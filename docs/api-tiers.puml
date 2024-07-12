@@ -1,0 +1,37 @@
+@startuml
+'https://plantuml.com/component-diagram
+
+package "API Facade" as FAPI {
+[Holder] as HAPI #Green
+[Issuer] #Orange
+[Verifier] #Orange
+}
+
+
+package "VC Exchange Protocols" as EPAPI {
+  [OID4VC] #Green
+  [DIDComm] #Orange
+}
+
+package "Low Level API" as LLAPI {
+  [VC] #Green
+  [DID] #Green
+  [KMS] #Green
+  [Vault] #Green
+}
+
+EPAPI --> LLAPI
+FAPI --> LLAPI
+FAPI --> EPAPI
+
+cloud "Mobile App" as MAPP
+
+cloud "Web App Endpoints" as WAPP
+
+MAPP --> HAPI
+WAPP --> OID4VC
+
+note top of FAPI: Green - first version; orange - later versions
+
+
+@enduml
