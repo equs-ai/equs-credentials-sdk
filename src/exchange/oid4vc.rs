@@ -40,7 +40,7 @@ pub trait Issuer
     async fn verify_proof(pop: ProofOfPossession, nonce: Option<Nonce>) -> Result<(), OidError>;
 
     // infers credential format from CredRequest
-    async fn issue_credential(req: CredentialRequest, material: impl vc::ToCredential, key_id: KeyID) -> Result<vc::Credential, OidError>;
+    async fn issue_credential(req: CredentialRequest, material: vc::CredentialMaterial, key_id: KeyID) -> Result<vc::Credential, OidError>;
 
     // deferred credential and transaction mgmt, extra steps for validation/3p integration is out-of-scope and should be done on Application layer
 }

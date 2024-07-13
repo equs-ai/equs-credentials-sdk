@@ -1,47 +1,96 @@
+use std::fmt;
 use std::iter::Map;
-use crate::core_::kms;
+
+use crate::core_::{did, kms};
 
 // Error handling
+#[derive(fmt::Debug)]
 pub enum VCError {}
 
 // Basic types definitions
-pub type Credential = ssi::vc::Credential;
-pub type CredentialSubject = ssi::vc::CredentialSubject;
+pub type W3cVc = ssi::vc::Credential;
+pub type W3cVcSubj = ssi::vc::CredentialSubject;
+pub type W3pVp = ssi::vc::Presentation;
 
-pub type Presentation = ssi::vc::Presentation;
+pub type JWTRaw = String;
 
-pub enum VCFormat {
-    JwtVc,
-    JsonLd,
-    //etc
+pub enum CredentialMaterial {
+    W3c(W3cVc),
+    // etc
+}
+
+pub enum Credential {
+    JsonLd(W3cVc),
+    JwtVc(JWTRaw),
+    // etc
+}
+
+impl Credential {
+    pub fn subject_did(&self) -> did::DID {
+        todo!()
+    }
+}
+
+pub enum Presentation {
+    W3cVp(W3pVp),
+    // etc
+}
+
+pub enum ProofPreparation {
+    JsonLd(ssi::ldp::ProofPreparation),
+    // etc
 }
 
 pub struct GenerationOptions {}
 pub struct ValidationOptions {}
 
-pub struct CredentialMaterial {
-    format: VCFormat,
-    subject: CredentialSubject,
-    claims: Map<String, serde_json::Value>,
-    // etc
+pub trait W3cBuilder {
+    fn subject(&self, arg: W3cVcSubj) -> impl W3cBuilder;
+
+    fn subject_from_did(&self, arg: &did::DID) -> impl W3cBuilder;
+
+    fn claims(&self, arg: Map<String, serde_json::Value>) -> impl W3cBuilder;
+
+    fn claims_from_json(&self, arg: serde_json::Value) -> impl W3cBuilder;
+
+    fn build(&self) -> W3cVc;
 }
 
 pub trait ToCredential {
     async fn to_credential(&self, signer: impl kms::Signer, options: GenerationOptions) -> Result<Credential, VCError>;
 }
 
-pub trait KmsObservable<KH> {
-    async fn key_handle(&self, kms: impl kms::Kms<KH>) -> Result<KH, VCError>;
+pub trait ProofPrepare {
+    async fn prepare(&self) -> ProofPreparation;
+}
+
+impl ProofPrepare for Credential {
+    async fn prepare(&self) -> ProofPreparation {
+        todo!()
+    }
 }
 
 pub trait VC {
-    async fn generate<KH: kms::KeyHandle>(material: CredentialMaterial, kh: KH, options: GenerationOptions) -> Result<Credential, VCError>;
+    type Options;
+
+    async fn generate<S, P>(cred: CredentialMaterial, proof_gen: P, signer: S, options: Self::Options) -> Result<Credential, VCError>
+    where
+        S: kms::Signer,
+        P: ProofPrepare
+    ;
 }
 
 pub trait VP {
-    async fn generate<KH: kms::KeyHandle>(creds: Vec<(Credential, KH)>) -> Result<Presentation, VCError>;
+    type Options;
+
+    async fn generate<S>(creds: Vec<(Credential, S)>, options: Self::Options) -> Result<Presentation, VCError>
+    where
+        S: kms::Signer,
+    ;
 }
 
 pub trait Verifier {
-    async fn validate(presentation: Presentation, options: ValidationOptions) -> Result<(), VCError>;
+    type Options;
+
+    async fn validate(presentation: Presentation, options: Self::Options) -> Result<(), VCError>;
 }

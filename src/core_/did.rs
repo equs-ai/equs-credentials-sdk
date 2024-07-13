@@ -1,5 +1,8 @@
 // Error handling
 
+use std::fmt;
+
+#[derive(fmt::Debug)]
 pub enum DIDError {}
 
 // Basic types definitions
@@ -10,22 +13,29 @@ pub type DIDDoc = ssi::did::Document;
 
 pub enum DIDMethod {
     DidKey,
+    DidWeb,
     // etc
 }
 
 // Methods results
-pub enum State {}
+#[derive(Default)]
+pub enum State {
+    #[default]
+    Ready,
+    // etc
+}
 
+#[derive(Default)]
 pub struct Created {
-    state: State,
-    did: Option<DID>,
-    doc: Option<DIDDoc>,
+    pub state: State,
+    pub did: Option<DID>,
+    pub doc: Option<DIDDoc>,
 }
 
 pub struct Resolution {
-    state: State,
-    did: Option<DID>,
-    doc: Option<DIDDoc>,
+    pub state: State,
+    pub did: Option<DID>,
+    pub doc: Option<DIDDoc>,
 }
 
 pub struct Updated;
