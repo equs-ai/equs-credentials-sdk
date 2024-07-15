@@ -4,9 +4,9 @@ use oid4vci::openidconnect::Nonce;
 use serde_json::Value;
 
 use crate::core_::{did, vault, vc};
-use crate::core_::did::{Created, DID};
+use crate::core_::did::{Created, DID, DIDURL};
 use crate::core_::kms;
-use crate::core_::kms::{KeyID, PubKey, Signer};
+use crate::core_::kms::{Alg, KeyID, PubKey, Signer};
 use crate::core_::vault::{FindCriteria, VaultError};
 use crate::core_::vc::{Credential, CredentialMaterial, GenerationOptions, Presentation, ProofPreparation, ProofPrepare, ToCredential, VCError, W3cBuilder, W3cVc, W3cVcSubj};
 use crate::exchange::oid4vc;
@@ -16,6 +16,7 @@ mod demo;
 // core::kms
 
 pub struct _KeyHandle;
+
 pub struct _Kms;
 
 impl _Kms {
@@ -24,7 +25,11 @@ impl _Kms {
     }
 }
 
-impl kms::Signer for _KeyHandle {
+impl Signer for _KeyHandle {
+    fn alg() -> Alg {
+        Alg::ES256
+    }
+
     async fn sign(&self, payload: &[u8]) -> Result<Vec<u8>, kms::KmsError> {
         todo!()
     }
@@ -43,11 +48,11 @@ impl kms::Kms<_KeyHandle> for _Kms {
         todo!()
     }
 
-    async fn get(&self, key_id: kms::KeyID) -> Result<_KeyHandle, kms::KmsError> {
+    async fn get(&self, key_id: &KeyID) -> Result<_KeyHandle, kms::KmsError> {
         todo!()
     }
 
-    async fn pub_key(&self, key_id: kms::KeyID) -> Result<Box<dyn PubKey>, kms::KmsError> {
+    async fn pub_key(&self, key_id: &KeyID) -> Result<Box<dyn PubKey>, kms::KmsError> {
         todo!()
     }
 }
@@ -66,7 +71,7 @@ impl _DIDCore {
 }
 
 impl did::DIDCore for _DIDCore {
-    async fn create(method: did::DIDMethod, options: did::CreateOptions) -> Result<did::Created, did::DIDError> {
+    async fn create<S: kms::Signer>(method: did::DIDMethod, signer: S, options: did::CreateOptions) -> Result<did::Created, did::DIDError> {
         println!("Generated DID");
         Ok(Created { did: Some("did:example:123".into()), ..Default::default() })
     }
@@ -125,12 +130,12 @@ impl _KeyStorage {
     }
 }
 
-impl vault::Storage<DID, KeyID> for _KeyStorage {
-    async fn put(&self, k: &DID, v: &KeyID) -> Result<(), VaultError> {
+impl vault::Storage<DIDURL, KeyID> for _KeyStorage {
+    async fn put(&self, k: &DIDURL, v: &KeyID) -> Result<(), VaultError> {
         todo!()
     }
 
-    async fn get(&self, k: &DID) -> Result<Option<KeyID>, VaultError> {
+    async fn get(&self, k: &DIDURL) -> Result<KeyID, VaultError> {
         todo!()
     }
 }
@@ -161,12 +166,12 @@ impl vc::W3cBuilder for _W3cBuilder {
 }
 
 pub struct DIDProof {
-    did: DID,
+    did_url: DIDURL,
 }
 
 impl DIDProof {
-    pub fn new(did: DID) -> Self {
-        Self { did }
+    pub fn new(did_url: DIDURL) -> Self {
+        Self { did_url }
     }
 }
 
@@ -201,7 +206,7 @@ pub struct _VP;
 impl vc::VP for _VP {
     type Options = ();
 
-    async fn generate<S>(creds: Vec<(Credential, S)>, options: ()) -> Result<Presentation, VCError>
+    async fn generate<S>(creds: &Credential, signer: S, options: ()) -> Result<Presentation, VCError>
     where
         S: Signer,
     {
@@ -220,7 +225,7 @@ pub struct _Verifier;
 impl vc::Verifier for _Verifier {
     type Options = ();
 
-    async fn validate(presentation: Presentation, options: ()) -> Result<(), VCError> {
+    async fn validate(presentation: &Presentation, options: ()) -> Result<(), VCError> {
         todo!()
     }
 }

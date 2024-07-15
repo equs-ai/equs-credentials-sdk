@@ -12,17 +12,30 @@ pub type W3cVc = ssi::vc::Credential;
 pub type W3cVcSubj = ssi::vc::CredentialSubject;
 pub type W3pVp = ssi::vc::Presentation;
 
+pub type ISOMdl = String;
+
 pub type JWTRaw = String;
 
+// The material Verifiable Credential could be built from
+// Does not and should not yet contain any signatures and proofs
 pub enum CredentialMaterial {
-    W3c(W3cVc),
+    JWT_VC_JSON(W3cVc),
+    JWT_VC_JSON_LD(W3cVc),
+    LDP_VC(W3cVc),
+
+    VC_SD_JWT(W3cVc),
+    ISOMdl(ISOMdl),
     // etc
 }
 
+// The resulting signed Verifiable Credential in the target format, serializable
 pub enum Credential {
-    JsonLd(W3cVc),
-    JwtVc(JWTRaw),
+    W3C_LDP(W3cVc),
+    W3C_JWT_JSON(JWTRaw),
+    W3C_JWT_JSON_LD(JWTRaw),
+    SD_JWT(JWTRaw),
     // etc
+    ISOMdl(String),
 }
 
 impl Credential {
@@ -73,6 +86,7 @@ impl ProofPrepare for Credential {
 pub trait VC {
     type Options;
 
+    // Type of the resulting Verifiable Credential must be unambiguously inferred from CredentialMaterial
     async fn generate<S, P>(cred: CredentialMaterial, proof_gen: P, signer: S, options: Self::Options) -> Result<Credential, VCError>
     where
         S: kms::Signer,
@@ -83,7 +97,8 @@ pub trait VC {
 pub trait VP {
     type Options;
 
-    async fn generate<S>(creds: Vec<(Credential, S)>, options: Self::Options) -> Result<Presentation, VCError>
+    // Assumption: Presentation to contain exactly one Credential
+    async fn generate<S>(cred: &Credential, signer: S, options: Self::Options) -> Result<Presentation, VCError>
     where
         S: kms::Signer,
     ;
@@ -92,5 +107,5 @@ pub trait VP {
 pub trait Verifier {
     type Options;
 
-    async fn validate(presentation: Presentation, options: Self::Options) -> Result<(), VCError>;
+    async fn validate(presentation: &Presentation, options: Self::Options) -> Result<(), VCError>;
 }

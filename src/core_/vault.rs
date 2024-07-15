@@ -25,5 +25,5 @@ pub trait Vault
 pub trait Storage<K, V> {
     async fn put(&self, k: &K, v: &V) -> Result<(), VaultError>;
 
-    async fn get(&self, k: &K) -> Result<Option<V>, VaultError>;
+    async fn get(&self, k: &K) -> Result<V, VaultError>;
 }

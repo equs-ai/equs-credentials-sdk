@@ -1,6 +1,7 @@
 // Error handling
 
 use std::fmt;
+use crate::core_::kms;
 
 #[derive(fmt::Debug)]
 pub enum DIDError {}
@@ -8,7 +9,7 @@ pub enum DIDError {}
 // Basic types definitions
 
 pub type DID = String;
-
+pub type DIDURL = ssi::did::DIDURL;
 pub type DIDDoc = ssi::did::Document;
 
 pub enum DIDMethod {
@@ -48,7 +49,7 @@ pub struct UpdateOptions;
 pub struct DeactivateOptions;
 
 pub trait DIDCore {
-    async fn create(method: DIDMethod, options: CreateOptions) -> Result<Created, DIDError>;
+    async fn create<S: kms::Signer>(method: DIDMethod, signer: S, options: CreateOptions) -> Result<Created, DIDError>;
 
     async fn resolve(did: &DID, options: ResolveOptions) -> Result<Resolution, DIDError>;
 
