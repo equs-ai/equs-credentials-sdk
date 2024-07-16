@@ -1,6 +1,7 @@
 use oauth2::url::Url;
 use oid4vci::core::profiles;
 use oid4vci::openidconnect::Nonce;
+
 use crate::core_::{kms, vc};
 use crate::core_::kms::KeyID;
 
@@ -40,7 +41,7 @@ pub trait Issuer
     async fn verify_proof(pop: ProofOfPossession, nonce: Option<Nonce>) -> Result<(), OidError>;
 
     // infers credential format from CredRequest
-    async fn issue_credential(req: CredentialRequest, material: vc::CredentialMaterial, key_id: KeyID) -> Result<vc::Credential, OidError>;
+    async fn issue_credential<CM>(req: CredentialRequest, material: CM, key_id: KeyID) -> Result<vc::Credential, OidError>;
 
     // deferred credential and transaction mgmt, extra steps for validation/3p integration is out-of-scope and should be done on Application layer
 }

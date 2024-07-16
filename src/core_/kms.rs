@@ -1,5 +1,7 @@
 use std::fmt;
 
+use crate::core_::crypto;
+
 // Error handling
 #[derive(fmt::Debug)]
 pub enum KmsError {}
@@ -13,24 +15,10 @@ pub enum KeyType {
     // etc
 }
 
-pub enum Alg {
-    ES256,
-}
-
 // Method options
 pub struct CreateOptions {}
 
-pub trait Signer {
-    fn alg() -> Alg;
-
-    async fn sign(&self, payload: &[u8]) -> Result<Vec<u8>, KmsError>;
-}
-
-pub trait Verifier {
-    async fn verify(&self, data: &[u8], signature: &[u8]) -> Result<(), KmsError>;
-}
-
-pub trait KeyHandle: Signer + Verifier {}
+pub trait KeyHandle: crypto::Signer + crypto::Verifier {}
 
 pub trait PubKey {}
 

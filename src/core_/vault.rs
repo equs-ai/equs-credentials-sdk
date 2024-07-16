@@ -1,6 +1,6 @@
 use std::fmt;
-use crate::core_::vc;
 
+use crate::core_::vc;
 
 // Error handling
 #[derive(fmt::Debug)]

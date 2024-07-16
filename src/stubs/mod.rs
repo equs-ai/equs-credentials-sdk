@@ -1,20 +1,21 @@
-use std::iter::Map;
-
 use oid4vci::openidconnect::Nonce;
-use serde_json::Value;
 
-use crate::core_::{did, vault, vc};
-use crate::core_::did::{Created, DID, DIDURL};
+use crate::core_::{crypto, did, pop, vault, vc};
+use crate::core_::crypto::{Alg, Signer};
+use crate::core_::did::{Created, DIDURL};
 use crate::core_::kms;
-use crate::core_::kms::{Alg, KeyID, PubKey, Signer};
+use crate::core_::pop::jwt_pop::{JwtProofOfPossession, Proof};
+use crate::core_::pop::{ProofOfPossession, VerifyOptions};
 use crate::core_::vault::{FindCriteria, VaultError};
-use crate::core_::vc::{Credential, CredentialMaterial, GenerationOptions, Presentation, ProofPreparation, ProofPrepare, ToCredential, VCError, W3cBuilder, W3cVc, W3cVcSubj};
+use crate::core_::vc::{API, Error};
+use crate::core_::vc::sd_jwt_vc::{Claims, Credential, Presentation, VCMetadata, VPMetadata};
 use crate::exchange::oid4vc;
 
 mod demo;
 
 // core::kms
 
+#[derive(Clone)]
 pub struct _KeyHandle;
 
 pub struct _Kms;
@@ -25,18 +26,18 @@ impl _Kms {
     }
 }
 
-impl Signer for _KeyHandle {
+impl crypto::Signer for _KeyHandle {
     fn alg() -> Alg {
         Alg::ES256
     }
 
-    async fn sign(&self, payload: &[u8]) -> Result<Vec<u8>, kms::KmsError> {
+    async fn sign(&self, payload: &[u8]) -> Result<Vec<u8>, crypto::CryptoError> {
         todo!()
     }
 }
 
-impl kms::Verifier for _KeyHandle {
-    async fn verify(&self, data: &[u8], signature: &[u8]) -> Result<(), kms::KmsError> {
+impl crypto::Verifier for _KeyHandle {
+    async fn verify(&self, data: &[u8], signature: &[u8]) -> Result<(), crypto::CryptoError> {
         todo!()
     }
 }
@@ -48,11 +49,11 @@ impl kms::Kms<_KeyHandle> for _Kms {
         todo!()
     }
 
-    async fn get(&self, key_id: &KeyID) -> Result<_KeyHandle, kms::KmsError> {
+    async fn get(&self, key_id: &kms::KeyID) -> Result<_KeyHandle, kms::KmsError> {
         todo!()
     }
 
-    async fn pub_key(&self, key_id: &KeyID) -> Result<Box<dyn PubKey>, kms::KmsError> {
+    async fn pub_key(&self, key_id: &kms::KeyID) -> Result<Box<dyn kms::PubKey>, kms::KmsError> {
         todo!()
     }
 }
@@ -71,7 +72,7 @@ impl _DIDCore {
 }
 
 impl did::DIDCore for _DIDCore {
-    async fn create<S: kms::Signer>(method: did::DIDMethod, signer: S, options: did::CreateOptions) -> Result<did::Created, did::DIDError> {
+    async fn create<S: crypto::Signer>(method: did::DIDMethod, signer: S, options: did::CreateOptions) -> Result<did::Created, did::DIDError> {
         println!("Generated DID");
         Ok(Created { did: Some("did:example:123".into()), ..Default::default() })
     }
@@ -109,15 +110,15 @@ impl vault::Vault for _Vault {
         todo!()
     }
 
-    async fn store_credential(&self, credential: Credential) -> Result<String, VaultError> {
+    async fn store_credential(&self, credential: vc::Credential) -> Result<String, VaultError> {
         todo!()
     }
 
-    async fn get_credential(&self, id: String) -> Result<Credential, VaultError> {
+    async fn get_credential(&self, id: String) -> Result<vc::Credential, VaultError> {
         todo!()
     }
 
-    async fn find_credentials(&self, criteria: FindCriteria) -> Result<Vec<Credential>, VaultError> {
+    async fn find_credentials(&self, criteria: FindCriteria) -> Result<Vec<vc::Credential>, VaultError> {
         todo!()
     }
 }
@@ -130,105 +131,72 @@ impl _KeyStorage {
     }
 }
 
-impl vault::Storage<DIDURL, KeyID> for _KeyStorage {
-    async fn put(&self, k: &DIDURL, v: &KeyID) -> Result<(), VaultError> {
+impl vault::Storage<DIDURL, kms::KeyID> for _KeyStorage {
+    async fn put(&self, k: &DIDURL, v: &kms::KeyID) -> Result<(), VaultError> {
         todo!()
     }
 
-    async fn get(&self, k: &DIDURL) -> Result<KeyID, VaultError> {
+    async fn get(&self, k: &DIDURL) -> Result<kms::KeyID, VaultError> {
         todo!()
     }
 }
 
 // core::vc
-pub struct _W3cBuilder;
 
-impl vc::W3cBuilder for _W3cBuilder {
-    fn subject(&self, arg: W3cVcSubj) -> _W3cBuilder {
-        todo!()
-    }
+pub struct _SdJwtAPI;
 
-    fn subject_from_did(&self, arg: &DID) -> _W3cBuilder {
-        todo!()
-    }
-
-    fn claims(&self, arg: Map<String, Value>) -> _W3cBuilder {
-        todo!()
-    }
-
-    fn claims_from_json(&self, arg: Value) -> _W3cBuilder {
-        todo!()
-    }
-
-    fn build(&self) -> W3cVc {
-        todo!()
-    }
-}
-
-pub struct DIDProof {
-    did_url: DIDURL,
-}
-
-impl DIDProof {
-    pub fn new(did_url: DIDURL) -> Self {
-        Self { did_url }
-    }
-}
-
-impl ProofPrepare for DIDProof {
-    async fn prepare(&self) -> ProofPreparation {
-        todo!()
-    }
-}
-
-pub struct _VC;
-
-impl _VC {
+impl _SdJwtAPI {
     pub fn new() -> Self {
         Self {}
     }
 }
 
-impl vc::VC for _VC {
-    type Options = ();
-
-    async fn generate<S, P>(cred: CredentialMaterial, proof_gen: P, signer: S, options: ()) -> Result<Credential, VCError>
+impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata> for _SdJwtAPI {
+    async fn create_vc<S>(claims: Claims, signer: S, iss_did_url: &DIDURL, metadata: VCMetadata) -> Result<Credential, Error>
     where
-        S: Signer,
-        P: ProofPrepare,
+        S: crypto::Signer,
     {
         todo!()
     }
-}
 
-pub struct _VP;
-
-impl vc::VP for _VP {
-    type Options = ();
-
-    async fn generate<S>(creds: &Credential, signer: S, options: ()) -> Result<Presentation, VCError>
+    async fn create_vp<S>(credential: &Credential, signer: S, nonce: vc::Nonce, verifier_id: &str, holder_did_url: &DIDURL, metadata: VPMetadata) -> Result<Presentation, Error>
     where
-        S: Signer,
+        S: crypto::Signer,
     {
         todo!()
     }
-}
 
-impl ToCredential for CredentialMaterial {
-    async fn to_credential(&self, signer: impl kms::Signer, options: GenerationOptions) -> Result<Credential, VCError> {
+    async fn verify_vp(presentation: &Presentation, opts: vc::VerifyOptions) -> Result<(), Error> {
         todo!()
     }
 }
 
-pub struct _Verifier;
+impl vc::sd_jwt_vc::SdJwtAPI for _SdJwtAPI {}
 
-impl vc::Verifier for _Verifier {
-    type Options = ();
+pub struct _JwtProofOfPossessionAPI;
 
-    async fn validate(presentation: &Presentation, options: ()) -> Result<(), VCError> {
+impl _JwtProofOfPossessionAPI {
+    pub fn new() -> Self {
+        Self {}
+    }
+}
+
+impl ProofOfPossession<Proof> for _JwtProofOfPossessionAPI {
+    async fn generate<S>(did_url: &DIDURL, signer: S, nonce: vc::Nonce, aud: String, iss: Option<String>) -> Result<Proof, Error>
+    where
+        S: crypto::Signer
+    {
+        todo!()
+    }
+
+    async fn verify(proof: Proof, opts: VerifyOptions) -> Result<(), Error> {
         todo!()
     }
 }
+
+impl pop::jwt_pop::JwtProofOfPossession for _JwtProofOfPossessionAPI {
+}
+
 // exchange::oid4vc
 
 pub struct Issuer
@@ -254,7 +222,7 @@ impl oid4vc::Issuer for Issuer {
         todo!()
     }
 
-    async fn issue_credential(req: oid4vc::CredentialRequest, material: vc::CredentialMaterial, key_id: KeyID) -> Result<Credential, oid4vc::OidError> {
+    async fn issue_credential<CM>(req: oid4vc::CredentialRequest, material: CM, key_id: kms::KeyID) -> Result<vc::Credential, oid4vc::OidError> {
         todo!()
     }
 }

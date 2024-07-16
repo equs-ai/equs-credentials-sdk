@@ -1,8 +1,8 @@
-// Error handling
-
 use std::fmt;
-use crate::core_::kms;
 
+use crate::core_::{crypto, kms};
+
+// Error handling
 #[derive(fmt::Debug)]
 pub enum DIDError {}
 
@@ -49,7 +49,10 @@ pub struct UpdateOptions;
 pub struct DeactivateOptions;
 
 pub trait DIDCore {
-    async fn create<S: kms::Signer>(method: DIDMethod, signer: S, options: CreateOptions) -> Result<Created, DIDError>;
+    async fn create<S>(method: DIDMethod, signer: S, options: CreateOptions) -> Result<Created, DIDError>
+    where
+        S: crypto::Signer
+    ;
 
     async fn resolve(did: &DID, options: ResolveOptions) -> Result<Resolution, DIDError>;
 
