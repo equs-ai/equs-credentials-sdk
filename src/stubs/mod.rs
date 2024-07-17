@@ -1,15 +1,19 @@
+use oauth2::url::Url;
 use oid4vci::openidconnect::Nonce;
 
 use crate::core_::{crypto, did, pop, vault, vc};
 use crate::core_::crypto::{Alg, Signer};
 use crate::core_::did::{Created, DIDURL};
 use crate::core_::kms;
-use crate::core_::pop::jwt_pop::{JwtProofOfPossession, Proof};
+use crate::core_::kms::KeyID;
 use crate::core_::pop::{ProofOfPossession, VerifyOptions};
+use crate::core_::pop::jwt_pop::{JwtProofOfPossession, Proof};
 use crate::core_::vault::{FindCriteria, VaultError};
 use crate::core_::vc::{API, Error};
 use crate::core_::vc::sd_jwt_vc::{Claims, Credential, Presentation, VCMetadata, VPMetadata};
 use crate::exchange::oid4vc;
+use crate::exchange::oid4vc::AccessToken;
+use crate::exchange::oid4vc::vci::{AuthorizationResponse, CredentialOffer, CredentialOfferParams, CredentialRequest, CredentialResult};
 
 mod demo;
 
@@ -184,7 +188,7 @@ impl _JwtProofOfPossessionAPI {
 impl ProofOfPossession<Proof> for _JwtProofOfPossessionAPI {
     async fn generate<S>(did_url: &DIDURL, signer: S, nonce: vc::Nonce, aud: String, iss: Option<String>) -> Result<Proof, Error>
     where
-        S: crypto::Signer
+        S: crypto::Signer,
     {
         todo!()
     }
@@ -194,36 +198,84 @@ impl ProofOfPossession<Proof> for _JwtProofOfPossessionAPI {
     }
 }
 
-impl pop::jwt_pop::JwtProofOfPossession for _JwtProofOfPossessionAPI {
-}
+impl pop::jwt_pop::JwtProofOfPossession for _JwtProofOfPossessionAPI {}
 
 // exchange::oid4vc
 
-pub struct Issuer
+pub struct _Issuer
 {
-    metadata: oid4vc::IssuerMetadata,
+    metadata: oid4vc::vci::IssuerMetadata,
     kms: _Kms,
 }
 
-impl oid4vc::Issuer for Issuer {
-    async fn metadata() -> oid4vc::IssuerMetadata {
+impl _Issuer {
+    pub fn new(kms: _Kms, metadata: oid4vc::vci::IssuerMetadata) -> Self {
+        Self { kms, metadata }
+    }
+}
+
+
+impl oid4vc::vci::Issuer for _Issuer {
+    async fn metadata(&self) -> oid4vc::vci::IssuerMetadata {
         todo!()
     }
 
-    async fn validate_token(token: oid4vc::AccessToken) -> Result<(), oid4vc::OidError> {
+    async fn offer_pre_authz_flow(&self, code: &str, cred_ids: &Vec<String>) -> Result<CredentialOfferParams, oid4vc::Error> {
         todo!()
     }
 
-    async fn validate_request(req: oid4vc::CredentialRequest) -> Result<(), oid4vc::OidError> {
+    async fn offer_authz_flow(&self, iss_state: Option<String>, cred_ids: &Vec<String>) -> Result<CredentialOfferParams, oid4vc::Error> {
         todo!()
     }
 
-    async fn verify_proof(pop: oid4vc::ProofOfPossession, nonce: Option<Nonce>) -> Result<(), oid4vc::OidError> {
+    async fn validate_token(&self, token: AccessToken) -> Result<(), oid4vc::Error> {
         todo!()
     }
 
-    async fn issue_credential<CM>(req: oid4vc::CredentialRequest, material: CM, key_id: kms::KeyID) -> Result<vc::Credential, oid4vc::OidError> {
+    async fn validate_request(&self, req: oid4vc::vci::CredentialRequest) -> Result<(), oid4vc::Error> {
+        todo!()
+    }
+
+    async fn verify_proof(&self, pop: oid4vc::vci::Proof, nonce: Nonce) -> Result<(), oid4vc::Error> {
+        todo!()
+    }
+
+    async fn issue_credential<CM>(&self, req: CredentialRequest, claims: CM, did_url: DIDURL, key_id: KeyID) -> Result<vc::Credential, oid4vc::Error> {
         todo!()
     }
 }
 
+pub struct _Holder {}
+
+impl oid4vc::vci::Holder for _Holder {
+    async fn from_metadata(issuer_url: Url) -> Result<Self, oid4vc::Error> {
+        todo!()
+    }
+
+    async fn from_offer(offer: CredentialOffer) -> Result<Self, oid4vc::Error> {
+        todo!()
+    }
+
+    fn supported_cred_ids() -> Vec<String> {
+        todo!()
+    }
+
+    async fn authz_code_flow(&self, cred_ids: &Vec<String>, callback: fn(Url) -> String) -> Result<AuthorizationResponse, oid4vc::Error> {
+        todo!()
+    }
+
+    async fn pre_authorized_flow(&self, cred_ids: &Vec<String>) -> Result<AuthorizationResponse, oid4vc::Error> {
+        todo!()
+    }
+
+    async fn request(&self, token: AccessToken, req: CredentialRequest,
+                     nonce: Option<vc::Nonce>, proof_did_url: Option<DIDURL>, proof_kid: Option<KeyID>,
+    ) -> Result<CredentialResult, oid4vc::Error> {
+        todo!()
+    }
+
+
+    async fn deferred(&self, token: AccessToken, transaction_id: String) -> Result<CredentialResult, oid4vc::Error> {
+        todo!()
+    }
+}

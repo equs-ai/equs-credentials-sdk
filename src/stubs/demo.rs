@@ -1,8 +1,19 @@
+use std::io;
+use std::io::Write;
+
+use oauth2::{AccessToken, TokenResponse};
+use oid4vci::core::profiles::w3c::CredentialDefinition;
+use oid4vci::core::profiles::w3c::jwt::Request;
+use oid4vci::metadata::CredentialUrl;
+use oid4vci::openidconnect::IssuerUrl;
+
 use crate::core_::did::{DIDCore, DIDMethod};
 use crate::core_::kms::{KeyType, Kms};
 use crate::core_::vault::{Storage, Vault};
 use crate::core_::vc::API;
 use crate::core_::vc::sd_jwt_vc::SdJwtAPI;
+use crate::exchange::oid4vc::vci::{Holder, Issuer};
+use crate::exchange::oid4vc::vci::CredentialResult;
 use crate::stubs::*;
 
 pub(crate) async fn low_level_demo() {
@@ -88,7 +99,70 @@ pub(crate) async fn low_level_demo() {
     let _ = _SdJwtAPI::verify_vp(&presentation, vc::VerifyOptions {}).await;
 }
 
-pub(crate) async fn exchange_demo() {}
+
+pub(crate) async fn exchange_demo() {
+    // Issuer init
+    let kms = _Kms::new();
+    let metadata = oid4vc::vci::IssuerMetadata::new(
+        IssuerUrl::new("https://issuer.com".into()).unwrap(),
+        CredentialUrl::new("https://issuer.com/credential".into()).unwrap(),
+        // define the credentials to be supported
+        vec![],
+    );
+    let issuer = _Issuer::new(kms, metadata);
+
+    // Out-of-band:
+    // Get the code from Authorization Server to be associated with targeted offer
+    let code = "123";
+    let cred_ids = vec![String::from("UniversityDegreeCredential")];
+    let offer = issuer.offer_pre_authz_flow(code, &cred_ids).await.unwrap();
+
+    // Holder init
+    // Out-of-band:
+    // Offer sent to the holder/ Offer put under `credential_offer_uri`
+    let holder = _Holder::from_offer(CredentialOffer::Value { credential_offer: offer }).await.unwrap();
+
+    // Pre-authorized code flow
+    let response = holder.pre_authorized_flow(&cred_ids).await.unwrap();
+    // OR using Authorized Code flow
+    let _ = holder.authz_code_flow(&cred_ids, |url: Url| {
+        // Only for demonstration purposes
+        println!("Auth URL: {}", url.to_owned().to_string());
+        print!("Please enter an authorization code: ");
+        io::stdout().flush().unwrap();
+
+        let mut input = String::new();
+        io::stdin().read_line(&mut input).expect("Failed to read auth code");
+        input
+    }).await.unwrap();
+
+    // ... Authorization server returned token and other fields
+    let token = response.access_token().secret().clone();
+
+    // Creating suitable request
+    let req = CredentialRequest::JWTVC(Request::new(CredentialDefinition::new(cred_ids.clone())));
+
+    // No proof of possession for demo's brevity
+    let res = holder.request(AccessToken::new(token.clone()), req, None, None, None).await.unwrap();
+
+    // ... in the same time the following Issuer's methods invoked
+
+    // let _ = issuer.validate_request(req.clone());
+    // let _ = issuer.validate_token(AccessToken::new(token.clone()));
+    //let _ = issuer.verify_proof(...)
+    // let vc = issuer.issue_credential(req, ...)
+
+    match res {
+        CredentialResult::Deferred { transaction_id } => {
+            let _ = holder.deferred(AccessToken::new(token.clone()), transaction_id).await.unwrap();
+        }
+        CredentialResult::Credential { credential, notification_id } => {
+            let vault = _Vault::new();
+
+            let _ = vault.store_credential(credential).await.unwrap();
+        }
+    }
+}
 
 
 fn resolve_holder_did(cred: &vc::Credential) -> DIDURL {
