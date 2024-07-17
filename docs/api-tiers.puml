@@ -1,0 +1,62 @@
+@startuml
+'https://plantuml.com/component-diagram
+
+'package "API Facade" as FAPI {
+'[Holder] as HAPI #Orange
+'[Issuer] #Orange
+'[Verifier] #Orange
+'}
+
+
+package "VC Exchange Protocols" as EPAPI {
+
+    package "OID4VC" {
+        package "Facade API" as EOFAPI {
+          [Issuer API] as EOFAPII #Green
+          [Holder API] as EOFAPIH #Green
+          [Verifier API] as EOFAPIV #Green
+        }
+
+        [Internal API] as EOIAPI #Green
+    }
+
+    package "DIDComm" {
+        [Facade API] #Orange
+        [Internal API] #Orange
+    }
+
+
+}
+
+package "Low Level API" as LLAPI {
+
+    package "Facade API" as LFAPI {
+      [Issuer API] as LFAPII #Green
+      [Holder API] as LFAPIH #Green
+      [Verifier API] as LFAPIV #Green
+    }
+
+    package "Internal API" as LIAPI {
+      [VC] #Green
+      [DID] #Green
+      [KMS] #Green
+      [Vault] #Green
+    }
+}
+
+cloud "Mobile App" as MAPP
+cloud "Web App Endpoints" as WAPP
+
+LFAPI --> LIAPI
+EOFAPI --> EOIAPI
+
+EOIAPI --> LFAPI
+
+MAPP --> EOFAPIH
+WAPP --> EOFAPII
+WAPP --> EOFAPIV
+
+note top of EPAPI: Green - first version; orange - later versions
+
+
+@enduml
