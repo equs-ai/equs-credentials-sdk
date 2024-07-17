@@ -1,0 +1,59 @@
+@startuml
+'https://plantuml.com/sequence-diagram
+!pragma teoz true
+
+autonumber
+
+actor Holder as H
+participant Issuer as I
+participant Verifier as V
+
+autonumber 0.1
+note over I: GET /.well-known/openid-credential-issuer HTTP/1.1
+H -> I: request_issuer_metadata()
+I -> I: create_issuer_metadata()
+autonumber stop
+& I -> H: IssuerMetadata
+
+...
+
+autonumber 1.1
+note over I: GET /credential_offer HTTP/1.1
+H -> I: get_credential_offer()
+I -> I: create_credential_offer()
+autonumber stop
+& I -> H: CredentialOffer
+
+...
+
+autonumber 2.1
+note over I: POST /credential HTTP/1.1
+H -> I: request_credential()
+I -> I: issue_credential()
+autonumber stop
+& I -> H: (Credential, CredentialMetadata)
+
+autonumber 3
+H -> H: store_credential()
+
+...
+
+autonumber 4.1
+note over V: GET /<presentation-req-endpoint> HTTP/1.1
+H -> V: get_presentation_request()
+V -> V: create_presentation_request()
+autonumber stop
+& V -> H: PresentationRequest
+
+...
+
+autonumber 5.1
+note over V: POST /<presentation-response-uri> HTTP/1.1
+H -> H: present_credentials()
+autonumber stop
+H -> V: (Presentation, PresentationData)
+autonumber 5.2
+V -> V: verify_presentation()
+
+
+@enduml
