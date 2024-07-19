@@ -13,7 +13,7 @@ I -> I: create `CredentialDefinition`
 ...
 
 autonumber 1.1
-I -> I: <b>offer_credential</b>(cred_def_id)
+I -> I: <b>offer_credential</b>(cred_def_id, protocol_data)
 I --> H: <out-of-band>: send `CredentialOffer`
 
 ...

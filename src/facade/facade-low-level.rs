@@ -53,20 +53,21 @@ pub struct PresentationData{} // presentation_submission
 //  --------- Issuer API -------------
 
 pub struct IssuerService {
-    signer: Signer
+    signer: Box<dyn Signer>
 }
 
 impl IssuerService {
     // Step 1.
     pub async fn offer_credential(
-        cred_def_id: String,
+        cred_def_id: &str,
+        protocol_data: Option<&CredentialOfferData>
     ) -> Result<CredentialOffer, Box<dyn Error>>
 
     // Step 3.
     pub async fn issue_credential(
-        credential_request: CredentialRequest,
-        claims: CredentialClaims,
-        nonce: String, // same as in request_credential
+        credential_request: &CredentialRequest,
+        claims: &CredentialClaims,
+        nonce: &str, // same as in request_credential
     ) -> Result<(Credential, CredentialMetadata), Box<dyn Error>>
 }
 
@@ -75,29 +76,29 @@ impl IssuerService {
 //  --------- Holder API -------------
 
 pub struct HolderService {
-    vault: Vault,
-    signer: Signer
+    vault: Box<dyn Vault>,
+    signer: Box<dyn Signer>
 }
 
 impl HolderService {
 
     // Step 2.
     pub async fn request_credential(
-        credential_offer: CredentialOffer,
-        nonce: String,
-        key_id: String,
+        credential_offer: &CredentialOffer,
+        nonce: &str,
+        key_id: &str,
     ) -> Result<(CredentialRequest, String), Box<dyn Error>>
 
     // Step 4.
     pub async fn store_credential(
-        credential: Credential,
-        credential_metadata: CredentialMetadata,
+        credential: &Credential,
+        credential_metadata: &CredentialMetadata,
     ) -> Result<Box<dyn Error>> 
     
     // Step 5.
     pub fn create_presentation(
-        nonce: String,
-        presentation_definition: PresentationDefinition,
+        nonce: &str,
+        presentation_definition: &PresentationDefinition,
     ) -> Result<(Presentation, PresentationData), Box<dyn Error>>
     
 }
@@ -107,17 +108,17 @@ impl HolderService {
 //  --------- Verifier API -------------
 
 pub struct VerifierService {
-    did_resolver: DIDResolver,
+    did_resolver: Box<dyn DIDResolver>,
 }
 
 impl VerifierService {
 
     // Step 6.
     pub fn verify_presentation(
-        presentation_definition: PresentationDefinition,
-        nonce: String, // same as in create_presentation
-        presentation: Presentation,
-        presentation_data: PresentationData,
+        presentation_definition: &PresentationDefinition,
+        nonce: &str, // same as in create_presentation
+        presentation: &Presentation,
+        presentation_data: &PresentationData,
     ) -> Result<Boolean, Box<dyn Error>>
 
 }
