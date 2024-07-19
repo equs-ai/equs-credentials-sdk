@@ -10,18 +10,22 @@ pub struct IssuerMetadata{
 }
 pub struct IssuerMetadataData{}
 
-pub struct PresentationRequest{
+pub struct AuthorizationRequest {
+    // TODO: will be SpruceID/ASDK type, details will be changed
     pub presentation_definition: PresentationDefinition,
     pub nonce: String,
-    pub presentation_request_metadata: PresentationRequestMetadata,
+    pub authorization-response-uri: String,
+    pub metadata: AuthorizationRequestMetadata,
 }
-pub struct PresentationRequestMetadata{}
+pub struct AuthorizationRequestMetadata{}
+
+pub struct AuthorizationResponse {} // SpruceID/ASDK type
+pub struct AuthorizationResponseMetadata{}
 
 pub type AccessToken = oauth2::AccessToken;
 
-// TODO: Adapters of Common types from facade-low-level to corresponding OID4VC Presentation Objects
 
-
+// THE API is Subject to Change
 
 //  --------- Issuer API -------------
 
@@ -30,49 +34,48 @@ pub type AccessToken = oauth2::AccessToken;
 // POST /token 
 
 pub struct IssuerService {
-    signer: Signer
+    signer: Box<dyn Signer>
 }
 
 impl IssuerService {
 
-    // (Optional) Step 0. 
+    // Step 0
     // GET /.well-known/openid-credential-issuer HTTP/1.1
     pub async fn create_issuer_metadata() -> Result<IssuerMetadata, Box<dyn Error>>
 
     // Step 1
-    // GET /credential_offer HTTP/1.1
-    pub async fn create_credential_offer() -> Result<CredentialOffer, Box<dyn Error>>
+    // GET /<credential_offer_uri> or pass by value
+    pub async fn create_credential_offer(
+        cred_def_id: &str,
+        protocol_data: Option<&CredentialOfferData> // grant type (auth code, pre-auth code), etc.
+    ) -> Result<CredentialOffer, Box<dyn Error>>
 
-    // Step 2
+    // Step 3
     // POST /credential HTTP/1.1
     pub async fn issue_credential(
-        credential_request: CredentialRequest,
-        claims: CredentialClaims,
-        token: AccessToken
+        credential_request: &CredentialRequest,
+        claims: &CredentialClaims,
+        token: &AccessToken
     ) -> Result<(Credential, CredentialMetadata), Box<dyn Error>>
 }
 
 //  --------- Holder API -------------
 
 pub struct HolderService {
-    vault: Vault,
-    signer: Signer,
-    http_client: HttpCLient 
+    vault: Box<dyn Vault>,
+    signer: Box<dyn Signer>,
+    http_client: Box<dyn HttpCLient> 
 }
 
 impl HolderService {
 
-    // (Optional) Step 0. 
-    // Calls GET /.well-known/openid-credential-issuer HTTP/1.1
-    pub async fn request_issuer_metadata() -> Result<IssuerMetadata>
-
-    // Step 1
-    // Calls GET /credential_offer HTTP/1.1
-    pub async fn get_credential_offer(
-        issuer_metadata: Option<IssuerMetadata>
-    ) -> Result<CredentialOffer, Box<dyn Error>>
-    
     // Step 2
+    // Calls GET /.well-known/openid-credential-issuer HTTP/1.1
+    pub async fn request_issuer_metadata(
+        credential_offer: &CredentialOffer,
+    ) -> Result<IssuerMetadata>
+
+    // Step 3
     // Calls the following:
     //   1. GET /authorize
     //   2. POST /token 
@@ -81,23 +84,25 @@ impl HolderService {
     //   6. POST /credential HTTP/1.1 to get credential
     pub async fn request_credential(
         credential_offer: &CredentialOffer,
-        key_id: String,
+        key_id: &str,
     ) -> Result<(Credential, CredentialMetadata), Box<dyn Error>>
     
-    // Step 3
+    // Step 4
     pub async fn store_credential(
-        credential: Credential,
-        credential_metadata: CredentialMetadata,
+        credential: &Credential,
+        credential_metadata: &CredentialMetadata,
     ) -> Result<Box<dyn Error>> 
     
-    // Step 4
-    pub fn get_presentation_request(
-    ) -> Result<PresentationRequest, Box<dyn Error>> 
+    // Step 6
+    // (Optional) AuthRequest can be sent out-of-band or by GET to auth-req-uri (this call)
+    pub fn get_authorization_request(   
+        auth-req-uri: &str
+    ) -> Result<AuthorizationRequest, Box<dyn Error>> 
     
-    // Step 5
+    // Step 7
     pub fn present_credentials(
-        vault: Vault,
-        presentation_request: PresentationRequest,
+        auth_request: &AuthorizationRequest,
+        metadata: &AuthorizationResponseMetadata,
     ) -> Result<Box<dyn Error>>
 
 }
@@ -106,22 +111,23 @@ impl HolderService {
 //  --------- Verifier API -------------
 
 pub struct VerifierService {
-    did_resolver: DIDResolver,
+    did_resolver: Box<dyn DIDResolver>,
 }
 
 impl VerifierService {
 
-    // Step 4
-    pub fn create_presentation_request(
-        presentation_definition: PresentationDefinition,
-        nonce: String,
-    ) -> Result<PresentationRequest, Box<dyn Error>> 
+    // Step 5
+    // GET /<authorization_req_uri> or pass by value
+    pub fn create_authorization_request(
+        presentation_definition: &PresentationDefinition,
+        nonce: &str,
+        metadata: &AuthorizationRequestMetadata,
+    ) -> Result<AuthorizationRequest, Box<dyn Error>> 
 
-    // Step 5.
-    // POST response_uri
+    // Step 7
+    // POST <authorization-response-uri>
     pub fn verify_presentation(
-        presentation: Presentation,
-        presentation_data: PresentationData,
+        auth_response: &AuthorizationResponse
     ) -> Result<Boolean, Box<dyn Error>>
 
 }

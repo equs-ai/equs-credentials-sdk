@@ -8,52 +8,65 @@ actor Holder as H
 participant Issuer as I
 participant Verifier as V
 
-autonumber 0.1
-note over I: GET /.well-known/openid-credential-issuer HTTP/1.1
-H -> I: request_issuer_metadata()
-I -> I: create_issuer_metadata()
-autonumber stop
-& I -> H: IssuerMetadata
+autonumber 0
+I -> I: create_issuer_metadata(...)
 
 ...
 
-autonumber 1.1
-note over I: GET /credential_offer HTTP/1.1
-H -> I: get_credential_offer()
-I -> I: create_credential_offer()
+autonumber 1
+I -> I: create_credential_offer(...)
 autonumber stop
-& I -> H: CredentialOffer
+I --> H: CredentialOffer
 
 ...
 
-autonumber 2.1
+autonumber 2
+note over I: (Optional) GET /.well-known/openid-credential-issuer HTTP/1.1
+H -> I: request_issuer_metadata(credential_offer)
+autonumber stop
+I -> H: IssuerMetadata
+
+...
+
+autonumber 3.1
 note over I: POST /credential HTTP/1.1
-H -> I: request_credential()
-I -> I: issue_credential()
+H -> I: request_credential(credential_offer, ...)
+I -> I: issue_credential(...)
 autonumber stop
 & I -> H: (Credential, CredentialMetadata)
 
-autonumber 3
-H -> H: store_credential()
+...
+
+autonumber 4
+H -> H: store_credential(...)
 
 ...
 
-autonumber 4.1
-note over V: GET /<presentation-req-endpoint> HTTP/1.1
-H -> V: get_presentation_request()
-V -> V: create_presentation_request()
+autonumber 5
+V -> V: create_authorization_request(...)
+
+note over V: AuthorizationRequest can be sent either out-of-band or by GET /<authorization_req_uri> HTTP/1.1
+alt Out-of-band
+V --> H: (AuthorizationRequest, <authorization-response-uri>)
+else GET /<authorization_req_uri> HTTP/1.1
+autonumber 6.1
+V --> H: <authorization_req_uri>
+note over V: GET /<authorization_req_uri> HTTP/1.1
+autonumber 6.2
+H -> V: get_authorization_request(authorization_req_uri, ...)
 autonumber stop
-& V -> H: PresentationRequest
+V -> H: (AuthorizationRequest, <authorization-response-uri>)
+end
 
 ...
 
-autonumber 5.1
-note over V: POST /<presentation-response-uri> HTTP/1.1
-H -> H: present_credentials()
+autonumber 7.1
+note over V: POST /<authorization-response-uri> HTTP/1.1
+H -> H: present_credentials(authorization_req, ...)
 autonumber stop
-H -> V: (Presentation, PresentationData)
-autonumber 5.2
-V -> V: verify_presentation()
+H -> V: AuthorizationResponse
+autonumber 7.2
+V -> V: verify_presentation(...)
 
 
 @enduml
