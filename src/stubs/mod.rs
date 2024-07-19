@@ -1,146 +1,52 @@
+#![allow(dead_code)]
+#![allow(unused_variables)]
+
 use oauth2::url::Url;
 use oid4vci::openidconnect::Nonce;
 
-use crate::core_::{crypto, did, pop, vault, vc};
-use crate::core_::crypto::{Alg, Signer};
-use crate::core_::did::{Created, DIDURL};
+use crate::core_::{crypto, did, pop, vc};
+use crate::core_::did::DIDURL;
 use crate::core_::kms;
 use crate::core_::kms::KeyID;
 use crate::core_::pop::{ProofOfPossession, VerifyOptions};
-use crate::core_::pop::jwt_pop::{JwtProofOfPossession, Proof};
-use crate::core_::vault::{FindCriteria, VaultError};
+use crate::core_::pop::jwt_pop::Proof;
+use crate::core_::vault::FindCriteria;
 use crate::core_::vc::{API, Error};
 use crate::core_::vc::sd_jwt_vc::{Claims, Credential, Presentation, VCMetadata, VPMetadata};
 use crate::exchange::oid4vc;
 use crate::exchange::oid4vc::AccessToken;
 use crate::exchange::oid4vc::vci::{AuthorizationResponse, CredentialOffer, CredentialOfferParams, CredentialRequest, CredentialResult};
+use crate::impls::kms::inmem::LocalKms;
 
 mod demo;
-
-// core::kms
-
-#[derive(Clone)]
-pub struct _KeyHandle;
-
-pub struct _Kms;
-
-impl _Kms {
-    pub fn new() -> Self {
-        Self {}
-    }
-}
-
-impl crypto::Signer for _KeyHandle {
-    fn alg() -> Alg {
-        Alg::ES256
-    }
-
-    async fn sign(&self, payload: &[u8]) -> Result<Vec<u8>, crypto::CryptoError> {
-        todo!()
-    }
-}
-
-impl crypto::Verifier for _KeyHandle {
-    async fn verify(&self, data: &[u8], signature: &[u8]) -> Result<(), crypto::CryptoError> {
-        todo!()
-    }
-}
-
-impl kms::KeyHandle for _KeyHandle {}
-
-impl kms::Kms<_KeyHandle> for _Kms {
-    async fn create(&self, key_type: kms::KeyType, options: kms::CreateOptions) -> Result<kms::KeyID, kms::KmsError> {
-        todo!()
-    }
-
-    async fn get(&self, key_id: &kms::KeyID) -> Result<_KeyHandle, kms::KmsError> {
-        todo!()
-    }
-
-    async fn pub_key(&self, key_id: &kms::KeyID) -> Result<Box<dyn kms::PubKey>, kms::KmsError> {
-        todo!()
-    }
-}
 
 // core::did
 
 pub struct _DIDCore
 {
-    kms: _Kms,
+    kms: LocalKms,
 }
 
 impl _DIDCore {
-    pub fn new(kms: _Kms) -> Self {
+    pub fn new(kms: LocalKms) -> Self {
         Self { kms }
     }
 }
 
 impl did::DIDCore for _DIDCore {
     async fn create<S: crypto::Signer>(method: did::DIDMethod, signer: S, options: did::CreateOptions) -> Result<did::Created, did::DIDError> {
-        println!("Generated DID");
-        Ok(Created { did: Some("did:example:123".into()), ..Default::default() })
-    }
-
-    async fn resolve(did: &did::DID, options: crate::core_::did::ResolveOptions) -> Result<did::Resolution, did::DIDError> {
         todo!()
     }
 
-    async fn update(did: &did::DID, options: crate::core_::did::UpdateOptions) -> Result<did::Updated, did::DIDError> {
+    async fn resolve(did: &did::DID, options: did::ResolveOptions) -> Result<did::Resolution, did::DIDError> {
         todo!()
     }
 
-    async fn deactivate(did: &did::DID, options: crate::core_::did::DeactivateOptions) -> Result<did::Deactivated, did::DIDError> {
-        todo!()
-    }
-}
-
-// core::vault
-
-pub struct _Vault;
-
-impl _Vault {
-    pub fn new() -> Self {
-        Self {}
-    }
-}
-
-impl vault::Vault for _Vault {
-    fn open(&self, master_secret: &str) -> Result<(), VaultError> {
-        println!("Vault opened");
-        Ok(())
-    }
-
-    fn close(&self) -> Result<(), VaultError> {
+    async fn update(did: &did::DID, options: did::UpdateOptions) -> Result<did::Updated, did::DIDError> {
         todo!()
     }
 
-    async fn store_credential(&self, credential: vc::Credential) -> Result<String, VaultError> {
-        todo!()
-    }
-
-    async fn get_credential(&self, id: String) -> Result<vc::Credential, VaultError> {
-        todo!()
-    }
-
-    async fn find_credentials(&self, criteria: FindCriteria) -> Result<Vec<vc::Credential>, VaultError> {
-        todo!()
-    }
-}
-
-pub struct _KeyStorage;
-
-impl _KeyStorage {
-    pub fn new() -> Self {
-        Self {}
-    }
-}
-
-impl vault::Storage<DIDURL, kms::KeyID> for _KeyStorage {
-    async fn put(&self, k: &DIDURL, v: &kms::KeyID) -> Result<(), VaultError> {
-        todo!()
-    }
-
-    async fn get(&self, k: &DIDURL) -> Result<kms::KeyID, VaultError> {
+    async fn deactivate(did: &did::DID, options: did::DeactivateOptions) -> Result<did::Deactivated, did::DIDError> {
         todo!()
     }
 }
@@ -205,15 +111,14 @@ impl pop::jwt_pop::JwtProofOfPossession for _JwtProofOfPossessionAPI {}
 pub struct _Issuer
 {
     metadata: oid4vc::vci::IssuerMetadata,
-    kms: _Kms,
+    kms: LocalKms,
 }
 
 impl _Issuer {
-    pub fn new(kms: _Kms, metadata: oid4vc::vci::IssuerMetadata) -> Self {
+    pub fn new(kms: LocalKms, metadata: oid4vc::vci::IssuerMetadata) -> Self {
         Self { kms, metadata }
     }
 }
-
 
 impl oid4vc::vci::Issuer for _Issuer {
     async fn metadata(&self) -> oid4vc::vci::IssuerMetadata {
@@ -232,7 +137,7 @@ impl oid4vc::vci::Issuer for _Issuer {
         todo!()
     }
 
-    async fn validate_request(&self, req: oid4vc::vci::CredentialRequest) -> Result<(), oid4vc::Error> {
+    async fn validate_request(&self, req: CredentialRequest) -> Result<(), oid4vc::Error> {
         todo!()
     }
 

@@ -9,33 +9,35 @@ use oid4vci::openidconnect::IssuerUrl;
 
 use crate::core_::did::{DIDCore, DIDMethod};
 use crate::core_::kms::{KeyType, Kms};
-use crate::core_::vault::{Storage, Vault};
+use crate::core_::storage::Storage;
+use crate::core_::vault::Vault;
 use crate::core_::vc::API;
-use crate::core_::vc::sd_jwt_vc::SdJwtAPI;
 use crate::exchange::oid4vc::vci::{Holder, Issuer};
 use crate::exchange::oid4vc::vci::CredentialResult;
+use crate::impls::storage::inmem::InMemStorage;
+use crate::impls::vault::inmem::InMemVault;
 use crate::stubs::*;
 
 pub(crate) async fn low_level_demo() {
     // Holder init
     let master_key = "abracadabra";
-    let h_kms = _Kms::new();
-    let h_vault = _Vault::new();
+    let mut h_kms = LocalKms::new();
+    let mut h_vault = InMemVault::new();
     let _ = h_vault.open(master_key);
-    let h_store = _KeyStorage::new();
+    let mut h_store = InMemStorage::new();
 
-    let h_kid = h_kms.create(KeyType::ED25519, kms::CreateOptions {}).await.unwrap();
+    let h_kid = h_kms.create(&KeyType::Ed25519, kms::CreateOptions {}).await.unwrap();
     let h_kh = h_kms.get(&h_kid).await.unwrap();
     let h_did_result = _DIDCore::create(DIDMethod::DidKey, h_kh, did::CreateOptions {}).await.unwrap();
     let h_did = h_did_result.did.unwrap();
     let h_did_url = DIDURL { did: h_did.clone(), path_abempty: String::from("/"), query: None, fragment: None };
-    let _ = h_store.put(&h_did_url, &h_kid);
+    let _ = h_store.put(h_did_url.clone().to_string(), h_kid.clone());
 
     // Issuer init
-    let i_kms = _Kms::new();
-    let i_vault = _Vault::new();
+    let mut i_kms = LocalKms::new();
+    let i_vault = InMemVault::new();
 
-    let i_kid = i_kms.create(KeyType::ED25519, kms::CreateOptions {}).await.unwrap();
+    let i_kid = i_kms.create(&KeyType::Ed25519, kms::CreateOptions {}).await.unwrap();
     let i_kh = i_kms.get(&i_kid).await.unwrap();
     let i_did_result = _DIDCore::create(DIDMethod::DidWeb, i_kh, did::CreateOptions {}).await.unwrap();
     let i_did = i_did_result.did.unwrap();
@@ -80,7 +82,7 @@ pub(crate) async fn low_level_demo() {
     let found_creds = h_vault.find_credentials(criteria).await.unwrap();
     // Choose appropriate credential
     let chosen = found_creds.get(0).unwrap();
-    let chosen_kid = h_store.get(&resolve_holder_did(&chosen)).await.unwrap();
+    let chosen_kid = h_store.get(&resolve_holder_did(&chosen).to_string()).await.unwrap();
     let chosen_kh = h_kms.get(&chosen_kid).await.unwrap();
     let presentation = match chosen {
         vc::Credential::SdJwt(cred) => _SdJwtAPI::create_vp(
@@ -102,7 +104,7 @@ pub(crate) async fn low_level_demo() {
 
 pub(crate) async fn exchange_demo() {
     // Issuer init
-    let kms = _Kms::new();
+    let kms = LocalKms::new();
     let metadata = oid4vc::vci::IssuerMetadata::new(
         IssuerUrl::new("https://issuer.com".into()).unwrap(),
         CredentialUrl::new("https://issuer.com/credential".into()).unwrap(),
@@ -157,7 +159,7 @@ pub(crate) async fn exchange_demo() {
             let _ = holder.deferred(AccessToken::new(token.clone()), transaction_id).await.unwrap();
         }
         CredentialResult::Credential { credential, notification_id } => {
-            let vault = _Vault::new();
+            let mut vault = InMemVault::new();
 
             let _ = vault.store_credential(credential).await.unwrap();
         }

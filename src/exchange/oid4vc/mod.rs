@@ -1,6 +1,4 @@
 use std::fmt;
-use oid4vci::core::profiles::CoreProfilesOffer;
-use crate::core_::vc;
 
 pub mod vci;
 pub mod vp;

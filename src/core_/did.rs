@@ -1,6 +1,6 @@
 use std::fmt;
 
-use crate::core_::{crypto, kms};
+use crate::core_::crypto;
 
 // Error handling
 #[derive(fmt::Debug)]
