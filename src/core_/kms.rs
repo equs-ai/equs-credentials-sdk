@@ -44,7 +44,7 @@ impl fmt::Display for KeyType {
 #[derive(Default)]
 pub struct CreateOptions {}
 
-pub trait KeyHandle: crypto::Signer + crypto::Verifier {}
+pub trait KeyHandle: crypto::Signer + crypto::Verifier + crypto::Key + Clone {}
 
 pub trait Kms<KH>
 where
@@ -53,4 +53,15 @@ where
     async fn create(&mut self, kt: &KeyType, opts: CreateOptions) -> Result<KeyID, Error>;
 
     async fn get(&self, kid: &KeyID) -> Result<KH, Error>;
+
+    async fn create_and_handle(&mut self, kt: &KeyType, opts: CreateOptions) -> Result<(KeyID, KH), Error> {
+        let res = self.create(kt, opts).await;
+        if res.is_err() { return Err(res.err().unwrap()); }
+        let kid = res.unwrap();
+
+        let res = self.get(&kid).await;
+        if res.is_err() { return Err(res.err().unwrap()); }
+
+        Ok((kid, res.unwrap()))
+    }
 }

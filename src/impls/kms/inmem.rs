@@ -1,13 +1,14 @@
 use std::str::FromStr;
 
 use crate::core_::{crypto, kms};
-use crate::core_::crypto::Suite;
+use crate::core_::crypto::{Key, Suite};
 use crate::core_::kms::Kms;
 use crate::core_::storage::Storage;
 use crate::impls::crypto::suites::ed25519::Ed25519;
 use crate::impls::crypto::suites::p256::P256;
 use crate::impls::storage::inmem::InMemStorage;
 
+#[derive(Clone)]
 pub enum KeyHandle {
     Ed25519(Ed25519),
     P256(P256),
@@ -36,6 +37,22 @@ impl crypto::Verifier for KeyHandle {
         match self {
             KeyHandle::Ed25519(s) => s.verify(data, signature).await,
             KeyHandle::P256(s) => s.verify(data, signature).await,
+        }
+    }
+}
+
+impl Key for KeyHandle {
+    fn pub_key(&self) -> Vec<u8> {
+        match self {
+            KeyHandle::Ed25519(s) => s.pub_key(),
+            KeyHandle::P256(s) => s.pub_key(),
+        }
+    }
+
+    fn jwk(&self) -> Option<ssi::jwk::JWK> {
+        match self {
+            KeyHandle::Ed25519(s) => s.jwk(),
+            KeyHandle::P256(s) => s.jwk(),
         }
     }
 }
@@ -106,7 +123,7 @@ impl Kms<KeyHandle> for LocalKms
 
 #[cfg(test)]
 mod tests {
-    use crate::core_::crypto::{Signer, Verifier};
+    use crate::core_::crypto::{Key, Signer, Verifier};
     use crate::core_::kms;
     use crate::core_::kms::Kms;
     use crate::impls::kms::inmem::LocalKms;
@@ -119,7 +136,7 @@ mod tests {
             // Create a key
             let create_res = kms.create(&kt, kms::CreateOptions {}).await;
             assert!(create_res.is_ok());
-            let Ok(kid) = create_res else { panic!("123") };
+            let kid = create_res.unwrap();
 
             // Check key type
             assert_eq!(&kid[10 + 1..], &kt.to_string());
@@ -127,8 +144,7 @@ mod tests {
             // Get a handle to the key
             let get_res = kms.get(&kid).await;
             assert!(get_res.is_ok());
-
-            let Ok(kh) = get_res else { panic!("123") };
+            let kh = get_res.unwrap();
 
             // Sign using handle
             let message = "abracadabra";
@@ -140,7 +156,14 @@ mod tests {
 
             // Verify using handle
             let v_res = kh.verify(message.as_bytes(), &signature).await;
-            assert!(v_res.is_ok())
+            assert!(v_res.is_ok());
+
+            // Check JWK
+            assert_ne!(kh.jwk(), None);
+
+            // Print jwks
+            let jwk = kh.jwk().unwrap();
+            println!("JWK: {}", serde_json::to_string_pretty(&jwk).unwrap())
         }
     }
 }
