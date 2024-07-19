@@ -25,6 +25,8 @@ pub struct AuthorizationResponseMetadata{}
 pub type AccessToken = oauth2::AccessToken;
 
 
+// THE API is Subject to Change
+
 //  --------- Issuer API -------------
 
 // Out-of-scope: Authorization Server (Key Cloak) for OAuth 2 (Authorization code flow):
@@ -91,12 +93,13 @@ impl HolderService {
         credential_metadata: &CredentialMetadata,
     ) -> Result<Box<dyn Error>> 
     
-    // Step 5
+    // Step 6
+    // (Optional) AuthRequest can be sent out-of-band or by GET to auth-req-uri (this call)
     pub fn get_authorization_request(   
         auth-req-uri: &str
     ) -> Result<AuthorizationRequest, Box<dyn Error>> 
     
-    // Step 6
+    // Step 7
     pub fn present_credentials(
         auth_request: &AuthorizationRequest,
         metadata: &AuthorizationResponseMetadata,
@@ -118,10 +121,10 @@ impl VerifierService {
     pub fn create_authorization_request(
         presentation_definition: &PresentationDefinition,
         nonce: &str,
-        metadata: Option<&AuthorizationRequestMetadata>,
+        metadata: &AuthorizationRequestMetadata,
     ) -> Result<AuthorizationRequest, Box<dyn Error>> 
 
-    // Step 6.
+    // Step 7
     // POST <authorization-response-uri>
     pub fn verify_presentation(
         auth_response: &AuthorizationResponse

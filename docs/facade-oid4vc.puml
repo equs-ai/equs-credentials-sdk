@@ -42,24 +42,30 @@ H -> H: store_credential(...)
 
 ...
 
-autonumber 5.1
+autonumber 5
 V -> V: create_authorization_request(...)
-autonumber stop
+
+note over V: AuthorizationRequest can be sent either out-of-band or by GET /<authorization_req_uri> HTTP/1.1
+alt Out-of-band
+V --> H: (AuthorizationRequest, <authorization-response-uri>)
+else GET /<authorization_req_uri> HTTP/1.1
+autonumber 6.1
 V --> H: <authorization_req_uri>
 note over V: GET /<authorization_req_uri> HTTP/1.1
-autonumber 5.2
+autonumber 6.2
 H -> V: get_authorization_request(authorization_req_uri, ...)
 autonumber stop
 V -> H: (AuthorizationRequest, <authorization-response-uri>)
+end
 
 ...
 
-autonumber 6.1
+autonumber 7.1
 note over V: POST /<authorization-response-uri> HTTP/1.1
 H -> H: present_credentials(authorization_req, ...)
 autonumber stop
 H -> V: AuthorizationResponse
-autonumber 6.2
+autonumber 7.2
 V -> V: verify_presentation(...)
 
 
