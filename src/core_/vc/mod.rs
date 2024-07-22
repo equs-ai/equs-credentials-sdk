@@ -1,19 +1,20 @@
-use std::fmt;
+use serde::{Deserialize, Serialize};
 
+use crate::core_::crypto;
 use crate::core_::did::DIDURL;
-use crate::core_::{crypto, did, kms, vc};
 
 // VC formats
 pub mod jwt_vc_json;
 pub mod ldp_vc;
 pub mod sd_jwt_vc;
 
-#[derive(fmt::Debug)]
+#[derive(Debug)]
 pub enum Error {}
 
 pub type JWTRaw = String;
 pub type Nonce = String;
 
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub enum Credential {
     // W3C
     JwtVcJson(jwt_vc_json::Credential),
