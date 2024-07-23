@@ -7,13 +7,13 @@ use oid4vci::core::profiles::w3c::jwt::Request;
 use oid4vci::metadata::CredentialUrl;
 use oid4vci::openidconnect::IssuerUrl;
 
-use crate::core_::did::{DIDCore, DIDMethod};
 use crate::core_::kms::{KeyType, Kms};
 use crate::core_::storage::Storage;
 use crate::core_::vault::Vault;
 use crate::core_::vc::API;
 use crate::exchange::oid4vc::vci::{Holder, Issuer};
 use crate::exchange::oid4vc::vci::CredentialResult;
+use crate::impls::did::didkey::DIDKey;
 use crate::impls::storage::inmem::InMemStorage;
 use crate::impls::vault::inmem::InMemVault;
 use crate::stubs::*;
@@ -28,8 +28,7 @@ pub(crate) async fn low_level_demo() {
 
     let h_kid = h_kms.create(&KeyType::Ed25519, kms::CreateOptions {}).await.unwrap();
     let h_kh = h_kms.get(&h_kid).await.unwrap();
-    let h_did_result = _DIDCore::create(DIDMethod::DidKey, h_kh, did::CreateOptions {}).await.unwrap();
-    let h_did = h_did_result.did.unwrap();
+    let h_did = DIDKey::new().generate(h_kh).unwrap();
     let h_did_url = DIDURL { did: h_did.clone(), path_abempty: String::from("/"), query: None, fragment: None };
     let _ = h_store.put(h_did_url.clone().to_string(), h_kid.clone());
 
@@ -39,8 +38,7 @@ pub(crate) async fn low_level_demo() {
 
     let i_kid = i_kms.create(&KeyType::Ed25519, kms::CreateOptions {}).await.unwrap();
     let i_kh = i_kms.get(&i_kid).await.unwrap();
-    let i_did_result = _DIDCore::create(DIDMethod::DidWeb, i_kh, did::CreateOptions {}).await.unwrap();
-    let i_did = i_did_result.did.unwrap();
+    let i_did = DIDKey::new().generate(i_kh).unwrap();
 
     // Holder's generation of PoP
     let nonce = "iss_nonce";

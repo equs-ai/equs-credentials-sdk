@@ -4,7 +4,7 @@
 use oauth2::url::Url;
 use oid4vci::openidconnect::Nonce;
 
-use crate::core_::{crypto, did, pop, vc};
+use crate::core_::{crypto, pop, vc};
 use crate::core_::did::DIDURL;
 use crate::core_::kms;
 use crate::core_::kms::KeyID;
@@ -19,37 +19,6 @@ use crate::exchange::oid4vc::vci::{AuthorizationResponse, CredentialOffer, Crede
 use crate::impls::kms::inmem::LocalKms;
 
 mod demo;
-
-// core::did
-
-pub struct _DIDCore
-{
-    kms: LocalKms,
-}
-
-impl _DIDCore {
-    pub fn new(kms: LocalKms) -> Self {
-        Self { kms }
-    }
-}
-
-impl did::DIDCore for _DIDCore {
-    async fn create<S: crypto::Signer>(method: did::DIDMethod, signer: S, options: did::CreateOptions) -> Result<did::Created, did::DIDError> {
-        todo!()
-    }
-
-    async fn resolve(did: &did::DID, options: did::ResolveOptions) -> Result<did::Resolution, did::DIDError> {
-        todo!()
-    }
-
-    async fn update(did: &did::DID, options: did::UpdateOptions) -> Result<did::Updated, did::DIDError> {
-        todo!()
-    }
-
-    async fn deactivate(did: &did::DID, options: did::DeactivateOptions) -> Result<did::Deactivated, did::DIDError> {
-        todo!()
-    }
-}
 
 // core::vc
 

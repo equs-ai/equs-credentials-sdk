@@ -2,7 +2,9 @@ use ed25519_dalek::{SecretKey, Signature, Signer, SigningKey};
 use rand::rngs::OsRng;
 
 use crate::core_::crypto;
+use crate::core_::crypto::Key;
 
+#[derive(Clone)]
 pub struct Ed25519 {
     signing_key: SigningKey,
 }
@@ -19,9 +21,22 @@ impl crypto::Suite for Ed25519 {
 
         Ok(Ed25519 { signing_key })
     }
+}
 
+impl Key for Ed25519 {
     fn pub_key(&self) -> Vec<u8> {
         self.signing_key.verifying_key().to_bytes().to_vec()
+    }
+
+    fn jwk(&self) -> Option<ssi::jwk::JWK> {
+        let pubk = self.pub_key();
+        let s: &[u8] = &pubk;
+
+        if let Ok(jwk) = ssi::jwk::ed25519_parse(s) {
+            Some(jwk)
+        } else {
+            None
+        }
     }
 }
 

@@ -3,7 +3,9 @@ use p256::ecdsa::signature::{Signer, Verifier};
 use rand::rngs::OsRng;
 
 use crate::core_::crypto;
+use crate::core_::crypto::Key;
 
+#[derive(Clone)]
 pub struct P256 {
     signing_key: SigningKey,
 }
@@ -23,9 +25,22 @@ impl crypto::Suite for P256 {
             Err(crypto::Error::KeyCreation)
         }
     }
+}
 
+impl Key for P256 {
     fn pub_key(&self) -> Vec<u8> {
         self.signing_key.verifying_key().to_sec1_bytes().to_vec()
+    }
+
+    fn jwk(&self) -> Option<ssi::jwk::JWK> {
+        let pubk = self.pub_key();
+        let s: &[u8] = &pubk;
+
+        if let Ok(jwk) = ssi::jwk::p256_parse(s) {
+            Some(jwk)
+        } else {
+            None
+        }
     }
 }
 

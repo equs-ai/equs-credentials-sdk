@@ -26,10 +26,14 @@ pub trait Verifier {
     async fn verify(&self, data: &[u8], signature: &[u8]) -> Result<(), Error>;
 }
 
-pub trait Suite: Signer + Verifier + Sized {
+pub trait Key: Signer + Verifier {
+    fn pub_key(&self) -> Vec<u8>;
+
+    fn jwk(&self) -> Option<ssi::jwk::JWK>;
+}
+
+pub trait Suite: Key + Sized {
     fn gen() -> Vec<u8>;
 
     fn from_secret(vec: Vec<u8>) -> Result<Self, Error>;
-
-    fn pub_key(&self) -> Vec<u8>;
 }
