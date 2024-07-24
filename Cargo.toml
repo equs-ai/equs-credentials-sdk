@@ -5,16 +5,27 @@ edition = "2021"
 
 [dependencies]
 oauth2 = "4.4.2"
-oid4vci = { git = "https://github.com/spruceid/oid4vci-rs", version = "0.1.0" }
+oid4vci = { git = "ssh://git@git.slock.it/open-source/oid4vci-rs", branch = "asdk-main" }
+#oid4vci = { path = "../oid4vci-rs" }
 oidc4vp = { git = "ssh://git@gitlab.dsr-corporation.com/dsr-blockchain/oid4vp-rs", version = "0.1.0", branch = "oidc4vp-new-impl" }
+sd-jwt-rs = { git = "ssh://git@gitlab.dsr-corporation.com/dsr-blockchain/sd-jwt-rust.git", branch = "feat/signer-support" }
 serde_json = "1.0.120"
 ssi = "0.7.0"
 rand = "0.8.5"
 ed25519-dalek = "2.1.1"
 random-string = "1.1.0"
+time = { version = "0.3.29", features = ["serde"] }
 serde = { version = "1.0.204", features = ["derive"] }
 p256 = "0.13.2"
 did-method-key = "0.2.2"
+syncwrap = "0.4.0"
+futures = "0.3.30"
+base64 = "0.22.1"
+jsonwebtoken = "9.3.0"
+async-trait = "0.1.81"
+strum_macros = "0.26.4"
+strum = "0.26.3"
+thiserror = "1.0.63"
 
 [dev-dependencies]
 tokio = { version = "1.25.0", features = ["macros"] }

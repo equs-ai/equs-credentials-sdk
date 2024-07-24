@@ -1,5 +1,6 @@
 use std::io;
 use std::io::Write;
+use std::str::FromStr;
 
 use oauth2::{AccessToken, TokenResponse};
 use oid4vci::core::profiles::w3c::CredentialDefinition;
@@ -8,14 +9,17 @@ use oid4vci::metadata::CredentialUrl;
 use oid4vci::openidconnect::IssuerUrl;
 
 use crate::core_::kms::{KeyType, Kms};
+use crate::core_::pop::{GenerateOptions, ProofOfPossession, VerifyOptions};
 use crate::core_::storage::Storage;
 use crate::core_::vault::Vault;
 use crate::core_::vc::API;
 use crate::exchange::oid4vc::vci::{Holder, Issuer};
 use crate::exchange::oid4vc::vci::CredentialResult;
 use crate::impls::did::didkey::DIDKey;
+use crate::impls::pop::jwt_pop::JwtProofOfPossession;
 use crate::impls::storage::inmem::InMemStorage;
 use crate::impls::vault::inmem::InMemVault;
+use crate::impls::vc::sd_jwt_vc::{SdJwtAPI, VCMetadata, VPMetadata};
 use crate::stubs::*;
 
 pub(crate) async fn low_level_demo() {
@@ -28,8 +32,8 @@ pub(crate) async fn low_level_demo() {
 
     let h_kid = h_kms.create(&KeyType::Ed25519, kms::CreateOptions {}).await.unwrap();
     let h_kh = h_kms.get(&h_kid).await.unwrap();
-    let h_did = DIDKey::new().generate(h_kh).unwrap();
-    let h_did_url = DIDURL { did: h_did.clone(), path_abempty: String::from("/"), query: None, fragment: None };
+    let h_did = DIDKey::new().generate(h_kh.clone()).unwrap();
+    let h_did_url = DIDURL::from_str(&h_did).unwrap();
     let _ = h_store.put(h_did_url.clone().to_string(), h_kid.clone());
 
     // Issuer init
@@ -39,21 +43,31 @@ pub(crate) async fn low_level_demo() {
     let i_kid = i_kms.create(&KeyType::Ed25519, kms::CreateOptions {}).await.unwrap();
     let i_kh = i_kms.get(&i_kid).await.unwrap();
     let i_did = DIDKey::new().generate(i_kh).unwrap();
+    let i_did_url = DIDURL::from_str(&i_did).unwrap();
 
     // Holder's generation of PoP
-    let nonce = "iss_nonce";
+    let nonce = Nonce::new_random();
     let pop_kh = h_kms.get(&h_kid).await.unwrap();
-    let pop = _JwtProofOfPossessionAPI::generate(
+    let pop = JwtProofOfPossession::generate(
         &h_did_url,
         pop_kh,
-        String::from(nonce),
-        i_did.clone(),
-        None,
+        nonce.clone(),
+        GenerateOptions {
+            cred_iss_id: i_did_url.to_string(),
+            ..Default::default()
+        },
     ).await.unwrap();
 
     // VC issuing
     // verifying ProofOfPossession
-    let _ = _JwtProofOfPossessionAPI::verify(pop, pop::VerifyOptions {}).await.unwrap();
+    let _ = JwtProofOfPossession::verify(
+        pop,
+        nonce.clone(),
+        VerifyOptions {
+            cred_iss_id: i_did_url.to_string(),
+            ..Default::default()
+        },
+    ).await.unwrap();
 
     // claims and holder did are known
     let claims = serde_json::json!({
@@ -63,12 +77,11 @@ pub(crate) async fn low_level_demo() {
     let claims = claims.as_object().unwrap().clone();
 
     let handle = i_kms.get(&i_kid).await.unwrap();
-    let did_url = DIDURL { did: i_did.clone(), path_abempty: String::from("/"), query: None, fragment: None };
-    let creds = _SdJwtAPI::create_vc(
+    let creds = SdJwtAPI::create_vc(
         claims,
-        handle,
-        &did_url,
-        VCMetadata { disclosures: vec![String::from("name")] },
+        (&i_did_url, handle),
+        (&h_did_url, h_kh.clone()),
+        VCMetadata { disclosures: vec!["$.name"], ..Default::default() },
     ).await.unwrap();
 
 
@@ -83,20 +96,20 @@ pub(crate) async fn low_level_demo() {
     let chosen_kid = h_store.get(&resolve_holder_did(&chosen).to_string()).await.unwrap();
     let chosen_kh = h_kms.get(&chosen_kid).await.unwrap();
     let presentation = match chosen {
-        vc::Credential::SdJwt(cred) => _SdJwtAPI::create_vp(
+        vc::Credential::SdJwt(cred) => SdJwtAPI::create_vp(
             cred,
             chosen_kh,
-            String::from("nonce-"),
+            Nonce::new_random(),
             "verifier-12345",
             &h_did_url,
-            VPMetadata { disclosures: vec![String::from("name")] },
+            VPMetadata { disclosures: vec!["$.name"] },
         ).await.unwrap(),
         // other presentations possible
         _ => panic!(""),
     };
 
     // verify presentation
-    let _ = _SdJwtAPI::verify_vp(&presentation, vc::VerifyOptions {}).await;
+    let _ = SdJwtAPI::verify_vp(&presentation, vc::VerifyOptions {}).await;
 }
 
 

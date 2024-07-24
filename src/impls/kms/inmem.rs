@@ -1,7 +1,9 @@
 use std::str::FromStr;
 
+use async_trait::async_trait;
+
 use crate::core_::{crypto, kms};
-use crate::core_::crypto::{Key, Suite};
+use crate::core_::crypto::Suite;
 use crate::core_::kms::Kms;
 use crate::core_::storage::Storage;
 use crate::impls::crypto::suites::ed25519::Ed25519;
@@ -16,11 +18,12 @@ pub enum KeyHandle {
 
 impl KeyHandle {}
 
+#[async_trait]
 impl crypto::Signer for KeyHandle {
     fn alg(&self) -> crypto::Alg {
         match self {
-            KeyHandle::Ed25519(s) => crypto::Alg::ED25519,
-            KeyHandle::P256(s) => crypto::Alg::ES256,
+            KeyHandle::Ed25519(s) => s.alg(),
+            KeyHandle::P256(s) => s.alg(),
         }
     }
 
@@ -32,6 +35,7 @@ impl crypto::Signer for KeyHandle {
     }
 }
 
+#[async_trait]
 impl crypto::Verifier for KeyHandle {
     async fn verify(&self, data: &[u8], signature: &[u8]) -> Result<(), crypto::Error> {
         match self {
@@ -41,7 +45,8 @@ impl crypto::Verifier for KeyHandle {
     }
 }
 
-impl Key for KeyHandle {
+#[async_trait]
+impl crypto::Key for KeyHandle {
     fn pub_key(&self) -> Vec<u8> {
         match self {
             KeyHandle::Ed25519(s) => s.pub_key(),
@@ -57,6 +62,13 @@ impl Key for KeyHandle {
     }
 }
 
+#[async_trait]
+impl crypto::SigningKey for KeyHandle {}
+
+#[async_trait]
+impl crypto::VerifyingKey for KeyHandle {}
+
+#[async_trait]
 impl kms::KeyHandle for KeyHandle {}
 
 pub type Bytes = Vec<u8>;
@@ -110,10 +122,14 @@ impl Kms<KeyHandle> for LocalKms
 
         let res = match kt {
             kms::KeyType::Ed25519 => {
-                Ed25519::from_secret(key.clone()).map(|s| KeyHandle::Ed25519(s)).map_err(|e| kms::Error::Crypto(e))
+                Ed25519::from_secret(key.clone())
+                    .map(|s| KeyHandle::Ed25519(s))
+                    .map_err(|e| kms::Error::Crypto(e.to_string()))
             }
             kms::KeyType::P256 => {
-                P256::from_secret(key.clone()).map(|s| KeyHandle::P256(s)).map_err(|e| kms::Error::Crypto(e))
+                P256::from_secret(key.clone())
+                    .map(|s| KeyHandle::P256(s))
+                    .map_err(|e| kms::Error::Crypto(e.to_string()))
             }
         };
 
@@ -126,7 +142,7 @@ mod tests {
     use crate::core_::crypto::{Key, Signer, Verifier};
     use crate::core_::kms;
     use crate::core_::kms::Kms;
-    use crate::impls::kms::inmem::LocalKms;
+    use crate::impls::kms::inmem::{KID_LENGTH, LocalKms};
 
     #[tokio::test]
     async fn e2e() {
@@ -139,7 +155,7 @@ mod tests {
             let kid = create_res.unwrap();
 
             // Check key type
-            assert_eq!(&kid[10 + 1..], &kt.to_string());
+            assert_eq!(&kid[KID_LENGTH + 1..], &kt.to_string());
 
             // Get a handle to the key
             let get_res = kms.get(&kid).await;

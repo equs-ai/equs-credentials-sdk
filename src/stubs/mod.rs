@@ -4,76 +4,17 @@
 use oauth2::url::Url;
 use oid4vci::openidconnect::Nonce;
 
-use crate::core_::{crypto, pop, vc};
 use crate::core_::did::DIDURL;
 use crate::core_::kms;
 use crate::core_::kms::KeyID;
-use crate::core_::pop::{ProofOfPossession, VerifyOptions};
-use crate::core_::pop::jwt_pop::Proof;
 use crate::core_::vault::FindCriteria;
-use crate::core_::vc::{API, Error};
-use crate::core_::vc::sd_jwt_vc::{Claims, Credential, Presentation, VCMetadata, VPMetadata};
+use crate::core_::vc;
 use crate::exchange::oid4vc;
 use crate::exchange::oid4vc::AccessToken;
 use crate::exchange::oid4vc::vci::{AuthorizationResponse, CredentialOffer, CredentialOfferParams, CredentialRequest, CredentialResult};
 use crate::impls::kms::inmem::LocalKms;
 
 mod demo;
-
-// core::vc
-
-pub struct _SdJwtAPI;
-
-impl _SdJwtAPI {
-    pub fn new() -> Self {
-        Self {}
-    }
-}
-
-impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata> for _SdJwtAPI {
-    async fn create_vc<S>(claims: Claims, signer: S, iss_did_url: &DIDURL, metadata: VCMetadata) -> Result<Credential, Error>
-    where
-        S: crypto::Signer,
-    {
-        todo!()
-    }
-
-    async fn create_vp<S>(credential: &Credential, signer: S, nonce: vc::Nonce, verifier_id: &str, holder_did_url: &DIDURL, metadata: VPMetadata) -> Result<Presentation, Error>
-    where
-        S: crypto::Signer,
-    {
-        todo!()
-    }
-
-    async fn verify_vp(presentation: &Presentation, opts: vc::VerifyOptions) -> Result<(), Error> {
-        todo!()
-    }
-}
-
-impl vc::sd_jwt_vc::SdJwtAPI for _SdJwtAPI {}
-
-pub struct _JwtProofOfPossessionAPI;
-
-impl _JwtProofOfPossessionAPI {
-    pub fn new() -> Self {
-        Self {}
-    }
-}
-
-impl ProofOfPossession<Proof> for _JwtProofOfPossessionAPI {
-    async fn generate<S>(did_url: &DIDURL, signer: S, nonce: vc::Nonce, aud: String, iss: Option<String>) -> Result<Proof, Error>
-    where
-        S: crypto::Signer,
-    {
-        todo!()
-    }
-
-    async fn verify(proof: Proof, opts: VerifyOptions) -> Result<(), Error> {
-        todo!()
-    }
-}
-
-impl pop::jwt_pop::JwtProofOfPossession for _JwtProofOfPossessionAPI {}
 
 // exchange::oid4vc
 

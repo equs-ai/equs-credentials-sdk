@@ -1,13 +1,17 @@
+use async_trait::async_trait;
 use ed25519_dalek::{SecretKey, Signature, Signer, SigningKey};
 use rand::rngs::OsRng;
 
 use crate::core_::crypto;
-use crate::core_::crypto::Key;
 
 #[derive(Clone)]
 pub struct Ed25519 {
     signing_key: SigningKey,
 }
+
+impl crypto::SigningKey for Ed25519 {}
+
+impl crypto::VerifyingKey for Ed25519 {}
 
 impl crypto::Suite for Ed25519 {
     fn gen() -> Vec<u8> {
@@ -23,7 +27,7 @@ impl crypto::Suite for Ed25519 {
     }
 }
 
-impl Key for Ed25519 {
+impl crypto::Key for Ed25519 {
     fn pub_key(&self) -> Vec<u8> {
         self.signing_key.verifying_key().to_bytes().to_vec()
     }
@@ -40,9 +44,10 @@ impl Key for Ed25519 {
     }
 }
 
+#[async_trait]
 impl crypto::Signer for Ed25519 {
     fn alg(&self) -> crypto::Alg {
-        crypto::Alg::ED25519
+        crypto::Alg::EdDSA
     }
 
     async fn sign(&self, payload: &[u8]) -> Result<Vec<u8>, crypto::Error> {
@@ -51,12 +56,13 @@ impl crypto::Signer for Ed25519 {
     }
 }
 
+#[async_trait]
 impl crypto::Verifier for Ed25519 {
     async fn verify(&self, data: &[u8], signature: &[u8]) -> Result<(), crypto::Error> {
         let sgn = Signature::from_slice(signature);
         let res: Result<(), crypto::Error> = match sgn {
-            Ok(sg) => self.signing_key.verify(data, &sg).map_err(|e| crypto::Error::Signature(e)),
-            Err(e) => Err(crypto::Error::Verification(e)),
+            Ok(sg) => self.signing_key.verify(data, &sg).map_err(|e| crypto::Error::Signature(e.to_string())),
+            Err(e) => Err(crypto::Error::Verification(e.to_string())),
         };
 
         res
