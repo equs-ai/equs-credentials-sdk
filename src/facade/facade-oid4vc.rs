@@ -99,9 +99,28 @@ impl HolderService {
         auth-req-uri: &str
     ) -> Result<AuthorizationRequest, Box<dyn Error>> 
     
-    // Step 7
+    // Step 7A
+    // Assume credentials for presentations are selected automatically
+    // If there is just one credential matching a presentation request - it's selected
+    // If there are multiple selection matching - they are selected according to a default logic (such as take the first one)
+    pub fn present_credentials_auto(
+        auth_request: &AuthorizationRequest,
+        metadata: &AuthorizationResponseMetadata,
+    ) -> Result<Box<dyn Error>>
+
+    // Step 7A1
+    // Manual approval/consent of credentials to be used for presentation
+    // Step 7A1 - find matching credentials
+    pub fn find_vcs_for_presentation(
+        auth_request: &AuthorizationRequest,
+    ) -> Result<CredentialMapping, Box<dyn Error>>
+
+    // Step 7A2
+    // Manual approval/consent of credentials to be used for presentation
+    // Step 5A2 - create presentation for a unambiguous Mapping where there is a VC for every presentation request item
     pub fn present_credentials(
         auth_request: &AuthorizationRequest,
+        credential_mapping_selected: &CredentialMapping,
         metadata: &AuthorizationResponseMetadata,
     ) -> Result<Box<dyn Error>>
 

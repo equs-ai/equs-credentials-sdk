@@ -46,7 +46,7 @@ pub struct CredentialMetadata{}
 pub struct PresentationDefinition{}
 pub struct Presentation{}
 pub struct PresentationData{} // presentation_submission
-
+pub struct CredentialMapping{} // maps found credentials for the given presentation definition
 
 // THE API is Subject to Change
 
@@ -95,12 +95,31 @@ impl HolderService {
         credential_metadata: &CredentialMetadata,
     ) -> Result<Box<dyn Error>> 
     
-    // Step 5.
-    pub fn create_presentation(
+    // Step 5A.
+    // Assume credentials for presentations are selected automatically
+    // If there is just one credential matching a presentation request - it's selected
+    // If there are multiple selection matching - they are selected according to a default logic (such as take the first one)
+    pub fn create_presentation_auto(
         nonce: &str,
         presentation_definition: &PresentationDefinition,
     ) -> Result<(Presentation, PresentationData), Box<dyn Error>>
     
+    // Step 5A1
+    // Manual approval/consent of credentials to be used for presentation
+    // Step 5A1 - find matching credentials
+    pub fn find_vcs_for_presentation(
+        presentation_definition: &PresentationDefinition,
+    ) -> Result<CredentialMapping, Box<dyn Error>>
+
+    // Step 5A2
+    // Manual approval/consent of credentials to be used for presentation
+    // Step 5A2 - create presentation for a unambiguous Mapping where there is a VC for every presentation request item
+    pub fn create_presentation(
+        nonce: &str,
+        presentation_definition: &PresentationDefinition,
+        credential_mapping_selected: &CredentialMapping,
+    ) -> Result<(Presentation, PresentationData), Box<dyn Error>>
+
 }
 
 
