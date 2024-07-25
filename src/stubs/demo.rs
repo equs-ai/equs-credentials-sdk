@@ -7,6 +7,7 @@ use oid4vci::core::profiles::w3c::CredentialDefinition;
 use oid4vci::core::profiles::w3c::jwt::Request;
 use oid4vci::metadata::CredentialUrl;
 use oid4vci::openidconnect::IssuerUrl;
+use serde_json::json;
 
 use crate::core_::kms::{KeyType, Kms};
 use crate::core_::pop::{GenerateOptions, ProofOfPossession, VerifyOptions};
@@ -102,14 +103,19 @@ pub(crate) async fn low_level_demo() {
             Nonce::new_random(),
             "verifier-12345",
             &h_did_url,
-            VPMetadata { disclosures: vec!["$.name"] },
+            VPMetadata { disclosures: json!({"name":"true"}).as_object().unwrap().to_owned() },
         ).await.unwrap(),
         // other presentations possible
         _ => panic!(""),
     };
 
     // verify presentation
-    let _ = SdJwtAPI::verify_vp(&presentation, vc::VerifyOptions {}).await;
+    let _ = SdJwtAPI::verify_vp(
+        &presentation,
+        Nonce::new_random(),
+        "verifier-12345",
+        vc::VerifyOptions {},
+    ).await.unwrap();
 }
 
 

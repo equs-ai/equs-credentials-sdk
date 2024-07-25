@@ -1,7 +1,7 @@
 use oid4vci::openidconnect;
 use serde::{Deserialize, Serialize};
 
-use crate::core_::crypto;
+use crate::core_::{crypto, did};
 use crate::core_::did::DIDURL;
 
 // VC formats
@@ -16,11 +16,17 @@ pub enum Error {
     KeyNotSupported,
     #[error("signing error: {0}")]
     Signing(String),
+    #[error("verifying error: {0}")]
+    Verifying(String),
     #[error("parsing error: {0}")]
     Parsing(String),
     #[error("incorrect claim: {0}")]
     IncorrectClaim(String),
 
+    #[error(transparent)]
+    SpruceDID(#[from] ssi::did::Error),
+    #[error(transparent)]
+    DID(#[from] did::Error),
     #[error(transparent)]
     JWK(#[from] ssi::jwk::Error),
     #[error(transparent)]
@@ -55,7 +61,6 @@ pub trait API<CL, C, P, CM, PM>
 where
     C: HasClaims<CL>,
     P: HasCredential<C>,
-
 {
     async fn create_vc<S, K>(claims: CL,
                              issuer_data: (&DIDURL, S),
@@ -70,10 +75,10 @@ where
                           nonce: Nonce, verifier_id: &str,
                           holder_did_url: &DIDURL, metadata: PM) -> Result<P>
     where
-        S: crypto::Signer
+        S: crypto::Signer + 'static
     ;
 
-    async fn verify_vp(presentation: &P, opts: VerifyOptions) -> Result<()>;
+    async fn verify_vp(presentation: &P, nonce: Nonce, verifier_id: &str, opts: VerifyOptions) -> Result<()>;
 }
 
 pub trait HasClaims<CL> {

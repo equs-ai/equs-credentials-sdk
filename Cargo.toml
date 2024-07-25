@@ -8,7 +8,7 @@ oauth2 = "4.4.2"
 oid4vci = { git = "ssh://git@git.slock.it/open-source/oid4vci-rs", branch = "asdk-main" }
 #oid4vci = { path = "../oid4vci-rs" }
 oidc4vp = { git = "ssh://git@gitlab.dsr-corporation.com/dsr-blockchain/oid4vp-rs", version = "0.1.0", branch = "oidc4vp-new-impl" }
-sd-jwt-rs = { git = "ssh://git@gitlab.dsr-corporation.com/dsr-blockchain/sd-jwt-rust.git", branch = "feat/signer-support" }
+sd-jwt-rs = { git = "ssh://git@git.slock.it/open-source/sd-jwt-rust.git", branch = "feat/signer-support" }
 serde_json = "1.0.120"
 ssi = "0.7.0"
 rand = "0.8.5"
@@ -26,6 +26,7 @@ async-trait = "0.1.81"
 strum_macros = "0.26.4"
 strum = "0.26.3"
 thiserror = "1.0.63"
+lazy_static = "1.5.0"
 
 [dev-dependencies]
 tokio = { version = "1.25.0", features = ["macros"] }
