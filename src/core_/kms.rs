@@ -1,14 +1,13 @@
-use std::fmt;
-use std::fmt::Formatter;
-use std::str::FromStr;
+use strum_macros::{Display, EnumString, IntoStaticStr};
 
 use crate::core_::crypto;
 
 // Error handling
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error, IntoStaticStr)]
+#[non_exhaustive]
 pub enum Error {
-    Unknown,
-    Crypto(crypto::Error),
+    #[error("crypto error: {0}")]
+    Crypto(String),
 }
 
 // Basic types definitions
@@ -16,35 +15,19 @@ pub enum Error {
 pub type KeyID = String;
 
 #[derive(Debug, PartialEq)]
+#[derive(Display, EnumString, IntoStaticStr)]
+#[non_exhaustive]
 pub enum KeyType {
     Ed25519,
     P256,
     // etc
 }
 
-impl FromStr for KeyType {
-    type Err = ();
-
-    fn from_str(input: &str) -> Result<KeyType, Self::Err> {
-        match input {
-            "Ed25519" => Ok(KeyType::Ed25519),
-            "P256" => Ok(KeyType::P256),
-            _ => Err(()),
-        }
-    }
-}
-
-impl fmt::Display for KeyType {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", &self)
-    }
-}
-
 // Method options
 #[derive(Default)]
 pub struct CreateOptions {}
 
-pub trait KeyHandle: crypto::Signer + crypto::Verifier + crypto::Key + Clone {}
+pub trait KeyHandle: crypto::SigningKey + crypto::VerifyingKey + crypto::Key + Clone {}
 
 pub trait Kms<KH>
 where

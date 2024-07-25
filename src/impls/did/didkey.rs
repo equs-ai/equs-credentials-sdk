@@ -74,7 +74,7 @@ mod tests {
             let doc = doc.unwrap();
 
             // DIDDoc assertions
-            assert_eq!(doc.id, did.clone());
+            assert_eq!(doc.id, did);
 
             let formatted = serde_json::to_string_pretty(&doc).unwrap();
             println!("DID doc resolved:\n{}", formatted);

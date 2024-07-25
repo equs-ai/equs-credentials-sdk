@@ -1,5 +1,6 @@
 #![allow(dead_code)]
 #![allow(unused_variables)]
+extern crate core;
 
 mod core_;
 mod exchange;
