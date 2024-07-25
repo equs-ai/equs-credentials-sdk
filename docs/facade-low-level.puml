@@ -34,9 +34,19 @@ H -> H: <b>store_credential</b>(credential, credential_metadata)
 
 autonumber 5.1
 V -> H: <out-of-band>: send `PresentationDefinition`
-H -> H: <b>create_presentation</b>(presentation_definition, nonce)
-H -> V: <out-of-band>: send `(Presentation, PresentationData)`
 
+alt Auto-select credentials
+autonumber 5.2.1
+H -> H: <b>create_presentation_auto</b>(presentation_definition, nonce)
+
+else User selects/approves credentials for the presentation
+autonumber 5.2.1
+H -> H: <b>find_vcs_for_presentation</b>(presentation_definition)
+H --> H: <out-of-band>: Select/Approve selection
+H -> H: <b>create_presentation</b>(presentation_definition, credential_mapping_selected, nonce)
+end
+autonumber 5.3
+H -> V: <out-of-band>: send `(Presentation, PresentationData)`
 ...
 
 autonumber 6

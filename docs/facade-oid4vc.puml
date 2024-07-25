@@ -60,9 +60,18 @@ end
 
 ...
 
-autonumber 7.1
 note over V: POST /<authorization-response-uri> HTTP/1.1
-H -> H: present_credentials(authorization_req, ...)
+
+alt Auto-select credentials
+autonumber 7.1.1
+H -> H: present_credentials_auto(auth_request, ...)
+else User selects/approves credentials for the presentation
+autonumber 7.1.1
+H -> H: find_vcs_for_presentation(auth_request, ...)
+H --> H: <out-of-band>: Select/Approve selection
+H -> H: present_credentials(auth_request, credential_mapping_selected, ...)
+
+end
 autonumber stop
 H -> V: AuthorizationResponse
 autonumber 7.2
