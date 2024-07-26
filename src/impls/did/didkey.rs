@@ -1,7 +1,10 @@
-use ssi::did::{DIDMethod, Source};
+use async_trait::async_trait;
+use ssi::did::{DIDMethod, Document, Source};
+use ssi::did_resolve::{DocumentMetadata, ResolutionInputMetadata, ResolutionMetadata};
 
 use crate::core_::{crypto, did};
-use crate::core_::did::{DID, DIDResolver, Resolution, ResolveOptions};
+use crate::core_::did::{DID, DIDResolver, Resolution, ResolveOptions, VerificationMethodMap};
+use crate::impls::did::resolve_verification_method;
 
 pub struct DIDKey {
     method: did_method_key::DIDKey,
@@ -21,18 +24,28 @@ impl DIDKey {
         };
 
         let did = self.method.generate(&Source::Key(&jwk));
-
         did.ok_or_else(|| did::Error::GenerationError)
     }
 }
 
 impl DIDResolver for DIDKey {
     async fn resolve(&self, did: &DID, options: ResolveOptions) -> Resolution {
-        let (metadata, doc, _) = self.method.to_resolver().resolve(did, &options.input).await;
-        Resolution { doc, metadata }
+        let (metadata, doc, doc_metadata) = self.method.to_resolver().resolve(did, &options.input).await;
+        Resolution { doc, metadata, doc_metadata }
+    }
+
+    async fn resolve_verification_method(&self, did_url: &str) -> Result<VerificationMethodMap, did::Error> {
+        resolve_verification_method(self.method.to_resolver(), did_url).await
     }
 }
 
+// for internal spruce usage
+#[async_trait]
+impl ssi::did::did_resolve::DIDResolver for DIDKey {
+    async fn resolve(&self, did: &str, input_metadata: &ResolutionInputMetadata) -> (ResolutionMetadata, Option<Document>, Option<DocumentMetadata>) {
+        self.method.resolve(did, input_metadata).await
+    }
+}
 
 #[cfg(test)]
 mod tests {

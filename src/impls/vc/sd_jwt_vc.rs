@@ -1,16 +1,20 @@
 use std::collections::HashMap;
 
 use futures::executor;
-use sd_jwt_rs::{ClaimsForSelectiveDisclosureStrategy, SDJWTIssuer, SDJWTSerializationFormat};
-use serde_json::Value;
+use jsonwebtoken::{DecodingKey, Header};
+use sd_jwt_rs::{ClaimsForSelectiveDisclosureStrategy, SDJWTHolder, SDJWTIssuer, SDJWTSerializationFormat, SDJWTVerifier};
+use serde_json::{Map, Value};
+use ssi::did::VerificationMethodMap;
+use ssi::jwk::JWK;
 use time::OffsetDateTime;
 
 use crate::core_::crypto::{Key, Signer};
-use crate::core_::did::DIDURL;
+use crate::core_::did::{DIDResolver, DIDURL};
 use crate::core_::vc;
-use crate::core_::vc::{API, Error, Nonce, VerifyOptions};
+use crate::core_::vc::{API, Error, Nonce, Result, VerifyOptions};
 use crate::core_::vc::sd_jwt_vc::{Claims, Credential, Disclosure, Presentation, SD_JWT_VC};
-use crate::impls;
+use crate::impls::did::UniversalResolver;
+use crate::impls::utils;
 use crate::impls::utils::b64;
 use crate::impls::utils::serde::Helpers;
 
@@ -27,6 +31,7 @@ impl sd_jwt_rs::signer::SDJWTSigner for SignerWrapper {
     }
 
     fn sign(&self, message: &[u8]) -> sd_jwt_rs::error::Result<String> {
+        // TODO: support async signers in `sd-jwt-rust`
         let future = self.signer.sign(message);
         let sgn = executor::block_on(future);
         sgn.map(|s| b64::encode(s))
@@ -35,7 +40,6 @@ impl sd_jwt_rs::signer::SDJWTSigner for SignerWrapper {
 }
 
 // Metadata
-
 #[derive(Debug, Default)]
 pub struct VCMetadata {
     pub lifetime: Option<time::Duration>,
@@ -44,32 +48,29 @@ pub struct VCMetadata {
 
 #[derive(Debug, Default)]
 pub struct VPMetadata {
-    pub disclosures: Vec<Disclosure>,
+    pub disclosures: Map<String, Value>,
 }
 
 impl vc::HasClaims<Claims> for Credential {
-    fn parse_claims(&self) -> Result<Claims, Error> {
-        let (_, payload, _) = ssi::jws::split_jws(&self.as_str())?;
-
-        let decoded = b64::decode(payload)?;
-        let str = String::from_utf8(decoded).map_err(|e| Error::Parsing(e.to_string()))?;
-
-        let claims: Claims = serde_json::from_str(&str)?;
-
+    fn parse_claims(&self) -> Result<Claims> {
+        let stripped = SdJwtAPI::strip_disclosures(&self);
+        let claims = ssi::jwt::decode_unverified(stripped)?;
         Ok(claims)
     }
 }
 
 impl vc::HasCredential<Credential> for Presentation {
-    fn get_credential(&self) -> Result<Credential, Error> {
-        todo!()
+    fn get_credential(&self) -> Result<Credential> {
+        // NOTE: returns basic VC w/o disclosures
+        let stripped = SdJwtAPI::strip_disclosures(&self);
+        Ok(stripped.to_owned())
     }
 }
 
-pub struct SdJwtAPI {}
+pub struct SdJwtAPI;
 
 impl SdJwtAPI {
-    fn validate_claims(claims: Claims) -> Result<(), Error> {
+    fn validate_claims(claims: Claims) -> Result<()> {
         if !claims.contains_key("vct") {
             return Err(Error::IncorrectClaim(String::from("missing vct")));
         }
@@ -101,13 +102,54 @@ impl SdJwtAPI {
 
         headers
     }
+
+    fn resolve_key(iss: &str, _: &Header) -> Result<DecodingKey> {
+        let resolver = UniversalResolver::new();
+
+        // TODO: support async `KeyResolver` in `sd-jwt-rust`
+        let future = resolver.resolve_verification_method(iss);
+        let ver_method: VerificationMethodMap = executor::block_on(future)?;
+
+        let jwk = ver_method.get_jwk()?;
+        let Some(jwk) = utils::jwk::from_spruce_jwk(&jwk) else {
+            return Err(Error::KeyNotSupported);
+        };
+
+        DecodingKey::from_jwk(&jwk).map_err(|e| Error::Parsing(e.to_string()))
+    }
+
+    fn unsafe_resolve_iss_key(iss: &str, header: &Header) -> DecodingKey {
+        // TODO: support error handling for `KeyResolver` in `sd-jwt-rust`
+        let Ok(key) = Self::resolve_key(iss, header) else {
+            panic!("error during resolving issuer key")
+        };
+
+        key
+    }
+
+    pub fn strip_disclosures(vc: &Credential) -> &str {
+        let mut parts = vc.split('~');
+        let stripped = match parts.next() {
+            Some(part) => part,
+            _ => unreachable!(),
+        };
+        stripped
+    }
+
+    pub fn verify_signature(vc: &Credential, jwk: &JWK) -> Result<()> {
+        let stripped = Self::strip_disclosures(vc);
+
+        let _ = ssi::jws::decode_verify(stripped, jwk)?;
+
+        Ok(())
+    }
 }
 
-impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata> for SdJwtAPI {
+impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata, Value> for SdJwtAPI {
     async fn create_vc<S, K>(claims: Claims,
                              issuer_data: (&DIDURL, S),
                              holder_data: (&DIDURL, K),
-                             metadata: VCMetadata) -> Result<Credential, Error>
+                             metadata: VCMetadata) -> Result<Credential>
     where
         S: Signer + 'static,
         K: Key,
@@ -120,7 +162,7 @@ impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata> for SdJwtAPI 
         let claims = SdJwtAPI::prepare_claims(claims, iss_did, hld_did, &metadata);
         let headers = SdJwtAPI::extra_headers();
 
-        let Some(jwk) = impls::utils::jwk::from_spruce_jwk_opt(hld_key.jwk()) else {
+        let Some(jwk) = utils::jwk::from_spruce_jwk_opt(hld_key.jwk()) else {
             return Err(Error::KeyNotSupported);
         };
 
@@ -137,17 +179,41 @@ impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata> for SdJwtAPI 
         res.map_err(|err| Error::Signing(err.to_string()))
     }
 
-    async fn create_vp<S>(credential: &Credential, signer: S,
+    async fn create_vp<S>(credential: &Credential,
+                          holder_data: (&DIDURL, S),
                           nonce: Nonce, verifier_id: &str,
-                          holder_did_url: &DIDURL, metadata: VPMetadata) -> Result<Presentation, Error>
+                          metadata: VPMetadata) -> Result<Presentation>
     where
-        S: Signer,
+        S: Signer + 'static,
     {
-        todo!()
+        let (_, signer) = holder_data;
+        let sgn_wrapper = SignerWrapper { signer: Box::new(signer) };
+
+        let mut holder = SDJWTHolder::new(credential.to_owned(), SDJWTSerializationFormat::Compact)
+            .map_err(|e| Error::Parsing(e.to_string()))?;
+
+        let presentation = holder.create_presentation(
+            metadata.disclosures,
+            Some(nonce.secret().to_owned()),
+            Some(verifier_id.to_string()),
+            Some(&sgn_wrapper),
+        );
+
+        Ok(presentation.unwrap())
     }
 
-    async fn verify_vp(presentation: &Presentation, opts: VerifyOptions) -> Result<(), Error> {
-        todo!()
+    async fn verify_vp(presentation: &Presentation,
+                       nonce: Nonce, verifier_id: &str,
+                       opts: VerifyOptions) -> Result<Value> {
+        let verifier = SDJWTVerifier::new(
+            presentation.to_owned(),
+            Box::new(SdJwtAPI::unsafe_resolve_iss_key),
+            Some(verifier_id.to_string()),
+            Some(nonce.secret().to_string()),
+            SDJWTSerializationFormat::Compact,
+        ).map_err(|e| Error::Verifying(e.to_string()))?;
+
+        Ok(verifier.verified_claims)
     }
 }
 
@@ -155,16 +221,17 @@ impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata> for SdJwtAPI 
 mod tests {
     use std::str::FromStr;
 
+    use oid4vci::openidconnect::Nonce;
     use serde_json::json;
     use ssi::did::DIDURL;
 
+    use crate::core_::{kms, vc};
     use crate::core_::crypto::Key;
-    use crate::core_::kms;
     use crate::core_::kms::Kms;
-    use crate::core_::vc::{API, HasClaims};
+    use crate::core_::vc::{API, HasClaims, HasCredential};
     use crate::impls::did::didkey::DIDKey;
     use crate::impls::kms::inmem::LocalKms;
-    use crate::impls::vc::sd_jwt_vc::{SdJwtAPI, VCMetadata};
+    use crate::impls::vc::sd_jwt_vc::{SdJwtAPI, VCMetadata, VPMetadata};
 
     #[tokio::test]
     async fn e2e() {
@@ -172,13 +239,14 @@ mod tests {
         let didkey = DIDKey::new();
 
         for kt in vec![kms::KeyType::Ed25519, kms::KeyType::P256] {
-            // Create a key
+            // Initialization
             let (_, i_kh) = kms.create_and_handle(&kt, kms::CreateOptions {}).await.unwrap();
             let (_, h_kh) = kms.create_and_handle(&kt, kms::CreateOptions {}).await.unwrap();
 
             let claims = json!( {
                 "vct": "https://issuer.net/cred_schema",
-                "name": "John Doe",
+                "name": "John",
+                "surname": "Doe",
                 "dob": "09/09/1989",
             });
 
@@ -195,16 +263,17 @@ mod tests {
 
             let iss_jwk = i_kh.clone().jwk().unwrap();
             println!("Iss JWK:\n{}", serde_json::to_string_pretty(&iss_jwk).unwrap());
-            let hld_jwk = i_kh.clone().jwk().unwrap();
+            let hld_jwk = h_kh.clone().jwk().unwrap();
             println!("Hld JWK:\n{}", serde_json::to_string_pretty(&hld_jwk).unwrap());
 
+            // VC
             let vc_res = SdJwtAPI::create_vc(
                 cl,
                 (&iss_did_url, i_kh.clone()),
                 (&hld_did_url, h_kh.clone()),
                 VCMetadata {
                     lifetime: Some(time::Duration::days(365)),
-                    disclosures: vec!["$.name"],
+                    disclosures: vec!["$.name", "$.surname"],
                 },
             ).await;
             assert!(vc_res.is_ok());
@@ -216,9 +285,53 @@ mod tests {
             println!("Claims:\n{}", serde_json::to_string_pretty(&claims).unwrap());
 
             assert!(!claims.contains_key("name"));
+            assert!(!claims.contains_key("surname"));
             assert_eq!(claims.get("dob").unwrap(), "09/09/1989");
             assert_eq!(claims.get("sub").unwrap(), &hld_did_url.to_string());
             assert_eq!(claims.get("iss").unwrap(), &iss_did_url.to_string());
+
+            let sgn_res = SdJwtAPI::verify_signature(&vc, &iss_jwk);
+            assert!(sgn_res.is_ok());
+
+            // VP
+            let nonce = Nonce::new_random();
+            let vp_res = SdJwtAPI::create_vp(
+                &vc,
+                (&hld_did_url, h_kh.clone()),
+                nonce.clone(),
+                "verifier-id",
+                VPMetadata {
+                    disclosures: json!({
+                        "name" : true
+                    }).as_object().unwrap().to_owned()
+                },
+            ).await;
+            assert!(vp_res.is_ok());
+
+            let vp = vp_res.unwrap();
+            println!("VP:\n{}", vp);
+
+            let vc_from_vp = vp.get_credential().unwrap();
+            let sgn_res = SdJwtAPI::verify_signature(&vc_from_vp, &iss_jwk);
+            assert!(sgn_res.is_ok());
+
+            // Verification
+            let ver_res = SdJwtAPI::verify_vp(
+                &vp,
+                nonce.clone(),
+                "verifier-id",
+                vc::VerifyOptions {},
+            ).await;
+            assert!(ver_res.is_ok());
+
+            let disclosed = ver_res.unwrap();
+            println!("Disclosed: {}", disclosed);
+
+            let disclosed = disclosed.as_object().unwrap();
+
+            assert!(disclosed.contains_key("name"));
+            assert_eq!(disclosed["name"], "John");
+            assert!(!disclosed.contains_key("surname"));
         }
     }
 }
