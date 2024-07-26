@@ -99,10 +99,9 @@ pub(crate) async fn low_level_demo() {
     let presentation = match chosen {
         vc::Credential::SdJwt(cred) => SdJwtAPI::create_vp(
             cred,
-            chosen_kh,
+            (&h_did_url,chosen_kh),
             Nonce::new_random(),
             "verifier-12345",
-            &h_did_url,
             VPMetadata { disclosures: json!({"name":"true"}).as_object().unwrap().to_owned() },
         ).await.unwrap(),
         // other presentations possible

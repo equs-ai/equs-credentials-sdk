@@ -4,7 +4,7 @@ use ssi::did_resolve::{DocumentMetadata, ResolutionInputMetadata, ResolutionMeta
 
 use crate::core_::{crypto, did};
 use crate::core_::did::{DID, DIDResolver, Resolution, ResolveOptions, VerificationMethodMap};
-use crate::impls::did::resolve_verification;
+use crate::impls::did::resolve_verification_method;
 
 pub struct DIDKey {
     method: did_method_key::DIDKey,
@@ -34,8 +34,8 @@ impl DIDResolver for DIDKey {
         Resolution { doc, metadata, doc_metadata }
     }
 
-    async fn resolve_verification(&self, did_url: &str) -> Result<VerificationMethodMap, did::Error> {
-        resolve_verification(self.method.to_resolver(), did_url).await
+    async fn resolve_verification_method(&self, did_url: &str) -> Result<VerificationMethodMap, did::Error> {
+        resolve_verification_method(self.method.to_resolver(), did_url).await
     }
 }
 

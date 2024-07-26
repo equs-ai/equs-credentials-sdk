@@ -39,6 +39,6 @@ pub struct ResolveOptions {
 pub trait DIDResolver {
     async fn resolve(&self, did: &DID, options: ResolveOptions) -> Resolution;
 
-    async fn resolve_verification(&self, did_url: &str) -> Result<VerificationMethodMap, Error>;
+    async fn resolve_verification_method(&self, did_url: &str) -> Result<VerificationMethodMap, Error>;
 }
 

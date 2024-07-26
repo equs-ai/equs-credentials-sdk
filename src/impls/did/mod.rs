@@ -25,8 +25,8 @@ impl DIDResolver for UniversalResolver {
         Resolution { doc, metadata, doc_metadata }
     }
 
-    async fn resolve_verification(&self, did_url: &str) -> Result<VerificationMethodMap, Error> {
-        resolve_verification(self.impls.to_resolver(), did_url).await
+    async fn resolve_verification_method(&self, did_url: &str) -> Result<VerificationMethodMap, Error> {
+        resolve_verification_method(self.impls.to_resolver(), did_url).await
     }
 }
 
@@ -38,7 +38,7 @@ impl ssi::did::did_resolve::DIDResolver for UniversalResolver {
     }
 }
 
-async fn resolve_verification(resolver: &dyn ssi::did::did_resolve::DIDResolver, did_url: &str) -> Result<VerificationMethodMap, Error> {
+async fn resolve_verification_method(resolver: &dyn ssi::did::did_resolve::DIDResolver, did_url: &str) -> Result<VerificationMethodMap, Error> {
     let (_, content, _) = dereference(resolver, did_url, &DereferencingInputMetadata::default()).await;
 
     let vm = match content {

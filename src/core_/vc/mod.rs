@@ -57,7 +57,7 @@ pub enum Credential {
 
 pub struct VerifyOptions;
 
-pub trait API<CL, C, P, CM, PM>
+pub trait API<CL, C, P, CM, PM, VR>
 where
     C: HasClaims<CL>,
     P: HasCredential<C>,
@@ -71,14 +71,17 @@ where
         K: crypto::Key
     ;
 
-    async fn create_vp<S>(credential: &C, signer: S,
+    async fn create_vp<S>(credential: &C,
+                          holder_data: (&DIDURL, S),
                           nonce: Nonce, verifier_id: &str,
-                          holder_did_url: &DIDURL, metadata: PM) -> Result<P>
+                          metadata: PM) -> Result<P>
     where
         S: crypto::Signer + 'static
     ;
 
-    async fn verify_vp(presentation: &P, nonce: Nonce, verifier_id: &str, opts: VerifyOptions) -> Result<()>;
+    async fn verify_vp(presentation: &P,
+                       nonce: Nonce, verifier_id: &str,
+                       opts: VerifyOptions) -> Result<VR>;
 }
 
 pub trait HasClaims<CL> {
