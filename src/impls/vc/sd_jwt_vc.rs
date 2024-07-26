@@ -330,6 +330,7 @@ mod tests {
             let disclosed = disclosed.as_object().unwrap();
 
             assert!(disclosed.contains_key("name"));
+            assert_eq!(disclosed["name"], "John");
             assert!(!disclosed.contains_key("surname"));
         }
     }
