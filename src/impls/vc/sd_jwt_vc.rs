@@ -11,8 +11,8 @@ use time::OffsetDateTime;
 use crate::core_::crypto::{Key, Signer};
 use crate::core_::did::{DIDResolver, DIDURL};
 use crate::core_::vc;
-use crate::core_::vc::{API, Error, Nonce, Result, VerifyOptions};
-use crate::core_::vc::sd_jwt_vc::{Claims, Credential, Disclosure, Presentation, SD_JWT_VC};
+use crate::core_::vc::{API, Error, Nonce, Result, SD_JWT_VC, VerifyOptions};
+use crate::core_::vc::sd_jwt_vc::{Claims, Credential, Disclosure, Presentation};
 use crate::impls::did::UniversalResolver;
 use crate::impls::utils;
 use crate::impls::utils::b64;
@@ -42,7 +42,7 @@ impl sd_jwt_rs::signer::SDJWTSigner for SignerWrapper {
 // Metadata
 #[derive(Debug, Default)]
 pub struct VCMetadata {
-    pub lifetime: Option<time::Duration>,
+    pub lifetime: time::Duration,
     pub disclosures: Vec<Disclosure>,
 }
 
@@ -89,9 +89,9 @@ impl SdJwtAPI {
         let now = OffsetDateTime::now_utc();
         prepared.put_dt("iat", now);
         prepared.put_dt("nbf", now);
-        if let Some(exp) = metadata.lifetime.map(|lt| now + lt) {
-            prepared.put_dt("exp", exp);
-        };
+
+        let lt = metadata.lifetime;
+        prepared.put_dt("exp", now + lt);
 
         Value::Object(prepared)
     }
@@ -146,6 +146,10 @@ impl SdJwtAPI {
 }
 
 impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata, Value> for SdJwtAPI {
+    fn resolve_claims(value: &Value) -> Claims {
+        value.as_object().unwrap().to_owned()
+    }
+
     async fn create_vc<S, K>(claims: Claims,
                              issuer_data: (&DIDURL, S),
                              holder_data: (&DIDURL, K),
@@ -197,9 +201,9 @@ impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata, Value> for Sd
             Some(nonce.secret().to_owned()),
             Some(verifier_id.to_string()),
             Some(&sgn_wrapper),
-        );
+        ).map_err(|e| Error::Presentation(e.to_string()))?;
 
-        Ok(presentation.unwrap())
+        Ok(presentation)
     }
 
     async fn verify_vp(presentation: &Presentation,
@@ -272,7 +276,7 @@ mod tests {
                 (&iss_did_url, i_kh.clone()),
                 (&hld_did_url, h_kh.clone()),
                 VCMetadata {
-                    lifetime: Some(time::Duration::days(365)),
+                    lifetime: time::Duration::days(365),
                     disclosures: vec!["$.name", "$.surname"],
                 },
             ).await;

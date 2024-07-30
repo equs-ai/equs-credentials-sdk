@@ -1,3 +1,4 @@
+use async_trait::async_trait;
 use strum_macros::{Display, EnumString, IntoStaticStr};
 
 use crate::core_::crypto;
@@ -29,6 +30,7 @@ pub struct CreateOptions {}
 
 pub trait KeyHandle: crypto::SigningKey + crypto::VerifyingKey + crypto::Key + Clone {}
 
+#[async_trait]
 pub trait Kms<KH>
 where
     KH: KeyHandle,

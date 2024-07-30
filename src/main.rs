@@ -5,7 +5,6 @@ extern crate core;
 mod core_;
 mod exchange;
 mod facade;
-mod stubs;
 mod sdk;
 mod impls;
 
