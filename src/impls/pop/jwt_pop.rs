@@ -1,7 +1,8 @@
 use async_trait::async_trait;
 use oid4vci::proof_of_possession::{ProofOfPossession, ProofOfPossessionController, ProofOfPossessionParams, ProofOfPossessionVerificationParams};
+use ssi::jwk::JWK;
 
-use crate::core_::{pop, vc};
+use crate::core_::{crypto, pop, vc};
 use crate::core_::crypto::{Signer, SigningKey};
 use crate::core_::did::DIDURL;
 use crate::core_::pop::{Error, GenerateOptions, VerifyOptions};
@@ -44,7 +45,7 @@ impl pop::ProofOfPossession<vc::JWTRaw> for JwtProofOfPossession {
         pop.to_jwt_with_signer(sgn).await.map_err(|e| Error::Conversion(e.to_string()))
     }
 
-    async fn verify(proof: vc::JWTRaw, nonce: Nonce, opts: VerifyOptions) -> Result<(), Error> {
+    async fn verify(proof: vc::JWTRaw, nonce: Nonce, opts: VerifyOptions) -> Result<(DIDURL, impl crypto::Key), Error> {
         let resolver = impls::did::UniversalResolver::new();
 
         let pop = ProofOfPossession::from_jwt(proof.as_str(), &resolver).await
@@ -52,6 +53,7 @@ impl pop::ProofOfPossession<vc::JWTRaw> for JwtProofOfPossession {
 
         let verification = pop.verify(&ProofOfPossessionVerificationParams {
             audience: opts.cred_iss_id.clone(),
+            // TODO: do we need to check client-id if Holder was already authorized?
             issuer: opts.client_id.clone(),
             nonce: nonce.clone(),
             controller_did: None,
@@ -60,7 +62,23 @@ impl pop::ProofOfPossession<vc::JWTRaw> for JwtProofOfPossession {
             exp_tolerance: None,
         }).await;
 
-        verification.map_err(|e| Error::Verification(e.to_string()))
+        verification.map_err(|e| Error::Verification(e.to_string()))?;
+
+        // TODO: refactor
+        let did_url = pop.controller.vm.unwrap();
+        let hld_key = pop.controller.jwk;
+
+        Ok((did_url, hld_key))
+    }
+}
+
+impl crypto::Key for JWK {
+    fn pub_key(&self) -> Vec<u8> {
+        unimplemented!()
+    }
+
+    fn jwk(&self) -> Option<JWK> {
+        Some(self.to_owned())
     }
 }
 
@@ -93,7 +111,6 @@ mod tests {
             let hld_did_url = DIDURL::from_str(&hld_did).unwrap();
 
             println!("Holder DID: {}", hld_did);
-            let jwk = h_kh.clone().jwk();
 
             let jwk = h_kh.clone().jwk().unwrap();
             println!("JWK:\n{}", serde_json::to_string_pretty(&jwk).unwrap());
@@ -130,8 +147,11 @@ mod tests {
                     client_id: Some("client-id".to_string()),
                 },
             ).await;
-
             assert!(verified.is_ok());
+
+            let (did_url, key) = verified.unwrap();
+            assert_eq!(did_url, hld_did_url);
+            assert_eq!(jwk.to_public(), key.jwk().unwrap());
         }
     }
 }

@@ -100,6 +100,7 @@ impl LocalKms {
     }
 }
 
+#[async_trait]
 impl Kms<KeyHandle> for LocalKms
 {
     async fn create(&mut self, kt: &kms::KeyType, opts: kms::CreateOptions) -> Result<kms::KeyID, kms::Error> {

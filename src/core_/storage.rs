@@ -1,7 +1,6 @@
-use std::fmt;
-
 // Error handling
-#[derive(fmt::Debug)]
+#[derive(Debug, thiserror::Error, strum::IntoStaticStr)]
+#[non_exhaustive]
 pub enum Error {}
 
 pub trait Storage<K, V>
