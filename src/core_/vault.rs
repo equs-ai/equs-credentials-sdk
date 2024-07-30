@@ -22,7 +22,7 @@ pub enum FindCriteria {
 }
 
 #[async_trait]
-pub trait Vault
+pub trait Vault: Send + Sync
 {
     fn open(&self, master_secret: &str) -> Result<(), Error>;
 

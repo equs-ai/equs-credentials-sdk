@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 use std::str::FromStr;
 
+use async_trait::async_trait;
+
 use crate::core_::{crypto, did, kms, pop, vault, vc};
 use crate::core_::crypto::Signer;
 use crate::core_::pop::ProofOfPossession as PopAPI;
@@ -18,9 +20,6 @@ pub struct IssuerMetadata {
     pub protocol_data: Option<IssuerMetadataData>, // Protocol specific
     pub key_metadata: KeyMetadata,
 }
-
-#[derive(Debug, PartialEq, Clone)]
-pub struct Display;
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct IssuerMetadataData {}
@@ -88,16 +87,19 @@ pub struct CredentialRequestData {
     pub lifetime: Option<time::Duration>,
 }
 
-pub type CredentialClaims = serde_json::Value;
-pub type Credential = vc::Credential;
-pub type CredentialMetadata = vc::CredentialMetadata;
-
+#[derive(Debug, PartialEq, Clone)]
 pub struct PresentationInput {
     pub id: String,
     pub format: String,
     pub claims: serde_json::Map<String, serde_json::Value>,
 }
 
+#[derive(Debug, PartialEq, Clone)]
+pub struct Display;
+
+pub type CredentialClaims = serde_json::Value;
+pub type Credential = vc::Credential;
+pub type CredentialMetadata = vc::CredentialMetadata;
 pub type Presentation = vc::Presentation;
 
 #[derive(Debug, thiserror::Error, strum::IntoStaticStr)]
@@ -123,23 +125,84 @@ pub enum Error {
 
 pub type Result<T> = core::result::Result<T, Error>;
 
+// API
 
-//  --------- Issuer API -------------
-pub struct Issuer<KH: kms::KeyHandle + 'static>
+#[async_trait]
+pub trait Issuer
 {
+    fn offer_credential(
+        &self,
+        cred_def_id: &str,
+        protocol_data: Option<&CredentialOfferData>,
+    ) -> Result<CredentialOffer>;
+
+    async fn issue_credential(
+        &self,
+        credential_request: &CredentialRequest,
+        claims: &CredentialClaims,
+        nonce: &str,
+    ) -> Result<(Credential, CredentialMetadata)>;
+}
+
+#[async_trait]
+pub trait Holder
+{
+    async fn request_credential(
+        &self,
+        credential_offer: &CredentialOffer,
+        nonce: &str,
+    ) -> Result<CredentialRequest>;
+
+    async fn store_credential(
+        &mut self,
+        credential: &Credential,
+        metadata: &CredentialMetadata,
+    ) -> Result<String>;
+
+    async fn create_presentation_auto(
+        &self,
+        nonce: &str,
+        verifier_id: &str,
+        presentation_input: &PresentationInput,
+    ) -> Result<Presentation>;
+
+    async fn find_vcs_for_presentation(
+        &self,
+        presentation_input: &PresentationInput,
+    ) -> Result<Vec<Credential>>;
+
+    async fn create_presentation(
+        &self,
+        nonce: &str,
+        verifier_id: &str,
+        presentation_input: &PresentationInput,
+        credential: &Credential,
+    ) -> Result<Presentation>;
+}
+
+#[async_trait]
+pub trait Verifier
+{
+    async fn verify_presentation(
+        &self,
+        presentation_input: &PresentationInput,
+        nonce: &str, // same as in create_presentation
+        presentation: &Presentation,
+    ) -> Result<CredentialClaims>;
+}
+
+// Services
+
+// Issuer
+
+pub struct IssuerService<KH: kms::KeyHandle + 'static> {
     kms: Box<dyn kms::Kms<KH>>,
     metadata: IssuerMetadata,
 }
 
-impl<KH: kms::KeyHandle + 'static> Issuer<KH> {
-    pub fn new(kms: impl kms::Kms<KH> + 'static, metadata: IssuerMetadata) -> Self {
-        Self { kms: Box::new(kms), metadata }
-    }
-}
-
-impl<KH: kms::KeyHandle + 'static> Issuer<KH>
-{
-    pub async fn offer_credential(
+#[async_trait]
+impl<KH: kms::KeyHandle + 'static> Issuer for IssuerService<KH> {
+    fn offer_credential(
         &self,
         cred_def_id: &str,
         protocol_data: Option<&CredentialOfferData>,
@@ -158,11 +221,11 @@ impl<KH: kms::KeyHandle + 'static> Issuer<KH>
         Ok(credential_offer)
     }
 
-    pub async fn issue_credential(
+    async fn issue_credential(
         &self,
         credential_request: &CredentialRequest,
         claims: &CredentialClaims,
-        nonce: &str, // same as in request_credential
+        nonce: &str,
     ) -> Result<(Credential, CredentialMetadata)> {
         let cred_def = self.resolve_cred_def_by_request(credential_request)?;
 
@@ -206,6 +269,12 @@ impl<KH: kms::KeyHandle + 'static> Issuer<KH>
         };
 
         Ok((vc, meta))
+    }
+}
+
+impl<KH: kms::KeyHandle + 'static> IssuerService<KH> {
+    pub fn new(kms: impl kms::Kms<KH> + 'static, metadata: IssuerMetadata) -> Self {
+        Self { kms: Box::new(kms), metadata }
     }
 
     fn sd_jwt_vc_metadata(&self, credential_request: &CredentialRequest) -> Result<VCMetadata> {
@@ -260,23 +329,17 @@ impl<KH: kms::KeyHandle + 'static> Issuer<KH>
     }
 }
 
+// Holder
 
-//  --------- Holder API -------------
-
-pub struct Holder<KH: kms::KeyHandle + 'static> {
+pub struct HolderService<KH: kms::KeyHandle + 'static> {
     kms: Box<dyn kms::Kms<KH>>,
     vault: Box<dyn vault::Vault>,
     metadata: HolderMetadata,
 }
 
-impl<KH: kms::KeyHandle + 'static> Holder<KH> {
-    pub fn new(kms: impl kms::Kms<KH> + 'static, vault: impl vault::Vault + 'static, metadata: HolderMetadata) -> Self {
-        Self { kms: Box::new(kms), vault: Box::new(vault), metadata }
-    }
-}
-
-impl<KH: kms::KeyHandle + 'static> Holder<KH> {
-    pub async fn request_credential(
+#[async_trait]
+impl<KH: kms::KeyHandle + 'static> Holder for HolderService<KH> {
+    async fn request_credential(
         &self,
         credential_offer: &CredentialOffer,
         nonce: &str,
@@ -315,22 +378,7 @@ impl<KH: kms::KeyHandle + 'static> Holder<KH> {
         Ok(credential_request)
     }
 
-    fn resolve_proof_format(&self, cred_def: &CredentialDefinition) -> Result<pop::Format> {
-        // TODO: add logic on supported proof formats of Holder
-        let pop_fmt = cred_def.supported_proofs.iter().next().ok_or(Error::ProofFormatNotFound)?;
-        let pop_fmt = pop::Format::from_str(pop_fmt)?;
-        Ok(pop_fmt)
-    }
-
-    async fn resolve_key_metadata(&self) -> Result<(did::DIDURL, impl crypto::SigningKey)> {
-        let key_meta = &self.metadata.key_metadata;
-        let did_url = did::DIDURL::from_str(&key_meta.did_url).unwrap();
-        let kh = self.kms.get(&key_meta.kid).await.unwrap();
-
-        Ok((did_url, kh))
-    }
-
-    pub async fn store_credential(
+    async fn store_credential(
         &mut self,
         credential: &Credential,
         metadata: &CredentialMetadata,
@@ -339,7 +387,7 @@ impl<KH: kms::KeyHandle + 'static> Holder<KH> {
         Ok(id)
     }
 
-    pub async fn create_presentation_auto(
+    async fn create_presentation_auto(
         &self,
         nonce: &str,
         verifier_id: &str,
@@ -353,7 +401,7 @@ impl<KH: kms::KeyHandle + 'static> Holder<KH> {
         Ok(presentation)
     }
 
-    pub async fn find_vcs_for_presentation(
+    async fn find_vcs_for_presentation(
         &self,
         presentation_input: &PresentationInput,
     ) -> Result<Vec<Credential>> {
@@ -363,7 +411,7 @@ impl<KH: kms::KeyHandle + 'static> Holder<KH> {
         Ok(credentials.into_iter().cloned().collect())
     }
 
-    pub async fn create_presentation(
+    async fn create_presentation(
         &self,
         nonce: &str,
         verifier_id: &str,
@@ -387,6 +435,27 @@ impl<KH: kms::KeyHandle + 'static> Holder<KH> {
 
         Ok(presentation)
     }
+}
+
+impl<KH: kms::KeyHandle + 'static> HolderService<KH> {
+    pub fn new(kms: impl kms::Kms<KH> + 'static, vault: impl vault::Vault + 'static, metadata: HolderMetadata) -> Self {
+        Self { kms: Box::new(kms), vault: Box::new(vault), metadata }
+    }
+
+    fn resolve_proof_format(&self, cred_def: &CredentialDefinition) -> Result<pop::Format> {
+        // TODO: add logic on supported proof formats of Holder
+        let pop_fmt = cred_def.supported_proofs.iter().next().ok_or(Error::ProofFormatNotFound)?;
+        let pop_fmt = pop::Format::from_str(pop_fmt)?;
+        Ok(pop_fmt)
+    }
+
+    async fn resolve_key_metadata(&self) -> Result<(did::DIDURL, impl crypto::SigningKey)> {
+        let key_meta = &self.metadata.key_metadata;
+        let did_url = did::DIDURL::from_str(&key_meta.did_url).unwrap();
+        let kh = self.kms.get(&key_meta.kid).await.unwrap();
+
+        Ok((did_url, kh))
+    }
 
     fn resolve_find_criteria(&self, input: &PresentationInput) -> Result<FindCriteria> {
         // TODO: more generic solution to support different criterias
@@ -400,19 +469,16 @@ impl<KH: kms::KeyHandle + 'static> Holder<KH> {
 }
 
 
-//  --------- Verifier API -------------
+//  Verifier
 
-pub struct Verifier {
+pub struct VerifierService {
     verifier_id: String,
 }
 
-impl Verifier {
-    pub fn new(verifier_id: &str) -> Self {
-        Self { verifier_id: verifier_id.to_owned() }
-    }
-
+#[async_trait]
+impl Verifier for VerifierService {
     // Step 6.
-    pub async fn verify_presentation(
+    async fn verify_presentation(
         &self,
         presentation_input: &PresentationInput,
         nonce: &str, // same as in create_presentation
@@ -434,6 +500,12 @@ impl Verifier {
 
         Ok(cred_claims)
     }
+}
+
+impl VerifierService {
+    pub fn new(verifier_id: &str) -> Self {
+        Self { verifier_id: verifier_id.to_owned() }
+    }
 
     fn validate_claims(disclosed: &serde_json::Value, expected: &serde_json::Map<String, serde_json::Value>) -> Result<()> {
         let default = &serde_json::Map::new();
@@ -448,7 +520,6 @@ impl Verifier {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use std::str::FromStr;
@@ -459,9 +530,9 @@ mod tests {
     use crate::core_::{kms, vc};
     use crate::core_::crypto::Key;
     use crate::core_::kms::Kms;
-    use crate::facade::facade_low_level::{CredentialDefinition, CredentialOfferData, Display, Holder, HolderMetadata, Issuer, IssuerMetadata, KeyMetadata, PresentationInput, Verifier};
+    use crate::facade::facade_low_level::{CredentialDefinition, CredentialOfferData, Display, Holder, HolderMetadata, HolderService, Issuer, IssuerMetadata, IssuerService, KeyMetadata, PresentationInput, Verifier, VerifierService};
     use crate::impls::did::didkey::DIDKey;
-    use crate::impls::kms::inmem::{KeyHandle, LocalKms};
+    use crate::impls::kms::inmem::LocalKms;
     use crate::impls::vault::inmem::InMemVault;
 
     #[tokio::test]
@@ -476,7 +547,7 @@ mod tests {
         let offer = issuer.offer_credential(
             "university degree",
             Some(&CredentialOfferData { disclosures: vec!["name", "surname"] }),
-        ).await;
+        );
         assert!(offer.is_ok());
         let offer = offer.unwrap();
 
@@ -503,6 +574,8 @@ mod tests {
 
         let store_res = holder.store_credential(&vc, &vc_meta).await;
         assert!(store_res.is_ok());
+
+        println!("Present proof...");
 
         let presentation_input = PresentationInput {
             id: "university degree".into(),
@@ -532,13 +605,15 @@ mod tests {
         assert!(ver_res.is_ok());
 
         let res_claims = ver_res.unwrap();
+        println!("Presentation claims {:?}", res_claims);
+
         assert!(res_claims.as_object().unwrap().contains_key("name"));
         assert!(res_claims.as_object().unwrap().contains_key("surname"));
         // should return not only requested claims, but all in credential
         assert!(res_claims.as_object().unwrap().contains_key("dob"));
     }
 
-    async fn issuer() -> Issuer<KeyHandle> {
+    async fn issuer() -> impl Issuer {
         // Initialization
         println!("Issuer creating...");
 
@@ -579,10 +654,10 @@ mod tests {
             },
         };
 
-        Issuer::new(kms, metadata)
+        IssuerService::new(kms, metadata)
     }
 
-    async fn holder() -> Holder<KeyHandle> {
+    async fn holder() -> impl Holder {
         // Initialization
         println!("Holder creating...");
 
@@ -600,7 +675,7 @@ mod tests {
         let jwk = kh.clone().jwk().unwrap();
         println!("Key JWK:\n{}", serde_json::to_string_pretty(&jwk).unwrap());
 
-        Holder::new(kms, vault, HolderMetadata {
+        HolderService::new(kms, vault, HolderMetadata {
             client_id: "client_id".into(),
             key_metadata: KeyMetadata {
                 did_url: did_url.to_string(),
@@ -609,7 +684,7 @@ mod tests {
         })
     }
 
-    fn verifier(id: &str) -> Verifier {
-        Verifier::new(id)
+    fn verifier(id: &str) -> impl Verifier {
+        VerifierService::new(id)
     }
 }
