@@ -31,7 +31,7 @@ pub struct CreateOptions {}
 pub trait KeyHandle: crypto::SigningKey + crypto::VerifyingKey + crypto::Key + Clone {}
 
 #[async_trait]
-pub trait Kms<KH>
+pub trait Kms<KH>: Send + Sync
 where
     KH: KeyHandle,
 {
