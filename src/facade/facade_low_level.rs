@@ -8,6 +8,7 @@ use crate::core_::crypto::Signer;
 use crate::core_::pop::ProofOfPossession as PopAPI;
 use crate::core_::vault::FindCriteria;
 use crate::core_::vc::{API, VerifyOptions};
+use crate::exchange;
 use crate::impls::pop::jwt_pop::JwtProofOfPossession;
 use crate::impls::vc::sd_jwt_vc::{SdJwtAPI, VCMetadata, VPMetadata};
 
@@ -22,7 +23,9 @@ pub struct IssuerMetadata {
 }
 
 #[derive(Debug, PartialEq, Clone)]
-pub struct IssuerMetadataData {}
+pub enum IssuerMetadataData {
+    Oidc4Vc(exchange::oid4vc::vci::IssuerMetadata)
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct CredentialDefinition {
@@ -30,9 +33,9 @@ pub struct CredentialDefinition {
     pub format: String,
     pub claims: HashMap<String, Display>,
     // TODO: needed in mvp?
-    pub credential_signing_alg_values_supported: String,
+    pub credential_signing_alg_values_supported: Option<Vec<String>>,
     // TODO: needed in mvp?
-    pub cryptographic_binding_methods_supported: String,
+    pub cryptographic_binding_methods_supported: Option<Vec<String>>,
     pub supported_proofs: Vec<String>,
     pub display: Display,
     pub protocol_data: Option<CredentialDefinitionData>, // Protocol specific
@@ -75,7 +78,7 @@ pub struct ProofOfPossession {
 
 #[derive(Debug, PartialEq, Clone, Default)]
 pub struct CredentialRequest {
-    pub cred_def_id: String,
+    pub cred_def_id: Option<String>,
     pub cred_offer_id: Option<String>,
     pub proof: ProofOfPossession,
     pub protocol_data: Option<CredentialRequestData>, // Protocol specific
@@ -289,9 +292,12 @@ impl<KH: kms::KeyHandle + 'static> IssuerService<KH> {
     fn resolve_cred_def_by_request(&self, credential_request: &CredentialRequest) -> Result<&CredentialDefinition> {
         // TODO: support flow for CredentialOffer handling (if present)
         let id = &credential_request.cred_def_id;
-        let cred_def = &self.find_cred_def(id)?;
+        if let Some(id) = id {
+            let cred_def = &self.find_cred_def(id)?;
+            return Ok(cred_def);
+        }
 
-        Ok(cred_def)
+        Err(Error::CredDefNotFound)
     }
 
     fn find_cred_def(&self, id: &str) -> Result<&CredentialDefinition> {
@@ -369,7 +375,7 @@ impl<KH: kms::KeyHandle + 'static> Holder for HolderService<KH> {
 
         let fmt: &str = pop_fmt.into();
         let credential_request = CredentialRequest {
-            cred_def_id: cred_def.cred_def_id.clone(),
+            cred_def_id: Some(cred_def.cred_def_id.clone()),
             cred_offer_id: Some(credential_offer.cred_offer_id.clone()),
             proof: ProofOfPossession { format: fmt.to_owned(), proof: proof.to_string() },
             protocol_data: Some(CredentialRequestData { ..Default::default() }),
@@ -637,8 +643,8 @@ mod tests {
                     cred_def_id: "university degree".into(),
                     format: vc::VCFormat::SdJwtVc.to_string(),
                     claims: Default::default(),
-                    credential_signing_alg_values_supported: "".to_string(),
-                    cryptographic_binding_methods_supported: "".to_string(),
+                    credential_signing_alg_values_supported: None,
+                    cryptographic_binding_methods_supported: None,
                     supported_proofs: vec![
                         "jwt".into()
                     ],

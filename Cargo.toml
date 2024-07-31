@@ -5,8 +5,7 @@ edition = "2021"
 
 [dependencies]
 oauth2 = "4.4.2"
-oid4vci = { git = "ssh://git@git.slock.it/open-source/oid4vci-rs", branch = "asdk-main" }
-#oid4vci = { path = "../oid4vci-rs" }
+oid4vci = { git = "ssh://git@git.slock.it/open-source/oid4vci-rs", branch = "feature/ASDK-35-adjustments" }
 oidc4vp = { git = "ssh://git@gitlab.dsr-corporation.com/dsr-blockchain/oid4vp-rs", version = "0.1.0", branch = "oidc4vp-new-impl" }
 sd-jwt-rs = { git = "ssh://git@git.slock.it/open-source/sd-jwt-rust.git", branch = "feat/signer-support" }
 serde_json = "1.0.120"
@@ -27,7 +26,9 @@ strum_macros = "0.26.4"
 strum = "0.26.3"
 thiserror = "1.0.63"
 lazy_static = "1.5.0"
-uuid = "1.10.0"
+url = "2.5.2"
+reqwest = { version = "0.11", features = ["blocking"] }
+uuid = { version = "1.10.0", features = ["v4"] }
 
 [dev-dependencies]
 tokio = { version = "1.25.0", features = ["macros"] }
