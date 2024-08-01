@@ -13,17 +13,45 @@ pub struct AuthorizationMetadata {}
 pub struct CredentialOffer {}
 pub struct IssuerMetadataData{}
 
-pub struct AuthorizationRequest {
-    // TODO: will be SpruceID/ASDK type, details will be changed
-    pub presentation_definition: PresentationDefinition,
-    pub nonce: String,
-    pub authorization-response-uri: String,
-    pub metadata: AuthorizationRequestMetadata,
-}
-pub struct AuthorizationRequestMetadata{}
 
-pub struct AuthorizationResponse {} // SpruceID/ASDK type
-pub struct AuthorizationResponseMetadata{}
+pub enum AuthorizationUrlType {
+    Reference(Url),
+    Value,
+}
+
+pub struct AuthorizationRequest {
+    client_id: ClientId,
+    request_object_jwt: String,
+    authorization_endpoint: Url,
+}
+
+impl AuthorizationRequest {
+    fn as_url(&self, type_: AuthorizationUrlType) -> Result<Url, Error> {
+        let request_indirection = match type_ {
+            AuthorizationUrlType::Value => {
+                RequestIndirection::ByValue(self.request_object_jwt.clone())
+            }
+            AuthorizationUrlType::Reference(at) => RequestIndirection::ByReference(at),
+        };
+
+        SpruceAuthorizationRequest {
+            client_id: self.client_id.0.clone(),
+            request_indirection,
+        }
+            .to_url(self.authorization_endpoint.clone())
+            .map_err(|err| {
+                Error::RequestCreationFailed(format!(
+                    "Cannot convert Authorization Request into URL: {}",
+                    err
+                ))
+            })
+    }
+}
+
+pub struct AuthorizationResponse {
+    vp_token: Json,
+    presentation_submission: PresentationSubmission,
+}
 
 pub type AccessToken = oauth2::AccessToken;
 
@@ -175,24 +203,29 @@ impl HolderService {
 //  --------- Verifier API -------------
 
 pub struct VerifierService {
-    did_resolver: Box<dyn DIDResolver>,
+    verifier: Oid4VpVerifier,
+    storage: Box<dyn Storage<String, Json>>,
 }
 
 impl VerifierService {
 
     // Step 5
     // GET /<authorization_req_uri> or pass by value
-    pub fn create_authorization_request(
+
+    pub async fn create_authorization_request(
+        &mut self,
         presentation_definition: &PresentationDefinition,
         nonce: &str,
-        metadata: &AuthorizationRequestMetadata,
-    ) -> Result<AuthorizationRequest, Box<dyn Error>> 
+        wallet_metadata: WalletMetadata,
+        response_uri: Url,
+    ) -> Result<AuthorizationRequest, Box<dyn Error>> {
 
     // Step 7
     // POST <authorization-response-uri>
-    pub fn verify_presentation(
-        auth_response: &AuthorizationResponse
-    ) -> Result<Boolean, Box<dyn Error>>
+    pub async fn verify_presentation(
+        &mut self,
+        authorization_response: &AuthorizationResponse,
+    ) -> Result<Json, Box<dyn Error>> {
 
 }
 
