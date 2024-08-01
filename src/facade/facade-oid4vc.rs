@@ -8,6 +8,9 @@ pub struct IssuerMetadata{
     pub cred_defs: Vector<CredentialDefinition>
     pub protocol_data: Option<IssuerMetadataData> // Protocol specific
 }
+pub struct AuthorizationMetadata {}
+
+pub struct CredentialOffer {}
 pub struct IssuerMetadataData{}
 
 pub struct AuthorizationRequest {
@@ -24,6 +27,19 @@ pub struct AuthorizationResponseMetadata{}
 
 pub type AccessToken = oauth2::AccessToken;
 
+pub struct TokenResponse {
+    token: AccessToken,
+    nonce: Option<String>,
+}
+
+pub struct CredentialRequest {
+    cred_def_id: String,
+}
+
+pub enum CredentialResult {
+    Deferred { transaction_id: String },
+    Credential { credential: Credential, notification_id: Option<String> },
+}
 
 // THE API is Subject to Change
 
@@ -71,9 +87,23 @@ impl HolderService {
 
     // Step 2
     // Calls GET /.well-known/openid-credential-issuer HTTP/1.1
-    pub async fn request_issuer_metadata(
+    pub async fn from_issuer_url(
+        issuer_url: String,
+    )-> Result<Self, Box<dyn Error>>
+
+    pub async fn from_metadata(
+        issuer_metadata: &IssuerMetadata,
+        authorization_metadata: &AuthorizationMetadata,
+    ) -> Result<Self, Box<dyn Error>>
+
+    pub async fn from_offer(
         credential_offer: &CredentialOffer,
-    ) -> Result<IssuerMetadata>
+    ) -> Result<Self, Box<dyn Error>>
+
+
+    pub fn get_issuer_metadata(
+        &self,
+    ) -> IssuerMetadata
 
     // Step 3
     // Calls the following:
@@ -82,10 +112,25 @@ impl HolderService {
     //   3. POST /credential HTTP/1.1 to get nonce
     //   5. `request_credential`
     //   6. POST /credential HTTP/1.1 to get credential
+
+
+    pub async fn pre_authz_code_flow(
+        &self,
+        pre_authorized_code: String,
+        tx_code: String,
+    ) -> Result<TokenResponse, Box<dyn Error>>
+
+    pub async fn authz_code_flow_with_scope(
+        &self,
+        cred_def_id: String,
+        authorization_callback: fn(Url) -> String,
+    ) -> Result<TokenResponse, Box<dyn Error>>
+
     pub async fn request_credential(
-        credential_offer: &CredentialOffer,
-        key_id: &str,
-    ) -> Result<(Credential, CredentialMetadata), Box<dyn Error>>
+        &self,
+        token_response: TokenResponse,
+        credential_request: &CredentialRequest,
+    ) -> Result<CredentialResult, Box<dyn Error>>
     
     // Step 4
     pub async fn store_credential(
