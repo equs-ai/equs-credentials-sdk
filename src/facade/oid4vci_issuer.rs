@@ -23,7 +23,7 @@ pub struct IssuerService {
 }
 
 impl IssuerService {
-    pub fn new<KH>(
+    pub fn from_issuer_metadata<KH>(
         kms: impl kms::Kms<KH> + 'static,
         storage: impl Storage<String, Json> + 'static,
         http_client: &'static HttpClient,
@@ -35,7 +35,7 @@ impl IssuerService {
     where
         KH: kms::KeyHandle + 'static,
     {
-        let cred_defs = retrieve_cred_defs(&metadata);
+        let cred_defs = Self::retrieve_cred_defs(&metadata);
 
         let issuer_metadata = facade_low_level::IssuerMetadata {
             issuer_id: metadata.credential_issuer().to_string(),
@@ -47,7 +47,7 @@ impl IssuerService {
         };
         let core_issuer = facade_low_level::IssuerService::new(kms, issuer_metadata);
         let oid4vci_issuer =
-            Oid4VciIssuer::new(metadata, core_issuer, auth_server_admin_auth_header);
+            Oid4VciIssuer::new(metadata, core_issuer, http_client, auth_server_admin_auth_header);
 
         Self {
             oid4vci_issuer,
@@ -56,7 +56,7 @@ impl IssuerService {
         }
     }
 
-    pub async fn metadata(&self) -> Result<Json> {
+    pub async fn get_issuer_metadata(&self) -> Result<Json> {
         let metadata = self.oid4vci_issuer.metadata()?;
 
         return Ok(metadata);
@@ -90,9 +90,7 @@ impl IssuerService {
         };
 
         let (cred, cred_metadata) = self.oid4vci_issuer
-            .issue_credential(cred_request, token, nonce, claims, |req| {
-                self.http_client.async_call(req)
-            })
+            .issue_credential(cred_request, token, nonce, claims)
             .await
             .map_err(Error::Issuance)?;
 
@@ -102,46 +100,46 @@ impl IssuerService {
 
         Ok(cred)
     }
+
+    fn retrieve_cred_defs(metadata: &IssuerMetadata) -> Vec<CredentialDefinition> {
+        metadata
+            .credential_configurations_supported()
+            .iter()
+            .map(|(id, cm)| {
+                let proofs: Vec<String> = if let Some(proof) = cm.proof_types_supported() {
+                    proof
+                        .keys()
+                        .map(|k| serde_json::to_string(k).unwrap_or("".to_string()))
+                        .collect()
+                } else {
+                    vec![]
+                };
+
+                CredentialDefinition {
+                    cred_def_id: id.to_string(),
+                    format: exchange::oid4vc::vci::credential_profile_metadata_format(
+                        cm.additional_fields(),
+                    ),
+                    claims: Default::default(),
+                    //TODO: Implement mapping from cm.additional_fields() to Some(Vec<String>)
+                    credential_signing_alg_values_supported: None,
+                    //TODO: Implement mapping from cm.additional_fields() to Some(Vec<String>)
+                    cryptographic_binding_methods_supported: None,
+                    supported_proofs: proofs,
+                    display: facade_low_level::Display,
+                    protocol_data: None,
+                    key_metadata: None,
+                }
+            })
+            .collect()
+    }
 }
 
 #[derive(Debug, thiserror::Error, strum::IntoStaticStr)]
 #[non_exhaustive]
 pub enum Error {
     #[error(transparent)]
-    Issuance(#[from] exchange::oid4vc::vci_issuer::IssuanceError<reqwest::Error>),
+    Issuance(#[from] exchange::oid4vc::vci_issuer::Error),
 }
 
 pub type Result<T> = core::result::Result<T, Error>;
-
-fn retrieve_cred_defs(metadata: &IssuerMetadata) -> Vec<CredentialDefinition> {
-    metadata
-        .credential_configurations_supported()
-        .iter()
-        .map(|(id, cm)| {
-            let proofs: Vec<String> = if let Some(proof) = cm.proof_types_supported() {
-                proof
-                    .keys()
-                    .map(|k| serde_json::to_string(k).unwrap_or("".to_string()))
-                    .collect()
-            } else {
-                vec![]
-            };
-
-            CredentialDefinition {
-                cred_def_id: id.to_string(),
-                format: exchange::oid4vc::vci::credential_profile_metadata_format(
-                    cm.additional_fields(),
-                ),
-                claims: Default::default(),
-                //TODO: Implement mapping from cm.additional_fields() to Some(Vec<String>)
-                credential_signing_alg_values_supported: None,
-                //TODO: Implement mapping from cm.additional_fields() to Some(Vec<String>)
-                cryptographic_binding_methods_supported: None,
-                supported_proofs: proofs,
-                display: facade_low_level::Display,
-                protocol_data: None,
-                key_metadata: None,
-            }
-        })
-        .collect()
-}

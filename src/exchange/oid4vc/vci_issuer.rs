@@ -1,7 +1,5 @@
-use std::future::Future;
-
 use oauth2::{
-    EmptyExtraTokenFields, HttpRequest, HttpResponse, Scope, StandardTokenIntrospectionResponse,
+    EmptyExtraTokenFields, HttpRequest, Scope, StandardTokenIntrospectionResponse,
     TokenIntrospectionResponse,
 };
 use oauth2::basic::BasicTokenType;
@@ -20,15 +18,16 @@ use uuid::Uuid;
 use crate::exchange::oid4vc::vci::{CredentialRequest, CredentialResponse, IssuanceMetadata, IssuerMetadata};
 use crate::facade::facade_low_level;
 use crate::facade::facade_low_level::{Issuer, ProofOfPossession};
-use crate::impls::http::{MIME_TYPE_FORM_URLENCODED, MIME_TYPE_JSON};
+use crate::impls::http::{HttpClient, MIME_TYPE_FORM_URLENCODED, MIME_TYPE_JSON};
 
 const CRED_OFFER_URI: &str = "openid-credential-offer://";
 
 pub struct Oid4VciIssuer
 {
+    issuer: Box<dyn Issuer>,
     issuer_metadata: IssuerMetadata,
     supported_cred_config_ids: Vec<String>,
-    issuer: Box<dyn Issuer>,
+    http_client: &'static HttpClient,
     auth_server_admin_auth_header: Option<HeaderValue>,
 }
 
@@ -36,6 +35,7 @@ impl Oid4VciIssuer {
     pub fn new(
         issuer_metadata: IssuerMetadata,
         issuer: impl Issuer + 'static,
+        http_client: &'static HttpClient,
         auth_server_admin_auth_header: Option<HeaderValue>,
     ) -> Self {
         let supported_cred_config_ids: Vec<String> = issuer_metadata
@@ -45,38 +45,33 @@ impl Oid4VciIssuer {
             .collect();
 
         Self {
+            issuer: Box::new(issuer),
             issuer_metadata,
             supported_cred_config_ids,
-            issuer: Box::new(issuer),
+            http_client,
             auth_server_admin_auth_header,
         }
     }
 
-    pub fn metadata<IE>(&self) -> Result<Value, IssuanceError<IE>>
-    where
-        IE: std::error::Error + 'static,
-    {
+    pub fn metadata(&self) -> Result<Value, Error> {
         let metadata_json = serde_json::to_value(self.issuer_metadata.clone())
-            .map_err(|e| IssuanceError::Parse(e))?;
+            .map_err(|e| Error::Parse(e))?;
 
         Ok(metadata_json)
     }
 
-    pub fn create_credential_offer<IE>(
+    pub fn create_credential_offer(
         &self,
         configuration_ids: Vec<&str>,
         grants: &CredentialOfferGrants,
-    ) -> Result<(CredentialOfferParameters<CoreProfilesOffer>, Url), IssuanceError<IE>>
-    where
-        IE: std::error::Error + 'static,
-    {
+    ) -> Result<(CredentialOfferParameters<CoreProfilesOffer>, Url), Error> {
         if configuration_ids.is_empty() {
-            return Err(IssuanceError::MissingCredentialConfigurationIds);
+            return Err(Error::MissingCredentialConfigurationIds);
         }
 
         for c in &configuration_ids {
             if !self.supported_cred_config_ids.contains(&c.to_string()) {
-                return Err(IssuanceError::NotSupportedCredentialConfigurationId(
+                return Err(Error::NotSupportedCredentialConfigurationId(
                     c.to_string(),
                 ));
             }
@@ -93,35 +88,30 @@ impl Oid4VciIssuer {
             );
 
         let cred_offer =
-            serde_json::to_string(&cred_offer_params).map_err(|e| IssuanceError::Parse(e))?;
+            serde_json::to_string(&cred_offer_params).map_err(|e| Error::Parse(e))?;
 
-        let mut url = Url::parse(CRED_OFFER_URI).map_err(IssuanceError::UrlParse)?;
+        let mut url = Url::parse(CRED_OFFER_URI).map_err(Error::UrlParse)?;
         url.set_query(Some(format!("credential_offer={}", cred_offer).as_str()));
 
         Ok((cred_offer_params, url))
     }
 
-    pub async fn issue_credential<C, F, IE>(
+    pub async fn issue_credential(
         &self,
         cred_request: &CredentialRequest,
         token: &str,
         nonce: Option<Nonce>,
         claims: &Value,
-        http_client: C,
-    ) -> Result<(CredentialResponse, IssuanceMetadata), IssuanceError<IE>>
-    where
-        C: FnOnce(HttpRequest) -> F,
-        F: Future<Output=Result<HttpResponse, IE>>,
-        IE: std::error::Error + 'static,
-    {
+    ) -> Result<(CredentialResponse, IssuanceMetadata), Error> {
         let auth_server_url = self.issuer_metadata
             .authorization_servers()
             .and_then(|urls| urls.first());
-        let _ = self.validate_token(&token, auth_server_url, http_client).await?;
+        let _ = self.validate_token(&token, auth_server_url).await?;
 
         if let (Some(proof), Some(nonce)) = (cred_request.proof(), &nonce) {
             let cred_req = facade_low_level::CredentialRequest {
-                cred_def_id: cred_request.credential_identifier.to_owned(),
+                //TODO: Implement finding a `credential_identifier` by `format` and `vct`
+                cred_def_id: cred_request.credential_identifier.to_owned().unwrap_or("".to_owned()),
                 cred_offer_id: None,
                 proof: ProofOfPossession::from(proof),
                 protocol_data: None,
@@ -131,7 +121,7 @@ impl Oid4VciIssuer {
             return match result {
                 Err(e) => {
                     if let facade_low_level::Error::Proof(e) = e {
-                        return Err(IssuanceError::ProofVerification {
+                        return Err(Error::ProofVerification {
                             error: "invalid_proof".to_owned(),
                             error_description: e.to_string(),
                             c_nonce: Some(nonce.to_owned()),
@@ -139,7 +129,7 @@ impl Oid4VciIssuer {
                         });
                     }
 
-                    Err(IssuanceError::Other(e.to_string()))
+                    Err(Error::Other(e.to_string()))
                 }
 
                 Ok((cred, cred_metadata)) => {
@@ -158,7 +148,7 @@ impl Oid4VciIssuer {
             };
         }
 
-        return Err(IssuanceError::ProofVerification {
+        return Err(Error::ProofVerification {
             error: "Empty proof".to_string(),
             error_description: "Proof can not be empty, please provide PoP with provided nonce".to_string(),
             c_nonce: nonce,
@@ -166,23 +156,17 @@ impl Oid4VciIssuer {
         });
     }
 
-    async fn validate_token<C, F, IE>(
+    async fn validate_token(
         &self,
         token: &str,
         auth_server_url: Option<&IssuerUrl>,
-        http_client: C,
     ) -> Result<
         StandardTokenIntrospectionResponse<EmptyExtraTokenFields, BasicTokenType>,
-        IssuanceError<IE>,
-    >
-    where
-        C: FnOnce(HttpRequest) -> F,
-        F: Future<Output=Result<HttpResponse, IE>>,
-        IE: std::error::Error + 'static,
+        Error, >
     {
         let token_introspect_url = if let Some(auth_url) = auth_server_url {
             Url::parse(&format!("{}{}", auth_url.url().to_string(), "token/introspect"))
-                .map_err(|e| IssuanceError::UrlParse(e))?
+                .map_err(|e| Error::UrlParse(e))?
         } else {
             unimplemented!("Validating by jwks.json of auth server is not supported yet")
         };
@@ -209,34 +193,32 @@ impl Oid4VciIssuer {
             body,
         };
 
-        let response = http_client(request)
+        let response = self.http_client.async_call(request)
             .await
-            .map_err(IssuanceError::NetworkRequest)?;
+            .map_err(Error::NetworkRequest)?;
         let token_ifo = serde_json::from_slice::<
             StandardTokenIntrospectionResponse<EmptyExtraTokenFields, BasicTokenType>,
         >(response.body.as_slice())
-            .map_err(|e| IssuanceError::Parse(e))?;
+            .map_err(|e| Error::Parse(e))?;
 
         if !token_ifo.active() {
-            return Err(IssuanceError::InActiveToken());
+            return Err(Error::InActiveToken);
         }
 
         Ok(token_ifo)
     }
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, strum::IntoStaticStr)]
 #[non_exhaustive]
-pub enum IssuanceError<IE>
-where
-    IE: std::error::Error + 'static,
+pub enum Error
 {
     #[error("Missed credential configuration ids")]
     MissingCredentialConfigurationIds,
     #[error("Credential id = {0} is not supported")]
     NotSupportedCredentialConfigurationId(String),
     #[error("Token is expired")]
-    InActiveToken(),
+    InActiveToken,
     #[error("ProofVerification error")]
     ProofVerification {
         error: String,
@@ -245,11 +227,11 @@ where
         c_nonce_expires_in: Option<i64>,
     },
     #[error("Url Parse Error: {0}")]
-    UrlParse(#[source] url::ParseError),
+    UrlParse(#[from] url::ParseError),
     #[error("Parsing error: {0}")]
-    Parse(#[source] serde_json::Error),
+    Parse(#[from] serde_json::Error),
     #[error("Network Request failed {0}")]
-    NetworkRequest(#[source] IE),
+    NetworkRequest(#[from] reqwest::Error),
     #[error("Other error: {0}")]
     Other(String),
 }
