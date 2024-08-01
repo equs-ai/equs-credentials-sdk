@@ -20,29 +20,6 @@ pub struct AuthorizationRequest {
     authorization_endpoint: Url,
 }
 
-impl AuthorizationRequest {
-    fn as_url(&self, type_: AuthorizationUrlType) -> Result<Url, Error> {
-        let request_indirection = match type_ {
-            AuthorizationUrlType::Value => {
-                RequestIndirection::ByValue(self.request_object_jwt.clone())
-            }
-            AuthorizationUrlType::Reference(at) => RequestIndirection::ByReference(at),
-        };
-
-        SpruceAuthorizationRequest {
-            client_id: self.client_id.0.clone(),
-            request_indirection,
-        }
-            .to_url(self.authorization_endpoint.clone())
-            .map_err(|err| {
-                Error::RequestCreationFailed(format!(
-                    "Cannot convert Authorization Request into URL: {}",
-                    err
-                ))
-            })
-    }
-}
-
 pub struct AuthorizationResponse {
     vp_token: Json,
     presentation_submission: PresentationSubmission,
@@ -64,20 +41,6 @@ pub enum CredentialResult {
     Credential { credential: Credential, notification_id: Option<String> },
 }
 
-// THE API is Subject to Change
-
-//  --------- Issuer API -------------
-
-// Out-of-scope: Authorization Server (Key Cloak) for OAuth 2 (Authorization code flow):
-// GET /authorize
-// POST /token 
-
-pub struct IssuerService {
-    oid4vci_issuer: Oid4VciIssuer,
-    storage: Box<dyn Storage<String, Json>>,
-    http_client: &'static HttpClient,
-}
-
 pub type Result<T> = core::result::Result<T, Error>;
 
 #[derive(Debug, thiserror::Error, strum::IntoStaticStr)]
@@ -87,47 +50,37 @@ pub enum Error {
     Issuance(#[from] exchange::oid4vc::vci_issuer::IssuanceError<reqwest::Error>),
 }
 
+// THE API is Subject to Change
+
+//  --------- Issuer API -------------
+
+// Out-of-scope: Authorization Server (Key Cloak) for OAuth 2 (Authorization code flow):
+// GET /authorize
+// POST /token 
+
+pub struct IssuerService {
+    signer: Box<dyn Signer>,
+    http_client: Box<dyn HttpCLient> 
+    storage: Box<dyn Storage<String, Json>>,
+}
+
+
 impl IssuerService {
     pub fn new<KH>(
         kms: impl kms::Kms<KH> + 'static,
         storage: impl Storage<String, Json> + 'static,
         http_client: &'static HttpClient,
-        metadata: IssuerMetadata,
+        issuer_metadata: IssuerMetadata,
         did_url: String,
         kid: String,
         auth_server_admin_auth_header: Option<HeaderValue>,
     ) -> Self
     where
         KH: kms::KeyHandle + 'static,
-    {
-        let cred_defs = retrieve_cred_defs(&metadata);
-
-        let issuer_metadata = facade_low_level::IssuerMetadata {
-            issuer_id: metadata.credential_issuer().to_string(),
-            cred_defs,
-            protocol_data: Some(facade_low_level::IssuerMetadataData::Oidc4Vc(
-                metadata.clone(),
-            )),
-            key_metadata: facade_low_level::KeyMetadata { did_url, kid },
-        };
-        let core_issuer = facade_low_level::IssuerService::new(kms, issuer_metadata);
-        let oid4vci_issuer =
-            Oid4VciIssuer::new(metadata, core_issuer, auth_server_admin_auth_header);
-
-        Self {
-            oid4vci_issuer,
-            storage: Box::new(storage),
-            http_client,
-        }
-    }
 
     // Step 0
     // GET /.well-known/openid-credential-issuer HTTP/1.1
-    pub async fn metadata(&self) -> Result<Json> {
-        let metadata = self.oid4vci_issuer.metadata()?;
-
-        return Ok(metadata);
-    }
+    pub async fn get_issuer_metadata(&self) -> Json 
 
     // Step 1
     // GET /<credential_offer_uri> or pass by value
@@ -135,13 +88,7 @@ impl IssuerService {
         &self,
         cred_def_ids: Vec<&str>,
         grants: &CredentialOfferGrants, // grant type (auth code, pre-auth code), etc.
-    ) -> Result<(CredentialOfferParameters<CoreProfilesOffer>, Url)> {
-        let offer = self
-            .oid4vci_issuer
-            .create_credential_offer(cred_def_ids, grants)?;
-
-        Ok(offer)
-    }
+    ) -> Result<(CredentialOfferParameters<CoreProfilesOffer>, Url)> 
 
     // Step 3
     // POST /credential HTTP/1.1
@@ -150,29 +97,7 @@ impl IssuerService {
         cred_request: &CredentialRequest,
         token: &String,
         claims: &Value,
-    ) -> Result<CredentialResponse> {
-        let nonce = if let Some(nonce) = self.storage.get(token).await.ok() {
-            serde_json::from_value(nonce.to_owned()).ok()
-        } else {
-            let nonce = serde_json::to_value(Nonce::new(uuid::Uuid::new_v4().to_string())).unwrap();
-            let _ = self.storage.put(token.to_string(), nonce).await;
-
-            None
-        };
-
-        let (cred, cred_metadata) = self.oid4vci_issuer
-            .issue_credential(cred_request, token, nonce, claims, |req| {
-                self.http_client.async_call(req)
-            })
-            .await
-            .map_err(Error::Issuance)?;
-
-        if let Some(value) = serde_json::to_value(&cred_metadata).ok() {
-            let _ = self.storage.put(cred_metadata.core_metadata.id, value).await;
-        }
-
-        Ok(cred)
-    }
+    ) -> Result<CredentialResponse> 
 }
 
 //  --------- Holder API -------------
@@ -290,14 +215,14 @@ impl VerifierService {
         nonce: &str,
         wallet_metadata: WalletMetadata,
         response_uri: Url,
-    ) -> Result<AuthorizationRequest, Box<dyn Error>> {
+    ) -> Result<AuthorizationRequest, Box<dyn Error>> 
 
     // Step 7
     // POST <authorization-response-uri>
     pub async fn verify_presentation(
         &mut self,
         authorization_response: &AuthorizationResponse,
-    ) -> Result<Json, Box<dyn Error>> {
+    ) -> Result<Json, Box<dyn Error>>
 
 }
 
