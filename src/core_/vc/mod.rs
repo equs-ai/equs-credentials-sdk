@@ -8,7 +8,7 @@ use crate::core_::{crypto, did};
 use crate::core_::did::DIDURL;
 
 // VC formats
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
 #[non_exhaustive]
 pub enum VCFormat {
     JwtVcJson,
@@ -137,6 +137,7 @@ impl Credential {
     }
 }
 
+#[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
 pub struct CredentialMetadata {
     pub id: String,
     pub format: VCFormat,

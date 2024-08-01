@@ -64,8 +64,8 @@ impl Oid4VciIssuer {
 
     pub fn create_credential_offer<IE>(
         &self,
-        configuration_ids: Vec<String>,
-        grants: CredentialOfferGrants,
+        configuration_ids: Vec<&str>,
+        grants: &CredentialOfferGrants,
     ) -> Result<(CredentialOfferParameters<CoreProfilesOffer>, Url), IssuanceError<IE>>
     where
         IE: std::error::Error + 'static,
@@ -75,9 +75,9 @@ impl Oid4VciIssuer {
         }
 
         for c in &configuration_ids {
-            if !self.supported_cred_config_ids.contains(c) {
+            if !self.supported_cred_config_ids.contains(&c.to_string()) {
                 return Err(IssuanceError::NotSupportedCredentialConfigurationId(
-                    c.to_owned(),
+                    c.to_string(),
                 ));
             }
         }
@@ -87,9 +87,9 @@ impl Oid4VciIssuer {
                 self.issuer_metadata.credential_issuer().clone(),
                 configuration_ids
                     .iter()
-                    .map(|c| CredentialOfferFormat::Reference(Scope::new(c.to_owned())))
+                    .map(|c| CredentialOfferFormat::Reference(Scope::new(c.to_string())))
                     .collect(),
-                Some(grants),
+                Some(grants.to_owned()),
             );
 
         let cred_offer =
@@ -105,7 +105,7 @@ impl Oid4VciIssuer {
         &self,
         cred_request: &CredentialRequest,
         token: &str,
-        nonce: Nonce,
+        nonce: Option<Nonce>,
         claims: &Value,
         http_client: C,
     ) -> Result<(CredentialResponse, IssuanceMetadata), IssuanceError<IE>>
@@ -119,7 +119,7 @@ impl Oid4VciIssuer {
             .and_then(|urls| urls.first());
         let _ = self.validate_token(&token, auth_server_url, http_client).await?;
 
-        if let Some(proof) = cred_request.proof() {
+        if let (Some(proof), Some(nonce)) = (cred_request.proof(), &nonce) {
             let cred_req = facade_low_level::CredentialRequest {
                 cred_def_id: cred_request.credential_identifier.to_owned(),
                 cred_offer_id: None,
@@ -134,7 +134,7 @@ impl Oid4VciIssuer {
                         return Err(IssuanceError::ProofVerification {
                             error: "invalid_proof".to_owned(),
                             error_description: e.to_string(),
-                            c_nonce: Some(nonce),
+                            c_nonce: Some(nonce.to_owned()),
                             c_nonce_expires_in: None,
                         });
                     }
@@ -149,7 +149,7 @@ impl Oid4VciIssuer {
 
                     let issuance_metadata = IssuanceMetadata {
                         core_metadata: cred_metadata,
-                        nonce: Some(nonce),
+                        nonce: Some(nonce.to_owned()),
                         notification_id,
                     };
 
@@ -161,7 +161,7 @@ impl Oid4VciIssuer {
         return Err(IssuanceError::ProofVerification {
             error: "Empty proof".to_string(),
             error_description: "Proof can not be empty, please provide PoP with provided nonce".to_string(),
-            c_nonce: Some(nonce),
+            c_nonce: nonce,
             c_nonce_expires_in: None,
         });
     }

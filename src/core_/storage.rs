@@ -1,11 +1,15 @@
+use async_trait::async_trait;
+
 // Error handling
 #[derive(Debug, thiserror::Error, strum::IntoStaticStr)]
 #[non_exhaustive]
 pub enum Error {}
 
+#[async_trait]
 pub trait Storage<K, V>
 where
-    V: 'static,
+    V: 'static + Send + Sync,
+    K: Send + Sync,
 {
     async fn put(&mut self, k: K, v: V) -> Result<(), Error>;
 

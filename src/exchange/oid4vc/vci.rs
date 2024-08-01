@@ -1,6 +1,7 @@
 use oauth2::url::Url;
 use oid4vci::core::profiles::{CoreProfilesOffer, CoreProfilesResponse, sd_jwt, w3c};
 use oid4vci::openidconnect::Nonce;
+use serde::{Deserialize, Serialize};
 
 use crate::core_::{did, vc};
 use crate::core_::did::DIDURL;
@@ -26,6 +27,7 @@ pub enum CredentialResult {
     Credential { credential: vc::Credential, notification_id: Option<String> },
 }
 
+#[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
 pub struct IssuanceMetadata {
     pub core_metadata: CredentialMetadata,
     pub nonce: Option<Nonce>,

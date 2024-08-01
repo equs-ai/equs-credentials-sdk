@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 use std::hash::Hash;
 
+use async_trait::async_trait;
+
 use crate::core_::storage;
 
 pub struct InMemStorage<K, V> {
@@ -13,10 +15,11 @@ impl<K, V> InMemStorage<K, V> {
     }
 }
 
+#[async_trait]
 impl<K, V> storage::Storage<K, V> for InMemStorage<K, V>
 where
-    K: Eq + PartialEq + Hash,
-    V: 'static,
+    K: Eq + PartialEq + Hash + Sync + Send,
+    V: 'static + Sync + Send,
 {
     async fn put(&mut self, k: K, v: V) -> Result<(), storage::Error> {
         self.map.insert(k, v);
