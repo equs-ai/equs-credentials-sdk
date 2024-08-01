@@ -4,78 +4,112 @@
 
 autonumber
 
-actor Holder as H
-participant Issuer as I
-participant Verifier as V
+actor "Holder" as HH
+participant "Holder App" as H
+participant "Issuer Service" as I
+participant "Verifier Service" as V
+participant "KeyCloak" as A
 
 autonumber 0
-I -> I: create_issuer_metadata(...)
-
-...
+A --> A: Configure with scopes\n(Credential Definition IDs)
 
 autonumber 1
-I -> I: create_credential_offer(...)
-autonumber stop
-I --> H: CredentialOffer
+I -> I: <b>from_issuer_metadata(issuer_metadata,...)
 
 ...
 
 autonumber 2
-note over I: (Optional) GET /.well-known/openid-credential-issuer HTTP/1.1
-H -> I: request_issuer_metadata(credential_offer)
+I -> I: <b>create_credential_offer(...)
 autonumber stop
-I -> H: IssuerMetadata
-
+I --> H: CredentialOffer (out-of-band)
 ...
 
 autonumber 3.1
-note over I: POST /credential HTTP/1.1
-H -> I: request_credential(credential_offer, ...)
-I -> I: issue_credential(...)
+H -> H++: <b>from_credential_offer(credential_offer)
 autonumber stop
-& I -> H: (Credential, CredentialMetadata)
-
+H --> I: GET /.well-known/openid-credential-issuer HTTP/1.1
+autonumber 3.2
+I -> I: <b>get_issuer_metadata()
+autonumber stop
+I --> H: IssuerMetadata
+destroy H
 ...
 
 autonumber 4
-H -> H: store_credential(...)
-
+H -> H: <b>get_issuer_metadata()
+autonumber stop
+H --> HH: (Optional)\nShow Credential Definitions (Schema) in UI
+H --> HH: (Optional)\nShow Credential Offer in UI
 ...
 
 autonumber 5
-V -> V: create_authorization_request(...)
+H -> H++: <b>authz_code_flow_with_scope(...)
+autonumber stop
+H --> A: POST /op/par HTTP/1.1
+H --> A: GET /authorize?&scope=<Cred-Def-ID>
+HH --> A: <Authentication>
+A --> H: Authorization Response (code)
+H --> A: POST /token HTTP/1.1
+A --> H: TokenResponse
+destroy H
+...
 
-note over V: AuthorizationRequest can be sent either out-of-band or by GET /<authorization_req_uri> HTTP/1.1
+autonumber 6.1
+H -> H++: <b>request_credential(token_response, ...)
+autonumber stop
+H --> I: POST /credential HTTP/1.1
+autonumber 6.2
+I -> I: <b>issue_credential(...)
+autonumber stop
+I --> H: Credential
+destroy H
+...
+
+autonumber 7
+H -> H: <b>store_credential(...)
+...
+
+autonumber 8.1
+V -> V: <b>create_authorization_request(...)
+autonumber stop
+
 alt Out-of-band
 V --> H: (AuthorizationRequest, <authorization-response-uri>)
 else GET /<authorization_req_uri> HTTP/1.1
-autonumber 6.1
 V --> H: <authorization_req_uri>
-note over V: GET /<authorization_req_uri> HTTP/1.1
-autonumber 6.2
-H -> V: get_authorization_request(authorization_req_uri, ...)
+autonumber 8.2
+H -> H++: <b>get_authorization_request(authorization_req_uri, ...)
 autonumber stop
-V -> H: (AuthorizationRequest, <authorization-response-uri>)
+H --> V: GET /<authorization_req_uri> HTTP/1.1
+V --> H: (AuthorizationRequest, <authorization-response-uri>)
+destroy H
 end
-
 ...
 
-note over V: POST /<authorization-response-uri> HTTP/1.1
 
 alt Auto-select credentials
-autonumber 7.1.1
-H -> H: present_credentials_auto(auth_request, ...)
-else User selects/approves credentials for the presentation
-autonumber 7.1.1
-H -> H: find_vcs_for_presentation(auth_request, ...)
-H --> H: <out-of-band>: Select/Approve selection
-H -> H: present_credentials(auth_request, credential_mapping_selected, ...)
-
-end
+autonumber 9
+H -> H++: <b>present_credentials_auto(auth_request, ...)
 autonumber stop
-H -> V: AuthorizationResponse
-autonumber 7.2
-V -> V: verify_presentation(...)
+H --> H: <find credentials>
+H --> V:  POST /<authorization-response-uri> HTTP/1.1
+autonumber 10
+V -> V: <b> verify_presentation(...)
+destroy  H
+
+else User selects/approves credentials for the presentation
+autonumber 9.1
+H -> H: <b>find_vcs_for_presentation(auth_request, ...)
+autonumber stop
+HH --> H: <out-of-band>: Select/Approve selection
+autonumber 9.2
+H -> H++: <b>present_credentials(auth_request, credential_mapping_selected, ...)
+autonumber stop
+H --> V:  POST /<authorization-response-uri> HTTP/1.1
+autonumber 10
+V -> V: <b> verify_presentation(...)
+destroy  H
+end
 
 
 @enduml
