@@ -4,15 +4,10 @@ pub trait HttpCLient{}
 
 
 //  --------- DATA MODEL -------------
-pub struct IssuerMetadata{
-    pub cred_defs: Vector<CredentialDefinition>
-    pub protocol_data: Option<IssuerMetadataData> // Protocol specific
-}
+
 pub struct AuthorizationMetadata {}
 
 pub struct CredentialOffer {}
-pub struct IssuerMetadataData{}
-
 
 pub enum AuthorizationUrlType {
     Reference(Url),
@@ -23,29 +18,6 @@ pub struct AuthorizationRequest {
     client_id: ClientId,
     request_object_jwt: String,
     authorization_endpoint: Url,
-}
-
-impl AuthorizationRequest {
-    fn as_url(&self, type_: AuthorizationUrlType) -> Result<Url, Error> {
-        let request_indirection = match type_ {
-            AuthorizationUrlType::Value => {
-                RequestIndirection::ByValue(self.request_object_jwt.clone())
-            }
-            AuthorizationUrlType::Reference(at) => RequestIndirection::ByReference(at),
-        };
-
-        SpruceAuthorizationRequest {
-            client_id: self.client_id.0.clone(),
-            request_indirection,
-        }
-            .to_url(self.authorization_endpoint.clone())
-            .map_err(|err| {
-                Error::RequestCreationFailed(format!(
-                    "Cannot convert Authorization Request into URL: {}",
-                    err
-                ))
-            })
-    }
 }
 
 pub struct AuthorizationResponse {
@@ -69,6 +41,15 @@ pub enum CredentialResult {
     Credential { credential: Credential, notification_id: Option<String> },
 }
 
+pub type Result<T> = core::result::Result<T, Error>;
+
+#[derive(Debug, thiserror::Error, strum::IntoStaticStr)]
+#[non_exhaustive]
+pub enum Error {
+    #[error(transparent)]
+    Issuance(#[from] exchange::oid4vc::vci_issuer::IssuanceError<reqwest::Error>),
+}
+
 // THE API is Subject to Change
 
 //  --------- Issuer API -------------
@@ -78,29 +59,45 @@ pub enum CredentialResult {
 // POST /token 
 
 pub struct IssuerService {
-    signer: Box<dyn Signer>
+    signer: Box<dyn Signer>,
+    http_client: Box<dyn HttpCLient> 
+    storage: Box<dyn Storage<String, Json>>,
 }
 
+
 impl IssuerService {
+    pub fn new<KH>(
+        kms: impl kms::Kms<KH> + 'static,
+        storage: impl Storage<String, Json> + 'static,
+        http_client: &'static HttpClient,
+        issuer_metadata: IssuerMetadata,
+        did_url: String,
+        kid: String,
+        auth_server_admin_auth_header: Option<HeaderValue>,
+    ) -> Self
+    where
+        KH: kms::KeyHandle + 'static,
 
     // Step 0
     // GET /.well-known/openid-credential-issuer HTTP/1.1
-    pub async fn create_issuer_metadata() -> Result<IssuerMetadata, Box<dyn Error>>
+    pub async fn get_issuer_metadata(&self) -> Json 
 
     // Step 1
     // GET /<credential_offer_uri> or pass by value
     pub async fn create_credential_offer(
-        cred_def_id: &str,
-        protocol_data: Option<&CredentialOfferData> // grant type (auth code, pre-auth code), etc.
-    ) -> Result<CredentialOffer, Box<dyn Error>>
+        &self,
+        cred_def_ids: Vec<&str>,
+        grants: &CredentialOfferGrants, // grant type (auth code, pre-auth code), etc.
+    ) -> Result<(CredentialOfferParameters<CoreProfilesOffer>, Url)> 
 
     // Step 3
     // POST /credential HTTP/1.1
     pub async fn issue_credential(
-        credential_request: &CredentialRequest,
-        claims: &CredentialClaims,
-        token: &AccessToken
-    ) -> Result<(Credential, CredentialMetadata), Box<dyn Error>>
+        &mut self,
+        cred_request: &CredentialRequest,
+        token: &String,
+        claims: &Value,
+    ) -> Result<CredentialResponse> 
 }
 
 //  --------- Holder API -------------
@@ -218,14 +215,14 @@ impl VerifierService {
         nonce: &str,
         wallet_metadata: WalletMetadata,
         response_uri: Url,
-    ) -> Result<AuthorizationRequest, Box<dyn Error>> {
+    ) -> Result<AuthorizationRequest, Box<dyn Error>> 
 
     // Step 7
     // POST <authorization-response-uri>
     pub async fn verify_presentation(
         &mut self,
         authorization_response: &AuthorizationResponse,
-    ) -> Result<Json, Box<dyn Error>> {
+    ) -> Result<Json, Box<dyn Error>>
 
 }
 
