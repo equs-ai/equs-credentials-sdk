@@ -66,7 +66,8 @@ pub struct IssuerService {
 
 
 impl IssuerService {
-    pub fn new<KH>(
+    // Step 1: Init Issuer Service
+    pub fn from_issuer_metadata<KH>(
         kms: impl kms::Kms<KH> + 'static,
         storage: impl Storage<String, Json> + 'static,
         http_client: &'static HttpClient,
@@ -78,11 +79,7 @@ impl IssuerService {
     where
         KH: kms::KeyHandle + 'static,
 
-    // Step 0
-    // GET /.well-known/openid-credential-issuer HTTP/1.1
-    pub async fn get_issuer_metadata(&self) -> Json 
-
-    // Step 1
+    // Step 2
     // GET /<credential_offer_uri> or pass by value
     pub async fn create_credential_offer(
         &self,
@@ -90,7 +87,13 @@ impl IssuerService {
         grants: &CredentialOfferGrants, // grant type (auth code, pre-auth code), etc.
     ) -> Result<(CredentialOfferParameters<CoreProfilesOffer>, Url)> 
 
-    // Step 3
+
+    // Step 3.2
+    // GET /.well-known/openid-credential-issuer HTTP/1.1
+    pub async fn get_issuer_metadata(&self) -> Json 
+
+
+    // Step 6.2
     // POST /credential HTTP/1.1
     pub async fn issue_credential(
         &mut self,
@@ -110,66 +113,65 @@ pub struct HolderService {
 
 impl HolderService {
 
-    // Step 2
+    // Step 3.1 Init Holder
+    // Calls GET /.well-known/openid-credential-issuer HTTP/1.1
+    pub async fn from_credential_offer(
+        credential_offer: &CredentialOffer,
+    ) -> Result<Self, Box<dyn Error>>
+
+    // Alternatice constructor for Wallet-initiated flows
     // Calls GET /.well-known/openid-credential-issuer HTTP/1.1
     pub async fn from_issuer_url(
         issuer_url: String,
     )-> Result<Self, Box<dyn Error>>
 
-    pub async fn from_metadata(
+
+    // Alternatice constructor when Issuer Metadata is aleready known
+    pub async fn from_issuer_metadata(
         issuer_metadata: &IssuerMetadata,
         authorization_metadata: &AuthorizationMetadata,
     ) -> Result<Self, Box<dyn Error>>
 
-    pub async fn from_offer(
-        credential_offer: &CredentialOffer,
-    ) -> Result<Self, Box<dyn Error>>
 
-
+    // Step 4: Return Issuer Metadata to display Credential Schema on UI
     pub fn get_issuer_metadata(
         &self,
     ) -> IssuerMetadata
 
-    // Step 3
-    // Calls the following:
-    //   1. GET /authorize
-    //   2. POST /token 
-    //   3. POST /credential HTTP/1.1 to get nonce
-    //   5. `request_credential`
-    //   6. POST /credential HTTP/1.1 to get credential
-
-
-    pub async fn pre_authz_code_flow(
-        &self,
-        pre_authorized_code: String,
-        tx_code: String,
-    ) -> Result<TokenResponse, Box<dyn Error>>
-
+    // Step 5: Get AuthToken using Authorization Code Flow with Scope
     pub async fn authz_code_flow_with_scope(
         &self,
         cred_def_id: String,
         authorization_callback: fn(Url) -> String,
     ) -> Result<TokenResponse, Box<dyn Error>>
 
+    // Step 5: Get AuthToken using Pre-authoriozed code flow
+    pub async fn pre_authz_code_flow(
+        &self,
+        pre_authorized_code: String,
+        tx_code: String,
+    ) -> Result<TokenResponse, Box<dyn Error>>
+
+    // Step 6.1: Get Credential by the AuthToken
     pub async fn request_credential(
         &self,
-        token_response: TokenResponse,
+        token_response: &TokenResponse,
         credential_request: &CredentialRequest,
     ) -> Result<CredentialResult, Box<dyn Error>>
     
-    // Step 4
+    // Step 7
     pub async fn store_credential(
         credential: &Credential,
         credential_metadata: &CredentialMetadata,
     ) -> Result<Box<dyn Error>> 
     
-    // Step 6
+    // Step 8.2
     // (Optional) AuthRequest can be sent out-of-band or by GET to auth-req-uri (this call)
     pub fn get_authorization_request(   
         auth-req-uri: &str
     ) -> Result<AuthorizationRequest, Box<dyn Error>> 
     
-    // Step 7A
+    // Step 9
     // Assume credentials for presentations are selected automatically
     // If there is just one credential matching a presentation request - it's selected
     // If there are multiple selection matching - they are selected according to a default logic (such as take the first one)
@@ -178,14 +180,14 @@ impl HolderService {
         metadata: &AuthorizationResponseMetadata,
     ) -> Result<Box<dyn Error>>
 
-    // Step 7A1
+    // Step 9.1
     // Manual approval/consent of credentials to be used for presentation
     // Step 7A1 - find matching credentials
     pub fn find_vcs_for_presentation(
         auth_request: &AuthorizationRequest,
     ) -> Result<CredentialMapping, Box<dyn Error>>
 
-    // Step 7A2
+    // Step 9.2
     // Manual approval/consent of credentials to be used for presentation
     // Step 5A2 - create presentation for a unambiguous Mapping where there is a VC for every presentation request item
     pub fn present_credentials(
@@ -206,9 +208,8 @@ pub struct VerifierService {
 
 impl VerifierService {
 
-    // Step 5
+    // Step 8.1
     // GET /<authorization_req_uri> or pass by value
-
     pub async fn create_authorization_request(
         &mut self,
         presentation_definition: &PresentationDefinition,
@@ -217,7 +218,7 @@ impl VerifierService {
         response_uri: Url,
     ) -> Result<AuthorizationRequest, Box<dyn Error>> 
 
-    // Step 7
+    // Step 10
     // POST <authorization-response-uri>
     pub async fn verify_presentation(
         &mut self,
