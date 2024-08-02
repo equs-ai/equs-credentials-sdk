@@ -56,7 +56,7 @@ impl IssuerService {
         }
     }
 
-    pub async fn get_issuer_metadata(&self) -> Result<Json> {
+    pub fn get_issuer_metadata(&self) -> Result<Json> {
         let metadata = self.oid4vci_issuer.metadata()?;
 
         return Ok(metadata);

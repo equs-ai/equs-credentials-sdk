@@ -1,6 +1,6 @@
 use oauth2::{
     EmptyExtraTokenFields, HttpRequest, Scope, StandardTokenIntrospectionResponse,
-    TokenIntrospectionResponse,
+    TokenIntrospectionResponse as TokenIntrospectionResponse_,
 };
 use oauth2::basic::BasicTokenType;
 use oauth2::http::{HeaderValue, Method};
@@ -10,7 +10,6 @@ use oid4vci::credential::ResponseEnum;
 use oid4vci::credential_offer::{CredentialOfferFormat, CredentialOfferGrants, CredentialOfferParameters};
 use oid4vci::openidconnect::{IssuerUrl, Nonce};
 use oid4vci::openidconnect::http::header::AUTHORIZATION;
-use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use url::Url;
 use uuid::Uuid;
@@ -90,7 +89,7 @@ impl Oid4VciIssuer {
         let cred_offer =
             serde_json::to_string(&cred_offer_params).map_err(|e| Error::Parse(e))?;
 
-        let mut url = Url::parse(CRED_OFFER_URI).map_err(Error::UrlParse)?;
+        let mut url = Url::parse(CRED_OFFER_URI)?;
         url.set_query(Some(format!("credential_offer={}", cred_offer).as_str()));
 
         Ok((cred_offer_params, url))
@@ -108,52 +107,52 @@ impl Oid4VciIssuer {
             .and_then(|urls| urls.first());
         let _ = self.validate_token(&token, auth_server_url).await?;
 
-        if let Some(proof) = cred_request.proof() {
-            let cred_req = facade_low_level::CredentialRequest {
-                //TODO: Implement finding a `credential_identifier` by `format` and `vct`
-                cred_def_id: cred_request.credential_identifier.to_owned().unwrap_or("".to_owned()),
-                cred_offer_id: None,
-                proof: ProofOfPossession::from(proof),
-                protocol_data: None,
-            };
-            let result = self.issuer.issue_credential(&cred_req, claims, nonce.secret()).await;
-
-            return match result {
-                Err(e) => {
-                    if let facade_low_level::Error::Proof(e) = e {
-                        return Err(Error::ProofVerification {
-                            error: "invalid_proof".to_owned(),
-                            error_description: e.to_string(),
-                            c_nonce: Some(nonce.to_owned()),
-                            c_nonce_expires_in: None,
-                        });
-                    }
-
-                    Err(Error::Other(e.to_string()))
-                }
-
-                Ok((cred, cred_metadata)) => {
-                    let notification_id = Some(Uuid::new_v4().to_string());
-                    let resp = CredentialResponse::new(ResponseEnum::Immediate(cred.into()))
-                        .set_notification_id(notification_id.clone());
-
-                    let issuance_metadata = IssuanceMetadata {
-                        core_metadata: cred_metadata,
-                        nonce: Some(nonce.to_owned()),
-                        notification_id,
-                    };
-
-                    Ok((resp, issuance_metadata))
-                }
-            };
+        if cred_request.proof().is_none() {
+            return Err(Error::ProofVerification {
+                error: "Empty proof".to_string(),
+                error_description: "Proof can not be empty, please provide PoP with provided nonce".to_string(),
+                c_nonce: Some(nonce),
+                c_nonce_expires_in: None,
+            });
         }
 
-        return Err(Error::ProofVerification {
-            error: "Empty proof".to_string(),
-            error_description: "Proof can not be empty, please provide PoP with provided nonce".to_string(),
-            c_nonce: Some(nonce),
-            c_nonce_expires_in: None,
-        });
+        let cred_req = facade_low_level::CredentialRequest {
+            //TODO: Implement finding a `credential_identifier` by `format` and `vct`
+            cred_def_id: cred_request.credential_identifier.to_owned().unwrap_or("".to_owned()),
+            cred_offer_id: None,
+            proof: ProofOfPossession::from(cred_request.proof().unwrap()),
+            protocol_data: None,
+        };
+        let result = self.issuer.issue_credential(&cred_req, claims, nonce.secret()).await;
+
+        return match result {
+            Err(e) => {
+                if let facade_low_level::Error::Proof(e) = e {
+                    return Err(Error::ProofVerification {
+                        error: "invalid_proof".to_owned(),
+                        error_description: e.to_string(),
+                        c_nonce: Some(nonce.to_owned()),
+                        c_nonce_expires_in: None,
+                    });
+                }
+
+                Err(Error::Other(e.to_string()))
+            }
+
+            Ok((cred, cred_metadata)) => {
+                let notification_id = Some(Uuid::new_v4().to_string());
+                let resp = CredentialResponse::new(ResponseEnum::Immediate(cred.into()))
+                    .set_notification_id(notification_id.clone());
+
+                let issuance_metadata = IssuanceMetadata {
+                    core_metadata: cred_metadata,
+                    nonce: Some(nonce.to_owned()),
+                    notification_id,
+                };
+
+                Ok((resp, issuance_metadata))
+            }
+        };
     }
 
     pub fn generate_pop_verification_error_and_nonce(&self) -> (Error, Nonce)
@@ -174,13 +173,10 @@ impl Oid4VciIssuer {
         &self,
         token: &str,
         auth_server_url: Option<&IssuerUrl>,
-    ) -> Result<
-        StandardTokenIntrospectionResponse<EmptyExtraTokenFields, BasicTokenType>,
-        Error, >
+    ) -> Result<TokenIntrospectionResponse, Error>
     {
         let token_introspect_url = if let Some(auth_url) = auth_server_url {
-            Url::parse(&format!("{}{}", auth_url.url().to_string(), "token/introspect"))
-                .map_err(|e| Error::UrlParse(e))?
+            Url::parse(&format!("{}{}", auth_url.url().to_string(), "token/introspect"))?
         } else {
             unimplemented!("Validating by jwks.json of auth server is not supported yet")
         };
@@ -210,9 +206,7 @@ impl Oid4VciIssuer {
         let response = self.http_client.async_call(request)
             .await
             .map_err(Error::NetworkRequest)?;
-        let token_ifo = serde_json::from_slice::<
-            StandardTokenIntrospectionResponse<EmptyExtraTokenFields, BasicTokenType>,
-        >(response.body.as_slice())
+        let token_ifo = serde_json::from_slice::<TokenIntrospectionResponse>(response.body.as_slice())
             .map_err(|e| Error::Parse(e))?;
 
         if !token_ifo.active() {
