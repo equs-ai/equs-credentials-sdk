@@ -32,12 +32,8 @@ pub struct CredentialDefinition {
     pub cred_def_id: String,
     pub format: String,
     pub claims: HashMap<String, Display>,
-    // TODO: needed in mvp?
-    pub credential_signing_alg_values_supported: Option<Vec<String>>,
-    // TODO: needed in mvp?
-    pub cryptographic_binding_methods_supported: Option<Vec<String>>,
     pub supported_proofs: Vec<String>,
-    pub display: Display,
+    pub display: Option<Display>,
     pub protocol_data: Option<CredentialDefinitionData>, // Protocol specific
     pub key_metadata: Option<KeyMetadata>,
 }
@@ -54,21 +50,24 @@ pub struct HolderMetadata {
     pub key_metadata: KeyMetadata,
 }
 
-#[derive(Debug, PartialEq, Clone)]
-pub struct CredentialDefinitionData {}
+#[derive(Debug, PartialEq, Clone, Default)]
+pub struct CredentialDefinitionData {
+    pub disclosures: Vec<&'static str>,
+    pub lifetime: Option<time::Duration>,
+}
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct CredentialOffer {
     pub issuer_id: String,
-    pub cred_offer_id: String,
-    pub cred_def: CredentialDefinition,
+    pub cred_offer_id: Option<String>,
+    pub cred_def_id: Option<String>,
+    pub supported_proofs: Option<Vec<String>>,
+    pub cred_def: Option<CredentialDefinition>,
     pub protocol_data: Option<CredentialOfferData>, // Protocol specific
 }
 
 #[derive(Debug, PartialEq, Clone, Default)]
-pub struct CredentialOfferData {
-    pub disclosures: Vec<&'static str>,
-}
+pub struct CredentialOfferData {}
 
 #[derive(Debug, PartialEq, Clone, Default)]
 pub struct ProofOfPossession {
@@ -85,10 +84,7 @@ pub struct CredentialRequest {
 }
 
 #[derive(Debug, PartialEq, Clone, Default)]
-pub struct CredentialRequestData {
-    pub disclosures: Vec<&'static str>,
-    pub lifetime: Option<time::Duration>,
-}
+pub struct CredentialRequestData {}
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct PresentationInput {
@@ -131,7 +127,7 @@ pub type Result<T> = core::result::Result<T, Error>;
 // API
 
 #[async_trait]
-pub trait Issuer
+pub trait Issuer: Send + Sync
 {
     fn offer_credential(
         &self,
@@ -148,7 +144,7 @@ pub trait Issuer
 }
 
 #[async_trait]
-pub trait Holder
+pub trait Holder: Send + Sync
 {
     async fn request_credential(
         &self,
@@ -184,7 +180,7 @@ pub trait Holder
 }
 
 #[async_trait]
-pub trait Verifier
+pub trait Verifier: Send + Sync
 {
     async fn verify_presentation(
         &self,
@@ -216,8 +212,10 @@ impl<KH: kms::KeyHandle + 'static> Issuer for IssuerService<KH> {
 
         let credential_offer = CredentialOffer {
             issuer_id: self.metadata.issuer_id.to_owned(),
-            cred_offer_id: id,
-            cred_def: cred_def.to_owned(),
+            cred_offer_id: Some(id),
+            supported_proofs: None,
+            cred_def_id: None,
+            cred_def: Some(cred_def.to_owned()),
             protocol_data: protocol_data.map(|p| p.to_owned()),
         };
 
@@ -258,7 +256,7 @@ impl<KH: kms::KeyHandle + 'static> Issuer for IssuerService<KH> {
                 let claims = SdJwtAPI::resolve_claims(claims);
                 let alg = &iss_key.alg();
 
-                let metadata = self.sd_jwt_vc_metadata(credential_request)?;
+                let metadata = self.sd_jwt_vc_metadata(&cred_def.protocol_data)?;
                 let cred = SdJwtAPI::create_vc(
                     claims,
                     (&iss_did, iss_key),
@@ -280,8 +278,8 @@ impl<KH: kms::KeyHandle + 'static> IssuerService<KH> {
         Self { kms: Box::new(kms), metadata }
     }
 
-    fn sd_jwt_vc_metadata(&self, credential_request: &CredentialRequest) -> Result<VCMetadata> {
-        let data = &credential_request.protocol_data.clone().ok_or(Error::NoProtocolData)?;
+    fn sd_jwt_vc_metadata(&self, protocol_data: &Option<CredentialDefinitionData>) -> Result<VCMetadata> {
+        let data = &protocol_data.clone().unwrap_or(Default::default());
 
         Ok(VCMetadata {
             lifetime: data.lifetime.unwrap_or(time::Duration::days(365)),
@@ -347,12 +345,9 @@ impl<KH: kms::KeyHandle + 'static> Holder for HolderService<KH> {
         credential_offer: &CredentialOffer,
         nonce: &str,
     ) -> Result<CredentialRequest> {
-        let cred_def = &credential_offer.cred_def;
+        let (cred_def_id, proofs) = self.resolve_cred_offer(&credential_offer)?;
 
-        let vc_fmt = &cred_def.format;
-        let vc_fmt = vc::VCFormat::from_str(vc_fmt)?;
-
-        let pop_fmt = self.resolve_proof_format(cred_def)?;
+        let pop_fmt = self.resolve_proof_format(proofs)?;
         let (did_url, key) = self.resolve_key_metadata().await?;
         let proof = match pop_fmt {
             pop::Format::Jwt => {
@@ -372,8 +367,8 @@ impl<KH: kms::KeyHandle + 'static> Holder for HolderService<KH> {
 
         let fmt: &str = pop_fmt.into();
         let credential_request = CredentialRequest {
-            cred_def_id: cred_def.cred_def_id.clone(),
-            cred_offer_id: Some(credential_offer.cred_offer_id.clone()),
+            cred_def_id: cred_def_id.clone(),
+            cred_offer_id: credential_offer.cred_offer_id.clone(),
             proof: ProofOfPossession { format: fmt.to_owned(), proof: proof.to_string() },
             protocol_data: Some(CredentialRequestData { ..Default::default() }),
         };
@@ -445,9 +440,26 @@ impl<KH: kms::KeyHandle + 'static> HolderService<KH> {
         Self { kms: Box::new(kms), vault: Box::new(vault), metadata }
     }
 
-    fn resolve_proof_format(&self, cred_def: &CredentialDefinition) -> Result<pop::Format> {
+    fn resolve_cred_offer(&self, credential_offer: &CredentialOffer) -> Result<(String, Vec<String>)> {
+        // Offer contains either full cred_def or cred_def_id+supported_proofs
+        let (cred_def_id, supported_proofs) = match credential_offer {
+            CredentialOffer {
+                cred_def: Some(cred_def),
+                ..
+            } => (&cred_def.cred_def_id, &cred_def.supported_proofs),
+            CredentialOffer {
+                cred_def_id: Some(cred_def_id),
+                supported_proofs: Some(supported_proofs),
+                ..
+            } => (cred_def_id, supported_proofs),
+            _ => return Err(Error::CredDefNotFound),
+        };
+
+        Ok((cred_def_id.to_owned(), supported_proofs.to_owned()))
+    }
+    fn resolve_proof_format(&self, supported_proofs: Vec<String>) -> Result<pop::Format> {
         // TODO: add logic on supported proof formats of Holder
-        let pop_fmt = cred_def.supported_proofs.iter().next().ok_or(Error::ProofFormatNotFound)?;
+        let pop_fmt = supported_proofs.iter().next().ok_or(Error::ProofFormatNotFound)?;
         let pop_fmt = pop::Format::from_str(pop_fmt)?;
         Ok(pop_fmt)
     }
@@ -533,7 +545,7 @@ mod tests {
     use crate::core_::{kms, vc};
     use crate::core_::crypto::Key;
     use crate::core_::kms::Kms;
-    use crate::facade::facade_low_level::{CredentialDefinition, CredentialOfferData, Display, Holder, HolderMetadata, HolderService, Issuer, IssuerMetadata, IssuerService, KeyMetadata, PresentationInput, Verifier, VerifierService};
+    use crate::facade::facade_low_level::{CredentialDefinition, CredentialDefinitionData, Holder, HolderMetadata, HolderService, Issuer, IssuerMetadata, IssuerService, KeyMetadata, PresentationInput, Verifier, VerifierService};
     use crate::impls::did::didkey::DIDKey;
     use crate::impls::kms::inmem::LocalKms;
     use crate::impls::vault::inmem::InMemVault;
@@ -548,8 +560,8 @@ mod tests {
         println!("Issue credential...");
 
         let offer = issuer.offer_credential(
-            "university degree",
-            Some(&CredentialOfferData { disclosures: vec!["name", "surname"] }),
+            "SD_JWT_cred",
+            None,
         );
         assert!(offer.is_ok());
         let offer = offer.unwrap();
@@ -560,10 +572,10 @@ mod tests {
         let request = request.unwrap();
 
         let claims = json!( {
-                "vct": "https://issuer.net/cred_schema",
-                "type": ["university degree"],
-                "name": "John",
-                "surname": "Doe",
+                "vct": "SD_JWT_cred",
+                "type": ["SD_JWT_cred"],
+                "given_name": "John",
+                "family_name": "Doe",
                 "dob": "09/09/1989",
             });
         let cl = claims.as_object().unwrap().clone();
@@ -581,11 +593,11 @@ mod tests {
         println!("Present proof...");
 
         let presentation_input = PresentationInput {
-            id: "university degree".into(),
+            id: "SD_JWT_cred".into(),
             format: "vc+sd-jwt".into(),
             claims: json!({
-               "name": true,
-               "surname": true,
+               "given_name": true,
+               "family_name": true,
             }).as_object().unwrap().to_owned(),
         };
 
@@ -610,8 +622,8 @@ mod tests {
         let res_claims = ver_res.unwrap();
         println!("Presentation claims {:?}", res_claims);
 
-        assert!(res_claims.as_object().unwrap().contains_key("name"));
-        assert!(res_claims.as_object().unwrap().contains_key("surname"));
+        assert!(res_claims.as_object().unwrap().contains_key("given_name"));
+        assert!(res_claims.as_object().unwrap().contains_key("family_name"));
         // should return not only requested claims, but all in credential
         assert!(res_claims.as_object().unwrap().contains_key("dob"));
     }
@@ -637,16 +649,17 @@ mod tests {
             issuer_id: did_url.to_string(),
             cred_defs: vec![
                 CredentialDefinition {
-                    cred_def_id: "university degree".into(),
+                    cred_def_id: "SD_JWT_cred".into(),
                     format: vc::VCFormat::SdJwtVc.to_string(),
                     claims: Default::default(),
-                    credential_signing_alg_values_supported: None,
-                    cryptographic_binding_methods_supported: None,
                     supported_proofs: vec![
                         "jwt".into()
                     ],
-                    display: Display,
-                    protocol_data: None,
+                    display: None,
+                    protocol_data: Some(CredentialDefinitionData {
+                        disclosures: vec!["$.given_name", "$.family_name"],
+                        lifetime: None,
+                    }),
                     key_metadata: None,
                 }
             ],
