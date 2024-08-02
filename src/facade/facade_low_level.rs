@@ -8,6 +8,7 @@ use crate::core_::crypto::Signer;
 use crate::core_::pop::ProofOfPossession as PopAPI;
 use crate::core_::vault::FindCriteria;
 use crate::core_::vc::{API, VerifyOptions};
+use crate::exchange;
 use crate::impls::pop::jwt_pop::JwtProofOfPossession;
 use crate::impls::vc::sd_jwt_vc::{SdJwtAPI, VCMetadata, VPMetadata};
 
@@ -22,7 +23,9 @@ pub struct IssuerMetadata {
 }
 
 #[derive(Debug, PartialEq, Clone)]
-pub struct IssuerMetadataData {}
+pub enum IssuerMetadataData {
+    Oidc4Vc(exchange::oid4vc::vci::IssuerMetadata)
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct CredentialDefinition {
@@ -30,9 +33,9 @@ pub struct CredentialDefinition {
     pub format: String,
     pub claims: HashMap<String, Display>,
     // TODO: needed in mvp?
-    pub credential_signing_alg_values_supported: String,
+    pub credential_signing_alg_values_supported: Option<Vec<String>>,
     // TODO: needed in mvp?
-    pub cryptographic_binding_methods_supported: String,
+    pub cryptographic_binding_methods_supported: Option<Vec<String>>,
     pub supported_proofs: Vec<String>,
     pub display: Display,
     pub protocol_data: Option<CredentialDefinitionData>, // Protocol specific
@@ -637,8 +640,8 @@ mod tests {
                     cred_def_id: "university degree".into(),
                     format: vc::VCFormat::SdJwtVc.to_string(),
                     claims: Default::default(),
-                    credential_signing_alg_values_supported: "".to_string(),
-                    cryptographic_binding_methods_supported: "".to_string(),
+                    credential_signing_alg_values_supported: None,
+                    cryptographic_binding_methods_supported: None,
                     supported_proofs: vec![
                         "jwt".into()
                     ],

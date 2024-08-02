@@ -2,6 +2,7 @@ use std::fmt;
 
 pub mod vci;
 pub mod vp;
+pub mod vci_issuer;
 
 #[derive(fmt::Debug)]
 pub enum Error {}

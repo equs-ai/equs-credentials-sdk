@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use serde::{Deserialize, Serialize};
 use strum_macros::{Display, EnumString, IntoStaticStr};
 
 // Error handling
@@ -15,7 +16,7 @@ pub enum Error {
     KeyGeneration(String),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[derive(Display, EnumString, IntoStaticStr)]
 pub enum Alg {
     ES256,

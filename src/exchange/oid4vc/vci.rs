@@ -1,21 +1,27 @@
 use oauth2::url::Url;
-use oid4vci::core::profiles::CoreProfilesOffer;
+use oid4vci::core::profiles::{CoreProfilesOffer, CoreProfilesResponse, sd_jwt, w3c};
+use oid4vci::core::profiles::CoreProfilesMetadata;
 use oid4vci::openidconnect::Nonce;
+use serde::{Deserialize, Serialize};
 
 use crate::core_::did::DIDURL;
 use crate::core_::kms::KeyID;
-use crate::core_::{did, vc};
+use crate::core_::vc;
+use crate::core_::vc::Credential;
 use crate::exchange::oid4vc::{AccessToken, Error};
+use crate::facade::facade_low_level;
+use crate::facade::facade_low_level::CredentialMetadata;
 
 pub type IssuerMetadata = oid4vci::core::metadata::IssuerMetadata;
-pub type CredentialRequest = oid4vci::core::profiles::CoreProfilesRequest;
+pub type CredentialRequest = oid4vci::core::credential::Request;
+pub type CredentialResponse = oid4vci::core::credential::Response;
 pub type ProofOfPossession = oid4vci::proof_of_possession::ProofOfPossession;
 pub type Proof = oid4vci::proof_of_possession::Proof;
 
 pub type CredentialOffer = oid4vci::credential_offer::CredentialOffer<CoreProfilesOffer>;
 pub type CredentialOfferParams = oid4vci::credential_offer::CredentialOfferParameters<CoreProfilesOffer>;
 pub type CredentialOfferParameters = oid4vci::credential_offer::CredentialOfferParameters<CoreProfilesOffer>;
-
+pub type CredentialProfileMetadata = CoreProfilesMetadata;
 pub type AuthorizationResponse = oid4vci::token::Response;
 
 pub enum CredentialResult {
@@ -23,23 +29,41 @@ pub enum CredentialResult {
     Credential { credential: vc::Credential, notification_id: Option<String> },
 }
 
-pub trait Issuer
-{
-    async fn metadata(&self) -> IssuerMetadata;
+#[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
+pub struct IssuanceMetadata {
+    pub core_metadata: CredentialMetadata,
+    pub nonce: Option<Nonce>,
+    pub notification_id: Option<String>,
+}
 
-    async fn offer_pre_authz_flow(&self, code: &str, cred_ids: &Vec<String>) -> Result<CredentialOfferParams, Error>;
+impl From<&Proof> for facade_low_level::ProofOfPossession {
+    fn from(value: &Proof) -> facade_low_level::ProofOfPossession {
+        match value {
+            Proof::JWT { jwt } => { facade_low_level::ProofOfPossession { format: "jwt".to_string(), proof: jwt.to_string() } }
+            Proof::CWT { cwt } => { facade_low_level::ProofOfPossession { format: "cwt".to_string(), proof: cwt.to_owned() } }
+        }
+    }
+}
 
-    async fn offer_authz_flow(&self, iss_state: Option<String>, cred_ids: &Vec<String>) -> Result<CredentialOfferParams, Error>;
+impl Into<CoreProfilesResponse> for Credential {
+    fn into(self) -> CoreProfilesResponse {
+        match self {
+            Credential::JwtVcJson(cred) => { CoreProfilesResponse::JWTVC(w3c::jwt::Response::new(cred)) }
+            Credential::JwtVcJsonLd(_) => { CoreProfilesResponse::JWTLDVC(w3c::jwtld::Response {}) }
+            Credential::LdpVc(cred) => { CoreProfilesResponse::LDVC(w3c::ldp::Response::new(cred)) }
+            Credential::SdJwt(cred) => { CoreProfilesResponse::SDJWTVC(sd_jwt::Response::new(cred)) }
+        }
+    }
+}
 
-    // including validation for scope
-    async fn validate_token(&self, token: AccessToken) -> Result<(), Error>;
-
-    async fn validate_request(&self, req: CredentialRequest) -> Result<(), Error>;
-
-    async fn verify_proof(&self, pop: Proof, nonce: Nonce) -> Result<(), Error>;
-
-    // infers credential format from CredRequest
-    async fn issue_credential<CM>(&self, req: CredentialRequest, claims: CM, did_url: did::DIDURL, key_id: KeyID) -> Result<vc::Credential, Error>;
+pub fn credential_profile_metadata_format(profile: &CredentialProfileMetadata) -> String {
+    match profile {
+        CoreProfilesMetadata::SDJWTVC(_) => { "vc+sd-jwt".to_string() }
+        CoreProfilesMetadata::JWTVC(_) => { "jwt_vc_json".to_string() }
+        CoreProfilesMetadata::JWTLDVC(_) => { "jwt_vc_json-ld".to_string() }
+        CoreProfilesMetadata::LDVC(_) => { " ldp_vc".to_string() }
+        CoreProfilesMetadata::ISOmDL(_) => { "mso_mdoc".to_string() }
+    }
 }
 
 

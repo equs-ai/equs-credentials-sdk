@@ -6,3 +6,4 @@ pub mod did;
 pub mod vc;
 pub mod pop;
 mod utils;
+pub mod http;
