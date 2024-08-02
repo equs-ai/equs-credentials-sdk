@@ -6,7 +6,6 @@ use url::Url;
 
 use crate::core_::kms;
 use crate::core_::storage::Storage;
-use crate::core_::vc::Nonce;
 use crate::exchange;
 use crate::exchange::oid4vc::vci::{
     CredentialRequest, CredentialResponse, IssuerMetadata,
@@ -14,6 +13,7 @@ use crate::exchange::oid4vc::vci::{
 use crate::exchange::oid4vc::vci_issuer::Oid4VciIssuer;
 use crate::facade::facade_low_level;
 use crate::facade::facade_low_level::CredentialDefinition;
+use crate::facade::oid4vci_issuer::Error::{Issuance, Parse};
 use crate::impls::http::HttpClient;
 
 pub struct IssuerService {
@@ -80,25 +80,31 @@ impl IssuerService {
         token: &String,
         claims: &Value,
     ) -> Result<CredentialResponse> {
-        let nonce = if let Some(nonce) = self.storage.get(token).await.ok() {
-            serde_json::from_value(nonce.to_owned()).ok()
+        //TODO: Implement another option to get a nonce from the token
+        if let Ok(nonce_value) = self.storage.get(token).await {
+            let nonce = serde_json::from_value(nonce_value.to_owned())
+                .map_err(Parse)?;
+
+            let (cred, cred_metadata) = self.oid4vci_issuer
+                .issue_credential(cred_request, token, nonce, claims)
+                .await
+                .map_err(Issuance)?;
+
+            if let Some(value) = serde_json::to_value(&cred_metadata).ok() {
+                let _ = self.storage.put(cred_metadata.core_metadata.id, value).await;
+            }
+
+            Ok(cred)
         } else {
-            let nonce = serde_json::to_value(Nonce::new(uuid::Uuid::new_v4().to_string())).unwrap();
-            let _ = self.storage.put(token.to_string(), nonce).await;
+            let (error, nonce) = self.oid4vci_issuer
+                .generate_pop_verification_error_and_nonce();
 
-            None
-        };
+            if let Ok(nonce) = serde_json::to_value(nonce) {
+                let _ = self.storage.put(token.to_string(), nonce).await;
+            }
 
-        let (cred, cred_metadata) = self.oid4vci_issuer
-            .issue_credential(cred_request, token, nonce, claims)
-            .await
-            .map_err(Error::Issuance)?;
-
-        if let Some(value) = serde_json::to_value(&cred_metadata).ok() {
-            let _ = self.storage.put(cred_metadata.core_metadata.id, value).await;
+            Err(Issuance(error))
         }
-
-        Ok(cred)
     }
 
     fn retrieve_cred_defs(metadata: &IssuerMetadata) -> Vec<CredentialDefinition> {
@@ -140,6 +146,8 @@ impl IssuerService {
 pub enum Error {
     #[error(transparent)]
     Issuance(#[from] exchange::oid4vc::vci_issuer::Error),
+    #[error("Parsing error: {0}")]
+    Parse(#[from] serde_json::Error),
 }
 
 pub type Result<T> = core::result::Result<T, Error>;

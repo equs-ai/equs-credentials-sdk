@@ -100,7 +100,7 @@ impl Oid4VciIssuer {
         &self,
         cred_request: &CredentialRequest,
         token: &str,
-        nonce: Option<Nonce>,
+        nonce: Nonce,
         claims: &Value,
     ) -> Result<(CredentialResponse, IssuanceMetadata), Error> {
         let auth_server_url = self.issuer_metadata
@@ -108,7 +108,7 @@ impl Oid4VciIssuer {
             .and_then(|urls| urls.first());
         let _ = self.validate_token(&token, auth_server_url).await?;
 
-        if let (Some(proof), Some(nonce)) = (cred_request.proof(), &nonce) {
+        if let Some(proof) = cred_request.proof() {
             let cred_req = facade_low_level::CredentialRequest {
                 //TODO: Implement finding a `credential_identifier` by `format` and `vct`
                 cred_def_id: cred_request.credential_identifier.to_owned().unwrap_or("".to_owned()),
@@ -151,9 +151,23 @@ impl Oid4VciIssuer {
         return Err(Error::ProofVerification {
             error: "Empty proof".to_string(),
             error_description: "Proof can not be empty, please provide PoP with provided nonce".to_string(),
-            c_nonce: nonce,
+            c_nonce: Some(nonce),
             c_nonce_expires_in: None,
         });
+    }
+
+    pub fn generate_pop_verification_error_and_nonce(&self) -> (Error, Nonce)
+    {
+        let nonce = Nonce::new(Uuid::new_v4().to_string());
+
+        let err = Error::ProofVerification {
+            error: "Proof of possession is needed".to_string(),
+            error_description: "Please provide PoP with provided nonce".to_string(),
+            c_nonce: Some(nonce.clone()),
+            c_nonce_expires_in: None,
+        };
+
+        (err, nonce)
     }
 
     async fn validate_token(

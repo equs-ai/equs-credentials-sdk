@@ -3,9 +3,9 @@ use oid4vci::core::profiles::{CoreProfilesOffer, CoreProfilesResponse, sd_jwt, w
 use oid4vci::openidconnect::Nonce;
 use serde::{Deserialize, Serialize};
 
-use crate::core_::{did, vc};
 use crate::core_::did::DIDURL;
 use crate::core_::kms::KeyID;
+use crate::core_::vc;
 use crate::core_::vc::Credential;
 use crate::exchange::oid4vc::{AccessToken, Error};
 use crate::facade::facade_low_level::CredentialMetadata;
@@ -62,25 +62,6 @@ pub fn credential_profile_metadata_format(profile: &CredentialProfileMetadata) -
         oid4vci::core::profiles::CoreProfilesMetadata::LDVC(_) => { " ldp_vc".to_string() }
         oid4vci::core::profiles::CoreProfilesMetadata::ISOmDL(_) => { "mso_mdoc".to_string() }
     }
-}
-
-pub trait Issuer
-{
-    async fn metadata(&self) -> IssuerMetadata;
-
-    async fn offer_pre_authz_flow(&self, code: &str, cred_ids: &Vec<String>) -> Result<CredentialOfferParams, Error>;
-
-    async fn offer_authz_flow(&self, iss_state: Option<String>, cred_ids: &Vec<String>) -> Result<CredentialOfferParams, Error>;
-
-    // including validation for scope
-    async fn validate_token(&self, token: AccessToken) -> Result<(), Error>;
-
-    async fn validate_request(&self, req: CredentialRequest) -> Result<(), Error>;
-
-    async fn verify_proof(&self, pop: Proof, nonce: Nonce) -> Result<(), Error>;
-
-    // infers credential format from CredRequest
-    async fn issue_credential<CM>(&self, req: CredentialRequest, claims: CM, did_url: did::DIDURL, key_id: KeyID) -> Result<vc::Credential, Error>;
 }
 
 
