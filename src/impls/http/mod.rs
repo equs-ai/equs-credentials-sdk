@@ -1,5 +1,5 @@
 use oauth2::{HttpRequest, HttpResponse};
-use reqwest::{Body, Client};
+use reqwest::{Body, Client, Request, StatusCode};
 
 pub const MIME_TYPE_FORM_URLENCODED: &str = "application/x-www-form-urlencoded";
 pub const MIME_TYPE_JSON: &str = "application/json";
@@ -30,22 +30,34 @@ impl HttpClient {
 
         let request = request_builder.build()?;
 
-        println!("-----REQUEST SENT TO URL-----\n{}", request.url().to_string());
-        println!("-----REQUEST BODY----- \n{}", Self::req_body_pretty(request.body()));
+        Self::log_req(&request, true);
 
         let response = self.client.execute(request).await?;
         let status_code = response.status();
         let headers = response.headers().to_owned();
         let chunks = response.bytes().await?;
 
-        println!("-----RESPONSE STATUS----- \n{}", status_code);
-        println!("-----RESPONSE BODY----- \n{}", Self::vec_pretty(chunks.to_vec()));
+        Self::log_resp(status_code, chunks.to_vec(), true);
 
         Ok(HttpResponse {
             status_code,
             headers,
             body: chunks.to_vec(),
         })
+    }
+
+    fn log_req(request: &Request, log_body: bool) {
+        println!("Req: {} {}", request.method(), request.url());
+        if log_body {
+            println!("Body:\n{}", Self::req_body_pretty(request.body()));
+        }
+    }
+
+    fn log_resp(status: StatusCode, chunks: Vec<u8>, log_body: bool) {
+        println!("Resp: {}", status);
+        if log_body {
+            println!("Body:\n{}", Self::vec_pretty(chunks));
+        }
     }
 
     fn req_body_pretty(body: Option<&Body>) -> String {
@@ -59,7 +71,9 @@ impl HttpClient {
 
     fn vec_pretty(vec: Vec<u8>) -> String {
         if vec.is_empty() { return "Empty body".to_string(); }
-        String::from_utf8(vec).unwrap_or("Failed to parse".to_string())
+        let str = String::from_utf8(vec).unwrap_or("Failed to parse".to_string());
+
+        serde_json::to_string_pretty(&str).unwrap_or(str)
     }
 }
 

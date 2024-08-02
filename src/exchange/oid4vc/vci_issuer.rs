@@ -10,6 +10,7 @@ use oid4vci::credential::ResponseEnum;
 use oid4vci::credential_offer::{CredentialOfferFormat, CredentialOfferGrants, CredentialOfferParameters};
 use oid4vci::openidconnect::{IssuerUrl, Nonce};
 use oid4vci::openidconnect::http::header::AUTHORIZATION;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use url::Url;
 use uuid::Uuid;
@@ -20,6 +21,8 @@ use crate::facade::facade_low_level::{Issuer, ProofOfPossession};
 use crate::impls::http::{HttpClient, MIME_TYPE_FORM_URLENCODED, MIME_TYPE_JSON};
 
 const CRED_OFFER_URI: &str = "openid-credential-offer://";
+
+pub type TokenIntrospectionResponse = StandardTokenIntrospectionResponse<EmptyExtraTokenFields, BasicTokenType>;
 
 pub struct Oid4VciIssuer
 {
@@ -52,11 +55,8 @@ impl Oid4VciIssuer {
         }
     }
 
-    pub fn metadata(&self) -> Result<Value, Error> {
-        let metadata_json = serde_json::to_value(self.issuer_metadata.clone())
-            .map_err(|e| Error::Parse(e))?;
-
-        Ok(metadata_json)
+    pub fn metadata(&self) -> IssuerMetadata {
+       self.issuer_metadata.clone()
     }
 
     pub fn create_credential_offer(

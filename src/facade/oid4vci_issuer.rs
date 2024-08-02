@@ -1,7 +1,7 @@
+use async_trait::async_trait;
 use oauth2::http::HeaderValue;
 use oid4vci::core::profiles::CoreProfilesOffer;
 use oid4vci::credential_offer::{CredentialOfferGrants, CredentialOfferParameters};
-use serde_json::{Value as Json, Value};
 use url::Url;
 
 use crate::core_::kms;
@@ -11,21 +11,74 @@ use crate::exchange::oid4vc::vci::{
     CredentialRequest, CredentialResponse, IssuerMetadata,
 };
 use crate::exchange::oid4vc::vci_issuer::Oid4VciIssuer;
-use crate::facade::facade_low_level;
+use crate::facade::{facade_low_level, facade_oid4vc};
 use crate::facade::facade_low_level::CredentialDefinition;
-use crate::facade::oid4vci_issuer::Error::{Issuance, Parse};
+use crate::facade::facade_oid4vc::CredentialClaims;
 use crate::impls::http::HttpClient;
+
+pub type Error = facade_oid4vc::Error;
+pub type Result<T> = facade_oid4vc::Result<T>;
 
 pub struct IssuerService {
     oid4vci_issuer: Oid4VciIssuer,
-    storage: Box<dyn Storage<String, Json>>,
+    storage: Box<dyn Storage<String, serde_json::Value>>,
     http_client: &'static HttpClient,
+}
+
+#[async_trait]
+impl facade_oid4vc::Issuer for IssuerService {
+    fn create_credential_offer(
+        &self,
+        cred_def_ids: Vec<&str>,
+        grants: &CredentialOfferGrants, // grant type (auth code, pre-auth code), etc.
+    ) -> Result<(CredentialOfferParameters<CoreProfilesOffer>, Url)> {
+        let offer = self
+            .oid4vci_issuer
+            .create_credential_offer(cred_def_ids, grants)?;
+
+        Ok(offer)
+    }
+
+    fn get_issuer_metadata(&self) -> IssuerMetadata {
+        self.oid4vci_issuer.metadata()
+    }
+
+    async fn issue_credential(
+        &mut self,
+        cred_request: &CredentialRequest,
+        token: &String,
+        claims: &CredentialClaims,
+    ) -> Result<CredentialResponse> {
+        //TODO: Implement another option to get a nonce from the token
+        if let Ok(nonce_value) = self.storage.get(token).await {
+            let nonce = serde_json::from_value(nonce_value.to_owned())?;
+
+            let (cred, cred_metadata) = self.oid4vci_issuer
+                .issue_credential(cred_request, token, nonce, claims)
+                .await?;
+
+            if let Some(value) = serde_json::to_value(&cred_metadata).ok() {
+                let _ = self.storage.put(cred_metadata.core_metadata.id, value).await;
+            }
+
+            Ok(cred)
+        } else {
+            let (error, nonce) = self.oid4vci_issuer
+                .generate_pop_verification_error_and_nonce();
+
+            if let Ok(nonce) = serde_json::to_value(nonce) {
+                let _ = self.storage.put(token.to_string(), nonce).await;
+            }
+
+            Err(Error::Issuer(error))
+        }
+    }
 }
 
 impl IssuerService {
     pub fn from_issuer_metadata<KH>(
         kms: impl kms::Kms<KH> + 'static,
-        storage: impl Storage<String, Json> + 'static,
+        storage: impl Storage<String, serde_json::Value> + 'static,
         http_client: &'static HttpClient,
         metadata: IssuerMetadata,
         did_url: String,
@@ -56,57 +109,6 @@ impl IssuerService {
         }
     }
 
-    pub fn get_issuer_metadata(&self) -> Result<Json> {
-        let metadata = self.oid4vci_issuer.metadata()?;
-
-        return Ok(metadata);
-    }
-
-    pub async fn create_credential_offer(
-        &self,
-        cred_def_ids: Vec<&str>,
-        grants: &CredentialOfferGrants, // grant type (auth code, pre-auth code), etc.
-    ) -> Result<(CredentialOfferParameters<CoreProfilesOffer>, Url)> {
-        let offer = self
-            .oid4vci_issuer
-            .create_credential_offer(cred_def_ids, grants)?;
-
-        Ok(offer)
-    }
-
-    pub async fn issue_credential(
-        &mut self,
-        cred_request: &CredentialRequest,
-        token: &String,
-        claims: &Value,
-    ) -> Result<CredentialResponse> {
-        //TODO: Implement another option to get a nonce from the token
-        if let Ok(nonce_value) = self.storage.get(token).await {
-            let nonce = serde_json::from_value(nonce_value.to_owned())
-                .map_err(Parse)?;
-
-            let (cred, cred_metadata) = self.oid4vci_issuer
-                .issue_credential(cred_request, token, nonce, claims)
-                .await
-                .map_err(Issuance)?;
-
-            if let Some(value) = serde_json::to_value(&cred_metadata).ok() {
-                let _ = self.storage.put(cred_metadata.core_metadata.id, value).await;
-            }
-
-            Ok(cred)
-        } else {
-            let (error, nonce) = self.oid4vci_issuer
-                .generate_pop_verification_error_and_nonce();
-
-            if let Ok(nonce) = serde_json::to_value(nonce) {
-                let _ = self.storage.put(token.to_string(), nonce).await;
-            }
-
-            Err(Issuance(error))
-        }
-    }
-
     fn retrieve_cred_defs(metadata: &IssuerMetadata) -> Vec<CredentialDefinition> {
         metadata
             .credential_configurations_supported()
@@ -127,12 +129,8 @@ impl IssuerService {
                         cm.additional_fields(),
                     ),
                     claims: Default::default(),
-                    //TODO: Implement mapping from cm.additional_fields() to Some(Vec<String>)
-                    credential_signing_alg_values_supported: None,
-                    //TODO: Implement mapping from cm.additional_fields() to Some(Vec<String>)
-                    cryptographic_binding_methods_supported: None,
                     supported_proofs: proofs,
-                    display: facade_low_level::Display,
+                    display: None,
                     protocol_data: None,
                     key_metadata: None,
                 }
@@ -140,14 +138,3 @@ impl IssuerService {
             .collect()
     }
 }
-
-#[derive(Debug, thiserror::Error, strum::IntoStaticStr)]
-#[non_exhaustive]
-pub enum Error {
-    #[error(transparent)]
-    Issuance(#[from] exchange::oid4vc::vci_issuer::Error),
-    #[error("Parsing error: {0}")]
-    Parse(#[from] serde_json::Error),
-}
-
-pub type Result<T> = core::result::Result<T, Error>;

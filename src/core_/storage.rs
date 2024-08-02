@@ -6,7 +6,7 @@ use async_trait::async_trait;
 pub enum Error {}
 
 #[async_trait]
-pub trait Storage<K, V>
+pub trait Storage<K, V>: Send + Sync
 where
     V: 'static + Send + Sync,
     K: Send + Sync,
