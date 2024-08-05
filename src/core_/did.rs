@@ -1,3 +1,4 @@
+use async_trait::async_trait;
 use strum_macros::IntoStaticStr;
 
 // Error handling
@@ -36,7 +37,8 @@ pub struct ResolveOptions {
     pub input: ResolutionInputMetadata,
 }
 
-pub trait DIDResolver {
+#[async_trait]
+pub trait DIDResolver: Send + Sync {
     async fn resolve(&self, did: &DID, options: ResolveOptions) -> Resolution;
 
     async fn resolve_verification_method(&self, did_url: &str) -> Result<VerificationMethodMap, Error>;
