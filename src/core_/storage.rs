@@ -3,7 +3,10 @@ use async_trait::async_trait;
 // Error handling
 #[derive(Debug, thiserror::Error, strum::IntoStaticStr)]
 #[non_exhaustive]
-pub enum Error {}
+pub enum Error {
+    #[error("Value for the key '{0}' is not found in storage.")]
+    ValueNotFound(String),
+}
 
 #[async_trait]
 pub trait Storage<K, V>: Send + Sync

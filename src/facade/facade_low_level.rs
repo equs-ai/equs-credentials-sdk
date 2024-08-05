@@ -184,7 +184,6 @@ pub trait Verifier: Send + Sync
 {
     async fn verify_presentation(
         &self,
-        presentation_input: &PresentationInput,
         nonce: &str, // same as in create_presentation
         presentation: &Presentation,
     ) -> Result<CredentialClaims>;
@@ -495,20 +494,16 @@ impl Verifier for VerifierService {
     // Step 6.
     async fn verify_presentation(
         &self,
-        presentation_input: &PresentationInput,
         nonce: &str, // same as in create_presentation
         presentation: &Presentation,
     ) -> Result<CredentialClaims> {
         let cred_claims: CredentialClaims = match presentation {
             Presentation::SdJwtVp(vp) => {
-                let claims = SdJwtAPI::verify_vp(vp,
-                                                 vc::Nonce::new(nonce.into()), &self.verifier_id,
-                                                 VerifyOptions {},
-                ).await?;
-
-                Self::validate_claims(&claims, &presentation_input.claims)?;
-
-                claims
+                SdJwtAPI::verify_vp(
+                    vp,
+                    vc::Nonce::new(nonce.into()), &self.verifier_id,
+                    VerifyOptions {},
+                ).await?
             }
             _ => Err(vc::Error::FormatNotSupported)?
         };
@@ -520,18 +515,6 @@ impl Verifier for VerifierService {
 impl VerifierService {
     pub fn new(verifier_id: &str) -> Self {
         Self { verifier_id: verifier_id.to_owned() }
-    }
-
-    fn validate_claims(disclosed: &serde_json::Value, expected: &serde_json::Map<String, serde_json::Value>) -> Result<()> {
-        let default = &serde_json::Map::new();
-        let disclosed = disclosed.as_object().unwrap_or(default);
-        for k in expected.keys() {
-            if !&disclosed.contains_key(k) {
-                return Err(Error::MissingClaim(k.to_owned()));
-            };
-        }
-
-        Ok(())
     }
 }
 
@@ -613,7 +596,6 @@ mod tests {
         println!("Presentation {:?}", vp);
 
         let ver_res = verifier.verify_presentation(
-            &presentation_input,
             nonce.secret(),
             &vp,
         ).await;

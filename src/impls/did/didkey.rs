@@ -28,6 +28,7 @@ impl DIDKey {
     }
 }
 
+#[async_trait]
 impl DIDResolver for DIDKey {
     async fn resolve(&self, did: &DID, options: ResolveOptions) -> Resolution {
         let (metadata, doc, doc_metadata) = self.method.to_resolver().resolve(did, &options.input).await;

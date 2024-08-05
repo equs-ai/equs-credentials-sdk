@@ -19,6 +19,7 @@ impl UniversalResolver {
     }
 }
 
+#[async_trait]
 impl DIDResolver for UniversalResolver {
     async fn resolve(&self, did: &DID, options: ResolveOptions) -> Resolution {
         let (metadata, doc, doc_metadata) = self.impls.resolve(did, &options.input).await;

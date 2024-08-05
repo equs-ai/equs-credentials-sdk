@@ -26,9 +26,10 @@ strum_macros = "0.26.4"
 strum = { version = "0.26.3", features = ["derive"] }
 thiserror = "1.0.63"
 reqwest = { version = "0.11", features = ["blocking"] }
-mockito = "1.5.0"
 uuid = { version = "1.10.0", features = ["v4"] }
 url = "2.5.2"
+anyhow = "1.0.86"
 
 [dev-dependencies]
 tokio = { version = "1.25.0", features = ["macros"] }
+mockito = "1.5.0"
