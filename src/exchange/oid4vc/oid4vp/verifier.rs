@@ -232,9 +232,7 @@ where
                 .map_err(|err| Error::VerificationFailed(err.to_string()))?;
 
             let constraints_fields = input_descriptor
-                .constraints
-                .as_ref()
-                .and_then(|constraints| constraints.fields.as_ref());
+                .constraints.fields.as_ref();
 
             if let Some(constraints) = constraints_fields {
                 Self::validate_field_constraints(&claims, constraints)?;

@@ -1,26 +1,23 @@
 use anyhow::Error;
+use async_trait::async_trait;
 use oid4vp::core::{
-    authorization_request::AuthorizationRequestObject,
-    credential_format::CredentialFormat,
+    authorization_request::AuthorizationRequestObject
+    ,
     metadata::WalletMetadata,
     profile::{Profile, Verifier},
 };
+use oid4vp::core::credential_format::CoreCredentialFormat;
 
 use crate::exchange::oid4vc::oid4vp::presentation_builder::DefaultPresentationBuilder;
-
-pub struct SdJwtVc;
-
-impl CredentialFormat for SdJwtVc {
-    const ID: &'static str = "sd+jwt-vc";
-}
 
 #[derive(Clone)]
 pub struct DefaultVerifierProfile;
 
+#[async_trait]
 impl Profile for DefaultVerifierProfile {
-    type CredentialFormat = SdJwtVc;
+    type CredentialFormat = CoreCredentialFormat;
 
-    fn validate_request(
+    async fn validate_request(
         &self,
         wallet_metadata: &WalletMetadata,
         request_object: &AuthorizationRequestObject,

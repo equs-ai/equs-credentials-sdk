@@ -4,6 +4,8 @@ use url::Url;
 
 use crate::core_::vc;
 use crate::exchange::oid4vc::{vci, vci_issuer};
+use crate::exchange::oid4vc::oid4vp::holder;
+use crate::exchange::oid4vc::oid4vp::holder::{CredentialsMap, ResolvedAuthRequest};
 use crate::exchange::oid4vc::vci::CredentialOfferParameters;
 use crate::facade::facade_low_level;
 
@@ -21,15 +23,10 @@ pub type Credential = vc::Credential;
 pub type CredentialMetadata = facade_low_level::CredentialMetadata;
 
 pub type TokenResponse = vci::TokenResponse;
-pub type CredentialRequest  = vci::CredentialRequest;
+pub type CredentialRequest = vci::CredentialRequest;
 pub type CredentialResponse = vci::CredentialResponse;
 
-pub struct AuthorizationRequest {
-    client_id: String,
-    request_object_jwt: String,
-    authorization_endpoint: Url,
-}
-
+pub type AuthorizationRequest = ResolvedAuthRequest;
 pub struct AuthorizationResponse {
     vp_token: serde_json::Value,
     presentation_submission: PresentationSubmission,
@@ -39,7 +36,7 @@ pub struct AuthorizationResponseMetadata {}
 
 pub struct PresentationDefinition {}
 pub struct PresentationSubmission {}
-pub struct CredentialMapping {}
+pub type CredentialMapping = CredentialsMap;
 
 
 #[derive(Debug, thiserror::Error, strum::IntoStaticStr)]
@@ -49,7 +46,13 @@ pub enum Error {
     Issuer(#[from] vci_issuer::Error),
 
     #[error(transparent)]
+    HolderVP(#[from] holder::Error),
+
+    #[error(transparent)]
     Serde(#[from] serde_json::Error),
+
+    #[error(transparent)]
+    Url(#[from] url::ParseError),
 }
 
 pub type Result<T> = core::result::Result<T, Error>;
@@ -132,7 +135,8 @@ pub trait HolderVci {
 pub trait HolderVp {
     // Step 8.2
     // (Optional) AuthRequest can be sent out-of-band or by GET to auth-req-uri (this call)
-    fn get_authorization_request(
+    async fn get_authorization_request(
+        &self,
         auth_req_uri: &str,
     ) -> Result<AuthorizationRequest>;
 
@@ -140,26 +144,29 @@ pub trait HolderVp {
     // Assume credentials for presentations are selected automatically
     // If there is just one credential matching a presentation request - it's selected
     // If there are multiple selection matching - they are selected according to a default logic (such as take the first one)
-    fn present_credentials_auto(
+    async fn present_credentials_auto(
+        &self,
         auth_request: &AuthorizationRequest,
         metadata: &AuthorizationResponseMetadata,
-    ) -> Result<()>;
+    ) -> Result<Option<Url>>;
 
     // Step 9.1
     // Manual approval/consent of credentials to be used for presentation
     // Step 7A1 - find matching credentials
-    fn find_vcs_for_presentation(
+    async fn find_vcs_for_presentation(
+        &self,
         auth_request: &AuthorizationRequest,
     ) -> Result<CredentialMapping>;
 
     // Step 9.2
     // Manual approval/consent of credentials to be used for presentation
     // Step 5A2 - create presentation for a unambiguous Mapping where there is a VC for every presentation request item
-    fn present_credentials(
+    async fn present_credentials(
+        &self,
         auth_request: &AuthorizationRequest,
         credential_mapping_selected: &CredentialMapping,
         metadata: &AuthorizationResponseMetadata,
-    ) -> Result<()>;
+    ) -> Result<Option<Url>>;
 }
 
 
