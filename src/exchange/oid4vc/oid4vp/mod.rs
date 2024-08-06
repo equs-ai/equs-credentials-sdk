@@ -11,6 +11,7 @@ pub mod error;
 pub mod presentation_builder;
 pub mod verifier;
 pub mod verifier_profile;
+pub mod holder;
 
 pub type PresentationSubmission = oid4vp::presentation_exchange::PresentationSubmission;
 pub type PresentationDefinition = oid4vp::presentation_exchange::PresentationDefinition;

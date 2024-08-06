@@ -146,6 +146,7 @@ pub struct CredentialMetadata {
 
 #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
 #[non_exhaustive]
+#[serde(untagged)]
 pub enum Presentation {
     // W3C
     JwtVp(jwt_vc_json::Presentation),
