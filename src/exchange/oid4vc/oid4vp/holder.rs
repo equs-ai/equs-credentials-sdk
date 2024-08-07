@@ -23,6 +23,7 @@ use uuid::Uuid;
 
 use crate::core_::did::DIDResolver;
 use crate::core_::vc::Credential;
+use crate::exchange::oid4vc::oid4vp::default_wallet_metadata;
 use crate::facade::facade_low_level;
 use crate::facade::facade_low_level::{Holder, Presentation, PresentationInput};
 
@@ -35,11 +36,17 @@ pub struct Oid4VpHolder {
 
 impl Oid4VpHolder {
     pub fn new(
-        metadata: WalletMetadata,
+        metadata: Option<WalletMetadata>,
         holder: impl Holder + 'static,
         did_resolver: impl DIDResolver + 'static,
         http_client: reqwest::Client,
     ) -> Self {
+        let metadata = if let Some(metadata) = metadata {
+            metadata
+        } else {
+            default_wallet_metadata()
+        };
+
         Self {
             holder: Box::new(holder),
             metadata,
@@ -110,10 +117,6 @@ impl Oid4VpHolder {
         creds_map: &CredentialsMap,
     ) -> Result<Option<Url>> {
         let prs_inputs = resolved_request.to_presentation_inputs()?;
-        let filtered_prs = prs_inputs
-            .iter()
-            .filter(|p| creds_map.contains_key(&p.id));
-
         let mut vp_tokens = vec![];
         let mut pres_sub = PresentationSubmission {
             id: Uuid::new_v4().to_string(),
@@ -121,8 +124,8 @@ impl Oid4VpHolder {
             descriptor_map: vec![],
         };
 
-        let mut index: usize = 0;
-        for pres_input in filtered_prs {
+        let mut path_index: usize = 0;
+        for pres_input in prs_inputs.iter() {
             if let Some(creds) = creds_map.get(&pres_input.id) {
                 for cred in creds.iter() {
                     self.submit_auth_response_helper(
@@ -130,14 +133,16 @@ impl Oid4VpHolder {
                         resolved_request.client_id.as_str(),
                         pres_input,
                         cred,
-                        format!("$[${index}]"),
+                        format!("$[${path_index}]"),
                         &mut vp_tokens,
                         &mut pres_sub,
                     )
                         .await?;
-                }
 
-                index += 1;
+                    path_index += 1;
+                }
+            } else {
+                //TODO Implement cases when credentials not found
             }
         }
 
@@ -188,24 +193,23 @@ impl Oid4VpHolder {
 
     fn generate_auth_response(
         presentations: Vec<Presentation>,
-        mut pres_sub: PresentationSubmission,
+        pres_sub: PresentationSubmission,
     ) -> Result<AuthorizationResponse> {
-        let mut vp = serde_json::Map::new();
-
-        if presentations.len() == 1 {
-            vp.entry("vp_token")
-                .or_insert(serde_json::to_value(presentations[0].clone())?);
-
-            pres_sub.descriptor_map[0].path = "$".to_owned();
-        } else {
-            vp.entry("vp_token")
-                .or_insert(serde_json::to_value(presentations)?);
+        let mut prs_resp = PresentationResponse {
+            vp_token: Default::default(),
+            presentation_submission: pres_sub
         };
 
-        vp.entry("presentation_submission")
-            .or_insert_with(|| serde_json::to_value(pres_sub).unwrap_or(Value::Null));
+        if presentations.len() == 1 {
+            prs_resp.vp_token = serde_json::to_value(presentations[0].clone())?;
+            prs_resp.presentation_submission.descriptor_map[0].path = "$".to_owned();
+        } else {
+            prs_resp.vp_token = serde_json::to_value(presentations)?;
+        };
 
-        let un_ob: UntypedObject = serde_json::from_value(Value::from(vp))?;
+        let un_ob: UntypedObject = serde_json::from_value(
+            serde_json::to_value(prs_resp)?
+        )?;
         let auth_resp = AuthorizationResponse::try_from(un_ob)?;
 
         Ok(auth_resp)
@@ -221,6 +225,12 @@ impl Oid4VpHolder {
 
         Ok(creds_map)
     }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct PresentationResponse {
+    vp_token: Value,
+    presentation_submission: PresentationSubmission
 }
 
 pub type CredentialId = String;
@@ -466,7 +476,7 @@ mod tests {
         let inner = holder().await;
         let resolver = DIDKey::new();
         let holder = Oid4VpHolder::new(
-            default_wallet_metadata(),
+            Some(default_wallet_metadata()),
             inner,
             resolver,
             client,
