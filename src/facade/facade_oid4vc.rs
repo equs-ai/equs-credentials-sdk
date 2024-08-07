@@ -1,33 +1,32 @@
 use async_trait::async_trait;
-use oid4vci::credential_offer::CredentialOfferGrants;
 use url::Url;
 
-use crate::core_::vc;
-use crate::exchange::oid4vc::{vci, vci_issuer};
+use crate::core_::{vault, vc};
+use crate::exchange::oid4vc::oid4vci;
+use crate::exchange::oid4vc::oid4vci::{CredentialOfferGrants, CredentialOfferParameters};
 use crate::exchange::oid4vc::oid4vp;
 use crate::exchange::oid4vc::oid4vp::{
-    AuthorizationRequest, AuthorizationResponse, holder, PresentationDefinition
+    AuthorizationRequest, AuthorizationResponse, PresentationDefinition
 };
 use crate::exchange::oid4vc::oid4vp::holder::{CredentialsMap, ResolvedAuthRequest};
-use crate::exchange::oid4vc::vci::CredentialOfferParameters;
 use crate::facade::facade_low_level;
 
 //  --------- DATA MODEL -------------
 
-pub type IssuerMetadata = vci::IssuerMetadata;
-pub type AuthorizationMetadata = vci::AuthorizationMetadata;
+pub type IssuerMetadata = oid4vci::IssuerMetadata;
+pub type AuthorizationMetadata = oid4vci::AuthorizationMetadata;
 pub struct WalletMetadata {}
 
 pub type CredentialClaims = facade_low_level::CredentialClaims;
 pub type CredentialClaimsRaw = serde_json::Value;
-pub type CredentialResult = vci::CredentialResult;
+pub type CredentialResult = oid4vci::CredentialResult;
 
 pub type Credential = vc::Credential;
 pub type CredentialMetadata = facade_low_level::CredentialMetadata;
 
-pub type TokenResponse = vci::TokenResponse;
-pub type CredentialRequest = vci::CredentialRequest;
-pub type CredentialResponse = vci::CredentialResponse;
+pub type TokenResponse = oid4vci::TokenResponse;
+pub type CredentialRequest = oid4vci::CredentialRequest;
+pub type CredentialResponse = oid4vci::CredentialResponse;
 
 pub struct AuthorizationResponseMetadata {}
 pub type CredentialMapping = CredentialsMap;
@@ -35,15 +34,25 @@ pub type CredentialMapping = CredentialsMap;
 #[derive(Debug, thiserror::Error, strum::IntoStaticStr)]
 #[non_exhaustive]
 pub enum Error {
+    // service
     #[error(transparent)]
-    Issuer(#[from] vci_issuer::Error),
+    Issuer(#[from] oid4vci::issuer::Error),
+    #[error(transparent)]
+    HolderVci(#[from] oid4vci::holder::Error),
 
     #[error(transparent)]
     Verifier(#[from] oid4vp::error::Error),
 
     #[error(transparent)]
-    HolderVP(#[from] holder::Error),
+    HolderVP(#[from] oid4vp::holder::Error),
 
+    // internal apis
+    #[error(transparent)]
+    Facade(#[from] facade_low_level::Error),
+    #[error(transparent)]
+    Vault(#[from] vault::Error),
+
+    // common
     #[error(transparent)]
     Serde(#[from] serde_json::Error),
 
@@ -103,7 +112,7 @@ pub trait HolderVci {
     async fn authz_code_flow_with_scope(
         &self,
         cred_def_id: String,
-        authorization_callback: impl FnOnce(Url) -> String,
+        authorization_callback: impl FnOnce(Url) -> String + Send,
     ) -> Result<TokenResponse>;
 
     // Step 5: Get AuthToken using Pre-authoriozed code flow
@@ -111,17 +120,19 @@ pub trait HolderVci {
         &self,
         pre_authorized_code: String,
         tx_code: String,
+        cred_def_id: Option<String>,
     ) -> Result<TokenResponse>;
 
     // Step 6.1: Get Credential by the AuthToken
     async fn request_credential(
         &self,
         token_response: &TokenResponse,
-        credential_request: &CredentialRequest,
+        cred_def_id: &str,
     ) -> Result<CredentialResult>;
 
     // Step 7
     async fn store_credential(
+        &mut self,
         credential: &Credential,
         credential_metadata: &CredentialMetadata,
     ) -> Result<()>;

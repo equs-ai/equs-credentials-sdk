@@ -1,3 +1,4 @@
+use std::time::Duration;
 use oauth2::{HttpRequest, HttpResponse};
 use reqwest::{Body, Client, Request, StatusCode};
 
@@ -22,7 +23,8 @@ impl HttpClient {
     pub async fn async_call(&self, request: HttpRequest) -> Result<HttpResponse, reqwest::Error> {
         let mut request_builder = self.client
             .request(request.method, request.url.as_str())
-            .body(request.body);
+            .body(request.body)
+            .timeout(Duration::from_secs(5));
 
         for (name, value) in &request.headers {
             request_builder = request_builder.header(name.as_str(), value.as_bytes());

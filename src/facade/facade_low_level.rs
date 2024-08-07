@@ -24,7 +24,7 @@ pub struct IssuerMetadata {
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum IssuerMetadataData {
-    Oidc4Vc(exchange::oid4vc::vci::IssuerMetadata)
+    Oidc4Vc(exchange::oid4vc::oid4vci::IssuerMetadata)
 }
 
 #[derive(Debug, Clone, PartialEq)]

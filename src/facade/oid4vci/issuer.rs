@@ -7,10 +7,8 @@ use url::Url;
 use crate::core_::kms;
 use crate::core_::storage::Storage;
 use crate::exchange;
-use crate::exchange::oid4vc::vci::{
-    CredentialRequest, CredentialResponse, IssuerMetadata,
-};
-use crate::exchange::oid4vc::vci_issuer::Oid4VciIssuer;
+use crate::exchange::oid4vc::oid4vci::{CredentialRequest, CredentialResponse, IssuerMetadata};
+use crate::exchange::oid4vc::oid4vci::issuer::Oid4VciIssuer;
 use crate::facade::{facade_low_level, facade_oid4vc};
 use crate::facade::facade_low_level::CredentialDefinition;
 use crate::facade::facade_oid4vc::CredentialClaims;
@@ -22,7 +20,7 @@ pub type Result<T> = facade_oid4vc::Result<T>;
 pub struct IssuerService {
     oid4vci_issuer: Oid4VciIssuer,
     storage: Box<dyn Storage<String, serde_json::Value>>,
-    http_client: &'static HttpClient,
+    http_client: HttpClient,
 }
 
 #[async_trait]
@@ -79,7 +77,7 @@ impl IssuerService {
     pub fn from_issuer_metadata<KH>(
         kms: impl kms::Kms<KH> + 'static,
         storage: impl Storage<String, serde_json::Value> + 'static,
-        http_client: &'static HttpClient,
+        http_client: HttpClient,
         metadata: IssuerMetadata,
         did_url: String,
         kid: String,
@@ -100,7 +98,7 @@ impl IssuerService {
         };
         let core_issuer = facade_low_level::IssuerService::new(kms, issuer_metadata);
         let oid4vci_issuer =
-            Oid4VciIssuer::new(metadata, core_issuer, http_client, auth_server_admin_auth_header);
+            Oid4VciIssuer::new(metadata, core_issuer, http_client.clone(), auth_server_admin_auth_header);
 
         Self {
             oid4vci_issuer,
@@ -125,7 +123,7 @@ impl IssuerService {
 
                 CredentialDefinition {
                     cred_def_id: id.to_string(),
-                    format: exchange::oid4vc::vci::credential_profile_metadata_format(
+                    format: exchange::oid4vc::oid4vci::credential_profile_metadata_format(
                         cm.additional_fields(),
                     ),
                     claims: Default::default(),
