@@ -1,22 +1,24 @@
-use crate::facade::facade_low_level::KeyMetadata;
-use error::Error;
 use oid4vp::core::authorization_request::{
-    parameters::ClientId, AuthorizationRequest as SpruceAuthorizationRequest, RequestIndirection,
+    AuthorizationRequest as SpruceAuthorizationRequest, RequestIndirection,
 };
 use oid4vp::core::object::UntypedObject;
+use serde::{Deserialize, Serialize};
 use serde_json::Value as Json;
 use url::Url;
 
+use error::Error;
+
 pub mod error;
+pub mod holder;
 pub mod presentation_builder;
 pub mod verifier;
 pub mod verifier_profile;
-pub mod holder;
 
 pub type PresentationSubmission = oid4vp::presentation_exchange::PresentationSubmission;
 pub type PresentationDefinition = oid4vp::presentation_exchange::PresentationDefinition;
 pub type ClientMetadata = oid4vp::core::authorization_request::parameters::ClientMetadata;
 pub type WalletMetadata = oid4vp::core::metadata::WalletMetadata;
+pub type KeyMetadata = crate::facade::facade_low_level::KeyMetadata;
 
 const DEFAULT_WALLET_METADATA: &str = r#"{
     "issuer": "https://self-issued.me/v2",
@@ -27,15 +29,27 @@ const DEFAULT_WALLET_METADATA: &str = r#"{
     "vp_formats_supported":
     {
         "vc+sd-jwt": {
-            "alg_values_supported": ["ES256"]
+            "alg_values_supported": ["EdDSA", "ES256"]
         }
     },
     "client_id_schemes_supported": [
         "did"
     ],
     "request_object_signing_alg_values_supported": [
-      "ES256"
+        "EdDSA",
+        "ES256"
     ]
+}"#;
+
+const DEFAULT_CLIENT_METADATA: &str = r#"{
+    "vp_formats": {
+        "vc+sd-jwt": {
+            "alg": [
+                "EdDSA",
+                "ES256"
+            ]
+        }
+    }
 }"#;
 
 pub fn default_wallet_metadata() -> WalletMetadata {
@@ -45,14 +59,20 @@ pub fn default_wallet_metadata() -> WalletMetadata {
     .unwrap()
 }
 
+pub fn default_client_metadata() -> ClientMetadata {
+    ClientMetadata::try_from(serde_json::from_str::<Json>(DEFAULT_CLIENT_METADATA).unwrap())
+        .unwrap()
+}
+
 pub enum AuthorizationUrlType {
     Reference(Url),
     Value,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct AuthorizationRequest {
-    client_id: ClientId,
-    request_object_jwt: String,
+    client_id: String,
+    pub request_object_jwt: String,
     authorization_endpoint: Url,
 }
 
@@ -66,7 +86,7 @@ impl AuthorizationRequest {
         };
 
         SpruceAuthorizationRequest {
-            client_id: self.client_id.0.clone(),
+            client_id: self.client_id.clone(),
             request_indirection,
         }
         .to_url(self.authorization_endpoint.clone())
@@ -79,6 +99,7 @@ impl AuthorizationRequest {
     }
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct AuthorizationResponse {
     pub vp_token: Json,
     pub presentation_submission: PresentationSubmission,
@@ -93,33 +114,24 @@ pub struct VerifierMetadata {
 
 #[cfg(test)]
 pub mod test_utils {
-    use crate::core_::did::DIDResolver;
+    use std::str::FromStr;
+
+    use oid4vci::openidconnect::Nonce;
+    use serde_json::{json, Value as Json};
+    use ssi::did::DIDURL;
+
+    use crate::core_::did::{DIDResolver, DID};
     use crate::core_::kms;
-    use crate::core_::kms::Kms;
+    use crate::core_::kms::{KeyID, Kms};
     use crate::core_::vc::API;
     use crate::exchange::oid4vc::oid4vp::{
-        AuthorizationResponse, ClientMetadata, PresentationDefinition, VerifierMetadata,
+        default_client_metadata, AuthorizationResponse, PresentationDefinition, VerifierMetadata,
     };
     use crate::facade::facade_low_level::KeyMetadata;
     use crate::impls::did::didkey::DIDKey;
     use crate::impls::did::UniversalResolver;
-    use crate::impls::kms::inmem::LocalKms;
+    use crate::impls::kms::inmem::{KeyHandle, LocalKms};
     use crate::impls::vc::sd_jwt_vc::{SdJwtAPI, VCMetadata, VPMetadata};
-    use oid4vci::openidconnect::Nonce;
-    use serde_json::{json, Value as Json};
-    use ssi::did::DIDURL;
-    use std::str::FromStr;
-
-    const TEST_CLIENT_METADATA: &str = r#"{
-        "vp_formats": {
-          "vc+sd-jwt": {
-            "alg": [
-              "EdDSA",
-              "ES256K"
-            ]
-          }
-        }
-    }"#;
 
     const TEST_PRESENTATION_DEFINITION: &str = r#"{
         "id": "1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed",
@@ -127,22 +139,19 @@ pub mod test_utils {
             {
                 "id": "Identity-1",
                 "name": "Identity VC",
-                "purpose": "We want a Identity",
+                "purpose": "We want an identity",
                 "format": {
                     "vc+sd-jwt": {
-                      "alg": ["EdDSA", "ES256K"]
+                        "alg": ["EdDSA", "ES256K"]
                     }
                  },
                 "constraints": {
                     "fields": [
                         {
                             "path": [
-                                "$.vct"
-                            ],
-                            "filter": {
-                                "type": "string",
-                                "pattern": "https://credentials.example.com/identity_credential"
-                            }
+                                "$.vct",
+                                "$.name"
+                            ]
                         }
                     ]
                 }
@@ -166,35 +175,17 @@ pub mod test_utils {
         did_resolver: &UniversalResolver,
         kms: &mut LocalKms,
     ) -> VerifierMetadata {
-        let did_key = DIDKey::new();
-
-        let kt = kms::KeyType::P256;
-
-        let (verifier_kid, verifier_key_handle) = kms
-            .create_and_handle(&kt, kms::CreateOptions {})
-            .await
-            .unwrap();
-        let verifier_did = did_key.generate(verifier_key_handle.clone()).unwrap();
-        let verifier_vm = did_resolver
-            .resolve_verification_method(&verifier_did)
-            .await
-            .unwrap()
-            .id;
-        let verifier_did_url = DIDURL::from_str(&verifier_did).unwrap();
+        let (verifier_kid, verifier_key_handle, verifier_did, verifier_vm_id) =
+            generate_did_key_and_vm(kms, did_resolver).await;
 
         VerifierMetadata {
             client_id: verifier_did.to_owned(),
             key_metadata: KeyMetadata {
-                did_url: verifier_vm,
+                did_url: verifier_vm_id,
                 kid: verifier_kid,
             },
-            client_metadata: create_test_client_metadata(),
+            client_metadata: default_client_metadata(),
         }
-    }
-
-    pub fn create_test_client_metadata() -> ClientMetadata {
-        ClientMetadata::try_from(serde_json::from_str::<Json>(TEST_CLIENT_METADATA).unwrap())
-            .unwrap()
     }
 
     pub fn create_test_presentation_definition() -> PresentationDefinition {
@@ -207,21 +198,10 @@ pub mod test_utils {
         claims: &Json,
         kms: &mut LocalKms,
     ) -> AuthorizationResponse {
-        let did_key = DIDKey::new();
-        let kt = kms::KeyType::P256;
-
-        let (issuer_kid, issuer_key_handle) = kms
-            .create_and_handle(&kt, kms::CreateOptions {})
-            .await
-            .unwrap();
-        let issuer_did = did_key.generate(issuer_key_handle.clone()).unwrap();
+        let (issuer_kid, issuer_key_handle, issuer_did) = generate_did_key(kms).await;
         let issuer_did_url = DIDURL::from_str(&issuer_did).unwrap();
 
-        let (holder_kid, holder_key_handle) = kms
-            .create_and_handle(&kt, kms::CreateOptions {})
-            .await
-            .unwrap();
-        let holder_did = did_key.generate(holder_key_handle.clone()).unwrap();
+        let (holder_kid, holder_key_handle, holder_did) = generate_did_key(kms).await;
         let holder_did_url = DIDURL::from_str(&holder_did).unwrap();
 
         let vc = SdJwtAPI::create_vc(
@@ -257,5 +237,29 @@ pub mod test_utils {
             vp_token: json!(vp),
             presentation_submission: serde_json::from_str(TEST_PRESENTATION_SUBMISSION).unwrap(),
         }
+    }
+
+    pub async fn generate_did_key(kms: &mut LocalKms) -> (KeyID, KeyHandle, DID) {
+        let (issuer_kid, issuer_key_handle) = kms
+            .create_and_handle(&kms::KeyType::P256, kms::CreateOptions {})
+            .await
+            .unwrap();
+        let issuer_did = DIDKey::new().generate(issuer_key_handle.clone()).unwrap();
+
+        (issuer_kid, issuer_key_handle, issuer_did)
+    }
+
+    pub async fn generate_did_key_and_vm(
+        kms: &mut LocalKms,
+        did_resolver: &UniversalResolver,
+    ) -> (KeyID, KeyHandle, DID, String) {
+        let (kid, key_handle, did) = generate_did_key(kms).await;
+        let vm_id = did_resolver
+            .resolve_verification_method(&did)
+            .await
+            .unwrap()
+            .id;
+
+        (kid, key_handle, did, vm_id)
     }
 }

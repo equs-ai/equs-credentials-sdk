@@ -1,9 +1,9 @@
-use std::marker::PhantomData;
 use async_trait::async_trait;
 use oid4vp::core::authorization_request::parameters::{
-    ClientId, Nonce, PresentationDefinition as PresentationDefinitionParameter, ResponseMode,
-    ResponseType, ResponseUri,
+    Nonce, PresentationDefinition as PresentationDefinitionParameter, ResponseMode, ResponseType,
+    ResponseUri,
 };
+use oid4vp::core::metadata::parameters::verifier::VpFormats;
 use oid4vp::core::metadata::WalletMetadata;
 use oid4vp::core::{
     metadata::parameters::wallet::AuthorizationEndpoint,
@@ -17,6 +17,7 @@ use ssi::{
     did_resolve::{DocumentMetadata, ResolutionInputMetadata, ResolutionMetadata},
     jwk::JWK,
 };
+use std::marker::PhantomData;
 use url::Url;
 
 use crate::core_::crypto::SigningKey;
@@ -101,6 +102,39 @@ where
         }
         Ok(())
     }
+
+    fn validate_formats(
+        &self,
+        presentation_definition: &PresentationDefinition,
+    ) -> Result<(), Error> {
+        let vp_format_json = match presentation_definition.format.as_ref() {
+            Some(format) => format,
+            None => return Ok(()), // presentation definition does not contain any format
+        };
+
+        let supported_formats = match self.metadata.client_metadata.0.get::<VpFormats>() {
+            Some(Ok(formats)) => formats,
+            _ => return Ok(()), // supported formats are not found
+        };
+
+        let vp_formats: VpFormats = vp_format_json.clone().try_into().map_err(|err| {
+            Error::ParsingError(format!(
+                "Failed to parse presentation definition format: {}. Error: {}",
+                vp_format_json, err
+            ))
+        })?;
+
+        for vp_format in vp_formats.0.keys() {
+            if !supported_formats.0.contains_key(vp_format) {
+                return Err(Error::FormatNotSupported(format!(
+                    "Format '{}' provided in presentation definition is not supported. Supported formats: {:?}",
+                    vp_format, supported_formats.0.keys().collect::<Vec<_>>()
+                )));
+            }
+        }
+
+        Ok(())
+    }
 }
 
 #[async_trait]
@@ -118,6 +152,8 @@ where
         wallet_metadata: WalletMetadata,
         response_uri: Url,
     ) -> Result<AuthorizationRequest, Error> {
+        self.validate_formats(presentation_definition)?;
+
         let presentation_definition_parameter = PresentationDefinitionParameter::try_from(
             presentation_definition.clone(),
         )
@@ -170,7 +206,7 @@ where
             .0;
 
         Ok(AuthorizationRequest {
-            client_id: ClientId(self.metadata.client_id.to_owned()),
+            client_id: self.metadata.client_id.to_owned(),
             request_object_jwt: session.request_object_jwt().to_string(),
             authorization_endpoint,
         })
@@ -231,9 +267,7 @@ where
                 .await
                 .map_err(|err| Error::VerificationFailed(err.to_string()))?;
 
-            let constraints_fields = input_descriptor
-                .constraints.fields.as_ref();
-
+            let constraints_fields = input_descriptor.constraints.fields.as_ref();
             if let Some(constraints) = constraints_fields {
                 Self::validate_field_constraints(&claims, constraints)?;
             }
@@ -292,9 +326,11 @@ impl<D: DIDResolver> ssi::did_resolve::DIDResolver for DIDResolverWrapper<D> {
 
 #[cfg(test)]
 mod tests {
+    use serde_json::json;
+
     use crate::exchange::oid4vc::oid4vp::test_utils::{
-        crate_authorization_response, create_test_client_metadata,
-        create_test_presentation_definition, create_test_verifier_metadata,
+        crate_authorization_response, create_test_presentation_definition,
+        create_test_verifier_metadata,
     };
     use crate::exchange::oid4vc::oid4vp::verifier::{ConcreteOid4VpVerifier, Oid4VpVerifier};
     use crate::exchange::oid4vc::oid4vp::{default_wallet_metadata, AuthorizationUrlType};
@@ -302,7 +338,6 @@ mod tests {
     use crate::impls::did::didkey::DIDKey;
     use crate::impls::did::UniversalResolver;
     use crate::impls::kms::inmem::LocalKms;
-    use serde_json::json;
 
     #[tokio::test]
     async fn generate_authorization_request() {
@@ -310,7 +345,6 @@ mod tests {
         let mut kms = LocalKms::new();
         let did_key = DIDKey::new();
 
-        let client_metadata = create_test_client_metadata();
         let presentation_definition = create_test_presentation_definition();
         let nonce = "n0NcE";
         let verifier_metadata = create_test_verifier_metadata(&did_resolver, &mut kms).await;
