@@ -7,6 +7,10 @@ use crate::core_::vc;
 use crate::facade::facade_low_level;
 use crate::facade::facade_low_level::CredentialMetadata;
 
+pub mod issuer;
+pub mod holder;
+
+
 pub type IssuerMetadata = oid4vci::core::metadata::IssuerMetadata;
 pub type AuthorizationMetadata = oid4vci::metadata::AuthorizationMetadata;
 
@@ -17,7 +21,7 @@ pub type CredentialResponse = oid4vci::core::credential::Response;
 pub type Proof = oid4vci::proof_of_possession::Proof;
 
 pub type CredentialOffer = oid4vci::core::credential_offer::CredentialOffer;
-pub type CredentialOfferParams = oid4vci::credential_offer::CredentialOfferParameters<CoreProfilesOffer>;
+pub type CredentialOfferGrants = oid4vci::credential_offer::CredentialOfferGrants;
 pub type CredentialOfferParameters = oid4vci::credential_offer::CredentialOfferParameters<CoreProfilesOffer>;
 pub type CredentialProfileMetadata = CoreProfilesMetadata;
 pub type AuthorizationResponse = oid4vci::token::Response;

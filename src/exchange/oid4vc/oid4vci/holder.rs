@@ -8,7 +8,7 @@ use oid4vci::core::client::Client;
 use oid4vci::core::credential;
 use oid4vci::core::credential_offer::CredentialOffer;
 use oid4vci::core::metadata::IssuerMetadata;
-use oid4vci::core::profiles::{CoreProfilesAuthorizationDetails, CoreProfilesOffer, CoreProfilesRequest, CoreProfilesResponse, sd_jwt};
+use oid4vci::core::profiles::{CoreProfilesAuthorizationDetails, CoreProfilesMetadata, CoreProfilesOffer, CoreProfilesRequest, CoreProfilesResponse, sd_jwt};
 use oid4vci::credential::{RequestError, ResponseEnum};
 use oid4vci::credential_offer::CredentialOfferFormat;
 use oid4vci::metadata::AuthorizationMetadata;
@@ -16,7 +16,7 @@ use oid4vci::openidconnect::IssuerUrl;
 use oid4vci::proof_of_possession::{KeyProofType, Proof};
 
 use crate::core_::vc;
-use crate::exchange::oid4vc::vci::CredentialResult;
+use crate::exchange::oid4vc::oid4vci::CredentialResult;
 use crate::facade::facade_low_level;
 use crate::facade::facade_low_level::{Holder, ProofOfPossession};
 use crate::impls;
@@ -27,7 +27,7 @@ use crate::impls::http::HttpClient;
 pub enum Error {
     // oid4vci
     #[error(transparent)]
-    Request(#[from] oid4vci::credential::RequestError<reqwest::Error>),
+    Request(#[from] RequestError<reqwest::Error>),
     #[error(transparent)]
     Client(#[from] oid4vci::client::Error),
 
@@ -53,6 +53,8 @@ pub enum Error {
     NonceMissed,
     #[error("not supported")]
     NotSupported,
+    #[error("cred def not found: {0}")]
+    CredDefNotFound(String),
 
     // Common
     #[error(transparent)]
@@ -76,7 +78,7 @@ pub struct Oid4VciHolder {
     issuer_metadata: IssuerMetadata,
     offer_configs: Vec<CredentialOfferFormat<CoreProfilesOffer>>,
     client: Client,
-    holder: Box<dyn Holder>,
+    pub holder: Box<dyn Holder>,
     http_client: HttpClient,
 }
 
@@ -208,7 +210,7 @@ impl Oid4VciHolder {
     pub async fn pre_authorized_flow(&self,
                                      pre_authorized_code: String,
                                      tx_code: String,
-                                     opt: AuthzOption,
+                                     opt: Option<AuthzOption>,
     ) -> Result<token::Response> {
         unimplemented!()
     }
@@ -254,37 +256,38 @@ impl Oid4VciHolder {
     }
 
     pub async fn request_credential(&self,
-                                    token: AccessToken,
-                                    detail: AuthorizationDetail,
-                                    nonce: Option<&str>,
+                                    token: &AccessToken,
+                                    cred_def_id: &str,
+                                    nonce: Option<String>,
     ) -> Result<CredentialResult> {
-        let cred_def_id = self.resolve_cred_def_id(&detail)?;
+        let cred_def = self.resolve_cred_def(cred_def_id)?;
 
-        let offer = &facade_low_level::CredentialOffer {
-            issuer_id: self.iss_url.to_string(),
-            cred_offer_id: None,
-            cred_def_id: Some(cred_def_id.clone()),
-            supported_proofs: self.resolve_supported_proofs(&cred_def_id),
-            cred_def: None,
-            protocol_data: None,
-        };
-
-        let req_base = match &detail.addition_profile_fields {
-            CoreProfilesAuthorizationDetails::SDJWTVC(det) => {
+        let req_base = match &cred_def {
+            CoreProfilesMetadata::SDJWTVC(det) => {
                 CoreProfilesRequest::SDJWTVC(sd_jwt::Request::new().set_vct(det.vct().map(|x| x.to_owned())))
             }
             _ => Err(Error::FormatNotSupported)?,
         };
 
+        let offer = &facade_low_level::CredentialOffer {
+            issuer_id: self.iss_url.clone(),
+            cred_offer_id: None,
+            cred_def_id: Some(cred_def_id.to_owned()),
+            supported_proofs: self.resolve_supported_proofs(&cred_def_id),
+            cred_def: None,
+            protocol_data: None,
+        };
+
+
         let nonce = match nonce {
-            Some(val) => val.to_string(),
+            Some(val) => val,
             None => self.request_nonce(token.clone(), req_base.clone()).await?
         };
 
         let req = self.holder.request_credential(offer, &nonce).await?;
 
         let credential_request = self.client
-            .request_credential(token, req_base)
+            .request_credential(token.to_owned(), req_base)
             .set_proof(Some(req.proof.try_into()?));
 
         let resp = credential_request
@@ -319,20 +322,16 @@ impl Oid4VciHolder {
         Ok(nonce.secret().to_string())
     }
 
-    fn resolve_cred_def_id(&self, detail: &AuthorizationDetail) -> Result<String> {
-        let id = match &detail.addition_profile_fields {
-            CoreProfilesAuthorizationDetails::SDJWTVC(det) => {
-                match det {
-                    sd_jwt::AuthorizationDetails { credential_configuration_id: Some(id), .. } => id,
-                    // TODO: scope=vct only supported by now
-                    sd_jwt::AuthorizationDetails { vct: Some(id), .. } => id,
-                    _ => Err(Error::BadRequest("invalid authorization".to_string()))?
-                }
-            }
-            _ => Err(Error::FormatNotSupported)?,
-        };
+    fn resolve_cred_def(&self, cred_def_id: &str) -> Result<CoreProfilesMetadata> {
+        let configs = self.issuer_metadata.credential_configurations_supported();
 
-        Ok(id.to_owned())
+        if !configs.contains_key(cred_def_id) {
+           return Err(Error::FormatNotSupported)
+        }
+
+        let data = configs.get(cred_def_id).unwrap();
+
+        Ok(data.additional_fields().to_owned())
     }
 
     fn validate_if_offer_supported(&self) -> Result<()> {
@@ -415,6 +414,7 @@ mod tests {
 
     use oauth2::TokenResponse;
     use oid4vci::core::metadata::IssuerMetadata;
+    use oid4vci::core::profiles::{CoreProfilesAuthorizationDetails, sd_jwt};
     use oid4vci::metadata::AuthorizationMetadata;
     use serde_json::json;
 
@@ -422,7 +422,7 @@ mod tests {
     use crate::core_::crypto::Key;
     use crate::core_::did::DIDURL;
     use crate::core_::kms::Kms;
-    use crate::exchange::oid4vc::vci_holder::{AuthzOption, Oid4VciHolder};
+    use crate::exchange::oid4vc::oid4vci::holder::{AuthzOption, Oid4VciHolder};
     use crate::facade::facade_low_level;
     use crate::facade::facade_low_level::{HolderMetadata, HolderService, KeyMetadata};
     use crate::impls::did::didkey::DIDKey;
@@ -511,6 +511,16 @@ mod tests {
 
         // Choose the particular cred to issue
         let detail = details.get(0).unwrap();
+        let cred_def_id = match &detail.addition_profile_fields {
+            CoreProfilesAuthorizationDetails::SDJWTVC(det) => {
+                match det {
+                    sd_jwt::AuthorizationDetails { credential_configuration_id: Some(id), .. } => id,
+                    sd_jwt::AuthorizationDetails { vct: Some(id), .. } => id,
+                    _ => panic!()
+                }
+            }
+            _ => panic!(),
+        };
 
         // nonce was received with token
         {
@@ -536,9 +546,9 @@ mod tests {
 
             // Credential requested
             let result = holder.request_credential(
-                token.access_token().to_owned(),
-                detail.to_owned(),
-                Some(nonce.secret()),
+                token.access_token(),
+                cred_def_id,
+                Some(nonce.secret().clone()),
             ).await;
 
             println!("Cred result: {:?}", result.unwrap())
@@ -580,8 +590,8 @@ mod tests {
                 .create();
 
             let result = holder.request_credential(
-                token.access_token().to_owned(),
-                detail.to_owned(),
+                token.access_token(),
+                cred_def_id,
                 None,
             ).await;
 

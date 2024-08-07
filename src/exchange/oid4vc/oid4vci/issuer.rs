@@ -5,7 +5,7 @@ use oauth2::{
 use oauth2::basic::BasicTokenType;
 use oauth2::http::{HeaderValue, Method};
 use oauth2::http::header::{ACCEPT, CONTENT_TYPE};
-use oid4vci::core::profiles::CoreProfilesOffer;
+use oid4vci::core::profiles::{CoreProfilesOffer, CoreProfilesRequest, sd_jwt};
 use oid4vci::credential::ResponseEnum;
 use oid4vci::credential_offer::{CredentialOfferFormat, CredentialOfferGrants, CredentialOfferParameters};
 use oid4vci::openidconnect::{IssuerUrl, Nonce};
@@ -15,7 +15,7 @@ use serde_json::Value;
 use url::Url;
 use uuid::Uuid;
 
-use crate::exchange::oid4vc::vci::{CredentialRequest, CredentialResponse, IssuanceMetadata, IssuerMetadata};
+use crate::exchange::oid4vc::oid4vci::{CredentialRequest, CredentialResponse, IssuanceMetadata, IssuerMetadata};
 use crate::facade::facade_low_level;
 use crate::facade::facade_low_level::{Issuer, ProofOfPossession};
 use crate::impls::http::{HttpClient, MIME_TYPE_FORM_URLENCODED, MIME_TYPE_JSON};
@@ -29,15 +29,16 @@ pub struct Oid4VciIssuer
     issuer: Box<dyn Issuer>,
     issuer_metadata: IssuerMetadata,
     supported_cred_config_ids: Vec<String>,
-    http_client: &'static HttpClient,
+    http_client: HttpClient,
     auth_server_admin_auth_header: Option<HeaderValue>,
+    token_validation: bool,
 }
 
 impl Oid4VciIssuer {
     pub fn new(
         issuer_metadata: IssuerMetadata,
         issuer: impl Issuer + 'static,
-        http_client: &'static HttpClient,
+        http_client: HttpClient,
         auth_server_admin_auth_header: Option<HeaderValue>,
     ) -> Self {
         let supported_cred_config_ids: Vec<String> = issuer_metadata
@@ -52,11 +53,12 @@ impl Oid4VciIssuer {
             supported_cred_config_ids,
             http_client,
             auth_server_admin_auth_header,
+            token_validation: false,
         }
     }
 
     pub fn metadata(&self) -> IssuerMetadata {
-       self.issuer_metadata.clone()
+        self.issuer_metadata.clone()
     }
 
     pub fn create_credential_offer(
@@ -105,20 +107,22 @@ impl Oid4VciIssuer {
         let auth_server_url = self.issuer_metadata
             .authorization_servers()
             .and_then(|urls| urls.first());
-        let _ = self.validate_token(&token, auth_server_url).await?;
-
+        if self.token_validation {
+            let _ = self.validate_token(&token, auth_server_url).await;
+        }
+        
         if cred_request.proof().is_none() {
-            return Err(Error::ProofVerification {
+            return Err(Error::ProofVerification(ProofVerificationBody {
                 error: "Empty proof".to_string(),
                 error_description: "Proof can not be empty, please provide PoP with provided nonce".to_string(),
                 c_nonce: Some(nonce),
-                c_nonce_expires_in: None,
-            });
+                c_nonce_expires_in: Some(86440),
+            }));
         }
 
+        let cred_def_id = self.resolve_cred_def_id(cred_request)?;
         let cred_req = facade_low_level::CredentialRequest {
-            //TODO: Implement finding a `credential_identifier` by `format` and `vct`
-            cred_def_id: cred_request.credential_identifier.to_owned().unwrap_or("".to_owned()),
+            cred_def_id,
             cred_offer_id: None,
             proof: ProofOfPossession::from(cred_request.proof().unwrap()),
             protocol_data: None,
@@ -128,12 +132,12 @@ impl Oid4VciIssuer {
         return match result {
             Err(e) => {
                 if let facade_low_level::Error::Proof(e) = e {
-                    return Err(Error::ProofVerification {
+                    return Err(Error::ProofVerification(ProofVerificationBody {
                         error: "invalid_proof".to_owned(),
                         error_description: e.to_string(),
                         c_nonce: Some(nonce.to_owned()),
-                        c_nonce_expires_in: None,
-                    });
+                        c_nonce_expires_in: Some(86440),
+                    }));
                 }
 
                 Err(Error::Other(e.to_string()))
@@ -155,28 +159,44 @@ impl Oid4VciIssuer {
         };
     }
 
+    fn resolve_cred_def_id(&self, req: &CredentialRequest) -> Result<String, Error> {
+        let id = match req.additional_profile_fields() {
+            CoreProfilesRequest::SDJWTVC(det) => {
+                match det {
+                    // TODO: scope=vct only supported by now
+                    sd_jwt::Request { vct: Some(id), .. } => id,
+                    _ => Err(Error::NotSupportedCredentialConfigurationId("invalid authorization".to_string()))?
+                }
+            }
+            _ => Err(Error::FormatNotSupported)?,
+        };
+
+        Ok(id.to_owned())
+    }
+
     pub fn generate_pop_verification_error_and_nonce(&self) -> (Error, Nonce)
     {
         let nonce = Nonce::new(Uuid::new_v4().to_string());
 
-        let err = Error::ProofVerification {
+        let err = Error::ProofVerification(ProofVerificationBody {
             error: "Proof of possession is needed".to_string(),
             error_description: "Please provide PoP with provided nonce".to_string(),
             c_nonce: Some(nonce.clone()),
-            c_nonce_expires_in: None,
-        };
+            // TODO: tune via config
+            c_nonce_expires_in: Some(86440),
+        });
 
         (err, nonce)
     }
 
-    async fn validate_token(
+    pub async fn validate_token(
         &self,
         token: &str,
         auth_server_url: Option<&IssuerUrl>,
     ) -> Result<TokenIntrospectionResponse, Error>
     {
         let token_introspect_url = if let Some(auth_url) = auth_server_url {
-            Url::parse(&format!("{}{}", auth_url.url().to_string(), "token/introspect"))?
+            Url::parse(&format!("{}{}", auth_url.url().to_string(), "introspect2"))?
         } else {
             unimplemented!("Validating by jwks.json of auth server is not supported yet")
         };
@@ -184,6 +204,7 @@ impl Oid4VciIssuer {
         let body = Vec::from(format!("token={}", token));
         let (auth_header, auth_value) = (
             AUTHORIZATION,
+            // TODO: make optional
             self.auth_server_admin_auth_header.to_owned().unwrap(),
         );
 
@@ -228,18 +249,15 @@ pub enum Error
     #[error("Token is expired")]
     InActiveToken,
     #[error("ProofVerification error")]
-    ProofVerification {
-        error: String,
-        error_description: String,
-        c_nonce: Option<Nonce>,
-        c_nonce_expires_in: Option<i64>,
-    },
+    ProofVerification(ProofVerificationBody),
     #[error("Url Parse Error: {0}")]
     UrlParse(#[from] url::ParseError),
     #[error("Parsing error: {0}")]
     Parse(#[from] serde_json::Error),
     #[error("Network Request failed {0}")]
     NetworkRequest(#[from] reqwest::Error),
+    #[error("format not supported")]
+    FormatNotSupported,
     #[error("Other error: {0}")]
     Other(String),
 }
@@ -248,4 +266,14 @@ pub enum Error
 struct TokenInfo {
     active: bool,
     username: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ProofVerificationBody {
+    error: String,
+    error_description: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    c_nonce: Option<Nonce>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    c_nonce_expires_in: Option<i64>,
 }

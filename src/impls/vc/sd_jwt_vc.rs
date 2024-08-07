@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-
+use async_trait::async_trait;
 use futures::executor;
 use jsonwebtoken::{DecodingKey, Header};
 use sd_jwt_rs::{ClaimsForSelectiveDisclosureStrategy, SDJWTHolder, SDJWTIssuer, SDJWTSerializationFormat, SDJWTVerifier};
@@ -24,17 +24,16 @@ pub struct SignerWrapper {
 
 impl SignerWrapper {}
 
+#[async_trait]
 impl sd_jwt_rs::signer::SDJWTSigner for SignerWrapper {
     fn algorithm(&self) -> &str {
         let alg = self.signer.alg();
         alg.into()
     }
 
-    fn sign(&self, message: &[u8]) -> sd_jwt_rs::error::Result<String> {
-        // TODO: support async signers in `sd-jwt-rust`
-        let future = self.signer.sign(message);
-        let sgn = executor::block_on(future);
-        sgn.map(|s| b64::encode(s))
+    async fn sign(&self, message: &[u8]) -> sd_jwt_rs::error::Result<String> {
+        let signed = self.signer.sign(message).await;
+        signed.map(|s| b64::encode(s))
             .map_err(|e| sd_jwt_rs::error::Error::SigningError(e.to_string()))
     }
 }
@@ -178,7 +177,7 @@ impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata, Value> for Sd
             false,
             SDJWTSerializationFormat::Compact,
             Some(headers),
-        );
+        ).await;
 
         res.map_err(|err| Error::Signing(err.to_string()))
     }
@@ -200,8 +199,8 @@ impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata, Value> for Sd
             metadata.disclosures,
             Some(nonce.secret().to_owned()),
             Some(verifier_id.to_string()),
-            Some(&sgn_wrapper),
-        ).map_err(|e| Error::Presentation(e.to_string()))?;
+            Some(Box::new(sgn_wrapper)),
+        ).await.map_err(|e| Error::Presentation(e.to_string()))?;
 
         Ok(presentation)
     }
