@@ -11,6 +11,7 @@ use uuid::Uuid;
 
 pub struct DefaultPresentationBuilder(PresentationDefinition);
 
+// TODO: Improve the Presentation Builder to make it easier to create presentation definition
 impl DefaultPresentationBuilder {
     pub fn new(id: String) -> DefaultPresentationBuilder {
         DefaultPresentationBuilder(PresentationDefinition {

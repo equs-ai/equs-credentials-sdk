@@ -107,6 +107,8 @@ mod tests {
         );
 
         println!("8.1 Verifier: Create Authorization Request");
+        // TODO: We should not use a test constant for Presentation Definition here,
+        //  we need to build a new one (as every Verifier will build it).
         let presentation_definition = create_test_presentation_definition();
         let nonce = "n0NcE";
         let response_uri: Url = format!("{}/auth", &verifier_base_url).parse().unwrap();
