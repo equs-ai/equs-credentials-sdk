@@ -3,7 +3,6 @@ use url::Url;
 
 use crate::core_::{vault, vc};
 use crate::exchange::oid4vc::oid4vci;
-use crate::exchange::oid4vc::oid4vci::{CredentialOfferGrants, CredentialOfferParameters};
 use crate::exchange::oid4vc::oid4vp;
 use crate::exchange::oid4vc::oid4vp::{
     AuthorizationRequest, AuthorizationResponse, PresentationDefinition
@@ -27,6 +26,8 @@ pub type CredentialMetadata = facade_low_level::CredentialMetadata;
 pub type TokenResponse = oid4vci::TokenResponse;
 pub type CredentialRequest = oid4vci::CredentialRequest;
 pub type CredentialResponse = oid4vci::CredentialResponse;
+pub type CredentialOfferGrants = oid4vci::CredentialOfferGrants;
+pub type CredentialOfferParameters = oid4vci::CredentialOfferParameters;
 
 pub struct AuthorizationResponseMetadata {}
 pub type CredentialMapping = CredentialsMap;
