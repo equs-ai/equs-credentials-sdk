@@ -1,8 +1,8 @@
 use async_trait::async_trait;
+use oid4vp::core::metadata::WalletMetadata;
 use url::Url;
 
 use crate::core_::{kms, vault};
-use crate::exchange::oid4vc::oid4vp::default_wallet_metadata;
 use crate::exchange::oid4vc::oid4vp::holder::{Oid4VpHolder, ResolvedAuthRequest};
 use crate::facade::facade_low_level;
 use crate::facade::facade_oid4vc::{AuthorizationResponseMetadata, CredentialMapping, HolderVp};
@@ -17,6 +17,7 @@ pub struct HolderService {
 impl HolderService {
     pub fn new<KH>(
         client_id: String,
+        metadata: Option<WalletMetadata>,
         did_url: String,
         kid: String,
         kms: impl kms::Kms<KH> + 'static,
@@ -32,7 +33,7 @@ impl HolderService {
         };
         let holder_low_level = facade_low_level::HolderService::new(kms, vault, holder_metadata);
         let holder = Oid4VpHolder::new(
-            default_wallet_metadata(),
+            metadata,
             holder_low_level,
             UniversalResolver::new(),
             http_client.clone(),

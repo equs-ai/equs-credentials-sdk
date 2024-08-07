@@ -137,6 +137,7 @@ mod tests {
         let http_client = reqwest::Client::new();
         let holder_service = HolderService::new(
             holder_did.to_owned(),
+            None,
             holder_vm,
             holder_kid,
             holder_kms,

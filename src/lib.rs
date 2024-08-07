@@ -7,8 +7,3 @@ mod exchange;
 mod facade;
 mod sdk;
 mod impls;
-
-fn main() {
-
-}
-
