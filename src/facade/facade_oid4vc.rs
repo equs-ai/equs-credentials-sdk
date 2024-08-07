@@ -4,7 +4,10 @@ use url::Url;
 
 use crate::core_::vc;
 use crate::exchange::oid4vc::{vci, vci_issuer};
-use crate::exchange::oid4vc::oid4vp::holder;
+use crate::exchange::oid4vc::oid4vp;
+use crate::exchange::oid4vc::oid4vp::{
+    AuthorizationRequest, AuthorizationResponse, holder, PresentationDefinition
+};
 use crate::exchange::oid4vc::oid4vp::holder::{CredentialsMap, ResolvedAuthRequest};
 use crate::exchange::oid4vc::vci::CredentialOfferParameters;
 use crate::facade::facade_low_level;
@@ -26,24 +29,17 @@ pub type TokenResponse = vci::TokenResponse;
 pub type CredentialRequest = vci::CredentialRequest;
 pub type CredentialResponse = vci::CredentialResponse;
 
-pub type AuthorizationRequest = ResolvedAuthRequest;
-pub struct AuthorizationResponse {
-    vp_token: serde_json::Value,
-    presentation_submission: PresentationSubmission,
-}
-
 pub struct AuthorizationResponseMetadata {}
-
-pub struct PresentationDefinition {}
-pub struct PresentationSubmission {}
 pub type CredentialMapping = CredentialsMap;
-
 
 #[derive(Debug, thiserror::Error, strum::IntoStaticStr)]
 #[non_exhaustive]
 pub enum Error {
     #[error(transparent)]
     Issuer(#[from] vci_issuer::Error),
+
+    #[error(transparent)]
+    Verifier(#[from] oid4vp::error::Error),
 
     #[error(transparent)]
     HolderVP(#[from] holder::Error),
@@ -138,7 +134,7 @@ pub trait HolderVp {
     async fn get_authorization_request(
         &self,
         auth_req_uri: &str,
-    ) -> Result<AuthorizationRequest>;
+    ) -> Result<ResolvedAuthRequest>;
 
     // Step 9
     // Assume credentials for presentations are selected automatically
@@ -146,7 +142,7 @@ pub trait HolderVp {
     // If there are multiple selection matching - they are selected according to a default logic (such as take the first one)
     async fn present_credentials_auto(
         &self,
-        auth_request: &AuthorizationRequest,
+        auth_request: &ResolvedAuthRequest,
         metadata: &AuthorizationResponseMetadata,
     ) -> Result<Option<Url>>;
 
@@ -155,7 +151,7 @@ pub trait HolderVp {
     // Step 7A1 - find matching credentials
     async fn find_vcs_for_presentation(
         &self,
-        auth_request: &AuthorizationRequest,
+        auth_request: &ResolvedAuthRequest,
     ) -> Result<CredentialMapping>;
 
     // Step 9.2
@@ -163,7 +159,7 @@ pub trait HolderVp {
     // Step 5A2 - create presentation for a unambiguous Mapping where there is a VC for every presentation request item
     async fn present_credentials(
         &self,
-        auth_request: &AuthorizationRequest,
+        auth_request: &ResolvedAuthRequest,
         credential_mapping_selected: &CredentialMapping,
         metadata: &AuthorizationResponseMetadata,
     ) -> Result<Option<Url>>;
@@ -177,7 +173,6 @@ pub trait Verifier {
         &mut self,
         presentation_definition: &PresentationDefinition,
         nonce: &str,
-        wallet_metadata: WalletMetadata,
         response_uri: Url,
     ) -> Result<AuthorizationRequest>;
 

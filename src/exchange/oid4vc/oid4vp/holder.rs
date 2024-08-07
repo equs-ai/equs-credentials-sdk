@@ -16,6 +16,7 @@ use oid4vp::core::response::AuthorizationResponse;
 use oid4vp::presentation_exchange::{
     DescriptorMap, PresentationDefinition, PresentationSubmission,
 };
+use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use url::Url;
 use uuid::Uuid;
@@ -248,6 +249,7 @@ pub enum Error {
     Other(String),
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ResolvedAuthRequest {
     pub client_id: String,
     pub presentation_definition: PresentationDefinition,

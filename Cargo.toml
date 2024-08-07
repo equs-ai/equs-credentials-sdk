@@ -5,7 +5,7 @@ edition = "2021"
 
 [dependencies]
 oid4vci = { git = "ssh://git@git.slock.it/open-source/oid4vci-rs", branch = "asdk-main" }
-oid4vp = { git = "ssh://git@git.slock.it/open-source/oid4vp-rs.git", branch = "feature/ASDK-36" }
+oid4vp = { git = "ssh://git@git.slock.it/open-source/oid4vp-rs.git", branch = "asdk-main" }
 sd-jwt-rs = { git = "ssh://git@git.slock.it/open-source/sd-jwt-rust.git", branch = "feat/signer-support" }
 
 oauth2 = "4.4.2"
