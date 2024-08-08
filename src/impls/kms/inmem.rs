@@ -73,6 +73,7 @@ impl kms::KeyHandle for KeyHandle {}
 
 pub type Bytes = Vec<u8>;
 
+#[derive(Clone)]
 pub struct LocalKms {
     storage: InMemStorage<kms::KeyID, Bytes>,
 }

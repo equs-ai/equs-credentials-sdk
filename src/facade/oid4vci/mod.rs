@@ -8,7 +8,6 @@ mod tests {
 
     use futures::executor;
     use mockito::{Request, ServerGuard};
-    use oauth2::http::HeaderValue;
     use oid4vci::core::metadata::IssuerMetadata;
     use oid4vci::core::profiles::CoreProfilesOffer;
     use oid4vci::credential_offer::{AuthorizationCodeGrant, CredentialOffer, CredentialOfferGrants, CredentialOfferParameters};
@@ -245,7 +244,7 @@ mod tests {
             metadata,
             did_url.to_string(),
             kid,
-            Some(HeaderValue::from_static("issuer_authz")),
+            None,
         );
 
         iss

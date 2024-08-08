@@ -52,8 +52,8 @@ impl Oid4VciIssuer {
             issuer_metadata,
             supported_cred_config_ids,
             http_client,
+            token_validation: auth_server_admin_auth_header.is_some(),
             auth_server_admin_auth_header,
-            token_validation: false,
         }
     }
 
@@ -196,7 +196,7 @@ impl Oid4VciIssuer {
     ) -> Result<TokenIntrospectionResponse, Error>
     {
         let token_introspect_url = if let Some(auth_url) = auth_server_url {
-            Url::parse(&format!("{}{}", auth_url.url().to_string(), "introspect2"))?
+            Url::parse(&format!("{}{}", auth_url.url().to_string(), "/protocol/openid-connect/token/introspect"))?
         } else {
             unimplemented!("Validating by jwks.json of auth server is not supported yet")
         };

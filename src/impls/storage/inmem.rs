@@ -6,6 +6,7 @@ use async_trait::async_trait;
 
 use crate::core_::storage;
 
+#[derive(Clone)]
 pub struct InMemStorage<K, V> {
     map: HashMap<K, V>,
 }
