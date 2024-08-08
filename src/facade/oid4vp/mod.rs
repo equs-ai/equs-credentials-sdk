@@ -72,7 +72,7 @@ mod tests {
             (&holder_did_url, holder_key_handle.clone()),
             VCMetadata {
                 lifetime: time::Duration::days(365),
-                disclosures: vec!["$.name", "$.surname", "$.address"],
+                disclosures: vec!["$.name".to_owned(), "$.surname".to_owned(), "$.address".to_owned()],
             },
         )
         .await

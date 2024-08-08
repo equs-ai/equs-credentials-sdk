@@ -168,11 +168,15 @@ impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata, Value> for Sd
         let Some(jwk) = utils::jwk::from_spruce_jwk_opt(hld_key.jwk()) else {
             return Err(Error::KeyNotSupported);
         };
+        let disclosures = metadata.disclosures
+            .iter()
+            .map(|d| d.as_str())
+            .collect();
 
         let mut issuer = SDJWTIssuer::new(Box::new(sgn_wrapper));
         let res = issuer.issue_sd_jwt(
             claims,
-            ClaimsForSelectiveDisclosureStrategy::Custom(metadata.disclosures),
+            ClaimsForSelectiveDisclosureStrategy::Custom(disclosures),
             Some(jwk),
             false,
             SDJWTSerializationFormat::Compact,
@@ -276,7 +280,7 @@ mod tests {
                 (&hld_did_url, h_kh.clone()),
                 VCMetadata {
                     lifetime: time::Duration::days(365),
-                    disclosures: vec!["$.name", "$.surname"],
+                    disclosures: vec!["$.name".to_owned(), "$.surname".to_owned()],
                 },
             ).await;
             assert!(vc_res.is_ok());

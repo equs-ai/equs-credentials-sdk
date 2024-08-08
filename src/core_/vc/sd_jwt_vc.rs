@@ -6,4 +6,4 @@ use crate::core_::vc;
 pub type Claims = Map<String, serde_json::Value>;
 pub type Credential = vc::JWTRaw;
 pub type Presentation = vc::JWTRaw;
-pub type Disclosure = &'static str;
+pub type Disclosure = String;

@@ -210,7 +210,7 @@ pub mod test_utils {
             (&holder_did_url, holder_key_handle.clone()),
             VCMetadata {
                 lifetime: time::Duration::days(365),
-                disclosures: vec!["$.name", "$.surname"],
+                disclosures: vec!["$.name".to_owned(), "$.surname".to_owned()],
             },
         )
         .await
