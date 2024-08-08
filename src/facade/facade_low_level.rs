@@ -52,7 +52,7 @@ pub struct HolderMetadata {
 
 #[derive(Debug, PartialEq, Clone, Default)]
 pub struct CredentialDefinitionData {
-    pub disclosures: Vec<&'static str>,
+    pub disclosures: Vec<String>,
     pub lifetime: Option<time::Duration>,
 }
 
@@ -639,7 +639,7 @@ mod tests {
                     ],
                     display: None,
                     protocol_data: Some(CredentialDefinitionData {
-                        disclosures: vec!["$.given_name", "$.family_name"],
+                        disclosures: vec!["$.given_name".to_owned(), "$.family_name".to_owned()],
                         lifetime: None,
                     }),
                     key_metadata: None,

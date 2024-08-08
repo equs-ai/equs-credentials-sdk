@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use oauth2::http::HeaderValue;
-use oid4vci::core::profiles::CoreProfilesOffer;
+use oid4vci::core::profiles::{CoreProfilesMetadata, CoreProfilesOffer};
 use oid4vci::credential_offer::{CredentialOfferGrants, CredentialOfferParameters};
 use url::Url;
 
@@ -10,7 +10,7 @@ use crate::exchange;
 use crate::exchange::oid4vc::oid4vci::{CredentialRequest, CredentialResponse, IssuerMetadata};
 use crate::exchange::oid4vc::oid4vci::issuer::Oid4VciIssuer;
 use crate::facade::{facade_low_level, facade_oid4vc};
-use crate::facade::facade_low_level::CredentialDefinition;
+use crate::facade::facade_low_level::{CredentialDefinition, CredentialDefinitionData};
 use crate::facade::facade_oid4vc::CredentialClaims;
 use crate::impls::http::HttpClient;
 
@@ -120,6 +120,17 @@ impl IssuerService {
                 } else {
                     vec![]
                 };
+                //TODO Implement mapping for other credential types
+                let disclosures: Vec<String> = if let CoreProfilesMetadata::SDJWTVC(metadata) = cm.additional_fields() {
+                    metadata.credential_definition()
+                        .claims()
+                        .unwrap()
+                        .keys()
+                        .map(|k| format!("$.{}", k.to_owned()))
+                        .collect()
+                } else {
+                    vec![]
+                };
 
                 CredentialDefinition {
                     cred_def_id: id.to_string(),
@@ -129,7 +140,12 @@ impl IssuerService {
                     claims: Default::default(),
                     supported_proofs: proofs,
                     display: None,
-                    protocol_data: None,
+                    protocol_data: Some(
+                        CredentialDefinitionData{
+                            disclosures,
+                            lifetime: None,
+                        }
+                    ),
                     key_metadata: None,
                 }
             })
