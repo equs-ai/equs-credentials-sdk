@@ -25,6 +25,7 @@ pub type CredentialOfferGrants = oid4vci::credential_offer::CredentialOfferGrant
 pub type CredentialOfferParameters = oid4vci::credential_offer::CredentialOfferParameters<CoreProfilesOffer>;
 pub type CredentialProfileMetadata = CoreProfilesMetadata;
 pub type AuthorizationResponse = oid4vci::token::Response;
+pub type AuthorizationCodeGrant = oid4vci::credential_offer::AuthorizationCodeGrant;
 
 #[derive(Debug, Clone)]
 pub enum CredentialResult {

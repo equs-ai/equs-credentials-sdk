@@ -198,7 +198,7 @@ impl Oid4VciIssuer {
     {
         // TODO: refactor: 1. to use Url::join 2. assume different strategies for validation in the future
         let token_introspect_url = if let Some(auth_url) = auth_server_url {
-            Url::parse(&format!("{}{}", auth_url.url().to_string(), "protocol/openid-connect/token/introspect"))?
+            Url::parse(auth_url)?.join("protocol/openid-connect/token/introspect")?
         } else {
             unimplemented!("Validating by jwks.json of auth server is not supported yet")
         };
