@@ -1,3 +1,4 @@
+use async_trait::async_trait;
 use crate::core_::kms::{KeyHandle, Kms};
 use crate::core_::storage::Storage;
 use crate::exchange;
@@ -70,6 +71,7 @@ impl<'a> VerifierService<'a> {
     }
 }
 
+#[async_trait]
 impl Verifier for VerifierService<'_> {
     /// Creates an authorization request.
     ///

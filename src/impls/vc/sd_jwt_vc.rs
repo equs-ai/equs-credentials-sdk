@@ -144,6 +144,7 @@ impl SdJwtAPI {
     }
 }
 
+#[async_trait]
 impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata, Value> for SdJwtAPI {
     fn resolve_claims(value: &Value) -> Claims {
         value.as_object().unwrap().to_owned()

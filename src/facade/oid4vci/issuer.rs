@@ -20,7 +20,6 @@ pub type Result<T> = facade_oid4vc::Result<T>;
 pub struct IssuerService {
     oid4vci_issuer: Oid4VciIssuer,
     storage: Box<dyn Storage<String, serde_json::Value>>,
-    http_client: HttpClient,
 }
 
 #[async_trait]
@@ -77,11 +76,12 @@ impl IssuerService {
     pub fn from_issuer_metadata<KH>(
         kms: impl kms::Kms<KH> + 'static,
         storage: impl Storage<String, serde_json::Value> + 'static,
-        http_client: HttpClient,
+        http_client: impl HttpClient + 'static,
         metadata: IssuerMetadata,
         did_url: String,
         kid: String,
         auth_server_admin_auth_header: Option<HeaderValue>,
+        token_validation: bool,
     ) -> Self
     where
         KH: kms::KeyHandle + 'static,
@@ -98,12 +98,11 @@ impl IssuerService {
         };
         let core_issuer = facade_low_level::IssuerService::new(kms, issuer_metadata);
         let oid4vci_issuer =
-            Oid4VciIssuer::new(metadata, core_issuer, http_client.clone(), auth_server_admin_auth_header);
+            Oid4VciIssuer::new(metadata, core_issuer, http_client, auth_server_admin_auth_header, token_validation);
 
         Self {
             oid4vci_issuer,
             storage: Box::new(storage),
-            http_client,
         }
     }
 

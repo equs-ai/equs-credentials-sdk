@@ -22,6 +22,7 @@ impl oid4vci::proof_of_possession::Signer for SignerWrapper {
     }
 }
 
+#[async_trait]
 impl pop::ProofOfPossession<vc::JWTRaw> for JwtProofOfPossession {
     async fn generate<S>(did_url: &DIDURL, key: S, nonce: Nonce, opts: GenerateOptions) -> Result<vc::JWTRaw, Error>
     where
@@ -45,7 +46,7 @@ impl pop::ProofOfPossession<vc::JWTRaw> for JwtProofOfPossession {
         pop.to_jwt_with_signer(sgn).await.map_err(|e| Error::Conversion(e.to_string()))
     }
 
-    async fn verify(proof: vc::JWTRaw, nonce: Nonce, opts: VerifyOptions) -> Result<(DIDURL, impl crypto::Key), Error> {
+    async fn verify(proof: vc::JWTRaw, nonce: Nonce, opts: VerifyOptions) -> Result<(DIDURL, Box<dyn crypto::Key>), Error> {
         let resolver = impls::did::UniversalResolver::new();
 
         let pop = ProofOfPossession::from_jwt(proof.as_str(), &resolver).await
@@ -68,7 +69,7 @@ impl pop::ProofOfPossession<vc::JWTRaw> for JwtProofOfPossession {
         let did_url = pop.controller.vm.unwrap();
         let hld_key = pop.controller.jwk;
 
-        Ok((did_url, hld_key))
+        Ok((did_url, Box::new(hld_key)))
     }
 }
 
