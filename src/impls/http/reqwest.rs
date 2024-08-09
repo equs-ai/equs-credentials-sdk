@@ -1,0 +1,94 @@
+use std::time::Duration;
+
+use async_trait::async_trait;
+use oauth2::{HttpRequest, HttpResponse};
+use oauth2::http::StatusCode;
+use reqwest::{Body, Client, Request};
+
+use crate::impls::http::HttpClient;
+
+pub type Error = reqwest::Error;
+
+#[derive(Clone)]
+pub struct ReqwestClient {
+    client: Client,
+}
+
+impl ReqwestClient {
+    pub fn new(
+        https_only: bool,
+        invalid_certs: bool,
+    ) -> Result<Self, Error> {
+        let client = Client::builder()
+            .https_only(https_only)
+            .danger_accept_invalid_certs(invalid_certs)
+            .build()?;
+
+        Ok(Self { client })
+    }
+
+    fn log_req(request: &Request, log_body: bool) {
+        println!("Req: {} {}", request.method(), request.url());
+        if log_body {
+            println!("Body:\n{}", Self::req_body_pretty(request.body()));
+        }
+    }
+
+    fn log_resp(status: StatusCode, chunks: Vec<u8>, log_body: bool) {
+        println!("Resp: {}", status);
+        if log_body {
+            println!("Body:\n{}", Self::vec_pretty(chunks));
+        }
+    }
+
+    fn req_body_pretty(body: Option<&Body>) -> String {
+        if body.is_none() { return "No body".to_string(); }
+
+        let bytes = body.unwrap().as_bytes();
+        let Some(vec) = bytes.map(|b| b.to_vec()) else { return "Empty body".to_string(); };
+
+        Self::vec_pretty(vec)
+    }
+
+    fn vec_pretty(vec: Vec<u8>) -> String {
+        if vec.is_empty() { return "Empty body".to_string(); }
+        let str = String::from_utf8(vec).unwrap_or("Failed to parse".to_string());
+
+        serde_json::to_string_pretty(&str).unwrap_or(str)
+    }
+}
+
+#[async_trait]
+impl HttpClient for ReqwestClient {
+    async fn async_call(&self, request: HttpRequest) -> Result<HttpResponse, Error> {
+        let mut request_builder = self.client
+            .request(request.method, request.url.as_str())
+            .body(request.body)
+            .timeout(Duration::from_secs(5));
+
+        for (name, value) in &request.headers {
+            request_builder = request_builder.header(name.as_str(), value.as_bytes());
+        }
+
+        let request = request_builder.build()?;
+
+        Self::log_req(&request, true);
+
+        let response = self.client.execute(request).await?;
+        let status_code = response.status();
+        let headers = response.headers().to_owned();
+        let chunks = response.bytes().await?;
+
+        Self::log_resp(status_code, chunks.to_vec(), true);
+
+        Ok(HttpResponse {
+            status_code,
+            headers,
+            body: chunks.to_vec(),
+        })
+    }
+
+    async fn static_async(request: HttpRequest) -> Result<HttpResponse, Error> {
+        ReqwestClient::new(false, true)?.async_call(request).await
+    }
+}

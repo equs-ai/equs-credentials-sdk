@@ -177,7 +177,7 @@ pub trait HolderVp {
     ) -> Result<Option<Url>>;
 }
 
-
+#[async_trait]
 pub trait Verifier {
     // Step 8.1
     // GET /<authorization_req_uri> or pass by value

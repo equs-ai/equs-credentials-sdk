@@ -1,5 +1,5 @@
 use std::str::FromStr;
-
+use async_trait::async_trait;
 use crate::core_::crypto;
 use crate::core_::did::DIDURL;
 use crate::core_::vc::Nonce;
@@ -77,6 +77,7 @@ pub struct VerifyOptions {
     pub client_id: Option<String>,
 }
 
+#[async_trait]
 pub trait ProofOfPossession<P>
 where
     P: Proof,
@@ -86,5 +87,5 @@ where
         S: crypto::SigningKey + 'static
     ;
 
-    async fn verify(proof: P, nonce: Nonce, opts: VerifyOptions) -> Result<(DIDURL, impl crypto::Key)>;
+    async fn verify(proof: P, nonce: Nonce, opts: VerifyOptions) -> Result<(DIDURL, Box<dyn crypto::Key>)>;
 }

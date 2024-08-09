@@ -1,84 +1,96 @@
-use std::time::Duration;
+use async_trait::async_trait;
+#[cfg(test)]
+use mockall::automock;
 use oauth2::{HttpRequest, HttpResponse};
-use reqwest::{Body, Client, Request, StatusCode};
+#[cfg(test)]
+use oauth2::http::{Method, StatusCode};
+
+pub use reqwest::ReqwestClient;
+
+mod reqwest;
 
 pub const MIME_TYPE_FORM_URLENCODED: &str = "application/x-www-form-urlencoded";
 pub const MIME_TYPE_JSON: &str = "application/json";
 
-#[derive(Clone)]
-pub struct HttpClient {
-    client: Client,
+#[cfg_attr(test, automock)]
+#[async_trait]
+pub trait HttpClient: Sync + Send {
+    async fn async_call(&self, request: HttpRequest) -> Result<HttpResponse, reqwest::Error>;
+
+    async fn static_async(request: HttpRequest) -> Result<HttpResponse, reqwest::Error>
+    where
+        Self: Sized;
 }
 
-impl HttpClient {
-    pub fn new(https_only: bool, invalid_certs: bool) -> Result<Self, reqwest::Error> {
-        let client = Client::builder()
-            .https_only(https_only)
-            .danger_accept_invalid_certs(invalid_certs)
-            .build()?;
+#[cfg(test)]
+pub fn mock_http<T: serde::Serialize + Send + Sync + 'static>(
+    mock: &mut MockHttpClient,
+    method: Method,
+    url: url::Url,
+    body: T,
+    status: StatusCode,
+) {
+    mock
+        .expect_async_call()
+        .withf(move |req| {
+            let method = req.method == method;
+            let url = req.url == url;
 
-        Ok(Self { client })
-    }
-
-    pub async fn async_call(&self, request: HttpRequest) -> Result<HttpResponse, reqwest::Error> {
-        let mut request_builder = self.client
-            .request(request.method, request.url.as_str())
-            .body(request.body)
-            .timeout(Duration::from_secs(5));
-
-        for (name, value) in &request.headers {
-            request_builder = request_builder.header(name.as_str(), value.as_bytes());
-        }
-
-        let request = request_builder.build()?;
-
-        Self::log_req(&request, true);
-
-        let response = self.client.execute(request).await?;
-        let status_code = response.status();
-        let headers = response.headers().to_owned();
-        let chunks = response.bytes().await?;
-
-        Self::log_resp(status_code, chunks.to_vec(), true);
-
-        Ok(HttpResponse {
-            status_code,
-            headers,
-            body: chunks.to_vec(),
+            method && url
         })
-    }
-
-    fn log_req(request: &Request, log_body: bool) {
-        println!("Req: {} {}", request.method(), request.url());
-        if log_body {
-            println!("Body:\n{}", Self::req_body_pretty(request.body()));
-        }
-    }
-
-    fn log_resp(status: StatusCode, chunks: Vec<u8>, log_body: bool) {
-        println!("Resp: {}", status);
-        if log_body {
-            println!("Body:\n{}", Self::vec_pretty(chunks));
-        }
-    }
-
-    fn req_body_pretty(body: Option<&Body>) -> String {
-        if body.is_none() { return "No body".to_string(); }
-
-        let bytes = body.unwrap().as_bytes();
-        let Some(vec) = bytes.map(|b| b.to_vec()) else { return "Empty body".to_string(); };
-
-        Self::vec_pretty(vec)
-    }
-
-    fn vec_pretty(vec: Vec<u8>) -> String {
-        if vec.is_empty() { return "Empty body".to_string(); }
-        let str = String::from_utf8(vec).unwrap_or("Failed to parse".to_string());
-
-        serde_json::to_string_pretty(&str).unwrap_or(str)
-    }
+        .times(1)
+        .returning(move |_| {
+            Ok(HttpResponse {
+                status_code: status,
+                headers: Default::default(),
+                body: serde_json::to_vec(&body).unwrap(),
+            })
+        });
 }
 
-pub async fn async_request(request: HttpRequest) -> Result<HttpResponse, reqwest::Error> {
-    HttpClient::new(false, true)?.async_call(request).await
+#[cfg(test)]
+pub fn mock_http_fn<F>(
+    mock: &mut MockHttpClient,
+    method: Method,
+    url: url::Url,
+    body_fn: F,
+    times: mockall::TimesRange,
+)
+where
+    F: FnMut(HttpRequest) -> Result<HttpResponse, reqwest::Error> + Send + 'static,
+{
+    mock
+        .expect_async_call()
+        .withf(move |req| {
+            let method = req.method == method;
+            let url = req.url == url;
+
+            method && url
+        })
+        .times(times)
+        .returning(body_fn);
+}
+
+#[cfg(test)]
+pub fn mock_static_ctx<T: serde::Serialize + Send + Sync + 'static>(
+    ctx: &__mock_MockHttpClient_HttpClient::__static_async::Context,
+    method: Method,
+    url: url::Url,
+    body: T,
+    status: StatusCode,
+) {
+    ctx
+        .expect()
+        .withf(move |req| {
+            let method = req.method == method;
+            let url = req.url == url;
+
+            method && url
+        })
+        .times(1)
+        .returning(move |_| Ok(HttpResponse {
+            status_code: StatusCode::OK,
+            headers: Default::default(),
+            body: serde_json::to_vec(&body).unwrap(),
+        }));
 }

@@ -29,7 +29,7 @@ pub struct Oid4VciIssuer
     issuer: Box<dyn Issuer>,
     issuer_metadata: IssuerMetadata,
     supported_cred_config_ids: Vec<String>,
-    http_client: HttpClient,
+    http_client: Box<dyn HttpClient>,
     auth_server_admin_auth_header: Option<HeaderValue>,
     token_validation: bool,
 }
@@ -38,8 +38,9 @@ impl Oid4VciIssuer {
     pub fn new(
         issuer_metadata: IssuerMetadata,
         issuer: impl Issuer + 'static,
-        http_client: HttpClient,
+        http_client: impl HttpClient + 'static,
         auth_server_admin_auth_header: Option<HeaderValue>,
+        token_validation: bool,
     ) -> Self {
         let supported_cred_config_ids: Vec<String> = issuer_metadata
             .credential_configurations_supported()
@@ -51,9 +52,9 @@ impl Oid4VciIssuer {
             issuer: Box::new(issuer),
             issuer_metadata,
             supported_cred_config_ids,
-            http_client,
-            token_validation: auth_server_admin_auth_header.is_some(),
+            http_client: Box::new(http_client),
             auth_server_admin_auth_header,
+            token_validation,
         }
     }
 
@@ -195,8 +196,9 @@ impl Oid4VciIssuer {
         auth_server_url: Option<&IssuerUrl>,
     ) -> Result<TokenIntrospectionResponse, Error>
     {
+        // TODO: refactor: 1. to use Url::join 2. assume different strategies for validation in the future
         let token_introspect_url = if let Some(auth_url) = auth_server_url {
-            Url::parse(&format!("{}{}", auth_url.url().to_string(), "/protocol/openid-connect/token/introspect"))?
+            Url::parse(&format!("{}{}", auth_url.url().to_string(), "protocol/openid-connect/token/introspect"))?
         } else {
             unimplemented!("Validating by jwks.json of auth server is not supported yet")
         };

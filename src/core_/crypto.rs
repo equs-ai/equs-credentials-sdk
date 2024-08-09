@@ -1,5 +1,8 @@
+use std::ops::Deref;
+
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use ssi::jwk::JWK;
 use strum_macros::{Display, EnumString, IntoStaticStr};
 
 // Error handling
@@ -35,10 +38,20 @@ pub trait Verifier: Sync + Send {
     async fn verify(&self, data: &[u8], signature: &[u8]) -> Result<(), Error>;
 }
 
-pub trait Key {
+pub trait Key: Sync + Send {
     fn pub_key(&self) -> Vec<u8>;
 
     fn jwk(&self) -> Option<ssi::jwk::JWK>;
+}
+
+impl Key for Box<dyn Key> {
+    fn pub_key(&self) -> Vec<u8> {
+        self.deref().pub_key()
+    }
+
+    fn jwk(&self) -> Option<JWK> {
+        self.deref().jwk()
+    }
 }
 
 #[async_trait]

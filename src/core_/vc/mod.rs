@@ -1,6 +1,6 @@
 use std::fmt::{Display, Formatter};
 use std::str::FromStr;
-
+use async_trait::async_trait;
 use oid4vci::openidconnect;
 use serde::{Deserialize, Serialize};
 
@@ -157,6 +157,7 @@ pub enum Presentation {
 
 pub struct VerifyOptions;
 
+#[async_trait]
 pub trait API<CL, C, P, CM, PM, VR>
 where
     C: HasClaims<CL>,
@@ -170,7 +171,7 @@ where
                              metadata: CM) -> Result<C>
     where
         S: crypto::Signer + 'static,
-        K: crypto::Key
+        K: crypto::Key,
     ;
 
     async fn create_vp<S>(credential: &C,
