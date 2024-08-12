@@ -618,7 +618,7 @@ mod tests {
         let didkey = DIDKey::new();
 
         let kt = kms::KeyType::P256;
-        let (kid, kh) = kms.create_and_handle(&kt, kms::CreateOptions {}).await.unwrap();
+        let (kid, kh) = kms.create_and_handle(kt, kms::CreateOptions {}).await.unwrap();
 
         let did = didkey.generate(kh.clone()).unwrap();
         let did_url = DIDURL::from_str(&did).unwrap();
@@ -664,7 +664,7 @@ mod tests {
         let vault = InMemVault::new();
 
         let kt = kms::KeyType::P256;
-        let (kid, kh) = kms.create_and_handle(&kt, kms::CreateOptions {}).await.unwrap();
+        let (kid, kh) = kms.create_and_handle(kt, kms::CreateOptions {}).await.unwrap();
 
         let did = didkey.generate(kh.clone()).unwrap();
         let did_url = DIDURL::from_str(&did).unwrap();

@@ -15,7 +15,7 @@ pub enum Error {
 
 pub type KeyID = String;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 #[derive(Display, EnumString, IntoStaticStr)]
 #[non_exhaustive]
 pub enum KeyType {
@@ -35,11 +35,11 @@ pub trait Kms<KH>: Send + Sync
 where
     KH: KeyHandle,
 {
-    async fn create(&mut self, kt: &KeyType, opts: CreateOptions) -> Result<KeyID, Error>;
+    async fn create(&mut self, kt: KeyType, opts: CreateOptions) -> Result<KeyID, Error>;
 
     async fn get(&self, kid: &KeyID) -> Result<KH, Error>;
 
-    async fn create_and_handle(&mut self, kt: &KeyType, opts: CreateOptions) -> Result<(KeyID, KH), Error> {
+    async fn create_and_handle(&mut self, kt: KeyType, opts: CreateOptions) -> Result<(KeyID, KH), Error> {
         let res = self.create(kt, opts).await;
         if res.is_err() { return Err(res.err().unwrap()); }
         let kid = res.unwrap();
@@ -48,5 +48,44 @@ where
         if res.is_err() { return Err(res.err().unwrap()); }
 
         Ok((kid, res.unwrap()))
+    }
+}
+
+#[cfg(test)]
+pub mod test_util {
+    use crate::core_::kms;
+    use crate::core_::kms::{KeyHandle, Kms};
+
+    pub async fn test_kms<KH: KeyHandle, KMS: Kms<KH>>(mut kms: KMS) {
+        for kt in vec![kms::KeyType::Ed25519, kms::KeyType::P256] {
+            // Create a key
+            let create_res = kms.create(kt.clone(), kms::CreateOptions {}).await;
+            assert!(create_res.is_ok());
+            let kid = create_res.unwrap();
+
+            // Get a handle to the key
+            let get_res = kms.get(&kid).await;
+            assert!(get_res.is_ok());
+            let kh = get_res.unwrap();
+
+            // Sign using handle
+            let message = "abracadabra";
+
+            let s_res = kh.sign(message.as_bytes()).await;
+            assert!(s_res.is_ok());
+
+            let signature = s_res.unwrap();
+
+            // Verify using handle
+            let v_res = kh.verify(message.as_bytes(), &signature).await;
+            assert!(v_res.is_ok());
+
+            // Check JWK
+            assert_ne!(kh.jwk(), None);
+
+            // Print jwks
+            let jwk = kh.jwk().unwrap();
+            println!("JWK: {}", serde_json::to_string_pretty(&jwk).unwrap())
+        }
     }
 }

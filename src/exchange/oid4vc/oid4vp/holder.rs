@@ -516,7 +516,7 @@ mod tests {
         assert!(store1_res.is_ok());
 
         let kt = kms::KeyType::P256;
-        let (kid, kh) = kms.create_and_handle(&kt, kms::CreateOptions {}).await.unwrap();
+        let (kid, kh) = kms.create_and_handle(kt, kms::CreateOptions {}).await.unwrap();
 
         let did = didkey.generate(kh.clone()).unwrap();
         let did_url = DIDURL::from_str(&did).unwrap();

@@ -74,7 +74,7 @@ impl pop::ProofOfPossession<vc::JWTRaw> for JwtProofOfPossession {
 }
 
 impl crypto::Key for JWK {
-    fn pub_key(&self) -> Vec<u8> {
+    fn pub_key(&self) -> Result<Vec<u8>, crypto::Error> {
         unimplemented!()
     }
 
@@ -106,7 +106,7 @@ mod tests {
 
         for kt in vec![kms::KeyType::Ed25519, kms::KeyType::P256] {
             // Create a key
-            let (_, h_kh) = kms.create_and_handle(&kt, kms::CreateOptions {}).await.unwrap();
+            let (_, h_kh) = kms.create_and_handle(kt, kms::CreateOptions {}).await.unwrap();
 
             let hld_did = didkey.generate(h_kh.clone()).unwrap();
             let hld_did_url = DIDURL::from_str(&hld_did).unwrap();
