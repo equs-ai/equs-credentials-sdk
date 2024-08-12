@@ -67,7 +67,7 @@ mod tests {
 
         for kt in vec![kms::KeyType::Ed25519, kms::KeyType::P256] {
             // Key
-            let (_, kh) = kms.create_and_handle(&kt, CreateOptions {}).await.unwrap();
+            let (_, kh) = kms.create_and_handle(kt, CreateOptions {}).await.unwrap();
 
             // Creation
             let created = didkey.generate(kh.clone());

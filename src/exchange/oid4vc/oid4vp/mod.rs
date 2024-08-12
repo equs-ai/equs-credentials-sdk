@@ -241,7 +241,7 @@ pub mod test_utils {
 
     pub async fn generate_did_key(kms: &mut LocalKms) -> (KeyID, KeyHandle, DID) {
         let (issuer_kid, issuer_key_handle) = kms
-            .create_and_handle(&kms::KeyType::P256, kms::CreateOptions {})
+            .create_and_handle(kms::KeyType::P256, kms::CreateOptions {})
             .await
             .unwrap();
         let issuer_did = DIDKey::new().generate(issuer_key_handle.clone()).unwrap();

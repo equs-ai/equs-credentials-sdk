@@ -32,12 +32,12 @@ impl crypto::Suite for P256 {
 }
 
 impl crypto::Key for P256 {
-    fn pub_key(&self) -> Vec<u8> {
-        self.signing_key.verifying_key().to_sec1_bytes().to_vec()
+    fn pub_key(&self) -> Result<Vec<u8>, crypto::Error> {
+        Ok(self.signing_key.verifying_key().to_sec1_bytes().to_vec())
     }
 
     fn jwk(&self) -> Option<ssi::jwk::JWK> {
-        let pubk = self.pub_key();
+        let pubk = self.pub_key().ok()?;
         let s: &[u8] = &pubk;
 
         if let Ok(jwk) = ssi::jwk::p256_parse(s) {

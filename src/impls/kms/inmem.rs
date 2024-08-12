@@ -47,7 +47,7 @@ impl crypto::Verifier for KeyHandle {
 
 #[async_trait]
 impl crypto::Key for KeyHandle {
-    fn pub_key(&self) -> Vec<u8> {
+    fn pub_key(&self) -> Result<Vec<u8>, crypto::Error> {
         match self {
             KeyHandle::Ed25519(s) => s.pub_key(),
             KeyHandle::P256(s) => s.pub_key(),
@@ -89,7 +89,7 @@ impl LocalKms {
         Self { storage }
     }
 
-    fn kid(kt: &kms::KeyType) -> kms::KeyID {
+    fn kid(kt: kms::KeyType) -> kms::KeyID {
         let id = random_string::generate(KID_LENGTH, random_string::charsets::ALPHA);
         format!("{}:{}", id, kt)
     }
@@ -104,7 +104,7 @@ impl LocalKms {
 #[async_trait]
 impl Kms<KeyHandle> for LocalKms
 {
-    async fn create(&mut self, kt: &kms::KeyType, opts: kms::CreateOptions) -> Result<kms::KeyID, kms::Error> {
+    async fn create(&mut self, kt: kms::KeyType, opts: kms::CreateOptions) -> Result<kms::KeyID, kms::Error> {
         let key = match kt {
             kms::KeyType::Ed25519 => Ed25519::gen(),
             kms::KeyType::P256 => P256::gen(),
@@ -141,47 +141,11 @@ impl Kms<KeyHandle> for LocalKms
 
 #[cfg(test)]
 mod tests {
-    use crate::core_::crypto::{Key, Signer, Verifier};
-    use crate::core_::kms;
-    use crate::core_::kms::Kms;
-    use crate::impls::kms::inmem::{KID_LENGTH, LocalKms};
+    use crate::core_::kms::test_util::test_kms;
+    use crate::impls::kms::inmem::LocalKms;
 
     #[tokio::test]
     async fn e2e() {
-        let mut kms = LocalKms::new();
-
-        for kt in vec![kms::KeyType::Ed25519, kms::KeyType::P256] {
-            // Create a key
-            let create_res = kms.create(&kt, kms::CreateOptions {}).await;
-            assert!(create_res.is_ok());
-            let kid = create_res.unwrap();
-
-            // Check key type
-            assert_eq!(&kid[KID_LENGTH + 1..], &kt.to_string());
-
-            // Get a handle to the key
-            let get_res = kms.get(&kid).await;
-            assert!(get_res.is_ok());
-            let kh = get_res.unwrap();
-
-            // Sign using handle
-            let message = "abracadabra";
-
-            let s_res = kh.sign(message.as_bytes()).await;
-            assert!(s_res.is_ok());
-
-            let signature = s_res.unwrap();
-
-            // Verify using handle
-            let v_res = kh.verify(message.as_bytes(), &signature).await;
-            assert!(v_res.is_ok());
-
-            // Check JWK
-            assert_ne!(kh.jwk(), None);
-
-            // Print jwks
-            let jwk = kh.jwk().unwrap();
-            println!("JWK: {}", serde_json::to_string_pretty(&jwk).unwrap())
-        }
+        test_kms(LocalKms::new()).await;
     }
 }

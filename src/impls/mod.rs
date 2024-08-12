@@ -1,3 +1,5 @@
+#[cfg(feature = "askar")]
+pub mod askar;
 pub mod kms;
 pub mod crypto;
 pub mod vault;

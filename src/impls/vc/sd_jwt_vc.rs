@@ -248,8 +248,8 @@ mod tests {
 
         for kt in vec![kms::KeyType::Ed25519, kms::KeyType::P256] {
             // Initialization
-            let (_, i_kh) = kms.create_and_handle(&kt, kms::CreateOptions {}).await.unwrap();
-            let (_, h_kh) = kms.create_and_handle(&kt, kms::CreateOptions {}).await.unwrap();
+            let (_, i_kh) = kms.create_and_handle(kt.clone(), kms::CreateOptions {}).await.unwrap();
+            let (_, h_kh) = kms.create_and_handle(kt, kms::CreateOptions {}).await.unwrap();
 
             let claims = json!( {
                 "vct": "https://issuer.net/cred_schema",

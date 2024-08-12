@@ -9,8 +9,8 @@ use strum_macros::{Display, EnumString, IntoStaticStr};
 #[derive(Debug, thiserror::Error, IntoStaticStr)]
 #[non_exhaustive]
 pub enum Error {
-    #[error("key not supported")]
-    KeyNotSupported,
+    #[error("key not supported: {0}")]
+    KeyNotSupported(String),
     #[error("signing error: {0}")]
     Signature(String),
     #[error("verifying error: {0}")]
@@ -39,13 +39,13 @@ pub trait Verifier: Sync + Send {
 }
 
 pub trait Key: Sync + Send {
-    fn pub_key(&self) -> Vec<u8>;
+    fn pub_key(&self) -> Result<Vec<u8>, Error>;
 
     fn jwk(&self) -> Option<ssi::jwk::JWK>;
 }
 
 impl Key for Box<dyn Key> {
-    fn pub_key(&self) -> Vec<u8> {
+    fn pub_key(&self) -> Result<Vec<u8>, Error> {
         self.deref().pub_key()
     }
 
