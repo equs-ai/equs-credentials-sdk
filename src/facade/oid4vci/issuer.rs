@@ -17,13 +17,13 @@ use crate::impls::http::HttpClient;
 pub type Error = facade_oid4vc::Error;
 pub type Result<T> = facade_oid4vc::Result<T>;
 
-pub struct IssuerService {
-    oid4vci_issuer: Oid4VciIssuer,
+pub struct IssuerService<HC: HttpClient + 'static> {
+    oid4vci_issuer: Oid4VciIssuer<HC>,
     storage: Box<dyn Storage<String, serde_json::Value>>,
 }
 
 #[async_trait]
-impl facade_oid4vc::Issuer for IssuerService {
+impl<HC: HttpClient + 'static> facade_oid4vc::Issuer for IssuerService<HC> {
     fn create_credential_offer(
         &self,
         cred_def_ids: Vec<&str>,
@@ -72,11 +72,11 @@ impl facade_oid4vc::Issuer for IssuerService {
     }
 }
 
-impl IssuerService {
+impl<HC: HttpClient + 'static> IssuerService<HC> {
     pub fn from_issuer_metadata<KH>(
         kms: impl kms::Kms<KH> + 'static,
         storage: impl Storage<String, serde_json::Value> + 'static,
-        http_client: impl HttpClient + 'static,
+        http_client: HC,
         metadata: IssuerMetadata,
         did_url: String,
         kid: String,
@@ -140,7 +140,7 @@ impl IssuerService {
                     supported_proofs: proofs,
                     display: None,
                     protocol_data: Some(
-                        CredentialDefinitionData{
+                        CredentialDefinitionData {
                             disclosures,
                             lifetime: None,
                         }

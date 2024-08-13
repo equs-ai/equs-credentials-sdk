@@ -11,7 +11,6 @@ use crate::impls::did::UniversalResolver;
 
 pub struct HolderService {
     holder: Oid4VpHolder,
-    http_client: reqwest::Client,
 }
 
 impl HolderService {
@@ -36,13 +35,10 @@ impl HolderService {
             metadata,
             holder_low_level,
             UniversalResolver::new(),
-            http_client.clone(),
+            http_client,
         );
 
-        Self {
-            holder,
-            http_client,
-        }
+        Self { holder }
     }
 }
 
