@@ -1,34 +1,30 @@
+use std::marker::PhantomData;
+
 use async_trait::async_trait;
+use oid4vp::core::{
+    metadata::parameters::wallet::AuthorizationEndpoint,
+    object::ParsingErrorContext,
+    verifier::{request_signer::RequestSigner, Session},
+};
 use oid4vp::core::authorization_request::parameters::{
     Nonce, PresentationDefinition as PresentationDefinitionParameter, ResponseMode, ResponseType,
     ResponseUri,
 };
 use oid4vp::core::metadata::parameters::verifier::VpFormats;
 use oid4vp::core::metadata::WalletMetadata;
-use oid4vp::core::{
-    metadata::parameters::wallet::AuthorizationEndpoint,
-    object::ParsingErrorContext,
-    verifier::{request_signer::RequestSigner, Session},
-};
 use oid4vp::presentation_exchange::{ConstraintsField, PresentationDefinition};
 use serde_json::{Map, Value as Json};
-use ssi::{
-    did::Document,
-    did_resolve::{DocumentMetadata, ResolutionInputMetadata, ResolutionMetadata},
-    jwk::JWK,
-};
-use std::marker::PhantomData;
+use ssi::jwk::JWK;
 use url::Url;
 
-use crate::core_::crypto::SigningKey;
-use crate::core_::did::ResolveOptions;
-use crate::core_::kms::Kms;
 use crate::core_::{did::DIDResolver, kms::KeyHandle};
-use crate::exchange::oid4vc::oid4vp::error::Error;
+use crate::core_::crypto::SigningKey;
+use crate::core_::kms::Kms;
 use crate::exchange::oid4vc::oid4vp::{
-    verifier_profile::DefaultVerifierProfile, AuthorizationRequest, AuthorizationResponse,
+    AuthorizationRequest, AuthorizationResponse, verifier_profile::DefaultVerifierProfile,
     VerifierMetadata,
 };
+use crate::exchange::oid4vc::oid4vp::error::Error;
 use crate::facade::facade_low_level::{Presentation, Verifier as PresentationVerifier};
 use crate::impls::utils::json::find_json_element;
 
@@ -59,7 +55,7 @@ where
 {
     metadata: VerifierMetadata,
     kms: KM,
-    did_resolver: DIDResolverWrapper<D>,
+    did_resolver: D,
     presentation_verifier: PV,
     _marker: PhantomData<KH>,
 }
@@ -79,7 +75,7 @@ where
     ) -> Self {
         Self {
             metadata,
-            did_resolver: DIDResolverWrapper(did_resolver),
+            did_resolver,
             kms,
             presentation_verifier,
             _marker: Default::default(),
@@ -157,9 +153,9 @@ where
         let presentation_definition_parameter = PresentationDefinitionParameter::try_from(
             presentation_definition.clone(),
         )
-        .map_err(|err| {
-            Error::ParsingError(format!("Failed to parse presentation definition: {}", err))
-        })?;
+            .map_err(|err| {
+                Error::ParsingError(format!("Failed to parse presentation definition: {}", err))
+            })?;
 
         let verifier_key = self
             .kms
@@ -172,10 +168,6 @@ where
                 ))
             })?;
 
-        let jwk = verifier_key.jwk().ok_or_else(|| {
-            Error::InvalidKey("Failed to convert verifier key into JWK".to_string())
-        })?;
-
         let session = Session::builder(DefaultVerifierProfile, wallet_metadata.clone())
             .with_request_parameter(ResponseMode::DirectPost)
             .with_request_parameter(ResponseUri(response_uri))
@@ -185,8 +177,8 @@ where
             .with_request_parameter(presentation_definition_parameter)
             .with_did_client_id_and_resolver(
                 self.metadata.key_metadata.did_url.to_owned(),
-                SignerWrapper(verifier_key, jwk),
-                &self.did_resolver,
+                SignerWrapper::new(verifier_key)?,
+                self.did_resolver.as_spruce_resolver(),
             )
             .await
             .map_err(|err| Error::KeyResolutionFailed(format!("Failed to build session: {}", err)))?
@@ -279,48 +271,32 @@ where
     }
 }
 
-struct SignerWrapper<S: SigningKey + Clone>(S, JWK);
+struct SignerWrapper<S: SigningKey> {
+    signer: S,
+    key: JWK,
+}
 
-#[async_trait]
-impl<S: SigningKey + Clone> RequestSigner for SignerWrapper<S> {
-    fn alg(&self) -> &str {
-        self.0.alg().into()
-    }
+impl<S: SigningKey> SignerWrapper<S> {
+    fn new(signer: S) -> Result<SignerWrapper<S>, Error> {
+        let key = signer.jwk().ok_or(Error::InvalidKey("Failed to convert verifier key into JWK".to_string()))?;
 
-    fn jwk(&self) -> &JWK {
-        &self.1
-    }
-
-    async fn sign(&self, payload: &[u8]) -> Result<Vec<u8>, anyhow::Error> {
-        let signature = self.0.sign(payload).await.map_err(|err| err)?;
-        Ok(signature)
+        Ok(SignerWrapper { signer, key })
     }
 }
 
-struct DIDResolverWrapper<D: DIDResolver>(D);
-
 #[async_trait]
-impl<D: DIDResolver> ssi::did_resolve::DIDResolver for DIDResolverWrapper<D> {
-    async fn resolve(
-        &self,
-        did: &str,
-        input_metadata: &ResolutionInputMetadata,
-    ) -> (
-        ResolutionMetadata,
-        Option<Document>,
-        Option<DocumentMetadata>,
-    ) {
-        let resolution = self
-            .0
-            .resolve(
-                &did.to_string(),
-                ResolveOptions {
-                    input: input_metadata.clone(),
-                },
-            )
-            .await;
+impl<S: SigningKey> RequestSigner for SignerWrapper<S> {
+    fn alg(&self) -> &str {
+        self.signer.alg().into()
+    }
 
-        (resolution.metadata, resolution.doc, resolution.doc_metadata)
+    fn jwk(&self) -> &JWK {
+        &self.key
+    }
+
+    async fn sign(&self, payload: &[u8]) -> Result<Vec<u8>, anyhow::Error> {
+        let signature = self.signer.sign(payload).await?;
+        Ok(signature)
     }
 }
 
@@ -328,12 +304,12 @@ impl<D: DIDResolver> ssi::did_resolve::DIDResolver for DIDResolverWrapper<D> {
 mod tests {
     use serde_json::json;
 
+    use crate::exchange::oid4vc::oid4vp::{AuthorizationUrlType, default_wallet_metadata};
     use crate::exchange::oid4vc::oid4vp::test_utils::{
         crate_authorization_response, create_test_presentation_definition,
         create_test_verifier_metadata,
     };
     use crate::exchange::oid4vc::oid4vp::verifier::{ConcreteOid4VpVerifier, Oid4VpVerifier};
-    use crate::exchange::oid4vc::oid4vp::{default_wallet_metadata, AuthorizationUrlType};
     use crate::facade::facade_low_level::VerifierService;
     use crate::impls::did::didkey::DIDKey;
     use crate::impls::did::UniversalResolver;

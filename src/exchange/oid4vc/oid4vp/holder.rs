@@ -197,7 +197,7 @@ impl Oid4VpHolder {
     ) -> Result<AuthorizationResponse> {
         let mut prs_resp = PresentationResponse {
             vp_token: Default::default(),
-            presentation_submission: pres_sub
+            presentation_submission: pres_sub,
         };
 
         if presentations.len() == 1 {
@@ -230,7 +230,7 @@ impl Oid4VpHolder {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct PresentationResponse {
     vp_token: Value,
-    presentation_submission: PresentationSubmission
+    presentation_submission: PresentationSubmission,
 }
 
 pub type CredentialId = String;

@@ -42,5 +42,6 @@ pub trait DIDResolver: Send + Sync {
     async fn resolve(&self, did: &DID, options: ResolveOptions) -> Resolution;
 
     async fn resolve_verification_method(&self, did_url: &str) -> Result<VerificationMethodMap, Error>;
-}
 
+    fn as_spruce_resolver(&self) -> &dyn ssi::did::did_resolve::DIDResolver;
+}

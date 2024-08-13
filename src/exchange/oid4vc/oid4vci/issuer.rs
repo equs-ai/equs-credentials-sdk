@@ -24,35 +24,36 @@ const CRED_OFFER_URI: &str = "openid-credential-offer://";
 
 pub type TokenIntrospectionResponse = StandardTokenIntrospectionResponse<EmptyExtraTokenFields, BasicTokenType>;
 
-pub struct Oid4VciIssuer
+pub struct Oid4VciIssuer<HC: HttpClient + 'static>
 {
     issuer: Box<dyn Issuer>,
     issuer_metadata: IssuerMetadata,
     supported_cred_config_ids: Vec<String>,
-    http_client: Box<dyn HttpClient>,
+    http_client: HC,
     auth_server_admin_auth_header: Option<HeaderValue>,
     token_validation: bool,
 }
 
-impl Oid4VciIssuer {
+impl<HC: HttpClient + 'static> Oid4VciIssuer<HC> {
     pub fn new(
         issuer_metadata: IssuerMetadata,
         issuer: impl Issuer + 'static,
-        http_client: impl HttpClient + 'static,
+        http_client: HC,
         auth_server_admin_auth_header: Option<HeaderValue>,
         token_validation: bool,
     ) -> Self {
         let supported_cred_config_ids: Vec<String> = issuer_metadata
             .credential_configurations_supported()
-            .iter()
-            .map(|e| e.0.to_owned())
+            .keys()
+            .into_iter()
+            .map(|e| e.to_owned())
             .collect();
 
         Self {
             issuer: Box::new(issuer),
             issuer_metadata,
             supported_cred_config_ids,
-            http_client: Box::new(http_client),
+            http_client,
             auth_server_admin_auth_header,
             token_validation,
         }

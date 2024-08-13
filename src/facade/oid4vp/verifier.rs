@@ -1,18 +1,19 @@
 use async_trait::async_trait;
-use crate::core_::kms::{KeyHandle, Kms};
-use crate::core_::storage::Storage;
-use crate::exchange;
-use crate::exchange::oid4vc::oid4vp::verifier::{ConcreteOid4VpVerifier, Oid4VpVerifier};
-use crate::exchange::oid4vc::oid4vp::{
-    default_client_metadata, default_wallet_metadata, AuthorizationRequest, AuthorizationResponse,
-    KeyMetadata, PresentationDefinition, VerifierMetadata,
-};
-use crate::facade::facade_low_level::VerifierService as PresentationVerifier;
-use crate::impls::did::UniversalResolver;
 use serde::{Deserialize, Serialize};
 use serde_json::Value as Json;
 use url::Url;
+
+use crate::core_::kms::{KeyHandle, Kms};
+use crate::core_::storage::Storage;
+use crate::exchange;
+use crate::exchange::oid4vc::oid4vp::{
+    AuthorizationRequest, AuthorizationResponse, default_client_metadata, default_wallet_metadata,
+    KeyMetadata, PresentationDefinition, VerifierMetadata,
+};
+use crate::exchange::oid4vc::oid4vp::verifier::{ConcreteOid4VpVerifier, Oid4VpVerifier};
+use crate::facade::facade_low_level::VerifierService as PresentationVerifier;
 use crate::facade::facade_oid4vc::{Error, Result, Verifier};
+use crate::impls::did::UniversalResolver;
 
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
 struct StorageEntry {

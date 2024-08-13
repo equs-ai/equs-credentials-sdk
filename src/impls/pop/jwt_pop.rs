@@ -4,7 +4,7 @@ use ssi::jwk::JWK;
 
 use crate::core_::{crypto, pop, vc};
 use crate::core_::crypto::{Signer, SigningKey};
-use crate::core_::did::DIDURL;
+use crate::core_::did::{DIDResolver, DIDURL};
 use crate::core_::pop::{Error, GenerateOptions, VerifyOptions};
 use crate::core_::vc::Nonce;
 use crate::impls;
@@ -49,7 +49,7 @@ impl pop::ProofOfPossession<vc::JWTRaw> for JwtProofOfPossession {
     async fn verify(proof: vc::JWTRaw, nonce: Nonce, opts: VerifyOptions) -> Result<(DIDURL, Box<dyn crypto::Key>), Error> {
         let resolver = impls::did::UniversalResolver::new();
 
-        let pop = ProofOfPossession::from_jwt(proof.as_str(), &resolver).await
+        let pop = ProofOfPossession::from_jwt(proof.as_str(), resolver.as_spruce_resolver()).await
             .map_err(|e| Error::Parsing(e.to_string()))?;
 
         let verification = pop.verify(&ProofOfPossessionVerificationParams {

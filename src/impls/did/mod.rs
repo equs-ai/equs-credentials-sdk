@@ -1,6 +1,6 @@
 use async_trait::async_trait;
-use ssi::did::{DIDMethods, Document, Resource, VerificationMethod};
-use ssi::did_resolve::{Content, dereference, DereferencingInputMetadata, DIDResolver as Resolver, DocumentMetadata, ResolutionInputMetadata, ResolutionMetadata};
+use ssi::did::{DIDMethods, Resource, VerificationMethod};
+use ssi::did_resolve::{Content, dereference, DereferencingInputMetadata, DIDResolver as SpruceResolver};
 
 use crate::core_::did::{DID, DIDResolver, Error, Resolution, ResolveOptions, VerificationMethodMap};
 
@@ -29,17 +29,13 @@ impl DIDResolver for UniversalResolver {
     async fn resolve_verification_method(&self, did_url: &str) -> Result<VerificationMethodMap, Error> {
         resolve_verification_method(self.impls.to_resolver(), did_url).await
     }
-}
 
-// for internal spruce usage
-#[async_trait]
-impl ssi::did::did_resolve::DIDResolver for UniversalResolver {
-    async fn resolve(&self, did: &str, input_metadata: &ResolutionInputMetadata) -> (ResolutionMetadata, Option<Document>, Option<DocumentMetadata>) {
-        self.impls.resolve(did, input_metadata).await
+    fn as_spruce_resolver(&self) -> &dyn SpruceResolver {
+        self.impls.to_resolver()
     }
 }
 
-async fn resolve_verification_method(resolver: &dyn ssi::did::did_resolve::DIDResolver, did_url: &str) -> Result<VerificationMethodMap, Error> {
+async fn resolve_verification_method(resolver: &dyn SpruceResolver, did_url: &str) -> Result<VerificationMethodMap, Error> {
     let (_, content, _) = dereference(resolver, did_url, &DereferencingInputMetadata::default()).await;
 
     let vm = match content {
