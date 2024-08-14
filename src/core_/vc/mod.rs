@@ -7,6 +7,13 @@ use serde::{Deserialize, Serialize};
 use crate::core_::{crypto, did};
 use crate::core_::did::DIDURL;
 
+pub const JWT_VC_JSON: &str = "jwt_vc_json";
+pub const JWT_VC_JSON_LD: &str = "jwt_vc_json-ld";
+pub const LDP_VC: &str = "ldp_vc";
+pub const SD_JWT_VC: &str = "vc+sd-jwt";
+pub const JWT_VP: &str = "jwt_vp";
+pub const LDP_VP: &str = "ldp_vp";
+
 // VC formats
 #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
 #[non_exhaustive]
@@ -20,10 +27,10 @@ pub enum VCFormat {
 impl Into<&'static str> for &VCFormat {
     fn into(self) -> &'static str {
         match self {
-            VCFormat::JwtVcJson => "jwt_vc_json",
-            VCFormat::JwtVcJsonLD => "jwt_vc_json-ld",
-            VCFormat::LdpVc => "ldp_vc",
-            VCFormat::SdJwtVc => "vc+sd-jwt",
+            VCFormat::JwtVcJson => JWT_VC_JSON,
+            VCFormat::JwtVcJsonLD => JWT_VC_JSON_LD,
+            VCFormat::LdpVc => LDP_VC,
+            VCFormat::SdJwtVc => SD_JWT_VC,
         }
     }
 }
@@ -40,10 +47,10 @@ impl FromStr for VCFormat {
 
     fn from_str(s: &str) -> Result<VCFormat> {
         match s {
-            "jwt_vc_json" => Ok(VCFormat::JwtVcJson),
-            "jwt_vc_json-ld" => Ok(VCFormat::JwtVcJsonLD),
-            "ldp_vc" => Ok(VCFormat::LdpVc),
-            "vc+sd-jwt" => Ok(VCFormat::SdJwtVc),
+            JWT_VC_JSON => Ok(VCFormat::JwtVcJson),
+            JWT_VC_JSON_LD => Ok(VCFormat::JwtVcJsonLD),
+            LDP_VC => Ok(VCFormat::LdpVc),
+            SD_JWT_VC => Ok(VCFormat::SdJwtVc),
             _ => Err(Error::FormatNotSupported),
         }
     }
@@ -59,18 +66,11 @@ pub enum VPFormat {
 impl Into<&'static str> for VPFormat {
     fn into(self) -> &'static str {
         match self {
-            VPFormat::JwtVp => "jwt_vp",
-            VPFormat::LdpVp => "ldp_vp",
+            VPFormat::JwtVp => JWT_VP,
+            VPFormat::LdpVp => LDP_VP,
         }
     }
 }
-
-pub const JWT_VC_JSON: &str = "jwt_vc_json";
-pub const JWT_VC_JSON_LD: &str = "jwt_vc_json-ld";
-pub const LDP_VC: &str = "ldp_vc";
-pub const SD_JWT_VC: &str = "vc+sd-jwt";
-pub const JWT_VP: &str = "jwt_vp";
-pub const LDP_VP: &str = "ldp_vp";
 
 pub mod jwt_vc_json;
 pub mod ldp_vc;

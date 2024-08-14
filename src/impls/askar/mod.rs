@@ -1,11 +1,13 @@
 pub mod kms;
+pub mod vault;
 
-use aries_askar::kms::LocalKey;
+use crate::impls::askar::vault::AskarVault;
 use aries_askar::storage::KdfMethod;
 use aries_askar::{Error, PassKey, Store, StoreKeyMethod};
+use kms::AskarKms;
 
-#[derive(Debug, Clone)]
-pub struct AskarStorage(Store, Option<String>);
+#[derive(Debug)]
+pub struct AskarStorage(Store);
 
 const IN_MEMORY_DB_URL: &str = "sqlite://:memory:";
 
@@ -23,7 +25,7 @@ impl AskarStorage {
         )
         .await?;
 
-        Ok(AskarStorage(store, profile))
+        Ok(AskarStorage(store))
     }
 
     pub async fn open(pass_key: &str, profile: Option<String>) -> Result<AskarStorage, Error> {
@@ -38,28 +40,45 @@ impl AskarStorage {
         )
         .await?;
 
-        Ok(AskarStorage(store, profile))
+        Ok(AskarStorage(store))
     }
 
-    pub async fn close(&self) -> Result<(), Error> {
-        self.0.to_owned().close().await
+    pub fn kms(&self) -> AskarKms {
+        AskarKms::new(self.0.clone())
     }
 
-    pub(crate) async fn insert_key(&self, key_id: &str, key: &LocalKey) -> Result<(), Error> {
-        let mut session = self.0.session(self.1.clone()).await?;
-        session.insert_key(key_id, &key, None, None, None).await?;
-        session.commit().await?;
-
-        Ok(())
+    pub fn vault(&self) -> AskarVault {
+        AskarVault::new(self.0.clone())
     }
 
-    pub(crate) async fn get_key(&self, key_id: &str) -> Result<Option<LocalKey>, Error> {
-        let mut session = self.0.session(self.1.clone()).await?;
+    pub async fn close(self) -> Result<(), Error> {
+        self.0.close().await
+    }
+}
 
-        session
-            .fetch_key(key_id, false)
-            .await?
-            .map(|key_entry| key_entry.load_local_key())
-            .transpose()
+#[cfg(test)]
+mod tests {
+    use crate::core_::kms::test_util::test_kms;
+    use crate::core_::vault::test_util::test_vault;
+    use crate::impls::askar::AskarStorage;
+
+    #[tokio::test]
+    async fn test_askar_kms() {
+        let storage = AskarStorage::create("sEcrEt", Some("Askar-Wallet".to_string()))
+            .await
+            .unwrap();
+        let kms = storage.kms();
+        test_kms(kms).await;
+        storage.close().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_askar_vault() {
+        let storage = AskarStorage::create("sEcrEt", Some("Askar-Wallet".to_string()))
+            .await
+            .unwrap();
+        let vault = storage.vault();
+        test_vault(vault).await;
+        storage.close().await.unwrap();
     }
 }
