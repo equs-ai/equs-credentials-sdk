@@ -405,7 +405,7 @@ impl<KH: kms::KeyHandle + 'static> Holder for HolderService<KH> {
         let criteria = self.resolve_find_criteria(presentation_input)?;
         let credentials = self.vault.find_credentials(criteria).await?;
 
-        Ok(credentials.into_iter().cloned().collect())
+        Ok(credentials.into_iter().collect())
     }
 
     async fn create_presentation(

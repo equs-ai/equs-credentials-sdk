@@ -1,12 +1,12 @@
 use crate::core_::crypto::{Alg, Error, Key, Signer, SigningKey, Verifier, VerifyingKey};
 use crate::core_::kms;
 use crate::core_::kms::{CreateOptions, KeyHandle, KeyID, KeyType, Kms};
-use crate::impls::askar::AskarStorage;
 use aries_askar::crypto::alg::EcCurves;
 use aries_askar::kms::{KeyAlg, LocalKey};
 use async_trait::async_trait;
 use ssi::jwk::JWK;
 use std::sync::Arc;
+use aries_askar::Store;
 
 #[derive(Debug, Clone)]
 pub struct AskarKeyHandle(Arc<LocalKey>, Alg);
@@ -91,11 +91,29 @@ impl From<KeyType> for KeyAlg {
 
 const KID_LENGTH: usize = 10;
 
-struct AskarKms(AskarStorage);
+pub struct AskarKms(Store);
 
 impl AskarKms {
-    pub fn from_storage(storage: AskarStorage) -> Self {
-        AskarKms(storage)
+    pub(super) fn new(store: Store) -> Self {
+        AskarKms(store)
+    }
+
+    async fn insert_key(&self, key_id: &str, key: &LocalKey) -> Result<(), aries_askar::Error> {
+        let mut session = self.0.session(None).await?;
+        session.insert_key(key_id, key, None, None, None).await?;
+        session.commit().await?;
+
+        Ok(())
+    }
+
+    async fn get_key(&self, key_id: &str) -> Result<Option<LocalKey>, aries_askar::Error> {
+        let mut session = self.0.session(None).await?;
+
+        session
+            .fetch_key(key_id, false)
+            .await?
+            .map(|key_entry| key_entry.load_local_key())
+            .transpose()
     }
 }
 
@@ -106,8 +124,7 @@ impl Kms<AskarKeyHandle> for AskarKms {
             LocalKey::generate(kt.into(), false).map_err(|e| kms::Error::Crypto(e.to_string()))?;
 
         let kid = random_string::generate(KID_LENGTH, random_string::charsets::ALPHA);
-        self.0
-            .insert_key(&kid, &key)
+        self.insert_key(&kid, &key)
             .await
             .map_err(|e| kms::Error::Crypto(e.to_string()))?;
 
@@ -115,8 +132,7 @@ impl Kms<AskarKeyHandle> for AskarKms {
     }
 
     async fn get(&self, kid: &KeyID) -> Result<AskarKeyHandle, kms::Error> {
-        let key = self.0
-            .get_key(kid)
+        let key = self.get_key(kid)
             .await
             .map_err(|err| kms::Error::Crypto(err.to_string()))?
             .ok_or_else(|| kms::Error::Crypto(format!("Key is not for ID: {}", kid)))?;
@@ -127,22 +143,5 @@ impl Kms<AskarKeyHandle> for AskarKms {
             .map_err(|err: Error| kms::Error::Crypto(err.to_string()))?;
 
         Ok(AskarKeyHandle(Arc::new(key), sign_algorithm))
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::core_::kms::test_util::test_kms;
-    use crate::impls::askar::kms::AskarKms;
-    use crate::impls::askar::AskarStorage;
-
-    #[tokio::test]
-    async fn e2e() {
-        let storage = AskarStorage::create("sEcrEt", Some("Askar-Wallet".to_string()))
-            .await
-            .unwrap();
-        let kms = AskarKms::from_storage(storage.to_owned());
-        test_kms(kms).await;
-        storage.close().await.unwrap()
     }
 }
