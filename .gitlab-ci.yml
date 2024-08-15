@@ -1,0 +1,12 @@
+stages:
+  - test
+
+test-job:
+  stage: test
+  image: rust:latest
+  script:
+    - cargo test --verbose
+  only:
+    - merge_requests
+    - main
+    - feature/ASDK-82
