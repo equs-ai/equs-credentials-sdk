@@ -1,5 +1,6 @@
 use std::fmt::{Display, Formatter};
 use std::str::FromStr;
+
 use async_trait::async_trait;
 use oid4vci::openidconnect;
 use serde::{Deserialize, Serialize};
@@ -170,7 +171,7 @@ where
                              holder_data: (&DIDURL, K),
                              metadata: CM) -> Result<C>
     where
-        S: crypto::Signer + 'static,
+        S: crypto::Signer,
         K: crypto::Key,
     ;
 
@@ -179,7 +180,7 @@ where
                           nonce: Nonce, verifier_id: &str,
                           metadata: PM) -> Result<P>
     where
-        S: crypto::Signer + 'static
+        S: crypto::Signer
     ;
 
     async fn verify_vp(presentation: &P,

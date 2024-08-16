@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+
 use async_trait::async_trait;
 use futures::executor;
 use jsonwebtoken::{DecodingKey, Header};
@@ -18,14 +19,12 @@ use crate::impls::utils;
 use crate::impls::utils::b64;
 use crate::impls::utils::serde::Helpers;
 
-pub struct SignerWrapper {
-    signer: Box<dyn Signer>,
+pub struct SignerWrapper<S: Signer> {
+    signer: S,
 }
 
-impl SignerWrapper {}
-
 #[async_trait]
-impl sd_jwt_rs::signer::SDJWTSigner for SignerWrapper {
+impl<S: Signer> sd_jwt_rs::signer::SDJWTSigner for SignerWrapper<S> {
     fn algorithm(&self) -> &str {
         let alg = self.signer.alg();
         alg.into()
@@ -155,13 +154,13 @@ impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata, Value> for Sd
                              holder_data: (&DIDURL, K),
                              metadata: VCMetadata) -> Result<Credential>
     where
-        S: Signer + 'static,
+        S: Signer,
         K: Key,
     {
         let (iss_did, signer) = issuer_data;
         let (hld_did, hld_key) = holder_data;
 
-        let sgn_wrapper = SignerWrapper { signer: Box::new(signer) };
+        let sgn_wrapper = SignerWrapper { signer };
 
         let claims = SdJwtAPI::prepare_claims(claims, iss_did, hld_did, &metadata);
         let headers = SdJwtAPI::extra_headers();
@@ -174,7 +173,7 @@ impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata, Value> for Sd
             .map(|d| d.as_str())
             .collect();
 
-        let mut issuer = SDJWTIssuer::new(Box::new(sgn_wrapper));
+        let mut issuer = SDJWTIssuer::new(sgn_wrapper);
         let res = issuer.issue_sd_jwt(
             claims,
             ClaimsForSelectiveDisclosureStrategy::Custom(disclosures),
@@ -192,10 +191,10 @@ impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata, Value> for Sd
                           nonce: Nonce, verifier_id: &str,
                           metadata: VPMetadata) -> Result<Presentation>
     where
-        S: Signer + 'static,
+        S: Signer,
     {
         let (_, signer) = holder_data;
-        let sgn_wrapper = SignerWrapper { signer: Box::new(signer) };
+        let sgn_wrapper = SignerWrapper { signer };
 
         let mut holder = SDJWTHolder::new(credential.to_owned(), SDJWTSerializationFormat::Compact)
             .map_err(|e| Error::Parsing(e.to_string()))?;
@@ -204,7 +203,7 @@ impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata, Value> for Sd
             metadata.disclosures,
             Some(nonce.secret().to_owned()),
             Some(verifier_id.to_string()),
-            Some(Box::new(sgn_wrapper)),
+            Some(sgn_wrapper),
         ).await.map_err(|e| Error::Presentation(e.to_string()))?;
 
         Ok(presentation)

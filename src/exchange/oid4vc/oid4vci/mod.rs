@@ -59,13 +59,3 @@ impl Into<CoreProfilesResponse> for vc::Credential {
         }
     }
 }
-
-pub fn credential_profile_metadata_format(profile: &CoreProfilesMetadata) -> String {
-    match profile {
-        CoreProfilesMetadata::SDJWTVC(_) => { "vc+sd-jwt".to_string() }
-        CoreProfilesMetadata::JWTVC(_) => { "jwt_vc_json".to_string() }
-        CoreProfilesMetadata::JWTLDVC(_) => { "jwt_vc_json-ld".to_string() }
-        CoreProfilesMetadata::LDVC(_) => { " ldp_vc".to_string() }
-        CoreProfilesMetadata::ISOmDL(_) => { "mso_mdoc".to_string() }
-    }
-}

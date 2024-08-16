@@ -3,7 +3,7 @@ use oid4vci::proof_of_possession::{ProofOfPossession, ProofOfPossessionControlle
 use ssi::jwk::JWK;
 
 use crate::core_::{crypto, pop, vc};
-use crate::core_::crypto::{Signer, SigningKey};
+use crate::core_::crypto::SigningKey;
 use crate::core_::did::{DIDResolver, DIDURL};
 use crate::core_::pop::{Error, GenerateOptions, VerifyOptions};
 use crate::core_::vc::Nonce;
@@ -11,14 +11,14 @@ use crate::impls;
 
 pub struct JwtProofOfPossession {}
 
-pub struct SignerWrapper {
-    signer: Box<dyn Signer>,
+pub struct SignerWrapper<S: SigningKey> {
+    key: S,
 }
 
 #[async_trait]
-impl oid4vci::proof_of_possession::Signer for SignerWrapper {
+impl<S: SigningKey> oid4vci::proof_of_possession::Signer for SignerWrapper<S> {
     async fn sign(&self, data: &[u8]) -> Result<Vec<u8>, ssi::jws::Error> {
-        self.signer.sign(data).await.map_err(|e| ssi::jws::Error::InvalidSignature)
+        self.key.sign(data).await.map_err(|e| ssi::jws::Error::InvalidSignature)
     }
 }
 
@@ -26,7 +26,7 @@ impl oid4vci::proof_of_possession::Signer for SignerWrapper {
 impl pop::ProofOfPossession<vc::JWTRaw> for JwtProofOfPossession {
     async fn generate<S>(did_url: &DIDURL, key: S, nonce: Nonce, opts: GenerateOptions) -> Result<vc::JWTRaw, Error>
     where
-        S: SigningKey + 'static,
+        S: SigningKey,
     {
         let params = &ProofOfPossessionParams {
             audience: opts.cred_iss_id.clone(),
@@ -34,6 +34,7 @@ impl pop::ProofOfPossession<vc::JWTRaw> for JwtProofOfPossession {
             nonce: Some(nonce),
             controller: ProofOfPossessionController {
                 vm: Some(did_url.to_owned()),
+                // TODO: error handling
                 jwk: key.jwk().unwrap(),
             },
         };
@@ -41,7 +42,7 @@ impl pop::ProofOfPossession<vc::JWTRaw> for JwtProofOfPossession {
 
         let pop = ProofOfPossession::generate(params, exp);
 
-        let sgn = SignerWrapper { signer: Box::new(key) };
+        let sgn = SignerWrapper { key };
 
         pop.to_jwt_with_signer(sgn).await.map_err(|e| Error::Conversion(e.to_string()))
     }

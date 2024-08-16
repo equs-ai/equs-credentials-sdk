@@ -24,9 +24,12 @@ const CRED_OFFER_URI: &str = "openid-credential-offer://";
 
 pub type TokenIntrospectionResponse = StandardTokenIntrospectionResponse<EmptyExtraTokenFields, BasicTokenType>;
 
-pub struct Oid4VciIssuer<HC: HttpClient + 'static>
+pub struct Oid4VciIssuer<HC, IS>
+where
+    HC: HttpClient,
+    IS: Issuer,
 {
-    issuer: Box<dyn Issuer>,
+    issuer: IS,
     issuer_metadata: IssuerMetadata,
     supported_cred_config_ids: Vec<String>,
     http_client: HC,
@@ -34,10 +37,14 @@ pub struct Oid4VciIssuer<HC: HttpClient + 'static>
     token_validation: bool,
 }
 
-impl<HC: HttpClient + 'static> Oid4VciIssuer<HC> {
+impl<HC, IS> Oid4VciIssuer<HC, IS>
+where
+    HC: HttpClient,
+    IS: Issuer,
+{
     pub fn new(
         issuer_metadata: IssuerMetadata,
-        issuer: impl Issuer + 'static,
+        issuer: IS,
         http_client: HC,
         auth_server_admin_auth_header: Option<HeaderValue>,
         token_validation: bool,
@@ -50,7 +57,7 @@ impl<HC: HttpClient + 'static> Oid4VciIssuer<HC> {
             .collect();
 
         Self {
-            issuer: Box::new(issuer),
+            issuer,
             issuer_metadata,
             supported_cred_config_ids,
             http_client,
@@ -112,7 +119,7 @@ impl<HC: HttpClient + 'static> Oid4VciIssuer<HC> {
         if self.token_validation {
             let _ = self.validate_token(&token, auth_server_url).await;
         }
-        
+
         if cred_request.proof().is_none() {
             return Err(Error::ProofVerification(ProofVerificationBody {
                 error: "Empty proof".to_string(),

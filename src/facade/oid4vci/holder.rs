@@ -3,6 +3,7 @@ use oauth2::TokenResponse as _TokenResponse;
 use url::Url;
 
 use crate::exchange::oid4vc::oid4vci::holder::{AuthzOption, Oid4VciHolder};
+use crate::facade::facade_low_level::Holder;
 use crate::facade::facade_oid4vc;
 use crate::facade::facade_oid4vc::{Credential, CredentialMetadata, CredentialResult, IssuerMetadata, TokenResponse};
 use crate::impls::http::HttpClient;
@@ -10,18 +11,30 @@ use crate::impls::http::HttpClient;
 pub type Error = facade_oid4vc::Error;
 pub type Result<T> = facade_oid4vc::Result<T>;
 
-pub struct HolderService<HC: HttpClient + 'static> {
-    holder: Oid4VciHolder<HC>,
+pub struct HolderService<HC, HL>
+where
+    HC: HttpClient,
+    HL: Holder,
+{
+    holder: Oid4VciHolder<HC, HL>,
 }
 
-impl<HC: HttpClient> HolderService<HC> {
-    pub fn new(holder: Oid4VciHolder<HC>) -> Self {
+impl<HC, HL> HolderService<HC, HL>
+where
+    HC: HttpClient,
+    HL: Holder,
+{
+    pub fn new(holder: Oid4VciHolder<HC, HL>) -> Self {
         Self { holder }
     }
 }
 
 #[async_trait]
-impl<HC: HttpClient + 'static> facade_oid4vc::HolderVci for HolderService<HC> {
+impl<HC, HL> facade_oid4vc::HolderVci for HolderService<HC, HL>
+where
+    HC: HttpClient,
+    HL: Holder,
+{
     fn get_issuer_metadata(&self) -> IssuerMetadata {
         self.holder.get_issuer_metadata()
     }

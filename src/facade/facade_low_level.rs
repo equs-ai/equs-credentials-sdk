@@ -1,14 +1,13 @@
 use std::collections::HashMap;
+use std::marker::PhantomData;
 use std::str::FromStr;
 
 use async_trait::async_trait;
 
-use crate::core_::{crypto, did, kms, pop, vault, vc};
-use crate::core_::crypto::Signer;
+use crate::core_::{did, kms, pop, vault, vc};
 use crate::core_::pop::ProofOfPossession as PopAPI;
 use crate::core_::vault::FindCriteria;
 use crate::core_::vc::{API, VerifyOptions};
-use crate::exchange;
 use crate::impls::pop::jwt_pop::JwtProofOfPossession;
 use crate::impls::vc::sd_jwt_vc::{SdJwtAPI, VCMetadata, VPMetadata};
 
@@ -23,8 +22,7 @@ pub struct IssuerMetadata {
 }
 
 #[derive(Debug, PartialEq, Clone)]
-pub enum IssuerMetadataData {
-    Oidc4Vc(exchange::oid4vc::oid4vci::IssuerMetadata)
+pub struct IssuerMetadataData {
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -193,13 +191,22 @@ pub trait Verifier: Send + Sync
 
 // Issuer
 
-pub struct IssuerService<KH: kms::KeyHandle + 'static> {
-    kms: Box<dyn kms::Kms<KH>>,
+pub struct IssuerService<KH, KMS>
+where
+    KH: kms::KeyHandle,
+    KMS: kms::Kms<KH>,
+{
+    kms: KMS,
     metadata: IssuerMetadata,
+    _marker: PhantomData<KH>,
 }
 
 #[async_trait]
-impl<KH: kms::KeyHandle + 'static> Issuer for IssuerService<KH> {
+impl<KH, KMS> Issuer for IssuerService<KH, KMS>
+where
+    KH: kms::KeyHandle,
+    KMS: kms::Kms<KH>,
+{
     fn offer_credential(
         &self,
         cred_def_id: &str,
@@ -272,9 +279,13 @@ impl<KH: kms::KeyHandle + 'static> Issuer for IssuerService<KH> {
     }
 }
 
-impl<KH: kms::KeyHandle + 'static> IssuerService<KH> {
-    pub fn new(kms: impl kms::Kms<KH> + 'static, metadata: IssuerMetadata) -> Self {
-        Self { kms: Box::new(kms), metadata }
+impl<KH, KMS> IssuerService<KH, KMS>
+where
+    KH: kms::KeyHandle,
+    KMS: kms::Kms<KH>,
+{
+    pub fn new(kms: KMS, metadata: IssuerMetadata) -> Self {
+        Self { kms, metadata, _marker: Default::default() }
     }
 
     fn sd_jwt_vc_metadata(&self, protocol_data: &Option<CredentialDefinitionData>) -> Result<VCMetadata> {
@@ -316,7 +327,7 @@ impl<KH: kms::KeyHandle + 'static> IssuerService<KH> {
         Ok((fmt, proof))
     }
 
-    async fn resolve_key_metadata(&self, cred_def: &CredentialDefinition) -> Result<(did::DIDURL, impl Signer)> {
+    async fn resolve_key_metadata(&self, cred_def: &CredentialDefinition) -> Result<(did::DIDURL, KH)> {
         let key_meta = match &cred_def.key_metadata {
             Some(m) => m,
             None => &self.metadata.key_metadata,
@@ -331,14 +342,25 @@ impl<KH: kms::KeyHandle + 'static> IssuerService<KH> {
 
 // Holder
 
-pub struct HolderService<KH: kms::KeyHandle + 'static> {
-    kms: Box<dyn kms::Kms<KH>>,
-    vault: Box<dyn vault::Vault>,
+pub struct HolderService<KH, KMS, V>
+where
+    KMS: kms::Kms<KH>,
+    KH: kms::KeyHandle,
+    V: vault::Vault,
+{
+    kms: KMS,
+    vault: V,
     metadata: HolderMetadata,
+    _marker: PhantomData<KH>,
 }
 
 #[async_trait]
-impl<KH: kms::KeyHandle + 'static> Holder for HolderService<KH> {
+impl<KH, KMS, V> Holder for HolderService<KH, KMS, V>
+where
+    KMS: kms::Kms<KH>,
+    KH: kms::KeyHandle,
+    V: vault::Vault,
+{
     async fn request_credential(
         &self,
         credential_offer: &CredentialOffer,
@@ -434,9 +456,14 @@ impl<KH: kms::KeyHandle + 'static> Holder for HolderService<KH> {
     }
 }
 
-impl<KH: kms::KeyHandle + 'static> HolderService<KH> {
-    pub fn new(kms: impl kms::Kms<KH> + 'static, vault: impl vault::Vault + 'static, metadata: HolderMetadata) -> Self {
-        Self { kms: Box::new(kms), vault: Box::new(vault), metadata }
+impl<KH, KMS, V> HolderService<KH, KMS, V>
+where
+    KMS: kms::Kms<KH>,
+    KH: kms::KeyHandle,
+    V: vault::Vault,
+{
+    pub fn new(kms: KMS, vault: V, metadata: HolderMetadata) -> Self {
+        Self { kms, vault, metadata, _marker: Default::default() }
     }
 
     fn resolve_cred_offer(&self, credential_offer: &CredentialOffer) -> Result<(String, Vec<String>)> {
@@ -463,7 +490,7 @@ impl<KH: kms::KeyHandle + 'static> HolderService<KH> {
         Ok(pop_fmt)
     }
 
-    async fn resolve_key_metadata(&self) -> Result<(did::DIDURL, impl crypto::SigningKey)> {
+    async fn resolve_key_metadata(&self) -> Result<(did::DIDURL, KH)> {
         let key_meta = &self.metadata.key_metadata;
         let did_url = did::DIDURL::from_str(&key_meta.did_url).unwrap();
         let kh = self.kms.get(&key_meta.kid).await.unwrap();
@@ -491,7 +518,6 @@ pub struct VerifierService {
 
 #[async_trait]
 impl Verifier for VerifierService {
-    // Step 6.
     async fn verify_presentation(
         &self,
         nonce: &str, // same as in create_presentation
