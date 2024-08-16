@@ -4,6 +4,8 @@ stages:
 test-job:
   stage: test
   image: rust:latest
+  before_script:
+    - sed -i 's|ssh://git@git.slock.it/|https://:$CI_ACCESS_TOKEN@git.slock.it/|' Cargo.toml
   script:
     - cargo test --verbose
   only:
