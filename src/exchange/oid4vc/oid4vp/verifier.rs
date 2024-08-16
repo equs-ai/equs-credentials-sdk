@@ -25,7 +25,7 @@ use crate::exchange::oid4vc::oid4vp::{
     VerifierMetadata,
 };
 use crate::exchange::oid4vc::oid4vp::error::Error;
-use crate::facade::facade_low_level::{Presentation, Verifier as PresentationVerifier};
+use crate::facade::facade_low_level::{Presentation, Verifier};
 use crate::impls::utils::json::find_json_element;
 
 #[async_trait]
@@ -46,32 +46,32 @@ pub trait Oid4VpVerifier: Send + Sync {
     ) -> Result<Json, Error>;
 }
 
-pub struct ConcreteOid4VpVerifier<KH, KM, D, PV>
+pub struct ConcreteOid4VpVerifier<KH, KMS, D, VF>
 where
     KH: KeyHandle,
-    KM: Kms<KH>,
+    KMS: Kms<KH>,
     D: DIDResolver,
-    PV: PresentationVerifier,
+    VF: Verifier,
 {
     metadata: VerifierMetadata,
-    kms: KM,
+    kms: KMS,
     did_resolver: D,
-    presentation_verifier: PV,
+    presentation_verifier: VF,
     _marker: PhantomData<KH>,
 }
 
-impl<KH, KM, D, PV> ConcreteOid4VpVerifier<KH, KM, D, PV>
+impl<KH, KMS, D, VF> ConcreteOid4VpVerifier<KH, KMS, D, VF>
 where
-    KM: Kms<KH>,
+    KMS: Kms<KH>,
     KH: KeyHandle,
     D: DIDResolver,
-    PV: PresentationVerifier,
+    VF: Verifier,
 {
     pub fn new(
         metadata: VerifierMetadata,
-        kms: KM,
+        kms: KMS,
         did_resolver: D,
-        presentation_verifier: PV,
+        presentation_verifier: VF,
     ) -> Self {
         Self {
             metadata,
@@ -134,12 +134,12 @@ where
 }
 
 #[async_trait]
-impl<KH, KM, D, PV> Oid4VpVerifier for ConcreteOid4VpVerifier<KH, KM, D, PV>
+impl<KH, KMS, D, VF> Oid4VpVerifier for ConcreteOid4VpVerifier<KH, KMS, D, VF>
 where
     KH: KeyHandle,
-    KM: Kms<KH>,
+    KMS: Kms<KH>,
     D: DIDResolver,
-    PV: PresentationVerifier,
+    VF: Verifier,
 {
     async fn authorization_request(
         &self,

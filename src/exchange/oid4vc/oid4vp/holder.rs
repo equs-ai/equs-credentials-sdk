@@ -27,18 +27,26 @@ use crate::exchange::oid4vc::oid4vp::default_wallet_metadata;
 use crate::facade::facade_low_level;
 use crate::facade::facade_low_level::{Holder, Presentation, PresentationInput};
 
-pub struct Oid4VpHolder {
-    holder: Box<dyn Holder>,
+pub struct Oid4VpHolder<HL, D>
+where
+    HL: Holder,
+    D: DIDResolver,
+{
+    holder: HL,
+    did_resolver: D,
     metadata: WalletMetadata,
-    did_resolver: Box<dyn DIDResolver>,
     http_client: reqwest::Client,
 }
 
-impl Oid4VpHolder {
+impl<HL, D> Oid4VpHolder<HL, D>
+where
+    HL: Holder,
+    D: DIDResolver,
+{
     pub fn new(
         metadata: Option<WalletMetadata>,
-        holder: impl Holder + 'static,
-        did_resolver: impl DIDResolver + 'static,
+        holder: HL,
+        did_resolver: D,
         http_client: reqwest::Client,
     ) -> Self {
         let metadata = if let Some(metadata) = metadata {
@@ -48,9 +56,9 @@ impl Oid4VpHolder {
         };
 
         Self {
-            holder: Box::new(holder),
+            holder,
             metadata,
-            did_resolver: Box::new(did_resolver),
+            did_resolver,
             http_client,
         }
     }
@@ -321,7 +329,11 @@ pub type Result<T> = core::result::Result<T, Error>;
 type Result_<T> = core::result::Result<T, anyhow::Error>;
 
 #[async_trait]
-impl profile::Profile for Oid4VpHolder {
+impl<HL, D> profile::Profile for Oid4VpHolder<HL, D>
+where
+    HL: Holder,
+    D: DIDResolver,
+{
     type CredentialFormat = CoreCredentialFormat;
 
     async fn validate_request(
@@ -350,14 +362,22 @@ impl profile::Profile for Oid4VpHolder {
 }
 
 #[async_trait]
-impl profile::Wallet for Oid4VpHolder {
+impl<HL, D> profile::Wallet for Oid4VpHolder<HL, D>
+where
+    HL: Holder,
+    D: DIDResolver,
+{
     fn wallet_metadata(&self) -> &WalletMetadata {
         &self.metadata
     }
 }
 
 #[async_trait]
-impl RequestVerification for Oid4VpHolder {
+impl<HL, D> RequestVerification for Oid4VpHolder<HL, D>
+where
+    HL: Holder,
+    D: DIDResolver,
+{
     async fn did(
         &self,
         decoded_request: &AuthorizationRequestObject,

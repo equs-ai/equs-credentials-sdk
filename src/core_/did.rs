@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use ssi::did::did_resolve::DIDResolver as SpruceResolver;
 use strum_macros::IntoStaticStr;
 
 // Error handling
@@ -43,5 +44,5 @@ pub trait DIDResolver: Send + Sync {
 
     async fn resolve_verification_method(&self, did_url: &str) -> Result<VerificationMethodMap, Error>;
 
-    fn as_spruce_resolver(&self) -> &dyn ssi::did::did_resolve::DIDResolver;
+    fn as_spruce_resolver(&self) -> &dyn SpruceResolver;
 }

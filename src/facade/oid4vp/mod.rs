@@ -25,6 +25,7 @@ mod tests {
         create_test_presentation_definition, generate_did_key,
         generate_did_key_and_vm,
     };
+    use crate::facade::facade_low_level;
     use crate::facade::facade_low_level::KeyMetadata;
     use crate::facade::facade_oid4vc::{AuthorizationResponseMetadata, HolderVp, Verifier};
     use crate::facade::oid4vp::holder::HolderService;
@@ -186,19 +187,20 @@ mod tests {
         verifier_service
     }
 
-    async fn holder(holder_did: DID, holder_vm: String, holder_kid: kms::KeyID, holder_kms: LocalKms, holder_vault: InMemVault) -> impl HolderVp {
-        let http_client = reqwest::Client::new();
-        let holder_service = HolderService::new(
-            holder_did.to_owned(),
-            None,
-            holder_vm,
-            holder_kid,
-            holder_kms,
-            holder_vault,
-            http_client,
-        );
+    async fn holder(holder_did: DID, holder_vm: String, holder_kid: kms::KeyID, kms: LocalKms, vault: InMemVault) -> impl HolderVp {
+        let metadata = facade_low_level::HolderMetadata {
+            client_id: holder_did.to_owned(),
+            key_metadata: KeyMetadata { did_url: holder_vm, kid: holder_kid },
+        };
+        let inner = facade_low_level::HolderService::new(kms, vault, metadata);
 
-        holder_service
+        let http_client = reqwest::Client::new();
+        HolderService::new(
+            inner,
+            UniversalResolver::new(),
+            None,
+            http_client,
+        )
     }
 
     async fn create_sample_vc(holder_did_url: &DIDURL, holder_kh: impl crypto::Key) -> (vc::Credential, CredentialMetadata) {

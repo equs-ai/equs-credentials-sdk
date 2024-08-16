@@ -72,19 +72,26 @@ pub enum AuthzOption {
     Details(AuthorizationDetail),
 }
 
-pub struct Oid4VciHolder<HC: HttpClient + 'static> {
+pub struct Oid4VciHolder<HC, HL>
+where
+    HC: HttpClient,
+{
     client_id: String,
     iss_url: String,
     issuer_metadata: IssuerMetadata,
     offer_configs: Vec<CredentialOfferFormat<CoreProfilesOffer>>,
     client: Client,
-    holder: Box<dyn Holder>,
-    http_client: Box<HC>,
+    holder: HL,
+    http_client: HC,
 }
 
-impl<HC: HttpClient + 'static> Oid4VciHolder<HC> {
+impl<HC, HL> Oid4VciHolder<HC, HL>
+where
+    HC: HttpClient,
+    HL: Holder,
+{
     pub async fn from_iss_url(
-        holder: impl Holder + 'static,
+        holder: HL,
         http_client: HC,
         iss_url: String,
         client_id: String,
@@ -101,7 +108,7 @@ impl<HC: HttpClient + 'static> Oid4VciHolder<HC> {
     }
 
     pub async fn from_credential_offer(
-        holder: impl Holder + 'static,
+        holder: HL,
         offer: &CredentialOffer,
         http_client: HC,
         client_id: String,
@@ -129,7 +136,7 @@ impl<HC: HttpClient + 'static> Oid4VciHolder<HC> {
     }
 
     async fn from_iss_url_with_configs(
-        holder: impl Holder + 'static,
+        holder: HL,
         http_client: HC,
         iss_url: String,
         offer_configs: Vec<CredentialOfferFormat<CoreProfilesOffer>>,
@@ -158,7 +165,7 @@ impl<HC: HttpClient + 'static> Oid4VciHolder<HC> {
     }
 
     pub fn from_metadata(
-        holder: impl Holder + 'static,
+        holder: HL,
         http_client: HC,
         issuer_metadata: IssuerMetadata,
         authz_metadata: AuthorizationMetadata,
@@ -177,7 +184,7 @@ impl<HC: HttpClient + 'static> Oid4VciHolder<HC> {
     }
 
     fn new(
-        holder: impl Holder + 'static,
+        holder: HL,
         http_client: HC,
         issuer_metadata: IssuerMetadata,
         authz_metadata: AuthorizationMetadata,
@@ -198,13 +205,17 @@ impl<HC: HttpClient + 'static> Oid4VciHolder<HC> {
             issuer_metadata,
             offer_configs,
             client,
-            holder: Box::new(holder),
-            http_client: Box::new(http_client),
+            holder,
+            http_client,
         })
     }
 }
 
-impl<HC: HttpClient + 'static> Oid4VciHolder<HC> {
+impl<HC, HL> Oid4VciHolder<HC, HL>
+where
+    HC: HttpClient,
+    HL: Holder,
+{
     pub fn get_issuer_metadata(&self) -> IssuerMetadata { self.issuer_metadata.clone() }
 
     pub async fn pre_authorized_flow(&self,

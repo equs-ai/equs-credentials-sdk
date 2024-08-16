@@ -1,5 +1,6 @@
 pub mod holder;
 pub mod issuer;
+mod metadata;
 
 #[cfg(test)]
 mod tests {
@@ -26,6 +27,7 @@ mod tests {
     use crate::facade::facade_oid4vc::Issuer;
     use crate::facade::oid4vci::holder::HolderService;
     use crate::facade::oid4vci::issuer::IssuerService;
+    use crate::facade::oid4vci::metadata::convert_metadata;
     use crate::impls::did::didkey::DIDKey;
     use crate::impls::http::{mock_http, mock_http_fn, mock_static_ctx, MockHttpClient};
     use crate::impls::kms::inmem::LocalKms;
@@ -218,34 +220,16 @@ mod tests {
     }
 
     async fn oid4vci_issuer(metadata: IssuerMetadata, http_client: MockHttpClient) -> impl facade_oid4vc::Issuer + Sized {
-        println!("Issuer creating...");
-
-        let mut kms = LocalKms::new();
-        let didkey = DIDKey::new();
-
-        let kt = kms::KeyType::P256;
-        let (kid, kh) = kms.create_and_handle(kt, kms::CreateOptions {}).await.unwrap();
-
-        let did = didkey.generate(kh.clone()).unwrap();
-        let did_url = DIDURL::from_str(&did).unwrap();
-        println!("DID: {}", did);
-
-        let jwk = kh.clone().jwk().unwrap();
-        println!("Key JWK:\n{}", serde_json::to_string_pretty(&jwk).unwrap());
-
+        let inner = issuer(&metadata).await;
         let storage = InMemStorage::new();
-        let iss = IssuerService::from_issuer_metadata(
-            kms,
+        IssuerService::new(
+            inner,
             storage,
             http_client,
             metadata,
-            did_url.to_string(),
-            kid,
             Some(HeaderValue::from_static("issuer_authz")),
             true,
-        );
-
-        iss
+        )
     }
 
     async fn holder() -> impl facade_low_level::Holder {
@@ -273,6 +257,32 @@ mod tests {
                 kid: kid.clone(),
             },
         })
+    }
+
+    async fn issuer(metadata: &IssuerMetadata) -> impl facade_low_level::Issuer {
+        println!("Issuer creating...");
+
+        let mut kms = LocalKms::new();
+        let didkey = DIDKey::new();
+
+        let kt = kms::KeyType::P256;
+        let (kid, kh) = kms.create_and_handle(kt, kms::CreateOptions {}).await.unwrap();
+
+        let did = didkey.generate(kh.clone()).unwrap();
+        let did_url = DIDURL::from_str(&did).unwrap();
+        println!("DID: {}", did);
+
+        let jwk = kh.clone().jwk().unwrap();
+        println!("Key JWK:\n{}", serde_json::to_string_pretty(&jwk).unwrap());
+
+        let key_metadata = KeyMetadata {
+            did_url: did_url.to_string(),
+            kid: kid.clone(),
+        };
+
+        let converted = convert_metadata(metadata, key_metadata);
+
+        facade_low_level::IssuerService::new(kms, converted)
     }
 
     fn sample_issuer_metadata(iss_url: &str, authz_url: &str) -> IssuerMetadata {

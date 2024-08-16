@@ -2,39 +2,35 @@ use async_trait::async_trait;
 use oid4vp::core::metadata::WalletMetadata;
 use url::Url;
 
-use crate::core_::{kms, vault};
+use crate::core_::did::DIDResolver;
 use crate::exchange::oid4vc::oid4vp::holder::{Oid4VpHolder, ResolvedAuthRequest};
-use crate::facade::facade_low_level;
+use crate::facade::facade_low_level::Holder;
 use crate::facade::facade_oid4vc::{AuthorizationResponseMetadata, CredentialMapping, HolderVp};
 use crate::facade::facade_oid4vc::Result;
-use crate::impls::did::UniversalResolver;
 
-pub struct HolderService {
-    holder: Oid4VpHolder,
+pub struct HolderService<HL, D>
+where
+    HL: Holder,
+    D: DIDResolver,
+{
+    holder: Oid4VpHolder<HL, D>,
 }
 
-impl HolderService {
-    pub fn new<KH>(
-        client_id: String,
+impl<HL, D> HolderService<HL, D>
+where
+    HL: Holder,
+    D: DIDResolver,
+{
+    pub fn new(
+        holder_low_level: HL,
+        resolver: D,
         metadata: Option<WalletMetadata>,
-        did_url: String,
-        kid: String,
-        kms: impl kms::Kms<KH> + 'static,
-        vault: impl vault::Vault + 'static,
         http_client: reqwest::Client,
-    ) -> Self
-    where
-        KH: kms::KeyHandle + 'static,
-    {
-        let holder_metadata = facade_low_level::HolderMetadata {
-            client_id,
-            key_metadata: facade_low_level::KeyMetadata { did_url, kid },
-        };
-        let holder_low_level = facade_low_level::HolderService::new(kms, vault, holder_metadata);
+    ) -> Self {
         let holder = Oid4VpHolder::new(
             metadata,
             holder_low_level,
-            UniversalResolver::new(),
+            resolver,
             http_client,
         );
 
@@ -43,7 +39,11 @@ impl HolderService {
 }
 
 #[async_trait]
-impl HolderVp for HolderService {
+impl<HL, D> HolderVp for HolderService<HL, D>
+where
+    HL: Holder,
+    D: DIDResolver,
+{
     async fn get_authorization_request(&self, auth_req_uri: &str) -> Result<ResolvedAuthRequest> {
         let url = Url::parse(auth_req_uri)?;
         let resolved_req = self.holder.resolve_authorization_request(&url).await?;

@@ -1,5 +1,7 @@
 use std::str::FromStr;
+
 use async_trait::async_trait;
+
 use crate::core_::crypto;
 use crate::core_::did::DIDURL;
 use crate::core_::vc::Nonce;
@@ -84,7 +86,7 @@ where
 {
     async fn generate<S>(did_url: &DIDURL, key: S, nonce: Nonce, opts: GenerateOptions) -> Result<P>
     where
-        S: crypto::SigningKey + 'static
+        S: crypto::SigningKey,
     ;
 
     async fn verify(proof: P, nonce: Nonce, opts: VerifyOptions) -> Result<(DIDURL, Box<dyn crypto::Key>)>;
