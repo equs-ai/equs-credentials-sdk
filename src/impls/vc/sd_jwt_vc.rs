@@ -1,11 +1,10 @@
 use std::collections::HashMap;
 
 use async_trait::async_trait;
-use futures::executor;
 use jsonwebtoken::{DecodingKey, Header};
 use sd_jwt_rs::{ClaimsForSelectiveDisclosureStrategy, SDJWTHolder, SDJWTIssuer, SDJWTSerializationFormat, SDJWTVerifier};
+use sd_jwt_rs::resolver::KeyResolver;
 use serde_json::{Map, Value};
-use ssi::did::VerificationMethodMap;
 use ssi::jwk::JWK;
 use time::OffsetDateTime;
 
@@ -65,6 +64,38 @@ impl vc::HasCredential<Credential> for Presentation {
     }
 }
 
+pub struct DidKeyResolver<R: DIDResolver>(R);
+
+impl<R: DIDResolver> DidKeyResolver<R> {
+    pub fn new(did_resolver: R) -> DidKeyResolver<R> {
+        DidKeyResolver(did_resolver)
+    }
+}
+
+#[async_trait]
+impl<R: DIDResolver> KeyResolver for DidKeyResolver<R> {
+    async fn resolve(&self, input: &str, header: &Header) -> sd_jwt_rs::error::Result<DecodingKey> {
+        let resolver = UniversalResolver::new();
+
+        let vm = resolver.resolve_verification_method(input)
+            .await
+            .map_err(|err| sd_jwt_rs::error::Error::Unspecified(err.to_string()))?;
+
+        let jwk = vm.get_jwk()
+            .map_err(|err| sd_jwt_rs::error::Error::DeserializationError(err.to_string()))?;
+
+        let jwk = utils::jwk::from_spruce_jwk(&jwk)
+            .ok_or_else(|| {
+                sd_jwt_rs::error::Error::Unspecified(format!("Unsupported key: {:?}", jwk))
+            })?;
+
+
+        DecodingKey::from_jwk(&jwk)
+            .map_err(|e| sd_jwt_rs::error::Error::DeserializationError(e.to_string()))
+    }
+}
+
+
 pub struct SdJwtAPI;
 
 impl SdJwtAPI {
@@ -99,30 +130,6 @@ impl SdJwtAPI {
         headers.insert("typ".to_string(), SD_JWT_VC.to_string());
 
         headers
-    }
-
-    fn resolve_key(iss: &str, _: &Header) -> Result<DecodingKey> {
-        let resolver = UniversalResolver::new();
-
-        // TODO: support async `KeyResolver` in `sd-jwt-rust`
-        let future = resolver.resolve_verification_method(iss);
-        let ver_method: VerificationMethodMap = executor::block_on(future)?;
-
-        let jwk = ver_method.get_jwk()?;
-        let Some(jwk) = utils::jwk::from_spruce_jwk(&jwk) else {
-            return Err(Error::KeyNotSupported);
-        };
-
-        DecodingKey::from_jwk(&jwk).map_err(|e| Error::Parsing(e.to_string()))
-    }
-
-    fn unsafe_resolve_iss_key(iss: &str, header: &Header) -> DecodingKey {
-        // TODO: support error handling for `KeyResolver` in `sd-jwt-rust`
-        let Ok(key) = Self::resolve_key(iss, header) else {
-            panic!("error during resolving issuer key")
-        };
-
-        key
     }
 
     pub fn strip_disclosures(vc: &Credential) -> &str {
@@ -212,15 +219,16 @@ impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata, Value> for Sd
     async fn verify_vp(presentation: &Presentation,
                        nonce: Nonce, verifier_id: &str,
                        opts: VerifyOptions) -> Result<Value> {
-        let verifier = SDJWTVerifier::new(
+        let key_resolver = DidKeyResolver::new(UniversalResolver::new());
+        let mut verifier = SDJWTVerifier::new(Box::new(key_resolver));
+        verifier.verify_presentation(
             presentation.to_owned(),
-            Box::new(SdJwtAPI::unsafe_resolve_iss_key),
             Some(verifier_id.to_string()),
             Some(nonce.secret().to_string()),
-            SDJWTSerializationFormat::Compact,
-        ).map_err(|e| Error::Verifying(e.to_string()))?;
-
-        Ok(verifier.verified_claims)
+            SDJWTSerializationFormat::Compact
+        )
+            .await
+            .map_err(|e| Error::Verifying(e.to_string()))
     }
 }
 
