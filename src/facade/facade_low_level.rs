@@ -68,7 +68,7 @@ pub struct CredentialOffer {
 pub struct CredentialOfferData {}
 
 #[derive(Debug, PartialEq, Clone, Default)]
-pub struct ProofOfPossession {
+pub struct Proof {
     pub format: String,
     pub proof: String,
 }
@@ -77,7 +77,7 @@ pub struct ProofOfPossession {
 pub struct CredentialRequest {
     pub cred_def_id: String,
     pub cred_offer_id: Option<String>,
-    pub proof: ProofOfPossession,
+    pub proof: Proof,
     pub protocol_data: Option<CredentialRequestData>, // Protocol specific
 }
 
@@ -312,10 +312,9 @@ where
         Ok(cred_def)
     }
 
-    fn resolve_proof<P>(cred_def: &CredentialDefinition,
-                        credential_request: &CredentialRequest) -> Result<(pop::Format, P)>
-    where
-        P: pop::Proof,
+    fn resolve_proof<P: pop::Proof>(cred_def: &CredentialDefinition,
+                                    credential_request: &CredentialRequest,
+    ) -> Result<(pop::Format, P)>
     {
         let proof = &credential_request.proof;
         let fmt = &proof.format;
@@ -390,7 +389,7 @@ where
         let credential_request = CredentialRequest {
             cred_def_id: cred_def_id.clone(),
             cred_offer_id: credential_offer.cred_offer_id.clone(),
-            proof: ProofOfPossession { format: fmt.to_owned(), proof: proof.to_string() },
+            proof: Proof { format: fmt.to_owned(), proof: proof.to_string() },
             protocol_data: Some(CredentialRequestData { ..Default::default() }),
         };
 

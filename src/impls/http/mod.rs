@@ -23,12 +23,24 @@ pub trait HttpClient: Sync + Send {
 }
 
 #[cfg(test)]
+pub fn mock_http_once<T: serde::Serialize + Send + Sync + 'static>(
+    mock: &mut MockHttpClient,
+    method: Method,
+    url: url::Url,
+    body: T,
+    status: StatusCode,
+) {
+    mock_http(mock, method, url, body, status, 1.into());
+}
+
+#[cfg(test)]
 pub fn mock_http<T: serde::Serialize + Send + Sync + 'static>(
     mock: &mut MockHttpClient,
     method: Method,
     url: url::Url,
     body: T,
     status: StatusCode,
+    times: mockall::TimesRange,
 ) {
     mock
         .expect_async_call()
@@ -38,7 +50,7 @@ pub fn mock_http<T: serde::Serialize + Send + Sync + 'static>(
 
             method && url
         })
-        .times(1)
+        .times(times)
         .returning(move |_| {
             Ok(HttpResponse {
                 status_code: status,
