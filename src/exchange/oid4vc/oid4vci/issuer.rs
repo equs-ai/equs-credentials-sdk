@@ -1,104 +1,98 @@
-use oauth2::{
-    EmptyExtraTokenFields, HttpRequest, Scope, StandardTokenIntrospectionResponse,
-    TokenIntrospectionResponse as TokenIntrospectionResponse_,
-};
-use oauth2::basic::BasicTokenType;
-use oauth2::http::{HeaderValue, Method};
-use oauth2::http::header::{ACCEPT, CONTENT_TYPE};
-use oid4vci::core::profiles::{CoreProfilesOffer, CoreProfilesRequest, sd_jwt};
-use oid4vci::credential::ResponseEnum;
+use async_trait::async_trait;
+use oauth2::Scope;
+use oid4vci::core::profiles::{CoreProfilesOffer, CoreProfilesRequest, CoreProfilesResponse, sd_jwt, w3c};
+use oid4vci::credential::{ProofVerificationErrorBody, ResponseEnum};
 use oid4vci::credential_offer::{CredentialOfferFormat, CredentialOfferGrants, CredentialOfferParameters};
-use oid4vci::openidconnect::{IssuerUrl, Nonce};
-use oid4vci::openidconnect::http::header::AUTHORIZATION;
-use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use oid4vci::openidconnect::Nonce;
+use oid4vci::proof_of_possession::Proof as SpruceProof;
 use url::Url;
-use uuid::Uuid;
 
-use crate::exchange::oid4vc::oid4vci::{CredentialRequest, CredentialResponse, IssuanceMetadata, IssuerMetadata};
+use crate::core_::storage::Storage;
+use crate::core_::vc;
+use crate::exchange::oid4vc::oid4vci::{CredentialOfferParams, CredentialRequest, CredentialResponse, IssuerMetadata};
+use crate::exchange::oid4vc::oid4vci as api;
+use crate::exchange::oid4vc::oid4vci::introspect::Introspect;
 use crate::facade::facade_low_level;
-use crate::facade::facade_low_level::{Issuer, ProofOfPossession};
-use crate::impls::http::{HttpClient, MIME_TYPE_FORM_URLENCODED, MIME_TYPE_JSON};
+use crate::facade::facade_low_level::{CredentialClaims, Proof};
+use crate::facade::facade_low_level::Proof as AsdkProof;
+use crate::impls::http::HttpClient;
 
 const CRED_OFFER_URI: &str = "openid-credential-offer://";
 
-pub type TokenIntrospectionResponse = StandardTokenIntrospectionResponse<EmptyExtraTokenFields, BasicTokenType>;
+// TODO: tune via config
+const NONCE_EXPIRES_IN: i64 = 86440;
 
-pub struct Oid4VciIssuer<HC, IS>
-where
-    HC: HttpClient,
-    IS: Issuer,
-{
-    issuer: IS,
-    issuer_metadata: IssuerMetadata,
-    supported_cred_config_ids: Vec<String>,
-    http_client: HC,
-    auth_server_admin_auth_header: Option<HeaderValue>,
-    token_validation: bool,
+pub type Error = api::IssuerError;
+pub type Result<T> = core::result::Result<T, Error>;
+
+pub enum TokenValidation<HC: HttpClient> {
+    Introspect(Introspect<HC>),
+    None,
+    //TODO: implement jwks
 }
 
-impl<HC, IS> Oid4VciIssuer<HC, IS>
+pub struct IssuerService<IS, ST, HC>
 where
+    IS: facade_low_level::Issuer,
+    ST: Storage<String, String>,
     HC: HttpClient,
-    IS: Issuer,
+{
+    issuer: IS,
+    storage: ST,
+    issuer_metadata: IssuerMetadata,
+    token_validation: TokenValidation<HC>,
+}
+
+impl<IS, ST, HC> IssuerService<IS, ST, HC>
+where
+    IS: facade_low_level::Issuer,
+    ST: Storage<String, String>,
+    HC: HttpClient,
 {
     pub fn new(
         issuer_metadata: IssuerMetadata,
         issuer: IS,
-        http_client: HC,
-        auth_server_admin_auth_header: Option<HeaderValue>,
-        token_validation: bool,
+        storage: ST,
+        token_validation: TokenValidation<HC>,
     ) -> Self {
-        let supported_cred_config_ids: Vec<String> = issuer_metadata
-            .credential_configurations_supported()
-            .keys()
-            .into_iter()
-            .map(|e| e.to_owned())
-            .collect();
-
         Self {
             issuer,
+            storage,
             issuer_metadata,
-            supported_cred_config_ids,
-            http_client,
-            auth_server_admin_auth_header,
             token_validation,
         }
     }
+}
 
-    pub fn metadata(&self) -> IssuerMetadata {
+#[async_trait]
+impl<IS, ST, HC> api::Issuer for IssuerService<IS, ST, HC>
+where
+    IS: facade_low_level::Issuer,
+    ST: Storage<String, String>,
+    HC: HttpClient,
+{
+    fn get_issuer_metadata(&self) -> IssuerMetadata {
         self.issuer_metadata.clone()
     }
 
-    pub fn create_credential_offer(
+    fn create_credential_offer(
         &self,
-        configuration_ids: Vec<&str>,
+        cred_def_ids: Vec<&str>,
         grants: &CredentialOfferGrants,
-    ) -> Result<(CredentialOfferParameters<CoreProfilesOffer>, Url), Error> {
-        if configuration_ids.is_empty() {
-            return Err(Error::MissingCredentialConfigurationIds);
-        }
-
-        for c in &configuration_ids {
-            if !self.supported_cred_config_ids.contains(&c.to_string()) {
-                return Err(Error::NotSupportedCredentialConfigurationId(
-                    c.to_string(),
-                ));
-            }
-        }
+    ) -> Result<(CredentialOfferParams, Url)> {
+        self.validate_cred_def_ids(&cred_def_ids)?;
 
         let cred_offer_params: CredentialOfferParameters<CoreProfilesOffer> =
             CredentialOfferParameters::new(
                 self.issuer_metadata.credential_issuer().clone(),
-                configuration_ids
+                cred_def_ids
                     .iter()
                     .map(|c| CredentialOfferFormat::Reference(Scope::new(c.to_string())))
                     .collect(),
                 Some(grants.to_owned()),
             );
 
-        let cred_offer =
-            serde_json::to_string(&cred_offer_params).map_err(|e| Error::Parse(e))?;
+        let cred_offer = serde_json::to_string(&cred_offer_params)?;
 
         let mut url = Url::parse(CRED_OFFER_URI)?;
         url.set_query(Some(format!("credential_offer={}", cred_offer).as_str()));
@@ -106,69 +100,59 @@ where
         Ok((cred_offer_params, url))
     }
 
-    pub async fn issue_credential(
-        &self,
+    async fn issue_credential(
+        &mut self,
         cred_request: &CredentialRequest,
-        token: &str,
-        nonce: Nonce,
-        claims: &Value,
-    ) -> Result<(CredentialResponse, IssuanceMetadata), Error> {
-        let auth_server_url = self.issuer_metadata
-            .authorization_servers()
-            .and_then(|urls| urls.first());
-        if self.token_validation {
-            let _ = self.validate_token(&token, auth_server_url).await;
+        token: &String,
+        claims: &CredentialClaims,
+    ) -> Result<CredentialResponse> {
+        self.validate_token(token).await?;
+
+        let nonce = self.resolve_nonce(token).await;
+
+        if cred_request.proof().is_none() || nonce.is_err() {
+            let nonce = self.upsert_nonce(token).await?;
+            return Err(Self::invalid_proof(nonce));
         }
 
-        if cred_request.proof().is_none() {
-            return Err(Error::ProofVerification(ProofVerificationBody {
-                error: "Empty proof".to_string(),
-                error_description: "Proof can not be empty, please provide PoP with provided nonce".to_string(),
-                c_nonce: Some(nonce),
-                c_nonce_expires_in: Some(86440),
-            }));
-        }
+        let nonce = nonce.unwrap();
 
         let cred_def_id = self.resolve_cred_def_id(cred_request)?;
         let cred_req = facade_low_level::CredentialRequest {
             cred_def_id,
             cred_offer_id: None,
-            proof: ProofOfPossession::from(cred_request.proof().unwrap()),
+            proof: Proof::from(cred_request.proof().unwrap()),
             protocol_data: None,
         };
+
         let result = self.issuer.issue_credential(&cred_req, claims, nonce.secret()).await;
 
-        return match result {
-            Err(e) => {
-                if let facade_low_level::Error::Proof(e) = e {
-                    return Err(Error::ProofVerification(ProofVerificationBody {
-                        error: "invalid_proof".to_owned(),
-                        error_description: e.to_string(),
-                        c_nonce: Some(nonce.to_owned()),
-                        c_nonce_expires_in: Some(86440),
-                    }));
-                }
+        let new_nonce = self.upsert_nonce(token).await?;
 
-                Err(Error::Other(e.to_string()))
-            }
+        if let Err(facade_low_level::Error::Proof(e)) = &result {
+            return Err(Self::invalid_proof(new_nonce));
+        }
 
-            Ok((cred, cred_metadata)) => {
-                let notification_id = Some(Uuid::new_v4().to_string());
-                let resp = CredentialResponse::new(ResponseEnum::Immediate(cred.into()))
-                    .set_notification_id(notification_id.clone());
+        if result.is_err() {
+            return Err(Error::VC(result.err().unwrap()));
+        }
 
-                let issuance_metadata = IssuanceMetadata {
-                    core_metadata: cred_metadata,
-                    nonce: Some(nonce.to_owned()),
-                    notification_id,
-                };
+        let (cred, _) = result.unwrap();
+        let resp = CredentialResponse::new(ResponseEnum::Immediate(cred.into()))
+            .set_nonce(Some(new_nonce))
+            .set_nonce_expiration(Some(NONCE_EXPIRES_IN));
 
-                Ok((resp, issuance_metadata))
-            }
-        };
+        Ok(resp)
     }
+}
 
-    fn resolve_cred_def_id(&self, req: &CredentialRequest) -> Result<String, Error> {
+impl<IS, ST, HC> IssuerService<IS, ST, HC>
+where
+    IS: facade_low_level::Issuer,
+    ST: Storage<String, String>,
+    HC: HttpClient,
+{
+    fn resolve_cred_def_id(&self, req: &CredentialRequest) -> Result<String> {
         let id = match req.additional_profile_fields() {
             CoreProfilesRequest::SDJWTVC(det) => {
                 match det {
@@ -183,107 +167,80 @@ where
         Ok(id.to_owned())
     }
 
-    pub fn generate_pop_verification_error_and_nonce(&self) -> (Error, Nonce)
-    {
-        let nonce = Nonce::new(Uuid::new_v4().to_string());
-
-        let err = Error::ProofVerification(ProofVerificationBody {
-            error: "Proof of possession is needed".to_string(),
-            error_description: "Please provide PoP with provided nonce".to_string(),
-            c_nonce: Some(nonce.clone()),
-            // TODO: tune via config
-            c_nonce_expires_in: Some(86440),
-        });
-
-        (err, nonce)
-    }
-
-    pub async fn validate_token(
-        &self,
-        token: &str,
-        auth_server_url: Option<&IssuerUrl>,
-    ) -> Result<TokenIntrospectionResponse, Error>
-    {
-        // TODO: refactor: 1. to use Url::join 2. assume different strategies for validation in the future
-        let token_introspect_url = if let Some(auth_url) = auth_server_url {
-            Url::parse(auth_url)?.join("protocol/openid-connect/token/introspect")?
-        } else {
-            unimplemented!("Validating by jwks.json of auth server is not supported yet")
-        };
-
-        let body = Vec::from(format!("token={}", token));
-        let (auth_header, auth_value) = (
-            AUTHORIZATION,
-            // TODO: make optional
-            self.auth_server_admin_auth_header.to_owned().unwrap(),
-        );
-
-        let request = HttpRequest {
-            url: token_introspect_url,
-            method: Method::POST,
-            headers: vec![
-                (
-                    CONTENT_TYPE,
-                    HeaderValue::from_static(MIME_TYPE_FORM_URLENCODED),
-                ),
-                (ACCEPT, HeaderValue::from_static(MIME_TYPE_JSON)),
-                (auth_header, auth_value),
-            ]
-                .into_iter()
-                .collect(),
-            body,
-        };
-
-        let response = self.http_client.async_call(request)
-            .await
-            .map_err(Error::NetworkRequest)?;
-        let token_ifo = serde_json::from_slice::<TokenIntrospectionResponse>(response.body.as_slice())
-            .map_err(|e| Error::Parse(e))?;
-
-        if !token_ifo.active() {
-            return Err(Error::InActiveToken);
+    fn validate_cred_def_ids(&self, cred_def_ids: &Vec<&str>) -> Result<()> {
+        if cred_def_ids.is_empty() {
+            return Err(Error::MissingCredentialConfigurationIds);
         }
 
-        Ok(token_ifo)
+        let supported: Vec<String> = self.issuer_metadata
+            .credential_configurations_supported()
+            .keys()
+            .into_iter()
+            .map(|e| e.to_owned())
+            .collect();
+
+        for c in cred_def_ids {
+            if !supported.contains(&c.to_string()) {
+                return Err(Error::NotSupportedCredentialConfigurationId(
+                    c.to_string(),
+                ));
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn resolve_nonce(&mut self, token: &String) -> Result<Nonce> {
+        let nonce = self.storage.get(token).await?;
+
+        Ok(Nonce::new(nonce.to_owned()))
+    }
+
+    async fn upsert_nonce(&mut self, token: &String) -> Result<Nonce> {
+        let nonce = Nonce::new_random();
+
+        self.storage.put(token.clone(), nonce.secret().to_owned()).await?;
+
+        Ok(nonce)
+    }
+
+    pub async fn validate_token(&self, token: &str) -> Result<()> {
+        match &self.token_validation {
+            TokenValidation::Introspect(svc) => {
+                svc.validate(token).await?
+            }
+            TokenValidation::None => {}
+        }
+
+        Ok(())
+    }
+
+    fn invalid_proof(nonce: Nonce) -> Error {
+        Error::InvalidProof(ProofVerificationErrorBody {
+            error: "invalid_proof".to_string(),
+            error_description: "Generate PoP for provided nonce".to_string(),
+            c_nonce: Some(nonce),
+            c_nonce_expires_in: Some(NONCE_EXPIRES_IN),
+        })
     }
 }
 
-#[derive(Debug, thiserror::Error, strum::IntoStaticStr)]
-#[non_exhaustive]
-pub enum Error
-{
-    #[error("Missed credential configuration ids")]
-    MissingCredentialConfigurationIds,
-    #[error("Credential id = {0} is not supported")]
-    NotSupportedCredentialConfigurationId(String),
-    #[error("Token is expired")]
-    InActiveToken,
-    #[error("ProofVerification error")]
-    ProofVerification(ProofVerificationBody),
-    #[error("Url Parse Error: {0}")]
-    UrlParse(#[from] url::ParseError),
-    #[error("Parsing error: {0}")]
-    Parse(#[from] serde_json::Error),
-    #[error("Network Request failed {0}")]
-    NetworkRequest(#[from] reqwest::Error),
-    #[error("format not supported")]
-    FormatNotSupported,
-    #[error("Other error: {0}")]
-    Other(String),
+impl From<&SpruceProof> for AsdkProof {
+    fn from(value: &SpruceProof) -> AsdkProof {
+        match value {
+            SpruceProof::JWT { jwt } => { AsdkProof { format: "jwt".to_string(), proof: jwt.to_string() } }
+            SpruceProof::CWT { cwt } => { AsdkProof { format: "cwt".to_string(), proof: cwt.to_owned() } }
+        }
+    }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
-struct TokenInfo {
-    active: bool,
-    username: Option<String>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ProofVerificationBody {
-    error: String,
-    error_description: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    c_nonce: Option<Nonce>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    c_nonce_expires_in: Option<i64>,
+impl Into<CoreProfilesResponse> for vc::Credential {
+    fn into(self) -> CoreProfilesResponse {
+        match self {
+            vc::Credential::JwtVcJson(cred) => { CoreProfilesResponse::JWTVC(w3c::jwt::Response::new(cred)) }
+            vc::Credential::JwtVcJsonLd(_) => { CoreProfilesResponse::JWTLDVC(w3c::jwtld::Response {}) }
+            vc::Credential::LdpVc(cred) => { CoreProfilesResponse::LDVC(w3c::ldp::Response::new(cred)) }
+            vc::Credential::SdJwt(cred) => { CoreProfilesResponse::SDJWTVC(sd_jwt::Response::new(cred)) }
+        }
+    }
 }

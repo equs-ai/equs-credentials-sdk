@@ -1,11 +1,10 @@
 use std::string::ToString;
 
-use oauth2::{AuthorizationCode, ClientId, CsrfToken, PkceCodeChallenge, RedirectUrl, ResponseType, Scope, url};
+use async_trait::async_trait;
+use oauth2::{AccessToken, AuthorizationCode, ClientId, CsrfToken, PkceCodeChallenge, RedirectUrl, ResponseType, Scope, TokenResponse as _TokenResponse};
 use oauth2::url::Url;
-use oid4vci::{openidconnect, token};
 use oid4vci::core::authorization::AuthorizationDetail;
 use oid4vci::core::client::Client;
-use oid4vci::core::credential;
 use oid4vci::core::credential_offer::CredentialOffer;
 use oid4vci::core::metadata::IssuerMetadata;
 use oid4vci::core::profiles::{CoreProfilesAuthorizationDetails, CoreProfilesMetadata, CoreProfilesOffer, CoreProfilesRequest, CoreProfilesResponse, sd_jwt};
@@ -13,82 +12,44 @@ use oid4vci::credential::{RequestError, ResponseEnum};
 use oid4vci::credential_offer::CredentialOfferFormat;
 use oid4vci::metadata::AuthorizationMetadata;
 use oid4vci::openidconnect::IssuerUrl;
-use oid4vci::proof_of_possession::{KeyProofType, Proof};
+use oid4vci::proof_of_possession::KeyProofType;
+use oid4vci::proof_of_possession::Proof as SpruceProof;
+use oid4vci::token;
 
 use crate::core_::vc;
 use crate::core_::vc::{Credential, CredentialMetadata};
-use crate::exchange::oid4vc::oid4vci::CredentialResult;
+use crate::exchange::oid4vc::oid4vci as api;
+use crate::exchange::oid4vc::oid4vci::{CredentialResult, TokenResponse};
 use crate::facade::facade_low_level;
-use crate::facade::facade_low_level::{Holder, ProofOfPossession};
+use crate::facade::facade_low_level::Proof as AsdkProof;
 use crate::impls::http::HttpClient;
 
-#[derive(Debug, thiserror::Error, strum::IntoStaticStr)]
-#[non_exhaustive]
-pub enum Error {
-    // oid4vci
-    #[error(transparent)]
-    Request(#[from] RequestError<reqwest::Error>),
-    #[error(transparent)]
-    Client(#[from] oid4vci::client::Error),
-
-    // openid connect/ouath
-    #[error(transparent)]
-    Discovery(#[from] openidconnect::DiscoveryError<reqwest::Error>),
-    #[error(transparent)]
-    Token(#[from] oauth2::RequestTokenError<reqwest::Error, token::Error>),
-
-    // Low-level
-    #[error(transparent)]
-    VC(#[from] facade_low_level::Error),
-
-    #[error("proof not supported")]
-    ProofNotSupported,
-    #[error("format not supported")]
-    FormatNotSupported,
-    #[error("CSRF failure")]
-    CsrfFailure,
-    #[error("bad request: {0}")]
-    BadRequest(String),
-    #[error("nonce missed")]
-    NonceMissed,
-    #[error("not supported")]
-    NotSupported,
-    #[error("cred def not found: {0}")]
-    CredDefNotFound(String),
-
-    // Common
-    #[error(transparent)]
-    Url(#[from] url::ParseError),
-    #[error(transparent)]
-    Reqwest(#[from] reqwest::Error),
-}
-
+pub type Error = api::HolderError;
 pub type Result<T> = core::result::Result<T, Error>;
-
-pub type AccessToken = oauth2::AccessToken;
 
 pub enum AuthzOption {
     Scope(String),
     Details(AuthorizationDetail),
 }
 
-pub struct Oid4VciHolder<HC, HL>
+pub struct HolderService<HL, HC>
 where
+    HL: facade_low_level::Holder,
     HC: HttpClient,
 {
+    holder: HL,
+    http_client: HC,
     client_id: String,
     iss_url: String,
     issuer_metadata: IssuerMetadata,
     offer_configs: Vec<CredentialOfferFormat<CoreProfilesOffer>>,
     client: Client,
-    holder: HL,
-    http_client: HC,
 }
 
-impl<HC, HL> Oid4VciHolder<HC, HL>
+impl<HL, HC> HolderService<HL, HC>
 where
+    HL: facade_low_level::Holder,
     HC: HttpClient,
-    HL: Holder,
 {
     pub async fn from_iss_url(
         holder: HL,
@@ -109,8 +70,8 @@ where
 
     pub async fn from_credential_offer(
         holder: HL,
-        offer: &CredentialOffer,
         http_client: HC,
+        offer: &CredentialOffer,
         client_id: String,
         redirect_url: String,
     ) -> Result<Self> {
@@ -211,24 +172,102 @@ where
     }
 }
 
-impl<HC, HL> Oid4VciHolder<HC, HL>
+#[async_trait]
+impl<HL, HC> api::Holder for HolderService<HL, HC>
 where
+    HL: facade_low_level::Holder,
     HC: HttpClient,
-    HL: Holder,
 {
-    pub fn get_issuer_metadata(&self) -> IssuerMetadata { self.issuer_metadata.clone() }
+    fn get_issuer_metadata(&self) -> IssuerMetadata {
+        self.issuer_metadata.clone()
+    }
 
-    pub async fn pre_authorized_flow(&self,
-                                     pre_authorized_code: String,
-                                     tx_code: String,
-                                     opt: Option<AuthzOption>,
-    ) -> Result<token::Response> {
+    async fn authz_code_flow_with_scope(
+        &self,
+        cred_def_id: String,
+        authorization_callback: impl FnOnce(Url) -> String + Send,
+    ) -> Result<TokenResponse> {
+        let response = self.authz_code_flow(
+            // TODO: advanced AuthDetail by cred_def_id, scope is enough for MVP
+            AuthzOption::Scope(cred_def_id),
+            authorization_callback,
+        ).await?;
+
+        Ok(response)
+    }
+
+    async fn pre_authz_code_flow(
+        &self,
+        pre_authorized_code: String,
+        tx_code: String,
+        cred_def_id: Option<String>,
+    ) -> Result<TokenResponse> {
         unimplemented!()
     }
 
-    pub async fn authz_code_flow(&self,
-                                 opt: AuthzOption,
-                                 callback: impl FnOnce(Url) -> String,
+    async fn request_credential(
+        &self,
+        token_response: &TokenResponse,
+        cred_def_id: &str,
+    ) -> Result<CredentialResult> {
+        let token = token_response.access_token();
+        let nonce = token_response.extra_fields().clone().c_nonce.map(|n| n.secret().clone());
+
+        let cred_def = self.resolve_cred_def(cred_def_id)?;
+
+        let req_base = match &cred_def {
+            CoreProfilesMetadata::SDJWTVC(det) => {
+                CoreProfilesRequest::SDJWTVC(sd_jwt::Request::new().set_vct(det.vct().map(|x| x.to_owned())))
+            }
+            _ => Err(Error::FormatNotSupported)?,
+        };
+
+        let offer = &facade_low_level::CredentialOffer {
+            issuer_id: self.iss_url.clone(),
+            cred_offer_id: None,
+            cred_def_id: Some(cred_def_id.to_owned()),
+            supported_proofs: self.resolve_supported_proofs(&cred_def_id),
+            cred_def: None,
+            protocol_data: None,
+        };
+
+        let nonce = match nonce {
+            Some(val) => val,
+            None => self.request_nonce(token.clone(), req_base.clone()).await?
+        };
+
+        let req = self.holder.request_credential(offer, &nonce).await?;
+
+        let credential_request = self.client
+            .request_credential(token.to_owned(), req_base)
+            .set_proof(Some(req.proof.try_into()?));
+
+        let resp = credential_request
+            .request_async(|req| self.http_client.async_call(req))
+            .await?;
+
+        resp.try_into()
+    }
+
+    async fn store_credential(
+        &mut self,
+        credential: &Credential,
+        credential_metadata: &CredentialMetadata,
+    ) -> Result<()> {
+        let _ = self.holder.store_credential(credential, credential_metadata).await?;
+
+        Ok(())
+    }
+}
+
+impl<HL, HC> HolderService<HL, HC>
+where
+    HL: facade_low_level::Holder,
+    HC: HttpClient,
+{
+    async fn authz_code_flow(&self,
+                             opt: AuthzOption,
+                             callback: impl FnOnce(Url) -> String,
     ) -> Result<token::Response> {
         let (pkce_challenge, pkce_verifier) = PkceCodeChallenge::new_random_sha256();
 
@@ -266,63 +305,11 @@ where
         Ok(token)
     }
 
-    pub async fn request_credential(&self,
-                                    token: &AccessToken,
-                                    cred_def_id: &str,
-                                    nonce: Option<String>,
-    ) -> Result<CredentialResult> {
-        let cred_def = self.resolve_cred_def(cred_def_id)?;
-
-        let req_base = match &cred_def {
-            CoreProfilesMetadata::SDJWTVC(det) => {
-                CoreProfilesRequest::SDJWTVC(sd_jwt::Request::new().set_vct(det.vct().map(|x| x.to_owned())))
-            }
-            _ => Err(Error::FormatNotSupported)?,
-        };
-
-        let offer = &facade_low_level::CredentialOffer {
-            issuer_id: self.iss_url.clone(),
-            cred_offer_id: None,
-            cred_def_id: Some(cred_def_id.to_owned()),
-            supported_proofs: self.resolve_supported_proofs(&cred_def_id),
-            cred_def: None,
-            protocol_data: None,
-        };
-
-
-        let nonce = match nonce {
-            Some(val) => val,
-            None => self.request_nonce(token.clone(), req_base.clone()).await?
-        };
-
-        let req = self.holder.request_credential(offer, &nonce).await?;
-
-        let credential_request = self.client
-            .request_credential(token.to_owned(), req_base)
-            .set_proof(Some(req.proof.try_into()?));
-
-        let resp = credential_request
-            .request_async(|req| self.http_client.async_call(req))
-            .await?;
-
-        Self::resolve_response(&resp)
-    }
-
     async fn deferred(&self,
                       token: AccessToken,
                       transaction_id: String,
     ) -> Result<CredentialResult> {
         unimplemented!()
-    }
-
-    pub async fn store_credential(
-        &mut self,
-        credential: &Credential,
-        credential_metadata: &CredentialMetadata,
-    ) -> Result<()> {
-        let _ = self.holder.store_credential(credential, credential_metadata).await?;
-
-        Ok(())
     }
 
     async fn request_nonce(
@@ -387,11 +374,19 @@ where
 
         Some(proofs)
     }
+}
 
-    fn resolve_response(response: &credential::Response) -> Result<CredentialResult> {
-        let result = match response.additional_profile_fields() {
+fn sanitize(s: String) -> String {
+    s.replace("\n", "")
+}
+
+impl TryInto<CredentialResult> for oid4vci::credential::Response<CoreProfilesResponse> {
+    type Error = Error;
+
+    fn try_into(self) -> std::result::Result<CredentialResult, Self::Error> {
+        let result = match self.additional_profile_fields() {
             ResponseEnum::Immediate(resp) => {
-                let credential = Self::resolve_response_format(resp)?;
+                let credential = resp.try_into()?;
                 CredentialResult::Credential { credential, notification_id: None }
             }
             ResponseEnum::Deferred { transaction_id } => {
@@ -401,28 +396,27 @@ where
 
         Ok(result)
     }
+}
 
-    fn resolve_response_format(resp: &CoreProfilesResponse) -> Result<vc::Credential> {
-        let credential = match resp {
+impl TryInto<Credential> for &CoreProfilesResponse {
+    type Error = Error;
+
+    fn try_into(self) -> std::result::Result<Credential, Self::Error> {
+        let credential = match self {
             CoreProfilesResponse::SDJWTVC(c) => vc::Credential::SdJwt(c.credential().to_owned()),
             _ => Err(Error::FormatNotSupported)?,
         };
-
         Ok(credential)
     }
 }
 
-fn sanitize(s: String) -> String {
-    s.replace("\n", "")
-}
-
-impl TryInto<Proof> for ProofOfPossession {
+impl TryInto<SpruceProof> for AsdkProof {
     type Error = Error;
 
-    fn try_into(self) -> std::result::Result<Proof, Self::Error> {
+    fn try_into(self) -> std::result::Result<SpruceProof, Self::Error> {
         let proof = match self {
-            ProofOfPossession { ref format, proof } if format == "jwt" => Proof::JWT { jwt: proof.to_owned() },
-            ProofOfPossession { ref format, proof } if format == "cwt" => Proof::CWT { cwt: proof.to_owned() },
+            AsdkProof { ref format, proof } if format == "jwt" => SpruceProof::JWT { jwt: proof.to_owned() },
+            AsdkProof { ref format, proof } if format == "cwt" => SpruceProof::CWT { cwt: proof.to_owned() },
             _ => Err(Error::ProofNotSupported)?,
         };
         Ok(proof)
