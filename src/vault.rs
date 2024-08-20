@@ -1,0 +1,92 @@
+use async_trait::async_trait;
+
+use crate::vc;
+
+// Error handling
+#[derive(Debug, thiserror::Error, strum::IntoStaticStr)]
+#[non_exhaustive]
+pub enum Error {
+    #[error("credential not found for ID: {0}")]
+    NotFound(String),
+    // TODO: remove coupling to VC formats error here
+    #[error("VC format error: {0}")]
+    VC(#[from] vc::formats::Error),
+    #[error("storage error: {0}")]
+    Storage(String),
+}
+
+#[non_exhaustive]
+pub enum FindCriteria {
+    ByIdAndFormat(String, vc::VCFormat),
+    // etc
+}
+
+#[async_trait]
+pub trait Vault: Send + Sync
+{
+    async fn store_credential(&mut self, credential: vc::Credential, metadata: &vc::CredentialMetadata) -> Result<String, Error>;
+
+    async fn get_credential(&self, id: &str) -> Result<vc::Credential, Error>;
+
+    async fn find_credentials(&self, criteria: FindCriteria) -> Result<Vec<vc::Credential>, Error>;
+}
+
+#[cfg(test)]
+pub mod test_util {
+    use crate::crypto::Alg;
+    use crate::vault::{FindCriteria, Vault};
+    use crate::vc::{Credential, CredentialMetadata, VCFormat};
+
+    pub async fn test_vault<V: Vault>(mut vault: V) {
+        let secret = "abracadabra".to_string();
+
+        // test data
+        let cred1 = "token".to_string();
+        let cred1_meta = CredentialMetadata {
+            id: "id1".into(),
+            format: VCFormat::SdJwtVc,
+            alg: Alg::ES256,
+        };
+        let cred2str = r###"{
+            "@context": "https://www.w3.org/2018/credentials/v1",
+            "id": "http://example.org/credentials/3731",
+            "type": ["VerifiableCredential"],
+            "issuer": "did:example:30e07a529f32d234f6181736bd3",
+            "issuanceDate": "2020-08-19T21:41:50Z",
+            "credentialSubject": {
+                "id": "did:example:d23dd687a7dc6787646f2eb98d0"
+            }
+        }"###;
+        let cred2: ssi::vc::Credential = serde_json::from_str(cred2str).unwrap();
+        let cred2_meta = CredentialMetadata {
+            id: "id2".into(),
+            format: VCFormat::LdpVc,
+            alg: Alg::ES256,
+        };
+
+        let cred1_id = vault
+            .store_credential(Credential::SdJwt(cred1.clone()), &cred1_meta)
+            .await
+            .unwrap();
+        let cred2_id = vault
+            .store_credential(Credential::LdpVc(cred2.clone()), &cred2_meta)
+            .await
+            .unwrap();
+
+        let get1_res = vault.get_credential(&cred1_id).await.unwrap();
+        let get2_res = vault.get_credential(&cred2_id).await.unwrap();
+
+        assert_eq!(get1_res, Credential::SdJwt(cred1.clone()));
+        assert_eq!(get2_res, Credential::LdpVc(cred2));
+
+        let find_res = vault
+            .find_credentials(FindCriteria::ByIdAndFormat(
+                "id1".to_owned(),
+                VCFormat::SdJwtVc,
+            ))
+            .await
+            .unwrap();
+
+        assert_eq!(find_res, vec![Credential::SdJwt(cred1)]);
+    }
+}
