@@ -1,0 +1,14 @@
+stages:
+  - test
+
+test-job:
+  stage: test
+  image: rust:1.79.0
+  before_script:
+    - sed -i "s|ssh://git@git.slock.it/|https://gitlab-ci-token:${CI_JOB_TOKEN}@git.slock.it/|" Cargo.toml
+  script:
+    - cargo build
+    - cargo test
+  only:
+    - merge_requests
+    - main
