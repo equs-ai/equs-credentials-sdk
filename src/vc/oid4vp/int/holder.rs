@@ -13,6 +13,7 @@ use oid4vp::core::object::{ParsingErrorContext, UntypedObject};
 use oid4vp::core::profile;
 use oid4vp::core::profile::Wallet;
 use oid4vp::core::response::AuthorizationResponse;
+use oid4vp::core::response::parameters::{PresentationSubmission as PresentationSubmissionParam, VpToken};
 use oid4vp::presentation_exchange::{
     DescriptorMap, PresentationDefinition, PresentationSubmission,
 };
@@ -103,7 +104,7 @@ where
                 resolved_request.client_id.as_str(),
                 pres_input,
                 creds.first().ok_or(Error::CredentialNotFound)?,
-                format!("$[${i}]"),
+                format!("$[{i}]"),
                 &mut vp_tokens,
                 &mut pres_sub,
             )
@@ -145,7 +146,7 @@ where
                         resolved_request.client_id.as_str(),
                         pres_input,
                         cred,
-                        format!("$[${path_index}]"),
+                        format!("$[{path_index}]"),
                         &mut vp_tokens,
                         &mut pres_sub,
                     )
@@ -205,24 +206,23 @@ where
 
     fn generate_auth_response(
         presentations: Vec<Presentation>,
-        pres_sub: PresentationSubmission,
+        mut pres_sub: PresentationSubmission,
     ) -> Result<AuthorizationResponse> {
-        let mut prs_resp = PresentationResponse {
-            vp_token: Default::default(),
-            presentation_submission: pres_sub,
-        };
+        let mut response_params  = UntypedObject::default();
 
-        if presentations.len() == 1 {
-            prs_resp.vp_token = serde_json::to_value(presentations[0].clone())?;
-            prs_resp.presentation_submission.descriptor_map[0].path = "$".to_owned();
+       if presentations.len() == 1 {
+            let vp_token = serde_json::to_string(&presentations[0])?;
+            response_params.insert(VpToken(vp_token));
+            pres_sub.descriptor_map[0].path = "$".to_owned();
         } else {
-            prs_resp.vp_token = serde_json::to_value(presentations)?;
+            let vp_token = serde_json::to_string(&presentations)?;
+            response_params.insert(VpToken(vp_token));
         };
 
-        let un_ob: UntypedObject = serde_json::from_value(
-            serde_json::to_value(prs_resp)?
-        )?;
-        let auth_resp = AuthorizationResponse::try_from(un_ob)?;
+        let pres_sub_json = serde_json::to_value(pres_sub)?;
+        response_params.insert(PresentationSubmissionParam(pres_sub_json));
+
+        let auth_resp = AuthorizationResponse::try_from(response_params)?;
 
         Ok(auth_resp)
     }
@@ -237,12 +237,6 @@ where
 
         Ok(creds_map)
     }
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-struct PresentationResponse {
-    vp_token: Value,
-    presentation_submission: PresentationSubmission,
 }
 
 pub type CredentialId = String;

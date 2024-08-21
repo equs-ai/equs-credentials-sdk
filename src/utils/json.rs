@@ -6,24 +6,27 @@ pub fn find_json_element<'a>(json: &'a Json, json_path: &str) -> Option<&'a Json
     }
 
     let mut current = json;
-
-    let path = json_path.strip_prefix("$.").unwrap_or(json_path);
+    let path = json_path.trim_start_matches("$").trim_start_matches(".");
     let parts = path.split('.');
 
     for part in parts {
-        if let Some((key, array_index)) = part.split_once('[') {
-            current = current.get(key)?;
+        if let Some((key_part, array_part)) = part.split_once('[') {
+            // Handle keys with index bracket
+            if !key_part.is_empty() {
+                current = current.get(key_part)?;
+            }
 
-            if let Some(index) = array_index.strip_suffix(']') {
-                if let Ok(index) = index.parse::<usize>() {
+            if let Some(index_str) = array_part.strip_suffix(']') {
+                if let Ok(index) = index_str.parse::<usize>() {
                     current = current.get(index)?;
                 } else {
-                    return None;
+                    current = current.get(index_str.replace("'", ""))?;
                 }
             } else {
                 return None;
             }
         } else {
+            // Handle simple keys
             current = current.get(part)?;
         }
     }
@@ -77,13 +80,30 @@ mod test {
         });
 
         assert_eq!(
-            find_json_element(&json_data, "$.address.street"),
+            find_json_element(&json_data, "$.address['street']"),
             Some(&json_data["address"]["street"])
         );
         assert_eq!(
             find_json_element(&json_data, "$.address.city"),
             Some(&json_data["address"]["city"])
         );
+    }
+
+    #[test]
+    fn test_find_json_element_root_array_index() {
+        let json_data = json!([
+            {
+                "name": "John",
+                "age": 35
+            },
+            {
+                "name": "Alice",
+                "age": 5
+            },
+        ]);
+
+        assert_eq!(find_json_element(&json_data, "$[0]"), Some(&json_data[0]));
+        assert_eq!(find_json_element(&json_data, "$[1]"), Some(&json_data[1]));
     }
 
     #[test]
@@ -121,6 +141,7 @@ mod test {
         });
 
         assert_eq!(find_json_element(&json_data, "$.nonexistent"), None);
+        assert_eq!(find_json_element(&json_data, "$['nonexistent']"), None);
         assert_eq!(find_json_element(&json_data, "$.age.invalid"), None);
         assert_eq!(find_json_element(&json_data, "$.city[0]"), None);
     }
