@@ -117,40 +117,204 @@ pub trait Verifier {
     ) -> Result<CredentialClaimsRaw, VerifierError>;
 }
 
-
 #[cfg(test)]
 mod tests {
     use std::str::FromStr;
     use std::sync::Arc;
-
     use mockito::Server;
-    use serde_json::{json, Map, Value as Json};
+    use oid4vp::presentation_exchange::PresentationDefinition;
+    use rstest::rstest;
+    use serde_json::{json, Map, Value as Json, Value};
     use ssi::did::DIDURL;
     use tokio::sync::Mutex;
     use url::{form_urlencoded, Url};
 
-    use crate::{crypto, kms, vc};
     use crate::crypto::Alg;
-    use crate::did::DID;
     use crate::did::universal::UniversalResolver;
+    use crate::did::DID;
     use crate::inmem::kms::LocalKms;
     use crate::inmem::storage::InMemStorage;
     use crate::inmem::vault::InMemVault;
     use crate::vault::Vault;
-    use crate::vc::{Credential, CredentialMetadata, oid4vp as api, VCFormat};
     use crate::vc::core::KeyMetadata;
-    use crate::vc::formats::API;
     use crate::vc::formats::sd_jwt_vc::{SdJwtAPI, VCMetadata};
-    use crate::vc::oid4vp::AuthorizationResponseMetadata;
+    use crate::vc::formats::API;
     use crate::vc::oid4vp::holder::HolderService;
-    use crate::vc::oid4vp::int::{AuthorizationResponse, AuthorizationUrlType, PresentationSubmission};
-    use crate::vc::oid4vp::int::test_utils::{create_test_presentation_definition, generate_did_key, generate_did_key_and_vm};
+    use crate::vc::oid4vp::int::test_utils::{generate_did_key, generate_did_key_and_vm};
+    use crate::vc::oid4vp::int::{
+        AuthorizationResponse, AuthorizationUrlType, PresentationSubmission,
+    };
     use crate::vc::oid4vp::verifier::VerifierService;
-    use crate::vc::oid4vp::Verifier;
+    use crate::vc::oid4vp::{AuthorizationResponseMetadata};
     use crate::vc::oid4vp::Holder;
+    use crate::vc::oid4vp::Verifier;
+    use crate::vc::{oid4vp as api, Credential, CredentialMetadata, VCFormat};
+    use crate::{crypto, kms, vc};
 
+    type ValidateClaims = dyn FnOnce(Json) -> ();
+
+    struct Oid4VpTestCredential {
+        pub id: &'static str,
+        pub claims: Value,
+    }
+
+    struct Oid4VpTestCase {
+        pub credentials: Vec<Oid4VpTestCredential>,
+        pub presentation_definition: PresentationDefinition,
+        pub validate: Box<ValidateClaims>,
+    }
+
+    fn single_presentation_case() -> Oid4VpTestCase {
+        let identity = Oid4VpTestCredential {
+            id: "Identity-1",
+            claims: json!({
+                "vct": "https://credentials.example.com/identity_credential",
+                "name": "John",
+                "surname": "Doe",
+                "address": "221B Baker Street",
+                "date": "09/09/1989",
+            }),
+        };
+
+        let presentation_definition = serde_json::from_value(json!({
+            "id": "1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed",
+            "input_descriptors": [
+                {
+                    "id": "Identity-1",
+                    "name": "Identity VC",
+                    "purpose": "We want an identity",
+                    "format": {
+                        "vc+sd-jwt": {
+                            "alg": ["EdDSA", "ES256K"]
+                        }
+                     },
+                    "constraints": {
+                        "fields": [
+                            {
+                                "path": [
+                                    "$.vct",
+                                    "$.name"
+                                ]
+                            }
+                        ]
+                    }
+                }
+            ]
+        }))
+        .unwrap();
+
+        let validate: Box<ValidateClaims> = Box::new(|claims| {
+            assert_eq!(
+                claims["Identity-1"]["vct"],
+                json!("https://credentials.example.com/identity_credential")
+            );
+            assert_eq!(claims["Identity-1"]["name"], json!("John"));
+        });
+
+        Oid4VpTestCase {
+            credentials: vec![identity],
+            presentation_definition,
+            validate,
+        }
+    }
+
+    fn multiple_presentation_case() -> Oid4VpTestCase {
+        let identity = Oid4VpTestCredential {
+            id: "Identity-1",
+            claims: json!({
+                "vct": "https://credentials.example.com/identity_credential",
+                "name": "John",
+                "surname": "Doe",
+                "address": "221B Baker Street",
+                "date": "09/09/1989",
+            }),
+        };
+
+        let degree = Oid4VpTestCredential {
+            id: "Degree-1",
+            claims: json!({
+                "vct": "https://credentials.example.com/degree_credential",
+                "name": "John",
+                "surname": "Doe",
+                "degree": {
+                    "type": "BachelorDegree",
+                    "name": "Bachelor of Science and Arts"
+                },
+                "date": "09/09/2002",
+            }),
+        };
+
+        let presentation_definition = serde_json::from_value(json!({
+            "id": "1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed",
+            "input_descriptors": [
+                {
+                    "id": "Identity-1",
+                    "name": "Identity VC",
+                    "purpose": "We want an identity",
+                    "format": {
+                        "vc+sd-jwt": {
+                            "alg": ["EdDSA", "ES256K"]
+                        }
+                     },
+                    "constraints": {
+                        "fields": [
+                            {
+                                "path": [
+                                    "$.vct",
+                                    "$.name"
+                                ]
+                            }
+                        ]
+                    }
+                },
+                {
+                    "id": "Degree-1",
+                    "name": "Degree VC",
+                    "format": {
+                        "vc+sd-jwt": {
+                            "alg": ["EdDSA", "ES256K"]
+                        }
+                     },
+                    "constraints": {
+                        "fields": [
+                            {
+                                "path": [
+                                    "$.vct",
+                                    "$.name"
+                                ]
+                            }
+                        ]
+                    }
+                }
+            ]
+        }))
+        .unwrap();
+
+        let validate: Box<ValidateClaims> = Box::new(|claims| {
+            assert_eq!(
+                claims["Identity-1"]["vct"],
+                json!("https://credentials.example.com/identity_credential")
+            );
+            assert_eq!(claims["Identity-1"]["name"], json!("John"));
+            assert_eq!(
+                claims["Degree-1"]["vct"],
+                json!("https://credentials.example.com/degree_credential")
+            );
+            assert_eq!(claims["Degree-1"]["degree"]["type"], json!("BachelorDegree"));
+        });
+
+        Oid4VpTestCase {
+            credentials: vec![identity, degree],
+            presentation_definition,
+            validate,
+        }
+    }
+
+    #[rstest]
+    #[case::single_presentation(single_presentation_case())]
+    #[case::multiple_presentation(multiple_presentation_case())]
     #[tokio::test]
-    async fn execute_oid4vp_flow() {
+    async fn execute_oid4vp_flow(#[case] test_case: Oid4VpTestCase) {
         println!("7. Store Credential");
         let mut holder_kms = LocalKms::new();
         let (holder_kid, holder_kh, holder_did, holder_vm) =
@@ -159,10 +323,17 @@ mod tests {
 
         let mut holder_vault = InMemVault::new();
 
-        let (vc, vc_meta) = create_sample_vc(&holder_did_url, holder_kh).await;
-        holder_vault.store_credential(vc, &vc_meta)
-            .await
-            .unwrap();
+        // Create and store VCs
+        for credential in &test_case.credentials {
+            let (vc, vc_meta) = create_vc(
+                credential.id,
+                &holder_did_url,
+                holder_kh.clone(),
+                credential.claims.clone(),
+            )
+            .await;
+            holder_vault.store_credential(vc, &vc_meta).await.unwrap();
+        }
 
         // Create Holder and Verifier
         let holder = holder(holder_did, holder_vm, holder_kid, holder_kms, holder_vault).await;
@@ -176,11 +347,10 @@ mod tests {
         println!("8.1 Verifier: Create Authorization Request");
         // TODO: We should not use a test constant for Presentation Definition here,
         //  we need to build a new one (as every Verifier will build it).
-        let presentation_definition = create_test_presentation_definition();
         let nonce = "n0NcE";
         let response_uri: Url = format!("{}/auth", &verifier_base_url).parse().unwrap();
         let auth_request = verifier
-            .create_authorization_request(&presentation_definition, nonce, response_uri)
+            .create_authorization_request(&test_case.presentation_definition, nonce, response_uri)
             .await
             .unwrap();
 
@@ -202,14 +372,13 @@ mod tests {
         mock_request_uri_endpoint(&mut verifier_server, &auth_request.request_object_jwt);
         let response_mutex = mock_response_uri_endpoint(&mut verifier_server);
 
-
         println!("8.2 Holder: Get Authorization Request");
         let request_object = holder
             .get_authorization_request(by_reference.as_str())
             .await
             .unwrap();
 
-        println!("Authorization Request: {:?}", &request_object);
+        println!("{:?}", &request_object);
 
         println!("9. Present Credential Auto");
         holder
@@ -220,18 +389,13 @@ mod tests {
         println!("10. Verify Presentation");
         let auth_response = response_mutex.lock().await.clone().unwrap();
 
-        let claims = verifier
-            .verify_presentation(&auth_response)
-            .await
-            .unwrap();
+        println!("{:?}", auth_response);
+
+        let claims = verifier.verify_presentation(&auth_response).await.unwrap();
 
         println!("Presentation Claims: {}", claims);
 
-        assert_eq!(
-            claims["Identity-1"]["vct"],
-            json!("https://credentials.example.com/identity_credential")
-        );
-        assert_eq!(claims["Identity-1"]["name"], json!("John"));
+        (test_case.validate)(claims);
     }
 
     fn mock_request_uri_endpoint(verifier_server: &mut Server, request_object_jwt: &str) {
@@ -265,7 +429,7 @@ mod tests {
                 let presentation_submission: PresentationSubmission = serde_json::from_value(
                     json_map.get("presentation_submission").unwrap().clone(),
                 )
-                    .unwrap();
+                .unwrap();
 
                 let mut locked_response = response_clone.try_lock().unwrap();
                 *locked_response = Some(AuthorizationResponse {
@@ -300,36 +464,36 @@ mod tests {
         verifier_service
     }
 
-    async fn holder(holder_did: DID, holder_vm: String, holder_kid: kms::KeyID, kms: LocalKms, vault: InMemVault) -> impl api::Holder {
+    async fn holder(
+        holder_did: DID,
+        holder_vm: String,
+        holder_kid: kms::KeyID,
+        kms: LocalKms,
+        vault: InMemVault,
+    ) -> impl api::Holder {
         let metadata = vc::core::HolderMetadata {
             client_id: holder_did.to_owned(),
-            key_metadata: KeyMetadata { did_url: holder_vm, kid: holder_kid },
+            key_metadata: KeyMetadata {
+                did_url: holder_vm,
+                kid: holder_kid,
+            },
         };
         let inner = vc::core::HolderService::new(kms, vault, metadata);
 
         let http_client = reqwest::Client::new();
-        HolderService::new(
-            inner,
-            UniversalResolver::new(),
-            None,
-            http_client,
-        )
+        HolderService::new(inner, UniversalResolver::new(), None, http_client)
     }
 
-    async fn create_sample_vc(holder_did_url: &DIDURL, holder_kh: impl crypto::Key) -> (Credential, CredentialMetadata) {
+    async fn create_vc(
+        id: &str,
+        holder_did_url: &DIDURL,
+        holder_kh: impl crypto::Key,
+        claims: Json,
+    ) -> (Credential, CredentialMetadata) {
         // Generate Issuer DID and Key
         let mut issuer_kms = LocalKms::new();
         let (issuer_kid, issuer_kh, issuer_did) = generate_did_key(&mut issuer_kms).await;
         println!("Issuer DID: {}", issuer_did);
-
-        let credential_id = "Identity-1";
-        let claims = json!( {
-            "vct": "https://credentials.example.com/identity_credential",
-            "name": "John",
-            "surname": "Doe",
-            "address": "221B Baker Street",
-            "date": "09/09/1989",
-        });
 
         let issuer_did_url = DIDURL::from_str(&issuer_did).unwrap();
 
@@ -339,16 +503,20 @@ mod tests {
             (&holder_did_url, holder_kh),
             VCMetadata {
                 lifetime: time::Duration::days(365),
-                disclosures: vec!["$.name".to_owned(), "$.surname".to_owned(), "$.address".to_owned()],
+                disclosures: vec![
+                    "$.name".to_owned(),
+                    "$.surname".to_owned(),
+                    "$.address".to_owned(),
+                ],
             },
         )
-            .await
-            .unwrap();
+        .await
+        .unwrap();
 
         println!("Credential: {}", vc);
 
         let vc_meta = CredentialMetadata {
-            id: credential_id.to_string(),
+            id: id.to_string(),
             format: VCFormat::SdJwtVc,
             alg: Alg::ES256,
         };
