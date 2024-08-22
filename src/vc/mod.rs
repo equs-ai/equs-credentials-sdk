@@ -6,9 +6,9 @@ use crate::crypto;
 
 mod formats;
 mod pop;
-mod core;
-mod oid4vci;
-mod oid4vp;
+pub mod core;
+pub mod oid4vci;
+pub mod oid4vp;
 
 pub const JWT_VC_JSON: &str = "jwt_vc_json";
 pub const JWT_VC_JSON_LD: &str = "jwt_vc_json-ld";

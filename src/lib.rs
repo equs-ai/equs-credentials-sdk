@@ -8,10 +8,10 @@ pub mod vault;
 pub mod storage;
 
 // core
-mod vc;
-mod did;
-pub(crate) mod utils;
-pub(crate) mod inmem;
+pub mod vc;
+pub mod did;
+pub mod utils;
+pub mod inmem;
 
 // TODO: move to a separate crate
 #[cfg(feature = "askar")]

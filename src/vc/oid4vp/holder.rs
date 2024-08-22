@@ -18,6 +18,7 @@ use oid4vp::core::profile::Wallet;
 use oid4vp::core::response::parameters::{PresentationSubmission as PresentationSubmissionParam, VpToken};
 use oid4vp::core::response::AuthorizationResponse;
 use oid4vp::presentation_exchange::{DescriptorMap, PresentationSubmission};
+use std::sync::Arc;
 use url::Url;
 use uuid::Uuid;
 
@@ -29,7 +30,7 @@ where
     HL: vc::core::Holder,
     D: DIDResolver,
 {
-    holder: HL,
+    holder: Arc<HL>,
     did_resolver: D,
     metadata: WalletMetadata,
     http_client: reqwest::Client,
@@ -41,7 +42,7 @@ where
     D: DIDResolver,
 {
     pub fn new(
-        holder: HL,
+        holder: Arc<HL>,
         did_resolver: D,
         metadata: Option<WalletMetadata>,
         http_client: reqwest::Client,
@@ -369,8 +370,6 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::str::FromStr;
-
     use crate::crypto::{Alg, Key};
     use crate::did::didkey::DIDKey;
     use crate::did::DIDURL;
@@ -381,6 +380,8 @@ mod tests {
     use crate::vc::core::{HolderMetadata, KeyMetadata};
     use crate::vc::{Credential, CredentialMetadata, VCFormat};
     use crate::{kms, vc};
+    use std::str::FromStr;
+    use std::sync::Arc;
 
     use crate::vc::oid4vp as api;
     use crate::vc::oid4vp::holder::HolderService;
@@ -432,7 +433,7 @@ mod tests {
         let inner = holder().await;
         let resolver = DIDKey::new();
         HolderService::new(
-            inner,
+            Arc::new(inner),
             resolver,
             None,
             client,

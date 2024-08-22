@@ -8,8 +8,8 @@ use url::Url;
 use crate::vc::{Claims, Credential};
 use crate::{storage, vc};
 
-mod verifier;
-mod holder;
+pub mod verifier;
+pub mod holder;
 mod presentation_exchange;
 mod presentation_builder;
 
@@ -713,7 +713,7 @@ mod tests {
         let inner = vc::core::HolderService::new(kms, vault, metadata);
 
         let http_client = reqwest::Client::new();
-        HolderService::new(inner, UniversalResolver::new(), None, http_client)
+        HolderService::new(Arc::new(inner), UniversalResolver::new(), None, http_client)
     }
 
     async fn create_vc(
