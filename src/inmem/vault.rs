@@ -1,7 +1,7 @@
-use std::collections::HashMap;
-
+use async_rwlock::RwLock;
 use async_trait::async_trait;
 use futures::future;
+use std::collections::HashMap;
 
 use crate::inmem::storage::InMemStorage;
 use crate::storage::Storage;
@@ -11,49 +11,53 @@ use crate::vc::{Credential, CredentialMetadata};
 
 pub struct InMemVault {
     storage: InMemStorage<String, Credential>,
-    indexed: HashMap<String, Vec<String>>,
+    indexed: RwLock<HashMap<String, Vec<String>>>,
 }
 
 impl InMemVault {
     pub fn for_store(storage: InMemStorage<String, Credential>) -> Self {
-        Self { storage, indexed: HashMap::new() }
+        Self { storage, indexed: RwLock::new(HashMap::new()) }
     }
 
     pub fn new() -> Self {
-        Self { storage: InMemStorage::new(), indexed: HashMap::new() }
+        Self { storage: InMemStorage::new(), indexed: RwLock::new(HashMap::new()) }
     }
 
 
-    fn update_index(&mut self, metadata: &CredentialMetadata, storage_id: &str) -> Result<(), Error> {
+    async fn update_index(&self, metadata: &CredentialMetadata, storage_id: &str) -> Result<(), Error> {
         let index = format!("{}:{}", metadata.id, metadata.format);
 
-        if !self.indexed.contains_key(&index) {
-            self.indexed.insert(index.clone(), vec![]);
+        let mut vec: Vec<String> = vec![];
+        vec.push(storage_id.to_owned());
+
+        if let Some(existing) = self.indexed.read().await.get(&index) {
+            vec.extend(existing.to_owned());
         }
 
-        self.indexed.get_mut(&index).unwrap().push(storage_id.to_owned());
+        self.indexed.write().await.insert(index, vec);
 
         Ok(())
     }
 
-    fn get_indexed(&self, id: &str, format: vc::VCFormat) -> Vec<String> {
+    async fn get_indexed(&self, id: &str, format: vc::VCFormat) -> Vec<String> {
         let index = format!("{}:{}", id, format);
-        let vec = self.indexed.get(&index);
-        if vec.is_none() { return Vec::new(); }
-        vec.unwrap().to_owned()
+        let map = self.indexed.read().await;
+        let vec = map.get(&index);
+        vec.cloned().unwrap_or_else(|| Vec::new())
     }
 }
 
 #[async_trait]
 impl Vault for InMemVault {
-    async fn store_credential(&mut self, credential: Credential, metadata: &CredentialMetadata) -> Result<String, Error> {
+    async fn store_credential(&self, credential: Credential, metadata: &CredentialMetadata) -> Result<String, Error> {
         let storage_id = random_string::generate(5, random_string::charsets::ALPHA);
 
         let _ = self.storage
             .put(storage_id.clone(), credential.clone())
             .await
             .map_err(|err| Error::Storage(err.to_string()))?;
-        self.update_index(metadata, &storage_id)?;
+
+        self.update_index(metadata, &storage_id).await?;
 
         Ok(storage_id)
     }
@@ -70,7 +74,7 @@ impl Vault for InMemVault {
     async fn find_credentials(&self, criteria: FindCriteria) -> Result<Vec<Credential>, Error> {
         let creds = match criteria {
             FindCriteria::ByIdAndFormat(id, fmt) => {
-                let ids = self.get_indexed(&id, fmt);
+                let ids = self.get_indexed(&id, fmt).await;
                 let creds = future::try_join_all(ids.iter().map(|id| self.get_credential(id)))
                     .await?;
                 creds

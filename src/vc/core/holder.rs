@@ -71,7 +71,7 @@ where
     }
 
     async fn store_credential(
-        &mut self,
+        &self,
         credential: &Credential,
         metadata: &CredentialMetadata,
     ) -> Result<String> {

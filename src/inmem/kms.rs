@@ -73,7 +73,6 @@ impl kms::KeyHandle for KeyHandle {}
 
 pub type Bytes = Vec<u8>;
 
-#[derive(Clone)]
 pub struct LocalKms {
     storage: InMemStorage<kms::KeyID, Bytes>,
 }
@@ -104,7 +103,7 @@ impl LocalKms {
 #[async_trait]
 impl Kms<KeyHandle> for LocalKms
 {
-    async fn create(&mut self, kt: kms::KeyType, opts: kms::CreateOptions) -> Result<kms::KeyID, kms::Error> {
+    async fn create(&self, kt: kms::KeyType, opts: kms::CreateOptions) -> Result<kms::KeyID, kms::Error> {
         let key = match kt {
             kms::KeyType::Ed25519 => Ed25519::gen(),
             kms::KeyType::P256 => P256::gen(),
@@ -125,17 +124,15 @@ impl Kms<KeyHandle> for LocalKms
         let res = match kt {
             kms::KeyType::Ed25519 => {
                 Ed25519::from_secret(key.clone())
-                    .map(|s| KeyHandle::Ed25519(s))
-                    .map_err(|e| kms::Error::Crypto(e.to_string()))
+                    .map(|s| KeyHandle::Ed25519(s))?
             }
             kms::KeyType::P256 => {
                 P256::from_secret(key.clone())
-                    .map(|s| KeyHandle::P256(s))
-                    .map_err(|e| kms::Error::Crypto(e.to_string()))
+                    .map(|s| KeyHandle::P256(s))?
             }
         };
 
-        res
+        Ok(res)
     }
 }
 

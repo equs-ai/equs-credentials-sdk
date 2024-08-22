@@ -121,14 +121,14 @@ impl AskarKms {
 
 #[async_trait]
 impl Kms<AskarKeyHandle> for AskarKms {
-    async fn create(&mut self, kt: KeyType, opts: CreateOptions) -> Result<KeyID, kms::Error> {
-        let key =
-            LocalKey::generate(kt.into(), false).map_err(|e| kms::Error::Crypto(e.to_string()))?;
+    async fn create(&self, kt: KeyType, opts: CreateOptions) -> Result<KeyID, kms::Error> {
+        let key = LocalKey::generate(kt.into(), false)
+            .map_err(|e| Error::KeyGeneration(e.to_string()))?;
 
         let kid = random_string::generate(KID_LENGTH, random_string::charsets::ALPHA);
         self.insert_key(&kid, &key)
             .await
-            .map_err(|e| kms::Error::Crypto(e.to_string()))?;
+            .map_err(|e| kms::Error::Creation(e.to_string()))?;
 
         Ok(kid)
     }
@@ -136,13 +136,13 @@ impl Kms<AskarKeyHandle> for AskarKms {
     async fn get(&self, kid: &KeyID) -> Result<AskarKeyHandle, kms::Error> {
         let key = self.get_key(kid)
             .await
-            .map_err(|err| kms::Error::Crypto(err.to_string()))?
-            .ok_or_else(|| kms::Error::Crypto(format!("Key is not for ID: {}", kid)))?;
+            .map_err(|err| kms::Error::Resolving(err.to_string()))?
+            .ok_or_else(|| kms::Error::KeyNotFound(kid.to_string()))?;
 
         let sign_algorithm = key
             .algorithm()
             .try_into()
-            .map_err(|err: Error| kms::Error::Crypto(err.to_string()))?;
+            .map_err(|err: Error| Error::AlgNotSupported(err.to_string()))?;
 
         Ok(AskarKeyHandle(Arc::new(key), sign_algorithm))
     }

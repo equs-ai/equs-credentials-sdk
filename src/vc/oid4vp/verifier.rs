@@ -129,7 +129,7 @@ where
     ///
     /// An `AuthorizationRequest` on success.
     async fn create_authorization_request(
-        &mut self,
+        &self,
         presentation_definition: &PresentationDefinition,
         nonce: &str,
         response_uri: Url,
@@ -161,7 +161,7 @@ where
     ///
     /// The verified claims as a JSON object.
     async fn verify_presentation(
-        &mut self,
+        &self,
         auth_response: &AuthorizationResponse,
     ) -> Result<Json> {
         let id = &auth_response.presentation_submission.definition_id;
@@ -437,7 +437,7 @@ mod tests {
         let presentation_definition = create_test_presentation_definition();
         let nonce = "n0NcE";
 
-        let (mut verifier, _) = verifier().await;
+        let (verifier, _) = verifier().await;
 
         let request = verifier.create_authorization_request(
             &presentation_definition,
@@ -456,7 +456,7 @@ mod tests {
 
     #[tokio::test]
     async fn verify_authorization_response() {
-        let (mut verifier, client_id) = verifier().await;
+        let (verifier, client_id) = verifier().await;
 
         let presentation_definition = create_test_presentation_definition();
         let claims = json!( {
@@ -490,11 +490,11 @@ mod tests {
 
     async fn verifier() -> (impl vc::oid4vp::Verifier, String) {
         let did_resolver = UniversalResolver::new();
-        let mut kms = LocalKms::new();
+        let kms = LocalKms::new();
         let did_key = DIDKey::new();
 
         let (verifier_kid, verifier_key_handle, verifier_did, verifier_vm_id) =
-            generate_did_key_and_vm(&mut kms, &did_resolver).await;
+            generate_did_key_and_vm(&kms, &did_resolver).await;
 
         let key_metadata = KeyMetadata {
             did_url: verifier_vm_id,

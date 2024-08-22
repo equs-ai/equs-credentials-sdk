@@ -249,7 +249,7 @@ where
     }
 
     async fn store_credential(
-        &mut self,
+        &self,
         credential: &Credential,
         credential_metadata: &CredentialMetadata,
     ) -> Result<()> {

@@ -6,13 +6,19 @@ use crate::vc;
 #[derive(Debug, thiserror::Error, strum::IntoStaticStr)]
 #[non_exhaustive]
 pub enum Error {
+    // TODO: change `get_credential` to return Option<Credential> in result?
     #[error("credential not found for ID: {0}")]
     NotFound(String),
-    // TODO: remove coupling to VC formats error here
-    #[error("VC format error: {0}")]
-    VC(#[from] vc::formats::Error),
-    #[error("storage error: {0}")]
+    #[error("Storage error: {0}")]
     Storage(String),
+    #[error("Format not supported: {0}")]
+    FormatNotSupported(String),
+    #[error("VC error: {0}")]
+    VC(String),
+    #[error("Network error: {0}")]
+    Network(String),
+    #[error("Invalid criteria: {0}")]
+    FindCriteria(String),
 }
 
 #[non_exhaustive]
@@ -24,7 +30,7 @@ pub enum FindCriteria {
 #[async_trait]
 pub trait Vault: Send + Sync
 {
-    async fn store_credential(&mut self, credential: vc::Credential, metadata: &vc::CredentialMetadata) -> Result<String, Error>;
+    async fn store_credential(&self, credential: vc::Credential, metadata: &vc::CredentialMetadata) -> Result<String, Error>;
 
     async fn get_credential(&self, id: &str) -> Result<vc::Credential, Error>;
 
@@ -37,7 +43,7 @@ pub mod test_util {
     use crate::vault::{FindCriteria, Vault};
     use crate::vc::{Credential, CredentialMetadata, VCFormat};
 
-    pub async fn test_vault<V: Vault>(mut vault: V) {
+    pub async fn test_vault<V: Vault>(vault: V) {
         let secret = "abracadabra".to_string();
 
         // test data

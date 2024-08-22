@@ -7,8 +7,8 @@ test-job:
   before_script:
     - sed -i "s|ssh://git@git.slock.it/|https://gitlab-ci-token:${CI_JOB_TOKEN}@git.slock.it/|" Cargo.toml
   script:
-    - cargo build
-    - cargo test
+    - cargo build --all-features
+    - cargo test --all-features
   only:
     - merge_requests
     - main

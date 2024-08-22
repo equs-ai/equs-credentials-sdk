@@ -255,7 +255,7 @@ mod tests {
 
     #[tokio::test]
     async fn e2e() {
-        let mut kms = LocalKms::new();
+        let kms = LocalKms::new();
         let didkey = DIDKey::new();
 
         for kt in vec![kms::KeyType::Ed25519, kms::KeyType::P256] {

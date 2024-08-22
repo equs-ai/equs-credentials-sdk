@@ -106,7 +106,7 @@ pub trait Issuer {
     ) -> Result<(CredentialOfferParams, Url), IssuerError>;
 
     async fn issue_credential(
-        &mut self,
+        &self,
         cred_request: &CredentialRequest,
         token: &String,
         claims: &Claims,
@@ -137,7 +137,7 @@ pub trait Holder {
     ) -> Result<CredentialResult, HolderError>;
 
     async fn store_credential(
-        &mut self,
+        &self,
         credential: &Credential,
         // TODO: update after vault::find and CredMetadata refactoring
         credential_metadata: &CredentialMetadata,
@@ -257,7 +257,7 @@ mod tests {
 
         // 1. Creating issuer from issuer metadata
         let introspect_ep = authz_url.join("/token/introspect").unwrap();
-        let mut issuer = oid4vci_issuer(issuer_metadata.clone(), http_mock_iss, introspect_ep).await;
+        let issuer = oid4vci_issuer(issuer_metadata.clone(), http_mock_iss, introspect_ep).await;
 
         // 2. Creating offer
         let (offer, _) = issuer.create_credential_offer(
@@ -274,7 +274,7 @@ mod tests {
             iss_url.join("/credential").unwrap(),
             move |req| {
                 // 6.2 Issuer will issue credentials
-                let fut = credential_endpoint(&mut issuer, req);
+                let fut = credential_endpoint(&issuer, req);
                 let result = executor::block_on(fut);
                 Ok(result)
             },
@@ -311,7 +311,7 @@ mod tests {
         println!("Credential: {:?}", credential);
     }
 
-    async fn credential_endpoint(issuer: &mut impl Issuer, req: HttpRequest) -> HttpResponse {
+    async fn credential_endpoint(issuer: &impl Issuer, req: HttpRequest) -> HttpResponse {
         let cred_req = serde_json::from_slice(req.body.as_slice()).unwrap();
         let token = req.headers.get("Authorization").unwrap();
         let token = token.to_str().unwrap()
@@ -376,7 +376,7 @@ mod tests {
         // Initialization
         println!("Holder creating...");
 
-        let mut kms = LocalKms::new();
+        let kms = LocalKms::new();
         let didkey = DIDKey::new();
         let vault = InMemVault::new();
 
@@ -402,7 +402,7 @@ mod tests {
     async fn issuer(metadata: &IssuerMetadata) -> impl vc::core::Issuer {
         println!("Issuer creating...");
 
-        let mut kms = LocalKms::new();
+        let kms = LocalKms::new();
         let didkey = DIDKey::new();
 
         let kt = kms::KeyType::P256;

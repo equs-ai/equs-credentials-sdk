@@ -121,14 +121,14 @@ pub trait Holder {
 #[async_trait]
 pub trait Verifier {
     async fn create_authorization_request(
-        &mut self,
+        &self,
         presentation_definition: &PresentationDefinition,
         nonce: &str,
         response_uri: Url,
     ) -> Result<AuthorizationRequest, VerifierError>;
 
     async fn verify_presentation(
-        &mut self,
+        &self,
         authorization_response: &AuthorizationResponse,
     ) -> Result<Claims, VerifierError>;
 }
@@ -241,7 +241,7 @@ pub mod test_utils {
 
     pub async fn create_test_verifier_metadata(
         did_resolver: &UniversalResolver,
-        kms: &mut LocalKms,
+        kms: &LocalKms,
     ) -> VerifierMetadata {
         let (verifier_kid, verifier_key_handle, verifier_did, verifier_vm_id) =
             generate_did_key_and_vm(kms, did_resolver).await;
@@ -307,7 +307,7 @@ pub mod test_utils {
         }
     }
 
-    pub async fn generate_did_key(kms: &mut LocalKms) -> (KeyID, KeyHandle, DID) {
+    pub async fn generate_did_key(kms: &LocalKms) -> (KeyID, KeyHandle, DID) {
         let (issuer_kid, issuer_key_handle) = kms
             .create_and_handle(kms::KeyType::P256, kms::CreateOptions {})
             .await
@@ -318,7 +318,7 @@ pub mod test_utils {
     }
 
     pub async fn generate_did_key_and_vm(
-        kms: &mut LocalKms,
+        kms: &LocalKms,
         did_resolver: &UniversalResolver,
     ) -> (KeyID, KeyHandle, DID, String) {
         let (kid, key_handle, did) = generate_did_key(kms).await;
@@ -547,12 +547,12 @@ mod tests {
     #[tokio::test]
     async fn execute_oid4vp_flow(#[case] test_case: Oid4VpTestCase) {
         println!("7. Store Credential");
-        let mut holder_kms = LocalKms::new();
+        let holder_kms = LocalKms::new();
         let (holder_kid, holder_kh, holder_did, holder_vm) =
-            generate_did_key_and_vm(&mut holder_kms, &UniversalResolver::new()).await;
+            generate_did_key_and_vm(&holder_kms, &UniversalResolver::new()).await;
         let holder_did_url = DIDURL::from_str(&holder_did).unwrap();
 
-        let mut holder_vault = InMemVault::new();
+        let holder_vault = InMemVault::new();
 
         // Create and store VCs
         for credential in &test_case.credentials {
@@ -569,7 +569,7 @@ mod tests {
         // Create Holder and Verifier
         let holder = holder(holder_did, holder_vm, holder_kid, holder_kms, holder_vault).await;
 
-        let mut verifier = verifier().await;
+        let verifier = verifier().await;
 
         // Generate mocks
         let mut verifier_server = Server::new_async().await;
@@ -674,12 +674,12 @@ mod tests {
     }
 
     async fn verifier() -> impl api::Verifier {
-        let mut kms = LocalKms::new();
+        let kms = LocalKms::new();
         let storage = InMemStorage::new();
         let did_resolver = UniversalResolver::new();
 
         let (kid, kh, did, vm_id) =
-            generate_did_key_and_vm(&mut kms, &did_resolver).await;
+            generate_did_key_and_vm(&kms, &did_resolver).await;
         println!("Verifier DID: {}", did);
 
         let inner = vc::core::VerifierService::new(&did);
@@ -723,15 +723,15 @@ mod tests {
         claims: Json,
     ) -> (Credential, CredentialMetadata) {
         // Generate Issuer DID and Key
-        let mut issuer_kms = LocalKms::new();
-        let (issuer_kid, issuer_kh, issuer_did) = generate_did_key(&mut issuer_kms).await;
-        println!("Issuer DID: {}", issuer_did);
+        let kms = LocalKms::new();
+        let (kid, kh, did) = generate_did_key(&kms).await;
+        println!("Issuer DID: {}", did);
 
-        let issuer_did_url = DIDURL::from_str(&issuer_did).unwrap();
+        let did_url = DIDURL::from_str(&did).unwrap();
 
         let vc = SdJwtAPI::create_vc(
             SdJwtAPI::resolve_claims(&claims),
-            (&issuer_did_url, issuer_kh),
+            (&did_url, kh),
             (&holder_did_url, holder_kh),
             VCMetadata {
                 lifetime: time::Duration::days(365),
@@ -753,6 +753,6 @@ mod tests {
             alg: Alg::ES256,
         };
 
-        (vc::Credential::SdJwt(vc), vc_meta)
+        (Credential::SdJwt(vc), vc_meta)
     }
 }

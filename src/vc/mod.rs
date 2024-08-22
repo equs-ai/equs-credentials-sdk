@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::crypto;
 
-pub mod formats;
+mod formats;
 mod pop;
 mod core;
 mod oid4vci;
