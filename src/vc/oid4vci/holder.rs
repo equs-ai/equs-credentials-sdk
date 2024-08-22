@@ -1,13 +1,17 @@
-use std::string::ToString;
-
+use crate::utils::http::HttpClient;
+use crate::vc;
+use crate::vc::core::Proof as AsdkProof;
+use crate::vc::oid4vci as api;
+use crate::vc::oid4vci::{CredentialResult, TokenResponse};
+use crate::vc::{Credential, CredentialMetadata};
 use async_trait::async_trait;
-use oauth2::{AccessToken, AuthorizationCode, ClientId, CsrfToken, PkceCodeChallenge, RedirectUrl, ResponseType, Scope, TokenResponse as _TokenResponse};
 use oauth2::url::Url;
+use oauth2::{AccessToken, AuthorizationCode, ClientId, CsrfToken, PkceCodeChallenge, RedirectUrl, ResponseType, Scope, TokenResponse as _TokenResponse};
 use oid4vci::core::authorization::AuthorizationDetail;
 use oid4vci::core::client::Client;
 use oid4vci::core::credential_offer::CredentialOffer;
 use oid4vci::core::metadata::IssuerMetadata;
-use oid4vci::core::profiles::{CoreProfilesAuthorizationDetails, CoreProfilesMetadata, CoreProfilesOffer, CoreProfilesRequest, CoreProfilesResponse, sd_jwt};
+use oid4vci::core::profiles::{sd_jwt, CoreProfilesAuthorizationDetails, CoreProfilesMetadata, CoreProfilesOffer, CoreProfilesRequest, CoreProfilesResponse};
 use oid4vci::credential::{RequestError, ResponseEnum};
 use oid4vci::credential_offer::CredentialOfferFormat;
 use oid4vci::metadata::AuthorizationMetadata;
@@ -15,13 +19,8 @@ use oid4vci::openidconnect::IssuerUrl;
 use oid4vci::proof_of_possession::KeyProofType;
 use oid4vci::proof_of_possession::Proof as SpruceProof;
 use oid4vci::token;
-
-use crate::utils::http::HttpClient;
-use crate::vc;
-use crate::vc::{Credential, CredentialMetadata};
-use crate::vc::core::Proof as AsdkProof;
-use crate::vc::oid4vci::{CredentialResult, TokenResponse};
-use crate::vc::oid4vci as api;
+use std::string::ToString;
+use std::sync::Arc;
 
 pub type Error = api::HolderError;
 pub type Result<T> = core::result::Result<T, Error>;
@@ -36,7 +35,7 @@ where
     HL: vc::core::Holder,
     HC: HttpClient,
 {
-    holder: HL,
+    holder: Arc<HL>,
     http_client: HC,
     client_id: String,
     iss_url: String,
@@ -51,7 +50,7 @@ where
     HC: HttpClient,
 {
     pub async fn from_iss_url(
-        holder: HL,
+        holder: Arc<HL>,
         http_client: HC,
         iss_url: String,
         client_id: String,
@@ -68,7 +67,7 @@ where
     }
 
     pub async fn from_credential_offer(
-        holder: HL,
+        holder: Arc<HL>,
         http_client: HC,
         offer: &CredentialOffer,
         client_id: String,
@@ -96,7 +95,7 @@ where
     }
 
     async fn from_iss_url_with_configs(
-        holder: HL,
+        holder: Arc<HL>,
         http_client: HC,
         iss_url: String,
         offer_configs: Vec<CredentialOfferFormat<CoreProfilesOffer>>,
@@ -125,7 +124,7 @@ where
     }
 
     pub fn from_metadata(
-        holder: HL,
+        holder: Arc<HL>,
         http_client: HC,
         issuer_metadata: IssuerMetadata,
         authz_metadata: AuthorizationMetadata,
@@ -144,7 +143,7 @@ where
     }
 
     fn new(
-        holder: HL,
+        holder: Arc<HL>,
         http_client: HC,
         issuer_metadata: IssuerMetadata,
         authz_metadata: AuthorizationMetadata,
@@ -160,13 +159,13 @@ where
         );
 
         Ok(Self {
+            holder,
+            http_client,
             client_id,
             iss_url: issuer_metadata.credential_issuer().to_string(),
             issuer_metadata,
             offer_configs,
             client,
-            holder,
-            http_client,
         })
     }
 }

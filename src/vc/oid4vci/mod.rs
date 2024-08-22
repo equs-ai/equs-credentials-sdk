@@ -7,8 +7,8 @@ use url::Url;
 use crate::{storage, vault, vc};
 use crate::vc::{Claims, Credential, CredentialMetadata};
 
-mod issuer;
-mod holder;
+pub mod issuer;
+pub mod holder;
 mod introspect;
 mod metadata;
 
@@ -19,6 +19,7 @@ pub type CredentialOfferParams = oid4vci::credential_offer::CredentialOfferParam
 pub type CredentialRequest = oid4vci::core::credential::Request;
 pub type CredentialResponse = oid4vci::core::credential::Response;
 pub type TokenResponse = oid4vci::token::Response;
+pub type AuthorizationCodeGrant = oid4vci::credential_offer::AuthorizationCodeGrant;
 
 #[derive(Debug, Clone)]
 pub enum CredentialResult {
@@ -147,7 +148,7 @@ pub trait Holder {
 #[cfg(test)]
 mod tests {
     use std::str::FromStr;
-
+    use std::sync::Arc;
     use futures::executor;
     use oauth2::{HttpRequest, HttpResponse};
     use oauth2::http::{Method, StatusCode};
@@ -352,7 +353,7 @@ mod tests {
     async fn oid4vci_holder(credential_offer: CredentialOfferParams, http_client: MockHttpClient) -> impl Holder + Sized {
         let inner = holder().await;
         HolderService::from_credential_offer(
-            inner,
+            Arc::new(inner),
             http_client,
             &CredentialOffer::Value { credential_offer },
             "wallet-dev".to_string(),
