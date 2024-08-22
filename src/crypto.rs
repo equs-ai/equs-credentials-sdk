@@ -9,13 +9,15 @@ use strum_macros::{Display, EnumString, IntoStaticStr};
 #[derive(Debug, thiserror::Error, IntoStaticStr)]
 #[non_exhaustive]
 pub enum Error {
-    #[error("key not supported: {0}")]
+    #[error("Key not supported: {0}")]
     KeyNotSupported(String),
-    #[error("signing error: {0}")]
+    #[error("Alg not supported: {0}")]
+    AlgNotSupported(String),
+    #[error("Signing error: {0}")]
     Signature(String),
-    #[error("verifying error: {0}")]
+    #[error("Verifying error: {0}")]
     Verification(String),
-    #[error("key generation failed: {0}")]
+    #[error("Key generation error: {0}")]
     KeyGeneration(String),
 }
 

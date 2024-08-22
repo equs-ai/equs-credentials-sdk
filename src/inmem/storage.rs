@@ -1,19 +1,18 @@
+use async_rwlock::RwLock;
+use async_trait::async_trait;
 use std::collections::HashMap;
 use std::fmt::Display;
 use std::hash::Hash;
 
-use async_trait::async_trait;
-
 use crate::storage;
 
-#[derive(Clone)]
 pub struct InMemStorage<K, V> {
-    map: HashMap<K, V>,
+    map: RwLock<HashMap<K, V>>,
 }
 
 impl<K, V> InMemStorage<K, V> {
     pub fn new() -> Self {
-        Self { map: HashMap::new() }
+        Self { map: RwLock::new(HashMap::new()) }
     }
 }
 
@@ -21,20 +20,20 @@ impl<K, V> InMemStorage<K, V> {
 impl<K, V> storage::Storage<K, V> for InMemStorage<K, V>
 where
     K: Display + Eq + PartialEq + Hash + Sync + Send,
-    V: 'static + Sync + Send,
+    V: 'static + Sync + Send + Clone,
 {
-    async fn put(&mut self, k: K, v: V) -> Result<(), storage::Error> {
-        self.map.insert(k, v);
+    async fn put(&self, k: K, v: V) -> Result<(), storage::Error> {
+        self.map.write().await.insert(k, v);
         Ok(())
     }
 
-    async fn get(&self, k: &K) -> Result<&V, storage::Error> {
-        let v = self.map.get(k);
+    async fn get(&self, k: &K) -> Result<V, storage::Error> {
+        let v = self.map.read().await.get(k).cloned();
         v.ok_or_else(|| storage::Error::ValueNotFound(k.to_string()))
     }
 
-    async fn delete(&mut self, k: &K) -> Result<(), storage::Error> {
-        let _ = self.map.remove(k);
+    async fn delete(&self, k: &K) -> Result<(), storage::Error> {
+        let _ = self.map.write().await.remove(k);
         Ok(())
     }
 }

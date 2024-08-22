@@ -5,7 +5,6 @@ use uuid::Uuid;
 
 use crate::crypto::Alg;
 use crate::vault::{Error, FindCriteria, Vault};
-use crate::vc;
 use crate::vc::{Credential, CredentialMetadata, JWT_VC_JSON, JWT_VC_JSON_LD, LDP_VC, SD_JWT_VC, VCFormat};
 
 pub const TAG_ID: &str = "id";
@@ -48,7 +47,7 @@ impl AskarVault {
     fn create_entry(
         credential: &Credential,
         metadata: &CredentialMetadata,
-    ) -> Result<Entry, vc::formats::Error> {
+    ) -> Result<Entry, Error> {
         let name = Uuid::new_v4().to_string();
         let tags = vec![
             EntryTag::Encrypted(TAG_ID.to_string(), metadata.id.to_owned()),
@@ -79,7 +78,7 @@ impl AskarVault {
             )),
             Credential::LdpVc(credential) => {
                 let credential_json = serde_json::to_string(&credential)
-                    .map_err(|err| vc::formats::Error::Parsing(err.to_string()))?;
+                    .map_err(|err| Error::VC(err.to_string()))?;
                 Ok(Entry::new(
                     EntryKind::Item,
                     LDP_VC,
@@ -102,7 +101,7 @@ impl AskarVault {
 #[async_trait]
 impl Vault for AskarVault {
     async fn store_credential(
-        &mut self,
+        &self,
         credential: Credential,
         metadata: &CredentialMetadata,
     ) -> Result<String, Error> {
@@ -194,20 +193,21 @@ impl TryFrom<Entry> for Credential {
             .value
             .as_opt_str()
             .ok_or_else(|| {
-                vc::formats::Error::Parsing("Failed to convert secret bytes to credential string".to_string())
+                Error::VC("Failed to convert secret bytes to credential string".to_string())
             })?
             .to_string();
+
 
         match value.category.as_str() {
             JWT_VC_JSON => Ok(Credential::JwtVcJson(credential_str)),
             JWT_VC_JSON_LD => Ok(Credential::JwtVcJsonLd(credential_str)),
             LDP_VC => {
                 let credential = ssi::vc::Credential::from_json_unsigned(&credential_str)
-                    .map_err(|err| vc::formats::Error::Parsing(err.to_string()))?;
+                    .map_err(|err| Error::VC(err.to_string()))?;
                 Ok(Credential::LdpVc(credential))
             }
             SD_JWT_VC => Ok(Credential::SdJwt(credential_str)),
-            _ => Err(Error::VC(vc::formats::Error::FormatNotSupported)),
+            _ => Err(Error::FormatNotSupported(value.category)),
         }
     }
 }

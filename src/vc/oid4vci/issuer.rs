@@ -99,7 +99,7 @@ where
     }
 
     async fn issue_credential(
-        &mut self,
+        &self,
         cred_request: &CredentialRequest,
         token: &String,
         claims: &Claims,
@@ -113,7 +113,7 @@ where
             return Err(Self::invalid_proof(nonce));
         }
 
-        let nonce = nonce.unwrap();
+        let nonce = nonce?;
 
         let cred_def_id = self.resolve_cred_def_id(cred_request)?;
         let cred_req = vc::core::CredentialRequest {
@@ -135,7 +135,7 @@ where
             return Err(Error::VC(result.err().unwrap()));
         }
 
-        let (cred, _) = result.unwrap();
+        let (cred, _) = result?;
         let resp = CredentialResponse::new(ResponseEnum::Immediate(cred.into()))
             .set_nonce(Some(new_nonce))
             .set_nonce_expiration(Some(NONCE_EXPIRES_IN));
@@ -188,13 +188,13 @@ where
         Ok(())
     }
 
-    async fn resolve_nonce(&mut self, token: &String) -> Result<Nonce> {
+    async fn resolve_nonce(&self, token: &String) -> Result<Nonce> {
         let nonce = self.storage.get(token).await?;
 
         Ok(Nonce::new(nonce.to_owned()))
     }
 
-    async fn upsert_nonce(&mut self, token: &String) -> Result<Nonce> {
+    async fn upsert_nonce(&self, token: &String) -> Result<Nonce> {
         let nonce = Nonce::new_random();
 
         self.storage.put(token.clone(), nonce.secret().to_owned()).await?;

@@ -9,8 +9,8 @@ pub use issuer::IssuerService;
 #[allow(unused_imports)]
 pub use verifier::VerifierService;
 
-use crate::{vault, vc};
 use crate::vc::{Claims, Credential, CredentialMetadata, Presentation};
+use crate::{vault, vc};
 
 pub mod verifier;
 pub mod holder;
@@ -152,7 +152,7 @@ pub trait Holder: Send + Sync
     ) -> Result<CredentialRequest>;
 
     async fn store_credential(
-        &mut self,
+        &self,
         credential: &Credential,
         metadata: &CredentialMetadata,
     ) -> Result<String>;
@@ -196,22 +196,22 @@ mod tests {
     use serde_json::json;
     use ssi::did::DIDURL;
 
-    use crate::{kms, vc};
     use crate::crypto::Key;
     use crate::did::didkey::DIDKey;
-    use crate::kms::Kms;
     use crate::inmem::kms::LocalKms;
     use crate::inmem::vault::InMemVault;
-    use crate::vc::core::{CredentialDefinition, CredentialDefinitionData, Holder, HolderMetadata, Issuer, IssuerMetadata, KeyMetadata, PresentationInput, Verifier};
+    use crate::kms::Kms;
     use crate::vc::core::holder::HolderService;
     use crate::vc::core::issuer::IssuerService;
     use crate::vc::core::verifier::VerifierService;
+    use crate::vc::core::{CredentialDefinition, CredentialDefinitionData, Holder, HolderMetadata, Issuer, IssuerMetadata, KeyMetadata, PresentationInput, Verifier};
+    use crate::{kms, vc};
 
     #[tokio::test]
     async fn e2e() {
         // Initialization
         let issuer = issuer().await;
-        let mut holder = holder().await;
+        let holder = holder().await;
         let verifier = verifier("ver-id");
 
         println!("Issue credential...");
@@ -288,7 +288,7 @@ mod tests {
         // Initialization
         println!("Issuer creating...");
 
-        let mut kms = LocalKms::new();
+        let kms = LocalKms::new();
         let didkey = DIDKey::new();
 
         let kt = kms::KeyType::P256;
@@ -333,7 +333,7 @@ mod tests {
         // Initialization
         println!("Holder creating...");
 
-        let mut kms = LocalKms::new();
+        let kms = LocalKms::new();
         let didkey = DIDKey::new();
         let vault = InMemVault::new();
 

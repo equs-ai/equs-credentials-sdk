@@ -7,11 +7,17 @@ use crate::crypto;
 #[derive(Debug, thiserror::Error, IntoStaticStr)]
 #[non_exhaustive]
 pub enum Error {
-    #[error("crypto error: {0}")]
-    Crypto(String),
+    #[error("Key not found: {0}")]
+    KeyNotFound(String),
+    #[error("Create key error: {0}")]
+    Creation(String),
+    #[error("Resolving error: {0}")]
+    Resolving(String),
+    #[error("Network error: {0}")]
+    Network(String),
+    #[error("Crypto error: {0}")]
+    Crypto(#[from] crypto::Error),
 }
-
-// Basic types definitions
 
 pub type KeyID = String;
 
@@ -25,7 +31,7 @@ pub enum KeyType {
 }
 
 // Method options
-#[derive(Default)]
+#[derive(Default, PartialEq, Clone)]
 pub struct CreateOptions {}
 
 pub trait KeyHandle: crypto::SigningKey + crypto::VerifyingKey + crypto::Key + Clone {}
@@ -35,19 +41,15 @@ pub trait Kms<KH>: Send + Sync
 where
     KH: KeyHandle,
 {
-    async fn create(&mut self, kt: KeyType, opts: CreateOptions) -> Result<KeyID, Error>;
+    async fn create(&self, kt: KeyType, opts: CreateOptions) -> Result<KeyID, Error>;
 
     async fn get(&self, kid: &KeyID) -> Result<KH, Error>;
 
-    async fn create_and_handle(&mut self, kt: KeyType, opts: CreateOptions) -> Result<(KeyID, KH), Error> {
-        let res = self.create(kt, opts).await;
-        if res.is_err() { return Err(res.err().unwrap()); }
-        let kid = res.unwrap();
+    async fn create_and_handle(&self, kt: KeyType, opts: CreateOptions) -> Result<(KeyID, KH), Error> {
+        let kid = self.create(kt, opts).await?;
+        let res = self.get(&kid).await?;
 
-        let res = self.get(&kid).await;
-        if res.is_err() { return Err(res.err().unwrap()); }
-
-        Ok((kid, res.unwrap()))
+        Ok((kid, res))
     }
 }
 
@@ -56,7 +58,7 @@ pub mod test_util {
     use crate::kms;
     use crate::kms::{KeyHandle, Kms};
 
-    pub async fn test_kms<KH: KeyHandle, KMS: Kms<KH>>(mut kms: KMS) {
+    pub async fn test_kms<KH: KeyHandle, KMS: Kms<KH>>(kms: KMS) {
         for kt in vec![kms::KeyType::Ed25519, kms::KeyType::P256] {
             // Create a key
             let create_res = kms.create(kt.clone(), kms::CreateOptions {}).await;

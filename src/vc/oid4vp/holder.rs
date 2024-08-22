@@ -68,15 +68,12 @@ where
     ) -> Result<()>
     {
         // TODO: implement builder-like helper for VpToken/PresentationSubmission in presentation_exchange
-        let presentation = self
-            .holder
-            .create_presentation(
-                nonce,
-                client_id,
-                presentation_input,
-                credential,
-            )
-            .await?;
+        let presentation = self.holder.create_presentation(
+            nonce,
+            client_id,
+            presentation_input,
+            credential,
+        ).await?;
 
         vp_tokens.push(presentation);
 
@@ -443,9 +440,9 @@ mod tests {
     }
 
     async fn holder() -> impl vc::core::Holder {
-        let mut kms = LocalKms::new();
+        let kms = LocalKms::new();
         let didkey = DIDKey::new();
-        let mut vault = InMemVault::new();
+        let vault = InMemVault::new();
 
         let cred1_meta = CredentialMetadata { id: "Identity-1".into(), format: VCFormat::SdJwtVc, alg: Alg::ES256 };
         let store1_res = vault.store_credential(Credential::SdJwt(CRED_JWT.to_string()), &cred1_meta).await;
