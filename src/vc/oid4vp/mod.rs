@@ -1,18 +1,48 @@
 use async_trait::async_trait;
+use oid4vp::core::authorization_request::parameters::{Nonce, ResponseMode};
+use oid4vp::core::object::UntypedObject;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use url::Url;
 
-use crate::vc;
-use crate::vc::oid4vp::int::{AuthorizationRequest, AuthorizationResponse, PresentationDefinition};
-use crate::vc::oid4vp::int::holder::{CredentialsMap, ResolvedAuthRequest};
+use crate::vc::{Claims, Credential};
+use crate::{storage, vc};
 
-pub mod int;
 mod verifier;
 mod holder;
-//  --------- DATA MODEL -------------
+mod presentation_exchange;
+mod presentation_builder;
 
-pub type CredentialClaimsRaw = serde_json::Value;
+// Data type
 pub struct AuthorizationResponseMetadata {}
-pub type CredentialMapping = CredentialsMap;
+pub type CredentialMapping = HashMap<String, Vec<Credential>>;
+pub type PresentationSubmission = oid4vp::presentation_exchange::PresentationSubmission;
+pub type PresentationDefinition = oid4vp::presentation_exchange::PresentationDefinition;
+pub type ClientMetadata = oid4vp::core::authorization_request::parameters::ClientMetadata;
+pub type WalletMetadata = oid4vp::core::metadata::WalletMetadata;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ResolvedAuthRequest {
+    pub client_id: String,
+    pub presentation_definition: PresentationDefinition,
+    pub nonce: Nonce,
+    pub response_mode: ResponseMode,
+    pub response_uri: Url,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct AuthorizationRequest {
+    client_id: String,
+    pub request_object_jwt: String,
+    authorization_endpoint: Url,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct AuthorizationResponse {
+    pub vp_token: serde_json::Value,
+    pub presentation_submission: PresentationSubmission,
+}
+
 
 #[derive(Debug, thiserror::Error, strum::IntoStaticStr)]
 #[non_exhaustive]
@@ -33,6 +63,8 @@ pub enum VerifierError {
     ParsingError(String),
     #[error("Required field missing: {0}")]
     MissingRequiredField(String),
+    #[error("Storage Error: {0}")]
+    StorageError(#[from] storage::Error),
 }
 
 #[derive(Debug, thiserror::Error, strum::IntoStaticStr)]
@@ -42,8 +74,6 @@ pub enum HolderError {
     VpFormatNotSupported,
     #[error("credential does not exist")]
     CredentialNotFound,
-    #[error("could not parse vp-format from presentation definition")]
-    VpFormatParse,
     #[error("could not validate Verifier: {0}")]
     RequestObjectVerification(String),
     #[error(transparent)]
@@ -56,52 +86,40 @@ pub enum HolderError {
     VC(#[from] vc::core::Error),
     #[error("Url Parse Error: {0}")]
     UrlParse(#[from] url::ParseError),
+    #[error("Presentation exchange error: {0}")]
+    PresentationExchange(#[from] presentation_exchange::Error),
     #[error("{0}")]
     Other(String),
 }
 
 #[async_trait]
 pub trait Holder {
-    // Step 8.2
-    // (Optional) AuthRequest can be sent out-of-band or by GET to auth-req-uri (this call)
     async fn get_authorization_request(
         &self,
         auth_req_uri: &str,
     ) -> Result<ResolvedAuthRequest, HolderError>;
 
-    // Step 9
-    // Assume credentials for presentations are selected automatically
-    // If there is just one credential matching a presentation request - it's selected
-    // If there are multiple selection matching - they are selected according to a default logic (such as take the first one)
     async fn present_credentials_auto(
         &self,
         auth_request: &ResolvedAuthRequest,
         metadata: &AuthorizationResponseMetadata,
     ) -> Result<Option<Url>, HolderError>;
 
-    // Step 9.1
-    // Manual approval/consent of credentials to be used for presentation
-    // Step 7A1 - find matching credentials
     async fn find_vcs_for_presentation(
         &self,
         auth_request: &ResolvedAuthRequest,
     ) -> Result<CredentialMapping, HolderError>;
 
-    // Step 9.2
-    // Manual approval/consent of credentials to be used for presentation
-    // Step 5A2 - create presentation for a unambiguous Mapping where there is a VC for every presentation request item
     async fn present_credentials(
         &self,
         auth_request: &ResolvedAuthRequest,
-        credential_mapping_selected: &CredentialMapping,
+        credential_mapping: &CredentialMapping,
         metadata: &AuthorizationResponseMetadata,
     ) -> Result<Option<Url>, HolderError>;
 }
 
 #[async_trait]
 pub trait Verifier {
-    // Step 8.1
-    // GET /<authorization_req_uri> or pass by value
     async fn create_authorization_request(
         &mut self,
         presentation_definition: &PresentationDefinition,
@@ -109,23 +127,238 @@ pub trait Verifier {
         response_uri: Url,
     ) -> Result<AuthorizationRequest, VerifierError>;
 
-    // Step 10
-    // POST <authorization-response-uri>
     async fn verify_presentation(
         &mut self,
         authorization_response: &AuthorizationResponse,
-    ) -> Result<CredentialClaimsRaw, VerifierError>;
+    ) -> Result<Claims, VerifierError>;
 }
+
+const DEFAULT_CLIENT_METADATA: &str = r#"{
+    "vp_formats": {
+        "vc+sd-jwt": {
+            "alg": [
+                "EdDSA",
+                "ES256"
+            ]
+        }
+    }
+}"#;
+
+
+pub fn default_client_metadata() -> ClientMetadata {
+    ClientMetadata::try_from(serde_json::from_str::<serde_json::Value>(DEFAULT_CLIENT_METADATA).unwrap())
+        .unwrap()
+}
+
+const DEFAULT_WALLET_METADATA: &str = r#"{
+    "issuer": "https://self-issued.me/v2",
+    "authorization_endpoint": "openid4vp://",
+    "response_types_supported": [
+        "vp_token"
+    ],
+    "vp_formats_supported":
+    {
+        "vc+sd-jwt": {
+            "alg_values_supported": ["EdDSA", "ES256"]
+        }
+    },
+    "client_id_schemes_supported": [
+        "did"
+    ],
+    "request_object_signing_alg_values_supported": [
+        "EdDSA",
+        "ES256"
+    ]
+}"#;
+
+pub fn default_wallet_metadata() -> WalletMetadata {
+    WalletMetadata::try_from(
+        serde_json::from_str::<UntypedObject>(DEFAULT_WALLET_METADATA).unwrap(),
+    ).unwrap()
+}
+
+
+#[cfg(test)]
+pub mod test_utils {
+    use std::str::FromStr;
+
+    use crate::did::didkey::DIDKey;
+    use crate::did::universal::UniversalResolver;
+    use crate::did::{DIDResolver, DID};
+    use crate::inmem::kms::{KeyHandle, LocalKms};
+    use crate::kms;
+    use crate::kms::{KeyID, Kms};
+    use crate::vc::core::KeyMetadata;
+    use crate::vc::formats::sd_jwt_vc::{SdJwtAPI, VCMetadata, VPMetadata};
+    use crate::vc::formats::API;
+    use crate::vc::oid4vp::verifier::VerifierMetadata;
+    use crate::vc::oid4vp::{default_client_metadata, AuthorizationRequest, AuthorizationResponse};
+    use oid4vci::openidconnect::Nonce;
+    use oid4vp::core::authorization_request::AuthorizationRequest as SpruceAuthorizationRequest;
+    use oid4vp::core::authorization_request::RequestIndirection;
+    use oid4vp::presentation_exchange::PresentationDefinition;
+    use serde_json::{json, Value as Json};
+    use ssi::did::DIDURL;
+    use url::Url;
+
+    const TEST_PRESENTATION_DEFINITION: &str = r#"{
+        "id": "1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed",
+        "input_descriptors": [
+            {
+                "id": "Identity-1",
+                "name": "Identity VC",
+                "purpose": "We want an identity",
+                "format": {
+                    "vc+sd-jwt": {
+                        "alg": ["EdDSA", "ES256K"]
+                    }
+                 },
+                "constraints": {
+                    "fields": [
+                        {
+                            "path": [
+                                "$.vct",
+                                "$.name"
+                            ]
+                        }
+                    ]
+                }
+            }
+        ]
+    }"#;
+
+    const TEST_PRESENTATION_SUBMISSION: &str = r#"{
+        "id": "725199a1-6fbe-4447-be06-a0f9857e32fd",
+        "definition_id": "1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed",
+        "descriptor_map": [
+            {
+                "id": "Identity-1",
+                "format": "vc+sd-jwt",
+                "path": "$"
+            }
+        ]
+    }"#;
+
+    pub async fn create_test_verifier_metadata(
+        did_resolver: &UniversalResolver,
+        kms: &mut LocalKms,
+    ) -> VerifierMetadata {
+        let (verifier_kid, verifier_key_handle, verifier_did, verifier_vm_id) =
+            generate_did_key_and_vm(kms, did_resolver).await;
+
+        VerifierMetadata {
+            client_id: verifier_did.to_owned(),
+            key_metadata: KeyMetadata {
+                did_url: verifier_vm_id,
+                kid: verifier_kid,
+            },
+            client_metadata: default_client_metadata(),
+        }
+    }
+
+    pub fn create_test_presentation_definition() -> PresentationDefinition {
+        serde_json::from_str(TEST_PRESENTATION_DEFINITION).unwrap()
+    }
+
+    pub async fn create_authorization_response(
+        verifier_id: &str,
+        nonce: &str,
+        claims: &Json,
+    ) -> AuthorizationResponse {
+        let mut kms = LocalKms::new();
+        let (issuer_kid, issuer_key_handle, issuer_did) = generate_did_key(&mut kms).await;
+        let issuer_did_url = DIDURL::from_str(&issuer_did).unwrap();
+
+        let (holder_kid, holder_key_handle, holder_did) = generate_did_key(&mut kms).await;
+        let holder_did_url = DIDURL::from_str(&holder_did).unwrap();
+
+        let vc = SdJwtAPI::create_vc(
+            SdJwtAPI::resolve_claims(&claims),
+            (&issuer_did_url, issuer_key_handle),
+            (&holder_did_url, holder_key_handle.clone()),
+            VCMetadata {
+                lifetime: time::Duration::days(365),
+                disclosures: vec!["$.name".to_owned(), "$.surname".to_owned()],
+            },
+        )
+            .await
+            .unwrap();
+
+        let vp = SdJwtAPI::create_vp(
+            &vc,
+            (&holder_did_url, holder_key_handle),
+            Nonce::new(nonce.to_string()),
+            &verifier_id,
+            VPMetadata {
+                disclosures: json!({
+                    "name" : true
+                })
+                    .as_object()
+                    .unwrap()
+                    .to_owned(),
+            },
+        )
+            .await
+            .unwrap();
+
+        AuthorizationResponse {
+            vp_token: json!(vp),
+            presentation_submission: serde_json::from_str(TEST_PRESENTATION_SUBMISSION).unwrap(),
+        }
+    }
+
+    pub async fn generate_did_key(kms: &mut LocalKms) -> (KeyID, KeyHandle, DID) {
+        let (issuer_kid, issuer_key_handle) = kms
+            .create_and_handle(kms::KeyType::P256, kms::CreateOptions {})
+            .await
+            .unwrap();
+        let issuer_did = DIDKey::new().generate(issuer_key_handle.clone()).unwrap();
+
+        (issuer_kid, issuer_key_handle, issuer_did)
+    }
+
+    pub async fn generate_did_key_and_vm(
+        kms: &mut LocalKms,
+        did_resolver: &UniversalResolver,
+    ) -> (KeyID, KeyHandle, DID, String) {
+        let (kid, key_handle, did) = generate_did_key(kms).await;
+        let vm_id = did_resolver
+            .resolve_verification_method(&did)
+            .await
+            .unwrap()
+            .id;
+
+        (kid, key_handle, did, vm_id)
+    }
+
+    pub enum AuthorizationUrlType {
+        Reference(Url),
+        Value,
+    }
+
+    pub fn auth_request_as_url(req: &AuthorizationRequest, type_: AuthorizationUrlType) -> Url {
+        let request_indirection = match type_ {
+            AuthorizationUrlType::Value => RequestIndirection::ByValue(req.request_object_jwt.clone()),
+            AuthorizationUrlType::Reference(at) => RequestIndirection::ByReference(at),
+        };
+
+        SpruceAuthorizationRequest {
+            client_id: req.client_id.clone(),
+            request_indirection,
+        }.to_url(req.authorization_endpoint.clone()).unwrap()
+    }
+}
+
 
 #[cfg(test)]
 mod tests {
-    use std::str::FromStr;
-    use std::sync::Arc;
     use mockito::Server;
-    use oid4vp::presentation_exchange::PresentationDefinition;
+    use oid4vp::presentation_exchange::{PresentationDefinition, PresentationSubmission};
     use rstest::rstest;
     use serde_json::{json, Map, Value as Json, Value};
     use ssi::did::DIDURL;
+    use std::str::FromStr;
+    use std::sync::Arc;
     use tokio::sync::Mutex;
     use url::{form_urlencoded, Url};
 
@@ -140,16 +373,14 @@ mod tests {
     use crate::vc::formats::sd_jwt_vc::{SdJwtAPI, VCMetadata};
     use crate::vc::formats::API;
     use crate::vc::oid4vp::holder::HolderService;
-    use crate::vc::oid4vp::int::test_utils::{generate_did_key, generate_did_key_and_vm};
-    use crate::vc::oid4vp::int::{
-        AuthorizationResponse, AuthorizationUrlType, PresentationSubmission,
-    };
+    use crate::vc::oid4vp::test_utils::{auth_request_as_url, generate_did_key, generate_did_key_and_vm, AuthorizationUrlType};
     use crate::vc::oid4vp::verifier::VerifierService;
-    use crate::vc::oid4vp::{AuthorizationResponseMetadata};
-    use crate::vc::oid4vp::Holder;
+    use crate::vc::oid4vp::AuthorizationResponseMetadata;
     use crate::vc::oid4vp::Verifier;
+    use crate::vc::oid4vp::{AuthorizationResponse, Holder};
     use crate::vc::{oid4vp as api, Credential, CredentialMetadata, VCFormat};
     use crate::{crypto, kms, vc};
+
 
     type ValidateClaims = dyn FnOnce(Json) -> ();
 
@@ -201,7 +432,7 @@ mod tests {
                 }
             ]
         }))
-        .unwrap();
+            .unwrap();
 
         let validate: Box<ValidateClaims> = Box::new(|claims| {
             assert_eq!(
@@ -288,7 +519,7 @@ mod tests {
                 }
             ]
         }))
-        .unwrap();
+            .unwrap();
 
         let validate: Box<ValidateClaims> = Box::new(|claims| {
             assert_eq!(
@@ -331,7 +562,7 @@ mod tests {
                 holder_kh.clone(),
                 credential.claims.clone(),
             )
-            .await;
+                .await;
             holder_vault.store_credential(vc, &vc_meta).await.unwrap();
         }
 
@@ -357,14 +588,12 @@ mod tests {
         let request_uri: Url = format!("{}/req-object", &verifier_base_url)
             .parse()
             .unwrap();
-        let by_value = auth_request.as_url(AuthorizationUrlType::Value).unwrap();
-        let by_reference = auth_request
-            .as_url(AuthorizationUrlType::Reference(
-                format!("{}/req-object", &verifier_base_url)
-                    .parse()
-                    .unwrap(),
-            ))
-            .unwrap();
+        let by_value = auth_request_as_url(&auth_request, AuthorizationUrlType::Value);
+        let by_reference = auth_request_as_url(&auth_request, AuthorizationUrlType::Reference(
+            format!("{}/req-object", &verifier_base_url)
+                .parse()
+                .unwrap(),
+        ));
 
         println!("Request object passed by value: {}", by_value);
         println!("Request object passed by reference: {}", by_reference);
@@ -429,7 +658,7 @@ mod tests {
                 let presentation_submission: PresentationSubmission = serde_json::from_value(
                     json_map.get("presentation_submission").unwrap().clone(),
                 )
-                .unwrap();
+                    .unwrap();
 
                 let mut locked_response = response_clone.try_lock().unwrap();
                 *locked_response = Some(AuthorizationResponse {
@@ -444,24 +673,27 @@ mod tests {
         authorization_response
     }
 
-    async fn verifier() -> impl Verifier {
-        let mut verifier_kms = LocalKms::new();
-        let (verifier_kid, verifier_key_handle, verifier_did, verifier_vm_id) =
-            generate_did_key_and_vm(&mut verifier_kms, &UniversalResolver::new()).await;
-        println!("Verifier DID: {}", verifier_did);
+    async fn verifier() -> impl api::Verifier {
+        let mut kms = LocalKms::new();
+        let storage = InMemStorage::new();
+        let did_resolver = UniversalResolver::new();
 
-        let verifier_storage = InMemStorage::<String, Json>::new();
-        let verifier_service = VerifierService::new(
-            verifier_did,
+        let (kid, kh, did, vm_id) =
+            generate_did_key_and_vm(&mut kms, &did_resolver).await;
+        println!("Verifier DID: {}", did);
+
+        let inner = vc::core::VerifierService::new(&did);
+        VerifierService::new(
+            inner,
+            kms,
+            did_resolver,
+            storage,
+            did,
             KeyMetadata {
-                did_url: verifier_vm_id,
-                kid: verifier_kid,
+                did_url: vm_id,
+                kid,
             },
-            verifier_kms,
-            verifier_storage,
-        );
-
-        verifier_service
+        )
     }
 
     async fn holder(
@@ -510,8 +742,8 @@ mod tests {
                 ],
             },
         )
-        .await
-        .unwrap();
+            .await
+            .unwrap();
 
         println!("Credential: {}", vc);
 
