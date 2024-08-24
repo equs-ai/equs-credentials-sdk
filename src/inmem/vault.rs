@@ -6,7 +6,6 @@ use std::collections::HashMap;
 use crate::inmem::storage::InMemStorage;
 use crate::storage::Storage;
 use crate::vault::{Error, FindCriteria, Vault};
-use crate::vc;
 use crate::vc::{Credential, CredentialMetadata};
 
 pub struct InMemVault {
@@ -25,7 +24,7 @@ impl InMemVault {
 
 
     async fn update_index(&self, metadata: &CredentialMetadata, storage_id: &str) -> Result<(), Error> {
-        let index = format!("{}:{}", metadata.id, metadata.format);
+        let index = format!("{}:{}", metadata.type_, metadata.format);
 
         let mut vec: Vec<String> = vec![];
         vec.push(storage_id.to_owned());
@@ -39,8 +38,8 @@ impl InMemVault {
         Ok(())
     }
 
-    async fn get_indexed(&self, id: &str, format: vc::VCFormat) -> Vec<String> {
-        let index = format!("{}:{}", id, format);
+    async fn get_indexed(&self, type_: &str, format: &str) -> Vec<String> {
+        let index = format!("{}:{}", type_, format);
         let map = self.indexed.read().await;
         let vec = map.get(&index);
         vec.cloned().unwrap_or_else(|| Vec::new())
@@ -73,8 +72,8 @@ impl Vault for InMemVault {
 
     async fn find_credentials(&self, criteria: FindCriteria) -> Result<Vec<Credential>, Error> {
         let creds = match criteria {
-            FindCriteria::ByIdAndFormat(id, fmt) => {
-                let ids = self.get_indexed(&id, fmt).await;
+            FindCriteria::ByTypeAndFormat(type_, fmt) => {
+                let ids = self.get_indexed(&type_, &fmt).await;
                 let creds = future::try_join_all(ids.iter().map(|id| self.get_credential(id)))
                     .await?;
                 creds

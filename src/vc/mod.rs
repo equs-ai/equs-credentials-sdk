@@ -1,14 +1,14 @@
 use std::fmt::{Display, Formatter};
 
-use serde::{Deserialize, Serialize};
-
 use crate::crypto;
+use serde::{Deserialize, Serialize};
 
 mod formats;
 mod pop;
 pub mod core;
 pub mod oid4vci;
 pub mod oid4vp;
+pub mod metadata;
 
 pub const JWT_VC_JSON: &str = "jwt_vc_json";
 pub const JWT_VC_JSON_LD: &str = "jwt_vc_json-ld";
@@ -90,12 +90,13 @@ impl Credential {
     }
 }
 
-// TODO: prune metadata
 #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
 pub struct CredentialMetadata {
-    pub id: String,
+    #[serde(rename = "type")]
+    pub type_: String,
     pub format: VCFormat,
-    pub alg: crypto::Alg,
+    pub alg: Option<crypto::Alg>,
+    pub tags: Vec<(String, String)>,
 }
 
 #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]

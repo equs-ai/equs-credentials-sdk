@@ -9,7 +9,7 @@ pub use issuer::IssuerService;
 #[allow(unused_imports)]
 pub use verifier::VerifierService;
 
-use crate::vc::{Claims, Credential, CredentialMetadata, Presentation};
+use crate::vc::{metadata, Claims, Credential, CredentialMetadata, Presentation};
 use crate::{vault, vc};
 
 pub mod verifier;
@@ -92,6 +92,7 @@ pub struct CredentialRequestData {}
 pub struct PresentationInput {
     pub id: String,
     pub format: String,
+    pub type_: Option<String>,
     pub claims: serde_json::Map<String, serde_json::Value>,
 }
 
@@ -111,10 +112,14 @@ pub enum Error {
     NoCredential,
     #[error("format not supported")]
     FormatNotSupported,
+    #[error("find criteria compilation failed: {0}")]
+    FindCriteria(String),
     #[error("missing claim: {0}")]
     MissingClaim(String),
     #[error(transparent)]
     VC(#[from] vc::formats::Error),
+    #[error(transparent)]
+    Metadata(#[from] metadata::Error),
     #[error(transparent)]
     Proof(#[from] vc::pop::Error),
     #[error(transparent)]
@@ -229,8 +234,7 @@ mod tests {
         let request = request.unwrap();
 
         let claims = json!( {
-                "vct": "SD_JWT_cred",
-                "type": ["SD_JWT_cred"],
+                "vct": "https://credentials.example.com/identity_credential",
                 "given_name": "John",
                 "family_name": "Doe",
                 "dob": "09/09/1989",
@@ -251,6 +255,7 @@ mod tests {
 
         let presentation_input = PresentationInput {
             id: "SD_JWT_cred".into(),
+            type_: Some("https://credentials.example.com/identity_credential".into()),
             format: "vc+sd-jwt".into(),
             claims: json!({
                "given_name": true,
