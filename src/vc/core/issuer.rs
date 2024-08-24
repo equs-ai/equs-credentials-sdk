@@ -4,15 +4,16 @@ use std::str::FromStr;
 use async_trait::async_trait;
 use oid4vci::openidconnect::Nonce;
 
-use crate::{kms, vc};
 use crate::did::DIDURL;
-use crate::vc::{Claims, Credential, CredentialMetadata, pop};
-use crate::vc::core::{CredentialDefinition, CredentialDefinitionData, CredentialOffer, CredentialOfferData, CredentialRequest, Error, Issuer, IssuerMetadata};
 use crate::vc::core::Result;
-use crate::vc::formats::API;
+use crate::vc::core::{CredentialDefinition, CredentialDefinitionData, CredentialOffer, CredentialOfferData, CredentialRequest, Error, Issuer, IssuerMetadata};
 use crate::vc::formats::sd_jwt_vc::{SdJwtAPI, VCMetadata};
+use crate::vc::formats::API;
+use crate::vc::metadata::{CredentialMetadataProcessor, DefaultMetadataProcessor};
 use crate::vc::pop::jwt_pop::JwtProofOfPossession;
 use crate::vc::pop::ProofOfPossession;
+use crate::vc::{pop, Claims, Credential, CredentialMetadata};
+use crate::{kms, vc};
 
 pub struct IssuerService<KH, KMS>
 where
@@ -80,7 +81,7 @@ where
 
         let (iss_did, iss_key) = self.resolve_key_metadata(cred_def).await?;
 
-        let (vc, meta) = match vc_fmt {
+        let vc = match vc_fmt {
             vc::VCFormat::SdJwtVc => {
                 let claims = SdJwtAPI::resolve_claims(claims);
                 let alg = &iss_key.alg();
@@ -93,10 +94,12 @@ where
                     metadata,
                 ).await?;
 
-                (Credential::SdJwt(cred), CredentialMetadata { id: cred_def.cred_def_id.to_owned(), format: vc_fmt, alg: alg.to_owned() })
+                Credential::SdJwt(cred)
             }
             _ => Err(Error::FormatNotSupported)?
         };
+
+        let meta = DefaultMetadataProcessor::resolve_metadata(&vc)?;
 
         Ok((vc, meta))
     }

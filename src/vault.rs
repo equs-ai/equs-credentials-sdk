@@ -23,7 +23,7 @@ pub enum Error {
 
 #[non_exhaustive]
 pub enum FindCriteria {
-    ByIdAndFormat(String, vc::VCFormat),
+    ByTypeAndFormat(String, String),
     // etc
 }
 
@@ -39,19 +39,17 @@ pub trait Vault: Send + Sync
 
 #[cfg(test)]
 pub mod test_util {
-    use crate::crypto::Alg;
     use crate::vault::{FindCriteria, Vault};
     use crate::vc::{Credential, CredentialMetadata, VCFormat};
 
     pub async fn test_vault<V: Vault>(vault: V) {
-        let secret = "abracadabra".to_string();
-
         // test data
         let cred1 = "token".to_string();
         let cred1_meta = CredentialMetadata {
-            id: "id1".into(),
+            type_: "https://credentials.example.com/identity_credential".into(),
             format: VCFormat::SdJwtVc,
-            alg: Alg::ES256,
+            alg: None,
+            tags: vec![],
         };
         let cred2str = r###"{
             "@context": "https://www.w3.org/2018/credentials/v1",
@@ -65,9 +63,10 @@ pub mod test_util {
         }"###;
         let cred2: ssi::vc::Credential = serde_json::from_str(cred2str).unwrap();
         let cred2_meta = CredentialMetadata {
-            id: "id2".into(),
+            type_: "VerifiableCredential".into(),
             format: VCFormat::LdpVc,
-            alg: Alg::ES256,
+            alg: None,
+            tags: vec![],
         };
 
         let cred1_id = vault
@@ -86,9 +85,9 @@ pub mod test_util {
         assert_eq!(get2_res, Credential::LdpVc(cred2));
 
         let find_res = vault
-            .find_credentials(FindCriteria::ByIdAndFormat(
-                "id1".to_owned(),
-                VCFormat::SdJwtVc,
+            .find_credentials(FindCriteria::ByTypeAndFormat(
+                "https://credentials.example.com/identity_credential".to_owned(),
+                VCFormat::SdJwtVc.to_string(),
             ))
             .await
             .unwrap();

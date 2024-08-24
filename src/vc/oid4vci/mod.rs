@@ -9,11 +9,12 @@ use crate::vc::{Claims, Credential, CredentialMetadata};
 
 pub mod issuer;
 pub mod holder;
-mod introspect;
-mod metadata;
+pub mod introspect;
+pub mod metadata;
 
 // Data types
 pub type IssuerMetadata = oid4vci::core::metadata::IssuerMetadata;
+pub type CredentialOffer = oid4vci::credential_offer::CredentialOffer<CoreProfilesOffer>;
 pub type CredentialOfferGrants = oid4vci::credential_offer::CredentialOfferGrants;
 pub type CredentialOfferParams = oid4vci::credential_offer::CredentialOfferParameters<CoreProfilesOffer>;
 pub type CredentialRequest = oid4vci::core::credential::Request;
@@ -97,7 +98,7 @@ pub enum HolderError {
 // API
 
 #[async_trait]
-pub trait Issuer {
+pub trait Issuer: Send + Sync {
     fn get_issuer_metadata(&self) -> IssuerMetadata;
 
     fn create_credential_offer(
@@ -115,7 +116,7 @@ pub trait Issuer {
 }
 
 #[async_trait]
-pub trait Holder {
+pub trait Holder: Send + Sync {
     fn get_issuer_metadata(&self) -> IssuerMetadata;
 
     async fn authz_code_flow_with_scope(

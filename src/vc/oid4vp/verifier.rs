@@ -5,15 +5,19 @@ use crate::storage::Storage;
 use crate::utils::json::find_json_element;
 use crate::vc;
 use crate::vc::core::KeyMetadata;
+use crate::vc::oid4vp::presentation_builder::DefaultPresentationBuilder;
 use crate::vc::oid4vp::{default_client_metadata, default_wallet_metadata, AuthorizationRequest, AuthorizationResponse, ClientMetadata};
 use crate::vc::{oid4vp as api, Presentation};
 use async_trait::async_trait;
 use oid4vp::core::authorization_request::parameters::PresentationDefinition as PresentationDefinitionParameter;
 use oid4vp::core::authorization_request::parameters::{Nonce, ResponseMode, ResponseType, ResponseUri};
+use oid4vp::core::authorization_request::AuthorizationRequestObject;
+use oid4vp::core::credential_format::CoreCredentialFormat;
 use oid4vp::core::metadata::parameters::verifier::VpFormats;
 use oid4vp::core::metadata::parameters::wallet::AuthorizationEndpoint;
 use oid4vp::core::metadata::WalletMetadata;
 use oid4vp::core::object::ParsingErrorContext;
+use oid4vp::core::profile::{Profile, Verifier};
 use oid4vp::core::verifier::request_signer::RequestSigner;
 use oid4vp::core::verifier::Session;
 use oid4vp::presentation_exchange::{ConstraintsField, PresentationDefinition};
@@ -21,11 +25,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value as Json};
 use ssi::jwk::JWK;
 use std::marker::PhantomData;
-use oid4vp::core::authorization_request::AuthorizationRequestObject;
-use oid4vp::core::credential_format::CoreCredentialFormat;
-use oid4vp::core::profile::{Profile, Verifier};
 use url::Url;
-use crate::vc::oid4vp::presentation_builder::DefaultPresentationBuilder;
 
 pub type Error = api::VerifierError;
 pub type Result<T> = core::result::Result<T, Error>;
@@ -241,7 +241,7 @@ where
 
     async fn authorization_request(
         &self,
-        presentation_definition: &oid4vp::presentation_exchange::PresentationDefinition,
+        presentation_definition: &PresentationDefinition,
         nonce: &str,
         wallet_metadata: WalletMetadata,
         response_uri: Url,
@@ -304,7 +304,7 @@ where
 
     async fn do_verify_presentation(
         &self,
-        presentation_definition: &oid4vp::presentation_exchange::PresentationDefinition,
+        presentation_definition: &PresentationDefinition,
         nonce: &str,
         authorization_response: &AuthorizationResponse,
     ) -> std::result::Result<Json, Error> {
@@ -395,7 +395,7 @@ struct SignerWrapper<S: SigningKey> {
 }
 
 impl<S: SigningKey> SignerWrapper<S> {
-    fn new(signer: S) -> std::result::Result<SignerWrapper<S>, Error> {
+    fn new(signer: S) -> Result<SignerWrapper<S>> {
         let key = signer.jwk().ok_or(Error::InvalidKey("Failed to convert verifier key into JWK".to_string()))?;
 
         Ok(SignerWrapper { signer, key })
@@ -412,7 +412,7 @@ impl<S: SigningKey> RequestSigner for SignerWrapper<S> {
         &self.key
     }
 
-    async fn sign(&self, payload: &[u8]) -> std::result::Result<Vec<u8>, anyhow::Error> {
+    async fn sign(&self, payload: &[u8]) -> anyhow::Result<Vec<u8>> {
         let signature = self.signer.sign(payload).await?;
         Ok(signature)
     }
@@ -428,9 +428,9 @@ mod tests {
     use crate::inmem::storage::InMemStorage;
     use crate::vc;
     use crate::vc::core::KeyMetadata;
-    use crate::vc::oid4vp::test_utils::{auth_request_as_url, create_authorization_response, create_test_presentation_definition, generate_did_key_and_vm, AuthorizationUrlType};
+    use crate::vc::oid4vp::test_utils::{create_authorization_response, create_test_presentation_definition, generate_did_key_and_vm};
     use crate::vc::oid4vp::verifier::VerifierService;
-    use crate::vc::oid4vp::Verifier;
+    use crate::vc::oid4vp::{auth_request_as_url, AuthorizationUrlType, Verifier};
 
     #[tokio::test]
     async fn generate_authorization_request() {

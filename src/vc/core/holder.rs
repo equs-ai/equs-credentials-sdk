@@ -4,16 +4,16 @@ use std::str::FromStr;
 use async_trait::async_trait;
 use oid4vci::openidconnect::Nonce;
 
-use crate::{kms, vault, vc};
 use crate::did::DIDURL;
 use crate::vault::FindCriteria;
-use crate::vc::{Credential, CredentialMetadata, pop, Presentation};
-use crate::vc::core::{CredentialOffer, CredentialRequest, CredentialRequestData, Error, Holder, HolderMetadata, PresentationInput, Proof};
 use crate::vc::core::Result;
-use crate::vc::formats::API;
+use crate::vc::core::{CredentialOffer, CredentialRequest, CredentialRequestData, Error, Holder, HolderMetadata, PresentationInput, Proof};
 use crate::vc::formats::sd_jwt_vc::{SdJwtAPI, VPMetadata};
+use crate::vc::formats::API;
 use crate::vc::pop::jwt_pop::JwtProofOfPossession;
 use crate::vc::pop::ProofOfPossession;
+use crate::vc::{pop, Credential, CredentialMetadata, Presentation};
+use crate::{kms, vault};
 
 pub struct HolderService<KH, KMS, V>
 where
@@ -114,10 +114,12 @@ where
 
         let presentation = match credential {
             Credential::SdJwt(vc) => {
+                // For now, only top level supported
+                let disclosures = Self::resolve_disclosures(presentation_input);
                 let vp = SdJwtAPI::create_vp(vc,
                                              (&did_url, key),
                                              Nonce::new(nonce.into()), verifier_id,
-                                             VPMetadata { disclosures: presentation_input.claims.clone() },
+                                             VPMetadata { disclosures },
                 ).await?;
 
                 Presentation::SdJwtVp(vp)
@@ -173,11 +175,19 @@ where
 
     fn resolve_find_criteria(&self, input: &PresentationInput) -> Result<FindCriteria> {
         // TODO: more generic solution to support different criterias
-        let vc_fmt = &input.format;
-        let vc_fmt = vc::VCFormat::from_str(vc_fmt)?;
-
-        let criteria = FindCriteria::ByIdAndFormat(input.id.clone(), vc_fmt.clone());
+        let type_ = input.type_.clone().ok_or(Error::FindCriteria("type value should be set in vp".to_string()))?;
+        let criteria = FindCriteria::ByTypeAndFormat(type_, input.format.clone());
 
         Ok(criteria)
+    }
+
+    fn resolve_disclosures(input: &PresentationInput) -> serde_json::Map<String, serde_json::Value> {
+        let claims = input.claims.clone();
+
+        let stripped: Vec<_> = claims.keys().into_iter()
+            .map(|k| (k.to_owned(), serde_json::Value::Bool(true)))
+            .collect();
+
+        serde_json::Map::from_iter(stripped.into_iter())
     }
 }

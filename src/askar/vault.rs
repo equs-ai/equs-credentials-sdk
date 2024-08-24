@@ -5,9 +5,9 @@ use uuid::Uuid;
 
 use crate::crypto::Alg;
 use crate::vault::{Error, FindCriteria, Vault};
-use crate::vc::{Credential, CredentialMetadata, JWT_VC_JSON, JWT_VC_JSON_LD, LDP_VC, SD_JWT_VC, VCFormat};
+use crate::vc::{Credential, CredentialMetadata, VCFormat, JWT_VC_JSON, JWT_VC_JSON_LD, LDP_VC, SD_JWT_VC};
 
-pub const TAG_ID: &str = "id";
+pub const TAG_TYPE: &str = "type_";
 pub const TAG_FORMAT: &str = "format";
 pub const TAG_ALG: &str = "alg";
 
@@ -49,17 +49,22 @@ impl AskarVault {
         metadata: &CredentialMetadata,
     ) -> Result<Entry, Error> {
         let name = Uuid::new_v4().to_string();
-        let tags = vec![
-            EntryTag::Encrypted(TAG_ID.to_string(), metadata.id.to_owned()),
+        let mut tags = vec![
+            EntryTag::Encrypted(TAG_TYPE.to_string(), metadata.type_.to_owned()),
             EntryTag::Encrypted(
                 TAG_FORMAT.to_string(),
                 <&VCFormat as Into<&str>>::into(&metadata.format).to_string(),
             ),
-            EntryTag::Encrypted(
-                TAG_ALG.to_string(),
-                <Alg as Into<&str>>::into(metadata.alg).to_string(),
-            ),
         ];
+
+        if let Some(alg) = metadata.alg {
+            tags.push(
+                EntryTag::Encrypted(
+                    TAG_ALG.to_string(),
+                    <Alg as Into<&str>>::into(alg).to_string(),
+                ),
+            )
+        }
 
         match credential {
             Credential::JwtVcJson(credential) => Ok(Entry::new(
@@ -174,12 +179,9 @@ impl From<AskarVaultId> for String {
 impl From<FindCriteria> for TagFilter {
     fn from(value: FindCriteria) -> Self {
         match value {
-            FindCriteria::ByIdAndFormat(id, format) => TagFilter::all_of(vec![
-                TagFilter::is_eq(TAG_ID, id),
-                TagFilter::is_eq(
-                    TAG_FORMAT,
-                    <&VCFormat as Into<&str>>::into(&format).to_string(),
-                ),
+            FindCriteria::ByTypeAndFormat(type_, format) => TagFilter::all_of(vec![
+                TagFilter::is_eq(TAG_TYPE, type_),
+                TagFilter::is_eq(TAG_FORMAT, format),
             ]),
         }
     }

@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use oid4vp::core::authorization_request::parameters::{Nonce, ResponseMode};
+use oid4vp::core::authorization_request::RequestIndirection;
 use oid4vp::core::object::UntypedObject;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -93,7 +94,7 @@ pub enum HolderError {
 }
 
 #[async_trait]
-pub trait Holder {
+pub trait Holder: Send + Sync {
     async fn get_authorization_request(
         &self,
         auth_req_uri: &str,
@@ -119,7 +120,7 @@ pub trait Holder {
 }
 
 #[async_trait]
-pub trait Verifier {
+pub trait Verifier: Send + Sync {
     async fn create_authorization_request(
         &self,
         presentation_definition: &PresentationDefinition,
@@ -177,6 +178,24 @@ pub fn default_wallet_metadata() -> WalletMetadata {
     ).unwrap()
 }
 
+pub enum AuthorizationUrlType {
+    Reference(Url),
+    Value,
+}
+
+pub fn auth_request_as_url(req: &AuthorizationRequest, type_: AuthorizationUrlType) -> Url {
+    let request_indirection = match type_ {
+        AuthorizationUrlType::Value => RequestIndirection::ByValue(req.request_object_jwt.clone()),
+        AuthorizationUrlType::Reference(at) => RequestIndirection::ByReference(at),
+    };
+    use oid4vp::core::authorization_request::AuthorizationRequest as SpruceAuthorizationRequest;
+
+    SpruceAuthorizationRequest {
+        client_id: req.client_id.clone(),
+        request_indirection,
+    }.to_url(req.authorization_endpoint.clone()).unwrap()
+}
+
 
 #[cfg(test)]
 pub mod test_utils {
@@ -192,14 +211,12 @@ pub mod test_utils {
     use crate::vc::formats::sd_jwt_vc::{SdJwtAPI, VCMetadata, VPMetadata};
     use crate::vc::formats::API;
     use crate::vc::oid4vp::verifier::VerifierMetadata;
-    use crate::vc::oid4vp::{default_client_metadata, AuthorizationRequest, AuthorizationResponse};
+    use crate::vc::oid4vp::{default_client_metadata, AuthorizationResponse};
     use oid4vci::openidconnect::Nonce;
-    use oid4vp::core::authorization_request::AuthorizationRequest as SpruceAuthorizationRequest;
-    use oid4vp::core::authorization_request::RequestIndirection;
+
     use oid4vp::presentation_exchange::PresentationDefinition;
     use serde_json::{json, Value as Json};
     use ssi::did::DIDURL;
-    use url::Url;
 
     const TEST_PRESENTATION_DEFINITION: &str = r#"{
         "id": "1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed",
@@ -330,23 +347,6 @@ pub mod test_utils {
 
         (kid, key_handle, did, vm_id)
     }
-
-    pub enum AuthorizationUrlType {
-        Reference(Url),
-        Value,
-    }
-
-    pub fn auth_request_as_url(req: &AuthorizationRequest, type_: AuthorizationUrlType) -> Url {
-        let request_indirection = match type_ {
-            AuthorizationUrlType::Value => RequestIndirection::ByValue(req.request_object_jwt.clone()),
-            AuthorizationUrlType::Reference(at) => RequestIndirection::ByReference(at),
-        };
-
-        SpruceAuthorizationRequest {
-            client_id: req.client_id.clone(),
-            request_indirection,
-        }.to_url(req.authorization_endpoint.clone()).unwrap()
-    }
 }
 
 
@@ -373,10 +373,10 @@ mod tests {
     use crate::vc::formats::sd_jwt_vc::{SdJwtAPI, VCMetadata};
     use crate::vc::formats::API;
     use crate::vc::oid4vp::holder::HolderService;
-    use crate::vc::oid4vp::test_utils::{auth_request_as_url, generate_did_key, generate_did_key_and_vm, AuthorizationUrlType};
+    use crate::vc::oid4vp::test_utils::{generate_did_key, generate_did_key_and_vm};
     use crate::vc::oid4vp::verifier::VerifierService;
-    use crate::vc::oid4vp::AuthorizationResponseMetadata;
     use crate::vc::oid4vp::Verifier;
+    use crate::vc::oid4vp::{auth_request_as_url, AuthorizationResponseMetadata, AuthorizationUrlType};
     use crate::vc::oid4vp::{AuthorizationResponse, Holder};
     use crate::vc::{oid4vp as api, Credential, CredentialMetadata, VCFormat};
     use crate::{crypto, kms, vc};
@@ -422,10 +422,14 @@ mod tests {
                     "constraints": {
                         "fields": [
                             {
-                                "path": [
-                                    "$.vct",
-                                    "$.name"
-                                ]
+                                "path": ["$.vct"],
+                                "filter": {
+                                    "type": "string",
+                                    "const": "https://credentials.example.com/identity_credential"
+                                }
+                            },
+                            {
+                                "path": ["$.name"]
                             }
                         ]
                     }
@@ -490,10 +494,14 @@ mod tests {
                     "constraints": {
                         "fields": [
                             {
-                                "path": [
-                                    "$.vct",
-                                    "$.name"
-                                ]
+                                "path": ["$.vct"],
+                                "filter": {
+                                    "type": "string",
+                                    "const": "https://credentials.example.com/identity_credential"
+                                }
+                            },
+                            {
+                                "path": ["$.name"]
                             }
                         ]
                     }
@@ -509,10 +517,14 @@ mod tests {
                     "constraints": {
                         "fields": [
                             {
-                                "path": [
-                                    "$.vct",
-                                    "$.name"
-                                ]
+                                "path": ["$.vct"],
+                                "filter": {
+                                    "type": "string",
+                                    "const": "https://credentials.example.com/degree_credential"
+                                }
+                            },
+                            {
+                                "path": ["$.name"]
                             }
                         ]
                     }
@@ -557,12 +569,11 @@ mod tests {
         // Create and store VCs
         for credential in &test_case.credentials {
             let (vc, vc_meta) = create_vc(
-                credential.id,
+                credential.claims["vct"].as_str().unwrap(),
                 &holder_did_url,
                 holder_kh.clone(),
                 credential.claims.clone(),
-            )
-                .await;
+            ).await;
             holder_vault.store_credential(vc, &vc_meta).await.unwrap();
         }
 
@@ -717,7 +728,7 @@ mod tests {
     }
 
     async fn create_vc(
-        id: &str,
+        type_: &str,
         holder_did_url: &DIDURL,
         holder_kh: impl crypto::Key,
         claims: Json,
@@ -748,9 +759,10 @@ mod tests {
         println!("Credential: {}", vc);
 
         let vc_meta = CredentialMetadata {
-            id: id.to_string(),
+            type_: type_.to_string(),
             format: VCFormat::SdJwtVc,
-            alg: Alg::ES256,
+            alg: Some(Alg::ES256),
+            tags: vec![],
         };
 
         (Credential::SdJwt(vc), vc_meta)
