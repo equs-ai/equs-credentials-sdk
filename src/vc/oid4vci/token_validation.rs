@@ -1,0 +1,143 @@
+use oauth2::basic::BasicTokenType;
+use oauth2::http::header::{InvalidHeaderValue, ACCEPT, AUTHORIZATION, CONTENT_TYPE};
+use oauth2::http::{HeaderValue, Method};
+use oauth2::{
+    EmptyExtraTokenFields, HttpRequest, StandardTokenIntrospectionResponse,
+    TokenIntrospectionResponse,
+};
+use oid4vci::openidconnect;
+use oid4vci::openidconnect::core::{
+    CoreJsonWebKey, CoreJsonWebKeyType, CoreJsonWebKeyUse, CoreJwsSigningAlgorithm,
+};
+use oid4vci::openidconnect::{JsonWebKey, JsonWebKeyId, JsonWebKeySet, JsonWebKeySetUrl};
+use reqwest::StatusCode;
+use url::Url;
+
+use crate::utils::http::{HttpClient, MIME_TYPE_FORM_URLENCODED, MIME_TYPE_JSON};
+
+pub type Result<T> = core::result::Result<T, Error>;
+
+type IntrospectionResponse = StandardTokenIntrospectionResponse<EmptyExtraTokenFields, BasicTokenType>;
+
+#[derive(Debug, thiserror::Error, strum::IntoStaticStr)]
+#[non_exhaustive]
+pub enum Error {
+    // Expected
+    #[error("Token validation error: {0}")]
+    Token(String),
+    // Unexpected
+    #[error("Network error: {0}")]
+    Network(#[from] reqwest::Error),
+    #[error("Url Parse Error: {0}")]
+    UrlParse(#[from] url::ParseError),
+    #[error("Parsing error: {0}")]
+    Parse(#[from] serde_json::Error),
+    #[error("Parsing error: {0}")]
+    InvalidHeader(#[from] InvalidHeaderValue),
+    #[error(transparent)]
+    Discovery(#[from] openidconnect::DiscoveryError<reqwest::Error>),
+}
+
+pub struct Introspect<HC: HttpClient> {
+    http_client: HC,
+    introspect_endpoint: Url,
+    auth_header: Option<String>,
+}
+
+impl<HC: HttpClient> Introspect<HC> {
+    pub fn new(http_client: HC, introspect_endpoint: Url, auth_header: Option<String>) -> Self {
+        Self { http_client, introspect_endpoint, auth_header }
+    }
+
+    pub async fn validate(&self, token: &str) -> Result<()> {
+        let body = Vec::from(format!("token={}", token));
+
+        let mut headers = vec![
+            (CONTENT_TYPE, HeaderValue::from_static(MIME_TYPE_FORM_URLENCODED)),
+            (ACCEPT, HeaderValue::from_static(MIME_TYPE_JSON)),
+        ];
+
+        if let Some(header) = &self.auth_header {
+            let header = HeaderValue::from_str(header)?;
+            headers.push((AUTHORIZATION, header));
+        }
+
+        let request = HttpRequest {
+            url: self.introspect_endpoint.clone(),
+            method: Method::POST,
+            headers: headers.into_iter().collect(),
+            body,
+        };
+
+        let response = self.http_client.async_call(request).await?;
+        if response.status_code != StatusCode::OK {
+            return Err(Error::Token("Token is invalid".to_owned()));
+        }
+
+        let token_ifo = serde_json::from_slice::<IntrospectionResponse>(response.body.as_slice())?;
+        if !token_ifo.active() {
+            return Err(Error::Token("Token is expired".to_owned()));
+        }
+
+        Ok(())
+    }
+}
+
+pub struct ByJwks<HC: HttpClient> {
+    http_client: HC,
+    jwks_url: JsonWebKeySetUrl,
+}
+
+impl<HC: HttpClient> ByJwks<HC> {
+    pub fn new(http_client: HC, jwks_url: JsonWebKeySetUrl) -> Self {
+        Self {
+            http_client,
+            jwks_url,
+        }
+    }
+
+    pub async fn validate(&self, token: &str) -> Result<()> {
+        let jwks =
+            JsonWebKeySet::<
+                CoreJwsSigningAlgorithm,
+                CoreJsonWebKeyType,
+                CoreJsonWebKeyUse,
+                CoreJsonWebKey>
+            ::fetch_async(&self.jwks_url, |req| self.http_client.async_call(req))
+                .await?;
+
+        let (header, signature) = if let Ok(header) = ssi::jws::decode_unverified(token) {
+            header
+        } else {
+            return Err(Error::Token("can not parse the token".to_owned()))
+        };
+
+        let key_id = header
+            .key_id
+            .ok_or(
+                Error::Token("\"kid\" not found in the header of the token".to_owned())
+            )?;
+
+        let key = jwks
+            .keys()
+            .iter()
+            .find(
+                |k| { k.key_id() == Some(&JsonWebKeyId::new(key_id.to_owned())) }
+            )
+            .ok_or(
+                Error::Token(format!("token is signed with the unknown key: \"kid\" = {}", key_id))
+            )?;
+
+        let alg: CoreJwsSigningAlgorithm = serde_json::from_str(
+           serde_json::to_string(&header.algorithm)?.as_str()
+        )?;
+
+        key.verify_signature(&alg, token.as_bytes(), signature.as_slice())
+            .map_err(|e|
+                Error::Token(format!("invalid token signature: {}", e.to_string()))
+            )?;
+
+        Ok(())
+    }
+
+}

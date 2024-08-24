@@ -215,7 +215,7 @@ where
 
         let req_base = match &cred_def {
             CoreProfilesMetadata::SDJWTVC(det) => {
-                CoreProfilesRequest::SDJWTVC(sd_jwt::Request::new().set_vct(det.vct().map(|x| x.to_owned())))
+                CoreProfilesRequest::SDJWTVC(sd_jwt::Request::new(det.vct().to_owned()))
             }
             _ => Err(Error::FormatNotSupported)?,
         };

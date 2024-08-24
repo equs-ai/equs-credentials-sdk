@@ -7,10 +7,10 @@ use url::Url;
 use crate::{storage, vault, vc};
 use crate::vc::{Claims, Credential, CredentialMetadata};
 
-pub mod issuer;
-pub mod holder;
-pub mod introspect;
-pub mod metadata;
+mod issuer;
+mod holder;
+mod token_validation;
+mod metadata;
 
 // Data types
 pub type IssuerMetadata = oid4vci::core::metadata::IssuerMetadata;
@@ -34,10 +34,16 @@ pub enum IssuerError
 {
     #[error("Missed credential configuration ids")]
     MissingCredentialConfigurationIds,
-    #[error("Credential id = {0} is not supported")]
+    #[error("Credential definition id = {0} is not supported")]
     NotSupportedCredentialConfigurationId(String),
+    #[error("Claim names validation error: {0}")]
+    ClaimNamesValidation(String),
+    #[error("Scope validation error: {0}")]
+    ScopeValidation(String),
+    #[error("Proof type validation error: {0}")]
+    ProofTypeValidation(String),
     #[error("Invalid token: {0}")]
-    InvalidToken(#[from] introspect::Error),
+    InvalidToken(#[from] token_validation::Error),
     #[error("Invalid proof")]
     InvalidProof(ProofVerificationErrorBody),
     #[error("Url Parse Error: {0}")]
@@ -173,12 +179,12 @@ mod tests {
     use crate::vc::core::{HolderMetadata, KeyMetadata};
     use crate::vc::oid4vci::{CredentialOfferGrants, CredentialOfferParams, Holder, issuer, Issuer};
     use crate::vc::oid4vci::holder::HolderService;
-    use crate::vc::oid4vci::introspect::Introspect;
+    use crate::vc::oid4vci::token_validation::Introspect;
     use crate::vc::oid4vci::issuer::{IssuerService, TokenValidation};
     use crate::vc::oid4vci::metadata::convert_metadata;
 
     // FIXTURES
-    const ACCESS_TOKEN: &str = "eyJhbGciOiJSUzI1NiIsInR5cCI6Ikp..sHQ";
+    const ACCESS_TOKEN: &str = "eyJhbGciOiJSUzI1NiIsInR5cCIgOiAiSldUIiwia2lkIiA6ICJQY2xZUDZ2UmsxTHBLRGZqU08yRGEzNXJtR1JmaTkzNjJDcFJFeUpmOHAwIn0.eyJleHAiOjE3MjQzOTg0OTQsImlhdCI6MTcyNDM5ODE5NCwiYXV0aF90aW1lIjoxNzI0Mzk4MTgyLCJqdGkiOiIwYjRmZTM5MC00OTIxLTQwNDItYjdlMS1iMDNiM2QxOTYyMjkiLCJpc3MiOiJodHRwOi8vbG9jYWxob3N0OjgwODAvaWRwL3JlYWxtcy9waWQtaXNzdWVyLXJlYWxtIiwic3ViIjoiNjBiOGJhNWYtYzczZi00OTc2LWIwZGEtNDhkMGU1MzMzNWRlIiwidHlwIjoiQmVhcmVyIiwiYXpwIjoid2FsbGV0LWRldiIsInNpZCI6ImYxNWIzZTExLWZmMjgtNDRkZi04ZmNmLWE3N2QyNDcxNGEyMyIsImFsbG93ZWQtb3JpZ2lucyI6WyIvKiJdLCJzY29wZSI6IlNEX0pXVF9jcmVkIn0.pLGGmOApXnQCY6CwuFzxFXEN36aDJ-iE0TM_esYJ_qtijhUtWq5zI9lD-iGzhTSdwZ7Y51eUKtqmJXHixzBo847vmMeGla4Ko6JTY-4vVAIQ1Hk1xzl25ALuZNwxGbljlysjzBgCxeAjZo3fE0HTI5y6NItptIU8aY3ykoIX9xE81ZkexbVrR495cEX7UIgUgCZyhj8lXUMWFrNFBhELnzzFGdX01Dq3B-KflY9ACVaw-_U9bT6EzDI0-0Cyx2K658EU9VpDjBSR6URT5I9quvx1qoYMFPv7zhjW3sUASIVwThe4CvWCCR8Kf8rsnEQ2qnchn0f6gn9thxi51FGkvA";
     const CRED_DEF_ID: &str = "SD_JWT_cred";
 
     #[tokio::test]
@@ -322,7 +328,6 @@ mod tests {
 
         let claims = json!( {
                         "vct": "SD_JWT_cred",
-                        "type": ["SD_JWT_cred"],
                         "given_name": "John",
                         "family_name": "Doe",
                         "dob": "09/09/1989",
@@ -455,7 +460,8 @@ mod tests {
                       "type": "SD_JWT_cred",
                       "claims": {
                         "given_name": {},
-                        "family_name": {}
+                        "family_name": {},
+                        "dob": {}
                       }
                     }
                 }

@@ -1,10 +1,13 @@
+use std::collections::HashMap;
 use async_trait::async_trait;
 use oauth2::Scope;
-use oid4vci::core::profiles::{CoreProfilesOffer, CoreProfilesRequest, CoreProfilesResponse, sd_jwt, w3c};
+use oid4vci::core::profiles::{CoreProfilesMetadata, CoreProfilesOffer, CoreProfilesRequest, CoreProfilesResponse, sd_jwt, w3c};
 use oid4vci::credential::{ProofVerificationErrorBody, ResponseEnum};
 use oid4vci::credential_offer::{CredentialOfferFormat, CredentialOfferGrants, CredentialOfferParameters};
 use oid4vci::openidconnect::Nonce;
-use oid4vci::proof_of_possession::Proof as SpruceProof;
+use oid4vci::proof_of_possession::{KeyProofType, Proof as SpruceProof, ProofType};
+use serde_json::{Map, Value};
+use ssi::jwt::decode_unverified;
 use url::Url;
 
 use crate::storage::Storage;
@@ -13,7 +16,8 @@ use crate::vc;
 use crate::vc::core::{Proof as AsdkProof, Proof};
 use crate::vc::oid4vci::{CredentialOfferParams, CredentialRequest, CredentialResponse, IssuerMetadata};
 use crate::vc::{Claims, oid4vci as api};
-use crate::vc::oid4vci::introspect::Introspect;
+use crate::vc::oid4vci::metadata::CredentialMetadata;
+use crate::vc::oid4vci::token_validation::{ByJwks, Introspect};
 
 const CRED_OFFER_URI: &str = "openid-credential-offer://";
 
@@ -25,8 +29,8 @@ pub type Result<T> = core::result::Result<T, Error>;
 
 pub enum TokenValidation<HC: HttpClient> {
     Introspect(Introspect<HC>),
+    ByJwks(ByJwks<HC>),
     None,
-    //TODO: implement jwks
 }
 
 pub struct IssuerService<IS, ST, HC>
@@ -106,20 +110,32 @@ where
     ) -> Result<CredentialResponse> {
         self.validate_token(token).await?;
 
-        let nonce = self.resolve_nonce(token).await;
-
-        if cred_request.proof().is_none() || nonce.is_err() {
+        let nonce = if let Ok(nonce) = self.resolve_nonce(token).await {
+            nonce
+        } else {
             let nonce = self.upsert_nonce(token).await?;
-            return Err(Self::invalid_proof(nonce));
-        }
 
-        let nonce = nonce?;
+            return Err(Self::invalid_proof(nonce));
+        };
+
+        let proof = if let Some(proof) =  cred_request.proof() {
+            proof
+        } else {
+            return Err(Self::invalid_proof(nonce));
+        };
 
         let cred_def_id = self.resolve_cred_def_id(cred_request)?;
+
+        self.validate_scope(token, &cred_def_id)?;
+        self.validate_claim_names(claims, &cred_def_id)?;
+        self.validate_proof_type(&proof, &cred_def_id)?;
+
+        let proof = Proof::from(proof);
+
         let cred_req = vc::core::CredentialRequest {
             cred_def_id,
             cred_offer_id: None,
-            proof: Proof::from(cred_request.proof().unwrap()),
+            proof,
             protocol_data: None,
         };
 
@@ -151,18 +167,29 @@ where
     HC: HttpClient,
 {
     fn resolve_cred_def_id(&self, req: &CredentialRequest) -> Result<String> {
-        let id = match req.additional_profile_fields() {
+        let vct = match req.additional_profile_fields() {
             CoreProfilesRequest::SDJWTVC(det) => {
-                match det {
-                    // TODO: scope=vct only supported by now
-                    sd_jwt::Request { vct: Some(id), .. } => id,
-                    _ => Err(Error::NotSupportedCredentialConfigurationId("invalid authorization".to_string()))?
-                }
+                det.vct()
             }
-            _ => Err(Error::FormatNotSupported)?,
+            _ => {
+                return Err(Error::FormatNotSupported)?
+            }
         };
 
-        Ok(id.to_owned())
+        let (cred_def_id, _) = self.issuer_metadata
+            .credential_configurations_supported()
+            .iter()
+            .find(|(id, cred_metadata)| {
+                if let CoreProfilesMetadata::SDJWTVC(metadata) = cred_metadata.additional_fields() {
+                    return metadata.vct() == vct
+                }
+                false
+            })
+            .ok_or(Error::NotSupportedCredentialConfigurationId(
+                format!("credential configuration id with vct = \"{}\" is not found", vct)
+            ))?;
+
+        Ok(cred_def_id.to_owned())
     }
 
     fn validate_cred_def_ids(&self, cred_def_ids: &Vec<&str>) -> Result<()> {
@@ -188,6 +215,147 @@ where
         Ok(())
     }
 
+    fn validate_proof_type(&self, proof: &SpruceProof, cred_def_id: &str) -> Result<()> {
+        let cred_metadata = self.get_credential_metadata(&cred_def_id)?;
+        let proof_types = if let Some(proof_types) = cred_metadata.proof_types_supported() {
+            proof_types
+        } else {
+            &Self::supported_proof_types()
+        };
+
+        let (proof_type, proof) = if let SpruceProof::JWT{ jwt } = proof {
+            (KeyProofType::Jwt, jwt)
+        } else {
+            return Err(
+                Error::ProofTypeValidation(
+                    "only \"jwt\" proof type is supported".to_owned()
+                ))
+        };
+
+        let proof_type = proof_types
+            .get(&proof_type)
+            .ok_or(Error::ProofTypeValidation(
+                format!("proof type = \"{}\" is not supported", cred_def_id)
+            ))?;
+
+        let proof_header = jsonwebtoken::decode_header(&proof)
+            .map_err( |e|
+                Error::ProofTypeValidation(
+                    format!("can not retrieve \"alg\" from the proof's header {}", e.to_string())
+                )
+            )?;
+
+        let sign_alg = serde_json::from_value(
+            serde_json::to_value(proof_header.alg)?
+        )?;
+
+        if !proof_type.proof_signing_alg_values_supported.contains(&sign_alg) {
+            return Err(
+                Error::ProofTypeValidation(
+                    format!("proof_type signing algorithm = \"{:?}\" is not supported", sign_alg)
+                ))
+        }
+
+        Ok(())
+    }
+
+    fn supported_proof_types() -> HashMap<KeyProofType, ProofType> {
+        HashMap::from([(
+            KeyProofType::Jwt,
+            ProofType::new(vec![
+                "ES256".to_owned(),
+                "EdDSA".to_owned()
+            ])
+        )])
+    }
+
+    fn validate_scope(&self, token: &String, cred_def_id: &str) -> Result<()> {
+        let token: Map<String, Value>   = decode_unverified(token.as_str())
+            .map_err( |e|
+                Error::ScopeValidation(
+                    format!("could not parse the access token: {}", e.to_string())
+                ))?;
+
+        let supported: Vec<Option<&Scope>> = self.issuer_metadata
+            .credential_configurations_supported()
+            .values()
+            .map(|cred_metadata| cred_metadata.scope())
+
+            .collect();
+
+        if let Some (Value::String(scopes)) = token.get("scope") {
+            let not_supported = scopes
+                .split(" ")
+                .find(
+                    |s| !supported.contains(
+                        &Some(&Scope::new(s.to_string())
+                        ))
+                );
+
+            if let Some(not_supported) = not_supported {
+                return Err(Error::ScopeValidation(
+                    format!("\"{}\" scope is not supported", not_supported)
+                ))
+            }
+
+            return Ok(())
+        }
+
+        Err(
+            Error::ScopeValidation(
+            "access token does not have \"scope\" field".to_owned())
+        )
+    }
+
+    fn validate_claim_names(&self, claims: &Value, cred_def_id: &str) -> Result<()> {
+        let claim_names: Vec<&str> = if let Value::Object(claims) = claims {
+            claims.keys().map(|k| k.as_str()).collect()
+        } else {
+            return Err(Error::ClaimNamesValidation("provided \"claims\" is not json object".to_owned()))
+        };
+
+        let cred_metadata = self.get_credential_metadata(&cred_def_id)?;
+        let sd_jwt_vc_metadata = if let CoreProfilesMetadata::SDJWTVC(metadata) = cred_metadata.additional_fields() {
+            metadata
+        } else {
+            //TODO Support other formats
+            return Err(Error::FormatNotSupported)
+        };
+
+        let supported_claims = if let Some(claims) = sd_jwt_vc_metadata.credential_definition().claims() {
+            let mut supported: Vec<&str> = claims.keys().map(|k| k.as_str()).collect();
+            supported.push("vct");
+
+            supported
+        } else {
+            return Ok(())
+        };
+
+        let not_supported = claim_names
+            .iter()
+            .find(
+                |c| !supported_claims.contains(c)
+            );
+        if let Some(not_supported) = not_supported {
+            return Err(Error::ClaimNamesValidation(
+                format!("\"{}\" claim name is not supported", not_supported)
+            ))
+        }
+
+        Ok(())
+    }
+
+    fn get_credential_metadata(&self, cred_def_id: &str) -> Result<&CredentialMetadata> {
+        self.issuer_metadata.
+            credential_configurations_supported()
+            .get(cred_def_id)
+            .ok_or(
+                Error::NotSupportedCredentialConfigurationId(
+                    format!("credential configuration with \"{}\" id is not found", cred_def_id)
+                )
+            )
+    }
+
     async fn resolve_nonce(&self, token: &String) -> Result<Nonce> {
         let nonce = self.storage.get(token).await?;
 
@@ -205,6 +373,9 @@ where
     pub async fn validate_token(&self, token: &str) -> Result<()> {
         match &self.token_validation {
             TokenValidation::Introspect(svc) => {
+                svc.validate(token).await?
+            }
+            TokenValidation::ByJwks(svc) => {
                 svc.validate(token).await?
             }
             TokenValidation::None => {}
