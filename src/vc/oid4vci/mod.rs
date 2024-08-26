@@ -1,7 +1,9 @@
 use async_trait::async_trait;
 use oid4vci::core::profiles::CoreProfilesOffer;
-use oid4vci::credential::{ProofVerificationErrorBody, RequestError};
+use oid4vci::credential::RequestError;
 use oid4vci::openidconnect;
+use oid4vci::openidconnect::Nonce;
+use serde::{Deserialize, Serialize};
 use url::Url;
 
 use crate::{storage, vault, vc};
@@ -21,6 +23,7 @@ pub type CredentialRequest = oid4vci::core::credential::Request;
 pub type CredentialResponse = oid4vci::core::credential::Response;
 pub type TokenResponse = oid4vci::token::Response;
 pub type AuthorizationCodeGrant = oid4vci::credential_offer::AuthorizationCodeGrant;
+pub type ErrorType = oid4vci::credential::ErrorType;
 
 #[derive(Debug, Clone)]
 pub enum CredentialResult {
@@ -29,31 +32,67 @@ pub enum CredentialResult {
 }
 
 #[derive(Debug, thiserror::Error, strum::IntoStaticStr)]
-#[non_exhaustive]
 pub enum IssuerError
 {
-    #[error("Missed credential configuration ids")]
-    MissingCredentialConfigurationIds,
+    #[error(transparent)]
+    Internal(#[from] InternalError),
+    #[error(transparent)]
+    Protocol(#[from] ProtocolErrorResponse)
+}
+
+#[derive(Clone, thiserror::Error, Debug, Deserialize, Serialize)]
+#[error("Protocol error: type = {:?}, description: {:?}", error, error_description)]
+pub struct ProtocolErrorResponse {
+    error: ErrorType,
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    error_description: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    c_nonce: Option<Nonce>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    c_nonce_expires_in: Option<i64>,
+}
+
+impl ProtocolErrorResponse {
+    pub fn new(error: ErrorType, description: &str) -> Self {
+        Self {
+            error,
+            error_description: Some(description.to_owned()),
+            c_nonce: None,
+            c_nonce_expires_in: None
+        }
+    }
+
+    pub fn new_with_nonce(
+        error: ErrorType,
+        description: &str,
+        nonce: Nonce,
+        nonce_expires_in: i64
+    ) -> Self {
+        Self {
+            error,
+            error_description: Some(description.to_owned()),
+            c_nonce: Some(nonce),
+            c_nonce_expires_in: Some(nonce_expires_in)
+        }
+    }
+
+}
+
+#[derive(Debug, thiserror::Error, strum::IntoStaticStr)]
+#[non_exhaustive]
+pub enum InternalError
+{
     #[error("Credential definition id = {0} is not supported")]
     NotSupportedCredentialConfigurationId(String),
     #[error("Claim names validation error: {0}")]
     ClaimNamesValidation(String),
-    #[error("Scope validation error: {0}")]
-    ScopeValidation(String),
-    #[error("Proof type validation error: {0}")]
-    ProofTypeValidation(String),
-    #[error("Invalid token: {0}")]
-    InvalidToken(#[from] token_validation::Error),
-    #[error("Invalid proof")]
-    InvalidProof(ProofVerificationErrorBody),
     #[error("Url Parse Error: {0}")]
     UrlParse(#[from] url::ParseError),
     #[error("Parsing error: {0}")]
     Parse(#[from] serde_json::Error),
     #[error("Network Request failed {0}")]
     Storage(#[from] storage::Error),
-    #[error("format not supported")]
-    FormatNotSupported,
     #[error("VC error: {0}")]
     VC(#[from] vc::core::Error),
 }
@@ -345,7 +384,7 @@ mod tests {
                 headers: Default::default(),
                 body: serde_json::to_vec(&cred_resp).unwrap(),
             },
-            Err(issuer::Error::InvalidProof(b)) => HttpResponse {
+            Err(issuer::Error::Protocol(b)) => HttpResponse {
                 status_code: StatusCode::BAD_REQUEST,
                 headers: Default::default(),
                 body: serde_json::to_vec(&b).unwrap(),
