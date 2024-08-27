@@ -1,13 +1,13 @@
 use async_trait::async_trait;
 use oid4vci::core::profiles::CoreProfilesOffer;
 use oid4vci::credential::RequestError;
-use oid4vci::openidconnect;
-use oid4vci::openidconnect::Nonce;
+use oid4vci::openidconnect::{DiscoveryError, Nonce};
 use serde::{Deserialize, Serialize};
-use url::Url;
 
 use crate::{storage, vault, vc};
 use crate::vc::{Claims, Credential, CredentialMetadata};
+use crate::vc::oid4vci::Error::{Internal, Protocol};
+use crate::vc::oid4vci::InternalError::{ClaimNamesValidation, Network, Other, Unhandled, Url, VC};
 
 mod issuer;
 mod holder;
@@ -32,7 +32,7 @@ pub enum CredentialResult {
 }
 
 #[derive(Debug, thiserror::Error, strum::IntoStaticStr)]
-pub enum IssuerError
+pub enum Error
 {
     #[error(transparent)]
     Internal(#[from] InternalError),
@@ -83,64 +83,86 @@ impl ProtocolErrorResponse {
 #[non_exhaustive]
 pub enum InternalError
 {
-    #[error("Credential definition id = {0} is not supported")]
-    NotSupportedCredentialConfigurationId(String),
+    #[error("cred def not found: {0}")]
+    CredDefNotFound(String),
     #[error("Claim names validation error: {0}")]
     ClaimNamesValidation(String),
-    #[error("Url Parse Error: {0}")]
-    UrlParse(#[from] url::ParseError),
-    #[error("Parsing error: {0}")]
+    #[error(transparent)]
+    Url(#[from] url::ParseError),
+    #[error(transparent)]
     Parse(#[from] serde_json::Error),
-    #[error("Network Request failed {0}")]
+    #[error(transparent)]
     Storage(#[from] storage::Error),
-    #[error("VC error: {0}")]
-    VC(#[from] vc::core::Error),
-}
-
-#[derive(Debug, thiserror::Error, strum::IntoStaticStr)]
-#[non_exhaustive]
-pub enum HolderError {
-    // oid4vci
-    #[error(transparent)]
-    Request(#[from] RequestError<reqwest::Error>),
-    #[error(transparent)]
-    Client(#[from] oid4vci::client::Error),
-
-    // openid connect/ouath
-    #[error(transparent)]
-    Discovery(#[from] openidconnect::DiscoveryError<reqwest::Error>),
-    #[error(transparent)]
-    Token(#[from] oauth2::RequestTokenError<reqwest::Error, oid4vci::token::Error>),
-
-    // Low-level
     #[error(transparent)]
     VC(#[from] vc::core::Error),
     #[error(transparent)]
     Vault(#[from] vault::Error),
-
-    #[error("proof not supported")]
-    ProofNotSupported,
-    #[error("format not supported")]
-    FormatNotSupported,
-    #[error("CSRF failure")]
-    CsrfFailure,
-    #[error("bad request: {0}")]
-    BadRequest(String),
-    #[error("nonce missed")]
-    NonceMissed,
-    #[error("not supported")]
-    NotSupported,
-    #[error("cred def not found: {0}")]
-    CredDefNotFound(String),
-
-    // Common
     #[error(transparent)]
-    Url(#[from] url::ParseError),
+    Network(#[from] reqwest::Error),
     #[error(transparent)]
-    Reqwest(#[from] reqwest::Error),
+    Discovery(#[from] DiscoveryError<reqwest::Error>),
+    #[error("other error: {0}")]
+    Other(String),
+    #[error("unhandled error: {0}")]
+    Unhandled(String),
 }
 
-// API
+impl From<reqwest::Error> for Error {
+    fn from(err: reqwest::Error) -> Self {
+        Internal(Network(err))
+    }
+}
+
+impl From<url::ParseError> for Error {
+    fn from(err: url::ParseError) -> Self {
+        Internal(Url(err))
+    }
+}
+
+impl From<vc::core::Error> for Error {
+    fn from(err: vc::core::Error) -> Self {
+        Internal(VC(err))
+    }
+}
+
+impl From<RequestError<reqwest::Error>> for Error {
+    fn from(err: RequestError<reqwest::Error>) -> Self {
+        match err {
+            RequestError::ClaimsVerification(e) => { Internal(ClaimNamesValidation(e.to_string())) }
+            RequestError::Request(e) => { Internal(Network(e)) }
+            RequestError::Response(_, body, _) => {
+                let err  = match serde_json::from_slice::<ProtocolErrorResponse>(body.as_slice()) {
+                    Ok(ptr_err)  => Protocol(ptr_err),
+                    _ => {
+                        match serde_json::from_slice::<String>(body.as_slice()) {
+                            Ok(err) => Internal(Unhandled(err)),
+                            _ => Internal(Other("can not parse credential response error".to_string()))
+                        }
+                    }
+                };
+
+                err
+            }
+            RequestError::ProofVerification(b) => {
+                let err= match (b.c_nonce, b.c_nonce_expires_in) {
+                    (Some(nonce), Some(expires_in)) =>
+                        ProtocolErrorResponse::new_with_nonce(
+                            ErrorType::InvalidProof,
+                            &b.error_description,
+                            nonce,
+                            expires_in,
+                        ),
+                    _ => ProtocolErrorResponse::new(ErrorType::InvalidProof, &b.error_description)
+                };
+
+                Protocol(err)
+            }
+            RequestError::Parse(e) => { Internal(Other(e.to_string())) }
+            RequestError::Other(e) => { Internal(Other(e)) }
+            _ => { Internal(Unhandled("unhandled error".to_owned())) }
+        }
+    }
+}
 
 #[async_trait]
 pub trait Issuer: Send + Sync {
@@ -150,14 +172,14 @@ pub trait Issuer: Send + Sync {
         &self,
         cred_def_ids: Vec<&str>,
         grants: &CredentialOfferGrants, // grant type (auth code, pre-auth code), etc.
-    ) -> Result<(CredentialOfferParams, Url), IssuerError>;
+    ) -> Result<(CredentialOfferParams, url::Url), Error>;
 
     async fn issue_credential(
         &self,
         cred_request: &CredentialRequest,
         token: &String,
         claims: &Claims,
-    ) -> Result<CredentialResponse, IssuerError>;
+    ) -> Result<CredentialResponse, Error>;
 }
 
 #[async_trait]
@@ -167,28 +189,28 @@ pub trait Holder: Send + Sync {
     async fn authz_code_flow_with_scope(
         &self,
         cred_def_id: String,
-        authorization_callback: impl FnOnce(Url) -> String + Send,
-    ) -> Result<TokenResponse, HolderError>;
+        authorization_callback: impl FnOnce(url::Url) -> String + Send,
+    ) -> Result<TokenResponse, Error>;
 
     async fn pre_authz_code_flow(
         &self,
         pre_authorized_code: String,
         tx_code: String,
         cred_def_id: Option<String>,
-    ) -> Result<TokenResponse, HolderError>;
+    ) -> Result<TokenResponse, Error>;
 
     async fn request_credential(
         &self,
         token_response: &TokenResponse,
         cred_def_id: &str,
-    ) -> Result<CredentialResult, HolderError>;
+    ) -> Result<CredentialResult, Error>;
 
     async fn store_credential(
         &self,
         credential: &Credential,
         // TODO: update after vault::find and CredMetadata refactoring
         credential_metadata: &CredentialMetadata,
-    ) -> Result<(), HolderError>;
+    ) -> Result<(), Error>;
 }
 
 #[cfg(test)]
