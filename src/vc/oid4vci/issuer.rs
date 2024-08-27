@@ -24,7 +24,7 @@ const CRED_OFFER_URI: &str = "openid-credential-offer://";
 const NONCE_EXPIRES_IN: i64 = 86440;
 const INVALID_PROOF_ERR_DESC: &str = "Credential Issuer requires key proof to be bound to a Credential Issuer provided nonce.";
 
-pub type Error = api::IssuerError;
+pub type Error = api::Error;
 pub type Result<T> = core::result::Result<T, Error>;
 
 pub enum TokenValidation<HC: HttpClient> {
@@ -98,7 +98,7 @@ where
             .map_err(InternalError::Parse)?;
 
         let mut url = Url::parse(CRED_OFFER_URI)
-            .map_err(InternalError::UrlParse)?;
+            .map_err(InternalError::Url)?;
 
         url.set_query(Some(format!("credential_offer={}", cred_offer).as_str()));
 
@@ -403,7 +403,7 @@ where
             credential_configurations_supported()
             .get(cred_def_id)
             .ok_or(
-                InternalError::NotSupportedCredentialConfigurationId(
+                InternalError::CredDefNotFound(
                     format!("credential configuration with \"{}\" id is not found", cred_def_id)
                 ).into()
             )

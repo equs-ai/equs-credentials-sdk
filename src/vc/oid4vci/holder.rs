@@ -2,7 +2,7 @@ use crate::utils::http::HttpClient;
 use crate::vc;
 use crate::vc::core::Proof as AsdkProof;
 use crate::vc::oid4vci as api;
-use crate::vc::oid4vci::{CredentialResult, TokenResponse};
+use crate::vc::oid4vci::{CredentialResult, InternalError, ProtocolErrorResponse, TokenResponse};
 use crate::vc::{Credential, CredentialMetadata};
 use async_trait::async_trait;
 use oauth2::url::Url;
@@ -12,7 +12,7 @@ use oid4vci::core::client::Client;
 use oid4vci::core::credential_offer::CredentialOffer;
 use oid4vci::core::metadata::IssuerMetadata;
 use oid4vci::core::profiles::{sd_jwt, CoreProfilesAuthorizationDetails, CoreProfilesMetadata, CoreProfilesOffer, CoreProfilesRequest, CoreProfilesResponse};
-use oid4vci::credential::{RequestError, ResponseEnum};
+use oid4vci::credential::{ErrorType, ResponseEnum};
 use oid4vci::credential_offer::CredentialOfferFormat;
 use oid4vci::metadata::AuthorizationMetadata;
 use oid4vci::openidconnect::IssuerUrl;
@@ -21,8 +21,10 @@ use oid4vci::proof_of_possession::Proof as SpruceProof;
 use oid4vci::token;
 use std::string::ToString;
 use std::sync::Arc;
+use crate::vc::oid4vci::Error::Protocol;
+use crate::vc::oid4vci::InternalError::{Other, Unhandled};
 
-pub type Error = api::HolderError;
+pub type Error = api::Error;
 pub type Result<T> = core::result::Result<T, Error>;
 
 pub enum AuthzOption {
@@ -81,7 +83,12 @@ where
                 (iss_url, offer_configs)
             }
             // TODO: parse url queries
-            CredentialOffer::Reference { .. } => Err(Error::NotSupported)?,
+            CredentialOffer::Reference { .. } => Err(
+                ProtocolErrorResponse::new(
+                    ErrorType::InvalidRequest,
+                    "resolving credential offer by reference is not supported"
+                )
+            )?,
         };
 
         Self::from_iss_url_with_configs(
@@ -105,12 +112,12 @@ where
         let issuer_metadata = IssuerMetadata::discover_async(
             IssuerUrl::new(iss_url.clone())?,
             |req| HC::static_async(req),
-        ).await?;
+        ).await.map_err(InternalError::Discovery)?;
 
         let authz_metadata = AuthorizationMetadata::discover_async(
             &issuer_metadata,
             |req| HC::static_async(req),
-        ).await?;
+        ).await.map_err(InternalError::Discovery)?;
 
         Self::new(
             holder,
@@ -217,7 +224,9 @@ where
             CoreProfilesMetadata::SDJWTVC(det) => {
                 CoreProfilesRequest::SDJWTVC(sd_jwt::Request::new(det.vct().to_owned()))
             }
-            _ => Err(Error::FormatNotSupported)?,
+            _ => Err(
+                ProtocolErrorResponse::new(ErrorType::UnsupportedCredentialFormat, "only \"vc+sd-jwt\" format is supported")
+            )?,
         };
 
         let offer = &vc::core::CredentialOffer {
@@ -271,7 +280,8 @@ where
 
         let in_csrf = CsrfToken::new_random();
         let push_request = self.client
-            .pushed_authorization_request::<_, CoreProfilesAuthorizationDetails>(|| in_csrf.clone())?
+            .pushed_authorization_request::<_, CoreProfilesAuthorizationDetails>(|| in_csrf.clone())
+            .map_err(|e| ProtocolErrorResponse::new(ErrorType::InvalidRequest, &e.to_string()))?
             .set_pkce_challenge(pkce_challenge);
 
         let push_request = match opt {
@@ -287,7 +297,9 @@ where
             .await?;
 
         if !(in_csrf.secret() == out_csrf.secret()) {
-            return Err(Error::CsrfFailure);
+            return Err(
+                ProtocolErrorResponse::new(ErrorType::InvalidRequest, "CSRF failure").into()
+            );
         }
 
         let code = callback(auth_url);
@@ -298,7 +310,9 @@ where
 
         let token = token_req
             .request_async(|req| self.http_client.async_call(req))
-            .await?;
+            .await.map_err(|e|
+                ProtocolErrorResponse::new(ErrorType::InvalidRequest, &e.to_string())
+            )?;
 
         Ok(token)
     }
@@ -310,7 +324,7 @@ where
         unimplemented!()
     }
 
-    async fn request_nonce(
+    async fn request_nonce( // TODO: Returning nonce should be optional
         &self,
         token: AccessToken,
         req_base: CoreProfilesRequest,
@@ -318,11 +332,13 @@ where
         let resp = self.client
             .request_credential(token, req_base)
             .request_async(|req| self.http_client.async_call(req))
-            .await;
+            .await.map_err(Error::from);
 
         let nonce = match resp {
-            Err(RequestError::ProofVerification(body)) => body.c_nonce.ok_or(Error::NonceMissed)?,
-            _ => Err(Error::NonceMissed)?
+            Err(Protocol(resp)) => resp.c_nonce
+                .ok_or(Other("Providing PoP without nonce is unsupported".to_owned()))?,
+            Err(e) => Err(Unhandled(e.to_string()))?,
+            _ => Err(Other("issuer does not provide a nonce".to_string()))?
         };
 
         Ok(nonce.secret().to_string())
@@ -332,7 +348,12 @@ where
         let configs = self.issuer_metadata.credential_configurations_supported();
 
         if !configs.contains_key(cred_def_id) {
-            return Err(Error::FormatNotSupported);
+            return Err(
+                ProtocolErrorResponse::new(
+                    ErrorType::UnsupportedCredentialType,
+                    &format!("credential definition id = {} is not supported", cred_def_id)
+                ).into()
+            );
         }
 
         let data = configs.get(cred_def_id).unwrap();
@@ -402,7 +423,12 @@ impl TryInto<Credential> for &CoreProfilesResponse {
     fn try_into(self) -> std::result::Result<Credential, Self::Error> {
         let credential = match self {
             CoreProfilesResponse::SDJWTVC(c) => vc::Credential::SdJwt(c.credential().to_owned()),
-            _ => Err(Error::FormatNotSupported)?,
+            _ => Err(
+                ProtocolErrorResponse::new(
+                    ErrorType::UnsupportedCredentialFormat,
+                    "only \"vc+sd-jwt\" format is supported"
+                )
+            )?,
         };
         Ok(credential)
     }
@@ -412,11 +438,16 @@ impl TryInto<SpruceProof> for AsdkProof {
     type Error = Error;
 
     fn try_into(self) -> std::result::Result<SpruceProof, Self::Error> {
-        let proof = match self {
-            AsdkProof { ref format, proof } if format == "jwt" => SpruceProof::JWT { jwt: proof.to_owned() },
-            AsdkProof { ref format, proof } if format == "cwt" => SpruceProof::CWT { cwt: proof.to_owned() },
-            _ => Err(Error::ProofNotSupported)?,
+        let proof = match self.format.as_str() {
+            "jwt" => SpruceProof::JWT { jwt: self.proof.to_owned() },
+            "cwt" => SpruceProof::CWT { cwt: self.proof.to_owned() },
+            _ => Err(
+                ProtocolErrorResponse::new(
+                    ErrorType::InvalidProof,
+                    &format!("proof type {} is not supported", self.format)
+                ))?,
         };
+
         Ok(proof)
     }
 }
