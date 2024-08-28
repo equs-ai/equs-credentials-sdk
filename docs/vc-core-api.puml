@@ -37,13 +37,13 @@ V -> H: <out-of-band>: send `PresentationDefinition`
 
 alt Auto-select credentials
 autonumber 5.2.1
-H -> H: <b>create_presentation_auto</b>(presentation_input, nonce)
+H -> H: <b>create_presentation_auto</b>(presentation_input, nonce, verifier_id)
 
 else User selects/approves credentials for the presentation
 autonumber 5.2.1
 H -> H: <b>find_vcs_for_presentation</b>(presentation_input)
 H --> H: <out-of-band>: Select/Approve selection
-H -> H: <b>create_presentation</b>(presentation_input, credential, nonce)
+H -> H: <b>create_presentation</b>(presentation_input, credential, nonce, verifier_id)
 end
 autonumber 5.3
 H -> V: <out-of-band>: send `Presentation`

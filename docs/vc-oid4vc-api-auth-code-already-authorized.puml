@@ -10,8 +10,14 @@ participant "Issuer Service" as I
 participant "Verifier Service" as V
 participant "KeyCloak" as A
 
-autonumber 0
+autonumber 0.1
 A --> A: Configure with scopes\n(Credential Definition IDs)
+
+autonumber 0.2
+H <--> A: Authorize
+autonumber stop
+A --> H: AccessToken (`scope` includes <Cred-Def-Id>)
+...
 
 autonumber 1
 I -> I: <b>from_issuer_metadata(issuer_metadata,...)
@@ -42,22 +48,11 @@ H --> HH: (Optional)\nShow Credential Definitions (Schema) in UI
 H --> HH: (Optional)\nShow Credential Offer in UI
 ...
 
-autonumber 5
-H -> H++: <b>authz_code_flow_with_scope(...)
-autonumber stop
-H --> A: POST /op/par HTTP/1.1
-H --> A: GET /authorize?&scope=<Cred-Def-ID>
-HH --> A: <Authentication>
-A --> H: Authorization Response (code)
-H --> A: POST /token HTTP/1.1
-A --> H: TokenResponse
-destroy H
-...
-
 autonumber 6.1
-H -> H++: <b>request_credential(token_response, ...)
+H -> H++: <b>request_credential(token_response, ...)</b> - use token from Step 0.2
 autonumber stop
 H --> I: POST /credential HTTP/1.1
+I --> A: Token introspect
 autonumber 6.2
 I -> I: <b>issue_credential(...)
 autonumber stop
