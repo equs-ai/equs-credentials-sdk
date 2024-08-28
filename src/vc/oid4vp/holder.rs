@@ -94,7 +94,9 @@ where
         let mut response_params = UntypedObject::default();
 
         if presentations.len() == 1 {
-            let vp_token = serde_json::to_string(&presentations[0])?;
+            let vp_token = serde_json::from_value(
+                serde_json::to_value(&presentations[0])?
+            )?;
             response_params.insert(VpToken(vp_token));
             pres_sub.descriptor_map[0].path = "$".to_owned();
         } else {
