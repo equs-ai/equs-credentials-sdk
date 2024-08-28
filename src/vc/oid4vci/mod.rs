@@ -9,13 +9,18 @@ use crate::vc::{Claims, Credential, CredentialMetadata};
 use crate::vc::oid4vci::Error::{Internal, Protocol};
 use crate::vc::oid4vci::InternalError::{ClaimNamesValidation, Network, Other, Unhandled, Url, VC};
 
-mod issuer;
-mod holder;
+pub(crate) mod issuer;
+pub(crate) mod holder;
 mod token_validation;
 mod metadata;
+mod builder;
+
+pub use builder::IssuerBuilder;
+pub use builder::HolderBuilder;
 
 // Data types
 pub type IssuerMetadata = oid4vci::core::metadata::IssuerMetadata;
+pub type AuthorizationMetadata = oid4vci::metadata::AuthorizationMetadata;
 pub type CredentialOffer = oid4vci::credential_offer::CredentialOffer<CoreProfilesOffer>;
 pub type CredentialOfferGrants = oid4vci::credential_offer::CredentialOfferGrants;
 pub type CredentialOfferParams = oid4vci::credential_offer::CredentialOfferParameters<CoreProfilesOffer>;
@@ -216,7 +221,6 @@ pub trait Holder: Send + Sync {
 #[cfg(test)]
 mod tests {
     use std::str::FromStr;
-    use std::sync::Arc;
     use futures::executor;
     use oauth2::{HttpRequest, HttpResponse};
     use oauth2::http::{Method, StatusCode};
@@ -420,7 +424,7 @@ mod tests {
     async fn oid4vci_holder(credential_offer: CredentialOfferParams, http_client: MockHttpClient) -> impl Holder + Sized {
         let inner = holder().await;
         HolderService::from_credential_offer(
-            Arc::new(inner),
+            inner,
             http_client,
             &CredentialOffer::Value { credential_offer },
             "wallet-dev".to_string(),

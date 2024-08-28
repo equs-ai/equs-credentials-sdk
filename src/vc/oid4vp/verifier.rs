@@ -90,11 +90,12 @@ where
         storage: ST,
         client_id: String,
         key_metadata: KeyMetadata,
+        client_metadata: Option<ClientMetadata>,
     ) -> Self {
         let metadata = VerifierMetadata {
             client_id,
             key_metadata,
-            client_metadata: default_client_metadata(),
+            client_metadata: client_metadata.unwrap_or(default_client_metadata()),
         };
 
         Self {
@@ -511,6 +512,7 @@ mod tests {
             storage,
             verifier_did.to_owned(),
             key_metadata,
+            None,
         );
 
         (svc, verifier_did)

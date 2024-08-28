@@ -1,27 +1,27 @@
-use async_rwlock::RwLock;
-use async_trait::async_trait;
-use futures::future;
-use std::collections::HashMap;
-
 use crate::inmem::storage::InMemStorage;
 use crate::storage::Storage;
 use crate::vault::{Error, FindCriteria, Vault};
 use crate::vc::{Credential, CredentialMetadata};
+use async_rwlock::RwLock;
+use async_trait::async_trait;
+use futures::future;
+use std::collections::HashMap;
+use std::sync::Arc;
 
+#[derive(Clone)]
 pub struct InMemVault {
-    storage: InMemStorage<String, Credential>,
-    indexed: RwLock<HashMap<String, Vec<String>>>,
+    storage: Arc<InMemStorage<String, Credential>>,
+    indexed: Arc<RwLock<HashMap<String, Vec<String>>>>,
 }
 
 impl InMemVault {
     pub fn for_store(storage: InMemStorage<String, Credential>) -> Self {
-        Self { storage, indexed: RwLock::new(HashMap::new()) }
+        Self { storage: Arc::new(storage), indexed: Arc::new(RwLock::new(HashMap::new())) }
     }
 
     pub fn new() -> Self {
-        Self { storage: InMemStorage::new(), indexed: RwLock::new(HashMap::new()) }
+        Self { storage: Arc::new(InMemStorage::new()), indexed: Arc::new(RwLock::new(HashMap::new())) }
     }
-
 
     async fn update_index(&self, metadata: &CredentialMetadata, storage_id: &str) -> Result<(), Error> {
         let index = format!("{}:{}", metadata.type_, metadata.format);

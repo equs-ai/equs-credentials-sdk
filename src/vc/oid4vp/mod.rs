@@ -9,10 +9,14 @@ use url::Url;
 use crate::vc::{Claims, Credential};
 use crate::{storage, vc};
 
-pub mod verifier;
-pub mod holder;
+pub(crate) mod verifier;
+pub(crate) mod holder;
 mod presentation_exchange;
 mod presentation_builder;
+mod builder;
+
+pub use builder::HolderBuilder;
+pub use builder::VerifierBuilder;
 
 // Data type
 pub struct AuthorizationResponseMetadata {}
@@ -704,6 +708,7 @@ mod tests {
                 did_url: vm_id,
                 kid,
             },
+            None,
         )
     }
 
@@ -724,7 +729,7 @@ mod tests {
         let inner = vc::core::HolderService::new(kms, vault, metadata);
 
         let http_client = reqwest::Client::new();
-        HolderService::new(Arc::new(inner), UniversalResolver::new(), None, http_client)
+        HolderService::new(inner, UniversalResolver::new(), None, http_client)
     }
 
     async fn create_vc(

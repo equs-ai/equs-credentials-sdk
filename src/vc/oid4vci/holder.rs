@@ -14,7 +14,6 @@ use oid4vci::proof_of_possession::KeyProofType;
 use oid4vci::proof_of_possession::Proof as SpruceProof;
 use oid4vci::token;
 use std::string::ToString;
-use std::sync::Arc;
 use tracing::{instrument, Level, debug, info, trace};
 
 use crate::vc::oid4vci::Error::Protocol;
@@ -40,10 +39,9 @@ where
     HL: vc::core::Holder,
     HC: HttpClient,
 {
-    holder: Arc<HL>,
+    holder: HL,
     http_client: HC,
     client_id: String,
-    iss_url: String,
     issuer_metadata: IssuerMetadata,
     offer_configs: Vec<CredentialOfferFormat<CoreProfilesOffer>>,
     client: Client,
@@ -59,7 +57,7 @@ where
         skip(holder, http_client),
     )]
     pub async fn from_iss_url(
-        holder: Arc<HL>,
+        holder: HL,
         http_client: HC,
         issuer_url: String,
         client_id: String,
@@ -83,7 +81,7 @@ where
         skip(holder, http_client, offer),
     )]
     pub async fn from_credential_offer(
-        holder: Arc<HL>,
+        holder: HL,
         http_client: HC,
         offer: &CredentialOffer,
         client_id: String,
@@ -125,7 +123,7 @@ where
         skip(holder, http_client),
     )]
     async fn from_iss_url_with_configs(
-        holder: Arc<HL>,
+        holder: HL,
         http_client: HC,
         issuer_url: String,
         offer_configs: Vec<CredentialOfferFormat<CoreProfilesOffer>>,
@@ -160,7 +158,7 @@ where
         skip(holder, http_client),
     )]
     pub fn from_metadata(
-        holder: Arc<HL>,
+        holder: HL,
         http_client: HC,
         issuer_metadata: IssuerMetadata,
         authz_metadata: AuthorizationMetadata,
@@ -186,7 +184,7 @@ where
         skip(holder, http_client),
     )]
     fn new(
-        holder: Arc<HL>,
+        holder: HL,
         http_client: HC,
         issuer_metadata: IssuerMetadata,
         authz_metadata: AuthorizationMetadata,
@@ -205,7 +203,6 @@ where
             holder,
             http_client,
             client_id,
-            iss_url: issuer_metadata.credential_issuer().to_string(),
             issuer_metadata,
             offer_configs,
             client,
@@ -292,7 +289,7 @@ where
         trace!(request_profile = ?req_base);
 
         let offer = &vc::core::CredentialOffer {
-            issuer_id: self.iss_url.clone(),
+            issuer_id: self.issuer_metadata.credential_issuer().to_string(),
             cred_offer_id: None,
             cred_def_id: Some(cred_def_id.to_owned()),
             supported_proofs: self.resolve_supported_proofs(&cred_def_id),
