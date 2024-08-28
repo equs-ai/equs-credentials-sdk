@@ -2,8 +2,8 @@ use async_trait::async_trait;
 use ssi::did::{DIDMethod, Source};
 use ssi::did_resolve::DIDResolver as SpruceResolver;
 
+use crate::did::{DIDResolver, Error, Resolution, ResolveOptions, DID};
 use crate::crypto;
-use crate::did::{DID, DIDResolver, Error, Resolution, ResolveOptions};
 
 pub struct DIDKey {
     method: did_method_key::DIDKey,
@@ -23,7 +23,7 @@ impl DIDKey {
         };
 
         let did = self.method.generate(&Source::Key(&jwk));
-        did.ok_or_else(|| Error::GenerationError)
+        did.ok_or_else(|| Error::GenerationError("did:key generation error".to_string()))
     }
 }
 
@@ -46,9 +46,9 @@ mod tests {
     use crate::crypto::Key;
     use crate::did::didkey::DIDKey;
     use crate::did::DIDResolver;
-    use crate::kms::{CreateOptions, Kms};
-    use crate::kms;
     use crate::inmem::kms::LocalKms;
+    use crate::kms;
+    use crate::kms::{CreateOptions, Kms};
 
     #[tokio::test]
     async fn e2e() {

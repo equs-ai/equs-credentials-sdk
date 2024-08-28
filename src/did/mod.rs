@@ -15,8 +15,8 @@ pub enum Error {
     MethodNotSupported(String),
     #[error("key not supported")]
     KeyNotSupported,
-    #[error("key not supported")]
-    GenerationError,
+    #[error("generation error: {0}")]
+    GenerationError(String),
     #[error("dereferencing error: {0}")]
     DereferencingError(String),
 }

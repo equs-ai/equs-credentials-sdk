@@ -1,14 +1,14 @@
-use std::str::FromStr;
-
 use async_trait::async_trait;
+use std::str::FromStr;
+use std::sync::Arc;
 
-use crate::{crypto, kms};
 use crate::crypto::Suite;
 use crate::inmem::crypto::ed25519::Ed25519;
 use crate::inmem::crypto::p256::P256;
 use crate::inmem::storage::InMemStorage;
 use crate::kms::Kms;
 use crate::storage::Storage;
+use crate::{crypto, kms};
 
 #[derive(Clone)]
 pub enum KeyHandle {
@@ -73,19 +73,20 @@ impl kms::KeyHandle for KeyHandle {}
 
 pub type Bytes = Vec<u8>;
 
+#[derive(Clone)]
 pub struct LocalKms {
-    storage: InMemStorage<kms::KeyID, Bytes>,
+    storage: Arc<InMemStorage<kms::KeyID, Bytes>>,
 }
 
 const KID_LENGTH: usize = 10;
 
 impl LocalKms {
     pub fn new() -> Self {
-        Self { storage: InMemStorage::new() }
+        Self { storage: Arc::new(InMemStorage::new()) }
     }
 
     pub fn for_store(storage: InMemStorage<kms::KeyID, Bytes>) -> Self {
-        Self { storage }
+        Self { storage: Arc::new(storage) }
     }
 
     fn kid(kt: kms::KeyType) -> kms::KeyID {
