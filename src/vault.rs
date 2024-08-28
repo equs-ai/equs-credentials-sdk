@@ -21,6 +21,7 @@ pub enum Error {
     FindCriteria(String),
 }
 
+#[derive(Debug)]
 #[non_exhaustive]
 pub enum FindCriteria {
     ByTypeAndFormat(String, String),

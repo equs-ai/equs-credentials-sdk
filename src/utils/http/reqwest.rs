@@ -2,8 +2,8 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use oauth2::{HttpRequest, HttpResponse};
-use oauth2::http::StatusCode;
-use reqwest::{Body, Client, Request};
+use reqwest::Client;
+use tracing::{instrument, Level, trace};
 
 use crate::utils::http::HttpClient;
 
@@ -26,40 +26,21 @@ impl ReqwestClient {
 
         Ok(Self { client })
     }
-
-    fn log_req(request: &Request, log_body: bool) {
-        println!("Req: {} {}", request.method(), request.url());
-        if log_body {
-            println!("Body:\n{}", Self::req_body_pretty(request.body()));
-        }
-    }
-
-    fn log_resp(status: StatusCode, chunks: Vec<u8>, log_body: bool) {
-        println!("Resp: {}", status);
-        if log_body {
-            println!("Body:\n{}", Self::vec_pretty(chunks));
-        }
-    }
-
-    fn req_body_pretty(body: Option<&Body>) -> String {
-        if body.is_none() { return "No body".to_string(); }
-
-        let bytes = body.unwrap().as_bytes();
-        let Some(vec) = bytes.map(|b| b.to_vec()) else { return "Empty body".to_string(); };
-
-        Self::vec_pretty(vec)
-    }
-
-    fn vec_pretty(vec: Vec<u8>) -> String {
-        if vec.is_empty() { return "Empty body".to_string(); }
-        let str = String::from_utf8(vec).unwrap_or("Failed to parse".to_string());
-
-        serde_json::to_string_pretty(&str).unwrap_or(str)
-    }
 }
 
 #[async_trait]
 impl HttpClient for ReqwestClient {
+
+    #[instrument(
+        level = Level::TRACE,
+        skip_all,
+        fields(
+            url = request.url.as_str(),
+            method = request.method.as_str(),
+            body = ?{ String::from_utf8(request.body.clone()).as_ref() }
+        )
+        err(),
+    )]
     async fn async_call(&self, request: HttpRequest) -> Result<HttpResponse, Error> {
         let mut request_builder = self.client
             .request(request.method, request.url.as_str())
@@ -72,14 +53,12 @@ impl HttpClient for ReqwestClient {
 
         let request = request_builder.build()?;
 
-        Self::log_req(&request, true);
-
         let response = self.client.execute(request).await?;
         let status_code = response.status();
         let headers = response.headers().to_owned();
         let chunks = response.bytes().await?;
 
-        Self::log_resp(status_code, chunks.to_vec(), true);
+        trace!(response_body = ?{ String::from_utf8(chunks.to_vec()).as_ref() });
 
         Ok(HttpResponse {
             status_code,

@@ -3,6 +3,7 @@ use std::str::FromStr;
 
 use async_trait::async_trait;
 use oid4vci::openidconnect::Nonce;
+use tracing::{instrument, Level, debug, trace};
 
 use crate::did::DIDURL;
 use crate::vc::core::Result;
@@ -31,6 +32,13 @@ where
     KH: kms::KeyHandle,
     KMS: kms::Kms<KH>,
 {
+
+    #[instrument(
+        level = Level::TRACE,
+        skip(self, protocol_data),
+        err(),
+        ret(level = Level::TRACE),
+    )]
     fn offer_credential(
         &self,
         cred_def_id: &str,
@@ -52,12 +60,20 @@ where
         Ok(credential_offer)
     }
 
+    #[instrument(
+        level = Level::TRACE,
+        skip_all,
+        err(),
+        ret(level = Level::TRACE),
+    )]
     async fn issue_credential(
         &self,
         credential_request: &CredentialRequest,
         claims: &Claims,
         nonce: &str,
     ) -> Result<(Credential, CredentialMetadata)> {
+        trace!(?credential_request, ?claims, %nonce);
+
         let cred_def = self.resolve_cred_def_by_request(credential_request)?;
 
         let (pop_fmt, proof) = Self::resolve_proof(cred_def, credential_request)?;
@@ -75,6 +91,7 @@ where
             }
             _ => Err(pop::Error::FormatNotSupported)?,
         };
+        debug!(resolved_holder_did = ?hld_did);
 
         let vc_fmt = &cred_def.format;
         let vc_fmt = vc::VCFormat::from_str(vc_fmt)?;
@@ -84,7 +101,9 @@ where
         let vc = match vc_fmt {
             vc::VCFormat::SdJwtVc => {
                 let claims = SdJwtAPI::resolve_claims(claims);
+                trace!(claims_to_issue = ?claims);
                 let alg = &iss_key.alg();
+                debug!(signing_alg = ?alg);
 
                 let metadata = self.sd_jwt_vc_metadata(&cred_def.protocol_data)?;
                 let cred = SdJwtAPI::create_vc(
@@ -110,11 +129,24 @@ where
     KH: kms::KeyHandle,
     KMS: kms::Kms<KH>,
 {
+
+    #[instrument(
+        level = Level::TRACE,
+        skip(kms)
+    )]
     pub fn new(kms: KMS, metadata: IssuerMetadata) -> Self {
         Self { kms, metadata, _marker: Default::default() }
     }
 
+    #[instrument(
+        level = Level::TRACE,
+        skip_all,
+        err(),
+        ret(level = Level::TRACE),
+    )]
     fn sd_jwt_vc_metadata(&self, protocol_data: &Option<CredentialDefinitionData>) -> Result<VCMetadata> {
+        trace!(protocol_data = ?{protocol_data.as_ref()});
+
         let data = &protocol_data.clone().unwrap_or(Default::default());
 
         Ok(VCMetadata {
@@ -123,7 +155,14 @@ where
         })
     }
 
+    #[instrument(
+        level = Level::TRACE,
+        skip_all,
+        err(),
+        ret(level = Level::TRACE),
+    )]
     fn resolve_cred_def_by_request(&self, credential_request: &CredentialRequest) -> Result<&CredentialDefinition> {
+        trace!(?credential_request);
         // TODO: support flow for CredentialOffer handling (if present)
         let id = &credential_request.cred_def_id;
         let cred_def = &self.find_cred_def(id)?;
@@ -131,6 +170,12 @@ where
         Ok(cred_def)
     }
 
+    #[instrument(
+        level = Level::TRACE,
+        skip(self),
+        err(),
+        ret(level = Level::TRACE),
+    )]
     fn find_cred_def(&self, id: &str) -> Result<&CredentialDefinition> {
         let cred_defs = &self.metadata.cred_defs;
         let cred_def = cred_defs.iter().find(|i| i.cred_def_id == id).ok_or(Error::CredDefNotFound)?;
@@ -138,10 +183,18 @@ where
         Ok(cred_def)
     }
 
-    fn resolve_proof<P: pop::Proof>(cred_def: &CredentialDefinition,
-                                    credential_request: &CredentialRequest,
+    #[instrument(
+        level = Level::TRACE,
+        skip_all,
+        err(),
+    )]
+    fn resolve_proof<P: pop::Proof>(
+        cred_def: &CredentialDefinition,
+        credential_request: &CredentialRequest,
     ) -> Result<(pop::Format, P)>
     {
+        trace!(credential_definition_id = ?cred_def, ?credential_request);
+
         let proof = &credential_request.proof;
         let fmt = &proof.format;
         let fmt = pop::Format::from_str(fmt)?;
@@ -152,7 +205,15 @@ where
         Ok((fmt, proof))
     }
 
+
+    #[instrument(
+        level = Level::TRACE,
+        skip_all,
+        err(),
+    )]
     async fn resolve_key_metadata(&self, cred_def: &CredentialDefinition) -> Result<(DIDURL, KH)> {
+        trace!(credential_definition_id = ?cred_def);
+
         let key_meta = match &cred_def.key_metadata {
             Some(m) => m,
             None => &self.metadata.key_metadata,
@@ -160,6 +221,8 @@ where
 
         let did_url = DIDURL::from_str(&key_meta.did_url).unwrap();
         let kh = self.kms.get(&key_meta.kid).await.unwrap();
+
+        debug!(resolved_did_url = ?did_url);
 
         Ok((did_url, kh))
     }
