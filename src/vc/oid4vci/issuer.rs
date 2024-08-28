@@ -9,6 +9,8 @@ use oid4vci::proof_of_possession::{KeyProofType, Proof as SpruceProof, ProofType
 use serde_json::{Map, Value};
 use ssi::jwt::decode_unverified;
 use url::Url;
+use tracing::{instrument, Level, debug, info, trace};
+
 use crate::storage::Storage;
 use crate::utils::http::HttpClient;
 use crate::vc;
@@ -51,12 +53,18 @@ where
     ST: Storage<String, String>,
     HC: HttpClient,
 {
+    #[instrument(
+        level = Level::TRACE,
+        skip(issuer, storage, token_validation)
+    )]
     pub fn new(
         issuer_metadata: IssuerMetadata,
         issuer: IS,
         storage: ST,
         token_validation: TokenValidation<HC>,
     ) -> Self {
+        info!("oid4vci issuer service is initialized");
+
         Self {
             issuer,
             storage,
@@ -73,15 +81,29 @@ where
     ST: Storage<String, String>,
     HC: HttpClient,
 {
+    #[instrument(
+        level = Level::TRACE,
+        skip_all,
+        ret(level = Level::DEBUG)
+    )]
     fn get_issuer_metadata(&self) -> IssuerMetadata {
         self.issuer_metadata.clone()
     }
 
+    #[instrument(
+        level = Level::TRACE,
+        skip(self, grants),
+        err(),
+        ret(level = Level::TRACE),
+    )]
     fn create_credential_offer(
         &self,
         cred_def_ids: Vec<&str>,
         grants: &CredentialOfferGrants,
     ) -> Result<(CredentialOfferParams, Url)> {
+        info!("creation of credential offer is started");
+        trace!(?grants);
+
         self.validate_cred_def_ids(&cred_def_ids)?;
 
         let cred_offer_params: CredentialOfferParameters<CoreProfilesOffer> =
@@ -102,15 +124,26 @@ where
 
         url.set_query(Some(format!("credential_offer={}", cred_offer).as_str()));
 
+        info!("credential offer is created");
+
         Ok((cred_offer_params, url))
     }
 
+    #[instrument(
+        level = Level::TRACE,
+        skip_all,
+        err(),
+        ret(level = Level::TRACE),
+    )]
     async fn issue_credential(
         &self,
         cred_request: &CredentialRequest,
         token: &String,
         claims: &Claims,
     ) -> Result<CredentialResponse> {
+        info!("issuance of credential is started");
+        trace!(credential_request = ?cred_request, %token, claims_to_issue = ?claims);
+
         self.validate_token(token).await?;
 
         let nonce = match self.resolve_nonce(token).await {
@@ -155,6 +188,8 @@ where
             .set_nonce(Some(new_nonce))
             .set_nonce_expiration(Some(NONCE_EXPIRES_IN));
 
+        info!("credential is issued");
+
         Ok(resp)
     }
 }
@@ -165,7 +200,16 @@ where
     ST: Storage<String, String>,
     HC: HttpClient,
 {
+
+    #[instrument(
+        level = Level::TRACE,
+        skip_all,
+        err(),
+        ret(level = Level::DEBUG),
+    )]
     fn resolve_cred_def_id(&self, req: &CredentialRequest) -> Result<String> {
+        trace!(credential_request = ?req);
+
         let vct = match req.additional_profile_fields() {
             CoreProfilesRequest::SDJWTVC(det) => {
                 det.vct()
@@ -199,6 +243,12 @@ where
         Ok(cred_def_id.to_owned())
     }
 
+    #[instrument(
+        level = Level::TRACE,
+        skip(self),
+        err(),
+        ret(level = Level::DEBUG),
+    )]
     fn validate_cred_def_ids(&self, cred_def_ids: &Vec<&str>) -> Result<()> {
         if cred_def_ids.is_empty() {
             return Err(
@@ -215,6 +265,8 @@ where
             .map(|e| e.to_owned())
             .collect();
 
+        debug!(supported_credential_definition_ids = ?supported);
+
         for c in cred_def_ids {
             if !supported.contains(&c.to_string()) {
 
@@ -230,6 +282,12 @@ where
         Ok(())
     }
 
+    #[instrument(
+        level = Level::TRACE,
+        skip(self, proof, token),
+        err(),
+        ret(level = Level::DEBUG),
+    )]
     async fn validate_proof_type(
         &self,
         proof: &SpruceProof,
@@ -237,7 +295,11 @@ where
         token: &String
     ) -> Result<()>
     {
+        trace!(?proof, %token);
+
         let cred_metadata = self.get_credential_metadata(&cred_def_id)?;
+        debug!(resolved_credential_metadata = ?cred_metadata);
+
         let proof_types = match cred_metadata.proof_types_supported() {
             Some(proof_types)  => proof_types,
             _ => &Self::supported_proof_types()
@@ -264,6 +326,7 @@ where
                 return Err(err)
             }
         };
+        debug!(resolved_proof_type = ?proof_type);
 
         let proof_header = match jsonwebtoken::decode_header(&proof) {
             Ok(proof_header) => proof_header,
@@ -281,6 +344,7 @@ where
             serde_json::to_value(proof_header.alg)
                 .map_err(InternalError::Parse)?
         ).map_err(InternalError::Parse)?;
+        debug!(resolved_signing_algorithm = %sign_alg);
 
         if !proof_type.proof_signing_alg_values_supported.contains(&sign_alg) {
             let err = self.invalid_proof(
@@ -294,6 +358,10 @@ where
         Ok(())
     }
 
+    #[instrument(
+        level = Level::TRACE,
+        ret(level = Level::DEBUG),
+    )]
     fn supported_proof_types() -> HashMap<KeyProofType, ProofType> {
         HashMap::from([(
             KeyProofType::Jwt,
@@ -304,7 +372,15 @@ where
         )])
     }
 
+    #[instrument(
+        level = Level::TRACE,
+        skip(self, token),
+        err(),
+        ret(level = Level::DEBUG),
+    )]
     fn validate_scope(&self, token: &String, cred_def_id: &str) -> Result<()> {
+        trace!(token_to_validate = %token);
+
         let token: Map<String, Value>   = decode_unverified(token.as_str())
             .map_err( |_|
                 ProtocolErrorResponse::new(
@@ -319,6 +395,7 @@ where
             .map(|cred_metadata| cred_metadata.scope())
 
             .collect();
+        debug!(supported_credential_definition_ids = ?supported);
 
         if let Some (Value::String(scopes)) = token.get("scope") {
             let not_supported = scopes
@@ -349,7 +426,15 @@ where
         )
     }
 
+    #[instrument(
+        level = Level::TRACE,
+        skip(self, claims),
+        err(),
+        ret(level = Level::DEBUG),
+    )]
     fn validate_claim_names(&self, claims: &Value, cred_def_id: &str) -> Result<()> {
+        trace!(?claims);
+
         let claim_names: Vec<&str> = match claims {
             Value::Object(claims) => claims.keys().map(|k| k.as_str()).collect(),
             _ => return Err(
@@ -370,6 +455,7 @@ where
                     ).into()
                 )
         };
+        debug!(resolved_credential_metadata = ?sd_jwt_vc_metadata);
 
         let supported_claims =  match sd_jwt_vc_metadata.credential_definition().claims() {
             Some(claims) => {
@@ -381,6 +467,7 @@ where
 
             _ => return Ok(())
         };
+        debug!(?supported_claims);
 
         let not_supported = claim_names
             .iter()
@@ -398,6 +485,12 @@ where
         Ok(())
     }
 
+    #[instrument(
+        level = Level::TRACE,
+        skip(self),
+        err(),
+        ret(level = Level::DEBUG),
+    )]
     fn get_credential_metadata(&self, cred_def_id: &str) -> Result<&CredentialMetadata> {
         self.issuer_metadata.
             credential_configurations_supported()
@@ -409,7 +502,15 @@ where
             )
     }
 
+    #[instrument(
+        level = Level::TRACE,
+        skip(self, token),
+        err(),
+        ret(level = Level::TRACE),
+    )]
     async fn resolve_nonce(&self, token: &String) -> Result<Nonce> {
+        trace!(%token);
+
         let nonce = self.storage.get(token)
             .await
             .map_err(InternalError::Storage)?;
@@ -417,7 +518,15 @@ where
         Ok(Nonce::new(nonce.to_owned()))
     }
 
+    #[instrument(
+        level = Level::TRACE,
+        skip_all,
+        err(),
+        ret(level = Level::TRACE),
+    )]
     async fn upsert_nonce(&self, token: &String) -> Result<Nonce> {
+        trace!(%token);
+
         let nonce = Nonce::new_random();
 
         self.storage.put(token.clone(), nonce.secret().to_owned())
@@ -427,7 +536,15 @@ where
         Ok(nonce)
     }
 
+    #[instrument(
+        level = Level::TRACE,
+        skip(self, token),
+        err(),
+        ret(level = Level::TRACE),
+    )]
     pub async fn validate_token(&self, token: &str) -> Result<()> {
+        trace!(%token);
+
         match &self.token_validation {
             TokenValidation::Introspect(svc) => {
                 svc.validate(token)
@@ -455,7 +572,15 @@ where
         Ok(())
     }
 
+    #[instrument(
+        level = Level::TRACE,
+        skip(self, token),
+        err(),
+        ret(level = Level::TRACE),
+    )]
     async fn invalid_proof(&self, token: &String, description: &str) -> Result<Error> {
+        trace!(%token);
+
         let nonce = self.upsert_nonce(token).await?;
         let err = Error::Protocol(
             ProtocolErrorResponse::new_with_nonce(

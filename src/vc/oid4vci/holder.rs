@@ -1,9 +1,3 @@
-use crate::utils::http::HttpClient;
-use crate::vc;
-use crate::vc::core::Proof as AsdkProof;
-use crate::vc::oid4vci as api;
-use crate::vc::oid4vci::{CredentialResult, InternalError, ProtocolErrorResponse, TokenResponse};
-use crate::vc::{Credential, CredentialMetadata};
 use async_trait::async_trait;
 use oauth2::url::Url;
 use oauth2::{AccessToken, AuthorizationCode, ClientId, CsrfToken, PkceCodeChallenge, RedirectUrl, ResponseType, Scope, TokenResponse as _TokenResponse};
@@ -21,12 +15,21 @@ use oid4vci::proof_of_possession::Proof as SpruceProof;
 use oid4vci::token;
 use std::string::ToString;
 use std::sync::Arc;
+use tracing::{instrument, Level, debug, info, trace};
+
 use crate::vc::oid4vci::Error::Protocol;
 use crate::vc::oid4vci::InternalError::{Other, Unhandled};
+use crate::vc;
+use crate::vc::core::Proof as AsdkProof;
+use crate::vc::oid4vci as api;
+use crate::vc::oid4vci::{CredentialResult, InternalError, ProtocolErrorResponse, TokenResponse};
+use crate::vc::{Credential, CredentialMetadata};
+use crate::utils::http::HttpClient;
 
 pub type Error = api::Error;
 pub type Result<T> = core::result::Result<T, Error>;
 
+#[derive(Debug)]
 pub enum AuthzOption {
     Scope(String),
     Details(AuthorizationDetail),
@@ -51,23 +54,34 @@ where
     HL: vc::core::Holder,
     HC: HttpClient,
 {
+    #[instrument(
+        level = Level::TRACE,
+        skip(holder, http_client),
+    )]
     pub async fn from_iss_url(
         holder: Arc<HL>,
         http_client: HC,
-        iss_url: String,
+        issuer_url: String,
         client_id: String,
         redirect_url: String, // urn:ietf:wg:oauth:2.0:oob
     ) -> Result<Self> {
-        Self::from_iss_url_with_configs(
+        let holder_service = Self::from_iss_url_with_configs(
             holder,
             http_client,
-            iss_url,
+            issuer_url,
             vec![],
             client_id,
             redirect_url,
-        ).await
+        ).await;
+        info!("oid4vci holder service is initialized");
+
+        holder_service
     }
 
+    #[instrument(
+        level = Level::TRACE,
+        skip(holder, http_client, offer),
+    )]
     pub async fn from_credential_offer(
         holder: Arc<HL>,
         http_client: HC,
@@ -75,6 +89,8 @@ where
         client_id: String,
         redirect_url: String,
     ) -> Result<Self> {
+        trace!(credential_offer = ?offer);
+
         let (iss_url, offer_configs) = match offer {
             CredentialOffer::Value { credential_offer } => {
                 let iss_url = credential_offer.credential_issuer.clone();
@@ -91,33 +107,42 @@ where
             )?,
         };
 
-        Self::from_iss_url_with_configs(
+        let holder_service = Self::from_iss_url_with_configs(
             holder,
             http_client,
             iss_url.to_string(),
             offer_configs,
             client_id,
             redirect_url,
-        ).await
+        ).await;
+        info!("oid4vci holder service is initialized");
+
+        holder_service
     }
 
+    #[instrument(
+        level = Level::TRACE,
+        skip(holder, http_client),
+    )]
     async fn from_iss_url_with_configs(
         holder: Arc<HL>,
         http_client: HC,
-        iss_url: String,
+        issuer_url: String,
         offer_configs: Vec<CredentialOfferFormat<CoreProfilesOffer>>,
         client_id: String,
         redirect_url: String, // urn:ietf:wg:oauth:2.0:oob
     ) -> Result<Self> {
         let issuer_metadata = IssuerMetadata::discover_async(
-            IssuerUrl::new(iss_url.clone())?,
+            IssuerUrl::new(issuer_url.clone())?,
             |req| HC::static_async(req),
         ).await.map_err(InternalError::Discovery)?;
+        debug!(resolved_issuer_metadata = ?issuer_metadata);
 
         let authz_metadata = AuthorizationMetadata::discover_async(
             &issuer_metadata,
             |req| HC::static_async(req),
         ).await.map_err(InternalError::Discovery)?;
+        debug!(resolved_authorization_server_metadata = ?authz_metadata);
 
         Self::new(
             holder,
@@ -130,6 +155,10 @@ where
         )
     }
 
+    #[instrument(
+        level = Level::TRACE,
+        skip(holder, http_client),
+    )]
     pub fn from_metadata(
         holder: Arc<HL>,
         http_client: HC,
@@ -138,7 +167,7 @@ where
         client_id: String,
         redirect_url: String,
     ) -> Result<Self> {
-        Self::new(
+        let holder_service = Self::new(
             holder,
             http_client,
             issuer_metadata,
@@ -146,9 +175,16 @@ where
             vec![],
             client_id,
             redirect_url,
-        )
+        );
+        info!("oid4vci holder service is initialized");
+
+        holder_service
     }
 
+    #[instrument(
+        level = Level::TRACE,
+        skip(holder, http_client),
+    )]
     fn new(
         holder: Arc<HL>,
         http_client: HC,
@@ -183,10 +219,22 @@ where
     HL: vc::core::Holder,
     HC: HttpClient,
 {
+
+    #[instrument(
+        level = Level::TRACE,
+        skip_all,
+        ret(level = Level::DEBUG),
+    )]
     fn get_issuer_metadata(&self) -> IssuerMetadata {
         self.issuer_metadata.clone()
     }
 
+    #[instrument(
+        level = Level::TRACE,
+        skip(self, authorization_callback),
+        err(),
+        ret(level = Level::TRACE),
+    )]
     async fn authz_code_flow_with_scope(
         &self,
         cred_def_id: String,
@@ -201,6 +249,12 @@ where
         Ok(response)
     }
 
+    #[instrument(
+        level = Level::TRACE,
+        skip(self, pre_authorized_code, tx_code),
+        err(),
+        ret(level = Level::TRACE),
+    )]
     async fn pre_authz_code_flow(
         &self,
         pre_authorized_code: String,
@@ -210,6 +264,12 @@ where
         unimplemented!()
     }
 
+    #[instrument(
+        level = Level::TRACE,
+        skip(self, token_response),
+        err(),
+        ret(level = Level::TRACE),
+    )]
     async fn request_credential(
         &self,
         token_response: &TokenResponse,
@@ -217,6 +277,7 @@ where
     ) -> Result<CredentialResult> {
         let token = token_response.access_token();
         let nonce = token_response.extra_fields().clone().c_nonce.map(|n| n.secret().clone());
+        trace!(access_token = ?token, nonce_from_token = ?{nonce.as_ref()});
 
         let cred_def = self.resolve_cred_def(cred_def_id)?;
 
@@ -228,6 +289,7 @@ where
                 ProtocolErrorResponse::new(ErrorType::UnsupportedCredentialFormat, "only \"vc+sd-jwt\" format is supported")
             )?,
         };
+        trace!(request_profile = ?req_base);
 
         let offer = &vc::core::CredentialOffer {
             issuer_id: self.iss_url.clone(),
@@ -242,8 +304,10 @@ where
             Some(val) => val,
             None => self.request_nonce(token.clone(), req_base.clone()).await?
         };
+        trace!(resolved_nonce = %nonce);
 
         let req = self.holder.request_credential(offer, &nonce).await?;
+        trace!(resolved_request = ?req);
 
         let credential_request = self.client
             .request_credential(token.to_owned(), req_base)
@@ -256,11 +320,19 @@ where
         resp.try_into()
     }
 
+    #[instrument(
+        level = Level::TRACE,
+        skip(self, credential, credential_metadata),
+        err(),
+        ret(level = Level::TRACE),
+    )]
     async fn store_credential(
         &self,
         credential: &Credential,
         credential_metadata: &CredentialMetadata,
     ) -> Result<()> {
+        trace!(?credential, ?credential_metadata);
+
         let _ = self.holder.store_credential(credential, credential_metadata).await?;
 
         Ok(())
@@ -272,10 +344,19 @@ where
     HL: vc::core::Holder,
     HC: HttpClient,
 {
+
+    #[instrument(
+        level = Level::TRACE,
+        skip_all,
+        err(),
+        ret(level = Level::TRACE),
+    )]
     async fn authz_code_flow(&self,
                              opt: AuthzOption,
                              callback: impl FnOnce(Url) -> String,
     ) -> Result<token::Response> {
+        trace!(authorization_option = ?opt);
+
         let (pkce_challenge, pkce_verifier) = PkceCodeChallenge::new_random_sha256();
 
         let in_csrf = CsrfToken::new_random();
@@ -303,10 +384,12 @@ where
         }
 
         let code = callback(auth_url);
+        trace!(authorization_code = %code);
 
         let token_req = self.client
             .exchange_code(AuthorizationCode::new(sanitize(code)))
             .set_pkce_verifier(pkce_verifier);
+        trace!(code_to_token_request = ?token_req);
 
         let token = token_req
             .request_async(|req| self.http_client.async_call(req))
@@ -317,6 +400,12 @@ where
         Ok(token)
     }
 
+    #[instrument(
+        level = Level::TRACE,
+        skip_all,
+        err(),
+        ret(level = Level::TRACE),
+    )]
     async fn deferred(&self,
                       token: AccessToken,
                       transaction_id: String,
@@ -324,15 +413,24 @@ where
         unimplemented!()
     }
 
+    #[instrument(
+        level = Level::TRACE,
+        skip_all,
+        err(),
+        ret(level = Level::TRACE),
+    )]
     async fn request_nonce( // TODO: Returning nonce should be optional
         &self,
         token: AccessToken,
         req_base: CoreProfilesRequest,
     ) -> Result<String> {
+        trace!(?token, credential_request = ?req_base);
+
         let resp = self.client
             .request_credential(token, req_base)
             .request_async(|req| self.http_client.async_call(req))
             .await.map_err(Error::from);
+        trace!(nonce_response = ?resp);
 
         let nonce = match resp {
             Err(Protocol(resp)) => resp.c_nonce
@@ -344,8 +442,15 @@ where
         Ok(nonce.secret().to_string())
     }
 
+    #[instrument(
+        level = Level::TRACE,
+        skip(self),
+        err(),
+        ret(level = Level::TRACE),
+    )]
     fn resolve_cred_def(&self, cred_def_id: &str) -> Result<CoreProfilesMetadata> {
         let configs = self.issuer_metadata.credential_configurations_supported();
+        debug!(supported_credential_configs = ?configs);
 
         if !configs.contains_key(cred_def_id) {
             return Err(
@@ -357,10 +462,17 @@ where
         }
 
         let data = configs.get(cred_def_id).unwrap();
+        debug!(resolved_credential_metadata = ?data);
 
         Ok(data.additional_fields().to_owned())
     }
 
+    #[instrument(
+        level = Level::TRACE,
+        skip_all,
+        err(),
+        ret(level = Level::TRACE),
+    )]
     fn validate_if_offer_supported(&self) -> Result<()> {
         // TODO: implement validation logic to support limitation for pre-authorized code
         /*
@@ -374,15 +486,22 @@ where
         Ok(())
     }
 
+    #[instrument(
+        level = Level::TRACE,
+        skip(self),
+        ret(level = Level::DEBUG),
+    )]
     fn resolve_supported_proofs(&self, cred_def_id: &str) -> Option<Vec<String>> {
         // TODO: delegate to the low-level facade after extending low-level IssuerMetadata
         let configs = self.issuer_metadata.credential_configurations_supported();
+        debug!(supported_credential_configs = ?configs);
 
         let supported: Vec<KeyProofType> = configs.get(cred_def_id)
             .map(|cd| cd.proof_types_supported())
             .flatten()
             .map(|pm| pm.clone().into_keys().collect())
             .unwrap_or(vec![KeyProofType::Jwt]);
+        debug!(supported_proof_types = ?supported);
 
         let proofs = supported.into_iter().map(|k| {
             match k {
