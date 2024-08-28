@@ -1,62 +1,52 @@
 @startuml
 'https://plantuml.com/component-diagram
+left to right direction
 
-'package "API Facade" as FAPI {
-'[Holder] as HAPI #Orange
-'[Issuer] #Orange
-'[Verifier] #Orange
-'}
+package "Applications" as App #LightBlue  {
+   [KMS Impl] as KMSApp
+   [Vault Impl] as VaultApp
+   [App Logic] as AppL
+}
 
+package "ASDK" as ASDK {
 
-package "VC Exchange Protocols" as EPAPI {
+     package "Pluggable" #LightGray {
+         [KMS Interface] as KMS #Green
+         [Vault Interface] as Vault #Green
+     }
 
-    package "OID4VC" {
-        package "Facade API" as EOFAPI {
-          [Issuer API] as EOFAPII #Green
-          [Holder API] as EOFAPIH #Green
-          [Verifier API] as EOFAPIV #Green
-        }
+    package "Public API" as API #LightGray {
+         package "VC Exchange" as VC1 {
+            [OID4VC] as VCOID #Green
+            [Aries] as Aries #Orange
+         }
+         [DIDComm Protocols] as DIDCommP #Orange
 
-        [Internal API] as EOIAPI #Green
+         [DID] as DID #Green
     }
 
-    package "DIDComm" {
-        [Facade API] #Orange
-        [Internal API] #Orange
-    }
+    package "Internal" as Int #Gray {
 
+        [VC Core] as VCCore #Green
+        [VC Formats] as VCF #Green
+        VCCore --> VCF
+
+        [DIDComm] as DIDComm #Orange
+        [Utils] #Green
+    }
 
 }
 
-package "Low Level API" as LLAPI {
+'API ---> Int
+VCOID ---> VCCore
+Aries ---> VCCore
+DIDCommP ---> DIDComm
 
-    package "Facade API" as LFAPI {
-      [Issuer API] as LFAPII #Green
-      [Holder API] as LFAPIH #Green
-      [Verifier API] as LFAPIV #Green
-    }
+VaultApp --|> Vault
+KMSApp --|> KMS
+AppL --> API
 
-    package "Internal API" as LIAPI {
-      [VC] #Green
-      [DID] #Green
-      [KMS] #Green
-      [Vault] #Green
-    }
-}
-
-cloud "Mobile App" as MAPP
-cloud "Web App Endpoints" as WAPP
-
-LFAPI --> LIAPI
-EOFAPI --> EOIAPI
-
-EOIAPI --> LFAPI
-
-MAPP --> EOFAPIH
-WAPP --> EOFAPII
-WAPP --> EOFAPIV
-
-note top of EPAPI: Green - first version; orange - later versions
+note left of ASDK: Green - already implemented;\nOrange - later versions
 
 
 @enduml
