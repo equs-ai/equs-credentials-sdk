@@ -15,10 +15,6 @@ pub struct InMemVault {
 }
 
 impl InMemVault {
-    pub fn for_store(storage: InMemStorage<String, Credential>) -> Self {
-        Self { storage: Arc::new(storage), indexed: Arc::new(RwLock::new(HashMap::new())) }
-    }
-
     pub fn new() -> Self {
         Self { storage: Arc::new(InMemStorage::new()), indexed: Arc::new(RwLock::new(HashMap::new())) }
     }
@@ -61,7 +57,7 @@ impl Vault for InMemVault {
         Ok(storage_id)
     }
 
-    async fn get_credential(&self, id: &str) -> Result<Credential, Error> {
+    async fn get_credential(&self, id: &str) -> Result<Option<Credential>, Error> {
         let cred = self.storage
             .get(&id.to_string())
             .await
@@ -80,20 +76,18 @@ impl Vault for InMemVault {
             }
         };
 
-        Ok(creds)
+        Ok(creds.into_iter().flatten().collect())
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::inmem::storage::InMemStorage;
     use crate::inmem::vault::InMemVault;
     use crate::vault::test_util::test_vault;
 
     #[tokio::test]
     async fn e2e() {
-        let storage = InMemStorage::new();
-        let vault = InMemVault::for_store(storage);
+        let vault = InMemVault::new();
         test_vault(vault).await;
     }
 }

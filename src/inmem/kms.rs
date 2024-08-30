@@ -6,7 +6,8 @@ use crate::crypto::Suite;
 use crate::inmem::crypto::ed25519::Ed25519;
 use crate::inmem::crypto::p256::P256;
 use crate::inmem::storage::InMemStorage;
-use crate::kms::Kms;
+use crate::kms::Error;
+use crate::kms::{KeyID, Kms};
 use crate::storage::Storage;
 use crate::{crypto, kms};
 
@@ -75,7 +76,7 @@ pub type Bytes = Vec<u8>;
 
 #[derive(Clone)]
 pub struct LocalKms {
-    storage: Arc<InMemStorage<kms::KeyID, Bytes>>,
+    storage: Arc<InMemStorage<KeyID, Bytes>>,
 }
 
 const KID_LENGTH: usize = 10;
@@ -104,7 +105,7 @@ impl LocalKms {
 #[async_trait]
 impl Kms<KeyHandle> for LocalKms
 {
-    async fn create(&self, kt: kms::KeyType, opts: kms::CreateOptions) -> Result<kms::KeyID, kms::Error> {
+    async fn create(&self, kt: kms::KeyType, opts: kms::CreateOptions) -> Result<KeyID, Error> {
         let key = match kt {
             kms::KeyType::Ed25519 => Ed25519::gen(),
             kms::KeyType::P256 => P256::gen(),
@@ -117,8 +118,10 @@ impl Kms<KeyHandle> for LocalKms
         Ok(kid.to_owned())
     }
 
-    async fn get(&self, kid: &kms::KeyID) -> Result<KeyHandle, kms::Error> {
-        let key = self.storage.get(kid).await.unwrap();
+    async fn get(&self, kid: &KeyID) -> Result<KeyHandle, Error> {
+        let key = self.storage.get(kid).await
+            .map_err(|e| Error::Resolving(e.to_string()))?
+            .ok_or(Error::KeyNotFound(kid.to_owned()))?;
 
         let kt = LocalKms::key_type(kid);
 

@@ -1,6 +1,9 @@
 use crate::vc::formats::HasClaims;
 use crate::vc::{Credential, CredentialMetadata};
 
+/// `Metadata` Error.
+///
+/// Should be used by all `CredentialMetadataProcessor` implementations.
 #[derive(Debug, thiserror::Error, strum::IntoStaticStr)]
 #[non_exhaustive]
 pub enum Error {
@@ -10,12 +13,35 @@ pub enum Error {
     Resolving(String),
 }
 
+/// `Result` alias for `MetadataProcessor` [Error].
 pub type Result<T> = core::result::Result<T, Error>;
 
+/// A common service to generate a [CredentialMetadata] for the [Credential].
+///
+/// # Implementation
+///
+/// Default implementation: [DefaultMetadataProcessor].
 pub trait CredentialMetadataProcessor {
+    /// Resolve a `CredentialMetadata` for `Credential`.
+    ///
+    /// # Arguments
+    ///
+    /// * `credential` - a `Credential`.
+    ///
+    /// # Returns
+    ///
+    /// A `CredentialMetadata` of the provided `Credential` on success.
+    ///
+    /// # Errors
+    ///
+    /// * [Error::FormatNotSupported] - format is not supported by the processor.
+    /// * [Error::Resolving] - fails to resolve `Credential`.
     fn resolve_metadata(credential: &Credential) -> Result<CredentialMetadata>;
 }
 
+/// A default implementation of [CredentialMetadataProcessor].
+///
+/// Fills in mandatory `type` and `format` for [CredentialMetadata].
 pub struct DefaultMetadataProcessor;
 
 impl DefaultMetadataProcessor {

@@ -31,7 +31,7 @@ pub type Error = api::VerifierError;
 pub type Result<T> = core::result::Result<T, Error>;
 
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
-pub struct StorageEntry {
+pub(crate) struct StorageEntry {
     pub nonce: String,
     pub presentation_definition: PresentationDefinition,
 }
@@ -166,7 +166,9 @@ where
         auth_response: &AuthorizationResponse,
     ) -> Result<Json> {
         let id = &auth_response.presentation_submission.definition_id;
-        let storage_entry = self.storage.get(id).await?;
+        let storage_entry = self.storage.get(id)
+            .await?
+            .ok_or(Error::SubmissionNotFound(id.to_owned()))?;
 
         let claims = self.do_verify_presentation(
             &storage_entry.presentation_definition,

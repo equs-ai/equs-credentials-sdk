@@ -220,7 +220,7 @@ where
         };
 
         let did_url = DIDURL::from_str(&key_meta.did_url).unwrap();
-        let kh = self.kms.get(&key_meta.kid).await.unwrap();
+        let kh = self.kms.get(&key_meta.kid).await?;
 
         debug!(resolved_did_url = ?did_url);
 

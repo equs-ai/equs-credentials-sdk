@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 
 mod formats;
 mod pop;
+
 pub mod core;
 pub mod oid4vci;
 pub mod oid4vp;
@@ -17,8 +18,8 @@ pub const SD_JWT_VC: &str = "vc+sd-jwt";
 pub const JWT_VP: &str = "jwt_vp";
 pub const LDP_VP: &str = "ldp_vp";
 
-// VC formats
 
+/// Basic enum for supported `VC` formats.
 #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
 #[non_exhaustive]
 pub enum VCFormat {
@@ -46,8 +47,7 @@ impl Display for VCFormat {
     }
 }
 
-// VP format
-
+/// Basic enum for supported `VP` formats.
 #[derive(Debug, PartialEq, Clone)]
 #[non_exhaustive]
 pub enum VPFormat {
@@ -64,8 +64,11 @@ impl Into<&'static str> for VPFormat {
     }
 }
 
-// Credential
-
+/// Verifiable Credential (`VC`)
+///
+/// Each enum value represents different format of `VC` and contains an actual serializable `VC` body.
+///
+/// *NOTE*: could be extended in the next releases.
 #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
 #[non_exhaustive]
 pub enum Credential {
@@ -90,6 +93,11 @@ impl Credential {
     }
 }
 
+/// Credential Metadata.
+///
+/// Contains the various data related to some `Credential`.
+///
+/// Currently, only `type` and `format` are mandatory.
 #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
 pub struct CredentialMetadata {
     #[serde(rename = "type")]
@@ -99,6 +107,11 @@ pub struct CredentialMetadata {
     pub tags: Vec<(String, String)>,
 }
 
+/// Verifiable Presentation (`VP`)
+///
+/// Each enum value represents different format of `VP` and contains an actual serializable `VP` body.
+///
+/// *NOTE*: could be extended in the next releases.
 #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
 #[non_exhaustive]
 #[serde(untagged)]
@@ -110,4 +123,5 @@ pub enum Presentation {
     SdJwtVp(String),
 }
 
+/// Basic format for `Claims`.
 pub type Claims = serde_json::Value;

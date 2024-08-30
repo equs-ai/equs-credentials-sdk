@@ -2,13 +2,12 @@ use async_trait::async_trait;
 
 use crate::vc;
 
-// Error handling
+/// `Vault` Error.
+///
+/// All implementations of [Vault] should leverage this enum for error handling.
 #[derive(Debug, thiserror::Error, strum::IntoStaticStr)]
 #[non_exhaustive]
 pub enum Error {
-    // TODO: change `get_credential` to return Option<Credential> in result?
-    #[error("credential not found for ID: {0}")]
-    NotFound(String),
     #[error("Storage error: {0}")]
     Storage(String),
     #[error("Format not supported: {0}")]
@@ -21,6 +20,12 @@ pub enum Error {
     FindCriteria(String),
 }
 
+/// `Result` alias for Vault-specific [Error].
+pub type Result<T> = core::result::Result<T, Error>;
+
+/// Criteria to be used in [Vault::find_credentials].
+///
+/// *NOTE*: Only searching VCs by format and type is currently supported.
 #[derive(Debug)]
 #[non_exhaustive]
 pub enum FindCriteria {
@@ -28,14 +33,77 @@ pub enum FindCriteria {
     // etc
 }
 
+/// An async `Vault` interface for managing Verifiable Credentials.
+///
+/// Should be implemented by any adapter to be used with `ASDK`.
+///
+/// Supports storing, retrieving and finding [vc::Credential].
 #[async_trait]
 pub trait Vault: Send + Sync
 {
-    async fn store_credential(&self, credential: vc::Credential, metadata: &vc::CredentialMetadata) -> Result<String, Error>;
+    /// Stores the `Credential` in `Vault`.
+    ///
+    /// # Arguments
+    ///
+    /// * `credential` - the `Credential` to store.
+    /// * `metadata` - the corresponding `CredentialMetadata`.
+    ///
+    /// # Returns
+    ///
+    /// An `ID` of the stored `credential` on success.
+    ///
+    /// # Errors
+    ///
+    /// * [Error::FormatNotSupported] - format is not supported by the `Vault`.
+    /// * [Error::VC] - issues with `Credential` processing.
+    /// * [Error::Storage] - fails to access the storage.
+    /// * [Error::Network] - issues with network.
+    async fn store_credential(
+        &self,
+        credential: vc::Credential,
+        metadata: &vc::CredentialMetadata,
+    ) -> Result<String>;
 
-    async fn get_credential(&self, id: &str) -> Result<vc::Credential, Error>;
+    /// Get a `Credential` from `Vault`
+    ///
+    /// # Arguments
+    ///
+    /// * `id` -  `ID` of the stored [vc::Credential].
+    ///
+    /// # Returns
+    ///
+    /// `Some(Credential)` on success.
+    /// `None` if no `Credential` was found by `id`.
+    ///
+    /// # Errors
+    ///
+    /// * [Error::Storage] - fails to access the storage.
+    /// * [Error::Network] - issues with network.
+    async fn get_credential(
+        &self,
+        id: &str,
+    ) -> Result<Option<vc::Credential>>;
 
-    async fn find_credentials(&self, criteria: FindCriteria) -> Result<Vec<vc::Credential>, Error>;
+    /// Find the `Credential`s in `Vault`
+    ///
+    /// # Arguments
+    ///
+    /// * `criteria` -  [FindCriteria] to search for credentials.
+    ///
+    /// # Returns
+    ///
+    /// A Vector of `Credential` matched the provided `criteria` on success.
+    /// In case if nothing meets the `criteria` an empty Vector should be returned.
+    ///
+    /// # Errors
+    ///
+    /// * [Error::FindCriteria] - invalid `FindCriteria`.
+    /// * [Error::Storage] - fails to access the storage.
+    /// * [Error::Network] - issues with network.
+    async fn find_credentials(
+        &self,
+        criteria: FindCriteria,
+    ) -> Result<Vec<vc::Credential>>;
 }
 
 #[cfg(test)]
@@ -82,8 +150,8 @@ pub mod test_util {
         let get1_res = vault.get_credential(&cred1_id).await.unwrap();
         let get2_res = vault.get_credential(&cred2_id).await.unwrap();
 
-        assert_eq!(get1_res, Credential::SdJwt(cred1.clone()));
-        assert_eq!(get2_res, Credential::LdpVc(cred2));
+        assert_eq!(get1_res, Some(Credential::SdJwt(cred1.clone())));
+        assert_eq!(get2_res, Some(Credential::LdpVc(cred2)));
 
         let find_res = vault
             .find_credentials(FindCriteria::ByTypeAndFormat(

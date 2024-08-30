@@ -10,7 +10,9 @@ pub mod storage;
 // core
 pub mod vc;
 pub mod did;
+// TODO: expose only http client trait here
 pub mod utils;
+// TODO: make private after moving the demo
 pub mod inmem;
 
 // TODO: move to a separate crate
