@@ -1,10 +1,10 @@
+use crate::storage;
+use crate::storage::Result;
 use async_rwlock::RwLock;
 use async_trait::async_trait;
 use std::collections::HashMap;
 use std::fmt::Display;
 use std::hash::Hash;
-
-use crate::storage;
 
 pub struct InMemStorage<K, V> {
     map: RwLock<HashMap<K, V>>,
@@ -22,17 +22,17 @@ where
     K: Display + Eq + PartialEq + Hash + Sync + Send,
     V: 'static + Sync + Send + Clone,
 {
-    async fn put(&self, k: K, v: V) -> Result<(), storage::Error> {
+    async fn put(&self, k: K, v: V) -> Result<()> {
         self.map.write().await.insert(k, v);
         Ok(())
     }
 
-    async fn get(&self, k: &K) -> Result<V, storage::Error> {
+    async fn get(&self, k: &K) -> Result<Option<V>> {
         let v = self.map.read().await.get(k).cloned();
-        v.ok_or_else(|| storage::Error::ValueNotFound(k.to_string()))
+        Ok(v)
     }
 
-    async fn delete(&self, k: &K) -> Result<(), storage::Error> {
+    async fn delete(&self, k: &K) -> Result<()> {
         let _ = self.map.write().await.remove(k);
         Ok(())
     }

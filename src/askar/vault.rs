@@ -118,14 +118,13 @@ impl Vault for AskarVault {
         Ok(id.into())
     }
 
-    async fn get_credential(&self, id: &str) -> Result<Credential, Error> {
+    async fn get_credential(&self, id: &str) -> Result<Option<Credential>, Error> {
         let entry = self
             .get(id.try_into()?)
             .await
-            .map_err(|err| Error::Storage(err.to_string()))?
-            .ok_or_else(|| Error::NotFound(id.to_string()))?;
+            .map_err(|err| Error::Storage(err.to_string()))?;
 
-        entry.try_into()
+        entry.map(|en| en.try_into()).transpose()
     }
 
     async fn find_credentials(&self, criteria: FindCriteria) -> Result<Vec<Credential>, Error> {

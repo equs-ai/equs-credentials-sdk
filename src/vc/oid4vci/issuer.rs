@@ -147,7 +147,7 @@ where
         self.validate_token(token).await?;
 
         let nonce = match self.resolve_nonce(token).await {
-            Ok(nonce) => nonce,
+            Ok(Some(nonce)) => nonce,
             _ => return Err(self.invalid_proof(&token, INVALID_PROOF_ERR_DESC).await?)
         };
 
@@ -508,14 +508,14 @@ where
         err(),
         ret(level = Level::TRACE),
     )]
-    async fn resolve_nonce(&self, token: &String) -> Result<Nonce> {
+    async fn resolve_nonce(&self, token: &String) -> Result<Option<Nonce>> {
         trace!(%token);
 
         let nonce = self.storage.get(token)
             .await
             .map_err(InternalError::Storage)?;
 
-        Ok(Nonce::new(nonce.to_owned()))
+        Ok(nonce.map(Nonce::new))
     }
 
     #[instrument(

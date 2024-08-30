@@ -70,6 +70,8 @@ pub enum VerifierError {
     MissingRequiredField(String),
     #[error("Storage Error: {0}")]
     StorageError(#[from] storage::Error),
+    #[error("Submission not found: {0}")]
+    SubmissionNotFound(String),
 }
 
 #[derive(Debug, thiserror::Error, strum::IntoStaticStr)]

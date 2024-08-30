@@ -66,6 +66,11 @@ cargo build --all-features
 cargo test --all-features
 ```
 
+### Generate documentation
+
+```
+cargo doc --no-deps
+```
 
 ## How to Use ASDK in Applications
 
@@ -80,16 +85,23 @@ An example of integration: https://git.slock.it/equstng/proof-of-concepts/asdk-d
 2. Implement application/platform specific Vault (to store and find Verifiable Credentials)
 3. Integrate OID4VC Holder API
    - [VC OID4VC API Auth Code: Full Flow](docs/vc-oid4vc-api-auth-code-full.png) or  [VC OID4VC API Auth Code: Already Authorized](docs/vc-oid4vc-api-auth-code-already-authorized.png)
-   - [Holder VCI API](src/vc/oid4vci/mod.rs) and [Holder VCI Service](src/vc/oid4vci/holder.rs)
-   - [Holder VP API](src/vc/oid4vp/mod.rs) and [Holder VP Service](src/vc/oid4vp/holder.rs)
+   - For VCI refer to:
+     - [Holder VCI API](src/vc/oid4vci/mod.rs)
+     - [Holder VCI Builder](src/vc/oid4vci/builder.rs)
+     - [Holder VCI Service](src/vc/oid4vci/holder.rs) (not publicly exposed)
+   - For VP refer to:
+     - [Holder VP API](src/vc/oid4vp/mod.rs)
+     - [Holder VP Builder](src/vc/oid4vp/builder.rs)
+     - [Holder VP Service](src/vc/oid4vp/holder.rs) (not publicly exposed)
 
 
 **Web App: Issuer**
 1. Implement application/platform specific KMS
 2. Instantiate OID4VC Issuer Service
-   - [VC OID4VC API Auth Code: Full Flow](docs/vc-oid4vc-api-auth-code-full.png) or  [VC OID4VC API Auth Code: Already Authorized](docs/vc-oid4vc-api-auth-code-already-authorized.png)
+    - [VC OID4VC API Auth Code: Full Flow](docs/vc-oid4vc-api-auth-code-full.png) or  [VC OID4VC API Auth Code: Already Authorized](docs/vc-oid4vc-api-auth-code-already-authorized.png)
     - [Issuer API](src/vc/oid4vci/mod.rs)
-    - [Issuer Service](src/vc/oid4vci/issuer.rs)
+    - [Issuer Builder](src/vc/oid4vci/builder.rs)
+    - [Issuer Service](src/vc/oid4vci/issuer.rs) (not publicly exposed)
 3. Create Issuer Metadata
 4. Create Credential Offer (optional)
 5. Implement the following endpoints. Each endpoint should call the corresponding ASDK Issuer API method.
@@ -104,9 +116,10 @@ An example of integration: https://git.slock.it/equstng/proof-of-concepts/asdk-d
 1. Integrate OID4VC Verifier Service
    - [VC OID4VC API Auth Code](docs/vc-oid4vc-api-auth-code-full.png)
    - [Verifier API](src/vc/oid4vp/mod.rs)
-   - [Verifier Service](src/vc/oid4vp/verifier.rs)
+   - [Verifier Builder](src/vc/oid4vp/builder.rs)
+   - [Verifier Service](src/vc/oid4vp/verifier.rs) (not publicly exposed)
 2. Implement the following endpoints. Each endpoint should call the corresponding ASDK Verifier API method.
-    - POST /<authorization-response-uri> HTTP/1.1: `verify_presentation`
+   - POST /<authorization-response-uri> HTTP/1.1: `verify_presentation`
 
 
 
