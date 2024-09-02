@@ -1,14 +1,25 @@
 stages:
   - test
+  - demo-build
 
-test-job:
-  stage: test
+default:
   image: rust:1.79.0
   before_script:
     - sed -i "s|ssh://git@git.slock.it/|https://gitlab-ci-token:${CI_JOB_TOKEN}@git.slock.it/|" Cargo.toml
+
+test-job:
+  stage: test
   script:
     - cargo build --all-features
     - cargo test --all-features
+  only:
+    - merge_requests
+    - main
+
+oid4vc-demo-build-job:
+  stage: demo-build
+  script:
+    - ./scripts/build-oid4vci-demo.sh
   only:
     - merge_requests
     - main

@@ -1,0 +1,18 @@
+[package]
+name = "holder"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tokio = { version = "1.25.0", features = ["rt", "rt-multi-thread", "macros"] }
+oauth2 = "4.4.2"
+serde_json = "1.0.117"
+reqwest = { version = "0.11", features = ["blocking"] }
+http = "0.2.12"
+ssi = "0.7.0"
+time = { version = "0.3.29", features = ["serde"] }
+jsonwebtoken = "9.3.0"
+serde_urlencoded = "0.7.1"
+tracing-subscriber = "0.3.18"
+
+agent-sdk = { path = "../../.." }

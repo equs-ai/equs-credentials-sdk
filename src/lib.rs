@@ -12,7 +12,7 @@ pub mod vc;
 pub mod did;
 // TODO: expose only http client trait here
 pub mod utils;
-// TODO: make private after moving the demo
+// TODO: make private after moving the oid4vc
 pub mod inmem;
 
 // TODO: move to a separate crate
