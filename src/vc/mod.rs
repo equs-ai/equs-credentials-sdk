@@ -1,7 +1,8 @@
-use std::fmt::{Display, Formatter};
-
-use crate::crypto;
 use serde::{Deserialize, Serialize};
+use crate::crypto::Alg;
+
+pub use crate::vc::formats::vc::*;
+pub use crate::vc::formats::vp::*;
 
 mod formats;
 mod pop;
@@ -10,59 +11,6 @@ pub mod core;
 pub mod oid4vci;
 pub mod oid4vp;
 pub mod metadata;
-
-pub const JWT_VC_JSON: &str = "jwt_vc_json";
-pub const JWT_VC_JSON_LD: &str = "jwt_vc_json-ld";
-pub const LDP_VC: &str = "ldp_vc";
-pub const SD_JWT_VC: &str = "vc+sd-jwt";
-pub const JWT_VP: &str = "jwt_vp";
-pub const LDP_VP: &str = "ldp_vp";
-
-
-/// Basic enum for supported `VC` formats.
-#[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
-#[non_exhaustive]
-pub enum VCFormat {
-    JwtVcJson,
-    JwtVcJsonLD,
-    LdpVc,
-    SdJwtVc,
-}
-
-impl Into<&'static str> for &VCFormat {
-    fn into(self) -> &'static str {
-        match self {
-            VCFormat::JwtVcJson => "jwt_vc_json",
-            VCFormat::JwtVcJsonLD => "jwt_vc_json-ld",
-            VCFormat::LdpVc => "ldp_vc",
-            VCFormat::SdJwtVc => "vc+sd-jwt",
-        }
-    }
-}
-
-impl Display for VCFormat {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        let str: &str = self.into();
-        write!(f, "{}", str)
-    }
-}
-
-/// Basic enum for supported `VP` formats.
-#[derive(Debug, PartialEq, Clone)]
-#[non_exhaustive]
-pub enum VPFormat {
-    JwtVp,
-    LdpVp,
-}
-
-impl Into<&'static str> for VPFormat {
-    fn into(self) -> &'static str {
-        match self {
-            VPFormat::JwtVp => "jwt_vp",
-            VPFormat::LdpVp => "ldp_vp",
-        }
-    }
-}
 
 /// Verifiable Credential (`VC`)
 ///
@@ -82,8 +30,8 @@ pub enum Credential {
     // ISOMdl(String),
 }
 
-impl Credential {
-    pub fn format(&self) -> VCFormat {
+impl HasVCFormat for Credential {
+    fn format(&self) -> VCFormat {
         match self {
             Credential::JwtVcJson(_) => VCFormat::JwtVcJson,
             Credential::JwtVcJsonLd(_) => VCFormat::JwtVcJsonLD,
@@ -103,7 +51,7 @@ pub struct CredentialMetadata {
     #[serde(rename = "type")]
     pub type_: String,
     pub format: VCFormat,
-    pub alg: Option<crypto::Alg>,
+    pub alg: Option<Alg>,
     pub tags: Vec<(String, String)>,
 }
 

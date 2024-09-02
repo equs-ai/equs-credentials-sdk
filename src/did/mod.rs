@@ -1,24 +1,40 @@
+use std::fmt::Debug;
 use async_trait::async_trait;
-use ssi::did::{Resource, VerificationMethod};
+use snafu::{Location, Snafu};
 use ssi::did::did_resolve::DIDResolver as SpruceResolver;
-use ssi::did_resolve::{Content, dereference, DereferencingInputMetadata};
-use strum_macros::IntoStaticStr;
+use ssi::did::{Resource, VerificationMethod};
+use ssi::did_resolve::{dereference, Content, DereferencingInputMetadata};
 
 pub mod didkey;
 pub mod universal;
 
 // Error handling
-#[derive(Debug, thiserror::Error, IntoStaticStr)]
+#[derive(Snafu)]
 #[non_exhaustive]
 pub enum Error {
-    #[error("method not supported: {0}")]
-    MethodNotSupported(String),
-    #[error("key not supported")]
-    KeyNotSupported,
-    #[error("generation error: {0}")]
-    GenerationError(String),
-    #[error("dereferencing error: {0}")]
-    DereferencingError(String),
+    #[snafu(display("Unsupported method: {method}"))]
+    MethodNotSupported { method: String },
+    #[snafu(display("Unsupported key: {type_}"))]
+    KeyNotSupported { type_: String },
+    #[snafu(display("DID generation error at {location}\n Cause: {details}"))]
+    DidGeneration {
+        details: String,
+        #[snafu(implicit)]
+        location: Location,
+    },
+    #[snafu(display("Resolution error at {location}\n Cause: {details}"))]
+    Resolution {
+        details: String,
+        #[snafu(implicit)]
+        location: Location,
+    },
+}
+
+impl Debug for Error {
+    fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
+        std::write!(fmt, "{}", self)?;
+        Ok(())
+    }
 }
 
 // Basic types definitions
@@ -47,30 +63,49 @@ pub struct ResolveOptions {
 pub trait DIDResolver: Send + Sync {
     async fn resolve(&self, did: &DID, options: ResolveOptions) -> Resolution;
 
-    async fn resolve_verification_method(&self, did_url: &str) -> Result<VerificationMethodMap, Error> {
+    async fn resolve_verification_method(
+        &self,
+        did_url: &str,
+    ) -> Result<VerificationMethodMap, Error> {
         resolve_verification_method(self.as_spruce_resolver(), did_url).await
     }
 
     fn as_spruce_resolver(&self) -> &dyn SpruceResolver;
 }
 
-async fn resolve_verification_method(resolver: &dyn SpruceResolver, did_url: &str) -> Result<VerificationMethodMap, Error> {
-    let (_, content, _) = dereference(resolver, did_url, &DereferencingInputMetadata::default()).await;
+async fn resolve_verification_method(
+    resolver: &dyn SpruceResolver,
+    did_url: &str,
+) -> Result<VerificationMethodMap, Error> {
+    let (_, content, _) = dereference(
+        resolver, did_url, &DereferencingInputMetadata::default()
+    ).await;
 
-    let vm = match content {
+    match content {
         Content::Object(Resource::VerificationMethod(vm)) => Ok(vm),
         Content::DIDDocument(document) => {
-            if let VerificationMethod::Map(vm) =
-                document.verification_method.unwrap().first().unwrap()
-            {
-                Ok(vm.to_owned())
+            let vm_option = document
+                .verification_method
+                .as_ref()
+                .and_then(|methods| methods.first())
+                .ok_or_else(|| {
+                    ResolutionSnafu {
+                        details: format!(
+                            "No verification method found in DID document for DID URL: {did_url}"
+                        )
+                    }.build()
+                })?;
+
+            if let VerificationMethod::Map(vm) = vm_option {
+                Ok(vm.clone())
             } else {
-                Err(Error::DereferencingError("could not find any verification method".into()))
+                ResolutionSnafu {
+                    details: format!("Could not find any verification method for DID URL: {did_url}"),
+                }.fail()
             }
         }
-
-        _ => Err(Error::DereferencingError("could not find specified verification method".into(),
-        )),
-    };
-    vm
+        _ => ResolutionSnafu {
+            details: format!("Failed to resolve verification method for DID URL: {did_url}")
+        }.fail(),
+    }
 }

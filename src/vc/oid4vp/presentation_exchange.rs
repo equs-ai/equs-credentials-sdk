@@ -51,12 +51,16 @@ impl TryInto<PresentationInput> for &InputDescriptor {
             .to_owned();
 
         let type_ = match format.as_str() {
-            "vc+sd-jwt" => claims.get("vct").and_then(|v| v.as_str()),
-            _ => None,
-        };
+            "vc+sd-jwt" => {
+                claims.get("vct")
+                    .and_then(|v| v.as_str())
+                    .ok_or(Error::VpFormatParse)
+            },
+            _ => Err(Error::VpFormatParse),
+        }?;
 
         let id = self.id.clone();
-        Ok(PresentationInput { id, format, type_: type_.map(str::to_string), claims })
+        Ok(PresentationInput { id, format, type_: type_.to_string(), claims })
     }
 }
 

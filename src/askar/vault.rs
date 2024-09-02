@@ -1,11 +1,22 @@
 use aries_askar::entry::{Entry, EntryKind, EntryTag, TagFilter};
 use aries_askar::Store;
 use async_trait::async_trait;
+use snafu::ensure;
 use uuid::Uuid;
 
 use crate::crypto::Alg;
-use crate::vault::{Error, FindCriteria, Vault};
-use crate::vc::{Credential, CredentialMetadata, VCFormat, JWT_VC_JSON, JWT_VC_JSON_LD, LDP_VC, SD_JWT_VC};
+use crate::vault::{
+    Error,
+    FindCriteria,
+    FormatNotSupportedSnafu,
+    ResolvingSnafu,
+    StoringSnafu,
+    Vault,
+    VCSnafu
+};
+use crate::vc::{
+    Credential, CredentialMetadata, JWT_VC_JSON, JWT_VC_JSON_LD, LDP_VC, SD_JWT_VC, VCFormat
+};
 
 pub const TAG_TYPE: &str = "type_";
 pub const TAG_FORMAT: &str = "format";
@@ -83,7 +94,7 @@ impl AskarVault {
             )),
             Credential::LdpVc(credential) => {
                 let credential_json = serde_json::to_string(&credential)
-                    .map_err(|err| Error::VC(err.to_string()))?;
+                    .map_err(|err| VCSnafu { details: err.to_string() }.build())?;
                 Ok(Entry::new(
                     EntryKind::Item,
                     LDP_VC,
@@ -113,7 +124,7 @@ impl Vault for AskarVault {
         let entry = Self::create_entry(&credential, &metadata)?;
         let id = self.insert(&entry)
             .await
-            .map_err(|err| Error::Storage(err.to_string()))?;
+            .map_err(|err| StoringSnafu { details: err.to_string() }.build())?;
 
         Ok(id.into())
     }
@@ -122,7 +133,7 @@ impl Vault for AskarVault {
         let entry = self
             .get(id.try_into()?)
             .await
-            .map_err(|err| Error::Storage(err.to_string()))?;
+            .map_err(|err| StoringSnafu { details: err.to_string() }.build())?;
 
         entry.map(|en| en.try_into()).transpose()
     }
@@ -131,7 +142,7 @@ impl Vault for AskarVault {
         let entries = self
             .find(criteria.into())
             .await
-            .map_err(|err| Error::Storage(err.to_string()))?;
+            .map_err(|err| StoringSnafu { details: err.to_string() }.build())?;
         entries.into_iter().map(|entry| entry.try_into()).collect()
     }
 }
@@ -158,9 +169,7 @@ impl TryFrom<&str> for AskarVaultId {
     fn try_from(value: &str) -> Result<Self, Self::Error> {
         let parts = value.split(":").collect::<Vec<&str>>();
 
-        if parts.len() != 2 {
-            return Err(Error::Storage(format!("Incorrect ID: {}", value)));
-        }
+        ensure!(parts.len() == 2, ResolvingSnafu { details:  format!("Incorrect ID: {}", value)});
 
         let category = parts[0].to_string();
         let name = parts[1].to_string();
@@ -194,7 +203,7 @@ impl TryFrom<Entry> for Credential {
             .value
             .as_opt_str()
             .ok_or_else(|| {
-                Error::VC("Failed to convert secret bytes to credential string".to_string())
+                VCSnafu { details: "Failed to convert secret bytes to credential string" }.build()
             })?
             .to_string();
 
@@ -204,11 +213,11 @@ impl TryFrom<Entry> for Credential {
             JWT_VC_JSON_LD => Ok(Credential::JwtVcJsonLd(credential_str)),
             LDP_VC => {
                 let credential = ssi::vc::Credential::from_json_unsigned(&credential_str)
-                    .map_err(|err| Error::VC(err.to_string()))?;
+                    .map_err(|err| VCSnafu { details: err.to_string() }.build())?;
                 Ok(Credential::LdpVc(credential))
             }
             SD_JWT_VC => Ok(Credential::SdJwt(credential_str)),
-            _ => Err(Error::FormatNotSupported(value.category)),
+            _ => FormatNotSupportedSnafu { format: value.category }.fail(),
         }
     }
 }

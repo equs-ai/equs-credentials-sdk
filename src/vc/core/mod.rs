@@ -1,9 +1,14 @@
 use std::collections::HashMap;
-
+use std::fmt::Debug;
 use async_trait::async_trait;
+use snafu::{Location, Snafu};
 
-use crate::vc::{metadata, Claims, Credential, CredentialMetadata, Presentation};
-use crate::{kms, vault, vc};
+use crate::vc::{
+    formats::Error as VCError, pop::Error as ProofError, metadata::Error as MetadataError,
+    Claims, Credential, CredentialMetadata, Presentation
+};
+use crate::kms::Error as KmsError;
+use crate::vault::Error as VaultError;
 
 mod verifier;
 mod holder;
@@ -12,6 +17,8 @@ mod issuer;
 pub use holder::HolderService;
 pub use issuer::IssuerService;
 pub use verifier::VerifierService;
+
+//  --------- DATA MODEL -------------
 
 /// A metadata for the `Issuer`.
 ///
@@ -137,7 +144,7 @@ pub struct CredentialRequestData {}
 pub struct PresentationInput {
     pub id: String,
     pub format: String,
-    pub type_: Option<String>,
+    pub type_: String,
     pub claims: serde_json::Map<String, serde_json::Value>,
 }
 
@@ -150,31 +157,63 @@ pub struct Display;
 /// `vc:core` API Error.
 ///
 /// Used by all `Issuer`, `Holder` and `Verifier` APIs.
-#[derive(Debug, thiserror::Error, strum::IntoStaticStr)]
+#[derive(Snafu)]
 #[non_exhaustive]
 pub enum Error {
-    #[error("cred def not found")]
-    CredDefNotFound,
-    #[error("proof format not found")]
-    ProofFormatNotFound,
-    #[error("no credential found")]
-    NoCredential,
-    #[error("format not supported")]
-    FormatNotSupported,
-    #[error("find criteria compilation failed: {0}")]
-    FindCriteria(String),
-    #[error("missing claim: {0}")]
-    MissingClaim(String),
-    #[error(transparent)]
-    VC(#[from] vc::formats::Error),
-    #[error(transparent)]
-    Metadata(#[from] metadata::Error),
-    #[error(transparent)]
-    Proof(#[from] vc::pop::Error),
-    #[error(transparent)]
-    Vault(#[from] vault::Error),
-    #[error(transparent)]
-    Kms(#[from] kms::Error),
+    #[snafu(display("Credential definition not found for ID: {id}"))]
+    CredDefNotFound { id: String },
+    #[snafu(display("Credential definition required"))]
+    CredDefRequired,
+    #[snafu(display("Proof format required"))]
+    ProofFormatRequired,
+    #[snafu(display("Requested credential not found"))]
+    RequestedCredentialNotFound,
+    #[snafu(display("Unsupported format: {format}"))]
+    FormatNotSupported { format: String },
+    #[snafu(display("VC error at {location}"))]
+    VC {
+        #[snafu(implicit)]
+        location: Location,
+        source: VCError,
+    },
+    #[snafu(display("Metadata error at {location}"))]
+    Metadata {
+        #[snafu(implicit)]
+        location: Location,
+        source: MetadataError,
+    },
+    #[snafu(display("Proof error at {location}"))]
+    Proof {
+        #[snafu(implicit)]
+        location: Location,
+        source: ProofError,
+    },
+    #[snafu(display("KMS error at {location}"))]
+    KMS {
+        #[snafu(implicit)]
+        location: Location,
+        source: KmsError,
+    },
+    #[snafu(display("Proof error at {location}"))]
+    Vault {
+        #[snafu(implicit)]
+        location: Location,
+        source: VaultError,
+    },
+}
+
+impl Debug for Error {
+    fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
+        std::write!(fmt, "{}", self)?;
+
+        let mut error: &dyn std::error::Error = self;
+        while let Some(source) = error.source() {
+            write!(fmt, "\n Cause: {}", source)?;
+            error = source;
+        }
+
+        Ok(())
+    }
 }
 
 /// `Result` alias for vc:core API [Error].
@@ -468,7 +507,7 @@ mod tests {
 
         let presentation_input = PresentationInput {
             id: "SD_JWT_cred".into(),
-            type_: Some("https://credentials.example.com/identity_credential".into()),
+            type_: "https://credentials.example.com/identity_credential".to_string(),
             format: "vc+sd-jwt".into(),
             claims: json!({
                "given_name": true,

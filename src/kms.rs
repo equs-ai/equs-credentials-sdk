@@ -1,24 +1,43 @@
+use std::fmt::Debug;
 use async_trait::async_trait;
+use snafu::{Location, Snafu};
 use strum_macros::{Display, EnumString, IntoStaticStr};
-
 use crate::crypto;
 
 /// `Kms` Error.
 ///
 /// All implementations of [Kms] should leverage this enum for error handling.
-#[derive(Debug, thiserror::Error, IntoStaticStr)]
+#[derive(Snafu)]
+#[snafu(visibility(pub))]
 #[non_exhaustive]
 pub enum Error {
-    #[error("Key not found: {0}")]
-    KeyNotFound(String),
-    #[error("Create key error: {0}")]
-    Creation(String),
-    #[error("Resolving error: {0}")]
-    Resolving(String),
-    #[error("Network error: {0}")]
-    Network(String),
-    #[error("Crypto error: {0}")]
-    Crypto(#[from] crypto::Error),
+    #[snafu(display("Key not found for ID: {id}"))]
+    NotFound { id: String },
+    #[snafu(display("Key creation error at {location}\n Cause: {details}"))]
+    Creation {
+        details: String,
+        #[snafu(implicit)]
+        location: Location,
+    },
+    #[snafu(display("Resolution error at {location}\n Cause: {details}"))]
+    Resolving {
+        details: String,
+        #[snafu(implicit)]
+        location: Location,
+    },
+    #[snafu(display("Crypto error at {location}\n Cause: {source}"))]
+    Crypto {
+        #[snafu(implicit)]
+        location: Location,
+        source: crypto::Error,
+    },
+}
+
+impl Debug for Error {
+    fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
+        std::write!(fmt, "{}", self)?;
+        Ok(())
+    }
 }
 
 /// `Result` alias for Kms-specific [Error].

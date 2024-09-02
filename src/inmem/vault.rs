@@ -1,6 +1,6 @@
 use crate::inmem::storage::InMemStorage;
 use crate::storage::Storage;
-use crate::vault::{Error, FindCriteria, Vault};
+use crate::vault::{Error, FindCriteria, StoringSnafu, Vault};
 use crate::vc::{Credential, CredentialMetadata};
 use async_rwlock::RwLock;
 use async_trait::async_trait;
@@ -50,7 +50,7 @@ impl Vault for InMemVault {
         let _ = self.storage
             .put(storage_id.clone(), credential.clone())
             .await
-            .map_err(|err| Error::Storage(err.to_string()))?;
+            .map_err(|err| StoringSnafu { details: err.to_string() }.build())?;
 
         self.update_index(metadata, &storage_id).await?;
 
@@ -58,12 +58,10 @@ impl Vault for InMemVault {
     }
 
     async fn get_credential(&self, id: &str) -> Result<Option<Credential>, Error> {
-        let cred = self.storage
+        self.storage
             .get(&id.to_string())
             .await
-            .map_err(|err| Error::Storage(err.to_string()))?;
-
-        Ok(cred.clone())
+            .map_err(|err| StoringSnafu { details: err.to_string() }.build())
     }
 
     async fn find_credentials(&self, criteria: FindCriteria) -> Result<Vec<Credential>, Error> {

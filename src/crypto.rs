@@ -1,26 +1,48 @@
+use std::fmt::Debug;
 use std::ops::Deref;
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use snafu::{Location, Snafu};
 use ssi::jwk::JWK;
 use strum_macros::{Display, EnumString, IntoStaticStr};
 
 /// `Crypto` Error.
 ///
 /// Enumerates general errors expected during `Crypto` operations.
-#[derive(Debug, thiserror::Error, IntoStaticStr)]
+#[derive(Snafu)]
+#[snafu(visibility(pub))]
 #[non_exhaustive]
 pub enum Error {
-    #[error("Key not supported: {0}")]
-    KeyNotSupported(String),
-    #[error("Alg not supported: {0}")]
-    AlgNotSupported(String),
-    #[error("Signing error: {0}")]
-    Signature(String),
-    #[error("Verifying error: {0}")]
-    Verification(String),
-    #[error("Key generation error: {0}")]
-    KeyGeneration(String),
+    #[snafu(display("Unsupported key type: {type_}"))]
+    KeyNotSupported { type_: String },
+    #[snafu(display("Unsupported algorithm: {alg}"))]
+    AlgNotSupported { alg: String },
+    #[snafu(display("Signing error at {location}\n Cause: {details}"))]
+    Signing {
+        details: String,
+        #[snafu(implicit)]
+        location: Location,
+    },
+    #[snafu(display("Verification error at {location}\n Cause: {details}"))]
+    Verification {
+        details: String,
+        #[snafu(implicit)]
+        location: Location,
+    },
+    #[snafu(display("Key generation error at {location}\n Cause: {details}"))]
+    KeyGeneration {
+        details: String,
+        #[snafu(implicit)]
+        location: Location,
+    },
+}
+
+impl Debug for Error {
+    fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
+        std::write!(fmt, "{}", self)?;
+        Ok(())
+    }
 }
 
 /// `Result` alias for Crypto-specific [Error].

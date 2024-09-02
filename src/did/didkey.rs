@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use ssi::did::{DIDMethod, Source};
 use ssi::did_resolve::DIDResolver as SpruceResolver;
 
-use crate::did::{DIDResolver, Error, Resolution, ResolveOptions, DID};
+use crate::did::{DID, DidGenerationSnafu, DIDResolver, Error, KeyNotSupportedSnafu, Resolution, ResolveOptions};
 use crate::crypto;
 
 pub struct DIDKey {
@@ -18,12 +18,11 @@ impl DIDKey {
     where
         K: crypto::Key,
     {
-        let Some(jwk) = key.jwk() else {
-            return Err(Error::KeyNotSupported)
-        };
+        let jwk = key.jwk()
+            .ok_or_else(|| KeyNotSupportedSnafu { type_: "jwk" }.build())?;
 
         let did = self.method.generate(&Source::Key(&jwk));
-        did.ok_or_else(|| Error::GenerationError("did:key generation error".to_string()))
+        did.ok_or_else(|| DidGenerationSnafu { details: "did:key generation failed" }.build())
     }
 }
 
@@ -61,11 +60,9 @@ mod tests {
             let (_, kh) = kms.create_and_handle(kt, CreateOptions {}).await.unwrap();
 
             // Creation
-            let created = didkey.generate(kh.clone());
-            assert!(created.is_ok());
+            let did = didkey.generate(kh.clone()).unwrap();
             let jwk = kh.clone().jwk().unwrap();
 
-            let did = created.unwrap();
             assert!(did.starts_with("did:key:"));
 
             println!("DID generated: {}", did.clone());
@@ -74,9 +71,7 @@ mod tests {
             let resolved = didkey.resolve(&did, Default::default()).await;
             assert!(resolved.metadata.error.is_none());
 
-            let doc = resolved.doc;
-            assert!(doc.is_some());
-            let doc = doc.unwrap();
+            let doc = resolved.doc.unwrap();
 
             // DIDDoc assertions
             assert_eq!(doc.id, did);

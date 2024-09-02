@@ -1,8 +1,9 @@
+use std::fmt::Debug;
 use std::str::FromStr;
-
 use async_trait::async_trait;
 use oid4vci::openidconnect::Nonce;
-
+use oid4vci::proof_of_possession::{ConversionError, ParsingError, VerificationError};
+use snafu::{Location, ResultExt, Snafu};
 use crate::crypto;
 use crate::did::DIDURL;
 
@@ -36,25 +37,54 @@ impl FromStr for Format {
             "jwt" => Ok(Format::Jwt),
             "ldp" => Ok(Format::Ldp),
             "cwt" => Ok(Format::Cwt),
-            _ => Err(Error::FormatNotSupported),
+            _ => FormatNotSupportedSnafu { format: s }.fail(),
         }
     }
 }
 
-#[derive(Debug, thiserror::Error, strum::IntoStaticStr)]
+#[derive(Snafu)]
 #[non_exhaustive]
 pub enum Error {
-    #[error("format not supported")]
-    FormatNotSupported,
-    #[error("conversion error: {0}")]
-    Conversion(String),
-    #[error("parsing error: {0}")]
-    Parsing(String),
-    #[error("verification error: {0}")]
-    Verification(String),
+    #[snafu(display("Unsupported proof format: {format}"))]
+    FormatNotSupported { format: String },
+    #[snafu(display("Conversion error at {location}"))]
+    Conversion {
+        #[snafu(implicit)]
+        location: Location,
+        source: ConversionError,
+    },
+    #[snafu(display("Parsing error at {location}"))]
+    Parsing {
+        #[snafu(implicit)]
+        location: Location,
+        source: ParsingError,
+    },
+    #[snafu(display("Verification error at {location}"))]
+    Verification {
+        #[snafu(implicit)]
+        location: Location,
+        source: VerificationError,
+    },
+    #[snafu(display("VC error at {location}"))]
+    VC {
+        #[snafu(implicit)]
+        location: Location,
+        source: ssi::vc::Error,
+    },
+}
 
-    #[error(transparent)]
-    SpruceVC(#[from] ssi::vc::Error),
+impl Debug for Error {
+    fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
+        std::write!(fmt, "{}", self)?;
+
+        let mut error: &dyn std::error::Error = self;
+        while let Some(source) = error.source() {
+            write!(fmt, "\n Cause: {}", source)?;
+            error = source;
+        }
+
+        Ok(())
+    }
 }
 
 pub type Result<T> = core::result::Result<T, Error>;
@@ -73,7 +103,7 @@ impl Proof for String {
 
 impl Proof for ssi::vc::Presentation {
     fn parse(str: &str) -> Result<Self> {
-        Ok(ssi::vc::Presentation::from_json(str)?)
+        Ok(ssi::vc::Presentation::from_json(str).context(VCSnafu)?)
     }
 }
 

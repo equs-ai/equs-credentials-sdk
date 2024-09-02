@@ -1,19 +1,19 @@
 use std::marker::PhantomData;
 use std::str::FromStr;
-
 use async_trait::async_trait;
 use oid4vci::openidconnect::Nonce;
+use snafu::ResultExt;
 use tracing::{instrument, Level, debug, trace};
 
 use crate::did::DIDURL;
-use crate::vault::FindCriteria;
-use crate::vc::core::Result;
-use crate::vc::core::{CredentialOffer, CredentialRequest, CredentialRequestData, Error, Holder, HolderMetadata, PresentationInput, Proof};
+use crate::vault::{FindCriteria};
+use crate::vc::core::{CredDefRequiredSnafu, FormatNotSupportedSnafu, KMSSnafu, ProofFormatRequiredSnafu, ProofSnafu, RequestedCredentialNotFoundSnafu, Result, VaultSnafu, VCSnafu};
+use crate::vc::core::{CredentialOffer, CredentialRequest, CredentialRequestData, Holder, HolderMetadata, PresentationInput, Proof};
 use crate::vc::formats::sd_jwt_vc::{SdJwtAPI, VPMetadata};
-use crate::vc::formats::API;
+use crate::vc::formats::{API};
 use crate::vc::pop::jwt_pop::JwtProofOfPossession;
 use crate::vc::pop::ProofOfPossession;
-use crate::vc::{pop, Credential, CredentialMetadata, Presentation};
+use crate::vc::{pop, Credential, CredentialMetadata, Presentation, HasVCFormat};
 use crate::{kms, vault};
 
 pub struct HolderService<KH, KMS, V>
@@ -63,9 +63,11 @@ where
                         client_id: None,
                         lifetime: None,
                     },
-                ).await?
+                ).await.context(ProofSnafu)?
             }
-            _ => Err(pop::Error::FormatNotSupported)?,
+            _ => return FormatNotSupportedSnafu {
+                format: <pop::Format as Into<&str>>::into(pop_fmt)
+            }.fail(),
         };
         trace!(resolved_proof = %proof);
 
@@ -93,7 +95,11 @@ where
     ) -> Result<String> {
         trace!(?credential, credential_metadata = ?metadata);
 
-        let id = self.vault.store_credential(credential.to_owned(), metadata).await?;
+        let id = self.vault
+            .store_credential(credential.to_owned(), metadata)
+            .await
+            .context(VaultSnafu)?;
+
         Ok(id)
     }
 
@@ -112,7 +118,8 @@ where
         trace!(%nonce, ?presentation_input);
 
         let credentials = self.find_vcs_for_presentation(presentation_input).await?;
-        let selected = credentials.get(0).ok_or(Error::NoCredential)?;
+        let selected = credentials.get(0)
+            .ok_or(RequestedCredentialNotFoundSnafu.build())?;
 
         let presentation = self.create_presentation(nonce, verifier_id, presentation_input, selected).await?;
 
@@ -132,7 +139,10 @@ where
         trace!(?presentation_input);
 
         let criteria = self.resolve_find_criteria(presentation_input)?;
-        let credentials = self.vault.find_credentials(criteria).await?;
+        let credentials = self.vault
+            .find_credentials(criteria)
+            .await
+            .context(VaultSnafu)?;
 
         Ok(credentials.into_iter().collect())
     }
@@ -158,15 +168,16 @@ where
             Credential::SdJwt(vc) => {
                 // For now, only top level supported
                 let disclosures = Self::resolve_disclosures(presentation_input);
-                let vp = SdJwtAPI::create_vp(vc,
-                                             (&did_url, key),
-                                             Nonce::new(nonce.into()), verifier_id,
-                                             VPMetadata { disclosures },
-                ).await?;
+                let vp = SdJwtAPI::create_vp(
+                    vc,
+                    (&did_url, key),
+                    Nonce::new(nonce.into()), verifier_id,
+                    VPMetadata { disclosures },
+                ).await.context(VCSnafu)?;
 
                 Presentation::SdJwtVp(vp)
             }
-            _ => Err(Error::FormatNotSupported)?
+            _ => return FormatNotSupportedSnafu { format: credential.format().to_string() }.fail()
         };
 
         Ok(presentation)
@@ -208,7 +219,7 @@ where
                 supported_proofs: Some(supported_proofs),
                 ..
             } => (cred_def_id, supported_proofs),
-            _ => return Err(Error::CredDefNotFound),
+            _ => return CredDefRequiredSnafu.fail(),
         };
 
         Ok((cred_def_id.to_owned(), supported_proofs.to_owned()))
@@ -222,8 +233,8 @@ where
     )]
     fn resolve_proof_format(&self, supported_proofs: Vec<String>) -> Result<pop::Format> {
         // TODO: add logic on supported proof formats of Holder
-        let pop_fmt = supported_proofs.iter().next().ok_or(Error::ProofFormatNotFound)?;
-        let pop_fmt = pop::Format::from_str(pop_fmt)?;
+        let pop_fmt = supported_proofs.iter().next().ok_or(ProofFormatRequiredSnafu.build())?;
+        let pop_fmt = pop::Format::from_str(pop_fmt).context(ProofSnafu)?;
         Ok(pop_fmt)
     }
 
@@ -235,7 +246,7 @@ where
     async fn resolve_key_metadata(&self) -> Result<(DIDURL, KH)> {
         let key_meta = &self.metadata.key_metadata;
         let did_url = DIDURL::from_str(&key_meta.did_url).unwrap();
-        let kh = self.kms.get(&key_meta.kid).await?;
+        let kh = self.kms.get(&key_meta.kid).await.context(KMSSnafu)?;
 
         debug!(resolved_did = ?did_url);
 
@@ -252,7 +263,7 @@ where
         trace!(presentation_input = ?input);
 
         // TODO: more generic solution to support different criterias
-        let type_ = input.type_.clone().ok_or(Error::FindCriteria("type value should be set in vp".to_string()))?;
+        let type_ = input.type_.to_owned();
         let criteria = FindCriteria::ByTypeAndFormat(type_, input.format.clone());
 
         Ok(criteria)
