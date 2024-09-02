@@ -1,21 +1,22 @@
 use std::collections::HashMap;
+use std::ops::Add;
 use async_trait::async_trait;
 use oauth2::Scope;
 use oid4vci::core::profiles::{CoreProfilesMetadata, CoreProfilesOffer, CoreProfilesRequest, CoreProfilesResponse, sd_jwt, w3c};
 use oid4vci::credential::{ErrorType, ResponseEnum};
 use oid4vci::credential_offer::{CredentialOfferFormat, CredentialOfferGrants, CredentialOfferParameters};
-use oid4vci::openidconnect::Nonce;
 use oid4vci::proof_of_possession::{KeyProofType, Proof as SpruceProof, ProofType};
 use serde_json::{Map, Value};
 use ssi::jwt::decode_unverified;
+use time::ext::NumericalDuration;
 use url::Url;
 use tracing::{instrument, Level, debug, info, trace};
+use uuid::Uuid;
 
-use crate::storage::Storage;
 use crate::utils::http::HttpClient;
 use crate::vc;
 use crate::vc::core::{Proof as AsdkProof, Proof};
-use crate::vc::oid4vci::{CredentialOfferParams, CredentialRequest, CredentialResponse, InternalError, IssuerMetadata, ProtocolErrorResponse};
+use crate::vc::oid4vci::{CredentialOfferParams, CredentialRequest, CredentialResponse, InternalError, IssuanceSession, IssuerMetadata, Nonce, NonceData, ProtocolErrorResponse};
 use crate::vc::{Claims, oid4vci as api};
 use crate::vc::oid4vci::metadata::CredentialMetadata;
 use crate::vc::oid4vci::token_validation::{ByJwks, Introspect};
@@ -35,39 +36,34 @@ pub enum TokenValidation<HC: HttpClient> {
     None,
 }
 
-pub struct IssuerService<IS, ST, HC>
+pub struct IssuerService<IS, HC>
 where
     IS: vc::core::Issuer,
-    ST: Storage<String, String>,
     HC: HttpClient,
 {
     issuer: IS,
-    storage: ST,
     issuer_metadata: IssuerMetadata,
     token_validation: TokenValidation<HC>,
 }
 
-impl<IS, ST, HC> IssuerService<IS, ST, HC>
+impl<IS, HC> IssuerService<IS, HC>
 where
     IS: vc::core::Issuer,
-    ST: Storage<String, String>,
     HC: HttpClient,
 {
     #[instrument(
         level = Level::TRACE,
-        skip(issuer, storage, token_validation)
+        skip(issuer, token_validation)
     )]
     pub fn new(
         issuer_metadata: IssuerMetadata,
         issuer: IS,
-        storage: ST,
         token_validation: TokenValidation<HC>,
     ) -> Self {
         info!("oid4vci issuer service is initialized");
 
         Self {
             issuer,
-            storage,
             issuer_metadata,
             token_validation,
         }
@@ -75,10 +71,9 @@ where
 }
 
 #[async_trait]
-impl<IS, ST, HC> api::Issuer for IssuerService<IS, ST, HC>
+impl<IS, HC> api::Issuer for IssuerService<IS, HC>
 where
     IS: vc::core::Issuer,
-    ST: Storage<String, String>,
     HC: HttpClient,
 {
     #[instrument(
@@ -140,27 +135,26 @@ where
         cred_request: &CredentialRequest,
         token: &String,
         claims: &Claims,
-    ) -> Result<CredentialResponse> {
+        session: &mut IssuanceSession,
+    ) -> Result<CredentialResponse>
+    {
         info!("issuance of credential is started");
         trace!(credential_request = ?cred_request, %token, claims_to_issue = ?claims);
 
         self.validate_token(token).await?;
 
-        let nonce = match self.resolve_nonce(token).await {
-            Ok(Some(nonce)) => nonce,
-            _ => return Err(self.invalid_proof(&token, INVALID_PROOF_ERR_DESC).await?)
-        };
+        let nonce = self.validate_nonce(session)?.nonce;
 
         let proof = match cred_request.proof() {
             Some(proof) => proof,
-            _ => return Err(self.invalid_proof(&token, INVALID_PROOF_ERR_DESC).await?)
+            _ => return Err(self.invalid_proof(session, INVALID_PROOF_ERR_DESC)?)
         };
 
         let cred_def_id = self.resolve_cred_def_id(cred_request)?;
 
         self.validate_scope(token, &cred_def_id)?;
         self.validate_claim_names(claims, &cred_def_id)?;
-        self.validate_proof_type(&proof, &cred_def_id, token).await?;
+        self.validate_proof_type(&proof, &cred_def_id, session).await?;
 
         let proof = Proof::from(proof);
 
@@ -171,22 +165,20 @@ where
             protocol_data: None,
         };
 
-        let result = self.issuer.issue_credential(&cred_req, claims, nonce.secret()).await;
-
-        let new_nonce = self.upsert_nonce(token).await?;
+        let result = self.issuer
+            .issue_credential(&cred_req, claims, nonce.secret()).await;
 
         if let Err(vc::core::Error::Proof(e)) = &result {
             return Err(
-                self.invalid_proof(&token, INVALID_PROOF_ERR_DESC).await?
+                self.invalid_proof(session, INVALID_PROOF_ERR_DESC)?
             );
         }
 
         let (cred, _) = result
             .map_err(InternalError::VC)?;
 
-        let resp = CredentialResponse::new(ResponseEnum::Immediate(cred.into()))
-            .set_nonce(Some(new_nonce))
-            .set_nonce_expiration(Some(NONCE_EXPIRES_IN));
+        let mut resp = CredentialResponse::new(ResponseEnum::Immediate(cred.into()));
+        resp = Self::update_cred_resp_and_session_data(resp, session);
 
         info!("credential is issued");
 
@@ -194,10 +186,9 @@ where
     }
 }
 
-impl<IS, ST, HC> IssuerService<IS, ST, HC>
+impl<IS, HC> IssuerService<IS, HC>
 where
     IS: vc::core::Issuer,
-    ST: Storage<String, String>,
     HC: HttpClient,
 {
 
@@ -284,7 +275,31 @@ where
 
     #[instrument(
         level = Level::TRACE,
-        skip(self, proof, token),
+        skip(self),
+        err(),
+        ret(level = Level::TRACE),
+    )]
+    fn validate_nonce(&self, session: &mut IssuanceSession) -> Result<NonceData> {
+        match &session.nonce {
+            Some(nonce_data) => {
+                if let (Some(created), Some(expires_in)) = (nonce_data.created, nonce_data.expires_in) {
+                    let expires = created.add(expires_in.seconds());
+                    if time::OffsetDateTime::now_utc() >= expires  {
+                        return Err(self.invalid_proof(session, INVALID_PROOF_ERR_DESC)?)
+                    }
+                }
+
+                Ok(nonce_data.to_owned())
+            },
+            _ => {
+                return Err(self.invalid_proof(session, INVALID_PROOF_ERR_DESC)?)
+            }
+        }
+    }
+
+    #[instrument(
+        level = Level::TRACE,
+        skip(self, proof, session),
         err(),
         ret(level = Level::DEBUG),
     )]
@@ -292,10 +307,10 @@ where
         &self,
         proof: &SpruceProof,
         cred_def_id: &str,
-        token: &String
+        session: &mut IssuanceSession
     ) -> Result<()>
     {
-        trace!(?proof, %token);
+        trace!(?proof, ?session);
 
         let cred_metadata = self.get_credential_metadata(&cred_def_id)?;
         debug!(resolved_credential_metadata = ?cred_metadata);
@@ -308,7 +323,7 @@ where
         let (proof_type, proof) = match proof {
             SpruceProof::JWT{ jwt } => (KeyProofType::Jwt, jwt),
             _ => {
-                let err = self.invalid_proof(token, "only \"jwt\" proof type is supported").await?;
+                let err = self.invalid_proof(session, "only \"jwt\" proof type is supported")?;
 
                 return Err(err)
             }
@@ -319,9 +334,9 @@ where
             _ => {
                 let proof_type = serde_json::to_string(&proof_type).map_err(InternalError::Parse)?;
                 let err = self.invalid_proof(
-                    token,
+                    session,
                     &format!("proof type = \"{}\" is not supported", proof_type)
-                ).await?;
+                )?;
 
                 return Err(err)
             }
@@ -332,9 +347,9 @@ where
             Ok(proof_header) => proof_header,
             _ => {
                 let err = self.invalid_proof(
-                    &token,
+                    session,
                     "can not retrieve \"alg\" from the proof's header"
-                ).await?;
+                )?;
 
                 return Err(err)
             }
@@ -348,9 +363,9 @@ where
 
         if !proof_type.proof_signing_alg_values_supported.contains(&sign_alg) {
             let err = self.invalid_proof(
-                token,
+                session,
                 &format!("proof_type signing algorithm = \"{}\" is not supported", sign_alg)
-            ).await?;
+            )?;
 
             return Err(err)
         }
@@ -508,40 +523,6 @@ where
         err(),
         ret(level = Level::TRACE),
     )]
-    async fn resolve_nonce(&self, token: &String) -> Result<Option<Nonce>> {
-        trace!(%token);
-
-        let nonce = self.storage.get(token)
-            .await
-            .map_err(InternalError::Storage)?;
-
-        Ok(nonce.map(Nonce::new))
-    }
-
-    #[instrument(
-        level = Level::TRACE,
-        skip_all,
-        err(),
-        ret(level = Level::TRACE),
-    )]
-    async fn upsert_nonce(&self, token: &String) -> Result<Nonce> {
-        trace!(%token);
-
-        let nonce = Nonce::new_random();
-
-        self.storage.put(token.clone(), nonce.secret().to_owned())
-            .await
-            .map_err(InternalError::Storage)?;
-
-        Ok(nonce)
-    }
-
-    #[instrument(
-        level = Level::TRACE,
-        skip(self, token),
-        err(),
-        ret(level = Level::TRACE),
-    )]
     pub async fn validate_token(&self, token: &str) -> Result<()> {
         trace!(%token);
 
@@ -574,24 +555,44 @@ where
 
     #[instrument(
         level = Level::TRACE,
-        skip(self, token),
+        skip(self, session),
         err(),
         ret(level = Level::TRACE),
     )]
-    async fn invalid_proof(&self, token: &String, description: &str) -> Result<Error> {
-        trace!(%token);
+    fn invalid_proof(&self, session: &mut IssuanceSession, description: &str) -> Result<Error> {
+        trace!(?session);
 
-        let nonce = self.upsert_nonce(token).await?;
+        let nonce_data = NonceData::new_random();
+        session.nonce = Some(nonce_data.clone());
+
         let err = Error::Protocol(
             ProtocolErrorResponse::new_with_nonce(
                 ErrorType::InvalidProof,
                 description,
-                nonce,
-                NONCE_EXPIRES_IN,
+                nonce_data.nonce,
+                nonce_data.expires_in,
             )
         );
 
         Ok(err)
+    }
+
+    #[instrument(
+        level = Level::TRACE,
+        ret(level = Level::TRACE),
+    )]
+    fn update_cred_resp_and_session_data(resp: CredentialResponse, session: &mut IssuanceSession) -> CredentialResponse {
+        let nonce_data = NonceData::new_random();
+        let notification_id = Uuid::new_v4().to_string();
+
+        session.nonce = Some(nonce_data.clone());
+        session.notification_id = Some(notification_id.clone());
+        trace!(issuance_session = ?session);
+
+        resp
+            .set_nonce(Some(nonce_data.nonce))
+            .set_nonce_expiration(nonce_data.expires_in)
+            .set_notification_id(Some(notification_id))
     }
 }
 
@@ -611,6 +612,17 @@ impl Into<CoreProfilesResponse> for vc::Credential {
             vc::Credential::JwtVcJsonLd(_) => { CoreProfilesResponse::JWTLDVC(w3c::jwtld::Response {}) }
             vc::Credential::LdpVc(cred) => { CoreProfilesResponse::LDVC(w3c::ldp::Response::new(cred)) }
             vc::Credential::SdJwt(cred) => { CoreProfilesResponse::SDJWTVC(sd_jwt::Response::new(cred)) }
+        }
+    }
+}
+
+impl NonceData {
+
+    pub fn new_random() -> Self {
+        Self {
+            nonce: Nonce::new_random(),
+            expires_in: Some(NONCE_EXPIRES_IN),
+            created: Some(time::OffsetDateTime::now_utc())
         }
     }
 }

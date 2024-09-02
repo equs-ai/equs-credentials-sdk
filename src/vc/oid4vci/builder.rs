@@ -1,4 +1,3 @@
-use crate::inmem::storage::InMemStorage;
 use crate::utils::http::{HttpClient, ReqwestClient};
 use crate::vc::core::KeyMetadata;
 use crate::vc::oid4vci as api;
@@ -116,13 +115,9 @@ where
             TokenParams::None => TokenValidation::None,
         };
 
-        // TODO: prune after fix on nonce managing
-        let storage = InMemStorage::new();
-
         let issuer = IssuerService::new(
             self.issuer_metadata,
             inner,
-            storage,
             token_validation,
         );
 
