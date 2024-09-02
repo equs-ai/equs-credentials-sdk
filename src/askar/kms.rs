@@ -1,14 +1,19 @@
 use std::sync::Arc;
-
 use aries_askar::crypto::alg::EcCurves;
 use aries_askar::kms::{KeyAlg, LocalKey};
 use aries_askar::Store;
 use async_trait::async_trait;
+use snafu::{ensure, ResultExt};
 use ssi::jwk::JWK;
 
-use crate::crypto::{Alg, Error, Key, Signer, SigningKey, Verifier, VerifyingKey};
-use crate::kms;
-use crate::kms::{CreateOptions, KeyHandle, KeyID, KeyType, Kms};
+use crate::crypto::{
+    Alg, AlgNotSupportedSnafu, Error as CryptoError, Key, KeyNotSupportedSnafu, Signer, SigningKey,
+    SigningSnafu, VerificationSnafu, Verifier, VerifyingKey
+};
+use crate::kms::{
+    Error as KmsError, CreateOptions, KeyHandle, KeyID, KeyType, Kms, CreationSnafu,
+    ResolvingSnafu, NotFoundSnafu, CryptoSnafu
+};
 
 #[derive(Debug, Clone)]
 pub struct AskarKeyHandle(Arc<LocalKey>, Alg);
@@ -25,10 +30,10 @@ impl AskarKeyHandle {
 impl SigningKey for AskarKeyHandle {}
 
 impl Key for AskarKeyHandle {
-    fn pub_key(&self) -> Result<Vec<u8>, Error> {
+    fn pub_key(&self) -> Result<Vec<u8>, CryptoError> {
         self.0
             .to_public_bytes()
-            .map_err(|err| Error::KeyNotSupported(err.to_string()))
+            .map_err(|err| KeyNotSupportedSnafu { type_: "public" }.build())
             .and_then(|public_key| Ok(public_key.to_vec()))
     }
 
@@ -44,10 +49,10 @@ impl Signer for AskarKeyHandle {
         self.1
     }
 
-    async fn sign(&self, payload: &[u8]) -> Result<Vec<u8>, Error> {
+    async fn sign(&self, payload: &[u8]) -> Result<Vec<u8>, CryptoError> {
         self.0
             .sign_message(payload, Some(self.askar_sign_type()))
-            .map_err(|err| Error::Signature(err.to_string()))
+            .map_err(|err| SigningSnafu { details: err.to_string() }.build())
     }
 }
 
@@ -55,41 +60,18 @@ impl VerifyingKey for AskarKeyHandle {}
 
 #[async_trait]
 impl Verifier for AskarKeyHandle {
-    async fn verify(&self, data: &[u8], signature: &[u8]) -> Result<(), Error> {
+    async fn verify(&self, data: &[u8], signature: &[u8]) -> Result<(), CryptoError> {
         let valid = self.0
             .verify_signature(data, signature, Some(self.askar_sign_type()))
-            .map_err(|err| Error::Verification(err.to_string()))?;
+            .map_err(|err| VerificationSnafu { details: err.to_string() }.build())?;
 
-        if !valid {
-            return Err(Error::Verification("Signature is not valid".to_string()));
-        }
+        ensure!(valid, VerificationSnafu{ details: "Signature is not valid" });
 
         Ok(())
     }
 }
 
 impl KeyHandle for AskarKeyHandle {}
-
-impl TryFrom<KeyAlg> for Alg {
-    type Error = Error;
-
-    fn try_from(value: KeyAlg) -> Result<Self, Self::Error> {
-        match value {
-            KeyAlg::Ed25519 => Ok(Alg::EdDSA),
-            KeyAlg::EcCurve(EcCurves::Secp256r1) => Ok(Alg::ES256),
-            _ => Err(Error::KeyNotSupported(format!("signing algorithm: {}", value.as_str()))),
-        }
-    }
-}
-
-impl From<KeyType> for KeyAlg {
-    fn from(value: KeyType) -> Self {
-        match value {
-            KeyType::P256 => KeyAlg::EcCurve(EcCurves::Secp256r1),
-            KeyType::Ed25519 => KeyAlg::Ed25519,
-        }
-    }
-}
 
 const KID_LENGTH: usize = 10;
 
@@ -121,29 +103,50 @@ impl AskarKms {
 
 #[async_trait]
 impl Kms<AskarKeyHandle> for AskarKms {
-    async fn create(&self, kt: KeyType, opts: CreateOptions) -> Result<KeyID, kms::Error> {
+    async fn create(&self, kt: KeyType, opts: CreateOptions) -> Result<KeyID, KmsError> {
         let key = LocalKey::generate(kt.into(), false)
-            .map_err(|e| Error::KeyGeneration(e.to_string()))?;
+            .map_err(|e| CreationSnafu { details: e.to_string() }.build())?;
 
         let kid = random_string::generate(KID_LENGTH, random_string::charsets::ALPHA);
         self.insert_key(&kid, &key)
             .await
-            .map_err(|e| kms::Error::Creation(e.to_string()))?;
+            .map_err(|e| CreationSnafu { details: e.to_string() }.build())?;
 
         Ok(kid)
     }
 
-    async fn get(&self, kid: &KeyID) -> Result<AskarKeyHandle, kms::Error> {
+    async fn get(&self, kid: &KeyID) -> Result<AskarKeyHandle, KmsError> {
         let key = self.get_key(kid)
             .await
-            .map_err(|err| kms::Error::Resolving(err.to_string()))?
-            .ok_or_else(|| kms::Error::KeyNotFound(kid.to_string()))?;
+            .map_err(|err| ResolvingSnafu { details: err.to_string() }.build())?
+            .ok_or_else(|| NotFoundSnafu { id: kid }.build())?;
 
         let sign_algorithm = key
             .algorithm()
             .try_into()
-            .map_err(|err: Error| Error::AlgNotSupported(err.to_string()))?;
+            .context(CryptoSnafu)?;
 
         Ok(AskarKeyHandle(Arc::new(key), sign_algorithm))
+    }
+}
+
+impl TryFrom<KeyAlg> for Alg {
+    type Error = CryptoError;
+
+    fn try_from(value: KeyAlg) -> Result<Self, Self::Error> {
+        match value {
+            KeyAlg::Ed25519 => Ok(Alg::EdDSA),
+            KeyAlg::EcCurve(EcCurves::Secp256r1) => Ok(Alg::ES256),
+            _ => AlgNotSupportedSnafu { alg: value.as_str() }.fail(),
+        }
+    }
+}
+
+impl From<KeyType> for KeyAlg {
+    fn from(value: KeyType) -> Self {
+        match value {
+            KeyType::P256 => KeyAlg::EcCurve(EcCurves::Secp256r1),
+            KeyType::Ed25519 => KeyAlg::Ed25519,
+        }
     }
 }

@@ -168,7 +168,7 @@ where
         let result = self.issuer
             .issue_credential(&cred_req, claims, nonce.secret()).await;
 
-        if let Err(vc::core::Error::Proof(e)) = &result {
+        if let Err(vc::core::Error::Proof { location, source }) = &result {
             return Err(
                 self.invalid_proof(session, INVALID_PROOF_ERR_DESC)?
             );

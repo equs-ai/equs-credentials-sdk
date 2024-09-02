@@ -1,23 +1,45 @@
-use async_trait::async_trait;
+use std::fmt::Debug;
 
+use async_trait::async_trait;
+use snafu::{Location, Snafu};
 use crate::vc;
 
 /// `Vault` Error.
 ///
 /// All implementations of [Vault] should leverage this enum for error handling.
-#[derive(Debug, thiserror::Error, strum::IntoStaticStr)]
+#[derive(Snafu)]
+#[snafu(visibility(pub))]
 #[non_exhaustive]
 pub enum Error {
-    #[error("Storage error: {0}")]
-    Storage(String),
-    #[error("Format not supported: {0}")]
-    FormatNotSupported(String),
-    #[error("VC error: {0}")]
-    VC(String),
-    #[error("Network error: {0}")]
-    Network(String),
-    #[error("Invalid criteria: {0}")]
-    FindCriteria(String),
+    #[snafu(display("Unsupported credential format: {format}"))]
+    FormatNotSupported {
+        format: String,
+    },
+    #[snafu(display("Credential storing error at {location}\n Cause: {details}"))]
+    Storing {
+        details: String,
+        #[snafu(implicit)]
+        location: Location,
+    },
+    #[snafu(display("Credential resolving error at {location}\n Cause: {details}"))]
+    Resolving {
+        details: String,
+        #[snafu(implicit)]
+        location: Location,
+    },
+    #[snafu(display("VC error at {location}\n Cause: {details}"))]
+    VC {
+        details: String,
+        #[snafu(implicit)]
+        location: Location,
+    },
+}
+
+impl Debug for Error {
+    fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
+        std::write!(fmt, "{}", self)?;
+        Ok(())
+    }
 }
 
 /// `Result` alias for Vault-specific [Error].

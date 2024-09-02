@@ -1,16 +1,29 @@
-use crate::vc::formats::HasClaims;
-use crate::vc::{Credential, CredentialMetadata};
+use std::fmt::Debug;
+use snafu::{Location, Snafu};
+use crate::vc::formats::{HasClaims};
+use crate::vc::{Credential, CredentialMetadata, HasVCFormat};
 
 /// `Metadata` Error.
 ///
 /// Should be used by all `CredentialMetadataProcessor` implementations.
-#[derive(Debug, thiserror::Error, strum::IntoStaticStr)]
+#[derive(Snafu)]
 #[non_exhaustive]
 pub enum Error {
-    #[error("format not supported")]
-    FormatNotSupported,
-    #[error("resolving failed: {0}")]
-    Resolving(String),
+    #[snafu(display("Unsupported format: {format}"))]
+    FormatNotSupported { format: String },
+    #[snafu(display("Resolving error at {location}\n Cause: {details}"))]
+    Resolving {
+        details: String,
+        #[snafu(implicit)]
+        location: Location,
+    },
+}
+
+impl Debug for Error {
+    fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
+        std::write!(fmt, "{}", self)?;
+        Ok(())
+    }
 }
 
 /// `Result` alias for `MetadataProcessor` [Error].
@@ -54,13 +67,13 @@ impl DefaultMetadataProcessor {
             }
             Credential::SdJwt(jwt) => {
                 let claims = jwt.parse_claims()
-                    .map_err(|err| Error::Resolving(err.to_string()))?;
+                    .map_err(|err| ResolvingSnafu { details: err.to_string() }.build())?;
 
                 let type_ = claims["vct"].as_str()
-                    .ok_or(Error::Resolving("vct not found".to_owned()))?;
+                    .ok_or(ResolvingSnafu { details:"vct not found" }.build())?;
                 Ok(type_.to_owned())
             }
-            _ => Err(Error::FormatNotSupported)?,
+            _ => FormatNotSupportedSnafu { format: credential.format().to_string() }.fail(),
         }
     }
 }

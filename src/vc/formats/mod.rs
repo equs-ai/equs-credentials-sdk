@@ -1,44 +1,115 @@
-use std::str::FromStr;
+use std::fmt::Debug;
 
 use async_trait::async_trait;
 use oid4vci::openidconnect::Nonce;
-use ssi::did::DIDURL;
+use snafu::{Location, Snafu};
+use ssi::did::{DIDURL};
 
 use crate::{crypto, did};
-use crate::vc::VCFormat;
 
 pub mod sd_jwt_vc;
+pub mod vc;
+pub mod vp;
 
-#[derive(Debug, thiserror::Error, strum::IntoStaticStr)]
+#[derive(Snafu)]
 #[non_exhaustive]
 pub enum Error {
-    #[error("format not supported")]
-    FormatNotSupported,
-    #[error("key not supported")]
-    KeyNotSupported,
-    #[error("signing error: {0}")]
-    Signing(String),
-    #[error("verifying error: {0}")]
-    Verifying(String),
-    #[error("parsing error: {0}")]
-    Parsing(String),
-    #[error("presentation: {0}")]
-    Presentation(String),
-    #[error("incorrect claim: {0}")]
-    IncorrectClaim(String),
+    #[snafu(display("Unsupported format: {format}"))]
+    FormatNotSupported { format: String },
 
-    #[error(transparent)]
-    SpruceDID(#[from] ssi::did::Error),
-    #[error(transparent)]
-    DID(#[from] did::Error),
-    #[error(transparent)]
-    JWK(#[from] ssi::jwk::Error),
-    #[error(transparent)]
-    JWS(#[from] ssi::jws::Error),
-    #[error(transparent)]
-    Json(#[from] serde_json::Error),
-    #[error(transparent)]
-    Base64(#[from] base64::DecodeError),
+    #[snafu(display("Unsupported key type: {type_}"))]
+    KeyTypeNotSupported { type_: String },
+
+    #[snafu(display("Signing error at {location}\n Cause: {details}"))]
+    Signing {
+        details: String,
+        #[snafu(implicit)]
+        location: Location,
+    },
+
+    #[snafu(display("Verification error at {location}\n Cause: {details}"))]
+    Verifying {
+        details: String,
+        #[snafu(implicit)]
+        location: Location,
+    },
+
+    #[snafu(display("Parsing error at {location}\n Cause: {details}"))]
+    Parsing {
+        details: String,
+        #[snafu(implicit)]
+        location: Location,
+    },
+
+    #[snafu(display("Presentation error at {location}\n Cause: {details}"))]
+    Presentation {
+        details: String,
+        #[snafu(implicit)]
+        location: Location,
+    },
+
+    #[snafu(display("Incorrect claim at {location}\n Cause: {details}"))]
+    IncorrectClaim {
+        details: String,
+        #[snafu(implicit)]
+        location: Location,
+    },
+
+    #[snafu(display("DID error at {location}"))]
+    SpruceDID {
+        source: ssi::did::Error,
+        #[snafu(implicit)]
+        location: Location,
+    },
+
+    #[snafu(display("DID error at {location}"))]
+    DID {
+        source: did::Error,
+        #[snafu(implicit)]
+        location: Location,
+    },
+
+    #[snafu(display("JWK error at {location}"))]
+    JWK {
+        source: ssi::jwk::Error,
+        #[snafu(implicit)]
+        location: Location,
+    },
+
+    #[snafu(display("JWS error at {location}"))]
+    JWS {
+        source: ssi::jws::Error,
+        #[snafu(implicit)]
+        location: Location,
+    },
+
+    #[snafu(display("JSON error at {location}"))]
+    Json {
+        source: serde_json::Error,
+        #[snafu(implicit)]
+        location: Location,
+    },
+
+    #[snafu(display("Base64 decoding error at {location}"))]
+    Base64 {
+        source: base64::DecodeError,
+        #[snafu(implicit)]
+        location: Location,
+    },
+}
+
+impl Debug for Error {
+    fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
+        std::write!(fmt, "{}", self)?;
+
+        let mut error: &dyn std::error::Error = self;
+        while let Some(source) = error.source() {
+            write!(fmt, "\n Cause: {}", source)?;
+            error = source;
+        }
+
+        Ok(())
+    }
 }
 
 pub type Result<T> = core::result::Result<T, Error>;
@@ -81,18 +152,4 @@ pub trait HasClaims<CL> {
 
 pub trait HasCredential<C> {
     fn get_credential(&self) -> Result<C>;
-}
-
-impl FromStr for VCFormat {
-    type Err = Error;
-
-    fn from_str(s: &str) -> Result<VCFormat> {
-        match s {
-            "jwt_vc_json" => Ok(VCFormat::JwtVcJson),
-            "jwt_vc_json-ld" => Ok(VCFormat::JwtVcJsonLD),
-            "ldp_vc" => Ok(VCFormat::LdpVc),
-            "vc+sd-jwt" => Ok(VCFormat::SdJwtVc),
-            _ => Err(Error::FormatNotSupported),
-        }
-    }
 }

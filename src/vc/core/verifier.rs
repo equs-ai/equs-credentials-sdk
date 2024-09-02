@@ -1,8 +1,8 @@
 use async_trait::async_trait;
 use oid4vci::openidconnect::Nonce;
-
+use snafu::ResultExt;
 use crate::vc::{Claims, Presentation};
-use crate::vc::core::{Error, Verifier};
+use crate::vc::core::{FormatNotSupportedSnafu, VCSnafu, Verifier};
 use crate::vc::core::Result;
 use crate::vc::formats::{API, VerifyOptions};
 use crate::vc::formats::sd_jwt_vc::SdJwtAPI;
@@ -24,10 +24,10 @@ impl Verifier for VerifierService {
                     vp,
                     Nonce::new(nonce.into()), &self.verifier_id,
                     VerifyOptions {},
-                ).await?
+                ).await.context(VCSnafu)
             }
-            _ => Err(Error::FormatNotSupported)?
-        };
+            _ => FormatNotSupportedSnafu { format: "" }.fail()
+        }?;
 
         Ok(cred_claims)
     }

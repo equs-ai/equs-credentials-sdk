@@ -22,8 +22,7 @@ impl AskarStorage {
             pass_key,
             profile.clone(),
             true,
-        )
-            .await?;
+        ).await?;
 
         Ok(AskarStorage(store))
     }
@@ -37,8 +36,7 @@ impl AskarStorage {
             Some(key_method),
             pass_key,
             profile.clone(),
-        )
-            .await?;
+        ).await?;
 
         Ok(AskarStorage(store))
     }

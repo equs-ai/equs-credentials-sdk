@@ -1,15 +1,33 @@
+use std::fmt::Debug;
 use async_trait::async_trait;
+use snafu::{Location, Snafu};
 
 /// `Storage` Error.
 ///
 /// All implementations of [Storage] should leverage this enum for error handling.
-#[derive(Debug, thiserror::Error, strum::IntoStaticStr)]
+#[derive(Snafu)]
+#[snafu(visibility(pub))]
 #[non_exhaustive]
 pub enum Error {
-    #[error("Network error: {0}")]
-    Network(String),
-    #[error("Collision: {0}")]
-    Collision(String),
+    #[snafu(display("Value resolving error at {location}\n Cause: {details}"))]
+    Resolving {
+        details: String,
+        #[snafu(implicit)]
+        location: Location,
+    },
+    #[snafu(display("Storage modification error at {location}\n Cause: {details}"))]
+    Modification {
+        details: String,
+        #[snafu(implicit)]
+        location: Location,
+    }
+}
+
+impl Debug for Error {
+    fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
+        std::write!(fmt, "{}", self)?;
+        Ok(())
+    }
 }
 
 /// `Result` alias for Storage-specific [Error].

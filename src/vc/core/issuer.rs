@@ -1,15 +1,15 @@
 use std::marker::PhantomData;
 use std::str::FromStr;
-
 use async_trait::async_trait;
 use oid4vci::openidconnect::Nonce;
+use snafu::ResultExt;
 use tracing::{instrument, Level, debug, trace};
 
 use crate::did::DIDURL;
-use crate::vc::core::Result;
-use crate::vc::core::{CredentialDefinition, CredentialDefinitionData, CredentialOffer, CredentialOfferData, CredentialRequest, Error, Issuer, IssuerMetadata};
+use crate::vc::core::{CredDefNotFoundSnafu, FormatNotSupportedSnafu, KMSSnafu, MetadataSnafu, ProofSnafu, Result, VCSnafu};
+use crate::vc::core::{CredentialDefinition, CredentialDefinitionData, CredentialOffer, CredentialOfferData, CredentialRequest, Issuer, IssuerMetadata};
 use crate::vc::formats::sd_jwt_vc::{SdJwtAPI, VCMetadata};
-use crate::vc::formats::API;
+use crate::vc::formats::{API};
 use crate::vc::metadata::{CredentialMetadataProcessor, DefaultMetadataProcessor};
 use crate::vc::pop::jwt_pop::JwtProofOfPossession;
 use crate::vc::pop::ProofOfPossession;
@@ -87,14 +87,16 @@ where
                         cred_iss_id: self.metadata.issuer_id.clone(),
                         client_id: None,
                     },
-                ).await?
+                ).await.context(ProofSnafu)?
             }
-            _ => Err(pop::Error::FormatNotSupported)?,
+            _ => return FormatNotSupportedSnafu {
+                format: <pop::Format as Into<&str>>::into(pop_fmt)
+            }.fail(),
         };
         debug!(resolved_holder_did = ?hld_did);
 
         let vc_fmt = &cred_def.format;
-        let vc_fmt = vc::VCFormat::from_str(vc_fmt)?;
+        let vc_fmt = vc::VCFormat::from_str(vc_fmt).context(VCSnafu)?;
 
         let (iss_did, iss_key) = self.resolve_key_metadata(cred_def).await?;
 
@@ -111,14 +113,14 @@ where
                     (&iss_did, iss_key),
                     (&hld_did, hld_key),
                     metadata,
-                ).await?;
+                ).await.context(VCSnafu)?;
 
                 Credential::SdJwt(cred)
             }
-            _ => Err(Error::FormatNotSupported)?
+            _ => return FormatNotSupportedSnafu { format: vc_fmt.to_string() }.fail(),
         };
 
-        let meta = DefaultMetadataProcessor::resolve_metadata(&vc)?;
+        let meta = DefaultMetadataProcessor::resolve_metadata(&vc).context(MetadataSnafu)?;
 
         Ok((vc, meta))
     }
@@ -178,7 +180,9 @@ where
     )]
     fn find_cred_def(&self, id: &str) -> Result<&CredentialDefinition> {
         let cred_defs = &self.metadata.cred_defs;
-        let cred_def = cred_defs.iter().find(|i| i.cred_def_id == id).ok_or(Error::CredDefNotFound)?;
+        let cred_def = cred_defs.iter()
+            .find(|i| i.cred_def_id == id)
+            .ok_or(CredDefNotFoundSnafu { id }.build())?;
 
         Ok(cred_def)
     }
@@ -197,11 +201,11 @@ where
 
         let proof = &credential_request.proof;
         let fmt = &proof.format;
-        let fmt = pop::Format::from_str(fmt)?;
+        let fmt = pop::Format::from_str(fmt).context(ProofSnafu)?;
 
         // TODO: add more validation for proof (against format, supported alg's, etc)
 
-        let proof = P::parse(&proof.proof)?;
+        let proof = P::parse(&proof.proof).context(ProofSnafu)?;
         Ok((fmt, proof))
     }
 
@@ -220,7 +224,7 @@ where
         };
 
         let did_url = DIDURL::from_str(&key_meta.did_url).unwrap();
-        let kh = self.kms.get(&key_meta.kid).await?;
+        let kh = self.kms.get(&key_meta.kid).await.context(KMSSnafu)?;
 
         debug!(resolved_did_url = ?did_url);
 

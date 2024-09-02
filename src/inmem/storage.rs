@@ -1,10 +1,10 @@
-use crate::storage;
 use crate::storage::Result;
 use async_rwlock::RwLock;
 use async_trait::async_trait;
 use std::collections::HashMap;
 use std::fmt::Display;
 use std::hash::Hash;
+use crate::storage::{Storage};
 
 pub struct InMemStorage<K, V> {
     map: RwLock<HashMap<K, V>>,
@@ -17,7 +17,7 @@ impl<K, V> InMemStorage<K, V> {
 }
 
 #[async_trait]
-impl<K, V> storage::Storage<K, V> for InMemStorage<K, V>
+impl<K, V> Storage<K, V> for InMemStorage<K, V>
 where
     K: Display + Eq + PartialEq + Hash + Sync + Send,
     V: 'static + Sync + Send + Clone,

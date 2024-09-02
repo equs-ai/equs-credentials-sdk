@@ -1,14 +1,15 @@
 use async_trait::async_trait;
 use oid4vci::openidconnect::Nonce;
 use oid4vci::proof_of_possession::{ProofOfPossession, ProofOfPossessionController, ProofOfPossessionParams, ProofOfPossessionVerificationParams};
+use snafu::ResultExt;
 use ssi::jwk::JWK;
 
 use crate::crypto;
-use crate::crypto::SigningKey;
+use crate::crypto::{SigningKey};
 use crate::did::{DIDResolver, DIDURL};
 use crate::did::universal::UniversalResolver;
 use crate::vc::pop;
-use crate::vc::pop::{Error, GenerateOptions, VerifyOptions};
+use crate::vc::pop::{ConversionSnafu, Error, GenerateOptions, ParsingSnafu, VerificationSnafu, VerifyOptions};
 
 pub struct SignerWrapper<S: SigningKey> {
     key: S,
@@ -45,14 +46,15 @@ impl pop::ProofOfPossession<String> for JwtProofOfPossession {
 
         let sgn = SignerWrapper { key };
 
-        pop.to_jwt_with_signer(sgn).await.map_err(|e| Error::Conversion(e.to_string()))
+        pop.to_jwt_with_signer(sgn).await.context(ConversionSnafu)
     }
 
     async fn verify(proof: String, nonce: Nonce, opts: VerifyOptions) -> Result<(DIDURL, Box<dyn crypto::Key>), Error> {
         let resolver = UniversalResolver::new();
 
-        let pop = ProofOfPossession::from_jwt(proof.as_str(), resolver.as_spruce_resolver()).await
-            .map_err(|e| Error::Parsing(e.to_string()))?;
+        let pop = ProofOfPossession::from_jwt(proof.as_str(), resolver.as_spruce_resolver())
+            .await
+            .context(ParsingSnafu)?;
 
         let verification = pop.verify(&ProofOfPossessionVerificationParams {
             audience: opts.cred_iss_id.clone(),
@@ -63,9 +65,7 @@ impl pop::ProofOfPossession<String> for JwtProofOfPossession {
             controller_jwk: None,
             nbf_tolerance: None,
             exp_tolerance: None,
-        }).await;
-
-        verification.map_err(|e| Error::Verification(e.to_string()))?;
+        }).await.context(VerificationSnafu)?;
 
         // TODO: refactor
         let did_url = pop.controller.vm.unwrap();

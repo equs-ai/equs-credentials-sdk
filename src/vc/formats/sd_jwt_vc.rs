@@ -1,11 +1,11 @@
 use std::collections::HashMap;
-
 use async_trait::async_trait;
 use jsonwebtoken::{DecodingKey, Header};
 use oid4vci::openidconnect::Nonce;
 use sd_jwt_rs::{ClaimsForSelectiveDisclosureStrategy, SDJWTHolder, SDJWTIssuer, SDJWTSerializationFormat, SDJWTVerifier};
 use sd_jwt_rs::resolver::KeyResolver;
 use serde_json::{Map, Value};
+use snafu::ResultExt;
 use ssi::jwk::JWK;
 use time::OffsetDateTime;
 
@@ -15,9 +15,12 @@ use crate::did::universal::UniversalResolver;
 use crate::utils;
 use crate::utils::b64;
 use crate::utils::serde::Helpers;
-use crate::vc::formats::{API, Error, HasClaims, HasCredential, VerifyOptions};
+use crate::vc::formats::{
+    API, HasClaims, HasCredential, IncorrectClaimSnafu, JWSSnafu, KeyTypeNotSupportedSnafu,
+    PresentationSnafu, SigningSnafu, VerifyingSnafu, VerifyOptions
+};
 use crate::vc::formats::Result;
-use crate::vc::SD_JWT_VC;
+use crate::vc::formats::vc::SD_JWT_VC;
 
 pub type SdJwtRsError = sd_jwt_rs::error::Error;
 
@@ -88,8 +91,7 @@ pub struct VPMetadata {
 impl HasClaims<Claims> for Credential {
     fn parse_claims(&self) -> Result<Claims> {
         let stripped = SdJwtAPI::strip_disclosures(&self);
-        let claims = ssi::jwt::decode_unverified(stripped)?;
-        Ok(claims)
+        ssi::jwt::decode_unverified(stripped).context(JWSSnafu)
     }
 }
 
@@ -106,7 +108,7 @@ pub struct SdJwtAPI;
 impl SdJwtAPI {
     fn validate_claims(claims: Claims) -> Result<()> {
         if !claims.contains_key("vct") {
-            return Err(Error::IncorrectClaim(String::from("missing vct")));
+            return IncorrectClaimSnafu { details: "missing vct" }.fail();
         }
 
         Ok(())
@@ -149,7 +151,7 @@ impl SdJwtAPI {
     pub fn verify_signature(vc: &Credential, jwk: &JWK) -> Result<()> {
         let stripped = Self::strip_disclosures(vc);
 
-        let _ = ssi::jws::decode_verify(stripped, jwk)?;
+        ssi::jws::decode_verify(stripped, jwk).context(JWSSnafu)?;
 
         Ok(())
     }
@@ -177,48 +179,44 @@ impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata, Value> for Sd
         let claims = SdJwtAPI::prepare_claims(claims, iss_did, hld_did, &metadata);
         let headers = SdJwtAPI::extra_headers();
 
-        let Some(jwk) = utils::jwk::from_spruce_jwk_opt(hld_key.jwk()) else {
-            return Err(Error::KeyNotSupported);
-        };
+        let jwk = utils::jwk::from_spruce_jwk_opt(hld_key.jwk())
+            .ok_or_else(|| KeyTypeNotSupportedSnafu { type_: "JWK" }.build())?;
+
         let disclosures = metadata.disclosures
             .iter()
             .map(|d| d.as_str())
             .collect();
 
         let mut issuer = SDJWTIssuer::new(sgn_wrapper);
-        let res = issuer.issue_sd_jwt(
+
+        issuer.issue_sd_jwt(
             claims,
             ClaimsForSelectiveDisclosureStrategy::Custom(disclosures),
             Some(jwk),
             false,
             SDJWTSerializationFormat::Compact,
             Some(headers),
-        ).await;
-
-        res.map_err(|err| Error::Signing(err.to_string()))
+        ).await.map_err(|err| SigningSnafu { details: err.to_string() }.build())
     }
 
-    async fn create_vp<S>(credential: &Credential,
-                          holder_data: (&DIDURL, S),
-                          nonce: Nonce, verifier_id: &str,
-                          metadata: VPMetadata) -> Result<Presentation>
-    where
-        S: Signer,
-    {
+    async fn create_vp<S>(
+        credential: &Credential,
+        holder_data: (&DIDURL, S),
+        nonce: Nonce, verifier_id: &str,
+        metadata: VPMetadata
+    ) -> Result<Presentation> where S: Signer {
         let (_, signer) = holder_data;
         let sgn_wrapper = SignerWrapper { signer };
 
         let mut holder = SDJWTHolder::new(credential.to_owned(), SDJWTSerializationFormat::Compact)
-            .map_err(|e| Error::Parsing(e.to_string()))?;
+            .map_err(|err| SigningSnafu { details: err.to_string() }.build())?;
 
-        let presentation = holder.create_presentation(
+        holder.create_presentation(
             metadata.disclosures,
             Some(nonce.secret().to_owned()),
             Some(verifier_id.to_string()),
             Some(sgn_wrapper),
-        ).await.map_err(|e| Error::Presentation(e.to_string()))?;
-
-        Ok(presentation)
+        ).await.map_err(|err| PresentationSnafu { details: err.to_string() }.build())
     }
 
     async fn verify_vp(presentation: &Presentation,
@@ -226,6 +224,7 @@ impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata, Value> for Sd
                        _opts: VerifyOptions) -> Result<Value> {
         let key_resolver = DidKeyResolver::new(UniversalResolver::new());
         let mut verifier = SDJWTVerifier::new(Box::new(key_resolver));
+
         verifier.verify_presentation(
             presentation.to_owned(),
             Some(verifier_id.to_string()),
@@ -233,7 +232,7 @@ impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata, Value> for Sd
             SDJWTSerializationFormat::Compact,
         )
             .await
-            .map_err(|e| Error::Verifying(e.to_string()))
+            .map_err(|e| VerifyingSnafu { details: e.to_string() }.build())
     }
 }
 

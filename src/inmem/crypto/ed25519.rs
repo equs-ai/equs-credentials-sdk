@@ -3,6 +3,7 @@ use ed25519_dalek::{SecretKey, Signature, Signer, SigningKey};
 use rand::rngs::OsRng;
 
 use crate::crypto;
+use crate::crypto::{VerificationSnafu};
 
 #[derive(Clone)]
 pub struct Ed25519 {
@@ -59,12 +60,13 @@ impl crypto::Signer for Ed25519 {
 #[async_trait]
 impl crypto::Verifier for Ed25519 {
     async fn verify(&self, data: &[u8], signature: &[u8]) -> Result<(), crypto::Error> {
-        let sgn = Signature::from_slice(signature);
-        let res: Result<(), crypto::Error> = match sgn {
-            Ok(sg) => self.signing_key.verify(data, &sg).map_err(|e| crypto::Error::Signature(e.to_string())),
-            Err(e) => Err(crypto::Error::Verification(e.to_string())),
-        };
+        let signature = Signature::from_slice(signature);
 
-        res
+        match signature {
+            Ok(sg) => self.signing_key
+                .verify(data, &sg)
+                .map_err(|e| VerificationSnafu { details: e.to_string() }.build()),
+            Err(e) => VerificationSnafu { details: e.to_string() }.fail(),
+        }
     }
 }
