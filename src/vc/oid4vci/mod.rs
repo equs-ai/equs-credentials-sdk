@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use oid4vci::core::profiles::CoreProfilesOffer;
 use oid4vci::credential::RequestError;
-use oid4vci::openidconnect::{DiscoveryError, Nonce};
+use oid4vci::openidconnect::{DiscoveryError};
 use serde::{Deserialize, Serialize};
 
 use crate::{storage, vault, vc};
@@ -13,8 +13,8 @@ pub(crate) mod issuer;
 pub(crate) mod holder;
 mod token_validation;
 mod metadata;
-mod builder;
 
+mod builder;
 pub use builder::IssuerBuilder;
 pub use builder::HolderBuilder;
 
@@ -29,6 +29,7 @@ pub type CredentialResponse = oid4vci::core::credential::Response;
 pub type TokenResponse = oid4vci::token::Response;
 pub type AuthorizationCodeGrant = oid4vci::credential_offer::AuthorizationCodeGrant;
 pub type ErrorType = oid4vci::credential::ErrorType;
+pub type Nonce = oid4vci::openidconnect::Nonce;
 
 #[derive(Debug, Clone)]
 pub enum CredentialResult {
@@ -72,16 +73,39 @@ impl ProtocolErrorResponse {
         error: ErrorType,
         description: &str,
         nonce: Nonce,
-        nonce_expires_in: i64
+        nonce_expires_in: Option<i64>
     ) -> Self {
         Self {
             error,
             error_description: Some(description.to_owned()),
             c_nonce: Some(nonce),
-            c_nonce_expires_in: Some(nonce_expires_in)
+            c_nonce_expires_in: nonce_expires_in
         }
     }
+}
 
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct IssuanceSession {
+    nonce: Option<NonceData>,
+    notification_id: Option<String>,
+    transaction_id: Option<String>,
+}
+
+impl Default for IssuanceSession {
+    fn default() -> Self {
+        Self{
+            nonce: None,
+            notification_id: None,
+            transaction_id: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NonceData {
+    nonce: Nonce,
+    expires_in: Option<i64>,
+    created: Option<time::OffsetDateTime>,
 }
 
 #[derive(Debug, thiserror::Error, strum::IntoStaticStr)]
@@ -155,7 +179,7 @@ impl From<RequestError<reqwest::Error>> for Error {
                             ErrorType::InvalidProof,
                             &b.error_description,
                             nonce,
-                            expires_in,
+                            Some(expires_in),
                         ),
                     _ => ProtocolErrorResponse::new(ErrorType::InvalidProof, &b.error_description)
                 };
@@ -184,6 +208,7 @@ pub trait Issuer: Send + Sync {
         cred_request: &CredentialRequest,
         token: &String,
         claims: &Claims,
+        session: &mut IssuanceSession,
     ) -> Result<CredentialResponse, Error>;
 }
 
@@ -238,11 +263,10 @@ mod tests {
     use crate::did::DIDURL;
     use crate::kms::Kms;
     use crate::inmem::kms::LocalKms;
-    use crate::inmem::storage::InMemStorage;
     use crate::inmem::vault::InMemVault;
     use crate::utils::http::{mock_http, mock_http_fn, mock_http_once, mock_static_ctx, MockHttpClient};
     use crate::vc::core::{HolderMetadata, KeyMetadata};
-    use crate::vc::oid4vci::{CredentialOfferGrants, CredentialOfferParams, Holder, issuer, Issuer};
+    use crate::vc::oid4vci::{CredentialOfferGrants, CredentialOfferParams, Holder, IssuanceSession, issuer, Issuer};
     use crate::vc::oid4vci::holder::HolderService;
     use crate::vc::oid4vci::token_validation::Introspect;
     use crate::vc::oid4vci::issuer::{IssuerService, TokenValidation};
@@ -341,13 +365,14 @@ mod tests {
             },
         ).unwrap();
 
+        let mut session = IssuanceSession::default();
         mock_http_fn(
             &mut http_mock,
             Method::POST,
             iss_url.join("/credential").unwrap(),
             move |req| {
                 // 6.2 Issuer will issue credentials
-                let fut = credential_endpoint(&issuer, req);
+                let fut = credential_endpoint(&issuer, req, &mut session);
                 let result = executor::block_on(fut);
                 Ok(result)
             },
@@ -384,7 +409,7 @@ mod tests {
         println!("Credential: {:?}", credential);
     }
 
-    async fn credential_endpoint(issuer: &impl Issuer, req: HttpRequest) -> HttpResponse {
+    async fn credential_endpoint(issuer: &impl Issuer, req: HttpRequest, session: &mut IssuanceSession) -> HttpResponse {
         let cred_req = serde_json::from_slice(req.body.as_slice()).unwrap();
         let token = req.headers.get("Authorization").unwrap();
         let token = token.to_str().unwrap()
@@ -402,6 +427,7 @@ mod tests {
             &cred_req,
             &token,
             &claims,
+            session,
         ).await;
 
         let response = match result {
@@ -410,10 +436,13 @@ mod tests {
                 headers: Default::default(),
                 body: serde_json::to_vec(&cred_resp).unwrap(),
             },
-            Err(issuer::Error::Protocol(b)) => HttpResponse {
-                status_code: StatusCode::BAD_REQUEST,
-                headers: Default::default(),
-                body: serde_json::to_vec(&b).unwrap(),
+            Err(issuer::Error::Protocol(b)) => {
+
+                return  HttpResponse {
+                    status_code: StatusCode::BAD_REQUEST,
+                    headers: Default::default(),
+                    body: serde_json::to_vec(&b).unwrap(),
+                }
             },
             _ => panic!(),
         };
@@ -434,12 +463,10 @@ mod tests {
 
     async fn oid4vci_issuer(metadata: IssuerMetadata, http_client: MockHttpClient, introspect_ep: Url) -> impl Issuer + Sized {
         let inner = issuer(&metadata).await;
-        let storage = InMemStorage::new();
         let introspect = Introspect::new(http_client, introspect_ep, None);
         IssuerService::new(
             metadata,
             inner,
-            storage,
             TokenValidation::Introspect(introspect),
         )
     }
