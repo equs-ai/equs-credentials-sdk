@@ -1,3 +1,6 @@
+[workspace]
+members = ["demos/oid4vc", "demos/oid4vc/holder"]
+
 [package]
 name = "agent-sdk"
 version = "0.2.0"

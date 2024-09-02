@@ -72,6 +72,10 @@ cargo test --all-features
 cargo doc --no-deps
 ```
 
+### Demos
+
+- [OID4VC web service](demos/oid4vc/README.md)
+
 ## How to Use ASDK in Applications
 
 ### OID4VC
