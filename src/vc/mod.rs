@@ -3,6 +3,7 @@ use crate::crypto::Alg;
 
 pub use crate::vc::formats::vc::*;
 pub use crate::vc::formats::vp::*;
+pub use crate::vc::formats::Error as VCFormatError;
 
 mod formats;
 mod pop;

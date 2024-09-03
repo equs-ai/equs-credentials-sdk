@@ -1,14 +1,16 @@
-use std::fmt::Debug;
 use async_trait::async_trait;
 use snafu::{Location, Snafu};
 use ssi::did::did_resolve::DIDResolver as SpruceResolver;
 use ssi::did::{Resource, VerificationMethod};
 use ssi::did_resolve::{dereference, Content, DereferencingInputMetadata};
+use std::fmt::Debug;
 
 pub mod didkey;
 pub mod universal;
 
-// Error handling
+/// `DID` Error.
+///
+/// Enumerates general errors expected during `DID` operations.
 #[derive(Snafu)]
 #[non_exhaustive]
 pub enum Error {
@@ -37,6 +39,9 @@ impl Debug for Error {
     }
 }
 
+/// `Result` alias for `DID`-specific [Error].
+pub type Result<T> = core::result::Result<T, Error>;
+
 // Basic types definitions
 pub type DID = String;
 pub type DIDURL = ssi::did::DIDURL;
@@ -46,6 +51,9 @@ pub type VerificationMethodMap = ssi::did::VerificationMethodMap;
 pub type ResolutionMetadata = ssi::did_resolve::ResolutionMetadata;
 pub type ResolutionInputMetadata = ssi::did_resolve::ResolutionInputMetadata;
 
+/// A result of `DID` resolution.
+///
+/// Contains resolution metadata, resolved DID doc and the doc's metadata.
 #[derive(Default, Clone)]
 pub struct Resolution {
     pub metadata: ResolutionMetadata,
@@ -53,32 +61,66 @@ pub struct Resolution {
     pub doc_metadata: Option<DocumentMetadata>,
 }
 
-// Methods options
+/// General options for `DID` resolution.
 #[derive(Default, Clone)]
 pub struct ResolveOptions {
     pub input: ResolutionInputMetadata,
 }
 
+/// A common async `DID` resolver trait.
+///
+/// Should be implemented by all supported `DID` methods.
 #[async_trait]
 pub trait DIDResolver: Send + Sync {
+    /// Resolve `DID` document by the provided `DID`.
+    ///
+    /// # Arguments
+    ///
+    /// * `did` - a `DID` to resolve.
+    /// * `options` - options for `DID` resolving.
+    ///
+    /// # Returns
+    ///
+    /// A `Resolution` struct containing `DID` doc and metadata or the error definition.
     async fn resolve(&self, did: &DID, options: ResolveOptions) -> Resolution;
 
+    /// A helper method to resolve `VerificationMethod` for the provided `DIDURL`.
+    ///
+    /// # Arguments
+    ///
+    /// * `did_url` - a `DIDURL` to resolve.
+    ///
+    /// # Returns
+    ///
+    /// A resolved `VerificationMethodMap` for the provided `DIDURL`
+    /// containing the verification key and other parameters on success.
+    ///
+    /// # Errors
+    ///
+    /// * [Error::Resolution] - fails to revolve `DIDURL`.
     async fn resolve_verification_method(
         &self,
         did_url: &str,
-    ) -> Result<VerificationMethodMap, Error> {
+    ) -> Result<VerificationMethodMap> {
         resolve_verification_method(self.as_spruce_resolver(), did_url).await
     }
 
+    /// Coverts resolver to Spruce-compatible one.
+    ///
+    /// For internal usage.
+    ///
+    /// # Returns
+    ///
+    /// A resolver that implements [SpruceResolver] trait.
     fn as_spruce_resolver(&self) -> &dyn SpruceResolver;
 }
 
 async fn resolve_verification_method(
     resolver: &dyn SpruceResolver,
     did_url: &str,
-) -> Result<VerificationMethodMap, Error> {
+) -> Result<VerificationMethodMap> {
     let (_, content, _) = dereference(
-        resolver, did_url, &DereferencingInputMetadata::default()
+        resolver, did_url, &DereferencingInputMetadata::default(),
     ).await;
 
     match content {

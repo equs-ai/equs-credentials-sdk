@@ -51,8 +51,7 @@ where
     ///
     /// # Errors
     ///
-    /// * [Error::Collision] - collision on inserting the key-value.
-    /// * [Error::Network] - fails to make a network call.
+    /// * [Error::Modification] - fails to insert the key-value.
     async fn put(&self, k: K, v: V) -> Result<()>;
 
     /// Returns a value for the provided key.
@@ -68,7 +67,7 @@ where
     ///
     /// # Errors
     ///
-    /// * [Error::Network] - fails to make a network call.
+    /// * [Error::Resolving] - fails to resolve a value.
     async fn get(&self, k: &K) -> Result<Option<V>>;
 
     /// Delete an entry from the `Storage`.
@@ -79,6 +78,6 @@ where
     ///
     /// # Errors
     ///
-    /// * [Error::Network] - fails to make a network call.
+    /// * [Error::Modification] - fails to delete the record.
     async fn delete(&self, k: &K) -> Result<()>;
 }

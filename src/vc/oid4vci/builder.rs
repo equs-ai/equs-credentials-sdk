@@ -11,6 +11,7 @@ use oid4vci::openidconnect::JsonWebKeySetUrl;
 use std::marker::PhantomData;
 use url::Url;
 
+/// `oid4vci` builder error.
 #[derive(Debug, thiserror::Error, strum::IntoStaticStr)]
 pub enum Error
 {
@@ -30,6 +31,7 @@ enum TokenParams {
     None,
 }
 
+/// A builder for instantiating `oid4vci` `Issuer`.
 pub struct IssuerBuilder<KH, KMS, HC>
 where
     KH: kms::KeyHandle,
@@ -53,6 +55,22 @@ where
     KH: kms::KeyHandle,
     KMS: kms::Kms<KH>,
 {
+    /// Returns a new `Builder` initialized with defaults.
+    ///
+    /// # Arguments
+    ///
+    /// * `kms` - an inner KMS.
+    /// * `issuer_metadata` - an `IssuerMetadata`.
+    /// * `key_metadata` - a `KeyMetadata` with `DIDURL` and `KID` to be used for signing operations.
+    ///
+    /// # Defaults
+    ///
+    /// * default `reqwest::Client` impl
+    /// * no token validation
+    ///
+    /// # Returns
+    ///
+    /// A new builder.
     pub fn new(kms: KMS, issuer_metadata: api::IssuerMetadata, key_metadata: KeyMetadata) -> Self {
         let http_client = ReqwestClient::new(false, true)
             .map_err(|e| Error::Build(e.to_string()));
@@ -74,6 +92,11 @@ where
     KMS: kms::Kms<KH>,
     HC: HttpClient,
 {
+    /// Use a specific `HttpClient`.
+    ///
+    /// # Arguments
+    ///
+    /// * `http_client` - a http client.
     pub fn with_http_client<HC_: HttpClient>(self, http_client: HC_) -> IssuerBuilder<KH, KMS, HC_> {
         IssuerBuilder {
             http_client: Ok(http_client),
@@ -86,16 +109,32 @@ where
         }
     }
 
+    /// Use an introspect token validation.
+    ///
+    /// # Arguments
+    ///
+    /// * `url` - an url of token introspection endpoint.
+    /// * `header` - an optional Authz header for introspection calls.
     pub fn token_validation_introspect(mut self, url: Url, header: Option<String>) -> Self {
         self.token_params = TokenParams::Introspect(url, header);
         self
     }
 
+    /// Use a JWKS token validation.
+    ///
+    /// # Arguments
+    ///
+    /// * `url` - an url of JWKS.
     pub fn token_validation_jwks(mut self, url: Url) -> Self {
         self.token_params = TokenParams::Jwks(url);
         self
     }
 
+    /// Builds an `Issuer`.
+    ///
+    /// # Returns
+    ///
+    /// An `Issuer` API on success.
     pub async fn build(self) -> Result<impl api::Issuer, Error> {
         let inner = vc::core::IssuerService::new(
             self.kms,
@@ -125,6 +164,7 @@ where
     }
 }
 
+/// A builder for instantiating `oid4vci` `Holder`.
 pub struct HolderBuilder<KH, KMS, V, HC>
 where
     KH: kms::KeyHandle,
@@ -155,6 +195,23 @@ where
     KMS: kms::Kms<KH>,
     V: vault::Vault,
 {
+    /// Returns a new `Builder` initialized with defaults.
+    ///
+    /// # Arguments
+    ///
+    /// * `kms` - an inner [kms::Kms].
+    /// * `vault` - an inner [vault::Vault].
+    /// * `key_metadata` - a `KeyMetadata` with `DIDURL` and `KID` to be used for signing operations.
+    /// * `client_id` - a client ID.
+    ///
+    /// # Defaults
+    ///
+    /// * default `reqwest::Client` impl
+    /// * "urn:ietf:wg:oauth:2.0:oob" as RedirectURL
+    ///
+    /// # Returns
+    ///
+    /// A new builder.
     pub fn new(kms: KMS, vault: V, key_metadata: KeyMetadata, client_id: String) -> Self {
         let http_client = ReqwestClient::new(false, true)
             .map_err(|e| Error::Build(e.to_string()));
@@ -181,21 +238,42 @@ where
     V: vault::Vault,
     HC: HttpClient,
 {
+    /// Use a specific `RedirectUrl`.
+    ///
+    /// # Arguments
+    ///
+    /// * `redirect_url` - an Oauth2 Redirect Url used by authorization endpoint.
     pub fn with_redirect_url(mut self, redirect_url: String) -> Self {
         self.redirect_url = redirect_url;
         self
     }
 
+    /// Use an `Issuer` url to init the `Holder`.
+    ///
+    /// # Arguments
+    ///
+    /// * `issuer_url` - an `Issuer` API url.
     pub fn with_issuer_url(mut self, issuer_url: String) -> Self {
         self.iss_url = Some(issuer_url);
         self
     }
 
+    /// Use a `CredentialOffer` to init the `Holder`.
+    ///
+    /// # Arguments
+    ///
+    /// * `offer` - a `CredentialOffer` issued by some `Issuer`.
     pub fn with_credential_offer(mut self, offer: CredentialOffer) -> Self {
         self.offer = Some(offer);
         self
     }
 
+    /// Use metadata to init the `Holder`.
+    ///
+    /// # Arguments
+    ///
+    /// * `issuer_metadata` - an `IssuerMetadata` of the `Issuer`.
+    /// * `authorization_metadata` - an `AuthorizationMetadata` of the corresponding Authorization Server.
     pub fn with_metadata(mut self,
                          issuer_metadata: api::IssuerMetadata,
                          authorization_metadata: api::AuthorizationMetadata,
@@ -204,6 +282,11 @@ where
         self
     }
 
+    /// Use a specific `HttpClient`.
+    ///
+    /// # Arguments
+    ///
+    /// * `http_client` - a http client.
     pub fn with_http_client<HC_: HttpClient>(self, http_client: HC_) -> HolderBuilder<KH, KMS, V, HC_> {
         HolderBuilder {
             http_client: Ok(http_client),
@@ -220,6 +303,18 @@ where
         }
     }
 
+    /// Builds a `Holder`.
+    ///
+    /// # Returns
+    ///
+    /// A `Holder` API on success.
+    ///
+    /// # Errors
+    ///
+    /// One of the following options for initialization should be explicitly provided:
+    /// * [HolderBuilder::with_issuer_url]
+    /// * [HolderBuilder::with_credential_offer]
+    /// * [HolderBuilder::with_metadata]
     pub async fn build(self) -> Result<impl api::Holder, Error> {
         let key_metadata = self.key_metadata;
         let holder_metadata = vc::core::HolderMetadata {
