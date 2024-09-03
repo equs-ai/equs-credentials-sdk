@@ -82,7 +82,7 @@ pub trait Signer: Sync + Send {
     ///
     /// # Errors
     ///
-    /// * [Error::Signature] - fails to sign a payload.
+    /// * [Error::Signing] - fails to sign a payload.
     /// * [Error::AlgNotSupported] - algorithm is not supported.
     async fn sign(&self, payload: &[u8]) -> Result<Vec<u8>>;
 }

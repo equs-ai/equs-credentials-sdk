@@ -4,6 +4,12 @@ use ssi::did_resolve::DIDResolver as SpruceResolver;
 
 use crate::did::{DID, DIDResolver, Resolution, ResolveOptions};
 
+
+/// An Universal `DID` resolver.
+///
+/// # Supported methods
+///
+/// `did:key`
 pub struct UniversalResolver {
     impls: DIDMethods<'static>,
 }

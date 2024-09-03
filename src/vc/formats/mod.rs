@@ -11,6 +11,9 @@ pub mod sd_jwt_vc;
 pub mod vc;
 pub mod vp;
 
+/// `VC` format internal error.
+///
+/// Defines errors for all supported low-level VC operations.
 #[derive(Snafu)]
 #[non_exhaustive]
 pub enum Error {

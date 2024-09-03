@@ -97,7 +97,6 @@ where
     /// # Errors
     ///
     /// * [Error::Creation] - fails to create a key.
-    /// * [Error::Network] - fails to make a network call.
     /// * [Error::Crypto] - crypto error, refer to [crypto::Error].
     async fn create(&self, kt: KeyType, opts: CreateOptions) -> Result<KeyID>;
 
@@ -113,9 +112,8 @@ where
     ///
     /// # Errors
     ///
-    /// * [Error::KeyNotFound] - key is not found.
+    /// * [Error::NotFound] - key is not found.
     /// * [Error::Resolving] - fails to resolve a key.
-    /// * [Error::Network] - fails to make a network call.
     /// * [Error::Crypto] - crypto error, refer to [crypto::Error].
     async fn get(&self, kid: &KeyID) -> Result<KH>;
 

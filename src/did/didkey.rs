@@ -2,9 +2,14 @@ use async_trait::async_trait;
 use ssi::did::{DIDMethod, Source};
 use ssi::did_resolve::DIDResolver as SpruceResolver;
 
-use crate::did::{DID, DidGenerationSnafu, DIDResolver, Error, KeyNotSupportedSnafu, Resolution, ResolveOptions};
-use crate::crypto;
+use crate::{crypto, did};
+use crate::did::{DIDResolver, DidGenerationSnafu, KeyNotSupportedSnafu, Resolution, ResolveOptions, Result, DID};
 
+pub type Error = did::Error;
+
+/// A general `did:key` service.
+///
+/// Supports generation of `did:keys` and resolving (via common [DIDResolver]).
 pub struct DIDKey {
     method: did_method_key::DIDKey,
 }
@@ -14,7 +19,21 @@ impl DIDKey {
         Self { method: did_method_key::DIDKey {} }
     }
 
-    pub fn generate<K>(&self, key: K) -> Result<DID, Error>
+    /// Create a `did:key`.
+    ///
+    /// # Arguments
+    ///
+    /// * `key` - a key to include in `did:key`.
+    ///
+    /// # Returns
+    ///
+    /// A new `did:key` based on the `key` on success.
+    ///
+    /// # Errors
+    ///
+    /// * [Error::KeyNotSupported] - fails if the `jwk` is not supported for `key`.
+    /// * [Error::DidGeneration] - can't generate `DID`.
+    pub fn generate<K>(&self, key: K) -> Result<DID>
     where
         K: crypto::Key,
     {

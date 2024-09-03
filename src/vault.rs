@@ -78,8 +78,7 @@ pub trait Vault: Send + Sync
     ///
     /// * [Error::FormatNotSupported] - format is not supported by the `Vault`.
     /// * [Error::VC] - issues with `Credential` processing.
-    /// * [Error::Storage] - fails to access the storage.
-    /// * [Error::Network] - issues with network.
+    /// * [Error::Storing] - fails to store the values.
     async fn store_credential(
         &self,
         credential: vc::Credential,
@@ -99,8 +98,7 @@ pub trait Vault: Send + Sync
     ///
     /// # Errors
     ///
-    /// * [Error::Storage] - fails to access the storage.
-    /// * [Error::Network] - issues with network.
+    /// * [Error::Resolving] - fails to access the storage.
     async fn get_credential(
         &self,
         id: &str,
@@ -119,9 +117,7 @@ pub trait Vault: Send + Sync
     ///
     /// # Errors
     ///
-    /// * [Error::FindCriteria] - invalid `FindCriteria`.
-    /// * [Error::Storage] - fails to access the storage.
-    /// * [Error::Network] - issues with network.
+    /// * [Error::Resolving] - fails to revolve the values.
     async fn find_credentials(
         &self,
         criteria: FindCriteria,

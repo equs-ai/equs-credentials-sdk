@@ -1,14 +1,14 @@
-use std::collections::HashMap;
-use std::fmt::Debug;
 use async_trait::async_trait;
 use snafu::{Location, Snafu};
+use std::collections::HashMap;
+use std::fmt::Debug;
 
-use crate::vc::{
-    formats::Error as VCError, pop::Error as ProofError, metadata::Error as MetadataError,
-    Claims, Credential, CredentialMetadata, Presentation
-};
 use crate::kms::Error as KmsError;
 use crate::vault::Error as VaultError;
+use crate::vc::{
+    formats::Error as VCError, metadata::Error as MetadataError, pop::Error as ProofError,
+    Claims, Credential, CredentialMetadata, Presentation,
+};
 
 mod verifier;
 mod holder;
@@ -271,8 +271,8 @@ pub trait Issuer: Send + Sync
     ///
     /// * [Error::CredDefNotFound] - `CredentialDefinition` not found.
     /// * [Error::FormatNotSupported] - `VC` format is not supported by the `Issuer`.
-    /// * [Error::VC] - internal error in [vc::formats] module.
-    /// * [Error::Kms] - error with [kms::Kms].
+    /// * [Error::VC] - internal error [VCFormatError](crate::vc::VCFormatError).
+    /// * [Error::KMS] - error with [Kms](crate::kms::Kms).
     /// * [Error::Proof] - proof is invalid.
     /// * [Error::Metadata] - fails to generate `CredentialMetadata`.
     async fn issue_credential(
@@ -308,7 +308,7 @@ pub trait Holder: Send + Sync
     ///
     /// * [Error::CredDefNotFound] - `CredentialDefinition` not found.
     /// * [Error::FormatNotSupported] - cred format is not supported by the `Issuer`.
-    /// * [Error::Kms] - error with [kms::Kms].
+    /// * [Error::KMS] - error with [Kms](crate::kms::Kms).
     /// * [Error::Proof] - proof generations fails.
     async fn request_credential(
         &self,
@@ -331,7 +331,7 @@ pub trait Holder: Send + Sync
     ///
     /// # Errors
     ///
-    /// * [Error::Vault] - error with [vault::Vault].
+    /// * [Error::Vault] - error with [Vault](crate::vault::Vault).
     async fn store_credential(
         &self,
         credential: &Credential,
@@ -351,14 +351,14 @@ pub trait Holder: Send + Sync
     /// # Returns
     ///
     /// A generated `Presentation` on success.
-    /// [Error::NoCredential] will be raised in no suitable `Credential` was found.
+    /// [Error::RequestedCredentialNotFound] will be raised in no suitable `Credential` was found.
     ///
     /// # Errors
     ///
     /// * [Error::FormatNotSupported] - VP format is not supported by the `Holder`.
-    /// * [Error::VC] - internal error in [vc::formats] module.
-    /// * [Error::Kms] - error with [kms::Kms].
-    /// * [Error::Vault] - error with [vault::Vault].
+    /// * [Error::VC] - internal error [VCFormatError](crate::vc::VCFormatError).
+    /// * [Error::KMS] - error with [Kms](crate::kms::Kms).
+    /// * [Error::Vault] - error with [Vault](crate::vault::Vault).
     async fn create_presentation_auto(
         &self,
         nonce: &str,
@@ -379,7 +379,7 @@ pub trait Holder: Send + Sync
     ///
     /// # Errors
     ///
-    /// * [Error::Vault] - error with [vault::Vault].
+    /// * [Error::Vault] - error with [Vault](crate::vault::Vault).
     async fn find_vcs_for_presentation(
         &self,
         presentation_input: &PresentationInput,
@@ -401,9 +401,9 @@ pub trait Holder: Send + Sync
     /// # Errors
     ///
     /// * [Error::FormatNotSupported] - VP format is not supported by the `Holder`.
-    /// * [Error::VC]  - internal error in [vc::formats] module.
-    /// * [Error::Kms] - error with [kms::Kms].
-    /// * [Error::Vault] - error with [vault::Vault].
+    /// * [Error::VC] - internal error [VCFormatError](crate::vc::VCFormatError).
+    /// * [Error::KMS] - error with [Kms](crate::kms::Kms).
+    /// * [Error::Vault] - error with [Vault](crate::vault::Vault).
     async fn create_presentation(
         &self,
         nonce: &str,
@@ -437,7 +437,7 @@ pub trait Verifier: Send + Sync
     /// # Errors
     ///
     /// * [Error::FormatNotSupported] - VP format is not supported by the `Holder`.
-    /// * [Error::VC] - internal error in [vc::formats] module.
+    /// * [Error::VC] - internal error [VCFormatError](crate::vc::VCFormatError).
     async fn verify_presentation(
         &self,
         nonce: &str,
