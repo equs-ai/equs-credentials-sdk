@@ -1,10 +1,11 @@
 use std::collections::HashMap;
 
 use oid4vci::core::metadata::IssuerMetadata;
-use oid4vci::core::profiles::CoreProfilesMetadata;
+use oid4vci::core::profiles::{CoreProfilesMetadata, CoreProfilesRequest, CoreProfilesResponse};
 
 use crate::vc;
 use crate::vc::core::{CredentialDefinition, CredentialDefinitionData, KeyMetadata};
+use crate::vc::{HasVCFormat, VCFormat};
 
 pub type CredentialMetadata = oid4vci::metadata::CredentialMetadata<CoreProfilesMetadata>;
 
@@ -43,9 +44,7 @@ fn cred_definition(id: &String, credential_metadata: &oid4vci::metadata::Credent
 
     CredentialDefinition {
         cred_def_id: id.to_string(),
-        format: credential_profile_metadata_format(
-            credential_metadata.additional_fields(),
-        ),
+        format: credential_metadata.additional_fields().format(),
         claims: Default::default(),
         supported_proofs: proofs,
         display: None,
@@ -59,12 +58,38 @@ fn cred_definition(id: &String, credential_metadata: &oid4vci::metadata::Credent
     }
 }
 
-fn credential_profile_metadata_format(profile: &CoreProfilesMetadata) -> String {
-    match profile {
-        CoreProfilesMetadata::SDJWTVC(_) => { "vc+sd-jwt".to_string() }
-        CoreProfilesMetadata::JWTVC(_) => { "jwt_vc_json".to_string() }
-        CoreProfilesMetadata::JWTLDVC(_) => { "jwt_vc_json-ld".to_string() }
-        CoreProfilesMetadata::LDVC(_) => { " ldp_vc".to_string() }
-        CoreProfilesMetadata::ISOmDL(_) => { "mso_mdoc".to_string() }
+impl HasVCFormat for CoreProfilesRequest {
+    fn format(&self) -> VCFormat {
+        match self {
+            CoreProfilesRequest::SDJWTVC(_) => VCFormat::SdJwtVc,
+            CoreProfilesRequest::JWTVC(_) => VCFormat::JwtVcJson,
+            CoreProfilesRequest::JWTLDVC(_) => VCFormat::JwtVcJsonLD,
+            CoreProfilesRequest::LDVC(_) => VCFormat::LdpVc,
+            CoreProfilesRequest::ISOmDL(_) => VCFormat::MsoMdoc,
+        }
+    }
+}
+
+impl HasVCFormat for CoreProfilesResponse {
+    fn format(&self) -> VCFormat {
+        match self {
+            CoreProfilesResponse::SDJWTVC(_) => VCFormat::SdJwtVc,
+            CoreProfilesResponse::JWTVC(_) => VCFormat::JwtVcJson,
+            CoreProfilesResponse::JWTLDVC(_) => VCFormat::JwtVcJsonLD,
+            CoreProfilesResponse::LDVC(_) => VCFormat::LdpVc,
+            CoreProfilesResponse::ISOmDL(_) => VCFormat::MsoMdoc,
+        }
+    }
+}
+
+impl HasVCFormat for CoreProfilesMetadata {
+    fn format(&self) -> crate::vc::VCFormat {
+        match self {
+            CoreProfilesMetadata::SDJWTVC(_) => VCFormat::SdJwtVc,
+            CoreProfilesMetadata::JWTVC(_) => VCFormat::JwtVcJson,
+            CoreProfilesMetadata::JWTLDVC(_) => VCFormat::JwtVcJsonLD,
+            CoreProfilesMetadata::LDVC(_) => VCFormat::LdpVc,
+            CoreProfilesMetadata::ISOmDL(_) => VCFormat::MsoMdoc,
+        }
     }
 }

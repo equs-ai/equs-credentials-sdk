@@ -1,13 +1,9 @@
+use std::fmt::Debug;
 use async_trait::async_trait;
 use oid4vci::core::profiles::CoreProfilesOffer;
-use oid4vci::credential::RequestError;
-use oid4vci::openidconnect::DiscoveryError;
 use serde::{Deserialize, Serialize};
-
-use crate::vc::oid4vci::Error::{Internal, Protocol};
-use crate::vc::oid4vci::InternalError::{ClaimNamesValidation, Network, Other, Unhandled, Url, VC};
+use snafu::Snafu;
 use crate::vc::{Claims, Credential, CredentialMetadata};
-use crate::{storage, vault, vc};
 
 pub(crate) mod issuer;
 pub(crate) mod holder;
@@ -15,8 +11,13 @@ mod token_validation;
 mod metadata;
 
 mod builder;
-pub use builder::HolderBuilder;
+mod protocol_error;
+mod internal_error;
+
 pub use builder::IssuerBuilder;
+pub use builder::HolderBuilder;
+pub use internal_error::InternalError;
+pub use protocol_error::ProtocolError;
 
 // Data types
 pub type IssuerMetadata = oid4vci::core::metadata::IssuerMetadata;
@@ -42,6 +43,35 @@ pub enum CredentialResult {
     Credential { credential: Credential, notification_id: Option<String> },
 }
 
+
+/// `oid4vci` API common error.
+///
+/// Used by `oid4vci` `Issuer` and `Holder`.
+///
+/// * [Protocol] encapsulates all expected [ProtocolErrorResponse] errors specific to the standard.
+/// See <https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0.html>.
+///
+/// * [Internal] error contains all unexpected errors.
+#[derive(Snafu)]
+#[non_exhaustive]
+pub enum Error {
+    #[snafu(transparent)]
+    Internal { source: InternalError },
+    #[snafu(transparent)]
+    Protocol { source: ProtocolError },
+}
+
+impl Debug for Error {
+    fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
+        std::write!(fmt, "{}", self)?;
+
+        Ok(())
+    }
+}
+
+/// `Result` alias for `oid4vci`-specific [Error].
+pub type Result<T> = core::result::Result<T, Error>;
+
 /// A session with state managed during the issuance.
 ///
 /// Contains [NonceData].
@@ -54,7 +84,7 @@ pub struct IssuanceSession {
 
 impl Default for IssuanceSession {
     fn default() -> Self {
-        Self {
+        Self{
             nonce: None,
             notification_id: None,
             transaction_id: None,
@@ -69,164 +99,6 @@ pub struct NonceData {
     expires_in: Option<i64>,
     created: Option<time::OffsetDateTime>,
 }
-
-/// `oid4vci` API common error.
-///
-/// Used by `oid4vci` `Issuer` and `Holder`.
-///
-/// * [Protocol] encapsulates all expected [ProtocolErrorResponse] errors specific to the standard.
-/// See <https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0.html>.
-///
-/// * [Internal] error contains all unexpected errors.
-#[derive(Debug, thiserror::Error, strum::IntoStaticStr)]
-pub enum Error
-{
-    #[error(transparent)]
-    Internal(#[from] InternalError),
-    #[error(transparent)]
-    Protocol(#[from] ProtocolErrorResponse),
-}
-
-/// A protocol-specific `oid4vci` error response.
-///
-/// Those errors are defined in the standard.
-/// See <https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0.html>.
-///
-/// Should be treated like 4xx errors.
-///
-/// # Nonce
-///
-/// `Holder`s MUST use `c_nonce` and `c_nonce_expires_in` for subsequent requests if they're returned.
-#[derive(Clone, thiserror::Error, Debug, Deserialize, Serialize)]
-#[error("Protocol error: type = {:?}, description: {:?}", error, error_description)]
-pub struct ProtocolErrorResponse {
-    error: ErrorType,
-    #[serde(default)]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    error_description: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    c_nonce: Option<Nonce>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    c_nonce_expires_in: Option<i64>,
-}
-
-impl ProtocolErrorResponse {
-    pub fn new(error: ErrorType, description: &str) -> Self {
-        Self {
-            error,
-            error_description: Some(description.to_owned()),
-            c_nonce: None,
-            c_nonce_expires_in: None,
-        }
-    }
-
-    pub fn new_with_nonce(
-        error: ErrorType,
-        description: &str,
-        nonce: Nonce,
-        nonce_expires_in: Option<i64>,
-    ) -> Self {
-        Self {
-            error,
-            error_description: Some(description.to_owned()),
-            c_nonce: Some(nonce),
-            c_nonce_expires_in: nonce_expires_in,
-        }
-    }
-}
-
-/// An `oid4vci` internal error.
-///
-/// Internal errors unspecified by the protocol.
-///
-/// Should be treated like 5xx errors.
-#[derive(Debug, thiserror::Error, strum::IntoStaticStr)]
-#[non_exhaustive]
-pub enum InternalError
-{
-    #[error("cred def not found: {0}")]
-    CredDefNotFound(String),
-    #[error("Claim names validation error: {0}")]
-    ClaimNamesValidation(String),
-    #[error(transparent)]
-    Url(#[from] url::ParseError),
-    #[error(transparent)]
-    Parse(#[from] serde_json::Error),
-    #[error(transparent)]
-    Storage(#[from] storage::Error),
-    #[error(transparent)]
-    VC(#[from] vc::core::Error),
-    #[error(transparent)]
-    Vault(#[from] vault::Error),
-    #[error(transparent)]
-    Network(#[from] reqwest::Error),
-    #[error(transparent)]
-    Discovery(#[from] DiscoveryError<reqwest::Error>),
-    #[error("other error: {0}")]
-    Other(String),
-    #[error("unhandled error: {0}")]
-    Unhandled(String),
-}
-
-impl From<reqwest::Error> for Error {
-    fn from(err: reqwest::Error) -> Self {
-        Internal(Network(err))
-    }
-}
-
-impl From<url::ParseError> for Error {
-    fn from(err: url::ParseError) -> Self {
-        Internal(Url(err))
-    }
-}
-
-impl From<vc::core::Error> for Error {
-    fn from(err: vc::core::Error) -> Self {
-        Internal(VC(err))
-    }
-}
-
-impl From<RequestError<reqwest::Error>> for Error {
-    fn from(err: RequestError<reqwest::Error>) -> Self {
-        match err {
-            RequestError::ClaimsVerification(e) => { Internal(ClaimNamesValidation(e.to_string())) }
-            RequestError::Request(e) => { Internal(Network(e)) }
-            RequestError::Response(_, body, _) => {
-                let err = match serde_json::from_slice::<ProtocolErrorResponse>(body.as_slice()) {
-                    Ok(ptr_err) => Protocol(ptr_err),
-                    _ => {
-                        match serde_json::from_slice::<String>(body.as_slice()) {
-                            Ok(err) => Internal(Unhandled(err)),
-                            _ => Internal(Other("can not parse credential response error".to_string()))
-                        }
-                    }
-                };
-
-                err
-            }
-            RequestError::ProofVerification(b) => {
-                let err = match (b.c_nonce, b.c_nonce_expires_in) {
-                    (Some(nonce), Some(expires_in)) =>
-                        ProtocolErrorResponse::new_with_nonce(
-                            ErrorType::InvalidProof,
-                            &b.error_description,
-                            nonce,
-                            Some(expires_in),
-                        ),
-                    _ => ProtocolErrorResponse::new(ErrorType::InvalidProof, &b.error_description)
-                };
-
-                Protocol(err)
-            }
-            RequestError::Parse(e) => { Internal(Other(e.to_string())) }
-            RequestError::Other(e) => { Internal(Other(e)) }
-            _ => { Internal(Unhandled("unhandled error".to_owned())) }
-        }
-    }
-}
-
-/// `Result` alias for `oid4vci`-specific [Error].
-pub type Result<T> = core::result::Result<T, Error>;
 
 /// An async `oid4vci` `Issuer` API.
 ///
@@ -463,7 +335,7 @@ mod tests {
     use crate::inmem::kms::LocalKms;
     use crate::inmem::vault::InMemVault;
     use crate::kms::Kms;
-    use crate::utils::http::{mock_http, mock_http_fn, mock_http_once, mock_static_ctx, MockHttpClient};
+    use crate::utils::http::test::{mock_http, mock_http_fn, mock_http_once, mock_static_ctx};
     use crate::vc::core::{HolderMetadata, KeyMetadata};
     use crate::vc::oid4vci::holder::HolderService;
     use crate::vc::oid4vci::issuer::{IssuerService, TokenValidation};
@@ -471,6 +343,7 @@ mod tests {
     use crate::vc::oid4vci::token_validation::Introspect;
     use crate::vc::oid4vci::{issuer, CredentialOfferGrants, CredentialOfferParams, Holder, IssuanceSession, Issuer};
     use crate::{kms, vc};
+    use crate::http::MockHttpClient;
 
     // FIXTURES
     const ACCESS_TOKEN: &str = "eyJhbGciOiJSUzI1NiIsInR5cCIgOiAiSldUIiwia2lkIiA6ICJQY2xZUDZ2UmsxTHBLRGZqU08yRGEzNXJtR1JmaTkzNjJDcFJFeUpmOHAwIn0.eyJleHAiOjE3MjQzOTg0OTQsImlhdCI6MTcyNDM5ODE5NCwiYXV0aF90aW1lIjoxNzI0Mzk4MTgyLCJqdGkiOiIwYjRmZTM5MC00OTIxLTQwNDItYjdlMS1iMDNiM2QxOTYyMjkiLCJpc3MiOiJodHRwOi8vbG9jYWxob3N0OjgwODAvaWRwL3JlYWxtcy9waWQtaXNzdWVyLXJlYWxtIiwic3ViIjoiNjBiOGJhNWYtYzczZi00OTc2LWIwZGEtNDhkMGU1MzMzNWRlIiwidHlwIjoiQmVhcmVyIiwiYXpwIjoid2FsbGV0LWRldiIsInNpZCI6ImYxNWIzZTExLWZmMjgtNDRkZi04ZmNmLWE3N2QyNDcxNGEyMyIsImFsbG93ZWQtb3JpZ2lucyI6WyIvKiJdLCJzY29wZSI6IlNEX0pXVF9jcmVkIn0.pLGGmOApXnQCY6CwuFzxFXEN36aDJ-iE0TM_esYJ_qtijhUtWq5zI9lD-iGzhTSdwZ7Y51eUKtqmJXHixzBo847vmMeGla4Ko6JTY-4vVAIQ1Hk1xzl25ALuZNwxGbljlysjzBgCxeAjZo3fE0HTI5y6NItptIU8aY3ykoIX9xE81ZkexbVrR495cEX7UIgUgCZyhj8lXUMWFrNFBhELnzzFGdX01Dq3B-KflY9ACVaw-_U9bT6EzDI0-0Cyx2K658EU9VpDjBSR6URT5I9quvx1qoYMFPv7zhjW3sUASIVwThe4CvWCCR8Kf8rsnEQ2qnchn0f6gn9thxi51FGkvA";
@@ -636,13 +509,13 @@ mod tests {
                 headers: Default::default(),
                 body: serde_json::to_vec(&cred_resp).unwrap(),
             },
-            Err(issuer::Error::Protocol(b)) => {
+            Err(issuer::Error::Protocol { source }) => {
                 return HttpResponse {
                     status_code: StatusCode::BAD_REQUEST,
                     headers: Default::default(),
-                    body: serde_json::to_vec(&b).unwrap(),
+                    body: serde_json::to_vec(&source).unwrap(),
                 }
-            }
+            },
             _ => panic!(),
         };
 

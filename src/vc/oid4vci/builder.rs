@@ -1,4 +1,3 @@
-use crate::utils::http::{HttpClient, ReqwestClient};
 use crate::vc::core::KeyMetadata;
 use crate::vc::oid4vci as api;
 use crate::vc::oid4vci::holder::HolderService;
@@ -10,6 +9,8 @@ use crate::{did, kms, vault, vc};
 use oid4vci::openidconnect::JsonWebKeySetUrl;
 use std::marker::PhantomData;
 use url::Url;
+use crate::http::HttpClient;
+use crate::reqwest::ReqwestClient;
 
 /// `oid4vci` builder error.
 #[derive(Debug, thiserror::Error, strum::IntoStaticStr)]

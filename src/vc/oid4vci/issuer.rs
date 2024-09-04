@@ -7,18 +7,23 @@ use oid4vci::credential::{ErrorType, ResponseEnum};
 use oid4vci::credential_offer::{CredentialOfferFormat, CredentialOfferGrants, CredentialOfferParameters};
 use oid4vci::proof_of_possession::{KeyProofType, Proof as SpruceProof, ProofType};
 use serde_json::{Map, Value};
+use snafu::{ensure, ResultExt};
 use ssi::jwt::decode_unverified;
 use time::ext::NumericalDuration;
 use url::Url;
-use tracing::{instrument, Level, debug, info, trace};
+use tracing::{instrument, Level, debug, info, trace, error};
 use uuid::Uuid;
-
-use crate::utils::http::HttpClient;
+use crate::http::HttpClient;
 use crate::vc;
 use crate::vc::core::{Proof as AsdkProof, Proof};
-use crate::vc::oid4vci::{CredentialOfferParams, CredentialRequest, CredentialResponse, InternalError, IssuanceSession, IssuerMetadata, Nonce, NonceData, ProtocolErrorResponse};
-use crate::vc::{Claims, oid4vci as api};
+use crate::vc::oid4vci::{
+    CredentialOfferParams, CredentialRequest, CredentialResponse, InternalError,
+    IssuanceSession, IssuerMetadata, Nonce, NonceData,
+};
+use crate::vc::{Claims, HasVCFormat, oid4vci as api};
+use crate::vc::oid4vci::internal_error::{ClaimsValidationSnafu, CredDefNotFoundSnafu, ParseSnafu, UrlParseSnafu, VCSnafu};
 use crate::vc::oid4vci::metadata::CredentialMetadata;
+use crate::vc::oid4vci::protocol_error::ProtocolSnafu;
 use crate::vc::oid4vci::token_validation::{ByJwks, Introspect};
 
 const CRED_OFFER_URI: &str = "openid-credential-offer://";
@@ -111,11 +116,9 @@ where
                 Some(grants.to_owned()),
             );
 
-        let cred_offer = serde_json::to_string(&cred_offer_params)
-            .map_err(InternalError::Parse)?;
+        let cred_offer = serde_json::to_string(&cred_offer_params).context(ParseSnafu)?;
 
-        let mut url = Url::parse(CRED_OFFER_URI)
-            .map_err(InternalError::Url)?;
+        let mut url = Url::parse(CRED_OFFER_URI).context(UrlParseSnafu)?;
 
         url.set_query(Some(format!("credential_offer={}", cred_offer).as_str()));
 
@@ -145,10 +148,9 @@ where
 
         let nonce = self.validate_nonce(session)?.nonce;
 
-        let proof = match cred_request.proof() {
-            Some(proof) => proof,
-            _ => return Err(self.invalid_proof(session, INVALID_PROOF_ERR_DESC)?)
-        };
+        let proof = cred_request.proof().ok_or_else(|| {
+            self.invalid_proof(session, INVALID_PROOF_ERR_DESC.to_string()).build()
+        })?;
 
         let cred_def_id = self.resolve_cred_def_id(cred_request)?;
 
@@ -166,16 +168,15 @@ where
         };
 
         let result = self.issuer
-            .issue_credential(&cred_req, claims, nonce.secret()).await;
+            .issue_credential(&cred_req, claims, nonce.secret())
+            .await;
 
-        if let Err(vc::core::Error::Proof { location, source }) = &result {
-            return Err(
-                self.invalid_proof(session, INVALID_PROOF_ERR_DESC)?
-            );
-        }
-
-        let (cred, _) = result
-            .map_err(InternalError::VC)?;
+        let (cred, _) =  match result {
+            Err(vc::core::Error::Proof { location, source }) => {
+                self.invalid_proof(session, INVALID_PROOF_ERR_DESC.to_string()).fail()?
+            }
+            _ => result.context(VCSnafu)?
+        };
 
         let mut resp = CredentialResponse::new(ResponseEnum::Immediate(cred.into()));
         resp = Self::update_cred_resp_and_session_data(resp, session);
@@ -205,14 +206,14 @@ where
             CoreProfilesRequest::SDJWTVC(det) => {
                 det.vct()
             }
-            _ => {
-                return Err(
-                    ProtocolErrorResponse::new(
-                        ErrorType::UnsupportedCredentialFormat,
-                        "only \"vc+sd-jwt\" format is supported"
-                    )
-                )?
-            }
+            _ => ProtocolSnafu::new(
+                ErrorType::UnsupportedCredentialFormat,
+                format!(
+                    "Unsupported credential format: {}",
+                    req.additional_profile_fields().format()
+                )
+            ).fail()?
+
         };
 
         let (cred_def_id, _) = self.issuer_metadata
@@ -225,10 +226,10 @@ where
                 false
             })
             .ok_or(
-                ProtocolErrorResponse::new(
+                ProtocolSnafu::new(
                     ErrorType::UnsupportedCredentialType,
-                    &format!("credential configuration id with vct = \"{}\" is not found", vct)
-                )
+                    format!("Credential configuration id with vct = \"{vct}\" is not found")
+                ).build()
             )?;
 
         Ok(cred_def_id.to_owned())
@@ -241,13 +242,13 @@ where
         ret(level = Level::DEBUG),
     )]
     fn validate_cred_def_ids(&self, cred_def_ids: &Vec<&str>) -> Result<()> {
-        if cred_def_ids.is_empty() {
-            return Err(
-                ProtocolErrorResponse::new(
-                    ErrorType::InvalidRequest,
-                    "Missed credential configuration ids").into()
-            );
-        }
+        ensure!(
+            !cred_def_ids.is_empty(),
+            ProtocolSnafu::new(
+                ErrorType::InvalidRequest,
+                "Missed credential configuration ids".to_string()
+            )
+        );
 
         let supported: Vec<String> = self.issuer_metadata
             .credential_configurations_supported()
@@ -258,16 +259,14 @@ where
 
         debug!(supported_credential_definition_ids = ?supported);
 
-        for c in cred_def_ids {
-            if !supported.contains(&c.to_string()) {
-
-                return Err(
-                    ProtocolErrorResponse::new(
+        for id in cred_def_ids {
+            ensure!(
+                supported.contains(&id.to_string()),
+                ProtocolSnafu::new(
                     ErrorType::UnsupportedCredentialType,
-                    &format!("Credential definition id = {} is not supported", c)
-                    ).into()
-                );
-            }
+                    format!("Unsupported Credential definition ID: {id}")
+                )
+            );
         }
 
         Ok(())
@@ -284,16 +283,15 @@ where
             Some(nonce_data) => {
                 if let (Some(created), Some(expires_in)) = (nonce_data.created, nonce_data.expires_in) {
                     let expires = created.add(expires_in.seconds());
-                    if time::OffsetDateTime::now_utc() >= expires  {
-                        return Err(self.invalid_proof(session, INVALID_PROOF_ERR_DESC)?)
-                    }
+                    ensure!(
+                        time::OffsetDateTime::now_utc() < expires,
+                        self.invalid_proof(session, INVALID_PROOF_ERR_DESC.to_string())
+                    );
                 }
 
                 Ok(nonce_data.to_owned())
             },
-            _ => {
-                return Err(self.invalid_proof(session, INVALID_PROOF_ERR_DESC)?)
-            }
+            _ => self.invalid_proof(session, INVALID_PROOF_ERR_DESC.to_string()).fail()?
         }
     }
 
@@ -322,53 +320,41 @@ where
 
         let (proof_type, proof) = match proof {
             SpruceProof::JWT{ jwt } => (KeyProofType::Jwt, jwt),
-            _ => {
-                let err = self.invalid_proof(session, "only \"jwt\" proof type is supported")?;
-
-                return Err(err)
-            }
+            SpruceProof::CWT { cwt } => self.invalid_proof(
+                session,
+                "Unsupported proof type: CWT".to_string()
+            ).fail()?
         };
 
-        let proof_type = match proof_types.get(&proof_type) {
-            Some(proof_type)  => proof_type,
-            _ => {
-                let proof_type = serde_json::to_string(&proof_type).map_err(InternalError::Parse)?;
-                let err = self.invalid_proof(
-                    session,
-                    &format!("proof type = \"{}\" is not supported", proof_type)
-                )?;
+        let proof_type = proof_types.get(&proof_type).ok_or_else(|| {
+            self.invalid_proof(
+                session,
+                format!("Unsupported proof type: {:?}", proof_type)
+            ).build()
+        })?;
 
-                return Err(err)
-            }
-        };
         debug!(resolved_proof_type = ?proof_type);
 
-        let proof_header = match jsonwebtoken::decode_header(&proof) {
-            Ok(proof_header) => proof_header,
-            _ => {
-                let err = self.invalid_proof(
-                    session,
-                    "can not retrieve \"alg\" from the proof's header"
-                )?;
-
-                return Err(err)
-            }
-        };
+        let proof_header = jsonwebtoken::decode_header(&proof).map_err(|err| {
+            error!("Can not retrieve \"alg\" from the proof's header: {err}");
+            self.invalid_proof(
+                session,
+                "Can not retrieve \"alg\" from the proof's header".to_string()
+            ).build()
+        })?;
 
         let sign_alg = serde_json::from_value(
-            serde_json::to_value(proof_header.alg)
-                .map_err(InternalError::Parse)?
-        ).map_err(InternalError::Parse)?;
+            serde_json::to_value(proof_header.alg).context(ParseSnafu)?
+        ).context(ParseSnafu)?;
         debug!(resolved_signing_algorithm = %sign_alg);
 
-        if !proof_type.proof_signing_alg_values_supported.contains(&sign_alg) {
-            let err = self.invalid_proof(
+        ensure!(
+            proof_type.proof_signing_alg_values_supported.contains(&sign_alg),
+            self.invalid_proof(
                 session,
-                &format!("proof_type signing algorithm = \"{}\" is not supported", sign_alg)
-            )?;
-
-            return Err(err)
-        }
+                format!("Unsupported proof type's signing algorithm: '{sign_alg}'")
+            )
+        );
 
         Ok(())
     }
@@ -396,19 +382,19 @@ where
     fn validate_scope(&self, token: &String, cred_def_id: &str) -> Result<()> {
         trace!(token_to_validate = %token);
 
-        let token: Map<String, Value>   = decode_unverified(token.as_str())
-            .map_err( |_|
-                ProtocolErrorResponse::new(
+        let token: Map<String, Value>  = decode_unverified(token.as_str())
+            .map_err( |err| {
+                error!("Could not parse the access token: {err}");
+                ProtocolSnafu::new(
                     ErrorType::InvalidToken,
-                    "could not parse the access token"
-                )
-            )?;
+                    "Could not parse the access token".to_string()
+                ).build()
+            })?;
 
         let supported: Vec<Option<&Scope>> = self.issuer_metadata
             .credential_configurations_supported()
             .values()
             .map(|cred_metadata| cred_metadata.scope())
-
             .collect();
         debug!(supported_credential_definition_ids = ?supported);
 
@@ -422,23 +408,19 @@ where
                 );
 
             if let Some(not_supported) = not_supported {
-                return Err(
-                    ProtocolErrorResponse::new(
-                        ErrorType::InvalidToken,
-                        &format!("\"{}\" scope declared in the token is not supported", not_supported)
-                    ).into()
-                )
+                ProtocolSnafu::new(
+                    ErrorType::InvalidToken,
+                    format!("\"{not_supported}\" scope declared in the token is not supported")
+                ).fail()?;
             }
 
             return Ok(())
         }
 
-        Err(
-            ProtocolErrorResponse::new(
-                ErrorType::InvalidToken,
-                "access token does not have \"scope\" field"
-            ).into()
-        )
+        ProtocolSnafu::new(
+            ErrorType::InvalidToken,
+            "Access token does not have \"scope\" field".to_string()
+        ).fail()?
     }
 
     #[instrument(
@@ -452,23 +434,18 @@ where
 
         let claim_names: Vec<&str> = match claims {
             Value::Object(claims) => claims.keys().map(|k| k.as_str()).collect(),
-            _ => return Err(
-                InternalError::ClaimNamesValidation("provided \"claims\" is not json object".to_owned())
-                    .into()
-            )
+            _ => ClaimsValidationSnafu { details: "Provided \"claims\" is not json object" }.fail()?
         };
 
         let cred_metadata = self.get_credential_metadata(&cred_def_id)?;
+        //TODO Support other formats
         let sd_jwt_vc_metadata = match cred_metadata.additional_fields() {
             CoreProfilesMetadata::SDJWTVC(metadata) => metadata,
-            _ =>
-            //TODO Support other formats
-                return Err(
-                    ProtocolErrorResponse::new(
-                        ErrorType::UnsupportedCredentialFormat,
-                        "only \"vc+sd-jwt\" format is supported"
-                    ).into()
+            _ => ProtocolSnafu::new(
+                    ErrorType::UnsupportedCredentialFormat,
+                    format!("Unsupported credential format: {}", cred_metadata.additional_fields().format()
                 )
+            ).fail()?
         };
         debug!(resolved_credential_metadata = ?sd_jwt_vc_metadata);
 
@@ -490,11 +467,9 @@ where
                 |c| !supported_claims.contains(c)
             );
         if let Some(not_supported) = not_supported {
-            return Err(
-                InternalError::ClaimNamesValidation(
-                    format!("\"{}\" claim name is not supported", not_supported)
-                ).into()
-            )
+            ClaimsValidationSnafu {
+                details: format!("Unsupported claim name: {not_supported}")
+            }.fail()?;
         }
 
         Ok(())
@@ -506,15 +481,13 @@ where
         err(),
         ret(level = Level::DEBUG),
     )]
-    fn get_credential_metadata(&self, cred_def_id: &str) -> Result<&CredentialMetadata> {
+    fn get_credential_metadata(
+        &self, cred_def_id: &str
+    ) -> std::result::Result<&CredentialMetadata, InternalError> {
         self.issuer_metadata.
             credential_configurations_supported()
             .get(cred_def_id)
-            .ok_or(
-                InternalError::CredDefNotFound(
-                    format!("credential configuration with \"{}\" id is not found", cred_def_id)
-                ).into()
-            )
+            .ok_or_else(|| CredDefNotFoundSnafu { id: cred_def_id }.build())
     }
 
     #[instrument(
@@ -530,21 +503,21 @@ where
             TokenValidation::Introspect(svc) => {
                 svc.validate(token)
                     .await
-                    .map_err( |_|
-                        ProtocolErrorResponse::new(
+                    .map_err(|_|
+                        ProtocolSnafu::new(
                             ErrorType::InvalidToken,
-                            "could not validate the token"
-                        )
+                            "Could not validate the token".to_string()
+                        ).build()
                     )?
             }
             TokenValidation::ByJwks(svc) => {
                 svc.validate(token)
                     .await
-                    .map_err( |_|
-                        ProtocolErrorResponse::new(
+                    .map_err(|_|
+                        ProtocolSnafu::new(
                             ErrorType::InvalidToken,
-                            "could not validate the token"
-                        )
+                            "Could not validate the token".to_string()
+                        ).build()
                     )?
             }
             TokenValidation::None => {}
@@ -556,25 +529,24 @@ where
     #[instrument(
         level = Level::TRACE,
         skip(self, session),
-        err(),
         ret(level = Level::TRACE),
     )]
-    fn invalid_proof(&self, session: &mut IssuanceSession, description: &str) -> Result<Error> {
+    fn invalid_proof(
+        &self,
+        session: &mut IssuanceSession,
+        description: String
+    ) -> ProtocolSnafu<vc::oid4vci::ErrorType, Option<String>, Option<Nonce>, Option<i64>> {
         trace!(?session);
 
         let nonce_data = NonceData::new_random();
         session.nonce = Some(nonce_data.clone());
 
-        let err = Error::Protocol(
-            ProtocolErrorResponse::new_with_nonce(
-                ErrorType::InvalidProof,
-                description,
-                nonce_data.nonce,
-                nonce_data.expires_in,
-            )
-        );
-
-        Ok(err)
+        ProtocolSnafu::new_with_nonce(
+            ErrorType::InvalidProof,
+            description,
+            nonce_data.nonce,
+            nonce_data.expires_in,
+        )
     }
 
     #[instrument(

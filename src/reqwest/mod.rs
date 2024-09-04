@@ -2,12 +2,9 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use oauth2::{HttpRequest, HttpResponse};
-use reqwest::Client;
+use reqwest::{Client};
 use tracing::{instrument, Level, trace};
-
-use crate::utils::http::HttpClient;
-
-pub type Error = reqwest::Error;
+use crate::http::{HttpClient, HttpSnafu, Result};
 
 #[derive(Clone)]
 pub struct ReqwestClient {
@@ -18,11 +15,12 @@ impl ReqwestClient {
     pub fn new(
         https_only: bool,
         invalid_certs: bool,
-    ) -> Result<Self, Error> {
+    ) -> Result<Self> {
         let client = Client::builder()
             .https_only(https_only)
             .danger_accept_invalid_certs(invalid_certs)
-            .build()?;
+            .build()
+            .map_err(|err| HttpSnafu { details: err.to_string() }.build())?;
 
         Ok(Self { client })
     }
@@ -41,7 +39,7 @@ impl HttpClient for ReqwestClient {
         )
         err(),
     )]
-    async fn async_call(&self, request: HttpRequest) -> Result<HttpResponse, Error> {
+    async fn async_call(&self, request: HttpRequest) -> Result<HttpResponse> {
         let mut request_builder = self.client
             .request(request.method, request.url.as_str())
             .body(request.body)
@@ -51,12 +49,15 @@ impl HttpClient for ReqwestClient {
             request_builder = request_builder.header(name.as_str(), value.as_bytes());
         }
 
-        let request = request_builder.build()?;
+        let request = request_builder.build()
+            .map_err(|err| HttpSnafu { details: err.to_string() }.build())?;
 
-        let response = self.client.execute(request).await?;
+        let response = self.client.execute(request).await
+            .map_err(|err| HttpSnafu { details: err.to_string() }.build())?;
         let status_code = response.status();
         let headers = response.headers().to_owned();
-        let chunks = response.bytes().await?;
+        let chunks = response.bytes().await
+            .map_err(|err| HttpSnafu { details: err.to_string() }.build())?;
 
         trace!(response_body = ?{ String::from_utf8(chunks.to_vec()).as_ref() });
 
@@ -67,7 +68,9 @@ impl HttpClient for ReqwestClient {
         })
     }
 
-    async fn static_async(request: HttpRequest) -> Result<HttpResponse, Error> {
+    async fn static_async(request: HttpRequest) -> Result<HttpResponse> {
         ReqwestClient::new(false, true)?.async_call(request).await
     }
 }
+
+

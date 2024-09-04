@@ -10,6 +10,8 @@ We use the `snafu` library for error handling, taking advantage of its features 
 - Use the `#[snafu(implicit)]` attribute for the `location` field to avoid providing it during error creation.
 - Use the `ensure!` macro if you want to raise an error if some condition is not met.
 - All error enums should use the `#[non_exhaustive]` macro to allow for future extensions without breaking existing code.
+- Error types should be placed close to their fallibility unit.
+- Avoid creating a generic `errors.rs` file that may contain multiple error types, as it can become bloated.
 
 ## Error Log Example
 As shown in the example below, error logs should be structured to provide useful information to the end user:

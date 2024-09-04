@@ -8,6 +8,8 @@ pub const JWT_VC_JSON: &str = "jwt_vc_json";
 pub const JWT_VC_JSON_LD: &str = "jwt_vc_json-ld";
 pub const LDP_VC: &str = "ldp_vc";
 pub const SD_JWT_VC: &str = "vc+sd-jwt";
+pub const MSO_MDOC: &str = "MsoMdoc";
+
 
 /// Basic enum for supported `VC` formats.
 #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
@@ -17,6 +19,7 @@ pub enum VCFormat {
     JwtVcJsonLD,
     LdpVc,
     SdJwtVc,
+    MsoMdoc,
 }
 
 pub trait HasVCFormat {
@@ -30,6 +33,7 @@ impl Into<&'static str> for &VCFormat {
             VCFormat::JwtVcJsonLD => JWT_VC_JSON_LD,
             VCFormat::LdpVc => LDP_VC,
             VCFormat::SdJwtVc => SD_JWT_VC,
+            VCFormat::MsoMdoc => MSO_MDOC,
         }
     }
 }
@@ -43,6 +47,7 @@ impl FromStr for VCFormat {
             JWT_VC_JSON_LD => Ok(VCFormat::JwtVcJsonLD),
             LDP_VC => Ok(VCFormat::LdpVc),
             SD_JWT_VC => Ok(VCFormat::SdJwtVc),
+            MSO_MDOC => Ok(VCFormat::MsoMdoc),
             _ => FormatNotSupportedSnafu { format: s }.fail(),
         }
     }

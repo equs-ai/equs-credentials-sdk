@@ -6,8 +6,8 @@ use std::fmt::Debug;
 use crate::kms::Error as KmsError;
 use crate::vault::Error as VaultError;
 use crate::vc::{
-    formats::Error as VCError, metadata::Error as MetadataError, pop::Error as ProofError,
-    Claims, Credential, CredentialMetadata, Presentation,
+    formats::Error as VCError, pop::Error as ProofError, metadata::Error as MetadataError,
+    Claims, Credential, CredentialMetadata, Presentation, VCFormat
 };
 
 mod verifier;
@@ -49,7 +49,7 @@ pub struct IssuerMetadataData {}
 #[derive(Debug, Clone, PartialEq)]
 pub struct CredentialDefinition {
     pub cred_def_id: String,
-    pub format: String,
+    pub format: VCFormat,
     pub claims: HashMap<String, Display>,
     pub supported_proofs: Vec<String>,
     pub display: Option<Display>,
@@ -585,7 +585,7 @@ mod tests {
             cred_defs: vec![
                 CredentialDefinition {
                     cred_def_id: "SD_JWT_cred".into(),
-                    format: vc::VCFormat::SdJwtVc.to_string(),
+                    format: vc::VCFormat::SdJwtVc,
                     claims: Default::default(),
                     supported_proofs: vec![
                         "jwt".into()

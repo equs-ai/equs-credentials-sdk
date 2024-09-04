@@ -96,7 +96,6 @@ where
         debug!(resolved_holder_did = ?hld_did);
 
         let vc_fmt = &cred_def.format;
-        let vc_fmt = vc::VCFormat::from_str(vc_fmt).context(VCSnafu)?;
 
         let (iss_did, iss_key) = self.resolve_key_metadata(cred_def).await?;
 
