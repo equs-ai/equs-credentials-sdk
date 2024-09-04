@@ -338,6 +338,28 @@ pub trait Holder: Send + Sync
         metadata: &CredentialMetadata,
     ) -> Result<String>;
 
+    /// Verify a `Credential` against an Issuer signature.
+    ///
+    /// This method will validate the `cred` signature.
+    ///
+    /// # Arguments
+    ///
+    /// * `credential` - a `Credential` to save.
+    ///
+    /// # Returns
+    /// Unit type if verification succeeds.
+    ///
+    ///
+    /// # Errors
+    ///
+    /// * [Error::FormatNotSupported] - VC format is not supported by the `Holder`.
+    /// * [Error::VC] - internal error [VCFormatError](crate::vc::VCFormatError).
+    async fn verify_credential(
+        &self,
+        credential: &Credential,
+    ) -> Result<()>;
+
+
     /// Create a Verifiable Presentation automatically.
     ///
     /// `Holder` will automatically select first `Credential` that matched the `PresentationInput`.

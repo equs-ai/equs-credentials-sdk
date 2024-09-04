@@ -312,9 +312,13 @@ where
 
         let resp = credential_request
             .request_async(|req| self.http_client.async_call(req))
-            .await?;
+            .await?.try_into();
 
-        resp.try_into()
+        if let Ok(CredentialResult::Credential {credential, ..}) = &resp {
+            self.holder.verify_credential(credential).await?;
+        }
+
+        resp
     }
 
     #[instrument(
@@ -522,7 +526,7 @@ impl TryInto<CredentialResult> for oid4vci::credential::Response<CoreProfilesRes
         let result = match self.additional_profile_fields() {
             ResponseEnum::Immediate(resp) => {
                 let credential = resp.try_into()?;
-                CredentialResult::Credential { credential, notification_id: None }
+                CredentialResult::Credential { credential, notification_id: self.notification_id().map(|v| v.to_owned()) }
             }
             ResponseEnum::Deferred { transaction_id } => {
                 CredentialResult::Deferred { transaction_id: transaction_id.clone().unwrap() }

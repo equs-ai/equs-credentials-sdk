@@ -10,7 +10,7 @@ use crate::vault::{FindCriteria};
 use crate::vc::core::{CredDefRequiredSnafu, FormatNotSupportedSnafu, KMSSnafu, ProofFormatRequiredSnafu, ProofSnafu, RequestedCredentialNotFoundSnafu, Result, VaultSnafu, VCSnafu};
 use crate::vc::core::{CredentialOffer, CredentialRequest, CredentialRequestData, Holder, HolderMetadata, PresentationInput, Proof};
 use crate::vc::formats::sd_jwt_vc::{SdJwtAPI, VPMetadata};
-use crate::vc::formats::{API};
+use crate::vc::formats::{API, VerifyOptions};
 use crate::vc::pop::jwt_pop::JwtProofOfPossession;
 use crate::vc::pop::ProofOfPossession;
 use crate::vc::{pop, Credential, CredentialMetadata, Presentation, HasVCFormat};
@@ -101,6 +101,23 @@ where
             .context(VaultSnafu)?;
 
         Ok(id)
+    }
+
+    #[instrument(
+        level = Level::TRACE,
+        skip_all,
+        err(),
+        ret(level = Level::TRACE),
+    )]
+    async fn verify_credential(&self, credential: &Credential) -> Result<()> {
+        trace!(?credential);
+
+        match credential {
+            Credential::SdJwt(cred) => {
+                SdJwtAPI::verify_vc(cred, VerifyOptions{}).await.context(VCSnafu)
+            }
+            _ => FormatNotSupportedSnafu { format: credential.format().to_string() }.fail()
+        }
     }
 
     #[instrument(
