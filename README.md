@@ -112,8 +112,8 @@ An example of integration: https://git.slock.it/equstng/proof-of-concepts/asdk-d
     - GET /.well-known/openid-credential-issuer HTTP/1.1: `get_issuer_metadata`
     - POST /credential HTTP/1.1: `issue_credential`
 6. Integrate Authorization Server (KeyCloak)
-    - `scope` must be equal to a Cred Def ID from the Issuer Metadata
-    - Either issue a new access token with the required scope (see [VC OID4VC API Auth Code: Full Flow](docs/vc-oid4vc-api-auth-code-full.png)), or re-use exisring access token, but make sure that CredDefIS is included as one of the scope values (see [VC OID4VC API Auth Code: Already Authorized](docs/vc-oid4vc-api-auth-code-already-authorized.png))
+    - Either issue a new access token with the required scope (see [VC OID4VC API Auth Code: Full Flow](docs/vc-oid4vc-api-auth-code-full.png)), 
+    - or re-use existing access token, but make sure that CredDefID is included as one of the scope values (see [VC OID4VC API Auth Code: Already Authorized](docs/vc-oid4vc-api-auth-code-already-authorized.png))
 
 
 **Web App: Verifier**

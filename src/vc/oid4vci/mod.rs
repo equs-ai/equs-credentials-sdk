@@ -1,9 +1,10 @@
-use std::fmt::Debug;
+use crate::vc::{Claims, Credential, CredentialMetadata};
 use async_trait::async_trait;
-use oid4vci::core::profiles::CoreProfilesOffer;
+use oauth2::AccessToken;
+use oid4vci::core::profiles::{CoreProfilesMetadata, CoreProfilesOffer};
 use serde::{Deserialize, Serialize};
 use snafu::Snafu;
-use crate::vc::{Claims, Credential, CredentialMetadata};
+use std::fmt::Debug;
 
 pub(crate) mod issuer;
 pub(crate) mod holder;
@@ -14,13 +15,15 @@ mod builder;
 mod protocol_error;
 mod internal_error;
 
-pub use builder::IssuerBuilder;
 pub use builder::HolderBuilder;
+pub use builder::IssuerBuilder;
 pub use internal_error::InternalError;
 pub use protocol_error::ProtocolError;
 
 // Data types
 pub type IssuerMetadata = oid4vci::core::metadata::IssuerMetadata;
+pub type CredDefMetadata = oid4vci::metadata::CredentialMetadata<CoreProfilesMetadata>;
+pub type CredDefMetadataProfile = oid4vci::core::profiles::CoreProfilesMetadata;
 pub type AuthorizationMetadata = oid4vci::metadata::AuthorizationMetadata;
 pub type CredentialOffer = oid4vci::credential_offer::CredentialOffer<CoreProfilesOffer>;
 pub type CredentialOfferGrants = oid4vci::credential_offer::CredentialOfferGrants;
@@ -34,7 +37,7 @@ pub type Nonce = oid4vci::openidconnect::Nonce;
 
 /// A result of the Credential issuance handled by `Holder`
 ///
-/// [Credential] contains issued `Credential`.
+/// Enum value `Credential` contains issued [Credential].
 ///
 /// *NOTE*: `deferred` flow and `notifications` currently are not supported.
 #[derive(Debug, Clone)]
@@ -43,6 +46,44 @@ pub enum CredentialResult {
     Credential { credential: Credential, notification_id: Option<String> },
 }
 
+/// A resolved response of the Credential issuance handled by `Holder`
+///
+/// `data` contains `CredentialResult`.
+/// `nonce_data` contains optional `NonceData` for subsequent calls.
+#[derive(Debug, Clone)]
+pub struct CredentialResponseResolved {
+    pub data: CredentialResult,
+    pub nonce_data: Option<NonceData>,
+}
+
+
+/// A session with state managed during the issuance.
+///
+/// Contains [NonceData].
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct IssuanceSession {
+    nonce: Option<NonceData>,
+    notification_id: Option<String>,
+    transaction_id: Option<String>,
+}
+
+impl Default for IssuanceSession {
+    fn default() -> Self {
+        Self {
+            nonce: None,
+            notification_id: None,
+            transaction_id: None,
+        }
+    }
+}
+
+/// A struct containing nonce and related data.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NonceData {
+    pub nonce: Nonce,
+    pub expires_in: Option<i64>,
+    pub created: Option<time::OffsetDateTime>,
+}
 
 /// `oid4vci` API common error.
 ///
@@ -72,34 +113,6 @@ impl Debug for Error {
 /// `Result` alias for `oid4vci`-specific [Error].
 pub type Result<T> = core::result::Result<T, Error>;
 
-/// A session with state managed during the issuance.
-///
-/// Contains [NonceData].
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct IssuanceSession {
-    nonce: Option<NonceData>,
-    notification_id: Option<String>,
-    transaction_id: Option<String>,
-}
-
-impl Default for IssuanceSession {
-    fn default() -> Self {
-        Self{
-            nonce: None,
-            notification_id: None,
-            transaction_id: None,
-        }
-    }
-}
-
-/// A struct containing nonce and related data.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct NonceData {
-    nonce: Nonce,
-    expires_in: Option<i64>,
-    created: Option<time::OffsetDateTime>,
-}
-
 /// An async `oid4vci` `Issuer` API.
 ///
 /// Supports issuance flow according to the `oid4vci` standard.
@@ -123,6 +136,14 @@ pub trait Issuer: Send + Sync {
     ///
     /// An `IssuerMetadata`.
     fn get_issuer_metadata(&self) -> IssuerMetadata;
+
+    /// Returns the `CredDefMetadata` for the provided `CredentialRequest`.
+    ///
+    /// # Returns
+    ///
+    /// `Some(CredDefMetadata)` if `cred_request` contains valid values.
+    /// `None` otherwise
+    fn get_cred_def_metadata(&self, cred_request: &CredentialRequest) -> Option<CredDefMetadata>;
 
     /// Create a `CredentialOffer` for multiple `CredDef` ids.
     ///
@@ -219,11 +240,9 @@ pub trait Holder: Send + Sync {
     ///
     /// Leverages Pushed Authorization Request endpoint, PKCE and CSRF tokens.
     ///
-    /// Currently, only `scope`=`cred_def_id` is supported.
-    ///
     /// # Arguments
     ///
-    /// * `cred_def_id` - a `CredentialDefinition` ID.
+    /// * `scope` - a scope for the desired `CredentialDefinition`s.
     /// * `authorization_callback` - a callback to retrieve an authorization code by the given `auth_url`.
     /// Requires application layer interaction.
     ///
@@ -238,7 +257,7 @@ pub trait Holder: Send + Sync {
     /// * [InternalError::Network] - fails to make a call to the `Issuer`.
     async fn authz_code_flow_with_scope(
         &self,
-        cred_def_id: String,
+        scope: String,
         authorization_callback: impl FnOnce(url::Url) -> String + Send,
     ) -> Result<TokenResponse>;
 
@@ -266,20 +285,19 @@ pub trait Holder: Send + Sync {
     ///
     /// Makes a call to an Issue Credential endpoint under the hood.
     ///
-    /// If no nonce were provided with `token_response`
-    /// service will make an empty request to re-request nonce from the `Issuer` automatically.
-    ///
     /// Always generates and provides a `Proof of Possession` in the request.
     ///
     /// After getting the `Credential`, verifies it against the signature by resolving the issuer's DID.
     /// # Arguments
     ///
-    /// * `token_response` - an authz response containing valid access token. May contain nonce.
+    /// * `token` - an access token.
     /// * `cred_def_id` - a `CredentialDefinition` ID.
+    /// * `nonce` - an optional nonce. If not set `Holder` will re-request nonce from the `Issuer` automatically.
     ///
     /// # Returns
     ///
-    /// A `CredentialResult` (Immediate or Deferred) on success.
+    /// A `CredentialResponseResolved` (Immediate or Deferred) on success.
+    /// Optionally includes `NonceData` for the next requests.
     ///
     /// # Errors
     ///
@@ -292,9 +310,10 @@ pub trait Holder: Send + Sync {
     /// * [InternalError::VC] - `vc::core` error during `Proof` generation or credential signature verification.
     async fn request_credential(
         &self,
-        token_response: &TokenResponse,
+        token: &AccessToken,
         cred_def_id: &str,
-    ) -> Result<CredentialResult>;
+        nonce: Option<Nonce>,
+    ) -> Result<CredentialResponseResolved>;
 
     /// Store a `Credential`.
     ///
@@ -319,7 +338,7 @@ pub trait Holder: Send + Sync {
 mod tests {
     use futures::executor;
     use oauth2::http::{Method, StatusCode};
-    use oauth2::{HttpRequest, HttpResponse};
+    use oauth2::{HttpRequest, HttpResponse, TokenResponse};
     use oid4vci::core::credential_offer::CredentialOffer;
     use oid4vci::core::metadata::IssuerMetadata;
     use oid4vci::credential_offer::AuthorizationCodeGrant;
@@ -332,6 +351,7 @@ mod tests {
     use crate::crypto::Key;
     use crate::did::didkey::DIDKey;
     use crate::did::DIDURL;
+    use crate::http::MockHttpClient;
     use crate::inmem::kms::LocalKms;
     use crate::inmem::vault::InMemVault;
     use crate::kms::Kms;
@@ -343,11 +363,10 @@ mod tests {
     use crate::vc::oid4vci::token_validation::Introspect;
     use crate::vc::oid4vci::{issuer, CredentialOfferGrants, CredentialOfferParams, Holder, IssuanceSession, Issuer};
     use crate::{kms, vc};
-    use crate::http::MockHttpClient;
 
     // FIXTURES
     const ACCESS_TOKEN: &str = "eyJhbGciOiJSUzI1NiIsInR5cCIgOiAiSldUIiwia2lkIiA6ICJQY2xZUDZ2UmsxTHBLRGZqU08yRGEzNXJtR1JmaTkzNjJDcFJFeUpmOHAwIn0.eyJleHAiOjE3MjQzOTg0OTQsImlhdCI6MTcyNDM5ODE5NCwiYXV0aF90aW1lIjoxNzI0Mzk4MTgyLCJqdGkiOiIwYjRmZTM5MC00OTIxLTQwNDItYjdlMS1iMDNiM2QxOTYyMjkiLCJpc3MiOiJodHRwOi8vbG9jYWxob3N0OjgwODAvaWRwL3JlYWxtcy9waWQtaXNzdWVyLXJlYWxtIiwic3ViIjoiNjBiOGJhNWYtYzczZi00OTc2LWIwZGEtNDhkMGU1MzMzNWRlIiwidHlwIjoiQmVhcmVyIiwiYXpwIjoid2FsbGV0LWRldiIsInNpZCI6ImYxNWIzZTExLWZmMjgtNDRkZi04ZmNmLWE3N2QyNDcxNGEyMyIsImFsbG93ZWQtb3JpZ2lucyI6WyIvKiJdLCJzY29wZSI6IlNEX0pXVF9jcmVkIn0.pLGGmOApXnQCY6CwuFzxFXEN36aDJ-iE0TM_esYJ_qtijhUtWq5zI9lD-iGzhTSdwZ7Y51eUKtqmJXHixzBo847vmMeGla4Ko6JTY-4vVAIQ1Hk1xzl25ALuZNwxGbljlysjzBgCxeAjZo3fE0HTI5y6NItptIU8aY3ykoIX9xE81ZkexbVrR495cEX7UIgUgCZyhj8lXUMWFrNFBhELnzzFGdX01Dq3B-KflY9ACVaw-_U9bT6EzDI0-0Cyx2K658EU9VpDjBSR6URT5I9quvx1qoYMFPv7zhjW3sUASIVwThe4CvWCCR8Kf8rsnEQ2qnchn0f6gn9thxi51FGkvA";
-    const CRED_DEF_ID: &str = "SD_JWT_cred";
+    const SCOPE: &str = "SD_JWT_cred";
 
     #[tokio::test]
     async fn e2e() {
@@ -403,13 +422,6 @@ mod tests {
                 "access_token": ACCESS_TOKEN,
                 "token_type": "bearer",
                 "expires_in": 86400,
-                "authorization_details": [
-                    {
-                        "type": "openid_credential",
-                        "format": "vc+sd-jwt",
-                        "vct": CRED_DEF_ID,
-                    }
-                ]
             }),
             StatusCode::OK,
         );
@@ -422,7 +434,7 @@ mod tests {
                   "active": true,
             }),
             StatusCode::OK,
-            2.into(),
+            3.into(),
         );
 
         // 1. Creating issuer from issuer metadata
@@ -431,7 +443,7 @@ mod tests {
 
         // 2. Creating offer
         let (offer, _) = issuer.create_credential_offer(
-            vec![CRED_DEF_ID],
+            vec!["SD_JWT_cred_1", "SD_JWT_cred_2"],
             &CredentialOfferGrants {
                 authorization_code: Some(AuthorizationCodeGrant { issuer_state: None }),
                 pre_authorized_code: None,
@@ -449,7 +461,7 @@ mod tests {
                 let result = executor::block_on(fut);
                 Ok(result)
             },
-            2.into(),
+            3.into(),
         );
 
         // 3.1 Creating holder from offer
@@ -460,7 +472,7 @@ mod tests {
 
         // 5. Holder authorizes
         let token_response = holder.authz_code_flow_with_scope(
-            CRED_DEF_ID.into(),
+            SCOPE.into(),
             |url| {
                 println!("Url {}", url);
 
@@ -473,13 +485,27 @@ mod tests {
 
         println!("Token response {:?}", token_response);
 
-        // 6.1 Holder requests credentials
-        let credential = holder.request_credential(
-            &token_response.clone(),
-            CRED_DEF_ID,
+        // 6.1 Holder requests SD_JWT_cred_1 credentials
+        let response = holder.request_credential(
+            token_response.access_token(),
+            "SD_JWT_cred_1",
+            None,
         ).await.unwrap();
 
-        println!("Credential: {:?}", credential);
+        println!("Credential 1: {:?}", response.data);
+
+        // Extra check that subsequent nonce returned
+        let nonce_data = response.nonce_data;
+        assert!(nonce_data.is_some());
+
+        // 6.2 Holder requests SD_JWT_cred_2 credentials with the same token
+        let response = holder.request_credential(
+            token_response.access_token(),
+            "SD_JWT_cred_2",
+            nonce_data.map(|d| d.nonce),
+        ).await.unwrap();
+
+        println!("Credential 2: {:?}", response.data);
     }
 
     async fn credential_endpoint(issuer: &impl Issuer, req: HttpRequest, session: &mut IssuanceSession) -> HttpResponse {
@@ -490,7 +516,6 @@ mod tests {
             .to_string();
 
         let claims = json!( {
-                        "vct": "SD_JWT_cred",
                         "given_name": "John",
                         "family_name": "Doe",
                         "dob": "09/09/1989",
@@ -515,7 +540,7 @@ mod tests {
                     headers: Default::default(),
                     body: serde_json::to_vec(&source).unwrap(),
                 }
-            },
+            }
             _ => panic!(),
         };
 
@@ -603,9 +628,9 @@ mod tests {
               "authorization_servers": [authz_url],
               "credential_endpoint": iss_url.to_owned()+"/credential",
               "credential_configurations_supported": {
-                "SD_JWT_cred": {
+                "SD_JWT_cred_1": {
                   "format": "vc+sd-jwt",
-                  "scope": "SD_JWT_cred",
+                  "scope": SCOPE.to_owned(),
                   "cryptographic_binding_methods_supported": [
                     "jwk"
                   ],
@@ -619,7 +644,7 @@ mod tests {
                       ]
                     }
                   },
-                  "vct": "SD_JWT_cred",
+                  "vct": "SD_JWT_cred_1",
                   "credential_definition": {
                       "type": "SD_JWT_cred",
                       "claims": {
@@ -628,7 +653,33 @@ mod tests {
                         "dob": {}
                       }
                     }
-                }
+                },
+                "SD_JWT_cred_2": {
+                  "format": "vc+sd-jwt",
+                  "scope": SCOPE.to_owned(),
+                  "cryptographic_binding_methods_supported": [
+                    "jwk"
+                  ],
+                  "credential_signing_alg_values_supported": [
+                    "ES256"
+                  ],
+                  "proof_types_supported": {
+                    "jwt": {
+                      "proof_signing_alg_values_supported": [
+                        "ES256"
+                      ]
+                    }
+                  },
+                  "vct": "SD_JWT_cred_2",
+                  "credential_definition": {
+                      "type": "SD_JWT_cred",
+                      "claims": {
+                        "given_name": {},
+                        "family_name": {},
+                        "dob": {}
+                      }
+                    }
+                },
               }
             }
         ));

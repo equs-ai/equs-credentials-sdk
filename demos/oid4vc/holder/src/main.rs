@@ -4,20 +4,24 @@ use agent_sdk::inmem::kms::LocalKms;
 use agent_sdk::inmem::vault::InMemVault;
 use agent_sdk::kms::Kms;
 use agent_sdk::vc::core::KeyMetadata;
-use agent_sdk::vc::metadata::CredentialMetadataProcessor;
-use agent_sdk::vc::oid4vci::Holder as HolderVci;
-use agent_sdk::vc::oid4vci::{CredentialResult, TokenResponse};
+use agent_sdk::vc::metadata::{CredentialMetadataProcessor, DefaultMetadataProcessor};
+use agent_sdk::vc::oid4vci::{CredentialResponseResolved, CredentialResult, TokenResponse};
+use agent_sdk::vc::oid4vci::{Holder as HolderVci, Nonce};
 use agent_sdk::vc::oid4vp::AuthorizationResponseMetadata;
 use agent_sdk::vc::oid4vp::Holder as HolderVp;
 use agent_sdk::vc::{oid4vci, oid4vp};
-use agent_sdk::{kms, vc};
+use agent_sdk::kms;
+use oauth2::{AccessToken, TokenResponse as _TokenResponse};
 use reqwest::Url;
 use std::io;
 use std::io::Write;
 
 const SERVER_URL: &str = "http://localhost:8088";
-const CRED_DEF_ID: &str = "SD_JWT_cred";
-const SCOPE: &str = "SD_JWT_cred";
+
+const CRED_DEF_ID_1: &str = "SD_JWT_cred_1";
+const CRED_DEF_ID_2: &str = "SD_JWT_cred_2";
+
+const SCOPE: &str = "SD_JWT_cred_scope";
 
 #[tokio::main]
 async fn main() {
@@ -49,27 +53,46 @@ async fn main() {
 async fn run_issuance_flow(holder: impl HolderVci) {
     println!("Issuance started");
 
-    println!("1. Holder authorizing into KeyCloak to get an access_token...");
+    println!("Holder authorizing into KeyCloak to get an access_token...");
     let token_resp = authorize_holder(&holder).await;
 
-    println!("2. Holder requesting credential...");
+    // In most cases there will be no nonce attached to the `token_response`
+    // Holder will automatically resolve it and re-request a new nonce
+    let nonce = token_resp.extra_fields().clone().c_nonce;
+
+    let resp = issue(&holder, CRED_DEF_ID_1, token_resp.access_token(), nonce).await;
+
+    // For subsequent requests to the Issuer, Holder must reuse the nonce from the previous response
+    let nonce = resp.nonce_data.map(|d| d.nonce);
+
+    let _ = issue(&holder, CRED_DEF_ID_2, token_resp.access_token(), nonce).await;
+
+    println!("Issuance done");
+}
+
+async fn issue(holder: &impl HolderVci, cred_def_id: &str, token: &AccessToken, nonce: Option<Nonce>) -> CredentialResponseResolved {
+    println!("1. Holder requesting credential `cred_def_id={}` ...", cred_def_id);
+
     let cred_resp = holder
-        .request_credential(&token_resp, CRED_DEF_ID)
+        .request_credential(token, cred_def_id, nonce)
         .await
         .unwrap();
 
-    let credential = match cred_resp {
+    let credential = match &cred_resp.data {
         CredentialResult::Credential { credential, .. } => credential,
         _ => unreachable!()
     };
 
-    println!("Credential:\n{}", serde_json::to_string_pretty(&credential).unwrap());
+    println!("Credential ({}):\n{}", cred_def_id, serde_json::to_string_pretty(credential).unwrap());
 
-    println!("3. Holder storing received credential...");
-    let metadata = vc::metadata::DefaultMetadataProcessor::resolve_metadata(&credential).unwrap();
-    let _ = holder.store_credential(&credential, &metadata).await.unwrap();
+    println!("2. Holder storing received credential `cred_def_id={}`...", cred_def_id);
 
-    println!("Issuance done");
+    let metadata = DefaultMetadataProcessor::resolve_metadata(credential).unwrap();
+    let _ = holder.store_credential(credential, &metadata).await.unwrap();
+
+    println!("Credential saved");
+
+    cred_resp
 }
 
 async fn run_presentation_flow(holder: impl HolderVp) {

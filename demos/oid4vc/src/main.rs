@@ -4,10 +4,12 @@ use actix_web_httpauth::headers::authorization::{Authorization, Bearer};
 use agent_sdk::did::didkey::DIDKey;
 use agent_sdk::did::{DIDResolver, DID};
 use agent_sdk::inmem::kms::LocalKms;
+use agent_sdk::inmem::storage::InMemStorage;
 use agent_sdk::kms;
 use agent_sdk::kms::Kms;
+use agent_sdk::storage::Storage;
 use agent_sdk::vc::core::KeyMetadata;
-use agent_sdk::vc::oid4vci::{AuthorizationCodeGrant, CredentialOffer, CredentialOfferGrants, CredentialRequest, IssuanceSession, IssuerMetadata};
+use agent_sdk::vc::oid4vci::{AuthorizationCodeGrant, CredDefMetadata, CredDefMetadataProfile, CredentialOffer, CredentialOfferGrants, CredentialRequest, IssuanceSession, IssuerMetadata};
 use agent_sdk::vc::oid4vp::{auth_request_as_url, AuthorizationResponse, AuthorizationUrlType, PresentationDefinition};
 use agent_sdk::vc::{oid4vci, oid4vp};
 use keycloak::{KeycloakAdmin, KeycloakAdminToken};
@@ -15,11 +17,10 @@ use reqwest::Url;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::sync::Arc;
-use agent_sdk::inmem::storage::InMemStorage;
-use agent_sdk::storage::Storage;
 
 const SERVER_URL: &str = "http://localhost:8088";
 const AUTH_SRV_URL: &str = "http://localhost:8080/idp/realms/pid-issuer-realm";
+
 const OID4VCI_ISSUE_CREDENTIAL_URL_PATH: &str = "/credential";
 const OID4VCI_ISSUER_METADATA_URL_PATH: &str = "/.well-known/openid-credential-issuer";
 const OID4VCI_CREDENTIAL_OFFER_URL_PATH: &str = "/credential_offer";
@@ -31,7 +32,7 @@ struct AppState {
     issuer: Arc<dyn oid4vci::Issuer>,
     verifier: Arc<dyn oid4vp::Verifier>,
     issuer_storage: InMemStorage<String, IssuanceSession>,
-    verifier_storage: InMemStorage<String, String>
+    verifier_storage: InMemStorage<String, String>,
 }
 
 #[actix_web::main]
@@ -86,15 +87,20 @@ async fn oid4vci_issue_credential(
         .token()
         .to_owned();
 
-    let claims = get_user_attributes().await?;
-    let mut session = get_issuance_session(state.clone(), &token).await;
+    let cred_def = state.issuer.get_cred_def_metadata(&cred_req).unwrap();
+
+    // Depending on the concrete `CredDef` requested Claims would be different
+    let claims = get_user_attributes(&cred_def).await?;
+
+    let mut session = state.issuer_storage.get(&token).await.unwrap()
+        .unwrap_or(IssuanceSession::default());
 
     let resp = state.issuer
         .issue_credential(
             &cred_req,
             &token,
             &claims,
-            &mut session
+            &mut session,
         ).await;
 
     state.issuer_storage.put(token, session)
@@ -105,8 +111,8 @@ async fn oid4vci_issue_credential(
     match resp {
         Ok(body) => Ok(HttpResponse::Ok().json(body)),
         // Protocol errors are expected
-        Err(oid4vci::Error::Protocol(body)) => {
-            Ok(HttpResponse::BadRequest().json(body))
+        Err(oid4vci::Error::Protocol { source }) => {
+            Ok(HttpResponse::BadRequest().json(source))
         }
         Err(_) => Ok(HttpResponse::InternalServerError().json(json!({}))),
     }
@@ -120,7 +126,7 @@ async fn oid4vci_issue_metadata(state: web::Data<AppState>) -> HttpResponse {
 
 async fn oid4vci_credential_offer(state: web::Data<AppState>) -> HttpResponse {
     let (credential_offer, url) = state.issuer.create_credential_offer(
-        vec!["SD_JWT_cred"],
+        vec!["SD_JWT_cred_1", "SD_JWT_cred_2"],
         &CredentialOfferGrants {
             authorization_code: Some(AuthorizationCodeGrant { issuer_state: None }),
             pre_authorized_code: None,
@@ -163,7 +169,7 @@ async fn oid4vp_presentation_request_uri(state: web::Data<AppState>) -> HttpResp
     state.verifier_storage
         .put(
             request_uri.to_string(),
-            auth_req.request_object_jwt
+            auth_req.request_object_jwt,
         ).await.unwrap();
 
     HttpResponse::Ok()
@@ -192,14 +198,21 @@ struct AuthResp {
     presentation_submission: String,
 }
 
-async fn get_issuance_session(state: web::Data<AppState>, token: &String) -> IssuanceSession {
-    match state.issuer_storage.get(token).await {
-        Ok(Some(session)) => session,
-        _ => IssuanceSession::default(),
-    }
-}
+async fn get_user_attributes(cred_def: &CredDefMetadata) -> Result<Value, Error> {
+    let vct = match cred_def.additional_fields() {
+        CredDefMetadataProfile::SDJWTVC(m) => m.vct(),
+        _ => panic!("only sd-jwt supported in demo"),
+    };
 
-async fn get_user_attributes() -> Result<Value, Error> {
+    // Issue dummy VC for SD_JWT_cred_2
+    // Just to demonstrate, that claims and values should be different between creds
+    if vct == "https://credentials.example.com/identity_credential_2" {
+        let mut claims_json = serde_json::Value::from(json!({}));
+        claims_json["username"] = serde_json::Value::from("USER");
+        claims_json["email"] = serde_json::Value::from("HARDCODED@gmail.com");
+        return Ok(claims_json);
+    }
+
     let (realm_name, user_name, keycloak_url) = (
         "pid-issuer-realm".to_owned(),
         "tneal".to_owned(),
@@ -238,7 +251,6 @@ async fn get_user_attributes() -> Result<Value, Error> {
         claims_json["given_name"] = serde_json::Value::from(user.first_name.to_owned());
         claims_json["username"] = serde_json::Value::from(user.username.to_owned());
         claims_json["email"] = serde_json::Value::from(user.email.to_owned());
-        claims_json["vct"] = serde_json::Value::from("https://credentials.example.com/identity_credential");
         return Ok(claims_json);
     }
 
@@ -301,9 +313,9 @@ fn sample_issuer_metadata(iss_url: &str, authz_url: &str) -> IssuerMetadata {
           "authorization_servers": [authz_url],
           "credential_endpoint": iss_url.to_owned()+"/credential",
           "credential_configurations_supported": {
-            "SD_JWT_cred": {
+            "SD_JWT_cred_1": {
               "format": "vc+sd-jwt",
-              "scope": "SD_JWT_cred",
+              "scope": "SD_JWT_cred_scope",
               "cryptographic_binding_methods_supported": [
                 "jwk"
               ],
@@ -317,7 +329,7 @@ fn sample_issuer_metadata(iss_url: &str, authz_url: &str) -> IssuerMetadata {
                   ]
                 }
               },
-              "vct": "SD_JWT_cred",
+              "vct": "https://credentials.example.com/identity_credential_1",
               "credential_definition": {
                   "type": "SD_JWT_cred",
                   "claims": {
@@ -333,6 +345,31 @@ fn sample_issuer_metadata(iss_url: &str, authz_url: &str) -> IssuerMetadata {
                     "gender": {},
                     "country": {},
                     "family_name": {}
+                  }
+                }
+            },
+            "SD_JWT_cred_2": {
+              "format": "vc+sd-jwt",
+              "scope": "SD_JWT_cred_scope",
+              "cryptographic_binding_methods_supported": [
+                "jwk"
+              ],
+              "credential_signing_alg_values_supported": [
+                "ES256"
+              ],
+              "proof_types_supported": {
+                "jwt": {
+                  "proof_signing_alg_values_supported": [
+                    "ES256"
+                  ]
+                }
+              },
+              "vct": "https://credentials.example.com/identity_credential_2",
+              "credential_definition": {
+                  "type": "SD_JWT_cred",
+                  "claims": {
+                    "email": {},
+                    "username": {},
                   }
                 }
             }
@@ -371,7 +408,7 @@ const TEST_PRESENTATION_DEFINITION: &str = r#"{
                             "path": ["$.vct"],
                             "filter": {
                                 "type": "string",
-                                "const": "https://credentials.example.com/identity_credential"
+                                "const": "https://credentials.example.com/identity_credential_1"
                             }
                         }
                     ]

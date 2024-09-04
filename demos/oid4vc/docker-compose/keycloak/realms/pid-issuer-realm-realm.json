@@ -485,7 +485,7 @@
   "webAuthnPolicyPasswordlessAcceptableAaguids": [],
   "scopeMappings": [
     {
-      "clientScope": "SD_JWT_cred",
+      "clientScope": "SD_JWT_cred_scope",
       "roles": [
         "eid-holder-natural-person"
       ]
@@ -716,7 +716,7 @@
         "web-origins"
       ],
       "optionalClientScopes": [
-        "SD_JWT_cred",
+        "SD_JWT_cred_scope",
         "eu.europa.ec.eudiw.pid_mso_mdoc",
         "org.iso.18013.5.1.mDL"
       ]
@@ -1022,7 +1022,7 @@
       ],
       "optionalClientScopes": [
         "roles",
-        "SD_JWT_cred",
+        "SD_JWT_cred_scope",
         "eu.europa.ec.eudiw.pid_mso_mdoc",
         "org.iso.18013.5.1.mDL"
       ]
@@ -1055,7 +1055,7 @@
     },
     {
       "id": "bdff440b-4dbe-4020-8003-3e4bb8bb40b2",
-      "name": "SD_JWT_cred",
+      "name": "SD_JWT_cred_scope",
       "description": "",
       "protocol": "openid-connect",
       "attributes": {
@@ -1495,7 +1495,7 @@
     "web-origins"
   ],
   "defaultOptionalClientScopes": [
-    "SD_JWT_cred",
+    "SD_JWT_cred_scope",
     "org.iso.18013.5.1.mDL"
   ],
   "browserSecurityHeaders": {
