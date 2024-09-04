@@ -1,11 +1,17 @@
 use async_trait::async_trait;
 use oauth2::url::Url;
-use oauth2::{AccessToken, AuthorizationCode, ClientId, CsrfToken, PkceCodeChallenge, RedirectUrl, ResponseType, Scope, TokenResponse as _TokenResponse};
+use oauth2::{
+    AccessToken, AuthorizationCode, ClientId, CsrfToken, PkceCodeChallenge, RedirectUrl,
+    ResponseType, Scope, TokenResponse as _TokenResponse
+};
 use oid4vci::core::authorization::AuthorizationDetail;
 use oid4vci::core::client::Client;
 use oid4vci::core::credential_offer::CredentialOffer;
 use oid4vci::core::metadata::IssuerMetadata;
-use oid4vci::core::profiles::{sd_jwt, CoreProfilesAuthorizationDetails, CoreProfilesMetadata, CoreProfilesOffer, CoreProfilesRequest, CoreProfilesResponse};
+use oid4vci::core::profiles::{
+    sd_jwt, CoreProfilesAuthorizationDetails, CoreProfilesMetadata,
+    CoreProfilesOffer, CoreProfilesRequest, CoreProfilesResponse
+};
 use oid4vci::credential::{ErrorType, ResponseEnum};
 use oid4vci::credential_offer::CredentialOfferFormat;
 use oid4vci::metadata::AuthorizationMetadata;
@@ -14,16 +20,17 @@ use oid4vci::proof_of_possession::KeyProofType;
 use oid4vci::proof_of_possession::Proof as SpruceProof;
 use oid4vci::token;
 use std::string::ToString;
+use snafu::{ensure, ResultExt};
 use tracing::{instrument, Level, debug, info, trace};
 
-use crate::vc::oid4vci::Error::Protocol;
-use crate::vc::oid4vci::InternalError::{Other, Unhandled};
+use crate::http::HttpClient;
 use crate::vc;
 use crate::vc::core::Proof as AsdkProof;
-use crate::vc::oid4vci as api;
-use crate::vc::oid4vci::{CredentialResult, InternalError, ProtocolErrorResponse, TokenResponse};
+use crate::vc::{HasVCFormat, oid4vci as api};
+use crate::vc::oid4vci::{CredentialResult, ProtocolError, TokenResponse};
 use crate::vc::{Credential, CredentialMetadata};
-use crate::utils::http::HttpClient;
+use crate::vc::oid4vci::internal_error::{DiscoverySnafu, IssuerServiceSnafu, RequestSnafu, UrlParseSnafu, VCSnafu};
+use crate::vc::oid4vci::protocol_error::ProtocolSnafu;
 
 pub type Error = api::Error;
 pub type Result<T> = core::result::Result<T, Error>;
@@ -97,12 +104,10 @@ where
                 (iss_url, offer_configs)
             }
             // TODO: parse url queries
-            CredentialOffer::Reference { .. } => Err(
-                ProtocolErrorResponse::new(
-                    ErrorType::InvalidRequest,
-                    "resolving credential offer by reference is not supported"
-                )
-            )?,
+            CredentialOffer::Reference { .. } => ProtocolSnafu::new(
+                ErrorType::InvalidRequest,
+                "Resolving credential offer by reference is not supported".to_string()
+            ).fail()?,
         };
 
         let holder_service = Self::from_iss_url_with_configs(
@@ -131,15 +136,15 @@ where
         redirect_url: String, // urn:ietf:wg:oauth:2.0:oob
     ) -> Result<Self> {
         let issuer_metadata = IssuerMetadata::discover_async(
-            IssuerUrl::new(issuer_url.clone())?,
+            IssuerUrl::new(issuer_url.clone()).context(UrlParseSnafu)?,
             |req| HC::static_async(req),
-        ).await.map_err(InternalError::Discovery)?;
+        ).await.context(DiscoverySnafu)?;
         debug!(resolved_issuer_metadata = ?issuer_metadata);
 
         let authz_metadata = AuthorizationMetadata::discover_async(
             &issuer_metadata,
             |req| HC::static_async(req),
-        ).await.map_err(InternalError::Discovery)?;
+        ).await.context(DiscoverySnafu)?;
         debug!(resolved_authorization_server_metadata = ?authz_metadata);
 
         Self::new(
@@ -196,7 +201,7 @@ where
             issuer_metadata.clone(),
             authz_metadata,
             ClientId::new(client_id.clone()),
-            RedirectUrl::new(redirect_url)?,
+            RedirectUrl::new(redirect_url).context(UrlParseSnafu)?,
         );
 
         Ok(Self {
@@ -282,9 +287,10 @@ where
             CoreProfilesMetadata::SDJWTVC(det) => {
                 CoreProfilesRequest::SDJWTVC(sd_jwt::Request::new(det.vct().to_owned()))
             }
-            _ => Err(
-                ProtocolErrorResponse::new(ErrorType::UnsupportedCredentialFormat, "only \"vc+sd-jwt\" format is supported")
-            )?,
+            _ => ProtocolSnafu::new(
+                ErrorType::UnsupportedCredentialFormat,
+                format!("Unsupported credential format: {}", cred_def.format())
+            ).fail()?,
         };
         trace!(request_profile = ?req_base);
 
@@ -303,7 +309,10 @@ where
         };
         trace!(resolved_nonce = %nonce);
 
-        let req = self.holder.request_credential(offer, &nonce).await?;
+        let req = self.holder
+            .request_credential(offer, &nonce)
+            .await
+            .context(VCSnafu)?;
         trace!(resolved_request = ?req);
 
         let credential_request = self.client
@@ -312,10 +321,12 @@ where
 
         let resp = credential_request
             .request_async(|req| self.http_client.async_call(req))
-            .await?.try_into();
+            .await.context(RequestSnafu)?.try_into();
 
         if let Ok(CredentialResult::Credential {credential, ..}) = &resp {
-            self.holder.verify_credential(credential).await?;
+            self.holder.verify_credential(credential)
+                .await
+                .context(VCSnafu)?;
         }
 
         resp
@@ -334,7 +345,10 @@ where
     ) -> Result<()> {
         trace!(?credential, ?credential_metadata);
 
-        let _ = self.holder.store_credential(credential, credential_metadata).await?;
+        let _ = self.holder
+            .store_credential(credential, credential_metadata)
+            .await
+            .context(VCSnafu)?;
 
         Ok(())
     }
@@ -363,7 +377,7 @@ where
         let in_csrf = CsrfToken::new_random();
         let push_request = self.client
             .pushed_authorization_request::<_, CoreProfilesAuthorizationDetails>(|| in_csrf.clone())
-            .map_err(|e| ProtocolErrorResponse::new(ErrorType::InvalidRequest, &e.to_string()))?
+            .map_err(|e| ProtocolSnafu::new(ErrorType::InvalidRequest, e.to_string()).build())?
             .set_pkce_challenge(pkce_challenge);
 
         let push_request = match opt {
@@ -376,13 +390,13 @@ where
 
         let (auth_url, out_csrf) = push_request
             .async_request(|req| self.http_client.async_call(req), None, None)
-            .await?;
+            .await
+            .context(RequestSnafu)?;
 
-        if !(in_csrf.secret() == out_csrf.secret()) {
-            return Err(
-                ProtocolErrorResponse::new(ErrorType::InvalidRequest, "CSRF failure").into()
-            );
-        }
+        ensure!(
+            in_csrf.secret() == out_csrf.secret(),
+            ProtocolSnafu::new(ErrorType::InvalidRequest, "CSRF failure".to_string()),
+        );
 
         let code = callback(auth_url);
         trace!(authorization_code = %code);
@@ -394,9 +408,8 @@ where
 
         let token = token_req
             .request_async(|req| self.http_client.async_call(req))
-            .await.map_err(|e|
-                ProtocolErrorResponse::new(ErrorType::InvalidRequest, &e.to_string())
-            )?;
+            .await
+            .map_err(|e| ProtocolSnafu::new(ErrorType::InvalidRequest, e.to_string()).build())?;
 
         Ok(token)
     }
@@ -430,15 +443,23 @@ where
         let resp = self.client
             .request_credential(token, req_base)
             .request_async(|req| self.http_client.async_call(req))
-            .await.map_err(Error::from);
+            .await;
+
         trace!(nonce_response = ?resp);
 
         let nonce = match resp {
-            Err(Protocol(resp)) => resp.c_nonce
-                .ok_or(Other("Providing PoP without nonce is unsupported".to_owned()))?,
-            Err(e) => Err(Unhandled(e.to_string()))?,
-            _ => Err(Other("issuer does not provide a nonce".to_string()))?
-        };
+            Ok(_) => IssuerServiceSnafu { details: "Issuer does not provide a nonce" }.fail(),
+            Err(err) => {
+                let protocol_error: ProtocolError = err.try_into().context(RequestSnafu)?;
+                protocol_error.nonce()
+                    .ok_or(
+                        IssuerServiceSnafu {
+                            details: "Providing PoP without nonce is unsupported"
+                        }.build()
+                    )
+                    .cloned()
+            }
+        }?;
 
         Ok(nonce.secret().to_string())
     }
@@ -453,14 +474,13 @@ where
         let configs = self.issuer_metadata.credential_configurations_supported();
         debug!(supported_credential_configs = ?configs);
 
-        if !configs.contains_key(cred_def_id) {
-            return Err(
-                ProtocolErrorResponse::new(
-                    ErrorType::UnsupportedCredentialType,
-                    &format!("credential definition id = {} is not supported", cred_def_id)
-                ).into()
-            );
-        }
+        ensure!(
+            configs.contains_key(cred_def_id),
+            ProtocolSnafu::new(
+                ErrorType::UnsupportedCredentialType,
+                format!("Unsupported credential definition ID: {cred_def_id}")
+            )
+        );
 
         let data = configs.get(cred_def_id).unwrap();
         debug!(resolved_credential_metadata = ?data);
@@ -526,7 +546,10 @@ impl TryInto<CredentialResult> for oid4vci::credential::Response<CoreProfilesRes
         let result = match self.additional_profile_fields() {
             ResponseEnum::Immediate(resp) => {
                 let credential = resp.try_into()?;
-                CredentialResult::Credential { credential, notification_id: self.notification_id().map(|v| v.to_owned()) }
+                CredentialResult::Credential {
+                    credential,
+                    notification_id: self.notification_id().map(|v| v.to_owned())
+                }
             }
             ResponseEnum::Deferred { transaction_id } => {
                 CredentialResult::Deferred { transaction_id: transaction_id.clone().unwrap() }
@@ -542,13 +565,11 @@ impl TryInto<Credential> for &CoreProfilesResponse {
 
     fn try_into(self) -> std::result::Result<Credential, Self::Error> {
         let credential = match self {
-            CoreProfilesResponse::SDJWTVC(c) => vc::Credential::SdJwt(c.credential().to_owned()),
-            _ => Err(
-                ProtocolErrorResponse::new(
-                    ErrorType::UnsupportedCredentialFormat,
-                    "only \"vc+sd-jwt\" format is supported"
-                )
-            )?,
+            CoreProfilesResponse::SDJWTVC(c) => Credential::SdJwt(c.credential().to_owned()),
+            _ => ProtocolSnafu::new(
+                ErrorType::UnsupportedCredentialFormat,
+                format!("Unsupported credential format: {}", self.format())
+            ).fail()?,
         };
         Ok(credential)
     }
@@ -561,11 +582,10 @@ impl TryInto<SpruceProof> for AsdkProof {
         let proof = match self.format.as_str() {
             "jwt" => SpruceProof::JWT { jwt: self.proof.to_owned() },
             "cwt" => SpruceProof::CWT { cwt: self.proof.to_owned() },
-            _ => Err(
-                ProtocolErrorResponse::new(
-                    ErrorType::InvalidProof,
-                    &format!("proof type {} is not supported", self.format)
-                ))?,
+            _ => ProtocolSnafu::new(
+                ErrorType::InvalidProof,
+                format!("Unsupported proof type: {}", self.format)
+            ).fail()?,
         };
 
         Ok(proof)
