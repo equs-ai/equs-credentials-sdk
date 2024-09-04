@@ -1,16 +1,13 @@
 use async_trait::async_trait;
 use oauth2::url::Url;
-use oauth2::{
-    AccessToken, AuthorizationCode, ClientId, CsrfToken, PkceCodeChallenge, RedirectUrl,
-    ResponseType, Scope, TokenResponse as _TokenResponse
-};
+use oauth2::{AccessToken, AuthorizationCode, ClientId, CsrfToken, PkceCodeChallenge, RedirectUrl, ResponseType, Scope};
 use oid4vci::core::authorization::AuthorizationDetail;
 use oid4vci::core::client::Client;
 use oid4vci::core::credential_offer::CredentialOffer;
 use oid4vci::core::metadata::IssuerMetadata;
 use oid4vci::core::profiles::{
     sd_jwt, CoreProfilesAuthorizationDetails, CoreProfilesMetadata,
-    CoreProfilesOffer, CoreProfilesRequest, CoreProfilesResponse
+    CoreProfilesOffer, CoreProfilesRequest, CoreProfilesResponse,
 };
 use oid4vci::credential::{ErrorType, ResponseEnum};
 use oid4vci::credential_offer::CredentialOfferFormat;
@@ -19,18 +16,18 @@ use oid4vci::openidconnect::IssuerUrl;
 use oid4vci::proof_of_possession::KeyProofType;
 use oid4vci::proof_of_possession::Proof as SpruceProof;
 use oid4vci::token;
-use std::string::ToString;
 use snafu::{ensure, ResultExt};
-use tracing::{instrument, Level, debug, info, trace};
+use std::string::ToString;
+use tracing::{debug, info, instrument, trace, Level};
 
 use crate::http::HttpClient;
 use crate::vc;
 use crate::vc::core::Proof as AsdkProof;
-use crate::vc::{HasVCFormat, oid4vci as api};
-use crate::vc::oid4vci::{CredentialResult, ProtocolError, TokenResponse};
-use crate::vc::{Credential, CredentialMetadata};
 use crate::vc::oid4vci::internal_error::{DiscoverySnafu, IssuerServiceSnafu, RequestSnafu, UrlParseSnafu, VCSnafu};
 use crate::vc::oid4vci::protocol_error::ProtocolSnafu;
+use crate::vc::oid4vci::{CredentialResponseResolved, CredentialResult, Nonce, NonceData, ProtocolError, TokenResponse};
+use crate::vc::{oid4vci as api, HasVCFormat};
+use crate::vc::{Credential, CredentialMetadata};
 
 pub type Error = api::Error;
 pub type Result<T> = core::result::Result<T, Error>;
@@ -106,7 +103,7 @@ where
             // TODO: parse url queries
             CredentialOffer::Reference { .. } => ProtocolSnafu::new(
                 ErrorType::InvalidRequest,
-                "Resolving credential offer by reference is not supported".to_string()
+                "Resolving credential offer by reference is not supported".to_string(),
             ).fail()?,
         };
 
@@ -221,7 +218,6 @@ where
     HL: vc::core::Holder,
     HC: HttpClient,
 {
-
     #[instrument(
         level = Level::TRACE,
         skip_all,
@@ -239,12 +235,12 @@ where
     )]
     async fn authz_code_flow_with_scope(
         &self,
-        cred_def_id: String,
+        scope: String,
         authorization_callback: impl FnOnce(Url) -> String + Send,
     ) -> Result<TokenResponse> {
         let response = self.authz_code_flow(
             // TODO: advanced AuthDetail by cred_def_id, scope is enough for MVP
-            AuthzOption::Scope(cred_def_id),
+            AuthzOption::Scope(scope),
             authorization_callback,
         ).await?;
 
@@ -268,18 +264,17 @@ where
 
     #[instrument(
         level = Level::TRACE,
-        skip(self, token_response),
+        skip(self),
         err(),
         ret(level = Level::TRACE),
     )]
     async fn request_credential(
         &self,
-        token_response: &TokenResponse,
+        token: &AccessToken,
         cred_def_id: &str,
-    ) -> Result<CredentialResult> {
-        let token = token_response.access_token();
-        let nonce = token_response.extra_fields().clone().c_nonce.map(|n| n.secret().clone());
-        trace!(access_token = ?token, nonce_from_token = ?{nonce.as_ref()});
+        nonce: Option<Nonce>,
+    ) -> Result<CredentialResponseResolved> {
+        trace!(access_token = ?token, nonce = ?{nonce.as_ref()});
 
         let cred_def = self.resolve_cred_def(cred_def_id)?;
 
@@ -289,7 +284,7 @@ where
             }
             _ => ProtocolSnafu::new(
                 ErrorType::UnsupportedCredentialFormat,
-                format!("Unsupported credential format: {}", cred_def.format())
+                format!("Unsupported credential format: {}", cred_def.format()),
             ).fail()?,
         };
         trace!(request_profile = ?req_base);
@@ -304,7 +299,7 @@ where
         };
 
         let nonce = match nonce {
-            Some(val) => val,
+            Some(val) => val.secret().to_owned(),
             None => self.request_nonce(token.clone(), req_base.clone()).await?
         };
         trace!(resolved_nonce = %nonce);
@@ -321,15 +316,17 @@ where
 
         let resp = credential_request
             .request_async(|req| self.http_client.async_call(req))
-            .await.context(RequestSnafu)?.try_into();
+            .await.context(RequestSnafu)?;
 
-        if let Ok(CredentialResult::Credential {credential, ..}) = &resp {
+        let cred_result: CredentialResult = (&resp).try_into()?;
+
+        if let CredentialResult::Credential { credential, .. } = &cred_result {
             self.holder.verify_credential(credential)
                 .await
                 .context(VCSnafu)?;
         }
 
-        resp
+        Ok(CredentialResponseResolved { data: cred_result, nonce_data: Self::extract_nonce(&resp) })
     }
 
     #[instrument(
@@ -359,7 +356,6 @@ where
     HL: vc::core::Holder,
     HC: HttpClient,
 {
-
     #[instrument(
         level = Level::TRACE,
         skip_all,
@@ -433,11 +429,12 @@ where
         err(),
         ret(level = Level::TRACE),
     )]
-    async fn request_nonce( // TODO: Returning nonce should be optional
+    async fn request_nonce(
         &self,
         token: AccessToken,
         req_base: CoreProfilesRequest,
     ) -> Result<String> {
+        // TODO: Returning nonce should be optional
         trace!(?token, credential_request = ?req_base);
 
         let resp = self.client
@@ -533,13 +530,21 @@ where
 
         Some(proofs)
     }
+
+    fn extract_nonce(resp: &oid4vci::core::credential::Response) -> Option<NonceData> {
+        resp.c_nonce().map(|nonce| NonceData {
+            nonce: nonce.to_owned(),
+            expires_in: resp.c_nonce_expires_in().cloned(),
+            created: Some(time::OffsetDateTime::now_utc()),
+        })
+    }
 }
 
 fn sanitize(s: String) -> String {
     s.replace("\n", "")
 }
 
-impl TryInto<CredentialResult> for oid4vci::credential::Response<CoreProfilesResponse> {
+impl TryInto<CredentialResult> for &oid4vci::credential::Response<CoreProfilesResponse> {
     type Error = Error;
 
     fn try_into(self) -> std::result::Result<CredentialResult, Self::Error> {
@@ -548,7 +553,7 @@ impl TryInto<CredentialResult> for oid4vci::credential::Response<CoreProfilesRes
                 let credential = resp.try_into()?;
                 CredentialResult::Credential {
                     credential,
-                    notification_id: self.notification_id().map(|v| v.to_owned())
+                    notification_id: self.notification_id().map(|v| v.to_owned()),
                 }
             }
             ResponseEnum::Deferred { transaction_id } => {
@@ -568,7 +573,7 @@ impl TryInto<Credential> for &CoreProfilesResponse {
             CoreProfilesResponse::SDJWTVC(c) => Credential::SdJwt(c.credential().to_owned()),
             _ => ProtocolSnafu::new(
                 ErrorType::UnsupportedCredentialFormat,
-                format!("Unsupported credential format: {}", self.format())
+                format!("Unsupported credential format: {}", self.format()),
             ).fail()?,
         };
         Ok(credential)
@@ -584,7 +589,7 @@ impl TryInto<SpruceProof> for AsdkProof {
             "cwt" => SpruceProof::CWT { cwt: self.proof.to_owned() },
             _ => ProtocolSnafu::new(
                 ErrorType::InvalidProof,
-                format!("Unsupported proof type: {}", self.format)
+                format!("Unsupported proof type: {}", self.format),
             ).fail()?,
         };
 
