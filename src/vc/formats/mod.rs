@@ -144,6 +144,8 @@ where
         S: crypto::Signer,
     ;
 
+    async fn verify_vc(credential: &C, opts: VerifyOptions) -> Result<()>;
+
     async fn verify_vp(presentation: &P,
                        nonce: Nonce, verifier_id: &str,
                        opts: VerifyOptions) -> Result<VR>;

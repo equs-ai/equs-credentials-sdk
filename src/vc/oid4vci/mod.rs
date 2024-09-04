@@ -399,6 +399,7 @@ pub trait Holder: Send + Sync {
     ///
     /// Always generates and provides a `Proof of Possession` in the request.
     ///
+    /// After getting the `Credential`, verifies it against the signature by resolving the issuer's DID.
     /// # Arguments
     ///
     /// * `token_response` - an authz response containing valid access token. May contain nonce.
@@ -416,7 +417,7 @@ pub trait Holder: Send + Sync {
     ///     * [ErrorType::UnsupportedCredentialFormat]
     /// * [InternalError::Parse] - fails to parse the payload.
     /// * [InternalError::Network] - fails to make a call to the `Issuer`.
-    /// * [InternalError::VC] - `vc::core` error during `Proof` generation.
+    /// * [InternalError::VC] - `vc::core` error during `Proof` generation or credential signature verification.
     async fn request_credential(
         &self,
         token_response: &TokenResponse,
