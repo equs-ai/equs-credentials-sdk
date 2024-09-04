@@ -89,10 +89,10 @@ pub struct NonceData {
 ///
 /// Used by `oid4vci` `Issuer` and `Holder`.
 ///
-/// * [Protocol] encapsulates all expected [ProtocolErrorResponse] errors specific to the standard.
+/// * [Error::Protocol] encapsulates all expected [ProtocolError] errors specific to the standard.
 /// See <https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0.html>.
 ///
-/// * [Internal] error contains all unexpected errors.
+/// * [Error::Internal] error contains all unexpected errors.
 #[derive(Snafu)]
 #[non_exhaustive]
 pub enum Error {
@@ -161,11 +161,11 @@ pub trait Issuer: Send + Sync {
     ///
     /// # Errors
     ///
-    /// * [Protocol] - expected protocol-specific error.
+    /// * [Error::Protocol] - expected protocol-specific error.
     ///     * [ErrorType::InvalidRequest]
     ///     * [ErrorType::UnsupportedCredentialType]
     /// * [InternalError::Parse] - fails to parse the payload.
-    /// * [InternalError::Url] - fails to parse `Url`.
+    /// * [InternalError::UrlParse] - fails to parse `Url`.
     fn create_credential_offer(
         &self,
         cred_def_ids: Vec<&str>,
@@ -194,7 +194,7 @@ pub trait Issuer: Send + Sync {
     ///
     /// # Errors
     ///
-    /// * [Protocol] - expected protocol-specific error.
+    /// * [Error::Protocol] - expected protocol-specific error.
     ///     * [ErrorType::InvalidRequest]
     ///     * [ErrorType::InvalidProof]
     ///     * [ErrorType::InvalidToken]
@@ -252,9 +252,9 @@ pub trait Holder: Send + Sync {
     ///
     /// # Errors
     ///
-    /// * [Protocol] - expected protocol-specific error.
+    /// * [Error::Protocol] - expected protocol-specific error.
     ///     * [ErrorType::InvalidRequest]
-    /// * [InternalError::Network] - fails to make a call to the `Issuer`.
+    /// * [InternalError::Request] - fails to make a call to the `Issuer`.
     async fn authz_code_flow_with_scope(
         &self,
         scope: String,
@@ -301,12 +301,12 @@ pub trait Holder: Send + Sync {
     ///
     /// # Errors
     ///
-    /// * [Protocol] - expected protocol-specific error.
+    /// * [Error::Protocol] - expected protocol-specific error.
     ///     * [ErrorType::InvalidRequest]
     ///     * [ErrorType::UnsupportedCredentialType]
     ///     * [ErrorType::UnsupportedCredentialFormat]
     /// * [InternalError::Parse] - fails to parse the payload.
-    /// * [InternalError::Network] - fails to make a call to the `Issuer`.
+    /// * [InternalError::Request] - fails to make a call to the `Issuer`.
     /// * [InternalError::VC] - `vc::core` error during `Proof` generation or credential signature verification.
     async fn request_credential(
         &self,
@@ -326,7 +326,7 @@ pub trait Holder: Send + Sync {
     ///
     /// # Errors
     ///
-    /// * [InternalError::Vault] - error with [vault::Vault].
+    /// * [InternalError::Vault] - error with [Vault](crate::vault::Vault).
     async fn store_credential(
         &self,
         credential: &Credential,
