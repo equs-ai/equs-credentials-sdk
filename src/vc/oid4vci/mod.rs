@@ -1,7 +1,7 @@
 use crate::vc::{Claims, Credential, CredentialMetadata};
 use async_trait::async_trait;
 use oauth2::AccessToken;
-use oid4vci::core::profiles::{CoreProfilesMetadata, CoreProfilesOffer};
+use oid4vci::core::profiles::CoreProfilesOffer;
 use serde::{Deserialize, Serialize};
 use snafu::Snafu;
 use std::fmt::Debug;
@@ -21,8 +21,8 @@ pub use internal_error::InternalError;
 pub use protocol_error::ProtocolError;
 
 // Data types
-pub type IssuerMetadata = oid4vci::core::metadata::IssuerMetadata;
-pub type CredDefMetadata = oid4vci::metadata::CredentialMetadata<CoreProfilesMetadata>;
+pub type IssuerMetadata = metadata::IssuerMetadata;
+pub type CredDefMetadata = metadata::CredentialMetadata;
 pub type CredDefMetadataProfile = oid4vci::core::profiles::CoreProfilesMetadata;
 pub type AuthorizationMetadata = oid4vci::metadata::AuthorizationMetadata;
 pub type CredentialOffer = oid4vci::credential_offer::CredentialOffer<CoreProfilesOffer>;

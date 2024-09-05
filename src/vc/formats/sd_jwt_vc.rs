@@ -16,7 +16,7 @@ use crate::did::universal::UniversalResolver;
 use crate::utils;
 use crate::utils::b64;
 use crate::utils::serde::Helpers;
-use crate::vc::formats::{API, HasClaims, HasCredential, IncorrectClaimSnafu, JWSSnafu, KeyTypeNotSupportedSnafu, ParsingSnafu, PresentationSnafu, SigningSnafu, VerifyingSnafu, VerifyOptions};
+use crate::vc::formats::{API, HasClaims, HasCredential, JWSSnafu, KeyTypeNotSupportedSnafu, ParsingSnafu, PresentationSnafu, SigningSnafu, VerifyingSnafu, VerifyOptions};
 use crate::vc::formats::Result;
 use crate::vc::formats::vc::SD_JWT_VC;
 
@@ -83,6 +83,7 @@ impl<R: DIDResolver> KeyResolver for DidKeyResolver<R> {
 // Metadata
 #[derive(Debug, Default)]
 pub struct VCMetadata {
+    pub vct: String,
     pub lifetime: time::Duration,
     pub disclosures: Vec<String>,
 }
@@ -110,19 +111,12 @@ impl HasCredential<Credential> for Presentation {
 pub struct SdJwtAPI;
 
 impl SdJwtAPI {
-    fn validate_claims(claims: Claims) -> Result<()> {
-        if !claims.contains_key("vct") {
-            return IncorrectClaimSnafu { details: "missing vct" }.fail();
-        }
-
-        Ok(())
-    }
-
     fn prepare_claims(claims: Claims,
                       iss_url: &DIDURL, hld_url: &DIDURL,
                       metadata: &VCMetadata) -> Value {
         let mut prepared = serde_json::Map::from(claims);
 
+        prepared.put_str("vct", &metadata.vct);
         prepared.put_str("iss", &iss_url.did);
         prepared.put_str("sub", hld_url);
 
@@ -179,7 +173,7 @@ impl SdJwtAPI {
         if let VerificationMethod::Map(vm) = vm {
             Ok(vm)
         } else {
-            return ParsingSnafu { details: "\"verification_method\" value must be embedded" }.fail()
+            ParsingSnafu { details: "\"verification_method\" value must be embedded" }.fail()
         }
     }
 
@@ -333,7 +327,6 @@ mod tests {
             let (_, h_kh) = kms.create_and_handle(kt, kms::CreateOptions {}).await.unwrap();
 
             let claims = json!( {
-                "vct": "https://issuer.net/cred_schema",
                 "name": "John",
                 "surname": "Doe",
                 "dob": "09/09/1989",
@@ -361,6 +354,7 @@ mod tests {
                 (&iss_did_url, i_kh.clone()),
                 (&hld_did_url, h_kh.clone()),
                 VCMetadata {
+                    vct: "https://issuer.net/cred_schema".to_owned(),
                     lifetime: time::Duration::days(365),
                     disclosures: vec!["$.name".to_owned(), "$.surname".to_owned()],
                 },

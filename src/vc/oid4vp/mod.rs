@@ -300,6 +300,7 @@ pub mod test_utils {
             (&issuer_did_url, issuer_key_handle),
             (&holder_did_url, holder_key_handle.clone()),
             VCMetadata {
+                vct: "https://credentials.example.com/identity_credential".to_owned(),
                 lifetime: time::Duration::days(365),
                 disclosures: vec!["$.name".to_owned(), "$.surname".to_owned()],
             },
@@ -392,6 +393,7 @@ mod tests {
 
     struct Oid4VpTestCredential {
         pub id: &'static str,
+        pub vct: &'static str,
         pub claims: Value,
     }
 
@@ -404,8 +406,8 @@ mod tests {
     fn single_presentation_case() -> Oid4VpTestCase {
         let identity = Oid4VpTestCredential {
             id: "Identity-1",
+            vct: "https://credentials.example.com/identity_credential",
             claims: json!({
-                "vct": "https://credentials.example.com/identity_credential",
                 "name": "John",
                 "surname": "Doe",
                 "address": "221B Baker Street",
@@ -462,8 +464,8 @@ mod tests {
     fn multiple_presentation_case() -> Oid4VpTestCase {
         let identity = Oid4VpTestCredential {
             id: "Identity-1",
+            vct: "https://credentials.example.com/identity_credential",
             claims: json!({
-                "vct": "https://credentials.example.com/identity_credential",
                 "name": "John",
                 "surname": "Doe",
                 "address": "221B Baker Street",
@@ -473,8 +475,8 @@ mod tests {
 
         let degree = Oid4VpTestCredential {
             id: "Degree-1",
+            vct: "https://credentials.example.com/degree_credential",
             claims: json!({
-                "vct": "https://credentials.example.com/degree_credential",
                 "name": "John",
                 "surname": "Doe",
                 "degree": {
@@ -575,7 +577,7 @@ mod tests {
         // Create and store VCs
         for credential in &test_case.credentials {
             let (vc, vc_meta) = create_vc(
-                credential.claims["vct"].as_str().unwrap(),
+                credential.vct,
                 &holder_did_url,
                 holder_kh.clone(),
                 credential.claims.clone(),
@@ -735,7 +737,7 @@ mod tests {
     }
 
     async fn create_vc(
-        type_: &str,
+        vct: &str,
         holder_did_url: &DIDURL,
         holder_kh: impl crypto::Key,
         claims: Json,
@@ -752,6 +754,7 @@ mod tests {
             (&did_url, kh),
             (&holder_did_url, holder_kh),
             VCMetadata {
+                vct: vct.to_owned(),
                 lifetime: time::Duration::days(365),
                 disclosures: vec![
                     "$.name".to_owned(),
@@ -766,7 +769,7 @@ mod tests {
         println!("Credential: {}", vc);
 
         let vc_meta = CredentialMetadata {
-            type_: type_.to_string(),
+            type_: vct.to_string(),
             format: VCFormat::SdJwtVc,
             alg: Some(Alg::ES256),
             tags: vec![],

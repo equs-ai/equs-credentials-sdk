@@ -16,6 +16,8 @@ use crate::http::HttpError;
 pub enum InternalError {
     #[snafu(display("Credential definition not found for ID: {id}"))]
     CredDefNotFound { id: String },
+    #[snafu(display("No scope set for Credential definition ID: {id}. Only scope authorization supported"))]
+    NoScopeSet { id: String },
     #[snafu(display("Claims validation error at {location}\n Cause: {details}"))]
     ClaimsValidation {
         details: String,

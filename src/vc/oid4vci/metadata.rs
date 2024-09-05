@@ -1,12 +1,13 @@
 use std::collections::HashMap;
 
-use oid4vci::core::metadata::IssuerMetadata;
+use oid4vci::core::profiles;
 use oid4vci::core::profiles::{CoreProfilesMetadata, CoreProfilesRequest, CoreProfilesResponse};
 
 use crate::vc;
 use crate::vc::core::{CredentialDefinition, CredentialDefinitionData, KeyMetadata};
 use crate::vc::{HasVCFormat, VCFormat};
 
+pub type IssuerMetadata = oid4vci::core::metadata::IssuerMetadata;
 pub type CredentialMetadata = oid4vci::metadata::CredentialMetadata<CoreProfilesMetadata>;
 
 pub fn convert_metadata(issuer_metadata: &IssuerMetadata, key_metadata: KeyMetadata) -> vc::core::IssuerMetadata {
@@ -27,14 +28,9 @@ pub fn convert_metadata(issuer_metadata: &IssuerMetadata, key_metadata: KeyMetad
 }
 
 fn cred_definition(id: &String, credential_metadata: &oid4vci::metadata::CredentialMetadata<CoreProfilesMetadata>) -> CredentialDefinition {
-    let disclosures = match credential_metadata.additional_fields() {
-        CoreProfilesMetadata::SDJWTVC(metadata) => metadata.credential_definition()
-            .claims()
-            .unwrap_or(&HashMap::new())
-            .keys()
-            .map(|k| format!("$.{}", k.to_owned()))
-            .collect(),
-        _ => vec![],
+    let protocol_data = match credential_metadata.additional_fields() {
+        CoreProfilesMetadata::SDJWTVC(metadata) => Some(sd_jwt_protocol_data(metadata)),
+        _ => None,
     };
 
     let proofs = credential_metadata.proof_types_supported().unwrap_or(&HashMap::new())
@@ -48,13 +44,23 @@ fn cred_definition(id: &String, credential_metadata: &oid4vci::metadata::Credent
         claims: Default::default(),
         supported_proofs: proofs,
         display: None,
-        protocol_data: Some(
-            CredentialDefinitionData {
-                disclosures,
-                lifetime: None,
-            }
-        ),
+        protocol_data,
         key_metadata: None,
+    }
+}
+
+fn sd_jwt_protocol_data(metadata: &profiles::sd_jwt::Metadata) -> CredentialDefinitionData {
+    let disclosures = metadata.credential_definition()
+        .claims()
+        .unwrap_or(&HashMap::new())
+        .keys()
+        .map(|k| format!("$.{}", k.to_owned()))
+        .collect();
+
+    CredentialDefinitionData::SdJwt {
+        vct: metadata.vct().to_owned(),
+        disclosures,
+        lifetime: None,
     }
 }
 
@@ -83,7 +89,7 @@ impl HasVCFormat for CoreProfilesResponse {
 }
 
 impl HasVCFormat for CoreProfilesMetadata {
-    fn format(&self) -> crate::vc::VCFormat {
+    fn format(&self) -> VCFormat {
         match self {
             CoreProfilesMetadata::SDJWTVC(_) => VCFormat::SdJwtVc,
             CoreProfilesMetadata::JWTVC(_) => VCFormat::JwtVcJson,

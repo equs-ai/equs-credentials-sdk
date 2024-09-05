@@ -463,7 +463,6 @@ mod tests {
 
         let presentation_definition = create_test_presentation_definition();
         let claims = json!( {
-            "vct": "https://credentials.example.com/identity_credential",
             "name": "John",
             "surname": "Doe",
             "date": "09/09/1989",
