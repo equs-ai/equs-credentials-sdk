@@ -1,20 +1,20 @@
-use std::marker::PhantomData;
-use std::str::FromStr;
 use async_trait::async_trait;
 use oid4vci::openidconnect::Nonce;
 use snafu::ResultExt;
-use tracing::{instrument, Level, debug, trace};
+use std::marker::PhantomData;
+use std::str::FromStr;
+use tracing::{debug, instrument, trace, Level};
 
 use crate::did::DIDURL;
-use crate::vc::core::{CredDefNotFoundSnafu, FormatNotSupportedSnafu, KMSSnafu, MetadataSnafu, ProofSnafu, Result, VCSnafu};
+use crate::kms;
+use crate::vc::core::{CredDefNotFoundSnafu, FormatNotSupportedSnafu, InconsistentProtocolDataSnafu, KMSSnafu, MetadataSnafu, ProofSnafu, Result, VCSnafu};
 use crate::vc::core::{CredentialDefinition, CredentialDefinitionData, CredentialOffer, CredentialOfferData, CredentialRequest, Issuer, IssuerMetadata};
 use crate::vc::formats::sd_jwt_vc::{SdJwtAPI, VCMetadata};
-use crate::vc::formats::{API};
+use crate::vc::formats::API;
 use crate::vc::metadata::{CredentialMetadataProcessor, DefaultMetadataProcessor};
 use crate::vc::pop::jwt_pop::JwtProofOfPossession;
 use crate::vc::pop::ProofOfPossession;
-use crate::vc::{pop, Claims, Credential, CredentialMetadata};
-use crate::{kms, vc};
+use crate::vc::{pop, Claims, Credential, CredentialMetadata, VCFormat};
 
 pub struct IssuerService<KH, KMS>
 where
@@ -32,7 +32,6 @@ where
     KH: kms::KeyHandle,
     KMS: kms::Kms<KH>,
 {
-
     #[instrument(
         level = Level::TRACE,
         skip(self, protocol_data),
@@ -100,13 +99,13 @@ where
         let (iss_did, iss_key) = self.resolve_key_metadata(cred_def).await?;
 
         let vc = match vc_fmt {
-            vc::VCFormat::SdJwtVc => {
+            VCFormat::SdJwtVc => {
                 let claims = SdJwtAPI::resolve_claims(claims);
                 trace!(claims_to_issue = ?claims);
                 let alg = &iss_key.alg();
                 debug!(signing_alg = ?alg);
 
-                let metadata = self.sd_jwt_vc_metadata(&cred_def.protocol_data)?;
+                let metadata = self.sd_jwt_vc_metadata(cred_def.protocol_data.clone())?;
                 let cred = SdJwtAPI::create_vc(
                     claims,
                     (&iss_did, iss_key),
@@ -130,7 +129,6 @@ where
     KH: kms::KeyHandle,
     KMS: kms::Kms<KH>,
 {
-
     #[instrument(
         level = Level::TRACE,
         skip(kms)
@@ -145,15 +143,19 @@ where
         err(),
         ret(level = Level::TRACE),
     )]
-    fn sd_jwt_vc_metadata(&self, protocol_data: &Option<CredentialDefinitionData>) -> Result<VCMetadata> {
-        trace!(protocol_data = ?{protocol_data.as_ref()});
+    fn sd_jwt_vc_metadata(&self, protocol_data: Option<CredentialDefinitionData>) -> Result<VCMetadata> {
+        trace!(?protocol_data);
 
-        let data = &protocol_data.clone().unwrap_or(Default::default());
+        let vc_metadata = match protocol_data {
+            Some(CredentialDefinitionData::SdJwt { vct, disclosures, lifetime }) => VCMetadata {
+                vct: vct.to_owned(),
+                lifetime: lifetime.unwrap_or(time::Duration::days(365)),
+                disclosures: disclosures.to_owned(),
+            },
+            _ => InconsistentProtocolDataSnafu { format: VCFormat::SdJwtVc.to_string() }.fail()?,
+        };
 
-        Ok(VCMetadata {
-            lifetime: data.lifetime.unwrap_or(time::Duration::days(365)),
-            disclosures: data.disclosures.to_owned(),
-        })
+        Ok(vc_metadata)
     }
 
     #[instrument(

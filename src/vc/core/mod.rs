@@ -6,8 +6,8 @@ use std::fmt::Debug;
 use crate::kms::Error as KmsError;
 use crate::vault::Error as VaultError;
 use crate::vc::{
-    formats::Error as VCError, pop::Error as ProofError, metadata::Error as MetadataError,
-    Claims, Credential, CredentialMetadata, Presentation, VCFormat
+    formats::Error as VCError, metadata::Error as MetadataError, pop::Error as ProofError,
+    Claims, Credential, CredentialMetadata, Presentation, VCFormat,
 };
 
 mod verifier;
@@ -17,8 +17,6 @@ mod issuer;
 pub use holder::HolderService;
 pub use issuer::IssuerService;
 pub use verifier::VerifierService;
-
-//  --------- DATA MODEL -------------
 
 /// A metadata for the `Issuer`.
 ///
@@ -80,10 +78,14 @@ pub struct HolderMetadata {
 /// A protocol-specific data for the `CredentialDefinition`.
 ///
 /// *NOTE*: will be extended in the next releases.
-#[derive(Debug, PartialEq, Clone, Default)]
-pub struct CredentialDefinitionData {
-    pub disclosures: Vec<String>,
-    pub lifetime: Option<time::Duration>,
+#[derive(Debug, PartialEq, Clone)]
+#[non_exhaustive]
+pub enum CredentialDefinitionData {
+    SdJwt {
+        vct: String,
+        disclosures: Vec<String>,
+        lifetime: Option<time::Duration>,
+    },
 }
 
 /// A `CredentialOffer` entity.
@@ -168,6 +170,8 @@ pub enum Error {
     ProofFormatRequired,
     #[snafu(display("Requested credential not found"))]
     RequestedCredentialNotFound,
+    #[snafu(display("Inconsistent protocol data for format: {format}"))]
+    InconsistentProtocolData { format: String },
     #[snafu(display("Unsupported format: {format}"))]
     FormatNotSupported { format: String },
     #[snafu(display("VC error at {location}"))]
@@ -508,7 +512,6 @@ mod tests {
         let request = request.unwrap();
 
         let claims = json!( {
-                "vct": "https://credentials.example.com/identity_credential",
                 "given_name": "John",
                 "family_name": "Doe",
                 "dob": "09/09/1989",
@@ -591,7 +594,8 @@ mod tests {
                         "jwt".into()
                     ],
                     display: None,
-                    protocol_data: Some(CredentialDefinitionData {
+                    protocol_data: Some(CredentialDefinitionData::SdJwt {
+                        vct: "https://credentials.example.com/identity_credential".to_owned(),
                         disclosures: vec!["$.given_name".to_owned(), "$.family_name".to_owned()],
                         lifetime: None,
                     }),

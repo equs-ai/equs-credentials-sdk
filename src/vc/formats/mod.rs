@@ -51,13 +51,6 @@ pub enum Error {
         location: Location,
     },
 
-    #[snafu(display("Incorrect claim at {location}\n Cause: {details}"))]
-    IncorrectClaim {
-        details: String,
-        #[snafu(implicit)]
-        location: Location,
-    },
-
     #[snafu(display("DID error at {location}"))]
     SpruceDID {
         source: ssi::did::Error,
