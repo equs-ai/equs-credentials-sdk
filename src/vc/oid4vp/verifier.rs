@@ -6,11 +6,16 @@ use crate::utils::json::find_json_element;
 use crate::vc;
 use crate::vc::core::KeyMetadata;
 use crate::vc::oid4vp::presentation_builder::DefaultPresentationBuilder;
-use crate::vc::oid4vp::{default_client_metadata, default_wallet_metadata, AuthorizationRequest, AuthorizationResponse, ClientMetadata};
+use crate::vc::oid4vp::{
+    default_client_metadata, default_wallet_metadata, AuthorizationRequest, AuthorizationResponse,
+    ClientMetadata,
+};
 use crate::vc::{oid4vp as api, Presentation};
 use async_trait::async_trait;
 use oid4vp::core::authorization_request::parameters::PresentationDefinition as PresentationDefinitionParameter;
-use oid4vp::core::authorization_request::parameters::{Nonce, ResponseMode, ResponseType, ResponseUri};
+use oid4vp::core::authorization_request::parameters::{
+    Nonce, ResponseMode, ResponseType, ResponseUri,
+};
 use oid4vp::core::authorization_request::AuthorizationRequestObject;
 use oid4vp::core::credential_format::CoreCredentialFormat;
 use oid4vp::core::metadata::parameters::verifier::VpFormats;
@@ -135,19 +140,23 @@ where
         nonce: &str,
         response_uri: Url,
     ) -> Result<AuthorizationRequest> {
-        let request = self.authorization_request(
-            presentation_definition,
-            nonce,
-            default_wallet_metadata(),
-            response_uri,
-        ).await?;
+        let request = self
+            .authorization_request(
+                presentation_definition,
+                nonce,
+                default_wallet_metadata(),
+                response_uri,
+            )
+            .await?;
 
         let storage_entry = StorageEntry {
             nonce: nonce.to_string(),
             presentation_definition: presentation_definition.clone(),
         };
 
-        self.storage.put(presentation_definition.id.to_owned(), storage_entry).await?;
+        self.storage
+            .put(presentation_definition.id.to_owned(), storage_entry)
+            .await?;
 
         Ok(request)
     }
@@ -161,20 +170,21 @@ where
     /// # Returns
     ///
     /// The verified claims as a JSON object.
-    async fn verify_presentation(
-        &self,
-        auth_response: &AuthorizationResponse,
-    ) -> Result<Json> {
+    async fn verify_presentation(&self, auth_response: &AuthorizationResponse) -> Result<Json> {
         let id = &auth_response.presentation_submission.definition_id;
-        let storage_entry = self.storage.get(id)
+        let storage_entry = self
+            .storage
+            .get(id)
             .await?
             .ok_or(Error::SubmissionNotFound(id.to_owned()))?;
 
-        let claims = self.do_verify_presentation(
-            &storage_entry.presentation_definition,
-            &storage_entry.nonce,
-            auth_response,
-        ).await?;
+        let claims = self
+            .do_verify_presentation(
+                &storage_entry.presentation_definition,
+                &storage_entry.nonce,
+                auth_response,
+            )
+            .await?;
 
         self.storage.delete(id).await?;
 
@@ -190,10 +200,7 @@ where
     D: DIDResolver,
     ST: Storage<String, StorageEntry>,
 {
-    fn validate_field_constraints(
-        claims: &Json,
-        constraints: &[ConstraintsField],
-    ) -> Result<()> {
+    fn validate_field_constraints(claims: &Json, constraints: &[ConstraintsField]) -> Result<()> {
         // TODO: move to presentation_exchange
         for constraint in constraints.iter() {
             for path in constraint.path.iter() {
@@ -208,10 +215,7 @@ where
         Ok(())
     }
 
-    fn validate_formats(
-        &self,
-        presentation_definition: &PresentationDefinition,
-    ) -> Result<()> {
+    fn validate_formats(&self, presentation_definition: &PresentationDefinition) -> Result<()> {
         // TODO: move to presentation_exchange (except for extracting VpFormats from metadata)
         let vp_format_json = match presentation_definition.format.as_ref() {
             Some(format) => format,
@@ -254,9 +258,9 @@ where
         let presentation_definition_parameter = PresentationDefinitionParameter::try_from(
             presentation_definition.clone(),
         )
-            .map_err(|err| {
-                Error::ParsingError(format!("Failed to parse presentation definition: {}", err))
-            })?;
+        .map_err(|err| {
+            Error::ParsingError(format!("Failed to parse presentation definition: {}", err))
+        })?;
 
         let verifier_key = self
             .kms
@@ -399,7 +403,9 @@ struct SignerWrapper<S: SigningKey> {
 
 impl<S: SigningKey> SignerWrapper<S> {
     fn new(signer: S) -> Result<SignerWrapper<S>> {
-        let key = signer.jwk().ok_or(Error::InvalidKey("Failed to convert verifier key into JWK".to_string()))?;
+        let key = signer.jwk().ok_or(Error::InvalidKey(
+            "Failed to convert verifier key into JWK".to_string(),
+        ))?;
 
         Ok(SignerWrapper { signer, key })
     }
@@ -431,7 +437,9 @@ mod tests {
     use crate::inmem::storage::InMemStorage;
     use crate::vc;
     use crate::vc::core::KeyMetadata;
-    use crate::vc::oid4vp::test_utils::{create_authorization_response, create_test_presentation_definition, generate_did_key_and_vm};
+    use crate::vc::oid4vp::test_utils::{
+        create_authorization_response, create_test_presentation_definition, generate_did_key_and_vm,
+    };
     use crate::vc::oid4vp::verifier::VerifierService;
     use crate::vc::oid4vp::{auth_request_as_url, AuthorizationUrlType, Verifier};
 
@@ -442,16 +450,20 @@ mod tests {
 
         let (verifier, _) = verifier().await;
 
-        let request = verifier.create_authorization_request(
-            &presentation_definition,
-            nonce,
-            "https://verifier/auth".parse().unwrap(),
-        ).await.unwrap();
+        let request = verifier
+            .create_authorization_request(
+                &presentation_definition,
+                nonce,
+                "https://verifier/auth".parse().unwrap(),
+            )
+            .await
+            .unwrap();
 
         let by_value = auth_request_as_url(&request, AuthorizationUrlType::Value);
-        let by_reference = auth_request_as_url(&request, AuthorizationUrlType::Reference(
-            "https://verifier/reqobject".parse().unwrap(),
-        ));
+        let by_reference = auth_request_as_url(
+            &request,
+            AuthorizationUrlType::Reference("https://verifier/reqobject".parse().unwrap()),
+        );
 
         println!("{}", by_value);
         println!("{}", by_reference);
@@ -469,17 +481,18 @@ mod tests {
         });
         let nonce = "n0NcE";
 
-        let request = verifier.create_authorization_request(
-            &presentation_definition,
-            nonce,
-            "https://verifier/auth".parse().unwrap(),
-        ).await.unwrap();
+        let request = verifier
+            .create_authorization_request(
+                &presentation_definition,
+                nonce,
+                "https://verifier/auth".parse().unwrap(),
+            )
+            .await
+            .unwrap();
 
-        let response = create_authorization_response(&client_id, &nonce, &claims)
-            .await;
+        let response = create_authorization_response(&client_id, nonce, &claims).await;
 
-        let claims = verifier.verify_presentation(&response)
-            .await.unwrap();
+        let claims = verifier.verify_presentation(&response).await.unwrap();
 
         println!("{}", claims);
 

@@ -9,11 +9,11 @@ use url::Url;
 use crate::vc::{Claims, Credential};
 use crate::{storage, vc};
 
-pub(crate) mod verifier;
-pub(crate) mod holder;
-mod presentation_exchange;
-mod presentation_builder;
 mod builder;
+pub(crate) mod holder;
+mod presentation_builder;
+mod presentation_exchange;
+pub(crate) mod verifier;
 
 pub use builder::HolderBuilder;
 pub use builder::VerifierBuilder;
@@ -47,7 +47,6 @@ pub struct AuthorizationResponse {
     pub vp_token: serde_json::Value,
     pub presentation_submission: PresentationSubmission,
 }
-
 
 #[derive(Debug, thiserror::Error, strum::IntoStaticStr)]
 #[non_exhaustive]
@@ -151,10 +150,11 @@ const DEFAULT_CLIENT_METADATA: &str = r#"{
     }
 }"#;
 
-
 pub fn default_client_metadata() -> ClientMetadata {
-    ClientMetadata::try_from(serde_json::from_str::<serde_json::Value>(DEFAULT_CLIENT_METADATA).unwrap())
-        .unwrap()
+    ClientMetadata::try_from(
+        serde_json::from_str::<serde_json::Value>(DEFAULT_CLIENT_METADATA).unwrap(),
+    )
+    .unwrap()
 }
 
 const DEFAULT_WALLET_METADATA: &str = r#"{
@@ -181,7 +181,8 @@ const DEFAULT_WALLET_METADATA: &str = r#"{
 pub fn default_wallet_metadata() -> WalletMetadata {
     WalletMetadata::try_from(
         serde_json::from_str::<UntypedObject>(DEFAULT_WALLET_METADATA).unwrap(),
-    ).unwrap()
+    )
+    .unwrap()
 }
 
 pub enum AuthorizationUrlType {
@@ -199,9 +200,10 @@ pub fn auth_request_as_url(req: &AuthorizationRequest, type_: AuthorizationUrlTy
     SpruceAuthorizationRequest {
         client_id: req.client_id.clone(),
         request_indirection,
-    }.to_url(req.authorization_endpoint.clone()).unwrap()
+    }
+    .to_url(req.authorization_endpoint.clone())
+    .unwrap()
 }
-
 
 #[cfg(test)]
 pub mod test_utils {
@@ -288,15 +290,15 @@ pub mod test_utils {
         nonce: &str,
         claims: &Json,
     ) -> AuthorizationResponse {
-        let mut kms = LocalKms::new();
-        let (issuer_kid, issuer_key_handle, issuer_did) = generate_did_key(&mut kms).await;
+        let kms = LocalKms::new();
+        let (issuer_kid, issuer_key_handle, issuer_did) = generate_did_key(&kms).await;
         let issuer_did_url = DIDURL::from_str(&issuer_did).unwrap();
 
-        let (holder_kid, holder_key_handle, holder_did) = generate_did_key(&mut kms).await;
+        let (holder_kid, holder_key_handle, holder_did) = generate_did_key(&kms).await;
         let holder_did_url = DIDURL::from_str(&holder_did).unwrap();
 
         let vc = SdJwtAPI::create_vc(
-            SdJwtAPI::resolve_claims(&claims),
+            SdJwtAPI::resolve_claims(claims),
             (&issuer_did_url, issuer_key_handle),
             (&holder_did_url, holder_key_handle.clone()),
             VCMetadata {
@@ -305,25 +307,25 @@ pub mod test_utils {
                 disclosures: vec!["$.name".to_owned(), "$.surname".to_owned()],
             },
         )
-            .await
-            .unwrap();
+        .await
+        .unwrap();
 
         let vp = SdJwtAPI::create_vp(
             &vc,
             (&holder_did_url, holder_key_handle),
             Nonce::new(nonce.to_string()),
-            &verifier_id,
+            verifier_id,
             VPMetadata {
                 disclosures: json!({
                     "name" : true
                 })
-                    .as_object()
-                    .unwrap()
-                    .to_owned(),
+                .as_object()
+                .unwrap()
+                .to_owned(),
             },
         )
-            .await
-            .unwrap();
+        .await
+        .unwrap();
 
         AuthorizationResponse {
             vp_token: json!(vp),
@@ -356,7 +358,6 @@ pub mod test_utils {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use mockito::Server;
@@ -383,13 +384,14 @@ mod tests {
     use crate::vc::oid4vp::test_utils::{generate_did_key, generate_did_key_and_vm};
     use crate::vc::oid4vp::verifier::VerifierService;
     use crate::vc::oid4vp::Verifier;
-    use crate::vc::oid4vp::{auth_request_as_url, AuthorizationResponseMetadata, AuthorizationUrlType};
+    use crate::vc::oid4vp::{
+        auth_request_as_url, AuthorizationResponseMetadata, AuthorizationUrlType,
+    };
     use crate::vc::oid4vp::{AuthorizationResponse, Holder};
     use crate::vc::{oid4vp as api, Credential, CredentialMetadata, VCFormat};
     use crate::{crypto, kms, vc};
 
-
-    type ValidateClaims = dyn FnOnce(Json) -> ();
+    type ValidateClaims = dyn FnOnce(Json);
 
     struct Oid4VpTestCredential {
         pub id: &'static str,
@@ -444,7 +446,7 @@ mod tests {
                 }
             ]
         }))
-            .unwrap();
+        .unwrap();
 
         let validate: Box<ValidateClaims> = Box::new(|claims| {
             assert_eq!(
@@ -539,7 +541,7 @@ mod tests {
                 }
             ]
         }))
-            .unwrap();
+        .unwrap();
 
         let validate: Box<ValidateClaims> = Box::new(|claims| {
             assert_eq!(
@@ -551,7 +553,10 @@ mod tests {
                 claims["Degree-1"]["vct"],
                 json!("https://credentials.example.com/degree_credential")
             );
-            assert_eq!(claims["Degree-1"]["degree"]["type"], json!("BachelorDegree"));
+            assert_eq!(
+                claims["Degree-1"]["degree"]["type"],
+                json!("BachelorDegree")
+            );
         });
 
         Oid4VpTestCase {
@@ -581,7 +586,8 @@ mod tests {
                 &holder_did_url,
                 holder_kh.clone(),
                 credential.claims.clone(),
-            ).await;
+            )
+            .await;
             holder_vault.store_credential(vc, &vc_meta).await.unwrap();
         }
 
@@ -608,11 +614,14 @@ mod tests {
             .parse()
             .unwrap();
         let by_value = auth_request_as_url(&auth_request, AuthorizationUrlType::Value);
-        let by_reference = auth_request_as_url(&auth_request, AuthorizationUrlType::Reference(
-            format!("{}/req-object", &verifier_base_url)
-                .parse()
-                .unwrap(),
-        ));
+        let by_reference = auth_request_as_url(
+            &auth_request,
+            AuthorizationUrlType::Reference(
+                format!("{}/req-object", &verifier_base_url)
+                    .parse()
+                    .unwrap(),
+            ),
+        );
 
         println!("Request object passed by value: {}", by_value);
         println!("Request object passed by reference: {}", by_reference);
@@ -666,7 +675,7 @@ mod tests {
             .mock("POST", "/auth")
             .with_body_from_request(move |request| {
                 let mut json_map = Map::new();
-                for (key, value) in form_urlencoded::parse(&request.body().unwrap()) {
+                for (key, value) in form_urlencoded::parse(request.body().unwrap()) {
                     // Try to parse the value as JSON, fall back to treating it as a plain string
                     let json_value: Json =
                         serde_json::from_str(&value).unwrap_or(Json::String(value.to_string()));
@@ -677,7 +686,7 @@ mod tests {
                 let presentation_submission: PresentationSubmission = serde_json::from_value(
                     json_map.get("presentation_submission").unwrap().clone(),
                 )
-                    .unwrap();
+                .unwrap();
 
                 let mut locked_response = response_clone.try_lock().unwrap();
                 *locked_response = Some(AuthorizationResponse {
@@ -697,8 +706,7 @@ mod tests {
         let storage = InMemStorage::new();
         let did_resolver = UniversalResolver::new();
 
-        let (kid, kh, did, vm_id) =
-            generate_did_key_and_vm(&kms, &did_resolver).await;
+        let (kid, kh, did, vm_id) = generate_did_key_and_vm(&kms, &did_resolver).await;
         println!("Verifier DID: {}", did);
 
         let inner = vc::core::VerifierService::new(&did);
@@ -752,7 +760,7 @@ mod tests {
         let vc = SdJwtAPI::create_vc(
             SdJwtAPI::resolve_claims(&claims),
             (&did_url, kh),
-            (&holder_did_url, holder_kh),
+            (holder_did_url, holder_kh),
             VCMetadata {
                 vct: vct.to_owned(),
                 lifetime: time::Duration::days(365),
@@ -763,8 +771,8 @@ mod tests {
                 ],
             },
         )
-            .await
-            .unwrap();
+        .await
+        .unwrap();
 
         println!("Credential: {}", vc);
 

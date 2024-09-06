@@ -9,9 +9,9 @@ pub enum VPFormat {
     LdpVp,
 }
 
-impl Into<&'static str> for VPFormat {
-    fn into(self) -> &'static str {
-        match self {
+impl From<VPFormat> for &'static str {
+    fn from(value: VPFormat) -> Self {
+        match value {
             VPFormat::JwtVp => JWT_VP,
             VPFormat::LdpVp => LDP_VP,
         }

@@ -6,7 +6,7 @@ pub fn find_json_element<'a>(json: &'a Json, json_path: &str) -> Option<&'a Json
     }
 
     let mut current = json;
-    let path = json_path.trim_start_matches("$").trim_start_matches(".");
+    let path = json_path.trim_start_matches('$').trim_start_matches('.');
     let parts = path.split('.');
 
     for part in parts {
@@ -20,7 +20,7 @@ pub fn find_json_element<'a>(json: &'a Json, json_path: &str) -> Option<&'a Json
                 if let Ok(index) = index_str.parse::<usize>() {
                     current = current.get(index)?;
                 } else {
-                    current = current.get(index_str.replace("'", ""))?;
+                    current = current.get(index_str.replace('\'', ""))?;
                 }
             } else {
                 return None;

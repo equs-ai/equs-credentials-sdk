@@ -10,7 +10,10 @@ use crate::vc::{HasVCFormat, VCFormat};
 pub type IssuerMetadata = oid4vci::core::metadata::IssuerMetadata;
 pub type CredentialMetadata = oid4vci::metadata::CredentialMetadata<CoreProfilesMetadata>;
 
-pub fn convert_metadata(issuer_metadata: &IssuerMetadata, key_metadata: KeyMetadata) -> vc::core::IssuerMetadata {
+pub fn convert_metadata(
+    issuer_metadata: &IssuerMetadata,
+    key_metadata: KeyMetadata,
+) -> vc::core::IssuerMetadata {
     let cred_defs = issuer_metadata
         .credential_configurations_supported()
         .iter()
@@ -27,13 +30,18 @@ pub fn convert_metadata(issuer_metadata: &IssuerMetadata, key_metadata: KeyMetad
     converted
 }
 
-fn cred_definition(id: &String, credential_metadata: &oid4vci::metadata::CredentialMetadata<CoreProfilesMetadata>) -> CredentialDefinition {
+fn cred_definition(
+    id: &String,
+    credential_metadata: &oid4vci::metadata::CredentialMetadata<CoreProfilesMetadata>,
+) -> CredentialDefinition {
     let protocol_data = match credential_metadata.additional_fields() {
         CoreProfilesMetadata::SDJWTVC(metadata) => Some(sd_jwt_protocol_data(metadata)),
         _ => None,
     };
 
-    let proofs = credential_metadata.proof_types_supported().unwrap_or(&HashMap::new())
+    let proofs = credential_metadata
+        .proof_types_supported()
+        .unwrap_or(&HashMap::new())
         .keys()
         .map(|k| serde_json::to_string(k).unwrap_or("".to_string()))
         .collect();
@@ -50,7 +58,8 @@ fn cred_definition(id: &String, credential_metadata: &oid4vci::metadata::Credent
 }
 
 fn sd_jwt_protocol_data(metadata: &profiles::sd_jwt::Metadata) -> CredentialDefinitionData {
-    let disclosures = metadata.credential_definition()
+    let disclosures = metadata
+        .credential_definition()
         .claims()
         .unwrap_or(&HashMap::new())
         .keys()

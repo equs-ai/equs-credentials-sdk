@@ -6,16 +6,10 @@ use uuid::Uuid;
 
 use crate::crypto::Alg;
 use crate::vault::{
-    Error,
-    FindCriteria,
-    FormatNotSupportedSnafu,
-    ResolvingSnafu,
-    StoringSnafu,
-    Vault,
-    VCSnafu
+    Error, FindCriteria, FormatNotSupportedSnafu, ResolvingSnafu, StoringSnafu, VCSnafu, Vault,
 };
 use crate::vc::{
-    Credential, CredentialMetadata, JWT_VC_JSON, JWT_VC_JSON_LD, LDP_VC, SD_JWT_VC, VCFormat
+    Credential, CredentialMetadata, VCFormat, JWT_VC_JSON, JWT_VC_JSON_LD, LDP_VC, SD_JWT_VC,
 };
 
 pub const TAG_TYPE: &str = "type_";
@@ -42,7 +36,10 @@ impl AskarVault {
             .await?;
         session.commit().await?;
 
-        Ok(AskarVaultId(entity.category.to_owned(), entity.name.to_owned()))
+        Ok(AskarVaultId(
+            entity.category.to_owned(),
+            entity.name.to_owned(),
+        ))
     }
 
     async fn get(&self, id: AskarVaultId) -> Result<Option<Entry>, aries_askar::Error> {
@@ -69,12 +66,10 @@ impl AskarVault {
         ];
 
         if let Some(alg) = metadata.alg {
-            tags.push(
-                EntryTag::Encrypted(
-                    TAG_ALG.to_string(),
-                    <Alg as Into<&str>>::into(alg).to_string(),
-                ),
-            )
+            tags.push(EntryTag::Encrypted(
+                TAG_ALG.to_string(),
+                <Alg as Into<&str>>::into(alg).to_string(),
+            ))
         }
 
         match credential {
@@ -93,8 +88,12 @@ impl AskarVault {
                 tags,
             )),
             Credential::LdpVc(credential) => {
-                let credential_json = serde_json::to_string(&credential)
-                    .map_err(|err| VCSnafu { details: err.to_string() }.build())?;
+                let credential_json = serde_json::to_string(&credential).map_err(|err| {
+                    VCSnafu {
+                        details: err.to_string(),
+                    }
+                    .build()
+                })?;
                 Ok(Entry::new(
                     EntryKind::Item,
                     LDP_VC,
@@ -121,28 +120,35 @@ impl Vault for AskarVault {
         credential: Credential,
         metadata: &CredentialMetadata,
     ) -> Result<String, Error> {
-        let entry = Self::create_entry(&credential, &metadata)?;
-        let id = self.insert(&entry)
-            .await
-            .map_err(|err| StoringSnafu { details: err.to_string() }.build())?;
+        let entry = Self::create_entry(&credential, metadata)?;
+        let id = self.insert(&entry).await.map_err(|err| {
+            StoringSnafu {
+                details: err.to_string(),
+            }
+            .build()
+        })?;
 
         Ok(id.into())
     }
 
     async fn get_credential(&self, id: &str) -> Result<Option<Credential>, Error> {
-        let entry = self
-            .get(id.try_into()?)
-            .await
-            .map_err(|err| StoringSnafu { details: err.to_string() }.build())?;
+        let entry = self.get(id.try_into()?).await.map_err(|err| {
+            StoringSnafu {
+                details: err.to_string(),
+            }
+            .build()
+        })?;
 
         entry.map(|en| en.try_into()).transpose()
     }
 
     async fn find_credentials(&self, criteria: FindCriteria) -> Result<Vec<Credential>, Error> {
-        let entries = self
-            .find(criteria.into())
-            .await
-            .map_err(|err| StoringSnafu { details: err.to_string() }.build())?;
+        let entries = self.find(criteria.into()).await.map_err(|err| {
+            StoringSnafu {
+                details: err.to_string(),
+            }
+            .build()
+        })?;
         entries.into_iter().map(|entry| entry.try_into()).collect()
     }
 }
@@ -167,9 +173,14 @@ impl TryFrom<&str> for AskarVaultId {
     type Error = Error;
 
     fn try_from(value: &str) -> Result<Self, Self::Error> {
-        let parts = value.split(":").collect::<Vec<&str>>();
+        let parts = value.split(':').collect::<Vec<&str>>();
 
-        ensure!(parts.len() == 2, ResolvingSnafu { details:  format!("Incorrect ID: {}", value)});
+        ensure!(
+            parts.len() == 2,
+            ResolvingSnafu {
+                details: format!("Incorrect ID: {}", value)
+            }
+        );
 
         let category = parts[0].to_string();
         let name = parts[1].to_string();
@@ -203,21 +214,31 @@ impl TryFrom<Entry> for Credential {
             .value
             .as_opt_str()
             .ok_or_else(|| {
-                VCSnafu { details: "Failed to convert secret bytes to credential string" }.build()
+                VCSnafu {
+                    details: "Failed to convert secret bytes to credential string",
+                }
+                .build()
             })?
             .to_string();
-
 
         match value.category.as_str() {
             JWT_VC_JSON => Ok(Credential::JwtVcJson(credential_str)),
             JWT_VC_JSON_LD => Ok(Credential::JwtVcJsonLd(credential_str)),
             LDP_VC => {
-                let credential = ssi::vc::Credential::from_json_unsigned(&credential_str)
-                    .map_err(|err| VCSnafu { details: err.to_string() }.build())?;
+                let credential =
+                    ssi::vc::Credential::from_json_unsigned(&credential_str).map_err(|err| {
+                        VCSnafu {
+                            details: err.to_string(),
+                        }
+                        .build()
+                    })?;
                 Ok(Credential::LdpVc(credential))
             }
             SD_JWT_VC => Ok(Credential::SdJwt(credential_str)),
-            _ => FormatNotSupportedSnafu { format: value.category }.fail(),
+            _ => FormatNotSupportedSnafu {
+                format: value.category,
+            }
+            .fail(),
         }
     }
 }

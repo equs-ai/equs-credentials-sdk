@@ -1,6 +1,6 @@
-use std::fmt::Debug;
 use async_trait::async_trait;
 use snafu::{Location, Snafu};
+use std::fmt::Debug;
 
 /// `Storage` Error.
 ///
@@ -20,7 +20,7 @@ pub enum Error {
         details: String,
         #[snafu(implicit)]
         location: Location,
-    }
+    },
 }
 
 impl Debug for Error {

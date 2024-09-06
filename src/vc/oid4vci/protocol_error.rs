@@ -1,9 +1,9 @@
-use std::fmt::Debug;
+use crate::http::HttpError;
 use crate::vc::oid4vci::{ErrorType, Nonce};
 use oid4vci::credential::RequestError;
 use serde::{Deserialize, Serialize};
 use snafu::Snafu;
-use crate::http::HttpError;
+use std::fmt::Debug;
 
 /// A protocol-specific `oid4vci` error response.
 ///
@@ -17,7 +17,11 @@ use crate::http::HttpError;
 /// `Holder`s MUST use `c_nonce` and `c_nonce_expires_in` for subsequent requests if they're returned.
 #[derive(Snafu, Clone, Deserialize, Serialize)]
 #[snafu(visibility(pub))]
-#[snafu(display("Protocol error: type = {:?}, description: {:?}", error, error_description))]
+#[snafu(display(
+    "Protocol error: type = {:?}, description: {:?}",
+    error,
+    error_description
+))]
 pub struct ProtocolError {
     error: ErrorType,
     #[serde(default)]
@@ -74,23 +78,22 @@ impl TryFrom<RequestError<HttpError>> for ProtocolError {
     fn try_from(value: RequestError<HttpError>) -> Result<Self, Self::Error> {
         match &value {
             RequestError::Response(_, body, _) => {
-                serde_json::from_slice::<ProtocolError>(body.as_slice())
-                    .map_err(|_| value)
+                serde_json::from_slice::<ProtocolError>(body.as_slice()).map_err(|_| value)
             }
             RequestError::ProofVerification(body) => {
                 let protocol_error = match (&body.c_nonce, &body.c_nonce_expires_in) {
-                    (Some(nonce), Some(expires_in)) => {
-                        ProtocolSnafu::new_with_nonce(
-                            ErrorType::InvalidProof,
-                            body.error_description.to_owned(),
-                            nonce.to_owned(),
-                            Some(expires_in.to_owned()),
-                        ).build()
-                    },
+                    (Some(nonce), Some(expires_in)) => ProtocolSnafu::new_with_nonce(
+                        ErrorType::InvalidProof,
+                        body.error_description.to_owned(),
+                        nonce.to_owned(),
+                        Some(expires_in.to_owned()),
+                    )
+                    .build(),
                     _ => ProtocolSnafu::new(
                         ErrorType::InvalidProof,
-                        body.error_description.to_owned()
-                    ).build()
+                        body.error_description.to_owned(),
+                    )
+                    .build(),
                 };
 
                 Ok(protocol_error)

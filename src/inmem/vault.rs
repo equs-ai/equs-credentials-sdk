@@ -16,10 +16,17 @@ pub struct InMemVault {
 
 impl InMemVault {
     pub fn new() -> Self {
-        Self { storage: Arc::new(InMemStorage::new()), indexed: Arc::new(RwLock::new(HashMap::new())) }
+        Self {
+            storage: Arc::new(InMemStorage::new()),
+            indexed: Arc::new(RwLock::new(HashMap::new())),
+        }
     }
 
-    async fn update_index(&self, metadata: &CredentialMetadata, storage_id: &str) -> Result<(), Error> {
+    async fn update_index(
+        &self,
+        metadata: &CredentialMetadata,
+        storage_id: &str,
+    ) -> Result<(), Error> {
         let index = format!("{}:{}", metadata.type_, metadata.format);
 
         let mut vec: Vec<String> = vec![];
@@ -38,19 +45,29 @@ impl InMemVault {
         let index = format!("{}:{}", type_, format);
         let map = self.indexed.read().await;
         let vec = map.get(&index);
-        vec.cloned().unwrap_or_else(|| Vec::new())
+        vec.cloned().unwrap_or_else(Vec::new)
     }
 }
 
 #[async_trait]
 impl Vault for InMemVault {
-    async fn store_credential(&self, credential: Credential, metadata: &CredentialMetadata) -> Result<String, Error> {
+    async fn store_credential(
+        &self,
+        credential: Credential,
+        metadata: &CredentialMetadata,
+    ) -> Result<String, Error> {
         let storage_id = random_string::generate(5, random_string::charsets::ALPHA);
 
-        let _ = self.storage
+        let _ = self
+            .storage
             .put(storage_id.clone(), credential.clone())
             .await
-            .map_err(|err| StoringSnafu { details: err.to_string() }.build())?;
+            .map_err(|err| {
+                StoringSnafu {
+                    details: err.to_string(),
+                }
+                .build()
+            })?;
 
         self.update_index(metadata, &storage_id).await?;
 
@@ -58,19 +75,19 @@ impl Vault for InMemVault {
     }
 
     async fn get_credential(&self, id: &str) -> Result<Option<Credential>, Error> {
-        self.storage
-            .get(&id.to_string())
-            .await
-            .map_err(|err| StoringSnafu { details: err.to_string() }.build())
+        self.storage.get(&id.to_string()).await.map_err(|err| {
+            StoringSnafu {
+                details: err.to_string(),
+            }
+            .build()
+        })
     }
 
     async fn find_credentials(&self, criteria: FindCriteria) -> Result<Vec<Credential>, Error> {
         let creds = match criteria {
             FindCriteria::ByTypeAndFormat(type_, fmt) => {
                 let ids = self.get_indexed(&type_, &fmt).await;
-                let creds = future::try_join_all(ids.iter().map(|id| self.get_credential(id)))
-                    .await?;
-                creds
+                future::try_join_all(ids.iter().map(|id| self.get_credential(id))).await?
             }
         };
 

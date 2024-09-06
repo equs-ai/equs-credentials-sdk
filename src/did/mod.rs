@@ -98,10 +98,7 @@ pub trait DIDResolver: Send + Sync {
     /// # Errors
     ///
     /// * [Error::Resolution] - fails to revolve `DIDURL`.
-    async fn resolve_verification_method(
-        &self,
-        did_url: &str,
-    ) -> Result<VerificationMethodMap> {
+    async fn resolve_verification_method(&self, did_url: &str) -> Result<VerificationMethodMap> {
         resolve_verification_method(self.as_spruce_resolver(), did_url).await
     }
 
@@ -119,9 +116,8 @@ async fn resolve_verification_method(
     resolver: &dyn SpruceResolver,
     did_url: &str,
 ) -> Result<VerificationMethodMap> {
-    let (_, content, _) = dereference(
-        resolver, did_url, &DereferencingInputMetadata::default(),
-    ).await;
+    let (_, content, _) =
+        dereference(resolver, did_url, &DereferencingInputMetadata::default()).await;
 
     match content {
         Content::Object(Resource::VerificationMethod(vm)) => Ok(vm),
@@ -134,20 +130,25 @@ async fn resolve_verification_method(
                     ResolutionSnafu {
                         details: format!(
                             "No verification method found in DID document for DID URL: {did_url}"
-                        )
-                    }.build()
+                        ),
+                    }
+                    .build()
                 })?;
 
             if let VerificationMethod::Map(vm) = vm_option {
                 Ok(vm.clone())
             } else {
                 ResolutionSnafu {
-                    details: format!("Could not find any verification method for DID URL: {did_url}"),
-                }.fail()
+                    details: format!(
+                        "Could not find any verification method for DID URL: {did_url}"
+                    ),
+                }
+                .fail()
             }
         }
         _ => ResolutionSnafu {
-            details: format!("Failed to resolve verification method for DID URL: {did_url}")
-        }.fail(),
+            details: format!("Failed to resolve verification method for DID URL: {did_url}"),
+        }
+        .fail(),
     }
 }

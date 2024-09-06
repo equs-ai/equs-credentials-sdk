@@ -3,7 +3,7 @@ use std::fmt::Debug;
 use async_trait::async_trait;
 use oid4vci::openidconnect::Nonce;
 use snafu::{Location, Snafu};
-use ssi::did::{DIDURL};
+use ssi::did::DIDURL;
 
 use crate::{crypto, did};
 
@@ -120,28 +120,34 @@ where
 {
     fn resolve_claims(value: &serde_json::Value) -> CL;
 
-    async fn create_vc<S, K>(claims: CL,
-                             issuer_data: (&DIDURL, S),
-                             holder_data: (&DIDURL, K),
-                             metadata: CM) -> Result<C>
+    async fn create_vc<S, K>(
+        claims: CL,
+        issuer_data: (&DIDURL, S),
+        holder_data: (&DIDURL, K),
+        metadata: CM,
+    ) -> Result<C>
     where
         S: crypto::Signer,
-        K: crypto::Key,
-    ;
+        K: crypto::Key;
 
-    async fn create_vp<S>(credential: &C,
-                          holder_data: (&DIDURL, S),
-                          nonce: Nonce, verifier_id: &str,
-                          metadata: PM) -> Result<P>
+    async fn create_vp<S>(
+        credential: &C,
+        holder_data: (&DIDURL, S),
+        nonce: Nonce,
+        verifier_id: &str,
+        metadata: PM,
+    ) -> Result<P>
     where
-        S: crypto::Signer,
-    ;
+        S: crypto::Signer;
 
     async fn verify_vc(credential: &C, opts: VerifyOptions) -> Result<()>;
 
-    async fn verify_vp(presentation: &P,
-                       nonce: Nonce, verifier_id: &str,
-                       opts: VerifyOptions) -> Result<VR>;
+    async fn verify_vp(
+        presentation: &P,
+        nonce: Nonce,
+        verifier_id: &str,
+        opts: VerifyOptions,
+    ) -> Result<VR>;
 }
 
 pub trait HasClaims<CL> {

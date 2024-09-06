@@ -1,3 +1,5 @@
+use crate::http::HttpClient;
+use crate::reqwest::ReqwestClient;
 use crate::vc::core::KeyMetadata;
 use crate::vc::oid4vci as api;
 use crate::vc::oid4vci::holder::HolderService;
@@ -9,13 +11,10 @@ use crate::{did, kms, vault, vc};
 use oid4vci::openidconnect::JsonWebKeySetUrl;
 use std::marker::PhantomData;
 use url::Url;
-use crate::http::HttpClient;
-use crate::reqwest::ReqwestClient;
 
 /// `oid4vci` builder error.
 #[derive(Debug, thiserror::Error, strum::IntoStaticStr)]
-pub enum Error
-{
+pub enum Error {
     #[error("Can't build service: {0}")]
     Build(String),
     #[error("Can't create default DID: {0}")]
@@ -73,8 +72,7 @@ where
     ///
     /// A new builder.
     pub fn new(kms: KMS, issuer_metadata: api::IssuerMetadata, key_metadata: KeyMetadata) -> Self {
-        let http_client = ReqwestClient::new(false, true)
-            .map_err(|e| Error::Build(e.to_string()));
+        let http_client = ReqwestClient::new(false, true).map_err(|e| Error::Build(e.to_string()));
 
         Self {
             issuer_metadata,
@@ -98,7 +96,10 @@ where
     /// # Arguments
     ///
     /// * `http_client` - a http client.
-    pub fn with_http_client<HC_: HttpClient>(self, http_client: HC_) -> IssuerBuilder<KH, KMS, HC_> {
+    pub fn with_http_client<HC_: HttpClient>(
+        self,
+        http_client: HC_,
+    ) -> IssuerBuilder<KH, KMS, HC_> {
         IssuerBuilder {
             http_client: Ok(http_client),
             // copied
@@ -155,11 +156,7 @@ where
             TokenParams::None => TokenValidation::None,
         };
 
-        let issuer = IssuerService::new(
-            self.issuer_metadata,
-            inner,
-            token_validation,
-        );
+        let issuer = IssuerService::new(self.issuer_metadata, inner, token_validation);
 
         Ok(issuer)
     }
@@ -214,8 +211,7 @@ where
     ///
     /// A new builder.
     pub fn new(kms: KMS, vault: V, key_metadata: KeyMetadata, client_id: String) -> Self {
-        let http_client = ReqwestClient::new(false, true)
-            .map_err(|e| Error::Build(e.to_string()));
+        let http_client = ReqwestClient::new(false, true).map_err(|e| Error::Build(e.to_string()));
 
         Self {
             client_id,
@@ -275,9 +271,10 @@ where
     ///
     /// * `issuer_metadata` - an `IssuerMetadata` of the `Issuer`.
     /// * `authorization_metadata` - an `AuthorizationMetadata` of the corresponding Authorization Server.
-    pub fn with_metadata(mut self,
-                         issuer_metadata: api::IssuerMetadata,
-                         authorization_metadata: api::AuthorizationMetadata,
+    pub fn with_metadata(
+        mut self,
+        issuer_metadata: api::IssuerMetadata,
+        authorization_metadata: api::AuthorizationMetadata,
     ) -> Self {
         self.metadata = Some((issuer_metadata, authorization_metadata));
         self
@@ -288,7 +285,10 @@ where
     /// # Arguments
     ///
     /// * `http_client` - a http client.
-    pub fn with_http_client<HC_: HttpClient>(self, http_client: HC_) -> HolderBuilder<KH, KMS, V, HC_> {
+    pub fn with_http_client<HC_: HttpClient>(
+        self,
+        http_client: HC_,
+    ) -> HolderBuilder<KH, KMS, V, HC_> {
         HolderBuilder {
             http_client: Ok(http_client),
             // copied
@@ -322,11 +322,7 @@ where
             client_id: self.client_id.clone(),
             key_metadata,
         };
-        let inner = vc::core::HolderService::new(
-            self.kms,
-            self.vault,
-            holder_metadata,
-        );
+        let inner = vc::core::HolderService::new(self.kms, self.vault, holder_metadata);
 
         let http_client = self.http_client?;
 
@@ -338,18 +334,17 @@ where
                     &offer,
                     self.client_id,
                     self.redirect_url,
-                ).await
-            }
-            (_, Some((iss_meta, authz_meta)), _) => {
-                HolderService::from_metadata(
-                    inner,
-                    http_client,
-                    iss_meta,
-                    authz_meta,
-                    self.client_id,
-                    self.redirect_url,
                 )
+                .await
             }
+            (_, Some((iss_meta, authz_meta)), _) => HolderService::from_metadata(
+                inner,
+                http_client,
+                iss_meta,
+                authz_meta,
+                self.client_id,
+                self.redirect_url,
+            ),
             (_, _, Some(url)) => {
                 HolderService::from_iss_url(
                     inner,
@@ -357,9 +352,12 @@ where
                     url,
                     self.client_id,
                     self.redirect_url,
-                ).await
+                )
+                .await
             }
-            _ => Err(Error::Build("Set either offer, metadata or issuer url".to_string()))?
+            _ => Err(Error::Build(
+                "Set either offer, metadata or issuer url".to_string(),
+            ))?,
         }?;
 
         Ok(holder)

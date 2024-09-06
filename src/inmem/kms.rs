@@ -1,15 +1,15 @@
-use async_trait::async_trait;
-use std::str::FromStr;
-use std::sync::Arc;
-use snafu::ResultExt;
 use crate::crypto::Suite;
 use crate::inmem::crypto::ed25519::Ed25519;
 use crate::inmem::crypto::p256::P256;
 use crate::inmem::storage::InMemStorage;
-use crate::kms::{Error, NotFoundSnafu, ResolvingSnafu};
 use crate::kms::{CryptoSnafu, KeyID, Kms};
+use crate::kms::{Error, NotFoundSnafu, ResolvingSnafu};
 use crate::storage::Storage;
 use crate::{crypto, kms};
+use async_trait::async_trait;
+use snafu::ResultExt;
+use std::str::FromStr;
+use std::sync::Arc;
 
 #[derive(Clone)]
 pub enum KeyHandle {
@@ -31,7 +31,7 @@ impl crypto::Signer for KeyHandle {
     async fn sign(&self, payload: &[u8]) -> Result<Vec<u8>, crypto::Error> {
         match self {
             KeyHandle::Ed25519(s) => s.sign(payload).await,
-            KeyHandle::P256(s) => s.sign(payload).await
+            KeyHandle::P256(s) => s.sign(payload).await,
         }
     }
 }
@@ -83,11 +83,15 @@ const KID_LENGTH: usize = 10;
 
 impl LocalKms {
     pub fn new() -> Self {
-        Self { storage: Arc::new(InMemStorage::new()) }
+        Self {
+            storage: Arc::new(InMemStorage::new()),
+        }
     }
 
     pub fn for_store(storage: InMemStorage<kms::KeyID, Bytes>) -> Self {
-        Self { storage: Arc::new(storage) }
+        Self {
+            storage: Arc::new(storage),
+        }
     }
 
     fn kid(kt: kms::KeyType) -> kms::KeyID {
@@ -95,7 +99,7 @@ impl LocalKms {
         format!("{}:{}", id, kt)
     }
 
-    fn key_type(kid: &String) -> kms::KeyType {
+    fn key_type(kid: &str) -> kms::KeyType {
         let postfix = &kid[KID_LENGTH + 1..];
 
         kms::KeyType::from_str(postfix).unwrap()
@@ -103,8 +107,7 @@ impl LocalKms {
 }
 
 #[async_trait]
-impl Kms<KeyHandle> for LocalKms
-{
+impl Kms<KeyHandle> for LocalKms {
     async fn create(&self, kt: kms::KeyType, opts: kms::CreateOptions) -> Result<KeyID, Error> {
         let key = match kt {
             kms::KeyType::Ed25519 => Ed25519::gen(),
@@ -119,28 +122,31 @@ impl Kms<KeyHandle> for LocalKms
     }
 
     async fn get(&self, kid: &KeyID) -> Result<KeyHandle, Error> {
-        let key = self.storage.get(kid).await
-            .map_err(|e| ResolvingSnafu { details: e.to_string() }.build())?
+        let key = self
+            .storage
+            .get(kid)
+            .await
+            .map_err(|e| {
+                ResolvingSnafu {
+                    details: e.to_string(),
+                }
+                .build()
+            })?
             .ok_or(NotFoundSnafu { id: kid }.build())?;
 
         let kt = LocalKms::key_type(kid);
 
         let res = match kt {
-            kms::KeyType::Ed25519 => {
-                Ed25519::from_secret(key.clone())
-                    .map(|s| KeyHandle::Ed25519(s))
-                    .context(CryptoSnafu)?
-            }
-            kms::KeyType::P256 => {
-                P256::from_secret(key.clone())
-                    .map(|s| KeyHandle::P256(s))
-                    .context(CryptoSnafu)?
-            }
+            kms::KeyType::Ed25519 => Ed25519::from_secret(key.clone())
+                .map(KeyHandle::Ed25519)
+                .context(CryptoSnafu)?,
+            kms::KeyType::P256 => P256::from_secret(key.clone())
+                .map(KeyHandle::P256)
+                .context(CryptoSnafu)?,
         };
 
         Ok(res)
     }
-
 }
 
 #[cfg(test)]

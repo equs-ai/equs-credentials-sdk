@@ -1,11 +1,11 @@
-use std::fmt::Debug;
-use std::str::FromStr;
+use crate::crypto;
+use crate::did::DIDURL;
 use async_trait::async_trait;
 use oid4vci::openidconnect::Nonce;
 use oid4vci::proof_of_possession::{ConversionError, ParsingError, VerificationError};
 use snafu::{Location, ResultExt, Snafu};
-use crate::crypto;
-use crate::did::DIDURL;
+use std::fmt::Debug;
+use std::str::FromStr;
 
 pub mod jwt_pop;
 
@@ -18,16 +18,15 @@ pub enum Format {
     Cwt,
 }
 
-impl Into<&'static str> for Format {
-    fn into(self) -> &'static str {
-        match self {
+impl From<Format> for &'static str {
+    fn from(value: Format) -> Self {
+        match value {
             Format::Jwt => "jwt",
             Format::Ldp => "ldp",
             Format::Cwt => "cwt",
         }
     }
 }
-
 
 impl FromStr for Format {
     type Err = Error;
@@ -103,7 +102,7 @@ impl Proof for String {
 
 impl Proof for ssi::vc::Presentation {
     fn parse(str: &str) -> Result<Self> {
-        Ok(ssi::vc::Presentation::from_json(str).context(VCSnafu)?)
+        ssi::vc::Presentation::from_json(str).context(VCSnafu)
     }
 }
 
@@ -125,10 +124,18 @@ pub trait ProofOfPossession<P>
 where
     P: Proof,
 {
-    async fn generate<S>(did_url: &DIDURL, key: S, nonce: Nonce, opts: GenerateOptions) -> Result<P>
+    async fn generate<S>(
+        did_url: &DIDURL,
+        key: S,
+        nonce: Nonce,
+        opts: GenerateOptions,
+    ) -> Result<P>
     where
-        S: crypto::SigningKey,
-    ;
+        S: crypto::SigningKey;
 
-    async fn verify(proof: P, nonce: Nonce, opts: VerifyOptions) -> Result<(DIDURL, Box<dyn crypto::Key>)>;
+    async fn verify(
+        proof: P,
+        nonce: Nonce,
+        opts: VerifyOptions,
+    ) -> Result<(DIDURL, Box<dyn crypto::Key>)>;
 }

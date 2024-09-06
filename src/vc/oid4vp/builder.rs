@@ -8,8 +8,7 @@ use crate::{did, kms, vault, vc};
 use std::marker::PhantomData;
 
 #[derive(Debug, thiserror::Error, strum::IntoStaticStr)]
-pub enum Error
-{
+pub enum Error {
     #[error("Can't create service: {0}")]
     Build(String),
     #[error("Can't create default DID: {0}")]
@@ -65,7 +64,10 @@ where
         self
     }
 
-    pub fn with_did_resolver<D1: did::DIDResolver>(self, resolver: D1) -> VerifierBuilder<KH, KMS, D1> {
+    pub fn with_did_resolver<D1: did::DIDResolver>(
+        self,
+        resolver: D1,
+    ) -> VerifierBuilder<KH, KMS, D1> {
         VerifierBuilder {
             resolver,
             // copied
@@ -119,7 +121,6 @@ where
     _marker: PhantomData<KH>,
 }
 
-
 impl<KH, KMS, V> HolderBuilder<KH, KMS, V, UniversalResolver>
 where
     KH: kms::KeyHandle,
@@ -163,7 +164,10 @@ where
         self
     }
 
-    pub fn with_did_resolver<D_: did::DIDResolver>(self, resolver: D_) -> HolderBuilder<KH, KMS, V, D_> {
+    pub fn with_did_resolver<D_: did::DIDResolver>(
+        self,
+        resolver: D_,
+    ) -> HolderBuilder<KH, KMS, V, D_> {
         HolderBuilder {
             resolver,
             // copied
@@ -183,11 +187,7 @@ where
             client_id: self.client_id,
             key_metadata,
         };
-        let inner = vc::core::HolderService::new(
-            self.kms,
-            self.vault,
-            holder_metadata,
-        );
+        let inner = vc::core::HolderService::new(self.kms, self.vault, holder_metadata);
 
         let holder = HolderService::new(
             inner,

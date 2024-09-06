@@ -1,15 +1,14 @@
+use crate::vc::formats;
+use crate::vc::formats::{Error, FormatNotSupportedSnafu};
+use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 use std::str::FromStr;
-use serde::{Deserialize, Serialize};
-use crate::vc::{formats};
-use crate::vc::formats::{FormatNotSupportedSnafu, Error};
 
 pub const JWT_VC_JSON: &str = "jwt_vc_json";
 pub const JWT_VC_JSON_LD: &str = "jwt_vc_json-ld";
 pub const LDP_VC: &str = "ldp_vc";
 pub const SD_JWT_VC: &str = "vc+sd-jwt";
 pub const MSO_MDOC: &str = "MsoMdoc";
-
 
 /// Basic enum for supported `VC` formats.
 #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
@@ -26,9 +25,9 @@ pub trait HasVCFormat {
     fn format(&self) -> VCFormat;
 }
 
-impl Into<&'static str> for &VCFormat {
-    fn into(self) -> &'static str {
-        match self {
+impl From<&VCFormat> for &'static str {
+    fn from(value: &VCFormat) -> Self {
+        match value {
             VCFormat::JwtVcJson => JWT_VC_JSON,
             VCFormat::JwtVcJsonLD => JWT_VC_JSON_LD,
             VCFormat::LdpVc => LDP_VC,

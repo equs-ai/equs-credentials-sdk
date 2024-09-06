@@ -2,6 +2,7 @@ use agent_sdk::did::didkey::DIDKey;
 use agent_sdk::did::{DIDResolver, DID};
 use agent_sdk::inmem::kms::LocalKms;
 use agent_sdk::inmem::vault::InMemVault;
+use agent_sdk::kms;
 use agent_sdk::kms::Kms;
 use agent_sdk::vc::core::KeyMetadata;
 use agent_sdk::vc::metadata::{CredentialMetadataProcessor, DefaultMetadataProcessor};
@@ -10,7 +11,6 @@ use agent_sdk::vc::oid4vci::{Holder as HolderVci, Nonce};
 use agent_sdk::vc::oid4vp::AuthorizationResponseMetadata;
 use agent_sdk::vc::oid4vp::Holder as HolderVp;
 use agent_sdk::vc::{oid4vci, oid4vp};
-use agent_sdk::kms;
 use oauth2::{AccessToken, TokenResponse as _TokenResponse};
 use reqwest::Url;
 use std::io;
@@ -35,13 +35,10 @@ async fn main() {
     let (did, key_metadata) = create_did_and_key_metadata(&kms).await;
 
     // Holders creation
-    let oid4vci_holder = oid4vci_holder(
-        kms.clone(), vault.clone(), key_metadata.clone(), SERVER_URL,
-    ).await;
+    let oid4vci_holder =
+        oid4vci_holder(kms.clone(), vault.clone(), key_metadata.clone(), SERVER_URL).await;
 
-    let oid4vp_holder = oid4vp_holder(
-        kms.clone(), vault.clone(), did, key_metadata,
-    ).await;
+    let oid4vp_holder = oid4vp_holder(kms.clone(), vault.clone(), did, key_metadata).await;
 
     // Running flows
     run_issuance_flow(oid4vci_holder).await;
@@ -70,8 +67,16 @@ async fn run_issuance_flow(holder: impl HolderVci) {
     println!("Issuance done");
 }
 
-async fn issue(holder: &impl HolderVci, cred_def_id: &str, token: &AccessToken, nonce: Option<Nonce>) -> CredentialResponseResolved {
-    println!("1. Holder requesting credential `cred_def_id={}` ...", cred_def_id);
+async fn issue(
+    holder: &impl HolderVci,
+    cred_def_id: &str,
+    token: &AccessToken,
+    nonce: Option<Nonce>,
+) -> CredentialResponseResolved {
+    println!(
+        "1. Holder requesting credential `cred_def_id={}` ...",
+        cred_def_id
+    );
 
     let cred_resp = holder
         .request_credential(token, cred_def_id, nonce)
@@ -80,15 +85,25 @@ async fn issue(holder: &impl HolderVci, cred_def_id: &str, token: &AccessToken, 
 
     let credential = match &cred_resp.data {
         CredentialResult::Credential { credential, .. } => credential,
-        _ => unreachable!()
+        _ => unreachable!(),
     };
 
-    println!("Credential ({}):\n{}", cred_def_id, serde_json::to_string_pretty(credential).unwrap());
+    println!(
+        "Credential ({}):\n{}",
+        cred_def_id,
+        serde_json::to_string_pretty(credential).unwrap()
+    );
 
-    println!("2. Holder storing received credential `cred_def_id={}`...", cred_def_id);
+    println!(
+        "2. Holder storing received credential `cred_def_id={}`...",
+        cred_def_id
+    );
 
     let metadata = DefaultMetadataProcessor::resolve_metadata(credential).unwrap();
-    let _ = holder.store_credential(credential, &metadata).await.unwrap();
+    holder
+        .store_credential(credential, &metadata)
+        .await
+        .unwrap();
 
     println!("Credential saved");
 
@@ -108,28 +123,46 @@ async fn run_presentation_flow(holder: impl HolderVp) {
         .read_line(&mut request_uri)
         .expect("Failed to read presentation request uri");
 
-    let auth_request = holder.get_authorization_request(&request_uri).await.unwrap();
+    let auth_request = holder
+        .get_authorization_request(&request_uri)
+        .await
+        .unwrap();
 
     println!("Auth request received: \n{:?}", auth_request);
 
     println!("2. Holder sends authorization/presentation response to Verifier");
-    holder.present_credentials_auto(&auth_request, &AuthorizationResponseMetadata {}).await.unwrap();
+    holder
+        .present_credentials_auto(&auth_request, &AuthorizationResponseMetadata {})
+        .await
+        .unwrap();
 
     println!("Presentation done");
 }
 
-async fn oid4vp_holder(kms: LocalKms, vault: InMemVault, did: String, key_metadata: KeyMetadata) -> impl oid4vp::Holder {
+async fn oid4vp_holder(
+    kms: LocalKms,
+    vault: InMemVault,
+    did: String,
+    key_metadata: KeyMetadata,
+) -> impl oid4vp::Holder {
     println!("Initializing oid4vp holder...");
 
     let holder = oid4vp::HolderBuilder::new(kms, vault, key_metadata, did)
-        .build().await.unwrap();
+        .build()
+        .await
+        .unwrap();
 
     println!("Done");
 
     holder
 }
 
-async fn oid4vci_holder(kms: LocalKms, vault: InMemVault, key_metadata: KeyMetadata, issuer_url: &str) -> impl oid4vci::Holder {
+async fn oid4vci_holder(
+    kms: LocalKms,
+    vault: InMemVault,
+    key_metadata: KeyMetadata,
+    issuer_url: &str,
+) -> impl oid4vci::Holder {
     println!("Initializing oid4vci holder...");
 
     let client_id = "wallet-dev".to_owned();
@@ -137,7 +170,9 @@ async fn oid4vci_holder(kms: LocalKms, vault: InMemVault, key_metadata: KeyMetad
     let holder = oid4vci::HolderBuilder::new(kms, vault, key_metadata, client_id)
         .with_issuer_url(issuer_url.to_string())
         .with_redirect_url("urn:ietf:wg:oauth:2.0:oob".to_string())
-        .build().await.unwrap();
+        .build()
+        .await
+        .unwrap();
 
     println!("Done");
 
@@ -147,13 +182,14 @@ async fn oid4vci_holder(kms: LocalKms, vault: InMemVault, key_metadata: KeyMetad
 async fn create_did_and_key_metadata(kms: &LocalKms) -> (DID, KeyMetadata) {
     let didkey = DIDKey::new();
 
-    let (kid, kh) = kms.create_and_handle(kms::KeyType::P256, kms::CreateOptions {})
-        .await.unwrap();
+    let (kid, kh) = kms
+        .create_and_handle(kms::KeyType::P256, kms::CreateOptions {})
+        .await
+        .unwrap();
 
     let did = didkey.generate(kh).unwrap();
 
-    let vm = didkey.resolve_verification_method(&did)
-        .await.unwrap().id;
+    let vm = didkey.resolve_verification_method(&did).await.unwrap().id;
 
     println!("Generated DID {}", did.clone());
     println!("Generated DIDURL {}", vm.clone());
@@ -164,7 +200,7 @@ async fn create_did_and_key_metadata(kms: &LocalKms) -> (DID, KeyMetadata) {
 async fn authorize_holder(holder: &impl oid4vci::Holder) -> TokenResponse {
     let callback = |url: Url| {
         println!("Authorization URL. Authenticate with user \"tneal\" and password \"password\"");
-        println!("{}", url.to_string());
+        println!("{}", url);
 
         print!("Please enter an authorization code: ");
         io::stdout().flush().unwrap();
@@ -176,10 +212,9 @@ async fn authorize_holder(holder: &impl oid4vci::Holder) -> TokenResponse {
 
         auth_code
     };
-    let token_response = holder
+
+    holder
         .authz_code_flow_with_scope(SCOPE.to_owned(), callback)
         .await
-        .unwrap();
-
-    token_response
+        .unwrap()
 }

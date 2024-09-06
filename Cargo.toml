@@ -5,6 +5,7 @@ members = ["demos/oid4vc", "demos/oid4vc/holder"]
 name = "agent-sdk"
 version = "0.2.1"
 edition = "2021"
+rust-version = "1.79"
 
 [dependencies]
 oid4vci = { git = "ssh://git@git.slock.it/open-source/oid4vci-rs.git", rev = "8b2b3161" }

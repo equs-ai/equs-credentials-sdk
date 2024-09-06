@@ -1,7 +1,7 @@
-use aries_askar::{Error, PassKey, Store, StoreKeyMethod};
-use aries_askar::storage::KdfMethod;
 use crate::askar::kms::AskarKms;
 use crate::askar::vault::AskarVault;
+use aries_askar::storage::KdfMethod;
+use aries_askar::{Error, PassKey, Store, StoreKeyMethod};
 
 pub mod kms;
 pub mod vault;
@@ -22,7 +22,8 @@ impl AskarStorage {
             pass_key,
             profile.clone(),
             true,
-        ).await?;
+        )
+        .await?;
 
         Ok(AskarStorage(store))
     }
@@ -36,7 +37,8 @@ impl AskarStorage {
             Some(key_method),
             pass_key,
             profile.clone(),
-        ).await?;
+        )
+        .await?;
 
         Ok(AskarStorage(store))
     }

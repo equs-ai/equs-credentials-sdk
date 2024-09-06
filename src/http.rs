@@ -1,9 +1,9 @@
-use std::fmt::Debug;
 use async_trait::async_trait;
 #[cfg(test)]
 use mockall::automock;
 use oauth2::{HttpRequest, HttpResponse};
 use snafu::{Location, Snafu};
+use std::fmt::Debug;
 
 #[derive(Snafu)]
 #[snafu(visibility(pub))]

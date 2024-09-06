@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use crate::crypto::Alg;
+use serde::{Deserialize, Serialize};
 
 pub use crate::vc::formats::vc::*;
 pub use crate::vc::formats::vp::*;
@@ -9,9 +9,9 @@ mod formats;
 mod pop;
 
 pub mod core;
+pub mod metadata;
 pub mod oid4vci;
 pub mod oid4vp;
-pub mod metadata;
 
 /// Verifiable Credential (`VC`)
 ///

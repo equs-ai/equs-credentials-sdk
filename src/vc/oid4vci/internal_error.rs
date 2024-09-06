@@ -1,9 +1,9 @@
-use std::fmt::Debug;
+use crate::http::HttpError;
+use crate::{storage, vault, vc};
 use oid4vci::credential::RequestError;
 use oid4vci::openidconnect::DiscoveryError;
 use snafu::{Location, Snafu};
-use crate::{storage, vault, vc};
-use crate::http::HttpError;
+use std::fmt::Debug;
 
 /// An `oid4vci` internal error.
 ///
@@ -16,7 +16,9 @@ use crate::http::HttpError;
 pub enum InternalError {
     #[snafu(display("Credential definition not found for ID: {id}"))]
     CredDefNotFound { id: String },
-    #[snafu(display("No scope set for Credential definition ID: {id}. Only scope authorization supported"))]
+    #[snafu(display(
+        "No scope set for Credential definition ID: {id}. Only scope authorization supported"
+    ))]
     NoScopeSet { id: String },
     #[snafu(display("Claims validation error at {location}\n Cause: {details}"))]
     ClaimsValidation {

@@ -1,31 +1,36 @@
-use std::collections::HashMap;
 use async_trait::async_trait;
 use jsonwebtoken::{DecodingKey, Header};
 use oid4vci::openidconnect::Nonce;
-use sd_jwt_rs::{ClaimsForSelectiveDisclosureStrategy, SDJWTHolder, SDJWTIssuer, SDJWTSerializationFormat, SDJWTVerifier};
 use sd_jwt_rs::resolver::KeyResolver;
+use sd_jwt_rs::{
+    ClaimsForSelectiveDisclosureStrategy, SDJWTHolder, SDJWTIssuer, SDJWTSerializationFormat,
+    SDJWTVerifier,
+};
 use serde_json::{Map, Value};
 use snafu::{ensure, ResultExt};
 use ssi::did::VerificationMethod;
 use ssi::jwk::JWK;
+use std::collections::HashMap;
 use time::OffsetDateTime;
 
 use crate::crypto::{Key, Signer};
-use crate::did::{DIDDoc, DIDResolver, DIDURL, VerificationMethodMap};
 use crate::did::universal::UniversalResolver;
+use crate::did::{DIDDoc, DIDResolver, VerificationMethodMap, DIDURL};
 use crate::utils;
 use crate::utils::b64;
 use crate::utils::serde::Helpers;
-use crate::vc::formats::{API, HasClaims, HasCredential, JWSSnafu, KeyTypeNotSupportedSnafu, ParsingSnafu, PresentationSnafu, SigningSnafu, VerifyingSnafu, VerifyOptions};
-use crate::vc::formats::Result;
 use crate::vc::formats::vc::SD_JWT_VC;
+use crate::vc::formats::Result;
+use crate::vc::formats::{
+    HasClaims, HasCredential, JWSSnafu, KeyTypeNotSupportedSnafu, ParsingSnafu, PresentationSnafu,
+    SigningSnafu, VerifyOptions, VerifyingSnafu, API,
+};
 
 pub type SdJwtRsError = sd_jwt_rs::error::Error;
 
 pub type Credential = String;
 pub type Presentation = String;
-pub type Claims = Map<String, serde_json::Value>;
-
+pub type Claims = Map<String, Value>;
 
 pub struct SignerWrapper<S: Signer> {
     signer: S,
@@ -40,7 +45,8 @@ impl<S: Signer> sd_jwt_rs::signer::SDJWTSigner for SignerWrapper<S> {
 
     async fn sign(&self, message: &[u8]) -> sd_jwt_rs::error::Result<String> {
         let signed = self.signer.sign(message).await;
-        signed.map(|s| b64::encode(s))
+        signed
+            .map(b64::encode)
             .map_err(|e| SdJwtRsError::SigningError(e.to_string()))
     }
 }
@@ -61,22 +67,26 @@ impl Default for DidKeyResolver<UniversalResolver> {
 
 #[async_trait]
 impl<R: DIDResolver> KeyResolver for DidKeyResolver<R> {
-    async fn resolve(&self, did_url: &str, header: &Header) -> sd_jwt_rs::error::Result<DecodingKey> {
+    async fn resolve(
+        &self,
+        did_url: &str,
+        header: &Header,
+    ) -> sd_jwt_rs::error::Result<DecodingKey> {
         let resolver = &self.0;
 
-        let vm = resolver.resolve_verification_method(did_url)
+        let vm = resolver
+            .resolve_verification_method(did_url)
             .await
             .map_err(|err| SdJwtRsError::Unspecified(err.to_string()))?;
 
-        let jwk = vm.get_jwk()
+        let jwk = vm
+            .get_jwk()
             .map_err(|err| SdJwtRsError::DeserializationError(err.to_string()))?;
 
         let jwk = utils::jwk::from_spruce_jwk(&jwk)
             .ok_or_else(|| SdJwtRsError::Unspecified(format!("Unsupported key: {:?}", jwk)))?;
 
-
-        DecodingKey::from_jwk(&jwk)
-            .map_err(|e| SdJwtRsError::DeserializationError(e.to_string()))
+        DecodingKey::from_jwk(&jwk).map_err(|e| SdJwtRsError::DeserializationError(e.to_string()))
     }
 }
 
@@ -95,7 +105,7 @@ pub struct VPMetadata {
 
 impl HasClaims<Claims> for Credential {
     fn parse_claims(&self) -> Result<Claims> {
-        let stripped = SdJwtAPI::strip_disclosures(&self);
+        let stripped = SdJwtAPI::strip_disclosures(self)?;
         ssi::jwt::decode_unverified(stripped).context(JWSSnafu)
     }
 }
@@ -103,7 +113,7 @@ impl HasClaims<Claims> for Credential {
 impl HasCredential<Credential> for Presentation {
     fn get_credential(&self) -> Result<Credential> {
         // NOTE: returns basic VC w/o disclosures
-        let stripped = SdJwtAPI::strip_disclosures(&self);
+        let stripped = SdJwtAPI::strip_disclosures(self)?;
         Ok(stripped.to_owned())
     }
 }
@@ -111,23 +121,24 @@ impl HasCredential<Credential> for Presentation {
 pub struct SdJwtAPI;
 
 impl SdJwtAPI {
-    fn prepare_claims(claims: Claims,
-                      iss_url: &DIDURL, hld_url: &DIDURL,
-                      metadata: &VCMetadata) -> Value {
-        let mut prepared = serde_json::Map::from(claims);
-
-        prepared.put_str("vct", &metadata.vct);
-        prepared.put_str("iss", &iss_url.did);
-        prepared.put_str("sub", hld_url);
+    fn prepare_claims(
+        mut claims: Claims,
+        iss_url: &DIDURL,
+        hld_url: &DIDURL,
+        metadata: &VCMetadata,
+    ) -> Value {
+        claims.put_str("vct", &metadata.vct);
+        claims.put_str("iss", &iss_url.did);
+        claims.put_str("sub", hld_url);
 
         let now = OffsetDateTime::now_utc();
-        prepared.put_dt("iat", now);
-        prepared.put_dt("nbf", now);
+        claims.put_dt("iat", now);
+        claims.put_dt("nbf", now);
 
         let lt = metadata.lifetime;
-        prepared.put_dt("exp", now + lt);
+        claims.put_dt("exp", now + lt);
 
-        Value::Object(prepared)
+        Value::Object(claims)
     }
 
     fn extra_headers(iss_did_url: &DIDURL) -> HashMap<String, String> {
@@ -138,17 +149,19 @@ impl SdJwtAPI {
         headers
     }
 
-    pub fn strip_disclosures(vc: &Credential) -> &str {
+    pub fn strip_disclosures(vc: &Credential) -> Result<&str> {
         let mut parts = vc.split('~');
-        let stripped = match parts.next() {
-            Some(part) => part,
-            _ => unreachable!(),
-        };
-        stripped
+
+        parts.next().ok_or_else(|| {
+            ParsingSnafu {
+                details: "Strip disclosure failed for 'vc+sd_jwt' credential",
+            }
+            .build()
+        })
     }
 
     pub fn verify_signature(vc: &Credential, jwk: &JWK) -> Result<()> {
-        let stripped = Self::strip_disclosures(vc);
+        let stripped = Self::strip_disclosures(vc)?;
 
         ssi::jws::decode_verify(stripped, jwk).context(JWSSnafu)?;
 
@@ -156,24 +169,34 @@ impl SdJwtAPI {
     }
 
     fn get_vm_from_did_doc(did_doc: &DIDDoc) -> Result<&VerificationMethodMap> {
-        let vm_methods = did_doc
-            .verification_method
-            .as_ref()
-            .ok_or(ParsingSnafu { details: "could not retrieve \"verification_method\" from DIDDoc" }.build())?;
+        let vm_methods = did_doc.verification_method.as_ref().ok_or(
+            ParsingSnafu {
+                details: "could not retrieve \"verification_method\" from DIDDoc",
+            }
+            .build(),
+        )?;
 
         ensure!(
             vm_methods.len() == 1,
-            ParsingSnafu { details: "DIDDoc contains multiple \"verification_method\"" }
+            ParsingSnafu {
+                details: "DIDDoc contains multiple \"verification_method\""
+            }
         );
 
-        let vm = vm_methods
-            .first()
-            .ok_or(ParsingSnafu { details: "\"verification_method\" list is empty" }.build())?;
+        let vm = vm_methods.first().ok_or(
+            ParsingSnafu {
+                details: "\"verification_method\" list is empty",
+            }
+            .build(),
+        )?;
 
         if let VerificationMethod::Map(vm) = vm {
             Ok(vm)
         } else {
-            ParsingSnafu { details: "\"verification_method\" value must be embedded" }.fail()
+            ParsingSnafu {
+                details: "\"verification_method\" value must be embedded",
+            }
+            .fail()
         }
     }
 
@@ -182,27 +205,56 @@ impl SdJwtAPI {
         let key_resolver = DidKeyResolver::default();
 
         let vm = match header.key_id {
-            Some(did_url) => {
-                key_resolver.0
-                    .resolve_verification_method(&did_url)
-                    .await.map_err(|e| { ParsingSnafu { details: format!("could not resolve verification method: {e}") }.build() })?
-            },
+            Some(did_url) => key_resolver
+                .0
+                .resolve_verification_method(&did_url)
+                .await
+                .map_err(|e| {
+                    ParsingSnafu {
+                        details: format!("could not resolve verification method: {e}"),
+                    }
+                    .build()
+                })?,
             _ => {
-                let claims: Claims = serde_json::from_slice(&payload)
-                    .map_err(|err| ParsingSnafu { details: err.to_string() }.build())?;
+                let claims: Claims = serde_json::from_slice(&payload).map_err(|err| {
+                    ParsingSnafu {
+                        details: err.to_string(),
+                    }
+                    .build()
+                })?;
 
-                let iss_value = claims.get("iss")
-                    .ok_or(VerifyingSnafu{ details: "could not retrieve \"iss\" field" }.build())?;
-                let iss_did = serde_json::to_string(iss_value)
-                    .map_err(|err| ParsingSnafu { details: err.to_string() }.build())?;
+                let iss_value = claims.get("iss").ok_or(
+                    VerifyingSnafu {
+                        details: "could not retrieve \"iss\" field",
+                    }
+                    .build(),
+                )?;
+                let iss_did = serde_json::to_string(iss_value).map_err(|err| {
+                    ParsingSnafu {
+                        details: err.to_string(),
+                    }
+                    .build()
+                })?;
 
-                let did_doc = key_resolver.0
-                    .resolve(&iss_did, Default::default()).await
+                let did_doc = key_resolver
+                    .0
+                    .resolve(&iss_did, Default::default())
+                    .await
                     .doc
-                    .ok_or(ParsingSnafu { details: "could not retrieve \"DIDDoc\"" }.build())?;
+                    .ok_or(
+                        ParsingSnafu {
+                            details: "could not retrieve \"DIDDoc\"",
+                        }
+                        .build(),
+                    )?;
 
                 Self::get_vm_from_did_doc(&did_doc)
-                    .map_err(|e| { ParsingSnafu { details: format!("could not resolve verification method: {e}") }.build() })?
+                    .map_err(|e| {
+                        ParsingSnafu {
+                            details: format!("could not resolve verification method: {e}"),
+                        }
+                        .build()
+                    })?
                     .to_owned()
             }
         };
@@ -217,10 +269,12 @@ impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata, Value> for Sd
         value.as_object().unwrap().to_owned()
     }
 
-    async fn create_vc<S, K>(claims: Claims,
-                             issuer_data: (&DIDURL, S),
-                             holder_data: (&DIDURL, K),
-                             metadata: VCMetadata) -> Result<Credential>
+    async fn create_vc<S, K>(
+        claims: Claims,
+        issuer_data: (&DIDURL, S),
+        holder_data: (&DIDURL, K),
+        metadata: VCMetadata,
+    ) -> Result<Credential>
     where
         S: Signer,
         K: Key,
@@ -231,72 +285,107 @@ impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata, Value> for Sd
         let sgn_wrapper = SignerWrapper { signer };
 
         let claims = SdJwtAPI::prepare_claims(claims, iss_did_url, hld_did, &metadata);
-        let headers = SdJwtAPI::extra_headers(&iss_did_url);
+        let headers = SdJwtAPI::extra_headers(iss_did_url);
 
         let jwk = utils::jwk::from_spruce_jwk_opt(hld_key.jwk())
             .ok_or_else(|| KeyTypeNotSupportedSnafu { type_: "JWK" }.build())?;
 
-        let disclosures = metadata.disclosures
-            .iter()
-            .map(|d| d.as_str())
-            .collect();
+        let disclosures = metadata.disclosures.iter().map(|d| d.as_str()).collect();
 
         let mut issuer = SDJWTIssuer::new(sgn_wrapper);
 
-        issuer.issue_sd_jwt(
-            claims,
-            ClaimsForSelectiveDisclosureStrategy::Custom(disclosures),
-            Some(jwk),
-            false,
-            SDJWTSerializationFormat::Compact,
-            Some(headers),
-        ).await.map_err(|err| SigningSnafu { details: err.to_string() }.build())
+        issuer
+            .issue_sd_jwt(
+                claims,
+                ClaimsForSelectiveDisclosureStrategy::Custom(disclosures),
+                Some(jwk),
+                false,
+                SDJWTSerializationFormat::Compact,
+                Some(headers),
+            )
+            .await
+            .map_err(|err| {
+                SigningSnafu {
+                    details: err.to_string(),
+                }
+                .build()
+            })
     }
 
     async fn create_vp<S>(
         credential: &Credential,
         holder_data: (&DIDURL, S),
-        nonce: Nonce, verifier_id: &str,
-        metadata: VPMetadata
-    ) -> Result<Presentation> where S: Signer {
+        nonce: Nonce,
+        verifier_id: &str,
+        metadata: VPMetadata,
+    ) -> Result<Presentation>
+    where
+        S: Signer,
+    {
         let (_, signer) = holder_data;
         let sgn_wrapper = SignerWrapper { signer };
 
         let mut holder = SDJWTHolder::new(credential.to_owned(), SDJWTSerializationFormat::Compact)
-            .map_err(|err| SigningSnafu { details: err.to_string() }.build())?;
+            .map_err(|err| {
+                SigningSnafu {
+                    details: err.to_string(),
+                }
+                .build()
+            })?;
 
-        holder.create_presentation(
-            metadata.disclosures,
-            Some(nonce.secret().to_owned()),
-            Some(verifier_id.to_string()),
-            Some(sgn_wrapper),
-        ).await.map_err(|err| PresentationSnafu { details: err.to_string() }.build())
+        holder
+            .create_presentation(
+                metadata.disclosures,
+                Some(nonce.secret().to_owned()),
+                Some(verifier_id.to_string()),
+                Some(sgn_wrapper),
+            )
+            .await
+            .map_err(|err| {
+                PresentationSnafu {
+                    details: err.to_string(),
+                }
+                .build()
+            })
     }
 
     async fn verify_vc(credential: &Credential, opts: VerifyOptions) -> Result<()> {
-        let plain_jwt = Self::strip_disclosures(credential);
+        let plain_jwt = Self::strip_disclosures(credential)?;
         let vm = Self::get_vm_from_jwt(plain_jwt).await?;
 
-        let jwk = vm.get_jwk()
-            .map_err(|e| { VerifyingSnafu{ details: format!("could not retrieve JWK: {e}") }.build() })?;
+        let jwk = vm.get_jwk().map_err(|e| {
+            VerifyingSnafu {
+                details: format!("could not retrieve JWK: {e}"),
+            }
+            .build()
+        })?;
 
         Self::verify_signature(credential, &jwk)
     }
 
-    async fn verify_vp(presentation: &Presentation,
-                       nonce: Nonce, verifier_id: &str,
-                       _opts: VerifyOptions) -> Result<Value> {
+    async fn verify_vp(
+        presentation: &Presentation,
+        nonce: Nonce,
+        verifier_id: &str,
+        _opts: VerifyOptions,
+    ) -> Result<Value> {
         let key_resolver = DidKeyResolver::default();
         let mut verifier = SDJWTVerifier::new(Box::new(key_resolver));
 
-        verifier.verify_presentation(
-            presentation.to_owned(),
-            Some(verifier_id.to_string()),
-            Some(nonce.secret().to_string()),
-            SDJWTSerializationFormat::Compact,
-        )
+        verifier
+            .verify_presentation(
+                presentation.to_owned(),
+                Some(verifier_id.to_string()),
+                Some(nonce.secret().to_string()),
+                SDJWTSerializationFormat::Compact,
+            )
             .await
-            .map_err(|e| VerifyingSnafu { details: e.to_string() }.build())
+            .map_err(|e| {
+                VerifyingSnafu {
+                    details: e.to_string(),
+                }
+                .build()
+            })
     }
 }
 
@@ -310,21 +399,27 @@ mod tests {
 
     use crate::crypto::Key;
     use crate::did::didkey::DIDKey;
+    use crate::inmem::kms::LocalKms;
     use crate::kms;
     use crate::kms::Kms;
-    use crate::inmem::kms::LocalKms;
-    use crate::vc::formats::{API, HasClaims, HasCredential, VerifyOptions};
     use crate::vc::formats::sd_jwt_vc::{SdJwtAPI, VCMetadata, VPMetadata};
+    use crate::vc::formats::{HasClaims, HasCredential, VerifyOptions, API};
 
     #[tokio::test]
     async fn e2e() {
         let kms = LocalKms::new();
         let didkey = DIDKey::new();
 
-        for kt in vec![kms::KeyType::Ed25519, kms::KeyType::P256] {
+        for kt in [kms::KeyType::Ed25519, kms::KeyType::P256] {
             // Initialization
-            let (_, i_kh) = kms.create_and_handle(kt.clone(), kms::CreateOptions {}).await.unwrap();
-            let (_, h_kh) = kms.create_and_handle(kt, kms::CreateOptions {}).await.unwrap();
+            let (_, i_kh) = kms
+                .create_and_handle(kt.clone(), kms::CreateOptions {})
+                .await
+                .unwrap();
+            let (_, h_kh) = kms
+                .create_and_handle(kt, kms::CreateOptions {})
+                .await
+                .unwrap();
 
             let claims = json!( {
                 "name": "John",
@@ -344,9 +439,15 @@ mod tests {
             println!("Claims: {:?}", cl);
 
             let iss_jwk = i_kh.clone().jwk().unwrap();
-            println!("Iss JWK:\n{}", serde_json::to_string_pretty(&iss_jwk).unwrap());
+            println!(
+                "Iss JWK:\n{}",
+                serde_json::to_string_pretty(&iss_jwk).unwrap()
+            );
             let hld_jwk = h_kh.clone().jwk().unwrap();
-            println!("Hld JWK:\n{}", serde_json::to_string_pretty(&hld_jwk).unwrap());
+            println!(
+                "Hld JWK:\n{}",
+                serde_json::to_string_pretty(&hld_jwk).unwrap()
+            );
 
             // VC
             let vc_res = SdJwtAPI::create_vc(
@@ -358,14 +459,18 @@ mod tests {
                     lifetime: time::Duration::days(365),
                     disclosures: vec!["$.name".to_owned(), "$.surname".to_owned()],
                 },
-            ).await;
+            )
+            .await;
             assert!(vc_res.is_ok());
 
             let vc = vc_res.unwrap();
             println!("VC:\n{}", vc);
 
             let claims = vc.parse_claims().unwrap();
-            println!("Claims:\n{}", serde_json::to_string_pretty(&claims).unwrap());
+            println!(
+                "Claims:\n{}",
+                serde_json::to_string_pretty(&claims).unwrap()
+            );
 
             assert!(!claims.contains_key("name"));
             assert!(!claims.contains_key("surname"));
@@ -386,9 +491,13 @@ mod tests {
                 VPMetadata {
                     disclosures: json!({
                         "name" : true
-                    }).as_object().unwrap().to_owned()
+                    })
+                    .as_object()
+                    .unwrap()
+                    .to_owned(),
                 },
-            ).await;
+            )
+            .await;
             assert!(vp_res.is_ok());
 
             let vp = vp_res.unwrap();
@@ -399,12 +508,8 @@ mod tests {
             assert!(sgn_res.is_ok());
 
             // Verification
-            let ver_res = SdJwtAPI::verify_vp(
-                &vp,
-                nonce.clone(),
-                "verifier-id",
-                VerifyOptions {},
-            ).await;
+            let ver_res =
+                SdJwtAPI::verify_vp(&vp, nonce.clone(), "verifier-id", VerifyOptions {}).await;
             assert!(ver_res.is_ok());
 
             let disclosed = ver_res.unwrap();
