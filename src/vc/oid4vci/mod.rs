@@ -6,14 +6,14 @@ use serde::{Deserialize, Serialize};
 use snafu::Snafu;
 use std::fmt::Debug;
 
-pub(crate) mod issuer;
 pub(crate) mod holder;
-mod token_validation;
+pub(crate) mod issuer;
 mod metadata;
+mod token_validation;
 
 mod builder;
-mod protocol_error;
 mod internal_error;
+mod protocol_error;
 
 pub use builder::HolderBuilder;
 pub use builder::IssuerBuilder;
@@ -27,7 +27,8 @@ pub type CredDefMetadataProfile = oid4vci::core::profiles::CoreProfilesMetadata;
 pub type AuthorizationMetadata = oid4vci::metadata::AuthorizationMetadata;
 pub type CredentialOffer = oid4vci::credential_offer::CredentialOffer<CoreProfilesOffer>;
 pub type CredentialOfferGrants = oid4vci::credential_offer::CredentialOfferGrants;
-pub type CredentialOfferParams = oid4vci::credential_offer::CredentialOfferParameters<CoreProfilesOffer>;
+pub type CredentialOfferParams =
+    oid4vci::credential_offer::CredentialOfferParameters<CoreProfilesOffer>;
 pub type CredentialRequest = oid4vci::core::credential::Request;
 pub type CredentialResponse = oid4vci::core::credential::Response;
 pub type TokenResponse = oid4vci::token::Response;
@@ -42,8 +43,13 @@ pub type Nonce = oid4vci::openidconnect::Nonce;
 /// *NOTE*: `deferred` flow and `notifications` currently are not supported.
 #[derive(Debug, Clone)]
 pub enum CredentialResult {
-    Deferred { transaction_id: String },
-    Credential { credential: Credential, notification_id: Option<String> },
+    Deferred {
+        transaction_id: String,
+    },
+    Credential {
+        credential: Credential,
+        notification_id: Option<String>,
+    },
 }
 
 /// A resolved response of the Credential issuance handled by `Holder`
@@ -56,25 +62,14 @@ pub struct CredentialResponseResolved {
     pub nonce_data: Option<NonceData>,
 }
 
-
 /// A session with state managed during the issuance.
 ///
 /// Contains [NonceData].
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct IssuanceSession {
     nonce: Option<NonceData>,
     notification_id: Option<String>,
     transaction_id: Option<String>,
-}
-
-impl Default for IssuanceSession {
-    fn default() -> Self {
-        Self {
-            nonce: None,
-            notification_id: None,
-            transaction_id: None,
-        }
-    }
 }
 
 /// A struct containing nonce and related data.
@@ -204,7 +199,7 @@ pub trait Issuer: Send + Sync {
     async fn issue_credential(
         &self,
         cred_request: &CredentialRequest,
-        token: &String,
+        token: &str,
         claims: &Claims,
         session: &mut IssuanceSession,
     ) -> Result<CredentialResponse>;
@@ -361,7 +356,9 @@ mod tests {
     use crate::vc::oid4vci::issuer::{IssuerService, TokenValidation};
     use crate::vc::oid4vci::metadata::convert_metadata;
     use crate::vc::oid4vci::token_validation::Introspect;
-    use crate::vc::oid4vci::{issuer, CredentialOfferGrants, CredentialOfferParams, Holder, IssuanceSession, Issuer};
+    use crate::vc::oid4vci::{
+        issuer, CredentialOfferGrants, CredentialOfferParams, Holder, IssuanceSession, Issuer,
+    };
     use crate::{kms, vc};
 
     // FIXTURES
@@ -387,7 +384,9 @@ mod tests {
         mock_static_ctx(
             &ctx,
             Method::GET,
-            iss_url.join("/.well-known/openid-credential-issuer").unwrap(),
+            iss_url
+                .join("/.well-known/openid-credential-issuer")
+                .unwrap(),
             issuer_metadata.clone(),
             StatusCode::OK,
         );
@@ -408,9 +407,9 @@ mod tests {
             Method::POST,
             authz_url.join("/par/request").unwrap(),
             json!({
-                "request_uri": "urn:ietf:params:oauth:request_uri:".to_owned() + req_uri_code.clone().secret(),
-                "expires_in": 86400,
-             }),
+               "request_uri": "urn:ietf:params:oauth:request_uri:".to_owned() + req_uri_code.clone().secret(),
+               "expires_in": 86400,
+            }),
             StatusCode::CREATED,
         );
 
@@ -442,13 +441,15 @@ mod tests {
         let issuer = oid4vci_issuer(issuer_metadata.clone(), http_mock_iss, introspect_ep).await;
 
         // 2. Creating offer
-        let (offer, _) = issuer.create_credential_offer(
-            vec!["SD_JWT_cred_1", "SD_JWT_cred_2"],
-            &CredentialOfferGrants {
-                authorization_code: Some(AuthorizationCodeGrant { issuer_state: None }),
-                pre_authorized_code: None,
-            },
-        ).unwrap();
+        let (offer, _) = issuer
+            .create_credential_offer(
+                vec!["SD_JWT_cred_1", "SD_JWT_cred_2"],
+                &CredentialOfferGrants {
+                    authorization_code: Some(AuthorizationCodeGrant { issuer_state: None }),
+                    pre_authorized_code: None,
+                },
+            )
+            .unwrap();
 
         let mut session = IssuanceSession::default();
         mock_http_fn(
@@ -471,26 +472,25 @@ mod tests {
         assert_eq!(&holder.get_issuer_metadata(), &issuer_metadata);
 
         // 5. Holder authorizes
-        let token_response = holder.authz_code_flow_with_scope(
-            SCOPE.into(),
-            |url| {
+        let token_response = holder
+            .authz_code_flow_with_scope(SCOPE.into(), |url| {
                 println!("Url {}", url);
 
                 assert!(url.to_string().starts_with(&authz_url.to_string()));
                 assert!(url.query().unwrap().contains(req_uri_code.secret()));
 
                 authz_code.secret().to_owned()
-            },
-        ).await.unwrap();
+            })
+            .await
+            .unwrap();
 
         println!("Token response {:?}", token_response);
 
         // 6.1 Holder requests SD_JWT_cred_1 credentials
-        let response = holder.request_credential(
-            token_response.access_token(),
-            "SD_JWT_cred_1",
-            None,
-        ).await.unwrap();
+        let response = holder
+            .request_credential(token_response.access_token(), "SD_JWT_cred_1", None)
+            .await
+            .unwrap();
 
         println!("Credential 1: {:?}", response.data);
 
@@ -499,55 +499,61 @@ mod tests {
         assert!(nonce_data.is_some());
 
         // 6.2 Holder requests SD_JWT_cred_2 credentials with the same token
-        let response = holder.request_credential(
-            token_response.access_token(),
-            "SD_JWT_cred_2",
-            nonce_data.map(|d| d.nonce),
-        ).await.unwrap();
+        let response = holder
+            .request_credential(
+                token_response.access_token(),
+                "SD_JWT_cred_2",
+                nonce_data.map(|d| d.nonce),
+            )
+            .await
+            .unwrap();
 
         println!("Credential 2: {:?}", response.data);
     }
 
-    async fn credential_endpoint(issuer: &impl Issuer, req: HttpRequest, session: &mut IssuanceSession) -> HttpResponse {
+    async fn credential_endpoint(
+        issuer: &impl Issuer,
+        req: HttpRequest,
+        session: &mut IssuanceSession,
+    ) -> HttpResponse {
         let cred_req = serde_json::from_slice(req.body.as_slice()).unwrap();
         let token = req.headers.get("Authorization").unwrap();
-        let token = token.to_str().unwrap()
-            .strip_prefix("Bearer ").unwrap()
+        let token = token
+            .to_str()
+            .unwrap()
+            .strip_prefix("Bearer ")
+            .unwrap()
             .to_string();
 
         let claims = json!( {
-                        "given_name": "John",
-                        "family_name": "Doe",
-                        "dob": "09/09/1989",
-                    });
+            "given_name": "John",
+            "family_name": "Doe",
+            "dob": "09/09/1989",
+        });
 
-        let result = issuer.issue_credential(
-            &cred_req,
-            &token,
-            &claims,
-            session,
-        ).await;
+        let result = issuer
+            .issue_credential(&cred_req, &token, &claims, session)
+            .await;
 
-        let response = match result {
+        match result {
             Ok(cred_resp) => HttpResponse {
                 status_code: StatusCode::OK,
                 headers: Default::default(),
                 body: serde_json::to_vec(&cred_resp).unwrap(),
             },
-            Err(issuer::Error::Protocol { source }) => {
-                return HttpResponse {
-                    status_code: StatusCode::BAD_REQUEST,
-                    headers: Default::default(),
-                    body: serde_json::to_vec(&source).unwrap(),
-                }
-            }
+            Err(issuer::Error::Protocol { source }) => HttpResponse {
+                status_code: StatusCode::BAD_REQUEST,
+                headers: Default::default(),
+                body: serde_json::to_vec(&source).unwrap(),
+            },
             _ => panic!(),
-        };
-
-        response
+        }
     }
 
-    async fn oid4vci_holder(credential_offer: CredentialOfferParams, http_client: MockHttpClient) -> impl Holder + Sized {
+    async fn oid4vci_holder(
+        credential_offer: CredentialOfferParams,
+        http_client: MockHttpClient,
+    ) -> impl Holder + Sized {
         let inner = holder().await;
         HolderService::from_credential_offer(
             inner,
@@ -555,17 +561,19 @@ mod tests {
             &CredentialOffer::Value { credential_offer },
             "wallet-dev".to_string(),
             "urn:ietf:wg:oauth:2.0:oob".to_string(),
-        ).await.unwrap()
+        )
+        .await
+        .unwrap()
     }
 
-    async fn oid4vci_issuer(metadata: IssuerMetadata, http_client: MockHttpClient, introspect_ep: Url) -> impl Issuer + Sized {
+    async fn oid4vci_issuer(
+        metadata: IssuerMetadata,
+        http_client: MockHttpClient,
+        introspect_ep: Url,
+    ) -> impl Issuer + Sized {
         let inner = issuer(&metadata).await;
         let introspect = Introspect::new(http_client, introspect_ep, None);
-        IssuerService::new(
-            metadata,
-            inner,
-            TokenValidation::Introspect(introspect),
-        )
+        IssuerService::new(metadata, inner, TokenValidation::Introspect(introspect))
     }
 
     async fn holder() -> impl vc::core::Holder {
@@ -577,7 +585,10 @@ mod tests {
         let vault = InMemVault::new();
 
         let kt = kms::KeyType::P256;
-        let (kid, kh) = kms.create_and_handle(kt, kms::CreateOptions {}).await.unwrap();
+        let (kid, kh) = kms
+            .create_and_handle(kt, kms::CreateOptions {})
+            .await
+            .unwrap();
 
         let did = didkey.generate(kh.clone()).unwrap();
         let did_url = DIDURL::from_str(&did).unwrap();
@@ -586,13 +597,17 @@ mod tests {
         let jwk = kh.clone().jwk().unwrap();
         println!("Key JWK:\n{}", serde_json::to_string_pretty(&jwk).unwrap());
 
-        vc::core::HolderService::new(kms, vault, HolderMetadata {
-            client_id: "wallet-dev".into(),
-            key_metadata: KeyMetadata {
-                did_url: did_url.to_string(),
-                kid: kid.clone(),
+        vc::core::HolderService::new(
+            kms,
+            vault,
+            HolderMetadata {
+                client_id: "wallet-dev".into(),
+                key_metadata: KeyMetadata {
+                    did_url: did_url.to_string(),
+                    kid: kid.clone(),
+                },
             },
-        })
+        )
     }
 
     async fn issuer(metadata: &IssuerMetadata) -> impl vc::core::Issuer {
@@ -602,7 +617,10 @@ mod tests {
         let didkey = DIDKey::new();
 
         let kt = kms::KeyType::P256;
-        let (kid, kh) = kms.create_and_handle(kt, kms::CreateOptions {}).await.unwrap();
+        let (kid, kh) = kms
+            .create_and_handle(kt, kms::CreateOptions {})
+            .await
+            .unwrap();
 
         let did = didkey.generate(kh.clone()).unwrap();
         let did_url = DIDURL::from_str(&did).unwrap();

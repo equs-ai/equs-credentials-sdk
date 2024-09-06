@@ -1,10 +1,10 @@
 use crate::storage::Result;
+use crate::storage::Storage;
 use async_rwlock::RwLock;
 use async_trait::async_trait;
 use std::collections::HashMap;
 use std::fmt::Display;
 use std::hash::Hash;
-use crate::storage::{Storage};
 
 pub struct InMemStorage<K, V> {
     map: RwLock<HashMap<K, V>>,
@@ -12,7 +12,9 @@ pub struct InMemStorage<K, V> {
 
 impl<K, V> InMemStorage<K, V> {
     pub fn new() -> Self {
-        Self { map: RwLock::new(HashMap::new()) }
+        Self {
+            map: RwLock::new(HashMap::new()),
+        }
     }
 }
 

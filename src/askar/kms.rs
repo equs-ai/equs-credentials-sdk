@@ -1,18 +1,18 @@
-use std::sync::Arc;
 use aries_askar::crypto::alg::EcCurves;
 use aries_askar::kms::{KeyAlg, LocalKey};
 use aries_askar::Store;
 use async_trait::async_trait;
 use snafu::{ensure, ResultExt};
 use ssi::jwk::JWK;
+use std::sync::Arc;
 
 use crate::crypto::{
     Alg, AlgNotSupportedSnafu, Error as CryptoError, Key, KeyNotSupportedSnafu, Signer, SigningKey,
-    SigningSnafu, VerificationSnafu, Verifier, VerifyingKey
+    SigningSnafu, VerificationSnafu, Verifier, VerifyingKey,
 };
 use crate::kms::{
-    Error as KmsError, CreateOptions, KeyHandle, KeyID, KeyType, Kms, CreationSnafu,
-    ResolvingSnafu, NotFoundSnafu, CryptoSnafu
+    CreateOptions, CreationSnafu, CryptoSnafu, Error as KmsError, KeyHandle, KeyID, KeyType, Kms,
+    NotFoundSnafu, ResolvingSnafu,
 };
 
 #[derive(Debug, Clone)]
@@ -34,7 +34,7 @@ impl Key for AskarKeyHandle {
         self.0
             .to_public_bytes()
             .map_err(|err| KeyNotSupportedSnafu { type_: "public" }.build())
-            .and_then(|public_key| Ok(public_key.to_vec()))
+            .map(|public_key| public_key.to_vec())
     }
 
     fn jwk(&self) -> Option<JWK> {
@@ -52,7 +52,12 @@ impl Signer for AskarKeyHandle {
     async fn sign(&self, payload: &[u8]) -> Result<Vec<u8>, CryptoError> {
         self.0
             .sign_message(payload, Some(self.askar_sign_type()))
-            .map_err(|err| SigningSnafu { details: err.to_string() }.build())
+            .map_err(|err| {
+                SigningSnafu {
+                    details: err.to_string(),
+                }
+                .build()
+            })
     }
 }
 
@@ -61,11 +66,22 @@ impl VerifyingKey for AskarKeyHandle {}
 #[async_trait]
 impl Verifier for AskarKeyHandle {
     async fn verify(&self, data: &[u8], signature: &[u8]) -> Result<(), CryptoError> {
-        let valid = self.0
+        let valid = self
+            .0
             .verify_signature(data, signature, Some(self.askar_sign_type()))
-            .map_err(|err| VerificationSnafu { details: err.to_string() }.build())?;
+            .map_err(|err| {
+                VerificationSnafu {
+                    details: err.to_string(),
+                }
+                .build()
+            })?;
 
-        ensure!(valid, VerificationSnafu{ details: "Signature is not valid" });
+        ensure!(
+            valid,
+            VerificationSnafu {
+                details: "Signature is not valid"
+            }
+        );
 
         Ok(())
     }
@@ -104,27 +120,37 @@ impl AskarKms {
 #[async_trait]
 impl Kms<AskarKeyHandle> for AskarKms {
     async fn create(&self, kt: KeyType, opts: CreateOptions) -> Result<KeyID, KmsError> {
-        let key = LocalKey::generate(kt.into(), false)
-            .map_err(|e| CreationSnafu { details: e.to_string() }.build())?;
+        let key = LocalKey::generate(kt.into(), false).map_err(|e| {
+            CreationSnafu {
+                details: e.to_string(),
+            }
+            .build()
+        })?;
 
         let kid = random_string::generate(KID_LENGTH, random_string::charsets::ALPHA);
-        self.insert_key(&kid, &key)
-            .await
-            .map_err(|e| CreationSnafu { details: e.to_string() }.build())?;
+        self.insert_key(&kid, &key).await.map_err(|e| {
+            CreationSnafu {
+                details: e.to_string(),
+            }
+            .build()
+        })?;
 
         Ok(kid)
     }
 
     async fn get(&self, kid: &KeyID) -> Result<AskarKeyHandle, KmsError> {
-        let key = self.get_key(kid)
+        let key = self
+            .get_key(kid)
             .await
-            .map_err(|err| ResolvingSnafu { details: err.to_string() }.build())?
+            .map_err(|err| {
+                ResolvingSnafu {
+                    details: err.to_string(),
+                }
+                .build()
+            })?
             .ok_or_else(|| NotFoundSnafu { id: kid }.build())?;
 
-        let sign_algorithm = key
-            .algorithm()
-            .try_into()
-            .context(CryptoSnafu)?;
+        let sign_algorithm = key.algorithm().try_into().context(CryptoSnafu)?;
 
         Ok(AskarKeyHandle(Arc::new(key), sign_algorithm))
     }
@@ -137,7 +163,10 @@ impl TryFrom<KeyAlg> for Alg {
         match value {
             KeyAlg::Ed25519 => Ok(Alg::EdDSA),
             KeyAlg::EcCurve(EcCurves::Secp256r1) => Ok(Alg::ES256),
-            _ => AlgNotSupportedSnafu { alg: value.as_str() }.fail(),
+            _ => AlgNotSupportedSnafu {
+                alg: value.as_str(),
+            }
+            .fail(),
         }
     }
 }

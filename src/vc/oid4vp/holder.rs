@@ -2,7 +2,9 @@ use crate::did::DIDResolver;
 use crate::vc;
 use crate::vc::core::PresentationInput;
 use crate::vc::oid4vp::presentation_exchange::split_to_inputs;
-use crate::vc::oid4vp::{default_wallet_metadata, AuthorizationResponseMetadata, CredentialMapping, ResolvedAuthRequest};
+use crate::vc::oid4vp::{
+    default_wallet_metadata, AuthorizationResponseMetadata, CredentialMapping, ResolvedAuthRequest,
+};
 use crate::vc::{oid4vp as api, Credential, Presentation};
 use anyhow::bail;
 use async_trait::async_trait;
@@ -15,7 +17,9 @@ use oid4vp::core::metadata::WalletMetadata;
 use oid4vp::core::object::{ParsingErrorContext, UntypedObject};
 use oid4vp::core::profile;
 use oid4vp::core::profile::Wallet;
-use oid4vp::core::response::parameters::{PresentationSubmission as PresentationSubmissionParam, VpToken};
+use oid4vp::core::response::parameters::{
+    PresentationSubmission as PresentationSubmissionParam, VpToken,
+};
 use oid4vp::core::response::AuthorizationResponse;
 use oid4vp::presentation_exchange::{DescriptorMap, PresentationSubmission};
 use url::Url;
@@ -56,6 +60,7 @@ where
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn submit_auth_response_helper(
         &self,
         nonce: &str,
@@ -65,15 +70,12 @@ where
         path: String,
         vp_tokens: &mut Vec<Presentation>,
         presentation_submission: &mut PresentationSubmission,
-    ) -> Result<()>
-    {
+    ) -> Result<()> {
         // TODO: implement builder-like helper for VpToken/PresentationSubmission in presentation_exchange
-        let presentation = self.holder.create_presentation(
-            nonce,
-            client_id,
-            presentation_input,
-            credential,
-        ).await?;
+        let presentation = self
+            .holder
+            .create_presentation(nonce, client_id, presentation_input, credential)
+            .await?;
 
         vp_tokens.push(presentation);
 
@@ -94,9 +96,7 @@ where
         let mut response_params = UntypedObject::default();
 
         if presentations.len() == 1 {
-            let vp_token = serde_json::from_value(
-                serde_json::to_value(&presentations[0])?
-            )?;
+            let vp_token = serde_json::from_value(serde_json::to_value(&presentations[0])?)?;
             response_params.insert(VpToken(vp_token));
             pres_sub.descriptor_map[0].path = "$".to_owned();
         } else {
@@ -119,14 +119,12 @@ where
     HL: vc::core::Holder,
     D: DIDResolver,
 {
-    async fn get_authorization_request(
-        &self,
-        auth_req_uri: &str,
-    ) -> Result<ResolvedAuthRequest> {
+    async fn get_authorization_request(&self, auth_req_uri: &str) -> Result<ResolvedAuthRequest> {
         let url = Url::parse(auth_req_uri)?;
         let aro = self.handle_request(&url, &self.http_client).await?;
 
-        let pres_def = aro.resolve_presentation_definition()
+        let pres_def = aro
+            .resolve_presentation_definition()
             .await?
             .parsed()
             .to_owned();
@@ -166,21 +164,27 @@ where
                 format!("$[{i}]"),
                 &mut vp_tokens,
                 &mut pres_sub,
-            ).await?;
+            )
+            .await?;
         }
 
         let auth_resp = Self::generate_auth_response(vp_tokens, pres_sub)?;
-        let redirect_url = self.submit_response(
-            &auth_request.response_uri,
-            &auth_request.response_mode,
-            auth_resp,
-            &self.http_client,
-        ).await?;
+        let redirect_url = self
+            .submit_response(
+                &auth_request.response_uri,
+                &auth_request.response_mode,
+                auth_resp,
+                &self.http_client,
+            )
+            .await?;
 
         Ok(redirect_url)
     }
 
-    async fn find_vcs_for_presentation(&self, auth_request: &ResolvedAuthRequest) -> Result<CredentialMapping> {
+    async fn find_vcs_for_presentation(
+        &self,
+        auth_request: &ResolvedAuthRequest,
+    ) -> Result<CredentialMapping> {
         let mut creds_map = CredentialMapping::new();
 
         let pres_inputs = split_to_inputs(&auth_request.presentation_definition)?;
@@ -220,7 +224,7 @@ where
                         &mut vp_tokens,
                         &mut pres_sub,
                     )
-                        .await?;
+                    .await?;
 
                     path_index += 1;
                 }
@@ -230,12 +234,14 @@ where
         }
 
         let auth_resp = Self::generate_auth_response(vp_tokens, pres_sub)?;
-        let redirect_url = self.submit_response(
-            &auth_request.response_uri,
-            &auth_request.response_mode,
-            auth_resp,
-            &self.http_client,
-        ).await?;
+        let redirect_url = self
+            .submit_response(
+                &auth_request.response_uri,
+                &auth_request.response_mode,
+                auth_resp,
+                &self.http_client,
+            )
+            .await?;
 
         Ok(redirect_url)
     }
@@ -263,11 +269,11 @@ where
             .parsing_error()?;
 
         if let Some(Ok(vp_formats)) = client_metadata.0.get::<VpFormats>() {
-            let unsupported = vp_formats.0
+            let unsupported = vp_formats
+                .0
                 .keys()
                 .find(|k| !wallet_metadata.vp_formats_supported().0.contains_key(*k));
-            if let Some(format) = unsupported
-            {
+            if let Some(format) = unsupported {
                 bail!("vp format not supported");
             }
         }
@@ -300,13 +306,18 @@ where
     ) -> anyhow::Result<()> {
         let (header, _) = ssi::jws::decode_unverified(&request_jwt)?;
 
-        let kid = header.key_id.ok_or(
-            Error::RequestObjectVerification("could not parse kid from Request Object JWT".to_owned())
-        )?;
-        let ver_map = self.did_resolver.resolve_verification_method(kid.as_str()).await?;
-        let verifier_pub_jwk = &ver_map.public_key_jwk.ok_or(
-            Error::RequestObjectVerification("could not parse Verifier's public JWK from Verification Method's Map".to_owned())
-        )?;
+        let kid = header.key_id.ok_or(Error::RequestObjectVerification(
+            "could not parse kid from Request Object JWT".to_owned(),
+        ))?;
+        let ver_map = self
+            .did_resolver
+            .resolve_verification_method(kid.as_str())
+            .await?;
+        let verifier_pub_jwk = &ver_map
+            .public_key_jwk
+            .ok_or(Error::RequestObjectVerification(
+                "could not parse Verifier's public JWK from Verification Method's Map".to_owned(),
+            ))?;
 
         ssi::jws::decode_verify(&request_jwt, verifier_pub_jwk)?;
 
@@ -407,19 +418,14 @@ mod tests {
             .with_status(200)
             .with_body(REQUEST_OBJECT)
             .create();
-        verifier_srv
-            .mock("POST", "/auth")
-            .with_status(200)
-            .create();
+        verifier_srv.mock("POST", "/auth").with_status(200).create();
 
         let holder = oid4vp_holder().await;
         // Handle request object
-        let request_obj = holder
-            .get_authorization_request(REQUEST_URI)
-            .await
-            .unwrap();
+        let request_obj = holder.get_authorization_request(REQUEST_URI).await.unwrap();
         // Send auth response
-        holder.present_credentials_auto(&request_obj, &AuthorizationResponseMetadata {})
+        holder
+            .present_credentials_auto(&request_obj, &AuthorizationResponseMetadata {})
             .await
             .unwrap();
     }
@@ -432,12 +438,7 @@ mod tests {
             .unwrap();
         let inner = holder().await;
         let resolver = DIDKey::new();
-        HolderService::new(
-            inner,
-            resolver,
-            None,
-            client,
-        )
+        HolderService::new(inner, resolver, None, client)
     }
 
     async fn holder() -> impl vc::core::Holder {
@@ -445,12 +446,22 @@ mod tests {
         let didkey = DIDKey::new();
         let vault = InMemVault::new();
 
-        let cred1_meta = CredentialMetadata { type_: "https://credentials.example.com/identity_credential".into(), format: VCFormat::SdJwtVc, alg: Some(Alg::ES256), tags: vec![] };
-        let store1_res = vault.store_credential(Credential::SdJwt(CRED_JWT.to_string()), &cred1_meta).await;
+        let cred1_meta = CredentialMetadata {
+            type_: "https://credentials.example.com/identity_credential".into(),
+            format: VCFormat::SdJwtVc,
+            alg: Some(Alg::ES256),
+            tags: vec![],
+        };
+        let store1_res = vault
+            .store_credential(Credential::SdJwt(CRED_JWT.to_string()), &cred1_meta)
+            .await;
         assert!(store1_res.is_ok());
 
         let kt = kms::KeyType::P256;
-        let (kid, kh) = kms.create_and_handle(kt, kms::CreateOptions {}).await.unwrap();
+        let (kid, kh) = kms
+            .create_and_handle(kt, kms::CreateOptions {})
+            .await
+            .unwrap();
 
         let did = didkey.generate(kh.clone()).unwrap();
         let did_url = DIDURL::from_str(&did).unwrap();
@@ -459,12 +470,16 @@ mod tests {
         let jwk = kh.clone().jwk().unwrap();
         println!("Key JWK:\n{}", serde_json::to_string_pretty(&jwk).unwrap());
 
-        vc::core::HolderService::new(kms, vault, HolderMetadata {
-            client_id: CLIENT_ID.to_owned(),
-            key_metadata: KeyMetadata {
-                did_url: did_url.to_string(),
-                kid: kid.clone(),
+        vc::core::HolderService::new(
+            kms,
+            vault,
+            HolderMetadata {
+                client_id: CLIENT_ID.to_owned(),
+                key_metadata: KeyMetadata {
+                    did_url: did_url.to_string(),
+                    kid: kid.clone(),
+                },
             },
-        })
+        )
     }
 }

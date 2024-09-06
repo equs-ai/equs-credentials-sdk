@@ -9,8 +9,13 @@ use agent_sdk::kms;
 use agent_sdk::kms::Kms;
 use agent_sdk::storage::Storage;
 use agent_sdk::vc::core::KeyMetadata;
-use agent_sdk::vc::oid4vci::{AuthorizationCodeGrant, CredDefMetadata, CredDefMetadataProfile, CredentialOffer, CredentialOfferGrants, CredentialRequest, IssuanceSession, IssuerMetadata};
-use agent_sdk::vc::oid4vp::{auth_request_as_url, AuthorizationResponse, AuthorizationUrlType, PresentationDefinition};
+use agent_sdk::vc::oid4vci::{
+    AuthorizationCodeGrant, CredDefMetadata, CredDefMetadataProfile, CredentialOffer,
+    CredentialOfferGrants, CredentialRequest, IssuanceSession, IssuerMetadata,
+};
+use agent_sdk::vc::oid4vp::{
+    auth_request_as_url, AuthorizationResponse, AuthorizationUrlType, PresentationDefinition,
+};
 use agent_sdk::vc::{oid4vci, oid4vp};
 use keycloak::{KeycloakAdmin, KeycloakAdminToken};
 use reqwest::Url;
@@ -44,7 +49,6 @@ async fn main() -> std::io::Result<()> {
         verifier: Arc::new(oid4vp_verifier().await),
         issuer_storage: InMemStorage::new(),
         verifier_storage: InMemStorage::new(),
-
     });
     HttpServer::new(move || {
         App::new()
@@ -64,17 +68,19 @@ async fn main() -> std::io::Result<()> {
                 OID4VP_AUTH_REQUEST_URL_PATH,
                 web::get().to(oid4vp_presentation_request_uri),
             )
-            .route(OID4VP_AUTH_REQUEST_OBJECT_URL_PATH,
-                   web::get().to(oid4vp_presentation_request_object),
+            .route(
+                OID4VP_AUTH_REQUEST_OBJECT_URL_PATH,
+                web::get().to(oid4vp_presentation_request_object),
             )
-            .route(OID4VP_AUTH_RESPONSE_URL_PATH,
-                   web::post().to(oid4vp_presentation_response),
+            .route(
+                OID4VP_AUTH_RESPONSE_URL_PATH,
+                web::post().to(oid4vp_presentation_response),
             )
             .app_data(app_state.clone())
     })
-        .bind(("127.0.0.1", 8088))?
-        .run()
-        .await
+    .bind(("127.0.0.1", 8088))?
+    .run()
+    .await
 }
 
 async fn oid4vci_issue_credential(
@@ -92,28 +98,26 @@ async fn oid4vci_issue_credential(
     // Depending on the concrete `CredDef` requested Claims would be different
     let claims = get_user_attributes(&cred_def).await?;
 
-    let mut session = state.issuer_storage.get(&token).await.unwrap()
+    let mut session = state
+        .issuer_storage
+        .get(&token)
+        .await
+        .unwrap()
         .unwrap_or(IssuanceSession::default());
 
-    let resp = state.issuer
-        .issue_credential(
-            &cred_req,
-            &token,
-            &claims,
-            &mut session,
-        ).await;
+    let resp = state
+        .issuer
+        .issue_credential(&cred_req, &token, &claims, &mut session)
+        .await;
 
-    state.issuer_storage.put(token, session)
-        .await.unwrap();
+    state.issuer_storage.put(token, session).await.unwrap();
 
     println!("Issuance Result: {:?}", resp);
 
     match resp {
         Ok(body) => Ok(HttpResponse::Ok().json(body)),
         // Protocol errors are expected
-        Err(oid4vci::Error::Protocol { source }) => {
-            Ok(HttpResponse::BadRequest().json(source))
-        }
+        Err(oid4vci::Error::Protocol { source }) => Ok(HttpResponse::BadRequest().json(source)),
         Err(_) => Ok(HttpResponse::InternalServerError().json(json!({}))),
     }
 }
@@ -125,13 +129,16 @@ async fn oid4vci_issue_metadata(state: web::Data<AppState>) -> HttpResponse {
 }
 
 async fn oid4vci_credential_offer(state: web::Data<AppState>) -> HttpResponse {
-    let (credential_offer, url) = state.issuer.create_credential_offer(
-        vec!["SD_JWT_cred_1", "SD_JWT_cred_2"],
-        &CredentialOfferGrants {
-            authorization_code: Some(AuthorizationCodeGrant { issuer_state: None }),
-            pre_authorized_code: None,
-        },
-    ).unwrap();
+    let (credential_offer, url) = state
+        .issuer
+        .create_credential_offer(
+            vec!["SD_JWT_cred_1", "SD_JWT_cred_2"],
+            &CredentialOfferGrants {
+                authorization_code: Some(AuthorizationCodeGrant { issuer_state: None }),
+                pre_authorized_code: None,
+            },
+        )
+        .unwrap();
 
     println!("Offer {:?}", credential_offer);
     println!("URL {}", url);
@@ -139,42 +146,49 @@ async fn oid4vci_credential_offer(state: web::Data<AppState>) -> HttpResponse {
     HttpResponse::Ok().json(CredentialOffer::Value { credential_offer })
 }
 
-
 async fn oid4vp_presentation_request_object(
     req: HttpRequest,
     state: web::Data<AppState>,
 ) -> HttpResponse {
-    let auth_req_object = state.verifier_storage
+    let auth_req_object = state
+        .verifier_storage
         .get(&req.full_url().to_string())
-        .await.unwrap().unwrap();
+        .await
+        .unwrap()
+        .unwrap();
 
-    HttpResponse::Ok().content_type("text/plain").body(auth_req_object)
+    HttpResponse::Ok()
+        .content_type("text/plain")
+        .body(auth_req_object)
 }
 
 async fn oid4vp_presentation_request_uri(state: web::Data<AppState>) -> HttpResponse {
     let response_uri =
         Url::parse(format!("{}{}", SERVER_URL, OID4VP_AUTH_RESPONSE_URL_PATH).as_str()).unwrap();
     let request_uri =
-        Url::parse(format!("{}{}", SERVER_URL, OID4VP_AUTH_REQUEST_OBJECT_URL_PATH).as_str()).unwrap();
+        Url::parse(format!("{}{}", SERVER_URL, OID4VP_AUTH_REQUEST_OBJECT_URL_PATH).as_str())
+            .unwrap();
 
     // Verifier may build a custom presentation definition depending on the needs of verification
-    let auth_req = state.verifier
+    let auth_req = state
+        .verifier
         .create_authorization_request(&default_presentation_definition(), "nOnCe", response_uri)
         .await
         .unwrap();
 
-    let url = auth_request_as_url(&auth_req, AuthorizationUrlType::Reference(request_uri.clone()))
-        .to_string();
+    let url = auth_request_as_url(
+        &auth_req,
+        AuthorizationUrlType::Reference(request_uri.clone()),
+    )
+    .to_string();
 
-    state.verifier_storage
-        .put(
-            request_uri.to_string(),
-            auth_req.request_object_jwt,
-        ).await.unwrap();
+    state
+        .verifier_storage
+        .put(request_uri.to_string(), auth_req.request_object_jwt)
+        .await
+        .unwrap();
 
-    HttpResponse::Ok()
-        .content_type("text/plain")
-        .body(url)
+    HttpResponse::Ok().content_type("text/plain").body(url)
 }
 
 async fn oid4vp_presentation_response(
@@ -185,9 +199,16 @@ async fn oid4vp_presentation_response(
         vp_token: req.0.vp_token,
         presentation_submission: serde_json::from_str(&req.0.presentation_submission).unwrap(),
     };
-    let verified_claims = state.verifier.verify_presentation(&wallet_auth_resp).await.unwrap();
+    let verified_claims = state
+        .verifier
+        .verify_presentation(&wallet_auth_resp)
+        .await
+        .unwrap();
 
-    println!("Verifier claims: {}", serde_json::to_string(&verified_claims).unwrap());
+    println!(
+        "Verifier claims: {}",
+        serde_json::to_string(&verified_claims).unwrap()
+    );
 
     HttpResponse::Ok().finish()
 }
@@ -207,7 +228,7 @@ async fn get_user_attributes(cred_def: &CredDefMetadata) -> Result<Value, Error>
     // Issue dummy VC for SD_JWT_cred_2
     // Just to demonstrate, that claims and values should be different between creds
     if vct == "https://credentials.example.com/identity_credential_2" {
-        let mut claims_json = serde_json::Value::from(json!({}));
+        let mut claims_json = json!({});
         claims_json["username"] = serde_json::Value::from("USER");
         claims_json["email"] = serde_json::Value::from("HARDCODED@gmail.com");
         return Ok(claims_json);
@@ -233,14 +254,28 @@ async fn get_user_attributes(cred_def: &CredDefMetadata) -> Result<Value, Error>
         "password",
         &client,
     )
-        .await
-        .unwrap();
+    .await
+    .unwrap();
 
     let keycloak_admin = KeycloakAdmin::new(keycloak_url, admin_token, client);
 
     let users = keycloak_admin
-        .realm_users_get(&realm_name, None, None, None, None, None, None, None, None, None, None, None, None, None,
-                         Some(user_name),
+        .realm_users_get(
+            &realm_name,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            Some(user_name),
         )
         .await
         .unwrap();
@@ -283,7 +318,9 @@ async fn oid4vp_verifier() -> impl oid4vp::Verifier {
     let (did, key_metadata) = create_did_and_key_metadata(&kms).await;
 
     let verifier = oid4vp::VerifierBuilder::new(kms, key_metadata, did)
-        .build().await.unwrap();
+        .build()
+        .await
+        .unwrap();
 
     println!("Done");
     verifier
@@ -292,13 +329,14 @@ async fn oid4vp_verifier() -> impl oid4vp::Verifier {
 async fn create_did_and_key_metadata(kms: &LocalKms) -> (DID, KeyMetadata) {
     let didkey = DIDKey::new();
 
-    let (kid, kh) = kms.create_and_handle(kms::KeyType::P256, kms::CreateOptions {})
-        .await.unwrap();
+    let (kid, kh) = kms
+        .create_and_handle(kms::KeyType::P256, kms::CreateOptions {})
+        .await
+        .unwrap();
 
     let did = didkey.generate(kh).unwrap();
 
-    let vm = didkey.resolve_verification_method(&did)
-        .await.unwrap().id;
+    let vm = didkey.resolve_verification_method(&did).await.unwrap().id;
 
     println!("Generated DID {}", did.clone());
     println!("Generated DIDURL {}", vm.clone());

@@ -1,11 +1,23 @@
 stages:
+  - lint
   - test
-  - demo-build
+  - build
 
 default:
   image: rust:1.79.0
   before_script:
     - sed -i "s|ssh://git@git.slock.it/|https://gitlab-ci-token:${CI_JOB_TOKEN}@git.slock.it/|" Cargo.toml
+
+lint-job:
+  stage: lint
+  script:
+    - rustup component add rustfmt
+    - rustup component add clippy
+    - cargo fmt --all
+    - cargo clippy --workspace --all-targets --all-features -- -Dwarnings
+  only:
+    - merge_requests
+    - main
 
 test-job:
   stage: test
@@ -16,8 +28,16 @@ test-job:
     - merge_requests
     - main
 
+doc-build-job:
+  stage: build
+  script:
+    - cargo doc --no-deps
+  only:
+    - merge_requests
+    - main
+
 oid4vc-demo-build-job:
-  stage: demo-build
+  stage: build
   script:
     - ./scripts/build-oid4vci-demo.sh
   only:

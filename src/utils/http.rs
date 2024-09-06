@@ -3,9 +3,9 @@ pub const MIME_TYPE_JSON: &str = "application/json";
 
 #[cfg(test)]
 pub mod test {
-    use oauth2::{HttpRequest, HttpResponse};
+    use crate::http::{MockHttpClient, Result, __mock_MockHttpClient_HttpClient};
     use oauth2::http::{Method, StatusCode};
-    use crate::http::{__mock_MockHttpClient_HttpClient, MockHttpClient, Result};
+    use oauth2::{HttpRequest, HttpResponse};
 
     #[cfg(test)]
     pub fn mock_http_once<T: serde::Serialize + Send + Sync + 'static>(
@@ -27,8 +27,7 @@ pub mod test {
         status: StatusCode,
         times: mockall::TimesRange,
     ) {
-        mock
-            .expect_async_call()
+        mock.expect_async_call()
             .withf(move |req| {
                 let method = req.method == method;
                 let url = req.url == url;
@@ -52,12 +51,10 @@ pub mod test {
         url: url::Url,
         body_fn: F,
         times: mockall::TimesRange,
-    )
-    where
+    ) where
         F: FnMut(HttpRequest) -> Result<HttpResponse> + Send + 'static,
     {
-        mock
-            .expect_async_call()
+        mock.expect_async_call()
             .withf(move |req| {
                 let method = req.method == method;
                 let url = req.url == url;
@@ -76,8 +73,7 @@ pub mod test {
         body: T,
         status: StatusCode,
     ) {
-        ctx
-            .expect()
+        ctx.expect()
             .withf(move |req| {
                 let method = req.method == method;
                 let url = req.url == url;
@@ -85,11 +81,12 @@ pub mod test {
                 method && url
             })
             .times(1)
-            .returning(move |_| Ok(HttpResponse {
-                status_code: StatusCode::OK,
-                headers: Default::default(),
-                body: serde_json::to_vec(&body).unwrap(),
-            }));
+            .returning(move |_| {
+                Ok(HttpResponse {
+                    status_code: StatusCode::OK,
+                    headers: Default::default(),
+                    body: serde_json::to_vec(&body).unwrap(),
+                })
+            });
     }
 }
-

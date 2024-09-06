@@ -1,19 +1,25 @@
-use std::marker::PhantomData;
-use std::str::FromStr;
 use async_trait::async_trait;
 use oid4vci::openidconnect::Nonce;
 use snafu::ResultExt;
-use tracing::{instrument, Level, debug, trace};
+use std::marker::PhantomData;
+use std::str::FromStr;
+use tracing::{debug, instrument, trace, Level};
 
 use crate::did::DIDURL;
-use crate::vault::{FindCriteria};
-use crate::vc::core::{CredDefRequiredSnafu, FormatNotSupportedSnafu, KMSSnafu, ProofFormatRequiredSnafu, ProofSnafu, RequestedCredentialNotFoundSnafu, Result, VaultSnafu, VCSnafu};
-use crate::vc::core::{CredentialOffer, CredentialRequest, CredentialRequestData, Holder, HolderMetadata, PresentationInput, Proof};
+use crate::vault::FindCriteria;
+use crate::vc::core::{
+    CredDefRequiredSnafu, FormatNotSupportedSnafu, KMSSnafu, ProofFormatRequiredSnafu, ProofSnafu,
+    RequestedCredentialNotFoundSnafu, Result, VCSnafu, VaultSnafu,
+};
+use crate::vc::core::{
+    CredentialOffer, CredentialRequest, CredentialRequestData, Holder, HolderMetadata,
+    PresentationInput, Proof,
+};
 use crate::vc::formats::sd_jwt_vc::{SdJwtAPI, VPMetadata};
-use crate::vc::formats::{API, VerifyOptions};
+use crate::vc::formats::{VerifyOptions, API};
 use crate::vc::pop::jwt_pop::JwtProofOfPossession;
 use crate::vc::pop::ProofOfPossession;
-use crate::vc::{pop, Credential, CredentialMetadata, Presentation, HasVCFormat};
+use crate::vc::{pop, Credential, CredentialMetadata, HasVCFormat, Presentation};
 use crate::{kms, vault};
 
 pub struct HolderService<KH, KMS, V>
@@ -48,26 +54,29 @@ where
     ) -> Result<CredentialRequest> {
         trace!(?credential_offer, %nonce);
 
-        let (cred_def_id, proofs) = self.resolve_cred_offer(&credential_offer)?;
+        let (cred_def_id, proofs) = self.resolve_cred_offer(credential_offer)?;
 
         let pop_fmt = self.resolve_proof_format(proofs)?;
         let (did_url, key) = self.resolve_key_metadata().await?;
         let proof = match pop_fmt {
-            pop::Format::Jwt => {
-                JwtProofOfPossession::generate(
-                    &did_url,
-                    key,
-                    Nonce::new(nonce.into()),
-                    pop::GenerateOptions {
-                        cred_iss_id: credential_offer.issuer_id.clone(),
-                        client_id: None,
-                        lifetime: None,
-                    },
-                ).await.context(ProofSnafu)?
+            pop::Format::Jwt => JwtProofOfPossession::generate(
+                &did_url,
+                key,
+                Nonce::new(nonce.into()),
+                pop::GenerateOptions {
+                    cred_iss_id: credential_offer.issuer_id.clone(),
+                    client_id: None,
+                    lifetime: None,
+                },
+            )
+            .await
+            .context(ProofSnafu)?,
+            _ => {
+                return FormatNotSupportedSnafu {
+                    format: <pop::Format as Into<&str>>::into(pop_fmt),
+                }
+                .fail()
             }
-            _ => return FormatNotSupportedSnafu {
-                format: <pop::Format as Into<&str>>::into(pop_fmt)
-            }.fail(),
         };
         trace!(resolved_proof = %proof);
 
@@ -75,8 +84,11 @@ where
         let credential_request = CredentialRequest {
             cred_def_id: cred_def_id.clone(),
             cred_offer_id: credential_offer.cred_offer_id.clone(),
-            proof: Proof { format: fmt.to_owned(), proof: proof.to_string() },
-            protocol_data: Some(CredentialRequestData { ..Default::default() }),
+            proof: Proof {
+                format: fmt.to_owned(),
+                proof: proof.to_string(),
+            },
+            protocol_data: Some(CredentialRequestData::default()),
         };
 
         Ok(credential_request)
@@ -95,7 +107,8 @@ where
     ) -> Result<String> {
         trace!(?credential, credential_metadata = ?metadata);
 
-        let id = self.vault
+        let id = self
+            .vault
             .store_credential(credential.to_owned(), metadata)
             .await
             .context(VaultSnafu)?;
@@ -113,10 +126,13 @@ where
         trace!(?credential);
 
         match credential {
-            Credential::SdJwt(cred) => {
-                SdJwtAPI::verify_vc(cred, VerifyOptions{}).await.context(VCSnafu)
+            Credential::SdJwt(cred) => SdJwtAPI::verify_vc(cred, VerifyOptions {})
+                .await
+                .context(VCSnafu),
+            _ => FormatNotSupportedSnafu {
+                format: credential.format().to_string(),
             }
-            _ => FormatNotSupportedSnafu { format: credential.format().to_string() }.fail()
+            .fail(),
         }
     }
 
@@ -135,10 +151,13 @@ where
         trace!(%nonce, ?presentation_input);
 
         let credentials = self.find_vcs_for_presentation(presentation_input).await?;
-        let selected = credentials.get(0)
+        let selected = credentials
+            .first()
             .ok_or(RequestedCredentialNotFoundSnafu.build())?;
 
-        let presentation = self.create_presentation(nonce, verifier_id, presentation_input, selected).await?;
+        let presentation = self
+            .create_presentation(nonce, verifier_id, presentation_input, selected)
+            .await?;
 
         Ok(presentation)
     }
@@ -156,7 +175,8 @@ where
         trace!(?presentation_input);
 
         let criteria = self.resolve_find_criteria(presentation_input)?;
-        let credentials = self.vault
+        let credentials = self
+            .vault
             .find_credentials(criteria)
             .await
             .context(VaultSnafu)?;
@@ -188,13 +208,21 @@ where
                 let vp = SdJwtAPI::create_vp(
                     vc,
                     (&did_url, key),
-                    Nonce::new(nonce.into()), verifier_id,
+                    Nonce::new(nonce.into()),
+                    verifier_id,
                     VPMetadata { disclosures },
-                ).await.context(VCSnafu)?;
+                )
+                .await
+                .context(VCSnafu)?;
 
                 Presentation::SdJwtVp(vp)
             }
-            _ => return FormatNotSupportedSnafu { format: credential.format().to_string() }.fail()
+            _ => {
+                return FormatNotSupportedSnafu {
+                    format: credential.format().to_string(),
+                }
+                .fail()
+            }
         };
 
         Ok(presentation)
@@ -214,7 +242,12 @@ where
     pub fn new(kms: KMS, vault: V, metadata: HolderMetadata) -> Self {
         debug!(holder_metadata = ?metadata);
 
-        Self { kms, vault, metadata, _marker: Default::default() }
+        Self {
+            kms,
+            vault,
+            metadata,
+            _marker: Default::default(),
+        }
     }
 
     #[instrument(
@@ -223,7 +256,10 @@ where
         err(),
         ret(level = Level::DEBUG),
     )]
-    fn resolve_cred_offer(&self, credential_offer: &CredentialOffer) -> Result<(String, Vec<String>)> {
+    fn resolve_cred_offer(
+        &self,
+        credential_offer: &CredentialOffer,
+    ) -> Result<(String, Vec<String>)> {
         trace!(?credential_offer);
         // Offer contains either full cred_def or cred_def_id+supported_proofs
         let (cred_def_id, supported_proofs) = match credential_offer {
@@ -250,7 +286,9 @@ where
     )]
     fn resolve_proof_format(&self, supported_proofs: Vec<String>) -> Result<pop::Format> {
         // TODO: add logic on supported proof formats of Holder
-        let pop_fmt = supported_proofs.iter().next().ok_or(ProofFormatRequiredSnafu.build())?;
+        let pop_fmt = supported_proofs
+            .first()
+            .ok_or(ProofFormatRequiredSnafu.build())?;
         let pop_fmt = pop::Format::from_str(pop_fmt).context(ProofSnafu)?;
         Ok(pop_fmt)
     }
@@ -291,12 +329,15 @@ where
         skip_all,
         ret(level = Level::TRACE),
     )]
-    fn resolve_disclosures(input: &PresentationInput) -> serde_json::Map<String, serde_json::Value> {
+    fn resolve_disclosures(
+        input: &PresentationInput,
+    ) -> serde_json::Map<String, serde_json::Value> {
         trace!(presentation_input = ?input);
 
         let claims = input.claims.clone();
 
-        let stripped: Vec<_> = claims.keys().into_iter()
+        let stripped: Vec<_> = claims
+            .keys()
             .map(|k| (k.to_owned(), serde_json::Value::Bool(true)))
             .collect();
 

@@ -6,13 +6,13 @@ use std::fmt::Debug;
 use crate::kms::Error as KmsError;
 use crate::vault::Error as VaultError;
 use crate::vc::{
-    formats::Error as VCError, metadata::Error as MetadataError, pop::Error as ProofError,
-    Claims, Credential, CredentialMetadata, Presentation, VCFormat,
+    formats::Error as VCError, metadata::Error as MetadataError, pop::Error as ProofError, Claims,
+    Credential, CredentialMetadata, Presentation, VCFormat,
 };
 
-mod verifier;
 mod holder;
 mod issuer;
+mod verifier;
 
 pub use holder::HolderService;
 pub use issuer::IssuerService;
@@ -231,8 +231,7 @@ pub type Result<T> = core::result::Result<T, Error>;
 ///
 /// Implementation for `Issuer`: [IssuerService].
 #[async_trait]
-pub trait Issuer: Send + Sync
-{
+pub trait Issuer: Send + Sync {
     /// Create a `CredentialOffer` based on some `CredentialDefinition`.
     ///
     ///
@@ -295,8 +294,7 @@ pub trait Issuer: Send + Sync
 ///
 /// Implementation for `Holder`: [HolderService].
 #[async_trait]
-pub trait Holder: Send + Sync
-{
+pub trait Holder: Send + Sync {
     /// Prepare a `CredentialRequest`.
     ///
     /// # Arguments
@@ -358,11 +356,7 @@ pub trait Holder: Send + Sync
     ///
     /// * [Error::FormatNotSupported] - VC format is not supported by the `Holder`.
     /// * [Error::VC] - internal error [VCFormatError](crate::vc::VCFormatError).
-    async fn verify_credential(
-        &self,
-        credential: &Credential,
-    ) -> Result<()>;
-
+    async fn verify_credential(&self, credential: &Credential) -> Result<()>;
 
     /// Create a Verifiable Presentation automatically.
     ///
@@ -447,8 +441,7 @@ pub trait Holder: Send + Sync
 ///
 /// Implementation for `Verifier`: [VerifierService].
 #[async_trait]
-pub trait Verifier: Send + Sync
-{
+pub trait Verifier: Send + Sync {
     /// Verify a `Presentation`.
     ///
     /// # Arguments
@@ -464,11 +457,8 @@ pub trait Verifier: Send + Sync
     ///
     /// * [Error::FormatNotSupported] - VP format is not supported by the `Holder`.
     /// * [Error::VC] - internal error [VCFormatError](crate::vc::VCFormatError).
-    async fn verify_presentation(
-        &self,
-        nonce: &str,
-        presentation: &Presentation,
-    ) -> Result<Claims>;
+    async fn verify_presentation(&self, nonce: &str, presentation: &Presentation)
+        -> Result<Claims>;
 }
 
 #[cfg(test)]
@@ -487,7 +477,10 @@ mod tests {
     use crate::vc::core::holder::HolderService;
     use crate::vc::core::issuer::IssuerService;
     use crate::vc::core::verifier::VerifierService;
-    use crate::vc::core::{CredentialDefinition, CredentialDefinitionData, Holder, HolderMetadata, Issuer, IssuerMetadata, KeyMetadata, PresentationInput, Verifier};
+    use crate::vc::core::{
+        CredentialDefinition, CredentialDefinitionData, Holder, HolderMetadata, Issuer,
+        IssuerMetadata, KeyMetadata, PresentationInput, Verifier,
+    };
     use crate::{kms, vc};
 
     #[tokio::test]
@@ -499,10 +492,7 @@ mod tests {
 
         println!("Issue credential...");
 
-        let offer = issuer.offer_credential(
-            "SD_JWT_cred",
-            None,
-        );
+        let offer = issuer.offer_credential("SD_JWT_cred", None);
         assert!(offer.is_ok());
         let offer = offer.unwrap();
 
@@ -512,14 +502,16 @@ mod tests {
         let request = request.unwrap();
 
         let claims = json!( {
-                "given_name": "John",
-                "family_name": "Doe",
-                "dob": "09/09/1989",
-            });
+            "given_name": "John",
+            "family_name": "Doe",
+            "dob": "09/09/1989",
+        });
         let cl = claims.as_object().unwrap().clone();
         println!("Claims: {:?}", cl);
 
-        let vc_res = issuer.issue_credential(&request, &claims, nonce.secret()).await;
+        let vc_res = issuer
+            .issue_credential(&request, &claims, nonce.secret())
+            .await;
         assert!(vc_res.is_ok());
 
         let (vc, vc_meta) = vc_res.unwrap();
@@ -537,24 +529,23 @@ mod tests {
             claims: json!({
                "given_name": true,
                "family_name": true,
-            }).as_object().unwrap().to_owned(),
+            })
+            .as_object()
+            .unwrap()
+            .to_owned(),
         };
 
         let nonce = Nonce::new_random();
 
-        let vp_res = holder.create_presentation_auto(
-            nonce.secret(), "ver-id",
-            &presentation_input,
-        ).await;
+        let vp_res = holder
+            .create_presentation_auto(nonce.secret(), "ver-id", &presentation_input)
+            .await;
         assert!(vp_res.is_ok());
 
         let vp = vp_res.unwrap();
         println!("Presentation {:?}", vp);
 
-        let ver_res = verifier.verify_presentation(
-            nonce.secret(),
-            &vp,
-        ).await;
+        let ver_res = verifier.verify_presentation(nonce.secret(), &vp).await;
         assert!(ver_res.is_ok());
 
         let res_claims = ver_res.unwrap();
@@ -574,7 +565,10 @@ mod tests {
         let didkey = DIDKey::new();
 
         let kt = kms::KeyType::P256;
-        let (kid, kh) = kms.create_and_handle(kt, kms::CreateOptions {}).await.unwrap();
+        let (kid, kh) = kms
+            .create_and_handle(kt, kms::CreateOptions {})
+            .await
+            .unwrap();
 
         let did = didkey.generate(kh.clone()).unwrap();
         let did_url = DIDURL::from_str(&did).unwrap();
@@ -585,23 +579,19 @@ mod tests {
 
         let metadata = IssuerMetadata {
             issuer_id: did_url.to_string(),
-            cred_defs: vec![
-                CredentialDefinition {
-                    cred_def_id: "SD_JWT_cred".into(),
-                    format: vc::VCFormat::SdJwtVc,
-                    claims: Default::default(),
-                    supported_proofs: vec![
-                        "jwt".into()
-                    ],
-                    display: None,
-                    protocol_data: Some(CredentialDefinitionData::SdJwt {
-                        vct: "https://credentials.example.com/identity_credential".to_owned(),
-                        disclosures: vec!["$.given_name".to_owned(), "$.family_name".to_owned()],
-                        lifetime: None,
-                    }),
-                    key_metadata: None,
-                }
-            ],
+            cred_defs: vec![CredentialDefinition {
+                cred_def_id: "SD_JWT_cred".into(),
+                format: vc::VCFormat::SdJwtVc,
+                claims: Default::default(),
+                supported_proofs: vec!["jwt".into()],
+                display: None,
+                protocol_data: Some(CredentialDefinitionData::SdJwt {
+                    vct: "https://credentials.example.com/identity_credential".to_owned(),
+                    disclosures: vec!["$.given_name".to_owned(), "$.family_name".to_owned()],
+                    lifetime: None,
+                }),
+                key_metadata: None,
+            }],
             protocol_data: None,
             key_metadata: KeyMetadata {
                 did_url: did_url.to_string(),
@@ -621,7 +611,10 @@ mod tests {
         let vault = InMemVault::new();
 
         let kt = kms::KeyType::P256;
-        let (kid, kh) = kms.create_and_handle(kt, kms::CreateOptions {}).await.unwrap();
+        let (kid, kh) = kms
+            .create_and_handle(kt, kms::CreateOptions {})
+            .await
+            .unwrap();
 
         let did = didkey.generate(kh.clone()).unwrap();
         let did_url = DIDURL::from_str(&did).unwrap();
@@ -630,13 +623,17 @@ mod tests {
         let jwk = kh.clone().jwk().unwrap();
         println!("Key JWK:\n{}", serde_json::to_string_pretty(&jwk).unwrap());
 
-        HolderService::new(kms, vault, HolderMetadata {
-            client_id: "client_id".into(),
-            key_metadata: KeyMetadata {
-                did_url: did_url.to_string(),
-                kid: kid.clone(),
+        HolderService::new(
+            kms,
+            vault,
+            HolderMetadata {
+                client_id: "client_id".into(),
+                key_metadata: KeyMetadata {
+                    did_url: did_url.to_string(),
+                    kid: kid.clone(),
+                },
             },
-        })
+        )
     }
 
     fn verifier(id: &str) -> impl Verifier {

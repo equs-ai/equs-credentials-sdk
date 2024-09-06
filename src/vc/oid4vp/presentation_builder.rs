@@ -51,7 +51,7 @@ impl Default for DefaultPresentationBuilder {
 
 impl PresentationBuilder for DefaultPresentationBuilder {
     fn build(self) -> Result<PresentationDefinitionParameter, Error> {
-        if self.0.input_descriptors.len() == 0 {
+        if self.0.input_descriptors.is_empty() {
             bail!("At least one input descriptor should be provided")
         }
 

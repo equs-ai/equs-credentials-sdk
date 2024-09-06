@@ -2,8 +2,10 @@ use async_trait::async_trait;
 use ssi::did::{DIDMethod, Source};
 use ssi::did_resolve::DIDResolver as SpruceResolver;
 
+use crate::did::{
+    DIDResolver, DidGenerationSnafu, KeyNotSupportedSnafu, Resolution, ResolveOptions, Result, DID,
+};
 use crate::{crypto, did};
-use crate::did::{DIDResolver, DidGenerationSnafu, KeyNotSupportedSnafu, Resolution, ResolveOptions, Result, DID};
 
 pub type Error = did::Error;
 
@@ -16,7 +18,9 @@ pub struct DIDKey {
 
 impl DIDKey {
     pub fn new() -> Self {
-        Self { method: did_method_key::DIDKey {} }
+        Self {
+            method: did_method_key::DIDKey {},
+        }
     }
 
     /// Create a `did:key`.
@@ -37,19 +41,30 @@ impl DIDKey {
     where
         K: crypto::Key,
     {
-        let jwk = key.jwk()
+        let jwk = key
+            .jwk()
             .ok_or_else(|| KeyNotSupportedSnafu { type_: "jwk" }.build())?;
 
         let did = self.method.generate(&Source::Key(&jwk));
-        did.ok_or_else(|| DidGenerationSnafu { details: "did:key generation failed" }.build())
+        did.ok_or_else(|| {
+            DidGenerationSnafu {
+                details: "did:key generation failed",
+            }
+            .build()
+        })
     }
 }
 
 #[async_trait]
 impl DIDResolver for DIDKey {
     async fn resolve(&self, did: &DID, options: ResolveOptions) -> Resolution {
-        let (metadata, doc, doc_metadata) = self.method.to_resolver().resolve(did, &options.input).await;
-        Resolution { doc, metadata, doc_metadata }
+        let (metadata, doc, doc_metadata) =
+            self.method.to_resolver().resolve(did, &options.input).await;
+        Resolution {
+            doc,
+            metadata,
+            doc_metadata,
+        }
     }
 
     fn as_spruce_resolver(&self) -> &dyn SpruceResolver {
@@ -74,7 +89,7 @@ mod tests {
         let kms = LocalKms::new();
         let didkey = DIDKey::new();
 
-        for kt in vec![kms::KeyType::Ed25519, kms::KeyType::P256] {
+        for kt in [kms::KeyType::Ed25519, kms::KeyType::P256] {
             // Key
             let (_, kh) = kms.create_and_handle(kt, CreateOptions {}).await.unwrap();
 
@@ -98,7 +113,13 @@ mod tests {
             let formatted = serde_json::to_string_pretty(&doc).unwrap();
             println!("DID doc resolved:\n{}", formatted);
 
-            let ver_method = doc.verification_method.unwrap().to_vec().get(0).unwrap().to_owned();
+            let ver_method = doc
+                .verification_method
+                .unwrap()
+                .to_vec()
+                .first()
+                .unwrap()
+                .to_owned();
             assert!(matches!(ver_method, VerificationMethod::Map(_)));
 
             let VerificationMethod::Map(map) = ver_method else {

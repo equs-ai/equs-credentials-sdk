@@ -5,6 +5,7 @@
 - [How To Build and Run](#how-to-build-and-run)
 - [How to Use ASDK in Applications](#how-to-use-asdk-in-applications)
 - [Dependencies](#dependencies)
+- [Development Guidelines](docs/guidlines/dev.md)
 
 ## About ASDK
 - ASDK is an SDK (library) providing building blocks for Self-Sovereign Identity (SSI) use cases.  

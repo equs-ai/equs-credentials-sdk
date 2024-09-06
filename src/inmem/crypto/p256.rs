@@ -5,7 +5,7 @@ use rand::rngs::OsRng;
 
 use crate::crypto::{
     Alg, Error, Key, KeyGenerationSnafu, Signer, SigningKey, SigningSnafu, Suite,
-    VerificationSnafu, Verifier, VerifyingKey
+    VerificationSnafu, Verifier, VerifyingKey,
 };
 
 #[derive(Clone)]
@@ -59,19 +59,33 @@ impl Signer for P256 {
         self.signing_key
             .try_sign(payload)
             .map(|s: EcdsaSignature| s.to_vec())
-            .map_err(|err| { SigningSnafu { details: err.to_string() }.build() })
+            .map_err(|err| {
+                SigningSnafu {
+                    details: err.to_string(),
+                }
+                .build()
+            })
     }
 }
 
 #[async_trait]
 impl Verifier for P256 {
     async fn verify(&self, data: &[u8], signature: &[u8]) -> Result<(), Error> {
-        let signature = EcdsaSignature::from_slice(signature)
-            .map_err(|err| { VerificationSnafu { details: err.to_string(), }.build() })?;
+        let signature = EcdsaSignature::from_slice(signature).map_err(|err| {
+            VerificationSnafu {
+                details: err.to_string(),
+            }
+            .build()
+        })?;
 
         self.signing_key
             .verifying_key()
             .verify(data, &signature)
-            .map_err(|err| VerificationSnafu { details: err.to_string() }.build())
+            .map_err(|err| {
+                VerificationSnafu {
+                    details: err.to_string(),
+                }
+                .build()
+            })
     }
 }

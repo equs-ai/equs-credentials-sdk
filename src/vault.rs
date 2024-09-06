@@ -1,8 +1,8 @@
 use std::fmt::Debug;
 
+use crate::vc;
 use async_trait::async_trait;
 use snafu::{Location, Snafu};
-use crate::vc;
 
 /// `Vault` Error.
 ///
@@ -12,9 +12,7 @@ use crate::vc;
 #[non_exhaustive]
 pub enum Error {
     #[snafu(display("Unsupported credential format: {format}"))]
-    FormatNotSupported {
-        format: String,
-    },
+    FormatNotSupported { format: String },
     #[snafu(display("Credential storing error at {location}\n Cause: {details}"))]
     Storing {
         details: String,
@@ -61,8 +59,7 @@ pub enum FindCriteria {
 ///
 /// Supports storing, retrieving and finding [vc::Credential].
 #[async_trait]
-pub trait Vault: Send + Sync
-{
+pub trait Vault: Send + Sync {
     /// Stores the `Credential` in `Vault`.
     ///
     /// # Arguments
@@ -99,10 +96,7 @@ pub trait Vault: Send + Sync
     /// # Errors
     ///
     /// * [Error::Resolving] - fails to access the storage.
-    async fn get_credential(
-        &self,
-        id: &str,
-    ) -> Result<Option<vc::Credential>>;
+    async fn get_credential(&self, id: &str) -> Result<Option<vc::Credential>>;
 
     /// Find the `Credential`s in `Vault`
     ///
@@ -118,10 +112,7 @@ pub trait Vault: Send + Sync
     /// # Errors
     ///
     /// * [Error::Resolving] - fails to revolve the values.
-    async fn find_credentials(
-        &self,
-        criteria: FindCriteria,
-    ) -> Result<Vec<vc::Credential>>;
+    async fn find_credentials(&self, criteria: FindCriteria) -> Result<Vec<vc::Credential>>;
 }
 
 #[cfg(test)]

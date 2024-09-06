@@ -1,8 +1,8 @@
-use std::fmt::Debug;
+use crate::crypto;
 use async_trait::async_trait;
 use snafu::{Location, Snafu};
+use std::fmt::Debug;
 use strum_macros::{Display, EnumString, IntoStaticStr};
-use crate::crypto;
 
 /// `Kms` Error.
 ///
@@ -49,8 +49,7 @@ pub type KeyID = String;
 /// Enum with supported `Kms` key types.
 ///
 /// *NOTE*: more key types to be supported later.
-#[derive(Debug, PartialEq, Clone)]
-#[derive(Display, EnumString, IntoStaticStr)]
+#[derive(Debug, PartialEq, Clone, Display, EnumString, IntoStaticStr)]
 #[non_exhaustive]
 pub enum KeyType {
     Ed25519,
@@ -145,7 +144,7 @@ pub mod test_util {
     use crate::kms::{KeyHandle, Kms};
 
     pub async fn test_kms<KH: KeyHandle, KMS: Kms<KH>>(kms: KMS) {
-        for kt in vec![kms::KeyType::Ed25519, kms::KeyType::P256] {
+        for kt in [kms::KeyType::Ed25519, kms::KeyType::P256] {
             // Create a key
             let create_res = kms.create(kt.clone(), kms::CreateOptions {}).await;
             assert!(create_res.is_ok());

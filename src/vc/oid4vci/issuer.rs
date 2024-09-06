@@ -1,16 +1,25 @@
 use crate::http::HttpClient;
 use crate::vc;
 use crate::vc::core::{Proof as AsdkProof, Proof};
-use crate::vc::oid4vci::internal_error::{ClaimsValidationSnafu, NoScopeSetSnafu, ParseSnafu, UrlParseSnafu, VCSnafu};
+use crate::vc::oid4vci::internal_error::{
+    ClaimsValidationSnafu, NoScopeSetSnafu, ParseSnafu, UrlParseSnafu, VCSnafu,
+};
 use crate::vc::oid4vci::protocol_error::ProtocolSnafu;
 use crate::vc::oid4vci::token_validation::{ByJwks, Introspect};
-use crate::vc::oid4vci::{CredDefMetadata, CredentialOfferParams, CredentialRequest, CredentialResponse, IssuanceSession, IssuerMetadata, Nonce, NonceData};
+use crate::vc::oid4vci::{
+    CredDefMetadata, CredentialOfferParams, CredentialRequest, CredentialResponse, IssuanceSession,
+    IssuerMetadata, Nonce, NonceData,
+};
 use crate::vc::{oid4vci as api, Claims, HasVCFormat};
 use async_trait::async_trait;
 use oauth2::Scope;
-use oid4vci::core::profiles::{sd_jwt, w3c, CoreProfilesMetadata, CoreProfilesOffer, CoreProfilesRequest, CoreProfilesResponse};
+use oid4vci::core::profiles::{
+    sd_jwt, w3c, CoreProfilesMetadata, CoreProfilesOffer, CoreProfilesRequest, CoreProfilesResponse,
+};
 use oid4vci::credential::{ErrorType, ResponseEnum};
-use oid4vci::credential_offer::{CredentialOfferFormat, CredentialOfferGrants, CredentialOfferParameters};
+use oid4vci::credential_offer::{
+    CredentialOfferFormat, CredentialOfferGrants, CredentialOfferParameters,
+};
 use oid4vci::proof_of_possession::{KeyProofType, Proof as SpruceProof, ProofType};
 use serde_json::{Map, Value};
 use snafu::{ensure, ResultExt};
@@ -26,7 +35,8 @@ const CRED_OFFER_URI: &str = "openid-credential-offer://";
 
 // TODO: tune via config
 const NONCE_EXPIRES_IN: i64 = 86440;
-const INVALID_PROOF_ERR_DESC: &str = "Credential Issuer requires key proof to be bound to a Credential Issuer provided nonce.";
+const INVALID_PROOF_ERR_DESC: &str =
+    "Credential Issuer requires key proof to be bound to a Credential Issuer provided nonce.";
 
 pub type Error = api::Error;
 pub type Result<T> = core::result::Result<T, Error>;
@@ -92,7 +102,9 @@ where
         ret(level = Level::DEBUG)
     )]
     fn get_cred_def_metadata(&self, cred_request: &CredentialRequest) -> Option<CredDefMetadata> {
-        self.resolve_cred_def(cred_request).map(|(_, cred_def)| cred_def).ok()
+        self.resolve_cred_def(cred_request)
+            .map(|(_, cred_def)| cred_def)
+            .ok()
     }
 
     #[instrument(
@@ -141,11 +153,10 @@ where
     async fn issue_credential(
         &self,
         cred_request: &CredentialRequest,
-        token: &String,
+        token: &str,
         claims: &Claims,
         session: &mut IssuanceSession,
-    ) -> Result<CredentialResponse>
-    {
+    ) -> Result<CredentialResponse> {
         info!("issuance of credential is started");
         trace!(credential_request = ?cred_request, %token, claims_to_issue = ?claims);
 
@@ -154,19 +165,25 @@ where
         let nonce = self.validate_nonce(session)?.nonce;
 
         let proof = cred_request.proof().ok_or_else(|| {
-            self.invalid_proof(session, INVALID_PROOF_ERR_DESC.to_string()).build()
+            self.invalid_proof(session, INVALID_PROOF_ERR_DESC.to_string())
+                .build()
         })?;
 
         let (cred_def_id, cred_def) = self.resolve_cred_def(cred_request)?;
 
         // FIXME: Remove this check after adopting authorization details
-        ensure!(cred_def.scope().is_some(), NoScopeSetSnafu{ id: cred_def_id.to_owned() });
+        ensure!(
+            cred_def.scope().is_some(),
+            NoScopeSetSnafu {
+                id: cred_def_id.to_owned()
+            }
+        );
 
         if let Some(scope) = cred_def.scope() {
             self.validate_scope(token, &cred_def_id, scope)?;
         }
         self.validate_claim_names(claims, &cred_def)?;
-        self.validate_proof_type(&proof, &cred_def, session).await?;
+        self.validate_proof_type(proof, &cred_def, session).await?;
 
         let proof = Proof::from(proof);
 
@@ -177,15 +194,16 @@ where
             protocol_data: None,
         };
 
-        let result = self.issuer
+        let result = self
+            .issuer
             .issue_credential(&cred_req, claims, nonce.secret())
             .await;
 
         let (cred, _) = match result {
-            Err(vc::core::Error::Proof { location, source }) => {
-                self.invalid_proof(session, INVALID_PROOF_ERR_DESC.to_string()).fail()?
-            }
-            _ => result.context(VCSnafu)?
+            Err(vc::core::Error::Proof { location, source }) => self
+                .invalid_proof(session, INVALID_PROOF_ERR_DESC.to_string())
+                .fail()?,
+            _ => result.context(VCSnafu)?,
         };
 
         let mut resp = CredentialResponse::new(ResponseEnum::Immediate(cred.into()));
@@ -212,19 +230,19 @@ where
         trace!(credential_request = ?req);
 
         let vct = match req.additional_profile_fields() {
-            CoreProfilesRequest::SDJWTVC(det) => {
-                det.vct()
-            }
+            CoreProfilesRequest::SDJWTVC(det) => det.vct(),
             _ => ProtocolSnafu::new(
                 ErrorType::UnsupportedCredentialFormat,
                 format!(
                     "Unsupported credential format: {}",
                     req.additional_profile_fields().format()
                 ),
-            ).fail()?
+            )
+            .fail()?,
         };
 
-        let (cred_def_id, cred_metadata) = self.issuer_metadata
+        let (cred_def_id, cred_metadata) = self
+            .issuer_metadata
             .credential_configurations_supported()
             .iter()
             .find(|(id, cred_metadata)| {
@@ -237,7 +255,8 @@ where
                 ProtocolSnafu::new(
                     ErrorType::UnsupportedCredentialType,
                     format!("Credential configuration id with vct = \"{vct}\" is not found"),
-                ).build()
+                )
+                .build(),
             )?;
 
         Ok((cred_def_id.to_owned(), cred_metadata.to_owned()))
@@ -258,10 +277,10 @@ where
             )
         );
 
-        let supported: Vec<String> = self.issuer_metadata
+        let supported: Vec<String> = self
+            .issuer_metadata
             .credential_configurations_supported()
             .keys()
-            .into_iter()
             .map(|e| e.to_owned())
             .collect();
 
@@ -289,7 +308,9 @@ where
     fn validate_nonce(&self, session: &mut IssuanceSession) -> Result<NonceData> {
         match &session.nonce {
             Some(nonce_data) => {
-                if let (Some(created), Some(expires_in)) = (nonce_data.created, nonce_data.expires_in) {
+                if let (Some(created), Some(expires_in)) =
+                    (nonce_data.created, nonce_data.expires_in)
+                {
                     let expires = created.add(expires_in.seconds());
                     ensure!(
                         time::OffsetDateTime::now_utc() < expires,
@@ -299,7 +320,9 @@ where
 
                 Ok(nonce_data.to_owned())
             }
-            _ => self.invalid_proof(session, INVALID_PROOF_ERR_DESC.to_string()).fail()?
+            _ => self
+                .invalid_proof(session, INVALID_PROOF_ERR_DESC.to_string())
+                .fail()?,
         }
     }
 
@@ -314,49 +337,48 @@ where
         proof: &SpruceProof,
         cred_metadata: &CredDefMetadata,
         session: &mut IssuanceSession,
-    ) -> Result<()>
-    {
+    ) -> Result<()> {
         trace!(?proof, ?session);
 
         debug!(?cred_metadata);
 
         let proof_types = match cred_metadata.proof_types_supported() {
             Some(proof_types) => proof_types,
-            _ => &Self::supported_proof_types()
+            _ => &Self::supported_proof_types(),
         };
 
         let (proof_type, proof) = match proof {
             SpruceProof::JWT { jwt } => (KeyProofType::Jwt, jwt),
-            SpruceProof::CWT { cwt } => self.invalid_proof(
-                session,
-                "Unsupported proof type: CWT".to_string(),
-            ).fail()?
+            SpruceProof::CWT { cwt } => self
+                .invalid_proof(session, "Unsupported proof type: CWT".to_string())
+                .fail()?,
         };
 
         let proof_type = proof_types.get(&proof_type).ok_or_else(|| {
-            self.invalid_proof(
-                session,
-                format!("Unsupported proof type: {:?}", proof_type),
-            ).build()
+            self.invalid_proof(session, format!("Unsupported proof type: {:?}", proof_type))
+                .build()
         })?;
 
         debug!(resolved_proof_type = ?proof_type);
 
-        let proof_header = jsonwebtoken::decode_header(&proof).map_err(|err| {
+        let proof_header = jsonwebtoken::decode_header(proof).map_err(|err| {
             error!("Can not retrieve \"alg\" from the proof's header: {err}");
             self.invalid_proof(
                 session,
                 "Can not retrieve \"alg\" from the proof's header".to_string(),
-            ).build()
+            )
+            .build()
         })?;
 
-        let sign_alg = serde_json::from_value(
-            serde_json::to_value(proof_header.alg).context(ParseSnafu)?
-        ).context(ParseSnafu)?;
+        let sign_alg =
+            serde_json::from_value(serde_json::to_value(proof_header.alg).context(ParseSnafu)?)
+                .context(ParseSnafu)?;
         debug!(resolved_signing_algorithm = %sign_alg);
 
         ensure!(
-            proof_type.proof_signing_alg_values_supported.contains(&sign_alg),
+            proof_type
+                .proof_signing_alg_values_supported
+                .contains(&sign_alg),
             self.invalid_proof(
                 session,
                 format!("Unsupported proof type's signing algorithm: '{sign_alg}'")
@@ -373,10 +395,7 @@ where
     fn supported_proof_types() -> HashMap<KeyProofType, ProofType> {
         HashMap::from([(
             KeyProofType::Jwt,
-            ProofType::new(vec![
-                "ES256".to_owned(),
-                "EdDSA".to_owned()
-            ])
+            ProofType::new(vec!["ES256".to_owned(), "EdDSA".to_owned()]),
         )])
     }
 
@@ -386,26 +405,28 @@ where
         err(),
         ret(level = Level::DEBUG),
     )]
-    fn validate_scope(&self, token: &String, cred_def_id: &str, scope: &Scope) -> Result<()> {
+    fn validate_scope(&self, token: &str, cred_def_id: &str, scope: &Scope) -> Result<()> {
         trace!(token_to_validate = %token);
 
         let scope = scope.to_string();
 
-        let token: Map<String, Value> = decode_unverified(token.as_str())
-            .map_err(|err| {
-                error!("Could not parse the access token: {err}");
-                ProtocolSnafu::new(
-                    ErrorType::InvalidToken,
-                    "Could not parse the access token".to_string(),
-                ).build()
-            })?;
+        let token: Map<String, Value> = decode_unverified(token).map_err(|err| {
+            error!("Could not parse the access token: {err}");
+            ProtocolSnafu::new(
+                ErrorType::InvalidToken,
+                "Could not parse the access token".to_string(),
+            )
+            .build()
+        })?;
 
         if let Some(Value::String(scopes)) = token.get("scope") {
             ensure!(
-                scopes.split(" ").any(|s| s == scope),
+                scopes.split(' ').any(|s| s == scope),
                 ProtocolSnafu::new(
                     ErrorType::InvalidToken,
-                    format!("Access token should have scope=\"{scope}\" for issuing \"{cred_def_id}\""),
+                    format!(
+                        "Access token should have scope=\"{scope}\" for issuing \"{cred_def_id}\""
+                    ),
                 ),
             );
 
@@ -415,7 +436,8 @@ where
         ProtocolSnafu::new(
             ErrorType::InvalidToken,
             "Access token does not have \"scope\" field".to_string(),
-        ).fail()?
+        )
+        .fail()?
     }
 
     #[instrument(
@@ -429,7 +451,10 @@ where
 
         let claim_names: Vec<&str> = match claims {
             Value::Object(claims) => claims.keys().map(|k| k.as_str()).collect(),
-            _ => ClaimsValidationSnafu { details: "Provided \"claims\" is not json object" }.fail()?
+            _ => ClaimsValidationSnafu {
+                details: "Provided \"claims\" is not json object",
+            }
+            .fail()?,
         };
 
         // TODO: Support other formats
@@ -437,9 +462,12 @@ where
             CoreProfilesMetadata::SDJWTVC(metadata) => metadata,
             _ => ProtocolSnafu::new(
                 ErrorType::UnsupportedCredentialFormat,
-                format!("Unsupported credential format: {}", cred_metadata.additional_fields().format()
+                format!(
+                    "Unsupported credential format: {}",
+                    cred_metadata.additional_fields().format()
                 ),
-            ).fail()?
+            )
+            .fail()?,
         };
         debug!(resolved_credential_metadata = ?sd_jwt_vc_metadata);
 
@@ -451,19 +479,16 @@ where
                 supported
             }
 
-            _ => return Ok(())
+            _ => return Ok(()),
         };
         debug!(?supported_claims);
 
-        let not_supported = claim_names
-            .iter()
-            .find(
-                |c| !supported_claims.contains(c)
-            );
+        let not_supported = claim_names.iter().find(|c| !supported_claims.contains(c));
         if let Some(not_supported) = not_supported {
             ClaimsValidationSnafu {
-                details: format!("Unsupported claim name: {not_supported}")
-            }.fail()?;
+                details: format!("Unsupported claim name: {not_supported}"),
+            }
+            .fail()?;
         }
 
         Ok(())
@@ -479,26 +504,20 @@ where
         trace!(%token);
 
         match &self.token_validation {
-            TokenValidation::Introspect(svc) => {
-                svc.validate(token)
-                    .await
-                    .map_err(|_|
-                        ProtocolSnafu::new(
-                            ErrorType::InvalidToken,
-                            "Could not validate the token".to_string(),
-                        ).build()
-                    )?
-            }
-            TokenValidation::ByJwks(svc) => {
-                svc.validate(token)
-                    .await
-                    .map_err(|_|
-                        ProtocolSnafu::new(
-                            ErrorType::InvalidToken,
-                            "Could not validate the token".to_string(),
-                        ).build()
-                    )?
-            }
+            TokenValidation::Introspect(svc) => svc.validate(token).await.map_err(|_| {
+                ProtocolSnafu::new(
+                    ErrorType::InvalidToken,
+                    "Could not validate the token".to_string(),
+                )
+                .build()
+            })?,
+            TokenValidation::ByJwks(svc) => svc.validate(token).await.map_err(|_| {
+                ProtocolSnafu::new(
+                    ErrorType::InvalidToken,
+                    "Could not validate the token".to_string(),
+                )
+                .build()
+            })?,
             TokenValidation::None => {}
         }
 
@@ -532,7 +551,10 @@ where
         level = Level::TRACE,
         ret(level = Level::TRACE),
     )]
-    fn update_cred_resp_and_session_data(resp: CredentialResponse, session: &mut IssuanceSession) -> CredentialResponse {
+    fn update_cred_resp_and_session_data(
+        resp: CredentialResponse,
+        session: &mut IssuanceSession,
+    ) -> CredentialResponse {
         let nonce_data = NonceData::new_random();
         let notification_id = Uuid::new_v4().to_string();
 
@@ -540,8 +562,7 @@ where
         session.notification_id = Some(notification_id.clone());
         trace!(issuance_session = ?session);
 
-        resp
-            .set_nonce(Some(nonce_data.nonce))
+        resp.set_nonce(Some(nonce_data.nonce))
             .set_nonce_expiration(nonce_data.expires_in)
             .set_notification_id(Some(notification_id))
     }
@@ -550,25 +571,39 @@ where
 impl From<&SpruceProof> for AsdkProof {
     fn from(value: &SpruceProof) -> AsdkProof {
         match value {
-            SpruceProof::JWT { jwt } => { AsdkProof { format: "jwt".to_string(), proof: jwt.to_string() } }
-            SpruceProof::CWT { cwt } => { AsdkProof { format: "cwt".to_string(), proof: cwt.to_owned() } }
+            SpruceProof::JWT { jwt } => AsdkProof {
+                format: "jwt".to_string(),
+                proof: jwt.to_string(),
+            },
+            SpruceProof::CWT { cwt } => AsdkProof {
+                format: "cwt".to_string(),
+                proof: cwt.to_owned(),
+            },
         }
     }
 }
 
-impl Into<CoreProfilesResponse> for vc::Credential {
-    fn into(self) -> CoreProfilesResponse {
-        match self {
-            vc::Credential::JwtVcJson(cred) => { CoreProfilesResponse::JWTVC(w3c::jwt::Response::new(cred)) }
-            vc::Credential::JwtVcJsonLd(_) => { CoreProfilesResponse::JWTLDVC(w3c::jwtld::Response {}) }
-            vc::Credential::LdpVc(cred) => { CoreProfilesResponse::LDVC(w3c::ldp::Response::new(cred)) }
-            vc::Credential::SdJwt(cred) => { CoreProfilesResponse::SDJWTVC(sd_jwt::Response::new(cred)) }
+impl From<vc::Credential> for CoreProfilesResponse {
+    fn from(value: vc::Credential) -> Self {
+        match value {
+            vc::Credential::JwtVcJson(cred) => {
+                CoreProfilesResponse::JWTVC(w3c::jwt::Response::new(cred))
+            }
+            vc::Credential::JwtVcJsonLd(_) => {
+                CoreProfilesResponse::JWTLDVC(w3c::jwtld::Response {})
+            }
+            vc::Credential::LdpVc(cred) => {
+                CoreProfilesResponse::LDVC(w3c::ldp::Response::new(cred))
+            }
+            vc::Credential::SdJwt(cred) => {
+                CoreProfilesResponse::SDJWTVC(sd_jwt::Response::new(cred))
+            }
         }
     }
 }
 
 impl NonceData {
-    pub fn new_random() -> Self {
+    pub(self) fn new_random() -> Self {
         Self {
             nonce: Nonce::new_random(),
             expires_in: Some(NONCE_EXPIRES_IN),

@@ -51,8 +51,9 @@ pub type Result<T> = core::result::Result<T, Error>;
 /// Enum with supported `Crypto` algorithms.
 ///
 /// *NOTE*: more algs to be supported later.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-#[derive(Display, EnumString, IntoStaticStr)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Serialize, Deserialize, Display, EnumString, IntoStaticStr,
+)]
 pub enum Alg {
     ES256,
     EdDSA,

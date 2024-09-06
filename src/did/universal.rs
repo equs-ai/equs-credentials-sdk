@@ -2,8 +2,7 @@ use async_trait::async_trait;
 use ssi::did::DIDMethods;
 use ssi::did_resolve::DIDResolver as SpruceResolver;
 
-use crate::did::{DID, DIDResolver, Resolution, ResolveOptions};
-
+use crate::did::{DIDResolver, Resolution, ResolveOptions, DID};
 
 /// An Universal `DID` resolver.
 ///
@@ -27,7 +26,11 @@ impl UniversalResolver {
 impl DIDResolver for UniversalResolver {
     async fn resolve(&self, did: &DID, options: ResolveOptions) -> Resolution {
         let (metadata, doc, doc_metadata) = self.impls.resolve(did, &options.input).await;
-        Resolution { doc, metadata, doc_metadata }
+        Resolution {
+            doc,
+            metadata,
+            doc_metadata,
+        }
     }
 
     fn as_spruce_resolver(&self) -> &dyn SpruceResolver {
