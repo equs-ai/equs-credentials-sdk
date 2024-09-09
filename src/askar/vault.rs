@@ -2,6 +2,7 @@ use aries_askar::entry::{Entry, EntryKind, EntryTag, TagFilter};
 use aries_askar::Store;
 use async_trait::async_trait;
 use snafu::ensure;
+use tracing::{instrument, Level};
 use uuid::Uuid;
 
 use crate::crypto::Alg;
@@ -16,13 +17,24 @@ pub const TAG_TYPE: &str = "type_";
 pub const TAG_FORMAT: &str = "format";
 pub const TAG_ALG: &str = "alg";
 
+#[derive(Debug)]
 pub struct AskarVault(Store);
 
 impl AskarVault {
+    #[instrument(
+        level = Level::TRACE,
+        ret(level = Level::TRACE)
+    )]
     pub(super) fn new(store: Store) -> Self {
         AskarVault(store)
     }
 
+    #[instrument(
+        level = Level::TRACE,
+        skip(self),
+        err(),
+        ret(level = Level::TRACE)
+    )]
     async fn insert(&self, entity: &Entry) -> Result<AskarVaultId, aries_askar::Error> {
         let mut session = self.0.session(None).await?;
         session
@@ -42,16 +54,33 @@ impl AskarVault {
         ))
     }
 
+    #[instrument(
+        level = Level::TRACE,
+        skip(self),
+        err(),
+        ret(level = Level::TRACE)
+    )]
     async fn get(&self, id: AskarVaultId) -> Result<Option<Entry>, aries_askar::Error> {
         let mut seesion = self.0.session(None).await?;
         seesion.fetch(id.category(), id.name(), false).await
     }
 
+    #[instrument(
+        level = Level::TRACE,
+        skip(self),
+        err(),
+        ret(level = Level::TRACE)
+    )]
     async fn find(&self, filter: TagFilter) -> Result<Vec<Entry>, aries_askar::Error> {
         let mut session = self.0.session(None).await?;
         session.fetch_all(None, Some(filter), None, false).await
     }
 
+    #[instrument(
+        level = Level::TRACE,
+        err(),
+        ret(level = Level::TRACE)
+    )]
     fn create_entry(
         credential: &Credential,
         metadata: &CredentialMetadata,
@@ -115,6 +144,12 @@ impl AskarVault {
 
 #[async_trait]
 impl Vault for AskarVault {
+    #[instrument(
+        level = Level::TRACE,
+        skip(self),
+        err(),
+        ret(level = Level::TRACE)
+    )]
     async fn store_credential(
         &self,
         credential: Credential,
@@ -131,6 +166,12 @@ impl Vault for AskarVault {
         Ok(id.into())
     }
 
+    #[instrument(
+        level = Level::TRACE,
+        skip(self),
+        err(),
+        ret(level = Level::TRACE)
+    )]
     async fn get_credential(&self, id: &str) -> Result<Option<Credential>, Error> {
         let entry = self.get(id.try_into()?).await.map_err(|err| {
             StoringSnafu {
@@ -142,6 +183,12 @@ impl Vault for AskarVault {
         entry.map(|en| en.try_into()).transpose()
     }
 
+    #[instrument(
+        level = Level::TRACE,
+        skip(self),
+        err(),
+        ret(level = Level::TRACE)
+    )]
     async fn find_credentials(&self, criteria: FindCriteria) -> Result<Vec<Credential>, Error> {
         let entries = self.find(criteria.into()).await.map_err(|err| {
             StoringSnafu {
@@ -153,17 +200,32 @@ impl Vault for AskarVault {
     }
 }
 
+#[derive(Debug)]
 struct AskarVaultId(String, String);
 
 impl AskarVaultId {
+    #[instrument(
+        level = Level::TRACE,
+        ret(level = Level::TRACE)
+    )]
     pub fn new(category: String, name: String) -> Self {
         AskarVaultId(category, name)
     }
 
+    #[instrument(
+        level = Level::TRACE,
+        skip(self),
+        ret(level = Level::TRACE)
+    )]
     pub fn category(&self) -> &str {
         &self.0
     }
 
+    #[instrument(
+        level = Level::TRACE,
+        skip(self),
+        ret(level = Level::TRACE)
+    )]
     pub fn name(&self) -> &str {
         &self.1
     }
@@ -172,6 +234,11 @@ impl AskarVaultId {
 impl TryFrom<&str> for AskarVaultId {
     type Error = Error;
 
+    #[instrument(
+        level = Level::TRACE,
+        err(),
+        ret(level = Level::TRACE)
+    )]
     fn try_from(value: &str) -> Result<Self, Self::Error> {
         let parts = value.split(':').collect::<Vec<&str>>();
 
@@ -190,12 +257,20 @@ impl TryFrom<&str> for AskarVaultId {
 }
 
 impl From<AskarVaultId> for String {
+    #[instrument(
+        level = Level::TRACE,
+        ret(level = Level::TRACE)
+    )]
     fn from(value: AskarVaultId) -> Self {
         format!("{}:{}", value.0, value.1)
     }
 }
 
 impl From<FindCriteria> for TagFilter {
+    #[instrument(
+        level = Level::TRACE,
+        ret(level = Level::TRACE)
+    )]
     fn from(value: FindCriteria) -> Self {
         match value {
             FindCriteria::ByTypeAndFormat(type_, format) => TagFilter::all_of(vec![
@@ -209,6 +284,11 @@ impl From<FindCriteria> for TagFilter {
 impl TryFrom<Entry> for Credential {
     type Error = Error;
 
+    #[instrument(
+        level = Level::TRACE,
+        err(),
+        ret(level = Level::TRACE)
+    )]
     fn try_from(value: Entry) -> Result<Self, Self::Error> {
         let credential_str = value
             .value

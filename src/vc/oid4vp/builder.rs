@@ -6,6 +6,7 @@ use crate::vc::oid4vp::holder::HolderService;
 use crate::vc::oid4vp::verifier::VerifierService;
 use crate::{did, kms, vault, vc};
 use std::marker::PhantomData;
+use tracing::{debug, info, instrument, Level};
 
 #[derive(Debug, thiserror::Error, strum::IntoStaticStr)]
 pub enum Error {
@@ -41,7 +42,13 @@ where
     KH: kms::KeyHandle,
     KMS: kms::Kms<KH>,
 {
+    #[instrument(
+        level = Level::TRACE,
+        skip(kms),
+    )]
     pub fn new(kms: KMS, key_metadata: KeyMetadata, client_id: String) -> Self {
+        info!("oid4vp-verifier builder is initialized");
+
         Self {
             client_id,
             key_metadata,
@@ -59,11 +66,19 @@ where
     KMS: kms::Kms<KH>,
     D: did::DIDResolver,
 {
+    #[instrument(
+        level = Level::TRACE,
+        skip(self),
+    )]
     pub fn with_client_metadata(mut self, client_metadata: api::ClientMetadata) -> Self {
         self.client_metadata = Some(client_metadata);
         self
     }
 
+    #[instrument(
+        level = Level::TRACE,
+        skip_all,
+    )]
     pub fn with_did_resolver<D1: did::DIDResolver>(
         self,
         resolver: D1,
@@ -80,6 +95,11 @@ where
         }
     }
 
+    #[instrument(
+        level = Level::TRACE,
+        skip_all,
+        err(),
+    )]
     pub async fn build(self) -> Result<impl api::Verifier, Error> {
         let inner = vc::core::VerifierService::new(&self.client_id);
 
@@ -95,6 +115,8 @@ where
             self.key_metadata,
             self.client_metadata,
         );
+
+        info!("oid4vp-verifier service is initialized");
 
         Ok(verifier)
     }
@@ -127,12 +149,18 @@ where
     KMS: kms::Kms<KH>,
     V: vault::Vault,
 {
+    #[instrument(
+        level = Level::TRACE,
+        skip(kms, vault)
+    )]
     pub fn new(kms: KMS, vault: V, key_metadata: KeyMetadata, client_id: String) -> Self {
         let http_client = reqwest::Client::builder()
             .danger_accept_invalid_certs(true)
             .https_only(false)
             .build()
             .map_err(|e| Error::Build(e.to_string()));
+
+        info!("oid4vp-holder builder is initialized");
 
         Self {
             client_id,
@@ -154,16 +182,28 @@ where
     V: vault::Vault,
     D: did::DIDResolver,
 {
+    #[instrument(
+        level = Level::TRACE,
+        skip(self),
+    )]
     pub fn with_wallet_metadata(mut self, wallet_metadata: api::WalletMetadata) -> Self {
         self.wallet_metadata = Some(wallet_metadata);
         self
     }
 
+    #[instrument(
+        level = Level::TRACE,
+        skip_all,
+    )]
     pub fn with_http_client(mut self, http_client: reqwest::Client) -> Self {
         self.http_client = Ok(http_client);
         self
     }
 
+    #[instrument(
+        level = Level::TRACE,
+        skip_all,
+    )]
     pub fn with_did_resolver<D_: did::DIDResolver>(
         self,
         resolver: D_,
@@ -181,12 +221,20 @@ where
         }
     }
 
+    #[instrument(
+        level = Level::TRACE,
+        skip(self),
+        err()
+    )]
     pub async fn build(self) -> Result<impl api::Holder, Error> {
         let key_metadata = self.key_metadata;
         let holder_metadata = vc::core::HolderMetadata {
             client_id: self.client_id,
             key_metadata,
         };
+
+        debug!(?holder_metadata);
+
         let inner = vc::core::HolderService::new(self.kms, self.vault, holder_metadata);
 
         let holder = HolderService::new(
@@ -195,6 +243,8 @@ where
             self.wallet_metadata,
             self.http_client?,
         );
+
+        info!("oid4vp-holder service is initialized");
 
         Ok(holder)
     }

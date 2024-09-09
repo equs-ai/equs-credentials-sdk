@@ -1,7 +1,9 @@
-use crate::vc::formats::HasClaims;
-use crate::vc::{Credential, CredentialMetadata, HasVCFormat};
 use snafu::{Location, Snafu};
 use std::fmt::Debug;
+use tracing::{instrument, Level};
+
+use crate::vc::formats::HasClaims;
+use crate::vc::{Credential, CredentialMetadata, HasVCFormat};
 
 /// `Metadata` Error.
 ///
@@ -58,6 +60,11 @@ pub trait CredentialMetadataProcessor {
 pub struct DefaultMetadataProcessor;
 
 impl DefaultMetadataProcessor {
+    #[instrument(
+        level = Level::TRACE,
+        err(),
+        ret(level = Level::TRACE)
+    )]
     fn type_(credential: &Credential) -> Result<String> {
         match credential {
             Credential::LdpVc(w3c_vc) => {
@@ -94,6 +101,11 @@ impl DefaultMetadataProcessor {
 }
 
 impl CredentialMetadataProcessor for DefaultMetadataProcessor {
+    #[instrument(
+        level = Level::TRACE,
+        err(),
+        ret(level = Level::TRACE)
+    )]
     fn resolve_metadata(credential: &Credential) -> Result<CredentialMetadata> {
         let format = credential.format();
         let type_ = Self::type_(credential)?;

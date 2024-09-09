@@ -67,6 +67,26 @@ cargo build --all-features
 cargo test --all-features
 ```
 
+### Collecting logs on the application side
+On the application side, to collect logs from `agent-sdk`, follow the steps below:
+
+1. Add `tracing-subscriber` dependency into `Cargo.toml`:
+  ```toml
+    tracing-subscriber = "0.3.18"
+  ```
+2. Add the following to your executable to initialize the default subscriber:
+```rust
+use tracing_subscriber;
+
+async fn main() {
+    tracing_subscriber::fmt::init();
+}
+```
+3. For example, to see `TRACE` level logs, run:
+```shell
+RUST_LOGS=TRACE cargo run
+```
+
 ### Generate documentation
 
 ```

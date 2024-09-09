@@ -1,17 +1,22 @@
-use std::time::Duration;
-
-use crate::http::{HttpClient, HttpSnafu, Result};
 use async_trait::async_trait;
 use oauth2::{HttpRequest, HttpResponse};
 use reqwest::Client;
+use std::time::Duration;
 use tracing::{instrument, trace, Level};
 
-#[derive(Clone)]
+use crate::http::{HttpClient, HttpSnafu, Result};
+
+#[derive(Debug, Clone)]
 pub struct ReqwestClient {
     client: Client,
 }
 
 impl ReqwestClient {
+    #[instrument(
+        level = Level::TRACE,
+        err(),
+        ret(level = Level::TRACE)
+    )]
     pub fn new(https_only: bool, invalid_certs: bool) -> Result<Self> {
         let client = Client::builder()
             .https_only(https_only)
@@ -82,6 +87,11 @@ impl HttpClient for ReqwestClient {
         })
     }
 
+    #[instrument(
+        level = Level::TRACE,
+        err(),
+        ret(level = Level::TRACE)
+    )]
     async fn static_async(request: HttpRequest) -> Result<HttpResponse> {
         ReqwestClient::new(false, true)?.async_call(request).await
     }

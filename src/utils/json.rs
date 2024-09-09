@@ -1,5 +1,11 @@
 use serde_json::Value as Json;
+use tracing::{instrument, Level};
 
+#[instrument(
+    level = Level::TRACE,
+    skip(json),
+    ret(level = Level::TRACE)
+)]
 pub fn find_json_element<'a>(json: &'a Json, json_path: &str) -> Option<&'a Json> {
     if json_path == "$" {
         return Some(json);

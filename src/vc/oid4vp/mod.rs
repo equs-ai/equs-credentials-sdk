@@ -4,6 +4,7 @@ use oid4vp::core::authorization_request::RequestIndirection;
 use oid4vp::core::object::UntypedObject;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use tracing::{instrument, Level};
 use url::Url;
 
 use crate::vc::{Claims, Credential};
@@ -150,6 +151,10 @@ const DEFAULT_CLIENT_METADATA: &str = r#"{
     }
 }"#;
 
+#[instrument(
+    level = Level::TRACE,
+    ret(level = Level::TRACE)
+)]
 pub fn default_client_metadata() -> ClientMetadata {
     ClientMetadata::try_from(
         serde_json::from_str::<serde_json::Value>(DEFAULT_CLIENT_METADATA).unwrap(),
@@ -178,6 +183,10 @@ const DEFAULT_WALLET_METADATA: &str = r#"{
     ]
 }"#;
 
+#[instrument(
+    level = Level::TRACE,
+    ret(level = Level::TRACE)
+)]
 pub fn default_wallet_metadata() -> WalletMetadata {
     WalletMetadata::try_from(
         serde_json::from_str::<UntypedObject>(DEFAULT_WALLET_METADATA).unwrap(),

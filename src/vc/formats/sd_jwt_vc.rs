@@ -12,6 +12,7 @@ use ssi::did::VerificationMethod;
 use ssi::jwk::JWK;
 use std::collections::HashMap;
 use time::OffsetDateTime;
+use tracing::{instrument, trace, Level};
 
 use crate::crypto::{Key, Signer};
 use crate::did::universal::UniversalResolver;
@@ -38,11 +39,22 @@ pub struct SignerWrapper<S: Signer> {
 
 #[async_trait]
 impl<S: Signer> sd_jwt_rs::signer::SDJWTSigner for SignerWrapper<S> {
+    #[instrument(
+        level = Level::TRACE,
+        skip(self),
+        ret(level = Level::TRACE),
+    )]
     fn algorithm(&self) -> &str {
         let alg = self.signer.alg();
         alg.into()
     }
 
+    #[instrument(
+        level = Level::TRACE,
+        skip(self),
+        err(),
+        ret(level = Level::TRACE),
+    )]
     async fn sign(&self, message: &[u8]) -> sd_jwt_rs::error::Result<String> {
         let signed = self.signer.sign(message).await;
         signed
@@ -54,12 +66,20 @@ impl<S: Signer> sd_jwt_rs::signer::SDJWTSigner for SignerWrapper<S> {
 pub struct DidKeyResolver<R: DIDResolver>(R);
 
 impl<R: DIDResolver> DidKeyResolver<R> {
+    #[instrument(
+        level = Level::TRACE,
+        skip_all
+    )]
     pub fn new(did_resolver: R) -> DidKeyResolver<R> {
         DidKeyResolver(did_resolver)
     }
 }
 
 impl Default for DidKeyResolver<UniversalResolver> {
+    #[instrument(
+        level = Level::TRACE,
+        skip_all
+    )]
     fn default() -> Self {
         DidKeyResolver::new(UniversalResolver::new())
     }
@@ -67,6 +87,11 @@ impl Default for DidKeyResolver<UniversalResolver> {
 
 #[async_trait]
 impl<R: DIDResolver> KeyResolver for DidKeyResolver<R> {
+    #[instrument(
+        level = Level::TRACE,
+        skip(self),
+        err(),
+    )]
     async fn resolve(
         &self,
         did_url: &str,
@@ -104,6 +129,12 @@ pub struct VPMetadata {
 }
 
 impl HasClaims<Claims> for Credential {
+    #[instrument(
+        level = Level::TRACE,
+        skip_all,
+        err(),
+        ret(level = Level::TRACE)
+    )]
     fn parse_claims(&self) -> Result<Claims> {
         let stripped = SdJwtAPI::strip_disclosures(self)?;
         ssi::jwt::decode_unverified(stripped).context(JWSSnafu)
@@ -111,6 +142,12 @@ impl HasClaims<Claims> for Credential {
 }
 
 impl HasCredential<Credential> for Presentation {
+    #[instrument(
+        level = Level::TRACE,
+        skip_all,
+        err(),
+        ret(level = Level::TRACE)
+    )]
     fn get_credential(&self) -> Result<Credential> {
         // NOTE: returns basic VC w/o disclosures
         let stripped = SdJwtAPI::strip_disclosures(self)?;
@@ -121,6 +158,10 @@ impl HasCredential<Credential> for Presentation {
 pub struct SdJwtAPI;
 
 impl SdJwtAPI {
+    #[instrument(
+        level = Level::TRACE,
+        ret(level = Level::TRACE)
+    )]
     fn prepare_claims(
         mut claims: Claims,
         iss_url: &DIDURL,
@@ -141,6 +182,10 @@ impl SdJwtAPI {
         Value::Object(claims)
     }
 
+    #[instrument(
+        level = Level::TRACE,
+        ret(level = Level::TRACE)
+    )]
     fn extra_headers(iss_did_url: &DIDURL) -> HashMap<String, String> {
         let mut headers = HashMap::new();
         headers.insert("typ".to_string(), SD_JWT_VC.to_string());
@@ -149,6 +194,11 @@ impl SdJwtAPI {
         headers
     }
 
+    #[instrument(
+        level = Level::TRACE,
+        err(),
+        ret(level = Level::TRACE)
+    )]
     pub fn strip_disclosures(vc: &Credential) -> Result<&str> {
         let mut parts = vc.split('~');
 
@@ -160,6 +210,10 @@ impl SdJwtAPI {
         })
     }
 
+    #[instrument(
+        level = Level::TRACE,
+        ret(level = Level::TRACE)
+    )]
     pub fn verify_signature(vc: &Credential, jwk: &JWK) -> Result<()> {
         let stripped = Self::strip_disclosures(vc)?;
 
@@ -168,6 +222,11 @@ impl SdJwtAPI {
         Ok(())
     }
 
+    #[instrument(
+        level = Level::TRACE,
+        err(),
+        ret(level = Level::TRACE)
+    )]
     fn get_vm_from_did_doc(did_doc: &DIDDoc) -> Result<&VerificationMethodMap> {
         let vm_methods = did_doc.verification_method.as_ref().ok_or(
             ParsingSnafu {
@@ -200,6 +259,11 @@ impl SdJwtAPI {
         }
     }
 
+    #[instrument(
+        level = Level::TRACE,
+        err(),
+        ret(level = Level::TRACE)
+    )]
     async fn get_vm_from_jwt(jwt: &str) -> Result<VerificationMethodMap> {
         let (header, payload) = ssi::jws::decode_unverified(jwt).context(JWSSnafu)?;
         let key_resolver = DidKeyResolver::default();
@@ -265,10 +329,20 @@ impl SdJwtAPI {
 
 #[async_trait]
 impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata, Value> for SdJwtAPI {
+    #[instrument(
+        level = Level::TRACE,
+        ret(level = Level::TRACE)
+    )]
     fn resolve_claims(value: &Value) -> Claims {
         value.as_object().unwrap().to_owned()
     }
 
+    #[instrument(
+        level = Level::TRACE,
+        skip(issuer_data, holder_data),
+        err(),
+        ret(level = Level::TRACE)
+    )]
     async fn create_vc<S, K>(
         claims: Claims,
         issuer_data: (&DIDURL, S),
@@ -279,6 +353,8 @@ impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata, Value> for Sd
         S: Signer,
         K: Key,
     {
+        trace!(issuer_did_url = ?{issuer_data.0}, holder_did_url = ?{holder_data.0});
+
         let (iss_did_url, signer) = issuer_data;
         let (hld_did, hld_key) = holder_data;
 
@@ -286,11 +362,14 @@ impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata, Value> for Sd
 
         let claims = SdJwtAPI::prepare_claims(claims, iss_did_url, hld_did, &metadata);
         let headers = SdJwtAPI::extra_headers(iss_did_url);
+        trace!(resolved_headers = ?headers);
 
         let jwk = utils::jwk::from_spruce_jwk_opt(hld_key.jwk())
             .ok_or_else(|| KeyTypeNotSupportedSnafu { type_: "JWK" }.build())?;
+        trace!(resolved_holder_jwk = ?jwk);
 
         let disclosures = metadata.disclosures.iter().map(|d| d.as_str()).collect();
+        trace!(resolved_disclosures = ?disclosures);
 
         let mut issuer = SDJWTIssuer::new(sgn_wrapper);
 
@@ -312,6 +391,12 @@ impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata, Value> for Sd
             })
     }
 
+    #[instrument(
+        level = Level::TRACE,
+        skip(holder_data),
+        err(),
+        ret(level = Level::TRACE)
+    )]
     async fn create_vp<S>(
         credential: &Credential,
         holder_data: (&DIDURL, S),
@@ -322,6 +407,8 @@ impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata, Value> for Sd
     where
         S: Signer,
     {
+        trace!(holder_did_url = ?{holder_data.0});
+
         let (_, signer) = holder_data;
         let sgn_wrapper = SignerWrapper { signer };
 
@@ -349,6 +436,11 @@ impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata, Value> for Sd
             })
     }
 
+    #[instrument(
+        level = Level::TRACE,
+        err(),
+        ret(level = Level::TRACE)
+    )]
     async fn verify_vc(credential: &Credential, opts: VerifyOptions) -> Result<()> {
         let plain_jwt = Self::strip_disclosures(credential)?;
         let vm = Self::get_vm_from_jwt(plain_jwt).await?;
@@ -363,6 +455,11 @@ impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata, Value> for Sd
         Self::verify_signature(credential, &jwk)
     }
 
+    #[instrument(
+        level = Level::TRACE,
+        err(),
+        ret(level = Level::TRACE)
+    )]
     async fn verify_vp(
         presentation: &Presentation,
         nonce: Nonce,

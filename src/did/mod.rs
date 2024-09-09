@@ -54,7 +54,7 @@ pub type ResolutionInputMetadata = ssi::did_resolve::ResolutionInputMetadata;
 /// A result of `DID` resolution.
 ///
 /// Contains resolution metadata, resolved DID doc and the doc's metadata.
-#[derive(Default, Clone)]
+#[derive(Debug, Default, Clone)]
 pub struct Resolution {
     pub metadata: ResolutionMetadata,
     pub doc: Option<DIDDoc>,
@@ -62,7 +62,7 @@ pub struct Resolution {
 }
 
 /// General options for `DID` resolution.
-#[derive(Default, Clone)]
+#[derive(Debug, Default, Clone)]
 pub struct ResolveOptions {
     pub input: ResolutionInputMetadata,
 }

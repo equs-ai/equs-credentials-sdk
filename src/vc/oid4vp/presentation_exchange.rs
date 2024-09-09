@@ -1,6 +1,8 @@
-use crate::vc::core::PresentationInput;
 use oid4vp::presentation_exchange::{ConstraintsField, InputDescriptor, PresentationDefinition};
 use serde_json::{Map, Value};
+use tracing::{instrument, Level};
+
+use crate::vc::core::PresentationInput;
 
 #[derive(Debug, thiserror::Error, strum::IntoStaticStr)]
 #[non_exhaustive]
@@ -9,6 +11,11 @@ pub enum Error {
     VpFormatParse,
 }
 
+#[instrument(
+    level = Level::TRACE,
+    err(),
+    ret(level = Level::TRACE)
+)]
 pub fn split_to_inputs(
     presentation_definition: &PresentationDefinition,
 ) -> Result<Vec<PresentationInput>, Error> {
@@ -24,6 +31,12 @@ pub fn split_to_inputs(
 impl TryInto<PresentationInput> for &InputDescriptor {
     type Error = Error;
 
+    #[instrument(
+        level = Level::TRACE,
+        skip(self),
+        err(),
+        ret(level = Level::TRACE)
+    )]
     fn try_into(self) -> Result<PresentationInput, Self::Error> {
         let fields = self.constraints.fields.clone().unwrap_or_default();
         let paths: Vec<&String> = fields.iter().flat_map(|f| f.path.iter()).collect();
@@ -74,6 +87,9 @@ impl TryInto<PresentationInput> for &InputDescriptor {
     }
 }
 
+#[instrument(
+    level = Level::TRACE
+)]
 fn filter_const(field: &ConstraintsField) -> Value {
     let filter = field.clone().filter.unwrap_or(Value::Null);
 
@@ -84,6 +100,10 @@ fn filter_const(field: &ConstraintsField) -> Value {
         .to_owned()
 }
 
+#[instrument(
+    level = Level::TRACE,
+    ret(level = Level::TRACE)
+)]
 fn top_level_paths(field: &ConstraintsField) -> Vec<String> {
     let paths = field.path.iter();
 

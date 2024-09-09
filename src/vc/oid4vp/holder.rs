@@ -22,6 +22,7 @@ use oid4vp::core::response::parameters::{
 };
 use oid4vp::core::response::AuthorizationResponse;
 use oid4vp::presentation_exchange::{DescriptorMap, PresentationSubmission};
+use tracing::{info, instrument, trace, Level};
 use url::Url;
 use uuid::Uuid;
 
@@ -44,6 +45,10 @@ where
     HL: vc::core::Holder,
     D: DIDResolver,
 {
+    #[instrument(
+        level = Level::TRACE,
+        skip(holder, did_resolver, http_client),
+    )]
     pub fn new(
         holder: HL,
         did_resolver: D,
@@ -51,6 +56,8 @@ where
         http_client: reqwest::Client,
     ) -> Self {
         let metadata = metadata.unwrap_or(default_wallet_metadata());
+
+        info!("oid4vp-holder service is initialized");
 
         Self {
             holder,
@@ -61,6 +68,12 @@ where
     }
 
     #[allow(clippy::too_many_arguments)]
+    #[instrument(
+        level = Level::TRACE,
+        skip(self),
+        err(),
+        ret(level = Level::TRACE)
+    )]
     async fn submit_auth_response_helper(
         &self,
         nonce: &str,
@@ -85,9 +98,16 @@ where
             path,
         });
 
+        trace!(updated_vp_tokens = ?vp_tokens);
+
         Ok(())
     }
 
+    #[instrument(
+        level = Level::TRACE,
+        err(),
+        ret(level = Level::TRACE)
+    )]
     fn generate_auth_response(
         presentations: Vec<Presentation>,
         mut pres_sub: PresentationSubmission,
@@ -119,6 +139,12 @@ where
     HL: vc::core::Holder,
     D: DIDResolver,
 {
+    #[instrument(
+        level = Level::TRACE,
+        skip(self),
+        err(),
+        ret(level = Level::TRACE)
+    )]
     async fn get_authorization_request(&self, auth_req_uri: &str) -> Result<ResolvedAuthRequest> {
         let url = Url::parse(auth_req_uri)?;
         let aro = self.handle_request(&url, &self.http_client).await?;
@@ -138,11 +164,19 @@ where
         })
     }
 
+    #[instrument(
+        level = Level::TRACE,
+        skip(self),
+        err(),
+        ret(level = Level::TRACE)
+    )]
     async fn present_credentials_auto(
         &self,
         auth_request: &ResolvedAuthRequest,
         _: &AuthorizationResponseMetadata,
     ) -> Result<Option<Url>> {
+        info!("presenting verifiable presentation is started");
+
         let mut vp_tokens = vec![];
         let mut pres_sub = PresentationSubmission {
             id: Uuid::new_v4().to_string(),
@@ -178,9 +212,17 @@ where
             )
             .await?;
 
+        info!("verifiable presentation is successfully presented");
+
         Ok(redirect_url)
     }
 
+    #[instrument(
+        level = Level::TRACE,
+        skip(self),
+        err(),
+        ret(level = Level::TRACE)
+    )]
     async fn find_vcs_for_presentation(
         &self,
         auth_request: &ResolvedAuthRequest,
@@ -196,12 +238,20 @@ where
         Ok(creds_map)
     }
 
+    #[instrument(
+        level = Level::TRACE,
+        skip(self),
+        err(),
+        ret(level = Level::TRACE)
+    )]
     async fn present_credentials(
         &self,
         auth_request: &ResolvedAuthRequest,
         creds_map: &CredentialMapping,
         _: &AuthorizationResponseMetadata,
     ) -> Result<Option<Url>> {
+        info!("presenting verifiable presentations is started");
+
         let mut vp_tokens = vec![];
         let mut pres_sub = PresentationSubmission {
             id: Uuid::new_v4().to_string(),
@@ -243,6 +293,8 @@ where
             )
             .await?;
 
+        info!("verifiable presentations are successfully presented");
+
         Ok(redirect_url)
     }
 }
@@ -255,6 +307,12 @@ where
 {
     type CredentialFormat = CoreCredentialFormat;
 
+    #[instrument(
+        level = Level::TRACE,
+        skip(self),
+        err(),
+        ret(level = Level::TRACE)
+    )]
     async fn validate_request(
         &self,
         wallet_metadata: &WalletMetadata,
@@ -299,6 +357,12 @@ where
     HL: vc::core::Holder,
     D: DIDResolver,
 {
+    #[instrument(
+        level = Level::TRACE,
+        skip(self),
+        err(),
+        ret(level = Level::TRACE)
+    )]
     async fn did(
         &self,
         decoded_request: &AuthorizationRequestObject,
@@ -324,6 +388,12 @@ where
         Ok(())
     }
 
+    #[instrument(
+        level = Level::TRACE,
+        skip(self),
+        err(),
+        ret(level = Level::TRACE)
+    )]
     async fn entity_id(
         &self,
         decoded_request: &AuthorizationRequestObject,
@@ -333,6 +403,12 @@ where
         Ok(())
     }
 
+    #[instrument(
+        level = Level::TRACE,
+        skip(self),
+        err(),
+        ret(level = Level::TRACE)
+    )]
     async fn preregistered(
         &self,
         decoded_request: &AuthorizationRequestObject,
@@ -342,6 +418,12 @@ where
         Ok(())
     }
 
+    #[instrument(
+        level = Level::TRACE,
+        skip(self),
+        err(),
+        ret(level = Level::TRACE)
+    )]
     async fn redirect_uri(
         &self,
         decoded_request: &AuthorizationRequestObject,
@@ -351,6 +433,12 @@ where
         Ok(())
     }
 
+    #[instrument(
+        level = Level::TRACE,
+        skip(self),
+        err(),
+        ret(level = Level::TRACE)
+    )]
     async fn x509_san_dns(
         &self,
         decoded_request: &AuthorizationRequestObject,
@@ -360,6 +448,12 @@ where
         Ok(())
     }
 
+    #[instrument(
+        level = Level::TRACE,
+        skip(self),
+        err(),
+        ret(level = Level::TRACE)
+    )]
     async fn x509_san_uri(
         &self,
         decoded_request: &AuthorizationRequestObject,
@@ -369,6 +463,12 @@ where
         Ok(())
     }
 
+    #[instrument(
+        level = Level::TRACE,
+        skip(self),
+        err(),
+        ret(level = Level::TRACE)
+    )]
     async fn other(
         &self,
         client_id_scheme: &str,
