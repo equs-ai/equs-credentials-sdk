@@ -44,7 +44,6 @@ pub type Result<T> = core::result::Result<T, Error>;
 pub enum TokenValidation<HC: HttpClient> {
     Introspect(Introspect<HC>),
     ByJwks(ByJwks<HC>),
-    None,
 }
 
 pub struct IssuerService<IS, HC>
@@ -54,7 +53,7 @@ where
 {
     issuer: IS,
     issuer_metadata: IssuerMetadata,
-    token_validation: TokenValidation<HC>,
+    token_validation: Option<TokenValidation<HC>>,
 }
 
 impl<IS, HC> IssuerService<IS, HC>
@@ -69,7 +68,7 @@ where
     pub fn new(
         issuer_metadata: IssuerMetadata,
         issuer: IS,
-        token_validation: TokenValidation<HC>,
+        token_validation: Option<TokenValidation<HC>>,
     ) -> Self {
         info!("oid4vci-issuer service is initialized");
 
@@ -504,21 +503,21 @@ where
         trace!(%token);
 
         match &self.token_validation {
-            TokenValidation::Introspect(svc) => svc.validate(token).await.map_err(|_| {
+            Some(TokenValidation::Introspect(svc)) => svc.validate(token).await.map_err(|_| {
                 ProtocolSnafu::new(
                     ErrorType::InvalidToken,
                     "Could not validate the token".to_string(),
                 )
                 .build()
             })?,
-            TokenValidation::ByJwks(svc) => svc.validate(token).await.map_err(|_| {
+            Some(TokenValidation::ByJwks(svc)) => svc.validate(token).await.map_err(|_| {
                 ProtocolSnafu::new(
                     ErrorType::InvalidToken,
                     "Could not validate the token".to_string(),
                 )
                 .build()
             })?,
-            TokenValidation::None => {}
+            None => {}
         }
 
         Ok(())

@@ -79,10 +79,10 @@ where
         level = Level::TRACE,
         skip_all,
     )]
-    pub fn with_did_resolver<D1: did::DIDResolver>(
+    pub fn with_did_resolver<D_: did::DIDResolver>(
         self,
-        resolver: D1,
-    ) -> VerifierBuilder<KH, KMS, D1> {
+        resolver: D_,
+    ) -> VerifierBuilder<KH, KMS, D_> {
         VerifierBuilder {
             resolver,
             // copied

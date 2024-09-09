@@ -227,8 +227,7 @@ pub mod test_utils {
     use crate::vc::core::KeyMetadata;
     use crate::vc::formats::sd_jwt_vc::{SdJwtAPI, VCMetadata, VPMetadata};
     use crate::vc::formats::API;
-    use crate::vc::oid4vp::verifier::VerifierMetadata;
-    use crate::vc::oid4vp::{default_client_metadata, AuthorizationResponse};
+    use crate::vc::oid4vp::AuthorizationResponse;
     use oid4vci::openidconnect::Nonce;
 
     use oid4vp::presentation_exchange::PresentationDefinition;
@@ -272,23 +271,6 @@ pub mod test_utils {
             }
         ]
     }"#;
-
-    pub async fn create_test_verifier_metadata(
-        did_resolver: &UniversalResolver,
-        kms: &LocalKms,
-    ) -> VerifierMetadata {
-        let (verifier_kid, verifier_key_handle, verifier_did, verifier_vm_id) =
-            generate_did_key_and_vm(kms, did_resolver).await;
-
-        VerifierMetadata {
-            client_id: verifier_did.to_owned(),
-            key_metadata: KeyMetadata {
-                did_url: verifier_vm_id,
-                kid: verifier_kid,
-            },
-            client_metadata: default_client_metadata(),
-        }
-    }
 
     pub fn create_test_presentation_definition() -> PresentationDefinition {
         serde_json::from_str(TEST_PRESENTATION_DEFINITION).unwrap()
@@ -365,6 +347,22 @@ pub mod test_utils {
 
         (kid, key_handle, did, vm_id)
     }
+
+    // TODO: move to the common test-util module
+    pub async fn create_did_and_key_metadata(kms: &LocalKms) -> (DID, KeyMetadata) {
+        let didkey = DIDKey::new();
+
+        let (kid, kh) = kms
+            .create_and_handle(kms::KeyType::P256, kms::CreateOptions {})
+            .await
+            .unwrap();
+
+        let did = didkey.generate(kh).unwrap();
+
+        let vm = didkey.resolve_verification_method(&did).await.unwrap().id;
+
+        (did, KeyMetadata { kid, did_url: vm })
+    }
 }
 
 #[cfg(test)]
@@ -379,26 +377,25 @@ mod tests {
     use tokio::sync::Mutex;
     use url::{form_urlencoded, Url};
 
+    use crate::crypto;
     use crate::crypto::Alg;
     use crate::did::universal::UniversalResolver;
-    use crate::did::DID;
     use crate::inmem::kms::LocalKms;
-    use crate::inmem::storage::InMemStorage;
     use crate::inmem::vault::InMemVault;
     use crate::vault::Vault;
     use crate::vc::core::KeyMetadata;
     use crate::vc::formats::sd_jwt_vc::{SdJwtAPI, VCMetadata};
     use crate::vc::formats::API;
-    use crate::vc::oid4vp::holder::HolderService;
-    use crate::vc::oid4vp::test_utils::{generate_did_key, generate_did_key_and_vm};
-    use crate::vc::oid4vp::verifier::VerifierService;
-    use crate::vc::oid4vp::Verifier;
+    use crate::vc::oid4vp::test_utils::{
+        create_did_and_key_metadata, generate_did_key, generate_did_key_and_vm,
+    };
+    use crate::vc::oid4vp::HolderBuilder;
     use crate::vc::oid4vp::{
         auth_request_as_url, AuthorizationResponseMetadata, AuthorizationUrlType,
     };
     use crate::vc::oid4vp::{AuthorizationResponse, Holder};
-    use crate::vc::{oid4vp as api, Credential, CredentialMetadata, VCFormat};
-    use crate::{crypto, kms, vc};
+    use crate::vc::oid4vp::{Verifier, VerifierBuilder};
+    use crate::vc::{Credential, CredentialMetadata, VCFormat};
 
     type ValidateClaims = dyn FnOnce(Json);
 
@@ -601,7 +598,15 @@ mod tests {
         }
 
         // Create Holder and Verifier
-        let holder = holder(holder_did, holder_vm, holder_kid, holder_kms, holder_vault).await;
+        let holder = holder(
+            holder_kms,
+            holder_vault,
+            KeyMetadata {
+                did_url: holder_vm,
+                kid: holder_kid,
+            },
+        )
+        .await;
 
         let verifier = verifier().await;
 
@@ -710,47 +715,22 @@ mod tests {
         authorization_response
     }
 
-    async fn verifier() -> impl api::Verifier {
+    async fn verifier() -> impl Verifier {
         let kms = LocalKms::new();
-        let storage = InMemStorage::new();
-        let did_resolver = UniversalResolver::new();
 
-        let (kid, kh, did, vm_id) = generate_did_key_and_vm(&kms, &did_resolver).await;
-        println!("Verifier DID: {}", did);
+        let (did, key_metadata) = create_did_and_key_metadata(&kms).await;
 
-        let inner = vc::core::VerifierService::new(&did);
-        VerifierService::new(
-            inner,
-            kms,
-            did_resolver,
-            storage,
-            did,
-            KeyMetadata {
-                did_url: vm_id,
-                kid,
-            },
-            None,
-        )
+        VerifierBuilder::new(kms, key_metadata, did)
+            .build()
+            .await
+            .unwrap()
     }
 
-    async fn holder(
-        holder_did: DID,
-        holder_vm: String,
-        holder_kid: kms::KeyID,
-        kms: LocalKms,
-        vault: InMemVault,
-    ) -> impl api::Holder {
-        let metadata = vc::core::HolderMetadata {
-            client_id: holder_did.to_owned(),
-            key_metadata: KeyMetadata {
-                did_url: holder_vm,
-                kid: holder_kid,
-            },
-        };
-        let inner = vc::core::HolderService::new(kms, vault, metadata);
-
-        let http_client = reqwest::Client::new();
-        HolderService::new(inner, UniversalResolver::new(), None, http_client)
+    async fn holder(kms: LocalKms, vault: InMemVault, key_metadata: KeyMetadata) -> impl Holder {
+        HolderBuilder::new(kms, vault, key_metadata, "wallet-dev".to_string())
+            .build()
+            .await
+            .unwrap()
     }
 
     async fn create_vc(

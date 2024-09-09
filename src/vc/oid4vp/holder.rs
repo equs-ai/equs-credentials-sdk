@@ -482,22 +482,15 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::crypto::{Alg, Key};
-    use crate::did::didkey::DIDKey;
-    use crate::did::DIDURL;
+    use crate::crypto::Alg;
     use crate::inmem::kms::LocalKms;
     use crate::inmem::vault::InMemVault;
-    use crate::kms::Kms;
     use crate::vault::Vault;
-    use crate::vc::core::{HolderMetadata, KeyMetadata};
     use crate::vc::{Credential, CredentialMetadata, VCFormat};
-    use crate::{kms, vc};
-    use std::str::FromStr;
 
-    use crate::vc::oid4vp as api;
-    use crate::vc::oid4vp::holder::HolderService;
-    use crate::vc::oid4vp::AuthorizationResponseMetadata;
+    use crate::vc::oid4vp::test_utils::create_did_and_key_metadata;
     use crate::vc::oid4vp::Holder;
+    use crate::vc::oid4vp::{AuthorizationResponseMetadata, HolderBuilder};
 
     const REQUEST_OBJECT: &str = "eyJhbGciOiJFUzI1NiIsImtpZCI6ImRpZDprZXk6ekRuYWVhZ3ZXMmVEV2MyeVZ3N0I5OG92Y0o4amRkbjdUOU1oM3k1VmlreXM2eTRrWCN6RG5hZWFndlcyZURXYzJ5Vnc3Qjk4b3ZjSjhqZGRuN1Q5TWgzeTVWaWt5czZ5NGtYIiwidHlwIjoiSldUIn0.eyJyZXNwb25zZV9tb2RlIjoiZGlyZWN0X3Bvc3QiLCJyZXNwb25zZV91cmkiOiJodHRwOi8vMTI3LjAuMC4xOjU1Nzk2L2F1dGgiLCJyZXNwb25zZV90eXBlIjoidnBfdG9rZW4iLCJub25jZSI6Im4wTmNFIiwiY2xpZW50X21ldGFkYXRhIjp7InZwX2Zvcm1hdHMiOnsidmMrc2Qtand0Ijp7ImFsZyI6WyJFZERTQSIsIkVTMjU2Il19fX0sInByZXNlbnRhdGlvbl9kZWZpbml0aW9uIjp7ImlkIjoiMWI5ZDZiY2QtYmJmZC00YjJkLTliNWQtYWI4ZGZiYmQ0YmVkIiwiaW5wdXRfZGVzY3JpcHRvcnMiOlt7ImlkIjoiSWRlbnRpdHktMSIsIm5hbWUiOiJJZGVudGl0eSBWQyIsInB1cnBvc2UiOiJXZSB3YW50IGFuIGlkZW50aXR5IiwiZm9ybWF0Ijp7InZjK3NkLWp3dCI6eyJhbGciOlsiRWREU0EiLCJFUzI1NksiXX19LCJjb25zdHJhaW50cyI6eyJmaWVsZHMiOlt7InBhdGgiOlsiJC52Y3QiXSwiZmlsdGVyIjp7InR5cGUiOiJzdHJpbmciLCJjb25zdCI6Imh0dHBzOi8vY3JlZGVudGlhbHMuZXhhbXBsZS5jb20vaWRlbnRpdHlfY3JlZGVudGlhbCJ9fSx7InBhdGgiOlsiJC5uYW1lIl19XX19XX0sImNsaWVudF9pZCI6ImRpZDprZXk6ekRuYWVhZ3ZXMmVEV2MyeVZ3N0I5OG92Y0o4amRkbjdUOU1oM3k1VmlreXM2eTRrWCIsImNsaWVudF9pZF9zY2hlbWUiOiJkaWQifQ.RlrD5ibioAvM_S0QAhdPK--9WyLEw258cMduAn26S1puXIxKgJod9gt00FDrK0x-jdPmkuPdpJWKzg3kcimIVQ";
     const REQUEST_URI: &str = "openid4vp://?client_id=did%3Akey%3AzDnaeagvW2eDWc2yVw7B98ovcJ8jddn7T9Mh3y5Vikys6y4kX&request_uri=http%3A%2F%2F127.0.0.1%3A55796%2Frequest";
@@ -520,7 +513,21 @@ mod tests {
             .create();
         verifier_srv.mock("POST", "/auth").with_status(200).create();
 
-        let holder = oid4vp_holder().await;
+        let vault = InMemVault::new();
+
+        let cred_meta = CredentialMetadata {
+            type_: "https://credentials.example.com/identity_credential".into(),
+            format: VCFormat::SdJwtVc,
+            alg: Some(Alg::ES256),
+            tags: vec![],
+        };
+
+        let res = vault
+            .store_credential(Credential::SdJwt(CRED_JWT.to_string()), &cred_meta)
+            .await;
+        assert!(res.is_ok());
+
+        let holder = oid4vp_holder(vault).await;
         // Handle request object
         let request_obj = holder.get_authorization_request(REQUEST_URI).await.unwrap();
         // Send auth response
@@ -530,56 +537,21 @@ mod tests {
             .unwrap();
     }
 
-    async fn oid4vp_holder() -> impl api::Holder {
+    async fn oid4vp_holder(vault: InMemVault) -> impl Holder {
+        let kms = LocalKms::new();
+
+        let (did, key_metadata) = create_did_and_key_metadata(&kms).await;
+
         let client = reqwest::Client::builder()
             .danger_accept_invalid_certs(true)
             .https_only(false)
             .build()
             .unwrap();
-        let inner = holder().await;
-        let resolver = DIDKey::new();
-        HolderService::new(inner, resolver, None, client)
-    }
 
-    async fn holder() -> impl vc::core::Holder {
-        let kms = LocalKms::new();
-        let didkey = DIDKey::new();
-        let vault = InMemVault::new();
-
-        let cred1_meta = CredentialMetadata {
-            type_: "https://credentials.example.com/identity_credential".into(),
-            format: VCFormat::SdJwtVc,
-            alg: Some(Alg::ES256),
-            tags: vec![],
-        };
-        let store1_res = vault
-            .store_credential(Credential::SdJwt(CRED_JWT.to_string()), &cred1_meta)
-            .await;
-        assert!(store1_res.is_ok());
-
-        let kt = kms::KeyType::P256;
-        let (kid, kh) = kms
-            .create_and_handle(kt, kms::CreateOptions {})
+        HolderBuilder::new(kms, vault, key_metadata, CLIENT_ID.to_owned())
+            .with_http_client(client)
+            .build()
             .await
-            .unwrap();
-
-        let did = didkey.generate(kh.clone()).unwrap();
-        let did_url = DIDURL::from_str(&did).unwrap();
-        println!("DID: {}", did);
-
-        let jwk = kh.clone().jwk().unwrap();
-        println!("Key JWK:\n{}", serde_json::to_string_pretty(&jwk).unwrap());
-
-        vc::core::HolderService::new(
-            kms,
-            vault,
-            HolderMetadata {
-                client_id: CLIENT_ID.to_owned(),
-                key_metadata: KeyMetadata {
-                    did_url: did_url.to_string(),
-                    kid: kid.clone(),
-                },
-            },
-        )
+            .unwrap()
     }
 }

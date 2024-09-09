@@ -6,7 +6,9 @@ use agent_sdk::kms;
 use agent_sdk::kms::Kms;
 use agent_sdk::vc::core::KeyMetadata;
 use agent_sdk::vc::metadata::{CredentialMetadataProcessor, DefaultMetadataProcessor};
-use agent_sdk::vc::oid4vci::{CredentialResponseResolved, CredentialResult, TokenResponse};
+use agent_sdk::vc::oid4vci::{
+    CredentialResponseResolved, CredentialResult, IssuerDiscovery, TokenResponse,
+};
 use agent_sdk::vc::oid4vci::{Holder as HolderVci, Nonce};
 use agent_sdk::vc::oid4vp::AuthorizationResponseMetadata;
 use agent_sdk::vc::oid4vp::Holder as HolderVp;
@@ -167,8 +169,8 @@ async fn oid4vci_holder(
 
     let client_id = "wallet-dev".to_owned();
 
-    let holder = oid4vci::HolderBuilder::new(kms, vault, key_metadata, client_id)
-        .with_issuer_url(issuer_url.to_string())
+    let iss_discovery = IssuerDiscovery::Url(issuer_url.to_string());
+    let holder = oid4vci::HolderBuilder::new(kms, vault, key_metadata, client_id, iss_discovery)
         .with_redirect_url("urn:ietf:wg:oauth:2.0:oob".to_string())
         .build()
         .await
