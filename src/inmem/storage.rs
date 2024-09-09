@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use std::fmt::Display;
 use std::hash::Hash;
 
+#[derive(Debug)]
 pub struct InMemStorage<K, V> {
     map: RwLock<HashMap<K, V>>,
 }

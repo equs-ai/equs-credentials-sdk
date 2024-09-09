@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use ssi::did::{DIDMethod, Source};
 use ssi::did_resolve::DIDResolver as SpruceResolver;
+use tracing::{instrument, trace, Level};
 
 use crate::did::{
     DIDResolver, DidGenerationSnafu, KeyNotSupportedSnafu, Resolution, ResolveOptions, Result, DID,
@@ -17,6 +18,9 @@ pub struct DIDKey {
 }
 
 impl DIDKey {
+    #[instrument(
+        level = Level::TRACE,
+    )]
     pub fn new() -> Self {
         Self {
             method: did_method_key::DIDKey {},
@@ -37,6 +41,12 @@ impl DIDKey {
     ///
     /// * [Error::KeyNotSupported] - fails if the `jwk` is not supported for `key`.
     /// * [Error::DidGeneration] - can't generate `DID`.
+    #[instrument(
+        level = Level::TRACE,
+        skip_all,
+        err(),
+        ret(level = Level::TRACE)
+    )]
     pub fn generate<K>(&self, key: K) -> Result<DID>
     where
         K: crypto::Key,
@@ -57,9 +67,17 @@ impl DIDKey {
 
 #[async_trait]
 impl DIDResolver for DIDKey {
+    #[instrument(
+        level = Level::TRACE,
+        skip(self),
+        ret(level = Level::TRACE)
+    )]
     async fn resolve(&self, did: &DID, options: ResolveOptions) -> Resolution {
         let (metadata, doc, doc_metadata) =
             self.method.to_resolver().resolve(did, &options.input).await;
+
+        trace!(resolved_metadata = ?metadata, resolved_did_doc = ?doc, resolved_did_doc_metadata = ?doc_metadata);
+
         Resolution {
             doc,
             metadata,
@@ -67,6 +85,10 @@ impl DIDResolver for DIDKey {
         }
     }
 
+    #[instrument(
+        level = Level::TRACE,
+        skip_all,
+    )]
     fn as_spruce_resolver(&self) -> &dyn SpruceResolver {
         self.method.to_resolver()
     }

@@ -3,6 +3,7 @@ use async_trait::async_trait;
 use snafu::{Location, Snafu};
 use std::fmt::Debug;
 use strum_macros::{Display, EnumString, IntoStaticStr};
+use tracing::{instrument, trace, Level};
 
 /// `Kms` Error.
 ///
@@ -58,7 +59,7 @@ pub enum KeyType {
 }
 
 /// General options for key creation.
-#[derive(Default, PartialEq, Clone)]
+#[derive(Debug, Default, PartialEq, Clone)]
 pub struct CreateOptions {}
 
 /// General-purpose `KeyHandle` trait.
@@ -130,9 +131,16 @@ where
     /// # Errors
     ///
     /// See [Kms::create] and [Kms::get] errors.
+    #[instrument(
+        level = Level::TRACE,
+        skip(self),
+        err(),
+    )]
     async fn create_and_handle(&self, kt: KeyType, opts: CreateOptions) -> Result<(KeyID, KH)> {
         let kid = self.create(kt, opts).await?;
         let res = self.get(&kid).await?;
+
+        trace!(created_key_id = ?kid);
 
         Ok((kid, res))
     }

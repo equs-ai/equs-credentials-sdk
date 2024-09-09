@@ -6,6 +6,7 @@ use oid4vci::proof_of_possession::{
 };
 use snafu::ResultExt;
 use ssi::jwk::JWK;
+use tracing::{debug, instrument, trace, Level};
 
 use crate::crypto;
 use crate::crypto::SigningKey;
@@ -22,6 +23,12 @@ pub struct SignerWrapper<S: SigningKey> {
 
 #[async_trait]
 impl<S: SigningKey> oid4vci::proof_of_possession::Signer for SignerWrapper<S> {
+    #[instrument(
+        level = Level::TRACE,
+        skip(self),
+        err(),
+        ret(level = Level::TRACE)
+    )]
     async fn sign(&self, data: &[u8]) -> Result<Vec<u8>, ssi::jws::Error> {
         self.key
             .sign(data)
@@ -34,6 +41,12 @@ pub struct JwtProofOfPossession {}
 
 #[async_trait]
 impl pop::ProofOfPossession<String> for JwtProofOfPossession {
+    #[instrument(
+        level = Level::TRACE,
+        skip(key),
+        err(),
+        ret(level = Level::TRACE)
+    )]
     async fn generate<S>(
         did_url: &DIDURL,
         key: S,
@@ -62,6 +75,10 @@ impl pop::ProofOfPossession<String> for JwtProofOfPossession {
         pop.to_jwt_with_signer(sgn).await.context(ConversionSnafu)
     }
 
+    #[instrument(
+        level = Level::TRACE,
+        err(),
+    )]
     async fn verify(
         proof: String,
         nonce: Nonce,
@@ -87,19 +104,34 @@ impl pop::ProofOfPossession<String> for JwtProofOfPossession {
             .await
             .context(VerificationSnafu)?;
 
+        debug!("proof of possession is verified");
+
         // TODO: refactor
         let did_url = pop.controller.vm.unwrap();
         let hld_key = pop.controller.jwk;
+
+        trace!(resolved_did_url = ?did_url);
 
         Ok((did_url, Box::new(hld_key)))
     }
 }
 
 impl crypto::Key for JWK {
+    #[instrument(
+        level = Level::TRACE,
+        skip_all,
+        err(),
+        ret(level = Level::TRACE)
+    )]
     fn pub_key(&self) -> Result<Vec<u8>, crypto::Error> {
         unimplemented!()
     }
 
+    #[instrument(
+        level = Level::TRACE,
+        skip_all,
+        ret(level = Level::TRACE)
+    )]
     fn jwk(&self) -> Option<JWK> {
         Some(self.to_owned())
     }

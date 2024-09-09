@@ -74,6 +74,8 @@ where
         client_id: String,
         redirect_url: String, // urn:ietf:wg:oauth:2.0:oob
     ) -> Result<Self> {
+        info!("oid4vci-holder service initialization is started");
+
         let holder_service = Self::from_iss_url_with_configs(
             holder,
             http_client,
@@ -83,14 +85,15 @@ where
             redirect_url,
         )
         .await;
-        info!("oid4vci holder service is initialized");
+
+        info!("oid4vci-holder service is initialized");
 
         holder_service
     }
 
     #[instrument(
         level = Level::TRACE,
-        skip(holder, http_client, offer),
+        skip(holder, http_client),
     )]
     pub async fn from_credential_offer(
         holder: HL,
@@ -99,7 +102,7 @@ where
         client_id: String,
         redirect_url: String,
     ) -> Result<Self> {
-        trace!(credential_offer = ?offer);
+        info!("oid4vci-holder service initialization is started");
 
         let (iss_url, offer_configs) = match offer {
             CredentialOffer::Value { credential_offer } => {
@@ -125,7 +128,8 @@ where
             redirect_url,
         )
         .await;
-        info!("oid4vci holder service is initialized");
+
+        info!("oid4vci-holder service is initialized");
 
         holder_service
     }
@@ -188,7 +192,7 @@ where
             client_id,
             redirect_url,
         );
-        info!("oid4vci holder service is initialized");
+        info!("oid4vci-holder service is initialized");
 
         holder_service
     }
@@ -212,6 +216,8 @@ where
             ClientId::new(client_id.clone()),
             RedirectUrl::new(redirect_url).context(UrlParseSnafu)?,
         );
+
+        info!("oid4vci-holder service is initialized");
 
         Ok(Self {
             holder,
@@ -250,6 +256,8 @@ where
         scope: String,
         authorization_callback: impl FnOnce(Url) -> String + Send,
     ) -> Result<TokenResponse> {
+        info!("authorization code flow is started");
+
         let response = self
             .authz_code_flow(
                 // TODO: advanced AuthDetail by cred_def_id, scope is enough for MVP
@@ -258,12 +266,14 @@ where
             )
             .await?;
 
+        info!("authorization code flow is succeeded");
+
         Ok(response)
     }
 
     #[instrument(
         level = Level::TRACE,
-        skip(self, pre_authorized_code, tx_code),
+        skip(self),
         err(),
         ret(level = Level::TRACE),
     )]
@@ -288,7 +298,7 @@ where
         cred_def_id: &str,
         nonce: Option<Nonce>,
     ) -> Result<CredentialResponseResolved> {
-        trace!(access_token = ?token, nonce = ?{nonce.as_ref()});
+        info!("requesting a credential flow is started");
 
         let cred_def = self.resolve_cred_def(cred_def_id)?;
 
@@ -339,11 +349,17 @@ where
         let cred_result: CredentialResult = (&resp).try_into()?;
 
         if let CredentialResult::Credential { credential, .. } = &cred_result {
+            info!("credential is received");
+
             self.holder
                 .verify_credential(credential)
                 .await
                 .context(VCSnafu)?;
+
+            info!("credential is verified");
         }
+
+        info!("requesting a credential flow is succeeded");
 
         Ok(CredentialResponseResolved {
             data: cred_result,
@@ -353,7 +369,7 @@ where
 
     #[instrument(
         level = Level::TRACE,
-        skip(self, credential, credential_metadata),
+        skip(self),
         err(),
         ret(level = Level::TRACE),
     )]
@@ -362,13 +378,15 @@ where
         credential: &Credential,
         credential_metadata: &CredentialMetadata,
     ) -> Result<()> {
-        trace!(?credential, ?credential_metadata);
+        info!("storing credential is started");
 
         let _ = self
             .holder
             .store_credential(credential, credential_metadata)
             .await
             .context(VCSnafu)?;
+
+        info!("credential is stored");
 
         Ok(())
     }
@@ -381,7 +399,7 @@ where
 {
     #[instrument(
         level = Level::TRACE,
-        skip_all,
+        skip(self, callback),
         err(),
         ret(level = Level::TRACE),
     )]
@@ -390,7 +408,7 @@ where
         opt: AuthzOption,
         callback: impl FnOnce(Url) -> String,
     ) -> Result<token::Response> {
-        trace!(authorization_option = ?opt);
+        info!("authorization is started");
 
         let (pkce_challenge, pkce_verifier) = PkceCodeChallenge::new_random_sha256();
 
@@ -432,6 +450,8 @@ where
             .await
             .map_err(|e| ProtocolSnafu::new(ErrorType::InvalidRequest, e.to_string()).build())?;
 
+        info!("authorization is succeeded");
+
         Ok(token)
     }
 
@@ -451,21 +471,19 @@ where
 
     #[instrument(
         level = Level::TRACE,
-        skip_all,
+        skip(self),
         err(),
         ret(level = Level::TRACE),
     )]
     async fn request_nonce(
         &self,
         token: AccessToken,
-        req_base: CoreProfilesRequest,
+        cred_req: CoreProfilesRequest,
     ) -> Result<String> {
         // TODO: Returning nonce should be optional
-        trace!(?token, credential_request = ?req_base);
-
         let resp = self
             .client
-            .request_credential(token, req_base)
+            .request_credential(token, cred_req)
             .request_async(|req| self.http_client.async_call(req))
             .await;
 
@@ -581,6 +599,12 @@ fn sanitize(s: String) -> String {
 impl TryInto<CredentialResult> for &oid4vci::credential::Response<CoreProfilesResponse> {
     type Error = Error;
 
+    #[instrument(
+        level = Level::TRACE,
+        skip_all,
+        err(),
+        ret(level = Level::TRACE)
+    )]
     fn try_into(self) -> std::result::Result<CredentialResult, Self::Error> {
         let result = match self.additional_profile_fields() {
             ResponseEnum::Immediate(resp) => {
@@ -602,6 +626,12 @@ impl TryInto<CredentialResult> for &oid4vci::credential::Response<CoreProfilesRe
 impl TryInto<Credential> for &CoreProfilesResponse {
     type Error = Error;
 
+    #[instrument(
+        level = Level::TRACE,
+        skip_all,
+        err(),
+        ret(level = Level::TRACE)
+    )]
     fn try_into(self) -> std::result::Result<Credential, Self::Error> {
         let credential = match self {
             CoreProfilesResponse::SDJWTVC(c) => Credential::SdJwt(c.credential().to_owned()),
@@ -618,6 +648,12 @@ impl TryInto<Credential> for &CoreProfilesResponse {
 impl TryInto<SpruceProof> for AsdkProof {
     type Error = Error;
 
+    #[instrument(
+        level = Level::TRACE,
+        skip_all,
+        err(),
+        ret(level = Level::TRACE)
+    )]
     fn try_into(self) -> std::result::Result<SpruceProof, Self::Error> {
         let proof = match self.format.as_str() {
             "jwt" => SpruceProof::JWT {

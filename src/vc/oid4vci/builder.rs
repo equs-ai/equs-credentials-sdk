@@ -10,6 +10,7 @@ use crate::vc::oid4vci::CredentialOffer;
 use crate::{did, kms, vault, vc};
 use oid4vci::openidconnect::JsonWebKeySetUrl;
 use std::marker::PhantomData;
+use tracing::{info, instrument, Level};
 use url::Url;
 
 /// `oid4vci` builder error.
@@ -71,8 +72,14 @@ where
     /// # Returns
     ///
     /// A new builder.
+    #[instrument(
+        level = Level::TRACE,
+        skip(kms),
+    )]
     pub fn new(kms: KMS, issuer_metadata: api::IssuerMetadata, key_metadata: KeyMetadata) -> Self {
         let http_client = ReqwestClient::new(false, true).map_err(|e| Error::Build(e.to_string()));
+
+        info!("oid4vci-issuer builder is initialized");
 
         Self {
             issuer_metadata,
@@ -96,6 +103,10 @@ where
     /// # Arguments
     ///
     /// * `http_client` - a http client.
+    #[instrument(
+        level = Level::TRACE,
+        skip_all,
+    )]
     pub fn with_http_client<HC_: HttpClient>(
         self,
         http_client: HC_,
@@ -117,6 +128,10 @@ where
     ///
     /// * `url` - an url of token introspection endpoint.
     /// * `header` - an optional Authz header for introspection calls.
+    #[instrument(
+        level = Level::TRACE,
+        skip(self),
+    )]
     pub fn token_validation_introspect(mut self, url: Url, header: Option<String>) -> Self {
         self.token_params = TokenParams::Introspect(url, header);
         self
@@ -127,6 +142,10 @@ where
     /// # Arguments
     ///
     /// * `url` - an url of JWKS.
+    #[instrument(
+        level = Level::TRACE,
+        skip(self),
+    )]
     pub fn token_validation_jwks(mut self, url: Url) -> Self {
         self.token_params = TokenParams::Jwks(url);
         self
@@ -137,6 +156,11 @@ where
     /// # Returns
     ///
     /// An `Issuer` API on success.
+    #[instrument(
+        level = Level::TRACE,
+        skip_all,
+        err(),
+    )]
     pub async fn build(self) -> Result<impl api::Issuer, Error> {
         let inner = vc::core::IssuerService::new(
             self.kms,
@@ -157,6 +181,8 @@ where
         };
 
         let issuer = IssuerService::new(self.issuer_metadata, inner, token_validation);
+
+        info!("oid4vci-issuer service is initialized");
 
         Ok(issuer)
     }
@@ -210,8 +236,14 @@ where
     /// # Returns
     ///
     /// A new builder.
+    #[instrument(
+        level = Level::TRACE,
+        skip(kms, vault),
+    )]
     pub fn new(kms: KMS, vault: V, key_metadata: KeyMetadata, client_id: String) -> Self {
         let http_client = ReqwestClient::new(false, true).map_err(|e| Error::Build(e.to_string()));
+
+        info!("oid4vci-holder builder is initialized");
 
         Self {
             client_id,
@@ -240,6 +272,10 @@ where
     /// # Arguments
     ///
     /// * `redirect_url` - an Oauth2 Redirect Url used by authorization endpoint.
+    #[instrument(
+        level = Level::TRACE,
+        skip(self),
+    )]
     pub fn with_redirect_url(mut self, redirect_url: String) -> Self {
         self.redirect_url = redirect_url;
         self
@@ -250,6 +286,10 @@ where
     /// # Arguments
     ///
     /// * `issuer_url` - an `Issuer` API url.
+    #[instrument(
+        level = Level::TRACE,
+        skip(self),
+    )]
     pub fn with_issuer_url(mut self, issuer_url: String) -> Self {
         self.iss_url = Some(issuer_url);
         self
@@ -260,6 +300,10 @@ where
     /// # Arguments
     ///
     /// * `offer` - a `CredentialOffer` issued by some `Issuer`.
+    #[instrument(
+        level = Level::TRACE,
+        skip(self),
+    )]
     pub fn with_credential_offer(mut self, offer: CredentialOffer) -> Self {
         self.offer = Some(offer);
         self
@@ -271,6 +315,10 @@ where
     ///
     /// * `issuer_metadata` - an `IssuerMetadata` of the `Issuer`.
     /// * `authorization_metadata` - an `AuthorizationMetadata` of the corresponding Authorization Server.
+    #[instrument(
+        level = Level::TRACE,
+        skip(self),
+    )]
     pub fn with_metadata(
         mut self,
         issuer_metadata: api::IssuerMetadata,
@@ -285,6 +333,10 @@ where
     /// # Arguments
     ///
     /// * `http_client` - a http client.
+    #[instrument(
+        level = Level::TRACE,
+        skip_all,
+    )]
     pub fn with_http_client<HC_: HttpClient>(
         self,
         http_client: HC_,
@@ -316,6 +368,11 @@ where
     /// * [HolderBuilder::with_issuer_url]
     /// * [HolderBuilder::with_credential_offer]
     /// * [HolderBuilder::with_metadata]
+    #[instrument(
+        level = Level::TRACE,
+        err(),
+        skip(self),
+    )]
     pub async fn build(self) -> Result<impl api::Holder, Error> {
         let key_metadata = self.key_metadata;
         let holder_metadata = vc::core::HolderMetadata {
@@ -359,6 +416,8 @@ where
                 "Set either offer, metadata or issuer url".to_string(),
             ))?,
         }?;
+
+        info!("oid4vci-holder service is initialized");
 
         Ok(holder)
     }

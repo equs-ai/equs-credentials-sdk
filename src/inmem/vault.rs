@@ -7,14 +7,19 @@ use async_trait::async_trait;
 use futures::future;
 use std::collections::HashMap;
 use std::sync::Arc;
+use tracing::{instrument, Level};
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct InMemVault {
     storage: Arc<InMemStorage<String, Credential>>,
     indexed: Arc<RwLock<HashMap<String, Vec<String>>>>,
 }
 
 impl InMemVault {
+    #[instrument(
+        level = Level::TRACE,
+        ret(level = Level::TRACE)
+    )]
     pub fn new() -> Self {
         Self {
             storage: Arc::new(InMemStorage::new()),
@@ -22,6 +27,12 @@ impl InMemVault {
         }
     }
 
+    #[instrument(
+        level = Level::TRACE,
+        skip(self),
+        err(),
+        ret(level = Level::TRACE)
+    )]
     async fn update_index(
         &self,
         metadata: &CredentialMetadata,
@@ -41,6 +52,11 @@ impl InMemVault {
         Ok(())
     }
 
+    #[instrument(
+        level = Level::TRACE,
+        skip(self),
+        ret(level = Level::TRACE)
+    )]
     async fn get_indexed(&self, type_: &str, format: &str) -> Vec<String> {
         let index = format!("{}:{}", type_, format);
         let map = self.indexed.read().await;
@@ -51,6 +67,12 @@ impl InMemVault {
 
 #[async_trait]
 impl Vault for InMemVault {
+    #[instrument(
+        level = Level::TRACE,
+        skip(self),
+        err(),
+        ret(level = Level::TRACE)
+    )]
     async fn store_credential(
         &self,
         credential: Credential,
@@ -74,6 +96,12 @@ impl Vault for InMemVault {
         Ok(storage_id)
     }
 
+    #[instrument(
+        level = Level::TRACE,
+        skip(self),
+        err(),
+        ret(level = Level::TRACE)
+    )]
     async fn get_credential(&self, id: &str) -> Result<Option<Credential>, Error> {
         self.storage.get(&id.to_string()).await.map_err(|err| {
             StoringSnafu {
@@ -83,6 +111,12 @@ impl Vault for InMemVault {
         })
     }
 
+    #[instrument(
+        level = Level::TRACE,
+        skip(self),
+        err(),
+        ret(level = Level::TRACE)
+    )]
     async fn find_credentials(&self, criteria: FindCriteria) -> Result<Vec<Credential>, Error> {
         let creds = match criteria {
             FindCriteria::ByTypeAndFormat(type_, fmt) => {

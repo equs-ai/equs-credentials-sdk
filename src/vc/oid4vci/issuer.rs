@@ -71,7 +71,7 @@ where
         issuer: IS,
         token_validation: TokenValidation<HC>,
     ) -> Self {
-        info!("oid4vci issuer service is initialized");
+        info!("oid4vci-issuer service is initialized");
 
         Self {
             issuer,
@@ -603,6 +603,10 @@ impl From<vc::Credential> for CoreProfilesResponse {
 }
 
 impl NonceData {
+    #[instrument(
+        level = Level::TRACE,
+        ret(level = Level::TRACE)
+    )]
     pub(self) fn new_random() -> Self {
         Self {
             nonce: Nonce::new_random(),

@@ -1,9 +1,11 @@
-use crate::http::HttpError;
-use crate::vc::oid4vci::{ErrorType, Nonce};
 use oid4vci::credential::RequestError;
 use serde::{Deserialize, Serialize};
 use snafu::Snafu;
 use std::fmt::Debug;
+use tracing::{instrument, Level};
+
+use crate::http::HttpError;
+use crate::vc::oid4vci::{ErrorType, Nonce};
 
 /// A protocol-specific `oid4vci` error response.
 ///
@@ -75,6 +77,11 @@ impl ProtocolSnafu<ErrorType, Option<String>, Option<Nonce>, Option<i64>> {
 impl TryFrom<RequestError<HttpError>> for ProtocolError {
     type Error = RequestError<HttpError>;
 
+    #[instrument(
+        level = Level::TRACE,
+        err(),
+        ret(level = Level::TRACE)
+    )]
     fn try_from(value: RequestError<HttpError>) -> Result<Self, Self::Error> {
         match &value {
             RequestError::Response(_, body, _) => {

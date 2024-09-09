@@ -10,6 +10,7 @@ use async_trait::async_trait;
 use snafu::ResultExt;
 use std::str::FromStr;
 use std::sync::Arc;
+use tracing::{instrument, Level};
 
 #[derive(Clone)]
 pub enum KeyHandle {
@@ -21,6 +22,11 @@ impl KeyHandle {}
 
 #[async_trait]
 impl crypto::Signer for KeyHandle {
+    #[instrument(
+        level = Level::TRACE,
+        skip_all,
+        ret(level = Level::TRACE)
+    )]
     fn alg(&self) -> crypto::Alg {
         match self {
             KeyHandle::Ed25519(s) => s.alg(),
@@ -28,6 +34,12 @@ impl crypto::Signer for KeyHandle {
         }
     }
 
+    #[instrument(
+        level = Level::TRACE,
+        skip(self),
+        err(),
+        ret(level = Level::TRACE)
+    )]
     async fn sign(&self, payload: &[u8]) -> Result<Vec<u8>, crypto::Error> {
         match self {
             KeyHandle::Ed25519(s) => s.sign(payload).await,
@@ -38,6 +50,12 @@ impl crypto::Signer for KeyHandle {
 
 #[async_trait]
 impl crypto::Verifier for KeyHandle {
+    #[instrument(
+        level = Level::TRACE,
+        skip(self),
+        err(),
+        ret(level = Level::TRACE)
+    )]
     async fn verify(&self, data: &[u8], signature: &[u8]) -> Result<(), crypto::Error> {
         match self {
             KeyHandle::Ed25519(s) => s.verify(data, signature).await,
@@ -48,6 +66,12 @@ impl crypto::Verifier for KeyHandle {
 
 #[async_trait]
 impl crypto::Key for KeyHandle {
+    #[instrument(
+        level = Level::TRACE,
+        skip_all,
+        err(),
+        ret(level = Level::TRACE)
+    )]
     fn pub_key(&self) -> Result<Vec<u8>, crypto::Error> {
         match self {
             KeyHandle::Ed25519(s) => s.pub_key(),
@@ -55,6 +79,11 @@ impl crypto::Key for KeyHandle {
         }
     }
 
+    #[instrument(
+        level = Level::TRACE,
+        skip_all,
+        ret(level = Level::TRACE)
+    )]
     fn jwk(&self) -> Option<ssi::jwk::JWK> {
         match self {
             KeyHandle::Ed25519(s) => s.jwk(),
@@ -74,7 +103,7 @@ impl kms::KeyHandle for KeyHandle {}
 
 pub type Bytes = Vec<u8>;
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct LocalKms {
     storage: Arc<InMemStorage<KeyID, Bytes>>,
 }
@@ -82,18 +111,30 @@ pub struct LocalKms {
 const KID_LENGTH: usize = 10;
 
 impl LocalKms {
+    #[instrument(
+        level = Level::TRACE,
+        ret(level = Level::TRACE)
+    )]
     pub fn new() -> Self {
         Self {
             storage: Arc::new(InMemStorage::new()),
         }
     }
 
+    #[instrument(
+        level = Level::TRACE,
+        ret(level = Level::TRACE)
+    )]
     pub fn for_store(storage: InMemStorage<kms::KeyID, Bytes>) -> Self {
         Self {
             storage: Arc::new(storage),
         }
     }
 
+    #[instrument(
+        level = Level::TRACE,
+        ret(level = Level::TRACE)
+    )]
     fn kid(kt: kms::KeyType) -> kms::KeyID {
         let id = random_string::generate(KID_LENGTH, random_string::charsets::ALPHA);
         format!("{}:{}", id, kt)
@@ -108,6 +149,12 @@ impl LocalKms {
 
 #[async_trait]
 impl Kms<KeyHandle> for LocalKms {
+    #[instrument(
+        level = Level::TRACE,
+        skip(self),
+        err(),
+        ret(level = Level::TRACE)
+    )]
     async fn create(&self, kt: kms::KeyType, opts: kms::CreateOptions) -> Result<KeyID, Error> {
         let key = match kt {
             kms::KeyType::Ed25519 => Ed25519::gen(),
@@ -121,6 +168,11 @@ impl Kms<KeyHandle> for LocalKms {
         Ok(kid.to_owned())
     }
 
+    #[instrument(
+        level = Level::TRACE,
+        skip(self),
+        err(),
+    )]
     async fn get(&self, kid: &KeyID) -> Result<KeyHandle, Error> {
         let key = self
             .storage

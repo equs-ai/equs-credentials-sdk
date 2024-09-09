@@ -17,6 +17,7 @@ use oid4vci::openidconnect::{
 use reqwest::StatusCode;
 use snafu::{ensure, Location, ResultExt, Snafu};
 use std::fmt::Debug;
+use tracing::{debug, instrument, trace, Level};
 use url::Url;
 
 pub type Result<T> = core::result::Result<T, Error>;
@@ -93,6 +94,10 @@ pub struct Introspect<HC: HttpClient> {
 }
 
 impl<HC: HttpClient> Introspect<HC> {
+    #[instrument(
+        level = Level::TRACE,
+        skip(http_client)
+    )]
     pub fn new(http_client: HC, introspect_endpoint: Url, auth_header: Option<String>) -> Self {
         Self {
             http_client,
@@ -101,6 +106,12 @@ impl<HC: HttpClient> Introspect<HC> {
         }
     }
 
+    #[instrument(
+        level = Level::TRACE,
+        skip(self),
+        err(),
+        ret(level = Level::TRACE)
+    )]
     pub async fn validate(&self, token: &str) -> Result<()> {
         let body = Vec::from(format!("token={}", token));
 
@@ -137,15 +148,20 @@ impl<HC: HttpClient> Introspect<HC> {
             }
         );
 
-        let token_ifo = serde_json::from_slice::<IntrospectionResponse>(response.body.as_slice())
-            .context(ParseSnafu)?;
+        let token_int_resp =
+            serde_json::from_slice::<IntrospectionResponse>(response.body.as_slice())
+                .context(ParseSnafu)?;
+
+        trace!(token_introspection_response = ?token_int_resp);
 
         ensure!(
-            token_ifo.active(),
+            token_int_resp.active(),
             TokenSnafu {
                 details: "Token is expired"
             }
         );
+
+        debug!("access token is valid");
 
         Ok(())
     }
@@ -157,6 +173,10 @@ pub struct ByJwks<HC: HttpClient> {
 }
 
 impl<HC: HttpClient> ByJwks<HC> {
+    #[instrument(
+        level = Level::TRACE,
+        skip(http_client)
+    )]
     pub fn new(http_client: HC, jwks_url: JsonWebKeySetUrl) -> Self {
         Self {
             http_client,
@@ -164,6 +184,12 @@ impl<HC: HttpClient> ByJwks<HC> {
         }
     }
 
+    #[instrument(
+        level = Level::TRACE,
+        skip(self),
+        err(),
+        ret(level = Level::TRACE)
+    )]
     pub async fn validate(&self, token: &str) -> Result<()> {
         let jwks = JsonWebKeySet::<
             CoreJwsSigningAlgorithm,
@@ -210,6 +236,8 @@ impl<HC: HttpClient> ByJwks<HC> {
 
         key.verify_signature(&alg, token.as_bytes(), signature.as_slice())
             .context(SignatureVerificationSnafu)?;
+
+        debug!("access token is valid");
 
         Ok(())
     }

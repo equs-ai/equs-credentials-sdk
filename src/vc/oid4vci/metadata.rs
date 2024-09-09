@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use tracing::{instrument, Level};
 
 use oid4vci::core::profiles;
 use oid4vci::core::profiles::{CoreProfilesMetadata, CoreProfilesRequest, CoreProfilesResponse};
@@ -10,6 +11,10 @@ use crate::vc::{HasVCFormat, VCFormat};
 pub type IssuerMetadata = oid4vci::core::metadata::IssuerMetadata;
 pub type CredentialMetadata = oid4vci::metadata::CredentialMetadata<CoreProfilesMetadata>;
 
+#[instrument(
+    level = Level::TRACE,
+    ret(level = Level::TRACE)
+)]
 pub fn convert_metadata(
     issuer_metadata: &IssuerMetadata,
     key_metadata: KeyMetadata,
@@ -30,6 +35,10 @@ pub fn convert_metadata(
     converted
 }
 
+#[instrument(
+    level = Level::TRACE,
+    ret(level = Level::TRACE)
+)]
 fn cred_definition(
     id: &String,
     credential_metadata: &oid4vci::metadata::CredentialMetadata<CoreProfilesMetadata>,

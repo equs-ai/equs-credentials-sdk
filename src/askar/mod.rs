@@ -1,7 +1,9 @@
-use crate::askar::kms::AskarKms;
-use crate::askar::vault::AskarVault;
 use aries_askar::storage::KdfMethod;
 use aries_askar::{Error, PassKey, Store, StoreKeyMethod};
+use tracing::{instrument, Level};
+
+use crate::askar::kms::AskarKms;
+use crate::askar::vault::AskarVault;
 
 pub mod kms;
 pub mod vault;
@@ -12,6 +14,11 @@ pub struct AskarStorage(Store);
 const IN_MEMORY_DB_URL: &str = "sqlite://:memory:";
 
 impl AskarStorage {
+    #[instrument(
+        level = Level::TRACE,
+        err(),
+        ret(level = Level::TRACE)
+    )]
     pub async fn create(pass_key: &str, profile: Option<String>) -> Result<AskarStorage, Error> {
         let key_method = StoreKeyMethod::DeriveKey(KdfMethod::Argon2i(Default::default()));
         let pass_key = PassKey::from(pass_key);
@@ -28,6 +35,11 @@ impl AskarStorage {
         Ok(AskarStorage(store))
     }
 
+    #[instrument(
+        level = Level::TRACE,
+        err(),
+        ret(level = Level::TRACE)
+    )]
     pub async fn open(pass_key: &str, profile: Option<String>) -> Result<AskarStorage, Error> {
         let key_method = StoreKeyMethod::DeriveKey(KdfMethod::Argon2i(Default::default()));
         let pass_key = PassKey::from(pass_key);
@@ -43,14 +55,29 @@ impl AskarStorage {
         Ok(AskarStorage(store))
     }
 
+    #[instrument(
+        level = Level::TRACE,
+        ret(level = Level::TRACE)
+    )]
     pub fn kms(&self) -> AskarKms {
         AskarKms::new(self.0.clone())
     }
 
+    #[instrument(
+        level = Level::TRACE,
+        skip_all,
+        ret(level = Level::TRACE)
+    )]
     pub fn vault(&self) -> AskarVault {
         AskarVault::new(self.0.clone())
     }
 
+    #[instrument(
+        level = Level::TRACE,
+        skip_all,
+        err(),
+        ret(level = Level::TRACE)
+    )]
     pub async fn close(self) -> Result<(), Error> {
         self.0.close().await
     }

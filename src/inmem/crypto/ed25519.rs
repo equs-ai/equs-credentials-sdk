@@ -1,11 +1,11 @@
+use crate::crypto;
+use crate::crypto::VerificationSnafu;
 use async_trait::async_trait;
 use ed25519_dalek::{SecretKey, Signature, Signer, SigningKey};
 use rand::rngs::OsRng;
+use tracing::{instrument, Level};
 
-use crate::crypto;
-use crate::crypto::VerificationSnafu;
-
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Ed25519 {
     signing_key: SigningKey,
 }
@@ -15,11 +15,20 @@ impl crypto::SigningKey for Ed25519 {}
 impl crypto::VerifyingKey for Ed25519 {}
 
 impl crypto::Suite for Ed25519 {
+    #[instrument(
+        level = Level::TRACE,
+        ret(level = Level::TRACE)
+    )]
     fn gen() -> Vec<u8> {
         let signing_key: SigningKey = SigningKey::generate(&mut OsRng);
         signing_key.to_bytes().to_vec()
     }
 
+    #[instrument(
+        level = Level::TRACE,
+        err(),
+        ret(level = Level::TRACE)
+    )]
     fn from_secret(vec: Vec<u8>) -> Result<Ed25519, crypto::Error> {
         let s: SecretKey = vec.try_into().unwrap();
         let signing_key = SigningKey::from_bytes(&s);
@@ -29,10 +38,21 @@ impl crypto::Suite for Ed25519 {
 }
 
 impl crypto::Key for Ed25519 {
+    #[instrument(
+        level = Level::TRACE,
+        skip_all,
+        err(),
+        ret(level = Level::TRACE)
+    )]
     fn pub_key(&self) -> Result<Vec<u8>, crypto::Error> {
         Ok(self.signing_key.verifying_key().to_bytes().to_vec())
     }
 
+    #[instrument(
+        level = Level::TRACE,
+        skip_all,
+        ret(level = Level::TRACE)
+    )]
     fn jwk(&self) -> Option<ssi::jwk::JWK> {
         let pubk = self.pub_key().ok()?;
         let s: &[u8] = &pubk;
@@ -47,10 +67,21 @@ impl crypto::Key for Ed25519 {
 
 #[async_trait]
 impl crypto::Signer for Ed25519 {
+    #[instrument(
+        level = Level::TRACE,
+        skip_all,
+        ret(level = Level::TRACE)
+    )]
     fn alg(&self) -> crypto::Alg {
         crypto::Alg::EdDSA
     }
 
+    #[instrument(
+        level = Level::TRACE,
+        skip(self),
+        err(),
+        ret(level = Level::TRACE)
+    )]
     async fn sign(&self, payload: &[u8]) -> Result<Vec<u8>, crypto::Error> {
         let signature: Signature = self.signing_key.sign(payload);
         Ok(signature.to_vec())
@@ -59,6 +90,12 @@ impl crypto::Signer for Ed25519 {
 
 #[async_trait]
 impl crypto::Verifier for Ed25519 {
+    #[instrument(
+        level = Level::TRACE,
+        skip(self),
+        err(),
+        ret(level = Level::TRACE)
+    )]
     async fn verify(&self, data: &[u8], signature: &[u8]) -> Result<(), crypto::Error> {
         let signature = Signature::from_slice(signature);
 

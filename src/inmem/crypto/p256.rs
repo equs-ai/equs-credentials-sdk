@@ -1,12 +1,12 @@
-use async_trait::async_trait;
-use p256::ecdsa::signature::{Signer as EcdsaSigner, Verifier as EcdsaVerifier};
-use p256::ecdsa::{Signature as EcdsaSignature, SigningKey as EcdsaSigningKey};
-use rand::rngs::OsRng;
-
 use crate::crypto::{
     Alg, Error, Key, KeyGenerationSnafu, Signer, SigningKey, SigningSnafu, Suite,
     VerificationSnafu, Verifier, VerifyingKey,
 };
+use async_trait::async_trait;
+use p256::ecdsa::signature::{Signer as EcdsaSigner, Verifier as EcdsaVerifier};
+use p256::ecdsa::{Signature as EcdsaSignature, SigningKey as EcdsaSigningKey};
+use rand::rngs::OsRng;
+use tracing::{instrument, Level};
 
 #[derive(Clone)]
 pub struct P256 {
@@ -18,11 +18,19 @@ impl SigningKey for P256 {}
 impl VerifyingKey for P256 {}
 
 impl Suite for P256 {
+    #[instrument(
+        level = Level::TRACE,
+        ret(level = Level::TRACE)
+    )]
     fn gen() -> Vec<u8> {
         let signing_key = EcdsaSigningKey::random(&mut OsRng);
         signing_key.to_bytes().to_vec()
     }
 
+    #[instrument(
+        level = Level::TRACE,
+        err(),
+    )]
     fn from_secret(vec: Vec<u8>) -> Result<P256, Error> {
         let s: &[u8] = &vec;
 
@@ -38,10 +46,21 @@ impl Suite for P256 {
 }
 
 impl Key for P256 {
+    #[instrument(
+        level = Level::TRACE,
+        skip_all,
+        err(),
+        ret(level = Level::TRACE)
+    )]
     fn pub_key(&self) -> Result<Vec<u8>, Error> {
         Ok(self.signing_key.verifying_key().to_sec1_bytes().to_vec())
     }
 
+    #[instrument(
+        level = Level::TRACE,
+        skip_all,
+        ret(level = Level::TRACE)
+    )]
     fn jwk(&self) -> Option<ssi::jwk::JWK> {
         self.pub_key()
             .ok()
@@ -51,10 +70,21 @@ impl Key for P256 {
 
 #[async_trait]
 impl Signer for P256 {
+    #[instrument(
+        level = Level::TRACE,
+        skip_all,
+        ret(level = Level::TRACE)
+    )]
     fn alg(&self) -> Alg {
         Alg::ES256
     }
 
+    #[instrument(
+        level = Level::TRACE,
+        skip(self),
+        err(),
+        ret(level = Level::TRACE)
+    )]
     async fn sign(&self, payload: &[u8]) -> Result<Vec<u8>, Error> {
         self.signing_key
             .try_sign(payload)
@@ -70,6 +100,12 @@ impl Signer for P256 {
 
 #[async_trait]
 impl Verifier for P256 {
+    #[instrument(
+        level = Level::TRACE,
+        skip(self),
+        err(),
+        ret(level = Level::TRACE)
+    )]
     async fn verify(&self, data: &[u8], signature: &[u8]) -> Result<(), Error> {
         let signature = EcdsaSignature::from_slice(signature).map_err(|err| {
             VerificationSnafu {

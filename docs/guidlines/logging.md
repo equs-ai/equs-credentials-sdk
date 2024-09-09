@@ -39,7 +39,7 @@ Each developer must follow these rules when adding the new features into codebas
 
 `debug!()` macro from `tracing::debug` will be used for logging when:
 
-- Showing some useful variables/outcomes within the function:
+- Showing some useful variables/outcomes(end-user insensitive) within the function:
    ```rust
     debug!(?supported_cred_config_ids);
    ```
@@ -87,3 +87,24 @@ Each developer must follow these rules when adding the new features into codebas
     #[instrument(level = Level::TRACE, skip(self, cred_request, claims))]
     pub async fn issue_credential(&self, cred_request: &CredentialRequest, token: &str, nonce: Nonce, claims: &Value) {}
    ```
+
+## Consuming logs
+
+On the application side, to collect logs from `agent-sdk`, follow the steps below:
+
+1. Add `tracing-subscriber` dependency into `Cargo.toml`:
+  ```toml
+    tracing-subscriber = "0.3.18"
+  ```
+2. Add the following to your executable to initialize the default subscriber:
+```rust
+use tracing_subscriber;
+
+async fn main() {
+    tracing_subscriber::fmt::init();
+}
+```
+3. For example, to see `TRACE` level logs, run:
+```shell
+RUST_LOGS=TRACE cargo run
+```

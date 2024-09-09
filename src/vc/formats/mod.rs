@@ -110,6 +110,7 @@ impl Debug for Error {
 
 pub type Result<T> = core::result::Result<T, Error>;
 
+#[derive(Debug)]
 pub struct VerifyOptions {}
 
 #[async_trait]

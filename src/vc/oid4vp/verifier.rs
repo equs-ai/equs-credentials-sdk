@@ -30,6 +30,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value as Json};
 use ssi::jwk::JWK;
 use std::marker::PhantomData;
+use tracing::{info, instrument, trace, Level};
 use url::Url;
 
 pub type Error = api::VerifierError;
@@ -88,6 +89,10 @@ where
     /// # Returns
     ///
     /// A new instance of `VerifierService`.
+    #[instrument(
+        level = Level::TRACE,
+        skip(verifier, kms, did_resolver, storage),
+    )]
     pub fn new(
         verifier: VF,
         kms: KMS,
@@ -102,6 +107,8 @@ where
             key_metadata,
             client_metadata: client_metadata.unwrap_or(default_client_metadata()),
         };
+
+        info!("oid4vp-verifier service is initialized");
 
         Self {
             metadata,
@@ -134,12 +141,19 @@ where
     /// # Returns
     ///
     /// An `AuthorizationRequest` on success.
+    #[instrument(
+        level = Level::TRACE,
+        skip(self)
+        ret(level = Level::TRACE)
+    )]
     async fn create_authorization_request(
         &self,
         presentation_definition: &PresentationDefinition,
         nonce: &str,
         response_uri: Url,
     ) -> Result<AuthorizationRequest> {
+        info!("creating authorization request object is started");
+
         let request = self
             .authorization_request(
                 presentation_definition,
@@ -158,6 +172,8 @@ where
             .put(presentation_definition.id.to_owned(), storage_entry)
             .await?;
 
+        info!("authorization request object is created");
+
         Ok(request)
     }
 
@@ -170,6 +186,12 @@ where
     /// # Returns
     ///
     /// The verified claims as a JSON object.
+    #[instrument(
+        level = Level::TRACE,
+        skip(self),
+        err(),
+        ret(level = Level::TRACE)
+    )]
     async fn verify_presentation(&self, auth_response: &AuthorizationResponse) -> Result<Json> {
         let id = &auth_response.presentation_submission.definition_id;
         let storage_entry = self
@@ -188,6 +210,8 @@ where
 
         self.storage.delete(id).await?;
 
+        info!("presentation is verified");
+
         Ok(claims)
     }
 }
@@ -200,6 +224,11 @@ where
     D: DIDResolver,
     ST: Storage<String, StorageEntry>,
 {
+    #[instrument(
+        level = Level::TRACE,
+        err(),
+        ret(level = Level::TRACE)
+    )]
     fn validate_field_constraints(claims: &Json, constraints: &[ConstraintsField]) -> Result<()> {
         // TODO: move to presentation_exchange
         for constraint in constraints.iter() {
@@ -215,6 +244,12 @@ where
         Ok(())
     }
 
+    #[instrument(
+        level = Level::TRACE,
+        skip(self),
+        err(),
+        ret(level = Level::TRACE)
+    )]
     fn validate_formats(&self, presentation_definition: &PresentationDefinition) -> Result<()> {
         // TODO: move to presentation_exchange (except for extracting VpFormats from metadata)
         let vp_format_json = match presentation_definition.format.as_ref() {
@@ -246,6 +281,12 @@ where
         Ok(())
     }
 
+    #[instrument(
+        level = Level::TRACE,
+        skip(self),
+        err(),
+        ret(level = Level::TRACE)
+    )]
     async fn authorization_request(
         &self,
         presentation_definition: &PresentationDefinition,
@@ -291,6 +332,8 @@ where
             .await
             .map_err(|err| Error::RequestCreationFailed(err.to_string()))?;
 
+        trace!(created_verifier_session = ?session);
+
         let authorization_endpoint = wallet_metadata
             .get::<AuthorizationEndpoint>()
             .parsing_error()
@@ -309,6 +352,12 @@ where
         })
     }
 
+    #[instrument(
+        level = Level::TRACE,
+        skip(self),
+        err(),
+        ret(level = Level::TRACE)
+    )]
     async fn do_verify_presentation(
         &self,
         presentation_definition: &PresentationDefinition,
@@ -376,13 +425,19 @@ where
     }
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct DefaultVerifierProfile;
 
 #[async_trait]
 impl Profile for DefaultVerifierProfile {
     type CredentialFormat = CoreCredentialFormat;
 
+    #[instrument(
+        level = Level::TRACE,
+        skip(self),
+        err(),
+        ret(level = Level::TRACE)
+    )]
     async fn validate_request(
         &self,
         wallet_metadata: &WalletMetadata,
@@ -402,6 +457,11 @@ struct SignerWrapper<S: SigningKey> {
 }
 
 impl<S: SigningKey> SignerWrapper<S> {
+    #[instrument(
+        level = Level::TRACE,
+        skip_all,
+        err(),
+    )]
     fn new(signer: S) -> Result<SignerWrapper<S>> {
         let key = signer.jwk().ok_or(Error::InvalidKey(
             "Failed to convert verifier key into JWK".to_string(),
@@ -413,14 +473,30 @@ impl<S: SigningKey> SignerWrapper<S> {
 
 #[async_trait]
 impl<S: SigningKey> RequestSigner for SignerWrapper<S> {
+    #[instrument(
+        level = Level::TRACE,
+        skip(self),
+        ret(level = Level::TRACE)
+    )]
     fn alg(&self) -> &str {
         self.signer.alg().into()
     }
 
+    #[instrument(
+        level = Level::TRACE,
+        skip(self),
+        ret(level = Level::TRACE)
+    )]
     fn jwk(&self) -> &JWK {
         &self.key
     }
 
+    #[instrument(
+        level = Level::TRACE,
+        skip(self),
+        err(),
+        ret(level = Level::TRACE)
+    )]
     async fn sign(&self, payload: &[u8]) -> anyhow::Result<Vec<u8>> {
         let signature = self.signer.sign(payload).await?;
         Ok(signature)
