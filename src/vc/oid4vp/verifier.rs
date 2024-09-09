@@ -507,17 +507,12 @@ impl<S: SigningKey> RequestSigner for SignerWrapper<S> {
 mod tests {
     use serde_json::json;
 
-    use crate::did::didkey::DIDKey;
-    use crate::did::universal::UniversalResolver;
     use crate::inmem::kms::LocalKms;
-    use crate::inmem::storage::InMemStorage;
-    use crate::vc;
-    use crate::vc::core::KeyMetadata;
     use crate::vc::oid4vp::test_utils::{
-        create_authorization_response, create_test_presentation_definition, generate_did_key_and_vm,
+        create_authorization_response, create_did_and_key_metadata,
+        create_test_presentation_definition,
     };
-    use crate::vc::oid4vp::verifier::VerifierService;
-    use crate::vc::oid4vp::{auth_request_as_url, AuthorizationUrlType, Verifier};
+    use crate::vc::oid4vp::{auth_request_as_url, AuthorizationUrlType, Verifier, VerifierBuilder};
 
     #[tokio::test]
     async fn generate_authorization_request() {
@@ -579,32 +574,16 @@ mod tests {
         assert_eq!(claims["Identity-1"]["name"], json!("John"));
     }
 
-    async fn verifier() -> (impl vc::oid4vp::Verifier, String) {
-        let did_resolver = UniversalResolver::new();
+    async fn verifier() -> (impl Verifier, String) {
         let kms = LocalKms::new();
-        let did_key = DIDKey::new();
 
-        let (verifier_kid, verifier_key_handle, verifier_did, verifier_vm_id) =
-            generate_did_key_and_vm(&kms, &did_resolver).await;
+        let (did, key_metadata) = create_did_and_key_metadata(&kms).await;
 
-        let key_metadata = KeyMetadata {
-            did_url: verifier_vm_id,
-            kid: verifier_kid,
-        };
+        let verifier = VerifierBuilder::new(kms, key_metadata, did.clone())
+            .build()
+            .await
+            .unwrap();
 
-        let storage = InMemStorage::new();
-        let inner = vc::core::VerifierService::new(&verifier_did);
-
-        let svc = VerifierService::new(
-            inner,
-            kms,
-            did_resolver,
-            storage,
-            verifier_did.to_owned(),
-            key_metadata,
-            None,
-        );
-
-        (svc, verifier_did)
+        (verifier, did)
     }
 }

@@ -17,6 +17,7 @@ mod protocol_error;
 
 pub use builder::HolderBuilder;
 pub use builder::IssuerBuilder;
+pub use builder::IssuerDiscovery;
 pub use internal_error::InternalError;
 pub use protocol_error::ProtocolError;
 
@@ -85,7 +86,7 @@ pub struct NonceData {
 /// Used by `oid4vci` `Issuer` and `Holder`.
 ///
 /// * [Error::Protocol] encapsulates all expected [ProtocolError] errors specific to the standard.
-/// See <https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0.html>.
+///   See <https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0.html>.
 ///
 /// * [Error::Internal] error contains all unexpected errors.
 #[derive(Snafu)]
@@ -334,32 +335,26 @@ mod tests {
     use futures::executor;
     use oauth2::http::{Method, StatusCode};
     use oauth2::{HttpRequest, HttpResponse, TokenResponse};
-    use oid4vci::core::credential_offer::CredentialOffer;
     use oid4vci::core::metadata::IssuerMetadata;
     use oid4vci::credential_offer::AuthorizationCodeGrant;
     use oid4vci::metadata::AuthorizationMetadata;
     use oid4vci::openidconnect::Nonce;
     use serde_json::json;
-    use std::str::FromStr;
     use url::Url;
 
-    use crate::crypto::Key;
     use crate::did::didkey::DIDKey;
-    use crate::did::DIDURL;
+    use crate::did::{DIDResolver, DID};
     use crate::http::MockHttpClient;
     use crate::inmem::kms::LocalKms;
     use crate::inmem::vault::InMemVault;
+    use crate::kms;
     use crate::kms::Kms;
     use crate::utils::http::test::{mock_http, mock_http_fn, mock_http_once, mock_static_ctx};
-    use crate::vc::core::{HolderMetadata, KeyMetadata};
-    use crate::vc::oid4vci::holder::HolderService;
-    use crate::vc::oid4vci::issuer::{IssuerService, TokenValidation};
-    use crate::vc::oid4vci::metadata::convert_metadata;
-    use crate::vc::oid4vci::token_validation::Introspect;
+    use crate::vc::core::KeyMetadata;
     use crate::vc::oid4vci::{
-        issuer, CredentialOfferGrants, CredentialOfferParams, Holder, IssuanceSession, Issuer,
+        issuer, CredentialOffer, CredentialOfferGrants, CredentialOfferParams, Holder,
+        HolderBuilder, IssuanceSession, Issuer, IssuerBuilder, IssuerDiscovery,
     };
-    use crate::{kms, vc};
 
     // FIXTURES
     const ACCESS_TOKEN: &str = "eyJhbGciOiJSUzI1NiIsInR5cCIgOiAiSldUIiwia2lkIiA6ICJQY2xZUDZ2UmsxTHBLRGZqU08yRGEzNXJtR1JmaTkzNjJDcFJFeUpmOHAwIn0.eyJleHAiOjE3MjQzOTg0OTQsImlhdCI6MTcyNDM5ODE5NCwiYXV0aF90aW1lIjoxNzI0Mzk4MTgyLCJqdGkiOiIwYjRmZTM5MC00OTIxLTQwNDItYjdlMS1iMDNiM2QxOTYyMjkiLCJpc3MiOiJodHRwOi8vbG9jYWxob3N0OjgwODAvaWRwL3JlYWxtcy9waWQtaXNzdWVyLXJlYWxtIiwic3ViIjoiNjBiOGJhNWYtYzczZi00OTc2LWIwZGEtNDhkMGU1MzMzNWRlIiwidHlwIjoiQmVhcmVyIiwiYXpwIjoid2FsbGV0LWRldiIsInNpZCI6ImYxNWIzZTExLWZmMjgtNDRkZi04ZmNmLWE3N2QyNDcxNGEyMyIsImFsbG93ZWQtb3JpZ2lucyI6WyIvKiJdLCJzY29wZSI6IlNEX0pXVF9jcmVkIn0.pLGGmOApXnQCY6CwuFzxFXEN36aDJ-iE0TM_esYJ_qtijhUtWq5zI9lD-iGzhTSdwZ7Y51eUKtqmJXHixzBo847vmMeGla4Ko6JTY-4vVAIQ1Hk1xzl25ALuZNwxGbljlysjzBgCxeAjZo3fE0HTI5y6NItptIU8aY3ykoIX9xE81ZkexbVrR495cEX7UIgUgCZyhj8lXUMWFrNFBhELnzzFGdX01Dq3B-KflY9ACVaw-_U9bT6EzDI0-0Cyx2K658EU9VpDjBSR6URT5I9quvx1qoYMFPv7zhjW3sUASIVwThe4CvWCCR8Kf8rsnEQ2qnchn0f6gn9thxi51FGkvA";
@@ -554,14 +549,20 @@ mod tests {
         credential_offer: CredentialOfferParams,
         http_client: MockHttpClient,
     ) -> impl Holder + Sized {
-        let inner = holder().await;
-        HolderService::from_credential_offer(
-            inner,
-            http_client,
-            &CredentialOffer::Value { credential_offer },
+        let kms = LocalKms::new();
+        let vault = InMemVault::new();
+
+        let (_, key_metadata) = create_did_and_key_metadata(&kms).await;
+
+        HolderBuilder::new(
+            kms,
+            vault,
+            key_metadata,
             "wallet-dev".to_string(),
-            "urn:ietf:wg:oauth:2.0:oob".to_string(),
+            IssuerDiscovery::Offer(CredentialOffer::Value { credential_offer }),
         )
+        .with_http_client(http_client)
+        .build()
         .await
         .unwrap()
     }
@@ -571,72 +572,32 @@ mod tests {
         http_client: MockHttpClient,
         introspect_ep: Url,
     ) -> impl Issuer + Sized {
-        let inner = issuer(&metadata).await;
-        let introspect = Introspect::new(http_client, introspect_ep, None);
-        IssuerService::new(metadata, inner, TokenValidation::Introspect(introspect))
+        let kms = LocalKms::new();
+
+        let (_, key_metadata) = create_did_and_key_metadata(&kms).await;
+
+        IssuerBuilder::new(kms, metadata, key_metadata)
+            .with_http_client(http_client)
+            .token_validation_introspect(introspect_ep, None)
+            .build()
+            .await
+            .unwrap()
     }
 
-    async fn holder() -> impl vc::core::Holder {
-        // Initialization
-        println!("Holder creating...");
-
-        let kms = LocalKms::new();
+    // TODO: move to the common test-util module
+    async fn create_did_and_key_metadata(kms: &LocalKms) -> (DID, KeyMetadata) {
         let didkey = DIDKey::new();
-        let vault = InMemVault::new();
 
-        let kt = kms::KeyType::P256;
         let (kid, kh) = kms
-            .create_and_handle(kt, kms::CreateOptions {})
+            .create_and_handle(kms::KeyType::P256, kms::CreateOptions {})
             .await
             .unwrap();
 
-        let did = didkey.generate(kh.clone()).unwrap();
-        let did_url = DIDURL::from_str(&did).unwrap();
-        println!("DID: {}", did);
+        let did = didkey.generate(kh).unwrap();
 
-        let jwk = kh.clone().jwk().unwrap();
-        println!("Key JWK:\n{}", serde_json::to_string_pretty(&jwk).unwrap());
+        let vm = didkey.resolve_verification_method(&did).await.unwrap().id;
 
-        vc::core::HolderService::new(
-            kms,
-            vault,
-            HolderMetadata {
-                client_id: "wallet-dev".into(),
-                key_metadata: KeyMetadata {
-                    did_url: did_url.to_string(),
-                    kid: kid.clone(),
-                },
-            },
-        )
-    }
-
-    async fn issuer(metadata: &IssuerMetadata) -> impl vc::core::Issuer {
-        println!("Issuer creating...");
-
-        let kms = LocalKms::new();
-        let didkey = DIDKey::new();
-
-        let kt = kms::KeyType::P256;
-        let (kid, kh) = kms
-            .create_and_handle(kt, kms::CreateOptions {})
-            .await
-            .unwrap();
-
-        let did = didkey.generate(kh.clone()).unwrap();
-        let did_url = DIDURL::from_str(&did).unwrap();
-        println!("DID: {}", did);
-
-        let jwk = kh.clone().jwk().unwrap();
-        println!("Key JWK:\n{}", serde_json::to_string_pretty(&jwk).unwrap());
-
-        let key_metadata = KeyMetadata {
-            did_url: did_url.to_string(),
-            kid: kid.clone(),
-        };
-
-        let converted = convert_metadata(metadata, key_metadata);
-
-        vc::core::IssuerService::new(kms, converted)
+        (did, KeyMetadata { kid, did_url: vm })
     }
 
     fn sample_issuer_metadata(iss_url: &str, authz_url: &str) -> IssuerMetadata {

@@ -24,12 +24,18 @@ pub enum Error {
     HolderInit(#[from] api::Error),
 }
 
-#[derive(Default, Clone)]
+#[derive(Clone)]
 enum TokenParams {
     Introspect(Url, Option<String>),
     Jwks(Url),
-    #[default]
-    None,
+}
+
+/// An enum containing options of discovery of the `Issuer` for a `Holder`.
+#[derive(Debug, Clone)]
+pub enum IssuerDiscovery {
+    Url(String),
+    Offer(CredentialOffer),
+    Metadata(api::IssuerMetadata, api::AuthorizationMetadata),
 }
 
 /// A builder for instantiating `oid4vci` `Issuer`.
@@ -42,7 +48,7 @@ where
     // data
     issuer_metadata: api::IssuerMetadata,
     key_metadata: KeyMetadata,
-    token_params: TokenParams,
+    token_params: Option<TokenParams>,
 
     // services
     kms: KMS,
@@ -86,7 +92,7 @@ where
             key_metadata,
             kms,
             http_client,
-            token_params: TokenParams::None,
+            token_params: None,
             _marker: Default::default(),
         }
     }
@@ -133,7 +139,7 @@ where
         skip(self),
     )]
     pub fn token_validation_introspect(mut self, url: Url, header: Option<String>) -> Self {
-        self.token_params = TokenParams::Introspect(url, header);
+        self.token_params = Some(TokenParams::Introspect(url, header));
         self
     }
 
@@ -147,7 +153,7 @@ where
         skip(self),
     )]
     pub fn token_validation_jwks(mut self, url: Url) -> Self {
-        self.token_params = TokenParams::Jwks(url);
+        self.token_params = Some(TokenParams::Jwks(url));
         self
     }
 
@@ -169,15 +175,15 @@ where
 
         let http_client = self.http_client?;
         let token_validation = match self.token_params {
-            TokenParams::Introspect(url, header) => {
+            Some(TokenParams::Introspect(url, header)) => {
                 let introspect = Introspect::new(http_client, url.to_owned(), header.to_owned());
-                TokenValidation::Introspect(introspect)
+                Some(TokenValidation::Introspect(introspect))
             }
-            TokenParams::Jwks(url) => {
+            Some(TokenParams::Jwks(url)) => {
                 let jwks = ByJwks::new(http_client, JsonWebKeySetUrl::from_url(url.to_owned()));
-                TokenValidation::ByJwks(jwks)
+                Some(TokenValidation::ByJwks(jwks))
             }
-            TokenParams::None => TokenValidation::None,
+            _ => None,
         };
 
         let issuer = IssuerService::new(self.issuer_metadata, inner, token_validation);
@@ -197,9 +203,7 @@ where
     HC: HttpClient,
 {
     // data
-    offer: Option<CredentialOffer>,
-    metadata: Option<(api::IssuerMetadata, api::AuthorizationMetadata)>,
-    iss_url: Option<String>,
+    iss_discovery: IssuerDiscovery,
 
     key_metadata: KeyMetadata,
     client_id: String,
@@ -227,6 +231,8 @@ where
     /// * `vault` - an inner [vault::Vault].
     /// * `key_metadata` - a `KeyMetadata` with `DIDURL` and `KID` to be used for signing operations.
     /// * `client_id` - a client ID.
+    /// * `iss_discovery` - a data to discover the `Issuer`.
+    ///   Either `CredentialOffer`, `IssuerMetadata` and `AuthorizationMetadata` or `Issuer` url.
     ///
     /// # Defaults
     ///
@@ -240,7 +246,13 @@ where
         level = Level::TRACE,
         skip(kms, vault),
     )]
-    pub fn new(kms: KMS, vault: V, key_metadata: KeyMetadata, client_id: String) -> Self {
+    pub fn new(
+        kms: KMS,
+        vault: V,
+        key_metadata: KeyMetadata,
+        client_id: String,
+        iss_discovery: IssuerDiscovery,
+    ) -> Self {
         let http_client = ReqwestClient::new(false, true).map_err(|e| Error::Build(e.to_string()));
 
         info!("oid4vci-holder builder is initialized");
@@ -250,9 +262,7 @@ where
             kms,
             vault,
             http_client,
-            offer: None,
-            metadata: None,
-            iss_url: None,
+            iss_discovery,
             key_metadata,
             redirect_url: "urn:ietf:wg:oauth:2.0:oob".to_string(),
             _marker: Default::default(),
@@ -281,53 +291,6 @@ where
         self
     }
 
-    /// Use an `Issuer` url to init the `Holder`.
-    ///
-    /// # Arguments
-    ///
-    /// * `issuer_url` - an `Issuer` API url.
-    #[instrument(
-        level = Level::TRACE,
-        skip(self),
-    )]
-    pub fn with_issuer_url(mut self, issuer_url: String) -> Self {
-        self.iss_url = Some(issuer_url);
-        self
-    }
-
-    /// Use a `CredentialOffer` to init the `Holder`.
-    ///
-    /// # Arguments
-    ///
-    /// * `offer` - a `CredentialOffer` issued by some `Issuer`.
-    #[instrument(
-        level = Level::TRACE,
-        skip(self),
-    )]
-    pub fn with_credential_offer(mut self, offer: CredentialOffer) -> Self {
-        self.offer = Some(offer);
-        self
-    }
-
-    /// Use metadata to init the `Holder`.
-    ///
-    /// # Arguments
-    ///
-    /// * `issuer_metadata` - an `IssuerMetadata` of the `Issuer`.
-    /// * `authorization_metadata` - an `AuthorizationMetadata` of the corresponding Authorization Server.
-    #[instrument(
-        level = Level::TRACE,
-        skip(self),
-    )]
-    pub fn with_metadata(
-        mut self,
-        issuer_metadata: api::IssuerMetadata,
-        authorization_metadata: api::AuthorizationMetadata,
-    ) -> Self {
-        self.metadata = Some((issuer_metadata, authorization_metadata));
-        self
-    }
-
     /// Use a specific `HttpClient`.
     ///
     /// # Arguments
@@ -344,9 +307,7 @@ where
         HolderBuilder {
             http_client: Ok(http_client),
             // copied
-            offer: self.offer,
-            metadata: self.metadata,
-            iss_url: self.iss_url,
+            iss_discovery: self.iss_discovery,
             client_id: self.client_id,
             redirect_url: self.redirect_url,
             key_metadata: self.key_metadata,
@@ -361,13 +322,6 @@ where
     /// # Returns
     ///
     /// A `Holder` API on success.
-    ///
-    /// # Errors
-    ///
-    /// One of the following options for initialization should be explicitly provided:
-    /// * [HolderBuilder::with_issuer_url]
-    /// * [HolderBuilder::with_credential_offer]
-    /// * [HolderBuilder::with_metadata]
     #[instrument(
         level = Level::TRACE,
         err(),
@@ -383,8 +337,8 @@ where
 
         let http_client = self.http_client?;
 
-        let holder = match (self.offer, self.metadata, self.iss_url) {
-            (Some(offer), _, _) => {
+        let holder = match self.iss_discovery {
+            IssuerDiscovery::Offer(offer) => {
                 HolderService::from_credential_offer(
                     inner,
                     http_client,
@@ -394,7 +348,7 @@ where
                 )
                 .await
             }
-            (_, Some((iss_meta, authz_meta)), _) => HolderService::from_metadata(
+            IssuerDiscovery::Metadata(iss_meta, authz_meta) => HolderService::from_metadata(
                 inner,
                 http_client,
                 iss_meta,
@@ -402,7 +356,7 @@ where
                 self.client_id,
                 self.redirect_url,
             ),
-            (_, _, Some(url)) => {
+            IssuerDiscovery::Url(url) => {
                 HolderService::from_iss_url(
                     inner,
                     http_client,
@@ -412,9 +366,6 @@ where
                 )
                 .await
             }
-            _ => Err(Error::Build(
-                "Set either offer, metadata or issuer url".to_string(),
-            ))?,
         }?;
 
         info!("oid4vci-holder service is initialized");

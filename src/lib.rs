@@ -4,6 +4,7 @@
 #![allow(clippy::blocks_in_conditions)]
 #![allow(clippy::new_without_default)]
 #![allow(clippy::result_large_err)]
+#![allow(clippy::large_enum_variant)]
 #![allow(clippy::upper_case_acronyms)]
 #![allow(clippy::assigning_clones)]
 
