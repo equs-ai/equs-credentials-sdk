@@ -1,6 +1,10 @@
 use crate::did::DIDResolver;
 use crate::vc;
 use crate::vc::core::PresentationInput;
+use crate::vc::oid4vp::internal_error::{
+    AuthorizationRequestSnafu, AuthorizationResponseSnafu, JsonSnafu, ParseSnafu,
+    PresentationExchangeSnafu, UrlParseSnafu, VCSnafu,
+};
 use crate::vc::oid4vp::presentation_exchange::split_to_inputs;
 use crate::vc::oid4vp::{
     default_wallet_metadata, AuthorizationResponseMetadata, CredentialMapping, ResolvedAuthRequest,
@@ -22,11 +26,12 @@ use oid4vp::core::response::parameters::{
 };
 use oid4vp::core::response::AuthorizationResponse;
 use oid4vp::presentation_exchange::{DescriptorMap, PresentationSubmission};
+use snafu::ResultExt;
 use tracing::{info, instrument, trace, Level};
 use url::Url;
 use uuid::Uuid;
 
-pub type Error = api::HolderError;
+pub type Error = api::Error;
 pub type Result<T> = core::result::Result<T, Error>;
 
 pub struct HolderService<HL, D>
@@ -88,7 +93,8 @@ where
         let presentation = self
             .holder
             .create_presentation(nonce, client_id, presentation_input, credential)
-            .await?;
+            .await
+            .context(VCSnafu)?;
 
         vp_tokens.push(presentation);
 
@@ -116,18 +122,26 @@ where
         let mut response_params = UntypedObject::default();
 
         if presentations.len() == 1 {
-            let vp_token = serde_json::from_value(serde_json::to_value(&presentations[0])?)?;
+            let vp_token =
+                serde_json::from_value(serde_json::to_value(&presentations[0]).context(JsonSnafu)?)
+                    .context(JsonSnafu)?;
+
             response_params.insert(VpToken(vp_token));
             pres_sub.descriptor_map[0].path = "$".to_owned();
         } else {
-            let vp_token = serde_json::to_string(&presentations)?;
+            let vp_token = serde_json::to_string(&presentations).context(JsonSnafu)?;
             response_params.insert(VpToken(vp_token));
         };
 
-        let pres_sub_json = serde_json::to_value(pres_sub)?;
+        let pres_sub_json = serde_json::to_value(pres_sub).context(JsonSnafu)?;
         response_params.insert(PresentationSubmissionParam(pres_sub_json));
 
-        let auth_resp = AuthorizationResponse::try_from(response_params)?;
+        let auth_resp = AuthorizationResponse::try_from(response_params).map_err(|e| {
+            ParseSnafu {
+                details: format!("Cannot parse Authorization Response: {e}"),
+            }
+            .build()
+        })?;
 
         Ok(auth_resp)
     }
@@ -146,12 +160,16 @@ where
         ret(level = Level::TRACE)
     )]
     async fn get_authorization_request(&self, auth_req_uri: &str) -> Result<ResolvedAuthRequest> {
-        let url = Url::parse(auth_req_uri)?;
-        let aro = self.handle_request(&url, &self.http_client).await?;
+        let url = Url::parse(auth_req_uri).context(UrlParseSnafu)?;
+        let aro = self
+            .handle_request(&url, &self.http_client)
+            .await
+            .context(AuthorizationRequestSnafu)?;
 
         let pres_def = aro
             .resolve_presentation_definition()
-            .await?
+            .await
+            .context(AuthorizationRequestSnafu)?
             .parsed()
             .to_owned();
 
@@ -184,17 +202,27 @@ where
             descriptor_map: vec![],
         };
 
-        let pres_inputs = split_to_inputs(&auth_request.presentation_definition)?;
+        let pres_inputs = split_to_inputs(&auth_request.presentation_definition)
+            .context(PresentationExchangeSnafu)?;
 
         for (i, pres_input) in pres_inputs.iter().enumerate() {
-            let creds = self.holder.find_vcs_for_presentation(pres_input).await?;
+            let creds = self
+                .holder
+                .find_vcs_for_presentation(pres_input)
+                .await
+                .context(VCSnafu)?;
 
             // TODO: run in parallel
             self.submit_auth_response_helper(
                 auth_request.nonce.0.as_str(),
                 auth_request.client_id.as_str(),
                 pres_input,
-                creds.first().ok_or(Error::CredentialNotFound)?,
+                creds.first().ok_or(
+                    AuthorizationResponseSnafu {
+                        details: "Empty credentials list",
+                    }
+                    .build(),
+                )?,
                 format!("$[{i}]"),
                 &mut vp_tokens,
                 &mut pres_sub,
@@ -210,7 +238,13 @@ where
                 auth_resp,
                 &self.http_client,
             )
-            .await?;
+            .await
+            .map_err(|e| {
+                AuthorizationResponseSnafu {
+                    details: format!("Could not submit Authorization Response: {e}"),
+                }
+                .build()
+            })?;
 
         info!("verifiable presentation is successfully presented");
 
@@ -229,9 +263,14 @@ where
     ) -> Result<CredentialMapping> {
         let mut creds_map = CredentialMapping::new();
 
-        let pres_inputs = split_to_inputs(&auth_request.presentation_definition)?;
+        let pres_inputs = split_to_inputs(&auth_request.presentation_definition)
+            .context(PresentationExchangeSnafu)?;
         for pres_input in pres_inputs.iter() {
-            let creds = self.holder.find_vcs_for_presentation(pres_input).await?;
+            let creds = self
+                .holder
+                .find_vcs_for_presentation(pres_input)
+                .await
+                .context(VCSnafu)?;
             creds_map.insert(pres_input.id.to_owned(), creds);
         }
 
@@ -260,7 +299,8 @@ where
         };
 
         let mut path_index: usize = 0;
-        let pres_inputs = split_to_inputs(&auth_request.presentation_definition)?;
+        let pres_inputs = split_to_inputs(&auth_request.presentation_definition)
+            .context(PresentationExchangeSnafu)?;
         for pres_input in pres_inputs.iter() {
             // TODO: refactor `path_index` logic and run async code in parallel
             if let Some(creds) = creds_map.get(&pres_input.id) {
@@ -291,7 +331,13 @@ where
                 auth_resp,
                 &self.http_client,
             )
-            .await?;
+            .await
+            .map_err(|e| {
+                AuthorizationResponseSnafu {
+                    details: format!("Could not submit Authorization Response: {e}"),
+                }
+                .build()
+            })?;
 
         info!("verifiable presentations are successfully presented");
 
@@ -370,18 +416,23 @@ where
     ) -> anyhow::Result<()> {
         let (header, _) = ssi::jws::decode_unverified(&request_jwt)?;
 
-        let kid = header.key_id.ok_or(Error::RequestObjectVerification(
-            "could not parse kid from Request Object JWT".to_owned(),
-        ))?;
+        let kid = header.key_id.ok_or(
+            ParseSnafu {
+                details: "Could not parse kid from Request Object JWT".to_owned(),
+            }
+            .build(),
+        )?;
         let ver_map = self
             .did_resolver
             .resolve_verification_method(kid.as_str())
             .await?;
-        let verifier_pub_jwk = &ver_map
-            .public_key_jwk
-            .ok_or(Error::RequestObjectVerification(
-                "could not parse Verifier's public JWK from Verification Method's Map".to_owned(),
-            ))?;
+        let verifier_pub_jwk = &ver_map.public_key_jwk.ok_or(
+            ParseSnafu {
+                details: "Could not parse Verifier's public JWK from Verification Method's Map"
+                    .to_owned(),
+            }
+            .build(),
+        )?;
 
         ssi::jws::decode_verify(&request_jwt, verifier_pub_jwk)?;
 

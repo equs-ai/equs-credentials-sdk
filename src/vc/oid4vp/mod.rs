@@ -3,21 +3,23 @@ use oid4vp::core::authorization_request::parameters::{Nonce, ResponseMode};
 use oid4vp::core::authorization_request::RequestIndirection;
 use oid4vp::core::object::UntypedObject;
 use serde::{Deserialize, Serialize};
+use snafu::Snafu;
 use std::collections::HashMap;
+use std::fmt::Debug;
 use tracing::{instrument, Level};
 use url::Url;
 
 use crate::vc::{Claims, Credential};
-use crate::{storage, vc};
-
 mod builder;
 pub(crate) mod holder;
+mod internal_error;
 mod presentation_builder;
 mod presentation_exchange;
 pub(crate) mod verifier;
 
 pub use builder::HolderBuilder;
 pub use builder::VerifierBuilder;
+use internal_error::InternalError;
 
 // Data type
 pub struct AuthorizationResponseMetadata {}
@@ -64,56 +66,20 @@ pub struct AuthorizationResponse {
     pub presentation_submission: PresentationSubmission,
 }
 
-/// An `OID4VP` `Verifier` API errors.
-#[derive(Debug, thiserror::Error, strum::IntoStaticStr)]
+#[derive(Snafu)]
 #[non_exhaustive]
-pub enum VerifierError {
-    #[error("Authorization Request creation failed: {0}")]
-    RequestCreationFailed(String),
-    #[error("Invalid Authorization Response: {0}")]
-    InvalidResponse(String),
-    #[error("Key resolution failed: {0}")]
-    KeyResolutionFailed(String),
-    #[error("Invalid key: {0}")]
-    InvalidKey(String),
-    #[error("{0} format not supported")]
-    FormatNotSupported(String),
-    #[error("Presentation verification failed {0}")]
-    VerificationFailed(String),
-    #[error("Failed to parse: {0}")]
-    ParsingError(String),
-    #[error("Required field missing: {0}")]
-    MissingRequiredField(String),
-    #[error("Storage Error: {0}")]
-    StorageError(#[from] storage::Error),
-    #[error("Submission not found: {0}")]
-    SubmissionNotFound(String),
+pub enum Error {
+    #[snafu(transparent)]
+    Internal { source: InternalError },
+    //TODO: Add Protocol Error
 }
 
-/// An `OID4VP` `Holder` API errors.
-#[derive(Debug, thiserror::Error, strum::IntoStaticStr)]
-#[non_exhaustive]
-pub enum HolderError {
-    #[error("vp format not supported")]
-    VpFormatNotSupported,
-    #[error("credential does not exist")]
-    CredentialNotFound,
-    #[error("could not validate Verifier: {0}")]
-    RequestObjectVerification(String),
-    #[error(transparent)]
-    SpruceOid4Vp(#[from] anyhow::Error),
-    #[error(transparent)]
-    SpruceSsiJws(#[from] ssi::jws::Error),
-    #[error(transparent)]
-    Parse(#[from] serde_json::Error),
-    #[error(transparent)]
-    VC(#[from] vc::core::Error),
-    #[error("Url Parse Error: {0}")]
-    UrlParse(#[from] url::ParseError),
-    #[error("Presentation exchange error: {0}")]
-    PresentationExchange(#[from] presentation_exchange::Error),
-    #[error("{0}")]
-    Other(String),
+impl Debug for Error {
+    fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
+        std::write!(fmt, "{}", self)?;
+
+        Ok(())
+    }
 }
 
 /// The `OID4VP` `Holder` API.
@@ -145,12 +111,12 @@ pub trait Holder: Send + Sync {
     ///
     /// # Errors
     ///
-    /// * [HolderError::Parse] - if the request URI is invalid
-    /// * [HolderError::SpruceOid4Vp] - if the request fails or the response is improperly formatted.
+    /// * [InternalError::UrlParse] - if the request URI is invalid
+    /// * [InternalError::AuthorizationRequest] - if the resolution of the authorization request fails.
     async fn get_authorization_request(
         &self,
         auth_req_uri: &str,
-    ) -> Result<ResolvedAuthRequest, HolderError>;
+    ) -> Result<ResolvedAuthRequest, Error>;
 
     /// Automatically presents credentials to the Verifier based on the authorization request.
     ///
@@ -169,14 +135,14 @@ pub trait Holder: Send + Sync {
     ///
     /// # Errors
     ///
-    /// * [HolderError::CredentialNotFound] - if a required credential is not found.
-    /// * [HolderError::PresentationExchange] - If there is an issue with parsing the presentation metadata.
-    /// * [HolderError::SpruceOid4Vp] - if the presentation fails or is improperly formatted.
+    /// * [InternalError::PresentationExchange] - if there is an issue with parsing the presentation metadata.
+    /// * [InternalError::VC] - if a required credential is not found.
+    /// * [InternalError::AuthorizationResponse] - if the submission of the authorization response fails.
     async fn present_credentials_auto(
         &self,
         auth_request: &ResolvedAuthRequest,
         metadata: &AuthorizationResponseMetadata,
-    ) -> Result<Option<Url>, HolderError>;
+    ) -> Result<Option<Url>, Error>;
 
     /// Finds verifiable credentials required for the presentation based on the authorization request.
     ///
@@ -191,12 +157,12 @@ pub trait Holder: Send + Sync {
     ///
     /// # Errors
     ///
-    /// * [HolderError::PresentationExchange] - If there is an issue with parsing the presentation metadata.
-    /// * [HolderError::VC] - If an error occurs in the `vc::core` during credential search and extraction
+    /// * [InternalError::PresentationExchange] - If there is an issue with parsing the presentation metadata.
+    /// * [InternalError::VC] - If an error occurs in the `vc::core` during credential search and extraction
     async fn find_vcs_for_presentation(
         &self,
         auth_request: &ResolvedAuthRequest,
-    ) -> Result<CredentialMapping, HolderError>;
+    ) -> Result<CredentialMapping, Error>;
 
     /// Manually presents credentials to the Verifier.
     ///
@@ -212,15 +178,15 @@ pub trait Holder: Send + Sync {
     ///
     /// # Errors
     ///
-    /// * [HolderError::CredentialNotFound] - If a required credential is missing.
-    /// * [HolderError::PresentationExchange] - If there is an issue with parsing the presentation metadata.
-    /// * [HolderError::SpruceOid4Vp] - If the presentation fails or is improperly formatted.
+    /// * [InternalError::PresentationExchange] - If there is an issue with parsing the presentation metadata.
+    /// * [InternalError::ParseSnafu] - ff there is an issue with parsing the generated authorization response.
+    /// * [InternalError::AuthorizationResponse] - if the submission of the authorization response fails.
     async fn present_credentials(
         &self,
         auth_request: &ResolvedAuthRequest,
         credential_mapping: &CredentialMapping,
         metadata: &AuthorizationResponseMetadata,
-    ) -> Result<Option<Url>, HolderError>;
+    ) -> Result<Option<Url>, Error>;
 }
 
 /// The `OID4VP` `Verifier` API.
@@ -253,16 +219,16 @@ pub trait Verifier: Send + Sync {
     ///
     /// # Errors
     ///
-    /// * [VerifierError::RequestCreationFailed] - if an error occurs during authorization request creation.
-    /// * [VerifierError::KeyResolutionFailed] - if there is an error during Issuer key resolution.
-    /// * [VerifierError::ParsingError] - if an error occurs during metadata parsing.
-    /// * [VerifierError::StorageError] - if an error occurs during the storage of authorization request metadata.
+    /// * [InternalError::VerifierSession] - if an error occurs during the creation of the verifier session.
+    /// * [InternalError::KMS] - if there is an error during Issuer key resolution.
+    /// * [InternalError::Parse] - if an error occurs during metadata parsing.
+    /// * [InternalError::Storage] - if an error occurs during the storing the authorization request metadata.
     async fn create_authorization_request(
         &self,
         presentation_definition: &PresentationDefinition,
         nonce: &str,
         response_uri: Url,
-    ) -> Result<AuthorizationRequest, VerifierError>;
+    ) -> Result<AuthorizationRequest, Error>;
 
     /// Verifies the presentation provided by the Holder.
     ///
@@ -276,14 +242,14 @@ pub trait Verifier: Send + Sync {
     ///
     /// # Errors
     ///
-    /// * [VerifierError::StorageError] - if an error occurs while retrieving the authorization request metadata.
-    /// * [VerifierError::InvalidResponse] - if an error occurs while parsing the authorization response.
-    /// * [VerifierError::FormatNotSupported] - if the provided presentation format is not supported.
-    /// * [VerifierError::VerificationFailed] - if the presentation verification fails.
+    /// * [InternalError::Storage] - if an error occurs while retrieving the authorization request metadata.
+    /// * [InternalError::AuthorizationResponse] - if an error occurs while parsing or validating the authorization response.
+    /// * [InternalError::FormatNotSupported] - if the provided presentation format is not supported.
+    /// * [InternalError::VC] - if the presentation verification fails.
     async fn verify_presentation(
         &self,
         authorization_response: &AuthorizationResponse,
-    ) -> Result<Claims, VerifierError>;
+    ) -> Result<Claims, Error>;
 }
 
 /// The types of authorization URLs.

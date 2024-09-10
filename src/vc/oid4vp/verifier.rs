@@ -1,16 +1,3 @@
-use crate::crypto::SigningKey;
-use crate::did::DIDResolver;
-use crate::kms::{KeyHandle, Kms};
-use crate::storage::Storage;
-use crate::utils::json::find_json_element;
-use crate::vc;
-use crate::vc::core::KeyMetadata;
-use crate::vc::oid4vp::presentation_builder::DefaultPresentationBuilder;
-use crate::vc::oid4vp::{
-    default_client_metadata, default_wallet_metadata, AuthorizationRequest, AuthorizationResponse,
-    ClientMetadata,
-};
-use crate::vc::{oid4vp as api, Presentation};
 use async_trait::async_trait;
 use oid4vp::core::authorization_request::parameters::PresentationDefinition as PresentationDefinitionParameter;
 use oid4vp::core::authorization_request::parameters::{
@@ -28,12 +15,31 @@ use oid4vp::core::verifier::Session;
 use oid4vp::presentation_exchange::{ConstraintsField, PresentationDefinition};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value as Json};
+use snafu::{ensure, ResultExt};
 use ssi::jwk::JWK;
 use std::marker::PhantomData;
 use tracing::{info, instrument, trace, Level};
 use url::Url;
 
-pub type Error = api::VerifierError;
+use crate::crypto::SigningKey;
+use crate::did::DIDResolver;
+use crate::kms::{KeyHandle, Kms};
+use crate::storage::Storage;
+use crate::utils::json::find_json_element;
+use crate::vc;
+use crate::vc::core::KeyMetadata;
+use crate::vc::oid4vp::internal_error::{
+    AuthorizationResponseSnafu, FormatNotSupportedSnafu, KMSSnafu, ParseSnafu,
+    StorageSnafu, VCSnafu, VerifierSessionSnafu,
+};
+use crate::vc::oid4vp::presentation_builder::DefaultPresentationBuilder;
+use crate::vc::oid4vp::{
+    default_client_metadata, default_wallet_metadata, AuthorizationRequest, AuthorizationResponse,
+    ClientMetadata,
+};
+use crate::vc::{oid4vp as api, Presentation};
+
+pub type Error = api::Error;
 pub type Result<T> = core::result::Result<T, Error>;
 
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
@@ -143,7 +149,8 @@ where
 
         self.storage
             .put(presentation_definition.id.to_owned(), storage_entry)
-            .await?;
+            .await
+            .context(StorageSnafu)?;
 
         info!("authorization request object is created");
 
@@ -158,11 +165,12 @@ where
     )]
     async fn verify_presentation(&self, auth_response: &AuthorizationResponse) -> Result<Json> {
         let id = &auth_response.presentation_submission.definition_id;
-        let storage_entry = self
-            .storage
-            .get(id)
-            .await?
-            .ok_or(Error::SubmissionNotFound(id.to_owned()))?;
+        let storage_entry = self.storage.get(id).await.context(StorageSnafu)?.ok_or(
+            ParseSnafu {
+                details: "Presentation submission is not found",
+            }
+            .build(),
+        )?;
 
         let claims = self
             .do_verify_presentation(
@@ -172,7 +180,7 @@ where
             )
             .await?;
 
-        self.storage.delete(id).await?;
+        self.storage.delete(id).await.context(StorageSnafu)?;
 
         info!("presentation is verified");
 
@@ -197,12 +205,12 @@ where
         // TODO: move to presentation_exchange
         for constraint in constraints.iter() {
             for path in constraint.path.iter() {
-                if find_json_element(claims, path).is_none() {
-                    return Err(Error::InvalidResponse(format!(
-                        "Requested claim not found by path {:?}",
-                        path
-                    )));
-                }
+                ensure!(
+                    find_json_element(claims, path).is_some(),
+                    AuthorizationResponseSnafu {
+                        details: format!("Requested claim not found by path {path}")
+                    }
+                );
             }
         }
         Ok(())
@@ -227,19 +235,20 @@ where
         };
 
         let vp_formats: VpFormats = vp_format_json.clone().try_into().map_err(|err| {
-            Error::ParsingError(format!(
-                "Failed to parse presentation definition format: {}. Error: {}",
-                vp_format_json, err
-            ))
+            ParseSnafu {
+                details: format!(
+                    "Failed to parse presentation definition format: {}. Error: {}",
+                    vp_format_json, err
+                ),
+            }
+            .build()
         })?;
 
         for vp_format in vp_formats.0.keys() {
-            if !supported_formats.0.contains_key(vp_format) {
-                return Err(Error::FormatNotSupported(format!(
-                    "Format '{}' provided in presentation definition is not supported. Supported formats: {:?}",
-                    vp_format, supported_formats.0.keys().collect::<Vec<_>>()
-                )));
-            }
+            ensure!(
+                supported_formats.0.contains_key(vp_format),
+                FormatNotSupportedSnafu { format: vp_format }
+            )
         }
 
         Ok(())
@@ -263,20 +272,18 @@ where
         let presentation_definition_parameter = PresentationDefinitionParameter::try_from(
             presentation_definition.clone(),
         )
-        .map_err(|err| {
-            Error::ParsingError(format!("Failed to parse presentation definition: {}", err))
+        .map_err(|e| {
+            ParseSnafu {
+                details: e.to_string(),
+            }
+            .build()
         })?;
 
         let verifier_key = self
             .kms
             .get(&self.metadata.key_metadata.kid)
             .await
-            .map_err(|err| {
-                Error::RequestCreationFailed(format!(
-                    "Failed to get key {}: {}",
-                    &self.metadata.key_metadata.kid, err
-                ))
-            })?;
+            .context(KMSSnafu)?;
 
         let session = Session::builder(DefaultVerifierProfile, wallet_metadata.clone())
             .with_request_parameter(ResponseMode::DirectPost)
@@ -291,21 +298,21 @@ where
                 self.did_resolver.as_spruce_resolver(),
             )
             .await
-            .map_err(|err| Error::KeyResolutionFailed(format!("Failed to build session: {}", err)))?
+            .context(VerifierSessionSnafu)?
             .build()
             .await
-            .map_err(|err| Error::RequestCreationFailed(err.to_string()))?;
+            .context(VerifierSessionSnafu)?;
 
         trace!(created_verifier_session = ?session);
 
         let authorization_endpoint = wallet_metadata
             .get::<AuthorizationEndpoint>()
             .parsing_error()
-            .map_err(|err| {
-                Error::ParsingError(format!(
-                    "Failed to get authorization endpoint from wallet metadata: {}",
-                    err
-                ))
+            .map_err(|e| {
+                ParseSnafu {
+                    details: e.to_string(),
+                }
+                .build()
             })?
             .0;
 
@@ -327,7 +334,7 @@ where
         presentation_definition: &PresentationDefinition,
         nonce: &str,
         authorization_response: &AuthorizationResponse,
-    ) -> std::result::Result<Json, Error> {
+    ) -> Result<Json> {
         let mut result: Map<String, Json> = Map::new();
         let vp_token = &authorization_response.vp_token;
         let presentation_submission = &authorization_response.presentation_submission;
@@ -337,45 +344,49 @@ where
                 .descriptor_map
                 .iter()
                 .find(|item| item.id == input_descriptor.id)
-                .ok_or_else(|| {
-                    Error::InvalidResponse(format!(
-                        "Requested presentation {:?} not found",
-                        input_descriptor
-                            .name
-                            .as_deref()
-                            .unwrap_or(&input_descriptor.id)
-                    ))
-                })?;
+                .ok_or(
+                    AuthorizationResponseSnafu {
+                        details: format!(
+                            "Requested presentation {} not found",
+                            input_descriptor.id
+                        ),
+                    }
+                    .build(),
+                )?;
 
-            let presentation_json =
-                find_json_element(vp_token, &descriptor_map.path).ok_or_else(|| {
-                    Error::InvalidResponse(format!(
+            let presentation_json = find_json_element(vp_token, &descriptor_map.path).ok_or(
+                AuthorizationResponseSnafu {
+                    details: format!(
                         "Requested presentation {:?} not found by path {:?}",
-                        input_descriptor
-                            .name
-                            .as_deref()
-                            .unwrap_or(&input_descriptor.id),
-                        descriptor_map.path
-                    ))
-                })?;
+                        input_descriptor.id, descriptor_map.path
+                    ),
+                }
+                .build(),
+            )?;
 
             let presentation = match descriptor_map.format.as_str() {
                 "vc+sd-jwt" => {
-                    let sd_jwt = presentation_json.as_str().ok_or_else(|| {
-                        Error::FormatNotSupported(
-                            "Incorrect presentation format: expected JWT string".to_string(),
-                        )
-                    })?;
-                    Ok(Presentation::SdJwtVp(sd_jwt.to_string()))
+                    let sd_jwt = presentation_json.as_str().ok_or(
+                        AuthorizationResponseSnafu {
+                            details: "Incorrect presentation format: expected JWT string"
+                                .to_string(),
+                        }
+                        .build(),
+                    )?;
+
+                    Presentation::SdJwtVp(sd_jwt.to_string())
                 }
-                _ => Err(Error::FormatNotSupported(descriptor_map.format.to_owned())),
-            }?;
+                _ => FormatNotSupportedSnafu {
+                    format: descriptor_map.format.to_owned(),
+                }
+                .fail()?,
+            };
 
             let claims = self
                 .verifier
                 .verify_presentation(nonce, &presentation)
                 .await
-                .map_err(|err| Error::VerificationFailed(err.to_string()))?;
+                .context(VCSnafu)?;
 
             let constraints_fields = input_descriptor.constraints.fields.as_ref();
             if let Some(constraints) = constraints_fields {
@@ -427,9 +438,12 @@ impl<S: SigningKey> SignerWrapper<S> {
         err(),
     )]
     fn new(signer: S) -> Result<SignerWrapper<S>> {
-        let key = signer.jwk().ok_or(Error::InvalidKey(
-            "Failed to convert verifier key into JWK".to_string(),
-        ))?;
+        let key = signer.jwk().ok_or(
+            ParseSnafu {
+                details: "Could not retrieve JWK",
+            }
+            .build(),
+        )?;
 
         Ok(SignerWrapper { signer, key })
     }

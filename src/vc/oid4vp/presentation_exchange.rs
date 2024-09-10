@@ -1,14 +1,30 @@
 use oid4vp::presentation_exchange::{ConstraintsField, InputDescriptor, PresentationDefinition};
 use serde_json::{Map, Value};
+use snafu::Snafu;
+use std::fmt::Debug;
 use tracing::{instrument, Level};
 
 use crate::vc::core::PresentationInput;
 
-#[derive(Debug, thiserror::Error, strum::IntoStaticStr)]
+#[derive(Snafu)]
 #[non_exhaustive]
 pub enum Error {
-    #[error("could not parse vp-format from presentation definition")]
+    #[snafu(display("Could not parse vp-format from presentation definition"))]
     VpFormatParse,
+}
+
+impl Debug for Error {
+    fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
+        std::write!(fmt, "{}", self)?;
+
+        let mut error: &dyn std::error::Error = self;
+        while let Some(source) = error.source() {
+            write!(fmt, "\n Cause: {}", source)?;
+            error = source;
+        }
+
+        Ok(())
+    }
 }
 
 #[instrument(
@@ -63,7 +79,7 @@ impl TryInto<PresentationInput> for &InputDescriptor {
         let format = self
             .format
             .clone()
-            .ok_or(Error::VpFormatParse)?
+            .ok_or(VpFormatParseSnafu.build())?
             .as_object()
             .and_then(|v| v.keys().find(|s| !s.is_empty()))
             .ok_or(Error::VpFormatParse)?
@@ -74,7 +90,7 @@ impl TryInto<PresentationInput> for &InputDescriptor {
                 .get("vct")
                 .and_then(|v| v.as_str())
                 .ok_or(Error::VpFormatParse),
-            _ => Err(Error::VpFormatParse),
+            _ => VpFormatParseSnafu.fail(),
         }?;
 
         let id = self.id.clone();

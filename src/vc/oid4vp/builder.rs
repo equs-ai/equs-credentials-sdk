@@ -1,22 +1,33 @@
 use crate::did::universal::UniversalResolver;
+use crate::http;
+use crate::http::HttpSnafu;
 use crate::inmem::storage::InMemStorage;
 use crate::vc::core::KeyMetadata;
 use crate::vc::oid4vp as api;
 use crate::vc::oid4vp::holder::HolderService;
 use crate::vc::oid4vp::verifier::VerifierService;
 use crate::{did, kms, vault, vc};
+use snafu::{Location, Snafu};
+use std::fmt::Debug;
 use std::marker::PhantomData;
 use tracing::{debug, info, instrument, Level};
 
 /// An `OID4VP` Builder errors.
-#[derive(Debug, thiserror::Error, strum::IntoStaticStr)]
+#[derive(Snafu)]
+#[non_exhaustive]
 pub enum Error {
-    #[error("Can't create service: {0}")]
-    Build(String),
-    #[error("Can't create default DID: {0}")]
-    DID(#[from] did::Error),
-    #[error("Can't create holder: {0}")]
-    HolderInit(#[from] api::HolderError),
+    Build {
+        details: String,
+        #[snafu(implicit)]
+        location: Location,
+    },
+}
+
+impl Debug for Error {
+    fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
+        std::write!(fmt, "{}", self)?;
+        Ok(())
+    }
 }
 
 /// A builder for creating an `OID4VP` `Verifier` instance.
@@ -177,7 +188,7 @@ where
     kms: KMS,
     vault: V,
     resolver: D,
-    http_client: Result<reqwest::Client, Error>,
+    http_client: Result<reqwest::Client, http::HttpError>,
 
     _marker: PhantomData<KH>,
 }
@@ -209,7 +220,12 @@ where
             .danger_accept_invalid_certs(true)
             .https_only(false)
             .build()
-            .map_err(|e| Error::Build(e.to_string()));
+            .map_err(|e| {
+                HttpSnafu {
+                    details: e.to_string(),
+                }
+                .build()
+            });
 
         info!("oid4vp-holder builder is initialized");
 
@@ -319,13 +335,14 @@ where
         debug!(?holder_metadata);
 
         let inner = vc::core::HolderService::new(self.kms, self.vault, holder_metadata);
+        let http_client = self.http_client.map_err(|e| {
+            BuildSnafu {
+                details: format!("Cannot initialize http client: {e}"),
+            }
+            .build()
+        })?;
 
-        let holder = HolderService::new(
-            inner,
-            self.resolver,
-            self.wallet_metadata,
-            self.http_client?,
-        );
+        let holder = HolderService::new(inner, self.resolver, self.wallet_metadata, http_client);
 
         info!("oid4vp-holder service is initialized");
 
