@@ -1,4 +1,4 @@
-use crate::http::HttpClient;
+use crate::http::{HttpClient, HttpError, HttpSnafu};
 use crate::reqwest::ReqwestClient;
 use crate::vc::core::KeyMetadata;
 use crate::vc::oid4vci as api;
@@ -7,21 +7,30 @@ use crate::vc::oid4vci::issuer::{IssuerService, TokenValidation};
 use crate::vc::oid4vci::metadata::convert_metadata;
 use crate::vc::oid4vci::token_validation::{ByJwks, Introspect};
 use crate::vc::oid4vci::CredentialOffer;
-use crate::{did, kms, vault, vc};
+use crate::{kms, vault, vc};
 use oid4vci::openidconnect::JsonWebKeySetUrl;
+use snafu::{Location, Snafu};
+use std::fmt::Debug;
 use std::marker::PhantomData;
 use tracing::{info, instrument, Level};
 use url::Url;
 
-/// `oid4vci` builder error.
-#[derive(Debug, thiserror::Error, strum::IntoStaticStr)]
+/// An `OID4VCI` Builder errors.
+#[derive(Snafu)]
+#[non_exhaustive]
 pub enum Error {
-    #[error("Can't build service: {0}")]
-    Build(String),
-    #[error("Can't create default DID: {0}")]
-    DID(#[from] did::Error),
-    #[error("Can't create holder: {0}")]
-    HolderInit(#[from] api::Error),
+    Build {
+        details: String,
+        #[snafu(implicit)]
+        location: Location,
+    },
+}
+
+impl Debug for Error {
+    fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
+        std::write!(fmt, "{}", self)?;
+        Ok(())
+    }
 }
 
 #[derive(Clone)]
@@ -52,7 +61,7 @@ where
 
     // services
     kms: KMS,
-    http_client: Result<HC, Error>,
+    http_client: Result<HC, HttpError>,
 
     _marker: PhantomData<KH>,
 }
@@ -83,7 +92,12 @@ where
         skip(kms),
     )]
     pub fn new(kms: KMS, issuer_metadata: api::IssuerMetadata, key_metadata: KeyMetadata) -> Self {
-        let http_client = ReqwestClient::new(false, true).map_err(|e| Error::Build(e.to_string()));
+        let http_client = ReqwestClient::new(false, true).map_err(|e| {
+            HttpSnafu {
+                details: e.to_string(),
+            }
+            .build()
+        });
 
         info!("oid4vci-issuer builder is initialized");
 
@@ -173,7 +187,12 @@ where
             convert_metadata(&self.issuer_metadata, self.key_metadata),
         );
 
-        let http_client = self.http_client?;
+        let http_client = self.http_client.map_err(|e| {
+            BuildSnafu {
+                details: format!("Cannot initialize http client: {e}"),
+            }
+            .build()
+        })?;
         let token_validation = match self.token_params {
             Some(TokenParams::Introspect(url, header)) => {
                 let introspect = Introspect::new(http_client, url.to_owned(), header.to_owned());
@@ -212,7 +231,7 @@ where
     // services
     kms: KMS,
     vault: V,
-    http_client: Result<HC, Error>,
+    http_client: Result<HC, HttpError>,
 
     _marker: PhantomData<KH>,
 }
@@ -253,7 +272,12 @@ where
         client_id: String,
         iss_discovery: IssuerDiscovery,
     ) -> Self {
-        let http_client = ReqwestClient::new(false, true).map_err(|e| Error::Build(e.to_string()));
+        let http_client = ReqwestClient::new(false, true).map_err(|e| {
+            HttpSnafu {
+                details: e.to_string(),
+            }
+            .build()
+        });
 
         info!("oid4vci-holder builder is initialized");
 
@@ -335,7 +359,12 @@ where
         };
         let inner = vc::core::HolderService::new(self.kms, self.vault, holder_metadata);
 
-        let http_client = self.http_client?;
+        let http_client = self.http_client.map_err(|e| {
+            BuildSnafu {
+                details: format!("Cannot initialize http client: {e}"),
+            }
+            .build()
+        })?;
 
         let holder = match self.iss_discovery {
             IssuerDiscovery::Offer(offer) => {
@@ -366,7 +395,13 @@ where
                 )
                 .await
             }
-        }?;
+        }
+        .map_err(|e| {
+            BuildSnafu {
+                details: format!("Cannot initialize Holder service: {e}"),
+            }
+            .build()
+        })?;
 
         info!("oid4vci-holder service is initialized");
 

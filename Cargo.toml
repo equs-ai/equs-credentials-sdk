@@ -28,7 +28,6 @@ jsonwebtoken = "9.3.0"
 async-trait = "0.1.81"
 strum_macros = "0.26.4"
 strum = { version = "0.26.3", features = ["derive"] }
-thiserror = "1.0.63"
 reqwest = "0.11"
 uuid = { version = "1.10.0", features = ["v4"] }
 url = "2.5.2"

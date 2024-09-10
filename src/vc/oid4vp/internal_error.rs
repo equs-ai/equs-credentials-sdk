@@ -1,11 +1,11 @@
-use crate::http::HttpError;
-use crate::{storage, vault, vc};
-use oid4vci::credential::RequestError;
-use oid4vci::openidconnect::DiscoveryError;
 use snafu::{Location, Snafu};
 use std::fmt::Debug;
 
-/// An `oid4vci` internal error.
+use crate::kms::Error as KmsError;
+use crate::vc::oid4vp::presentation_exchange;
+use crate::{http, storage, vc};
+
+/// An `oid4vp` internal error.
 ///
 /// Internal errors unspecified by the protocol.
 ///
@@ -14,35 +14,27 @@ use std::fmt::Debug;
 #[snafu(visibility(pub(super)))]
 #[non_exhaustive]
 pub enum InternalError {
-    #[snafu(display("Credential definition not found for ID: {id}"))]
-    CredDefNotFound { id: String },
-    #[snafu(display(
-        "No scope set for Credential definition ID: {id}. Only scope authorization supported"
-    ))]
-    NoScopeSet { id: String },
-    #[snafu(display("Claims validation error at {location}\n Cause: {details}"))]
-    ClaimsValidation {
-        details: String,
+    #[snafu(display("Authorization Response error: {details}"))]
+    AuthorizationResponse { details: String },
+    #[snafu(display("Unsupported format: {format}"))]
+    FormatNotSupported { format: String },
+    #[snafu(display("KMS error at {location}"))]
+    KMS {
         #[snafu(implicit)]
         location: Location,
+        source: KmsError,
     },
-    #[snafu(display("Issuer service error at {location}\n Cause: {details}"))]
-    IssuerService {
-        details: String,
+    #[snafu(display("Key resolution error at {location}"))]
+    VerifierSession {
         #[snafu(implicit)]
         location: Location,
+        source: anyhow::Error,
     },
-    #[snafu(display("Url parse error at {location}"))]
-    UrlParse {
+    #[snafu(display("Authorization Request handling error at {location}"))]
+    AuthorizationRequest {
         #[snafu(implicit)]
         location: Location,
-        source: url::ParseError,
-    },
-    #[snafu(display("Parse error at {location}"))]
-    Parse {
-        #[snafu(implicit)]
-        location: Location,
-        source: serde_json::Error,
+        source: anyhow::Error,
     },
     #[snafu(display("Storage error at {location}"))]
     Storage {
@@ -50,36 +42,47 @@ pub enum InternalError {
         location: Location,
         source: storage::Error,
     },
+    #[snafu(display("JWS error at {location}"))]
+    JWS {
+        source: ssi::jws::Error,
+        #[snafu(implicit)]
+        location: Location,
+    },
+    #[snafu(display("Parse error at {location}"))]
+    Json {
+        #[snafu(implicit)]
+        location: Location,
+        source: serde_json::Error,
+    },
+    #[snafu(display("Parse error: {details}"))]
+    Parse {
+        details: String,
+        #[snafu(implicit)]
+        location: Location,
+    },
     #[snafu(display("VC error at {location}"))]
     VC {
         #[snafu(implicit)]
         location: Location,
         source: vc::core::Error,
     },
-    #[snafu(display("Vault error at {location}"))]
-    Vault {
+    #[snafu(display("Url parse error at {location}"))]
+    UrlParse {
         #[snafu(implicit)]
         location: Location,
-        source: vault::Error,
+        source: url::ParseError,
     },
-    #[snafu(display("Request error at {location}"))]
-    Request {
+    #[snafu(display("Presentation exchange error at {location}"))]
+    PresentationExchange {
         #[snafu(implicit)]
         location: Location,
-        source: RequestError<HttpError>,
-    },
-    #[snafu(display("Discovery error at {location}"))]
-    Discovery {
-        #[snafu(implicit)]
-        location: Location,
-        //TODO: Check that nothing other than 'reqwest::Error' can be used here.
-        source: DiscoveryError<HttpError>,
+        source: presentation_exchange::Error,
     },
     #[snafu(display("Http error at {location}"))]
     HttpClient {
         #[snafu(implicit)]
         location: Location,
-        source: HttpError,
+        source: http::HttpError,
     },
 }
 
