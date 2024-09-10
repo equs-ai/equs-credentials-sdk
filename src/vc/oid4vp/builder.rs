@@ -8,6 +8,7 @@ use crate::{did, kms, vault, vc};
 use std::marker::PhantomData;
 use tracing::{debug, info, instrument, Level};
 
+/// An `OID4VP` Builder errors.
 #[derive(Debug, thiserror::Error, strum::IntoStaticStr)]
 pub enum Error {
     #[error("Can't create service: {0}")]
@@ -18,6 +19,7 @@ pub enum Error {
     HolderInit(#[from] api::HolderError),
 }
 
+/// A builder for creating an `OID4VP` `Verifier` instance.
 #[derive(Clone)]
 pub struct VerifierBuilder<KH, KMS, D>
 where
@@ -42,6 +44,17 @@ where
     KH: kms::KeyHandle,
     KMS: kms::Kms<KH>,
 {
+    /// Creates a new instance of `VerifierBuilder` with default configurations.
+    ///
+    /// # Arguments
+    ///
+    /// * `kms` - a Key Management System (KMS) instance responsible for managing cryptographic keys.
+    /// * `key_metadata` - a `KeyMetadata` with `DIDURL` and `KID` to be used for signing operations.
+    /// * `client_id` - the Client ID of the `Verifier`.
+    ///
+    /// # Returns
+    ///
+    /// A new `VerifierBuilder` instance
     #[instrument(
         level = Level::TRACE,
         skip(kms),
@@ -66,6 +79,14 @@ where
     KMS: kms::Kms<KH>,
     D: did::DIDResolver,
 {
+    /// Sets the Verifier's client metadata.
+    ///
+    /// This method allows setting custom metadata for the Verifier.
+    /// If no client metadata is provided, a default value will be used.
+    ///
+    /// # Arguments
+    ///
+    /// * `client_metadata` - a JSON object containing the Verifier metadata values
     #[instrument(
         level = Level::TRACE,
         skip(self),
@@ -75,6 +96,14 @@ where
         self
     }
 
+    /// Sets a custom DID resolver.
+    ///
+    /// This method allows providing a custom `DIDResolver` for resolving DIDs.
+    /// If no custom resolver is provided, the default `UniversalResolver` will be used.
+    ///
+    /// # Arguments
+    ///
+    /// * `resolver` - an instance of a custom DID resolver.
     #[instrument(
         level = Level::TRACE,
         skip_all,
@@ -95,6 +124,15 @@ where
         }
     }
 
+    /// Builds the `Verifier` API instance based on the current configuration of the builder.
+    ///
+    /// # Returns
+    ///
+    /// The `Verifier` API instance on success.
+    ///
+    /// # Errors
+    ///
+    /// [Error::Build] - if the build process fails.
     #[instrument(
         level = Level::TRACE,
         skip_all,
@@ -122,6 +160,7 @@ where
     }
 }
 
+/// A builder for creating an `OID4VP` `Holder` API instance.
 pub struct HolderBuilder<KH, KMS, V, D>
 where
     KH: kms::KeyHandle,
@@ -149,6 +188,18 @@ where
     KMS: kms::Kms<KH>,
     V: vault::Vault,
 {
+    /// Creates a new instance of `HolderBuilder` with default configurations.
+    ///
+    /// # Arguments
+    ///
+    /// * `kms` - a Key Management System (KMS) instance responsible for managing cryptographic keys.
+    /// * `vault` - a Vault service used for securely storing credentials.
+    /// * `key_metadata` - a `KeyMetadata` with `DIDURL` and `KID` to be used for signing operations.
+    /// * `client_id` - the Client ID of the `Holder`.
+    ///
+    /// # Returns
+    ///
+    /// A new `HolderBuilder` instance.
     #[instrument(
         level = Level::TRACE,
         skip(kms, vault)
@@ -182,6 +233,14 @@ where
     V: vault::Vault,
     D: did::DIDResolver,
 {
+    /// Sets custom wallet metadata for the holder.
+    ///
+    /// This method allows providing a custom wallet metadata.
+    /// If not provided, a default will be used.
+    ///
+    /// # Arguments
+    ///
+    /// * `wallet_metadata` - metadata defining the credential formats, proof types, and algorithms supported by the wallet.
     #[instrument(
         level = Level::TRACE,
         skip(self),
@@ -191,6 +250,14 @@ where
         self
     }
 
+    /// Sets a custom HTTP client for the holder.
+    ///
+    /// This method allows providing a custom HTTP client for the holder.
+    /// If not provided, a default HTTP client will be used.
+    ///
+    /// # Arguments
+    ///
+    /// * `http_client` - a custom HTTP client instance.
     #[instrument(
         level = Level::TRACE,
         skip_all,
@@ -200,6 +267,14 @@ where
         self
     }
 
+    /// Sets a custom DID resolver.
+    ///
+    /// This method allows providing a custom `DIDResolver` for resolving DIDs.
+    /// If no custom resolver is provided, the default `UniversalResolver` will be used.
+    ///
+    /// # Arguments
+    ///
+    /// * `resolver` - an instance of a custom DID resolver.
     #[instrument(
         level = Level::TRACE,
         skip_all,
@@ -210,7 +285,6 @@ where
     ) -> HolderBuilder<KH, KMS, V, D_> {
         HolderBuilder {
             resolver,
-            // copied
             client_id: self.client_id,
             wallet_metadata: self.wallet_metadata,
             key_metadata: self.key_metadata,
@@ -221,6 +295,15 @@ where
         }
     }
 
+    /// Builds the `Holder` API instance based on the current configuration of the builder.
+    ///
+    /// # Returns
+    ///
+    /// The `Holder` API instance on success.
+    ///
+    /// # Errors
+    ///
+    /// [Error::Build] - if the build process fails.
     #[instrument(
         level = Level::TRACE,
         skip(self),

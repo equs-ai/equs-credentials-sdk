@@ -27,6 +27,13 @@ pub type PresentationDefinition = oid4vp::presentation_exchange::PresentationDef
 pub type ClientMetadata = oid4vp::core::authorization_request::parameters::ClientMetadata;
 pub type WalletMetadata = oid4vp::core::metadata::WalletMetadata;
 
+/// A resolved `OID4VP` authorization request.
+///
+/// `client_id` Verifier's identifier.
+/// `presentation_definition` Rules for the required Verifiable Presentation(s).
+/// `nonce` Unique value to prevent replay attacks.
+/// `response_mode` Method for returning the authorization response.
+/// `response_uri` URI to send the response.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ResolvedAuthRequest {
     pub client_id: String,
@@ -36,19 +43,28 @@ pub struct ResolvedAuthRequest {
     pub response_uri: Url,
 }
 
+/// An `OID4VP` authorization request.
+///
+/// It can be represented as a URL using the [auth_request_as_url] helper function.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct AuthorizationRequest {
     client_id: String,
+    /// JWT containing Authorization Request parameters.
     pub request_object_jwt: String,
     authorization_endpoint: Url,
 }
 
+/// An OID4VP authorization response.
+///
+/// `vp_token` VP Token containing the Verifiable Presentation(s).
+/// `presentation_submission` Details of the submitted presentation.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct AuthorizationResponse {
     pub vp_token: serde_json::Value,
     pub presentation_submission: PresentationSubmission,
 }
 
+/// An `OID4VP` `Verifier` API errors.
 #[derive(Debug, thiserror::Error, strum::IntoStaticStr)]
 #[non_exhaustive]
 pub enum VerifierError {
@@ -74,6 +90,7 @@ pub enum VerifierError {
     SubmissionNotFound(String),
 }
 
+/// An `OID4VP` `Holder` API errors.
 #[derive(Debug, thiserror::Error, strum::IntoStaticStr)]
 #[non_exhaustive]
 pub enum HolderError {
@@ -99,24 +116,105 @@ pub enum HolderError {
     Other(String),
 }
 
+/// The `OID4VP` `Holder` API.
+///
+/// Supports presentation flow according to the `OID4VP` specification.
+/// See <https://openid.net/specs/openid-4-verifiable-presentations-1_0-ID2.html>.
+///
+/// # Features
+///
+/// * Fetches authorization requests from verifiers.
+/// * Discovers credentials required for presentation requests.
+/// * Supports both automatic and manual credential presentation.
+///
+/// # Implementation
+///
+/// Use [HolderBuilder] to instantiate a service.
+/// Existing implementation of the API is not exposed.
 #[async_trait]
 pub trait Holder: Send + Sync {
+    /// Fetches the `OID4VP` authorization request object from the provided URI.
+    ///
+    /// # Arguments
+    ///
+    /// * `auth_req_uri` - a request URI provided by the authorization URL.
+    ///
+    /// # Returns
+    ///
+    /// A `ResolvedAuthRequest` with the presentation definition and other relevant details on success.
+    ///
+    /// # Errors
+    ///
+    /// * [HolderError::Parse] - if the request URI is invalid
+    /// * [HolderError::SpruceOid4Vp] - if the request fails or the response is improperly formatted.
     async fn get_authorization_request(
         &self,
         auth_req_uri: &str,
     ) -> Result<ResolvedAuthRequest, HolderError>;
 
+    /// Automatically presents credentials to the Verifier based on the authorization request.
+    ///
+    /// This method selects the first appropriate credential that matches the requirements of the authorization request.
+    /// To present specific credentials, use [Holder::find_vcs_for_presentation] to discover suitable credentials and
+    /// [Holder::present_credentials] to manually present them.
+    ///
+    /// # Arguments
+    ///
+    /// * `auth_request` - the resolved authorization request containing the presentation requirements.
+    /// * `metadata` - the metadata for the authorization response.
+    ///
+    /// # Returns
+    ///
+    /// A redirect URL if the presentation is successful, or `None` on success without redirection.
+    ///
+    /// # Errors
+    ///
+    /// * [HolderError::CredentialNotFound] - if a required credential is not found.
+    /// * [HolderError::PresentationExchange] - If there is an issue with parsing the presentation metadata.
+    /// * [HolderError::SpruceOid4Vp] - if the presentation fails or is improperly formatted.
     async fn present_credentials_auto(
         &self,
         auth_request: &ResolvedAuthRequest,
         metadata: &AuthorizationResponseMetadata,
     ) -> Result<Option<Url>, HolderError>;
 
+    /// Finds verifiable credentials required for the presentation based on the authorization request.
+    ///
+    /// # Arguments
+    ///
+    /// * `auth_request` - the resolved authorization request containing the presentation requirements.
+    ///
+    /// # Returns
+    ///
+    ///  A map of credentials that satisfy the authorization request's requirements.
+    ///  If no matching credentials are found, an empty map is returned.
+    ///
+    /// # Errors
+    ///
+    /// * [HolderError::PresentationExchange] - If there is an issue with parsing the presentation metadata.
+    /// * [HolderError::VC] - If an error occurs in the `vc::core` during credential search and extraction
     async fn find_vcs_for_presentation(
         &self,
         auth_request: &ResolvedAuthRequest,
     ) -> Result<CredentialMapping, HolderError>;
 
+    /// Manually presents credentials to the Verifier.
+    ///
+    /// # Arguments
+    ///
+    /// * `auth_request` - the resolved authorization request.
+    /// * `credential_mapping` - the map of credentials required for the presentation.
+    /// * `metadata` -the authorization response metadata.
+    ///
+    /// # Returns
+    ///
+    /// A redirect URL if the presentation is successful, or `None` on success without redirection.
+    ///
+    /// # Errors
+    ///
+    /// * [HolderError::CredentialNotFound] - If a required credential is missing.
+    /// * [HolderError::PresentationExchange] - If there is an issue with parsing the presentation metadata.
+    /// * [HolderError::SpruceOid4Vp] - If the presentation fails or is improperly formatted.
     async fn present_credentials(
         &self,
         auth_request: &ResolvedAuthRequest,
@@ -125,8 +223,40 @@ pub trait Holder: Send + Sync {
     ) -> Result<Option<Url>, HolderError>;
 }
 
+/// The `OID4VP` `Verifier` API.
+///
+/// Supports presentation request and verification flow according to the `OID4VP` specification.
+/// See <https://openid.net/specs/openid-4-verifiable-presentations-1_0-ID2.html>.
+///
+/// # Features
+///
+/// * Create an authorization request.
+/// * Verify the presentations.
+///
+/// # Implementation
+///
+/// Use [VerifierBuilder] to instantiate a service.
+/// Existing implementation of the API is not exposed.
 #[async_trait]
 pub trait Verifier: Send + Sync {
+    /// Creates an `OID4VP` authorization request.
+    ///
+    /// # Arguments
+    ///
+    /// * `presentation_definition` - the presentation definition specifying the presentation requirements.
+    /// * `nonce` - a string used to prevent replay attacks, representing the nonce for the request.
+    /// * `response_uri` - the URL where the Holder will send the response.
+    ///
+    /// # Returns
+    ///
+    ///  The OID4VP authorization request on success.
+    ///
+    /// # Errors
+    ///
+    /// * [VerifierError::RequestCreationFailed] - if an error occurs during authorization request creation.
+    /// * [VerifierError::KeyResolutionFailed] - if there is an error during Issuer key resolution.
+    /// * [VerifierError::ParsingError] - if an error occurs during metadata parsing.
+    /// * [VerifierError::StorageError] - if an error occurs during the storage of authorization request metadata.
     async fn create_authorization_request(
         &self,
         presentation_definition: &PresentationDefinition,
@@ -134,10 +264,59 @@ pub trait Verifier: Send + Sync {
         response_uri: Url,
     ) -> Result<AuthorizationRequest, VerifierError>;
 
+    /// Verifies the presentation provided by the Holder.
+    ///
+    /// # Arguments
+    ///
+    /// * `authorization_response` - the authorization response containing the VP token and presentation submission.
+    ///
+    /// # Returns
+    ///
+    /// * The verified claims as a JSON object on success.
+    ///
+    /// # Errors
+    ///
+    /// * [VerifierError::StorageError] - if an error occurs while retrieving the authorization request metadata.
+    /// * [VerifierError::InvalidResponse] - if an error occurs while parsing the authorization response.
+    /// * [VerifierError::FormatNotSupported] - if the provided presentation format is not supported.
+    /// * [VerifierError::VerificationFailed] - if the presentation verification fails.
     async fn verify_presentation(
         &self,
         authorization_response: &AuthorizationResponse,
     ) -> Result<Claims, VerifierError>;
+}
+
+/// The types of authorization URLs.
+///
+/// It can be either a request URI from which to retrieve the request object, or the encrypted request object itself.
+pub enum AuthorizationUrlType {
+    Reference(Url),
+    Value,
+}
+
+/// Converts an `AuthorizationRequest` into a URL.
+///
+/// # Arguments
+///
+/// * `req` - the authorization request.
+/// * `type_` - type of authorization URL (by reference or by value).
+///
+/// # Returns
+///
+/// * An authorization request URL.
+pub fn auth_request_as_url(req: &AuthorizationRequest, type_: AuthorizationUrlType) -> Url {
+    let request_indirection = match type_ {
+        AuthorizationUrlType::Value => RequestIndirection::ByValue(req.request_object_jwt.clone()),
+        AuthorizationUrlType::Reference(at) => RequestIndirection::ByReference(at),
+    };
+    use oid4vp::core::authorization_request::AuthorizationRequest as SpruceAuthorizationRequest;
+
+    SpruceAuthorizationRequest {
+        client_id: req.client_id.clone(),
+        request_indirection,
+    }
+    .to_url(req.authorization_endpoint.clone())
+    .unwrap()
 }
 
 const DEFAULT_CLIENT_METADATA: &str = r#"{
@@ -155,7 +334,7 @@ const DEFAULT_CLIENT_METADATA: &str = r#"{
     level = Level::TRACE,
     ret(level = Level::TRACE)
 )]
-pub fn default_client_metadata() -> ClientMetadata {
+fn default_client_metadata() -> ClientMetadata {
     ClientMetadata::try_from(
         serde_json::from_str::<serde_json::Value>(DEFAULT_CLIENT_METADATA).unwrap(),
     )
@@ -187,30 +366,10 @@ const DEFAULT_WALLET_METADATA: &str = r#"{
     level = Level::TRACE,
     ret(level = Level::TRACE)
 )]
-pub fn default_wallet_metadata() -> WalletMetadata {
+fn default_wallet_metadata() -> WalletMetadata {
     WalletMetadata::try_from(
         serde_json::from_str::<UntypedObject>(DEFAULT_WALLET_METADATA).unwrap(),
     )
-    .unwrap()
-}
-
-pub enum AuthorizationUrlType {
-    Reference(Url),
-    Value,
-}
-
-pub fn auth_request_as_url(req: &AuthorizationRequest, type_: AuthorizationUrlType) -> Url {
-    let request_indirection = match type_ {
-        AuthorizationUrlType::Value => RequestIndirection::ByValue(req.request_object_jwt.clone()),
-        AuthorizationUrlType::Reference(at) => RequestIndirection::ByReference(at),
-    };
-    use oid4vp::core::authorization_request::AuthorizationRequest as SpruceAuthorizationRequest;
-
-    SpruceAuthorizationRequest {
-        client_id: req.client_id.clone(),
-        request_indirection,
-    }
-    .to_url(req.authorization_endpoint.clone())
     .unwrap()
 }
 

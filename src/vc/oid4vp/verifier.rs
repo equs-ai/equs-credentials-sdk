@@ -49,9 +49,6 @@ pub struct VerifierMetadata {
     pub client_metadata: ClientMetadata,
 }
 
-/// Service for managing OIDC4VP verifications.
-///
-/// This service handles the creation of authorization requests and the verification of presentations.
 pub struct VerifierService<VF, KH, KMS, D, ST>
 where
     VF: vc::core::Verifier,
@@ -76,19 +73,6 @@ where
     D: DIDResolver,
     ST: Storage<String, StorageEntry>,
 {
-    /// Creates a new `VerifierService`.
-    ///
-    /// # Arguments
-    ///
-    /// * `verifier` - core Verifier
-    /// * `kms` - Key Management Service.
-    /// * `storage` - Storage for caching requests.
-    /// * `client_id` - Verifier ID
-    /// * `key_metadata` - Verifier signing key metadata
-    ///
-    /// # Returns
-    ///
-    /// A new instance of `VerifierService`.
     #[instrument(
         level = Level::TRACE,
         skip(verifier, kms, did_resolver, storage),
@@ -130,17 +114,6 @@ where
     D: DIDResolver,
     ST: Storage<String, StorageEntry>,
 {
-    /// Creates an authorization request.
-    ///
-    /// # Arguments
-    ///
-    /// * `presentation_definition` - The presentation definition.
-    /// * `nonce` - A unique nonce.
-    /// * `response_uri` - The response URI.
-    ///
-    /// # Returns
-    ///
-    /// An `AuthorizationRequest` on success.
     #[instrument(
         level = Level::TRACE,
         skip(self)
@@ -177,15 +150,6 @@ where
         Ok(request)
     }
 
-    /// Verifies a presentation.
-    ///
-    /// # Arguments
-    ///
-    /// * `auth_response` - The authorization response containing the presentation.
-    ///
-    /// # Returns
-    ///
-    /// The verified claims as a JSON object.
     #[instrument(
         level = Level::TRACE,
         skip(self),
