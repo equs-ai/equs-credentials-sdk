@@ -3,14 +3,14 @@ use crate::did::DIDURL;
 use async_trait::async_trait;
 use oid4vci::openidconnect::Nonce;
 use oid4vci::proof_of_possession::{ConversionError, ParsingError, VerificationError};
-use snafu::{Location, ResultExt, Snafu};
-use std::fmt::Debug;
+use snafu::{Location, Snafu};
+use std::fmt::{Debug, Display, Formatter};
 use std::str::FromStr;
 
 pub mod jwt_pop;
 
 // Proof of possession formats
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
 #[non_exhaustive]
 pub enum Format {
     Jwt,
@@ -18,8 +18,8 @@ pub enum Format {
     Cwt,
 }
 
-impl From<Format> for &'static str {
-    fn from(value: Format) -> Self {
+impl From<&Format> for &'static str {
+    fn from(value: &Format) -> Self {
         match value {
             Format::Jwt => "jwt",
             Format::Ldp => "ldp",
@@ -41,7 +41,15 @@ impl FromStr for Format {
     }
 }
 
+impl Display for Format {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let str: &str = self.into();
+        write!(f, "{}", str)
+    }
+}
+
 #[derive(Snafu)]
+#[snafu(visibility(pub(super)))]
 #[non_exhaustive]
 pub enum Error {
     #[snafu(display("Unsupported proof format: {format}"))]
@@ -70,6 +78,18 @@ pub enum Error {
         location: Location,
         source: ssi::vc::Error,
     },
+    #[snafu(display("JWS error at {location}"))]
+    JWS {
+        source: ssi::jws::Error,
+        #[snafu(implicit)]
+        location: Location,
+    },
+    #[snafu(display("Crypto error at {location}"))]
+    Crypto {
+        #[snafu(implicit)]
+        location: Location,
+        source: crypto::Error,
+    },
 }
 
 impl Debug for Error {
@@ -88,24 +108,6 @@ impl Debug for Error {
 
 pub type Result<T> = core::result::Result<T, Error>;
 
-pub trait Proof {
-    fn parse(str: &str) -> Result<Self>
-    where
-        Self: Sized;
-}
-
-impl Proof for String {
-    fn parse(str: &str) -> Result<Self> {
-        Ok(str.to_owned())
-    }
-}
-
-impl Proof for ssi::vc::Presentation {
-    fn parse(str: &str) -> Result<Self> {
-        ssi::vc::Presentation::from_json(str).context(VCSnafu)
-    }
-}
-
 #[derive(Debug, PartialEq, Clone, Default)]
 pub struct GenerateOptions {
     pub cred_iss_id: String,
@@ -120,10 +122,7 @@ pub struct VerifyOptions {
 }
 
 #[async_trait]
-pub trait ProofOfPossession<P>
-where
-    P: Proof,
-{
+pub trait ProofOfPossession<P> {
     async fn generate<S>(
         did_url: &DIDURL,
         key: S,
@@ -138,4 +137,6 @@ where
         nonce: Nonce,
         opts: VerifyOptions,
     ) -> Result<(DIDURL, Box<dyn crypto::Key>)>;
+
+    fn alg(proof: &P) -> Result<crypto::Alg>;
 }

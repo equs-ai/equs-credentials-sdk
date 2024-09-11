@@ -20,11 +20,10 @@ use oid4vci::credential::{ErrorType, ResponseEnum};
 use oid4vci::credential_offer::{
     CredentialOfferFormat, CredentialOfferGrants, CredentialOfferParameters,
 };
-use oid4vci::proof_of_possession::{KeyProofType, Proof as SpruceProof, ProofType};
+use oid4vci::proof_of_possession::Proof as SpruceProof;
 use serde_json::{Map, Value};
 use snafu::{ensure, ResultExt};
 use ssi::jwt::decode_unverified;
-use std::collections::HashMap;
 use std::ops::Add;
 use time::ext::NumericalDuration;
 use tracing::{debug, error, info, instrument, trace, Level};
@@ -182,7 +181,6 @@ where
             self.validate_scope(token, &cred_def_id, scope)?;
         }
         self.validate_claim_names(claims, &cred_def)?;
-        self.validate_proof_type(proof, &cred_def, session).await?;
 
         let proof = Proof::from(proof);
 
@@ -199,7 +197,8 @@ where
             .await;
 
         let (cred, _) = match result {
-            Err(vc::core::Error::Proof { location, source }) => self
+            Err(vc::core::Error::Proof { .. })
+            | Err(vc::core::Error::ProofFormatNotSupported { .. }) => self
                 .invalid_proof(session, INVALID_PROOF_ERR_DESC.to_string())
                 .fail()?,
             _ => result.context(VCSnafu)?,
@@ -323,79 +322,6 @@ where
                 .invalid_proof(session, INVALID_PROOF_ERR_DESC.to_string())
                 .fail()?,
         }
-    }
-
-    #[instrument(
-        level = Level::TRACE,
-        skip(self, proof, session),
-        err(),
-        ret(level = Level::DEBUG),
-    )]
-    async fn validate_proof_type(
-        &self,
-        proof: &SpruceProof,
-        cred_metadata: &CredDefMetadata,
-        session: &mut IssuanceSession,
-    ) -> Result<()> {
-        trace!(?proof, ?session);
-
-        debug!(?cred_metadata);
-
-        let proof_types = match cred_metadata.proof_types_supported() {
-            Some(proof_types) => proof_types,
-            _ => &Self::supported_proof_types(),
-        };
-
-        let (proof_type, proof) = match proof {
-            SpruceProof::JWT { jwt } => (KeyProofType::Jwt, jwt),
-            SpruceProof::CWT { cwt } => self
-                .invalid_proof(session, "Unsupported proof type: CWT".to_string())
-                .fail()?,
-        };
-
-        let proof_type = proof_types.get(&proof_type).ok_or_else(|| {
-            self.invalid_proof(session, format!("Unsupported proof type: {:?}", proof_type))
-                .build()
-        })?;
-
-        debug!(resolved_proof_type = ?proof_type);
-
-        let proof_header = jsonwebtoken::decode_header(proof).map_err(|err| {
-            error!("Can not retrieve \"alg\" from the proof's header: {err}");
-            self.invalid_proof(
-                session,
-                "Can not retrieve \"alg\" from the proof's header".to_string(),
-            )
-            .build()
-        })?;
-
-        let sign_alg =
-            serde_json::from_value(serde_json::to_value(proof_header.alg).context(ParseSnafu)?)
-                .context(ParseSnafu)?;
-        debug!(resolved_signing_algorithm = %sign_alg);
-
-        ensure!(
-            proof_type
-                .proof_signing_alg_values_supported
-                .contains(&sign_alg),
-            self.invalid_proof(
-                session,
-                format!("Unsupported proof type's signing algorithm: '{sign_alg}'")
-            )
-        );
-
-        Ok(())
-    }
-
-    #[instrument(
-        level = Level::TRACE,
-        ret(level = Level::DEBUG),
-    )]
-    fn supported_proof_types() -> HashMap<KeyProofType, ProofType> {
-        HashMap::from([(
-            KeyProofType::Jwt,
-            ProofType::new(vec!["ES256".to_owned(), "EdDSA".to_owned()]),
-        )])
     }
 
     #[instrument(

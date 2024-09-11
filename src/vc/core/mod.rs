@@ -3,11 +3,12 @@ use snafu::{Location, Snafu};
 use std::collections::HashMap;
 use std::fmt::Debug;
 
+use crate::crypto;
 use crate::kms::Error as KmsError;
 use crate::vault::Error as VaultError;
 use crate::vc::{
-    formats::Error as VCError, metadata::Error as MetadataError, pop::Error as ProofError, Claims,
-    Credential, CredentialMetadata, Presentation, VCFormat,
+    formats::Error as VCError, metadata::Error as MetadataError, pop, pop::Error as ProofError,
+    Claims, Credential, CredentialMetadata, Presentation, VCFormat,
 };
 
 mod holder;
@@ -49,7 +50,8 @@ pub struct CredentialDefinition {
     pub cred_def_id: String,
     pub format: VCFormat,
     pub claims: HashMap<String, Display>,
-    pub supported_proofs: Vec<String>,
+    pub supported_proofs: Option<HashMap<pop::Format, Vec<crypto::Alg>>>,
+    pub supported_signing_algs: Option<Vec<crypto::Alg>>,
     pub display: Option<Display>,
     pub protocol_data: Option<CredentialDefinitionData>, // Protocol specific
     pub key_metadata: Option<KeyMetadata>,
@@ -75,7 +77,7 @@ pub struct HolderMetadata {
     pub key_metadata: KeyMetadata,
 }
 
-/// A protocol-specific data for the `CredentialDefinition`.
+/// A format-specific data for the `CredentialDefinition`.
 ///
 /// *NOTE*: will be extended in the next releases.
 #[derive(Debug, PartialEq, Clone)]
@@ -97,12 +99,18 @@ pub enum CredentialDefinitionData {
 /// *NOTE*: will be extended in the next releases.
 #[derive(Debug, PartialEq, Clone)]
 pub struct CredentialOffer {
-    pub issuer_id: String,
     pub cred_offer_id: Option<String>,
-    pub cred_def_id: Option<String>,
-    pub supported_proofs: Option<Vec<String>>,
-    pub cred_def: Option<CredentialDefinition>,
+    pub issuer_id: String,
+    pub cred_def_id: String,
+    pub content: CredentialOfferContent,
     pub protocol_data: Option<CredentialOfferData>, // Protocol specific
+}
+
+/// A struct defining content for a `CredentialOffer`.
+#[derive(Debug, PartialEq, Clone)]
+pub enum CredentialOfferContent {
+    CredDef(CredentialDefinition),
+    SupportedProofs(Option<HashMap<pop::Format, Vec<crypto::Alg>>>),
 }
 
 /// A protocol-specific data for the `CredentialOffer`.
@@ -164,8 +172,6 @@ pub struct Display;
 pub enum Error {
     #[snafu(display("Credential definition not found for ID: {id}"))]
     CredDefNotFound { id: String },
-    #[snafu(display("Credential definition required"))]
-    CredDefRequired,
     #[snafu(display("Proof format required"))]
     ProofFormatRequired,
     #[snafu(display("Requested credential not found"))]
@@ -174,6 +180,10 @@ pub enum Error {
     InconsistentProtocolData { format: String },
     #[snafu(display("Unsupported format: {format}"))]
     FormatNotSupported { format: String },
+    #[snafu(display("Unsupported algorithm: {alg}"))]
+    AlgNotSupported { alg: String },
+    #[snafu(display("Unsupported proof format: {format}"))]
+    ProofFormatNotSupported { format: String },
     #[snafu(display("VC error at {location}"))]
     VC {
         #[snafu(implicit)]
@@ -223,7 +233,7 @@ impl Debug for Error {
 /// `Result` alias for vc:core API [Error].
 pub type Result<T> = core::result::Result<T, Error>;
 
-/// An async low-level `Issuer` API.
+/// An async low-level protocol-agnostic `Issuer` API.
 ///
 /// Provides the methods for creating a `CredentialOffer` and issuing a `Credential`.
 ///
@@ -286,7 +296,7 @@ pub trait Issuer: Send + Sync {
     ) -> Result<(Credential, CredentialMetadata)>;
 }
 
-/// An async low-level `Holder` API.
+/// An async low-level protocol-agnostic `Holder` API.
 ///
 /// Supports issuance and presentation flow.
 ///
@@ -433,7 +443,7 @@ pub trait Holder: Send + Sync {
     ) -> Result<Presentation>;
 }
 
-/// An async low-level `Verifier` API.
+/// An async low-level protocol-agnostic `Verifier` API.
 ///
 /// Provides basic method for verification of `VP`s.
 ///
@@ -463,13 +473,14 @@ pub trait Verifier: Send + Sync {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
     use std::str::FromStr;
 
     use oid4vci::openidconnect::Nonce;
     use serde_json::json;
     use ssi::did::DIDURL;
 
-    use crate::crypto::Key;
+    use crate::crypto::{Alg, Key};
     use crate::did::didkey::DIDKey;
     use crate::inmem::kms::LocalKms;
     use crate::inmem::vault::InMemVault;
@@ -481,6 +492,7 @@ mod tests {
         CredentialDefinition, CredentialDefinitionData, Holder, HolderMetadata, Issuer,
         IssuerMetadata, KeyMetadata, PresentationInput, Verifier,
     };
+    use crate::vc::pop;
     use crate::{kms, vc};
 
     #[tokio::test]
@@ -583,7 +595,8 @@ mod tests {
                 cred_def_id: "SD_JWT_cred".into(),
                 format: vc::VCFormat::SdJwtVc,
                 claims: Default::default(),
-                supported_proofs: vec!["jwt".into()],
+                supported_proofs: Some(HashMap::from([(pop::Format::Jwt, vec![Alg::ES256])])),
+                supported_signing_algs: Some(vec![Alg::ES256]),
                 display: None,
                 protocol_data: Some(CredentialDefinitionData::SdJwt {
                     vct: "https://credentials.example.com/identity_credential".to_owned(),

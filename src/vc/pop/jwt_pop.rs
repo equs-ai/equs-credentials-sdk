@@ -6,15 +6,17 @@ use oid4vci::proof_of_possession::{
 };
 use snafu::ResultExt;
 use ssi::jwk::JWK;
+use ssi::jws;
 use tracing::{debug, instrument, trace, Level};
 
 use crate::crypto;
-use crate::crypto::SigningKey;
+use crate::crypto::{Alg, SigningKey};
 use crate::did::universal::UniversalResolver;
 use crate::did::{DIDResolver, DIDURL};
 use crate::vc::pop;
 use crate::vc::pop::{
-    ConversionSnafu, Error, GenerateOptions, ParsingSnafu, VerificationSnafu, VerifyOptions,
+    ConversionSnafu, CryptoSnafu, Error, GenerateOptions, JWSSnafu, ParsingSnafu,
+    VerificationSnafu, VerifyOptions,
 };
 
 pub struct SignerWrapper<S: SigningKey> {
@@ -113,6 +115,18 @@ impl pop::ProofOfPossession<String> for JwtProofOfPossession {
         trace!(resolved_did_url = ?did_url);
 
         Ok((did_url, Box::new(hld_key)))
+    }
+
+    #[instrument(
+        level = Level::TRACE,
+        err(),
+        ret(level = Level::TRACE)
+    )]
+    fn alg(proof: &String) -> Result<Alg, Error> {
+        let (header, _) = jws::decode_unverified(proof).context(JWSSnafu)?;
+
+        let alg = header.algorithm;
+        (&alg).try_into().context(CryptoSnafu)
     }
 }
 

@@ -1,4 +1,5 @@
 use crate::http::HttpError;
+use crate::vc::oid4vci::metadata;
 use crate::{storage, vault, vc};
 use oid4vci::credential::RequestError;
 use oid4vci::openidconnect::DiscoveryError;
@@ -80,6 +81,12 @@ pub enum InternalError {
         #[snafu(implicit)]
         location: Location,
         source: HttpError,
+    },
+    #[snafu(display("Metadata resolving error at {location}"))]
+    Metadata {
+        #[snafu(implicit)]
+        location: Location,
+        source: metadata::Error,
     },
 }
 

@@ -29,8 +29,8 @@ use crate::utils::json::find_json_element;
 use crate::vc;
 use crate::vc::core::KeyMetadata;
 use crate::vc::oid4vp::internal_error::{
-    AuthorizationResponseSnafu, FormatNotSupportedSnafu, KMSSnafu, ParseSnafu,
-    StorageSnafu, VCSnafu, VerifierSessionSnafu,
+    AuthorizationResponseSnafu, FormatNotSupportedSnafu, KMSSnafu, ParseSnafu, StorageSnafu,
+    VCSnafu, VerifierSessionSnafu,
 };
 use crate::vc::oid4vp::presentation_builder::DefaultPresentationBuilder;
 use crate::vc::oid4vp::{
