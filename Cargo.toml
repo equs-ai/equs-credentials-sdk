@@ -3,7 +3,7 @@ members = ["demos/oid4vc", "demos/oid4vc/holder"]
 
 [package]
 name = "agent-sdk"
-version = "0.2.1"
+version = "0.2.2"
 edition = "2021"
 rust-version = "1.79"
 
