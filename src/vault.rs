@@ -2,9 +2,9 @@ use std::fmt::Debug;
 
 use crate::vc;
 use async_trait::async_trait;
-use snafu::{Location, Snafu};
 #[cfg(test)]
 use mockall::automock;
+use snafu::{Location, Snafu};
 
 /// `Vault` Error.
 ///
