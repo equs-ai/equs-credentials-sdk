@@ -1,11 +1,12 @@
-use std::fmt::Debug;
-use std::ops::Deref;
-
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use snafu::{Location, Snafu};
+use ssi::jwk;
 use ssi::jwk::JWK;
-use strum_macros::{Display, EnumString, IntoStaticStr};
+use std::fmt::Debug;
+use std::ops::Deref;
+use std::str::FromStr;
+use strum_macros::{Display, IntoStaticStr};
 
 /// `Crypto` Error.
 ///
@@ -51,12 +52,38 @@ pub type Result<T> = core::result::Result<T, Error>;
 /// Enum with supported `Crypto` algorithms.
 ///
 /// *NOTE*: more algs to be supported later.
-#[derive(
-    Debug, Clone, Copy, PartialEq, Serialize, Deserialize, Display, EnumString, IntoStaticStr,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Display, IntoStaticStr)]
+#[non_exhaustive]
 pub enum Alg {
     ES256,
     EdDSA,
+}
+
+impl FromStr for Alg {
+    type Err = Error;
+
+    fn from_str(s: &str) -> Result<Alg> {
+        match s {
+            "ES256" => Ok(Alg::ES256),
+            "EdDSA" => Ok(Alg::EdDSA),
+            _ => AlgNotSupportedSnafu { alg: s }.fail(),
+        }
+    }
+}
+
+impl TryFrom<&jwk::Algorithm> for Alg {
+    type Error = Error;
+
+    fn try_from(value: &jwk::Algorithm) -> Result<Alg> {
+        match value {
+            jwk::Algorithm::EdDSA => Ok(Alg::EdDSA),
+            jwk::Algorithm::ES256 => Ok(Alg::ES256),
+            _ => AlgNotSupportedSnafu {
+                alg: serde_json::to_string(value).unwrap_or(format!("{:?}", value)),
+            }
+            .fail(),
+        }
+    }
 }
 
 /// An async `Signer` interface.

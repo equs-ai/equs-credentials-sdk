@@ -184,7 +184,12 @@ where
     pub async fn build(self) -> Result<impl api::Issuer, Error> {
         let inner = vc::core::IssuerService::new(
             self.kms,
-            convert_metadata(&self.issuer_metadata, self.key_metadata),
+            convert_metadata(&self.issuer_metadata, self.key_metadata).map_err(|e| {
+                BuildSnafu {
+                    details: format!("Cannot convert metadata: {e}"),
+                }
+                .build()
+            })?,
         );
 
         let http_client = self.http_client.map_err(|e| {

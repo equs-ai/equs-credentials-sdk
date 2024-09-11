@@ -1,19 +1,21 @@
 use async_trait::async_trait;
 use oid4vci::openidconnect::Nonce;
 use snafu::ResultExt;
+use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::str::FromStr;
 use tracing::{debug, instrument, trace, Level};
 
+use crate::crypto::Alg;
 use crate::did::DIDURL;
 use crate::vault::FindCriteria;
 use crate::vc::core::{
-    CredDefRequiredSnafu, FormatNotSupportedSnafu, KMSSnafu, ProofFormatRequiredSnafu, ProofSnafu,
-    RequestedCredentialNotFoundSnafu, Result, VCSnafu, VaultSnafu,
-};
-use crate::vc::core::{
     CredentialOffer, CredentialRequest, CredentialRequestData, Holder, HolderMetadata,
     PresentationInput, Proof,
+};
+use crate::vc::core::{
+    CredentialOfferContent, FormatNotSupportedSnafu, KMSSnafu, ProofFormatRequiredSnafu,
+    ProofSnafu, RequestedCredentialNotFoundSnafu, Result, VCSnafu, VaultSnafu,
 };
 use crate::vc::formats::sd_jwt_vc::{SdJwtAPI, VPMetadata};
 use crate::vc::formats::{VerifyOptions, API};
@@ -54,10 +56,14 @@ where
     ) -> Result<CredentialRequest> {
         trace!(?credential_offer, %nonce);
 
-        let (cred_def_id, proofs) = self.resolve_cred_offer(credential_offer)?;
+        let supported_proofs = match &credential_offer.content {
+            CredentialOfferContent::CredDef(cred_def) => &cred_def.supported_proofs,
+            CredentialOfferContent::SupportedProofs(proofs) => proofs,
+        };
 
-        let pop_fmt = self.resolve_proof_format(proofs)?;
         let (did_url, key) = self.resolve_key_metadata().await?;
+        let pop_fmt = self.resolve_proof_format(supported_proofs.to_owned(), &key)?;
+
         let proof = match pop_fmt {
             pop::Format::Jwt => JwtProofOfPossession::generate(
                 &did_url,
@@ -73,19 +79,18 @@ where
             .context(ProofSnafu)?,
             _ => {
                 return FormatNotSupportedSnafu {
-                    format: <pop::Format as Into<&str>>::into(pop_fmt),
+                    format: pop_fmt.to_string(),
                 }
                 .fail()
             }
         };
         trace!(resolved_proof = %proof);
 
-        let fmt: &str = pop_fmt.into();
         let credential_request = CredentialRequest {
-            cred_def_id: cred_def_id.clone(),
+            cred_def_id: credential_offer.cred_def_id.clone(),
             cred_offer_id: credential_offer.cred_offer_id.clone(),
             proof: Proof {
-                format: fmt.to_owned(),
+                format: pop_fmt.to_string(),
                 proof: proof.to_string(),
             },
             protocol_data: Some(CredentialRequestData::default()),
@@ -256,41 +261,30 @@ where
         err(),
         ret(level = Level::DEBUG),
     )]
-    fn resolve_cred_offer(
+    fn resolve_proof_format(
         &self,
-        credential_offer: &CredentialOffer,
-    ) -> Result<(String, Vec<String>)> {
-        trace!(?credential_offer);
-        // Offer contains either full cred_def or cred_def_id+supported_proofs
-        let (cred_def_id, supported_proofs) = match credential_offer {
-            CredentialOffer {
-                cred_def: Some(cred_def),
-                ..
-            } => (&cred_def.cred_def_id, &cred_def.supported_proofs),
-            CredentialOffer {
-                cred_def_id: Some(cred_def_id),
-                supported_proofs: Some(supported_proofs),
-                ..
-            } => (cred_def_id, supported_proofs),
-            _ => return CredDefRequiredSnafu.fail(),
+        supported_proofs: Option<HashMap<pop::Format, Vec<Alg>>>,
+        key: &KH,
+    ) -> Result<pop::Format> {
+        let alg = key.alg();
+
+        trace!(?alg);
+
+        let fmt = match supported_proofs {
+            Some(proofs) => {
+                let (fmt, _) = proofs
+                    .iter()
+                    .find(|(fmt, algs)| algs.contains(&alg))
+                    .ok_or(ProofFormatRequiredSnafu.build())?;
+
+                fmt.to_owned()
+            }
+            None => pop::Format::Jwt,
         };
 
-        Ok((cred_def_id.to_owned(), supported_proofs.to_owned()))
-    }
+        debug!(resolved_format = ?fmt);
 
-    #[instrument(
-        level = Level::TRACE,
-        skip(self),
-        err(),
-        ret(level = Level::DEBUG),
-    )]
-    fn resolve_proof_format(&self, supported_proofs: Vec<String>) -> Result<pop::Format> {
-        // TODO: add logic on supported proof formats of Holder
-        let pop_fmt = supported_proofs
-            .first()
-            .ok_or(ProofFormatRequiredSnafu.build())?;
-        let pop_fmt = pop::Format::from_str(pop_fmt).context(ProofSnafu)?;
-        Ok(pop_fmt)
+        Ok(fmt)
     }
 
     #[instrument(

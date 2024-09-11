@@ -16,7 +16,6 @@ use oid4vci::credential::{ErrorType, ResponseEnum};
 use oid4vci::credential_offer::CredentialOfferFormat;
 use oid4vci::metadata::AuthorizationMetadata;
 use oid4vci::openidconnect::IssuerUrl;
-use oid4vci::proof_of_possession::KeyProofType;
 use oid4vci::proof_of_possession::Proof as SpruceProof;
 use oid4vci::token;
 use snafu::{ensure, ResultExt};
@@ -25,13 +24,14 @@ use tracing::{debug, info, instrument, trace, Level};
 
 use crate::http::HttpClient;
 use crate::vc;
-use crate::vc::core::Proof as AsdkProof;
+use crate::vc::core::{CredentialOfferContent, Proof as AsdkProof};
 use crate::vc::oid4vci::internal_error::{
-    DiscoverySnafu, IssuerServiceSnafu, RequestSnafu, UrlParseSnafu, VCSnafu,
+    DiscoverySnafu, IssuerServiceSnafu, MetadataSnafu, RequestSnafu, UrlParseSnafu, VCSnafu,
 };
 use crate::vc::oid4vci::protocol_error::ProtocolSnafu;
 use crate::vc::oid4vci::{
-    CredentialResponseResolved, CredentialResult, Nonce, NonceData, ProtocolError, TokenResponse,
+    metadata, CredDefMetadata, CredentialResponseResolved, CredentialResult, Nonce, NonceData,
+    ProtocolError, TokenResponse,
 };
 use crate::vc::{oid4vci as api, HasVCFormat};
 use crate::vc::{Credential, CredentialMetadata};
@@ -302,24 +302,28 @@ where
 
         let cred_def = self.resolve_cred_def(cred_def_id)?;
 
-        let req_base = match &cred_def {
+        let req_base = match &cred_def.additional_fields() {
             CoreProfilesMetadata::SDJWTVC(det) => {
                 CoreProfilesRequest::SDJWTVC(sd_jwt::Request::new(det.vct().to_owned()))
             }
             _ => ProtocolSnafu::new(
                 ErrorType::UnsupportedCredentialFormat,
-                format!("Unsupported credential format: {}", cred_def.format()),
+                format!(
+                    "Unsupported credential format: {}",
+                    cred_def.additional_fields().format()
+                ),
             )
             .fail()?,
         };
+
         trace!(request_profile = ?req_base);
 
+        let supported_proofs = metadata::supported_proofs(&cred_def).context(MetadataSnafu)?;
         let offer = &vc::core::CredentialOffer {
-            issuer_id: self.issuer_metadata.credential_issuer().to_string(),
             cred_offer_id: None,
-            cred_def_id: Some(cred_def_id.to_owned()),
-            supported_proofs: self.resolve_supported_proofs(cred_def_id),
-            cred_def: None,
+            issuer_id: self.issuer_metadata.credential_issuer().to_string(),
+            cred_def_id: cred_def_id.to_owned(),
+            content: CredentialOfferContent::SupportedProofs(supported_proofs),
             protocol_data: None,
         };
 
@@ -517,7 +521,7 @@ where
         err(),
         ret(level = Level::TRACE),
     )]
-    fn resolve_cred_def(&self, cred_def_id: &str) -> Result<CoreProfilesMetadata> {
+    fn resolve_cred_def(&self, cred_def_id: &str) -> Result<CredDefMetadata> {
         let configs = self.issuer_metadata.credential_configurations_supported();
         debug!(supported_credential_configs = ?configs);
 
@@ -532,7 +536,7 @@ where
         let data = configs.get(cred_def_id).unwrap();
         debug!(resolved_credential_metadata = ?data);
 
-        Ok(data.additional_fields().to_owned())
+        Ok(data.to_owned())
     }
 
     #[instrument(
@@ -552,35 +556,6 @@ where
             but were discoverable from the Credential Issuer's credential_configurations_supported metadata parameter.
         */
         Ok(())
-    }
-
-    #[instrument(
-        level = Level::TRACE,
-        skip(self),
-        ret(level = Level::DEBUG),
-    )]
-    fn resolve_supported_proofs(&self, cred_def_id: &str) -> Option<Vec<String>> {
-        // TODO: delegate to the low-level facade after extending low-level IssuerMetadata
-        let configs = self.issuer_metadata.credential_configurations_supported();
-        debug!(supported_credential_configs = ?configs);
-
-        let supported: Vec<KeyProofType> = configs
-            .get(cred_def_id)
-            .and_then(|cd| cd.proof_types_supported())
-            .map(|pm| pm.clone().into_keys().collect())
-            .unwrap_or(vec![KeyProofType::Jwt]);
-        debug!(supported_proof_types = ?supported);
-
-        let proofs = supported
-            .into_iter()
-            .map(|k| match k {
-                KeyProofType::Jwt => "jwt",
-                KeyProofType::Cwt => "cwt",
-            })
-            .map(ToOwned::to_owned)
-            .collect();
-
-        Some(proofs)
     }
 
     fn extract_nonce(resp: &oid4vci::core::credential::Response) -> Option<NonceData> {

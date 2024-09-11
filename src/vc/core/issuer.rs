@@ -1,15 +1,9 @@
-use async_trait::async_trait;
-use oid4vci::openidconnect::Nonce;
-use snafu::ResultExt;
-use std::marker::PhantomData;
-use std::str::FromStr;
-use tracing::{debug, instrument, trace, Level};
-
 use crate::did::DIDURL;
 use crate::kms;
 use crate::vc::core::{
-    CredDefNotFoundSnafu, FormatNotSupportedSnafu, InconsistentProtocolDataSnafu, KMSSnafu,
-    MetadataSnafu, ProofSnafu, Result, VCSnafu,
+    AlgNotSupportedSnafu, CredDefNotFoundSnafu, CredentialOfferContent, FormatNotSupportedSnafu,
+    InconsistentProtocolDataSnafu, KMSSnafu, MetadataSnafu, ProofFormatNotSupportedSnafu,
+    ProofSnafu, Result, VCSnafu,
 };
 use crate::vc::core::{
     CredentialDefinition, CredentialDefinitionData, CredentialOffer, CredentialOfferData,
@@ -21,6 +15,12 @@ use crate::vc::metadata::{CredentialMetadataProcessor, DefaultMetadataProcessor}
 use crate::vc::pop::jwt_pop::JwtProofOfPossession;
 use crate::vc::pop::ProofOfPossession;
 use crate::vc::{pop, Claims, Credential, CredentialMetadata, VCFormat};
+use async_trait::async_trait;
+use oid4vci::openidconnect::Nonce;
+use snafu::{ensure, ResultExt};
+use std::marker::PhantomData;
+use std::str::FromStr;
+use tracing::{debug, instrument, trace, Level};
 
 pub struct IssuerService<KH, KMS>
 where
@@ -54,11 +54,10 @@ where
         let id = uuid::Uuid::new_v4().to_string();
 
         let credential_offer = CredentialOffer {
-            issuer_id: self.metadata.issuer_id.to_owned(),
             cred_offer_id: Some(id),
-            supported_proofs: None,
-            cred_def_id: None,
-            cred_def: Some(cred_def.to_owned()),
+            issuer_id: self.metadata.issuer_id.to_owned(),
+            cred_def_id: cred_def.cred_def_id.to_owned(),
+            content: CredentialOfferContent::CredDef(cred_def.to_owned()),
             protocol_data: protocol_data.map(|p| p.to_owned()),
         };
 
@@ -95,8 +94,8 @@ where
             .await
             .context(ProofSnafu)?,
             _ => {
-                return FormatNotSupportedSnafu {
-                    format: <pop::Format as Into<&str>>::into(pop_fmt),
+                return ProofFormatNotSupportedSnafu {
+                    format: pop_fmt.to_string(),
                 }
                 .fail()
             }
@@ -223,20 +222,42 @@ where
         skip_all,
         err(),
     )]
-    fn resolve_proof<P: pop::Proof>(
+    fn resolve_proof(
         cred_def: &CredentialDefinition,
         credential_request: &CredentialRequest,
-    ) -> Result<(pop::Format, P)> {
+    ) -> Result<(pop::Format, String)> {
         trace!(credential_definition_id = ?cred_def, ?credential_request);
 
         let proof = &credential_request.proof;
         let fmt = &proof.format;
         let fmt = pop::Format::from_str(fmt).context(ProofSnafu)?;
 
-        // TODO: add more validation for proof (against format, supported alg's, etc)
+        // Check supported proofs only if they were set explicitly
+        if let Some(proofs) = &cred_def.supported_proofs {
+            let algs = proofs.get(&fmt).ok_or(
+                ProofFormatNotSupportedSnafu {
+                    format: fmt.to_string(),
+                }
+                .build(),
+            )?;
 
-        let proof = P::parse(&proof.proof).context(ProofSnafu)?;
-        Ok((fmt, proof))
+            let alg = match fmt {
+                pop::Format::Jwt => JwtProofOfPossession::alg(&proof.proof).context(ProofSnafu)?,
+                _ => ProofFormatNotSupportedSnafu {
+                    format: fmt.to_string(),
+                }
+                .fail()?,
+            };
+
+            ensure!(
+                algs.contains(&alg),
+                ProofFormatNotSupportedSnafu {
+                    format: fmt.to_string()
+                }
+            );
+        }
+
+        Ok((fmt, proof.proof.to_owned()))
     }
 
     #[instrument(
@@ -253,7 +274,20 @@ where
         };
 
         let did_url = DIDURL::from_str(&key_meta.did_url).unwrap();
+
         let kh = self.kms.get(&key_meta.kid).await.context(KMSSnafu)?;
+
+        // Check signing algs only if they were set explicitly
+        if let Some(algs) = &cred_def.supported_signing_algs {
+            let alg = kh.alg();
+
+            ensure!(
+                algs.contains(&alg),
+                AlgNotSupportedSnafu {
+                    alg: alg.to_string()
+                },
+            );
+        }
 
         debug!(resolved_did_url = ?did_url);
 
