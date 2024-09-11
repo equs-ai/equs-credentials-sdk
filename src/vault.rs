@@ -3,6 +3,8 @@ use std::fmt::Debug;
 use crate::vc;
 use async_trait::async_trait;
 use snafu::{Location, Snafu};
+#[cfg(test)]
+use mockall::automock;
 
 /// `Vault` Error.
 ///
@@ -58,6 +60,7 @@ pub enum FindCriteria {
 /// Should be implemented by any adapter to be used with `ASDK`.
 ///
 /// Supports storing, retrieving and finding [vc::Credential].
+#[cfg_attr(test, automock)]
 #[async_trait]
 pub trait Vault: Send + Sync {
     /// Stores the `Credential` in `Vault`.

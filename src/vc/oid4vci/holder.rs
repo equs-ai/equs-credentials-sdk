@@ -672,3 +672,180 @@ impl TryInto<SpruceProof> for AsdkProof {
         Ok(proof)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+    use api::IssuerDiscovery;
+    use oauth2::http::{Method, StatusCode};
+    use crate::inmem::kms::LocalKms;
+    use crate::inmem::vault::InMemVault;
+    use crate::vault::{MockVault, Vault};
+    use crate::vc::VCFormat;
+    use crate::vc::oid4vci::{Holder, HolderBuilder, CredentialRequest, CredentialResult};
+    use crate::utils::test_utils::create_did_and_key_metadata;
+    use crate::utils::http::test::{mock_http_once, mock_http_req_predicate};
+    use crate::http::MockHttpClient;
+    use crate::vc::oid4vci::tests::fixtures::{
+        ISSUER_URL, AUTH_URL, ACCESS_TOKEN, SD_JWT_CREDS,
+        NOTIFICATION_ID, SCOPE, REQ_URI_CODE,
+        sample_issuer_metadata, sample_authorization_metadata,
+        sample_cred_response, sample_nonce, sample_access_token,
+    };
+
+    #[tokio::test]
+    async fn holder_requests_access_token_correctly() {
+        let mut http_client = MockHttpClient::new();
+
+        mock_http_once(
+            &mut http_client,
+            Method::POST,
+            par_request_endpoint(),
+            json!({
+                "request_uri": "urn:ietf:params:oauth:request_uri:".to_owned() + REQ_URI_CODE,
+                "expires_in": 86400,
+             }),
+            StatusCode::CREATED,
+        );
+
+        mock_http_once(
+            &mut http_client,
+            Method::POST,
+            access_token_endpoint(),
+            sample_access_token_response(),
+            StatusCode::OK,
+        );
+
+        let holder_service = build_holder(http_client, InMemVault::new()).await;
+
+        let token_response = holder_service.authz_code_flow_with_scope(
+            SCOPE.into(),
+            |url| {
+                assert!(url.to_string().starts_with(AUTH_URL));
+                assert!(url.query().unwrap().contains(REQ_URI_CODE));
+                "fake_auth_code".to_string()
+            },
+        ).await.unwrap();
+
+        assert_eq!(serde_json::to_value(&token_response).unwrap(), sample_access_token_response());
+    }
+
+    #[tokio::test]
+    async fn holder_requests_credentials_correctly() {
+        let mut http_client = MockHttpClient::new();
+
+        // validate that CredentialRequest is formed correctly and sent to an Issuer
+        mock_http_req_predicate(
+            &mut http_client,
+            Method::POST,
+            credential_endpoint(),
+            |req_body| {
+                serde_json::from_str::<CredentialRequest>(&req_body).expect("invalid credential request");
+                true
+            },
+            sample_cred_response(),
+            StatusCode::OK,
+            1.into(),
+        );
+
+        let holder = build_holder(http_client, InMemVault::new()).await;
+
+        let _ = holder.request_credential(
+            &sample_access_token(),
+            SCOPE,
+            Some(sample_nonce())
+        ).await;
+    }
+
+    #[tokio::test]
+    async fn holder_receives_issued_credential_correctly() {
+        let mut http_client = MockHttpClient::new();
+
+        mock_http_once(
+            &mut http_client,
+            Method::POST,
+            credential_endpoint(),
+            sample_cred_response(),
+            StatusCode::OK,
+        );
+
+        let holder = build_holder(http_client, InMemVault::new()).await;
+
+        let response = holder.request_credential(
+            &sample_access_token(),
+            SCOPE,
+            Some(sample_nonce())
+        ).await.unwrap();
+
+        assert!(matches!(
+            response.data,
+            CredentialResult::Credential {
+                credential: Credential::SdJwt(jwt),
+                notification_id: Some(notification_id)
+            } if jwt == SD_JWT_CREDS && notification_id == NOTIFICATION_ID
+        ));
+    }
+
+    #[tokio::test]
+    async fn holder_stores_credentilas_correctly() {
+
+        let mut vault = MockVault::new();
+        vault
+            .expect_store_credential()
+            .times(1)
+            .returning(|arg0, arg2| {
+                Ok(String::from("fake_cred_id"))
+            });
+
+        let holder_service = build_holder(MockHttpClient::new(), vault).await;
+        let credential = Credential::SdJwt("fake_sdjwt".to_string());
+
+        let cred_metadata = CredentialMetadata {
+            type_: "https://credentials.example.com/identity_credential".into(),
+            format: VCFormat::SdJwtVc,
+            alg: None,
+            tags: vec![],
+        };
+
+        let result = holder_service.store_credential(&credential, &cred_metadata).await;
+
+        result.unwrap();
+    }
+
+    async fn build_holder(http_client: impl HttpClient, vault: impl Vault) -> impl Holder + Sized {
+        let kms = LocalKms::new();
+        let (_, key_metadata) = create_did_and_key_metadata(&kms).await;
+
+        let builder = HolderBuilder::new(
+            kms,
+            vault,
+            key_metadata,
+            "fake_client_id".to_string(),
+            IssuerDiscovery::Metadata(sample_issuer_metadata(), sample_authorization_metadata()),
+        )
+            .with_http_client(http_client)
+            .with_redirect_url("urn:ietf:wg:oauth:2.0:oob".to_string());
+
+        builder.build().await.unwrap()
+    }
+
+    fn sample_access_token_response() -> serde_json::Value {
+        json!({
+            "access_token": ACCESS_TOKEN,
+            "token_type": "bearer",
+            "expires_in": 86400,
+        })
+    }
+
+    fn par_request_endpoint() -> Url {
+        Url::parse(AUTH_URL).unwrap().join("/par/request").unwrap()
+    }
+    fn access_token_endpoint() -> Url {
+        Url::parse(AUTH_URL).unwrap().join("/token").unwrap()
+    }
+
+    fn credential_endpoint() -> Url {
+        Url::parse(ISSUER_URL).unwrap().join("/credential").unwrap()
+    }
+}
