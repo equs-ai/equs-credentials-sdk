@@ -47,6 +47,10 @@ impl ProtocolError {
     pub fn nonce(&self) -> Option<&Nonce> {
         self.c_nonce.as_ref()
     }
+
+    pub fn error_type(&self) -> &ErrorType {
+        &self.error
+    }
 }
 
 impl ProtocolSnafu<ErrorType, Option<String>, Option<Nonce>, Option<i64>> {

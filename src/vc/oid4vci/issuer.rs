@@ -614,3 +614,182 @@ impl NonceData {
         }
     }
 }
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use serde_json::json;
+    use oauth2::http::{Method, StatusCode};
+    use api::{Issuer, IssuerBuilder};
+    use crate::inmem::kms::LocalKms;
+    use crate::vc::oid4vci::Error::Protocol;
+    use crate::utils::test_utils::create_did_and_key_metadata;
+    use crate::vc::oid4vci::AuthorizationCodeGrant;
+    use crate::utils::http::test::mock_http_req_body;
+    use crate::http::MockHttpClient;
+
+    use crate::vc::oid4vci::tests::fixtures::{
+        AUTH_URL, ACCESS_TOKEN, NONCE,
+        sample_issuer_metadata, sample_credential_offer,
+        sample_credential_request, sample_claims
+    };
+
+    #[tokio::test]
+    async fn issuer_returns_metadata_correctly() {
+        let issuer = build_issuer().await;
+
+        let metadata = issuer.get_issuer_metadata();
+
+        assert_eq!(metadata, sample_issuer_metadata());
+    }
+
+    #[tokio::test]
+    async fn issuer_creates_credential_offer_correctly() {
+        let issuer = build_issuer().await;
+
+        let offer = issuer.create_credential_offer(
+            vec!["SD_JWT_cred"],
+            &CredentialOfferGrants {
+                authorization_code: Some(AuthorizationCodeGrant { issuer_state: None }),
+                pre_authorized_code: None,
+            },
+        ).unwrap();
+
+        assert_eq!(serde_json::to_value(offer.0).unwrap(), sample_credential_offer());
+    }
+
+    #[tokio::test]
+    async fn issuance_succeeds_when_nonce_is_provided() {
+        let issuer = build_issuer().await;
+
+        let iss_result = issuer.issue_credential(
+            &sample_credential_request(),
+            ACCESS_TOKEN,
+            &sample_claims(),
+            &mut sample_session_with_nonce(),
+        ).await;
+
+        iss_result.unwrap();
+    }
+
+    #[tokio::test]
+    async fn issuance_fails_with_invalid_proof_error_when_nonce_is_not_provided() {
+        let issuer = build_issuer().await;
+
+        let iss_result = issuer.issue_credential(
+            &sample_credential_request(),
+            ACCESS_TOKEN,
+            &sample_claims(),
+            &mut sample_session_without_nonce(),
+        ).await;
+
+        assert!(matches!(
+            iss_result.err().unwrap(),
+            Protocol { source } if *source.error_type() == ErrorType::InvalidProof
+        ));
+    }
+
+    #[tokio::test]
+    async fn issuer_requests_token_validity_from_auth_server() {
+        let mut http_client = MockHttpClient::new();
+
+        mock_http_req_body(
+            &mut http_client,
+            Method::POST,
+            Url::parse(AUTH_URL).unwrap().join("/token/introspect").unwrap(),
+            format!("token={}", ACCESS_TOKEN),
+            json!({
+                  "active": true,
+            }),
+            StatusCode::OK,
+            1.into(),
+        );
+
+        let issuer = build_issuer_with_token_validation(http_client).await;
+
+        let iss_result = issuer.issue_credential(
+            &sample_credential_request(),
+            ACCESS_TOKEN,
+            &sample_claims(),
+            &mut sample_session_with_nonce(),
+        ).await.unwrap();
+    }
+
+
+    #[tokio::test]
+    async fn issuance_fails_with_invalid_token_error_when_token_is_not_active() {
+        let authz_url = Url::parse(AUTH_URL).unwrap();
+        let mut http_client = MockHttpClient::new();
+
+        mock_http_req_body(
+            &mut http_client,
+            Method::POST,
+            authz_url.join("/token/introspect").unwrap(),
+            format!("token={}", ACCESS_TOKEN),
+            json!({
+                  "active": false,
+            }),
+            StatusCode::OK,
+            1.into(),
+        );
+
+        let issuer = build_issuer_with_token_validation(http_client).await;
+
+        let iss_result = issuer.issue_credential(
+            &sample_credential_request(),
+            ACCESS_TOKEN,
+            &sample_claims(),
+            &mut sample_session_with_nonce(),
+        ).await;
+
+        assert!(matches!(
+            iss_result.err().unwrap(),
+            Protocol { source } if *source.error_type() == ErrorType::InvalidToken
+        ));
+    }
+
+    fn sample_session_with_nonce() -> IssuanceSession {
+        let mut session = IssuanceSession::default();
+
+        let nonce_data: NonceData = serde_json::from_value(json!(
+            {
+                "nonce": NONCE,
+                "expires_in": 86440,
+                "created": null
+            }
+        )).unwrap();
+
+        session.nonce = Some(nonce_data);
+        session
+    }
+
+    fn sample_session_without_nonce() -> IssuanceSession {
+        IssuanceSession::default()
+    }
+
+    async fn build_issuer() -> impl Issuer {
+        let kms = LocalKms::new();
+        let issuer_metadata = sample_issuer_metadata();
+        let (_, key_metadata) = create_did_and_key_metadata(&kms).await;
+        let builder = IssuerBuilder::new(kms, issuer_metadata, key_metadata);
+
+        builder.build().await.unwrap()
+    }
+
+    async fn build_issuer_with_token_validation(http_client: MockHttpClient) -> impl Issuer {
+        let kms = LocalKms::new();
+        let issuer_metadata = sample_issuer_metadata();
+        let (_, key_metadata) = create_did_and_key_metadata(&kms).await;
+        let builder = IssuerBuilder::new(kms, issuer_metadata, key_metadata);
+
+        let authz_url = Url::parse(AUTH_URL).unwrap();
+
+        builder
+            .with_http_client(http_client)
+            .token_validation_introspect(authz_url.join("/token/introspect").unwrap(), None)
+            .build()
+            .await.unwrap()
+    }
+}

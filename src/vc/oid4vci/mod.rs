@@ -15,6 +15,9 @@ mod builder;
 mod internal_error;
 mod protocol_error;
 
+#[cfg(test)]
+pub(crate) mod tests;
+
 pub use builder::HolderBuilder;
 pub use builder::IssuerBuilder;
 pub use builder::IssuerDiscovery;
@@ -331,7 +334,7 @@ pub trait Holder: Send + Sync {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod e2e_tests {
     use futures::executor;
     use oauth2::http::{Method, StatusCode};
     use oauth2::{HttpRequest, HttpResponse, TokenResponse};
@@ -342,15 +345,11 @@ mod tests {
     use serde_json::json;
     use url::Url;
 
-    use crate::did::didkey::DIDKey;
-    use crate::did::{DIDResolver, DID};
+    use crate::utils::test_utils::create_did_and_key_metadata;
     use crate::http::MockHttpClient;
     use crate::inmem::kms::LocalKms;
     use crate::inmem::vault::InMemVault;
-    use crate::kms;
-    use crate::kms::Kms;
     use crate::utils::http::test::{mock_http, mock_http_fn, mock_http_once, mock_static_ctx};
-    use crate::vc::core::KeyMetadata;
     use crate::vc::oid4vci::{
         issuer, CredentialOffer, CredentialOfferGrants, CredentialOfferParams, Holder,
         HolderBuilder, IssuanceSession, Issuer, IssuerBuilder, IssuerDiscovery,
@@ -582,22 +581,6 @@ mod tests {
             .build()
             .await
             .unwrap()
-    }
-
-    // TODO: move to the common test-util module
-    async fn create_did_and_key_metadata(kms: &LocalKms) -> (DID, KeyMetadata) {
-        let didkey = DIDKey::new();
-
-        let (kid, kh) = kms
-            .create_and_handle(kms::KeyType::P256, kms::CreateOptions {})
-            .await
-            .unwrap();
-
-        let did = didkey.generate(kh).unwrap();
-
-        let vm = didkey.resolve_verification_method(&did).await.unwrap().id;
-
-        (did, KeyMetadata { kid, did_url: vm })
     }
 
     fn sample_issuer_metadata(iss_url: &str, authz_url: &str) -> IssuerMetadata {
