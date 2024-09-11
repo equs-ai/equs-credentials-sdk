@@ -54,12 +54,12 @@ pub mod test {
         status: StatusCode,
         times: mockall::TimesRange,
     ) {
-        mock
-            .expect_async_call()
+        mock.expect_async_call()
             .withf(move |req| {
                 let method = req.method == method;
                 let url = req.url == url;
-                let body = String::from_utf8(req.body.clone()).expect("Found invalid UTF-8") == expected_req_body;
+                let body = String::from_utf8(req.body.clone()).expect("Found invalid UTF-8")
+                    == expected_req_body;
 
                 method && url && body
             })
@@ -82,18 +82,18 @@ pub mod test {
         body: T,
         status: StatusCode,
         times: mockall::TimesRange,
-    )
-    where
+    ) where
         T: serde::Serialize + Send + Sync + 'static,
         F: Fn(String) -> bool + Send + 'static,
     {
-        mock
-            .expect_async_call()
+        mock.expect_async_call()
             .withf(move |req| {
                 let method = req.method == method;
                 let url = req.url == url;
 
-                method && url && expected_req_body_predicate(String::from_utf8(req.body.clone()).unwrap())
+                method
+                    && url
+                    && expected_req_body_predicate(String::from_utf8(req.body.clone()).unwrap())
             })
             .times(times)
             .returning(move |_| {

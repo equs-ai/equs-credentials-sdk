@@ -651,23 +651,22 @@ impl TryInto<SpruceProof> for AsdkProof {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::json;
-    use api::IssuerDiscovery;
-    use oauth2::http::{Method, StatusCode};
+    use crate::http::MockHttpClient;
     use crate::inmem::kms::LocalKms;
     use crate::inmem::vault::InMemVault;
-    use crate::vault::{MockVault, Vault};
-    use crate::vc::VCFormat;
-    use crate::vc::oid4vci::{Holder, HolderBuilder, CredentialRequest, CredentialResult};
-    use crate::utils::test_utils::create_did_and_key_metadata;
     use crate::utils::http::test::{mock_http_once, mock_http_req_predicate};
-    use crate::http::MockHttpClient;
+    use crate::utils::test_utils::create_did_and_key_metadata;
+    use crate::vault::{MockVault, Vault};
     use crate::vc::oid4vci::tests::fixtures::{
-        ISSUER_URL, AUTH_URL, ACCESS_TOKEN, SD_JWT_CREDS,
-        NOTIFICATION_ID, SCOPE, REQ_URI_CODE,
-        sample_issuer_metadata, sample_authorization_metadata,
-        sample_cred_response, sample_nonce, sample_access_token,
+        sample_access_token, sample_authorization_metadata, sample_cred_response,
+        sample_issuer_metadata, sample_nonce, ACCESS_TOKEN, AUTH_URL, ISSUER_URL, NOTIFICATION_ID,
+        REQ_URI_CODE, SCOPE, SD_JWT_CREDS,
     };
+    use crate::vc::oid4vci::{CredentialRequest, CredentialResult, Holder, HolderBuilder};
+    use crate::vc::VCFormat;
+    use api::IssuerDiscovery;
+    use oauth2::http::{Method, StatusCode};
+    use serde_json::json;
 
     #[tokio::test]
     async fn holder_requests_access_token_correctly() {
@@ -678,9 +677,9 @@ mod tests {
             Method::POST,
             par_request_endpoint(),
             json!({
-                "request_uri": "urn:ietf:params:oauth:request_uri:".to_owned() + REQ_URI_CODE,
-                "expires_in": 86400,
-             }),
+               "request_uri": "urn:ietf:params:oauth:request_uri:".to_owned() + REQ_URI_CODE,
+               "expires_in": 86400,
+            }),
             StatusCode::CREATED,
         );
 
@@ -694,16 +693,19 @@ mod tests {
 
         let holder_service = build_holder(http_client, InMemVault::new()).await;
 
-        let token_response = holder_service.authz_code_flow_with_scope(
-            SCOPE.into(),
-            |url| {
+        let token_response = holder_service
+            .authz_code_flow_with_scope(SCOPE.into(), |url| {
                 assert!(url.to_string().starts_with(AUTH_URL));
                 assert!(url.query().unwrap().contains(REQ_URI_CODE));
                 "fake_auth_code".to_string()
-            },
-        ).await.unwrap();
+            })
+            .await
+            .unwrap();
 
-        assert_eq!(serde_json::to_value(&token_response).unwrap(), sample_access_token_response());
+        assert_eq!(
+            serde_json::to_value(&token_response).unwrap(),
+            sample_access_token_response()
+        );
     }
 
     #[tokio::test]
@@ -716,7 +718,8 @@ mod tests {
             Method::POST,
             credential_endpoint(),
             |req_body| {
-                serde_json::from_str::<CredentialRequest>(&req_body).expect("invalid credential request");
+                serde_json::from_str::<CredentialRequest>(&req_body)
+                    .expect("invalid credential request");
                 true
             },
             sample_cred_response(),
@@ -726,11 +729,9 @@ mod tests {
 
         let holder = build_holder(http_client, InMemVault::new()).await;
 
-        let _ = holder.request_credential(
-            &sample_access_token(),
-            SCOPE,
-            Some(sample_nonce())
-        ).await;
+        let _ = holder
+            .request_credential(&sample_access_token(), SCOPE, Some(sample_nonce()))
+            .await;
     }
 
     #[tokio::test]
@@ -747,11 +748,10 @@ mod tests {
 
         let holder = build_holder(http_client, InMemVault::new()).await;
 
-        let response = holder.request_credential(
-            &sample_access_token(),
-            SCOPE,
-            Some(sample_nonce())
-        ).await.unwrap();
+        let response = holder
+            .request_credential(&sample_access_token(), SCOPE, Some(sample_nonce()))
+            .await
+            .unwrap();
 
         assert!(matches!(
             response.data,
@@ -764,14 +764,11 @@ mod tests {
 
     #[tokio::test]
     async fn holder_stores_credentilas_correctly() {
-
         let mut vault = MockVault::new();
         vault
             .expect_store_credential()
             .times(1)
-            .returning(|arg0, arg2| {
-                Ok(String::from("fake_cred_id"))
-            });
+            .returning(|arg0, arg2| Ok(String::from("fake_cred_id")));
 
         let holder_service = build_holder(MockHttpClient::new(), vault).await;
         let credential = Credential::SdJwt("fake_sdjwt".to_string());
@@ -783,7 +780,9 @@ mod tests {
             tags: vec![],
         };
 
-        let result = holder_service.store_credential(&credential, &cred_metadata).await;
+        let result = holder_service
+            .store_credential(&credential, &cred_metadata)
+            .await;
 
         result.unwrap();
     }
@@ -799,8 +798,8 @@ mod tests {
             "fake_client_id".to_string(),
             IssuerDiscovery::Metadata(sample_issuer_metadata(), sample_authorization_metadata()),
         )
-            .with_http_client(http_client)
-            .with_redirect_url("urn:ietf:wg:oauth:2.0:oob".to_string());
+        .with_http_client(http_client)
+        .with_redirect_url("urn:ietf:wg:oauth:2.0:oob".to_string());
 
         builder.build().await.unwrap()
     }

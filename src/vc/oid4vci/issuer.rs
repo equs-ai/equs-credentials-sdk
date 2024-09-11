@@ -541,25 +541,23 @@ impl NonceData {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    use serde_json::json;
-    use oauth2::http::{Method, StatusCode};
-    use api::{Issuer, IssuerBuilder};
+    use crate::http::MockHttpClient;
     use crate::inmem::kms::LocalKms;
-    use crate::vc::oid4vci::Error::Protocol;
+    use crate::utils::http::test::mock_http_req_body;
     use crate::utils::test_utils::create_did_and_key_metadata;
     use crate::vc::oid4vci::AuthorizationCodeGrant;
-    use crate::utils::http::test::mock_http_req_body;
-    use crate::http::MockHttpClient;
+    use crate::vc::oid4vci::Error::Protocol;
+    use api::{Issuer, IssuerBuilder};
+    use oauth2::http::{Method, StatusCode};
+    use serde_json::json;
 
     use crate::vc::oid4vci::tests::fixtures::{
-        AUTH_URL, ACCESS_TOKEN, NONCE,
-        sample_issuer_metadata, sample_credential_offer,
-        sample_credential_request, sample_claims
+        sample_claims, sample_credential_offer, sample_credential_request, sample_issuer_metadata,
+        ACCESS_TOKEN, AUTH_URL, NONCE,
     };
 
     #[tokio::test]
@@ -575,27 +573,34 @@ mod tests {
     async fn issuer_creates_credential_offer_correctly() {
         let issuer = build_issuer().await;
 
-        let offer = issuer.create_credential_offer(
-            vec!["SD_JWT_cred"],
-            &CredentialOfferGrants {
-                authorization_code: Some(AuthorizationCodeGrant { issuer_state: None }),
-                pre_authorized_code: None,
-            },
-        ).unwrap();
+        let offer = issuer
+            .create_credential_offer(
+                vec!["SD_JWT_cred"],
+                &CredentialOfferGrants {
+                    authorization_code: Some(AuthorizationCodeGrant { issuer_state: None }),
+                    pre_authorized_code: None,
+                },
+            )
+            .unwrap();
 
-        assert_eq!(serde_json::to_value(offer.0).unwrap(), sample_credential_offer());
+        assert_eq!(
+            serde_json::to_value(offer.0).unwrap(),
+            sample_credential_offer()
+        );
     }
 
     #[tokio::test]
     async fn issuance_succeeds_when_nonce_is_provided() {
         let issuer = build_issuer().await;
 
-        let iss_result = issuer.issue_credential(
-            &sample_credential_request(),
-            ACCESS_TOKEN,
-            &sample_claims(),
-            &mut sample_session_with_nonce(),
-        ).await;
+        let iss_result = issuer
+            .issue_credential(
+                &sample_credential_request(),
+                ACCESS_TOKEN,
+                &sample_claims(),
+                &mut sample_session_with_nonce(),
+            )
+            .await;
 
         iss_result.unwrap();
     }
@@ -604,12 +609,14 @@ mod tests {
     async fn issuance_fails_with_invalid_proof_error_when_nonce_is_not_provided() {
         let issuer = build_issuer().await;
 
-        let iss_result = issuer.issue_credential(
-            &sample_credential_request(),
-            ACCESS_TOKEN,
-            &sample_claims(),
-            &mut sample_session_without_nonce(),
-        ).await;
+        let iss_result = issuer
+            .issue_credential(
+                &sample_credential_request(),
+                ACCESS_TOKEN,
+                &sample_claims(),
+                &mut sample_session_without_nonce(),
+            )
+            .await;
 
         assert!(matches!(
             iss_result.err().unwrap(),
@@ -624,7 +631,10 @@ mod tests {
         mock_http_req_body(
             &mut http_client,
             Method::POST,
-            Url::parse(AUTH_URL).unwrap().join("/token/introspect").unwrap(),
+            Url::parse(AUTH_URL)
+                .unwrap()
+                .join("/token/introspect")
+                .unwrap(),
             format!("token={}", ACCESS_TOKEN),
             json!({
                   "active": true,
@@ -635,14 +645,16 @@ mod tests {
 
         let issuer = build_issuer_with_token_validation(http_client).await;
 
-        let iss_result = issuer.issue_credential(
-            &sample_credential_request(),
-            ACCESS_TOKEN,
-            &sample_claims(),
-            &mut sample_session_with_nonce(),
-        ).await.unwrap();
+        let iss_result = issuer
+            .issue_credential(
+                &sample_credential_request(),
+                ACCESS_TOKEN,
+                &sample_claims(),
+                &mut sample_session_with_nonce(),
+            )
+            .await
+            .unwrap();
     }
-
 
     #[tokio::test]
     async fn issuance_fails_with_invalid_token_error_when_token_is_not_active() {
@@ -663,12 +675,14 @@ mod tests {
 
         let issuer = build_issuer_with_token_validation(http_client).await;
 
-        let iss_result = issuer.issue_credential(
-            &sample_credential_request(),
-            ACCESS_TOKEN,
-            &sample_claims(),
-            &mut sample_session_with_nonce(),
-        ).await;
+        let iss_result = issuer
+            .issue_credential(
+                &sample_credential_request(),
+                ACCESS_TOKEN,
+                &sample_claims(),
+                &mut sample_session_with_nonce(),
+            )
+            .await;
 
         assert!(matches!(
             iss_result.err().unwrap(),
@@ -685,7 +699,8 @@ mod tests {
                 "expires_in": 86440,
                 "created": null
             }
-        )).unwrap();
+        ))
+        .unwrap();
 
         session.nonce = Some(nonce_data);
         session
@@ -716,6 +731,7 @@ mod tests {
             .with_http_client(http_client)
             .token_validation_introspect(authz_url.join("/token/introspect").unwrap(), None)
             .build()
-            .await.unwrap()
+            .await
+            .unwrap()
     }
 }

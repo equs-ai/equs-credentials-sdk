@@ -10,13 +10,13 @@
 
 // external
 pub mod crypto;
+pub mod http;
 pub mod kms;
 pub mod storage;
 pub mod vault;
 
 // core
 pub mod did;
-pub mod http;
 mod utils;
 pub mod vc;
 // TODO: make private after moving the oid4vc
