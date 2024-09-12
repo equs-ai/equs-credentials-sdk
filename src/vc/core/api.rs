@@ -21,7 +21,6 @@ pub struct IssuerMetadata {
     pub issuer_id: String,
     pub cred_defs: Vec<CredentialDefinition>,
     pub protocol_data: Option<IssuerMetadataData>, // Protocol specific
-    pub key_metadata: KeyMetadata,
 }
 
 /// A protocol-specific data for the `Issuer`.
@@ -34,9 +33,6 @@ pub struct IssuerMetadataData {}
 ///
 /// Defines the Credential Schema and enlists the claims expected in the corresponding `Credential`.
 /// Contains other various data necessary for creation of `Credential` as well.
-///
-/// *NOTE*: `KeyMetadata` for a `CredDef` is optional.
-/// If it is `None` `Issuer`s will fall back to the root-level one.
 #[derive(Debug, Clone, PartialEq)]
 pub struct CredentialDefinition {
     pub cred_def_id: String,
@@ -46,7 +42,7 @@ pub struct CredentialDefinition {
     pub supported_signing_algs: Option<Vec<crypto::Alg>>,
     pub display: Option<Display>,
     pub protocol_data: Option<CredentialDefinitionData>, // Protocol specific
-    pub key_metadata: Option<KeyMetadata>,
+    pub key_metadata: KeyMetadata,
 }
 
 /// A helper struct for handling Keys and DIDs for the services.

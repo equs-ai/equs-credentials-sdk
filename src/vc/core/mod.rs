@@ -141,13 +141,12 @@ mod tests {
                     disclosures: vec!["$.given_name".to_owned(), "$.family_name".to_owned()],
                     lifetime: None,
                 }),
-                key_metadata: None,
+                key_metadata: KeyMetadata {
+                    did_url: did_url.to_string(),
+                    kid: kid.clone(),
+                },
             }],
             protocol_data: None,
-            key_metadata: KeyMetadata {
-                did_url: did_url.to_string(),
-                kid: kid.clone(),
-            },
         };
 
         IssuerService::new(kms, metadata)

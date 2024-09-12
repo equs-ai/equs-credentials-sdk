@@ -10,6 +10,7 @@ use crate::vc::oid4vci::CredentialOffer;
 use crate::{kms, vault, vc};
 use oid4vci::openidconnect::JsonWebKeySetUrl;
 use snafu::{Location, Snafu};
+use std::collections::HashMap;
 use std::fmt::Debug;
 use std::marker::PhantomData;
 use tracing::{info, instrument, Level};
@@ -58,6 +59,7 @@ where
     issuer_metadata: api::IssuerMetadata,
     key_metadata: KeyMetadata,
     token_params: Option<TokenParams>,
+    cred_conf_ids_with_key_metadata: HashMap<String, KeyMetadata>,
 
     // services
     kms: KMS,
@@ -77,7 +79,9 @@ where
     ///
     /// * `kms` - an inner KMS.
     /// * `issuer_metadata` - an `IssuerMetadata`.
-    /// * `key_metadata` - a `KeyMetadata` with `DIDURL` and `KID` to be used for signing operations.
+    /// * `key_metadata` - a default `KeyMetadata` with `DIDURL` and `KID` to be used for signing operations.
+    ///    If you want to specify a dedicated `KeyMedata` per `credential_configuration_id`, please
+    ///    use `with_dedicated_key_metadata` builder function
     ///
     /// # Defaults
     ///
@@ -107,6 +111,7 @@ where
             kms,
             http_client,
             token_params: None,
+            cred_conf_ids_with_key_metadata: Default::default(),
             _marker: Default::default(),
         }
     }
@@ -138,6 +143,7 @@ where
             key_metadata: self.key_metadata,
             token_params: self.token_params,
             kms: self.kms,
+            cred_conf_ids_with_key_metadata: Default::default(),
             _marker: Default::default(),
         }
     }
@@ -171,6 +177,30 @@ where
         self
     }
 
+    /// Sets a `KeyMetadata` to be used for signing operations of the credential
+    /// with the corresponding `credential_configuration_id`.
+    ///
+    /// # Arguments
+    ///
+    /// * `credential_configuration_id` - credential configuration id predefined on `IssuerMetadata`.
+    /// * `key_metadata` - a `KeyMetadata` with `DIDURL` and `KID` to be used for signing operations.
+    #[instrument(
+        level = Level::TRACE,
+        skip(self),
+    )]
+    pub fn with_dedicated_key_metadata(
+        mut self,
+        credential_configuration_id: &str,
+        key_metadata: &KeyMetadata,
+    ) -> Self {
+        self.cred_conf_ids_with_key_metadata.insert(
+            credential_configuration_id.to_owned(),
+            key_metadata.to_owned(),
+        );
+
+        self
+    }
+
     /// Builds an `Issuer`.
     ///
     /// # Returns
@@ -182,15 +212,18 @@ where
         err(),
     )]
     pub async fn build(self) -> Result<impl api::Issuer, Error> {
-        let inner = vc::core::IssuerService::new(
-            self.kms,
-            convert_metadata(&self.issuer_metadata, self.key_metadata).map_err(|e| {
-                BuildSnafu {
-                    details: format!("Cannot convert metadata: {e}"),
-                }
-                .build()
-            })?,
-        );
+        let issuer_metadata = convert_metadata(
+            &self.issuer_metadata,
+            &self.cred_conf_ids_with_key_metadata,
+            &self.key_metadata,
+        )
+        .map_err(|e| {
+            BuildSnafu {
+                details: format!("Cannot convert metadata: {e}"),
+            }
+            .build()
+        })?;
+        let inner = vc::core::IssuerService::new(self.kms, issuer_metadata);
 
         let http_client = self.http_client.map_err(|e| {
             BuildSnafu {

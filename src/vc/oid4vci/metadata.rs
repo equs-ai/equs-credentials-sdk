@@ -48,12 +48,21 @@ type Result<T> = std::result::Result<T, Error>;
 )]
 pub fn convert_metadata(
     issuer_metadata: &IssuerMetadata,
-    key_metadata: KeyMetadata,
+    cred_def_ids_with_key_metadata: &HashMap<String, KeyMetadata>,
+    default_key_metadata: &KeyMetadata,
 ) -> Result<vc::core::IssuerMetadata> {
     let cred_defs = issuer_metadata
         .credential_configurations_supported()
         .iter()
-        .map(|(id, cm)| cred_definition(id, cm))
+        .map(|(id, cm)| {
+            cred_definition(
+                id,
+                cm,
+                cred_def_ids_with_key_metadata
+                    .get(id)
+                    .unwrap_or(default_key_metadata),
+            )
+        })
         .collect::<Result<Vec<CredentialDefinition>>>()?;
 
     trace!(resolved_cred_defs = ?cred_defs);
@@ -62,7 +71,6 @@ pub fn convert_metadata(
         issuer_id: issuer_metadata.credential_issuer().to_string(),
         cred_defs,
         protocol_data: None,
-        key_metadata,
     };
 
     Ok(converted)
@@ -76,6 +84,7 @@ pub fn convert_metadata(
 pub fn cred_definition(
     id: &String,
     credential_metadata: &oid4vci::metadata::CredentialMetadata<CoreProfilesMetadata>,
+    key_metadata: &KeyMetadata,
 ) -> Result<CredentialDefinition> {
     let protocol_data = match credential_metadata.additional_fields() {
         CoreProfilesMetadata::SDJWTVC(metadata) => Some(sd_jwt_protocol_data(metadata)),
@@ -97,7 +106,7 @@ pub fn cred_definition(
         supported_signing_algs: algs,
         display: None,
         protocol_data,
-        key_metadata: None,
+        key_metadata: key_metadata.to_owned(),
     })
 }
 
