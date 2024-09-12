@@ -3,12 +3,10 @@ use crate::vc::{Claims, Credential};
 use async_trait::async_trait;
 use oid4vp::core::authorization_request::parameters::{Nonce, ResponseMode};
 use oid4vp::core::authorization_request::RequestIndirection;
-use oid4vp::core::object::UntypedObject;
 use serde::{Deserialize, Serialize};
 use snafu::Snafu;
 use std::collections::HashMap;
 use std::fmt::Debug;
-use tracing::{instrument, Level};
 use url::Url;
 
 // Data type
@@ -272,59 +270,5 @@ pub fn auth_request_as_url(req: &AuthorizationRequest, type_: AuthorizationUrlTy
         request_indirection,
     }
     .to_url(req.authorization_endpoint.clone())
-    .unwrap()
-}
-
-const DEFAULT_CLIENT_METADATA: &str = r#"{
-    "vp_formats": {
-        "vc+sd-jwt": {
-            "alg": [
-                "EdDSA",
-                "ES256"
-            ]
-        }
-    }
-}"#;
-
-#[instrument(
-    level = Level::TRACE,
-    ret(level = Level::TRACE)
-)]
-pub(crate) fn default_client_metadata() -> ClientMetadata {
-    ClientMetadata::try_from(
-        serde_json::from_str::<serde_json::Value>(DEFAULT_CLIENT_METADATA).unwrap(),
-    )
-    .unwrap()
-}
-
-const DEFAULT_WALLET_METADATA: &str = r#"{
-    "issuer": "https://self-issued.me/v2",
-    "authorization_endpoint": "openid4vp://",
-    "response_types_supported": [
-        "vp_token"
-    ],
-    "vp_formats_supported":
-    {
-        "vc+sd-jwt": {
-            "alg_values_supported": ["EdDSA", "ES256"]
-        }
-    },
-    "client_id_schemes_supported": [
-        "did"
-    ],
-    "request_object_signing_alg_values_supported": [
-        "EdDSA",
-        "ES256"
-    ]
-}"#;
-
-#[instrument(
-    level = Level::TRACE,
-    ret(level = Level::TRACE)
-)]
-pub(crate) fn default_wallet_metadata() -> WalletMetadata {
-    WalletMetadata::try_from(
-        serde_json::from_str::<UntypedObject>(DEFAULT_WALLET_METADATA).unwrap(),
-    )
     .unwrap()
 }

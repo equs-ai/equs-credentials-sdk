@@ -2,7 +2,7 @@ use snafu::{Location, Snafu};
 use std::fmt::Debug;
 
 use crate::kms::Error as KmsError;
-use crate::vc::oid4vp::presentation_exchange;
+use crate::vc::presentation_exchange;
 use crate::{http, storage, vc};
 
 /// An `oid4vp` internal error.

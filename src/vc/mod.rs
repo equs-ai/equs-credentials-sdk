@@ -7,6 +7,7 @@ pub use crate::vc::formats::Error as VCFormatError;
 
 mod formats;
 mod pop;
+mod presentation_exchange;
 
 pub mod core;
 pub mod metadata;
