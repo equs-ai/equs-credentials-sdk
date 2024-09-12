@@ -268,10 +268,7 @@ where
     async fn resolve_key_metadata(&self, cred_def: &CredentialDefinition) -> Result<(DIDURL, KH)> {
         trace!(credential_definition_id = ?cred_def);
 
-        let key_meta = match &cred_def.key_metadata {
-            Some(m) => m,
-            None => &self.metadata.key_metadata,
-        };
+        let key_meta = &cred_def.key_metadata;
 
         let did_url = DIDURL::from_str(&key_meta.did_url).unwrap();
 
