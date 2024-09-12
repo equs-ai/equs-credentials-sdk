@@ -4,8 +4,7 @@ pub(crate) mod verifier;
 
 mod builder;
 mod internal_error;
-mod presentation_builder;
-mod presentation_exchange;
+mod metadata;
 
 pub use builder::Error as BuilderError;
 pub use builder::HolderBuilder;

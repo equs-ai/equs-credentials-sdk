@@ -12,10 +12,10 @@ use oid4vp::core::object::ParsingErrorContext;
 use oid4vp::core::profile::{Profile, Verifier};
 use oid4vp::core::verifier::request_signer::RequestSigner;
 use oid4vp::core::verifier::Session;
-use oid4vp::presentation_exchange::{ConstraintsField, PresentationDefinition};
+use oid4vp::presentation_exchange::PresentationDefinition;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value as Json};
-use snafu::{ensure, ResultExt};
+use snafu::ResultExt;
 use ssi::jwk::JWK;
 use std::marker::PhantomData;
 use tracing::{info, instrument, trace, Level};
@@ -25,19 +25,19 @@ use crate::crypto::SigningKey;
 use crate::did::DIDResolver;
 use crate::kms::{KeyHandle, Kms};
 use crate::storage::Storage;
-use crate::utils::json::find_json_element;
 use crate::vc;
 use crate::vc::core::KeyMetadata;
+use crate::vc::oid4vp as api;
 use crate::vc::oid4vp::internal_error::{
-    AuthorizationResponseSnafu, FormatNotSupportedSnafu, KMSSnafu, ParseSnafu, StorageSnafu,
-    VCSnafu, VerifierSessionSnafu,
+    KMSSnafu, ParseSnafu, PresentationExchangeSnafu, StorageSnafu, VCSnafu, VerifierSessionSnafu,
 };
-use crate::vc::oid4vp::presentation_builder::DefaultPresentationBuilder;
-use crate::vc::oid4vp::{
-    default_client_metadata, default_wallet_metadata, AuthorizationRequest, AuthorizationResponse,
-    ClientMetadata,
+use crate::vc::oid4vp::metadata::{
+    default_client_metadata, default_vp_formats, default_wallet_metadata,
 };
-use crate::vc::{oid4vp as api, Presentation};
+use crate::vc::oid4vp::{AuthorizationRequest, AuthorizationResponse, ClientMetadata};
+use crate::vc::presentation_exchange;
+use crate::vc::presentation_exchange::builder::DefaultPresentationBuilder;
+use crate::vc::presentation_exchange::PresentationResponse;
 
 pub type Error = api::Error;
 pub type Result<T> = core::result::Result<T, Error>;
@@ -198,64 +198,6 @@ where
 {
     #[instrument(
         level = Level::TRACE,
-        err(),
-        ret(level = Level::TRACE)
-    )]
-    fn validate_field_constraints(claims: &Json, constraints: &[ConstraintsField]) -> Result<()> {
-        // TODO: move to presentation_exchange
-        for constraint in constraints.iter() {
-            for path in constraint.path.iter() {
-                ensure!(
-                    find_json_element(claims, path).is_some(),
-                    AuthorizationResponseSnafu {
-                        details: format!("Requested claim not found by path {path}")
-                    }
-                );
-            }
-        }
-        Ok(())
-    }
-
-    #[instrument(
-        level = Level::TRACE,
-        skip(self),
-        err(),
-        ret(level = Level::TRACE)
-    )]
-    fn validate_formats(&self, presentation_definition: &PresentationDefinition) -> Result<()> {
-        // TODO: move to presentation_exchange (except for extracting VpFormats from metadata)
-        let vp_format_json = match presentation_definition.format.as_ref() {
-            Some(format) => format,
-            None => return Ok(()), // presentation definition does not contain any format
-        };
-
-        let supported_formats = match self.metadata.client_metadata.0.get::<VpFormats>() {
-            Some(Ok(formats)) => formats,
-            _ => return Ok(()), // supported formats are not found
-        };
-
-        let vp_formats: VpFormats = vp_format_json.clone().try_into().map_err(|err| {
-            ParseSnafu {
-                details: format!(
-                    "Failed to parse presentation definition format: {}. Error: {}",
-                    vp_format_json, err
-                ),
-            }
-            .build()
-        })?;
-
-        for vp_format in vp_formats.0.keys() {
-            ensure!(
-                supported_formats.0.contains_key(vp_format),
-                FormatNotSupportedSnafu { format: vp_format }
-            )
-        }
-
-        Ok(())
-    }
-
-    #[instrument(
-        level = Level::TRACE,
         skip(self),
         err(),
         ret(level = Level::TRACE)
@@ -267,7 +209,16 @@ where
         wallet_metadata: WalletMetadata,
         response_uri: Url,
     ) -> Result<AuthorizationRequest> {
-        self.validate_formats(presentation_definition)?;
+        let formats = self
+            .metadata
+            .client_metadata
+            .0
+            .get::<VpFormats>()
+            .and_then(std::result::Result::ok)
+            .unwrap_or_else(default_vp_formats);
+
+        presentation_exchange::validate_formats(formats, presentation_definition)
+            .context(PresentationExchangeSnafu)?;
 
         let presentation_definition_parameter = PresentationDefinitionParameter::try_from(
             presentation_definition.clone(),
@@ -336,64 +287,31 @@ where
         authorization_response: &AuthorizationResponse,
     ) -> Result<Json> {
         let mut result: Map<String, Json> = Map::new();
-        let vp_token = &authorization_response.vp_token;
-        let presentation_submission = &authorization_response.presentation_submission;
+        let presentation_response = PresentationResponse {
+            presentations: authorization_response.vp_token.clone(),
+            presentation_submission: authorization_response.presentation_submission.clone(),
+        };
 
-        for input_descriptor in &presentation_definition.input_descriptors {
-            let descriptor_map = presentation_submission
-                .descriptor_map
-                .iter()
-                .find(|item| item.id == input_descriptor.id)
-                .ok_or(
-                    AuthorizationResponseSnafu {
-                        details: format!(
-                            "Requested presentation {} not found",
-                            input_descriptor.id
-                        ),
-                    }
-                    .build(),
-                )?;
+        let requested_presentations = presentation_exchange::resolve_presentation_response(
+            &presentation_response,
+            presentation_definition,
+        )
+        .context(PresentationExchangeSnafu)?;
 
-            let presentation_json = find_json_element(vp_token, &descriptor_map.path).ok_or(
-                AuthorizationResponseSnafu {
-                    details: format!(
-                        "Requested presentation {:?} not found by path {:?}",
-                        input_descriptor.id, descriptor_map.path
-                    ),
-                }
-                .build(),
-            )?;
-
-            let presentation = match descriptor_map.format.as_str() {
-                "vc+sd-jwt" => {
-                    let sd_jwt = presentation_json.as_str().ok_or(
-                        AuthorizationResponseSnafu {
-                            details: "Incorrect presentation format: expected JWT string"
-                                .to_string(),
-                        }
-                        .build(),
-                    )?;
-
-                    Presentation::SdJwtVp(sd_jwt.to_string())
-                }
-                _ => FormatNotSupportedSnafu {
-                    format: descriptor_map.format.to_owned(),
-                }
-                .fail()?,
-            };
-
+        for requested_presentation in requested_presentations {
             let claims = self
                 .verifier
-                .verify_presentation(nonce, &presentation)
+                .verify_presentation(nonce, &requested_presentation.presentation)
                 .await
                 .context(VCSnafu)?;
+            presentation_exchange::validate_claims(
+                &claims,
+                &requested_presentation.id,
+                presentation_definition,
+            )
+            .context(PresentationExchangeSnafu)?;
 
-            let constraints_fields = input_descriptor.constraints.fields.as_ref();
-            if let Some(constraints) = constraints_fields {
-                Self::validate_field_constraints(&claims, constraints)?;
-            }
-
-            result.insert(input_descriptor.id.clone(), claims);
+            result.insert(requested_presentation.id, claims);
         }
 
         Ok(result.into())
