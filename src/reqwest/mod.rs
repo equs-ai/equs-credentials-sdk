@@ -86,13 +86,4 @@ impl HttpClient for ReqwestClient {
             body: chunks.to_vec(),
         })
     }
-
-    #[instrument(
-        level = Level::TRACE,
-        err(),
-        ret(level = Level::TRACE)
-    )]
-    async fn static_async(request: HttpRequest) -> Result<HttpResponse> {
-        ReqwestClient::new(false, true)?.async_call(request).await
-    }
 }

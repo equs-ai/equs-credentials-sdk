@@ -16,7 +16,7 @@ use tracing::{instrument, trace, Level};
 
 use crate::crypto::{Key, Signer};
 use crate::did::universal::UniversalResolver;
-use crate::did::{DIDDoc, DIDResolver, VerificationMethodMap, DIDURL, DID};
+use crate::did::{DIDDoc, DIDResolver, VerificationMethodMap, DID, DIDURL};
 use crate::utils;
 use crate::utils::b64;
 use crate::utils::serde::Helpers;
@@ -360,12 +360,7 @@ impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata, Value> for Sd
 
         let sgn_wrapper = SignerWrapper { signer };
 
-        let claims = SdJwtAPI::prepare_claims(
-            claims,
-            &iss_did_url.did,
-            &hld_did.did,
-            &metadata
-        );
+        let claims = SdJwtAPI::prepare_claims(claims, &iss_did_url.did, &hld_did.did, &metadata);
         let headers = SdJwtAPI::extra_headers(iss_did_url);
         trace!(resolved_headers = ?headers);
 

@@ -3,7 +3,7 @@ pub const MIME_TYPE_JSON: &str = "application/json";
 
 #[cfg(test)]
 pub mod test {
-    use crate::http::{MockHttpClient, Result, __mock_MockHttpClient_HttpClient};
+    use crate::http::{MockHttpClient, Result};
     use oauth2::http::{Method, StatusCode};
     use oauth2::{HttpRequest, HttpResponse};
 
@@ -124,30 +124,5 @@ pub mod test {
             })
             .times(times)
             .returning(body_fn);
-    }
-
-    #[cfg(test)]
-    pub fn mock_static_ctx<T: serde::Serialize + Send + Sync + 'static>(
-        ctx: &__mock_MockHttpClient_HttpClient::__static_async::Context,
-        method: Method,
-        url: url::Url,
-        body: T,
-        status: StatusCode,
-    ) {
-        ctx.expect()
-            .withf(move |req| {
-                let method = req.method == method;
-                let url = req.url == url;
-
-                method && url
-            })
-            .times(1)
-            .returning(move |_| {
-                Ok(HttpResponse {
-                    status_code: StatusCode::OK,
-                    headers: Default::default(),
-                    body: serde_json::to_vec(&body).unwrap(),
-                })
-            });
     }
 }

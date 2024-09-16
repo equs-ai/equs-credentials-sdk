@@ -8,7 +8,7 @@ edition = "2021"
 rust-version = "1.79"
 
 [dependencies]
-oid4vci = { git = "ssh://git@git.slock.it/open-source/oid4vci-rs.git", rev = "8b2b3161" }
+oid4vci = { git = "ssh://git@git.slock.it/open-source/oid4vci-rs.git", rev = "706b443a" }
 oid4vp = { git = "ssh://git@git.slock.it/open-source/oid4vp-rs.git", rev = "3f130a3e" }
 sd-jwt-rs = { git = "ssh://git@git.slock.it/open-source/sd-jwt-rust.git", rev = "f49801f6" }
 
