@@ -9,7 +9,7 @@ rust-version = "1.79"
 
 [dependencies]
 oid4vci = { git = "ssh://git@git.slock.it/open-source/oid4vci-rs.git", rev = "8b2b3161" }
-oid4vp = { git = "ssh://git@git.slock.it/open-source/oid4vp-rs.git", rev = "35860755" }
+oid4vp = { git = "ssh://git@git.slock.it/open-source/oid4vp-rs.git", rev = "3f130a3e" }
 sd-jwt-rs = { git = "ssh://git@git.slock.it/open-source/sd-jwt-rust.git", rev = "f49801f6" }
 
 oauth2 = "4.4.2"
@@ -39,8 +39,8 @@ snafu = "0.8.4"
 
 
 [dev-dependencies]
+serde_urlencoded = "0.7.1"
 tokio = { version = "1.25.0", features = ["macros"] }
-mockito = "1.5.0"
 mockall = "0.13.0"
 rstest = "0.22.0"
 

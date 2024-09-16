@@ -1,7 +1,7 @@
 use crate::did::universal::UniversalResolver;
-use crate::http;
-use crate::http::HttpSnafu;
+use crate::http::{HttpClient, HttpError, HttpSnafu};
 use crate::inmem::storage::InMemStorage;
+use crate::reqwest::ReqwestClient;
 use crate::vc::core::KeyMetadata;
 use crate::vc::oid4vp as api;
 use crate::vc::oid4vp::holder::HolderService;
@@ -172,12 +172,13 @@ where
 }
 
 /// A builder for creating an `OID4VP` `Holder` API instance.
-pub struct HolderBuilder<KH, KMS, V, D>
+pub struct HolderBuilder<KH, KMS, V, D, HC>
 where
     KH: kms::KeyHandle,
     KMS: kms::Kms<KH>,
     V: vault::Vault,
     D: did::DIDResolver,
+    HC: HttpClient,
 {
     // data
     client_id: String,
@@ -188,12 +189,12 @@ where
     kms: KMS,
     vault: V,
     resolver: D,
-    http_client: Result<reqwest::Client, http::HttpError>,
+    http_client: Result<HC, HttpError>,
 
     _marker: PhantomData<KH>,
 }
 
-impl<KH, KMS, V> HolderBuilder<KH, KMS, V, UniversalResolver>
+impl<KH, KMS, V> HolderBuilder<KH, KMS, V, UniversalResolver, ReqwestClient>
 where
     KH: kms::KeyHandle,
     KMS: kms::Kms<KH>,
@@ -216,16 +217,12 @@ where
         skip(kms, vault)
     )]
     pub fn new(kms: KMS, vault: V, key_metadata: KeyMetadata, client_id: String) -> Self {
-        let http_client = reqwest::Client::builder()
-            .danger_accept_invalid_certs(true)
-            .https_only(false)
+        let http_client = ReqwestClient::new(false, true).map_err(|e| {
+            HttpSnafu {
+                details: e.to_string(),
+            }
             .build()
-            .map_err(|e| {
-                HttpSnafu {
-                    details: e.to_string(),
-                }
-                .build()
-            });
+        });
 
         info!("oid4vp-holder builder is initialized");
 
@@ -242,12 +239,13 @@ where
     }
 }
 
-impl<KH, KMS, V, D> HolderBuilder<KH, KMS, V, D>
+impl<KH, KMS, V, D, HC> HolderBuilder<KH, KMS, V, D, HC>
 where
     KH: kms::KeyHandle,
     KMS: kms::Kms<KH>,
     V: vault::Vault,
     D: did::DIDResolver,
+    HC: HttpClient,
 {
     /// Sets custom wallet metadata for the holder.
     ///
@@ -278,9 +276,20 @@ where
         level = Level::TRACE,
         skip_all,
     )]
-    pub fn with_http_client(mut self, http_client: reqwest::Client) -> Self {
-        self.http_client = Ok(http_client);
-        self
+    pub fn with_http_client<HC_: HttpClient>(
+        self,
+        http_client: HC_,
+    ) -> HolderBuilder<KH, KMS, V, D, HC_> {
+        HolderBuilder {
+            client_id: self.client_id,
+            key_metadata: self.key_metadata,
+            wallet_metadata: self.wallet_metadata,
+            kms: self.kms,
+            vault: self.vault,
+            resolver: self.resolver,
+            http_client: Ok(http_client),
+            _marker: Default::default(),
+        }
     }
 
     /// Sets a custom DID resolver.
@@ -298,7 +307,7 @@ where
     pub fn with_did_resolver<D_: did::DIDResolver>(
         self,
         resolver: D_,
-    ) -> HolderBuilder<KH, KMS, V, D_> {
+    ) -> HolderBuilder<KH, KMS, V, D_, HC> {
         HolderBuilder {
             resolver,
             client_id: self.client_id,
