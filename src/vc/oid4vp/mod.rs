@@ -166,21 +166,25 @@ pub mod test_utils {
 
 #[cfg(test)]
 mod tests {
-    use mockito::Server;
-    use oid4vp::presentation_exchange::{PresentationDefinition, PresentationSubmission};
+    use futures::executor;
+    use oauth2::http::header::CONTENT_TYPE;
+    use oauth2::http::{HeaderMap, HeaderValue, Method, StatusCode};
+    use oauth2::HttpResponse;
+    use oid4vp::presentation_exchange::PresentationDefinition;
     use rstest::rstest;
-    use serde_json::{json, Map, Value as Json, Value};
+    use serde_json::{json, Value as Json, Value};
     use ssi::did::DIDURL;
+    use std::collections::HashMap;
     use std::str::FromStr;
-    use std::sync::Arc;
-    use tokio::sync::Mutex;
-    use url::{form_urlencoded, Url};
+    use url::Url;
 
     use crate::crypto;
     use crate::crypto::Alg;
     use crate::did::universal::UniversalResolver;
+    use crate::http::{HttpClient, MockHttpClient};
     use crate::inmem::kms::LocalKms;
     use crate::inmem::vault::InMemVault;
+    use crate::utils::http::test::mock_http_fn;
     use crate::vault::Vault;
     use crate::vc::core::KeyMetadata;
     use crate::vc::formats::sd_jwt_vc::{SdJwtAPI, VCMetadata};
@@ -196,7 +200,7 @@ mod tests {
     use crate::vc::oid4vp::{Verifier, VerifierBuilder};
     use crate::vc::{Credential, CredentialMetadata, VCFormat};
 
-    type ValidateClaims = dyn FnOnce(Json);
+    type ValidateClaims = dyn Fn(Json) + Send + Sync;
 
     struct Oid4VpTestCredential {
         pub id: &'static str,
@@ -209,6 +213,8 @@ mod tests {
         pub presentation_definition: PresentationDefinition,
         pub validate: Box<ValidateClaims>,
     }
+
+    const VERIFIER_URL: &str = "http://example.com";
 
     fn single_presentation_case() -> Oid4VpTestCase {
         let identity = Oid4VpTestCredential {
@@ -396,8 +402,40 @@ mod tests {
             holder_vault.store_credential(vc, &vc_meta).await.unwrap();
         }
 
-        // Create Holder and Verifier
+        // Create mock http client
+        let mut http_client = MockHttpClient::new();
+
+        // Create Verifier
+        let verifier = verifier().await;
+
+        println!("8.1 Verifier: Create Authorization Request");
+        // TODO: We should not use a test constant for Presentation Definition here,
+        //  we need to build a new one (as every Verifier will build it).
+        let nonce = "n0NcE";
+        let response_uri: Url = format!("{}/auth", VERIFIER_URL).parse().unwrap();
+        let auth_request = verifier
+            .create_authorization_request(&test_case.presentation_definition, nonce, response_uri)
+            .await
+            .unwrap();
+
+        let request_uri: Url = format!("{}/request", VERIFIER_URL).parse().unwrap();
+        let by_value = auth_request_as_url(&auth_request, AuthorizationUrlType::Value);
+        let by_reference = auth_request_as_url(
+            &auth_request,
+            AuthorizationUrlType::Reference(format!("{}/request", &VERIFIER_URL).parse().unwrap()),
+        );
+
+        println!("Request object passed by value: {}", by_value);
+        println!("Request object passed by reference: {}", by_reference);
+
+        mock_request_uri_endpoint(&mut http_client, auth_request.request_object_jwt.clone());
+
+        // Bind mocked http call to verify presentation method
+        mock_verify_presentation(Box::new(verifier), test_case.validate, &mut http_client);
+
+        // Create Holder
         let holder = holder(
+            http_client,
             holder_kms,
             holder_vault,
             KeyMetadata {
@@ -406,41 +444,6 @@ mod tests {
             },
         )
         .await;
-
-        let verifier = verifier().await;
-
-        // Generate mocks
-        let mut verifier_server = Server::new_async().await;
-        let verifier_base_url = verifier_server.url();
-
-        println!("8.1 Verifier: Create Authorization Request");
-        // TODO: We should not use a test constant for Presentation Definition here,
-        //  we need to build a new one (as every Verifier will build it).
-        let nonce = "n0NcE";
-        let response_uri: Url = format!("{}/auth", &verifier_base_url).parse().unwrap();
-        let auth_request = verifier
-            .create_authorization_request(&test_case.presentation_definition, nonce, response_uri)
-            .await
-            .unwrap();
-
-        let request_uri: Url = format!("{}/req-object", &verifier_base_url)
-            .parse()
-            .unwrap();
-        let by_value = auth_request_as_url(&auth_request, AuthorizationUrlType::Value);
-        let by_reference = auth_request_as_url(
-            &auth_request,
-            AuthorizationUrlType::Reference(
-                format!("{}/req-object", &verifier_base_url)
-                    .parse()
-                    .unwrap(),
-            ),
-        );
-
-        println!("Request object passed by value: {}", by_value);
-        println!("Request object passed by reference: {}", by_reference);
-
-        mock_request_uri_endpoint(&mut verifier_server, &auth_request.request_object_jwt);
-        let response_mutex = mock_response_uri_endpoint(&mut verifier_server);
 
         println!("8.2 Holder: Get Authorization Request");
         let request_object = holder
@@ -455,63 +458,68 @@ mod tests {
             .present_credentials_auto(&request_object, &AuthorizationResponseMetadata {})
             .await
             .unwrap();
-
-        println!("10. Verify Presentation");
-        let auth_response = response_mutex.lock().await.clone().unwrap();
-
-        println!("{:?}", auth_response);
-
-        let claims = verifier.verify_presentation(&auth_response).await.unwrap();
-
-        println!("Presentation Claims: {}", claims);
-
-        (test_case.validate)(claims);
     }
 
-    fn mock_request_uri_endpoint(verifier_server: &mut Server, request_object_jwt: &str) {
-        verifier_server
-            .mock("GET", "/req-object")
-            .with_status(200)
-            .with_header("content-type", "text/plain")
-            .with_body(request_object_jwt)
-            .create();
+    fn mock_request_uri_endpoint(http_client: &mut MockHttpClient, request_object_jwt: String) {
+        mock_http_fn(
+            http_client,
+            Method::GET,
+            Url::parse(VERIFIER_URL).unwrap().join("/request").unwrap(),
+            move |req| {
+                let resp = HttpResponse {
+                    status_code: StatusCode::OK,
+                    headers: HeaderMap::from_iter(vec![(
+                        CONTENT_TYPE,
+                        HeaderValue::from_str("text/plain").unwrap(),
+                    )]),
+                    body: Vec::from(request_object_jwt.to_owned()),
+                };
+
+                Ok(resp)
+            },
+            1.into(),
+        );
     }
 
-    fn mock_response_uri_endpoint(
-        verifier_server: &mut Server,
-    ) -> Arc<Mutex<Option<AuthorizationResponse>>> {
-        let authorization_response = Arc::new(Mutex::new(None));
+    fn mock_verify_presentation(
+        verifier: Box<impl Verifier + 'static>,
+        validate_claims: Box<ValidateClaims>,
+        http_client: &mut MockHttpClient,
+    ) {
+        mock_http_fn(
+            http_client,
+            Method::POST,
+            Url::parse(VERIFIER_URL).unwrap().join("/auth").unwrap(),
+            move |request| {
+                println!("10. Verify Presentation");
+                let form: HashMap<String, String> =
+                    serde_urlencoded::from_bytes(request.body.as_slice()).unwrap();
+                // Retrieve vp_token and presentation_definition from submitted form
+                let vp_token =
+                    serde_json::from_str(form.get("vp_token").unwrap().as_str()).unwrap();
+                let presentation_submission =
+                    serde_json::from_str(form.get("presentation_submission").unwrap().as_str())
+                        .unwrap();
 
-        let response_clone = Arc::clone(&authorization_response);
-
-        verifier_server
-            .mock("POST", "/auth")
-            .with_body_from_request(move |request| {
-                let mut json_map = Map::new();
-                for (key, value) in form_urlencoded::parse(request.body().unwrap()) {
-                    // Try to parse the value as JSON, fall back to treating it as a plain string
-                    let json_value: Json =
-                        serde_json::from_str(&value).unwrap_or(Json::String(value.to_string()));
-                    json_map.insert(key.to_string(), json_value);
-                }
-
-                let vp_token = json_map.get("vp_token").unwrap().clone();
-                let presentation_submission: PresentationSubmission = serde_json::from_value(
-                    json_map.get("presentation_submission").unwrap().clone(),
-                )
-                .unwrap();
-
-                let mut locked_response = response_clone.try_lock().unwrap();
-                *locked_response = Some(AuthorizationResponse {
+                let auth_response = AuthorizationResponse {
                     vp_token,
                     presentation_submission,
-                });
+                };
 
-                vec![]
-            })
-            .create();
+                let result = executor::block_on(verifier.verify_presentation(&auth_response));
+                let claims = result.unwrap();
+                println!("Presentation Claims: {}", claims);
 
-        authorization_response
+                validate_claims(claims);
+
+                Ok(HttpResponse {
+                    status_code: StatusCode::OK,
+                    headers: Default::default(),
+                    body: vec![],
+                })
+            },
+            1.into(),
+        );
     }
 
     async fn verifier() -> impl Verifier {
@@ -525,8 +533,14 @@ mod tests {
             .unwrap()
     }
 
-    async fn holder(kms: LocalKms, vault: InMemVault, key_metadata: KeyMetadata) -> impl Holder {
+    async fn holder(
+        http_client: impl HttpClient,
+        kms: LocalKms,
+        vault: InMemVault,
+        key_metadata: KeyMetadata,
+    ) -> impl Holder {
         HolderBuilder::new(kms, vault, key_metadata, "wallet-dev".to_string())
+            .with_http_client(http_client)
             .build()
             .await
             .unwrap()

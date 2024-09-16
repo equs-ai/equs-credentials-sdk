@@ -1,4 +1,5 @@
 use crate::did::DIDResolver;
+use crate::http::HttpClient;
 use crate::vc;
 use crate::vc::core::PresentationInput;
 use crate::vc::oid4vp::internal_error::{
@@ -32,7 +33,7 @@ use url::Url;
 pub type Error = api::Error;
 pub type Result<T> = core::result::Result<T, Error>;
 
-pub struct HolderService<HL, D>
+pub struct HolderService<HL, D, HC>
 where
     HL: vc::core::Holder,
     D: DIDResolver,
@@ -40,13 +41,14 @@ where
     holder: HL,
     did_resolver: D,
     metadata: WalletMetadata,
-    http_client: reqwest::Client,
+    http_client: HC,
 }
 
-impl<HL, D> HolderService<HL, D>
+impl<HL, D, HC> HolderService<HL, D, HC>
 where
     HL: vc::core::Holder,
     D: DIDResolver,
+    HC: HttpClient,
 {
     #[instrument(
         level = Level::TRACE,
@@ -56,7 +58,7 @@ where
         holder: HL,
         did_resolver: D,
         metadata: Option<WalletMetadata>,
-        http_client: reqwest::Client,
+        http_client: HC,
     ) -> Self {
         let metadata = metadata.unwrap_or(default_wallet_metadata());
 
@@ -93,7 +95,7 @@ where
                 &auth_request.response_uri,
                 &auth_request.response_mode,
                 auth_resp,
-                &self.http_client,
+                |req| self.http_client.async_call(req),
             )
             .await
             .map_err(|e| {
@@ -177,10 +179,11 @@ where
 }
 
 #[async_trait]
-impl<HL, D> api::Holder for HolderService<HL, D>
+impl<HL, D, HC> api::Holder for HolderService<HL, D, HC>
 where
     HL: vc::core::Holder,
     D: DIDResolver,
+    HC: HttpClient,
 {
     #[instrument(
         level = Level::TRACE,
@@ -191,12 +194,12 @@ where
     async fn get_authorization_request(&self, auth_req_uri: &str) -> Result<ResolvedAuthRequest> {
         let url = Url::parse(auth_req_uri).context(UrlParseSnafu)?;
         let aro = self
-            .handle_request(&url, &self.http_client)
+            .handle_request(&url, |req| self.http_client.async_call(req))
             .await
             .context(AuthorizationRequestSnafu)?;
 
         let pres_def = aro
-            .resolve_presentation_definition()
+            .resolve_presentation_definition(|req| self.http_client.async_call(req))
             .await
             .context(AuthorizationRequestSnafu)?
             .parsed()
@@ -327,10 +330,11 @@ where
 }
 
 #[async_trait]
-impl<HL, D> profile::Profile for HolderService<HL, D>
+impl<HL, D, HC> profile::Profile for HolderService<HL, D, HC>
 where
     HL: vc::core::Holder,
     D: DIDResolver,
+    HC: HttpClient,
 {
     type CredentialFormat = CoreCredentialFormat;
 
@@ -349,9 +353,10 @@ where
             return Ok(());
         }
 
-        let client_metadata = ClientMetadata::resolve(request_object)
-            .await
-            .parsing_error()?;
+        let client_metadata =
+            ClientMetadata::resolve(request_object, |req| self.http_client.async_call(req))
+                .await
+                .parsing_error()?;
 
         if let Some(Ok(vp_formats)) = client_metadata.0.get::<VpFormats>() {
             let unsupported = vp_formats
@@ -368,10 +373,11 @@ where
 }
 
 #[async_trait]
-impl<HL, D> Wallet for HolderService<HL, D>
+impl<HL, D, HC> Wallet for HolderService<HL, D, HC>
 where
     HL: vc::core::Holder,
     D: DIDResolver,
+    HC: HttpClient,
 {
     fn wallet_metadata(&self) -> &WalletMetadata {
         &self.metadata
@@ -379,10 +385,11 @@ where
 }
 
 #[async_trait]
-impl<HL, D> RequestVerification for HolderService<HL, D>
+impl<HL, D, HC> RequestVerification for HolderService<HL, D, HC>
 where
     HL: vc::core::Holder,
     D: DIDResolver,
+    HC: HttpClient,
 {
     #[instrument(
         level = Level::TRACE,
@@ -515,10 +522,16 @@ where
 #[cfg(test)]
 mod tests {
     use crate::crypto::Alg;
+    use crate::http::{HttpClient, MockHttpClient};
     use crate::inmem::kms::LocalKms;
     use crate::inmem::vault::InMemVault;
+    use crate::utils::http::test::mock_http_fn;
     use crate::vault::Vault;
     use crate::vc::{Credential, CredentialMetadata, VCFormat};
+    use oauth2::http::header::CONTENT_TYPE;
+    use oauth2::http::{HeaderMap, HeaderValue, Method, StatusCode};
+    use oauth2::HttpResponse;
+    use url::Url;
 
     use crate::vc::oid4vp::test_utils::create_did_and_key_metadata;
     use crate::vc::oid4vp::Holder;
@@ -528,22 +541,16 @@ mod tests {
     const REQUEST_URI: &str = "openid4vp://?client_id=did%3Akey%3AzDnaeagvW2eDWc2yVw7B98ovcJ8jddn7T9Mh3y5Vikys6y4kX&request_uri=http%3A%2F%2F127.0.0.1%3A55796%2Frequest";
     const CLIENT_ID: &str = "wallet-dev";
     const CRED_JWT: &str = "eyJ0eXAiOiJ2YytzZC1qd3QiLCJhbGciOiJFUzI1NiJ9.eyJfc2QiOlsiSDQyTEp5b1JtWFhybktOUUZDWFcxb3BnRURtZ05hUFlsLUVyV3lxWkNXNCIsIlVOd19fd3hQSzdIbWk3LVZvdjBpaUZvc2Y2bUFCNlM2MzdTd3BqdlRWbDgiLCJlX2NaMVFCSGV4Z3ZBUUdfOF9BdkVNX3U4amJfTi1MOVFTdXdaMkhKVTFFIl0sInZjdCI6Imh0dHBzOi8vY3JlZGVudGlhbHMuZXhhbXBsZS5jb20vaWRlbnRpdHlfY3JlZGVudGlhbCIsImRhdGUiOiIwOS8wOS8xOTg5Iiwic3ViIjoiZGlkOmtleTp6RG5hZWRTWUZWcVpqc3NyckxjamRCWVBHR0RTMm92U3JvRWl5ZFVQOHNEQk5lN3lDIiwibmJmIjoxNzI0MzcyNTY4LCJfc2RfYWxnIjoic2hhLTI1NiIsImlzcyI6ImRpZDprZXk6ekRuYWVWZUFYdGRneExab0d4VkFNUEZUN0pBZGhpUFZXckNxeVJiNVJzVWFnU0NVZSIsImlhdCI6MTcyNDM3MjU2OCwiZXhwIjoxNzU1OTA4NTY4LCJjbmYiOnsiandrIjp7Imt0eSI6IkVDIiwiY3J2IjoiUC0yNTYiLCJ4Ijoid1UxNWZwa3F3bDdxV3RKV2tZUmJmQTlMQ0Z3SFJKX21yQkJhOXEyU0ZPcyIsInkiOiJUaFBhVHZTQW9mdUYtNFpzbjg2RllHRGtLTHZhd2Z3TXlLZmc5bTJJaTlnIn19fQ.s_s2RV6dHjW4JnwlYozGgrTvrjcr7E1BTutHI8OgP9jDjwIH9sM17339QwZrONY_QkcRiCBpIEVK-9OPESNqQg~WyJFR0lvZ0d2UVY5c0liZzlDSW1KU0Z3IiwgIm5hbWUiLCAiSm9obiJd~WyJxZTZoTjMyVFFyY09CYWVWSERpcE1nIiwgInN1cm5hbWUiLCAiRG9lIl0~WyJtUzRuS2FHMjRXdVdpMTlaWHB6VG5RIiwgImFkZHJlc3MiLCAiMjIxQiBCYWtlciBTdHJlZXQiXQ~";
+    const VERIFIER_URL: &str = "http://127.0.0.1:55796";
 
     #[tokio::test]
     async fn e2e() {
-        let mut verifier_srv = mockito::Server::new_with_opts(mockito::ServerOpts {
-            host: "127.0.0.1",
-            port: 55796,
-            assert_on_drop: false,
-        });
+        let mut http_client = MockHttpClient::new();
 
-        verifier_srv
-            .mock("GET", "/request")
-            .with_header("content-type", "text/plain")
-            .with_status(200)
-            .with_body(REQUEST_OBJECT)
-            .create();
-        verifier_srv.mock("POST", "/auth").with_status(200).create();
+        // Mock request while Holder tries to get Authorization request Object
+        mock_get_request_object_call(&mut http_client);
+        // Mock request while Holder tries to send Authorization Response
+        mock_send_authorization_response_call(&mut http_client);
 
         let vault = InMemVault::new();
 
@@ -559,7 +566,7 @@ mod tests {
             .await;
         assert!(res.is_ok());
 
-        let holder = oid4vp_holder(vault).await;
+        let holder = oid4vp_holder(http_client, vault).await;
         // Handle request object
         let request_obj = holder.get_authorization_request(REQUEST_URI).await.unwrap();
         // Send auth response
@@ -569,7 +576,44 @@ mod tests {
             .unwrap();
     }
 
-    async fn oid4vp_holder(vault: InMemVault) -> impl Holder {
+    fn mock_get_request_object_call(http_client: &mut MockHttpClient) {
+        mock_http_fn(
+            http_client,
+            Method::GET,
+            Url::parse(VERIFIER_URL).unwrap().join("/request").unwrap(),
+            |req| {
+                let resp = HttpResponse {
+                    status_code: StatusCode::OK,
+                    headers: HeaderMap::from_iter(vec![(
+                        CONTENT_TYPE,
+                        HeaderValue::from_str("text/plain").unwrap(),
+                    )]),
+                    body: Vec::from(REQUEST_OBJECT),
+                };
+
+                Ok(resp)
+            },
+            1.into(),
+        );
+    }
+
+    fn mock_send_authorization_response_call(http_client: &mut MockHttpClient) {
+        mock_http_fn(
+            http_client,
+            Method::POST,
+            Url::parse(VERIFIER_URL).unwrap().join("/auth").unwrap(),
+            |req| {
+                Ok(HttpResponse {
+                    status_code: StatusCode::OK,
+                    headers: Default::default(),
+                    body: vec![],
+                })
+            },
+            1.into(),
+        );
+    }
+
+    async fn oid4vp_holder(http_client: impl HttpClient, vault: InMemVault) -> impl Holder {
         let kms = LocalKms::new();
 
         let (did, key_metadata) = create_did_and_key_metadata(&kms).await;
@@ -581,7 +625,7 @@ mod tests {
             .unwrap();
 
         HolderBuilder::new(kms, vault, key_metadata, CLIENT_ID.to_owned())
-            .with_http_client(client)
+            .with_http_client(http_client)
             .build()
             .await
             .unwrap()
