@@ -16,7 +16,7 @@ use tracing::{instrument, trace, Level};
 
 use crate::crypto::{Key, Signer};
 use crate::did::universal::UniversalResolver;
-use crate::did::{DIDDoc, DIDResolver, VerificationMethodMap, DIDURL};
+use crate::did::{DIDDoc, DIDResolver, VerificationMethodMap, DIDURL, DID};
 use crate::utils;
 use crate::utils::b64;
 use crate::utils::serde::Helpers;
@@ -164,13 +164,13 @@ impl SdJwtAPI {
     )]
     fn prepare_claims(
         mut claims: Claims,
-        iss_url: &DIDURL,
-        hld_url: &DIDURL,
+        iss_did: &DID,
+        hld_did: &DID,
         metadata: &VCMetadata,
     ) -> Value {
         claims.put_str("vct", &metadata.vct);
-        claims.put_str("iss", &iss_url.did);
-        claims.put_str("sub", hld_url);
+        claims.put_str("iss", iss_did);
+        claims.put_str("sub", hld_did);
 
         let now = OffsetDateTime::now_utc();
         claims.put_dt("iat", now);
@@ -360,7 +360,12 @@ impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata, Value> for Sd
 
         let sgn_wrapper = SignerWrapper { signer };
 
-        let claims = SdJwtAPI::prepare_claims(claims, iss_did_url, hld_did, &metadata);
+        let claims = SdJwtAPI::prepare_claims(
+            claims,
+            &iss_did_url.did,
+            &hld_did.did,
+            &metadata
+        );
         let headers = SdJwtAPI::extra_headers(iss_did_url);
         trace!(resolved_headers = ?headers);
 
