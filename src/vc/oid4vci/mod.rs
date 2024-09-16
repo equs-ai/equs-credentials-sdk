@@ -35,7 +35,7 @@ pub mod e2e_tests {
     use crate::http::MockHttpClient;
     use crate::inmem::kms::LocalKms;
     use crate::inmem::vault::InMemVault;
-    use crate::utils::http::test::{mock_http, mock_http_fn, mock_http_once, mock_static_ctx};
+    use crate::utils::http::test::{mock_http, mock_http_fn, mock_http_once};
     use crate::utils::test_utils::create_did_and_key_metadata;
     use crate::vc::oid4vci::{
         issuer, CredentialOffer, CredentialOfferGrants, CredentialOfferParams, Holder,
@@ -61,23 +61,24 @@ pub mod e2e_tests {
         let iss_url = Url::parse(iss_url_str).unwrap();
         let authz_url = Url::parse(authz_url_str).unwrap();
 
-        let ctx = MockHttpClient::static_async_context();
-        mock_static_ctx(
-            &ctx,
+        mock_http(
+            &mut http_mock,
             Method::GET,
             iss_url
                 .join("/.well-known/openid-credential-issuer")
                 .unwrap(),
             issuer_metadata.clone(),
             StatusCode::OK,
+            1.into(),
         );
 
-        mock_static_ctx(
-            &ctx,
+        mock_http(
+            &mut http_mock,
             Method::GET,
             authz_url.join("/.well-known/openid-configuration").unwrap(),
             authorization_metadata.clone(),
             StatusCode::OK,
+            1.into(),
         );
 
         let authz_code = Nonce::new_random();

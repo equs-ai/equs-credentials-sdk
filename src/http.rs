@@ -47,23 +47,4 @@ pub trait HttpClient: Sync + Send {
     ///
     /// * [HttpError] - in case of failures and 4xx/5xx codes.
     async fn async_call(&self, request: HttpRequest) -> Result<HttpResponse>;
-
-    /// Make an async HTTP call (static).
-    ///
-    /// # Arguments
-    ///
-    /// * `request` - an HttpRequest.
-    ///
-    /// # Returns
-    ///
-    /// A successful HttpResponse on success.
-    ///
-    /// # Errors
-    ///
-    /// * [HttpError] - in case of failures and 4xx/5xx codes.
-    ///
-    /// *NOTE*: assumed to use standard implementation for a Client to make a call.
-    async fn static_async(request: HttpRequest) -> Result<HttpResponse>
-    where
-        Self: Sized;
 }

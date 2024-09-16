@@ -148,16 +148,17 @@ where
     ) -> Result<Self> {
         let issuer_metadata = IssuerMetadata::discover_async(
             IssuerUrl::new(issuer_url.clone()).context(UrlParseSnafu)?,
-            |req| HC::static_async(req),
+            |req| http_client.async_call(req),
         )
         .await
         .context(DiscoverySnafu)?;
         debug!(resolved_issuer_metadata = ?issuer_metadata);
 
-        let authz_metadata =
-            AuthorizationMetadata::discover_async(&issuer_metadata, |req| HC::static_async(req))
-                .await
-                .context(DiscoverySnafu)?;
+        let authz_metadata = AuthorizationMetadata::discover_async(&issuer_metadata, |req| {
+            http_client.async_call(req)
+        })
+        .await
+        .context(DiscoverySnafu)?;
         debug!(resolved_authorization_server_metadata = ?authz_metadata);
 
         Self::new(
