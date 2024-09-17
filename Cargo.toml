@@ -1,5 +1,5 @@
 [workspace]
-members = ["demos/oid4vc", "demos/oid4vc/holder"]
+members = ["demos/oid4vc", "demos/oid4vc/holder", "demos/multi-thread"]
 
 [package]
 name = "agent-sdk"

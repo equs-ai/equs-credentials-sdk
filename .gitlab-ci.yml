@@ -39,7 +39,16 @@ doc-build-job:
 oid4vc-demo-build-job:
   stage: build
   script:
-    - ./scripts/build-oid4vci-demo.sh
+    - cargo build --manifest-path=demos/oid4vc/Cargo.toml
+    - cargo build --manifest-path=demos/oid4vc/holder/Cargo.toml
+  only:
+    - merge_requests
+    - main
+
+multi-thread-demo-build-job:
+  stage: build
+  script:
+    - cargo build --manifest-path=demos/multi-thread/Cargo.toml
   only:
     - merge_requests
     - main
