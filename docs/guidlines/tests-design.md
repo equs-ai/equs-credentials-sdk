@@ -32,7 +32,6 @@ where
     IS: vc::core::Issuer,
     HC: HttpClient,
 {
-
     async fn issue_credential(
         &self,
         cred_request: &CredentialRequest,
@@ -44,7 +43,6 @@ where
     }
 
     ...
-
 }
 
 
@@ -72,7 +70,7 @@ mod tests {
 ```
 
 All test functions (marked with `#[tokio::test]`) should be located before any helper functions.
-It allows to find and read tests quickly due to placing them together (not mixing them with helper functions). 
+It allows to find and read tests quickly due to placing them together (not mixing them with helper functions).
 The structure of unit tests should look so:
 
 ```rust
@@ -101,7 +99,7 @@ mod tests {
     ...
 
     // list of helper functions
-    
+
     fn sample_issuer_metadata() -> IssuerMetadata {
         ...
     }
@@ -120,15 +118,16 @@ the code is crate-level or module-level:
 - crate-level code should be located in the `crate::utils::test_utils` module
 - module-level code should be placed in the module where the tested code is located (for example, `oid4vci` module)
 
-Do not use intermediate-level modules (for example, `vc` module) because it may increase complexity of the test code scattering it between multiple places.
+Do not use intermediate-level modules (for example, `vc` module) because it may increase complexity of the test code
+scattering it between multiple places.
 
 For example, there is a shared code used by `Holder`/`Issuer` tests simultaneously.
 Such shared code used by several modules, but not by all modules in the crate, should be placed in
 the module where the tested code is located (`oid4vci` module in this case).
 
-At the same time, there are some code that should be shared on the crate-level. For example, function `create_did_and_key_metadata()` is used by several modules, including `oid4vci`/`oid4vp`.
+At the same time, there are some code that should be shared on the crate-level. For example,
+function `create_did_and_key_metadata()` is used by several modules, including `oid4vci`/`oid4vp`.
 Such code should be placed in the `crate::utils::test_utils` module.
-
 
 #### Async tests
 
@@ -138,9 +137,9 @@ Example:
 
 ```rust
     #[tokio::test]
-    async fn holder_requests_token_correctly() {
-        ...
-    }
+async fn holder_requests_token_correctly() {
+    ...
+}
 ```
 
 #### What to test?
@@ -163,7 +162,8 @@ in the method. For example:
 3. Returning valid `Credential` object in case the Issuer provided correct credential response
 4. Returning an Error object in case the Issuer provided malformed response
 
-Note that a single action under the method's hood gives us several units of behaviour we need to test. There are, at least, positive and negative cases for almost each actions done by the tested system.
+Note that a single action under the method's hood gives us several units of behaviour we need to test. There are, at
+least, positive and negative cases for almost each actions done by the tested system.
 
 As a result we need to create multiple tests for the same method to cover all it's `units of behavior` under the hood.
 
@@ -179,10 +179,13 @@ Rules:
 
 Examples:
 
-- `issuer_creates_credential_offer_correctly` tests successful case, the word `correctly` tells us that credential offer body is not malformed.
-- `issuance_succeeds_when_nonce_is_provided` tests successful case, the word `succeeds` tells us that process of issuance performed with no errors.
-- `issuance_fails_with_invalid_proof_error_when_nonce_is_not_provided` tests failure case, the word `fails` tells us that process of issuance performed with expected error, `with_invalid_proof_error` tells what exactly error we expect, `when_nonce_is_not_provided` describes condition causes such a result.
-
+- `issuer_creates_credential_offer_correctly` tests successful case, the word `correctly` tells us that credential offer
+  body is not malformed.
+- `issuance_succeeds_when_nonce_is_provided` tests successful case, the word `succeeds` tells us that process of
+  issuance performed with no errors.
+- `issuance_fails_with_invalid_proof_error_when_nonce_is_not_provided` tests failure case, the word `fails` tells us
+  that process of issuance performed with expected error, `with_invalid_proof_error` tells what exactly error we
+  expect, `when_nonce_is_not_provided` describes condition causes such a result.
 
 Links:
 
@@ -207,7 +210,6 @@ agent-sdk
     ├── ...
     └── ...
 ```
-
 
 #### Code shared between several E2E tests
 
@@ -239,7 +241,6 @@ fn issue_credentials() {
 }
 ```
 
-
 ## Testing tools
 
 - `mockall`
@@ -248,4 +249,38 @@ fn issue_credentials() {
 
 ## Test coverage
 
-TBD
+We compared several code coverage tools for our Rust project:
+
+- **Tarpaulin:** Easy to configure and set up with Continuous Integration (CI). It supports generating code coverage
+  using either `Ptrace` or `LLVM` modes. The `Ptrace` mode is only available on Linux with x86_64 architecture.
+  Tarpaulin provides fairly reliable line coverage but may sometimes produce minor inaccuracies.
+- **gcov:** Uses LLVM IR to count covered lines, but it is not known for high accuracy in terms of code coverage.
+- **go-kcov:** A wrapper around kcov, which use DWARF debugging information to generate coverage reports. While it
+  can be used with Rust projects, it may not offer the same level of accuracy or ease of setup as other tools.
+- **Source-based coverage (LLVM-based coverage):** This method is considered highly accurate because it instruments
+  the code at the LLVM IR level, providing precise coverage data at the source level.
+
+After reviewing the reports produced by these tools, we found that Tarpaulin with `Ptrace` mode met our accuracy
+requirements and better integrated with our existing CI pipeline.
+
+We initially set the minimum coverage to **60%**, but we need to increase it to **80%** to ensure code robustness.
+
+### Running Code Coverage with Tarpaulin
+
+Install Tarpaulin:
+
+```shell
+cargo install cargo-tarpaulin
+```
+
+Run Tarpaulin:
+
+```shell
+cargo tarpaulin --all-features --exclude-files demos/*
+```
+
+Run Tarpaulin with the generation of an HTML report:
+
+```shell
+cargo tarpaulin --all-features --exclude-files demos/* -o HTML --output-dir target
+```
