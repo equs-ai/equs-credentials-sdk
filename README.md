@@ -84,7 +84,7 @@ async fn main() {
 ```
 3. For example, to see `TRACE` level logs, run:
 ```shell
-RUST_LOGS=TRACE cargo run
+RUST_LOG=TRACE cargo run
 ```
 
 ### Generate documentation
@@ -96,6 +96,7 @@ cargo doc --no-deps
 ### Demos
 
 - [OID4VC web service](demos/oid4vc/README.md)
+- [Multi-thread support](demos/multi-thread/README.md)
 
 ## How to Use ASDK in Applications
 

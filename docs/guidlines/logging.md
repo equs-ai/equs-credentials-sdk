@@ -106,5 +106,5 @@ async fn main() {
 ```
 3. For example, to see `TRACE` level logs, run:
 ```shell
-RUST_LOGS=TRACE cargo run
+RUST_LOG=TRACE cargo run
 ```
