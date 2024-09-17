@@ -1,36 +1,43 @@
 # Development Guidelines
+
 - [Rust API Guidelines](#rust-api-guidelines)
 - [Linting and Formatting](#linting-and-formatting)
 - [Error Handling](error_handling.md)
-- [Testing]()
+- [Testing](tests-design.md)
 - [Logging](logging.md)
 
-
 ## Rust API Guidelines
-Reference the official Rust API Guidelines: [Rust API Guidelines](https://rust-lang.github.io/api-guidelines/). 
+
+Reference the official Rust API Guidelines: [Rust API Guidelines](https://rust-lang.github.io/api-guidelines/).
 These guidelines provide standards for readability, usability and legibility.
 
 ## Linting and Formatting
+
 ### Use `rustfmt` for Consistent Code Formatting
-`rustfmt` ensures that code follows Rust's official style guidelines. It is essential for maintaining a uniform codebase.
+
+`rustfmt` ensures that code follows Rust's official style guidelines. It is essential for maintaining a uniform
+codebase.
+
 - Run `rustfmt` manually:
    ```bash
    cargo fmt --all
    ```
 - Automatic Formatting in Rust Rover:
-  1. Go to **File > Settings > Rust > Rustfmt**.
-  2. Enable the option: **Use Rustfmt instead of the built-in formatter**.
+    1. Go to **File > Settings > Rust > Rustfmt**.
+    2. Enable the option: **Use Rustfmt instead of the built-in formatter**.
 
 **Note:** Always ensure that your code is properly formatted before submitting a pull request.
 
 ### Use `clippy` for Code Linting
+
 `clippy` is a linting tool that helps catch common mistakes and enforce best practices.
+
 - Run `clippy`:
    ```bash
    cargo clippy --workspace --all-targets --all-features
    ```
-- Fix the warnings and suggestions provided by `clippy` manually 
-or apply Clippy's suggestions automatically using the command below.
+- Fix the warnings and suggestions provided by `clippy` manually
+  or apply Clippy's suggestions automatically using the command below.
   ```bash
   cargo clippy --workspace --all-targets --all-features --fix
   ```

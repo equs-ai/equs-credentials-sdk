@@ -13,7 +13,7 @@ lint-job:
   script:
     - rustup component add rustfmt
     - rustup component add clippy
-    - cargo fmt --all
+    - cargo fmt --all -- --check
     - cargo clippy --workspace --all-targets --all-features -- -Dwarnings
   only:
     - merge_requests
@@ -28,10 +28,25 @@ test-job:
     - merge_requests
     - main
 
+coverage-job:
+  stage: test
+  before_script:
+    - sed -i "s|ssh://git@git.slock.it/|https://gitlab-ci-token:${CI_JOB_TOKEN}@git.slock.it/|" Cargo.toml
+    - cargo install cargo-tarpaulin
+  script:
+    - cargo tarpaulin --timeout 180 --all-features --exclude-files "demos/*" --fail-under 60 -o Html
+  coverage: '/^\d+.\d+% coverage/'
+  artifacts:
+    paths:
+      - tarpaulin-report.html
+  only:
+    - merge_requests
+    - main
+
 doc-build-job:
   stage: build
   script:
-    - cargo doc --no-deps
+    - RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --workspace --all-features
   only:
     - merge_requests
     - main
