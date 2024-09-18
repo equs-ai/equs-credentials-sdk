@@ -1,8 +1,6 @@
 use async_trait::async_trait;
 use oid4vp::core::authorization_request::parameters::PresentationDefinition as PresentationDefinitionParameter;
-use oid4vp::core::authorization_request::parameters::{
-    Nonce, ResponseMode, ResponseType, ResponseUri,
-};
+use oid4vp::core::authorization_request::parameters::{ResponseMode, ResponseType, ResponseUri};
 use oid4vp::core::authorization_request::AuthorizationRequestObject;
 use oid4vp::core::credential_format::CoreCredentialFormat;
 use oid4vp::core::metadata::parameters::verifier::VpFormats;
@@ -13,7 +11,6 @@ use oid4vp::core::profile::{Profile, Verifier};
 use oid4vp::core::verifier::request_signer::RequestSigner;
 use oid4vp::core::verifier::Session;
 use oid4vp::presentation_exchange::PresentationDefinition;
-use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value as Json};
 use snafu::ResultExt;
 use ssi::jwk::JWK;
@@ -24,29 +21,24 @@ use url::Url;
 use crate::crypto::SigningKey;
 use crate::did::DIDResolver;
 use crate::kms::{KeyHandle, Kms};
-use crate::storage::Storage;
 use crate::vc;
 use crate::vc::core::KeyMetadata;
 use crate::vc::oid4vp as api;
 use crate::vc::oid4vp::internal_error::{
-    KMSSnafu, ParseSnafu, PresentationExchangeSnafu, StorageSnafu, VCSnafu, VerifierSessionSnafu,
+    KMSSnafu, ParseSnafu, PresentationExchangeSnafu, VCSnafu, VerifierSessionSnafu,
 };
 use crate::vc::oid4vp::metadata::{
     default_client_metadata, default_vp_formats, default_wallet_metadata,
 };
-use crate::vc::oid4vp::{AuthorizationRequest, AuthorizationResponse, ClientMetadata};
+use crate::vc::oid4vp::{
+    AuthorizationRequest, AuthorizationResponse, ClientMetadata, Nonce, PresentationSession,
+};
 use crate::vc::presentation_exchange;
 use crate::vc::presentation_exchange::builder::DefaultPresentationBuilder;
 use crate::vc::presentation_exchange::PresentationResponse;
 
 pub type Error = api::Error;
 pub type Result<T> = core::result::Result<T, Error>;
-
-#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
-pub(crate) struct StorageEntry {
-    pub nonce: String,
-    pub presentation_definition: PresentationDefinition,
-}
 
 #[derive(Debug, Clone)]
 pub struct VerifierMetadata {
@@ -55,39 +47,35 @@ pub struct VerifierMetadata {
     pub client_metadata: ClientMetadata,
 }
 
-pub struct VerifierService<VF, KH, KMS, D, ST>
+pub struct VerifierService<VF, KH, KMS, D>
 where
     VF: vc::core::Verifier,
     KH: KeyHandle,
     KMS: Kms<KH>,
     D: DIDResolver,
-    ST: Storage<String, StorageEntry>,
 {
     verifier: VF,
     metadata: VerifierMetadata,
     kms: KMS,
     did_resolver: D,
-    storage: ST,
     _marker: PhantomData<KH>,
 }
 
-impl<VF, KH, KMS, D, ST> VerifierService<VF, KH, KMS, D, ST>
+impl<VF, KH, KMS, D> VerifierService<VF, KH, KMS, D>
 where
     VF: vc::core::Verifier,
     KH: KeyHandle,
     KMS: Kms<KH>,
     D: DIDResolver,
-    ST: Storage<String, StorageEntry>,
 {
     #[instrument(
         level = Level::TRACE,
-        skip(verifier, kms, did_resolver, storage),
+        skip(verifier, kms, did_resolver),
     )]
     pub fn new(
         verifier: VF,
         kms: KMS,
         did_resolver: D,
-        storage: ST,
         client_id: String,
         key_metadata: KeyMetadata,
         client_metadata: Option<ClientMetadata>,
@@ -105,20 +93,18 @@ where
             did_resolver,
             kms,
             verifier,
-            storage,
             _marker: Default::default(),
         }
     }
 }
 
 #[async_trait]
-impl<VF, KH, KMS, D, ST> api::Verifier for VerifierService<VF, KH, KMS, D, ST>
+impl<VF, KH, KMS, D> api::Verifier for VerifierService<VF, KH, KMS, D>
 where
     VF: vc::core::Verifier,
     KH: KeyHandle,
     KMS: Kms<KH>,
     D: DIDResolver,
-    ST: Storage<String, StorageEntry>,
 {
     #[instrument(
         level = Level::TRACE,
@@ -128,9 +114,9 @@ where
     async fn create_authorization_request(
         &self,
         presentation_definition: &PresentationDefinition,
-        nonce: &str,
+        nonce: &Nonce,
         response_uri: Url,
-    ) -> Result<AuthorizationRequest> {
+    ) -> Result<(AuthorizationRequest, PresentationSession)> {
         info!("creating authorization request object is started");
 
         let request = self
@@ -142,19 +128,14 @@ where
             )
             .await?;
 
-        let storage_entry = StorageEntry {
-            nonce: nonce.to_string(),
-            presentation_definition: presentation_definition.clone(),
+        let session = PresentationSession {
+            nonce: nonce.to_owned(),
+            presentation_definition: presentation_definition.to_owned(),
         };
-
-        self.storage
-            .put(presentation_definition.id.to_owned(), storage_entry)
-            .await
-            .context(StorageSnafu)?;
 
         info!("authorization request object is created");
 
-        Ok(request)
+        Ok((request, session))
     }
 
     #[instrument(
@@ -163,24 +144,18 @@ where
         err(),
         ret(level = Level::TRACE)
     )]
-    async fn verify_presentation(&self, auth_response: &AuthorizationResponse) -> Result<Json> {
-        let id = &auth_response.presentation_submission.definition_id;
-        let storage_entry = self.storage.get(id).await.context(StorageSnafu)?.ok_or(
-            ParseSnafu {
-                details: "Presentation submission is not found",
-            }
-            .build(),
-        )?;
-
+    async fn verify_presentation(
+        &self,
+        auth_response: &AuthorizationResponse,
+        session: &PresentationSession,
+    ) -> Result<Json> {
         let claims = self
             .do_verify_presentation(
-                &storage_entry.presentation_definition,
-                &storage_entry.nonce,
+                &session.presentation_definition,
+                &session.nonce,
                 auth_response,
             )
             .await?;
-
-        self.storage.delete(id).await.context(StorageSnafu)?;
 
         info!("presentation is verified");
 
@@ -188,13 +163,12 @@ where
     }
 }
 
-impl<VF, KH, KMS, D, ST> VerifierService<VF, KH, KMS, D, ST>
+impl<VF, KH, KMS, D> VerifierService<VF, KH, KMS, D>
 where
     VF: vc::core::Verifier,
     KH: KeyHandle,
     KMS: Kms<KH>,
     D: DIDResolver,
-    ST: Storage<String, StorageEntry>,
 {
     #[instrument(
         level = Level::TRACE,
@@ -205,7 +179,7 @@ where
     async fn authorization_request(
         &self,
         presentation_definition: &PresentationDefinition,
-        nonce: &str,
+        nonce: &Nonce,
         wallet_metadata: WalletMetadata,
         response_uri: Url,
     ) -> Result<AuthorizationRequest> {
@@ -240,7 +214,7 @@ where
             .with_request_parameter(ResponseMode::DirectPost)
             .with_request_parameter(ResponseUri(response_uri))
             .with_request_parameter(ResponseType::VpToken)
-            .with_request_parameter(Nonce(nonce.to_string()))
+            .with_request_parameter(nonce.to_owned())
             .with_request_parameter(self.metadata.client_metadata.clone())
             .with_request_parameter(presentation_definition_parameter)
             .with_did_client_id_and_resolver(
@@ -283,7 +257,7 @@ where
     async fn do_verify_presentation(
         &self,
         presentation_definition: &PresentationDefinition,
-        nonce: &str,
+        nonce: &Nonce,
         authorization_response: &AuthorizationResponse,
     ) -> Result<Json> {
         let mut result: Map<String, Json> = Map::new();
@@ -301,7 +275,7 @@ where
         for requested_presentation in requested_presentations {
             let claims = self
                 .verifier
-                .verify_presentation(nonce, &requested_presentation.presentation)
+                .verify_presentation(&nonce.0, &requested_presentation.presentation)
                 .await
                 .context(VCSnafu)?;
             presentation_exchange::validate_claims(
@@ -413,14 +387,14 @@ mod tests {
     #[tokio::test]
     async fn generate_authorization_request() {
         let presentation_definition = create_test_presentation_definition();
-        let nonce = "n0NcE";
+        let nonce = "nOnCe".into();
 
         let (verifier, _) = verifier().await;
 
-        let request = verifier
+        let (request, _) = verifier
             .create_authorization_request(
                 &presentation_definition,
-                nonce,
+                &nonce,
                 "https://verifier/auth".parse().unwrap(),
             )
             .await
@@ -446,20 +420,23 @@ mod tests {
             "surname": "Doe",
             "date": "09/09/1989",
         });
-        let nonce = "n0NcE";
+        let nonce = "nOnCe".into();
 
-        let request = verifier
+        let (request, session) = verifier
             .create_authorization_request(
                 &presentation_definition,
-                nonce,
+                &nonce,
                 "https://verifier/auth".parse().unwrap(),
             )
             .await
             .unwrap();
 
-        let response = create_authorization_response(&client_id, nonce, &claims).await;
+        let response = create_authorization_response(&client_id, &nonce.0, &claims).await;
 
-        let claims = verifier.verify_presentation(&response).await.unwrap();
+        let claims = verifier
+            .verify_presentation(&response, &session)
+            .await
+            .unwrap();
 
         println!("{}", claims);
 

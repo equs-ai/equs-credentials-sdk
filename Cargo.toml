@@ -9,18 +9,18 @@ rust-version = "1.79"
 
 [dependencies]
 oid4vci = { git = "ssh://git@git.slock.it/open-source/oid4vci-rs.git", rev = "706b443a" }
-oid4vp = { git = "ssh://git@git.slock.it/open-source/oid4vp-rs.git", rev = "3f130a3e" }
+oid4vp = { git = "ssh://git@git.slock.it/open-source/oid4vp-rs.git", rev = "134802ae" }
 sd-jwt-rs = { git = "ssh://git@git.slock.it/open-source/sd-jwt-rust.git", rev = "f49801f6" }
 
 oauth2 = "4.4.2"
 serde_json = "1.0.120"
 ssi = "0.7.0"
-rand = "0.8.5"
-ed25519-dalek = "2.1.1"
+rand = { version = "0.8.5", optional = true }
+ed25519-dalek = { version = "2.1.1", optional = true }
 random-string = "1.1.0"
 time = { version = "0.3.29", features = ["serde"] }
 serde = { version = "1.0.204", features = ["derive"] }
-p256 = "0.13.2"
+p256 = { version = "0.13.2", optional = true }
 did-method-key = "0.2.2"
 futures = "0.3.30"
 base64 = "0.22.1"
@@ -46,3 +46,4 @@ rstest = "0.22.0"
 
 [features]
 askar = ["dep:aries-askar"]
+in-memory = ["dep:rand", "dep:ed25519-dalek", "dep:p256"]

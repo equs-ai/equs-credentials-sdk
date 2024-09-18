@@ -1,7 +1,7 @@
 use crate::vc::oid4vp::InternalError;
 use crate::vc::{Claims, Credential};
 use async_trait::async_trait;
-use oid4vp::core::authorization_request::parameters::{Nonce, ResponseMode};
+use oid4vp::core::authorization_request::parameters::ResponseMode;
 use oid4vp::core::authorization_request::RequestIndirection;
 use serde::{Deserialize, Serialize};
 use snafu::Snafu;
@@ -16,6 +16,16 @@ pub type PresentationSubmission = oid4vp::presentation_exchange::PresentationSub
 pub type PresentationDefinition = oid4vp::presentation_exchange::PresentationDefinition;
 pub type ClientMetadata = oid4vp::core::authorization_request::parameters::ClientMetadata;
 pub type WalletMetadata = oid4vp::core::metadata::WalletMetadata;
+pub type Nonce = oid4vp::core::authorization_request::parameters::Nonce;
+
+/// A session with state managed during the presentation.
+///
+/// Contains [Nonce, PresentationDefinition].
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct PresentationSession {
+    pub nonce: Nonce,
+    pub presentation_definition: PresentationDefinition,
+}
 
 /// A resolved `OID4VP` authorization request.
 ///
@@ -203,40 +213,41 @@ pub trait Verifier: Send + Sync {
     ///
     /// # Returns
     ///
-    ///  The OID4VP authorization request on success.
+    ///  - `AuthorizationRequest` - the OID4VP authorization request
+    ///  - `PresentationSession` - the `session` state that will be used when the `verify_presentation` method is called.
     ///
     /// # Errors
     ///
     /// * [InternalError::VerifierSession] - if an error occurs during the creation of the verifier session.
     /// * [InternalError::KMS] - if there is an error during Issuer key resolution.
     /// * [InternalError::Parse] - if an error occurs during metadata parsing.
-    /// * [InternalError::Storage] - if an error occurs during the storing the authorization request metadata.
     async fn create_authorization_request(
         &self,
         presentation_definition: &PresentationDefinition,
-        nonce: &str,
+        nonce: &Nonce,
         response_uri: Url,
-    ) -> Result<AuthorizationRequest, Error>;
+    ) -> Result<(AuthorizationRequest, PresentationSession), Error>;
 
     /// Verifies the presentation provided by the Holder.
     ///
     /// # Arguments
     ///
     /// * `authorization_response` - the authorization response containing the VP token and presentation submission.
-    ///
+    /// * `session` - a session object containing `Nonce` and `PresentationDefinition`,
+    ///  which are generated when the `create_authorization_request` method is called.
     /// # Returns
     ///
     /// * The verified claims as a JSON object on success.
     ///
     /// # Errors
     ///
-    /// * [InternalError::Storage] - if an error occurs while retrieving the authorization request metadata.
     /// * [InternalError::AuthorizationResponse] - if an error occurs while parsing or validating the authorization response.
     /// * [InternalError::FormatNotSupported] - if the provided presentation format is not supported.
     /// * [InternalError::VC] - if the presentation verification fails.
     async fn verify_presentation(
         &self,
         authorization_response: &AuthorizationResponse,
+        session: &PresentationSession,
     ) -> Result<Claims, Error>;
 }
 

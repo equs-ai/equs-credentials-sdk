@@ -192,11 +192,11 @@ mod tests {
     use crate::vc::oid4vp::test_utils::{
         create_did_and_key_metadata, generate_did_key, generate_did_key_and_vm,
     };
-    use crate::vc::oid4vp::HolderBuilder;
     use crate::vc::oid4vp::{
         auth_request_as_url, AuthorizationResponseMetadata, AuthorizationUrlType,
     };
     use crate::vc::oid4vp::{AuthorizationResponse, Holder};
+    use crate::vc::oid4vp::{HolderBuilder, PresentationSession};
     use crate::vc::oid4vp::{Verifier, VerifierBuilder};
     use crate::vc::{Credential, CredentialMetadata, VCFormat};
 
@@ -411,10 +411,10 @@ mod tests {
         println!("8.1 Verifier: Create Authorization Request");
         // TODO: We should not use a test constant for Presentation Definition here,
         //  we need to build a new one (as every Verifier will build it).
-        let nonce = "n0NcE";
+        let nonce = "nOnCe".into();
         let response_uri: Url = format!("{}/auth", VERIFIER_URL).parse().unwrap();
-        let auth_request = verifier
-            .create_authorization_request(&test_case.presentation_definition, nonce, response_uri)
+        let (auth_request, session) = verifier
+            .create_authorization_request(&test_case.presentation_definition, &nonce, response_uri)
             .await
             .unwrap();
 
@@ -431,7 +431,12 @@ mod tests {
         mock_request_uri_endpoint(&mut http_client, auth_request.request_object_jwt.clone());
 
         // Bind mocked http call to verify presentation method
-        mock_verify_presentation(Box::new(verifier), test_case.validate, &mut http_client);
+        mock_verify_presentation(
+            Box::new(verifier),
+            test_case.validate,
+            &mut http_client,
+            session,
+        );
 
         // Create Holder
         let holder = holder(
@@ -485,6 +490,7 @@ mod tests {
         verifier: Box<impl Verifier + 'static>,
         validate_claims: Box<ValidateClaims>,
         http_client: &mut MockHttpClient,
+        session: PresentationSession,
     ) {
         mock_http_fn(
             http_client,
@@ -506,7 +512,8 @@ mod tests {
                     presentation_submission,
                 };
 
-                let result = executor::block_on(verifier.verify_presentation(&auth_response));
+                let result =
+                    executor::block_on(verifier.verify_presentation(&auth_response, &session));
                 let claims = result.unwrap();
                 println!("Presentation Claims: {}", claims);
 
