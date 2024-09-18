@@ -1,6 +1,5 @@
 use crate::did::universal::UniversalResolver;
 use crate::http::{HttpClient, HttpError, HttpSnafu};
-use crate::inmem::storage::InMemStorage;
 use crate::reqwest::ReqwestClient;
 use crate::vc::core::KeyMetadata;
 use crate::vc::oid4vp as api;
@@ -152,14 +151,10 @@ where
     pub async fn build(self) -> Result<impl api::Verifier, Error> {
         let inner = vc::core::VerifierService::new(&self.client_id);
 
-        // TODO: prune after removing storage usage in verifier
-        let storage = InMemStorage::new();
-
         let verifier = VerifierService::new(
             inner,
             self.kms,
             self.resolver,
-            storage,
             self.client_id,
             self.key_metadata,
             self.client_metadata,

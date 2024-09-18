@@ -3,7 +3,7 @@ use std::fmt::Debug;
 
 use crate::kms::Error as KmsError;
 use crate::vc::presentation_exchange;
-use crate::{http, storage, vc};
+use crate::{http, vc};
 
 /// An `oid4vp` internal error.
 ///
@@ -35,12 +35,6 @@ pub enum InternalError {
         #[snafu(implicit)]
         location: Location,
         source: anyhow::Error,
-    },
-    #[snafu(display("Storage error at {location}"))]
-    Storage {
-        #[snafu(implicit)]
-        location: Location,
-        source: storage::Error,
     },
     #[snafu(display("JWS error at {location}"))]
     JWS {

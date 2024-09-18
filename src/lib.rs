@@ -19,7 +19,8 @@ pub mod vault;
 pub mod did;
 mod utils;
 pub mod vc;
-// TODO: make private after moving the oid4vc
+
+#[cfg(any(test, feature = "in-memory"))]
 pub mod inmem;
 pub mod reqwest;
 

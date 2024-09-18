@@ -14,13 +14,14 @@ use agent_sdk::vc::oid4vci::{
     CredentialOfferGrants, CredentialRequest, IssuanceSession, IssuerMetadata,
 };
 use agent_sdk::vc::oid4vp::{
-    auth_request_as_url, AuthorizationResponse, AuthorizationUrlType, PresentationDefinition,
+    auth_request_as_url, AuthorizationResponse, AuthorizationUrlType, Nonce,
+    PresentationDefinition, PresentationSession,
 };
 use agent_sdk::vc::{oid4vci, oid4vp};
 use keycloak::{KeycloakAdmin, KeycloakAdminToken};
 use reqwest::Url;
-use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use std::collections::HashMap;
 use std::sync::Arc;
 
 const SERVER_URL: &str = "http://localhost:8088";
@@ -37,7 +38,8 @@ struct AppState {
     issuer: Arc<dyn oid4vci::Issuer>,
     verifier: Arc<dyn oid4vp::Verifier>,
     issuer_storage: InMemStorage<String, IssuanceSession>,
-    verifier_storage: InMemStorage<String, String>,
+    verifier_auth_req_obj_storage: InMemStorage<String, String>,
+    verifier_presentation_session_storage: InMemStorage<String, PresentationSession>,
 }
 
 #[actix_web::main]
@@ -48,7 +50,8 @@ async fn main() -> std::io::Result<()> {
         issuer: Arc::new(oid4vci_issuer().await),
         verifier: Arc::new(oid4vp_verifier().await),
         issuer_storage: InMemStorage::new(),
-        verifier_storage: InMemStorage::new(),
+        verifier_auth_req_obj_storage: InMemStorage::new(),
+        verifier_presentation_session_storage: InMemStorage::new(),
     });
     HttpServer::new(move || {
         App::new()
@@ -151,7 +154,7 @@ async fn oid4vp_presentation_request_object(
     state: web::Data<AppState>,
 ) -> HttpResponse {
     let auth_req_object = state
-        .verifier_storage
+        .verifier_auth_req_obj_storage
         .get(&req.full_url().to_string())
         .await
         .unwrap()
@@ -170,9 +173,13 @@ async fn oid4vp_presentation_request_uri(state: web::Data<AppState>) -> HttpResp
             .unwrap();
 
     // Verifier may build a custom presentation definition depending on the needs of verification
-    let auth_req = state
+    let (auth_req, session) = state
         .verifier
-        .create_authorization_request(&default_presentation_definition(), "nOnCe", response_uri)
+        .create_authorization_request(
+            &default_presentation_definition(),
+            &Nonce::from("nOnCe"),
+            response_uri,
+        )
         .await
         .unwrap();
 
@@ -183,8 +190,14 @@ async fn oid4vp_presentation_request_uri(state: web::Data<AppState>) -> HttpResp
     .to_string();
 
     state
-        .verifier_storage
+        .verifier_auth_req_obj_storage
         .put(request_uri.to_string(), auth_req.request_object_jwt)
+        .await
+        .unwrap();
+
+    state
+        .verifier_presentation_session_storage
+        .put(session.presentation_definition.id.clone(), session)
         .await
         .unwrap();
 
@@ -193,15 +206,20 @@ async fn oid4vp_presentation_request_uri(state: web::Data<AppState>) -> HttpResp
 
 async fn oid4vp_presentation_response(
     state: web::Data<AppState>,
-    req: web::Form<AuthResp>,
+    req: web::Form<HashMap<String, String>>,
 ) -> HttpResponse {
-    let wallet_auth_resp = AuthorizationResponse {
-        vp_token: req.0.vp_token,
-        presentation_submission: serde_json::from_str(&req.0.presentation_submission).unwrap(),
-    };
+    let wallet_auth_resp = oid4vp_auth_resp_from_submitted_form(&req);
+
+    let session = state
+        .verifier_presentation_session_storage
+        .get(&wallet_auth_resp.presentation_submission.definition_id)
+        .await
+        .unwrap()
+        .unwrap();
+
     let verified_claims = state
         .verifier
-        .verify_presentation(&wallet_auth_resp)
+        .verify_presentation(&wallet_auth_resp, &session)
         .await
         .unwrap();
 
@@ -213,10 +231,17 @@ async fn oid4vp_presentation_response(
     HttpResponse::Ok().finish()
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-struct AuthResp {
-    vp_token: Value,
-    presentation_submission: String,
+fn oid4vp_auth_resp_from_submitted_form(
+    form: &web::Form<HashMap<String, String>>,
+) -> AuthorizationResponse {
+    let vp_token = serde_json::from_str(form.get("vp_token").unwrap()).unwrap();
+    let presentation_submission =
+        serde_json::from_str(form.get("presentation_submission").unwrap()).unwrap();
+
+    AuthorizationResponse {
+        vp_token,
+        presentation_submission,
+    }
 }
 
 async fn get_user_attributes(cred_def: &CredDefMetadata) -> Result<Value, Error> {
