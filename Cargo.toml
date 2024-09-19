@@ -43,6 +43,7 @@ serde_urlencoded = "0.7.1"
 tokio = { version = "1.25.0", features = ["macros"] }
 mockall = "0.13.0"
 rstest = "0.22.0"
+async-mutex = "1.4.0"
 
 [features]
 askar = ["dep:aries-askar"]
