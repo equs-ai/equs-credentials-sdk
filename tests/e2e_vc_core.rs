@@ -23,7 +23,7 @@ use agent_sdk::vc::core::{
 use agent_sdk::vc::SD_JWT_VC;
 
 use utils::fixtures::{sample_claims, SCOPE, VC_TYPE, VERIFIER_ID};
-use utils::helpers::create_did_and_key_metadata;
+use utils::helpers::create_did_keymetadata_keyhandle;
 
 #[tokio::test]
 async fn credential_issuance_and_presentation_verification() {
@@ -97,7 +97,7 @@ async fn build_issuer() -> impl Issuer {
     println!("Issuer creating...");
 
     let kms = LocalKms::new();
-    let (did, key_metadata) = create_did_and_key_metadata(&kms).await;
+    let (did, key_metadata, _) = create_did_keymetadata_keyhandle(&kms).await;
     let did_url = DIDURL::from_str(&did).unwrap();
 
     let metadata = IssuerMetadata {
@@ -129,7 +129,7 @@ async fn build_holder() -> impl Holder {
     let kms = LocalKms::new();
     let vault = InMemVault::new();
 
-    let (did, key_metadata) = create_did_and_key_metadata(&kms).await;
+    let (did, key_metadata, _) = create_did_keymetadata_keyhandle(&kms).await;
     println!("DID: {}", did);
 
     HolderService::new(

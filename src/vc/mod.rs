@@ -1,9 +1,11 @@
 use crate::crypto::Alg;
 use serde::{Deserialize, Serialize};
 
+pub use crate::vc::formats::sd_jwt_vc::{SdJwtAPI as VCFormatsSdJwtAPI, VCMetadata};
 pub use crate::vc::formats::vc::*;
 pub use crate::vc::formats::vp::*;
 pub use crate::vc::formats::Error as VCFormatError;
+pub use crate::vc::formats::API as VCFormatsAPI;
 
 mod formats;
 mod pop;

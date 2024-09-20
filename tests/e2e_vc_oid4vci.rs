@@ -45,7 +45,7 @@ async fn autorized_code_flow_using_scopes(#[case] validate_token: bool) {
     // 1. Creating issuer from issuer metadata
     let issuer = build_issuer(
         issuer_metadata.clone(),
-        create_http_client_for_issuer(),
+        prepare_http_client_for_issuer(),
         introspect_ep,
     )
     .await;
@@ -62,7 +62,7 @@ async fn autorized_code_flow_using_scopes(#[case] validate_token: bool) {
         .unwrap();
 
     let http_client_for_holder =
-        create_http_client_for_holder(authz_code.clone(), req_uri_code.clone(), issuer);
+        prepare_http_client_for_holder(authz_code.clone(), req_uri_code.clone(), issuer);
 
     // 3.1 Creating holder from offer
     let holder = build_holder(offer, http_client_for_holder).await;
@@ -152,7 +152,7 @@ async fn credential_endpoint(
     }
 }
 
-fn create_http_client_for_issuer() -> impl HttpClient {
+fn prepare_http_client_for_issuer() -> impl HttpClient {
     let mut http_client = HttpClientEmulator::new();
 
     http_client.add_handler(
@@ -169,7 +169,7 @@ fn create_http_client_for_issuer() -> impl HttpClient {
     http_client
 }
 
-fn create_http_client_for_holder(
+fn prepare_http_client_for_holder(
     authz_code: Nonce,
     req_uri_code: Nonce,
     issuer: impl Issuer + 'static,

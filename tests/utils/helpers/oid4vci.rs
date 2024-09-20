@@ -17,7 +17,7 @@ use crate::utils::fixtures::{
 use oid4vci::core::metadata::IssuerMetadata;
 use url::Url;
 
-use super::create_did_and_key_metadata;
+use super::create_did_keymetadata_keyhandle;
 
 pub async fn build_holder(
     credential_offer: CredentialOfferParams,
@@ -26,7 +26,7 @@ pub async fn build_holder(
     let kms = LocalKms::new();
     let vault = InMemVault::new();
 
-    let (_, key_metadata) = create_did_and_key_metadata(&kms).await;
+    let (_, key_metadata, _) = create_did_keymetadata_keyhandle(&kms).await;
 
     HolderBuilder::new(
         kms,
@@ -47,7 +47,7 @@ pub async fn build_issuer(
     introspect_ep: Option<Url>,
 ) -> impl Issuer {
     let kms = LocalKms::new();
-    let (_, key_metadata) = create_did_and_key_metadata(&kms).await;
+    let (_, key_metadata, _) = create_did_keymetadata_keyhandle(&kms).await;
 
     let mut builder = IssuerBuilder::new(kms, metadata, key_metadata).with_http_client(http_client);
 

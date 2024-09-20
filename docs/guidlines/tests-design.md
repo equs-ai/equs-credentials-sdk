@@ -193,51 +193,82 @@ Links:
 
 ### E2E tests
 
-#### E2E tests naming convention
-
-TBD
-
 #### E2E tests location
 
 E2E tests should be placed in the `tests` directory of in the project's root (next to `src`).
 
-Each test is located in a separate file. For example:
+Example:
 
 ```
 agent-sdk
 └── tests
-    ├── e2e_credential_issuance.rs
-    ├── ...
+    ├── e2e_vc_core.rs
+    ├── e2e_vc_oid4vci.rs
     └── ...
 ```
 
-#### Code shared between several E2E tests
+File names follow the template `e2e_<MODULE_NAME>_<SUBMODULE_NAME>.rs` where:
 
-In case we need to use some functions from more than one e2e test such functions should be placed
-in a separate module in a file `tests/<SHARED_MODULE_NAME>/mod.rs`.
+- `e2e` is the prefix to destinguish E2E tests from integration tests (if any)
+- `<MODULE_NAME>` is the name of top-level module (for example, `vc`)
+- `<SUBMODULE_NAME>` is the name of an internal submodule (for example, `oid4vci`)
 
-For example, we need to create a `common` module that includes helper functions called from several
-e2e tests. Structure of files looks as shown below:
+Each file may include more that one test for the same submodule in case there are several flows
+that should be tested.
+
+#### E2E tests naming convention
+
+E2E test name should describe the tested flow.
+
+#### Multiple cases for a single test
+
+In case when it makes sense to test some particular flow with several input data it should be done
+with [rstest's](https://crates.io/crates/rstest) `case` feature. It allows to cover different test cases without
+code duplication.
+
+#### Fixtures and code shared between several E2E tests
+
+In case we need to use some functions/fixtures from more than one e2e test such functions should be placed
+in a separate module in a directory `tests/<SHARED_MODULE_NAME>`.
+
+For now, there is an `utils` module that includes fixtures and helper functions called from several e2e tests.
+Structure of files looks as shown below:
 
 ```
-agent-sdk                          # root project directory
-└── tests                          # directory for intergaration tests
-    ├── common                     # `common` module directory
-    │   └── mod.rs                 # .rs file that includes code of the `common` module
-    └── e2e_credential_issuance.rs # example of integration test
+agent-sdk
+└── tests                          # directory for e2e tests
+    ├── utils                      # `utils` module directory
+    │   ├── fixtures               # submodule that contains test fixtures
+    │   ├── helpers                # submodule that contains helper functions used in e2e tests
+    │   └── mod.rs
+    └── e2e_vc_oid4vci.rs          # e2e test
 ```
 
-Example of the `e2e_credential_issuance.rs` file:
+The `utils` module is used, first of all, to place test fixtures in order to have E2E tests files more
+focused on the code while fixtures for test cases are located in `utils::fixtures` module.
+Another kind of code located in the `utils::helpers` module is helpers functions that are used by several
+E2E crates in order to avoid code duplication.
+
+Example of an E2E test file:
 
 ```rust
-use agent_sdk::vc::oid4vci::IssuerService;  // bring the tested code into test's scope
+#![allow(dead_code)]
 
-mod common;                                 // add the `common` module's code into test's crate
+mod utils;                                                  // add the `utils` module's code into test's crate
 
-#[tokio::test]                              // annotate the test's function
-fn issue_credentials() {
-    common::setup();                        // call a function from the `common` module
-    ...
+use rstest::rstest;                                         // import `rstest` features
+use agent_sdk::inmem::kms::LocalKms;                        // `agent_sdk` code
+use utils::http::HttpClientEmulator;                        // shared struct from the `utils::http` module
+use utils::fixtures::oid4vp::{                              // test cases placed in the `utils::fixtures::oid4vp`
+    multiple_presentation_case, single_presentation_case
+};
+
+#[rstest]
+#[case::single_presentation(single_presentation_case())]    // single flow - multiple test cases
+#[case::multiple_presentation(multiple_presentation_case())]
+#[tokio::test]
+async fn credentials_presentation_and_verification(#[case] test_case: Oid4VpTestCase) {
+    // code
 }
 ```
 

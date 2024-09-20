@@ -1,3 +1,5 @@
+pub(crate) mod oid4vp;
+
 use serde_json::json;
 use url::Url;
 
