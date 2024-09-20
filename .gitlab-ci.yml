@@ -1,14 +1,86 @@
+include:
+  - template: Security/SAST.gitlab-ci.yml
+  - template: Security/Secret-Detection.gitlab-ci.yml
+  - project: 'build-images/sonar-qube'
+    ref: main
+    file: '/templates/.gitlab-ci-sonarqube.yml'
+  - project: 'build-images/synopsys-detect'
+    ref: main
+    file: '/templates/.gitlab-ci-blackduck-intelligent.yml'
+  - project: 'build-images/synopsys-detect'
+    ref: main
+    file: '/templates/.gitlab-ci-blackduck-signature.yml'
+
 stages:
+  - scan
   - lint
   - test
   - build
 
-default:
-  image: rust:1.79.0
+variables:
+  RUST_VERSION: "1.79.0"
+
+# Shared configurations
+.cargo_local_deps_script: &cargo_local_deps_script
+  - sed -i "s|ssh://git@git.slock.it/|https://gitlab-ci-token:${CI_JOB_TOKEN}@git.slock.it/|" Cargo.toml
+
+.rust_job_configs: &rust_job_configs
+  image: rust:${RUST_VERSION}
   before_script:
-    - sed -i "s|ssh://git@git.slock.it/|https://gitlab-ci-token:${CI_JOB_TOKEN}@git.slock.it/|" Cargo.toml
+    - *cargo_local_deps_script
+
+.black_duck_scan: &black_duck_scan
+  stage: scan
+  before_script:
+    - curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain ${RUST_VERSION}
+    - source "$HOME/.cargo/env"
+    - *cargo_local_deps_script
+    - cargo generate-lockfile
+
+# Scan stage
+
+black duck scan branches:
+  <<: *black_duck_scan
+
+black duck signature scan branches:
+  <<: *black_duck_scan
+
+black duck scan tags:
+  <<: *black_duck_scan
+
+black duck signature scan tags:
+  <<: *black_duck_scan
+
+semgrep-sast:
+  stage: scan
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_REF_NAME == "main"'
+      changes:
+        - '**/*.rs'
+
+secret_detection:
+  stage: scan
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_REF_NAME == "main"'
+      changes:
+        - '**/*'
+
+sonar qube scan branches:
+  stage: scan
+  except:
+    - merge_requests
+
+sonar qube scan tags:
+  stage: scan
+  except:
+    - merge_requests
+
+# Lint stage
 
 lint-job:
+  <<: *rust_job_configs
   stage: lint
   script:
     - rustup component add rustfmt
@@ -19,7 +91,10 @@ lint-job:
     - merge_requests
     - main
 
+# Test stage
+
 test-job:
+  <<: *rust_job_configs
   stage: test
   script:
     - cargo build --all-features
@@ -29,11 +104,10 @@ test-job:
     - main
 
 coverage-job:
+  <<: *rust_job_configs
   stage: test
-  before_script:
-    - sed -i "s|ssh://git@git.slock.it/|https://gitlab-ci-token:${CI_JOB_TOKEN}@git.slock.it/|" Cargo.toml
-    - cargo install cargo-tarpaulin
   script:
+    - cargo install cargo-tarpaulin
     - cargo tarpaulin --timeout 180 --all-features --exclude-files "demos/*" --fail-under 60 -o Html
   coverage: '/^\d+.\d+% coverage/'
   artifacts:
@@ -43,7 +117,10 @@ coverage-job:
     - merge_requests
     - main
 
+# Build stage
+
 doc-build-job:
+  <<: *rust_job_configs
   stage: build
   script:
     - RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --workspace --all-features
@@ -52,6 +129,7 @@ doc-build-job:
     - main
 
 oid4vc-demo-build-job:
+  <<: *rust_job_configs
   stage: build
   script:
     - cargo build --manifest-path=demos/oid4vc/Cargo.toml
@@ -61,6 +139,7 @@ oid4vc-demo-build-job:
     - main
 
 multi-thread-demo-build-job:
+  <<: *rust_job_configs
   stage: build
   script:
     - cargo build --manifest-path=demos/multi-thread/Cargo.toml
