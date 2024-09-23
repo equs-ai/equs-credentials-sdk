@@ -549,20 +549,21 @@ mod tests {
     use crate::inmem::kms::LocalKms;
     use crate::utils::http::test::mock_http_req_body;
     use crate::utils::test_utils::create_did_and_key_metadata;
+    use crate::vc::oid4vci::metadata::convert_metadata;
+    use crate::vc::oid4vci::tests::fixtures::{
+        sample_claims, sample_credential_definition, sample_credential_offer,
+        sample_credential_request, sample_issuer_metadata, ACCESS_TOKEN, CRED_DEF_ID, NONCE, SCOPE,
+        TOKEN_INTROSPECT_URL,
+    };
     use crate::vc::oid4vci::AuthorizationCodeGrant;
     use crate::vc::oid4vci::Error::Protocol;
-    use api::{Issuer, IssuerBuilder};
+    use api::Issuer;
     use oauth2::http::{Method, StatusCode};
     use serde_json::json;
 
-    use crate::vc::oid4vci::tests::fixtures::{
-        sample_claims, sample_credential_offer, sample_credential_request, sample_issuer_metadata,
-        ACCESS_TOKEN, AUTH_URL, NONCE,
-    };
-
     #[tokio::test]
     async fn issuer_returns_metadata_correctly() {
-        let issuer = build_issuer().await;
+        let issuer = issuer_service(None, None).await;
 
         let metadata = issuer.get_issuer_metadata();
 
@@ -571,11 +572,11 @@ mod tests {
 
     #[tokio::test]
     async fn issuer_creates_credential_offer_correctly() {
-        let issuer = build_issuer().await;
+        let issuer = issuer_service(None, None).await;
 
         let offer = issuer
             .create_credential_offer(
-                vec!["SD_JWT_cred"],
+                vec![CRED_DEF_ID],
                 &CredentialOfferGrants {
                     authorization_code: Some(AuthorizationCodeGrant { issuer_state: None }),
                     pre_authorized_code: None,
@@ -591,7 +592,7 @@ mod tests {
 
     #[tokio::test]
     async fn issuance_succeeds_when_nonce_is_provided() {
-        let issuer = build_issuer().await;
+        let issuer = issuer_service(None, None).await;
 
         let iss_result = issuer
             .issue_credential(
@@ -607,7 +608,7 @@ mod tests {
 
     #[tokio::test]
     async fn issuance_fails_with_invalid_proof_error_when_nonce_is_not_provided() {
-        let issuer = build_issuer().await;
+        let issuer = issuer_service(None, None).await;
 
         let iss_result = issuer
             .issue_credential(
@@ -627,14 +628,12 @@ mod tests {
     #[tokio::test]
     async fn issuer_requests_token_validity_from_auth_server() {
         let mut http_client = MockHttpClient::new();
+        let token_intro_url = Url::parse(TOKEN_INTROSPECT_URL).unwrap();
 
         mock_http_req_body(
             &mut http_client,
             Method::POST,
-            Url::parse(AUTH_URL)
-                .unwrap()
-                .join("/token/introspect")
-                .unwrap(),
+            token_intro_url.clone(),
             format!("token={}", ACCESS_TOKEN),
             json!({
                   "active": true,
@@ -643,7 +642,9 @@ mod tests {
             1.into(),
         );
 
-        let issuer = build_issuer_with_token_validation(http_client).await;
+        let token_validator =
+            TokenValidation::Introspect(Introspect::new(http_client, token_intro_url, None));
+        let issuer = issuer_service(None, Some(token_validator)).await;
 
         let iss_result = issuer
             .issue_credential(
@@ -658,13 +659,13 @@ mod tests {
 
     #[tokio::test]
     async fn issuance_fails_with_invalid_token_error_when_token_is_not_active() {
-        let authz_url = Url::parse(AUTH_URL).unwrap();
         let mut http_client = MockHttpClient::new();
+        let token_intro_url = Url::parse(TOKEN_INTROSPECT_URL).unwrap();
 
         mock_http_req_body(
             &mut http_client,
             Method::POST,
-            authz_url.join("/token/introspect").unwrap(),
+            Url::parse(TOKEN_INTROSPECT_URL).unwrap(),
             format!("token={}", ACCESS_TOKEN),
             json!({
                   "active": false,
@@ -673,7 +674,9 @@ mod tests {
             1.into(),
         );
 
-        let issuer = build_issuer_with_token_validation(http_client).await;
+        let token_validator =
+            TokenValidation::Introspect(Introspect::new(http_client, token_intro_url, None));
+        let issuer = issuer_service(None, Some(token_validator)).await;
 
         let iss_result = issuer
             .issue_credential(
@@ -688,6 +691,65 @@ mod tests {
             iss_result.err().unwrap(),
             Protocol { source } if *source.error_type() == ErrorType::InvalidToken
         ));
+    }
+
+    #[tokio::test]
+    async fn issuer_resolves_credential_definition_correctly() {
+        let issuer_service = issuer_service(None, None).await;
+
+        let cred_req = sample_credential_request();
+        let (cred_def_id, cred_def_metadata) = issuer_service.resolve_cred_def(&cred_req).unwrap();
+
+        assert_eq!(
+            (CRED_DEF_ID.to_owned(), sample_credential_definition()),
+            (cred_def_id, cred_def_metadata)
+        )
+    }
+
+    #[tokio::test]
+    async fn issuer_validates_credential_definition_ids_correctly() {
+        let issuer_service = issuer_service(None, None).await;
+
+        let cred_def_ids = vec![CRED_DEF_ID];
+        let validate_res = issuer_service.validate_cred_def_ids(&cred_def_ids);
+
+        validate_res.unwrap();
+    }
+
+    #[tokio::test]
+    async fn issuer_validates_nonce_correctly() {
+        let issuer_service = issuer_service(None, None).await;
+
+        let mut session = sample_session_with_nonce();
+        let nonce_data = session.nonce.clone().unwrap();
+        let nonce_data_to_check = issuer_service.validate_nonce(&mut session).unwrap();
+
+        assert_eq!(nonce_data_to_check, nonce_data);
+    }
+
+    #[tokio::test]
+    async fn issuer_validates_scope_correctly() {
+        let issuer_service = issuer_service(None, None).await;
+        let scope = Scope::new(SCOPE.to_owned());
+
+        let validate_res = issuer_service.validate_scope(ACCESS_TOKEN, CRED_DEF_ID, &scope);
+
+        validate_res.unwrap()
+    }
+
+    #[tokio::test]
+    async fn issuer_validates_claim_names_correctly() {
+        let issuer_service = issuer_service(None, None).await;
+
+        let claims = json!({
+            "given_name": "Bois",
+            "family_name": "Tursunov"
+        });
+        let cred_def = sample_credential_definition();
+
+        let validate_res = issuer_service.validate_claim_names(&claims, &cred_def);
+
+        validate_res.unwrap()
     }
 
     fn sample_session_with_nonce() -> IssuanceSession {
@@ -710,28 +772,24 @@ mod tests {
         IssuanceSession::default()
     }
 
-    async fn build_issuer() -> impl Issuer {
+    async fn issuer_service(
+        http_client: Option<MockHttpClient>,
+        token_validation: Option<TokenValidation<MockHttpClient>>,
+    ) -> IssuerService<impl vc::core::Issuer, impl HttpClient> {
         let kms = LocalKms::new();
+        let introspect = Introspect::new(
+            http_client.unwrap_or_default(),
+            Url::parse(TOKEN_INTROSPECT_URL).unwrap(),
+            None,
+        );
+
         let issuer_metadata = sample_issuer_metadata();
         let (_, key_metadata) = create_did_and_key_metadata(&kms).await;
-        let builder = IssuerBuilder::new(kms, issuer_metadata, key_metadata);
+        let issuer_metadata_inner =
+            convert_metadata(&issuer_metadata, &Default::default(), &key_metadata).unwrap();
 
-        builder.build().await.unwrap()
-    }
+        let inner = vc::core::IssuerService::new(kms, issuer_metadata_inner);
 
-    async fn build_issuer_with_token_validation(http_client: MockHttpClient) -> impl Issuer {
-        let kms = LocalKms::new();
-        let issuer_metadata = sample_issuer_metadata();
-        let (_, key_metadata) = create_did_and_key_metadata(&kms).await;
-        let builder = IssuerBuilder::new(kms, issuer_metadata, key_metadata);
-
-        let authz_url = Url::parse(AUTH_URL).unwrap();
-
-        builder
-            .with_http_client(http_client)
-            .token_validation_introspect(authz_url.join("/token/introspect").unwrap(), None)
-            .build()
-            .await
-            .unwrap()
+        IssuerService::new(issuer_metadata, inner, token_validation)
     }
 }

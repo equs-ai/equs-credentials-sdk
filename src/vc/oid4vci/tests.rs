@@ -1,5 +1,5 @@
 pub mod fixtures {
-    use crate::vc::oid4vci::{CredentialRequest, CredentialResponse, Nonce};
+    use crate::vc::oid4vci::{CredDefMetadata, CredentialRequest, CredentialResponse, Nonce};
     use crate::vc::Claims;
     use oauth2::AccessToken;
     use oid4vci::core::metadata::IssuerMetadata;
@@ -8,6 +8,9 @@ pub mod fixtures {
 
     pub const ISSUER_URL: &str = "https://issuer-backend.com";
     pub const AUTH_URL: &str = "https://authz-backend.com";
+    pub const TOKEN_INTROSPECT_URL: &str =
+        "https://authz-backend.com/protocol/openid-connect/token/introspect";
+    pub const JWKS_URL: &str = "http://issuer.org/certs";
     pub const NONCE: &str = "KB50VOm9I-kPLT9mAACV8g";
 
     // header:
@@ -78,41 +81,19 @@ pub mod fixtures {
 
     pub const NOTIFICATION_ID: &str = "8fcc7362-dc77-4aaf-a953-fa56e39b22f7";
     pub const SCOPE: &str = "SD_JWT_cred";
+    pub const CRED_DEF_ID: &str = "SD_JWT_cred_sample";
     pub const REQ_URI_CODE: &str = "fake_request_uri";
+    pub const AUTH_REDIRECT_URL: &str = "urn:ietf:wg:oauth:2.0:oob";
 
     pub fn sample_issuer_metadata() -> IssuerMetadata {
+        let cred_def = serde_json::to_value(&sample_credential_definition()).unwrap();
         let metadata = serde_json::from_value(json!(
             {
                 "credential_issuer": ISSUER_URL,
                 "authorization_servers": [AUTH_URL],
                 "credential_endpoint": ISSUER_URL.to_owned()+"/credential",
                 "credential_configurations_supported": {
-                    "SD_JWT_cred": {
-                    "format": "vc+sd-jwt",
-                    "scope": "SD_JWT_cred",
-                    "cryptographic_binding_methods_supported": [
-                        "jwk"
-                    ],
-                    "credential_signing_alg_values_supported": [
-                        "ES256"
-                    ],
-                    "proof_types_supported": {
-                        "jwt": {
-                        "proof_signing_alg_values_supported": [
-                            "ES256"
-                        ]
-                        }
-                    },
-                    "vct": "SD_JWT_cred",
-                    "credential_definition": {
-                        "type": "SD_JWT_cred",
-                        "claims": {
-                            "given_name": {},
-                            "family_name": {},
-                            "dob": {}
-                        }
-                        }
-                    }
+                    CRED_DEF_ID: cred_def
                 }
             }
         ));
@@ -126,7 +107,7 @@ pub mod fixtures {
                 "issuer": AUTH_URL,
                 "authorization_endpoint": AUTH_URL.to_owned()+"/auth",
                 "token_endpoint": AUTH_URL.to_owned()+"/token",
-                "introspection_endpoint": AUTH_URL.to_owned()+"/protocol/openid-connect/token/introspect",
+                "introspection_endpoint": TOKEN_INTROSPECT_URL,
                 "jwks_uri": AUTH_URL.to_owned()+"/cert",
                 "grant_types_supported": [
                     "authorization_code",
@@ -153,7 +134,7 @@ pub mod fixtures {
             {
                 "credential_issuer": ISSUER_URL,
                 "credential_configuration_ids": [
-                    "SD_JWT_cred"
+                    CRED_DEF_ID
                 ],
                 "grants": {
                     "authorization_code": {
@@ -162,6 +143,38 @@ pub mod fixtures {
                 }
             }
         )
+    }
+
+    pub fn sample_credential_definition() -> CredDefMetadata {
+        let cred_def = serde_json::from_value(json!({
+            "format": "vc+sd-jwt",
+            "scope": "SD_JWT_cred",
+            "cryptographic_binding_methods_supported": [
+                "jwk"
+            ],
+            "credential_signing_alg_values_supported": [
+                "ES256"
+            ],
+            "proof_types_supported": {
+                "jwt": {
+                "proof_signing_alg_values_supported": [
+                    "ES256"
+                ]
+                }
+            },
+            "vct": "SD_JWT_cred",
+            "credential_definition": {
+                "type": "SD_JWT_cred",
+                "claims": {
+                    "given_name": {},
+                    "family_name": {},
+                    "dob": {}
+                }
+            }
+            }
+        ));
+
+        cred_def.unwrap()
     }
 
     pub fn sample_access_token() -> AccessToken {
@@ -175,7 +188,7 @@ pub mod fixtures {
     pub fn sample_credential_request() -> CredentialRequest {
         serde_json::from_value(json!(
             {
-                "credential_identifier":null,
+                "credential_identifier": CRED_DEF_ID,
                 "format":"vc+sd-jwt",
                 "vct":"SD_JWT_cred",
                 "proof":{
@@ -208,5 +221,49 @@ pub mod fixtures {
             "dob": "09/09/1989",
         }))
         .unwrap()
+    }
+
+    pub fn sample_jwks() -> Value {
+        let jwks = json!({
+          "keys": [
+            {
+              "kid": "PclYP6vRk1LpKDfjSO2Da35rmGRfi9362CpREyJf8p0",
+              "kty": "RSA",
+              "alg": "RS256",
+              "use": "sig",
+              "n": "qIMTnddR8yxBzXe1ue1Fx7kfjgY9jzsWm5ge7UWv5GWlFEoKjtDrGmPhtSwFTden3DiM4XiIBZ-5AbX_8fdnGxNUON1_GFBnLQv6q0eea9NRM8gtu_avM4nlVzErpdW1LKVm7C3JjjfdlivBEu6XcUZA4bUKNPaj6nwuqQsKstrcuPG32WapVszLDksfSowEVUIc9p__U0aasrfz6jM83jTwq_phHgEwZKxzfw-i055X0Q-JdIs01I27JkiNp0KG5Va-KU9GJBhcTw3QgpifmRc7_9WzmiiSbkxqsTZQwnQbxyShQJYZc0TdBudd7C3mRhDUNh-gdflCk06vCb5sbw",
+              "e": "AQAB",
+              "x5c": [
+                "MIICrzCCAZcCBgGK8WCVpzANBgkqhkiG9w0BAQsFADAbMRkwFwYDVQQDDBBwaWQtaXNzdWVyLXJlYWxtMB4XDTIzMTAwMjE3MTA1M1oXDTMzMTAwMjE3MTIzM1owGzEZMBcGA1UEAwwQcGlkLWlzc3Vlci1yZWFsbTCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAKiDE53XUfMsQc13tbntRce5H44GPY87FpuYHu1Fr+RlpRRKCo7Q6xpj4bUsBU3Xp9w4jOF4iAWfuQG1//H3ZxsTVDjdfxhQZy0L+qtHnmvTUTPILbv2rzOJ5VcxK6XVtSylZuwtyY433ZYrwRLul3FGQOG1CjT2o+p8LqkLCrLa3Ljxt9lmqVbMyw5LH0qMBFVCHPaf/1NGmrK38+ozPN408Kv6YR4BMGSsc38PotOeV9EPiXSLNNSNuyZIjadChuVWvilPRiQYXE8N0IKYn5kXO//Vs5ookm5MarE2UMJ0G8ckoUCWGXNE3QbnXewt5kYQ1DYfoHX5QpNOrwm+bG8CAwEAATANBgkqhkiG9w0BAQsFAAOCAQEAg+H8Z/vQXxZ+kZZXupIOdZZCR3LuyLiZcselF2ldXaH44SUXBM2LbVvElLScg/DFak9Bp6+3fIrky56E9je/i8TpEtq0ey9sdncjAD070BmMHis7MIT5PdQkaESpCwJmN4HkVNrVFbsdiklnKIoSWmJ7IdARTPlYP3bDo6ts+0wxqc6dmFzePppVn+eMXr0HO4Il8ycctCaDr+iY4yvvi+OoOozm7yPBMzjFhYpLSV6Nisy5KABS3XTKJRmKelnC8jrqPl3lDWLXQx24PpIzxSRcRb6yPkClJWe7qFzckec7Zv5M7IRwLyxb0aWtK8m1xBlKXLNEWp+KXtrYGYHi0g=="
+              ],
+              "x5t": "f_nYDF5_zLbbZm1BxSroBsxCywU",
+              "x5t#S256": "cxRALdyDtXe6fbJ16gv7GHqnd2G4zoOsUmKU1SJYA3c"
+            }
+          ]
+        });
+
+        jwks
+    }
+
+    pub fn sample_introspect_response() -> Value {
+        let resp = json!({
+            "exp":1726846647,
+            "iat":1726811031,
+            "auth_time":1726810647,
+            "jti":"cfbd5482-3cfa-4aed-b2f4-d65fb858b42e",
+            "iss":"http://localhost:8080",
+            "sub":"60b8ba5f-c73f-4976-b0da-48d0e53335de",
+            "typ":"Bearer",
+            "azp":"wallet-dev",
+            "sid":"1fe84eb7-1911-40eb-8dcf-db3607a68d8f",
+            "allowed-origins":["/*"],
+            "scope":"SD_JWT_cred_scope",
+            "client_id":"wallet-dev",
+            "username":"tneal",
+            "token_type":"Bearer",
+            "active":true
+        });
+
+        resp
     }
 }

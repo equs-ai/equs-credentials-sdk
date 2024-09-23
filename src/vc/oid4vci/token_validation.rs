@@ -11,9 +11,7 @@ use oid4vci::openidconnect;
 use oid4vci::openidconnect::core::{
     CoreJsonWebKey, CoreJsonWebKeyType, CoreJsonWebKeyUse, CoreJwsSigningAlgorithm,
 };
-use oid4vci::openidconnect::{
-    JsonWebKey, JsonWebKeyId, JsonWebKeySet, JsonWebKeySetUrl, SignatureVerificationError,
-};
+use oid4vci::openidconnect::{JsonWebKey, JsonWebKeyId, JsonWebKeySet, JsonWebKeySetUrl};
 use reqwest::StatusCode;
 use snafu::{ensure, Location, ResultExt, Snafu};
 use std::fmt::Debug;
@@ -69,7 +67,7 @@ pub enum Error {
     SignatureVerification {
         #[snafu(implicit)]
         location: Location,
-        source: SignatureVerificationError,
+        source: ssi::jws::Error,
     },
 }
 
@@ -200,14 +198,12 @@ impl<HC: HttpClient> ByJwks<HC> {
         .await
         .context(DiscoverySnafu)?;
 
-        let (header, signature) = if let Ok(header) = ssi::jws::decode_unverified(token) {
-            header
-        } else {
-            return TokenSnafu {
-                details: "Can not parse the token",
+        let (header, _) = ssi::jws::decode_unverified(token).map_err(|e| {
+            TokenSnafu {
+                details: format!("Can not parse the header of the token: {e}"),
             }
-            .fail();
-        };
+            .build()
+        })?;
 
         let key_id = header.key_id.ok_or(
             TokenSnafu {
@@ -227,18 +223,89 @@ impl<HC: HttpClient> ByJwks<HC> {
                 .build(),
             )?;
 
-        let alg: CoreJwsSigningAlgorithm = serde_json::from_str(
-            serde_json::to_string(&header.algorithm)
-                .context(ParseSnafu)?
-                .as_str(),
-        )
-        .context(ParseSnafu)?;
+        let jwk = serde_json::from_value(serde_json::to_value(key).context(ParseSnafu)?)
+            .context(ParseSnafu)?;
 
-        key.verify_signature(&alg, token.as_bytes(), signature.as_slice())
-            .context(SignatureVerificationSnafu)?;
+        ssi::jws::decode_verify(token, &jwk).context(SignatureVerificationSnafu)?;
 
         debug!("access token is valid");
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::http::MockHttpClient;
+    use crate::utils::http::test::mock_http_fn;
+    use crate::vc::oid4vci::tests::fixtures::{
+        sample_introspect_response, sample_jwks, JWKS_URL, TOKEN_INTROSPECT_URL,
+    };
+    use oauth2::http::HeaderMap;
+    use oauth2::HttpResponse;
+
+    const TOKEN: &str = "eyJhbGciOiJSUzI1NiIsInR5cCIgOiAiSldUIiwia2lkIiA6ICJQY2xZUDZ2UmsxTHBLRGZqU08yRGEzNXJtR1JmaTkzNjJDcFJFeUpmOHAwIn0.eyJleHAiOjE3MjY4NDY2NDcsImlhdCI6MTcyNjgxMDgzOSwiYXV0aF90aW1lIjoxNzI2ODEwNjQ3LCJqdGkiOiJlNWIxZjFjNC1kYjEzLTRkODgtYmJkMi0yN2NkMDkxYzc1ZGEiLCJpc3MiOiJodHRwOi8vbG9jYWxob3N0OjgwODAvaWRwL3JlYWxtcy9waWQtaXNzdWVyLXJlYWxtIiwic3ViIjoiNjBiOGJhNWYtYzczZi00OTc2LWIwZGEtNDhkMGU1MzMzNWRlIiwidHlwIjoiQmVhcmVyIiwiYXpwIjoid2FsbGV0LWRldiIsInNpZCI6IjFmZTg0ZWI3LTE5MTEtNDBlYi04ZGNmLWRiMzYwN2E2OGQ4ZiIsImFsbG93ZWQtb3JpZ2lucyI6WyIvKiJdLCJzY29wZSI6IlNEX0pXVF9jcmVkX3Njb3BlIn0.Sj6R0q7nnumcspoZOMS6KhOFf4yCia9KAF4uSjUShLq4xUgO-GaprdFjk3zX6koNr1dj_fVdi0Kq0Msxm3JkgJ4tNJRksF_n2pGhgfTfsGW6llZr_ZcO_bYugWYbbyUuw88QqGVhVjdiGfffkg3YC6UP-2-nK96BgQGu9UmbSxSwYYeZdoCc1vqUglN_0zwZ3FSmZ9J12QBb7rvK-lPPMhKeXByaHyuz_MtQguEmi0GOg4J1v3DHQZz5aFEG7W9-zYKRVO3EXHgolOrzobnNgQyfpE0SzHkokLKrEddudbSATvUAT9DXihXHYCRPouf3pnSpV3WPl6Kxh46RdfNw-w";
+
+    #[tokio::test]
+    async fn validating_token_by_jwks_works() {
+        let mut http_client = MockHttpClient::new();
+        mock_http_fn(
+            &mut http_client,
+            Method::GET,
+            Url::parse(JWKS_URL).unwrap(),
+            |req| {
+                let resp = HttpResponse {
+                    status_code: StatusCode::OK,
+                    headers: HeaderMap::from_iter(vec![(
+                        CONTENT_TYPE,
+                        HeaderValue::from_str(MIME_TYPE_JSON).unwrap(),
+                    )]),
+                    body: serde_json::to_vec(&sample_jwks()).unwrap(),
+                };
+
+                Ok(resp)
+            },
+            1.into(),
+        );
+
+        let validator = ByJwks::new(
+            http_client,
+            JsonWebKeySetUrl::new(JWKS_URL.to_string()).unwrap(),
+        );
+
+        let result = validator.validate(TOKEN).await;
+
+        result.unwrap()
+    }
+
+    #[tokio::test]
+    async fn validating_token_by_introspect_url_works() {
+        let mut http_client = MockHttpClient::new();
+        mock_http_fn(
+            &mut http_client,
+            Method::POST,
+            Url::parse(TOKEN_INTROSPECT_URL).unwrap(),
+            |req| {
+                let resp = HttpResponse {
+                    status_code: StatusCode::OK,
+                    headers: HeaderMap::from_iter(vec![(
+                        CONTENT_TYPE,
+                        HeaderValue::from_str(MIME_TYPE_JSON).unwrap(),
+                    )]),
+                    body: serde_json::to_vec(&sample_introspect_response()).unwrap(),
+                };
+
+                Ok(resp)
+            },
+            1.into(),
+        );
+
+        let validator =
+            Introspect::new(http_client, Url::parse(TOKEN_INTROSPECT_URL).unwrap(), None);
+
+        let result = validator.validate(TOKEN).await;
+
+        result.unwrap()
     }
 }

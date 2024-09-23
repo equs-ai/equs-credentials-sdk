@@ -20,6 +20,7 @@ use url::Url;
 #[derive(Snafu)]
 #[non_exhaustive]
 pub enum Error {
+    #[snafu(display("Builder error at {location}\n Cause: {details}"))]
     Build {
         details: String,
         #[snafu(implicit)]
@@ -30,6 +31,13 @@ pub enum Error {
 impl Debug for Error {
     fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
         std::write!(fmt, "{}", self)?;
+
+        let mut error: &dyn std::error::Error = self;
+        while let Some(source) = error.source() {
+            write!(fmt, "\n Cause: {}", source)?;
+            error = source;
+        }
+
         Ok(())
     }
 }
@@ -436,7 +444,7 @@ where
         }
         .map_err(|e| {
             BuildSnafu {
-                details: format!("Cannot initialize Holder service: {e}"),
+                details: format!("Cannot initialize Holder service: {:?}", e),
             }
             .build()
         })?;
@@ -444,5 +452,110 @@ where
         info!("oid4vci-holder service is initialized");
 
         Ok(holder)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::http::MockHttpClient;
+    use crate::inmem::kms::LocalKms;
+    use crate::inmem::vault::InMemVault;
+    use crate::utils::http::test::mock_http_once;
+    use crate::utils::test_utils::create_did_and_key_metadata;
+    use crate::vc::oid4vci::tests::fixtures::{
+        sample_authorization_metadata, sample_issuer_metadata, AUTH_REDIRECT_URL, ISSUER_URL, SCOPE,
+    };
+    use oauth2::http::{Method, StatusCode};
+    use oauth2::Scope;
+    use oid4vci::credential_offer::{CredentialOfferFormat, CredentialOfferParameters};
+    use oid4vci::openidconnect::IssuerUrl;
+    use rstest::rstest;
+
+    pub const ISSUER_OIDC_URL: &str =
+        "https://issuer-backend.com/.well-known/openid-credential-issuer";
+    pub const AUTH_SERVER_OIDC_URL: &str =
+        "https://authz-backend.com/.well-known/openid-configuration";
+
+    #[tokio::test]
+    async fn building_issuer_works() {
+        let http_client = MockHttpClient::new();
+        let kms = LocalKms::new();
+        let (_, key_metadata) = create_did_and_key_metadata(&kms).await;
+
+        let builder = IssuerBuilder::new(kms, sample_issuer_metadata(), key_metadata)
+            .token_validation_jwks(Url::parse("http://issuer.org/certs").unwrap())
+            .with_http_client(http_client);
+
+        let result = builder.build().await;
+
+        result.unwrap();
+    }
+
+    #[rstest]
+    #[case::from_offer(issuer_discovery_from_offer())]
+    #[case::from_url(issuer_discovery_from_url())]
+    #[case::from_metadata(issuer_discovery_from_metadata())]
+    #[tokio::test]
+    async fn building_holder_works(#[case] discovery: IssuerDiscovery) {
+        let kms = LocalKms::new();
+        let (_, key_metadata) = create_did_and_key_metadata(&kms).await;
+
+        let mut http_client = MockHttpClient::new();
+        match discovery {
+            IssuerDiscovery::Url(_) | IssuerDiscovery::Offer(_) => {
+                mock_http_once(
+                    &mut http_client,
+                    Method::GET,
+                    Url::parse(ISSUER_OIDC_URL).unwrap(),
+                    sample_issuer_metadata(),
+                    StatusCode::OK,
+                );
+
+                mock_http_once(
+                    &mut http_client,
+                    Method::GET,
+                    Url::parse(AUTH_SERVER_OIDC_URL).unwrap(),
+                    sample_authorization_metadata(),
+                    StatusCode::OK,
+                );
+            }
+            _ => {}
+        }
+
+        let vault = InMemVault::new();
+        let builder = HolderBuilder::new(
+            kms,
+            vault,
+            key_metadata,
+            "fake_client_id".to_string(),
+            discovery,
+        )
+        .with_http_client(http_client)
+        .with_redirect_url(AUTH_REDIRECT_URL.to_string());
+
+        let result = builder.build().await;
+
+        result.unwrap();
+    }
+
+    fn issuer_discovery_from_offer() -> IssuerDiscovery {
+        let credential_offer = CredentialOfferParameters::new(
+            IssuerUrl::new(ISSUER_URL.to_string()).unwrap(),
+            vec![CredentialOfferFormat::Reference(Scope::new(
+                SCOPE.to_string(),
+            ))],
+            None,
+        );
+
+        IssuerDiscovery::Offer(CredentialOffer::Value { credential_offer })
+    }
+
+    fn issuer_discovery_from_url() -> IssuerDiscovery {
+        IssuerDiscovery::Url(ISSUER_URL.to_owned())
+    }
+
+    fn issuer_discovery_from_metadata() -> IssuerDiscovery {
+        IssuerDiscovery::Metadata(sample_issuer_metadata(), sample_authorization_metadata())
     }
 }
