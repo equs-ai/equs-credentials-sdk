@@ -1,5 +1,5 @@
 [workspace]
-members = ["demos/oid4vc", "demos/oid4vc/holder", "demos/multi-thread"]
+members = ["demos/oid4vc", "demos/oid4vc/holder", "demos/multi-thread", "plugins/askar"]
 
 [package]
 name = "agent-sdk"
@@ -32,7 +32,6 @@ reqwest = "0.11"
 uuid = { version = "1.10.0", features = ["v4"] }
 url = "2.5.2"
 anyhow = "1.0.86"
-aries-askar = { version = "0.3.1", optional = true }
 async-rwlock = "1.3.0"
 tracing = { version = "0.1.40", features = ["attributes", "release_max_level_warn"] }
 snafu = "0.8.4"
@@ -49,5 +48,4 @@ ed25519-dalek = { version = "2.1.1"}
 p256 = { version = "0.13.2"}
 
 [features]
-askar = ["dep:aries-askar"]
 in-memory = ["dep:rand", "dep:ed25519-dalek", "dep:p256"]

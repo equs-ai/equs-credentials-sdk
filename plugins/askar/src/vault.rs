@@ -5,11 +5,11 @@ use snafu::ensure;
 use tracing::{instrument, Level};
 use uuid::Uuid;
 
-use crate::crypto::Alg;
-use crate::vault::{
+use agent_sdk::crypto::Alg;
+use agent_sdk::vault::{
     Error, FindCriteria, FormatNotSupportedSnafu, ResolvingSnafu, StoringSnafu, VCSnafu, Vault,
 };
-use crate::vc::{
+use agent_sdk::vc::{
     Credential, CredentialMetadata, VCFormat, JWT_VC_JSON, JWT_VC_JSON_LD, LDP_VC, SD_JWT_VC,
 };
 
@@ -138,6 +138,10 @@ impl AskarVault {
                 credential.as_str(),
                 tags,
             )),
+            _ => FormatNotSupportedSnafu {
+                format: format!("{:?}", credential),
+            }
+            .fail(),
         }
     }
 }
@@ -180,7 +184,7 @@ impl Vault for AskarVault {
             .build()
         })?;
 
-        entry.map(|en| en.try_into()).transpose()
+        entry.map(entry_to_credential).transpose()
     }
 
     #[instrument(
@@ -190,13 +194,22 @@ impl Vault for AskarVault {
         ret(level = Level::TRACE)
     )]
     async fn find_credentials(&self, criteria: FindCriteria) -> Result<Vec<Credential>, Error> {
-        let entries = self.find(criteria.into()).await.map_err(|err| {
+        let tag_filter = find_criteria_to_tag_filter(criteria);
+
+        if tag_filter.is_none() {
+            return StoringSnafu {
+                details: "empty tag filter",
+            }
+            .fail();
+        }
+
+        let entries = self.find(tag_filter.unwrap()).await.map_err(|err| {
             StoringSnafu {
                 details: err.to_string(),
             }
             .build()
         })?;
-        entries.into_iter().map(|entry| entry.try_into()).collect()
+        entries.into_iter().map(entry_to_credential).collect()
     }
 }
 
@@ -266,59 +279,116 @@ impl From<AskarVaultId> for String {
     }
 }
 
-impl From<FindCriteria> for TagFilter {
-    #[instrument(
-        level = Level::TRACE,
-        ret(level = Level::TRACE)
-    )]
-    fn from(value: FindCriteria) -> Self {
-        match value {
-            FindCriteria::ByTypeAndFormat(type_, format) => TagFilter::all_of(vec![
-                TagFilter::is_eq(TAG_TYPE, type_),
-                TagFilter::is_eq(TAG_FORMAT, format),
-            ]),
-        }
+fn find_criteria_to_tag_filter(criteria: FindCriteria) -> Option<TagFilter> {
+    match criteria {
+        FindCriteria::ByTypeAndFormat(type_, format) => Some(TagFilter::all_of(vec![
+            TagFilter::is_eq(TAG_TYPE, type_),
+            TagFilter::is_eq(TAG_FORMAT, format),
+        ])),
+        _ => None,
     }
 }
 
-impl TryFrom<Entry> for Credential {
-    type Error = Error;
-
-    #[instrument(
-        level = Level::TRACE,
-        err(),
-        ret(level = Level::TRACE)
-    )]
-    fn try_from(value: Entry) -> Result<Self, Self::Error> {
-        let credential_str = value
-            .value
-            .as_opt_str()
-            .ok_or_else(|| {
-                VCSnafu {
-                    details: "Failed to convert secret bytes to credential string",
-                }
-                .build()
-            })?
-            .to_string();
-
-        match value.category.as_str() {
-            JWT_VC_JSON => Ok(Credential::JwtVcJson(credential_str)),
-            JWT_VC_JSON_LD => Ok(Credential::JwtVcJsonLd(credential_str)),
-            LDP_VC => {
-                let credential =
-                    ssi::vc::Credential::from_json_unsigned(&credential_str).map_err(|err| {
-                        VCSnafu {
-                            details: err.to_string(),
-                        }
-                        .build()
-                    })?;
-                Ok(Credential::LdpVc(credential))
+fn entry_to_credential(entry: Entry) -> Result<Credential, Error> {
+    let credential_str = entry
+        .value
+        .as_opt_str()
+        .ok_or_else(|| {
+            VCSnafu {
+                details: "Failed to convert secret bytes to credential string",
             }
-            SD_JWT_VC => Ok(Credential::SdJwt(credential_str)),
-            _ => FormatNotSupportedSnafu {
-                format: value.category,
-            }
-            .fail(),
+            .build()
+        })?
+        .to_string();
+
+    match entry.category.as_str() {
+        JWT_VC_JSON => Ok(Credential::JwtVcJson(credential_str)),
+        JWT_VC_JSON_LD => Ok(Credential::JwtVcJsonLd(credential_str)),
+        LDP_VC => {
+            let credential =
+                ssi::vc::Credential::from_json_unsigned(&credential_str).map_err(|err| {
+                    VCSnafu {
+                        details: err.to_string(),
+                    }
+                    .build()
+                })?;
+            Ok(Credential::LdpVc(credential))
         }
+        SD_JWT_VC => Ok(Credential::SdJwt(credential_str)),
+        _ => FormatNotSupportedSnafu {
+            format: entry.category,
+        }
+        .fail(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::AskarStorage;
+    use agent_sdk::vault::{FindCriteria, Vault};
+    use agent_sdk::vc::{Credential, CredentialMetadata, VCFormat};
+
+    // TODO: consider splitting this test into several small unit tests
+    #[tokio::test]
+    async fn test_askar_vault() {
+        let storage = AskarStorage::create("sEcrEt", Some("Askar-Wallet".to_string()))
+            .await
+            .unwrap();
+        let vault = storage.vault();
+        test_vault(vault).await;
+        storage.close().await.unwrap();
+    }
+
+    pub async fn test_vault<V: Vault>(vault: V) {
+        // test data
+        let cred1 = "token".to_string();
+        let cred1_meta = CredentialMetadata {
+            type_: "https://credentials.example.com/identity_credential".into(),
+            format: VCFormat::SdJwtVc,
+            alg: None,
+            tags: vec![],
+        };
+        let cred2str = r###"{
+            "@context": "https://www.w3.org/2018/credentials/v1",
+            "id": "http://example.org/credentials/3731",
+            "type": ["VerifiableCredential"],
+            "issuer": "did:example:30e07a529f32d234f6181736bd3",
+            "issuanceDate": "2020-08-19T21:41:50Z",
+            "credentialSubject": {
+                "id": "did:example:d23dd687a7dc6787646f2eb98d0"
+            }
+        }"###;
+        let cred2: ssi::vc::Credential = serde_json::from_str(cred2str).unwrap();
+        let cred2_meta = CredentialMetadata {
+            type_: "VerifiableCredential".into(),
+            format: VCFormat::LdpVc,
+            alg: None,
+            tags: vec![],
+        };
+
+        let cred1_id = vault
+            .store_credential(Credential::SdJwt(cred1.clone()), &cred1_meta)
+            .await
+            .unwrap();
+        let cred2_id = vault
+            .store_credential(Credential::LdpVc(cred2.clone()), &cred2_meta)
+            .await
+            .unwrap();
+
+        let get1_res = vault.get_credential(&cred1_id).await.unwrap();
+        let get2_res = vault.get_credential(&cred2_id).await.unwrap();
+
+        assert_eq!(get1_res, Some(Credential::SdJwt(cred1.clone())));
+        assert_eq!(get2_res, Some(Credential::LdpVc(cred2)));
+
+        let find_res = vault
+            .find_credentials(FindCriteria::ByTypeAndFormat(
+                "https://credentials.example.com/identity_credential".to_owned(),
+                VCFormat::SdJwtVc.to_string(),
+            ))
+            .await
+            .unwrap();
+
+        assert_eq!(find_res, vec![Credential::SdJwt(cred1)]);
     }
 }
