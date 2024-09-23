@@ -23,7 +23,3 @@ pub mod vc;
 #[cfg(any(test, feature = "in-memory"))]
 pub mod inmem;
 pub mod reqwest;
-
-// TODO: move to a separate crate
-#[cfg(feature = "askar")]
-pub mod askar;

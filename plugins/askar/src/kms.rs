@@ -7,11 +7,11 @@ use ssi::jwk::JWK;
 use std::sync::Arc;
 use tracing::{instrument, Level};
 
-use crate::crypto::{
+use agent_sdk::crypto::{
     Alg, AlgNotSupportedSnafu, Error as CryptoError, Key, KeyNotSupportedSnafu, Signer, SigningKey,
     SigningSnafu, VerificationSnafu, Verifier, VerifyingKey,
 };
-use crate::kms::{
+use agent_sdk::kms::{
     CreateOptions, CreationSnafu, CryptoSnafu, Error as KmsError, KeyHandle, KeyID, KeyType, Kms,
     NotFoundSnafu, ResolvingSnafu,
 };
@@ -25,10 +25,14 @@ impl AskarKeyHandle {
         skip_all,
         ret(level = Level::TRACE)
     )]
-    fn askar_sign_type(&self) -> &'static str {
+    fn askar_sign_type(&self) -> Result<&'static str, CryptoError> {
         match self.alg() {
-            Alg::ES256 => "es256",
-            Alg::EdDSA => "eddsa",
+            Alg::ES256 => Ok("es256"),
+            Alg::EdDSA => Ok("eddsa"),
+            _ => AlgNotSupportedSnafu {
+                alg: format!("{}", self.alg()),
+            }
+            .fail(),
         }
     }
 }
@@ -45,7 +49,7 @@ impl Key for AskarKeyHandle {
     fn pub_key(&self) -> Result<Vec<u8>, CryptoError> {
         self.0
             .to_public_bytes()
-            .map_err(|err| KeyNotSupportedSnafu { type_: "public" }.build())
+            .map_err(|_| KeyNotSupportedSnafu { type_: "public" }.build())
             .map(|public_key| public_key.to_vec())
     }
 
@@ -78,8 +82,10 @@ impl Signer for AskarKeyHandle {
         ret(level = Level::TRACE)
     )]
     async fn sign(&self, payload: &[u8]) -> Result<Vec<u8>, CryptoError> {
+        let sign_type = self.askar_sign_type()?;
+
         self.0
-            .sign_message(payload, Some(self.askar_sign_type()))
+            .sign_message(payload, Some(sign_type))
             .map_err(|err| {
                 SigningSnafu {
                     details: err.to_string(),
@@ -100,9 +106,10 @@ impl Verifier for AskarKeyHandle {
         ret(level = Level::TRACE)
     )]
     async fn verify(&self, data: &[u8], signature: &[u8]) -> Result<(), CryptoError> {
+        let sign_type = self.askar_sign_type()?;
         let valid = self
             .0
-            .verify_signature(data, signature, Some(self.askar_sign_type()))
+            .verify_signature(data, signature, Some(sign_type))
             .map_err(|err| {
                 VerificationSnafu {
                     details: err.to_string(),
@@ -176,8 +183,9 @@ impl Kms<AskarKeyHandle> for AskarKms {
         err(),
         ret(level = Level::TRACE)
     )]
-    async fn create(&self, kt: KeyType, opts: CreateOptions) -> Result<KeyID, KmsError> {
-        let key = LocalKey::generate(kt.into(), false).map_err(|e| {
+    async fn create(&self, kt: KeyType, _opts: CreateOptions) -> Result<KeyID, KmsError> {
+        let key_alg = key_type_to_key_alg(kt).context(CryptoSnafu)?;
+        let key = LocalKey::generate(key_alg, false).map_err(|e| {
             CreationSnafu {
                 details: e.to_string(),
             }
@@ -213,41 +221,81 @@ impl Kms<AskarKeyHandle> for AskarKms {
             })?
             .ok_or_else(|| NotFoundSnafu { id: kid }.build())?;
 
-        let sign_algorithm = key.algorithm().try_into().context(CryptoSnafu)?;
+        let sign_algorithm = key_alg_to_alg(key.algorithm()).context(CryptoSnafu)?;
 
         Ok(AskarKeyHandle(Arc::new(key), sign_algorithm))
     }
 }
 
-impl TryFrom<KeyAlg> for Alg {
-    type Error = CryptoError;
-
-    #[instrument(
-        level = Level::TRACE,
-        err(),
-        ret(level = Level::TRACE)
-    )]
-    fn try_from(value: KeyAlg) -> Result<Self, Self::Error> {
-        match value {
-            KeyAlg::Ed25519 => Ok(Alg::EdDSA),
-            KeyAlg::EcCurve(EcCurves::Secp256r1) => Ok(Alg::ES256),
-            _ => AlgNotSupportedSnafu {
-                alg: value.as_str(),
-            }
-            .fail(),
+fn key_alg_to_alg(key_alg: KeyAlg) -> Result<Alg, CryptoError> {
+    match key_alg {
+        KeyAlg::Ed25519 => Ok(Alg::EdDSA),
+        KeyAlg::EcCurve(EcCurves::Secp256r1) => Ok(Alg::ES256),
+        _ => AlgNotSupportedSnafu {
+            alg: key_alg.as_str(),
         }
+        .fail(),
     }
 }
 
-impl From<KeyType> for KeyAlg {
-    #[instrument(
-        level = Level::TRACE,
-        ret(level = Level::TRACE)
-    )]
-    fn from(value: KeyType) -> Self {
-        match value {
-            KeyType::P256 => KeyAlg::EcCurve(EcCurves::Secp256r1),
-            KeyType::Ed25519 => KeyAlg::Ed25519,
+fn key_type_to_key_alg(key_type: KeyType) -> Result<KeyAlg, CryptoError> {
+    match key_type {
+        KeyType::P256 => Ok(KeyAlg::EcCurve(EcCurves::Secp256r1)),
+        KeyType::Ed25519 => Ok(KeyAlg::Ed25519),
+        _ => KeyNotSupportedSnafu {
+            type_: format!("{}", key_type),
+        }
+        .fail(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::AskarStorage;
+    use agent_sdk::kms;
+    use agent_sdk::kms::{KeyHandle, Kms};
+
+    // TODO: consider splitting this test into several small unit tests
+    #[tokio::test]
+    async fn test_askar_kms() {
+        let storage = AskarStorage::create("sEcrEt", Some("Askar-Wallet".to_string()))
+            .await
+            .unwrap();
+        let kms = storage.kms();
+        test_kms(kms).await;
+        storage.close().await.unwrap();
+    }
+
+    pub async fn test_kms<KH: KeyHandle, KMS: Kms<KH>>(kms: KMS) {
+        for kt in [kms::KeyType::Ed25519, kms::KeyType::P256] {
+            // Create a key
+            let create_res = kms.create(kt.clone(), kms::CreateOptions {}).await;
+            assert!(create_res.is_ok());
+            let kid = create_res.unwrap();
+
+            // Get a handle to the key
+            let get_res = kms.get(&kid).await;
+            assert!(get_res.is_ok());
+            let kh = get_res.unwrap();
+
+            // Sign using handle
+            let message = "abracadabra";
+
+            let s_res = kh.sign(message.as_bytes()).await;
+            assert!(s_res.is_ok());
+
+            let signature = s_res.unwrap();
+
+            // Verify using handle
+            let v_res = kh.verify(message.as_bytes(), &signature).await;
+            assert!(v_res.is_ok());
+
+            // Check JWK
+            assert_ne!(kh.jwk(), None);
+
+            // Print jwks
+            let jwk = kh.jwk().unwrap();
+            println!("JWK: {}", serde_json::to_string_pretty(&jwk).unwrap())
         }
     }
 }

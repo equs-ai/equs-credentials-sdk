@@ -1,9 +1,12 @@
+// Below rule has bug: https://github.com/rust-lang/rust-clippy/issues/12281
+#![allow(clippy::blocks_in_conditions)]
+
 use aries_askar::storage::KdfMethod;
 use aries_askar::{Error, PassKey, Store, StoreKeyMethod};
 use tracing::{instrument, Level};
 
-use crate::askar::kms::AskarKms;
-use crate::askar::vault::AskarVault;
+use crate::kms::AskarKms;
+use crate::vault::AskarVault;
 
 pub mod kms;
 pub mod vault;
@@ -80,32 +83,5 @@ impl AskarStorage {
     )]
     pub async fn close(self) -> Result<(), Error> {
         self.0.close().await
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::askar::AskarStorage;
-    use crate::kms::test_util::test_kms;
-    use crate::vault::test_util::test_vault;
-
-    #[tokio::test]
-    async fn test_askar_kms() {
-        let storage = AskarStorage::create("sEcrEt", Some("Askar-Wallet".to_string()))
-            .await
-            .unwrap();
-        let kms = storage.kms();
-        test_kms(kms).await;
-        storage.close().await.unwrap();
-    }
-
-    #[tokio::test]
-    async fn test_askar_vault() {
-        let storage = AskarStorage::create("sEcrEt", Some("Askar-Wallet".to_string()))
-            .await
-            .unwrap();
-        let vault = storage.vault();
-        test_vault(vault).await;
-        storage.close().await.unwrap();
     }
 }
