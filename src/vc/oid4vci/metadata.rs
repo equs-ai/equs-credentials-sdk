@@ -82,7 +82,7 @@ pub fn convert_metadata(
         ret(level = Level::TRACE),
 )]
 pub fn cred_definition(
-    id: &String,
+    id: &str,
     credential_metadata: &oid4vci::metadata::CredentialMetadata<CoreProfilesMetadata>,
     key_metadata: &KeyMetadata,
 ) -> Result<CredentialDefinition> {
@@ -204,5 +204,144 @@ impl HasVCFormat for CoreProfilesMetadata {
             CoreProfilesMetadata::LDVC(_) => VCFormat::LdpVc,
             CoreProfilesMetadata::ISOmDL(_) => VCFormat::MsoMdoc,
         }
+    }
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::inmem::kms::LocalKms;
+    use crate::utils::test_utils::create_did_and_key_metadata;
+    use crate::vc::oid4vci::tests::fixtures::{AUTH_URL, CRED_DEF_ID, ISSUER_URL};
+    use crate::vc::oid4vci::CredDefMetadata;
+    use crate::vc::pop::Format;
+    use serde_json::json;
+
+    #[tokio::test]
+    async fn converting_issuer_metadata_works() {
+        let kms = LocalKms::new();
+        let (_, default_key_metadata) = create_did_and_key_metadata(&kms).await;
+        let (_, cred_def_key_metadata) = create_did_and_key_metadata(&kms).await;
+
+        let metadata = sample_issuer_metadata();
+        let cred_def_metadata = sample_credential_definition();
+        let cred_defs =
+            vec![cred_definition(CRED_DEF_ID, &cred_def_metadata, &cred_def_key_metadata).unwrap()];
+
+        let expected = vc::core::IssuerMetadata {
+            issuer_id: metadata.credential_issuer().to_string(),
+            cred_defs,
+            protocol_data: None,
+        };
+
+        let converted = convert_metadata(
+            &metadata,
+            &HashMap::from([(CRED_DEF_ID.to_owned(), cred_def_key_metadata)]),
+            &default_key_metadata,
+        )
+        .unwrap();
+
+        assert_eq!(converted, expected)
+    }
+
+    #[tokio::test]
+    async fn converting_credential_metadata_works() {
+        let kms = LocalKms::new();
+        let cred_def_metadata = sample_credential_definition();
+        let (_, key_metadata) = create_did_and_key_metadata(&kms).await;
+
+        let mut expected = CredentialDefinition {
+            cred_def_id: CRED_DEF_ID.to_owned(),
+            format: cred_def_metadata.additional_fields().format(),
+            claims: Default::default(),
+            supported_proofs: supported_proofs(&cred_def_metadata).unwrap(),
+            supported_signing_algs: Some(vec![Alg::ES256]),
+            display: None,
+            protocol_data: None,
+            key_metadata: key_metadata.to_owned(),
+        };
+
+        expected.protocol_data = match cred_def_metadata.additional_fields() {
+            CoreProfilesMetadata::SDJWTVC(metadata) => Some(sd_jwt_protocol_data(metadata)),
+            _ => None,
+        };
+
+        let converted = cred_definition(CRED_DEF_ID, &cred_def_metadata, &key_metadata).unwrap();
+
+        assert_eq!(converted, expected)
+    }
+
+    #[tokio::test]
+    async fn retrieving_supported_proofs_works() {
+        let kms = LocalKms::new();
+        let cred_def_metadata = sample_credential_definition();
+        let (_, key_metadata) = create_did_and_key_metadata(&kms).await;
+
+        let expected = HashMap::from([(Format::Jwt, vec![Alg::ES256])]);
+
+        let proofs = supported_proofs(&cred_def_metadata).unwrap().unwrap();
+
+        assert_eq!(proofs, expected)
+    }
+
+    #[tokio::test]
+    async fn converting_sd_jwt_protocol_data_works() {
+        let cred_def_metadata = sample_credential_definition();
+        let expected = CredentialDefinitionData::SdJwt {
+            vct: "SD_JWT_cred".to_string(),
+            disclosures: vec!["$.given_name".to_owned()],
+            lifetime: None,
+        };
+
+        if let CoreProfilesMetadata::SDJWTVC(metadata) = cred_def_metadata.additional_fields() {
+            let converted = sd_jwt_protocol_data(metadata);
+
+            assert_eq!(converted, expected)
+        };
+    }
+
+    fn sample_issuer_metadata() -> IssuerMetadata {
+        let cred_def = serde_json::to_value(&sample_credential_definition()).unwrap();
+        let metadata = serde_json::from_value(json!(
+            {
+                "credential_issuer": ISSUER_URL,
+                "authorization_servers": [AUTH_URL],
+                "credential_endpoint": ISSUER_URL.to_owned()+"/credential",
+                "credential_configurations_supported": {
+                    CRED_DEF_ID: cred_def
+                }
+            }
+        ));
+
+        metadata.unwrap()
+    }
+
+    fn sample_credential_definition() -> CredDefMetadata {
+        let cred_def = serde_json::from_value(json!({
+            "format": "vc+sd-jwt",
+            "scope": "SD_JWT_cred",
+            "cryptographic_binding_methods_supported": [
+                "jwk"
+            ],
+            "credential_signing_alg_values_supported": [
+                "ES256"
+            ],
+            "proof_types_supported": {
+                "jwt": {
+                "proof_signing_alg_values_supported": [
+                    "ES256"
+                ]
+                }
+            },
+            "vct": "SD_JWT_cred",
+            "credential_definition": {
+                "type": "SD_JWT_cred",
+                "claims": {
+                    "given_name": {}
+                }
+            }
+            }
+        ));
+
+        cred_def.unwrap()
     }
 }

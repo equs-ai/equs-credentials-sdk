@@ -660,12 +660,11 @@ mod tests {
     use crate::vault::{MockVault, Vault};
     use crate::vc::oid4vci::tests::fixtures::{
         sample_access_token, sample_authorization_metadata, sample_cred_response,
-        sample_issuer_metadata, sample_nonce, ACCESS_TOKEN, AUTH_URL, ISSUER_URL, NOTIFICATION_ID,
-        REQ_URI_CODE, SCOPE, SD_JWT_CREDS,
+        sample_credential_definition, sample_issuer_metadata, sample_nonce, ACCESS_TOKEN, AUTH_URL,
+        CRED_DEF_ID, ISSUER_URL, NOTIFICATION_ID, REQ_URI_CODE, SCOPE, SD_JWT_CREDS,
     };
-    use crate::vc::oid4vci::{CredentialRequest, CredentialResult, Holder, HolderBuilder};
+    use crate::vc::oid4vci::{CredentialRequest, CredentialResult, Holder};
     use crate::vc::VCFormat;
-    use api::IssuerDiscovery;
     use oauth2::http::{Method, StatusCode};
     use serde_json::json;
 
@@ -692,7 +691,7 @@ mod tests {
             StatusCode::OK,
         );
 
-        let holder_service = build_holder(http_client, InMemVault::new()).await;
+        let holder_service = holder_service(http_client, InMemVault::new()).await;
 
         let token_response = holder_service
             .authz_code_flow_with_scope(SCOPE.into(), |url| {
@@ -707,6 +706,45 @@ mod tests {
             serde_json::to_value(&token_response).unwrap(),
             sample_access_token_response()
         );
+    }
+
+    #[tokio::test]
+    async fn holder_requests_nonce_correctly() {
+        let mut http_client = MockHttpClient::new();
+        let nonce = "nOnCe";
+
+        mock_http_once(
+            &mut http_client,
+            Method::POST,
+            credential_endpoint(),
+            json!({
+               "error": "invalid_proof",
+               "error_description": "Provide PoP",
+               "c_nonce": nonce,
+               "c_nonce_expires_in": 8600,
+            }),
+            StatusCode::BAD_REQUEST,
+        );
+
+        let token = AccessToken::new(ACCESS_TOKEN.to_owned());
+        let cred_req = CoreProfilesRequest::SDJWTVC(sd_jwt::Request::new(CRED_DEF_ID.to_owned()));
+
+        let holder_service = holder_service(http_client, InMemVault::new()).await;
+
+        let nonce_to_check = holder_service.request_nonce(token, cred_req).await.unwrap();
+
+        assert_eq!(nonce_to_check, nonce.to_owned())
+    }
+
+    #[tokio::test]
+    async fn holder_resolves_credential_definition_correctly() {
+        let http_client = MockHttpClient::new();
+
+        let holder_service = holder_service(http_client, InMemVault::new()).await;
+
+        let cred_def_to_check = holder_service.resolve_cred_def(CRED_DEF_ID).unwrap();
+
+        assert_eq!(cred_def_to_check, sample_credential_definition())
     }
 
     #[tokio::test]
@@ -728,10 +766,10 @@ mod tests {
             1.into(),
         );
 
-        let holder = build_holder(http_client, InMemVault::new()).await;
+        let holder = holder_service(http_client, InMemVault::new()).await;
 
         let _ = holder
-            .request_credential(&sample_access_token(), SCOPE, Some(sample_nonce()))
+            .request_credential(&sample_access_token(), CRED_DEF_ID, Some(sample_nonce()))
             .await;
     }
 
@@ -747,10 +785,10 @@ mod tests {
             StatusCode::OK,
         );
 
-        let holder = build_holder(http_client, InMemVault::new()).await;
+        let holder = holder_service(http_client, InMemVault::new()).await;
 
         let response = holder
-            .request_credential(&sample_access_token(), SCOPE, Some(sample_nonce()))
+            .request_credential(&sample_access_token(), CRED_DEF_ID, Some(sample_nonce()))
             .await
             .unwrap();
 
@@ -764,14 +802,14 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn holder_stores_credentilas_correctly() {
+    async fn holder_stores_credentials_correctly() {
         let mut vault = MockVault::new();
         vault
             .expect_store_credential()
             .times(1)
             .returning(|arg0, arg2| Ok(String::from("fake_cred_id")));
 
-        let holder_service = build_holder(MockHttpClient::new(), vault).await;
+        let holder_service = holder_service(MockHttpClient::new(), vault).await;
         let credential = Credential::SdJwt("fake_sdjwt".to_string());
 
         let cred_metadata = CredentialMetadata {
@@ -788,21 +826,29 @@ mod tests {
         result.unwrap();
     }
 
-    async fn build_holder(http_client: impl HttpClient, vault: impl Vault) -> impl Holder + Sized {
+    async fn holder_service(
+        http_client: impl HttpClient,
+        vault: impl Vault,
+    ) -> HolderService<impl vc::core::Holder, impl HttpClient> {
         let kms = LocalKms::new();
         let (_, key_metadata) = create_did_and_key_metadata(&kms).await;
-
-        let builder = HolderBuilder::new(
-            kms,
-            vault,
+        let client_id = "fake_client_id";
+        let holder_metadata = vc::core::HolderMetadata {
+            client_id: client_id.to_owned(),
             key_metadata,
-            "fake_client_id".to_string(),
-            IssuerDiscovery::Metadata(sample_issuer_metadata(), sample_authorization_metadata()),
-        )
-        .with_http_client(http_client)
-        .with_redirect_url("urn:ietf:wg:oauth:2.0:oob".to_string());
+        };
 
-        builder.build().await.unwrap()
+        let inner = vc::core::HolderService::new(kms, vault, holder_metadata);
+
+        HolderService::from_metadata(
+            inner,
+            http_client,
+            sample_issuer_metadata(),
+            sample_authorization_metadata(),
+            client_id.to_owned(),
+            "urn:ietf:wg:oauth:2.0:oob".to_string(),
+        )
+        .unwrap()
     }
 
     fn sample_access_token_response() -> serde_json::Value {
