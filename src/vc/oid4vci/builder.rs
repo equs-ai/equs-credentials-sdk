@@ -452,7 +452,7 @@ mod tests {
     use crate::utils::http::test::mock_http_once;
     use crate::utils::test_utils::create_did_and_key_metadata;
     use crate::vc::oid4vci::tests::fixtures::{
-        sample_authorization_metadata, sample_issuer_metadata, AUTH_REDIRECT_URL, ISSUER_URL, SCOPE,
+        sample_authorization_metadata, SampleIssuerMetadata, AUTH_REDIRECT_URL, ISSUER_URL, SCOPE,
     };
     use oauth2::http::{Method, StatusCode};
     use oauth2::Scope;
@@ -471,9 +471,10 @@ mod tests {
         let kms = LocalKms::new();
         let (_, key_metadata) = create_did_and_key_metadata(&kms).await;
 
-        let builder = IssuerBuilder::new(kms, sample_issuer_metadata(), key_metadata)
-            .token_validation_jwks(Url::parse("http://issuer.org/certs").unwrap())
-            .with_http_client(http_client);
+        let builder =
+            IssuerBuilder::new(kms, SampleIssuerMetadata::with_sdjwtvc_conf(), key_metadata)
+                .token_validation_jwks(Url::parse("http://issuer.org/certs").unwrap())
+                .with_http_client(http_client);
 
         let result = builder.build().await;
 
@@ -495,7 +496,7 @@ mod tests {
                     &mut http_client,
                     Method::GET,
                     Url::parse(ISSUER_OIDC_URL).unwrap(),
-                    sample_issuer_metadata(),
+                    SampleIssuerMetadata::with_sdjwtvc_conf(),
                     StatusCode::OK,
                 );
 
@@ -537,6 +538,9 @@ mod tests {
     }
 
     fn issuer_discovery_from_metadata() -> IssuerDiscovery {
-        IssuerDiscovery::Metadata(sample_issuer_metadata(), sample_authorization_metadata())
+        IssuerDiscovery::Metadata(
+            SampleIssuerMetadata::with_sdjwtvc_conf(),
+            sample_authorization_metadata(),
+        )
     }
 }
