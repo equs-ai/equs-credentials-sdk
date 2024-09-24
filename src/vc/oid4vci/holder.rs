@@ -661,12 +661,14 @@ mod tests {
     use crate::vault::{MockVault, Vault};
     use crate::vc::oid4vci::tests::fixtures::{
         sample_access_token, sample_authorization_metadata, sample_cred_response,
-        sample_credential_definition, sample_issuer_metadata, sample_nonce, ACCESS_TOKEN, AUTH_URL,
-        CRED_DEF_ID, ISSUER_URL, NOTIFICATION_ID, REQ_URI_CODE, SCOPE, SD_JWT_CREDS,
+        sample_credential_definition, sample_nonce, SampleIssuerMetadata, ACCESS_TOKEN,
+        AUTH_REDIRECT_URL, AUTH_URL, CRED_DEF_ID, ISSUER_URL, NOTIFICATION_ID, REQ_URI_CODE, SCOPE,
+        SD_JWT_CREDS,
     };
     use crate::vc::oid4vci::{CredentialRequest, CredentialResult, Holder};
     use crate::vc::VCFormat;
     use oauth2::http::{Method, StatusCode};
+    use rstest::rstest;
     use serde_json::json;
 
     #[tokio::test]
@@ -692,7 +694,13 @@ mod tests {
             StatusCode::OK,
         );
 
-        let holder_service = holder_service(http_client, InMemVault::new(), LocalKms::new()).await;
+        let holder_service = holder_service_from_issuer_metadata(
+            http_client,
+            InMemVault::new(),
+            LocalKms::new(),
+            SampleIssuerMetadata::with_sdjwtvc_conf(),
+        )
+        .await;
 
         let token_response = holder_service
             .authz_code_flow_with_scope(SCOPE.into(), |url| {
@@ -730,7 +738,13 @@ mod tests {
         let token = AccessToken::new(ACCESS_TOKEN.to_owned());
         let cred_req = CoreProfilesRequest::SDJWTVC(sd_jwt::Request::new(CRED_DEF_ID.to_owned()));
 
-        let holder_service = holder_service(http_client, InMemVault::new(), LocalKms::new()).await;
+        let holder_service = holder_service_from_issuer_metadata(
+            http_client,
+            InMemVault::new(),
+            LocalKms::new(),
+            SampleIssuerMetadata::with_sdjwtvc_conf(),
+        )
+        .await;
 
         let nonce_to_check = holder_service.request_nonce(token, cred_req).await.unwrap();
 
@@ -741,7 +755,13 @@ mod tests {
     async fn holder_resolves_credential_definition_correctly() {
         let http_client = MockHttpClient::new();
 
-        let holder_service = holder_service(http_client, InMemVault::new(), LocalKms::new()).await;
+        let holder_service = holder_service_from_issuer_metadata(
+            http_client,
+            InMemVault::new(),
+            LocalKms::new(),
+            SampleIssuerMetadata::with_sdjwtvc_conf(),
+        )
+        .await;
 
         let cred_def_to_check = holder_service.resolve_cred_def(CRED_DEF_ID).unwrap();
 
@@ -770,7 +790,13 @@ mod tests {
         let kms = LocalKms::new();
         let (_, key_metadata) = create_did_and_key_metadata(&kms).await;
 
-        let holder = holder_service(http_client, InMemVault::new(), kms).await;
+        let holder = holder_service_from_issuer_metadata(
+            http_client,
+            InMemVault::new(),
+            kms,
+            SampleIssuerMetadata::with_sdjwtvc_conf(),
+        )
+        .await;
 
         let _ = holder
             .request_credential(
@@ -797,7 +823,13 @@ mod tests {
         let kms = LocalKms::new();
         let (_, key_metadata) = create_did_and_key_metadata(&kms).await;
 
-        let holder = holder_service(http_client, InMemVault::new(), kms).await;
+        let holder = holder_service_from_issuer_metadata(
+            http_client,
+            InMemVault::new(),
+            kms,
+            SampleIssuerMetadata::with_sdjwtvc_conf(),
+        )
+        .await;
 
         let response = holder
             .request_credential(
@@ -828,7 +860,13 @@ mod tests {
 
         let kms = LocalKms::new();
 
-        let holder_service = holder_service(MockHttpClient::new(), vault, kms).await;
+        let holder_service = holder_service_from_issuer_metadata(
+            MockHttpClient::new(),
+            vault,
+            kms,
+            SampleIssuerMetadata::with_sdjwtvc_conf(),
+        )
+        .await;
         let credential = Credential::SdJwt("fake_sdjwt".to_string());
 
         let cred_metadata = CredentialMetadata {
@@ -846,10 +884,108 @@ mod tests {
         result.unwrap();
     }
 
-    async fn holder_service(
+    #[tokio::test]
+    #[should_panic(expected = "Unsupported credential definition ID")]
+    async fn holder_fails_processing_incorrect_cred_def_id() {
+        let kms = LocalKms::new();
+        let (_, key_metadata) = create_did_and_key_metadata(&kms).await;
+
+        let holder_service = holder_service_from_issuer_metadata(
+            MockHttpClient::new(),
+            InMemVault::new(),
+            LocalKms::new(),
+            SampleIssuerMetadata::with_sdjwtvc_conf(),
+        )
+        .await;
+
+        let result = holder_service
+            .request_credential(
+                &sample_access_token(),
+                "unexpected_cred_def_id",
+                Some(sample_nonce()),
+                &key_metadata,
+            )
+            .await
+            .unwrap();
+    }
+
+    #[rstest]
+    #[case(SampleIssuerMetadata::with_jwtvc_conf())]
+    #[case(SampleIssuerMetadata::with_jwtldvc_conf())]
+    #[case(SampleIssuerMetadata::with_ldvc_conf())]
+    #[case(SampleIssuerMetadata::with_isomdl_conf())]
+    #[tokio::test]
+    #[should_panic(expected = "Unsupported credential format")]
+    async fn holder_fails_on_unsupported_credential_formats(#[case] test_metadata: IssuerMetadata) {
+        let kms = LocalKms::new();
+        let (_, key_metadata) = create_did_and_key_metadata(&kms).await;
+
+        let holder_service = holder_service_from_issuer_metadata(
+            MockHttpClient::new(),
+            InMemVault::new(),
+            kms,
+            test_metadata,
+        )
+        .await;
+
+        let result = holder_service
+            .request_credential(
+                &sample_access_token(),
+                SCOPE,
+                Some(sample_nonce()),
+                &key_metadata,
+            )
+            .await
+            .unwrap();
+    }
+    #[tokio::test]
+    #[should_panic(expected = "Issuer does not provide a nonce")]
+    async fn holder_fails_with_no_nonce_provided() {
+        let mut http_client = MockHttpClient::new();
+
+        let kms = LocalKms::new();
+        let (_, key_metadata) = create_did_and_key_metadata(&kms).await;
+
+        mock_http_once(
+            &mut http_client,
+            Method::POST,
+            credential_endpoint(),
+            json!({}),
+            StatusCode::OK,
+        );
+
+        let holder_service = holder_service_from_issuer_metadata(
+            http_client,
+            InMemVault::new(),
+            LocalKms::new(),
+            SampleIssuerMetadata::with_sdjwtvc_conf(),
+        )
+        .await;
+
+        let result = holder_service
+            .request_credential(&sample_access_token(), CRED_DEF_ID, None, &key_metadata)
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    #[should_panic(expected = "Resolving credential offer by reference is not supported")]
+    async fn holder_fails_on_processing_credential_offer_reference() {
+        let holder_service = holder_service_from_credential_offer(
+            MockHttpClient::new(),
+            InMemVault::new(),
+            CredentialOffer::Reference {
+                credential_offer_uri: Url::parse("https://example.com").unwrap(),
+            },
+        )
+        .await;
+    }
+
+    async fn holder_service_from_issuer_metadata(
         http_client: impl HttpClient,
         vault: impl Vault,
         kms: LocalKms,
+        issuer_metadata: IssuerMetadata,
     ) -> HolderService<impl vc::core::Holder, impl HttpClient> {
         let client_id = "fake_client_id";
         let holder_metadata = vc::core::HolderMetadata {
@@ -861,11 +997,34 @@ mod tests {
         HolderService::from_metadata(
             inner,
             http_client,
-            sample_issuer_metadata(),
+            issuer_metadata,
             sample_authorization_metadata(),
             client_id.to_owned(),
             "urn:ietf:wg:oauth:2.0:oob".to_string(),
         )
+        .unwrap()
+    }
+
+    async fn holder_service_from_credential_offer(
+        http_client: impl HttpClient,
+        vault: impl Vault,
+        offer: CredentialOffer,
+    ) -> HolderService<impl vc::core::Holder, impl HttpClient> {
+        let client_id = "fake_client_id";
+        let holder_metadata = vc::core::HolderMetadata {
+            client_id: client_id.to_owned(),
+        };
+
+        let inner = vc::core::HolderService::new(LocalKms::new(), vault, holder_metadata);
+
+        HolderService::from_credential_offer(
+            inner,
+            http_client,
+            &offer,
+            client_id.to_owned(),
+            AUTH_REDIRECT_URL.to_string(),
+        )
+        .await
         .unwrap()
     }
 

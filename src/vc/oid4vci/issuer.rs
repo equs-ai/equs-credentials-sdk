@@ -552,7 +552,7 @@ mod tests {
     use crate::vc::oid4vci::metadata::convert_metadata;
     use crate::vc::oid4vci::tests::fixtures::{
         sample_claims, sample_credential_definition, sample_credential_offer,
-        sample_credential_request, sample_issuer_metadata, ACCESS_TOKEN, CRED_DEF_ID, NONCE, SCOPE,
+        sample_credential_request, SampleIssuerMetadata, ACCESS_TOKEN, CRED_DEF_ID, NONCE, SCOPE,
         TOKEN_INTROSPECT_URL,
     };
     use crate::vc::oid4vci::AuthorizationCodeGrant;
@@ -567,7 +567,7 @@ mod tests {
 
         let metadata = issuer.get_issuer_metadata();
 
-        assert_eq!(metadata, sample_issuer_metadata());
+        assert_eq!(metadata, SampleIssuerMetadata::with_sdjwtvc_conf());
     }
 
     #[tokio::test]
@@ -783,7 +783,7 @@ mod tests {
             None,
         );
 
-        let issuer_metadata = sample_issuer_metadata();
+        let issuer_metadata = SampleIssuerMetadata::with_sdjwtvc_conf();
         let (_, key_metadata) = create_did_and_key_metadata(&kms).await;
         let issuer_metadata_inner =
             convert_metadata(&issuer_metadata, &Default::default(), &key_metadata).unwrap();

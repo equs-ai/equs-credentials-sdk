@@ -85,20 +85,112 @@ pub mod fixtures {
     pub const REQ_URI_CODE: &str = "fake_request_uri";
     pub const AUTH_REDIRECT_URL: &str = "urn:ietf:wg:oauth:2.0:oob";
 
-    pub fn sample_issuer_metadata() -> IssuerMetadata {
-        let cred_def = serde_json::to_value(sample_credential_definition()).unwrap();
-        let metadata = serde_json::from_value(json!(
-            {
-                "credential_issuer": ISSUER_URL,
-                "authorization_servers": [AUTH_URL],
-                "credential_endpoint": ISSUER_URL.to_owned()+"/credential",
-                "credential_configurations_supported": {
-                    CRED_DEF_ID: cred_def
+    pub struct SampleIssuerMetadata {}
+    impl SampleIssuerMetadata {
+        pub fn with_sdjwtvc_conf() -> IssuerMetadata {
+            let metadata = serde_json::from_value(json!(
+                {
+                    "credential_issuer": ISSUER_URL,
+                    "authorization_servers": [AUTH_URL],
+                    "credential_endpoint": ISSUER_URL.to_owned()+"/credential",
+                    "credential_configurations_supported": {
+                        CRED_DEF_ID: {
+                        "format": "vc+sd-jwt",
+                        "scope": "SD_JWT_cred",
+                        "cryptographic_binding_methods_supported": [
+                            "jwk"
+                        ],
+                        "credential_signing_alg_values_supported": [
+                            "ES256"
+                        ],
+                        "proof_types_supported": {
+                            "jwt": {
+                                "proof_signing_alg_values_supported": [
+                                    "ES256"
+                                ],
+                            },
+                        },
+                        "vct": "SD_JWT_cred",
+                        "credential_definition": {
+                            "type": "SD_JWT_cred",
+                                "claims": {
+                                    "given_name": {},
+                                    "family_name": {},
+                                    "dob": {},
+                                },
+                            },
+                        },
+                    },
                 }
-            }
-        ));
+            ));
 
-        metadata.unwrap()
+            metadata.unwrap()
+        }
+        pub fn with_jwtvc_conf() -> IssuerMetadata {
+            let metadata = serde_json::from_value(json!(
+                {
+                    "credential_issuer": ISSUER_URL,
+                    "credential_endpoint": ISSUER_URL.to_owned()+"/credential",
+                    "credential_configurations_supported": {
+                        SCOPE: {
+                            "format": "jwt_vc_json",
+                            "credential_definition": {
+                                "type": [],
+                            },
+                        },
+                    },
+                }
+            ));
+            metadata.unwrap()
+        }
+        pub fn with_jwtldvc_conf() -> IssuerMetadata {
+            let metadata = serde_json::from_value(json!(
+                {
+                    "credential_issuer": ISSUER_URL,
+                    "credential_endpoint": ISSUER_URL.to_owned()+"/credential",
+                    "credential_configurations_supported": {
+                        SCOPE: {
+                            "format": "jwt_vc_json-ld",
+                        },
+                    },
+                }
+            ));
+            metadata.unwrap()
+        }
+        pub fn with_ldvc_conf() -> IssuerMetadata {
+            let metadata = serde_json::from_value(json!(
+                {
+                    "credential_issuer": ISSUER_URL,
+                    "credential_endpoint": ISSUER_URL.to_owned()+"/credential",
+                    "credential_configurations_supported": {
+                        SCOPE: {
+                            "format": "ldp_vc",
+                            "@context": [],
+                            "credentials_definition": {
+                                "type": [],
+                                "@context": [],
+                            },
+                        },
+                    },
+                }
+            ));
+            metadata.unwrap()
+        }
+        pub fn with_isomdl_conf() -> IssuerMetadata {
+            let metadata = serde_json::from_value(json!(
+                {
+                    "credential_issuer": ISSUER_URL,
+                    "credential_endpoint": ISSUER_URL.to_owned()+"/credential",
+                    "credential_configurations_supported": {
+                        SCOPE: {
+                            "format": "mso_mdoc",
+                            "doctype": "",
+                        },
+                    },
+                }
+            ));
+            metadata.unwrap()
+        }
     }
 
     pub fn sample_authorization_metadata() -> AuthorizationMetadata {
