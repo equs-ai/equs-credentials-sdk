@@ -177,7 +177,6 @@ where
 {
     // data
     client_id: String,
-    key_metadata: KeyMetadata,
     wallet_metadata: Option<api::WalletMetadata>,
 
     // services
@@ -201,7 +200,6 @@ where
     ///
     /// * `kms` - a Key Management System (KMS) instance responsible for managing cryptographic keys.
     /// * `vault` - a Vault service used for securely storing credentials.
-    /// * `key_metadata` - a `KeyMetadata` with `DIDURL` and `KID` to be used for signing operations.
     /// * `client_id` - the Client ID of the `Holder`.
     ///
     /// # Returns
@@ -211,7 +209,7 @@ where
         level = Level::TRACE,
         skip(kms, vault)
     )]
-    pub fn new(kms: KMS, vault: V, key_metadata: KeyMetadata, client_id: String) -> Self {
+    pub fn new(kms: KMS, vault: V, client_id: String) -> Self {
         let http_client = ReqwestClient::new(false, true).map_err(|e| {
             HttpSnafu {
                 details: e.to_string(),
@@ -223,7 +221,6 @@ where
 
         Self {
             client_id,
-            key_metadata,
             kms,
             vault,
             http_client,
@@ -277,7 +274,6 @@ where
     ) -> HolderBuilder<KH, KMS, V, D, HC_> {
         HolderBuilder {
             client_id: self.client_id,
-            key_metadata: self.key_metadata,
             wallet_metadata: self.wallet_metadata,
             kms: self.kms,
             vault: self.vault,
@@ -307,7 +303,6 @@ where
             resolver,
             client_id: self.client_id,
             wallet_metadata: self.wallet_metadata,
-            key_metadata: self.key_metadata,
             kms: self.kms,
             vault: self.vault,
             http_client: self.http_client,
@@ -330,10 +325,8 @@ where
         err()
     )]
     pub async fn build(self) -> Result<impl api::Holder, Error> {
-        let key_metadata = self.key_metadata;
         let holder_metadata = vc::core::HolderMetadata {
             client_id: self.client_id,
-            key_metadata,
         };
 
         debug!(?holder_metadata);

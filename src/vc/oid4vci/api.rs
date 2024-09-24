@@ -1,3 +1,4 @@
+use crate::vc::core::KeyMetadata;
 use crate::vc::oid4vci::{metadata, InternalError, ProtocolError};
 use crate::vc::{Claims, Credential, CredentialMetadata};
 use async_trait::async_trait;
@@ -281,6 +282,7 @@ pub trait Holder: Send + Sync {
     /// * `token` - an access token.
     /// * `cred_def_id` - a `CredentialDefinition` ID.
     /// * `nonce` - an optional nonce. If not set `Holder` will re-request nonce from the `Issuer` automatically.
+    /// * `key_metadata` - a `KeyMetadata` for corresponding key to be used for signing operations.
     ///
     /// # Returns
     ///
@@ -301,6 +303,7 @@ pub trait Holder: Send + Sync {
         token: &AccessToken,
         cred_def_id: &str,
         nonce: Option<Nonce>,
+        key_metadata: &KeyMetadata,
     ) -> Result<CredentialResponseResolved>;
 
     /// Store a `Credential`.

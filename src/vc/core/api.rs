@@ -5,10 +5,10 @@ use std::fmt::Debug;
 
 use crate::crypto;
 use crate::kms::Error as KmsError;
-use crate::vault::Error as VaultError;
+use crate::vault::{CredentialEntry, Error as VaultError};
 use crate::vc::{
-    formats::Error as VCError, metadata::Error as MetadataError, pop, pop::Error as ProofError,
-    Claims, Credential, CredentialMetadata, Presentation, VCFormat,
+    formats::Error as VCError, pop, pop::Error as ProofError, Claims, Credential,
+    CredentialMetadata, Presentation, VCFormat,
 };
 
 /// A metadata for the `Issuer`.
@@ -56,13 +56,10 @@ pub struct KeyMetadata {
 
 /// A metadata for the `Holder`.
 ///
-/// Encapsulates all necessary data needed to issue a `Credential`.
-///
-/// One `IssuerMetadata` supports multiple [CredentialDefinition]s.
+/// Encapsulates all necessary data needed to request a `Credential`.
 #[derive(Debug, PartialEq, Clone)]
 pub struct HolderMetadata {
     pub client_id: String,
-    pub key_metadata: KeyMetadata,
 }
 
 /// A format-specific data for the `CredentialDefinition`.
@@ -173,17 +170,13 @@ pub enum Error {
     AlgNotSupported { alg: String },
     #[snafu(display("Unsupported proof format: {format}"))]
     ProofFormatNotSupported { format: String },
+    #[snafu(display("Invalid DID Url: {input}"))]
+    InvalidDIDUrl { input: String },
     #[snafu(display("VC error at {location}"))]
     VC {
         #[snafu(implicit)]
         location: Location,
         source: VCError,
-    },
-    #[snafu(display("Metadata error at {location}"))]
-    Metadata {
-        #[snafu(implicit)]
-        location: Location,
-        source: MetadataError,
     },
     #[snafu(display("Proof error at {location}"))]
     Proof {
@@ -267,7 +260,7 @@ pub trait Issuer: Send + Sync {
     ///
     /// # Returns
     ///
-    /// A `Credential` with its related `CredentialMetadata` in tuple on success.
+    /// An issued `Credential` on success.
     ///
     /// # Errors
     ///
@@ -276,13 +269,12 @@ pub trait Issuer: Send + Sync {
     /// * [Error::VC] - internal error [VCFormatError](crate::vc::VCFormatError).
     /// * [Error::KMS] - error with [Kms](crate::kms::Kms).
     /// * [Error::Proof] - proof is invalid.
-    /// * [Error::Metadata] - fails to generate `CredentialMetadata`.
     async fn issue_credential(
         &self,
         credential_request: &CredentialRequest,
         claims: &Claims,
         nonce: &str,
-    ) -> Result<(Credential, CredentialMetadata)>;
+    ) -> Result<Credential>;
 }
 
 /// An async low-level protocol-agnostic `Holder` API.
@@ -300,6 +292,7 @@ pub trait Holder: Send + Sync {
     ///
     /// * `credential_offer` - a `CredentialOffer`.with definition of which `Credential` to request.
     /// * `nonce` - a nonce to generate a `ProofOfPossession`.
+    /// * `key_metadata` - a `KeyMetadata` for corresponding key to be used for signing operations.
     ///
     /// # Returns
     ///
@@ -315,6 +308,7 @@ pub trait Holder: Send + Sync {
         &self,
         credential_offer: &CredentialOffer,
         nonce: &str,
+        key_metadata: &KeyMetadata,
     ) -> Result<CredentialRequest>;
 
     /// Store a `Credential`.
@@ -385,7 +379,7 @@ pub trait Holder: Send + Sync {
         presentation_input: &PresentationInput,
     ) -> Result<Presentation>;
 
-    /// Find the suitable `Credential`s for the provided `PresentationInput`.
+    /// Find the suitable `CredentialEntry`s for the provided `PresentationInput`.
     ///
     /// # Arguments
     ///
@@ -393,7 +387,7 @@ pub trait Holder: Send + Sync {
     ///
     /// # Returns
     ///
-    /// A Vector of `Credential` matched the provided `PresentationInput` on success.
+    /// A Vector of `CredentialEntry` matched the provided `PresentationInput` on success.
     /// In case if nothing meets the `input` an empty Vector will be returned.
     ///
     /// # Errors
@@ -402,7 +396,7 @@ pub trait Holder: Send + Sync {
     async fn find_vcs_for_presentation(
         &self,
         presentation_input: &PresentationInput,
-    ) -> Result<Vec<Credential>>;
+    ) -> Result<Vec<CredentialEntry>>;
 
     /// Create a Verifiable Presentation.
     ///
@@ -411,7 +405,7 @@ pub trait Holder: Send + Sync {
     /// * `nonce` - a nonce from `Verifier` to be used to generate `VP`.
     /// * `verifier_id` - an ID of the `Verifier`.
     /// * `presentation_input` - an input with the data defining the requested `VC`s.
-    /// * `credential` - an actual `Credential` for the `Presentation`.
+    /// * `credential` - an actual `CredentialEntry` for the `Presentation`.
     ///
     /// # Returns
     ///
@@ -428,7 +422,7 @@ pub trait Holder: Send + Sync {
         nonce: &str,
         verifier_id: &str,
         presentation_input: &PresentationInput,
-        credential: &Credential,
+        credential: &CredentialEntry,
     ) -> Result<Presentation>;
 }
 
@@ -446,7 +440,7 @@ pub trait Verifier: Send + Sync {
     /// # Arguments
     ///
     /// * `nonce` - a nonce used to generate `Presentation`.
-    /// * `presentation` - an `Presentation` to verify.
+    /// * `presentation` - a `Presentation` to verify.
     ///
     /// # Returns
     ///

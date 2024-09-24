@@ -150,9 +150,13 @@ async fn start_holders(runs: u32) {
 async fn run_holder() -> Result<(), String> {
     let dummy_token = AccessToken::new(DUMMY_TOKEN.into());
 
+    let kms = LocalKms::new();
+    let (_, key_metadata) = create_did_and_key_metadata(&kms).await;
+
     let holder = oid4vci_holder(
         sample_issuer_metadata(SERVER_URL),
         dummy_authorization_metadata(),
+        kms,
     )
     .await;
 
@@ -161,6 +165,7 @@ async fn run_holder() -> Result<(), String> {
             &dummy_token,
             "SD_JWT_cred",
             Some(Nonce::new(DUMMY_NONCE.into())),
+            &key_metadata,
         )
         .await;
 
@@ -177,15 +182,13 @@ async fn run_holder() -> Result<(), String> {
 async fn oid4vci_holder(
     issuer_metadata: IssuerMetadata,
     authz_metadata: AuthorizationMetadata,
+    kms: LocalKms,
 ) -> impl Holder {
     let vault = InMemVault::new();
-    let kms = LocalKms::new();
-    let (_, key_metadata) = create_did_and_key_metadata(&kms).await;
 
     oid4vci::HolderBuilder::new(
         kms,
         vault,
-        key_metadata,
         "wallet-dev".to_owned(),
         IssuerDiscovery::Metadata(issuer_metadata, authz_metadata),
     )

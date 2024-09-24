@@ -133,7 +133,7 @@ where
 
     async fn create_vp<S>(
         credential: &C,
-        holder_data: (&DIDURL, S),
+        holder_signer: S,
         nonce: Nonce,
         verifier_id: &str,
         metadata: PM,
