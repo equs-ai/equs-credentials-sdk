@@ -2,6 +2,7 @@ use snafu::{Location, Snafu};
 use std::fmt::Debug;
 use tracing::{instrument, Level};
 
+use crate::vc::core::KeyMetadata;
 use crate::vc::formats::HasClaims;
 use crate::vc::{Credential, CredentialMetadata, HasVCFormat};
 
@@ -42,6 +43,7 @@ pub trait CredentialMetadataProcessor {
     /// # Arguments
     ///
     /// * `credential` - a `Credential`.
+    /// * `key_metadata` - a key meta of the `Holder` used for `Credential` generation.
     ///
     /// # Returns
     ///
@@ -51,7 +53,10 @@ pub trait CredentialMetadataProcessor {
     ///
     /// * [Error::FormatNotSupported] - format is not supported by the processor.
     /// * [Error::Resolving] - fails to resolve `Credential`.
-    fn resolve_metadata(credential: &Credential) -> Result<CredentialMetadata>;
+    fn resolve_metadata(
+        credential: &Credential,
+        key_metadata: KeyMetadata,
+    ) -> Result<CredentialMetadata>;
 }
 
 /// A default implementation of [CredentialMetadataProcessor].
@@ -106,13 +111,17 @@ impl CredentialMetadataProcessor for DefaultMetadataProcessor {
         err(),
         ret(level = Level::TRACE)
     )]
-    fn resolve_metadata(credential: &Credential) -> Result<CredentialMetadata> {
+    fn resolve_metadata(
+        credential: &Credential,
+        key_metadata: KeyMetadata,
+    ) -> Result<CredentialMetadata> {
         let format = credential.format();
         let type_ = Self::type_(credential)?;
 
         Ok(CredentialMetadata {
             type_,
             format,
+            kid: key_metadata.kid,
             alg: None,
             tags: vec![],
         })

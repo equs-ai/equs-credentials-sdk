@@ -196,7 +196,7 @@ where
             .issue_credential(&cred_req, claims, nonce.secret())
             .await;
 
-        let (cred, _) = match result {
+        let cred = match result {
             Err(vc::core::Error::Proof { .. })
             | Err(vc::core::Error::ProofFormatNotSupported { .. }) => self
                 .invalid_proof(session, INVALID_PROOF_ERR_DESC.to_string())

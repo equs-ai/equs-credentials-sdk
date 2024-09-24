@@ -3,6 +3,7 @@
 mod utils;
 
 use agent_sdk::http::HttpClient;
+use agent_sdk::inmem::kms::LocalKms;
 use agent_sdk::vc::oid4vci;
 use agent_sdk::vc::oid4vci::{CredentialOfferGrants, Holder, IssuanceSession, Issuer};
 use async_mutex::Mutex;
@@ -24,6 +25,7 @@ use utils::fixtures::{
     AUTHZ_URL, SCOPE,
 };
 
+use crate::utils::helpers::create_did_keymetadata_keyhandle;
 use utils::helpers::oid4vci::{build_holder, build_issuer, setup_http_static_handlers};
 
 #[rstest]
@@ -65,7 +67,8 @@ async fn autorized_code_flow_using_scopes(#[case] validate_token: bool) {
         prepare_http_client_for_holder(authz_code.clone(), req_uri_code.clone(), issuer);
 
     // 3.1 Creating holder from offer
-    let holder = build_holder(offer, http_client_for_holder).await;
+    let kms = LocalKms::new();
+    let holder = build_holder(offer, http_client_for_holder, kms.clone()).await;
 
     // 4. Holder has issuer metadata
     assert_eq!(&holder.get_issuer_metadata(), &issuer_metadata);
@@ -86,8 +89,14 @@ async fn autorized_code_flow_using_scopes(#[case] validate_token: bool) {
     println!("Token response {:?}", token_response);
 
     // 6.1 Holder requests SD_JWT_cred_1 credentials
+    let (_, key_metadata, _) = create_did_keymetadata_keyhandle(&kms).await;
     let response = holder
-        .request_credential(token_response.access_token(), "SD_JWT_cred_1", None)
+        .request_credential(
+            token_response.access_token(),
+            "SD_JWT_cred_1",
+            None,
+            &key_metadata,
+        )
         .await
         .unwrap();
 
@@ -98,11 +107,13 @@ async fn autorized_code_flow_using_scopes(#[case] validate_token: bool) {
     assert!(nonce_data.is_some());
 
     // 6.2 Holder requests SD_JWT_cred_2 credentials with the same token
+    let (_, key_metadata, _) = create_did_keymetadata_keyhandle(&kms).await;
     let response = holder
         .request_credential(
             token_response.access_token(),
             "SD_JWT_cred_2",
             nonce_data.map(|d| d.nonce),
+            &key_metadata,
         )
         .await
         .unwrap();

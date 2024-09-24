@@ -55,6 +55,7 @@ pub struct CredentialMetadata {
     #[serde(rename = "type")]
     pub type_: String,
     pub format: VCFormat,
+    pub kid: String,
     pub alg: Option<Alg>,
     pub tags: Vec<(String, String)>,
 }

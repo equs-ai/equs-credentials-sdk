@@ -393,13 +393,13 @@ impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata, Value> for Sd
 
     #[instrument(
         level = Level::TRACE,
-        skip(holder_data),
+        skip(holder_signer),
         err(),
         ret(level = Level::TRACE)
     )]
     async fn create_vp<S>(
         credential: &Credential,
-        holder_data: (&DIDURL, S),
+        holder_signer: S,
         nonce: Nonce,
         verifier_id: &str,
         metadata: VPMetadata,
@@ -407,10 +407,9 @@ impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata, Value> for Sd
     where
         S: Signer,
     {
-        trace!(holder_did_url = ?{holder_data.0});
-
-        let (_, signer) = holder_data;
-        let sgn_wrapper = SignerWrapper { signer };
+        let sgn_wrapper = SignerWrapper {
+            signer: holder_signer,
+        };
 
         let mut holder = SDJWTHolder::new(credential.to_owned(), SDJWTSerializationFormat::Compact)
             .map_err(|err| {
@@ -514,7 +513,7 @@ mod tests {
                 .await
                 .unwrap();
             let (_, h_kh) = kms
-                .create_and_handle(kt, kms::CreateOptions {})
+                .create_and_handle(kt.clone(), kms::CreateOptions {})
                 .await
                 .unwrap();
 
@@ -582,7 +581,7 @@ mod tests {
             let nonce = Nonce::new_random();
             let vp_res = SdJwtAPI::create_vp(
                 &vc,
-                (&hld_did_url, h_kh.clone()),
+                h_kh.clone(),
                 nonce.clone(),
                 "verifier-id",
                 VPMetadata {
@@ -617,6 +616,39 @@ mod tests {
             assert!(disclosed.contains_key("name"));
             assert_eq!(disclosed["name"], "John");
             assert!(!disclosed.contains_key("surname"));
+
+            // Malicious VP (signed by another key)
+            let (_, mh_kh) = kms
+                .create_and_handle(kt, kms::CreateOptions {})
+                .await
+                .unwrap();
+
+            let mhld_did = didkey.generate(mh_kh.clone()).unwrap();
+            let mhld_did_url = DIDURL::from_str(&mhld_did).unwrap();
+            println!("mHld DID: {}", mhld_did);
+
+            let nonce = Nonce::new_random();
+            // VP can be generated using another signature
+            let mvp = SdJwtAPI::create_vp(
+                &vc,
+                mh_kh.clone(),
+                nonce.clone(),
+                "verifier-id",
+                VPMetadata {
+                    disclosures: json!({
+                        "name" : true
+                    })
+                    .as_object()
+                    .unwrap()
+                    .to_owned(),
+                },
+            )
+            .await
+            .unwrap();
+
+            // But Verifier should deny it
+            let ver_res =
+                SdJwtAPI::verify_vp(&mvp, nonce.clone(), "verifier-id", VerifyOptions {}).await;
         }
     }
 }

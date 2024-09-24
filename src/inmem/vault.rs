@@ -1,6 +1,6 @@
 use crate::inmem::storage::InMemStorage;
 use crate::storage::Storage;
-use crate::vault::{Error, FindCriteria, StoringSnafu, Vault};
+use crate::vault::{CredentialEntry, Error, FindCriteria, StoringSnafu, Vault};
 use crate::vc::{Credential, CredentialMetadata};
 use async_rwlock::RwLock;
 use async_trait::async_trait;
@@ -11,7 +11,7 @@ use tracing::{instrument, Level};
 
 #[derive(Debug, Clone)]
 pub struct InMemVault {
-    storage: Arc<InMemStorage<String, Credential>>,
+    storage: Arc<InMemStorage<String, CredentialEntry>>,
     indexed: Arc<RwLock<HashMap<String, Vec<String>>>>,
 }
 
@@ -80,9 +80,14 @@ impl Vault for InMemVault {
     ) -> Result<String, Error> {
         let storage_id = random_string::generate(5, random_string::charsets::ALPHA);
 
+        let entry = CredentialEntry {
+            credential,
+            kid: metadata.kid.clone(),
+        };
+
         let _ = self
             .storage
-            .put(storage_id.clone(), credential.clone())
+            .put(storage_id.clone(), entry)
             .await
             .map_err(|err| {
                 StoringSnafu {
@@ -102,7 +107,7 @@ impl Vault for InMemVault {
         err(),
         ret(level = Level::TRACE)
     )]
-    async fn get_credential(&self, id: &str) -> Result<Option<Credential>, Error> {
+    async fn get_credential(&self, id: &str) -> Result<Option<CredentialEntry>, Error> {
         self.storage.get(&id.to_string()).await.map_err(|err| {
             StoringSnafu {
                 details: err.to_string(),
@@ -117,7 +122,10 @@ impl Vault for InMemVault {
         err(),
         ret(level = Level::TRACE)
     )]
-    async fn find_credentials(&self, criteria: FindCriteria) -> Result<Vec<Credential>, Error> {
+    async fn find_credentials(
+        &self,
+        criteria: FindCriteria,
+    ) -> Result<Vec<CredentialEntry>, Error> {
         let creds = match criteria {
             FindCriteria::ByTypeAndFormat(type_, fmt) => {
                 let ids = self.get_indexed(&type_, &fmt).await;

@@ -22,16 +22,13 @@ use super::create_did_keymetadata_keyhandle;
 pub async fn build_holder(
     credential_offer: CredentialOfferParams,
     http_client: impl HttpClient,
+    kms: LocalKms,
 ) -> impl Holder {
-    let kms = LocalKms::new();
     let vault = InMemVault::new();
-
-    let (_, key_metadata, _) = create_did_keymetadata_keyhandle(&kms).await;
 
     HolderBuilder::new(
         kms,
         vault,
-        key_metadata,
         "wallet-dev".to_string(),
         IssuerDiscovery::Offer(CredentialOffer::Value { credential_offer }),
     )

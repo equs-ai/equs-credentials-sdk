@@ -270,7 +270,6 @@ where
     // data
     iss_discovery: IssuerDiscovery,
 
-    key_metadata: KeyMetadata,
     client_id: String,
     redirect_url: String,
 
@@ -294,7 +293,6 @@ where
     ///
     /// * `kms` - an inner [kms::Kms].
     /// * `vault` - an inner [vault::Vault].
-    /// * `key_metadata` - a `KeyMetadata` with `DIDURL` and `KID` to be used for signing operations.
     /// * `client_id` - a client ID.
     /// * `iss_discovery` - a data to discover the `Issuer`.
     ///   Either `CredentialOffer`, `IssuerMetadata` and `AuthorizationMetadata` or `Issuer` url.
@@ -311,13 +309,7 @@ where
         level = Level::TRACE,
         skip(kms, vault),
     )]
-    pub fn new(
-        kms: KMS,
-        vault: V,
-        key_metadata: KeyMetadata,
-        client_id: String,
-        iss_discovery: IssuerDiscovery,
-    ) -> Self {
+    pub fn new(kms: KMS, vault: V, client_id: String, iss_discovery: IssuerDiscovery) -> Self {
         let http_client = ReqwestClient::new(false, true).map_err(|e| {
             HttpSnafu {
                 details: e.to_string(),
@@ -333,7 +325,6 @@ where
             vault,
             http_client,
             iss_discovery,
-            key_metadata,
             redirect_url: "urn:ietf:wg:oauth:2.0:oob".to_string(),
             _marker: Default::default(),
         }
@@ -380,7 +371,6 @@ where
             iss_discovery: self.iss_discovery,
             client_id: self.client_id,
             redirect_url: self.redirect_url,
-            key_metadata: self.key_metadata,
             kms: self.kms,
             vault: self.vault,
             _marker: Default::default(),
@@ -398,10 +388,8 @@ where
         skip(self),
     )]
     pub async fn build(self) -> Result<impl api::Holder, Error> {
-        let key_metadata = self.key_metadata;
         let holder_metadata = vc::core::HolderMetadata {
             client_id: self.client_id.clone(),
-            key_metadata,
         };
         let inner = vc::core::HolderService::new(self.kms, self.vault, holder_metadata);
 
@@ -499,7 +487,6 @@ mod tests {
     #[tokio::test]
     async fn building_holder_works(#[case] discovery: IssuerDiscovery) {
         let kms = LocalKms::new();
-        let (_, key_metadata) = create_did_and_key_metadata(&kms).await;
 
         let mut http_client = MockHttpClient::new();
         match discovery {
@@ -524,15 +511,9 @@ mod tests {
         }
 
         let vault = InMemVault::new();
-        let builder = HolderBuilder::new(
-            kms,
-            vault,
-            key_metadata,
-            "fake_client_id".to_string(),
-            discovery,
-        )
-        .with_http_client(http_client)
-        .with_redirect_url(AUTH_REDIRECT_URL.to_string());
+        let builder = HolderBuilder::new(kms, vault, "fake_client_id".to_string(), discovery)
+            .with_http_client(http_client)
+            .with_redirect_url(AUTH_REDIRECT_URL.to_string());
 
         let result = builder.build().await;
 

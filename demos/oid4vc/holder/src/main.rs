@@ -33,23 +33,19 @@ async fn main() {
     let kms = LocalKms::new();
     let vault = InMemVault::new();
 
-    // In the real service these should be generated beforehand/taken from configuration/persistence
-    let (did, key_metadata) = create_did_and_key_metadata(&kms).await;
-
     // Holders creation
-    let oid4vci_holder =
-        oid4vci_holder(kms.clone(), vault.clone(), key_metadata.clone(), SERVER_URL).await;
+    let oid4vci_holder = oid4vci_holder(kms.clone(), vault.clone(), SERVER_URL).await;
 
-    let oid4vp_holder = oid4vp_holder(kms.clone(), vault.clone(), did, key_metadata).await;
+    let oid4vp_holder = oid4vp_holder(kms.clone(), vault.clone()).await;
 
     // Running flows
-    run_issuance_flow(oid4vci_holder).await;
+    run_issuance_flow(oid4vci_holder, kms.clone()).await;
     run_presentation_flow(oid4vp_holder).await;
 
     println!("Done");
 }
 
-async fn run_issuance_flow(holder: impl HolderVci) {
+async fn run_issuance_flow(holder: impl HolderVci, kms: LocalKms) {
     println!("Issuance started");
 
     println!("Holder authorizing into KeyCloak to get an access_token...");
@@ -59,12 +55,31 @@ async fn run_issuance_flow(holder: impl HolderVci) {
     // Holder will automatically resolve it and re-request a new nonce
     let nonce = token_resp.extra_fields().clone().c_nonce;
 
-    let resp = issue(&holder, CRED_DEF_ID_1, token_resp.access_token(), nonce).await;
+    // In the real service these should be generated beforehand/taken from configuration/persistence
+    let (_, key_metadata) = create_did_and_key_metadata(&kms).await;
+
+    let resp = issue(
+        &holder,
+        CRED_DEF_ID_1,
+        token_resp.access_token(),
+        nonce,
+        key_metadata,
+    )
+    .await;
 
     // For subsequent requests to the Issuer, Holder must reuse the nonce from the previous response
     let nonce = resp.nonce_data.map(|d| d.nonce);
 
-    let _ = issue(&holder, CRED_DEF_ID_2, token_resp.access_token(), nonce).await;
+    // Using different key to request another credential
+    let (_, key_metadata) = create_did_and_key_metadata(&kms).await;
+    let _ = issue(
+        &holder,
+        CRED_DEF_ID_2,
+        token_resp.access_token(),
+        nonce,
+        key_metadata,
+    )
+    .await;
 
     println!("Issuance done");
 }
@@ -74,6 +89,7 @@ async fn issue(
     cred_def_id: &str,
     token: &AccessToken,
     nonce: Option<Nonce>,
+    key_metadata: KeyMetadata,
 ) -> CredentialResponseResolved {
     println!(
         "1. Holder requesting credential `cred_def_id={}` ...",
@@ -81,7 +97,7 @@ async fn issue(
     );
 
     let cred_resp = holder
-        .request_credential(token, cred_def_id, nonce)
+        .request_credential(token, cred_def_id, nonce, &key_metadata)
         .await
         .unwrap();
 
@@ -101,7 +117,7 @@ async fn issue(
         cred_def_id
     );
 
-    let metadata = DefaultMetadataProcessor::resolve_metadata(credential).unwrap();
+    let metadata = DefaultMetadataProcessor::resolve_metadata(credential, key_metadata).unwrap();
     holder
         .store_credential(credential, &metadata)
         .await
@@ -141,15 +157,12 @@ async fn run_presentation_flow(holder: impl HolderVp) {
     println!("Presentation done");
 }
 
-async fn oid4vp_holder(
-    kms: LocalKms,
-    vault: InMemVault,
-    did: String,
-    key_metadata: KeyMetadata,
-) -> impl oid4vp::Holder {
+async fn oid4vp_holder(kms: LocalKms, vault: InMemVault) -> impl oid4vp::Holder {
     println!("Initializing oid4vp holder...");
 
-    let holder = oid4vp::HolderBuilder::new(kms, vault, key_metadata, did)
+    let client_id = "wallet-dev".to_owned();
+
+    let holder = oid4vp::HolderBuilder::new(kms, vault, client_id)
         .build()
         .await
         .unwrap();
@@ -162,7 +175,6 @@ async fn oid4vp_holder(
 async fn oid4vci_holder(
     kms: LocalKms,
     vault: InMemVault,
-    key_metadata: KeyMetadata,
     issuer_url: &str,
 ) -> impl oid4vci::Holder {
     println!("Initializing oid4vci holder...");
@@ -170,7 +182,7 @@ async fn oid4vci_holder(
     let client_id = "wallet-dev".to_owned();
 
     let iss_discovery = IssuerDiscovery::Url(issuer_url.to_string());
-    let holder = oid4vci::HolderBuilder::new(kms, vault, key_metadata, client_id, iss_discovery)
+    let holder = oid4vci::HolderBuilder::new(kms, vault, client_id, iss_discovery)
         .with_redirect_url("urn:ietf:wg:oauth:2.0:oob".to_string())
         .build()
         .await

@@ -1,9 +1,10 @@
 use std::fmt::Debug;
 
-use crate::vc;
+use crate::{kms, vc};
 use async_trait::async_trait;
 #[cfg(test)]
 use mockall::automock;
+use serde::{Deserialize, Serialize};
 use snafu::{Location, Snafu};
 
 /// `Vault` Error.
@@ -55,6 +56,13 @@ pub enum FindCriteria {
     // etc
 }
 
+/// A struct for stored `Credential` in `Vault` with some extra information.
+#[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
+pub struct CredentialEntry {
+    pub credential: vc::Credential,
+    pub kid: kms::KeyID,
+}
+
 /// An async `Vault` interface for managing Verifiable Credentials.
 ///
 /// Should be implemented by any adapter to be used with `ASDK`.
@@ -85,23 +93,23 @@ pub trait Vault: Send + Sync {
         metadata: &vc::CredentialMetadata,
     ) -> Result<String>;
 
-    /// Get a `Credential` from `Vault`
+    /// Get a `CredentialEntry` with `Credential` from `Vault`
     ///
     /// # Arguments
     ///
-    /// * `id` -  `ID` of the stored [vc::Credential].
+    /// * `id` -  `ID` of the stored [CredentialEntry].
     ///
     /// # Returns
     ///
-    /// `Some(Credential)` on success.
-    /// `None` if no `Credential` was found by `id`.
+    /// `Some(CredentialEntry)` on success.
+    /// `None` if no `CredentialEntry` was found by `id`.
     ///
     /// # Errors
     ///
     /// * [Error::Resolving] - fails to access the storage.
-    async fn get_credential(&self, id: &str) -> Result<Option<vc::Credential>>;
+    async fn get_credential(&self, id: &str) -> Result<Option<CredentialEntry>>;
 
-    /// Find the `Credential`s in `Vault`
+    /// Find the matching `CredentialEntry`s in `Vault`
     ///
     /// # Arguments
     ///
@@ -109,18 +117,18 @@ pub trait Vault: Send + Sync {
     ///
     /// # Returns
     ///
-    /// A Vector of `Credential` matched the provided `criteria` on success.
+    /// A Vector of `CredentialEntry` matched the provided `criteria` on success.
     /// In case if nothing meets the `criteria` an empty Vector should be returned.
     ///
     /// # Errors
     ///
     /// * [Error::Resolving] - fails to revolve the values.
-    async fn find_credentials(&self, criteria: FindCriteria) -> Result<Vec<vc::Credential>>;
+    async fn find_credentials(&self, criteria: FindCriteria) -> Result<Vec<CredentialEntry>>;
 }
 
 #[cfg(test)]
 pub mod test_util {
-    use crate::vault::{FindCriteria, Vault};
+    use crate::vault::{CredentialEntry, FindCriteria, Vault};
     use crate::vc::{Credential, CredentialMetadata, VCFormat};
 
     pub async fn test_vault<V: Vault>(vault: V) {
@@ -128,6 +136,7 @@ pub mod test_util {
         let cred1 = "token".to_string();
         let cred1_meta = CredentialMetadata {
             type_: "https://credentials.example.com/identity_credential".into(),
+            kid: "1234".into(),
             format: VCFormat::SdJwtVc,
             alg: None,
             tags: vec![],
@@ -145,6 +154,7 @@ pub mod test_util {
         let cred2: ssi::vc::Credential = serde_json::from_str(cred2str).unwrap();
         let cred2_meta = CredentialMetadata {
             type_: "VerifiableCredential".into(),
+            kid: "1234".into(),
             format: VCFormat::LdpVc,
             alg: None,
             tags: vec![],
@@ -162,8 +172,20 @@ pub mod test_util {
         let get1_res = vault.get_credential(&cred1_id).await.unwrap();
         let get2_res = vault.get_credential(&cred2_id).await.unwrap();
 
-        assert_eq!(get1_res, Some(Credential::SdJwt(cred1.clone())));
-        assert_eq!(get2_res, Some(Credential::LdpVc(cred2)));
+        assert_eq!(
+            get1_res,
+            Some(CredentialEntry {
+                credential: Credential::SdJwt(cred1.clone()),
+                kid: "1234".into()
+            }),
+        );
+        assert_eq!(
+            get2_res,
+            Some(CredentialEntry {
+                credential: Credential::LdpVc(cred2.clone()),
+                kid: "1234".into()
+            }),
+        );
 
         let find_res = vault
             .find_credentials(FindCriteria::ByTypeAndFormat(
@@ -173,6 +195,12 @@ pub mod test_util {
             .await
             .unwrap();
 
-        assert_eq!(find_res, vec![Credential::SdJwt(cred1)]);
+        assert_eq!(
+            find_res,
+            vec![CredentialEntry {
+                credential: Credential::SdJwt(cred1),
+                kid: "1234".into()
+            }]
+        );
     }
 }

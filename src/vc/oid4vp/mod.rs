@@ -102,7 +102,7 @@ pub mod test_utils {
 
         let vp = SdJwtAPI::create_vp(
             &vc,
-            (&holder_did_url, holder_key_handle),
+            holder_key_handle,
             Nonce::new(nonce.to_string()),
             verifier_id,
             VPMetadata {

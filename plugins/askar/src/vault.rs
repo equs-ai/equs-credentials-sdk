@@ -7,7 +7,8 @@ use uuid::Uuid;
 
 use agent_sdk::crypto::Alg;
 use agent_sdk::vault::{
-    Error, FindCriteria, FormatNotSupportedSnafu, ResolvingSnafu, StoringSnafu, VCSnafu, Vault,
+    CredentialEntry, Error, FindCriteria, FormatNotSupportedSnafu, ResolvingSnafu, StoringSnafu,
+    VCSnafu, Vault,
 };
 use agent_sdk::vc::{
     Credential, CredentialMetadata, VCFormat, JWT_VC_JSON, JWT_VC_JSON_LD, LDP_VC, SD_JWT_VC,
@@ -15,6 +16,7 @@ use agent_sdk::vc::{
 
 pub const TAG_TYPE: &str = "type_";
 pub const TAG_FORMAT: &str = "format";
+pub const TAG_KID: &str = "kid";
 pub const TAG_ALG: &str = "alg";
 
 #[derive(Debug)]
@@ -92,6 +94,7 @@ impl AskarVault {
                 TAG_FORMAT.to_string(),
                 <&VCFormat as Into<&str>>::into(&metadata.format).to_string(),
             ),
+            EntryTag::Encrypted(TAG_KID.to_string(), metadata.kid.to_owned()),
         ];
 
         if let Some(alg) = metadata.alg {
@@ -176,7 +179,7 @@ impl Vault for AskarVault {
         err(),
         ret(level = Level::TRACE)
     )]
-    async fn get_credential(&self, id: &str) -> Result<Option<Credential>, Error> {
+    async fn get_credential(&self, id: &str) -> Result<Option<CredentialEntry>, Error> {
         let entry = self.get(id.try_into()?).await.map_err(|err| {
             StoringSnafu {
                 details: err.to_string(),
@@ -193,7 +196,10 @@ impl Vault for AskarVault {
         err(),
         ret(level = Level::TRACE)
     )]
-    async fn find_credentials(&self, criteria: FindCriteria) -> Result<Vec<Credential>, Error> {
+    async fn find_credentials(
+        &self,
+        criteria: FindCriteria,
+    ) -> Result<Vec<CredentialEntry>, Error> {
         let tag_filter = find_criteria_to_tag_filter(criteria);
 
         if tag_filter.is_none() {
@@ -289,7 +295,7 @@ fn find_criteria_to_tag_filter(criteria: FindCriteria) -> Option<TagFilter> {
     }
 }
 
-fn entry_to_credential(entry: Entry) -> Result<Credential, Error> {
+fn entry_to_credential(entry: Entry) -> Result<CredentialEntry, Error> {
     let credential_str = entry
         .value
         .as_opt_str()
@@ -301,9 +307,9 @@ fn entry_to_credential(entry: Entry) -> Result<Credential, Error> {
         })?
         .to_string();
 
-    match entry.category.as_str() {
-        JWT_VC_JSON => Ok(Credential::JwtVcJson(credential_str)),
-        JWT_VC_JSON_LD => Ok(Credential::JwtVcJsonLd(credential_str)),
+    let credential = match entry.category.as_str() {
+        JWT_VC_JSON => Credential::JwtVcJson(credential_str),
+        JWT_VC_JSON_LD => Credential::JwtVcJsonLd(credential_str),
         LDP_VC => {
             let credential =
                 ssi::vc::Credential::from_json_unsigned(&credential_str).map_err(|err| {
@@ -312,20 +318,35 @@ fn entry_to_credential(entry: Entry) -> Result<Credential, Error> {
                     }
                     .build()
                 })?;
-            Ok(Credential::LdpVc(credential))
+            Credential::LdpVc(credential)
         }
-        SD_JWT_VC => Ok(Credential::SdJwt(credential_str)),
+        SD_JWT_VC => Credential::SdJwt(credential_str),
         _ => FormatNotSupportedSnafu {
             format: entry.category,
         }
-        .fail(),
-    }
+        .fail()?,
+    };
+
+    let kid = entry
+        .tags
+        .iter()
+        .find(|t| t.name() == TAG_KID)
+        .ok_or(
+            ResolvingSnafu {
+                details: "KID not specified",
+            }
+            .build(),
+        )?
+        .value()
+        .to_owned();
+
+    Ok(CredentialEntry { credential, kid })
 }
 
 #[cfg(test)]
 mod tests {
     use crate::AskarStorage;
-    use agent_sdk::vault::{FindCriteria, Vault};
+    use agent_sdk::vault::{CredentialEntry, FindCriteria, Vault};
     use agent_sdk::vc::{Credential, CredentialMetadata, VCFormat};
 
     // TODO: consider splitting this test into several small unit tests
@@ -344,6 +365,7 @@ mod tests {
         let cred1 = "token".to_string();
         let cred1_meta = CredentialMetadata {
             type_: "https://credentials.example.com/identity_credential".into(),
+            kid: "1234".into(),
             format: VCFormat::SdJwtVc,
             alg: None,
             tags: vec![],
@@ -361,6 +383,7 @@ mod tests {
         let cred2: ssi::vc::Credential = serde_json::from_str(cred2str).unwrap();
         let cred2_meta = CredentialMetadata {
             type_: "VerifiableCredential".into(),
+            kid: "1234".into(),
             format: VCFormat::LdpVc,
             alg: None,
             tags: vec![],
@@ -378,8 +401,20 @@ mod tests {
         let get1_res = vault.get_credential(&cred1_id).await.unwrap();
         let get2_res = vault.get_credential(&cred2_id).await.unwrap();
 
-        assert_eq!(get1_res, Some(Credential::SdJwt(cred1.clone())));
-        assert_eq!(get2_res, Some(Credential::LdpVc(cred2)));
+        assert_eq!(
+            get1_res,
+            Some(CredentialEntry {
+                credential: Credential::SdJwt(cred1.clone()),
+                kid: "1234".into()
+            }),
+        );
+        assert_eq!(
+            get2_res,
+            Some(CredentialEntry {
+                credential: Credential::LdpVc(cred2.clone()),
+                kid: "1234".into()
+            }),
+        );
 
         let find_res = vault
             .find_credentials(FindCriteria::ByTypeAndFormat(
@@ -389,6 +424,12 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(find_res, vec![Credential::SdJwt(cred1)]);
+        assert_eq!(
+            find_res,
+            vec![CredentialEntry {
+                credential: Credential::SdJwt(cred1),
+                kid: "1234".into()
+            }]
+        );
     }
 }

@@ -525,17 +525,16 @@ mod tests {
     use crate::http::{HttpClient, MockHttpClient};
     use crate::inmem::kms::LocalKms;
     use crate::inmem::vault::InMemVault;
+    use crate::kms::{CreateOptions, KeyType, Kms};
     use crate::utils::http::test::mock_http_fn;
     use crate::vault::Vault;
+    use crate::vc::oid4vp::Holder;
+    use crate::vc::oid4vp::{AuthorizationResponseMetadata, HolderBuilder};
     use crate::vc::{Credential, CredentialMetadata, VCFormat};
     use oauth2::http::header::CONTENT_TYPE;
     use oauth2::http::{HeaderMap, HeaderValue, Method, StatusCode};
     use oauth2::HttpResponse;
     use url::Url;
-
-    use crate::vc::oid4vp::test_utils::create_did_and_key_metadata;
-    use crate::vc::oid4vp::Holder;
-    use crate::vc::oid4vp::{AuthorizationResponseMetadata, HolderBuilder};
 
     const REQUEST_OBJECT: &str = "eyJhbGciOiJFUzI1NiIsImtpZCI6ImRpZDprZXk6ekRuYWVhZ3ZXMmVEV2MyeVZ3N0I5OG92Y0o4amRkbjdUOU1oM3k1VmlreXM2eTRrWCN6RG5hZWFndlcyZURXYzJ5Vnc3Qjk4b3ZjSjhqZGRuN1Q5TWgzeTVWaWt5czZ5NGtYIiwidHlwIjoiSldUIn0.eyJyZXNwb25zZV9tb2RlIjoiZGlyZWN0X3Bvc3QiLCJyZXNwb25zZV91cmkiOiJodHRwOi8vMTI3LjAuMC4xOjU1Nzk2L2F1dGgiLCJyZXNwb25zZV90eXBlIjoidnBfdG9rZW4iLCJub25jZSI6Im4wTmNFIiwiY2xpZW50X21ldGFkYXRhIjp7InZwX2Zvcm1hdHMiOnsidmMrc2Qtand0Ijp7ImFsZyI6WyJFZERTQSIsIkVTMjU2Il19fX0sInByZXNlbnRhdGlvbl9kZWZpbml0aW9uIjp7ImlkIjoiMWI5ZDZiY2QtYmJmZC00YjJkLTliNWQtYWI4ZGZiYmQ0YmVkIiwiaW5wdXRfZGVzY3JpcHRvcnMiOlt7ImlkIjoiSWRlbnRpdHktMSIsIm5hbWUiOiJJZGVudGl0eSBWQyIsInB1cnBvc2UiOiJXZSB3YW50IGFuIGlkZW50aXR5IiwiZm9ybWF0Ijp7InZjK3NkLWp3dCI6eyJhbGciOlsiRWREU0EiLCJFUzI1NksiXX19LCJjb25zdHJhaW50cyI6eyJmaWVsZHMiOlt7InBhdGgiOlsiJC52Y3QiXSwiZmlsdGVyIjp7InR5cGUiOiJzdHJpbmciLCJjb25zdCI6Imh0dHBzOi8vY3JlZGVudGlhbHMuZXhhbXBsZS5jb20vaWRlbnRpdHlfY3JlZGVudGlhbCJ9fSx7InBhdGgiOlsiJC5uYW1lIl19XX19XX0sImNsaWVudF9pZCI6ImRpZDprZXk6ekRuYWVhZ3ZXMmVEV2MyeVZ3N0I5OG92Y0o4amRkbjdUOU1oM3k1VmlreXM2eTRrWCIsImNsaWVudF9pZF9zY2hlbWUiOiJkaWQifQ.RlrD5ibioAvM_S0QAhdPK--9WyLEw258cMduAn26S1puXIxKgJod9gt00FDrK0x-jdPmkuPdpJWKzg3kcimIVQ";
     const REQUEST_URI: &str = "openid4vp://?client_id=did%3Akey%3AzDnaeagvW2eDWc2yVw7B98ovcJ8jddn7T9Mh3y5Vikys6y4kX&request_uri=http%3A%2F%2F127.0.0.1%3A55796%2Frequest";
@@ -552,10 +551,14 @@ mod tests {
         // Mock request while Holder tries to send Authorization Response
         mock_send_authorization_response_call(&mut http_client);
 
+        let kms = LocalKms::new();
+        let kid = kms.create(KeyType::P256, CreateOptions {}).await.unwrap();
+
         let vault = InMemVault::new();
 
         let cred_meta = CredentialMetadata {
             type_: "https://credentials.example.com/identity_credential".into(),
+            kid,
             format: VCFormat::SdJwtVc,
             alg: Some(Alg::ES256),
             tags: vec![],
@@ -566,7 +569,7 @@ mod tests {
             .await;
         assert!(res.is_ok());
 
-        let holder = oid4vp_holder(http_client, vault).await;
+        let holder = oid4vp_holder(http_client, vault, kms).await;
         // Handle request object
         let request_obj = holder.get_authorization_request(REQUEST_URI).await.unwrap();
         // Send auth response
@@ -613,18 +616,18 @@ mod tests {
         );
     }
 
-    async fn oid4vp_holder(http_client: impl HttpClient, vault: InMemVault) -> impl Holder {
-        let kms = LocalKms::new();
-
-        let (did, key_metadata) = create_did_and_key_metadata(&kms).await;
-
+    async fn oid4vp_holder(
+        http_client: impl HttpClient,
+        vault: InMemVault,
+        kms: LocalKms,
+    ) -> impl Holder {
         let client = reqwest::Client::builder()
             .danger_accept_invalid_certs(true)
             .https_only(false)
             .build()
             .unwrap();
 
-        HolderBuilder::new(kms, vault, key_metadata, CLIENT_ID.to_owned())
+        HolderBuilder::new(kms, vault, CLIENT_ID.to_owned())
             .with_http_client(http_client)
             .build()
             .await

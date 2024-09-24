@@ -300,7 +300,7 @@ mod tests {
     }
 
     fn sample_issuer_metadata() -> IssuerMetadata {
-        let cred_def = serde_json::to_value(&sample_credential_definition()).unwrap();
+        let cred_def = serde_json::to_value(sample_credential_definition()).unwrap();
         let metadata = serde_json::from_value(json!(
             {
                 "credential_issuer": ISSUER_URL,

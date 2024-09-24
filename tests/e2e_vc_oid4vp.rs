@@ -19,7 +19,6 @@ use agent_sdk::http::HttpClient;
 use agent_sdk::inmem::kms::LocalKms;
 use agent_sdk::inmem::vault::InMemVault;
 use agent_sdk::vault::Vault;
-use agent_sdk::vc::core::KeyMetadata;
 use agent_sdk::vc::oid4vp::{
     auth_request_as_url, AuthorizationResponseMetadata, AuthorizationUrlType,
 };
@@ -49,7 +48,7 @@ use crate::utils::fixtures::oid4vp::{
 async fn credentials_presentation_and_verification(#[case] test_case: Oid4VpTestCase) {
     println!("7. Store Credential");
     let holder_kms = LocalKms::new();
-    let (holder_kid, holder_kh, holder_did, holder_vm) =
+    let (holder_kid, holder_kh, holder_did, _) =
         generate_did_key_and_vm(&holder_kms, &UniversalResolver::new()).await;
     let holder_did_url = DIDURL::from_str(&holder_did).unwrap();
 
@@ -60,6 +59,7 @@ async fn credentials_presentation_and_verification(#[case] test_case: Oid4VpTest
         let (vc, vc_meta) = create_vc(
             credential.vct,
             &holder_did_url,
+            holder_kid.clone(),
             holder_kh.clone(),
             credential.claims.clone(),
         )
@@ -93,16 +93,7 @@ async fn credentials_presentation_and_verification(#[case] test_case: Oid4VpTest
     );
 
     // Create Holder
-    let holder = build_holder(
-        http_client,
-        holder_kms,
-        holder_vault,
-        KeyMetadata {
-            did_url: holder_vm,
-            kid: holder_kid,
-        },
-    )
-    .await;
+    let holder = build_holder(http_client, holder_kms, holder_vault).await;
 
     println!("8.2 Holder: Get Authorization Request");
     let request_object = holder
@@ -196,9 +187,8 @@ async fn build_holder(
     http_client: impl HttpClient,
     kms: LocalKms,
     vault: InMemVault,
-    key_metadata: KeyMetadata,
 ) -> impl Holder {
-    HolderBuilder::new(kms, vault, key_metadata, "wallet-dev".to_string())
+    HolderBuilder::new(kms, vault, "wallet-dev".to_string())
         .with_http_client(http_client)
         .build()
         .await
@@ -208,6 +198,7 @@ async fn build_holder(
 async fn create_vc(
     vct: &str,
     holder_did_url: &DIDURL,
+    holder_kid: String,
     holder_kh: impl crypto::Key,
     claims: serde_json::Value,
 ) -> (Credential, CredentialMetadata) {
@@ -240,6 +231,7 @@ async fn create_vc(
 
     let vc_meta = CredentialMetadata {
         type_: vct.to_string(),
+        kid: holder_kid,
         format: VCFormat::SdJwtVc,
         alg: Some(Alg::ES256),
         tags: vec![],

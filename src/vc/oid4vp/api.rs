@@ -1,5 +1,6 @@
+use crate::vault::CredentialEntry;
 use crate::vc::oid4vp::InternalError;
-use crate::vc::{Claims, Credential};
+use crate::vc::Claims;
 use async_trait::async_trait;
 use oid4vp::core::authorization_request::parameters::ResponseMode;
 use oid4vp::core::authorization_request::RequestIndirection;
@@ -11,7 +12,7 @@ use url::Url;
 
 // Data type
 pub struct AuthorizationResponseMetadata {}
-pub type CredentialMapping = HashMap<String, Vec<Credential>>;
+pub type CredentialMapping = HashMap<String, Vec<CredentialEntry>>;
 pub type PresentationSubmission = oid4vp::presentation_exchange::PresentationSubmission;
 pub type PresentationDefinition = oid4vp::presentation_exchange::PresentationDefinition;
 pub type ClientMetadata = oid4vp::core::authorization_request::parameters::ClientMetadata;

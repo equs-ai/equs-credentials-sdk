@@ -2,8 +2,8 @@ use crate::did::DIDURL;
 use crate::kms;
 use crate::vc::core::{
     AlgNotSupportedSnafu, CredDefNotFoundSnafu, CredentialOfferContent, FormatNotSupportedSnafu,
-    InconsistentProtocolDataSnafu, KMSSnafu, MetadataSnafu, ProofFormatNotSupportedSnafu,
-    ProofSnafu, Result, VCSnafu,
+    InconsistentProtocolDataSnafu, KMSSnafu, ProofFormatNotSupportedSnafu, ProofSnafu, Result,
+    VCSnafu,
 };
 use crate::vc::core::{
     CredentialDefinition, CredentialDefinitionData, CredentialOffer, CredentialOfferData,
@@ -11,10 +11,9 @@ use crate::vc::core::{
 };
 use crate::vc::formats::sd_jwt_vc::{SdJwtAPI, VCMetadata};
 use crate::vc::formats::API;
-use crate::vc::metadata::{CredentialMetadataProcessor, DefaultMetadataProcessor};
 use crate::vc::pop::jwt_pop::JwtProofOfPossession;
 use crate::vc::pop::ProofOfPossession;
-use crate::vc::{pop, Claims, Credential, CredentialMetadata, VCFormat};
+use crate::vc::{pop, Claims, Credential, VCFormat};
 use async_trait::async_trait;
 use oid4vci::openidconnect::Nonce;
 use snafu::{ensure, ResultExt};
@@ -75,7 +74,7 @@ where
         credential_request: &CredentialRequest,
         claims: &Claims,
         nonce: &str,
-    ) -> Result<(Credential, CredentialMetadata)> {
+    ) -> Result<Credential> {
         trace!(?credential_request, ?claims, %nonce);
 
         let cred_def = self.resolve_cred_def_by_request(credential_request)?;
@@ -129,9 +128,7 @@ where
             }
         };
 
-        let meta = DefaultMetadataProcessor::resolve_metadata(&vc).context(MetadataSnafu)?;
-
-        Ok((vc, meta))
+        Ok(vc)
     }
 }
 

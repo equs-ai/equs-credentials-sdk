@@ -20,6 +20,7 @@ use agent_sdk::vc::core::{
     CredentialDefinition, CredentialDefinitionData, Holder, HolderMetadata, Issuer, IssuerMetadata,
     PopFormat, PresentationInput, Verifier,
 };
+use agent_sdk::vc::metadata::{CredentialMetadataProcessor, DefaultMetadataProcessor};
 use agent_sdk::vc::SD_JWT_VC;
 
 use utils::fixtures::{sample_claims, SCOPE, VC_TYPE, VERIFIER_ID};
@@ -28,8 +29,10 @@ use utils::helpers::create_did_keymetadata_keyhandle;
 #[tokio::test]
 async fn credential_issuance_and_presentation_verification() {
     // Initialization
+    let holder_kms = LocalKms::new();
+
     let issuer = build_issuer().await;
-    let holder = build_holder().await;
+    let holder = build_holder(holder_kms.clone()).await;
     let verifier = build_verifier(VERIFIER_ID);
 
     println!("Issue credential...");
@@ -38,22 +41,25 @@ async fn credential_issuance_and_presentation_verification() {
     let offer = offer.unwrap();
 
     let nonce = Nonce::new_random();
-    let request = holder.request_credential(&offer, nonce.secret()).await;
+    let (_, key_metadata, _) = create_did_keymetadata_keyhandle(&holder_kms).await;
+    let request = holder
+        .request_credential(&offer, nonce.secret(), &key_metadata)
+        .await;
     let request = request.unwrap();
 
     let claims = sample_claims();
 
     println!("Claims: {:?}", claims);
 
-    let vc_res = issuer
+    let vc = issuer
         .issue_credential(&request, &claims, nonce.secret())
-        .await;
+        .await
+        .unwrap();
 
-    let (vc, vc_meta) = vc_res.unwrap();
     println!("Credential {:?}", &vc);
 
-    let store_res = holder.store_credential(&vc, &vc_meta).await;
-    assert!(store_res.is_ok());
+    let vc_meta = DefaultMetadataProcessor::resolve_metadata(&vc, key_metadata).unwrap();
+    let _ = holder.store_credential(&vc, &vc_meta).await.unwrap();
 
     println!("Present proof...");
 
@@ -122,22 +128,17 @@ async fn build_issuer() -> impl Issuer {
     IssuerService::new(kms, metadata)
 }
 
-async fn build_holder() -> impl Holder {
+async fn build_holder(kms: LocalKms) -> impl Holder {
     // Initialization
     println!("Holder creating...");
 
-    let kms = LocalKms::new();
     let vault = InMemVault::new();
-
-    let (did, key_metadata, _) = create_did_keymetadata_keyhandle(&kms).await;
-    println!("DID: {}", did);
 
     HolderService::new(
         kms,
         vault,
         HolderMetadata {
             client_id: "client_id".into(),
-            key_metadata,
         },
     )
 }

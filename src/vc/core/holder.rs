@@ -8,14 +8,15 @@ use tracing::{debug, instrument, trace, Level};
 
 use crate::crypto::Alg;
 use crate::did::DIDURL;
-use crate::vault::FindCriteria;
+use crate::vault::{CredentialEntry, FindCriteria};
 use crate::vc::core::{
-    CredentialOffer, CredentialRequest, CredentialRequestData, Holder, HolderMetadata,
+    CredentialOffer, CredentialRequest, CredentialRequestData, Holder, HolderMetadata, KeyMetadata,
     PresentationInput, Proof,
 };
 use crate::vc::core::{
-    CredentialOfferContent, FormatNotSupportedSnafu, KMSSnafu, ProofFormatRequiredSnafu,
-    ProofSnafu, RequestedCredentialNotFoundSnafu, Result, VCSnafu, VaultSnafu,
+    CredentialOfferContent, FormatNotSupportedSnafu, InvalidDIDUrlSnafu, KMSSnafu,
+    ProofFormatRequiredSnafu, ProofSnafu, RequestedCredentialNotFoundSnafu, Result, VCSnafu,
+    VaultSnafu,
 };
 use crate::vc::formats::sd_jwt_vc::{SdJwtAPI, VPMetadata};
 use crate::vc::formats::{VerifyOptions, API};
@@ -53,6 +54,7 @@ where
         &self,
         credential_offer: &CredentialOffer,
         nonce: &str,
+        key_metadata: &KeyMetadata,
     ) -> Result<CredentialRequest> {
         trace!(?credential_offer, %nonce);
 
@@ -61,7 +63,7 @@ where
             CredentialOfferContent::SupportedProofs(proofs) => proofs,
         };
 
-        let (did_url, key) = self.resolve_key_metadata().await?;
+        let (did_url, key) = self.resolve_key_metadata(key_metadata).await?;
         let pop_fmt = self.resolve_proof_format(supported_proofs.to_owned(), &key)?;
 
         let proof = match pop_fmt {
@@ -176,7 +178,7 @@ where
     async fn find_vcs_for_presentation(
         &self,
         presentation_input: &PresentationInput,
-    ) -> Result<Vec<Credential>> {
+    ) -> Result<Vec<CredentialEntry>> {
         trace!(?presentation_input);
 
         let criteria = self.resolve_find_criteria(presentation_input)?;
@@ -191,7 +193,7 @@ where
 
     #[instrument(
         level = Level::TRACE,
-        skip(self, nonce, presentation_input, credential),
+        skip(self, nonce, presentation_input, cred_entry),
         err(),
         ret(level = Level::TRACE),
     )]
@@ -200,19 +202,19 @@ where
         nonce: &str,
         verifier_id: &str,
         presentation_input: &PresentationInput,
-        credential: &Credential,
+        cred_entry: &CredentialEntry,
     ) -> Result<Presentation> {
-        trace!(%nonce, ?presentation_input, ?credential);
+        trace!(%nonce, ?presentation_input, ?cred_entry);
 
-        let (did_url, key) = self.resolve_key_metadata().await?;
+        let key = self.kms.get(&cred_entry.kid).await.context(KMSSnafu)?;
 
-        let presentation = match credential {
+        let presentation = match &cred_entry.credential {
             Credential::SdJwt(vc) => {
                 // For now, only top level supported
                 let disclosures = Self::resolve_disclosures(presentation_input);
                 let vp = SdJwtAPI::create_vp(
                     vc,
-                    (&did_url, key),
+                    key,
                     Nonce::new(nonce.into()),
                     verifier_id,
                     VPMetadata { disclosures },
@@ -224,7 +226,7 @@ where
             }
             _ => {
                 return FormatNotSupportedSnafu {
-                    format: credential.format().to_string(),
+                    format: cred_entry.credential.format().to_string(),
                 }
                 .fail()
             }
@@ -292,10 +294,15 @@ where
         skip(self),
         err(),
     )]
-    async fn resolve_key_metadata(&self) -> Result<(DIDURL, KH)> {
-        let key_meta = &self.metadata.key_metadata;
-        let did_url = DIDURL::from_str(&key_meta.did_url).unwrap();
-        let kh = self.kms.get(&key_meta.kid).await.context(KMSSnafu)?;
+    async fn resolve_key_metadata(&self, key_metadata: &KeyMetadata) -> Result<(DIDURL, KH)> {
+        let did_url = DIDURL::from_str(&key_metadata.did_url).map_err(|_| {
+            InvalidDIDUrlSnafu {
+                input: &key_metadata.did_url,
+            }
+            .build()
+        })?;
+
+        let kh = self.kms.get(&key_metadata.kid).await.context(KMSSnafu)?;
 
         debug!(resolved_did = ?did_url);
 
