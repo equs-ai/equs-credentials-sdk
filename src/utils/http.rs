@@ -4,8 +4,10 @@ pub const MIME_TYPE_JSON: &str = "application/json";
 #[cfg(test)]
 pub mod test {
     use crate::http::{MockHttpClient, Result};
-    use oauth2::http::{Method, StatusCode};
+    use oauth2::http::header::CONTENT_TYPE;
+    use oauth2::http::{HeaderMap, HeaderValue, Method, StatusCode};
     use oauth2::{HttpRequest, HttpResponse};
+    use url::Url;
 
     #[cfg(test)]
     pub fn mock_http_once<T: serde::Serialize + Send + Sync + 'static>(
@@ -103,6 +105,33 @@ pub mod test {
                     body: serde_json::to_vec(&body).unwrap(),
                 })
             });
+    }
+
+    pub fn mock_http_fn_with_plain_text_resp(
+        mock: &mut MockHttpClient,
+        method: Method,
+        url: Url,
+        body: &'static str,
+        times: mockall::TimesRange,
+    ) {
+        mock_http_fn(
+            mock,
+            method,
+            url,
+            move |req| {
+                let resp = HttpResponse {
+                    status_code: StatusCode::OK,
+                    headers: HeaderMap::from_iter(vec![(
+                        CONTENT_TYPE,
+                        HeaderValue::from_str("text/plain").unwrap(),
+                    )]),
+                    body: Vec::from(body),
+                };
+
+                Ok(resp)
+            },
+            1.into(),
+        );
     }
 
     #[cfg(test)]

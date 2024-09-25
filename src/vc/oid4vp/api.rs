@@ -78,6 +78,12 @@ impl Debug for Error {
     fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
         std::write!(fmt, "{}", self)?;
 
+        let mut error: &dyn std::error::Error = self;
+        while let Some(source) = error.source() {
+            write!(fmt, "\n Cause: {}", source)?;
+            error = source;
+        }
+
         Ok(())
     }
 }

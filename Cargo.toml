@@ -9,7 +9,7 @@ members = [
 
 [package]
 name = "agent-sdk"
-version = "0.2.2"
+version = "0.2.3"
 edition = "2021"
 rust-version = "1.79"
 
@@ -50,9 +50,9 @@ mockall = "0.13.0"
 mockito = "1.5.0"
 rstest = "0.22.0"
 async-mutex = "1.4.0"
-rand = { version = "0.8.5"}
-ed25519-dalek = { version = "2.1.1"}
-p256 = { version = "0.13.2"}
+rand = { version = "0.8.5" }
+ed25519-dalek = { version = "2.1.1" }
+p256 = { version = "0.13.2" }
 
 [features]
 in-memory = ["dep:rand", "dep:ed25519-dalek", "dep:p256"]
