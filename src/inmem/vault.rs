@@ -18,7 +18,7 @@ pub struct InMemVault {
 impl InMemVault {
     #[instrument(
         level = Level::TRACE,
-        ret(level = Level::TRACE)
+        ret(),
     )]
     pub fn new() -> Self {
         Self {
@@ -31,7 +31,7 @@ impl InMemVault {
         level = Level::TRACE,
         skip(self),
         err(),
-        ret(level = Level::TRACE)
+        ret(),
     )]
     async fn update_index(
         &self,
@@ -55,7 +55,7 @@ impl InMemVault {
     #[instrument(
         level = Level::TRACE,
         skip(self),
-        ret(level = Level::TRACE)
+        ret(),
     )]
     async fn get_indexed(&self, type_: &str, format: &str) -> Vec<String> {
         let index = format!("{}:{}", type_, format);
@@ -71,7 +71,7 @@ impl Vault for InMemVault {
         level = Level::TRACE,
         skip(self),
         err(),
-        ret(level = Level::TRACE)
+        ret(),
     )]
     async fn store_credential(
         &self,
@@ -105,7 +105,7 @@ impl Vault for InMemVault {
         level = Level::TRACE,
         skip(self),
         err(),
-        ret(level = Level::TRACE)
+        ret(),
     )]
     async fn get_credential(&self, id: &str) -> Result<Option<CredentialEntry>, Error> {
         self.storage.get(&id.to_string()).await.map_err(|err| {
@@ -120,7 +120,7 @@ impl Vault for InMemVault {
         level = Level::TRACE,
         skip(self),
         err(),
-        ret(level = Level::TRACE)
+        ret(),
     )]
     async fn find_credentials(
         &self,

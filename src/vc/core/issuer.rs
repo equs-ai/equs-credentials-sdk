@@ -39,9 +39,9 @@ where
 {
     #[instrument(
         level = Level::TRACE,
-        skip(self, protocol_data),
+        skip(self),
         err(),
-        ret(level = Level::TRACE),
+        ret(),
     )]
     fn offer_credential(
         &self,
@@ -67,7 +67,7 @@ where
         level = Level::TRACE,
         skip_all,
         err(),
-        ret(level = Level::TRACE),
+        ret(),
     )]
     async fn issue_credential(
         &self,
@@ -151,9 +151,9 @@ where
 
     #[instrument(
         level = Level::TRACE,
-        skip_all,
+        skip(self),
         err(),
-        ret(level = Level::TRACE),
+        ret(),
     )]
     fn sd_jwt_vc_metadata(
         &self,
@@ -182,9 +182,9 @@ where
 
     #[instrument(
         level = Level::TRACE,
-        skip_all,
+        skip(self),
         err(),
-        ret(level = Level::TRACE),
+        ret(),
     )]
     fn resolve_cred_def_by_request(
         &self,
@@ -202,7 +202,7 @@ where
         level = Level::TRACE,
         skip(self),
         err(),
-        ret(level = Level::TRACE),
+        ret(),
     )]
     fn find_cred_def(&self, id: &str) -> Result<&CredentialDefinition> {
         let cred_defs = &self.metadata.cred_defs;
@@ -216,8 +216,8 @@ where
 
     #[instrument(
         level = Level::TRACE,
-        skip_all,
         err(),
+        ret(),
     )]
     fn resolve_proof(
         cred_def: &CredentialDefinition,
@@ -259,7 +259,7 @@ where
 
     #[instrument(
         level = Level::TRACE,
-        skip_all,
+        skip(self),
         err(),
     )]
     async fn resolve_key_metadata(&self, cred_def: &CredentialDefinition) -> Result<(DIDURL, KH)> {

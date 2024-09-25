@@ -19,7 +19,7 @@ impl Verifier for VerifierService {
         level = Level::TRACE,
         skip(self),
         err(),
-        ret(level = Level::TRACE),
+        ret(),
     )]
     async fn verify_presentation(
         &self,

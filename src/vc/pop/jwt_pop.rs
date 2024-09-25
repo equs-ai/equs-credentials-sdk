@@ -29,7 +29,7 @@ impl<S: SigningKey> oid4vci::proof_of_possession::Signer for SignerWrapper<S> {
         level = Level::TRACE,
         skip(self),
         err(),
-        ret(level = Level::TRACE)
+        ret(),
     )]
     async fn sign(&self, data: &[u8]) -> Result<Vec<u8>, ssi::jws::Error> {
         self.key
@@ -47,7 +47,7 @@ impl pop::ProofOfPossession<String> for JwtProofOfPossession {
         level = Level::TRACE,
         skip(key),
         err(),
-        ret(level = Level::TRACE)
+        ret(),
     )]
     async fn generate<S>(
         did_url: &DIDURL,
@@ -123,7 +123,7 @@ impl pop::ProofOfPossession<String> for JwtProofOfPossession {
     #[instrument(
         level = Level::TRACE,
         err(),
-        ret(level = Level::TRACE)
+        ret(),
     )]
     fn alg(proof: &String) -> Result<Alg, Error> {
         let (header, _) = jws::decode_unverified(proof).context(JWSSnafu)?;
@@ -138,7 +138,7 @@ impl crypto::Key for JWK {
         level = Level::TRACE,
         skip_all,
         err(),
-        ret(level = Level::TRACE)
+        ret(),
     )]
     fn pub_key(&self) -> Result<Vec<u8>, crypto::Error> {
         unimplemented!()
@@ -147,7 +147,7 @@ impl crypto::Key for JWK {
     #[instrument(
         level = Level::TRACE,
         skip_all,
-        ret(level = Level::TRACE)
+        ret(),
     )]
     fn jwk(&self) -> Option<JWK> {
         Some(self.to_owned())

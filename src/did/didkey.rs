@@ -45,7 +45,7 @@ impl DIDKey {
         level = Level::TRACE,
         skip_all,
         err(),
-        ret(level = Level::TRACE)
+        ret(),
     )]
     pub fn generate<K>(&self, key: K) -> Result<DID>
     where
@@ -70,7 +70,7 @@ impl DIDResolver for DIDKey {
     #[instrument(
         level = Level::TRACE,
         skip(self),
-        ret(level = Level::TRACE)
+        ret(),
     )]
     async fn resolve(&self, did: &str, options: ResolveOptions) -> Resolution {
         let (metadata, doc, doc_metadata) =

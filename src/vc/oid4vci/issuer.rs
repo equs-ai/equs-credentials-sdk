@@ -88,7 +88,7 @@ where
     #[instrument(
         level = Level::TRACE,
         skip_all,
-        ret(level = Level::DEBUG)
+        ret()
     )]
     fn get_issuer_metadata(&self) -> IssuerMetadata {
         self.issuer_metadata.clone()
@@ -97,7 +97,7 @@ where
     #[instrument(
         level = Level::TRACE,
         skip(self),
-        ret(level = Level::DEBUG)
+        ret()
     )]
     fn get_cred_def_metadata(&self, cred_request: &CredentialRequest) -> Option<CredDefMetadata> {
         self.resolve_cred_def(cred_request)
@@ -107,9 +107,9 @@ where
 
     #[instrument(
         level = Level::TRACE,
-        skip(self, grants),
+        skip(self),
         err(),
-        ret(level = Level::TRACE),
+        ret(),
     )]
     fn create_credential_offer(
         &self,
@@ -144,9 +144,9 @@ where
 
     #[instrument(
         level = Level::TRACE,
-        skip_all,
+        skip(self),
         err(),
-        ret(level = Level::TRACE),
+        ret(),
     )]
     async fn issue_credential(
         &self,
@@ -220,9 +220,9 @@ where
 {
     #[instrument(
         level = Level::TRACE,
-        skip_all,
+        skip(self),
         err(),
-        ret(level = Level::DEBUG),
+        ret(),
     )]
     fn resolve_cred_def(&self, req: &CredentialRequest) -> Result<(String, CredDefMetadata)> {
         trace!(credential_request = ?req);
@@ -264,7 +264,7 @@ where
         level = Level::TRACE,
         skip(self),
         err(),
-        ret(level = Level::DEBUG),
+        ret(),
     )]
     fn validate_cred_def_ids(&self, cred_def_ids: &Vec<&str>) -> Result<()> {
         ensure!(
@@ -301,7 +301,7 @@ where
         level = Level::TRACE,
         skip(self),
         err(),
-        ret(level = Level::TRACE),
+        ret(),
     )]
     fn validate_nonce(&self, session: &mut IssuanceSession) -> Result<NonceData> {
         match &session.nonce {
@@ -326,9 +326,9 @@ where
 
     #[instrument(
         level = Level::TRACE,
-        skip(self, token),
+        skip(self),
         err(),
-        ret(level = Level::DEBUG),
+        ret(),
     )]
     fn validate_scope(&self, token: &str, cred_def_id: &str, scope: &Scope) -> Result<()> {
         trace!(token_to_validate = %token);
@@ -367,9 +367,9 @@ where
 
     #[instrument(
         level = Level::TRACE,
-        skip(self, claims),
+        skip(self),
         err(),
-        ret(level = Level::DEBUG),
+        ret(),
     )]
     fn validate_claim_names(&self, claims: &Value, cred_metadata: &CredDefMetadata) -> Result<()> {
         trace!(?claims);
@@ -421,13 +421,11 @@ where
 
     #[instrument(
         level = Level::TRACE,
-        skip(self, token),
+        skip(self),
         err(),
-        ret(level = Level::TRACE),
+        ret(),
     )]
     pub async fn validate_token(&self, token: &str) -> Result<()> {
-        trace!(%token);
-
         match &self.token_validation {
             Some(TokenValidation::Introspect(svc)) => svc.validate(token).await.map_err(|_| {
                 ProtocolSnafu::new(
@@ -451,8 +449,8 @@ where
 
     #[instrument(
         level = Level::TRACE,
-        skip(self, session),
-        ret(level = Level::TRACE),
+        skip(self),
+        ret(),
     )]
     fn invalid_proof(
         &self,
@@ -474,7 +472,7 @@ where
 
     #[instrument(
         level = Level::TRACE,
-        ret(level = Level::TRACE),
+        ret(),
     )]
     fn update_cred_resp_and_session_data(
         resp: CredentialResponse,
@@ -530,7 +528,7 @@ impl From<vc::Credential> for CoreProfilesResponse {
 impl NonceData {
     #[instrument(
         level = Level::TRACE,
-        ret(level = Level::TRACE)
+        ret()
     )]
     pub(self) fn new_random() -> Self {
         Self {

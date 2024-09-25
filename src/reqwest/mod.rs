@@ -1,10 +1,15 @@
 use async_trait::async_trait;
 use oauth2::{HttpRequest, HttpResponse};
 use reqwest::Client;
+use std::str::from_utf8;
 use std::time::Duration;
-use tracing::{instrument, trace, Level};
+use tracing::{debug, info, instrument, Level};
 
 use crate::http::{HttpClient, HttpSnafu, Result};
+
+fn req_body_to_string(body: &[u8]) -> &str {
+    from_utf8(body).unwrap_or("*** NON-UTF8 characters ***")
+}
 
 #[derive(Debug, Clone)]
 pub struct ReqwestClient {
@@ -15,7 +20,7 @@ impl ReqwestClient {
     #[instrument(
         level = Level::TRACE,
         err(),
-        ret(level = Level::TRACE)
+        ret(),
     )]
     pub fn new(https_only: bool, invalid_certs: bool) -> Result<Self> {
         let client = Client::builder()
@@ -46,9 +51,13 @@ impl HttpClient for ReqwestClient {
         err(),
     )]
     async fn async_call(&self, request: HttpRequest) -> Result<HttpResponse> {
+        info!("Req: {} {}", request.method, request.url);
+        debug!("Req body: {}", req_body_to_string(&request.body));
+        debug!("Req headers: {:?}", request.headers);
+
         let mut request_builder = self
             .client
-            .request(request.method, request.url.as_str())
+            .request(request.method.clone(), request.url.as_str())
             .body(request.body)
             .timeout(Duration::from_secs(5));
 
@@ -56,14 +65,14 @@ impl HttpClient for ReqwestClient {
             request_builder = request_builder.header(name.as_str(), value.as_bytes());
         }
 
-        let request = request_builder.build().map_err(|err| {
+        let req = request_builder.build().map_err(|err| {
             HttpSnafu {
                 details: err.to_string(),
             }
             .build()
         })?;
 
-        let response = self.client.execute(request).await.map_err(|err| {
+        let response = self.client.execute(req).await.map_err(|err| {
             HttpSnafu {
                 details: err.to_string(),
             }
@@ -78,12 +87,16 @@ impl HttpClient for ReqwestClient {
             .build()
         })?;
 
-        trace!(response_body = ?{ String::from_utf8(chunks.to_vec()).as_ref() });
+        let resp_body = chunks.to_vec();
+
+        info!("Resp: {} {} {}", status_code, request.method, request.url);
+        debug!("Resp body: {}", req_body_to_string(&resp_body));
+        debug!("Resp headers: {:?}", headers);
 
         Ok(HttpResponse {
             status_code,
             headers,
-            body: chunks.to_vec(),
+            body: resp_body,
         })
     }
 }

@@ -66,6 +66,7 @@ where
     #[instrument(
         level = Level::TRACE,
         skip(holder, http_client),
+        err(),
     )]
     pub async fn from_iss_url(
         holder: HL,
@@ -94,6 +95,7 @@ where
     #[instrument(
         level = Level::TRACE,
         skip(holder, http_client),
+        err(),
     )]
     pub async fn from_credential_offer(
         holder: HL,
@@ -137,6 +139,7 @@ where
     #[instrument(
         level = Level::TRACE,
         skip(holder, http_client),
+        err(),
     )]
     async fn from_iss_url_with_configs(
         holder: HL,
@@ -175,6 +178,7 @@ where
     #[instrument(
         level = Level::TRACE,
         skip(holder, http_client),
+        err(),
     )]
     pub fn from_metadata(
         holder: HL,
@@ -201,6 +205,7 @@ where
     #[instrument(
         level = Level::TRACE,
         skip(holder, http_client),
+        err(),
     )]
     fn new(
         holder: HL,
@@ -240,7 +245,7 @@ where
     #[instrument(
         level = Level::TRACE,
         skip_all,
-        ret(level = Level::DEBUG),
+        ret(),
     )]
     fn get_issuer_metadata(&self) -> IssuerMetadata {
         self.issuer_metadata.clone()
@@ -250,7 +255,7 @@ where
         level = Level::TRACE,
         skip(self, authorization_callback),
         err(),
-        ret(level = Level::TRACE),
+        ret(),
     )]
     async fn authz_code_flow_with_scope(
         &self,
@@ -276,7 +281,7 @@ where
         level = Level::TRACE,
         skip(self),
         err(),
-        ret(level = Level::TRACE),
+        ret(),
     )]
     async fn pre_authz_code_flow(
         &self,
@@ -291,7 +296,7 @@ where
         level = Level::TRACE,
         skip(self),
         err(),
-        ret(level = Level::TRACE),
+        ret(),
     )]
     async fn request_credential(
         &self,
@@ -328,6 +333,7 @@ where
             content: CredentialOfferContent::SupportedProofs(supported_proofs),
             protocol_data: None,
         };
+        trace!(credential_offer = ?offer);
 
         let nonce = match nonce {
             Some(val) => val.secret().to_owned(),
@@ -377,7 +383,7 @@ where
         level = Level::TRACE,
         skip(self),
         err(),
-        ret(level = Level::TRACE),
+        ret(),
     )]
     async fn store_credential(
         &self,
@@ -407,7 +413,7 @@ where
         level = Level::TRACE,
         skip(self, callback),
         err(),
-        ret(level = Level::TRACE),
+        ret(),
     )]
     async fn authz_code_flow(
         &self,
@@ -431,6 +437,7 @@ where
                 .set_response_type(&ResponseType::new("code".into())),
             AuthzOption::Details(detail) => push_request.set_authorization_details(vec![detail]),
         };
+        debug!("auth request sending");
 
         let (auth_url, out_csrf) = push_request
             .async_request(|req| self.http_client.async_call(req), None, None)
@@ -463,9 +470,9 @@ where
 
     #[instrument(
         level = Level::TRACE,
-        skip_all,
+        skip(self),
         err(),
-        ret(level = Level::TRACE),
+        ret(),
     )]
     async fn deferred(
         &self,
@@ -479,7 +486,7 @@ where
         level = Level::TRACE,
         skip(self),
         err(),
-        ret(level = Level::TRACE),
+        ret(),
     )]
     async fn request_nonce(
         &self,
@@ -521,7 +528,7 @@ where
         level = Level::TRACE,
         skip(self),
         err(),
-        ret(level = Level::TRACE),
+        ret(),
     )]
     fn resolve_cred_def(&self, cred_def_id: &str) -> Result<CredDefMetadata> {
         let configs = self.issuer_metadata.credential_configurations_supported();
@@ -545,7 +552,7 @@ where
         level = Level::TRACE,
         skip_all,
         err(),
-        ret(level = Level::TRACE),
+        ret(),
     )]
     fn validate_if_offer_supported(&self) -> Result<()> {
         // TODO: implement validation logic to support limitation for pre-authorized code
@@ -560,6 +567,10 @@ where
         Ok(())
     }
 
+    #[instrument(
+        level = Level::TRACE,
+        ret(),
+    )]
     fn extract_nonce(resp: &oid4vci::core::credential::Response) -> Option<NonceData> {
         resp.c_nonce().map(|nonce| NonceData {
             nonce: nonce.to_owned(),
@@ -580,7 +591,7 @@ impl TryInto<CredentialResult> for &oid4vci::credential::Response<CoreProfilesRe
         level = Level::TRACE,
         skip_all,
         err(),
-        ret(level = Level::TRACE)
+        ret()
     )]
     fn try_into(self) -> std::result::Result<CredentialResult, Self::Error> {
         let result = match self.additional_profile_fields() {
@@ -607,7 +618,7 @@ impl TryInto<Credential> for &CoreProfilesResponse {
         level = Level::TRACE,
         skip_all,
         err(),
-        ret(level = Level::TRACE)
+        ret()
     )]
     fn try_into(self) -> std::result::Result<Credential, Self::Error> {
         let credential = match self {
@@ -629,7 +640,7 @@ impl TryInto<SpruceProof> for AsdkProof {
         level = Level::TRACE,
         skip_all,
         err(),
-        ret(level = Level::TRACE)
+        ret()
     )]
     fn try_into(self) -> std::result::Result<SpruceProof, Self::Error> {
         let proof = match self.format.as_str() {

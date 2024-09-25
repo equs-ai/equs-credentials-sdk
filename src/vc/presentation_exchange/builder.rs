@@ -16,7 +16,7 @@ pub struct DefaultPresentationBuilder(PresentationDefinition);
 impl DefaultPresentationBuilder {
     #[instrument(
         level = Level::TRACE,
-        ret(level = Level::TRACE)
+        ret(),
     )]
     pub fn new(id: String) -> DefaultPresentationBuilder {
         DefaultPresentationBuilder(PresentationDefinition {
@@ -30,7 +30,7 @@ impl DefaultPresentationBuilder {
 
     #[instrument(
         level = Level::TRACE,
-        ret(level = Level::TRACE)
+        ret(),
     )]
     pub fn from(presentation_definition: PresentationDefinition) -> DefaultPresentationBuilder {
         DefaultPresentationBuilder(presentation_definition)
@@ -39,7 +39,7 @@ impl DefaultPresentationBuilder {
     #[instrument(
         level = Level::TRACE,
         skip(self)
-        ret(level = Level::TRACE)
+        ret(),
     )]
     pub fn with_input_descriptor(mut self, input_descriptor: &InputDescriptor) -> Self {
         self.0.input_descriptors.push(input_descriptor.clone());
@@ -49,7 +49,7 @@ impl DefaultPresentationBuilder {
     #[instrument(
         level = Level::TRACE,
         skip(self)
-        ret(level = Level::TRACE)
+        ret(),
     )]
     pub fn with_name(mut self, name: &str) -> Self {
         self.0.name = Some(name.to_string());
@@ -59,7 +59,7 @@ impl DefaultPresentationBuilder {
     #[instrument(
         level = Level::TRACE,
         skip(self)
-        ret(level = Level::TRACE)
+        ret(),
     )]
     pub fn with_format(mut self, format: Json) -> Self {
         self.0.format = Some(format);
@@ -70,7 +70,7 @@ impl DefaultPresentationBuilder {
 impl Default for DefaultPresentationBuilder {
     #[instrument(
         level = Level::TRACE,
-        ret(level = Level::TRACE)
+        ret(),
     )]
     fn default() -> Self {
         DefaultPresentationBuilder::new(Uuid::new_v4().to_string())
@@ -82,7 +82,7 @@ impl PresentationBuilder for DefaultPresentationBuilder {
         level = Level::TRACE,
         skip(self)
         err(),
-        ret(level = Level::TRACE)
+        ret(),
     )]
     fn build(self) -> Result<PresentationDefinitionParameter, Error> {
         if self.0.input_descriptors.is_empty() {

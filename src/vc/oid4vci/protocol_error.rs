@@ -84,7 +84,7 @@ impl TryFrom<RequestError<HttpError>> for ProtocolError {
     #[instrument(
         level = Level::TRACE,
         err(),
-        ret(level = Level::TRACE)
+        ret(),
     )]
     fn try_from(value: RequestError<HttpError>) -> Result<Self, Self::Error> {
         match &value {

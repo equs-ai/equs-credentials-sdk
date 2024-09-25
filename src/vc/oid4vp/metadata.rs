@@ -17,7 +17,7 @@ const DEFAULT_CLIENT_METADATA: &str = r#"{
 
 #[instrument(
     level = Level::TRACE,
-    ret(level = Level::TRACE)
+    ret(),
 )]
 pub fn default_client_metadata() -> ClientMetadata {
     ClientMetadata::try_from(
@@ -28,7 +28,7 @@ pub fn default_client_metadata() -> ClientMetadata {
 
 #[instrument(
     level = Level::TRACE,
-    ret(level = Level::TRACE)
+    ret(),
 )]
 pub fn default_vp_formats() -> VpFormats {
     default_client_metadata()
@@ -61,7 +61,7 @@ const DEFAULT_WALLET_METADATA: &str = r#"{
 
 #[instrument(
     level = Level::TRACE,
-    ret(level = Level::TRACE)
+    ret(),
 )]
 pub fn default_wallet_metadata() -> WalletMetadata {
     WalletMetadata::try_from(

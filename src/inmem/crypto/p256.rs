@@ -20,7 +20,7 @@ impl VerifyingKey for P256 {}
 impl Suite for P256 {
     #[instrument(
         level = Level::TRACE,
-        ret(level = Level::TRACE)
+        ret(),
     )]
     fn gen() -> Vec<u8> {
         let signing_key = EcdsaSigningKey::random(&mut OsRng);
@@ -50,7 +50,7 @@ impl Key for P256 {
         level = Level::TRACE,
         skip_all,
         err(),
-        ret(level = Level::TRACE)
+        ret(),
     )]
     fn pub_key(&self) -> Result<Vec<u8>, Error> {
         Ok(self.signing_key.verifying_key().to_sec1_bytes().to_vec())
@@ -59,7 +59,7 @@ impl Key for P256 {
     #[instrument(
         level = Level::TRACE,
         skip_all,
-        ret(level = Level::TRACE)
+        ret(),
     )]
     fn jwk(&self) -> Option<ssi::jwk::JWK> {
         self.pub_key()
@@ -73,7 +73,7 @@ impl Signer for P256 {
     #[instrument(
         level = Level::TRACE,
         skip_all,
-        ret(level = Level::TRACE)
+        ret(),
     )]
     fn alg(&self) -> Alg {
         Alg::ES256
@@ -83,7 +83,7 @@ impl Signer for P256 {
         level = Level::TRACE,
         skip(self),
         err(),
-        ret(level = Level::TRACE)
+        ret(),
     )]
     async fn sign(&self, payload: &[u8]) -> Result<Vec<u8>, Error> {
         self.signing_key
@@ -104,7 +104,7 @@ impl Verifier for P256 {
         level = Level::TRACE,
         skip(self),
         err(),
-        ret(level = Level::TRACE)
+        ret(),
     )]
     async fn verify(&self, data: &[u8], signature: &[u8]) -> Result<(), Error> {
         let signature = EcdsaSignature::from_slice(signature).map_err(|err| {

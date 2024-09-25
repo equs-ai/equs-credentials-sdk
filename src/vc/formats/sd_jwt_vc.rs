@@ -42,7 +42,7 @@ impl<S: Signer> sd_jwt_rs::signer::SDJWTSigner for SignerWrapper<S> {
     #[instrument(
         level = Level::TRACE,
         skip(self),
-        ret(level = Level::TRACE),
+        ret(),
     )]
     fn algorithm(&self) -> &str {
         let alg = self.signer.alg();
@@ -53,7 +53,7 @@ impl<S: Signer> sd_jwt_rs::signer::SDJWTSigner for SignerWrapper<S> {
         level = Level::TRACE,
         skip(self),
         err(),
-        ret(level = Level::TRACE),
+        ret(),
     )]
     async fn sign(&self, message: &[u8]) -> sd_jwt_rs::error::Result<String> {
         let signed = self.signer.sign(message).await;
@@ -133,7 +133,7 @@ impl HasClaims<Claims> for Credential {
         level = Level::TRACE,
         skip_all,
         err(),
-        ret(level = Level::TRACE)
+        ret(),
     )]
     fn parse_claims(&self) -> Result<Claims> {
         let stripped = SdJwtAPI::strip_disclosures(self)?;
@@ -146,7 +146,7 @@ impl HasCredential<Credential> for Presentation {
         level = Level::TRACE,
         skip_all,
         err(),
-        ret(level = Level::TRACE)
+        ret(),
     )]
     fn get_credential(&self) -> Result<Credential> {
         // NOTE: returns basic VC w/o disclosures
@@ -160,7 +160,7 @@ pub struct SdJwtAPI;
 impl SdJwtAPI {
     #[instrument(
         level = Level::TRACE,
-        ret(level = Level::TRACE)
+        ret(),
     )]
     fn prepare_claims(
         mut claims: Claims,
@@ -184,7 +184,7 @@ impl SdJwtAPI {
 
     #[instrument(
         level = Level::TRACE,
-        ret(level = Level::TRACE)
+        ret(),
     )]
     fn extra_headers(iss_did_url: &DIDURL) -> HashMap<String, String> {
         let mut headers = HashMap::new();
@@ -197,7 +197,7 @@ impl SdJwtAPI {
     #[instrument(
         level = Level::TRACE,
         err(),
-        ret(level = Level::TRACE)
+        ret(),
     )]
     pub fn strip_disclosures(vc: &Credential) -> Result<&str> {
         let mut parts = vc.split('~');
@@ -212,7 +212,7 @@ impl SdJwtAPI {
 
     #[instrument(
         level = Level::TRACE,
-        ret(level = Level::TRACE)
+        ret(),
     )]
     pub fn verify_signature(vc: &Credential, jwk: &JWK) -> Result<()> {
         let stripped = Self::strip_disclosures(vc)?;
@@ -225,7 +225,7 @@ impl SdJwtAPI {
     #[instrument(
         level = Level::TRACE,
         err(),
-        ret(level = Level::TRACE)
+        ret()
     )]
     fn get_vm_from_did_doc(did_doc: &DIDDoc) -> Result<&VerificationMethodMap> {
         let vm_methods = did_doc.verification_method.as_ref().ok_or(
@@ -262,7 +262,7 @@ impl SdJwtAPI {
     #[instrument(
         level = Level::TRACE,
         err(),
-        ret(level = Level::TRACE)
+        ret(),
     )]
     async fn get_vm_from_jwt(jwt: &str) -> Result<VerificationMethodMap> {
         let (header, payload) = ssi::jws::decode_unverified(jwt).context(JWSSnafu)?;
@@ -331,7 +331,7 @@ impl SdJwtAPI {
 impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata, Value> for SdJwtAPI {
     #[instrument(
         level = Level::TRACE,
-        ret(level = Level::TRACE)
+        ret(),
     )]
     fn resolve_claims(value: &Value) -> Claims {
         value.as_object().unwrap().to_owned()
@@ -341,7 +341,7 @@ impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata, Value> for Sd
         level = Level::TRACE,
         skip(issuer_data, holder_data),
         err(),
-        ret(level = Level::TRACE)
+        ret(),
     )]
     async fn create_vc<S, K>(
         claims: Claims,
@@ -399,7 +399,7 @@ impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata, Value> for Sd
         level = Level::TRACE,
         skip(holder_signer),
         err(),
-        ret(level = Level::TRACE)
+        ret(),
     )]
     async fn create_vp<S>(
         credential: &Credential,
@@ -442,7 +442,7 @@ impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata, Value> for Sd
     #[instrument(
         level = Level::TRACE,
         err(),
-        ret(level = Level::TRACE)
+        ret(),
     )]
     async fn verify_vc(credential: &Credential, opts: VerifyOptions) -> Result<()> {
         let plain_jwt = Self::strip_disclosures(credential)?;
@@ -461,7 +461,7 @@ impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata, Value> for Sd
     #[instrument(
         level = Level::TRACE,
         err(),
-        ret(level = Level::TRACE)
+        ret(),
     )]
     async fn verify_vp(
         presentation: &Presentation,

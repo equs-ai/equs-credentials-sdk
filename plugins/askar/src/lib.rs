@@ -20,7 +20,7 @@ impl AskarStorage {
     #[instrument(
         level = Level::TRACE,
         err(),
-        ret(level = Level::TRACE)
+        ret(),
     )]
     pub async fn create(pass_key: &str, profile: Option<String>) -> Result<AskarStorage, Error> {
         let key_method = StoreKeyMethod::DeriveKey(KdfMethod::Argon2i(Default::default()));
@@ -41,7 +41,7 @@ impl AskarStorage {
     #[instrument(
         level = Level::TRACE,
         err(),
-        ret(level = Level::TRACE)
+        ret(),
     )]
     pub async fn open(pass_key: &str, profile: Option<String>) -> Result<AskarStorage, Error> {
         let key_method = StoreKeyMethod::DeriveKey(KdfMethod::Argon2i(Default::default()));
@@ -60,7 +60,7 @@ impl AskarStorage {
 
     #[instrument(
         level = Level::TRACE,
-        ret(level = Level::TRACE)
+        ret(),
     )]
     pub fn kms(&self) -> AskarKms {
         AskarKms::new(self.0.clone())
@@ -69,7 +69,7 @@ impl AskarStorage {
     #[instrument(
         level = Level::TRACE,
         skip_all,
-        ret(level = Level::TRACE)
+        ret(),
     )]
     pub fn vault(&self) -> AskarVault {
         AskarVault::new(self.0.clone())
@@ -79,7 +79,7 @@ impl AskarStorage {
         level = Level::TRACE,
         skip_all,
         err(),
-        ret(level = Level::TRACE)
+        ret(),
     )]
     pub async fn close(self) -> Result<(), Error> {
         self.0.close().await

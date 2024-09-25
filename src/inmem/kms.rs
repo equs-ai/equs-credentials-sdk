@@ -25,7 +25,7 @@ impl crypto::Signer for KeyHandle {
     #[instrument(
         level = Level::TRACE,
         skip_all,
-        ret(level = Level::TRACE)
+        ret(),
     )]
     fn alg(&self) -> crypto::Alg {
         match self {
@@ -38,7 +38,7 @@ impl crypto::Signer for KeyHandle {
         level = Level::TRACE,
         skip(self),
         err(),
-        ret(level = Level::TRACE)
+        ret(),
     )]
     async fn sign(&self, payload: &[u8]) -> Result<Vec<u8>, crypto::Error> {
         match self {
@@ -54,7 +54,7 @@ impl crypto::Verifier for KeyHandle {
         level = Level::TRACE,
         skip(self),
         err(),
-        ret(level = Level::TRACE)
+        ret(),
     )]
     async fn verify(&self, data: &[u8], signature: &[u8]) -> Result<(), crypto::Error> {
         match self {
@@ -70,7 +70,7 @@ impl crypto::Key for KeyHandle {
         level = Level::TRACE,
         skip_all,
         err(),
-        ret(level = Level::TRACE)
+        ret(),
     )]
     fn pub_key(&self) -> Result<Vec<u8>, crypto::Error> {
         match self {
@@ -82,7 +82,7 @@ impl crypto::Key for KeyHandle {
     #[instrument(
         level = Level::TRACE,
         skip_all,
-        ret(level = Level::TRACE)
+        ret(),
     )]
     fn jwk(&self) -> Option<ssi::jwk::JWK> {
         match self {
@@ -113,7 +113,7 @@ const KID_LENGTH: usize = 10;
 impl LocalKms {
     #[instrument(
         level = Level::TRACE,
-        ret(level = Level::TRACE)
+        ret(),
     )]
     pub fn new() -> Self {
         Self {
@@ -123,7 +123,7 @@ impl LocalKms {
 
     #[instrument(
         level = Level::TRACE,
-        ret(level = Level::TRACE)
+        ret(),
     )]
     pub fn for_store(storage: InMemStorage<kms::KeyID, Bytes>) -> Self {
         Self {
@@ -133,7 +133,7 @@ impl LocalKms {
 
     #[instrument(
         level = Level::TRACE,
-        ret(level = Level::TRACE)
+        ret(),
     )]
     fn kid(kt: kms::KeyType) -> kms::KeyID {
         let id = random_string::generate(KID_LENGTH, random_string::charsets::ALPHA);
@@ -153,7 +153,7 @@ impl Kms<KeyHandle> for LocalKms {
         level = Level::TRACE,
         skip(self),
         err(),
-        ret(level = Level::TRACE)
+        ret(),
     )]
     async fn create(&self, kt: kms::KeyType, opts: kms::CreateOptions) -> Result<KeyID, Error> {
         let key = match kt {

@@ -23,7 +23,7 @@ impl AskarKeyHandle {
     #[instrument(
         level = Level::TRACE,
         skip_all,
-        ret(level = Level::TRACE)
+        ret(),
     )]
     fn askar_sign_type(&self) -> Result<&'static str, CryptoError> {
         match self.alg() {
@@ -44,7 +44,7 @@ impl Key for AskarKeyHandle {
         level = Level::TRACE,
         skip_all,
         err(),
-        ret(level = Level::TRACE)
+        ret(),
     )]
     fn pub_key(&self) -> Result<Vec<u8>, CryptoError> {
         self.0
@@ -56,7 +56,7 @@ impl Key for AskarKeyHandle {
     #[instrument(
         level = Level::TRACE,
         skip_all,
-        ret(level = Level::TRACE)
+        ret(),
     )]
     fn jwk(&self) -> Option<JWK> {
         let jwk = self.0.to_jwk_public(None).ok()?;
@@ -69,7 +69,7 @@ impl Signer for AskarKeyHandle {
     #[instrument(
         level = Level::TRACE,
         skip_all,
-        ret(level = Level::TRACE)
+        ret(),
     )]
     fn alg(&self) -> Alg {
         self.1
@@ -79,7 +79,7 @@ impl Signer for AskarKeyHandle {
         level = Level::TRACE,
         skip(self),
         err(),
-        ret(level = Level::TRACE)
+        ret(),
     )]
     async fn sign(&self, payload: &[u8]) -> Result<Vec<u8>, CryptoError> {
         let sign_type = self.askar_sign_type()?;
@@ -103,7 +103,7 @@ impl Verifier for AskarKeyHandle {
         level = Level::TRACE,
         skip(self),
         err(),
-        ret(level = Level::TRACE)
+        ret(),
     )]
     async fn verify(&self, data: &[u8], signature: &[u8]) -> Result<(), CryptoError> {
         let sign_type = self.askar_sign_type()?;
@@ -148,7 +148,7 @@ impl AskarKms {
         level = Level::TRACE,
         skip(self),
         err(),
-        ret(level = Level::TRACE)
+        ret(),
     )]
     async fn insert_key(&self, key_id: &str, key: &LocalKey) -> Result<(), aries_askar::Error> {
         let mut session = self.0.session(None).await?;
@@ -162,7 +162,7 @@ impl AskarKms {
         level = Level::TRACE,
         skip(self),
         err(),
-        ret(level = Level::TRACE)
+        ret(),
     )]
     async fn get_key(&self, key_id: &str) -> Result<Option<LocalKey>, aries_askar::Error> {
         let mut session = self.0.session(None).await?;
@@ -181,7 +181,7 @@ impl Kms<AskarKeyHandle> for AskarKms {
         level = Level::TRACE,
         skip(self),
         err(),
-        ret(level = Level::TRACE)
+        ret(),
     )]
     async fn create(&self, kt: KeyType, _opts: CreateOptions) -> Result<KeyID, KmsError> {
         let key_alg = key_type_to_key_alg(kt).context(CryptoSnafu)?;
@@ -207,7 +207,7 @@ impl Kms<AskarKeyHandle> for AskarKms {
         level = Level::TRACE,
         skip(self),
         err(),
-        ret(level = Level::TRACE)
+        ret(),
     )]
     async fn get(&self, kid: &KeyID) -> Result<AskarKeyHandle, KmsError> {
         let key = self

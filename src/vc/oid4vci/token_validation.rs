@@ -94,7 +94,7 @@ pub struct Introspect<HC: HttpClient> {
 impl<HC: HttpClient> Introspect<HC> {
     #[instrument(
         level = Level::TRACE,
-        skip(http_client)
+        skip(http_client),
     )]
     pub fn new(http_client: HC, introspect_endpoint: Url, auth_header: Option<String>) -> Self {
         Self {
@@ -108,7 +108,7 @@ impl<HC: HttpClient> Introspect<HC> {
         level = Level::TRACE,
         skip(self),
         err(),
-        ret(level = Level::TRACE)
+        ret(),
     )]
     pub async fn validate(&self, token: &str) -> Result<()> {
         let body = Vec::from(format!("token={}", token));
@@ -186,7 +186,7 @@ impl<HC: HttpClient> ByJwks<HC> {
         level = Level::TRACE,
         skip(self),
         err(),
-        ret(level = Level::TRACE)
+        ret(),
     )]
     pub async fn validate(&self, token: &str) -> Result<()> {
         let jwks = JsonWebKeySet::<

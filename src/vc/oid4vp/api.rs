@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use snafu::Snafu;
 use std::collections::HashMap;
 use std::fmt::Debug;
+use tracing::{instrument, Level};
 use url::Url;
 
 // Data type
@@ -255,6 +256,7 @@ pub trait Verifier: Send + Sync {
 /// The types of authorization URLs.
 ///
 /// It can be either a request URI from which to retrieve the request object, or the encrypted request object itself.
+#[derive(Debug)]
 pub enum AuthorizationUrlType {
     Reference(Url),
     Value,
@@ -270,6 +272,10 @@ pub enum AuthorizationUrlType {
 /// # Returns
 ///
 /// * An authorization request URL.
+#[instrument(
+    level = Level::TRACE,
+    ret(),
+)]
 pub fn auth_request_as_url(req: &AuthorizationRequest, type_: AuthorizationUrlType) -> Url {
     let request_indirection = match type_ {
         AuthorizationUrlType::Value => RequestIndirection::ByValue(req.request_object_jwt.clone()),
