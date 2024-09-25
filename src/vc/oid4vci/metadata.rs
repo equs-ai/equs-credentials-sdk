@@ -44,7 +44,7 @@ type Result<T> = std::result::Result<T, Error>;
 #[instrument(
         level = Level::TRACE,
         err(),
-        ret(level = Level::TRACE),
+        ret(),
 )]
 pub fn convert_metadata(
     issuer_metadata: &IssuerMetadata,
@@ -79,7 +79,7 @@ pub fn convert_metadata(
 #[instrument(
         level = Level::TRACE,
         err(),
-        ret(level = Level::TRACE),
+        ret(),
 )]
 pub fn cred_definition(
     id: &str,
@@ -110,6 +110,11 @@ pub fn cred_definition(
     })
 }
 
+#[instrument(
+    level = Level::TRACE,
+    err(),
+    ret(),
+)]
 pub fn supported_proofs(
     credential_metadata: &oid4vci::metadata::CredentialMetadata<CoreProfilesMetadata>,
 ) -> Result<Option<HashMap<pop::Format, Vec<Alg>>>> {
@@ -133,6 +138,10 @@ pub fn supported_proofs(
         .transpose()
 }
 
+#[instrument(
+    level = Level::TRACE,
+    ret(),
+)]
 fn sd_jwt_protocol_data(metadata: &profiles::sd_jwt::Metadata) -> CredentialDefinitionData {
     let disclosures = metadata
         .credential_definition()
@@ -149,6 +158,11 @@ fn sd_jwt_protocol_data(metadata: &profiles::sd_jwt::Metadata) -> CredentialDefi
     }
 }
 
+#[instrument(
+    level = Level::TRACE,
+    err(),
+    ret(),
+)]
 fn sd_jwt_signing_algorithms(metadata: &profiles::sd_jwt::Metadata) -> Result<Option<Vec<Alg>>> {
     metadata
         .credential_signing_alg_values_supported()

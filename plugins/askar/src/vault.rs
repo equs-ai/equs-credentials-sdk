@@ -25,7 +25,7 @@ pub struct AskarVault(Store);
 impl AskarVault {
     #[instrument(
         level = Level::TRACE,
-        ret(level = Level::TRACE)
+        ret(),
     )]
     pub(super) fn new(store: Store) -> Self {
         AskarVault(store)
@@ -35,7 +35,7 @@ impl AskarVault {
         level = Level::TRACE,
         skip(self),
         err(),
-        ret(level = Level::TRACE)
+        ret(),
     )]
     async fn insert(&self, entity: &Entry) -> Result<AskarVaultId, aries_askar::Error> {
         let mut session = self.0.session(None).await?;
@@ -60,7 +60,7 @@ impl AskarVault {
         level = Level::TRACE,
         skip(self),
         err(),
-        ret(level = Level::TRACE)
+        ret(),
     )]
     async fn get(&self, id: AskarVaultId) -> Result<Option<Entry>, aries_askar::Error> {
         let mut seesion = self.0.session(None).await?;
@@ -71,7 +71,7 @@ impl AskarVault {
         level = Level::TRACE,
         skip(self),
         err(),
-        ret(level = Level::TRACE)
+        ret(),
     )]
     async fn find(&self, filter: TagFilter) -> Result<Vec<Entry>, aries_askar::Error> {
         let mut session = self.0.session(None).await?;
@@ -81,7 +81,7 @@ impl AskarVault {
     #[instrument(
         level = Level::TRACE,
         err(),
-        ret(level = Level::TRACE)
+        ret(),
     )]
     fn create_entry(
         credential: &Credential,
@@ -155,7 +155,7 @@ impl Vault for AskarVault {
         level = Level::TRACE,
         skip(self),
         err(),
-        ret(level = Level::TRACE)
+        ret(),
     )]
     async fn store_credential(
         &self,
@@ -177,7 +177,7 @@ impl Vault for AskarVault {
         level = Level::TRACE,
         skip(self),
         err(),
-        ret(level = Level::TRACE)
+        ret(),
     )]
     async fn get_credential(&self, id: &str) -> Result<Option<CredentialEntry>, Error> {
         let entry = self.get(id.try_into()?).await.map_err(|err| {
@@ -194,7 +194,7 @@ impl Vault for AskarVault {
         level = Level::TRACE,
         skip(self),
         err(),
-        ret(level = Level::TRACE)
+        ret(),
     )]
     async fn find_credentials(
         &self,
@@ -225,7 +225,7 @@ struct AskarVaultId(String, String);
 impl AskarVaultId {
     #[instrument(
         level = Level::TRACE,
-        ret(level = Level::TRACE)
+        ret(),
     )]
     pub fn new(category: String, name: String) -> Self {
         AskarVaultId(category, name)
@@ -234,7 +234,7 @@ impl AskarVaultId {
     #[instrument(
         level = Level::TRACE,
         skip(self),
-        ret(level = Level::TRACE)
+        ret(),
     )]
     pub fn category(&self) -> &str {
         &self.0
@@ -243,7 +243,7 @@ impl AskarVaultId {
     #[instrument(
         level = Level::TRACE,
         skip(self),
-        ret(level = Level::TRACE)
+        ret(),
     )]
     pub fn name(&self) -> &str {
         &self.1
@@ -256,7 +256,7 @@ impl TryFrom<&str> for AskarVaultId {
     #[instrument(
         level = Level::TRACE,
         err(),
-        ret(level = Level::TRACE)
+        ret(),
     )]
     fn try_from(value: &str) -> Result<Self, Self::Error> {
         let parts = value.split(':').collect::<Vec<&str>>();
@@ -278,7 +278,7 @@ impl TryFrom<&str> for AskarVaultId {
 impl From<AskarVaultId> for String {
     #[instrument(
         level = Level::TRACE,
-        ret(level = Level::TRACE)
+        ret(),
     )]
     fn from(value: AskarVaultId) -> Self {
         format!("{}:{}", value.0, value.1)

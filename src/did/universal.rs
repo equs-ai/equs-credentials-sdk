@@ -31,7 +31,7 @@ impl DIDResolver for UniversalResolver {
     #[instrument(
         level = Level::TRACE,
         skip(self),
-        ret(level = Level::TRACE)
+        ret(),
     )]
     async fn resolve(&self, did: &str, options: ResolveOptions) -> Resolution {
         let (metadata, doc, doc_metadata) = self.impls.resolve(did, &options.input).await;

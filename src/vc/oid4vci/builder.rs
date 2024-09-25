@@ -13,7 +13,7 @@ use snafu::{Location, Snafu};
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::marker::PhantomData;
-use tracing::{info, instrument, Level};
+use tracing::{debug, info, instrument, Level};
 use url::Url;
 
 /// An `OID4VCI` Builder errors.
@@ -402,6 +402,8 @@ where
 
         let holder = match self.iss_discovery {
             IssuerDiscovery::Offer(offer) => {
+                debug!("offer: {:?}", offer);
+
                 HolderService::from_credential_offer(
                     inner,
                     http_client,
@@ -411,15 +413,24 @@ where
                 )
                 .await
             }
-            IssuerDiscovery::Metadata(iss_meta, authz_meta) => HolderService::from_metadata(
-                inner,
-                http_client,
-                iss_meta,
-                authz_meta,
-                self.client_id,
-                self.redirect_url,
-            ),
+            IssuerDiscovery::Metadata(iss_meta, authz_meta) => {
+                debug!(
+                    "issuer metadata: {:?}, authz metadata: {:?}",
+                    iss_meta, authz_meta
+                );
+
+                HolderService::from_metadata(
+                    inner,
+                    http_client,
+                    iss_meta,
+                    authz_meta,
+                    self.client_id,
+                    self.redirect_url,
+                )
+            }
             IssuerDiscovery::Url(url) => {
+                debug!("issuer discovery url: {url}");
+
                 HolderService::from_iss_url(
                     inner,
                     http_client,

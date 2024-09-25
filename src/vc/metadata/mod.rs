@@ -69,7 +69,7 @@ impl DefaultMetadataProcessor {
     #[instrument(
         level = Level::TRACE,
         err(),
-        ret(level = Level::TRACE)
+        ret(),
     )]
     fn type_(credential: &Credential) -> Result<String> {
         match credential {
@@ -111,7 +111,7 @@ impl CredentialMetadataProcessor for DefaultMetadataProcessor {
     #[instrument(
         level = Level::TRACE,
         err(),
-        ret(level = Level::TRACE)
+        ret(),
     )]
     fn resolve_metadata(
         credential: &Credential,

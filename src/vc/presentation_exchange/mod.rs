@@ -63,7 +63,7 @@ pub struct PresentationResponse {
 #[instrument(
     level = Level::TRACE,
     err(),
-    ret(level = Level::TRACE)
+    ret(),
 )]
 pub fn prepare_presentation_response(
     requested_presentations: &[RequestedPresentation],
@@ -93,7 +93,7 @@ pub fn prepare_presentation_response(
 #[instrument(
     level = Level::TRACE,
     err(),
-    ret(level = Level::TRACE)
+    ret(),
 )]
 pub fn resolve_presentation_response(
     presentation_response: &PresentationResponse,
@@ -157,7 +157,7 @@ pub fn resolve_presentation_response(
 #[instrument(
     level = Level::TRACE,
     err(),
-    ret(level = Level::TRACE)
+    ret(),
 )]
 pub fn validate_claims(
     claims: &Claims,
@@ -176,7 +176,7 @@ pub fn validate_claims(
 #[instrument(
     level = Level::TRACE,
     err(),
-    ret(level = Level::TRACE)
+    ret(),
 )]
 fn handle_single_presentation(
     requested_presentation: &RequestedPresentation,
@@ -207,7 +207,7 @@ fn handle_single_presentation(
 #[instrument(
     level = Level::TRACE,
     err(),
-    ret(level = Level::TRACE)
+    ret(),
 )]
 fn handle_multiple_presentations(
     requested_presentations: &[RequestedPresentation],
@@ -244,7 +244,7 @@ fn handle_multiple_presentations(
 #[instrument(
     level = Level::TRACE,
     err(),
-    ret(level = Level::TRACE)
+    ret(),
 )]
 fn process_requested_presentation(
     requested_presentation: &RequestedPresentation,
@@ -272,7 +272,7 @@ fn process_requested_presentation(
 #[instrument(
     level = Level::TRACE,
     err(),
-    ret(level = Level::TRACE)
+    ret(),
 )]
 fn validate_field_constraints(claims: &Json, constraints: &[ConstraintsField]) -> Result<()> {
     for constraint in constraints.iter() {
@@ -291,7 +291,7 @@ fn validate_field_constraints(claims: &Json, constraints: &[ConstraintsField]) -
 #[instrument(
     level = Level::TRACE,
     err(),
-    ret(level = Level::TRACE)
+    ret(),
 )]
 pub fn validate_formats(
     supported_formats: VpFormats,
@@ -317,7 +317,7 @@ pub fn validate_formats(
 #[instrument(
     level = Level::TRACE,
     err(),
-    ret(level = Level::TRACE)
+    ret(),
 )]
 pub fn split_to_inputs(
     presentation_definition: &PresentationDefinition,
@@ -338,7 +338,7 @@ impl TryInto<PresentationInput> for &InputDescriptor {
         level = Level::TRACE,
         skip(self),
         err(),
-        ret(level = Level::TRACE)
+        ret(),
     )]
     fn try_into(self) -> Result<PresentationInput> {
         let fields = self.constraints.fields.clone().unwrap_or_default();
@@ -388,7 +388,7 @@ impl TryInto<PresentationInput> for &InputDescriptor {
 #[instrument(
     level = Level::TRACE,
     err(),
-    ret(level = Level::TRACE)
+    ret(),
 )]
 fn extract_input_descriptor<'a>(
     input_descriptor_id: &str,
@@ -409,7 +409,7 @@ fn extract_input_descriptor<'a>(
 #[instrument(
     level = Level::TRACE,
     err(),
-    ret(level = Level::TRACE)
+    ret(),
 )]
 fn extract_vp_format(input_descriptor: &InputDescriptor) -> Result<String> {
     input_descriptor
@@ -427,7 +427,8 @@ fn extract_vp_format(input_descriptor: &InputDescriptor) -> Result<String> {
 }
 
 #[instrument(
-    level = Level::TRACE
+    level = Level::TRACE,
+    ret(),
 )]
 fn filter_const(field: &ConstraintsField) -> Json {
     let filter = field.clone().filter.unwrap_or(Json::Null);
@@ -441,7 +442,7 @@ fn filter_const(field: &ConstraintsField) -> Json {
 
 #[instrument(
     level = Level::TRACE,
-    ret(level = Level::TRACE)
+    ret(),
 )]
 fn top_level_paths(field: &ConstraintsField) -> Vec<String> {
     let paths = field.path.iter();

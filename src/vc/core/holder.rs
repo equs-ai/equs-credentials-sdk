@@ -46,9 +46,9 @@ where
 {
     #[instrument(
         level = Level::TRACE,
-        skip_all,
+        skip(self),
         err(),
-        ret(level = Level::TRACE),
+        ret(),
     )]
     async fn request_credential(
         &self,
@@ -103,9 +103,9 @@ where
 
     #[instrument(
         level = Level::TRACE,
-        skip_all,
+        skip(self),
         err(),
-        ret(level = Level::TRACE),
+        ret(),
     )]
     async fn store_credential(
         &self,
@@ -125,9 +125,9 @@ where
 
     #[instrument(
         level = Level::TRACE,
-        skip_all,
+        skip(self),
         err(),
-        ret(level = Level::TRACE),
+        ret(),
     )]
     async fn verify_credential(&self, credential: &Credential) -> Result<()> {
         trace!(?credential);
@@ -145,9 +145,9 @@ where
 
     #[instrument(
         level = Level::TRACE,
-        skip(self, nonce, presentation_input),
+        skip(self),
         err(),
-        ret(level = Level::TRACE),
+        ret(),
     )]
     async fn create_presentation_auto(
         &self,
@@ -171,9 +171,9 @@ where
 
     #[instrument(
         level = Level::TRACE,
-        skip_all,
+        skip(self),
         err(),
-        ret(level = Level::TRACE),
+        ret(),
     )]
     async fn find_vcs_for_presentation(
         &self,
@@ -193,9 +193,9 @@ where
 
     #[instrument(
         level = Level::TRACE,
-        skip(self, nonce, presentation_input, cred_entry),
+        skip(self),
         err(),
-        ret(level = Level::TRACE),
+        ret(),
     )]
     async fn create_presentation(
         &self,
@@ -261,7 +261,7 @@ where
         level = Level::TRACE,
         skip_all,
         err(),
-        ret(level = Level::DEBUG),
+        ret(),
     )]
     fn resolve_proof_format(
         &self,
@@ -311,9 +311,9 @@ where
 
     #[instrument(
         level = Level::TRACE,
-        skip_all,
+        skip(self),
         err(),
-        ret(level = Level::TRACE),
+        ret(),
     )]
     fn resolve_find_criteria(&self, input: &PresentationInput) -> Result<FindCriteria> {
         trace!(presentation_input = ?input);
@@ -327,8 +327,7 @@ where
 
     #[instrument(
         level = Level::TRACE,
-        skip_all,
-        ret(level = Level::TRACE),
+        ret(),
     )]
     fn resolve_disclosures(
         input: &PresentationInput,

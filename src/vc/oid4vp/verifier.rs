@@ -109,7 +109,7 @@ where
     #[instrument(
         level = Level::TRACE,
         skip(self)
-        ret(level = Level::TRACE)
+        ret(),
     )]
     async fn create_authorization_request(
         &self,
@@ -142,7 +142,7 @@ where
         level = Level::TRACE,
         skip(self),
         err(),
-        ret(level = Level::TRACE)
+        ret(),
     )]
     async fn verify_presentation(
         &self,
@@ -174,7 +174,7 @@ where
         level = Level::TRACE,
         skip(self),
         err(),
-        ret(level = Level::TRACE)
+        ret(),
     )]
     async fn authorization_request(
         &self,
@@ -252,7 +252,7 @@ where
         level = Level::TRACE,
         skip(self),
         err(),
-        ret(level = Level::TRACE)
+        ret(),
     )]
     async fn do_verify_presentation(
         &self,
@@ -303,7 +303,7 @@ impl Profile for DefaultVerifierProfile {
         level = Level::TRACE,
         skip(self),
         err(),
-        ret(level = Level::TRACE)
+        ret(),
     )]
     async fn validate_request(
         &self,
@@ -346,7 +346,7 @@ impl<S: SigningKey> RequestSigner for SignerWrapper<S> {
     #[instrument(
         level = Level::TRACE,
         skip(self),
-        ret(level = Level::TRACE)
+        ret(),
     )]
     fn alg(&self) -> &str {
         self.signer.alg().into()
@@ -355,7 +355,7 @@ impl<S: SigningKey> RequestSigner for SignerWrapper<S> {
     #[instrument(
         level = Level::TRACE,
         skip(self),
-        ret(level = Level::TRACE)
+        ret(),
     )]
     fn jwk(&self) -> &JWK {
         &self.key
@@ -365,7 +365,7 @@ impl<S: SigningKey> RequestSigner for SignerWrapper<S> {
         level = Level::TRACE,
         skip(self),
         err(),
-        ret(level = Level::TRACE)
+        ret(),
     )]
     async fn sign(&self, payload: &[u8]) -> anyhow::Result<Vec<u8>> {
         let signature = self.signer.sign(payload).await?;

@@ -4,7 +4,7 @@ use tracing::{instrument, Level};
 #[instrument(
     level = Level::TRACE,
     skip(json),
-    ret(level = Level::TRACE)
+    ret(),
 )]
 pub fn find_json_element<'a>(json: &'a Json, json_path: &str) -> Option<&'a Json> {
     if json_path == "$" {

@@ -4,6 +4,7 @@ use ssi::did::did_resolve::DIDResolver as SpruceResolver;
 use ssi::did::{Resource, VerificationMethod};
 use ssi::did_resolve::{dereference, Content, DereferencingInputMetadata};
 use std::fmt::Debug;
+use tracing::{instrument, Level};
 
 pub mod didkey;
 pub mod universal;
@@ -112,6 +113,12 @@ pub trait DIDResolver: Send + Sync {
     fn as_spruce_resolver(&self) -> &dyn SpruceResolver;
 }
 
+#[instrument(
+    level = Level::TRACE,
+    skip(resolver),
+    err(),
+    ret(),
+)]
 async fn resolve_verification_method(
     resolver: &dyn SpruceResolver,
     did_url: &str,

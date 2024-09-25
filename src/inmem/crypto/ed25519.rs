@@ -17,7 +17,7 @@ impl crypto::VerifyingKey for Ed25519 {}
 impl crypto::Suite for Ed25519 {
     #[instrument(
         level = Level::TRACE,
-        ret(level = Level::TRACE)
+        ret(),
     )]
     fn gen() -> Vec<u8> {
         let signing_key: SigningKey = SigningKey::generate(&mut OsRng);
@@ -27,7 +27,7 @@ impl crypto::Suite for Ed25519 {
     #[instrument(
         level = Level::TRACE,
         err(),
-        ret(level = Level::TRACE)
+        ret(),
     )]
     fn from_secret(vec: Vec<u8>) -> Result<Ed25519, crypto::Error> {
         let s: SecretKey = vec.try_into().unwrap();
@@ -42,7 +42,7 @@ impl crypto::Key for Ed25519 {
         level = Level::TRACE,
         skip_all,
         err(),
-        ret(level = Level::TRACE)
+        ret(),
     )]
     fn pub_key(&self) -> Result<Vec<u8>, crypto::Error> {
         Ok(self.signing_key.verifying_key().to_bytes().to_vec())
@@ -51,7 +51,7 @@ impl crypto::Key for Ed25519 {
     #[instrument(
         level = Level::TRACE,
         skip_all,
-        ret(level = Level::TRACE)
+        ret(),
     )]
     fn jwk(&self) -> Option<ssi::jwk::JWK> {
         let pubk = self.pub_key().ok()?;
@@ -70,7 +70,7 @@ impl crypto::Signer for Ed25519 {
     #[instrument(
         level = Level::TRACE,
         skip_all,
-        ret(level = Level::TRACE)
+        ret(),
     )]
     fn alg(&self) -> crypto::Alg {
         crypto::Alg::EdDSA
@@ -80,7 +80,7 @@ impl crypto::Signer for Ed25519 {
         level = Level::TRACE,
         skip(self),
         err(),
-        ret(level = Level::TRACE)
+        ret(),
     )]
     async fn sign(&self, payload: &[u8]) -> Result<Vec<u8>, crypto::Error> {
         let signature: Signature = self.signing_key.sign(payload);
@@ -94,7 +94,7 @@ impl crypto::Verifier for Ed25519 {
         level = Level::TRACE,
         skip(self),
         err(),
-        ret(level = Level::TRACE)
+        ret(),
     )]
     async fn verify(&self, data: &[u8], signature: &[u8]) -> Result<(), crypto::Error> {
         let signature = Signature::from_slice(signature);

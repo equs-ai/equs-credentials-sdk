@@ -2,7 +2,7 @@ use tracing::{instrument, Level};
 
 #[instrument(
     level = Level::TRACE,
-    ret(level = Level::TRACE)
+    ret(),
 )]
 pub fn from_spruce_jwk(spruce_jwk: &ssi::jwk::JWK) -> Option<jsonwebtoken::jwk::Jwk> {
     let Ok(serialized) = serde_json::to_value(spruce_jwk) else {
@@ -18,7 +18,7 @@ pub fn from_spruce_jwk(spruce_jwk: &ssi::jwk::JWK) -> Option<jsonwebtoken::jwk::
 
 #[instrument(
     level = Level::TRACE,
-    ret(level = Level::TRACE)
+    ret(),
 )]
 pub fn from_spruce_jwk_opt(spruce_jwk: Option<ssi::jwk::JWK>) -> Option<jsonwebtoken::jwk::Jwk> {
     spruce_jwk.and_then(|j| from_spruce_jwk(&j))
@@ -26,7 +26,7 @@ pub fn from_spruce_jwk_opt(spruce_jwk: Option<ssi::jwk::JWK>) -> Option<jsonwebt
 
 #[instrument(
     level = Level::TRACE,
-    ret(level = Level::TRACE)
+    ret(),
 )]
 pub fn from_jsonwebtoken_jwk(jsonwebtoken_jwk: &jsonwebtoken::jwk::Jwk) -> Option<ssi::jwk::JWK> {
     let Ok(serialized) = serde_json::to_value(jsonwebtoken_jwk) else {
@@ -42,7 +42,7 @@ pub fn from_jsonwebtoken_jwk(jsonwebtoken_jwk: &jsonwebtoken::jwk::Jwk) -> Optio
 
 #[instrument(
     level = Level::TRACE,
-    ret(level = Level::TRACE)
+    ret(),
 )]
 pub fn from_jsonwebtoken_jwk_opt(
     jsonwebtoken_jwk: Option<jsonwebtoken::jwk::Jwk>,

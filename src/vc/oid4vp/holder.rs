@@ -76,7 +76,7 @@ where
         level = Level::TRACE,
         skip(self),
         err(),
-        ret(level = Level::TRACE)
+        ret(),
     )]
     async fn submit_presentation(
         &self,
@@ -111,7 +111,7 @@ where
     #[instrument(
         level = Level::TRACE,
         err(),
-        ret(level = Level::TRACE)
+        ret(),
     )]
     fn create_auth_response(
         presentation_response: PresentationResponse,
@@ -140,7 +140,7 @@ where
         level = Level::TRACE,
         skip(self),
         err(),
-        ret(level = Level::TRACE)
+        ret(),
     )]
     async fn create_presentation_by_input(
         &self,
@@ -189,7 +189,7 @@ where
         level = Level::TRACE,
         skip(self),
         err(),
-        ret(level = Level::TRACE)
+        ret(),
     )]
     async fn get_authorization_request(&self, auth_req_uri: &str) -> Result<ResolvedAuthRequest> {
         let url = Url::parse(auth_req_uri).context(UrlParseSnafu)?;
@@ -218,7 +218,7 @@ where
         level = Level::TRACE,
         skip(self),
         err(),
-        ret(level = Level::TRACE)
+        ret(),
     )]
     async fn present_credentials_auto(
         &self,
@@ -250,7 +250,7 @@ where
         level = Level::TRACE,
         skip(self),
         err(),
-        ret(level = Level::TRACE)
+        ret()
     )]
     async fn find_vcs_for_presentation(
         &self,
@@ -277,7 +277,7 @@ where
         level = Level::TRACE,
         skip(self),
         err(),
-        ret(level = Level::TRACE)
+        ret(),
     )]
     async fn present_credentials(
         &self,
@@ -342,7 +342,7 @@ where
         level = Level::TRACE,
         skip(self),
         err(),
-        ret(level = Level::TRACE)
+        ret(),
     )]
     async fn validate_request(
         &self,
@@ -395,7 +395,7 @@ where
         level = Level::TRACE,
         skip(self),
         err(),
-        ret(level = Level::TRACE)
+        ret(),
     )]
     async fn did(
         &self,
@@ -431,7 +431,7 @@ where
         level = Level::TRACE,
         skip(self),
         err(),
-        ret(level = Level::TRACE)
+        ret(),
     )]
     async fn entity_id(
         &self,
@@ -446,7 +446,7 @@ where
         level = Level::TRACE,
         skip(self),
         err(),
-        ret(level = Level::TRACE)
+        ret(),
     )]
     async fn preregistered(
         &self,
@@ -461,7 +461,7 @@ where
         level = Level::TRACE,
         skip(self),
         err(),
-        ret(level = Level::TRACE)
+        ret(),
     )]
     async fn redirect_uri(
         &self,
@@ -476,7 +476,7 @@ where
         level = Level::TRACE,
         skip(self),
         err(),
-        ret(level = Level::TRACE)
+        ret(),
     )]
     async fn x509_san_dns(
         &self,
@@ -491,7 +491,7 @@ where
         level = Level::TRACE,
         skip(self),
         err(),
-        ret(level = Level::TRACE)
+        ret(),
     )]
     async fn x509_san_uri(
         &self,
@@ -506,7 +506,7 @@ where
         level = Level::TRACE,
         skip(self),
         err(),
-        ret(level = Level::TRACE)
+        ret(),
     )]
     async fn other(
         &self,
