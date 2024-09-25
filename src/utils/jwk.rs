@@ -55,7 +55,7 @@ mod tests {
     use crate::utils::jwk::{from_jsonwebtoken_jwk, from_spruce_jwk};
 
     #[test]
-    fn e2e() {
+    fn jwk_conversions_work_correctly() {
         let spruce_jwk = ssi::jwk::JWK::generate_ed25519().unwrap();
 
         let jsonwebtoken_jwk = from_spruce_jwk(&spruce_jwk);

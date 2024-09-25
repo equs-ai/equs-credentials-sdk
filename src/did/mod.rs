@@ -82,7 +82,7 @@ pub trait DIDResolver: Send + Sync {
     /// # Returns
     ///
     /// A `Resolution` struct containing `DID` doc and metadata or the error definition.
-    async fn resolve(&self, did: &DID, options: ResolveOptions) -> Resolution;
+    async fn resolve(&self, did: &str, options: ResolveOptions) -> Resolution;
 
     /// A helper method to resolve `VerificationMethod` for the provided `DIDURL`.
     ///

@@ -17,3 +17,29 @@ impl Helpers for serde_json::Map<String, Value> {
         self.insert(k.to_string(), Value::Number(Number::from(ts)));
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::utils::serde::Helpers;
+    use serde_json::{Map, Value};
+    use time::OffsetDateTime;
+
+    #[test]
+    fn put_str_works_correctly() {
+        let mut map = Map::new();
+        map.put_str("key", "value");
+
+        assert_eq!(map["key"], "value");
+    }
+
+    #[test]
+    fn put_dt_works_correctly() {
+        let mut map = Map::new();
+
+        let now = OffsetDateTime::now_utc().unix_timestamp();
+        let dt = OffsetDateTime::from_unix_timestamp(now).unwrap();
+        map.put_dt("key", dt);
+
+        assert_eq!(map["key"], Value::Number(now.into()));
+    }
+}

@@ -54,6 +54,10 @@ impl Display for Format {
 pub enum Error {
     #[snafu(display("Unsupported proof format: {format}"))]
     FormatNotSupported { format: String },
+    #[snafu(display("Unsupported key type: {type_}"))]
+    KeyTypeNotSupported { type_: String },
+    #[snafu(display("Verification method not found"))]
+    VerificationMethodNotFound,
     #[snafu(display("Conversion error at {location}"))]
     Conversion {
         #[snafu(implicit)]
