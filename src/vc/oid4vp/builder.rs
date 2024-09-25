@@ -346,3 +346,64 @@ where
         Ok(holder)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::did::universal::UniversalResolver;
+    use crate::http::MockHttpClient;
+    use crate::inmem::kms::LocalKms;
+    use crate::inmem::vault::InMemVault;
+    use crate::utils::test_utils::create_did_and_key_metadata;
+    use crate::vc::oid4vp::metadata::{default_client_metadata, default_wallet_metadata};
+    use crate::vc::oid4vp::tests::fixtures::CLIENT_ID;
+    use crate::vc::oid4vp::{HolderBuilder, VerifierBuilder};
+
+    #[tokio::test]
+    async fn build_holder() {
+        let kms = LocalKms::new();
+        let vault = InMemVault::new();
+
+        HolderBuilder::new(kms, vault, CLIENT_ID.to_owned())
+            .with_http_client(MockHttpClient::new())
+            .with_did_resolver(UniversalResolver::new())
+            .with_wallet_metadata(default_wallet_metadata())
+            .build()
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn build_holder_with_defaults() {
+        let kms = LocalKms::new();
+        let vault = InMemVault::new();
+
+        HolderBuilder::new(kms, vault, CLIENT_ID.to_owned())
+            .build()
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn build_verifier() {
+        let kms = LocalKms::new();
+        let (did, key_metadata) = create_did_and_key_metadata(&kms).await;
+
+        let verifier = VerifierBuilder::new(kms, key_metadata, did.clone())
+            .with_client_metadata(default_client_metadata())
+            .with_did_resolver(UniversalResolver::new())
+            .build()
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn build_verifier_with_defaults() {
+        let kms = LocalKms::new();
+        let (did, key_metadata) = create_did_and_key_metadata(&kms).await;
+
+        let verifier = VerifierBuilder::new(kms, key_metadata, did.clone())
+            .build()
+            .await
+            .unwrap();
+    }
+}

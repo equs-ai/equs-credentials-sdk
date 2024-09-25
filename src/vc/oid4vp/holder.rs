@@ -521,116 +521,173 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::crypto::Alg;
-    use crate::http::{HttpClient, MockHttpClient};
+    use crate::http::MockHttpClient;
     use crate::inmem::kms::LocalKms;
     use crate::inmem::vault::InMemVault;
     use crate::kms::{CreateOptions, KeyType, Kms};
-    use crate::utils::http::test::mock_http_fn;
-    use crate::vault::Vault;
-    use crate::vc::oid4vp::Holder;
-    use crate::vc::oid4vp::{AuthorizationResponseMetadata, HolderBuilder};
-    use crate::vc::{Credential, CredentialMetadata, VCFormat};
-    use oauth2::http::header::CONTENT_TYPE;
-    use oauth2::http::{HeaderMap, HeaderValue, Method, StatusCode};
-    use oauth2::HttpResponse;
-    use url::Url;
-
-    const REQUEST_OBJECT: &str = "eyJhbGciOiJFUzI1NiIsImtpZCI6ImRpZDprZXk6ekRuYWVhZ3ZXMmVEV2MyeVZ3N0I5OG92Y0o4amRkbjdUOU1oM3k1VmlreXM2eTRrWCN6RG5hZWFndlcyZURXYzJ5Vnc3Qjk4b3ZjSjhqZGRuN1Q5TWgzeTVWaWt5czZ5NGtYIiwidHlwIjoiSldUIn0.eyJyZXNwb25zZV9tb2RlIjoiZGlyZWN0X3Bvc3QiLCJyZXNwb25zZV91cmkiOiJodHRwOi8vMTI3LjAuMC4xOjU1Nzk2L2F1dGgiLCJyZXNwb25zZV90eXBlIjoidnBfdG9rZW4iLCJub25jZSI6Im4wTmNFIiwiY2xpZW50X21ldGFkYXRhIjp7InZwX2Zvcm1hdHMiOnsidmMrc2Qtand0Ijp7ImFsZyI6WyJFZERTQSIsIkVTMjU2Il19fX0sInByZXNlbnRhdGlvbl9kZWZpbml0aW9uIjp7ImlkIjoiMWI5ZDZiY2QtYmJmZC00YjJkLTliNWQtYWI4ZGZiYmQ0YmVkIiwiaW5wdXRfZGVzY3JpcHRvcnMiOlt7ImlkIjoiSWRlbnRpdHktMSIsIm5hbWUiOiJJZGVudGl0eSBWQyIsInB1cnBvc2UiOiJXZSB3YW50IGFuIGlkZW50aXR5IiwiZm9ybWF0Ijp7InZjK3NkLWp3dCI6eyJhbGciOlsiRWREU0EiLCJFUzI1NksiXX19LCJjb25zdHJhaW50cyI6eyJmaWVsZHMiOlt7InBhdGgiOlsiJC52Y3QiXSwiZmlsdGVyIjp7InR5cGUiOiJzdHJpbmciLCJjb25zdCI6Imh0dHBzOi8vY3JlZGVudGlhbHMuZXhhbXBsZS5jb20vaWRlbnRpdHlfY3JlZGVudGlhbCJ9fSx7InBhdGgiOlsiJC5uYW1lIl19XX19XX0sImNsaWVudF9pZCI6ImRpZDprZXk6ekRuYWVhZ3ZXMmVEV2MyeVZ3N0I5OG92Y0o4amRkbjdUOU1oM3k1VmlreXM2eTRrWCIsImNsaWVudF9pZF9zY2hlbWUiOiJkaWQifQ.RlrD5ibioAvM_S0QAhdPK--9WyLEw258cMduAn26S1puXIxKgJod9gt00FDrK0x-jdPmkuPdpJWKzg3kcimIVQ";
-    const REQUEST_URI: &str = "openid4vp://?client_id=did%3Akey%3AzDnaeagvW2eDWc2yVw7B98ovcJ8jddn7T9Mh3y5Vikys6y4kX&request_uri=http%3A%2F%2F127.0.0.1%3A55796%2Frequest";
-    const CLIENT_ID: &str = "wallet-dev";
-    const CRED_JWT: &str = "eyJ0eXAiOiJ2YytzZC1qd3QiLCJhbGciOiJFUzI1NiJ9.eyJfc2QiOlsiSDQyTEp5b1JtWFhybktOUUZDWFcxb3BnRURtZ05hUFlsLUVyV3lxWkNXNCIsIlVOd19fd3hQSzdIbWk3LVZvdjBpaUZvc2Y2bUFCNlM2MzdTd3BqdlRWbDgiLCJlX2NaMVFCSGV4Z3ZBUUdfOF9BdkVNX3U4amJfTi1MOVFTdXdaMkhKVTFFIl0sInZjdCI6Imh0dHBzOi8vY3JlZGVudGlhbHMuZXhhbXBsZS5jb20vaWRlbnRpdHlfY3JlZGVudGlhbCIsImRhdGUiOiIwOS8wOS8xOTg5Iiwic3ViIjoiZGlkOmtleTp6RG5hZWRTWUZWcVpqc3NyckxjamRCWVBHR0RTMm92U3JvRWl5ZFVQOHNEQk5lN3lDIiwibmJmIjoxNzI0MzcyNTY4LCJfc2RfYWxnIjoic2hhLTI1NiIsImlzcyI6ImRpZDprZXk6ekRuYWVWZUFYdGRneExab0d4VkFNUEZUN0pBZGhpUFZXckNxeVJiNVJzVWFnU0NVZSIsImlhdCI6MTcyNDM3MjU2OCwiZXhwIjoxNzU1OTA4NTY4LCJjbmYiOnsiandrIjp7Imt0eSI6IkVDIiwiY3J2IjoiUC0yNTYiLCJ4Ijoid1UxNWZwa3F3bDdxV3RKV2tZUmJmQTlMQ0Z3SFJKX21yQkJhOXEyU0ZPcyIsInkiOiJUaFBhVHZTQW9mdUYtNFpzbjg2RllHRGtLTHZhd2Z3TXlLZmc5bTJJaTlnIn19fQ.s_s2RV6dHjW4JnwlYozGgrTvrjcr7E1BTutHI8OgP9jDjwIH9sM17339QwZrONY_QkcRiCBpIEVK-9OPESNqQg~WyJFR0lvZ0d2UVY5c0liZzlDSW1KU0Z3IiwgIm5hbWUiLCAiSm9obiJd~WyJxZTZoTjMyVFFyY09CYWVWSERpcE1nIiwgInN1cm5hbWUiLCAiRG9lIl0~WyJtUzRuS2FHMjRXdVdpMTlaWHB6VG5RIiwgImFkZHJlc3MiLCAiMjIxQiBCYWtlciBTdHJlZXQiXQ~";
-    const VERIFIER_URL: &str = "http://127.0.0.1:55796";
+    use crate::utils::http::test::mock_http_fn_with_plain_text_resp;
+    use crate::vc;
+    use crate::vc::oid4vp::tests::fixtures::{
+        multi_presentation, single_presentation, REQUEST_URI, VERIFIER_URL,
+    };
+    use crate::vc::oid4vp::tests::utils::{
+        build_url, holder_service, validate_claims, PresentationTestCase,
+    };
+    use crate::vc::oid4vp::{AuthorizationResponseMetadata, Holder};
+    use crate::vc::{Claims, Credential};
+    use oauth2::http::Method;
+    use rstest::rstest;
+    use sd_jwt_rs::utils::decode_sd_jwt;
+    use sd_jwt_rs::SDJWTSerializationFormat;
 
     #[tokio::test]
-    async fn e2e() {
+    async fn get_auth_request_success() {
         let mut http_client = MockHttpClient::new();
+        mock_http_fn_with_plain_text_resp(
+            &mut http_client,
+            Method::GET,
+            build_url(VERIFIER_URL, "request"),
+            single_presentation::AUTH_REQUEST_JWT,
+            1.into(),
+        );
+        let holder = holder_service(http_client, LocalKms::new(), InMemVault::new()).await;
 
-        // Mock request while Holder tries to get Authorization request Object
-        mock_get_request_object_call(&mut http_client);
-        // Mock request while Holder tries to send Authorization Response
-        mock_send_authorization_response_call(&mut http_client);
+        // Get request object
+        let request_obj = holder.get_authorization_request(REQUEST_URI).await.unwrap();
+
+        assert_eq!(
+            serde_json::to_value(&request_obj).unwrap(),
+            single_presentation::AUTH_REQUEST
+                .parse::<serde_json::Value>()
+                .unwrap()
+        );
+    }
+
+    #[rstest]
+    #[case::single_presentation(single_presentation_case(), false)]
+    #[case::single_presentation_with_extra_credentials(single_presentation_case(), true)]
+    #[case::multiple_presentation(multiple_presentation_case(), false)]
+    #[case::multiple_presentation_with_extra_credentials(multiple_presentation_case(), true)]
+    #[tokio::test]
+    async fn present_credential_auto_correctly(
+        #[case] test_case: PresentationTestCase,
+        #[case] with_extra_creds: bool,
+    ) {
+        let mut http_client = MockHttpClient::new();
+        test_case.mock_http_auth_response_endpoint(&mut http_client);
 
         let kms = LocalKms::new();
-        let kid = kms.create(KeyType::P256, CreateOptions {}).await.unwrap();
+        let vault = test_case.prepare_vault(&kms, with_extra_creds).await;
+        let holder = holder_service(http_client, kms, vault).await;
 
-        let vault = InMemVault::new();
-
-        let cred_meta = CredentialMetadata {
-            type_: "https://credentials.example.com/identity_credential".into(),
-            kid,
-            format: VCFormat::SdJwtVc,
-            alg: Some(Alg::ES256),
-            tags: vec![],
-        };
-
-        let res = vault
-            .store_credential(Credential::SdJwt(CRED_JWT.to_string()), &cred_meta)
-            .await;
-        assert!(res.is_ok());
-
-        let holder = oid4vp_holder(http_client, vault, kms).await;
-        // Handle request object
-        let request_obj = holder.get_authorization_request(REQUEST_URI).await.unwrap();
         // Send auth response
         holder
-            .present_credentials_auto(&request_obj, &AuthorizationResponseMetadata {})
+            .present_credentials_auto(&test_case.request, &AuthorizationResponseMetadata {})
             .await
             .unwrap();
     }
 
-    fn mock_get_request_object_call(http_client: &mut MockHttpClient) {
-        mock_http_fn(
-            http_client,
-            Method::GET,
-            Url::parse(VERIFIER_URL).unwrap().join("/request").unwrap(),
-            |req| {
-                let resp = HttpResponse {
-                    status_code: StatusCode::OK,
-                    headers: HeaderMap::from_iter(vec![(
-                        CONTENT_TYPE,
-                        HeaderValue::from_str("text/plain").unwrap(),
-                    )]),
-                    body: Vec::from(REQUEST_OBJECT),
-                };
+    #[rstest]
+    #[case::single_presentation(single_presentation_case(), false)]
+    #[case::single_presentation_with_extra_credentials(single_presentation_case(), true)]
+    #[case::multiple_presentation(multiple_presentation_case(), false)]
+    #[case::multiple_presentation_with_extra_credentials(multiple_presentation_case(), true)]
+    #[tokio::test]
+    async fn find_credentials_success(
+        #[case] test_case: PresentationTestCase,
+        #[case] with_extra_creds: bool,
+    ) {
+        let kms = LocalKms::new();
+        let vault = test_case.prepare_vault(&kms, with_extra_creds).await;
+        let holder = holder_service(MockHttpClient::new(), kms, vault).await;
 
-                Ok(resp)
-            },
-            1.into(),
-        );
-    }
-
-    fn mock_send_authorization_response_call(http_client: &mut MockHttpClient) {
-        mock_http_fn(
-            http_client,
-            Method::POST,
-            Url::parse(VERIFIER_URL).unwrap().join("/auth").unwrap(),
-            |req| {
-                Ok(HttpResponse {
-                    status_code: StatusCode::OK,
-                    headers: Default::default(),
-                    body: vec![],
-                })
-            },
-            1.into(),
-        );
-    }
-
-    async fn oid4vp_holder(
-        http_client: impl HttpClient,
-        vault: InMemVault,
-        kms: LocalKms,
-    ) -> impl Holder {
-        let client = reqwest::Client::builder()
-            .danger_accept_invalid_certs(true)
-            .https_only(false)
-            .build()
+        let credential_mapping = holder
+            .find_vcs_for_presentation(&test_case.request)
+            .await
             .unwrap();
 
-        HolderBuilder::new(kms, vault, CLIENT_ID.to_owned())
-            .with_http_client(http_client)
-            .build()
+        let retrieved_credentials: Vec<vc::Credential> = test_case
+            .request
+            .presentation_definition
+            .input_descriptors
+            .iter()
+            .flat_map(|descriptor| credential_mapping.get(&descriptor.id).unwrap().clone())
+            .map(|entry| entry.credential)
+            .collect();
+
+        let retrieved_credentials_claims: Vec<Claims> = retrieved_credentials
+            .iter()
+            .filter_map(|credential| match credential {
+                Credential::SdJwt(sd_jwt_vc) => {
+                    decode_sd_jwt(sd_jwt_vc.to_owned(), SDJWTSerializationFormat::Compact).ok()
+                }
+                _ => None,
+            })
+            .collect();
+
+        let mut cred_data = test_case.credential_data;
+        if with_extra_creds {
+            cred_data.extend(cred_data.clone())
+        }
+
+        for claims in retrieved_credentials_claims {
+            let index = cred_data
+                .iter()
+                .enumerate()
+                .find(|(_, (type_, _))| *type_ == claims["vct"])
+                .unwrap()
+                .0;
+            validate_claims(&claims, &cred_data.remove(index));
+        }
+    }
+
+    #[rstest]
+    #[case::single_presentation(single_presentation_case())]
+    #[case::multiple_presentation(multiple_presentation_case())]
+    #[tokio::test]
+    async fn present_credential_correctly(#[case] test_case: PresentationTestCase) {
+        let mut http_client = MockHttpClient::new();
+        test_case.mock_http_auth_response_endpoint(&mut http_client);
+
+        let kms = LocalKms::new();
+        let key = kms
+            .create_and_handle(KeyType::P256, CreateOptions {})
             .await
-            .unwrap()
+            .unwrap();
+        let holder = holder_service(http_client, kms, InMemVault::new()).await;
+        let credential_mapping = test_case.build_credential_mapping(key).await;
+
+        holder
+            .present_credentials(
+                &test_case.request,
+                &credential_mapping,
+                &AuthorizationResponseMetadata {},
+            )
+            .await
+            .unwrap();
+    }
+
+    fn single_presentation_case() -> PresentationTestCase {
+        PresentationTestCase {
+            request: single_presentation::auth_request(),
+            credential_data: single_presentation::credential_data(),
+            presentation_submission: single_presentation::presentation_submission(),
+        }
+    }
+
+    fn single_presentation_several_creds_case() -> PresentationTestCase {
+        PresentationTestCase {
+            request: single_presentation::auth_request(),
+            credential_data: single_presentation::credential_data(),
+            presentation_submission: single_presentation::presentation_submission(),
+        }
+    }
+
+    fn multiple_presentation_case() -> PresentationTestCase {
+        PresentationTestCase {
+            request: multi_presentation::auth_request(),
+            credential_data: multi_presentation::credential_data(),
+            presentation_submission: multi_presentation::presentation_submission(),
+        }
     }
 }

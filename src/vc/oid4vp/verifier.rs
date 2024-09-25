@@ -375,88 +375,139 @@ impl<S: SigningKey> RequestSigner for SignerWrapper<S> {
 
 #[cfg(test)]
 mod tests {
-    use serde_json::json;
-
+    use crate::http::HttpSnafu;
     use crate::inmem::kms::LocalKms;
-    use crate::vc::oid4vp::test_utils::{
-        create_authorization_response, create_did_and_key_metadata,
-        create_test_presentation_definition,
+    use crate::vc::oid4vp::tests::fixtures::{multi_presentation, single_presentation};
+    use crate::vc::oid4vp::tests::fixtures::{NONCE, VERIFIER_URL};
+    use crate::vc::oid4vp::tests::utils::{
+        build_url, validate_claims, verifier_service, VerificationTestCase,
     };
-    use crate::vc::oid4vp::{auth_request_as_url, AuthorizationUrlType, Verifier, VerifierBuilder};
+    use crate::vc::oid4vp::{
+        auth_request_as_url, AuthorizationUrlType, PresentationSession, Verifier,
+    };
+    use oid4vp::core::authorization_request::{AuthorizationRequest, AuthorizationRequestObject};
+    use oid4vp::core::object::UntypedObject;
+    use rstest::rstest;
+    use std::collections::HashMap;
+    use url::Url;
 
     #[tokio::test]
-    async fn generate_authorization_request() {
-        let presentation_definition = create_test_presentation_definition();
-        let nonce = "nOnCe".into();
+    async fn generate_auth_request_by_reference_success() {
+        let presentation_definition = single_presentation::presentation_definition();
+        let request_uri = build_url(VERIFIER_URL, "request");
 
-        let (verifier, _) = verifier().await;
+        let (verifier, did) = verifier_service().await;
 
         let (request, _) = verifier
             .create_authorization_request(
                 &presentation_definition,
-                &nonce,
-                "https://verifier/auth".parse().unwrap(),
+                &NONCE.into(),
+                build_url(VERIFIER_URL, "auth"),
+            )
+            .await
+            .unwrap();
+
+        let by_reference = auth_request_as_url(
+            &request,
+            AuthorizationUrlType::Reference(request_uri.clone()),
+        );
+
+        let hash_query: HashMap<String, String> = by_reference.query_pairs().into_owned().collect();
+
+        assert_eq!(hash_query.get("client_id").unwrap(), &did);
+        assert_eq!(hash_query.get("request_uri").unwrap(), request_uri.as_str());
+    }
+
+    #[tokio::test]
+    async fn generate_auth_request_by_value_success() {
+        let presentation_definition = single_presentation::presentation_definition();
+        let response_uri: Url = build_url(VERIFIER_URL, "auth");
+
+        let (verifier, did) = verifier_service().await;
+
+        let (request, _) = verifier
+            .create_authorization_request(
+                &presentation_definition,
+                &NONCE.into(),
+                response_uri.clone(),
             )
             .await
             .unwrap();
 
         let by_value = auth_request_as_url(&request, AuthorizationUrlType::Value);
-        let by_reference = auth_request_as_url(
-            &request,
-            AuthorizationUrlType::Reference("https://verifier/reqobject".parse().unwrap()),
-        );
 
-        println!("{}", by_value);
-        println!("{}", by_reference);
-    }
+        let auth_request = AuthorizationRequest::from_query_params(by_value.query().unwrap());
 
-    #[tokio::test]
-    async fn verify_authorization_response() {
-        let (verifier, client_id) = verifier().await;
+        let hash_query: HashMap<String, String> = by_value.query_pairs().into_owned().collect();
+        let jwt = hash_query.get("request").unwrap();
 
-        let presentation_definition = create_test_presentation_definition();
-        let claims = json!( {
-            "name": "John",
-            "surname": "Doe",
-            "date": "09/09/1989",
-        });
-        let nonce = "nOnCe".into();
-
-        let (request, session) = verifier
-            .create_authorization_request(
-                &presentation_definition,
-                &nonce,
-                "https://verifier/auth".parse().unwrap(),
-            )
-            .await
+        let request: AuthorizationRequestObject = ssi::jwt::decode_unverified::<UntypedObject>(jwt)
+            .unwrap()
+            .try_into()
             .unwrap();
 
-        let response = create_authorization_response(&client_id, &nonce.0, &claims).await;
+        let actual_presentation_definition = request
+            .resolve_presentation_definition(|_| async {
+                HttpSnafu {
+                    details: "Requesting a presentation definition by reference is not supported in this test.".to_string(),
+                }.fail()
+            })
+            .await
+            .unwrap()
+            .into_parsed();
 
-        let claims = verifier
+        assert_eq!(actual_presentation_definition, presentation_definition);
+        assert_eq!(request.client_id().0, did);
+        assert_eq!(request.nonce().0, NONCE);
+        assert_eq!(request.return_uri(), &response_uri);
+    }
+
+    #[rstest]
+    #[case::single_presentation(single_presentation_case())]
+    #[case::multi_presentation(multi_presentation_case())]
+    #[tokio::test]
+    async fn verify_authorization_response_success(#[case] test_case: VerificationTestCase) {
+        let (verifier, client_id) = verifier_service().await;
+        let kms = LocalKms::new();
+
+        let session = PresentationSession {
+            nonce: NONCE.into(),
+            presentation_definition: test_case.presentation_definition.clone(),
+        };
+
+        let response = test_case.auth_response(NONCE, &client_id).await;
+
+        let verified_claims = verifier
             .verify_presentation(&response, &session)
             .await
             .unwrap();
 
-        println!("{}", claims);
+        for (index, credential_data) in test_case.credential_data.into_iter().enumerate() {
+            let cred_id = &test_case
+                .presentation_submission
+                .descriptor_map
+                .get(index)
+                .unwrap()
+                .id;
 
-        assert_eq!(
-            claims["Identity-1"]["vct"],
-            json!("https://credentials.example.com/identity_credential")
-        );
-        assert_eq!(claims["Identity-1"]["name"], json!("John"));
+            let cred_claims = &verified_claims[cred_id];
+            validate_claims(cred_claims, &credential_data);
+        }
     }
 
-    async fn verifier() -> (impl Verifier, String) {
-        let kms = LocalKms::new();
+    fn single_presentation_case() -> VerificationTestCase {
+        VerificationTestCase {
+            presentation_definition: single_presentation::presentation_definition(),
+            credential_data: single_presentation::credential_data(),
+            presentation_submission: single_presentation::presentation_submission(),
+        }
+    }
 
-        let (did, key_metadata) = create_did_and_key_metadata(&kms).await;
-
-        let verifier = VerifierBuilder::new(kms, key_metadata, did.clone())
-            .build()
-            .await
-            .unwrap();
-
-        (verifier, did)
+    fn multi_presentation_case() -> VerificationTestCase {
+        VerificationTestCase {
+            presentation_definition: multi_presentation::presentation_definition(),
+            credential_data: multi_presentation::credential_data(),
+            presentation_submission: multi_presentation::presentation_submission(),
+        }
     }
 }
