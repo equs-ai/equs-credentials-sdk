@@ -550,8 +550,8 @@ mod tests {
     use crate::vc::oid4vci::metadata::convert_metadata;
     use crate::vc::oid4vci::tests::fixtures::{
         sample_claims, sample_credential_definition, sample_credential_offer,
-        sample_credential_request, SampleIssuerMetadata, ACCESS_TOKEN, CRED_DEF_ID, NONCE, SCOPE,
-        TOKEN_INTROSPECT_URL,
+        sample_credential_request, SampleIssuerMetadata, ACCESS_TOKEN, ACCESS_TOKEN_WITHOUT_SCOPE,
+        CRED_DEF_ID, NONCE, SCOPE, TOKEN_INTROSPECT_URL,
     };
     use crate::vc::oid4vci::AuthorizationCodeGrant;
     use crate::vc::oid4vci::Error::Protocol;
@@ -748,6 +748,53 @@ mod tests {
         let validate_res = issuer_service.validate_claim_names(&claims, &cred_def);
 
         validate_res.unwrap()
+    }
+
+    #[tokio::test]
+    #[should_panic(expected = "Access token does not have \\\"scope\\\" field")]
+    async fn issuer_fails_validating_absent_scope() {
+        let issuer_service = issuer_service(None, None).await;
+
+        issuer_service
+            .validate_scope(
+                ACCESS_TOKEN_WITHOUT_SCOPE,
+                "fake_cred_def_id",
+                &Scope::new("fake_scope".to_owned()),
+            )
+            .unwrap()
+    }
+
+    #[tokio::test]
+    #[should_panic(
+        expected = "Access token should have scope=\\\"incorrect_scope_field_should_be_SD_JWT_cred\\\" for issuing \\\"incorrect_cred_def_id_should_be_SD_JWT_cred_sample\\\""
+    )]
+    async fn issuer_fails_validating_incorrect_scope() {
+        let issuer_service = issuer_service(None, None).await;
+
+        issuer_service
+            .validate_scope(
+                ACCESS_TOKEN,
+                "incorrect_cred_def_id_should_be_SD_JWT_cred_sample",
+                &Scope::new("incorrect_scope_field_should_be_SD_JWT_cred".to_string()),
+            )
+            .unwrap()
+    }
+
+    #[tokio::test]
+    #[should_panic(expected = "Cause: Provided \"claims\" is not json object")]
+    async fn issuer_fails_on_non_json_claims() {
+        let issuer = issuer_service(None, None).await;
+
+        let iss_result = issuer
+            .issue_credential(
+                &sample_credential_request(),
+                ACCESS_TOKEN,
+                &serde_json::from_str("[0,1,2]").unwrap(),
+                &mut sample_session_with_nonce(),
+            )
+            .await;
+
+        iss_result.unwrap();
     }
 
     fn sample_session_with_nonce() -> IssuanceSession {
