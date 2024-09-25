@@ -16,7 +16,7 @@ use tracing::{instrument, trace, Level};
 
 use crate::crypto::{Key, Signer};
 use crate::did::universal::UniversalResolver;
-use crate::did::{DIDDoc, DIDResolver, VerificationMethodMap, DID, DIDURL};
+use crate::did::{DIDDoc, DIDResolver, VerificationMethodMap, DIDURL};
 use crate::utils;
 use crate::utils::b64;
 use crate::utils::serde::Helpers;
@@ -164,13 +164,13 @@ impl SdJwtAPI {
     )]
     fn prepare_claims(
         mut claims: Claims,
-        iss_did: &DID,
-        hld_did: &DID,
+        iss_did_url: &DIDURL,
+        hld_did_url: &DIDURL,
         metadata: &VCMetadata,
     ) -> Value {
         claims.put_str("vct", &metadata.vct);
-        claims.put_str("iss", iss_did);
-        claims.put_str("sub", hld_did);
+        claims.put_str("iss", &iss_did_url.did);
+        claims.put_str("sub", &hld_did_url.did);
 
         let now = OffsetDateTime::now_utc();
         claims.put_dt("iat", now);
@@ -356,16 +356,20 @@ impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata, Value> for Sd
         trace!(issuer_did_url = ?{issuer_data.0}, holder_did_url = ?{holder_data.0});
 
         let (iss_did_url, signer) = issuer_data;
-        let (hld_did, hld_key) = holder_data;
+        let (hld_did_url, hld_key) = holder_data;
 
         let sgn_wrapper = SignerWrapper { signer };
 
-        let claims = SdJwtAPI::prepare_claims(claims, &iss_did_url.did, &hld_did.did, &metadata);
+        let claims = SdJwtAPI::prepare_claims(claims, iss_did_url, hld_did_url, &metadata);
         let headers = SdJwtAPI::extra_headers(iss_did_url);
         trace!(resolved_headers = ?headers);
 
-        let jwk = utils::jwk::from_spruce_jwk_opt(hld_key.jwk())
-            .ok_or_else(|| KeyTypeNotSupportedSnafu { type_: "JWK" }.build())?;
+        let jwk = utils::jwk::from_spruce_jwk_opt(hld_key.jwk()).ok_or_else(|| {
+            KeyTypeNotSupportedSnafu {
+                type_: "JWK incompatible",
+            }
+            .build()
+        })?;
         trace!(resolved_holder_jwk = ?jwk);
 
         let disclosures = metadata.disclosures.iter().map(|d| d.as_str()).collect();
@@ -487,168 +491,294 @@ impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata, Value> for Sd
 
 #[cfg(test)]
 mod tests {
-    use std::str::FromStr;
-
-    use oid4vci::openidconnect::Nonce;
-    use serde_json::json;
-    use ssi::did::DIDURL;
-
     use crate::crypto::Key;
     use crate::did::didkey::DIDKey;
+    use crate::did::{DIDResolver, DIDURL};
     use crate::inmem::kms::LocalKms;
-    use crate::kms;
-    use crate::kms::Kms;
-    use crate::vc::formats::sd_jwt_vc::{SdJwtAPI, VCMetadata, VPMetadata};
-    use crate::vc::formats::{HasClaims, HasCredential, VerifyOptions, API};
+    use crate::kms::{CreateOptions, KeyHandle, KeyType, Kms};
+    use crate::utils::serde::Helpers;
+    use crate::utils::test_utils::{create_did_url_and_key_handle, no_jwk_key};
+    use crate::vc::formats::sd_jwt_vc::{Claims, Credential, SdJwtAPI, VCMetadata, VPMetadata};
+    use crate::vc::formats::{Error, HasClaims, HasCredential, VerifyOptions, API};
+    use oid4vci::openidconnect::Nonce;
+    use rstest::rstest;
+    use serde_json::json;
+    use std::str::FromStr;
+
+    #[rstest]
+    #[case::p256(KeyType::P256)]
+    #[case::ed25519(KeyType::Ed25519)]
+    #[tokio::test]
+    async fn sd_jwt_work_correctly_for_all_supported_keys(#[case] kt: KeyType) {
+        let kms = LocalKms::new();
+        let (hld_did_url, hld_kh) = create_did_url_and_key_handle(&kms, kt.clone()).await;
+        let (iss_did_url, iss_kh) = create_did_url_and_key_handle(&kms, kt.clone()).await;
+        let iss_jwk = iss_kh.clone().jwk().unwrap();
+
+        let vc = SdJwtAPI::create_vc(
+            sample_claims(),
+            (&iss_did_url, iss_kh.clone()),
+            (&hld_did_url, hld_kh.clone()),
+            sample_vc_metadata(),
+        )
+        .await
+        .unwrap();
+
+        SdJwtAPI::verify_vc(&vc, Default::default()).await.unwrap();
+
+        let claims = vc.parse_claims().unwrap();
+        assert!(!claims.contains_key("name"));
+        assert!(!claims.contains_key("surname"));
+        assert_eq!(claims.get("dob").unwrap(), "09/09/1989");
+        assert_eq!(claims.get("sub").unwrap(), &hld_did_url.did);
+        assert_eq!(claims.get("iss").unwrap(), &iss_did_url.did);
+        assert_eq!(claims.get("vct").unwrap(), "https://issuer.net/cred_schema");
+
+        let nonce = Nonce::new_random();
+        let vp = SdJwtAPI::create_vp(
+            &vc,
+            hld_kh.clone(),
+            nonce.clone(),
+            "verifier-id",
+            sample_vp_metadata(),
+        )
+        .await
+        .unwrap();
+
+        let vc_from_vp = vp.get_credential().unwrap();
+        SdJwtAPI::verify_signature(&vc_from_vp, &iss_jwk).unwrap();
+
+        let disclosed = SdJwtAPI::verify_vp(&vp, nonce.clone(), "verifier-id", VerifyOptions {})
+            .await
+            .unwrap();
+        let disclosed = disclosed.as_object().unwrap();
+
+        assert!(disclosed.contains_key("name"));
+        assert_eq!(disclosed["name"], "John");
+        assert!(!disclosed.contains_key("surname"));
+    }
 
     #[tokio::test]
-    async fn e2e() {
+    async fn sd_jwt_create_vc_fails_on_invalid_claim() {
         let kms = LocalKms::new();
-        let didkey = DIDKey::new();
+        let (hld_did_url, hld_kh) = create_did_url_and_key_handle(&kms, KeyType::P256).await;
+        let (iss_did_url, iss_kh) = create_did_url_and_key_handle(&kms, KeyType::P256).await;
 
-        for kt in [kms::KeyType::Ed25519, kms::KeyType::P256] {
-            // Initialization
-            let (_, i_kh) = kms
-                .create_and_handle(kt.clone(), kms::CreateOptions {})
-                .await
-                .unwrap();
-            let (_, h_kh) = kms
-                .create_and_handle(kt.clone(), kms::CreateOptions {})
-                .await
-                .unwrap();
+        let mut claims = sample_claims();
+        claims.put_str("_sd", "should be empty");
 
-            let claims = json!( {
-                "name": "John",
-                "surname": "Doe",
-                "dob": "09/09/1989",
-            });
+        let res = SdJwtAPI::create_vc(
+            claims,
+            (&iss_did_url, iss_kh),
+            (&hld_did_url, hld_kh),
+            sample_vc_metadata(),
+        )
+        .await;
 
-            let iss_did = didkey.generate(i_kh.clone()).unwrap();
-            let iss_did_url = DIDURL::from_str(&iss_did).unwrap();
-            println!("Iss DID: {}", iss_did);
+        assert!(matches!(res.err(), Some(Error::Signing { .. })));
+    }
 
-            let hld_did = didkey.generate(h_kh.clone()).unwrap();
-            let hld_did_url = DIDURL::from_str(&hld_did).unwrap();
-            println!("Hld DID: {}", hld_did);
+    #[tokio::test]
+    async fn sd_jwt_create_vc_fails_on_invalid_key() {
+        let kms = LocalKms::new();
+        let hld_did_url = DIDURL::from_str("did:example:123").unwrap();
+        let hld_kh = no_jwk_key();
+        let (iss_did_url, iss_kh) = create_did_url_and_key_handle(&kms, KeyType::P256).await;
 
-            let cl = claims.as_object().unwrap().clone();
-            println!("Claims: {:?}", cl);
+        let res = SdJwtAPI::create_vc(
+            sample_claims(),
+            (&iss_did_url, iss_kh),
+            (&hld_did_url, hld_kh),
+            sample_vc_metadata(),
+        )
+        .await;
 
-            let iss_jwk = i_kh.clone().jwk().unwrap();
-            println!(
-                "Iss JWK:\n{}",
-                serde_json::to_string_pretty(&iss_jwk).unwrap()
-            );
-            let hld_jwk = h_kh.clone().jwk().unwrap();
-            println!(
-                "Hld JWK:\n{}",
-                serde_json::to_string_pretty(&hld_jwk).unwrap()
-            );
+        assert!(matches!(res.err(), Some(Error::KeyTypeNotSupported { .. })));
+    }
 
-            // VC
-            let vc_res = SdJwtAPI::create_vc(
-                cl,
-                (&iss_did_url, i_kh.clone()),
-                (&hld_did_url, h_kh.clone()),
-                VCMetadata {
-                    vct: "https://issuer.net/cred_schema".to_owned(),
-                    lifetime: time::Duration::days(365),
-                    disclosures: vec!["$.name".to_owned(), "$.surname".to_owned()],
-                },
-            )
-            .await;
-            assert!(vc_res.is_ok());
+    #[tokio::test]
+    async fn sd_jwt_verify_vc_fails_on_invalid_cred() {
+        let res = SdJwtAPI::verify_vc(&"not-a-valid-sd-jwt".to_string(), Default::default()).await;
+        assert!(matches!(res.err(), Some(Error::JWS { .. })));
+    }
 
-            let vc = vc_res.unwrap();
-            println!("VC:\n{}", vc);
+    #[tokio::test]
+    async fn sd_jwt_verify_vc_fails_on_resolving_vm() {
+        let vc = sample_sd_jwt_vc_did_example().await;
 
-            let claims = vc.parse_claims().unwrap();
-            println!(
-                "Claims:\n{}",
-                serde_json::to_string_pretty(&claims).unwrap()
-            );
+        let res = SdJwtAPI::verify_vc(&vc, Default::default()).await;
+        assert!(matches!(res.err(), Some(Error::Parsing { .. })));
+    }
 
-            assert!(!claims.contains_key("name"));
-            assert!(!claims.contains_key("surname"));
-            assert_eq!(claims.get("dob").unwrap(), "09/09/1989");
-            assert_eq!(claims.get("sub").unwrap(), &hld_did_url.to_string());
-            assert_eq!(claims.get("iss").unwrap(), &iss_did_url.to_string());
+    #[tokio::test]
+    async fn sd_jwt_verify_signature_fails_on_wrong_key() {
+        let (vc, _) = sample_sd_jwt_vc_with_hld_kh().await;
 
-            let sgn_res = SdJwtAPI::verify_signature(&vc, &iss_jwk);
-            assert!(sgn_res.is_ok());
+        let kms = LocalKms::new();
+        let (_, another_iss_kh) = create_did_url_and_key_handle(&kms, KeyType::P256).await;
+        let another_iss_jwk = another_iss_kh.jwk().unwrap();
 
-            // VP
-            let nonce = Nonce::new_random();
-            let vp_res = SdJwtAPI::create_vp(
-                &vc,
-                h_kh.clone(),
-                nonce.clone(),
-                "verifier-id",
-                VPMetadata {
-                    disclosures: json!({
-                        "name" : true
-                    })
-                    .as_object()
-                    .unwrap()
-                    .to_owned(),
-                },
-            )
-            .await;
-            assert!(vp_res.is_ok());
+        let res = SdJwtAPI::verify_signature(&vc, &another_iss_jwk);
+        assert!(matches!(res.err(), Some(Error::JWS { .. })));
+    }
 
-            let vp = vp_res.unwrap();
-            println!("VP:\n{}", vp);
+    #[tokio::test]
+    async fn sd_jwt_create_vp_fails_on_invalid_credential() {
+        let kms = LocalKms::new();
+        let (hld_did_url, hld_kh) = create_did_url_and_key_handle(&kms, KeyType::P256).await;
 
-            let vc_from_vp = vp.get_credential().unwrap();
-            let sgn_res = SdJwtAPI::verify_signature(&vc_from_vp, &iss_jwk);
-            assert!(sgn_res.is_ok());
+        let nonce = Nonce::new_random();
+        let res = SdJwtAPI::create_vp(
+            &"not-a-valid-sd-jwt".to_string(),
+            hld_kh,
+            nonce,
+            "verifier-id",
+            sample_vp_metadata(),
+        )
+        .await;
 
-            // Verification
-            let ver_res =
-                SdJwtAPI::verify_vp(&vp, nonce.clone(), "verifier-id", VerifyOptions {}).await;
-            assert!(ver_res.is_ok());
+        assert!(matches!(res.err(), Some(Error::Signing { .. })));
+    }
 
-            let disclosed = ver_res.unwrap();
-            println!("Disclosed: {}", disclosed);
+    #[tokio::test]
+    async fn sd_jwt_create_vp_fails_when_disclosure_not_found() {
+        let kms = LocalKms::new();
+        let (vc, hld_kh) = sample_sd_jwt_vc_with_hld_kh().await;
 
-            let disclosed = disclosed.as_object().unwrap();
+        let nonce = Nonce::new_random();
+        let res = SdJwtAPI::create_vp(
+            &vc,
+            hld_kh,
+            nonce,
+            "verifier-id",
+            VPMetadata {
+                disclosures: json!({
+                    "some_other_claim" : true
+                })
+                .as_object()
+                .unwrap()
+                .to_owned(),
+            },
+        )
+        .await;
 
-            assert!(disclosed.contains_key("name"));
-            assert_eq!(disclosed["name"], "John");
-            assert!(!disclosed.contains_key("surname"));
+        assert!(matches!(res.err(), Some(Error::Presentation { .. })));
+    }
 
-            // Malicious VP (signed by another key)
-            let (_, mh_kh) = kms
-                .create_and_handle(kt, kms::CreateOptions {})
-                .await
-                .unwrap();
+    #[tokio::test]
+    async fn sd_jwt_verify_vp_fails_on_invalid_vp() {
+        let nonce = Nonce::new_random();
+        let res = SdJwtAPI::verify_vp(
+            &"not-a-valid-vp".to_string(),
+            nonce.clone(),
+            "verifier-id",
+            VerifyOptions {},
+        )
+        .await;
 
-            let mhld_did = didkey.generate(mh_kh.clone()).unwrap();
-            let mhld_did_url = DIDURL::from_str(&mhld_did).unwrap();
-            println!("mHld DID: {}", mhld_did);
+        assert!(matches!(res.err(), Some(Error::Verifying { .. })));
+    }
 
-            let nonce = Nonce::new_random();
-            // VP can be generated using another signature
-            let mvp = SdJwtAPI::create_vp(
-                &vc,
-                mh_kh.clone(),
-                nonce.clone(),
-                "verifier-id",
-                VPMetadata {
-                    disclosures: json!({
-                        "name" : true
-                    })
-                    .as_object()
-                    .unwrap()
-                    .to_owned(),
-                },
-            )
+    #[tokio::test]
+    async fn sd_jwt_verify_vp_fails_on_vp_signed_by_another_key() {
+        let (vc, _) = sample_sd_jwt_vc_with_hld_kh().await;
+
+        let kms = LocalKms::new();
+        let (_, kh) = kms
+            .create_and_handle(KeyType::P256, CreateOptions {})
             .await
             .unwrap();
 
-            // But Verifier should deny it
-            let ver_res =
-                SdJwtAPI::verify_vp(&mvp, nonce.clone(), "verifier-id", VerifyOptions {}).await;
+        let nonce = Nonce::new_random();
+        // VP can be generated using another signature
+        let vp = SdJwtAPI::create_vp(&vc, kh, nonce.clone(), "verifier-id", sample_vp_metadata())
+            .await
+            .unwrap();
+
+        // But Verifier should deny it
+        let res = SdJwtAPI::verify_vp(&vp, nonce.clone(), "verifier-id", VerifyOptions {}).await;
+
+        assert!(matches!(res.err(), Some(Error::Verifying { .. })));
+    }
+
+    #[tokio::test]
+    async fn get_vm_from_did_doc_works_for_didkey() {
+        let kms = LocalKms::new();
+        let (_, kh) = kms
+            .create_and_handle(KeyType::P256, CreateOptions {})
+            .await
+            .unwrap();
+
+        let didkey = DIDKey::new();
+        let did = didkey.generate(kh).unwrap();
+        let did_doc = didkey.resolve(&did, Default::default()).await.doc.unwrap();
+
+        let vm = SdJwtAPI::get_vm_from_did_doc(&did_doc).unwrap();
+        assert!(vm.id.starts_with(&did));
+    }
+
+    async fn sample_sd_jwt_vc_with_hld_kh() -> (Credential, impl KeyHandle) {
+        let kms = LocalKms::new();
+
+        let (hld_did_url, h_kh) = create_did_url_and_key_handle(&kms, KeyType::P256).await;
+        let (iss_did_url, i_kh) = create_did_url_and_key_handle(&kms, KeyType::P256).await;
+
+        let vc = SdJwtAPI::create_vc(
+            sample_claims(),
+            (&iss_did_url, i_kh),
+            (&hld_did_url, h_kh.clone()),
+            sample_vc_metadata(),
+        )
+        .await
+        .unwrap();
+
+        (vc, h_kh)
+    }
+
+    async fn sample_sd_jwt_vc_did_example() -> Credential {
+        let kms = LocalKms::new();
+
+        let (hld_did_url, h_kh) = create_did_url_and_key_handle(&kms, KeyType::P256).await;
+        let iss_did_url = DIDURL::from_str("did:example:123").unwrap();
+        let (_, i_kh) = create_did_url_and_key_handle(&kms, KeyType::P256).await;
+
+        SdJwtAPI::create_vc(
+            sample_claims(),
+            (&iss_did_url, i_kh),
+            (&hld_did_url, h_kh.clone()),
+            sample_vc_metadata(),
+        )
+        .await
+        .unwrap()
+    }
+
+    fn sample_claims() -> Claims {
+        json!( {
+            "name": "John",
+            "surname": "Doe",
+            "dob": "09/09/1989",
+        })
+        .as_object()
+        .unwrap()
+        .clone()
+    }
+
+    fn sample_vc_metadata() -> VCMetadata {
+        VCMetadata {
+            vct: "https://issuer.net/cred_schema".to_owned(),
+            lifetime: time::Duration::days(365),
+            disclosures: vec!["$.name".to_owned(), "$.surname".to_owned()],
+        }
+    }
+
+    fn sample_vp_metadata() -> VPMetadata {
+        VPMetadata {
+            disclosures: json!({
+                "name" : true
+            })
+            .as_object()
+            .unwrap()
+            .to_owned(),
         }
     }
 }

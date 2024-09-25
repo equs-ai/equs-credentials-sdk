@@ -15,8 +15,8 @@ use crate::did::universal::UniversalResolver;
 use crate::did::{DIDResolver, DIDURL};
 use crate::vc::pop;
 use crate::vc::pop::{
-    ConversionSnafu, CryptoSnafu, Error, GenerateOptions, JWSSnafu, ParsingSnafu,
-    VerificationSnafu, VerifyOptions,
+    ConversionSnafu, CryptoSnafu, Error, GenerateOptions, JWSSnafu, KeyTypeNotSupportedSnafu,
+    ParsingSnafu, VerificationSnafu, VerifyOptions,
 };
 
 pub struct SignerWrapper<S: SigningKey> {
@@ -64,11 +64,15 @@ impl pop::ProofOfPossession<String> for JwtProofOfPossession {
             nonce: Some(nonce),
             controller: ProofOfPossessionController {
                 vm: Some(did_url.to_owned()),
-                // TODO: error handling
-                jwk: key.jwk().unwrap(),
+                jwk: key.jwk().ok_or(
+                    KeyTypeNotSupportedSnafu {
+                        type_: "JWK incompatible",
+                    }
+                    .build(),
+                )?,
             },
         };
-        let exp = opts.lifetime.unwrap_or(time::Duration::minutes(10));
+        let exp = opts.lifetime.unwrap_or(time::Duration::minutes(60));
 
         let pop = ProofOfPossession::generate(params, exp);
 
@@ -108,8 +112,7 @@ impl pop::ProofOfPossession<String> for JwtProofOfPossession {
 
         debug!("proof of possession is verified");
 
-        // TODO: refactor
-        let did_url = pop.controller.vm.unwrap();
+        let did_url = pop.controller.vm.ok_or(Error::VerificationMethodNotFound)?;
         let hld_key = pop.controller.jwk;
 
         trace!(resolved_did_url = ?did_url);
@@ -153,83 +156,120 @@ impl crypto::Key for JWK {
 
 #[cfg(test)]
 mod tests {
+    use oid4vci::openidconnect::Nonce;
+    use rstest::rstest;
+    use serde_json::{Map, Value};
     use std::str::FromStr;
 
-    use oid4vci::openidconnect;
-    use serde_json::{Map, Value};
-    use ssi::did::DIDURL;
-
     use crate::crypto::Key;
-    use crate::did::didkey::DIDKey;
+    use crate::did::DIDURL;
     use crate::inmem::kms::LocalKms;
-    use crate::kms;
-    use crate::kms::Kms;
+    use crate::kms::KeyType;
+    use crate::utils::test_utils::{create_did_url_and_key_handle, failed_signer_key, no_jwk_key};
     use crate::vc::pop::jwt_pop::JwtProofOfPossession;
-    use crate::vc::pop::{GenerateOptions, ProofOfPossession, VerifyOptions};
+    use crate::vc::pop::{Error, GenerateOptions, ProofOfPossession, VerifyOptions};
 
+    #[rstest]
+    #[case::p256(KeyType::P256)]
+    #[case::ed25519(KeyType::Ed25519)]
     #[tokio::test]
-    async fn e2e() {
+    async fn jwt_pop_generation_and_verification_work_correctly_for_all_supported_keys(
+        #[case] kt: KeyType,
+    ) {
         let kms = LocalKms::new();
-        let didkey = DIDKey::new();
+        let (did_url, kh) = create_did_url_and_key_handle(&kms, kt.clone()).await;
+        let jwk = kh.clone().jwk().unwrap();
 
-        for kt in [kms::KeyType::Ed25519, kms::KeyType::P256] {
-            // Create a key
-            let (_, h_kh) = kms
-                .create_and_handle(kt, kms::CreateOptions {})
+        let nonce = Nonce::new_random();
+        let proof = JwtProofOfPossession::generate(
+            &did_url,
+            kh.clone(),
+            nonce.clone(),
+            sample_generate_opts(),
+        )
+        .await
+        .unwrap();
+
+        let decoded: Map<String, Value> = ssi::jwt::decode_verify(proof.as_str(), &jwk).unwrap();
+        assert_eq!(decoded.get("aud").unwrap(), "did:web:issuer.com");
+        assert_eq!(decoded.get("iss").unwrap(), "client-id");
+        assert!(decoded.contains_key("nonce"));
+
+        let (v_did_url, key) =
+            JwtProofOfPossession::verify(proof, nonce.clone(), sample_verify_opts())
                 .await
                 .unwrap();
 
-            let hld_did = didkey.generate(h_kh.clone()).unwrap();
-            let hld_did_url = DIDURL::from_str(&hld_did).unwrap();
+        assert_eq!(v_did_url.did, did_url.did);
+        assert_eq!(key.jwk().unwrap(), jwk);
+    }
 
-            println!("Holder DID: {}", hld_did);
+    #[tokio::test]
+    async fn jwt_pop_generation_fails_on_invalid_jwk() {
+        let kh = no_jwk_key();
+        let did_url = DIDURL::from_str("did:example:123").unwrap();
 
-            let jwk = h_kh.clone().jwk().unwrap();
-            println!("JWK:\n{}", serde_json::to_string_pretty(&jwk).unwrap());
+        let nonce = Nonce::new_random();
+        let res = JwtProofOfPossession::generate(&did_url, kh, nonce, sample_generate_opts()).await;
 
-            let nonce = openidconnect::Nonce::new_random();
+        assert!(matches!(res.err(), Some(Error::KeyTypeNotSupported { .. })));
+    }
 
-            let proof = JwtProofOfPossession::generate(
-                &hld_did_url,
-                h_kh.clone(),
-                nonce.clone(),
-                GenerateOptions {
-                    cred_iss_id: "did:web:issuer.com".to_string(),
-                    client_id: Some("client-id".to_string()),
-                    lifetime: None,
-                },
-            )
-            .await;
-            assert!(proof.is_ok());
+    #[tokio::test]
+    async fn jwt_pop_generation_fails_on_invalid_signer() {
+        let kms = LocalKms::new();
+        let (did_url, kh) = create_did_url_and_key_handle(&kms, KeyType::P256).await;
+        let failed_kh = failed_signer_key(kh);
 
-            let proof = proof.unwrap();
-            println!("Proof JWT:\n{}", proof);
+        let nonce = Nonce::new_random();
+        let res =
+            JwtProofOfPossession::generate(&did_url, failed_kh, nonce, sample_generate_opts())
+                .await;
 
-            let decoded: Map<String, Value> =
-                ssi::jwt::decode_verify(proof.as_str(), &jwk).unwrap();
-            println!(
-                "Decoded: {}",
-                serde_json::to_string_pretty(&decoded).unwrap()
-            );
+        assert!(matches!(res.err(), Some(Error::Conversion { .. })));
+    }
 
-            assert_eq!(decoded.get("aud").unwrap(), "did:web:issuer.com");
-            assert_eq!(decoded.get("iss").unwrap(), "client-id");
-            assert!(decoded.contains_key("nonce"));
+    #[tokio::test]
+    async fn jwt_pop_verification_fails_on_invalid_payload() {
+        let nonce = Nonce::new_random();
+        let res = JwtProofOfPossession::verify(
+            "invalid-jwt".to_string(),
+            nonce.clone(),
+            sample_verify_opts(),
+        )
+        .await;
 
-            let verified = JwtProofOfPossession::verify(
-                proof,
-                nonce.clone(),
-                VerifyOptions {
-                    cred_iss_id: "did:web:issuer.com".to_string(),
-                    client_id: Some("client-id".to_string()),
-                },
-            )
-            .await;
-            assert!(verified.is_ok());
+        assert!(matches!(res.err(), Some(Error::Parsing { .. })));
+    }
 
-            let (did_url, key) = verified.unwrap();
-            assert_eq!(did_url, hld_did_url);
-            assert_eq!(jwk.to_public(), key.jwk().unwrap());
+    #[tokio::test]
+    async fn jwt_pop_verification_fails_on_invalid_nonce() {
+        let kms = LocalKms::new();
+        let (did_url, kh) = create_did_url_and_key_handle(&kms, KeyType::P256).await;
+
+        let nonce1 = Nonce::new_random();
+        let proof = JwtProofOfPossession::generate(&did_url, kh, nonce1, sample_generate_opts())
+            .await
+            .unwrap();
+
+        let nonce2 = Nonce::new_random();
+        let res = JwtProofOfPossession::verify(proof, nonce2, sample_verify_opts()).await;
+
+        assert!(matches!(res.err(), Some(Error::Verification { .. })));
+    }
+
+    fn sample_generate_opts() -> GenerateOptions {
+        GenerateOptions {
+            cred_iss_id: "did:web:issuer.com".to_string(),
+            client_id: Some("client-id".to_string()),
+            lifetime: None,
+        }
+    }
+
+    fn sample_verify_opts() -> VerifyOptions {
+        VerifyOptions {
+            cred_iss_id: "did:web:issuer.com".to_string(),
+            client_id: Some("client-id".to_string()),
         }
     }
 }

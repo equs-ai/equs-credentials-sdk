@@ -58,6 +58,8 @@ pub enum KeyType {
     // etc
 }
 
+pub const SUPPORTED_KEYS: [KeyType; 2] = [KeyType::Ed25519, KeyType::P256];
+
 /// General options for key creation.
 #[derive(Debug, Default, PartialEq, Clone)]
 pub struct CreateOptions {}
