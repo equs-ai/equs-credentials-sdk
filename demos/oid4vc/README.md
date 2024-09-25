@@ -25,13 +25,19 @@ The Web server in the root represents the Issuer and Verifier sides and the hold
 
 ### Steps to run the demo
 
-1. Run a web server:
+1. Run an issuer server:
     ```bash
+    cd issuer
     cargo run
     ```
-2. Open a new terminal window. Go to the `holder` folder and run demo
+2. Open a new terminal window. Go to the `verifier` folder and run a web server:
+    ```bash
+    cd verifier
+    cargo run
+    ```
+3. Open a new terminal window. Go to the `holder` folder and run demo
     ```bash
     cd  holder
     cargo run
     ```
-3. Follow the instructions on the console.
+4. Follow the instructions on the console.

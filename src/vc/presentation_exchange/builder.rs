@@ -1,14 +1,13 @@
 use anyhow::{bail, Error};
 use oid4vp::{
-    core::{
-        authorization_request::parameters::PresentationDefinition as PresentationDefinitionParameter,
-        profile::PresentationBuilder,
-    },
+    core::authorization_request::parameters::PresentationDefinition as PresentationDefinitionParameter,
     presentation_exchange::{InputDescriptor, PresentationDefinition},
 };
 use serde_json::Value as Json;
 use tracing::{instrument, Level};
 use uuid::Uuid;
+
+pub use oid4vp::core::profile::PresentationBuilder;
 
 #[derive(Debug)]
 pub struct DefaultPresentationBuilder(PresentationDefinition);

@@ -132,7 +132,8 @@ oid4vc-demo-build-job:
   <<: *rust_job_configs
   stage: build
   script:
-    - cargo build --manifest-path=demos/oid4vc/Cargo.toml
+    - cargo build --manifest-path=demos/oid4vc/issuer/Cargo.toml
+    - cargo build --manifest-path=demos/oid4vc/verifier/Cargo.toml
     - cargo build --manifest-path=demos/oid4vc/holder/Cargo.toml
   only:
     - merge_requests
