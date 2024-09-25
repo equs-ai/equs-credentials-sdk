@@ -10,36 +10,26 @@ use agent_sdk::kms::Kms;
 use agent_sdk::storage::Storage;
 use agent_sdk::vc::core::KeyMetadata;
 use agent_sdk::vc::oid4vci::{
-    AuthorizationCodeGrant, CredDefMetadata, CredDefMetadataProfile, CredentialOffer,
-    CredentialOfferGrants, CredentialRequest, IssuanceSession, IssuerMetadata,
+    AuthorizationCodeGrant, CredDefMetadata, CredDefMetadataProfile, CredentialOfferGrants,
+    CredentialRequest, IssuanceSession, IssuerMetadata,
 };
-use agent_sdk::vc::oid4vp::{
-    auth_request_as_url, AuthorizationResponse, AuthorizationUrlType, Nonce,
-    PresentationDefinition, PresentationSession,
-};
-use agent_sdk::vc::{oid4vci, oid4vp};
+
+use agent_sdk::vc::oid4vci;
 use keycloak::{KeycloakAdmin, KeycloakAdminToken};
 use reqwest::Url;
 use serde_json::{json, Value};
-use std::collections::HashMap;
 use std::sync::Arc;
 
 const SERVER_URL: &str = "http://localhost:8088";
 const AUTH_SRV_URL: &str = "http://localhost:8080/idp/realms/pid-issuer-realm";
 
-const OID4VCI_ISSUE_CREDENTIAL_URL_PATH: &str = "/credential";
-const OID4VCI_ISSUER_METADATA_URL_PATH: &str = "/.well-known/openid-credential-issuer";
-const OID4VCI_CREDENTIAL_OFFER_URL_PATH: &str = "/credential_offer";
-const OID4VP_AUTH_REQUEST_URL_PATH: &str = "/request_uri";
-const OID4VP_AUTH_REQUEST_OBJECT_URL_PATH: &str = "/request";
-const OID4VP_AUTH_RESPONSE_URL_PATH: &str = "/present";
+const CREDENTIAL_URL_PATH: &str = "/credential";
+const METADATA_URL_PATH: &str = "/.well-known/openid-credential-issuer";
+const CREDENTIAL_OFFER_URL_PATH: &str = "/credential_offer";
 
 struct AppState {
     issuer: Arc<dyn oid4vci::Issuer>,
-    verifier: Arc<dyn oid4vp::Verifier>,
-    issuer_storage: InMemStorage<String, IssuanceSession>,
-    verifier_auth_req_obj_storage: InMemStorage<String, String>,
-    verifier_presentation_session_storage: InMemStorage<String, PresentationSession>,
+    storage: InMemStorage<String, IssuanceSession>,
 }
 
 #[actix_web::main]
@@ -47,38 +37,14 @@ async fn main() -> std::io::Result<()> {
     tracing_subscriber::fmt::init();
 
     let app_state = web::Data::new(AppState {
-        issuer: Arc::new(oid4vci_issuer().await),
-        verifier: Arc::new(oid4vp_verifier().await),
-        issuer_storage: InMemStorage::new(),
-        verifier_auth_req_obj_storage: InMemStorage::new(),
-        verifier_presentation_session_storage: InMemStorage::new(),
+        issuer: Arc::new(issuer().await),
+        storage: InMemStorage::new(),
     });
     HttpServer::new(move || {
         App::new()
-            .route(
-                OID4VCI_ISSUE_CREDENTIAL_URL_PATH,
-                web::post().to(oid4vci_issue_credential),
-            )
-            .route(
-                OID4VCI_ISSUER_METADATA_URL_PATH,
-                web::get().to(oid4vci_issue_metadata),
-            )
-            .route(
-                OID4VCI_CREDENTIAL_OFFER_URL_PATH,
-                web::get().to(oid4vci_credential_offer),
-            )
-            .route(
-                OID4VP_AUTH_REQUEST_URL_PATH,
-                web::get().to(oid4vp_presentation_request_uri),
-            )
-            .route(
-                OID4VP_AUTH_REQUEST_OBJECT_URL_PATH,
-                web::get().to(oid4vp_presentation_request_object),
-            )
-            .route(
-                OID4VP_AUTH_RESPONSE_URL_PATH,
-                web::post().to(oid4vp_presentation_response),
-            )
+            .route(CREDENTIAL_URL_PATH, web::post().to(issue_credential))
+            .route(METADATA_URL_PATH, web::get().to(issue_metadata))
+            .route(CREDENTIAL_OFFER_URL_PATH, web::get().to(credential_offer))
             .app_data(app_state.clone())
     })
     .bind(("127.0.0.1", 8088))?
@@ -86,7 +52,7 @@ async fn main() -> std::io::Result<()> {
     .await
 }
 
-async fn oid4vci_issue_credential(
+async fn issue_credential(
     state: web::Data<AppState>,
     req: HttpRequest,
     cred_req: web::Json<CredentialRequest>,
@@ -102,7 +68,7 @@ async fn oid4vci_issue_credential(
     let claims = get_user_attributes(&cred_def).await?;
 
     let mut session = state
-        .issuer_storage
+        .storage
         .get(&token)
         .await
         .unwrap()
@@ -113,7 +79,7 @@ async fn oid4vci_issue_credential(
         .issue_credential(&cred_req, &token, &claims, &mut session)
         .await;
 
-    state.issuer_storage.put(token, session).await.unwrap();
+    state.storage.put(token, session).await.unwrap();
 
     println!("Issuance Result: {:?}", resp);
 
@@ -125,13 +91,13 @@ async fn oid4vci_issue_credential(
     }
 }
 
-async fn oid4vci_issue_metadata(state: web::Data<AppState>) -> HttpResponse {
+async fn issue_metadata(state: web::Data<AppState>) -> HttpResponse {
     let metadata = state.issuer.get_issuer_metadata();
 
     HttpResponse::Ok().json(serde_json::to_value(metadata).unwrap())
 }
 
-async fn oid4vci_credential_offer(state: web::Data<AppState>) -> HttpResponse {
+async fn credential_offer(state: web::Data<AppState>) -> HttpResponse {
     let (credential_offer, url) = state
         .issuer
         .create_credential_offer(
@@ -146,102 +112,7 @@ async fn oid4vci_credential_offer(state: web::Data<AppState>) -> HttpResponse {
     println!("Offer {:?}", credential_offer);
     println!("URL {}", url);
 
-    HttpResponse::Ok().json(CredentialOffer::Value { credential_offer })
-}
-
-async fn oid4vp_presentation_request_object(
-    req: HttpRequest,
-    state: web::Data<AppState>,
-) -> HttpResponse {
-    let auth_req_object = state
-        .verifier_auth_req_obj_storage
-        .get(&req.full_url().to_string())
-        .await
-        .unwrap()
-        .unwrap();
-
-    HttpResponse::Ok()
-        .content_type("text/plain")
-        .body(auth_req_object)
-}
-
-async fn oid4vp_presentation_request_uri(state: web::Data<AppState>) -> HttpResponse {
-    let response_uri =
-        Url::parse(format!("{}{}", SERVER_URL, OID4VP_AUTH_RESPONSE_URL_PATH).as_str()).unwrap();
-    let request_uri =
-        Url::parse(format!("{}{}", SERVER_URL, OID4VP_AUTH_REQUEST_OBJECT_URL_PATH).as_str())
-            .unwrap();
-
-    // Verifier may build a custom presentation definition depending on the needs of verification
-    let (auth_req, session) = state
-        .verifier
-        .create_authorization_request(
-            &default_presentation_definition(),
-            &Nonce::from("nOnCe"),
-            response_uri,
-        )
-        .await
-        .unwrap();
-
-    let url = auth_request_as_url(
-        &auth_req,
-        AuthorizationUrlType::Reference(request_uri.clone()),
-    )
-    .to_string();
-
-    state
-        .verifier_auth_req_obj_storage
-        .put(request_uri.to_string(), auth_req.request_object_jwt)
-        .await
-        .unwrap();
-
-    state
-        .verifier_presentation_session_storage
-        .put(session.presentation_definition.id.clone(), session)
-        .await
-        .unwrap();
-
-    HttpResponse::Ok().content_type("text/plain").body(url)
-}
-
-async fn oid4vp_presentation_response(
-    state: web::Data<AppState>,
-    req: web::Form<HashMap<String, String>>,
-) -> HttpResponse {
-    let wallet_auth_resp = oid4vp_auth_resp_from_submitted_form(&req);
-
-    let session = state
-        .verifier_presentation_session_storage
-        .get(&wallet_auth_resp.presentation_submission.definition_id)
-        .await
-        .unwrap()
-        .unwrap();
-
-    let verified_claims = state
-        .verifier
-        .verify_presentation(&wallet_auth_resp, &session)
-        .await
-        .unwrap();
-
-    println!(
-        "Verifier claims: {}",
-        serde_json::to_string(&verified_claims).unwrap()
-    );
-
-    HttpResponse::Ok().finish()
-}
-
-fn oid4vp_auth_resp_from_submitted_form(
-    form: &web::Form<HashMap<String, String>>,
-) -> AuthorizationResponse {
-    let vp_token = serde_json::from_str(form.get("vp_token").unwrap()).unwrap();
-    let presentation_submission =
-        serde_json::from_str(form.get("presentation_submission").unwrap()).unwrap();
-
-    AuthorizationResponse {
-        vp_token,
-        presentation_submission,
-    }
+    HttpResponse::Ok().json(credential_offer)
 }
 
 async fn get_user_attributes(cred_def: &CredDefMetadata) -> Result<Value, Error> {
@@ -317,8 +188,8 @@ async fn get_user_attributes(cred_def: &CredDefMetadata) -> Result<Value, Error>
     Ok(Value::Null)
 }
 
-async fn oid4vci_issuer() -> impl oid4vci::Issuer {
-    println!("Initializing oid4vci issuer...");
+async fn issuer() -> impl oid4vci::Issuer {
+    println!("Initializing issuer...");
     let kms = LocalKms::new();
     // In the real service these should be generated beforehand/taken from configuration/persistence
     let (_, key_metadata) = create_did_and_key_metadata(&kms).await;
@@ -334,21 +205,6 @@ async fn oid4vci_issuer() -> impl oid4vci::Issuer {
 
     println!("Done");
     issuer
-}
-
-async fn oid4vp_verifier() -> impl oid4vp::Verifier {
-    println!("Initializing oid4vp verifier...");
-    let kms = LocalKms::new();
-    // In the real service these should be generated beforehand/taken from configuration/persistence
-    let (did, key_metadata) = create_did_and_key_metadata(&kms).await;
-
-    let verifier = oid4vp::VerifierBuilder::new(kms, key_metadata, did)
-        .build()
-        .await
-        .unwrap();
-
-    println!("Done");
-    verifier
 }
 
 async fn create_did_and_key_metadata(kms: &LocalKms) -> (DID, KeyMetadata) {
@@ -369,6 +225,9 @@ async fn create_did_and_key_metadata(kms: &LocalKms) -> (DID, KeyMetadata) {
     (did, KeyMetadata { kid, did_url: vm })
 }
 
+const CRED_DEF_1: &str = "SD_JWT_cred_1";
+const CRED_DEF_2: &str = "SD_JWT_cred_2";
+
 fn sample_issuer_metadata(iss_url: &str, authz_url: &str) -> IssuerMetadata {
     let metadata = serde_json::from_value(json!(
         {
@@ -376,7 +235,7 @@ fn sample_issuer_metadata(iss_url: &str, authz_url: &str) -> IssuerMetadata {
           "authorization_servers": [authz_url],
           "credential_endpoint": iss_url.to_owned()+"/credential",
           "credential_configurations_supported": {
-            "SD_JWT_cred_1": {
+            CRED_DEF_1: {
               "format": "vc+sd-jwt",
               "scope": "SD_JWT_cred_scope",
               "cryptographic_binding_methods_supported": [
@@ -411,7 +270,7 @@ fn sample_issuer_metadata(iss_url: &str, authz_url: &str) -> IssuerMetadata {
                   }
                 }
             },
-            "SD_JWT_cred_2": {
+            CRED_DEF_2: {
               "format": "vc+sd-jwt",
               "scope": "SD_JWT_cred_scope",
               "cryptographic_binding_methods_supported": [
@@ -442,40 +301,3 @@ fn sample_issuer_metadata(iss_url: &str, authz_url: &str) -> IssuerMetadata {
 
     metadata.unwrap()
 }
-
-pub fn default_presentation_definition() -> PresentationDefinition {
-    serde_json::from_str(TEST_PRESENTATION_DEFINITION).unwrap()
-}
-
-const TEST_PRESENTATION_DEFINITION: &str = r#"{
-        "id": "1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed",
-        "input_descriptors": [
-            {
-                "id": "Identity-1",
-                "name": "Identity VC",
-                "purpose": "We want an identity",
-                "format": {
-                    "vc+sd-jwt": {
-                        "alg": ["EdDSA", "ES256K"]
-                    }
-                 },
-                "constraints": {
-                    "fields": [
-                        {
-                            "path": [
-                                "$.family_name",
-                                "$.given_name"
-                            ]
-                        },
-                        {
-                            "path": ["$.vct"],
-                            "filter": {
-                                "type": "string",
-                                "const": "https://credentials.example.com/identity_credential_1"
-                            }
-                        }
-                    ]
-                }
-            }
-        ]
-    }"#;

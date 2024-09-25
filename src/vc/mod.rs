@@ -1,4 +1,5 @@
 use crate::crypto::Alg;
+use crate::vc::formats::sd_jwt_vc;
 use serde::{Deserialize, Serialize};
 
 pub use crate::vc::formats::sd_jwt_vc::{SdJwtAPI as VCFormatsSdJwtAPI, VCMetadata};
@@ -16,6 +17,10 @@ pub mod metadata;
 pub mod oid4vci;
 pub mod oid4vp;
 
+pub use formats::HasClaims;
+pub use presentation_exchange::builder::DefaultPresentationBuilder;
+pub use presentation_exchange::builder::PresentationBuilder;
+
 /// Verifiable Credential (`VC`)
 ///
 /// Each enum value represents different format of `VC` and contains an actual serializable `VC` body.
@@ -29,7 +34,7 @@ pub enum Credential {
     JwtVcJsonLd(String),
     LdpVc(ssi::vc::Credential),
     // SD-JWT
-    SdJwt(String),
+    SdJwt(sd_jwt_vc::Credential),
     // etc
     // ISOMdl(String),
 }
