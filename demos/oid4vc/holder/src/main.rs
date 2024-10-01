@@ -135,7 +135,10 @@ async fn run_presentation_flow(holder: impl HolderVp) {
     println!("Please enter presentation request URI from http://localhost:8098/request_uri:");
     io::stdout().flush().unwrap();
 
-    let request_uri = input_from_console("Failed to read presentation request uri");
+    let input = input_from_console("Failed to read presentation request uri");
+    let request_uri = input
+        .parse()
+        .unwrap_or_else(|_| panic!("Incorrect URI: {input}"));
 
     let auth_request = holder
         .get_authorization_request(&request_uri)

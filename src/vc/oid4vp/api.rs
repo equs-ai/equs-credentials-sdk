@@ -109,7 +109,7 @@ pub trait Holder: Send + Sync {
     ///
     /// # Arguments
     ///
-    /// * `auth_req_uri` - a request URI provided by the authorization URL.
+    /// * `request_uri` - a request URI provided by the authorization URL.
     ///
     /// # Returns
     ///
@@ -121,7 +121,7 @@ pub trait Holder: Send + Sync {
     /// * [InternalError::AuthorizationRequest] - if the resolution of the authorization request fails.
     async fn get_authorization_request(
         &self,
-        auth_req_uri: &str,
+        request_uri: &Url,
     ) -> Result<ResolvedAuthRequest, Error>;
 
     /// Automatically presents credentials to the Verifier based on the authorization request.

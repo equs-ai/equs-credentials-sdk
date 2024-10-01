@@ -16,6 +16,8 @@ use crate::{http, vc};
 pub enum InternalError {
     #[snafu(display("Authorization Response error: {details}"))]
     AuthorizationResponse { details: String },
+    #[snafu(display("Credential of Type '{type_}' and Format '{format}' not found"))]
+    CredentialNotFound { type_: String, format: String },
     #[snafu(display("Unsupported format: {format}"))]
     FormatNotSupported { format: String },
     #[snafu(display("KMS error at {location}"))]

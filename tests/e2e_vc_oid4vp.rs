@@ -97,7 +97,7 @@ async fn credentials_presentation_and_verification(#[case] test_case: Oid4VpTest
 
     println!("8.2 Holder: Get Authorization Request");
     let request_object = holder
-        .get_authorization_request(by_reference.as_str())
+        .get_authorization_request(&by_reference)
         .await
         .unwrap();
 
