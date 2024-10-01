@@ -183,6 +183,7 @@ where
     kms: KMS,
     vault: V,
     resolver: D,
+    // TODO: Should be HTTP client type, not Result
     http_client: Result<HC, HttpError>,
 
     _marker: PhantomData<KH>,

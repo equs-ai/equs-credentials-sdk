@@ -9,9 +9,12 @@ pub mod fixtures {
     pub const REQUEST_URI: &str = "openid4vp://?client_id=did%3Akey%3AzDnaeagvW2eDWc2yVw7B98ovcJ8jddn7T9Mh3y5Vikys6y4kX&request_uri=http%3A%2F%2F127.0.0.1%3A55796%2Frequest";
 
     pub mod single_presentation {
+        use crate::vc::oid4vp::tests::fixtures::NONCE;
+        use crate::vc::oid4vp::tests::utils::{PresentationTestCase, VerificationTestCase};
         use crate::vc::oid4vp::tests::CredTypeWithClaims;
         use crate::vc::oid4vp::{
-            PresentationDefinition, PresentationSubmission, ResolvedAuthRequest,
+            PresentationDefinition, PresentationSession, PresentationSubmission,
+            ResolvedAuthRequest,
         };
         use serde_json::json;
 
@@ -128,12 +131,38 @@ pub mod fixtures {
                 json!({"name": "John"}),
             )]
         }
+
+        pub fn presentation_session() -> PresentationSession {
+            PresentationSession {
+                nonce: NONCE.into(),
+                presentation_definition: presentation_definition(),
+            }
+        }
+
+        pub fn presentation_test_case() -> PresentationTestCase {
+            PresentationTestCase {
+                request: auth_request(),
+                credential_data: credential_data(),
+                presentation_submission: presentation_submission(),
+            }
+        }
+
+        pub fn verification_test_case() -> VerificationTestCase {
+            VerificationTestCase {
+                credential_data: credential_data(),
+                presentation_submission: presentation_submission(),
+                session: presentation_session(),
+            }
+        }
     }
 
     pub mod multi_presentation {
+        use crate::vc::oid4vp::tests::fixtures::NONCE;
+        use crate::vc::oid4vp::tests::utils::{PresentationTestCase, VerificationTestCase};
         use crate::vc::oid4vp::tests::CredTypeWithClaims;
         use crate::vc::oid4vp::{
-            PresentationDefinition, PresentationSubmission, ResolvedAuthRequest,
+            PresentationDefinition, PresentationSession, PresentationSubmission,
+            ResolvedAuthRequest,
         };
         use serde_json::json;
 
@@ -331,6 +360,29 @@ pub mod fixtures {
                 ),
             ]
         }
+
+        pub fn presentation_session() -> PresentationSession {
+            PresentationSession {
+                nonce: NONCE.into(),
+                presentation_definition: presentation_definition(),
+            }
+        }
+
+        pub fn presentation_test_case() -> PresentationTestCase {
+            PresentationTestCase {
+                request: auth_request(),
+                credential_data: credential_data(),
+                presentation_submission: presentation_submission(),
+            }
+        }
+
+        pub fn verification_test_case() -> VerificationTestCase {
+            VerificationTestCase {
+                credential_data: credential_data(),
+                presentation_submission: presentation_submission(),
+                session: presentation_session(),
+            }
+        }
     }
 }
 
@@ -354,7 +406,8 @@ pub mod utils {
     use crate::vc::oid4vp::tests::CredTypeWithClaims;
     use crate::vc::oid4vp::verifier::VerifierService;
     use crate::vc::oid4vp::{
-        AuthorizationResponse, CredentialMapping, Holder, ResolvedAuthRequest, Verifier,
+        AuthorizationResponse, CredentialMapping, Holder, PresentationSession, ResolvedAuthRequest,
+        Verifier,
     };
     use crate::vc::{
         presentation_exchange, Claims, Credential, CredentialMetadata, VCFormat, VCFormatsAPI,
@@ -363,7 +416,7 @@ pub mod utils {
     use oauth2::http::{Method, StatusCode};
     use oid4vci::openidconnect::Nonce;
     use oid4vp::core::response::PostRedirection;
-    use oid4vp::presentation_exchange::{PresentationDefinition, PresentationSubmission};
+    use oid4vp::presentation_exchange::PresentationSubmission;
     use sd_jwt_rs::utils::decode_sd_jwt;
     use sd_jwt_rs::SDJWTSerializationFormat;
     use serde_json::json;
@@ -513,13 +566,13 @@ pub mod utils {
     }
 
     pub struct VerificationTestCase {
-        pub presentation_definition: PresentationDefinition,
         pub credential_data: Vec<CredTypeWithClaims>,
         pub presentation_submission: PresentationSubmission,
+        pub session: PresentationSession,
     }
 
     impl VerificationTestCase {
-        pub async fn auth_response(&self, nonce: &str, verifier_id: &str) -> AuthorizationResponse {
+        pub async fn vp_token(&self, nonce: &str, verifier_id: &str) -> serde_json::Value {
             let kms = LocalKms::new();
             let (_, holder_key_handle) = kms
                 .create_and_handle(KeyType::P256, CreateOptions {})
@@ -535,14 +588,16 @@ pub mod utils {
                 presentations.push(vp)
             }
 
-            let vp_token = if presentations.len() == 1 {
+            if presentations.len() == 1 {
                 json!(presentations.first().unwrap())
             } else {
                 json!(presentations)
-            };
+            }
+        }
 
+        pub async fn auth_response(&self, nonce: &str, verifier_id: &str) -> AuthorizationResponse {
             AuthorizationResponse {
-                vp_token,
+                vp_token: self.vp_token(nonce, verifier_id).await,
                 presentation_submission: self.presentation_submission.clone(),
             }
         }

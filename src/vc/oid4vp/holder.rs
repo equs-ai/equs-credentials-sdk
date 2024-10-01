@@ -3,8 +3,8 @@ use crate::http::HttpClient;
 use crate::vc;
 use crate::vc::core::PresentationInput;
 use crate::vc::oid4vp::internal_error::{
-    AuthorizationRequestSnafu, AuthorizationResponseSnafu, JsonSnafu, ParseSnafu,
-    PresentationExchangeSnafu, UrlParseSnafu, VCSnafu,
+    AuthorizationRequestSnafu, AuthorizationResponseSnafu, CredentialNotFoundSnafu, JsonSnafu,
+    ParseSnafu, PresentationExchangeSnafu, VCSnafu,
 };
 use crate::vc::oid4vp::metadata::default_wallet_metadata;
 use crate::vc::oid4vp::{AuthorizationResponseMetadata, CredentialMapping, ResolvedAuthRequest};
@@ -154,8 +154,9 @@ where
             .context(VCSnafu)?;
 
         let first_credential = credentials.first().ok_or_else(|| {
-            AuthorizationResponseSnafu {
-                details: "Empty credentials list",
+            CredentialNotFoundSnafu {
+                type_: &presentation_input.type_,
+                format: &presentation_input.format,
             }
             .build()
         })?;
@@ -191,10 +192,9 @@ where
         err(),
         ret(),
     )]
-    async fn get_authorization_request(&self, auth_req_uri: &str) -> Result<ResolvedAuthRequest> {
-        let url = Url::parse(auth_req_uri).context(UrlParseSnafu)?;
+    async fn get_authorization_request(&self, request_uri: &Url) -> Result<ResolvedAuthRequest> {
         let aro = self
-            .handle_request(&url, |req| self.http_client.async_call(req))
+            .handle_request(request_uri, |req| self.http_client.async_call(req))
             .await
             .context(AuthorizationRequestSnafu)?;
 
@@ -525,7 +525,7 @@ mod tests {
     use crate::inmem::kms::LocalKms;
     use crate::inmem::vault::InMemVault;
     use crate::kms::{CreateOptions, KeyType, Kms};
-    use crate::utils::http::test::mock_http_fn_with_plain_text_resp;
+    use crate::utils::http::test::{mock_http_fn, mock_http_fn_with_plain_text_resp};
     use crate::vc;
     use crate::vc::oid4vp::tests::fixtures::{
         multi_presentation, single_presentation, REQUEST_URI, VERIFIER_URL,
@@ -536,9 +536,12 @@ mod tests {
     use crate::vc::oid4vp::{AuthorizationResponseMetadata, Holder};
     use crate::vc::{Claims, Credential};
     use oauth2::http::Method;
+    use oauth2::HttpResponse;
+    use reqwest::StatusCode;
     use rstest::rstest;
     use sd_jwt_rs::utils::decode_sd_jwt;
     use sd_jwt_rs::SDJWTSerializationFormat;
+    use serde_json::json;
 
     #[tokio::test]
     async fn get_auth_request_success() {
@@ -553,7 +556,10 @@ mod tests {
         let holder = holder_service(http_client, LocalKms::new(), InMemVault::new()).await;
 
         // Get request object
-        let request_obj = holder.get_authorization_request(REQUEST_URI).await.unwrap();
+        let request_obj = holder
+            .get_authorization_request(&REQUEST_URI.parse().unwrap())
+            .await
+            .unwrap();
 
         assert_eq!(
             serde_json::to_value(&request_obj).unwrap(),
@@ -564,12 +570,18 @@ mod tests {
     }
 
     #[rstest]
-    #[case::single_presentation(single_presentation_case(), false)]
-    #[case::single_presentation_with_extra_credentials(single_presentation_case(), true)]
-    #[case::multiple_presentation(multiple_presentation_case(), false)]
-    #[case::multiple_presentation_with_extra_credentials(multiple_presentation_case(), true)]
+    #[case::single_presentation_success(single_presentation::presentation_test_case(), false)]
+    #[case::single_presentation_with_extra_credentials_success(
+        single_presentation::presentation_test_case(),
+        true
+    )]
+    #[case::multi_presentation_success(multi_presentation::presentation_test_case(), false)]
+    #[case::multi_presentation_with_extra_credentials_success(
+        multi_presentation::presentation_test_case(),
+        true
+    )]
     #[tokio::test]
-    async fn present_credential_auto_correctly(
+    async fn present_credential_auto_success(
         #[case] test_case: PresentationTestCase,
         #[case] with_extra_creds: bool,
     ) {
@@ -588,10 +600,83 @@ mod tests {
     }
 
     #[rstest]
-    #[case::single_presentation(single_presentation_case(), false)]
-    #[case::single_presentation_with_extra_credentials(single_presentation_case(), true)]
-    #[case::multiple_presentation(multiple_presentation_case(), false)]
-    #[case::multiple_presentation_with_extra_credentials(multiple_presentation_case(), true)]
+    #[should_panic(
+        expected = "Credential of Type 'https://credentials.example.com/identity_credential' and Format 'vc+sd-jwt' not found"
+    )]
+    #[case::requested_credential_not_exist(requested_credential_not_exist_case(), false)]
+    // TODO: Should not submit empty presentation response, implemented as part of the ASDK-98 task
+    #[ignore]
+    #[should_panic]
+    #[case::empty_input_descriptor(empty_input_descriptor_case(), false)]
+    #[should_panic(expected = "Unsupported format: jwt_vc_json")]
+    #[case::request_unsupported_credential_format(
+        request_unsupported_credential_format_case(),
+        false
+    )]
+    // TODO: Validations will be implemented as part of the ASDK-98 task
+    #[ignore]
+    #[should_panic]
+    #[case::request_unsupported_credential_alg(request_unsupported_credential_alg_case(), false)]
+    #[tokio::test]
+    async fn present_credential_auto_fails(
+        #[case] test_case: PresentationTestCase,
+        #[case] with_extra_creds: bool,
+    ) {
+        let kms = LocalKms::new();
+        let vault = test_case.prepare_vault(&kms, with_extra_creds).await;
+        let holder = holder_service(MockHttpClient::new(), kms, vault).await;
+
+        // Send auth response
+        holder
+            .present_credentials_auto(&test_case.request, &AuthorizationResponseMetadata {})
+            .await
+            .unwrap();
+    }
+
+    #[should_panic(
+        expected = "response: status_code=500 Internal Server Error, response_body=Internal Server Error"
+    )]
+    #[tokio::test]
+    async fn present_credential_auto_fails_on_internal_server_error() {
+        let test_case = single_presentation::presentation_test_case();
+
+        let mut http_client = MockHttpClient::new();
+        mock_http_fn(
+            &mut http_client,
+            Method::POST,
+            build_url(VERIFIER_URL, "auth"),
+            |_| {
+                Ok(HttpResponse {
+                    status_code: StatusCode::INTERNAL_SERVER_ERROR,
+                    headers: Default::default(),
+                    body: "Internal Server Error".as_bytes().to_owned(),
+                })
+            },
+            1.into(),
+        );
+
+        let kms = LocalKms::new();
+        let vault = test_case.prepare_vault(&kms, false).await;
+        let holder = holder_service(http_client, kms, vault).await;
+
+        // Send auth response
+        holder
+            .present_credentials_auto(&test_case.request, &AuthorizationResponseMetadata {})
+            .await
+            .unwrap();
+    }
+
+    #[rstest]
+    #[case::single_presentation_success(single_presentation::presentation_test_case(), false)]
+    #[case::single_presentation_with_extra_credentials_success(
+        single_presentation::presentation_test_case(),
+        true
+    )]
+    #[case::multi_presentation_success(multi_presentation::presentation_test_case(), false)]
+    #[case::multi_presentation_with_extra_credentials_success(
+        multi_presentation::presentation_test_case(),
+        true
+    )]
     #[tokio::test]
     async fn find_credentials_success(
         #[case] test_case: PresentationTestCase,
@@ -630,22 +715,51 @@ mod tests {
             cred_data.extend(cred_data.clone())
         }
 
-        for claims in retrieved_credentials_claims {
-            let index = cred_data
+        assert!(
+            !retrieved_credentials_claims.is_empty(),
+            "Credentials not found"
+        );
+
+        // TODO: Should also validate extra credentials
+        for (expected_type, expected_claims) in cred_data {
+            let claims = retrieved_credentials_claims
                 .iter()
-                .enumerate()
-                .find(|(_, (type_, _))| *type_ == claims["vct"])
-                .unwrap()
-                .0;
-            validate_claims(&claims, &cred_data.remove(index));
+                .find(|retrieved_claims| *expected_type == retrieved_claims["vct"])
+                .unwrap();
+
+            validate_claims(claims, &(expected_type, expected_claims));
         }
     }
 
-    #[rstest]
-    #[case::single_presentation(single_presentation_case())]
-    #[case::multiple_presentation(multiple_presentation_case())]
     #[tokio::test]
-    async fn present_credential_correctly(#[case] test_case: PresentationTestCase) {
+    async fn find_credentials_returns_empty_list() {
+        let test_case = requested_credential_not_exist_case();
+        let kms = LocalKms::new();
+        let vault = test_case.prepare_vault(&kms, false).await;
+        let holder = holder_service(MockHttpClient::new(), kms, vault).await;
+
+        let credential_mapping = holder
+            .find_vcs_for_presentation(&test_case.request)
+            .await
+            .unwrap();
+
+        let retrieved_credentials: Vec<vc::Credential> = test_case
+            .request
+            .presentation_definition
+            .input_descriptors
+            .iter()
+            .flat_map(|descriptor| credential_mapping.get(&descriptor.id).unwrap().clone())
+            .map(|entry| entry.credential)
+            .collect();
+
+        assert!(retrieved_credentials.is_empty());
+    }
+
+    #[rstest]
+    #[case::single_presentation(single_presentation::presentation_test_case())]
+    #[case::multi_presentation(multi_presentation::presentation_test_case())]
+    #[tokio::test]
+    async fn present_credential_success(#[case] test_case: PresentationTestCase) {
         let mut http_client = MockHttpClient::new();
         test_case.mock_http_auth_response_endpoint(&mut http_client);
 
@@ -667,27 +781,106 @@ mod tests {
             .unwrap();
     }
 
-    fn single_presentation_case() -> PresentationTestCase {
-        PresentationTestCase {
-            request: single_presentation::auth_request(),
-            credential_data: single_presentation::credential_data(),
-            presentation_submission: single_presentation::presentation_submission(),
-        }
+    #[should_panic(expected = "Unsupported format: jwt_vc_json")]
+    #[tokio::test]
+    async fn present_credential_fails_on_request_unsupported_credential_format() {
+        let test_case = request_unsupported_credential_format_case();
+        let kms = LocalKms::new();
+        let key = kms
+            .create_and_handle(KeyType::P256, CreateOptions {})
+            .await
+            .unwrap();
+        let holder = holder_service(MockHttpClient::new(), kms, InMemVault::new()).await;
+        let credential_mapping = test_case.build_credential_mapping(key).await;
+
+        holder
+            .present_credentials(
+                &test_case.request,
+                &credential_mapping,
+                &AuthorizationResponseMetadata {},
+            )
+            .await
+            .unwrap();
     }
 
-    fn single_presentation_several_creds_case() -> PresentationTestCase {
-        PresentationTestCase {
-            request: single_presentation::auth_request(),
-            credential_data: single_presentation::credential_data(),
-            presentation_submission: single_presentation::presentation_submission(),
-        }
+    #[should_panic(
+        expected = "response: status_code=500 Internal Server Error, response_body=Internal Server Error"
+    )]
+    #[tokio::test]
+    async fn present_credential_fails_on_internal_server_error() {
+        let test_case = single_presentation::presentation_test_case();
+
+        let mut http_client = MockHttpClient::new();
+        mock_http_fn(
+            &mut http_client,
+            Method::POST,
+            build_url(VERIFIER_URL, "auth"),
+            |_| {
+                Ok(HttpResponse {
+                    status_code: StatusCode::INTERNAL_SERVER_ERROR,
+                    headers: Default::default(),
+                    body: "Internal Server Error".as_bytes().to_owned(),
+                })
+            },
+            1.into(),
+        );
+
+        let kms = LocalKms::new();
+        let key = kms
+            .create_and_handle(KeyType::P256, CreateOptions {})
+            .await
+            .unwrap();
+        let holder = holder_service(http_client, kms, InMemVault::new()).await;
+        let credential_mapping = test_case.build_credential_mapping(key).await;
+
+        holder
+            .present_credentials(
+                &test_case.request,
+                &credential_mapping,
+                &AuthorizationResponseMetadata {},
+            )
+            .await
+            .unwrap();
     }
 
-    fn multiple_presentation_case() -> PresentationTestCase {
-        PresentationTestCase {
-            request: multi_presentation::auth_request(),
-            credential_data: multi_presentation::credential_data(),
-            presentation_submission: multi_presentation::presentation_submission(),
-        }
+    fn requested_credential_not_exist_case() -> PresentationTestCase {
+        let mut test_case = single_presentation::presentation_test_case();
+        test_case.credential_data = vec![(
+            "https://credentials.example.com/degree_credential",
+            json!({"name": "John", "degree": "Bachelor"}),
+        )];
+        test_case
+    }
+
+    fn empty_input_descriptor_case() -> PresentationTestCase {
+        let mut test_case = single_presentation::presentation_test_case();
+        test_case.request.presentation_definition.input_descriptors = vec![];
+        test_case
+    }
+
+    fn request_unsupported_credential_format_case() -> PresentationTestCase {
+        let mut test_case = single_presentation::presentation_test_case();
+        let cred_format: serde_json::Value = json!({
+            "jwt_vc_json":{
+                "alg":[
+                    "RS256"
+                ]
+            }
+        });
+        test_case.request.presentation_definition.input_descriptors[0].format = Some(cred_format);
+        test_case
+    }
+
+    fn request_unsupported_credential_alg_case() -> PresentationTestCase {
+        let mut test_case = single_presentation::presentation_test_case();
+        let cred_format: serde_json::Value = json!({
+            "vc+sd-jwt":{
+                "alg":[
+                    "RS256"
+                ]
+            }
+        });
+        test_case.request.presentation_definition.input_descriptors[0].format = Some(cred_format);
+        test_case
     }
 }

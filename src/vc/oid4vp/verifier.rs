@@ -383,11 +383,13 @@ mod tests {
         build_url, validate_claims, verifier_service, VerificationTestCase,
     };
     use crate::vc::oid4vp::{
-        auth_request_as_url, AuthorizationUrlType, PresentationSession, Verifier,
+        auth_request_as_url, AuthorizationResponse, AuthorizationUrlType, PresentationDefinition,
+        Verifier,
     };
     use oid4vp::core::authorization_request::{AuthorizationRequest, AuthorizationRequestObject};
     use oid4vp::core::object::UntypedObject;
     use rstest::rstest;
+    use serde_json::json;
     use std::collections::HashMap;
     use url::Url;
 
@@ -462,23 +464,62 @@ mod tests {
         assert_eq!(request.return_uri(), &response_uri);
     }
 
+    // TODO: Validations will be implemented as part of the ASDK-98 task
     #[rstest]
-    #[case::single_presentation(single_presentation_case())]
-    #[case::multi_presentation(multi_presentation_case())]
+    #[ignore]
+    #[case::empty_id(presentation_definition_with_empty_id())]
+    #[ignore]
+    #[case::empty_descriptors(presentation_definition_with_empty_descriptors())]
     #[tokio::test]
-    async fn verify_authorization_response_success(#[case] test_case: VerificationTestCase) {
+    #[should_panic]
+    async fn generate_auth_request_fails_on_invalid_presentation_def(
+        #[case] presentation_definition: PresentationDefinition,
+    ) {
+        let request_uri = build_url(VERIFIER_URL, "request");
+
+        let (verifier, did) = verifier_service().await;
+
+        let (request, _) = verifier
+            .create_authorization_request(
+                &presentation_definition,
+                &NONCE.into(),
+                build_url(VERIFIER_URL, "auth"),
+            )
+            .await
+            .unwrap();
+    }
+
+    // TODO: Validations will be implemented as part of the ASDK-98 task
+    #[ignore]
+    #[tokio::test]
+    #[should_panic]
+    async fn generate_auth_request_fails_on_empty_nonce() {
+        let request_uri = build_url(VERIFIER_URL, "request");
+
+        let (verifier, did) = verifier_service().await;
+
+        let (request, _) = verifier
+            .create_authorization_request(
+                &single_presentation::presentation_definition(),
+                &"".into(),
+                build_url(VERIFIER_URL, "auth"),
+            )
+            .await
+            .unwrap();
+    }
+
+    #[rstest]
+    #[case::single_presentation_success(single_presentation::verification_test_case())]
+    #[case::multi_presentation_success(multi_presentation::verification_test_case())]
+    #[tokio::test]
+    async fn verify_auth_response_success(#[case] test_case: VerificationTestCase) {
         let (verifier, client_id) = verifier_service().await;
         let kms = LocalKms::new();
-
-        let session = PresentationSession {
-            nonce: NONCE.into(),
-            presentation_definition: test_case.presentation_definition.clone(),
-        };
 
         let response = test_case.auth_response(NONCE, &client_id).await;
 
         let verified_claims = verifier
-            .verify_presentation(&response, &session)
+            .verify_presentation(&response, &test_case.session)
             .await
             .unwrap();
 
@@ -495,19 +536,102 @@ mod tests {
         }
     }
 
-    fn single_presentation_case() -> VerificationTestCase {
-        VerificationTestCase {
-            presentation_definition: single_presentation::presentation_definition(),
-            credential_data: single_presentation::credential_data(),
-            presentation_submission: single_presentation::presentation_submission(),
-        }
+    #[rstest]
+    #[should_panic(expected = "Invalid nonce")]
+    #[case::invalid_nonce(invalid_nonce_case())]
+    #[should_panic(
+        expected = "Requested presentation SD_JWT_cred not found in the presentation submission"
+    )]
+    #[case::presentation_not_provided(presentation_not_provided_case())]
+    #[should_panic(
+        expected = "Requested presentation Identity-1 not found in the presentation submission"
+    )]
+    #[case::empty_descriptor_map(empty_descriptor_map_case())]
+    // TODO: Filter constraint validations will be implemented as part of the ASDK-98 task
+    #[ignore]
+    #[case::invalid_presentation_type(invalid_presentation_type_case())]
+    #[should_panic(expected = " Requested claim not found by path $.name")]
+    #[case::presentation_claim_not_found(presentation_claim_not_found_case())]
+    #[tokio::test]
+    async fn verify_auth_response_fails(#[case] test_case: VerificationTestCase) {
+        let (verifier, client_id) = verifier_service().await;
+        let kms = LocalKms::new();
+
+        let response = test_case.auth_response(NONCE, &client_id).await;
+
+        let verified_claims = verifier
+            .verify_presentation(&response, &test_case.session)
+            .await
+            .unwrap();
     }
 
-    fn multi_presentation_case() -> VerificationTestCase {
-        VerificationTestCase {
-            presentation_definition: multi_presentation::presentation_definition(),
-            credential_data: multi_presentation::credential_data(),
-            presentation_submission: multi_presentation::presentation_submission(),
-        }
+    #[rstest]
+    #[case::empty_token("[]")]
+    #[case::invalid_token(r#"{"test": "invalid"}"#)]
+    #[tokio::test]
+    #[should_panic(expected = "Incorrect presentation format: expected JWT string")]
+    async fn verify_auth_response_fails_on_invalid_vp_token(#[case] vp_token: &str) {
+        let (verifier, client_id) = verifier_service().await;
+        let kms = LocalKms::new();
+
+        let response = AuthorizationResponse {
+            vp_token: serde_json::from_str(vp_token).unwrap(),
+            presentation_submission: single_presentation::presentation_submission(),
+        };
+
+        let result = verifier
+            .verify_presentation(&response, &single_presentation::presentation_session())
+            .await
+            .unwrap();
+    }
+
+    fn presentation_definition_with_empty_id() -> PresentationDefinition {
+        let mut presentation_definition = single_presentation::presentation_definition();
+        presentation_definition.id = "".to_string();
+
+        presentation_definition
+    }
+
+    fn presentation_definition_with_empty_descriptors() -> PresentationDefinition {
+        let mut presentation_definition = single_presentation::presentation_definition();
+        presentation_definition.input_descriptors = vec![];
+
+        presentation_definition
+    }
+
+    fn invalid_nonce_case() -> VerificationTestCase {
+        let mut test_case = single_presentation::verification_test_case();
+        test_case.session.nonce = "other-nonce".into();
+        test_case
+    }
+
+    fn empty_descriptor_map_case() -> VerificationTestCase {
+        let mut test_case = single_presentation::verification_test_case();
+        test_case.presentation_submission.descriptor_map = vec![];
+        test_case
+    }
+
+    fn presentation_not_provided_case() -> VerificationTestCase {
+        let mut test_case = single_presentation::verification_test_case();
+        test_case.session.presentation_definition = multi_presentation::presentation_definition();
+        test_case
+    }
+
+    fn invalid_presentation_type_case() -> VerificationTestCase {
+        let mut test_case = single_presentation::verification_test_case();
+        test_case.credential_data = vec![(
+            "https://credentials.example.com/degree_credential",
+            json!({"name": "John", "degree": "Bachelor"}),
+        )];
+        test_case
+    }
+
+    fn presentation_claim_not_found_case() -> VerificationTestCase {
+        let mut test_case = single_presentation::verification_test_case();
+        test_case.credential_data = vec![(
+            "https://credentials.example.com/identity_credential",
+            json!({"degree": "Bachelor"}),
+        )];
+        test_case
     }
 }
