@@ -1,5 +1,6 @@
 use crate::did::universal::UniversalResolver;
 use crate::http::{HttpClient, HttpError, HttpSnafu};
+use crate::nonce::NonceGenerator;
 use crate::reqwest::ReqwestClient;
 use crate::vc::core::KeyMetadata;
 use crate::vc::oid4vp as api;
@@ -31,11 +32,12 @@ impl Debug for Error {
 
 /// A builder for creating an `OID4VP` `Verifier` instance.
 #[derive(Clone)]
-pub struct VerifierBuilder<KH, KMS, D>
+pub struct VerifierBuilder<KH, KMS, D, NG>
 where
     KH: kms::KeyHandle,
     KMS: kms::Kms<KH>,
     D: did::DIDResolver,
+    NG: NonceGenerator,
 {
     // data
     client_id: String,
@@ -45,14 +47,16 @@ where
     // services
     kms: KMS,
     resolver: D,
+    nonce_generator: NG,
 
     _marker: PhantomData<KH>,
 }
 
-impl<KH, KMS> VerifierBuilder<KH, KMS, UniversalResolver>
+impl<KH, KMS, NG> VerifierBuilder<KH, KMS, UniversalResolver, NG>
 where
     KH: kms::KeyHandle,
     KMS: kms::Kms<KH>,
+    NG: NonceGenerator,
 {
     /// Creates a new instance of `VerifierBuilder` with default configurations.
     ///
@@ -67,15 +71,21 @@ where
     /// A new `VerifierBuilder` instance
     #[instrument(
         level = Level::TRACE,
-        skip(kms),
+        skip(kms, nonce_generator),
     )]
-    pub fn new(kms: KMS, key_metadata: KeyMetadata, client_id: String) -> Self {
+    pub fn new(
+        kms: KMS,
+        nonce_generator: NG,
+        key_metadata: KeyMetadata,
+        client_id: String,
+    ) -> Self {
         info!("oid4vp-verifier builder is initialized");
 
         Self {
             client_id,
             key_metadata,
             kms,
+            nonce_generator,
             resolver: UniversalResolver::new(),
             client_metadata: None,
             _marker: Default::default(),
@@ -83,11 +93,12 @@ where
     }
 }
 
-impl<KH, KMS, D> VerifierBuilder<KH, KMS, D>
+impl<KH, KMS, D, NG> VerifierBuilder<KH, KMS, D, NG>
 where
     KH: kms::KeyHandle,
     KMS: kms::Kms<KH>,
     D: did::DIDResolver,
+    NG: NonceGenerator,
 {
     /// Sets the Verifier's client metadata.
     ///
@@ -121,7 +132,7 @@ where
     pub fn with_did_resolver<D_: did::DIDResolver>(
         self,
         resolver: D_,
-    ) -> VerifierBuilder<KH, KMS, D_> {
+    ) -> VerifierBuilder<KH, KMS, D_, NG> {
         VerifierBuilder {
             resolver,
             // copied
@@ -129,6 +140,7 @@ where
             client_metadata: self.client_metadata,
             key_metadata: self.key_metadata,
             kms: self.kms,
+            nonce_generator: self.nonce_generator,
 
             _marker: Default::default(),
         }
@@ -155,6 +167,7 @@ where
             inner,
             self.kms,
             self.resolver,
+            self.nonce_generator,
             self.client_id,
             self.key_metadata,
             self.client_metadata,
@@ -353,6 +366,7 @@ mod tests {
     use crate::did::universal::UniversalResolver;
     use crate::http::MockHttpClient;
     use crate::inmem::kms::LocalKms;
+    use crate::inmem::nonce::LocalNonceGenerator;
     use crate::inmem::vault::InMemVault;
     use crate::utils::test_utils::create_did_and_key_metadata;
     use crate::vc::oid4vp::metadata::{default_client_metadata, default_wallet_metadata};
@@ -387,9 +401,10 @@ mod tests {
     #[tokio::test]
     async fn build_verifier() {
         let kms = LocalKms::new();
+        let nonce_gen = LocalNonceGenerator::default();
         let (did, key_metadata) = create_did_and_key_metadata(&kms).await;
 
-        let verifier = VerifierBuilder::new(kms, key_metadata, did.clone())
+        let verifier = VerifierBuilder::new(kms, nonce_gen, key_metadata, did.clone())
             .with_client_metadata(default_client_metadata())
             .with_did_resolver(UniversalResolver::new())
             .build()
@@ -400,9 +415,10 @@ mod tests {
     #[tokio::test]
     async fn build_verifier_with_defaults() {
         let kms = LocalKms::new();
+        let nonce_gen = LocalNonceGenerator::default();
         let (did, key_metadata) = create_did_and_key_metadata(&kms).await;
 
-        let verifier = VerifierBuilder::new(kms, key_metadata, did.clone())
+        let verifier = VerifierBuilder::new(kms, nonce_gen, key_metadata, did.clone())
             .build()
             .await
             .unwrap();

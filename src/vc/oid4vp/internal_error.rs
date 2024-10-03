@@ -3,7 +3,7 @@ use std::fmt::Debug;
 
 use crate::kms::Error as KmsError;
 use crate::vc::presentation_exchange;
-use crate::{http, vc};
+use crate::{http, nonce, vc};
 
 /// An `oid4vp` internal error.
 ///
@@ -79,6 +79,12 @@ pub enum InternalError {
         #[snafu(implicit)]
         location: Location,
         source: http::HttpError,
+    },
+    #[snafu(display("Nonce generation error at {location}"))]
+    NonceGeneration {
+        #[snafu(implicit)]
+        location: Location,
+        source: nonce::Error,
     },
 }
 

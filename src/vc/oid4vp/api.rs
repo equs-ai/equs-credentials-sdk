@@ -1,3 +1,4 @@
+use crate::nonce::Nonce;
 use crate::vault::CredentialEntry;
 use crate::vc::oid4vp::InternalError;
 use crate::vc::Claims;
@@ -18,7 +19,6 @@ pub type PresentationSubmission = oid4vp::presentation_exchange::PresentationSub
 pub type PresentationDefinition = oid4vp::presentation_exchange::PresentationDefinition;
 pub type ClientMetadata = oid4vp::core::authorization_request::parameters::ClientMetadata;
 pub type WalletMetadata = oid4vp::core::metadata::WalletMetadata;
-pub type Nonce = oid4vp::core::authorization_request::parameters::Nonce;
 
 /// A session with state managed during the presentation.
 ///
@@ -216,7 +216,6 @@ pub trait Verifier: Send + Sync {
     /// # Arguments
     ///
     /// * `presentation_definition` - the presentation definition specifying the presentation requirements.
-    /// * `nonce` - a string used to prevent replay attacks, representing the nonce for the request.
     /// * `response_uri` - the URL where the Holder will send the response.
     ///
     /// # Returns
@@ -232,7 +231,6 @@ pub trait Verifier: Send + Sync {
     async fn create_authorization_request(
         &self,
         presentation_definition: &PresentationDefinition,
-        nonce: &Nonce,
         response_uri: Url,
     ) -> Result<(AuthorizationRequest, PresentationSession), Error>;
 

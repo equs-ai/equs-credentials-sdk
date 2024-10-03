@@ -34,6 +34,7 @@ use utils::http::HttpClientEmulator;
 
 use agent_sdk::did::{DIDResolver, DID};
 use agent_sdk::inmem::kms::KeyHandle;
+use agent_sdk::inmem::nonce::LocalNonceGenerator;
 use agent_sdk::kms::KeyID;
 
 use crate::utils::fixtures::oid4vp::{
@@ -73,10 +74,9 @@ async fn credentials_presentation_and_verification(#[case] test_case: Oid4VpTest
     println!("8.1 Verifier: Create Authorization Request");
     // TODO: We should not use a test constant for Presentation Definition here,
     //  we need to build a new one (as every Verifier will build it).
-    let nonce = "n0NcE".into();
     let response_uri: Url = format!("{}/auth", VERIFIER_URL).parse().unwrap();
     let (auth_request, session) = verifier
-        .create_authorization_request(&test_case.presentation_definition, &nonce, response_uri)
+        .create_authorization_request(&test_case.presentation_definition, response_uri)
         .await
         .unwrap();
 
@@ -174,10 +174,11 @@ fn prepare_http_client_for_holder(
 
 async fn build_verifier() -> impl Verifier {
     let kms = LocalKms::new();
+    let nonce_gen = LocalNonceGenerator::default();
 
     let (did, key_metadata, _) = create_did_keymetadata_keyhandle(&kms).await;
 
-    VerifierBuilder::new(kms, key_metadata, did)
+    VerifierBuilder::new(kms, nonce_gen, key_metadata, did)
         .build()
         .await
         .unwrap()

@@ -20,7 +20,6 @@ use agent_sdk::vc::core::{
 };
 use agent_sdk::vc::metadata::{CredentialMetadataProcessor, DefaultMetadataProcessor};
 use agent_sdk::vc::SD_JWT_VC;
-use oid4vci::openidconnect::Nonce;
 use serde_json::json;
 use ssi::did::DIDURL;
 
@@ -78,16 +77,16 @@ async fn credential_issuance_and_presentation_verification() {
         .to_owned(),
     };
 
-    let nonce = Nonce::new_random();
+    let nonce = LocalNonceGenerator::default().generate().await.unwrap();
 
     let vp_res = holder
-        .create_presentation_auto(nonce.secret(), VERIFIER_ID, &presentation_input)
+        .create_presentation_auto(&nonce, VERIFIER_ID, &presentation_input)
         .await;
 
     let vp = vp_res.unwrap();
     println!("Presentation {:?}", vp);
 
-    let ver_res = verifier.verify_presentation(nonce.secret(), &vp).await;
+    let ver_res = verifier.verify_presentation(&nonce, &vp).await;
     assert!(ver_res.is_ok());
 
     let res_claims = ver_res.unwrap();

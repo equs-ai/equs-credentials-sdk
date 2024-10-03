@@ -1,7 +1,7 @@
 use crate::crypto;
 use crate::did::DIDURL;
+use crate::nonce::Nonce;
 use async_trait::async_trait;
-use oid4vci::openidconnect::Nonce;
 use oid4vci::proof_of_possession::{ConversionError, ParsingError, VerificationError};
 use snafu::{Location, Snafu};
 use std::fmt::{Debug, Display, Formatter};
@@ -130,7 +130,7 @@ pub trait ProofOfPossession<P> {
     async fn generate<S>(
         did_url: &DIDURL,
         key: S,
-        nonce: Nonce,
+        nonce: &Nonce,
         opts: GenerateOptions,
     ) -> Result<P>
     where
@@ -138,7 +138,7 @@ pub trait ProofOfPossession<P> {
 
     async fn verify(
         proof: P,
-        nonce: Nonce,
+        nonce: &Nonce,
         opts: VerifyOptions,
     ) -> Result<(DIDURL, Box<dyn crypto::Key>)>;
 
