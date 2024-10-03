@@ -48,13 +48,13 @@ impl Debug for Error {
 
 pub type Result<T> = core::result::Result<T, Error>;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct RequestedPresentation {
     pub id: String,
     pub presentation: Presentation,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct PresentationResponse {
     pub presentations: Json,
     pub presentation_submission: PresentationSubmission,
@@ -455,4 +455,315 @@ fn top_level_paths(field: &ConstraintsField) -> Vec<String> {
         })
         .filter(|s| !s.is_empty())
         .collect()
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use oid4vp::presentation_exchange::Constraints;
+    use oid4vp::utils::NonEmptyVec;
+    use rstest::rstest;
+    use serde_json::{json, Value};
+
+    #[tokio::test]
+    async fn prepare_presentation_response_succeeds_handling_single_case() {
+        let requested_presentation =
+            create_requested_presentation_sdjwtvp("descriptor_id", "fake_sd_jwt_vp");
+        let presentation_definition = create_single_presentation_definition();
+
+        let result =
+            prepare_presentation_response(&[requested_presentation], &presentation_definition)
+                .unwrap();
+
+        let presentation_submission_id = result.presentation_submission.id.clone();
+
+        assert_eq!(
+            result,
+            PresentationResponse {
+                presentations: json!("fake_sd_jwt_vp"),
+                presentation_submission: PresentationSubmission {
+                    id: presentation_submission_id,
+                    definition_id: "presentation_definition_id".to_string(),
+                    descriptor_map: vec![DescriptorMap {
+                        id: "descriptor_id".to_string(),
+                        format: "vc+sd-jwt".to_string(),
+                        path: "$".to_string()
+                    }]
+                }
+            }
+        )
+    }
+
+    #[tokio::test]
+    async fn prepare_presentation_response_succeeds_handling_multiple_case() {
+        let rp_1 = create_requested_presentation_sdjwtvp("descriptor_id_1", "fake_sd_jwt_vp_1");
+        let rp_2 = create_requested_presentation_sdjwtvp("descriptor_id_2", "fake_sd_jwt_vp_2");
+        let presentation_definition = create_multiple_presentation_definition();
+
+        let result =
+            prepare_presentation_response(&[rp_1, rp_2], &presentation_definition).unwrap();
+        assert_eq!(
+            result.presentations,
+            json!([
+                "fake_sd_jwt_vp_1".to_string(),
+                "fake_sd_jwt_vp_2".to_string()
+            ])
+        )
+    }
+
+    #[tokio::test]
+    async fn resolve_presentation_response_succeeds_on_correct_data() {
+        let presentation_response = PresentationResponse {
+            presentations: json!("fake_presentation"),
+            presentation_submission: create_presentation_submission_with_descriptor_format(
+                SD_JWT_VC,
+            ),
+        };
+        let presentation_definition = create_single_presentation_definition();
+
+        let result =
+            resolve_presentation_response(&presentation_response, &presentation_definition)
+                .unwrap();
+
+        assert_eq!(
+            result,
+            vec![RequestedPresentation {
+                id: "descriptor_id".to_string(),
+                presentation: Presentation::SdJwtVp("fake_presentation".to_string()),
+            },]
+        )
+    }
+
+    #[tokio::test]
+    async fn validate_claims_succeeds_on_correct_data() {
+        let claims = json!({
+            "vct": "fake_vct_value"
+        });
+        let presentation_definition = create_single_presentation_definition();
+        validate_claims(&claims, "descriptor_id", &presentation_definition).unwrap();
+    }
+
+    #[tokio::test]
+    async fn split_to_inputs_returns_correct_presentation_inputs() {
+        let presentation_definition = create_single_presentation_definition();
+        let result = split_to_inputs(&presentation_definition).unwrap();
+
+        let mut claims = serde_json::Map::new();
+        claims.insert(
+            "vct".to_string(),
+            Value::String("value_of_filter.const".to_string()),
+        );
+
+        assert_eq!(
+            result,
+            [PresentationInput {
+                id: "descriptor_id".to_string(),
+                format: "vc+sd-jwt".to_string(),
+                type_: "value_of_filter.const".to_string(),
+                claims
+            }]
+        )
+    }
+
+    #[tokio::test]
+    #[should_panic(
+        expected = "Requested presentation descriptor_id not found in the presentation submission"
+    )]
+    async fn resolve_presentation_response_fails_on_wrong_descriptor_map_id() {
+        let presentation_response = PresentationResponse {
+            presentations: Value::String("fake_sd_jwt_vp".to_string()),
+            presentation_submission: {
+                let descriptor_map =
+                    vec![create_descriptor_map("fake_descriptor_id", SD_JWT_VC, "$")];
+                create_presentation_submission(descriptor_map)
+            },
+        };
+        let presentation_definition = create_single_presentation_definition();
+
+        let result =
+            resolve_presentation_response(&presentation_response, &presentation_definition)
+                .unwrap();
+    }
+
+    #[tokio::test]
+    #[should_panic(
+        expected = "Requested presentation \"descriptor_id\" not found by path \"$.incorrect_presentation_key\""
+    )]
+    async fn resolve_presentation_response_fails_on_wrong_path() {
+        let presentation_response = PresentationResponse {
+            presentations: json!({"presentation_key": "presentation_value"}),
+            presentation_submission: {
+                let descriptor_map = vec![create_descriptor_map(
+                    "descriptor_id",
+                    SD_JWT_VC,
+                    "$.incorrect_presentation_key",
+                )];
+                create_presentation_submission(descriptor_map)
+            },
+        };
+        let presentation_definition = create_single_presentation_definition();
+
+        let result =
+            resolve_presentation_response(&presentation_response, &presentation_definition)
+                .unwrap();
+    }
+
+    #[tokio::test]
+    #[should_panic(expected = "Incorrect presentation format: expected JWT string")]
+    async fn resolve_presentation_response_fails_on_sdjwtvc_format_but_non_string_presentation() {
+        let presentation_response = PresentationResponse {
+            presentations: json!(1),
+            presentation_submission: create_presentation_submission_with_descriptor_format(
+                SD_JWT_VC,
+            ),
+        };
+        let presentation_definition = create_single_presentation_definition();
+
+        let result =
+            resolve_presentation_response(&presentation_response, &presentation_definition)
+                .unwrap();
+    }
+
+    #[rstest]
+    #[case(crate::vc::JWT_VC_JSON)]
+    #[case(crate::vc::JWT_VC_JSON_LD)]
+    #[case(crate::vc::LDP_VC)]
+    #[case(crate::vc::MSO_MDOC)]
+    #[case("fake_string")]
+    #[tokio::test]
+    #[should_panic(expected = "Unsupported format: ")]
+    async fn resolve_presentation_response_fails_on_wrong_format(#[case] format: &str) {
+        let presentation_response = PresentationResponse {
+            presentations: json!("fake_presentation"),
+            presentation_submission: create_presentation_submission_with_descriptor_format(format),
+        };
+        let presentation_definition = create_single_presentation_definition();
+
+        let result =
+            resolve_presentation_response(&presentation_response, &presentation_definition)
+                .unwrap();
+    }
+
+    fn create_single_presentation_definition() -> PresentationDefinition {
+        let input_descriptor = create_input_descriptor(
+            "descriptor_id",
+            sample_input_descriptor_constraints(),
+            sample_input_descriptor_format_sdjwtvc(),
+        );
+        PresentationDefinition {
+            id: "presentation_definition_id".to_string(),
+            input_descriptors: vec![input_descriptor],
+            name: None,
+            purpose: None,
+            format: None,
+        }
+    }
+
+    fn create_multiple_presentation_definition() -> PresentationDefinition {
+        let constraints = sample_input_descriptor_constraints();
+        let format = sample_input_descriptor_format_sdjwtvc();
+
+        let input_descriptors = vec![
+            create_input_descriptor("descriptor_id_1", constraints.clone(), format.clone()),
+            create_input_descriptor("descriptor_id_2", constraints.clone(), format.clone()),
+            create_input_descriptor("descriptor_id_3", constraints.clone(), format.clone()),
+        ];
+
+        PresentationDefinition {
+            id: "presentation_definition_id".to_string(),
+            input_descriptors,
+            name: None,
+            purpose: None,
+            format: None,
+        }
+    }
+
+    fn create_input_descriptor(
+        id: &str,
+        constraints: Constraints,
+        format: Option<Value>,
+    ) -> InputDescriptor {
+        InputDescriptor {
+            id: id.to_string(),
+            constraints,
+            name: None,
+            purpose: None,
+            format,
+        }
+    }
+
+    fn sample_input_descriptor_constraints() -> Constraints {
+        let format = Some(
+            serde_json::from_value(json!(
+                {
+                    "const": "value_of_filter.const",
+                }
+            ))
+            .unwrap(),
+        );
+        Constraints {
+            fields: Some(vec![
+                create_constraints_field("$.vct", None),
+                create_constraints_field("$.vct", format),
+            ]),
+            limit_disclosure: None,
+        }
+    }
+
+    fn sample_input_descriptor_format_sdjwtvc() -> Option<Value> {
+        Some(
+            serde_json::from_value(json!({
+               "vc+sd-jwt": {
+                   "alg": ["EdDSA", "ES256K"]
+               }
+            }))
+            .unwrap(),
+        )
+    }
+
+    fn create_constraints_field(path: &str, filter: Option<Value>) -> ConstraintsField {
+        ConstraintsField {
+            path: NonEmptyVec::new(path.to_string()),
+            id: None,
+            purpose: None,
+            name: None,
+            filter,
+            optional: None,
+            intent_to_retain: None,
+        }
+    }
+
+    fn create_presentation_submission_with_descriptor_format(
+        format: &str,
+    ) -> PresentationSubmission {
+        let descriptor_map = vec![create_descriptor_map("descriptor_id", format, "$")];
+        create_presentation_submission(descriptor_map)
+    }
+
+    fn create_presentation_submission(
+        descriptor_map: Vec<DescriptorMap>,
+    ) -> PresentationSubmission {
+        PresentationSubmission {
+            id: "".to_string(),
+            definition_id: "presentation_definition_id".to_string(),
+            descriptor_map,
+        }
+    }
+
+    fn create_requested_presentation_sdjwtvp(
+        id: &str,
+        presentation: &str,
+    ) -> RequestedPresentation {
+        RequestedPresentation {
+            id: id.to_string(),
+            presentation: Presentation::SdJwtVp(presentation.to_string()),
+        }
+    }
+
+    fn create_descriptor_map(id: &str, format: &str, path: &str) -> DescriptorMap {
+        DescriptorMap {
+            id: id.to_string(),
+            format: format.to_string(),
+            path: path.to_string(),
+        }
+    }
 }
