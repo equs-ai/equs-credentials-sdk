@@ -1,6 +1,8 @@
 use async_trait::async_trait;
 use oid4vp::core::authorization_request::parameters::PresentationDefinition as PresentationDefinitionParameter;
-use oid4vp::core::authorization_request::parameters::{ResponseMode, ResponseType, ResponseUri};
+use oid4vp::core::authorization_request::parameters::{
+    Nonce as NonceSpruce, ResponseMode, ResponseType, ResponseUri,
+};
 use oid4vp::core::authorization_request::AuthorizationRequestObject;
 use oid4vp::core::credential_format::CoreCredentialFormat;
 use oid4vp::core::metadata::parameters::verifier::VpFormats;
@@ -21,17 +23,19 @@ use url::Url;
 use crate::crypto::SigningKey;
 use crate::did::DIDResolver;
 use crate::kms::{KeyHandle, Kms};
+use crate::nonce::{Nonce, NonceGenerator};
 use crate::vc;
 use crate::vc::core::KeyMetadata;
 use crate::vc::oid4vp as api;
 use crate::vc::oid4vp::internal_error::{
-    KMSSnafu, ParseSnafu, PresentationExchangeSnafu, VCSnafu, VerifierSessionSnafu,
+    KMSSnafu, NonceGenerationSnafu, ParseSnafu, PresentationExchangeSnafu, VCSnafu,
+    VerifierSessionSnafu,
 };
 use crate::vc::oid4vp::metadata::{
     default_client_metadata, default_vp_formats, default_wallet_metadata,
 };
 use crate::vc::oid4vp::{
-    AuthorizationRequest, AuthorizationResponse, ClientMetadata, Nonce, PresentationSession,
+    AuthorizationRequest, AuthorizationResponse, ClientMetadata, PresentationSession,
 };
 use crate::vc::presentation_exchange;
 use crate::vc::presentation_exchange::builder::DefaultPresentationBuilder;
@@ -47,35 +51,39 @@ pub struct VerifierMetadata {
     pub client_metadata: ClientMetadata,
 }
 
-pub struct VerifierService<VF, KH, KMS, D>
+pub struct VerifierService<VF, KH, KMS, D, NG>
 where
     VF: vc::core::Verifier,
     KH: KeyHandle,
     KMS: Kms<KH>,
     D: DIDResolver,
+    NG: NonceGenerator,
 {
     verifier: VF,
     metadata: VerifierMetadata,
     kms: KMS,
+    nonce_generator: NG,
     did_resolver: D,
     _marker: PhantomData<KH>,
 }
 
-impl<VF, KH, KMS, D> VerifierService<VF, KH, KMS, D>
+impl<VF, KH, KMS, D, NG> VerifierService<VF, KH, KMS, D, NG>
 where
     VF: vc::core::Verifier,
     KH: KeyHandle,
     KMS: Kms<KH>,
     D: DIDResolver,
+    NG: NonceGenerator,
 {
     #[instrument(
         level = Level::TRACE,
-        skip(verifier, kms, did_resolver),
+        skip(verifier, kms, nonce_generator, did_resolver),
     )]
     pub fn new(
         verifier: VF,
         kms: KMS,
         did_resolver: D,
+        nonce_generator: NG,
         client_id: String,
         key_metadata: KeyMetadata,
         client_metadata: Option<ClientMetadata>,
@@ -92,6 +100,7 @@ where
             metadata,
             did_resolver,
             kms,
+            nonce_generator,
             verifier,
             _marker: Default::default(),
         }
@@ -99,12 +108,13 @@ where
 }
 
 #[async_trait]
-impl<VF, KH, KMS, D> api::Verifier for VerifierService<VF, KH, KMS, D>
+impl<VF, KH, KMS, D, NG> api::Verifier for VerifierService<VF, KH, KMS, D, NG>
 where
     VF: vc::core::Verifier,
     KH: KeyHandle,
     KMS: Kms<KH>,
     D: DIDResolver,
+    NG: NonceGenerator,
 {
     #[instrument(
         level = Level::TRACE,
@@ -114,22 +124,26 @@ where
     async fn create_authorization_request(
         &self,
         presentation_definition: &PresentationDefinition,
-        nonce: &Nonce,
         response_uri: Url,
     ) -> Result<(AuthorizationRequest, PresentationSession)> {
         info!("creating authorization request object is started");
+        let nonce = self
+            .nonce_generator
+            .generate()
+            .await
+            .context(NonceGenerationSnafu)?;
 
         let request = self
             .authorization_request(
                 presentation_definition,
-                nonce,
+                &nonce,
                 default_wallet_metadata(),
                 response_uri,
             )
             .await?;
 
         let session = PresentationSession {
-            nonce: nonce.to_owned(),
+            nonce,
             presentation_definition: presentation_definition.to_owned(),
         };
 
@@ -163,12 +177,13 @@ where
     }
 }
 
-impl<VF, KH, KMS, D> VerifierService<VF, KH, KMS, D>
+impl<VF, KH, KMS, D, NG> VerifierService<VF, KH, KMS, D, NG>
 where
     VF: vc::core::Verifier,
     KH: KeyHandle,
     KMS: Kms<KH>,
     D: DIDResolver,
+    NG: NonceGenerator,
 {
     #[instrument(
         level = Level::TRACE,
@@ -214,7 +229,7 @@ where
             .with_request_parameter(ResponseMode::DirectPost)
             .with_request_parameter(ResponseUri(response_uri))
             .with_request_parameter(ResponseType::VpToken)
-            .with_request_parameter(nonce.to_owned())
+            .with_request_parameter(NonceSpruce(nonce.secret().to_owned()))
             .with_request_parameter(self.metadata.client_metadata.clone())
             .with_request_parameter(presentation_definition_parameter)
             .with_did_client_id_and_resolver(
@@ -275,7 +290,7 @@ where
         for requested_presentation in requested_presentations {
             let claims = self
                 .verifier
-                .verify_presentation(&nonce.0, &requested_presentation.presentation)
+                .verify_presentation(nonce, &requested_presentation.presentation)
                 .await
                 .context(VCSnafu)?;
             presentation_exchange::validate_claims(
@@ -377,14 +392,15 @@ impl<S: SigningKey> RequestSigner for SignerWrapper<S> {
 mod tests {
     use crate::http::HttpSnafu;
     use crate::inmem::kms::LocalKms;
-    use crate::vc::oid4vp::tests::fixtures::{multi_presentation, single_presentation};
-    use crate::vc::oid4vp::tests::fixtures::{NONCE, VERIFIER_URL};
+    use crate::nonce::Nonce;
+    use crate::vc::oid4vp::tests::fixtures::VERIFIER_URL;
+    use crate::vc::oid4vp::tests::fixtures::{multi_presentation, single_presentation, NONCE};
     use crate::vc::oid4vp::tests::utils::{
         build_url, validate_claims, verifier_service, VerificationTestCase,
     };
     use crate::vc::oid4vp::{
         auth_request_as_url, AuthorizationResponse, AuthorizationUrlType, PresentationDefinition,
-        Verifier,
+        PresentationSession, Verifier,
     };
     use oid4vp::core::authorization_request::{AuthorizationRequest, AuthorizationRequestObject};
     use oid4vp::core::object::UntypedObject;
@@ -401,11 +417,7 @@ mod tests {
         let (verifier, did) = verifier_service().await;
 
         let (request, _) = verifier
-            .create_authorization_request(
-                &presentation_definition,
-                &NONCE.into(),
-                build_url(VERIFIER_URL, "auth"),
-            )
+            .create_authorization_request(&presentation_definition, build_url(VERIFIER_URL, "auth"))
             .await
             .unwrap();
 
@@ -428,11 +440,7 @@ mod tests {
         let (verifier, did) = verifier_service().await;
 
         let (request, _) = verifier
-            .create_authorization_request(
-                &presentation_definition,
-                &NONCE.into(),
-                response_uri.clone(),
-            )
+            .create_authorization_request(&presentation_definition, response_uri.clone())
             .await
             .unwrap();
 
@@ -460,7 +468,6 @@ mod tests {
 
         assert_eq!(actual_presentation_definition, presentation_definition);
         assert_eq!(request.client_id().0, did);
-        assert_eq!(request.nonce().0, NONCE);
         assert_eq!(request.return_uri(), &response_uri);
     }
 
@@ -480,11 +487,7 @@ mod tests {
         let (verifier, did) = verifier_service().await;
 
         let (request, _) = verifier
-            .create_authorization_request(
-                &presentation_definition,
-                &NONCE.into(),
-                build_url(VERIFIER_URL, "auth"),
-            )
+            .create_authorization_request(&presentation_definition, build_url(VERIFIER_URL, "auth"))
             .await
             .unwrap();
     }
@@ -501,7 +504,6 @@ mod tests {
         let (request, _) = verifier
             .create_authorization_request(
                 &single_presentation::presentation_definition(),
-                &"".into(),
                 build_url(VERIFIER_URL, "auth"),
             )
             .await
@@ -515,8 +517,12 @@ mod tests {
     async fn verify_auth_response_success(#[case] test_case: VerificationTestCase) {
         let (verifier, client_id) = verifier_service().await;
         let kms = LocalKms::new();
+        let session = PresentationSession {
+            nonce: Nonce(NONCE.to_owned()),
+            presentation_definition: test_case.session.presentation_definition.clone(),
+        };
 
-        let response = test_case.auth_response(NONCE, &client_id).await;
+        let response = test_case.auth_response(&session.nonce, &client_id).await;
 
         let verified_claims = verifier
             .verify_presentation(&response, &test_case.session)
@@ -556,8 +562,9 @@ mod tests {
     async fn verify_auth_response_fails(#[case] test_case: VerificationTestCase) {
         let (verifier, client_id) = verifier_service().await;
         let kms = LocalKms::new();
+        let nonce = Nonce(NONCE.to_owned());
 
-        let response = test_case.auth_response(NONCE, &client_id).await;
+        let response = test_case.auth_response(&nonce, &client_id).await;
 
         let verified_claims = verifier
             .verify_presentation(&response, &test_case.session)
@@ -601,7 +608,7 @@ mod tests {
 
     fn invalid_nonce_case() -> VerificationTestCase {
         let mut test_case = single_presentation::verification_test_case();
-        test_case.session.nonce = "other-nonce".into();
+        test_case.session.nonce = Nonce("other-nonce".to_owned());
         test_case
     }
 

@@ -1,10 +1,10 @@
 use std::fmt::Debug;
 
 use async_trait::async_trait;
-use oid4vci::openidconnect::Nonce;
 use snafu::{Location, Snafu};
 use ssi::did::DIDURL;
 
+use crate::nonce::Nonce;
 use crate::{crypto, did};
 
 pub mod sd_jwt_vc;
@@ -134,7 +134,7 @@ where
     async fn create_vp<S>(
         credential: &C,
         holder_signer: S,
-        nonce: Nonce,
+        nonce: &Nonce,
         verifier_id: &str,
         metadata: PM,
     ) -> Result<P>
@@ -145,7 +145,7 @@ where
 
     async fn verify_vp(
         presentation: &P,
-        nonce: Nonce,
+        nonce: &Nonce,
         verifier_id: &str,
         opts: VerifyOptions,
     ) -> Result<VR>;

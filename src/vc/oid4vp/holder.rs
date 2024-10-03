@@ -1,5 +1,6 @@
 use crate::did::DIDResolver;
 use crate::http::HttpClient;
+use crate::nonce::Nonce;
 use crate::vc;
 use crate::vc::core::PresentationInput;
 use crate::vc::oid4vp::internal_error::{
@@ -164,7 +165,7 @@ where
         let presentation = self
             .holder
             .create_presentation(
-                auth_request.nonce.0.as_str(),
+                &auth_request.nonce,
                 auth_request.client_id.as_str(),
                 presentation_input,
                 first_credential,
@@ -208,7 +209,7 @@ where
         Ok(ResolvedAuthRequest {
             client_id: aro.client_id().0.to_owned(),
             presentation_definition: pres_def,
-            nonce: aro.nonce().clone(),
+            nonce: Nonce(aro.nonce().to_owned().0),
             response_mode: aro.response_mode().to_owned(),
             response_uri: aro.return_uri().to_owned(),
         })
@@ -303,8 +304,8 @@ where
                     let presentation = self
                         .holder
                         .create_presentation(
-                            auth_request.nonce.0.as_str(),
-                            auth_request.client_id.as_str(),
+                            &auth_request.nonce,
+                            &auth_request.client_id,
                             presentation_input,
                             credential,
                         )

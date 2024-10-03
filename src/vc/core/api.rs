@@ -375,7 +375,7 @@ pub trait Holder: Send + Sync {
     /// * [Error::Vault] - error with [Vault](crate::vault::Vault).
     async fn create_presentation_auto(
         &self,
-        nonce: &str,
+        nonce: &Nonce,
         verifier_id: &str,
         presentation_input: &PresentationInput,
     ) -> Result<Presentation>;
@@ -420,7 +420,7 @@ pub trait Holder: Send + Sync {
     /// * [Error::Vault] - error with [Vault](crate::vault::Vault).
     async fn create_presentation(
         &self,
-        nonce: &str,
+        nonce: &Nonce,
         verifier_id: &str,
         presentation_input: &PresentationInput,
         credential: &CredentialEntry,
@@ -451,6 +451,9 @@ pub trait Verifier: Send + Sync {
     ///
     /// * [Error::FormatNotSupported] - VP format is not supported by the `Holder`.
     /// * [Error::VC] - internal error [VCFormatError](crate::vc::VCFormatError).
-    async fn verify_presentation(&self, nonce: &str, presentation: &Presentation)
-        -> Result<Claims>;
+    async fn verify_presentation(
+        &self,
+        nonce: &Nonce,
+        presentation: &Presentation,
+    ) -> Result<Claims>;
 }

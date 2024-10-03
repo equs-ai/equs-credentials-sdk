@@ -9,6 +9,7 @@ pub mod fixtures {
     pub const REQUEST_URI: &str = "openid4vp://?client_id=did%3Akey%3AzDnaeagvW2eDWc2yVw7B98ovcJ8jddn7T9Mh3y5Vikys6y4kX&request_uri=http%3A%2F%2F127.0.0.1%3A55796%2Frequest";
 
     pub mod single_presentation {
+        use crate::nonce::Nonce;
         use crate::vc::oid4vp::tests::fixtures::NONCE;
         use crate::vc::oid4vp::tests::utils::{PresentationTestCase, VerificationTestCase};
         use crate::vc::oid4vp::tests::CredTypeWithClaims;
@@ -134,7 +135,7 @@ pub mod fixtures {
 
         pub fn presentation_session() -> PresentationSession {
             PresentationSession {
-                nonce: NONCE.into(),
+                nonce: Nonce(NONCE.to_owned()),
                 presentation_definition: presentation_definition(),
             }
         }
@@ -157,6 +158,7 @@ pub mod fixtures {
     }
 
     pub mod multi_presentation {
+        use crate::nonce::Nonce;
         use crate::vc::oid4vp::tests::fixtures::NONCE;
         use crate::vc::oid4vp::tests::utils::{PresentationTestCase, VerificationTestCase};
         use crate::vc::oid4vp::tests::CredTypeWithClaims;
@@ -363,7 +365,7 @@ pub mod fixtures {
 
         pub fn presentation_session() -> PresentationSession {
             PresentationSession {
-                nonce: NONCE.into(),
+                nonce: Nonce(NONCE.to_owned()),
                 presentation_definition: presentation_definition(),
             }
         }
@@ -392,8 +394,10 @@ pub mod utils {
     use crate::did::universal::UniversalResolver;
     use crate::http::{HttpClient, MockHttpClient};
     use crate::inmem::kms::{KeyHandle, LocalKms};
+    use crate::inmem::nonce::LocalNonceGenerator;
     use crate::inmem::vault::InMemVault;
     use crate::kms::{CreateOptions, KeyID, KeyType, Kms};
+    use crate::nonce::Nonce;
     use crate::utils::http::test::mock_http_req_predicate;
     use crate::utils::test_utils;
     use crate::utils::test_utils::create_did_and_key_metadata;
@@ -414,7 +418,6 @@ pub mod utils {
         VCMetadata,
     };
     use oauth2::http::{Method, StatusCode};
-    use oid4vci::openidconnect::Nonce;
     use oid4vp::core::response::PostRedirection;
     use oid4vp::presentation_exchange::PresentationSubmission;
     use sd_jwt_rs::utils::decode_sd_jwt;
@@ -572,7 +575,7 @@ pub mod utils {
     }
 
     impl VerificationTestCase {
-        pub async fn vp_token(&self, nonce: &str, verifier_id: &str) -> serde_json::Value {
+        pub async fn vp_token(&self, nonce: &Nonce, verifier_id: &str) -> serde_json::Value {
             let kms = LocalKms::new();
             let (_, holder_key_handle) = kms
                 .create_and_handle(KeyType::P256, CreateOptions {})
@@ -595,7 +598,11 @@ pub mod utils {
             }
         }
 
-        pub async fn auth_response(&self, nonce: &str, verifier_id: &str) -> AuthorizationResponse {
+        pub async fn auth_response(
+            &self,
+            nonce: &Nonce,
+            verifier_id: &str,
+        ) -> AuthorizationResponse {
             AuthorizationResponse {
                 vp_token: self.vp_token(nonce, verifier_id).await,
                 presentation_submission: self.presentation_submission.clone(),
@@ -621,6 +628,7 @@ pub mod utils {
 
     pub async fn verifier_service() -> (impl Verifier, String) {
         let kms = LocalKms::new();
+        let nonce_gen = LocalNonceGenerator::default();
         let (did, key_metadata) = create_did_and_key_metadata(&kms).await;
         let inner = vc::core::VerifierService::new(&did);
 
@@ -628,6 +636,7 @@ pub mod utils {
             inner,
             kms,
             UniversalResolver::new(),
+            nonce_gen,
             did.clone(),
             key_metadata,
             None,
@@ -677,14 +686,14 @@ pub mod utils {
     pub async fn create_sd_jwt_vp(
         vc: &sd_jwt_vc::Credential,
         disclosures: serde_json::Value,
-        nonce: &str,
+        nonce: &Nonce,
         verifier_id: &str,
         holder_key_handle: &KeyHandle,
     ) -> sd_jwt_vc::Presentation {
         SdJwtAPI::create_vp(
             vc,
             holder_key_handle.clone(),
-            Nonce::new(nonce.to_string()),
+            nonce,
             verifier_id,
             VPMetadata {
                 disclosures: disclosures.as_object().unwrap().to_owned(),

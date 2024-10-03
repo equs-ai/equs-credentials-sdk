@@ -16,7 +16,6 @@ use crate::vc::pop::jwt_pop::JwtProofOfPossession;
 use crate::vc::pop::ProofOfPossession;
 use crate::vc::{pop, Claims, Credential, VCFormat};
 use async_trait::async_trait;
-use oid4vci::openidconnect;
 use snafu::{ensure, ResultExt};
 use std::marker::PhantomData;
 use std::str::FromStr;
@@ -85,7 +84,7 @@ where
         let (hld_did, hld_key) = match pop_fmt {
             pop::Format::Jwt => JwtProofOfPossession::verify(
                 proof,
-                openidconnect::Nonce::new(nonce.secret().to_owned()),
+                nonce,
                 pop::VerifyOptions {
                     cred_iss_id: self.metadata.issuer_id.clone(),
                     client_id: None,

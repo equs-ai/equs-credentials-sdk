@@ -1,5 +1,4 @@
 use async_trait::async_trait;
-use oid4vci::openidconnect;
 use snafu::ResultExt;
 use std::collections::HashMap;
 use std::marker::PhantomData;
@@ -71,7 +70,7 @@ where
             pop::Format::Jwt => JwtProofOfPossession::generate(
                 &did_url,
                 key,
-                openidconnect::Nonce::new(nonce.secret().to_owned()),
+                nonce,
                 pop::GenerateOptions {
                     cred_iss_id: credential_offer.issuer_id.clone(),
                     client_id: None,
@@ -152,12 +151,10 @@ where
     )]
     async fn create_presentation_auto(
         &self,
-        nonce: &str,
+        nonce: &Nonce,
         verifier_id: &str,
         presentation_input: &PresentationInput,
     ) -> Result<Presentation> {
-        trace!(%nonce, ?presentation_input);
-
         let credentials = self.find_vcs_for_presentation(presentation_input).await?;
         let selected = credentials
             .first()
@@ -200,28 +197,21 @@ where
     )]
     async fn create_presentation(
         &self,
-        nonce: &str,
+        nonce: &Nonce,
         verifier_id: &str,
         presentation_input: &PresentationInput,
         cred_entry: &CredentialEntry,
     ) -> Result<Presentation> {
-        trace!(%nonce, ?presentation_input, ?cred_entry);
-
         let key = self.kms.get(&cred_entry.kid).await.context(KMSSnafu)?;
 
         let presentation = match &cred_entry.credential {
             Credential::SdJwt(vc) => {
                 // For now, only top level supported
                 let disclosures = Self::resolve_disclosures(presentation_input);
-                let vp = SdJwtAPI::create_vp(
-                    vc,
-                    key,
-                    openidconnect::Nonce::new(nonce.into()),
-                    verifier_id,
-                    VPMetadata { disclosures },
-                )
-                .await
-                .context(VCSnafu)?;
+                let vp =
+                    SdJwtAPI::create_vp(vc, key, nonce, verifier_id, VPMetadata { disclosures })
+                        .await
+                        .context(VCSnafu)?;
 
                 Presentation::SdJwtVp(vp)
             }

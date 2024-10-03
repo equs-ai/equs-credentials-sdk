@@ -1,6 +1,5 @@
 use async_trait::async_trait;
 use jsonwebtoken::{DecodingKey, Header};
-use oid4vci::openidconnect::Nonce;
 use sd_jwt_rs::resolver::KeyResolver;
 use sd_jwt_rs::{
     ClaimsForSelectiveDisclosureStrategy, SDJWTHolder, SDJWTIssuer, SDJWTSerializationFormat,
@@ -17,6 +16,7 @@ use tracing::{instrument, trace, Level};
 use crate::crypto::{Key, Signer};
 use crate::did::universal::UniversalResolver;
 use crate::did::{DIDDoc, DIDResolver, VerificationMethodMap, DIDURL};
+use crate::nonce::Nonce;
 use crate::utils;
 use crate::utils::b64;
 use crate::utils::serde::Helpers;
@@ -404,7 +404,7 @@ impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata, Value> for Sd
     async fn create_vp<S>(
         credential: &Credential,
         holder_signer: S,
-        nonce: Nonce,
+        nonce: &Nonce,
         verifier_id: &str,
         metadata: VPMetadata,
     ) -> Result<Presentation>
@@ -465,7 +465,7 @@ impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata, Value> for Sd
     )]
     async fn verify_vp(
         presentation: &Presentation,
-        nonce: Nonce,
+        nonce: &Nonce,
         verifier_id: &str,
         _opts: VerifyOptions,
     ) -> Result<Value> {
@@ -495,12 +495,13 @@ mod tests {
     use crate::did::didkey::DIDKey;
     use crate::did::{DIDResolver, DIDURL};
     use crate::inmem::kms::LocalKms;
+    use crate::inmem::nonce::LocalNonceGenerator;
     use crate::kms::{CreateOptions, KeyHandle, KeyType, Kms};
+    use crate::nonce::{Nonce, NonceGenerator};
     use crate::utils::serde::Helpers;
     use crate::utils::test_utils::{create_did_url_and_key_handle, no_jwk_key};
     use crate::vc::formats::sd_jwt_vc::{Claims, Credential, SdJwtAPI, VCMetadata, VPMetadata};
     use crate::vc::formats::{Error, HasClaims, HasCredential, VerifyOptions, API};
-    use oid4vci::openidconnect::Nonce;
     use rstest::rstest;
     use serde_json::json;
     use std::str::FromStr;
@@ -534,11 +535,11 @@ mod tests {
         assert_eq!(claims.get("iss").unwrap(), &iss_did_url.did);
         assert_eq!(claims.get("vct").unwrap(), "https://issuer.net/cred_schema");
 
-        let nonce = Nonce::new_random();
+        let nonce = random_nonce().await;
         let vp = SdJwtAPI::create_vp(
             &vc,
             hld_kh.clone(),
-            nonce.clone(),
+            &nonce,
             "verifier-id",
             sample_vp_metadata(),
         )
@@ -548,7 +549,7 @@ mod tests {
         let vc_from_vp = vp.get_credential().unwrap();
         SdJwtAPI::verify_signature(&vc_from_vp, &iss_jwk).unwrap();
 
-        let disclosed = SdJwtAPI::verify_vp(&vp, nonce.clone(), "verifier-id", VerifyOptions {})
+        let disclosed = SdJwtAPI::verify_vp(&vp, &nonce, "verifier-id", VerifyOptions {})
             .await
             .unwrap();
         let disclosed = disclosed.as_object().unwrap();
@@ -627,11 +628,10 @@ mod tests {
         let kms = LocalKms::new();
         let (hld_did_url, hld_kh) = create_did_url_and_key_handle(&kms, KeyType::P256).await;
 
-        let nonce = Nonce::new_random();
         let res = SdJwtAPI::create_vp(
             &"not-a-valid-sd-jwt".to_string(),
             hld_kh,
-            nonce,
+            &random_nonce().await,
             "verifier-id",
             sample_vp_metadata(),
         )
@@ -645,11 +645,10 @@ mod tests {
         let kms = LocalKms::new();
         let (vc, hld_kh) = sample_sd_jwt_vc_with_hld_kh().await;
 
-        let nonce = Nonce::new_random();
         let res = SdJwtAPI::create_vp(
             &vc,
             hld_kh,
-            nonce,
+            &random_nonce().await,
             "verifier-id",
             VPMetadata {
                 disclosures: json!({
@@ -667,10 +666,9 @@ mod tests {
 
     #[tokio::test]
     async fn sd_jwt_verify_vp_fails_on_invalid_vp() {
-        let nonce = Nonce::new_random();
         let res = SdJwtAPI::verify_vp(
             &"not-a-valid-vp".to_string(),
-            nonce.clone(),
+            &random_nonce().await,
             "verifier-id",
             VerifyOptions {},
         )
@@ -689,14 +687,14 @@ mod tests {
             .await
             .unwrap();
 
-        let nonce = Nonce::new_random();
+        let nonce = random_nonce().await;
         // VP can be generated using another signature
-        let vp = SdJwtAPI::create_vp(&vc, kh, nonce.clone(), "verifier-id", sample_vp_metadata())
+        let vp = SdJwtAPI::create_vp(&vc, kh, &nonce, "verifier-id", sample_vp_metadata())
             .await
             .unwrap();
 
         // But Verifier should deny it
-        let res = SdJwtAPI::verify_vp(&vp, nonce.clone(), "verifier-id", VerifyOptions {}).await;
+        let res = SdJwtAPI::verify_vp(&vp, &nonce, "verifier-id", VerifyOptions {}).await;
 
         assert!(matches!(res.err(), Some(Error::Verifying { .. })));
     }
@@ -750,6 +748,10 @@ mod tests {
         )
         .await
         .unwrap()
+    }
+
+    async fn random_nonce() -> Nonce {
+        LocalNonceGenerator::default().generate().await.unwrap()
     }
 
     fn sample_claims() -> Claims {

@@ -8,9 +8,10 @@ use agent_sdk::kms::Kms;
 use agent_sdk::storage::Storage;
 use agent_sdk::vc::core::KeyMetadata;
 
+use agent_sdk::inmem::nonce::LocalNonceGenerator;
 use agent_sdk::vc::oid4vp::{
-    auth_request_as_url, AuthorizationResponse, AuthorizationUrlType, Nonce,
-    PresentationDefinition, PresentationSession,
+    auth_request_as_url, AuthorizationResponse, AuthorizationUrlType, PresentationDefinition,
+    PresentationSession,
 };
 use agent_sdk::vc::{oid4vp, DefaultPresentationBuilder, PresentationBuilder};
 use reqwest::Url;
@@ -80,11 +81,7 @@ async fn presentation_request_uri(state: web::Data<AppState>) -> HttpResponse {
     // Verifier may build a custom presentation definition depending on the needs of verification
     let (auth_req, session) = state
         .verifier
-        .create_authorization_request(
-            &default_presentation_definition(),
-            &Nonce::from("nOnCe"),
-            response_uri,
-        )
+        .create_authorization_request(&default_presentation_definition(), response_uri)
         .await
         .unwrap();
 
@@ -152,10 +149,11 @@ fn auth_resp_from_submitted_form(
 async fn verifier() -> impl oid4vp::Verifier {
     println!("Initializing verifier...");
     let kms = LocalKms::new();
+    let nonce_gen = LocalNonceGenerator::default();
     // In the real service these should be generated beforehand/taken from configuration/persistence
     let (did, key_metadata) = create_did_and_key_metadata(&kms).await;
 
-    let verifier = oid4vp::VerifierBuilder::new(kms, key_metadata, did)
+    let verifier = oid4vp::VerifierBuilder::new(kms, nonce_gen, key_metadata, did)
         .build()
         .await
         .unwrap();
