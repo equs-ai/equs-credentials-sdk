@@ -4,13 +4,14 @@ use agent_sdk::inmem::kms::LocalKms;
 use agent_sdk::inmem::vault::InMemVault;
 use agent_sdk::kms;
 use agent_sdk::kms::Kms;
+use agent_sdk::nonce::{Nonce, NonceData};
 use agent_sdk::vault::CredentialEntry;
 use agent_sdk::vc::core::KeyMetadata;
 use agent_sdk::vc::metadata::{CredentialMetadataProcessor, DefaultMetadataProcessor};
+use agent_sdk::vc::oid4vci::Holder as HolderVci;
 use agent_sdk::vc::oid4vci::{
     CredentialOffer, CredentialResponseResolved, CredentialResult, IssuerDiscovery, TokenResponse,
 };
-use agent_sdk::vc::oid4vci::{Holder as HolderVci, Nonce};
 use agent_sdk::vc::oid4vp::{AuthorizationResponseMetadata, ResolvedAuthRequest};
 use agent_sdk::vc::oid4vp::{CredentialMapping, Holder as HolderVp};
 use agent_sdk::vc::HasClaims;
@@ -19,6 +20,7 @@ use oauth2::{AccessToken, TokenResponse as _TokenResponse};
 use reqwest::Url;
 use std::io;
 use std::io::Write;
+use time::OffsetDateTime;
 
 const CRED_DEF_ID_1: &str = "SD_JWT_cred_1";
 const CRED_DEF_ID_2: &str = "SD_JWT_cred_2";
@@ -53,7 +55,15 @@ async fn run_issuance_flow(holder: impl HolderVci, kms: LocalKms) {
 
     // In most cases there will be no nonce attached to the `token_response`
     // Holder will automatically resolve it and re-request a new nonce
-    let mut nonce = token_resp.extra_fields().clone().c_nonce;
+    let nonce = token_resp
+        .extra_fields()
+        .clone()
+        .c_nonce
+        .map(|n| NonceData {
+            value: Nonce::new(n.secret().as_bytes()),
+            created: OffsetDateTime::now_utc(),
+            expires_in: None,
+        });
 
     // In the real service these should be generated beforehand/taken from configuration/persistence
     let (_, key_metadata) = create_did_and_key_metadata(&kms).await;
@@ -62,20 +72,19 @@ async fn run_issuance_flow(holder: impl HolderVci, kms: LocalKms) {
         &holder,
         CRED_DEF_ID_1,
         token_resp.access_token(),
-        nonce,
+        nonce.as_ref(),
         key_metadata,
     )
     .await;
 
     // For subsequent requests to the Issuer, Holder must reuse the nonce from the previous response
-    nonce = resp.nonce_data.map(|d| d.nonce);
     let (_, key_metadata) = create_did_and_key_metadata(&kms).await;
 
     let _ = request_credential(
         &holder,
         CRED_DEF_ID_2,
         token_resp.access_token(),
-        nonce,
+        resp.nonce_data.as_ref(),
         key_metadata,
     )
     .await;
@@ -87,7 +96,7 @@ async fn request_credential(
     holder: &impl HolderVci,
     cred_def_id: &str,
     token: &AccessToken,
-    nonce: Option<Nonce>,
+    nonce: Option<&NonceData>,
     key_metadata: KeyMetadata,
 ) -> CredentialResponseResolved {
     println!(

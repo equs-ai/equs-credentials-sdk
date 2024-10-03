@@ -42,7 +42,6 @@ async-rwlock = "1.3.0"
 tracing = { version = "0.1.40", features = ["attributes", "release_max_level_warn"] }
 snafu = "0.8.4"
 
-
 [dev-dependencies]
 serde_urlencoded = "0.7.1"
 tokio = { version = "1.25.0", features = ["macros"] }

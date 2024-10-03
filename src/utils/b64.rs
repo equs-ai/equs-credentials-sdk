@@ -6,8 +6,8 @@ use tracing::{instrument, Level};
     level = Level::TRACE,
     ret(),
 )]
-pub fn encode(vec: Vec<u8>) -> String {
-    URL_SAFE_NO_PAD.encode(vec.as_slice())
+pub fn encode(vec: &[u8]) -> String {
+    URL_SAFE_NO_PAD.encode(vec)
 }
 
 #[instrument(
@@ -28,7 +28,7 @@ mod tests {
 
     #[test]
     fn encode_works_correctly() {
-        let encoded = encode(PAYLOAD_SRC.as_bytes().to_vec());
+        let encoded = encode(PAYLOAD_SRC.as_bytes());
 
         assert_eq!(encoded, PAYLOAD_B64);
     }

@@ -1,10 +1,12 @@
 pub mod fixtures {
-    use crate::vc::oid4vci::{CredDefMetadata, CredentialRequest, CredentialResponse, Nonce};
+    use crate::nonce::{Nonce, NonceData};
+    use crate::vc::oid4vci::{CredDefMetadata, CredentialRequest, CredentialResponse};
     use crate::vc::Claims;
     use oauth2::AccessToken;
     use oid4vci::core::metadata::IssuerMetadata;
     use oid4vci::metadata::AuthorizationMetadata;
     use serde_json::{json, Value};
+    use time::OffsetDateTime;
 
     pub const ISSUER_URL: &str = "https://issuer-backend.com";
     pub const AUTH_URL: &str = "https://authz-backend.com";
@@ -274,8 +276,12 @@ pub mod fixtures {
         oauth2::AccessToken::new(ACCESS_TOKEN.to_string())
     }
 
-    pub fn sample_nonce() -> Nonce {
-        serde_json::from_value(json!(NONCE)).unwrap()
+    pub fn sample_nonce() -> NonceData {
+        NonceData {
+            value: Nonce(NONCE.to_owned()),
+            created: OffsetDateTime::now_utc(),
+            expires_in: None,
+        }
     }
 
     pub fn sample_credential_request() -> CredentialRequest {

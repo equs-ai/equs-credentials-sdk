@@ -14,6 +14,7 @@ use agent_sdk::vc::oid4vci::{
     CredentialRequest, IssuanceSession, IssuerMetadata,
 };
 
+use agent_sdk::inmem::nonce::LocalNonceGenerator;
 use agent_sdk::vc::oid4vci;
 use keycloak::{KeycloakAdmin, KeycloakAdminToken};
 use reqwest::Url;
@@ -191,12 +192,13 @@ async fn get_user_attributes(cred_def: &CredDefMetadata) -> Result<Value, Error>
 async fn issuer() -> impl oid4vci::Issuer {
     println!("Initializing issuer...");
     let kms = LocalKms::new();
+    let nonce_gen = LocalNonceGenerator::default();
     // In the real service these should be generated beforehand/taken from configuration/persistence
     let (_, key_metadata) = create_did_and_key_metadata(&kms).await;
 
     let issuer_metadata = sample_issuer_metadata(SERVER_URL, AUTH_SRV_URL);
 
-    let issuer = oid4vci::IssuerBuilder::new(kms, issuer_metadata, key_metadata)
+    let issuer = oid4vci::IssuerBuilder::new(kms, nonce_gen, issuer_metadata, key_metadata)
         .token_validation_introspect(
             Url::parse("http://localhost:8080/idp/realms/pid-issuer-realm/protocol/openid-connect/token/introspect").unwrap(),
             Some(format!("Basic {}", "cGlkLWlzc3Vlci1zcnY6eklLQVY5RElJSWFKQ3pIQ1ZCUGx5U2dVOEtnWTY4VTI=")),

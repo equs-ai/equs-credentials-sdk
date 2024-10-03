@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use oid4vci::openidconnect::Nonce;
+use oid4vci::openidconnect;
 use snafu::ResultExt;
 use std::collections::HashMap;
 use std::marker::PhantomData;
@@ -8,6 +8,7 @@ use tracing::{debug, instrument, trace, Level};
 
 use crate::crypto::Alg;
 use crate::did::DIDURL;
+use crate::nonce::Nonce;
 use crate::vault::{CredentialEntry, FindCriteria};
 use crate::vc::core::{
     CredentialOffer, CredentialRequest, CredentialRequestData, Holder, HolderMetadata, KeyMetadata,
@@ -53,10 +54,10 @@ where
     async fn request_credential(
         &self,
         credential_offer: &CredentialOffer,
-        nonce: &str,
+        nonce: &Nonce,
         key_metadata: &KeyMetadata,
     ) -> Result<CredentialRequest> {
-        trace!(?credential_offer, %nonce);
+        trace!(?credential_offer, ?nonce);
 
         let supported_proofs = match &credential_offer.content {
             CredentialOfferContent::CredDef(cred_def) => &cred_def.supported_proofs,
@@ -70,7 +71,7 @@ where
             pop::Format::Jwt => JwtProofOfPossession::generate(
                 &did_url,
                 key,
-                Nonce::new(nonce.into()),
+                openidconnect::Nonce::new(nonce.secret().to_owned()),
                 pop::GenerateOptions {
                     cred_iss_id: credential_offer.issuer_id.clone(),
                     client_id: None,
@@ -215,7 +216,7 @@ where
                 let vp = SdJwtAPI::create_vp(
                     vc,
                     key,
-                    Nonce::new(nonce.into()),
+                    openidconnect::Nonce::new(nonce.into()),
                     verifier_id,
                     VPMetadata { disclosures },
                 )

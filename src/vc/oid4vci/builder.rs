@@ -1,4 +1,5 @@
 use crate::http::{HttpClient, HttpError, HttpSnafu};
+use crate::nonce::NonceGenerator;
 use crate::reqwest::ReqwestClient;
 use crate::vc::core::KeyMetadata;
 use crate::vc::oid4vci as api;
@@ -57,11 +58,12 @@ pub enum IssuerDiscovery {
 }
 
 /// A builder for instantiating `oid4vci` `Issuer`.
-pub struct IssuerBuilder<KH, KMS, HC>
+pub struct IssuerBuilder<KH, KMS, HC, NG>
 where
     KH: kms::KeyHandle,
     KMS: kms::Kms<KH>,
     HC: HttpClient,
+    NG: NonceGenerator,
 {
     // data
     issuer_metadata: api::IssuerMetadata,
@@ -72,20 +74,23 @@ where
     // services
     kms: KMS,
     http_client: Result<HC, HttpError>,
+    nonce_generator: NG,
 
     _marker: PhantomData<KH>,
 }
 
-impl<KH, KMS> IssuerBuilder<KH, KMS, ReqwestClient>
+impl<KH, KMS, NG> IssuerBuilder<KH, KMS, ReqwestClient, NG>
 where
     KH: kms::KeyHandle,
     KMS: kms::Kms<KH>,
+    NG: NonceGenerator,
 {
     /// Returns a new `Builder` initialized with defaults.
     ///
     /// # Arguments
     ///
     /// * `kms` - an inner KMS.
+    /// * `nonce_generator` - a nonce generator.
     /// * `issuer_metadata` - an `IssuerMetadata`.
     /// * `key_metadata` - a default `KeyMetadata` with `DIDURL` and `KID` to be used for signing operations.
     ///    If you want to specify a dedicated `KeyMedata` per `credential_configuration_id`, please
@@ -101,9 +106,14 @@ where
     /// A new builder.
     #[instrument(
         level = Level::TRACE,
-        skip(kms),
+        skip(kms, nonce_generator),
     )]
-    pub fn new(kms: KMS, issuer_metadata: api::IssuerMetadata, key_metadata: KeyMetadata) -> Self {
+    pub fn new(
+        kms: KMS,
+        nonce_generator: NG,
+        issuer_metadata: api::IssuerMetadata,
+        key_metadata: KeyMetadata,
+    ) -> Self {
         let http_client = ReqwestClient::new(false, true).map_err(|e| {
             HttpSnafu {
                 details: e.to_string(),
@@ -118,6 +128,7 @@ where
             key_metadata,
             kms,
             http_client,
+            nonce_generator,
             token_params: None,
             cred_conf_ids_with_key_metadata: Default::default(),
             _marker: Default::default(),
@@ -125,11 +136,12 @@ where
     }
 }
 
-impl<KH, KMS, HC> IssuerBuilder<KH, KMS, HC>
+impl<KH, KMS, HC, NG> IssuerBuilder<KH, KMS, HC, NG>
 where
     KH: kms::KeyHandle,
     KMS: kms::Kms<KH>,
     HC: HttpClient,
+    NG: NonceGenerator,
 {
     /// Use a specific `HttpClient`.
     ///
@@ -143,7 +155,7 @@ where
     pub fn with_http_client<HC_: HttpClient>(
         self,
         http_client: HC_,
-    ) -> IssuerBuilder<KH, KMS, HC_> {
+    ) -> IssuerBuilder<KH, KMS, HC_, NG> {
         IssuerBuilder {
             http_client: Ok(http_client),
             // copied
@@ -151,6 +163,7 @@ where
             key_metadata: self.key_metadata,
             token_params: self.token_params,
             kms: self.kms,
+            nonce_generator: self.nonce_generator,
             cred_conf_ids_with_key_metadata: Default::default(),
             _marker: Default::default(),
         }
@@ -251,7 +264,12 @@ where
             _ => None,
         };
 
-        let issuer = IssuerService::new(self.issuer_metadata, inner, token_validation);
+        let issuer = IssuerService::new(
+            self.issuer_metadata,
+            inner,
+            self.nonce_generator,
+            token_validation,
+        );
 
         info!("oid4vci-issuer service is initialized");
 
@@ -459,6 +477,7 @@ mod tests {
     use super::*;
     use crate::http::MockHttpClient;
     use crate::inmem::kms::LocalKms;
+    use crate::inmem::nonce::LocalNonceGenerator;
     use crate::inmem::vault::InMemVault;
     use crate::utils::http::test::mock_http_once;
     use crate::utils::test_utils::create_did_and_key_metadata;
@@ -480,12 +499,17 @@ mod tests {
     async fn building_issuer_works() {
         let http_client = MockHttpClient::new();
         let kms = LocalKms::new();
+        let nonce_gen = LocalNonceGenerator::default();
         let (_, key_metadata) = create_did_and_key_metadata(&kms).await;
 
-        let builder =
-            IssuerBuilder::new(kms, SampleIssuerMetadata::with_sdjwtvc_conf(), key_metadata)
-                .token_validation_jwks(Url::parse("http://issuer.org/certs").unwrap())
-                .with_http_client(http_client);
+        let builder = IssuerBuilder::new(
+            kms,
+            nonce_gen,
+            SampleIssuerMetadata::with_sdjwtvc_conf(),
+            key_metadata,
+        )
+        .token_validation_jwks(Url::parse("http://issuer.org/certs").unwrap())
+        .with_http_client(http_client);
 
         let result = builder.build().await;
 

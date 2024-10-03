@@ -5,6 +5,7 @@ use std::fmt::Debug;
 
 use crate::crypto;
 use crate::kms::Error as KmsError;
+use crate::nonce::Nonce;
 use crate::vault::{CredentialEntry, Error as VaultError};
 use crate::vc::{
     formats::Error as VCError, pop, pop::Error as ProofError, Claims, Credential,
@@ -273,7 +274,7 @@ pub trait Issuer: Send + Sync {
         &self,
         credential_request: &CredentialRequest,
         claims: &Claims,
-        nonce: &str,
+        nonce: &Nonce,
     ) -> Result<Credential>;
 }
 
@@ -307,7 +308,7 @@ pub trait Holder: Send + Sync {
     async fn request_credential(
         &self,
         credential_offer: &CredentialOffer,
-        nonce: &str,
+        nonce: &Nonce,
         key_metadata: &KeyMetadata,
     ) -> Result<CredentialRequest>;
 
