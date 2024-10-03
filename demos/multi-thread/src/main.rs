@@ -1,17 +1,20 @@
+use actix_web::cookie::time::OffsetDateTime;
 use actix_web::http::header::Header;
 use actix_web::{web, App, Error, HttpRequest, HttpResponse, HttpServer};
 use actix_web_httpauth::headers::authorization::{Authorization, Bearer};
 use agent_sdk::did::didkey::DIDKey;
 use agent_sdk::did::{DIDResolver, DID};
 use agent_sdk::inmem::kms::LocalKms;
+use agent_sdk::inmem::nonce::LocalNonceGenerator;
 use agent_sdk::inmem::vault::InMemVault;
 use agent_sdk::kms;
 use agent_sdk::kms::Kms;
+use agent_sdk::nonce::{Nonce, NonceData};
 use agent_sdk::vc::core::KeyMetadata;
 use agent_sdk::vc::oid4vci;
 use agent_sdk::vc::oid4vci::{
     AuthorizationMetadata, CredentialRequest, CredentialResponseResolved, CredentialResult,
-    IssuanceSession, IssuerDiscovery, IssuerMetadata, Nonce, NonceData,
+    IssuanceSession, IssuerDiscovery, IssuerMetadata,
 };
 use agent_sdk::vc::oid4vci::{Holder, Issuer};
 use oauth2::AccessToken;
@@ -90,11 +93,7 @@ async fn issue_endpoint(
     });
 
     let mut dummy_session = IssuanceSession {
-        nonce: Some(NonceData {
-            nonce: Nonce::new(DUMMY_NONCE.into()),
-            expires_in: None,
-            created: None,
-        }),
+        nonce: Some(sample_nonce()),
         notification_id: None,
         transaction_id: None,
     };
@@ -114,9 +113,10 @@ async fn issue_endpoint(
 
 async fn oid4vci_issuer(issuer_metadata: IssuerMetadata) -> impl Issuer {
     let kms = LocalKms::new();
+    let nonce_gen = LocalNonceGenerator::default();
     let (_, key_metadata) = create_did_and_key_metadata(&kms).await;
 
-    oid4vci::IssuerBuilder::new(kms, issuer_metadata, key_metadata)
+    oid4vci::IssuerBuilder::new(kms, nonce_gen, issuer_metadata, key_metadata)
         .build()
         .await
         .unwrap()
@@ -164,7 +164,7 @@ async fn run_holder() -> Result<(), String> {
         .request_credential(
             &dummy_token,
             "SD_JWT_cred",
-            Some(Nonce::new(DUMMY_NONCE.into())),
+            Some(&sample_nonce()),
             &key_metadata,
         )
         .await;
@@ -210,6 +210,14 @@ async fn create_did_and_key_metadata(kms: &LocalKms) -> (DID, KeyMetadata) {
     let vm = didkey.resolve_verification_method(&did).await.unwrap().id;
 
     (did, KeyMetadata { kid, did_url: vm })
+}
+
+fn sample_nonce() -> NonceData {
+    NonceData {
+        value: Nonce::new(DUMMY_NONCE.as_bytes()),
+        created: OffsetDateTime::now_utc(),
+        expires_in: None,
+    }
 }
 
 fn sample_issuer_metadata(iss_url: &str) -> IssuerMetadata {

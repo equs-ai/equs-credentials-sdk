@@ -2,10 +2,13 @@ use oid4vci::credential::RequestError;
 use serde::{Deserialize, Serialize};
 use snafu::Snafu;
 use std::fmt::Debug;
+use time::Duration;
 use tracing::{instrument, Level};
 
 use crate::http::HttpError;
-use crate::vc::oid4vci::{ErrorType, Nonce};
+use crate::nonce::Nonce;
+use crate::utils::serde::{duration_to_int, int_to_duration};
+use crate::vc::oid4vci::ErrorType;
 
 /// A protocol-specific `oid4vci` error response.
 ///
@@ -31,8 +34,12 @@ pub struct ProtocolError {
     error_description: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     c_nonce: Option<Nonce>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    c_nonce_expires_in: Option<i64>,
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "int_to_duration",
+        serialize_with = "duration_to_int"
+    )]
+    c_nonce_expires_in: Option<Duration>,
 }
 
 impl Debug for ProtocolError {
@@ -48,12 +55,16 @@ impl ProtocolError {
         self.c_nonce.as_ref()
     }
 
+    pub fn nonce_expiration(&self) -> Option<&Duration> {
+        self.c_nonce_expires_in.as_ref()
+    }
+
     pub fn error_type(&self) -> &ErrorType {
         &self.error
     }
 }
 
-impl ProtocolSnafu<ErrorType, Option<String>, Option<Nonce>, Option<i64>> {
+impl ProtocolSnafu<ErrorType, Option<String>, Option<Nonce>, Option<Duration>> {
     pub fn new(error: ErrorType, description: String) -> Self {
         Self {
             error,
@@ -65,15 +76,15 @@ impl ProtocolSnafu<ErrorType, Option<String>, Option<Nonce>, Option<i64>> {
 
     pub fn new_with_nonce(
         error: ErrorType,
-        description: String,
-        nonce: Nonce,
-        nonce_expires_in: Option<i64>,
+        description: &str,
+        nonce: &Nonce,
+        nonce_expires_in: &Option<Duration>,
     ) -> Self {
         Self {
             error,
-            error_description: Some(description),
-            c_nonce: Some(nonce),
-            c_nonce_expires_in: nonce_expires_in,
+            error_description: Some(description.to_owned()),
+            c_nonce: Some(nonce.to_owned()),
+            c_nonce_expires_in: nonce_expires_in.to_owned(),
         }
     }
 }
@@ -92,12 +103,12 @@ impl TryFrom<RequestError<HttpError>> for ProtocolError {
                 serde_json::from_slice::<ProtocolError>(body.as_slice()).map_err(|_| value)
             }
             RequestError::ProofVerification(body) => {
-                let protocol_error = match (&body.c_nonce, &body.c_nonce_expires_in) {
-                    (Some(nonce), Some(expires_in)) => ProtocolSnafu::new_with_nonce(
+                let protocol_error = match &body.c_nonce {
+                    Some(nonce) => ProtocolSnafu::new_with_nonce(
                         ErrorType::InvalidProof,
-                        body.error_description.to_owned(),
-                        nonce.to_owned(),
-                        Some(expires_in.to_owned()),
+                        &body.error_description,
+                        &Nonce(nonce.secret().to_owned()),
+                        &body.c_nonce_expires_in.map(Duration::seconds),
                     )
                     .build(),
                     _ => ProtocolSnafu::new(

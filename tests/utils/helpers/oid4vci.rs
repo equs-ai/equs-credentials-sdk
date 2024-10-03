@@ -14,10 +14,10 @@ use crate::utils::fixtures::{
     sample_authorization_metadata, sample_authz_url, sample_issuer_metadata, sample_issuer_url,
 };
 
+use super::create_did_keymetadata_keyhandle;
+use agent_sdk::inmem::nonce::LocalNonceGenerator;
 use oid4vci::core::metadata::IssuerMetadata;
 use url::Url;
-
-use super::create_did_keymetadata_keyhandle;
 
 pub async fn build_holder(
     credential_offer: CredentialOfferParams,
@@ -44,9 +44,11 @@ pub async fn build_issuer(
     introspect_ep: Option<Url>,
 ) -> impl Issuer {
     let kms = LocalKms::new();
+    let nonce_gen = LocalNonceGenerator::default();
     let (_, key_metadata, _) = create_did_keymetadata_keyhandle(&kms).await;
 
-    let mut builder = IssuerBuilder::new(kms, metadata, key_metadata).with_http_client(http_client);
+    let mut builder =
+        IssuerBuilder::new(kms, nonce_gen, metadata, key_metadata).with_http_client(http_client);
 
     if let Some(ep) = introspect_ep {
         builder = builder.token_validation_introspect(ep, None);

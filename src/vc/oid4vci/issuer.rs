@@ -1,14 +1,16 @@
 use crate::http::HttpClient;
+use crate::nonce::{Nonce, NonceData, NonceGenerator};
 use crate::vc;
 use crate::vc::core::{Proof as AsdkProof, Proof};
 use crate::vc::oid4vci::internal_error::{
-    ClaimsValidationSnafu, NoScopeSetSnafu, ParseSnafu, UrlParseSnafu, VCSnafu,
+    ClaimsValidationSnafu, NoScopeSetSnafu, NonceGenerationSnafu, ParseSnafu, UrlParseSnafu,
+    VCSnafu,
 };
 use crate::vc::oid4vci::protocol_error::ProtocolSnafu;
 use crate::vc::oid4vci::token_validation::{ByJwks, Introspect};
 use crate::vc::oid4vci::{
     CredDefMetadata, CredentialOfferParams, CredentialRequest, CredentialResponse, IssuanceSession,
-    IssuerMetadata, Nonce, NonceData,
+    IssuerMetadata,
 };
 use crate::vc::{oid4vci as api, Claims, HasVCFormat};
 use async_trait::async_trait;
@@ -20,12 +22,12 @@ use oid4vci::credential::{ErrorType, ResponseEnum};
 use oid4vci::credential_offer::{
     CredentialOfferFormat, CredentialOfferGrants, CredentialOfferParameters,
 };
+use oid4vci::openidconnect;
 use oid4vci::proof_of_possession::Proof as SpruceProof;
 use serde_json::{Map, Value};
 use snafu::{ensure, ResultExt};
 use ssi::jwt::decode_unverified;
-use std::ops::Add;
-use time::ext::NumericalDuration;
+use time::Duration;
 use tracing::{debug, error, info, instrument, trace, Level};
 use url::Url;
 use uuid::Uuid;
@@ -45,34 +47,39 @@ pub enum TokenValidation<HC: HttpClient> {
     ByJwks(ByJwks<HC>),
 }
 
-pub struct IssuerService<IS, HC>
+pub struct IssuerService<IS, HC, NG>
 where
     IS: vc::core::Issuer,
     HC: HttpClient,
+    NG: NonceGenerator,
 {
     issuer: IS,
+    nonce_generator: NG,
     issuer_metadata: IssuerMetadata,
     token_validation: Option<TokenValidation<HC>>,
 }
 
-impl<IS, HC> IssuerService<IS, HC>
+impl<IS, HC, NG> IssuerService<IS, HC, NG>
 where
     IS: vc::core::Issuer,
     HC: HttpClient,
+    NG: NonceGenerator,
 {
     #[instrument(
         level = Level::TRACE,
-        skip(issuer, token_validation)
+        skip(issuer, nonce_generator, token_validation)
     )]
     pub fn new(
         issuer_metadata: IssuerMetadata,
         issuer: IS,
+        nonce_generator: NG,
         token_validation: Option<TokenValidation<HC>>,
     ) -> Self {
         info!("oid4vci-issuer service is initialized");
 
         Self {
             issuer,
+            nonce_generator,
             issuer_metadata,
             token_validation,
         }
@@ -80,10 +87,11 @@ where
 }
 
 #[async_trait]
-impl<IS, HC> api::Issuer for IssuerService<IS, HC>
+impl<IS, HC, NG> api::Issuer for IssuerService<IS, HC, NG>
 where
     IS: vc::core::Issuer,
     HC: HttpClient,
+    NG: NonceGenerator,
 {
     #[instrument(
         level = Level::TRACE,
@@ -160,12 +168,15 @@ where
 
         self.validate_token(token).await?;
 
-        let nonce = self.validate_nonce(session)?.nonce;
+        let nonce = self.validate_nonce(session).await?;
 
-        let proof = cred_request.proof().ok_or_else(|| {
-            self.invalid_proof(session, INVALID_PROOF_ERR_DESC.to_string())
-                .build()
-        })?;
+        let proof = if let Some(proof) = cred_request.proof() {
+            proof
+        } else {
+            self.invalid_proof(session, INVALID_PROOF_ERR_DESC)
+                .await?
+                .fail()?
+        };
 
         let (cred_def_id, cred_def) = self.resolve_cred_def(cred_request)?;
 
@@ -193,19 +204,22 @@ where
 
         let result = self
             .issuer
-            .issue_credential(&cred_req, claims, nonce.secret())
+            .issue_credential(&cred_req, claims, &nonce.value)
             .await;
 
         let cred = match result {
             Err(vc::core::Error::Proof { .. })
             | Err(vc::core::Error::ProofFormatNotSupported { .. }) => self
-                .invalid_proof(session, INVALID_PROOF_ERR_DESC.to_string())
+                .invalid_proof(session, INVALID_PROOF_ERR_DESC)
+                .await?
                 .fail()?,
             _ => result.context(VCSnafu)?,
         };
 
         let mut resp = CredentialResponse::new(ResponseEnum::Immediate(cred.into()));
-        resp = Self::update_cred_resp_and_session_data(resp, session);
+        resp = self
+            .update_cred_resp_and_session_data(resp, session)
+            .await?;
 
         info!("credential is issued");
 
@@ -213,10 +227,11 @@ where
     }
 }
 
-impl<IS, HC> IssuerService<IS, HC>
+impl<IS, HC, NG> IssuerService<IS, HC, NG>
 where
     IS: vc::core::Issuer,
     HC: HttpClient,
+    NG: NonceGenerator,
 {
     #[instrument(
         level = Level::TRACE,
@@ -303,23 +318,19 @@ where
         err(),
         ret(),
     )]
-    fn validate_nonce(&self, session: &mut IssuanceSession) -> Result<NonceData> {
+    async fn validate_nonce(&self, session: &mut IssuanceSession) -> Result<NonceData> {
         match &session.nonce {
-            Some(nonce_data) => {
-                if let (Some(created), Some(expires_in)) =
-                    (nonce_data.created, nonce_data.expires_in)
-                {
-                    let expires = created.add(expires_in.seconds());
-                    ensure!(
-                        time::OffsetDateTime::now_utc() < expires,
-                        self.invalid_proof(session, INVALID_PROOF_ERR_DESC.to_string())
-                    );
-                }
+            Some(nonce) => {
+                ensure!(
+                    !nonce.is_expired(),
+                    self.invalid_proof(session, INVALID_PROOF_ERR_DESC).await?
+                );
 
-                Ok(nonce_data.to_owned())
+                Ok(nonce.to_owned())
             }
             _ => self
-                .invalid_proof(session, INVALID_PROOF_ERR_DESC.to_string())
+                .invalid_proof(session, INVALID_PROOF_ERR_DESC)
+                .await?
                 .fail()?,
         }
     }
@@ -447,47 +458,65 @@ where
         Ok(())
     }
 
+    #[allow(clippy::type_complexity)]
     #[instrument(
         level = Level::TRACE,
         skip(self),
         ret(),
     )]
-    fn invalid_proof(
+    async fn invalid_proof(
         &self,
         session: &mut IssuanceSession,
-        description: String,
-    ) -> ProtocolSnafu<vc::oid4vci::ErrorType, Option<String>, Option<Nonce>, Option<i64>> {
+        description: &str,
+    ) -> Result<
+        ProtocolSnafu<vc::oid4vci::ErrorType, Option<String>, Option<Nonce>, Option<Duration>>,
+    > {
         trace!(?session);
 
-        let nonce_data = NonceData::new_random();
-        session.nonce = Some(nonce_data.clone());
+        let nonce = self
+            .nonce_generator
+            .with_expiration(Duration::seconds(NONCE_EXPIRES_IN))
+            .await
+            .context(NonceGenerationSnafu)?;
+        session.nonce = Some(nonce.clone());
 
-        ProtocolSnafu::new_with_nonce(
+        let protocol_error = ProtocolSnafu::new_with_nonce(
             ErrorType::InvalidProof,
             description,
-            nonce_data.nonce,
-            nonce_data.expires_in,
-        )
+            &nonce.value,
+            &nonce.expires_in,
+        );
+
+        Ok(protocol_error)
     }
 
     #[instrument(
         level = Level::TRACE,
+        skip(self),
         ret(),
     )]
-    fn update_cred_resp_and_session_data(
+    async fn update_cred_resp_and_session_data(
+        &self,
         resp: CredentialResponse,
         session: &mut IssuanceSession,
-    ) -> CredentialResponse {
-        let nonce_data = NonceData::new_random();
-        let notification_id = Uuid::new_v4().to_string();
+    ) -> Result<CredentialResponse> {
+        let nonce = self
+            .nonce_generator
+            .with_expiration(Duration::seconds(NONCE_EXPIRES_IN))
+            .await
+            .context(NonceGenerationSnafu)?;
+        session.nonce = Some(nonce.clone());
 
-        session.nonce = Some(nonce_data.clone());
+        let notification_id = Uuid::new_v4().to_string();
         session.notification_id = Some(notification_id.clone());
         trace!(issuance_session = ?session);
 
-        resp.set_nonce(Some(nonce_data.nonce))
-            .set_nonce_expiration(nonce_data.expires_in)
-            .set_notification_id(Some(notification_id))
+        let resp = resp
+            .set_nonce(Some(openidconnect::Nonce::new(nonce.secret().to_owned())))
+            .set_nonce_expiration(nonce.expires_in.map(|d| d.whole_seconds()))
+            .set_notification_id(Some(notification_id));
+
+        Ok(resp)
     }
 }
 
@@ -525,26 +554,13 @@ impl From<vc::Credential> for CoreProfilesResponse {
     }
 }
 
-impl NonceData {
-    #[instrument(
-        level = Level::TRACE,
-        ret()
-    )]
-    pub(self) fn new_random() -> Self {
-        Self {
-            nonce: Nonce::new_random(),
-            expires_in: Some(NONCE_EXPIRES_IN),
-            created: Some(time::OffsetDateTime::now_utc()),
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     use crate::http::MockHttpClient;
     use crate::inmem::kms::LocalKms;
+    use crate::inmem::nonce::LocalNonceGenerator;
     use crate::utils::http::test::mock_http_req_body;
     use crate::utils::test_utils::create_did_and_key_metadata;
     use crate::vc::oid4vci::metadata::convert_metadata;
@@ -558,6 +574,7 @@ mod tests {
     use api::Issuer;
     use oauth2::http::{Method, StatusCode};
     use serde_json::json;
+    use time::OffsetDateTime;
 
     #[tokio::test]
     async fn issuer_returns_metadata_correctly() {
@@ -720,7 +737,7 @@ mod tests {
 
         let mut session = sample_session_with_nonce();
         let nonce_data = session.nonce.clone().unwrap();
-        let nonce_data_to_check = issuer_service.validate_nonce(&mut session).unwrap();
+        let nonce_data_to_check = issuer_service.validate_nonce(&mut session).await.unwrap();
 
         assert_eq!(nonce_data_to_check, nonce_data);
     }
@@ -799,12 +816,12 @@ mod tests {
 
     fn sample_session_with_nonce() -> IssuanceSession {
         let mut session = IssuanceSession::default();
-
+        let created_time = OffsetDateTime::now_utc().unix_timestamp();
         let nonce_data: NonceData = serde_json::from_value(json!(
             {
-                "nonce": NONCE,
+                "value": NONCE,
                 "expires_in": 86440,
-                "created": null
+                "created": created_time
             }
         ))
         .unwrap();
@@ -820,8 +837,9 @@ mod tests {
     async fn issuer_service(
         http_client: Option<MockHttpClient>,
         token_validation: Option<TokenValidation<MockHttpClient>>,
-    ) -> IssuerService<impl vc::core::Issuer, impl HttpClient> {
+    ) -> IssuerService<impl vc::core::Issuer, impl HttpClient, impl NonceGenerator> {
         let kms = LocalKms::new();
+        let nonce_gen = LocalNonceGenerator::default();
         let introspect = Introspect::new(
             http_client.unwrap_or_default(),
             Url::parse(TOKEN_INTROSPECT_URL).unwrap(),
@@ -835,6 +853,6 @@ mod tests {
 
         let inner = vc::core::IssuerService::new(kms, issuer_metadata_inner);
 
-        IssuerService::new(issuer_metadata, inner, token_validation)
+        IssuerService::new(issuer_metadata, inner, nonce_gen, token_validation)
     }
 }

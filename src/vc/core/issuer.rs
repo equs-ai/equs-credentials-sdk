@@ -1,5 +1,6 @@
 use crate::did::DIDURL;
 use crate::kms;
+use crate::nonce::Nonce;
 use crate::vc::core::{
     AlgNotSupportedSnafu, CredDefNotFoundSnafu, CredentialOfferContent, FormatNotSupportedSnafu,
     InconsistentProtocolDataSnafu, KMSSnafu, ProofFormatNotSupportedSnafu, ProofSnafu, Result,
@@ -15,7 +16,7 @@ use crate::vc::pop::jwt_pop::JwtProofOfPossession;
 use crate::vc::pop::ProofOfPossession;
 use crate::vc::{pop, Claims, Credential, VCFormat};
 use async_trait::async_trait;
-use oid4vci::openidconnect::Nonce;
+use oid4vci::openidconnect;
 use snafu::{ensure, ResultExt};
 use std::marker::PhantomData;
 use std::str::FromStr;
@@ -73,9 +74,9 @@ where
         &self,
         credential_request: &CredentialRequest,
         claims: &Claims,
-        nonce: &str,
+        nonce: &Nonce,
     ) -> Result<Credential> {
-        trace!(?credential_request, ?claims, %nonce);
+        trace!(?credential_request, ?claims, ?nonce);
 
         let cred_def = self.resolve_cred_def_by_request(credential_request)?;
 
@@ -84,7 +85,7 @@ where
         let (hld_did, hld_key) = match pop_fmt {
             pop::Format::Jwt => JwtProofOfPossession::verify(
                 proof,
-                Nonce::new(nonce.into()),
+                openidconnect::Nonce::new(nonce.secret().to_owned()),
                 pop::VerifyOptions {
                     cred_iss_id: self.metadata.issuer_id.clone(),
                     client_id: None,

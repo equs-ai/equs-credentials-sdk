@@ -1,3 +1,4 @@
+use crate::nonce::NonceData;
 use crate::vc::core::KeyMetadata;
 use crate::vc::oid4vci::{metadata, InternalError, ProtocolError};
 use crate::vc::{Claims, Credential, CredentialMetadata};
@@ -22,8 +23,6 @@ pub type CredentialResponse = oid4vci::core::credential::Response;
 pub type TokenResponse = oid4vci::token::Response;
 pub type AuthorizationCodeGrant = oid4vci::credential_offer::AuthorizationCodeGrant;
 pub type ErrorType = oid4vci::credential::ErrorType;
-pub type Nonce = oid4vci::openidconnect::Nonce;
-
 /// A result of the Credential issuance handled by `Holder`
 ///
 /// Enum value `Credential` contains issued [Credential].
@@ -58,14 +57,6 @@ pub struct IssuanceSession {
     pub nonce: Option<NonceData>,
     pub notification_id: Option<String>,
     pub transaction_id: Option<String>,
-}
-
-/// A struct containing nonce and related data.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct NonceData {
-    pub nonce: Nonce,
-    pub expires_in: Option<i64>,
-    pub created: Option<time::OffsetDateTime>,
 }
 
 /// `oid4vci` API common error.
@@ -302,7 +293,7 @@ pub trait Holder: Send + Sync {
         &self,
         token: &AccessToken,
         cred_def_id: &str,
-        nonce: Option<Nonce>,
+        nonce: Option<&NonceData>,
         key_metadata: &KeyMetadata,
     ) -> Result<CredentialResponseResolved>;
 

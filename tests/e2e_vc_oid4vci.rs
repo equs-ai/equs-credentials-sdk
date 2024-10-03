@@ -12,13 +12,13 @@ use oauth2::http::Method;
 use oauth2::http::StatusCode;
 use oauth2::{HttpRequest, HttpResponse, TokenResponse};
 use oid4vci::AuthorizationCodeGrant;
-use oid4vci::Nonce;
 use rstest::rstest;
 use serde_json::json;
 use std::borrow::{Borrow, BorrowMut};
 use std::str;
 use std::sync::Arc;
 use utils::http::HttpClientEmulator;
+use uuid::Uuid;
 
 use utils::fixtures::{
     sample_authz_url, sample_claims, sample_issuer_metadata, sample_issuer_url, ACCESS_TOKEN,
@@ -36,8 +36,8 @@ async fn autorized_code_flow_using_scopes(#[case] validate_token: bool) {
     // Setting up mocks and fixtures
     let issuer_metadata = sample_issuer_metadata();
 
-    let authz_code = Nonce::new_random();
-    let req_uri_code = Nonce::new_random();
+    let authz_code = Uuid::new_v4().to_string();
+    let req_uri_code = Uuid::new_v4().to_string();
     let mut introspect_ep = None;
 
     if validate_token {
@@ -79,9 +79,9 @@ async fn autorized_code_flow_using_scopes(#[case] validate_token: bool) {
             println!("Url {}", url);
 
             assert!(url.to_string().starts_with(AUTHZ_URL));
-            assert!(url.query().unwrap().contains(req_uri_code.secret()));
+            assert!(url.query().unwrap().contains(&req_uri_code));
 
-            authz_code.secret().to_owned()
+            authz_code.to_owned()
         })
         .await
         .unwrap();
@@ -112,7 +112,7 @@ async fn autorized_code_flow_using_scopes(#[case] validate_token: bool) {
         .request_credential(
             token_response.access_token(),
             "SD_JWT_cred_2",
-            nonce_data.map(|d| d.nonce),
+            nonce_data.as_ref(),
             &key_metadata,
         )
         .await
@@ -181,8 +181,8 @@ fn prepare_http_client_for_issuer() -> impl HttpClient {
 }
 
 fn prepare_http_client_for_holder(
-    authz_code: Nonce,
-    req_uri_code: Nonce,
+    authz_code: String,
+    req_uri_code: String,
     issuer: impl Issuer + 'static,
 ) -> impl HttpClient {
     let mut http_client = HttpClientEmulator::new();
@@ -196,10 +196,11 @@ fn prepare_http_client_for_holder(
 
             let resp_body = serde_json::to_value(json!(
                 {
-                    "request_uri": "urn:ietf:params:oauth:request_uri:".to_owned() + req_uri_code.secret(),
+                    "request_uri": "urn:ietf:params:oauth:request_uri:".to_owned() + &req_uri_code,
                     "expires_in": 86400,
                 }
-            )).unwrap();
+            ))
+            .unwrap();
 
             Ok(HttpResponse {
                 status_code: StatusCode::CREATED,
@@ -214,7 +215,7 @@ fn prepare_http_client_for_holder(
         Box::new(move |req| {
             let req_body = str::from_utf8(&req.body).unwrap();
 
-            assert!(req_body.contains(&format!("code={}", authz_code.secret())));
+            assert!(req_body.contains(&format!("code={authz_code}")));
             assert_eq!(req.method, Method::POST);
 
             let resp = json!({

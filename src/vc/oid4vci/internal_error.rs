@@ -1,6 +1,6 @@
 use crate::http::HttpError;
 use crate::vc::oid4vci::metadata;
-use crate::{storage, vault, vc};
+use crate::{nonce, storage, vault, vc};
 use oid4vci::credential::RequestError;
 use oid4vci::openidconnect::DiscoveryError;
 use snafu::{Location, Snafu};
@@ -87,6 +87,12 @@ pub enum InternalError {
         #[snafu(implicit)]
         location: Location,
         source: metadata::Error,
+    },
+    #[snafu(display("Nonce generation error at {location}"))]
+    NonceGeneration {
+        #[snafu(implicit)]
+        location: Location,
+        source: nonce::Error,
     },
 }
 

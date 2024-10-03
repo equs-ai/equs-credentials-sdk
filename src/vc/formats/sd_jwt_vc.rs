@@ -58,7 +58,7 @@ impl<S: Signer> sd_jwt_rs::signer::SDJWTSigner for SignerWrapper<S> {
     async fn sign(&self, message: &[u8]) -> sd_jwt_rs::error::Result<String> {
         let signed = self.signer.sign(message).await;
         signed
-            .map(b64::encode)
+            .map(|v| b64::encode(&v))
             .map_err(|e| SdJwtRsError::SigningError(e.to_string()))
     }
 }

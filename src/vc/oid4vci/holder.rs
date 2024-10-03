@@ -20,9 +20,11 @@ use oid4vci::proof_of_possession::Proof as SpruceProof;
 use oid4vci::token;
 use snafu::{ensure, ResultExt};
 use std::string::ToString;
+use time::{Duration, OffsetDateTime};
 use tracing::{debug, info, instrument, trace, Level};
 
 use crate::http::HttpClient;
+use crate::nonce::{Nonce, NonceData};
 use crate::vc;
 use crate::vc::core::{CredentialOfferContent, KeyMetadata, Proof as AsdkProof};
 use crate::vc::oid4vci::internal_error::{
@@ -30,8 +32,8 @@ use crate::vc::oid4vci::internal_error::{
 };
 use crate::vc::oid4vci::protocol_error::ProtocolSnafu;
 use crate::vc::oid4vci::{
-    metadata, CredDefMetadata, CredentialResponseResolved, CredentialResult, Nonce, NonceData,
-    ProtocolError, TokenResponse,
+    metadata, CredDefMetadata, CredentialResponseResolved, CredentialResult, ProtocolError,
+    TokenResponse,
 };
 use crate::vc::{oid4vci as api, HasVCFormat};
 use crate::vc::{Credential, CredentialMetadata};
@@ -302,7 +304,7 @@ where
         &self,
         token: &AccessToken,
         cred_def_id: &str,
-        nonce: Option<Nonce>,
+        nonce: Option<&NonceData>,
         key_metadata: &KeyMetadata,
     ) -> Result<CredentialResponseResolved> {
         info!("requesting a credential flow is started");
@@ -336,14 +338,14 @@ where
         trace!(credential_offer = ?offer);
 
         let nonce = match nonce {
-            Some(val) => val.secret().to_owned(),
-            None => self.request_nonce(token.clone(), req_base.clone()).await?,
+            Some(val) => val,
+            None => &self.request_nonce(token.clone(), req_base.clone()).await?,
         };
-        trace!(resolved_nonce = %nonce);
+        trace!(resolved_nonce = ?nonce);
 
         let req = self
             .holder
-            .request_credential(offer, &nonce, key_metadata)
+            .request_credential(offer, &nonce.value, key_metadata)
             .await
             .context(VCSnafu)?;
         trace!(resolved_request = ?req);
@@ -492,7 +494,7 @@ where
         &self,
         token: AccessToken,
         cred_req: CoreProfilesRequest,
-    ) -> Result<String> {
+    ) -> Result<NonceData> {
         // TODO: Returning nonce should be optional
         let resp = self
             .client
@@ -506,22 +508,25 @@ where
             Ok(_) => IssuerServiceSnafu {
                 details: "Issuer does not provide a nonce",
             }
-            .fail(),
+            .fail()?,
             Err(err) => {
                 let protocol_error: ProtocolError = err.try_into().context(RequestSnafu)?;
-                protocol_error
-                    .nonce()
-                    .ok_or(
-                        IssuerServiceSnafu {
-                            details: "Providing PoP without nonce is unsupported",
-                        }
-                        .build(),
-                    )
-                    .cloned()
-            }
-        }?;
+                let nonce = protocol_error.nonce().ok_or(
+                    IssuerServiceSnafu {
+                        details: "Providing PoP without nonce is unsupported",
+                    }
+                    .build(),
+                )?;
 
-        Ok(nonce.secret().to_string())
+                NonceData {
+                    value: nonce.to_owned(),
+                    expires_in: protocol_error.nonce_expiration().map(|e| e.to_owned()),
+                    created: OffsetDateTime::now_utc(),
+                }
+            }
+        };
+
+        Ok(nonce)
     }
 
     #[instrument(
@@ -573,9 +578,11 @@ where
     )]
     fn extract_nonce(resp: &oid4vci::core::credential::Response) -> Option<NonceData> {
         resp.c_nonce().map(|nonce| NonceData {
-            nonce: nonce.to_owned(),
-            expires_in: resp.c_nonce_expires_in().cloned(),
-            created: Some(time::OffsetDateTime::now_utc()),
+            value: Nonce(nonce.secret().to_owned()),
+            expires_in: resp
+                .c_nonce_expires_in()
+                .map(|e| Duration::seconds(e.to_owned())),
+            created: time::OffsetDateTime::now_utc(),
         })
     }
 }
@@ -759,7 +766,7 @@ mod tests {
 
         let nonce_to_check = holder_service.request_nonce(token, cred_req).await.unwrap();
 
-        assert_eq!(nonce_to_check, nonce.to_owned())
+        assert_eq!(nonce_to_check.secret(), nonce)
     }
 
     #[tokio::test]
@@ -813,7 +820,7 @@ mod tests {
             .request_credential(
                 &sample_access_token(),
                 CRED_DEF_ID,
-                Some(sample_nonce()),
+                Some(&sample_nonce()),
                 &key_metadata,
             )
             .await;
@@ -846,7 +853,7 @@ mod tests {
             .request_credential(
                 &sample_access_token(),
                 CRED_DEF_ID,
-                Some(sample_nonce()),
+                Some(&sample_nonce()),
                 &key_metadata,
             )
             .await
@@ -913,7 +920,7 @@ mod tests {
             .request_credential(
                 &sample_access_token(),
                 "unexpected_cred_def_id",
-                Some(sample_nonce()),
+                Some(&sample_nonce()),
                 &key_metadata,
             )
             .await
@@ -943,7 +950,7 @@ mod tests {
             .request_credential(
                 &sample_access_token(),
                 SCOPE,
-                Some(sample_nonce()),
+                Some(&sample_nonce()),
                 &key_metadata,
             )
             .await

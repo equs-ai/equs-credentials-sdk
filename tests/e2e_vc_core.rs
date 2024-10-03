@@ -5,13 +5,11 @@ mod utils;
 use std::collections::HashMap;
 use std::str::FromStr;
 
-use oid4vci::openidconnect::Nonce;
-use serde_json::json;
-use ssi::did::DIDURL;
-
 use agent_sdk::crypto::Alg;
 use agent_sdk::inmem::kms::LocalKms;
+use agent_sdk::inmem::nonce::LocalNonceGenerator;
 use agent_sdk::inmem::vault::InMemVault;
+use agent_sdk::nonce::NonceGenerator;
 use agent_sdk::vc;
 use agent_sdk::vc::core::HolderService;
 use agent_sdk::vc::core::IssuerService;
@@ -22,6 +20,9 @@ use agent_sdk::vc::core::{
 };
 use agent_sdk::vc::metadata::{CredentialMetadataProcessor, DefaultMetadataProcessor};
 use agent_sdk::vc::SD_JWT_VC;
+use oid4vci::openidconnect::Nonce;
+use serde_json::json;
+use ssi::did::DIDURL;
 
 use utils::fixtures::{sample_claims, SCOPE, VC_TYPE, VERIFIER_ID};
 use utils::helpers::create_did_keymetadata_keyhandle;
@@ -30,6 +31,7 @@ use utils::helpers::create_did_keymetadata_keyhandle;
 async fn credential_issuance_and_presentation_verification() {
     // Initialization
     let holder_kms = LocalKms::new();
+    let nonce_gen = LocalNonceGenerator::default();
 
     let issuer = build_issuer().await;
     let holder = build_holder(holder_kms.clone()).await;
@@ -40,10 +42,10 @@ async fn credential_issuance_and_presentation_verification() {
     let offer = issuer.offer_credential(SCOPE, None);
     let offer = offer.unwrap();
 
-    let nonce = Nonce::new_random();
+    let nonce = nonce_gen.generate().await.unwrap();
     let (_, key_metadata, _) = create_did_keymetadata_keyhandle(&holder_kms).await;
     let request = holder
-        .request_credential(&offer, nonce.secret(), &key_metadata)
+        .request_credential(&offer, &nonce, &key_metadata)
         .await;
     let request = request.unwrap();
 
@@ -52,7 +54,7 @@ async fn credential_issuance_and_presentation_verification() {
     println!("Claims: {:?}", claims);
 
     let vc = issuer
-        .issue_credential(&request, &claims, nonce.secret())
+        .issue_credential(&request, &claims, &nonce)
         .await
         .unwrap();
 
