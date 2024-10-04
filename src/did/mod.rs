@@ -7,6 +7,7 @@ use std::fmt::Debug;
 use tracing::{instrument, Level};
 
 pub mod didkey;
+pub mod didweb;
 pub mod universal;
 
 /// `DID` Error.
@@ -19,8 +20,16 @@ pub enum Error {
     MethodNotSupported { method: String },
     #[snafu(display("Unsupported key: {type_}"))]
     KeyNotSupported { type_: String },
+    #[snafu(display("Invalid format of DID: {details}"))]
+    InvalidDidFormat { details: String },
     #[snafu(display("DID generation error at {location}\n Cause: {details}"))]
     DidGeneration {
+        details: String,
+        #[snafu(implicit)]
+        location: Location,
+    },
+    #[snafu(display("DID Document generation error at {location}\n Cause: {details}"))]
+    DidDocGeneration {
         details: String,
         #[snafu(implicit)]
         location: Location,

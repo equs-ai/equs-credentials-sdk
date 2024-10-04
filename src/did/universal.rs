@@ -21,6 +21,7 @@ impl UniversalResolver {
     pub fn new() -> Self {
         let mut impls = DIDMethods::default();
         impls.insert(Box::new(did_method_key::DIDKey {}));
+        impls.insert(Box::new(did_web::DIDWeb {}));
 
         Self { impls }
     }
@@ -62,6 +63,7 @@ mod tests {
     use crate::inmem::kms::LocalKms;
     use crate::kms;
     use crate::kms::{CreateOptions, Kms};
+    use serde_json::json;
 
     #[tokio::test]
     async fn universal_resolver_supports_didkey() {
@@ -69,6 +71,55 @@ mod tests {
         let did = didkey().await;
 
         let resolution = resolver.resolve(&did, Default::default()).await;
+        assert!(resolution.metadata.error.is_none());
+        assert_eq!(resolution.doc.unwrap().id, did);
+
+        let vm = resolver.resolve_verification_method(&did).await.unwrap();
+        assert!(vm.id.starts_with(&did));
+    }
+
+    #[tokio::test]
+    async fn universal_resolver_supports_didweb() {
+        let mut server = mockito::Server::new_async().await;
+        let port_idx = server.url().rfind(':').unwrap() + 1;
+        let port = &server.url()[port_idx..];
+
+        let did = format!("did:web:localhost%3A{port}");
+
+        let mock = server
+            .mock("GET", "/.well-known/did.json")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(
+                json!(
+                    {
+                        "@context": [
+                          "https://www.w3.org/ns/did/v1",
+                          "https://w3id.org/security#Ed25519VerificationKey2020"
+                        ],
+                        "id": &did,
+                        "verificationMethod": [
+                          {
+                            "id": did.to_string() + "#key-0",
+                            "type": "Ed25519VerificationKey2020",
+                            "controller": &did,
+                            "publicKeyJwk": {
+                              "kty": "OKP",
+                              "crv": "Ed25519",
+                              "x": "pbaXXx7XTNbX9ExtlLm2YECzixhs1_BLSD79SwtRTPY"
+                            }
+                          }
+                        ]
+                      }
+                )
+                .to_string(),
+            )
+            .create();
+
+        let resolver = UniversalResolver::new();
+
+        let resolution = resolver.resolve(&did, Default::default()).await;
+
         assert!(resolution.metadata.error.is_none());
         assert_eq!(resolution.doc.unwrap().id, did);
 

@@ -1,8 +1,7 @@
 use actix_web::http::header::Header;
 use actix_web::{web, App, Error, HttpRequest, HttpResponse, HttpServer};
 use actix_web_httpauth::headers::authorization::{Authorization, Bearer};
-use agent_sdk::did::didkey::DIDKey;
-use agent_sdk::did::{DIDResolver, DID};
+use agent_sdk::did::DID;
 use agent_sdk::inmem::kms::LocalKms;
 use agent_sdk::inmem::storage::InMemStorage;
 use agent_sdk::kms;
@@ -14,6 +13,8 @@ use agent_sdk::vc::oid4vci::{
     CredentialRequest, IssuanceSession, IssuerMetadata,
 };
 
+use agent_sdk::did::didweb::DIDWeb;
+use agent_sdk::did::DIDDoc;
 use agent_sdk::inmem::nonce::LocalNonceGenerator;
 use agent_sdk::vc::oid4vci;
 use keycloak::{KeycloakAdmin, KeycloakAdminToken};
@@ -27,25 +28,31 @@ const AUTH_SRV_URL: &str = "http://localhost:8080/idp/realms/pid-issuer-realm";
 const CREDENTIAL_URL_PATH: &str = "/credential";
 const METADATA_URL_PATH: &str = "/.well-known/openid-credential-issuer";
 const CREDENTIAL_OFFER_URL_PATH: &str = "/credential_offer";
+const DID_DOC_URL_PATH: &str = "/.well-known/did.json";
 
 struct AppState {
     issuer: Arc<dyn oid4vci::Issuer>,
     storage: InMemStorage<String, IssuanceSession>,
+    did_doc: DIDDoc,
 }
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     tracing_subscriber::fmt::init();
 
+    let (issuer, did_document) = issuer().await;
+
     let app_state = web::Data::new(AppState {
-        issuer: Arc::new(issuer().await),
+        issuer: Arc::new(issuer),
         storage: InMemStorage::new(),
+        did_doc: did_document,
     });
     HttpServer::new(move || {
         App::new()
             .route(CREDENTIAL_URL_PATH, web::post().to(issue_credential))
             .route(METADATA_URL_PATH, web::get().to(issue_metadata))
             .route(CREDENTIAL_OFFER_URL_PATH, web::get().to(credential_offer))
+            .route(DID_DOC_URL_PATH, web::get().to(did_doc))
             .app_data(app_state.clone())
     })
     .bind(("127.0.0.1", 8088))?
@@ -114,6 +121,10 @@ async fn credential_offer(state: web::Data<AppState>) -> HttpResponse {
     println!("URL {}", url);
 
     HttpResponse::Ok().json(credential_offer)
+}
+
+async fn did_doc(state: web::Data<AppState>) -> HttpResponse {
+    HttpResponse::Ok().json(state.did_doc.clone())
 }
 
 async fn get_user_attributes(cred_def: &CredDefMetadata) -> Result<Value, Error> {
@@ -189,12 +200,12 @@ async fn get_user_attributes(cred_def: &CredDefMetadata) -> Result<Value, Error>
     Ok(Value::Null)
 }
 
-async fn issuer() -> impl oid4vci::Issuer {
+async fn issuer() -> (impl oid4vci::Issuer, DIDDoc) {
     println!("Initializing issuer...");
     let kms = LocalKms::new();
     let nonce_gen = LocalNonceGenerator::default();
     // In the real service these should be generated beforehand/taken from configuration/persistence
-    let (_, key_metadata) = create_did_and_key_metadata(&kms).await;
+    let (_, key_metadata, did_doc) = create_did_and_key_metadata(&kms).await;
 
     let issuer_metadata = sample_issuer_metadata(SERVER_URL, AUTH_SRV_URL);
 
@@ -206,25 +217,23 @@ async fn issuer() -> impl oid4vci::Issuer {
         .build().await.unwrap();
 
     println!("Done");
-    issuer
+    (issuer, did_doc)
 }
 
-async fn create_did_and_key_metadata(kms: &LocalKms) -> (DID, KeyMetadata) {
-    let didkey = DIDKey::new();
-
+async fn create_did_and_key_metadata(kms: &LocalKms) -> (DID, KeyMetadata, DIDDoc) {
     let (kid, kh) = kms
         .create_and_handle(kms::KeyType::P256, kms::CreateOptions {})
         .await
         .unwrap();
 
-    let did = didkey.generate(kh).unwrap();
-
-    let vm = didkey.resolve_verification_method(&did).await.unwrap().id;
+    let did = DIDWeb::generate_did_from_url(SERVER_URL).unwrap();
+    let did_doc = DIDWeb::generate_did_document(&did, &kh).unwrap();
+    let vm = format!("{did}#key-0");
 
     println!("Generated DID {}", did.clone());
     println!("Generated DIDURL {}", vm.clone());
 
-    (did, KeyMetadata { kid, did_url: vm })
+    (did, KeyMetadata { kid, did_url: vm }, did_doc)
 }
 
 const CRED_DEF_1: &str = "SD_JWT_cred_1";
