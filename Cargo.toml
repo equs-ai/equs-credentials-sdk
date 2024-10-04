@@ -28,6 +28,9 @@ time = { version = "0.3.29", features = ["serde"] }
 serde = { version = "1.0.204", features = ["derive"] }
 p256 = { version = "0.13.2", optional = true }
 did-method-key = "0.2.2"
+did-web = "0.2.2"
+ssi-dids = "0.1.1"
+iref = "2.2.3"
 futures = "0.3.30"
 base64 = "0.22.1"
 jsonwebtoken = "9.3.0"
@@ -41,6 +44,7 @@ anyhow = "1.0.86"
 async-rwlock = "1.3.0"
 tracing = { version = "0.1.40", features = ["attributes", "release_max_level_warn"] }
 snafu = "0.8.4"
+regex = "1.11.0"
 
 [dev-dependencies]
 serde_urlencoded = "0.7.1"
