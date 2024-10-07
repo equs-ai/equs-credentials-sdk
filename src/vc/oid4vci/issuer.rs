@@ -563,21 +563,25 @@ mod tests {
     use crate::inmem::nonce::LocalNonceGenerator;
     use crate::utils::http::test::mock_http_req_body;
     use crate::utils::test_utils::create_did_and_key_metadata;
+    use crate::vc::oid4vci::issuer::TokenValidation::ByJwks;
     use crate::vc::oid4vci::metadata::convert_metadata;
     use crate::vc::oid4vci::tests::fixtures::{
         sample_claims, sample_credential_definition, sample_credential_offer,
-        sample_credential_request, SampleIssuerMetadata, ACCESS_TOKEN, ACCESS_TOKEN_WITHOUT_SCOPE,
-        CRED_DEF_ID, NONCE, SCOPE, TOKEN_INTROSPECT_URL,
+        SampleCredentialRequest, SampleIssuerMetadata, ACCESS_TOKEN, ACCESS_TOKEN_WITHOUT_SCOPE,
+        AUTH_URL, CRED_DEF_ID, ISSUER_URL, JWKS_URL, NONCE, SAMPLE_PROOF_JWT, SCOPE,
+        TOKEN_INTROSPECT_URL,
     };
-    use crate::vc::oid4vci::AuthorizationCodeGrant;
     use crate::vc::oid4vci::Error::Protocol;
+    use crate::vc::oid4vci::{token_validation, AuthorizationCodeGrant};
     use api::Issuer;
     use oauth2::http::{Method, StatusCode};
+    use oid4vci::openidconnect::JsonWebKeySetUrl;
+    use rstest::rstest;
     use serde_json::json;
     use time::OffsetDateTime;
 
     #[tokio::test]
-    async fn issuer_returns_metadata_correctly() {
+    async fn get_issuer_metadata_returns_correct_data() {
         let issuer = issuer_service(None, None).await;
 
         let metadata = issuer.get_issuer_metadata();
@@ -586,7 +590,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn issuer_creates_credential_offer_correctly() {
+    async fn create_credential_offer_returns_correct_data() {
         let issuer = issuer_service(None, None).await;
 
         let offer = issuer
@@ -606,12 +610,12 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn issuance_succeeds_when_nonce_is_provided() {
+    async fn issue_credential_succeeds_when_nonce_is_provided() {
         let issuer = issuer_service(None, None).await;
 
         let iss_result = issuer
             .issue_credential(
-                &sample_credential_request(),
+                &SampleCredentialRequest::with_sdjwtvc_conf(),
                 ACCESS_TOKEN,
                 &sample_claims(),
                 &mut sample_session_with_nonce(),
@@ -622,15 +626,15 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn issuance_fails_with_invalid_proof_error_when_nonce_is_not_provided() {
+    async fn issue_credential_fails_with_invalid_proof_error_when_nonce_is_not_provided() {
         let issuer = issuer_service(None, None).await;
 
         let iss_result = issuer
             .issue_credential(
-                &sample_credential_request(),
+                &SampleCredentialRequest::with_sdjwtvc_conf(),
                 ACCESS_TOKEN,
                 &sample_claims(),
-                &mut sample_session_without_nonce(),
+                &mut IssuanceSession::default(),
             )
             .await;
 
@@ -641,7 +645,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn issuer_requests_token_validity_from_auth_server() {
+    async fn issue_credential_succeeds_requesting_token_validity_from_auth_server() {
         let mut http_client = MockHttpClient::new();
         let token_intro_url = Url::parse(TOKEN_INTROSPECT_URL).unwrap();
 
@@ -663,7 +667,7 @@ mod tests {
 
         let iss_result = issuer
             .issue_credential(
-                &sample_credential_request(),
+                &SampleCredentialRequest::with_sdjwtvc_conf(),
                 ACCESS_TOKEN,
                 &sample_claims(),
                 &mut sample_session_with_nonce(),
@@ -673,7 +677,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn issuance_fails_with_invalid_token_error_when_token_is_not_active() {
+    async fn issue_credential_fails_with_invalid_token_error_when_token_is_not_active() {
         let mut http_client = MockHttpClient::new();
         let token_intro_url = Url::parse(TOKEN_INTROSPECT_URL).unwrap();
 
@@ -695,7 +699,7 @@ mod tests {
 
         let iss_result = issuer
             .issue_credential(
-                &sample_credential_request(),
+                &SampleCredentialRequest::with_sdjwtvc_conf(),
                 ACCESS_TOKEN,
                 &sample_claims(),
                 &mut sample_session_with_nonce(),
@@ -709,10 +713,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn issuer_resolves_credential_definition_correctly() {
+    async fn resolve_cred_def_succeeds_with_correct_data() {
         let issuer_service = issuer_service(None, None).await;
 
-        let cred_req = sample_credential_request();
+        let cred_req = SampleCredentialRequest::with_sdjwtvc_conf();
         let (cred_def_id, cred_def_metadata) = issuer_service.resolve_cred_def(&cred_req).unwrap();
 
         assert_eq!(
@@ -722,7 +726,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn issuer_validates_credential_definition_ids_correctly() {
+    async fn validate_cred_def_ids_succeeds_with_correct_data() {
         let issuer_service = issuer_service(None, None).await;
 
         let cred_def_ids = vec![CRED_DEF_ID];
@@ -732,7 +736,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn issuer_validates_nonce_correctly() {
+    async fn validate_nonce_succeeds_with_correct_data() {
         let issuer_service = issuer_service(None, None).await;
 
         let mut session = sample_session_with_nonce();
@@ -743,7 +747,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn issuer_validates_scope_correctly() {
+    async fn validate_scope_succeeds_with_correct_data() {
         let issuer_service = issuer_service(None, None).await;
         let scope = Scope::new(SCOPE.to_owned());
 
@@ -753,7 +757,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn issuer_validates_claim_names_correctly() {
+    async fn validate_claim_names_succeeds_with_correct_data() {
         let issuer_service = issuer_service(None, None).await;
 
         let claims = json!({
@@ -767,51 +771,263 @@ mod tests {
         validate_res.unwrap()
     }
 
+    #[rstest]
+    #[case(SampleCredentialRequest::with_jwtvcjson_conf())]
+    #[case(SampleCredentialRequest::with_jwtldvc_conf())]
+    #[case(SampleCredentialRequest::with_ldpvc_conf())]
+    #[case(SampleCredentialRequest::with_msomdoc_conf())]
     #[tokio::test]
-    #[should_panic(expected = "Access token does not have \\\"scope\\\" field")]
-    async fn issuer_fails_validating_absent_scope() {
+    async fn get_cred_def_metadata_returns_none_on_unsupported_credential_format(
+        #[case] credential_request: CredentialRequest,
+    ) {
         let issuer_service = issuer_service(None, None).await;
+        let result = issuer_service.get_cred_def_metadata(&credential_request);
+        assert_eq!(result, None);
+    }
 
+    #[tokio::test]
+    async fn get_cred_def_metadata_returns_none_on_incorrect_sd_jwt_cred() {
+        let issuer_service = issuer_service(None, None).await;
+        let cred_req = sample_sdjwtvc_credential_request_with_fake_vct();
+        let result = issuer_service.get_cred_def_metadata(&cred_req);
+        assert_eq!(result, None);
+    }
+
+    #[tokio::test]
+    async fn validate_token_does_nothing_on_token_validation_being_none() {
+        let issuer = issuer_service(None, None).await;
+        issuer.validate_token("").await.unwrap();
+    }
+
+    #[tokio::test]
+    #[should_panic(expected = "Missed credential configuration ids")]
+    async fn create_credential_offer_fails_on_empty_cred_def_ids() {
+        let issuer_service = issuer_service(None, None).await;
+        let grants = create_empty_credential_offer_grants();
         issuer_service
-            .validate_scope(
-                ACCESS_TOKEN_WITHOUT_SCOPE,
-                "fake_cred_def_id",
-                &Scope::new("fake_scope".to_owned()),
-            )
-            .unwrap()
+            .create_credential_offer(vec![], &grants)
+            .unwrap();
+    }
+
+    #[tokio::test]
+    #[should_panic(expected = "Unsupported Credential definition ID: fake_cred_def_id")]
+    async fn create_credential_offer_fails_on_not_matching_cred_def_ids() {
+        let issuer_service = issuer_service(None, None).await;
+        let grants = create_empty_credential_offer_grants();
+        issuer_service
+            .create_credential_offer(vec![CRED_DEF_ID, "fake_cred_def_id"], &grants)
+            .unwrap();
+    }
+
+    #[rstest]
+    #[case::sync_case(IssuanceSession::default())]
+    #[case::async_case(sample_session_with_expired_nonce().await)]
+    #[tokio::test]
+    #[should_panic(
+        expected = "Credential Issuer requires key proof to be bound to a Credential Issuer provided nonce."
+    )]
+    async fn issue_credential_fails_on_invalid_sessions_nonce(
+        #[case] mut session: IssuanceSession,
+    ) {
+        let credential_request = SampleCredentialRequest::with_sdjwtvc_conf();
+        let claims = json!({});
+        let issuer_service = issuer_service(None, None).await;
+        issuer_service
+            .issue_credential(&credential_request, "fake_token", &claims, &mut session)
+            .await
+            .unwrap();
+    }
+
+    #[rstest]
+    #[case(SampleCredentialRequest::with_jwtvcjson_conf())]
+    #[case(SampleCredentialRequest::with_jwtldvc_conf())]
+    #[case(SampleCredentialRequest::with_ldpvc_conf())]
+    #[case(SampleCredentialRequest::with_msomdoc_conf())]
+    #[tokio::test]
+    #[should_panic(
+        expected = "Credential Issuer requires key proof to be bound to a Credential Issuer provided nonce."
+    )]
+    async fn issue_credential_fails_on_unsupported_format(
+        #[case] credential_request: CredentialRequest,
+    ) {
+        let claims = json!({});
+        let mut session = sample_session_with_nonce();
+
+        let issuer_service = issuer_service(None, None).await;
+        issuer_service
+            .issue_credential(&credential_request, "fake_token", &claims, &mut session)
+            .await
+            .unwrap();
     }
 
     #[tokio::test]
     #[should_panic(
-        expected = "Access token should have scope=\\\"incorrect_scope_field_should_be_SD_JWT_cred\\\" for issuing \\\"incorrect_cred_def_id_should_be_SD_JWT_cred_sample\\\""
+        expected = "Credential configuration id with vct = \\\"fake_sd_jwt_cred\\\" is not found"
     )]
-    async fn issuer_fails_validating_incorrect_scope() {
-        let issuer_service = issuer_service(None, None).await;
+    async fn issue_credential_fails_on_incorrect_cred_def() {
+        let credential_request = sample_sdjwtvc_credential_request_with_fake_vct();
+        let claims = json!({});
+        let mut session = sample_session_with_nonce();
 
+        let issuer_service = issuer_service(None, None).await;
         issuer_service
-            .validate_scope(
-                ACCESS_TOKEN,
-                "incorrect_cred_def_id_should_be_SD_JWT_cred_sample",
-                &Scope::new("incorrect_scope_field_should_be_SD_JWT_cred".to_string()),
-            )
-            .unwrap()
+            .issue_credential(&credential_request, "fake_token", &claims, &mut session)
+            .await
+            .unwrap();
     }
 
     #[tokio::test]
-    #[should_panic(expected = "Cause: Provided \"claims\" is not json object")]
-    async fn issuer_fails_on_non_json_claims() {
-        let issuer = issuer_service(None, None).await;
+    #[should_panic(
+        expected = "No scope set for Credential definition ID: SD_JWT_cred_sample. Only scope authorization supported"
+    )]
+    async fn issue_credential_fails_on_absent_scope() {
+        let credential_request = SampleCredentialRequest::with_sdjwtvc_conf();
+        let claims = json!({});
+        let mut session = sample_session_with_nonce();
 
-        let iss_result = issuer
+        let issuer_service =
+            issuer_service_with_metadata(None, None, sample_issuer_metadata_without_scope()).await;
+        issuer_service
+            .issue_credential(&credential_request, "fake_token", &claims, &mut session)
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    #[should_panic(expected = "Could not parse the access token")]
+    async fn issue_credential_fails_on_non_decodable_token() {
+        let credential_request = SampleCredentialRequest::with_sdjwtvc_conf();
+        let claims = json!({});
+        let mut session = sample_session_with_nonce();
+
+        let issuer_service = issuer_service(None, None).await;
+        issuer_service
+            .issue_credential(&credential_request, "fake_token", &claims, &mut session)
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    #[should_panic(
+        expected = "Access token should have scope=\\\"fake_scope\\\" for issuing \\\"SD_JWT_cred_sample\\\""
+    )]
+    async fn issue_credential_fails_on_incorrect_scope() {
+        let credential_request = SampleCredentialRequest::with_sdjwtvc_conf();
+        let claims = json!({});
+        let mut session = sample_session_with_nonce();
+
+        let issuer_service =
+            issuer_service_with_metadata(None, None, sample_issuer_metadata_with_incorrect_scope())
+                .await;
+        issuer_service
+            .issue_credential(&credential_request, ACCESS_TOKEN, &claims, &mut session)
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    #[should_panic(expected = "Access token does not have \\\"scope\\\" field")]
+    async fn issue_credential_fails_on_absent_token_scope() {
+        let credential_request = SampleCredentialRequest::with_sdjwtvc_conf();
+        let claims = json!({});
+        let mut session = sample_session_with_nonce();
+
+        let issuer_service = issuer_service(None, None).await;
+        issuer_service
             .issue_credential(
-                &sample_credential_request(),
+                &credential_request,
+                ACCESS_TOKEN_WITHOUT_SCOPE,
+                &claims,
+                &mut session,
+            )
+            .await
+            .unwrap();
+    }
+
+    #[rstest]
+    #[case(json!("[0,1,2]"))]
+    #[case(json!("1"))]
+    #[case(json!("true"))]
+    #[case(json!("string_value"))]
+    #[case(json!(null))]
+    #[tokio::test]
+    #[should_panic(expected = "Cause: Provided \"claims\" is not json object")]
+    async fn issue_credential_fails_on_non_json_claims(#[case] claims: Value) {
+        let issuer = issuer_service(None, None).await;
+        issuer
+            .issue_credential(
+                &SampleCredentialRequest::with_sdjwtvc_conf(),
                 ACCESS_TOKEN,
-                &serde_json::from_str("[0,1,2]").unwrap(),
+                &claims,
                 &mut sample_session_with_nonce(),
             )
-            .await;
+            .await
+            .unwrap();
+    }
 
-        iss_result.unwrap();
+    #[tokio::test]
+    #[should_panic(expected = "Unsupported claim name: unsupported_key")]
+    async fn issue_credential_fails_on_claims_having_unsupported_key() {
+        let claims = json!({"unsupported_key": "unsupported_keys_value"});
+
+        let issuer = issuer_service(None, None).await;
+        issuer
+            .issue_credential(
+                &SampleCredentialRequest::with_sdjwtvc_conf(),
+                ACCESS_TOKEN,
+                &claims,
+                &mut sample_session_with_nonce(),
+            )
+            .await
+            .unwrap();
+    }
+
+    #[rstest]
+    #[case(sample_sdjwtvc_credential_request_with_cwt_proof_format())]
+    #[case(sample_sdjwtvc_credential_request_with_empty_proofs_jwt())]
+    #[case(sample_sdjwtvc_credential_request_without_proof())]
+    #[tokio::test]
+    #[should_panic(
+        expected = "Credential Issuer requires key proof to be bound to a Credential Issuer provided nonce."
+    )]
+    async fn issue_credential_fails_on_invalid_proof(
+        #[case] credential_request: CredentialRequest,
+    ) {
+        let claims = json!({});
+
+        let issuer = issuer_service(None, None).await;
+        issuer
+            .issue_credential(
+                &credential_request,
+                ACCESS_TOKEN,
+                &claims,
+                &mut sample_session_with_nonce(),
+            )
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    #[should_panic(expected = "Could not validate the token")]
+    async fn validate_token_fails_on_incorrect_http_response() {
+        let mut http_client = MockHttpClient::new();
+
+        mock_http_req_body(
+            &mut http_client,
+            Method::GET,
+            Url::parse(JWKS_URL).unwrap(),
+            "".to_string(),
+            json!({}),
+            StatusCode::OK,
+            1.into(),
+        );
+
+        let token_validator = ByJwks(token_validation::ByJwks::new(
+            http_client,
+            JsonWebKeySetUrl::new(JWKS_URL.to_string()).unwrap(),
+        ));
+        let issuer = issuer_service(None, Some(token_validator)).await;
+        issuer.validate_token("").await.unwrap();
     }
 
     fn sample_session_with_nonce() -> IssuanceSession {
@@ -820,7 +1036,7 @@ mod tests {
         let nonce_data: NonceData = serde_json::from_value(json!(
             {
                 "value": NONCE,
-                "expires_in": 86440,
+                "expires_in": NONCE_EXPIRES_IN,
                 "created": created_time
             }
         ))
@@ -830,13 +1046,35 @@ mod tests {
         session
     }
 
-    fn sample_session_without_nonce() -> IssuanceSession {
-        IssuanceSession::default()
+    async fn sample_session_with_expired_nonce() -> IssuanceSession {
+        let nonce_gen = LocalNonceGenerator::default();
+        let nonce = nonce_gen
+            .with_expiration(Duration::seconds(0))
+            .await
+            .unwrap();
+        IssuanceSession {
+            nonce: Some(nonce),
+            notification_id: None,
+            transaction_id: None,
+        }
     }
 
     async fn issuer_service(
         http_client: Option<MockHttpClient>,
         token_validation: Option<TokenValidation<MockHttpClient>>,
+    ) -> IssuerService<impl vc::core::Issuer, impl HttpClient, impl NonceGenerator> {
+        issuer_service_with_metadata(
+            http_client,
+            token_validation,
+            SampleIssuerMetadata::with_sdjwtvc_conf(),
+        )
+        .await
+    }
+
+    async fn issuer_service_with_metadata(
+        http_client: Option<MockHttpClient>,
+        token_validation: Option<TokenValidation<MockHttpClient>>,
+        issuer_metadata: IssuerMetadata,
     ) -> IssuerService<impl vc::core::Issuer, impl HttpClient, impl NonceGenerator> {
         let kms = LocalKms::new();
         let nonce_gen = LocalNonceGenerator::default();
@@ -846,7 +1084,6 @@ mod tests {
             None,
         );
 
-        let issuer_metadata = SampleIssuerMetadata::with_sdjwtvc_conf();
         let (_, key_metadata) = create_did_and_key_metadata(&kms).await;
         let issuer_metadata_inner =
             convert_metadata(&issuer_metadata, &Default::default(), &key_metadata).unwrap();
@@ -854,5 +1091,115 @@ mod tests {
         let inner = vc::core::IssuerService::new(kms, issuer_metadata_inner);
 
         IssuerService::new(issuer_metadata, inner, nonce_gen, token_validation)
+    }
+
+    fn sample_sdjwtvc_credential_request_with_fake_vct() -> CredentialRequest {
+        serde_json::from_value(json!(
+            {
+                "credential_identifier": CRED_DEF_ID,
+                "format":"vc+sd-jwt",
+                "vct":"fake_sd_jwt_cred",
+                "proof":{
+                    "proof_type":"jwt",
+                    "jwt":SAMPLE_PROOF_JWT
+                },
+                "credential_response_encryption":null
+            }
+        ))
+        .unwrap()
+    }
+
+    fn sample_sdjwtvc_credential_request_with_empty_proofs_jwt() -> CredentialRequest {
+        serde_json::from_value(json!(
+            {
+                "credential_identifier": CRED_DEF_ID,
+                "format":"vc+sd-jwt",
+                "vct":"SD_JWT_cred",
+                "proof":{
+                    "proof_type":"jwt",
+                    "jwt":""
+                },
+                "credential_response_encryption":null
+            }
+        ))
+        .unwrap()
+    }
+
+    fn sample_sdjwtvc_credential_request_with_cwt_proof_format() -> CredentialRequest {
+        serde_json::from_value(json!(
+            {
+                "credential_identifier": CRED_DEF_ID,
+                "format":"vc+sd-jwt",
+                "vct":"SD_JWT_cred",
+                "proof":{
+                    "proof_type":"cwt",
+                    "cwt":SAMPLE_PROOF_JWT
+                },
+                "credential_response_encryption":null
+            }
+        ))
+        .unwrap()
+    }
+
+    fn sample_sdjwtvc_credential_request_without_proof() -> CredentialRequest {
+        serde_json::from_value(json!(
+            {
+                "credential_identifier": CRED_DEF_ID,
+                "format":"vc+sd-jwt",
+                "vct":"fake_sd_jwt_cred",
+                "credential_response_encryption":null
+            }
+        ))
+        .unwrap()
+    }
+
+    fn sample_issuer_metadata_without_scope() -> IssuerMetadata {
+        serde_json::from_value(json!(
+            {
+                "credential_issuer": ISSUER_URL,
+                "authorization_servers": [AUTH_URL],
+                "credential_endpoint": ISSUER_URL.to_owned()+"/credential",
+                "credential_configurations_supported": {
+                    CRED_DEF_ID: {
+                    "format": "vc+sd-jwt",
+                    "vct": "SD_JWT_cred",
+                    "credential_definition": {
+                        "type": "SD_JWT_cred",
+                            "claims": {},
+                        },
+                    },
+                },
+            }
+        ))
+        .unwrap()
+    }
+
+    fn sample_issuer_metadata_with_incorrect_scope() -> IssuerMetadata {
+        serde_json::from_value(json!(
+            {
+                "credential_issuer": ISSUER_URL,
+                "authorization_servers": [AUTH_URL],
+                "credential_endpoint": ISSUER_URL.to_owned()+"/credential",
+                "credential_configurations_supported": {
+                    CRED_DEF_ID: {
+                    "format": "vc+sd-jwt",
+                    "vct": "SD_JWT_cred",
+                    "scope": "fake_scope",
+                    "credential_definition": {
+                        "type": "SD_JWT_cred",
+                            "claims": {},
+                        },
+                    },
+                },
+            }
+        ))
+        .unwrap()
+    }
+
+    fn create_empty_credential_offer_grants() -> CredentialOfferGrants {
+        CredentialOfferGrants {
+            authorization_code: None,
+            pre_authorized_code: None,
+        }
     }
 }

@@ -220,6 +220,7 @@ impl HasVCFormat for CoreProfilesMetadata {
         }
     }
 }
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -282,6 +283,27 @@ mod tests {
         let converted = cred_definition(CRED_DEF_ID, &cred_def_metadata, &key_metadata).unwrap();
 
         assert_eq!(converted, expected)
+    }
+
+    #[tokio::test]
+    async fn cred_definition_returns_correct_data_with_none_in_specific_fields() {
+        let kms = LocalKms::new();
+        let cred_def_metadata = sample_credential_definition_without_scope();
+        let (_, key_metadata) = create_did_and_key_metadata(&kms).await;
+
+        let expected = CredentialDefinition {
+            cred_def_id: "SD_JWT_cred_sample".to_string(),
+            format: VCFormat::JwtVcJsonLD,
+            claims: HashMap::new(),
+            supported_proofs: None,
+            supported_signing_algs: None,
+            display: None,
+            protocol_data: None,
+            key_metadata: key_metadata.clone(),
+        };
+
+        let result = cred_definition(CRED_DEF_ID, &cred_def_metadata, &key_metadata).unwrap();
+        assert_eq!(result, expected)
     }
 
     #[tokio::test]
@@ -353,6 +375,15 @@ mod tests {
                     "given_name": {}
                 }
             }
+            }
+        ));
+
+        cred_def.unwrap()
+    }
+
+    fn sample_credential_definition_without_scope() -> CredDefMetadata {
+        let cred_def = serde_json::from_value(json!({
+            "format": "jwt_vc_json-ld",
             }
         ));
 

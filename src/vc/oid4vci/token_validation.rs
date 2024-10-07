@@ -244,30 +244,31 @@ mod tests {
     };
     use oauth2::http::HeaderMap;
     use oauth2::HttpResponse;
+    use serde_json::{json, Value};
 
     const TOKEN: &str = "eyJhbGciOiJSUzI1NiIsInR5cCIgOiAiSldUIiwia2lkIiA6ICJQY2xZUDZ2UmsxTHBLRGZqU08yRGEzNXJtR1JmaTkzNjJDcFJFeUpmOHAwIn0.eyJleHAiOjE3MjY4NDY2NDcsImlhdCI6MTcyNjgxMDgzOSwiYXV0aF90aW1lIjoxNzI2ODEwNjQ3LCJqdGkiOiJlNWIxZjFjNC1kYjEzLTRkODgtYmJkMi0yN2NkMDkxYzc1ZGEiLCJpc3MiOiJodHRwOi8vbG9jYWxob3N0OjgwODAvaWRwL3JlYWxtcy9waWQtaXNzdWVyLXJlYWxtIiwic3ViIjoiNjBiOGJhNWYtYzczZi00OTc2LWIwZGEtNDhkMGU1MzMzNWRlIiwidHlwIjoiQmVhcmVyIiwiYXpwIjoid2FsbGV0LWRldiIsInNpZCI6IjFmZTg0ZWI3LTE5MTEtNDBlYi04ZGNmLWRiMzYwN2E2OGQ4ZiIsImFsbG93ZWQtb3JpZ2lucyI6WyIvKiJdLCJzY29wZSI6IlNEX0pXVF9jcmVkX3Njb3BlIn0.Sj6R0q7nnumcspoZOMS6KhOFf4yCia9KAF4uSjUShLq4xUgO-GaprdFjk3zX6koNr1dj_fVdi0Kq0Msxm3JkgJ4tNJRksF_n2pGhgfTfsGW6llZr_ZcO_bYugWYbbyUuw88QqGVhVjdiGfffkg3YC6UP-2-nK96BgQGu9UmbSxSwYYeZdoCc1vqUglN_0zwZ3FSmZ9J12QBb7rvK-lPPMhKeXByaHyuz_MtQguEmi0GOg4J1v3DHQZz5aFEG7W9-zYKRVO3EXHgolOrzobnNgQyfpE0SzHkokLKrEddudbSATvUAT9DXihXHYCRPouf3pnSpV3WPl6Kxh46RdfNw-w";
 
     #[tokio::test]
-    async fn validating_token_by_jwks_works() {
-        let mut http_client = MockHttpClient::new();
-        mock_http_fn(
-            &mut http_client,
-            Method::GET,
-            Url::parse(JWKS_URL).unwrap(),
-            |req| {
-                let resp = HttpResponse {
-                    status_code: StatusCode::OK,
-                    headers: HeaderMap::from_iter(vec![(
-                        CONTENT_TYPE,
-                        HeaderValue::from_str(MIME_TYPE_JSON).unwrap(),
-                    )]),
-                    body: serde_json::to_vec(&sample_jwks()).unwrap(),
-                };
-
-                Ok(resp)
-            },
-            1.into(),
+    async fn introspect_validate_succeeds_by_correct_url() {
+        let http_client = create_mock_http_client(
+            TOKEN_INTROSPECT_URL,
+            sample_introspect_response(),
+            Method::POST,
+            StatusCode::OK,
         );
+
+        let validator =
+            Introspect::new(http_client, Url::parse(TOKEN_INTROSPECT_URL).unwrap(), None);
+
+        let result = validator.validate(TOKEN).await;
+
+        result.unwrap()
+    }
+
+    #[tokio::test]
+    async fn by_jwks_validate_succeeds_with_correct_token() {
+        let http_client =
+            create_mock_http_client(JWKS_URL, sample_jwks(), Method::GET, StatusCode::OK);
 
         let validator = ByJwks::new(
             http_client,
@@ -280,25 +281,13 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn validating_token_by_introspect_url_works() {
-        let mut http_client = MockHttpClient::new();
-        mock_http_fn(
-            &mut http_client,
+    #[should_panic(expected = "Token is invalid")]
+    async fn introspect_validate_fails_on_non_ok_status() {
+        let http_client = create_mock_http_client(
+            TOKEN_INTROSPECT_URL,
+            sample_introspect_response(),
             Method::POST,
-            Url::parse(TOKEN_INTROSPECT_URL).unwrap(),
-            |req| {
-                let resp = HttpResponse {
-                    status_code: StatusCode::OK,
-                    headers: HeaderMap::from_iter(vec![(
-                        CONTENT_TYPE,
-                        HeaderValue::from_str(MIME_TYPE_JSON).unwrap(),
-                    )]),
-                    body: serde_json::to_vec(&sample_introspect_response()).unwrap(),
-                };
-
-                Ok(resp)
-            },
-            1.into(),
+            StatusCode::INTERNAL_SERVER_ERROR,
         );
 
         let validator =
@@ -307,5 +296,51 @@ mod tests {
         let result = validator.validate(TOKEN).await;
 
         result.unwrap()
+    }
+
+    #[tokio::test]
+    #[should_panic(expected = "Token is expired")]
+    async fn introspect_validate_fails_on_expired_token() {
+        let http_client = create_mock_http_client(
+            TOKEN_INTROSPECT_URL,
+            json!({"active": false}),
+            Method::POST,
+            StatusCode::OK,
+        );
+
+        let validator =
+            Introspect::new(http_client, Url::parse(TOKEN_INTROSPECT_URL).unwrap(), None);
+
+        let result = validator.validate(TOKEN).await;
+
+        result.unwrap()
+    }
+
+    fn create_mock_http_client(
+        url: &str,
+        body: Value,
+        method: Method,
+        status: StatusCode,
+    ) -> MockHttpClient {
+        let mut http_client = MockHttpClient::new();
+        mock_http_fn(
+            &mut http_client,
+            method,
+            Url::parse(url).unwrap(),
+            move |req| {
+                let resp = HttpResponse {
+                    status_code: status,
+                    headers: HeaderMap::from_iter(vec![(
+                        CONTENT_TYPE,
+                        HeaderValue::from_str(MIME_TYPE_JSON).unwrap(),
+                    )]),
+                    body: serde_json::to_vec(&body).unwrap(),
+                };
+
+                Ok(resp)
+            },
+            1.into(),
+        );
+        http_client
     }
 }
