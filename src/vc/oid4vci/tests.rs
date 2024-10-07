@@ -4,6 +4,8 @@ pub mod fixtures {
     use crate::vc::Claims;
     use oauth2::AccessToken;
     use oid4vci::core::metadata::IssuerMetadata;
+    use oid4vci::core::profiles::w3c::ldp::CredentialDefinitionLD;
+    use oid4vci::core::profiles::w3c::CredentialDefinition;
     use oid4vci::metadata::AuthorizationMetadata;
     use serde_json::{json, Value};
     use time::OffsetDateTime;
@@ -284,19 +286,69 @@ pub mod fixtures {
         }
     }
 
-    pub fn sample_credential_request() -> CredentialRequest {
-        serde_json::from_value(json!(
-            {
-                "credential_identifier": CRED_DEF_ID,
-                "format":"vc+sd-jwt",
-                "vct":"SD_JWT_cred",
-                "proof":{
-                    "proof_type":"jwt",
-                    "jwt":"eyJhbGciOiJFUzI1NiIsImtpZCI6ImRpZDprZXk6ekRuYWVucG50Q2tYbkRDbmFEazYyTHhOcVBjNENNZDMyZmJoaVZzWlY1S3BQVEcyYyIsInR5cCI6Im9wZW5pZDR2Y2ktcHJvb2Yrand0In0.eyJhdWQiOiJodHRwczovL2lzc3Vlci1iYWNrZW5kLmNvbSIsIm5iZiI6MTcyNTM1MDQ4MCwiaWF0IjoxNzI1MzUwNDgwLCJleHAiOjQ4Nzg5NTA0ODAsIm5vbmNlIjoiS0I1MFZPbTlJLWtQTFQ5bUFBQ1Y4ZyJ9.v1bcMxXQDF4TqvR8ZJtL5-HcnuX9NgwErL9Qr9NFQ9IiAivWqoPpXizUFx8lpM26XUaY70FwGDFog17tbGysmg"
-                },
-                "credential_response_encryption":null
-            }
-        )).unwrap()
+    pub const SAMPLE_PROOF_JWT: &str = "eyJhbGciOiJFUzI1NiIsImtpZCI6ImRpZDprZXk6ekRuYWVucG50Q2tYbkRDbmFEazYyTHhOcVBjNENNZDMyZmJoaVZzWlY1S3BQVEcyYyIsInR5cCI6Im9wZW5pZDR2Y2ktcHJvb2Yrand0In0.eyJhdWQiOiJodHRwczovL2lzc3Vlci1iYWNrZW5kLmNvbSIsIm5iZiI6MTcyNTM1MDQ4MCwiaWF0IjoxNzI1MzUwNDgwLCJleHAiOjQ4Nzg5NTA0ODAsIm5vbmNlIjoiS0I1MFZPbTlJLWtQTFQ5bUFBQ1Y4ZyJ9.v1bcMxXQDF4TqvR8ZJtL5-HcnuX9NgwErL9Qr9NFQ9IiAivWqoPpXizUFx8lpM26XUaY70FwGDFog17tbGysmg";
+
+    pub struct SampleCredentialRequest {}
+
+    impl SampleCredentialRequest {
+        pub fn with_sdjwtvc_conf() -> CredentialRequest {
+            serde_json::from_value(json!(
+                {
+                    "credential_identifier": CRED_DEF_ID,
+                    "format":"vc+sd-jwt",
+                    "vct":"SD_JWT_cred",
+                    "proof":{
+                        "proof_type":"jwt",
+                        "jwt": SAMPLE_PROOF_JWT,
+                    },
+                    "credential_response_encryption":null
+                }
+            ))
+            .unwrap()
+        }
+
+        pub fn with_jwtvcjson_conf() -> CredentialRequest {
+            serde_json::from_value(json!(
+                {
+                    "credential_identifier": CRED_DEF_ID,
+                    "format":"jwt_vc_json",
+                    "credential_definition": CredentialDefinition::new(vec![]),
+                }
+            ))
+            .unwrap()
+        }
+
+        pub fn with_jwtldvc_conf() -> CredentialRequest {
+            serde_json::from_value(json!(
+                {
+                    "credential_identifier": CRED_DEF_ID,
+                    "format":"jwt_vc_json-ld"
+                }
+            ))
+            .unwrap()
+        }
+
+        pub fn with_ldpvc_conf() -> CredentialRequest {
+            serde_json::from_value(json!(
+                {
+                    "credential_identifier": CRED_DEF_ID,
+                    "format":"ldp_vc",
+                    "credential_definition": CredentialDefinitionLD::new(CredentialDefinition::new(vec![]), vec![]),
+                }
+            ))
+            .unwrap()
+        }
+
+        pub fn with_msomdoc_conf() -> CredentialRequest {
+            serde_json::from_value(json!(
+                {
+                    "credential_identifier": CRED_DEF_ID,
+                    "format":"mso_mdoc",
+                        "doctype": "",
+                }
+            ))
+            .unwrap()
+        }
     }
 
     pub fn sample_cred_response() -> CredentialResponse {
