@@ -108,7 +108,7 @@ coverage-job:
   stage: test
   script:
     - cargo install cargo-tarpaulin
-    - cargo tarpaulin --timeout 180 --all-features --exclude-files "demos/*" --fail-under 60 -o Html
+    - cargo tarpaulin --timeout 180 --all-features --exclude-files "demos/*" --exclude-files "wrappers/*" --fail-under 60 -o Html
   coverage: '/^\d+.\d+% coverage/'
   artifacts:
     paths:

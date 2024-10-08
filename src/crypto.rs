@@ -2,7 +2,6 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use snafu::{Location, Snafu};
 use ssi::jwk;
-use ssi::jwk::JWK;
 use std::fmt::Debug;
 use std::ops::Deref;
 use std::str::FromStr;
@@ -85,6 +84,8 @@ impl TryFrom<&jwk::Algorithm> for Alg {
         }
     }
 }
+
+pub type JWK = jwk::JWK;
 
 /// An async `Signer` interface.
 ///
