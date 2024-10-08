@@ -1,5 +1,6 @@
 pub const MIME_TYPE_FORM_URLENCODED: &str = "application/x-www-form-urlencoded";
 pub const MIME_TYPE_JSON: &str = "application/json";
+pub const MIME_TYPE_TEXT_PLAIN: &str = "text/plain";
 
 #[cfg(test)]
 pub mod test {
