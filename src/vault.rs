@@ -49,7 +49,7 @@ pub type Result<T> = core::result::Result<T, Error>;
 /// Criteria to be used in [Vault::find_credentials].
 ///
 /// *NOTE*: Only searching VCs by format and type is currently supported.
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 #[non_exhaustive]
 pub enum FindCriteria {
     ByTypeAndFormat(String, String),
