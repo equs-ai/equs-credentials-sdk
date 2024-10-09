@@ -1,5 +1,6 @@
 use crate::crypto;
 use async_trait::async_trait;
+use common_macros::DebugError;
 use snafu::{Location, Snafu};
 use std::fmt::Debug;
 use strum_macros::{Display, EnumString, IntoStaticStr};
@@ -8,7 +9,7 @@ use tracing::{instrument, trace, Level};
 /// `Kms` Error.
 ///
 /// All implementations of [Kms] should leverage this enum for error handling.
-#[derive(Snafu)]
+#[derive(Snafu, DebugError)]
 #[snafu(visibility(pub))]
 #[non_exhaustive]
 pub enum Error {
@@ -32,13 +33,6 @@ pub enum Error {
         location: Location,
         source: crypto::Error,
     },
-}
-
-impl Debug for Error {
-    fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
-        std::write!(fmt, "{}", self)?;
-        Ok(())
-    }
 }
 
 /// `Result` alias for Kms-specific [Error].

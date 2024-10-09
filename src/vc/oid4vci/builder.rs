@@ -9,6 +9,7 @@ use crate::vc::oid4vci::metadata::convert_metadata;
 use crate::vc::oid4vci::token_validation::{ByJwks, Introspect};
 use crate::vc::oid4vci::CredentialOffer;
 use crate::{kms, vault, vc};
+use common_macros::DebugError;
 use oid4vci::openidconnect::JsonWebKeySetUrl;
 use snafu::{Location, Snafu};
 use std::collections::HashMap;
@@ -18,7 +19,7 @@ use tracing::{debug, info, instrument, Level};
 use url::Url;
 
 /// An `OID4VCI` Builder errors.
-#[derive(Snafu)]
+#[derive(Snafu, DebugError)]
 #[non_exhaustive]
 pub enum Error {
     #[snafu(display("Builder error at {location}\n Cause: {details}"))]
@@ -27,20 +28,6 @@ pub enum Error {
         #[snafu(implicit)]
         location: Location,
     },
-}
-
-impl Debug for Error {
-    fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
-        std::write!(fmt, "{}", self)?;
-
-        let mut error: &dyn std::error::Error = self;
-        while let Some(source) = error.source() {
-            write!(fmt, "\n Cause: {}", source)?;
-            error = source;
-        }
-
-        Ok(())
-    }
 }
 
 #[derive(Clone)]

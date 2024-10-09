@@ -2,6 +2,7 @@ use crate::crypto;
 use crate::did::DIDURL;
 use crate::nonce::Nonce;
 use async_trait::async_trait;
+use common_macros::DebugError;
 use oid4vci::proof_of_possession::{ConversionError, ParsingError, VerificationError};
 use snafu::{Location, Snafu};
 use std::fmt::{Debug, Display, Formatter};
@@ -48,7 +49,7 @@ impl Display for Format {
     }
 }
 
-#[derive(Snafu)]
+#[derive(Snafu, DebugError)]
 #[snafu(visibility(pub(super)))]
 #[non_exhaustive]
 pub enum Error {
@@ -94,20 +95,6 @@ pub enum Error {
         location: Location,
         source: crypto::Error,
     },
-}
-
-impl Debug for Error {
-    fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
-        std::write!(fmt, "{}", self)?;
-
-        let mut error: &dyn std::error::Error = self;
-        while let Some(source) = error.source() {
-            write!(fmt, "\n Cause: {}", source)?;
-            error = source;
-        }
-
-        Ok(())
-    }
 }
 
 pub type Result<T> = core::result::Result<T, Error>;

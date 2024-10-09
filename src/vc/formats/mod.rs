@@ -6,6 +6,7 @@ use ssi::did::DIDURL;
 
 use crate::nonce::Nonce;
 use crate::{crypto, did};
+use common_macros::DebugError;
 
 pub mod sd_jwt_vc;
 pub mod vc;
@@ -14,7 +15,7 @@ pub mod vp;
 /// `VC` format internal error.
 ///
 /// Defines errors for all supported low-level VC operations.
-#[derive(Snafu)]
+#[derive(Snafu, DebugError)]
 #[non_exhaustive]
 pub enum Error {
     #[snafu(display("Unsupported format: {format}"))]
@@ -92,20 +93,6 @@ pub enum Error {
         #[snafu(implicit)]
         location: Location,
     },
-}
-
-impl Debug for Error {
-    fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
-        std::write!(fmt, "{}", self)?;
-
-        let mut error: &dyn std::error::Error = self;
-        while let Some(source) = error.source() {
-            write!(fmt, "\n Cause: {}", source)?;
-            error = source;
-        }
-
-        Ok(())
-    }
 }
 
 pub type Result<T> = core::result::Result<T, Error>;

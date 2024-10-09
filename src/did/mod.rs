@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use common_macros::DebugError;
 use snafu::{Location, Snafu};
 use ssi::did::did_resolve::DIDResolver as SpruceResolver;
 use ssi::did::{Resource, VerificationMethod};
@@ -13,7 +14,7 @@ pub mod universal;
 /// `DID` Error.
 ///
 /// Enumerates general errors expected during `DID` operations.
-#[derive(Snafu)]
+#[derive(Snafu, DebugError)]
 #[non_exhaustive]
 pub enum Error {
     #[snafu(display("Unsupported method: {method}"))]
@@ -40,13 +41,6 @@ pub enum Error {
         #[snafu(implicit)]
         location: Location,
     },
-}
-
-impl Debug for Error {
-    fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
-        std::write!(fmt, "{}", self)?;
-        Ok(())
-    }
 }
 
 /// `Result` alias for `DID`-specific [Error].
