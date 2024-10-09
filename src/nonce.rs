@@ -1,6 +1,7 @@
 use crate::utils::b64;
 use crate::utils::serde::{int_to_duration, int_to_offset_date_time};
 use async_trait::async_trait;
+use common_macros::DebugError;
 use serde::{Deserialize, Serialize};
 use snafu::{Location, Snafu};
 use std::fmt::Debug;
@@ -51,7 +52,7 @@ impl Nonce {
 /// `NonceGenerator` Error.
 ///
 /// All implementations of [NonceGenerator] should leverage this enum for error handling.
-#[derive(Snafu)]
+#[derive(Snafu, DebugError)]
 #[snafu(visibility(pub))]
 #[non_exhaustive]
 pub enum Error {
@@ -61,13 +62,6 @@ pub enum Error {
         #[snafu(implicit)]
         location: Location,
     },
-}
-
-impl Debug for Error {
-    fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
-        std::write!(fmt, "{}", self)?;
-        Ok(())
-    }
 }
 
 /// `Result` alias for Nonce-specific [Error].

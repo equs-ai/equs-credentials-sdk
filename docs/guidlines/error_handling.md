@@ -3,7 +3,7 @@ We use the `snafu` library for error handling, taking advantage of its features 
 
 ## Rules
 - Developers should try to write more informative error messages, including relevant error details and arguments.
-- Use the `#[derive(Snafu)]` macro for defining error enums or structs.
+- Use the `#[derive(Snafu, DebugError)]` macro for defining error enums or structs.
 - Do not use the `#[derive(Debug)]` macro for errors. The default `Debug` implementation displays internal error structure details that are not readable enough.
 - When naming error variants, avoid adding the `Error` postfix to the variant name. The context provided by the error name should be sufficient.
 - If an error contains a nested source error, include a `Location` struct to capture and display where the error occurred.
@@ -94,13 +94,13 @@ the location within the module where it occurred.
 #[derive(Snafu)]
 #[non_exhaustive]
 pub enum Error {
-    #[snafu(display("Crypto error at {location}\n Cause: {source}"))]
+    #[snafu(display("Crypto error at {location}"))]
     Crypto {
         #[snafu(implicit)]
         location: Location,
         source: crypto::Error
     },
-    #[snafu(display("Network error at {location}\n Cause: {source}"))]
+    #[snafu(display("Network error at {location}"))]
     Network {
         #[snafu(implicit)]
         location: Location,
@@ -119,29 +119,31 @@ fn perform_network_request(url: &str) -> Result<Response, Error> {
 ```
 
 # Error Example
+
 ```rust
- use snafu::{Snafu, ResultExt};
+use snafu::{Snafu, ResultExt};
+use common_macros::DebugError;
  
-#[derive(Snafu)]
+#[derive(Snafu, DebugError)]
 #[non_exhaustive]
 enum Error {
     #[snafu(display("Unsupported key: {type_}"))]
     KeyNotSupported { type_: String },
     #[snafu(display("Unsupported algorithm: {alg}"))]
     AlgNotSupported { alg: String },
-    #[snafu(display("Key generation error at {location}\n Cause: {details}"))]
+    #[snafu(display("Key generation error at {location}: {details}"))]
     KeyGeneration {
         details: String,
         #[snafu(implicit)]
         location: Location,
     },
-    #[snafu(display("Network error at {location}\n Cause: {source}"))]
+    #[snafu(display("Network error at {location}"))]
     Network {
         #[snafu(implicit)]
         location: Location,
         source: reqwest::Error
     },
-    #[snafu(display("Failed to open file {filename} at {location}\n {source}"))]
+    #[snafu(display("Failed to open file {filename} at {location}"))]
     File {
         filename: String,
         #[snafu(implicit)]
@@ -151,21 +153,14 @@ enum Error {
 }
 ```
 
-We can reduce boilerplate by implementing the Debug trait for the Error type. 
-By implementing Debug as shown below, we can avoid the need to provide the source explicitly in the display message.
+We use `#[derive(Snafu, DebugError)]` to implement `Debug` trait that is responsible for showing a chain of
+errors in the following way:
 
-```rust
-impl std::fmt::Debug for Error {
-    fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
-        std::write!(fmt, "{}", self)?;
-
-        let mut error: &dyn std::error::Error = self;
-        while let Some(source) = error.source() {
-            write!(fmt, "\n Cause: {}", source)?;
-            error = source;
-        }
-
-        Ok(())
-    }
-}
 ```
+VC error at src/vc/oid4vci/holder.rs:751:23
+ Cause: VC error at src/vc/oid4vci/holder.rs:747:23
+ Cause: DID error at src/vc/oid4vci/holder.rs:743:23
+ Cause: Key mismatch
+```
+
+In case an error includes `source` field the source error will be shown as a part of `Cause: ` line.

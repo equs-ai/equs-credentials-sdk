@@ -1,11 +1,12 @@
 use async_trait::async_trait;
+use common_macros::DebugError;
 use snafu::{Location, Snafu};
 use std::fmt::Debug;
 
 /// `Storage` Error.
 ///
 /// All implementations of [Storage] should leverage this enum for error handling.
-#[derive(Snafu)]
+#[derive(Snafu, DebugError)]
 #[snafu(visibility(pub))]
 #[non_exhaustive]
 pub enum Error {
@@ -21,13 +22,6 @@ pub enum Error {
         #[snafu(implicit)]
         location: Location,
     },
-}
-
-impl Debug for Error {
-    fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
-        std::write!(fmt, "{}", self)?;
-        Ok(())
-    }
 }
 
 /// `Result` alias for Storage-specific [Error].

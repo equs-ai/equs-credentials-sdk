@@ -1,5 +1,6 @@
 use crate::http::{HttpClient, HttpError};
 use crate::utils::http::{MIME_TYPE_FORM_URLENCODED, MIME_TYPE_JSON};
+use common_macros::DebugError;
 use oauth2::basic::BasicTokenType;
 use oauth2::http::header::{InvalidHeaderValue, ACCEPT, AUTHORIZATION, CONTENT_TYPE};
 use oauth2::http::{HeaderValue, Method};
@@ -23,7 +24,7 @@ pub type Result<T> = core::result::Result<T, Error>;
 type IntrospectionResponse =
     StandardTokenIntrospectionResponse<EmptyExtraTokenFields, BasicTokenType>;
 
-#[derive(Snafu)]
+#[derive(Snafu, DebugError)]
 pub enum Error {
     // Expected
     #[snafu(display("Token validation error at {location}\n Cause: {details}"))]
@@ -69,20 +70,6 @@ pub enum Error {
         location: Location,
         source: ssi::jws::Error,
     },
-}
-
-impl Debug for Error {
-    fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
-        std::write!(fmt, "{}", self)?;
-
-        let mut error: &dyn std::error::Error = self;
-        while let Some(source) = error.source() {
-            write!(fmt, "\n Cause: {}", source)?;
-            error = source;
-        }
-
-        Ok(())
-    }
 }
 
 pub struct Introspect<HC: HttpClient> {

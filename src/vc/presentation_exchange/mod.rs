@@ -1,6 +1,7 @@
 use crate::utils::json::find_json_element;
 use crate::vc::core::PresentationInput;
 use crate::vc::{Claims, Presentation, SD_JWT_VC};
+use common_macros::DebugError;
 use oid4vp::core::metadata::parameters::verifier::VpFormats;
 use oid4vp::presentation_exchange::{
     ConstraintsField, DescriptorMap, InputDescriptor, PresentationDefinition,
@@ -14,7 +15,7 @@ use uuid::Uuid;
 
 pub mod builder;
 
-#[derive(Snafu)]
+#[derive(Snafu, DebugError)]
 #[non_exhaustive]
 pub enum Error {
     #[snafu(display("Unsupported format: {format}"))]
@@ -30,20 +31,6 @@ pub enum Error {
         location: Location,
         source: anyhow::Error,
     },
-}
-
-impl Debug for Error {
-    fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
-        std::write!(fmt, "{}", self)?;
-
-        let mut error: &dyn std::error::Error = self;
-        while let Some(source) = error.source() {
-            write!(fmt, "\n Cause: {}", source)?;
-            error = source;
-        }
-
-        Ok(())
-    }
 }
 
 pub type Result<T> = core::result::Result<T, Error>;

@@ -3,6 +3,7 @@ use crate::vault::CredentialEntry;
 use crate::vc::oid4vp::InternalError;
 use crate::vc::Claims;
 use async_trait::async_trait;
+use common_macros::DebugError;
 use oid4vp::core::authorization_request::parameters::ResponseMode;
 use oid4vp::core::authorization_request::RequestIndirection;
 use serde::{Deserialize, Serialize};
@@ -66,26 +67,12 @@ pub struct AuthorizationResponse {
     pub presentation_submission: PresentationSubmission,
 }
 
-#[derive(Snafu)]
+#[derive(Snafu, DebugError)]
 #[non_exhaustive]
 pub enum Error {
     #[snafu(transparent)]
     Internal { source: InternalError },
     //TODO: Add Protocol Error
-}
-
-impl Debug for Error {
-    fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
-        std::write!(fmt, "{}", self)?;
-
-        let mut error: &dyn std::error::Error = self;
-        while let Some(source) = error.source() {
-            write!(fmt, "\n Cause: {}", source)?;
-            error = source;
-        }
-
-        Ok(())
-    }
 }
 
 /// The `OID4VP` `Holder` API.

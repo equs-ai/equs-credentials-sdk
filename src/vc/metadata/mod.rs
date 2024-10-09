@@ -6,11 +6,12 @@ use tracing::{instrument, Level};
 use crate::vc::core::KeyMetadata;
 use crate::vc::formats::HasClaims;
 use crate::vc::{Credential, CredentialMetadata, HasVCFormat};
+use common_macros::DebugError;
 
 /// `Metadata` Error.
 ///
 /// Should be used by all `CredentialMetadataProcessor` implementations.
-#[derive(Snafu)]
+#[derive(Snafu, DebugError)]
 #[non_exhaustive]
 pub enum Error {
     #[snafu(display("Unsupported format: {format}"))]
@@ -21,13 +22,6 @@ pub enum Error {
         #[snafu(implicit)]
         location: Location,
     },
-}
-
-impl Debug for Error {
-    fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
-        std::write!(fmt, "{}", self)?;
-        Ok(())
-    }
 }
 
 /// `Result` alias for `MetadataProcessor` [Error].

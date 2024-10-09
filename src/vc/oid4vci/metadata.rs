@@ -2,6 +2,7 @@ use crate::crypto::Alg;
 use crate::vc::core::{CredentialDefinition, CredentialDefinitionData, KeyMetadata};
 use crate::vc::{pop, HasVCFormat, VCFormat};
 use crate::{crypto, vc};
+use common_macros::DebugError;
 use oid4vci::core::profiles;
 use oid4vci::core::profiles::{CoreProfilesMetadata, CoreProfilesRequest, CoreProfilesResponse};
 use oid4vci::proof_of_possession::KeyProofType;
@@ -14,7 +15,7 @@ use tracing::{instrument, trace, Level};
 pub type IssuerMetadata = oid4vci::core::metadata::IssuerMetadata;
 pub type CredentialMetadata = oid4vci::metadata::CredentialMetadata<CoreProfilesMetadata>;
 
-#[derive(Snafu)]
+#[derive(Snafu, DebugError)]
 #[non_exhaustive]
 pub enum Error {
     #[snafu(display("Crypto error at {location}"))]
@@ -23,20 +24,6 @@ pub enum Error {
         location: Location,
         source: crypto::Error,
     },
-}
-
-impl Debug for Error {
-    fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
-        std::write!(fmt, "{}", self)?;
-
-        let mut error: &dyn std::error::Error = self;
-        while let Some(source) = error.source() {
-            write!(fmt, "\n Cause: {}", source)?;
-            error = source;
-        }
-
-        Ok(())
-    }
 }
 
 type Result<T> = std::result::Result<T, Error>;

@@ -2,6 +2,7 @@ use std::fmt::Debug;
 
 use crate::{kms, vc};
 use async_trait::async_trait;
+use common_macros::DebugError;
 #[cfg(test)]
 use mockall::automock;
 use serde::{Deserialize, Serialize};
@@ -10,7 +11,7 @@ use snafu::{Location, Snafu};
 /// `Vault` Error.
 ///
 /// All implementations of [Vault] should leverage this enum for error handling.
-#[derive(Snafu)]
+#[derive(Snafu, DebugError)]
 #[snafu(visibility(pub))]
 #[non_exhaustive]
 pub enum Error {
@@ -34,13 +35,6 @@ pub enum Error {
         #[snafu(implicit)]
         location: Location,
     },
-}
-
-impl Debug for Error {
-    fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
-        std::write!(fmt, "{}", self)?;
-        Ok(())
-    }
 }
 
 /// `Result` alias for Vault-specific [Error].

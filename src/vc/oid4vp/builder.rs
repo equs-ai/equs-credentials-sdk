@@ -7,13 +7,14 @@ use crate::vc::oid4vp as api;
 use crate::vc::oid4vp::holder::HolderService;
 use crate::vc::oid4vp::verifier::VerifierService;
 use crate::{did, kms, vault, vc};
+use common_macros::DebugError;
 use snafu::{Location, Snafu};
 use std::fmt::Debug;
 use std::marker::PhantomData;
 use tracing::{debug, info, instrument, Level};
 
 /// An `OID4VP` Builder errors.
-#[derive(Snafu)]
+#[derive(Snafu, DebugError)]
 #[non_exhaustive]
 pub enum Error {
     Build {
@@ -21,13 +22,6 @@ pub enum Error {
         #[snafu(implicit)]
         location: Location,
     },
-}
-
-impl Debug for Error {
-    fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
-        std::write!(fmt, "{}", self)?;
-        Ok(())
-    }
 }
 
 /// A builder for creating an `OID4VP` `Verifier` instance.
