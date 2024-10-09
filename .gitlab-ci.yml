@@ -77,6 +77,20 @@ sonar qube scan tags:
   except:
     - merge_requests
 
+dependency_scanning:
+  <<: *rust_job_configs
+  stage: scan
+  script:
+    - cargo install gitlab-cargo-audit
+    - gitlab-cargo-audit --output-path gl-dependency-scanning-report.json
+  artifacts:
+    when: always
+    reports:
+      dependency_scanning: gl-dependency-scanning-report.json
+  only:
+    - merge_requests
+    - main
+
 # Lint stage
 
 lint-job:
