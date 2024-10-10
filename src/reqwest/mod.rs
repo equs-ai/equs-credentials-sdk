@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use mime::Mime;
 use oauth2::http::header::ACCEPT;
 use oauth2::http::HeaderValue;
 use oauth2::{HttpRequest, HttpResponse};
@@ -6,7 +7,7 @@ use reqwest::header::CONTENT_TYPE;
 use reqwest::redirect::Policy;
 use reqwest::{Client, Response};
 use snafu::ensure;
-use std::str::from_utf8;
+use std::str::{from_utf8, FromStr};
 use std::time::Duration;
 use tracing::{debug, info, instrument, Level};
 
@@ -79,17 +80,45 @@ impl ReqwestClient {
             }.build()
         })?;
 
-        ensure!(
-            content_type_to_accept == content_type,
-            HttpSnafu {
-                details: format!(
-                    "Content-type is mismatched: accepted {:?} , received {:?}",
-                    content_type_to_accept, content_type
-                ),
+        let content_type = Self::header_value_to_mime(content_type);
+        let content_type_to_accept = Self::header_value_to_mime(content_type_to_accept);
+
+        if let (Some(content_type), Some(content_type_to_accept)) =
+            (content_type, content_type_to_accept)
+        {
+            ensure!(
+                content_type_to_accept.essence_str() == content_type.essence_str(),
+                HttpSnafu {
+                    details: format!(
+                        "Content-type is mismatched: accepted {:?} , received {:?}",
+                        content_type_to_accept, content_type
+                    ),
+                }
+            );
+
+            for (name, value) in content_type_to_accept.params() {
+                let value_to_check = content_type.get_param(name);
+
+                ensure!(
+                    value_to_check == Some(value),
+                    HttpSnafu {
+                        details: format!(
+                            "Content-type is mismatched: accepted {:?} , received {:?}",
+                            content_type_to_accept, content_type
+                        ),
+                    }
+                );
             }
-        );
+        }
 
         Ok(())
+    }
+
+    fn header_value_to_mime(header_val: &HeaderValue) -> Option<Mime> {
+        header_val
+            .to_str()
+            .ok()
+            .and_then(|c| Mime::from_str(c).ok())
     }
 }
 
@@ -168,6 +197,7 @@ mod tests {
     use crate::http::HttpClient;
     use crate::reqwest::ReqwestClient;
     use crate::utils::http::MIME_TYPE_JSON;
+    use crate::utils::http::MIME_TYPE_TEXT_PLAIN;
     use oauth2::http::header::ACCEPT;
     use oauth2::http::{HeaderMap, HeaderValue, Method};
     use oauth2::HttpRequest;
@@ -176,6 +206,10 @@ mod tests {
     use rstest::rstest;
     use serde_json::{json, Value};
     use url::Url;
+
+    const MIME_TYPE_TEXT_HTML: &str = "text/html";
+    const MIME_TYPE_TEXT_HTML_WITH_CHARSET: &str = "text/html; charset=utf-8";
+    const MIME_TYPE_JSON_WITH_CHARSET: &str = "application/json; charset=utf-8";
 
     #[tokio::test]
     #[should_panic(expected = "URL scheme is not allowed")]
@@ -240,23 +274,54 @@ mod tests {
     // #[case(("content-length", "12"))]
     #[rstest]
     #[should_panic(expected = "Content-type is mismatched")]
-    #[case((CONTENT_TYPE.as_str(), "text/plain"))]
+    #[case::different_mimes(MIME_TYPE_TEXT_PLAIN, MIME_TYPE_JSON)]
+    #[should_panic(expected = "Content-type is mismatched")]
+    #[case::mimes_with_different_params(MIME_TYPE_JSON_WITH_CHARSET, MIME_TYPE_JSON)]
     #[tokio::test]
-    async fn handling_response_fails_when_content_type_is_invalid(#[case] header: (&str, &str)) {
+    async fn handling_response_fails_when_content_type_is_invalid(
+        #[case] accept_header: &str,
+        #[case] resp_header: &str,
+    ) {
         let mut server = mockito::Server::new_async().await;
         let url = server.url();
 
         let mock = server
             .mock("GET", "/test")
             .with_status(200)
-            .with_header(header.0, header.1)
+            .with_header(CONTENT_TYPE.as_str(), resp_header)
             .with_body("Hello World!")
             .create();
 
         let request = HttpRequest {
             url: Url::parse("http://example.org").unwrap(),
             method: Method::GET,
-            headers: vec![(ACCEPT, HeaderValue::from_static(MIME_TYPE_JSON))]
+            headers: vec![(ACCEPT, HeaderValue::from_str(accept_header).unwrap())]
+                .into_iter()
+                .collect(),
+            body: vec![],
+        };
+
+        let client = ReqwestClient::unsecure().unwrap();
+
+        let resp = client.async_call(request).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn handling_response_works_when_essence_of_accepted_header_is_matched() {
+        let mut server = mockito::Server::new_async().await;
+        let url = server.url();
+
+        let mock = server
+            .mock("GET", "/test")
+            .with_status(200)
+            .with_header(CONTENT_TYPE.as_str(), MIME_TYPE_TEXT_HTML_WITH_CHARSET)
+            .with_body("Hello World!")
+            .create();
+
+        let request = HttpRequest {
+            url: Url::parse("http://example.org").unwrap(),
+            method: Method::GET,
+            headers: vec![(ACCEPT, HeaderValue::from_static(MIME_TYPE_TEXT_HTML))]
                 .into_iter()
                 .collect(),
             body: vec![],
