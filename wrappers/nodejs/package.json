@@ -21,11 +21,12 @@
   "scripts": {
     "artifacts": "napi artifacts",
     "build": "napi build --platform --release",
-    "build:debug": "napi build --platform",
+    "build:debug": "napi build --features=in-memory --platform",
     "prepublishOnly": "napi prepublish -t npm",
     "test": "ava",
     "universal": "napi universal",
-    "version": "napi version"
+    "version": "napi version",
+    "postinstall": "if [ \"$NODE_ENV\" = \"development\" ]; then npm run build:debug; else npm run build; fi"
   },
   "packageManager": "yarn@4.5.0"
 }

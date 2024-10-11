@@ -1,4 +1,5 @@
 #![deny(clippy::all)]
+#[cfg(any(test, feature = "in-memory"))]
 pub mod inmem;
 pub mod kms;
 mod nonce;
