@@ -2,7 +2,8 @@
 #[cfg(any(test, feature = "in-memory"))]
 pub mod inmem;
 pub mod kms;
-mod nonce;
+pub mod nonce;
 pub(crate) mod utils;
 pub mod vault;
 pub mod vc;
+pub use utils::create_key_metadata;

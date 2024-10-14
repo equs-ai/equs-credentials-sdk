@@ -1,6 +1,8 @@
-use crate::utils::{parse_string_arg, to_result_string};
+use crate::nonce::JsNonceData;
+use crate::utils::to_json_object;
 use crate::vc::core::{JsCredential, JsCredentialMetadata, JsKeyMetadata};
-use crate::vc::oid4vci::NonceData;
+use crate::vc::JsonObject;
+use agent_sdk::nonce::NonceData;
 use agent_sdk::vc::core::KeyMetadata;
 use agent_sdk::vc::oid4vci::{
     CredentialResponseResolved, CredentialResult, Holder, IssuerMetadata, TokenResponse,
@@ -12,23 +14,25 @@ use napi::Either;
 use napi_derive::napi;
 use oauth2::AccessToken;
 use tokio::runtime::Handle;
+use tokio::task;
 use url::Url;
 
 #[napi]
-pub struct JsHolder(Box<dyn _HolderWrapperTrait>);
+pub struct OID4VciHolder(Box<dyn _HolderWrapperTrait>);
 
-impl JsHolder {
-    pub fn from_holder<H: Holder + 'static>(holder: H) -> JsHolder {
-        JsHolder(Box::new(_HolderWrapper(holder)))
+impl OID4VciHolder {
+    pub fn from_holder<H: Holder + 'static>(holder: H) -> OID4VciHolder {
+        OID4VciHolder(Box::new(_HolderWrapper(holder)))
     }
 }
 
 #[napi]
-impl JsHolder {
+impl OID4VciHolder {
     #[napi]
-    pub fn get_issuer_metadata(&self) -> napi::Result<String> {
+    pub fn get_issuer_metadata(&self) -> napi::Result<JsonObject> {
         let issuer_metadata = self.0.get_issuer_metadata();
-        to_result_string(&issuer_metadata)
+
+        to_json_object(issuer_metadata)
     }
 
     #[napi]
@@ -36,25 +40,25 @@ impl JsHolder {
         &self,
         scope: String,
         authorization_callback: ThreadsafeFunction<String, ErrorStrategy::Fatal>,
-    ) -> napi::Result<String> {
-        let token_response = self
-            .0
+    ) -> napi::Result<JsonObject> {
+        self.0
             .authz_code_flow_with_scope(
                 scope,
                 Box::new(move |url| {
                     // TODO: Refactor `authorization_callback` to allow asynchronous execution and handling of errors.
-                    Handle::current().block_on(async {
-                        authorization_callback
-                            .call_async(url.to_string())
-                            .await
-                            .unwrap()
+                    task::block_in_place(move || {
+                        Handle::current().block_on(async {
+                            authorization_callback
+                                .call_async(url.to_string())
+                                .await
+                                .unwrap()
+                        })
                     })
                 }),
             )
             .await
-            .map_err(|err| napi::Error::from_reason(format!("{:?}", err)))?;
-
-        to_result_string(&token_response)
+            .map_err(|err| napi::Error::from_reason(format!("{:?}", err)))
+            .and_then(to_json_object)
     }
 
     #[napi]
@@ -63,14 +67,12 @@ impl JsHolder {
         pre_authorized_code: String,
         tx_code: String,
         cred_def_id: Option<String>,
-    ) -> napi::Result<String> {
-        let token_response = self
-            .0
+    ) -> napi::Result<JsonObject> {
+        self.0
             .pre_authz_code_flow(pre_authorized_code, tx_code, cred_def_id)
             .await
-            .map_err(|err| napi::Error::from_reason(format!("{:?}", err)))?;
-
-        to_result_string(&token_response)
+            .map_err(|err| napi::Error::from_reason(format!("{:?}", err)))
+            .and_then(to_json_object)
     }
 
     #[napi]
@@ -78,20 +80,18 @@ impl JsHolder {
         &self,
         token: String,
         cred_def_id: String,
-        nonce: Option<String>,
+        nonce: Option<JsNonceData>,
         key_metadata: JsKeyMetadata,
     ) -> napi::Result<CredentialResponse> {
-        let nonce = nonce.map(|value| parse_string_arg(&value)).transpose()?;
-        let token = parse_string_arg(&token)?;
+        let nonce = nonce.map(|data| data.try_into()).transpose()?;
+        let token = serde_json::from_value(serde_json::Value::String(token))?;
         let key_metadata = key_metadata.into();
 
-        let result = self
-            .0
+        self.0
             .request_credential(&token, &cred_def_id, nonce, &key_metadata)
             .await
-            .map_err(|err| napi::Error::from_reason(format!("{:?}", err)))?;
-
-        result.try_into()
+            .map_err(|err| napi::Error::from_reason(format!("{:?}", err)))
+            .and_then(TryInto::try_into)
     }
 
     #[napi]
@@ -121,7 +121,7 @@ pub struct CredentialImmediate {
 #[napi(object)]
 pub struct CredentialResponse {
     pub data: Either<CredentialDeferred, CredentialImmediate>,
-    pub nonce_data: Option<NonceData>,
+    pub nonce_data: Option<JsNonceData>,
 }
 
 impl TryFrom<CredentialResponseResolved> for CredentialResponse {
@@ -143,7 +143,7 @@ impl TryFrom<CredentialResponseResolved> for CredentialResponse {
 
         Ok(Self {
             data,
-            nonce_data: value.nonce_data.map(|value| value.try_into()).transpose()?,
+            nonce_data: value.nonce_data.map(|value| value.into()),
         })
     }
 }
@@ -169,7 +169,7 @@ trait _HolderWrapperTrait: Send + Sync {
         &self,
         token: &AccessToken,
         cred_def_id: &str,
-        nonce: Option<agent_sdk::nonce::NonceData>,
+        nonce: Option<NonceData>,
         key_metadata: &KeyMetadata,
     ) -> oid4vci::Result<CredentialResponseResolved>;
 
@@ -213,7 +213,7 @@ impl<H: Holder> _HolderWrapperTrait for _HolderWrapper<H> {
         &self,
         token: &AccessToken,
         cred_def_id: &str,
-        nonce: Option<agent_sdk::nonce::NonceData>,
+        nonce: Option<NonceData>,
         key_metadata: &KeyMetadata,
     ) -> oid4vci::Result<CredentialResponseResolved> {
         self.0

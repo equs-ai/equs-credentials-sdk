@@ -1,4 +1,3 @@
-use crate::utils::{parse_string_arg, to_result_string};
 use agent_sdk::crypto::Alg;
 use agent_sdk::vc::core::KeyMetadata;
 use agent_sdk::vc::{Credential, CredentialMetadata, HasVCFormat, VCFormat};
@@ -97,7 +96,7 @@ impl TryFrom<Credential> for JsCredential {
             },
             Credential::LdpVc(payload) => Self {
                 format: JsVCFormat::LdpVc,
-                payload: to_result_string(&payload)?,
+                payload: serde_json::to_string(&payload)?,
             },
             Credential::SdJwt(payload) => Self {
                 format: JsVCFormat::SdJwtVc,
@@ -122,7 +121,7 @@ impl TryFrom<JsCredential> for Credential {
         let result = match value.format {
             JsVCFormat::JwtVcJson => Self::JwtVcJson(value.payload),
             JsVCFormat::JwtVcJsonLD => Self::JwtVcJsonLd(value.payload),
-            JsVCFormat::LdpVc => Self::LdpVc(parse_string_arg(&value.payload)?),
+            JsVCFormat::LdpVc => Self::LdpVc(serde_json::from_str(&value.payload)?),
             JsVCFormat::SdJwtVc => Self::SdJwt(value.payload),
             JsVCFormat::MsoMdoc => {
                 return Err(Error::from_reason(

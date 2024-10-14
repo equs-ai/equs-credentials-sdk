@@ -1,10 +1,11 @@
-use crate::vc::core::{JsCredential, JsCredentialMetadata};
 use agent_sdk::vault;
 use agent_sdk::vault::{CredentialEntry, FindCriteria, Vault};
 use agent_sdk::vc::{Credential, CredentialMetadata};
 use async_trait::async_trait;
 use napi_derive::napi;
 use std::sync::Arc;
+
+use crate::vc::core::{JsCredential, JsCredentialMetadata};
 
 #[derive(Clone)]
 #[napi]
@@ -96,7 +97,18 @@ impl TryFrom<CredentialEntry> for JsCredentialEntry {
     }
 }
 
-#[napi(js_name = "CredentialSearchCriteria")]
+impl TryFrom<JsCredentialEntry> for CredentialEntry {
+    type Error = napi::Error;
+
+    fn try_from(value: JsCredentialEntry) -> napi::Result<Self> {
+        Ok(CredentialEntry {
+            credential: value.credential.try_into()?,
+            kid: value.kid,
+        })
+    }
+}
+
+#[napi]
 pub struct CredentialSearchCriteria(FindCriteria);
 
 #[napi]

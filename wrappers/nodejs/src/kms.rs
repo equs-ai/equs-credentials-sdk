@@ -1,11 +1,11 @@
-use crate::utils::to_result_string;
-use crate::vc::core::JsAlg;
 use agent_sdk::crypto::{Alg, Key, Signer, SigningKey, Verifier, VerifyingKey, JWK};
 use agent_sdk::kms::{CreateOptions, KeyHandle, KeyID, KeyType, Kms};
 use agent_sdk::{crypto, kms};
 use async_trait::async_trait;
 use napi_derive::napi;
 use std::sync::Arc;
+
+use crate::vc::core::JsAlg;
 
 #[napi]
 #[derive(Clone)]
@@ -27,7 +27,9 @@ impl NativeKeyHandle {
 
     #[napi]
     pub fn jwk(&self) -> Option<String> {
-        self.0.jwk().and_then(|value| to_result_string(&value).ok())
+        self.0
+            .jwk()
+            .and_then(|value| serde_json::to_string(&value).ok())
     }
 
     #[napi]
