@@ -1,37 +1,38 @@
+use crate::kms::NativeKms;
+use crate::nonce::NativeNonceGenerator;
+use crate::utils::{from_json_object, parse_url_arg};
+use crate::vault::NativeVault;
+use crate::vc::core::JsKeyMetadata;
+use crate::vc::oid4vci::holder::OID4VciHolder;
+use crate::vc::oid4vci::issuer::OID4VCiIssuer;
+use crate::vc::JsonObject;
+use agent_sdk::reqwest::ReqwestClient;
 use agent_sdk::vc::core::KeyMetadata;
 use agent_sdk::vc::oid4vci::{CredentialOffer, HolderBuilder, IssuerBuilder, IssuerDiscovery};
 use napi::{Error, Result};
 use napi_derive::napi;
 use std::collections::HashMap;
 
-use crate::kms::NativeKms;
-use crate::nonce::NativeNonceGenerator;
-use crate::utils::{parse_string_arg, parse_url_arg};
-use crate::vault::NativeVault;
-use crate::vc::core::JsKeyMetadata;
-use crate::vc::oid4vci::holder::JsHolder;
-use crate::vc::oid4vci::issuer::JsIssuer;
-
-#[napi(js_name = "IssuerBuilder")]
-pub struct JsIssuerBuilder {
+#[napi]
+pub struct OID4VciIssuerBuilder {
     kms: NativeKms,
     nonce_generator: NativeNonceGenerator,
-    issuer_metadata: String,
+    issuer_metadata: JsonObject,
     key_metadata: KeyMetadata,
     token_validation: Option<TokenValidation>,
     dedicated_keys: HashMap<String, KeyMetadata>,
 }
 
 #[napi]
-impl JsIssuerBuilder {
+impl OID4VciIssuerBuilder {
     #[napi(constructor)]
     pub fn new(
         kms: &NativeKms,
         nonce_generator: &NativeNonceGenerator,
-        issuer_metadata: String,
+        issuer_metadata: JsonObject,
         key_metadata: JsKeyMetadata,
     ) -> Self {
-        JsIssuerBuilder {
+        OID4VciIssuerBuilder {
             kms: kms.clone(),
             nonce_generator: nonce_generator.clone(),
             issuer_metadata,
@@ -62,11 +63,11 @@ impl JsIssuerBuilder {
     }
 
     #[napi]
-    pub async fn build(&self) -> Result<JsIssuer> {
+    pub async fn build(&self) -> Result<OID4VCiIssuer> {
         let mut builder = IssuerBuilder::new(
             self.kms.clone(),
             self.nonce_generator.clone(),
-            parse_string_arg(&self.issuer_metadata)?,
+            from_json_object(self.issuer_metadata.clone())?,
             self.key_metadata.clone(),
         );
 
@@ -91,12 +92,12 @@ impl JsIssuerBuilder {
             .await
             .map_err(|err| Error::from_reason(format!("{:?}", err)))?;
 
-        Ok(JsIssuer(Box::new(issuer)))
+        Ok(OID4VCiIssuer(Box::new(issuer)))
     }
 }
 
-#[napi(js_name = "HolderBuilder")]
-pub struct JsHolderBuilder {
+#[napi]
+pub struct OID4VciHolderBuilder {
     kms: NativeKms,
     vault: NativeVault,
     client_id: String,
@@ -105,7 +106,7 @@ pub struct JsHolderBuilder {
 }
 
 #[napi]
-impl JsHolderBuilder {
+impl OID4VciHolderBuilder {
     #[napi(constructor)]
     pub fn new(
         kms: &NativeKms,
@@ -113,7 +114,7 @@ impl JsHolderBuilder {
         client_id: String,
         issuer_discovery: &JsIssuerDiscovery,
     ) -> Self {
-        JsHolderBuilder {
+        OID4VciHolderBuilder {
             kms: kms.clone(),
             vault: vault.clone(),
             client_id,
@@ -128,13 +129,20 @@ impl JsHolderBuilder {
     }
 
     #[napi]
-    pub async fn build(&self) -> Result<JsHolder> {
+    pub async fn build(&self) -> Result<OID4VciHolder> {
         let mut builder = HolderBuilder::new(
             self.kms.clone(),
             self.vault.clone(),
             self.client_id.to_owned(),
             self.issuer_discovery.0.clone(),
         );
+
+        if cfg!(debug_assertions) {
+            builder = builder.with_http_client(
+                ReqwestClient::unsecure()
+                    .map_err(|err| Error::from_reason(format!("{:?}", err)))?,
+            )
+        }
 
         if let Some(url) = &self.redirect_url {
             builder = builder.with_redirect_url(url.to_string());
@@ -145,7 +153,7 @@ impl JsHolderBuilder {
             .await
             .map_err(|err| Error::from_reason(format!("{:?}", err)))?;
 
-        Ok(JsHolder::from_holder(holder))
+        Ok(OID4VciHolder::from_holder(holder))
     }
 }
 
@@ -161,8 +169,8 @@ impl JsIssuerDiscovery {
     }
 
     #[napi(factory)]
-    pub fn from_offer(credential_offer: String) -> Result<Self> {
-        let credential_offer = parse_string_arg(&credential_offer)?;
+    pub fn from_offer(credential_offer: JsonObject) -> Result<Self> {
+        let credential_offer = from_json_object(credential_offer)?;
 
         Ok(JsIssuerDiscovery(IssuerDiscovery::Offer(
             CredentialOffer::Value { credential_offer },
@@ -181,10 +189,10 @@ impl JsIssuerDiscovery {
     }
 
     #[napi(factory)]
-    pub fn from_metadata(issuer_metadata: String, auth_metadata: String) -> Result<Self> {
+    pub fn from_metadata(issuer_metadata: JsonObject, auth_metadata: JsonObject) -> Result<Self> {
         Ok(JsIssuerDiscovery(IssuerDiscovery::Metadata(
-            parse_string_arg(&issuer_metadata)?,
-            parse_string_arg(&auth_metadata)?,
+            from_json_object(issuer_metadata)?,
+            from_json_object(auth_metadata)?,
         )))
     }
 }

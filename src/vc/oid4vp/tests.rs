@@ -588,7 +588,7 @@ pub mod utils {
                 let vp =
                     create_sd_jwt_vp(&vc, claims.clone(), nonce, verifier_id, &holder_key_handle)
                         .await;
-                presentations.push(vp)
+                presentations.push(vp);
             }
 
             if presentations.len() == 1 {

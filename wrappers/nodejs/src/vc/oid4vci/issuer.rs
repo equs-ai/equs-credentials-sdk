@@ -1,26 +1,29 @@
-use crate::utils::{parse_string_arg, to_result_string};
-use crate::vc::oid4vci::NonceData;
 use agent_sdk::vc::oid4vci;
 use agent_sdk::vc::oid4vci::Issuer;
 use napi::{Error, Result};
 use napi_derive::napi;
 
-#[napi]
-pub struct JsIssuer(pub(crate) Box<dyn Issuer>);
+use crate::nonce::JsNonceData;
+use crate::utils::{from_json_object, to_json_object};
+use crate::vc::JsonObject;
 
 #[napi]
-impl JsIssuer {
+pub struct OID4VCiIssuer(pub(crate) Box<dyn Issuer>);
+
+#[napi]
+impl OID4VCiIssuer {
     #[napi]
-    pub fn get_issuer_metadata(&self) -> Result<String> {
+    pub fn get_issuer_metadata(&self) -> Result<JsonObject> {
         let issuer_metadata = self.0.get_issuer_metadata();
-        to_result_string(&issuer_metadata)
+
+        to_json_object(issuer_metadata)
     }
 
     #[napi]
-    pub fn get_cred_def_metadata(&self, cred_request: String) -> Result<Option<String>> {
+    pub fn get_cred_def_metadata(&self, cred_request: JsonObject) -> Result<Option<JsonObject>> {
         self.0
-            .get_cred_def_metadata(&parse_string_arg(&cred_request)?)
-            .map(|value| to_result_string(&value))
+            .get_cred_def_metadata(&from_json_object(cred_request)?)
+            .map(to_json_object)
             .transpose()
     }
 
@@ -28,15 +31,15 @@ impl JsIssuer {
     pub fn create_credential_offer(
         &self,
         cred_def_ids: Vec<&str>,
-        grants: String, // grant type (auth code, pre-auth code), etc.
+        grants: JsonObject, // grant type (auth code, pre-auth code), etc.
     ) -> Result<CredentialOffer> {
         let (params, url) = self
             .0
-            .create_credential_offer(cred_def_ids, &parse_string_arg(&grants)?)
+            .create_credential_offer(cred_def_ids, &from_json_object(grants)?)
             .map_err(|err| Error::from_reason(format!("{:?}", err)))?;
 
         Ok(CredentialOffer {
-            params: to_result_string(&params)?,
+            params: to_json_object(params)?,
             url: url.to_string(),
         })
     }
@@ -44,9 +47,9 @@ impl JsIssuer {
     #[napi]
     pub async fn issue_credential(
         &self,
-        cred_request: String,
+        cred_request: JsonObject,
         token: String,
-        claims: String,
+        claims: JsonObject,
         session: IssuanceSession,
     ) -> Result<IssuanceResult> {
         let mut oid4vci_session = session.try_into()?;
@@ -54,9 +57,9 @@ impl JsIssuer {
         let result = self
             .0
             .issue_credential(
-                &parse_string_arg(&cred_request)?,
+                &from_json_object(cred_request)?,
                 &token,
-                &parse_string_arg(&claims)?,
+                &from_json_object(claims)?,
                 &mut oid4vci_session,
             )
             .await;
@@ -64,13 +67,13 @@ impl JsIssuer {
         match result {
             Ok(cred_response) => Ok(IssuanceResult {
                 type_: IssuanceResultType::CredResponse,
-                value: to_result_string(&cred_response)?,
-                session: oid4vci_session.try_into()?,
+                value: to_json_object(cred_response)?,
+                session: oid4vci_session.into(),
             }),
             Err(oid4vci::Error::Protocol { source }) => Ok(IssuanceResult {
                 type_: IssuanceResultType::ProtocolError,
-                value: to_result_string(&source)?,
-                session: oid4vci_session.try_into()?,
+                value: to_json_object(source)?,
+                session: oid4vci_session.into(),
             }),
             Err(err) => Err(Error::from_reason(format!("{:?}", err))),
         }
@@ -79,7 +82,7 @@ impl JsIssuer {
 
 #[napi(object)]
 pub struct CredentialOffer {
-    pub params: String,
+    pub params: JsonObject,
     pub url: String,
 }
 
@@ -92,13 +95,13 @@ pub enum IssuanceResultType {
 #[napi(object)]
 pub struct IssuanceResult {
     pub type_: IssuanceResultType,
-    pub value: String,
+    pub value: JsonObject,
     pub session: IssuanceSession,
 }
 
 #[napi(object)]
 pub struct IssuanceSession {
-    pub nonce: Option<NonceData>,
+    pub nonce: Option<JsNonceData>,
     pub notification_id: Option<String>,
     pub transaction_id: Option<String>,
 }
@@ -117,16 +120,12 @@ impl TryFrom<IssuanceSession> for oid4vci::IssuanceSession {
     }
 }
 
-impl TryFrom<oid4vci::IssuanceSession> for IssuanceSession {
-    type Error = Error;
-
-    fn try_from(value: oid4vci::IssuanceSession) -> Result<Self> {
-        let nonce = value.nonce.map(|nonce| nonce.try_into()).transpose()?;
-
-        Ok(Self {
-            nonce,
+impl From<oid4vci::IssuanceSession> for IssuanceSession {
+    fn from(value: oid4vci::IssuanceSession) -> Self {
+        Self {
+            nonce: value.nonce.map(|nonce| nonce.into()),
             notification_id: value.notification_id,
             transaction_id: value.transaction_id,
-        })
+        }
     }
 }

@@ -1,9 +1,28 @@
+use crate::kms::NativeKms;
+use crate::vc::core::JsKeyMetadata;
+use crate::vc::JsonObject;
+use agent_sdk::did::didkey::DIDKey;
+use agent_sdk::did::DIDResolver;
+use agent_sdk::kms;
+use agent_sdk::kms::Kms;
+use napi_derive::napi;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use url::Url;
 
-pub fn parse_string_arg<T: DeserializeOwned>(value: &str) -> napi::Result<T> {
-    serde_json::from_str(value).map_err(|err| napi::Error::new(napi::Status::InvalidArg, err))
+pub fn from_json_object<T: DeserializeOwned>(object: JsonObject) -> napi::Result<T> {
+    Ok(serde_json::from_value(serde_json::Value::Object(object))?)
+}
+
+pub fn to_json_object<T: Serialize>(value: T) -> napi::Result<JsonObject> {
+    let value = serde_json::to_value(value)?;
+
+    match value {
+        serde_json::Value::Object(object) => Ok(object),
+        _ => Err(napi::Error::from_reason(format!(
+            "{value} cannot be represented as a JSON object"
+        ))),
+    }
 }
 
 pub fn parse_url_arg(url: &str) -> napi::Result<Url> {
@@ -12,6 +31,19 @@ pub fn parse_url_arg(url: &str) -> napi::Result<Url> {
     })
 }
 
-pub fn to_result_string<T: Serialize>(value: &T) -> napi::Result<String> {
-    serde_json::to_string(&value).map_err(|err| napi::Error::from_reason(err.to_string()))
+#[cfg(debug_assertions)]
+#[napi]
+pub async fn create_key_metadata(kms: &NativeKms) -> JsKeyMetadata {
+    let did_key = DIDKey::new();
+
+    let (kid, kh) = kms
+        .create_and_handle(kms::KeyType::P256, kms::CreateOptions {})
+        .await
+        .unwrap();
+
+    let did = did_key.generate(kh).unwrap();
+
+    let vm = did_key.resolve_verification_method(&did).await.unwrap().id;
+
+    JsKeyMetadata { did_url: vm, kid }
 }
