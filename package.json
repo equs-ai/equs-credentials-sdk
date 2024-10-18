@@ -1,8 +1,0 @@
-{
-  "name": "agent-sdk",
-  "version": "0.2.3",
-  "main": "wrappers/nodejs",
-  "scripts": {
-    "postinstall": "cd wrappers/nodejs && npm i && npm run postinstall"
-  }
-}

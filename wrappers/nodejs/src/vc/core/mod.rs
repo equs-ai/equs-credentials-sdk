@@ -10,6 +10,12 @@ pub struct JsKeyMetadata {
     pub did_url: String,
     pub kid: String,
 }
+#[derive(Clone)]
+#[napi(js_name = "DIDAndKeyMetadata", object)]
+pub struct JsDIDAndKeyMetadata {
+    pub key_metadata: JsKeyMetadata,
+    pub did: String,
+}
 
 impl From<JsKeyMetadata> for KeyMetadata {
     fn from(value: JsKeyMetadata) -> Self {
@@ -37,6 +43,21 @@ impl From<JsVCFormat> for VCFormat {
             JsVCFormat::LdpVc => VCFormat::LdpVc,
             JsVCFormat::SdJwtVc => VCFormat::SdJwtVc,
             JsVCFormat::MsoMdoc => VCFormat::MsoMdoc,
+        }
+    }
+}
+
+impl TryFrom<VCFormat> for JsVCFormat {
+    type Error = Error;
+
+    fn try_from(value: VCFormat) -> napi::Result<Self> {
+        match value {
+            VCFormat::JwtVcJson => Ok(JsVCFormat::JwtVcJson),
+            VCFormat::JwtVcJsonLD => Ok(JsVCFormat::JwtVcJsonLD),
+            VCFormat::LdpVc => Ok(JsVCFormat::LdpVc),
+            VCFormat::SdJwtVc => Ok(JsVCFormat::SdJwtVc),
+            VCFormat::MsoMdoc => Ok(JsVCFormat::MsoMdoc),
+            _ => Err(Error::from_reason(format!("Format not supported {value}"))),
         }
     }
 }
@@ -162,5 +183,25 @@ impl From<JsCredentialMetadata> for CredentialMetadata {
                 .map(|tag| (tag.key, tag.value))
                 .collect(),
         }
+    }
+}
+
+impl TryFrom<CredentialMetadata> for JsCredentialMetadata {
+    type Error = Error;
+    fn try_from(value: CredentialMetadata) -> napi::Result<Self> {
+        Ok(Self {
+            type_: value.type_,
+            format: value.format.try_into()?,
+            kid: value.kid,
+            alg: value.alg.map(|value| value.try_into()).transpose()?,
+            tags: value
+                .tags
+                .into_iter()
+                .map(|tag| Tag {
+                    key: tag.0,
+                    value: tag.1,
+                })
+                .collect(),
+        })
     }
 }

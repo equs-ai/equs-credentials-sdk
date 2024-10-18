@@ -6,4 +6,4 @@ pub mod nonce;
 pub(crate) mod utils;
 pub mod vault;
 pub mod vc;
-pub use utils::create_key_metadata;
+pub use utils::{create_did_and_key_metadata, enable_logs, resolve_metadata};
