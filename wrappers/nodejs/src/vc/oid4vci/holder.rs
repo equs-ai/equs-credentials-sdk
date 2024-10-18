@@ -9,6 +9,7 @@ use agent_sdk::vc::oid4vci::{
 };
 use agent_sdk::vc::{oid4vci, Credential, CredentialMetadata};
 use async_trait::async_trait;
+use napi::bindgen_prelude::Promise;
 use napi::threadsafe_function::{ErrorStrategy, ThreadsafeFunction};
 use napi::Either;
 use napi_derive::napi;
@@ -35,7 +36,9 @@ impl OID4VciHolder {
         to_json_object(issuer_metadata)
     }
 
-    #[napi]
+    #[napi(
+        ts_args_type = "scope: string, authorization_callback: (url: string) => Promise<string>"
+    )]
     pub async fn authz_code_flow_with_scope(
         &self,
         scope: String,
@@ -49,7 +52,9 @@ impl OID4VciHolder {
                     task::block_in_place(move || {
                         Handle::current().block_on(async {
                             authorization_callback
-                                .call_async(url.to_string())
+                                .call_async::<Promise<String>>(url.to_string())
+                                .await
+                                .unwrap()
                                 .await
                                 .unwrap()
                         })

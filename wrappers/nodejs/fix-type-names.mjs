@@ -11,6 +11,7 @@ const replacements = [
     {from: 'JsAuthorizationResponse', to: 'AuthorizationResponse'},
     {from: 'JsPresentationSession', to: 'PresentationSession'},
     {from: 'JsKeyMetadata', to: 'KeyMetadata'},
+    {from: 'JsDIDAndKeyMetadata', to: 'DIDAndKeyMetadata'},
     {from: 'JsonObject', to: 'Record<string, any>'},
 ];
 

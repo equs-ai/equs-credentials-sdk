@@ -35,9 +35,9 @@ services:
       timeout: 10s
       retries: 12
     volumes:
-      - ./keycloak/extra/health-check.sh:/opt/keycloak/health-check.sh
-      - ./keycloak/realms/:/opt/keycloak/data/import
-      - ./keycloak/themes/:/opt/keycloak/themes
-      - ./keycloak/certs/:/etc/ssl/certs/
+      - ./extra/health-check.sh:/opt/keycloak/health-check.sh
+      - ./realms/:/opt/keycloak/data/import
+      - ./themes/:/opt/keycloak/themes
+      - ./certs/:/etc/ssl/certs/
     networks:
       - default
