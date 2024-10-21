@@ -4,7 +4,6 @@ use crate::vc::JsonObject;
 use agent_sdk::did::didkey::DIDKey;
 use agent_sdk::did::DIDResolver;
 use agent_sdk::kms;
-use agent_sdk::kms::Kms;
 use agent_sdk::vc::metadata::{CredentialMetadataProcessor, DefaultMetadataProcessor};
 use napi_derive::napi;
 use serde::de::DeserializeOwned;
@@ -38,6 +37,7 @@ pub async fn create_did_and_key_metadata(kms: &NativeKms) -> JsDIDAndKeyMetadata
     let did_key = DIDKey::new();
 
     let (kid, kh) = kms
+        .inner()
         .create_and_handle(kms::KeyType::P256, kms::CreateOptions {})
         .await
         .unwrap();

@@ -44,7 +44,7 @@ test.serial('authorize using auth code', async t => {
     const vciHolder = await buildHolder()
 
     const token_response =
-        await vciHolder.authzCodeFlowWithScope(SCOPE, (_) => 'code')
+        await vciHolder.authzCodeFlowWithScope(SCOPE, async (_) => 'code')
 
     t.like(token_response, ACCESS_TOKEN_RESPONSE)
 })

@@ -1,22 +1,24 @@
+use agent_sdk::reqwest::ReqwestClient;
+use agent_sdk::vc::core::KeyMetadata;
+use agent_sdk::vc::oid4vci::{CredentialOffer, HolderBuilder, IssuerBuilder, IssuerDiscovery};
+use napi::{Either, Error, Result};
+use napi_derive::napi;
+use std::collections::HashMap;
+
 use crate::kms::NativeKms;
-use crate::nonce::NativeNonceGenerator;
+use crate::kms::{JsKms, UnifiedKms};
+use crate::nonce::{JsNonceGenerator, NativeNonceGenerator, UnifiedNonceGenerator};
 use crate::utils::{from_json_object, parse_url_arg};
-use crate::vault::NativeVault;
+use crate::vault::{JsVault, NativeVault, UnifiedVault};
 use crate::vc::core::JsKeyMetadata;
 use crate::vc::oid4vci::holder::OID4VciHolder;
 use crate::vc::oid4vci::issuer::OID4VCiIssuer;
 use crate::vc::JsonObject;
-use agent_sdk::reqwest::ReqwestClient;
-use agent_sdk::vc::core::KeyMetadata;
-use agent_sdk::vc::oid4vci::{CredentialOffer, HolderBuilder, IssuerBuilder, IssuerDiscovery};
-use napi::{Error, Result};
-use napi_derive::napi;
-use std::collections::HashMap;
 
 #[napi]
 pub struct OID4VciIssuerBuilder {
-    kms: NativeKms,
-    nonce_generator: NativeNonceGenerator,
+    kms: UnifiedKms,
+    nonce_generator: UnifiedNonceGenerator,
     issuer_metadata: JsonObject,
     key_metadata: KeyMetadata,
     token_validation: Option<TokenValidation>,
@@ -27,14 +29,14 @@ pub struct OID4VciIssuerBuilder {
 impl OID4VciIssuerBuilder {
     #[napi(constructor)]
     pub fn new(
-        kms: &NativeKms,
-        nonce_generator: &NativeNonceGenerator,
+        kms: Either<&NativeKms, JsKms>,
+        nonce_generator: Either<&NativeNonceGenerator, JsNonceGenerator>,
         issuer_metadata: JsonObject,
         key_metadata: JsKeyMetadata,
     ) -> Self {
         OID4VciIssuerBuilder {
-            kms: kms.clone(),
-            nonce_generator: nonce_generator.clone(),
+            kms: kms.into(),
+            nonce_generator: nonce_generator.into(),
             issuer_metadata,
             key_metadata: key_metadata.into(),
             token_validation: None,
@@ -98,8 +100,8 @@ impl OID4VciIssuerBuilder {
 
 #[napi]
 pub struct OID4VciHolderBuilder {
-    kms: NativeKms,
-    vault: NativeVault,
+    kms: UnifiedKms,
+    vault: UnifiedVault,
     client_id: String,
     issuer_discovery: JsIssuerDiscovery,
     redirect_url: Option<String>,
@@ -109,14 +111,14 @@ pub struct OID4VciHolderBuilder {
 impl OID4VciHolderBuilder {
     #[napi(constructor)]
     pub fn new(
-        kms: &NativeKms,
-        vault: &NativeVault,
+        kms: Either<&NativeKms, JsKms>,
+        vault: Either<&NativeVault, JsVault>,
         client_id: String,
         issuer_discovery: &JsIssuerDiscovery,
     ) -> Self {
         OID4VciHolderBuilder {
-            kms: kms.clone(),
-            vault: vault.clone(),
+            kms: kms.into(),
+            vault: vault.into(),
             client_id,
             issuer_discovery: issuer_discovery.clone(),
             redirect_url: None,

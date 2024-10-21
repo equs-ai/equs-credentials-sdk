@@ -1,31 +1,17 @@
-use agent_sdk::nonce::{Nonce, NonceData, NonceGenerator};
-use async_trait::async_trait;
+use agent_sdk::nonce::NonceData;
 use napi::{Error, Status};
 use napi_derive::napi;
-use std::sync::Arc;
 use time::{Duration, OffsetDateTime};
 
-#[derive(Clone)]
-#[napi]
-pub struct NativeNonceGenerator(Arc<dyn NonceGenerator>);
+mod js;
+mod native;
+#[cfg(debug_assertions)]
+pub mod test;
+mod unified;
 
-impl NativeNonceGenerator {
-    pub fn from<NG: NonceGenerator + 'static>(nonce_generator: NG) -> NativeNonceGenerator {
-        let nonce_generator = Arc::new(nonce_generator);
-        NativeNonceGenerator(nonce_generator)
-    }
-}
-
-#[async_trait]
-impl NonceGenerator for NativeNonceGenerator {
-    async fn generate(&self) -> agent_sdk::nonce::Result<Nonce> {
-        self.0.generate().await
-    }
-
-    async fn with_expiration(&self, expiration: Duration) -> agent_sdk::nonce::Result<NonceData> {
-        self.0.with_expiration(expiration).await
-    }
-}
+pub use js::JsNonceGenerator;
+pub use native::NativeNonceGenerator;
+pub use unified::UnifiedNonceGenerator;
 
 #[napi(js_name = "NonceData", object)]
 pub struct JsNonceData {
