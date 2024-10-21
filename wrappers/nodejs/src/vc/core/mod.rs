@@ -57,7 +57,9 @@ impl TryFrom<VCFormat> for JsVCFormat {
             VCFormat::LdpVc => Ok(JsVCFormat::LdpVc),
             VCFormat::SdJwtVc => Ok(JsVCFormat::SdJwtVc),
             VCFormat::MsoMdoc => Ok(JsVCFormat::MsoMdoc),
-            _ => Err(Error::from_reason(format!("Format not supported {value}"))),
+            _ => Err(Error::from_reason(format!(
+                "Unsupported VC format: {value}"
+            ))),
         }
     }
 }
@@ -188,6 +190,7 @@ impl From<JsCredentialMetadata> for CredentialMetadata {
 
 impl TryFrom<CredentialMetadata> for JsCredentialMetadata {
     type Error = Error;
+
     fn try_from(value: CredentialMetadata) -> napi::Result<Self> {
         Ok(Self {
             type_: value.type_,
@@ -197,10 +200,7 @@ impl TryFrom<CredentialMetadata> for JsCredentialMetadata {
             tags: value
                 .tags
                 .into_iter()
-                .map(|tag| Tag {
-                    key: tag.0,
-                    value: tag.1,
-                })
+                .map(|(key, value)| Tag { key, value })
                 .collect(),
         })
     }

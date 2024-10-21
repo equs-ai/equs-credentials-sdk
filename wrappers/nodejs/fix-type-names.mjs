@@ -13,6 +13,7 @@ const replacements = [
     {from: 'JsKeyMetadata', to: 'KeyMetadata'},
     {from: 'JsDIDAndKeyMetadata', to: 'DIDAndKeyMetadata'},
     {from: 'JsonObject', to: 'Record<string, any>'},
+    {from: 'JsNonceData', to: 'NonceData'},
 ];
 
 (async () => {

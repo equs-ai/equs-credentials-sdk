@@ -1,20 +1,21 @@
-use crate::kms::NativeKms;
-use crate::nonce::NativeNonceGenerator;
+use agent_sdk::reqwest::ReqwestClient;
+use agent_sdk::vc::oid4vp::{ClientMetadata, HolderBuilder, VerifierBuilder};
+use napi::{Either, Error, Result, Status};
+use napi_derive::napi;
+
+use crate::kms::{JsKms, NativeKms, UnifiedKms};
+use crate::nonce::{JsNonceGenerator, NativeNonceGenerator, UnifiedNonceGenerator};
 use crate::utils::from_json_object;
-use crate::vault::NativeVault;
+use crate::vault::{JsVault, NativeVault, UnifiedVault};
 use crate::vc::core::JsKeyMetadata;
 use crate::vc::oid4vp::holder::OID4VPHolder;
 use crate::vc::oid4vp::verifier::OID4VPVerifier;
 use crate::vc::JsonObject;
-use agent_sdk::reqwest::ReqwestClient;
-use agent_sdk::vc::oid4vp::{ClientMetadata, HolderBuilder, VerifierBuilder};
-use napi::{Error, Result, Status};
-use napi_derive::napi;
 
 #[napi]
 pub struct OID4VPVerifierBuilder {
-    kms: NativeKms,
-    nonce_generator: NativeNonceGenerator,
+    kms: UnifiedKms,
+    nonce_generator: UnifiedNonceGenerator,
     key_metadata: JsKeyMetadata,
     client_id: String,
     client_metadata: Option<JsonObject>,
@@ -24,14 +25,14 @@ pub struct OID4VPVerifierBuilder {
 impl OID4VPVerifierBuilder {
     #[napi(constructor)]
     pub fn new(
-        kms: &NativeKms,
-        nonce_generator: &NativeNonceGenerator,
+        kms: Either<&NativeKms, JsKms>,
+        nonce_generator: Either<&NativeNonceGenerator, JsNonceGenerator>,
         key_metadata: JsKeyMetadata,
         client_id: String,
     ) -> Self {
         OID4VPVerifierBuilder {
-            kms: kms.clone(),
-            nonce_generator: nonce_generator.clone(),
+            kms: kms.into(),
+            nonce_generator: nonce_generator.into(),
             key_metadata,
             client_id,
             client_metadata: None,
@@ -72,8 +73,8 @@ impl OID4VPVerifierBuilder {
 
 #[napi]
 pub struct OID4VPHolderBuilder {
-    kms: NativeKms,
-    vault: NativeVault,
+    kms: UnifiedKms,
+    vault: UnifiedVault,
     client_id: String,
     wallet_metadata: Option<JsonObject>,
 }
@@ -81,10 +82,14 @@ pub struct OID4VPHolderBuilder {
 #[napi]
 impl OID4VPHolderBuilder {
     #[napi(constructor)]
-    pub fn new(kms: &NativeKms, vault: &NativeVault, client_id: String) -> Self {
+    pub fn new(
+        kms: Either<&NativeKms, JsKms>,
+        vault: Either<&NativeVault, JsVault>,
+        client_id: String,
+    ) -> Self {
         OID4VPHolderBuilder {
-            kms: kms.clone(),
-            vault: vault.clone(),
+            kms: kms.into(),
+            vault: vault.into(),
             client_id,
             wallet_metadata: None,
         }
