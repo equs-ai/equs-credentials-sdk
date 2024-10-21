@@ -407,7 +407,7 @@ where
         };
         debug!(resolved_credential_metadata = ?sd_jwt_vc_metadata);
 
-        let supported_claims = match sd_jwt_vc_metadata.credential_definition().claims() {
+        let supported_claims = match sd_jwt_vc_metadata.claims() {
             Some(claims) => {
                 let mut supported: Vec<&str> = claims.keys().map(|k| k.as_str()).collect();
                 supported.push("vct");
@@ -1163,10 +1163,7 @@ mod tests {
                     CRED_DEF_ID: {
                     "format": "vc+sd-jwt",
                     "vct": "SD_JWT_cred",
-                    "credential_definition": {
-                        "type": "SD_JWT_cred",
-                            "claims": {},
-                        },
+                    "claims": {},
                     },
                 },
             }
@@ -1185,10 +1182,7 @@ mod tests {
                     "format": "vc+sd-jwt",
                     "vct": "SD_JWT_cred",
                     "scope": "fake_scope",
-                    "credential_definition": {
-                        "type": "SD_JWT_cred",
-                            "claims": {},
-                        },
+                    "claims": {},
                     },
                 },
             }

@@ -265,23 +265,20 @@ fn sample_issuer_metadata(iss_url: &str, authz_url: &str) -> IssuerMetadata {
                 }
               },
               "vct": "https://credentials.example.com/identity_credential_1",
-              "credential_definition": {
-                  "type": "SD_JWT_cred",
-                  "claims": {
-                    "given_name": {},
-                    "age_over_18": {},
-                    "street": {},
-                    "email": {},
-                    "username": {},
-                    "postal_code": {},
-                    "locality": {},
-                    "region": {},
-                    "birthdate": {},
-                    "gender": {},
-                    "country": {},
-                    "family_name": {}
-                  }
-                }
+              "claims": {
+                "given_name": {},
+                "age_over_18": {},
+                "street": {},
+                "email": {},
+                "username": {},
+                "postal_code": {},
+                "locality": {},
+                "region": {},
+                "birthdate": {},
+                "gender": {},
+                "country": {},
+                "family_name": {}
+              }
             },
             CRED_DEF_2: {
               "format": "vc+sd-jwt",
@@ -300,13 +297,10 @@ fn sample_issuer_metadata(iss_url: &str, authz_url: &str) -> IssuerMetadata {
                 }
               },
               "vct": "https://credentials.example.com/identity_credential_2",
-              "credential_definition": {
-                  "type": "SD_JWT_cred",
-                  "claims": {
-                    "email": {},
-                    "username": {},
-                  }
-                }
+              "claims": {
+                "email": {},
+                "username": {},
+              }
             }
           }
         }

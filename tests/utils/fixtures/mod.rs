@@ -72,14 +72,11 @@ pub fn sample_issuer_metadata() -> IssuerMetadata {
                 }
               },
               "vct": "SD_JWT_cred_1",
-              "credential_definition": {
-                  "type": "SD_JWT_cred",
-                  "claims": {
-                    "given_name": {},
-                    "family_name": {},
-                    "dob": {}
-                  }
-                }
+              "claims": {
+                "given_name": {},
+                "family_name": {},
+                "dob": {}
+              }
             },
             "SD_JWT_cred_2": {
               "format": "vc+sd-jwt",
@@ -98,14 +95,11 @@ pub fn sample_issuer_metadata() -> IssuerMetadata {
                 }
               },
               "vct": "SD_JWT_cred_2",
-              "credential_definition": {
-                  "type": "SD_JWT_cred",
-                  "claims": {
-                    "given_name": {},
-                    "family_name": {},
-                    "dob": {}
-                  }
-                }
+              "claims": {
+                "given_name": {},
+                "family_name": {},
+                "dob": {}
+              }
             },
           }
         }

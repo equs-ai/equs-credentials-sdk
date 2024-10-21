@@ -100,29 +100,26 @@ pub mod fixtures {
                     "credential_endpoint": ISSUER_URL.to_owned()+"/credential",
                     "credential_configurations_supported": {
                         CRED_DEF_ID: {
-                        "format": "vc+sd-jwt",
-                        "scope": "SD_JWT_cred",
-                        "cryptographic_binding_methods_supported": [
-                            "jwk"
-                        ],
-                        "credential_signing_alg_values_supported": [
-                            "ES256"
-                        ],
-                        "proof_types_supported": {
-                            "jwt": {
-                                "proof_signing_alg_values_supported": [
-                                    "ES256"
-                                ],
-                            },
-                        },
-                        "vct": "SD_JWT_cred",
-                        "credential_definition": {
-                            "type": "SD_JWT_cred",
-                                "claims": {
-                                    "given_name": {},
-                                    "family_name": {},
-                                    "dob": {},
+                            "format": "vc+sd-jwt",
+                            "scope": "SD_JWT_cred",
+                            "cryptographic_binding_methods_supported": [
+                                "jwk"
+                            ],
+                            "credential_signing_alg_values_supported": [
+                                "ES256"
+                            ],
+                            "proof_types_supported": {
+                                "jwt": {
+                                    "proof_signing_alg_values_supported": [
+                                        "ES256"
+                                    ],
                                 },
+                            },
+                            "vct": "SD_JWT_cred",
+                            "claims": {
+                                "given_name": {},
+                                "family_name": {},
+                                "dob": {},
                             },
                         },
                     },
@@ -260,16 +257,12 @@ pub mod fixtures {
                 }
             },
             "vct": "SD_JWT_cred",
-            "credential_definition": {
-                "type": "SD_JWT_cred",
-                "claims": {
-                    "given_name": {},
-                    "family_name": {},
-                    "dob": {}
-                }
+            "claims": {
+                "given_name": {},
+                "family_name": {},
+                "dob": {}
             }
-            }
-        ));
+        }));
 
         cred_def.unwrap()
     }

@@ -27,24 +27,21 @@ export const ISSUER_METADATA = {
                 },
             },
             "vct": CRED_TYPE,
-            "credential_definition": {
-                "type": CRED_TYPE,
-                "claims": {
-                    "given_name": {
-                        display: [{name: "Name"}],
-                        mandatory: true,
-                        value_type: "string",
-                    },
-                    "family_name": {
-                        display: [{name: "Surname"}],
-                        mandatory: true,
-                        value_type: "string",
-                    },
-                    "dob": {
-                        display: [{name: "Date of birth"}],
-                        mandatory: true,
-                        value_type: "number",
-                    },
+            "claims": {
+                "given_name": {
+                    display: [{name: "Name"}],
+                    mandatory: true,
+                    value_type: "string",
+                },
+                "family_name": {
+                    display: [{name: "Surname"}],
+                    mandatory: true,
+                    value_type: "string",
+                },
+                "dob": {
+                    display: [{name: "Date of birth"}],
+                    mandatory: true,
+                    value_type: "number",
                 },
             },
         },
@@ -89,27 +86,24 @@ export const CRED_DEF_METADATA = {
     "credential_signing_alg_values_supported": [
         "ES256"
     ],
-    "credential_definition": {
-        "type": "SD_JWT_cred",
-        "claims": {
-            "given_name": {
-                "mandatory": true,
-                "value_type": "string",
-                "display": [{"name": "Name",}]
-            },
-            "dob": {
-                "mandatory": true,
-                "value_type": "number",
-                "display": [{"name": "Date of birth",}]
-            },
-            "family_name": {
-                "mandatory": true,
-                "value_type": "string",
-                "display": [{"name": "Surname",}]
-            }
+    "vct": "SD_JWT_cred",
+    "claims": {
+        "given_name": {
+            "mandatory": true,
+            "value_type": "string",
+            "display": [{"name": "Name",}]
+        },
+        "dob": {
+            "mandatory": true,
+            "value_type": "number",
+            "display": [{"name": "Date of birth",}]
+        },
+        "family_name": {
+            "mandatory": true,
+            "value_type": "string",
+            "display": [{"name": "Surname",}]
         }
-    },
-    "vct": "SD_JWT_cred"
+    }
 }
 
 export const PROOF_JWT = "eyJhbGciOiJFUzI1NiIsImtpZCI6ImRpZDprZXk6ekRuYWViWmdKbkRkdTZyU1g3eWZVUlhra25velNMbVd3ZjZkVGVjbnEyWENzZFc4cyIsInR5cCI6Im9wZW5pZDR2Y2ktcHJvb2Yrand0In0.eyJhdWQiOiJodHRwOi8vbG9jYWxob3N0OjkwMDAiLCJuYmYiOjE3Mjg4NDM5NTcsImlhdCI6MTcyODg0Mzk1NywiZXhwIjozNDU2ODQzOTU3LCJub25jZSI6IktCNTBWT205SS1rUExUOW1BQUNWOGcifQ.hbSBKuMQzrNGuHx0_stxcaBrwVDgfNjaI4CFqvoz2hKjK02T-nMRE8XGcFW4sYTfomXmWjSPAIqJmUSKCg9dsA"

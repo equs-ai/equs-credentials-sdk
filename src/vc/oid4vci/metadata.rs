@@ -131,7 +131,6 @@ pub fn supported_proofs(
 )]
 fn sd_jwt_protocol_data(metadata: &profiles::sd_jwt::Metadata) -> CredentialDefinitionData {
     let disclosures = metadata
-        .credential_definition()
         .claims()
         .unwrap_or(&HashMap::new())
         .keys()
@@ -356,14 +355,10 @@ mod tests {
                 }
             },
             "vct": "SD_JWT_cred",
-            "credential_definition": {
-                "type": "SD_JWT_cred",
-                "claims": {
-                    "given_name": {}
-                }
+            "claims": {
+                "given_name": {}
             }
-            }
-        ));
+        }));
 
         cred_def.unwrap()
     }
