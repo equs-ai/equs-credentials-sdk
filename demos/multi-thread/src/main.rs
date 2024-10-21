@@ -231,14 +231,11 @@ fn sample_issuer_metadata(iss_url: &str) -> IssuerMetadata {
               "format": "vc+sd-jwt",
               "scope": "SD_JWT_cred",
               "vct": "https://credentials.example.com/identity_credential",
-              "credential_definition": {
-                  "type": "SD_JWT_cred",
-                  "claims": {
-                    "id": {},
-                    "given_name": {},
-                    "family_name": {}
-                  }
-                }
+              "claims": {
+                "id": {},
+                "given_name": {},
+                "family_name": {}
+              }
             }
           }
         }
