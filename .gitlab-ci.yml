@@ -19,6 +19,7 @@ stages:
 
 variables:
   RUST_VERSION: "1.79.0"
+  NODE_VERSION: "20.18.0"
 
 # Shared configurations
 .cargo_local_deps_script: &cargo_local_deps_script
@@ -27,6 +28,13 @@ variables:
 .rust_job_configs: &rust_job_configs
   image: rust:${RUST_VERSION}
   before_script:
+    - *cargo_local_deps_script
+
+.nodejs_job_configs: &nodejs_job_configs
+  image: node:${NODE_VERSION}
+  before_script:
+    - curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain ${RUST_VERSION}
+    - source "$HOME/.cargo/env"
     - *cargo_local_deps_script
 
 .black_duck_scan: &black_duck_scan
@@ -117,6 +125,16 @@ test-job:
     - merge_requests
     - main
 
+nodejs-test-job:
+  <<: *nodejs_job_configs
+  stage: test
+  script:
+    - NODE_ENV=development npm i --prefix wrappers/nodejs
+    - npm run test --prefix wrappers/nodejs
+  only:
+    - merge_requests
+    - main
+
 coverage-job:
   <<: *rust_job_configs
   stage: test
@@ -158,6 +176,17 @@ multi-thread-demo-build-job:
   stage: build
   script:
     - cargo build --manifest-path=demos/multi-thread/Cargo.toml
+  only:
+    - merge_requests
+    - main
+
+nodejs-demo-build-job:
+  <<: *nodejs_job_configs
+  stage: build
+  script:
+    - NODE_ENV=development npm i --prefix wrappers/nodejs
+    - NODE_ENV=development npm i --prefix demos/nodejs/oid4vc
+    - npm run build --prefix demos/nodejs/oid4vc
   only:
     - merge_requests
     - main
