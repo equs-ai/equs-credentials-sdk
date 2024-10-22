@@ -1,10 +1,10 @@
 import {
-  authRequestAsUrlByReference,
-  createDidAndKeyMetadata,
-  enableLogs,
-  inMemKms,
-  localNonceGenerator,
-  Oid4VpVerifierBuilder,
+    createDidAndKeyMetadata,
+    enableLogs,
+    inMemKms,
+    localNonceGenerator,
+    Oid4VpVerifierBuilder,
+    PassAuthRequestObject,
 } from "../../../../../wrappers/nodejs";
 import * as express from "express";
 import {urlencoded} from "express";
@@ -39,24 +39,21 @@ async function main(): Promise<void> {
             const responseUri = `http://${host}:${port}/present`;
             const requestUri = `http://${host}:${port}/request`;
 
-            const {authorizationRequest, session} =
+            let authResponseOptions = {
+                mode: "direct_post",
+                type: "vp_token",
+                submissionUri: responseUri,
+            }
+
+            const {authorizationRequestUri, session} =
                 await appState.verifier.createAuthorizationRequest(
                     config.presentationDefinition,
-                    responseUri,
+                    authResponseOptions,
+                    PassAuthRequestObject.byReference(requestUri),
+                    null
                 );
-            // todo add auth request by value or expose exact function from rust
-            const url = authRequestAsUrlByReference(authorizationRequest, requestUri);
 
-            appState.authReqObjStorage.set(
-                requestUri,
-                authorizationRequest.requestObjectJwt,
-            );
-            appState.presentationSessionStorage.set(
-                session.presentationDefinition.id,
-                session,
-            );
-
-            res.contentType("text/plain").send(url);
+            res.contentType("text/plain").send(authorizationRequestUri);
         } catch (e: any) {
             res.status(500).send(e.message);
         }

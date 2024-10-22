@@ -1,6 +1,6 @@
 import test from "ava";
 import mockttp from "mockttp";
-import {createKeyMetadata, inMemKms, inMemVault, Oid4VpHolderBuilder, VCFormat} from "../../index.js";
+import {createDidAndKeyMetadata, inMemKms, inMemVault, Oid4VpHolderBuilder, VCFormat} from "../../index.js";
 import {AUTH_REQUEST, AUTH_REQUEST_JWT, VC, VC_TYPE} from "./fixtures.mjs";
 import {isEmpty} from "../utils.mjs";
 
@@ -15,14 +15,10 @@ test.serial('resolve Authorization request', async t => {
 
     const vpHolder = await buildHolder()
 
-    let authorizationRequest = await vpHolder.getAuthorizationRequest(
-        'openid4vp://?client_id=did%3Akey%3AzDnaeagvW2eDWc2yVw7B98ovcJ8jddn7T9Mh3y5Vikys6y4kX&request_uri=http%3A%2F%2Flocalhost%3A9001%2Frequest'
-    )
-
-    let expectedAuthorizationRequest = AUTH_REQUEST
-    expectedAuthorizationRequest.responseUri = 'http://127.0.0.1:55796/auth'
-
-    t.like(authorizationRequest, expectedAuthorizationRequest)
+    const authorizationRequest = await vpHolder.getAuthorizationRequest(
+        'openid4vp://?client_id=did%3Akey%3AzDnaesEX79GFQf4cX9wKxbWHBJepu5jHe53WRnasdhWgZ8FKR&request_uri=http%3A%2F%2Flocalhost%3A9001%2Frequest'
+    );
+    t.like(authorizationRequest, AUTH_REQUEST)
 })
 
 test.serial('present Credentials Auto', async t => {
@@ -39,7 +35,7 @@ test.serial('present Credentials Auto', async t => {
     const vault = inMemVault()
     const vpHolder = await buildHolder(kms, vault)
 
-    const keyMetadata = await createKeyMetadata(kms)
+    const {keyMetadata} = await createDidAndKeyMetadata(kms)
     const credential = {
         format: VCFormat.SdJwtVc,
         payload: VC,
@@ -72,7 +68,7 @@ test.serial('present Credentials', async t => {
     const vault = inMemVault()
     const vpHolder = await buildHolder(kms, vault)
 
-    const keyMetadata = await createKeyMetadata(kms)
+    const {keyMetadata} = await createDidAndKeyMetadata(kms)
     const credential = {
         format: VCFormat.SdJwtVc,
         payload: VC,

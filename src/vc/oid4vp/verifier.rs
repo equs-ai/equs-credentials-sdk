@@ -1,23 +1,14 @@
 use async_trait::async_trait;
-use oid4vp::core::authorization_request::parameters::PresentationDefinition as PresentationDefinitionParameter;
-use oid4vp::core::authorization_request::parameters::{
-    Nonce as NonceSpruce, ResponseMode, ResponseType, ResponseUri,
-};
-use oid4vp::core::authorization_request::AuthorizationRequestObject;
-use oid4vp::core::credential_format::CoreCredentialFormat;
-use oid4vp::core::metadata::parameters::verifier::VpFormats;
-use oid4vp::core::metadata::parameters::wallet::AuthorizationEndpoint;
+use oid4vp::core::authorization_request::parameters::Nonce as NonceSpruce;
 use oid4vp::core::metadata::WalletMetadata;
-use oid4vp::core::object::ParsingErrorContext;
-use oid4vp::core::profile::{Profile, Verifier};
-use oid4vp::core::verifier::request_signer::RequestSigner;
-use oid4vp::core::verifier::Session;
-use oid4vp::presentation_exchange::PresentationDefinition;
+use oid4vp::verifier::by_reference::ByReference;
+use oid4vp::verifier::request_signer::RequestSigner;
 use serde_json::{Map, Value as Json};
 use snafu::ResultExt;
 use ssi::jwk::JWK;
+use std::fmt::{Debug, Formatter};
 use std::marker::PhantomData;
-use tracing::{info, instrument, trace, Level};
+use tracing::{info, instrument, Level};
 use url::Url;
 
 use crate::crypto::SigningKey;
@@ -28,21 +19,24 @@ use crate::vc;
 use crate::vc::core::KeyMetadata;
 use crate::vc::oid4vp as api;
 use crate::vc::oid4vp::internal_error::{
-    KMSSnafu, NonceGenerationSnafu, ParseSnafu, PresentationExchangeSnafu, VCSnafu,
-    VerifierSessionSnafu,
+    AuthorizationRequestSnafu, KMSSnafu, NonceGenerationSnafu, ParseSnafu,
+    PresentationExchangeSnafu, VCSnafu,
 };
-use crate::vc::oid4vp::metadata::{
-    default_client_metadata, default_vp_formats, default_wallet_metadata,
-};
+use crate::vc::oid4vp::metadata::{default_client_metadata, default_wallet_metadata};
 use crate::vc::oid4vp::{
-    AuthorizationRequest, AuthorizationResponse, ClientMetadata, PresentationSession,
+    AuthResponseOptions, AuthorizationResponse, ClientMetadata, PassAuthRequestObject,
+    PresentationSession,
 };
 use crate::vc::presentation_exchange;
-use crate::vc::presentation_exchange::builder::DefaultPresentationBuilder;
-use crate::vc::presentation_exchange::PresentationResponse;
+use crate::vc::presentation_exchange::{
+    validate_against_presentation_definition, PresentationDefinition, PresentationResponse,
+};
 
 pub type Error = api::Error;
 pub type Result<T> = core::result::Result<T, Error>;
+
+pub type DIDClient<S> = oid4vp::verifier::client::DIDClient<S>;
+pub type X509SanClient = oid4vp::verifier::client::X509SanClient;
 
 #[derive(Debug, Clone)]
 pub struct VerifierMetadata {
@@ -124,8 +118,10 @@ where
     async fn create_authorization_request(
         &self,
         presentation_definition: &PresentationDefinition,
-        response_uri: Url,
-    ) -> Result<(AuthorizationRequest, PresentationSession)> {
+        auth_response_config: &AuthResponseOptions,
+        pass_auth_request_object: &PassAuthRequestObject,
+        wallet_metadata: Option<&WalletMetadata>,
+    ) -> Result<(Url, PresentationSession)> {
         info!("creating authorization request object is started");
         let nonce = self
             .nonce_generator
@@ -133,23 +129,25 @@ where
             .await
             .context(NonceGenerationSnafu)?;
 
-        let request = self
+        let (request_url, auth_request_jwt) = self
             .authorization_request(
                 presentation_definition,
-                &nonce,
-                default_wallet_metadata(),
-                response_uri,
+                nonce.clone(),
+                auth_response_config,
+                pass_auth_request_object,
+                wallet_metadata.unwrap_or(&default_wallet_metadata()),
             )
             .await?;
 
         let session = PresentationSession {
             nonce,
+            auth_request_jwt,
             presentation_definition: presentation_definition.to_owned(),
         };
 
         info!("authorization request object is created");
 
-        Ok((request, session))
+        Ok((request_url, session))
     }
 
     #[instrument(
@@ -194,73 +192,49 @@ where
     async fn authorization_request(
         &self,
         presentation_definition: &PresentationDefinition,
-        nonce: &Nonce,
-        wallet_metadata: WalletMetadata,
-        response_uri: Url,
-    ) -> Result<AuthorizationRequest> {
-        let formats = self
-            .metadata
-            .client_metadata
-            .0
-            .get::<VpFormats>()
-            .and_then(std::result::Result::ok)
-            .unwrap_or_else(default_vp_formats);
-
-        presentation_exchange::validate_formats(formats, presentation_definition)
-            .context(PresentationExchangeSnafu)?;
-
-        let presentation_definition_parameter = PresentationDefinitionParameter::try_from(
-            presentation_definition.clone(),
-        )
-        .map_err(|e| {
-            ParseSnafu {
-                details: e.to_string(),
-            }
-            .build()
-        })?;
-
+        nonce: Nonce,
+        auth_response_config: &AuthResponseOptions,
+        pass_auth_request_object: &PassAuthRequestObject,
+        wallet_metadata: &WalletMetadata,
+    ) -> Result<(Url, String)> {
         let verifier_key = self
             .kms
             .get(&self.metadata.key_metadata.kid)
             .await
             .context(KMSSnafu)?;
 
-        let session = Session::builder(DefaultVerifierProfile, wallet_metadata.clone())
-            .with_request_parameter(ResponseMode::DirectPost)
-            .with_request_parameter(ResponseUri(response_uri))
-            .with_request_parameter(ResponseType::VpToken)
-            .with_request_parameter(NonceSpruce(nonce.secret().to_owned()))
-            .with_request_parameter(self.metadata.client_metadata.clone())
-            .with_request_parameter(presentation_definition_parameter)
-            .with_did_client_id_and_resolver(
-                self.metadata.key_metadata.did_url.to_owned(),
-                SignerWrapper::new(verifier_key)?,
-                self.did_resolver.as_spruce_resolver(),
-            )
-            .await
-            .context(VerifierSessionSnafu)?
+        let did_client = DIDClient::new(
+            self.metadata.key_metadata.did_url.clone(),
+            SignerWrapper::new(verifier_key)?,
+            self.did_resolver.as_spruce_resolver(),
+        )
+        .await
+        .context(AuthorizationRequestSnafu)?;
+
+        let verifier = oid4vp::verifier::Verifier::builder()
+            .with_client(did_client)
+            .with_submission_endpoint(auth_response_config.submission_uri.0.to_owned());
+
+        let pass_req_obj = match pass_auth_request_object.to_owned() {
+            PassAuthRequestObject::ByValue => ByReference::False,
+            PassAuthRequestObject::ByReference(at) => ByReference::True { at },
+        };
+
+        let (auth_request_url, auth_req_jwt) = verifier
             .build()
             .await
-            .context(VerifierSessionSnafu)?;
+            .context(AuthorizationRequestSnafu)?
+            .build_authorization_request()
+            .with_presentation_definition(presentation_definition.to_owned())
+            .with_request_parameter(auth_response_config.mode.to_owned())
+            .with_request_parameter(auth_response_config.type_.to_owned())
+            .with_request_parameter(NonceSpruce::from(nonce.secret()))
+            .with_request_parameter(self.metadata.client_metadata.clone())
+            .build(wallet_metadata, pass_req_obj)
+            .await
+            .context(AuthorizationRequestSnafu)?;
 
-        trace!(created_verifier_session = ?session);
-
-        let authorization_endpoint = wallet_metadata
-            .get::<AuthorizationEndpoint>()
-            .parsing_error()
-            .map_err(|e| {
-                ParseSnafu {
-                    details: e.to_string(),
-                }
-                .build()
-            })?
-            .0;
-
-        Ok(AuthorizationRequest {
-            client_id: self.metadata.client_id.to_owned(),
-            request_object_jwt: session.request_object_jwt().to_string(),
-            authorization_endpoint,
-        })
+        Ok((auth_request_url, auth_req_jwt))
     }
 
     #[instrument(
@@ -293,44 +267,33 @@ where
                 .verify_presentation(nonce, &requested_presentation.presentation)
                 .await
                 .context(VCSnafu)?;
-            presentation_exchange::validate_claims(
-                &claims,
-                &requested_presentation.id,
-                presentation_definition,
-            )
-            .context(PresentationExchangeSnafu)?;
-
             result.insert(requested_presentation.id, claims);
         }
 
+        match authorization_response.vp_token {
+            Json::Array(_) => {
+                let claims = Json::Array(result.values().map(|v| v.to_owned()).collect());
+                validate_against_presentation_definition(
+                    &claims,
+                    presentation_definition,
+                    &authorization_response.presentation_submission,
+                )
+                .context(PresentationExchangeSnafu)?;
+            }
+            _ => {
+                if let Some(claim) = result.values().find(|_| true) {
+                    validate_against_presentation_definition(
+                        claim,
+                        presentation_definition,
+                        &authorization_response.presentation_submission,
+                    )
+                    .context(PresentationExchangeSnafu)?;
+                }
+            }
+        };
+
         Ok(result.into())
     }
-}
-
-#[derive(Debug, Clone)]
-pub struct DefaultVerifierProfile;
-
-#[async_trait]
-impl Profile for DefaultVerifierProfile {
-    type CredentialFormat = CoreCredentialFormat;
-
-    #[instrument(
-        level = Level::TRACE,
-        skip(self),
-        err(),
-        ret(),
-    )]
-    async fn validate_request(
-        &self,
-        wallet_metadata: &WalletMetadata,
-        request_object: &AuthorizationRequestObject,
-    ) -> anyhow::Result<()> {
-        Ok(())
-    }
-}
-
-impl Verifier for DefaultVerifierProfile {
-    type PresentationBuilder = DefaultPresentationBuilder;
 }
 
 struct SignerWrapper<S: SigningKey> {
@@ -356,15 +319,23 @@ impl<S: SigningKey> SignerWrapper<S> {
     }
 }
 
+impl<S: SigningKey> Debug for SignerWrapper<S> {
+    fn fmt(&self, fmt: &mut Formatter<'_>) -> std::fmt::Result {
+        std::write!(fmt, "JWK = {:?}", self.key)
+    }
+}
+
 #[async_trait]
 impl<S: SigningKey> RequestSigner for SignerWrapper<S> {
+    type Error = anyhow::Error;
+
     #[instrument(
         level = Level::TRACE,
         skip(self),
         ret(),
     )]
-    fn alg(&self) -> &str {
-        self.signer.alg().into()
+    fn alg(&self) -> anyhow::Result<String, Self::Error> {
+        Ok(self.signer.alg().to_string())
     }
 
     #[instrument(
@@ -372,8 +343,8 @@ impl<S: SigningKey> RequestSigner for SignerWrapper<S> {
         skip(self),
         ret(),
     )]
-    fn jwk(&self) -> &JWK {
-        &self.key
+    fn jwk(&self) -> anyhow::Result<JWK, Self::Error> {
+        Ok(self.key.to_owned())
     }
 
     #[instrument(
@@ -382,7 +353,7 @@ impl<S: SigningKey> RequestSigner for SignerWrapper<S> {
         err(),
         ret(),
     )]
-    async fn sign(&self, payload: &[u8]) -> anyhow::Result<Vec<u8>> {
+    async fn sign(&self, payload: &[u8]) -> anyhow::Result<Vec<u8>, Self::Error> {
         let signature = self.signer.sign(payload).await?;
         Ok(signature)
     }
@@ -393,15 +364,16 @@ mod tests {
     use crate::http::HttpSnafu;
     use crate::inmem::kms::LocalKms;
     use crate::nonce::Nonce;
+    use crate::vc::oid4vp::tests::fixtures::multi_presentation::auth_response_options;
     use crate::vc::oid4vp::tests::fixtures::VERIFIER_URL;
     use crate::vc::oid4vp::tests::fixtures::{multi_presentation, single_presentation, NONCE};
     use crate::vc::oid4vp::tests::utils::{
         build_url, validate_claims, verifier_service, VerificationTestCase,
     };
     use crate::vc::oid4vp::{
-        auth_request_as_url, AuthorizationResponse, AuthorizationUrlType, PresentationDefinition,
-        PresentationSession, Verifier,
+        AuthorizationResponse, PassAuthRequestObject, PresentationSession, Verifier,
     };
+    use crate::vc::presentation_exchange::PresentationDefinition;
     use oid4vp::core::authorization_request::{AuthorizationRequest, AuthorizationRequestObject};
     use oid4vp::core::object::UntypedObject;
     use rstest::rstest;
@@ -416,17 +388,19 @@ mod tests {
 
         let (verifier, did) = verifier_service().await;
 
-        let (request, _) = verifier
-            .create_authorization_request(&presentation_definition, build_url(VERIFIER_URL, "auth"))
+        let auth_resp_options = auth_response_options(build_url(VERIFIER_URL, "auth"));
+
+        let (uri, _) = verifier
+            .create_authorization_request(
+                &presentation_definition,
+                &auth_resp_options,
+                &PassAuthRequestObject::ByReference(request_uri.clone()),
+                None,
+            )
             .await
             .unwrap();
 
-        let by_reference = auth_request_as_url(
-            &request,
-            AuthorizationUrlType::Reference(request_uri.clone()),
-        );
-
-        let hash_query: HashMap<String, String> = by_reference.query_pairs().into_owned().collect();
+        let hash_query: HashMap<String, String> = uri.query_pairs().into_owned().collect();
 
         assert_eq!(hash_query.get("client_id").unwrap(), &did);
         assert_eq!(hash_query.get("request_uri").unwrap(), request_uri.as_str());
@@ -439,22 +413,28 @@ mod tests {
 
         let (verifier, did) = verifier_service().await;
 
-        let (request, _) = verifier
-            .create_authorization_request(&presentation_definition, response_uri.clone())
+        let auth_resp_options = auth_response_options(response_uri.clone());
+
+        let (request_uri, session) = verifier
+            .create_authorization_request(
+                &presentation_definition,
+                &auth_resp_options,
+                &PassAuthRequestObject::ByValue,
+                None,
+            )
             .await
             .unwrap();
 
-        let by_value = auth_request_as_url(&request, AuthorizationUrlType::Value);
+        let auth_request = AuthorizationRequest::from_query_params(request_uri.query().unwrap());
 
-        let auth_request = AuthorizationRequest::from_query_params(by_value.query().unwrap());
+        let hash_query: HashMap<String, String> = request_uri.query_pairs().into_owned().collect();
+        let auth_req_jwt_from_uri = hash_query.get("request").unwrap();
 
-        let hash_query: HashMap<String, String> = by_value.query_pairs().into_owned().collect();
-        let jwt = hash_query.get("request").unwrap();
-
-        let request: AuthorizationRequestObject = ssi::jwt::decode_unverified::<UntypedObject>(jwt)
-            .unwrap()
-            .try_into()
-            .unwrap();
+        let request: AuthorizationRequestObject =
+            ssi::jwt::decode_unverified::<UntypedObject>(auth_req_jwt_from_uri)
+                .unwrap()
+                .try_into()
+                .unwrap();
 
         let actual_presentation_definition = request
             .resolve_presentation_definition(|_| async {
@@ -466,7 +446,11 @@ mod tests {
             .unwrap()
             .into_parsed();
 
-        assert_eq!(actual_presentation_definition, presentation_definition);
+        assert_eq!(session.auth_request_jwt, auth_req_jwt_from_uri.to_owned());
+        assert_eq!(
+            serde_json::to_value(&actual_presentation_definition).unwrap(),
+            serde_json::to_value(&presentation_definition).unwrap()
+        );
         assert_eq!(request.client_id().0, did);
         assert_eq!(request.return_uri(), &response_uri);
     }
@@ -486,8 +470,15 @@ mod tests {
 
         let (verifier, did) = verifier_service().await;
 
+        let auth_resp_options = auth_response_options(build_url(VERIFIER_URL, "auth"));
+
         let (request, _) = verifier
-            .create_authorization_request(&presentation_definition, build_url(VERIFIER_URL, "auth"))
+            .create_authorization_request(
+                &presentation_definition,
+                &auth_resp_options,
+                &PassAuthRequestObject::ByReference(request_uri),
+                None,
+            )
             .await
             .unwrap();
     }
@@ -501,10 +492,14 @@ mod tests {
 
         let (verifier, did) = verifier_service().await;
 
+        let auth_resp_options = auth_response_options(build_url(VERIFIER_URL, "auth"));
+
         let (request, _) = verifier
             .create_authorization_request(
                 &single_presentation::presentation_definition(),
-                build_url(VERIFIER_URL, "auth"),
+                &auth_resp_options,
+                &PassAuthRequestObject::ByReference(request_uri),
+                None,
             )
             .await
             .unwrap();
@@ -520,6 +515,7 @@ mod tests {
         let session = PresentationSession {
             nonce: Nonce(NONCE.to_owned()),
             presentation_definition: test_case.session.presentation_definition.clone(),
+            auth_request_jwt: Default::default(),
         };
 
         let response = test_case.auth_response(&session.nonce, &client_id).await;
@@ -532,10 +528,10 @@ mod tests {
         for (index, credential_data) in test_case.credential_data.into_iter().enumerate() {
             let cred_id = &test_case
                 .presentation_submission
-                .descriptor_map
+                .descriptor_map()
                 .get(index)
                 .unwrap()
-                .id;
+                .id();
 
             let cred_claims = &verified_claims[cred_id];
             validate_claims(cred_claims, &credential_data);
@@ -556,7 +552,7 @@ mod tests {
     // TODO: Filter constraint validations will be implemented as part of the ASDK-98 task
     #[ignore]
     #[case::invalid_presentation_type(invalid_presentation_type_case())]
-    #[should_panic(expected = " Requested claim not found by path $.name")]
+    #[should_panic(expected = "Field elements are not found while it is required")]
     #[case::presentation_claim_not_found(presentation_claim_not_found_case())]
     #[tokio::test]
     async fn verify_auth_response_fails(#[case] test_case: VerificationTestCase) {
@@ -594,14 +590,21 @@ mod tests {
 
     fn presentation_definition_with_empty_id() -> PresentationDefinition {
         let mut presentation_definition = single_presentation::presentation_definition();
-        presentation_definition.id = "".to_string();
+        presentation_definition = PresentationDefinition::new(
+            "".to_string(),
+            presentation_definition
+                .input_descriptors()
+                .first()
+                .unwrap()
+                .to_owned(),
+        );
 
         presentation_definition
     }
 
     fn presentation_definition_with_empty_descriptors() -> PresentationDefinition {
         let mut presentation_definition = single_presentation::presentation_definition();
-        presentation_definition.input_descriptors = vec![];
+        presentation_definition.input_descriptors_mut().clear();
 
         presentation_definition
     }
@@ -614,7 +617,10 @@ mod tests {
 
     fn empty_descriptor_map_case() -> VerificationTestCase {
         let mut test_case = single_presentation::verification_test_case();
-        test_case.presentation_submission.descriptor_map = vec![];
+        test_case
+            .presentation_submission
+            .descriptor_map_mut()
+            .clear();
         test_case
     }
 

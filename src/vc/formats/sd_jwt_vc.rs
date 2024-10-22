@@ -20,6 +20,7 @@ use crate::nonce::Nonce;
 use crate::utils;
 use crate::utils::b64;
 use crate::utils::serde::Helpers;
+use crate::vc::core::PresentationInput;
 use crate::vc::formats::vc::SD_JWT_VC;
 use crate::vc::formats::Result;
 use crate::vc::formats::{
@@ -486,6 +487,43 @@ impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata, Value> for Sd
                 }
                 .build()
             })
+    }
+}
+
+impl SdJwtAPI {
+    #[instrument(
+        level = Level::TRACE,
+        ret(),
+    )]
+    pub fn resolve_disclosures(input: &PresentationInput) -> Result<Map<String, Value>> {
+        trace!(presentation_input = ?input);
+
+        let claims = input.constraints.clone();
+
+        let stripped: Vec<_> = claims
+            .fields()
+            .iter()
+            .flat_map(|f| f.path().iter().map(|p| p.as_str()))
+            .collect();
+
+        let json = utils::json::paths_to_json(stripped).map_err(|e| {
+            ParsingSnafu {
+                details: format!("could parse json paths: {e}"),
+            }
+            .build()
+        })?;
+
+        let json_obj = json
+            .as_object()
+            .ok_or_else(|| {
+                ParsingSnafu {
+                    details: "could not convert json into json object",
+                }
+                .build()
+            })?
+            .to_owned();
+
+        Ok(json_obj)
     }
 }
 

@@ -7,6 +7,7 @@ use crate::crypto;
 use crate::kms::Error as KmsError;
 use crate::nonce::Nonce;
 use crate::vault::{CredentialEntry, Error as VaultError};
+use crate::vc::presentation_exchange::{ClaimFormat, Constraints};
 use crate::vc::{
     formats::Error as VCError, pop, pop::Error as ProofError, Claims, Credential,
     CredentialMetadata, Presentation, VCFormat,
@@ -141,9 +142,9 @@ pub struct CredentialRequestData {}
 #[derive(Debug, PartialEq, Clone)]
 pub struct PresentationInput {
     pub id: String,
-    pub format: String,
+    pub format: ClaimFormat,
     pub type_: String,
-    pub claims: serde_json::Map<String, serde_json::Value>,
+    pub constraints: Constraints,
 }
 
 /// A struct that defines how to display the claim.

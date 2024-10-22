@@ -6,21 +6,19 @@ pub mod fixtures {
     pub const VERIFIER_URL: &str = "http://127.0.0.1:55796";
     pub const NONCE: &str = "n0NcE";
     pub const CLIENT_ID: &str = "wallet-dev";
-    pub const REQUEST_URI: &str = "openid4vp://?client_id=did%3Akey%3AzDnaeagvW2eDWc2yVw7B98ovcJ8jddn7T9Mh3y5Vikys6y4kX&request_uri=http%3A%2F%2F127.0.0.1%3A55796%2Frequest";
+    pub const REQUEST_URI: &str = "openid4vp://?client_id=did%3Akey%3AzDnaekR7pzGzJRzxrQGpKiftrCZxKCPoWAcGxpS8RzYBDK7LC&request_uri=http%3A%2F%2F127.0.0.1%3A55796%2Frequest";
 
     pub mod single_presentation {
         use crate::nonce::Nonce;
         use crate::vc::oid4vp::tests::fixtures::NONCE;
         use crate::vc::oid4vp::tests::utils::{PresentationTestCase, VerificationTestCase};
         use crate::vc::oid4vp::tests::CredTypeWithClaims;
-        use crate::vc::oid4vp::{
-            PresentationDefinition, PresentationSession, PresentationSubmission,
-            ResolvedAuthRequest,
-        };
+        use crate::vc::oid4vp::{PresentationSession, ResolvedAuthRequest};
+        use crate::vc::presentation_exchange::{PresentationDefinition, PresentationSubmission};
         use serde_json::json;
 
         const PRESENTATION_DEFINITION: &str = r#"{
-           "id":"1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed",
+           "id":"327ad171-c80a-485b-b098-50d7ad278ef6",
            "input_descriptors":[
               {
                  "id":"Identity-1",
@@ -28,10 +26,8 @@ pub mod fixtures {
                  "purpose":"We want an identity",
                  "format":{
                     "vc+sd-jwt":{
-                       "alg":[
-                          "EdDSA",
-                          "ES256K"
-                       ]
+                        "sd-jwt_alg_values": ["ES256", "EdDSA"],
+                        "kb-jwt_alg_values": ["ES256", "EdDSA"]
                     }
                  },
                  "constraints":{
@@ -57,8 +53,8 @@ pub mod fixtures {
         }"#;
 
         const PRESENTATION_SUBMISSION: &str = r#"{
-            "id": "",
-            "definition_id": "1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed",
+            "id": "00000000-0000-0000-0000-000000000000",
+            "definition_id": "327ad171-c80a-485b-b098-50d7ad278ef6",
             "descriptor_map": [
                 {
                     "id": "Identity-1",
@@ -68,49 +64,58 @@ pub mod fixtures {
             ]
         }"#;
 
-        pub const AUTH_REQUEST_JWT: &str = "eyJhbGciOiJFUzI1NiIsImtpZCI6ImRpZDprZXk6ekRuYWVhZ3ZXMmVEV2MyeVZ3N0I5OG92Y0o4amRkbjdUOU1oM3k1VmlreXM2eTRrWCN6RG5hZWFndlcyZURXYzJ5Vnc3Qjk4b3ZjSjhqZGRuN1Q5TWgzeTVWaWt5czZ5NGtYIiwidHlwIjoiSldUIn0.eyJyZXNwb25zZV9tb2RlIjoiZGlyZWN0X3Bvc3QiLCJyZXNwb25zZV91cmkiOiJodHRwOi8vMTI3LjAuMC4xOjU1Nzk2L2F1dGgiLCJyZXNwb25zZV90eXBlIjoidnBfdG9rZW4iLCJub25jZSI6Im4wTmNFIiwiY2xpZW50X21ldGFkYXRhIjp7InZwX2Zvcm1hdHMiOnsidmMrc2Qtand0Ijp7ImFsZyI6WyJFZERTQSIsIkVTMjU2Il19fX0sInByZXNlbnRhdGlvbl9kZWZpbml0aW9uIjp7ImlkIjoiMWI5ZDZiY2QtYmJmZC00YjJkLTliNWQtYWI4ZGZiYmQ0YmVkIiwiaW5wdXRfZGVzY3JpcHRvcnMiOlt7ImlkIjoiSWRlbnRpdHktMSIsIm5hbWUiOiJJZGVudGl0eSBWQyIsInB1cnBvc2UiOiJXZSB3YW50IGFuIGlkZW50aXR5IiwiZm9ybWF0Ijp7InZjK3NkLWp3dCI6eyJhbGciOlsiRWREU0EiLCJFUzI1NksiXX19LCJjb25zdHJhaW50cyI6eyJmaWVsZHMiOlt7InBhdGgiOlsiJC52Y3QiXSwiZmlsdGVyIjp7InR5cGUiOiJzdHJpbmciLCJjb25zdCI6Imh0dHBzOi8vY3JlZGVudGlhbHMuZXhhbXBsZS5jb20vaWRlbnRpdHlfY3JlZGVudGlhbCJ9fSx7InBhdGgiOlsiJC5uYW1lIl19XX19XX0sImNsaWVudF9pZCI6ImRpZDprZXk6ekRuYWVhZ3ZXMmVEV2MyeVZ3N0I5OG92Y0o4amRkbjdUOU1oM3k1VmlreXM2eTRrWCIsImNsaWVudF9pZF9zY2hlbWUiOiJkaWQifQ.RlrD5ibioAvM_S0QAhdPK--9WyLEw258cMduAn26S1puXIxKgJod9gt00FDrK0x-jdPmkuPdpJWKzg3kcimIVQ";
+        pub const AUTH_REQUEST_JWT: &str = "eyJhbGciOiJFUzI1NiIsImtpZCI6ImRpZDprZXk6ekRuYWVrUjdwekd6SlJ6eHJRR3BLaWZ0ckNaeEtDUG9XQWNHeHBTOFJ6WUJESzdMQyN6RG5hZWtSN3B6R3pKUnp4clFHcEtpZnRyQ1p4S0NQb1dBY0d4cFM4UnpZQkRLN0xDIiwidHlwIjoiSldUIn0.eyJyZXNwb25zZV9tb2RlIjoiZGlyZWN0X3Bvc3QiLCJyZXNwb25zZV90eXBlIjoidnBfdG9rZW4iLCJub25jZSI6IjhZT0dKcjVIVkZUOHZTa0w3eEVGdE5wb1NWNldVcEFQM3JYQWRhVTNnNUUiLCJjbGllbnRfbWV0YWRhdGEiOnsidnBfZm9ybWF0cyI6eyJ2YytzZC1qd3QiOnsiYWxnIjpbIkVkRFNBIiwiRVMyNTYiXX19fSwiY2xpZW50X2lkIjoiZGlkOmtleTp6RG5hZWtSN3B6R3pKUnp4clFHcEtpZnRyQ1p4S0NQb1dBY0d4cFM4UnpZQkRLN0xDIiwiY2xpZW50X2lkX3NjaGVtZSI6ImRpZCIsInByZXNlbnRhdGlvbl9kZWZpbml0aW9uIjp7ImlkIjoiMzI3YWQxNzEtYzgwYS00ODViLWIwOTgtNTBkN2FkMjc4ZWY2IiwiaW5wdXRfZGVzY3JpcHRvcnMiOlt7ImlkIjoiSWRlbnRpdHktMSIsImNvbnN0cmFpbnRzIjp7ImZpZWxkcyI6W3sicGF0aCI6WyIkLm5hbWUiXSwicHJlZGljYXRlIjpudWxsLCJpbnRlbnRfdG9fcmV0YWluIjpmYWxzZX0seyJwYXRoIjpbIiQudmN0Il0sInByZWRpY2F0ZSI6bnVsbCwiZmlsdGVyIjp7InR5cGUiOiJzdHJpbmciLCJjb25zdCI6Imh0dHBzOi8vY3JlZGVudGlhbHMuZXhhbXBsZS5jb20vaWRlbnRpdHlfY3JlZGVudGlhbCJ9LCJpbnRlbnRfdG9fcmV0YWluIjpmYWxzZX1dfSwibmFtZSI6IklkZW50aXR5IFZDIiwicHVycG9zZSI6IldlIHdhbnQgYW4gaWRlbnRpdHkiLCJmb3JtYXQiOnsidmMrc2Qtand0Ijp7InNkLWp3dF9hbGdfdmFsdWVzIjpbIkVTMjU2IiwiRWREU0EiXSwia2Itand0X2FsZ192YWx1ZXMiOlsiRVMyNTYiLCJFZERTQSJdfX19XSwibmFtZSI6IkV4YW1wbGUgd2l0aCBzZWxlY3RpdmUgZGlzY2xvc3VyZSJ9LCJyZXNwb25zZV91cmkiOiJodHRwOi8vMTI3LjAuMC4xOjU1Nzk2L2F1dGgifQ.fi3pba2RZDzIZbtWfRehDd0EECVxOGlRbC_gCojeCV5ulB2eJD70gFVcMWN9a9LooZm0q_RaZIcdyl070cA28A";
         pub const AUTH_REQUEST: &str = r#"
             {
-               "client_id":"did:key:zDnaeagvW2eDWc2yVw7B98ovcJ8jddn7T9Mh3y5Vikys6y4kX",
-               "presentation_definition":{
-                  "id":"1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed",
-                  "input_descriptors":[
-                     {
-                        "id":"Identity-1",
-                        "name":"Identity VC",
-                        "purpose":"We want an identity",
-                        "format":{
-                           "vc+sd-jwt":{
-                              "alg":[
-                                 "EdDSA",
-                                 "ES256K"
-                              ]
-                           }
+              "client_id": "did:key:zDnaekR7pzGzJRzxrQGpKiftrCZxKCPoWAcGxpS8RzYBDK7LC",
+              "presentation_definition": {
+                "id": "327ad171-c80a-485b-b098-50d7ad278ef6",
+                "input_descriptors": [
+                  {
+                    "id": "Identity-1",
+                    "constraints": {
+                      "fields": [
+                        {
+                          "path": [
+                            "$.name"
+                          ],
+                          "predicate": null,
+                          "intent_to_retain": false
                         },
-                        "constraints":{
-                           "fields":[
-                              {
-                                 "path":[
-                                    "$.vct"
-                                 ],
-                                 "filter":{
-                                    "type":"string",
-                                    "const":"https://credentials.example.com/identity_credential"
-                                 }
-                              },
-                              {
-                                 "path":[
-                                    "$.name"
-                                 ]
-                              }
-                           ]
+                        {
+                          "path": [
+                            "$.vct"
+                          ],
+                          "predicate": null,
+                          "filter": {
+                            "type": "string",
+                            "const": "https://credentials.example.com/identity_credential"
+                          },
+                          "intent_to_retain": false
                         }
-                     }
-                  ]
-               },
-               "nonce":"n0NcE",
-               "response_mode":"direct_post",
-               "response_uri":"http://127.0.0.1:55796/auth"
+                      ]
+                    },
+                    "name": "Identity VC",
+                    "purpose": "We want an identity",
+                    "format": {
+                      "vc+sd-jwt": {
+                        "sd-jwt_alg_values": [
+                          "ES256",
+                          "EdDSA"
+                        ],
+                        "kb-jwt_alg_values": [
+                          "ES256",
+                          "EdDSA"
+                        ]
+                      }
+                    }
+                  }
+                ],
+                "name": "Example with selective disclosure"
+              },
+              "nonce": "8YOGJr5HVFT8vSkL7xEFtNpoSV6WUpAP3rXAdaU3g5E",
+              "response_mode": "direct_post",
+              "response_uri": "http://127.0.0.1:55796/auth"
             }
         "#;
 
@@ -137,6 +142,7 @@ pub mod fixtures {
             PresentationSession {
                 nonce: Nonce(NONCE.to_owned()),
                 presentation_definition: presentation_definition(),
+                auth_request_jwt: Default::default(),
             }
         }
 
@@ -163,13 +169,15 @@ pub mod fixtures {
         use crate::vc::oid4vp::tests::utils::{PresentationTestCase, VerificationTestCase};
         use crate::vc::oid4vp::tests::CredTypeWithClaims;
         use crate::vc::oid4vp::{
-            PresentationDefinition, PresentationSession, PresentationSubmission,
-            ResolvedAuthRequest,
+            AuthResponseOptions, PresentationSession, ResolvedAuthRequest, ResponseMode,
+            ResponseType, ResponseUri,
         };
+        use crate::vc::presentation_exchange::{PresentationDefinition, PresentationSubmission};
         use serde_json::json;
+        use url::Url;
 
         const PRESENTATION_DEFINITION: &str = r#"{
-           "id":"1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed",
+           "id":"327ad171-c80a-485b-b098-50d7ad278ef6",
            "input_descriptors":[
               {
                  "id":"Identity-1",
@@ -177,10 +185,14 @@ pub mod fixtures {
                  "purpose":"We want an identity",
                  "format":{
                     "vc+sd-jwt":{
-                       "alg":[
-                          "EdDSA",
-                          "ES256K"
-                       ]
+                       "sd-jwt_alg_values": [
+                          "ES256",
+                          "EdDSA"
+                        ],
+                        "kb-jwt_alg_values": [
+                          "ES256",
+                          "EdDSA"
+                        ]
                     }
                  },
                  "constraints":{
@@ -210,10 +222,14 @@ pub mod fixtures {
                  "purpose":"We want an identity",
                  "format":{
                     "vc+sd-jwt":{
-                       "alg":[
-                          "EdDSA",
-                          "ES256K"
-                       ]
+                       "sd-jwt_alg_values": [
+                          "ES256",
+                          "EdDSA"
+                        ],
+                        "kb-jwt_alg_values": [
+                          "ES256",
+                          "EdDSA"
+                        ]
                     }
                  },
                  "constraints":{
@@ -239,8 +255,8 @@ pub mod fixtures {
         }"#;
 
         const PRESENTATION_SUBMISSION: &str = r#"{
-            "id": "",
-            "definition_id": "1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed",
+            "id": "00000000-0000-0000-0000-000000000000",
+            "definition_id": "327ad171-c80a-485b-b098-50d7ad278ef6",
             "descriptor_map": [
                 {
                     "id": "Identity-1",
@@ -259,7 +275,7 @@ pub mod fixtures {
         {
            "client_id":"did:key:zDnaeagvW2eDWc2yVw7B98ovcJ8jddn7T9Mh3y5Vikys6y4kX",
            "presentation_definition": {
-               "id":"1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed",
+               "id":"327ad171-c80a-485b-b098-50d7ad278ef6",
                "input_descriptors":[
                   {
                      "id":"Identity-1",
@@ -267,9 +283,13 @@ pub mod fixtures {
                      "purpose":"We want an identity",
                      "format":{
                         "vc+sd-jwt":{
-                           "alg":[
-                              "EdDSA",
-                              "ES256K"
+                           "sd-jwt_alg_values": [
+                                "ES256",
+                                "EdDSA"
+                           ],
+                           "kb-jwt_alg_values": [
+                              "ES256",
+                              "EdDSA"
                            ]
                         }
                      },
@@ -300,9 +320,13 @@ pub mod fixtures {
                      "purpose":"We want an identity",
                      "format":{
                         "vc+sd-jwt":{
-                           "alg":[
-                              "EdDSA",
-                              "ES256K"
+                           "sd-jwt_alg_values": [
+                              "ES256",
+                              "EdDSA"
+                           ],
+                           "kb-jwt_alg_values": [
+                              "ES256",
+                              "EdDSA"
                            ]
                         }
                      },
@@ -367,6 +391,7 @@ pub mod fixtures {
             PresentationSession {
                 nonce: Nonce(NONCE.to_owned()),
                 presentation_definition: presentation_definition(),
+                auth_request_jwt: Default::default(),
             }
         }
 
@@ -383,6 +408,14 @@ pub mod fixtures {
                 credential_data: credential_data(),
                 presentation_submission: presentation_submission(),
                 session: presentation_session(),
+            }
+        }
+
+        pub fn auth_response_options(submission_uri: Url) -> AuthResponseOptions {
+            AuthResponseOptions {
+                type_: ResponseType::VpToken,
+                mode: ResponseMode::DirectPost,
+                submission_uri: ResponseUri::new(submission_uri),
             }
         }
     }
@@ -413,13 +446,13 @@ pub mod utils {
         AuthorizationResponse, CredentialMapping, Holder, PresentationSession, ResolvedAuthRequest,
         Verifier,
     };
+    use crate::vc::presentation_exchange::PresentationSubmission;
     use crate::vc::{
         presentation_exchange, Claims, Credential, CredentialMetadata, VCFormat, VCFormatsAPI,
         VCMetadata,
     };
     use oauth2::http::{Method, StatusCode};
     use oid4vp::core::response::PostRedirection;
-    use oid4vp::presentation_exchange::PresentationSubmission;
     use sd_jwt_rs::utils::decode_sd_jwt;
     use sd_jwt_rs::SDJWTSerializationFormat;
     use serde_json::json;
@@ -456,7 +489,11 @@ pub mod utils {
 
                     let mut presentation_submission: PresentationSubmission =
                         serde_json::from_str(&form["presentation_submission"]).unwrap();
-                    presentation_submission.id.clear();
+                    presentation_submission = PresentationSubmission::new(
+                        uuid::Uuid::default(),
+                        presentation_submission.definition_id().to_owned(),
+                        presentation_submission.descriptor_map().to_owned(),
+                    );
 
                     assert_eq!(presentation_submission, expected_presentation_submission);
 
@@ -547,7 +584,8 @@ pub mod utils {
 
         pub fn extract_claims(form: &HashMap<String, String>) -> Vec<Claims> {
             let vp_token = form.get("vp_token").unwrap();
-            let vp_token_value: serde_json::Value = serde_json::from_str(vp_token).unwrap();
+            let vp_token_value: serde_json::Value =
+                serde_json::from_str(vp_token).unwrap_or(serde_json::to_value(vp_token).unwrap());
 
             match vp_token_value {
                 serde_json::Value::String(token) => {

@@ -206,8 +206,8 @@ where
 
         let presentation = match &cred_entry.credential {
             Credential::SdJwt(vc) => {
-                // For now, only top level supported
-                let disclosures = Self::resolve_disclosures(presentation_input);
+                let disclosures =
+                    SdJwtAPI::resolve_disclosures(presentation_input).context(VCSnafu)?;
                 let vp =
                     SdJwtAPI::create_vp(vc, key, nonce, verifier_id, VPMetadata { disclosures })
                         .await
@@ -219,7 +219,7 @@ where
                 return FormatNotSupportedSnafu {
                     format: cred_entry.credential.format().to_string(),
                 }
-                .fail()
+                .fail();
             }
         };
 
@@ -311,27 +311,8 @@ where
 
         // TODO: more generic solution to support different criterias
         let type_ = input.type_.to_owned();
-        let criteria = FindCriteria::ByTypeAndFormat(type_, input.format.clone());
+        let criteria = FindCriteria::ByTypeAndFormat(type_, input.format.name());
 
         Ok(criteria)
-    }
-
-    #[instrument(
-        level = Level::TRACE,
-        ret(),
-    )]
-    fn resolve_disclosures(
-        input: &PresentationInput,
-    ) -> serde_json::Map<String, serde_json::Value> {
-        trace!(presentation_input = ?input);
-
-        let claims = input.claims.clone();
-
-        let stripped: Vec<_> = claims
-            .keys()
-            .map(|k| (k.to_owned(), serde_json::Value::Bool(true)))
-            .collect();
-
-        serde_json::Map::from_iter(stripped.into_iter())
     }
 }

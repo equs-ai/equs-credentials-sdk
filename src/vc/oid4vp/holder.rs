@@ -11,22 +11,15 @@ use crate::vc::oid4vp::metadata::default_wallet_metadata;
 use crate::vc::oid4vp::{AuthorizationResponseMetadata, CredentialMapping, ResolvedAuthRequest};
 use crate::vc::presentation_exchange::{PresentationResponse, RequestedPresentation};
 use crate::vc::{oid4vp as api, presentation_exchange};
-use anyhow::bail;
 use async_trait::async_trait;
 use futures::future;
-use oid4vp::core::authorization_request::parameters::ClientMetadata;
-use oid4vp::core::authorization_request::verification::RequestVerification;
+use oid4vp::core::authorization_request::verification::RequestVerifier;
 use oid4vp::core::authorization_request::AuthorizationRequestObject;
-use oid4vp::core::credential_format::CoreCredentialFormat;
-use oid4vp::core::metadata::parameters::verifier::VpFormats;
 use oid4vp::core::metadata::WalletMetadata;
-use oid4vp::core::object::{ParsingErrorContext, UntypedObject};
-use oid4vp::core::profile;
-use oid4vp::core::profile::Wallet;
-use oid4vp::core::response::parameters::{
-    PresentationSubmission as PresentationSubmissionParam, VpToken,
-};
-use oid4vp::core::response::AuthorizationResponse;
+use oid4vp::core::object::UntypedObject;
+use oid4vp::core::response::parameters::{PresentationSubmission, VpToken};
+use oid4vp::core::response::{AuthorizationResponse, UnencodedAuthorizationResponse};
+use oid4vp::wallet::Wallet;
 use snafu::ResultExt;
 use tracing::{info, instrument, Level};
 use url::Url;
@@ -99,12 +92,7 @@ where
                 |req| self.http_client.async_call(req),
             )
             .await
-            .map_err(|e| {
-                AuthorizationResponseSnafu {
-                    details: format!("Could not submit Authorization Response: {e}"),
-                }
-                .build()
-            })?;
+            .context(AuthorizationResponseSnafu)?;
 
         Ok(redirect_url)
     }
@@ -117,22 +105,20 @@ where
     fn create_auth_response(
         presentation_response: PresentationResponse,
     ) -> Result<AuthorizationResponse> {
-        let mut response_params = UntypedObject::default();
-
-        let vp_token =
-            serde_json::to_string(&presentation_response.presentations).context(JsonSnafu)?;
-        response_params.insert(VpToken(vp_token));
+        let vp_token = VpToken::try_from(presentation_response.presentations)
+            .context(AuthorizationResponseSnafu)?;
 
         let pres_sub_json = serde_json::to_value(&presentation_response.presentation_submission)
             .context(JsonSnafu)?;
-        response_params.insert(PresentationSubmissionParam(pres_sub_json));
 
-        let auth_resp = AuthorizationResponse::try_from(response_params).map_err(|e| {
-            ParseSnafu {
-                details: format!("Cannot parse Authorization Response: {e}"),
-            }
-            .build()
-        })?;
+        let pres_sub =
+            PresentationSubmission::try_from(pres_sub_json).context(AuthorizationResponseSnafu)?;
+
+        let auth_resp = AuthorizationResponse::Unencoded(UnencodedAuthorizationResponse(
+            UntypedObject::default(),
+            vp_token,
+            pres_sub,
+        ));
 
         Ok(auth_resp)
     }
@@ -157,7 +143,7 @@ where
         let first_credential = credentials.first().ok_or_else(|| {
             CredentialNotFoundSnafu {
                 type_: &presentation_input.type_,
-                format: &presentation_input.format,
+                format: &presentation_input.format.name(),
             }
             .build()
         })?;
@@ -195,7 +181,7 @@ where
     )]
     async fn get_authorization_request(&self, request_uri: &Url) -> Result<ResolvedAuthRequest> {
         let aro = self
-            .handle_request(request_uri, |req| self.http_client.async_call(req))
+            .validate_request(request_uri, |req| self.http_client.async_call(req))
             .await
             .context(AuthorizationRequestSnafu)?;
 
@@ -209,7 +195,7 @@ where
         Ok(ResolvedAuthRequest {
             client_id: aro.client_id().0.to_owned(),
             presentation_definition: pres_def,
-            nonce: Nonce(aro.nonce().to_owned().0),
+            nonce: Nonce(aro.nonce().to_owned().into()),
             response_mode: aro.response_mode().to_owned(),
             response_uri: aro.return_uri().to_owned(),
         })
@@ -331,62 +317,19 @@ where
 }
 
 #[async_trait]
-impl<HL, D, HC> profile::Profile for HolderService<HL, D, HC>
-where
-    HL: vc::core::Holder,
-    D: DIDResolver,
-    HC: HttpClient,
-{
-    type CredentialFormat = CoreCredentialFormat;
-
-    #[instrument(
-        level = Level::TRACE,
-        skip(self),
-        err(),
-        ret(),
-    )]
-    async fn validate_request(
-        &self,
-        wallet_metadata: &WalletMetadata,
-        request_object: &AuthorizationRequestObject,
-    ) -> anyhow::Result<()> {
-        if request_object.get::<ClientMetadata>().is_none() {
-            return Ok(());
-        }
-
-        let client_metadata =
-            ClientMetadata::resolve(request_object, |req| self.http_client.async_call(req))
-                .await
-                .parsing_error()?;
-
-        if let Some(Ok(vp_formats)) = client_metadata.0.get::<VpFormats>() {
-            let unsupported = vp_formats
-                .0
-                .keys()
-                .find(|k| !wallet_metadata.vp_formats_supported().0.contains_key(*k));
-            if let Some(format) = unsupported {
-                bail!("VP format not supported");
-            }
-        }
-
-        Ok(())
-    }
-}
-
-#[async_trait]
 impl<HL, D, HC> Wallet for HolderService<HL, D, HC>
 where
     HL: vc::core::Holder,
     D: DIDResolver,
     HC: HttpClient,
 {
-    fn wallet_metadata(&self) -> &WalletMetadata {
+    fn metadata(&self) -> &WalletMetadata {
         &self.metadata
     }
 }
 
 #[async_trait]
-impl<HL, D, HC> RequestVerification for HolderService<HL, D, HC>
+impl<HL, D, HC> RequestVerifier for HolderService<HL, D, HC>
 where
     HL: vc::core::Holder,
     D: DIDResolver,
@@ -427,97 +370,6 @@ where
 
         Ok(())
     }
-
-    #[instrument(
-        level = Level::TRACE,
-        skip(self),
-        err(),
-        ret(),
-    )]
-    async fn entity_id(
-        &self,
-        decoded_request: &AuthorizationRequestObject,
-        request_jwt: String,
-    ) -> anyhow::Result<()> {
-        //TODO: Implement verification method
-        Ok(())
-    }
-
-    #[instrument(
-        level = Level::TRACE,
-        skip(self),
-        err(),
-        ret(),
-    )]
-    async fn preregistered(
-        &self,
-        decoded_request: &AuthorizationRequestObject,
-        request_jwt: String,
-    ) -> anyhow::Result<()> {
-        //TODO: Implement verification method
-        Ok(())
-    }
-
-    #[instrument(
-        level = Level::TRACE,
-        skip(self),
-        err(),
-        ret(),
-    )]
-    async fn redirect_uri(
-        &self,
-        decoded_request: &AuthorizationRequestObject,
-        request_jwt: String,
-    ) -> anyhow::Result<()> {
-        //TODO: Implement verification method
-        Ok(())
-    }
-
-    #[instrument(
-        level = Level::TRACE,
-        skip(self),
-        err(),
-        ret(),
-    )]
-    async fn x509_san_dns(
-        &self,
-        decoded_request: &AuthorizationRequestObject,
-        request_jwt: String,
-    ) -> anyhow::Result<()> {
-        //TODO: Implement verification method
-        Ok(())
-    }
-
-    #[instrument(
-        level = Level::TRACE,
-        skip(self),
-        err(),
-        ret(),
-    )]
-    async fn x509_san_uri(
-        &self,
-        decoded_request: &AuthorizationRequestObject,
-        request_jwt: String,
-    ) -> anyhow::Result<()> {
-        //TODO: Implement verification method
-        Ok(())
-    }
-
-    #[instrument(
-        level = Level::TRACE,
-        skip(self),
-        err(),
-        ret(),
-    )]
-    async fn other(
-        &self,
-        client_id_scheme: &str,
-        decoded_request: &AuthorizationRequestObject,
-        request_jwt: String,
-    ) -> anyhow::Result<()> {
-        //TODO: Implement verification method
-        Ok(())
-    }
 }
 
 #[cfg(test)]
@@ -535,6 +387,7 @@ mod tests {
         build_url, holder_service, validate_claims, PresentationTestCase,
     };
     use crate::vc::oid4vp::{AuthorizationResponseMetadata, Holder};
+    use crate::vc::presentation_exchange::ClaimFormatMap;
     use crate::vc::{Claims, Credential};
     use oauth2::http::Method;
     use oauth2::HttpResponse;
@@ -692,12 +545,12 @@ mod tests {
             .await
             .unwrap();
 
-        let retrieved_credentials: Vec<vc::Credential> = test_case
+        let retrieved_credentials: Vec<Credential> = test_case
             .request
             .presentation_definition
-            .input_descriptors
+            .input_descriptors()
             .iter()
-            .flat_map(|descriptor| credential_mapping.get(&descriptor.id).unwrap().clone())
+            .flat_map(|descriptor| credential_mapping.get(descriptor.id()).unwrap().clone())
             .map(|entry| entry.credential)
             .collect();
 
@@ -747,9 +600,9 @@ mod tests {
         let retrieved_credentials: Vec<vc::Credential> = test_case
             .request
             .presentation_definition
-            .input_descriptors
+            .input_descriptors()
             .iter()
-            .flat_map(|descriptor| credential_mapping.get(&descriptor.id).unwrap().clone())
+            .flat_map(|descriptor| credential_mapping.get(descriptor.id()).unwrap().clone())
             .map(|entry| entry.credential)
             .collect();
 
@@ -855,33 +708,66 @@ mod tests {
 
     fn empty_input_descriptor_case() -> PresentationTestCase {
         let mut test_case = single_presentation::presentation_test_case();
-        test_case.request.presentation_definition.input_descriptors = vec![];
+        test_case
+            .request
+            .presentation_definition
+            .input_descriptors_mut()
+            .clear();
         test_case
     }
 
     fn request_unsupported_credential_format_case() -> PresentationTestCase {
-        let mut test_case = single_presentation::presentation_test_case();
-        let cred_format: serde_json::Value = json!({
+        let test_case = single_presentation::presentation_test_case();
+        let cred_format: ClaimFormatMap = serde_json::from_value(json!({
             "jwt_vc_json":{
-                "alg":[
+                "alg_values_supported":[
                     "RS256"
                 ]
             }
-        });
-        test_case.request.presentation_definition.input_descriptors[0].format = Some(cred_format);
-        test_case
+        }))
+        .unwrap();
+
+        update_claim_format(test_case, cred_format)
     }
 
     fn request_unsupported_credential_alg_case() -> PresentationTestCase {
-        let mut test_case = single_presentation::presentation_test_case();
-        let cred_format: serde_json::Value = json!({
+        let test_case = single_presentation::presentation_test_case();
+        let cred_format: ClaimFormatMap = serde_json::from_value(json!({
             "vc+sd-jwt":{
-                "alg":[
-                    "RS256"
-                ]
+                "sd-jwt_alg_values": ["ES256", "EdDSA"],
+                "kb-jwt_alg_values": ["ES256", "EdDSA"],
             }
-        });
-        test_case.request.presentation_definition.input_descriptors[0].format = Some(cred_format);
+        }))
+        .unwrap();
+
+        update_claim_format(test_case, cred_format)
+    }
+
+    fn update_claim_format(
+        mut test_case: PresentationTestCase,
+        cred_format: ClaimFormatMap,
+    ) -> PresentationTestCase {
+        let mut input_desc = test_case
+            .request
+            .presentation_definition
+            .input_descriptors()
+            .clone();
+        if let Some(i) = input_desc.get_mut(0) {
+            *i = i.to_owned().set_format(cred_format)
+        }
+
+        test_case
+            .request
+            .presentation_definition
+            .input_descriptors_mut()
+            .clear();
+
+        test_case
+            .request
+            .presentation_definition
+            .input_descriptors_mut()
+            .append(&mut input_desc);
+
         test_case
     }
 }

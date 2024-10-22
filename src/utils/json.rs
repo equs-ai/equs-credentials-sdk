@@ -1,5 +1,21 @@
-use serde_json::Value as Json;
+use common_macros::DebugError;
+use serde_json::{json, Value as Json, Value};
+use snafu::{Location, Snafu};
+use std::fmt::Debug;
 use tracing::{instrument, Level};
+
+pub type Result<T> = core::result::Result<T, Error>;
+
+#[derive(Snafu, DebugError)]
+#[non_exhaustive]
+pub enum Error {
+    #[snafu(display("Parsing error at {location}\n Cause: {details}"))]
+    Parsing {
+        details: String,
+        #[snafu(implicit)]
+        location: Location,
+    },
+}
 
 #[instrument(
     level = Level::TRACE,
@@ -38,6 +54,80 @@ pub fn find_json_element<'a>(json: &'a Json, json_path: &str) -> Option<&'a Json
     }
 
     Some(current)
+}
+
+#[instrument(
+    level = Level::TRACE,
+    ret(),
+)]
+pub fn paths_to_json(paths: Vec<&str>) -> Result<Value> {
+    let mut json = json!({});
+    for p in paths {
+        let path = p.replacen("$.", "", 1);
+        path_to_json(path.clone(), &mut json)?;
+    }
+
+    Ok(json)
+}
+
+fn path_to_json(path: String, mut json_obj: &mut Value) -> Result<()> {
+    let parts: Vec<&str> = path.split('.').collect();
+
+    for (i, part) in parts.iter().enumerate() {
+        if part.contains('[') && part.contains(']') {
+            path_to_json_helper(json_obj, part, parts.len(), i)?;
+        } else if i == parts.len() - 1 {
+            json_obj[part] = Value::Bool(true);
+        } else {
+            if json_obj.get(part).is_none() {
+                json_obj[part] = json!({});
+            }
+            json_obj = &mut json_obj[part];
+        }
+    }
+
+    Ok(())
+}
+
+fn path_to_json_helper(
+    json_obj: &mut Value,
+    part: &str,
+    length: usize,
+    parts_index: usize,
+) -> Result<()> {
+    let key = part.split('[').next().ok_or(
+        ParsingSnafu {
+            details: "cannot parse key of json-path",
+        }
+        .build(),
+    )?;
+    let index: usize = part
+        .split('[')
+        .nth(1)
+        .and_then(|i| i.trim_end_matches(']').parse::<usize>().ok())
+        .ok_or(
+            ParsingSnafu {
+                details: "cannot parse index of json-path",
+            }
+            .build(),
+        )?;
+
+    if json_obj.get(key).is_none() {
+        json_obj[key] = json!(vec![Value::Null; index + 1]);
+    }
+
+    if let Value::Array(arr) = &mut json_obj[key] {
+        if index >= arr.len() {
+            arr.resize(index + 1, Value::Null);
+        }
+        if parts_index == length - 1 {
+            arr[index] = Value::Bool(true);
+        } else if arr[index].is_null() {
+            arr[index] = json!({});
+        }
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]

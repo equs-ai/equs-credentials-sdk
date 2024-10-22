@@ -19,7 +19,7 @@ use agent_sdk::vc::core::{
     PopFormat, PresentationInput, Verifier,
 };
 use agent_sdk::vc::metadata::{CredentialMetadataProcessor, DefaultMetadataProcessor};
-use agent_sdk::vc::SD_JWT_VC;
+use agent_sdk::vc::ClaimFormat;
 use serde_json::json;
 use ssi::did::DIDURL;
 
@@ -64,17 +64,33 @@ async fn credential_issuance_and_presentation_verification() {
 
     println!("Present proof...");
 
+    let constraints = serde_json::from_value(json!({
+       "fields": [
+            {
+                "path": ["$.vct"],
+                "filter": {
+                    "type": "string",
+                    "const": "https://credentials.example.com/identity_credential"
+                }
+            },
+            {
+                "path": ["$.given_name"],
+            },
+            {
+                "path": ["$.family_name"],
+            }
+        ]
+    }))
+    .unwrap();
+
     let presentation_input = PresentationInput {
-        id: SCOPE.to_string(),
-        type_: VC_TYPE.to_string(),
-        format: SD_JWT_VC.to_string(),
-        claims: json!({
-           "given_name": true,
-           "family_name": true,
-        })
-        .as_object()
-        .unwrap()
-        .to_owned(),
+        id: "descriptor_id".to_string(),
+        format: ClaimFormat::SdJwtVc {
+            jwt_alg_values: vec!["ES256".to_string(), "EdDSA".to_string()],
+            kb_alg_values: vec!["ES256".to_string(), "EdDSA".to_string()],
+        },
+        type_: "https://credentials.example.com/identity_credential".to_string(),
+        constraints,
     };
 
     let nonce = LocalNonceGenerator::default().generate().await.unwrap();

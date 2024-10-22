@@ -14,8 +14,12 @@ use crate::{http, nonce, vc};
 #[snafu(visibility(pub(super)))]
 #[non_exhaustive]
 pub enum InternalError {
-    #[snafu(display("Authorization Response error: {details}"))]
-    AuthorizationResponse { details: String },
+    #[snafu(display("Authorization Response error at {location}"))]
+    AuthorizationResponse {
+        #[snafu(implicit)]
+        location: Location,
+        source: anyhow::Error,
+    },
     #[snafu(display("Credential of Type '{type_}' and Format '{format}' not found"))]
     CredentialNotFound { type_: String, format: String },
     #[snafu(display("Unsupported format: {format}"))]
@@ -25,12 +29,6 @@ pub enum InternalError {
         #[snafu(implicit)]
         location: Location,
         source: KmsError,
-    },
-    #[snafu(display("Key resolution error at {location}"))]
-    VerifierSession {
-        #[snafu(implicit)]
-        location: Location,
-        source: anyhow::Error,
     },
     #[snafu(display("Authorization Request handling error at {location}"))]
     AuthorizationRequest {
