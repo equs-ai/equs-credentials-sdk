@@ -1,7 +1,7 @@
 import test from 'ava'
 
 import {
-    createKeyMetadata,
+    createDidAndKeyMetadata,
     CredentialSearchCriteria,
     inMemKms,
     inMemVault,
@@ -59,9 +59,9 @@ test.serial('request Credential', async t => {
         expiresIn: 86400,
         created: 1728732136,
     }
-    const key_metadata = await createKeyMetadata(kms);
+    const {keyMetadata} = await createDidAndKeyMetadata(kms);
 
-    const cred_response = await vciHolder.requestCredential(ACCESS_TOKEN, CRED_DEF_ID, nonce, key_metadata)
+    const cred_response = await vciHolder.requestCredential(ACCESS_TOKEN, CRED_DEF_ID, nonce, keyMetadata)
 
     t.like(cred_response, {
         data: {

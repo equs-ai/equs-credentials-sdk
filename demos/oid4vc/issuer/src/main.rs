@@ -194,7 +194,13 @@ async fn get_user_attributes(cred_def: &CredDefMetadata) -> Result<Value, Error>
         claims_json["family_name"] = serde_json::Value::from(user.last_name.to_owned());
         claims_json["given_name"] = serde_json::Value::from(user.first_name.to_owned());
         claims_json["username"] = serde_json::Value::from(user.username.to_owned());
-        claims_json["email"] = serde_json::Value::from(user.email.to_owned());
+        claims_json["email"] = json!({
+            "personal": user.email.to_owned(),
+            "work": user.email.to_owned()
+        });
+        claims_json["postal_code"] = json!({
+            "codes": [ claims_json["postal_code"][0], "10001" ]
+        });
         return Ok(claims_json);
     }
 
@@ -269,9 +275,12 @@ fn sample_issuer_metadata(iss_url: &str, authz_url: &str) -> IssuerMetadata {
                 "given_name": {},
                 "age_over_18": {},
                 "street": {},
-                "email": {},
-                "username": {},
-                "postal_code": {},
+                "email": {
+                            "personal": {},
+                            "work": {}
+                        },
+                    "username": {},
+                "postal_code": {"codes": [{}, {}]},
                 "locality": {},
                 "region": {},
                 "birthdate": {},

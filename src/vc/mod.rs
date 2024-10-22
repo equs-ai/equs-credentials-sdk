@@ -7,10 +7,11 @@ pub use crate::vc::formats::vc::*;
 pub use crate::vc::formats::vp::*;
 pub use crate::vc::formats::Error as VCFormatError;
 pub use crate::vc::formats::API as VCFormatsAPI;
+pub use crate::vc::presentation_exchange::ClaimFormat;
 
 mod formats;
 mod pop;
-mod presentation_exchange;
+pub mod presentation_exchange;
 
 pub mod core;
 pub mod metadata;
@@ -18,8 +19,6 @@ pub mod oid4vci;
 pub mod oid4vp;
 
 pub use formats::HasClaims;
-pub use presentation_exchange::builder::DefaultPresentationBuilder;
-pub use presentation_exchange::builder::PresentationBuilder;
 
 /// Verifiable Credential (`VC`)
 ///

@@ -1,5 +1,5 @@
 import test from 'ava'
-import {Oid4VciIssuerBuilder, inMemKms, localNonceGenerator, createKeyMetadata} from "../../index.js"
+import {Oid4VciIssuerBuilder, inMemKms, localNonceGenerator, createDidAndKeyMetadata} from "../../index.js"
 import {
     ACCESS_TOKEN, CLAIMS,
     CRED_DEF_ID, CRED_DEF_METADATA, CRED_OFFER,
@@ -53,7 +53,7 @@ test('issue Credential', async t => {
 async function buildIssuer() {
     const kms = inMemKms()
     const nonce_generator = localNonceGenerator()
-    const key_metadata = await createKeyMetadata(kms)
+    const {keyMetadata} = await createDidAndKeyMetadata(kms)
 
-    return await new Oid4VciIssuerBuilder(kms, nonce_generator, ISSUER_METADATA, key_metadata).build()
+    return await new Oid4VciIssuerBuilder(kms, nonce_generator, ISSUER_METADATA, keyMetadata).build()
 }

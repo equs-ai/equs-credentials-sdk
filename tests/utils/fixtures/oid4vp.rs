@@ -1,4 +1,5 @@
-use oid4vp::presentation_exchange::{InputDescriptor, PresentationDefinition};
+use agent_sdk::vc::presentation_exchange::PresentationDefinition;
+use oid4vp::core::input_descriptor::InputDescriptor;
 use serde_json::{json, Value as Json, Value};
 
 pub type ValidateClaimsFunc = dyn Fn(Json) + Send + Sync;
@@ -36,7 +37,14 @@ fn sample_identity_credential() -> (Oid4VpTestCredential, InputDescriptor) {
             "purpose": "We want an identity",
             "format": {
                 "vc+sd-jwt": {
-                    "alg": ["EdDSA", "ES256K"]
+                   "sd-jwt_alg_values": [
+                      "ES256",
+                      "EdDSA"
+                   ],
+                   "kb-jwt_alg_values": [
+                      "ES256",
+                      "EdDSA"
+                   ]
                 }
              },
             "constraints": {
@@ -81,7 +89,14 @@ fn sample_degree_credential() -> (Oid4VpTestCredential, InputDescriptor) {
             "name": "Degree VC",
             "format": {
                 "vc+sd-jwt": {
-                    "alg": ["EdDSA", "ES256K"]
+                   "sd-jwt_alg_values": [
+                      "ES256",
+                      "EdDSA"
+                   ],
+                   "kb-jwt_alg_values": [
+                      "ES256",
+                      "EdDSA"
+                   ]
                 }
              },
             "constraints": {
@@ -108,13 +123,10 @@ fn sample_degree_credential() -> (Oid4VpTestCredential, InputDescriptor) {
 pub fn single_presentation_case() -> Oid4VpTestCase {
     let (credential, descriptor) = sample_identity_credential();
 
-    let presentation_definition = PresentationDefinition {
-        id: "1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed".to_string(),
-        name: None,
-        purpose: None,
-        format: None,
-        input_descriptors: vec![descriptor],
-    };
+    let presentation_definition = PresentationDefinition::new(
+        "1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed".to_string(),
+        descriptor,
+    );
 
     let validate: Box<ValidateClaimsFunc> = Box::new(|claims| {
         assert_eq!(
@@ -135,13 +147,11 @@ pub fn multiple_presentation_case() -> Oid4VpTestCase {
     let (cred_identity, descriptor_identity) = sample_identity_credential();
     let (cred_degree, descriptor_degree) = sample_degree_credential();
 
-    let presentation_definition = PresentationDefinition {
-        id: "1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed".to_string(),
-        name: None,
-        purpose: None,
-        format: None,
-        input_descriptors: vec![descriptor_identity, descriptor_degree],
-    };
+    let presentation_definition = PresentationDefinition::new(
+        "1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed".to_string(),
+        descriptor_identity,
+    )
+    .add_input_descriptors(descriptor_degree);
 
     let validate: Box<ValidateClaimsFunc> = Box::new(|claims| {
         assert_eq!(

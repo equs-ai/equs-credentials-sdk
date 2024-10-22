@@ -1,46 +1,55 @@
-export const AUTH_REQUEST_JWT = 'eyJhbGciOiJFUzI1NiIsImtpZCI6ImRpZDprZXk6ekRuYWVhZ3ZXMmVEV2MyeVZ3N0I5OG92Y0o4amRkbjdUOU1oM3k1VmlreXM2eTRrWCN6RG5hZWFndlcyZURXYzJ5Vnc3Qjk4b3ZjSjhqZGRuN1Q5TWgzeTVWaWt5czZ5NGtYIiwidHlwIjoiSldUIn0.eyJyZXNwb25zZV9tb2RlIjoiZGlyZWN0X3Bvc3QiLCJyZXNwb25zZV91cmkiOiJodHRwOi8vMTI3LjAuMC4xOjU1Nzk2L2F1dGgiLCJyZXNwb25zZV90eXBlIjoidnBfdG9rZW4iLCJub25jZSI6Im4wTmNFIiwiY2xpZW50X21ldGFkYXRhIjp7InZwX2Zvcm1hdHMiOnsidmMrc2Qtand0Ijp7ImFsZyI6WyJFZERTQSIsIkVTMjU2Il19fX0sInByZXNlbnRhdGlvbl9kZWZpbml0aW9uIjp7ImlkIjoiMWI5ZDZiY2QtYmJmZC00YjJkLTliNWQtYWI4ZGZiYmQ0YmVkIiwiaW5wdXRfZGVzY3JpcHRvcnMiOlt7ImlkIjoiSWRlbnRpdHktMSIsIm5hbWUiOiJJZGVudGl0eSBWQyIsInB1cnBvc2UiOiJXZSB3YW50IGFuIGlkZW50aXR5IiwiZm9ybWF0Ijp7InZjK3NkLWp3dCI6eyJhbGciOlsiRWREU0EiLCJFUzI1NksiXX19LCJjb25zdHJhaW50cyI6eyJmaWVsZHMiOlt7InBhdGgiOlsiJC52Y3QiXSwiZmlsdGVyIjp7InR5cGUiOiJzdHJpbmciLCJjb25zdCI6Imh0dHBzOi8vY3JlZGVudGlhbHMuZXhhbXBsZS5jb20vaWRlbnRpdHlfY3JlZGVudGlhbCJ9fSx7InBhdGgiOlsiJC5uYW1lIl19XX19XX0sImNsaWVudF9pZCI6ImRpZDprZXk6ekRuYWVhZ3ZXMmVEV2MyeVZ3N0I5OG92Y0o4amRkbjdUOU1oM3k1VmlreXM2eTRrWCIsImNsaWVudF9pZF9zY2hlbWUiOiJkaWQifQ.RlrD5ibioAvM_S0QAhdPK--9WyLEw258cMduAn26S1puXIxKgJod9gt00FDrK0x-jdPmkuPdpJWKzg3kcimIVQ'
+export const AUTH_REQUEST_JWT = 'eyJhbGciOiJFUzI1NiIsImtpZCI6ImRpZDprZXk6ekRuYWVzRVg3OUdGUWY0Y1g5d0t4YldIQkplcHU1akhlNTNXUm5hc2RoV2daOEZLUiN6RG5hZXNFWDc5R0ZRZjRjWDl3S3hiV0hCSmVwdTVqSGU1M1dSbmFzZGhXZ1o4RktSIiwidHlwIjoiSldUIn0.eyJyZXNwb25zZV9tb2RlIjoiZGlyZWN0X3Bvc3QiLCJyZXNwb25zZV90eXBlIjoidnBfdG9rZW4iLCJub25jZSI6ImF2SzI1cUdsaDBmejg0T3MtR1JabV9NOTFRT09ya0JSaV9TdXNXbmpiZmMiLCJjbGllbnRfbWV0YWRhdGEiOnsidnBfZm9ybWF0cyI6eyJ2YytzZC1qd3QiOnsiYWxnIjpbIkVkRFNBIiwiRVMyNTYiXX19fSwiY2xpZW50X2lkIjoiZGlkOmtleTp6RG5hZXNFWDc5R0ZRZjRjWDl3S3hiV0hCSmVwdTVqSGU1M1dSbmFzZGhXZ1o4RktSIiwiY2xpZW50X2lkX3NjaGVtZSI6ImRpZCIsInByZXNlbnRhdGlvbl9kZWZpbml0aW9uIjp7ImlkIjoiMjRjYzFlNGQtMTRhNy00ZjhjLWIyY2YtMDNmZjQ5YzRjYTk2IiwiaW5wdXRfZGVzY3JpcHRvcnMiOlt7ImlkIjoiSWRlbnRpdHktMSIsImNvbnN0cmFpbnRzIjp7ImZpZWxkcyI6W3sicGF0aCI6WyIkLnZjdCJdLCJwcmVkaWNhdGUiOm51bGwsImZpbHRlciI6eyJ0eXBlIjoic3RyaW5nIiwiY29uc3QiOiJodHRwczovL2NyZWRlbnRpYWxzLmV4YW1wbGUuY29tL2lkZW50aXR5X2NyZWRlbnRpYWwifSwiaW50ZW50X3RvX3JldGFpbiI6ZmFsc2V9LHsicGF0aCI6WyIkLm5hbWUiXSwicHJlZGljYXRlIjpudWxsLCJpbnRlbnRfdG9fcmV0YWluIjpmYWxzZX1dfSwibmFtZSI6IklkZW50aXR5IFZDIiwicHVycG9zZSI6IldlIHdhbnQgYW4gaWRlbnRpdHkiLCJmb3JtYXQiOnsidmMrc2Qtand0Ijp7InNkLWp3dF9hbGdfdmFsdWVzIjpbIkVTMjU2IiwiRWREU0EiXSwia2Itand0X2FsZ192YWx1ZXMiOlsiRVMyNTYiLCJFZERTQSJdfX19XSwibmFtZSI6IkV4YW1wbGUgd2l0aCBzZWxlY3RpdmUgZGlzY2xvc3VyZSJ9LCJyZXNwb25zZV91cmkiOiJodHRwOi8vbG9jYWxob3N0OjkwMDEvcmVzcG9uc2UifQ.30DJ-SfGbANtnYqUhlcA1ploTAPz-TLMk_E7Amedzsa29N5UPj076lVDdwAi6bOsK0-evgijKL6V1gfSfFYYaA'
 
 export const AUTH_REQUEST = {
-    "clientId": "did:key:zDnaeagvW2eDWc2yVw7B98ovcJ8jddn7T9Mh3y5Vikys6y4kX",
+    "clientId": "did:key:zDnaesEX79GFQf4cX9wKxbWHBJepu5jHe53WRnasdhWgZ8FKR",
     "presentationDefinition": {
-        "id": "1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed",
+        "id": "24cc1e4d-14a7-4f8c-b2cf-03ff49c4ca96",
         "input_descriptors": [
             {
                 "id": "Identity-1",
-                "name": "Identity VC",
-                "purpose": "We want an identity",
-                "format": {
-                    "vc+sd-jwt": {
-                        "alg": [
-                            "EdDSA",
-                            "ES256K"
-                        ]
-                    }
-                },
                 "constraints": {
                     "fields": [
                         {
                             "path": [
                                 "$.vct"
                             ],
+                            "predicate": null,
                             "filter": {
                                 "type": "string",
                                 "const": "https://credentials.example.com/identity_credential"
-                            }
+                            },
+                            "intent_to_retain": false
                         },
                         {
                             "path": [
                                 "$.name"
-                            ]
+                            ],
+                            "intent_to_retain": false,
+                            "predicate": null,
                         }
                     ]
+                },
+                "name": "Identity VC",
+                "purpose": "We want an identity",
+                "format": {
+                    "vc+sd-jwt": {
+                        "sd-jwt_alg_values": [
+                            "ES256",
+                            "EdDSA"
+                        ],
+                        "kb-jwt_alg_values": [
+                            "ES256",
+                            "EdDSA"
+                        ]
+                    }
                 }
             }
-        ]
+        ],
+        "name": "Example with selective disclosure"
     },
-    "nonce": "n0NcE",
+    "responseUri": "http://localhost:9001/response",
     "responseMode": "direct_post",
-    "responseUri": "http://localhost:9001/response"
+    "nonce": "avK25qGlh0fz84Os-GRZm_M91QOOrkBRi_SusWnjbfc",
 }
 
 export const PRESENTATION_DEFINITION = {
@@ -52,10 +61,8 @@ export const PRESENTATION_DEFINITION = {
             "purpose": "We want an identity",
             "format": {
                 "vc+sd-jwt": {
-                    "alg": [
-                        "EdDSA",
-                        "ES256K"
-                    ]
+                    "sd-jwt_alg_values": ["ES256", "EdDSA"],
+                    "kb-jwt_alg_values": ["ES256", "EdDSA"]
                 }
             },
             "constraints": {
@@ -81,7 +88,7 @@ export const PRESENTATION_DEFINITION = {
 }
 
 export const PRESENTATION_SUBMISSION = {
-    id: "e18f2155-1235-43e9-8f0c-1f18cf72911a,definition_id:1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed",
+    id: "e18f2155-1235-43e9-8f0c-1f18cf72911a",
     definition_id: "1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed",
     descriptor_map: [{id: "Identity-1", format: "vc+sd-jwt", path: "$"}]
 }

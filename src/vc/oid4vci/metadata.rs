@@ -1,7 +1,7 @@
 use crate::crypto::Alg;
 use crate::vc::core::{CredentialDefinition, CredentialDefinitionData, KeyMetadata};
 use crate::vc::{pop, HasVCFormat, VCFormat};
-use crate::{crypto, vc};
+use crate::{crypto, utils, vc};
 use common_macros::DebugError;
 use oid4vci::core::profiles;
 use oid4vci::core::profiles::{CoreProfilesMetadata, CoreProfilesRequest, CoreProfilesResponse};
@@ -130,12 +130,13 @@ pub fn supported_proofs(
     ret(),
 )]
 fn sd_jwt_protocol_data(metadata: &profiles::sd_jwt::Metadata) -> CredentialDefinitionData {
-    let disclosures = metadata
-        .claims()
-        .unwrap_or(&HashMap::new())
-        .keys()
-        .map(|k| format!("$.{}", k.to_owned()))
-        .collect();
+    let mut disclosures = vec![];
+
+    for (k, v) in metadata.claims().unwrap_or(&HashMap::new()) {
+        let parent_key = format!("$.{}", k.to_owned());
+        disclosures.push(parent_key.clone());
+        utils::serde::accumulate_claim_names(v.other(), parent_key, &mut disclosures);
+    }
 
     CredentialDefinitionData::SdJwt {
         vct: metadata.vct().to_owned(),

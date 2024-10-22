@@ -1,19 +1,33 @@
 use crate::utils::json::find_json_element;
 use crate::vc::core::PresentationInput;
-use crate::vc::{Claims, Presentation, SD_JWT_VC};
+use crate::vc::{formats, Presentation};
 use common_macros::DebugError;
-use oid4vp::core::metadata::parameters::verifier::VpFormats;
-use oid4vp::presentation_exchange::{
-    ConstraintsField, DescriptorMap, InputDescriptor, PresentationDefinition,
-    PresentationSubmission,
-};
-use serde_json::Value as Json;
-use snafu::{ensure, Location, ResultExt, Snafu};
+use oid4vp::core::input_descriptor::JsonPath;
+use serde::{Deserialize, Serialize};
+use serde_json::{json, Value as Json};
+use snafu::{Location, ResultExt, Snafu};
 use std::fmt::Debug;
 use tracing::{instrument, Level};
 use uuid::Uuid;
 
-pub mod builder;
+pub type Constraints = oid4vp::core::input_descriptor::Constraints;
+pub type ConstraintsField = oid4vp::core::input_descriptor::ConstraintsField;
+pub type ClaimFormatMap = oid4vp::core::input_descriptor::ClaimFormatMap;
+pub type ClaimFormat = oid4vp::core::input_descriptor::ClaimFormat;
+pub type ClaimFormatDesignation = oid4vp::core::credential_format::ClaimFormatDesignation;
+pub type ClaimFormatPayload = oid4vp::core::credential_format::ClaimFormatPayload;
+pub type DescriptorMap = oid4vp::core::presentation_submission::DescriptorMap;
+pub type InputDescriptor = oid4vp::core::input_descriptor::InputDescriptor;
+pub type PresentationSubmission = oid4vp::core::presentation_submission::PresentationSubmission;
+pub type PresentationDefinition = oid4vp::core::presentation_definition::PresentationDefinition;
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct FilterWithConst {
+    #[serde(rename = "type")]
+    type_: String,
+    #[serde(rename = "const")]
+    const_: String,
+}
 
 #[derive(Snafu, DebugError)]
 #[non_exhaustive]
@@ -31,18 +45,23 @@ pub enum Error {
         location: Location,
         source: anyhow::Error,
     },
+    VCFormats {
+        #[snafu(implicit)]
+        location: Location,
+        source: formats::Error,
+    },
 }
 
 pub type Result<T> = core::result::Result<T, Error>;
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct RequestedPresentation {
+pub(crate) struct RequestedPresentation {
     pub id: String,
     pub presentation: Presentation,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct PresentationResponse {
+pub(crate) struct PresentationResponse {
     pub presentations: Json,
     pub presentation_submission: PresentationSubmission,
 }
@@ -52,15 +71,15 @@ pub struct PresentationResponse {
     err(),
     ret(),
 )]
-pub fn prepare_presentation_response(
+pub(crate) fn prepare_presentation_response(
     requested_presentations: &[RequestedPresentation],
     presentation_definition: &PresentationDefinition,
 ) -> Result<PresentationResponse> {
-    let mut presentation_submission = PresentationSubmission {
-        id: Uuid::new_v4().to_string(),
-        definition_id: presentation_definition.id.clone(),
-        descriptor_map: vec![],
-    };
+    let mut presentation_submission = PresentationSubmission::new(
+        Uuid::new_v4(),
+        presentation_definition.id().to_owned(),
+        vec![],
+    );
 
     if requested_presentations.len() == 1 {
         handle_single_presentation(
@@ -77,6 +96,16 @@ pub fn prepare_presentation_response(
     }
 }
 
+pub(crate) fn validate_against_presentation_definition(
+    presentation: &Json,
+    presentation_definition: &PresentationDefinition,
+    presentation_submission: &PresentationSubmission,
+) -> Result<()> {
+    presentation_definition
+        .validate_presentation(presentation, presentation_submission.descriptor_map())
+        .context(VPSnafu)
+}
+
 #[instrument(
     level = Level::TRACE,
     err(),
@@ -88,35 +117,36 @@ pub fn resolve_presentation_response(
 ) -> Result<Vec<RequestedPresentation>> {
     let mut result: Vec<RequestedPresentation> = vec![];
 
-    for input_descriptor in &presentation_definition.input_descriptors {
+    for input_descriptor in presentation_definition.input_descriptors() {
         let descriptor_map = presentation_response
             .presentation_submission
-            .descriptor_map
+            .descriptor_map()
             .iter()
-            .find(|item| item.id == input_descriptor.id)
+            .find(|item| item.id() == input_descriptor.id())
             .ok_or(
                 ParseSnafu {
                     details: format!(
                         "Requested presentation {} not found in the presentation submission",
-                        input_descriptor.id
+                        input_descriptor.id()
                     ),
                 }
                 .build(),
             )?;
 
         let presentation_json =
-            find_json_element(&presentation_response.presentations, &descriptor_map.path).ok_or(
+            find_json_element(&presentation_response.presentations, descriptor_map.path()).ok_or(
                 ParseSnafu {
                     details: format!(
                         "Requested presentation {:?} not found by path {:?}",
-                        input_descriptor.id, descriptor_map.path
+                        input_descriptor.id(),
+                        descriptor_map.path()
                     ),
                 }
                 .build(),
             )?;
 
-        let presentation = match descriptor_map.format.as_str() {
-            SD_JWT_VC => {
+        let presentation = match descriptor_map.format() {
+            ClaimFormatDesignation::SdJwtVc => {
                 let sd_jwt = presentation_json.as_str().ok_or(
                     ParseSnafu {
                         details: "Incorrect presentation format: expected JWT string".to_string(),
@@ -127,37 +157,18 @@ pub fn resolve_presentation_response(
                 Presentation::SdJwtVp(sd_jwt.to_string())
             }
             _ => FormatNotSupportedSnafu {
-                format: descriptor_map.format.to_owned(),
+                format: descriptor_map.format().to_owned(),
             }
             .fail()?,
         };
 
         result.push(RequestedPresentation {
-            id: input_descriptor.id.to_owned(),
+            id: input_descriptor.id().to_owned(),
             presentation,
         })
     }
 
     Ok(result)
-}
-
-#[instrument(
-    level = Level::TRACE,
-    err(),
-    ret(),
-)]
-pub fn validate_claims(
-    claims: &Claims,
-    input_descriptor_id: &str,
-    presentation_definition: &PresentationDefinition,
-) -> Result<()> {
-    let input_descriptor = extract_input_descriptor(input_descriptor_id, presentation_definition)?;
-    let constraints_fields = input_descriptor.constraints.fields.as_ref();
-    if let Some(constraints) = constraints_fields {
-        validate_field_constraints(claims, constraints)?;
-    }
-
-    Ok(())
 }
 
 #[instrument(
@@ -247,56 +258,11 @@ fn process_requested_presentation(
         None => "$".to_string(),
     };
 
-    submission.descriptor_map.push(DescriptorMap {
-        id: input_descriptor.id.to_owned(),
+    submission.descriptor_map_mut().push(DescriptorMap::new(
+        input_descriptor.id().to_owned(),
         format,
         path,
-    });
-
-    Ok(())
-}
-
-#[instrument(
-    level = Level::TRACE,
-    err(),
-    ret(),
-)]
-fn validate_field_constraints(claims: &Json, constraints: &[ConstraintsField]) -> Result<()> {
-    for constraint in constraints.iter() {
-        for path in constraint.path.iter() {
-            ensure!(
-                find_json_element(claims, path).is_some(),
-                ParseSnafu {
-                    details: format!("Requested claim not found by path {path}")
-                }
-            );
-        }
-    }
-    Ok(())
-}
-
-#[instrument(
-    level = Level::TRACE,
-    err(),
-    ret(),
-)]
-pub fn validate_formats(
-    supported_formats: VpFormats,
-    presentation_definition: &PresentationDefinition,
-) -> Result<()> {
-    let vp_format_json = match presentation_definition.format.as_ref() {
-        Some(format) => format,
-        None => return Ok(()), // presentation definition does not contain any format
-    };
-
-    let vp_formats: VpFormats = vp_format_json.clone().try_into().context(VPSnafu)?;
-
-    for vp_format in vp_formats.0.keys() {
-        ensure!(
-            supported_formats.0.contains_key(vp_format),
-            FormatNotSupportedSnafu { format: vp_format }
-        )
-    }
+    ));
 
     Ok(())
 }
@@ -311,7 +277,7 @@ pub fn split_to_inputs(
 ) -> Result<Vec<PresentationInput>> {
     let mut inputs: Vec<PresentationInput> = vec![];
 
-    for desc in presentation_definition.input_descriptors.iter() {
+    for desc in presentation_definition.input_descriptors().iter() {
         inputs.push(desc.try_into()?)
     }
 
@@ -328,48 +294,76 @@ impl TryInto<PresentationInput> for &InputDescriptor {
         ret(),
     )]
     fn try_into(self) -> Result<PresentationInput> {
-        let fields = self.constraints.fields.clone().unwrap_or_default();
-        let paths: Vec<&String> = fields.iter().flat_map(|f| f.path.iter()).collect();
+        let format = extract_format(self.format())?;
 
-        let claims: Vec<(String, Json)> = fields
-            .iter()
-            .flat_map(|field| {
-                //TODO: Implement parsing nested fields like $.address.street
-                let paths = top_level_paths(field);
-
-                // Supported only filter.const for now
-                let value = filter_const(field);
-
-                paths
+        let type_ = match &format {
+            ClaimFormat::SdJwtVc { .. } => {
+                let constraints_field = self
+                    .constraints()
+                    .fields()
                     .iter()
-                    .map(|s| s.to_string())
-                    .zip(std::iter::repeat(value))
-                    .collect::<Vec<_>>()
-            })
-            .collect();
+                    .find(|&f| {
+                        f.filter().is_some_and(|f| !f.is_null())
+                            && f.path().contains(&JsonPath::from("$.vct"))
+                    })
+                    .ok_or_else(|| {
+                        ParseSnafu {
+                            details: "The 'vct' claim with 'filter' is required for the SD-JWT VC",
+                        }
+                        .build()
+                    })?;
+                let filter = parse_filter_const(constraints_field.filter().unwrap())?;
 
-        let claims = serde_json::Map::from_iter(claims);
+                filter.const_
+            }
+            _ => FormatNotSupportedSnafu {
+                format: format.name().to_owned(),
+            }
+            .fail()?,
+        };
 
-        let format = extract_vp_format(self)?;
-
-        let type_ = match format.as_str() {
-            SD_JWT_VC => claims.get("vct").and_then(|v| v.as_str()).ok_or(
-                ParseSnafu {
-                    details: "The 'vct' claim is required for the SD-JWT VC",
-                }
-                .build(),
-            ),
-            _ => FormatNotSupportedSnafu { format: &format }.fail(),
-        }?;
-
-        let id = self.id.clone();
         Ok(PresentationInput {
-            id,
-            format,
-            type_: type_.to_string(),
-            claims,
+            id: self.id().to_string(),
+            format: format.to_owned(),
+            type_,
+            constraints: self.constraints().to_owned(),
         })
     }
+}
+
+#[instrument(
+    level = Level::TRACE,
+    err(),
+    ret(),
+)]
+fn extract_format(format_map: &ClaimFormatMap) -> Result<ClaimFormat> {
+    let (format_name, format_payload) = format_map
+        .iter()
+        .next() //FIXME: Seems, it should be one format for specific Input Descriptor?
+        .ok_or_else(|| {
+            ParseSnafu {
+                details: "format is not defined",
+            }
+            .build()
+        })?;
+
+    let json = json!({ String::from(format_name.to_owned()): format_payload });
+
+    serde_json::from_value::<ClaimFormat>(json).map_err(|e| {
+        ParseSnafu {
+            details: format!("could not parse claim format: {e}"),
+        }
+        .build()
+    })
+}
+
+fn parse_filter_const(json: &Json) -> Result<FilterWithConst> {
+    serde_json::from_value(json.to_owned()).map_err(|err| {
+        ParseSnafu {
+            details: format!("could not parse 'filter': {err}"),
+        }
+        .build()
+    })
 }
 
 #[instrument(
@@ -382,9 +376,9 @@ fn extract_input_descriptor<'a>(
     presentation_definition: &'a PresentationDefinition,
 ) -> Result<&'a InputDescriptor> {
     presentation_definition
-        .input_descriptors
+        .input_descriptors()
         .iter()
-        .find(|input_descriptor| input_descriptor.id == input_descriptor_id)
+        .find(|input_descriptor| input_descriptor.id() == input_descriptor_id)
         .ok_or_else(|| {
             ParseSnafu {
                 details: format!("Input descriptor with id {input_descriptor_id} not found"),
@@ -398,13 +392,12 @@ fn extract_input_descriptor<'a>(
     err(),
     ret(),
 )]
-fn extract_vp_format(input_descriptor: &InputDescriptor) -> Result<String> {
+fn extract_vp_format(input_descriptor: &InputDescriptor) -> Result<ClaimFormatDesignation> {
     input_descriptor
-        .format
-        .as_ref()
-        .and_then(|v| v.as_object())
-        .and_then(|obj| obj.keys().find(|s| !s.is_empty()))
-        .map(|key| key.to_string())
+        .format()
+        .keys()
+        .next()
+        .map(|s| s.to_owned())
         .ok_or_else(|| {
             ParseSnafu {
                 details: "VP format is not found in the input descriptor",
@@ -413,69 +406,40 @@ fn extract_vp_format(input_descriptor: &InputDescriptor) -> Result<String> {
         })
 }
 
-#[instrument(
-    level = Level::TRACE,
-    ret(),
-)]
-fn filter_const(field: &ConstraintsField) -> Json {
-    let filter = field.clone().filter.unwrap_or(Json::Null);
-
-    filter
-        .as_object()
-        .and_then(|obj| obj.get("const"))
-        .unwrap_or(&Json::Null)
-        .to_owned()
-}
-
-#[instrument(
-    level = Level::TRACE,
-    ret(),
-)]
-fn top_level_paths(field: &ConstraintsField) -> Vec<String> {
-    let paths = field.path.iter();
-
-    paths
-        .map(|path| {
-            let parts: Vec<&str> = path.split('.').collect();
-            let top_level = parts.get(1).unwrap_or(&"");
-            top_level.to_string()
-        })
-        .filter(|s| !s.is_empty())
-        .collect()
-}
 #[cfg(test)]
 mod tests {
     use super::*;
-    use oid4vp::presentation_exchange::Constraints;
-    use oid4vp::utils::NonEmptyVec;
+    use oid4vp::core::input_descriptor::ConstraintsField;
     use rstest::rstest;
     use serde_json::{json, Value};
+
+    const SAMPLE_SD_JWT_PRESENTATION: &str = "eyJ0eXAiOiJ2YytzZC1qd3QiLCJhbGciOiJFUzI1NiIsImtpZCI6ImRpZDp3ZWI6bG9jYWxob3N0JTNBODA4OCNrZXktMCJ9.eyJfc2QiOlsiWGo2b2gtb2Q3ZWxSYWJsWEY0bWtBV25DUERVTFlMTXdoYWNrZ1hrUW9ERSIsImF0WXFsdlNTUUpKcy1CT0M1bnNHdk1sT2pka2VINkV5X1M4WGhIcVVNZkUiXSwidmN0IjoiaHR0cHM6Ly9jcmVkZW50aWFscy5leGFtcGxlLmNvbS9pZGVudGl0eV9jcmVkZW50aWFsXzIiLCJzdWIiOiJkaWQ6a2V5OnpEbmFlZTY1OWJ5WHU0cnFjdWpqclJMRmk1N005V2ZGOHVBMnVaZkJ3UjdlSGlDRnYiLCJuYmYiOjE3MjkxNzkxMTcsIl9zZF9hbGciOiJzaGEtMjU2IiwiaXNzIjoiZGlkOndlYjpsb2NhbGhvc3QlM0E4MDg4IiwiaWF0IjoxNzI5MTc5MTE3LCJleHAiOjE3NjA3MTUxMTcsImNuZiI6eyJqd2siOnsia3R5IjoiRUMiLCJjcnYiOiJQLTI1NiIsIngiOiJ5dXJteEE0VXBVZVZ2a3oxb0huUktpd2E2U19OVi1DWlpSQnBLakFkU1BVIiwieSI6Imxwb0NQQTUxcXVKTEU0S0xvajVEQTlMcU1sOE1ZUTRTbjdWUkVmeFpJVG8ifX19.bzL9_sEGMw_4LFZ8_NI1-pmgrTZ18rU4QjZR4jrQ8ZFlLplE2Ekgukgpk4sTamSZkHn8Dx1UI1fxFB2qphaSmw~WyI3LXlZS2M3R21yRS1faV9namZJNUFBIiwgImVtYWlsIiwgIkhBUkRDT0RFREBnbWFpbC5jb20iXQ~WyJ6MGJpN0xiRTFPRkdRZmxZMjE2VUxBIiwgInVzZXJuYW1lIiwgIlVTRVIiXQ~eyJ0eXAiOiJrYitqd3QiLCJhbGciOiJFUzI1NiJ9.eyJub25jZSI6InJ3RDFFWmwybGJiT1BJQkZXeEtpNlVpUkhGUVhxdXBPdXlwajZJdkRsX0kiLCJhdWQiOiJkaWQ6a2V5OnpEbmFleWhQTFhGc1VFRktqbTY0ZUUzdzRSOU1XTHFRQmNYRDJOdWRMZjZmWk1EdlEiLCJpYXQiOjE3MjkxNzkxMjMsInNkX2hhc2giOiJ5VDRTNnk1S1F4Q0tkQkc0bzZDaUE0YmxjS0t0Y1Z0Sk1IUWMzaEJTcHY4In0.OLRtLvwoiZ7UeOfMVrh7DzJ2f_MiZhEIcANmrHOARRRqoUos5y85GWHRv9JsPzgSZ8wd5Uwso75ZlydgiTGKxA";
 
     #[tokio::test]
     async fn prepare_presentation_response_succeeds_handling_single_case() {
         let requested_presentation =
-            create_requested_presentation_sdjwtvp("descriptor_id", "fake_sd_jwt_vp");
+            create_requested_presentation_sdjwtvp("descriptor_id", SAMPLE_SD_JWT_PRESENTATION);
         let presentation_definition = create_single_presentation_definition();
 
         let result =
             prepare_presentation_response(&[requested_presentation], &presentation_definition)
                 .unwrap();
 
-        let presentation_submission_id = result.presentation_submission.id.clone();
+        let presentation_submission_id = result.presentation_submission.id().to_owned();
 
         assert_eq!(
             result,
             PresentationResponse {
-                presentations: json!("fake_sd_jwt_vp"),
-                presentation_submission: PresentationSubmission {
-                    id: presentation_submission_id,
-                    definition_id: "presentation_definition_id".to_string(),
-                    descriptor_map: vec![DescriptorMap {
-                        id: "descriptor_id".to_string(),
-                        format: "vc+sd-jwt".to_string(),
-                        path: "$".to_string()
-                    }]
-                }
+                presentations: json!(SAMPLE_SD_JWT_PRESENTATION),
+                presentation_submission: PresentationSubmission::new(
+                    presentation_submission_id,
+                    "presentation_definition_id".to_string(),
+                    vec![DescriptorMap::new(
+                        "descriptor_id".to_string(),
+                        ClaimFormatDesignation::SdJwtVc,
+                        "$".to_string()
+                    )]
+                ),
             }
         )
     }
@@ -500,9 +464,9 @@ mod tests {
     #[tokio::test]
     async fn resolve_presentation_response_succeeds_on_correct_data() {
         let presentation_response = PresentationResponse {
-            presentations: json!("fake_presentation"),
+            presentations: json!(SAMPLE_SD_JWT_PRESENTATION),
             presentation_submission: create_presentation_submission_with_descriptor_format(
-                SD_JWT_VC,
+                ClaimFormatDesignation::SdJwtVc,
             ),
         };
         let presentation_definition = create_single_presentation_definition();
@@ -515,18 +479,9 @@ mod tests {
             result,
             vec![RequestedPresentation {
                 id: "descriptor_id".to_string(),
-                presentation: Presentation::SdJwtVp("fake_presentation".to_string()),
+                presentation: Presentation::SdJwtVp(SAMPLE_SD_JWT_PRESENTATION.to_string()),
             },]
         )
-    }
-
-    #[tokio::test]
-    async fn validate_claims_succeeds_on_correct_data() {
-        let claims = json!({
-            "vct": "fake_vct_value"
-        });
-        let presentation_definition = create_single_presentation_definition();
-        validate_claims(&claims, "descriptor_id", &presentation_definition).unwrap();
     }
 
     #[tokio::test]
@@ -534,19 +489,29 @@ mod tests {
         let presentation_definition = create_single_presentation_definition();
         let result = split_to_inputs(&presentation_definition).unwrap();
 
-        let mut claims = serde_json::Map::new();
-        claims.insert(
-            "vct".to_string(),
-            Value::String("value_of_filter.const".to_string()),
-        );
+        let constraints = serde_json::from_value(json!({
+           "fields": [
+                {
+                    "path": ["$.vct"],
+                    "filter": {
+                        "type": "string",
+                        "const": "https://credentials.example.com/identity_credential"
+                    }
+                }
+            ]
+        }))
+        .unwrap();
 
         assert_eq!(
             result,
             [PresentationInput {
                 id: "descriptor_id".to_string(),
-                format: "vc+sd-jwt".to_string(),
-                type_: "value_of_filter.const".to_string(),
-                claims
+                format: ClaimFormat::SdJwtVc {
+                    jwt_alg_values: vec!["ES256".to_string(), "EdDSA".to_string()],
+                    kb_alg_values: vec!["ES256".to_string(), "EdDSA".to_string()]
+                },
+                type_: "https://credentials.example.com/identity_credential".to_string(),
+                constraints
             }]
         )
     }
@@ -557,10 +522,13 @@ mod tests {
     )]
     async fn resolve_presentation_response_fails_on_wrong_descriptor_map_id() {
         let presentation_response = PresentationResponse {
-            presentations: Value::String("fake_sd_jwt_vp".to_string()),
+            presentations: json!(SAMPLE_SD_JWT_PRESENTATION),
             presentation_submission: {
-                let descriptor_map =
-                    vec![create_descriptor_map("fake_descriptor_id", SD_JWT_VC, "$")];
+                let descriptor_map = vec![create_descriptor_map(
+                    "fake_descriptor_id",
+                    ClaimFormatDesignation::SdJwtVc,
+                    "$",
+                )];
                 create_presentation_submission(descriptor_map)
             },
         };
@@ -577,11 +545,11 @@ mod tests {
     )]
     async fn resolve_presentation_response_fails_on_wrong_path() {
         let presentation_response = PresentationResponse {
-            presentations: json!({"presentation_key": "presentation_value"}),
+            presentations: json!(SAMPLE_SD_JWT_PRESENTATION),
             presentation_submission: {
                 let descriptor_map = vec![create_descriptor_map(
                     "descriptor_id",
-                    SD_JWT_VC,
+                    ClaimFormatDesignation::SdJwtVc,
                     "$.incorrect_presentation_key",
                 )];
                 create_presentation_submission(descriptor_map)
@@ -600,7 +568,7 @@ mod tests {
         let presentation_response = PresentationResponse {
             presentations: json!(1),
             presentation_submission: create_presentation_submission_with_descriptor_format(
-                SD_JWT_VC,
+                ClaimFormatDesignation::SdJwtVc,
             ),
         };
         let presentation_definition = create_single_presentation_definition();
@@ -611,16 +579,18 @@ mod tests {
     }
 
     #[rstest]
-    #[case(crate::vc::JWT_VC_JSON)]
-    #[case(crate::vc::JWT_VC_JSON_LD)]
-    #[case(crate::vc::LDP_VC)]
-    #[case(crate::vc::MSO_MDOC)]
-    #[case("fake_string")]
+    #[case(ClaimFormatDesignation::JwtVcJson)]
+    #[case(ClaimFormatDesignation::JwtVc)]
+    #[case(ClaimFormatDesignation::LdpVc)]
+    #[case(ClaimFormatDesignation::MsoMDoc)]
+    #[case(ClaimFormatDesignation::Other("fake_string".to_owned()))]
     #[tokio::test]
     #[should_panic(expected = "Unsupported format: ")]
-    async fn resolve_presentation_response_fails_on_wrong_format(#[case] format: &str) {
+    async fn resolve_presentation_response_fails_on_wrong_format(
+        #[case] format: ClaimFormatDesignation,
+    ) {
         let presentation_response = PresentationResponse {
-            presentations: json!("fake_presentation"),
+            presentations: json!(SAMPLE_SD_JWT_PRESENTATION),
             presentation_submission: create_presentation_submission_with_descriptor_format(format),
         };
         let presentation_definition = create_single_presentation_definition();
@@ -636,91 +606,64 @@ mod tests {
             sample_input_descriptor_constraints(),
             sample_input_descriptor_format_sdjwtvc(),
         );
-        PresentationDefinition {
-            id: "presentation_definition_id".to_string(),
-            input_descriptors: vec![input_descriptor],
-            name: None,
-            purpose: None,
-            format: None,
-        }
+        PresentationDefinition::new("presentation_definition_id".to_string(), input_descriptor)
     }
 
     fn create_multiple_presentation_definition() -> PresentationDefinition {
         let constraints = sample_input_descriptor_constraints();
         let format = sample_input_descriptor_format_sdjwtvc();
 
-        let input_descriptors = vec![
+        PresentationDefinition::new(
+            "presentation_definition_id".to_string(),
             create_input_descriptor("descriptor_id_1", constraints.clone(), format.clone()),
-            create_input_descriptor("descriptor_id_2", constraints.clone(), format.clone()),
-            create_input_descriptor("descriptor_id_3", constraints.clone(), format.clone()),
-        ];
-
-        PresentationDefinition {
-            id: "presentation_definition_id".to_string(),
-            input_descriptors,
-            name: None,
-            purpose: None,
-            format: None,
-        }
+        )
+        .add_input_descriptors(create_input_descriptor(
+            "descriptor_id_2",
+            constraints.clone(),
+            format.clone(),
+        ))
+        .add_input_descriptors(create_input_descriptor(
+            "descriptor_id_3",
+            constraints.clone(),
+            format.clone(),
+        ))
     }
 
     fn create_input_descriptor(
         id: &str,
         constraints: Constraints,
-        format: Option<Value>,
+        format: ClaimFormatMap,
     ) -> InputDescriptor {
-        InputDescriptor {
-            id: id.to_string(),
-            constraints,
-            name: None,
-            purpose: None,
-            format,
-        }
+        InputDescriptor::new(id.to_string(), constraints).set_format(format)
     }
 
     fn sample_input_descriptor_constraints() -> Constraints {
-        let format = Some(
-            serde_json::from_value(json!(
-                {
-                    "const": "value_of_filter.const",
-                }
-            ))
-            .unwrap(),
-        );
-        Constraints {
-            fields: Some(vec![
-                create_constraints_field("$.vct", None),
-                create_constraints_field("$.vct", format),
-            ]),
-            limit_disclosure: None,
-        }
+        let filter = serde_json::from_value(json!(
+            {
+                "type": "string",
+                "const": "https://credentials.example.com/identity_credential",
+            }
+        ))
+        .unwrap();
+        Constraints::new().add_constraint(create_constraints_field("$.vct", filter))
     }
 
-    fn sample_input_descriptor_format_sdjwtvc() -> Option<Value> {
-        Some(
-            serde_json::from_value(json!({
-               "vc+sd-jwt": {
-                   "alg": ["EdDSA", "ES256K"]
-               }
-            }))
-            .unwrap(),
-        )
+    fn sample_input_descriptor_format_sdjwtvc() -> ClaimFormatMap {
+        serde_json::from_value(json!({
+            "vc+sd-jwt": {
+              "sd-jwt_alg_values": ["ES256", "EdDSA"],
+              "kb-jwt_alg_values": ["ES256", "EdDSA"]
+            }
+        }))
+        .unwrap()
     }
 
-    fn create_constraints_field(path: &str, filter: Option<Value>) -> ConstraintsField {
-        ConstraintsField {
-            path: NonEmptyVec::new(path.to_string()),
-            id: None,
-            purpose: None,
-            name: None,
-            filter,
-            optional: None,
-            intent_to_retain: None,
-        }
+    fn create_constraints_field(path: &str, filter: Value) -> ConstraintsField {
+        ConstraintsField::new(path.to_string()).set_filter(filter)
     }
 
     fn create_presentation_submission_with_descriptor_format(
-        format: &str,
+        format: ClaimFormatDesignation,
     ) -> PresentationSubmission {
         let descriptor_map = vec![create_descriptor_map("descriptor_id", format, "$")];
         create_presentation_submission(descriptor_map)
@@ -729,11 +672,11 @@ mod tests {
     fn create_presentation_submission(
         descriptor_map: Vec<DescriptorMap>,
     ) -> PresentationSubmission {
-        PresentationSubmission {
-            id: "".to_string(),
-            definition_id: "presentation_definition_id".to_string(),
+        PresentationSubmission::new(
+            Default::default(),
+            "presentation_definition_id".to_string(),
             descriptor_map,
-        }
+        )
     }
 
     fn create_requested_presentation_sdjwtvp(
@@ -746,11 +689,11 @@ mod tests {
         }
     }
 
-    fn create_descriptor_map(id: &str, format: &str, path: &str) -> DescriptorMap {
-        DescriptorMap {
-            id: id.to_string(),
-            format: format.to_string(),
-            path: path.to_string(),
-        }
+    fn create_descriptor_map(
+        id: &str,
+        format: ClaimFormatDesignation,
+        path: &str,
+    ) -> DescriptorMap {
+        DescriptorMap::new(id.to_string(), format, path.to_string())
     }
 }

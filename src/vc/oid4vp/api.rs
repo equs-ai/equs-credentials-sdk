@@ -1,25 +1,24 @@
 use crate::nonce::Nonce;
 use crate::vault::CredentialEntry;
 use crate::vc::oid4vp::InternalError;
+use crate::vc::presentation_exchange::{PresentationDefinition, PresentationSubmission};
 use crate::vc::Claims;
 use async_trait::async_trait;
 use common_macros::DebugError;
-use oid4vp::core::authorization_request::parameters::ResponseMode;
-use oid4vp::core::authorization_request::RequestIndirection;
 use serde::{Deserialize, Serialize};
 use snafu::Snafu;
 use std::collections::HashMap;
 use std::fmt::Debug;
-use tracing::{instrument, Level};
 use url::Url;
 
 // Data type
 pub struct AuthorizationResponseMetadata {}
 pub type CredentialMapping = HashMap<String, Vec<CredentialEntry>>;
-pub type PresentationSubmission = oid4vp::presentation_exchange::PresentationSubmission;
-pub type PresentationDefinition = oid4vp::presentation_exchange::PresentationDefinition;
 pub type ClientMetadata = oid4vp::core::authorization_request::parameters::ClientMetadata;
 pub type WalletMetadata = oid4vp::core::metadata::WalletMetadata;
+pub type ResponseType = oid4vp::core::authorization_request::parameters::ResponseType;
+pub type ResponseMode = oid4vp::core::authorization_request::parameters::ResponseMode;
+pub type ResponseUri = oid4vp::core::authorization_request::parameters::ResponseUri;
 
 /// A session with state managed during the presentation.
 ///
@@ -28,6 +27,7 @@ pub type WalletMetadata = oid4vp::core::metadata::WalletMetadata;
 pub struct PresentationSession {
     pub nonce: Nonce,
     pub presentation_definition: PresentationDefinition,
+    pub auth_request_jwt: String,
 }
 
 /// A resolved `OID4VP` authorization request.
@@ -46,15 +46,12 @@ pub struct ResolvedAuthRequest {
     pub response_uri: Url,
 }
 
-/// An `OID4VP` authorization request.
-///
-/// It can be represented as a URL using the [auth_request_as_url] helper function.
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-pub struct AuthorizationRequest {
-    pub client_id: String,
-    /// JWT containing Authorization Request parameters.
-    pub request_object_jwt: String,
-    pub authorization_endpoint: Url,
+/// An `OID4VP` response configuration of authorization request object.
+#[derive(Debug, Clone)]
+pub struct AuthResponseOptions {
+    pub type_: ResponseType,
+    pub mode: ResponseMode,
+    pub submission_uri: ResponseUri,
 }
 
 /// An OID4VP authorization response.
@@ -65,6 +62,12 @@ pub struct AuthorizationRequest {
 pub struct AuthorizationResponse {
     pub vp_token: serde_json::Value,
     pub presentation_submission: PresentationSubmission,
+}
+
+#[derive(Clone, Debug)]
+pub enum PassAuthRequestObject {
+    ByValue,
+    ByReference(Url),
 }
 
 #[derive(Snafu, DebugError)]
@@ -203,23 +206,28 @@ pub trait Verifier: Send + Sync {
     /// # Arguments
     ///
     /// * `presentation_definition` - the presentation definition specifying the presentation requirements.
-    /// * `response_uri` - the URL where the Holder will send the response.
+    /// * `pass_auth_request_object` - how to pass an authorization request object to holder, by value or by reference.
+    /// * `auth_response_options` - config about how and where to send authorization response.
+    /// * `wallet_metadata` - optional metadata of holder. if it is `None`, metadata form `metadata::default_metadata()` will be used
     ///
     /// # Returns
     ///
-    ///  - `AuthorizationRequest` - the OID4VP authorization request
+    ///  - `Url` - the OID4VP authorization request url
     ///  - `PresentationSession` - the `session` state that will be used when the `verify_presentation` method is called.
     ///
     /// # Errors
     ///
-    /// * [InternalError::VerifierSession] - if an error occurs during the creation of the verifier session.
+    /// * [InternalError::AuthorizationRequest] - if an error occurs during the creation of the authorization request object.
     /// * [InternalError::KMS] - if there is an error during Issuer key resolution.
     /// * [InternalError::Parse] - if an error occurs during metadata parsing.
+    /// * [InternalError::NonceGeneration] - if an error occurs during generation of nonce
     async fn create_authorization_request(
         &self,
         presentation_definition: &PresentationDefinition,
-        response_uri: Url,
-    ) -> Result<(AuthorizationRequest, PresentationSession), Error>;
+        auth_response_options: &AuthResponseOptions,
+        pass_auth_request_object: &PassAuthRequestObject,
+        wallet_metadata: Option<&WalletMetadata>,
+    ) -> Result<(Url, PresentationSession), Error>;
 
     /// Verifies the presentation provided by the Holder.
     ///
@@ -242,42 +250,4 @@ pub trait Verifier: Send + Sync {
         authorization_response: &AuthorizationResponse,
         session: &PresentationSession,
     ) -> Result<Claims, Error>;
-}
-
-/// The types of authorization URLs.
-///
-/// It can be either a request URI from which to retrieve the request object, or the encrypted request object itself.
-#[derive(Debug)]
-pub enum AuthorizationUrlType {
-    Reference(Url),
-    Value,
-}
-
-/// Converts an `AuthorizationRequest` into a URL.
-///
-/// # Arguments
-///
-/// * `req` - the authorization request.
-/// * `type_` - type of authorization URL (by reference or by value).
-///
-/// # Returns
-///
-/// * An authorization request URL.
-#[instrument(
-    level = Level::TRACE,
-    ret(),
-)]
-pub fn auth_request_as_url(req: &AuthorizationRequest, type_: AuthorizationUrlType) -> Url {
-    let request_indirection = match type_ {
-        AuthorizationUrlType::Value => RequestIndirection::ByValue(req.request_object_jwt.clone()),
-        AuthorizationUrlType::Reference(at) => RequestIndirection::ByReference(at),
-    };
-    use oid4vp::core::authorization_request::AuthorizationRequest as SpruceAuthorizationRequest;
-
-    SpruceAuthorizationRequest {
-        client_id: req.client_id.clone(),
-        request_indirection,
-    }
-    .to_url(req.authorization_endpoint.clone())
-    .unwrap()
 }

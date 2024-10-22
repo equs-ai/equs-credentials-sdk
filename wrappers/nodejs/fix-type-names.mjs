@@ -12,6 +12,7 @@ const replacements = [
     {from: 'JsPresentationSession', to: 'PresentationSession'},
     {from: 'JsKeyMetadata', to: 'KeyMetadata'},
     {from: 'JsDIDAndKeyMetadata', to: 'DIDAndKeyMetadata'},
+    {from: 'JsAuthResponseOptions', to: 'AuthResponseOptions'},
     {from: 'JsonObject', to: 'Record<string, any>'},
     {from: 'JsNonceData', to: 'NonceData'},
 ];

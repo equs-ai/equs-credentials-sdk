@@ -69,6 +69,32 @@ where
     serializer.serialize_some(&seconds)
 }
 
+pub fn accumulate_claim_names(json_obj: &Value, parent_key: String, keys: &mut Vec<String>) {
+    match json_obj {
+        Value::Object(map) => {
+            for (k, v) in map {
+                let new_key = if parent_key.is_empty() {
+                    k.clone()
+                } else {
+                    format!("{}.{}", parent_key, k)
+                };
+                accumulate_claim_names(v, new_key.clone(), keys);
+                keys.push(new_key);
+            }
+        }
+        Value::Array(arr) => {
+            for (index, value) in arr.iter().enumerate() {
+                let new_key = format!("{}[{}]", parent_key, index);
+                accumulate_claim_names(value, new_key.clone(), keys);
+                keys.push(new_key);
+            }
+        }
+        _ => {
+            keys.push(parent_key);
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::nonce::{Nonce, NonceData};

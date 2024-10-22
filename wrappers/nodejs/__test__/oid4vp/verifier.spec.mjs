@@ -1,10 +1,10 @@
 import test from "ava";
 import {
-    authRequestAsUrlByReference, authRequestAsUrlByValue,
-    createKeyMetadata,
+    createDidAndKeyMetadata,
     inMemKms,
     localNonceGenerator,
-    Oid4VpVerifierBuilder
+    Oid4VpVerifierBuilder,
+    PassAuthRequestObject
 } from "../../index.js";
 import {isEmpty} from "../utils.mjs";
 import {CLAIMS, PRESENTATION_DEFINITION, PRESENTATION_SUBMISSION, VP} from "./fixtures.mjs";
@@ -12,14 +12,34 @@ import {CLAIMS, PRESENTATION_DEFINITION, PRESENTATION_SUBMISSION, VP} from "./fi
 test('create Authorization Request', async t => {
     const verifier = await buildVerifier()
 
-    let authorizationRequestWithSession = await verifier.createAuthorizationRequest(PRESENTATION_DEFINITION, 'http://localhost:9001/response')
-    let by_reference = authRequestAsUrlByReference(authorizationRequestWithSession.authorizationRequest, 'http://localhost:9001/response')
-    let by_value = authRequestAsUrlByValue(authorizationRequestWithSession.authorizationRequest)
+    let authResponseOptions = {
+        mode: "direct_post",
+        type: "vp_token",
+        submissionUri: "http://localhost:9001/response",
+    }
 
-    t.false(isEmpty(by_reference))
-    t.false(isEmpty(by_value))
-    t.false(isEmpty(authorizationRequestWithSession.session.nonce))
-    t.like(authorizationRequestWithSession.session.presentationDefinition, PRESENTATION_DEFINITION)
+    let authReqByValue = await verifier.createAuthorizationRequest(
+        PRESENTATION_DEFINITION,
+        authResponseOptions,
+        PassAuthRequestObject.byValue(),
+        null
+    );
+
+
+    t.true(authReqByValue.authorizationRequestUri.includes('request=eyJh'))
+    t.false(isEmpty(authReqByValue.session.nonce))
+    t.like(authReqByValue.session.presentationDefinition, PRESENTATION_DEFINITION)
+
+    let authReqByReference = await verifier.createAuthorizationRequest(
+        PRESENTATION_DEFINITION,
+        authResponseOptions,
+        PassAuthRequestObject.byReference('http://localhost:9001/request'),
+        null
+    );
+
+    t.true(authReqByReference.authorizationRequestUri.includes('request_uri=http%3A%2F%2Flocalhost%3A9001%2Frequest'))
+    t.false(isEmpty(authReqByReference.session.nonce))
+    t.like(authReqByReference.session.presentationDefinition, PRESENTATION_DEFINITION)
 })
 
 test('verify Authorization Response', async t => {
@@ -28,6 +48,8 @@ test('verify Authorization Response', async t => {
     const session = {
         nonce: 'n0NcE',
         presentationDefinition: PRESENTATION_DEFINITION,
+        authorizationRequestJwt: "",
+
     }
 
     const auth_request = {
@@ -43,7 +65,7 @@ test('verify Authorization Response', async t => {
 async function buildVerifier(client_id = 'did:key:zDnaeagvW2eDWc2yVw7B98ovcJ8jddn7T9Mh3y5Vikys6y4kX') {
     let kms = inMemKms()
     let nonce_generator = localNonceGenerator()
-    let key_metadata = await createKeyMetadata(kms)
+    let {keyMetadata} = await createDidAndKeyMetadata(kms)
 
-    return await new Oid4VpVerifierBuilder(kms, nonce_generator, key_metadata, client_id).build()
+    return await new Oid4VpVerifierBuilder(kms, nonce_generator, keyMetadata, client_id).build()
 }

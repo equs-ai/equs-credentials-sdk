@@ -9,14 +9,20 @@ use agent_sdk::storage::Storage;
 use agent_sdk::vc::core::KeyMetadata;
 
 use agent_sdk::inmem::nonce::LocalNonceGenerator;
+use agent_sdk::vc::oid4vp;
 use agent_sdk::vc::oid4vp::{
-    auth_request_as_url, AuthorizationResponse, AuthorizationUrlType, PresentationDefinition,
-    PresentationSession,
+    AuthResponseOptions, AuthorizationResponse, PassAuthRequestObject, PresentationSession,
+    ResponseMode, ResponseType, ResponseUri,
 };
-use agent_sdk::vc::{oid4vp, DefaultPresentationBuilder, PresentationBuilder};
+use agent_sdk::vc::presentation_exchange::{
+    ClaimFormatDesignation, ClaimFormatMap, ClaimFormatPayload, Constraints, ConstraintsField,
+    InputDescriptor, PresentationDefinition,
+};
 use reqwest::Url;
+use serde_json::json;
 use std::collections::HashMap;
 use std::sync::Arc;
+use uuid::Uuid;
 
 const SERVER_URL: &str = "http://localhost:8098";
 const AUTH_REQUEST_URL_PATH: &str = "/request_uri";
@@ -78,32 +84,40 @@ async fn presentation_request_uri(state: web::Data<AppState>) -> HttpResponse {
     let request_uri =
         Url::parse(format!("{}{}", SERVER_URL, AUTH_REQUEST_OBJECT_URL_PATH).as_str()).unwrap();
 
-    // Verifier may build a custom presentation definition depending on the needs of verification
+    let auth_resp_config = AuthResponseOptions {
+        type_: ResponseType::VpToken,
+        mode: ResponseMode::DirectPost,
+        submission_uri: ResponseUri::new(response_uri),
+    };
+
+    let pass_auth_req_object = PassAuthRequestObject::ByReference(request_uri.clone());
+
     let (auth_req, session) = state
         .verifier
-        .create_authorization_request(&default_presentation_definition(), response_uri)
+        .create_authorization_request(
+            &default_presentation_definition(),
+            &auth_resp_config,
+            &pass_auth_req_object,
+            None,
+        )
         .await
         .unwrap();
 
-    let url = auth_request_as_url(
-        &auth_req,
-        AuthorizationUrlType::Reference(request_uri.clone()),
-    )
-    .to_string();
-
     state
         .auth_req_obj_storage
-        .put(request_uri.to_string(), auth_req.request_object_jwt)
+        .put(request_uri.to_string(), session.auth_request_jwt.to_owned())
         .await
         .unwrap();
 
     state
         .presentation_session_storage
-        .put(session.presentation_definition.id.clone(), session)
+        .put(session.presentation_definition.id().to_owned(), session)
         .await
         .unwrap();
 
-    HttpResponse::Ok().content_type("text/plain").body(url)
+    HttpResponse::Ok()
+        .content_type("text/plain")
+        .body(auth_req.to_string())
 }
 
 async fn presentation_response(
@@ -114,7 +128,7 @@ async fn presentation_response(
 
     let session = state
         .presentation_session_storage
-        .get(&wallet_auth_resp.presentation_submission.definition_id)
+        .get(wallet_auth_resp.presentation_submission.definition_id())
         .await
         .unwrap()
         .unwrap();
@@ -136,7 +150,9 @@ async fn presentation_response(
 fn auth_resp_from_submitted_form(
     form: &web::Form<HashMap<String, String>>,
 ) -> AuthorizationResponse {
-    let vp_token = serde_json::from_str(form.get("vp_token").unwrap()).unwrap();
+    let vp_token_str = form.get("vp_token").unwrap();
+    let vp_token =
+        serde_json::from_str(vp_token_str).unwrap_or(serde_json::to_value(vp_token_str).unwrap());
     let presentation_submission =
         serde_json::from_str(form.get("presentation_submission").unwrap()).unwrap();
 
@@ -181,42 +197,37 @@ async fn create_did_and_key_metadata(kms: &LocalKms) -> (DID, KeyMetadata) {
 }
 
 pub fn default_presentation_definition() -> PresentationDefinition {
-    let builder = DefaultPresentationBuilder::default()
-        .with_name("Example with selective disclosure")
-        .with_input_descriptor(&serde_json::from_str(INPUT_DESCRIPTOR_FOR_CRED_DEF_1).unwrap())
-        .with_input_descriptor(&serde_json::from_str(INPUT_DESCRIPTOR_FOR_CRED_DEF_2).unwrap())
-        .build();
+    let vct_filter = json!({
+        "type": "string",
+        "const": "https://credentials.example.com/identity_credential_2"
+    });
+    let vct_constraint = ConstraintsField::new("$.path".to_string()).set_filter(vct_filter);
 
-    builder.unwrap().parsed().to_owned()
+    let name_email_constraint =
+        ConstraintsField::new("$.email".to_string()).add_path("$.username".to_string());
+
+    let constraints = Constraints::new()
+        .add_constraint(vct_constraint)
+        .add_constraint(name_email_constraint);
+
+    let mut format = ClaimFormatMap::new();
+    format.insert(
+        ClaimFormatDesignation::SdJwtVc,
+        ClaimFormatPayload::Json(json!({
+          "sd-jwt_alg_values": ["ES256", "EdDSA"],
+          "kb-jwt_alg_values": ["ES256", "EdDSA"]
+        })),
+    );
+
+    let input_descriptor_1 = InputDescriptor::new("Identity-1".to_string(), constraints)
+        .set_name("Identity VC".to_string())
+        .set_purpose("We want an identity".to_string())
+        .set_format(format);
+
+    PresentationDefinition::new(Uuid::new_v4().to_string(), input_descriptor_1)
+        .add_input_descriptors(serde_json::from_str(INPUT_DESCRIPTOR_FOR_CRED_DEF_2).unwrap())
+        .set_name("Example with selective disclosure".to_owned())
 }
-
-const INPUT_DESCRIPTOR_FOR_CRED_DEF_1: &str = r#"{
-    "id": "Identity-1",
-    "name": "Identity VC",
-    "purpose": "We want an identity",
-    "format": {
-        "vc+sd-jwt": {
-            "alg": ["EdDSA", "ES256K"]
-        }
-     },
-    "constraints": {
-        "fields": [
-            {
-                "path": [
-                    "$.family_name",
-                    "$.given_name"
-                ]
-            },
-            {
-                "path": ["$.vct"],
-                "filter": {
-                    "type": "string",
-                    "const": "https://credentials.example.com/identity_credential_1"
-                }
-            }
-        ]
-    }
-}"#;
 
 const INPUT_DESCRIPTOR_FOR_CRED_DEF_2: &str = r#"{
     "id": "Identity-2",
@@ -224,7 +235,8 @@ const INPUT_DESCRIPTOR_FOR_CRED_DEF_2: &str = r#"{
     "purpose": "We want an identity",
     "format": {
         "vc+sd-jwt": {
-            "alg": ["EdDSA", "ES256K"]
+          "sd-jwt_alg_values": ["ES256", "EdDSA"],
+          "kb-jwt_alg_values": ["ES256", "EdDSA"]
         }
      },
     "constraints": {

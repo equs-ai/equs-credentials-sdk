@@ -20,7 +20,8 @@ use agent_sdk::inmem::kms::LocalKms;
 use agent_sdk::inmem::vault::InMemVault;
 use agent_sdk::vault::Vault;
 use agent_sdk::vc::oid4vp::{
-    auth_request_as_url, AuthorizationResponseMetadata, AuthorizationUrlType,
+    AuthResponseOptions, AuthorizationResponseMetadata, PassAuthRequestObject, ResponseMode,
+    ResponseType, ResponseUri,
 };
 use agent_sdk::vc::oid4vp::{AuthorizationResponse, Holder};
 use agent_sdk::vc::oid4vp::{HolderBuilder, PresentationSession};
@@ -75,18 +76,25 @@ async fn credentials_presentation_and_verification(#[case] test_case: Oid4VpTest
     // TODO: We should not use a test constant for Presentation Definition here,
     //  we need to build a new one (as every Verifier will build it).
     let response_uri: Url = format!("{}/auth", VERIFIER_URL).parse().unwrap();
+    let request_uri: Url = format!("{}/request", &VERIFIER_URL).parse().unwrap();
+    let auth_resp_options = AuthResponseOptions {
+        type_: ResponseType::VpToken,
+        mode: ResponseMode::DirectPost,
+        submission_uri: ResponseUri::new(response_uri),
+    };
+
     let (auth_request, session) = verifier
-        .create_authorization_request(&test_case.presentation_definition, response_uri)
+        .create_authorization_request(
+            &test_case.presentation_definition,
+            &auth_resp_options,
+            &PassAuthRequestObject::ByReference(request_uri.clone()),
+            None,
+        )
         .await
         .unwrap();
 
-    let by_reference = auth_request_as_url(
-        &auth_request,
-        AuthorizationUrlType::Reference(format!("{}/request", &VERIFIER_URL).parse().unwrap()),
-    );
-
     let http_client = prepare_http_client_for_holder(
-        auth_request.request_object_jwt.clone(),
+        session.auth_request_jwt.clone(),
         verifier,
         test_case.validate,
         session,
@@ -97,7 +105,7 @@ async fn credentials_presentation_and_verification(#[case] test_case: Oid4VpTest
 
     println!("8.2 Holder: Get Authorization Request");
     let request_object = holder
-        .get_authorization_request(&by_reference)
+        .get_authorization_request(&auth_request)
         .await
         .unwrap();
 
@@ -145,7 +153,9 @@ fn prepare_http_client_for_holder(
             let form: HashMap<String, String> =
                 serde_urlencoded::from_bytes(req.body.as_slice()).unwrap();
             // Retrieve vp_token and presentation_definition from submitted form
-            let vp_token = serde_json::from_str(form.get("vp_token").unwrap().as_str()).unwrap();
+            let vp_token_str = form.get("vp_token").unwrap().as_str();
+            let vp_token = serde_json::from_str(vp_token_str)
+                .unwrap_or(serde_json::to_value(vp_token_str).unwrap());
             let presentation_submission =
                 serde_json::from_str(form.get("presentation_submission").unwrap().as_str())
                     .unwrap();
