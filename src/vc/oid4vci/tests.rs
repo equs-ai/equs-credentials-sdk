@@ -128,6 +128,7 @@ pub mod fixtures {
 
             metadata.unwrap()
         }
+
         pub fn with_jwtvc_conf() -> IssuerMetadata {
             let metadata = serde_json::from_value(json!(
                 {
@@ -145,6 +146,7 @@ pub mod fixtures {
             ));
             metadata.unwrap()
         }
+
         pub fn with_jwtldvc_conf() -> IssuerMetadata {
             let metadata = serde_json::from_value(json!(
                 {
@@ -159,25 +161,7 @@ pub mod fixtures {
             ));
             metadata.unwrap()
         }
-        pub fn with_ldvc_conf() -> IssuerMetadata {
-            let metadata = serde_json::from_value(json!(
-                {
-                    "credential_issuer": ISSUER_URL,
-                    "credential_endpoint": ISSUER_URL.to_owned()+"/credential",
-                    "credential_configurations_supported": {
-                        SCOPE: {
-                            "format": "ldp_vc",
-                            "@context": [],
-                            "credentials_definition": {
-                                "type": [],
-                                "@context": [],
-                            },
-                        },
-                    },
-                }
-            ));
-            metadata.unwrap()
-        }
+
         pub fn with_isomdl_conf() -> IssuerMetadata {
             let metadata = serde_json::from_value(json!(
                 {

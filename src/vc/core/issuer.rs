@@ -10,7 +10,10 @@ use crate::vc::core::{
     CredentialDefinition, CredentialDefinitionData, CredentialOffer, CredentialOfferData,
     CredentialRequest, Issuer, IssuerMetadata,
 };
-use crate::vc::formats::sd_jwt_vc::{SdJwtAPI, VCMetadata};
+use crate::vc::formats::json_ld_vc;
+use crate::vc::formats::json_ld_vc::JsonLdAPI;
+use crate::vc::formats::sd_jwt_vc;
+use crate::vc::formats::sd_jwt_vc::SdJwtAPI;
 use crate::vc::formats::API;
 use crate::vc::pop::jwt_pop::JwtProofOfPossession;
 use crate::vc::pop::ProofOfPossession;
@@ -37,12 +40,7 @@ where
     KH: kms::KeyHandle,
     KMS: kms::Kms<KH>,
 {
-    #[instrument(
-        level = Level::TRACE,
-        skip(self),
-        err(),
-        ret(),
-    )]
+    #[instrument(level = Level::TRACE, skip(self), err(), ret())]
     fn offer_credential(
         &self,
         cred_def_id: &str,
@@ -63,12 +61,7 @@ where
         Ok(credential_offer)
     }
 
-    #[instrument(
-        level = Level::TRACE,
-        skip_all,
-        err(),
-        ret(),
-    )]
+    #[instrument(level = Level::TRACE, skip_all, err(), ret())]
     async fn issue_credential(
         &self,
         credential_request: &CredentialRequest,
@@ -104,13 +97,13 @@ where
         let vc_fmt = &cred_def.format;
 
         let (iss_did, iss_key) = self.resolve_key_metadata(cred_def).await?;
+        let alg = &iss_key.alg();
+        debug!(signing_alg = ?alg);
 
         let vc = match vc_fmt {
             VCFormat::SdJwtVc => {
-                let claims = SdJwtAPI::resolve_claims(claims);
+                let claims = SdJwtAPI::resolve_claims(claims).context(VCSnafu)?;
                 trace!(claims_to_issue = ?claims);
-                let alg = &iss_key.alg();
-                debug!(signing_alg = ?alg);
 
                 let metadata = self.sd_jwt_vc_metadata(cred_def.protocol_data.clone())?;
                 let cred =
@@ -119,6 +112,22 @@ where
                         .context(VCSnafu)?;
 
                 Credential::SdJwt(cred)
+            }
+            VCFormat::LdpVc => {
+                let claims = JsonLdAPI::resolve_claims(claims).context(VCSnafu)?;
+                trace!(claims_to_issue = ?claims);
+
+                let metadata = self.json_ld_vc_metadata(cred_def.protocol_data.clone())?;
+                let cred = JsonLdAPI::create_vc(
+                    claims,
+                    (&iss_did, iss_key),
+                    (&hld_did, hld_key),
+                    metadata,
+                )
+                .await
+                .context(VCSnafu)?;
+
+                Credential::LdpVc(cred)
             }
             _ => {
                 return FormatNotSupportedSnafu {
@@ -137,10 +146,7 @@ where
     KH: kms::KeyHandle,
     KMS: kms::Kms<KH>,
 {
-    #[instrument(
-        level = Level::TRACE,
-        skip(kms)
-    )]
+    #[instrument(level = Level::TRACE, skip(kms))]
     pub fn new(kms: KMS, metadata: IssuerMetadata) -> Self {
         Self {
             kms,
@@ -149,16 +155,11 @@ where
         }
     }
 
-    #[instrument(
-        level = Level::TRACE,
-        skip(self),
-        err(),
-        ret(),
-    )]
+    #[instrument(level = Level::TRACE, skip(self), err(), ret())]
     fn sd_jwt_vc_metadata(
         &self,
         protocol_data: Option<CredentialDefinitionData>,
-    ) -> Result<VCMetadata> {
+    ) -> Result<sd_jwt_vc::VCMetadata> {
         trace!(?protocol_data);
 
         let vc_metadata = match protocol_data {
@@ -166,7 +167,7 @@ where
                 vct,
                 disclosures,
                 lifetime,
-            }) => VCMetadata {
+            }) => sd_jwt_vc::VCMetadata {
                 vct: vct.to_owned(),
                 lifetime: lifetime.unwrap_or(time::Duration::days(365)),
                 disclosures: disclosures.to_owned(),
@@ -180,12 +181,27 @@ where
         Ok(vc_metadata)
     }
 
-    #[instrument(
-        level = Level::TRACE,
-        skip(self),
-        err(),
-        ret(),
-    )]
+    #[instrument(level = Level::TRACE, skip(self), err(), ret())]
+    fn json_ld_vc_metadata(
+        &self,
+        protocol_data: Option<CredentialDefinitionData>,
+    ) -> Result<json_ld_vc::VCMetadata> {
+        trace!(?protocol_data);
+
+        let metadata = match protocol_data {
+            Some(CredentialDefinitionData::Ldp { contexts, vc_types }) => {
+                json_ld_vc::VCMetadata::new(contexts, vc_types)
+            }
+            _ => InconsistentProtocolDataSnafu {
+                format: VCFormat::LdpVc.to_string(),
+            }
+            .fail()?,
+        };
+
+        Ok(metadata)
+    }
+
+    #[instrument(level = Level::TRACE, skip(self), err(), ret())]
     fn resolve_cred_def_by_request(
         &self,
         credential_request: &CredentialRequest,
@@ -198,12 +214,7 @@ where
         Ok(cred_def)
     }
 
-    #[instrument(
-        level = Level::TRACE,
-        skip(self),
-        err(),
-        ret(),
-    )]
+    #[instrument(level = Level::TRACE, skip(self), err(), ret())]
     fn find_cred_def(&self, id: &str) -> Result<&CredentialDefinition> {
         let cred_defs = &self.metadata.cred_defs;
         let cred_def = cred_defs
@@ -214,11 +225,7 @@ where
         Ok(cred_def)
     }
 
-    #[instrument(
-        level = Level::TRACE,
-        err(),
-        ret(),
-    )]
+    #[instrument(level = Level::TRACE, err(), ret())]
     fn resolve_proof(
         cred_def: &CredentialDefinition,
         credential_request: &CredentialRequest,
@@ -257,11 +264,7 @@ where
         Ok((fmt, proof.proof.to_owned()))
     }
 
-    #[instrument(
-        level = Level::TRACE,
-        skip(self),
-        err(),
-    )]
+    #[instrument(level = Level::TRACE, skip(self), err())]
     async fn resolve_key_metadata(&self, cred_def: &CredentialDefinition) -> Result<(DIDURL, KH)> {
         trace!(credential_definition_id = ?cred_def);
 

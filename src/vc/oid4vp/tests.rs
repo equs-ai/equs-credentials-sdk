@@ -708,7 +708,7 @@ pub mod utils {
             .collect();
 
         SdJwtAPI::create_vc(
-            SdJwtAPI::resolve_claims(claims),
+            SdJwtAPI::resolve_claims(claims).unwrap(),
             (&issuer_did_url, issuer_key_handle),
             (&holder_did_url, holder_key_handle.clone()),
             VCMetadata {

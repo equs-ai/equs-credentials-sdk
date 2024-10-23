@@ -18,6 +18,8 @@ use crate::vc::core::{
     ProofFormatRequiredSnafu, ProofSnafu, RequestedCredentialNotFoundSnafu, Result, VCSnafu,
     VaultSnafu,
 };
+use crate::vc::formats::json_ld_vc;
+use crate::vc::formats::json_ld_vc::JsonLdAPI;
 use crate::vc::formats::sd_jwt_vc::{SdJwtAPI, VPMetadata};
 use crate::vc::formats::{VerifyOptions, API};
 use crate::vc::pop::jwt_pop::JwtProofOfPossession;
@@ -136,6 +138,9 @@ where
             Credential::SdJwt(cred) => SdJwtAPI::verify_vc(cred, VerifyOptions {})
                 .await
                 .context(VCSnafu),
+            Credential::LdpVc(cred) => JsonLdAPI::verify_vc(cred, VerifyOptions {})
+                .await
+                .context(VCSnafu),
             _ => FormatNotSupportedSnafu {
                 format: credential.format().to_string(),
             }
@@ -214,6 +219,19 @@ where
                         .context(VCSnafu)?;
 
                 Presentation::SdJwtVp(vp)
+            }
+            Credential::LdpVc(vc) => {
+                let vp = JsonLdAPI::create_vp(
+                    vc,
+                    key,
+                    nonce,
+                    verifier_id,
+                    json_ld_vc::VPMetadata::new(),
+                )
+                .await
+                .context(VCSnafu)?;
+
+                Presentation::LdpVp(vp)
             }
             _ => {
                 return FormatNotSupportedSnafu {

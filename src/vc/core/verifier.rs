@@ -1,6 +1,7 @@
 use crate::nonce::Nonce;
 use crate::vc::core::Result;
 use crate::vc::core::{FormatNotSupportedSnafu, VCSnafu, Verifier};
+use crate::vc::formats::json_ld_vc::JsonLdAPI;
 use crate::vc::formats::sd_jwt_vc::SdJwtAPI;
 use crate::vc::formats::{VerifyOptions, API};
 use crate::vc::{Claims, Presentation};
@@ -28,6 +29,11 @@ impl Verifier for VerifierService {
         let cred_claims: Claims = match presentation {
             Presentation::SdJwtVp(vp) => {
                 SdJwtAPI::verify_vp(vp, nonce, &self.verifier_id, VerifyOptions {})
+                    .await
+                    .context(VCSnafu)
+            }
+            Presentation::LdpVp(vp) => {
+                JsonLdAPI::verify_vp(vp, nonce, &self.verifier_id, VerifyOptions {})
                     .await
                     .context(VCSnafu)
             }

@@ -9,7 +9,7 @@ use oid4vci::core::client::Client;
 use oid4vci::core::credential_offer::CredentialOffer;
 use oid4vci::core::metadata::IssuerMetadata;
 use oid4vci::core::profiles::{
-    sd_jwt, CoreProfilesAuthorizationDetails, CoreProfilesMetadata, CoreProfilesOffer,
+    sd_jwt, w3c, CoreProfilesAuthorizationDetails, CoreProfilesMetadata, CoreProfilesOffer,
     CoreProfilesRequest, CoreProfilesResponse,
 };
 use oid4vci::credential::{ErrorType, ResponseEnum};
@@ -315,6 +315,9 @@ where
             CoreProfilesMetadata::SDJWTVC(det) => {
                 CoreProfilesRequest::SDJWTVC(sd_jwt::Request::new(det.vct().to_owned()))
             }
+            CoreProfilesMetadata::LDVC(det) => CoreProfilesRequest::LDVC(w3c::ldp::Request::new(
+                det.credentials_definition().to_owned(),
+            )),
             _ => ProtocolSnafu::new(
                 ErrorType::UnsupportedCredentialFormat,
                 format!(
@@ -630,6 +633,7 @@ impl TryInto<Credential> for &CoreProfilesResponse {
     fn try_into(self) -> std::result::Result<Credential, Self::Error> {
         let credential = match self {
             CoreProfilesResponse::SDJWTVC(c) => Credential::SdJwt(c.credential().to_owned()),
+            CoreProfilesResponse::LDVC(c) => Credential::LdpVc(c.credential().to_owned()),
             _ => ProtocolSnafu::new(
                 ErrorType::UnsupportedCredentialFormat,
                 format!("Unsupported credential format: {}", self.format()),
@@ -930,7 +934,6 @@ mod tests {
     #[rstest]
     #[case(SampleIssuerMetadata::with_jwtvc_conf())]
     #[case(SampleIssuerMetadata::with_jwtldvc_conf())]
-    #[case(SampleIssuerMetadata::with_ldvc_conf())]
     #[case(SampleIssuerMetadata::with_isomdl_conf())]
     #[tokio::test]
     #[should_panic(expected = "Unsupported credential format")]

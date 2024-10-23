@@ -222,7 +222,7 @@ async fn create_vc(
     let did_url = DIDURL::from_str(&did).unwrap();
 
     let vc = VCFormatsSdJwtAPI::create_vc(
-        VCFormatsSdJwtAPI::resolve_claims(&claims),
+        VCFormatsSdJwtAPI::resolve_claims(&claims).unwrap(),
         (&did_url, kh),
         (holder_did_url, holder_kh),
         VCMetadata {

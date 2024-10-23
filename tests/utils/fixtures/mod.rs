@@ -101,6 +101,84 @@ pub fn sample_issuer_metadata() -> IssuerMetadata {
                 "dob": {}
               }
             },
+            "LDPVC_cred_1": {
+              "scope": SCOPE.to_owned(),
+              "format": "ldp_vc",
+              "@context": [
+                  "https://www.w3.org/2018/credentials/v1",
+                  "https://w3id.org/citizenship/v1"
+              ],
+              "type": [
+                  "VerifiableCredential",
+                  "PermanentResidentCard"
+              ],
+              "cryptographic_binding_methods_supported": [
+                  "jwk"
+              ],
+              "cryptographic_suites_supported": [
+                  "Ed25519Signature2018",
+                  "EcdsaSecp256k1Signature2019"
+              ],
+              "credentials_definition": {
+                  "@context": [
+                      "https://www.w3.org/2018/credentials/v1",
+                      "https://w3id.org/citizenship/v1"
+                  ],
+                  "type": [
+                      "VerifiableCredential",
+                      "PermanentResidentCard"
+                  ],
+                  "credentialSubject": {
+                      "givenName": {
+                          "display": [
+                              {
+                                  "name": "Given Name",
+                                  "locale": "en-US"
+                              }
+                          ]
+                      },
+                      "familyName": {
+                          "display": [
+                              {
+                                  "name": "Surname",
+                                  "locale": "en-US"
+                              }
+                          ]
+                      },
+                      "gender": {
+                        "display": [
+                            {
+                                "name": "Gender",
+                                "locale": "en-US"
+                            }
+                        ]
+                      },
+                      "birthDate": {},
+                      "birthCountry": {},
+                      "commuterClassification": {},
+                      "residentSince": {},
+                      "gpa": {
+                          "display": [
+                              {
+                                  "name": "GPA"
+                              }
+                          ]
+                      }
+                  }
+              },
+              "display": [
+                  {
+                      "name": "University Credential",
+                      "locale": "en-US",
+                      "logo": {
+                          "url": "https://exampleuniversity.com/public/logo.png",
+                          "alt_text": "a square logo of a university"
+                      },
+                      "background_color": "#12107c",
+                      "text_color": "#FFFFFF"
+                  }
+              ]
+          },
           }
         }
     ));
@@ -136,12 +214,28 @@ pub fn sample_authorization_metadata(authz_url: &str) -> AuthorizationMetadata {
     metadata.unwrap()
 }
 
-pub fn sample_claims() -> Claims {
+pub fn sample_claims_sdjwt() -> Claims {
     serde_json::from_value(json!(
         {
             "given_name": "John",
             "family_name": "Doe",
             "dob": "09/09/1989",
+        }
+    ))
+    .unwrap()
+}
+
+pub fn sample_claims_jsonld() -> Claims {
+    serde_json::from_value(json!(
+        {
+            "type": ["PermanentResident", "Person"],
+            "givenName": "Jane",
+            "familyName": "Smith",
+            "gender": "female",
+            "residentSince": "2015-01-01",
+            "commuterClassification": "C1",
+            "birthCountry": "Arcadia",
+            "birthDate": "1978-07-17"
         }
     ))
     .unwrap()

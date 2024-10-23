@@ -23,7 +23,7 @@ use agent_sdk::vc::ClaimFormat;
 use serde_json::json;
 use ssi::did::DIDURL;
 
-use utils::fixtures::{sample_claims, SCOPE, VC_TYPE, VERIFIER_ID};
+use utils::fixtures::{sample_claims_sdjwt, SCOPE, VC_TYPE, VERIFIER_ID};
 use utils::helpers::create_did_keymetadata_keyhandle;
 
 #[tokio::test]
@@ -48,7 +48,7 @@ async fn credential_issuance_and_presentation_verification() {
         .await;
     let request = request.unwrap();
 
-    let claims = sample_claims();
+    let claims = sample_claims_sdjwt();
 
     println!("Claims: {:?}", claims);
 

@@ -242,8 +242,9 @@ where
     fn resolve_cred_def(&self, req: &CredentialRequest) -> Result<(String, CredDefMetadata)> {
         trace!(credential_request = ?req);
 
-        let vct = match req.additional_profile_fields() {
-            CoreProfilesRequest::SDJWTVC(det) => det.vct(),
+        match req.additional_profile_fields() {
+            CoreProfilesRequest::SDJWTVC(_) => (),
+            CoreProfilesRequest::LDVC(_) => (),
             _ => ProtocolSnafu::new(
                 ErrorType::UnsupportedCredentialFormat,
                 format!(
@@ -260,14 +261,27 @@ where
             .iter()
             .find(|(id, cred_metadata)| {
                 if let CoreProfilesMetadata::SDJWTVC(metadata) = cred_metadata.additional_fields() {
-                    return metadata.vct() == vct;
+                    if let CoreProfilesRequest::SDJWTVC(det) = req.additional_profile_fields() {
+                        return metadata.vct() == det.vct();
+                    }
                 }
+
+                if let CoreProfilesMetadata::LDVC(metadata) = cred_metadata.additional_fields() {
+                    if let CoreProfilesRequest::LDVC(det) = req.additional_profile_fields() {
+                        return det.credential_definition().credential_definition().r#type()
+                            == metadata
+                                .credentials_definition()
+                                .credential_definition()
+                                .r#type();
+                    }
+                }
+
                 false
             })
             .ok_or(
                 ProtocolSnafu::new(
                     ErrorType::UnsupportedCredentialType,
-                    format!("Credential configuration id with vct = \"{vct}\" is not found"),
+                    "Credential configuration id is not found".to_string(),
                 )
                 .build(),
             )?;
@@ -393,9 +407,43 @@ where
             .fail()?,
         };
 
-        // TODO: Support other formats
-        let sd_jwt_vc_metadata = match cred_metadata.additional_fields() {
-            CoreProfilesMetadata::SDJWTVC(metadata) => metadata,
+        // TODO: split it into two parts: required/optional claims
+        let supported_claims = match cred_metadata.additional_fields() {
+            CoreProfilesMetadata::SDJWTVC(metadata) => {
+                debug!(resolved_credential_metadata = ?metadata);
+
+                match metadata.claims() {
+                    Some(claims) => {
+                        let mut supported: Vec<&str> = claims.keys().map(|k| k.as_str()).collect();
+                        supported.push("vct");
+
+                        supported
+                    }
+
+                    _ => return Ok(()),
+                }
+            }
+            CoreProfilesMetadata::LDVC(metadata) => {
+                debug!(resolved_credential_metadata = ?metadata);
+
+                let mut supported: Vec<&str> = metadata
+                    .credentials_definition()
+                    .credential_definition()
+                    .credential_subject()
+                    .ok_or_else(|| {
+                        ClaimsValidationSnafu {
+                            details: "Credential definition does not include claims",
+                        }
+                        .build()
+                    })?
+                    .keys()
+                    .map(|k| k.as_str())
+                    .collect();
+
+                supported.push("type");
+
+                supported
+            }
             _ => ProtocolSnafu::new(
                 ErrorType::UnsupportedCredentialFormat,
                 format!(
@@ -405,18 +453,7 @@ where
             )
             .fail()?,
         };
-        debug!(resolved_credential_metadata = ?sd_jwt_vc_metadata);
 
-        let supported_claims = match sd_jwt_vc_metadata.claims() {
-            Some(claims) => {
-                let mut supported: Vec<&str> = claims.keys().map(|k| k.as_str()).collect();
-                supported.push("vct");
-
-                supported
-            }
-
-            _ => return Ok(()),
-        };
         debug!(?supported_claims);
 
         let not_supported = claim_names.iter().find(|c| !supported_claims.contains(c));
@@ -861,9 +898,7 @@ mod tests {
     }
 
     #[tokio::test]
-    #[should_panic(
-        expected = "Credential configuration id with vct = \\\"fake_sd_jwt_cred\\\" is not found"
-    )]
+    #[should_panic(expected = "Credential configuration id is not found")]
     async fn issue_credential_fails_on_incorrect_cred_def() {
         let credential_request = sample_sdjwtvc_credential_request_with_fake_vct();
         let claims = json!({});

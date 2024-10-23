@@ -79,6 +79,22 @@ impl TryFrom<&jwk::Algorithm> for Alg {
     }
 }
 
+impl TryFrom<&ssi::ldp::ProofSuiteType> for Alg {
+    type Error = Error;
+
+    fn try_from(value: &ssi::ldp::ProofSuiteType) -> Result<Alg> {
+        match value {
+            ssi::ldp::ProofSuiteType::Ed25519Signature2018 => Ok(Alg::EdDSA),
+            ssi::ldp::ProofSuiteType::Ed25519Signature2020 => Ok(Alg::EdDSA),
+            ssi::ldp::ProofSuiteType::EcdsaSecp256k1Signature2019 => Ok(Alg::ES256),
+            _ => AlgNotSupportedSnafu {
+                alg: format!("{:?}", value),
+            }
+            .fail(),
+        }
+    }
+}
+
 pub type JWK = jwk::JWK;
 
 /// An async `Signer` interface.
