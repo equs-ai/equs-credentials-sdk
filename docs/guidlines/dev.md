@@ -5,6 +5,7 @@
 - [Error Handling](error_handling.md)
 - [Testing](tests-design.md)
 - [Logging](logging.md)
+- [API Wrappers](wrappers.md)
 
 ## Rust API Guidelines
 
