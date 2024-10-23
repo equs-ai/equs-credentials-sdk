@@ -24,8 +24,8 @@ use crate::vc::core::PresentationInput;
 use crate::vc::formats::vc::SD_JWT_VC;
 use crate::vc::formats::Result;
 use crate::vc::formats::{
-    HasClaims, HasCredential, JWSSnafu, KeyTypeNotSupportedSnafu, ParsingSnafu, PresentationSnafu,
-    SigningSnafu, VerifyOptions, VerifyingSnafu, API,
+    ClaimsResolvingSnafu, HasClaims, HasCredential, JWSSnafu, KeyTypeNotSupportedSnafu,
+    ParsingSnafu, PresentationSnafu, SigningSnafu, VerifyOptions, VerifyingSnafu, API,
 };
 
 pub type SdJwtRsError = sd_jwt_rs::error::Error;
@@ -334,8 +334,15 @@ impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata, Value> for Sd
         level = Level::TRACE,
         ret(),
     )]
-    fn resolve_claims(value: &Value) -> Claims {
-        value.as_object().unwrap().to_owned()
+    fn resolve_claims(value: &Value) -> Result<Claims> {
+        let claims = value.as_object().ok_or_else(|| {
+            ClaimsResolvingSnafu {
+                details: "The value is not an object",
+            }
+            .build()
+        })?;
+
+        Ok(claims.to_owned())
     }
 
     #[instrument(

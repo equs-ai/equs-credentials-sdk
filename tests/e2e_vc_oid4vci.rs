@@ -21,8 +21,8 @@ use utils::http::HttpClientEmulator;
 use uuid::Uuid;
 
 use utils::fixtures::{
-    sample_authz_url, sample_claims, sample_issuer_metadata, sample_issuer_url, ACCESS_TOKEN,
-    AUTHZ_URL, SCOPE,
+    sample_authz_url, sample_claims_jsonld, sample_claims_sdjwt, sample_issuer_metadata,
+    sample_issuer_url, ACCESS_TOKEN, AUTHZ_URL, SCOPE,
 };
 
 use crate::utils::helpers::create_did_keymetadata_keyhandle;
@@ -55,7 +55,7 @@ async fn autorized_code_flow_using_scopes(#[case] validate_token: bool) {
     // 2. Creating offer
     let (offer, _) = issuer
         .create_credential_offer(
-            vec!["SD_JWT_cred_1", "SD_JWT_cred_2"],
+            vec!["SD_JWT_cred_1", "SD_JWT_cred_2", "LDPVC_cred_1"],
             &CredentialOfferGrants {
                 authorization_code: Some(AuthorizationCodeGrant { issuer_state: None }),
                 pre_authorized_code: None,
@@ -106,19 +106,27 @@ async fn autorized_code_flow_using_scopes(#[case] validate_token: bool) {
     let nonce_data = response.nonce_data;
     assert!(nonce_data.is_some());
 
-    // 6.2 Holder requests SD_JWT_cred_2 credentials with the same token
+    // 6.2 Holder requests LDPVC_cred_1 credentials with the same token
     let (_, key_metadata, _) = create_did_keymetadata_keyhandle(&kms).await;
     let response = holder
         .request_credential(
             token_response.access_token(),
-            "SD_JWT_cred_2",
+            "LDPVC_cred_1",
             nonce_data.as_ref(),
             &key_metadata,
         )
         .await
         .unwrap();
 
-    println!("Credential 2: {:?}", response.data);
+    match response.data {
+        oid4vci::CredentialResult::Credential { credential, .. } => {
+            println!(
+                "Credential 2: {}",
+                serde_json::to_string_pretty(&credential).unwrap()
+            );
+        }
+        _ => panic!("unexpected result"),
+    }
 }
 
 async fn credential_endpoint(
@@ -126,7 +134,20 @@ async fn credential_endpoint(
     req: HttpRequest,
     session: Arc<Mutex<IssuanceSession>>,
 ) -> HttpResponse {
+    let cred_req_str = std::str::from_utf8(req.body.as_slice()).unwrap();
+
+    let claims = if cred_req_str.contains("\"vc+sd-jwt\"") {
+        sample_claims_sdjwt()
+    } else if cred_req_str.contains("\"ldp_vc\"") {
+        sample_claims_jsonld()
+    } else {
+        panic!("unsupported format of requested credential");
+    };
+
     let cred_req = serde_json::from_slice(req.body.as_slice()).unwrap();
+
+    println!("cred request from holder: {:?}", cred_req);
+
     let token = req.headers.get("Authorization").unwrap();
     let token = token
         .to_str()
@@ -138,15 +159,12 @@ async fn credential_endpoint(
     let mut session_lock = session.lock().await;
 
     let result = issuer
-        .issue_credential(
-            &cred_req,
-            &token,
-            &sample_claims(),
-            session_lock.borrow_mut(),
-        )
+        .issue_credential(&cred_req, &token, &claims, session_lock.borrow_mut())
         .await;
 
     assert!(session_lock.borrow().nonce.is_some());
+
+    println!("result: {:?}", result);
 
     match result {
         Ok(cred_resp) => HttpResponse {

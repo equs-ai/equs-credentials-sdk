@@ -34,6 +34,7 @@ p256 = { version = "0.13.2", optional = true }
 did-method-key = "0.2.2"
 did-web = "0.2.2"
 ssi-dids = "0.1.1"
+ssi-ldp = "0.3.2"
 iref = "2.2.3"
 futures = "0.3.30"
 base64 = "0.22.1"
@@ -50,6 +51,7 @@ tracing = { version = "0.1.40", features = ["attributes", "release_max_level_war
 snafu = "0.8.4"
 regex = "1.11.0"
 mime = "0.3.17"
+chrono = "0.4.38"
 
 [dev-dependencies]
 serde_urlencoded = "0.7.1"

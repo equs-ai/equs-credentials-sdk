@@ -77,6 +77,10 @@ pub enum CredentialDefinitionData {
         disclosures: Vec<String>,
         lifetime: Option<time::Duration>,
     },
+    Ldp {
+        contexts: Vec<String>,
+        vc_types: Vec<String>,
+    },
 }
 
 /// A `CredentialOffer` entity.

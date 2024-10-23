@@ -8,6 +8,7 @@ use crate::nonce::Nonce;
 use crate::{crypto, did};
 use common_macros::DebugError;
 
+pub mod json_ld_vc;
 pub mod sd_jwt_vc;
 pub mod vc;
 pub mod vp;
@@ -23,6 +24,31 @@ pub enum Error {
 
     #[snafu(display("Unsupported key type: {type_}"))]
     KeyTypeNotSupported { type_: String },
+
+    #[snafu(display("Credential creation error at {location}\n Cause: {details}"))]
+    CredentialCreation {
+        details: String,
+        #[snafu(implicit)]
+        location: Location,
+    },
+
+    #[snafu(display("Multiple credential subjects are not supported error at {location}"))]
+    MultipleSubjectNotSupported {
+        #[snafu(implicit)]
+        location: Location,
+    },
+
+    #[snafu(display("Verifiable presentation does not include credential at {location}"))]
+    NoCredential {
+        #[snafu(implicit)]
+        location: Location,
+    },
+
+    #[snafu(display("Multiple credentials are not supported error at {location}"))]
+    MultipleCredentialsNotSupported {
+        #[snafu(implicit)]
+        location: Location,
+    },
 
     #[snafu(display("Signing error at {location}\n Cause: {details}"))]
     Signing {
@@ -93,6 +119,20 @@ pub enum Error {
         #[snafu(implicit)]
         location: Location,
     },
+
+    #[snafu(display("Proof completion error at {location}"))]
+    ProofCompletion {
+        source: ssi_ldp::Error,
+        #[snafu(implicit)]
+        location: Location,
+    },
+
+    #[snafu(display("Claims can not be resolved at {location}\n Cause: {details}"))]
+    ClaimsResolving {
+        details: String,
+        #[snafu(implicit)]
+        location: Location,
+    },
 }
 
 pub type Result<T> = core::result::Result<T, Error>;
@@ -106,7 +146,7 @@ where
     C: HasClaims<CL>,
     P: HasCredential<C>,
 {
-    fn resolve_claims(value: &serde_json::Value) -> CL;
+    fn resolve_claims(value: &serde_json::Value) -> Result<CL>;
 
     async fn create_vc<S, K>(
         claims: CL,
@@ -115,7 +155,7 @@ where
         metadata: CM,
     ) -> Result<C>
     where
-        S: crypto::Signer,
+        S: crypto::Signer + crypto::Key,
         K: crypto::Key;
 
     async fn create_vp<S>(
@@ -126,7 +166,7 @@ where
         metadata: PM,
     ) -> Result<P>
     where
-        S: crypto::Signer;
+        S: crypto::Signer + crypto::Key;
 
     async fn verify_vc(credential: &C, opts: VerifyOptions) -> Result<()>;
 

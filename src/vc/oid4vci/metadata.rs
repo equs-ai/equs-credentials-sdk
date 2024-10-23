@@ -28,11 +28,7 @@ pub enum Error {
 
 type Result<T> = std::result::Result<T, Error>;
 
-#[instrument(
-        level = Level::TRACE,
-        err(),
-        ret(),
-)]
+#[instrument(level = Level::TRACE, err(), ret())]
 pub fn convert_metadata(
     issuer_metadata: &IssuerMetadata,
     cred_def_ids_with_key_metadata: &HashMap<String, KeyMetadata>,
@@ -63,11 +59,7 @@ pub fn convert_metadata(
     Ok(converted)
 }
 
-#[instrument(
-        level = Level::TRACE,
-        err(),
-        ret(),
-)]
+#[instrument(level = Level::TRACE, err(), ret())]
 pub fn cred_definition(
     id: &str,
     credential_metadata: &oid4vci::metadata::CredentialMetadata<CoreProfilesMetadata>,
@@ -75,6 +67,7 @@ pub fn cred_definition(
 ) -> Result<CredentialDefinition> {
     let protocol_data = match credential_metadata.additional_fields() {
         CoreProfilesMetadata::SDJWTVC(metadata) => Some(sd_jwt_protocol_data(metadata)),
+        CoreProfilesMetadata::LDVC(metadata) => Some(json_ld_protocol_data(metadata)),
         _ => None,
     };
 
@@ -82,6 +75,7 @@ pub fn cred_definition(
 
     let algs = match credential_metadata.additional_fields() {
         CoreProfilesMetadata::SDJWTVC(metadata) => sd_jwt_signing_algorithms(metadata)?,
+        CoreProfilesMetadata::LDVC(metadata) => json_ld_signing_algorithms(metadata)?,
         _ => None,
     };
 
@@ -97,11 +91,7 @@ pub fn cred_definition(
     })
 }
 
-#[instrument(
-    level = Level::TRACE,
-    err(),
-    ret(),
-)]
+#[instrument(level = Level::TRACE, err(), ret())]
 pub fn supported_proofs(
     credential_metadata: &oid4vci::metadata::CredentialMetadata<CoreProfilesMetadata>,
 ) -> Result<Option<HashMap<pop::Format, Vec<Alg>>>> {
@@ -125,10 +115,7 @@ pub fn supported_proofs(
         .transpose()
 }
 
-#[instrument(
-    level = Level::TRACE,
-    ret(),
-)]
+#[instrument(level = Level::TRACE, ret())]
 fn sd_jwt_protocol_data(metadata: &profiles::sd_jwt::Metadata) -> CredentialDefinitionData {
     let mut disclosures = vec![];
 
@@ -145,16 +132,43 @@ fn sd_jwt_protocol_data(metadata: &profiles::sd_jwt::Metadata) -> CredentialDefi
     }
 }
 
-#[instrument(
-    level = Level::TRACE,
-    err(),
-    ret(),
-)]
+#[instrument(level = Level::TRACE, ret())]
+fn json_ld_protocol_data(metadata: &profiles::w3c::ldp::Metadata) -> CredentialDefinitionData {
+    let contexts = metadata
+        .context()
+        .iter()
+        .map(|ctx| ctx.as_str().unwrap().to_string())
+        .collect();
+
+    let vc_types = metadata
+        .credentials_definition()
+        .credential_definition()
+        .r#type()
+        .clone();
+
+    CredentialDefinitionData::Ldp { contexts, vc_types }
+}
+
+#[instrument(level = Level::TRACE, err(), ret())]
 fn sd_jwt_signing_algorithms(metadata: &profiles::sd_jwt::Metadata) -> Result<Option<Vec<Alg>>> {
     metadata
         .credential_signing_alg_values_supported()
         .map(|algs| {
             let res = algs
+                .iter()
+                .map(|s| s.try_into().context(CryptoSnafu))
+                .collect::<Result<Vec<Alg>>>();
+            res
+        })
+        .transpose()
+}
+
+#[instrument(level = Level::TRACE, err(), ret())]
+fn json_ld_signing_algorithms(metadata: &profiles::w3c::ldp::Metadata) -> Result<Option<Vec<Alg>>> {
+    metadata
+        .cryptographic_suites_supported()
+        .map(|crypto_suites| {
+            let res = crypto_suites
                 .iter()
                 .map(|s| s.try_into().context(CryptoSnafu))
                 .collect::<Result<Vec<Alg>>>();
