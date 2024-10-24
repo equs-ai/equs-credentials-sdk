@@ -1,20 +1,24 @@
 use crate::did::DIDResolver;
 use crate::http::HttpClient;
 use crate::nonce::Nonce;
-use crate::vc;
+use crate::utils::http::MimeType;
 use crate::vc::core::PresentationInput;
 use crate::vc::oid4vp::internal_error::{
-    AuthorizationRequestSnafu, AuthorizationResponseSnafu, CredentialNotFoundSnafu, JsonSnafu,
-    ParseSnafu, PresentationExchangeSnafu, VCSnafu,
+    AuthorizationResponseSnafu, CredentialNotFoundSnafu, HttpClientSnafu, JsonSnafu,
+    PresentationExchangeSnafu, VCSnafu,
 };
 use crate::vc::oid4vp::metadata::default_wallet_metadata;
-use crate::vc::oid4vp::{AuthorizationResponseMetadata, CredentialMapping, ResolvedAuthRequest};
+use crate::vc::oid4vp::{
+    AuthorizationResponseMetadata, CredentialMapping, ProtocolError, ResolvedAuthRequest,
+};
 use crate::vc::presentation_exchange::{PresentationResponse, RequestedPresentation};
 use crate::vc::{oid4vp as api, presentation_exchange};
+use crate::{utils, vc};
 use async_trait::async_trait;
 use futures::future;
-use oid4vp::core::authorization_request::verification::RequestVerifier;
-use oid4vp::core::authorization_request::AuthorizationRequestObject;
+use oid4vp::core::authorization_request::verification::{did, RequestVerifier};
+use oid4vp::core::authorization_request::{AuthorizationRequest, AuthorizationRequestObject};
+use oid4vp::core::error::ErrorType;
 use oid4vp::core::metadata::WalletMetadata;
 use oid4vp::core::object::UntypedObject;
 use oid4vp::core::response::parameters::{PresentationSubmission, VpToken};
@@ -91,8 +95,7 @@ where
                 auth_resp,
                 |req| self.http_client.async_call(req),
             )
-            .await
-            .context(AuthorizationResponseSnafu)?;
+            .await?;
 
         Ok(redirect_url)
     }
@@ -140,6 +143,16 @@ where
             .await
             .context(VCSnafu)?;
 
+        if credentials.is_empty() {
+            info!("matching credentials are not found, sending an authorization error response to the verifier...");
+            let err = ProtocolError::new(
+                ErrorType::AccessDenied,
+                Some("matching credentials are not found".to_owned()),
+            );
+            self.submit_auth_error_resp(&auth_request.response_uri, &err)
+                .await?;
+        }
+
         let first_credential = credentials.first().ok_or_else(|| {
             CredentialNotFoundSnafu {
                 type_: &presentation_input.type_,
@@ -164,6 +177,44 @@ where
             presentation,
         })
     }
+
+    #[instrument(
+        level = Level::TRACE,
+        skip(self),
+        err(),
+        ret(),
+    )]
+    async fn resolve_auth_resp_endpoint(&self, request_uri: &Url) -> Result<Url> {
+        let auth_req =
+            AuthorizationRequest::from_url(request_uri, &self.metadata.authorization_endpoint().0)?;
+
+        let url = auth_req
+            .resolve_response_uri(|req| self.http_client.async_call(req))
+            .await?;
+
+        Ok(url)
+    }
+
+    #[instrument(
+        level = Level::TRACE,
+        skip(self),
+        err(),
+        ret(),
+    )]
+    async fn submit_auth_error_resp(&self, response_uri: &Url, body: &ProtocolError) -> Result<()> {
+        let body = serde_json::to_vec(body).context(JsonSnafu)?;
+        let req = utils::http::generate_post_req(response_uri, MimeType::AppFormUrlEnc, body);
+
+        let _ = self
+            .http_client
+            .async_call(req)
+            .await
+            .context(HttpClientSnafu)?;
+
+        info!("authorization error response is sent to verifier");
+
+        Ok(())
+    }
 }
 
 #[async_trait]
@@ -180,15 +231,27 @@ where
         ret(),
     )]
     async fn get_authorization_request(&self, request_uri: &Url) -> Result<ResolvedAuthRequest> {
-        let aro = self
+        let aro_result = self
             .validate_request(request_uri, |req| self.http_client.async_call(req))
             .await
-            .context(AuthorizationRequestSnafu)?;
+            .map_err(Error::from);
+
+        let aro = match aro_result {
+            Ok(aro) => aro,
+            Err(Error::Protocol { source: body }) => {
+                let response_uri = self.resolve_auth_resp_endpoint(request_uri).await?;
+
+                info!("authorization request validation is failed, sending an authorization error response to the verifier...");
+                self.submit_auth_error_resp(&response_uri, &body).await?;
+
+                return Err(Error::Protocol { source: body });
+            }
+            Err(e) => return Err(e),
+        };
 
         let pres_def = aro
             .resolve_presentation_definition(|req| self.http_client.async_call(req))
-            .await
-            .context(AuthorizationRequestSnafu)?
+            .await?
             .parsed()
             .to_owned();
 
@@ -314,6 +377,28 @@ where
 
         Ok(redirect_url)
     }
+
+    #[instrument(
+        level = Level::TRACE,
+        skip(self),
+        err(),
+        ret(),
+    )]
+    async fn decline_authorization_request(
+        &self,
+        auth_request: &ResolvedAuthRequest,
+    ) -> Result<()> {
+        info!("presentation request is declined, sending an authorization error response to the verifier...");
+        let err = ProtocolError::new(
+            ErrorType::AccessDenied,
+            Some("consent to share the presentation is not given".to_owned()),
+        );
+        let _ = self
+            .submit_auth_error_resp(&auth_request.response_uri, &err)
+            .await?;
+
+        Ok(())
+    }
 }
 
 #[async_trait]
@@ -345,30 +430,15 @@ where
         &self,
         decoded_request: &AuthorizationRequestObject,
         request_jwt: String,
-    ) -> anyhow::Result<()> {
-        let (header, _) = ssi::jws::decode_unverified(&request_jwt)?;
-
-        let kid = header.key_id.ok_or(
-            ParseSnafu {
-                details: "Could not parse kid from Request Object JWT".to_owned(),
-            }
-            .build(),
-        )?;
-        let ver_map = self
-            .did_resolver
-            .resolve_verification_method(kid.as_str())
-            .await?;
-        let verifier_pub_jwk = &ver_map.public_key_jwk.ok_or(
-            ParseSnafu {
-                details: "Could not parse Verifier's public JWK from Verification Method's Map"
-                    .to_owned(),
-            }
-            .build(),
-        )?;
-
-        ssi::jws::decode_verify(&request_jwt, verifier_pub_jwk)?;
-
-        Ok(())
+    ) -> anyhow::Result<(), oid4vp::core::error::Error> {
+        did::verify_with_resolver(
+            self.metadata(),
+            decoded_request,
+            request_jwt,
+            None,
+            self.did_resolver.as_spruce_resolver(),
+        )
+        .await
     }
 }
 
@@ -380,13 +450,14 @@ mod tests {
     use crate::kms::{CreateOptions, KeyType, Kms};
     use crate::utils::http::test::{mock_http_fn, mock_http_fn_with_plain_text_resp};
     use crate::vc;
+    use crate::vc::oid4vp::protocol_error::ErrorType;
     use crate::vc::oid4vp::tests::fixtures::{
         multi_presentation, single_presentation, REQUEST_URI, VERIFIER_URL,
     };
     use crate::vc::oid4vp::tests::utils::{
         build_url, holder_service, validate_claims, PresentationTestCase,
     };
-    use crate::vc::oid4vp::{AuthorizationResponseMetadata, Holder};
+    use crate::vc::oid4vp::{AuthorizationResponseMetadata, Holder, ProtocolError};
     use crate::vc::presentation_exchange::ClaimFormatMap;
     use crate::vc::{Claims, Credential};
     use oauth2::http::Method;
@@ -454,10 +525,6 @@ mod tests {
     }
 
     #[rstest]
-    #[should_panic(
-        expected = "Credential of Type 'https://credentials.example.com/identity_credential' and Format 'vc+sd-jwt' not found"
-    )]
-    #[case::requested_credential_not_exist(requested_credential_not_exist_case(), false)]
     // TODO: Should not submit empty presentation response, implemented as part of the ASDK-98 task
     #[ignore]
     #[should_panic]
@@ -479,6 +546,45 @@ mod tests {
         let kms = LocalKms::new();
         let vault = test_case.prepare_vault(&kms, with_extra_creds).await;
         let holder = holder_service(MockHttpClient::new(), kms, vault).await;
+
+        // Send auth response
+        holder
+            .present_credentials_auto(&test_case.request, &AuthorizationResponseMetadata {})
+            .await
+            .unwrap();
+    }
+
+    #[should_panic(
+        expected = "Credential of Type 'https://credentials.example.com/identity_credential' and Format 'vc+sd-jwt' not found"
+    )]
+    #[tokio::test]
+    async fn present_credential_auto_fails_when_credentials_are_not_found() {
+        let test_case = requested_credential_not_exist_case();
+
+        let mut http_client = MockHttpClient::new();
+        mock_http_fn(
+            &mut http_client,
+            Method::POST,
+            build_url(VERIFIER_URL, "auth"),
+            |req| {
+                let err: ProtocolError = serde_json::from_slice(req.body.as_slice()).unwrap();
+                assert_eq!(err.error_type(), &ErrorType::AccessDenied);
+                assert_eq!(
+                    err.description(),
+                    &Some("matching credentials are not found".to_owned())
+                );
+                Ok(HttpResponse {
+                    status_code: StatusCode::OK,
+                    headers: Default::default(),
+                    body: vec![],
+                })
+            },
+            1.into(),
+        );
+
+        let kms = LocalKms::new();
+        let vault = test_case.prepare_vault(&kms, false).await;
+        let holder = holder_service(http_client, kms, vault).await;
 
         // Send auth response
         holder

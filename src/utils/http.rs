@@ -1,7 +1,40 @@
+use oauth2::http::header::CONTENT_TYPE;
+use oauth2::http::{HeaderMap, Method};
+use oauth2::HttpRequest;
+use reqwest::header::HeaderValue;
+use url::Url;
+
 pub const MIME_TYPE_FORM_URLENCODED: &str = "application/x-www-form-urlencoded";
 pub const MIME_TYPE_JSON: &str = "application/json";
 pub const MIME_TYPE_TEXT_PLAIN: &str = "text/plain";
 
+pub(crate) enum MimeType {
+    AppFormUrlEnc,
+    AppJson,
+    TextPlain,
+}
+
+impl MimeType {
+    fn as_str(&self) -> &'static str {
+        match self {
+            MimeType::AppFormUrlEnc => MIME_TYPE_FORM_URLENCODED,
+            MimeType::AppJson => MIME_TYPE_JSON,
+            MimeType::TextPlain => MIME_TYPE_TEXT_PLAIN,
+        }
+    }
+}
+
+pub(crate) fn generate_post_req(url: &Url, content_type: MimeType, body: Vec<u8>) -> HttpRequest {
+    HttpRequest {
+        url: url.to_owned(),
+        method: Method::POST,
+        headers: HeaderMap::from_iter(vec![(
+            CONTENT_TYPE,
+            HeaderValue::from_static(content_type.as_str()),
+        )]),
+        body,
+    }
+}
 #[cfg(test)]
 pub mod test {
     use crate::http::{MockHttpClient, Result};
