@@ -199,12 +199,12 @@ async fn create_did_and_key_metadata(kms: &LocalKms) -> (DID, KeyMetadata) {
 pub fn default_presentation_definition() -> PresentationDefinition {
     let vct_filter = json!({
         "type": "string",
-        "const": "https://credentials.example.com/identity_credential_2"
+        "const": "https://credentials.example.com/identity_credential_1"
     });
-    let vct_constraint = ConstraintsField::new("$.path".to_string()).set_filter(vct_filter);
+    let vct_constraint = ConstraintsField::new("$.vct".to_string()).set_filter(vct_filter);
 
     let name_email_constraint =
-        ConstraintsField::new("$.email".to_string()).add_path("$.username".to_string());
+        ConstraintsField::new("$.email.work".to_string()).add_path("$.username".to_string());
 
     let constraints = Constraints::new()
         .add_constraint(vct_constraint)
@@ -243,7 +243,7 @@ const INPUT_DESCRIPTOR_FOR_CRED_DEF_2: &str = r#"{
         "fields": [
             {
                 "path": [
-                    "$.email",
+                    "$.family_name",
                     "$.username"
                 ]
             },

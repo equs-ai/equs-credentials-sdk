@@ -138,8 +138,9 @@ async fn get_user_attributes(cred_def: &CredDefMetadata) -> Result<Value, Error>
     // Just to demonstrate, that claims and values should be different between creds
     if vct == "https://credentials.example.com/identity_credential_2" {
         let mut claims_json = json!({});
-        claims_json["username"] = serde_json::Value::from("USER");
-        claims_json["email"] = serde_json::Value::from("HARDCODED@gmail.com");
+        claims_json["username"] = serde_json::Value::from("John");
+        claims_json["family_name"] = serde_json::Value::from("Doe");
+        claims_json["email"] = serde_json::Value::from("john.doe@example.com");
         return Ok(claims_json);
     }
 
@@ -309,6 +310,7 @@ fn sample_issuer_metadata(iss_url: &str, authz_url: &str) -> IssuerMetadata {
               "claims": {
                 "email": {},
                 "username": {},
+                "family_name": {},
               }
             }
           }
