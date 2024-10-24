@@ -1,107 +1,117 @@
 import {
-    createDidAndKeyMetadata,
-    enableLogs,
-    inMemKms,
-    localNonceGenerator,
-    Oid4VpVerifierBuilder,
-    PassAuthRequestObject,
+  AuthResponseOptions,
+  createDidAndKeyMetadata,
+  enableLogs,
+  inMemKms,
+  localNonceGenerator,
+  Oid4VpVerifierBuilder,
+  PassAuthRequestObject,
 } from "../../../../../wrappers/nodejs";
 import * as express from "express";
-import {urlencoded} from "express";
-import {json} from "body-parser";
-import {config} from "../components/config";
+import { urlencoded } from "express";
+import { json } from "body-parser";
+import { config } from "../components/config";
 
 async function main(): Promise<void> {
-    await enableLogs();
+  await enableLogs();
 
-    const {port, host} = config.servers.verifier;
-    const kms = inMemKms();
-    const nonceGenerator = localNonceGenerator();
-    const {did, keyMetadata} = await createDidAndKeyMetadata(kms);
+  const { port, host } = config.servers.verifier;
+  const kms = inMemKms();
+  const nonceGenerator = localNonceGenerator();
+  const { did, keyMetadata } = await createDidAndKeyMetadata(kms);
 
-    const appState = {
-        verifier: await new Oid4VpVerifierBuilder(
-            kms,
-            nonceGenerator,
-            keyMetadata,
-            did,
-        ).build(),
-        authReqObjStorage: new Map(),
-        presentationSessionStorage: new Map(),
-    };
+  const appState = {
+    verifier: await new Oid4VpVerifierBuilder(
+      kms,
+      nonceGenerator,
+      keyMetadata,
+      did,
+    ).build(),
+    authReqObjStorage: new Map(),
+    presentationSessionStorage: new Map(),
+  };
 
-    const app = express();
-    app.use(json());
-    app.use(urlencoded({extended: true}));
+  const app = express();
+  app.use(json());
+  app.use(urlencoded({ extended: true }));
 
-    app.get("/request_uri", async (req, res) => {
-        try {
-            const responseUri = `http://${host}:${port}/present`;
-            const requestUri = `http://${host}:${port}/request`;
+  app.get("/request_uri", async (req, res) => {
+    try {
+      const responseUri = `http://${host}:${port}/present`;
+      const requestUri = `http://${host}:${port}/request`;
 
-            let authResponseOptions = {
-                mode: "direct_post",
-                type: "vp_token",
-                submissionUri: responseUri,
-            }
+      let authResponseOptions: AuthResponseOptions = {
+        mode: "direct_post",
+        type: "vp_token",
+        submissionUri: responseUri,
+      };
 
-            const {authorizationRequestUri, session} =
-                await appState.verifier.createAuthorizationRequest(
-                    config.presentationDefinition,
-                    authResponseOptions,
-                    PassAuthRequestObject.byReference(requestUri),
-                    null
-                );
+      const { authorizationRequestUri, session } =
+        await appState.verifier.createAuthorizationRequest(
+          config.presentationDefinition,
+          authResponseOptions,
+          PassAuthRequestObject.byReference(requestUri),
+          null,
+        );
 
-            res.contentType("text/plain").send(authorizationRequestUri);
-        } catch (e: any) {
-            res.status(500).send(e.message);
-        }
-    });
+      appState.authReqObjStorage.set(
+        requestUri,
+        session.authorizationRequestJwt,
+      );
+      appState.presentationSessionStorage.set(
+        session.presentationDefinition.id,
+        session,
+      );
 
-    app.get("/request", async (req, res) => {
-        try {
-            const fullUrl = req.protocol + "://" + req.get("host") + req.originalUrl;
-            const authReqObject = appState.authReqObjStorage.get(fullUrl);
-            res.contentType("text/plain").send(authReqObject);
-        } catch (e: any) {
-            res.status(500).send(e.message);
-        }
-    });
+      res.contentType("text/plain").send(authorizationRequestUri);
+    } catch (e: any) {
+      res.status(500).send(e.message);
+    }
+  });
 
-    app.post("/present", async (req, res) => {
-        try {
-            const vpToken = req.body.vp_token;
-            if (!vpToken) throw new Error("vp_token does not exist in request body!");
+  app.get("/request", async (req, res) => {
+    try {
+      const fullUrl = req.protocol + "://" + req.get("host") + req.originalUrl;
+      const authReqObject = appState.authReqObjStorage.get(fullUrl);
+      res.contentType("text/plain").send(authReqObject);
+    } catch (e: any) {
+      res.status(500).send(e.message);
+    }
+  });
 
-            const presentationSubmission = req.body.presentation_submission;
-            if (!presentationSubmission)
-                throw new Error(
-                    "presentation_submission does not exist in request body!",
-                );
+  app.post("/present", async (req, res) => {
+    try {
+      const vpToken = req.body.vp_token;
+      if (!vpToken) throw new Error("vp_token does not exist in request body!");
 
-            const authorizationResponse = {
-                vpToken: JSON.parse(vpToken),
-                presentationSubmission: JSON.parse(presentationSubmission),
-            };
+      const presentationSubmission = req.body.presentation_submission;
+      if (!presentationSubmission)
+        throw new Error(
+          "presentation_submission does not exist in request body!",
+        );
 
-            const session = appState.presentationSessionStorage.get(
-                authorizationResponse.presentationSubmission.definition_id,
-            );
-            const verifiedClaims = await appState.verifier.verifyPresentation(
-                authorizationResponse,
-                session,
-            );
-            console.log(`Verifier claims: `, verifiedClaims);
+      const authorizationResponse = {
+        vpToken: JSON.parse(vpToken),
+        presentationSubmission: JSON.parse(presentationSubmission),
+      };
 
-            res.send();
-        } catch (e: any) {
-            res.status(500).send(e.message);
-        }
-    });
+      const session = appState.presentationSessionStorage.get(
+        authorizationResponse.presentationSubmission.definition_id,
+      );
+      const verifiedClaims = await appState.verifier.verifyPresentation(
+        authorizationResponse,
+        session,
+      );
+      console.log(`Verifier claims: `, verifiedClaims);
 
-    app.listen(port, host);
-    console.log(`Started listening on ${host}:${port}`);
+      res.send();
+    } catch (e: any) {
+      res.status(500).send(e.message);
+    }
+  });
+
+  app.listen(port, host);
+  console.log(`Started listening on ${host}:${port}`);
 }
 
 setImmediate(main);

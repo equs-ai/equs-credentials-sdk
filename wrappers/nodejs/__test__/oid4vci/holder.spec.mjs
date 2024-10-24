@@ -12,10 +12,15 @@ import {
 import {
     ACCESS_TOKEN,
     ACCESS_TOKEN_RESPONSE,
-    AUTH_SERVER_METADATA, CODE_RESPONSE, CRED_DEF_ID,
-    CRED_OFFER, CRED_RESPONSE, CRED_TYPE,
+    AUTH_SERVER_METADATA,
+    CODE_RESPONSE,
+    CRED_DEF_ID,
+    CRED_OFFER,
+    CRED_RESPONSE,
+    CRED_TYPE,
     ISSUER_METADATA,
-    SCOPE, SD_JWT_CREDS,
+    SCOPE,
+    SD_JWT_CREDS,
 } from "./fixtures.mjs";
 import mockttp from 'mockttp'
 

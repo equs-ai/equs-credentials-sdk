@@ -4,6 +4,7 @@ import fs from 'fs/promises';
 // JS types that are not renamed automatically should be added to this list.
 const replacements = [
     {from: 'JsAlg', to: 'Alg'},
+    {from: 'JsVCFormat', to: 'VCFormat'},
     {from: 'JsKeyType', to: 'KeyType'},
     {from: 'JsCredential', to: 'Credential'},
     {from: 'JsCredentialMetadata', to: 'CredentialMetadata'},

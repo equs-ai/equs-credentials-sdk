@@ -19,6 +19,7 @@ oauth2 = "4.4.2"
 time = { version = "0.3.29", features = ["serde"] }
 tokio = "1.40.0"
 tracing-subscriber = "0.3.18"
+log = "0.4.22"
 
 [build-dependencies]
 napi-build = "2.1.3"

@@ -1,8 +1,3 @@
-use async_trait::async_trait;
-use snafu::{Location, Snafu};
-use std::collections::HashMap;
-use std::fmt::Debug;
-
 use crate::crypto;
 use crate::kms::Error as KmsError;
 use crate::nonce::Nonce;
@@ -12,6 +7,11 @@ use crate::vc::{
     formats::Error as VCError, pop, pop::Error as ProofError, Claims, Credential,
     CredentialMetadata, Presentation, VCFormat,
 };
+use async_trait::async_trait;
+use serde::{Deserialize, Serialize};
+use snafu::{Location, Snafu};
+use std::collections::HashMap;
+use std::fmt::Debug;
 
 use common_macros::DebugError;
 
@@ -37,7 +37,7 @@ pub struct IssuerMetadataData {}
 ///
 /// Defines the Credential Schema and enlists the claims expected in the corresponding `Credential`.
 /// Contains other various data necessary for creation of `Credential` as well.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CredentialDefinition {
     pub cred_def_id: String,
     pub format: VCFormat,
@@ -52,7 +52,7 @@ pub struct CredentialDefinition {
 /// A helper struct for handling Keys and DIDs for the services.
 ///
 /// Contains `DIDURL` of the party and the corresponding `KID` to access the key.
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
 pub struct KeyMetadata {
     pub did_url: String,
     pub kid: String,
@@ -69,7 +69,7 @@ pub struct HolderMetadata {
 /// A format-specific data for the `CredentialDefinition`.
 ///
 /// *NOTE*: will be extended in the next releases.
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
 #[non_exhaustive]
 pub enum CredentialDefinitionData {
     SdJwt {
@@ -154,7 +154,7 @@ pub struct PresentationInput {
 /// A struct that defines how to display the claim.
 ///
 /// *NOTE*: will be extended in the next releases.
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
 pub struct Display;
 
 /// `vc:core` API Error.
