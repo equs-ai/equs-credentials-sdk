@@ -1,9 +1,13 @@
 import test from 'ava'
-import {Oid4VciIssuerBuilder, inMemKms, localNonceGenerator, createDidAndKeyMetadata} from "../../index.js"
+import {createDidAndKeyMetadata, inMemKms, localNonceGenerator, Oid4VciIssuerBuilder} from "../../index.js"
 import {
-    ACCESS_TOKEN, CLAIMS,
-    CRED_DEF_ID, CRED_DEF_METADATA, CRED_OFFER,
-    CRED_REQUEST, GRANTS,
+    ACCESS_TOKEN,
+    CLAIMS,
+    CRED_DEF_ID,
+    CRED_DEF_METADATA,
+    CRED_OFFER,
+    CRED_REQUEST,
+    GRANTS,
     ISSUER_METADATA,
 } from "./fixtures.mjs"
 import {isEmpty} from "../utils.mjs";

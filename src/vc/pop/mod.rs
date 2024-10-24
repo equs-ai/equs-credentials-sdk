@@ -4,6 +4,7 @@ use crate::nonce::Nonce;
 use async_trait::async_trait;
 use common_macros::DebugError;
 use oid4vci::proof_of_possession::{ConversionError, ParsingError, VerificationError};
+use serde::{Deserialize, Serialize};
 use snafu::{Location, Snafu};
 use std::fmt::{Debug, Display, Formatter};
 use std::str::FromStr;
@@ -11,7 +12,7 @@ use std::str::FromStr;
 pub mod jwt_pop;
 
 // Proof of possession formats
-#[derive(Debug, PartialEq, Eq, Hash, Clone)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
 #[non_exhaustive]
 pub enum Format {
     Jwt,
