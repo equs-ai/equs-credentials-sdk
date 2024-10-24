@@ -1,12 +1,12 @@
 use crate::nonce::Nonce;
 use crate::vault::CredentialEntry;
-use crate::vc::oid4vp::InternalError;
+use crate::vc::oid4vp::{InternalError, ProtocolError};
 use crate::vc::presentation_exchange::{PresentationDefinition, PresentationSubmission};
 use crate::vc::Claims;
 use async_trait::async_trait;
 use common_macros::DebugError;
 use serde::{Deserialize, Serialize};
-use snafu::Snafu;
+use snafu::{IntoError, Snafu};
 use std::collections::HashMap;
 use std::fmt::Debug;
 use url::Url;
@@ -75,7 +75,8 @@ pub enum PassAuthRequestObject {
 pub enum Error {
     #[snafu(transparent)]
     Internal { source: InternalError },
-    //TODO: Add Protocol Error
+    #[snafu(transparent)]
+    Protocol { source: ProtocolError },
 }
 
 /// The `OID4VP` `Holder` API.
@@ -96,6 +97,7 @@ pub enum Error {
 #[async_trait]
 pub trait Holder: Send + Sync {
     /// Fetches the `OID4VP` authorization request object from the provided URI.
+    /// If the validation of authorization request fails then related `ProtocolError` response will be sent to the `response_uri` endpoint
     ///
     /// # Arguments
     ///
@@ -107,8 +109,9 @@ pub trait Holder: Send + Sync {
     ///
     /// # Errors
     ///
+    /// * [ProtocolError] - if the validation of authorization request fails
     /// * [InternalError::UrlParse] - if the request URI is invalid
-    /// * [InternalError::AuthorizationRequest] - if the resolution of the authorization request fails.
+    /// * [InternalError::Oid4VpLib] - if the resolution of the authorization request fails.
     async fn get_authorization_request(
         &self,
         request_uri: &Url,
@@ -183,6 +186,20 @@ pub trait Holder: Send + Sync {
         credential_mapping: &CredentialMapping,
         metadata: &AuthorizationResponseMetadata,
     ) -> Result<Option<Url>, Error>;
+
+    /// Decline the authorization request by sending authorization error response to the `response_uri` endpoint.
+    ///
+    /// # Arguments
+    ///
+    /// * `auth_request` - the resolved authorization request.
+    ///
+    /// # Errors
+    ///
+    /// * [InternalError::HttpClient] - if the submission of the authorization error response fails.
+    async fn decline_authorization_request(
+        &self,
+        auth_request: &ResolvedAuthRequest,
+    ) -> Result<(), Error>;
 }
 
 /// The `OID4VP` `Verifier` API.
@@ -217,7 +234,7 @@ pub trait Verifier: Send + Sync {
     ///
     /// # Errors
     ///
-    /// * [InternalError::AuthorizationRequest] - if an error occurs during the creation of the authorization request object.
+    /// * [InternalError::Oid4VpLib] - if an error occurs during the creation of the authorization request object.
     /// * [InternalError::KMS] - if there is an error during Issuer key resolution.
     /// * [InternalError::Parse] - if an error occurs during metadata parsing.
     /// * [InternalError::NonceGeneration] - if an error occurs during generation of nonce
@@ -250,4 +267,20 @@ pub trait Verifier: Send + Sync {
         authorization_response: &AuthorizationResponse,
         session: &PresentationSession,
     ) -> Result<Claims, Error>;
+}
+
+use crate::vc::oid4vp::internal_error::Oid4VpLibSnafu;
+use oid4vp::core::error::Error as SpruceErr;
+
+impl From<SpruceErr> for Error {
+    fn from(value: SpruceErr) -> Self {
+        match value {
+            SpruceErr::Internal(e) => Self::Internal {
+                source: Oid4VpLibSnafu.into_error(e),
+            },
+            SpruceErr::Protocol(e) => Self::Protocol {
+                source: ProtocolError::new(e.r#type, e.description),
+            },
+        }
+    }
 }

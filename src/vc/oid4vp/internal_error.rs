@@ -1,3 +1,4 @@
+use common_macros::DebugError;
 use snafu::{Location, Snafu};
 use std::fmt::Debug;
 
@@ -10,7 +11,7 @@ use crate::{http, nonce, vc};
 /// Internal errors unspecified by the protocol.
 ///
 /// Should be treated like 5xx errors.
-#[derive(Snafu)]
+#[derive(Snafu, DebugError)]
 #[snafu(visibility(pub(super)))]
 #[non_exhaustive]
 pub enum InternalError {
@@ -30,8 +31,8 @@ pub enum InternalError {
         location: Location,
         source: KmsError,
     },
-    #[snafu(display("Authorization Request handling error at {location}"))]
-    AuthorizationRequest {
+    #[snafu(display("oid4vp-rs library internal error at {location}"))]
+    Oid4VpLib {
         #[snafu(implicit)]
         location: Location,
         source: anyhow::Error,
@@ -84,18 +85,4 @@ pub enum InternalError {
         location: Location,
         source: nonce::Error,
     },
-}
-
-impl Debug for InternalError {
-    fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
-        std::write!(fmt, "{}", self)?;
-
-        let mut error: &dyn std::error::Error = self;
-        while let Some(source) = error.source() {
-            write!(fmt, "\n Cause: {}", source)?;
-            error = source;
-        }
-
-        Ok(())
-    }
 }

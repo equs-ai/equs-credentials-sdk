@@ -19,8 +19,7 @@ use crate::vc;
 use crate::vc::core::KeyMetadata;
 use crate::vc::oid4vp as api;
 use crate::vc::oid4vp::internal_error::{
-    AuthorizationRequestSnafu, KMSSnafu, NonceGenerationSnafu, ParseSnafu,
-    PresentationExchangeSnafu, VCSnafu,
+    KMSSnafu, NonceGenerationSnafu, Oid4VpLibSnafu, ParseSnafu, PresentationExchangeSnafu, VCSnafu,
 };
 use crate::vc::oid4vp::metadata::{default_client_metadata, default_wallet_metadata};
 use crate::vc::oid4vp::{
@@ -209,7 +208,7 @@ where
             self.did_resolver.as_spruce_resolver(),
         )
         .await
-        .context(AuthorizationRequestSnafu)?;
+        .context(Oid4VpLibSnafu)?;
 
         let verifier = oid4vp::verifier::Verifier::builder()
             .with_client(did_client)
@@ -223,7 +222,7 @@ where
         let (auth_request_url, auth_req_jwt) = verifier
             .build()
             .await
-            .context(AuthorizationRequestSnafu)?
+            .context(Oid4VpLibSnafu)?
             .build_authorization_request()
             .with_presentation_definition(presentation_definition.to_owned())
             .with_request_parameter(auth_response_config.mode.to_owned())
@@ -231,8 +230,7 @@ where
             .with_request_parameter(NonceSpruce::from(nonce.secret()))
             .with_request_parameter(self.metadata.client_metadata.clone())
             .build(wallet_metadata, pass_req_obj)
-            .await
-            .context(AuthorizationRequestSnafu)?;
+            .await?;
 
         Ok((auth_request_url, auth_req_jwt))
     }
