@@ -13,15 +13,16 @@ include:
 
 stages:
   - scan
+  - build
   - lint
   - test
-  - build
 
 variables:
   RUST_VERSION: "1.79.0"
   NODE_VERSION: "20.18.0"
 
 # Shared configurations
+
 .cargo_local_deps_script: &cargo_local_deps_script
   - sed -i "s|ssh://git@git.slock.it/|https://gitlab-ci-token:${CI_JOB_TOKEN}@git.slock.it/|" Cargo.toml
 
@@ -99,83 +100,13 @@ dependency_scanning:
     - merge_requests
     - main
 
-# Lint stage
-
-lint-job:
-  <<: *rust_job_configs
-  stage: lint
-  script:
-    - rustup component add rustfmt
-    - rustup component add clippy
-    - cargo fmt --all -- --check
-    - cargo clippy --workspace --all-targets --all-features -- -Dwarnings
-  only:
-    - merge_requests
-    - main
-
-# Test stage
-
-test-job:
-  <<: *rust_job_configs
-  stage: test
-  script:
-    - cargo build --all-features
-    - cargo test --all-features
-  only:
-    - merge_requests
-    - main
-
-nodejs-test-job:
-  <<: *nodejs_job_configs
-  stage: test
-  script:
-    - NODE_ENV=development npm i --prefix wrappers/nodejs
-    - npm run test --prefix wrappers/nodejs
-  only:
-    - merge_requests
-    - main
-
-coverage-job:
-  <<: *rust_job_configs
-  stage: test
-  script:
-    - cargo install cargo-tarpaulin
-    - cargo tarpaulin --timeout 180 --all-features --exclude-files "demos/*" --exclude-files "wrappers/*" --fail-under 60 -o Html
-  coverage: '/^\d+.\d+% coverage/'
-  artifacts:
-    paths:
-      - tarpaulin-report.html
-  only:
-    - merge_requests
-    - main
-
 # Build stage
 
-doc-build-job:
+build-job:
   <<: *rust_job_configs
   stage: build
   script:
-    - RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --workspace --all-features
-  only:
-    - merge_requests
-    - main
-
-oid4vc-demo-build-job:
-  <<: *rust_job_configs
-  stage: build
-  script:
-    - cargo build --manifest-path=demos/oid4vc/issuer/Cargo.toml
-    - cargo build --manifest-path=demos/oid4vc/verifier/Cargo.toml
-    - cargo build --manifest-path=demos/oid4vc/holder/Cargo.toml
-  only:
-    - merge_requests
-    - main
-
-multi-thread-demo-build-job:
-  <<: *rust_job_configs
-  stage: build
-  script:
-    - cargo build --manifest-path=demos/multi-thread/Cargo.toml
+    - cargo build --all-features --workspace
   only:
     - merge_requests
     - main
@@ -187,6 +118,63 @@ nodejs-demo-build-job:
     - NODE_ENV=development npm i --prefix wrappers/nodejs
     - NODE_ENV=development npm i --prefix demos/nodejs/oid4vc
     - npm run build --prefix demos/nodejs/oid4vc
+  only:
+    - merge_requests
+    - main
+
+doc-build-job:
+  <<: *rust_job_configs
+  stage: build
+  script:
+    - RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --workspace --all-features
+  only:
+    - merge_requests
+    - main
+
+# Lint stage
+
+check-format-job:
+  <<: *rust_job_configs
+  stage: lint
+  script:
+    - rustup component add rustfmt
+    - cargo fmt --all -- --check
+  only:
+    - merge_requests
+    - main
+
+lint-job:
+  <<: *rust_job_configs
+  stage: lint
+  script:
+    - rustup component add clippy
+    - cargo clippy --workspace --all-targets --all-features -- -Dwarnings
+  only:
+    - merge_requests
+    - main
+
+# Test stage
+
+test-with-coverage-job:
+  <<: *rust_job_configs
+  stage: test
+  script:
+    - cargo install cargo-tarpaulin
+    - cargo tarpaulin --skip-clean --timeout 180 --all-features --exclude-files "demos/*" --exclude-files "wrappers/*" --fail-under 60 -o Html
+  coverage: '/^\d+.\d+% coverage/'
+  artifacts:
+    paths:
+      - tarpaulin-report.html
+  only:
+    - merge_requests
+    - main
+
+nodejs-test-job:
+  <<: *nodejs_job_configs
+  stage: test
+  script:
+    - NODE_ENV=development npm i --prefix wrappers/nodejs
+    - npm run test --prefix wrappers/nodejs
   only:
     - merge_requests
     - main
