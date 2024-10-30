@@ -986,7 +986,7 @@ mod tests {
     #[case(json!("string_value"))]
     #[case(json!(null))]
     #[tokio::test]
-    #[should_panic(expected = "Cause: Provided \"claims\" is not json object")]
+    #[should_panic(expected = "Claims validation error: Provided \"claims\" is not json object")]
     async fn issue_credential_fails_on_non_json_claims(#[case] claims: Value) {
         let issuer = issuer_service(None, None).await;
         issuer

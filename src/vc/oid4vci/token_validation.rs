@@ -27,44 +27,44 @@ type IntrospectionResponse =
 #[derive(Snafu, DebugError)]
 pub enum Error {
     // Expected
-    #[snafu(display("Token validation error at {location}\n Cause: {details}"))]
+    #[snafu(display("Token validation error: {details}"))]
     Token {
         details: String,
         #[snafu(implicit)]
         location: Location,
     },
     // Unexpected
-    #[snafu(display("Network error at {location}"))]
+    #[snafu(display("Network error"))]
     Network {
         #[snafu(implicit)]
         location: Location,
         source: HttpError,
     },
-    #[snafu(display("URL parse error at {location}"))]
+    #[snafu(display("URL parse error"))]
     UrlParse {
         #[snafu(implicit)]
         location: Location,
         source: url::ParseError,
     },
-    #[snafu(display("Parse error at {location}"))]
+    #[snafu(display("Parse error"))]
     Parse {
         #[snafu(implicit)]
         location: Location,
         source: serde_json::Error,
     },
-    #[snafu(display("Invalid header error at {location}"))]
+    #[snafu(display("Invalid header error"))]
     InvalidHeader {
         #[snafu(implicit)]
         location: Location,
         source: InvalidHeaderValue,
     },
-    #[snafu(display("Discovery error at {location}"))]
+    #[snafu(display("Discovery error"))]
     Discovery {
         #[snafu(implicit)]
         location: Location,
         source: openidconnect::DiscoveryError<HttpError>,
     },
-    #[snafu(display("Signature verification error at {location}"))]
+    #[snafu(display("Signature verification error"))]
     SignatureVerification {
         #[snafu(implicit)]
         location: Location,

@@ -1,20 +1,30 @@
 # Overview
-We use the `snafu` library for error handling, taking advantage of its features to provide more detailed and user-friendly error messages. The following guidelines ensure consistency and clarity in how errors are handled and reported in our codebase.
+
+We use the `snafu` library for error handling, taking advantage of its features to provide more detailed and
+user-friendly error messages. The following guidelines ensure consistency and clarity in how errors are handled and
+reported in our codebase.
 
 ## Rules
+
 - Developers should try to write more informative error messages, including relevant error details and arguments.
 - Use the `#[derive(Snafu, DebugError)]` macro for defining error enums or structs.
-- Do not use the `#[derive(Debug)]` macro for errors. The default `Debug` implementation displays internal error structure details that are not readable enough.
-- When naming error variants, avoid adding the `Error` postfix to the variant name. The context provided by the error name should be sufficient.
-- If an error contains a nested source error, include a `Location` struct to capture and display where the error occurred.
+- Do not use the `#[derive(Debug)]` macro for errors. The default `Debug` implementation displays internal error
+  structure details that are not readable enough.
+- When naming error variants, avoid adding the `Error` postfix to the variant name. The context provided by the error
+  name should be sufficient.
+- If an error contains a nested source error, include a `Location` struct to capture and display where the error
+  occurred.
 - Use the `#[snafu(implicit)]` attribute for the `location` field to avoid providing it during error creation.
 - Use the `ensure!` macro if you want to raise an error if some condition is not met.
-- All error enums should use the `#[non_exhaustive]` macro to allow for future extensions without breaking existing code.
+- All error enums should use the `#[non_exhaustive]` macro to allow for future extensions without breaking existing
+  code.
 - Error types should be placed close to their fallibility unit.
 - Avoid creating a generic `errors.rs` file that may contain multiple error types, as it can become bloated.
 
 ## Error Log Example
+
 As shown in the example below, error logs should be structured to provide useful information to the end user:
+
 ```
 Internal error at src/common/catalog/src/error.rs:80:10
  Cause: Crypto error at src/common/function/src/error.rs:90:10
@@ -22,9 +32,11 @@ Internal error at src/common/catalog/src/error.rs:80:10
 ```
 
 # Common error types
+
 ## Specific operation error
-These error types should be as descriptive as possible and should not require 
-additional context such as location information.
+
+These error types should be as descriptive as possible and should not require additional context such as location
+information.
 
 ```rust
 pub enum Error {
@@ -48,20 +60,21 @@ fn check_algorithm(alg: &str) -> Result<(), Error> {
 ```
 
 ## Module general error
-Describe a general error and should provide additional context, 
-by providing detailed descriptions and the location where the error occurred.
+
+Describe a general error and should provide additional context by providing detailed descriptions. Location will be
+added by DebugError macros if it's possible
 
 ```rust
-#[derive(Snafu)]
+#[derive(Snafu, DebugError)]
 #[non_exhaustive]
 pub enum Error {
-    #[snafu(display("Signature verifying error at {location}\n Cause: {details}"))]
+    #[snafu(display("Signature verifying error: {details}"))]
     SignatureVerification {
         details: String,
         #[snafu(implicit)]
         location: Location,
     },
-    #[error("Key generation error at {location}\n Cause: {details}")]
+    #[error("Key generation error: {details}")]
     KeyGeneration {
         details: String,
         #[snafu(implicit)]
@@ -81,26 +94,26 @@ fn verify_signature(data: &[byte], signature: &[byte]) -> Result<(), Error> {
             details: "Signature does not match expected value",
         },
     );
-    
     Ok(())
 }
 ```
 
 ## External module/crate errors
-Describe the underlying module/crate error, and should include the original source error and 
-the location within the module where it occurred.
+
+Describe the underlying module/crate error, and should include the original source error and the location within the
+module where it occurred. Implicit location lets Snafu include location and source let it know what source is.
 
 ```rust
-#[derive(Snafu)]
+#[derive(Snafu, DebugError)]
 #[non_exhaustive]
 pub enum Error {
-    #[snafu(display("Crypto error at {location}"))]
+    #[snafu(display("Crypto error"))]
     Crypto {
         #[snafu(implicit)]
         location: Location,
         source: crypto::Error
     },
-    #[snafu(display("Network error at {location}"))]
+    #[snafu(display("Network error"))]
     Network {
         #[snafu(implicit)]
         location: Location,
@@ -123,7 +136,7 @@ fn perform_network_request(url: &str) -> Result<Response, Error> {
 ```rust
 use snafu::{Snafu, ResultExt};
 use common_macros::DebugError;
- 
+
 #[derive(Snafu, DebugError)]
 #[non_exhaustive]
 enum Error {
@@ -131,19 +144,19 @@ enum Error {
     KeyNotSupported { type_: String },
     #[snafu(display("Unsupported algorithm: {alg}"))]
     AlgNotSupported { alg: String },
-    #[snafu(display("Key generation error at {location}: {details}"))]
+    #[snafu(display("Key generation error: {details}"))]
     KeyGeneration {
         details: String,
         #[snafu(implicit)]
         location: Location,
     },
-    #[snafu(display("Network error at {location}"))]
+    #[snafu(display("Network error"))]
     Network {
         #[snafu(implicit)]
         location: Location,
         source: reqwest::Error
     },
-    #[snafu(display("Failed to open file {filename} at {location}"))]
+    #[snafu(display("Failed to open file {filename}"))]
     File {
         filename: String,
         #[snafu(implicit)]
@@ -153,8 +166,8 @@ enum Error {
 }
 ```
 
-We use `#[derive(Snafu, DebugError)]` to implement `Debug` trait that is responsible for showing a chain of
-errors in the following way:
+We use `#[derive(Snafu, DebugError)]` to implement `Debug` trait that is responsible for showing a chain of errors in
+the following way:
 
 ```
 VC error at src/vc/oid4vci/holder.rs:751:23
@@ -163,4 +176,7 @@ VC error at src/vc/oid4vci/holder.rs:751:23
  Cause: Key mismatch
 ```
 
-In case an error includes `source` field the source error will be shown as a part of `Cause: ` line.
+In cases when error includes:
+
+1) `source` then the source error will be shown as a part of `Cause: ` line.
+2) `location` then location of the error will be shown after `at` in addition to display.

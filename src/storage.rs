@@ -10,13 +10,13 @@ use std::fmt::Debug;
 #[snafu(visibility(pub))]
 #[non_exhaustive]
 pub enum Error {
-    #[snafu(display("Value resolving error at {location}\n Cause: {details}"))]
+    #[snafu(display("Value resolving error: {details}"))]
     Resolving {
         details: String,
         #[snafu(implicit)]
         location: Location,
     },
-    #[snafu(display("Storage modification error at {location}\n Cause: {details}"))]
+    #[snafu(display("Storage modification error: {details}"))]
     Modification {
         details: String,
         #[snafu(implicit)]

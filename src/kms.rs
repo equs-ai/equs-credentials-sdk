@@ -15,19 +15,19 @@ use tracing::{instrument, trace, Level};
 pub enum Error {
     #[snafu(display("Key not found for ID: {id}"))]
     NotFound { id: String },
-    #[snafu(display("Key creation error at {location}\n Cause: {details}"))]
+    #[snafu(display("Key creation error: {details}"))]
     Creation {
         details: String,
         #[snafu(implicit)]
         location: Location,
     },
-    #[snafu(display("Resolution error at {location}\n Cause: {details}"))]
+    #[snafu(display("Resolution error: {details}"))]
     Resolving {
         details: String,
         #[snafu(implicit)]
         location: Location,
     },
-    #[snafu(display("Crypto error at {location}\n Cause: {source}"))]
+    #[snafu(display("Crypto error"))]
     Crypto {
         #[snafu(implicit)]
         location: Location,

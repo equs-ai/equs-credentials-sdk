@@ -23,19 +23,19 @@ pub enum Error {
     KeyNotSupported { type_: String },
     #[snafu(display("Invalid format of DID: {details}"))]
     InvalidDidFormat { details: String },
-    #[snafu(display("DID generation error at {location}\n Cause: {details}"))]
+    #[snafu(display("DID generation error: {details}"))]
     DidGeneration {
         details: String,
         #[snafu(implicit)]
         location: Location,
     },
-    #[snafu(display("DID Document generation error at {location}\n Cause: {details}"))]
+    #[snafu(display("DID Document generation error: {details}"))]
     DidDocGeneration {
         details: String,
         #[snafu(implicit)]
         location: Location,
     },
-    #[snafu(display("Resolution error at {location}\n Cause: {details}"))]
+    #[snafu(display("Resolution error: {details}"))]
     Resolution {
         details: String,
         #[snafu(implicit)]

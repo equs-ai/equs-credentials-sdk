@@ -1,6 +1,7 @@
 use crate::http::HttpError;
 use crate::vc::oid4vci::metadata;
 use crate::{nonce, storage, vault, vc};
+use common_macros::DebugError;
 use oid4vci::credential::RequestError;
 use oid4vci::openidconnect::DiscoveryError;
 use snafu::{Location, Snafu};
@@ -11,101 +12,95 @@ use std::fmt::Debug;
 /// Internal errors unspecified by the protocol.
 ///
 /// Should be treated like 5xx errors.
-#[derive(Snafu)]
+#[derive(Snafu, DebugError)]
 #[snafu(visibility(pub(super)))]
 #[non_exhaustive]
 pub enum InternalError {
     #[snafu(display("Credential definition not found for ID: {id}"))]
-    CredDefNotFound { id: String },
+    CredDefNotFound {
+        id: String,
+        #[snafu(implicit)]
+        location: Location,
+    },
     #[snafu(display(
         "No scope set for Credential definition ID: {id}. Only scope authorization supported"
     ))]
-    NoScopeSet { id: String },
-    #[snafu(display("Claims validation error at {location}\n Cause: {details}"))]
+    NoScopeSet {
+        id: String,
+        #[snafu(implicit)]
+        location: Location,
+    },
+    #[snafu(display("Claims validation error: {details}"))]
     ClaimsValidation {
         details: String,
         #[snafu(implicit)]
         location: Location,
     },
-    #[snafu(display("Issuer service error at {location}\n Cause: {details}"))]
+    #[snafu(display("Issuer service error: {details}"))]
     IssuerService {
         details: String,
         #[snafu(implicit)]
         location: Location,
     },
-    #[snafu(display("Url parse error at {location}"))]
+    #[snafu(display("Url parse error"))]
     UrlParse {
         #[snafu(implicit)]
         location: Location,
         source: url::ParseError,
     },
-    #[snafu(display("Parse error at {location}"))]
+    #[snafu(display("Parse error"))]
     Parse {
         #[snafu(implicit)]
         location: Location,
         source: serde_json::Error,
     },
-    #[snafu(display("Storage error at {location}"))]
+    #[snafu(display("Storage error"))]
     Storage {
         #[snafu(implicit)]
         location: Location,
         source: storage::Error,
     },
-    #[snafu(display("VC error at {location}"))]
+    #[snafu(display("VC error"))]
     VC {
         #[snafu(implicit)]
         location: Location,
         source: vc::core::Error,
     },
-    #[snafu(display("Vault error at {location}"))]
+    #[snafu(display("Vault error"))]
     Vault {
         #[snafu(implicit)]
         location: Location,
         source: vault::Error,
     },
-    #[snafu(display("Request error at {location}"))]
+    #[snafu(display("Request error"))]
     Request {
         #[snafu(implicit)]
         location: Location,
         source: RequestError<HttpError>,
     },
-    #[snafu(display("Discovery error at {location}"))]
+    #[snafu(display("Discovery error"))]
     Discovery {
         #[snafu(implicit)]
         location: Location,
         //TODO: Check that nothing other than 'reqwest::Error' can be used here.
         source: DiscoveryError<HttpError>,
     },
-    #[snafu(display("Http error at {location}"))]
+    #[snafu(display("Http error"))]
     HttpClient {
         #[snafu(implicit)]
         location: Location,
         source: HttpError,
     },
-    #[snafu(display("Metadata resolving error at {location}"))]
+    #[snafu(display("Metadata resolving error"))]
     Metadata {
         #[snafu(implicit)]
         location: Location,
         source: metadata::Error,
     },
-    #[snafu(display("Nonce generation error at {location}"))]
+    #[snafu(display("Nonce generation error"))]
     NonceGeneration {
         #[snafu(implicit)]
         location: Location,
         source: nonce::Error,
     },
-}
-
-impl Debug for InternalError {
-    fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
-        std::write!(fmt, "{}", self)?;
-
-        let mut error: &dyn std::error::Error = self;
-        while let Some(source) = error.source() {
-            write!(fmt, "\n Cause: {}", source)?;
-            error = source;
-        }
-
-        Ok(())
-    }
 }

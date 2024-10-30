@@ -19,19 +19,19 @@ pub enum Error {
     KeyNotSupported { type_: String },
     #[snafu(display("Unsupported algorithm: {alg}"))]
     AlgNotSupported { alg: String },
-    #[snafu(display("Signing error at {location}\n Cause: {details}"))]
+    #[snafu(display("Signing error: {details}"))]
     Signing {
         details: String,
         #[snafu(implicit)]
         location: Location,
     },
-    #[snafu(display("Verification error at {location}\n Cause: {details}"))]
+    #[snafu(display("Verification error: {details}"))]
     Verification {
         details: String,
         #[snafu(implicit)]
         location: Location,
     },
-    #[snafu(display("Key generation error at {location}\n Cause: {details}"))]
+    #[snafu(display("Key generation error: {details}"))]
     KeyGeneration {
         details: String,
         #[snafu(implicit)]

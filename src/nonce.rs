@@ -56,7 +56,7 @@ impl Nonce {
 #[snafu(visibility(pub))]
 #[non_exhaustive]
 pub enum Error {
-    #[snafu(display("Nonce generation error at {location}\n Cause: {details}"))]
+    #[snafu(display("Nonce generation error: {details}"))]
     Generate {
         details: String,
         #[snafu(implicit)]

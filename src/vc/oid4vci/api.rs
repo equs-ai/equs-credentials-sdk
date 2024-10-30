@@ -9,8 +9,6 @@ use serde::{Deserialize, Serialize};
 use snafu::Snafu;
 use std::fmt::Debug;
 
-use common_macros::DebugError;
-
 // Data types
 pub type IssuerMetadata = metadata::IssuerMetadata;
 pub type CredDefMetadata = metadata::CredentialMetadata;
@@ -70,13 +68,28 @@ pub struct IssuanceSession {
 ///   See <https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0.html>.
 ///
 /// * [Error::Internal] error contains all unexpected errors.
-#[derive(Snafu, DebugError)]
+#[derive(Snafu)]
 #[non_exhaustive]
 pub enum Error {
     #[snafu(transparent)]
     Internal { source: InternalError },
     #[snafu(transparent)]
     Protocol { source: ProtocolError },
+}
+
+impl Debug for Error {
+    fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            Self::Internal { source } => {
+                write!(fmt, "{:#?}", source)?;
+            }
+            Self::Protocol { source } => {
+                write!(fmt, "{:#?}", source)?;
+            }
+        }
+
+        Ok(())
+    }
 }
 
 /// `Result` alias for `oid4vci`-specific [Error].

@@ -16,7 +16,7 @@ use common_macros::DebugError;
 pub enum Error {
     #[snafu(display("Unsupported format: {format}"))]
     FormatNotSupported { format: String },
-    #[snafu(display("Resolving error at {location}\n Cause: {details}"))]
+    #[snafu(display("Resolving error: {details}"))]
     Resolving {
         details: String,
         #[snafu(implicit)]
