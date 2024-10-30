@@ -180,25 +180,25 @@ pub enum Error {
     ProofFormatNotSupported { format: String },
     #[snafu(display("Invalid DID Url: {input}"))]
     InvalidDIDUrl { input: String },
-    #[snafu(display("VC error at {location}"))]
+    #[snafu(display("VC error"))]
     VC {
         #[snafu(implicit)]
         location: Location,
         source: VCError,
     },
-    #[snafu(display("Proof error at {location}"))]
+    #[snafu(display("Proof error"))]
     Proof {
         #[snafu(implicit)]
         location: Location,
         source: ProofError,
     },
-    #[snafu(display("KMS error at {location}"))]
+    #[snafu(display("KMS error"))]
     KMS {
         #[snafu(implicit)]
         location: Location,
         source: KmsError,
     },
-    #[snafu(display("Proof error at {location}"))]
+    #[snafu(display("Proof error"))]
     Vault {
         #[snafu(implicit)]
         location: Location,

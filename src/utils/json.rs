@@ -9,7 +9,7 @@ pub type Result<T> = core::result::Result<T, Error>;
 #[derive(Snafu, DebugError)]
 #[non_exhaustive]
 pub enum Error {
-    #[snafu(display("Parsing error at {location}\n Cause: {details}"))]
+    #[snafu(display("Parsing error: {details}"))]
     Parsing {
         details: String,
         #[snafu(implicit)]

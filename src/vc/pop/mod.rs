@@ -60,37 +60,37 @@ pub enum Error {
     KeyTypeNotSupported { type_: String },
     #[snafu(display("Verification method not found"))]
     VerificationMethodNotFound,
-    #[snafu(display("Conversion error at {location}"))]
+    #[snafu(display("Conversion error"))]
     Conversion {
         #[snafu(implicit)]
         location: Location,
         source: ConversionError,
     },
-    #[snafu(display("Parsing error at {location}"))]
+    #[snafu(display("Parsing error"))]
     Parsing {
         #[snafu(implicit)]
         location: Location,
         source: ParsingError,
     },
-    #[snafu(display("Verification error at {location}"))]
+    #[snafu(display("Verification error"))]
     Verification {
         #[snafu(implicit)]
         location: Location,
         source: VerificationError,
     },
-    #[snafu(display("VC error at {location}"))]
+    #[snafu(display("VC error"))]
     VC {
         #[snafu(implicit)]
         location: Location,
         source: ssi::vc::Error,
     },
-    #[snafu(display("JWS error at {location}"))]
+    #[snafu(display("JWS error"))]
     JWS {
         source: ssi::jws::Error,
         #[snafu(implicit)]
         location: Location,
     },
-    #[snafu(display("Crypto error at {location}"))]
+    #[snafu(display("Crypto error"))]
     Crypto {
         #[snafu(implicit)]
         location: Location,

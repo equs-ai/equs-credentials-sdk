@@ -25,109 +25,109 @@ pub enum Error {
     #[snafu(display("Unsupported key type: {type_}"))]
     KeyTypeNotSupported { type_: String },
 
-    #[snafu(display("Credential creation error at {location}\n Cause: {details}"))]
+    #[snafu(display("Credential creation error: {details}"))]
     CredentialCreation {
         details: String,
         #[snafu(implicit)]
         location: Location,
     },
 
-    #[snafu(display("Multiple credential subjects are not supported error at {location}"))]
+    #[snafu(display("Multiple credential subjects are not supported error"))]
     MultipleSubjectNotSupported {
         #[snafu(implicit)]
         location: Location,
     },
 
-    #[snafu(display("Verifiable presentation does not include credential at {location}"))]
+    #[snafu(display("Verifiable presentation does not include credential"))]
     NoCredential {
         #[snafu(implicit)]
         location: Location,
     },
 
-    #[snafu(display("Multiple credentials are not supported error at {location}"))]
+    #[snafu(display("Multiple credentials are not supported error"))]
     MultipleCredentialsNotSupported {
         #[snafu(implicit)]
         location: Location,
     },
 
-    #[snafu(display("Signing error at {location}\n Cause: {details}"))]
+    #[snafu(display("Signing error: {details}"))]
     Signing {
         details: String,
         #[snafu(implicit)]
         location: Location,
     },
 
-    #[snafu(display("Verification error at {location}\n Cause: {details}"))]
+    #[snafu(display("Verification error: {details}"))]
     Verifying {
         details: String,
         #[snafu(implicit)]
         location: Location,
     },
 
-    #[snafu(display("Parsing error at {location}\n Cause: {details}"))]
+    #[snafu(display("Parsing error: {details}"))]
     Parsing {
         details: String,
         #[snafu(implicit)]
         location: Location,
     },
 
-    #[snafu(display("Presentation error at {location}\n Cause: {details}"))]
+    #[snafu(display("Presentation error: {details}"))]
     Presentation {
         details: String,
         #[snafu(implicit)]
         location: Location,
     },
 
-    #[snafu(display("DID error at {location}"))]
+    #[snafu(display("DID error"))]
     SpruceDID {
         source: ssi::did::Error,
         #[snafu(implicit)]
         location: Location,
     },
 
-    #[snafu(display("DID error at {location}"))]
+    #[snafu(display("DID error"))]
     DID {
         source: did::Error,
         #[snafu(implicit)]
         location: Location,
     },
 
-    #[snafu(display("JWK error at {location}"))]
+    #[snafu(display("JWK error"))]
     JWK {
         source: ssi::jwk::Error,
         #[snafu(implicit)]
         location: Location,
     },
 
-    #[snafu(display("JWS error at {location}"))]
+    #[snafu(display("JWS error"))]
     JWS {
         source: ssi::jws::Error,
         #[snafu(implicit)]
         location: Location,
     },
 
-    #[snafu(display("JSON error at {location}"))]
+    #[snafu(display("JSON error"))]
     Json {
         source: serde_json::Error,
         #[snafu(implicit)]
         location: Location,
     },
 
-    #[snafu(display("Base64 decoding error at {location}"))]
+    #[snafu(display("Base64 decoding error"))]
     Base64 {
         source: base64::DecodeError,
         #[snafu(implicit)]
         location: Location,
     },
 
-    #[snafu(display("Proof completion error at {location}"))]
+    #[snafu(display("Proof completion error"))]
     ProofCompletion {
         source: ssi_ldp::Error,
         #[snafu(implicit)]
         location: Location,
     },
 
-    #[snafu(display("Claims can not be resolved at {location}\n Cause: {details}"))]
+    #[snafu(display("Claims can not be resolved: {details}"))]
     ClaimsResolving {
         details: String,
         #[snafu(implicit)]

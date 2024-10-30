@@ -18,7 +18,7 @@ pub type CredentialMetadata = oid4vci::metadata::CredentialMetadata<CoreProfiles
 #[derive(Snafu, DebugError)]
 #[non_exhaustive]
 pub enum Error {
-    #[snafu(display("Crypto error at {location}"))]
+    #[snafu(display("Crypto error"))]
     Crypto {
         #[snafu(implicit)]
         location: Location,

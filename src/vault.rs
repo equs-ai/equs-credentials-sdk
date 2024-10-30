@@ -17,19 +17,19 @@ use snafu::{Location, Snafu};
 pub enum Error {
     #[snafu(display("Unsupported credential format: {format}"))]
     FormatNotSupported { format: String },
-    #[snafu(display("Credential storing error at {location}\n Cause: {details}"))]
+    #[snafu(display("Credential storing error: {details}"))]
     Storing {
         details: String,
         #[snafu(implicit)]
         location: Location,
     },
-    #[snafu(display("Credential resolving error at {location}\n Cause: {details}"))]
+    #[snafu(display("Credential resolving error: {details}"))]
     Resolving {
         details: String,
         #[snafu(implicit)]
         location: Location,
     },
-    #[snafu(display("VC error at {location}\n Cause: {details}"))]
+    #[snafu(display("VC error: {details}"))]
     VC {
         details: String,
         #[snafu(implicit)]

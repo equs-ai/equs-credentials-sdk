@@ -22,7 +22,7 @@ use url::Url;
 #[derive(Snafu, DebugError)]
 #[non_exhaustive]
 pub enum Error {
-    #[snafu(display("Builder error at {location}\n Cause: {details}"))]
+    #[snafu(display("Builder error: {details}"))]
     Build {
         details: String,
         #[snafu(implicit)]

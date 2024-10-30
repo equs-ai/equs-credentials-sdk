@@ -34,7 +34,7 @@ struct FilterWithConst {
 pub enum Error {
     #[snafu(display("Unsupported format: {format}"))]
     FormatNotSupported { format: String },
-    #[snafu(display("Parse error at {location}\n Cause: {details}"))]
+    #[snafu(display("Parse error: {details}"))]
     Parse {
         details: String,
         #[snafu(implicit)]

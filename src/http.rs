@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use common_macros::DebugError;
 #[cfg(test)]
 use mockall::automock;
 use oauth2::{HttpRequest, HttpResponse};
@@ -8,20 +9,13 @@ use std::fmt::Debug;
 /// `HttpClient` Error.
 ///
 /// All implementations of [HttpClient] should raise it on error.
-#[derive(Snafu)]
+#[derive(Snafu, DebugError)]
 #[snafu(visibility(pub))]
-#[snafu(display("HTTP error at {location}\n Cause: {details}"))]
+#[snafu(display("HTTP error: {details}"))]
 pub struct HttpError {
     details: String,
     #[snafu(implicit)]
     location: Location,
-}
-
-impl Debug for HttpError {
-    fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
-        std::write!(fmt, "{}", self)?;
-        Ok(())
-    }
 }
 
 /// `Result` alias for `HttpClient`-specific [HttpError].
