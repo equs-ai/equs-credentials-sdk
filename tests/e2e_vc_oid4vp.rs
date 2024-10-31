@@ -11,6 +11,7 @@ use ssi::did::DIDURL;
 use std::collections::HashMap;
 use std::str::FromStr;
 use url::Url;
+use utils::fixtures::oid4vp::Oid4VpTestCredentialFormat;
 
 use agent_sdk::crypto;
 use agent_sdk::crypto::Alg;
@@ -28,7 +29,7 @@ use agent_sdk::vc::oid4vp::{HolderBuilder, PresentationSession};
 use agent_sdk::vc::oid4vp::{Verifier, VerifierBuilder};
 use agent_sdk::vc::VCFormatsAPI;
 use agent_sdk::vc::{Credential, CredentialMetadata, VCFormat};
-use agent_sdk::vc::{VCFormatsSdJwtAPI, VCMetadata};
+use agent_sdk::vc::{VCFormatsJsonLdAPI, VCFormatsSdJwtAPI};
 
 use utils::helpers::create_did_keymetadata_keyhandle;
 use utils::http::HttpClientEmulator;
@@ -39,13 +40,14 @@ use agent_sdk::inmem::nonce::LocalNonceGenerator;
 use agent_sdk::kms::KeyID;
 
 use crate::utils::fixtures::oid4vp::{
-    multiple_presentation_case, single_presentation_case, Oid4VpTestCase, ValidateClaimsFunc,
-    VERIFIER_URL,
+    multiple_sdjwt_presentation_case, single_jsonld_presentation_case,
+    single_sdjwt_presentation_case, Oid4VpTestCase, ValidateClaimsFunc, VERIFIER_URL,
 };
 
 #[rstest]
-#[case::single_presentation(single_presentation_case())]
-#[case::multiple_presentation(multiple_presentation_case())]
+#[case::single_jsonld_presentation(single_jsonld_presentation_case())]
+#[case::single_sdjwt_presentation(single_sdjwt_presentation_case())]
+#[case::multiple_sdjwt_presentation(multiple_sdjwt_presentation_case())]
 #[tokio::test]
 async fn credentials_presentation_and_verification(#[case] test_case: Oid4VpTestCase) {
     println!("7. Store Credential");
@@ -57,15 +59,19 @@ async fn credentials_presentation_and_verification(#[case] test_case: Oid4VpTest
     let holder_vault = InMemVault::new();
 
     // Create and store VCs
-    for credential in &test_case.credentials {
+    for credential in test_case.credentials {
         let (vc, vc_meta) = create_vc(
-            credential.vct,
+            credential.format,
+            credential.vc_type,
             &holder_did_url,
             holder_kid.clone(),
             holder_kh.clone(),
-            credential.claims.clone(),
+            credential.claims,
         )
         .await;
+
+        println!("\nvc: {:?}\n", vc);
+
         holder_vault.store_credential(vc, &vc_meta).await.unwrap();
     }
 
@@ -207,7 +213,8 @@ async fn build_holder(
 }
 
 async fn create_vc(
-    vct: &str,
+    format: Oid4VpTestCredentialFormat,
+    vc_type: &str,
     holder_did_url: &DIDURL,
     holder_kid: String,
     holder_kh: impl crypto::Key,
@@ -221,34 +228,56 @@ async fn create_vc(
 
     let did_url = DIDURL::from_str(&did).unwrap();
 
-    let vc = VCFormatsSdJwtAPI::create_vc(
-        VCFormatsSdJwtAPI::resolve_claims(&claims).unwrap(),
-        (&did_url, kh),
-        (holder_did_url, holder_kh),
-        VCMetadata {
-            vct: vct.to_owned(),
-            lifetime: time::Duration::days(365),
-            disclosures: vec![
-                "$.name".to_owned(),
-                "$.surname".to_owned(),
-                "$.address".to_owned(),
-            ],
-        },
-    )
-    .await
-    .unwrap();
+    let resolved_claims = VCFormatsJsonLdAPI::resolve_claims(&claims).unwrap();
 
-    println!("Credential: {}", vc);
+    println!("resolved_claims: {:?}", resolved_claims);
 
-    let vc_meta = CredentialMetadata {
-        type_: vct.to_string(),
-        kid: holder_kid,
-        format: VCFormat::SdJwtVc,
-        alg: Some(Alg::ES256),
-        tags: vec![],
-    };
+    match format {
+        Oid4VpTestCredentialFormat::SdJwt(metadata) => {
+            let vc = VCFormatsSdJwtAPI::create_vc(
+                VCFormatsSdJwtAPI::resolve_claims(&claims).unwrap(),
+                (&did_url, kh),
+                (holder_did_url, holder_kh),
+                metadata,
+            )
+            .await
+            .unwrap();
 
-    (Credential::SdJwt(vc), vc_meta)
+            println!("Credential: {}", vc);
+
+            let vc_meta = CredentialMetadata {
+                type_: vc_type.to_string(),
+                kid: holder_kid,
+                format: VCFormat::SdJwtVc,
+                alg: Some(Alg::ES256),
+                tags: vec![],
+            };
+
+            (Credential::SdJwt(vc), vc_meta)
+        }
+        Oid4VpTestCredentialFormat::LdpVc(metadata) => {
+            let vc = VCFormatsJsonLdAPI::create_vc(
+                resolved_claims,
+                (&did_url, kh),
+                (holder_did_url, holder_kh),
+                metadata,
+            )
+            .await
+            .unwrap();
+
+            println!("Credential: {}", serde_json::to_string_pretty(&vc).unwrap());
+
+            let vc_meta = CredentialMetadata {
+                type_: vc_type.to_string(),
+                kid: holder_kid,
+                format: VCFormat::LdpVc,
+                alg: Some(Alg::ES256),
+                tags: vec![],
+            };
+
+            (Credential::LdpVc(vc), vc_meta)
+        }
+    }
 }
 
 pub async fn generate_did_key_and_vm(

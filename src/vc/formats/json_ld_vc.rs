@@ -190,7 +190,7 @@ impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata, Value> for Js
             .await
             .map_err(|_| {
                 CredentialCreationSnafu {
-                    details: "can not find verification method",
+                    details: "Can not find verification method",
                 }
                 .build()
             })?;
@@ -261,13 +261,13 @@ impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata, Value> for Js
             }) => did.clone(),
             OneOrMany::Many(_) => {
                 return PresentationSnafu {
-                    details: "multiple subjects in credential",
+                    details: "Multiple subjects in the credential",
                 }
                 .fail()
             }
             _ => {
                 return PresentationSnafu {
-                    details: "can not find holder's DID",
+                    details: "Can not find the holder's DID",
                 }
                 .fail()
             }
@@ -278,7 +278,7 @@ impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata, Value> for Js
             .await
             .map_err(|_| {
                 PresentationSnafu {
-                    details: "can not find verification method",
+                    details: "Can not find verification method",
                 }
                 .build()
             })?;
@@ -363,11 +363,16 @@ impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata, Value> for Js
             .fail();
         }
 
-        let claims = presentation.get_credential()?.parse_claims()?;
+        let credential = presentation.get_credential()?;
 
-        Ok(Value::Object(serde_json::Map::from_iter(
-            claims.into_iter(),
-        )))
+        let credential_json = serde_json::to_value(credential).map_err(|err| {
+            VerifyingSnafu {
+                details: format!("Can not be serialized to json: {err}"),
+            }
+            .build()
+        })?;
+
+        Ok(credential_json)
     }
 }
 
@@ -434,7 +439,7 @@ async fn sign_proof(input: &SigningInput, signer: &impl Signer) -> Result<Vec<u8
             .build()
         }),
         _ => SigningSnafu {
-            details: "unsupported signing input",
+            details: "Unsupported signing input",
         }
         .fail(),
     }

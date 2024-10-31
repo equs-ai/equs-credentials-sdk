@@ -129,19 +129,21 @@ async fn did_doc(state: web::Data<AppState>) -> HttpResponse {
 }
 
 async fn get_user_attributes(cred_def: &CredDefMetadata) -> Result<Value, Error> {
-    let vct = match cred_def.additional_fields() {
+    let vc_type = match cred_def.additional_fields() {
         CredDefMetadataProfile::SDJWTVC(m) => m.vct(),
-        _ => panic!("only sd-jwt supported in demo"),
+        CredDefMetadataProfile::LDVC(m) => {
+            &m.credentials_definition().credential_definition().r#type()[1]
+        }
+        _ => panic!("unsupported format"),
     };
 
-    // Issue dummy VC for SD_JWT_cred_2
-    // Just to demonstrate, that claims and values should be different between creds
-    if vct == "https://credentials.example.com/identity_credential_2" {
-        let mut claims_json = json!({});
-        claims_json["username"] = serde_json::Value::from("John");
-        claims_json["family_name"] = serde_json::Value::from("Doe");
-        claims_json["email"] = serde_json::Value::from("john.doe@example.com");
-        return Ok(claims_json);
+    if vc_type == "PermanentResidentCard" {
+        return Ok(json!({
+            "type": ["PermanentResident", "Person"],
+            "givenName": "John",
+            "familyName": "Doe",
+            "birthDate": "09/09/1989",
+        }));
     }
 
     let (realm_name, user_name, keycloak_url) = (
@@ -246,7 +248,7 @@ async fn create_did_and_key_metadata(kms: &LocalKms) -> (DID, KeyMetadata, DIDDo
 }
 
 const CRED_DEF_1: &str = "SD_JWT_cred_1";
-const CRED_DEF_2: &str = "SD_JWT_cred_2";
+const CRED_DEF_2: &str = "JSON_LDP_cred_2";
 
 fn sample_issuer_metadata(iss_url: &str, authz_url: &str) -> IssuerMetadata {
     let metadata = serde_json::from_value(json!(
@@ -291,27 +293,55 @@ fn sample_issuer_metadata(iss_url: &str, authz_url: &str) -> IssuerMetadata {
               }
             },
             CRED_DEF_2: {
-              "format": "vc+sd-jwt",
-              "scope": "SD_JWT_cred_scope",
-              "cryptographic_binding_methods_supported": [
-                "jwk"
-              ],
-              "credential_signing_alg_values_supported": [
-                "ES256"
-              ],
-              "proof_types_supported": {
-                "jwt": {
-                  "proof_signing_alg_values_supported": [
-                    "ES256"
-                  ]
-                }
-              },
-              "vct": "https://credentials.example.com/identity_credential_2",
-              "claims": {
-                "email": {},
-                "username": {},
-                "family_name": {},
-              }
+                "format": "ldp_vc",
+                "scope": "SD_JWT_cred_scope",
+                "@context": [
+                    "https://www.w3.org/2018/credentials/v1",
+                    "https://w3id.org/citizenship/v1"
+                ],
+                "type": [
+                    "VerifiableCredential",
+                    "PermanentResidentCard"
+                ],
+                "cryptographic_binding_methods_supported": [
+                    "jwk"
+                ],
+                "cryptographic_suites_supported": [
+                    "Ed25519Signature2018",
+                    "EcdsaSecp256k1Signature2019"
+                ],
+                "credentials_definition": {
+                    "@context": [
+                        "https://www.w3.org/2018/credentials/v1",
+                        "https://w3id.org/citizenship/v1"
+                    ],
+                    "type": [
+                        "VerifiableCredential",
+                        "PermanentResidentCard"
+                    ],
+                    "credentialSubject": {
+                        "givenName": {},
+                        "familyName": {},
+                        "gender": {},
+                        "birthDate": {},
+                        "birthCountry": {},
+                        "commuterClassification": {},
+                        "residentSince": {},
+                        "gpa": {}
+                    }
+                },
+                "display": [
+                    {
+                        "name": "University Credential",
+                        "locale": "en-US",
+                        "logo": {
+                            "url": "https://exampleuniversity.com/public/logo.png",
+                            "alt_text": "a square logo of a university"
+                        },
+                        "background_color": "#12107c",
+                        "text_color": "#FFFFFF"
+                    }
+                ]
             }
           }
         }

@@ -2,6 +2,9 @@ use crate::crypto::Alg;
 use crate::vc::formats::sd_jwt_vc;
 use serde::{Deserialize, Serialize};
 
+pub use crate::vc::formats::json_ld_vc::{
+    JsonLdAPI as VCFormatsJsonLdAPI, VCMetadata as JsonLdAPIVCMetadata,
+};
 pub use crate::vc::formats::sd_jwt_vc::{SdJwtAPI as VCFormatsSdJwtAPI, VCMetadata};
 pub use crate::vc::formats::vc::*;
 pub use crate::vc::formats::vp::*;

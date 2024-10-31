@@ -24,7 +24,7 @@ use std::io::Write;
 use time::OffsetDateTime;
 
 const CRED_DEF_ID_1: &str = "SD_JWT_cred_1";
-const CRED_DEF_ID_2: &str = "SD_JWT_cred_2";
+const CRED_DEF_ID_2: &str = "JSON_LDP_cred_2";
 
 const SCOPE: &str = "SD_JWT_cred_scope";
 

@@ -141,7 +141,7 @@ async fn presentation_response(
 
     println!(
         "Verifier claims: {}",
-        serde_json::to_string(&verified_claims).unwrap()
+        serde_json::to_string_pretty(&verified_claims).unwrap()
     );
 
     HttpResponse::Ok().finish()
@@ -230,28 +230,26 @@ pub fn default_presentation_definition() -> PresentationDefinition {
 }
 
 const INPUT_DESCRIPTOR_FOR_CRED_DEF_2: &str = r#"{
-    "id": "Identity-2",
+    "id": "resident-card",
     "name": "Identity VC",
-    "purpose": "We want an identity",
+    "purpose": "We want a resident card",
     "format": {
-        "vc+sd-jwt": {
-          "sd-jwt_alg_values": ["ES256", "EdDSA"],
-          "kb-jwt_alg_values": ["ES256", "EdDSA"]
+        "ldp_vc": {
+           "proof_type": [
+            "Ed25519Signature2018",
+            "EcdsaSecp256k1Signature2019"
+           ]
         }
-     },
+    },
     "constraints": {
         "fields": [
             {
-                "path": [
-                    "$.family_name",
-                    "$.username"
-                ]
-            },
-            {
-                "path": ["$.vct"],
+                "path": ["$.type"],
                 "filter": {
-                    "type": "string",
-                    "const": "https://credentials.example.com/identity_credential_2"
+                    "type": "array",
+                    "contains": {
+                        "const": "PermanentResidentCard"
+                    }
                 }
             }
         ]
