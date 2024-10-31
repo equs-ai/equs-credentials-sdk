@@ -9,6 +9,7 @@ use regex::Regex;
 use ssi::did::{VerificationMethod, VerificationMethodMap};
 use ssi::did_resolve::DIDResolver as SpruceResolver;
 use ssi::jwk::Params;
+use ssi_dids::DIDURL;
 use ssi_dids::{Context, Contexts};
 use std::str::FromStr;
 use tracing::{instrument, Level};
@@ -164,13 +165,24 @@ impl DIDWeb {
             Context::URI(IriRefBuf::from_str(vm_type_iri).unwrap()),
         ]);
 
-        did_doc.verification_method = Some(vec![VerificationMethod::Map(VerificationMethodMap {
+        let default_vm = VerificationMethodMap {
             id: format!("{}#key-0", did),
             type_: vm_type.to_string(),
             controller: did.to_string(),
             public_key_jwk: Some(jwk),
             ..Default::default()
-        })]);
+        };
+
+        did_doc.verification_method = Some(vec![VerificationMethod::Map(default_vm.to_owned())]);
+
+        let did_url: DIDURL = default_vm.id.try_into().map_err(|_| {
+            DidDocGenerationSnafu {
+                details: "DIDURL parsing failed",
+            }
+            .build()
+        })?;
+
+        did_doc.assertion_method = Some(vec![VerificationMethod::DIDURL(did_url)]);
 
         Ok(did_doc)
     }
