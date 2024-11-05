@@ -4,8 +4,8 @@ use crate::did::{DIDResolver, DIDURL};
 use crate::nonce::Nonce;
 use crate::utils::b64;
 use crate::vc::formats::{
-    ClaimsResolvingSnafu, CredentialCreationSnafu, FormatNotSupportedSnafu, HasClaims,
-    HasCredential, KeyTypeNotSupportedSnafu, MultipleCredentialsNotSupportedSnafu,
+    ClaimsResolvingSnafu, CredentialCreationSnafu, FormatNotSupportedSnafu, GetExpirationClaim,
+    HasClaims, HasCredential, KeyTypeNotSupportedSnafu, MultipleCredentialsNotSupportedSnafu,
     MultipleSubjectNotSupportedSnafu, NoCredentialSnafu, PresentationSnafu, ProofCompletionSnafu,
     Result, SigningSnafu, VerifyOptions, VerifyingSnafu, API,
 };
@@ -141,6 +141,89 @@ impl HasCredential<Credential> for Presentation {
 
 pub struct JsonLdAPI;
 
+impl JsonLdAPI {
+    #[instrument(level = Level::TRACE, ret())]
+    fn create_credential(
+        metadata: VCMetadata,
+        iss_did: String,
+        holder_did: String,
+        claims: Claims,
+    ) -> Credential {
+        let now = chrono::Local::now();
+        let exp_date = JsonLdAPI::get_expiration_claim(&claims)
+            .unwrap_or(VCDateTime::from(now + metadata.lifetime));
+
+        let credential_subject = OneOrMany::One(CredentialSubject {
+            id: Some(URI::String(holder_did)),
+            property_set: Some(claims),
+        });
+        let iss_date = VCDateTime::from(now);
+        let issuer = Some(ssi::vc::Issuer::URI(URI::String(iss_did)));
+
+        Credential {
+            context: metadata.contexts,
+            type_: metadata.type_,
+            issuer,
+            credential_subject,
+            id: None,
+            issuance_date: Some(iss_date),
+            proof: None,
+            expiration_date: Some(exp_date),
+            credential_status: None,
+            terms_of_use: None,
+            evidence: None,
+            credential_schema: None,
+            refresh_service: None,
+            property_set: None,
+        }
+    }
+
+    #[instrument(level = Level::TRACE, ret())]
+    fn create_presentation(
+        vc: Credential,
+        metadata: VPMetadata,
+        holder_did: String,
+    ) -> Presentation {
+        let holder = Some(URI::String(holder_did));
+        let verifiable_credential = Some(OneOrMany::One(CredentialOrJWT::Credential(vc)));
+
+        Presentation {
+            context: metadata.contexts,
+            type_: metadata.type_,
+            holder,
+            verifiable_credential,
+            id: None,
+            proof: None,
+            holder_binding: None,
+            property_set: None,
+        }
+    }
+
+    #[instrument(level = Level::TRACE, skip(signer), err(), ret())]
+    async fn sign_proof(input: &SigningInput, signer: &impl Signer) -> Result<Vec<u8>> {
+        match input {
+            SigningInput::Bytes(bytes) => signer.sign(&bytes.0).await.map_err(|err| {
+                SigningSnafu {
+                    details: err.to_string(),
+                }
+                .build()
+            }),
+            _ => SigningSnafu {
+                details: "Unsupported signing input",
+            }
+            .fail(),
+        }
+    }
+}
+
+impl GetExpirationClaim<Claims, VCDateTime> for JsonLdAPI {
+    fn get_expiration_claim(claims: &Claims) -> Option<VCDateTime> {
+        claims
+            .get("expirationDate")
+            .and_then(|v| serde_json::from_value(v.to_owned()).ok())
+    }
+}
+
 #[async_trait]
 impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata, Value> for JsonLdAPI {
     #[instrument(level = Level::TRACE, ret())]
@@ -197,7 +280,8 @@ impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata, Value> for Js
 
         let resolver = universal_resolver.as_spruce_resolver();
 
-        let mut vc = create_credential(metadata, iss_did, holder_data.0.did.clone(), claims);
+        let mut vc =
+            JsonLdAPI::create_credential(metadata, iss_did, holder_data.0.did.clone(), claims);
 
         let proof_options = ssi::vc::LinkedDataProofOptions {
             verification_method: Some(ssi::vc::URI::String(verification_method_map.id)),
@@ -216,7 +300,7 @@ impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata, Value> for Js
                 .build()
             })?;
 
-        let sig = sign_proof(&proof_preparation.signing_input, &iss_key_handle).await?;
+        let sig = JsonLdAPI::sign_proof(&proof_preparation.signing_input, &iss_key_handle).await?;
         let sig_b64 = b64::encode(&sig);
 
         let proof = proof_preparation
@@ -283,7 +367,7 @@ impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata, Value> for Js
                 .build()
             })?;
 
-        let mut vp = create_presentation(vc, metadata, holder_did.to_string());
+        let mut vp = JsonLdAPI::create_presentation(vc, metadata, holder_did.to_string());
 
         let proof_options = ssi::vc::LinkedDataProofOptions {
             verification_method: Some(ssi::vc::URI::String(verification_method_map.id)),
@@ -303,7 +387,7 @@ impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata, Value> for Js
                 .build()
             })?;
 
-        let sig = sign_proof(&proof_preparation.signing_input, &holder_signer).await?;
+        let sig = JsonLdAPI::sign_proof(&proof_preparation.signing_input, &holder_signer).await?;
         let sig_b64 = b64::encode(&sig);
 
         let proof = proof_preparation
@@ -373,75 +457,6 @@ impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata, Value> for Js
         })?;
 
         Ok(credential_json)
-    }
-}
-
-#[instrument(level = Level::TRACE, ret())]
-fn create_credential(
-    metadata: VCMetadata,
-    iss_did: String,
-    holder_did: String,
-    claims: Claims,
-) -> Credential {
-    let issuer = Some(ssi::vc::Issuer::URI(URI::String(iss_did)));
-
-    let credential_subject = OneOrMany::One(CredentialSubject {
-        id: Some(URI::String(holder_did)),
-        property_set: Some(claims),
-    });
-
-    let now = chrono::Local::now();
-    let iss_date = VCDateTime::from(now);
-    let exp_date = VCDateTime::from(now + metadata.lifetime);
-
-    Credential {
-        context: metadata.contexts,
-        type_: metadata.type_,
-        issuer,
-        credential_subject,
-        id: None,
-        issuance_date: Some(iss_date),
-        proof: None,
-        expiration_date: Some(exp_date),
-        credential_status: None,
-        terms_of_use: None,
-        evidence: None,
-        credential_schema: None,
-        refresh_service: None,
-        property_set: None,
-    }
-}
-
-#[instrument(level = Level::TRACE, ret())]
-fn create_presentation(vc: Credential, metadata: VPMetadata, holder_did: String) -> Presentation {
-    let holder = Some(URI::String(holder_did));
-    let verifiable_credential = Some(OneOrMany::One(CredentialOrJWT::Credential(vc)));
-
-    Presentation {
-        context: metadata.contexts,
-        type_: metadata.type_,
-        holder,
-        verifiable_credential,
-        id: None,
-        proof: None,
-        holder_binding: None,
-        property_set: None,
-    }
-}
-
-#[instrument(level = Level::TRACE, skip(signer), err(), ret())]
-async fn sign_proof(input: &SigningInput, signer: &impl Signer) -> Result<Vec<u8>> {
-    match input {
-        SigningInput::Bytes(bytes) => signer.sign(&bytes.0).await.map_err(|err| {
-            SigningSnafu {
-                details: err.to_string(),
-            }
-            .build()
-        }),
-        _ => SigningSnafu {
-            details: "Unsupported signing input",
-        }
-        .fail(),
     }
 }
 

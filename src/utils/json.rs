@@ -60,24 +60,24 @@ pub fn find_json_element<'a>(json: &'a Json, json_path: &str) -> Option<&'a Json
     level = Level::TRACE,
     ret(),
 )]
-pub fn paths_to_json(paths: Vec<&str>) -> Result<Value> {
+pub fn paths_to_json(paths: Vec<(&str, Value)>) -> Result<Value> {
     let mut json = json!({});
-    for p in paths {
+    for (p, value) in paths {
         let path = p.replacen("$.", "", 1);
-        path_to_json(path.clone(), &mut json)?;
+        path_to_json(path.clone(), &mut json, &value)?;
     }
 
     Ok(json)
 }
 
-fn path_to_json(path: String, mut json_obj: &mut Value) -> Result<()> {
+fn path_to_json(path: String, mut json_obj: &mut Value, value: &Value) -> Result<()> {
     let parts: Vec<&str> = path.split('.').collect();
 
     for (i, part) in parts.iter().enumerate() {
         if part.contains('[') && part.contains(']') {
-            path_to_json_helper(json_obj, part, parts.len(), i)?;
+            path_to_json_helper(json_obj, part, parts.len(), i, value)?;
         } else if i == parts.len() - 1 {
-            json_obj[part] = Value::Bool(true);
+            json_obj[part] = value.to_owned();
         } else {
             if json_obj.get(part).is_none() {
                 json_obj[part] = json!({});
@@ -94,6 +94,7 @@ fn path_to_json_helper(
     part: &str,
     length: usize,
     parts_index: usize,
+    value: &Value,
 ) -> Result<()> {
     let key = part.split('[').next().ok_or(
         ParsingSnafu {
@@ -121,7 +122,7 @@ fn path_to_json_helper(
             arr.resize(index + 1, Value::Null);
         }
         if parts_index == length - 1 {
-            arr[index] = Value::Bool(true);
+            json_obj[part] = value.to_owned()
         } else if arr[index].is_null() {
             arr[index] = json!({});
         }
