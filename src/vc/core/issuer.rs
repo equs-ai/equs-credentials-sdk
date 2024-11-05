@@ -10,11 +10,11 @@ use crate::vc::core::{
     CredentialDefinition, CredentialDefinitionData, CredentialOffer, CredentialOfferData,
     CredentialRequest, Issuer, IssuerMetadata,
 };
-use crate::vc::formats::json_ld_vc;
 use crate::vc::formats::json_ld_vc::JsonLdAPI;
 use crate::vc::formats::sd_jwt_vc;
 use crate::vc::formats::sd_jwt_vc::SdJwtAPI;
 use crate::vc::formats::API;
+use crate::vc::formats::{json_ld_vc, GetExpirationClaim};
 use crate::vc::pop::jwt_pop::JwtProofOfPossession;
 use crate::vc::pop::ProofOfPossession;
 use crate::vc::{pop, Claims, Credential, VCFormat};
@@ -105,7 +105,7 @@ where
                 let claims = SdJwtAPI::resolve_claims(claims).context(VCSnafu)?;
                 trace!(claims_to_issue = ?claims);
 
-                let metadata = self.sd_jwt_vc_metadata(cred_def.protocol_data.clone())?;
+                let metadata = self.sd_jwt_vc_metadata(&claims, cred_def.protocol_data.clone())?;
                 let cred =
                     SdJwtAPI::create_vc(claims, (&iss_did, iss_key), (&hld_did, hld_key), metadata)
                         .await
@@ -158,6 +158,7 @@ where
     #[instrument(level = Level::TRACE, skip(self), err(), ret())]
     fn sd_jwt_vc_metadata(
         &self,
+        claims: &sd_jwt_vc::Claims,
         protocol_data: Option<CredentialDefinitionData>,
     ) -> Result<sd_jwt_vc::VCMetadata> {
         trace!(?protocol_data);
@@ -167,11 +168,16 @@ where
                 vct,
                 disclosures,
                 lifetime,
-            }) => sd_jwt_vc::VCMetadata {
-                vct: vct.to_owned(),
-                lifetime: lifetime.unwrap_or(time::Duration::days(365)),
-                disclosures: disclosures.to_owned(),
-            },
+            }) => {
+                let lifetime =
+                    SdJwtAPI::get_expiration_claim(claims).unwrap_or(time::Duration::days(365));
+
+                sd_jwt_vc::VCMetadata {
+                    vct: vct.to_owned(),
+                    lifetime,
+                    disclosures: disclosures.to_owned(),
+                }
+            }
             _ => InconsistentProtocolDataSnafu {
                 format: VCFormat::SdJwtVc.to_string(),
             }

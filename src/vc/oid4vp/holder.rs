@@ -2,6 +2,7 @@ use crate::did::DIDResolver;
 use crate::http::HttpClient;
 use crate::nonce::Nonce;
 use crate::utils::http::MimeType;
+use crate::vault::CredentialEntry;
 use crate::vc::core::PresentationInput;
 use crate::vc::oid4vp::internal_error::{
     AuthorizationResponseSnafu, CredentialNotFoundSnafu, HttpClientSnafu, JsonSnafu,
@@ -15,17 +16,16 @@ use crate::vc::presentation_exchange::{PresentationResponse, RequestedPresentati
 use crate::vc::{oid4vp as api, presentation_exchange};
 use crate::{utils, vc};
 use async_trait::async_trait;
-use futures::future;
+use futures::{future, StreamExt};
 use oid4vp::core::authorization_request::verification::{did, RequestVerifier};
 use oid4vp::core::authorization_request::{AuthorizationRequest, AuthorizationRequestObject};
-use oid4vp::core::error::ErrorType;
 use oid4vp::core::metadata::WalletMetadata;
 use oid4vp::core::object::UntypedObject;
 use oid4vp::core::response::parameters::{PresentationSubmission, VpToken};
 use oid4vp::core::response::{AuthorizationResponse, UnencodedAuthorizationResponse};
 use oid4vp::wallet::Wallet;
 use snafu::ResultExt;
-use tracing::{info, instrument, Level};
+use tracing::{error, info, instrument, Level};
 use url::Url;
 
 pub type Error = api::Error;
@@ -134,48 +134,44 @@ where
     )]
     async fn create_presentation_by_input(
         &self,
+        credentials: &Vec<CredentialEntry>,
         presentation_input: &PresentationInput,
         auth_request: &ResolvedAuthRequest,
     ) -> Result<RequestedPresentation> {
-        let credentials = self
-            .holder
-            .find_vcs_for_presentation(presentation_input)
-            .await
-            .context(VCSnafu)?;
+        let stream = futures::stream::iter(credentials);
+        let events = stream.filter_map(|cred| async {
+            self.holder
+                .create_presentation(
+                    &auth_request.nonce,
+                    auth_request.client_id.as_str(),
+                    presentation_input,
+                    cred,
+                )
+                .await
+                .inspect_err(|e| {
+                    error!("could not create a presentation\n: Cause: {e}");
+                })
+                .ok()
+        });
+        let mut events = Box::pin(events);
 
-        if credentials.is_empty() {
-            info!("matching credentials are not found, sending an authorization error response to the verifier...");
-            let err = ProtocolError::new(
-                ErrorType::AccessDenied,
-                Some("matching credentials are not found".to_owned()),
-            );
-            self.submit_auth_error_resp(&auth_request.response_uri, &err)
-                .await?;
+        if let Some(presentation) = events.next().await {
+            return Ok(RequestedPresentation {
+                id: presentation_input.id.to_owned(),
+                presentation: presentation.to_owned(),
+            });
         }
 
-        let first_credential = credentials.first().ok_or_else(|| {
-            CredentialNotFoundSnafu {
-                type_: &presentation_input.type_,
-                format: &presentation_input.format.name(),
-            }
-            .build()
-        })?;
+        info!("matching credentials are not found, sending an authorization error response to the verifier...");
+        let err = ProtocolError::access_denied("matching credentials are not found");
+        self.submit_auth_error_resp(&auth_request.response_uri, &err)
+            .await?;
 
-        let presentation = self
-            .holder
-            .create_presentation(
-                &auth_request.nonce,
-                auth_request.client_id.as_str(),
-                presentation_input,
-                first_credential,
-            )
-            .await
-            .context(VCSnafu)?;
-
-        Ok(RequestedPresentation {
-            id: presentation_input.id.to_owned(),
-            presentation,
-        })
+        CredentialNotFoundSnafu {
+            type_: &presentation_input.type_,
+            format: &presentation_input.format.name(),
+        }
+        .fail()?
     }
 
     #[instrument(
@@ -214,6 +210,29 @@ where
         info!("authorization error response is sent to verifier");
 
         Ok(())
+    }
+
+    #[instrument(level = Level::TRACE, skip(self), err(), ret())]
+    async fn create_presentation_from_creds_map(
+        &self,
+        creds_map: &CredentialMapping,
+        presentation_input: &PresentationInput,
+        auth_request: &ResolvedAuthRequest,
+    ) -> Result<RequestedPresentation> {
+        let Some(creds) = creds_map.get(&presentation_input.id) else {
+            let err = ProtocolError::access_denied("matching credentials are not found");
+            self.submit_auth_error_resp(&auth_request.response_uri, &err)
+                .await?;
+
+            CredentialNotFoundSnafu {
+                type_: &presentation_input.type_,
+                format: &presentation_input.format.name(),
+            }
+            .fail()?
+        };
+
+        self.create_presentation_by_input(creds, presentation_input, auth_request)
+            .await
     }
 }
 
@@ -281,9 +300,16 @@ where
             presentation_exchange::split_to_inputs(&auth_request.presentation_definition)
                 .context(PresentationExchangeSnafu)?;
 
-        let presentations: Vec<RequestedPresentation> =
-            future::try_join_all(presentation_inputs.iter().map(|presentation_input| {
-                self.create_presentation_by_input(presentation_input, auth_request)
+        let presentations =
+            future::try_join_all(presentation_inputs.iter().map(|presentation_input| async {
+                let creds = self
+                    .holder
+                    .find_vcs_for_presentation(presentation_input)
+                    .await
+                    .context(VCSnafu)?;
+
+                self.create_presentation_by_input(&creds, presentation_input, auth_request)
+                    .await
             }))
             .await?;
 
@@ -337,41 +363,20 @@ where
     ) -> Result<Option<Url>> {
         info!("presenting verifiable presentations is started");
 
-        let mut presentaions: Vec<RequestedPresentation> = vec![];
-
         let presentation_inputs =
             presentation_exchange::split_to_inputs(&auth_request.presentation_definition)
                 .context(PresentationExchangeSnafu)?;
 
-        // TODO: Improve code:
-        //  - Run async code concurrently
-        //  - Try to refactor the loop below, possibly by extracting it into a map operation
-        //  - Try to reuse [self.create_presentation_by_input]
-        for presentation_input in presentation_inputs.iter() {
-            if let Some(credentials) = creds_map.get(&presentation_input.id) {
-                for credential in credentials.iter() {
-                    let presentation = self
-                        .holder
-                        .create_presentation(
-                            &auth_request.nonce,
-                            &auth_request.client_id,
-                            presentation_input,
-                            credential,
-                        )
-                        .await
-                        .context(VCSnafu)?;
+        let presentations =
+            future::try_join_all(presentation_inputs.iter().map(|presentation_input| async {
+                self.create_presentation_from_creds_map(creds_map, presentation_input, auth_request)
+                    .await
+            }))
+            .await?;
 
-                    presentaions.push(RequestedPresentation {
-                        id: presentation_input.id.to_owned(),
-                        presentation,
-                    });
-                }
-            } else {
-                //TODO Implement cases when credentials not found
-            }
-        }
-
-        let redirect_url = self.submit_presentation(presentaions, auth_request).await?;
+        let redirect_url = self
+            .submit_presentation(presentations, auth_request)
+            .await?;
 
         info!("verifiable presentations are successfully presented");
 
@@ -389,10 +394,7 @@ where
         auth_request: &ResolvedAuthRequest,
     ) -> Result<()> {
         info!("presentation request is declined, sending an authorization error response to the verifier...");
-        let err = ProtocolError::new(
-            ErrorType::AccessDenied,
-            Some("consent to share the presentation is not given".to_owned()),
-        );
+        let err = ProtocolError::access_denied("consent to share the presentation is not given");
         let _ = self
             .submit_auth_error_resp(&auth_request.response_uri, &err)
             .await?;

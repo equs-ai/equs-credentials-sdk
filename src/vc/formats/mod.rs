@@ -185,3 +185,7 @@ pub trait HasClaims<CL> {
 pub trait HasCredential<C> {
     fn get_credential(&self) -> Result<C>;
 }
+
+pub trait GetExpirationClaim<CL, EC> {
+    fn get_expiration_claim(claims: &CL) -> Option<EC>;
+}

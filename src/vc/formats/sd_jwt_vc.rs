@@ -10,7 +10,6 @@ use snafu::{ensure, ResultExt};
 use ssi::did::VerificationMethod;
 use ssi::jwk::JWK;
 use std::collections::HashMap;
-use time::OffsetDateTime;
 use tracing::{instrument, trace, Level};
 
 use crate::crypto::{Key, Signer};
@@ -22,11 +21,11 @@ use crate::utils::b64;
 use crate::utils::serde::Helpers;
 use crate::vc::core::PresentationInput;
 use crate::vc::formats::vc::SD_JWT_VC;
-use crate::vc::formats::Result;
 use crate::vc::formats::{
     ClaimsResolvingSnafu, HasClaims, HasCredential, JWSSnafu, KeyTypeNotSupportedSnafu,
     ParsingSnafu, PresentationSnafu, SigningSnafu, VerifyOptions, VerifyingSnafu, API,
 };
+use crate::vc::formats::{GetExpirationClaim, Result};
 
 pub type SdJwtRsError = sd_jwt_rs::error::Error;
 
@@ -173,7 +172,7 @@ impl SdJwtAPI {
         claims.put_str("iss", &iss_did_url.did);
         claims.put_str("sub", &hld_did_url.did);
 
-        let now = OffsetDateTime::now_utc();
+        let now = time::OffsetDateTime::now_utc();
         claims.put_dt("iat", now);
         claims.put_dt("nbf", now);
 
@@ -325,6 +324,61 @@ impl SdJwtAPI {
         };
 
         Ok(vm)
+    }
+
+    #[instrument(
+        level = Level::TRACE,
+        ret(),
+    )]
+    pub fn resolve_disclosures(input: &PresentationInput) -> Result<Map<String, Value>> {
+        trace!(presentation_input = ?input);
+
+        let claims = input.constraints.clone();
+
+        let stripped: Vec<_> = claims
+            .fields()
+            .iter()
+            .flat_map(|f| {
+                f.path().iter().map(|p| {
+                    let value = if f.is_optional() {
+                        Value::String("optional".to_string())
+                    } else {
+                        Value::Bool(true)
+                    };
+
+                    (p.as_str(), value)
+                })
+            })
+            .collect();
+
+        let json = utils::json::paths_to_json(stripped).map_err(|e| {
+            ParsingSnafu {
+                details: format!("could parse json paths: {e}"),
+            }
+            .build()
+        })?;
+
+        let json_obj = json
+            .as_object()
+            .ok_or_else(|| {
+                ParsingSnafu {
+                    details: "could not convert json into json object",
+                }
+                .build()
+            })?
+            .to_owned();
+
+        Ok(json_obj)
+    }
+}
+
+impl GetExpirationClaim<Claims, time::Duration> for SdJwtAPI {
+    fn get_expiration_claim(claims: &Claims) -> Option<time::Duration> {
+        claims.get("exp").and_then(|v| {
+            serde_json::from_value::<i64>(v.to_owned())
+                .map(time::Duration::seconds)
+                .ok()
+        })
     }
 }
 
@@ -497,43 +551,6 @@ impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata, Value> for Sd
     }
 }
 
-impl SdJwtAPI {
-    #[instrument(
-        level = Level::TRACE,
-        ret(),
-    )]
-    pub fn resolve_disclosures(input: &PresentationInput) -> Result<Map<String, Value>> {
-        trace!(presentation_input = ?input);
-
-        let claims = input.constraints.clone();
-
-        let stripped: Vec<_> = claims
-            .fields()
-            .iter()
-            .flat_map(|f| f.path().iter().map(|p| p.as_str()))
-            .collect();
-
-        let json = utils::json::paths_to_json(stripped).map_err(|e| {
-            ParsingSnafu {
-                details: format!("could parse json paths: {e}"),
-            }
-            .build()
-        })?;
-
-        let json_obj = json
-            .as_object()
-            .ok_or_else(|| {
-                ParsingSnafu {
-                    details: "could not convert json into json object",
-                }
-                .build()
-            })?
-            .to_owned();
-
-        Ok(json_obj)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use crate::crypto::Key;
@@ -602,6 +619,42 @@ mod tests {
         assert!(disclosed.contains_key("name"));
         assert_eq!(disclosed["name"], "John");
         assert!(!disclosed.contains_key("surname"));
+    }
+
+    #[tokio::test]
+    async fn sd_jwt_create_vp_works_when_disclosure_is_optional() {
+        let kms = LocalKms::new();
+        let (vc, hld_kh) = sample_sd_jwt_vc_with_hld_kh().await;
+        let nonce = &random_nonce().await;
+        let verifier_id = "verifier-id";
+
+        let vp = SdJwtAPI::create_vp(
+            &vc,
+            hld_kh,
+            nonce,
+            verifier_id,
+            VPMetadata {
+                disclosures: json!({
+                    "optional_claim" : "optional",
+                    "name": "optional",
+                })
+                .as_object()
+                .unwrap()
+                .to_owned(),
+            },
+        )
+        .await
+        .unwrap();
+
+        let disclosed = SdJwtAPI::verify_vp(&vp, nonce, verifier_id, VerifyOptions {})
+            .await
+            .unwrap();
+
+        let disclosed = disclosed.as_object().unwrap();
+
+        assert!(!disclosed.contains_key("optional_claim"));
+        assert!(disclosed.contains_key("name"));
+        assert_eq!(disclosed["name"], "John");
     }
 
     #[tokio::test]
