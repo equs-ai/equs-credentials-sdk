@@ -1,6 +1,5 @@
 import {
   AuthResponseOptions,
-  createDidAndKeyMetadata,
   enableLogs,
   inMemKms,
   localNonceGenerator,
@@ -11,6 +10,7 @@ import * as express from "express";
 import { urlencoded } from "express";
 import { json } from "body-parser";
 import { config } from "../components/config";
+import { createDidAndKeyMetadata } from "../components/utils";
 
 async function main(): Promise<void> {
   await enableLogs();

@@ -44,7 +44,7 @@ strum_macros = "0.26.4"
 strum = { version = "0.26.3", features = ["derive"] }
 reqwest = { version = "0.11", features = ["rustls-tls"] }
 uuid = { version = "1.10.0", features = ["v4"] }
-url = "2.5.2"
+url = "=2.5.2"
 anyhow = "1.0.86"
 async-rwlock = "1.3.0"
 tracing = { version = "0.1.40", features = ["attributes", "release_max_level_warn"] }

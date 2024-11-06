@@ -1,9 +1,5 @@
-use crate::kms::NativeKms;
-use crate::vc::core::{JsCredential, JsCredentialMetadata, JsDIDAndKeyMetadata, JsKeyMetadata};
+use crate::vc::core::{JsCredential, JsCredentialMetadata, JsKeyMetadata};
 use crate::vc::JsonObject;
-use agent_sdk::did::didkey::DIDKey;
-use agent_sdk::did::DIDResolver;
-use agent_sdk::kms;
 use agent_sdk::vc::metadata::{CredentialMetadataProcessor, DefaultMetadataProcessor};
 use napi_derive::napi;
 use serde::de::DeserializeOwned;
@@ -29,27 +25,6 @@ pub fn parse_url_arg(url: &str) -> napi::Result<Url> {
     url.parse().map_err(|err| {
         napi::Error::new(napi::Status::InvalidArg, format!("Url parse error: {err}"))
     })
-}
-
-#[cfg(debug_assertions)]
-#[napi]
-pub async fn create_did_and_key_metadata(kms: &NativeKms) -> JsDIDAndKeyMetadata {
-    let did_key = DIDKey::new();
-
-    let (kid, kh) = kms
-        .inner()
-        .create_and_handle(kms::KeyType::P256, kms::CreateOptions {})
-        .await
-        .unwrap();
-
-    let did = did_key.generate(kh).unwrap();
-
-    let vm = did_key.resolve_verification_method(&did).await.unwrap().id;
-
-    JsDIDAndKeyMetadata {
-        did,
-        key_metadata: JsKeyMetadata { did_url: vm, kid },
-    }
 }
 
 #[napi]

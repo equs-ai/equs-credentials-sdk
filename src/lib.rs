@@ -20,7 +20,7 @@ pub mod did;
 mod utils;
 pub mod vc;
 
-#[cfg(any(test, feature = "in-memory"))]
+// #[cfg(any(test, feature = "in-memory"))]
 pub mod inmem;
 pub mod nonce;
 pub mod reqwest;

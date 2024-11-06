@@ -1,0 +1,238 @@
+use crate::vc::JsonObject;
+use agent_sdk::http;
+use agent_sdk::http::{HttpClient, HttpSnafu};
+use async_trait::async_trait;
+use napi::bindgen_prelude::Promise;
+use napi::threadsafe_function::{ErrorStrategy, ThreadsafeFunction};
+use napi::{Error, Result};
+use napi_derive::napi;
+use oauth2::http::{HeaderMap, HeaderName, HeaderValue, Method, StatusCode};
+use oauth2::{HttpRequest, HttpResponse};
+use serde_json::Map;
+use url::Url;
+
+#[napi(js_name = "HttpMethod")]
+pub enum JsHttpMethod {
+    GET,
+    POST,
+    PUT,
+    DELETE,
+    HEAD,
+    OPTIONS,
+    CONNECT,
+    PATCH,
+    TRACE,
+}
+
+impl From<JsHttpMethod> for Method {
+    fn from(value: JsHttpMethod) -> Self {
+        match value {
+            JsHttpMethod::GET => Method::GET,
+            JsHttpMethod::POST => Method::POST,
+            JsHttpMethod::PUT => Method::PUT,
+            JsHttpMethod::DELETE => Method::DELETE,
+            JsHttpMethod::HEAD => Method::HEAD,
+            JsHttpMethod::OPTIONS => Method::OPTIONS,
+            JsHttpMethod::CONNECT => Method::CONNECT,
+            JsHttpMethod::PATCH => Method::PATCH,
+            JsHttpMethod::TRACE => Method::TRACE,
+        }
+    }
+}
+
+impl TryFrom<Method> for JsHttpMethod {
+    type Error = Error;
+    fn try_from(value: Method) -> Result<Self> {
+        match value {
+            Method::GET => Ok(JsHttpMethod::GET),
+            Method::POST => Ok(JsHttpMethod::POST),
+            Method::PUT => Ok(JsHttpMethod::PUT),
+            Method::DELETE => Ok(JsHttpMethod::DELETE),
+            Method::HEAD => Ok(JsHttpMethod::HEAD),
+            Method::OPTIONS => Ok(JsHttpMethod::OPTIONS),
+            Method::CONNECT => Ok(JsHttpMethod::CONNECT),
+            Method::PATCH => Ok(JsHttpMethod::PATCH),
+            Method::TRACE => Ok(JsHttpMethod::TRACE),
+            _ => Err(Error::from_reason("Invalid HTTP method")),
+        }
+    }
+}
+
+#[napi(object, js_name = "HttpRequest")]
+pub struct JsHttpRequest {
+    pub url: String,
+    pub method: JsHttpMethod,
+    pub headers: JsonObject,
+    pub body: Option<String>,
+}
+
+impl TryFrom<JsHttpRequest> for HttpRequest {
+    type Error = Error;
+    fn try_from(value: JsHttpRequest) -> Result<Self> {
+        Ok(Self {
+            url: Url::parse(&value.url).map_err(|e| Error::from_reason(e.to_string()))?,
+            method: value.method.into(),
+            headers: parse_json_to_header_map(value.headers)?,
+            body: convert_option_string_to_vec_u8(value.body),
+        })
+    }
+}
+
+impl TryFrom<HttpRequest> for JsHttpRequest {
+    type Error = Error;
+    fn try_from(value: HttpRequest) -> Result<Self> {
+        Ok(Self {
+            url: value.url.to_string(),
+            method: value.method.try_into()?,
+            headers: parse_header_map_to_map(value.headers)?,
+            body: convert_vec_u8_to_string(value.body)?,
+        })
+    }
+}
+
+#[napi(object, js_name = "HttpResponse")]
+pub struct JsHttpResponse {
+    pub status_code: u16,
+    pub headers: JsonObject,
+    pub body: Option<String>,
+}
+
+impl TryFrom<HttpResponse> for JsHttpResponse {
+    type Error = Error;
+    fn try_from(value: HttpResponse) -> Result<Self> {
+        Ok(Self {
+            status_code: value.status_code.as_u16(),
+            headers: parse_header_map_to_map(value.headers)?,
+            body: convert_vec_u8_to_string(value.body)?,
+        })
+    }
+}
+
+impl TryFrom<JsHttpResponse> for HttpResponse {
+    type Error = Error;
+    fn try_from(value: JsHttpResponse) -> Result<Self> {
+        let headers = parse_json_to_header_map(value.headers)?;
+
+        Ok(Self {
+            status_code: StatusCode::from_u16(value.status_code)
+                .map_err(|e| Error::from_reason(e.to_string()))?,
+            headers,
+            body: convert_option_string_to_vec_u8(value.body),
+        })
+    }
+}
+
+#[napi(js_name = "HttpClient", object, object_to_js = false)]
+pub struct JsHttpClient {
+    #[napi(ts_type = "(request: HttpRequest) => Promise<HttpResponse>")]
+    pub async_call: ThreadsafeFunction<JsHttpRequest, ErrorStrategy::Fatal>,
+}
+
+#[async_trait]
+impl HttpClient for JsHttpClient {
+    async fn async_call(&self, request: HttpRequest) -> http::Result<HttpResponse> {
+        let js_http_request = request.try_into().map_err(|e: Error| {
+            HttpSnafu {
+                details: e.to_string(),
+            }
+            .build()
+        })?;
+
+        let promise_js_http_response = self
+            .async_call
+            .call_async::<Promise<JsHttpResponse>>(js_http_request)
+            .await
+            .map_err(|e| {
+                HttpSnafu {
+                    details: e.to_string(),
+                }
+                .build()
+            })?;
+
+        let js_http_response = promise_js_http_response.await.map_err(|e| {
+            HttpSnafu {
+                details: e.to_string(),
+            }
+            .build()
+        })?;
+
+        let http_response = js_http_response.try_into().map_err(|e: Error| {
+            HttpSnafu {
+                details: e.to_string(),
+            }
+            .build()
+        })?;
+
+        Ok(http_response)
+    }
+}
+
+#[napi]
+pub struct NativeHttpClient(Box<dyn HttpClient>);
+
+#[napi]
+impl NativeHttpClient {
+    #[napi]
+    pub async fn async_call(&self, request: JsHttpRequest) -> Result<JsHttpResponse> {
+        self.0
+            .async_call(request.try_into()?)
+            .await
+            .map_err(|e| Error::from_reason(e.to_string()))?
+            .try_into()
+    }
+}
+
+fn parse_json_to_header_map(value: JsonObject) -> Result<HeaderMap> {
+    let mut headers = HeaderMap::new();
+
+    for (key, value) in value {
+        let header_name = HeaderName::from_bytes(key.as_bytes())
+            .map_err(|e| Error::from_reason(e.to_string()))?;
+        let header_value = HeaderValue::from_str(&value.to_string())
+            .map_err(|e| Error::from_reason(e.to_string()))?;
+
+        headers.insert(header_name, header_value);
+    }
+    Ok(headers)
+}
+fn parse_header_map_to_map(value: HeaderMap) -> Result<JsonObject> {
+    let mut headers = Map::new();
+    for (key, value) in value.iter() {
+        headers.insert(
+            key.to_string(),
+            serde_json::from_str(
+                value
+                    .to_str()
+                    .map_err(|e| Error::from_reason(e.to_string()))?,
+            )?,
+        );
+    }
+    Ok(headers)
+}
+
+fn convert_option_string_to_vec_u8(value: Option<String>) -> Vec<u8> {
+    if let Some(value) = value {
+        value.as_bytes().to_vec()
+    } else {
+        Vec::new()
+    }
+}
+fn convert_vec_u8_to_string(value: Vec<u8>) -> Result<Option<String>> {
+    if value.is_empty() {
+        return Ok(None);
+    }
+    let result = String::from_utf8(value).map_err(|e| Error::from_reason(e.to_string()))?;
+    Ok(Some(result))
+}
+
+#[napi]
+pub async fn for_http_request_test(
+    client: JsHttpClient,
+    req: JsHttpRequest,
+) -> Result<JsHttpResponse> {
+    client
+        .async_call(req.try_into()?)
+        .await
+        .map_err(|e| Error::from_reason(e.to_string()))
+        .and_then(|v| v.try_into())
+}

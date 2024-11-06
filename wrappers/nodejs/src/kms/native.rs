@@ -14,7 +14,7 @@ pub struct NativeKeyHandle(Arc<dyn SigningKey>, Arc<dyn VerifyingKey>);
 #[napi]
 impl NativeKeyHandle {
     #[napi]
-    pub fn pub_key(&self) -> napi::Result<Uint8Array> {
+    pub fn pub_key(&self) -> napi::Result<Vec<u8>> {
         self.0
             .pub_key()
             .map(Into::into)
