@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use common_macros::DebugError;
 use snafu::{Location, Snafu};
-use ssi::did::did_resolve::DIDResolver as SpruceResolver;
+pub use ssi::did::did_resolve::DIDResolver as SpruceResolver;
 use ssi::did::{Resource, VerificationMethod};
 use ssi::did_resolve::{dereference, Content, DereferencingInputMetadata};
 use std::fmt::Debug;
@@ -15,6 +15,7 @@ pub mod universal;
 ///
 /// Enumerates general errors expected during `DID` operations.
 #[derive(Snafu, DebugError)]
+#[snafu(visibility(pub))]
 #[non_exhaustive]
 pub enum Error {
     #[snafu(display("Unsupported method: {method}"))]
@@ -37,6 +38,12 @@ pub enum Error {
     },
     #[snafu(display("Resolution error: {details}"))]
     Resolution {
+        details: String,
+        #[snafu(implicit)]
+        location: Location,
+    },
+    #[snafu(display("Resolution verification error: {details}"))]
+    ResolutionVerification {
         details: String,
         #[snafu(implicit)]
         location: Location,

@@ -21,12 +21,6 @@ pub struct JsKeyMetadata {
     pub did_url: String,
     pub kid: String,
 }
-#[derive(Clone)]
-#[napi(js_name = "DIDAndKeyMetadata", object)]
-pub struct JsDIDAndKeyMetadata {
-    pub key_metadata: JsKeyMetadata,
-    pub did: String,
-}
 
 impl From<JsKeyMetadata> for KeyMetadata {
     fn from(value: JsKeyMetadata) -> Self {
@@ -529,9 +523,7 @@ pub struct JsCredentialDefinition {
 impl TryFrom<CredentialDefinition> for JsCredentialDefinition {
     type Error = Error;
     fn try_from(value: CredentialDefinition) -> Result<Self, Error> {
-        let supported_proofs = value
-            .supported_proofs
-            .and_then(|value| to_json_object(value).ok());
+        let supported_proofs = value.supported_proofs.map(to_json_object).transpose()?;
         let mut supported_signing_algs: Vec<JsAlg> = vec![];
         if let Some(v) = value.supported_signing_algs {
             for alg in v {
@@ -555,9 +547,7 @@ impl TryFrom<CredentialDefinition> for JsCredentialDefinition {
 impl TryFrom<JsCredentialDefinition> for CredentialDefinition {
     type Error = Error;
     fn try_from(value: JsCredentialDefinition) -> Result<Self, Error> {
-        let supported_proofs = value
-            .supported_proofs
-            .and_then(|value| from_json_object(value).ok());
+        let supported_proofs = value.supported_proofs.map(from_json_object).transpose()?;
         let mut supported_signing_algs: Vec<Alg> = vec![];
         if let Some(v) = value.supported_signing_algs {
             for alg in v {
@@ -572,13 +562,13 @@ impl TryFrom<JsCredentialDefinition> for CredentialDefinition {
             supported_proofs,
             supported_signing_algs: Some(supported_signing_algs),
             display: value.display.map(|v| v.into()),
-            protocol_data: value.protocol_data.and_then(|v| from_json_object(v).ok()),
+            protocol_data: value.protocol_data.map(from_json_object).transpose()?,
             key_metadata: value.key_metadata.into(),
         })
     }
 }
 
-#[napi(js_name = "IssuerMetadata", object)]
+#[napi(object, js_name = "IssuerMetadata")]
 pub struct JsIssuerMetadata {
     pub issuer_id: String,
     pub cred_defs: Vec<JsCredentialDefinition>,

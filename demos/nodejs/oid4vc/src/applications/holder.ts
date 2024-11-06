@@ -1,5 +1,4 @@
 import {
-  createDidAndKeyMetadata,
   CredentialDeferred,
   CredentialImmediate,
   CredentialResponse,
@@ -16,7 +15,7 @@ import {
   resolveMetadata,
 } from "../../../../../wrappers/nodejs";
 import { config } from "../components/config";
-import { readFromCLI } from "../components/utils";
+import { createDidAndKeyMetadata, readFromCLI } from "../components/utils";
 
 async function main(): Promise<void> {
   await enableLogs();
@@ -79,7 +78,7 @@ async function presentationFlow(holder: Oid4VpHolder): Promise<void> {
 
   const authRequest = await holder.getAuthorizationRequest(requestURI);
   console.log("Auth request received: ");
-  console.dir(authRequest, { depth: 5 });
+  console.dir(authRequest, { depth: 2 });
 
   console.log("Holder sends authorization/presentation response to Verifier");
   await holder.presentCredentialsAuto(authRequest);

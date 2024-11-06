@@ -1,6 +1,5 @@
 import {
 	Alg,
-	createDidAndKeyMetadata,
 	CredentialOfferContentFormat,
 	inMemKms,
 	inMemVault,
@@ -8,6 +7,7 @@ import {
 	PresentationInput,
 	VCFormat,
 } from "../../index";
+import { createDidAndKeyMetadata } from "../utils/utils";
 
 export class Utils {
 	readonly nonce = "KB50VOm9I-kPLT9mAACV8g";

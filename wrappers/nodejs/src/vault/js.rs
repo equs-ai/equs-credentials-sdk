@@ -16,7 +16,7 @@ pub struct JsVault {
         ThreadsafeFunction<(JsCredential, JsCredentialMetadata), ErrorStrategy::Fatal>,
     #[napi(ts_type = "(id: string) => Promise<CredentialEntry | null>")]
     pub get_credential: ThreadsafeFunction<String, ErrorStrategy::Fatal>,
-    #[napi(ts_type = "(criteria: CredentialSearchCriteria) => Array<CredentialEntry>")]
+    #[napi(ts_type = "(criteria: CredentialSearchCriteria) => Promise<Array<CredentialEntry>>")]
     pub find_credentials: ThreadsafeFunction<CredentialSearchCriteria, ErrorStrategy::Fatal>,
 }
 

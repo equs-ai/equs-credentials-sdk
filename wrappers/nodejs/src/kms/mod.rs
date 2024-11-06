@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use napi_derive::napi;
 use std::sync::Arc;
 
-mod js;
+pub mod js;
 mod native;
 #[cfg(debug_assertions)]
 pub mod test;
