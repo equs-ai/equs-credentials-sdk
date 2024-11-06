@@ -63,6 +63,34 @@ impl InMemVault {
         let vec = map.get(&index);
         vec.cloned().unwrap_or_else(Vec::new)
     }
+
+    #[cfg(test)]
+    pub(crate) async fn store_entry(&self, entry: &CredentialEntry) -> Result<String, Error> {
+        let credential = entry.credential.to_owned();
+        let kid = entry.kid.to_owned();
+
+        use crate::vc::core::api::KeyMetadata;
+        use crate::vc::metadata::{CredentialMetadataProcessor, DefaultMetadataProcessor};
+
+        let metadata = DefaultMetadataProcessor::resolve_metadata(
+            &credential,
+            KeyMetadata {
+                did_url: "to-be-ignored".to_string(),
+                kid,
+            },
+        )
+        .unwrap();
+
+        self.store_credential(credential, &metadata).await
+    }
+
+    #[cfg(test)]
+    pub(crate) async fn store_entries(
+        &self,
+        entries: Vec<&CredentialEntry>,
+    ) -> Result<Vec<String>, Error> {
+        future::try_join_all(entries.iter().map(|entry| self.store_entry(entry))).await
+    }
 }
 
 #[async_trait]

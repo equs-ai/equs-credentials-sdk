@@ -297,3 +297,168 @@ where
         Ok((did_url, kh))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::inmem::kms::LocalKms;
+    use crate::kms::KeyType;
+    use crate::utils::test_utils::create_did_and_key_metadata;
+    use crate::vc::core::tests::fixtures::{
+        sample_cred_def, sample_issuer_metadata, CRED_DEF_ID, ISSUER_ID,
+    };
+    use crate::vc::core::tests::utils::{random_nonce, CredTestCase};
+    use crate::vc::core::{
+        CredentialOfferContent, CredentialRequest, Error, Issuer, IssuerService, KeyMetadata,
+    };
+    use rstest::rstest;
+
+    #[rstest]
+    #[case::sd_jwt(CredTestCase::sd_jwt())]
+    #[case::ldp_vc(CredTestCase::ldp_vc())]
+    #[tokio::test]
+    async fn issuer_offers_credential_correctly(#[case] case: CredTestCase) {
+        let kms = LocalKms::new();
+        let (_, key_metadata) = create_did_and_key_metadata(&kms).await;
+
+        let issuer = issuer_service(kms, key_metadata.clone(), &case);
+
+        let offer = issuer.offer_credential(CRED_DEF_ID, None).unwrap();
+
+        assert_eq!(offer.issuer_id, ISSUER_ID);
+        assert_eq!(
+            offer.content,
+            CredentialOfferContent::CredDef(sample_cred_def(&case, key_metadata))
+        )
+    }
+
+    #[rstest]
+    #[case::sd_jwt(CredTestCase::sd_jwt())]
+    #[case::ldp_vc(CredTestCase::ldp_vc())]
+    #[tokio::test]
+    async fn issuer_issues_credential_correctly(#[case] case: CredTestCase) {
+        let kms = LocalKms::new();
+        let (_, key_metadata) = create_did_and_key_metadata(&kms).await;
+
+        let nonce = random_nonce().await;
+        let proof = case.generate_pop(&kms, &nonce, KeyType::P256).await;
+
+        let issuer = issuer_service(kms, key_metadata, &case);
+
+        let request = case.create_cred_request(proof);
+
+        let credential = issuer
+            .issue_credential(&request, &case.claims, &nonce)
+            .await
+            .unwrap();
+
+        case.assert_credential(&credential).await;
+    }
+
+    #[rstest]
+    #[case::sd_jwt(CredTestCase::sd_jwt())]
+    #[case::ldp_vc(CredTestCase::ldp_vc())]
+    #[tokio::test]
+    async fn issuer_issues_credential_fails_on_unknown_cred_def(#[case] case: CredTestCase) {
+        let kms = LocalKms::new();
+        let (_, key_metadata) = create_did_and_key_metadata(&kms).await;
+
+        let nonce = random_nonce().await;
+        let proof = case.generate_pop(&kms, &nonce, KeyType::P256).await;
+
+        let issuer = issuer_service(kms, key_metadata, &case);
+
+        let request = case.create_cred_request(proof);
+        let request = CredentialRequest {
+            cred_def_id: "unknown".to_string(),
+            ..request
+        };
+
+        let res = issuer
+            .issue_credential(&request, &case.claims, &nonce)
+            .await;
+
+        assert!(matches!(res.err(), Some(Error::CredDefNotFound { .. })));
+    }
+
+    #[rstest]
+    #[case::sd_jwt(CredTestCase::sd_jwt())]
+    #[case::ldp_vc(CredTestCase::ldp_vc())]
+    #[tokio::test]
+    async fn issuer_issues_credential_fails_on_unsupported_proof(#[case] case: CredTestCase) {
+        let kms = LocalKms::new();
+        let (_, key_metadata) = create_did_and_key_metadata(&kms).await;
+
+        let nonce = random_nonce().await;
+        let proof = case.generate_pop(&kms, &nonce, KeyType::Ed25519).await;
+
+        let issuer = issuer_service(kms, key_metadata, &case);
+
+        let request = case.create_cred_request(proof);
+
+        let res = issuer
+            .issue_credential(&request, &case.claims, &nonce)
+            .await;
+
+        assert!(matches!(
+            res.err(),
+            Some(Error::ProofFormatNotSupported { .. })
+        ));
+    }
+
+    #[rstest]
+    #[case::sd_jwt(CredTestCase::sd_jwt())]
+    #[case::ldp_vc(CredTestCase::ldp_vc())]
+    #[tokio::test]
+    async fn issuer_issues_credential_fails_on_invalid_proof(#[case] case: CredTestCase) {
+        let kms = LocalKms::new();
+        let (_, key_metadata) = create_did_and_key_metadata(&kms).await;
+
+        let nonce = random_nonce().await;
+        let proof = "invalid_proof".to_string();
+
+        let issuer = issuer_service(kms, key_metadata, &case);
+
+        let request = case.create_cred_request(proof);
+
+        let res = issuer
+            .issue_credential(&request, &case.claims, &nonce)
+            .await;
+
+        assert!(matches!(res.err(), Some(Error::Proof { .. })));
+    }
+
+    #[rstest]
+    #[case::sd_jwt(CredTestCase::sd_jwt())]
+    #[case::ldp_vc(CredTestCase::ldp_vc())]
+    #[tokio::test]
+    async fn issuer_issues_credential_fails_on_invalid_key(#[case] case: CredTestCase) {
+        let kms = LocalKms::new();
+        let (_, key_metadata) = create_did_and_key_metadata(&kms).await;
+
+        let nonce = random_nonce().await;
+        let proof = case.generate_pop(&kms, &nonce, KeyType::P256).await;
+
+        let key_metadata = KeyMetadata {
+            did_url: key_metadata.did_url,
+            kid: "invalid-kid".to_string(),
+        };
+
+        let issuer = issuer_service(kms, key_metadata, &case);
+
+        let request = case.create_cred_request(proof);
+
+        let res = issuer
+            .issue_credential(&request, &case.claims, &nonce)
+            .await;
+
+        assert!(matches!(res.err(), Some(Error::KMS { .. })));
+    }
+
+    fn issuer_service(
+        kms: LocalKms,
+        key_metadata: KeyMetadata,
+        case: &CredTestCase,
+    ) -> impl Issuer {
+        IssuerService::new(kms, sample_issuer_metadata(key_metadata, case))
+    }
+}

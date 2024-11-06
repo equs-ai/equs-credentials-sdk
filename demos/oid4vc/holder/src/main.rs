@@ -302,7 +302,7 @@ fn get_issuer_discovery_mode() -> IssuerDiscovery {
             IssuerDiscovery::Url(input.to_string())
         }
         "2" => {
-            println!("Please enter the Credential offer Json Value");
+            println!("Please enter the Credential offer Json Value from from http://localhost:8088/credential_offer:");
             input = input_from_console("Failed to read the value of the Credential offer");
 
             IssuerDiscovery::Offer(CredentialOffer::Value {

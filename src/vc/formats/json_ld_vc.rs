@@ -14,14 +14,16 @@ use chrono::TimeDelta;
 use serde_json::Value;
 use snafu::ResultExt;
 use ssi::vc::{
-    Contexts, Credential, CredentialOrJWT, CredentialSubject, OneOrMany, Presentation, VCDateTime,
-    ALT_DEFAULT_CONTEXT, DEFAULT_CONTEXT, DEFAULT_CONTEXT_V2, URI,
+    Contexts, CredentialOrJWT, CredentialSubject, OneOrMany, VCDateTime, ALT_DEFAULT_CONTEXT,
+    DEFAULT_CONTEXT, DEFAULT_CONTEXT_V2, URI,
 };
 use ssi_ldp::{Context, ProofSuite, SigningInput};
 use std::collections::HashMap;
 use tracing::{instrument, trace, Level};
 
 pub type Claims = HashMap<String, Value>;
+pub type Credential = ssi::vc::Credential;
+pub type Presentation = ssi::vc::Presentation;
 
 const DEFAULT_VC_TYPE: &str = "VerifiableCredential";
 const DEFAULT_VP_TYPE: &str = "VerifiablePresentation";

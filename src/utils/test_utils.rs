@@ -2,7 +2,7 @@ use crate::crypto::{Alg, Key, Signer, SigningKey};
 use crate::did::didkey::DIDKey;
 use crate::did::{DIDResolver, DID, DIDURL};
 use crate::inmem::kms::LocalKms;
-use crate::kms::{KeyHandle, KeyType, Kms};
+use crate::kms::{KeyHandle, KeyID, KeyType, Kms};
 use crate::vc::core::KeyMetadata;
 use crate::{crypto, kms};
 use async_trait::async_trait;
@@ -10,10 +10,17 @@ use ssi::jwk::JWK;
 use std::str::FromStr;
 
 pub async fn create_did_and_key_metadata(kms: &LocalKms) -> (DID, KeyMetadata) {
+    create_did_and_key_metadata_by_key_type(kms, KeyType::P256).await
+}
+
+pub async fn create_did_and_key_metadata_by_key_type(
+    kms: &LocalKms,
+    kt: KeyType,
+) -> (DID, KeyMetadata) {
     let didkey = DIDKey::new();
 
     let (kid, kh) = kms
-        .create_and_handle(kms::KeyType::P256, kms::CreateOptions {})
+        .create_and_handle(kt, kms::CreateOptions {})
         .await
         .unwrap();
 
@@ -40,6 +47,24 @@ pub async fn create_did_url_and_key_handle(
 
     let did_url = DIDURL::from_str(&vm).unwrap();
     (did_url, kh)
+}
+
+pub async fn create_did_url_and_key_handle_kid(
+    kms: &LocalKms,
+    key_type: KeyType,
+) -> (DIDURL, KeyID, impl KeyHandle) {
+    let didkey = DIDKey::new();
+
+    let (kid, kh) = kms
+        .create_and_handle(key_type, kms::CreateOptions {})
+        .await
+        .unwrap();
+
+    let did = didkey.generate(kh.clone()).unwrap();
+    let vm = didkey.resolve_verification_method(&did).await.unwrap().id;
+
+    let did_url = DIDURL::from_str(&vm).unwrap();
+    (did_url, kid, kh)
 }
 
 pub fn no_jwk_key() -> impl SigningKey {

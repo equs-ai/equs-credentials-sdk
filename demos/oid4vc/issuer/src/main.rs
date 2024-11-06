@@ -110,7 +110,7 @@ async fn credential_offer(state: web::Data<AppState>) -> HttpResponse {
     let (credential_offer, url) = state
         .issuer
         .create_credential_offer(
-            vec!["SD_JWT_cred_1", "SD_JWT_cred_2"],
+            vec!["SD_JWT_cred_1", "JSON_LDP_cred_2"],
             &CredentialOfferGrants {
                 authorization_code: Some(AuthorizationCodeGrant { issuer_state: None }),
                 pre_authorized_code: None,
