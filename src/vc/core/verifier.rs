@@ -54,3 +54,56 @@ impl VerifierService {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::inmem::kms::LocalKms;
+    use crate::vc::core::tests::fixtures::VERIFIER_ID;
+    use crate::vc::core::tests::utils::{random_nonce, CredTestCase};
+    use crate::vc::core::{Error, Verifier, VerifierService};
+    use rstest::rstest;
+
+    #[rstest]
+    #[case::sd_jwt(CredTestCase::sd_jwt())]
+    #[case::ldp_vc(CredTestCase::ldp_vc())]
+    #[tokio::test]
+    async fn verifier_verifies_credential_correctly(#[case] case: CredTestCase) {
+        let kms = LocalKms::new();
+
+        let nonce = random_nonce().await;
+
+        let vc = case.generate_vc(&kms).await;
+        let vp = case.generate_vp(&kms, &vc, &nonce).await;
+
+        let verifier = verifier_service();
+
+        let claims = verifier.verify_presentation(&nonce, &vp).await.unwrap();
+
+        let claims = claims.as_object().unwrap();
+
+        case.assert_verified_claims(claims).await;
+    }
+
+    #[rstest]
+    #[case::sd_jwt(CredTestCase::sd_jwt())]
+    #[tokio::test]
+    async fn verifier_verify_fails_on_invalid_nonce(#[case] case: CredTestCase) {
+        let kms = LocalKms::new();
+
+        let nonce1 = random_nonce().await;
+        let nonce2 = random_nonce().await;
+
+        let vc = case.generate_vc(&kms).await;
+        let vp = case.generate_vp(&kms, &vc, &nonce1).await;
+
+        let verifier = verifier_service();
+
+        let res = verifier.verify_presentation(&nonce2, &vp).await;
+
+        assert!(matches!(res.err(), Some(Error::VC { .. })));
+    }
+
+    fn verifier_service() -> impl Verifier {
+        VerifierService::new(VERIFIER_ID)
+    }
+}

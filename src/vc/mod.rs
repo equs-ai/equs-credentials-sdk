@@ -1,5 +1,5 @@
 use crate::crypto::Alg;
-use crate::vc::formats::sd_jwt_vc;
+use crate::vc::formats::{sd_jwt_vc, FormatNotSupportedSnafu, HasCredential};
 use serde::{Deserialize, Serialize};
 
 pub use crate::vc::formats::json_ld_vc::{
@@ -81,6 +81,33 @@ pub enum Presentation {
     LdpVp(ssi::vc::Presentation),
     // SD-JWT
     SdJwtVp(String),
+}
+
+impl HasVPFormat for Presentation {
+    fn format(&self) -> VPFormat {
+        match self {
+            Presentation::JwtVp(_) => VPFormat::JwtVp,
+            Presentation::LdpVp(_) => VPFormat::LdpVp,
+            Presentation::SdJwtVp(_) => VPFormat::SdJwtVp,
+        }
+    }
+}
+
+impl HasCredential<Credential> for Presentation {
+    fn get_credential(&self) -> formats::Result<Credential> {
+        match &self {
+            Presentation::SdJwtVp(presentation) => {
+                Ok(Credential::SdJwt(presentation.get_credential()?))
+            }
+            Presentation::LdpVp(presentation) => {
+                Ok(Credential::LdpVc(presentation.get_credential()?))
+            }
+            _ => FormatNotSupportedSnafu {
+                format: self.format().to_string(),
+            }
+            .fail(),
+        }
+    }
 }
 
 /// Basic format for `Claims`.

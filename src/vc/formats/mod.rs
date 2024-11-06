@@ -17,6 +17,7 @@ pub mod vp;
 ///
 /// Defines errors for all supported low-level VC operations.
 #[derive(Snafu, DebugError)]
+#[snafu(visibility(pub))]
 #[non_exhaustive]
 pub enum Error {
     #[snafu(display("Unsupported format: {format}"))]
