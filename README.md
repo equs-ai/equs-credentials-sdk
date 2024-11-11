@@ -31,13 +31,15 @@ See [Components](docs/asdk-components.png).
 #### Implemented
 - VC Formats:
   - SD-JWT VC (version: TBD)
+  - W3C JSON-LD (version: TBD)
 - VC Exchange Protocols:
     - OID4VCI (draft 14)
         - Authorization Code Flow using scope Parameter to Request Issuance of a Credential
-    - OID4VP (draft 21)
+    - OID4VP (draft 22)
         - Cross Device Flow
 - DID methods
   - did:key (version: TBD)
+  - did:web (version: TBD)
 
 #### Planned
 - VC Formats:
@@ -53,7 +55,6 @@ See [Components](docs/asdk-components.png).
       - Response Mode "direct_post.jwt"
     - Aries AIPv2
 - DID methods
-    - did:web
     - did:peer
     - did:ethr or similar
 - DIDComm and Protocols Engine 
@@ -112,11 +113,11 @@ An example of integration: https://git.slock.it/equstng/proof-of-concepts/asdk-d
 3. Integrate OID4VC Holder API
    - [VC OID4VC API Auth Code: Full Flow](docs/vc-oid4vc-api-auth-code-full.png) or  [VC OID4VC API Auth Code: Already Authorized](docs/vc-oid4vc-api-auth-code-already-authorized.png)
    - For VCI refer to:
-     - [Holder VCI API](src/vc/oid4vci/mod.rs)
+     - [Holder VCI API](src/vc/oid4vci/api.rs)
      - [Holder VCI Builder](src/vc/oid4vci/builder.rs)
      - [Holder VCI Service](src/vc/oid4vci/holder.rs) (not publicly exposed)
    - For VP refer to:
-     - [Holder VP API](src/vc/oid4vp/mod.rs)
+     - [Holder VP API](src/vc/oid4vp/api.rs)
      - [Holder VP Builder](src/vc/oid4vp/builder.rs)
      - [Holder VP Service](src/vc/oid4vp/holder.rs) (not publicly exposed)
 
@@ -125,7 +126,7 @@ An example of integration: https://git.slock.it/equstng/proof-of-concepts/asdk-d
 1. Implement application/platform specific KMS
 2. Instantiate OID4VC Issuer Service
     - [VC OID4VC API Auth Code: Full Flow](docs/vc-oid4vc-api-auth-code-full.png) or  [VC OID4VC API Auth Code: Already Authorized](docs/vc-oid4vc-api-auth-code-already-authorized.png)
-    - [Issuer API](src/vc/oid4vci/mod.rs)
+    - [Issuer API](src/vc/oid4vci/api.rs)
     - [Issuer Builder](src/vc/oid4vci/builder.rs)
     - [Issuer Service](src/vc/oid4vci/issuer.rs) (not publicly exposed)
 3. Create Issuer Metadata
@@ -141,7 +142,7 @@ An example of integration: https://git.slock.it/equstng/proof-of-concepts/asdk-d
 **Web App: Verifier**
 1. Integrate OID4VC Verifier Service
    - [VC OID4VC API Auth Code](docs/vc-oid4vc-api-auth-code-full.png)
-   - [Verifier API](src/vc/oid4vp/mod.rs)
+   - [Verifier API](src/vc/oid4vp/api.rs)
    - [Verifier Builder](src/vc/oid4vp/builder.rs)
    - [Verifier Service](src/vc/oid4vp/verifier.rs) (not publicly exposed)
 2. Implement the following endpoints. Each endpoint should call the corresponding ASDK Verifier API method.
@@ -150,7 +151,7 @@ An example of integration: https://git.slock.it/equstng/proof-of-concepts/asdk-d
 
 
 **Note:**
-ASDK contains an example of KMS and Vault (not part of default build) based on [aries-askar](https://github.com/hyperledger/aries-askar), see [src/askar](src/askar). The current implementations are not recommended  for production (just demo purposes), but production ones can be created based on it.
+ASDK contains an example of KMS and Vault (not part of default build) based on [aries-askar](https://github.com/hyperledger/aries-askar), see [src/askar](plugins/askar). The current implementations are not recommended  for production (just demo purposes), but production ones can be created based on it.
 
 ## Dependencies
 - https://github.com/spruceid/ssi (v0.7.0)
