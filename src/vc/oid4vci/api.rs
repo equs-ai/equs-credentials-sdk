@@ -1,13 +1,17 @@
+use crate::http::HttpError;
 use crate::nonce::NonceData;
 use crate::vc::core::KeyMetadata;
+use crate::vc::oid4vci::internal_error::RequestSnafu;
 use crate::vc::oid4vci::{metadata, InternalError, ProtocolError};
 use crate::vc::{Claims, Credential, CredentialMetadata};
 use async_trait::async_trait;
 use oauth2::AccessToken;
 use oid4vci::core::profiles::CoreProfilesOffer;
+use oid4vci::credential::RequestError;
 use serde::{Deserialize, Serialize};
-use snafu::Snafu;
+use snafu::{IntoError, Snafu};
 use std::fmt::Debug;
+use tracing::{instrument, Level};
 
 // Data types
 pub type IssuerMetadata = metadata::IssuerMetadata;
@@ -316,4 +320,27 @@ pub trait Holder: Send + Sync {
         credential: &Credential,
         credential_metadata: &CredentialMetadata,
     ) -> Result<()>;
+}
+
+impl From<RequestError<HttpError>> for Error {
+    #[instrument(
+        level = Level::TRACE,
+        ret(),
+    )]
+    fn from(value: RequestError<HttpError>) -> Self {
+        match &value {
+            RequestError::Response(_, body, _) => {
+                let result = serde_json::from_slice::<ProtocolError>(body.as_slice());
+                match result {
+                    Ok(value) => Self::Protocol { source: value },
+                    Err(_) => Self::Internal {
+                        source: RequestSnafu.into_error(value),
+                    },
+                }
+            }
+            _ => Self::Internal {
+                source: RequestSnafu.into_error(value),
+            },
+        }
+    }
 }

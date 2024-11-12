@@ -252,7 +252,11 @@ pub mod fixtures {
     }
 
     pub fn sample_access_token() -> AccessToken {
-        oauth2::AccessToken::new(ACCESS_TOKEN.to_string())
+        AccessToken::new(ACCESS_TOKEN.to_string())
+    }
+
+    pub fn fake_access_token() -> AccessToken {
+        AccessToken::new("".to_string())
     }
 
     pub fn sample_nonce() -> NonceData {

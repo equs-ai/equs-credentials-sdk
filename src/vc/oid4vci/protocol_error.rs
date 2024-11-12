@@ -1,11 +1,8 @@
-use oid4vci::credential::RequestError;
 use serde::{Deserialize, Serialize};
 use snafu::Snafu;
 use std::fmt::Debug;
 use time::Duration;
-use tracing::{instrument, Level};
 
-use crate::http::HttpError;
 use crate::nonce::Nonce;
 use crate::utils::serde::{duration_to_int, int_to_duration};
 use crate::vc::oid4vci::ErrorType;
@@ -85,42 +82,6 @@ impl ProtocolSnafu<ErrorType, Option<String>, Option<Nonce>, Option<Duration>> {
             error_description: Some(description.to_owned()),
             c_nonce: Some(nonce.to_owned()),
             c_nonce_expires_in: nonce_expires_in.to_owned(),
-        }
-    }
-}
-
-impl TryFrom<RequestError<HttpError>> for ProtocolError {
-    type Error = RequestError<HttpError>;
-
-    #[instrument(
-        level = Level::TRACE,
-        err(),
-        ret(),
-    )]
-    fn try_from(value: RequestError<HttpError>) -> Result<Self, Self::Error> {
-        match &value {
-            RequestError::Response(_, body, _) => {
-                serde_json::from_slice::<ProtocolError>(body.as_slice()).map_err(|_| value)
-            }
-            RequestError::ProofVerification(body) => {
-                let protocol_error = match &body.c_nonce {
-                    Some(nonce) => ProtocolSnafu::new_with_nonce(
-                        ErrorType::InvalidProof,
-                        &body.error_description,
-                        &Nonce(nonce.secret().to_owned()),
-                        &body.c_nonce_expires_in.map(Duration::seconds),
-                    )
-                    .build(),
-                    _ => ProtocolSnafu::new(
-                        ErrorType::InvalidProof,
-                        body.error_description.to_owned(),
-                    )
-                    .build(),
-                };
-
-                Ok(protocol_error)
-            }
-            _ => Err(value),
         }
     }
 }
