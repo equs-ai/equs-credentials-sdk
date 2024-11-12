@@ -28,12 +28,11 @@ use crate::nonce::{Nonce, NonceData};
 use crate::vc;
 use crate::vc::core::{CredentialOfferContent, KeyMetadata, Proof as AsdkProof};
 use crate::vc::oid4vci::internal_error::{
-    DiscoverySnafu, IssuerServiceSnafu, MetadataSnafu, RequestSnafu, UrlParseSnafu, VCSnafu,
+    DiscoverySnafu, IssuerServiceSnafu, MetadataSnafu, UrlParseSnafu, VCSnafu,
 };
 use crate::vc::oid4vci::protocol_error::ProtocolSnafu;
 use crate::vc::oid4vci::{
-    metadata, CredDefMetadata, CredentialResponseResolved, CredentialResult, ProtocolError,
-    TokenResponse,
+    metadata, CredDefMetadata, CredentialResponseResolved, CredentialResult, TokenResponse,
 };
 use crate::vc::{oid4vci as api, HasVCFormat};
 use crate::vc::{Credential, CredentialMetadata};
@@ -360,8 +359,7 @@ where
 
         let resp = credential_request
             .request_async(|req| self.http_client.async_call(req))
-            .await
-            .context(RequestSnafu)?;
+            .await?;
 
         let cred_result: CredentialResult = (&resp).try_into()?;
 
@@ -446,8 +444,7 @@ where
 
         let (auth_url, out_csrf) = push_request
             .async_request(|req| self.http_client.async_call(req), None, None)
-            .await
-            .context(RequestSnafu)?;
+            .await?;
 
         ensure!(
             in_csrf.secret() == out_csrf.secret(),
@@ -503,33 +500,34 @@ where
             .client
             .request_credential(token, cred_req)
             .request_async(|req| self.http_client.async_call(req))
-            .await;
+            .await
+            .map_err(|e| e.into());
 
         trace!(nonce_response = ?resp);
 
-        let nonce = match resp {
+        match resp {
             Ok(_) => IssuerServiceSnafu {
                 details: "Issuer does not provide a nonce",
             }
             .fail()?,
-            Err(err) => {
-                let protocol_error: ProtocolError = err.try_into().context(RequestSnafu)?;
-                let nonce = protocol_error.nonce().ok_or(
+
+            Err(Error::Protocol { source }) => {
+                let nonce = source.nonce().ok_or(
                     IssuerServiceSnafu {
                         details: "Providing PoP without nonce is unsupported",
                     }
                     .build(),
                 )?;
 
-                NonceData {
+                Ok(NonceData {
                     value: nonce.to_owned(),
-                    expires_in: protocol_error.nonce_expiration().map(|e| e.to_owned()),
+                    expires_in: source.nonce_expiration().map(|e| e.to_owned()),
                     created: OffsetDateTime::now_utc(),
-                }
+                })
             }
-        };
 
-        Ok(nonce)
+            Err(error) => Err(error)?,
+        }
     }
 
     #[instrument(
@@ -682,10 +680,10 @@ mod tests {
     use crate::utils::test_utils::create_did_and_key_metadata;
     use crate::vault::{MockVault, Vault};
     use crate::vc::oid4vci::tests::fixtures::{
-        sample_access_token, sample_authorization_metadata, sample_cred_response,
-        sample_credential_definition, sample_nonce, SampleIssuerMetadata, ACCESS_TOKEN,
-        AUTH_REDIRECT_URL, AUTH_URL, CRED_DEF_ID, ISSUER_URL, NOTIFICATION_ID, REQ_URI_CODE, SCOPE,
-        SD_JWT_CREDS,
+        fake_access_token, sample_access_token, sample_authorization_metadata,
+        sample_cred_response, sample_credential_definition, sample_nonce, SampleIssuerMetadata,
+        ACCESS_TOKEN, AUTH_REDIRECT_URL, AUTH_URL, CRED_DEF_ID, ISSUER_URL, NOTIFICATION_ID,
+        REQ_URI_CODE, SCOPE, SD_JWT_CREDS,
     };
     use crate::vc::oid4vci::{CredentialRequest, CredentialResult, Holder};
     use crate::vc::VCFormat;
@@ -959,6 +957,7 @@ mod tests {
             .await
             .unwrap();
     }
+
     #[tokio::test]
     #[should_panic(expected = "Issuer does not provide a nonce")]
     async fn holder_fails_with_no_nonce_provided() {
@@ -985,6 +984,46 @@ mod tests {
 
         let result = holder_service
             .request_credential(&sample_access_token(), CRED_DEF_ID, None, &key_metadata)
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    #[should_panic(expected = "Could not parse the access token")]
+    async fn holder_shows_informative_error_display_on_wrong_access_token() {
+        let mut http_client = MockHttpClient::new();
+
+        mock_http_once(
+            &mut http_client,
+            Method::POST,
+            credential_endpoint(),
+            json!({
+               "error": ErrorType::InvalidToken,
+               "error_description": "Could not parse the access token",
+               "c_nonce": "n0nce",
+               "c_nonce_expires_in": 8600,
+            }),
+            StatusCode::BAD_REQUEST,
+        );
+
+        let kms = LocalKms::new();
+        let (_, key_metadata) = create_did_and_key_metadata(&kms).await;
+
+        let holder = holder_service_from_issuer_metadata(
+            http_client,
+            InMemVault::new(),
+            kms,
+            SampleIssuerMetadata::with_sdjwtvc_conf(),
+        )
+        .await;
+
+        let response = holder
+            .request_credential(
+                &fake_access_token(),
+                CRED_DEF_ID,
+                Some(&sample_nonce()),
+                &key_metadata,
+            )
             .await
             .unwrap();
     }
