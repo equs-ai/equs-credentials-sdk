@@ -172,7 +172,10 @@ pub mod fixtures {
             AuthResponseOptions, PresentationSession, ResolvedAuthRequest, ResponseMode,
             ResponseType, ResponseUri,
         };
-        use crate::vc::presentation_exchange::{PresentationDefinition, PresentationSubmission};
+        use crate::vc::presentation_exchange::{
+            PresentationDefinition, PresentationSubmission, SubmissionRequirement,
+            SubmissionRequirementBase, SubmissionRequirementObject, SubmissionRequirementPick,
+        };
         use serde_json::json;
         use url::Url;
 
@@ -245,7 +248,8 @@ pub mod fixtures {
                        },
                        {
                           "path":[
-                            "$.name"
+                            "$.name",
+                            "$.email.personal"
                           ]
                        }
                     ]
@@ -343,7 +347,8 @@ pub mod fixtures {
                            },
                            {
                              "path":[
-                               "$.name"
+                               "$.name",
+                               "$.email.personal"
                              ]
                           }
                         ]
@@ -364,6 +369,22 @@ pub mod fixtures {
             serde_json::from_str(PRESENTATION_SUBMISSION).unwrap()
         }
 
+        pub fn submission_requirements(pick_count: usize) -> Vec<SubmissionRequirement> {
+            vec![SubmissionRequirement::Pick(SubmissionRequirementPick {
+                submission_requirement: SubmissionRequirementBase::From {
+                    from: "A".to_string(),
+                    submission_requirement_base: SubmissionRequirementObject {
+                        name: Some("Identity proof".to_string()),
+                        purpose: None,
+                        property_set: None,
+                    },
+                },
+                count: Some(pick_count),
+                min: None,
+                max: None,
+            })]
+        }
+
         pub fn auth_request() -> ResolvedAuthRequest {
             serde_json::from_str(AUTH_REQUEST).unwrap()
         }
@@ -382,6 +403,10 @@ pub mod fixtures {
                     "SD_JWT_cred",
                     json!({
                         "name": "John",
+                        "email": {
+                            "work": "work@example.com",
+                            "personal": "personal@example.com"
+                        },
                     }),
                 ),
             ]

@@ -45,6 +45,10 @@ impl ProtocolError {
     pub fn access_denied(message: &str) -> ProtocolError {
         ProtocolError::new(ErrorType::AccessDenied, Some(message.to_owned()))
     }
+
+    pub fn vp_formats_not_supported(message: &str) -> ProtocolError {
+        ProtocolError::new(ErrorType::VpFormatsNotSupported, Some(message.to_owned()))
+    }
 }
 
 impl ProtocolSnafu<ErrorType, Option<String>> {

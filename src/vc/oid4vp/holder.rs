@@ -234,6 +234,38 @@ where
         self.create_presentation_by_input(creds, presentation_input, auth_request)
             .await
     }
+
+    #[instrument(level = Level::TRACE, skip(self), err(), ret())]
+    async fn validate_against_supported_vp_formats(
+        &self,
+        auth_request: &ResolvedAuthRequest,
+    ) -> Result<()> {
+        let formats_map = auth_request
+            .presentation_definition
+            .input_descriptors()
+            .iter()
+            .flat_map(|d| d.format());
+        for (format, payload) in formats_map {
+            let found = self
+                .metadata
+                .vp_formats_supported()
+                .contains_claim_format_with_payload(format, payload);
+
+            if !found {
+                let body = ProtocolError::vp_formats_not_supported(&format!(
+                    "vp format = '{}' with {} algorithms is not supported",
+                    String::from(format.to_owned()),
+                    serde_json::to_string(payload).unwrap_or_else(|_| "".to_string())
+                ));
+                self.submit_auth_error_resp(&auth_request.response_uri, &body)
+                    .await?;
+
+                return Err(Error::Protocol { source: body });
+            }
+        }
+
+        Ok(())
+    }
 }
 
 #[async_trait]
@@ -295,6 +327,9 @@ where
         _: &AuthorizationResponseMetadata,
     ) -> Result<Option<Url>> {
         info!("presenting verifiable presentation is started");
+
+        self.validate_against_supported_vp_formats(auth_request)
+            .await?;
 
         let presentation_inputs =
             presentation_exchange::split_to_inputs(&auth_request.presentation_definition)
@@ -527,18 +562,16 @@ mod tests {
     }
 
     #[rstest]
-    // TODO: Should not submit empty presentation response, implemented as part of the ASDK-98 task
-    #[ignore]
-    #[should_panic]
-    #[case::empty_input_descriptor(empty_input_descriptor_case(), false)]
-    #[should_panic(expected = "Unsupported format: jwt_vc_json")]
+    #[should_panic(
+        expected = "vp format = 'jwt_vc_json' with {\"alg_values_supported\":[\"RS256\"]} algorithms is not supported"
+    )]
     #[case::request_unsupported_credential_format(
         request_unsupported_credential_format_case(),
         false
     )]
-    // TODO: Validations will be implemented as part of the ASDK-98 task
-    #[ignore]
-    #[should_panic]
+    #[should_panic(
+        expected = "vp format = 'vc+sd-jwt' with {\"sd-jwt_alg_values\":[\"RS256\"],\"kb-jwt_alg_values\":[\"RS256\"]} algorithms is not supported"
+    )]
     #[case::request_unsupported_credential_alg(request_unsupported_credential_alg_case(), false)]
     #[tokio::test]
     async fn present_credential_auto_fails(
@@ -547,7 +580,30 @@ mod tests {
     ) {
         let kms = LocalKms::new();
         let vault = test_case.prepare_vault(&kms, with_extra_creds).await;
-        let holder = holder_service(MockHttpClient::new(), kms, vault).await;
+
+        let mut http_client = MockHttpClient::new();
+        mock_http_fn(
+            &mut http_client,
+            Method::POST,
+            build_url(VERIFIER_URL, "auth"),
+            |req| {
+                let err: ProtocolError = serde_json::from_slice(req.body.as_slice()).unwrap();
+                assert_eq!(err.error_type(), &ErrorType::VpFormatsNotSupported);
+                assert!(err
+                    .description()
+                    .clone()
+                    .unwrap()
+                    .contains("algorithms is not supported"),);
+                Ok(HttpResponse {
+                    status_code: StatusCode::OK,
+                    headers: Default::default(),
+                    body: vec![],
+                })
+            },
+            1.into(),
+        );
+
+        let holder = holder_service(http_client, kms, vault).await;
 
         // Send auth response
         holder
@@ -814,16 +870,6 @@ mod tests {
         test_case
     }
 
-    fn empty_input_descriptor_case() -> PresentationTestCase {
-        let mut test_case = single_presentation::presentation_test_case();
-        test_case
-            .request
-            .presentation_definition
-            .input_descriptors_mut()
-            .clear();
-        test_case
-    }
-
     fn request_unsupported_credential_format_case() -> PresentationTestCase {
         let test_case = single_presentation::presentation_test_case();
         let cred_format: ClaimFormatMap = serde_json::from_value(json!({
@@ -842,8 +888,8 @@ mod tests {
         let test_case = single_presentation::presentation_test_case();
         let cred_format: ClaimFormatMap = serde_json::from_value(json!({
             "vc+sd-jwt":{
-                "sd-jwt_alg_values": ["ES256", "EdDSA"],
-                "kb-jwt_alg_values": ["ES256", "EdDSA"],
+                "sd-jwt_alg_values": ["RS256"],
+                "kb-jwt_alg_values": ["RS256"],
             }
         }))
         .unwrap();
