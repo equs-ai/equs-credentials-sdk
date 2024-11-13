@@ -1,3 +1,6 @@
+use std::fmt::{Debug, Formatter};
+use std::marker::PhantomData;
+
 use async_trait::async_trait;
 use oid4vp::core::authorization_request::parameters::Nonce as NonceSpruce;
 use oid4vp::core::metadata::WalletMetadata;
@@ -6,8 +9,6 @@ use oid4vp::verifier::request_signer::RequestSigner;
 use serde_json::{Map, Value as Json};
 use snafu::ResultExt;
 use ssi::jwk::JWK;
-use std::fmt::{Debug, Formatter};
-use std::marker::PhantomData;
 use tracing::{info, instrument, Level};
 use url::Url;
 
@@ -359,10 +360,20 @@ impl<S: SigningKey> RequestSigner for SignerWrapper<S> {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+
+    use oid4vp::core::authorization_request::{AuthorizationRequest, AuthorizationRequestObject};
+    use oid4vp::core::object::UntypedObject;
+    use rstest::rstest;
+    use serde_json::json;
+    use url::Url;
+
     use crate::http::HttpSnafu;
     use crate::inmem::kms::LocalKms;
     use crate::nonce::Nonce;
-    use crate::vc::oid4vp::tests::fixtures::multi_presentation::auth_response_options;
+    use crate::vc::oid4vp::tests::fixtures::multi_presentation::{
+        auth_response_options, submission_requirements,
+    };
     use crate::vc::oid4vp::tests::fixtures::VERIFIER_URL;
     use crate::vc::oid4vp::tests::fixtures::{multi_presentation, single_presentation, NONCE};
     use crate::vc::oid4vp::tests::utils::{
@@ -372,12 +383,6 @@ mod tests {
         AuthorizationResponse, PassAuthRequestObject, PresentationSession, Verifier,
     };
     use crate::vc::presentation_exchange::PresentationDefinition;
-    use oid4vp::core::authorization_request::{AuthorizationRequest, AuthorizationRequestObject};
-    use oid4vp::core::object::UntypedObject;
-    use rstest::rstest;
-    use serde_json::json;
-    use std::collections::HashMap;
-    use url::Url;
 
     #[tokio::test]
     async fn generate_auth_request_by_reference_success() {
@@ -453,11 +458,8 @@ mod tests {
         assert_eq!(request.return_uri(), &response_uri);
     }
 
-    // TODO: Validations will be implemented as part of the ASDK-98 task
     #[rstest]
-    #[ignore]
     #[case::empty_id(presentation_definition_with_empty_id())]
-    #[ignore]
     #[case::empty_descriptors(presentation_definition_with_empty_descriptors())]
     #[tokio::test]
     #[should_panic]
@@ -481,31 +483,10 @@ mod tests {
             .unwrap();
     }
 
-    // TODO: Validations will be implemented as part of the ASDK-98 task
-    #[ignore]
-    #[tokio::test]
-    #[should_panic]
-    async fn generate_auth_request_fails_on_empty_nonce() {
-        let request_uri = build_url(VERIFIER_URL, "request");
-
-        let (verifier, did) = verifier_service().await;
-
-        let auth_resp_options = auth_response_options(build_url(VERIFIER_URL, "auth"));
-
-        let (request, _) = verifier
-            .create_authorization_request(
-                &single_presentation::presentation_definition(),
-                &auth_resp_options,
-                &PassAuthRequestObject::ByReference(request_uri),
-                None,
-            )
-            .await
-            .unwrap();
-    }
-
     #[rstest]
     #[case::single_presentation_success(single_presentation::verification_test_case())]
     #[case::multi_presentation_success(multi_presentation::verification_test_case())]
+    #[case::multi_presentation_success(submission_requirements_satisfied_case())]
     #[tokio::test]
     async fn verify_auth_response_success(#[case] test_case: VerificationTestCase) {
         let (verifier, client_id) = verifier_service().await;
@@ -547,11 +528,14 @@ mod tests {
         expected = "Requested presentation Identity-1 not found in the presentation submission"
     )]
     #[case::empty_descriptor_map(empty_descriptor_map_case())]
-    // TODO: Filter constraint validations will be implemented as part of the ASDK-98 task
-    #[ignore]
-    #[case::invalid_presentation_type(invalid_presentation_type_case())]
+    #[should_panic(expected = "Field did not pass filter validation, and is not an optional field")]
+    #[case::invalid_presentation_type(presentation_with_different_claim_values_case())]
     #[should_panic(expected = "Field elements are not found while it is required")]
     #[case::presentation_claim_not_found(presentation_claim_not_found_case())]
+    #[should_panic(
+        expected = "Submission Requirement group, A, validation failed. Descriptor Map count 1 is not equal to the count: 2."
+    )]
+    #[case::submission_requirements_unsatisfied(submission_requirements_unsatisfied_case())]
     #[tokio::test]
     async fn verify_auth_response_fails(#[case] test_case: VerificationTestCase) {
         let (verifier, client_id) = verifier_service().await;
@@ -570,7 +554,7 @@ mod tests {
     #[case::empty_token("[]")]
     #[case::invalid_token(r#"{"test": "invalid"}"#)]
     #[tokio::test]
-    #[should_panic(expected = "Incorrect presentation format: expected JWT string")]
+    #[should_panic(expected = "Incorrect presentation format: expected SD-JWT string")]
     async fn verify_auth_response_fails_on_invalid_vp_token(#[case] vp_token: &str) {
         let (verifier, client_id) = verifier_service().await;
         let kms = LocalKms::new();
@@ -628,7 +612,7 @@ mod tests {
         test_case
     }
 
-    fn invalid_presentation_type_case() -> VerificationTestCase {
+    fn presentation_with_different_claim_values_case() -> VerificationTestCase {
         let mut test_case = single_presentation::verification_test_case();
         test_case.credential_data = vec![(
             "https://credentials.example.com/degree_credential",
@@ -643,6 +627,34 @@ mod tests {
             "https://credentials.example.com/identity_credential",
             json!({"degree": "Bachelor"}),
         )];
+        test_case
+    }
+
+    fn submission_requirements_satisfied_case() -> VerificationTestCase {
+        let mut test_case = multi_presentation::verification_test_case();
+        let _ = test_case
+            .session
+            .presentation_definition
+            .input_descriptors_mut()
+            .get_mut(0)
+            .map(|i| {
+                *i = i.to_owned().add_to_group("A".to_string());
+            });
+        test_case.session.presentation_definition = test_case
+            .session
+            .presentation_definition
+            .set_submission_requirements(submission_requirements(1));
+
+        test_case
+    }
+
+    fn submission_requirements_unsatisfied_case() -> VerificationTestCase {
+        let mut test_case = submission_requirements_satisfied_case();
+        test_case.session.presentation_definition = test_case
+            .session
+            .presentation_definition
+            .set_submission_requirements(submission_requirements(2));
+
         test_case
     }
 }

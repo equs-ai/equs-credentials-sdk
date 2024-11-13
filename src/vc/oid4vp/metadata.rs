@@ -47,7 +47,14 @@ const DEFAULT_WALLET_METADATA: &str = r#"{
     "vp_formats_supported":
     {
         "vc+sd-jwt": {
-            "alg_values_supported": ["EdDSA", "ES256"]
+            "sd-jwt_alg_values": ["EdDSA", "ES256"],
+            "kb-jwt_alg_values": ["EdDSA", "ES256"]
+        },
+        "ldp_vc": {
+           "proof_type": [
+            "Ed25519Signature2018",
+            "EcdsaSecp256k1Signature2019"
+           ]
         }
     },
     "client_id_schemes_supported": [

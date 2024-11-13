@@ -20,6 +20,14 @@ pub type DescriptorMap = oid4vp::core::presentation_submission::DescriptorMap;
 pub type InputDescriptor = oid4vp::core::input_descriptor::InputDescriptor;
 pub type PresentationSubmission = oid4vp::core::presentation_submission::PresentationSubmission;
 pub type PresentationDefinition = oid4vp::core::presentation_definition::PresentationDefinition;
+pub type SubmissionRequirement = oid4vp::core::presentation_definition::SubmissionRequirement;
+pub type SubmissionRequirementObject =
+    oid4vp::core::presentation_definition::SubmissionRequirementObject;
+pub type SubmissionRequirementBase =
+    oid4vp::core::presentation_definition::SubmissionRequirementBase;
+pub type SubmissionRequirementPick =
+    oid4vp::core::presentation_definition::SubmissionRequirementPick;
+pub type GroupId = oid4vp::core::input_descriptor::GroupId;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct FieldFilter {
@@ -128,16 +136,21 @@ pub fn resolve_presentation_response(
             .presentation_submission
             .descriptor_map()
             .iter()
-            .find(|item| item.id() == input_descriptor.id())
-            .ok_or(
-                ParseSnafu {
-                    details: format!(
-                        "Requested presentation {} not found in the presentation submission",
-                        input_descriptor.id()
-                    ),
-                }
-                .build(),
-            )?;
+            .find(|item| item.id() == input_descriptor.id());
+
+        let descriptor_map = if let Some(descriptor_map) = descriptor_map {
+            descriptor_map
+        } else if input_descriptor.groups().is_empty() {
+            return ParseSnafu {
+                details: format!(
+                    "Requested presentation {} not found in the presentation submission",
+                    input_descriptor.id()
+                ),
+            }
+            .fail();
+        } else {
+            continue;
+        };
 
         let presentation_json =
             find_json_element(&presentation_response.presentations, descriptor_map.path()).ok_or(
@@ -155,7 +168,8 @@ pub fn resolve_presentation_response(
             ClaimFormatDesignation::SdJwtVc => {
                 let sd_jwt = presentation_json.as_str().ok_or(
                     ParseSnafu {
-                        details: "Incorrect presentation format: expected JWT string".to_string(),
+                        details: "Incorrect presentation format: expected SD-JWT string"
+                            .to_string(),
                     }
                     .build(),
                 )?;
@@ -714,7 +728,7 @@ mod tests {
     }
 
     #[tokio::test]
-    #[should_panic(expected = "Incorrect presentation format: expected JWT string")]
+    #[should_panic(expected = "Incorrect presentation format: expected SD-JWT string")]
     async fn resolve_presentation_response_fails_on_sdjwtvc_format_but_non_string_presentation() {
         let presentation_response = PresentationResponse {
             presentations: json!(1),
