@@ -8,6 +8,7 @@ use std::fmt::Debug;
 use tracing::{instrument, Level};
 
 pub mod didkey;
+pub mod didpeer;
 pub mod didweb;
 pub mod universal;
 
