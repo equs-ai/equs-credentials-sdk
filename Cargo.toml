@@ -22,6 +22,10 @@ oid4vci = { git = "ssh://git@git.slock.it/open-source/oid4vci-rs.git", rev = "c7
 oid4vp = { git = "ssh://git@git.slock.it/open-source/oid4vp-rs.git", rev = "82e33f44" }
 sd-jwt-rs = { git = "ssh://git@git.slock.it/open-source/sd-jwt-rust.git", rev = "05e6866e" }
 
+did_peer = { tag = "0.65.0", git = "https://github.com/hyperledger/aries-vcx" }
+did_resolver = { tag = "0.65.0", git = "https://github.com/hyperledger/aries-vcx" }
+did_parser_nom = { tag = "0.65.0", git = "https://github.com/hyperledger/aries-vcx" }
+
 oauth2 = "4.4.2"
 serde_json = "1.0.120"
 ssi = "0.7.0"

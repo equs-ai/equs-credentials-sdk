@@ -1,3 +1,4 @@
+use super::didpeer::SpruceCompatibleDIDPeer;
 use async_trait::async_trait;
 use ssi::did::DIDMethods;
 use ssi::did_resolve::DIDResolver as SpruceResolver;
@@ -22,6 +23,7 @@ impl UniversalResolver {
         let mut impls = DIDMethods::default();
         impls.insert(Box::new(did_method_key::DIDKey {}));
         impls.insert(Box::new(did_web::DIDWeb {}));
+        impls.insert(Box::new(SpruceCompatibleDIDPeer::new()));
 
         Self { impls }
     }
