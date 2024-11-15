@@ -37,6 +37,14 @@ pub enum Error {
         #[snafu(implicit)]
         location: Location,
     },
+    #[snafu(display("Derivation not supported for: {kid}"))]
+    DerivationNotSupported { kid: String },
+    #[snafu(display("Derivation error: {details}"))]
+    Derivation {
+        details: String,
+        #[snafu(implicit)]
+        location: Location,
+    },
 }
 
 /// `Result` alias for Crypto-specific [Error].
@@ -214,4 +222,41 @@ pub trait Suite: SigningKey + VerifyingKey + Sized {
     /// * [Error::AlgNotSupported] - algorithm is not supported.
     /// * [Error::KeyGeneration] - fails to generate a key.
     fn from_secret(bytes: Vec<u8>) -> Result<Self>;
+}
+
+/// A crypto `DerivationSuite` with support of derivation.
+#[async_trait]
+pub trait DerivationSuite<S: Suite>: Sync + Send {
+    /// Creates a suite from a seed key.
+    ///
+    /// # Arguments
+    ///
+    /// * `seed` - a seed value.
+    ///
+    /// # Returns
+    ///
+    /// A derivation suite for the provided seed.
+    fn from_seed(seed: &[u8]) -> Self;
+
+    /// Returns the corresponding [Suite] for signing/verification.
+    ///
+    /// # Returns
+    ///
+    /// A crypto `Suite`.
+    fn suite(&self) -> Result<S>;
+
+    /// Derives a key for specified path.
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - a derivation path.
+    ///
+    /// # Returns
+    ///
+    /// Private key bytes.
+    ///
+    /// # Errors
+    ///
+    /// * [Error::Derivation] - fails to derive a key.
+    async fn derive(&self, path: &str) -> Result<Vec<u8>>;
 }
