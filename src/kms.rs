@@ -49,10 +49,11 @@ pub type KeyID = String;
 pub enum KeyType {
     Ed25519,
     P256,
+    K256,
     // etc
 }
 
-pub const SUPPORTED_KEYS: [KeyType; 2] = [KeyType::Ed25519, KeyType::P256];
+pub const SUPPORTED_KEYS: [KeyType; 3] = [KeyType::Ed25519, KeyType::P256, KeyType::K256];
 
 /// General options for key creation.
 #[derive(Debug, Default, PartialEq, Clone)]
@@ -142,13 +143,68 @@ where
     }
 }
 
+/// Enum with supported `Kms` derivation types.
+///
+/// *NOTE*: more key types to be supported later.
+#[derive(Debug, PartialEq, Clone, Display, EnumString, IntoStaticStr)]
+#[non_exhaustive]
+pub enum Derivation {
+    BIP32,
+    // etc
+}
+
+/// An async `DerivativeKms` is an extension for `Kms` to support key derivation.
+///
+/// Could be implemented by any adapter to be used with `ASDK`.
+///
+/// Adds up master key's creation from a seed and derivation.
+#[async_trait]
+pub trait DerivativeKms<KH>: Kms<KH>
+where
+    KH: KeyHandle,
+{
+    /// Create and store a derivative master key from seed in `Kms`.
+    ///
+    /// # Arguments
+    ///
+    /// * `seed` - a seed value used for the key creation.
+    /// * `der` - derivation to be used for the child keys.
+    ///
+    /// # Returns
+    ///
+    /// A `KeyId` for the created key on success.
+    ///
+    /// # Errors
+    ///
+    /// * [Error::Creation] - fails to create a key.
+    /// * [Error::Crypto] - crypto error, refer to [crypto::Error].
+    async fn create_from_seed(&self, seed: &[u8], der: Derivation) -> Result<KeyID>;
+
+    /// Derive a key from the provided master using the corresponding derivation `path`.
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - a derivation path.
+    /// * `master_kid` - KID of a master key.
+    ///
+    /// # Returns
+    ///
+    /// A `KeyId` for the created key on success.
+    ///
+    /// # Errors
+    ///
+    /// * [Error::Creation] - fails to create a key.
+    /// * [Error::Crypto] - crypto error, refer to [crypto::Error].
+    async fn derive(&self, path: &str, master_kid: &KeyID) -> Result<KeyID>;
+}
+
 #[cfg(test)]
 pub mod test_util {
     use crate::kms;
-    use crate::kms::{KeyHandle, Kms};
+    use crate::kms::{KeyHandle, Kms, SUPPORTED_KEYS};
 
     pub async fn test_kms<KH: KeyHandle, KMS: Kms<KH>>(kms: KMS) {
-        for kt in [kms::KeyType::Ed25519, kms::KeyType::P256] {
+        for kt in SUPPORTED_KEYS {
             // Create a key
             let create_res = kms.create(kt.clone(), kms::CreateOptions {}).await;
             assert!(create_res.is_ok());
