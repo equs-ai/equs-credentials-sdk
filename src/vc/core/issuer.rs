@@ -10,11 +10,11 @@ use crate::vc::core::{
     CredentialDefinition, CredentialDefinitionData, CredentialOffer, CredentialOfferData,
     CredentialRequest, Issuer, IssuerMetadata,
 };
+use crate::vc::formats::json_ld_vc;
 use crate::vc::formats::json_ld_vc::JsonLdAPI;
 use crate::vc::formats::sd_jwt_vc;
 use crate::vc::formats::sd_jwt_vc::SdJwtAPI;
 use crate::vc::formats::API;
-use crate::vc::formats::{json_ld_vc, GetExpirationClaim};
 use crate::vc::pop::jwt_pop::JwtProofOfPossession;
 use crate::vc::pop::ProofOfPossession;
 use crate::vc::{pop, Claims, Credential, VCFormat};
@@ -168,16 +168,11 @@ where
                 vct,
                 disclosures,
                 lifetime,
-            }) => {
-                let lifetime =
-                    SdJwtAPI::get_expiration_claim(claims).unwrap_or(time::Duration::days(365));
-
-                sd_jwt_vc::VCMetadata {
-                    vct: vct.to_owned(),
-                    lifetime,
-                    disclosures: disclosures.to_owned(),
-                }
-            }
+            }) => sd_jwt_vc::VCMetadata {
+                vct: vct.to_owned(),
+                lifetime: lifetime.unwrap_or(time::Duration::days(365)),
+                disclosures: disclosures.to_owned(),
+            },
             _ => InconsistentProtocolDataSnafu {
                 format: VCFormat::SdJwtVc.to_string(),
             }
