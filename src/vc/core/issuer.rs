@@ -22,7 +22,7 @@ use async_trait::async_trait;
 use snafu::{ensure, ResultExt};
 use std::marker::PhantomData;
 use std::str::FromStr;
-use tracing::{debug, instrument, trace, Level};
+use tracing::{debug, info, instrument, trace, Level};
 
 pub struct IssuerService<KH, KMS>
 where
@@ -273,6 +273,7 @@ where
 
         let did_url = DIDURL::from_str(&key_meta.did_url).unwrap();
 
+        info!("access to the key {}", key_meta.kid);
         let kh = self.kms.get(&key_meta.kid).await.context(KMSSnafu)?;
 
         // Check signing algs only if they were set explicitly

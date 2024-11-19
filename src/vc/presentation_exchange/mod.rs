@@ -1,4 +1,5 @@
 use crate::utils::json::find_json_element;
+use crate::utils::logs::sanitize_log_msg;
 use crate::vc::core::PresentationInput;
 use crate::vc::{formats, Presentation};
 use common_macros::DebugError;
@@ -164,9 +165,9 @@ pub fn resolve_presentation_response(
             find_json_element(&presentation_response.presentations, descriptor_map.path()).ok_or(
                 ParseSnafu {
                     details: format!(
-                        "Requested presentation {:?} not found by path {:?}",
+                        "Requested presentation \"{}\" not found by path {}",
                         input_descriptor.id(),
-                        descriptor_map.path()
+                        sanitize_log_msg(descriptor_map.path())
                     ),
                 }
                 .build(),
@@ -520,7 +521,10 @@ fn extract_input_descriptor<'a>(
         .find(|input_descriptor| input_descriptor.id() == input_descriptor_id)
         .ok_or_else(|| {
             ParseSnafu {
-                details: format!("Input descriptor with id {input_descriptor_id} not found"),
+                details: format!(
+                    "Input descriptor with id {} not found",
+                    sanitize_log_msg(input_descriptor_id)
+                ),
             }
             .build()
         })
@@ -747,9 +751,7 @@ mod tests {
     }
 
     #[tokio::test]
-    #[should_panic(
-        expected = "Requested presentation \"descriptor_id\" not found by path \"$.incorrect_presentation_key\""
-    )]
+    #[should_panic(expected = "Requested presentation \"descriptor_id\" not found by path")]
     async fn resolve_presentation_response_fails_on_wrong_path() {
         let presentation_response = PresentationResponse {
             presentations: sample_sdjwt_presentation(),
