@@ -2,9 +2,10 @@ use std::fmt::{Debug, Formatter};
 use std::marker::PhantomData;
 
 use async_trait::async_trait;
-use oid4vp::core::authorization_request::parameters::Nonce as NonceSpruce;
+use oid4vp::core::authorization_request::parameters::{ClientId, Nonce as NonceSpruce};
 use oid4vp::core::metadata::WalletMetadata;
 use oid4vp::verifier::by_reference::ByReference;
+use oid4vp::verifier::request_builder::RequestType;
 use oid4vp::verifier::request_signer::RequestSigner;
 use serde_json::{Map, Value as Json};
 use snafu::ResultExt;
@@ -25,7 +26,7 @@ use crate::vc::oid4vp::internal_error::{
 use crate::vc::oid4vp::metadata::{default_client_metadata, default_wallet_metadata};
 use crate::vc::oid4vp::{
     AuthResponseOptions, AuthorizationResponse, ClientMetadata, PassAuthRequestObject,
-    PresentationSession,
+    PresentationSession, ProtocolError, ResponseMode,
 };
 use crate::vc::presentation_exchange;
 use crate::vc::presentation_exchange::{
@@ -37,6 +38,7 @@ pub type Result<T> = core::result::Result<T, Error>;
 
 pub type DIDClient<S> = oid4vp::verifier::client::DIDClient<S>;
 pub type X509SanClient = oid4vp::verifier::client::X509SanClient;
+pub type RedirectUriClient = oid4vp::verifier::client::RedirectUriClient;
 
 #[derive(Debug, Clone)]
 pub struct VerifierMetadata {
@@ -196,31 +198,88 @@ where
         auth_response_config: &AuthResponseOptions,
         pass_auth_request_object: &PassAuthRequestObject,
         wallet_metadata: &WalletMetadata,
-    ) -> Result<(Url, String)> {
-        let verifier_key = self
-            .kms
-            .get(&self.metadata.key_metadata.kid)
-            .await
-            .context(KMSSnafu)?;
+    ) -> Result<(Url, Option<String>)> {
+        match &auth_response_config.mode {
+            ResponseMode::FragmentJwt | ResponseMode::Fragment => {
+                let client = RedirectUriClient::new(ClientId(self.metadata.client_id.to_owned()));
+                let verifier_builder = oid4vp::verifier::Verifier::builder().with_client(client);
+                self.authorization_request_helper(
+                    presentation_definition,
+                    nonce,
+                    auth_response_config,
+                    pass_auth_request_object,
+                    wallet_metadata,
+                    verifier_builder,
+                )
+                .await
+            }
+            _ => {
+                let verifier_key = self
+                    .kms
+                    .get(&self.metadata.key_metadata.kid)
+                    .await
+                    .context(KMSSnafu)?;
 
-        let did_client = DIDClient::new(
-            self.metadata.key_metadata.did_url.clone(),
-            SignerWrapper::new(verifier_key)?,
-            self.did_resolver.as_spruce_resolver(),
-        )
-        .await
-        .context(Oid4VpLibSnafu)?;
+                let did_client = DIDClient::new(
+                    self.metadata.key_metadata.did_url.clone(),
+                    SignerWrapper::new(verifier_key)?,
+                    self.did_resolver.as_spruce_resolver(),
+                )
+                .await
+                .context(Oid4VpLibSnafu)?;
 
-        let verifier = oid4vp::verifier::Verifier::builder()
-            .with_client(did_client)
-            .with_submission_endpoint(auth_response_config.submission_uri.0.to_owned());
+                let verifier_builder =
+                    oid4vp::verifier::Verifier::builder().with_client(did_client);
+                self.authorization_request_helper(
+                    presentation_definition,
+                    nonce,
+                    auth_response_config,
+                    pass_auth_request_object,
+                    wallet_metadata,
+                    verifier_builder,
+                )
+                .await
+            }
+        }
+    }
 
-        let pass_req_obj = match pass_auth_request_object.to_owned() {
-            PassAuthRequestObject::ByValue => ByReference::False,
-            PassAuthRequestObject::ByReference(at) => ByReference::True { at },
+    #[instrument(
+        level = Level::TRACE,
+        skip(self),
+        err(),
+        ret(),
+    )]
+    async fn authorization_request_helper(
+        &self,
+        presentation_definition: &PresentationDefinition,
+        nonce: Nonce,
+        auth_response_config: &AuthResponseOptions,
+        pass_auth_request_object: &PassAuthRequestObject,
+        wallet_metadata: &WalletMetadata,
+        verifier_builder: oid4vp::verifier::VerifierBuilder<
+            impl oid4vp::verifier::client::Client + Send + Sync,
+        >,
+    ) -> Result<(Url, Option<String>)> {
+        let auth_req_type = match (pass_auth_request_object.to_owned(), &auth_response_config.mode) {
+            (PassAuthRequestObject::ByValue, ResponseMode::FragmentJwt | ResponseMode::Fragment) => {
+                RequestType::Plain
+            },
+            (PassAuthRequestObject::ByValue,  ResponseMode::DirectPost | ResponseMode::DirectPostJwt) => {
+                RequestType::SignedJwt(ByReference::False)
+            },
+            (PassAuthRequestObject::ByReference(at),  ResponseMode::DirectPost | ResponseMode::DirectPostJwt) => {
+                RequestType::SignedJwt(ByReference::True { at })
+            },
+            (_, mode) => {
+                return Err(Error::Protocol {
+                    source: ProtocolError::invalid_request(&format!("passing authorization request object by value or url is not supported in '{mode}' response mode")),
+
+                })
+            },
         };
 
-        let (auth_request_url, auth_req_jwt) = verifier
+        let (auth_request_url, auth_req_jwt) = verifier_builder
+            .with_submission_endpoint(auth_response_config.submission_uri.to_owned())
             .build()
             .await
             .context(Oid4VpLibSnafu)?
@@ -230,7 +289,7 @@ where
             .with_request_parameter(auth_response_config.type_.to_owned())
             .with_request_parameter(NonceSpruce::from(nonce.secret()))
             .with_request_parameter(self.metadata.client_metadata.clone())
-            .build(wallet_metadata, pass_req_obj)
+            .build(wallet_metadata, auth_req_type)
             .await?;
 
         Ok((auth_request_url, auth_req_jwt))
@@ -449,7 +508,10 @@ mod tests {
             .unwrap()
             .into_parsed();
 
-        assert_eq!(session.auth_request_jwt, auth_req_jwt_from_uri.to_owned());
+        assert_eq!(
+            session.auth_request_jwt.unwrap(),
+            auth_req_jwt_from_uri.to_owned()
+        );
         assert_eq!(
             serde_json::to_value(&actual_presentation_definition).unwrap(),
             serde_json::to_value(&presentation_definition).unwrap()

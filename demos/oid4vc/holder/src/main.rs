@@ -1,6 +1,7 @@
 use agent_sdk::did::didkey::DIDKey;
 use agent_sdk::did::{DIDResolver, DID};
 use agent_sdk::inmem::kms::LocalKms;
+use agent_sdk::inmem::nonce::LocalNonceGenerator;
 use agent_sdk::inmem::vault::InMemVault;
 use agent_sdk::kms;
 use agent_sdk::kms::Kms;
@@ -13,15 +14,22 @@ use agent_sdk::vc::oid4vci::Holder as HolderVci;
 use agent_sdk::vc::oid4vci::{
     CredentialOffer, CredentialResponseResolved, CredentialResult, IssuerDiscovery, TokenResponse,
 };
-use agent_sdk::vc::oid4vp::{AuthorizationResponseMetadata, ResolvedAuthRequest};
+use agent_sdk::vc::oid4vp::Verifier;
+use agent_sdk::vc::oid4vp::{
+    AuthResponseOptions, AuthorizationResponse, AuthorizationResponseMetadata,
+    PassAuthRequestObject, ResolvedAuthRequest, ResponseMode, ResponseType,
+};
 use agent_sdk::vc::oid4vp::{CredentialMapping, Holder as HolderVp};
+use agent_sdk::vc::presentation_exchange::PresentationDefinition;
 use agent_sdk::vc::HasClaims;
 use agent_sdk::vc::{oid4vci, oid4vp, Credential};
 use oauth2::{AccessToken, TokenResponse as _TokenResponse};
 use reqwest::Url;
+use std::collections::HashMap;
 use std::io;
 use std::io::Write;
 use time::OffsetDateTime;
+use uuid::Uuid;
 
 const CRED_DEF_ID_1: &str = "SD_JWT_cred_1";
 const CRED_DEF_ID_2: &str = "JSON_LDP_cred_2";
@@ -138,8 +146,29 @@ async fn request_credential(
 }
 
 async fn run_presentation_flow(holder: impl HolderVp) {
-    println!("Presentation started");
+    println!("Please enter the number to execute presentation flow:\n 1 - Cross Device\n 2 - Same device");
+    let mut input = input_from_console("Failed to read selected presentation flow");
 
+    match input.as_str() {
+        "1" => {
+            println!("Same device flow is started ...");
+            input.clear();
+            cross_device_presentation_flow(holder).await
+        }
+        "2" => {
+            println!("Cross device flow is started ...");
+            input.clear();
+            same_device_presentation_flow(holder).await
+        }
+        _ => {
+            println!("Invalid input, please retry the flow");
+        }
+    }
+
+    println!("Presentation done");
+}
+
+async fn cross_device_presentation_flow(holder: impl HolderVp) {
     println!("1. Holder tries to parse authorization/presentation request of Verifier");
 
     println!("Please enter presentation request URI from http://localhost:8098/request_uri:");
@@ -161,22 +190,112 @@ async fn run_presentation_flow(holder: impl HolderVp) {
     );
 
     present_credential(holder, &auth_request).await;
-
-    println!("Presentation done");
 }
 
-async fn present_credential(holder: impl HolderVp, auth_request: &ResolvedAuthRequest) {
+async fn same_device_presentation_flow(holder: impl HolderVp) {
+    let redirect_uri = Url::parse("http://verifier.example.com/cb").unwrap();
+    let verifier = verifier(redirect_uri.as_ref()).await;
+    println!("1.2 Verifier generates authorization request");
+
+    let auth_resp_config = AuthResponseOptions {
+        type_: ResponseType::VpToken,
+        mode: ResponseMode::Fragment,
+        submission_uri: redirect_uri,
+    };
+    let pass_auth_req_object = PassAuthRequestObject::ByValue;
+
+    let (request_uri, session) = verifier
+        .create_authorization_request(
+            &default_presentation_definition(),
+            &auth_resp_config,
+            &pass_auth_req_object,
+            None,
+        )
+        .await
+        .unwrap();
+
+    println!("1.3 Generated presentation request uri: \n{request_uri}");
+
+    println!("1.4 Holder starts to handle presentation request");
+
+    let auth_request = holder
+        .get_authorization_request(&request_uri)
+        .await
+        .unwrap();
+
+    println!(
+        "Resolved and validated presentation request: \n{}",
+        serde_json::to_string_pretty(&auth_request).unwrap()
+    );
+
+    let url = present_credential(holder, &auth_request).await.unwrap();
+    println!("Holder generated presentation response and embedded it into redirect uri: \n{url}");
+
+    println!("3.1 Verifier validates presentation response");
+    let presentation_resp = retrieve_auth_resp_from_uri(url);
+
+    let verified_claims = verifier
+        .verify_presentation(&presentation_resp, &session)
+        .await
+        .unwrap();
+
+    println!(
+        "Verifier claims: {}",
+        serde_json::to_string_pretty(&verified_claims).unwrap()
+    );
+}
+
+fn retrieve_auth_resp_from_uri(url: Url) -> AuthorizationResponse {
+    let presentation_resp_map: HashMap<String, String> =
+        serde_urlencoded::from_str(url.fragment().unwrap()).unwrap();
+
+    let vp_token_str = presentation_resp_map.get("vp_token").unwrap();
+    let vp_token =
+        serde_json::from_str(vp_token_str).unwrap_or(serde_json::to_value(vp_token_str).unwrap());
+    let presentation_submission = serde_json::from_str(
+        presentation_resp_map
+            .get("presentation_submission")
+            .unwrap(),
+    )
+    .unwrap();
+
+    AuthorizationResponse {
+        vp_token,
+        presentation_submission,
+    }
+}
+
+async fn verifier(client_id: &str) -> impl Verifier {
+    println!("1.1 Initializing verifier...");
+    let kms = LocalKms::new();
+    let nonce_gen = LocalNonceGenerator::default();
+    let (_, key_metadata) = create_did_and_key_metadata(&kms).await;
+
+    let verifier =
+        oid4vp::VerifierBuilder::new(kms, nonce_gen, key_metadata, client_id.to_string())
+            .build()
+            .await
+            .unwrap();
+
+    println!("Done");
+    verifier
+}
+
+async fn present_credential(
+    holder: impl HolderVp,
+    auth_request: &ResolvedAuthRequest,
+) -> Option<Url> {
     println!("Please enter the number to send presentation by:\n 1 - Auto\n 2 - Selecting from the credential list");
 
     let mut input = input_from_console("Failed to read presentation mode");
 
-    match input.as_str() {
+    let redirect_url = match input.as_str() {
         "1" => {
             println!("2. Holder sends authorization/presentation response to Verifier");
             holder
                 .present_credentials_auto(auth_request, &AuthorizationResponseMetadata {})
                 .await
-                .unwrap();
+                .unwrap()
         }
         "2" => {
             let credentials = holder
@@ -204,12 +323,14 @@ async fn present_credential(holder: impl HolderVp, auth_request: &ResolvedAuthRe
             holder
                 .present_credentials(auth_request, &selected, &AuthorizationResponseMetadata {})
                 .await
-                .unwrap();
+                .unwrap()
         }
         _ => {
-            println!("Invalid input, please retry the flow");
+            panic!("Invalid input, please retry the flow");
         }
-    }
+    };
+
+    redirect_url
 }
 
 fn collect_selected_cred_entries(
@@ -358,3 +479,73 @@ fn input_from_console(err_msg: &str) -> String {
 
     input.replace('\n', "")
 }
+
+pub fn default_presentation_definition() -> PresentationDefinition {
+    let input_descriptor_1 = serde_json::from_str(INPUT_DESCRIPTOR_FOR_CRED_DEF_1).unwrap();
+    PresentationDefinition::new(Uuid::new_v4().to_string(), input_descriptor_1)
+        .add_input_descriptors(serde_json::from_str(INPUT_DESCRIPTOR_FOR_CRED_DEF_2).unwrap())
+        .set_name("Example with selective disclosure".to_owned())
+}
+
+const INPUT_DESCRIPTOR_FOR_CRED_DEF_1: &str = r#"{
+    "id": "Identity-1",
+    "name": "Identity VC",
+    "purpose": "We want a resident card",
+    "format": {
+        "vc+sd-jwt": {
+        "sd-jwt_alg_values": [
+          "ES256",
+          "EdDSA"
+        ],
+        "kb-jwt_alg_values": [
+          "ES256",
+          "EdDSA"
+        ]
+      }
+    },
+    "constraints": {
+        "fields": [
+          {
+            "path": ["$.vct"],
+             "filter": {
+               "type": "string",
+               "const": "https://credentials.example.com/identity_credential_1"
+             }
+          },
+          {
+            "path": ["$.username"]
+          },
+          {
+            "path": ["$.email.work"],
+            "optional": true
+          }
+        ]
+    }
+}"#;
+
+const INPUT_DESCRIPTOR_FOR_CRED_DEF_2: &str = r#"{
+    "id": "resident-card",
+    "name": "Identity VC",
+    "purpose": "We want a resident card",
+    "format": {
+        "ldp_vc": {
+           "proof_type": [
+            "Ed25519Signature2018",
+            "EcdsaSecp256k1Signature2019"
+           ]
+        }
+    },
+    "constraints": {
+        "fields": [
+            {
+                "path": ["$.type"],
+                "filter": {
+                    "type": "array",
+                    "contains": {
+                        "const": "PermanentResidentCard"
+                    }
+                }
+            }
+        ]
+    }
+}"#;

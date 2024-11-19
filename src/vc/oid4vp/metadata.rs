@@ -58,7 +58,8 @@ const DEFAULT_WALLET_METADATA: &str = r#"{
         }
     },
     "client_id_schemes_supported": [
-        "did"
+        "did",
+        "redirect_uri"
     ],
     "request_object_signing_alg_values_supported": [
         "EdDSA",
