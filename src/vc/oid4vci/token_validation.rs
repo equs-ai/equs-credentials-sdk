@@ -1,5 +1,6 @@
 use crate::http::{HttpClient, HttpError};
 use crate::utils::http::{MIME_TYPE_FORM_URLENCODED, MIME_TYPE_JSON};
+use crate::utils::logs::sanitize_log_msg;
 use common_macros::DebugError;
 use oauth2::basic::BasicTokenType;
 use oauth2::http::header::{InvalidHeaderValue, ACCEPT, AUTHORIZATION, CONTENT_TYPE};
@@ -205,7 +206,10 @@ impl<HC: HttpClient> ByJwks<HC> {
             .find(|k| k.key_id() == Some(&JsonWebKeyId::new(key_id.to_owned())))
             .ok_or(
                 TokenSnafu {
-                    details: format!("Token is signed with the unknown key: \"kid\" = {}", key_id),
+                    details: format!(
+                        "Token is signed with the unknown key: \"kid\" = {}",
+                        sanitize_log_msg(&key_id)
+                    ),
                 }
                 .build(),
             )?;

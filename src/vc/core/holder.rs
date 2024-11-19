@@ -3,7 +3,7 @@ use snafu::ResultExt;
 use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::str::FromStr;
-use tracing::{debug, instrument, trace, Level};
+use tracing::{debug, info, instrument, trace, Level};
 
 use crate::crypto::Alg;
 use crate::did::DIDURL;
@@ -122,6 +122,8 @@ where
             .await
             .context(VaultSnafu)?;
 
+        info!("credential {id} stored to the vault");
+
         Ok(id)
     }
 
@@ -185,6 +187,8 @@ where
         trace!(?presentation_input);
 
         let criteria = self.resolve_find_criteria(presentation_input);
+
+        info!("search for credentials in the vault");
         let credentials = self
             .vault
             .find_credentials(criteria)
@@ -207,6 +211,7 @@ where
         presentation_input: &PresentationInput,
         cred_entry: &CredentialEntry,
     ) -> Result<Presentation> {
+        info!("access to the key {}", cred_entry.kid);
         let key = self.kms.get(&cred_entry.kid).await.context(KMSSnafu)?;
 
         let presentation = match &cred_entry.credential {
@@ -309,6 +314,7 @@ where
             .build()
         })?;
 
+        info!("access to the key {}", key_metadata.kid);
         let kh = self.kms.get(&key_metadata.kid).await.context(KMSSnafu)?;
 
         debug!(resolved_did = ?did_url);

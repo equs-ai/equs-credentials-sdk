@@ -214,6 +214,7 @@ where
                 .await
             }
             _ => {
+                info!("access to the key {}", self.metadata.key_metadata.kid);
                 let verifier_key = self
                     .kms
                     .get(&self.metadata.key_metadata.kid)

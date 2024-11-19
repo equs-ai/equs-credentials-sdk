@@ -1,3 +1,4 @@
+use crate::utils::logs::sanitize_log_msg;
 use async_trait::async_trait;
 use common_macros::DebugError;
 use snafu::{Location, Snafu};
@@ -165,7 +166,10 @@ async fn resolve_verification_method(
             }
         }
         _ => ResolutionSnafu {
-            details: format!("Failed to resolve verification method for DID URL: {did_url}"),
+            details: format!(
+                "Failed to resolve verification method for DID URL: {}",
+                sanitize_log_msg(did_url)
+            ), // did_url can be any string, sanitize it
         }
         .fail(),
     }

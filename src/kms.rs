@@ -4,7 +4,7 @@ use common_macros::DebugError;
 use snafu::{Location, Snafu};
 use std::fmt::Debug;
 use strum_macros::{Display, EnumString, IntoStaticStr};
-use tracing::{instrument, trace, Level};
+use tracing::{info, instrument, Level};
 
 /// `Kms` Error.
 ///
@@ -135,9 +135,8 @@ where
     )]
     async fn create_and_handle(&self, kt: KeyType, opts: CreateOptions) -> Result<(KeyID, KH)> {
         let kid = self.create(kt, opts).await?;
+        info!("created a key {kid}");
         let res = self.get(&kid).await?;
-
-        trace!(created_key_id = ?kid);
 
         Ok((kid, res))
     }

@@ -16,6 +16,8 @@ Each developer must follow these rules when adding the new features into codebas
  - To log `return` values of function / method, use the `ret` property like `#[instrument(ret())]`
     * If `return` value implements `Display` trait, use `#[instrument(ret(Display))]`
  - To log `error` events of function / method, use the `ret` property like `#[instrument(err())]`
+ - Make sure that error message does not reveal any sensitive information (like access token, nonce, etc.). All errors returned by instrumented functions (with `#[instrument]` annotation) are logged as log entries with `ERROR` level. Make sure that the field `details` does not include any sensitive data.
+ - In case of logging any externally obtained data (for example, credential request from a holder to an issuer) use the `utils::logs::sanitize_log_msg()` function to avoid any characters that should not to be in logs.
 
 
 ### Error level

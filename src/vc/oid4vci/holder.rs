@@ -64,11 +64,7 @@ where
     HL: vc::core::Holder,
     HC: HttpClient,
 {
-    #[instrument(
-        level = Level::TRACE,
-        skip(holder, http_client),
-        err(),
-    )]
+    #[instrument(level = Level::TRACE, skip(holder, http_client), err())]
     pub async fn from_iss_url(
         holder: HL,
         http_client: HC,
@@ -93,11 +89,7 @@ where
         holder_service
     }
 
-    #[instrument(
-        level = Level::TRACE,
-        skip(holder, http_client),
-        err(),
-    )]
+    #[instrument(level = Level::TRACE, skip(holder, http_client), err())]
     pub async fn from_credential_offer(
         holder: HL,
         http_client: HC,
@@ -137,11 +129,7 @@ where
         holder_service
     }
 
-    #[instrument(
-        level = Level::TRACE,
-        skip(holder, http_client),
-        err(),
-    )]
+    #[instrument(level = Level::TRACE, skip(holder, http_client), err())]
     async fn from_iss_url_with_configs(
         holder: HL,
         http_client: HC,
@@ -176,11 +164,7 @@ where
         )
     }
 
-    #[instrument(
-        level = Level::TRACE,
-        skip(holder, http_client),
-        err(),
-    )]
+    #[instrument(level = Level::TRACE, skip(holder, http_client), err())]
     pub fn from_metadata(
         holder: HL,
         http_client: HC,
@@ -203,11 +187,7 @@ where
         holder_service
     }
 
-    #[instrument(
-        level = Level::TRACE,
-        skip(holder, http_client),
-        err(),
-    )]
+    #[instrument(level = Level::TRACE, skip(holder, http_client), err())]
     fn new(
         holder: HL,
         http_client: HC,
@@ -243,21 +223,12 @@ where
     HL: vc::core::Holder,
     HC: HttpClient,
 {
-    #[instrument(
-        level = Level::TRACE,
-        skip_all,
-        ret(),
-    )]
+    #[instrument(level = Level::TRACE, skip_all, ret())]
     fn get_issuer_metadata(&self) -> IssuerMetadata {
         self.issuer_metadata.clone()
     }
 
-    #[instrument(
-        level = Level::TRACE,
-        skip(self, authorization_callback),
-        err(),
-        ret(),
-    )]
+    #[instrument(level = Level::TRACE, skip(self, authorization_callback), err(), ret())]
     async fn authz_code_flow_with_scope(
         &self,
         scope: String,
@@ -278,12 +249,7 @@ where
         Ok(response)
     }
 
-    #[instrument(
-        level = Level::TRACE,
-        skip(self),
-        err(),
-        ret(),
-    )]
+    #[instrument(level = Level::TRACE, skip(self), err(), ret())]
     async fn pre_authz_code_flow(
         &self,
         pre_authorized_code: String,
@@ -293,12 +259,7 @@ where
         unimplemented!()
     }
 
-    #[instrument(
-        level = Level::TRACE,
-        skip(self),
-        err(),
-        ret(),
-    )]
+    #[instrument(level = Level::TRACE, skip(self), err(), ret())]
     async fn request_credential(
         &self,
         token: &AccessToken,
@@ -382,12 +343,7 @@ where
         })
     }
 
-    #[instrument(
-        level = Level::TRACE,
-        skip(self),
-        err(),
-        ret(),
-    )]
+    #[instrument(level = Level::TRACE, skip(self), err(), ret())]
     async fn store_credential(
         &self,
         credential: &Credential,
@@ -412,12 +368,7 @@ where
     HL: vc::core::Holder,
     HC: HttpClient,
 {
-    #[instrument(
-        level = Level::TRACE,
-        skip(self, callback),
-        err(),
-        ret(),
-    )]
+    #[instrument(level = Level::TRACE, skip(self, callback), err(), ret())]
     async fn authz_code_flow(
         &self,
         opt: AuthzOption,
@@ -440,7 +391,7 @@ where
                 .set_response_type(&ResponseType::new("code".into())),
             AuthzOption::Details(detail) => push_request.set_authorization_details(vec![detail]),
         };
-        debug!("auth request sending");
+        info!("holder is sending auth request");
 
         let (auth_url, out_csrf) = push_request
             .async_request(|req| self.http_client.async_call(req), None, None)
@@ -451,7 +402,9 @@ where
             ProtocolSnafu::new(ErrorType::InvalidRequest, "CSRF failure".to_string()),
         );
 
+        info!("authentication is started");
         let code = callback(auth_url);
+        info!("authentication is completed");
         trace!(authorization_code = %code);
 
         let token_req = self
@@ -470,12 +423,7 @@ where
         Ok(token)
     }
 
-    #[instrument(
-        level = Level::TRACE,
-        skip(self),
-        err(),
-        ret(),
-    )]
+    #[instrument(level = Level::TRACE, skip(self), err(), ret())]
     async fn deferred(
         &self,
         token: AccessToken,
@@ -484,12 +432,7 @@ where
         unimplemented!()
     }
 
-    #[instrument(
-        level = Level::TRACE,
-        skip(self),
-        err(),
-        ret(),
-    )]
+    #[instrument(level = Level::TRACE, skip(self), err(), ret())]
     async fn request_nonce(
         &self,
         token: AccessToken,
@@ -530,12 +473,7 @@ where
         }
     }
 
-    #[instrument(
-        level = Level::TRACE,
-        skip(self),
-        err(),
-        ret(),
-    )]
+    #[instrument(level = Level::TRACE, skip(self), err(), ret())]
     fn resolve_cred_def(&self, cred_def_id: &str) -> Result<CredDefMetadata> {
         let configs = self.issuer_metadata.credential_configurations_supported();
         debug!(supported_credential_configs = ?configs);
@@ -554,12 +492,7 @@ where
         Ok(data.to_owned())
     }
 
-    #[instrument(
-        level = Level::TRACE,
-        skip_all,
-        err(),
-        ret(),
-    )]
+    #[instrument(level = Level::TRACE, skip_all, err(), ret())]
     fn validate_if_offer_supported(&self) -> Result<()> {
         // TODO: implement validation logic to support limitation for pre-authorized code
         /*
@@ -573,10 +506,7 @@ where
         Ok(())
     }
 
-    #[instrument(
-        level = Level::TRACE,
-        ret(),
-    )]
+    #[instrument(level = Level::TRACE, ret())]
     fn extract_nonce(resp: &oid4vci::core::credential::Response) -> Option<NonceData> {
         resp.c_nonce().map(|nonce| NonceData {
             value: Nonce(nonce.secret().to_owned()),
@@ -595,12 +525,7 @@ fn sanitize(s: String) -> String {
 impl TryInto<CredentialResult> for &oid4vci::credential::Response<CoreProfilesResponse> {
     type Error = Error;
 
-    #[instrument(
-        level = Level::TRACE,
-        skip_all,
-        err(),
-        ret()
-    )]
+    #[instrument(level = Level::TRACE, skip_all, err(), ret())]
     fn try_into(self) -> std::result::Result<CredentialResult, Self::Error> {
         let result = match self.additional_profile_fields() {
             ResponseEnum::Immediate(resp) => {
@@ -622,12 +547,7 @@ impl TryInto<CredentialResult> for &oid4vci::credential::Response<CoreProfilesRe
 impl TryInto<Credential> for &CoreProfilesResponse {
     type Error = Error;
 
-    #[instrument(
-        level = Level::TRACE,
-        skip_all,
-        err(),
-        ret()
-    )]
+    #[instrument(level = Level::TRACE, skip_all, err(), ret())]
     fn try_into(self) -> std::result::Result<Credential, Self::Error> {
         let credential = match self {
             CoreProfilesResponse::SDJWTVC(c) => Credential::SdJwt(c.credential().to_owned()),
@@ -645,12 +565,7 @@ impl TryInto<Credential> for &CoreProfilesResponse {
 impl TryInto<SpruceProof> for AsdkProof {
     type Error = Error;
 
-    #[instrument(
-        level = Level::TRACE,
-        skip_all,
-        err(),
-        ret()
-    )]
+    #[instrument(level = Level::TRACE, skip_all, err(), ret())]
     fn try_into(self) -> std::result::Result<SpruceProof, Self::Error> {
         let proof = match self.format.as_str() {
             "jwt" => SpruceProof::JWT {
