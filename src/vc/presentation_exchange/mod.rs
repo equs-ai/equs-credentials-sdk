@@ -6,7 +6,9 @@ use oid4vp::core::input_descriptor::JsonPath;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value as Json};
 use snafu::{ensure, Location, ResultExt, Snafu};
+use std::collections::HashMap;
 use std::fmt::Debug;
+use std::ops::Deref;
 use tracing::{instrument, Level};
 use uuid::Uuid;
 
@@ -58,6 +60,12 @@ pub enum Error {
     FormatNotSupported { format: String },
     #[snafu(display("Parse error: {details}"))]
     Parse {
+        details: String,
+        #[snafu(implicit)]
+        location: Location,
+    },
+    #[snafu(display("Claims to exclude are not valid: {details}"))]
+    InvalidClaimsToExclude {
         details: String,
         #[snafu(implicit)]
         location: Location,
@@ -289,11 +297,21 @@ fn process_requested_presentation(
 #[instrument(level = Level::TRACE, err(), ret())]
 pub fn split_to_inputs(
     presentation_definition: &PresentationDefinition,
+    claims_to_exclude: Option<&HashMap<String, Vec<String>>>,
 ) -> Result<Vec<PresentationInput>> {
     let mut inputs: Vec<PresentationInput> = vec![];
 
-    for desc in presentation_definition.input_descriptors().iter() {
-        inputs.push(desc.try_into()?)
+    for desc in presentation_definition
+        .input_descriptors()
+        .to_owned()
+        .iter_mut()
+    {
+        if let Some(claims) = claims_to_exclude.and_then(|claims_map| claims_map.get(desc.id())) {
+            let constraints = filter_and_exclude_constraints(desc, claims)?;
+            *desc = desc.to_owned().set_constraints(constraints);
+        }
+
+        inputs.push(desc.deref().try_into()?);
     }
 
     Ok(inputs)
@@ -322,6 +340,30 @@ impl TryInto<PresentationInput> for &InputDescriptor {
             constraints: self.constraints().to_owned(),
         })
     }
+}
+
+fn filter_and_exclude_constraints(
+    input_descriptor: &InputDescriptor,
+    claims_to_exclude: &Vec<JsonPath>,
+) -> Result<Constraints> {
+    let mut constraints = input_descriptor.constraints().to_owned();
+
+    for (index, field) in constraints.fields().to_owned().iter().enumerate() {
+        for claim in claims_to_exclude {
+            if !field.path().contains(claim) {
+                continue;
+            }
+            if !field.is_optional() {
+                InvalidClaimsToExcludeSnafu {
+                    details: format!("Claim {claim} is not optional"),
+                }
+                .fail()?;
+            }
+            constraints.fields_as_mut().remove(index);
+        }
+    }
+
+    Ok(constraints)
 }
 
 #[instrument(level = Level::TRACE, err(), ret())]
@@ -600,7 +642,7 @@ mod tests {
     async fn split_to_inputs_returns_correct_presentation_inputs_for_sdjwt() {
         let presentation_definition = create_single_presentation_definition();
 
-        let result = split_to_inputs(&presentation_definition).unwrap();
+        let result = split_to_inputs(&presentation_definition, None).unwrap();
 
         assert_eq!(
             result,
@@ -628,7 +670,7 @@ mod tests {
         let presentation_definition =
             PresentationDefinition::new("presentation_definition_id".to_string(), descriptor);
 
-        let result = split_to_inputs(&presentation_definition).unwrap();
+        let result = split_to_inputs(&presentation_definition, None).unwrap();
 
         assert_eq!(
             result,
@@ -673,7 +715,7 @@ mod tests {
         let presentation_definition =
             PresentationDefinition::new("presentation_definition_id".to_string(), descriptor);
 
-        let result = split_to_inputs(&presentation_definition);
+        let result = split_to_inputs(&presentation_definition, None);
 
         assert!(matches!(
             result.err().unwrap(),

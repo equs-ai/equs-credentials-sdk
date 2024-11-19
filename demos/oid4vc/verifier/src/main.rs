@@ -204,12 +204,14 @@ pub fn default_presentation_definition() -> PresentationDefinition {
     });
     let vct_constraint = ConstraintsField::new("$.vct".to_string()).set_filter(vct_filter);
 
-    let name_email_constraint =
-        ConstraintsField::new("$.email.work".to_string()).add_path("$.username".to_string());
+    let email_constraint = ConstraintsField::new("$.email.work".to_string());
+
+    let username_constraint = ConstraintsField::new("$.username".to_string()).set_optional(true);
 
     let constraints = Constraints::new()
         .add_constraint(vct_constraint)
-        .add_constraint(name_email_constraint);
+        .add_constraint(email_constraint)
+        .add_constraint(username_constraint);
 
     let mut format = ClaimFormatMap::new();
     format.insert(

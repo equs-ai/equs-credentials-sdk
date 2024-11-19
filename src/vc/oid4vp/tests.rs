@@ -6,7 +6,7 @@ pub mod fixtures {
     pub const VERIFIER_URL: &str = "http://127.0.0.1:55796";
     pub const NONCE: &str = "n0NcE";
     pub const CLIENT_ID: &str = "wallet-dev";
-    pub const REQUEST_URI: &str = "openid4vp://?client_id=did%3Akey%3AzDnaekR7pzGzJRzxrQGpKiftrCZxKCPoWAcGxpS8RzYBDK7LC&request_uri=http%3A%2F%2F127.0.0.1%3A55796%2Frequest";
+    pub const REQUEST_URI: &str = "openid4vp://?client_id=did%3Akey%3AzDnaex9UKhcwNpfrPva1HLj6DECNHhHkmuY6xszv1KGWksvfL&request_uri=http%3A%2F%2F127.0.0.1%3A55796%2Frequest";
 
     pub mod single_presentation {
         use crate::nonce::Nonce;
@@ -64,10 +64,10 @@ pub mod fixtures {
             ]
         }"#;
 
-        pub const AUTH_REQUEST_JWT: &str = "eyJhbGciOiJFUzI1NiIsImtpZCI6ImRpZDprZXk6ekRuYWVrUjdwekd6SlJ6eHJRR3BLaWZ0ckNaeEtDUG9XQWNHeHBTOFJ6WUJESzdMQyN6RG5hZWtSN3B6R3pKUnp4clFHcEtpZnRyQ1p4S0NQb1dBY0d4cFM4UnpZQkRLN0xDIiwidHlwIjoiSldUIn0.eyJyZXNwb25zZV9tb2RlIjoiZGlyZWN0X3Bvc3QiLCJyZXNwb25zZV90eXBlIjoidnBfdG9rZW4iLCJub25jZSI6IjhZT0dKcjVIVkZUOHZTa0w3eEVGdE5wb1NWNldVcEFQM3JYQWRhVTNnNUUiLCJjbGllbnRfbWV0YWRhdGEiOnsidnBfZm9ybWF0cyI6eyJ2YytzZC1qd3QiOnsiYWxnIjpbIkVkRFNBIiwiRVMyNTYiXX19fSwiY2xpZW50X2lkIjoiZGlkOmtleTp6RG5hZWtSN3B6R3pKUnp4clFHcEtpZnRyQ1p4S0NQb1dBY0d4cFM4UnpZQkRLN0xDIiwiY2xpZW50X2lkX3NjaGVtZSI6ImRpZCIsInByZXNlbnRhdGlvbl9kZWZpbml0aW9uIjp7ImlkIjoiMzI3YWQxNzEtYzgwYS00ODViLWIwOTgtNTBkN2FkMjc4ZWY2IiwiaW5wdXRfZGVzY3JpcHRvcnMiOlt7ImlkIjoiSWRlbnRpdHktMSIsImNvbnN0cmFpbnRzIjp7ImZpZWxkcyI6W3sicGF0aCI6WyIkLm5hbWUiXSwicHJlZGljYXRlIjpudWxsLCJpbnRlbnRfdG9fcmV0YWluIjpmYWxzZX0seyJwYXRoIjpbIiQudmN0Il0sInByZWRpY2F0ZSI6bnVsbCwiZmlsdGVyIjp7InR5cGUiOiJzdHJpbmciLCJjb25zdCI6Imh0dHBzOi8vY3JlZGVudGlhbHMuZXhhbXBsZS5jb20vaWRlbnRpdHlfY3JlZGVudGlhbCJ9LCJpbnRlbnRfdG9fcmV0YWluIjpmYWxzZX1dfSwibmFtZSI6IklkZW50aXR5IFZDIiwicHVycG9zZSI6IldlIHdhbnQgYW4gaWRlbnRpdHkiLCJmb3JtYXQiOnsidmMrc2Qtand0Ijp7InNkLWp3dF9hbGdfdmFsdWVzIjpbIkVTMjU2IiwiRWREU0EiXSwia2Itand0X2FsZ192YWx1ZXMiOlsiRVMyNTYiLCJFZERTQSJdfX19XSwibmFtZSI6IkV4YW1wbGUgd2l0aCBzZWxlY3RpdmUgZGlzY2xvc3VyZSJ9LCJyZXNwb25zZV91cmkiOiJodHRwOi8vMTI3LjAuMC4xOjU1Nzk2L2F1dGgifQ.fi3pba2RZDzIZbtWfRehDd0EECVxOGlRbC_gCojeCV5ulB2eJD70gFVcMWN9a9LooZm0q_RaZIcdyl070cA28A";
+        pub const AUTH_REQUEST_JWT: &str = "eyJhbGciOiJFUzI1NiIsImtpZCI6ImRpZDprZXk6ekRuYWV4OVVLaGN3TnBmclB2YTFITGo2REVDTkhoSGttdVk2eHN6djFLR1drc3ZmTCN6RG5hZXg5VUtoY3dOcGZyUHZhMUhMajZERUNOSGhIa211WTZ4c3p2MUtHV2tzdmZMIiwidHlwIjoiSldUIn0.eyJyZXNwb25zZV9tb2RlIjoiZGlyZWN0X3Bvc3QiLCJyZXNwb25zZV90eXBlIjoidnBfdG9rZW4iLCJub25jZSI6IlhVY2ZUTmZKLWQ1cG05OVhVS0c3bUdLdWt3WGVEYXNhUmxnaEtFcEd4aDAiLCJjbGllbnRfbWV0YWRhdGEiOnsidnBfZm9ybWF0cyI6eyJ2YytzZC1qd3QiOnsiYWxnIjpbIkVkRFNBIiwiRVMyNTYiXX19fSwiY2xpZW50X2lkIjoiZGlkOmtleTp6RG5hZXg5VUtoY3dOcGZyUHZhMUhMajZERUNOSGhIa211WTZ4c3p2MUtHV2tzdmZMIiwiY2xpZW50X2lkX3NjaGVtZSI6ImRpZCIsInByZXNlbnRhdGlvbl9kZWZpbml0aW9uIjp7ImlkIjoiMzI3YWQxNzEtYzgwYS00ODViLWIwOTgtNTBkN2FkMjc4ZWY2IiwiaW5wdXRfZGVzY3JpcHRvcnMiOlt7ImlkIjoiSWRlbnRpdHktMSIsImNvbnN0cmFpbnRzIjp7ImZpZWxkcyI6W3sicGF0aCI6WyIkLm5hbWUiXSwicHJlZGljYXRlIjpudWxsLCJvcHRpb25hbCI6dHJ1ZSwiaW50ZW50X3RvX3JldGFpbiI6ZmFsc2V9LHsicGF0aCI6WyIkLnZjdCJdLCJwcmVkaWNhdGUiOm51bGwsImZpbHRlciI6eyJ0eXBlIjoic3RyaW5nIiwiY29uc3QiOiJodHRwczovL2NyZWRlbnRpYWxzLmV4YW1wbGUuY29tL2lkZW50aXR5X2NyZWRlbnRpYWwifSwiaW50ZW50X3RvX3JldGFpbiI6ZmFsc2V9XX0sIm5hbWUiOiJJZGVudGl0eSBWQyIsInB1cnBvc2UiOiJXZSB3YW50IGFuIGlkZW50aXR5IiwiZm9ybWF0Ijp7InZjK3NkLWp3dCI6eyJzZC1qd3RfYWxnX3ZhbHVlcyI6WyJFUzI1NiIsIkVkRFNBIl0sImtiLWp3dF9hbGdfdmFsdWVzIjpbIkVTMjU2IiwiRWREU0EiXX19fV0sIm5hbWUiOiJFeGFtcGxlIHdpdGggc2VsZWN0aXZlIGRpc2Nsb3N1cmUifSwicmVzcG9uc2VfdXJpIjoiaHR0cDovLzEyNy4wLjAuMTo1NTc5Ni9hdXRoIn0.E5Y-Vk_ncPljaRr562qVkFRhAxYIBw_2BoajKJc8Wm-y8qQb2CcmKaHURoWxc6IG3ky7AWLs1ubI28WWak5WJA";
         pub const AUTH_REQUEST: &str = r#"
             {
-              "client_id": "did:key:zDnaekR7pzGzJRzxrQGpKiftrCZxKCPoWAcGxpS8RzYBDK7LC",
+              "client_id": "did:key:zDnaex9UKhcwNpfrPva1HLj6DECNHhHkmuY6xszv1KGWksvfL",
               "presentation_definition": {
                 "id": "327ad171-c80a-485b-b098-50d7ad278ef6",
                 "input_descriptors": [
@@ -80,6 +80,7 @@ pub mod fixtures {
                             "$.name"
                           ],
                           "predicate": null,
+                          "optional": true,
                           "intent_to_retain": false
                         },
                         {
@@ -113,7 +114,7 @@ pub mod fixtures {
                 ],
                 "name": "Example with selective disclosure"
               },
-              "nonce": "8YOGJr5HVFT8vSkL7xEFtNpoSV6WUpAP3rXAdaU3g5E",
+              "nonce": "XUcfTNfJ-d5pm99XUKG7mGKukwXeDasaRlghKEpGxh0",
               "response_mode": "direct_post",
               "response_uri": "http://127.0.0.1:55796/auth"
             }
@@ -493,7 +494,11 @@ pub mod utils {
     }
 
     impl PresentationTestCase {
-        pub fn mock_http_auth_response_endpoint(&self, http_client: &mut MockHttpClient) {
+        pub fn mock_http_auth_response_endpoint(
+            &self,
+            http_client: &mut MockHttpClient,
+            claims_to_exclude: Option<&HashMap<String, Vec<String>>>,
+        ) {
             let credential_data = self.credential_data.clone();
             let expected_presentation_submission = self.presentation_submission.clone();
 
@@ -581,7 +586,7 @@ pub mod utils {
         ) -> CredentialMapping {
             let (kid, key_handle) = holder_key;
             let inputs =
-                presentation_exchange::split_to_inputs(&self.request.presentation_definition)
+                presentation_exchange::split_to_inputs(&self.request.presentation_definition, None)
                     .unwrap();
 
             let mut result = CredentialMapping::new();

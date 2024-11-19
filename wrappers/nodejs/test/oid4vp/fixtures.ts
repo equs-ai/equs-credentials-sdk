@@ -1,10 +1,10 @@
 export const AUTH_REQUEST_JWT =
-	"eyJhbGciOiJFUzI1NiIsImtpZCI6ImRpZDprZXk6ekRuYWVzRVg3OUdGUWY0Y1g5d0t4YldIQkplcHU1akhlNTNXUm5hc2RoV2daOEZLUiN6RG5hZXNFWDc5R0ZRZjRjWDl3S3hiV0hCSmVwdTVqSGU1M1dSbmFzZGhXZ1o4RktSIiwidHlwIjoiSldUIn0.eyJyZXNwb25zZV9tb2RlIjoiZGlyZWN0X3Bvc3QiLCJyZXNwb25zZV90eXBlIjoidnBfdG9rZW4iLCJub25jZSI6ImF2SzI1cUdsaDBmejg0T3MtR1JabV9NOTFRT09ya0JSaV9TdXNXbmpiZmMiLCJjbGllbnRfbWV0YWRhdGEiOnsidnBfZm9ybWF0cyI6eyJ2YytzZC1qd3QiOnsiYWxnIjpbIkVkRFNBIiwiRVMyNTYiXX19fSwiY2xpZW50X2lkIjoiZGlkOmtleTp6RG5hZXNFWDc5R0ZRZjRjWDl3S3hiV0hCSmVwdTVqSGU1M1dSbmFzZGhXZ1o4RktSIiwiY2xpZW50X2lkX3NjaGVtZSI6ImRpZCIsInByZXNlbnRhdGlvbl9kZWZpbml0aW9uIjp7ImlkIjoiMjRjYzFlNGQtMTRhNy00ZjhjLWIyY2YtMDNmZjQ5YzRjYTk2IiwiaW5wdXRfZGVzY3JpcHRvcnMiOlt7ImlkIjoiSWRlbnRpdHktMSIsImNvbnN0cmFpbnRzIjp7ImZpZWxkcyI6W3sicGF0aCI6WyIkLnZjdCJdLCJwcmVkaWNhdGUiOm51bGwsImZpbHRlciI6eyJ0eXBlIjoic3RyaW5nIiwiY29uc3QiOiJodHRwczovL2NyZWRlbnRpYWxzLmV4YW1wbGUuY29tL2lkZW50aXR5X2NyZWRlbnRpYWwifSwiaW50ZW50X3RvX3JldGFpbiI6ZmFsc2V9LHsicGF0aCI6WyIkLm5hbWUiXSwicHJlZGljYXRlIjpudWxsLCJpbnRlbnRfdG9fcmV0YWluIjpmYWxzZX1dfSwibmFtZSI6IklkZW50aXR5IFZDIiwicHVycG9zZSI6IldlIHdhbnQgYW4gaWRlbnRpdHkiLCJmb3JtYXQiOnsidmMrc2Qtand0Ijp7InNkLWp3dF9hbGdfdmFsdWVzIjpbIkVTMjU2IiwiRWREU0EiXSwia2Itand0X2FsZ192YWx1ZXMiOlsiRVMyNTYiLCJFZERTQSJdfX19XSwibmFtZSI6IkV4YW1wbGUgd2l0aCBzZWxlY3RpdmUgZGlzY2xvc3VyZSJ9LCJyZXNwb25zZV91cmkiOiJodHRwOi8vbG9jYWxob3N0OjkwMDEvcmVzcG9uc2UifQ.30DJ-SfGbANtnYqUhlcA1ploTAPz-TLMk_E7Amedzsa29N5UPj076lVDdwAi6bOsK0-evgijKL6V1gfSfFYYaA";
+	"eyJhbGciOiJFUzI1NiIsImtpZCI6ImRpZDprZXk6ekRuYWVRdUMzWjhRaWNScXpMV1Rjc3l4eEdweExoR1AzWEFYN1g2QU1vU1VqMkViQiN6RG5hZVF1QzNaOFFpY1JxekxXVGNzeXh4R3B4TGhHUDNYQVg3WDZBTW9TVWoyRWJCIiwidHlwIjoiSldUIn0.eyJyZXNwb25zZV9tb2RlIjoiZGlyZWN0X3Bvc3QiLCJyZXNwb25zZV90eXBlIjoidnBfdG9rZW4iLCJub25jZSI6IjkwSWxkNFdhd09DR0ZnbGZDTVU1eXd1TkxYV1FFOGdsWmhTemZPd3RMUUkiLCJjbGllbnRfbWV0YWRhdGEiOnsidnBfZm9ybWF0cyI6eyJ2YytzZC1qd3QiOnsiYWxnIjpbIkVkRFNBIiwiRVMyNTYiXX19fSwiY2xpZW50X2lkIjoiZGlkOmtleTp6RG5hZVF1QzNaOFFpY1JxekxXVGNzeXh4R3B4TGhHUDNYQVg3WDZBTW9TVWoyRWJCIiwiY2xpZW50X2lkX3NjaGVtZSI6ImRpZCIsInByZXNlbnRhdGlvbl9kZWZpbml0aW9uIjp7ImlkIjoiMWI5ZDZiY2QtYmJmZC00YjJkLTliNWQtYWI4ZGZiYmQ0YmVkIiwiaW5wdXRfZGVzY3JpcHRvcnMiOlt7ImlkIjoiSWRlbnRpdHktMSIsImNvbnN0cmFpbnRzIjp7ImZpZWxkcyI6W3sicGF0aCI6WyIkLnZjdCJdLCJwcmVkaWNhdGUiOm51bGwsImZpbHRlciI6eyJ0eXBlIjoic3RyaW5nIiwiY29uc3QiOiJodHRwczovL2NyZWRlbnRpYWxzLmV4YW1wbGUuY29tL2lkZW50aXR5X2NyZWRlbnRpYWwifSwiaW50ZW50X3RvX3JldGFpbiI6ZmFsc2V9LHsicGF0aCI6WyIkLm5hbWUiXSwicHJlZGljYXRlIjpudWxsLCJvcHRpb25hbCI6dHJ1ZSwiaW50ZW50X3RvX3JldGFpbiI6ZmFsc2V9XX0sIm5hbWUiOiJJZGVudGl0eSBWQyIsInB1cnBvc2UiOiJXZSB3YW50IGFuIGlkZW50aXR5IiwiZm9ybWF0Ijp7InZjK3NkLWp3dCI6eyJzZC1qd3RfYWxnX3ZhbHVlcyI6WyJFUzI1NiIsIkVkRFNBIl0sImtiLWp3dF9hbGdfdmFsdWVzIjpbIkVTMjU2IiwiRWREU0EiXX19fV19LCJyZXNwb25zZV91cmkiOiJodHRwOi8vbG9jYWxob3N0OjkwMDEvcmVzcG9uc2UifQ.4YnvxrmmsrjilN-dGnNryW9NVYbw73BzDU8vBeH7AkmPV1DTRX1TEFbju1MQ7fcIGSdsO65J_dQ2njCLEWWomA";
 
 export const AUTH_REQUEST = {
-	clientId: "did:key:zDnaesEX79GFQf4cX9wKxbWHBJepu5jHe53WRnasdhWgZ8FKR",
+	clientId: "did:key:zDnaeQuC3Z8QicRqzLWTcsyxxGpxLhGP3XAX7X6AMoSUj2EbB",
 	presentationDefinition: {
-		id: "24cc1e4d-14a7-4f8c-b2cf-03ff49c4ca96",
+		id: "1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed",
 		input_descriptors: [
 			{
 				id: "Identity-1",
@@ -23,6 +23,7 @@ export const AUTH_REQUEST = {
 							path: ["$.name"],
 							intent_to_retain: false,
 							predicate: null,
+							optional: true,
 						},
 					],
 				},
@@ -36,11 +37,10 @@ export const AUTH_REQUEST = {
 				},
 			},
 		],
-		name: "Example with selective disclosure",
 	},
 	responseUri: "http://localhost:9001/response",
 	responseMode: "direct_post",
-	nonce: "avK25qGlh0fz84Os-GRZm_M91QOOrkBRi_SusWnjbfc",
+	nonce: "90Ild4WawOCGFglfCMU5ywuNLXWQE8glZhSzfOwtLQI",
 };
 
 export const PRESENTATION_DEFINITION = {
@@ -67,6 +67,7 @@ export const PRESENTATION_DEFINITION = {
 					},
 					{
 						path: ["$.name"],
+						optional: true,
 					},
 				],
 			},

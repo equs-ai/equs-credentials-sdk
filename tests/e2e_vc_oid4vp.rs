@@ -21,8 +21,7 @@ use agent_sdk::inmem::kms::LocalKms;
 use agent_sdk::inmem::vault::InMemVault;
 use agent_sdk::vault::Vault;
 use agent_sdk::vc::oid4vp::{
-    AuthResponseOptions, AuthorizationResponseMetadata, PassAuthRequestObject, ResponseMode,
-    ResponseType,
+    AuthResponseOptions, PassAuthRequestObject, ResponseMode, ResponseType,
 };
 use agent_sdk::vc::oid4vp::{AuthorizationResponse, Holder};
 use agent_sdk::vc::oid4vp::{HolderBuilder, PresentationSession};
@@ -119,7 +118,7 @@ async fn credentials_presentation_and_verification(#[case] test_case: Oid4VpTest
 
     println!("9. Present Credential Auto");
     holder
-        .present_credentials_auto(&request_object, &AuthorizationResponseMetadata {})
+        .present_credentials_auto(&request_object, &Default::default())
         .await
         .unwrap();
 }

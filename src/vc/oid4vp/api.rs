@@ -11,8 +11,44 @@ use std::collections::HashMap;
 use std::fmt::Debug;
 use url::Url;
 
-// Data type
-pub struct AuthorizationResponseMetadata {}
+/// Response metadata
+///
+/// # Fields
+///
+/// * `claims_to_exclude` - map of claims divided by input descriptors
+/// that need to be excluded.
+/// Exclude works for optional claims only. Excluding non-optional claims will throw a
+/// [crate::vc::presentation_exchange::Error::InvalidClaimsToExclude]
+/// ```
+/// use std::collections::HashMap;
+/// let mut map = HashMap::new();
+/// map.insert("Identity-1", vec!["$.name".to_string()]);
+/// ```
+#[derive(Debug, Default)]
+pub struct AuthorizationResponseMetadata {
+    pub claims_to_exclude: Option<HashMap<String, Vec<String>>>,
+}
+
+impl AuthorizationResponseMetadata {
+    pub fn with_excluded_claims(claims: HashMap<String, Vec<String>>) -> Self {
+        Self {
+            claims_to_exclude: Some(claims),
+        }
+    }
+
+    pub fn add_claims_to_exclude(&mut self, descriptor_id: String, claim: String) -> &mut Self {
+        let claims_to_exclude = self.claims_to_exclude.get_or_insert(HashMap::new());
+
+        if let Some(claims) = claims_to_exclude.get_mut(&descriptor_id) {
+            claims.push(claim);
+        } else {
+            claims_to_exclude.insert(descriptor_id, vec![claim]);
+        }
+
+        self
+    }
+}
+
 pub type CredentialMapping = HashMap<String, Vec<CredentialEntry>>;
 pub type ClientMetadata = oid4vp::core::authorization_request::parameters::ClientMetadata;
 pub type WalletMetadata = oid4vp::core::metadata::WalletMetadata;
