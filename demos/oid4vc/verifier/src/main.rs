@@ -12,7 +12,7 @@ use agent_sdk::inmem::nonce::LocalNonceGenerator;
 use agent_sdk::vc::oid4vp;
 use agent_sdk::vc::oid4vp::{
     AuthResponseOptions, AuthorizationResponse, PassAuthRequestObject, PresentationSession,
-    ResponseMode, ResponseType, ResponseUri,
+    ResponseMode, ResponseType,
 };
 use agent_sdk::vc::presentation_exchange::{
     ClaimFormatDesignation, ClaimFormatMap, ClaimFormatPayload, Constraints, ConstraintsField,
@@ -31,7 +31,7 @@ const AUTH_RESPONSE_URL_PATH: &str = "/present";
 
 struct AppState {
     verifier: Arc<dyn oid4vp::Verifier>,
-    auth_req_obj_storage: InMemStorage<String, String>,
+    auth_req_obj_storage: InMemStorage<String, Option<String>>,
     presentation_session_storage: InMemStorage<String, PresentationSession>,
 }
 
@@ -71,6 +71,7 @@ async fn presentation_request_object(req: HttpRequest, state: web::Data<AppState
         .get(&req.full_url().to_string())
         .await
         .unwrap()
+        .unwrap()
         .unwrap();
 
     HttpResponse::Ok()
@@ -87,7 +88,7 @@ async fn presentation_request_uri(state: web::Data<AppState>) -> HttpResponse {
     let auth_resp_config = AuthResponseOptions {
         type_: ResponseType::VpToken,
         mode: ResponseMode::DirectPost,
-        submission_uri: ResponseUri::new(response_uri),
+        submission_uri: response_uri,
     };
 
     let pass_auth_req_object = PassAuthRequestObject::ByReference(request_uri.clone());

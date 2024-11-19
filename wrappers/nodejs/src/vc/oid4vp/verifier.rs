@@ -6,6 +6,7 @@ use agent_sdk::vc::oid4vp::{
 };
 use napi::{Error, Result};
 use napi_derive::napi;
+use url::Url;
 
 #[napi]
 pub struct OID4VPVerifier(Box<dyn Verifier>);
@@ -78,9 +79,8 @@ impl TryFrom<JsAuthResponseOptions> for AuthResponseOptions {
         Ok(Self {
             type_: value.type_.into(),
             mode: value.mode.into(),
-            submission_uri: serde_json::Value::String(value.submission_uri)
-                .try_into()
-                .map_err(|_| Error::from_reason("could not parse submission uri".to_string()))?,
+            submission_uri: Url::parse(&value.submission_uri)
+                .map_err(|e| Error::from_reason(e.to_string()))?,
         })
     }
 }
@@ -110,7 +110,7 @@ impl JsPassAuthRequestObject {
 pub struct JsPresentationSession {
     pub nonce: String,
     pub presentation_definition: JsonObject,
-    pub authorization_request_jwt: String,
+    pub authorization_request_jwt: Option<String>,
 }
 
 impl TryFrom<PresentationSession> for JsPresentationSession {
@@ -140,7 +140,7 @@ impl TryFrom<JsPresentationSession> for PresentationSession {
 #[napi(object)]
 pub struct AuthorizationRequestWithSession {
     pub authorization_request_uri: String,
-    pub authorization_request_jwt: String,
+    pub authorization_request_jwt: Option<String>,
     pub session: JsPresentationSession,
 }
 

@@ -22,7 +22,7 @@ use agent_sdk::inmem::vault::InMemVault;
 use agent_sdk::vault::Vault;
 use agent_sdk::vc::oid4vp::{
     AuthResponseOptions, AuthorizationResponseMetadata, PassAuthRequestObject, ResponseMode,
-    ResponseType, ResponseUri,
+    ResponseType,
 };
 use agent_sdk::vc::oid4vp::{AuthorizationResponse, Holder};
 use agent_sdk::vc::oid4vp::{HolderBuilder, PresentationSession};
@@ -86,7 +86,7 @@ async fn credentials_presentation_and_verification(#[case] test_case: Oid4VpTest
     let auth_resp_options = AuthResponseOptions {
         type_: ResponseType::VpToken,
         mode: ResponseMode::DirectPost,
-        submission_uri: ResponseUri::new(response_uri),
+        submission_uri: response_uri,
     };
 
     let (auth_request, session) = verifier
@@ -100,7 +100,7 @@ async fn credentials_presentation_and_verification(#[case] test_case: Oid4VpTest
         .unwrap();
 
     let http_client = prepare_http_client_for_holder(
-        session.auth_request_jwt.clone(),
+        session.auth_request_jwt.clone().unwrap(),
         verifier,
         test_case.validate,
         session,

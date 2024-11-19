@@ -18,7 +18,6 @@ pub type ClientMetadata = oid4vp::core::authorization_request::parameters::Clien
 pub type WalletMetadata = oid4vp::core::metadata::WalletMetadata;
 pub type ResponseType = oid4vp::core::authorization_request::parameters::ResponseType;
 pub type ResponseMode = oid4vp::core::authorization_request::parameters::ResponseMode;
-pub type ResponseUri = oid4vp::core::authorization_request::parameters::ResponseUri;
 
 /// A session with state managed during the presentation.
 ///
@@ -27,7 +26,7 @@ pub type ResponseUri = oid4vp::core::authorization_request::parameters::Response
 pub struct PresentationSession {
     pub nonce: Nonce,
     pub presentation_definition: PresentationDefinition,
-    pub auth_request_jwt: String,
+    pub auth_request_jwt: Option<String>,
 }
 
 /// A resolved `OID4VP` authorization request.
@@ -51,7 +50,7 @@ pub struct ResolvedAuthRequest {
 pub struct AuthResponseOptions {
     pub type_: ResponseType,
     pub mode: ResponseMode,
-    pub submission_uri: ResponseUri,
+    pub submission_uri: Url,
 }
 
 /// An OID4VP authorization response.

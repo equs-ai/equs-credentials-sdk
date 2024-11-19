@@ -49,6 +49,10 @@ impl ProtocolError {
     pub fn vp_formats_not_supported(message: &str) -> ProtocolError {
         ProtocolError::new(ErrorType::VpFormatsNotSupported, Some(message.to_owned()))
     }
+
+    pub fn invalid_request(message: &str) -> ProtocolError {
+        ProtocolError::new(ErrorType::InvalidRequest, Some(message.to_owned()))
+    }
 }
 
 impl ProtocolSnafu<ErrorType, Option<String>> {

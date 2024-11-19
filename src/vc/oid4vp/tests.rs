@@ -170,7 +170,7 @@ pub mod fixtures {
         use crate::vc::oid4vp::tests::CredTypeWithClaims;
         use crate::vc::oid4vp::{
             AuthResponseOptions, PresentationSession, ResolvedAuthRequest, ResponseMode,
-            ResponseType, ResponseUri,
+            ResponseType,
         };
         use crate::vc::presentation_exchange::{
             PresentationDefinition, PresentationSubmission, SubmissionRequirement,
@@ -440,7 +440,7 @@ pub mod fixtures {
             AuthResponseOptions {
                 type_: ResponseType::VpToken,
                 mode: ResponseMode::DirectPost,
-                submission_uri: ResponseUri::new(submission_uri),
+                submission_uri,
             }
         }
     }

@@ -184,9 +184,14 @@ where
         let auth_req =
             AuthorizationRequest::from_url(request_uri, &self.metadata.authorization_endpoint().0)?;
 
-        let url = auth_req
-            .resolve_response_uri(|req| self.http_client.async_call(req))
-            .await?;
+        let url = match auth_req {
+            AuthorizationRequest::Plain(aro) => aro.return_uri().to_owned(),
+            AuthorizationRequest::Signed(signed_req) => {
+                signed_req
+                    .resolve_response_uri(|req| self.http_client.async_call(req))
+                    .await?
+            }
+        };
 
         Ok(url)
     }
@@ -476,6 +481,42 @@ where
             self.did_resolver.as_spruce_resolver(),
         )
         .await
+    }
+
+    #[instrument(
+        level = Level::TRACE,
+        skip(self),
+        err(),
+        ret(),
+    )]
+    async fn redirect_uri(
+        &self,
+        decoded_request: &AuthorizationRequestObject,
+        redirect_uri: &Url,
+    ) -> anyhow::Result<(), oid4vp::core::error::Error> {
+        let supported = self
+            .metadata()
+            .is_client_id_schema_supported(decoded_request.client_id_scheme());
+
+        if !supported {
+            return Err(oid4vp::core::error::Error::protocol_invalid_req(
+                "'redirect_uri' client_id_schema verification method is not supported",
+            ));
+        }
+        let client_id = &decoded_request.client_id().0;
+        let client_id_as_uri = Url::parse(client_id).map_err(|_| {
+            oid4vp::core::error::Error::protocol_invalid_req(
+                "could not parse 'client_id' = {client_id} as uri, in 'redirect_uri' response method it must be uri",
+            )
+        })?;
+
+        if client_id_as_uri != *redirect_uri {
+            return Err(oid4vp::core::error::Error::protocol_invalid_req(
+                &format!("in 'redirect_uri' response mode 'client_id' = {client_id} must be equal to 'redirect_uri' = {redirect_uri}"),
+            ));
+        }
+
+        Ok(())
     }
 }
 
