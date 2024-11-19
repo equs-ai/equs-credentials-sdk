@@ -176,8 +176,8 @@ impl SdJwtAPI {
         claims.put_dt("iat", now);
         claims.put_dt("nbf", now);
 
-        let lt = metadata.lifetime;
-        claims.put_dt("exp", now + lt);
+        let exp = Self::get_expiration_claim(&claims).unwrap_or(now + metadata.lifetime);
+        claims.put_dt("exp", exp);
 
         Value::Object(claims)
     }
@@ -372,13 +372,16 @@ impl SdJwtAPI {
     }
 }
 
-impl GetExpirationClaim<Claims, time::Duration> for SdJwtAPI {
-    fn get_expiration_claim(claims: &Claims) -> Option<time::Duration> {
-        claims.get("exp").and_then(|v| {
-            serde_json::from_value::<i64>(v.to_owned())
-                .map(time::Duration::seconds)
-                .ok()
-        })
+impl GetExpirationClaim<Claims, time::OffsetDateTime> for SdJwtAPI {
+    fn get_expiration_claim(claims: &Claims) -> Option<time::OffsetDateTime> {
+        claims
+            .get("exp")
+            .and_then(|v| {
+                serde_json::from_value::<i64>(v.to_owned())
+                    .map(|exp| time::OffsetDateTime::from_unix_timestamp(exp).ok())
+                    .ok()
+            })
+            .unwrap_or(None)
     }
 }
 
