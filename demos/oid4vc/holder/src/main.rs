@@ -291,9 +291,11 @@ async fn present_credential(
 
     let redirect_url = match input.as_str() {
         "1" => {
-            println!("2. Holder sends authorization/presentation response to Verifier");
+            println!("2. Holder sends authorization/presentation response to Verifier!");
+
+            let auth_response_metadata = get_claims_to_exclude();
             holder
-                .present_credentials_auto(auth_request, &AuthorizationResponseMetadata {})
+                .present_credentials_auto(auth_request, &auth_response_metadata)
                 .await
                 .unwrap()
         }
@@ -319,9 +321,11 @@ async fn present_credential(
             input = input_from_console("Failed to read the selected credential");
             let selected = collect_selected_cred_entries(input, &credentials);
 
+            let auth_response_metadata = get_claims_to_exclude();
+
             println!("2. Holder sends authorization/presentation response to Verifier");
             holder
-                .present_credentials(auth_request, &selected, &AuthorizationResponseMetadata {})
+                .present_credentials(auth_request, &selected, &auth_response_metadata)
                 .await
                 .unwrap()
         }
@@ -331,6 +335,24 @@ async fn present_credential(
     };
 
     redirect_url
+}
+
+fn get_claims_to_exclude() -> AuthorizationResponseMetadata {
+    println!("Do you want to add claims to exclude?: y (yes) or anything else for no");
+    let input = input_from_console("Failed to read input on claims to exclude");
+    match input.as_str() {
+        "y" => {
+            println!("Input id of input descriptor: ");
+            let id = input_from_console("Failed to read presentation mode");
+            println!("Input name of claim to exclude (use space for more than one): ");
+            let claims = input_from_console("Failed to read presentation mode");
+            let claims: Vec<String> = claims.split(' ').map(|s| s.to_string()).collect();
+            let mut map = HashMap::new();
+            map.insert(id, claims);
+            AuthorizationResponseMetadata::with_excluded_claims(map)
+        }
+        _ => Default::default(),
+    }
 }
 
 fn collect_selected_cred_entries(

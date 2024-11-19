@@ -39,10 +39,14 @@ impl OID4VPHolder {
     pub async fn present_credentials_auto(
         &self,
         auth_request: AuthorizationRequest,
+        auth_response_metadata: JsAuthorizationResponseMetadata,
     ) -> Result<Option<String>> {
         let result = self
             .0
-            .present_credentials_auto(&auth_request.try_into()?, &AuthorizationResponseMetadata {})
+            .present_credentials_auto(
+                &auth_request.try_into()?,
+                &auth_response_metadata.try_into()?,
+            )
             .await
             .map_err(|err| Error::from_reason(format!("{:?}", err)))?;
 
@@ -68,13 +72,14 @@ impl OID4VPHolder {
         &self,
         auth_request: AuthorizationRequest,
         credential_mapping: HashMap<String, Vec<JsCredentialEntry>>,
+        auth_response_metadata: JsAuthorizationResponseMetadata,
     ) -> Result<Option<String>> {
         let result = self
             .0
             .present_credentials(
                 &auth_request.try_into()?,
                 &convert_from_js_credential_mapping(credential_mapping)?,
-                &AuthorizationResponseMetadata {},
+                &auth_response_metadata.try_into()?,
             )
             .await
             .map_err(|err| Error::from_reason(format!("{:?}", err)))?;
@@ -116,6 +121,23 @@ impl TryFrom<ResolvedAuthRequest> for AuthorizationRequest {
             nonce: value.nonce.secret().to_string(),
             response_mode: value.response_mode.into(),
             response_uri: value.response_uri.to_string(),
+        })
+    }
+}
+
+#[napi(object)]
+pub struct JsAuthorizationResponseMetadata {
+    pub claims_to_exclude: Option<HashMap<String, Vec<String>>>,
+}
+
+impl TryFrom<JsAuthorizationResponseMetadata> for AuthorizationResponseMetadata {
+    type Error = Error;
+    fn try_from(value: JsAuthorizationResponseMetadata) -> Result<Self> {
+        Ok(Self {
+            claims_to_exclude: value
+                .claims_to_exclude
+                .map(|cte| from_json_object(to_json_object(cte)?))
+                .transpose()?,
         })
     }
 }

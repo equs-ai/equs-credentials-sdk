@@ -13,6 +13,7 @@ import {
 } from "../../index";
 import { AUTH_REQUEST, AUTH_REQUEST_JWT, VC, VC_TYPE } from "./fixtures";
 import { createDidAndKeyMetadata } from "../utils/utils";
+import base64 = require("base-64");
 
 describe("OID4VP Holder: ", () => {
 	const mockServer = getLocal();
@@ -50,7 +51,7 @@ describe("OID4VP Holder: ", () => {
 		await mockServer.forGet("/request").thenReply(200, AUTH_REQUEST_JWT, { "content-type": "text/plain" });
 
 		const authorizationRequest = await holder.getAuthorizationRequest(
-			"openid4vp://?client_id=did%3Akey%3AzDnaesEX79GFQf4cX9wKxbWHBJepu5jHe53WRnasdhWgZ8FKR&request_uri=http%3A%2F%2Flocalhost%3A9001%2Frequest",
+			"openid4vp://?client_id=did%3Akey%3AzDnaeQuC3Z8QicRqzLWTcsyxxGpxLhGP3XAX7X6AMoSUj2EbB&request_uri=http%3A%2F%2Flocalhost%3A9001%2Frequest",
 		);
 		expect(authorizationRequest).toEqual(AUTH_REQUEST);
 	});
@@ -60,9 +61,30 @@ describe("OID4VP Holder: ", () => {
 
 		await vault.storeCredential(credential, metadata);
 
-		const result = await holder.presentCredentialsAuto(AUTH_REQUEST);
+		const result = await holder.presentCredentialsAuto(AUTH_REQUEST, {});
 
 		expect(result).toBeNull();
+	});
+
+	test("present Credentials Auto with excluded claims", async () => {
+		let token: string;
+		await mockServer.forPost("/response").thenCallback(async (request) => {
+			const form_data = await request.body.getFormData();
+
+			token = form_data.vp_token as string;
+			if (!form_data.presentation_submission?.length || !form_data.vp_token?.length)
+				throw new Error("Form data is invalid");
+
+			return { statusCode: 200, body: "" };
+		});
+
+		await vault.storeCredential(credential, metadata);
+
+		await holder.presentCredentialsAuto(AUTH_REQUEST, {
+			claimsToExclude: { "Identity-1": ["$.name"] },
+		});
+
+		expect(token.split("~").length).toEqual(2);
 	});
 
 	test("present Credentials", async () => {
@@ -72,7 +94,7 @@ describe("OID4VP Holder: ", () => {
 
 		let mapping = await holder.findVcsForPresentation(AUTH_REQUEST);
 
-		const result = await holder.presentCredentials(AUTH_REQUEST, mapping);
+		const result = await holder.presentCredentials(AUTH_REQUEST, mapping, {});
 
 		expect(result).toBeNull();
 	});

@@ -329,16 +329,18 @@ where
     async fn present_credentials_auto(
         &self,
         auth_request: &ResolvedAuthRequest,
-        _: &AuthorizationResponseMetadata,
+        auth_response_metadata: &AuthorizationResponseMetadata,
     ) -> Result<Option<Url>> {
         info!("presenting verifiable presentation is started");
 
         self.validate_against_supported_vp_formats(auth_request)
             .await?;
 
-        let presentation_inputs =
-            presentation_exchange::split_to_inputs(&auth_request.presentation_definition)
-                .context(PresentationExchangeSnafu)?;
+        let presentation_inputs = presentation_exchange::split_to_inputs(
+            &auth_request.presentation_definition,
+            auth_response_metadata.claims_to_exclude.as_ref(),
+        )
+        .context(PresentationExchangeSnafu)?;
 
         let presentations =
             future::try_join_all(presentation_inputs.iter().map(|presentation_input| async {
@@ -375,7 +377,7 @@ where
         let mut creds_map = CredentialMapping::new();
 
         let presentation_inputs =
-            presentation_exchange::split_to_inputs(&auth_request.presentation_definition)
+            presentation_exchange::split_to_inputs(&auth_request.presentation_definition, None)
                 .context(PresentationExchangeSnafu)?;
         for pres_input in presentation_inputs.iter() {
             let creds = self
@@ -399,13 +401,15 @@ where
         &self,
         auth_request: &ResolvedAuthRequest,
         creds_map: &CredentialMapping,
-        _: &AuthorizationResponseMetadata,
+        auth_response_metadata: &AuthorizationResponseMetadata,
     ) -> Result<Option<Url>> {
         info!("presenting verifiable presentations is started");
 
-        let presentation_inputs =
-            presentation_exchange::split_to_inputs(&auth_request.presentation_definition)
-                .context(PresentationExchangeSnafu)?;
+        let presentation_inputs = presentation_exchange::split_to_inputs(
+            &auth_request.presentation_definition,
+            auth_response_metadata.claims_to_exclude.as_ref(),
+        )
+        .context(PresentationExchangeSnafu)?;
 
         let presentations =
             future::try_join_all(presentation_inputs.iter().map(|presentation_input| async {
@@ -526,7 +530,9 @@ mod tests {
     use crate::inmem::kms::LocalKms;
     use crate::inmem::vault::InMemVault;
     use crate::kms::{CreateOptions, KeyType, Kms};
-    use crate::utils::http::test::{mock_http_fn, mock_http_fn_with_plain_text_resp};
+    use crate::utils::http::test::{
+        mock_http_fn, mock_http_fn_with_plain_text_resp, mock_http_req_predicate,
+    };
     use crate::vc;
     use crate::vc::oid4vp::protocol_error::ErrorType;
     use crate::vc::oid4vp::tests::fixtures::{
@@ -540,11 +546,13 @@ mod tests {
     use crate::vc::{Claims, Credential};
     use oauth2::http::Method;
     use oauth2::HttpResponse;
+    use oid4vp::core::response::PostRedirection;
     use reqwest::StatusCode;
     use rstest::rstest;
     use sd_jwt_rs::utils::decode_sd_jwt;
     use sd_jwt_rs::SDJWTSerializationFormat;
     use serde_json::json;
+    use std::collections::HashMap;
 
     #[tokio::test]
     async fn get_auth_request_success() {
@@ -589,7 +597,7 @@ mod tests {
         #[case] with_extra_creds: bool,
     ) {
         let mut http_client = MockHttpClient::new();
-        test_case.mock_http_auth_response_endpoint(&mut http_client);
+        test_case.mock_http_auth_response_endpoint(&mut http_client, None);
 
         let kms = LocalKms::new();
         let vault = test_case.prepare_vault(&kms, with_extra_creds).await;
@@ -597,9 +605,79 @@ mod tests {
 
         // Send auth response
         holder
-            .present_credentials_auto(&test_case.request, &AuthorizationResponseMetadata {})
+            .present_credentials_auto(&test_case.request, &Default::default())
             .await
             .unwrap();
+    }
+
+    #[tokio::test]
+    async fn present_credential_auto_success_with_excluded_claims() {
+        let test_case = single_presentation::presentation_test_case();
+
+        let mut auth_response_metadata = AuthorizationResponseMetadata::default();
+        auth_response_metadata
+            .add_claims_to_exclude("Identity-1".to_string(), "$.name".to_string());
+
+        let mut http_client = MockHttpClient::new();
+        mock_http_req_predicate(
+            &mut http_client,
+            Method::POST,
+            build_url(VERIFIER_URL, "auth"),
+            move |request| {
+                let form = serde_urlencoded::from_bytes(request.as_bytes()).unwrap();
+                let claims = PresentationTestCase::extract_claims(&form);
+
+                let expected_claim = claims.first().unwrap().get("name");
+
+                assert_eq!(expected_claim, None, "Claim is not excluded");
+
+                true
+            },
+            PostRedirection {
+                redirect_uri: build_url(VERIFIER_URL, "redirect"),
+            },
+            StatusCode::OK,
+            1.into(),
+        );
+
+        let kms = LocalKms::new();
+        let vault = test_case.prepare_vault(&kms, false).await;
+        let holder = holder_service(http_client, kms, vault).await;
+
+        // Send auth response
+        let result = holder
+            .present_credentials_auto(&test_case.request, &auth_response_metadata)
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn auth_response_metadata_creates_with_claims() {
+        let id = "id-1".to_string();
+        let claim = "claim_to_exclude".to_string();
+        let mut claims = HashMap::new();
+        claims.insert(id.clone(), vec![claim.clone()]);
+        let metadata = AuthorizationResponseMetadata::with_excluded_claims(claims);
+
+        assert_eq!(
+            metadata.claims_to_exclude.unwrap().get(&id).unwrap()[0],
+            claim,
+            "Claims does not match"
+        )
+    }
+
+    #[tokio::test]
+    async fn auth_response_metadata_adds_claims_correctly() {
+        let id = "id-1".to_string();
+        let claim = "claim_to_exclude".to_string();
+        let mut metadata = AuthorizationResponseMetadata::default();
+        metadata.add_claims_to_exclude(id.clone(), claim.clone());
+
+        assert_eq!(
+            metadata.claims_to_exclude.unwrap().get(&id).unwrap()[0],
+            claim,
+            "Claims does not match"
+        )
     }
 
     #[rstest]
@@ -648,7 +726,7 @@ mod tests {
 
         // Send auth response
         holder
-            .present_credentials_auto(&test_case.request, &AuthorizationResponseMetadata {})
+            .present_credentials_auto(&test_case.request, &Default::default())
             .await
             .unwrap();
     }
@@ -687,7 +765,7 @@ mod tests {
 
         // Send auth response
         holder
-            .present_credentials_auto(&test_case.request, &AuthorizationResponseMetadata {})
+            .present_credentials_auto(&test_case.request, &Default::default())
             .await
             .unwrap();
     }
@@ -720,7 +798,7 @@ mod tests {
 
         // Send auth response
         holder
-            .present_credentials_auto(&test_case.request, &AuthorizationResponseMetadata {})
+            .present_credentials_auto(&test_case.request, &Default::default())
             .await
             .unwrap();
     }
@@ -820,7 +898,7 @@ mod tests {
     #[tokio::test]
     async fn present_credential_success(#[case] test_case: PresentationTestCase) {
         let mut http_client = MockHttpClient::new();
-        test_case.mock_http_auth_response_endpoint(&mut http_client);
+        test_case.mock_http_auth_response_endpoint(&mut http_client, None);
 
         let kms = LocalKms::new();
         let key = kms
@@ -831,11 +909,7 @@ mod tests {
         let credential_mapping = test_case.build_credential_mapping(key).await;
 
         holder
-            .present_credentials(
-                &test_case.request,
-                &credential_mapping,
-                &AuthorizationResponseMetadata {},
-            )
+            .present_credentials(&test_case.request, &credential_mapping, &Default::default())
             .await
             .unwrap();
     }
@@ -853,11 +927,7 @@ mod tests {
         let credential_mapping = test_case.build_credential_mapping(key).await;
 
         holder
-            .present_credentials(
-                &test_case.request,
-                &credential_mapping,
-                &AuthorizationResponseMetadata {},
-            )
+            .present_credentials(&test_case.request, &credential_mapping, &Default::default())
             .await
             .unwrap();
     }
@@ -893,11 +963,7 @@ mod tests {
         let credential_mapping = test_case.build_credential_mapping(key).await;
 
         holder
-            .present_credentials(
-                &test_case.request,
-                &credential_mapping,
-                &AuthorizationResponseMetadata {},
-            )
+            .present_credentials(&test_case.request, &credential_mapping, &Default::default())
             .await
             .unwrap();
     }

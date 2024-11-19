@@ -81,7 +81,7 @@ async function presentationFlow(holder: Oid4VpHolder): Promise<void> {
   console.dir(authRequest, { depth: 2 });
 
   console.log("Holder sends authorization/presentation response to Verifier");
-  await holder.presentCredentialsAuto(authRequest);
+  await holder.presentCredentialsAuto(authRequest, {});
 }
 
 function isCredentialImmediate(
