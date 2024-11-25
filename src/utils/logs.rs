@@ -39,10 +39,6 @@ fn encode_message(message: &str) -> String {
     for character in message.chars() {
         if is_character_allowed(character) {
             encoded_message.push(character);
-        } else {
-            character
-                .escape_unicode()
-                .for_each(|c| encoded_message.push(c));
         }
     }
 
@@ -93,7 +89,7 @@ mod tests {
     }
 
     #[rstest]
-    #[case("test@123", r"test\u{40}123[dGVzdEAxMjM]")]
+    #[case("test@123", r"test123[dGVzdEAxMjM]")]
     #[tokio::test]
     async fn non_alphanumeric_message_is_encoded(#[case] message: &str, #[case] encoded: &str) {
         let log_message = sanitize_log_msg(message);
@@ -114,7 +110,7 @@ mod tests {
     }
 
     #[rstest]
-    #[case(r"test\u{40}123[dGVzdEAxMjM]")]
+    #[case(r"test123[dGVzdEAxMjM]")]
     #[tokio::test]
     async fn encoded_log_message_is_formatted_properly(#[case] encoded_message: &str) {
         let log_msg = LogMessage::Encoded(encoded_message.to_string());
