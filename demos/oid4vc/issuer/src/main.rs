@@ -16,7 +16,7 @@ use agent_sdk::vc::oid4vci::{
 use agent_sdk::did::didweb::DIDWeb;
 use agent_sdk::did::DIDDoc;
 use agent_sdk::inmem::nonce::LocalNonceGenerator;
-use agent_sdk::reqwest::ReqwestClient;
+use agent_sdk::reqwest::builder::ReqwestClientBuilder;
 use agent_sdk::vc::oid4vci;
 use keycloak::{KeycloakAdmin, KeycloakAdminToken};
 use reqwest::Url;
@@ -220,7 +220,7 @@ async fn issuer() -> (impl oid4vci::Issuer, DIDDoc) {
     let issuer_metadata = sample_issuer_metadata(SERVER_URL, AUTH_SRV_URL);
 
     let issuer = oid4vci::IssuerBuilder::new(kms, nonce_gen, issuer_metadata, key_metadata)
-        .with_http_client(ReqwestClient::unsecure().unwrap())
+        .with_http_client(ReqwestClientBuilder::new().insecure().build().unwrap())
         .token_validation_introspect(
             Url::parse("http://localhost:8080/idp/realms/pid-issuer-realm/protocol/openid-connect/token/introspect").unwrap(),
             Some(format!("Basic {}", "cGlkLWlzc3Vlci1zcnY6eklLQVY5RElJSWFKQ3pIQ1ZCUGx5U2dVOEtnWTY4VTI=")),

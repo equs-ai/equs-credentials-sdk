@@ -1,4 +1,4 @@
-use agent_sdk::reqwest::ReqwestClient;
+use agent_sdk::reqwest::builder::ReqwestClientBuilder;
 use agent_sdk::vc::oid4vp::{ClientMetadata, HolderBuilder, VerifierBuilder};
 use napi::{Either, Error, Result, Status};
 use napi_derive::napi;
@@ -107,7 +107,9 @@ impl OID4VPHolderBuilder {
 
         if cfg!(debug_assertions) {
             builder = builder.with_http_client(
-                ReqwestClient::unsecure()
+                ReqwestClientBuilder::new()
+                    .insecure()
+                    .build()
                     .map_err(|err| Error::from_reason(format!("{:?}", err)))?,
             )
         }
