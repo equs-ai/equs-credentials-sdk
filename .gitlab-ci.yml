@@ -1,9 +1,6 @@
 include:
   - template: Security/SAST.gitlab-ci.yml
   - template: Security/Secret-Detection.gitlab-ci.yml
-  - project: 'build-images/sonar-qube'
-    ref: main
-    file: '/templates/.gitlab-ci-sonarqube.yml'
   - project: 'build-images/synopsys-detect'
     ref: main
     file: '/templates/.gitlab-ci-blackduck-intelligent.yml'
@@ -75,16 +72,6 @@ secret_detection:
     - if: '$CI_COMMIT_REF_NAME == "main"'
       changes:
         - '**/*'
-
-sonar qube scan branches:
-  stage: scan
-  except:
-    - merge_requests
-
-sonar qube scan tags:
-  stage: scan
-  except:
-    - merge_requests
 
 dependency_scanning:
   <<: *rust_job_configs
