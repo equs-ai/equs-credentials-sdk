@@ -13,10 +13,12 @@ stages:
   - build
   - lint
   - test
+  - release
 
 variables:
   RUST_VERSION: "1.79.0"
   NODE_VERSION: "20.18.0"
+  VERSION_REGEX: /^[0-9]+\.[0-9]+\.[0-9]+$/
 
 # Shared configurations
 
@@ -165,3 +167,24 @@ nodejs-test-job:
   only:
     - merge_requests
     - main
+
+# Release stage
+release_artifacts_job:
+  <<: *rust_job_configs
+  stage: release
+  script:
+    - cargo install cargo-sbom
+    - cargo install cargo-audit
+    - cargo sbom 2>1 >          SBOM.auto.out
+    - cargo audit 2>1 >         AUDIT.auto.out || true
+    - cargo doc --no-deps 2>1 > API.auto.out
+  artifacts:
+    paths:
+      - SBOM.auto.out
+      - AUDIT.auto.out
+      - API.auto.out
+  rules:
+    - if: $CI_COMMIT_TAG && $CI_COMMIT_TAG =~ $VERSION_REGEX
+      when: always
+    - when: never
+
