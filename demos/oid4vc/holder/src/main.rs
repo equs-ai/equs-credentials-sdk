@@ -6,7 +6,7 @@ use agent_sdk::inmem::vault::InMemVault;
 use agent_sdk::kms;
 use agent_sdk::kms::Kms;
 use agent_sdk::nonce::{Nonce, NonceData};
-use agent_sdk::reqwest::ReqwestClient;
+use agent_sdk::reqwest::builder::ReqwestClientBuilder;
 use agent_sdk::vault::CredentialEntry;
 use agent_sdk::vc::core::KeyMetadata;
 use agent_sdk::vc::metadata::{CredentialMetadataProcessor, DefaultMetadataProcessor};
@@ -405,7 +405,7 @@ async fn oid4vp_holder(kms: LocalKms, vault: InMemVault) -> impl oid4vp::Holder 
     let client_id = "wallet-dev".to_owned();
 
     let holder = oid4vp::HolderBuilder::new(kms, vault, client_id)
-        .with_http_client(ReqwestClient::unsecure().unwrap())
+        .with_http_client(ReqwestClientBuilder::new().insecure().build().unwrap())
         .build()
         .await
         .unwrap();
@@ -423,7 +423,7 @@ async fn oid4vci_holder(kms: LocalKms, vault: InMemVault) -> impl oid4vci::Holde
 
     let holder = oid4vci::HolderBuilder::new(kms, vault, client_id, iss_discovery)
         .with_redirect_url("urn:ietf:wg:oauth:2.0:oob".to_string())
-        .with_http_client(ReqwestClient::unsecure().unwrap())
+        .with_http_client(ReqwestClientBuilder::new().insecure().build().unwrap())
         .build()
         .await
         .unwrap();

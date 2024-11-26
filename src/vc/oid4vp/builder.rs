@@ -1,6 +1,7 @@
 use crate::did::universal::UniversalResolver;
 use crate::http::{HttpClient, HttpError, HttpSnafu};
 use crate::nonce::NonceGenerator;
+use crate::reqwest::builder::ReqwestClientBuilder;
 use crate::reqwest::ReqwestClient;
 use crate::vc::core::KeyMetadata;
 use crate::vc::oid4vp as api;
@@ -218,7 +219,7 @@ where
         skip(kms, vault)
     )]
     pub fn new(kms: KMS, vault: V, client_id: String) -> Self {
-        let http_client = ReqwestClient::new().map_err(|e| {
+        let http_client = ReqwestClientBuilder::new().build().map_err(|e| {
             HttpSnafu {
                 details: e.to_string(),
             }
