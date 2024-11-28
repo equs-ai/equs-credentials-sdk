@@ -245,17 +245,23 @@ impl From<Proof> for JsProof {
 }
 
 #[napi(js_name = "CredentialRequestData", object)]
-pub struct JsCredentialRequestData {}
+pub struct JsCredentialRequestData {
+    pub proof_tolerance: Option<i64>,
+}
 
 impl From<JsCredentialRequestData> for CredentialRequestData {
-    fn from(_value: JsCredentialRequestData) -> Self {
-        Self {}
+    fn from(value: JsCredentialRequestData) -> Self {
+        Self {
+            proof_tolerance: value.proof_tolerance.map(time::Duration::seconds),
+        }
     }
 }
 
 impl From<CredentialRequestData> for JsCredentialRequestData {
-    fn from(_value: CredentialRequestData) -> Self {
-        Self {}
+    fn from(value: CredentialRequestData) -> Self {
+        Self {
+            proof_tolerance: value.proof_tolerance.map(|d| d.whole_seconds()),
+        }
     }
 }
 

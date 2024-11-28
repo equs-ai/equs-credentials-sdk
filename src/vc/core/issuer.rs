@@ -75,14 +75,10 @@ where
         let (pop_fmt, proof) = Self::resolve_proof(cred_def, credential_request)?;
 
         let (hld_did, hld_key) = match pop_fmt {
-            pop::Format::Jwt => JwtProofOfPossession::verify(
-                proof,
-                nonce,
-                pop::VerifyOptions {
-                    cred_iss_id: self.metadata.issuer_id.clone(),
-                    client_id: None,
-                },
-            )
+            pop::Format::Jwt => {
+                let verification_opts = self.resolve_pop_verification_options(credential_request);
+                JwtProofOfPossession::verify(proof, nonce, verification_opts)
+            }
             .await
             .context(ProofSnafu)?,
             _ => {
@@ -292,6 +288,24 @@ where
 
         Ok((did_url, kh))
     }
+
+    #[instrument(level = Level::TRACE, skip(self), ret())]
+    fn resolve_pop_verification_options(
+        &self,
+        credential_request: &CredentialRequest,
+    ) -> pop::VerifyOptions {
+        let clock_tolerance = credential_request
+            .protocol_data
+            .as_ref()
+            .map(|p| p.proof_tolerance)
+            .unwrap_or_default();
+
+        pop::VerifyOptions {
+            cred_iss_id: self.metadata.issuer_id.clone(),
+            clock_tolerance,
+            client_id: None,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -307,6 +321,7 @@ mod tests {
         CredentialOfferContent, CredentialRequest, Error, Issuer, IssuerService, KeyMetadata,
     };
     use rstest::rstest;
+    use time::OffsetDateTime;
 
     #[rstest]
     #[case::sd_jwt(CredTestCase::sd_jwt())]
@@ -348,6 +363,63 @@ mod tests {
             .unwrap();
 
         case.assert_credential(&credential).await;
+    }
+
+    #[tokio::test]
+    async fn issuer_issues_credential_correctly_when_pop_verification_tolerance_is_given() {
+        let case = CredTestCase::sd_jwt();
+        let kms = LocalKms::new();
+        let (_, key_metadata) = create_did_and_key_metadata(&kms).await;
+
+        let nonce = random_nonce().await;
+        let proof = case
+            .generate_pop_with_lifetime(
+                &kms,
+                &nonce,
+                KeyType::P256,
+                OffsetDateTime::now_utc().checked_add(time::Duration::seconds(3)),
+                OffsetDateTime::now_utc().checked_add(time::Duration::minutes(5)),
+            )
+            .await;
+
+        let issuer = issuer_service(kms, key_metadata, &case);
+
+        let request =
+            case.create_cred_request_with_pop_tolerance(proof, time::Duration::seconds(3));
+
+        let credential = issuer
+            .issue_credential(&request, &case.claims, &nonce)
+            .await
+            .unwrap();
+
+        case.assert_credential(&credential).await;
+    }
+
+    #[should_panic(expected = "proof of possession is not yet valid")]
+    #[tokio::test]
+    async fn issuer_issues_credential_fails_when_pop_verification_tolerance_is_not_set() {
+        let case = CredTestCase::sd_jwt();
+        let kms = LocalKms::new();
+        let (_, key_metadata) = create_did_and_key_metadata(&kms).await;
+
+        let nonce = random_nonce().await;
+        let proof = case
+            .generate_pop_with_lifetime(
+                &kms,
+                &nonce,
+                KeyType::P256,
+                OffsetDateTime::now_utc().checked_add(time::Duration::seconds(3)),
+                OffsetDateTime::now_utc().checked_add(time::Duration::minutes(5)),
+            )
+            .await;
+
+        let issuer = issuer_service(kms, key_metadata, &case);
+        let request = case.create_cred_request(proof);
+
+        let credential = issuer
+            .issue_credential(&request, &case.claims, &nonce)
+            .await
+            .unwrap();
     }
 
     #[rstest]

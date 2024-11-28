@@ -13,6 +13,7 @@ use agent_sdk::vc::oid4vci::{
     CredentialRequest, IssuanceSession, IssuerMetadata,
 };
 
+use actix_web::cookie::time;
 use agent_sdk::did::didweb::DIDWeb;
 use agent_sdk::did::DIDDoc;
 use agent_sdk::inmem::nonce::LocalNonceGenerator;
@@ -221,6 +222,7 @@ async fn issuer() -> (impl oid4vci::Issuer, DIDDoc) {
 
     let issuer = oid4vci::IssuerBuilder::new(kms, nonce_gen, issuer_metadata, key_metadata)
         .with_http_client(ReqwestClientBuilder::new().insecure().build().unwrap())
+        .with_clock_skew(time::Duration::minutes(1))
         .token_validation_introspect(
             Url::parse("http://localhost:8080/idp/realms/pid-issuer-realm/protocol/openid-connect/token/introspect").unwrap(),
             Some(format!("Basic {}", "cGlkLWlzc3Vlci1zcnY6eklLQVY5RElJSWFKQ3pIQ1ZCUGx5U2dVOEtnWTY4VTI=")),

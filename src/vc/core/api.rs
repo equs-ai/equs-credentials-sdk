@@ -8,12 +8,12 @@ use crate::vc::{
     CredentialMetadata, Presentation, VCFormat,
 };
 use async_trait::async_trait;
+use common_macros::DebugError;
 use serde::{Deserialize, Serialize};
 use snafu::{Location, Snafu};
 use std::collections::HashMap;
 use std::fmt::Debug;
-
-use common_macros::DebugError;
+use time::Duration;
 
 /// A metadata for the `Issuer`.
 ///
@@ -138,7 +138,9 @@ pub struct CredentialRequest {
 ///
 /// *NOTE*: will be extended in the next releases.
 #[derive(Debug, PartialEq, Clone, Default)]
-pub struct CredentialRequestData {}
+pub struct CredentialRequestData {
+    pub proof_tolerance: Option<Duration>,
+}
 
 /// An entity used to prepare a `Presentation` for the `Verifier`.
 ///

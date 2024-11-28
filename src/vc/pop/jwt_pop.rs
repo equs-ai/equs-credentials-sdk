@@ -21,7 +21,7 @@ use crate::vc::pop::{
 };
 
 pub struct SignerWrapper<S: SigningKey> {
-    key: S,
+    pub(crate) key: S,
 }
 
 #[async_trait]
@@ -73,7 +73,7 @@ impl pop::ProofOfPossession<String> for JwtProofOfPossession {
                 )?,
             },
         };
-        let exp = opts.lifetime.unwrap_or(time::Duration::minutes(60));
+        let exp = opts.lifetime.unwrap_or(time::Duration::minutes(5));
 
         let pop = ProofOfPossession::generate(params, exp);
 
@@ -103,10 +103,10 @@ impl pop::ProofOfPossession<String> for JwtProofOfPossession {
                 // TODO: do we need to check client-id if Holder was already authorized?
                 issuer: opts.client_id.clone(),
                 nonce: openidconnect::Nonce::new(nonce.secret().to_owned()),
+                nbf_tolerance: opts.clock_tolerance,
+                exp_tolerance: opts.clock_tolerance,
                 controller_did: None,
                 controller_jwk: None,
-                nbf_tolerance: None,
-                exp_tolerance: None,
             })
             .await
             .context(VerificationSnafu)?;
@@ -278,6 +278,7 @@ mod tests {
         VerifyOptions {
             cred_iss_id: "did:web:issuer.com".to_string(),
             client_id: Some("client-id".to_string()),
+            ..Default::default()
         }
     }
 }

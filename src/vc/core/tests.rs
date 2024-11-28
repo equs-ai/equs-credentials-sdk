@@ -114,6 +114,7 @@ pub mod fixtures {
 }
 
 pub mod utils {
+    use crate::crypto::Key;
     use crate::did::DIDURL;
     use crate::inmem::kms::LocalKms;
     use crate::inmem::nonce::LocalNonceGenerator;
@@ -122,14 +123,20 @@ pub mod utils {
     use crate::utils::test_utils::create_did_url_and_key_handle_kid;
     use crate::vault::CredentialEntry;
     use crate::vc::core::tests::fixtures::*;
-    use crate::vc::core::{CredentialDefinitionData, CredentialRequest, PresentationInput, Proof};
+    use crate::vc::core::{
+        CredentialDefinitionData, CredentialRequest, CredentialRequestData, PresentationInput,
+        Proof,
+    };
     use crate::vc::formats::json_ld_vc::JsonLdAPI;
     use crate::vc::formats::sd_jwt_vc::SdJwtAPI;
     use crate::vc::formats::{json_ld_vc, sd_jwt_vc, HasCredential, VerifyOptions};
-    use crate::vc::pop::jwt_pop::JwtProofOfPossession;
+    use crate::vc::pop::jwt_pop::{JwtProofOfPossession, SignerWrapper};
     use crate::vc::pop::{GenerateOptions, ProofOfPossession};
     use crate::vc::{pop, ClaimFormat, Claims, Credential, Presentation, VCFormat, VCFormatsAPI};
+    use oid4vci::openidconnect;
+    use oid4vci::proof_of_possession::{ProofOfPossessionBody, ProofOfPossessionController};
     use serde_json::{json, Map, Value};
+    use time::{Duration, OffsetDateTime};
     use uuid::Uuid;
 
     pub async fn random_nonce() -> Nonce {
@@ -209,6 +216,7 @@ pub mod utils {
                     pop::VerifyOptions {
                         cred_iss_id: ISSUER_ID.into(),
                         client_id: None,
+                        ..Default::default()
                     },
                 )
                 .await
@@ -292,6 +300,19 @@ pub mod utils {
             }
         }
 
+        pub fn create_cred_request_with_pop_tolerance(
+            &self,
+            proof: String,
+            tolerance: Duration,
+        ) -> CredentialRequest {
+            let mut cred_req = self.create_cred_request(proof);
+            cred_req.protocol_data = Some(CredentialRequestData {
+                proof_tolerance: Some(tolerance),
+            });
+
+            cred_req
+        }
+
         pub fn create_presentation_input(&self) -> PresentationInput {
             let constraints = serde_json::from_value(sample_constraints()).unwrap();
 
@@ -321,6 +342,41 @@ pub mod utils {
                 .unwrap(),
                 _ => unimplemented!(),
             }
+        }
+
+        pub async fn generate_pop_with_lifetime(
+            &self,
+            kms: &LocalKms,
+            nonce: &Nonce,
+            kt: KeyType,
+            not_before: Option<OffsetDateTime>,
+            exp: Option<OffsetDateTime>,
+        ) -> String {
+            let (hld_did_url, h_kid, h_kh) = create_did_url_and_key_handle_kid(kms, kt).await;
+            let now = OffsetDateTime::now_utc();
+
+            let pop = oid4vci::proof_of_possession::ProofOfPossession {
+                body: ProofOfPossessionBody {
+                    audience: ISSUER_ID.to_string(),
+                    issuer: None,
+                    not_before,
+                    issued_at: Some(now),
+                    expires_at: exp.unwrap_or(
+                        OffsetDateTime::now_utc()
+                            .checked_add(Duration::minutes(5))
+                            .unwrap(),
+                    ),
+                    nonce: openidconnect::Nonce::new(nonce.secret().to_owned()),
+                },
+                controller: ProofOfPossessionController {
+                    vm: Some(hld_did_url.to_owned()),
+                    jwk: h_kh.jwk().unwrap(),
+                },
+            };
+
+            let sgn = SignerWrapper { key: h_kh };
+
+            pop.to_jwt_with_signer(sgn).await.unwrap()
         }
 
         pub async fn generate_vc(&self, kms: &LocalKms) -> CredentialEntry {

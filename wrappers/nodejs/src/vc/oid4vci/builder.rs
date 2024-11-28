@@ -22,6 +22,7 @@ pub struct OID4VciIssuerBuilder {
     issuer_metadata: JsonObject,
     key_metadata: KeyMetadata,
     token_validation: Option<TokenValidation>,
+    clock_skew: Option<time::Duration>,
     dedicated_keys: HashMap<String, KeyMetadata>,
 }
 
@@ -40,6 +41,7 @@ impl OID4VciIssuerBuilder {
             issuer_metadata,
             key_metadata: key_metadata.into(),
             token_validation: None,
+            clock_skew: None,
             dedicated_keys: HashMap::new(),
         }
     }
@@ -52,6 +54,11 @@ impl OID4VciIssuerBuilder {
     #[napi]
     pub fn token_validation_jwks(&mut self, url: String) {
         self.token_validation = Some(TokenValidation::Jwks(url));
+    }
+
+    #[napi]
+    pub fn with_clock_skew(&mut self, duration: i64) {
+        self.clock_skew = Some(time::Duration::seconds(duration))
     }
 
     #[napi]
@@ -83,6 +90,10 @@ impl OID4VciIssuerBuilder {
                     builder = builder.token_validation_jwks(parse_url_arg(url)?)
                 }
             }
+        }
+
+        if let Some(duration) = self.clock_skew {
+            builder = builder.with_clock_skew(duration);
         }
 
         for (key, value) in &self.dedicated_keys {
