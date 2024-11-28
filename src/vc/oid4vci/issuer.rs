@@ -1,7 +1,7 @@
 use crate::http::HttpClient;
 use crate::nonce::{Nonce, NonceData, NonceGenerator};
 use crate::vc;
-use crate::vc::core::{Proof as AsdkProof, Proof};
+use crate::vc::core::{CredentialRequestData, Proof as AsdkProof, Proof};
 use crate::vc::oid4vci::internal_error::{
     ClaimsValidationSnafu, NoScopeSetSnafu, NonceGenerationSnafu, ParseSnafu, UrlParseSnafu,
     VCSnafu,
@@ -12,7 +12,7 @@ use crate::vc::oid4vci::{
     CredDefMetadata, CredentialOfferParams, CredentialRequest, CredentialResponse, IssuanceSession,
     IssuerMetadata,
 };
-use crate::vc::{oid4vci as api, Claims, HasVCFormat};
+use crate::vc::{oid4vci as api, pop, Claims, HasVCFormat};
 use async_trait::async_trait;
 use oauth2::Scope;
 use oid4vci::core::profiles::{
@@ -57,6 +57,7 @@ where
     nonce_generator: NG,
     issuer_metadata: IssuerMetadata,
     token_validation: Option<TokenValidation<HC>>,
+    clock_skew: Option<Duration>,
 }
 
 impl<IS, HC, NG> IssuerService<IS, HC, NG>
@@ -71,6 +72,7 @@ where
         issuer: IS,
         nonce_generator: NG,
         token_validation: Option<TokenValidation<HC>>,
+        clock_skew: Option<Duration>,
     ) -> Self {
         info!("oid4vci-issuer service is initialized");
 
@@ -79,6 +81,7 @@ where
             nonce_generator,
             issuer_metadata,
             token_validation,
+            clock_skew,
         }
     }
 }
@@ -178,9 +181,9 @@ where
 
         let cred_req = vc::core::CredentialRequest {
             cred_def_id,
-            cred_offer_id: None,
             proof,
-            protocol_data: None,
+            protocol_data: self.resolve_cred_req_protocol_data(),
+            cred_offer_id: None,
         };
 
         let result = self
@@ -189,9 +192,14 @@ where
             .await;
 
         let cred = match result {
-            Err(vc::core::Error::Proof { .. })
-            | Err(vc::core::Error::ProofFormatNotSupported { .. }) => self
-                .invalid_proof(session, INVALID_PROOF_ERR_DESC)
+            Err(vc::core::Error::Proof { source, .. }) => {
+                self.resolve_pop_protocol_error(source, session).await?.fail()?
+            }
+            Err(vc::core::Error::ProofFormatNotSupported { format }) => self
+                .invalid_proof(
+                    session,
+                    &format!("proof of possession with '{format}' format is not supported. {INVALID_PROOF_ERR_DESC}"),
+                )
                 .await?
                 .fail()?,
             _ => result.context(VCSnafu)?,
@@ -497,6 +505,35 @@ where
             .set_notification_id(Some(notification_id));
 
         Ok(resp)
+    }
+
+    #[allow(clippy::type_complexity)]
+    #[instrument(level = Level::TRACE, skip(self), err(), ret())]
+    async fn resolve_pop_protocol_error(
+        &self,
+        proof_err: pop::Error,
+        session: &mut IssuanceSession,
+    ) -> Result<
+        ProtocolSnafu<vc::oid4vci::ErrorType, Option<String>, Option<Nonce>, Option<Duration>>,
+    > {
+        if let pop::Error::Verification { source, .. } = proof_err {
+            return self
+                .invalid_proof(session, &format!("{}. {INVALID_PROOF_ERR_DESC}", source))
+                .await;
+        }
+
+        self.invalid_proof(session, INVALID_PROOF_ERR_DESC).await
+    }
+
+    #[instrument(level = Level::TRACE, skip(self), ret())]
+    fn resolve_cred_req_protocol_data(&self) -> Option<CredentialRequestData> {
+        if let Some(duration) = self.clock_skew {
+            return Some(CredentialRequestData {
+                proof_tolerance: Some(duration),
+            });
+        }
+
+        None
     }
 }
 
@@ -1068,7 +1105,7 @@ mod tests {
 
         let inner = vc::core::IssuerService::new(kms, issuer_metadata_inner);
 
-        IssuerService::new(issuer_metadata, inner, nonce_gen, token_validation)
+        IssuerService::new(issuer_metadata, inner, nonce_gen, token_validation, None)
     }
 
     fn sample_sdjwtvc_credential_request_with_fake_vct() -> CredentialRequest {

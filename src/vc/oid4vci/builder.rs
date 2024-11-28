@@ -57,6 +57,7 @@ where
     issuer_metadata: api::IssuerMetadata,
     key_metadata: KeyMetadata,
     token_params: Option<TokenParams>,
+    clock_skew: Option<time::Duration>,
     cred_conf_ids_with_key_metadata: HashMap<String, KeyMetadata>,
 
     // services
@@ -118,6 +119,7 @@ where
             http_client,
             nonce_generator,
             token_params: None,
+            clock_skew: None,
             cred_conf_ids_with_key_metadata: Default::default(),
             _marker: Default::default(),
         }
@@ -150,6 +152,7 @@ where
             issuer_metadata: self.issuer_metadata,
             key_metadata: self.key_metadata,
             token_params: self.token_params,
+            clock_skew: self.clock_skew,
             kms: self.kms,
             nonce_generator: self.nonce_generator,
             cred_conf_ids_with_key_metadata: Default::default(),
@@ -210,6 +213,26 @@ where
         self
     }
 
+    /// Sets the duration for clock skew tolerance.
+    ///
+    /// Set a duration to account for potential clock skew between different systems.
+    /// It is used while performing time-based validations.
+    ///
+    /// # Arguments
+    ///
+    /// * `duration` - The duration to set for clock skew tolerance. This value defines
+    ///   the amount of time to be considered as permissible skew in seconds, milliseconds,
+    ///   or other time units supported by `time::Duration`.
+    ///
+    #[instrument(
+        level = Level::TRACE,
+        skip(self),
+    )]
+    pub fn with_clock_skew(mut self, duration: time::Duration) -> Self {
+        self.clock_skew = Some(duration);
+        self
+    }
+
     /// Builds an `Issuer`.
     ///
     /// # Returns
@@ -257,6 +280,7 @@ where
             inner,
             self.nonce_generator,
             token_validation,
+            self.clock_skew,
         );
 
         info!("oid4vci-issuer service is initialized");
@@ -497,6 +521,7 @@ mod tests {
             key_metadata,
         )
         .token_validation_jwks(Url::parse("http://issuer.org/certs").unwrap())
+        .with_clock_skew(time::Duration::minutes(1))
         .with_http_client(http_client);
 
         let result = builder.build().await;

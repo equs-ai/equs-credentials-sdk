@@ -222,7 +222,7 @@ impl HttpClient for ReqwestClient {
             .client
             .request(request.method.clone(), request.url.as_str())
             .body(request.body)
-            .timeout(Duration::from_secs(5));
+            .timeout(Duration::from_secs(30));
 
         for (name, value) in &request.headers {
             request_builder = request_builder.header(name.as_str(), value.as_bytes());

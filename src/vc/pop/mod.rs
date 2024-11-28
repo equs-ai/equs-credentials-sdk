@@ -111,6 +111,7 @@ pub struct GenerateOptions {
 pub struct VerifyOptions {
     pub cred_iss_id: String,
     pub client_id: Option<String>,
+    pub clock_tolerance: Option<time::Duration>,
 }
 
 #[async_trait]
