@@ -262,6 +262,7 @@ fn retrieve_auth_resp_from_uri(url: Url) -> AuthorizationResponse {
     AuthorizationResponse {
         vp_token,
         presentation_submission,
+        id_token: None,
     }
 }
 

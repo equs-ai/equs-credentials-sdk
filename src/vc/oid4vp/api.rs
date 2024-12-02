@@ -1,8 +1,10 @@
 use crate::nonce::Nonce;
 use crate::vault::CredentialEntry;
+use crate::vc::core::KeyMetadata;
 use crate::vc::oid4vp::{InternalError, ProtocolError};
 use crate::vc::presentation_exchange::{PresentationDefinition, PresentationSubmission};
 use crate::vc::Claims;
+
 use async_trait::async_trait;
 use common_macros::DebugError;
 use serde::{Deserialize, Serialize};
@@ -11,11 +13,28 @@ use std::collections::HashMap;
 use std::fmt::Debug;
 use url::Url;
 
-/// Response metadata
+pub type CredentialMapping = HashMap<String, Vec<CredentialEntry>>;
+pub type ClientMetadata = oid4vp::core::authorization_request::parameters::ClientMetadata;
+pub type WalletMetadata = oid4vp::core::metadata::WalletMetadata;
+pub type ResponseType = oid4vp::core::authorization_request::parameters::ResponseType;
+pub type ResponseMode = oid4vp::core::authorization_request::parameters::ResponseMode;
+
+/// Metadata for an ID Token.
+///
+/// - `id_token_key`: metadata for the key used to sign the SIOP ID token.
+/// - `lifetime`: lifetime of the ID token.
+#[derive(Debug)]
+pub struct IdTokenMetadata {
+    pub key_metadata: KeyMetadata,
+    pub lifetime: time::Duration,
+}
+
+/// Metadata for an Authorization Response.
 ///
 /// # Fields
 ///
-/// * `claims_to_exclude` - map of claims divided by input descriptors
+/// - `claims_to_exclude` - map of claims divided by input descriptors
+/// - `id_token_metadata`: metadata containing the signing key and lifetime for the SIOP ID token
 /// that need to be excluded.
 /// Exclude works for optional claims only. Excluding non-optional claims will throw a
 /// [crate::vc::presentation_exchange::Error::InvalidClaimsToExclude]
@@ -27,12 +46,14 @@ use url::Url;
 #[derive(Debug, Default)]
 pub struct AuthorizationResponseMetadata {
     pub claims_to_exclude: Option<HashMap<String, Vec<String>>>,
+    pub id_token_metadata: Option<IdTokenMetadata>,
 }
 
 impl AuthorizationResponseMetadata {
     pub fn with_excluded_claims(claims: HashMap<String, Vec<String>>) -> Self {
         Self {
             claims_to_exclude: Some(claims),
+            id_token_metadata: None,
         }
     }
 
@@ -48,12 +69,6 @@ impl AuthorizationResponseMetadata {
         self
     }
 }
-
-pub type CredentialMapping = HashMap<String, Vec<CredentialEntry>>;
-pub type ClientMetadata = oid4vp::core::authorization_request::parameters::ClientMetadata;
-pub type WalletMetadata = oid4vp::core::metadata::WalletMetadata;
-pub type ResponseType = oid4vp::core::authorization_request::parameters::ResponseType;
-pub type ResponseMode = oid4vp::core::authorization_request::parameters::ResponseMode;
 
 /// A session with state managed during the presentation.
 ///
@@ -77,6 +92,7 @@ pub struct ResolvedAuthRequest {
     pub client_id: String,
     pub presentation_definition: PresentationDefinition,
     pub nonce: Nonce,
+    pub response_type: ResponseType,
     pub response_mode: ResponseMode,
     pub response_uri: Url,
 }
@@ -93,10 +109,11 @@ pub struct AuthResponseOptions {
 ///
 /// `vp_token` VP Token containing the Verifiable Presentation(s).
 /// `presentation_submission` Details of the submitted presentation.
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct AuthorizationResponse {
     pub vp_token: serde_json::Value,
     pub presentation_submission: PresentationSubmission,
+    pub id_token: Option<String>,
 }
 
 #[derive(Clone, Debug)]

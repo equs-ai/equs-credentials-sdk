@@ -214,8 +214,8 @@ pub mod utils {
                     proof.proof.clone(),
                     nonce,
                     pop::VerifyOptions {
-                        cred_iss_id: ISSUER_ID.into(),
-                        client_id: None,
+                        audience: ISSUER_ID.into(),
+                        issuer: None,
                         ..Default::default()
                     },
                 )
@@ -333,8 +333,8 @@ pub mod utils {
                     h_kh,
                     nonce,
                     GenerateOptions {
-                        cred_iss_id: ISSUER_ID.to_string(),
-                        client_id: None,
+                        audience: ISSUER_ID.to_string(),
+                        issuer: None,
                         lifetime: None,
                     },
                 )

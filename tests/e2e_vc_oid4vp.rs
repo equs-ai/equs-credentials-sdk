@@ -168,6 +168,7 @@ fn prepare_http_client_for_holder(
             let auth_response = AuthorizationResponse {
                 vp_token,
                 presentation_submission,
+                id_token: None,
             };
 
             let result = executor::block_on(verifier.verify_presentation(&auth_response, &session));

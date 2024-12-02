@@ -147,6 +147,7 @@ pub struct AuthorizationRequestWithSession {
 #[napi(js_name = "AuthorizationResponse", object)]
 pub struct JsAuthorizationResponse {
     pub vp_token: serde_json::Value,
+    pub id_token: Option<String>,
     pub presentation_submission: JsonObject,
 }
 
@@ -156,6 +157,7 @@ impl TryFrom<JsAuthorizationResponse> for AuthorizationResponse {
     fn try_from(value: JsAuthorizationResponse) -> Result<Self> {
         Ok(Self {
             vp_token: value.vp_token,
+            id_token: value.id_token,
             presentation_submission: from_json_object(value.presentation_submission)?,
         })
     }

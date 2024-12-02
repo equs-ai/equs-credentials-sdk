@@ -74,8 +74,8 @@ where
                 key,
                 nonce,
                 pop::GenerateOptions {
-                    cred_iss_id: credential_offer.issuer_id.clone(),
-                    client_id: None,
+                    audience: credential_offer.issuer_id.clone(),
+                    issuer: None,
                     lifetime: None,
                 },
             )

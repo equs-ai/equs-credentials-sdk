@@ -22,6 +22,26 @@ pub enum InternalError {
     },
     #[snafu(display("Credential of Type '{type_}' and Format '{format}' not found"))]
     CredentialNotFound { type_: String, format: String },
+    #[snafu(display("Please provide the metadata required to generate the ID token"))]
+    IdTokenMetadataNotFound,
+    #[snafu(display("ID token parse error"))]
+    IdTokenParse {
+        #[snafu(implicit)]
+        location: Location,
+        source: anyhow::Error,
+    },
+    #[snafu(display("ID token validation error: {details}"))]
+    IdTokenValidation {
+        #[snafu(implicit)]
+        location: Location,
+        details: String,
+    },
+    #[snafu(display("ID token generation error"))]
+    IdTokenGeneration {
+        #[snafu(implicit)]
+        location: Location,
+        source: anyhow::Error,
+    },
     #[snafu(display("Unsupported format: {format}"))]
     FormatNotSupported { format: String },
     #[snafu(display("KMS error"))]
@@ -65,6 +85,12 @@ pub enum InternalError {
         #[snafu(implicit)]
         location: Location,
         source: url::ParseError,
+    },
+    #[snafu(display("did url parse error"))]
+    DidUrlParse {
+        source: ssi::did::Error,
+        #[snafu(implicit)]
+        location: Location,
     },
     #[snafu(display("Presentation exchange error"))]
     PresentationExchange {
