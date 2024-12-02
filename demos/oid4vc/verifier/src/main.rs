@@ -11,8 +11,8 @@ use agent_sdk::vc::core::KeyMetadata;
 use agent_sdk::inmem::nonce::LocalNonceGenerator;
 use agent_sdk::vc::oid4vp;
 use agent_sdk::vc::oid4vp::{
-    AuthResponseOptions, AuthorizationResponse, PassAuthRequestObject, PresentationSession,
-    ResponseMode, ResponseType,
+    AuthResponseOptions, AuthorizationResponse, ClientMetadata, PassAuthRequestObject,
+    PresentationSession, ResponseMode, ResponseType,
 };
 use agent_sdk::vc::presentation_exchange::{
     ClaimFormatDesignation, ClaimFormatMap, ClaimFormatPayload, Constraints, ConstraintsField,
@@ -86,7 +86,7 @@ async fn presentation_request_uri(state: web::Data<AppState>) -> HttpResponse {
         Url::parse(format!("{}{}", SERVER_URL, AUTH_REQUEST_OBJECT_URL_PATH).as_str()).unwrap();
 
     let auth_resp_config = AuthResponseOptions {
-        type_: ResponseType::VpToken,
+        type_: ResponseType::VpTokenIdToken,
         mode: ResponseMode::DirectPost,
         submission_uri: response_uri,
     };
@@ -156,10 +156,12 @@ fn auth_resp_from_submitted_form(
         serde_json::from_str(vp_token_str).unwrap_or(serde_json::to_value(vp_token_str).unwrap());
     let presentation_submission =
         serde_json::from_str(form.get("presentation_submission").unwrap()).unwrap();
+    let id_token = form.get("id_token").cloned();
 
     AuthorizationResponse {
         vp_token,
         presentation_submission,
+        id_token,
     }
 }
 
@@ -171,6 +173,7 @@ async fn verifier() -> impl oid4vp::Verifier {
     let (did, key_metadata) = create_did_and_key_metadata(&kms).await;
 
     let verifier = oid4vp::VerifierBuilder::new(kms, nonce_gen, key_metadata, did)
+        .with_client_metadata(default_verifier_metadata())
         .build()
         .await
         .unwrap();
@@ -257,4 +260,31 @@ const INPUT_DESCRIPTOR_FOR_CRED_DEF_2: &str = r#"{
             }
         ]
     }
+}"#;
+
+fn default_verifier_metadata() -> ClientMetadata {
+    ClientMetadata::try_from(
+        serde_json::from_str::<serde_json::Value>(DEFAULT_CLIENT_METADATA).unwrap(),
+    )
+    .unwrap()
+}
+
+const DEFAULT_CLIENT_METADATA: &str = r#"{
+    "vp_formats": {
+        "vc+sd-jwt": {
+            "alg": [
+                "EdDSA",
+                "ES256"
+            ]
+        },
+        "ldp_vc": {
+          "proof_type": [
+            "Ed25519Signature2018",
+            "EcdsaSecp256k1Signature2019"
+          ]
+        }
+    },
+    "subject_syntax_types_supported": [
+        "did:key"
+    ]
 }"#;

@@ -1,5 +1,6 @@
 pub(crate) mod api;
 pub(crate) mod holder;
+pub(super) mod signer;
 pub(crate) mod verifier;
 
 mod builder;

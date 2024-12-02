@@ -301,9 +301,9 @@ where
             .unwrap_or_default();
 
         pop::VerifyOptions {
-            cred_iss_id: self.metadata.issuer_id.clone(),
+            audience: self.metadata.issuer_id.clone(),
             clock_tolerance,
-            client_id: None,
+            issuer: None,
         }
     }
 }

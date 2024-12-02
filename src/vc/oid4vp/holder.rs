@@ -1,14 +1,17 @@
-use crate::did::DIDResolver;
+use crate::did::{DIDResolver, DIDURL};
 use crate::http::HttpClient;
+use crate::kms::{KeyHandle, Kms};
 use crate::nonce::Nonce;
 use crate::utils::http::MimeType;
 use crate::vault::CredentialEntry;
 use crate::vc::core::PresentationInput;
 use crate::vc::oid4vp::internal_error::{
-    AuthorizationResponseSnafu, CredentialNotFoundSnafu, HttpClientSnafu, JsonSnafu,
+    AuthorizationResponseSnafu, CredentialNotFoundSnafu, DidUrlParseSnafu, HttpClientSnafu,
+    IdTokenGenerationSnafu, IdTokenMetadataNotFoundSnafu, IdTokenParseSnafu, JsonSnafu, KMSSnafu,
     PresentationExchangeSnafu, VCSnafu,
 };
 use crate::vc::oid4vp::metadata::default_wallet_metadata;
+use crate::vc::oid4vp::signer::Signer;
 use crate::vc::oid4vp::{
     AuthorizationResponseMetadata, CredentialMapping, ProtocolError, ResolvedAuthRequest,
 };
@@ -17,46 +20,57 @@ use crate::vc::{oid4vp as api, presentation_exchange};
 use crate::{utils, vc};
 use async_trait::async_trait;
 use futures::{future, StreamExt};
+use oid4vp::core::authorization_request::parameters::ResponseType;
 use oid4vp::core::authorization_request::verification::{did, RequestVerifier};
 use oid4vp::core::authorization_request::{AuthorizationRequest, AuthorizationRequestObject};
 use oid4vp::core::metadata::WalletMetadata;
 use oid4vp::core::object::UntypedObject;
-use oid4vp::core::response::parameters::{PresentationSubmission, VpToken};
+use oid4vp::core::response::parameters::{IdToken, PresentationSubmission, VpToken};
 use oid4vp::core::response::{AuthorizationResponse, UnencodedAuthorizationResponse};
-use oid4vp::wallet::Wallet;
+use oid4vp::wallet::{IdTokenParams, Wallet};
 use snafu::ResultExt;
+use std::marker::PhantomData;
+use std::str::FromStr;
 use tracing::{error, info, instrument, Level};
 use url::Url;
 
 pub type Error = api::Error;
 pub type Result<T> = core::result::Result<T, Error>;
+const ID_TOKEN_JWT_PROOF_TYPE: &str = "JWT";
 
-pub struct HolderService<HL, D, HC>
+pub struct HolderService<HL, D, HC, KH, KMS>
 where
     HL: vc::core::Holder,
     D: DIDResolver,
+    KH: KeyHandle,
+    KMS: Kms<KH>,
 {
     holder: HL,
     did_resolver: D,
     metadata: WalletMetadata,
+    kms: KMS,
     http_client: HC,
+    _marker: PhantomData<KH>,
 }
 
-impl<HL, D, HC> HolderService<HL, D, HC>
+impl<HL, D, HC, KH, KMS> HolderService<HL, D, HC, KH, KMS>
 where
     HL: vc::core::Holder,
     D: DIDResolver,
     HC: HttpClient,
+    KH: KeyHandle,
+    KMS: Kms<KH>,
 {
     #[instrument(
         level = Level::TRACE,
-        skip(holder, did_resolver, http_client),
+        skip(holder, did_resolver, http_client, kms),
     )]
     pub fn new(
         holder: HL,
         did_resolver: D,
-        metadata: Option<WalletMetadata>,
         http_client: HC,
+        kms: KMS,
+        metadata: Option<WalletMetadata>,
     ) -> Self {
         let metadata = metadata.unwrap_or(default_wallet_metadata());
 
@@ -66,7 +80,9 @@ where
             holder,
             metadata,
             did_resolver,
+            kms,
             http_client,
+            _marker: Default::default(),
         }
     }
 
@@ -80,13 +96,23 @@ where
         &self,
         presentations: Vec<RequestedPresentation>,
         auth_request: &ResolvedAuthRequest,
+        auth_response_metadata: &AuthorizationResponseMetadata,
     ) -> Result<Option<Url>> {
         let presentation_response = presentation_exchange::prepare_presentation_response(
             &presentations,
             &auth_request.presentation_definition,
         )
         .context(PresentationExchangeSnafu)?;
-        let auth_resp = Self::create_auth_response(presentation_response)?;
+
+        let id_token = match auth_request.response_type {
+            ResponseType::VpTokenIdToken => Some(
+                self.generate_id_token(auth_request, auth_response_metadata)
+                    .await?,
+            ),
+            _ => None,
+        };
+
+        let auth_resp = Self::create_auth_response(presentation_response, id_token)?;
 
         let redirect_url = self
             .submit_response(
@@ -107,6 +133,7 @@ where
     )]
     fn create_auth_response(
         presentation_response: PresentationResponse,
+        id_token: Option<IdToken>,
     ) -> Result<AuthorizationResponse> {
         let vp_token = VpToken::try_from(presentation_response.presentations)
             .context(AuthorizationResponseSnafu)?;
@@ -121,9 +148,50 @@ where
             UntypedObject::default(),
             vp_token,
             pres_sub,
+            id_token,
         ));
 
         Ok(auth_resp)
+    }
+
+    #[instrument(
+        level = Level::TRACE,
+        skip(self),
+        err(),
+        ret(),
+    )]
+    async fn generate_id_token(
+        &self,
+        auth_request: &ResolvedAuthRequest,
+        auth_response_metadata: &AuthorizationResponseMetadata,
+    ) -> Result<IdToken> {
+        let metadata = auth_response_metadata
+            .id_token_metadata
+            .as_ref()
+            .ok_or_else(|| IdTokenMetadataNotFoundSnafu.build())?;
+
+        let key = self
+            .kms
+            .get(&metadata.key_metadata.kid)
+            .await
+            .context(KMSSnafu)?;
+
+        let did_url = DIDURL::from_str(&metadata.key_metadata.did_url).context(DidUrlParseSnafu)?;
+        let params = IdTokenParams {
+            audience: auth_request.client_id.to_owned(),
+            nonce: auth_request.nonce.0.to_owned().into(),
+            lifetime: metadata.lifetime,
+            other: None,
+        };
+
+        let raw = self
+            .generate_did_based_id_token(&did_url, params, Signer::new(key)?)
+            .await
+            .context(IdTokenGenerationSnafu)?;
+
+        let id_token = raw.try_into().context(IdTokenParseSnafu)?;
+
+        Ok(id_token)
     }
 
     #[instrument(
@@ -274,11 +342,13 @@ where
 }
 
 #[async_trait]
-impl<HL, D, HC> api::Holder for HolderService<HL, D, HC>
+impl<HL, D, HC, KH, KMS> api::Holder for HolderService<HL, D, HC, KH, KMS>
 where
     HL: vc::core::Holder,
     D: DIDResolver,
     HC: HttpClient,
+    KH: KeyHandle,
+    KMS: Kms<KH>,
 {
     #[instrument(
         level = Level::TRACE,
@@ -315,6 +385,7 @@ where
             client_id: aro.client_id().0.to_owned(),
             presentation_definition: pres_def,
             nonce: Nonce(aro.nonce().to_owned().into()),
+            response_type: aro.response_type().to_owned(),
             response_mode: aro.response_mode().to_owned(),
             response_uri: aro.return_uri().to_owned(),
         })
@@ -356,7 +427,7 @@ where
             .await?;
 
         let redirect_url = self
-            .submit_presentation(presentations, auth_request)
+            .submit_presentation(presentations, auth_request, auth_response_metadata)
             .await?;
 
         info!("verifiable presentations are successfully presented");
@@ -419,7 +490,7 @@ where
             .await?;
 
         let redirect_url = self
-            .submit_presentation(presentations, auth_request)
+            .submit_presentation(presentations, auth_request, auth_response_metadata)
             .await?;
 
         info!("verifiable presentations are successfully presented");
@@ -448,11 +519,13 @@ where
 }
 
 #[async_trait]
-impl<HL, D, HC> Wallet for HolderService<HL, D, HC>
+impl<HL, D, HC, KH, KMS> Wallet for HolderService<HL, D, HC, KH, KMS>
 where
     HL: vc::core::Holder,
     D: DIDResolver,
     HC: HttpClient,
+    KH: KeyHandle,
+    KMS: Kms<KH>,
 {
     fn metadata(&self) -> &WalletMetadata {
         &self.metadata
@@ -460,11 +533,13 @@ where
 }
 
 #[async_trait]
-impl<HL, D, HC> RequestVerifier for HolderService<HL, D, HC>
+impl<HL, D, HC, KH, KMS> RequestVerifier for HolderService<HL, D, HC, KH, KMS>
 where
     HL: vc::core::Holder,
     D: DIDResolver,
     HC: HttpClient,
+    KH: KeyHandle,
+    KMS: Kms<KH>,
 {
     #[instrument(
         level = Level::TRACE,
@@ -533,7 +608,9 @@ mod tests {
     use crate::utils::http::test::{
         mock_http_fn, mock_http_fn_with_plain_text_resp, mock_http_req_predicate,
     };
+    use crate::utils::test_utils::create_did_and_key_metadata;
     use crate::vc;
+    use crate::vc::core::KeyMetadata;
     use crate::vc::oid4vp::protocol_error::ErrorType;
     use crate::vc::oid4vp::tests::fixtures::{
         multi_presentation, single_presentation, REQUEST_URI, VERIFIER_URL,
@@ -541,7 +618,9 @@ mod tests {
     use crate::vc::oid4vp::tests::utils::{
         build_url, holder_service, validate_claims, PresentationTestCase,
     };
-    use crate::vc::oid4vp::{AuthorizationResponseMetadata, Holder, ProtocolError};
+    use crate::vc::oid4vp::{
+        AuthorizationResponseMetadata, Holder, IdTokenMetadata, ProtocolError, ResponseType,
+    };
     use crate::vc::presentation_exchange::ClaimFormatMap;
     use crate::vc::{Claims, Credential};
     use oauth2::http::Method;
@@ -605,7 +684,26 @@ mod tests {
 
         // Send auth response
         holder
-            .present_credentials_auto(&test_case.request, &Default::default())
+            .present_credentials_auto(&test_case.request, &test_case.response_metadata)
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn present_credential_auto_with_siop_success() {
+        let kms = LocalKms::new();
+        let (_, key_metadata) = create_did_and_key_metadata(&kms).await;
+        let test_case = siop_case(key_metadata);
+
+        let mut http_client = MockHttpClient::new();
+        test_case.mock_http_auth_response_endpoint(&mut http_client, None);
+
+        let vault = test_case.prepare_vault(&kms, false).await;
+        let holder = holder_service(http_client, kms, vault).await;
+
+        // Send auth response
+        holder
+            .present_credentials_auto(&test_case.request, &test_case.response_metadata)
             .await
             .unwrap();
     }
@@ -726,7 +824,7 @@ mod tests {
 
         // Send auth response
         holder
-            .present_credentials_auto(&test_case.request, &Default::default())
+            .present_credentials_auto(&test_case.request, &test_case.response_metadata)
             .await
             .unwrap();
     }
@@ -765,7 +863,7 @@ mod tests {
 
         // Send auth response
         holder
-            .present_credentials_auto(&test_case.request, &Default::default())
+            .present_credentials_auto(&test_case.request, &test_case.response_metadata)
             .await
             .unwrap();
     }
@@ -798,7 +896,7 @@ mod tests {
 
         // Send auth response
         holder
-            .present_credentials_auto(&test_case.request, &Default::default())
+            .present_credentials_auto(&test_case.request, &test_case.response_metadata)
             .await
             .unwrap();
     }
@@ -909,7 +1007,36 @@ mod tests {
         let credential_mapping = test_case.build_credential_mapping(key).await;
 
         holder
-            .present_credentials(&test_case.request, &credential_mapping, &Default::default())
+            .present_credentials(
+                &test_case.request,
+                &credential_mapping,
+                &test_case.response_metadata,
+            )
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn present_credential_with_siop_success() {
+        let kms = LocalKms::new();
+        let (_, key_metadata) = create_did_and_key_metadata(&kms).await;
+        let test_case = siop_case(key_metadata.clone());
+
+        let mut http_client = MockHttpClient::new();
+        test_case.mock_http_auth_response_endpoint(&mut http_client, None);
+
+        let key_handle = kms.get(&key_metadata.kid).await.unwrap();
+        let holder = holder_service(http_client, kms, InMemVault::new()).await;
+        let credential_mapping = test_case
+            .build_credential_mapping((key_metadata.kid, key_handle))
+            .await;
+
+        holder
+            .present_credentials(
+                &test_case.request,
+                &credential_mapping,
+                &test_case.response_metadata,
+            )
             .await
             .unwrap();
     }
@@ -927,7 +1054,11 @@ mod tests {
         let credential_mapping = test_case.build_credential_mapping(key).await;
 
         holder
-            .present_credentials(&test_case.request, &credential_mapping, &Default::default())
+            .present_credentials(
+                &test_case.request,
+                &credential_mapping,
+                &test_case.response_metadata,
+            )
             .await
             .unwrap();
     }
@@ -966,6 +1097,18 @@ mod tests {
             .present_credentials(&test_case.request, &credential_mapping, &Default::default())
             .await
             .unwrap();
+    }
+
+    fn siop_case(key_metadata: KeyMetadata) -> PresentationTestCase {
+        let mut test_case = single_presentation::presentation_test_case();
+        test_case.request.response_type = ResponseType::VpTokenIdToken;
+
+        test_case.response_metadata.id_token_metadata = Some(IdTokenMetadata {
+            key_metadata,
+            lifetime: time::Duration::days(1),
+        });
+
+        test_case
     }
 
     fn requested_credential_not_exist_case() -> PresentationTestCase {

@@ -60,8 +60,8 @@ impl pop::ProofOfPossession<String> for JwtProofOfPossession {
         S: SigningKey,
     {
         let params = &ProofOfPossessionParams {
-            audience: opts.cred_iss_id.clone(),
-            issuer: opts.client_id.clone(),
+            audience: opts.audience.clone(),
+            issuer: opts.issuer.clone(),
             nonce: Some(openidconnect::Nonce::new(nonce.secret().to_owned())),
             controller: ProofOfPossessionController {
                 vm: Some(did_url.to_owned()),
@@ -99,9 +99,9 @@ impl pop::ProofOfPossession<String> for JwtProofOfPossession {
 
         let verification = pop
             .verify(&ProofOfPossessionVerificationParams {
-                audience: opts.cred_iss_id.clone(),
+                audience: opts.audience.clone(),
                 // TODO: do we need to check client-id if Holder was already authorized?
-                issuer: opts.client_id.clone(),
+                issuer: opts.issuer.clone(),
                 nonce: openidconnect::Nonce::new(nonce.secret().to_owned()),
                 nbf_tolerance: opts.clock_tolerance,
                 exp_tolerance: opts.clock_tolerance,
@@ -268,16 +268,16 @@ mod tests {
 
     fn sample_generate_opts() -> GenerateOptions {
         GenerateOptions {
-            cred_iss_id: "did:web:issuer.com".to_string(),
-            client_id: Some("client-id".to_string()),
+            audience: "did:web:issuer.com".to_string(),
+            issuer: Some("client-id".to_string()),
             lifetime: None,
         }
     }
 
     fn sample_verify_opts() -> VerifyOptions {
         VerifyOptions {
-            cred_iss_id: "did:web:issuer.com".to_string(),
-            client_id: Some("client-id".to_string()),
+            audience: "did:web:issuer.com".to_string(),
+            issuer: Some("client-id".to_string()),
             ..Default::default()
         }
     }

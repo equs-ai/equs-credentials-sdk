@@ -102,15 +102,15 @@ pub type Result<T> = core::result::Result<T, Error>;
 
 #[derive(Debug, PartialEq, Clone, Default)]
 pub struct GenerateOptions {
-    pub cred_iss_id: String,
-    pub client_id: Option<String>,
+    pub audience: String,
+    pub issuer: Option<String>,
     pub lifetime: Option<time::Duration>,
 }
 
 #[derive(Debug, PartialEq, Clone, Default)]
 pub struct VerifyOptions {
-    pub cred_iss_id: String,
-    pub client_id: Option<String>,
+    pub audience: String,
+    pub issuer: Option<String>,
     pub clock_tolerance: Option<time::Duration>,
 }
 

@@ -1,19 +1,17 @@
-use std::fmt::{Debug, Formatter};
 use std::marker::PhantomData;
 
 use async_trait::async_trait;
-use oid4vp::core::authorization_request::parameters::{ClientId, Nonce as NonceSpruce};
+use oid4vp::core::authorization_request::parameters::{
+    ClientId, IdTokenType, Nonce as NonceSpruce, Scope,
+};
 use oid4vp::core::metadata::WalletMetadata;
 use oid4vp::verifier::by_reference::ByReference;
 use oid4vp::verifier::request_builder::RequestType;
-use oid4vp::verifier::request_signer::RequestSigner;
 use serde_json::{Map, Value as Json};
-use snafu::ResultExt;
-use ssi::jwk::JWK;
+use snafu::{ensure, ResultExt};
 use tracing::{info, instrument, Level};
 use url::Url;
 
-use crate::crypto::SigningKey;
 use crate::did::DIDResolver;
 use crate::kms::{KeyHandle, Kms};
 use crate::nonce::{Nonce, NonceGenerator};
@@ -21,17 +19,20 @@ use crate::vc;
 use crate::vc::core::KeyMetadata;
 use crate::vc::oid4vp as api;
 use crate::vc::oid4vp::internal_error::{
-    KMSSnafu, NonceGenerationSnafu, Oid4VpLibSnafu, ParseSnafu, PresentationExchangeSnafu, VCSnafu,
+    IdTokenValidationSnafu, JsonSnafu, KMSSnafu, NonceGenerationSnafu, Oid4VpLibSnafu,
+    PresentationExchangeSnafu, VCSnafu,
 };
 use crate::vc::oid4vp::metadata::{default_client_metadata, default_wallet_metadata};
+use crate::vc::oid4vp::signer::Signer;
 use crate::vc::oid4vp::{
     AuthResponseOptions, AuthorizationResponse, ClientMetadata, PassAuthRequestObject,
-    PresentationSession, ProtocolError, ResponseMode,
+    PresentationSession, ProtocolError, ResponseMode, ResponseType,
 };
 use crate::vc::presentation_exchange;
 use crate::vc::presentation_exchange::{
     validate_against_presentation_definition, PresentationDefinition, PresentationResponse,
 };
+use oid4vp::core::response::parameters::IdTokenBody as IdToken;
 
 pub type Error = api::Error;
 pub type Result<T> = core::result::Result<T, Error>;
@@ -39,6 +40,8 @@ pub type Result<T> = core::result::Result<T, Error>;
 pub type DIDClient<S> = oid4vp::verifier::client::DIDClient<S>;
 pub type X509SanClient = oid4vp::verifier::client::X509SanClient;
 pub type RedirectUriClient = oid4vp::verifier::client::RedirectUriClient;
+const VP_TOKEN: &str = "vp_token";
+const ID_TOKEN: &str = "id_token";
 
 #[derive(Debug, Clone)]
 pub struct VerifierMetadata {
@@ -132,7 +135,7 @@ where
             .context(NonceGenerationSnafu)?;
 
         let (request_url, auth_request_jwt) = self
-            .authorization_request(
+            .build_authorization_request(
                 presentation_definition,
                 nonce.clone(),
                 auth_response_config,
@@ -163,7 +166,7 @@ where
         auth_response: &AuthorizationResponse,
         session: &PresentationSession,
     ) -> Result<Json> {
-        let claims = self
+        let vp_token_claims = self
             .do_verify_presentation(
                 &session.presentation_definition,
                 &session.nonce,
@@ -171,9 +174,21 @@ where
             )
             .await?;
 
+        let mut claims = serde_json::Map::new();
+        claims.insert(VP_TOKEN.to_string(), vp_token_claims);
+
+        if let Some(id_token) = &auth_response.id_token {
+            let id_token_claims = self.validate_id_token(id_token, &session.nonce).await?;
+
+            let id_token_claims = serde_json::to_value(id_token_claims).context(JsonSnafu)?;
+            claims.insert(ID_TOKEN.to_string(), id_token_claims);
+
+            info!("ID token is verified");
+        }
+
         info!("presentation is verified");
 
-        Ok(claims)
+        Ok(Json::Object(claims))
     }
 }
 
@@ -191,7 +206,114 @@ where
         err(),
         ret(),
     )]
-    async fn authorization_request(
+    async fn validate_id_token(&self, id_token: &str, nonce: &Nonce) -> Result<IdToken> {
+        let header: ssi::jws::Header = ssi::jws::decode_unverified(id_token)
+            .map_err(|e| {
+                IdTokenValidationSnafu {
+                    details: format!("could not parse id token: {e}"),
+                }
+                .build()
+            })?
+            .0;
+
+        ensure!(
+            header.type_ == Some("JWT".to_string()),
+            IdTokenValidationSnafu {
+                details: "header 'typ' must be 'JWT'",
+            }
+        );
+
+        ensure!(
+            header.algorithm != ssi::jwk::Algorithm::None,
+            IdTokenValidationSnafu {
+                details: "header must contain 'alg' claim",
+            }
+        );
+
+        let (did, jwk) = self
+            .resolve_did_and_jwk_from_id_token_header(header)
+            .await?;
+        let id_token: IdToken = ssi::jwt::decode_verify(id_token, &jwk).map_err(|e| {
+            IdTokenValidationSnafu {
+                details: format!("could not decode and validate id token: {e}"),
+            }
+            .build()
+        })?;
+
+        ensure!(
+            id_token.audience == self.metadata.client_id,
+            IdTokenValidationSnafu {
+                details: &format!(
+                    "id token audience value mismatch, expected {}, got {}",
+                    self.metadata.client_id, id_token.audience
+                ),
+            }
+        );
+
+        ensure!(
+            id_token.nonce == nonce.0,
+            IdTokenValidationSnafu {
+                details: "incorrect nonce".to_string(),
+            }
+        );
+
+        ensure!(
+            id_token.subject == did && id_token.issuer == did ,
+            IdTokenValidationSnafu {
+                details: &format!("id token 'subject' and 'issuer' values must be equal, expected {}, got 'subject' = {} and 'issuer' = {}", did, id_token.subject, id_token.issuer),
+            }
+        );
+
+        ensure!(
+            id_token.expiration_time > time::OffsetDateTime::now_utc().unix_timestamp(),
+            IdTokenValidationSnafu {
+                details: "id token is expired".to_string(),
+            }
+        );
+
+        Ok(id_token)
+    }
+
+    async fn resolve_did_and_jwk_from_id_token_header(
+        &self,
+        header: ssi::jws::Header,
+    ) -> Result<(String, ssi::jwk::JWK)> {
+        let Some(kid) = header.key_id else {
+            IdTokenValidationSnafu {
+                details: "header must contain 'kid' claim",
+            }
+            .fail()?
+        };
+
+        let vm = self
+            .did_resolver
+            .resolve_verification_method(&kid)
+            .await
+            .map_err(|e| {
+                IdTokenValidationSnafu {
+                    details: format!(
+                        "could not parse did verification method from 'kid' = {kid}: {e}"
+                    ),
+                }
+                .build()
+            })?;
+        let jwk = vm.get_jwk().map_err(|e| {
+            IdTokenValidationSnafu {
+                details: &format!("could not parse public jwk from resolved verification method of did document: {e}"),
+            }
+            .build()
+        })?;
+
+        Ok((vm.controller, jwk))
+    }
+
+    #[instrument(
+        level = Level::TRACE,
+        skip(self),
+        err(),
+        ret(),
+    )]
+    async fn build_authorization_request(
         &self,
         presentation_definition: &PresentationDefinition,
         nonce: Nonce,
@@ -203,7 +325,7 @@ where
             ResponseMode::FragmentJwt | ResponseMode::Fragment => {
                 let client = RedirectUriClient::new(ClientId(self.metadata.client_id.to_owned()));
                 let verifier_builder = oid4vp::verifier::Verifier::builder().with_client(client);
-                self.authorization_request_helper(
+                self.build_authorization_request_helper(
                     presentation_definition,
                     nonce,
                     auth_response_config,
@@ -223,7 +345,7 @@ where
 
                 let did_client = DIDClient::new(
                     self.metadata.key_metadata.did_url.clone(),
-                    SignerWrapper::new(verifier_key)?,
+                    Signer::new(verifier_key)?,
                     self.did_resolver.as_spruce_resolver(),
                 )
                 .await
@@ -231,7 +353,7 @@ where
 
                 let verifier_builder =
                     oid4vp::verifier::Verifier::builder().with_client(did_client);
-                self.authorization_request_helper(
+                self.build_authorization_request_helper(
                     presentation_definition,
                     nonce,
                     auth_response_config,
@@ -250,7 +372,7 @@ where
         err(),
         ret(),
     )]
-    async fn authorization_request_helper(
+    async fn build_authorization_request_helper(
         &self,
         presentation_definition: &PresentationDefinition,
         nonce: Nonce,
@@ -279,15 +401,30 @@ where
             },
         };
 
-        let (auth_request_url, auth_req_jwt) = verifier_builder
+        let verifier = verifier_builder
             .with_submission_endpoint(auth_response_config.submission_uri.to_owned())
             .build()
             .await
-            .context(Oid4VpLibSnafu)?
-            .build_authorization_request()
+            .context(Oid4VpLibSnafu)?;
+
+        let request_builder = verifier.build_authorization_request();
+
+        let request_builder = match auth_response_config.type_ {
+            ResponseType::VpTokenIdToken => request_builder
+                .with_request_parameter(auth_response_config.type_.to_owned())
+                .with_request_parameter(Scope("openid".to_string()))
+                .with_request_parameter(IdTokenType::SubjectSigned),
+            _ => request_builder.with_request_parameter(auth_response_config.type_.to_owned()),
+        };
+
+        let pass_req_obj = match pass_auth_request_object.to_owned() {
+            PassAuthRequestObject::ByValue => ByReference::False,
+            PassAuthRequestObject::ByReference(at) => ByReference::True { at },
+        };
+
+        let (auth_request_url, auth_req_jwt) = request_builder
             .with_presentation_definition(presentation_definition.to_owned())
             .with_request_parameter(auth_response_config.mode.to_owned())
-            .with_request_parameter(auth_response_config.type_.to_owned())
             .with_request_parameter(NonceSpruce::from(nonce.secret()))
             .with_request_parameter(self.metadata.client_metadata.clone())
             .build(wallet_metadata, auth_req_type)
@@ -355,73 +492,11 @@ where
     }
 }
 
-struct SignerWrapper<S: SigningKey> {
-    signer: S,
-    key: JWK,
-}
-
-impl<S: SigningKey> SignerWrapper<S> {
-    #[instrument(
-        level = Level::TRACE,
-        skip_all,
-        err(),
-    )]
-    fn new(signer: S) -> Result<SignerWrapper<S>> {
-        let key = signer.jwk().ok_or(
-            ParseSnafu {
-                details: "Could not retrieve JWK",
-            }
-            .build(),
-        )?;
-
-        Ok(SignerWrapper { signer, key })
-    }
-}
-
-impl<S: SigningKey> Debug for SignerWrapper<S> {
-    fn fmt(&self, fmt: &mut Formatter<'_>) -> std::fmt::Result {
-        std::write!(fmt, "JWK = {:?}", self.key)
-    }
-}
-
-#[async_trait]
-impl<S: SigningKey> RequestSigner for SignerWrapper<S> {
-    type Error = anyhow::Error;
-
-    #[instrument(
-        level = Level::TRACE,
-        skip(self),
-        ret(),
-    )]
-    fn alg(&self) -> anyhow::Result<String, Self::Error> {
-        Ok(self.signer.alg().to_string())
-    }
-
-    #[instrument(
-        level = Level::TRACE,
-        skip(self),
-        ret(),
-    )]
-    fn jwk(&self) -> anyhow::Result<JWK, Self::Error> {
-        Ok(self.key.to_owned())
-    }
-
-    #[instrument(
-        level = Level::TRACE,
-        skip(self),
-        err(),
-        ret(),
-    )]
-    async fn sign(&self, payload: &[u8]) -> anyhow::Result<Vec<u8>, Self::Error> {
-        let signature = self.signer.sign(payload).await?;
-        Ok(signature)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
 
+    use oid4vp::core::authorization_request::parameters::{IdTokenType, Scope};
     use oid4vp::core::authorization_request::{AuthorizationRequest, AuthorizationRequestObject};
     use oid4vp::core::object::UntypedObject;
     use rstest::rstest;
@@ -439,8 +514,9 @@ mod tests {
     use crate::vc::oid4vp::tests::utils::{
         build_url, validate_claims, verifier_service, VerificationTestCase,
     };
+    use crate::vc::oid4vp::verifier::VP_TOKEN;
     use crate::vc::oid4vp::{
-        AuthorizationResponse, PassAuthRequestObject, PresentationSession, Verifier,
+        AuthorizationResponse, PassAuthRequestObject, PresentationSession, ResponseType, Verifier,
     };
     use crate::vc::presentation_exchange::PresentationDefinition;
 
@@ -521,6 +597,68 @@ mod tests {
         assert_eq!(request.return_uri(), &response_uri);
     }
 
+    #[tokio::test]
+    async fn generate_siop_auth_request_by_value_success() {
+        let presentation_definition = single_presentation::presentation_definition();
+        let response_uri: Url = build_url(VERIFIER_URL, "auth");
+
+        let (verifier, did) = verifier_service().await;
+
+        let mut auth_resp_options = auth_response_options(response_uri.clone());
+        auth_resp_options.type_ = ResponseType::VpTokenIdToken;
+
+        let (request_uri, session) = verifier
+            .create_authorization_request(
+                &presentation_definition,
+                &auth_resp_options,
+                &PassAuthRequestObject::ByValue,
+                None,
+            )
+            .await
+            .unwrap();
+
+        let auth_request = AuthorizationRequest::from_query_params(request_uri.query().unwrap());
+
+        let hash_query: HashMap<String, String> = request_uri.query_pairs().into_owned().collect();
+        let auth_req_jwt_from_uri = hash_query.get("request").unwrap();
+
+        let request: AuthorizationRequestObject =
+            ssi::jwt::decode_unverified::<UntypedObject>(auth_req_jwt_from_uri)
+                .unwrap()
+                .try_into()
+                .unwrap();
+
+        let actual_presentation_definition = request
+            .resolve_presentation_definition(|_| async {
+                HttpSnafu {
+                    details: "Requesting a presentation definition by reference is not supported in this test.".to_string(),
+                }.fail()
+            })
+            .await
+            .unwrap()
+            .into_parsed();
+
+        assert_eq!(
+            session.auth_request_jwt.unwrap(),
+            auth_req_jwt_from_uri.to_owned()
+        );
+        assert_eq!(
+            serde_json::to_value(&actual_presentation_definition).unwrap(),
+            serde_json::to_value(&presentation_definition).unwrap()
+        );
+        assert_eq!(request.client_id().0, did);
+        assert_eq!(request.return_uri(), &response_uri);
+        assert_eq!(
+            request.get::<Scope>().unwrap().unwrap(),
+            Scope("openid".to_string())
+        );
+        assert_eq!(
+            request.get::<IdTokenType>().unwrap().unwrap(),
+            IdTokenType::SubjectSigned
+        );
+    }
+
+    // TODO: Validations will be implemented as part of the ASDK-98 task
     #[rstest]
     #[case::empty_id(presentation_definition_with_empty_id())]
     #[case::empty_descriptors(presentation_definition_with_empty_descriptors())]
@@ -575,7 +713,7 @@ mod tests {
                 .unwrap()
                 .id();
 
-            let cred_claims = &verified_claims[cred_id];
+            let cred_claims = &verified_claims[VP_TOKEN][cred_id];
             validate_claims(cred_claims, &credential_data);
         }
     }
@@ -625,6 +763,7 @@ mod tests {
         let response = AuthorizationResponse {
             vp_token: serde_json::from_str(vp_token).unwrap(),
             presentation_submission: single_presentation::presentation_submission(),
+            id_token: None,
         };
 
         let result = verifier

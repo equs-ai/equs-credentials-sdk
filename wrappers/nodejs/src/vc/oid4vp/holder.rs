@@ -1,16 +1,17 @@
+use crate::utils::{from_json_object, parse_url_arg, to_json_object};
+use crate::vault::JsCredentialEntry;
+use crate::vc::core::JsKeyMetadata;
+use crate::vc::JsonObject;
 use agent_sdk::vault::CredentialEntry;
-use agent_sdk::vc::oid4vp::Holder;
 use agent_sdk::vc::oid4vp::{
     AuthorizationResponseMetadata, CredentialMapping, ResolvedAuthRequest,
 };
+use agent_sdk::vc::oid4vp::{Holder, IdTokenMetadata};
 use napi::{Error, Result};
 use napi_derive::napi;
 use std::collections::HashMap;
+use time::ext::NumericalDuration;
 use url::Url;
-
-use crate::utils::{from_json_object, parse_url_arg, to_json_object};
-use crate::vault::JsCredentialEntry;
-use crate::vc::JsonObject;
 
 #[napi]
 pub struct OID4VPHolder(Box<dyn Holder>);
@@ -93,6 +94,7 @@ pub struct AuthorizationRequest {
     pub client_id: String,
     pub presentation_definition: JsonObject,
     pub nonce: String,
+    pub response_type: String,
     pub response_mode: String,
     pub response_uri: String,
 }
@@ -105,6 +107,7 @@ impl TryFrom<AuthorizationRequest> for ResolvedAuthRequest {
             client_id: value.client_id,
             presentation_definition: from_json_object(value.presentation_definition)?,
             nonce: serde_json::from_value(serde_json::Value::String(value.nonce))?,
+            response_type: value.response_type.into(),
             response_mode: value.response_mode.into(),
             response_uri: parse_url_arg(&value.response_uri)?,
         })
@@ -119,6 +122,7 @@ impl TryFrom<ResolvedAuthRequest> for AuthorizationRequest {
             client_id: value.client_id,
             presentation_definition: to_json_object(&value.presentation_definition)?,
             nonce: value.nonce.secret().to_string(),
+            response_type: value.response_type.into(),
             response_mode: value.response_mode.into(),
             response_uri: value.response_uri.to_string(),
         })
@@ -128,6 +132,13 @@ impl TryFrom<ResolvedAuthRequest> for AuthorizationRequest {
 #[napi(object)]
 pub struct JsAuthorizationResponseMetadata {
     pub claims_to_exclude: Option<HashMap<String, Vec<String>>>,
+    pub id_token_metadata: Option<JsIdTokenMetadata>,
+}
+
+#[napi(object)]
+pub struct JsIdTokenMetadata {
+    pub key_metadata: JsKeyMetadata,
+    pub lifetime: i64,
 }
 
 impl TryFrom<JsAuthorizationResponseMetadata> for AuthorizationResponseMetadata {
@@ -138,6 +149,10 @@ impl TryFrom<JsAuthorizationResponseMetadata> for AuthorizationResponseMetadata 
                 .claims_to_exclude
                 .map(|cte| from_json_object(to_json_object(cte)?))
                 .transpose()?,
+            id_token_metadata: value.id_token_metadata.map(|idt| IdTokenMetadata {
+                key_metadata: idt.key_metadata.into(),
+                lifetime: idt.lifetime.seconds(),
+            }),
         })
     }
 }

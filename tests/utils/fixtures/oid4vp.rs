@@ -211,15 +211,15 @@ pub fn single_jsonld_presentation_case() -> Oid4VpTestCase {
 
     let validate: Box<ValidateClaimsFunc> = Box::new(|claims| {
         assert_eq!(
-            claims["resident-card"]["credentialSubject"]["givenName"],
+            claims["vp_token"]["resident-card"]["credentialSubject"]["givenName"],
             json!("John")
         );
         assert_eq!(
-            claims["resident-card"]["credentialSubject"]["familyName"],
+            claims["vp_token"]["resident-card"]["credentialSubject"]["familyName"],
             json!("Doe")
         );
         assert_eq!(
-            claims["resident-card"]["credentialSubject"]["birthDate"],
+            claims["vp_token"]["resident-card"]["credentialSubject"]["birthDate"],
             json!("09/09/1989")
         );
     });
@@ -241,10 +241,10 @@ pub fn single_sdjwt_presentation_case() -> Oid4VpTestCase {
 
     let validate: Box<ValidateClaimsFunc> = Box::new(|claims| {
         assert_eq!(
-            claims["Identity-1"]["vct"],
+            claims["vp_token"]["Identity-1"]["vct"],
             json!("https://credentials.example.com/identity_credential")
         );
-        assert_eq!(claims["Identity-1"]["name"], json!("John"));
+        assert_eq!(claims["vp_token"]["Identity-1"]["name"], json!("John"));
     });
 
     Oid4VpTestCase {
@@ -266,16 +266,16 @@ pub fn multiple_sdjwt_presentation_case() -> Oid4VpTestCase {
 
     let validate: Box<ValidateClaimsFunc> = Box::new(|claims| {
         assert_eq!(
-            claims["Identity-1"]["vct"],
+            claims["vp_token"]["Identity-1"]["vct"],
             json!("https://credentials.example.com/identity_credential")
         );
-        assert_eq!(claims["Identity-1"]["name"], json!("John"));
+        assert_eq!(claims["vp_token"]["Identity-1"]["name"], json!("John"));
         assert_eq!(
-            claims["Degree-1"]["vct"],
+            claims["vp_token"]["Degree-1"]["vct"],
             json!("https://credentials.example.com/degree_credential")
         );
         assert_eq!(
-            claims["Degree-1"]["degree"]["type"],
+            claims["vp_token"]["Degree-1"]["degree"]["type"],
             json!("BachelorDegree")
         );
     });

@@ -116,6 +116,7 @@ pub mod fixtures {
               },
               "nonce": "XUcfTNfJ-d5pm99XUKG7mGKukwXeDasaRlghKEpGxh0",
               "response_mode": "direct_post",
+              "response_type": "vp_token",
               "response_uri": "http://127.0.0.1:55796/auth"
             }
         "#;
@@ -152,6 +153,7 @@ pub mod fixtures {
                 request: auth_request(),
                 credential_data: credential_data(),
                 presentation_submission: presentation_submission(),
+                response_metadata: Default::default(),
             }
         }
 
@@ -359,6 +361,7 @@ pub mod fixtures {
             },
            "nonce":"n0NcE",
            "response_mode":"direct_post",
+           "response_type": "vp_token",
            "response_uri":"http://127.0.0.1:55796/auth"
         }"#;
 
@@ -426,6 +429,7 @@ pub mod fixtures {
                 request: auth_request(),
                 credential_data: credential_data(),
                 presentation_submission: presentation_submission(),
+                response_metadata: Default::default(),
             }
         }
 
@@ -457,7 +461,7 @@ pub mod utils {
     use crate::inmem::vault::InMemVault;
     use crate::kms::{CreateOptions, KeyID, KeyType, Kms};
     use crate::nonce::Nonce;
-    use crate::utils::http::test::mock_http_req_predicate;
+    use crate::utils::http::test::mock_http_req_async_predicate;
     use crate::utils::test_utils;
     use crate::utils::test_utils::create_did_and_key_metadata;
     use crate::vault::{CredentialEntry, Vault};
@@ -469,8 +473,8 @@ pub mod utils {
     use crate::vc::oid4vp::tests::CredTypeWithClaims;
     use crate::vc::oid4vp::verifier::VerifierService;
     use crate::vc::oid4vp::{
-        AuthorizationResponse, CredentialMapping, Holder, PresentationSession, ResolvedAuthRequest,
-        Verifier,
+        AuthorizationResponse, AuthorizationResponseMetadata, ClientMetadata, CredentialMapping,
+        Holder, PresentationSession, ResolvedAuthRequest, Verifier,
     };
     use crate::vc::presentation_exchange::PresentationSubmission;
     use crate::vc::{
@@ -478,10 +482,14 @@ pub mod utils {
         VCMetadata,
     };
     use oauth2::http::{Method, StatusCode};
+    use oid4vp::core::authorization_request::parameters::ResponseType;
+    use oid4vp::core::metadata::parameters::SubjectSyntaxTypesSupported;
+    use oid4vp::core::object::UntypedObject;
+    use oid4vp::core::response::parameters::IdToken;
     use oid4vp::core::response::PostRedirection;
     use sd_jwt_rs::utils::decode_sd_jwt;
     use sd_jwt_rs::SDJWTSerializationFormat;
-    use serde_json::json;
+    use serde_json::{json, Value};
     use ssi::did::DIDURL;
     use std::collections::HashMap;
     use std::str::FromStr;
@@ -491,6 +499,7 @@ pub mod utils {
         pub request: ResolvedAuthRequest,
         pub credential_data: Vec<CredTypeWithClaims>,
         pub presentation_submission: PresentationSubmission,
+        pub response_metadata: AuthorizationResponseMetadata,
     }
 
     impl PresentationTestCase {
@@ -501,33 +510,23 @@ pub mod utils {
         ) {
             let credential_data = self.credential_data.clone();
             let expected_presentation_submission = self.presentation_submission.clone();
+            let client_id = self.request.client_id.to_owned();
+            let nonce = self.request.nonce.clone();
+            let response_type = self.request.response_type.clone();
 
-            mock_http_req_predicate(
+            mock_http_req_async_predicate(
                 http_client,
                 Method::POST,
                 build_url(VERIFIER_URL, "auth"),
                 move |request| {
-                    let form = serde_urlencoded::from_bytes(request.as_bytes()).unwrap();
-                    let claims = Self::extract_claims(&form);
-
-                    for index in 0..claims.len() {
-                        validate_claims(
-                            claims.get(index).unwrap(),
-                            credential_data.get(index).unwrap(),
-                        )
-                    }
-
-                    let mut presentation_submission: PresentationSubmission =
-                        serde_json::from_str(&form["presentation_submission"]).unwrap();
-                    presentation_submission = PresentationSubmission::new(
-                        uuid::Uuid::default(),
-                        presentation_submission.definition_id().to_owned(),
-                        presentation_submission.descriptor_map().to_owned(),
-                    );
-
-                    assert_eq!(presentation_submission, expected_presentation_submission);
-
-                    true
+                    Self::mock_http_auth_response_endpoint_helper(
+                        credential_data.clone(),
+                        expected_presentation_submission.clone(),
+                        client_id.clone(),
+                        nonce.clone(),
+                        response_type.clone(),
+                        request,
+                    )
                 },
                 PostRedirection {
                     redirect_uri: build_url(VERIFIER_URL, "redirect"),
@@ -537,6 +536,48 @@ pub mod utils {
             );
         }
 
+        async fn mock_http_auth_response_endpoint_helper(
+            credential_data: Vec<CredTypeWithClaims>,
+            expected_presentation_submission: PresentationSubmission,
+            client_id: String,
+            nonce: Nonce,
+            response_type: ResponseType,
+            request: String,
+        ) -> bool {
+            let form = serde_urlencoded::from_bytes(request.as_bytes()).unwrap();
+            let claims = Self::extract_claims(&form);
+            for index in 0..claims.len() {
+                validate_claims(
+                    claims.get(index).unwrap(),
+                    credential_data.get(index).unwrap(),
+                )
+            }
+
+            let mut presentation_submission: PresentationSubmission =
+                serde_json::from_str(&form["presentation_submission"]).unwrap();
+            presentation_submission = PresentationSubmission::new(
+                uuid::Uuid::default(),
+                presentation_submission.definition_id().to_owned(),
+                presentation_submission.descriptor_map().to_owned(),
+            );
+
+            assert_eq!(presentation_submission, expected_presentation_submission);
+
+            if response_type == ResponseType::VpTokenIdToken {
+                let id_token: IdToken = form
+                    .get("id_token")
+                    .unwrap()
+                    .to_string()
+                    .try_into()
+                    .unwrap();
+                let id_token = id_token.parsed_body();
+
+                assert_eq!(id_token.nonce, nonce.0);
+                assert_eq!(id_token.audience, client_id)
+            }
+
+            true
+        }
         pub async fn prepare_vault(&self, kms: &LocalKms, with_extra_creds: bool) -> InMemVault {
             let vault = InMemVault::new();
 
@@ -674,6 +715,7 @@ pub mod utils {
             AuthorizationResponse {
                 vp_token: self.vp_token(nonce, verifier_id).await,
                 presentation_submission: self.presentation_submission.clone(),
+                id_token: None,
             }
         }
     }
@@ -684,14 +726,14 @@ pub mod utils {
         vault: InMemVault,
     ) -> impl Holder {
         let inner = vc::core::HolderService::new(
-            kms,
+            kms.clone(),
             vault,
             vc::core::HolderMetadata {
                 client_id: "client_id".to_string(),
             },
         );
 
-        HolderService::new(inner, UniversalResolver::new(), None, http_client)
+        HolderService::new(inner, UniversalResolver::new(), http_client, kms, None)
     }
 
     pub async fn verifier_service() -> (impl Verifier, String) {
@@ -699,6 +741,11 @@ pub mod utils {
         let nonce_gen = LocalNonceGenerator::default();
         let (did, key_metadata) = create_did_and_key_metadata(&kms).await;
         let inner = vc::core::VerifierService::new(&did);
+        let sub_syntax_types = SubjectSyntaxTypesSupported(vec!["did:key".to_string()]);
+
+        let mut client_metadata =
+            ClientMetadata::try_from(Value::from(UntypedObject::default())).unwrap();
+        client_metadata.0.insert(sub_syntax_types);
 
         let verifier = VerifierService::new(
             inner,
@@ -707,7 +754,7 @@ pub mod utils {
             nonce_gen,
             did.clone(),
             key_metadata,
-            None,
+            Some(client_metadata),
         );
 
         (verifier, did)

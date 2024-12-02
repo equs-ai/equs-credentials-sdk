@@ -42,7 +42,8 @@ const DEFAULT_WALLET_METADATA: &str = r#"{
     "issuer": "https://self-issued.me/v2",
     "authorization_endpoint": "openid4vp://",
     "response_types_supported": [
-        "vp_token"
+        "vp_token",
+        "vp_token id_token"
     ],
     "vp_formats_supported":
     {
@@ -64,6 +65,12 @@ const DEFAULT_WALLET_METADATA: &str = r#"{
     "request_object_signing_alg_values_supported": [
         "EdDSA",
         "ES256"
+    ],
+    "subject_syntax_types_supported": [
+        "did:key"
+    ],
+    "id_token_types_supported": [
+        "subject_signed_id_token"
     ]
 }"#;
 

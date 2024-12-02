@@ -178,7 +178,7 @@ where
 pub struct HolderBuilder<KH, KMS, V, D, HC>
 where
     KH: kms::KeyHandle,
-    KMS: kms::Kms<KH>,
+    KMS: kms::Kms<KH> + Clone,
     V: vault::Vault,
     D: did::DIDResolver,
     HC: HttpClient,
@@ -200,7 +200,7 @@ where
 impl<KH, KMS, V> HolderBuilder<KH, KMS, V, UniversalResolver, ReqwestClient>
 where
     KH: kms::KeyHandle,
-    KMS: kms::Kms<KH>,
+    KMS: kms::Kms<KH> + Clone,
     V: vault::Vault,
 {
     /// Creates a new instance of `HolderBuilder` with default configurations.
@@ -243,7 +243,7 @@ where
 impl<KH, KMS, V, D, HC> HolderBuilder<KH, KMS, V, D, HC>
 where
     KH: kms::KeyHandle,
-    KMS: kms::Kms<KH>,
+    KMS: kms::Kms<KH> + Clone,
     V: vault::Vault,
     D: did::DIDResolver,
     HC: HttpClient,
@@ -340,7 +340,7 @@ where
 
         debug!(?holder_metadata);
 
-        let inner = vc::core::HolderService::new(self.kms, self.vault, holder_metadata);
+        let inner = vc::core::HolderService::new(self.kms.clone(), self.vault, holder_metadata);
         let http_client = self.http_client.map_err(|e| {
             BuildSnafu {
                 details: format!("Cannot initialize http client: {e}"),
@@ -348,7 +348,13 @@ where
             .build()
         })?;
 
-        let holder = HolderService::new(inner, self.resolver, self.wallet_metadata, http_client);
+        let holder = HolderService::new(
+            inner,
+            self.resolver,
+            http_client,
+            self.kms,
+            self.wallet_metadata,
+        );
 
         info!("oid4vp-holder service is initialized");
 

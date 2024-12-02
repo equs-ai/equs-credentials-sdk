@@ -38,16 +38,18 @@ pub(crate) fn generate_post_req(url: &Url, content_type: MimeType, body: Vec<u8>
 #[cfg(test)]
 pub mod test {
     use crate::http::{MockHttpClient, Result};
+    use futures::executor;
     use oauth2::http::header::CONTENT_TYPE;
     use oauth2::http::{HeaderMap, HeaderValue, Method, StatusCode};
     use oauth2::{HttpRequest, HttpResponse};
+    use std::future::Future;
     use url::Url;
 
     #[cfg(test)]
     pub fn mock_http_once<T: serde::Serialize + Send + Sync + 'static>(
         mock: &mut MockHttpClient,
         method: Method,
-        url: url::Url,
+        url: Url,
         body: T,
         status: StatusCode,
     ) {
@@ -58,7 +60,7 @@ pub mod test {
     pub fn mock_http<T: serde::Serialize + Send + Sync + 'static>(
         mock: &mut MockHttpClient,
         method: Method,
-        url: url::Url,
+        url: Url,
         body: T,
         status: StatusCode,
         times: mockall::TimesRange,
@@ -84,7 +86,7 @@ pub mod test {
     pub fn mock_http_req_body<T: serde::Serialize + Send + Sync + 'static>(
         mock: &mut MockHttpClient,
         method: Method,
-        url: url::Url,
+        url: Url,
         expected_req_body: String,
         body: T,
         status: StatusCode,
@@ -113,7 +115,7 @@ pub mod test {
     pub fn mock_http_req_predicate<T, F>(
         mock: &mut MockHttpClient,
         method: Method,
-        url: url::Url,
+        url: Url,
         expected_req_body_predicate: F,
         body: T,
         status: StatusCode,
@@ -139,6 +141,30 @@ pub mod test {
                     body: serde_json::to_vec(&body).unwrap(),
                 })
             });
+    }
+
+    pub fn mock_http_req_async_predicate<T, FN, F>(
+        mock: &mut MockHttpClient,
+        method: Method,
+        url: Url,
+        expected_req_body_predicate: FN,
+        body: T,
+        status: StatusCode,
+        times: mockall::TimesRange,
+    ) where
+        T: serde::Serialize + Send + Sync + 'static,
+        FN: Fn(String) -> F + Send + 'static,
+        F: Future<Output = bool>,
+    {
+        mock_http_req_predicate(
+            mock,
+            method,
+            url,
+            move |req_body| executor::block_on(expected_req_body_predicate(req_body)),
+            body,
+            status,
+            times,
+        );
     }
 
     pub fn mock_http_fn_with_plain_text_resp(
@@ -172,7 +198,7 @@ pub mod test {
     pub fn mock_http_fn<F>(
         mock: &mut MockHttpClient,
         method: Method,
-        url: url::Url,
+        url: Url,
         body_fn: F,
         times: mockall::TimesRange,
     ) where
