@@ -828,6 +828,25 @@ mod tests {
             .await
             .unwrap();
     }
+    #[rstest]
+    #[should_panic(expected = "Please provide the metadata required to generate the ID token")]
+    #[case::id_token_metadata_not_declared(siop_id_token_metadata_not_declared_case())]
+    #[should_panic(expected = "Key not found for ID: unknown")]
+    #[case::invalid_key_metadata(siop_invalid_key_metadata_case())]
+    #[tokio::test]
+    async fn present_credential_auto_with_siop_fails(#[case] test_case: PresentationTestCase) {
+        let kms = LocalKms::new();
+        let (_, key_metadata) = create_did_and_key_metadata(&kms).await;
+        let mut http_client = MockHttpClient::new();
+        test_case.mock_http_auth_response_endpoint(&mut http_client, None);
+        let vault = test_case.prepare_vault(&kms, false).await;
+
+        let holder = holder_service(http_client, kms, vault).await;
+        holder
+            .present_credentials_auto(&test_case.request, &test_case.response_metadata)
+            .await
+            .unwrap();
+    }
 
     #[should_panic(
         expected = "Credential of Type 'https://credentials.example.com/identity_credential' and Format 'vc+sd-jwt' not found"
@@ -1103,6 +1122,31 @@ mod tests {
         let mut test_case = single_presentation::presentation_test_case();
         test_case.request.response_type = ResponseType::VpTokenIdToken;
 
+        test_case.response_metadata.id_token_metadata = Some(IdTokenMetadata {
+            key_metadata,
+            lifetime: time::Duration::days(1),
+        });
+
+        test_case
+    }
+
+    fn siop_id_token_metadata_not_declared_case() -> PresentationTestCase {
+        let mut test_case = single_presentation::presentation_test_case();
+        test_case.request.response_type = ResponseType::VpTokenIdToken;
+
+        test_case.response_metadata.id_token_metadata = None;
+
+        test_case
+    }
+
+    fn siop_invalid_key_metadata_case() -> PresentationTestCase {
+        let mut test_case = single_presentation::presentation_test_case();
+        test_case.request.response_type = ResponseType::VpTokenIdToken;
+
+        let key_metadata = KeyMetadata {
+            did_url: "did::example::1234".to_string(),
+            kid: "unknown".to_string(),
+        };
         test_case.response_metadata.id_token_metadata = Some(IdTokenMetadata {
             key_metadata,
             lifetime: time::Duration::days(1),

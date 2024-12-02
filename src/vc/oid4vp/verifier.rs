@@ -496,13 +496,7 @@ where
 mod tests {
     use std::collections::HashMap;
 
-    use oid4vp::core::authorization_request::parameters::{IdTokenType, Scope};
-    use oid4vp::core::authorization_request::{AuthorizationRequest, AuthorizationRequestObject};
-    use oid4vp::core::object::UntypedObject;
-    use rstest::rstest;
-    use serde_json::json;
-    use url::Url;
-
+    use super::*;
     use crate::http::HttpSnafu;
     use crate::inmem::kms::LocalKms;
     use crate::nonce::Nonce;
@@ -515,10 +509,16 @@ mod tests {
         build_url, validate_claims, verifier_service, VerificationTestCase,
     };
     use crate::vc::oid4vp::verifier::VP_TOKEN;
-    use crate::vc::oid4vp::{
-        AuthorizationResponse, PassAuthRequestObject, PresentationSession, ResponseType, Verifier,
-    };
+    use crate::vc::oid4vp::{PassAuthRequestObject, PresentationSession, ResponseType, Verifier};
     use crate::vc::presentation_exchange::PresentationDefinition;
+    use crate::vc::Claims;
+    use oid4vp::core::authorization_request::parameters::{IdTokenType, Scope};
+    use oid4vp::core::authorization_request::{AuthorizationRequest, AuthorizationRequestObject};
+    use oid4vp::core::object::UntypedObject;
+    use oid4vp::wallet::IdTokenParams;
+    use rstest::rstest;
+    use serde_json::json;
+    use url::Url;
 
     #[tokio::test]
     async fn generate_auth_request_by_reference_success() {
@@ -705,17 +705,41 @@ mod tests {
             .await
             .unwrap();
 
-        for (index, credential_data) in test_case.credential_data.into_iter().enumerate() {
-            let cred_id = &test_case
-                .presentation_submission
-                .descriptor_map()
-                .get(index)
-                .unwrap()
-                .id();
+        validate_vp_token_against_expected_claims(test_case, &verified_claims);
+    }
 
-            let cred_claims = &verified_claims[VP_TOKEN][cred_id];
-            validate_claims(cred_claims, &credential_data);
-        }
+    #[tokio::test]
+    async fn verify_auth_response_with_id_token_success() {
+        let test_case = single_presentation::verification_test_case();
+        let (verifier, client_id) = verifier_service().await;
+        let kms = LocalKms::new();
+        let session = PresentationSession {
+            nonce: Nonce(NONCE.to_owned()),
+            presentation_definition: test_case.session.presentation_definition.clone(),
+            auth_request_jwt: Default::default(),
+        };
+
+        let id_token_params = IdTokenParams {
+            audience: client_id.to_owned(),
+            nonce: session.nonce.0.to_owned().into(),
+            lifetime: time::Duration::minutes(5),
+            other: None,
+        };
+        let response = test_case
+            .auth_response_with_id_token(&session.nonce, &client_id, id_token_params)
+            .await;
+
+        let verified_claims = verifier
+            .verify_presentation(&response, &test_case.session)
+            .await
+            .unwrap();
+
+        validate_vp_token_against_expected_claims(test_case, &verified_claims);
+
+        let id_token_claims: IdToken =
+            serde_json::from_value(verified_claims[ID_TOKEN].to_owned()).unwrap();
+        assert_eq!(id_token_claims.audience, client_id);
+        assert_eq!(id_token_claims.nonce, session.nonce.0);
     }
 
     #[rstest]
@@ -752,24 +776,58 @@ mod tests {
     }
 
     #[rstest]
-    #[case::empty_token("[]")]
-    #[case::invalid_token(r#"{"test": "invalid"}"#)]
+    #[should_panic(expected = "incorrect nonce")]
+    #[case::incorrect_nonce(Some("invalid".to_string()), None, None)]
+    #[should_panic(expected = "id token audience value mismatch")]
+    #[case::invalid_audience(None, Some("did:example:1234".to_string(),), None)]
+    #[should_panic(expected = "id token is expired")]
+    #[case::token_expired(None, None, Some(time::Duration::seconds(0)))]
     #[tokio::test]
-    #[should_panic(expected = "Incorrect presentation format: expected SD-JWT string")]
-    async fn verify_auth_response_fails_on_invalid_vp_token(#[case] vp_token: &str) {
+    async fn verify_auth_response_fails_on_invalid_vp_token(
+        #[case] nonce: Option<String>,
+        #[case] audience: Option<String>,
+        #[case] lifetime: Option<time::Duration>,
+    ) {
+        let test_case = single_presentation::verification_test_case();
         let (verifier, client_id) = verifier_service().await;
         let kms = LocalKms::new();
-
-        let response = AuthorizationResponse {
-            vp_token: serde_json::from_str(vp_token).unwrap(),
-            presentation_submission: single_presentation::presentation_submission(),
-            id_token: None,
+        let session = PresentationSession {
+            nonce: Nonce(NONCE.to_owned()),
+            presentation_definition: test_case.session.presentation_definition.clone(),
+            auth_request_jwt: Default::default(),
         };
 
-        let result = verifier
-            .verify_presentation(&response, &single_presentation::presentation_session())
+        let id_token_params = IdTokenParams {
+            audience: audience.unwrap_or(client_id.to_owned()),
+            nonce: nonce.unwrap_or(session.nonce.0.to_owned()).into(),
+            lifetime: lifetime.unwrap_or(time::Duration::minutes(5)),
+            other: None,
+        };
+        let response = test_case
+            .auth_response_with_id_token(&session.nonce, &client_id, id_token_params)
+            .await;
+
+        let verified_claims = verifier
+            .verify_presentation(&response, &test_case.session)
             .await
             .unwrap();
+    }
+
+    fn validate_vp_token_against_expected_claims(
+        test_case: VerificationTestCase,
+        verified_claims: &Claims,
+    ) {
+        for (index, credential_data) in test_case.credential_data.into_iter().enumerate() {
+            let cred_id = &test_case
+                .presentation_submission
+                .descriptor_map()
+                .get(index)
+                .unwrap()
+                .id();
+
+            let cred_claims = &verified_claims[VP_TOKEN][cred_id];
+            validate_claims(cred_claims, &credential_data);
+        }
     }
 
     fn presentation_definition_with_empty_id() -> PresentationDefinition {
