@@ -21,7 +21,8 @@ use agent_sdk::inmem::kms::LocalKms;
 use agent_sdk::inmem::vault::InMemVault;
 use agent_sdk::vault::Vault;
 use agent_sdk::vc::oid4vp::{
-    AuthResponseOptions, PassAuthRequestObject, ResponseMode, ResponseType,
+    AuthResponseOptions, AuthorizationResponseMetadata, ClientMetadata, IdTokenMetadata,
+    PassAuthRequestObject, ResponseMode, ResponseType,
 };
 use agent_sdk::vc::oid4vp::{AuthorizationResponse, Holder};
 use agent_sdk::vc::oid4vp::{HolderBuilder, PresentationSession};
@@ -33,15 +34,14 @@ use agent_sdk::vc::{VCFormatsJsonLdAPI, VCFormatsSdJwtAPI};
 use utils::helpers::create_did_keymetadata_keyhandle;
 use utils::http::HttpClientEmulator;
 
-use agent_sdk::did::{DIDResolver, DID};
-use agent_sdk::inmem::kms::KeyHandle;
-use agent_sdk::inmem::nonce::LocalNonceGenerator;
-use agent_sdk::kms::KeyID;
-
 use crate::utils::fixtures::oid4vp::{
     multiple_sdjwt_presentation_case, single_jsonld_presentation_case,
     single_sdjwt_presentation_case, Oid4VpTestCase, ValidateClaimsFunc, VERIFIER_URL,
 };
+use agent_sdk::did::{DIDResolver, DID};
+use agent_sdk::inmem::kms::KeyHandle;
+use agent_sdk::inmem::nonce::LocalNonceGenerator;
+use agent_sdk::vc::core::KeyMetadata;
 
 #[rstest]
 #[case::single_jsonld_presentation(single_jsonld_presentation_case())]
@@ -51,7 +51,7 @@ use crate::utils::fixtures::oid4vp::{
 async fn credentials_presentation_and_verification(#[case] test_case: Oid4VpTestCase) {
     println!("7. Store Credential");
     let holder_kms = LocalKms::new();
-    let (holder_kid, holder_kh, holder_did, _) =
+    let (holder_key_metadata, holder_kh, holder_did, _) =
         generate_did_key_and_vm(&holder_kms, &UniversalResolver::new()).await;
     let holder_did_url = DIDURL::from_str(&holder_did).unwrap();
 
@@ -63,7 +63,7 @@ async fn credentials_presentation_and_verification(#[case] test_case: Oid4VpTest
             credential.format,
             credential.vc_type,
             &holder_did_url,
-            holder_kid.clone(),
+            holder_key_metadata.kid.clone(),
             holder_kh.clone(),
             credential.claims,
         )
@@ -83,7 +83,7 @@ async fn credentials_presentation_and_verification(#[case] test_case: Oid4VpTest
     let response_uri: Url = format!("{}/auth", VERIFIER_URL).parse().unwrap();
     let request_uri: Url = format!("{}/request", &VERIFIER_URL).parse().unwrap();
     let auth_resp_options = AuthResponseOptions {
-        type_: ResponseType::VpToken,
+        type_: ResponseType::VpTokenIdToken,
         mode: ResponseMode::DirectPost,
         submission_uri: response_uri,
     };
@@ -117,8 +117,17 @@ async fn credentials_presentation_and_verification(#[case] test_case: Oid4VpTest
     println!("{:?}", &request_object);
 
     println!("9. Present Credential Auto");
+
+    let auth_resp_metadata = AuthorizationResponseMetadata {
+        claims_to_exclude: None,
+        id_token_metadata: Some(IdTokenMetadata {
+            key_metadata: holder_key_metadata,
+            lifetime: time::Duration::minutes(5),
+        }),
+    };
+
     holder
-        .present_credentials_auto(&request_object, &Default::default())
+        .present_credentials_auto(&request_object, &auth_resp_metadata)
         .await
         .unwrap();
 }
@@ -164,11 +173,12 @@ fn prepare_http_client_for_holder(
             let presentation_submission =
                 serde_json::from_str(form.get("presentation_submission").unwrap().as_str())
                     .unwrap();
+            let id_token = form.get("id_token").cloned();
 
             let auth_response = AuthorizationResponse {
                 vp_token,
                 presentation_submission,
-                id_token: None,
+                id_token,
             };
 
             let result = executor::block_on(verifier.verify_presentation(&auth_response, &session));
@@ -195,6 +205,7 @@ async fn build_verifier() -> impl Verifier {
     let (did, key_metadata, _) = create_did_keymetadata_keyhandle(&kms).await;
 
     VerifierBuilder::new(kms, nonce_gen, key_metadata, did)
+        .with_client_metadata(default_verifier_metadata())
         .build()
         .await
         .unwrap()
@@ -283,7 +294,7 @@ async fn create_vc(
 pub async fn generate_did_key_and_vm(
     kms: &LocalKms,
     did_resolver: &UniversalResolver,
-) -> (KeyID, KeyHandle, DID, String) {
+) -> (KeyMetadata, KeyHandle, DID, String) {
     let (did, key_md, key_handle) = create_did_keymetadata_keyhandle(kms).await;
 
     let vm_id = did_resolver
@@ -292,5 +303,32 @@ pub async fn generate_did_key_and_vm(
         .unwrap()
         .id;
 
-    (key_md.kid, key_handle, did, vm_id)
+    (key_md, key_handle, did, vm_id)
 }
+
+fn default_verifier_metadata() -> ClientMetadata {
+    ClientMetadata::try_from(
+        serde_json::from_str::<serde_json::Value>(DEFAULT_CLIENT_METADATA).unwrap(),
+    )
+    .unwrap()
+}
+
+const DEFAULT_CLIENT_METADATA: &str = r#"{
+    "vp_formats": {
+        "vc+sd-jwt": {
+            "alg": [
+                "EdDSA",
+                "ES256"
+            ]
+        },
+        "ldp_vc": {
+          "proof_type": [
+            "Ed25519Signature2018",
+            "EcdsaSecp256k1Signature2019"
+          ]
+        }
+    },
+    "subject_syntax_types_supported": [
+        "did:key"
+    ]
+}"#;

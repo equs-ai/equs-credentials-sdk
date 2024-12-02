@@ -469,6 +469,7 @@ pub mod utils {
     use crate::vc::formats::sd_jwt_vc;
     use crate::vc::formats::sd_jwt_vc::{SdJwtAPI, VPMetadata};
     use crate::vc::oid4vp::holder::HolderService;
+    use crate::vc::oid4vp::signer::Signer;
     use crate::vc::oid4vp::tests::fixtures::VERIFIER_URL;
     use crate::vc::oid4vp::tests::CredTypeWithClaims;
     use crate::vc::oid4vp::verifier::VerifierService;
@@ -487,6 +488,7 @@ pub mod utils {
     use oid4vp::core::object::UntypedObject;
     use oid4vp::core::response::parameters::IdToken;
     use oid4vp::core::response::PostRedirection;
+    use oid4vp::wallet::{IdTokenParams, Wallet};
     use sd_jwt_rs::utils::decode_sd_jwt;
     use sd_jwt_rs::SDJWTSerializationFormat;
     use serde_json::{json, Value};
@@ -718,6 +720,18 @@ pub mod utils {
                 id_token: None,
             }
         }
+
+        pub async fn auth_response_with_id_token(
+            &self,
+            nonce: &Nonce,
+            verifier_id: &str,
+            id_token_params: IdTokenParams,
+        ) -> AuthorizationResponse {
+            let mut auth_resp = self.auth_response(nonce, verifier_id).await;
+            auth_resp.id_token = Some(generate_did_based_id_token(id_token_params).await);
+
+            auth_resp
+        }
     }
 
     pub async fn holder_service(
@@ -829,5 +843,36 @@ pub mod utils {
                 "Claims: {claims}, expected {key}: {value}"
             );
         }
+    }
+
+    pub async fn generate_did_based_id_token(params: IdTokenParams) -> String {
+        let kms = LocalKms::new();
+        let inner = vc::core::HolderService::new(
+            kms.clone(),
+            InMemVault::new(),
+            vc::core::HolderMetadata {
+                client_id: "client_id".to_string(),
+            },
+        );
+
+        let holder = HolderService::new(
+            inner,
+            UniversalResolver::new(),
+            MockHttpClient::new(),
+            kms.clone(),
+            None,
+        );
+        let (did, metadata) = create_did_and_key_metadata(&kms).await;
+
+        let key = kms.get(&metadata.kid).await.unwrap();
+
+        holder
+            .generate_did_based_id_token(
+                &metadata.did_url.parse().unwrap(),
+                params,
+                Signer::new(key).unwrap(),
+            )
+            .await
+            .unwrap()
     }
 }

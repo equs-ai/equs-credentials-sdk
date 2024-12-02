@@ -14,12 +14,12 @@ use agent_sdk::vc::oid4vci::Holder as HolderVci;
 use agent_sdk::vc::oid4vci::{
     CredentialOffer, CredentialResponseResolved, CredentialResult, IssuerDiscovery, TokenResponse,
 };
-use agent_sdk::vc::oid4vp::Verifier;
 use agent_sdk::vc::oid4vp::{
     AuthResponseOptions, AuthorizationResponse, AuthorizationResponseMetadata,
     PassAuthRequestObject, ResolvedAuthRequest, ResponseMode, ResponseType,
 };
 use agent_sdk::vc::oid4vp::{CredentialMapping, Holder as HolderVp};
+use agent_sdk::vc::oid4vp::{IdTokenMetadata, Verifier};
 use agent_sdk::vc::presentation_exchange::PresentationDefinition;
 use agent_sdk::vc::HasClaims;
 use agent_sdk::vc::{oid4vci, oid4vp, Credential};
@@ -51,7 +51,7 @@ async fn main() {
 
     // Running flows
     run_issuance_flow(oid4vci_holder, kms.clone()).await;
-    run_presentation_flow(oid4vp_holder).await;
+    run_presentation_flow(oid4vp_holder, kms).await;
 
     println!("Done");
 }
@@ -145,7 +145,7 @@ async fn request_credential(
     cred_resp
 }
 
-async fn run_presentation_flow(holder: impl HolderVp) {
+async fn run_presentation_flow(holder: impl HolderVp, kms: LocalKms) {
     println!("Please enter the number to execute presentation flow:\n 1 - Cross Device\n 2 - Same device");
     let mut input = input_from_console("Failed to read selected presentation flow");
 
@@ -153,12 +153,12 @@ async fn run_presentation_flow(holder: impl HolderVp) {
         "1" => {
             println!("Same device flow is started ...");
             input.clear();
-            cross_device_presentation_flow(holder).await
+            cross_device_presentation_flow(holder, kms).await
         }
         "2" => {
             println!("Cross device flow is started ...");
             input.clear();
-            same_device_presentation_flow(holder).await
+            same_device_presentation_flow(holder, kms).await
         }
         _ => {
             println!("Invalid input, please retry the flow");
@@ -168,7 +168,7 @@ async fn run_presentation_flow(holder: impl HolderVp) {
     println!("Presentation done");
 }
 
-async fn cross_device_presentation_flow(holder: impl HolderVp) {
+async fn cross_device_presentation_flow(holder: impl HolderVp, kms: LocalKms) {
     println!("1. Holder tries to parse authorization/presentation request of Verifier");
 
     println!("Please enter presentation request URI from http://localhost:8098/request_uri:");
@@ -189,10 +189,10 @@ async fn cross_device_presentation_flow(holder: impl HolderVp) {
         serde_json::to_string_pretty(&auth_request).unwrap()
     );
 
-    present_credential(holder, &auth_request).await;
+    present_credential(holder, kms, &auth_request).await;
 }
 
-async fn same_device_presentation_flow(holder: impl HolderVp) {
+async fn same_device_presentation_flow(holder: impl HolderVp, kms: LocalKms) {
     let redirect_uri = Url::parse("http://verifier.example.com/cb").unwrap();
     let verifier = verifier(redirect_uri.as_ref()).await;
     println!("1.2 Verifier generates authorization request");
@@ -228,7 +228,9 @@ async fn same_device_presentation_flow(holder: impl HolderVp) {
         serde_json::to_string_pretty(&auth_request).unwrap()
     );
 
-    let url = present_credential(holder, &auth_request).await.unwrap();
+    let url = present_credential(holder, kms, &auth_request)
+        .await
+        .unwrap();
     println!("Holder generated presentation response and embedded it into redirect uri: \n{url}");
 
     println!("3.1 Verifier validates presentation response");
@@ -284,6 +286,7 @@ async fn verifier(client_id: &str) -> impl Verifier {
 
 async fn present_credential(
     holder: impl HolderVp,
+    kms: LocalKms,
     auth_request: &ResolvedAuthRequest,
 ) -> Option<Url> {
     println!("Please enter the number to send presentation by:\n 1 - Auto\n 2 - Selecting from the credential list");
@@ -294,7 +297,7 @@ async fn present_credential(
         "1" => {
             println!("2. Holder sends authorization/presentation response to Verifier!");
 
-            let auth_response_metadata = get_claims_to_exclude();
+            let auth_response_metadata = resolve_auth_resp_metadata(auth_request, kms).await;
             holder
                 .present_credentials_auto(auth_request, &auth_response_metadata)
                 .await
@@ -322,7 +325,7 @@ async fn present_credential(
             input = input_from_console("Failed to read the selected credential");
             let selected = collect_selected_cred_entries(input, &credentials);
 
-            let auth_response_metadata = get_claims_to_exclude();
+            let auth_response_metadata = resolve_auth_resp_metadata(auth_request, kms).await;
 
             println!("2. Holder sends authorization/presentation response to Verifier");
             holder
@@ -338,10 +341,13 @@ async fn present_credential(
     redirect_url
 }
 
-fn get_claims_to_exclude() -> AuthorizationResponseMetadata {
+async fn resolve_auth_resp_metadata(
+    auth_request: &ResolvedAuthRequest,
+    kms: LocalKms,
+) -> AuthorizationResponseMetadata {
     println!("Do you want to add claims to exclude?: y (yes) or anything else for no");
     let input = input_from_console("Failed to read input on claims to exclude");
-    match input.as_str() {
+    let mut auth_resp_metadata = match input.as_str() {
         "y" => {
             println!("Input id of input descriptor: ");
             let id = input_from_console("Failed to read presentation mode");
@@ -353,7 +359,18 @@ fn get_claims_to_exclude() -> AuthorizationResponseMetadata {
             AuthorizationResponseMetadata::with_excluded_claims(map)
         }
         _ => Default::default(),
+    };
+
+    if auth_request.response_type == ResponseType::VpTokenIdToken {
+        let (_, key_metadata) = create_did_and_key_metadata(&kms).await;
+
+        auth_resp_metadata.id_token_metadata = Some(IdTokenMetadata {
+            key_metadata,
+            lifetime: time::Duration::minutes(5),
+        });
     }
+
+    auth_resp_metadata
 }
 
 fn collect_selected_cred_entries(
