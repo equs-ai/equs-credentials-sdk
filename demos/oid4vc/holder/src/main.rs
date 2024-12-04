@@ -69,7 +69,7 @@ async fn run_issuance_flow(holder: impl HolderVci, kms: LocalKms) {
         .clone()
         .c_nonce
         .map(|n| NonceData {
-            value: Nonce::new(n.secret().as_bytes()),
+            value: Nonce::from_secret(n.secret().clone()),
             created: OffsetDateTime::now_utc(),
             expires_in: None,
         });

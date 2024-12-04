@@ -125,7 +125,7 @@ mod tests {
     fn serialization_of_nonce_data_works_correctly() {
         let nonce_offset_date_time = OffsetDateTime::from_unix_timestamp(1727962239).unwrap();
         let nonce_data = NonceData {
-            value: Nonce("nOnCe".to_owned()),
+            value: Nonce::from_secret("nOnCe".to_owned()),
             created: nonce_offset_date_time,
             expires_in: Some(Duration::seconds(86440)),
         };

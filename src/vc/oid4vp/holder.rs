@@ -179,7 +179,7 @@ where
         let did_url = DIDURL::from_str(&metadata.key_metadata.did_url).context(DidUrlParseSnafu)?;
         let params = IdTokenParams {
             audience: auth_request.client_id.to_owned(),
-            nonce: auth_request.nonce.0.to_owned().into(),
+            nonce: auth_request.nonce.secret().to_owned().into(),
             lifetime: metadata.lifetime,
             other: None,
         };
@@ -384,7 +384,7 @@ where
         Ok(ResolvedAuthRequest {
             client_id: aro.client_id().0.to_owned(),
             presentation_definition: pres_def,
-            nonce: Nonce(aro.nonce().to_owned().into()),
+            nonce: Nonce::from_secret(aro.nonce().as_str().to_owned()),
             response_type: aro.response_type().to_owned(),
             response_mode: aro.response_mode().to_owned(),
             response_uri: aro.return_uri().to_owned(),

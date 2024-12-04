@@ -409,7 +409,7 @@ where
 
         let token_req = self
             .client
-            .exchange_code(AuthorizationCode::new(sanitize(code)))
+            .exchange_code(AuthorizationCode::new(code))
             .set_pkce_verifier(pkce_verifier);
         trace!(code_to_token_request = ?token_req);
 
@@ -509,17 +509,13 @@ where
     #[instrument(level = Level::TRACE, ret())]
     fn extract_nonce(resp: &oid4vci::core::credential::Response) -> Option<NonceData> {
         resp.c_nonce().map(|nonce| NonceData {
-            value: Nonce(nonce.secret().to_owned()),
+            value: Nonce::from_secret(nonce.secret().to_owned()),
             expires_in: resp
                 .c_nonce_expires_in()
                 .map(|e| Duration::seconds(e.to_owned())),
             created: time::OffsetDateTime::now_utc(),
         })
     }
-}
-
-fn sanitize(s: String) -> String {
-    s.replace('\n', "")
 }
 
 impl TryInto<CredentialResult> for &oid4vci::credential::Response<CoreProfilesResponse> {

@@ -7,6 +7,7 @@ use snafu::{Location, Snafu};
 use std::fmt::Debug;
 use std::ops::Add;
 use time::{Duration, OffsetDateTime};
+use zeroize::{Zeroize, ZeroizeOnDrop};
 
 /// A struct containing nonce with created time and duration.
 #[derive(Debug, Clone, Deserialize, PartialEq)]
@@ -36,12 +37,19 @@ impl NonceData {
 }
 
 /// A nonce value to assign a value into `Nonce`.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct Nonce(pub(crate) String);
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, ZeroizeOnDrop)]
+pub struct Nonce(String);
 
 impl Nonce {
-    pub fn new(data: &[u8]) -> Self {
-        Nonce(b64::encode(data))
+    pub fn new<const N: usize>(data: [u8; N]) -> Self {
+        let nonce = Self(b64::encode(&data));
+        let mut data = data;
+        data.zeroize();
+        nonce
+    }
+
+    pub fn from_secret(secret: String) -> Self {
+        Self(secret)
     }
 
     pub fn secret(&self) -> &str {
@@ -108,4 +116,23 @@ pub trait NonceGenerator: Send + Sync {
 
         Ok(nonce_data)
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Nonce;
+    use zeroize::ZeroizeOnDrop;
+
+    #[tokio::test]
+    async fn nonce_implements_zeroize_on_drop() {
+        let nonce = Nonce::from_secret("secret".to_owned());
+
+        assert_zeroize_on_drop_is_implemented(nonce);
+    }
+
+    // This function is intended to verify (in compile time)
+    // that the Nonce struct implements the ZeroizeOnDrop trait.
+    // The idea behind this function is to prevent accidental removal
+    // the ZeroizeOnDrop implementation that is important for security.
+    fn assert_zeroize_on_drop_is_implemented(x: impl ZeroizeOnDrop) {}
 }
