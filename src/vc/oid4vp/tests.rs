@@ -142,7 +142,7 @@ pub mod fixtures {
 
         pub fn presentation_session() -> PresentationSession {
             PresentationSession {
-                nonce: Nonce(NONCE.to_owned()),
+                nonce: Nonce::from_secret(NONCE.to_owned()),
                 presentation_definition: presentation_definition(),
                 auth_request_jwt: Default::default(),
             }
@@ -418,7 +418,7 @@ pub mod fixtures {
 
         pub fn presentation_session() -> PresentationSession {
             PresentationSession {
-                nonce: Nonce(NONCE.to_owned()),
+                nonce: Nonce::from_secret(NONCE.to_owned()),
                 presentation_definition: presentation_definition(),
                 auth_request_jwt: Default::default(),
             }
@@ -574,7 +574,7 @@ pub mod utils {
                     .unwrap();
                 let id_token = id_token.parsed_body();
 
-                assert_eq!(id_token.nonce, nonce.0);
+                assert_eq!(id_token.nonce, nonce.secret());
                 assert_eq!(id_token.audience, client_id)
             }
 

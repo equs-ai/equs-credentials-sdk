@@ -51,6 +51,7 @@ snafu = "0.8.4"
 regex = "1.11.0"
 mime = "0.3.17"
 chrono = "0.4.38"
+zeroize = "1.8.1"
 
 # InMEM dependencies
 # crypto/kms dependencies

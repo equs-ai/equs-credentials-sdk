@@ -251,7 +251,7 @@ where
         );
 
         ensure!(
-            id_token.nonce == nonce.0,
+            id_token.nonce == nonce.secret(),
             IdTokenValidationSnafu {
                 details: "incorrect nonce".to_string(),
             }
@@ -693,7 +693,7 @@ mod tests {
         let (verifier, client_id) = verifier_service().await;
         let kms = LocalKms::new();
         let session = PresentationSession {
-            nonce: Nonce(NONCE.to_owned()),
+            nonce: Nonce::from_secret(NONCE.to_owned()),
             presentation_definition: test_case.session.presentation_definition.clone(),
             auth_request_jwt: Default::default(),
         };
@@ -714,14 +714,14 @@ mod tests {
         let (verifier, client_id) = verifier_service().await;
         let kms = LocalKms::new();
         let session = PresentationSession {
-            nonce: Nonce(NONCE.to_owned()),
+            nonce: Nonce::from_secret(NONCE.to_owned()),
             presentation_definition: test_case.session.presentation_definition.clone(),
             auth_request_jwt: Default::default(),
         };
 
         let id_token_params = IdTokenParams {
             audience: client_id.to_owned(),
-            nonce: session.nonce.0.to_owned().into(),
+            nonce: session.nonce.secret().to_owned().into(),
             lifetime: time::Duration::minutes(5),
             other: None,
         };
@@ -739,7 +739,7 @@ mod tests {
         let id_token_claims: IdToken =
             serde_json::from_value(verified_claims[ID_TOKEN].to_owned()).unwrap();
         assert_eq!(id_token_claims.audience, client_id);
-        assert_eq!(id_token_claims.nonce, session.nonce.0);
+        assert_eq!(id_token_claims.nonce, session.nonce.secret());
     }
 
     #[rstest]
@@ -765,7 +765,7 @@ mod tests {
     async fn verify_auth_response_fails(#[case] test_case: VerificationTestCase) {
         let (verifier, client_id) = verifier_service().await;
         let kms = LocalKms::new();
-        let nonce = Nonce(NONCE.to_owned());
+        let nonce = Nonce::from_secret(NONCE.to_owned());
 
         let response = test_case.auth_response(&nonce, &client_id).await;
 
@@ -792,14 +792,14 @@ mod tests {
         let (verifier, client_id) = verifier_service().await;
         let kms = LocalKms::new();
         let session = PresentationSession {
-            nonce: Nonce(NONCE.to_owned()),
+            nonce: Nonce::from_secret(NONCE.to_owned()),
             presentation_definition: test_case.session.presentation_definition.clone(),
             auth_request_jwt: Default::default(),
         };
 
         let id_token_params = IdTokenParams {
             audience: audience.unwrap_or(client_id.to_owned()),
-            nonce: nonce.unwrap_or(session.nonce.0.to_owned()).into(),
+            nonce: nonce.unwrap_or(session.nonce.secret().to_owned()).into(),
             lifetime: lifetime.unwrap_or(time::Duration::minutes(5)),
             other: None,
         };
@@ -853,7 +853,7 @@ mod tests {
 
     fn invalid_nonce_case() -> VerificationTestCase {
         let mut test_case = single_presentation::verification_test_case();
-        test_case.session.nonce = Nonce("other-nonce".to_owned());
+        test_case.session.nonce = Nonce::from_secret("other-nonce".to_owned());
         test_case
     }
 

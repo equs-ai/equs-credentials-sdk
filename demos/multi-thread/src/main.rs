@@ -214,7 +214,7 @@ async fn create_did_and_key_metadata(kms: &LocalKms) -> (DID, KeyMetadata) {
 
 fn sample_nonce() -> NonceData {
     NonceData {
-        value: Nonce::new(DUMMY_NONCE.as_bytes()),
+        value: Nonce::from_secret(DUMMY_NONCE.to_owned()),
         created: OffsetDateTime::now_utc(),
         expires_in: None,
     }

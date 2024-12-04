@@ -10,7 +10,7 @@ pub struct LocalNonceGenerator {}
 impl NonceGenerator for LocalNonceGenerator {
     async fn generate(&self) -> Result<Nonce> {
         let bytes: [u8; 32] = rand::random();
-        let nonce = Nonce::new(&bytes);
+        let nonce = Nonce::new(bytes);
 
         Ok(nonce)
     }

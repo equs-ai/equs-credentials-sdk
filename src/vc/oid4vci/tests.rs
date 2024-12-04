@@ -261,7 +261,7 @@ pub mod fixtures {
 
     pub fn sample_nonce() -> NonceData {
         NonceData {
-            value: Nonce(NONCE.to_owned()),
+            value: Nonce::from_secret(NONCE.to_owned()),
             created: OffsetDateTime::now_utc(),
             expires_in: None,
         }
