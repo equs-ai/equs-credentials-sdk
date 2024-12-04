@@ -110,7 +110,7 @@ pub fn sample_issuer_metadata() -> IssuerMetadata {
               ],
               "type": [
                   "VerifiableCredential",
-                  "PermanentResidentCard"
+                  "PermanentResident"
               ],
               "cryptographic_binding_methods_supported": [
                   "jwk"
@@ -126,7 +126,7 @@ pub fn sample_issuer_metadata() -> IssuerMetadata {
                   ],
                   "type": [
                       "VerifiableCredential",
-                      "PermanentResidentCard"
+                      "PermanentResident"
                   ],
                   "credentialSubject": {
                       "givenName": {

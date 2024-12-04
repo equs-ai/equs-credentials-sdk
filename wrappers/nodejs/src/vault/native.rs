@@ -1,4 +1,4 @@
-use crate::vault::{CredentialSearchCriteria, JsCredentialEntry};
+use crate::vault::{JsCredentialEntry, JsCredentialFilter};
 use crate::vc::core::{JsCredential, JsCredentialMetadata};
 use agent_sdk::vault::Vault;
 use napi_derive::napi;
@@ -44,11 +44,11 @@ impl NativeVault {
     #[napi]
     pub async fn find_credentials(
         &self,
-        criteria: &CredentialSearchCriteria,
+        filters: Vec<&JsCredentialFilter>,
     ) -> napi::Result<Vec<JsCredentialEntry>> {
         let credentials = self
             .0
-            .find_credentials(criteria.0.clone())
+            .find_credentials(filters.iter().map(|c| c.0.clone()).collect())
             .await
             .map_err(|err| napi::Error::from_reason(format!("{err:?}")))?;
 

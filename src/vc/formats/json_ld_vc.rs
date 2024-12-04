@@ -6,8 +6,8 @@ use crate::utils::b64;
 use crate::vc::formats::{
     ClaimsResolvingSnafu, CredentialCreationSnafu, FormatNotSupportedSnafu, GetExpirationClaim,
     HasClaims, HasCredential, KeyTypeNotSupportedSnafu, MultipleCredentialsNotSupportedSnafu,
-    MultipleSubjectNotSupportedSnafu, NoCredentialSnafu, PresentationSnafu, ProofCompletionSnafu,
-    Result, SigningSnafu, VerifyOptions, VerifyingSnafu, API,
+    NoCredentialSnafu, ParsingSnafu, PresentationSnafu, ProofCompletionSnafu, Result, SigningSnafu,
+    VerifyOptions, VerifyingSnafu, API,
 };
 use async_trait::async_trait;
 use chrono::TimeDelta;
@@ -17,7 +17,7 @@ use ssi::vc::{
     Contexts, CredentialOrJWT, CredentialSubject, OneOrMany, VCDateTime, ALT_DEFAULT_CONTEXT,
     DEFAULT_CONTEXT, DEFAULT_CONTEXT_V2, URI,
 };
-use ssi_ldp::{Context, ProofSuite, SigningInput};
+use ssi_ldp::{Context, LinkedDataDocument, ProofSuite, SigningInput};
 use std::collections::HashMap;
 use tracing::{instrument, trace, Level};
 
@@ -100,24 +100,18 @@ impl VPMetadata {
 impl HasClaims<Claims> for Credential {
     #[instrument(level = Level::TRACE, skip(self), err(), ret())]
     fn parse_claims(&self) -> Result<Claims> {
-        match &self.credential_subject {
-            OneOrMany::Many(cred_subjs) => MultipleSubjectNotSupportedSnafu {}.fail(),
-            OneOrMany::One(cred_subject) => {
-                let mut claims = HashMap::new();
-
-                if let Some(URI::String(id)) = &cred_subject.id {
-                    claims.insert("id".to_string(), Value::String(id.clone()));
-                }
-
-                if let Some(properties) = &cred_subject.property_set {
-                    for (key, val) in properties.iter() {
-                        claims.insert(key.clone(), val.clone());
-                    }
-                }
-
-                Ok(claims)
+        let mut value = self.to_value().map_err(|err| {
+            ParsingSnafu {
+                details: err.to_string(),
             }
+            .build()
+        })?;
+
+        if let Some(obj) = value.as_object_mut() {
+            obj.remove("proof");
         }
+
+        JsonLdAPI::resolve_claims(&value)
     }
 }
 

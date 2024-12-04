@@ -7,8 +7,8 @@ use uuid::Uuid;
 
 use agent_sdk::crypto::Alg;
 use agent_sdk::vault::{
-    CredentialEntry, Error, FindCriteria, FormatNotSupportedSnafu, ResolvingSnafu, StoringSnafu,
-    VCSnafu, Vault,
+    CredentialEntry, CredentialFilter, Error, FormatNotSupportedSnafu, ResolvingSnafu,
+    StoringSnafu, VCSnafu, Vault,
 };
 use agent_sdk::vc::{
     Credential, CredentialMetadata, VCFormat, JWT_VC_JSON, JWT_VC_JSON_LD, LDP_VC, SD_JWT_VC,
@@ -102,6 +102,10 @@ impl AskarVault {
                 TAG_ALG.to_string(),
                 <Alg as Into<&str>>::into(alg).to_string(),
             ))
+        }
+
+        for (name, value) in &metadata.tags {
+            tags.push(EntryTag::Encrypted(name.to_owned(), value.to_owned()))
         }
 
         match credential {
@@ -198,18 +202,16 @@ impl Vault for AskarVault {
     )]
     async fn find_credentials(
         &self,
-        criteria: FindCriteria,
+        filters: Vec<CredentialFilter>,
     ) -> Result<Vec<CredentialEntry>, Error> {
-        let tag_filter = find_criteria_to_tag_filter(criteria);
-
-        if tag_filter.is_none() {
-            return StoringSnafu {
+        let tag_filter = map_credential_filter_to_tags(filters).ok_or_else(|| {
+            StoringSnafu {
                 details: "empty tag filter",
             }
-            .fail();
-        }
+            .build()
+        })?;
 
-        let entries = self.find(tag_filter.unwrap()).await.map_err(|err| {
+        let entries = self.find(tag_filter).await.map_err(|err| {
             StoringSnafu {
                 details: err.to_string(),
             }
@@ -285,14 +287,24 @@ impl From<AskarVaultId> for String {
     }
 }
 
-fn find_criteria_to_tag_filter(criteria: FindCriteria) -> Option<TagFilter> {
-    match criteria {
-        FindCriteria::ByTypeAndFormat(type_, format) => Some(TagFilter::all_of(vec![
-            TagFilter::is_eq(TAG_TYPE, type_),
-            TagFilter::is_eq(TAG_FORMAT, format),
-        ])),
-        _ => None,
+#[instrument(level = Level::TRACE, ret())]
+fn map_credential_filter_to_tags(filters: Vec<CredentialFilter>) -> Option<TagFilter> {
+    let mut tags = vec![];
+    for filter in filters {
+        let tag = match filter {
+            CredentialFilter::Format(format) => TagFilter::is_eq(TAG_FORMAT, format),
+            CredentialFilter::Tag(name, value) => TagFilter::is_eq(name, value),
+            CredentialFilter::TagKeys(names) => TagFilter::exist(names),
+            _ => continue,
+        };
+        tags.push(tag)
     }
+
+    if tags.is_empty() {
+        return None;
+    }
+
+    Some(TagFilter::all_of(tags))
 }
 
 fn entry_to_credential(entry: Entry) -> Result<CredentialEntry, Error> {
@@ -346,7 +358,7 @@ fn entry_to_credential(entry: Entry) -> Result<CredentialEntry, Error> {
 #[cfg(test)]
 mod tests {
     use crate::AskarStorage;
-    use agent_sdk::vault::{CredentialEntry, FindCriteria, Vault};
+    use agent_sdk::vault::{CredentialEntry, CredentialFilter, Vault};
     use agent_sdk::vc::{Credential, CredentialMetadata, VCFormat};
 
     // TODO: consider splitting this test into several small unit tests
@@ -368,7 +380,10 @@ mod tests {
             kid: "1234".into(),
             format: VCFormat::SdJwtVc,
             alg: None,
-            tags: vec![],
+            tags: vec![
+                ("$.name".to_string(), "John".to_string()),
+                ("$.email.work".to_string(), "email@email.com".to_string()),
+            ],
         };
         let cred2str = r###"{
             "@context": "https://www.w3.org/2018/credentials/v1",
@@ -417,10 +432,15 @@ mod tests {
         );
 
         let find_res = vault
-            .find_credentials(FindCriteria::ByTypeAndFormat(
-                "https://credentials.example.com/identity_credential".to_owned(),
-                VCFormat::SdJwtVc.to_string(),
-            ))
+            .find_credentials(vec![
+                CredentialFilter::Format(VCFormat::SdJwtVc.to_string()),
+                CredentialFilter::TagKeys(vec!["$.name".to_string()]),
+                CredentialFilter::Tag("$.email.work".to_string(), "email@email.com".to_string()),
+                CredentialFilter::Tag(
+                    "$.vct".to_string(),
+                    "https://credentials.example.com/identity_credential".to_string(),
+                ),
+            ])
             .await
             .unwrap();
 

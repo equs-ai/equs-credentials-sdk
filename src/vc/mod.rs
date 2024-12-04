@@ -1,7 +1,4 @@
 use crate::crypto::Alg;
-use crate::vc::formats::{sd_jwt_vc, FormatNotSupportedSnafu, HasCredential};
-use serde::{Deserialize, Serialize};
-
 pub use crate::vc::formats::json_ld_vc::{
     JsonLdAPI as VCFormatsJsonLdAPI, VCMetadata as JsonLdAPIVCMetadata,
 };
@@ -10,7 +7,13 @@ pub use crate::vc::formats::vc::*;
 pub use crate::vc::formats::vp::*;
 pub use crate::vc::formats::Error as VCFormatError;
 pub use crate::vc::formats::API as VCFormatsAPI;
+use crate::vc::formats::{
+    sd_jwt_vc, FormatNotSupportedSnafu, HasCredential, JsonSnafu, ParsingSnafu,
+};
 pub use crate::vc::presentation_exchange::ClaimFormat;
+use serde::{Deserialize, Serialize};
+use serde_json::{Map, Value};
+use snafu::ResultExt;
 
 mod formats;
 mod pop;
@@ -112,3 +115,28 @@ impl HasCredential<Credential> for Presentation {
 
 /// Basic format for `Claims`.
 pub type Claims = serde_json::Value;
+
+impl HasClaims<Map<String, Value>> for Credential {
+    fn parse_claims(&self) -> formats::Result<Map<String, Value>> {
+        match &self {
+            Credential::SdJwt(vc) => vc.parse_claims(),
+            Credential::LdpVc(vc) => {
+                let claims = vc.parse_claims()?;
+                Ok(serde_json::to_value(claims)
+                    .context(JsonSnafu)?
+                    .as_object()
+                    .ok_or_else(|| {
+                        ParsingSnafu {
+                            details: "Incorrect W3C JSON-LD claims format",
+                        }
+                        .build()
+                    })?
+                    .to_owned())
+            }
+            _ => FormatNotSupportedSnafu {
+                format: self.format().to_string(),
+            }
+            .fail(),
+        }
+    }
+}

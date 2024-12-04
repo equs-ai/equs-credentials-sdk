@@ -8,7 +8,7 @@ use tracing::{debug, info, instrument, trace, Level};
 use crate::crypto::Alg;
 use crate::did::DIDURL;
 use crate::nonce::Nonce;
-use crate::vault::{CredentialEntry, FindCriteria};
+use crate::vault::{CredentialEntry, CredentialFilter};
 use crate::vc::core::{
     CredentialOffer, CredentialRequest, CredentialRequestData, Holder, HolderMetadata, KeyMetadata,
     PresentationInput, Proof,
@@ -186,12 +186,12 @@ where
     ) -> Result<Vec<CredentialEntry>> {
         trace!(?presentation_input);
 
-        let criteria = self.resolve_find_criteria(presentation_input);
+        let filters = self.resolve_filters(presentation_input);
 
         info!("search for credentials in the vault");
         let credentials = self
             .vault
-            .find_credentials(criteria)
+            .find_credentials(filters)
             .await
             .context(VaultSnafu)?;
 
@@ -327,13 +327,34 @@ where
         skip(self),
         ret(),
     )]
-    fn resolve_find_criteria(&self, input: &PresentationInput) -> FindCriteria {
+    fn resolve_filters(&self, input: &PresentationInput) -> Vec<CredentialFilter> {
         trace!(presentation_input = ?input);
 
-        // TODO: more generic solution to support different criterias
-        let type_ = input.type_.to_owned();
+        let mut filters = vec![];
 
-        FindCriteria::ByTypeAndFormat(type_, input.format.name())
+        if let Some(format) = &input.format {
+            filters.push(CredentialFilter::Format(format.to_owned()));
+        }
+
+        for restriction in &input.restrictions {
+            if restriction.optional {
+                continue;
+            }
+
+            match &restriction.value {
+                Some(value) => {
+                    let result: Vec<CredentialFilter> = restriction
+                        .fields
+                        .iter()
+                        .map(|field| CredentialFilter::Tag(field.to_string(), value.to_string()))
+                        .collect();
+                    filters.extend(result)
+                }
+                None => filters.push(CredentialFilter::TagKeys(restriction.fields.clone())),
+            }
+        }
+
+        filters
     }
 }
 
@@ -348,9 +369,7 @@ mod tests {
     use crate::vault::{CredentialEntry, FormatNotSupportedSnafu, MockVault, Vault};
     use crate::vc::core::tests::fixtures::{sample_cred_def_offer, CRED_DEF_ID, VERIFIER_ID};
     use crate::vc::core::tests::utils::{random_nonce, CredTestCase};
-    use crate::vc::core::{
-        Error, Holder, HolderMetadata, HolderService, KeyMetadata, PresentationInput,
-    };
+    use crate::vc::core::{Error, Holder, HolderMetadata, HolderService, KeyMetadata};
     use crate::vc::CredentialMetadata;
     use rstest::rstest;
 
@@ -551,16 +570,19 @@ mod tests {
         let holder = holder_service(kms, vault);
 
         let input = case.create_presentation_input();
+
         let creds = holder.find_vcs_for_presentation(&input).await.unwrap();
 
         assert_eq!(creds.len(), 2);
         assert!(creds.contains(&entry1));
         assert!(creds.contains(&entry2));
 
-        let input = PresentationInput {
+        let input = CredTestCase {
             type_: "non-existing".to_string(),
-            ..input
-        };
+            ..case
+        }
+        .create_presentation_input();
+
         let creds = holder.find_vcs_for_presentation(&input).await.unwrap();
 
         assert!(creds.is_empty())

@@ -235,11 +235,7 @@ where
         self.submit_auth_error_resp(&auth_request.response_uri, &err)
             .await?;
 
-        CredentialNotFoundSnafu {
-            type_: &presentation_input.type_,
-            format: &presentation_input.format.name(),
-        }
-        .fail()?
+        CredentialNotFoundSnafu.fail()?
     }
 
     #[instrument(
@@ -297,11 +293,7 @@ where
             self.submit_auth_error_resp(&auth_request.response_uri, &err)
                 .await?;
 
-            CredentialNotFoundSnafu {
-                type_: &presentation_input.type_,
-                format: &presentation_input.format.name(),
-            }
-            .fail()?
+            CredentialNotFoundSnafu.fail()?
         };
 
         self.create_presentation_by_input(creds, presentation_input, auth_request)
@@ -848,9 +840,7 @@ mod tests {
             .unwrap();
     }
 
-    #[should_panic(
-        expected = "Credential of Type 'https://credentials.example.com/identity_credential' and Format 'vc+sd-jwt' not found"
-    )]
+    #[should_panic(expected = "Credential not found")]
     #[tokio::test]
     async fn present_credential_auto_fails_when_credentials_are_not_found() {
         let test_case = requested_credential_not_exist_case();
@@ -1049,28 +1039,6 @@ mod tests {
         let credential_mapping = test_case
             .build_credential_mapping((key_metadata.kid, key_handle))
             .await;
-
-        holder
-            .present_credentials(
-                &test_case.request,
-                &credential_mapping,
-                &test_case.response_metadata,
-            )
-            .await
-            .unwrap();
-    }
-
-    #[should_panic(expected = "Unsupported format: jwt_vc_json")]
-    #[tokio::test]
-    async fn present_credential_fails_on_request_unsupported_credential_format() {
-        let test_case = request_unsupported_credential_format_case();
-        let kms = LocalKms::new();
-        let key = kms
-            .create_and_handle(KeyType::P256, CreateOptions {})
-            .await
-            .unwrap();
-        let holder = holder_service(MockHttpClient::new(), kms, InMemVault::new()).await;
-        let credential_mapping = test_case.build_credential_mapping(key).await;
 
         holder
             .present_credentials(

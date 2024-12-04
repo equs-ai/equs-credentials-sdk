@@ -230,7 +230,7 @@ pub trait Holder: Send + Sync {
     /// # Errors
     ///
     /// * [InternalError::PresentationExchange] - If there is an issue with parsing the presentation metadata.
-    /// * [InternalError::Parse] - ff there is an issue with parsing the generated authorization response.
+    /// * [InternalError::Parse] - if there is an issue with parsing the generated authorization response.
     /// * [InternalError::AuthorizationResponse] - if the submission of the authorization response fails.
     async fn present_credentials(
         &self,

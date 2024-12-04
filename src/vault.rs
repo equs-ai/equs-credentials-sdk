@@ -40,13 +40,18 @@ pub enum Error {
 /// `Result` alias for Vault-specific [Error].
 pub type Result<T> = core::result::Result<T, Error>;
 
-/// Criteria to be used in [Vault::find_credentials].
+/// Filter to be used in [Vault::find_credentials].
 ///
-/// *NOTE*: Only searching VCs by format and type is currently supported.
-#[derive(Debug, Serialize, Deserialize, Clone)]
+/// # Variants
+/// - `Format(String)`: Filters credentials based on their format (e.g., "vc+sd-jwt").
+/// - `Fields(Vec<String>)`: Filters credentials based on the presence of specific tag keys.
+/// - `FieldValue(String, String)`: Filters credentials where a specific tag key matches a given value.
+#[derive(Debug, PartialEq, Clone)]
 #[non_exhaustive]
-pub enum FindCriteria {
-    ByTypeAndFormat(String, String),
+pub enum CredentialFilter {
+    Format(String),
+    TagKeys(Vec<String>),
+    Tag(String, String),
     // etc
 }
 
@@ -107,22 +112,25 @@ pub trait Vault: Send + Sync {
     ///
     /// # Arguments
     ///
-    /// * `criteria` -  [FindCriteria] to search for credentials.
+    /// * `criterias` -  a vec of [CredentialFilter] to search for credentials.
     ///
     /// # Returns
     ///
-    /// A Vector of `CredentialEntry` matched the provided `criteria` on success.
-    /// In case if nothing meets the `criteria` an empty Vector should be returned.
+    /// A Vector of `CredentialEntry` matched the provided `criterias` on success.
+    /// In case if nothing meets the `criterias` an empty Vector should be returned.
     ///
     /// # Errors
     ///
     /// * [Error::Resolving] - fails to revolve the values.
-    async fn find_credentials(&self, criteria: FindCriteria) -> Result<Vec<CredentialEntry>>;
+    async fn find_credentials(
+        &self,
+        filters: Vec<CredentialFilter>,
+    ) -> Result<Vec<CredentialEntry>>;
 }
 
 #[cfg(test)]
 pub mod test_util {
-    use crate::vault::{CredentialEntry, FindCriteria, Vault};
+    use crate::vault::{CredentialEntry, CredentialFilter, Vault};
     use crate::vc::{Credential, CredentialMetadata, VCFormat};
 
     pub async fn test_vault<V: Vault>(vault: V) {
@@ -133,7 +141,14 @@ pub mod test_util {
             kid: "1234".into(),
             format: VCFormat::SdJwtVc,
             alg: None,
-            tags: vec![],
+            tags: vec![
+                (
+                    "$.vct".to_string(),
+                    "https://credentials.example.com/identity_credential".to_string(),
+                ),
+                ("$.name".to_string(), "John".to_string()),
+                ("$.email.work".to_string(), "email@email.com".to_string()),
+            ],
         };
         let cred2str = r###"{
             "@context": "https://www.w3.org/2018/credentials/v1",
@@ -182,10 +197,15 @@ pub mod test_util {
         );
 
         let find_res = vault
-            .find_credentials(FindCriteria::ByTypeAndFormat(
-                "https://credentials.example.com/identity_credential".to_owned(),
-                VCFormat::SdJwtVc.to_string(),
-            ))
+            .find_credentials(vec![
+                CredentialFilter::Format(VCFormat::SdJwtVc.to_string()),
+                CredentialFilter::TagKeys(vec!["$.name".to_string()]),
+                CredentialFilter::Tag("$.email.work".to_string(), "email@email.com".to_string()),
+                CredentialFilter::Tag(
+                    "$.vct".to_string(),
+                    "https://credentials.example.com/identity_credential".to_string(),
+                ),
+            ])
             .await
             .unwrap();
 

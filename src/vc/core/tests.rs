@@ -5,7 +5,6 @@ pub mod fixtures {
         CredentialDefinition, CredentialOffer, CredentialOfferContent, IssuerMetadata, KeyMetadata,
     };
     use crate::vc::formats::json_ld_vc;
-    use serde_json::{json, Value};
     use ssi::core::uri;
     use ssi::one_or_many::OneOrMany;
     use ssi::vc::{Contexts, CredentialSubject};
@@ -18,7 +17,7 @@ pub mod fixtures {
     pub const CRED_OFFER_ID: &str = "CRED_OFFER_ID";
 
     pub const VCT: &str = "https://issuer.net/cred_schema";
-    pub const CRED_TYE: &str = "PermanentResidentCard";
+    pub const CRED_TYPE: &str = "PermanentResident";
 
     pub fn fake_ldp_vc_cred() -> json_ld_vc::Credential {
         json_ld_vc::Credential {
@@ -42,19 +41,6 @@ pub mod fixtures {
             refresh_service: None,
             property_set: None,
         }
-    }
-
-    pub fn sample_constraints() -> Value {
-        json!({
-            "fields": [
-                {
-                    "path": ["$.givenName"],
-                },
-                {
-                    "path": ["$.familyName"],
-                }
-            ]
-        })
     }
 
     pub fn sample_issuer_metadata(
@@ -125,7 +111,7 @@ pub mod utils {
     use crate::vc::core::tests::fixtures::*;
     use crate::vc::core::{
         CredentialDefinitionData, CredentialRequest, CredentialRequestData, PresentationInput,
-        Proof,
+        PresentationRestriction, Proof,
     };
     use crate::vc::formats::json_ld_vc::JsonLdAPI;
     use crate::vc::formats::sd_jwt_vc::SdJwtAPI;
@@ -185,14 +171,14 @@ pub mod utils {
                         "https://www.w3.org/2018/credentials/v1".to_string(),
                         "https://w3id.org/citizenship/v1".to_string(),
                     ],
-                    vc_types: vec![CRED_TYE.to_owned()],
+                    vc_types: vec![CRED_TYPE.to_owned()],
                 }),
                 claim_format: ClaimFormat::LdpVc {
                     proof_type: vec!["EcdsaSecp256r1Signature2019".to_string()],
                 },
-                type_: CRED_TYE.to_owned(),
+                type_: CRED_TYPE.to_owned(),
                 claims: json!({
-                    "type": ["PermanentResident", "Person"],
+                    "type": [CRED_TYPE.to_owned(), "Person"],
                     "givenName": "Jane",
                     "familyName": "Smith",
                     "gender": "female",
@@ -314,13 +300,47 @@ pub mod utils {
         }
 
         pub fn create_presentation_input(&self) -> PresentationInput {
-            let constraints = serde_json::from_value(sample_constraints()).unwrap();
-
-            PresentationInput {
-                id: Uuid::new_v4().to_string(),
-                format: self.claim_format.clone(),
-                type_: self.type_.clone(),
-                constraints,
+            match self.format {
+                VCFormat::SdJwtVc => PresentationInput {
+                    id: Uuid::new_v4().to_string(),
+                    format: Some(self.claim_format.name()),
+                    restrictions: vec![
+                        PresentationRestriction {
+                            fields: vec!["$.vct".to_string()],
+                            value: Some(self.type_.to_owned()),
+                            optional: false,
+                        },
+                        PresentationRestriction {
+                            fields: vec!["$.givenName".to_string(), "$.familyName".to_string()],
+                            value: None,
+                            optional: false,
+                        },
+                    ],
+                },
+                VCFormat::LdpVc => PresentationInput {
+                    id: Uuid::new_v4().to_string(),
+                    format: Some(self.claim_format.name()),
+                    restrictions: vec![
+                        PresentationRestriction {
+                            fields: vec!["$.type[*]".to_string()],
+                            value: Some(self.type_.to_owned()),
+                            optional: false,
+                        },
+                        PresentationRestriction {
+                            fields: vec![
+                                "$.credentialSubject.givenName".to_string(),
+                                "$.credentialSubject.familyName".to_string(),
+                            ],
+                            value: None,
+                            optional: false,
+                        },
+                    ],
+                },
+                _ => PresentationInput {
+                    id: Uuid::new_v4().to_string(),
+                    format: Some(self.claim_format.name()),
+                    restrictions: vec![],
+                },
             }
         }
 

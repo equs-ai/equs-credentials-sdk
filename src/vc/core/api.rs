@@ -2,7 +2,6 @@ use crate::crypto;
 use crate::kms::Error as KmsError;
 use crate::nonce::Nonce;
 use crate::vault::{CredentialEntry, Error as VaultError};
-use crate::vc::presentation_exchange::{ClaimFormat, Constraints};
 use crate::vc::{
     formats::Error as VCError, pop, pop::Error as ProofError, Claims, Credential,
     CredentialMetadata, Presentation, VCFormat,
@@ -142,15 +141,27 @@ pub struct CredentialRequestData {
     pub proof_tolerance: Option<Duration>,
 }
 
+/// Represents a restrictions for presented credentials.
+///
+/// # Fields
+/// - `fields`: A list of field names that must be present in the credential.
+/// - `value`: An optional value that the field(s) must match.
+/// - `optional`: A flag indicates whether the specified field(s) is optional.
+#[derive(Debug, PartialEq, Clone)]
+pub struct PresentationRestriction {
+    pub fields: Vec<String>,
+    pub value: Option<String>,
+    pub optional: bool,
+}
+
 /// An entity used to prepare a `Presentation` for the `Verifier`.
 ///
 /// Contains the parameters used by `Holder` to find a suitable `Credential`s.
 #[derive(Debug, PartialEq, Clone)]
 pub struct PresentationInput {
     pub id: String,
-    pub format: ClaimFormat,
-    pub type_: String,
-    pub constraints: Constraints,
+    pub format: Option<String>,
+    pub restrictions: Vec<PresentationRestriction>,
 }
 
 /// A struct that defines how to display the claim.

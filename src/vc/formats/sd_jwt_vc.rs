@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use jsonwebtoken::{DecodingKey, Header};
 use sd_jwt_rs::resolver::KeyResolver;
+use sd_jwt_rs::utils::decode_sd_jwt;
 use sd_jwt_rs::{
     ClaimsForSelectiveDisclosureStrategy, SDJWTHolder, SDJWTIssuer, SDJWTSerializationFormat,
     SDJWTVerifier,
@@ -19,7 +20,7 @@ use crate::nonce::Nonce;
 use crate::utils;
 use crate::utils::b64;
 use crate::utils::serde::Helpers;
-use crate::vc::core::PresentationInput;
+use crate::vc::core::{PresentationInput, PresentationRestriction};
 use crate::vc::formats::vc::SD_JWT_VC;
 use crate::vc::formats::{
     ClaimsResolvingSnafu, HasClaims, HasCredential, JWSSnafu, KeyTypeNotSupportedSnafu,
@@ -136,8 +137,19 @@ impl HasClaims<Claims> for Credential {
         ret(),
     )]
     fn parse_claims(&self) -> Result<Claims> {
-        let stripped = SdJwtAPI::strip_disclosures(self)?;
-        ssi::jwt::decode_unverified(stripped).context(JWSSnafu)
+        let mut value = decode_sd_jwt(self.to_string(), SDJWTSerializationFormat::Compact)
+            .map_err(|err| {
+                ParsingSnafu {
+                    details: err.to_string(),
+                }
+                .build()
+            })?;
+
+        if let Some(obj) = value.as_object_mut() {
+            obj.remove("cnf");
+        }
+
+        SdJwtAPI::resolve_claims(&value)
     }
 }
 
@@ -333,21 +345,18 @@ impl SdJwtAPI {
     pub fn resolve_disclosures(input: &PresentationInput) -> Result<Map<String, Value>> {
         trace!(presentation_input = ?input);
 
-        let claims = input.constraints.clone();
+        let claims = Self::resolve_claims_for_restriction(&input.restrictions);
 
-        let stripped: Vec<_> = claims
-            .fields()
-            .iter()
-            .flat_map(|f| {
-                f.path().iter().map(|p| {
-                    let value = if f.is_optional() {
-                        Value::String("optional".to_string())
-                    } else {
-                        Value::Bool(true)
-                    };
+        let stripped: Vec<(&str, Value)> = claims
+            .into_iter()
+            .map(|(key, optional)| {
+                let value = if optional {
+                    Value::String("optional".to_string())
+                } else {
+                    Value::Bool(true)
+                };
 
-                    (p.as_str(), value)
-                })
+                (key, value)
             })
             .collect();
 
@@ -369,6 +378,23 @@ impl SdJwtAPI {
             .to_owned();
 
         Ok(json_obj)
+    }
+
+    fn resolve_claims_for_restriction(
+        restrictions: &[PresentationRestriction],
+    ) -> HashMap<&str, bool> {
+        let mut field_map = HashMap::new();
+
+        for restriction in restrictions {
+            for field in &restriction.fields {
+                field_map
+                    .entry(field.as_str())
+                    .and_modify(|disclosure| *disclosure &= restriction.optional)
+                    .or_insert(restriction.optional);
+            }
+        }
+
+        field_map
     }
 }
 
@@ -593,8 +619,8 @@ mod tests {
         SdJwtAPI::verify_vc(&vc, Default::default()).await.unwrap();
 
         let claims = vc.parse_claims().unwrap();
-        assert!(!claims.contains_key("name"));
-        assert!(!claims.contains_key("surname"));
+        assert!(claims.contains_key("name"));
+        assert!(claims.contains_key("surname"));
         assert_eq!(claims.get("dob").unwrap(), "09/09/1989");
         assert_eq!(claims.get("sub").unwrap(), &hld_did_url.did);
         assert_eq!(claims.get("iss").unwrap(), &iss_did_url.did);

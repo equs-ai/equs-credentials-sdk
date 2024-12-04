@@ -452,7 +452,6 @@ pub mod fixtures {
 }
 
 pub mod utils {
-    use crate::crypto::Alg;
     use crate::did::didkey::DIDKey;
     use crate::did::universal::UniversalResolver;
     use crate::http::{HttpClient, MockHttpClient};
@@ -466,8 +465,10 @@ pub mod utils {
     use crate::utils::test_utils::create_did_and_key_metadata;
     use crate::vault::{CredentialEntry, Vault};
     use crate::vc;
+    use crate::vc::core::KeyMetadata;
     use crate::vc::formats::sd_jwt_vc;
     use crate::vc::formats::sd_jwt_vc::{SdJwtAPI, VPMetadata};
+    use crate::vc::metadata::{CredentialMetadataProcessor, DefaultMetadataProcessor};
     use crate::vc::oid4vp::holder::HolderService;
     use crate::vc::oid4vp::signer::Signer;
     use crate::vc::oid4vp::tests::fixtures::VERIFIER_URL;
@@ -478,10 +479,7 @@ pub mod utils {
         Holder, PresentationSession, ResolvedAuthRequest, Verifier,
     };
     use crate::vc::presentation_exchange::PresentationSubmission;
-    use crate::vc::{
-        presentation_exchange, Claims, Credential, CredentialMetadata, VCFormat, VCFormatsAPI,
-        VCMetadata,
-    };
+    use crate::vc::{presentation_exchange, Claims, Credential, VCFormatsAPI, VCMetadata};
     use oauth2::http::{Method, StatusCode};
     use oid4vp::core::authorization_request::parameters::ResponseType;
     use oid4vp::core::metadata::parameters::SubjectSyntaxTypesSupported;
@@ -605,19 +603,19 @@ pub mod utils {
         pub async fn store_creds(&self, vault: &InMemVault, holder_key: (KeyID, KeyHandle)) {
             let (holder_kid, holder_key_handle) = holder_key;
             for (vct, claims) in &self.credential_data {
-                let sd_jwt_vc = create_sd_jwt_vc(vct, claims, &holder_key_handle).await;
+                let credential =
+                    Credential::SdJwt(create_sd_jwt_vc(vct, claims, &holder_key_handle).await);
+                let metadata = DefaultMetadataProcessor::resolve_metadata(
+                    &credential,
+                    KeyMetadata {
+                        did_url: "did:fake:test".to_string(),
+                        kid: holder_kid.to_owned(),
+                    },
+                )
+                .unwrap();
 
                 let res = vault
-                    .store_credential(
-                        Credential::SdJwt(sd_jwt_vc),
-                        &CredentialMetadata {
-                            type_: vct.to_string(),
-                            format: VCFormat::SdJwtVc,
-                            kid: holder_kid.to_owned(),
-                            alg: Some(Alg::ES256),
-                            tags: vec![],
-                        },
-                    )
+                    .store_credential(credential.clone(), &metadata)
                     .await
                     .unwrap();
             }
@@ -638,7 +636,11 @@ pub mod utils {
                 let (vct, claims) = self
                     .credential_data
                     .iter()
-                    .find(|(vct, _)| *vct == input.type_)
+                    .find(|(vct, _)| {
+                        input.restrictions.iter().any(|restriction| {
+                            matches!(restriction.value.as_ref(), Some(value) if value == &vct.to_string())
+                        })
+                    })
                     .unwrap();
 
                 let sd_jwt_vc = create_sd_jwt_vc(vct, claims, &key_handle).await;
