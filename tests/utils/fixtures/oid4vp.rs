@@ -31,13 +31,13 @@ fn sample_jsonld_resident_card_credential() -> (Oid4VpTestCredential, InputDescr
         ],
         vec![
             "VerifiableCredential".to_string(),
-            "PermanentResidentCard".to_string(),
+            "PermanentResident".to_string(),
         ],
     ));
 
     let credential = Oid4VpTestCredential {
         format,
-        vc_type: "PermanentResidentCard",
+        vc_type: "PermanentResident",
         claims: json!({
             "type": ["PermanentResident", "Person"],
             "givenName": "John",
@@ -66,7 +66,7 @@ fn sample_jsonld_resident_card_credential() -> (Oid4VpTestCredential, InputDescr
                         "filter": {
                             "type": "array",
                             "contains": {
-                                "const": "PermanentResidentCard"
+                                "const": "PermanentResident"
                             },
                         }
                     }

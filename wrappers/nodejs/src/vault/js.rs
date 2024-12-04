@@ -1,7 +1,7 @@
-use crate::vault::{CredentialSearchCriteria, JsCredentialEntry};
+use crate::vault::{JsCredentialEntry, JsCredentialFilter};
 use crate::vc::core::{JsCredential, JsCredentialMetadata};
 use agent_sdk::vault;
-use agent_sdk::vault::{CredentialEntry, FindCriteria, ResolvingSnafu, StoringSnafu, Vault};
+use agent_sdk::vault::{CredentialEntry, CredentialFilter, ResolvingSnafu, StoringSnafu, Vault};
 use agent_sdk::vc::{Credential, CredentialMetadata};
 use async_trait::async_trait;
 use napi::bindgen_prelude::Promise;
@@ -16,8 +16,8 @@ pub struct JsVault {
         ThreadsafeFunction<(JsCredential, JsCredentialMetadata), ErrorStrategy::Fatal>,
     #[napi(ts_type = "(id: string) => Promise<CredentialEntry | null>")]
     pub get_credential: ThreadsafeFunction<String, ErrorStrategy::Fatal>,
-    #[napi(ts_type = "(criteria: CredentialSearchCriteria) => Promise<Array<CredentialEntry>>")]
-    pub find_credentials: ThreadsafeFunction<CredentialSearchCriteria, ErrorStrategy::Fatal>,
+    #[napi(ts_type = "(criteria: Array<CredentialFilter>) => Promise<Array<CredentialEntry>>")]
+    pub find_credentials: ThreadsafeFunction<Vec<JsCredentialFilter>, ErrorStrategy::Fatal>,
 }
 
 #[async_trait]
@@ -84,11 +84,16 @@ impl Vault for JsVault {
 
     async fn find_credentials(
         &self,
-        criteria: FindCriteria,
+        filters: Vec<CredentialFilter>,
     ) -> vault::Result<Vec<CredentialEntry>> {
         let promise: Promise<Vec<JsCredentialEntry>> = self
             .find_credentials
-            .call_async(CredentialSearchCriteria(criteria))
+            .call_async(
+                filters
+                    .iter()
+                    .map(|c| JsCredentialFilter(c.to_owned()))
+                    .collect(),
+            )
             .await
             .map_err(|err| {
                 ResolvingSnafu {

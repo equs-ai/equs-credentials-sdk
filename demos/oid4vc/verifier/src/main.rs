@@ -125,6 +125,11 @@ async fn presentation_response(
     state: web::Data<AppState>,
     req: web::Form<HashMap<String, String>>,
 ) -> HttpResponse {
+    if !req.contains_key("vp_token") {
+        println!("{:?}", req);
+        return HttpResponse::BadRequest().finish();
+    }
+
     let wallet_auth_resp = auth_resp_from_submitted_form(&req);
 
     let session = state
@@ -211,10 +216,18 @@ pub fn default_presentation_definition() -> PresentationDefinition {
 
     let username_constraint = ConstraintsField::new("$.username".to_string()).set_optional(true);
 
+    let country_filter = json!({
+        "type": "string",
+        "const": "US"
+    });
+    let country_constraint =
+        ConstraintsField::new("$.country".to_string()).set_filter(country_filter);
+
     let constraints = Constraints::new()
         .add_constraint(vct_constraint)
         .add_constraint(email_constraint)
-        .add_constraint(username_constraint);
+        .add_constraint(username_constraint)
+        .add_constraint(country_constraint);
 
     let mut format = ClaimFormatMap::new();
     format.insert(

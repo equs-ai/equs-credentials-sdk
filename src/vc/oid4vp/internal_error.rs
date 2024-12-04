@@ -20,8 +20,8 @@ pub enum InternalError {
         location: Location,
         source: anyhow::Error,
     },
-    #[snafu(display("Credential of Type '{type_}' and Format '{format}' not found"))]
-    CredentialNotFound { type_: String, format: String },
+    #[snafu(display("Credential not found"))]
+    CredentialNotFound,
     #[snafu(display("Please provide the metadata required to generate the ID token"))]
     IdTokenMetadataNotFound,
     #[snafu(display("ID token parse error"))]

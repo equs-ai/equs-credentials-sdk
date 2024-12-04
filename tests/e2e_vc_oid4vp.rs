@@ -14,7 +14,6 @@ use url::Url;
 use utils::fixtures::oid4vp::Oid4VpTestCredentialFormat;
 
 use agent_sdk::crypto;
-use agent_sdk::crypto::Alg;
 use agent_sdk::did::universal::UniversalResolver;
 use agent_sdk::http::HttpClient;
 use agent_sdk::inmem::kms::LocalKms;
@@ -28,7 +27,7 @@ use agent_sdk::vc::oid4vp::{AuthorizationResponse, Holder};
 use agent_sdk::vc::oid4vp::{HolderBuilder, PresentationSession};
 use agent_sdk::vc::oid4vp::{Verifier, VerifierBuilder};
 use agent_sdk::vc::VCFormatsAPI;
-use agent_sdk::vc::{Credential, CredentialMetadata, VCFormat};
+use agent_sdk::vc::{Credential, CredentialMetadata};
 use agent_sdk::vc::{VCFormatsJsonLdAPI, VCFormatsSdJwtAPI};
 
 use utils::helpers::create_did_keymetadata_keyhandle;
@@ -42,6 +41,7 @@ use agent_sdk::did::{DIDResolver, DID};
 use agent_sdk::inmem::kms::KeyHandle;
 use agent_sdk::inmem::nonce::LocalNonceGenerator;
 use agent_sdk::vc::core::KeyMetadata;
+use agent_sdk::vc::metadata::{CredentialMetadataProcessor, DefaultMetadataProcessor};
 
 #[rstest]
 #[case::single_jsonld_presentation(single_jsonld_presentation_case())]
@@ -61,7 +61,6 @@ async fn credentials_presentation_and_verification(#[case] test_case: Oid4VpTest
     for credential in test_case.credentials {
         let (vc, vc_meta) = create_vc(
             credential.format,
-            credential.vc_type,
             &holder_did_url,
             holder_key_metadata.kid.clone(),
             holder_kh.clone(),
@@ -225,7 +224,6 @@ async fn build_holder(
 
 async fn create_vc(
     format: Oid4VpTestCredentialFormat,
-    vc_type: &str,
     holder_did_url: &DIDURL,
     holder_kid: String,
     holder_kh: impl crypto::Key,
@@ -256,15 +254,17 @@ async fn create_vc(
 
             println!("Credential: {}", vc);
 
-            let vc_meta = CredentialMetadata {
-                type_: vc_type.to_string(),
-                kid: holder_kid,
-                format: VCFormat::SdJwtVc,
-                alg: Some(Alg::ES256),
-                tags: vec![],
-            };
+            let credential = Credential::SdJwt(vc);
+            let metadata = DefaultMetadataProcessor::resolve_metadata(
+                &credential,
+                KeyMetadata {
+                    did_url: holder_did_url.to_string(),
+                    kid: holder_kid,
+                },
+            )
+            .unwrap();
 
-            (Credential::SdJwt(vc), vc_meta)
+            (credential, metadata)
         }
         Oid4VpTestCredentialFormat::LdpVc(metadata) => {
             let vc = VCFormatsJsonLdAPI::create_vc(
@@ -278,15 +278,17 @@ async fn create_vc(
 
             println!("Credential: {}", serde_json::to_string_pretty(&vc).unwrap());
 
-            let vc_meta = CredentialMetadata {
-                type_: vc_type.to_string(),
-                kid: holder_kid,
-                format: VCFormat::LdpVc,
-                alg: Some(Alg::ES256),
-                tags: vec![],
-            };
+            let credential = Credential::LdpVc(vc);
+            let metadata = DefaultMetadataProcessor::resolve_metadata(
+                &credential,
+                KeyMetadata {
+                    did_url: holder_did_url.to_string(),
+                    kid: holder_kid,
+                },
+            )
+            .unwrap();
 
-            (Credential::LdpVc(vc), vc_meta)
+            (credential, metadata)
         }
     }
 }

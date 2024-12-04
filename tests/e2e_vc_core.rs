@@ -16,13 +16,12 @@ use agent_sdk::vc::core::IssuerService;
 use agent_sdk::vc::core::VerifierService;
 use agent_sdk::vc::core::{
     CredentialDefinition, CredentialDefinitionData, Holder, HolderMetadata, Issuer, IssuerMetadata,
-    PopFormat, PresentationInput, Verifier,
+    PopFormat, Verifier,
 };
 use agent_sdk::vc::metadata::{CredentialMetadataProcessor, DefaultMetadataProcessor};
-use agent_sdk::vc::ClaimFormat;
+use agent_sdk::vc::presentation_exchange::InputDescriptor;
 use serde_json::json;
 use ssi::did::DIDURL;
-
 use utils::fixtures::{sample_claims_sdjwt, SCOPE, VC_TYPE, VERIFIER_ID};
 use utils::helpers::create_did_keymetadata_keyhandle;
 
@@ -64,39 +63,40 @@ async fn credential_issuance_and_presentation_verification() {
 
     println!("Present proof...");
 
-    let constraints = serde_json::from_value(json!({
-       "fields": [
-            {
-                "path": ["$.vct"],
-                "filter": {
-                    "type": "string",
-                    "const": "https://credentials.example.com/identity_credential"
-                }
-            },
-            {
-                "path": ["$.given_name"],
-            },
-            {
-                "path": ["$.family_name"],
+    let input_descriptor: InputDescriptor = serde_json::from_value(json!({
+        "id": "Identity-1",
+        "name": "Identity VC",
+        "purpose": "We want a resident card",
+        "format": {
+            "vc+sd-jwt": {
+                "sd-jwt_alg_values": ["ES256", "EdDSA"],
+                "kb-jwt_alg_values": ["ES256", "EdDSA"],
             }
-        ]
+        },
+        "constraints": {
+            "fields": [
+                {
+                    "path": ["$.vct"],
+                    "filter": {
+                        "type": "string",
+                        "const": "https://credentials.example.com/identity_credential"
+                    }
+                },
+                {
+                    "path": ["$.given_name"],
+                },
+                {
+                    "path": ["$.family_name"],
+                }
+            ]
+        }
     }))
     .unwrap();
-
-    let presentation_input = PresentationInput {
-        id: "descriptor_id".to_string(),
-        format: ClaimFormat::SdJwtVc {
-            jwt_alg_values: vec!["ES256".to_string(), "EdDSA".to_string()],
-            kb_alg_values: vec!["ES256".to_string(), "EdDSA".to_string()],
-        },
-        type_: "https://credentials.example.com/identity_credential".to_string(),
-        constraints,
-    };
 
     let nonce = LocalNonceGenerator::default().generate().await.unwrap();
 
     let vp_res = holder
-        .create_presentation_auto(&nonce, VERIFIER_ID, &presentation_input)
+        .create_presentation_auto(&nonce, VERIFIER_ID, &input_descriptor.try_into().unwrap())
         .await;
 
     let vp = vp_res.unwrap();

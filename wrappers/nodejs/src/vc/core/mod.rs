@@ -8,7 +8,7 @@ use agent_sdk::crypto::Alg;
 use agent_sdk::vc::core::{
     CredentialDefinition, CredentialOffer, CredentialOfferContent, CredentialOfferData,
     CredentialRequest, CredentialRequestData, Display, HolderMetadata, IssuerMetadata,
-    IssuerMetadataData, KeyMetadata, PresentationInput, Proof,
+    IssuerMetadataData, KeyMetadata, PresentationInput, PresentationRestriction, Proof,
 };
 use agent_sdk::vc::{Credential, CredentialMetadata, HasVCFormat, Presentation, VCFormat};
 use napi::Error;
@@ -396,12 +396,38 @@ impl TryFrom<CredentialOffer> for JsCredentialOffer {
     }
 }
 
+#[napi(js_name = "PresentationRestriction", object)]
+pub struct JsPresentationRestriction {
+    pub fields: Vec<String>,
+    pub value: Option<String>,
+    pub optional: bool,
+}
+
+impl From<JsPresentationRestriction> for PresentationRestriction {
+    fn from(value: JsPresentationRestriction) -> Self {
+        Self {
+            fields: value.fields,
+            value: value.value,
+            optional: value.optional,
+        }
+    }
+}
+
+impl From<PresentationRestriction> for JsPresentationRestriction {
+    fn from(value: PresentationRestriction) -> Self {
+        Self {
+            fields: value.fields,
+            value: value.value,
+            optional: value.optional,
+        }
+    }
+}
+
 #[napi(js_name = "PresentationInput", object)]
 pub struct JsPresentationInput {
     pub id: String,
-    pub format: Value,
-    pub type_: String,
-    pub constraints: JsonObject,
+    pub format: Option<Value>,
+    pub restrictions: Vec<JsPresentationRestriction>,
 }
 
 impl TryFrom<JsPresentationInput> for PresentationInput {
@@ -410,9 +436,8 @@ impl TryFrom<JsPresentationInput> for PresentationInput {
     fn try_from(value: JsPresentationInput) -> Result<Self, Error> {
         Ok(Self {
             id: value.id,
-            format: serde_json::from_value(value.format)?,
-            type_: value.type_,
-            constraints: from_json_object(value.constraints)?,
+            format: value.format.map(serde_json::from_value).transpose()?,
+            restrictions: value.restrictions.into_iter().map(|v| v.into()).collect(),
         })
     }
 }
@@ -423,9 +448,8 @@ impl TryFrom<PresentationInput> for JsPresentationInput {
     fn try_from(value: PresentationInput) -> Result<Self, Error> {
         Ok(Self {
             id: value.id,
-            format: serde_json::to_value(value.format)?,
-            type_: value.type_,
-            constraints: to_json_object(value.constraints)?,
+            format: value.format.map(serde_json::to_value).transpose()?,
+            restrictions: value.restrictions.into_iter().map(|v| v.into()).collect(),
         })
     }
 }

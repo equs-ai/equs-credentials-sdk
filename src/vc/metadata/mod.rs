@@ -3,6 +3,7 @@ use snafu::{Location, Snafu};
 use std::fmt::Debug;
 use tracing::{instrument, Level};
 
+use crate::utils;
 use crate::vc::core::KeyMetadata;
 use crate::vc::formats::HasClaims;
 use crate::vc::{Credential, CredentialMetadata, HasVCFormat};
@@ -99,6 +100,23 @@ impl DefaultMetadataProcessor {
             .fail(),
         }
     }
+
+    #[instrument(level = Level::TRACE, skip(credential), err())]
+    fn resolve_tags(credential: &Credential) -> Result<Vec<(String, String)>> {
+        let claims = credential.parse_claims().map_err(|err| {
+            ResolvingSnafu {
+                details: format!("{err:?}"),
+            }
+            .build()
+        })?;
+
+        let tags: Vec<(String, String)> = utils::json::claims_to_json_path(claims)
+            .iter()
+            .map(|(k, v)| (k.to_owned(), v.to_owned()))
+            .collect();
+
+        Ok(tags)
+    }
 }
 
 impl CredentialMetadataProcessor for DefaultMetadataProcessor {
@@ -119,7 +137,7 @@ impl CredentialMetadataProcessor for DefaultMetadataProcessor {
             format,
             kid: key_metadata.kid,
             alg: None,
-            tags: vec![],
+            tags: Self::resolve_tags(credential)?,
         })
     }
 }
@@ -219,6 +237,73 @@ mod tests {
         let res = DefaultMetadataProcessor::resolve_metadata(&invalid_cred, key_metadata.clone());
 
         assert!(matches!(res.err(), Some(Error::Resolving { .. })));
+    }
+
+    #[test]
+    fn resolve_sd_jwt_cred_tags() {
+        let credential = Credential::SdJwt(SD_JWT_CRED.into());
+        let mut tags = DefaultMetadataProcessor::resolve_tags(&credential).unwrap();
+
+        tags.sort();
+
+        assert_eq!(
+            tags,
+            vec![
+                ("$.dob".to_string(), "09/09/1989".to_string()),
+                ("$.exp".to_string(), "1758670181".to_string()),
+                ("$.iat".to_string(), "1727134181".to_string()),
+                (
+                    "$.iss".to_string(),
+                    "did:key:z6MkhEcbQWUFDpjbrmPZNwSrP88Xta7stHTo4QiA5AmrpHaY".to_string()
+                ),
+                ("$.name".to_string(), "John".to_string()),
+                ("$.nbf".to_string(), "1727134181".to_string()),
+                (
+                    "$.sub".to_string(),
+                    "did:key:z6MkqLdRvJwvhEoakcdyQvL5koo2iHfDnicd5xor567ujpmr".to_string()
+                ),
+                ("$.surname".to_string(), "Doe".to_string()),
+                (
+                    "$.vct".to_string(),
+                    "https://issuer.net/cred_schema".to_string()
+                ),
+            ]
+        );
+    }
+
+    #[test]
+    fn resolve_js_ld_cred_tags() {
+        let credential =
+            Credential::LdpVc(ssi::vc::Credential::from_json_unsigned(LDP_VC_CRED).unwrap());
+
+        let mut tags = DefaultMetadataProcessor::resolve_tags(&credential).unwrap();
+
+        tags.sort();
+
+        assert_eq!(
+            tags,
+            vec![
+                (
+                    "$.@context".to_string(),
+                    "https://www.w3.org/2018/credentials/v1".to_string()
+                ),
+                (
+                    "$.credentialSubject.id".to_string(),
+                    "did:example:d23dd687a7dc6787646f2eb98d0".to_string()
+                ),
+                (
+                    "$.id".to_string(),
+                    "http://example.org/credentials/3731".to_string()
+                ),
+                (
+                    "$.issuanceDate".to_string(),
+                    "2020-08-19T21:41:50Z".to_string()
+                ),
+                ("$.issuer".to_string(), "did:example:foo".to_string()),
+                ("$.type[*]".to_string(), "UniversityDegree".to_string()),
+                ("$.type[*]".to_string(), "VerifiableCredential".to_string()),
+            ]
+        )
     }
 
     fn sd_jwt_cred() -> TestCaseCred {

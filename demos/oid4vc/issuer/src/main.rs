@@ -205,6 +205,7 @@ async fn get_user_attributes(cred_def: &CredDefMetadata) -> Result<Value, Error>
         claims_json["postal_code"] = json!({
             "codes": [ claims_json["postal_code"][0], "10001" ]
         });
+        claims_json["country"] = serde_json::Value::from("US");
         return Ok(claims_json);
     }
 
@@ -291,7 +292,8 @@ fn sample_issuer_metadata(iss_url: &str, authz_url: &str) -> IssuerMetadata {
                 "birthdate": {},
                 "gender": {},
                 "country": {},
-                "family_name": {}
+                "family_name": {},
+                "country": {},
               }
             },
             CRED_DEF_2: {

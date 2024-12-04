@@ -1,15 +1,14 @@
 use crate::utils::json::find_json_element;
 use crate::utils::logs::sanitize_log_msg;
-use crate::vc::core::PresentationInput;
+use crate::vc::core::{PresentationInput, PresentationRestriction};
 use crate::vc::{formats, Presentation};
 use common_macros::DebugError;
 use oid4vp::core::input_descriptor::JsonPath;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value as Json};
-use snafu::{ensure, Location, ResultExt, Snafu};
+use snafu::{Location, ResultExt, Snafu};
 use std::collections::HashMap;
 use std::fmt::Debug;
-use std::ops::Deref;
 use tracing::{instrument, Level};
 use uuid::Uuid;
 
@@ -36,22 +35,24 @@ pub type GroupId = oid4vp::core::input_descriptor::GroupId;
 struct FieldFilter {
     #[serde(rename = "type")]
     type_: String,
-    #[serde(rename = "const")]
-    const_: Option<String>,
-    contains: Option<Contains>,
-    items: Option<Items>,
+    #[serde(flatten)]
+    properties: Option<FieldFilterProperties>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-struct Items {
-    #[serde(rename = "enum")]
-    enum_: Vec<String>,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-struct Contains {
+enum FieldFilterProperties {
     #[serde(rename = "const")]
-    const_: String,
+    Const(String),
+    #[serde(rename = "items")]
+    Items {
+        #[serde(rename = "enum")]
+        enum_: Vec<String>,
+    },
+    #[serde(rename = "contains")]
+    Contains {
+        #[serde(rename = "const")]
+        const_: String,
+    },
 }
 
 #[derive(Snafu, DebugError)]
@@ -302,43 +303,41 @@ pub fn split_to_inputs(
 ) -> Result<Vec<PresentationInput>> {
     let mut inputs: Vec<PresentationInput> = vec![];
 
-    for desc in presentation_definition
-        .input_descriptors()
-        .to_owned()
-        .iter_mut()
-    {
+    for desc in presentation_definition.input_descriptors() {
+        let mut updated_desc = desc.to_owned();
+
         if let Some(claims) = claims_to_exclude.and_then(|claims_map| claims_map.get(desc.id())) {
             let constraints = filter_and_exclude_constraints(desc, claims)?;
-            *desc = desc.to_owned().set_constraints(constraints);
+            updated_desc = updated_desc.set_constraints(constraints);
         }
 
-        inputs.push(desc.deref().try_into()?);
+        inputs.push(updated_desc.try_into()?);
     }
 
     Ok(inputs)
 }
 
-impl TryInto<PresentationInput> for &InputDescriptor {
+impl TryInto<PresentationInput> for InputDescriptor {
     type Error = Error;
 
     #[instrument(level = Level::TRACE, skip(self), err(), ret())]
     fn try_into(self) -> Result<PresentationInput> {
-        let format = extract_format(self.format())?;
+        let format = extract_format(self.format())?.map(|format| format.name());
 
-        let type_ = match &format {
-            ClaimFormat::SdJwtVc { .. } => parse_sdjwt_vc_type(self)?,
-            ClaimFormat::LdpVc { .. } => parse_json_ldp_vc_type(self)?,
-            _ => FormatNotSupportedSnafu {
-                format: format.name().to_owned(),
-            }
-            .fail()?,
-        };
+        let restrictions: Vec<PresentationRestriction> = self
+            .constraints()
+            .fields()
+            .iter()
+            .map(resolve_credential_restriction)
+            .collect::<Result<Vec<_>>>()?
+            .into_iter()
+            .flatten()
+            .collect();
 
         Ok(PresentationInput {
             id: self.id().to_string(),
-            format: format.to_owned(),
-            type_,
-            constraints: self.constraints().to_owned(),
+            format,
+            restrictions,
         })
     }
 }
@@ -368,146 +367,22 @@ fn filter_and_exclude_constraints(
 }
 
 #[instrument(level = Level::TRACE, err(), ret())]
-fn parse_sdjwt_vc_type(input_descriptor: &InputDescriptor) -> Result<String> {
-    let constraints_field = find_constraint_field_with_path(input_descriptor, "$.vct")?;
-    let filter = parse_filter(constraints_field)?;
-
-    let cred_type = match filter {
-        FieldFilter {
-            type_: field_type,
-            const_: Some(const_val),
-            contains: None,
-            items: None,
-        } => {
-            ensure!(
-                field_type == "string",
-                ParseSnafu {
-                    details: "Value of 'filter.type' must be 'string'",
-                }
-            );
-
-            const_val
-        }
-        _ => {
-            return ParseSnafu {
-                details: "Invalid format of the 'filter'",
-            }
-            .fail()
-        }
+fn extract_format(format_map: &ClaimFormatMap) -> Result<Option<ClaimFormat>> {
+    //FIXME: Seems, it should be one format for specific Input Descriptor?
+    let Some((format_name, format_payload)) = format_map.iter().next() else {
+        return Ok(None);
     };
-
-    Ok(cred_type)
-}
-
-#[instrument(level = Level::TRACE, err(), ret())]
-fn parse_json_ldp_vc_type(input_descriptor: &InputDescriptor) -> Result<String> {
-    let cred_types_filter = find_constraint_field_with_path(input_descriptor, "$.type")?;
-
-    let filter = parse_filter(cred_types_filter)?;
-
-    ensure!(
-        filter.type_ == "array",
-        ParseSnafu {
-            details: "Value of 'filter.type' must be 'array'",
-        }
-    );
-
-    let cred_type = match filter {
-        FieldFilter {
-            contains: Some(c),
-            items: None,
-            const_: None,
-            ..
-        } => c.const_,
-        FieldFilter {
-            contains: None,
-            items: Some(items),
-            const_: None,
-            ..
-        } => {
-            let cred_types: Vec<&String> = items
-                .enum_
-                .iter()
-                .filter(|&s| s != "VerifiableCredential")
-                .collect();
-
-            ensure!(
-                cred_types.len() == 1,
-                ParseSnafu {
-                    details: "Must be specified exactly one credential type",
-                }
-            );
-
-            cred_types[0].clone()
-        }
-        _ => {
-            return ParseSnafu {
-                details: "'filter' must specify either 'contains' or 'items'",
-            }
-            .fail()
-        }
-    };
-
-    Ok(cred_type)
-}
-
-#[instrument(level = Level::TRACE, err(), ret())]
-fn extract_format(format_map: &ClaimFormatMap) -> Result<ClaimFormat> {
-    let (format_name, format_payload) = format_map
-        .iter()
-        .next() //FIXME: Seems, it should be one format for specific Input Descriptor?
-        .ok_or_else(|| {
-            ParseSnafu {
-                details: "format is not defined",
-            }
-            .build()
-        })?;
 
     let json = json!({ String::from(format_name.to_owned()): format_payload });
 
-    serde_json::from_value::<ClaimFormat>(json).map_err(|e| {
+    let format = serde_json::from_value::<ClaimFormat>(json).map_err(|e| {
         ParseSnafu {
             details: format!("could not parse claim format: {e}"),
         }
         .build()
-    })
-}
-
-#[instrument(level = Level::TRACE, err(), ret())]
-fn find_constraint_field_with_path<'a>(
-    descriptor: &'a InputDescriptor,
-    path: &str,
-) -> Result<&'a ConstraintsField> {
-    descriptor
-        .constraints()
-        .fields()
-        .iter()
-        .find(|&f| {
-            f.filter().is_some_and(|f| !f.is_null()) && f.path().contains(&JsonPath::from(path))
-        })
-        .ok_or_else(|| {
-            ParseSnafu {
-                details: format!("'{path}' must be specified as a field constraint"),
-            }
-            .build()
-        })
-}
-
-#[instrument(level = Level::TRACE, err(), ret())]
-fn parse_filter(constraints: &ConstraintsField) -> Result<FieldFilter> {
-    let filter = constraints.filter().ok_or_else(|| {
-        ParseSnafu {
-            details: "'filter' must be specified in a field constraint",
-        }
-        .build()
     })?;
 
-    serde_json::from_value(filter.clone()).map_err(|err| {
-        ParseSnafu {
-            details: format!("could not parse 'filter': {err}"),
-        }
-        .build()
-    })
+    Ok(Some(format))
 }
 
 #[instrument(level = Level::TRACE, err(), ret())]
@@ -543,6 +418,99 @@ fn extract_vp_format(input_descriptor: &InputDescriptor) -> Result<ClaimFormatDe
             }
             .build()
         })
+}
+
+#[instrument(level = Level::TRACE, err(), ret())]
+fn resolve_credential_restriction(
+    constraints: &ConstraintsField,
+) -> Result<Vec<PresentationRestriction>> {
+    let fields = constraints
+        .path()
+        .iter()
+        .map(|path| generalize_json_path(path))
+        .collect();
+
+    let filter = constraints
+        .filter()
+        .map(|filter| serde_json::from_value(filter.clone()))
+        .transpose()
+        .map_err(|err| {
+            ParseSnafu {
+                details: format!("could not parse 'filter': {err}"),
+            }
+            .build()
+        })?;
+
+    let restrictions = build_restrictions(fields, filter, constraints.is_optional());
+
+    Ok(restrictions)
+}
+
+fn generalize_json_path(path: &str) -> String {
+    let path_segments: Vec<&str> = path.split('.').collect();
+
+    let mut result = String::new();
+
+    for segment in path_segments {
+        if !result.is_empty() {
+            result.push('.');
+        }
+
+        let open_bracket_pos = segment.find('[');
+        let close_bracket_pos = segment.find(']');
+
+        let segment = match (open_bracket_pos, close_bracket_pos) {
+            (Some(open), Some(close)) => &segment.replace(&segment[open + 1..close], "*"),
+            _ => segment,
+        };
+
+        result.push_str(segment);
+    }
+
+    result
+}
+
+fn build_restrictions(
+    fields: Vec<String>,
+    filter: Option<FieldFilter>,
+    optional: bool,
+) -> Vec<PresentationRestriction> {
+    let Some(filter_properties) = filter.and_then(|filter| filter.properties) else {
+        return vec![PresentationRestriction {
+            fields,
+            value: None,
+            optional,
+        }];
+    };
+
+    match filter_properties {
+        FieldFilterProperties::Const(const_) => vec![PresentationRestriction {
+            fields,
+            value: Some(const_),
+            optional,
+        }],
+        FieldFilterProperties::Items { enum_ } => {
+            let fields: Vec<String> = fields.iter().map(|field| format!("{field}[*]")).collect();
+
+            enum_
+                .iter()
+                .map(move |value| PresentationRestriction {
+                    fields: fields.clone(),
+                    value: Some(value.to_owned()),
+                    optional,
+                })
+                .collect()
+        }
+        FieldFilterProperties::Contains { const_ } => {
+            let fields = fields.iter().map(|field| format!("{field}[*]")).collect();
+
+            vec![PresentationRestriction {
+                fields,
+                value: Some(const_),
+                optional,
+            }]
+        }
+    }
 }
 
 #[cfg(test)]
@@ -652,27 +620,22 @@ mod tests {
             result,
             [PresentationInput {
                 id: "descriptor_id".to_string(),
-                format: ClaimFormat::SdJwtVc {
-                    jwt_alg_values: vec!["ES256".to_string(), "EdDSA".to_string()],
-                    kb_alg_values: vec!["ES256".to_string(), "EdDSA".to_string()]
-                },
-                type_: "https://credentials.example.com/identity_credential".to_string(),
-                constraints: presentation_definition.input_descriptors()[0]
-                    .constraints()
-                    .clone(),
+                format: Some("vc+sd-jwt".to_string()),
+                restrictions: vec![PresentationRestriction {
+                    fields: vec!["$.vct".to_string()],
+                    value: Some("https://credentials.example.com/identity_credential".to_string()),
+                    optional: false,
+                }],
             }]
         )
     }
 
-    #[rstest]
-    #[case::with_contains(sample_ldp_presentation_descriptor_with_contains())]
-    #[case::with_enum(sample_ldp_presentation_descriptor_with_enum())]
     #[tokio::test]
-    async fn split_to_inputs_returns_correct_presentation_inputs_for_ldpvc(
-        #[case] descriptor: InputDescriptor,
-    ) {
-        let presentation_definition =
-            PresentationDefinition::new("presentation_definition_id".to_string(), descriptor);
+    async fn split_to_inputs_works_for_ldpvc_with_enum_constraint() {
+        let presentation_definition = PresentationDefinition::new(
+            "presentation_definition_id".to_string(),
+            sample_ldp_presentation_descriptor_with_enum(),
+        );
 
         let result = split_to_inputs(&presentation_definition, None).unwrap();
 
@@ -680,51 +643,44 @@ mod tests {
             result,
             [PresentationInput {
                 id: "resident-card".to_string(),
-                format: ClaimFormat::LdpVc {
-                    proof_type: vec![
-                        "Ed25519Signature2018".to_string(),
-                        "EcdsaSecp256k1Signature2019".to_string(),
-                    ]
-                },
-                type_: "PermanentResidentCard".to_string(),
-                constraints: presentation_definition.input_descriptors()[0]
-                    .constraints()
-                    .clone(),
+                format: Some("ldp_vc".to_string()),
+                restrictions: vec![
+                    PresentationRestriction {
+                        fields: vec!["$.type[*]".to_string()],
+                        value: Some("VerifiableCredential".to_string()),
+                        optional: false,
+                    },
+                    PresentationRestriction {
+                        fields: vec!["$.type[*]".to_string()],
+                        value: Some("PermanentResidentCard".to_string()),
+                        optional: false,
+                    }
+                ],
             }]
         )
     }
 
-    #[rstest]
-    #[case::invlaid_type(
-        sample_ldp_presentation_descriptor_invalid_type(),
-        "Value of 'filter.type' must be 'array'"
-    )]
-    #[case::contains_and_items(
-        sample_ldp_presentation_descriptor_both_items_and_contains(),
-        "'filter' must specify either 'contains' or 'items'"
-    )]
-    #[case::neither_items_nor_contains(
-        sample_ldp_presentation_descriptor_neither_items_nor_contains(),
-        "'filter' must specify either 'contains' or 'items'"
-    )]
-    #[case::without_filter(
-        sample_ldp_presentation_descriptor_without_filter(),
-        "'$.type' must be specified as a field constraint"
-    )]
     #[tokio::test]
-    async fn split_to_inputs_for_ldpvc_fails_when_descriptor_is_not_valid(
-        #[case] descriptor: InputDescriptor,
-        #[case] err_message: &str,
-    ) {
-        let presentation_definition =
-            PresentationDefinition::new("presentation_definition_id".to_string(), descriptor);
+    async fn split_to_inputs_works_for_ldpvc_with_contains_constraint() {
+        let presentation_definition = PresentationDefinition::new(
+            "presentation_definition_id".to_string(),
+            sample_ldp_presentation_descriptor_with_contains(),
+        );
 
-        let result = split_to_inputs(&presentation_definition, None);
+        let result = split_to_inputs(&presentation_definition, None).unwrap();
 
-        assert!(matches!(
-            result.err().unwrap(),
-            Error::Parse { details, .. } if details == err_message,
-        ));
+        assert_eq!(
+            result,
+            [PresentationInput {
+                id: "resident-card".to_string(),
+                format: Some("ldp_vc".to_string()),
+                restrictions: vec![PresentationRestriction {
+                    fields: vec!["$.type[*]".to_string()],
+                    value: Some("PermanentResidentCard".to_string()),
+                    optional: false,
+                }],
+            }]
+        )
     }
 
     #[tokio::test]
@@ -806,6 +762,15 @@ mod tests {
         let result =
             resolve_presentation_response(&presentation_response, &presentation_definition)
                 .unwrap();
+    }
+
+    #[rstest]
+    #[case::no_indices("root.child.grandchild", "root.child.grandchild")]
+    #[case::single_index("root.child[0].grandchild", "root.child[*].grandchild")]
+    #[case::multi_index("root.child[0].grandchild[1]", "root.child[*].grandchild[*]")]
+    #[case::single_sigment("[0]", "[*]")]
+    fn test_generalize_json_path(#[case] input: &str, #[case] expected: &str) {
+        assert_eq!(generalize_json_path(input), expected);
     }
 
     fn create_single_presentation_definition() -> PresentationDefinition {

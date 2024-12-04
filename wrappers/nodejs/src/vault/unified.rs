@@ -1,10 +1,9 @@
-use agent_sdk::vault::{CredentialEntry, FindCriteria, Vault};
+use crate::vault::JsVault;
+use crate::vault::NativeVault;
+use agent_sdk::vault::{CredentialEntry, CredentialFilter, Vault};
 use agent_sdk::vc::{Credential, CredentialMetadata};
 use async_trait::async_trait;
 use napi::Either;
-
-use crate::vault::JsVault;
-use crate::vault::NativeVault;
 
 #[derive(Clone)]
 pub enum UnifiedVault {
@@ -36,11 +35,11 @@ impl Vault for UnifiedVault {
 
     async fn find_credentials(
         &self,
-        criteria: FindCriteria,
+        filters: Vec<CredentialFilter>,
     ) -> agent_sdk::vault::Result<Vec<CredentialEntry>> {
         match self {
-            UnifiedVault::Js(js) => js.find_credentials(criteria).await,
-            UnifiedVault::Native(native) => native.inner().find_credentials(criteria).await,
+            UnifiedVault::Js(js) => js.find_credentials(filters).await,
+            UnifiedVault::Native(native) => native.inner().find_credentials(filters).await,
         }
     }
 }

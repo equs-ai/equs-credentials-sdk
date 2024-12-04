@@ -1,18 +1,134 @@
 use crate::inmem::storage::InMemStorage;
 use crate::storage::Storage;
-use crate::vault::{CredentialEntry, Error, FindCriteria, StoringSnafu, Vault};
+use crate::vault::{CredentialEntry, CredentialFilter, Error, StoringSnafu, Vault};
 use crate::vc::{Credential, CredentialMetadata};
 use async_rwlock::RwLock;
 use async_trait::async_trait;
 use futures::future;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use tracing::{instrument, Level};
 
 #[derive(Debug, Clone)]
 pub struct InMemVault {
     storage: Arc<InMemStorage<String, CredentialEntry>>,
-    indexed: Arc<RwLock<HashMap<String, Vec<String>>>>,
+    indexes: Index,
+}
+
+#[derive(Debug, Clone)]
+struct Index {
+    tags: Arc<RwLock<HashMap<String, Vec<String>>>>,
+    tag_names: Arc<RwLock<HashMap<String, Vec<String>>>>,
+}
+
+pub type Tag = (String, String);
+
+impl Index {
+    #[instrument(
+        level = Level::TRACE,
+        ret(),
+    )]
+    fn new() -> Self {
+        Self {
+            tags: Arc::new(RwLock::new(HashMap::new())),
+            tag_names: Arc::new(RwLock::new(HashMap::new())),
+        }
+    }
+
+    #[instrument(
+        level = Level::TRACE,
+        skip(self),
+        ret(),
+    )]
+    async fn put_tag(&self, tag: &Tag, storage_id: &str) {
+        let (k, v) = tag;
+        let index = format!("{k}:{v}");
+
+        let mut vec: Vec<String> = vec![];
+        vec.push(storage_id.to_owned());
+
+        if let Some(existing) = self.tags.read().await.get(&index) {
+            vec.extend(existing.to_owned());
+        }
+
+        self.tags.write().await.insert(index, vec);
+    }
+
+    #[instrument(
+        level = Level::TRACE,
+        skip(self),
+        ret(),
+    )]
+    async fn put_tag_name(&self, tag_name: String, storage_id: &str) {
+        let mut vec: Vec<String> = vec![];
+        vec.push(storage_id.to_owned());
+
+        if let Some(existing) = self.tag_names.read().await.get(&tag_name) {
+            vec.extend(existing.to_owned());
+        }
+
+        self.tag_names.write().await.insert(tag_name, vec);
+    }
+
+    #[instrument(
+        level = Level::TRACE,
+        skip(self),
+        ret(),
+    )]
+    async fn get_ids(&self, tag: &Tag) -> HashSet<String> {
+        let (k, v) = tag;
+        let index = format!("{k}:{v}");
+
+        let vec = self.tags.read().await.get(&index);
+
+        let mut ids = HashSet::new();
+        if let Some(existing) = self.tags.read().await.get(&index) {
+            ids.extend(existing.to_owned())
+        }
+
+        ids
+    }
+
+    #[instrument(
+        level = Level::TRACE,
+        skip(self),
+        ret(),
+    )]
+    async fn get_ids_for_tag_names(&self, tag_names: Vec<String>) -> HashSet<String> {
+        let map = self.tag_names.read().await;
+
+        let mut ids = HashSet::new();
+
+        for tag_name in tag_names.iter() {
+            let tag_ids = map.get(tag_name).cloned().unwrap_or(Vec::new());
+            ids.extend(tag_ids);
+        }
+
+        ids
+    }
+
+    #[instrument(level = Level::TRACE, skip(self), ret())]
+    async fn find_by_filters(&self, filters: CredentialFilter) -> HashSet<String> {
+        match filters {
+            CredentialFilter::Format(format) => self.get_ids(&("format".to_string(), format)).await,
+            CredentialFilter::TagKeys(tag_names) => self.get_ids_for_tag_names(tag_names).await,
+            CredentialFilter::Tag(name, val) => self.get_ids(&(name, val)).await,
+        }
+    }
+}
+
+#[instrument(level = Level::TRACE, ret())]
+fn intersection(id_sets: &[HashSet<String>]) -> HashSet<String> {
+    if let Some(first) = id_sets.first() {
+        // intersection of all sets
+        return first
+            .iter()
+            .filter(|elem| id_sets.iter().all(|set| set.contains(*elem)))
+            .map(|elem| elem.to_owned())
+            .collect::<HashSet<String>>();
+    }
+
+    HashSet::new()
 }
 
 impl InMemVault {
@@ -23,33 +139,8 @@ impl InMemVault {
     pub fn new() -> Self {
         Self {
             storage: Arc::new(InMemStorage::new()),
-            indexed: Arc::new(RwLock::new(HashMap::new())),
+            indexes: Index::new(),
         }
-    }
-
-    #[instrument(
-        level = Level::TRACE,
-        skip(self),
-        err(),
-        ret(),
-    )]
-    async fn update_index(
-        &self,
-        metadata: &CredentialMetadata,
-        storage_id: &str,
-    ) -> Result<(), Error> {
-        let index = format!("{}:{}", metadata.type_, metadata.format);
-
-        let mut vec: Vec<String> = vec![];
-        vec.push(storage_id.to_owned());
-
-        if let Some(existing) = self.indexed.read().await.get(&index) {
-            vec.extend(existing.to_owned());
-        }
-
-        self.indexed.write().await.insert(index, vec);
-
-        Ok(())
     }
 
     #[instrument(
@@ -57,11 +148,24 @@ impl InMemVault {
         skip(self),
         ret(),
     )]
-    async fn get_indexed(&self, type_: &str, format: &str) -> Vec<String> {
-        let index = format!("{}:{}", type_, format);
-        let map = self.indexed.read().await;
-        let vec = map.get(&index);
-        vec.cloned().unwrap_or_else(Vec::new)
+    async fn update_index(&self, metadata: &CredentialMetadata, storage_id: &str) {
+        self.indexes
+            .put_tag(&("type".to_string(), metadata.type_.to_owned()), storage_id)
+            .await;
+        self.indexes
+            .put_tag(
+                &("format".to_string(), metadata.format.to_string()),
+                storage_id,
+            )
+            .await;
+
+        for tag in &metadata.tags {
+            let (name, _) = tag;
+            self.indexes.put_tag(tag, storage_id).await;
+            self.indexes
+                .put_tag_name(name.to_string(), storage_id)
+                .await;
+        }
     }
 
     #[cfg(test)]
@@ -124,7 +228,7 @@ impl Vault for InMemVault {
                 .build()
             })?;
 
-        self.update_index(metadata, &storage_id).await?;
+        self.update_index(metadata, &storage_id).await;
 
         Ok(storage_id)
     }
@@ -152,14 +256,17 @@ impl Vault for InMemVault {
     )]
     async fn find_credentials(
         &self,
-        criteria: FindCriteria,
+        filters: Vec<CredentialFilter>,
     ) -> Result<Vec<CredentialEntry>, Error> {
-        let creds = match criteria {
-            FindCriteria::ByTypeAndFormat(type_, fmt) => {
-                let ids = self.get_indexed(&type_, &fmt).await;
-                future::try_join_all(ids.iter().map(|id| self.get_credential(id))).await?
-            }
-        };
+        let mut ids_per_criteria = vec![];
+        for filter in filters {
+            let found = self.indexes.find_by_filters(filter.clone()).await;
+            ids_per_criteria.push(found.clone());
+        }
+
+        let ids = intersection(&ids_per_criteria);
+
+        let creds = future::try_join_all(ids.iter().map(|id| self.get_credential(id))).await?;
 
         Ok(creds.into_iter().flatten().collect())
     }
