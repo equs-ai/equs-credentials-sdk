@@ -1,223 +1,33 @@
 pub mod builder;
+pub(super) mod middleware;
+pub mod validators;
 
 use async_trait::async_trait;
-use mime::Mime;
-use oauth2::http::header::ACCEPT;
-use oauth2::http::HeaderValue;
 use oauth2::{HttpRequest, HttpResponse};
-use reqwest::header::CONTENT_TYPE;
-use reqwest::{Client, Response};
-use snafu::ensure;
-use std::str::{from_utf8, FromStr};
+use reqwest_middleware::ClientWithMiddleware;
 use std::time::Duration;
-use tracing::{debug, info, instrument, warn, Level};
+use tracing::{info, instrument};
 
 use crate::http::{HttpClient, HttpError, HttpSnafu, Result};
 
-fn req_body_to_string(body: &[u8]) -> &str {
-    from_utf8(body).unwrap_or("*** NON-UTF8 characters ***")
-}
-
-/// `HttpLimits` struct represents limitations of request/response body size.
-#[derive(Clone, Debug)]
-pub struct HttpLimits {
-    req_size_limit: Option<usize>,
-    resp_size_limit: Option<usize>,
-}
-
-impl HttpLimits {
-    /// Creates an `HttpLimits` structure via specifying the limits for
-    /// request and response body sizes in bytes.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use agent_sdk::reqwest::HttpLimits;
-    ///
-    /// // No any limits
-    /// let limits = HttpLimits::new(None, None);
-    ///
-    /// // Unlimited request body size, limited (1024 bytes) response body size
-    /// let limits = HttpLimits::new(None, Some(1024));
-    /// ```
-    #[instrument(level = Level::TRACE, ret())]
-    pub fn new(req_size_limit: Option<usize>, resp_size_limit: Option<usize>) -> Self {
-        Self {
-            req_size_limit,
-            resp_size_limit,
-        }
-    }
-
-    /// Creates an `HttpLimits` structure that doen set any limits
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use agent_sdk::reqwest::HttpLimits;
-    ///
-    /// let unlimited = HttpLimits::unlimited();
-    /// ```
-    #[instrument(level = Level::TRACE, ret())]
-    pub fn unlimited() -> Self {
-        Self {
-            req_size_limit: None,
-            resp_size_limit: None,
-        }
-    }
-
-    #[instrument(level = Level::TRACE, ret())]
-    fn is_req_body_out_of_limit(&self, body_size: usize) -> bool {
-        match self.req_size_limit {
-            Some(limit) => body_size > limit,
-            _ => false,
-        }
-    }
-
-    #[instrument(level = Level::TRACE, ret())]
-    fn is_resp_body_out_of_limit(&self, body_size: usize) -> bool {
-        match self.resp_size_limit {
-            Some(limit) => body_size > limit,
-            _ => false,
-        }
-    }
-}
-
 #[derive(Debug, Clone)]
 pub struct ReqwestClient {
-    client: Client,
-    limits: HttpLimits,
-}
-
-impl ReqwestClient {
-    fn validate_content_type_of_resp(
-        content_type_to_accept: &HeaderValue,
-        response: &Response,
-    ) -> Result<()> {
-        let content_type = response.headers().get(CONTENT_TYPE).ok_or_else(|| {
-            HttpSnafu {
-                details: format!(
-                    "Content-type is missed: accepted {:?}, content-type header is missed in response",
-                    content_type_to_accept
-                ),
-            }.build()
-        })?;
-
-        let content_type = Self::header_value_to_mime(content_type);
-        let content_type_to_accept = Self::header_value_to_mime(content_type_to_accept);
-
-        if let (Some(content_type), Some(content_type_to_accept)) =
-            (content_type, content_type_to_accept)
-        {
-            ensure!(
-                content_type_to_accept.essence_str() == content_type.essence_str(),
-                HttpSnafu {
-                    details: format!(
-                        "Content-type is mismatched: accepted {:?} , received {:?}",
-                        content_type_to_accept, content_type
-                    ),
-                }
-            );
-
-            for (name, value) in content_type_to_accept.params() {
-                let value_to_check = content_type.get_param(name);
-
-                ensure!(
-                    value_to_check == Some(value),
-                    HttpSnafu {
-                        details: format!(
-                            "Content-type is mismatched: accepted {:?} , received {:?}",
-                            content_type_to_accept, content_type
-                        ),
-                    }
-                );
-            }
-        }
-
-        Ok(())
-    }
-
-    fn header_value_to_mime(header_val: &HeaderValue) -> Option<Mime> {
-        header_val
-            .to_str()
-            .ok()
-            .and_then(|c| Mime::from_str(c).ok())
-    }
-
-    fn validate_content_length_header(&self, response: &Response) -> Result<()> {
-        let Some(content_len) = response.content_length() else {
-            return Ok(());
-        };
-
-        let content_len: usize = content_len.try_into().map_err(|_| {
-            HttpSnafu {
-                details: format!("content length value {} exceeds usize::MAX", content_len),
-            }
-            .build()
-        })?;
-
-        if self.limits.is_resp_body_out_of_limit(content_len) {
-            return HttpSnafu {
-                details: format!("content length value {} exceeds limit", content_len),
-            }
-            .fail();
-        }
-
-        Ok(())
-    }
-
-    async fn receive_resp_body(&self, response: &mut Response) -> Result<Vec<u8>> {
-        let mut resp_body: Vec<u8> = match response.content_length() {
-            Some(content_len) => Vec::with_capacity(content_len.try_into().unwrap_or_default()),
-            None => Vec::new(),
-        };
-
-        while let Some(body_part) = response.chunk().await? {
-            // make sure that operation (resp_body.len() + body_part.len()) does not overflow
-            if (usize::MAX - resp_body.len()) < body_part.len() {
-                return HttpSnafu {
-                    details: "response body size exceeds usize::MAX value",
-                }
-                .fail();
-            }
-
-            let current_resp_size = resp_body.len() + body_part.len();
-
-            if self.limits.is_resp_body_out_of_limit(current_resp_size) {
-                return HttpSnafu {
-                    details: "response body size exceeds the limit",
-                }
-                .fail();
-            }
-
-            resp_body.append(&mut body_part.to_vec());
-        }
-
-        Ok(resp_body)
-    }
+    client: ClientWithMiddleware,
 }
 
 #[async_trait]
 impl HttpClient for ReqwestClient {
     #[instrument(
-        level = Level::TRACE,
         skip_all,
+        name = "HTTP async call"
         fields(
             url = request.url.as_str(),
             method = request.method.as_str(),
-            body = ?{ String::from_utf8(request.body.clone()).as_ref() }
         )
         err(),
     )]
     async fn async_call(&self, request: HttpRequest) -> Result<HttpResponse> {
-        info!("Req: {} {}", request.method, request.url);
-        debug!("Req body: {}", req_body_to_string(&request.body));
-        debug!("Req headers: {:?}", request.headers);
-
-        if self.limits.is_req_body_out_of_limit(request.body.len()) {
-            warn!("Req body size is {}", request.body.len());
-        }
-
-        let content_type_to_accept = request.headers.get(ACCEPT);
+        info!("Making HTTP request is started");
         let mut request_builder = self
             .client
             .request(request.method.clone(), request.url.as_str())
@@ -235,32 +45,29 @@ impl HttpClient for ReqwestClient {
             .build()
         })?;
 
-        let mut response = self.client.execute(req).await.map_err(|err| {
+        let response = self.client.execute(req).await.map_err(|err| {
             HttpSnafu {
                 details: err.to_string(),
             }
             .build()
         })?;
 
-        if let Some(content_type_to_accept) = content_type_to_accept {
-            Self::validate_content_type_of_resp(content_type_to_accept, &response)?;
-        }
-
         let status_code = response.status();
         let headers = response.headers().to_owned();
 
-        self.validate_content_length_header(&response)?;
+        let chunks = response.bytes().await.map_err(|err| {
+            HttpSnafu {
+                details: err.to_string(),
+            }
+            .build()
+        })?;
 
-        let resp_body = self.receive_resp_body(&mut response).await?;
-
-        info!("Resp: {} {} {}", status_code, request.method, request.url);
-        debug!("Resp body: {}", req_body_to_string(&resp_body));
-        debug!("Resp headers: {:?}", headers);
+        info!("HTTP response is successfully handled: status code = {status_code}");
 
         Ok(HttpResponse {
             status_code,
             headers,
-            body: resp_body,
+            body: chunks.to_vec(),
         })
     }
 }
@@ -284,16 +91,13 @@ mod tests {
     use oauth2::http::header::ACCEPT;
     use oauth2::http::{HeaderMap, HeaderValue, Method};
     use oauth2::HttpRequest;
-    use reqwest::header::CONTENT_TYPE;
+    use reqwest::header::{CONTENT_TYPE, SET_COOKIE};
     use reqwest::StatusCode;
     use rstest::rstest;
     use serde_json::{json, Value};
     use url::Url;
 
-    use super::HttpLimits;
-
-    const MIME_TYPE_TEXT_HTML: &str = "text/html";
-    const MIME_TYPE_TEXT_HTML_WITH_CHARSET: &str = "text/html; charset=utf-8";
+    const MIME_TYPE_TEXT_PLAIN_WITH_CHARSET: &str = "text/plain; charset=utf-8";
     const MIME_TYPE_JSON_WITH_CHARSET: &str = "application/json; charset=utf-8";
 
     #[tokio::test]
@@ -304,7 +108,10 @@ mod tests {
             .async_call(HttpRequest {
                 url: Url::parse("http://example.org").unwrap(),
                 method: Method::POST,
-                headers: Default::default(),
+                headers: HeaderMap::from_iter(vec![(
+                    ACCEPT,
+                    HeaderValue::from_static(MIME_TYPE_JSON),
+                )]),
                 body: vec![],
             })
             .await
@@ -337,7 +144,7 @@ mod tests {
         let mock = server
             .mock("GET", "/test")
             .with_status(200)
-            .with_header(CONTENT_TYPE.as_str(), "text/plain")
+            .with_header(CONTENT_TYPE.as_str(), MIME_TYPE_TEXT_PLAIN)
             .with_header("content-length", "13")
             .with_body("Hello World!")
             .create();
@@ -347,7 +154,10 @@ mod tests {
             .async_call(HttpRequest {
                 url: Url::parse(format!("{url}/test").as_str()).unwrap(),
                 method: Method::GET,
-                headers: Default::default(),
+                headers: HeaderMap::from_iter(vec![(
+                    ACCEPT,
+                    HeaderValue::from_static(MIME_TYPE_TEXT_PLAIN),
+                )]),
                 body: vec![],
             })
             .await
@@ -355,32 +165,37 @@ mod tests {
     }
 
     #[rstest]
-    #[case::unlimited(HttpLimits::unlimited())]
-    #[case::limited_1mb(HttpLimits::new(None, Some(DataSize::MBytes(1).into())))]
-    #[case::limited_50kb(HttpLimits::new(None, Some(DataSize::KBytes(50).into())))]
+    #[case::unlimited(None)]
+    #[case::limited_1mb(Some(DataSize::MBytes(1).into()))]
+    #[case::limited_50kb(Some(DataSize::KBytes(50).into()))]
     #[tokio::test]
     async fn reqwest_client_succeeds_when_response_size_does_not_exceed_the_limit(
-        #[case] limits: HttpLimits,
+        #[case] limits: Option<usize>,
     ) {
         let mut server = mockito::Server::new_async().await;
 
         let mock = server
             .mock("GET", "/")
             .with_status(200)
-            .with_header(CONTENT_TYPE.as_str(), "text/plain")
+            .with_header(CONTENT_TYPE.as_str(), MIME_TYPE_TEXT_PLAIN)
             .with_body(resp_data_50kb())
             .create();
 
-        let client = ReqwestClientBuilder::new()
-            .insecure()
-            .with_limits(limits)
-            .build()
-            .unwrap();
-        let resp = client
+        let mut client_builder = ReqwestClientBuilder::new().insecure();
+
+        if let Some(response_limits) = limits {
+            client_builder = client_builder.with_response_content_size_limit(response_limits)
+        }
+        let client = client_builder.build().unwrap();
+
+        let _ = client
             .async_call(HttpRequest {
                 url: Url::parse(format!("{}/", server.url()).as_str()).unwrap(),
                 method: Method::GET,
-                headers: Default::default(),
+                headers: HeaderMap::from_iter(vec![(
+                    ACCEPT,
+                    HeaderValue::from_static(MIME_TYPE_TEXT_PLAIN),
+                )]),
                 body: vec![],
             })
             .await
@@ -389,30 +204,33 @@ mod tests {
 
     #[rstest]
     #[should_panic(expected = "content length value 51200 exceeds limit")]
-    #[case::limited_10kb(HttpLimits::new(None, Some(DataSize::KBytes(10).into())))]
+    #[case::limited_10kb(DataSize::KBytes(10).into())]
     #[tokio::test]
     async fn reqwest_client_fails_when_content_length_is_bigger_than_the_limit(
-        #[case] limits: HttpLimits,
+        #[case] response_limit: usize,
     ) {
         let mut server = mockito::Server::new_async().await;
 
         let mock = server
             .mock("GET", "/test")
             .with_status(200)
-            .with_header(CONTENT_TYPE.as_str(), "text/plain")
+            .with_header(CONTENT_TYPE.as_str(), MIME_TYPE_TEXT_PLAIN)
             .with_body(resp_data_50kb())
             .create();
 
         let client = ReqwestClientBuilder::new()
             .insecure()
-            .with_limits(limits)
+            .with_response_content_size_limit(response_limit)
             .build()
             .unwrap();
         let resp = client
             .async_call(HttpRequest {
                 url: Url::parse(format!("{}/test", server.url()).as_str()).unwrap(),
                 method: Method::GET,
-                headers: Default::default(),
+                headers: HeaderMap::from_iter(vec![(
+                    ACCEPT,
+                    HeaderValue::from_static(MIME_TYPE_TEXT_PLAIN),
+                )]),
                 body: vec![],
             })
             .await
@@ -421,61 +239,96 @@ mod tests {
 
     #[rstest]
     #[should_panic(expected = "response body size exceeds the limit")]
-    #[case::limited_10kb(HttpLimits::new(None, Some(DataSize::KBytes(10).into())))]
+    #[case::limited_10kb(DataSize::KBytes(10).into())]
     #[tokio::test]
     async fn reqwest_client_fails_when_response_body_size_exceeds_the_limit(
-        #[case] limits: HttpLimits,
+        #[case] response_limit: usize,
     ) {
         let mut server = mockito::Server::new_async().await;
 
         let mock = server
             .mock("GET", "/")
             .with_status(200)
-            .with_header(CONTENT_TYPE.as_str(), "text/plain")
+            .with_header(CONTENT_TYPE.as_str(), MIME_TYPE_TEXT_PLAIN)
             .with_chunked_body(|w| w.write_all(&resp_data_50kb()))
             .create();
 
         let client = ReqwestClientBuilder::new()
             .insecure()
-            .with_limits(limits)
+            .with_response_content_size_limit(response_limit)
             .build()
             .unwrap();
-        let resp = client
+        let _ = client
             .async_call(HttpRequest {
                 url: Url::parse(format!("{}/", server.url()).as_str()).unwrap(),
                 method: Method::GET,
-                headers: Default::default(),
+                headers: HeaderMap::from_iter(vec![(
+                    ACCEPT,
+                    HeaderValue::from_static(MIME_TYPE_TEXT_PLAIN),
+                )]),
                 body: vec![],
             })
             .await
             .unwrap();
     }
 
-    // TODO: Seems mockito adds "text/html" content-type as default, so find a way to respond with empty content-type
-    // #[should_panic(expected = "Content-type is missed")] /
-    // #[case(("content-length", "12"))]
     #[rstest]
     #[should_panic(expected = "Content-type is mismatched")]
-    #[case::different_mimes(MIME_TYPE_TEXT_PLAIN, MIME_TYPE_JSON)]
+    #[case::unaccepted_content_response_type(
+        MIME_TYPE_TEXT_PLAIN,
+        MIME_TYPE_JSON,
+        "{\"hello\":\"world\"}"
+    )]
+    #[should_panic(expected = "Response body is not a json")]
+    #[case::unaccepted_response_with_html_body(
+        MIME_TYPE_JSON,
+        MIME_TYPE_JSON,
+        "<html><body>Hello World!</body></html>"
+    )]
+    #[should_panic(expected = "Response body is not a json")]
+    #[case::unaccepted_response_with_xml_body(
+        MIME_TYPE_JSON,
+        MIME_TYPE_JSON,
+        "<note><body>XML Content</body></note>"
+    )]
+    #[should_panic(expected = "Response body is not a json")]
+    #[case::unaccepted_response_with_js_body(
+        MIME_TYPE_JSON,
+        MIME_TYPE_JSON,
+        "console.log('Hello World!');"
+    )]
+    #[should_panic(expected = "Response body is not a json")]
+    #[case::unaccepted_response_with_css_body(
+        MIME_TYPE_JSON,
+        MIME_TYPE_JSON,
+        "body { background-color: red; }"
+    )]
     #[should_panic(expected = "Content-type is mismatched")]
-    #[case::mimes_with_different_params(MIME_TYPE_JSON_WITH_CHARSET, MIME_TYPE_JSON)]
+    #[case::different_mimes(MIME_TYPE_TEXT_PLAIN, MIME_TYPE_JSON, "Hello World!")]
+    #[should_panic(expected = "Content-type is mismatched")]
+    #[case::mimes_with_different_params(
+        MIME_TYPE_JSON_WITH_CHARSET,
+        MIME_TYPE_JSON,
+        "{\"hello\":\"world\"}"
+    )]
     #[tokio::test]
     async fn handling_response_fails_when_content_type_is_invalid(
         #[case] accept_header: &str,
         #[case] resp_header: &str,
+        #[case] resp_body: &str,
     ) {
         let mut server = mockito::Server::new_async().await;
         let url = server.url();
 
         let mock = server
-            .mock("GET", "/test")
+            .mock("GET", "/")
             .with_status(200)
             .with_header(CONTENT_TYPE.as_str(), resp_header)
-            .with_body("Hello World!")
+            .with_body(resp_body)
             .create();
 
         let request = HttpRequest {
-            url: Url::parse("http://example.org").unwrap(),
+            url: Url::parse(&url).unwrap(),
             method: Method::GET,
             headers: vec![(ACCEPT, HeaderValue::from_str(accept_header).unwrap())]
                 .into_iter()
@@ -489,21 +342,78 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn set_cookie_header_should_be_removed_after_handling_response() {
+        let mut server = mockito::Server::new_async().await;
+        let url = server.url();
+
+        let mock = server
+            .mock("GET", "/")
+            .with_status(200)
+            .with_header(CONTENT_TYPE.as_str(), MIME_TYPE_JSON)
+            .with_header(SET_COOKIE.as_str(), "username=john_doe; Path=/; HttpOnly")
+            .with_body("{\"hello\":\"world\"}")
+            .create();
+
+        let request = HttpRequest {
+            url: Url::parse(&url).unwrap(),
+            method: Method::GET,
+            headers: vec![(ACCEPT, HeaderValue::from_str(MIME_TYPE_JSON).unwrap())]
+                .into_iter()
+                .collect(),
+            body: vec![],
+        };
+
+        let client = ReqwestClientBuilder::new().insecure().build().unwrap();
+
+        let resp = client.async_call(request).await.unwrap();
+
+        assert!(!resp.headers.contains_key(SET_COOKIE));
+    }
+
+    #[tokio::test]
+    #[should_panic(expected = "Content-type is mismatched")]
+    async fn duplicated_header_should_fail_after_handling_response() {
+        let mut server = mockito::Server::new_async().await;
+        let url = server.url();
+
+        let mock = server
+            .mock("GET", "/")
+            .with_status(200)
+            .with_header(CONTENT_TYPE.as_str(), MIME_TYPE_TEXT_PLAIN)
+            .with_header(CONTENT_TYPE.as_str(), MIME_TYPE_JSON)
+            .with_body("{\"hello\":\"world\"}")
+            .create();
+
+        let request = HttpRequest {
+            url: Url::parse(&url).unwrap(),
+            method: Method::GET,
+            headers: vec![(ACCEPT, HeaderValue::from_str(MIME_TYPE_JSON).unwrap())]
+                .into_iter()
+                .collect(),
+            body: vec![],
+        };
+
+        let client = ReqwestClientBuilder::new().insecure().build().unwrap();
+
+        client.async_call(request).await.unwrap();
+    }
+
+    #[tokio::test]
     async fn handling_response_works_when_essence_of_accepted_header_is_matched() {
         let mut server = mockito::Server::new_async().await;
         let url = server.url();
 
         let mock = server
-            .mock("GET", "/test")
+            .mock("GET", "/")
             .with_status(200)
-            .with_header(CONTENT_TYPE.as_str(), MIME_TYPE_TEXT_HTML_WITH_CHARSET)
+            .with_header(CONTENT_TYPE.as_str(), MIME_TYPE_TEXT_PLAIN_WITH_CHARSET)
             .with_body("Hello World!")
             .create();
 
         let request = HttpRequest {
-            url: Url::parse("http://example.org").unwrap(),
+            url: Url::parse(&url).unwrap(),
             method: Method::GET,
-            headers: vec![(ACCEPT, HeaderValue::from_static(MIME_TYPE_TEXT_HTML))]
+            headers: vec![(ACCEPT, HeaderValue::from_static(MIME_TYPE_TEXT_PLAIN))]
                 .into_iter()
                 .collect(),
             body: vec![],
@@ -565,7 +475,10 @@ mod tests {
             .async_call(HttpRequest {
                 url: Url::parse(format!("{url}/test").as_str()).unwrap(),
                 method: Method::POST,
-                headers: Default::default(),
+                headers: HeaderMap::from_iter(vec![(
+                    ACCEPT,
+                    HeaderValue::from_static(MIME_TYPE_JSON),
+                )]),
                 body: serde_json::to_vec(&json!({"hello":"world"})).unwrap(),
             })
             .await

@@ -19,7 +19,7 @@ rust-version = "1.79"
 common-macros = { path = "./common-macros" }
 
 oid4vci = { git = "ssh://git@git.slock.it/open-source/oid4vci-rs.git", rev = "c76f89f4" }
-oid4vp = { git = "ssh://git@git.slock.it/open-source/oid4vp-rs.git", rev = "d54901ef" }
+oid4vp = { git = "ssh://git@git.slock.it/open-source/oid4vp-rs.git", rev = "f14b7fc9" }
 sd-jwt-rs = { git = "ssh://git@git.slock.it/open-source/sd-jwt-rust.git", rev = "05e6866e" }
 
 did_peer = { tag = "0.65.0", git = "https://github.com/hyperledger/aries-vcx" }
@@ -44,6 +44,9 @@ async-trait = "0.1.81"
 strum_macros = "0.26.4"
 strum = { version = "0.26.3", features = ["derive"] }
 reqwest = { version = "0.11", features = ["rustls-tls"] }
+reqwest-middleware = "0.1.1"
+reqwest-tracing = "0.2.0"
+task-local-extensions = "0.1.1"
 uuid = { version = "1.10.0", features = ["v4"] }
 url = "=2.5.2"
 anyhow = "1.0.86"
