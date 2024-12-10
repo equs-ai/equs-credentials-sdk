@@ -458,11 +458,13 @@ pub mod utils {
     use crate::inmem::kms::{KeyHandle, LocalKms};
     use crate::inmem::nonce::LocalNonceGenerator;
     use crate::inmem::vault::InMemVault;
+    use crate::kms::MockKms;
     use crate::kms::{CreateOptions, KeyID, KeyType, Kms};
     use crate::nonce::Nonce;
     use crate::utils::http::test::mock_http_req_async_predicate;
     use crate::utils::test_utils;
     use crate::utils::test_utils::create_did_and_key_metadata;
+    use crate::utils::test_utils::failed_signer_key;
     use crate::vault::{CredentialEntry, Vault};
     use crate::vc;
     use crate::vc::core::KeyMetadata;
@@ -752,10 +754,17 @@ pub mod utils {
         HolderService::new(inner, UniversalResolver::new(), http_client, kms, None)
     }
 
-    pub async fn verifier_service() -> (impl Verifier, String) {
+    async fn create_verifier_service(invalid_key_id: bool) -> (impl Verifier, String) {
         let kms = LocalKms::new();
         let nonce_gen = LocalNonceGenerator::default();
         let (did, key_metadata) = create_did_and_key_metadata(&kms).await;
+
+        let mut key_metadata = key_metadata;
+
+        if invalid_key_id {
+            key_metadata.kid = "invalid_key_id".to_string();
+        }
+
         let inner = vc::core::VerifierService::new(&did);
         let sub_syntax_types = SubjectSyntaxTypesSupported(vec!["did:key".to_string()]);
 
@@ -771,6 +780,37 @@ pub mod utils {
             did.clone(),
             key_metadata,
             Some(client_metadata),
+        );
+
+        (verifier, did)
+    }
+
+    pub async fn verifier_service() -> (impl Verifier, String) {
+        create_verifier_service(false).await
+    }
+
+    pub async fn verifier_service_with_invalid_kid() -> (impl Verifier, String) {
+        create_verifier_service(true).await
+    }
+
+    pub async fn verifier_service_with_signer_error() -> (impl Verifier, String) {
+        let kms = LocalKms::new();
+        let (did, key_metadata) = create_did_and_key_metadata(&kms).await;
+        let key_handle = kms.get(&key_metadata.kid).await.unwrap();
+
+        let mut kms_mock = MockKms::new();
+        kms_mock
+            .expect_get()
+            .returning(move |_| Ok(failed_signer_key(key_handle.clone())));
+
+        let verifier = VerifierService::new(
+            vc::core::VerifierService::new(&did),
+            kms_mock,
+            UniversalResolver::new(),
+            LocalNonceGenerator::default(),
+            did.clone(),
+            key_metadata,
+            None,
         );
 
         (verifier, did)

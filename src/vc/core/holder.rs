@@ -46,12 +46,7 @@ where
     KH: kms::KeyHandle,
     V: vault::Vault,
 {
-    #[instrument(
-        level = Level::TRACE,
-        skip(self),
-        err(),
-        ret(),
-    )]
+    #[instrument(level = Level::TRACE, skip(self), err(), ret())]
     async fn request_credential(
         &self,
         credential_offer: &CredentialOffer,
@@ -103,12 +98,7 @@ where
         Ok(credential_request)
     }
 
-    #[instrument(
-        level = Level::TRACE,
-        skip(self),
-        err(),
-        ret(),
-    )]
+    #[instrument(level = Level::TRACE, skip(self), err(), ret())]
     async fn store_credential(
         &self,
         credential: &Credential,
@@ -127,12 +117,7 @@ where
         Ok(id)
     }
 
-    #[instrument(
-        level = Level::TRACE,
-        skip(self),
-        err(),
-        ret(),
-    )]
+    #[instrument(level = Level::TRACE, skip(self), err(), ret())]
     async fn verify_credential(&self, credential: &Credential) -> Result<()> {
         trace!(?credential);
 
@@ -150,12 +135,7 @@ where
         }
     }
 
-    #[instrument(
-        level = Level::TRACE,
-        skip(self),
-        err(),
-        ret(),
-    )]
+    #[instrument(level = Level::TRACE, skip(self), err(), ret())]
     async fn create_presentation_auto(
         &self,
         nonce: &Nonce,
@@ -174,12 +154,7 @@ where
         Ok(presentation)
     }
 
-    #[instrument(
-        level = Level::TRACE,
-        skip(self),
-        err(),
-        ret(),
-    )]
+    #[instrument(level = Level::TRACE, skip(self), err(), ret())]
     async fn find_vcs_for_presentation(
         &self,
         presentation_input: &PresentationInput,
@@ -198,12 +173,7 @@ where
         Ok(credentials.into_iter().collect())
     }
 
-    #[instrument(
-        level = Level::TRACE,
-        skip(self),
-        err(),
-        ret(),
-    )]
+    #[instrument(level = Level::TRACE, skip(self), err(), ret())]
     async fn create_presentation(
         &self,
         nonce: &Nonce,
@@ -254,10 +224,7 @@ where
     KH: kms::KeyHandle,
     V: vault::Vault,
 {
-    #[instrument(
-        level = Level::TRACE,
-        skip(kms, vault),
-    )]
+    #[instrument(level = Level::TRACE, skip(kms, vault))]
     pub fn new(kms: KMS, vault: V, metadata: HolderMetadata) -> Self {
         debug!(holder_metadata = ?metadata);
 
@@ -269,12 +236,7 @@ where
         }
     }
 
-    #[instrument(
-        level = Level::TRACE,
-        skip_all,
-        err(),
-        ret(),
-    )]
+    #[instrument(level = Level::TRACE, skip_all, err(), ret())]
     fn resolve_proof_format(
         &self,
         supported_proofs: Option<HashMap<pop::Format, Vec<Alg>>>,
@@ -301,11 +263,7 @@ where
         Ok(fmt)
     }
 
-    #[instrument(
-        level = Level::TRACE,
-        skip(self),
-        err(),
-    )]
+    #[instrument(level = Level::TRACE, skip(self), err())]
     async fn resolve_key_metadata(&self, key_metadata: &KeyMetadata) -> Result<(DIDURL, KH)> {
         let did_url = DIDURL::from_str(&key_metadata.did_url).map_err(|_| {
             InvalidDIDUrlSnafu {
@@ -322,11 +280,7 @@ where
         Ok((did_url, kh))
     }
 
-    #[instrument(
-        level = Level::TRACE,
-        skip(self),
-        ret(),
-    )]
+    #[instrument(level = Level::TRACE, skip(self), ret())]
     fn resolve_filters(&self, input: &PresentationInput) -> Vec<CredentialFilter> {
         trace!(presentation_input = ?input);
 
@@ -396,6 +350,28 @@ mod tests {
         assert_eq!(request.cred_def_id, CRED_DEF_ID);
         case.assert_proof_of_possession(request.proof, &nonce, &key_metadata.did_url)
             .await;
+    }
+
+    #[tokio::test]
+    async fn credential_request_fails_in_case_of_kms_error() {
+        let kms = LocalKms::new();
+        let vault = InMemVault::new();
+        let (_, key_metadata) = create_did_and_key_metadata(&kms).await;
+
+        let key_metadata = KeyMetadata {
+            kid: "invalid_key_id".to_string(),
+            ..key_metadata
+        };
+
+        let holder = holder_service(kms, vault);
+        let offer = sample_cred_def_offer(&CredTestCase::sd_jwt());
+        let nonce = random_nonce().await;
+
+        let result = holder
+            .request_credential(&offer, &nonce, &key_metadata)
+            .await;
+
+        assert!(matches!(result.err().unwrap(), Error::KMS { .. }));
     }
 
     #[rstest]
