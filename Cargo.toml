@@ -31,6 +31,7 @@ serde_json = "1.0.120"
 ssi = "0.7.0"
 time = { version = "0.3.29", features = ["serde"] }
 serde = { version = "1.0.204", features = ["derive"] }
+serde_urlencoded = "0.7.1"
 did-method-key = "0.2.2"
 did-web = "0.2.2"
 ssi-dids = "0.1.1"
@@ -65,7 +66,6 @@ async-rwlock = { version = "1.3.0", optional = true }
 ecdsa = { version = "0.16.9", optional = true }
 
 [dev-dependencies]
-serde_urlencoded = "0.7.1"
 tokio = { version = "1.25.0", features = ["macros"] }
 mockall = "0.13.0"
 mockito = "1.5.0"
