@@ -8,7 +8,7 @@ use crate::vc::core::PresentationInput;
 use crate::vc::oid4vp::internal_error::{
     AuthorizationResponseSnafu, CredentialNotFoundSnafu, DidUrlParseSnafu, HttpClientSnafu,
     IdTokenGenerationSnafu, IdTokenMetadataNotFoundSnafu, IdTokenParseSnafu, JsonSnafu, KMSSnafu,
-    PresentationExchangeSnafu, VCSnafu,
+    ParseSnafu, PresentationExchangeSnafu, VCSnafu,
 };
 use crate::vc::oid4vp::metadata::default_wallet_metadata;
 use crate::vc::oid4vp::signer::Signer;
@@ -267,8 +267,17 @@ where
         ret(),
     )]
     async fn submit_auth_error_resp(&self, response_uri: &Url, body: &ProtocolError) -> Result<()> {
-        let body = serde_json::to_vec(body).context(JsonSnafu)?;
-        let req = utils::http::generate_post_req(response_uri, MimeType::AppFormUrlEnc, body);
+        let body = serde_urlencoded::to_string(body).map_err(|e| {
+            ParseSnafu {
+                details: format!("could not serialize protocol error into form-urlencoded: {e}"),
+            }
+            .build()
+        })?;
+        let req = utils::http::generate_post_req(
+            response_uri,
+            MimeType::AppFormUrlEnc,
+            body.into_bytes(),
+        );
 
         let _ = self
             .http_client
@@ -796,7 +805,7 @@ mod tests {
             Method::POST,
             build_url(VERIFIER_URL, "auth"),
             |req| {
-                let err: ProtocolError = serde_json::from_slice(req.body.as_slice()).unwrap();
+                let err: ProtocolError = serde_urlencoded::from_bytes(req.body.as_slice()).unwrap();
                 assert_eq!(err.error_type(), &ErrorType::VpFormatsNotSupported);
                 assert!(err
                     .description()
@@ -851,7 +860,7 @@ mod tests {
             Method::POST,
             build_url(VERIFIER_URL, "auth"),
             |req| {
-                let err: ProtocolError = serde_json::from_slice(req.body.as_slice()).unwrap();
+                let err: ProtocolError = serde_urlencoded::from_bytes(req.body.as_slice()).unwrap();
                 assert_eq!(err.error_type(), &ErrorType::AccessDenied);
                 assert_eq!(
                     err.description(),

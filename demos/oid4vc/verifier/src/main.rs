@@ -125,9 +125,14 @@ async fn presentation_response(
     state: web::Data<AppState>,
     req: web::Form<HashMap<String, String>>,
 ) -> HttpResponse {
-    if !req.contains_key("vp_token") {
-        println!("{:?}", req);
-        return HttpResponse::BadRequest().finish();
+    if req.contains_key("error") {
+        println!(
+            "Received authorization error response: error = {}, error_description = {}",
+            req.0.get("error").unwrap(),
+            req.0.get("error_description").unwrap_or(&"".to_string())
+        );
+
+        return HttpResponse::Ok().finish();
     }
 
     let wallet_auth_resp = auth_resp_from_submitted_form(&req);
