@@ -1,17 +1,21 @@
-use super::ReqwestClient;
-use crate::http::{HttpSnafu, Result};
-use crate::reqwest::middleware::ValidatorMiddleware;
-use crate::reqwest::validators::content_size::ContentSizeLimiter;
-use crate::reqwest::validators::content_type::ContentTypeValidator;
 use reqwest::redirect::Policy;
 use reqwest::Client;
 use reqwest_tracing::TracingMiddleware;
 use tracing::{instrument, Level};
 
+use super::ReqwestClient;
+use crate::http::{HttpSnafu, Result};
+use crate::reqwest::middleware::ValidatorMiddleware;
+use crate::reqwest::validators::content_size::ContentSizeLimiter;
+use crate::reqwest::validators::content_type::ContentTypeValidator;
+
+pub type Certificate = reqwest::Certificate;
+
 #[derive(Debug)]
 pub struct ReqwestClientBuilder {
     content_size_limiter: ContentSizeLimiter,
     insecure: bool,
+    trusted_root_certs: Vec<Certificate>,
 }
 
 impl ReqwestClientBuilder {
@@ -20,6 +24,7 @@ impl ReqwestClientBuilder {
         Self {
             content_size_limiter: ContentSizeLimiter::unlimited(),
             insecure: false,
+            trusted_root_certs: vec![],
         }
     }
 
@@ -69,6 +74,32 @@ impl ReqwestClientBuilder {
         self
     }
 
+    /// Adds a trusted root certificate.
+    ///
+    /// This can be used to connect to a server that has a self-signed
+    /// certificate for example.
+    ///
+    /// # Arguments
+    ///
+    /// * `cert` - A `Certificate` the trusted root certificate.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use agent_sdk::reqwest::builder::{ Certificate, ReqwestClientBuilder };
+    ///
+    /// let cert = Certificate::from_pem("-----BEGIN CERTIFICATE-----...".as_bytes()).unwrap();
+    /// let builder = ReqwestClientBuilder::new()
+    ///     .add_trusted_root_certificate(cert)
+    ///     .build();
+    /// ```
+    #[cfg(debug_assertions)]
+    #[instrument(level = Level::TRACE, ret())]
+    pub fn add_trusted_root_certificate(mut self, cert: Certificate) -> Self {
+        self.trusted_root_certs.push(cert);
+        self
+    }
+
     /// Enables the HTTP client to make insecure `http` calls.
     ///
     /// This method configures the HTTP client to allow connections over the non-secure
@@ -88,6 +119,7 @@ impl ReqwestClientBuilder {
     ///
     /// Returns an instance of `Self` with the `insecure` option enabled.
     ///
+    #[cfg(debug_assertions)]
     #[instrument(level = Level::TRACE, ret())]
     pub fn insecure(mut self) -> Self {
         self.insecure = true;
@@ -137,18 +169,22 @@ impl ReqwestClientBuilder {
                     .build()
                 })?
         } else {
-            Client::builder()
+            let mut builder = Client::builder()
                 .https_only(true)
                 .use_rustls_tls()
                 .min_tls_version(reqwest::tls::Version::TLS_1_2)
-                .redirect(Policy::none())
+                .redirect(Policy::none());
+
+            for cert in self.trusted_root_certs {
+                builder = builder.add_root_certificate(cert)
+            }
+
+            builder.build().map_err(|err| {
+                HttpSnafu {
+                    details: err.to_string(),
+                }
                 .build()
-                .map_err(|err| {
-                    HttpSnafu {
-                        details: err.to_string(),
-                    }
-                    .build()
-                })?
+            })?
         };
 
         let client_with_middleware = reqwest_middleware::ClientBuilder::new(client)
