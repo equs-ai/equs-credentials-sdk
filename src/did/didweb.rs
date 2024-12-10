@@ -225,6 +225,7 @@ mod tests {
     use crate::kms;
     use crate::kms::KeyType;
     use crate::kms::Kms;
+    use crate::utils::test_utils::no_jwk_key;
     use rstest::rstest;
     use serde_json::json;
 
@@ -318,12 +319,22 @@ mod tests {
             .await
             .unwrap();
 
-        println!("{invalid_did}");
         let result = DIDWeb::generate_did_document(invalid_did, &key);
 
         assert!(matches!(
             result.err().unwrap(),
             Error::InvalidDidFormat { .. }
+        ));
+    }
+
+    #[tokio::test]
+    async fn did_doc_generating_fails_on_invalid_jwk() {
+        let did = "did:web:test.example.com";
+        let result = DIDWeb::generate_did_document(did, &no_jwk_key());
+
+        assert!(matches!(
+            result.err().unwrap(),
+            Error::DidDocGeneration { .. }
         ));
     }
 }

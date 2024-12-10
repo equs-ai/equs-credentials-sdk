@@ -351,6 +351,7 @@ mod tests {
     use crate::kms;
     use crate::kms::KeyType;
     use crate::kms::Kms;
+    use crate::utils::test_utils::no_jwk_key;
     use rstest::rstest;
 
     #[rstest]
@@ -425,6 +426,16 @@ mod tests {
             doc.clone().unwrap().verification_method.unwrap()[0].get_id(did),
             format!("{did}#key-0")
         );
+    }
+
+    #[tokio::test]
+    async fn did_peer_4_generating_fails_on_invalid_jwk() {
+        let result = DIDPeer::generate_did_peer4(&no_jwk_key(), KeyType::P256);
+
+        assert!(matches!(
+            result.err().unwrap(),
+            crate::did::Error::DidDocGeneration { .. }
+        ));
     }
 
     #[rstest]

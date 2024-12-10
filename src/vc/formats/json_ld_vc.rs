@@ -464,6 +464,7 @@ mod tests {
     use crate::kms::KeyType;
     use crate::nonce::NonceGenerator;
     use crate::utils::test_utils::create_did_url_and_key_handle;
+    use crate::utils::test_utils::{failed_signer_key, no_jwk_key};
     use crate::vc::formats::Error;
     use rstest::rstest;
     use serde_json::json;
@@ -491,7 +492,6 @@ mod tests {
         let kms = LocalKms::new();
         let (hld_did_url, hld_kh) = create_did_url_and_key_handle(&kms, KeyType::P256).await;
         let (iss_did_url, iss_kh) = create_did_url_and_key_handle(&kms, iss_key_type).await;
-        let iss_jwk = iss_kh.clone().jwk().unwrap();
 
         let metadata = VCMetadata::new(
             vec![
@@ -505,8 +505,8 @@ mod tests {
 
         let vc = JsonLdAPI::create_vc(
             claims,
-            (&iss_did_url, iss_kh.clone()),
-            (&hld_did_url, hld_kh.clone()),
+            (&iss_did_url, iss_kh),
+            (&hld_did_url, hld_kh),
             metadata,
         )
         .await
@@ -553,11 +553,70 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn issuance_fails_in_case_of_signer_error() {
+        let kms = LocalKms::new();
+        let (hld_did_url, hld_kh) = create_did_url_and_key_handle(&kms, KeyType::P256).await;
+        let (iss_did_url, iss_kh) = create_did_url_and_key_handle(&kms, KeyType::P256).await;
+
+        let metadata = VCMetadata::new(
+            vec![
+                "https://www.w3.org/2018/credentials/v1".to_string(),
+                "https://w3id.org/citizenship/v1".to_string(),
+            ],
+            vec!["PermanentResidentCard".to_string()],
+        );
+
+        let claims = JsonLdAPI::resolve_claims(&sample_claims()).unwrap();
+
+        let result = JsonLdAPI::create_vc(
+            claims,
+            (&iss_did_url, failed_signer_key(iss_kh)),
+            (&hld_did_url, hld_kh),
+            metadata,
+        )
+        .await;
+
+        assert!(matches!(
+            result.err().unwrap(),
+            crate::vc::formats::Error::Signing { .. }
+        ));
+    }
+
+    #[tokio::test]
+    async fn issuance_fails_in_case_of_jwk_error() {
+        let kms = LocalKms::new();
+        let (hld_did_url, hld_kh) = create_did_url_and_key_handle(&kms, KeyType::P256).await;
+        let (iss_did_url, iss_kh) = create_did_url_and_key_handle(&kms, KeyType::P256).await;
+
+        let metadata = VCMetadata::new(
+            vec![
+                "https://www.w3.org/2018/credentials/v1".to_string(),
+                "https://w3id.org/citizenship/v1".to_string(),
+            ],
+            vec!["PermanentResidentCard".to_string()],
+        );
+
+        let claims = JsonLdAPI::resolve_claims(&sample_claims()).unwrap();
+
+        let result = JsonLdAPI::create_vc(
+            claims,
+            (&iss_did_url, no_jwk_key()),
+            (&hld_did_url, hld_kh),
+            metadata,
+        )
+        .await;
+
+        assert!(matches!(
+            result.err().unwrap(),
+            crate::vc::formats::Error::KeyTypeNotSupported { .. }
+        ));
+    }
+
+    #[tokio::test]
     async fn vc_issuance_fails_when_claims_can_not_be_expanded() {
         let kms = LocalKms::new();
         let (hld_did_url, hld_kh) = create_did_url_and_key_handle(&kms, KeyType::P256).await;
         let (iss_did_url, iss_kh) = create_did_url_and_key_handle(&kms, KeyType::P256).await;
-        let iss_jwk = iss_kh.clone().jwk().unwrap();
 
         let metadata = VCMetadata::new(
             vec![
@@ -584,8 +643,8 @@ mod tests {
 
         let vc_issuance_result = JsonLdAPI::create_vc(
             claims,
-            (&iss_did_url, iss_kh.clone()),
-            (&hld_did_url, hld_kh.clone()),
+            (&iss_did_url, iss_kh),
+            (&hld_did_url, hld_kh),
             metadata,
         )
         .await;
@@ -607,7 +666,6 @@ mod tests {
         let kms = LocalKms::new();
         let (hld_did_url, hld_kh) = create_did_url_and_key_handle(&kms, holder_key_type).await;
         let (iss_did_url, iss_kh) = create_did_url_and_key_handle(&kms, KeyType::P256).await;
-        let iss_jwk = iss_kh.clone().jwk().unwrap();
 
         let metadata = VCMetadata::new(
             vec![
@@ -621,7 +679,7 @@ mod tests {
 
         let vc = JsonLdAPI::create_vc(
             claims,
-            (&iss_did_url, iss_kh.clone()),
+            (&iss_did_url, iss_kh),
             (&hld_did_url, hld_kh.clone()),
             metadata,
         )
@@ -630,15 +688,10 @@ mod tests {
 
         let nonce = LocalNonceGenerator::default().generate().await.unwrap();
 
-        let presentation = JsonLdAPI::create_vp(
-            &vc,
-            hld_kh.clone(),
-            &nonce,
-            "verifier_id",
-            VPMetadata::new(),
-        )
-        .await
-        .unwrap();
+        let presentation =
+            JsonLdAPI::create_vp(&vc, hld_kh, &nonce, "verifier_id", VPMetadata::new())
+                .await
+                .unwrap();
 
         JsonLdAPI::verify_vp(
             &presentation,
@@ -674,6 +727,84 @@ mod tests {
         assert!(proof.contains_key("verificationMethod"));
         assert!(proof.contains_key("created"));
         assert!(proof.contains_key("jws"));
+    }
+
+    #[tokio::test]
+    async fn presentation_fails_in_case_of_signer_error() {
+        let kms = LocalKms::new();
+        let (hld_did_url, hld_kh) = create_did_url_and_key_handle(&kms, KeyType::P256).await;
+        let (iss_did_url, iss_kh) = create_did_url_and_key_handle(&kms, KeyType::P256).await;
+
+        let metadata = VCMetadata::new(
+            vec![
+                "https://www.w3.org/2018/credentials/v1".to_string(),
+                "https://w3id.org/citizenship/v1".to_string(),
+            ],
+            vec!["PermanentResidentCard".to_string()],
+        );
+
+        let claims = JsonLdAPI::resolve_claims(&sample_claims()).unwrap();
+
+        let vc = JsonLdAPI::create_vc(
+            claims,
+            (&iss_did_url, iss_kh),
+            (&hld_did_url, hld_kh.clone()),
+            metadata,
+        )
+        .await
+        .unwrap();
+
+        let nonce = LocalNonceGenerator::default().generate().await.unwrap();
+
+        let result = JsonLdAPI::create_vp(
+            &vc,
+            failed_signer_key(hld_kh),
+            &nonce,
+            "verifier_id",
+            VPMetadata::new(),
+        )
+        .await;
+
+        assert!(matches!(
+            result.err().unwrap(),
+            crate::vc::formats::Error::Signing { .. }
+        ));
+    }
+
+    #[tokio::test]
+    async fn presentation_fails_in_case_of_jwk_error() {
+        let kms = LocalKms::new();
+        let (hld_did_url, hld_kh) = create_did_url_and_key_handle(&kms, KeyType::P256).await;
+        let (iss_did_url, iss_kh) = create_did_url_and_key_handle(&kms, KeyType::P256).await;
+
+        let metadata = VCMetadata::new(
+            vec![
+                "https://www.w3.org/2018/credentials/v1".to_string(),
+                "https://w3id.org/citizenship/v1".to_string(),
+            ],
+            vec!["PermanentResidentCard".to_string()],
+        );
+
+        let claims = JsonLdAPI::resolve_claims(&sample_claims()).unwrap();
+
+        let vc = JsonLdAPI::create_vc(
+            claims,
+            (&iss_did_url, iss_kh),
+            (&hld_did_url, hld_kh),
+            metadata,
+        )
+        .await
+        .unwrap();
+
+        let nonce = LocalNonceGenerator::default().generate().await.unwrap();
+
+        let result =
+            JsonLdAPI::create_vp(&vc, no_jwk_key(), &nonce, "verifier_id", VPMetadata::new()).await;
+
+        assert!(matches!(
+            result.err().unwrap(),
+            crate::vc::formats::Error::KeyTypeNotSupported { .. }
+        ));
     }
 
     fn sample_claims() -> Value {

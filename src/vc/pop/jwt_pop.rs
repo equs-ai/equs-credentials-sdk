@@ -26,12 +26,7 @@ pub struct SignerWrapper<S: SigningKey> {
 
 #[async_trait]
 impl<S: SigningKey> oid4vci::proof_of_possession::Signer for SignerWrapper<S> {
-    #[instrument(
-        level = Level::TRACE,
-        skip(self),
-        err(),
-        ret(),
-    )]
+    #[instrument(level = Level::TRACE, skip(self), err(), ret())]
     async fn sign(&self, data: &[u8]) -> Result<Vec<u8>, ssi::jws::Error> {
         self.key
             .sign(data)
@@ -44,12 +39,7 @@ pub struct JwtProofOfPossession {}
 
 #[async_trait]
 impl pop::ProofOfPossession<String> for JwtProofOfPossession {
-    #[instrument(
-        level = Level::TRACE,
-        skip(key),
-        err(),
-        ret(),
-    )]
+    #[instrument(level = Level::TRACE, skip(key), err(), ret())]
     async fn generate<S>(
         did_url: &DIDURL,
         key: S,
@@ -82,10 +72,7 @@ impl pop::ProofOfPossession<String> for JwtProofOfPossession {
         pop.to_jwt_with_signer(sgn).await.context(ConversionSnafu)
     }
 
-    #[instrument(
-        level = Level::TRACE,
-        err(),
-    )]
+    #[instrument(level = Level::TRACE, err())]
     async fn verify(
         proof: String,
         nonce: &Nonce,
@@ -121,11 +108,7 @@ impl pop::ProofOfPossession<String> for JwtProofOfPossession {
         Ok((did_url, Box::new(hld_key)))
     }
 
-    #[instrument(
-        level = Level::TRACE,
-        err(),
-        ret(),
-    )]
+    #[instrument(level = Level::TRACE, err(), ret())]
     fn alg(proof: &String) -> Result<Alg, Error> {
         let (header, _) = jws::decode_unverified(proof).context(JWSSnafu)?;
 
@@ -135,21 +118,12 @@ impl pop::ProofOfPossession<String> for JwtProofOfPossession {
 }
 
 impl crypto::Key for JWK {
-    #[instrument(
-        level = Level::TRACE,
-        skip_all,
-        err(),
-        ret(),
-    )]
+    #[instrument(level = Level::TRACE, skip_all, err(), ret())]
     fn pub_key(&self) -> Result<Vec<u8>, crypto::Error> {
         unimplemented!()
     }
 
-    #[instrument(
-        level = Level::TRACE,
-        skip_all,
-        ret(),
-    )]
+    #[instrument(level = Level::TRACE, skip_all, ret())]
     fn jwk(&self) -> Option<JWK> {
         Some(self.to_owned())
     }

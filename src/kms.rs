@@ -1,6 +1,8 @@
 use crate::crypto;
 use async_trait::async_trait;
 use common_macros::DebugError;
+#[cfg(test)]
+use mockall::automock;
 use snafu::{Location, Snafu};
 use std::fmt::Debug;
 use strum_macros::{Display, EnumString, IntoStaticStr};
@@ -75,6 +77,7 @@ pub trait KeyHandle: crypto::SigningKey + crypto::VerifyingKey + crypto::Key + C
 /// Should be implemented by any adapter to be used with `ASDK`.
 ///
 /// Supports key's creation and retrieving the `KeyHandle` with support of basic `Crypto`.
+#[cfg_attr(test, automock)]
 #[async_trait]
 pub trait Kms<KH>: Send + Sync
 where
@@ -128,11 +131,7 @@ where
     /// # Errors
     ///
     /// See [Kms::create] and [Kms::get] errors.
-    #[instrument(
-        level = Level::TRACE,
-        skip(self),
-        err(),
-    )]
+    #[instrument(level = Level::TRACE, skip(self), err())]
     async fn create_and_handle(&self, kt: KeyType, opts: CreateOptions) -> Result<(KeyID, KH)> {
         let kid = self.create(kt, opts).await?;
         info!("created a key {kid}");

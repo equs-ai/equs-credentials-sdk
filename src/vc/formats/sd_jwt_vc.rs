@@ -40,22 +40,13 @@ pub struct SignerWrapper<S: Signer> {
 
 #[async_trait]
 impl<S: Signer> sd_jwt_rs::signer::SDJWTSigner for SignerWrapper<S> {
-    #[instrument(
-        level = Level::TRACE,
-        skip(self),
-        ret(),
-    )]
+    #[instrument(level = Level::TRACE, skip(self), ret())]
     fn algorithm(&self) -> &str {
         let alg = self.signer.alg();
         alg.into()
     }
 
-    #[instrument(
-        level = Level::TRACE,
-        skip(self),
-        err(),
-        ret(),
-    )]
+    #[instrument(level = Level::TRACE, skip(self), err(), ret())]
     async fn sign(&self, message: &[u8]) -> sd_jwt_rs::error::Result<String> {
         let signed = self.signer.sign(message).await;
         signed
@@ -67,20 +58,14 @@ impl<S: Signer> sd_jwt_rs::signer::SDJWTSigner for SignerWrapper<S> {
 pub struct DidKeyResolver<R: DIDResolver>(R);
 
 impl<R: DIDResolver> DidKeyResolver<R> {
-    #[instrument(
-        level = Level::TRACE,
-        skip_all
-    )]
+    #[instrument(level = Level::TRACE, skip_all)]
     pub fn new(did_resolver: R) -> DidKeyResolver<R> {
         DidKeyResolver(did_resolver)
     }
 }
 
 impl Default for DidKeyResolver<UniversalResolver> {
-    #[instrument(
-        level = Level::TRACE,
-        skip_all
-    )]
+    #[instrument(level = Level::TRACE, skip_all)]
     fn default() -> Self {
         DidKeyResolver::new(UniversalResolver::new())
     }
@@ -88,11 +73,7 @@ impl Default for DidKeyResolver<UniversalResolver> {
 
 #[async_trait]
 impl<R: DIDResolver> KeyResolver for DidKeyResolver<R> {
-    #[instrument(
-        level = Level::TRACE,
-        skip(self),
-        err(),
-    )]
+    #[instrument(level = Level::TRACE, skip(self), err())]
     async fn resolve(
         &self,
         did_url: &str,
@@ -130,12 +111,7 @@ pub struct VPMetadata {
 }
 
 impl HasClaims<Claims> for Credential {
-    #[instrument(
-        level = Level::TRACE,
-        skip_all,
-        err(),
-        ret(),
-    )]
+    #[instrument(level = Level::TRACE, skip_all, err(), ret())]
     fn parse_claims(&self) -> Result<Claims> {
         let mut value = decode_sd_jwt(self.to_string(), SDJWTSerializationFormat::Compact)
             .map_err(|err| {
@@ -154,12 +130,7 @@ impl HasClaims<Claims> for Credential {
 }
 
 impl HasCredential<Credential> for Presentation {
-    #[instrument(
-        level = Level::TRACE,
-        skip_all,
-        err(),
-        ret(),
-    )]
+    #[instrument(level = Level::TRACE, skip_all, err(), ret())]
     fn get_credential(&self) -> Result<Credential> {
         // NOTE: returns basic VC w/o disclosures
         let stripped = SdJwtAPI::strip_disclosures(self)?;
@@ -170,10 +141,7 @@ impl HasCredential<Credential> for Presentation {
 pub struct SdJwtAPI;
 
 impl SdJwtAPI {
-    #[instrument(
-        level = Level::TRACE,
-        ret(),
-    )]
+    #[instrument(level = Level::TRACE, ret())]
     fn prepare_claims(
         mut claims: Claims,
         iss_did_url: &DIDURL,
@@ -194,10 +162,7 @@ impl SdJwtAPI {
         Value::Object(claims)
     }
 
-    #[instrument(
-        level = Level::TRACE,
-        ret(),
-    )]
+    #[instrument(level = Level::TRACE, ret())]
     fn extra_headers(iss_did_url: &DIDURL) -> HashMap<String, String> {
         let mut headers = HashMap::new();
         headers.insert("typ".to_string(), SD_JWT_VC.to_string());
@@ -206,11 +171,7 @@ impl SdJwtAPI {
         headers
     }
 
-    #[instrument(
-        level = Level::TRACE,
-        err(),
-        ret(),
-    )]
+    #[instrument(level = Level::TRACE, err(), ret())]
     pub fn strip_disclosures(vc: &Credential) -> Result<&str> {
         let mut parts = vc.split('~');
 
@@ -222,10 +183,7 @@ impl SdJwtAPI {
         })
     }
 
-    #[instrument(
-        level = Level::TRACE,
-        ret(),
-    )]
+    #[instrument(level = Level::TRACE, ret())]
     pub fn verify_signature(vc: &Credential, jwk: &JWK) -> Result<()> {
         let stripped = Self::strip_disclosures(vc)?;
 
@@ -234,11 +192,7 @@ impl SdJwtAPI {
         Ok(())
     }
 
-    #[instrument(
-        level = Level::TRACE,
-        err(),
-        ret()
-    )]
+    #[instrument(level = Level::TRACE, err(), ret())]
     fn get_vm_from_did_doc(did_doc: &DIDDoc) -> Result<&VerificationMethodMap> {
         let vm_methods = did_doc.verification_method.as_ref().ok_or(
             ParsingSnafu {
@@ -271,11 +225,7 @@ impl SdJwtAPI {
         }
     }
 
-    #[instrument(
-        level = Level::TRACE,
-        err(),
-        ret(),
-    )]
+    #[instrument(level = Level::TRACE, err(), ret())]
     async fn get_vm_from_jwt(jwt: &str) -> Result<VerificationMethodMap> {
         let (header, payload) = ssi::jws::decode_unverified(jwt).context(JWSSnafu)?;
         let key_resolver = DidKeyResolver::default();
@@ -338,10 +288,7 @@ impl SdJwtAPI {
         Ok(vm)
     }
 
-    #[instrument(
-        level = Level::TRACE,
-        ret(),
-    )]
+    #[instrument(level = Level::TRACE, ret())]
     pub fn resolve_disclosures(input: &PresentationInput) -> Result<Map<String, Value>> {
         trace!(presentation_input = ?input);
 
@@ -413,10 +360,7 @@ impl GetExpirationClaim<Claims, time::OffsetDateTime> for SdJwtAPI {
 
 #[async_trait]
 impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata, Value> for SdJwtAPI {
-    #[instrument(
-        level = Level::TRACE,
-        ret(),
-    )]
+    #[instrument(level = Level::TRACE, ret())]
     fn resolve_claims(value: &Value) -> Result<Claims> {
         let claims = value.as_object().ok_or_else(|| {
             ClaimsResolvingSnafu {
@@ -428,12 +372,7 @@ impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata, Value> for Sd
         Ok(claims.to_owned())
     }
 
-    #[instrument(
-        level = Level::TRACE,
-        skip(issuer_data, holder_data),
-        err(),
-        ret(),
-    )]
+    #[instrument(level = Level::TRACE, skip(issuer_data, holder_data), err(), ret())]
     async fn create_vc<S, K>(
         claims: Claims,
         issuer_data: (&DIDURL, S),
@@ -486,12 +425,7 @@ impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata, Value> for Sd
             })
     }
 
-    #[instrument(
-        level = Level::TRACE,
-        skip(holder_signer),
-        err(),
-        ret(),
-    )]
+    #[instrument(level = Level::TRACE, skip(holder_signer), err(), ret())]
     async fn create_vp<S>(
         credential: &Credential,
         holder_signer: S,
@@ -530,11 +464,7 @@ impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata, Value> for Sd
             })
     }
 
-    #[instrument(
-        level = Level::TRACE,
-        err(),
-        ret(),
-    )]
+    #[instrument(level = Level::TRACE, err(), ret())]
     async fn verify_vc(credential: &Credential, opts: VerifyOptions) -> Result<()> {
         let plain_jwt = Self::strip_disclosures(credential)?;
         let vm = Self::get_vm_from_jwt(plain_jwt).await?;
@@ -549,11 +479,7 @@ impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata, Value> for Sd
         Self::verify_signature(credential, &jwk)
     }
 
-    #[instrument(
-        level = Level::TRACE,
-        err(),
-        ret(),
-    )]
+    #[instrument(level = Level::TRACE, err(), ret())]
     async fn verify_vp(
         presentation: &Presentation,
         nonce: &Nonce,
@@ -590,7 +516,7 @@ mod tests {
     use crate::kms::{CreateOptions, KeyHandle, KeyType, Kms};
     use crate::nonce::{Nonce, NonceGenerator};
     use crate::utils::serde::Helpers;
-    use crate::utils::test_utils::{create_did_url_and_key_handle, no_jwk_key};
+    use crate::utils::test_utils::{create_did_url_and_key_handle, failed_signer_key, no_jwk_key};
     use crate::vc::formats::sd_jwt_vc::{Claims, Credential, SdJwtAPI, VCMetadata, VPMetadata};
     use crate::vc::formats::{Error, HasClaims, HasCredential, VerifyOptions, API};
     use rstest::rstest;
@@ -604,12 +530,12 @@ mod tests {
     async fn sd_jwt_work_correctly_for_all_supported_keys(#[case] kt: KeyType) {
         let kms = LocalKms::new();
         let (hld_did_url, hld_kh) = create_did_url_and_key_handle(&kms, kt.clone()).await;
-        let (iss_did_url, iss_kh) = create_did_url_and_key_handle(&kms, kt.clone()).await;
-        let iss_jwk = iss_kh.clone().jwk().unwrap();
+        let (iss_did_url, iss_kh) = create_did_url_and_key_handle(&kms, kt).await;
+        let iss_jwk = iss_kh.jwk().unwrap();
 
         let vc = SdJwtAPI::create_vc(
             sample_claims(),
-            (&iss_did_url, iss_kh.clone()),
+            (&iss_did_url, iss_kh),
             (&hld_did_url, hld_kh.clone()),
             sample_vc_metadata(),
         )
@@ -627,15 +553,9 @@ mod tests {
         assert_eq!(claims.get("vct").unwrap(), "https://issuer.net/cred_schema");
 
         let nonce = random_nonce().await;
-        let vp = SdJwtAPI::create_vp(
-            &vc,
-            hld_kh.clone(),
-            &nonce,
-            "verifier-id",
-            sample_vp_metadata(),
-        )
-        .await
-        .unwrap();
+        let vp = SdJwtAPI::create_vp(&vc, hld_kh, &nonce, "verifier-id", sample_vp_metadata())
+            .await
+            .unwrap();
 
         let vc_from_vp = vp.get_credential().unwrap();
         SdJwtAPI::verify_signature(&vc_from_vp, &iss_jwk).unwrap();
@@ -648,6 +568,77 @@ mod tests {
         assert!(disclosed.contains_key("name"));
         assert_eq!(disclosed["name"], "John");
         assert!(!disclosed.contains_key("surname"));
+    }
+
+    #[tokio::test]
+    async fn sd_jwt_issuance_fails_in_case_of_signer_error() {
+        let kms = LocalKms::new();
+        let (hld_did_url, hld_kh) = create_did_url_and_key_handle(&kms, KeyType::P256).await;
+        let (iss_did_url, iss_kh) = create_did_url_and_key_handle(&kms, KeyType::P256).await;
+
+        let result = SdJwtAPI::create_vc(
+            sample_claims(),
+            (&iss_did_url, failed_signer_key(iss_kh)),
+            (&hld_did_url, hld_kh),
+            sample_vc_metadata(),
+        )
+        .await;
+
+        assert!(matches!(
+            result.err().unwrap(),
+            crate::vc::formats::Error::Signing { .. }
+        ));
+    }
+
+    #[tokio::test]
+    async fn sd_jwt_issuance_fails_in_case_of_jwk_error() {
+        let kms = LocalKms::new();
+        let (hld_did_url, hld_kh) = create_did_url_and_key_handle(&kms, KeyType::P256).await;
+        let (iss_did_url, iss_kh) = create_did_url_and_key_handle(&kms, KeyType::P256).await;
+
+        let result = SdJwtAPI::create_vc(
+            sample_claims(),
+            (&iss_did_url, iss_kh),
+            (&hld_did_url, no_jwk_key()),
+            sample_vc_metadata(),
+        )
+        .await;
+
+        assert!(matches!(
+            result.err().unwrap(),
+            crate::vc::formats::Error::KeyTypeNotSupported { .. }
+        ));
+    }
+
+    #[tokio::test]
+    async fn sd_jwt_presentation_fails_in_case_of_signer_error() {
+        let kms = LocalKms::new();
+        let (hld_did_url, hld_kh) = create_did_url_and_key_handle(&kms, KeyType::P256).await;
+        let (iss_did_url, iss_kh) = create_did_url_and_key_handle(&kms, KeyType::P256).await;
+
+        let vc = SdJwtAPI::create_vc(
+            sample_claims(),
+            (&iss_did_url, iss_kh),
+            (&hld_did_url, hld_kh.clone()),
+            sample_vc_metadata(),
+        )
+        .await
+        .unwrap();
+
+        let nonce = random_nonce().await;
+        let result = SdJwtAPI::create_vp(
+            &vc,
+            failed_signer_key(hld_kh),
+            &nonce,
+            "verifier-id",
+            sample_vp_metadata(),
+        )
+        .await;
+
+        assert!(matches!(
+            result.err().unwrap(),
+            crate::vc::formats::Error::Presentation { .. }
+        ));
     }
 
     #[tokio::test]
@@ -870,7 +861,7 @@ mod tests {
         SdJwtAPI::create_vc(
             sample_claims(),
             (&iss_did_url, i_kh),
-            (&hld_did_url, h_kh.clone()),
+            (&hld_did_url, h_kh),
             sample_vc_metadata(),
         )
         .await

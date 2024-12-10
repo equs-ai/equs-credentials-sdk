@@ -12,11 +12,7 @@ pub(super) struct Signer<S: SigningKey> {
 }
 
 impl<S: SigningKey> Signer<S> {
-    #[instrument(
-        level = Level::TRACE,
-        skip_all,
-        err(),
-    )]
+    #[instrument(level = Level::TRACE, skip_all, err())]
     pub(super) fn new(signer: S) -> crate::vc::oid4vp::verifier::Result<Signer<S>> {
         let key = signer.jwk().ok_or(
             ParseSnafu {
@@ -39,30 +35,17 @@ impl<S: SigningKey> Debug for Signer<S> {
 impl<S: SigningKey> oid4vp::signer::Signer for Signer<S> {
     type Error = anyhow::Error;
 
-    #[instrument(
-        level = Level::TRACE,
-        skip(self),
-        ret(),
-    )]
+    #[instrument(level = Level::TRACE, skip(self), ret())]
     fn alg(&self) -> anyhow::Result<String, Self::Error> {
         Ok(self.signer.alg().to_string())
     }
 
-    #[instrument(
-        level = Level::TRACE,
-        skip(self),
-        ret(),
-    )]
+    #[instrument(level = Level::TRACE, skip(self), ret())]
     fn jwk(&self) -> anyhow::Result<JWK, Self::Error> {
         Ok(self.key.to_owned())
     }
 
-    #[instrument(
-        level = Level::TRACE,
-        skip(self),
-        err(),
-        ret(),
-    )]
+    #[instrument(level = Level::TRACE, skip(self), err(), ret())]
     async fn sign(&self, payload: &[u8]) -> anyhow::Result<Vec<u8>, Self::Error> {
         let signature = self.signer.sign(payload).await?;
         Ok(signature)

@@ -1,4 +1,4 @@
-use crate::crypto::{Alg, Key, Signer, SigningKey};
+use crate::crypto::{Alg, Key, Signer, SigningKey, Verifier, VerifyingKey};
 use crate::did::didkey::DIDKey;
 use crate::did::{DIDResolver, DID, DIDURL};
 use crate::inmem::kms::LocalKms;
@@ -67,7 +67,8 @@ pub async fn create_did_url_and_key_handle_kid(
     (did_url, kid, kh)
 }
 
-pub fn no_jwk_key() -> impl SigningKey {
+pub fn no_jwk_key() -> impl KeyHandle {
+    #[derive(Clone)]
     struct MockKey {}
 
     impl Key for MockKey {
@@ -91,12 +92,21 @@ pub fn no_jwk_key() -> impl SigningKey {
         }
     }
 
+    #[async_trait]
+    impl Verifier for MockKey {
+        async fn verify(&self, data: &[u8], signature: &[u8]) -> crypto::Result<()> {
+            unimplemented!()
+        }
+    }
+
     impl SigningKey for MockKey {}
+    impl VerifyingKey for MockKey {}
+    impl KeyHandle for MockKey {}
 
     MockKey {}
 }
 
-pub fn failed_signer_key(key: impl Key + 'static) -> impl SigningKey {
+pub fn failed_signer_key(key: impl Key + 'static) -> impl KeyHandle {
     struct MockKey {
         key: Box<dyn Key>,
     }
@@ -124,7 +134,26 @@ pub fn failed_signer_key(key: impl Key + 'static) -> impl SigningKey {
         }
     }
 
+    #[async_trait]
+    impl Verifier for MockKey {
+        async fn verify(&self, data: &[u8], signature: &[u8]) -> crypto::Result<()> {
+            unimplemented!()
+        }
+    }
+
+    impl Clone for MockKey {
+        fn clone(&self) -> Self {
+            unimplemented!()
+        }
+
+        fn clone_from(&mut self, source: &Self) {
+            unimplemented!()
+        }
+    }
+
     impl SigningKey for MockKey {}
+    impl VerifyingKey for MockKey {}
+    impl KeyHandle for MockKey {}
 
     MockKey { key: Box::new(key) }
 }

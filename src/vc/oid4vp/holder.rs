@@ -61,10 +61,7 @@ where
     KH: KeyHandle,
     KMS: Kms<KH>,
 {
-    #[instrument(
-        level = Level::TRACE,
-        skip(holder, did_resolver, http_client, kms),
-    )]
+    #[instrument(level = Level::TRACE, skip(holder, did_resolver, http_client, kms))]
     pub fn new(
         holder: HL,
         did_resolver: D,
@@ -86,12 +83,7 @@ where
         }
     }
 
-    #[instrument(
-        level = Level::TRACE,
-        skip(self),
-        err(),
-        ret(),
-    )]
+    #[instrument(level = Level::TRACE, skip(self), err(), ret())]
     async fn submit_presentation(
         &self,
         presentations: Vec<RequestedPresentation>,
@@ -126,11 +118,7 @@ where
         Ok(redirect_url)
     }
 
-    #[instrument(
-        level = Level::TRACE,
-        err(),
-        ret(),
-    )]
+    #[instrument(level = Level::TRACE, err(), ret())]
     fn create_auth_response(
         presentation_response: PresentationResponse,
         id_token: Option<IdToken>,
@@ -154,12 +142,7 @@ where
         Ok(auth_resp)
     }
 
-    #[instrument(
-        level = Level::TRACE,
-        skip(self),
-        err(),
-        ret(),
-    )]
+    #[instrument(level = Level::TRACE, skip(self), err(), ret())]
     async fn generate_id_token(
         &self,
         auth_request: &ResolvedAuthRequest,
@@ -194,12 +177,7 @@ where
         Ok(id_token)
     }
 
-    #[instrument(
-        level = Level::TRACE,
-        skip(self),
-        err(),
-        ret(),
-    )]
+    #[instrument(level = Level::TRACE, skip(self), err(), ret())]
     async fn create_presentation_by_input(
         &self,
         credentials: &Vec<CredentialEntry>,
@@ -238,12 +216,7 @@ where
         CredentialNotFoundSnafu.fail()?
     }
 
-    #[instrument(
-        level = Level::TRACE,
-        skip(self),
-        err(),
-        ret(),
-    )]
+    #[instrument(level = Level::TRACE, skip(self), err(), ret())]
     async fn resolve_auth_resp_endpoint(&self, request_uri: &Url) -> Result<Url> {
         let auth_req =
             AuthorizationRequest::from_url(request_uri, &self.metadata.authorization_endpoint().0)?;
@@ -260,12 +233,7 @@ where
         Ok(url)
     }
 
-    #[instrument(
-        level = Level::TRACE,
-        skip(self),
-        err(),
-        ret(),
-    )]
+    #[instrument(level = Level::TRACE, skip(self), err(), ret())]
     async fn submit_auth_error_resp(&self, response_uri: &Url, body: &ProtocolError) -> Result<()> {
         let body = serde_urlencoded::to_string(body).map_err(|e| {
             ParseSnafu {
@@ -351,12 +319,7 @@ where
     KH: KeyHandle,
     KMS: Kms<KH>,
 {
-    #[instrument(
-        level = Level::TRACE,
-        skip(self),
-        err(),
-        ret(),
-    )]
+    #[instrument(level = Level::TRACE, skip(self), err(), ret())]
     async fn get_authorization_request(&self, request_uri: &Url) -> Result<ResolvedAuthRequest> {
         let aro_result = self
             .validate_request(request_uri, |req| self.http_client.async_call(req))
@@ -392,12 +355,7 @@ where
         })
     }
 
-    #[instrument(
-        level = Level::TRACE,
-        skip(self),
-        err(),
-        ret(),
-    )]
+    #[instrument(level = Level::TRACE, skip(self), err(), ret())]
     async fn present_credentials_auto(
         &self,
         auth_request: &ResolvedAuthRequest,
@@ -436,12 +394,7 @@ where
         Ok(redirect_url)
     }
 
-    #[instrument(
-        level = Level::TRACE,
-        skip(self),
-        err(),
-        ret()
-    )]
+    #[instrument(level = Level::TRACE, skip(self), err(), ret())]
     async fn find_vcs_for_presentation(
         &self,
         auth_request: &ResolvedAuthRequest,
@@ -463,12 +416,7 @@ where
         Ok(creds_map)
     }
 
-    #[instrument(
-        level = Level::TRACE,
-        skip(self),
-        err(),
-        ret(),
-    )]
+    #[instrument(level = Level::TRACE, skip(self), err(), ret())]
     async fn present_credentials(
         &self,
         auth_request: &ResolvedAuthRequest,
@@ -499,12 +447,7 @@ where
         Ok(redirect_url)
     }
 
-    #[instrument(
-        level = Level::TRACE,
-        skip(self),
-        err(),
-        ret(),
-    )]
+    #[instrument(level = Level::TRACE, skip(self), err(), ret())]
     async fn decline_authorization_request(
         &self,
         auth_request: &ResolvedAuthRequest,
@@ -542,12 +485,7 @@ where
     KH: KeyHandle,
     KMS: Kms<KH>,
 {
-    #[instrument(
-        level = Level::TRACE,
-        skip(self),
-        err(),
-        ret(),
-    )]
+    #[instrument(level = Level::TRACE, skip(self), err(), ret())]
     async fn did(
         &self,
         decoded_request: &AuthorizationRequestObject,
@@ -563,12 +501,7 @@ where
         .await
     }
 
-    #[instrument(
-        level = Level::TRACE,
-        skip(self),
-        err(),
-        ret(),
-    )]
+    #[instrument(level = Level::TRACE, skip(self), err(), ret())]
     async fn redirect_uri(
         &self,
         decoded_request: &AuthorizationRequestObject,
@@ -605,11 +538,13 @@ mod tests {
     use crate::http::MockHttpClient;
     use crate::inmem::kms::LocalKms;
     use crate::inmem::vault::InMemVault;
+    use crate::kms::MockKms;
     use crate::kms::{CreateOptions, KeyType, Kms};
     use crate::utils::http::test::{
         mock_http_fn, mock_http_fn_with_plain_text_resp, mock_http_req_predicate,
     };
     use crate::utils::test_utils::create_did_and_key_metadata;
+    use crate::utils::test_utils::{failed_signer_key, no_jwk_key};
     use crate::vc;
     use crate::vc::core::KeyMetadata;
     use crate::vc::oid4vp::protocol_error::ErrorType;
@@ -620,7 +555,8 @@ mod tests {
         build_url, holder_service, validate_claims, PresentationTestCase,
     };
     use crate::vc::oid4vp::{
-        AuthorizationResponseMetadata, Holder, IdTokenMetadata, ProtocolError, ResponseType,
+        AuthorizationResponseMetadata, Error, Holder, IdTokenMetadata, InternalError,
+        ProtocolError, ResponseType,
     };
     use crate::vc::presentation_exchange::ClaimFormatMap;
     use crate::vc::{Claims, Credential};
@@ -829,6 +765,7 @@ mod tests {
             .await
             .unwrap();
     }
+
     #[rstest]
     #[should_panic(expected = "Please provide the metadata required to generate the ID token")]
     #[case::id_token_metadata_not_declared(siop_id_token_metadata_not_declared_case())]
@@ -847,6 +784,105 @@ mod tests {
             .present_credentials_auto(&test_case.request, &test_case.response_metadata)
             .await
             .unwrap();
+    }
+
+    #[tokio::test]
+    async fn present_credential_with_siop_fails_in_case_of_signer_error() {
+        let kms = LocalKms::new();
+        let (_, key_metadata) = create_did_and_key_metadata(&kms).await;
+        let test_case = siop_case(key_metadata.clone());
+
+        let http_client = MockHttpClient::new();
+        let key_handle = kms.get(&key_metadata.kid).await.unwrap();
+
+        let mut kms_mock = MockKms::new();
+        kms_mock
+            .expect_get()
+            .returning(move |_| Ok(failed_signer_key(key_handle.clone())));
+
+        let inner = vc::core::HolderService::new(
+            kms.clone(),
+            InMemVault::new(),
+            vc::core::HolderMetadata {
+                client_id: "client_id".to_string(),
+            },
+        );
+
+        let holder = crate::vc::oid4vp::holder::HolderService::new(
+            inner,
+            crate::did::universal::UniversalResolver::new(),
+            http_client,
+            kms_mock,
+            None,
+        );
+
+        let key_handle = kms.get(&key_metadata.kid).await.unwrap();
+        let credential_mapping = test_case
+            .build_credential_mapping((key_metadata.kid, key_handle))
+            .await;
+
+        let result = holder
+            .present_credentials(
+                &test_case.request,
+                &credential_mapping,
+                &test_case.response_metadata,
+            )
+            .await;
+
+        assert!(matches!(
+            result.err().unwrap(),
+            Error::Internal {
+                source: InternalError::IdTokenGeneration { .. }
+            }
+        ));
+    }
+
+    #[tokio::test]
+    async fn present_credential_with_siop_fails_in_case_of_jwk_error() {
+        let kms = LocalKms::new();
+        let (_, key_metadata) = create_did_and_key_metadata(&kms).await;
+        let test_case = siop_case(key_metadata.clone());
+
+        let http_client = MockHttpClient::new();
+        let key_handle = kms.get(&key_metadata.kid).await.unwrap();
+
+        let mut kms_mock = MockKms::new();
+        kms_mock.expect_get().returning(move |_| Ok(no_jwk_key()));
+
+        let inner = vc::core::HolderService::new(
+            kms,
+            InMemVault::new(),
+            vc::core::HolderMetadata {
+                client_id: "client_id".to_string(),
+            },
+        );
+
+        let holder = crate::vc::oid4vp::holder::HolderService::new(
+            inner,
+            crate::did::universal::UniversalResolver::new(),
+            http_client,
+            kms_mock,
+            None,
+        );
+
+        let credential_mapping = test_case
+            .build_credential_mapping((key_metadata.kid, key_handle))
+            .await;
+
+        let result = holder
+            .present_credentials(
+                &test_case.request,
+                &credential_mapping,
+                &test_case.response_metadata,
+            )
+            .await;
+
+        assert!(matches!(
+            result.err().unwrap(),
+            Error::Internal {
+                source: InternalError::Parse { .. }
+            }
+        ));
     }
 
     #[should_panic(expected = "Credential not found")]

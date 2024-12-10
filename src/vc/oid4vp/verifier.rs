@@ -74,10 +74,7 @@ where
     D: DIDResolver,
     NG: NonceGenerator,
 {
-    #[instrument(
-        level = Level::TRACE,
-        skip(verifier, kms, nonce_generator, did_resolver),
-    )]
+    #[instrument(level = Level::TRACE, skip(verifier, kms, nonce_generator, did_resolver))]
     pub fn new(
         verifier: VF,
         kms: KMS,
@@ -115,11 +112,7 @@ where
     D: DIDResolver,
     NG: NonceGenerator,
 {
-    #[instrument(
-        level = Level::TRACE,
-        skip(self)
-        ret(),
-    )]
+    #[instrument(level = Level::TRACE, skip(self), ret())]
     async fn create_authorization_request(
         &self,
         presentation_definition: &PresentationDefinition,
@@ -155,12 +148,7 @@ where
         Ok((request_url, session))
     }
 
-    #[instrument(
-        level = Level::TRACE,
-        skip(self),
-        err(),
-        ret(),
-    )]
+    #[instrument(level = Level::TRACE, skip(self), err(), ret())]
     async fn verify_presentation(
         &self,
         auth_response: &AuthorizationResponse,
@@ -200,12 +188,7 @@ where
     D: DIDResolver,
     NG: NonceGenerator,
 {
-    #[instrument(
-        level = Level::TRACE,
-        skip(self),
-        err(),
-        ret(),
-    )]
+    #[instrument(level = Level::TRACE, skip(self), err(), ret())]
     async fn validate_id_token(&self, id_token: &str, nonce: &Nonce) -> Result<IdToken> {
         let header: ssi::jws::Header = ssi::jws::decode_unverified(id_token)
             .map_err(|e| {
@@ -307,12 +290,7 @@ where
         Ok((vm.controller, jwk))
     }
 
-    #[instrument(
-        level = Level::TRACE,
-        skip(self),
-        err(),
-        ret(),
-    )]
+    #[instrument(level = Level::TRACE, skip(self), err(), ret())]
     async fn build_authorization_request(
         &self,
         presentation_definition: &PresentationDefinition,
@@ -366,12 +344,7 @@ where
         }
     }
 
-    #[instrument(
-        level = Level::TRACE,
-        skip(self),
-        err(),
-        ret(),
-    )]
+    #[instrument(level = Level::TRACE, skip(self), err(), ret())]
     async fn build_authorization_request_helper(
         &self,
         presentation_definition: &PresentationDefinition,
@@ -433,12 +406,7 @@ where
         Ok((auth_request_url, auth_req_jwt))
     }
 
-    #[instrument(
-        level = Level::TRACE,
-        skip(self),
-        err(),
-        ret(),
-    )]
+    #[instrument(level = Level::TRACE, skip(self), err(), ret())]
     async fn do_verify_presentation(
         &self,
         presentation_definition: &PresentationDefinition,
@@ -506,9 +474,11 @@ mod tests {
     use crate::vc::oid4vp::tests::fixtures::VERIFIER_URL;
     use crate::vc::oid4vp::tests::fixtures::{multi_presentation, single_presentation, NONCE};
     use crate::vc::oid4vp::tests::utils::{
-        build_url, validate_claims, verifier_service, VerificationTestCase,
+        build_url, validate_claims, verifier_service, verifier_service_with_invalid_kid,
+        verifier_service_with_signer_error, VerificationTestCase,
     };
     use crate::vc::oid4vp::verifier::VP_TOKEN;
+    use crate::vc::oid4vp::InternalError;
     use crate::vc::oid4vp::{PassAuthRequestObject, PresentationSession, ResponseType, Verifier};
     use crate::vc::presentation_exchange::PresentationDefinition;
     use crate::vc::Claims;
@@ -543,6 +513,56 @@ mod tests {
 
         assert_eq!(hash_query.get("client_id").unwrap(), &did);
         assert_eq!(hash_query.get("request_uri").unwrap(), request_uri.as_str());
+    }
+
+    #[tokio::test]
+    async fn auth_request_generating_fails_when_key_id_is_not_valid() {
+        let presentation_definition = single_presentation::presentation_definition();
+        let request_uri = build_url(VERIFIER_URL, "request");
+        let auth_resp_options = auth_response_options(build_url(VERIFIER_URL, "auth"));
+
+        let (verifier, did) = verifier_service_with_invalid_kid().await;
+
+        let result = verifier
+            .create_authorization_request(
+                &presentation_definition,
+                &auth_resp_options,
+                &PassAuthRequestObject::ByReference(request_uri),
+                None,
+            )
+            .await;
+
+        assert!(matches!(
+            result.err().unwrap(),
+            Error::Internal {
+                source: InternalError::KMS { .. }
+            }
+        ));
+    }
+
+    #[tokio::test]
+    async fn auth_request_generating_fails_in_case_of_signer_error() {
+        let presentation_definition = single_presentation::presentation_definition();
+        let request_uri = build_url(VERIFIER_URL, "request");
+        let auth_resp_options = auth_response_options(build_url(VERIFIER_URL, "auth"));
+
+        let (verifier, did) = verifier_service_with_signer_error().await;
+
+        let result = verifier
+            .create_authorization_request(
+                &presentation_definition,
+                &auth_resp_options,
+                &PassAuthRequestObject::ByReference(request_uri),
+                None,
+            )
+            .await;
+
+        assert!(matches!(
+            result.err().unwrap(),
+            Error::Internal {
+                source: InternalError::Oid4VpLib { .. }
+            }
+        ));
     }
 
     #[tokio::test]

@@ -15,12 +15,7 @@ pub struct VerifierService {
 
 #[async_trait]
 impl Verifier for VerifierService {
-    #[instrument(
-        level = Level::TRACE,
-        skip(self),
-        err(),
-        ret(),
-    )]
+    #[instrument(level = Level::TRACE, skip(self), err(), ret())]
     async fn verify_presentation(
         &self,
         nonce: &Nonce, // same as in create_presentation
@@ -45,9 +40,7 @@ impl Verifier for VerifierService {
 }
 
 impl VerifierService {
-    #[instrument(
-        level = Level::TRACE,
-    )]
+    #[instrument(level = Level::TRACE)]
     pub fn new(verifier_id: &str) -> Self {
         Self {
             verifier_id: verifier_id.to_owned(),
