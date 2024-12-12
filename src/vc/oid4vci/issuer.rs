@@ -2,6 +2,7 @@ use crate::http::HttpClient;
 use crate::nonce::{Nonce, NonceData, NonceGenerator};
 use crate::vc;
 use crate::vc::core::{CredentialRequestData, Proof as AsdkProof, Proof};
+use crate::vc::formats::sd_jwt_vc::{EXP_CLAIM, IAT_CLAIM, NBF_CLAIM, VCT_CLAIM};
 use crate::vc::oid4vci::internal_error::{
     ClaimsValidationSnafu, NoScopeSetSnafu, NonceGenerationSnafu, ParseSnafu, UrlParseSnafu,
     VCSnafu,
@@ -379,7 +380,7 @@ where
                 match metadata.claims() {
                     Some(claims) => {
                         let mut supported: Vec<&str> = claims.keys().map(|k| k.as_str()).collect();
-                        supported.push("vct");
+                        supported.extend_from_slice(&[VCT_CLAIM, NBF_CLAIM, IAT_CLAIM, EXP_CLAIM]);
 
                         supported
                     }
@@ -574,12 +575,14 @@ impl From<vc::Credential> for CoreProfilesResponse {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::ops::Add;
 
     use crate::http::MockHttpClient;
     use crate::inmem::kms::LocalKms;
     use crate::inmem::nonce::LocalNonceGenerator;
     use crate::utils::http::test::mock_http_req_body;
     use crate::utils::test_utils::create_did_and_key_metadata;
+    use crate::vc::formats::sd_jwt_vc::SdJwtAPI;
     use crate::vc::oid4vci::issuer::TokenValidation::ByJwks;
     use crate::vc::oid4vci::metadata::convert_metadata;
     use crate::vc::oid4vci::tests::fixtures::{
@@ -640,6 +643,46 @@ mod tests {
             .await;
 
         iss_result.unwrap();
+    }
+
+    #[tokio::test]
+    async fn issue_credential_succeeds_when_time_based_claims_are_provided() {
+        let issuer = issuer_service(None, None).await;
+        let mut claims = sample_claims().as_object_mut().unwrap().to_owned();
+
+        let exp = OffsetDateTime::now_utc()
+            .add(Duration::days(365))
+            .unix_timestamp();
+        let nbf = OffsetDateTime::now_utc()
+            .add(Duration::days(1))
+            .unix_timestamp();
+        let iat = OffsetDateTime::now_utc().unix_timestamp();
+        claims.insert(EXP_CLAIM.to_string(), serde_json::Value::from(exp));
+        claims.insert(NBF_CLAIM.to_string(), serde_json::Value::from(nbf));
+        claims.insert(IAT_CLAIM.to_string(), serde_json::Value::from(iat));
+
+        let iss_result = issuer
+            .issue_credential(
+                &SampleCredentialRequest::with_sdjwtvc_conf(),
+                ACCESS_TOKEN,
+                &serde_json::Value::Object(claims.to_owned()),
+                &mut sample_session_with_nonce(),
+            )
+            .await;
+
+        let resp = iss_result.unwrap();
+
+        if let ResponseEnum::Immediate(CoreProfilesResponse::SDJWTVC(resp)) =
+            resp.additional_profile_fields()
+        {
+            let claims_str = SdJwtAPI::strip_disclosures(resp.credential()).unwrap();
+            let claims: Map<String, Value> = decode_unverified(claims_str).unwrap();
+            assert_eq!(claims.get(EXP_CLAIM).unwrap(), exp);
+            assert_eq!(claims.get(NBF_CLAIM).unwrap(), nbf);
+            assert_eq!(claims.get(IAT_CLAIM).unwrap(), iat);
+        } else {
+            unreachable!()
+        }
     }
 
     #[tokio::test]
