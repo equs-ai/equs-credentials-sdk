@@ -12,8 +12,10 @@ use agent_sdk::vc::oid4vci::{
     AuthorizationCodeGrant, CredDefMetadata, CredDefMetadataProfile, CredentialOfferGrants,
     CredentialRequest, IssuanceSession, IssuerMetadata,
 };
+use std::ops::Add;
 
 use actix_web::cookie::time;
+use actix_web::cookie::time::OffsetDateTime;
 use agent_sdk::did::didweb::DIDWeb;
 use agent_sdk::did::DIDDoc;
 use agent_sdk::inmem::nonce::LocalNonceGenerator;
@@ -206,6 +208,31 @@ async fn get_user_attributes(cred_def: &CredDefMetadata) -> Result<Value, Error>
             "codes": [ claims_json["postal_code"][0], "10001" ]
         });
         claims_json["country"] = serde_json::Value::from("US");
+
+        let _ = claims_json.as_object_mut().is_some_and(|m| {
+            m.insert(
+                "exp".to_string(),
+                serde_json::Value::from(
+                    OffsetDateTime::now_utc()
+                        .add(time::Duration::days(365))
+                        .unix_timestamp(),
+                ),
+            );
+            m.insert(
+                "nbf".to_string(),
+                serde_json::Value::from(
+                    OffsetDateTime::now_utc()
+                        .add(time::Duration::days(1))
+                        .unix_timestamp(),
+                ),
+            );
+            m.insert(
+                "iat".to_string(),
+                serde_json::Value::from(OffsetDateTime::now_utc().unix_timestamp()),
+            );
+            true
+        });
+
         return Ok(claims_json);
     }
 
