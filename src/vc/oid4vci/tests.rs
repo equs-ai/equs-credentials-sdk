@@ -1,7 +1,7 @@
 pub mod fixtures {
     use crate::nonce::{Nonce, NonceData};
+    use crate::vc::claims::Claims;
     use crate::vc::oid4vci::{CredDefMetadata, CredentialRequest, CredentialResponse};
-    use crate::vc::Claims;
     use oauth2::AccessToken;
     use oid4vci::core::metadata::IssuerMetadata;
     use oid4vci::core::profiles::w3c::ldp::CredentialDefinitionLD;

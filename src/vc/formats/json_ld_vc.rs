@@ -3,11 +3,13 @@ use crate::did::universal::UniversalResolver;
 use crate::did::{DIDResolver, DIDURL};
 use crate::nonce::Nonce;
 use crate::utils::b64;
+use crate::vc::claims::Claims;
+use crate::vc::claims::Error as ClaimsError;
 use crate::vc::formats::{
-    ClaimsResolvingSnafu, CredentialCreationSnafu, FormatNotSupportedSnafu, GetExpirationClaim,
-    HasClaims, HasCredential, KeyTypeNotSupportedSnafu, MultipleCredentialsNotSupportedSnafu,
-    NoCredentialSnafu, ParsingSnafu, PresentationSnafu, ProofCompletionSnafu, Result, SigningSnafu,
-    VerifyOptions, VerifyingSnafu, API,
+    CredentialCreationSnafu, FormatNotSupportedSnafu, GetExpirationClaim, HasClaims, HasCredential,
+    KeyTypeNotSupportedSnafu, MultipleCredentialsNotSupportedSnafu, NoCredentialSnafu,
+    ParsingSnafu, PresentationSnafu, ProofCompletionSnafu, Result, SigningSnafu, VerifyOptions,
+    VerifyingSnafu, API,
 };
 use async_trait::async_trait;
 use chrono::TimeDelta;
@@ -19,9 +21,10 @@ use ssi::vc::{
 };
 use ssi_ldp::{Context, LinkedDataDocument, ProofSuite, SigningInput};
 use std::collections::HashMap;
-use tracing::{instrument, trace, Level};
+use tracing::{instrument, trace, warn, Level};
 
-pub type Claims = HashMap<String, Value>;
+use super::ClaimsSnafu;
+
 pub type Credential = ssi::vc::Credential;
 pub type Presentation = ssi::vc::Presentation;
 
@@ -111,7 +114,8 @@ impl HasClaims<Claims> for Credential {
             obj.remove("proof");
         }
 
-        JsonLdAPI::resolve_claims(&value)
+        let claims = value.try_into().context(ClaimsSnafu)?;
+        Ok(claims)
     }
 }
 
@@ -149,9 +153,20 @@ impl JsonLdAPI {
         let exp_date = JsonLdAPI::get_expiration_claim(&claims)
             .unwrap_or(VCDateTime::from(now + metadata.lifetime));
 
+        let mut claims_json: HashMap<String, Value> = HashMap::new();
+        for (k, v) in claims.claims() {
+            let json_value: core::result::Result<Value, ClaimsError> = v.clone().try_into();
+
+            if let Ok(value) = json_value {
+                claims_json.insert(k.clone(), value);
+            } else {
+                warn!("Claim value can not be transformed to json value");
+            }
+        }
+
         let credential_subject = OneOrMany::One(CredentialSubject {
             id: Some(URI::String(holder_did)),
-            property_set: Some(claims),
+            property_set: Some(claims_json),
         });
         let iss_date = VCDateTime::from(now);
         let issuer = Some(ssi::vc::Issuer::URI(URI::String(iss_did)));
@@ -216,30 +231,13 @@ impl GetExpirationClaim<Claims, VCDateTime> for JsonLdAPI {
     fn get_expiration_claim(claims: &Claims) -> Option<VCDateTime> {
         claims
             .get("expirationDate")
-            .and_then(|v| serde_json::from_value(v.to_owned()).ok())
+            .and_then(|v| v.to_owned().try_into().ok())
+            .and_then(|v| serde_json::from_value(v).ok())
     }
 }
 
 #[async_trait]
-impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata, Value> for JsonLdAPI {
-    #[instrument(level = Level::TRACE, ret())]
-    fn resolve_claims(value: &Value) -> Result<Claims> {
-        let mut claims = HashMap::new();
-
-        let val_object = value.as_object().ok_or_else(|| {
-            ClaimsResolvingSnafu {
-                details: "The value is not an object",
-            }
-            .build()
-        })?;
-
-        for (key, value) in val_object {
-            claims.insert(key.clone(), value.clone());
-        }
-
-        Ok(claims)
-    }
-
+impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata, Claims> for JsonLdAPI {
     #[instrument(level = Level::TRACE, skip(issuer_data, holder_data), err(), ret())]
     async fn create_vc<S, K>(
         claims: Claims,
@@ -422,7 +420,7 @@ impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata, Value> for Js
         nonce: &Nonce,
         verifier_id: &str,
         _opts: VerifyOptions,
-    ) -> Result<Value> {
+    ) -> Result<Claims> {
         let proof_options = ssi::vc::LinkedDataProofOptions {
             proof_purpose: Some(ssi::vc::ProofPurpose::AssertionMethod),
             ..Default::default()
@@ -445,6 +443,8 @@ impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata, Value> for Js
 
         let credential = presentation.get_credential()?;
 
+        // TODO: figure out if it is possible to avoid Credential -> Value -> Claims
+        // convertation and replace it with Credential -> Claims instead.
         let credential_json = serde_json::to_value(credential).map_err(|err| {
             VerifyingSnafu {
                 details: format!("Can not be serialized to json: {err}"),
@@ -452,7 +452,8 @@ impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata, Value> for Js
             .build()
         })?;
 
-        Ok(credential_json)
+        let claims = credential_json.try_into().context(ClaimsSnafu)?;
+        Ok(claims)
     }
 }
 
@@ -465,21 +466,10 @@ mod tests {
     use crate::nonce::NonceGenerator;
     use crate::utils::test_utils::create_did_url_and_key_handle;
     use crate::utils::test_utils::{failed_signer_key, no_jwk_key};
+    use crate::vc::claims::Claim;
     use crate::vc::formats::Error;
     use rstest::rstest;
     use serde_json::json;
-
-    #[tokio::test]
-    async fn claims_resolving_works_correctly() {
-        let claims = JsonLdAPI::resolve_claims(&json!({
-            "key_0": "value_0",
-            "key_1": [1, 2, "test"]
-        }))
-        .unwrap();
-
-        assert_eq!(claims.get("key_0").unwrap(), &json!("value_0"));
-        assert_eq!(claims.get("key_1").unwrap(), &json!([1, 2, "test"]));
-    }
 
     #[rstest]
     #[case::p256(KeyType::P256, "EcdsaSecp256r1Signature2019")]
@@ -501,10 +491,8 @@ mod tests {
             vec!["PermanentResidentCard".to_string()],
         );
 
-        let claims = JsonLdAPI::resolve_claims(&sample_claims()).unwrap();
-
         let vc = JsonLdAPI::create_vc(
-            claims,
+            sample_claims(),
             (&iss_did_url, iss_kh),
             (&hld_did_url, hld_kh),
             metadata,
@@ -522,11 +510,9 @@ mod tests {
         let proof = vc.get("proof").unwrap().as_object().unwrap().clone();
 
         let mut expected_cred_subject = sample_claims();
-        expected_cred_subject
-            .as_object_mut()
-            .unwrap()
-            .insert("id".to_string(), Value::String(hld_did_url.did.clone()));
+        expected_cred_subject.insert("id".to_string(), Claim::String(hld_did_url.did.clone()));
 
+        let expected_cred_subject: Value = expected_cred_subject.try_into().unwrap();
         assert_eq!(
             vc.get("@context").unwrap(),
             &json!([
@@ -566,10 +552,8 @@ mod tests {
             vec!["PermanentResidentCard".to_string()],
         );
 
-        let claims = JsonLdAPI::resolve_claims(&sample_claims()).unwrap();
-
         let result = JsonLdAPI::create_vc(
-            claims,
+            sample_claims(),
             (&iss_did_url, failed_signer_key(iss_kh)),
             (&hld_did_url, hld_kh),
             metadata,
@@ -596,10 +580,8 @@ mod tests {
             vec!["PermanentResidentCard".to_string()],
         );
 
-        let claims = JsonLdAPI::resolve_claims(&sample_claims()).unwrap();
-
         let result = JsonLdAPI::create_vc(
-            claims,
+            sample_claims(),
             (&iss_did_url, no_jwk_key()),
             (&hld_did_url, hld_kh),
             metadata,
@@ -637,9 +619,9 @@ mod tests {
             "commuterClassification": "C1",
             "birthCountry": "Arcadia",
             "birthDate": "1978-07-17"
-        });
-
-        let claims = JsonLdAPI::resolve_claims(&claims).unwrap();
+        })
+        .try_into()
+        .unwrap();
 
         let vc_issuance_result = JsonLdAPI::create_vc(
             claims,
@@ -675,10 +657,8 @@ mod tests {
             vec!["PermanentResidentCard".to_string()],
         );
 
-        let claims = JsonLdAPI::resolve_claims(&sample_claims()).unwrap();
-
         let vc = JsonLdAPI::create_vc(
-            claims,
+            sample_claims(),
             (&iss_did_url, iss_kh),
             (&hld_did_url, hld_kh.clone()),
             metadata,
@@ -743,10 +723,8 @@ mod tests {
             vec!["PermanentResidentCard".to_string()],
         );
 
-        let claims = JsonLdAPI::resolve_claims(&sample_claims()).unwrap();
-
         let vc = JsonLdAPI::create_vc(
-            claims,
+            sample_claims(),
             (&iss_did_url, iss_kh),
             (&hld_did_url, hld_kh.clone()),
             metadata,
@@ -785,10 +763,8 @@ mod tests {
             vec!["PermanentResidentCard".to_string()],
         );
 
-        let claims = JsonLdAPI::resolve_claims(&sample_claims()).unwrap();
-
         let vc = JsonLdAPI::create_vc(
-            claims,
+            sample_claims(),
             (&iss_did_url, iss_kh),
             (&hld_did_url, hld_kh),
             metadata,
@@ -807,7 +783,7 @@ mod tests {
         ));
     }
 
-    fn sample_claims() -> Value {
+    fn sample_claims() -> Claims {
         json!({
             "type": ["PermanentResident", "Person"],
             "givenName": "JANE",
@@ -821,5 +797,7 @@ mod tests {
             "birthCountry": "Arcadia",
             "birthDate": "1978-07-17"
         })
+        .try_into()
+        .unwrap()
     }
 }

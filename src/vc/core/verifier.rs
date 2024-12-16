@@ -1,10 +1,11 @@
 use crate::nonce::Nonce;
+use crate::vc::claims::Claims;
 use crate::vc::core::Result;
 use crate::vc::core::{FormatNotSupportedSnafu, VCSnafu, Verifier};
 use crate::vc::formats::json_ld_vc::JsonLdAPI;
 use crate::vc::formats::sd_jwt_vc::SdJwtAPI;
 use crate::vc::formats::{VerifyOptions, API};
-use crate::vc::{Claims, Presentation};
+use crate::vc::Presentation;
 use async_trait::async_trait;
 use snafu::ResultExt;
 use tracing::{instrument, Level};
@@ -72,9 +73,7 @@ mod tests {
 
         let claims = verifier.verify_presentation(&nonce, &vp).await.unwrap();
 
-        let claims = claims.as_object().unwrap();
-
-        case.assert_verified_claims(claims).await;
+        case.assert_verified_claims(&claims).await;
     }
 
     #[rstest]

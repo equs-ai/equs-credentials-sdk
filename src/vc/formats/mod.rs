@@ -134,6 +134,13 @@ pub enum Error {
         #[snafu(implicit)]
         location: Location,
     },
+
+    #[snafu(display("Claims error"))]
+    Claims {
+        source: crate::vc::claims::Error,
+        #[snafu(implicit)]
+        location: Location,
+    },
 }
 
 pub type Result<T> = core::result::Result<T, Error>;
@@ -147,8 +154,6 @@ where
     C: HasClaims<CL>,
     P: HasCredential<C>,
 {
-    fn resolve_claims(value: &serde_json::Value) -> Result<CL>;
-
     async fn create_vc<S, K>(
         claims: CL,
         issuer_data: (&DIDURL, S),

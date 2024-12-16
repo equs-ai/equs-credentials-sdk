@@ -108,6 +108,7 @@ pub mod utils {
     use crate::nonce::{Nonce, NonceGenerator};
     use crate::utils::test_utils::create_did_url_and_key_handle_kid;
     use crate::vault::CredentialEntry;
+    use crate::vc::claims::Claims;
     use crate::vc::core::tests::fixtures::*;
     use crate::vc::core::{
         CredentialDefinitionData, CredentialRequest, CredentialRequestData, PresentationInput,
@@ -118,10 +119,10 @@ pub mod utils {
     use crate::vc::formats::{json_ld_vc, sd_jwt_vc, HasCredential, VerifyOptions};
     use crate::vc::pop::jwt_pop::{JwtProofOfPossession, SignerWrapper};
     use crate::vc::pop::{GenerateOptions, ProofOfPossession};
-    use crate::vc::{pop, ClaimFormat, Claims, Credential, Presentation, VCFormat, VCFormatsAPI};
+    use crate::vc::{pop, ClaimFormat, Credential, Presentation, VCFormat, VCFormatsAPI};
     use oid4vci::openidconnect;
     use oid4vci::proof_of_possession::{ProofOfPossessionBody, ProofOfPossessionController};
-    use serde_json::{json, Map, Value};
+    use serde_json::json;
     use time::{Duration, OffsetDateTime};
     use uuid::Uuid;
 
@@ -136,7 +137,7 @@ pub mod utils {
         pub protocol_data: Option<CredentialDefinitionData>,
         pub claim_format: ClaimFormat,
         pub type_: String,
-        pub claims: Value,
+        pub claims: Claims,
     }
 
     impl CredTestCase {
@@ -158,7 +159,9 @@ pub mod utils {
                     "givenName": "Jane",
                     "familyName": "Smith",
                     "birthDate": "1978-07-17"
-                }),
+                })
+                .try_into()
+                .unwrap(),
             }
         }
 
@@ -186,7 +189,9 @@ pub mod utils {
                     "commuterClassification": "C1",
                     "birthCountry": "Arcadia",
                     "birthDate": "1978-07-17"
-                }),
+                })
+                .try_into()
+                .unwrap(),
             }
         }
     }
@@ -249,17 +254,13 @@ pub mod utils {
             }
         }
 
-        pub async fn assert_verified_claims(&self, verified_claims: &Map<String, Value>) {
+        pub async fn assert_verified_claims(&self, verified_claims: &Claims) {
             let verified_claims = match &self.format {
-                VCFormat::LdpVc => verified_claims
-                    .get("credentialSubject")
-                    .unwrap()
-                    .as_object()
-                    .unwrap(),
-                _ => verified_claims,
+                VCFormat::LdpVc => verified_claims.get("credentialSubject").unwrap(),
+                _ => &verified_claims.clone().into(),
             };
 
-            let case_claims = self.claims.as_object().unwrap();
+            let case_claims = self.claims.claims();
             for (name, val) in case_claims {
                 let verified = verified_claims.get(name).unwrap();
                 assert_eq!(val, verified)
@@ -499,14 +500,9 @@ pub mod utils {
                 lifetime: Default::default(),
             };
 
-            SdJwtAPI::create_vc(
-                SdJwtAPI::resolve_claims(claims).unwrap(),
-                iss_data,
-                hld_data,
-                vc_meta,
-            )
-            .await
-            .unwrap()
+            SdJwtAPI::create_vc(claims.clone(), iss_data, hld_data, vc_meta)
+                .await
+                .unwrap()
         }
 
         async fn sd_jwt_vp(
@@ -536,14 +532,9 @@ pub mod utils {
         ) -> json_ld_vc::Credential {
             let vc_meta = json_ld_vc::VCMetadata::new(contexts.to_owned(), vc_types.to_owned());
 
-            JsonLdAPI::create_vc(
-                JsonLdAPI::resolve_claims(claims).unwrap(),
-                iss_data,
-                hld_data,
-                vc_meta,
-            )
-            .await
-            .unwrap()
+            JsonLdAPI::create_vc(claims.clone(), iss_data, hld_data, vc_meta)
+                .await
+                .unwrap()
         }
 
         async fn json_ld_vp(

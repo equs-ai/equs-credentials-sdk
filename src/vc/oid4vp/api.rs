@@ -1,9 +1,9 @@
 use crate::nonce::Nonce;
 use crate::vault::CredentialEntry;
+use crate::vc::claims::Claims;
 use crate::vc::core::KeyMetadata;
 use crate::vc::oid4vp::{InternalError, ProtocolError};
 use crate::vc::presentation_exchange::{PresentationDefinition, PresentationSubmission};
-use crate::vc::Claims;
 
 use async_trait::async_trait;
 use common_macros::DebugError;

@@ -107,12 +107,11 @@ async fn credential_issuance_and_presentation_verification() {
 
     let res_claims = ver_res.unwrap();
     println!("Presentation claims {:?}", res_claims);
-    let res_claims = res_claims.as_object().unwrap();
 
-    assert!(res_claims.contains_key("given_name"));
-    assert!(res_claims.contains_key("family_name"));
+    assert!(res_claims.get("given_name").is_some());
+    assert!(res_claims.get("family_name").is_some());
     // should return not only requested claims, but all in credential
-    assert!(res_claims.contains_key("dob"));
+    assert!(res_claims.get("dob").is_some());
 }
 
 async fn build_issuer() -> impl Issuer {

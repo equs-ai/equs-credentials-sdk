@@ -1,6 +1,7 @@
 use crate::did::DIDURL;
 use crate::kms;
 use crate::nonce::Nonce;
+use crate::vc::claims::Claims;
 use crate::vc::core::{
     AlgNotSupportedSnafu, CredDefNotFoundSnafu, CredentialOfferContent, FormatNotSupportedSnafu,
     InconsistentProtocolDataSnafu, KMSSnafu, ProofFormatNotSupportedSnafu, ProofSnafu, Result,
@@ -17,7 +18,7 @@ use crate::vc::formats::sd_jwt_vc::SdJwtAPI;
 use crate::vc::formats::API;
 use crate::vc::pop::jwt_pop::JwtProofOfPossession;
 use crate::vc::pop::ProofOfPossession;
-use crate::vc::{pop, Claims, Credential, VCFormat};
+use crate::vc::{pop, Credential, VCFormat};
 use async_trait::async_trait;
 use snafu::{ensure, ResultExt};
 use std::marker::PhantomData;
@@ -98,24 +99,26 @@ where
 
         let vc = match vc_fmt {
             VCFormat::SdJwtVc => {
-                let claims = SdJwtAPI::resolve_claims(claims).context(VCSnafu)?;
                 trace!(claims_to_issue = ?claims);
 
-                let metadata = self.sd_jwt_vc_metadata(&claims, cred_def.protocol_data.clone())?;
-                let cred =
-                    SdJwtAPI::create_vc(claims, (&iss_did, iss_key), (&hld_did, hld_key), metadata)
-                        .await
-                        .context(VCSnafu)?;
+                let metadata = self.sd_jwt_vc_metadata(claims, cred_def.protocol_data.clone())?;
+                let cred = SdJwtAPI::create_vc(
+                    claims.clone(),
+                    (&iss_did, iss_key),
+                    (&hld_did, hld_key),
+                    metadata,
+                )
+                .await
+                .context(VCSnafu)?;
 
                 Credential::SdJwt(cred)
             }
             VCFormat::LdpVc => {
-                let claims = JsonLdAPI::resolve_claims(claims).context(VCSnafu)?;
                 trace!(claims_to_issue = ?claims);
 
                 let metadata = self.json_ld_vc_metadata(cred_def.protocol_data.clone())?;
                 let cred = JsonLdAPI::create_vc(
-                    claims,
+                    claims.clone(),
                     (&iss_did, iss_key),
                     (&hld_did, hld_key),
                     metadata,

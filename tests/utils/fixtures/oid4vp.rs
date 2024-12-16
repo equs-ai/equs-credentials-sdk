@@ -1,9 +1,10 @@
+use agent_sdk::vc::claims::{Claim, Claims};
 use agent_sdk::vc::presentation_exchange::PresentationDefinition;
 use agent_sdk::vc::{JsonLdAPIVCMetadata, VCMetadata};
 use oid4vp::core::input_descriptor::InputDescriptor;
-use serde_json::{json, Value as Json, Value};
+use serde_json::json;
 
-pub type ValidateClaimsFunc = dyn Fn(Json) + Send + Sync;
+pub type ValidateClaimsFunc = dyn Fn(Claims) + Send + Sync;
 
 pub enum Oid4VpTestCredentialFormat {
     SdJwt(VCMetadata),
@@ -12,7 +13,7 @@ pub enum Oid4VpTestCredentialFormat {
 pub struct Oid4VpTestCredential {
     pub format: Oid4VpTestCredentialFormat,
     pub vc_type: &'static str,
-    pub claims: Value,
+    pub claims: Claims,
 }
 
 pub struct Oid4VpTestCase {
@@ -43,7 +44,9 @@ fn sample_jsonld_resident_card_credential() -> (Oid4VpTestCredential, InputDescr
             "givenName": "John",
             "familyName": "Doe",
             "birthDate": "09/09/1989",
-        }),
+        })
+        .try_into()
+        .unwrap(),
     };
 
     let input_descriptor = serde_json::from_value(json!(
@@ -98,7 +101,9 @@ fn sample_sdjwt_identity_credential() -> (Oid4VpTestCredential, InputDescriptor)
             "surname": "Doe",
             "address": "221B Baker Street",
             "date": "09/09/1989",
-        }),
+        })
+        .try_into()
+        .unwrap(),
     };
 
     let input_descriptor = serde_json::from_value(json!(
@@ -161,7 +166,9 @@ fn sample_sdjwt_degree_credential() -> (Oid4VpTestCredential, InputDescriptor) {
                 "name": "Bachelor of Science and Arts"
             },
             "date": "09/09/2002",
-        }),
+        })
+        .try_into()
+        .unwrap(),
     };
 
     let input_descriptor = serde_json::from_value(json!(
@@ -211,16 +218,40 @@ pub fn single_jsonld_presentation_case() -> Oid4VpTestCase {
 
     let validate: Box<ValidateClaimsFunc> = Box::new(|claims| {
         assert_eq!(
-            claims["vp_token"]["resident-card"]["credentialSubject"]["givenName"],
-            json!("John")
+            claims
+                .get("vp_token")
+                .unwrap()
+                .get("resident-card")
+                .unwrap()
+                .get("credentialSubject")
+                .unwrap()
+                .get("givenName")
+                .unwrap(),
+            &Claim::String("John".to_string())
         );
         assert_eq!(
-            claims["vp_token"]["resident-card"]["credentialSubject"]["familyName"],
-            json!("Doe")
+            claims
+                .get("vp_token")
+                .unwrap()
+                .get("resident-card")
+                .unwrap()
+                .get("credentialSubject")
+                .unwrap()
+                .get("familyName")
+                .unwrap(),
+            &Claim::String("Doe".to_string())
         );
         assert_eq!(
-            claims["vp_token"]["resident-card"]["credentialSubject"]["birthDate"],
-            json!("09/09/1989")
+            claims
+                .get("vp_token")
+                .unwrap()
+                .get("resident-card")
+                .unwrap()
+                .get("credentialSubject")
+                .unwrap()
+                .get("birthDate")
+                .unwrap(),
+            &Claim::String("09/09/1989".to_string())
         );
     });
 
@@ -241,10 +272,25 @@ pub fn single_sdjwt_presentation_case() -> Oid4VpTestCase {
 
     let validate: Box<ValidateClaimsFunc> = Box::new(|claims| {
         assert_eq!(
-            claims["vp_token"]["Identity-1"]["vct"],
-            json!("https://credentials.example.com/identity_credential")
+            claims
+                .get("vp_token")
+                .unwrap()
+                .get("Identity-1")
+                .unwrap()
+                .get("vct")
+                .unwrap(),
+            &Claim::String("https://credentials.example.com/identity_credential".to_string())
         );
-        assert_eq!(claims["vp_token"]["Identity-1"]["name"], json!("John"));
+        assert_eq!(
+            claims
+                .get("vp_token")
+                .unwrap()
+                .get("Identity-1")
+                .unwrap()
+                .get("name")
+                .unwrap(),
+            &Claim::String("John".to_string())
+        );
     });
 
     Oid4VpTestCase {
@@ -266,17 +312,46 @@ pub fn multiple_sdjwt_presentation_case() -> Oid4VpTestCase {
 
     let validate: Box<ValidateClaimsFunc> = Box::new(|claims| {
         assert_eq!(
-            claims["vp_token"]["Identity-1"]["vct"],
-            json!("https://credentials.example.com/identity_credential")
+            claims
+                .get("vp_token")
+                .unwrap()
+                .get("Identity-1")
+                .unwrap()
+                .get("vct")
+                .unwrap(),
+            &Claim::String("https://credentials.example.com/identity_credential".to_string())
         );
-        assert_eq!(claims["vp_token"]["Identity-1"]["name"], json!("John"));
         assert_eq!(
-            claims["vp_token"]["Degree-1"]["vct"],
-            json!("https://credentials.example.com/degree_credential")
+            claims
+                .get("vp_token")
+                .unwrap()
+                .get("Identity-1")
+                .unwrap()
+                .get("name")
+                .unwrap(),
+            &Claim::String("John".to_string())
         );
         assert_eq!(
-            claims["vp_token"]["Degree-1"]["degree"]["type"],
-            json!("BachelorDegree")
+            claims
+                .get("vp_token")
+                .unwrap()
+                .get("Degree-1")
+                .unwrap()
+                .get("vct")
+                .unwrap(),
+            &Claim::String("https://credentials.example.com/degree_credential".to_string())
+        );
+        assert_eq!(
+            claims
+                .get("vp_token")
+                .unwrap()
+                .get("Degree-1")
+                .unwrap()
+                .get("degree")
+                .unwrap()
+                .get("type")
+                .unwrap(),
+            &Claim::String("BachelorDegree".to_string())
         );
     });
 

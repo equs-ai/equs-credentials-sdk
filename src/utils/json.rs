@@ -1,5 +1,6 @@
+use crate::vc::claims::{Claim, Claims};
 use common_macros::DebugError;
-use serde_json::{json, Map, Value as Json, Value};
+use serde_json::{json, Value as Json, Value};
 use snafu::{Location, Snafu};
 use std::fmt::Debug;
 use tracing::{instrument, Level};
@@ -131,32 +132,33 @@ fn path_to_json_helper(
     Ok(())
 }
 
-pub fn claims_to_json_path(claims: Map<String, Value>) -> Vec<(String, String)> {
+// TODO: get rid of Claim -> String convertation since it is considered to be insecure
+pub fn claims_to_json_path(claims: Claims) -> Vec<(String, String)> {
     let mut flatten = vec![];
-    flatten_claims(&mut flatten, Value::Object(claims), "$");
+    flatten_claims(&mut flatten, &claims.into(), "$");
 
     flatten
 }
 
-fn flatten_claims(flatten: &mut Vec<(String, String)>, root: Value, parent_key: &str) {
+fn flatten_claims(flatten: &mut Vec<(String, String)>, root: &Claim, parent_key: &str) {
     match root {
-        Value::Object(obj) => {
+        Claim::Object(obj) => {
             for (key, value) in obj {
                 let key = format!("{parent_key}.{key}");
                 flatten_claims(flatten, value, &key);
             }
         }
-        Value::Array(vec) => {
+        Claim::Array(vec) => {
             for value in vec {
                 let key = format!("{parent_key}[*]");
                 flatten_claims(flatten, value, &key);
             }
         }
-        Value::String(val) => {
-            flatten.push((parent_key.to_owned(), val));
+        Claim::String(val) => {
+            flatten.push((parent_key.to_owned(), val.clone()));
         }
         _ => {
-            flatten.push((parent_key.to_owned(), root.to_string()));
+            flatten.push((parent_key.to_owned(), serde_json::to_string(&root).unwrap()));
         }
     }
 }
@@ -302,21 +304,16 @@ mod test {
             },
             "age": 28,
         })
-        .as_object()
-        .cloned()
+        .try_into()
         .unwrap();
 
         let claims = claims_to_json_path(json);
 
-        assert_eq!(
-            claims,
-            vec![
-                ("$.name".to_string(), "John".to_string()),
-                ("$.email.personal".to_string(), "work@mail.com".to_string()),
-                ("$.email.work".to_string(), "null".to_string()),
-                ("$.email.verified".to_string(), "true".to_string()),
-                ("$.age".to_string(), "28".to_string())
-            ]
-        );
+        assert_eq!(claims.len(), 5);
+        assert!(claims.contains(&("$.name".to_string(), "John".to_string())));
+        assert!(claims.contains(&("$.email.personal".to_string(), "work@mail.com".to_string())));
+        assert!(claims.contains(&("$.email.work".to_string(), "null".to_string())));
+        assert!(claims.contains(&("$.email.verified".to_string(), "true".to_string())));
+        assert!(claims.contains(&("$.age".to_string(), "28".to_string())));
     }
 }

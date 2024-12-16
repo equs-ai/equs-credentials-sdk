@@ -1,9 +1,10 @@
 use crate::http::HttpError;
 use crate::nonce::NonceData;
+use crate::vc::claims::Claims;
 use crate::vc::core::KeyMetadata;
 use crate::vc::oid4vci::internal_error::RequestSnafu;
 use crate::vc::oid4vci::{metadata, InternalError, ProtocolError};
-use crate::vc::{Claims, Credential, CredentialMetadata};
+use crate::vc::{Credential, CredentialMetadata};
 use async_trait::async_trait;
 use oauth2::AccessToken;
 use oid4vci::core::profiles::CoreProfilesOffer;

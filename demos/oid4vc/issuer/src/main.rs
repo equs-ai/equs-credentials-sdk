@@ -20,10 +20,11 @@ use agent_sdk::did::didweb::DIDWeb;
 use agent_sdk::did::DIDDoc;
 use agent_sdk::inmem::nonce::LocalNonceGenerator;
 use agent_sdk::reqwest::builder::ReqwestClientBuilder;
+use agent_sdk::vc::claims::Claims;
 use agent_sdk::vc::oid4vci;
 use keycloak::{KeycloakAdmin, KeycloakAdminToken};
 use reqwest::Url;
-use serde_json::{json, Value};
+use serde_json::json;
 use std::sync::Arc;
 
 const SERVER_URL: &str = "http://localhost:8088";
@@ -131,7 +132,7 @@ async fn did_doc(state: web::Data<AppState>) -> HttpResponse {
     HttpResponse::Ok().json(state.did_doc.clone())
 }
 
-async fn get_user_attributes(cred_def: &CredDefMetadata) -> Result<Value, Error> {
+async fn get_user_attributes(cred_def: &CredDefMetadata) -> Result<Claims, Error> {
     let vc_type = match cred_def.additional_fields() {
         CredDefMetadataProfile::SDJWTVC(m) => m.vct(),
         CredDefMetadataProfile::LDVC(m) => {
@@ -146,7 +147,9 @@ async fn get_user_attributes(cred_def: &CredDefMetadata) -> Result<Value, Error>
             "givenName": "John",
             "familyName": "Doe",
             "birthDate": "09/09/1989",
-        }));
+        })
+        .try_into()
+        .unwrap());
     }
 
     let (realm_name, user_name, keycloak_url) = (
@@ -233,10 +236,10 @@ async fn get_user_attributes(cred_def: &CredDefMetadata) -> Result<Value, Error>
             true
         });
 
-        return Ok(claims_json);
+        return Ok(claims_json.try_into().unwrap());
     }
 
-    Ok(Value::Null)
+    Ok(Claims::new())
 }
 
 async fn issuer() -> (impl oid4vci::Issuer, DIDDoc) {
