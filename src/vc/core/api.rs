@@ -2,9 +2,10 @@ use crate::crypto;
 use crate::kms::Error as KmsError;
 use crate::nonce::Nonce;
 use crate::vault::{CredentialEntry, Error as VaultError};
+use crate::vc::claims::Claims;
 use crate::vc::{
-    formats::Error as VCError, pop, pop::Error as ProofError, Claims, Credential,
-    CredentialMetadata, Presentation, VCFormat,
+    formats::Error as VCError, pop, pop::Error as ProofError, Credential, CredentialMetadata,
+    Presentation, VCFormat,
 };
 use async_trait::async_trait;
 use common_macros::DebugError;

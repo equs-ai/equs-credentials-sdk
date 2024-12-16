@@ -40,6 +40,7 @@ use crate::utils::fixtures::oid4vp::{
 use agent_sdk::did::{DIDResolver, DID};
 use agent_sdk::inmem::kms::KeyHandle;
 use agent_sdk::inmem::nonce::LocalNonceGenerator;
+use agent_sdk::vc::claims::Claims;
 use agent_sdk::vc::core::KeyMetadata;
 use agent_sdk::vc::metadata::{CredentialMetadataProcessor, DefaultMetadataProcessor};
 
@@ -182,7 +183,7 @@ fn prepare_http_client_for_holder(
 
             let result = executor::block_on(verifier.verify_presentation(&auth_response, &session));
             let claims = result.unwrap();
-            println!("Presentation Claims: {}", claims);
+            println!("Presentation Claims: {:?}", claims);
 
             validate_claims_func(claims);
 
@@ -227,24 +228,20 @@ async fn create_vc(
     holder_did_url: &DIDURL,
     holder_kid: String,
     holder_kh: impl crypto::Key,
-    claims: serde_json::Value,
+    claims: Claims,
 ) -> (Credential, CredentialMetadata) {
+    println!("claims: {:?}", claims);
+
     // Generate Issuer DID and Key
     let kms = LocalKms::new();
     let (did, _, kh) = create_did_keymetadata_keyhandle(&kms).await;
-
     println!("Issuer DID: {}", did);
-
     let did_url = DIDURL::from_str(&did).unwrap();
-
-    let resolved_claims = VCFormatsJsonLdAPI::resolve_claims(&claims).unwrap();
-
-    println!("resolved_claims: {:?}", resolved_claims);
 
     match format {
         Oid4VpTestCredentialFormat::SdJwt(metadata) => {
             let vc = VCFormatsSdJwtAPI::create_vc(
-                VCFormatsSdJwtAPI::resolve_claims(&claims).unwrap(),
+                claims.clone(),
                 (&did_url, kh),
                 (holder_did_url, holder_kh),
                 metadata,
@@ -268,7 +265,7 @@ async fn create_vc(
         }
         Oid4VpTestCredentialFormat::LdpVc(metadata) => {
             let vc = VCFormatsJsonLdAPI::create_vc(
-                resolved_claims,
+                claims,
                 (&did_url, kh),
                 (holder_did_url, holder_kh),
                 metadata,

@@ -1,6 +1,7 @@
 use crate::http::HttpClient;
 use crate::nonce::{Nonce, NonceData, NonceGenerator};
 use crate::vc;
+use crate::vc::claims::Claims;
 use crate::vc::core::{CredentialRequestData, Proof as AsdkProof, Proof};
 use crate::vc::formats::sd_jwt_vc::{EXP_CLAIM, IAT_CLAIM, NBF_CLAIM, VCT_CLAIM};
 use crate::vc::oid4vci::internal_error::{
@@ -13,7 +14,7 @@ use crate::vc::oid4vci::{
     CredDefMetadata, CredentialOfferParams, CredentialRequest, CredentialResponse, IssuanceSession,
     IssuerMetadata,
 };
-use crate::vc::{oid4vci as api, pop, Claims, HasVCFormat};
+use crate::vc::{oid4vci as api, pop, HasVCFormat};
 use async_trait::async_trait;
 use oauth2::Scope;
 use oid4vci::core::profiles::{
@@ -361,16 +362,10 @@ where
     }
 
     #[instrument(level = Level::TRACE, skip(self), err(), ret())]
-    fn validate_claim_names(&self, claims: &Value, cred_metadata: &CredDefMetadata) -> Result<()> {
+    fn validate_claim_names(&self, claims: &Claims, cred_metadata: &CredDefMetadata) -> Result<()> {
         trace!(?claims);
 
-        let claim_names: Vec<&str> = match claims {
-            Value::Object(claims) => claims.keys().map(|k| k.as_str()).collect(),
-            _ => ClaimsValidationSnafu {
-                details: "Provided \"claims\" is not json object",
-            }
-            .fail()?,
-        };
+        let claim_names: Vec<&str> = claims.claims().keys().map(|k| k.as_str()).collect();
 
         // TODO: split it into two parts: required/optional claims
         let supported_claims = match cred_metadata.additional_fields() {
@@ -582,6 +577,7 @@ mod tests {
     use crate::inmem::nonce::LocalNonceGenerator;
     use crate::utils::http::test::mock_http_req_body;
     use crate::utils::test_utils::create_did_and_key_metadata;
+    use crate::vc::claims::Claim;
     use crate::vc::formats::sd_jwt_vc::SdJwtAPI;
     use crate::vc::oid4vci::issuer::TokenValidation::ByJwks;
     use crate::vc::oid4vci::metadata::convert_metadata;
@@ -648,7 +644,7 @@ mod tests {
     #[tokio::test]
     async fn issue_credential_succeeds_when_time_based_claims_are_provided() {
         let issuer = issuer_service(None, None).await;
-        let mut claims = sample_claims().as_object_mut().unwrap().to_owned();
+        let mut claims = sample_claims();
 
         let exp = OffsetDateTime::now_utc()
             .add(Duration::days(365))
@@ -657,15 +653,15 @@ mod tests {
             .add(Duration::days(1))
             .unix_timestamp();
         let iat = OffsetDateTime::now_utc().unix_timestamp();
-        claims.insert(EXP_CLAIM.to_string(), serde_json::Value::from(exp));
-        claims.insert(NBF_CLAIM.to_string(), serde_json::Value::from(nbf));
-        claims.insert(IAT_CLAIM.to_string(), serde_json::Value::from(iat));
+        claims.insert(EXP_CLAIM.to_string(), Claim::Int(exp));
+        claims.insert(NBF_CLAIM.to_string(), Claim::Int(nbf));
+        claims.insert(IAT_CLAIM.to_string(), Claim::Int(iat));
 
         let iss_result = issuer
             .issue_credential(
                 &SampleCredentialRequest::with_sdjwtvc_conf(),
                 ACCESS_TOKEN,
-                &serde_json::Value::Object(claims.to_owned()),
+                &claims,
                 &mut sample_session_with_nonce(),
             )
             .await;
@@ -823,7 +819,9 @@ mod tests {
         let claims = json!({
             "given_name": "Bois",
             "family_name": "Tursunov"
-        });
+        })
+        .try_into()
+        .unwrap();
         let cred_def = sample_credential_definition();
 
         let validate_res = issuer_service.validate_claim_names(&claims, &cred_def);
@@ -890,7 +888,7 @@ mod tests {
         #[case] mut session: IssuanceSession,
     ) {
         let credential_request = SampleCredentialRequest::with_sdjwtvc_conf();
-        let claims = json!({});
+        let claims = Claims::new();
         let issuer_service = issuer_service(None, None).await;
         issuer_service
             .issue_credential(&credential_request, "fake_token", &claims, &mut session)
@@ -910,7 +908,7 @@ mod tests {
     async fn issue_credential_fails_on_unsupported_format(
         #[case] credential_request: CredentialRequest,
     ) {
-        let claims = json!({});
+        let claims = Claims::new();
         let mut session = sample_session_with_nonce();
 
         let issuer_service = issuer_service(None, None).await;
@@ -924,7 +922,7 @@ mod tests {
     #[should_panic(expected = "Credential configuration id is not found")]
     async fn issue_credential_fails_on_incorrect_cred_def() {
         let credential_request = sample_sdjwtvc_credential_request_with_fake_vct();
-        let claims = json!({});
+        let claims = Claims::new();
         let mut session = sample_session_with_nonce();
 
         let issuer_service = issuer_service(None, None).await;
@@ -940,7 +938,7 @@ mod tests {
     )]
     async fn issue_credential_fails_on_absent_scope() {
         let credential_request = SampleCredentialRequest::with_sdjwtvc_conf();
-        let claims = json!({});
+        let claims = Claims::new();
         let mut session = sample_session_with_nonce();
 
         let issuer_service =
@@ -955,7 +953,7 @@ mod tests {
     #[should_panic(expected = "Could not parse the access token")]
     async fn issue_credential_fails_on_non_decodable_token() {
         let credential_request = SampleCredentialRequest::with_sdjwtvc_conf();
-        let claims = json!({});
+        let claims = Claims::new();
         let mut session = sample_session_with_nonce();
 
         let issuer_service = issuer_service(None, None).await;
@@ -971,7 +969,7 @@ mod tests {
     )]
     async fn issue_credential_fails_on_incorrect_scope() {
         let credential_request = SampleCredentialRequest::with_sdjwtvc_conf();
-        let claims = json!({});
+        let claims = Claims::new();
         let mut session = sample_session_with_nonce();
 
         let issuer_service =
@@ -987,7 +985,7 @@ mod tests {
     #[should_panic(expected = "Access token does not have \\\"scope\\\" field")]
     async fn issue_credential_fails_on_absent_token_scope() {
         let credential_request = SampleCredentialRequest::with_sdjwtvc_conf();
-        let claims = json!({});
+        let claims = Claims::new();
         let mut session = sample_session_with_nonce();
 
         let issuer_service = issuer_service(None, None).await;
@@ -1002,31 +1000,12 @@ mod tests {
             .unwrap();
     }
 
-    #[rstest]
-    #[case(json!("[0,1,2]"))]
-    #[case(json!("1"))]
-    #[case(json!("true"))]
-    #[case(json!("string_value"))]
-    #[case(json!(null))]
-    #[tokio::test]
-    #[should_panic(expected = "Claims validation error: Provided \"claims\" is not json object")]
-    async fn issue_credential_fails_on_non_json_claims(#[case] claims: Value) {
-        let issuer = issuer_service(None, None).await;
-        issuer
-            .issue_credential(
-                &SampleCredentialRequest::with_sdjwtvc_conf(),
-                ACCESS_TOKEN,
-                &claims,
-                &mut sample_session_with_nonce(),
-            )
-            .await
-            .unwrap();
-    }
-
     #[tokio::test]
     #[should_panic(expected = "Unsupported claim name: unsupported_key")]
     async fn issue_credential_fails_on_claims_having_unsupported_key() {
-        let claims = json!({"unsupported_key": "unsupported_keys_value"});
+        let claims = json!({"unsupported_key": "unsupported_keys_value"})
+            .try_into()
+            .unwrap();
 
         let issuer = issuer_service(None, None).await;
         issuer
@@ -1051,7 +1030,7 @@ mod tests {
     async fn issue_credential_fails_on_invalid_proof(
         #[case] credential_request: CredentialRequest,
     ) {
-        let claims = json!({});
+        let claims = Claims::new();
 
         let issuer = issuer_service(None, None).await;
         issuer

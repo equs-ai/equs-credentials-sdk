@@ -90,7 +90,9 @@ async fn issue_endpoint(
         "id": rand_string,
         "given_name": "John",
         "family_name": "Doe"
-    });
+    })
+    .try_into()
+    .unwrap();
 
     let mut dummy_session = IssuanceSession {
         nonce: Some(sample_nonce()),

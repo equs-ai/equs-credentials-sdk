@@ -1,9 +1,9 @@
-use serde_json::Value;
 use snafu::{Location, Snafu};
 use std::fmt::Debug;
 use tracing::{instrument, Level};
 
 use crate::utils;
+use crate::vc::claims::Claim;
 use crate::vc::core::KeyMetadata;
 use crate::vc::formats::HasClaims;
 use crate::vc::{Credential, CredentialMetadata, HasVCFormat};
@@ -86,7 +86,7 @@ impl DefaultMetadataProcessor {
                 })?;
 
                 let type_ = match claims.get("vct") {
-                    Some(Value::String(vct)) => vct,
+                    Some(Claim::String(vct)) => vct,
                     _ => ResolvingSnafu {
                         details: "vct not found",
                     }

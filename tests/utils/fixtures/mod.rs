@@ -6,7 +6,7 @@ use url::Url;
 use oid4vci::core::metadata::IssuerMetadata;
 use oid4vci::metadata::AuthorizationMetadata;
 
-use agent_sdk::vc::Claims;
+use agent_sdk::vc::claims::Claims;
 
 pub const AUTHZ_URL: &str = "https://authz-backend.com";
 pub const ISSUER_URL: &str = "https://issuer-backend.com";

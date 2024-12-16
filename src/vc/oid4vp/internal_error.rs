@@ -1,4 +1,5 @@
 use crate::kms::Error as KmsError;
+use crate::vc::claims::Error as ClaimsError;
 use crate::vc::presentation_exchange;
 use crate::{http, nonce, vc};
 use common_macros::DebugError;
@@ -109,5 +110,12 @@ pub enum InternalError {
         #[snafu(implicit)]
         location: Location,
         source: nonce::Error,
+    },
+
+    #[snafu(display("Claims error"))]
+    Claims {
+        source: ClaimsError,
+        #[snafu(implicit)]
+        location: Location,
     },
 }

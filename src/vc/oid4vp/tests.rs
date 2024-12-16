@@ -1,4 +1,4 @@
-use crate::vc::Claims;
+use crate::vc::claims::Claims;
 
 type CredTypeWithClaims = (&'static str, Claims);
 
@@ -136,7 +136,7 @@ pub mod fixtures {
         pub fn credential_data() -> Vec<CredTypeWithClaims> {
             vec![(
                 "https://credentials.example.com/identity_credential",
-                json!({"name": "John"}),
+                json!({"name": "John"}).try_into().unwrap(),
             )]
         }
 
@@ -401,7 +401,9 @@ pub mod fixtures {
                         "name": "John",
                         "surname": "Doe",
                         "date": "09/09/1989",
-                    }),
+                    })
+                    .try_into()
+                    .unwrap(),
                 ),
                 (
                     "SD_JWT_cred",
@@ -411,7 +413,9 @@ pub mod fixtures {
                             "work": "work@example.com",
                             "personal": "personal@example.com"
                         },
-                    }),
+                    })
+                    .try_into()
+                    .unwrap(),
                 ),
             ]
         }
@@ -467,6 +471,7 @@ pub mod utils {
     use crate::utils::test_utils::failed_signer_key;
     use crate::vault::{CredentialEntry, Vault};
     use crate::vc;
+    use crate::vc::claims::{Claim, Claims};
     use crate::vc::core::KeyMetadata;
     use crate::vc::formats::sd_jwt_vc;
     use crate::vc::formats::sd_jwt_vc::{SdJwtAPI, VPMetadata};
@@ -481,7 +486,7 @@ pub mod utils {
         Holder, PresentationSession, ResolvedAuthRequest, Verifier,
     };
     use crate::vc::presentation_exchange::PresentationSubmission;
-    use crate::vc::{presentation_exchange, Claims, Credential, VCFormatsAPI, VCMetadata};
+    use crate::vc::{presentation_exchange, Credential, VCFormatsAPI, VCMetadata};
     use oauth2::http::{Method, StatusCode};
     use oid4vp::core::authorization_request::parameters::ResponseType;
     use oid4vp::core::metadata::parameters::SubjectSyntaxTypesSupported;
@@ -666,7 +671,10 @@ pub mod utils {
 
             match vp_token_value {
                 serde_json::Value::String(token) => {
-                    vec![decode_sd_jwt(token, SDJWTSerializationFormat::Compact).unwrap()]
+                    vec![decode_sd_jwt(token, SDJWTSerializationFormat::Compact)
+                        .unwrap()
+                        .try_into()
+                        .unwrap()]
                 }
                 serde_json::Value::Array(tokens) => tokens
                     .into_iter()
@@ -677,6 +685,7 @@ pub mod utils {
                         )
                         .unwrap()
                     })
+                    .map(|val| val.try_into().unwrap())
                     .collect(),
                 _ => panic!("Invalid VP token format: {:?}", vp_token_value),
             }
@@ -700,9 +709,14 @@ pub mod utils {
             let mut presentations: Vec<sd_jwt_vc::Presentation> = vec![];
             for (vct, claims) in self.credential_data.iter() {
                 let vc = create_sd_jwt_vc(vct, claims, &holder_key_handle).await;
-                let vp =
-                    create_sd_jwt_vp(&vc, claims.clone(), nonce, verifier_id, &holder_key_handle)
-                        .await;
+                let vp = create_sd_jwt_vp(
+                    &vc,
+                    claims.clone().try_into().unwrap(),
+                    nonce,
+                    verifier_id,
+                    &holder_key_handle,
+                )
+                .await;
                 presentations.push(vp);
             }
 
@@ -834,14 +848,13 @@ pub mod utils {
         let holder_did_url = DIDURL::from_str(&did).unwrap();
 
         let disclosures: Vec<String> = claims
-            .as_object()
-            .unwrap()
+            .claims()
             .keys()
             .map(|key| format!("$.{}", key))
             .collect();
 
         SdJwtAPI::create_vc(
-            SdJwtAPI::resolve_claims(claims).unwrap(),
+            claims.clone(),
             (&issuer_did_url, issuer_key_handle),
             (&holder_did_url, holder_key_handle.clone()),
             VCMetadata {
@@ -877,12 +890,13 @@ pub mod utils {
     pub fn validate_claims(claims: &Claims, credential_data: &CredTypeWithClaims) {
         let (vct, expected_claims) = credential_data;
 
-        assert_eq!(&claims["vct"], vct);
+        assert_eq!(claims.get("vct").unwrap(), &Claim::String(vct.to_string()));
 
-        for (key, value) in expected_claims.as_object().unwrap() {
+        for (key, value) in expected_claims.claims() {
             assert_eq!(
-                &claims[key], value,
-                "Claims: {claims}, expected {key}: {value}"
+                claims.get(key).unwrap(),
+                value,
+                "Claims: expected {key}: {value}"
             );
         }
     }

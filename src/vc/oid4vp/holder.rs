@@ -546,6 +546,7 @@ mod tests {
     use crate::utils::test_utils::create_did_and_key_metadata;
     use crate::utils::test_utils::{failed_signer_key, no_jwk_key};
     use crate::vc;
+    use crate::vc::claims::{Claim, Claims};
     use crate::vc::core::KeyMetadata;
     use crate::vc::oid4vp::protocol_error::ErrorType;
     use crate::vc::oid4vp::tests::fixtures::{
@@ -559,7 +560,7 @@ mod tests {
         ProtocolError, ResponseType,
     };
     use crate::vc::presentation_exchange::ClaimFormatMap;
-    use crate::vc::{Claims, Credential};
+    use crate::vc::Credential;
     use oauth2::http::Method;
     use oauth2::HttpResponse;
     use oid4vp::core::response::PostRedirection;
@@ -997,6 +998,7 @@ mod tests {
                 }
                 _ => None,
             })
+            .map(|c| c.try_into().unwrap())
             .collect();
 
         let mut cred_data = test_case.credential_data;
@@ -1013,7 +1015,13 @@ mod tests {
         for (expected_type, expected_claims) in cred_data {
             let claims = retrieved_credentials_claims
                 .iter()
-                .find(|retrieved_claims| *expected_type == retrieved_claims["vct"])
+                .find(|retrieved_claims| {
+                    if let Some(Claim::String(sss)) = retrieved_claims.get("vct") {
+                        return expected_type == sss;
+                    }
+
+                    false
+                })
                 .unwrap();
 
             validate_claims(claims, &(expected_type, expected_claims));
@@ -1172,7 +1180,9 @@ mod tests {
         let mut test_case = single_presentation::presentation_test_case();
         test_case.credential_data = vec![(
             "https://credentials.example.com/degree_credential",
-            json!({"name": "John", "degree": "Bachelor"}),
+            json!({"name": "John", "degree": "Bachelor"})
+                .try_into()
+                .unwrap(),
         )];
         test_case
     }

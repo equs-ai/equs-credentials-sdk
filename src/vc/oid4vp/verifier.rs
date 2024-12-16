@@ -7,7 +7,7 @@ use oid4vp::core::authorization_request::parameters::{
 use oid4vp::core::metadata::WalletMetadata;
 use oid4vp::verifier::by_reference::ByReference;
 use oid4vp::verifier::request_builder::RequestType;
-use serde_json::{Map, Value as Json};
+use serde_json::Value as Json;
 use snafu::{ensure, ResultExt};
 use tracing::{info, instrument, Level};
 use url::Url;
@@ -16,10 +16,11 @@ use crate::did::DIDResolver;
 use crate::kms::{KeyHandle, Kms};
 use crate::nonce::{Nonce, NonceGenerator};
 use crate::vc;
+use crate::vc::claims::{Claim, Claims};
 use crate::vc::core::KeyMetadata;
 use crate::vc::oid4vp as api;
 use crate::vc::oid4vp::internal_error::{
-    IdTokenValidationSnafu, JsonSnafu, KMSSnafu, NonceGenerationSnafu, Oid4VpLibSnafu,
+    ClaimsSnafu, IdTokenValidationSnafu, JsonSnafu, KMSSnafu, NonceGenerationSnafu, Oid4VpLibSnafu,
     PresentationExchangeSnafu, VCSnafu,
 };
 use crate::vc::oid4vp::metadata::{default_client_metadata, default_wallet_metadata};
@@ -33,6 +34,7 @@ use crate::vc::presentation_exchange::{
     validate_against_presentation_definition, PresentationDefinition, PresentationResponse,
 };
 use oid4vp::core::response::parameters::IdTokenBody as IdToken;
+use std::collections::HashMap;
 
 pub type Error = api::Error;
 pub type Result<T> = core::result::Result<T, Error>;
@@ -153,7 +155,7 @@ where
         &self,
         auth_response: &AuthorizationResponse,
         session: &PresentationSession,
-    ) -> Result<Json> {
+    ) -> Result<Claims> {
         let vp_token_claims = self
             .do_verify_presentation(
                 &session.presentation_definition,
@@ -162,21 +164,22 @@ where
             )
             .await?;
 
-        let mut claims = serde_json::Map::new();
+        let mut claims = Claims::new();
         claims.insert(VP_TOKEN.to_string(), vp_token_claims);
 
         if let Some(id_token) = &auth_response.id_token {
             let id_token_claims = self.validate_id_token(id_token, &session.nonce).await?;
 
+            // TODO: get rid of IdTokenBody -> Value convertaion, implement IdTokenBody -> Claim instead
             let id_token_claims = serde_json::to_value(id_token_claims).context(JsonSnafu)?;
-            claims.insert(ID_TOKEN.to_string(), id_token_claims);
+            claims.insert(ID_TOKEN.to_string(), id_token_claims.into());
 
             info!("ID token is verified");
         }
 
         info!("presentation is verified");
 
-        Ok(Json::Object(claims))
+        Ok(claims)
     }
 }
 
@@ -412,8 +415,10 @@ where
         presentation_definition: &PresentationDefinition,
         nonce: &Nonce,
         authorization_response: &AuthorizationResponse,
-    ) -> Result<Json> {
-        let mut result: Map<String, Json> = Map::new();
+    ) -> Result<Claim> {
+        let mut result: HashMap<String, Claim> = HashMap::new();
+        let mut ids = vec![]; // we need it to preserve order of items in the array
+
         let presentation_response = PresentationResponse {
             presentations: authorization_response.vp_token.clone(),
             presentation_submission: authorization_response.presentation_submission.clone(),
@@ -431,12 +436,25 @@ where
                 .verify_presentation(nonce, &requested_presentation.presentation)
                 .await
                 .context(VCSnafu)?;
-            result.insert(requested_presentation.id, claims);
+            ids.push(requested_presentation.id.clone());
+            result.insert(requested_presentation.id, claims.into());
         }
 
         match authorization_response.vp_token {
             Json::Array(_) => {
-                let claims = Json::Array(result.values().map(|v| v.to_owned()).collect());
+                let mut arr = vec![];
+                for id in ids.into_iter() {
+                    arr.push(
+                        result
+                            .get(&id)
+                            .unwrap()
+                            .clone()
+                            .try_into()
+                            .context(ClaimsSnafu)?,
+                    );
+                }
+
+                let claims = Json::Array(arr);
                 validate_against_presentation_definition(
                     &claims,
                     presentation_definition,
@@ -446,8 +464,10 @@ where
             }
             _ => {
                 if let Some(claim) = result.values().find(|_| true) {
+                    // TODO: figure out how to secure erase sensitive data
+                    // after Claim -> Value convertation
                     validate_against_presentation_definition(
-                        claim,
+                        &claim.clone().try_into().context(ClaimsSnafu)?,
                         presentation_definition,
                         &authorization_response.presentation_submission,
                     )
@@ -456,7 +476,7 @@ where
             }
         };
 
-        Ok(result.into())
+        Ok(Claim::Object(result))
     }
 }
 
@@ -468,6 +488,7 @@ mod tests {
     use crate::http::HttpSnafu;
     use crate::inmem::kms::LocalKms;
     use crate::nonce::Nonce;
+    use crate::vc::claims::Claims;
     use crate::vc::oid4vp::tests::fixtures::multi_presentation::{
         auth_response_options, submission_requirements,
     };
@@ -481,7 +502,6 @@ mod tests {
     use crate::vc::oid4vp::InternalError;
     use crate::vc::oid4vp::{PassAuthRequestObject, PresentationSession, ResponseType, Verifier};
     use crate::vc::presentation_exchange::PresentationDefinition;
-    use crate::vc::Claims;
     use oid4vp::core::authorization_request::parameters::{IdTokenType, Scope};
     use oid4vp::core::authorization_request::{AuthorizationRequest, AuthorizationRequestObject};
     use oid4vp::core::object::UntypedObject;
@@ -756,8 +776,15 @@ mod tests {
 
         validate_vp_token_against_expected_claims(test_case, &verified_claims);
 
-        let id_token_claims: IdToken =
-            serde_json::from_value(verified_claims[ID_TOKEN].to_owned()).unwrap();
+        let id_token_claims: IdToken = serde_json::from_value(
+            verified_claims
+                .get(ID_TOKEN)
+                .unwrap()
+                .to_owned()
+                .try_into()
+                .unwrap(),
+        )
+        .unwrap();
         assert_eq!(id_token_claims.audience, client_id);
         assert_eq!(id_token_claims.nonce, session.nonce.secret());
     }
@@ -845,8 +872,24 @@ mod tests {
                 .unwrap()
                 .id();
 
-            let cred_claims = &verified_claims[VP_TOKEN][cred_id];
-            validate_claims(cred_claims, &credential_data);
+            let cred_claims = verified_claims
+                .get(VP_TOKEN)
+                .unwrap()
+                .get(cred_id)
+                .unwrap()
+                .clone();
+
+            let cred_claims = match &cred_claims {
+                Claim::Object(map) => {
+                    let mut claims = Claims::new();
+                    map.iter()
+                        .for_each(|(k, v)| claims.insert(k.to_owned(), v.to_owned()));
+                    claims
+                }
+                _ => panic!("cred_claims is not an object"),
+            };
+
+            validate_claims(&cred_claims, &credential_data);
         }
     }
 
@@ -896,7 +939,9 @@ mod tests {
         let mut test_case = single_presentation::verification_test_case();
         test_case.credential_data = vec![(
             "https://credentials.example.com/degree_credential",
-            json!({"name": "John", "degree": "Bachelor"}),
+            json!({"name": "John", "degree": "Bachelor"})
+                .try_into()
+                .unwrap(),
         )];
         test_case
     }
@@ -905,7 +950,7 @@ mod tests {
         let mut test_case = single_presentation::verification_test_case();
         test_case.credential_data = vec![(
             "https://credentials.example.com/identity_credential",
-            json!({"degree": "Bachelor"}),
+            json!({"degree": "Bachelor"}).try_into().unwrap(),
         )];
         test_case
     }

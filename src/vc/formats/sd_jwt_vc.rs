@@ -23,8 +23,8 @@ use crate::utils::serde::Helpers;
 use crate::vc::core::{PresentationInput, PresentationRestriction};
 use crate::vc::formats::vc::SD_JWT_VC;
 use crate::vc::formats::{
-    ClaimsResolvingSnafu, HasClaims, HasCredential, JWSSnafu, KeyTypeNotSupportedSnafu,
-    ParsingSnafu, PresentationSnafu, SigningSnafu, VerifyOptions, VerifyingSnafu, API,
+    ClaimsSnafu, HasClaims, HasCredential, JWSSnafu, KeyTypeNotSupportedSnafu, ParsingSnafu,
+    PresentationSnafu, SigningSnafu, VerifyOptions, VerifyingSnafu, API,
 };
 use crate::vc::formats::{GetExpirationClaim, Result};
 
@@ -47,9 +47,9 @@ const ALWAYS_REVEALED_CLAIMS: [&str; 6] = [
 
 pub type SdJwtRsError = sd_jwt_rs::error::Error;
 
+pub use crate::vc::claims::Claims;
 pub type Credential = String;
 pub type Presentation = String;
-pub type Claims = Map<String, Value>;
 
 pub struct SignerWrapper<S: Signer> {
     signer: S,
@@ -124,6 +124,7 @@ pub struct VCMetadata {
 
 #[derive(Debug, Default)]
 pub struct VPMetadata {
+    // TODO: should we change it to Claims?
     pub disclosures: Map<String, Value>,
 }
 
@@ -142,7 +143,8 @@ impl HasClaims<Claims> for Credential {
             obj.remove(CNF_CLAIM);
         }
 
-        SdJwtAPI::resolve_claims(&value)
+        let claims = value.try_into().context(ClaimsSnafu)?;
+        Ok(claims)
     }
 }
 
@@ -164,7 +166,7 @@ impl SdJwtAPI {
         iss_did_url: &DIDURL,
         hld_did_url: &DIDURL,
         metadata: &VCMetadata,
-    ) -> Value {
+    ) -> Claims {
         claims.put_str(VCT_CLAIM, &metadata.vct);
         claims.put_str(ISS_CLAIM, &iss_did_url.did);
         claims.put_str(SUB_CLAIM, &hld_did_url.did);
@@ -180,7 +182,7 @@ impl SdJwtAPI {
             .unwrap_or_else(|| time::OffsetDateTime::now_utc() + metadata.lifetime);
         claims.put_dt(EXP_CLAIM, exp);
 
-        Value::Object(claims)
+        claims
     }
 
     #[instrument(level = Level::TRACE, ret())]
@@ -375,24 +377,12 @@ impl GetExpirationClaim<Claims, time::OffsetDateTime> for SdJwtAPI {
 fn get_time_based_claim(claims: &Claims, key: &str) -> Option<time::OffsetDateTime> {
     claims
         .get(key)
-        .and_then(|v| v.as_i64())
-        .and_then(|v| time::OffsetDateTime::from_unix_timestamp(v).ok())
+        .and_then(|v| v.as_int())
+        .and_then(|v| time::OffsetDateTime::from_unix_timestamp(*v).ok())
 }
 
 #[async_trait]
-impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata, Value> for SdJwtAPI {
-    #[instrument(level = Level::TRACE, ret())]
-    fn resolve_claims(value: &Value) -> Result<Claims> {
-        let claims = value.as_object().ok_or_else(|| {
-            ClaimsResolvingSnafu {
-                details: "The value is not an object",
-            }
-            .build()
-        })?;
-
-        Ok(claims.to_owned())
-    }
-
+impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata, Claims> for SdJwtAPI {
     #[instrument(level = Level::TRACE, skip(issuer_data, holder_data), err(), ret())]
     async fn create_vc<S, K>(
         claims: Claims,
@@ -437,6 +427,7 @@ impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata, Value> for Sd
         trace!(resolved_disclosures = ?disclosures);
 
         let mut issuer = SDJWTIssuer::new(sgn_wrapper);
+        let claims = claims.try_into().context(ClaimsSnafu)?;
 
         issuer
             .issue_sd_jwt(
@@ -516,11 +507,11 @@ impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata, Value> for Sd
         nonce: &Nonce,
         verifier_id: &str,
         _opts: VerifyOptions,
-    ) -> Result<Value> {
+    ) -> Result<Claims> {
         let key_resolver = DidKeyResolver::default();
         let mut verifier = SDJWTVerifier::new(Box::new(key_resolver));
 
-        verifier
+        let claims_json = verifier
             .verify_presentation(
                 presentation.to_owned(),
                 Some(verifier_id.to_string()),
@@ -533,7 +524,9 @@ impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata, Value> for Sd
                     details: e.to_string(),
                 }
                 .build()
-            })
+            })?;
+
+        claims_json.try_into().context(ClaimsSnafu)
     }
 }
 
@@ -548,6 +541,7 @@ mod tests {
     use crate::nonce::{Nonce, NonceGenerator};
     use crate::utils::serde::Helpers;
     use crate::utils::test_utils::{create_did_url_and_key_handle, failed_signer_key, no_jwk_key};
+    use crate::vc::claims::Claim;
     use crate::vc::formats::sd_jwt_vc::{
         Claims, Credential, SdJwtAPI, VCMetadata, VPMetadata, EXP_CLAIM, IAT_CLAIM, ISS_CLAIM,
         NBF_CLAIM, SUB_CLAIM, VCT_CLAIM,
@@ -577,9 +571,9 @@ mod tests {
             .add(time::Duration::days(1))
             .unix_timestamp();
         let iat = OffsetDateTime::now_utc().unix_timestamp();
-        claims.insert(EXP_CLAIM.to_string(), serde_json::Value::from(exp));
-        claims.insert(NBF_CLAIM.to_string(), serde_json::Value::from(nbf));
-        claims.insert(IAT_CLAIM.to_string(), serde_json::Value::from(iat));
+        claims.insert(EXP_CLAIM.to_string(), Claim::Int(exp));
+        claims.insert(NBF_CLAIM.to_string(), Claim::Int(nbf));
+        claims.insert(IAT_CLAIM.to_string(), Claim::Int(iat));
 
         let mut vc_metadata = sample_vc_metadata();
         vc_metadata.disclosures.extend_from_slice(&[
@@ -599,18 +593,27 @@ mod tests {
         SdJwtAPI::verify_vc(&vc, Default::default()).await.unwrap();
 
         let claims = vc.parse_claims().unwrap();
-        assert!(claims.contains_key("name"));
-        assert!(claims.contains_key("surname"));
-        assert_eq!(claims.get("dob").unwrap(), "09/09/1989");
-        assert_eq!(claims.get(SUB_CLAIM).unwrap(), &hld_did_url.did);
-        assert_eq!(claims.get(ISS_CLAIM).unwrap(), &iss_did_url.did);
+        assert!(claims.get("name").is_some());
+        assert!(claims.get("surname").is_some());
+        assert_eq!(
+            claims.get("dob").unwrap(),
+            &Claim::String("09/09/1989".to_string())
+        );
+        assert_eq!(
+            claims.get(SUB_CLAIM).unwrap(),
+            &Claim::String(hld_did_url.did)
+        );
+        assert_eq!(
+            claims.get(ISS_CLAIM).unwrap(),
+            &Claim::String(iss_did_url.did)
+        );
         assert_eq!(
             claims.get(VCT_CLAIM).unwrap(),
-            "https://issuer.net/cred_schema"
+            &Claim::String("https://issuer.net/cred_schema".to_string())
         );
-        assert_eq!(claims.get(EXP_CLAIM).unwrap(), exp);
-        assert_eq!(claims.get(NBF_CLAIM).unwrap(), nbf);
-        assert_eq!(claims.get(IAT_CLAIM).unwrap(), iat);
+        assert_eq!(claims.get(EXP_CLAIM).unwrap(), &Claim::Int(exp));
+        assert_eq!(claims.get(NBF_CLAIM).unwrap(), &Claim::Int(nbf));
+        assert_eq!(claims.get(IAT_CLAIM).unwrap(), &Claim::Int(iat));
 
         let nonce = random_nonce().await;
         let vp = SdJwtAPI::create_vp(&vc, hld_kh, &nonce, "verifier-id", sample_vp_metadata())
@@ -623,14 +626,16 @@ mod tests {
         let disclosed = SdJwtAPI::verify_vp(&vp, &nonce, "verifier-id", VerifyOptions {})
             .await
             .unwrap();
-        let disclosed = disclosed.as_object().unwrap();
 
-        assert!(disclosed.contains_key("name"));
-        assert!(disclosed.contains_key(EXP_CLAIM));
-        assert!(disclosed.contains_key(NBF_CLAIM));
-        assert_eq!(disclosed["name"], "John");
-        assert!(!disclosed.contains_key("surname"));
-        assert!(!disclosed.contains_key(IAT_CLAIM));
+        assert!(disclosed.get("name").is_some());
+        assert!(disclosed.get(EXP_CLAIM).is_some());
+        assert!(disclosed.get(NBF_CLAIM).is_some());
+        assert_eq!(
+            disclosed.get("name").unwrap(),
+            &Claim::String("John".to_string())
+        );
+        assert!(disclosed.get("surname").is_none());
+        assert!(disclosed.get(IAT_CLAIM).is_none());
     }
 
     #[tokio::test]
@@ -733,11 +738,12 @@ mod tests {
             .await
             .unwrap();
 
-        let disclosed = disclosed.as_object().unwrap();
-
-        assert!(!disclosed.contains_key("optional_claim"));
-        assert!(disclosed.contains_key("name"));
-        assert_eq!(disclosed["name"], "John");
+        assert!(disclosed.get("optional_claim").is_none());
+        assert!(disclosed.get("name").is_some());
+        assert_eq!(
+            disclosed.get("name").unwrap(),
+            &Claim::String("John".to_string())
+        );
     }
 
     #[tokio::test]
@@ -941,9 +947,8 @@ mod tests {
             "surname": "Doe",
             "dob": "09/09/1989",
         })
-        .as_object()
+        .try_into()
         .unwrap()
-        .clone()
     }
 
     fn sample_vc_metadata() -> VCMetadata {
