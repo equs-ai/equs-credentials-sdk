@@ -152,7 +152,9 @@ impl AskarKms {
     )]
     async fn insert_key(&self, key_id: &str, key: &LocalKey) -> Result<(), aries_askar::Error> {
         let mut session = self.0.session(None).await?;
-        session.insert_key(key_id, key, None, None, None).await?;
+        session
+            .insert_key(key_id, key, None, None, None, None)
+            .await?;
         session.commit().await?;
 
         Ok(())
@@ -185,7 +187,7 @@ impl Kms<AskarKeyHandle> for AskarKms {
     )]
     async fn create(&self, kt: KeyType, _opts: CreateOptions) -> Result<KeyID, KmsError> {
         let key_alg = key_type_to_key_alg(kt).context(CryptoSnafu)?;
-        let key = LocalKey::generate(key_alg, false).map_err(|e| {
+        let key = LocalKey::generate_with_rng(key_alg, false).map_err(|e| {
             CreationSnafu {
                 details: e.to_string(),
             }

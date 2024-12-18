@@ -81,6 +81,7 @@ async function main(): Promise<void> {
 
   app.post("/present", async (req, res) => {
     try {
+      console.log(`Request body: `, req.body);
       const vpToken = req.body.vp_token;
       if (!vpToken) throw new Error("vp_token does not exist in request body!");
 
@@ -104,7 +105,7 @@ async function main(): Promise<void> {
       );
       console.log(`Verifier claims: `, verifiedClaims);
 
-      res.send();
+      res.status(200).contentType("application/json").send();
     } catch (e: any) {
       res.status(500).send(e.message);
     }

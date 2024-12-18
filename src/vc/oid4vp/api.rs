@@ -33,11 +33,11 @@ pub struct IdTokenMetadata {
 ///
 /// # Fields
 ///
-/// - `claims_to_exclude` - map of claims divided by input descriptors
+/// - `claims_to_exclude` - map of claims divided by input descriptors that need to be excluded.
 /// - `id_token_metadata`: metadata containing the signing key and lifetime for the SIOP ID token
-/// that need to be excluded.
+///
 /// Exclude works for optional claims only. Excluding non-optional claims will throw a
-/// [crate::vc::presentation_exchange::Error::InvalidClaimsToExclude]
+///     [crate::vc::presentation_exchange::Error::InvalidClaimsToExclude]
 /// ```
 /// use std::collections::HashMap;
 /// let mut map = HashMap::new();
