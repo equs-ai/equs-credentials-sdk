@@ -75,7 +75,9 @@ impl AskarVault {
     )]
     async fn find(&self, filter: TagFilter) -> Result<Vec<Entry>, aries_askar::Error> {
         let mut session = self.0.session(None).await?;
-        session.fetch_all(None, Some(filter), None, false).await
+        session
+            .fetch_all(None, Some(filter), None, None, false, false)
+            .await
     }
 
     #[instrument(
@@ -381,6 +383,10 @@ mod tests {
             format: VCFormat::SdJwtVc,
             alg: None,
             tags: vec![
+                (
+                    "$.vct".to_string(),
+                    "https://credentials.example.com/identity_credential".to_string(),
+                ),
                 ("$.name".to_string(), "John".to_string()),
                 ("$.email.work".to_string(), "email@email.com".to_string()),
             ],

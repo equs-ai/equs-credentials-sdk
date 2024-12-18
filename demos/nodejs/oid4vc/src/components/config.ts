@@ -84,8 +84,8 @@ export class Config {
         purpose: "We want an identity",
         format: {
           "vc+sd-jwt": {
-            "sd-jwt_alg_values": ["ES256", "ES384"],
-            "kb-jwt_alg_values": ["ES256", "ES384"],
+            "sd-jwt_alg_values": ["ES256", "EdDSA"],
+            "kb-jwt_alg_values": ["ES256", "EdDSA"],
           },
         },
         constraints: {
@@ -109,8 +109,8 @@ export class Config {
         purpose: "We want an identity",
         format: {
           "vc+sd-jwt": {
-            "sd-jwt_alg_values": ["ES256", "ES384"],
-            "kb-jwt_alg_values": ["ES256", "ES384"],
+            "sd-jwt_alg_values": ["ES256", "EdDSA"],
+            "kb-jwt_alg_values": ["ES256", "EdDSA"],
           },
         },
         constraints: {

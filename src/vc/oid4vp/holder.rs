@@ -244,6 +244,7 @@ where
         let req = utils::http::generate_post_req(
             response_uri,
             MimeType::AppFormUrlEnc,
+            MimeType::AppJson,
             body.into_bytes(),
         );
 

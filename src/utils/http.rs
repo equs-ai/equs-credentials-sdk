@@ -1,7 +1,7 @@
 use oauth2::http::header::CONTENT_TYPE;
 use oauth2::http::{HeaderMap, Method};
 use oauth2::HttpRequest;
-use reqwest::header::HeaderValue;
+use reqwest::header::{HeaderValue, ACCEPT};
 use url::Url;
 
 pub const MIME_TYPE_FORM_URLENCODED: &str = "application/x-www-form-urlencoded";
@@ -24,14 +24,22 @@ impl MimeType {
     }
 }
 
-pub(crate) fn generate_post_req(url: &Url, content_type: MimeType, body: Vec<u8>) -> HttpRequest {
+pub(crate) fn generate_post_req(
+    url: &Url,
+    content_type: MimeType,
+    accept: MimeType,
+    body: Vec<u8>,
+) -> HttpRequest {
     HttpRequest {
         url: url.to_owned(),
         method: Method::POST,
-        headers: HeaderMap::from_iter(vec![(
-            CONTENT_TYPE,
-            HeaderValue::from_static(content_type.as_str()),
-        )]),
+        headers: HeaderMap::from_iter(vec![
+            (
+                CONTENT_TYPE,
+                HeaderValue::from_static(content_type.as_str()),
+            ),
+            (ACCEPT, HeaderValue::from_static(accept.as_str())),
+        ]),
         body,
     }
 }
