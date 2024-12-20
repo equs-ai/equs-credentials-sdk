@@ -175,14 +175,15 @@ release_artifacts_job:
   script:
     - cargo install cargo-sbom
     - cargo install cargo-audit
-    - cargo sbom 2>1 >          SBOM.auto.out
-    - cargo audit 2>1 >         AUDIT.auto.out || true
-    - cargo doc --no-deps 2>1 > API.auto.out
+    - cargo sbom &>  SBOM.auto.out
+    - cargo audit &> AUDIT.auto.out || true
+    - cargo doc --no-deps
+    - tar -cvz -f API.auto.tar.gz target/doc/agent_sdk/
   artifacts:
     paths:
       - SBOM.auto.out
       - AUDIT.auto.out
-      - API.auto.out
+      - API.auto.tar.gz
   rules:
     - if: $CI_COMMIT_TAG && $CI_COMMIT_TAG =~ $VERSION_REGEX
       when: always
