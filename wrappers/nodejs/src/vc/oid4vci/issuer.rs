@@ -8,10 +8,10 @@ use crate::utils::{from_json_object, to_json_object};
 use crate::vc::JsonObject;
 
 #[napi]
-pub struct OID4VCiIssuer(pub(crate) Box<dyn Issuer>);
+pub struct OID4VCIIssuer(pub(crate) Box<dyn Issuer>);
 
 #[napi]
-impl OID4VCiIssuer {
+impl OID4VCIIssuer {
     #[napi]
     pub fn get_issuer_metadata(&self) -> Result<JsonObject> {
         let issuer_metadata = self.0.get_issuer_metadata();

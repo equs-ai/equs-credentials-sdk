@@ -5,6 +5,8 @@ import {
   IssuanceSession,
   localNonceGenerator,
   Oid4VciIssuerBuilder,
+  TracingLogFormat,
+  TracingLogLevel,
 } from "../../../../../wrappers/nodejs";
 import * as express from "express";
 import { config } from "../components/config";
@@ -12,7 +14,7 @@ import { json } from "body-parser";
 import { createDidAndKeyMetadata } from "../components/utils";
 
 async function main(): Promise<void> {
-  await enableLogs();
+  await enableLogs(TracingLogFormat.Full, TracingLogLevel.Info);
 
   const kms = inMemKms();
   const nonceGenerator = localNonceGenerator();

@@ -5,25 +5,84 @@ use crate::utils::{from_json_object, to_json_object};
 use crate::vc::JsonObject;
 use agent_sdk::did::universal::UniversalResolver;
 use agent_sdk::did::{
-    DIDResolver as ASDKDIDResolver, Resolution, ResolutionMetadata, ResolutionVerificationSnafu,
-    ResolveOptions, VerificationMethodMap,
+    DIDResolver as ASDKDIDResolver, DocumentMetadata, Metadata, Resolution,
+    ResolutionInputMetadata, ResolutionMetadata, ResolutionVerificationSnafu, ResolveOptions,
+    VerificationMethodMap,
 };
 use async_trait::async_trait;
+use chrono::DateTime;
 use napi::bindgen_prelude::Promise;
 use napi::threadsafe_function::{ErrorStrategy, ThreadsafeFunction};
 use napi::{Error, Result};
 use napi_derive::napi;
+use std::collections::HashMap;
+
+fn json_value_to_metadata(value: Option<JsonObject>) -> Result<Option<HashMap<String, Metadata>>> {
+    let result = value
+        .map(serde_json::Value::Object)
+        .map(serde_json::from_value)
+        .transpose()?;
+
+    Ok(result)
+}
+
+fn metadata_to_json_value(value: Option<HashMap<String, Metadata>>) -> Result<Option<JsonObject>> {
+    let result = value
+        .map(serde_json::to_value)
+        .transpose()?
+        .map(serde_json::from_value)
+        .transpose()?;
+
+    Ok(result)
+}
+
+#[napi(object, js_name = "ResolutionInputMetadata")]
+pub struct JsResolutionInputMetadata {
+    pub accept: Option<String>,
+    pub version_id: Option<String>,
+    pub version_time: Option<String>,
+    pub no_cache: Option<bool>,
+    pub property_set: Option<JsonObject>,
+}
+
+impl TryFrom<JsResolutionInputMetadata> for ResolutionInputMetadata {
+    type Error = Error;
+
+    fn try_from(value: JsResolutionInputMetadata) -> Result<Self> {
+        Ok(Self {
+            accept: value.accept,
+            version_id: value.version_id,
+            version_time: value.version_time,
+            no_cache: value.no_cache,
+            property_set: json_value_to_metadata(value.property_set)?,
+        })
+    }
+}
+impl TryFrom<ResolutionInputMetadata> for JsResolutionInputMetadata {
+    type Error = Error;
+
+    fn try_from(value: ResolutionInputMetadata) -> Result<Self> {
+        Ok(Self {
+            accept: value.accept,
+            version_id: value.version_id,
+            version_time: value.version_time,
+            no_cache: value.no_cache,
+            property_set: metadata_to_json_value(value.property_set)?,
+        })
+    }
+}
 
 #[napi(object, js_name = "ResolveOptions")]
 pub struct JsResolveOptions {
-    pub input: JsonObject,
+    pub input: JsResolutionInputMetadata,
 }
+
 impl TryFrom<JsResolveOptions> for ResolveOptions {
     type Error = Error;
 
     fn try_from(value: JsResolveOptions) -> Result<Self> {
         Ok(Self {
-            input: from_json_object(value.input)?,
+            input: value.input.try_into()?,
         })
     }
 }
@@ -32,25 +91,94 @@ impl TryFrom<ResolveOptions> for JsResolveOptions {
 
     fn try_from(value: ResolveOptions) -> Result<Self> {
         Ok(Self {
-            input: to_json_object(value.input)?,
+            input: value.input.try_into()?,
+        })
+    }
+}
+
+#[napi(object, js_name = "ResolutionMetadata")]
+pub struct JsResolutionMetadata {
+    pub error: Option<String>,
+    pub content_type: Option<String>,
+    pub property_set: Option<JsonObject>,
+}
+
+impl TryFrom<JsResolutionMetadata> for ResolutionMetadata {
+    type Error = Error;
+
+    fn try_from(value: JsResolutionMetadata) -> Result<Self> {
+        Ok(Self {
+            error: value.error,
+            content_type: value.content_type,
+            property_set: json_value_to_metadata(value.property_set)?,
+        })
+    }
+}
+impl TryFrom<ResolutionMetadata> for JsResolutionMetadata {
+    type Error = Error;
+
+    fn try_from(value: ResolutionMetadata) -> Result<Self> {
+        Ok(Self {
+            error: value.error,
+            content_type: value.content_type,
+            property_set: metadata_to_json_value(value.property_set)?,
+        })
+    }
+}
+
+#[napi(object, js_name = "DocumentMetadata")]
+pub struct JsDocumentMetadata {
+    pub created: Option<i64>,
+    pub updated: Option<i64>,
+    pub deactivated: Option<bool>,
+    pub property_set: Option<JsonObject>,
+}
+
+impl TryFrom<JsDocumentMetadata> for DocumentMetadata {
+    type Error = Error;
+
+    fn try_from(value: JsDocumentMetadata) -> Result<Self> {
+        Ok(Self {
+            created: value
+                .created
+                .map(DateTime::from_timestamp_millis)
+                .ok_or_else(|| Error::from_reason("Invalid timestamp"))?,
+            updated: value
+                .updated
+                .map(DateTime::from_timestamp_millis)
+                .ok_or_else(|| Error::from_reason("Invalid timestamp"))?,
+            deactivated: value.deactivated,
+            property_set: json_value_to_metadata(value.property_set)?,
+        })
+    }
+}
+impl TryFrom<DocumentMetadata> for JsDocumentMetadata {
+    type Error = Error;
+
+    fn try_from(value: DocumentMetadata) -> Result<Self> {
+        Ok(Self {
+            created: value.created.map(|d| d.timestamp_millis()),
+            updated: value.updated.map(|d| d.timestamp_millis()),
+            deactivated: value.deactivated,
+            property_set: metadata_to_json_value(value.property_set)?,
         })
     }
 }
 
 #[napi(object, js_name = "Resolution")]
 pub struct JsResolution {
-    pub metadata: JsonObject,
+    pub metadata: JsResolutionMetadata,
+    pub doc_metadata: Option<JsDocumentMetadata>,
     pub doc: Option<JsonObject>,
-    pub doc_metadata: Option<JsonObject>,
 }
 
 impl TryFrom<JsResolution> for Resolution {
     type Error = Error;
     fn try_from(value: JsResolution) -> Result<Self> {
         Ok(Self {
-            metadata: from_json_object(value.metadata)?,
+            metadata: value.metadata.try_into()?,
+            doc_metadata: value.doc_metadata.map(|doc| doc.try_into()).transpose()?,
             doc: value.doc.map(from_json_object).transpose()?,
-            doc_metadata: value.doc_metadata.map(from_json_object).transpose()?,
         })
     }
 }
@@ -58,9 +186,9 @@ impl TryFrom<Resolution> for JsResolution {
     type Error = Error;
     fn try_from(value: Resolution) -> Result<Self> {
         Ok(Self {
-            metadata: to_json_object(value.metadata)?,
+            metadata: value.metadata.try_into()?,
+            doc_metadata: value.doc_metadata.map(|doc| doc.try_into()).transpose()?,
             doc: value.doc.map(to_json_object).transpose()?,
-            doc_metadata: value.doc_metadata.map(to_json_object).transpose()?,
         })
     }
 }

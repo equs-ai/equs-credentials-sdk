@@ -11,12 +11,12 @@ use crate::nonce::{JsNonceGenerator, NativeNonceGenerator, UnifiedNonceGenerator
 use crate::utils::{from_json_object, parse_url_arg};
 use crate::vault::{JsVault, NativeVault, UnifiedVault};
 use crate::vc::core::JsKeyMetadata;
-use crate::vc::oid4vci::holder::OID4VciHolder;
-use crate::vc::oid4vci::issuer::OID4VCiIssuer;
+use crate::vc::oid4vci::holder::OID4VCIHolder;
+use crate::vc::oid4vci::issuer::OID4VCIIssuer;
 use crate::vc::JsonObject;
 
 #[napi]
-pub struct OID4VciIssuerBuilder {
+pub struct OID4VCIIssuerBuilder {
     kms: UnifiedKms,
     nonce_generator: UnifiedNonceGenerator,
     issuer_metadata: JsonObject,
@@ -27,7 +27,7 @@ pub struct OID4VciIssuerBuilder {
 }
 
 #[napi]
-impl OID4VciIssuerBuilder {
+impl OID4VCIIssuerBuilder {
     #[napi(constructor)]
     pub fn new(
         kms: Either<&NativeKms, JsKms>,
@@ -35,7 +35,7 @@ impl OID4VciIssuerBuilder {
         issuer_metadata: JsonObject,
         key_metadata: JsKeyMetadata,
     ) -> Self {
-        OID4VciIssuerBuilder {
+        OID4VCIIssuerBuilder {
             kms: kms.into(),
             nonce_generator: nonce_generator.into(),
             issuer_metadata,
@@ -72,7 +72,7 @@ impl OID4VciIssuerBuilder {
     }
 
     #[napi]
-    pub async fn build(&self) -> Result<OID4VCiIssuer> {
+    pub async fn build(&self) -> Result<OID4VCIIssuer> {
         let mut builder = IssuerBuilder::new(
             self.kms.clone(),
             self.nonce_generator.clone(),
@@ -105,12 +105,12 @@ impl OID4VciIssuerBuilder {
             .await
             .map_err(|err| Error::from_reason(format!("{:?}", err)))?;
 
-        Ok(OID4VCiIssuer(Box::new(issuer)))
+        Ok(OID4VCIIssuer(Box::new(issuer)))
     }
 }
 
 #[napi]
-pub struct OID4VciHolderBuilder {
+pub struct OID4VCIHolderBuilder {
     kms: UnifiedKms,
     vault: UnifiedVault,
     client_id: String,
@@ -119,7 +119,7 @@ pub struct OID4VciHolderBuilder {
 }
 
 #[napi]
-impl OID4VciHolderBuilder {
+impl OID4VCIHolderBuilder {
     #[napi(constructor)]
     pub fn new(
         kms: Either<&NativeKms, JsKms>,
@@ -127,7 +127,7 @@ impl OID4VciHolderBuilder {
         client_id: String,
         issuer_discovery: &JsIssuerDiscovery,
     ) -> Self {
-        OID4VciHolderBuilder {
+        OID4VCIHolderBuilder {
             kms: kms.into(),
             vault: vault.into(),
             client_id,
@@ -142,7 +142,7 @@ impl OID4VciHolderBuilder {
     }
 
     #[napi]
-    pub async fn build(&self) -> Result<OID4VciHolder> {
+    pub async fn build(&self) -> Result<OID4VCIHolder> {
         let mut builder = HolderBuilder::new(
             self.kms.clone(),
             self.vault.clone(),
@@ -168,7 +168,7 @@ impl OID4VciHolderBuilder {
             .await
             .map_err(|err| Error::from_reason(format!("{:?}", err)))?;
 
-        Ok(OID4VciHolder::from_holder(holder))
+        Ok(OID4VCIHolder::from_holder(holder))
     }
 }
 

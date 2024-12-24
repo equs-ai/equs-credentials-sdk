@@ -13,12 +13,14 @@ import {
   Oid4VpHolder,
   Oid4VpHolderBuilder,
   resolveMetadata,
+  TracingLogFormat,
+  TracingLogLevel,
 } from "../../../../../wrappers/nodejs";
 import { config } from "../components/config";
 import { createDidAndKeyMetadata, readFromCLI } from "../components/utils";
 
 async function main(): Promise<void> {
-  await enableLogs();
+  await enableLogs(TracingLogFormat.Full, TracingLogLevel.Info);
 
   const kms = inMemKms();
   const vault = inMemVault();

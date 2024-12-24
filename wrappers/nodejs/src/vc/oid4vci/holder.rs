@@ -19,16 +19,16 @@ use tokio::task;
 use url::Url;
 
 #[napi]
-pub struct OID4VciHolder(Box<dyn _HolderWrapperTrait>);
+pub struct OID4VCIHolder(Box<dyn _HolderWrapperTrait>);
 
-impl OID4VciHolder {
-    pub fn from_holder<H: Holder + 'static>(holder: H) -> OID4VciHolder {
-        OID4VciHolder(Box::new(_HolderWrapper(holder)))
+impl OID4VCIHolder {
+    pub fn from_holder<H: Holder + 'static>(holder: H) -> OID4VCIHolder {
+        OID4VCIHolder(Box::new(_HolderWrapper(holder)))
     }
 }
 
 #[napi]
-impl OID4VciHolder {
+impl OID4VCIHolder {
     #[napi]
     pub fn get_issuer_metadata(&self) -> napi::Result<JsonObject> {
         let issuer_metadata = self.0.get_issuer_metadata();
