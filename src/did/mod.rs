@@ -63,6 +63,7 @@ pub type DocumentMetadata = ssi::did_resolve::DocumentMetadata;
 pub type VerificationMethodMap = ssi::did::VerificationMethodMap;
 pub type ResolutionMetadata = ssi::did_resolve::ResolutionMetadata;
 pub type ResolutionInputMetadata = ssi::did_resolve::ResolutionInputMetadata;
+pub type Metadata = ssi::did_resolve::Metadata;
 
 /// A result of `DID` resolution.
 ///

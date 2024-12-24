@@ -5,6 +5,8 @@ import {
   localNonceGenerator,
   Oid4VpVerifierBuilder,
   PassAuthRequestObject,
+  TracingLogFormat,
+  TracingLogLevel,
 } from "../../../../../wrappers/nodejs";
 import * as express from "express";
 import { urlencoded } from "express";
@@ -13,7 +15,7 @@ import { config } from "../components/config";
 import { createDidAndKeyMetadata } from "../components/utils";
 
 async function main(): Promise<void> {
-  await enableLogs();
+  await enableLogs(TracingLogFormat.Full, TracingLogLevel.Info);
 
   const { port, host } = config.servers.verifier;
   const kms = inMemKms();

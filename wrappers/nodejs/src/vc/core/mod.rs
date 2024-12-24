@@ -13,7 +13,7 @@ use agent_sdk::vc::core::{
 use agent_sdk::vc::{Credential, CredentialMetadata, HasVCFormat, Presentation, VCFormat};
 use napi::Error;
 use napi_derive::napi;
-use serde_json::{json, to_string, Value};
+use serde_json::{json, to_string};
 
 #[derive(Clone)]
 #[napi(js_name = "KeyMetadata", object)]
@@ -426,7 +426,7 @@ impl From<PresentationRestriction> for JsPresentationRestriction {
 #[napi(js_name = "PresentationInput", object)]
 pub struct JsPresentationInput {
     pub id: String,
-    pub format: Option<Value>,
+    pub format: Option<String>,
     pub restrictions: Vec<JsPresentationRestriction>,
 }
 
@@ -436,7 +436,7 @@ impl TryFrom<JsPresentationInput> for PresentationInput {
     fn try_from(value: JsPresentationInput) -> Result<Self, Error> {
         Ok(Self {
             id: value.id,
-            format: value.format.map(serde_json::from_value).transpose()?,
+            format: value.format,
             restrictions: value.restrictions.into_iter().map(|v| v.into()).collect(),
         })
     }
@@ -448,7 +448,7 @@ impl TryFrom<PresentationInput> for JsPresentationInput {
     fn try_from(value: PresentationInput) -> Result<Self, Error> {
         Ok(Self {
             id: value.id,
-            format: value.format.map(serde_json::to_value).transpose()?,
+            format: value.format,
             restrictions: value.restrictions.into_iter().map(|v| v.into()).collect(),
         })
     }

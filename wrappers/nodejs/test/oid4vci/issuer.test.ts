@@ -1,4 +1,4 @@
-import { inMemKms, localNonceGenerator, Oid4VCiIssuer, Oid4VciIssuerBuilder } from "../../index";
+import { inMemKms, localNonceGenerator, OID4VCIIssuer, Oid4VciIssuerBuilder } from "../../index";
 import {
 	ACCESS_TOKEN,
 	CLAIMS,
@@ -12,7 +12,7 @@ import {
 import { createDidAndKeyMetadata } from "../utils/utils";
 
 describe("OID4VCI Issuer: ", () => {
-	let issuer: Oid4VCiIssuer;
+	let issuer: OID4VCIIssuer;
 
 	beforeEach(async () => {
 		const kms = inMemKms();

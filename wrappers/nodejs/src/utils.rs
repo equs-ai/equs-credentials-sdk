@@ -4,6 +4,7 @@ use agent_sdk::vc::metadata::{CredentialMetadataProcessor, DefaultMetadataProces
 use napi_derive::napi;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
+use tracing::Level;
 use url::Url;
 
 pub fn from_json_object<T: DeserializeOwned>(object: JsonObject) -> napi::Result<T> {
@@ -39,6 +40,43 @@ pub async fn resolve_metadata(
 }
 
 #[napi]
-pub async fn enable_logs() {
-    tracing_subscriber::fmt::init();
+pub enum TracingLogFormat {
+    Full,
+    Compact,
+    Pretty,
+    Json,
+}
+
+#[napi]
+pub enum TracingLogLevel {
+    Trace,
+    Debug,
+    Info,
+    Warn,
+    Error,
+}
+
+impl From<TracingLogLevel> for Level {
+    fn from(value: TracingLogLevel) -> Self {
+        match value {
+            TracingLogLevel::Trace => Level::TRACE,
+            TracingLogLevel::Debug => Level::DEBUG,
+            TracingLogLevel::Info => Level::INFO,
+            TracingLogLevel::Warn => Level::WARN,
+            TracingLogLevel::Error => Level::ERROR,
+        }
+    }
+}
+
+#[napi]
+pub async fn enable_logs(format: Option<TracingLogFormat>, level: Option<TracingLogLevel>) {
+    let level_filter = level.map(|lvl| lvl.into()).unwrap_or(Level::INFO);
+    let subscriber_builder = tracing_subscriber::fmt().with_env_filter(level_filter.as_str());
+
+    match format {
+        None | Some(TracingLogFormat::Full) => subscriber_builder.init(),
+        Some(TracingLogFormat::Compact) => subscriber_builder.compact().init(),
+        Some(TracingLogFormat::Pretty) => subscriber_builder.pretty().init(),
+        Some(TracingLogFormat::Json) => subscriber_builder.json().init(),
+    };
 }

@@ -31,7 +31,7 @@ describe("DID: ", () => {
 		const resolver = createUniversalDidResolver();
 
 		test("Resolve", async () => {
-			const result = await resolver.resolve(did, { input: { metadata: {} } });
+			const result = await resolver.resolve(did, { input: { accept: "test" } });
 			expect(result).toEqual(expect.objectContaining(utils.keyResolveResponse));
 		});
 		test("Resolve verification method", async () => {
