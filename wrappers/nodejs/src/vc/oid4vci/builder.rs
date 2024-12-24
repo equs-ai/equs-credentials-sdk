@@ -1,4 +1,6 @@
+#[cfg(debug_assertions)]
 use agent_sdk::reqwest::builder::ReqwestClientBuilder;
+
 use agent_sdk::vc::core::KeyMetadata;
 use agent_sdk::vc::oid4vci::{CredentialOffer, HolderBuilder, IssuerBuilder, IssuerDiscovery};
 use napi::{Either, Error, Result};
@@ -150,7 +152,8 @@ impl OID4VCIHolderBuilder {
             self.issuer_discovery.0.clone(),
         );
 
-        if cfg!(debug_assertions) {
+        #[cfg(debug_assertions)]
+        {
             builder = builder.with_http_client(
                 ReqwestClientBuilder::new()
                     .insecure()
