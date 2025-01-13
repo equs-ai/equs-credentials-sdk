@@ -7,15 +7,17 @@ use sd_jwt_rs::{
     SDJWTVerifier,
 };
 use serde_json::{Map, Value};
-use snafu::{ensure, ResultExt};
-use ssi::did::VerificationMethod;
-use ssi::jwk::JWK;
+use snafu::ResultExt;
+use ssi::dids::DIDResolver;
+use ssi::jwk::{JWKResolver, JWK};
+use std::borrow::Cow;
 use std::collections::HashMap;
+use std::ops::Deref;
 use tracing::{instrument, trace, Level};
 
 use crate::crypto::{Key, Signer};
 use crate::did::universal::UniversalResolver;
-use crate::did::{DIDDoc, DIDResolver, VerificationMethodMap, DIDURL};
+use crate::did::DIDURL;
 use crate::nonce::Nonce;
 use crate::utils;
 use crate::utils::b64;
@@ -23,8 +25,9 @@ use crate::utils::serde::Helpers;
 use crate::vc::core::{PresentationInput, PresentationRestriction};
 use crate::vc::formats::vc::SD_JWT_VC;
 use crate::vc::formats::{
-    ClaimsSnafu, HasClaims, HasCredential, JWSSnafu, KeyTypeNotSupportedSnafu, ParsingSnafu,
-    PresentationSnafu, SigningSnafu, VerifyOptions, VerifyingSnafu, API,
+    resolve_verification_method, ClaimsSnafu, HasClaims, HasCredential, JWSSnafu,
+    KeyTypeNotSupportedSnafu, ParsingSnafu, PresentationSnafu, ProofValidationSnafu, SigningSnafu,
+    VerifyOptions, VerifyingSnafu, API,
 };
 use crate::vc::formats::{GetExpirationClaim, Result};
 
@@ -72,41 +75,41 @@ impl<S: Signer> sd_jwt_rs::signer::SDJWTSigner for SignerWrapper<S> {
     }
 }
 
-pub struct DidKeyResolver<R: DIDResolver>(R);
+pub struct DidKeyResolver<R: JWKResolver>(R);
 
-impl<R: DIDResolver> DidKeyResolver<R> {
+impl<R: JWKResolver> DidKeyResolver<R> {
     #[instrument(level = Level::TRACE, skip_all)]
     pub fn new(did_resolver: R) -> DidKeyResolver<R> {
         DidKeyResolver(did_resolver)
     }
 }
 
+#[async_trait]
 impl Default for DidKeyResolver<UniversalResolver> {
     #[instrument(level = Level::TRACE, skip_all)]
     fn default() -> Self {
-        DidKeyResolver::new(UniversalResolver::new())
+        DidKeyResolver::new(UniversalResolver {})
     }
 }
 
 #[async_trait]
-impl<R: DIDResolver> KeyResolver for DidKeyResolver<R> {
+impl KeyResolver for DidKeyResolver<UniversalResolver> {
     #[instrument(level = Level::TRACE, skip(self), err())]
-    async fn resolve(
-        &self,
-        did_url: &str,
-        header: &Header,
-    ) -> sd_jwt_rs::error::Result<DecodingKey> {
-        let resolver = &self.0;
-
-        let vm = resolver
-            .resolve_verification_method(did_url)
+    async fn resolve(&self, did: &str, header: &Header) -> sd_jwt_rs::error::Result<DecodingKey> {
+        let vm = self
+            .0
+            .resolve_into_any_verification_method(ssi::dids::DID::new(did).map_err(|e| {
+                SdJwtRsError::Unspecified(format!("could not resolve verification method: {e}"))
+            })?)
             .await
-            .map_err(|err| SdJwtRsError::Unspecified(err.to_string()))?;
+            .map_err(|e| SdJwtRsError::Unspecified(e.to_string()))?
+            .ok_or_else(|| SdJwtRsError::Unspecified("empty verification method".to_string()))?;
 
-        let jwk = vm
-            .get_jwk()
-            .map_err(|err| SdJwtRsError::DeserializationError(err.to_string()))?;
-
+        let jwk = self
+            .0
+            .fetch_public_jwk(Some(vm.id.as_str()))
+            .await
+            .map_err(|e| SdJwtRsError::Unspecified("could not resolve public jwk".to_string()))?;
         let jwk = utils::jwk::from_spruce_jwk(&jwk)
             .ok_or_else(|| SdJwtRsError::Unspecified(format!("Unsupported key: {:?}", jwk)))?;
 
@@ -168,8 +171,8 @@ impl SdJwtAPI {
         metadata: &VCMetadata,
     ) -> Claims {
         claims.put_str(VCT_CLAIM, &metadata.vct);
-        claims.put_str(ISS_CLAIM, &iss_did_url.did);
-        claims.put_str(SUB_CLAIM, &hld_did_url.did);
+        claims.put_str(ISS_CLAIM, iss_did_url.did());
+        claims.put_str(SUB_CLAIM, hld_did_url.did());
 
         let iat =
             get_time_based_claim(&claims, IAT_CLAIM).unwrap_or_else(time::OffsetDateTime::now_utc);
@@ -210,53 +213,19 @@ impl SdJwtAPI {
     pub fn verify_signature(vc: &Credential, jwk: &JWK) -> Result<()> {
         let stripped = Self::strip_disclosures(vc)?;
 
-        ssi::jws::decode_verify(stripped, jwk).context(JWSSnafu)?;
+        ssi::claims::jws::decode_verify(stripped, jwk).context(JWSSnafu)?;
 
         Ok(())
     }
 
     #[instrument(level = Level::TRACE, err(), ret())]
-    fn get_vm_from_did_doc(did_doc: &DIDDoc) -> Result<&VerificationMethodMap> {
-        let vm_methods = did_doc.verification_method.as_ref().ok_or(
-            ParsingSnafu {
-                details: "could not retrieve \"verification_method\" from DIDDoc",
-            }
-            .build(),
-        )?;
-
-        ensure!(
-            vm_methods.len() == 1,
-            ParsingSnafu {
-                details: "DIDDoc contains multiple \"verification_method\""
-            }
-        );
-
-        let vm = vm_methods.first().ok_or(
-            ParsingSnafu {
-                details: "\"verification_method\" list is empty",
-            }
-            .build(),
-        )?;
-
-        if let VerificationMethod::Map(vm) = vm {
-            Ok(vm)
-        } else {
-            ParsingSnafu {
-                details: "\"verification_method\" value must be embedded",
-            }
-            .fail()
-        }
-    }
-
-    #[instrument(level = Level::TRACE, err(), ret())]
-    async fn get_vm_from_jwt(jwt: &str) -> Result<VerificationMethodMap> {
-        let (header, payload) = ssi::jws::decode_unverified(jwt).context(JWSSnafu)?;
-        let key_resolver = DidKeyResolver::default();
+    async fn get_jwk_from_jwt(jwt: &str) -> Result<Cow<JWK>> {
+        let (header, payload) = ssi::claims::jws::decode_unverified(jwt).context(JWSSnafu)?;
+        let resolver = UniversalResolver::default();
 
         let vm = match header.key_id {
-            Some(did_url) => key_resolver
-                .0
-                .resolve_verification_method(&did_url)
+            Some(did_url) => resolver
+                .fetch_public_jwk(Some(&did_url))
                 .await
                 .map_err(|e| {
                     ParsingSnafu {
@@ -274,7 +243,7 @@ impl SdJwtAPI {
 
                 let iss_value = claims.get(ISS_CLAIM).ok_or(
                     VerifyingSnafu {
-                        details: "could not retrieve \"iss\" field",
+                        details: "could not retrieve \"iss\" field from sd-jwt header",
                     }
                     .build(),
                 )?;
@@ -285,30 +254,15 @@ impl SdJwtAPI {
                     .build()
                 })?;
 
-                let did_doc = key_resolver
-                    .0
-                    .resolve(&iss_did, Default::default())
+                let vm = resolve_verification_method(&iss_did).await?;
+                resolver
+                    .fetch_public_jwk(Some(vm.id.as_str()))
                     .await
-                    .doc
-                    .ok_or(
-                        ParsingSnafu {
-                            details: "could not retrieve \"DIDDoc\"",
-                        }
-                        .build(),
-                    )?;
-
-                Self::get_vm_from_did_doc(&did_doc)
-                    .map_err(|e| {
-                        ParsingSnafu {
-                            details: format!("could not resolve verification method: {e}"),
-                        }
-                        .build()
-                    })?
-                    .to_owned()
+                    .context(ProofValidationSnafu)?
             }
         };
 
-        Ok(vm)
+        Ok(Cow::Owned(vm.deref().clone()))
     }
 
     #[instrument(level = Level::TRACE, ret())]
@@ -489,14 +443,7 @@ impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata, Claims> for S
     #[instrument(level = Level::TRACE, err(), ret())]
     async fn verify_vc(credential: &Credential, opts: VerifyOptions) -> Result<()> {
         let plain_jwt = Self::strip_disclosures(credential)?;
-        let vm = Self::get_vm_from_jwt(plain_jwt).await?;
-
-        let jwk = vm.get_jwk().map_err(|e| {
-            VerifyingSnafu {
-                details: format!("could not retrieve JWK: {e}"),
-            }
-            .build()
-        })?;
+        let jwk = Self::get_jwk_from_jwt(plain_jwt).await?;
 
         Self::verify_signature(credential, &jwk)
     }
@@ -534,6 +481,7 @@ impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata, Claims> for S
 mod tests {
     use crate::crypto::Key;
     use crate::did::didkey::DIDKey;
+    use crate::did::universal::UniversalResolver;
     use crate::did::{DIDResolver, DIDURL};
     use crate::inmem::kms::LocalKms;
     use crate::inmem::nonce::LocalNonceGenerator;
@@ -550,7 +498,6 @@ mod tests {
     use rstest::rstest;
     use serde_json::json;
     use std::ops::Add;
-    use std::str::FromStr;
     use time::OffsetDateTime;
 
     #[rstest]
@@ -601,11 +548,11 @@ mod tests {
         );
         assert_eq!(
             claims.get(SUB_CLAIM).unwrap(),
-            &Claim::String(hld_did_url.did)
+            &Claim::String(hld_did_url.did().to_string())
         );
         assert_eq!(
             claims.get(ISS_CLAIM).unwrap(),
-            &Claim::String(iss_did_url.did)
+            &Claim::String(iss_did_url.did().to_string())
         );
         assert_eq!(
             claims.get(VCT_CLAIM).unwrap(),
@@ -769,14 +716,14 @@ mod tests {
     #[tokio::test]
     async fn sd_jwt_create_vc_fails_on_invalid_key() {
         let kms = LocalKms::new();
-        let hld_did_url = DIDURL::from_str("did:example:123").unwrap();
+        let hld_did_url = DIDURL::new("did:example:123").unwrap();
         let hld_kh = no_jwk_key();
         let (iss_did_url, iss_kh) = create_did_url_and_key_handle(&kms, KeyType::P256).await;
 
         let res = SdJwtAPI::create_vc(
             sample_claims(),
             (&iss_did_url, iss_kh),
-            (&hld_did_url, hld_kh),
+            (hld_did_url, hld_kh),
             sample_vc_metadata(),
         )
         .await;
@@ -894,12 +841,14 @@ mod tests {
             .await
             .unwrap();
 
-        let didkey = DIDKey::new();
-        let did = didkey.generate(kh).unwrap();
-        let did_doc = didkey.resolve(&did, Default::default()).await.doc.unwrap();
+        let did = DIDKey::generate(kh).unwrap();
+        let vm = UniversalResolver::default()
+            .resolve_into_any_verification_method(ssi::dids::DID::new(&did).unwrap())
+            .await
+            .unwrap()
+            .unwrap();
 
-        let vm = SdJwtAPI::get_vm_from_did_doc(&did_doc).unwrap();
-        assert!(vm.id.starts_with(&did));
+        assert!(vm.id.to_string().starts_with(&did));
     }
 
     async fn sample_sd_jwt_vc_with_hld_kh() -> (Credential, impl KeyHandle) {
@@ -924,12 +873,12 @@ mod tests {
         let kms = LocalKms::new();
 
         let (hld_did_url, h_kh) = create_did_url_and_key_handle(&kms, KeyType::P256).await;
-        let iss_did_url = DIDURL::from_str("did:example:123").unwrap();
+        let iss_did_url = DIDURL::new("did:example:123").unwrap();
         let (_, i_kh) = create_did_url_and_key_handle(&kms, KeyType::P256).await;
 
         SdJwtAPI::create_vc(
             sample_claims(),
-            (&iss_did_url, i_kh),
+            (iss_did_url, i_kh),
             (&hld_did_url, h_kh),
             sample_vc_metadata(),
         )

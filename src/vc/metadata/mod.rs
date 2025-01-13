@@ -8,6 +8,7 @@ use crate::vc::core::KeyMetadata;
 use crate::vc::formats::HasClaims;
 use crate::vc::{Credential, CredentialMetadata, HasVCFormat};
 use common_macros::DebugError;
+type Level_ = Level;
 
 /// `Metadata` Error.
 ///
@@ -68,13 +69,14 @@ impl DefaultMetadataProcessor {
     )]
     fn type_(credential: &Credential) -> Result<String> {
         match credential {
-            Credential::LdpVc(w3c_vc) => {
-                let type_ = w3c_vc
-                    .type_
-                    .clone()
-                    .into_iter()
+            Credential::LdpVc(ldp_vc) => {
+                let type_ = ldp_vc
+                    .types
+                    .additional_types()
                     .last()
-                    .unwrap_or("VerifiableCredential".to_string());
+                    .unwrap_or(&"VerifiableCredential".to_string())
+                    .to_owned();
+
                 Ok(type_)
             }
             Credential::SdJwt(jwt) => {
@@ -145,6 +147,7 @@ impl CredentialMetadataProcessor for DefaultMetadataProcessor {
 #[cfg(test)]
 mod tests {
     use crate::vc::core::KeyMetadata;
+    use crate::vc::formats::json_ld_vc::VC;
     use crate::vc::metadata::{CredentialMetadataProcessor, DefaultMetadataProcessor, Error};
     use crate::vc::{Credential, VCFormat};
     use rstest::rstest;
@@ -273,8 +276,10 @@ mod tests {
 
     #[test]
     fn resolve_js_ld_cred_tags() {
-        let credential =
-            Credential::LdpVc(ssi::vc::Credential::from_json_unsigned(LDP_VC_CRED).unwrap());
+        let credential = Credential::LdpVc(VC::new(
+            serde_json::from_str(LDP_VC_CRED).unwrap(),
+            Default::default(),
+        ));
 
         let mut tags = DefaultMetadataProcessor::resolve_tags(&credential).unwrap();
 
@@ -284,7 +289,7 @@ mod tests {
             tags,
             vec![
                 (
-                    "$.@context".to_string(),
+                    "$.@context[*]".to_string(),
                     "https://www.w3.org/2018/credentials/v1".to_string()
                 ),
                 (
@@ -320,9 +325,7 @@ mod tests {
 
     fn ldp_vc_cred() -> TestCaseCred {
         TestCaseCred {
-            credential: Credential::LdpVc(
-                ssi::vc::Credential::from_json_unsigned(LDP_VC_CRED).unwrap(),
-            ),
+            credential: Credential::LdpVc(serde_json::from_str(LDP_VC_CRED).unwrap()),
             type_: "UniversityDegree".into(),
             format: VCFormat::LdpVc,
             key_metadata: KeyMetadata {

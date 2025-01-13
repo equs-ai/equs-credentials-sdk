@@ -3,7 +3,8 @@ use actix_web::http::header::Header;
 use actix_web::{web, App, Error, HttpRequest, HttpResponse, HttpServer};
 use actix_web_httpauth::headers::authorization::{Authorization, Bearer};
 use agent_sdk::did::didkey::DIDKey;
-use agent_sdk::did::{DIDResolver, DID};
+use agent_sdk::did::universal::UniversalResolver;
+use agent_sdk::did::{DIDBuf, DIDResolver, DID};
 use agent_sdk::inmem::kms::LocalKms;
 use agent_sdk::inmem::nonce::LocalNonceGenerator;
 use agent_sdk::inmem::vault::InMemVault;
@@ -13,11 +14,10 @@ use agent_sdk::nonce::{Nonce, NonceData};
 use agent_sdk::vc::core::KeyMetadata;
 use agent_sdk::vc::oid4vci;
 use agent_sdk::vc::oid4vci::{
-    AuthorizationMetadata, CredentialRequest, CredentialResponseResolved, CredentialResult,
-    IssuanceSession, IssuerDiscovery, IssuerMetadata,
+    AccessToken, AuthorizationMetadata, CredentialRequest, CredentialResponseResolved,
+    CredentialResult, IssuanceSession, IssuerDiscovery, IssuerMetadata,
 };
 use agent_sdk::vc::oid4vci::{Holder, Issuer};
-use oauth2::AccessToken;
 use rand::distributions::Alphanumeric;
 use rand::{thread_rng, Rng};
 use serde_json::json;
@@ -200,18 +200,27 @@ async fn oid4vci_holder(
 }
 
 async fn create_did_and_key_metadata(kms: &LocalKms) -> (DID, KeyMetadata) {
-    let didkey = DIDKey::new();
-
     let (kid, kh) = kms
         .create_and_handle(kms::KeyType::P256, kms::CreateOptions {})
         .await
         .unwrap();
 
-    let did = didkey.generate(kh).unwrap();
+    let did = DIDKey::generate(kh).unwrap();
 
-    let vm = didkey.resolve_verification_method(&did).await.unwrap().id;
+    let vm = UniversalResolver::default()
+        .resolve_into_any_verification_method(DIDBuf::from_string(did.clone()).unwrap().as_did())
+        .await
+        .unwrap()
+        .unwrap()
+        .id;
 
-    (did, KeyMetadata { kid, did_url: vm })
+    (
+        did,
+        KeyMetadata {
+            kid,
+            did_url: vm.to_string(),
+        },
+    )
 }
 
 fn sample_nonce() -> NonceData {

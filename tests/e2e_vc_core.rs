@@ -3,7 +3,6 @@
 mod utils;
 
 use std::collections::HashMap;
-use std::str::FromStr;
 
 use agent_sdk::crypto::Alg;
 use agent_sdk::inmem::kms::LocalKms;
@@ -21,7 +20,6 @@ use agent_sdk::vc::core::{
 use agent_sdk::vc::metadata::{CredentialMetadataProcessor, DefaultMetadataProcessor};
 use agent_sdk::vc::presentation_exchange::InputDescriptor;
 use serde_json::json;
-use ssi::did::DIDURL;
 use utils::fixtures::{sample_claims_sdjwt, SCOPE, VC_TYPE, VERIFIER_ID};
 use utils::helpers::create_did_keymetadata_keyhandle;
 
@@ -119,11 +117,10 @@ async fn build_issuer() -> impl Issuer {
     println!("Issuer creating...");
 
     let kms = LocalKms::new();
-    let (did, key_metadata, _) = create_did_keymetadata_keyhandle(&kms).await;
-    let did_url = DIDURL::from_str(&did).unwrap();
+    let (_, key_metadata, _) = create_did_keymetadata_keyhandle(&kms).await;
 
     let metadata = IssuerMetadata {
-        issuer_id: did_url.to_string(),
+        issuer_id: key_metadata.did_url.to_string(),
         cred_defs: vec![CredentialDefinition {
             cred_def_id: SCOPE.into(),
             format: vc::VCFormat::SdJwtVc,

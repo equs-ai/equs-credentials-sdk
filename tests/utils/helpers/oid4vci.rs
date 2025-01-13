@@ -3,11 +3,10 @@ use agent_sdk::inmem::kms::LocalKms;
 use agent_sdk::inmem::vault::InMemVault;
 use agent_sdk::vc::oid4vci::{
     CredentialOffer, CredentialOfferParams, Holder, HolderBuilder, Issuer, IssuerBuilder,
-    IssuerDiscovery,
+    IssuerDiscovery, IssuerMetadata,
 };
 
 use crate::utils::http::HttpClientEmulator;
-use oauth2::http::StatusCode;
 use oauth2::HttpResponse;
 
 use crate::utils::fixtures::{
@@ -16,12 +15,11 @@ use crate::utils::fixtures::{
 
 use super::create_did_keymetadata_keyhandle;
 use agent_sdk::inmem::nonce::LocalNonceGenerator;
-use oid4vci::core::metadata::IssuerMetadata;
 use url::Url;
 
 pub async fn build_holder(
     credential_offer: CredentialOfferParams,
-    http_client: impl HttpClient,
+    http_client: impl HttpClient + 'static,
     kms: LocalKms,
 ) -> impl Holder {
     let vault = InMemVault::new();
@@ -40,7 +38,7 @@ pub async fn build_holder(
 
 pub async fn build_issuer(
     metadata: IssuerMetadata,
-    http_client: impl HttpClient,
+    http_client: impl HttpClient + 'static,
     introspect_ep: Option<Url>,
 ) -> impl Issuer {
     let kms = LocalKms::new();
@@ -65,11 +63,7 @@ pub fn setup_http_static_handlers(http_client_emulator: &mut HttpClientEmulator)
         Box::new(|_| {
             let resp = sample_issuer_metadata();
 
-            Ok(HttpResponse {
-                status_code: StatusCode::OK,
-                headers: Default::default(),
-                body: serde_json::to_vec(&resp).unwrap(),
-            })
+            Ok(HttpResponse::new(serde_json::to_vec(&resp).unwrap()))
         }),
     );
 
@@ -81,11 +75,7 @@ pub fn setup_http_static_handlers(http_client_emulator: &mut HttpClientEmulator)
             let authz_url_str = "https://authz-backend.com";
             let resp = sample_authorization_metadata(authz_url_str);
 
-            Ok(HttpResponse {
-                status_code: StatusCode::OK,
-                headers: Default::default(),
-                body: serde_json::to_vec(&resp).unwrap(),
-            })
+            Ok(HttpResponse::new(serde_json::to_vec(&resp).unwrap()))
         }),
     );
 }

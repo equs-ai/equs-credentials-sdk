@@ -107,7 +107,9 @@ async fn issue_credential(
 async fn issue_metadata(state: web::Data<AppState>) -> HttpResponse {
     let metadata = state.issuer.get_issuer_metadata();
 
-    HttpResponse::Ok().json(serde_json::to_value(metadata).unwrap())
+    HttpResponse::Ok()
+        .insert_header(("Content-Type", "application/json"))
+        .json(serde_json::to_value(metadata).unwrap())
 }
 
 async fn credential_offer(state: web::Data<AppState>) -> HttpResponse {
@@ -116,7 +118,7 @@ async fn credential_offer(state: web::Data<AppState>) -> HttpResponse {
         .create_credential_offer(
             vec!["SD_JWT_cred_1", "JSON_LDP_cred_2"],
             &CredentialOfferGrants {
-                authorization_code: Some(AuthorizationCodeGrant { issuer_state: None }),
+                authorization_code: Some(AuthorizationCodeGrant::new(None, None)),
                 pre_authorized_code: None,
             },
         )
@@ -133,11 +135,9 @@ async fn did_doc(state: web::Data<AppState>) -> HttpResponse {
 }
 
 async fn get_user_attributes(cred_def: &CredDefMetadata) -> Result<Claims, Error> {
-    let vc_type = match cred_def.additional_fields() {
-        CredDefMetadataProfile::SDJWTVC(m) => m.vct(),
-        CredDefMetadataProfile::LDVC(m) => {
-            &m.credentials_definition().credential_definition().r#type()[1]
-        }
+    let vc_type = match cred_def.profile_specific_fields() {
+        CredDefMetadataProfile::VcSdJwt(m) => m.vct(),
+        CredDefMetadataProfile::LdpVc(m) => &m.credential_definition().r#type()[1],
         _ => panic!("unsupported format"),
     };
 
@@ -297,7 +297,9 @@ fn sample_issuer_metadata(iss_url: &str, authz_url: &str) -> IssuerMetadata {
                 "jwk"
               ],
               "credential_signing_alg_values_supported": [
-                "ES256"
+                "ES256",
+                "ES256K",
+                "EdDSA"
               ],
               "proof_types_supported": {
                 "jwt": {
@@ -315,7 +317,7 @@ fn sample_issuer_metadata(iss_url: &str, authz_url: &str) -> IssuerMetadata {
                             "personal": {},
                             "work": {}
                         },
-                    "username": {},
+                "username": {},
                 "postal_code": {"codes": [{}, {}]},
                 "locality": {},
                 "region": {},
@@ -340,11 +342,11 @@ fn sample_issuer_metadata(iss_url: &str, authz_url: &str) -> IssuerMetadata {
                 "cryptographic_binding_methods_supported": [
                     "jwk"
                 ],
-                "cryptographic_suites_supported": [
+                "credential_signing_alg_values_supported": [
                     "Ed25519Signature2018",
                     "EcdsaSecp256k1Signature2019"
                 ],
-                "credentials_definition": {
+                "credential_definition": {
                     "@context": [
                         "https://www.w3.org/2018/credentials/v1",
                         "https://w3id.org/citizenship/v1"
@@ -369,10 +371,13 @@ fn sample_issuer_metadata(iss_url: &str, authz_url: &str) -> IssuerMetadata {
                         "name": "University Credential",
                         "locale": "en-US",
                         "logo": {
-                            "url": "https://exampleuniversity.com/public/logo.png",
+                            "uri": "https://exampleuniversity.com/public/logo.png",
                             "alt_text": "a square logo of a university"
                         },
                         "background_color": "#12107c",
+                        "background_image": {
+                            "uri": "https://university.example.edu/public/background-image.png"
+                        },
                         "text_color": "#FFFFFF"
                     }
                 ]

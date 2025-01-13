@@ -1,25 +1,33 @@
-use crate::crypto::Key;
+use crate::crypto::{Key, JWK};
 use crate::did::{
-    DIDDoc, DIDResolver, DidDocGenerationSnafu, DidGenerationSnafu, InvalidDidFormatSnafu,
-    KeyNotSupportedSnafu, Resolution, ResolveOptions, Result, DID,
+    DIDDoc, DidBufCreationSnafu, DidDocGenerationSnafu, DidGenerationSnafu, DidUrlBufCreationSnafu,
+    InvalidDidFormatSnafu, IriRefCreationSnafu, KeyNotSupportedSnafu, ParseSnafu, Result, DID,
 };
-use async_trait::async_trait;
-use iref::IriRefBuf;
 use regex::Regex;
-use ssi::did::{VerificationMethod, VerificationMethodMap};
-use ssi::did_resolve::DIDResolver as SpruceResolver;
+use snafu::ResultExt;
+use ssi::dids::document::representation::json_ld::DIDContext;
+use ssi::dids::document::verification_method::ValueOrReference;
+use ssi::dids::ssi_json_ld::syntax::ContextEntry;
+use ssi::dids::{DIDBuf, DIDURLBuf, DIDURLReferenceBuf, Document};
+use ssi::json_ld::IriRefBuf;
 use ssi::jwk::Params;
-use ssi_dids::DIDURL;
-use ssi_dids::{Context, Contexts};
+use ssi::security::multibase::Base;
+use ssi::security::MultibaseBuf;
+use std::collections::BTreeMap;
 use std::str::FromStr;
 use tracing::{instrument, Level};
 use url::Url;
 
-const ED25519_VM_TYPE: &str = "Ed25519VerificationKey2020";
-const ED25519_VM_TYPE_IRI: &str = "https://w3id.org/security#Ed25519VerificationKey2020";
+type Level_ = Level;
+
+const ED25519_VM_TYPE: &str = "Ed25519VerificationKey2018";
+const ED25519_VM_TYPE_IRI: &str = "https://w3id.org/security#Ed25519VerificationKey2018";
 const ECDSASECP256K1_VM_TYPE: &str = "EcdsaSecp256k1VerificationKey2019";
 const ECDSASECP256K1_VM_TYPE_IRI: &str =
     "https://w3id.org/security#EcdsaSecp256k1VerificationKey2019";
+const ECDSASECP256R1_VM_TYPE: &str = "EcdsaSecp256r1VerificationKey2019";
+const ECDSASECP256R1_VM_TYPE_IRI: &str =
+    "https://w3id.org/security#EcdsaSecp256r1VerificationKey2019";
 
 // ([a-z0-9][a-z0-9\-]*)      first part of domain name
 // (\.[a-z0-9][a-z0-9\-]*)*   any number of domain name parts
@@ -30,19 +38,10 @@ const DID_WEB_PATTERN: &str =
 
 /// Resolver for the `did:web` method.
 ///
-/// Implements common [DIDResolver] for resolving DIDs.
-pub struct DIDWeb {
-    did_web_resolver: did_web::DIDWeb,
-}
+/// Supports generation of `did:web`.
+pub struct DIDWeb {}
 
 impl DIDWeb {
-    #[instrument(level = Level::TRACE)]
-    pub fn new() -> Self {
-        Self {
-            did_web_resolver: did_web::DIDWeb {},
-        }
-    }
-
     /// Generate a `did:web` from a URL.
     ///
     /// # Arguments
@@ -123,9 +122,61 @@ impl DIDWeb {
             .build()
         })?;
 
-        let (vm_type, vm_type_iri) = match jwk.params {
+        let (vm_type, vm_type_iri, (public_key_name, public_key_value)) =
+            Self::extract_verification_method_params(&jwk)?;
+
+        let mut document = Document::new(DIDBuf::from_str(did).context(DidBufCreationSnafu)?);
+
+        let array = vec![ContextEntry::IriRef(vm_type_iri)];
+        let mut properties = BTreeMap::new();
+        properties.insert(public_key_name, public_key_value);
+        let default_vm = ssi::dids::document::DIDVerificationMethod {
+            id: DIDURLBuf::from_string(format!("{}#key-0", did)).context(DidUrlBufCreationSnafu)?,
+            type_: vm_type.to_string(),
+            controller: DIDBuf::from_str(did).context(DidBufCreationSnafu)?,
+            properties,
+        };
+
+        let did_url_buf = default_vm.id.clone();
+
+        document.verification_method = vec![default_vm];
+
+        document.verification_relationships.assertion_method = vec![ValueOrReference::Reference(
+            DIDURLReferenceBuf::Absolute(did_url_buf),
+        )];
+
+        let options = ssi::dids::document::representation::Options::JsonLd({
+            ssi::dids::document::representation::json_ld::Options {
+                context: ssi::dids::document::representation::json_ld::Context::array(
+                    DIDContext::V1,
+                    array,
+                ),
+            }
+        });
+
+        let did_doc = DIDDoc::new(document, options);
+
+        Ok(did_doc)
+    }
+
+    #[instrument(level = Level::TRACE, err(), ret())]
+    fn extract_verification_method_params(
+        jwk: &JWK,
+    ) -> Result<(&str, IriRefBuf, (String, serde_json::Value))> {
+        let result = match jwk.params {
             Params::OKP(ref params) => match &params.curve[..] {
-                "Ed25519" => (ED25519_VM_TYPE, ED25519_VM_TYPE_IRI),
+                "Ed25519" => {
+                    let key = bs58::encode(&params.public_key.0).into_string();
+                    (
+                        ED25519_VM_TYPE,
+                        IriRefBuf::new(ED25519_VM_TYPE_IRI.to_string())
+                            .context(IriRefCreationSnafu)?,
+                        (
+                            "publicKeyBase58".to_string(),
+                            serde_json::Value::String(key),
+                        ),
+                    )
+                }
                 _ => {
                     return KeyNotSupportedSnafu {
                         type_: params.curve.clone(),
@@ -135,7 +186,39 @@ impl DIDWeb {
             },
             Params::EC(ref params) => match params.curve {
                 Some(ref curve) => match &curve[..] {
-                    "P-256" => (ECDSASECP256K1_VM_TYPE, ECDSASECP256K1_VM_TYPE_IRI),
+                    "secp256k1" => (
+                        ECDSASECP256K1_VM_TYPE,
+                        IriRefBuf::new(ECDSASECP256K1_VM_TYPE_IRI.to_string())
+                            .context(IriRefCreationSnafu)?,
+                        (
+                            "publicKeyJwk".to_string(),
+                            serde_json::to_value(jwk).context(ParseSnafu)?,
+                        ),
+                    ),
+                    "secp256r1" | "P-256" => {
+                        let key = MultibaseBuf::encode(
+                            Base::Base58Btc,
+                            jwk.to_multicodec()
+                                .map_err(|e| {
+                                    DidDocGenerationSnafu {
+                                        details: format!(
+                                            "could not convert jwk to multicodec form: {e}"
+                                        ),
+                                    }
+                                    .build()
+                                })?
+                                .as_bytes(),
+                        );
+                        (
+                            ECDSASECP256R1_VM_TYPE,
+                            IriRefBuf::new(ECDSASECP256R1_VM_TYPE_IRI.to_string())
+                                .context(IriRefCreationSnafu)?,
+                            (
+                                "publicKeyMultibase".to_string(),
+                                serde_json::to_value(key).context(ParseSnafu)?,
+                            ),
+                        )
+                    }
                     _ => {
                         return KeyNotSupportedSnafu {
                             type_: curve.clone(),
@@ -158,33 +241,7 @@ impl DIDWeb {
             }
         };
 
-        let mut did_doc = DIDDoc::new(did);
-
-        did_doc.context = Contexts::Many(vec![
-            Context::URI(IriRefBuf::from_str("https://www.w3.org/ns/did/v1").unwrap()),
-            Context::URI(IriRefBuf::from_str(vm_type_iri).unwrap()),
-        ]);
-
-        let default_vm = VerificationMethodMap {
-            id: format!("{}#key-0", did),
-            type_: vm_type.to_string(),
-            controller: did.to_string(),
-            public_key_jwk: Some(jwk),
-            ..Default::default()
-        };
-
-        did_doc.verification_method = Some(vec![VerificationMethod::Map(default_vm.to_owned())]);
-
-        let did_url: DIDURL = default_vm.id.try_into().map_err(|_| {
-            DidDocGenerationSnafu {
-                details: "DIDURL parsing failed",
-            }
-            .build()
-        })?;
-
-        did_doc.assertion_method = Some(vec![VerificationMethod::DIDURL(did_url)]);
-
-        Ok(did_doc)
+        Ok(result)
     }
 }
 
@@ -196,26 +253,6 @@ fn validate_didweb(did: &str) -> Result<()> {
     }
 
     Ok(())
-}
-
-#[async_trait]
-impl DIDResolver for DIDWeb {
-    #[instrument(level = Level::TRACE, skip(self), ret())]
-    async fn resolve(&self, did: &str, options: ResolveOptions) -> Resolution {
-        let (metadata, doc, doc_metadata) =
-            self.did_web_resolver.resolve(did, &options.input).await;
-
-        Resolution {
-            doc,
-            metadata,
-            doc_metadata,
-        }
-    }
-
-    #[instrument(level = Level::TRACE, skip_all)]
-    fn as_spruce_resolver(&self) -> &dyn SpruceResolver {
-        &self.did_web_resolver
-    }
 }
 
 #[cfg(test)]
@@ -269,7 +306,7 @@ mod tests {
     }
 
     #[rstest]
-    #[case::p256((KeyType::P256, ECDSASECP256K1_VM_TYPE,ECDSASECP256K1_VM_TYPE_IRI))]
+    #[case::p256((KeyType::P256, ECDSASECP256R1_VM_TYPE,ECDSASECP256R1_VM_TYPE_IRI))]
     #[case::ed25519((KeyType::Ed25519, ED25519_VM_TYPE, ED25519_VM_TYPE_IRI))]
     #[tokio::test]
     async fn did_doc_is_generated_correctly(#[case] test_case: (KeyType, &str, &str)) {
@@ -283,23 +320,25 @@ mod tests {
             .unwrap();
 
         let did_doc = DIDWeb::generate_did_document(did, &key).unwrap();
-
         assert_eq!(
-            did_doc.context,
-            serde_json::from_value(json!(["https://www.w3.org/ns/did/v1", vm_type_iri])).unwrap()
+            serde_json::to_value(&did_doc)
+                .unwrap()
+                .get("@context")
+                .unwrap()
+                .to_owned(),
+            serde_json::to_value(json!(["https://www.w3.org/ns/did/v1", vm_type_iri])).unwrap()
         );
 
         assert_eq!(did_doc.id, did);
 
         assert_eq!(
-            did_doc.verification_method.as_ref().unwrap()[0],
-            VerificationMethod::Map(VerificationMethodMap {
-                id: format!("{did}#key-0"),
-                type_: vm_type.to_string(),
-                controller: did.to_string(),
-                public_key_jwk: Some(key.jwk().unwrap()),
-                ..Default::default()
-            })
+            did_doc.verification_method[0].id,
+            DIDURLBuf::new(format!("{did}#key-0").as_bytes().to_vec()).unwrap()
+        );
+        assert_eq!(did_doc.verification_method[0].type_, vm_type.to_string());
+        assert_eq!(
+            did_doc.verification_method[0].controller,
+            DIDBuf::from_str(did).unwrap()
         );
     }
 

@@ -1,19 +1,23 @@
-use crate::crypto::Alg;
+use crate::crypto::{Alg, AlgNotSupportedSnafu};
 use crate::vc::core::{CredentialDefinition, CredentialDefinitionData, KeyMetadata};
 use crate::vc::{pop, HasVCFormat, VCFormat};
 use crate::{crypto, utils, vc};
 use common_macros::DebugError;
-use oid4vci::core::profiles;
-use oid4vci::core::profiles::{CoreProfilesMetadata, CoreProfilesRequest, CoreProfilesResponse};
+use oid4vci::core::profiles::{
+    CoreProfilesCredentialConfiguration, CoreProfilesCredentialResponseType,
+    CredentialRequestWithFormat,
+};
+use oid4vci::metadata::credential_issuer::CredentialConfiguration;
 use oid4vci::proof_of_possession::KeyProofType;
 use snafu::{Location, ResultExt, Snafu};
 use std::collections::HashMap;
 use std::fmt::Debug;
+use std::ops::Deref;
 use std::str::FromStr;
 use tracing::{instrument, trace, Level};
 
-pub type IssuerMetadata = oid4vci::core::metadata::IssuerMetadata;
-pub type CredentialMetadata = oid4vci::metadata::CredentialMetadata<CoreProfilesMetadata>;
+pub type IssuerMetadata = oid4vci::core::metadata::CredentialIssuerMetadata;
+pub type CredentialMetadata = CredentialConfiguration<CoreProfilesCredentialConfiguration>;
 
 #[derive(Snafu, DebugError)]
 #[non_exhaustive]
@@ -23,6 +27,11 @@ pub enum Error {
         #[snafu(implicit)]
         location: Location,
         source: crypto::Error,
+    },
+    #[snafu(display("Unsupported credential request"))]
+    UnsupportedCredentialRequest {
+        #[snafu(implicit)]
+        location: Location,
     },
 }
 
@@ -37,12 +46,12 @@ pub fn convert_metadata(
     let cred_defs = issuer_metadata
         .credential_configurations_supported()
         .iter()
-        .map(|(id, cm)| {
+        .map(|cc| {
             cred_definition(
-                id,
-                cm,
+                cc.id(),
+                cc,
                 cred_def_ids_with_key_metadata
-                    .get(id)
+                    .get(cc.id().as_str())
                     .unwrap_or(default_key_metadata),
             )
         })
@@ -62,26 +71,34 @@ pub fn convert_metadata(
 #[instrument(level = Level::TRACE, err(), ret())]
 pub fn cred_definition(
     id: &str,
-    credential_metadata: &oid4vci::metadata::CredentialMetadata<CoreProfilesMetadata>,
+    credential_metadata: &CredentialMetadata,
     key_metadata: &KeyMetadata,
 ) -> Result<CredentialDefinition> {
-    let protocol_data = match credential_metadata.additional_fields() {
-        CoreProfilesMetadata::SDJWTVC(metadata) => Some(sd_jwt_protocol_data(metadata)),
-        CoreProfilesMetadata::LDVC(metadata) => Some(json_ld_protocol_data(metadata)),
+    let protocol_data = match credential_metadata.profile_specific_fields() {
+        CoreProfilesCredentialConfiguration::VcSdJwt(metadata) => {
+            Some(sd_jwt_protocol_data(metadata))
+        }
+        CoreProfilesCredentialConfiguration::LdpVc(metadata) => {
+            Some(json_ld_protocol_data(metadata))
+        }
         _ => None,
     };
 
     let proofs = supported_proofs(credential_metadata)?;
 
-    let algs = match credential_metadata.additional_fields() {
-        CoreProfilesMetadata::SDJWTVC(metadata) => sd_jwt_signing_algorithms(metadata)?,
-        CoreProfilesMetadata::LDVC(metadata) => json_ld_signing_algorithms(metadata)?,
+    let algs = match credential_metadata.profile_specific_fields() {
+        CoreProfilesCredentialConfiguration::VcSdJwt(metadata) => {
+            Some(sd_jwt_signing_algorithms(metadata)?)
+        }
+        CoreProfilesCredentialConfiguration::JwtVcJsonLd(metadata) => {
+            Some(json_ld_signing_algorithms(metadata)?)
+        }
         _ => None,
     };
 
     Ok(CredentialDefinition {
         cred_def_id: id.to_string(),
-        format: credential_metadata.additional_fields().format(),
+        format: credential_metadata.profile_specific_fields().format(),
         claims: Default::default(),
         supported_proofs: proofs,
         supported_signing_algs: algs,
@@ -93,19 +110,23 @@ pub fn cred_definition(
 
 #[instrument(level = Level::TRACE, err(), ret())]
 pub fn supported_proofs(
-    credential_metadata: &oid4vci::metadata::CredentialMetadata<CoreProfilesMetadata>,
+    credential_metadata: &CredentialMetadata,
 ) -> Result<Option<HashMap<pop::Format, Vec<Alg>>>> {
     credential_metadata
         .proof_types_supported()
         .map(|proofs| {
             proofs
                 .iter()
-                .map(|(kpt, pt)| {
-                    let fmt: pop::Format = kpt.into();
-                    let algs = pt
+                .map(|key_proof_type_supported| {
+                    let fmt: pop::Format = match key_proof_type_supported.to_owned().key {
+                        KeyProofType::Jwt => pop::Format::Jwt,
+                        KeyProofType::Cwt => pop::Format::Cwt,
+                        KeyProofType::LdpVp => pop::Format::Ldp,
+                    };
+                    let algs = key_proof_type_supported
                         .proof_signing_alg_values_supported
                         .iter()
-                        .map(|s| Alg::from_str(s).context(CryptoSnafu))
+                        .map(|alg| Alg::from_str(alg.as_ref()).context(CryptoSnafu))
                         .collect::<Result<Vec<Alg>>>();
 
                     algs.map(|vec| (fmt, vec))
@@ -116,13 +137,16 @@ pub fn supported_proofs(
 }
 
 #[instrument(level = Level::TRACE, ret())]
-fn sd_jwt_protocol_data(metadata: &profiles::sd_jwt::Metadata) -> CredentialDefinitionData {
+fn sd_jwt_protocol_data(
+    metadata: &oid4vci::core::profiles::vc_sd_jwt::CredentialConfiguration,
+) -> CredentialDefinitionData {
     let mut disclosures = vec![];
 
     for (k, v) in metadata.claims().unwrap_or(&HashMap::new()) {
         let parent_key = format!("$.{}", k.to_owned());
         disclosures.push(parent_key.clone());
-        utils::serde::accumulate_claim_names(v.other(), parent_key, &mut disclosures);
+        let json = serde_json::to_value(v.deref().to_owned()).unwrap_or(serde_json::Value::Null);
+        utils::serde::accumulate_claim_names(&json, parent_key, &mut disclosures);
     }
 
     CredentialDefinitionData::SdJwt {
@@ -133,48 +157,53 @@ fn sd_jwt_protocol_data(metadata: &profiles::sd_jwt::Metadata) -> CredentialDefi
 }
 
 #[instrument(level = Level::TRACE, ret())]
-fn json_ld_protocol_data(metadata: &profiles::w3c::ldp::Metadata) -> CredentialDefinitionData {
+fn json_ld_protocol_data(
+    metadata: &oid4vci::core::profiles::ldp_vc::CredentialConfiguration,
+) -> CredentialDefinitionData {
     let contexts = metadata
+        .credential_definition()
         .context()
         .iter()
         .map(|ctx| ctx.as_str().unwrap().to_string())
         .collect();
 
-    let vc_types = metadata
-        .credentials_definition()
-        .credential_definition()
-        .r#type()
-        .clone();
+    let vc_types = metadata.credential_definition().r#type().clone();
 
     CredentialDefinitionData::Ldp { contexts, vc_types }
 }
 
 #[instrument(level = Level::TRACE, err(), ret())]
-fn sd_jwt_signing_algorithms(metadata: &profiles::sd_jwt::Metadata) -> Result<Option<Vec<Alg>>> {
+fn sd_jwt_signing_algorithms(
+    metadata: &oid4vci::core::profiles::vc_sd_jwt::CredentialConfiguration,
+) -> Result<Vec<Alg>> {
     metadata
         .credential_signing_alg_values_supported()
-        .map(|algs| {
-            let res = algs
-                .iter()
-                .map(|s| s.try_into().context(CryptoSnafu))
-                .collect::<Result<Vec<Alg>>>();
-            res
-        })
-        .transpose()
+        .iter()
+        .map(|alg| alg.try_into().context(CryptoSnafu))
+        .collect()
 }
 
 #[instrument(level = Level::TRACE, err(), ret())]
-fn json_ld_signing_algorithms(metadata: &profiles::w3c::ldp::Metadata) -> Result<Option<Vec<Alg>>> {
-    metadata
-        .cryptographic_suites_supported()
-        .map(|crypto_suites| {
-            let res = crypto_suites
-                .iter()
-                .map(|s| s.try_into().context(CryptoSnafu))
-                .collect::<Result<Vec<Alg>>>();
-            res
-        })
-        .transpose()
+fn json_ld_signing_algorithms(
+    metadata: &oid4vci::core::profiles::jwt_vc_json_ld::CredentialConfiguration,
+) -> Result<Vec<Alg>> {
+    let mut algs = vec![];
+    for crypto_suites in metadata.credential_signing_alg_values_supported() {
+        let alg = match crypto_suites.as_str() {
+            "Ed25519Signature2018" | "Ed25519Signature2020" => Ok(Alg::EdDSA),
+            "EcdsaSecp256r1Signature2019" => Ok(Alg::ES256),
+            "EcdsaSecp256k1Signature2019" => Ok(Alg::ES256K),
+            _ => Err(AlgNotSupportedSnafu {
+                alg: crypto_suites.to_string(),
+            }
+            .build()),
+        }
+        .context(CryptoSnafu)?;
+
+        algs.push(alg)
+    }
+
+    Ok(algs)
 }
 
 impl From<&KeyProofType> for pop::Format {
@@ -182,42 +211,43 @@ impl From<&KeyProofType> for pop::Format {
         match value {
             KeyProofType::Jwt => pop::Format::Jwt,
             KeyProofType::Cwt => pop::Format::Cwt,
+            KeyProofType::LdpVp => pop::Format::Ldp,
         }
     }
 }
 
-impl HasVCFormat for CoreProfilesRequest {
+impl HasVCFormat for CredentialRequestWithFormat {
     fn format(&self) -> VCFormat {
         match self {
-            CoreProfilesRequest::SDJWTVC(_) => VCFormat::SdJwtVc,
-            CoreProfilesRequest::JWTVC(_) => VCFormat::JwtVcJson,
-            CoreProfilesRequest::JWTLDVC(_) => VCFormat::JwtVcJsonLD,
-            CoreProfilesRequest::LDVC(_) => VCFormat::LdpVc,
-            CoreProfilesRequest::ISOmDL(_) => VCFormat::MsoMdoc,
+            CredentialRequestWithFormat::JwtVcJson(_) => VCFormat::JwtVcJson,
+            CredentialRequestWithFormat::JwtVcJsonLd(_) => VCFormat::JwtVcJsonLD,
+            CredentialRequestWithFormat::LdpVc(_) => VCFormat::LdpVc,
+            CredentialRequestWithFormat::MsoMdoc(_) => VCFormat::MsoMdoc,
+            CredentialRequestWithFormat::VcSdJwt(_) => VCFormat::SdJwtVc,
         }
     }
 }
 
-impl HasVCFormat for CoreProfilesResponse {
+impl HasVCFormat for CoreProfilesCredentialResponseType {
     fn format(&self) -> VCFormat {
         match self {
-            CoreProfilesResponse::SDJWTVC(_) => VCFormat::SdJwtVc,
-            CoreProfilesResponse::JWTVC(_) => VCFormat::JwtVcJson,
-            CoreProfilesResponse::JWTLDVC(_) => VCFormat::JwtVcJsonLD,
-            CoreProfilesResponse::LDVC(_) => VCFormat::LdpVc,
-            CoreProfilesResponse::ISOmDL(_) => VCFormat::MsoMdoc,
+            CoreProfilesCredentialResponseType::JwtVcJson(_) => VCFormat::JwtVcJson,
+            CoreProfilesCredentialResponseType::JwtVcJsonLd(_) => VCFormat::JwtVcJsonLD,
+            CoreProfilesCredentialResponseType::LdpVc(_) => VCFormat::LdpVc,
+            CoreProfilesCredentialResponseType::MsoMdoc(_) => VCFormat::MsoMdoc,
+            CoreProfilesCredentialResponseType::VcSdJwt(_) => VCFormat::SdJwtVc,
         }
     }
 }
 
-impl HasVCFormat for CoreProfilesMetadata {
+impl HasVCFormat for CoreProfilesCredentialConfiguration {
     fn format(&self) -> VCFormat {
         match self {
-            CoreProfilesMetadata::SDJWTVC(_) => VCFormat::SdJwtVc,
-            CoreProfilesMetadata::JWTVC(_) => VCFormat::JwtVcJson,
-            CoreProfilesMetadata::JWTLDVC(_) => VCFormat::JwtVcJsonLD,
-            CoreProfilesMetadata::LDVC(_) => VCFormat::LdpVc,
-            CoreProfilesMetadata::ISOmDL(_) => VCFormat::MsoMdoc,
+            CoreProfilesCredentialConfiguration::VcSdJwt(_) => VCFormat::SdJwtVc,
+            CoreProfilesCredentialConfiguration::JwtVcJson(_) => VCFormat::JwtVcJson,
+            CoreProfilesCredentialConfiguration::JwtVcJsonLd(_) => VCFormat::JwtVcJsonLD,
+            CoreProfilesCredentialConfiguration::LdpVc(_) => VCFormat::LdpVc,
+            CoreProfilesCredentialConfiguration::MsoMdoc(_) => VCFormat::MsoMdoc,
         }
     }
 }
@@ -267,7 +297,7 @@ mod tests {
 
         let mut expected = CredentialDefinition {
             cred_def_id: CRED_DEF_ID.to_owned(),
-            format: cred_def_metadata.additional_fields().format(),
+            format: cred_def_metadata.profile_specific_fields().format(),
             claims: Default::default(),
             supported_proofs: supported_proofs(&cred_def_metadata).unwrap(),
             supported_signing_algs: Some(vec![Alg::ES256]),
@@ -276,8 +306,10 @@ mod tests {
             key_metadata: key_metadata.to_owned(),
         };
 
-        expected.protocol_data = match cred_def_metadata.additional_fields() {
-            CoreProfilesMetadata::SDJWTVC(metadata) => Some(sd_jwt_protocol_data(metadata)),
+        expected.protocol_data = match cred_def_metadata.profile_specific_fields() {
+            CoreProfilesCredentialConfiguration::VcSdJwt(metadata) => {
+                Some(sd_jwt_protocol_data(metadata))
+            }
             _ => None,
         };
 
@@ -297,7 +329,7 @@ mod tests {
             format: VCFormat::JwtVcJsonLD,
             claims: HashMap::new(),
             supported_proofs: None,
-            supported_signing_algs: None,
+            supported_signing_algs: Some(vec![]),
             display: None,
             protocol_data: None,
             key_metadata: key_metadata.clone(),
@@ -329,7 +361,9 @@ mod tests {
             lifetime: None,
         };
 
-        if let CoreProfilesMetadata::SDJWTVC(metadata) = cred_def_metadata.additional_fields() {
+        if let CoreProfilesCredentialConfiguration::VcSdJwt(metadata) =
+            cred_def_metadata.profile_specific_fields()
+        {
             let converted = sd_jwt_protocol_data(metadata);
 
             assert_eq!(converted, expected)
@@ -337,7 +371,13 @@ mod tests {
     }
 
     fn sample_issuer_metadata() -> IssuerMetadata {
-        let cred_def = serde_json::to_value(sample_credential_definition()).unwrap();
+        let serde_json::Value::Object(mut cred_def) =
+            serde_json::to_value(sample_credential_definition()).unwrap()
+        else {
+            panic!("credential definition should be an object");
+        };
+        cred_def.remove("$key$");
+
         let metadata = serde_json::from_value(json!(
             {
                 "credential_issuer": ISSUER_URL,
@@ -354,6 +394,7 @@ mod tests {
 
     fn sample_credential_definition() -> CredDefMetadata {
         let cred_def = serde_json::from_value(json!({
+            "$key$": CRED_DEF_ID,
             "format": "vc+sd-jwt",
             "scope": "SD_JWT_cred",
             "cryptographic_binding_methods_supported": [
@@ -380,9 +421,14 @@ mod tests {
 
     fn sample_credential_definition_without_scope() -> CredDefMetadata {
         let cred_def = serde_json::from_value(json!({
+            "$key$": "sample_jwt_vc_credential_definition",
             "format": "jwt_vc_json-ld",
-            }
-        ));
+            "credential_definition": {
+                "@context": [],
+                "type": [],
+                "credential_subject": {},
+            },
+        }));
 
         cred_def.unwrap()
     }

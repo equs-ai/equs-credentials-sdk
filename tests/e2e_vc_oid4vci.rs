@@ -57,7 +57,7 @@ async fn autorized_code_flow_using_scopes(#[case] validate_token: bool) {
         .create_credential_offer(
             vec!["SD_JWT_cred_1", "SD_JWT_cred_2", "LDPVC_cred_1"],
             &CredentialOfferGrants {
-                authorization_code: Some(AuthorizationCodeGrant { issuer_state: None }),
+                authorization_code: Some(AuthorizationCodeGrant::new(None, None)),
                 pre_authorized_code: None,
             },
         )
@@ -134,7 +134,7 @@ async fn credential_endpoint(
     req: HttpRequest,
     session: Arc<Mutex<IssuanceSession>>,
 ) -> HttpResponse {
-    let cred_req_str = std::str::from_utf8(req.body.as_slice()).unwrap();
+    let cred_req_str = std::str::from_utf8(req.body().as_slice()).unwrap();
 
     let claims = if cred_req_str.contains("\"vc+sd-jwt\"") {
         sample_claims_sdjwt()
@@ -144,11 +144,11 @@ async fn credential_endpoint(
         panic!("unsupported format of requested credential");
     };
 
-    let cred_req = serde_json::from_slice(req.body.as_slice()).unwrap();
+    let cred_req = serde_json::from_slice(req.body().as_slice()).unwrap();
 
     println!("cred request from holder: {:?}", cred_req);
 
-    let token = req.headers.get("Authorization").unwrap();
+    let token = req.headers().get("Authorization").unwrap();
     let token = token
         .to_str()
         .unwrap()
@@ -167,16 +167,13 @@ async fn credential_endpoint(
     println!("result: {:?}", result);
 
     match result {
-        Ok(cred_resp) => HttpResponse {
-            status_code: StatusCode::OK,
-            headers: Default::default(),
-            body: serde_json::to_vec(&cred_resp).unwrap(),
-        },
-        Err(oid4vci::Error::Protocol { source }) => HttpResponse {
-            status_code: StatusCode::BAD_REQUEST,
-            headers: Default::default(),
-            body: serde_json::to_vec(&source).unwrap(),
-        },
+        Ok(cred_resp) => HttpResponse::new(serde_json::to_vec(&cred_resp).unwrap()),
+        Err(oid4vci::Error::Protocol { source }) => {
+            let mut resp = HttpResponse::new(serde_json::to_vec(&source).unwrap());
+            *resp.status_mut() = StatusCode::BAD_REQUEST;
+
+            resp
+        }
         _ => panic!(),
     }
 }
@@ -187,11 +184,9 @@ fn prepare_http_client_for_issuer() -> impl HttpClient {
     http_client.add_handler(
         sample_authz_url().join("/token/introspect").unwrap(),
         Box::new(|_| {
-            Ok(HttpResponse {
-                status_code: StatusCode::OK,
-                headers: Default::default(),
-                body: serde_json::to_vec(&json!({"active": true,})).unwrap(),
-            })
+            Ok(HttpResponse::new(
+                serde_json::to_vec(&json!({"active": true,})).unwrap(),
+            ))
         }),
     );
 
@@ -210,7 +205,7 @@ fn prepare_http_client_for_holder(
     http_client.add_handler(
         sample_authz_url().join("/par/request").unwrap(),
         Box::new(move |req| {
-            assert_eq!(req.method, Method::POST);
+            assert_eq!(req.method(), Method::POST);
 
             let resp_body = serde_json::to_value(json!(
                 {
@@ -219,22 +214,20 @@ fn prepare_http_client_for_holder(
                 }
             ))
             .unwrap();
+            let mut resp = HttpResponse::new(serde_json::to_vec(&resp_body).unwrap());
+            *resp.status_mut() = StatusCode::CREATED;
 
-            Ok(HttpResponse {
-                status_code: StatusCode::CREATED,
-                headers: Default::default(),
-                body: serde_json::to_vec(&resp_body).unwrap(),
-            })
+            Ok(resp)
         }),
     );
 
     http_client.add_handler(
         sample_authz_url().join("/token").unwrap(),
         Box::new(move |req| {
-            let req_body = str::from_utf8(&req.body).unwrap();
+            let req_body = str::from_utf8(req.body()).unwrap();
 
             assert!(req_body.contains(&format!("code={authz_code}")));
-            assert_eq!(req.method, Method::POST);
+            assert_eq!(req.method(), Method::POST);
 
             let resp = json!({
                 "access_token": ACCESS_TOKEN,
@@ -242,11 +235,7 @@ fn prepare_http_client_for_holder(
                 "expires_in": 86400,
             });
 
-            Ok(HttpResponse {
-                status_code: StatusCode::OK,
-                headers: Default::default(),
-                body: serde_json::to_vec(&resp).unwrap(),
-            })
+            Ok(HttpResponse::new(serde_json::to_vec(&resp).unwrap()))
         }),
     );
 

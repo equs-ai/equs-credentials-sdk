@@ -6,27 +6,28 @@ use crate::vc::oid4vci::internal_error::RequestSnafu;
 use crate::vc::oid4vci::{metadata, InternalError, ProtocolError};
 use crate::vc::{Credential, CredentialMetadata};
 use async_trait::async_trait;
-use oauth2::AccessToken;
-use oid4vci::core::profiles::CoreProfilesOffer;
-use oid4vci::credential::RequestError;
+use oid4vci::core::profiles::{CoreProfilesCredentialRequest, CoreProfilesCredentialResponse};
+use oid4vci::credential::{RequestError, Response};
 use serde::{Deserialize, Serialize};
 use snafu::{IntoError, Snafu};
 use std::fmt::Debug;
 use tracing::{instrument, Level};
 
+type Level_ = Level;
+
 // Data types
 pub type IssuerMetadata = metadata::IssuerMetadata;
 pub type CredDefMetadata = metadata::CredentialMetadata;
-pub type CredDefMetadataProfile = oid4vci::core::profiles::CoreProfilesMetadata;
-pub type AuthorizationMetadata = oid4vci::metadata::AuthorizationMetadata;
-pub type CredentialOffer = oid4vci::credential_offer::CredentialOffer<CoreProfilesOffer>;
+pub type CredDefMetadataProfile = oid4vci::core::profiles::CoreProfilesCredentialConfiguration;
+pub type AuthorizationMetadata = oid4vci::metadata::AuthorizationServerMetadata;
+pub type CredentialOffer = oid4vci::credential_offer::CredentialOffer;
 pub type CredentialOfferGrants = oid4vci::credential_offer::CredentialOfferGrants;
-pub type CredentialOfferParams =
-    oid4vci::credential_offer::CredentialOfferParameters<CoreProfilesOffer>;
-pub type CredentialRequest = oid4vci::core::credential::Request;
-pub type CredentialResponse = oid4vci::core::credential::Response;
+pub type CredentialOfferParams = oid4vci::credential_offer::CredentialOfferParameters;
+pub type CredentialRequest = oid4vci::credential::Request<CoreProfilesCredentialRequest>;
+pub type CredentialResponse = Response<CoreProfilesCredentialResponse>;
 pub type TokenResponse = oid4vci::token::Response;
 pub type AuthorizationCodeGrant = oid4vci::credential_offer::AuthorizationCodeGrant;
+pub type AccessToken = oauth2::AccessToken;
 pub type ErrorType = oid4vci::credential::ErrorType;
 
 /// A result of the Credential issuance handled by `Holder`
@@ -149,7 +150,7 @@ pub trait Issuer: Send + Sync {
     /// # Errors
     ///
     /// * [Error::Protocol] - expected protocol-specific error.
-    ///     * [ErrorType::InvalidRequest]
+    ///     * [ErrorType::InvalidCredentialRequest]
     ///     * [ErrorType::UnsupportedCredentialType]
     /// * [InternalError::Parse] - fails to parse the payload.
     /// * [InternalError::UrlParse] - fails to parse `Url`.
@@ -182,7 +183,7 @@ pub trait Issuer: Send + Sync {
     /// # Errors
     ///
     /// * [Error::Protocol] - expected protocol-specific error.
-    ///     * [ErrorType::InvalidRequest]
+    ///     * [ErrorType::InvalidCredentialRequest]
     ///     * [ErrorType::InvalidProof]
     ///     * [ErrorType::InvalidToken]
     ///     * [ErrorType::UnsupportedCredentialType]
@@ -240,7 +241,7 @@ pub trait Holder: Send + Sync {
     /// # Errors
     ///
     /// * [Error::Protocol] - expected protocol-specific error.
-    ///     * [ErrorType::InvalidRequest]
+    ///     * [ErrorType::InvalidCredentialRequest]
     /// * [InternalError::Request] - fails to make a call to the `Issuer`.
     async fn authz_code_flow_with_scope(
         &self,
@@ -290,7 +291,7 @@ pub trait Holder: Send + Sync {
     /// # Errors
     ///
     /// * [Error::Protocol] - expected protocol-specific error.
-    ///     * [ErrorType::InvalidRequest]
+    ///     * [ErrorType::InvalidCredentialRequest]
     ///     * [ErrorType::UnsupportedCredentialType]
     ///     * [ErrorType::UnsupportedCredentialFormat]
     /// * [InternalError::Parse] - fails to parse the payload.

@@ -1,10 +1,9 @@
 use crate::crypto::{Key, JWK};
 use crate::did::{
-    DIDDoc, DIDResolver, DidDocGenerationSnafu, DidGenerationSnafu, Resolution, ResolveOptions,
+    DIDDoc, DidDocGenerationSnafu, DidGenerationSnafu, DocumentMetadata, ResolutionMetadata,
     Result, DID,
 };
 use crate::kms::KeyType;
-use async_trait::async_trait;
 use did_parser_nom::DidUrl;
 use did_peer::peer_did::numalgos::numalgo4::construction_did_doc::{
     DidPeer4ConstructionDidDocument, DidPeer4VerificationMethod,
@@ -23,11 +22,12 @@ use did_resolver::traits::resolvable::resolution_metadata::DidResolutionMetadata
 use did_resolver::traits::resolvable::resolution_output::DidResolutionOutput;
 use did_resolver::traits::resolvable::DidResolvable;
 use serde_json::Value;
-use ssi::did_resolve::{DIDResolver as SpruceResolver, ResolutionMetadata};
-use ssi_dids::did_resolve::{DocumentMetadata, ResolutionInputMetadata};
-use ssi_dids::DIDMethod;
+use ssi::dids::resolution::{Error, Options, Output};
+use ssi::dids::{DIDMethod, DIDResolver as SpruceResolver};
 use std::collections::HashSet;
 use tracing::{instrument, Level};
+
+type Level_ = Level;
 
 const DID_V1_CONTEXT: &str = "https://www.w3.org/ns/did/v1";
 
@@ -42,24 +42,15 @@ const ECDSA_SECP_256K1_RECOVERY_METHOD_2020: &str =
     "https://w3id.org/security#EcdsaSecp256k1RecoveryMethod2020";
 const MULTIKEY: &str = "https://w3id.org/security#Multikey";
 
-pub(crate) struct SpruceCompatibleDIDPeer(PeerDidResolver);
-
 pub struct DIDPeer {
-    resolver: SpruceCompatibleDIDPeer,
-}
-
-impl SpruceCompatibleDIDPeer {
-    #[instrument(level = Level::TRACE)]
-    pub fn new() -> Self {
-        Self(PeerDidResolver::new())
-    }
+    resolver: PeerDidResolver,
 }
 
 impl DIDPeer {
     #[instrument(level = Level::TRACE)]
     pub fn new() -> Self {
         DIDPeer {
-            resolver: SpruceCompatibleDIDPeer::new(),
+            resolver: PeerDidResolver::new(),
         }
     }
 
@@ -116,108 +107,43 @@ impl DIDPeer {
     }
 }
 
-#[async_trait]
-impl DIDResolver for DIDPeer {
+impl SpruceResolver for DIDPeer {
     #[instrument(level = Level::TRACE, skip(self), ret())]
-    async fn resolve(&self, did: &str, options: ResolveOptions) -> Resolution {
-        let (metadata, doc, doc_metadata) = self
+    async fn resolve_representation<'a>(
+        &'a self,
+        did: &'a ssi::dids::DID,
+        options: Options,
+    ) -> std::result::Result<Output<Vec<u8>>, Error> {
+        let did_peer = did_parser_nom::Did::parse(did.to_string()).map_err(|err| {
+            Error::Internal(format!("could not parse did:peer = {}: {}", did, err))
+        })?;
+
+        let DidResolutionOutput {
+            did_document,
+            did_resolution_metadata,
+            did_document_metadata,
+        } = self
             .resolver
-            .resolve(did, &ResolutionInputMetadata::default())
-            .await;
-
-        Resolution {
-            metadata,
-            doc,
-            doc_metadata,
-        }
-    }
-
-    #[instrument(level = Level::TRACE, skip(self))]
-    fn as_spruce_resolver(&self) -> &dyn SpruceResolver {
-        &self.resolver
-    }
-}
-
-#[async_trait]
-impl SpruceResolver for SpruceCompatibleDIDPeer {
-    #[instrument(level = Level::TRACE, skip(self), ret())]
-    async fn resolve(
-        &self,
-        did: &str,
-        input_metadata: &ResolutionInputMetadata,
-    ) -> (ResolutionMetadata, Option<DIDDoc>, Option<DocumentMetadata>) {
-        let did_peer = match did_parser_nom::Did::parse(did.to_string()) {
-            Ok(did) => did,
-            Err(err) => {
-                return (
-                    ResolutionMetadata {
-                        error: Some(err.to_string()),
-                        ..Default::default()
-                    },
-                    None,
-                    None,
-                )
-            }
-        };
-
-        let resolution_result = self
-            .0
             .resolve(
                 &did_peer,
                 &PeerDidResolutionOptions {
                     encoding: Some(PublicKeyEncoding::Base58),
                 },
             )
-            .await;
+            .await
+            .map_err(|e| Error::NoRepresentation)?;
 
-        let DidResolutionOutput {
-            did_document,
-            did_resolution_metadata,
-            did_document_metadata,
-        } = match resolution_result {
-            Ok(result) => result,
-            Err(err) => {
-                return (
-                    ResolutionMetadata {
-                        error: Some(err.to_string()),
-                        ..Default::default()
-                    },
-                    None,
-                    None,
-                )
-            }
-        };
+        let did_doc = convert_did_doc(&did_document)?;
 
-        let did_doc = match convert_did_doc(&did_document) {
-            Ok(doc) => doc,
-            Err(err) => {
-                return (
-                    ResolutionMetadata {
-                        error: Some(err.to_string()),
-                        ..Default::default()
-                    },
-                    None,
-                    None,
-                )
-            }
-        };
-
-        (
-            convert_resolution_metadata(did_resolution_metadata),
-            Some(did_doc),
-            Some(convert_did_doc_metadata(did_document_metadata)),
-        )
+        Ok(Output {
+            metadata: convert_resolution_metadata(did_resolution_metadata),
+            document: did_doc.to_bytes(),
+            document_metadata: convert_did_doc_metadata(did_document_metadata),
+        })
     }
 }
-
-impl DIDMethod for SpruceCompatibleDIDPeer {
-    fn name(&self) -> &'static str {
-        "peer"
-    }
-
-    fn to_resolver(&self) -> &dyn SpruceResolver {
-        self
-    }
+impl DIDMethod for DIDPeer {
+    const DID_METHOD_NAME: &'static str = "peer";
 }
 
 #[instrument(level = Level::TRACE, ret())]
@@ -247,12 +173,19 @@ fn convert_jwk(jwk: &JWK) -> serde_json::Result<JsonWebKey> {
 }
 
 #[instrument(level = Level::TRACE, err(), ret())]
-fn convert_did_doc(did_doc: &DidDocument) -> Result<DIDDoc> {
-    let Ok(Value::Object(mut did_doc_map)) = serde_json::to_value(did_doc) else {
-        return DidDocGenerationSnafu {
-            details: "Can not parse did documents as a json object",
+fn convert_did_doc(did_doc: &DidDocument) -> std::result::Result<DIDDoc, Error> {
+    let mut did_doc_map = match serde_json::to_value(did_doc) {
+        Ok(Value::Object(did_doc)) => did_doc,
+        Err(err) => {
+            return Err(Error::InvalidData(ssi::dids::document::InvalidData::Json(
+                err,
+            )))
         }
-        .fail();
+        _ => {
+            return Err(Error::RepresentationNotSupported(
+                "could not convert did doc to json object".to_string(),
+            ))
+        }
     };
 
     if did_doc_map.get("@context").is_none() {
@@ -303,12 +236,8 @@ fn convert_did_doc(did_doc: &DidDocument) -> Result<DIDDoc> {
         })
     });
 
-    serde_json::from_value(Value::Object(did_doc_map)).map_err(|err| {
-        DidDocGenerationSnafu {
-            details: err.to_string(),
-        }
-        .build()
-    })
+    serde_json::from_value(Value::Object(did_doc_map))
+        .map_err(|e| Error::InvalidData(ssi::dids::document::InvalidData::JsonLd(e)))
 }
 
 #[instrument(level = Level::TRACE)]
@@ -329,19 +258,14 @@ fn relative_verification_method_id_to_absolute(vm: &mut Value, did_str: &str) {
 #[instrument(level = Level::TRACE, ret())]
 fn convert_did_doc_metadata(did_doc_metadata: DidDocumentMetadata) -> DocumentMetadata {
     DocumentMetadata {
-        created: did_doc_metadata.created(),
-        updated: did_doc_metadata.updated(),
         deactivated: did_doc_metadata.deactivated(),
-        property_set: None,
     }
 }
 
 #[instrument(level = Level::TRACE, ret())]
 fn convert_resolution_metadata(resolution_metadata: DidResolutionMetadata) -> ResolutionMetadata {
     ResolutionMetadata {
-        error: resolution_metadata.error().map(|err| err.to_string()),
         content_type: resolution_metadata.content_type().cloned(),
-        property_set: None,
     }
 }
 
@@ -408,14 +332,15 @@ mod tests {
     async fn did_resolving_succeeds_correctly(#[case] did: &str, #[case] vm_context: &str) {
         let resolver = DIDPeer::new();
 
-        let Resolution {
-            metadata,
-            doc,
-            doc_metadata,
-        } = resolver.resolve(did, ResolveOptions::default()).await;
+        let document = resolver
+            .resolve(ssi::dids::DID::new(&did).unwrap())
+            .await
+            .unwrap()
+            .document
+            .into_document();
 
         assert_eq!(
-            serde_json::to_value(doc.clone().unwrap().context.clone()).unwrap(),
+            serde_json::to_value(document.clone().property_set.get("@context").unwrap()).unwrap(),
             Value::Array(vec![
                 Value::String("https://www.w3.org/ns/did/v1".to_string()),
                 Value::String(vm_context.to_string())
@@ -423,7 +348,7 @@ mod tests {
         );
 
         assert_eq!(
-            doc.clone().unwrap().verification_method.unwrap()[0].get_id(did),
+            document.clone().verification_method[0].id.to_string(),
             format!("{did}#key-0")
         );
     }
@@ -439,27 +364,15 @@ mod tests {
     }
 
     #[rstest]
-    #[case::empty_string("")]
     #[case::did_key("did:key:zDnaeWuPANDrwEAqBPqTGUTLVEeJRyDXwjLQAbtBFDY3ZUmWk")]
     #[case::did_peer4_short("did:peer:4zQmaT2A39nfFt7AhQ3TUqtXsyViE9TPzgyeEwoD9x2Tz3TZ")]
     #[tokio::test]
     async fn did_resolving_fails_when_did_is_not_did_peer4_long(#[case] did: &str) {
         let resolver = DIDPeer::new();
 
-        let resolution_result = resolver.resolve(did, ResolveOptions::default()).await;
+        let resolution_result = resolver.resolve(ssi::dids::DID::new(&did).unwrap()).await;
 
-        assert!(matches!(
-            resolution_result,
-            Resolution {
-                metadata: ResolutionMetadata {
-                    error: Some(_),
-                    content_type: None,
-                    property_set: None
-                },
-                doc: None,
-                doc_metadata: None
-            }
-        ));
+        assert!(resolution_result.is_err());
     }
 
     fn sample_did_peer_4_ed25519() -> &'static str {

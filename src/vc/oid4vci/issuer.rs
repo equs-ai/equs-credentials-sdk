@@ -5,8 +5,8 @@ use crate::vc::claims::Claims;
 use crate::vc::core::{CredentialRequestData, Proof as AsdkProof, Proof};
 use crate::vc::formats::sd_jwt_vc::{EXP_CLAIM, IAT_CLAIM, NBF_CLAIM, VCT_CLAIM};
 use crate::vc::oid4vci::internal_error::{
-    ClaimsValidationSnafu, NoScopeSetSnafu, NonceGenerationSnafu, ParseSnafu, UrlParseSnafu,
-    VCSnafu,
+    ClaimsValidationSnafu, NoScopeSetSnafu, NonceGenerationSnafu, ParseSnafu, TypeConversionSnafu,
+    UrlParseSnafu, VCSnafu,
 };
 use crate::vc::oid4vci::protocol_error::ProtocolSnafu;
 use crate::vc::oid4vci::token_validation::{ByJwks, Introspect};
@@ -18,17 +18,18 @@ use crate::vc::{oid4vci as api, pop, HasVCFormat};
 use async_trait::async_trait;
 use oauth2::Scope;
 use oid4vci::core::profiles::{
-    sd_jwt, w3c, CoreProfilesMetadata, CoreProfilesOffer, CoreProfilesRequest, CoreProfilesResponse,
+    CoreProfilesCredentialConfiguration, CoreProfilesCredentialRequest,
+    CoreProfilesCredentialResponseType, CredentialRequestWithFormat,
 };
-use oid4vci::credential::{ErrorType, ResponseEnum};
-use oid4vci::credential_offer::{
-    CredentialOfferFormat, CredentialOfferGrants, CredentialOfferParameters,
-};
-use oid4vci::openidconnect;
+use oid4vci::credential::{ErrorType, Response, ResponseEnum};
+use oid4vci::credential_offer::{CredentialOfferGrants, CredentialOfferParameters};
 use oid4vci::proof_of_possession::Proof as SpruceProof;
+use oid4vci::types::CredentialConfigurationId;
 use serde_json::{Map, Value};
 use snafu::{ensure, ResultExt};
-use ssi::jwt::decode_unverified;
+use ssi::claims::jwt::decode_unverified;
+use ssi::claims::JwsBuf;
+use std::str::FromStr;
 use time::Duration;
 use tracing::{debug, error, info, instrument, trace, warn, Level};
 use url::Url;
@@ -92,7 +93,7 @@ where
 impl<IS, HC, NG> api::Issuer for IssuerService<IS, HC, NG>
 where
     IS: vc::core::Issuer,
-    HC: HttpClient,
+    HC: HttpClient + 'static,
     NG: NonceGenerator,
 {
     #[instrument(level = Level::TRACE, skip_all, ret())]
@@ -118,15 +119,14 @@ where
 
         self.validate_cred_def_ids(&cred_def_ids)?;
 
-        let cred_offer_params: CredentialOfferParameters<CoreProfilesOffer> =
-            CredentialOfferParameters::new(
-                self.issuer_metadata.credential_issuer().clone(),
-                cred_def_ids
-                    .iter()
-                    .map(|c| CredentialOfferFormat::Reference(Scope::new(c.to_string())))
-                    .collect(),
-                Some(grants.to_owned()),
-            );
+        let cred_offer_params = CredentialOfferParameters {
+            credential_issuer: self.issuer_metadata.credential_issuer().clone(),
+            credential_configuration_ids: cred_def_ids
+                .iter()
+                .map(|c| CredentialConfigurationId::new(c.to_string()))
+                .collect(),
+            grants: Some(grants.to_owned()),
+        };
 
         let cred_offer = serde_json::to_string(&cred_offer_params).context(ParseSnafu)?;
 
@@ -193,21 +193,23 @@ where
             .issue_credential(&cred_req, claims, &nonce.value)
             .await;
 
-        let cred = match result {
-            Err(vc::core::Error::Proof { source, .. }) => {
-                self.resolve_pop_protocol_error(source, session).await?.fail()?
-            }
-            Err(vc::core::Error::ProofFormatNotSupported { format }) => self
-                .invalid_proof(
-                    session,
-                    &format!("proof of possession with '{format}' format is not supported. {INVALID_PROOF_ERR_DESC}"),
-                )
-                .await?
-                .fail()?,
-            _ => result.context(VCSnafu)?,
-        };
+        let credential = match result {
+                Err(vc::core::Error::Proof { source, .. }) => {
+                    self.resolve_pop_protocol_error(source, session).await?.fail()?
+                }
+                Err(vc::core::Error::ProofFormatNotSupported { format }) => self
+                    .invalid_proof(
+                        session,
+                        &format!("proof of possession with '{format}' format is not supported. {INVALID_PROOF_ERR_DESC}"),
+                    )
+                    .await?
+                    .fail()?,
+                _ => result.context(VCSnafu)?,
+            };
 
-        let mut resp = CredentialResponse::new(ResponseEnum::Immediate(cred.into()));
+        let mut resp = Response::new(ResponseEnum::Immediate {
+            credential: credential.try_into()?,
+        });
         resp = self
             .update_cred_resp_and_session_data(resp, session)
             .await?;
@@ -228,51 +230,54 @@ where
     fn resolve_cred_def(&self, req: &CredentialRequest) -> Result<(String, CredDefMetadata)> {
         trace!(credential_request = ?req);
 
-        match req.additional_profile_fields() {
-            CoreProfilesRequest::SDJWTVC(_) => (),
-            CoreProfilesRequest::LDVC(_) => (),
+        let result = match req.additional_profile_fields() {
+            CoreProfilesCredentialRequest::WithFormat { inner, .. } => match inner {
+                CredentialRequestWithFormat::VcSdJwt(sd_jwt_req) => self
+                    .issuer_metadata
+                    .credential_configurations_supported()
+                    .iter()
+                    .find(|cred_metadata| {
+                        let CoreProfilesCredentialConfiguration::VcSdJwt(supported) =
+                            cred_metadata.profile_specific_fields()
+                        else {
+                            return false;
+                        };
+                        return supported.vct() == sd_jwt_req.vct();
+                    }),
+                CredentialRequestWithFormat::LdpVc(ldp_req) => self
+                    .issuer_metadata
+                    .credential_configurations_supported()
+                    .iter()
+                    .find(|cred_metadata| {
+                        let CoreProfilesCredentialConfiguration::LdpVc(supported) =
+                            cred_metadata.profile_specific_fields()
+                        else {
+                            return false;
+                        };
+                        return supported.credential_definition().r#type()
+                            == ldp_req.credential_definition().r#type();
+                    }),
+                _ => ProtocolSnafu::new(
+                    ErrorType::UnsupportedCredentialFormat,
+                    format!("Unsupported credential format: {:#?}", inner.format()),
+                )
+                .fail()?,
+            },
             _ => ProtocolSnafu::new(
-                ErrorType::UnsupportedCredentialFormat,
-                format!(
-                    "Unsupported credential format: {}",
-                    req.additional_profile_fields().format()
-                ),
+                ErrorType::InvalidCredentialRequest,
+                "Credential request with credential configuration id is not supported".to_string(),
             )
             .fail()?,
-        };
+        }
+        .ok_or(
+            ProtocolSnafu::new(
+                ErrorType::UnsupportedCredentialType,
+                "Credential configuration id is not found".to_string(),
+            )
+            .build(),
+        )?;
 
-        let (cred_def_id, cred_metadata) = self
-            .issuer_metadata
-            .credential_configurations_supported()
-            .iter()
-            .find(|(id, cred_metadata)| {
-                if let CoreProfilesMetadata::SDJWTVC(metadata) = cred_metadata.additional_fields() {
-                    if let CoreProfilesRequest::SDJWTVC(det) = req.additional_profile_fields() {
-                        return metadata.vct() == det.vct();
-                    }
-                }
-
-                if let CoreProfilesMetadata::LDVC(metadata) = cred_metadata.additional_fields() {
-                    if let CoreProfilesRequest::LDVC(det) = req.additional_profile_fields() {
-                        return det.credential_definition().credential_definition().r#type()
-                            == metadata
-                                .credentials_definition()
-                                .credential_definition()
-                                .r#type();
-                    }
-                }
-
-                false
-            })
-            .ok_or(
-                ProtocolSnafu::new(
-                    ErrorType::UnsupportedCredentialType,
-                    "Credential configuration id is not found".to_string(),
-                )
-                .build(),
-            )?;
-
-        Ok((cred_def_id.to_owned(), cred_metadata.to_owned()))
+        Ok((result.id().to_string().to_owned(), result.to_owned()))
     }
 
     #[instrument(level = Level::TRACE, skip(self), err(), ret())]
@@ -280,15 +285,16 @@ where
         ensure!(
             !cred_def_ids.is_empty(),
             ProtocolSnafu::new(
-                ErrorType::InvalidRequest,
+                ErrorType::InvalidCredentialRequest,
                 "Missed credential configuration ids".to_string()
             )
         );
 
-        let supported: Vec<String> = self
+        let supported: Vec<CredentialConfigurationId> = self
             .issuer_metadata
             .credential_configurations_supported()
-            .keys()
+            .iter()
+            .map(|c| c.id())
             .map(|e| e.to_owned())
             .collect();
 
@@ -296,7 +302,7 @@ where
 
         for id in cred_def_ids {
             ensure!(
-                supported.contains(&id.to_string()),
+                supported.contains(&CredentialConfigurationId::new(id.to_string())),
                 ProtocolSnafu::new(
                     ErrorType::UnsupportedCredentialType,
                     format!("Unsupported Credential definition ID: {id}")
@@ -368,8 +374,8 @@ where
         let claim_names: Vec<&str> = claims.claims().keys().map(|k| k.as_str()).collect();
 
         // TODO: split it into two parts: required/optional claims
-        let supported_claims = match cred_metadata.additional_fields() {
-            CoreProfilesMetadata::SDJWTVC(metadata) => {
+        let supported_claims = match cred_metadata.profile_specific_fields() {
+            CoreProfilesCredentialConfiguration::VcSdJwt(metadata) => {
                 debug!(resolved_credential_metadata = ?metadata);
 
                 match metadata.claims() {
@@ -383,19 +389,12 @@ where
                     _ => return Ok(()),
                 }
             }
-            CoreProfilesMetadata::LDVC(metadata) => {
+            CoreProfilesCredentialConfiguration::LdpVc(metadata) => {
                 debug!(resolved_credential_metadata = ?metadata);
 
                 let mut supported: Vec<&str> = metadata
-                    .credentials_definition()
                     .credential_definition()
                     .credential_subject()
-                    .ok_or_else(|| {
-                        ClaimsValidationSnafu {
-                            details: "Credential definition does not include claims",
-                        }
-                        .build()
-                    })?
                     .keys()
                     .map(|k| k.as_str())
                     .collect();
@@ -408,7 +407,7 @@ where
                 ErrorType::UnsupportedCredentialFormat,
                 format!(
                     "Unsupported credential format: {}",
-                    cred_metadata.additional_fields().format()
+                    cred_metadata.profile_specific_fields().format()
                 ),
             )
             .fail()?,
@@ -496,7 +495,7 @@ where
         trace!(issuance_session = ?session);
 
         let resp = resp
-            .set_nonce(Some(openidconnect::Nonce::new(nonce.secret().to_owned())))
+            .set_nonce(Some(oid4vci::types::Nonce::new(nonce.secret().to_owned())))
             .set_nonce_expiration(nonce.expires_in.map(|d| d.whole_seconds()))
             .set_notification_id(Some(notification_id));
 
@@ -536,33 +535,51 @@ where
 impl From<&SpruceProof> for AsdkProof {
     fn from(value: &SpruceProof) -> AsdkProof {
         match value {
-            SpruceProof::JWT { jwt } => AsdkProof {
+            SpruceProof::Jwt { jwt } => AsdkProof {
                 format: "jwt".to_string(),
                 proof: jwt.to_string(),
             },
-            SpruceProof::CWT { cwt } => AsdkProof {
+            SpruceProof::Cwt { cwt } => AsdkProof {
                 format: "cwt".to_string(),
                 proof: cwt.to_owned(),
+            },
+            SpruceProof::LdpVp { ldp_vp } => AsdkProof {
+                format: "ldp_vp".to_string(),
+                proof: ldp_vp.to_string(),
             },
         }
     }
 }
 
-impl From<vc::Credential> for CoreProfilesResponse {
-    fn from(value: vc::Credential) -> Self {
-        match value {
+impl TryInto<CoreProfilesCredentialResponseType> for vc::Credential {
+    type Error = Error;
+
+    fn try_into(self) -> std::result::Result<CoreProfilesCredentialResponseType, Self::Error> {
+        match self {
             vc::Credential::JwtVcJson(cred) => {
-                CoreProfilesResponse::JWTVC(w3c::jwt::Response::new(cred))
+                let jws_buf = JwsBuf::from_str(cred.as_str()).map_err(|e| {
+                    TypeConversionSnafu {
+                        details: e.to_string(),
+                    }
+                    .build()
+                })?;
+                Ok(CoreProfilesCredentialResponseType::JwtVcJson(jws_buf))
             }
-            vc::Credential::JwtVcJsonLd(_) => {
-                CoreProfilesResponse::JWTLDVC(w3c::jwtld::Response {})
+            vc::Credential::JwtVcJsonLd(cred) => {
+                let jws_buf = JwsBuf::from_str(cred.as_str()).map_err(|e| {
+                    TypeConversionSnafu {
+                        details: e.to_string(),
+                    }
+                    .build()
+                })?;
+
+                Ok(CoreProfilesCredentialResponseType::JwtVcJsonLd(jws_buf))
             }
             vc::Credential::LdpVc(cred) => {
-                CoreProfilesResponse::LDVC(w3c::ldp::Response::new(cred))
+                let cred = serde_json::to_value(&cred).context(ParseSnafu)?;
+                Ok(CoreProfilesCredentialResponseType::LdpVc(cred))
             }
-            vc::Credential::SdJwt(cred) => {
-                CoreProfilesResponse::SDJWTVC(sd_jwt::Response::new(cred))
-            }
+            vc::Credential::SdJwt(cred) => Ok(CoreProfilesCredentialResponseType::VcSdJwt(cred)),
         }
     }
 }
@@ -591,7 +608,7 @@ mod tests {
     use crate::vc::oid4vci::{token_validation, AuthorizationCodeGrant};
     use api::Issuer;
     use oauth2::http::{Method, StatusCode};
-    use oid4vci::openidconnect::JsonWebKeySetUrl;
+    use openidconnect::JsonWebKeySetUrl;
     use rstest::rstest;
     use serde_json::json;
     use time::OffsetDateTime;
@@ -613,7 +630,7 @@ mod tests {
             .create_credential_offer(
                 vec![CRED_DEF_ID],
                 &CredentialOfferGrants {
-                    authorization_code: Some(AuthorizationCodeGrant { issuer_state: None }),
+                    authorization_code: Some(AuthorizationCodeGrant::new(None, None)),
                     pre_authorized_code: None,
                 },
             )
@@ -668,10 +685,11 @@ mod tests {
 
         let resp = iss_result.unwrap();
 
-        if let ResponseEnum::Immediate(CoreProfilesResponse::SDJWTVC(resp)) =
-            resp.additional_profile_fields()
+        if let ResponseEnum::Immediate {
+            credential: CoreProfilesCredentialResponseType::VcSdJwt(resp),
+        } = resp.response_kind()
         {
-            let claims_str = SdJwtAPI::strip_disclosures(resp.credential()).unwrap();
+            let claims_str = SdJwtAPI::strip_disclosures(resp).unwrap();
             let claims: Map<String, Value> = decode_unverified(claims_str).unwrap();
             assert_eq!(claims.get(EXP_CLAIM).unwrap(), exp);
             assert_eq!(claims.get(NBF_CLAIM).unwrap(), nbf);
@@ -1133,7 +1151,6 @@ mod tests {
     fn sample_sdjwtvc_credential_request_with_fake_vct() -> CredentialRequest {
         serde_json::from_value(json!(
             {
-                "credential_identifier": CRED_DEF_ID,
                 "format":"vc+sd-jwt",
                 "vct":"fake_sd_jwt_cred",
                 "proof":{
@@ -1149,7 +1166,6 @@ mod tests {
     fn sample_sdjwtvc_credential_request_with_empty_proofs_jwt() -> CredentialRequest {
         serde_json::from_value(json!(
             {
-                "credential_identifier": CRED_DEF_ID,
                 "format":"vc+sd-jwt",
                 "vct":"SD_JWT_cred",
                 "proof":{
@@ -1165,7 +1181,6 @@ mod tests {
     fn sample_sdjwtvc_credential_request_with_cwt_proof_format() -> CredentialRequest {
         serde_json::from_value(json!(
             {
-                "credential_identifier": CRED_DEF_ID,
                 "format":"vc+sd-jwt",
                 "vct":"SD_JWT_cred",
                 "proof":{
@@ -1181,7 +1196,6 @@ mod tests {
     fn sample_sdjwtvc_credential_request_without_proof() -> CredentialRequest {
         serde_json::from_value(json!(
             {
-                "credential_identifier": CRED_DEF_ID,
                 "format":"vc+sd-jwt",
                 "vct":"fake_sd_jwt_cred",
                 "credential_response_encryption":null

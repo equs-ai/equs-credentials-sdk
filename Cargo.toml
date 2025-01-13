@@ -13,40 +13,36 @@ members = [
 name = "agent-sdk"
 version = "0.4.4"
 edition = "2021"
-rust-version = "1.79"
+rust-version = "1.82"
 
 [dependencies]
 common-macros = { path = "./common-macros" }
 
-oid4vci = { git = "ssh://git@git.slock.it/open-source/oid4vci-rs.git", rev = "c76f89f4" }
-oid4vp = { git = "ssh://git@git.slock.it/open-source/oid4vp-rs.git", rev = "d33817e3" }
+oid4vci = { git = "ssh://git@git.slock.it/open-source/oid4vci-rs.git", rev = "7be5e5f5" }
+openid4vp = { git = "ssh://git@git.slock.it/open-source/oid4vp-rs.git", rev = "a35b6240" }
 sd-jwt-rs = { git = "ssh://git@git.slock.it/open-source/sd-jwt-rust.git", rev = "110d40c5" }
 
 did_peer = { tag = "0.65.0", git = "https://github.com/hyperledger/aries-vcx" }
 did_resolver = { tag = "0.65.0", git = "https://github.com/hyperledger/aries-vcx" }
 did_parser_nom = { tag = "0.65.0", git = "https://github.com/hyperledger/aries-vcx" }
 
-oauth2 = "4.4.2"
+oauth2 = "5.0.0-rc.1"
 serde_json = "1.0.120"
-ssi = "0.7.0"
+ssi = "0.10.1"
 time = { version = "0.3.29", features = ["serde"] }
 serde = { version = "1.0.204", features = ["derive"] }
 serde_urlencoded = "0.7.1"
-did-method-key = "0.2.2"
-did-web = "0.2.2"
-ssi-dids = "0.1.1"
-ssi-ldp = "0.3.2"
-iref = "2.2.3"
+serde_json_path = "0.7.1"
+iref = "3.2.2"
 futures = "0.3.30"
 base64 = "0.22.1"
 jsonwebtoken = "9.3.0"
-async-trait = "0.1.81"
+async-trait = "0.1.85"
 strum_macros = "0.26.4"
 strum = { version = "0.26.3", features = ["derive"] }
-reqwest = { version = "0.11", features = ["rustls-tls"] }
-reqwest-middleware = "0.1.1"
-reqwest-tracing = "0.2.0"
-task-local-extensions = "0.1.1"
+reqwest = { version = "0.12.9", features = ["rustls-tls"] }
+reqwest-middleware = "0.4.0"
+reqwest-tracing = "0.5.5"
 uuid = { version = "1.10.0", features = ["v4"] }
 url = "=2.5.2"
 anyhow = "1.0.86"
@@ -55,6 +51,7 @@ snafu = "0.8.4"
 regex = "1.11.0"
 mime = "0.3.17"
 chrono = "0.4.38"
+openidconnect = "4.0.0-rc.1"
 zeroize = "1.8.1"
 
 # InMEM dependencies
@@ -62,6 +59,7 @@ zeroize = "1.8.1"
 p256 = { version = "0.13.2", optional = true }
 ed25519-dalek = { version = "2.1.1", optional = true }
 bip32 = { version = "0.5.2", optional = true }
+bs58 = "0.5.1"
 # service
 rand = { version = "0.8.5", optional = true }
 random-string = { version = "1.1.0", optional = true }

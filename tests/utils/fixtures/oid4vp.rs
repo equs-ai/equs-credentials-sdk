@@ -1,8 +1,10 @@
 use agent_sdk::vc::claims::{Claim, Claims};
 use agent_sdk::vc::presentation_exchange::PresentationDefinition;
 use agent_sdk::vc::{JsonLdAPIVCMetadata, VCMetadata};
-use oid4vp::core::input_descriptor::InputDescriptor;
+use openid4vp::core::input_descriptor::InputDescriptor;
 use serde_json::json;
+use ssi::dids::ssi_json_ld::IriRefBuf;
+use std::str::FromStr;
 
 pub type ValidateClaimsFunc = dyn Fn(Claims) + Send + Sync;
 
@@ -25,16 +27,19 @@ pub struct Oid4VpTestCase {
 pub const VERIFIER_URL: &str = "http://example.com";
 
 fn sample_jsonld_resident_card_credential() -> (Oid4VpTestCredential, InputDescriptor) {
-    let format = Oid4VpTestCredentialFormat::LdpVc(JsonLdAPIVCMetadata::new(
-        vec![
-            "https://www.w3.org/2018/credentials/v1".to_string(),
-            "https://w3id.org/citizenship/v1".to_string(),
-        ],
-        vec![
-            "VerifiableCredential".to_string(),
-            "PermanentResident".to_string(),
-        ],
-    ));
+    let format = Oid4VpTestCredentialFormat::LdpVc(
+        JsonLdAPIVCMetadata::new(
+            vec![
+                IriRefBuf::from_str("https://www.w3.org/2018/credentials/v1").unwrap(),
+                IriRefBuf::from_str("https://w3id.org/citizenship/v1").unwrap(),
+            ],
+            vec![
+                "VerifiableCredential".to_string(),
+                "PermanentResident".to_string(),
+            ],
+        )
+        .unwrap(),
+    );
 
     let credential = Oid4VpTestCredential {
         format,
@@ -223,6 +228,8 @@ pub fn single_jsonld_presentation_case() -> Oid4VpTestCase {
                 .unwrap()
                 .get("resident-card")
                 .unwrap()
+                .get("verifiableCredential")
+                .unwrap()
                 .get("credentialSubject")
                 .unwrap()
                 .get("givenName")
@@ -235,6 +242,8 @@ pub fn single_jsonld_presentation_case() -> Oid4VpTestCase {
                 .unwrap()
                 .get("resident-card")
                 .unwrap()
+                .get("verifiableCredential")
+                .unwrap()
                 .get("credentialSubject")
                 .unwrap()
                 .get("familyName")
@@ -246,6 +255,8 @@ pub fn single_jsonld_presentation_case() -> Oid4VpTestCase {
                 .get("vp_token")
                 .unwrap()
                 .get("resident-card")
+                .unwrap()
+                .get("verifiableCredential")
                 .unwrap()
                 .get("credentialSubject")
                 .unwrap()
@@ -308,7 +319,7 @@ pub fn multiple_sdjwt_presentation_case() -> Oid4VpTestCase {
         "1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed".to_string(),
         descriptor_identity,
     )
-    .add_input_descriptors(descriptor_degree);
+    .add_input_descriptor(descriptor_degree);
 
     let validate: Box<ValidateClaimsFunc> = Box::new(|claims| {
         assert_eq!(

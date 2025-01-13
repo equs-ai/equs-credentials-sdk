@@ -6,6 +6,7 @@ use common_macros::DebugError;
 use oid4vci::proof_of_possession::{ConversionError, ParsingError, VerificationError};
 use serde::{Deserialize, Serialize};
 use snafu::{Location, Snafu};
+use ssi::dids::DIDURLBuf;
 use std::fmt::{Debug, Display, Formatter};
 use std::str::FromStr;
 
@@ -82,11 +83,11 @@ pub enum Error {
     VC {
         #[snafu(implicit)]
         location: Location,
-        source: ssi::vc::Error,
+        source: ssi::claims::vc::v1::JwtVpDecodeError,
     },
     #[snafu(display("JWS error"))]
     JWS {
-        source: ssi::jws::Error,
+        source: ssi::claims::jws::Error,
         #[snafu(implicit)]
         location: Location,
     },
@@ -95,6 +96,12 @@ pub enum Error {
         #[snafu(implicit)]
         location: Location,
         source: crypto::Error,
+    },
+    #[snafu(display("Did url error {details}"))]
+    DidUrl {
+        #[snafu(implicit)]
+        location: Location,
+        details: String,
     },
 }
 
@@ -129,7 +136,7 @@ pub trait ProofOfPossession<P> {
         proof: P,
         nonce: &Nonce,
         opts: VerifyOptions,
-    ) -> Result<(DIDURL, Box<dyn crypto::Key>)>;
+    ) -> Result<(DIDURLBuf, Box<dyn crypto::Key>)>;
 
     fn alg(proof: &P) -> Result<crypto::Alg>;
 }

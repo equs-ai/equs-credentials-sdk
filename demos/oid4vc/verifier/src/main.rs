@@ -1,6 +1,6 @@
 use actix_web::{web, App, HttpRequest, HttpResponse, HttpServer};
 use agent_sdk::did::didkey::DIDKey;
-use agent_sdk::did::{DIDResolver, DID};
+use agent_sdk::did::{DIDBuf, DIDResolver, DID};
 use agent_sdk::inmem::kms::LocalKms;
 use agent_sdk::inmem::storage::InMemStorage;
 use agent_sdk::kms;
@@ -8,6 +8,7 @@ use agent_sdk::kms::Kms;
 use agent_sdk::storage::Storage;
 use agent_sdk::vc::core::KeyMetadata;
 
+use agent_sdk::did::universal::UniversalResolver;
 use agent_sdk::inmem::nonce::LocalNonceGenerator;
 use agent_sdk::vc::oid4vp;
 use agent_sdk::vc::oid4vp::{
@@ -16,11 +17,12 @@ use agent_sdk::vc::oid4vp::{
 };
 use agent_sdk::vc::presentation_exchange::{
     ClaimFormatDesignation, ClaimFormatMap, ClaimFormatPayload, Constraints, ConstraintsField,
-    InputDescriptor, PresentationDefinition,
+    InputDescriptor, JsonPath, PresentationDefinition,
 };
 use reqwest::Url;
 use serde_json::json;
 use std::collections::HashMap;
+use std::str::FromStr;
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -193,21 +195,28 @@ async fn verifier() -> impl oid4vp::Verifier {
 }
 
 async fn create_did_and_key_metadata(kms: &LocalKms) -> (DID, KeyMetadata) {
-    let didkey = DIDKey::new();
-
     let (kid, kh) = kms
         .create_and_handle(kms::KeyType::P256, kms::CreateOptions {})
         .await
         .unwrap();
 
-    let did = didkey.generate(kh).unwrap();
+    let did = DIDKey::generate(kh).unwrap();
 
-    let vm = didkey.resolve_verification_method(&did).await.unwrap().id;
+    let did_url = UniversalResolver::default()
+        .resolve(DIDBuf::from_str(&did).unwrap().as_did())
+        .await
+        .unwrap()
+        .document
+        .verification_method
+        .first()
+        .unwrap()
+        .id
+        .to_string();
 
-    println!("Generated DID {}", did.clone());
-    println!("Generated DIDURL {}", vm.clone());
+    println!("Generated DID {}", did);
+    println!("Generated DIDURL {}", did_url);
 
-    (did, KeyMetadata { kid, did_url: vm })
+    (did, KeyMetadata { kid, did_url })
 }
 
 pub fn default_presentation_definition() -> PresentationDefinition {
@@ -215,18 +224,22 @@ pub fn default_presentation_definition() -> PresentationDefinition {
         "type": "string",
         "const": "https://credentials.example.com/identity_credential_1"
     });
-    let vct_constraint = ConstraintsField::new("$.vct".to_string()).set_filter(vct_filter);
+    let vct_constraint = ConstraintsField::new(JsonPath::parse("$.vct").unwrap())
+        .set_filter(&vct_filter)
+        .unwrap();
 
-    let email_constraint = ConstraintsField::new("$.email.work".to_string());
+    let email_constraint = ConstraintsField::new(JsonPath::parse("$.email.work").unwrap());
 
-    let username_constraint = ConstraintsField::new("$.username".to_string()).set_optional(true);
+    let username_constraint =
+        ConstraintsField::new(JsonPath::parse("$.username").unwrap()).set_optional(true);
 
     let country_filter = json!({
         "type": "string",
         "const": "US"
     });
-    let country_constraint =
-        ConstraintsField::new("$.country".to_string()).set_filter(country_filter);
+    let country_constraint = ConstraintsField::new(JsonPath::parse("$.country").unwrap())
+        .set_filter(&country_filter)
+        .unwrap();
 
     let constraints = Constraints::new()
         .add_constraint(vct_constraint)
@@ -249,7 +262,7 @@ pub fn default_presentation_definition() -> PresentationDefinition {
         .set_format(format);
 
     PresentationDefinition::new(Uuid::new_v4().to_string(), input_descriptor_1)
-        .add_input_descriptors(serde_json::from_str(INPUT_DESCRIPTOR_FOR_CRED_DEF_2).unwrap())
+        .add_input_descriptor(serde_json::from_str(INPUT_DESCRIPTOR_FOR_CRED_DEF_2).unwrap())
         .set_name("Example with selective disclosure".to_owned())
 }
 

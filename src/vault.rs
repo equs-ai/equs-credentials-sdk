@@ -56,7 +56,7 @@ pub enum CredentialFilter {
 }
 
 /// A struct for stored `Credential` in `Vault` with some extra information.
-#[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CredentialEntry {
     pub credential: vc::Credential,
     pub kid: kms::KeyID,
@@ -160,7 +160,7 @@ pub mod test_util {
                 "id": "did:example:d23dd687a7dc6787646f2eb98d0"
             }
         }"###;
-        let cred2: ssi::vc::Credential = serde_json::from_str(cred2str).unwrap();
+        let cred2: crate::vc::formats::json_ld_vc::VC = serde_json::from_str(cred2str).unwrap();
         let cred2_meta = CredentialMetadata {
             type_: "VerifiableCredential".into(),
             kid: "1234".into(),
@@ -182,18 +182,21 @@ pub mod test_util {
         let get2_res = vault.get_credential(&cred2_id).await.unwrap();
 
         assert_eq!(
-            get1_res,
-            Some(CredentialEntry {
+            serde_json::to_value(get1_res.unwrap()).unwrap(),
+            serde_json::to_value(CredentialEntry {
                 credential: Credential::SdJwt(cred1.clone()),
                 kid: "1234".into()
-            }),
+            })
+            .unwrap(),
         );
+
         assert_eq!(
-            get2_res,
-            Some(CredentialEntry {
+            serde_json::to_value(get2_res.unwrap()).unwrap(),
+            serde_json::to_value(CredentialEntry {
                 credential: Credential::LdpVc(cred2.clone()),
                 kid: "1234".into()
-            }),
+            })
+            .unwrap(),
         );
 
         let find_res = vault
@@ -210,11 +213,12 @@ pub mod test_util {
             .unwrap();
 
         assert_eq!(
-            find_res,
-            vec![CredentialEntry {
+            serde_json::to_value(find_res).unwrap(),
+            serde_json::Value::Array(vec![serde_json::to_value(CredentialEntry {
                 credential: Credential::SdJwt(cred1),
                 kid: "1234".into()
-            }]
+            })
+            .unwrap()])
         );
     }
 }

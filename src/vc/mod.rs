@@ -12,7 +12,7 @@ use crate::vc::formats::{sd_jwt_vc, FormatNotSupportedSnafu, HasCredential};
 pub use crate::vc::presentation_exchange::ClaimFormat;
 use serde::{Deserialize, Serialize};
 
-mod formats;
+pub(crate) mod formats;
 mod pop;
 pub mod presentation_exchange;
 
@@ -29,15 +29,15 @@ pub use formats::HasClaims;
 /// Each enum value represents different format of `VC` and contains an actual serializable `VC` body.
 ///
 /// *NOTE*: could be extended in the next releases.
-#[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[non_exhaustive]
 pub enum Credential {
-    // W3C
-    JwtVcJson(String),
-    JwtVcJsonLd(String),
-    LdpVc(ssi::vc::Credential),
     // SD-JWT
     SdJwt(sd_jwt_vc::Credential),
+    // W3C
+    LdpVc(formats::json_ld_vc::VC),
+    JwtVcJson(String),
+    JwtVcJsonLd(String),
     // etc
     // ISOMdl(String),
 }
@@ -73,13 +73,13 @@ pub struct CredentialMetadata {
 /// Each enum value represents different format of `VP` and contains an actual serializable `VP` body.
 ///
 /// *NOTE*: could be extended in the next releases.
-#[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[non_exhaustive]
 #[serde(untagged)]
 pub enum Presentation {
     // W3C
-    JwtVp(ssi::vc::Presentation),
-    LdpVp(ssi::vc::Presentation),
+    JwtVp(String),
+    LdpVp(formats::json_ld_vc::VP),
     // SD-JWT
     SdJwtVp(String),
 }

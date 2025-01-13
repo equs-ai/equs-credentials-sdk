@@ -39,7 +39,7 @@ describe("OID4VCI Issuer: ", () => {
 
 		expect(credentialOffer).toMatchObject({
 			params: CRED_OFFER,
-			url: "openid-credential-offer://?credential_offer={%22credential_issuer%22:%22http://localhost:9000%22,%22credential_configuration_ids%22:[%22IDENTITY_SD_JWT%22],%22grants%22:{%22authorization_code%22:{%22issuer_state%22:null}}}",
+			url: "openid-credential-offer://?credential_offer={%22credential_issuer%22:%22http://localhost:9000%22,%22credential_configuration_ids%22:[%22IDENTITY_SD_JWT%22],%22grants%22:{%22authorization_code%22:{%22issuer_state%22:null,%22authorization_server%22:null}}}",
 		});
 	});
 

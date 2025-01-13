@@ -1,10 +1,10 @@
 use crate::reqwest::validators::content_size::ContentSizeLimiter;
 use crate::reqwest::validators::content_type::ContentTypeValidator;
 use oauth2::http;
+use oauth2::http::Extensions;
 use reqwest::header::SET_COOKIE;
 use reqwest::{Request, Response};
 use reqwest_middleware::{Error, Next, Result};
-use task_local_extensions::Extensions;
 use tracing::warn;
 
 pub struct ValidatorMiddleware {

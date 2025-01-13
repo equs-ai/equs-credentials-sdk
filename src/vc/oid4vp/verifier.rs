@@ -1,18 +1,19 @@
-use std::marker::PhantomData;
-
 use async_trait::async_trait;
-use oid4vp::core::authorization_request::parameters::{
+use openid4vp::core::authorization_request::parameters::{
     ClientId, IdTokenType, Nonce as NonceSpruce, Scope,
 };
-use oid4vp::core::metadata::WalletMetadata;
-use oid4vp::verifier::by_reference::ByReference;
-use oid4vp::verifier::request_builder::RequestType;
+use openid4vp::core::metadata::WalletMetadata;
+use openid4vp::verifier::by_reference::ByReference;
+use openid4vp::verifier::request_builder::RequestType;
 use serde_json::Value as Json;
 use snafu::{ensure, ResultExt};
+use std::fmt::Debug;
+use std::marker::PhantomData;
 use tracing::{info, instrument, Level};
 use url::Url;
 
-use crate::did::DIDResolver;
+use crate::did::universal::UniversalResolver;
+use crate::did::JWKResolver;
 use crate::kms::{KeyHandle, Kms};
 use crate::nonce::{Nonce, NonceGenerator};
 use crate::vc;
@@ -20,8 +21,8 @@ use crate::vc::claims::{Claim, Claims};
 use crate::vc::core::KeyMetadata;
 use crate::vc::oid4vp as api;
 use crate::vc::oid4vp::internal_error::{
-    ClaimsSnafu, IdTokenValidationSnafu, JsonSnafu, KMSSnafu, NonceGenerationSnafu, Oid4VpLibSnafu,
-    PresentationExchangeSnafu, VCSnafu,
+    ClaimsSnafu, DidUrlResolutionSnafu, IdTokenValidationSnafu, JsonSnafu, KMSSnafu,
+    NonceGenerationSnafu, Oid4VpLibSnafu, ParseSnafu, PresentationExchangeSnafu, VCSnafu,
 };
 use crate::vc::oid4vp::metadata::{default_client_metadata, default_wallet_metadata};
 use crate::vc::oid4vp::signer::Signer;
@@ -33,15 +34,17 @@ use crate::vc::presentation_exchange;
 use crate::vc::presentation_exchange::{
     validate_against_presentation_definition, PresentationDefinition, PresentationResponse,
 };
-use oid4vp::core::response::parameters::IdTokenBody as IdToken;
+use openid4vp::core::response::parameters::IdTokenBody as IdToken;
+use ssi::dids::DIDURLBuf;
 use std::collections::HashMap;
+use std::ops::Deref;
 
 pub type Error = api::Error;
 pub type Result<T> = core::result::Result<T, Error>;
 
-pub type DIDClient<S> = oid4vp::verifier::client::DIDClient<S>;
-pub type X509SanClient = oid4vp::verifier::client::X509SanClient;
-pub type RedirectUriClient = oid4vp::verifier::client::RedirectUriClient;
+pub type DIDClient<S> = openid4vp::verifier::client::DIDClient<S>;
+pub type X509SanClient = openid4vp::verifier::client::X509SanClient;
+pub type RedirectUriClient = openid4vp::verifier::client::RedirectUriClient;
 const VP_TOKEN: &str = "vp_token";
 const ID_TOKEN: &str = "id_token";
 
@@ -52,35 +55,32 @@ pub struct VerifierMetadata {
     pub client_metadata: ClientMetadata,
 }
 
-pub struct VerifierService<VF, KH, KMS, D, NG>
+pub struct VerifierService<VF, KH, KMS, NG>
 where
     VF: vc::core::Verifier,
     KH: KeyHandle,
     KMS: Kms<KH>,
-    D: DIDResolver,
     NG: NonceGenerator,
 {
     verifier: VF,
     metadata: VerifierMetadata,
     kms: KMS,
     nonce_generator: NG,
-    did_resolver: D,
+    public_jwk_resolver: UniversalResolver,
     _marker: PhantomData<KH>,
 }
 
-impl<VF, KH, KMS, D, NG> VerifierService<VF, KH, KMS, D, NG>
+impl<VF, KH, KMS, NG> VerifierService<VF, KH, KMS, NG>
 where
     VF: vc::core::Verifier,
     KH: KeyHandle,
     KMS: Kms<KH>,
-    D: DIDResolver,
     NG: NonceGenerator,
 {
-    #[instrument(level = Level::TRACE, skip(verifier, kms, nonce_generator, did_resolver))]
+    #[instrument(level = Level::TRACE, skip(verifier, kms, nonce_generator))]
     pub fn new(
         verifier: VF,
         kms: KMS,
-        did_resolver: D,
         nonce_generator: NG,
         client_id: String,
         key_metadata: KeyMetadata,
@@ -96,7 +96,7 @@ where
 
         Self {
             metadata,
-            did_resolver,
+            public_jwk_resolver: UniversalResolver::default(),
             kms,
             nonce_generator,
             verifier,
@@ -106,12 +106,11 @@ where
 }
 
 #[async_trait]
-impl<VF, KH, KMS, D, NG> api::Verifier for VerifierService<VF, KH, KMS, D, NG>
+impl<VF, KH, KMS, NG> api::Verifier for VerifierService<VF, KH, KMS, NG>
 where
     VF: vc::core::Verifier,
     KH: KeyHandle,
     KMS: Kms<KH>,
-    D: DIDResolver,
     NG: NonceGenerator,
 {
     #[instrument(level = Level::TRACE, skip(self), ret())]
@@ -170,7 +169,7 @@ where
         if let Some(id_token) = &auth_response.id_token {
             let id_token_claims = self.validate_id_token(id_token, &session.nonce).await?;
 
-            // TODO: get rid of IdTokenBody -> Value convertaion, implement IdTokenBody -> Claim instead
+            // TODO: get rid of IdTokenBody -> Value conversion, implement IdTokenBody -> Claim instead
             let id_token_claims = serde_json::to_value(id_token_claims).context(JsonSnafu)?;
             claims.insert(ID_TOKEN.to_string(), id_token_claims.into());
 
@@ -183,17 +182,16 @@ where
     }
 }
 
-impl<VF, KH, KMS, D, NG> VerifierService<VF, KH, KMS, D, NG>
+impl<VF, KH, KMS, NG> VerifierService<VF, KH, KMS, NG>
 where
     VF: vc::core::Verifier,
     KH: KeyHandle,
     KMS: Kms<KH>,
-    D: DIDResolver,
     NG: NonceGenerator,
 {
     #[instrument(level = Level::TRACE, skip(self), err(), ret())]
     async fn validate_id_token(&self, id_token: &str, nonce: &Nonce) -> Result<IdToken> {
-        let header: ssi::jws::Header = ssi::jws::decode_unverified(id_token)
+        let header: ssi::claims::jws::Header = ssi::claims::jws::decode_unverified(id_token)
             .map_err(|e| {
                 IdTokenValidationSnafu {
                     details: format!("could not parse id token: {e}"),
@@ -219,7 +217,7 @@ where
         let (did, jwk) = self
             .resolve_did_and_jwk_from_id_token_header(header)
             .await?;
-        let id_token: IdToken = ssi::jwt::decode_verify(id_token, &jwk).map_err(|e| {
+        let id_token: IdToken = ssi::claims::jwt::decode_verify(id_token, &jwk).map_err(|e| {
             IdTokenValidationSnafu {
                 details: format!("could not decode and validate id token: {e}"),
             }
@@ -262,7 +260,7 @@ where
 
     async fn resolve_did_and_jwk_from_id_token_header(
         &self,
-        header: ssi::jws::Header,
+        header: ssi::claims::jws::Header,
     ) -> Result<(String, ssi::jwk::JWK)> {
         let Some(kid) = header.key_id else {
             IdTokenValidationSnafu {
@@ -271,26 +269,19 @@ where
             .fail()?
         };
 
-        let vm = self
-            .did_resolver
-            .resolve_verification_method(&kid)
+        let did_url = DIDURLBuf::from_string(kid).context(DidUrlResolutionSnafu)?;
+        let jwk = self
+            .public_jwk_resolver
+            .fetch_public_jwk(Some(did_url.as_str()))
             .await
             .map_err(|e| {
-                IdTokenValidationSnafu {
-                    details: format!(
-                        "could not parse did verification method from 'kid' = {kid}: {e}"
-                    ),
+                ParseSnafu {
+                    details: format!("could not resolve public jwk from did_url: {e}"),
                 }
                 .build()
             })?;
-        let jwk = vm.get_jwk().map_err(|e| {
-            IdTokenValidationSnafu {
-                details: &format!("could not parse public jwk from resolved verification method of did document: {e}"),
-            }
-            .build()
-        })?;
 
-        Ok((vm.controller, jwk))
+        Ok((did_url.did().to_string(), jwk.deref().to_owned()))
     }
 
     #[instrument(level = Level::TRACE, skip(self), err(), ret())]
@@ -305,7 +296,7 @@ where
         match &auth_response_config.mode {
             ResponseMode::FragmentJwt | ResponseMode::Fragment => {
                 let client = RedirectUriClient::new(ClientId(self.metadata.client_id.to_owned()));
-                let verifier_builder = oid4vp::verifier::Verifier::builder().with_client(client);
+                let verifier_builder = openid4vp::verifier::Verifier::builder().with_client(client);
                 self.build_authorization_request_helper(
                     presentation_definition,
                     nonce,
@@ -327,13 +318,13 @@ where
                 let did_client = DIDClient::new(
                     self.metadata.key_metadata.did_url.clone(),
                     Signer::new(verifier_key)?,
-                    self.did_resolver.as_spruce_resolver(),
+                    &self.public_jwk_resolver,
                 )
                 .await
                 .context(Oid4VpLibSnafu)?;
 
                 let verifier_builder =
-                    oid4vp::verifier::Verifier::builder().with_client(did_client);
+                    openid4vp::verifier::Verifier::builder().with_client(did_client);
                 self.build_authorization_request_helper(
                     presentation_definition,
                     nonce,
@@ -355,8 +346,8 @@ where
         auth_response_config: &AuthResponseOptions,
         pass_auth_request_object: &PassAuthRequestObject,
         wallet_metadata: &WalletMetadata,
-        verifier_builder: oid4vp::verifier::VerifierBuilder<
-            impl oid4vp::verifier::client::Client + Send + Sync,
+        verifier_builder: openid4vp::verifier::VerifierBuilder<
+            impl openid4vp::verifier::client::Client + Send + Sync,
         >,
     ) -> Result<(Url, Option<String>)> {
         let auth_req_type = match (pass_auth_request_object.to_owned(), &auth_response_config.mode) {
@@ -482,10 +473,8 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
-
     use super::*;
-    use crate::http::HttpSnafu;
+    use crate::http::MockHttpClient;
     use crate::inmem::kms::LocalKms;
     use crate::nonce::Nonce;
     use crate::vc::claims::Claims;
@@ -502,12 +491,15 @@ mod tests {
     use crate::vc::oid4vp::InternalError;
     use crate::vc::oid4vp::{PassAuthRequestObject, PresentationSession, ResponseType, Verifier};
     use crate::vc::presentation_exchange::PresentationDefinition;
-    use oid4vp::core::authorization_request::parameters::{IdTokenType, Scope};
-    use oid4vp::core::authorization_request::{AuthorizationRequest, AuthorizationRequestObject};
-    use oid4vp::core::object::UntypedObject;
-    use oid4vp::wallet::IdTokenParams;
+    use openid4vp::core::authorization_request::{
+        AuthorizationRequest, AuthorizationRequestObject,
+    };
+    use openid4vp::core::object::UntypedObject;
+    use openid4vp::wallet::IdTokenParams;
     use rstest::rstest;
     use serde_json::json;
+    use ssi::claims::jwt::decode_unverified;
+    use std::collections::HashMap;
     use url::Url;
 
     #[tokio::test]
@@ -610,17 +602,13 @@ mod tests {
         let auth_req_jwt_from_uri = hash_query.get("request").unwrap();
 
         let request: AuthorizationRequestObject =
-            ssi::jwt::decode_unverified::<UntypedObject>(auth_req_jwt_from_uri)
+            decode_unverified::<UntypedObject>(auth_req_jwt_from_uri)
                 .unwrap()
                 .try_into()
                 .unwrap();
 
         let actual_presentation_definition = request
-            .resolve_presentation_definition(|_| async {
-                HttpSnafu {
-                    details: "Requesting a presentation definition by reference is not supported in this test.".to_string(),
-                }.fail()
-            })
+            .resolve_presentation_definition(&MockHttpClient::new())
             .await
             .unwrap()
             .into_parsed();
@@ -663,17 +651,13 @@ mod tests {
         let auth_req_jwt_from_uri = hash_query.get("request").unwrap();
 
         let request: AuthorizationRequestObject =
-            ssi::jwt::decode_unverified::<UntypedObject>(auth_req_jwt_from_uri)
+            decode_unverified::<UntypedObject>(auth_req_jwt_from_uri)
                 .unwrap()
                 .try_into()
                 .unwrap();
 
         let actual_presentation_definition = request
-            .resolve_presentation_definition(|_| async {
-                HttpSnafu {
-                    details: "Requesting a presentation definition by reference is not supported in this test.".to_string(),
-                }.fail()
-            })
+            .resolve_presentation_definition(&MockHttpClient::new())
             .await
             .unwrap()
             .into_parsed();
@@ -800,13 +784,15 @@ mod tests {
         expected = "Requested presentation Identity-1 not found in the presentation submission"
     )]
     #[case::empty_descriptor_map(empty_descriptor_map_case())]
-    #[should_panic(expected = "Field did not pass filter validation, and is not an optional field")]
-    #[case::invalid_presentation_type(presentation_with_different_claim_values_case())]
-    #[should_panic(expected = "Field elements are not found while it is required")]
-    #[case::presentation_claim_not_found(presentation_claim_not_found_case())]
     #[should_panic(
-        expected = "Submission Requirement group, A, validation failed. Descriptor Map count 1 is not equal to the count: 2."
+        expected = "presentation submission validation failed: missing required input `Identity-1"
     )]
+    #[case::invalid_presentation_type(presentation_with_different_claim_values_case())]
+    #[should_panic(
+        expected = "presentation submission validation failed: missing required input `Identity-1`"
+    )]
+    #[case::presentation_claim_not_found(presentation_claim_not_found_case())]
+    #[should_panic(expected = "invalid number of inputs for group `A` (expected 2, found 1)")]
     #[case::submission_requirements_unsatisfied(submission_requirements_unsatisfied_case())]
     #[tokio::test]
     async fn verify_auth_response_fails(#[case] test_case: VerificationTestCase) {
@@ -870,7 +856,7 @@ mod tests {
                 .descriptor_map()
                 .get(index)
                 .unwrap()
-                .id();
+                .id;
 
             let cred_claims = verified_claims
                 .get(VP_TOKEN)
@@ -963,7 +949,7 @@ mod tests {
             .input_descriptors_mut()
             .get_mut(0)
             .map(|i| {
-                *i = i.to_owned().add_to_group("A".to_string());
+                i.groups.push("A".to_string());
             });
         test_case.session.presentation_definition = test_case
             .session

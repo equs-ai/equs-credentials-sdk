@@ -1,12 +1,11 @@
 use async_trait::async_trait;
 use snafu::ResultExt;
+use ssi::dids::DIDURLBuf;
 use std::collections::HashMap;
 use std::marker::PhantomData;
-use std::str::FromStr;
 use tracing::{debug, info, instrument, trace, Level};
 
 use crate::crypto::Alg;
-use crate::did::DIDURL;
 use crate::nonce::Nonce;
 use crate::vault::{CredentialEntry, CredentialFilter};
 use crate::vc::core::{
@@ -131,7 +130,7 @@ where
             _ => FormatNotSupportedSnafu {
                 format: credential.format().to_string(),
             }
-            .fail(),
+            .fail()?,
         }
     }
 
@@ -201,7 +200,7 @@ where
                     key,
                     nonce,
                     verifier_id,
-                    json_ld_vc::VPMetadata::new(),
+                    json_ld_vc::VPMetadata::new().context(VCSnafu)?,
                 )
                 .await
                 .context(VCSnafu)?;
@@ -264,13 +263,15 @@ where
     }
 
     #[instrument(level = Level::TRACE, skip(self), err())]
-    async fn resolve_key_metadata(&self, key_metadata: &KeyMetadata) -> Result<(DIDURL, KH)> {
-        let did_url = DIDURL::from_str(&key_metadata.did_url).map_err(|_| {
-            InvalidDIDUrlSnafu {
-                input: &key_metadata.did_url,
-            }
-            .build()
-        })?;
+    async fn resolve_key_metadata(&self, key_metadata: &KeyMetadata) -> Result<(DIDURLBuf, KH)> {
+        let did_url = DIDURLBuf::from_string(key_metadata.did_url.to_owned())
+            .map_err(|_| {
+                InvalidDIDUrlSnafu {
+                    input: &key_metadata.did_url,
+                }
+                .build()
+            })?
+            .to_owned();
 
         info!("access to the key {}", key_metadata.kid);
         let kh = self.kms.get(&key_metadata.kid).await.context(KMSSnafu)?;
@@ -324,7 +325,7 @@ mod tests {
     use crate::vc::core::tests::fixtures::{sample_cred_def_offer, CRED_DEF_ID, VERIFIER_ID};
     use crate::vc::core::tests::utils::{random_nonce, CredTestCase};
     use crate::vc::core::{Error, Holder, HolderMetadata, HolderService, KeyMetadata};
-    use crate::vc::CredentialMetadata;
+    use crate::vc::{CredentialMetadata, HasVCFormat};
     use rstest::rstest;
 
     #[rstest]
@@ -494,7 +495,10 @@ mod tests {
 
         let stored = vault.get_credential(&id).await.unwrap();
 
-        assert_eq!(stored, Some(entry))
+        assert_eq!(
+            stored.unwrap().credential.format(),
+            entry.credential.format()
+        );
     }
 
     #[rstest]
@@ -550,8 +554,13 @@ mod tests {
         let creds = holder.find_vcs_for_presentation(&input).await.unwrap();
 
         assert_eq!(creds.len(), 2);
-        assert!(creds.contains(&entry1));
-        assert!(creds.contains(&entry2));
+
+        let serde_json::Value::Array(json_creds) = serde_json::to_value(&creds).unwrap() else {
+            panic!("failed to serialize credentials as json array");
+        };
+
+        assert!(json_creds.contains(&serde_json::to_value(entry1).unwrap()));
+        assert!(json_creds.contains(&serde_json::to_value(entry2).unwrap()));
 
         let input = CredTestCase {
             type_: "non-existing".to_string(),

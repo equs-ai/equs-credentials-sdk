@@ -4,17 +4,14 @@ mod utils;
 
 use futures::executor;
 use oauth2::http::header::CONTENT_TYPE;
-use oauth2::http::{HeaderMap, HeaderValue, Method, StatusCode};
+use oauth2::http::{HeaderValue, Method};
 use oauth2::HttpResponse;
 use rstest::rstest;
-use ssi::did::DIDURL;
 use std::collections::HashMap;
-use std::str::FromStr;
 use url::Url;
 use utils::fixtures::oid4vp::Oid4VpTestCredentialFormat;
 
 use agent_sdk::crypto;
-use agent_sdk::did::universal::UniversalResolver;
 use agent_sdk::http::HttpClient;
 use agent_sdk::inmem::kms::LocalKms;
 use agent_sdk::inmem::vault::InMemVault;
@@ -37,7 +34,7 @@ use crate::utils::fixtures::oid4vp::{
     multiple_sdjwt_presentation_case, single_jsonld_presentation_case,
     single_sdjwt_presentation_case, Oid4VpTestCase, ValidateClaimsFunc, VERIFIER_URL,
 };
-use agent_sdk::did::{DIDResolver, DID};
+use agent_sdk::did::DIDURL;
 use agent_sdk::inmem::kms::KeyHandle;
 use agent_sdk::inmem::nonce::LocalNonceGenerator;
 use agent_sdk::vc::claims::Claims;
@@ -52,17 +49,14 @@ use agent_sdk::vc::metadata::{CredentialMetadataProcessor, DefaultMetadataProces
 async fn credentials_presentation_and_verification(#[case] test_case: Oid4VpTestCase) {
     println!("7. Store Credential");
     let holder_kms = LocalKms::new();
-    let (holder_key_metadata, holder_kh, holder_did, _) =
-        generate_did_key_and_vm(&holder_kms, &UniversalResolver::new()).await;
-    let holder_did_url = DIDURL::from_str(&holder_did).unwrap();
-
+    let (holder_key_metadata, holder_kh) = generate_did_key_and_vm(&holder_kms).await;
     let holder_vault = InMemVault::new();
 
     // Create and store VCs
     for credential in test_case.credentials {
         let (vc, vc_meta) = create_vc(
             credential.format,
-            &holder_did_url,
+            &holder_key_metadata.did_url,
             holder_key_metadata.kid.clone(),
             holder_kh.clone(),
             credential.claims,
@@ -143,16 +137,10 @@ fn prepare_http_client_for_holder(
     http_client.add_handler(
         Url::parse(VERIFIER_URL).unwrap().join("/request").unwrap(),
         Box::new(move |req| {
-            assert_eq!(req.method, Method::GET);
-
-            let resp = HttpResponse {
-                status_code: StatusCode::OK,
-                headers: HeaderMap::from_iter(vec![(
-                    CONTENT_TYPE,
-                    HeaderValue::from_str("text/plain").unwrap(),
-                )]),
-                body: Vec::from(request_object_jwt.to_owned()),
-            };
+            assert_eq!(req.method(), Method::GET);
+            let mut resp = HttpResponse::new(Vec::from(request_object_jwt.to_owned()));
+            resp.headers_mut()
+                .insert(CONTENT_TYPE, HeaderValue::from_static("text/plain"));
 
             Ok(resp)
         }),
@@ -161,11 +149,10 @@ fn prepare_http_client_for_holder(
     http_client.add_handler(
         Url::parse(VERIFIER_URL).unwrap().join("/auth").unwrap(),
         Box::new(move |req| {
-            assert_eq!(req.method, Method::POST);
+            assert_eq!(req.method(), Method::POST);
 
             println!("10. Verify Presentation");
-            let form: HashMap<String, String> =
-                serde_urlencoded::from_bytes(req.body.as_slice()).unwrap();
+            let form: HashMap<String, String> = serde_urlencoded::from_bytes(req.body()).unwrap();
             // Retrieve vp_token and presentation_definition from submitted form
             let vp_token_str = form.get("vp_token").unwrap().as_str();
             let vp_token = serde_json::from_str(vp_token_str)
@@ -187,11 +174,7 @@ fn prepare_http_client_for_holder(
 
             validate_claims_func(claims);
 
-            Ok(HttpResponse {
-                status_code: StatusCode::OK,
-                headers: Default::default(),
-                body: vec![],
-            })
+            Ok(HttpResponse::new(vec![]))
         }),
     );
 
@@ -225,7 +208,7 @@ async fn build_holder(
 
 async fn create_vc(
     format: Oid4VpTestCredentialFormat,
-    holder_did_url: &DIDURL,
+    holder_did_url: &str,
     holder_kid: String,
     holder_kh: impl crypto::Key,
     claims: Claims,
@@ -234,16 +217,15 @@ async fn create_vc(
 
     // Generate Issuer DID and Key
     let kms = LocalKms::new();
-    let (did, _, kh) = create_did_keymetadata_keyhandle(&kms).await;
+    let (did, key_metadata, kh) = create_did_keymetadata_keyhandle(&kms).await;
     println!("Issuer DID: {}", did);
-    let did_url = DIDURL::from_str(&did).unwrap();
 
     match format {
         Oid4VpTestCredentialFormat::SdJwt(metadata) => {
             let vc = VCFormatsSdJwtAPI::create_vc(
                 claims.clone(),
-                (&did_url, kh),
-                (holder_did_url, holder_kh),
+                (DIDURL::new(&key_metadata.did_url).unwrap(), kh),
+                (DIDURL::new(holder_did_url).unwrap(), holder_kh),
                 metadata,
             )
             .await
@@ -266,8 +248,8 @@ async fn create_vc(
         Oid4VpTestCredentialFormat::LdpVc(metadata) => {
             let vc = VCFormatsJsonLdAPI::create_vc(
                 claims,
-                (&did_url, kh),
-                (holder_did_url, holder_kh),
+                (DIDURL::new(&key_metadata.did_url).unwrap(), kh),
+                (DIDURL::new(holder_did_url).unwrap(), holder_kh),
                 metadata,
             )
             .await
@@ -290,19 +272,10 @@ async fn create_vc(
     }
 }
 
-pub async fn generate_did_key_and_vm(
-    kms: &LocalKms,
-    did_resolver: &UniversalResolver,
-) -> (KeyMetadata, KeyHandle, DID, String) {
-    let (did, key_md, key_handle) = create_did_keymetadata_keyhandle(kms).await;
+pub async fn generate_did_key_and_vm(kms: &LocalKms) -> (KeyMetadata, KeyHandle) {
+    let (_, key_md, key_handle) = create_did_keymetadata_keyhandle(kms).await;
 
-    let vm_id = did_resolver
-        .resolve_verification_method(&did)
-        .await
-        .unwrap()
-        .id;
-
-    (key_md, key_handle, did, vm_id)
+    (key_md, key_handle)
 }
 
 fn default_verifier_metadata() -> ClientMetadata {

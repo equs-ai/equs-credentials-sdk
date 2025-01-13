@@ -1,12 +1,13 @@
 use std::fmt::Debug;
 
-use async_trait::async_trait;
-use snafu::{Location, Snafu};
-use ssi::did::DIDURL;
-
+use crate::crypto;
 use crate::nonce::Nonce;
-use crate::{crypto, did};
+use async_trait::async_trait;
 use common_macros::DebugError;
+use snafu::{Location, Snafu};
+use ssi::claims::SignatureError;
+use ssi::dids::document::DIDVerificationMethod;
+use ssi::dids::DIDURL;
 
 pub mod json_ld_vc;
 pub mod sd_jwt_vc;
@@ -58,6 +59,13 @@ pub enum Error {
         location: Location,
     },
 
+    #[snafu(display("Signature error: {source}"))]
+    SpruceSigning {
+        source: SignatureError,
+        #[snafu(implicit)]
+        location: Location,
+    },
+
     #[snafu(display("Verification error: {details}"))]
     Verifying {
         details: String,
@@ -79,16 +87,9 @@ pub enum Error {
         location: Location,
     },
 
-    #[snafu(display("DID error"))]
-    SpruceDID {
-        source: ssi::did::Error,
-        #[snafu(implicit)]
-        location: Location,
-    },
-
-    #[snafu(display("DID error"))]
+    #[snafu(display("DID parsing error: {details}"))]
     DID {
-        source: did::Error,
+        details: String,
         #[snafu(implicit)]
         location: Location,
     },
@@ -102,7 +103,7 @@ pub enum Error {
 
     #[snafu(display("JWS error"))]
     JWS {
-        source: ssi::jws::Error,
+        source: ssi::claims::jws::Error,
         #[snafu(implicit)]
         location: Location,
     },
@@ -121,9 +122,9 @@ pub enum Error {
         location: Location,
     },
 
-    #[snafu(display("Proof completion error"))]
-    ProofCompletion {
-        source: ssi_ldp::Error,
+    #[snafu(display("Proof validation error"))]
+    ProofValidation {
+        source: ssi::claims::ProofValidationError,
         #[snafu(implicit)]
         location: Location,
     },
@@ -138,6 +139,34 @@ pub enum Error {
     #[snafu(display("Claims error"))]
     Claims {
         source: crate::vc::claims::Error,
+        #[snafu(implicit)]
+        location: Location,
+    },
+
+    #[snafu(display("Uri parsing error: {source}"))]
+    UriParsing {
+        source: did_resolver::did_doc::schema::types::uri::UriWrapperError,
+        #[snafu(implicit)]
+        location: Location,
+    },
+
+    #[snafu(display("IriReference parsing error: {source}"))]
+    IriRefParsing {
+        source: iref::iri::InvalidIriRef<String>,
+        #[snafu(implicit)]
+        location: Location,
+    },
+
+    #[snafu(display("IriBuf parsing error: {source}"))]
+    IriBufParsing {
+        source: iref::iri::InvalidIri<String>,
+        #[snafu(implicit)]
+        location: Location,
+    },
+
+    #[snafu(display("Crypto suite creation error: {details}"))]
+    CryptoSuiteCreation {
+        details: String,
         #[snafu(implicit)]
         location: Location,
     },
@@ -194,4 +223,30 @@ pub trait HasCredential<C> {
 
 pub trait GetExpirationClaim<CL, EC> {
     fn get_expiration_claim(claims: &CL) -> Option<EC>;
+}
+
+pub(super) async fn resolve_verification_method(did: &str) -> Result<DIDVerificationMethod> {
+    use crate::did::universal::UniversalResolver;
+    use crate::did::DIDResolver;
+
+    UniversalResolver::default()
+        .resolve_into_any_verification_method(ssi::dids::DID::new(did).map_err(|e| {
+            DIDSnafu {
+                details: e.to_string(),
+            }
+            .build()
+        })?)
+        .await
+        .map_err(|e| {
+            CredentialCreationSnafu {
+                details: format!("Can not resolve verification method: {e}"),
+            }
+            .build()
+        })?
+        .ok_or_else(|| {
+            CredentialCreationSnafu {
+                details: "Can not find verification method",
+            }
+            .build()
+        })
 }

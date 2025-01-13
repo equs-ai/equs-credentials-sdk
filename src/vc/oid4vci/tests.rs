@@ -1,12 +1,11 @@
 pub mod fixtures {
     use crate::nonce::{Nonce, NonceData};
     use crate::vc::claims::Claims;
-    use crate::vc::oid4vci::{CredDefMetadata, CredentialRequest, CredentialResponse};
+    use crate::vc::oid4vci::metadata::IssuerMetadata;
+    use crate::vc::oid4vci::{
+        AuthorizationMetadata, CredDefMetadata, CredentialRequest, CredentialResponse,
+    };
     use oauth2::AccessToken;
-    use oid4vci::core::metadata::IssuerMetadata;
-    use oid4vci::core::profiles::w3c::ldp::CredentialDefinitionLD;
-    use oid4vci::core::profiles::w3c::CredentialDefinition;
-    use oid4vci::metadata::AuthorizationMetadata;
     use serde_json::{json, Value};
     use time::OffsetDateTime;
 
@@ -155,6 +154,11 @@ pub mod fixtures {
                     "credential_configurations_supported": {
                         SCOPE: {
                             "format": "jwt_vc_json-ld",
+                            "credential_definition": {
+                                "@context": [],
+                                "type": [],
+                                "credential_subject": {},
+                            },
                         },
                     },
                 }
@@ -216,7 +220,8 @@ pub mod fixtures {
                 ],
                 "grants": {
                     "authorization_code": {
-                        "issuer_state":null
+                        "issuer_state":null,
+                        "authorization_server":null
                     }
                 }
             }
@@ -225,6 +230,7 @@ pub mod fixtures {
 
     pub fn sample_credential_definition() -> CredDefMetadata {
         let cred_def = serde_json::from_value(json!({
+            "$key$": CRED_DEF_ID,
             "format": "vc+sd-jwt",
             "scope": "SD_JWT_cred",
             "cryptographic_binding_methods_supported": [
@@ -267,7 +273,7 @@ pub mod fixtures {
         }
     }
 
-    pub const SAMPLE_PROOF_JWT: &str = "eyJhbGciOiJFUzI1NiIsImtpZCI6ImRpZDprZXk6ekRuYWVucG50Q2tYbkRDbmFEazYyTHhOcVBjNENNZDMyZmJoaVZzWlY1S3BQVEcyYyIsInR5cCI6Im9wZW5pZDR2Y2ktcHJvb2Yrand0In0.eyJhdWQiOiJodHRwczovL2lzc3Vlci1iYWNrZW5kLmNvbSIsIm5iZiI6MTcyNTM1MDQ4MCwiaWF0IjoxNzI1MzUwNDgwLCJleHAiOjQ4Nzg5NTA0ODAsIm5vbmNlIjoiS0I1MFZPbTlJLWtQTFQ5bUFBQ1Y4ZyJ9.v1bcMxXQDF4TqvR8ZJtL5-HcnuX9NgwErL9Qr9NFQ9IiAivWqoPpXizUFx8lpM26XUaY70FwGDFog17tbGysmg";
+    pub const SAMPLE_PROOF_JWT: &str = "eyJhbGciOiJFUzI1NiIsImtpZCI6ImRpZDprZXk6ekRuYWVxTnJnR1RBV3FVVlNVRnFvWFh3bjhONThVc2JLRVpDeUUyWlk5ZFRHS3B3cyN6RG5hZXFOcmdHVEFXcVVWU1VGcW9YWHduOE41OFVzYktFWkN5RTJaWTlkVEdLcHdzIiwidHlwIjoib3BlbmlkNHZjaS1wcm9vZitqd3QifQ.eyJhdWQiOiJodHRwczovL2lzc3Vlci1iYWNrZW5kLmNvbSIsIm5iZiI6MTczNTkwMTAzNCwiaWF0IjoxNzM1OTAxMDM0LCJleHAiOjY2MTQ4NTE1MTQsIm5vbmNlIjoiS0I1MFZPbTlJLWtQTFQ5bUFBQ1Y4ZyJ9.2flsRA_XKGFm4JBpvRHkV3QKLMo81OawQHL1YQdwVRo3OnZeugQJevWz8q-_lD-fo6U9_z_KuLNt9tQr_5A5Iw";
 
     pub struct SampleCredentialRequest {}
 
@@ -275,7 +281,6 @@ pub mod fixtures {
         pub fn with_sdjwtvc_conf() -> CredentialRequest {
             serde_json::from_value(json!(
                 {
-                    "credential_identifier": CRED_DEF_ID,
                     "format":"vc+sd-jwt",
                     "vct":"SD_JWT_cred",
                     "proof":{
@@ -291,9 +296,11 @@ pub mod fixtures {
         pub fn with_jwtvcjson_conf() -> CredentialRequest {
             serde_json::from_value(json!(
                 {
-                    "credential_identifier": CRED_DEF_ID,
                     "format":"jwt_vc_json",
-                    "credential_definition": CredentialDefinition::new(vec![]),
+                    "credential_definition": json!({
+                    "type": [],
+                    "credentialSubject": {},
+                }),
                 }
             ))
             .unwrap()
@@ -302,8 +309,12 @@ pub mod fixtures {
         pub fn with_jwtldvc_conf() -> CredentialRequest {
             serde_json::from_value(json!(
                 {
-                    "credential_identifier": CRED_DEF_ID,
-                    "format":"jwt_vc_json-ld"
+                    "format":"jwt_vc_json-ld",
+                    "credential_definition": json!({
+                        "@context": [],
+                        "type": [],
+                        "credentialSubject": {},
+                    }),
                 }
             ))
             .unwrap()
@@ -312,9 +323,12 @@ pub mod fixtures {
         pub fn with_ldpvc_conf() -> CredentialRequest {
             serde_json::from_value(json!(
                 {
-                    "credential_identifier": CRED_DEF_ID,
                     "format":"ldp_vc",
-                    "credential_definition": CredentialDefinitionLD::new(CredentialDefinition::new(vec![]), vec![]),
+                    "credential_definition": json!({
+                        "@context": [],
+                        "type": [],
+                        "credentialSubject": {},
+                    }),
                 }
             ))
             .unwrap()
@@ -323,9 +337,8 @@ pub mod fixtures {
         pub fn with_msomdoc_conf() -> CredentialRequest {
             serde_json::from_value(json!(
                 {
-                    "credential_identifier": CRED_DEF_ID,
                     "format":"mso_mdoc",
-                        "doctype": "",
+                     "doctype": "",
                 }
             ))
             .unwrap()

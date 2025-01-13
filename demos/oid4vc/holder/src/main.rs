@@ -1,5 +1,6 @@
 use agent_sdk::did::didkey::DIDKey;
-use agent_sdk::did::{DIDResolver, DID};
+use agent_sdk::did::universal::UniversalResolver;
+use agent_sdk::did::{DIDBuf, DIDResolver, DID};
 use agent_sdk::inmem::kms::LocalKms;
 use agent_sdk::inmem::nonce::LocalNonceGenerator;
 use agent_sdk::inmem::vault::InMemVault;
@@ -480,19 +481,24 @@ fn get_issuer_discovery_mode() -> IssuerDiscovery {
 }
 
 async fn create_did_and_key_metadata(kms: &LocalKms) -> (DID, KeyMetadata) {
-    let didkey = DIDKey::new();
-
     let (kid, kh) = kms
         .create_and_handle(kms::KeyType::P256, kms::CreateOptions {})
         .await
         .unwrap();
 
-    let did = didkey.generate(kh).unwrap();
+    let did = DIDKey::generate(kh).unwrap();
 
-    let vm = didkey.resolve_verification_method(&did).await.unwrap().id;
+    let vm = UniversalResolver::default()
+        .resolve_into_any_verification_method(DIDBuf::from_string(did.clone()).unwrap().as_did())
+        .await
+        .unwrap()
+        .unwrap()
+        .id
+        .as_did_url()
+        .to_string();
 
-    println!("Generated DID {}", did.clone());
-    println!("Generated DIDURL {}", vm.clone());
+    println!("Generated DID {did}");
+    println!("Generated DIDURL {vm}");
     (did, KeyMetadata { kid, did_url: vm })
 }
 
@@ -523,7 +529,7 @@ fn input_from_console(err_msg: &str) -> String {
 pub fn default_presentation_definition() -> PresentationDefinition {
     let input_descriptor_1 = serde_json::from_str(INPUT_DESCRIPTOR_FOR_CRED_DEF_1).unwrap();
     PresentationDefinition::new(Uuid::new_v4().to_string(), input_descriptor_1)
-        .add_input_descriptors(serde_json::from_str(INPUT_DESCRIPTOR_FOR_CRED_DEF_2).unwrap())
+        .add_input_descriptor(serde_json::from_str(INPUT_DESCRIPTOR_FOR_CRED_DEF_2).unwrap())
         .set_name("Example with selective disclosure".to_owned())
 }
 

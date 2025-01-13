@@ -11,6 +11,7 @@ use async_trait::async_trait;
 use common_macros::DebugError;
 use serde::{Deserialize, Serialize};
 use snafu::{Location, Snafu};
+use ssi::dids::InvalidDIDURL;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use time::Duration;
@@ -180,6 +181,8 @@ pub struct Display;
 pub enum Error {
     #[snafu(display("Credential definition not found for ID: {id}"))]
     CredDefNotFound { id: String },
+    #[snafu(display("Claims not found: {details}"))]
+    ClaimsNotFound { details: String },
     #[snafu(display("Proof format required"))]
     ProofFormatRequired,
     #[snafu(display("Requested credential not found"))]
@@ -217,6 +220,31 @@ pub enum Error {
         #[snafu(implicit)]
         location: Location,
         source: VaultError,
+    },
+    #[snafu(display("Parse error"))]
+    Parse {
+        #[snafu(implicit)]
+        location: Location,
+        source: serde_json::Error,
+    },
+    #[snafu(display("Claims error"))]
+    Claims {
+        source: crate::vc::claims::Error,
+        #[snafu(implicit)]
+        location: Location,
+    },
+    #[snafu(display("Could not parse context(string) as Iri parsing error"))]
+    ContextParsing {
+        source: iref::iri::InvalidIriRef<String>,
+        #[snafu(implicit)]
+        location: Location,
+    },
+
+    #[snafu(display("Could not parse did url"))]
+    DidUrlParsing {
+        source: InvalidDIDURL<String>,
+        #[snafu(implicit)]
+        location: Location,
     },
 }
 

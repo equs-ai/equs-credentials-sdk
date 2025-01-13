@@ -457,7 +457,6 @@ pub mod fixtures {
 
 pub mod utils {
     use crate::did::didkey::DIDKey;
-    use crate::did::universal::UniversalResolver;
     use crate::http::{HttpClient, MockHttpClient};
     use crate::inmem::kms::{KeyHandle, LocalKms};
     use crate::inmem::nonce::LocalNonceGenerator;
@@ -483,21 +482,22 @@ pub mod utils {
     use crate::vc::oid4vp::verifier::VerifierService;
     use crate::vc::oid4vp::{
         AuthorizationResponse, AuthorizationResponseMetadata, ClientMetadata, CredentialMapping,
-        Holder, PresentationSession, ResolvedAuthRequest, Verifier,
+        Holder, PresentationSession, ResolvedAuthRequest, ResponseType, Verifier,
     };
     use crate::vc::presentation_exchange::PresentationSubmission;
     use crate::vc::{presentation_exchange, Credential, VCFormatsAPI, VCMetadata};
-    use oauth2::http::{Method, StatusCode};
-    use oid4vp::core::authorization_request::parameters::ResponseType;
-    use oid4vp::core::metadata::parameters::SubjectSyntaxTypesSupported;
-    use oid4vp::core::object::UntypedObject;
-    use oid4vp::core::response::parameters::IdToken;
-    use oid4vp::core::response::PostRedirection;
-    use oid4vp::wallet::{IdTokenParams, Wallet};
+    use async_trait::async_trait;
+    use oauth2::http::{Method, Request, Response, StatusCode};
+    use openid4vp::core::metadata::parameters::SubjectSyntaxTypesSupported;
+    use openid4vp::core::object::UntypedObject;
+    use openid4vp::core::response::parameters::IdToken;
+    use openid4vp::core::response::PostRedirection;
+    use openid4vp::core::util::http::AsyncHttpClient;
+    use openid4vp::wallet::{IdTokenParams, Wallet};
     use sd_jwt_rs::utils::decode_sd_jwt;
     use sd_jwt_rs::SDJWTSerializationFormat;
     use serde_json::{json, Value};
-    use ssi::did::DIDURL;
+    use ssi::dids::DIDURLBuf;
     use std::collections::HashMap;
     use std::str::FromStr;
     use url::Url;
@@ -765,7 +765,7 @@ pub mod utils {
             },
         );
 
-        HolderService::new(inner, UniversalResolver::new(), http_client, kms, None)
+        HolderService::new(inner, http_client, kms, None)
     }
 
     async fn create_verifier_service(invalid_key_id: bool) -> (impl Verifier, String) {
@@ -789,7 +789,6 @@ pub mod utils {
         let verifier = VerifierService::new(
             inner,
             kms,
-            UniversalResolver::new(),
             nonce_gen,
             did.clone(),
             key_metadata,
@@ -820,7 +819,6 @@ pub mod utils {
         let verifier = VerifierService::new(
             vc::core::VerifierService::new(&did),
             kms_mock,
-            UniversalResolver::new(),
             LocalNonceGenerator::default(),
             did.clone(),
             key_metadata,
@@ -844,8 +842,8 @@ pub mod utils {
         let (issuer_did_url, issuer_key_handle) =
             test_utils::create_did_url_and_key_handle(&kms, KeyType::P256).await;
 
-        let did = DIDKey::new().generate(holder_key_handle.clone()).unwrap();
-        let holder_did_url = DIDURL::from_str(&did).unwrap();
+        let did = DIDKey::generate(holder_key_handle.clone()).unwrap();
+        let holder_did_url = DIDURLBuf::from_str(&did).unwrap();
 
         let disclosures: Vec<String> = claims
             .claims()
@@ -911,13 +909,7 @@ pub mod utils {
             },
         );
 
-        let holder = HolderService::new(
-            inner,
-            UniversalResolver::new(),
-            MockHttpClient::new(),
-            kms.clone(),
-            None,
-        );
+        let holder = HolderService::new(inner, MockHttpClient::new(), kms.clone(), None);
         let (did, metadata) = create_did_and_key_metadata(&kms).await;
 
         let key = kms.get(&metadata.kid).await.unwrap();
@@ -930,5 +922,14 @@ pub mod utils {
             )
             .await
             .unwrap()
+    }
+
+    #[async_trait]
+    impl AsyncHttpClient for MockHttpClient {
+        async fn execute(&self, request: Request<Vec<u8>>) -> anyhow::Result<Response<Vec<u8>>> {
+            self.async_call(request)
+                .await
+                .map_err(|e| anyhow::Error::msg(e.to_string()))
+        }
     }
 }

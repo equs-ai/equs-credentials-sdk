@@ -1,12 +1,12 @@
+use crate::kms::{JsKms, NativeKms, UnifiedKms};
+use crate::vc::core::JsKeyMetadata;
 use agent_sdk::did::didkey::DIDKey;
-use agent_sdk::did::DIDResolver;
+use agent_sdk::did::universal::UniversalResolver;
+use agent_sdk::did::{DIDBuf, DIDResolver};
 use agent_sdk::kms;
 use agent_sdk::kms::Kms;
 use napi::Either;
 use napi_derive::napi;
-
-use crate::kms::{JsKms, NativeKms, UnifiedKms};
-use crate::vc::core::JsKeyMetadata;
 
 #[napi]
 pub async fn create_key_metadata(kms: Either<&NativeKms, JsKms>) -> JsKeyMetadata {
@@ -14,16 +14,21 @@ pub async fn create_key_metadata(kms: Either<&NativeKms, JsKms>) -> JsKeyMetadat
 }
 
 async fn _create_key_metadata(kms: UnifiedKms) -> JsKeyMetadata {
-    let did_key = DIDKey::new();
-
     let (kid, kh) = kms
         .create_and_handle(kms::KeyType::P256, kms::CreateOptions {})
         .await
         .unwrap();
 
-    let did = did_key.generate(kh).unwrap();
+    let did = DIDKey::generate(kh).unwrap();
 
-    let vm = did_key.resolve_verification_method(&did).await.unwrap().id;
+    let vm = UniversalResolver::default()
+        .resolve_into_any_verification_method(&DIDBuf::from_string(did).unwrap())
+        .await
+        .unwrap()
+        .unwrap()
+        .id
+        .as_did_url()
+        .to_string();
 
     JsKeyMetadata { did_url: vm, kid }
 }

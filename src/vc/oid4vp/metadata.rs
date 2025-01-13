@@ -1,8 +1,10 @@
 use crate::vc::oid4vp::ClientMetadata;
-use oid4vp::core::metadata::parameters::verifier::VpFormats;
-use oid4vp::core::metadata::WalletMetadata;
-use oid4vp::core::object::UntypedObject;
+use openid4vp::core::metadata::parameters::verifier::VpFormats;
+use openid4vp::core::metadata::WalletMetadata;
+use openid4vp::core::object::UntypedObject;
 use tracing::{instrument, Level};
+
+type Level_ = Level;
 
 const DEFAULT_CLIENT_METADATA: &str = r#"{
     "vp_formats": {

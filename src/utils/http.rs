@@ -1,3 +1,4 @@
+use crate::http::HttpSnafu;
 use oauth2::http::header::CONTENT_TYPE;
 use oauth2::http::{HeaderMap, Method};
 use oauth2::HttpRequest;
@@ -29,26 +30,32 @@ pub(crate) fn generate_post_req(
     content_type: MimeType,
     accept: MimeType,
     body: Vec<u8>,
-) -> HttpRequest {
-    HttpRequest {
-        url: url.to_owned(),
-        method: Method::POST,
-        headers: HeaderMap::from_iter(vec![
-            (
-                CONTENT_TYPE,
-                HeaderValue::from_static(content_type.as_str()),
-            ),
-            (ACCEPT, HeaderValue::from_static(accept.as_str())),
-        ]),
-        body,
-    }
+) -> crate::http::Result<HttpRequest> {
+    let mut request = HttpRequest::new(body);
+    *request.headers_mut() = HeaderMap::from_iter(vec![
+        (
+            CONTENT_TYPE,
+            HeaderValue::from_static(content_type.as_str()),
+        ),
+        (ACCEPT, HeaderValue::from_static(accept.as_str())),
+    ]);
+    *request.method_mut() = Method::POST;
+    *request.uri_mut() = oauth2::http::Uri::try_from(url.to_string()).map_err(|e| {
+        HttpSnafu {
+            details: format!("could not build post request uri: {e}"),
+        }
+        .build()
+    })?;
+
+    Ok(request)
 }
+
 #[cfg(test)]
 pub mod test {
     use crate::http::{MockHttpClient, Result};
     use futures::executor;
     use oauth2::http::header::CONTENT_TYPE;
-    use oauth2::http::{HeaderMap, HeaderValue, Method, StatusCode};
+    use oauth2::http::{HeaderValue, Method, StatusCode};
     use oauth2::{HttpRequest, HttpResponse};
     use std::future::Future;
     use url::Url;
@@ -75,18 +82,17 @@ pub mod test {
     ) {
         mock.expect_async_call()
             .withf(move |req| {
-                let method = req.method == method;
-                let url = req.url == url;
+                let method = req.method() == method;
+                let url = req.uri().to_string() == url.to_string();
 
                 method && url
             })
             .times(times)
             .returning(move |_| {
-                Ok(HttpResponse {
-                    status_code: status,
-                    headers: Default::default(),
-                    body: serde_json::to_vec(&body).unwrap(),
-                })
+                let mut resp = HttpResponse::new(serde_json::to_vec(&body).unwrap());
+                *resp.status_mut() = status;
+
+                Ok(resp)
             });
     }
 
@@ -102,20 +108,19 @@ pub mod test {
     ) {
         mock.expect_async_call()
             .withf(move |req| {
-                let method = req.method == method;
-                let url = req.url == url;
-                let body = String::from_utf8(req.body.clone()).expect("Found invalid UTF-8")
+                let method = req.method() == method;
+                let url = req.uri().to_string() == url.to_string();
+                let body = String::from_utf8(req.body().clone()).expect("Found invalid UTF-8")
                     == expected_req_body;
 
                 method && url && body
             })
             .times(times)
             .returning(move |_| {
-                Ok(HttpResponse {
-                    status_code: status,
-                    headers: Default::default(),
-                    body: serde_json::to_vec(&body).unwrap(),
-                })
+                let mut resp = HttpResponse::new(serde_json::to_vec(&body).unwrap());
+                *resp.status_mut() = status;
+
+                Ok(resp)
             });
     }
 
@@ -134,20 +139,19 @@ pub mod test {
     {
         mock.expect_async_call()
             .withf(move |req| {
-                let method = req.method == method;
-                let url = req.url == url;
+                let method = req.method() == method;
+                let url = req.uri().to_string() == url.to_string();
 
                 method
                     && url
-                    && expected_req_body_predicate(String::from_utf8(req.body.clone()).unwrap())
+                    && expected_req_body_predicate(String::from_utf8(req.body().clone()).unwrap())
             })
             .times(times)
             .returning(move |_| {
-                Ok(HttpResponse {
-                    status_code: status,
-                    headers: Default::default(),
-                    body: serde_json::to_vec(&body).unwrap(),
-                })
+                let mut resp = HttpResponse::new(serde_json::to_vec(&body).unwrap());
+                *resp.status_mut() = status;
+
+                Ok(resp)
             });
     }
 
@@ -187,14 +191,9 @@ pub mod test {
             method,
             url,
             move |req| {
-                let resp = HttpResponse {
-                    status_code: StatusCode::OK,
-                    headers: HeaderMap::from_iter(vec![(
-                        CONTENT_TYPE,
-                        HeaderValue::from_str("text/plain").unwrap(),
-                    )]),
-                    body: Vec::from(body),
-                };
+                let mut resp = HttpResponse::new(Vec::from(body));
+                resp.headers_mut()
+                    .insert(CONTENT_TYPE, HeaderValue::from_str("text/plain").unwrap());
 
                 Ok(resp)
             },
@@ -214,8 +213,8 @@ pub mod test {
     {
         mock.expect_async_call()
             .withf(move |req| {
-                let method = req.method == method;
-                let url = req.url == url;
+                let method = req.method() == method;
+                let url = req.uri().to_string() == url.to_string();
 
                 method && url
             })

@@ -3,7 +3,6 @@ use crate::vc::oid4vci::metadata;
 use crate::{nonce, storage, vault, vc};
 use common_macros::DebugError;
 use oid4vci::credential::RequestError;
-use oid4vci::openidconnect::DiscoveryError;
 use snafu::{Location, Snafu};
 use std::fmt::Debug;
 
@@ -83,7 +82,7 @@ pub enum InternalError {
         #[snafu(implicit)]
         location: Location,
         //TODO: Check that nothing other than 'reqwest::Error' can be used here.
-        source: DiscoveryError<HttpError>,
+        source: anyhow::Error,
     },
     #[snafu(display("Http error"))]
     HttpClient {
@@ -102,5 +101,12 @@ pub enum InternalError {
         #[snafu(implicit)]
         location: Location,
         source: nonce::Error,
+    },
+
+    #[snafu(display("Type conversion error: {details}"))]
+    TypeConversion {
+        #[snafu(implicit)]
+        location: Location,
+        details: String,
     },
 }
