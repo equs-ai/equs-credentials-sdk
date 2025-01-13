@@ -86,10 +86,9 @@ export const CRED_DEF_METADATA = {
 };
 
 export const PROOF_JWT =
-	"eyJhbGciOiJFUzI1NiIsImtpZCI6ImRpZDprZXk6ekRuYWViWmdKbkRkdTZyU1g3eWZVUlhra25velNMbVd3ZjZkVGVjbnEyWENzZFc4cyIsInR5cCI6Im9wZW5pZDR2Y2ktcHJvb2Yrand0In0.eyJhdWQiOiJodHRwOi8vbG9jYWxob3N0OjkwMDAiLCJuYmYiOjE3Mjg4NDM5NTcsImlhdCI6MTcyODg0Mzk1NywiZXhwIjozNDU2ODQzOTU3LCJub25jZSI6IktCNTBWT205SS1rUExUOW1BQUNWOGcifQ.hbSBKuMQzrNGuHx0_stxcaBrwVDgfNjaI4CFqvoz2hKjK02T-nMRE8XGcFW4sYTfomXmWjSPAIqJmUSKCg9dsA";
+	"eyJhbGciOiJFUzI1NiIsImtpZCI6ImRpZDprZXk6ekRuYWVmM2lLZTFGV3U4QUtOM25yUEpCdWtTenNTNE5KNm95b0xiVjh1QkNTR2ZjZiN6RG5hZWYzaUtlMUZXdThBS04zbnJQSkJ1a1N6c1M0Tko2b3lvTGJWOHVCQ1NHZmNmIiwidHlwIjoib3BlbmlkNHZjaS1wcm9vZitqd3QifQ.eyJhdWQiOiJodHRwOi8vbG9jYWxob3N0OjkwMDAiLCJuYmYiOjE3MzYxODIzOTcsImlhdCI6MTczNjE4MjM5NywiZXhwIjo0ODg5NzgyMzk3LCJub25jZSI6IktCNTBWT205SS1rUExUOW1BQUNWOGcifQ.IteWgE_LbL7lanDu3CJDdwGheGRDrJdh_gn-ldOraEWazE_kTtcgXMp4WJG871FOqRzI8lphSxWfqrGBXG4wxA";
 
 export const CRED_REQUEST = {
-	credential_identifier: CRED_DEF_ID,
 	format: "vc+sd-jwt",
 	vct: "SD_JWT_cred",
 	proof: {
@@ -102,6 +101,7 @@ export const CRED_REQUEST = {
 export const GRANTS = {
 	authorization_code: {
 		issuer_state: null,
+		authorization_server: null,
 	},
 };
 

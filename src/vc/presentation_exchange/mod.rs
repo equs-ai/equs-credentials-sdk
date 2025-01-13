@@ -1,35 +1,39 @@
-use crate::utils::json::find_json_element;
 use crate::utils::logs::sanitize_log_msg;
 use crate::vc::core::{PresentationInput, PresentationRestriction};
 use crate::vc::{formats, Presentation};
 use common_macros::DebugError;
-use oid4vp::core::input_descriptor::JsonPath;
+use openid4vp::core::presentation_submission::NoClaimsDecoder;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value as Json};
 use snafu::{Location, ResultExt, Snafu};
 use std::collections::HashMap;
 use std::fmt::Debug;
+use std::str::FromStr;
 use tracing::{instrument, Level};
 use uuid::Uuid;
 
-pub type Constraints = oid4vp::core::input_descriptor::Constraints;
-pub type ConstraintsField = oid4vp::core::input_descriptor::ConstraintsField;
-pub type ClaimFormatMap = oid4vp::core::input_descriptor::ClaimFormatMap;
-pub type ClaimFormat = oid4vp::core::input_descriptor::ClaimFormat;
-pub type ClaimFormatDesignation = oid4vp::core::credential_format::ClaimFormatDesignation;
-pub type ClaimFormatPayload = oid4vp::core::credential_format::ClaimFormatPayload;
-pub type DescriptorMap = oid4vp::core::presentation_submission::DescriptorMap;
-pub type InputDescriptor = oid4vp::core::input_descriptor::InputDescriptor;
-pub type PresentationSubmission = oid4vp::core::presentation_submission::PresentationSubmission;
-pub type PresentationDefinition = oid4vp::core::presentation_definition::PresentationDefinition;
-pub type SubmissionRequirement = oid4vp::core::presentation_definition::SubmissionRequirement;
+// IDE removes Level from imports due to absence of usage. This way it is used now
+type Level_ = Level;
+
+pub type Constraints = openid4vp::core::input_descriptor::Constraints;
+pub type ConstraintsField = openid4vp::core::input_descriptor::ConstraintsField;
+pub type ClaimFormatMap = openid4vp::core::credential_format::ClaimFormatMap;
+pub type ClaimFormat = openid4vp::core::credential_format::ClaimFormat;
+pub type ClaimFormatDesignation = openid4vp::core::credential_format::ClaimFormatDesignation;
+pub type ClaimFormatPayload = openid4vp::core::credential_format::ClaimFormatPayload;
+pub type DescriptorMap = openid4vp::core::presentation_submission::DescriptorMap;
+pub type InputDescriptor = openid4vp::core::input_descriptor::InputDescriptor;
+pub type PresentationSubmission = openid4vp::core::presentation_submission::PresentationSubmission;
+pub type PresentationDefinition = openid4vp::core::presentation_definition::PresentationDefinition;
+pub type SubmissionRequirement = openid4vp::core::presentation_definition::SubmissionRequirement;
 pub type SubmissionRequirementObject =
-    oid4vp::core::presentation_definition::SubmissionRequirementObject;
+    openid4vp::core::presentation_definition::SubmissionRequirementObject;
 pub type SubmissionRequirementBase =
-    oid4vp::core::presentation_definition::SubmissionRequirementBase;
+    openid4vp::core::presentation_definition::SubmissionRequirementBase;
 pub type SubmissionRequirementPick =
-    oid4vp::core::presentation_definition::SubmissionRequirementPick;
-pub type GroupId = oid4vp::core::input_descriptor::GroupId;
+    openid4vp::core::presentation_definition::SubmissionRequirementPick;
+pub type GroupId = openid4vp::core::input_descriptor::GroupId;
+pub type JsonPath = serde_json_path::JsonPath;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct FieldFilter {
@@ -72,21 +76,26 @@ pub enum Error {
         #[snafu(implicit)]
         location: Location,
     },
-    VP {
+    VPValidation {
         #[snafu(implicit)]
         location: Location,
-        source: anyhow::Error,
+        source: openid4vp::core::presentation_submission::SubmissionError,
     },
     VCFormats {
         #[snafu(implicit)]
         location: Location,
         source: formats::Error,
     },
+    SubmissionValidationError {
+        #[snafu(implicit)]
+        location: Location,
+        source: openid4vp::core::presentation_submission::SubmissionValidationError,
+    },
 }
 
 pub type Result<T> = core::result::Result<T, Error>;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub(crate) struct RequestedPresentation {
     pub id: String,
     pub presentation: Presentation,
@@ -129,9 +138,18 @@ pub(crate) fn validate_against_presentation_definition(
     presentation_definition: &PresentationDefinition,
     presentation_submission: &PresentationSubmission,
 ) -> Result<()> {
-    presentation_definition
-        .validate_presentation(presentation, presentation_submission.descriptor_map())
-        .context(VPSnafu)
+    let inputs = presentation_submission
+        .find_and_validate_inputs(presentation_definition, presentation, &NoClaimsDecoder {})
+        .context(VPValidationSnafu)?;
+    if let Some(sub_reqs) = presentation_definition.submission_requirements() {
+        for sub_req in sub_reqs {
+            let _ = sub_req
+                .validate(presentation_definition, &inputs)
+                .context(SubmissionValidationSnafu);
+        }
+    }
+
+    Ok(())
 }
 
 #[instrument(level = Level::TRACE, err(), ret())]
@@ -146,15 +164,15 @@ pub fn resolve_presentation_response(
             .presentation_submission
             .descriptor_map()
             .iter()
-            .find(|item| item.id() == input_descriptor.id());
+            .find(|item| item.id == input_descriptor.id);
 
         let descriptor_map = if let Some(descriptor_map) = descriptor_map {
             descriptor_map
-        } else if input_descriptor.groups().is_empty() {
+        } else if input_descriptor.groups.is_empty() {
             return ParseSnafu {
                 details: format!(
                     "Requested presentation {} not found in the presentation submission",
-                    input_descriptor.id()
+                    input_descriptor.id
                 ),
             }
             .fail();
@@ -162,21 +180,15 @@ pub fn resolve_presentation_response(
             continue;
         };
 
-        let presentation_json =
-            find_json_element(&presentation_response.presentations, descriptor_map.path()).ok_or(
-                ParseSnafu {
-                    details: format!(
-                        "Requested presentation \"{}\" not found by path {}",
-                        input_descriptor.id(),
-                        sanitize_log_msg(descriptor_map.path())
-                    ),
-                }
-                .build(),
-            )?;
-
-        let presentation = match descriptor_map.format() {
+        let presentation = match descriptor_map.format {
             ClaimFormatDesignation::SdJwtVc => {
-                let sd_jwt = presentation_json.as_str().ok_or(
+                let prs_json = extract_json_presentation(
+                    presentation_response,
+                    input_descriptor,
+                    &descriptor_map.path,
+                )?;
+
+                let sd_jwt = prs_json.as_str().ok_or(
                     ParseSnafu {
                         details: "Incorrect presentation format: expected SD-JWT string"
                             .to_string(),
@@ -187,10 +199,31 @@ pub fn resolve_presentation_response(
                 Presentation::SdJwtVp(sd_jwt.to_string())
             }
             ClaimFormatDesignation::LdpVc => {
-                let presentation: ssi::vc::Presentation =
+                let presentation_json = if presentation_response.presentations.is_array() {
+                    let path = JsonPath::parse(
+                        &descriptor_map
+                            .path
+                            .to_string()
+                            .replace(".verifiableCredential", ""),
+                    )
+                    .map_err(|e| {
+                        ParseSnafu {
+                            details: "Could not parse json path",
+                        }
+                        .build()
+                    })?;
+
+                    extract_json_presentation(presentation_response, input_descriptor, &path)?
+                } else {
+                    &presentation_response.presentations
+                };
+
+                let presentation =
                     serde_json::from_value(presentation_json.clone()).map_err(|err| {
                         ParseSnafu {
-                            details: format!("Incorrect presentation format: {err}"),
+                            details: format!(
+                                "Could not deserialize 'ldp_vp' presentation from json: {err}"
+                            ),
                         }
                         .build()
                     })?;
@@ -198,18 +231,48 @@ pub fn resolve_presentation_response(
                 Presentation::LdpVp(presentation)
             }
             _ => FormatNotSupportedSnafu {
-                format: descriptor_map.format().to_owned(),
+                format: String::from(descriptor_map.format.to_owned()),
             }
             .fail()?,
         };
 
         result.push(RequestedPresentation {
-            id: input_descriptor.id().to_owned(),
+            id: input_descriptor.id.to_owned(),
             presentation,
         })
     }
 
     Ok(result)
+}
+
+fn extract_json_presentation<'a>(
+    presentation_response: &'a PresentationResponse,
+    input_descriptor: &'a InputDescriptor,
+    path: &JsonPath,
+) -> Result<&'a serde_json::Value> {
+    path.query(&presentation_response.presentations)
+        .at_most_one()
+        .map_err(|e| {
+            ParseSnafu {
+                details: format!(
+                    "Requested presentation \"{}\" not found by path {}: {}",
+                    input_descriptor.id,
+                    sanitize_log_msg(&path.to_string()),
+                    e
+                ),
+            }
+            .build()
+        })?
+        .ok_or(
+            ParseSnafu {
+                details: format!(
+                    "Requested presentation \"{}\" not found by path {}",
+                    input_descriptor.id,
+                    sanitize_log_msg(&path.to_string())
+                ),
+            }
+            .build(),
+        )
 }
 
 #[instrument(level = Level::TRACE, err(), ret())]
@@ -282,16 +345,27 @@ fn process_requested_presentation(
     let input_descriptor =
         extract_input_descriptor(&requested_presentation.id, presentation_definition)?;
     let format = extract_vp_format(input_descriptor)?;
-    let path = match index {
+    let mut path = match index {
         Some(i) => format!("$[{i}]"),
         None => "$".to_string(),
     };
 
-    submission.descriptor_map_mut().push(DescriptorMap::new(
-        input_descriptor.id().to_owned(),
+    if let Presentation::LdpVp(_) = requested_presentation.presentation {
+        path.push_str(".verifiableCredential");
+    }
+
+    let descriptor_map = DescriptorMap::new(
+        &input_descriptor.id,
         format,
-        path,
-    ));
+        JsonPath::from_str(&path).map_err(|e| {
+            ParseSnafu {
+                details: e.to_string(),
+            }
+            .build()
+        })?,
+    );
+
+    submission.descriptor_map_mut().push(descriptor_map);
 
     Ok(())
 }
@@ -306,7 +380,7 @@ pub fn split_to_inputs(
     for desc in presentation_definition.input_descriptors() {
         let mut updated_desc = desc.to_owned();
 
-        if let Some(claims) = claims_to_exclude.and_then(|claims_map| claims_map.get(desc.id())) {
+        if let Some(claims) = claims_to_exclude.and_then(|claims_map| claims_map.get(&desc.id)) {
             let constraints = filter_and_exclude_constraints(desc, claims)?;
             updated_desc = updated_desc.set_constraints(constraints);
         }
@@ -322,10 +396,10 @@ impl TryInto<PresentationInput> for InputDescriptor {
 
     #[instrument(level = Level::TRACE, skip(self), err(), ret())]
     fn try_into(self) -> Result<PresentationInput> {
-        let format = extract_format(self.format())?.map(|format| format.name());
+        let format = extract_format(&self.format)?.map(|format| format.name());
 
         let restrictions: Vec<PresentationRestriction> = self
-            .constraints()
+            .constraints
             .fields()
             .iter()
             .map(resolve_credential_restriction)
@@ -335,8 +409,8 @@ impl TryInto<PresentationInput> for InputDescriptor {
             .collect();
 
         Ok(PresentationInput {
-            id: self.id().to_string(),
-            format,
+            id: self.id.to_owned(),
+            format: format.to_owned(),
             restrictions,
         })
     }
@@ -344,26 +418,33 @@ impl TryInto<PresentationInput> for InputDescriptor {
 
 fn filter_and_exclude_constraints(
     input_descriptor: &InputDescriptor,
-    claims_to_exclude: &Vec<JsonPath>,
+    claims_to_exclude: &Vec<String>,
 ) -> Result<Constraints> {
-    let mut constraints = input_descriptor.constraints().to_owned();
+    let constraints = &mut input_descriptor.constraints.to_owned();
 
     for (index, field) in constraints.fields().to_owned().iter().enumerate() {
         for claim in claims_to_exclude {
-            if !field.path().contains(claim) {
+            if !field.path.contains(&JsonPath::from_str(claim).map_err(|e| {
+                ParseSnafu {
+                    details: format!(
+                        "Could not parse excluded claim = '{claim}' as json path: {e}"
+                    ),
+                }
+                .build()
+            })?) {
                 continue;
             }
             if !field.is_optional() {
                 InvalidClaimsToExcludeSnafu {
-                    details: format!("Claim {claim} is not optional"),
+                    details: format!("Claim = '{claim}' is not optional"),
                 }
                 .fail()?;
             }
-            constraints.fields_as_mut().remove(index);
+            constraints.fields_mut().remove(index);
         }
     }
 
-    Ok(constraints)
+    Ok(constraints.to_owned())
 }
 
 #[instrument(level = Level::TRACE, err(), ret())]
@@ -393,7 +474,7 @@ fn extract_input_descriptor<'a>(
     presentation_definition
         .input_descriptors()
         .iter()
-        .find(|input_descriptor| input_descriptor.id() == input_descriptor_id)
+        .find(|input_descriptor| input_descriptor.id == input_descriptor_id)
         .ok_or_else(|| {
             ParseSnafu {
                 details: format!(
@@ -408,7 +489,7 @@ fn extract_input_descriptor<'a>(
 #[instrument(level = Level::TRACE, err(), ret())]
 fn extract_vp_format(input_descriptor: &InputDescriptor) -> Result<ClaimFormatDesignation> {
     input_descriptor
-        .format()
+        .format
         .keys()
         .next()
         .map(|s| s.to_owned())
@@ -425,9 +506,9 @@ fn resolve_credential_restriction(
     constraints: &ConstraintsField,
 ) -> Result<Vec<PresentationRestriction>> {
     let fields = constraints
-        .path()
+        .path
         .iter()
-        .map(|path| generalize_json_path(path))
+        .map(|path| generalize_json_path(&path.to_string()))
         .collect();
 
     let filter = constraints
@@ -516,12 +597,13 @@ fn build_restrictions(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use oid4vp::core::{
+    use openid4vp::core::{
         credential_format::ClaimFormatDesignation,
         input_descriptor::{ConstraintsField, InputDescriptor},
     };
     use rstest::rstest;
     use serde_json::{json, Value};
+    use std::str::FromStr;
 
     #[tokio::test]
     async fn prepare_presentation_response_succeeds_handling_single_case() {
@@ -547,7 +629,7 @@ mod tests {
                     vec![DescriptorMap::new(
                         "descriptor_id".to_string(),
                         ClaimFormatDesignation::SdJwtVc,
-                        "$".to_string()
+                        JsonPath::from_str("$").unwrap()
                     )]
                 ),
             }
@@ -602,11 +684,8 @@ mod tests {
         };
 
         assert_eq!(
-            result,
-            vec![RequestedPresentation {
-                id: "descriptor_id".to_string(),
-                presentation,
-            },]
+            serde_json::to_value(&result[0].presentation).unwrap(),
+            serde_json::to_value(presentation).unwrap(),
         )
     }
 
@@ -790,12 +869,12 @@ mod tests {
             "presentation_definition_id".to_string(),
             create_input_descriptor("descriptor_id_1", constraints.clone(), format.clone()),
         )
-        .add_input_descriptors(create_input_descriptor(
+        .add_input_descriptor(create_input_descriptor(
             "descriptor_id_2",
             constraints.clone(),
             format.clone(),
         ))
-        .add_input_descriptors(create_input_descriptor(
+        .add_input_descriptor(create_input_descriptor(
             "descriptor_id_3",
             constraints.clone(),
             format.clone(),
@@ -832,7 +911,9 @@ mod tests {
     }
 
     fn create_constraints_field(path: &str, filter: Value) -> ConstraintsField {
-        ConstraintsField::new(path.to_string()).set_filter(filter)
+        ConstraintsField::new(JsonPath::from_str(path).unwrap())
+            .set_filter(&filter)
+            .unwrap()
     }
 
     fn create_presentation_submission_with_descriptor_format(
@@ -867,7 +948,7 @@ mod tests {
         format: ClaimFormatDesignation,
         path: &str,
     ) -> DescriptorMap {
-        DescriptorMap::new(id.to_string(), format, path.to_string())
+        DescriptorMap::new(id.to_string(), format, JsonPath::from_str(path).unwrap())
     }
 
     fn sample_sdjwt_presentation() -> Value {

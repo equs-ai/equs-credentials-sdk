@@ -3,6 +3,7 @@ use async_trait::async_trait;
 use oauth2::http::StatusCode;
 use oauth2::{HttpRequest, HttpResponse};
 use std::collections::HashMap;
+use std::str::FromStr;
 use url::Url;
 
 type HandlerFunc = dyn Fn(HttpRequest) -> Result<HttpResponse> + Sync + Send;
@@ -26,14 +27,15 @@ impl HttpClientEmulator {
 #[async_trait]
 impl HttpClient for HttpClientEmulator {
     async fn async_call(&self, request: HttpRequest) -> Result<HttpResponse> {
-        if let Some(handler) = self.handlers.get(&request.url) {
+        if let Some(handler) = self
+            .handlers
+            .get(&Url::from_str(&request.uri().to_string()).unwrap())
+        {
             return handler(request);
         }
+        let mut resp = HttpResponse::new(vec![]);
+        *resp.status_mut() = StatusCode::NOT_FOUND;
 
-        Ok(HttpResponse {
-            status_code: StatusCode::NOT_FOUND,
-            headers: Default::default(),
-            body: vec![],
-        })
+        Ok(resp)
     }
 }

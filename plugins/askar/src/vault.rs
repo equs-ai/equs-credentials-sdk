@@ -325,13 +325,12 @@ fn entry_to_credential(entry: Entry) -> Result<CredentialEntry, Error> {
         JWT_VC_JSON => Credential::JwtVcJson(credential_str),
         JWT_VC_JSON_LD => Credential::JwtVcJsonLd(credential_str),
         LDP_VC => {
-            let credential =
-                ssi::vc::Credential::from_json_unsigned(&credential_str).map_err(|err| {
-                    VCSnafu {
-                        details: err.to_string(),
-                    }
-                    .build()
-                })?;
+            let credential = serde_json::from_str(&credential_str).map_err(|err| {
+                VCSnafu {
+                    details: err.to_string(),
+                }
+                .build()
+            })?;
             Credential::LdpVc(credential)
         }
         SD_JWT_VC => Credential::SdJwt(credential_str),
@@ -401,7 +400,7 @@ mod tests {
                 "id": "did:example:d23dd687a7dc6787646f2eb98d0"
             }
         }"###;
-        let cred2: ssi::vc::Credential = serde_json::from_str(cred2str).unwrap();
+        let cred2 = serde_json::from_str(cred2str).unwrap();
         let cred2_meta = CredentialMetadata {
             type_: "VerifiableCredential".into(),
             kid: "1234".into(),
@@ -415,7 +414,7 @@ mod tests {
             .await
             .unwrap();
         let cred2_id = vault
-            .store_credential(Credential::LdpVc(cred2.clone()), &cred2_meta)
+            .store_credential(Credential::LdpVc(cred2), &cred2_meta)
             .await
             .unwrap();
 
@@ -423,18 +422,20 @@ mod tests {
         let get2_res = vault.get_credential(&cred2_id).await.unwrap();
 
         assert_eq!(
-            get1_res,
-            Some(CredentialEntry {
+            serde_json::to_value(&get1_res).unwrap(),
+            serde_json::to_value(CredentialEntry {
                 credential: Credential::SdJwt(cred1.clone()),
                 kid: "1234".into()
-            }),
+            })
+            .unwrap(),
         );
         assert_eq!(
-            get2_res,
-            Some(CredentialEntry {
-                credential: Credential::LdpVc(cred2.clone()),
+            serde_json::to_value(&get2_res).unwrap(),
+            serde_json::to_value(CredentialEntry {
+                credential: Credential::LdpVc(serde_json::from_str(cred2str).unwrap()),
                 kid: "1234".into()
-            }),
+            })
+            .unwrap(),
         );
 
         let find_res = vault
@@ -451,11 +452,12 @@ mod tests {
             .unwrap();
 
         assert_eq!(
-            find_res,
-            vec![CredentialEntry {
+            serde_json::to_value(find_res).unwrap(),
+            serde_json::to_value(vec![CredentialEntry {
                 credential: Credential::SdJwt(cred1),
                 kid: "1234".into()
-            }]
+            }])
+            .unwrap()
         );
     }
 }

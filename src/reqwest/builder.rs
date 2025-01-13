@@ -192,7 +192,7 @@ impl ReqwestClientBuilder {
                 self.content_size_limiter,
                 ContentTypeValidator,
             ))
-            .with(TracingMiddleware)
+            .with(TracingMiddleware::default())
             .build();
 
         Ok(ReqwestClient {

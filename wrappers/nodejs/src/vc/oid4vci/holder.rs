@@ -5,7 +5,8 @@ use crate::vc::JsonObject;
 use agent_sdk::nonce::NonceData;
 use agent_sdk::vc::core::KeyMetadata;
 use agent_sdk::vc::oid4vci::{
-    CredentialResponseResolved, CredentialResult, Holder, IssuerMetadata, TokenResponse,
+    AccessToken, CredentialResponseResolved, CredentialResult, Holder, IssuerMetadata,
+    TokenResponse,
 };
 use agent_sdk::vc::{oid4vci, Credential, CredentialMetadata};
 use async_trait::async_trait;
@@ -13,7 +14,6 @@ use napi::bindgen_prelude::Promise;
 use napi::threadsafe_function::{ErrorStrategy, ThreadsafeFunction};
 use napi::Either;
 use napi_derive::napi;
-use oauth2::AccessToken;
 use tokio::runtime::Handle;
 use tokio::task;
 use url::Url;

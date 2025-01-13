@@ -6,10 +6,9 @@ use napi::bindgen_prelude::Promise;
 use napi::threadsafe_function::{ErrorStrategy, ThreadsafeFunction};
 use napi::{Error, Result};
 use napi_derive::napi;
-use oauth2::http::{HeaderMap, HeaderName, HeaderValue, Method, StatusCode};
+use oauth2::http::{HeaderMap, HeaderName, HeaderValue, Method, StatusCode, Uri};
 use oauth2::{HttpRequest, HttpResponse};
 use serde_json::Map;
-use url::Url;
 
 #[napi(js_name = "HttpMethod")]
 pub enum JsHttpMethod {
@@ -40,10 +39,10 @@ impl From<JsHttpMethod> for Method {
     }
 }
 
-impl TryFrom<Method> for JsHttpMethod {
+impl TryFrom<&Method> for JsHttpMethod {
     type Error = Error;
-    fn try_from(value: Method) -> Result<Self> {
-        match value {
+    fn try_from(value: &Method) -> Result<Self> {
+        match *value {
             Method::GET => Ok(JsHttpMethod::GET),
             Method::POST => Ok(JsHttpMethod::POST),
             Method::PUT => Ok(JsHttpMethod::PUT),
@@ -69,12 +68,16 @@ pub struct JsHttpRequest {
 impl TryFrom<JsHttpRequest> for HttpRequest {
     type Error = Error;
     fn try_from(value: JsHttpRequest) -> Result<Self> {
-        Ok(Self {
-            url: Url::parse(&value.url).map_err(|e| Error::from_reason(e.to_string()))?,
-            method: value.method.into(),
-            headers: parse_json_to_header_map(value.headers)?,
-            body: convert_option_string_to_vec_u8(value.body),
-        })
+        let mut req = HttpRequest::new(convert_option_string_to_vec_u8(value.body));
+
+        *req.uri_mut() = value
+            .url
+            .parse::<Uri>()
+            .map_err(|e| Error::from_reason(e.to_string()))?;
+        *req.method_mut() = value.method.into();
+        *req.headers_mut() = parse_json_to_header_map(value.headers)?;
+
+        Ok(req)
     }
 }
 
@@ -82,10 +85,10 @@ impl TryFrom<HttpRequest> for JsHttpRequest {
     type Error = Error;
     fn try_from(value: HttpRequest) -> Result<Self> {
         Ok(Self {
-            url: value.url.to_string(),
-            method: value.method.try_into()?,
-            headers: parse_header_map_to_map(value.headers)?,
-            body: convert_vec_u8_to_string(value.body)?,
+            url: value.uri().to_string(),
+            method: value.method().try_into()?,
+            headers: parse_header_map_to_map(value.headers())?,
+            body: convert_vec_u8_to_string(value.into_body())?,
         })
     }
 }
@@ -101,9 +104,9 @@ impl TryFrom<HttpResponse> for JsHttpResponse {
     type Error = Error;
     fn try_from(value: HttpResponse) -> Result<Self> {
         Ok(Self {
-            status_code: value.status_code.as_u16(),
-            headers: parse_header_map_to_map(value.headers)?,
-            body: convert_vec_u8_to_string(value.body)?,
+            status_code: value.status().as_u16(),
+            headers: parse_header_map_to_map(value.headers())?,
+            body: convert_vec_u8_to_string(value.into_body())?,
         })
     }
 }
@@ -112,13 +115,12 @@ impl TryFrom<JsHttpResponse> for HttpResponse {
     type Error = Error;
     fn try_from(value: JsHttpResponse) -> Result<Self> {
         let headers = parse_json_to_header_map(value.headers)?;
+        let mut resp = HttpResponse::new(convert_option_string_to_vec_u8(value.body));
+        *resp.headers_mut() = headers;
+        *resp.status_mut() = StatusCode::from_u16(value.status_code)
+            .map_err(|e| Error::from_reason(e.to_string()))?;
 
-        Ok(Self {
-            status_code: StatusCode::from_u16(value.status_code)
-                .map_err(|e| Error::from_reason(e.to_string()))?,
-            headers,
-            body: convert_option_string_to_vec_u8(value.body),
-        })
+        Ok(resp)
     }
 }
 
@@ -195,7 +197,7 @@ fn parse_json_to_header_map(value: JsonObject) -> Result<HeaderMap> {
     }
     Ok(headers)
 }
-fn parse_header_map_to_map(value: HeaderMap) -> Result<JsonObject> {
+fn parse_header_map_to_map(value: &HeaderMap) -> Result<JsonObject> {
     let mut headers = Map::new();
     for (key, value) in value.iter() {
         headers.insert(

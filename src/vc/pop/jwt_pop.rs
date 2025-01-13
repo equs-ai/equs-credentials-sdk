@@ -1,39 +1,24 @@
 use async_trait::async_trait;
-use oid4vci::openidconnect;
 use oid4vci::proof_of_possession::{
     ProofOfPossession, ProofOfPossessionController, ProofOfPossessionParams,
     ProofOfPossessionVerificationParams,
 };
 use snafu::ResultExt;
+use ssi::claims::jws;
+use ssi::dids::DIDURLBuf;
 use ssi::jwk::JWK;
-use ssi::jws;
 use tracing::{debug, instrument, trace, Level};
 
 use crate::crypto;
 use crate::crypto::{Alg, SigningKey};
 use crate::did::universal::UniversalResolver;
-use crate::did::{DIDResolver, DIDURL};
+use crate::did::DIDURL;
 use crate::nonce::Nonce;
 use crate::vc::pop;
 use crate::vc::pop::{
     ConversionSnafu, CryptoSnafu, Error, GenerateOptions, JWSSnafu, KeyTypeNotSupportedSnafu,
     ParsingSnafu, VerificationSnafu, VerifyOptions,
 };
-
-pub struct SignerWrapper<S: SigningKey> {
-    pub(crate) key: S,
-}
-
-#[async_trait]
-impl<S: SigningKey> oid4vci::proof_of_possession::Signer for SignerWrapper<S> {
-    #[instrument(level = Level::TRACE, skip(self), err(), ret())]
-    async fn sign(&self, data: &[u8]) -> Result<Vec<u8>, ssi::jws::Error> {
-        self.key
-            .sign(data)
-            .await
-            .map_err(|e| ssi::jws::Error::InvalidSignature)
-    }
-}
 
 pub struct JwtProofOfPossession {}
 
@@ -52,7 +37,7 @@ impl pop::ProofOfPossession<String> for JwtProofOfPossession {
         let params = &ProofOfPossessionParams {
             audience: opts.audience.clone(),
             issuer: opts.issuer.clone(),
-            nonce: Some(openidconnect::Nonce::new(nonce.secret().to_owned())),
+            nonce: Some(oid4vci::types::Nonce::new(nonce.secret().to_owned())),
             controller: ProofOfPossessionController {
                 vm: Some(did_url.to_owned()),
                 jwk: key.jwk().ok_or(
@@ -67,9 +52,12 @@ impl pop::ProofOfPossession<String> for JwtProofOfPossession {
 
         let pop = ProofOfPossession::generate(params, exp);
 
-        let sgn = SignerWrapper { key };
+        let signing_input = pop.to_jwt_signing_input().context(ConversionSnafu)?;
+        let signed = key.sign(&signing_input).await.context(CryptoSnafu)?;
 
-        pop.to_jwt_with_signer(sgn).await.context(ConversionSnafu)
+        let jws = pop.to_jwt_with_signature(signed).context(ConversionSnafu)?;
+
+        Ok(jws)
     }
 
     #[instrument(level = Level::TRACE, err())]
@@ -77,10 +65,10 @@ impl pop::ProofOfPossession<String> for JwtProofOfPossession {
         proof: String,
         nonce: &Nonce,
         opts: VerifyOptions,
-    ) -> Result<(DIDURL, Box<dyn crypto::Key>), Error> {
-        let resolver = UniversalResolver::new();
+    ) -> Result<(DIDURLBuf, Box<dyn crypto::Key>), Error> {
+        let resolver = UniversalResolver::default();
 
-        let pop = ProofOfPossession::from_jwt(proof.as_str(), resolver.as_spruce_resolver())
+        let pop = ProofOfPossession::from_jwt(proof.as_str(), resolver)
             .await
             .context(ParsingSnafu)?;
 
@@ -89,7 +77,7 @@ impl pop::ProofOfPossession<String> for JwtProofOfPossession {
                 audience: opts.audience.clone(),
                 // TODO: do we need to check client-id if Holder was already authorized?
                 issuer: opts.issuer.clone(),
-                nonce: openidconnect::Nonce::new(nonce.secret().to_owned()),
+                nonce: oid4vci::types::Nonce::new(nonce.secret().to_owned()),
                 nbf_tolerance: opts.clock_tolerance,
                 exp_tolerance: opts.clock_tolerance,
                 controller_did: None,
@@ -133,7 +121,6 @@ impl crypto::Key for JWK {
 mod tests {
     use rstest::rstest;
     use serde_json::{Map, Value};
-    use std::str::FromStr;
 
     use crate::crypto::Key;
     use crate::did::DIDURL;
@@ -162,7 +149,8 @@ mod tests {
                 .await
                 .unwrap();
 
-        let decoded: Map<String, Value> = ssi::jwt::decode_verify(proof.as_str(), &jwk).unwrap();
+        let decoded: Map<String, Value> =
+            ssi::claims::jwt::decode_verify(proof.as_str(), &jwk).unwrap();
         assert_eq!(decoded.get("aud").unwrap(), "did:web:issuer.com");
         assert_eq!(decoded.get("iss").unwrap(), "client-id");
         assert!(decoded.contains_key("nonce"));
@@ -171,17 +159,17 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(v_did_url.did, did_url.did);
+        assert_eq!(v_did_url.did(), did_url.did());
         assert_eq!(key.jwk().unwrap(), jwk);
     }
 
     #[tokio::test]
     async fn jwt_pop_generation_fails_on_invalid_jwk() {
         let kh = no_jwk_key();
-        let did_url = DIDURL::from_str("did:example:123").unwrap();
+        let did_url = DIDURL::new("did:example:123").unwrap();
 
         let res = JwtProofOfPossession::generate(
-            &did_url,
+            did_url,
             kh,
             &random_nonce().await,
             sample_generate_opts(),
@@ -205,7 +193,7 @@ mod tests {
         )
         .await;
 
-        assert!(matches!(res.err(), Some(Error::Conversion { .. })));
+        assert!(matches!(res.err(), Some(Error::Crypto { .. })));
     }
 
     #[tokio::test]

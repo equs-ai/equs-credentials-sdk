@@ -11,7 +11,7 @@ use crate::vc::oid4vci::token_validation::{ByJwks, Introspect};
 use crate::vc::oid4vci::CredentialOffer;
 use crate::{kms, vault, vc};
 use common_macros::DebugError;
-use oid4vci::openidconnect::JsonWebKeySetUrl;
+use openidconnect::JsonWebKeySetUrl;
 use snafu::{Location, Snafu};
 use std::collections::HashMap;
 use std::fmt::Debug;
@@ -130,7 +130,7 @@ impl<KH, KMS, HC, NG> IssuerBuilder<KH, KMS, HC, NG>
 where
     KH: kms::KeyHandle,
     KMS: kms::Kms<KH>,
-    HC: HttpClient,
+    HC: HttpClient + 'static,
     NG: NonceGenerator,
 {
     /// Use a specific `HttpClient`.
@@ -142,7 +142,7 @@ where
         level = Level::TRACE,
         skip_all,
     )]
-    pub fn with_http_client<HC_: HttpClient>(
+    pub fn with_http_client<HC_: HttpClient + 'static>(
         self,
         http_client: HC_,
     ) -> IssuerBuilder<KH, KMS, HC_, NG> {
@@ -366,7 +366,7 @@ where
     KH: kms::KeyHandle,
     KMS: kms::Kms<KH>,
     V: vault::Vault,
-    HC: HttpClient,
+    HC: HttpClient + 'static,
 {
     /// Use a specific `RedirectUrl`.
     ///
@@ -497,9 +497,8 @@ mod tests {
         sample_authorization_metadata, SampleIssuerMetadata, AUTH_REDIRECT_URL, ISSUER_URL, SCOPE,
     };
     use oauth2::http::{Method, StatusCode};
-    use oauth2::Scope;
-    use oid4vci::credential_offer::{CredentialOfferFormat, CredentialOfferParameters};
-    use oid4vci::openidconnect::IssuerUrl;
+    use oid4vci::credential_offer::CredentialOfferParameters;
+    use oid4vci::types::{CredentialConfigurationId, IssuerUrl};
     use rstest::rstest;
 
     pub const ISSUER_OIDC_URL: &str =
@@ -570,13 +569,11 @@ mod tests {
     }
 
     fn issuer_discovery_from_offer() -> IssuerDiscovery {
-        let credential_offer = CredentialOfferParameters::new(
-            IssuerUrl::new(ISSUER_URL.to_string()).unwrap(),
-            vec![CredentialOfferFormat::Reference(Scope::new(
-                SCOPE.to_string(),
-            ))],
-            None,
-        );
+        let credential_offer = CredentialOfferParameters {
+            credential_issuer: IssuerUrl::new(ISSUER_URL.to_string()).unwrap(),
+            credential_configuration_ids: vec![CredentialConfigurationId::new(SCOPE.to_string())],
+            grants: None,
+        };
 
         IssuerDiscovery::Offer(CredentialOffer::Value { credential_offer })
     }

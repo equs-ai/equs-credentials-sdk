@@ -1,5 +1,6 @@
 use crate::nonce::Nonce;
 use crate::vc::claims::Claims;
+use crate::vc::core::api::{ClaimsSnafu, ParseSnafu};
 use crate::vc::core::Result;
 use crate::vc::core::{FormatNotSupportedSnafu, VCSnafu, Verifier};
 use crate::vc::formats::json_ld_vc::JsonLdAPI;
@@ -29,9 +30,14 @@ impl Verifier for VerifierService {
                     .context(VCSnafu)
             }
             Presentation::LdpVp(vp) => {
-                JsonLdAPI::verify_vp(vp, nonce, &self.verifier_id, VerifyOptions {})
+                let _ = JsonLdAPI::verify_vp(vp, nonce, &self.verifier_id, VerifyOptions {})
                     .await
-                    .context(VCSnafu)
+                    .context(VCSnafu)?;
+
+                let claims = Claims::try_from(serde_json::to_value(vp).context(ParseSnafu)?)
+                    .context(ClaimsSnafu)?;
+
+                Ok(claims)
             }
             _ => FormatNotSupportedSnafu { format: "" }.fail(),
         }?;

@@ -3,6 +3,7 @@ use async_trait::async_trait;
 use tracing::{instrument, Level};
 
 use crate::crypto;
+use crate::inmem::crypto::HasAlg;
 use ecdsa::elliptic_curve::generic_array::ArrayLength;
 use ecdsa::elliptic_curve::ops::Invert;
 use ecdsa::elliptic_curve::point::PointCompression;
@@ -44,7 +45,7 @@ pub trait HasJWK {
 
 impl<C> crypto::SigningKey for Ecdsa<C>
 where
-    C: PrimeCurve + CurveArithmetic + PointCompression + DigestPrimitive + HasJWK,
+    C: PrimeCurve + CurveArithmetic + PointCompression + DigestPrimitive + HasJWK + HasAlg,
     Scalar<C>: Invert<Output = CtOption<Scalar<C>>> + SignPrimitive<C>,
     SignatureSize<C>: ArrayLength<u8>,
     AffinePoint<C>: FromEncodedPoint<C> + ToEncodedPoint<C> + VerifyPrimitive<C>,
@@ -54,7 +55,7 @@ where
 
 impl<C> crypto::VerifyingKey for Ecdsa<C>
 where
-    C: PrimeCurve + CurveArithmetic + PointCompression + DigestPrimitive + HasJWK,
+    C: PrimeCurve + CurveArithmetic + PointCompression + DigestPrimitive + HasJWK + HasAlg,
     Scalar<C>: Invert<Output = CtOption<Scalar<C>>> + SignPrimitive<C>,
     SignatureSize<C>: ArrayLength<u8>,
     AffinePoint<C>: FromEncodedPoint<C> + ToEncodedPoint<C> + VerifyPrimitive<C>,
@@ -64,7 +65,7 @@ where
 
 impl<C> crypto::Suite for Ecdsa<C>
 where
-    C: PrimeCurve + CurveArithmetic + PointCompression + DigestPrimitive + HasJWK,
+    C: PrimeCurve + CurveArithmetic + PointCompression + DigestPrimitive + HasJWK + HasAlg,
     Scalar<C>: Invert<Output = CtOption<Scalar<C>>> + SignPrimitive<C>,
     SignatureSize<C>: ArrayLength<u8>,
     AffinePoint<C>: FromEncodedPoint<C> + ToEncodedPoint<C> + VerifyPrimitive<C>,
@@ -99,7 +100,7 @@ where
 
 impl<C> crypto::Key for Ecdsa<C>
 where
-    C: PrimeCurve + CurveArithmetic + PointCompression + DigestPrimitive + HasJWK,
+    C: PrimeCurve + CurveArithmetic + PointCompression + DigestPrimitive + HasJWK + HasAlg,
     Scalar<C>: Invert<Output = CtOption<Scalar<C>>> + SignPrimitive<C>,
     SignatureSize<C>: ArrayLength<u8>,
     AffinePoint<C>: FromEncodedPoint<C> + ToEncodedPoint<C> + VerifyPrimitive<C>,
@@ -128,7 +129,7 @@ where
 #[async_trait]
 impl<C> crypto::Signer for Ecdsa<C>
 where
-    C: PrimeCurve + CurveArithmetic + PointCompression + DigestPrimitive + HasJWK,
+    C: PrimeCurve + CurveArithmetic + PointCompression + DigestPrimitive + HasJWK + HasAlg,
     Scalar<C>: Invert<Output = CtOption<Scalar<C>>> + SignPrimitive<C>,
     SignatureSize<C>: ArrayLength<u8>,
     AffinePoint<C>: FromEncodedPoint<C> + ToEncodedPoint<C> + VerifyPrimitive<C>,
@@ -140,7 +141,7 @@ where
         ret(),
     )]
     fn alg(&self) -> Alg {
-        Alg::ES256
+        C::algorithm()
     }
 
     #[instrument(

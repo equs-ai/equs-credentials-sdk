@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use snafu::Snafu;
 use std::fmt::Debug;
 
-pub type ErrorType = oid4vp::core::error::ErrorType;
+pub type ErrorType = openid4vp::core::error::ErrorType;
 
 /// A protocol-specific `oid4vp` error response.
 ///

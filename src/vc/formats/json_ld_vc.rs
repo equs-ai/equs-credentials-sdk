@@ -1,68 +1,77 @@
 use crate::crypto::{Key, Signer};
 use crate::did::universal::UniversalResolver;
-use crate::did::{DIDResolver, DIDURL};
+use crate::did::DIDURL;
 use crate::nonce::Nonce;
-use crate::utils::b64;
-use crate::vc::claims::Claims;
-use crate::vc::claims::Error as ClaimsError;
+use crate::vc::claims::{Claim, Claims};
 use crate::vc::formats::{
-    CredentialCreationSnafu, FormatNotSupportedSnafu, GetExpirationClaim, HasClaims, HasCredential,
-    KeyTypeNotSupportedSnafu, MultipleCredentialsNotSupportedSnafu, NoCredentialSnafu,
-    ParsingSnafu, PresentationSnafu, ProofCompletionSnafu, Result, SigningSnafu, VerifyOptions,
-    VerifyingSnafu, API,
+    resolve_verification_method, ClaimsSnafu, CryptoSuiteCreationSnafu, GetExpirationClaim,
+    HasClaims, HasCredential, IriBufParsingSnafu, IriRefParsingSnafu, JsonSnafu,
+    KeyTypeNotSupportedSnafu, MultipleCredentialsNotSupportedSnafu,
+    MultipleSubjectNotSupportedSnafu, NoCredentialSnafu, ParsingSnafu, PresentationSnafu, Result,
+    SpruceSigningSnafu, VerifyOptions, VerifyingSnafu, API,
 };
 use async_trait::async_trait;
-use chrono::TimeDelta;
-use serde_json::Value;
-use snafu::ResultExt;
-use ssi::vc::{
-    Contexts, CredentialOrJWT, CredentialSubject, OneOrMany, VCDateTime, ALT_DEFAULT_CONTEXT,
-    DEFAULT_CONTEXT, DEFAULT_CONTEXT_V2, URI,
-};
-use ssi_ldp::{Context, LinkedDataDocument, ProofSuite, SigningInput};
-use std::collections::HashMap;
-use tracing::{instrument, trace, warn, Level};
+use chrono::{FixedOffset, TimeDelta};
+use serde::de::IntoDeserializer;
+use serde::Deserialize;
+use snafu::{ensure, ResultExt};
+use ssi::claims::data_integrity::AnyInputSuiteOptions;
+use ssi::claims::vc::syntax::IdOr;
+use ssi::claims::{MessageSignatureError, SignatureError, VerificationParameters};
+use ssi::dids::ssi_json_ld;
+use ssi::json_ld::iref::UriBuf;
+use ssi::json_ld::syntax::ContextEntry::IriRef;
+use ssi::json_ld::{IriBuf, IriRefBuf, CREDENTIALS_V1_CONTEXT, CREDENTIALS_V2_CONTEXT};
+use ssi::prelude::{AnyMethod, AnySuite, CryptographicSuite, DataIntegrity, ProofOptions};
+use ssi::verification_methods::{LocalSigner, MessageSigner, ReferenceOrOwned};
+use ssi::xsd::DateTime;
+use ssi::OneOrMany;
+use ssi_json_ld::syntax::Context;
+use std::borrow::Cow;
+use std::str::FromStr;
+use std::sync::Arc;
+use tracing::{instrument, trace, Level};
 
-use super::ClaimsSnafu;
-
-pub type Credential = ssi::vc::Credential;
-pub type Presentation = ssi::vc::Presentation;
+pub type Credential = ssi::claims::vc::v1::JsonCredential<Claims>;
+pub type VC = DataIntegrity<Credential, AnySuite>;
+pub type Presentation = ssi::claims::vc::v1::syntax::JsonPresentation<VC>;
+pub type VP = DataIntegrity<Presentation, AnySuite>;
 
 const DEFAULT_VC_TYPE: &str = "VerifiableCredential";
 const DEFAULT_VP_TYPE: &str = "VerifiablePresentation";
 
 const DEFAULT_CRED_LIFETIME_DAYS: i64 = 5 * 365;
 
+pub type Iri = iref::Iri;
+
 // Metadata
 #[derive(Debug)]
 pub struct VCMetadata {
-    pub contexts: Contexts,
+    pub contexts: Context,
     pub type_: OneOrMany<String>,
     pub lifetime: TimeDelta,
 }
 
 impl VCMetadata {
     #[instrument(level = Level::TRACE, ret())]
-    pub fn new(contexts: Vec<String>, types: Vec<String>) -> Self {
+    pub fn new(contexts: Vec<IriRefBuf>, types: Vec<String>) -> Result<Self> {
         let mut contexts = contexts;
         let mut types = types;
 
         let default_ctx_is_provided = contexts.iter().any(|ctx| {
-            ctx == DEFAULT_CONTEXT || ctx == DEFAULT_CONTEXT_V2 || ctx == ALT_DEFAULT_CONTEXT
+            Some(CREDENTIALS_V1_CONTEXT) == ctx.as_iri()
+                || Some(CREDENTIALS_V2_CONTEXT) == ctx.as_iri()
         });
 
         if !default_ctx_is_provided {
-            contexts.push(DEFAULT_CONTEXT.to_string());
+            contexts.push(
+                IriRefBuf::new(CREDENTIALS_V1_CONTEXT.to_string()).context(IriRefParsingSnafu)?,
+            );
         }
 
         let contexts = match contexts.len() {
-            1 => Contexts::One(Context::URI(URI::String(contexts[0].clone()))),
-            _ => Contexts::Many(
-                contexts
-                    .into_iter()
-                    .map(|uri| Context::URI(URI::String(uri)))
-                    .collect(),
-            ),
+            1 => Context::One(IriRef(contexts.first().unwrap().to_owned())),
+            _ => Context::Many(contexts.into_iter().map(IriRef).collect()),
         };
 
         if !types.iter().any(|item| item == DEFAULT_VC_TYPE) {
@@ -76,159 +85,169 @@ impl VCMetadata {
 
         let lifetime = chrono::Duration::days(DEFAULT_CRED_LIFETIME_DAYS);
 
-        Self {
+        Ok(Self {
             contexts,
             type_,
             lifetime,
-        }
+        })
     }
 }
 
 #[derive(Debug)]
 pub struct VPMetadata {
-    pub contexts: Contexts,
+    pub contexts: Context,
     pub type_: OneOrMany<String>,
 }
 
 impl VPMetadata {
     #[instrument(level = Level::TRACE, ret())]
-    pub fn new() -> Self {
-        Self {
-            contexts: Contexts::One(Context::URI(URI::String(DEFAULT_CONTEXT.to_string()))),
+    pub fn new() -> Result<Self> {
+        let context =
+            IriRefBuf::new(CREDENTIALS_V1_CONTEXT.to_string()).context(IriRefParsingSnafu)?;
+        Ok(Self {
+            contexts: Context::One(IriRef(context)),
             type_: OneOrMany::One(DEFAULT_VP_TYPE.to_string()),
-        }
+        })
     }
 }
 
-impl HasClaims<Claims> for Credential {
+impl HasClaims<Claims> for VC {
     #[instrument(level = Level::TRACE, skip(self), err(), ret())]
     fn parse_claims(&self) -> Result<Claims> {
-        let mut value = self.to_value().map_err(|err| {
-            ParsingSnafu {
-                details: err.to_string(),
-            }
-            .build()
-        })?;
-
-        if let Some(obj) = value.as_object_mut() {
-            obj.remove("proof");
+        if self.credential_subjects.len() != 1 {
+            MultipleSubjectNotSupportedSnafu {}.fail()?
         }
 
-        let claims = value.try_into().context(ClaimsSnafu)?;
+        let claims = Claims::try_from(serde_json::to_value(&self.claims).context(JsonSnafu)?)
+            .context(ClaimsSnafu)?;
+
         Ok(claims)
     }
 }
 
-impl HasCredential<Credential> for Presentation {
+impl HasCredential<VC> for VP {
     #[instrument(level = Level::TRACE, skip(self), err(), ret())]
-    fn get_credential(&self) -> Result<Credential> {
-        let cred_or_jwt = match &self.verifiable_credential {
-            None => return NoCredentialSnafu {}.fail(),
-            Some(OneOrMany::One(cred)) => cred,
-            Some(OneOrMany::Many(creds)) => match creds.len() {
-                1 => &creds[0],
-                0 => return NoCredentialSnafu {}.fail(),
-                _ => return MultipleCredentialsNotSupportedSnafu {}.fail(),
-            },
-        };
+    fn get_credential(&self) -> Result<VC> {
+        ensure!(
+            !self.verifiable_credentials.is_empty(),
+            NoCredentialSnafu {}
+        );
 
-        match cred_or_jwt {
-            CredentialOrJWT::Credential(cred) => Ok(cred.clone()),
-            CredentialOrJWT::JWT(_) => FormatNotSupportedSnafu { format: "JWT" }.fail(),
-        }
+        ensure!(
+            self.verifiable_credentials.len() == 1,
+            MultipleCredentialsNotSupportedSnafu {}
+        );
+
+        Ok(self.verifiable_credentials[0].to_owned())
     }
 }
 
 pub struct JsonLdAPI;
+struct JsonLdSigner<S: Signer + Key> {
+    signer: Arc<S>,
+}
 
 impl JsonLdAPI {
     #[instrument(level = Level::TRACE, ret())]
     fn create_credential(
         metadata: VCMetadata,
-        iss_did: String,
-        holder_did: String,
-        claims: Claims,
-    ) -> Credential {
-        let now = chrono::Local::now();
-        let exp_date = JsonLdAPI::get_expiration_claim(&claims)
-            .unwrap_or(VCDateTime::from(now + metadata.lifetime));
+        iss_did: &str,
+        holder_did: &str,
+        mut claims: Claims,
+    ) -> Result<Credential> {
+        claims.insert("id".to_string(), Claim::String(holder_did.to_string()));
 
-        let mut claims_json: HashMap<String, Value> = HashMap::new();
-        for (k, v) in claims.claims() {
-            let json_value: core::result::Result<Value, ClaimsError> = v.clone().try_into();
+        let now = chrono::Local::now().to_utc();
+        let lifetime = FixedOffset::from_str(&metadata.lifetime.to_string()).ok();
+        let exp_date =
+            JsonLdAPI::get_expiration_claim(&claims).unwrap_or((now + metadata.lifetime).into());
+        let iss_date = now.into();
 
-            if let Ok(value) = json_value {
-                claims_json.insert(k.clone(), value);
-            } else {
-                warn!("Claim value can not be transformed to json value");
+        let issuer = IdOr::Id(UriBuf::from_str(iss_did).map_err(|e| {
+            ParsingSnafu {
+                details: format!("Could not parse issuer did as uri buf {e}"),
             }
-        }
+            .build()
+        })?);
 
-        let credential_subject = OneOrMany::One(CredentialSubject {
-            id: Some(URI::String(holder_did)),
-            property_set: Some(claims_json),
-        });
-        let iss_date = VCDateTime::from(now);
-        let issuer = Some(ssi::vc::Issuer::URI(URI::String(iss_did)));
+        let (context, types) = Self::resolve_context_and_types(metadata.contexts, metadata.type_)?;
 
-        Credential {
-            context: metadata.contexts,
-            type_: metadata.type_,
+        Ok(Credential {
+            context,
+            types,
             issuer,
-            credential_subject,
-            id: None,
+            credential_subjects: ssi::claims::vc::syntax::NonEmptyVec::new(claims),
             issuance_date: Some(iss_date),
-            proof: None,
             expiration_date: Some(exp_date),
-            credential_status: None,
-            terms_of_use: None,
-            evidence: None,
-            credential_schema: None,
-            refresh_service: None,
-            property_set: None,
-        }
+
+            additional_properties: Default::default(),
+
+            id: None,
+            credential_status: vec![],
+            terms_of_use: vec![],
+            evidence: vec![],
+            credential_schema: vec![],
+            refresh_services: vec![],
+        })
     }
 
     #[instrument(level = Level::TRACE, ret())]
     fn create_presentation(
-        vc: Credential,
+        vc: VC,
         metadata: VPMetadata,
         holder_did: String,
-    ) -> Presentation {
-        let holder = Some(URI::String(holder_did));
-        let verifiable_credential = Some(OneOrMany::One(CredentialOrJWT::Credential(vc)));
+    ) -> Result<Presentation> {
+        let (context, types) = Self::resolve_context_and_types(metadata.contexts, metadata.type_)?;
 
-        Presentation {
-            context: metadata.contexts,
-            type_: metadata.type_,
-            holder,
-            verifiable_credential,
-            id: None,
-            proof: None,
-            holder_binding: None,
-            property_set: None,
-        }
-    }
+        Ok(Presentation {
+            context,
+            verifiable_credentials: vec![vc],
+            types,
 
-    #[instrument(level = Level::TRACE, skip(signer), err(), ret())]
-    async fn sign_proof(input: &SigningInput, signer: &impl Signer) -> Result<Vec<u8>> {
-        match input {
-            SigningInput::Bytes(bytes) => signer.sign(&bytes.0).await.map_err(|err| {
-                SigningSnafu {
-                    details: err.to_string(),
+            holder: Some(UriBuf::new(holder_did.into_bytes()).map_err(|e| {
+                ParsingSnafu {
+                    details: "Could not parse did into uri buf",
                 }
                 .build()
-            }),
-            _ => SigningSnafu {
-                details: "Unsupported signing input",
+            })?),
+
+            id: None,
+            additional_properties: Default::default(),
+        })
+    }
+
+    pub fn resolve_context_and_types<C, T>(
+        contexts: Context,
+        types: OneOrMany<String>,
+    ) -> Result<(
+        ssi::claims::vc::syntax::Context<C>,
+        ssi::claims::vc::syntax::Types<T>,
+    )>
+    where
+        C: ssi::claims::vc::syntax::RequiredContext,
+        T: ssi::claims::vc::syntax::RequiredType,
+    {
+        let mut context = ssi::claims::vc::syntax::Context::default();
+        match contexts {
+            Context::One(value) => {
+                context.insert(value);
             }
-            .fail(),
-        }
+            Context::Many(value) => context.extend(value),
+        };
+
+        let types = ssi::claims::vc::syntax::Types::deserialize(
+            serde_json::to_value(types)
+                .context(JsonSnafu)?
+                .into_deserializer(),
+        )
+        .context(JsonSnafu)?;
+
+        Ok((context, types))
     }
 }
 
-impl GetExpirationClaim<Claims, VCDateTime> for JsonLdAPI {
-    fn get_expiration_claim(claims: &Claims) -> Option<VCDateTime> {
+impl GetExpirationClaim<Claims, DateTime> for JsonLdAPI {
+    fn get_expiration_claim(claims: &Claims) -> Option<DateTime> {
         claims
             .get("expirationDate")
             .and_then(|v| v.to_owned().try_into().ok())
@@ -237,86 +256,74 @@ impl GetExpirationClaim<Claims, VCDateTime> for JsonLdAPI {
 }
 
 #[async_trait]
-impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata, Claims> for JsonLdAPI {
+impl API<Claims, VC, VP, VCMetadata, VPMetadata, ()> for JsonLdAPI {
     #[instrument(level = Level::TRACE, skip(issuer_data, holder_data), err(), ret())]
     async fn create_vc<S, K>(
         claims: Claims,
         issuer_data: (&DIDURL, S),
         holder_data: (&DIDURL, K),
         metadata: VCMetadata,
-    ) -> Result<Credential>
+    ) -> Result<VC>
     where
         S: Signer + Key,
         K: Key,
     {
         trace!(issuer_did_url = ?{issuer_data.0}, holder_did_url = ?{holder_data.0});
 
-        let iss_did = issuer_data.0.did.clone();
-        let iss_key_handle = issuer_data.1;
-
-        let pub_key = iss_key_handle.jwk().ok_or_else(|| {
+        let iss_did = issuer_data.0.did();
+        let pub_key = issuer_data.1.jwk().ok_or_else(|| {
             KeyTypeNotSupportedSnafu {
                 type_: "JWK incompatible",
             }
             .build()
         })?;
 
-        let universal_resolver = UniversalResolver::new();
-        let verification_method_map = universal_resolver
-            .resolve_verification_method(&iss_did)
-            .await
-            .map_err(|_| {
-                CredentialCreationSnafu {
-                    details: "Can not find verification method",
+        let resolver = UniversalResolver::default();
+
+        let vc = JsonLdAPI::create_credential(
+            metadata,
+            iss_did.as_str(),
+            holder_data.0.did().as_str(),
+            claims,
+        )?;
+        let signer = LocalSigner(JsonLdSigner {
+            signer: Arc::new(issuer_data.1),
+        });
+
+        let verification_method = resolve_verification_method(iss_did).await?;
+        let verification_method_id =
+            IriBuf::from_str(&verification_method.id).context(IriBufParsingSnafu)?;
+
+        let options = ProofOptions::from_method_and_options(
+            ReferenceOrOwned::Reference(verification_method_id.clone()),
+            Default::default(),
+        );
+
+        let suite =
+            AnySuite::pick(&pub_key, options.verification_method.as_ref()).ok_or_else(|| {
+                CryptoSuiteCreationSnafu {
+                    details: format!(
+                        "Could not pick crypto suite for verification method = {}",
+                        verification_method_id
+                    ),
                 }
                 .build()
             })?;
 
-        let resolver = universal_resolver.as_spruce_resolver();
-
-        let mut vc =
-            JsonLdAPI::create_credential(metadata, iss_did, holder_data.0.did.clone(), claims);
-
-        let proof_options = ssi::vc::LinkedDataProofOptions {
-            verification_method: Some(ssi::vc::URI::String(verification_method_map.id)),
-            ..Default::default()
-        };
-
-        let mut context_loader = ssi::jsonld::ContextLoader::default();
-
-        let proof_preparation = vc
-            .prepare_proof(&pub_key, &proof_options, resolver, &mut context_loader)
+        suite
+            .sign(vc.clone(), resolver, signer, options)
             .await
-            .map_err(|err| {
-                CredentialCreationSnafu {
-                    details: err.to_string(),
-                }
-                .build()
-            })?;
-
-        let sig = JsonLdAPI::sign_proof(&proof_preparation.signing_input, &iss_key_handle).await?;
-        let sig_b64 = b64::encode(&sig);
-
-        let proof = proof_preparation
-            .proof
-            .type_
-            .complete(&proof_preparation, &sig_b64)
-            .await
-            .context(ProofCompletionSnafu)?;
-
-        vc.add_proof(proof);
-
-        Ok(vc)
+            .context(SpruceSigningSnafu)
     }
 
     #[instrument(level = Level::TRACE, skip(holder_signer, nonce), err(), ret())]
     async fn create_vp<S>(
-        credential: &Credential,
+        credential: &VC,
         holder_signer: S,
         nonce: &Nonce,
         verifier_id: &str,
         metadata: VPMetadata,
-    ) -> Result<Presentation>
+    ) -> Result<VP>
     where
         S: Signer + Key,
     {
@@ -327,133 +334,153 @@ impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata, Claims> for J
             .build()
         })?;
 
-        let universal_resolver = UniversalResolver::new();
-        let resolver = universal_resolver.as_spruce_resolver();
+        let resolver = UniversalResolver::default();
 
-        let vc = credential.to_owned();
-
-        let holder_did = match &vc.credential_subject {
-            OneOrMany::One(CredentialSubject {
-                id: Some(URI::String(did)),
-                ..
-            }) => did.clone(),
-            OneOrMany::Many(_) => {
-                return PresentationSnafu {
-                    details: "Multiple subjects in the credential",
+        let holder_did = match credential.credential_subjects.len() {
+            1 => match credential
+                .credential_subjects
+                .first()
+                .map(|c| c.get("id").to_owned())
+            {
+                Some(Some(Claim::String(id))) => id,
+                _ => {
+                    return PresentationSnafu {
+                        details: "Could not parse subject 'id' of vc",
+                    }
+                    .fail()?
                 }
-                .fail()
-            }
+            },
             _ => {
                 return PresentationSnafu {
-                    details: "Can not find the holder's DID",
+                    details: "Multiple subjects in the credential is not supported",
                 }
-                .fail()
+                .fail()?
             }
         };
 
-        let verification_method_map = universal_resolver
-            .resolve_verification_method(&holder_did)
+        let vp = JsonLdAPI::create_presentation(
+            credential.to_owned(),
+            metadata,
+            holder_did.to_string(),
+        )?;
+
+        let resolver = UniversalResolver::default();
+        let verifier = VerificationParameters::from_resolver(&resolver);
+
+        let signer = LocalSigner(JsonLdSigner {
+            signer: Arc::new(holder_signer),
+        });
+
+        let verification_method = resolve_verification_method(holder_did).await?;
+        let verification_method_id =
+            IriBuf::from_str(&verification_method.id).context(IriBufParsingSnafu)?;
+
+        let mut params = ProofOptions::from_method_and_options(
+            ReferenceOrOwned::Reference(verification_method_id.clone()),
+            AnyInputSuiteOptions::new(),
+        );
+
+        params.nonce = Some(nonce.secret().to_owned());
+
+        let suite = AnySuite::pick(&key, params.verification_method.as_ref()).ok_or_else(|| {
+            CryptoSuiteCreationSnafu {
+                details: format!(
+                    "Could not pick crypto suite for verification method = {}",
+                    verification_method_id
+                ),
+            }
+            .build()
+        })?;
+        suite
+            .sign(vp, resolver, &signer, params)
             .await
-            .map_err(|_| {
-                PresentationSnafu {
-                    details: "Can not find verification method",
-                }
-                .build()
-            })?;
-
-        let mut vp = JsonLdAPI::create_presentation(vc, metadata, holder_did.to_string());
-
-        let proof_options = ssi::vc::LinkedDataProofOptions {
-            verification_method: Some(ssi::vc::URI::String(verification_method_map.id)),
-            proof_purpose: Some(ssi::vc::ProofPurpose::AssertionMethod),
-            ..Default::default()
-        };
-
-        let mut context_loader = ssi::jsonld::ContextLoader::default();
-
-        let proof_preparation = vp
-            .prepare_proof(&key, &proof_options, resolver, &mut context_loader)
-            .await
-            .map_err(|err| {
-                PresentationSnafu {
-                    details: err.to_string(),
-                }
-                .build()
-            })?;
-
-        let sig = JsonLdAPI::sign_proof(&proof_preparation.signing_input, &holder_signer).await?;
-        let sig_b64 = b64::encode(&sig);
-
-        let proof = proof_preparation
-            .proof
-            .type_
-            .complete(&proof_preparation, &sig_b64)
-            .await
-            .context(ProofCompletionSnafu)?;
-
-        vp.add_proof(proof);
-
-        Ok(vp)
+            .context(SpruceSigningSnafu)
     }
 
     #[instrument(level = Level::TRACE, err(), ret())]
-    async fn verify_vc(credential: &Credential, opts: VerifyOptions) -> Result<()> {
-        let mut context_loader = ssi::jsonld::ContextLoader::default();
-        let universal_resolver = UniversalResolver::new();
-        let resolver = universal_resolver.as_spruce_resolver();
+    async fn verify_vc(credential: &VC, opts: VerifyOptions) -> Result<()> {
+        let resolver = UniversalResolver::default();
+        let verifier = VerificationParameters::from_resolver(resolver);
 
-        let result = credential.verify(None, resolver, &mut context_loader).await;
-
-        if !result.errors.is_empty() {
-            return VerifyingSnafu {
-                details: result.errors.join("\n"),
-            }
-            .fail();
-        }
+        let result = credential
+            .verify(&verifier)
+            .await
+            .map_err(|e| {
+                VerifyingSnafu {
+                    details: e.to_string(),
+                }
+                .build()
+            })?
+            .map_err(|e| {
+                VerifyingSnafu {
+                    details: e.to_string(),
+                }
+                .build()
+            })?;
 
         Ok(())
     }
 
     #[instrument(level = Level::TRACE, skip(nonce), err(), ret())]
     async fn verify_vp(
-        presentation: &Presentation,
+        presentation: &VP,
         nonce: &Nonce,
         verifier_id: &str,
         _opts: VerifyOptions,
-    ) -> Result<Claims> {
-        let proof_options = ssi::vc::LinkedDataProofOptions {
-            proof_purpose: Some(ssi::vc::ProofPurpose::AssertionMethod),
-            ..Default::default()
-        };
+    ) -> Result<()> {
+        let resolver = UniversalResolver::default();
 
-        let universal_resolver = UniversalResolver::new();
-        let resolver = universal_resolver.as_spruce_resolver();
-        let mut context_loader = ssi::jsonld::ContextLoader::default();
+        let verifier = VerificationParameters::from_resolver(resolver);
+        presentation
+            .verify(verifier)
+            .await
+            .map_err(|e| {
+                VerifyingSnafu {
+                    details: e.to_string(),
+                }
+                .build()
+            })?
+            .map_err(|e| {
+                VerifyingSnafu {
+                    details: e.to_string(),
+                }
+                .build()
+            })?;
 
-        let result = presentation
-            .verify(Some(proof_options), resolver, &mut context_loader)
-            .await;
+        Ok(())
+    }
+}
 
-        if !result.errors.is_empty() {
-            return VerifyingSnafu {
-                details: result.errors.join("\n"),
-            }
-            .fail();
+impl<S: Signer + Key> MessageSigner<ssi::crypto::Algorithm> for JsonLdSigner<S> {
+    async fn sign(
+        self,
+        algorithm: ssi::crypto::AlgorithmInstance,
+        message: &[u8],
+    ) -> std::result::Result<Vec<u8>, MessageSignatureError> {
+        match algorithm {
+            ssi::crypto::AlgorithmInstance::EdDSA | ssi::crypto::AlgorithmInstance::ES256 => self
+                .signer
+                .sign(message)
+                .await
+                .map_err(|e| MessageSignatureError::SignatureFailed(e.to_string())),
+            _ => Err(MessageSignatureError::UnsupportedAlgorithm(format!(
+                "{}",
+                algorithm.algorithm()
+            ))),
         }
+    }
+}
 
-        let credential = presentation.get_credential()?;
+impl<S: Signer + Key> ssi::verification_methods::Signer<AnyMethod> for JsonLdSigner<S> {
+    type MessageSigner = JsonLdSigner<S>;
 
-        // TODO: figure out if it is possible to avoid Credential -> Value -> Claims
-        // convertation and replace it with Credential -> Claims instead.
-        let credential_json = serde_json::to_value(credential).map_err(|err| {
-            VerifyingSnafu {
-                details: format!("Can not be serialized to json: {err}"),
-            }
-            .build()
-        })?;
-
-        let claims = credential_json.try_into().context(ClaimsSnafu)?;
-        Ok(claims)
+    async fn for_method(
+        &self,
+        method: Cow<'_, AnyMethod>,
+    ) -> std::result::Result<Option<Self::MessageSigner>, SignatureError> {
+        Ok(Some(JsonLdSigner {
+            signer: self.signer.clone(),
+        }))
     }
 }
 
@@ -469,7 +496,7 @@ mod tests {
     use crate::vc::claims::Claim;
     use crate::vc::formats::Error;
     use rstest::rstest;
-    use serde_json::json;
+    use serde_json::{json, Value};
 
     #[rstest]
     #[case::p256(KeyType::P256, "EcdsaSecp256r1Signature2019")]
@@ -485,11 +512,12 @@ mod tests {
 
         let metadata = VCMetadata::new(
             vec![
-                "https://www.w3.org/2018/credentials/v1".to_string(),
-                "https://w3id.org/citizenship/v1".to_string(),
+                IriRefBuf::from_str("https://www.w3.org/2018/credentials/v1").unwrap(),
+                IriRefBuf::from_str("https://w3id.org/citizenship/v1").unwrap(),
             ],
             vec!["PermanentResidentCard".to_string()],
-        );
+        )
+        .unwrap();
 
         let vc = JsonLdAPI::create_vc(
             sample_claims(),
@@ -510,7 +538,10 @@ mod tests {
         let proof = vc.get("proof").unwrap().as_object().unwrap().clone();
 
         let mut expected_cred_subject = sample_claims();
-        expected_cred_subject.insert("id".to_string(), Claim::String(hld_did_url.did.clone()));
+        expected_cred_subject.insert(
+            "id".to_string(),
+            Claim::String(hld_did_url.did().to_string()),
+        );
 
         let expected_cred_subject: Value = expected_cred_subject.try_into().unwrap();
         assert_eq!(
@@ -525,7 +556,10 @@ mod tests {
             &json!(["VerifiableCredential", "PermanentResidentCard"])
         );
         assert_eq!(vc.get("credentialSubject").unwrap(), &expected_cred_subject);
-        assert_eq!(vc.get("issuer").unwrap(), &json!(iss_did_url.did.clone()));
+        assert_eq!(
+            vc.get("issuer").unwrap(),
+            &json!(iss_did_url.did().to_string())
+        );
         assert!(vc.contains_key("issuanceDate"));
         assert!(vc.contains_key("expirationDate"));
         assert_eq!(proof.get("type").unwrap(), &json!(proof_type.to_string()));
@@ -546,11 +580,12 @@ mod tests {
 
         let metadata = VCMetadata::new(
             vec![
-                "https://www.w3.org/2018/credentials/v1".to_string(),
-                "https://w3id.org/citizenship/v1".to_string(),
+                IriRefBuf::from_str("https://www.w3.org/2018/credentials/v1").unwrap(),
+                IriRefBuf::from_str("https://w3id.org/citizenship/v1").unwrap(),
             ],
             vec!["PermanentResidentCard".to_string()],
-        );
+        )
+        .unwrap();
 
         let result = JsonLdAPI::create_vc(
             sample_claims(),
@@ -562,7 +597,7 @@ mod tests {
 
         assert!(matches!(
             result.err().unwrap(),
-            crate::vc::formats::Error::Signing { .. }
+            crate::vc::formats::Error::SpruceSigning { .. }
         ));
     }
 
@@ -574,11 +609,12 @@ mod tests {
 
         let metadata = VCMetadata::new(
             vec![
-                "https://www.w3.org/2018/credentials/v1".to_string(),
-                "https://w3id.org/citizenship/v1".to_string(),
+                IriRefBuf::from_str("https://www.w3.org/2018/credentials/v1").unwrap(),
+                IriRefBuf::from_str("https://w3id.org/citizenship/v1").unwrap(),
             ],
             vec!["PermanentResidentCard".to_string()],
-        );
+        )
+        .unwrap();
 
         let result = JsonLdAPI::create_vc(
             sample_claims(),
@@ -602,11 +638,12 @@ mod tests {
 
         let metadata = VCMetadata::new(
             vec![
-                "https://www.w3.org/2018/credentials/v1".to_string(),
-                "https://w3id.org/citizenship/v1".to_string(),
+                IriRefBuf::from_str("https://www.w3.org/2018/credentials/v1").unwrap(),
+                IriRefBuf::from_str("https://w3id.org/citizenship/v1").unwrap(),
             ],
             vec!["PermanentResidentCard".to_string()],
-        );
+        )
+        .unwrap();
 
         let claims = json!({
             "type": ["PermanentResident", "Person"],
@@ -631,9 +668,8 @@ mod tests {
         )
         .await;
 
-        assert!(matches!(
-            vc_issuance_result.err().unwrap(),
-            Error::CredentialCreation { .. }
+        assert!(vc_issuance_result.err().unwrap().to_string().contains(
+            "JSON-LD expansion failed: expansion error: Key `given_name` expansion failed"
         ));
     }
 
@@ -651,11 +687,12 @@ mod tests {
 
         let metadata = VCMetadata::new(
             vec![
-                "https://www.w3.org/2018/credentials/v1".to_string(),
-                "https://w3id.org/citizenship/v1".to_string(),
+                IriRefBuf::from_str("https://www.w3.org/2018/credentials/v1").unwrap(),
+                IriRefBuf::from_str("https://w3id.org/citizenship/v1").unwrap(),
             ],
             vec!["PermanentResidentCard".to_string()],
-        );
+        )
+        .unwrap();
 
         let vc = JsonLdAPI::create_vc(
             sample_claims(),
@@ -668,10 +705,15 @@ mod tests {
 
         let nonce = LocalNonceGenerator::default().generate().await.unwrap();
 
-        let presentation =
-            JsonLdAPI::create_vp(&vc, hld_kh, &nonce, "verifier_id", VPMetadata::new())
-                .await
-                .unwrap();
+        let presentation = JsonLdAPI::create_vp(
+            &vc,
+            hld_kh,
+            &nonce,
+            "verifier_id",
+            VPMetadata::new().unwrap(),
+        )
+        .await
+        .unwrap();
 
         JsonLdAPI::verify_vp(
             &presentation,
@@ -691,14 +733,17 @@ mod tests {
 
         assert_eq!(
             vp.get("@context").unwrap(),
-            &json!("https://www.w3.org/2018/credentials/v1")
+            &json!(["https://www.w3.org/2018/credentials/v1"])
         );
         assert_eq!(vp.get("type").unwrap(), &json!("VerifiablePresentation"));
         assert_eq!(
             vp.get("verifiableCredential").unwrap(),
             &serde_json::to_value(vc).unwrap()
         );
-        assert_eq!(vp.get("holder").unwrap(), &json!(hld_did_url.did.clone()));
+        assert_eq!(
+            vp.get("holder").unwrap(),
+            &Value::String(hld_did_url.did().to_string())
+        );
         assert_eq!(proof.get("type").unwrap(), &json!(proof_type.to_string()));
         assert_eq!(
             proof.get("proofPurpose").unwrap(),
@@ -717,11 +762,12 @@ mod tests {
 
         let metadata = VCMetadata::new(
             vec![
-                "https://www.w3.org/2018/credentials/v1".to_string(),
-                "https://w3id.org/citizenship/v1".to_string(),
+                IriRefBuf::from_str("https://www.w3.org/2018/credentials/v1").unwrap(),
+                IriRefBuf::from_str("https://w3id.org/citizenship/v1").unwrap(),
             ],
             vec!["PermanentResidentCard".to_string()],
-        );
+        )
+        .unwrap();
 
         let vc = JsonLdAPI::create_vc(
             sample_claims(),
@@ -739,14 +785,11 @@ mod tests {
             failed_signer_key(hld_kh),
             &nonce,
             "verifier_id",
-            VPMetadata::new(),
+            VPMetadata::new().unwrap(),
         )
         .await;
 
-        assert!(matches!(
-            result.err().unwrap(),
-            crate::vc::formats::Error::Signing { .. }
-        ));
+        assert!(matches!(result.err().unwrap(), Error::SpruceSigning { .. }));
     }
 
     #[tokio::test]
@@ -757,11 +800,12 @@ mod tests {
 
         let metadata = VCMetadata::new(
             vec![
-                "https://www.w3.org/2018/credentials/v1".to_string(),
-                "https://w3id.org/citizenship/v1".to_string(),
+                IriRefBuf::from_str("https://www.w3.org/2018/credentials/v1").unwrap(),
+                IriRefBuf::from_str("https://w3id.org/citizenship/v1").unwrap(),
             ],
             vec!["PermanentResidentCard".to_string()],
-        );
+        )
+        .unwrap();
 
         let vc = JsonLdAPI::create_vc(
             sample_claims(),
@@ -774,8 +818,14 @@ mod tests {
 
         let nonce = LocalNonceGenerator::default().generate().await.unwrap();
 
-        let result =
-            JsonLdAPI::create_vp(&vc, no_jwk_key(), &nonce, "verifier_id", VPMetadata::new()).await;
+        let result = JsonLdAPI::create_vp(
+            &vc,
+            no_jwk_key(),
+            &nonce,
+            "verifier_id",
+            VPMetadata::new().unwrap(),
+        )
+        .await;
 
         assert!(matches!(
             result.err().unwrap(),

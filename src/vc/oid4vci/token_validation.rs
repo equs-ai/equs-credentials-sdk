@@ -4,19 +4,17 @@ use crate::utils::logs::sanitize_log_msg;
 use common_macros::DebugError;
 use oauth2::basic::BasicTokenType;
 use oauth2::http::header::{InvalidHeaderValue, ACCEPT, AUTHORIZATION, CONTENT_TYPE};
-use oauth2::http::{HeaderValue, Method};
+use oauth2::http::uri::InvalidUri;
+use oauth2::http::{HeaderMap, HeaderValue, Method, Request, StatusCode, Uri};
 use oauth2::{
-    EmptyExtraTokenFields, HttpRequest, StandardTokenIntrospectionResponse,
-    TokenIntrospectionResponse,
+    EmptyExtraTokenFields, StandardTokenIntrospectionResponse, TokenIntrospectionResponse,
 };
-use oid4vci::openidconnect;
-use oid4vci::openidconnect::core::{
-    CoreJsonWebKey, CoreJsonWebKeyType, CoreJsonWebKeyUse, CoreJwsSigningAlgorithm,
-};
-use oid4vci::openidconnect::{JsonWebKey, JsonWebKeyId, JsonWebKeySet, JsonWebKeySetUrl};
-use reqwest::StatusCode;
+use openidconnect::core::CoreJsonWebKey;
+use openidconnect::{DiscoveryError, JsonWebKey, JsonWebKeyId, JsonWebKeySet, JsonWebKeySetUrl};
 use snafu::{ensure, Location, ResultExt, Snafu};
 use std::fmt::Debug;
+use std::str::FromStr;
+use std::sync::Arc;
 use tracing::{debug, instrument, trace, Level};
 use url::Url;
 
@@ -47,6 +45,12 @@ pub enum Error {
         location: Location,
         source: url::ParseError,
     },
+    #[snafu(display("Invalid uri error"))]
+    InvalidUri {
+        #[snafu(implicit)]
+        location: Location,
+        source: InvalidUri,
+    },
     #[snafu(display("Parse error"))]
     Parse {
         #[snafu(implicit)]
@@ -63,13 +67,19 @@ pub enum Error {
     Discovery {
         #[snafu(implicit)]
         location: Location,
-        source: openidconnect::DiscoveryError<HttpError>,
+        source: DiscoveryError<HttpError>,
     },
     #[snafu(display("Signature verification error"))]
     SignatureVerification {
         #[snafu(implicit)]
         location: Location,
-        source: ssi::jws::Error,
+        source: ssi::claims::jws::Error,
+    },
+    #[snafu(display("Request builder error"))]
+    RequestBuilder {
+        #[snafu(implicit)]
+        location: Location,
+        source: oauth2::http::Error,
     },
 }
 
@@ -114,12 +124,18 @@ impl<HC: HttpClient> Introspect<HC> {
             headers.push((AUTHORIZATION, header));
         }
 
-        let request = HttpRequest {
-            url: self.introspect_endpoint.clone(),
-            method: Method::POST,
-            headers: headers.into_iter().collect(),
-            body,
-        };
+        let mut builder = Request::head(
+            Uri::from_str(self.introspect_endpoint.as_ref()).context(InvalidUriSnafu)?,
+        )
+        .method(Method::POST);
+
+        let default_headers = &mut HeaderMap::new();
+        let builder_headers = builder.headers_mut().unwrap_or(default_headers);
+        for (key, value) in headers {
+            builder_headers.append(key, value);
+        }
+
+        let request = builder.body(body).context(RequestBuilderSnafu)?;
 
         let response = self
             .http_client
@@ -128,14 +144,14 @@ impl<HC: HttpClient> Introspect<HC> {
             .context(NetworkSnafu)?;
 
         ensure!(
-            response.status_code == StatusCode::OK,
+            response.status() == StatusCode::OK,
             TokenSnafu {
                 details: "Token is invalid"
             }
         );
 
         let token_int_resp =
-            serde_json::from_slice::<IntrospectionResponse>(response.body.as_slice())
+            serde_json::from_slice::<IntrospectionResponse>(response.body().as_slice())
                 .context(ParseSnafu)?;
 
         trace!(token_introspection_response = ?token_int_resp);
@@ -154,7 +170,7 @@ impl<HC: HttpClient> Introspect<HC> {
 }
 
 pub struct ByJwks<HC: HttpClient> {
-    http_client: HC,
+    http_client: Arc<HC>,
     jwks_url: JsonWebKeySetUrl,
 }
 
@@ -165,7 +181,7 @@ impl<HC: HttpClient> ByJwks<HC> {
     )]
     pub fn new(http_client: HC, jwks_url: JsonWebKeySetUrl) -> Self {
         Self {
-            http_client,
+            http_client: Arc::new(http_client),
             jwks_url,
         }
     }
@@ -177,16 +193,15 @@ impl<HC: HttpClient> ByJwks<HC> {
         ret(),
     )]
     pub async fn validate(&self, token: &str) -> Result<()> {
-        let jwks = JsonWebKeySet::<
-            CoreJwsSigningAlgorithm,
-            CoreJsonWebKeyType,
-            CoreJsonWebKeyUse,
-            CoreJsonWebKey,
-        >::fetch_async(&self.jwks_url, |req| self.http_client.async_call(req))
-        .await
-        .context(DiscoverySnafu)?;
+        let http_callback = |req| {
+            let client = self.http_client.clone();
+            Box::pin(async move { client.async_call(req).await })
+        };
+        let jwks = JsonWebKeySet::<CoreJsonWebKey>::fetch_async(&self.jwks_url, &http_callback)
+            .await
+            .context(DiscoverySnafu)?;
 
-        let (header, _) = ssi::jws::decode_unverified(token).map_err(|e| {
+        let (header, _) = ssi::claims::jws::decode_unverified(token).map_err(|e| {
             TokenSnafu {
                 details: format!("Can not parse the header of the token: {e}"),
             }
@@ -217,7 +232,7 @@ impl<HC: HttpClient> ByJwks<HC> {
         let jwk = serde_json::from_value(serde_json::to_value(key).context(ParseSnafu)?)
             .context(ParseSnafu)?;
 
-        ssi::jws::decode_verify(token, &jwk).context(SignatureVerificationSnafu)?;
+        ssi::claims::jws::decode_verify(token, &jwk).context(SignatureVerificationSnafu)?;
 
         debug!("access token is valid");
 
@@ -233,7 +248,6 @@ mod tests {
     use crate::vc::oid4vci::tests::fixtures::{
         sample_introspect_response, sample_jwks, JWKS_URL, TOKEN_INTROSPECT_URL,
     };
-    use oauth2::http::HeaderMap;
     use oauth2::HttpResponse;
     use serde_json::{json, Value};
 
@@ -319,14 +333,11 @@ mod tests {
             method,
             Url::parse(url).unwrap(),
             move |req| {
-                let resp = HttpResponse {
-                    status_code: status,
-                    headers: HeaderMap::from_iter(vec![(
-                        CONTENT_TYPE,
-                        HeaderValue::from_str(MIME_TYPE_JSON).unwrap(),
-                    )]),
-                    body: serde_json::to_vec(&body).unwrap(),
-                };
+                let body = serde_json::to_vec(&body).unwrap();
+                let mut resp = HttpResponse::new(body);
+                resp.headers_mut()
+                    .insert(CONTENT_TYPE, HeaderValue::from_static(MIME_TYPE_JSON));
+                *resp.status_mut() = status;
 
                 Ok(resp)
             },

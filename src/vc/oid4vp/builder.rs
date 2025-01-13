@@ -1,4 +1,3 @@
-use crate::did::universal::UniversalResolver;
 use crate::http::{HttpClient, HttpError, HttpSnafu};
 use crate::nonce::NonceGenerator;
 use crate::reqwest::builder::ReqwestClientBuilder;
@@ -7,7 +6,7 @@ use crate::vc::core::KeyMetadata;
 use crate::vc::oid4vp as api;
 use crate::vc::oid4vp::holder::HolderService;
 use crate::vc::oid4vp::verifier::VerifierService;
-use crate::{did, kms, vault, vc};
+use crate::{kms, vault, vc};
 use common_macros::DebugError;
 use snafu::{Location, Snafu};
 use std::fmt::Debug;
@@ -27,11 +26,10 @@ pub enum Error {
 
 /// A builder for creating an `OID4VP` `Verifier` instance.
 #[derive(Clone)]
-pub struct VerifierBuilder<KH, KMS, D, NG>
+pub struct VerifierBuilder<KH, KMS, NG>
 where
     KH: kms::KeyHandle,
     KMS: kms::Kms<KH>,
-    D: did::DIDResolver,
     NG: NonceGenerator,
 {
     // data
@@ -41,13 +39,12 @@ where
 
     // services
     kms: KMS,
-    resolver: D,
     nonce_generator: NG,
 
     _marker: PhantomData<KH>,
 }
 
-impl<KH, KMS, NG> VerifierBuilder<KH, KMS, UniversalResolver, NG>
+impl<KH, KMS, NG> VerifierBuilder<KH, KMS, NG>
 where
     KH: kms::KeyHandle,
     KMS: kms::Kms<KH>,
@@ -75,24 +72,21 @@ where
         client_id: String,
     ) -> Self {
         info!("oid4vp-verifier builder is initialized");
-
         Self {
             client_id,
             key_metadata,
             kms,
             nonce_generator,
-            resolver: UniversalResolver::new(),
             client_metadata: None,
             _marker: Default::default(),
         }
     }
 }
 
-impl<KH, KMS, D, NG> VerifierBuilder<KH, KMS, D, NG>
+impl<KH, KMS, NG> VerifierBuilder<KH, KMS, NG>
 where
     KH: kms::KeyHandle,
     KMS: kms::Kms<KH>,
-    D: did::DIDResolver,
     NG: NonceGenerator,
 {
     /// Sets the Verifier's client metadata.
@@ -110,35 +104,6 @@ where
     pub fn with_client_metadata(mut self, client_metadata: api::ClientMetadata) -> Self {
         self.client_metadata = Some(client_metadata);
         self
-    }
-
-    /// Sets a custom DID resolver.
-    ///
-    /// This method allows providing a custom `DIDResolver` for resolving DIDs.
-    /// If no custom resolver is provided, the default `UniversalResolver` will be used.
-    ///
-    /// # Arguments
-    ///
-    /// * `resolver` - an instance of a custom DID resolver.
-    #[instrument(
-        level = Level::TRACE,
-        skip_all,
-    )]
-    pub fn with_did_resolver<D_: did::DIDResolver>(
-        self,
-        resolver: D_,
-    ) -> VerifierBuilder<KH, KMS, D_, NG> {
-        VerifierBuilder {
-            resolver,
-            // copied
-            client_id: self.client_id,
-            client_metadata: self.client_metadata,
-            key_metadata: self.key_metadata,
-            kms: self.kms,
-            nonce_generator: self.nonce_generator,
-
-            _marker: Default::default(),
-        }
     }
 
     /// Builds the `Verifier` API instance based on the current configuration of the builder.
@@ -161,7 +126,6 @@ where
         let verifier = VerifierService::new(
             inner,
             self.kms,
-            self.resolver,
             self.nonce_generator,
             self.client_id,
             self.key_metadata,
@@ -175,12 +139,11 @@ where
 }
 
 /// A builder for creating an `OID4VP` `Holder` API instance.
-pub struct HolderBuilder<KH, KMS, V, D, HC>
+pub struct HolderBuilder<KH, KMS, V, HC>
 where
     KH: kms::KeyHandle,
     KMS: kms::Kms<KH> + Clone,
     V: vault::Vault,
-    D: did::DIDResolver,
     HC: HttpClient,
 {
     // data
@@ -190,14 +153,13 @@ where
     // services
     kms: KMS,
     vault: V,
-    resolver: D,
     // TODO: Should be HTTP client type, not Result
     http_client: Result<HC, HttpError>,
 
     _marker: PhantomData<KH>,
 }
 
-impl<KH, KMS, V> HolderBuilder<KH, KMS, V, UniversalResolver, ReqwestClient>
+impl<KH, KMS, V> HolderBuilder<KH, KMS, V, ReqwestClient>
 where
     KH: kms::KeyHandle,
     KMS: kms::Kms<KH> + Clone,
@@ -233,19 +195,17 @@ where
             kms,
             vault,
             http_client,
-            resolver: UniversalResolver::new(),
             wallet_metadata: None,
             _marker: Default::default(),
         }
     }
 }
 
-impl<KH, KMS, V, D, HC> HolderBuilder<KH, KMS, V, D, HC>
+impl<KH, KMS, V, HC> HolderBuilder<KH, KMS, V, HC>
 where
     KH: kms::KeyHandle,
     KMS: kms::Kms<KH> + Clone,
     V: vault::Vault,
-    D: did::DIDResolver,
     HC: HttpClient,
 {
     /// Sets custom wallet metadata for the holder.
@@ -280,41 +240,13 @@ where
     pub fn with_http_client<HC_: HttpClient>(
         self,
         http_client: HC_,
-    ) -> HolderBuilder<KH, KMS, V, D, HC_> {
+    ) -> HolderBuilder<KH, KMS, V, HC_> {
         HolderBuilder {
             client_id: self.client_id,
             wallet_metadata: self.wallet_metadata,
             kms: self.kms,
             vault: self.vault,
-            resolver: self.resolver,
             http_client: Ok(http_client),
-            _marker: Default::default(),
-        }
-    }
-
-    /// Sets a custom DID resolver.
-    ///
-    /// This method allows providing a custom `DIDResolver` for resolving DIDs.
-    /// If no custom resolver is provided, the default `UniversalResolver` will be used.
-    ///
-    /// # Arguments
-    ///
-    /// * `resolver` - an instance of a custom DID resolver.
-    #[instrument(
-        level = Level::TRACE,
-        skip_all,
-    )]
-    pub fn with_did_resolver<D_: did::DIDResolver>(
-        self,
-        resolver: D_,
-    ) -> HolderBuilder<KH, KMS, V, D_, HC> {
-        HolderBuilder {
-            resolver,
-            client_id: self.client_id,
-            wallet_metadata: self.wallet_metadata,
-            kms: self.kms,
-            vault: self.vault,
-            http_client: self.http_client,
             _marker: Default::default(),
         }
     }
@@ -348,13 +280,7 @@ where
             .build()
         })?;
 
-        let holder = HolderService::new(
-            inner,
-            self.resolver,
-            http_client,
-            self.kms,
-            self.wallet_metadata,
-        );
+        let holder = HolderService::new(inner, http_client, self.kms, self.wallet_metadata);
 
         info!("oid4vp-holder service is initialized");
 
@@ -364,7 +290,6 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::did::universal::UniversalResolver;
     use crate::http::MockHttpClient;
     use crate::inmem::kms::LocalKms;
     use crate::inmem::nonce::LocalNonceGenerator;
@@ -381,7 +306,6 @@ mod tests {
 
         HolderBuilder::new(kms, vault, CLIENT_ID.to_owned())
             .with_http_client(MockHttpClient::new())
-            .with_did_resolver(UniversalResolver::new())
             .with_wallet_metadata(default_wallet_metadata())
             .build()
             .await
@@ -407,7 +331,6 @@ mod tests {
 
         let verifier = VerifierBuilder::new(kms, nonce_gen, key_metadata, did.clone())
             .with_client_metadata(default_client_metadata())
-            .with_did_resolver(UniversalResolver::new())
             .build()
             .await
             .unwrap();

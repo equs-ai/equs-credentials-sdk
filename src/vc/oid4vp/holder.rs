@@ -1,4 +1,4 @@
-use crate::did::{DIDResolver, DIDURL};
+use crate::did::universal::UniversalResolver;
 use crate::http::HttpClient;
 use crate::kms::{KeyHandle, Kms};
 use crate::nonce::Nonce;
@@ -6,9 +6,9 @@ use crate::utils::http::MimeType;
 use crate::vault::CredentialEntry;
 use crate::vc::core::PresentationInput;
 use crate::vc::oid4vp::internal_error::{
-    AuthorizationResponseSnafu, CredentialNotFoundSnafu, DidUrlParseSnafu, HttpClientSnafu,
-    IdTokenGenerationSnafu, IdTokenMetadataNotFoundSnafu, IdTokenParseSnafu, JsonSnafu, KMSSnafu,
-    ParseSnafu, PresentationExchangeSnafu, VCSnafu,
+    AuthorizationResponseSnafu, CredentialNotFoundSnafu, HttpClientSnafu, IdTokenGenerationSnafu,
+    IdTokenMetadataNotFoundSnafu, IdTokenParseSnafu, JsonSnafu, KMSSnafu, ParseSnafu,
+    PresentationExchangeSnafu, VCSnafu,
 };
 use crate::vc::oid4vp::metadata::default_wallet_metadata;
 use crate::vc::oid4vp::signer::Signer;
@@ -20,15 +20,18 @@ use crate::vc::{oid4vp as api, presentation_exchange};
 use crate::{utils, vc};
 use async_trait::async_trait;
 use futures::{future, StreamExt};
-use oid4vp::core::authorization_request::parameters::ResponseType;
-use oid4vp::core::authorization_request::verification::{did, RequestVerifier};
-use oid4vp::core::authorization_request::{AuthorizationRequest, AuthorizationRequestObject};
-use oid4vp::core::metadata::WalletMetadata;
-use oid4vp::core::object::UntypedObject;
-use oid4vp::core::response::parameters::{IdToken, PresentationSubmission, VpToken};
-use oid4vp::core::response::{AuthorizationResponse, UnencodedAuthorizationResponse};
-use oid4vp::wallet::{IdTokenParams, Wallet};
+use oauth2::http::{Request, Response};
+use openid4vp::core::authorization_request::parameters::ResponseType;
+use openid4vp::core::authorization_request::verification::{did, RequestVerifier};
+use openid4vp::core::authorization_request::{AuthorizationRequest, AuthorizationRequestObject};
+use openid4vp::core::metadata::WalletMetadata;
+use openid4vp::core::presentation_submission::PresentationSubmission;
+use openid4vp::core::response::parameters::{IdToken, VpToken};
+use openid4vp::core::response::{AuthorizationResponse, UnencodedAuthorizationResponse};
+use openid4vp::core::util::http::AsyncHttpClient;
+use openid4vp::wallet::{IdTokenParams, Wallet};
 use snafu::ResultExt;
+use ssi::dids::DIDURLBuf;
 use std::marker::PhantomData;
 use std::str::FromStr;
 use tracing::{error, info, instrument, Level};
@@ -38,37 +41,30 @@ pub type Error = api::Error;
 pub type Result<T> = core::result::Result<T, Error>;
 const ID_TOKEN_JWT_PROOF_TYPE: &str = "JWT";
 
-pub struct HolderService<HL, D, HC, KH, KMS>
+pub struct HolderService<HL, HC, KH, KMS>
 where
     HL: vc::core::Holder,
-    D: DIDResolver,
+    HC: HttpClient,
     KH: KeyHandle,
     KMS: Kms<KH>,
 {
     holder: HL,
-    did_resolver: D,
+    public_jwk_resolver: UniversalResolver,
     metadata: WalletMetadata,
     kms: KMS,
     http_client: HC,
     _marker: PhantomData<KH>,
 }
 
-impl<HL, D, HC, KH, KMS> HolderService<HL, D, HC, KH, KMS>
+impl<HL, HC, KH, KMS> HolderService<HL, HC, KH, KMS>
 where
     HL: vc::core::Holder,
-    D: DIDResolver,
     HC: HttpClient,
     KH: KeyHandle,
     KMS: Kms<KH>,
 {
-    #[instrument(level = Level::TRACE, skip(holder, did_resolver, http_client, kms))]
-    pub fn new(
-        holder: HL,
-        did_resolver: D,
-        http_client: HC,
-        kms: KMS,
-        metadata: Option<WalletMetadata>,
-    ) -> Self {
+    #[instrument(level = Level::TRACE, skip(holder, http_client, kms))]
+    pub fn new(holder: HL, http_client: HC, kms: KMS, metadata: Option<WalletMetadata>) -> Self {
         let metadata = metadata.unwrap_or(default_wallet_metadata());
 
         info!("oid4vp-holder service is initialized");
@@ -76,7 +72,7 @@ where
         Self {
             holder,
             metadata,
-            did_resolver,
+            public_jwk_resolver: UniversalResolver::default(),
             kms,
             http_client,
             _marker: Default::default(),
@@ -111,7 +107,6 @@ where
                 &auth_request.response_uri,
                 &auth_request.response_mode,
                 auth_resp,
-                |req| self.http_client.async_call(req),
             )
             .await?;
 
@@ -129,15 +124,14 @@ where
         let pres_sub_json = serde_json::to_value(&presentation_response.presentation_submission)
             .context(JsonSnafu)?;
 
-        let pres_sub =
+        let presentation_submission =
             PresentationSubmission::try_from(pres_sub_json).context(AuthorizationResponseSnafu)?;
 
-        let auth_resp = AuthorizationResponse::Unencoded(UnencodedAuthorizationResponse(
-            UntypedObject::default(),
+        let auth_resp = AuthorizationResponse::Unencoded(UnencodedAuthorizationResponse {
             vp_token,
-            pres_sub,
+            presentation_submission,
             id_token,
-        ));
+        });
 
         Ok(auth_resp)
     }
@@ -159,7 +153,12 @@ where
             .await
             .context(KMSSnafu)?;
 
-        let did_url = DIDURL::from_str(&metadata.key_metadata.did_url).context(DidUrlParseSnafu)?;
+        let did_url = DIDURLBuf::from_str(&metadata.key_metadata.did_url).map_err(|e| {
+            ParseSnafu {
+                details: e.to_string(),
+            }
+            .build()
+        })?;
         let params = IdTokenParams {
             audience: auth_request.client_id.to_owned(),
             nonce: auth_request.nonce.secret().to_owned().into(),
@@ -204,7 +203,7 @@ where
         if let Some(presentation) = events.next().await {
             return Ok(RequestedPresentation {
                 id: presentation_input.id.to_owned(),
-                presentation: presentation.to_owned(),
+                presentation,
             });
         }
 
@@ -224,9 +223,7 @@ where
         let url = match auth_req {
             AuthorizationRequest::Plain(aro) => aro.return_uri().to_owned(),
             AuthorizationRequest::Signed(signed_req) => {
-                signed_req
-                    .resolve_response_uri(|req| self.http_client.async_call(req))
-                    .await?
+                signed_req.resolve_response_uri(self).await?
             }
         };
 
@@ -246,7 +243,8 @@ where
             MimeType::AppFormUrlEnc,
             MimeType::AppJson,
             body.into_bytes(),
-        );
+        )
+        .context(HttpClientSnafu)?;
 
         let _ = self
             .http_client
@@ -287,7 +285,7 @@ where
             .presentation_definition
             .input_descriptors()
             .iter()
-            .flat_map(|d| d.format());
+            .flat_map(|d| &d.format);
         for (format, payload) in formats_map {
             let found = self
                 .metadata
@@ -298,7 +296,7 @@ where
                 let body = ProtocolError::vp_formats_not_supported(&format!(
                     "vp format = '{}' with {} algorithms is not supported",
                     String::from(format.to_owned()),
-                    serde_json::to_string(payload).unwrap_or_else(|_| "".to_string())
+                    serde_json::to_string(&payload).unwrap_or_else(|_| "".to_string())
                 ));
                 self.submit_auth_error_resp(&auth_request.response_uri, &body)
                     .await?;
@@ -312,10 +310,9 @@ where
 }
 
 #[async_trait]
-impl<HL, D, HC, KH, KMS> api::Holder for HolderService<HL, D, HC, KH, KMS>
+impl<HL, HC, KH, KMS> api::Holder for HolderService<HL, HC, KH, KMS>
 where
     HL: vc::core::Holder,
-    D: DIDResolver,
     HC: HttpClient,
     KH: KeyHandle,
     KMS: Kms<KH>,
@@ -323,7 +320,7 @@ where
     #[instrument(level = Level::TRACE, skip(self), err(), ret())]
     async fn get_authorization_request(&self, request_uri: &Url) -> Result<ResolvedAuthRequest> {
         let aro_result = self
-            .validate_request(request_uri, |req| self.http_client.async_call(req))
+            .validate_request(request_uri)
             .await
             .map_err(Error::from);
 
@@ -341,7 +338,7 @@ where
         };
 
         let pres_def = aro
-            .resolve_presentation_definition(|req| self.http_client.async_call(req))
+            .resolve_presentation_definition(self)
             .await?
             .parsed()
             .to_owned();
@@ -464,24 +461,41 @@ where
 }
 
 #[async_trait]
-impl<HL, D, HC, KH, KMS> Wallet for HolderService<HL, D, HC, KH, KMS>
+impl<HL, HC, KH, KMS> AsyncHttpClient for HolderService<HL, HC, KH, KMS>
 where
     HL: vc::core::Holder,
-    D: DIDResolver,
     HC: HttpClient,
     KH: KeyHandle,
     KMS: Kms<KH>,
 {
-    fn metadata(&self) -> &WalletMetadata {
-        &self.metadata
+    async fn execute(&self, request: Request<Vec<u8>>) -> anyhow::Result<Response<Vec<u8>>> {
+        Ok(self.http_client.async_call(request).await?)
     }
 }
 
 #[async_trait]
-impl<HL, D, HC, KH, KMS> RequestVerifier for HolderService<HL, D, HC, KH, KMS>
+impl<HL, HC, KH, KMS> Wallet for HolderService<HL, HC, KH, KMS>
 where
     HL: vc::core::Holder,
-    D: DIDResolver,
+    HC: HttpClient,
+    KH: KeyHandle,
+    KMS: Kms<KH>,
+{
+    type HttpClient = Self;
+
+    fn metadata(&self) -> &WalletMetadata {
+        &self.metadata
+    }
+
+    fn http_client(&self) -> &Self::HttpClient {
+        self
+    }
+}
+
+#[async_trait]
+impl<HL, HC, KH, KMS> RequestVerifier for HolderService<HL, HC, KH, KMS>
+where
+    HL: vc::core::Holder,
     HC: HttpClient,
     KH: KeyHandle,
     KMS: Kms<KH>,
@@ -491,13 +505,13 @@ where
         &self,
         decoded_request: &AuthorizationRequestObject,
         request_jwt: String,
-    ) -> anyhow::Result<(), oid4vp::core::error::Error> {
+    ) -> anyhow::Result<(), openid4vp::core::error::Error> {
         did::verify_with_resolver(
             self.metadata(),
             decoded_request,
             request_jwt,
             None,
-            self.did_resolver.as_spruce_resolver(),
+            &self.public_jwk_resolver,
         )
         .await
     }
@@ -507,25 +521,25 @@ where
         &self,
         decoded_request: &AuthorizationRequestObject,
         redirect_uri: &Url,
-    ) -> anyhow::Result<(), oid4vp::core::error::Error> {
+    ) -> anyhow::Result<(), openid4vp::core::error::Error> {
         let supported = self
             .metadata()
             .is_client_id_schema_supported(decoded_request.client_id_scheme());
 
         if !supported {
-            return Err(oid4vp::core::error::Error::protocol_invalid_req(
+            return Err(openid4vp::core::error::Error::protocol_invalid_req(
                 "'redirect_uri' client_id_schema verification method is not supported",
             ));
         }
         let client_id = &decoded_request.client_id().0;
         let client_id_as_uri = Url::parse(client_id).map_err(|_| {
-            oid4vp::core::error::Error::protocol_invalid_req(
+            openid4vp::core::error::Error::protocol_invalid_req(
                 "could not parse 'client_id' = {client_id} as uri, in 'redirect_uri' response method it must be uri",
             )
         })?;
 
         if client_id_as_uri != *redirect_uri {
-            return Err(oid4vp::core::error::Error::protocol_invalid_req(
+            return Err(openid4vp::core::error::Error::protocol_invalid_req(
                 &format!("in 'redirect_uri' response mode 'client_id' = {client_id} must be equal to 'redirect_uri' = {redirect_uri}"),
             ));
         }
@@ -563,9 +577,9 @@ mod tests {
     use crate::vc::presentation_exchange::ClaimFormatMap;
     use crate::vc::Credential;
     use oauth2::http::Method;
+    use oauth2::reqwest::StatusCode;
     use oauth2::HttpResponse;
-    use oid4vp::core::response::PostRedirection;
-    use reqwest::StatusCode;
+    use openid4vp::core::response::PostRedirection;
     use rstest::rstest;
     use sd_jwt_rs::utils::decode_sd_jwt;
     use sd_jwt_rs::SDJWTSerializationFormat;
@@ -743,18 +757,19 @@ mod tests {
             Method::POST,
             build_url(VERIFIER_URL, "auth"),
             |req| {
-                let err: ProtocolError = serde_urlencoded::from_bytes(req.body.as_slice()).unwrap();
+                let err: ProtocolError =
+                    serde_urlencoded::from_bytes(req.body().as_slice()).unwrap();
                 assert_eq!(err.error_type(), &ErrorType::VpFormatsNotSupported);
                 assert!(err
                     .description()
                     .clone()
                     .unwrap()
-                    .contains("algorithms is not supported"),);
-                Ok(HttpResponse {
-                    status_code: StatusCode::OK,
-                    headers: Default::default(),
-                    body: vec![],
-                })
+                    .contains("algorithms is not supported"));
+
+                let mut response = HttpResponse::new(vec![]);
+                *response.status_mut() = StatusCode::OK;
+
+                Ok(response)
             },
             1.into(),
         );
@@ -810,13 +825,8 @@ mod tests {
             },
         );
 
-        let holder = crate::vc::oid4vp::holder::HolderService::new(
-            inner,
-            crate::did::universal::UniversalResolver::new(),
-            http_client,
-            kms_mock,
-            None,
-        );
+        let holder =
+            crate::vc::oid4vp::holder::HolderService::new(inner, http_client, kms_mock, None);
 
         let key_handle = kms.get(&key_metadata.kid).await.unwrap();
         let credential_mapping = test_case
@@ -859,13 +869,8 @@ mod tests {
             },
         );
 
-        let holder = crate::vc::oid4vp::holder::HolderService::new(
-            inner,
-            crate::did::universal::UniversalResolver::new(),
-            http_client,
-            kms_mock,
-            None,
-        );
+        let holder =
+            crate::vc::oid4vp::holder::HolderService::new(inner, http_client, kms_mock, None);
 
         let credential_mapping = test_case
             .build_credential_mapping((key_metadata.kid, key_handle))
@@ -898,17 +903,18 @@ mod tests {
             Method::POST,
             build_url(VERIFIER_URL, "auth"),
             |req| {
-                let err: ProtocolError = serde_urlencoded::from_bytes(req.body.as_slice()).unwrap();
+                let err: ProtocolError =
+                    serde_urlencoded::from_bytes(req.body().as_slice()).unwrap();
                 assert_eq!(err.error_type(), &ErrorType::AccessDenied);
                 assert_eq!(
                     err.description(),
                     &Some("matching credentials are not found".to_owned())
                 );
-                Ok(HttpResponse {
-                    status_code: StatusCode::OK,
-                    headers: Default::default(),
-                    body: vec![],
-                })
+
+                let mut response = HttpResponse::new(vec![]);
+                *response.status_mut() = StatusCode::OK;
+
+                Ok(response)
             },
             1.into(),
         );
@@ -937,11 +943,10 @@ mod tests {
             Method::POST,
             build_url(VERIFIER_URL, "auth"),
             |_| {
-                Ok(HttpResponse {
-                    status_code: StatusCode::INTERNAL_SERVER_ERROR,
-                    headers: Default::default(),
-                    body: "Internal Server Error".as_bytes().to_owned(),
-                })
+                let mut response = HttpResponse::new("Internal Server Error".as_bytes().to_owned());
+                *response.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
+
+                Ok(response)
             },
             1.into(),
         );
@@ -987,7 +992,7 @@ mod tests {
             .presentation_definition
             .input_descriptors()
             .iter()
-            .flat_map(|descriptor| credential_mapping.get(descriptor.id()).unwrap().clone())
+            .flat_map(|descriptor| credential_mapping.get(&descriptor.id).unwrap().clone())
             .map(|entry| entry.credential)
             .collect();
 
@@ -1046,7 +1051,7 @@ mod tests {
             .presentation_definition
             .input_descriptors()
             .iter()
-            .flat_map(|descriptor| credential_mapping.get(descriptor.id()).unwrap().clone())
+            .flat_map(|descriptor| credential_mapping.get(&descriptor.id).unwrap().clone())
             .map(|entry| entry.credential)
             .collect();
 
@@ -1117,11 +1122,10 @@ mod tests {
             Method::POST,
             build_url(VERIFIER_URL, "auth"),
             |_| {
-                Ok(HttpResponse {
-                    status_code: StatusCode::INTERNAL_SERVER_ERROR,
-                    headers: Default::default(),
-                    body: "Internal Server Error".as_bytes().to_owned(),
-                })
+                let mut response = HttpResponse::new("Internal Server Error".as_bytes().to_owned());
+                *response.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
+
+                Ok(response)
             },
             1.into(),
         );

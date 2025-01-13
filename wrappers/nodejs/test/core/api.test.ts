@@ -29,7 +29,7 @@ describe("VC::Core", () => {
                     credOfferId: undefined,
                     proof: {
                         format: "jwt",
-                        proof: "eyJhbGciOiJFUzI1NiIsImtpZCI6ImRpZDprZXk6ekRuYWVucG50Q2tYbkRDbmFEazYyTHhOcVBjNENNZDMyZmJoaVZzWlY1S3BQVEcyYyIsInR5cCI6Im9wZW5pZDR2Y2ktcHJvb2Yrand0In0.eyJhdWQiOiJodHRwczovL2lzc3Vlci1iYWNrZW5kLmNvbSIsIm5iZiI6MTcyNTM1MDQ4MCwiaWF0IjoxNzI1MzUwNDgwLCJleHAiOjQ4Nzg5NTA0ODAsIm5vbmNlIjoiS0I1MFZPbTlJLWtQTFQ5bUFBQ1Y4ZyJ9.v1bcMxXQDF4TqvR8ZJtL5-HcnuX9NgwErL9Qr9NFQ9IiAivWqoPpXizUFx8lpM26XUaY70FwGDFog17tbGysmg",
+                        proof: "eyJhbGciOiJFUzI1NiIsImtpZCI6ImRpZDprZXk6ekRuYWVxTnJnR1RBV3FVVlNVRnFvWFh3bjhONThVc2JLRVpDeUUyWlk5ZFRHS3B3cyN6RG5hZXFOcmdHVEFXcVVWU1VGcW9YWHduOE41OFVzYktFWkN5RTJaWTlkVEdLcHdzIiwidHlwIjoib3BlbmlkNHZjaS1wcm9vZitqd3QifQ.eyJhdWQiOiJodHRwczovL2lzc3Vlci1iYWNrZW5kLmNvbSIsIm5iZiI6MTczNTkwMTAzNCwiaWF0IjoxNzM1OTAxMDM0LCJleHAiOjY2MTQ4NTE1MTQsIm5vbmNlIjoiS0I1MFZPbTlJLWtQTFQ5bUFBQ1Y4ZyJ9.2flsRA_XKGFm4JBpvRHkV3QKLMo81OawQHL1YQdwVRo3OnZeugQJevWz8q-_lD-fo6U9_z_KuLNt9tQr_5A5Iw",
                     },
                 },
                 utils.claims,

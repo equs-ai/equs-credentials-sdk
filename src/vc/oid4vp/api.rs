@@ -14,10 +14,10 @@ use std::fmt::Debug;
 use url::Url;
 
 pub type CredentialMapping = HashMap<String, Vec<CredentialEntry>>;
-pub type ClientMetadata = oid4vp::core::authorization_request::parameters::ClientMetadata;
-pub type WalletMetadata = oid4vp::core::metadata::WalletMetadata;
-pub type ResponseType = oid4vp::core::authorization_request::parameters::ResponseType;
-pub type ResponseMode = oid4vp::core::authorization_request::parameters::ResponseMode;
+pub type ClientMetadata = openid4vp::core::authorization_request::parameters::ClientMetadata;
+pub type WalletMetadata = openid4vp::core::metadata::WalletMetadata;
+pub type ResponseType = openid4vp::core::authorization_request::parameters::ResponseType;
+pub type ResponseMode = openid4vp::core::authorization_request::parameters::ResponseMode;
 
 /// Metadata for an ID Token.
 ///
@@ -322,7 +322,7 @@ pub trait Verifier: Send + Sync {
 }
 
 use crate::vc::oid4vp::internal_error::Oid4VpLibSnafu;
-use oid4vp::core::error::Error as SpruceErr;
+use openid4vp::core::error::Error as SpruceErr;
 
 impl From<SpruceErr> for Error {
     fn from(value: SpruceErr) -> Self {

@@ -3,13 +3,12 @@ use aries_askar::kms::{KeyAlg, LocalKey};
 use aries_askar::Store;
 use async_trait::async_trait;
 use snafu::{ensure, ResultExt};
-use ssi::jwk::JWK;
 use std::sync::Arc;
 use tracing::{instrument, Level};
 
 use agent_sdk::crypto::{
     Alg, AlgNotSupportedSnafu, Error as CryptoError, Key, KeyNotSupportedSnafu, Signer, SigningKey,
-    SigningSnafu, VerificationSnafu, Verifier, VerifyingKey,
+    SigningSnafu, VerificationSnafu, Verifier, VerifyingKey, JWK,
 };
 use agent_sdk::kms::{
     CreateOptions, CreationSnafu, CryptoSnafu, Error as KmsError, KeyHandle, KeyID, KeyType, Kms,

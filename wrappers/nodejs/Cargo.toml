@@ -15,7 +15,7 @@ serde = { version = "1.0.204", features = ["derive"] }
 serde_json = "1.0.120"
 url = "2.5.2"
 async-trait = "0.1.81"
-oauth2 = "4.4.2"
+oauth2 = "5.0.0-rc.1"
 time = { version = "0.3.29", features = ["serde"] }
 tokio = "1.40.0"
 tracing-subscriber = { version = "0.3.18", features = ["fmt", "json", "env-filter"] }

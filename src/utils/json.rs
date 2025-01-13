@@ -5,6 +5,8 @@ use snafu::{Location, Snafu};
 use std::fmt::Debug;
 use tracing::{instrument, Level};
 
+type Level_ = Level;
+
 pub type Result<T> = core::result::Result<T, Error>;
 
 #[derive(Snafu, DebugError)]

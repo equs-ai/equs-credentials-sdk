@@ -4,6 +4,7 @@ use crate::vc::presentation_exchange;
 use crate::{http, nonce, vc};
 use common_macros::DebugError;
 use snafu::{Location, Snafu};
+use ssi::dids::InvalidDIDURL;
 use std::fmt::Debug;
 
 /// An `oid4vp` internal error.
@@ -59,7 +60,7 @@ pub enum InternalError {
     },
     #[snafu(display("JWS error"))]
     JWS {
-        source: ssi::jws::Error,
+        source: ssi::claims::jws::Error,
         #[snafu(implicit)]
         location: Location,
     },
@@ -87,12 +88,6 @@ pub enum InternalError {
         location: Location,
         source: url::ParseError,
     },
-    #[snafu(display("did url parse error"))]
-    DidUrlParse {
-        source: ssi::did::Error,
-        #[snafu(implicit)]
-        location: Location,
-    },
     #[snafu(display("Presentation exchange error"))]
     PresentationExchange {
         #[snafu(implicit)]
@@ -115,6 +110,13 @@ pub enum InternalError {
     #[snafu(display("Claims error"))]
     Claims {
         source: ClaimsError,
+        #[snafu(implicit)]
+        location: Location,
+    },
+
+    #[snafu(display("DID url buf resolution error"))]
+    DidUrlResolution {
+        source: InvalidDIDURL<String>,
         #[snafu(implicit)]
         location: Location,
     },

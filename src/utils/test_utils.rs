@@ -1,13 +1,14 @@
 use crate::crypto::{Alg, Key, Signer, SigningKey, Verifier, VerifyingKey};
 use crate::did::didkey::DIDKey;
-use crate::did::{DIDResolver, DID, DIDURL};
+use crate::did::universal::UniversalResolver;
+use crate::did::{DIDResolver, DID};
 use crate::inmem::kms::LocalKms;
 use crate::kms::{KeyHandle, KeyID, KeyType, Kms};
 use crate::vc::core::KeyMetadata;
 use crate::{crypto, kms};
 use async_trait::async_trait;
+use ssi::dids::DIDURLBuf;
 use ssi::jwk::JWK;
-use std::str::FromStr;
 
 pub async fn create_did_and_key_metadata(kms: &LocalKms) -> (DID, KeyMetadata) {
     create_did_and_key_metadata_by_key_type(kms, KeyType::P256).await
@@ -17,54 +18,66 @@ pub async fn create_did_and_key_metadata_by_key_type(
     kms: &LocalKms,
     kt: KeyType,
 ) -> (DID, KeyMetadata) {
-    let didkey = DIDKey::new();
-
     let (kid, kh) = kms
         .create_and_handle(kt, kms::CreateOptions {})
         .await
         .unwrap();
 
-    let did = didkey.generate(kh).unwrap();
+    let did = DIDKey::generate(kh).unwrap();
 
-    let vm = didkey.resolve_verification_method(&did).await.unwrap().id;
+    let did_url = UniversalResolver::default()
+        .resolve_into_any_verification_method(ssi::dids::DID::new(did.as_bytes()).unwrap())
+        .await
+        .unwrap()
+        .unwrap()
+        .id;
 
-    (did, KeyMetadata { kid, did_url: vm })
+    (
+        did,
+        KeyMetadata {
+            kid,
+            did_url: did_url.to_string(),
+        },
+    )
 }
 
 pub async fn create_did_url_and_key_handle(
     kms: &LocalKms,
     key_type: KeyType,
-) -> (DIDURL, impl KeyHandle) {
-    let didkey = DIDKey::new();
-
+) -> (DIDURLBuf, impl KeyHandle) {
     let (_, kh) = kms
         .create_and_handle(key_type, kms::CreateOptions {})
         .await
         .unwrap();
 
-    let did = didkey.generate(kh.clone()).unwrap();
-    let vm = didkey.resolve_verification_method(&did).await.unwrap().id;
+    let did = DIDKey::generate(kh.clone()).unwrap();
+    let did_url = UniversalResolver::default()
+        .resolve_into_any_verification_method(ssi::dids::DID::new(did.as_bytes()).unwrap())
+        .await
+        .unwrap()
+        .unwrap()
+        .id;
 
-    let did_url = DIDURL::from_str(&vm).unwrap();
     (did_url, kh)
 }
 
 pub async fn create_did_url_and_key_handle_kid(
     kms: &LocalKms,
     key_type: KeyType,
-) -> (DIDURL, KeyID, impl KeyHandle) {
-    let didkey = DIDKey::new();
-
+) -> (DIDURLBuf, KeyID, impl KeyHandle) {
     let (kid, kh) = kms
         .create_and_handle(key_type, kms::CreateOptions {})
         .await
         .unwrap();
 
-    let did = didkey.generate(kh.clone()).unwrap();
-    let vm = didkey.resolve_verification_method(&did).await.unwrap().id;
+    let did = DIDKey::generate(kh.clone()).unwrap();
+    let vm = UniversalResolver::default()
+        .resolve_into_any_verification_method(ssi::dids::DID::new(did.as_bytes()).unwrap())
+        .await
+        .unwrap()
+        .unwrap();
 
-    let did_url = DIDURL::from_str(&vm).unwrap();
-    (did_url, kid, kh)
+    (vm.id, kid, kh)
 }
 
 pub fn no_jwk_key() -> impl KeyHandle {

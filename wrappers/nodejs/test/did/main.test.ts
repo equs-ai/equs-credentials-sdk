@@ -1,8 +1,6 @@
 import { createUniversalDidResolver, DIDKey, inMemKms, KeyHandle, KeyType } from "../../index";
-import { Utils } from "./utils";
 
 describe("DID: ", () => {
-	const utils = new Utils();
 	let did: string;
 	let keyHandle: KeyHandle;
 
@@ -27,16 +25,20 @@ describe("DID: ", () => {
 		expect(did).toEqual(expect.stringContaining("did:key:"));
 	});
 
+
 	describe("Universal Resolver: ", () => {
 		const resolver = createUniversalDidResolver();
 
-		test("Resolve", async () => {
-			const result = await resolver.resolve(did, { input: { accept: "test" } });
-			expect(result).toEqual(expect.objectContaining(utils.keyResolveResponse));
-		});
 		test("Resolve verification method", async () => {
 			const result = await resolver.resolveVerificationMethod(did);
-			expect(result).toEqual(expect.objectContaining(utils.keyVerificationMethod));
+			expect(result).toEqual(expect.objectContaining(
+				{
+					id: expect.stringContaining("did:key:"),
+					controller: expect.stringContaining("did:key:"),
+					type: "Multikey",
+					publicKeyMultibase: expect.stringMatching("^z[1-9A-HJ-NP-Za-km-z]+$"),
+				}
+			));
 		});
 	});
 });

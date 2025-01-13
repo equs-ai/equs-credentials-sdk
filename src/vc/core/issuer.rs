@@ -1,7 +1,7 @@
-use crate::did::DIDURL;
 use crate::kms;
 use crate::nonce::Nonce;
 use crate::vc::claims::Claims;
+use crate::vc::core::api::{ContextParsingSnafu, DidUrlParsingSnafu};
 use crate::vc::core::{
     AlgNotSupportedSnafu, CredDefNotFoundSnafu, CredentialOfferContent, FormatNotSupportedSnafu,
     InconsistentProtocolDataSnafu, KMSSnafu, ProofFormatNotSupportedSnafu, ProofSnafu, Result,
@@ -20,7 +20,9 @@ use crate::vc::pop::jwt_pop::JwtProofOfPossession;
 use crate::vc::pop::ProofOfPossession;
 use crate::vc::{pop, Credential, VCFormat};
 use async_trait::async_trait;
+use iref::IriRefBuf;
 use snafu::{ensure, ResultExt};
+use ssi::dids::DIDURLBuf;
 use std::marker::PhantomData;
 use std::str::FromStr;
 use tracing::{debug, info, instrument, trace, Level};
@@ -189,8 +191,17 @@ where
         trace!(?protocol_data);
 
         let metadata = match protocol_data {
-            Some(CredentialDefinitionData::Ldp { contexts, vc_types }) => {
-                json_ld_vc::VCMetadata::new(contexts, vc_types)
+            Some(CredentialDefinitionData::Ldp {
+                contexts: ctx_strs,
+                vc_types,
+            }) => {
+                let mut contexts = vec![];
+                for context in ctx_strs {
+                    let c = IriRefBuf::new(context.to_owned()).context(ContextParsingSnafu)?;
+                    contexts.push(c);
+                }
+
+                json_ld_vc::VCMetadata::new(contexts, vc_types).context(VCSnafu)?
             }
             _ => InconsistentProtocolDataSnafu {
                 format: VCFormat::LdpVc.to_string(),
@@ -265,12 +276,15 @@ where
     }
 
     #[instrument(level = Level::TRACE, skip(self), err())]
-    async fn resolve_key_metadata(&self, cred_def: &CredentialDefinition) -> Result<(DIDURL, KH)> {
+    async fn resolve_key_metadata(
+        &self,
+        cred_def: &CredentialDefinition,
+    ) -> Result<(DIDURLBuf, KH)> {
         trace!(credential_definition_id = ?cred_def);
 
         let key_meta = &cred_def.key_metadata;
 
-        let did_url = DIDURL::from_str(&key_meta.did_url).unwrap();
+        let did_url = DIDURLBuf::from_str(&key_meta.did_url).context(DidUrlParsingSnafu)?;
 
         info!("access to the key {}", key_meta.kid);
         let kh = self.kms.get(&key_meta.kid).await.context(KMSSnafu)?;

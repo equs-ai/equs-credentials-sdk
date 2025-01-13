@@ -1,46 +1,50 @@
 pub mod fixtures {
     use crate::crypto::Alg;
+    use crate::vc::claims::Claims;
     use crate::vc::core::tests::utils::CredTestCase;
     use crate::vc::core::{
         CredentialDefinition, CredentialOffer, CredentialOfferContent, IssuerMetadata, KeyMetadata,
     };
     use crate::vc::formats::json_ld_vc;
-    use ssi::core::uri;
-    use ssi::one_or_many::OneOrMany;
-    use ssi::vc::{Contexts, CredentialSubject};
-    use ssi_ldp::Context;
+    use iref::{IriRefBuf, UriBuf};
+    use ssi::claims::data_integrity::Proofs;
+    use ssi::claims::vc::syntax::IdOr;
+    use ssi::claims::vc::v1::syntax::CredentialType;
+    use ssi::json_ld::syntax::ContextEntry;
     use std::collections::HashMap;
+    use std::str::FromStr;
 
-    pub const ISSUER_ID: &str = "issuer-id";
-    pub const VERIFIER_ID: &str = "verifier-id";
+    pub const ISSUER_ID: &str = "https://example.issuer.org";
+    pub const VERIFIER_ID: &str = "https://example.verifier.org";
     pub const CRED_DEF_ID: &str = "CRED_DEF_ID";
     pub const CRED_OFFER_ID: &str = "CRED_OFFER_ID";
 
     pub const VCT: &str = "https://issuer.net/cred_schema";
     pub const CRED_TYPE: &str = "PermanentResident";
 
-    pub fn fake_ldp_vc_cred() -> json_ld_vc::Credential {
-        json_ld_vc::Credential {
-            context: Contexts::One(Context::URI(uri::URI::String(
-                "https://placeholder.com".to_string(),
-            ))),
+    pub fn fake_ldp_vc_cred() -> json_ld_vc::VC {
+        let mut context = ssi::claims::vc::syntax::Context::default();
+        context.insert(ContextEntry::IriRef(
+            IriRefBuf::new("https://placeholder.com".to_string()).unwrap(),
+        ));
+        let types = ssi::claims::vc::syntax::Types::<CredentialType>::default();
+        let cred = json_ld_vc::Credential {
+            context,
             id: None,
-            type_: OneOrMany::One("type".to_string()),
-            credential_subject: OneOrMany::One(CredentialSubject {
-                id: None,
-                property_set: None,
-            }),
-            issuer: None,
+            types,
+            credential_subjects: ssi::claims::vc::syntax::NonEmptyVec::new(Claims::new()),
+            issuer: IdOr::Id(UriBuf::from_str(ISSUER_ID).unwrap()),
             issuance_date: None,
-            proof: None,
             expiration_date: None,
-            credential_status: None,
-            terms_of_use: None,
-            evidence: None,
-            credential_schema: None,
-            refresh_service: None,
-            property_set: None,
-        }
+            credential_status: vec![],
+            terms_of_use: vec![],
+            evidence: vec![],
+            credential_schema: vec![],
+            refresh_services: vec![],
+            additional_properties: Default::default(),
+        };
+
+        json_ld_vc::VC::new(cred, Proofs::default())
     }
 
     pub fn sample_issuer_metadata(
@@ -101,6 +105,7 @@ pub mod fixtures {
 
 pub mod utils {
     use crate::crypto::Key;
+    use crate::crypto::Signer;
     use crate::did::DIDURL;
     use crate::inmem::kms::LocalKms;
     use crate::inmem::nonce::LocalNonceGenerator;
@@ -117,15 +122,15 @@ pub mod utils {
     use crate::vc::formats::json_ld_vc::JsonLdAPI;
     use crate::vc::formats::sd_jwt_vc::SdJwtAPI;
     use crate::vc::formats::{json_ld_vc, sd_jwt_vc, HasCredential, VerifyOptions};
-    use crate::vc::pop::jwt_pop::{JwtProofOfPossession, SignerWrapper};
+    use crate::vc::pop::jwt_pop::JwtProofOfPossession;
     use crate::vc::pop::{GenerateOptions, ProofOfPossession};
     use crate::vc::{pop, ClaimFormat, Credential, Presentation, VCFormat, VCFormatsAPI};
-    use oid4vci::openidconnect;
+    use iref::IriRefBuf;
     use oid4vci::proof_of_possession::{ProofOfPossessionBody, ProofOfPossessionController};
     use serde_json::json;
+    use std::str::FromStr;
     use time::{Duration, OffsetDateTime};
     use uuid::Uuid;
-
     pub async fn random_nonce() -> Nonce {
         let nonce_gen = LocalNonceGenerator::default();
         nonce_gen.generate().await.unwrap()
@@ -215,7 +220,7 @@ pub mod utils {
                 _ => unimplemented!(),
             };
 
-            assert!(did_url.starts_with(&v_did_url.did))
+            assert!(did_url.starts_with(v_did_url.did().as_str()))
         }
 
         pub async fn assert_credential(&self, vc: &Credential) {
@@ -250,13 +255,20 @@ pub mod utils {
                     }
                     (_, _) => unimplemented!(),
                 },
-                _ => assert_eq!(vp_vc, vc),
+                _ => assert_eq!(
+                    serde_json::to_value(vp_vc).unwrap(),
+                    serde_json::to_value(vc).unwrap()
+                ),
             }
         }
 
         pub async fn assert_verified_claims(&self, verified_claims: &Claims) {
             let verified_claims = match &self.format {
-                VCFormat::LdpVc => verified_claims.get("credentialSubject").unwrap(),
+                VCFormat::LdpVc => {
+                    let vcs = verified_claims.get("verifiableCredential").unwrap();
+
+                    vcs.get("credentialSubject").unwrap()
+                }
                 _ => &verified_claims.clone().into(),
             };
 
@@ -387,7 +399,7 @@ pub mod utils {
                             .checked_add(Duration::minutes(5))
                             .unwrap(),
                     ),
-                    nonce: openidconnect::Nonce::new(nonce.secret().to_owned()),
+                    nonce: oid4vci::types::Nonce::new(nonce.secret().to_owned()),
                 },
                 controller: ProofOfPossessionController {
                     vm: Some(hld_did_url.to_owned()),
@@ -395,9 +407,10 @@ pub mod utils {
                 },
             };
 
-            let sgn = SignerWrapper { key: h_kh };
+            let signing_input = pop.to_jwt_signing_input().unwrap();
+            let signed = h_kh.sign(&signing_input).await.unwrap();
 
-            pop.to_jwt_with_signer(sgn).await.unwrap()
+            pop.to_jwt_with_signature(signed).unwrap()
         }
 
         pub async fn generate_vc(&self, kms: &LocalKms) -> CredentialEntry {
@@ -527,10 +540,17 @@ pub mod utils {
             claims: &Claims,
             iss_data: (&DIDURL, impl KeyHandle),
             hld_data: (&DIDURL, impl KeyHandle),
-            contexts: &Vec<String>,
-            vc_types: &Vec<String>,
-        ) -> json_ld_vc::Credential {
-            let vc_meta = json_ld_vc::VCMetadata::new(contexts.to_owned(), vc_types.to_owned());
+            contexts: &[String],
+            vc_types: &[String],
+        ) -> json_ld_vc::VC {
+            let vc_meta = json_ld_vc::VCMetadata::new(
+                contexts
+                    .iter()
+                    .map(|s| IriRefBuf::from_str(s).unwrap())
+                    .collect(),
+                vc_types.to_owned(),
+            )
+            .unwrap();
 
             JsonLdAPI::create_vc(claims.clone(), iss_data, hld_data, vc_meta)
                 .await
@@ -538,11 +558,11 @@ pub mod utils {
         }
 
         async fn json_ld_vp(
-            vc: &json_ld_vc::Credential,
+            vc: &json_ld_vc::VC,
             kh: impl KeyHandle,
             nonce: &Nonce,
-        ) -> json_ld_vc::Presentation {
-            let vp_meta = json_ld_vc::VPMetadata::new();
+        ) -> json_ld_vc::VP {
+            let vp_meta = json_ld_vc::VPMetadata::new().unwrap();
 
             JsonLdAPI::create_vp(vc, kh, nonce, VERIFIER_ID, vp_meta)
                 .await

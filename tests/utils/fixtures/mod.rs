@@ -3,10 +3,8 @@ pub(crate) mod oid4vp;
 use serde_json::json;
 use url::Url;
 
-use oid4vci::core::metadata::IssuerMetadata;
-use oid4vci::metadata::AuthorizationMetadata;
-
 use agent_sdk::vc::claims::Claims;
+use agent_sdk::vc::oid4vci::{AuthorizationMetadata, IssuerMetadata};
 
 pub const AUTHZ_URL: &str = "https://authz-backend.com";
 pub const ISSUER_URL: &str = "https://issuer-backend.com";
@@ -103,82 +101,35 @@ pub fn sample_issuer_metadata() -> IssuerMetadata {
             },
             "LDPVC_cred_1": {
               "scope": SCOPE.to_owned(),
+              "cryptographic_binding_methods_supported": [
+                "jwk"
+              ],
               "format": "ldp_vc",
-              "@context": [
+              "credential_signing_alg_values_supported": [
+                "Ed25519Signature2018",
+                "EcdsaSecp256k1Signature2019"
+              ],
+              "credential_definition": {
+                "@context": [
                   "https://www.w3.org/2018/credentials/v1",
                   "https://w3id.org/citizenship/v1"
-              ],
-              "type": [
+                ],
+                "type": [
                   "VerifiableCredential",
-                  "PermanentResident"
-              ],
-              "cryptographic_binding_methods_supported": [
-                  "jwk"
-              ],
-              "cryptographic_suites_supported": [
-                  "Ed25519Signature2018",
-                  "EcdsaSecp256k1Signature2019"
-              ],
-              "credentials_definition": {
-                  "@context": [
-                      "https://www.w3.org/2018/credentials/v1",
-                      "https://w3id.org/citizenship/v1"
-                  ],
-                  "type": [
-                      "VerifiableCredential",
-                      "PermanentResident"
-                  ],
-                  "credentialSubject": {
-                      "givenName": {
-                          "display": [
-                              {
-                                  "name": "Given Name",
-                                  "locale": "en-US"
-                              }
-                          ]
-                      },
-                      "familyName": {
-                          "display": [
-                              {
-                                  "name": "Surname",
-                                  "locale": "en-US"
-                              }
-                          ]
-                      },
-                      "gender": {
-                        "display": [
-                            {
-                                "name": "Gender",
-                                "locale": "en-US"
-                            }
-                        ]
-                      },
-                      "birthDate": {},
-                      "birthCountry": {},
-                      "commuterClassification": {},
-                      "residentSince": {},
-                      "gpa": {
-                          "display": [
-                              {
-                                  "name": "GPA"
-                              }
-                          ]
-                      }
-                  }
-              },
-              "display": [
-                  {
-                      "name": "University Credential",
-                      "locale": "en-US",
-                      "logo": {
-                          "url": "https://exampleuniversity.com/public/logo.png",
-                          "alt_text": "a square logo of a university"
-                      },
-                      "background_color": "#12107c",
-                      "text_color": "#FFFFFF"
-                  }
-              ]
-          },
+                  "PermanentResidentCard"
+                ],
+                "credentialSubject": {
+                  "givenName": {},
+                  "residentSince": {},
+                  "birthDate": {},
+                  "birthCountry": {},
+                  "familyName": {},
+                  "gender": {},
+                  "commuterClassification": {},
+                  "gpa": {}
+                }
+              }
+            }
           }
         }
     ));

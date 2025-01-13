@@ -57,6 +57,7 @@ pub type Result<T> = core::result::Result<T, Error>;
 #[non_exhaustive]
 pub enum Alg {
     ES256,
+    ES256K,
     EdDSA,
 }
 
@@ -66,6 +67,7 @@ impl FromStr for Alg {
     fn from_str(s: &str) -> Result<Alg> {
         match s {
             "ES256" => Ok(Alg::ES256),
+            "ES256K" => Ok(Alg::ES256K),
             "EdDSA" => Ok(Alg::EdDSA),
             _ => AlgNotSupportedSnafu { alg: s }.fail(),
         }
@@ -79,24 +81,9 @@ impl TryFrom<&jwk::Algorithm> for Alg {
         match value {
             jwk::Algorithm::EdDSA => Ok(Alg::EdDSA),
             jwk::Algorithm::ES256 => Ok(Alg::ES256),
+            jwk::Algorithm::ES256K => Ok(Alg::ES256K),
             _ => AlgNotSupportedSnafu {
                 alg: serde_json::to_string(value).unwrap_or(format!("{:?}", value)),
-            }
-            .fail(),
-        }
-    }
-}
-
-impl TryFrom<&ssi::ldp::ProofSuiteType> for Alg {
-    type Error = Error;
-
-    fn try_from(value: &ssi::ldp::ProofSuiteType) -> Result<Alg> {
-        match value {
-            ssi::ldp::ProofSuiteType::Ed25519Signature2018 => Ok(Alg::EdDSA),
-            ssi::ldp::ProofSuiteType::Ed25519Signature2020 => Ok(Alg::EdDSA),
-            ssi::ldp::ProofSuiteType::EcdsaSecp256k1Signature2019 => Ok(Alg::ES256),
-            _ => AlgNotSupportedSnafu {
-                alg: format!("{:?}", value),
             }
             .fail(),
         }

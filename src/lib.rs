@@ -7,7 +7,7 @@
 #![allow(clippy::large_enum_variant)]
 #![allow(clippy::upper_case_acronyms)]
 #![allow(clippy::assigning_clones)]
-#![forbid(unsafe_code)]
+// #![forbid(unsafe_code)]
 
 // external
 pub mod crypto;

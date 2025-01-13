@@ -1,59 +1,88 @@
-use super::didpeer::SpruceCompatibleDIDPeer;
-use async_trait::async_trait;
-use ssi::did::DIDMethods;
-use ssi::did_resolve::DIDResolver as SpruceResolver;
-use tracing::{instrument, trace, Level};
+use super::didpeer::DIDPeer;
+use crate::did::ProofValidationError;
+use iref::Iri;
+use ssi::dids::resolution::{Options, Output};
+use ssi::dids::{AnyDidMethod, DIDMethod, DIDResolver, VerificationMethodDIDResolver, DID};
+use ssi::jwk::JWKResolver;
+use ssi::prelude::AnyMethod;
+use ssi::verification_methods::{
+    ReferenceOrOwnedRef, ResolutionOptions, VerificationMethodResolutionError,
+    VerificationMethodResolver,
+};
+use ssi::JWK;
+use std::borrow::Cow;
+use std::ops::Deref;
+use tracing::{instrument, Level};
 
-use crate::did::{DIDResolver, Resolution, ResolveOptions};
+type Level_ = Level;
 
 /// An Universal `DID` resolver.
 ///
 /// # Supported methods
 ///
 /// `did:key`
-pub struct UniversalResolver {
-    impls: DIDMethods<'static>,
-}
+/// `did:peer`
+/// `did:web`
+#[derive(Default)]
+pub struct UniversalResolver {}
 
-impl UniversalResolver {
-    #[instrument(
-        level = Level::TRACE,
-    )]
-    pub fn new() -> Self {
-        let mut impls = DIDMethods::default();
-        impls.insert(Box::new(did_method_key::DIDKey {}));
-        impls.insert(Box::new(did_web::DIDWeb {}));
-        impls.insert(Box::new(SpruceCompatibleDIDPeer::new()));
-
-        Self { impls }
-    }
-}
-
-#[async_trait]
 impl DIDResolver for UniversalResolver {
-    #[instrument(
-        level = Level::TRACE,
-        skip(self),
-        ret(),
-    )]
-    async fn resolve(&self, did: &str, options: ResolveOptions) -> Resolution {
-        let (metadata, doc, doc_metadata) = self.impls.resolve(did, &options.input).await;
+    #[instrument(level = Level::TRACE, skip(self), ret())]
+    async fn resolve_representation<'a>(
+        &'a self,
+        did: &'a DID,
+        options: Options,
+    ) -> Result<Output<Vec<u8>>, ssi::dids::resolution::Error> {
+        let result = match did.method_specific_id() {
+            DIDPeer::DID_METHOD_NAME => DIDPeer::new().resolve_representation(did, options).await,
+            _ => {
+                AnyDidMethod::default()
+                    .resolve_representation(did, options)
+                    .await
+            }
+        }?;
 
-        trace!(resolved_metadata = ?metadata, resolved_did_doc = ?doc, resolved_did_doc_metadata = ?doc_metadata);
-
-        Resolution {
-            doc,
-            metadata,
-            doc_metadata,
-        }
+        Ok(Output {
+            metadata: result.metadata,
+            document: result.document,
+            document_metadata: result.document_metadata,
+        })
     }
+}
 
-    #[instrument(
-        level = Level::TRACE,
-        skip_all,
-    )]
-    fn as_spruce_resolver(&self) -> &dyn SpruceResolver {
-        self.impls.to_resolver()
+impl VerificationMethodResolver for UniversalResolver {
+    type Method = AnyMethod;
+
+    #[instrument(level = Level::TRACE, skip(self, options), ret())]
+    async fn resolve_verification_method_with(
+        &self,
+        issuer: Option<&Iri>,
+        method: Option<ReferenceOrOwnedRef<'_, Self::Method>>,
+        options: ResolutionOptions,
+    ) -> Result<Cow<Self::Method>, VerificationMethodResolutionError> {
+        let vmdr = VerificationMethodDIDResolver::new(UniversalResolver {});
+        let vm = vmdr
+            .resolve_verification_method_with(issuer, method, options)
+            .await?
+            .deref()
+            .clone();
+
+        Ok(Cow::Owned(vm))
+    }
+}
+
+impl JWKResolver for UniversalResolver {
+    #[instrument(level = Level::TRACE, skip(self), ret())]
+    async fn fetch_public_jwk(
+        &self,
+        key_id: Option<&str>,
+    ) -> Result<Cow<JWK>, ProofValidationError> {
+        let resolver: VerificationMethodDIDResolver<_, AnyMethod> =
+            VerificationMethodDIDResolver::new(UniversalResolver {});
+
+        let jwk = resolver.fetch_public_jwk(key_id).await?.deref().clone();
+
+        Ok(Cow::Owned(jwk))
     }
 }
 
@@ -69,15 +98,20 @@ mod tests {
 
     #[tokio::test]
     async fn universal_resolver_supports_didkey() {
-        let resolver = UniversalResolver::new();
-        let did = didkey().await;
+        let resolver = UniversalResolver::default();
+        let did_key = didkey().await;
+        let did = ssi::dids::DID::new(&did_key).unwrap();
 
-        let resolution = resolver.resolve(&did, Default::default()).await;
-        assert!(resolution.metadata.error.is_none());
-        assert_eq!(resolution.doc.unwrap().id, did);
+        let resolution = resolver.resolve(did).await.unwrap();
+        assert!(resolution.metadata.content_type.is_some());
+        assert_eq!(resolution.document.id.as_did(), did);
 
-        let vm = resolver.resolve_verification_method(&did).await.unwrap();
-        assert!(vm.id.starts_with(&did));
+        let vm = resolver
+            .resolve_into_any_verification_method(did)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(vm.id.starts_with(&did_key));
     }
 
     #[tokio::test]
@@ -118,35 +152,45 @@ mod tests {
             )
             .create();
 
-        let resolver = UniversalResolver::new();
+        let resolver = UniversalResolver::default();
 
-        let resolution = resolver.resolve(&did, Default::default()).await;
+        let resolution = resolver
+            .resolve(ssi::dids::DID::new(&did).unwrap())
+            .await
+            .unwrap();
 
-        assert!(resolution.metadata.error.is_none());
-        assert_eq!(resolution.doc.unwrap().id, did);
+        assert!(resolution.metadata.content_type.is_some());
+        assert_eq!(resolution.document.id.as_did().to_string(), did);
 
-        let vm = resolver.resolve_verification_method(&did).await.unwrap();
-        assert!(vm.id.starts_with(&did));
+        let vm = resolver
+            .resolve_into_any_verification_method(ssi::dids::DID::new(&did).unwrap())
+            .await
+            .unwrap()
+            .unwrap();
+
+        assert!(vm.id.to_string().starts_with(&did));
     }
 
     #[tokio::test]
     async fn universal_resolver_fails_on_unsupported_method() {
-        let resolver = UniversalResolver::new();
+        let resolver = UniversalResolver::default();
         let did = "did:example:12345";
 
-        let resolution = resolver.resolve(did, Default::default()).await;
-        assert!(resolution.metadata.error.is_some());
+        let resolution = resolver
+            .resolve(ssi::dids::DID::new(did).unwrap())
+            .await
+            .err();
+        assert!(resolution.unwrap().to_string().contains("not supported"));
     }
 
     async fn didkey() -> DID {
         let kms = LocalKms::new();
-        let didkey = DIDKey::new();
 
         let (_, kh) = kms
             .create_and_handle(kms::KeyType::P256, CreateOptions {})
             .await
             .unwrap();
 
-        didkey.generate(kh.clone()).unwrap()
+        DIDKey::generate(kh.clone()).unwrap()
     }
 }

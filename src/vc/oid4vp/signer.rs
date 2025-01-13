@@ -32,7 +32,7 @@ impl<S: SigningKey> Debug for Signer<S> {
 }
 
 #[async_trait]
-impl<S: SigningKey> oid4vp::signer::Signer for Signer<S> {
+impl<S: SigningKey> openid4vp::signer::Signer for Signer<S> {
     type Error = anyhow::Error;
 
     #[instrument(level = Level::TRACE, skip(self), ret())]
