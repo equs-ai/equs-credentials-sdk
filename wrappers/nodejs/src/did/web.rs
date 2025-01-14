@@ -23,7 +23,7 @@ impl JsDIDWeb {
             .map_err(|e| Error::from_reason(e.to_string()))
     }
 
-    #[napi]
+    #[napi(ts_return_type = "DIDDocument")]
     pub fn generate_did_document(&self, did: String, key: JsKeyHandle) -> Result<JsonObject> {
         DIDWeb::generate_did_document(&did, &key)
             .map_err(|e| Error::from_reason(e.to_string()))

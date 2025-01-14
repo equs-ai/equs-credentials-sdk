@@ -92,6 +92,7 @@ impl OID4VPHolder {
 #[napi(object)]
 pub struct AuthorizationRequest {
     pub client_id: String,
+    #[napi(ts_type = "PresentationDefinition")]
     pub presentation_definition: JsonObject,
     pub nonce: String,
     pub response_type: String,

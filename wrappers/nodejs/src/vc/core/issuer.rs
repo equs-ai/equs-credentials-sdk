@@ -29,7 +29,7 @@ impl VCCoreIssuer {
     pub async fn issue_credential(
         &self,
         credential_request: JsCredentialRequest,
-        claims: Value,
+        #[napi(ts_arg_type = "Claims")] claims: Value,
         nonce: String,
     ) -> Result<JsCredential, Error> {
         let claims = claims

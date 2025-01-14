@@ -16,8 +16,8 @@
   },
   "scripts": {
     "artifacts": "napi artifacts",
-    "build": "napi build --platform --release && node fix-type-names.mjs",
-    "build:debug": "napi build --features=in-memory --platform && node fix-type-names.mjs",
+    "build": "napi build --platform --release && node scripts/fix-type-names.mjs && node scripts/add-import-line.mjs",
+    "build:debug": "napi build --features=in-memory --platform && node scripts/fix-type-names.mjs && node scripts/add-import-line.mjs",
     "prepublishOnly": "napi prepublish -t npm",
     "test": "jest",
     "universal": "napi universal",
@@ -26,13 +26,14 @@
   },
   "packageManager": "yarn@4.5.0",
   "dependencies": {
-    "jwt-decode": "^4.0.0"
+    "jwt-decode": "^4.0.0",
+    "oauth4webapi": "^3.1.4"
   },
   "devDependencies": {
     "@napi-rs/cli": "^2.18.4",
+    "@types/base-64": "^1.0.2",
     "@types/jest": "^29.5.13",
     "@types/node-jose": "^1.1.13",
-    "@types/base-64": "^1.0.2",
     "@typescript-eslint/eslint-plugin": "^7.4.0",
     "@typescript-eslint/parser": "^7.4.0",
     "base-64": "^1.0.0",

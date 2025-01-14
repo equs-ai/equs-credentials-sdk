@@ -11,7 +11,7 @@ pub struct VCCoreVerifier(pub(crate) Box<dyn Verifier>);
 
 #[napi]
 impl VCCoreVerifier {
-    #[napi]
+    #[napi(ts_return_type = "Promise<Claims>")]
     pub async fn verify_presentation(
         &self,
         nonce: String,

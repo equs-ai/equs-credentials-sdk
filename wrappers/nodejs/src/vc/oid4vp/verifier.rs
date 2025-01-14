@@ -22,7 +22,7 @@ impl OID4VPVerifier {
     #[napi]
     pub async fn create_authorization_request(
         &self,
-        presentation_definition: JsonObject,
+        #[napi(ts_arg_type = "PresentationDefinition")] presentation_definition: JsonObject,
         auth_response_options: JsAuthResponseOptions,
         pass_auth_request_object: &JsPassAuthRequestObject,
         wallet_metadata: Option<JsonObject>,
@@ -51,7 +51,7 @@ impl OID4VPVerifier {
         })
     }
 
-    #[napi]
+    #[napi(ts_return_type = "Promise<Claims>")]
     pub async fn verify_presentation(
         &self,
         authorization_response: JsAuthorizationResponse,
@@ -109,6 +109,7 @@ impl JsPassAuthRequestObject {
 #[napi(js_name = "PresentationSession", object)]
 pub struct JsPresentationSession {
     pub nonce: String,
+    #[napi(ts_type = "PresentationDefinition")]
     pub presentation_definition: JsonObject,
     pub authorization_request_jwt: Option<String>,
 }
@@ -148,6 +149,7 @@ pub struct AuthorizationRequestWithSession {
 pub struct JsAuthorizationResponse {
     pub vp_token: serde_json::Value,
     pub id_token: Option<String>,
+    #[napi(ts_type = "PresentationSubmission")]
     pub presentation_submission: JsonObject,
 }
 

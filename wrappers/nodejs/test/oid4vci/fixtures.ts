@@ -1,3 +1,5 @@
+import { Claims, OID4VCICredentialRequest, OID4VCIIssuerMetadata } from "../../types/entrypoint";
+
 export const ISSUER_ENDPOINT = "http://localhost:9000";
 export const TOKEN_ENDPOINT = `${ISSUER_ENDPOINT}/auth/token`;
 export const PUSHED_AUTH_REQUEST_ENDPOINT = `${ISSUER_ENDPOINT}/auth/par/request`;
@@ -5,7 +7,7 @@ export const CRED_DEF_ID = "IDENTITY_SD_JWT";
 export const CRED_TYPE = "SD_JWT_cred";
 export const SCOPE = "SD_JWT_cred";
 
-export const ISSUER_METADATA = {
+export const ISSUER_METADATA: OID4VCIIssuerMetadata = {
 	credential_issuer: ISSUER_ENDPOINT,
 	authorization_servers: [`${ISSUER_ENDPOINT}/auth`],
 	credential_endpoint: `${ISSUER_ENDPOINT}/credential`,
@@ -88,7 +90,7 @@ export const CRED_DEF_METADATA = {
 export const PROOF_JWT =
 	"eyJhbGciOiJFUzI1NiIsImtpZCI6ImRpZDprZXk6ekRuYWVmM2lLZTFGV3U4QUtOM25yUEpCdWtTenNTNE5KNm95b0xiVjh1QkNTR2ZjZiN6RG5hZWYzaUtlMUZXdThBS04zbnJQSkJ1a1N6c1M0Tko2b3lvTGJWOHVCQ1NHZmNmIiwidHlwIjoib3BlbmlkNHZjaS1wcm9vZitqd3QifQ.eyJhdWQiOiJodHRwOi8vbG9jYWxob3N0OjkwMDAiLCJuYmYiOjE3MzYxODIzOTcsImlhdCI6MTczNjE4MjM5NywiZXhwIjo0ODg5NzgyMzk3LCJub25jZSI6IktCNTBWT205SS1rUExUOW1BQUNWOGcifQ.IteWgE_LbL7lanDu3CJDdwGheGRDrJdh_gn-ldOraEWazE_kTtcgXMp4WJG871FOqRzI8lphSxWfqrGBXG4wxA";
 
-export const CRED_REQUEST = {
+export const CRED_REQUEST: OID4VCICredentialRequest = {
 	format: "vc+sd-jwt",
 	vct: "SD_JWT_cred",
 	proof: {
@@ -125,7 +127,7 @@ export const ACCESS_TOKEN_RESPONSE = {
 	expires_in: 86400,
 };
 
-export const CLAIMS = {
+export const CLAIMS: Claims = {
 	vct: "SD_JWT_cred",
 	given_name: "John",
 	family_name: "Doe",
