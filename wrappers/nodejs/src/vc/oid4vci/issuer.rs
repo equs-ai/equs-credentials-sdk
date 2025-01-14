@@ -12,14 +12,17 @@ pub struct OID4VCIIssuer(pub(crate) Box<dyn Issuer>);
 
 #[napi]
 impl OID4VCIIssuer {
-    #[napi]
+    #[napi(ts_return_type = "OID4VCIIssuerMetadata")]
     pub fn get_issuer_metadata(&self) -> Result<JsonObject> {
         let issuer_metadata = self.0.get_issuer_metadata();
 
         to_json_object(issuer_metadata)
     }
 
-    #[napi]
+    #[napi(
+        ts_args_type = "credRequest: OID4VCICredentialRequest",
+        ts_return_type = "OID4VCICredentialMetadata | null"
+    )]
     pub fn get_cred_def_metadata(&self, cred_request: JsonObject) -> Result<Option<JsonObject>> {
         self.0
             .get_cred_def_metadata(&from_json_object(cred_request)?)
@@ -31,7 +34,8 @@ impl OID4VCIIssuer {
     pub fn create_credential_offer(
         &self,
         cred_def_ids: Vec<&str>,
-        grants: JsonObject, // grant type (auth code, pre-auth code), etc.
+
+        #[napi(ts_arg_type = "CredentialOfferGrants")] grants: JsonObject, // grant type (auth code, pre-auth code), etc.
     ) -> Result<CredentialOffer> {
         let (params, url) = self
             .0
@@ -47,7 +51,7 @@ impl OID4VCIIssuer {
     #[napi]
     pub async fn issue_credential(
         &self,
-        cred_request: JsonObject,
+        #[napi(ts_arg_type = "OID4VCICredentialRequest")] cred_request: JsonObject,
         token: String,
         claims: JsonObject,
         session: IssuanceSession,

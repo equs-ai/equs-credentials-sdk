@@ -29,7 +29,7 @@ impl OID4VCIHolder {
 
 #[napi]
 impl OID4VCIHolder {
-    #[napi]
+    #[napi(ts_return_type = "OID4VCIIssuerMetadata")]
     pub fn get_issuer_metadata(&self) -> napi::Result<JsonObject> {
         let issuer_metadata = self.0.get_issuer_metadata();
 
@@ -37,7 +37,8 @@ impl OID4VCIHolder {
     }
 
     #[napi(
-        ts_args_type = "scope: string, authorization_callback: (url: string) => Promise<string>"
+        ts_args_type = "scope: string, authorization_callback: (url: string) => Promise<string>",
+        ts_return_type = "Promise<TokenResponse>"
     )]
     pub async fn authz_code_flow_with_scope(
         &self,
@@ -66,7 +67,7 @@ impl OID4VCIHolder {
             .and_then(to_json_object)
     }
 
-    #[napi]
+    #[napi(ts_return_type = "Promise<TokenResponse>")]
     pub async fn pre_authz_code_flow(
         &self,
         pre_authorized_code: String,

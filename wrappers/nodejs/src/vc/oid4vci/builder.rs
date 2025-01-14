@@ -34,7 +34,7 @@ impl OID4VCIIssuerBuilder {
     pub fn new(
         kms: Either<&NativeKms, JsKms>,
         nonce_generator: Either<&NativeNonceGenerator, JsNonceGenerator>,
-        issuer_metadata: JsonObject,
+        #[napi(ts_arg_type = "OID4VCIIssuerMetadata")] issuer_metadata: JsonObject,
         key_metadata: JsKeyMetadata,
     ) -> Self {
         OID4VCIIssuerBuilder {
@@ -206,7 +206,10 @@ impl JsIssuerDiscovery {
         )))
     }
 
-    #[napi(factory)]
+    #[napi(
+        factory,
+        ts_args_type = "issuerMetadata: OID4VCIIssuerMetadata, authMetadata: AuthMetadata"
+    )]
     pub fn from_metadata(issuer_metadata: JsonObject, auth_metadata: JsonObject) -> Result<Self> {
         Ok(JsIssuerDiscovery(IssuerDiscovery::Metadata(
             from_json_object(issuer_metadata)?,
