@@ -28,7 +28,8 @@ use crate::nonce::{Nonce, NonceData};
 use crate::vc;
 use crate::vc::core::{CredentialOfferContent, KeyMetadata, Proof as AsdkProof};
 use crate::vc::oid4vci::internal_error::{
-    DiscoverySnafu, IssuerServiceSnafu, MetadataSnafu, ParseSnafu, UrlParseSnafu, VCSnafu,
+    DiscoverySnafu, IssuerServiceSnafu, MetadataSnafu, ParseSnafu, TypeConversionSnafu,
+    UrlParseSnafu, VCSnafu,
 };
 use crate::vc::oid4vci::protocol_error::ProtocolSnafu;
 use crate::vc::oid4vci::{
@@ -572,7 +573,13 @@ impl TryInto<CredentialResult> for &CredentialResponse {
                 notification_id: self.notification_id().map(|v| v.to_owned()),
             },
             ResponseEnum::Deferred { transaction_id } => CredentialResult::Deferred {
-                transaction_id: transaction_id.clone().unwrap(),
+                transaction_id: transaction_id.clone().ok_or(
+                    TypeConversionSnafu {
+                        details: "Deferred credential response must contain transaction ID"
+                            .to_string(),
+                    }
+                    .build(),
+                )?,
             },
             ResponseEnum::ImmediateMany { .. } => ProtocolSnafu::new(
                 ErrorType::InvalidCredentialRequest,

@@ -135,34 +135,45 @@ fn path_to_json_helper(
 }
 
 // TODO: get rid of Claim -> String convertation since it is considered to be insecure
-pub fn claims_to_json_path(claims: Claims) -> Vec<(String, String)> {
+pub fn claims_to_json_path(claims: Claims) -> Result<Vec<(String, String)>> {
     let mut flatten = vec![];
-    flatten_claims(&mut flatten, &claims.into(), "$");
+    flatten_claims(&mut flatten, &claims.into(), "$")?;
 
-    flatten
+    Ok(flatten)
 }
 
-fn flatten_claims(flatten: &mut Vec<(String, String)>, root: &Claim, parent_key: &str) {
+fn flatten_claims(
+    flatten: &mut Vec<(String, String)>,
+    root: &Claim,
+    parent_key: &str,
+) -> Result<()> {
     match root {
         Claim::Object(obj) => {
             for (key, value) in obj {
                 let key = format!("{parent_key}.{key}");
-                flatten_claims(flatten, value, &key);
+                flatten_claims(flatten, value, &key)?;
             }
         }
         Claim::Array(vec) => {
             for value in vec {
                 let key = format!("{parent_key}[*]");
-                flatten_claims(flatten, value, &key);
+                flatten_claims(flatten, value, &key)?;
             }
         }
         Claim::String(val) => {
             flatten.push((parent_key.to_owned(), val.clone()));
         }
         _ => {
-            flatten.push((parent_key.to_owned(), serde_json::to_string(&root).unwrap()));
+            let value = serde_json::to_string(&root).map_err(|err| {
+                ParsingSnafu {
+                    details: format!("Failed to convert to string: {err}"),
+                }
+                .build()
+            })?;
+            flatten.push((parent_key.to_owned(), value));
         }
     }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -309,7 +320,7 @@ mod test {
         .try_into()
         .unwrap();
 
-        let claims = claims_to_json_path(json);
+        let claims = claims_to_json_path(json).unwrap();
 
         assert_eq!(claims.len(), 5);
         assert!(claims.contains(&("$.name".to_string(), "John".to_string())));

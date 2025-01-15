@@ -164,7 +164,7 @@ fn json_ld_protocol_data(
         .credential_definition()
         .context()
         .iter()
-        .map(|ctx| ctx.as_str().unwrap().to_string())
+        .map(|ctx| ctx.as_str().unwrap_or_default().to_string())
         .collect();
 
     let vc_types = metadata.credential_definition().r#type().clone();

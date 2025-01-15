@@ -1,5 +1,5 @@
 use crate::crypto;
-use crate::crypto::VerificationSnafu;
+use crate::crypto::{MalformedSnafu, VerificationSnafu};
 use async_trait::async_trait;
 use ed25519_dalek::{SecretKey, Signature, Signer, SigningKey};
 use rand::rngs::OsRng;
@@ -30,7 +30,12 @@ impl crypto::Suite for Ed25519 {
         ret(),
     )]
     fn from_secret(vec: Vec<u8>) -> Result<Ed25519, crypto::Error> {
-        let s: SecretKey = vec.try_into().unwrap();
+        let s: SecretKey = vec.try_into().map_err(|_| {
+            MalformedSnafu {
+                details: "Invalid secret key bytes".to_string(),
+            }
+            .build()
+        })?;
         let signing_key = SigningKey::from_bytes(&s);
 
         Ok(Ed25519 { signing_key })
