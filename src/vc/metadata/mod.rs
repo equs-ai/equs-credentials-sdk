@@ -113,6 +113,12 @@ impl DefaultMetadataProcessor {
         })?;
 
         let tags: Vec<(String, String)> = utils::json::claims_to_json_path(claims)
+            .map_err(|err| {
+                ResolvingSnafu {
+                    details: format!("Unable to create tags for claims: {err}"),
+                }
+                .build()
+            })?
             .iter()
             .map(|(k, v)| (k.to_owned(), v.to_owned()))
             .collect();

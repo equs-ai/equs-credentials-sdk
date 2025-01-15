@@ -87,7 +87,12 @@ impl DIDWeb {
         let port = url.port().map_or(String::new(), |p| format!("%3A{p}"));
         let path_segments = url
             .path_segments()
-            .unwrap()
+            .ok_or_else(|| {
+                DidGenerationSnafu {
+                    details: "invalid url: path segments are not specified",
+                }
+                .build()
+            })?
             .filter(|segment| !segment.is_empty())
             .map(|segment| format!(":{segment}"))
             .fold(String::new(), |acc, item| format!("{acc}{item}"));

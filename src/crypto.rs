@@ -45,6 +45,12 @@ pub enum Error {
         #[snafu(implicit)]
         location: Location,
     },
+    #[snafu(display("Malformed error: {details}"))]
+    Malformed {
+        details: String,
+        #[snafu(implicit)]
+        location: Location,
+    },
 }
 
 /// `Result` alias for Crypto-specific [Error].

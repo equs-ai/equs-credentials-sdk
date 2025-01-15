@@ -70,7 +70,7 @@ impl VCMetadata {
         }
 
         let contexts = match contexts.len() {
-            1 => Context::One(IriRef(contexts.first().unwrap().to_owned())),
+            1 => Context::One(IriRef(contexts[0].to_owned())),
             _ => Context::Many(contexts.into_iter().map(IriRef).collect()),
         };
 
@@ -735,7 +735,7 @@ mod tests {
             vp.get("@context").unwrap(),
             &json!(["https://www.w3.org/2018/credentials/v1"])
         );
-        assert_eq!(vp.get("type").unwrap(), &json!("VerifiablePresentation"));
+        assert_eq!(vp.get("type").unwrap(), &json!(["VerifiablePresentation"]));
         assert_eq!(
             vp.get("verifiableCredential").unwrap(),
             &serde_json::to_value(vc).unwrap()
