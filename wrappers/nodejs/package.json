@@ -1,6 +1,6 @@
 {
   "name": "agent-sdk",
-  "version": "0.2.3",
+  "version": "0.5.0",
   "main": "index.js",
   "types": "index.d.ts",
   "napi": {

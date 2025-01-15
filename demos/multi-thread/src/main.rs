@@ -11,6 +11,7 @@ use agent_sdk::inmem::vault::InMemVault;
 use agent_sdk::kms;
 use agent_sdk::kms::Kms;
 use agent_sdk::nonce::{Nonce, NonceData};
+use agent_sdk::reqwest::builder::ReqwestClientBuilder;
 use agent_sdk::vc::core::KeyMetadata;
 use agent_sdk::vc::oid4vci;
 use agent_sdk::vc::oid4vci::{
@@ -119,6 +120,7 @@ async fn oid4vci_issuer(issuer_metadata: IssuerMetadata) -> impl Issuer {
     let (_, key_metadata) = create_did_and_key_metadata(&kms).await;
 
     oid4vci::IssuerBuilder::new(kms, nonce_gen, issuer_metadata, key_metadata)
+        .with_http_client(ReqwestClientBuilder::new().insecure().build().unwrap())
         .build()
         .await
         .unwrap()
@@ -177,7 +179,7 @@ async fn run_holder() -> Result<(), String> {
             ..
         }) => Ok(()),
         Ok(_) => Err("Unexpected result".into()),
-        Err(err) => Err(err.to_string()),
+        Err(err) => Err(format!("{err:?}")),
     }
 }
 
@@ -194,6 +196,7 @@ async fn oid4vci_holder(
         "wallet-dev".to_owned(),
         IssuerDiscovery::Metadata(issuer_metadata, authz_metadata),
     )
+    .with_http_client(ReqwestClientBuilder::new().insecure().build().unwrap())
     .build()
     .await
     .unwrap()
@@ -246,7 +249,12 @@ fn sample_issuer_metadata(iss_url: &str) -> IssuerMetadata {
                 "id": {},
                 "given_name": {},
                 "family_name": {}
-              }
+              },
+               "credential_signing_alg_values_supported": [
+                "ES256",
+                "ES256K",
+                "EdDSA"
+              ],
             }
           }
         }
