@@ -9,9 +9,11 @@ use agent_sdk::kms::Kms;
 use agent_sdk::storage::Storage;
 use agent_sdk::vc::core::KeyMetadata;
 use agent_sdk::vc::oid4vci::{
-    AuthorizationCodeGrant, CredDefMetadata, CredDefMetadataProfile, CredentialOfferGrants,
-    CredentialRequest, IssuanceSession, IssuerMetadata,
+    AuthorizationCodeGrant, AuthorizationMetadata, CredDefMetadata, CredDefMetadataProfile,
+    CredentialOfferGrants, CredentialRequest, IssuanceSession, IssuerMetadata, IssuerUrl,
+    PreAuthorizedCode, PreAuthorizedCodeGrant, TokenRequest, TokenResponse,
 };
+use std::collections::HashMap;
 use std::ops::Add;
 
 use actix_web::cookie::time;
@@ -26,14 +28,26 @@ use keycloak::{KeycloakAdmin, KeycloakAdminToken};
 use reqwest::Url;
 use serde_json::json;
 use std::sync::Arc;
+use std::time::Duration;
 
-const SERVER_URL: &str = "http://localhost:8088";
+const ISSUER_SERVER_URL: &str = "http://localhost:8088";
 const AUTH_SRV_URL: &str = "http://localhost:8080/idp/realms/pid-issuer-realm";
+const CRED_OFFER_SCHEME: &str = "openid-credential-offer://";
 
 const CREDENTIAL_URL_PATH: &str = "/credential";
 const METADATA_URL_PATH: &str = "/.well-known/openid-credential-issuer";
-const CREDENTIAL_OFFER_URL_PATH: &str = "/credential_offer";
+const CREDENTIAL_OFFER_WITH_AUTH_CODE_GRANT_URL_PATH: &str = "/credential_offer_auth_code_grant";
+const CREDENTIAL_OFFER_WITH_PRE_AUTH_CODE_GRANT_URL_PATH: &str =
+    "/credential_offer_pre_auth_code_grant";
+const CREATE_CREDENTIAL_OFFER_URI_WITH_AUTH_CODE_GRANT_PATH: &str =
+    "/create_credential_offer_uri_auth_code_grant";
+const CREATE_CREDENTIAL_OFFER_URI_WITH_PRE_AUTH_CODE_GRANT_PATH: &str =
+    "/create_credential_offer_uri_pre_auth_code_grant";
 const DID_DOC_URL_PATH: &str = "/.well-known/did.json";
+const AUTH_METADATA_ENDPOINT_PATH: &str = "/.well-known/openid-configuration";
+const TOKEN_ENDPOINT_PATH: &str = "/token";
+const TOKEN_INTROSPECT_PATH: &str = "/introspection";
+const DUMMY_ACCESS_TOKEN: &str = "eyJhbGciOiJSUzI1NiIsInR5cCIgOiAiSldUIiwia2lkIiA6ICJQY2xZUDZ2UmsxTHBLRGZqU08yRGEzNXJtR1JmaTkzNjJDcFJFeUpmOHAwIn0.eyJleHAiOjE3MzY5NDI0MTQsImlhdCI6MTczNjk0MjExNCwiYXV0aF90aW1lIjoxNzM2OTQyMTEyLCJqdGkiOiI0MzEwNjlkMS01ZjIzLTQ5MjAtYjA1Zi01NWI2NjM1MDQxODYiLCJpc3MiOiJodHRwOi8vbG9jYWxob3N0OjgwODAvaWRwL3JlYWxtcy9waWQtaXNzdWVyLXJlYWxtIiwic3ViIjoiNjBiOGJhNWYtYzczZi00OTc2LWIwZGEtNDhkMGU1MzMzNWRlIiwidHlwIjoiQmVhcmVyIiwiYXpwIjoid2FsbGV0LWRldiIsInNpZCI6IjQwZTYyNDY3LTUzZmMtNGQyOS05ZGZmLTJlN2Y4NDRjM2UzMiIsImFsbG93ZWQtb3JpZ2lucyI6WyIvKiJdLCJzY29wZSI6IlNEX0pXVF9jcmVkX3Njb3BlIn0.g4Ll7wiGq9VrxwAcGeARHB1mziDYMQBSmKHl_KGyBZccUvMGlH7ZPIegW_FLFJg4ZSz3IyId2xchuXP8LaSAghgLf9HmKA4XWlVhvx4wP90aj9bj2fdD9UUuSwQIeRlkZe7DTNookyClsqKJ2uIBzvaLoID2_4_RAvqmNi_grIe-ruus4thyp5NsQdEoudErok5DQiM_N2Wz5zg2MRrECjZL4kX-CrEiSaGaikTR-Lxc9UpvLr8mmmEwz7O4BOCDukyslzCZylmC32lttMYzU2Cno_XsIOvXtfGzwNjzZ-ohF9ThnpHvl7EexoZeDaPP2oYSDJOdrh33BB879DGuHw";
 
 struct AppState {
     issuer: Arc<dyn oid4vci::Issuer>,
@@ -56,8 +70,29 @@ async fn main() -> std::io::Result<()> {
         App::new()
             .route(CREDENTIAL_URL_PATH, web::post().to(issue_credential))
             .route(METADATA_URL_PATH, web::get().to(issue_metadata))
-            .route(CREDENTIAL_OFFER_URL_PATH, web::get().to(credential_offer))
+            .route(
+                CREATE_CREDENTIAL_OFFER_URI_WITH_AUTH_CODE_GRANT_PATH,
+                web::get().to(create_credential_offer_uri_with_auth_code_grant),
+            )
+            .route(
+                CREATE_CREDENTIAL_OFFER_URI_WITH_PRE_AUTH_CODE_GRANT_PATH,
+                web::get().to(create_credential_offer_uri_with_pre_auth_code_grant),
+            )
+            .route(
+                CREDENTIAL_OFFER_WITH_AUTH_CODE_GRANT_URL_PATH,
+                web::get().to(credential_offer_with_auth_code_grant),
+            )
+            .route(
+                CREDENTIAL_OFFER_WITH_PRE_AUTH_CODE_GRANT_URL_PATH,
+                web::get().to(credential_offer_with_pre_auth_code_grant),
+            )
             .route(DID_DOC_URL_PATH, web::get().to(did_doc))
+            .route(TOKEN_ENDPOINT_PATH, web::post().to(generate_token))
+            .route(TOKEN_INTROSPECT_PATH, web::post().to(validate_token))
+            .route(
+                AUTH_METADATA_ENDPOINT_PATH,
+                web::get().to(issuer_auth_metadata),
+            )
             .app_data(app_state.clone())
     })
     .bind(("127.0.0.1", 8088))?
@@ -112,13 +147,16 @@ async fn issue_metadata(state: web::Data<AppState>) -> HttpResponse {
         .json(serde_json::to_value(metadata).unwrap())
 }
 
-async fn credential_offer(state: web::Data<AppState>) -> HttpResponse {
+async fn credential_offer_with_auth_code_grant(state: web::Data<AppState>) -> HttpResponse {
+    let pre_auth_grant = AuthorizationCodeGrant::new(None, None)
+        .set_authorization_server(Some(IssuerUrl::new(ISSUER_SERVER_URL.to_string()).unwrap()));
+
     let (credential_offer, url) = state
         .issuer
         .create_credential_offer(
             vec!["SD_JWT_cred_1", "JSON_LDP_cred_2"],
             &CredentialOfferGrants {
-                authorization_code: Some(AuthorizationCodeGrant::new(None, None)),
+                authorization_code: Some(pre_auth_grant),
                 pre_authorized_code: None,
             },
         )
@@ -128,6 +166,93 @@ async fn credential_offer(state: web::Data<AppState>) -> HttpResponse {
     println!("URL {}", url);
 
     HttpResponse::Ok().json(credential_offer)
+}
+
+async fn credential_offer_with_pre_auth_code_grant(state: web::Data<AppState>) -> HttpResponse {
+    let pre_auth_grant = PreAuthorizedCodeGrant::new(PreAuthorizedCode::new("code".to_string()))
+        .set_authorization_server(Some(IssuerUrl::new(ISSUER_SERVER_URL.to_string()).unwrap()));
+
+    let (credential_offer, url) = state
+        .issuer
+        .create_credential_offer(
+            vec!["SD_JWT_cred_1", "JSON_LDP_cred_2"],
+            &CredentialOfferGrants {
+                authorization_code: None,
+                pre_authorized_code: Some(pre_auth_grant),
+            },
+        )
+        .unwrap();
+
+    println!("Offer {:?}", credential_offer);
+    println!("URL {}", url);
+
+    HttpResponse::Ok().json(credential_offer)
+}
+
+async fn create_credential_offer_uri_with_auth_code_grant() -> HttpResponse {
+    let mut offer_uri = Url::parse(CRED_OFFER_SCHEME).unwrap();
+    offer_uri.set_query(Some(&format!(
+        "credential_offer_uri={ISSUER_SERVER_URL}{CREDENTIAL_OFFER_WITH_AUTH_CODE_GRANT_URL_PATH}"
+    )));
+
+    HttpResponse::Ok()
+        .content_type("text/plain")
+        .body(offer_uri.to_string())
+}
+
+async fn create_credential_offer_uri_with_pre_auth_code_grant() -> HttpResponse {
+    let mut offer_uri = Url::parse(CRED_OFFER_SCHEME).unwrap();
+    offer_uri.set_query(Some(&format!(
+        "credential_offer_uri={ISSUER_SERVER_URL}{CREDENTIAL_OFFER_WITH_PRE_AUTH_CODE_GRANT_URL_PATH}"
+    )));
+
+    HttpResponse::Ok()
+        .content_type("text/plain")
+        .body(offer_uri.to_string())
+}
+
+async fn generate_token(req: web::Form<TokenRequest>) -> Result<HttpResponse, Error> {
+    println!("Token request: {:?}", req.0);
+    let resp: TokenResponse = serde_json::from_value(json!({
+        "access_token": DUMMY_ACCESS_TOKEN,
+        "token_type": "Bearer",
+        "expires_in": 86400,
+    }))?;
+
+    Ok(HttpResponse::Ok().json(resp))
+}
+
+async fn validate_token(req: web::Form<HashMap<String, String>>) -> Result<HttpResponse, Error> {
+    println!("Validate token request: {:?}", req.0.get("token").unwrap());
+    let iat = OffsetDateTime::now_utc().unix_timestamp();
+    let exp = OffsetDateTime::now_utc()
+        .add(Duration::from_secs(300))
+        .unix_timestamp();
+    let resp = json!({
+        "exp":iat,
+        "iat":exp,
+        "iss":AUTH_SRV_URL,
+        "typ":"Bearer",
+        "azp":"wallet-dev",
+        "allowed-origins":["/*"],
+        "scope":"SD_JWT_cred_scope",
+        "client_id":"wallet-dev",
+        "username":"tneal",
+        "token_type":"Bearer",
+        "active":true
+    });
+
+    Ok(HttpResponse::Ok()
+        .insert_header(("Content-Type", "application/json"))
+        .json(resp))
+}
+
+async fn issuer_auth_metadata() -> HttpResponse {
+    let metadata = sample_authorization_metadata();
+
+    HttpResponse::Ok()
+        .insert_header(("Content-Type", "application/json"))
+        .json(serde_json::to_value(metadata).unwrap())
 }
 
 async fn did_doc(state: web::Data<AppState>) -> HttpResponse {
@@ -249,16 +374,22 @@ async fn issuer() -> (impl oid4vci::Issuer, DIDDoc) {
     // In the real service these should be generated beforehand/taken from configuration/persistence
     let (_, key_metadata, did_doc) = create_did_and_key_metadata(&kms).await;
 
-    let issuer_metadata = sample_issuer_metadata(SERVER_URL, AUTH_SRV_URL);
+    let issuer_metadata = sample_issuer_metadata(ISSUER_SERVER_URL, AUTH_SRV_URL);
 
     let issuer = oid4vci::IssuerBuilder::new(kms, nonce_gen, issuer_metadata, key_metadata)
         .with_http_client(ReqwestClientBuilder::new().insecure().build().unwrap())
         .with_clock_skew(time::Duration::minutes(1))
         .token_validation_introspect(
-            Url::parse("http://localhost:8080/idp/realms/pid-issuer-realm/protocol/openid-connect/token/introspect").unwrap(),
-            Some(format!("Basic {}", "cGlkLWlzc3Vlci1zcnY6eklLQVY5RElJSWFKQ3pIQ1ZCUGx5U2dVOEtnWTY4VTI=")),
+            // Url::parse("http://localhost:8080/idp/realms/pid-issuer-realm/protocol/openid-connect/token/introspect").unwrap(),
+            Url::parse(&format!("{ISSUER_SERVER_URL}{TOKEN_INTROSPECT_PATH}")).unwrap(),
+            Some(format!(
+                "Basic {}",
+                "cGlkLWlzc3Vlci1zcnY6eklLQVY5RElJSWFKQ3pIQ1ZCUGx5U2dVOEtnWTY4VTI="
+            )),
         )
-        .build().await.unwrap();
+        .build()
+        .await
+        .unwrap();
 
     println!("Done");
     (issuer, did_doc)
@@ -270,7 +401,7 @@ async fn create_did_and_key_metadata(kms: &LocalKms) -> (DID, KeyMetadata, DIDDo
         .await
         .unwrap();
 
-    let did = DIDWeb::generate_did_from_url(SERVER_URL).unwrap();
+    let did = DIDWeb::generate_did_from_url(ISSUER_SERVER_URL).unwrap();
     let did_doc = DIDWeb::generate_did_document(&did, &kh).unwrap();
     let vm = format!("{did}#key-0");
 
@@ -383,6 +514,25 @@ fn sample_issuer_metadata(iss_url: &str, authz_url: &str) -> IssuerMetadata {
                 ]
             }
           }
+        }
+    ));
+
+    metadata.unwrap()
+}
+
+pub fn sample_authorization_metadata() -> AuthorizationMetadata {
+    let metadata = serde_json::from_value(json!(
+        {
+            "issuer": ISSUER_SERVER_URL,
+            "token_endpoint": ISSUER_SERVER_URL.to_owned()+TOKEN_ENDPOINT_PATH,
+            "introspection_endpoint": ISSUER_SERVER_URL.to_owned()+TOKEN_INTROSPECT_PATH,
+            "pre-authorized_grant_anonymous_access_supported": true,
+            "grant_types_supported": [
+                "urn:ietf:params:oauth:grant-type:pre-authorized_code",
+            ],
+            "response_types_supported": [
+                "token",
+            ]
         }
     ));
 

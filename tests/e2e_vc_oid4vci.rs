@@ -15,8 +15,8 @@ use oid4vci::AuthorizationCodeGrant;
 use rstest::rstest;
 use serde_json::json;
 use std::borrow::{Borrow, BorrowMut};
-use std::str;
 use std::sync::Arc;
+use std::{io, str};
 use utils::http::HttpClientEmulator;
 use uuid::Uuid;
 
@@ -81,7 +81,7 @@ async fn autorized_code_flow_using_scopes(#[case] validate_token: bool) {
             assert!(url.to_string().starts_with(AUTHZ_URL));
             assert!(url.query().unwrap().contains(&req_uri_code));
 
-            authz_code.to_owned()
+            async { Ok::<String, io::Error>(authz_code.to_owned()) }
         })
         .await
         .unwrap();

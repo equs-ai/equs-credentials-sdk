@@ -2,8 +2,8 @@ use agent_sdk::http::HttpClient;
 use agent_sdk::inmem::kms::LocalKms;
 use agent_sdk::inmem::vault::InMemVault;
 use agent_sdk::vc::oid4vci::{
-    CredentialOffer, CredentialOfferParams, Holder, HolderBuilder, Issuer, IssuerBuilder,
-    IssuerDiscovery, IssuerMetadata,
+    CredentialOfferParams, Holder, HolderBuilder, Issuer, IssuerBuilder, IssuerDiscovery,
+    IssuerMetadata,
 };
 
 use crate::utils::http::HttpClientEmulator;
@@ -28,7 +28,7 @@ pub async fn build_holder(
         kms,
         vault,
         "wallet-dev".to_string(),
-        IssuerDiscovery::Offer(CredentialOffer::Value { credential_offer }),
+        IssuerDiscovery::Offer(credential_offer),
     )
     .with_http_client(http_client)
     .build()

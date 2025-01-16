@@ -8,7 +8,7 @@ use crate::vc::oid4vci::holder::HolderService;
 use crate::vc::oid4vci::issuer::{IssuerService, TokenValidation};
 use crate::vc::oid4vci::metadata::convert_metadata;
 use crate::vc::oid4vci::token_validation::{ByJwks, Introspect};
-use crate::vc::oid4vci::CredentialOffer;
+use crate::vc::oid4vci::CredentialOfferParams;
 use crate::{kms, vault, vc};
 use common_macros::DebugError;
 use openidconnect::JsonWebKeySetUrl;
@@ -41,7 +41,7 @@ enum TokenParams {
 #[derive(Debug, Clone)]
 pub enum IssuerDiscovery {
     Url(String),
-    Offer(CredentialOffer),
+    Offer(CredentialOfferParams),
     Metadata(api::IssuerMetadata, api::AuthorizationMetadata),
 }
 
@@ -496,9 +496,10 @@ mod tests {
     use crate::vc::oid4vci::tests::fixtures::{
         sample_authorization_metadata, SampleIssuerMetadata, AUTH_REDIRECT_URL, ISSUER_URL, SCOPE,
     };
+    use crate::vc::oid4vci::IssuerUrl;
     use oauth2::http::{Method, StatusCode};
     use oid4vci::credential_offer::CredentialOfferParameters;
-    use oid4vci::types::{CredentialConfigurationId, IssuerUrl};
+    use oid4vci::types::CredentialConfigurationId;
     use rstest::rstest;
 
     pub const ISSUER_OIDC_URL: &str =
@@ -575,7 +576,7 @@ mod tests {
             grants: None,
         };
 
-        IssuerDiscovery::Offer(CredentialOffer::Value { credential_offer })
+        IssuerDiscovery::Offer(credential_offer)
     }
 
     fn issuer_discovery_from_url() -> IssuerDiscovery {

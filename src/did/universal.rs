@@ -33,7 +33,7 @@ impl DIDResolver for UniversalResolver {
         did: &'a DID,
         options: Options,
     ) -> Result<Output<Vec<u8>>, ssi::dids::resolution::Error> {
-        let result = match did.method_specific_id() {
+        let result = match did.method_name() {
             DIDPeer::DID_METHOD_NAME => DIDPeer::new().resolve_representation(did, options).await,
             _ => {
                 AnyDidMethod::default()
