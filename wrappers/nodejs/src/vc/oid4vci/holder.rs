@@ -14,9 +14,13 @@ use napi::bindgen_prelude::Promise;
 use napi::threadsafe_function::{ErrorStrategy, ThreadsafeFunction};
 use napi::Either;
 use napi_derive::napi;
-use tokio::runtime::Handle;
-use tokio::task;
+use std::future::Future;
+use std::io;
+use std::pin::Pin;
 use url::Url;
+
+pub type AuthorizationCallback =
+    Box<dyn FnOnce(Url) -> Pin<Box<dyn Future<Output = Result<String, io::Error>> + Send>> + Send>;
 
 #[napi]
 pub struct OID4VCIHolder(Box<dyn _HolderWrapperTrait>);
@@ -49,33 +53,20 @@ impl OID4VCIHolder {
             .authz_code_flow_with_scope(
                 scope,
                 Box::new(move |url| {
-                    // TODO: Refactor `authorization_callback` to allow asynchronous execution and handling of errors.
-                    task::block_in_place(move || {
-                        Handle::current().block_on(async {
-                            authorization_callback
-                                .call_async::<Promise<String>>(url.to_string())
-                                .await
-                                .unwrap()
-                                .await
-                                .unwrap()
-                        })
+                    Box::pin(async move {
+                        let result = authorization_callback
+                            .call_async::<Promise<String>>(url.to_string())
+                            .await
+                            .unwrap()
+                            .await;
+
+                        match result {
+                            Ok(s) => Ok(s),
+                            Err(e) => Err(io::Error::new(io::ErrorKind::Other, format!("{:?}", e))),
+                        }
                     })
                 }),
             )
-            .await
-            .map_err(|err| napi::Error::from_reason(format!("{:?}", err)))
-            .and_then(to_json_object)
-    }
-
-    #[napi(ts_return_type = "Promise<TokenResponse>")]
-    pub async fn pre_authz_code_flow(
-        &self,
-        pre_authorized_code: String,
-        tx_code: String,
-        cred_def_id: Option<String>,
-    ) -> napi::Result<JsonObject> {
-        self.0
-            .pre_authz_code_flow(pre_authorized_code, tx_code, cred_def_id)
             .await
             .map_err(|err| napi::Error::from_reason(format!("{:?}", err)))
             .and_then(to_json_object)
@@ -161,14 +152,7 @@ trait _HolderWrapperTrait: Send + Sync {
     async fn authz_code_flow_with_scope(
         &self,
         scope: String,
-        authorization_callback: Box<dyn FnOnce(url::Url) -> String + Send>,
-    ) -> oid4vci::Result<TokenResponse>;
-
-    async fn pre_authz_code_flow(
-        &self,
-        pre_authorized_code: String,
-        tx_code: String,
-        cred_def_id: Option<String>,
+        authorization_callback: AuthorizationCallback,
     ) -> oid4vci::Result<TokenResponse>;
 
     async fn request_credential(
@@ -197,21 +181,10 @@ impl<H: Holder> _HolderWrapperTrait for _HolderWrapper<H> {
     async fn authz_code_flow_with_scope(
         &self,
         scope: String,
-        authorization_callback: Box<dyn FnOnce(Url) -> String + Send>,
+        authorization_callback: AuthorizationCallback,
     ) -> oid4vci::Result<TokenResponse> {
         self.0
             .authz_code_flow_with_scope(scope, authorization_callback)
-            .await
-    }
-
-    async fn pre_authz_code_flow(
-        &self,
-        pre_authorized_code: String,
-        tx_code: String,
-        cred_def_id: Option<String>,
-    ) -> oid4vci::Result<TokenResponse> {
-        self.0
-            .pre_authz_code_flow(pre_authorized_code, tx_code, cred_def_id)
             .await
     }
 

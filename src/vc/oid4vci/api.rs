@@ -11,21 +11,28 @@ use oid4vci::credential::{RequestError, Response};
 use serde::{Deserialize, Serialize};
 use snafu::{IntoError, Snafu};
 use std::fmt::Debug;
+use std::future::Future;
 use tracing::{instrument, Level};
 
 type Level_ = Level;
 
 // Data types
 pub type IssuerMetadata = metadata::IssuerMetadata;
+pub type IssuerUrl = oid4vci::types::IssuerUrl;
 pub type CredDefMetadata = metadata::CredentialMetadata;
 pub type CredDefMetadataProfile = oid4vci::core::profiles::CoreProfilesCredentialConfiguration;
 pub type AuthorizationMetadata = oid4vci::metadata::AuthorizationServerMetadata;
 pub type CredentialOffer = oid4vci::credential_offer::CredentialOffer;
 pub type CredentialOfferGrants = oid4vci::credential_offer::CredentialOfferGrants;
 pub type CredentialOfferParams = oid4vci::credential_offer::CredentialOfferParameters;
+pub type CredentialOfferRequest = oid4vci::types::CredentialOfferRequest;
 pub type CredentialRequest = oid4vci::credential::Request<CoreProfilesCredentialRequest>;
 pub type CredentialResponse = Response<CoreProfilesCredentialResponse>;
+pub type PreAuthorizedCode = oid4vci::types::PreAuthorizedCode;
+pub type PreAuthorizedCodeGrant = oid4vci::credential_offer::PreAuthorizedCodeGrant;
+pub type TokenRequest = oid4vci::token::Request;
 pub type TokenResponse = oid4vci::token::Response;
+pub type TxCode = oid4vci::types::TxCode;
 pub type AuthorizationCodeGrant = oid4vci::credential_offer::AuthorizationCodeGrant;
 pub type AccessToken = oauth2::AccessToken;
 pub type ErrorType = oid4vci::credential::ErrorType;
@@ -64,6 +71,12 @@ pub struct IssuanceSession {
     pub nonce: Option<NonceData>,
     pub notification_id: Option<String>,
     pub transaction_id: Option<String>,
+}
+
+#[derive(Clone, Debug)]
+pub enum AuthzFlow {
+    Authorize(url::Url),
+    Preauthorized,
 }
 
 /// `oid4vci` API common error.
@@ -234,6 +247,12 @@ pub trait Holder: Send + Sync {
     /// * `authorization_callback` - a callback to retrieve an authorization code by the given `auth_url`.
     /// Requires application layer interaction.
     ///
+    /// # Type Parameters
+    ///
+    /// * `AC` - The authorization callback type that implements `FnOnce(AuthzFlow)`
+    /// * `F` - The Future type returned by the authorization callback
+    /// * `E` - The Error type that can be returned by the authorization callback
+    ///
     /// # Returns
     ///
     /// A `TokenResponse` with a valid token to be used for issuing a `Credential` on success.
@@ -243,31 +262,66 @@ pub trait Holder: Send + Sync {
     /// * [Error::Protocol] - expected protocol-specific error.
     ///     * [ErrorType::InvalidCredentialRequest]
     /// * [InternalError::Request] - fails to make a call to the `Issuer`.
-    async fn authz_code_flow_with_scope(
+    /// * [InternalError::AuthorizationCallback] - fails to retrieve authorization code
+    async fn authz_code_flow_with_scope<AC, F, E>(
         &self,
         scope: String,
-        authorization_callback: impl FnOnce(url::Url) -> String + Send,
-    ) -> Result<TokenResponse>;
+        authorization_callback: AC,
+    ) -> Result<TokenResponse>
+    where
+        AC: FnOnce(url::Url) -> F + Send,
+        F: Future<Output = std::result::Result<String, E>> + Send,
+        E: std::error::Error + 'static;
 
-    /// Run Pre-authorized Code Flow to authorize the `Holder`.
+    /// Gets an access token using a resolved credential offer.
     ///
-    /// *NOTE*: **not implemented yet**.
+    /// This function handles the OAuth authorization process by:
+    /// 1. Validating the credential offer parameters
+    /// 2. Determining the appropriate authorization flow
+    /// 3. Executing the authorization callback to obtain necessary codes
+    /// 4. Exchanging the codes for an access token
     ///
     /// # Arguments
     ///
-    /// * `pre_authorized_code` - a pre-authorization code.
-    /// * `tx_code` - a transaction code.
-    /// * `cred_def_id` - a `CredentialDefinition` ID.
+    /// * `offer_params` - A resolved credential offer containing optional authorization server endpoint,
+    ///   supported grant types, and other metadata required for the token request.
+    ///
+    /// * `authorization_callback` - An asynchronous callback function that handles the user interaction
+    ///   portion of the authorization flow. The callback receives an [AuthzFlow] enum indicating
+    ///   whether to obtain an authorization code or transaction code. The callback must return
+    ///   the appropriate code as a String.
+    ///
+    /// # Type Parameters
+    ///
+    /// * `AC` - The authorization callback type that implements `FnOnce(AuthzFlow)`
+    /// * `F` - The Future type returned by the authorization callback
+    /// * `E` - The Error type that can be returned by the authorization callback
     ///
     /// # Returns
     ///
-    /// A `TokenResponse` with a valid token to be used for issuing a `Credential` on success.
-    async fn pre_authz_code_flow(
+    /// Returns a `Result<TokenResponse>` where `TokenResponse` contains:
+    /// - An access token for credential issuance
+    /// - Token type (usually "Bearer")
+    /// - Expiration time (if provided)
+    /// - Optional refresh token
+    ///
+    /// # Errors
+    ///
+    /// * [Error::Protocol] - expected protocol-specific error.
+    ///     * [ErrorType::UnsupportedCredentialType]
+    /// * [InternalError::Request] - fails to make a call to the `Issuer`.
+    /// * [InternalError::AuthorizationCallback] - fails to retrieve an authorization or a transaction code
+    /// * [InternalError::Discovery] - fails to retrieve authorization server metadata
+    /// * [InternalError::HolderService] - fails to exchange an authorization or a transaction code to access token
+    async fn get_access_token<AC, F, E>(
         &self,
-        pre_authorized_code: String,
-        tx_code: String,
-        cred_def_id: Option<String>,
-    ) -> Result<TokenResponse>;
+        offer_params: &CredentialOfferParams,
+        authorization_callback: AC,
+    ) -> Result<TokenResponse>
+    where
+        AC: FnOnce(AuthzFlow) -> F + Send,
+        F: Future<Output = std::result::Result<String, E>> + Send,
+        E: std::error::Error + 'static;
 
     /// Request a `Credential` for the provided `CredentialDefinition`.
     ///

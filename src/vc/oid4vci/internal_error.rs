@@ -41,6 +41,12 @@ pub enum InternalError {
         #[snafu(implicit)]
         location: Location,
     },
+    #[snafu(display("Holder service error: {details}"))]
+    HolderService {
+        details: String,
+        #[snafu(implicit)]
+        location: Location,
+    },
     #[snafu(display("Url parse error"))]
     UrlParse {
         #[snafu(implicit)]
@@ -105,6 +111,12 @@ pub enum InternalError {
 
     #[snafu(display("Type conversion error: {details}"))]
     TypeConversion {
+        #[snafu(implicit)]
+        location: Location,
+        details: String,
+    },
+    #[snafu(display("authorization callback error: {details}"))]
+    AuthorizationCallback {
         #[snafu(implicit)]
         location: Location,
         details: String,

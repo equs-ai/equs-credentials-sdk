@@ -1,3 +1,20 @@
+use crate::http::HttpClient;
+use crate::nonce::{Nonce, NonceData};
+use crate::vc;
+use crate::vc::core::{CredentialOfferContent, KeyMetadata, Proof as AsdkProof};
+use crate::vc::oid4vci::internal_error::{
+    AuthorizationCallbackSnafu, DiscoverySnafu, HolderServiceSnafu, IssuerServiceSnafu,
+    MetadataSnafu, ParseSnafu, TypeConversionSnafu, UrlParseSnafu, VCSnafu,
+};
+use crate::vc::oid4vci::protocol_error::ProtocolSnafu;
+use crate::vc::oid4vci::AuthzFlow::Authorize;
+use crate::vc::oid4vci::{
+    metadata, AuthorizationMetadata, AuthzFlow, CredDefMetadata, CredentialOfferParams,
+    CredentialResponse, CredentialResponseResolved, CredentialResult, IssuerMetadata,
+    PreAuthorizedCode, TxCode,
+};
+use crate::vc::{oid4vci as api, HasVCFormat};
+use crate::vc::{Credential, CredentialMetadata};
 use async_trait::async_trait;
 use oauth2::url::Url;
 use oauth2::{
@@ -23,22 +40,6 @@ use std::sync::Arc;
 use time::{Duration, OffsetDateTime};
 use tracing::{debug, info, instrument, trace, Level};
 
-use crate::http::HttpClient;
-use crate::nonce::{Nonce, NonceData};
-use crate::vc;
-use crate::vc::core::{CredentialOfferContent, KeyMetadata, Proof as AsdkProof};
-use crate::vc::oid4vci::internal_error::{
-    DiscoverySnafu, IssuerServiceSnafu, MetadataSnafu, ParseSnafu, TypeConversionSnafu,
-    UrlParseSnafu, VCSnafu,
-};
-use crate::vc::oid4vci::protocol_error::ProtocolSnafu;
-use crate::vc::oid4vci::{
-    metadata, AuthorizationMetadata, CredDefMetadata, CredentialOffer, CredentialResponse,
-    CredentialResponseResolved, CredentialResult, IssuerMetadata, TokenResponse,
-};
-use crate::vc::{oid4vci as api, HasVCFormat};
-use crate::vc::{Credential, CredentialMetadata};
-
 pub type Error = api::Error;
 pub type Result<T> = core::result::Result<T, Error>;
 
@@ -57,7 +58,6 @@ where
     http_client: Arc<HC>,
     client_id: String,
     issuer_metadata: IssuerMetadata,
-    offer_configs: Vec<CredentialConfigurationId>,
     client: Client,
 }
 
@@ -80,7 +80,6 @@ where
             holder,
             http_client,
             issuer_url,
-            vec![],
             client_id,
             redirect_url,
         )
@@ -95,32 +94,18 @@ where
     pub async fn from_credential_offer(
         holder: HL,
         http_client: HC,
-        offer: &CredentialOffer,
+        offer: &CredentialOfferParams,
         client_id: String,
         redirect_url: String,
     ) -> Result<Self> {
         info!("oid4vci-holder service initialization is started");
 
-        let (iss_url, offer_configs) = match offer {
-            CredentialOffer::Value { credential_offer } => {
-                let iss_url = credential_offer.credential_issuer.clone();
-                let offer_configs = credential_offer.credential_configuration_ids.clone();
-
-                (iss_url, offer_configs)
-            }
-            // TODO: parse url queries
-            CredentialOffer::Reference { .. } => ProtocolSnafu::new(
-                ErrorType::InvalidCredentialRequest,
-                "Resolving credential offer by reference is not supported".to_string(),
-            )
-            .fail()?,
-        };
+        let iss_url = offer.credential_issuer.clone();
 
         let holder_service = Self::from_iss_url_with_configs(
             holder,
             http_client,
             iss_url.to_string(),
-            offer_configs,
             client_id,
             redirect_url,
         )
@@ -136,7 +121,6 @@ where
         holder: HL,
         http_client: HC,
         issuer_url: String,
-        offer_configs: Vec<CredentialConfigurationId>,
         client_id: String,
         redirect_url: String, // urn:ietf:wg:oauth:2.0:oob
     ) -> Result<Self> {
@@ -171,7 +155,6 @@ where
             http_client,
             issuer_metadata,
             authz_metadata,
-            offer_configs,
             client_id,
             redirect_url,
         )
@@ -191,7 +174,6 @@ where
             Arc::new(http_client),
             issuer_metadata,
             authz_metadata,
-            vec![],
             client_id,
             redirect_url,
         );
@@ -206,7 +188,6 @@ where
         http_client: Arc<HC>,
         issuer_metadata: IssuerMetadata,
         authz_metadata: AuthorizationMetadata,
-        offer_configs: Vec<CredentialConfigurationId>,
         client_id: String,
         redirect_url: String,
     ) -> Result<Self> {
@@ -224,9 +205,38 @@ where
             http_client,
             client_id,
             issuer_metadata,
-            offer_configs,
             client,
         })
+    }
+
+    #[instrument(level = Level::TRACE, skip(self), err(), ret())]
+    async fn exchange_pre_auth_code_for_token(
+        &self,
+        issuer_url: Option<&IssuerUrl>,
+        pre_authorized_code: PreAuthorizedCode,
+        transaction_code: TxCode,
+    ) -> Result<token::Response> {
+        let mut req = self
+            .client
+            .exchange_pre_authorized_code(pre_authorized_code)
+            .set_tx_code(&transaction_code);
+
+        if let Some(issuer_url) = issuer_url {
+            let auth_serv_metadata =
+                AuthorizationMetadata::discover_async(issuer_url, &self.http_closure())
+                    .await
+                    .context(DiscoverySnafu)?;
+
+            req = req.set_token_url(auth_serv_metadata.token_endpoint().clone())
+        }
+        let token = req.request_async(&self.http_closure()).await.map_err(|e| {
+            HolderServiceSnafu {
+                details: format!("Could not exchange preauthorized code to token: {e}"),
+            }
+            .build()
+        })?;
+
+        Ok(token)
     }
 }
 
@@ -242,11 +252,16 @@ where
     }
 
     #[instrument(level = Level::TRACE, skip(self, authorization_callback), err(), ret())]
-    async fn authz_code_flow_with_scope(
+    async fn authz_code_flow_with_scope<AC, F, E>(
         &self,
         scope: String,
-        authorization_callback: impl FnOnce(Url) -> String + Send,
-    ) -> Result<TokenResponse> {
+        authorization_callback: AC,
+    ) -> Result<token::Response>
+    where
+        AC: FnOnce(Url) -> F + Send,
+        F: Future<Output = std::result::Result<String, E>> + Send,
+        E: std::error::Error + 'static,
+    {
         info!("authorization code flow is started");
 
         let response = self
@@ -262,14 +277,78 @@ where
         Ok(response)
     }
 
-    #[instrument(level = Level::TRACE, skip(self), err(), ret())]
-    async fn pre_authz_code_flow(
+    #[instrument(level = Level::TRACE, skip(self, authorization_callback), err(), ret())]
+    async fn get_access_token<AC, F, E>(
         &self,
-        pre_authorized_code: String,
-        tx_code: String,
-        cred_def_id: Option<String>,
-    ) -> Result<TokenResponse> {
-        unimplemented!()
+        offer_params: &CredentialOfferParams,
+        authorization_callback: AC,
+    ) -> Result<api::TokenResponse>
+    where
+        AC: FnOnce(AuthzFlow) -> F + Send,
+        F: Future<Output = std::result::Result<String, E>> + Send,
+        E: std::error::Error + 'static,
+    {
+        let grants = offer_params.grants.as_ref().ok_or_else(|| {
+            HolderServiceSnafu {
+                details: "credential offer grants is not provided",
+            }
+            .build()
+        })?;
+
+        if let Some(pre_auth_code) = &grants.pre_authorized_code {
+            let tx_code = authorization_callback(AuthzFlow::Preauthorized)
+                .await
+                .map_err(|e| {
+                    AuthorizationCallbackSnafu {
+                        details: e.to_string(),
+                    }
+                    .build()
+                })?;
+
+            return self
+                .exchange_pre_auth_code_for_token(
+                    pre_auth_code.authorization_server(),
+                    pre_auth_code.pre_authorized_code().to_owned(),
+                    TxCode::new(tx_code),
+                )
+                .await;
+        }
+
+        if let Some(authorization) = &grants.authorization_code {
+            let scope = offer_params
+                .credential_configuration_ids
+                .iter()
+                .find_map(|cc| {
+                    self.resolve_cred_def(cc)
+                        .map(|c| c.scope().map(|s| s.to_string()))
+                        .unwrap_or(None)
+                })
+                .ok_or_else(|| {
+                    ProtocolSnafu::new(
+                        ErrorType::UnsupportedCredentialType,
+                        format!(
+                            "Unsupported credential definition IDs: {}",
+                            offer_params
+                                .credential_configuration_ids
+                                .iter()
+                                .map(|c| c.to_string())
+                                .collect::<Vec<String>>()
+                                .join(", ")
+                        ),
+                    )
+                    .build()
+                })?;
+
+            return self
+                .authz_code_flow_with_scope(scope, |url| authorization_callback(Authorize(url)))
+                .await;
+        }
+
+        HolderServiceSnafu {
+            details:
+                "credential offer authorization code or pre-authorized grants are not provided",
+        }
+        .fail()?
     }
 
     #[instrument(level = Level::TRACE, skip(self), err(), ret())]
@@ -393,11 +472,16 @@ where
     HC: HttpClient + 'static,
 {
     #[instrument(level = Level::TRACE, skip(self, callback), err(), ret())]
-    async fn authz_code_flow(
+    async fn authz_code_flow<AC, F, E>(
         &self,
         opt: AuthzOption,
-        callback: impl FnOnce(Url) -> String,
-    ) -> Result<token::Response> {
+        callback: AC,
+    ) -> Result<token::Response>
+    where
+        AC: FnOnce(Url) -> F + Send,
+        F: Future<Output = std::result::Result<String, E>> + Send,
+        E: std::error::Error + 'static,
+    {
         info!("authorization is started");
 
         let (pkce_challenge, pkce_verifier) = PkceCodeChallenge::new_random_sha256();
@@ -432,7 +516,12 @@ where
         );
 
         info!("authentication is started");
-        let code = callback(auth_url);
+        let code = callback(auth_url).await.map_err(|e| {
+            AuthorizationCallbackSnafu {
+                details: e.to_string(),
+            }
+            .build()
+        })?;
         info!("authentication is completed");
         trace!(authorization_code = %code);
 
@@ -487,7 +576,7 @@ where
 
             Err(Error::Protocol { source }) => {
                 let nonce = source.nonce().ok_or(
-                    IssuerServiceSnafu {
+                    HolderServiceSnafu {
                         details: "Providing PoP without nonce is unsupported",
                     }
                     .build(),
@@ -649,8 +738,8 @@ mod tests {
     use crate::vc::oid4vci::tests::fixtures::{
         fake_access_token, sample_access_token, sample_authorization_metadata,
         sample_cred_response, sample_credential_definition, sample_nonce, SampleIssuerMetadata,
-        ACCESS_TOKEN, AUTH_REDIRECT_URL, AUTH_URL, CRED_DEF_ID, ISSUER_URL, NOTIFICATION_ID,
-        REQ_URI_CODE, SCOPE, SD_JWT_CREDS,
+        ACCESS_TOKEN, AUTH_URL, CRED_DEF_ID, ISSUER_URL, NOTIFICATION_ID, REQ_URI_CODE, SCOPE,
+        SD_JWT_CREDS,
     };
     use crate::vc::oid4vci::{CredentialRequest, CredentialResult, Holder};
     use crate::vc::VCFormat;
@@ -658,6 +747,7 @@ mod tests {
     use oid4vci::core::profiles::CoreProfilesCredentialRequest;
     use rstest::rstest;
     use serde_json::json;
+    use std::io;
 
     #[tokio::test]
     async fn holder_requests_access_token_correctly() {
@@ -694,7 +784,8 @@ mod tests {
             .authz_code_flow_with_scope(SCOPE.into(), |url| {
                 assert!(url.to_string().starts_with(AUTH_URL));
                 assert!(url.query().unwrap().contains(REQ_URI_CODE));
-                "fake_auth_code".to_string()
+
+                async { Ok::<String, io::Error>("fake_auth_code".to_string()) }
             })
             .await
             .unwrap();
@@ -1004,19 +1095,6 @@ mod tests {
             .unwrap();
     }
 
-    #[tokio::test]
-    #[should_panic(expected = "Resolving credential offer by reference is not supported")]
-    async fn holder_fails_on_processing_credential_offer_reference() {
-        let holder_service = holder_service_from_credential_offer(
-            MockHttpClient::new(),
-            InMemVault::new(),
-            CredentialOffer::Reference {
-                credential_offer_uri: Url::parse("https://example.com").unwrap(),
-            },
-        )
-        .await;
-    }
-
     async fn holder_service_from_issuer_metadata(
         http_client: impl HttpClient + 'static,
         vault: impl Vault,
@@ -1038,29 +1116,6 @@ mod tests {
             client_id.to_owned(),
             "urn:ietf:wg:oauth:2.0:oob".to_string(),
         )
-        .unwrap()
-    }
-
-    async fn holder_service_from_credential_offer(
-        http_client: impl HttpClient + 'static,
-        vault: impl Vault,
-        offer: CredentialOffer,
-    ) -> HolderService<impl vc::core::Holder, impl HttpClient> {
-        let client_id = "fake_client_id";
-        let holder_metadata = vc::core::HolderMetadata {
-            client_id: client_id.to_owned(),
-        };
-
-        let inner = vc::core::HolderService::new(LocalKms::new(), vault, holder_metadata);
-
-        HolderService::from_credential_offer(
-            inner,
-            http_client,
-            &offer,
-            client_id.to_owned(),
-            AUTH_REDIRECT_URL.to_string(),
-        )
-        .await
         .unwrap()
     }
 

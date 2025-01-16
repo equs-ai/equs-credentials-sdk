@@ -2,7 +2,7 @@
 use agent_sdk::reqwest::builder::ReqwestClientBuilder;
 
 use agent_sdk::vc::core::KeyMetadata;
-use agent_sdk::vc::oid4vci::{CredentialOffer, HolderBuilder, IssuerBuilder, IssuerDiscovery};
+use agent_sdk::vc::oid4vci::{HolderBuilder, IssuerBuilder, IssuerDiscovery};
 use napi::{Either, Error, Result};
 use napi_derive::napi;
 use std::collections::HashMap;
@@ -190,20 +190,7 @@ impl JsIssuerDiscovery {
     pub fn from_offer(credential_offer: JsonObject) -> Result<Self> {
         let credential_offer = from_json_object(credential_offer)?;
 
-        Ok(JsIssuerDiscovery(IssuerDiscovery::Offer(
-            CredentialOffer::Value { credential_offer },
-        )))
-    }
-
-    #[napi(factory)]
-    pub fn from_offer_uri(credential_offer_uri: String) -> Result<Self> {
-        let credential_offer_uri = parse_url_arg(&credential_offer_uri)?;
-
-        Ok(JsIssuerDiscovery(IssuerDiscovery::Offer(
-            CredentialOffer::Reference {
-                credential_offer_uri,
-            },
-        )))
+        Ok(JsIssuerDiscovery(IssuerDiscovery::Offer(credential_offer)))
     }
 
     #[napi(

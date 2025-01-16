@@ -11,10 +11,11 @@ use agent_sdk::reqwest::builder::ReqwestClientBuilder;
 use agent_sdk::vault::CredentialEntry;
 use agent_sdk::vc::core::KeyMetadata;
 use agent_sdk::vc::metadata::{CredentialMetadataProcessor, DefaultMetadataProcessor};
-use agent_sdk::vc::oid4vci::Holder as HolderVci;
 use agent_sdk::vc::oid4vci::{
-    CredentialOffer, CredentialResponseResolved, CredentialResult, IssuerDiscovery, TokenResponse,
+    AuthzFlow, CredentialOfferParams, CredentialResponseResolved, CredentialResult,
+    IssuerDiscovery, TokenResponse,
 };
+use agent_sdk::vc::oid4vci::{CredentialOfferResolver, Holder as HolderVci};
 use agent_sdk::vc::oid4vp::{
     AuthResponseOptions, AuthorizationResponse, AuthorizationResponseMetadata,
     PassAuthRequestObject, ResolvedAuthRequest, ResponseMode, ResponseType,
@@ -46,23 +47,26 @@ async fn main() {
     let vault = InMemVault::new();
 
     // Holders creation
-    let oid4vci_holder = oid4vci_holder(kms.clone(), vault.clone()).await;
+    let (oid4vci_holder, resolved_offer) = oid4vci_holder(kms.clone(), vault.clone()).await;
 
     let oid4vp_holder = oid4vp_holder(kms.clone(), vault.clone()).await;
 
     // Running flows
-    run_issuance_flow(oid4vci_holder, kms.clone()).await;
+    run_issuance_flow(oid4vci_holder, kms.clone(), resolved_offer).await;
     run_presentation_flow(oid4vp_holder, kms).await;
 
     println!("Done");
 }
 
-async fn run_issuance_flow(holder: impl HolderVci, kms: LocalKms) {
+async fn run_issuance_flow(
+    holder: impl HolderVci,
+    kms: LocalKms,
+    offer: Option<CredentialOfferParams>,
+) {
+    println!("Authorization is started");
+
+    let token_resp = run_authz_flow(&holder, offer).await;
     println!("Issuance started");
-
-    println!("Holder authorizing into KeyCloak to get an access_token...");
-    let token_resp = authorize_holder(&holder).await;
-
     // In most cases there will be no nonce attached to the `token_response`
     // Holder will automatically resolve it and re-request a new nonce
     let nonce = token_resp
@@ -100,6 +104,22 @@ async fn run_issuance_flow(holder: impl HolderVci, kms: LocalKms) {
     .await;
 
     println!("Issuance done");
+}
+
+async fn run_authz_flow(
+    holder: &impl HolderVci,
+    offer: Option<CredentialOfferParams>,
+) -> TokenResponse {
+    match offer {
+        Some(offer) => {
+            println!("Authorization by resolving credential offer is started ...");
+            get_access_token_by_resolving_offer(holder, offer).await
+        }
+        _ => {
+            println!("Authorization Code Flow is started ...");
+            authorize_holder(holder).await
+        }
+    }
 }
 
 async fn request_credential(
@@ -434,8 +454,11 @@ async fn oid4vp_holder(kms: LocalKms, vault: InMemVault) -> impl oid4vp::Holder 
     holder
 }
 
-async fn oid4vci_holder(kms: LocalKms, vault: InMemVault) -> impl oid4vci::Holder {
-    let iss_discovery = get_issuer_discovery_mode();
+async fn oid4vci_holder(
+    kms: LocalKms,
+    vault: InMemVault,
+) -> (impl oid4vci::Holder, Option<CredentialOfferParams>) {
+    let (iss_discovery, resolved_offer) = get_issuer_discovery_mode().await;
 
     println!("Initializing oid4vci holder...");
     let client_id = "wallet-dev".to_owned();
@@ -449,11 +472,11 @@ async fn oid4vci_holder(kms: LocalKms, vault: InMemVault) -> impl oid4vci::Holde
 
     println!("Done");
 
-    holder
+    (holder, resolved_offer)
 }
 
-fn get_issuer_discovery_mode() -> IssuerDiscovery {
-    println!("Please enter the number to initialize holder form:\n 1 - Issuer URL\n 2 - Credential Offer");
+async fn get_issuer_discovery_mode() -> (IssuerDiscovery, Option<CredentialOfferParams>) {
+    println!("Please enter the number to initialize holder from:\n 1 - Issuer URL\n 2 - By resolving a credential Offer");
     let mut input = input_from_console("Failed to read holder initialization mode");
 
     match input.as_str() {
@@ -461,23 +484,40 @@ fn get_issuer_discovery_mode() -> IssuerDiscovery {
             println!("Please enter the Issuer URL");
             input = input_from_console("Failed to read the Issuer URL");
 
-            IssuerDiscovery::Url(input.to_string())
+            (IssuerDiscovery::Url(input.to_string()), None)
         }
         "2" => {
-            println!("Please enter the Credential offer Json Value from from http://localhost:8088/credential_offer:");
-            input = input_from_console("Failed to read the value of the Credential offer");
-
-            IssuerDiscovery::Offer(CredentialOffer::Value {
-                credential_offer: serde_json::from_str(&input)
-                    .expect("Failed to parse the Credential offer"),
-            })
+            let offer_params = resolve_offer().await;
+            (
+                IssuerDiscovery::Url(offer_params.credential_issuer.to_string()),
+                Some(offer_params),
+            )
         }
 
         _ => {
             println!("Invalid input, please retry");
-            get_issuer_discovery_mode()
+            Box::pin(get_issuer_discovery_mode()).await
         }
     }
+}
+
+async fn resolve_offer() -> CredentialOfferParams {
+    println!("Please select and enter the Credential offer Uri from:");
+    println!(
+        "- Offer with authorization code grant: http://localhost:8088/create_credential_offer_uri_auth_code_grant"
+    );
+    println!(
+        "- Offer with pre-authorized code grant: http://localhost:8088/create_credential_offer_uri_pre_auth_code_grant"
+    );
+
+    let input = input_from_console("Failed to read the value of the Credential offer");
+
+    CredentialOfferResolver::with_http_client(
+        ReqwestClientBuilder::new().insecure().build().unwrap(),
+    )
+    .resolve(Url::parse(&input).unwrap())
+    .await
+    .unwrap()
 }
 
 async fn create_did_and_key_metadata(kms: &LocalKms) -> (DID, KeyMetadata) {
@@ -510,13 +550,49 @@ async fn authorize_holder(holder: &impl oid4vci::Holder) -> TokenResponse {
         print!("Please enter an authorization code: ");
         io::stdout().flush().unwrap();
 
-        input_from_console("Failed to read auth code")
+        let code = input_from_console("Failed to read auth code");
+        async { Ok::<String, io::Error>(code) }
     };
 
     holder
         .authz_code_flow_with_scope(SCOPE.to_owned(), callback)
         .await
         .unwrap()
+}
+
+async fn get_access_token_by_resolving_offer(
+    holder: &impl oid4vci::Holder,
+    offer_params: CredentialOfferParams,
+) -> TokenResponse {
+    let callback = |authz_flow: AuthzFlow| {
+        let code = match authz_flow {
+            AuthzFlow::Authorize(url) => {
+                println!(
+                    "Authorization URL. Authenticate with user \"tneal\" and password \"password\""
+                );
+                println!("{}", url);
+
+                print!("Please enter a authorization code: ");
+                io::stdout().flush().unwrap();
+                input_from_console("Failed to read authorization code")
+            }
+            AuthzFlow::Preauthorized => {
+                print!("Please enter a transaction code: ");
+                io::stdout().flush().unwrap();
+                input_from_console("Failed to read transaction code")
+            }
+        };
+        async { Ok::<String, io::Error>(code) }
+    };
+
+    let access_token = holder
+        .get_access_token(&offer_params, callback)
+        .await
+        .unwrap();
+
+    print!("Access token is successfully retrieved by resolving the credential offer");
+
+    access_token
 }
 
 fn input_from_console(err_msg: &str) -> String {
