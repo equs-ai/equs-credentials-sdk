@@ -1,3 +1,5 @@
+import { ClaimFormatMap } from "./common";
+
 declare enum Predicate {
 	Required = 0,
 	Preferred = 1,
@@ -24,7 +26,7 @@ interface Constraints {
 	limit_disclosure?: ConstraintsLimitDisclosure;
 }
 
-type ClaimFormatPayload =
+export type ClaimFormatPayload =
 	| { alg: string[] }
 	| { alg_values_supported: string[] }
 	| { proof_type: string[] }
@@ -42,8 +44,6 @@ interface InputDescriptor {
 	format: Partial<ClaimFormatMap>;
 	group?: Array<string>;
 }
-
-type ClaimFormatMap = Record<string, ClaimFormatPayload>;
 
 export interface PresentationDefinition {
 	id: string;

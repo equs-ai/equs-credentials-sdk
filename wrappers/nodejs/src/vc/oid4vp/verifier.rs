@@ -25,7 +25,9 @@ impl OID4VPVerifier {
         #[napi(ts_arg_type = "PresentationDefinition")] presentation_definition: JsonObject,
         auth_response_options: JsAuthResponseOptions,
         pass_auth_request_object: &JsPassAuthRequestObject,
-        wallet_metadata: Option<JsonObject>,
+        #[napi(ts_arg_type = "WalletMetadata | undefined | null")] wallet_metadata: Option<
+            JsonObject,
+        >,
     ) -> Result<AuthorizationRequestWithSession> {
         let wallet_metadata: Option<WalletMetadata> = if let Some(metadata) = wallet_metadata {
             Some(from_json_object(metadata)?)

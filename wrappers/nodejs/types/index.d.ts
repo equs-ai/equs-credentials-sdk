@@ -1,3 +1,4 @@
+export * from "./common";
 export * from "./presentation-definition";
 export * from "./presentation-submission";
 export * from "./did-document";
@@ -8,3 +9,6 @@ export * from "./auth-metadata";
 export * from "./token-response";
 export * from "./credential-request";
 export * from "./credential-metadata";
+export * from "./credential-offer";
+export * from "./client-metadata";
+export * from "./wallet-metadata";

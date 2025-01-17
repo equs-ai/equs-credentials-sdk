@@ -1,5 +1,6 @@
 interface AuthorizationCodeGrant {
 	issuer_state?: string;
+	authorization_server?: string;
 }
 
 interface TransactionCode {

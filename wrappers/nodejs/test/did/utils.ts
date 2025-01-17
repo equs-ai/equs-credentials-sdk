@@ -1,3 +1,5 @@
+import { DIDResolution, DIDVerificationMethod } from "../../types";
+
 export class Utils {
 	readonly webVerificationMethod = {
 		id: expect.stringContaining("did:web:"),
@@ -9,7 +11,7 @@ export class Utils {
 			x: expect.any(String),
 		},
 	};
-	readonly keyVerificationMethod = {
+	readonly keyVerificationMethod: DIDVerificationMethod = {
 		id: expect.stringContaining("did:key:"),
 		type: "Ed25519VerificationKey2018",
 		controller: expect.stringContaining("did:key:"),
@@ -43,5 +45,24 @@ export class Utils {
 			authentication: [expect.stringContaining("did:key:")],
 			assertionMethod: [expect.stringContaining("did:key:")],
 		},
+	};
+
+	readonly didResolution: DIDResolution = {
+		document: {
+			"@context": ["https://www.w3.org/ns/did/v1", "https://w3id.org/security/multikey/v1"],
+			id: expect.stringContaining("did:key:"),
+			authentication: [expect.stringContaining("did:key:")],
+			assertionMethod: [expect.stringContaining("did:key:")],
+			verificationMethod: [
+				{
+					controller: expect.stringContaining("did:key:"),
+					id: expect.stringContaining("did:key:"),
+					publicKeyMultibase: expect.stringMatching("^z[1-9A-HJ-NP-Za-km-z]+$"),
+					type: "Multikey",
+				},
+			],
+		},
+		metadata: { contentType: "application/did+ld+json" },
+		document_metadata: { deactivated: null },
 	};
 }

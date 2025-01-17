@@ -1,6 +1,8 @@
+import { CredentialFormats } from "./common";
+
 interface DescriptorMap {
 	id: string;
-	format: string;
+	format: CredentialFormats;
 	path: string;
 	path_nested?: DescriptorMap;
 }

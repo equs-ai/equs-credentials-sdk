@@ -1,4 +1,14 @@
-import { Claims, OID4VCICredentialRequest, OID4VCIIssuerMetadata } from "../../types/entrypoint";
+import {
+	AuthMetadata,
+	Claims,
+	CredentialOfferGrants,
+	OID4VCICredentialMetadata,
+	OID4VCICredentialOffer,
+	OID4VCICredentialRequest,
+	OID4VCIIssuerMetadata,
+	CredentialFormats,
+	JwkAlgorithm,
+} from "../../index";
 
 export const ISSUER_ENDPOINT = "http://localhost:9000";
 export const TOKEN_ENDPOINT = `${ISSUER_ENDPOINT}/auth/token`;
@@ -13,10 +23,10 @@ export const ISSUER_METADATA: OID4VCIIssuerMetadata = {
 	credential_endpoint: `${ISSUER_ENDPOINT}/credential`,
 	credential_configurations_supported: {
 		IDENTITY_SD_JWT: {
-			format: "vc+sd-jwt",
+			format: CredentialFormats.VCSDJWT,
 			scope: SCOPE,
 			cryptographic_binding_methods_supported: ["jwk"],
-			credential_signing_alg_values_supported: ["ES256"],
+			credential_signing_alg_values_supported: [JwkAlgorithm.ES256],
 			proof_types_supported: {
 				jwt: {
 					proof_signing_alg_values_supported: ["ES256"],
@@ -44,7 +54,7 @@ export const ISSUER_METADATA: OID4VCIIssuerMetadata = {
 	},
 };
 
-export const AUTH_SERVER_METADATA = {
+export const AUTH_SERVER_METADATA: AuthMetadata = {
 	issuer: `${ISSUER_ENDPOINT}/auth`,
 	authorization_endpoint: `${ISSUER_ENDPOINT}/auth`,
 	token_endpoint: TOKEN_ENDPOINT,
@@ -57,7 +67,7 @@ export const AUTH_SERVER_METADATA = {
 	pushed_authorization_request_endpoint: PUSHED_AUTH_REQUEST_ENDPOINT,
 };
 
-export const CRED_DEF_METADATA = {
+export const CRED_DEF_METADATA: OID4VCICredentialMetadata = {
 	scope: SCOPE,
 	cryptographic_binding_methods_supported: ["jwk"],
 	proof_types_supported: {
@@ -65,8 +75,8 @@ export const CRED_DEF_METADATA = {
 			proof_signing_alg_values_supported: ["ES256"],
 		},
 	},
-	format: "vc+sd-jwt",
-	credential_signing_alg_values_supported: ["ES256"],
+	format: CredentialFormats.VCSDJWT,
+	credential_signing_alg_values_supported: [JwkAlgorithm.ES256],
 	vct: "SD_JWT_cred",
 	claims: {
 		given_name: {
@@ -100,14 +110,14 @@ export const CRED_REQUEST: OID4VCICredentialRequest = {
 	credential_response_encryption: null,
 };
 
-export const GRANTS = {
+export const GRANTS: CredentialOfferGrants = {
 	authorization_code: {
 		issuer_state: null,
 		authorization_server: null,
 	},
 };
 
-export const CRED_OFFER = {
+export const CRED_OFFER: OID4VCICredentialOffer = {
 	credential_issuer: ISSUER_ENDPOINT,
 	credential_configuration_ids: [CRED_DEF_ID],
 	grants: GRANTS,
