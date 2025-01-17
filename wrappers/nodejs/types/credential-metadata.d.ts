@@ -1,14 +1,14 @@
 import { CredentialFormats, JwkAlgorithm } from "./common";
 import { CredentialMetadataDisplay, CredentialSubjectClaims, KeyProofType, ProofType } from "./issuer-metadata";
 
-interface CredentialMetadataSdJwtVc extends CredentialMetadataCommon<"vc+sd-jwt"> {
-	format: "vc+sd-jwt";
+interface CredentialMetadataSdJwtVc extends CredentialMetadataCommon {
+	format: CredentialFormats.VCSDJWT;
 	vct: string;
 	claims?: CredentialSubjectClaims;
 }
 
-interface CredentialMetadataCommon<CF extends CredentialFormats> {
-	format: CF;
+interface CredentialMetadataCommon {
+	format: CredentialFormats;
 	scope?: string;
 	cryptographic_binding_methods_supported?: Array<string>;
 	credential_signing_alg_values_supported?: Array<JwkAlgorithm>;
@@ -18,6 +18,4 @@ interface CredentialMetadataCommon<CF extends CredentialFormats> {
 	[key: string]: unknown;
 }
 
-type CredentialMetadata<CF extends CredentialFormats> = CredentialMetadataCommon<CF> & CredentialMetadataSdJwtVc;
-
-export type OID4VCICredentialMetadata = CredentialMetadata<CredentialFormats>;
+export type OID4VCICredentialMetadata = CredentialMetadataCommon & CredentialMetadataSdJwtVc;

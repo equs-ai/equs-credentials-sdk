@@ -42,7 +42,10 @@ impl OID4VPVerifierBuilder {
     }
 
     #[napi]
-    pub fn with_client_metadata(&mut self, client_metadata: JsonObject) {
+    pub fn with_client_metadata(
+        &mut self,
+        #[napi(ts_arg_type = "ClientMetadata")] client_metadata: JsonObject,
+    ) {
         self.client_metadata = Some(client_metadata);
     }
 
@@ -98,7 +101,10 @@ impl OID4VPHolderBuilder {
     }
 
     #[napi]
-    pub fn with_wallet_metadata(&mut self, wallet_metadata: JsonObject) {
+    pub fn with_wallet_metadata(
+        &mut self,
+        #[napi(ts_arg_type = "WalletMetadata")] wallet_metadata: JsonObject,
+    ) {
         self.wallet_metadata = Some(wallet_metadata)
     }
 

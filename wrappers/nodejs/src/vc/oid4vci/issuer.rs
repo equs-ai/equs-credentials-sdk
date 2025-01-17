@@ -53,7 +53,7 @@ impl OID4VCIIssuer {
         &self,
         #[napi(ts_arg_type = "OID4VCICredentialRequest")] cred_request: JsonObject,
         token: String,
-        claims: JsonObject,
+        #[napi(ts_arg_type = "Claims")] claims: JsonObject,
         session: IssuanceSession,
     ) -> Result<IssuanceResult> {
         let mut oid4vci_session = session.try_into()?;

@@ -1,18 +1,18 @@
 import { OID4VCICredentialMetadata } from "./credential-metadata";
 
-type KeyProofType = "jwt" | "cwt";
+export type KeyProofType = "jwt" | "cwt";
 
 interface IssuerMetadataDisplay {
 	name?: string;
 	locale?: string;
 }
 
-interface CredentialMetadataDisplayLogo {
+export interface CredentialMetadataDisplayLogo {
 	url: string;
 	alt_text: string;
 }
 
-interface CredentialMetadataDisplay {
+export interface CredentialMetadataDisplay {
 	name: string;
 	locale?: string;
 	logo?: CredentialMetadataDisplayLogo;
@@ -21,13 +21,13 @@ interface CredentialMetadataDisplay {
 	text_color?: string;
 }
 
-interface ProofType {
+export interface ProofType {
 	proof_signing_alg_values_supported: Array<string>;
 
 	[key: string]: any;
 }
 
-interface CredentialSubjectClaims {
+export interface CredentialSubjectClaims {
 	mandatory?: boolean;
 	value_type?: string;
 	display?: Array<IssuerMetadataDisplay>;
@@ -35,7 +35,7 @@ interface CredentialSubjectClaims {
 	[key: string]: unknown;
 }
 
-interface IssuerMetadata {
+export interface IssuerMetadata {
 	credential_issuer: string;
 	authorization_servers?: Array<string>;
 	credential_endpoint: string;

@@ -187,7 +187,9 @@ impl JsIssuerDiscovery {
     }
 
     #[napi(factory)]
-    pub fn from_offer(credential_offer: JsonObject) -> Result<Self> {
+    pub fn from_offer(
+        #[napi(ts_arg_type = "OID4VCICredentialOffer")] credential_offer: JsonObject,
+    ) -> Result<Self> {
         let credential_offer = from_json_object(credential_offer)?;
 
         Ok(JsIssuerDiscovery(IssuerDiscovery::Offer(credential_offer)))

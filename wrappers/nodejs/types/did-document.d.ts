@@ -1,4 +1,4 @@
-interface VerificationMethod {
+export interface DIDVerificationMethod {
 	id: string;
 	type: string;
 	controller: string;
@@ -19,18 +19,33 @@ interface IProof {
 }
 
 export interface DIDDocument {
-	context: string | string[];
+	context?: string | string[];
 	id: string;
 	alsoKnownAs?: string[];
 	controller?: string | string[];
-	verificationMethod?: VerificationMethod[];
-	authentication?: (string | VerificationMethod)[];
-	assertionMethod?: (string | VerificationMethod)[];
-	keyAgreement?: (string | VerificationMethod)[];
-	capabilityInvocation?: (string | VerificationMethod)[];
-	capabilityDelegation?: (string | VerificationMethod)[];
-	public_key?: Array<VerificationMethod>;
+	verificationMethod?: DIDVerificationMethod[];
+	authentication?: (string | DIDVerificationMethod)[];
+	assertionMethod?: (string | DIDVerificationMethod)[];
+	keyAgreement?: (string | DIDVerificationMethod)[];
+	capabilityInvocation?: (string | DIDVerificationMethod)[];
+	capabilityDelegation?: (string | DIDVerificationMethod)[];
+	publicKey?: Array<DIDVerificationMethod>;
 	service?: Service[];
 	proof?: IProof | IProof[];
-	property_set?: Record<string, any>;
+
+	[key: string]: unknown;
+}
+
+interface DocMetadata {
+	deactivated?: boolean;
+}
+
+interface Metadata {
+	contentType?: string;
+}
+
+export interface DIDResolution {
+	document: DIDDocument;
+	metadata: Metadata;
+	document_metadata: DocMetadata;
 }
