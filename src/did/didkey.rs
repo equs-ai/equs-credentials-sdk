@@ -60,6 +60,7 @@ mod tests {
     use crate::kms;
     use crate::kms::{CreateOptions, Kms};
     use crate::utils::test_utils::no_jwk_key;
+    use strum::IntoEnumIterator;
 
     const SAMPLE_DID: &str = "did:key:zDnaefX6jBNVFnFeUPMRGo6exaVdJ1TRCwuhm296PbB5gPTj6";
     const SAMPLE_DID_URL: &str = "did:key:zDnaefX6jBNVFnFeUPMRGo6exaVdJ1TRCwuhm296PbB5gPTj6#zDnaefX6jBNVFnFeUPMRGo6exaVdJ1TRCwuhm296PbB5gPTj6";
@@ -68,7 +69,7 @@ mod tests {
     async fn didkey_generated_correctly() {
         let kms = LocalKms::new();
 
-        for kt in kms::SUPPORTED_KEYS {
+        for kt in kms::KeyType::iter() {
             let (_, kh) = kms.create_and_handle(kt, CreateOptions {}).await.unwrap();
 
             let did = DIDKey::generate(kh.clone()).unwrap();

@@ -1,4 +1,4 @@
-use crate::crypto::{Key, Signer};
+use crate::crypto::{Key, Signer, SigningOptions};
 use crate::did::universal::UniversalResolver;
 use crate::did::DIDURL;
 use crate::nonce::Nonce;
@@ -457,12 +457,36 @@ impl<S: Signer + Key> MessageSigner<ssi::crypto::Algorithm> for JsonLdSigner<S> 
         algorithm: ssi::crypto::AlgorithmInstance,
         message: &[u8],
     ) -> std::result::Result<Vec<u8>, MessageSignatureError> {
-        match algorithm {
+        match &algorithm {
             ssi::crypto::AlgorithmInstance::EdDSA | ssi::crypto::AlgorithmInstance::ES256 => self
                 .signer
                 .sign(message)
                 .await
                 .map_err(|e| MessageSignatureError::SignatureFailed(e.to_string())),
+
+            ssi::crypto::AlgorithmInstance::Bbs(instance) => {
+                self.sign_multi(algorithm, &[message.to_vec()]).await
+            }
+            _ => Err(MessageSignatureError::UnsupportedAlgorithm(format!(
+                "{}",
+                algorithm.algorithm()
+            ))),
+        }
+    }
+
+    async fn sign_multi(
+        self,
+        algorithm: ssi::crypto::AlgorithmInstance,
+        messages: &[Vec<u8>],
+    ) -> std::result::Result<Vec<u8>, MessageSignatureError> {
+        match algorithm {
+            ssi::crypto::AlgorithmInstance::Bbs(instance) => {
+                let signing_opts = SigningOptions::BBS(*instance.0);
+                self.signer
+                    .sign_multi(messages, Some(signing_opts))
+                    .await
+                    .map_err(|e| MessageSignatureError::SignatureFailed(e.to_string()))
+            }
             _ => Err(MessageSignatureError::UnsupportedAlgorithm(format!(
                 "{}",
                 algorithm.algorithm()
