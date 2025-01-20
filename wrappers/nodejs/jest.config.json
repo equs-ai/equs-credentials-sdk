@@ -3,7 +3,8 @@
   "verbose": true,
   "moduleFileExtensions": [
     "js",
-    "ts"
+    "ts",
+    "d.ts"
   ],
   "transform": {
     "^.+\\.(ts|tsx)$": "ts-jest"

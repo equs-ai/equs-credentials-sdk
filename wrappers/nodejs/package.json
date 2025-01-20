@@ -19,7 +19,7 @@
     "build": "napi build --platform --release && node scripts/fix-type-names.mjs && node scripts/add-import-line.mjs",
     "build:debug": "napi build --features=in-memory --platform && node scripts/fix-type-names.mjs && node scripts/add-import-line.mjs",
     "prepublishOnly": "napi prepublish -t npm",
-    "test": "jest",
+    "test": "jest -w=1",
     "universal": "napi universal",
     "version": "napi version",
     "postinstall": "if [ \"$NODE_ENV\" = \"development\" ]; then npm run build:debug; else npm run build; fi"

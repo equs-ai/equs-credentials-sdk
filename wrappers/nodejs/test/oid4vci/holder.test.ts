@@ -12,7 +12,7 @@ import {
     AUTH_SERVER_METADATA,
     CODE_RESPONSE,
     CRED_DEF_ID,
-    CRED_OFFER,
+    CRED_OFFER, CRED_OFFER_WITH_AUTH_GRANT, CRED_OFFER_WITH_PRE_AUTH_GRANT,
     CRED_RESPONSE,
     CRED_TYPE,
     ISSUER_METADATA,
@@ -48,6 +48,34 @@ describe("OID4VCI Holder: ", () => {
         const vciHolder = await buildHolder();
 
         const token_response = await vciHolder.authzCodeFlowWithScope(SCOPE, async (_) => "code");
+
+        expect(token_response).toEqual(ACCESS_TOKEN_RESPONSE);
+    });
+
+    test("get access token by using resolved credential offer with pre-authorized code grant", async () => {
+        await mockServer.forPost("/auth/token").thenJson(200, ACCESS_TOKEN_RESPONSE);
+
+        const vciHolder = await buildHolder();
+
+        const token_response = await vciHolder.getAccessToken(CRED_OFFER_WITH_PRE_AUTH_GRANT, async (authorization_flow) => {
+            expect(authorization_flow.type).toEqual("preauthorized")
+            return "code"
+        });
+
+        expect(token_response).toEqual(ACCESS_TOKEN_RESPONSE);
+    });
+
+    test("get access token by using resolved credential offer with authorization code grant", async () => {
+        await mockServer.forPost("/auth/par/request").thenJson(201, CODE_RESPONSE);
+        await mockServer.forPost("/auth/token").thenJson(200, ACCESS_TOKEN_RESPONSE);
+
+        const vciHolder = await buildHolder();
+
+        const token_response = await vciHolder.getAccessToken(CRED_OFFER_WITH_AUTH_GRANT, async (authorization_flow) => {
+            expect(authorization_flow.type).toEqual("authorize")
+            expect(authorization_flow["url"]).toBeDefined()
+            return "code"
+        });
 
         expect(token_response).toEqual(ACCESS_TOKEN_RESPONSE);
     });

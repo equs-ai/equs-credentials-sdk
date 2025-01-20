@@ -1,12 +1,12 @@
 use crate::nonce::JsNonceData;
-use crate::utils::to_json_object;
+use crate::utils::{from_json_object, to_json_object};
 use crate::vc::core::{JsCredential, JsCredentialMetadata, JsKeyMetadata};
 use crate::vc::JsonObject;
 use agent_sdk::nonce::NonceData;
 use agent_sdk::vc::core::KeyMetadata;
 use agent_sdk::vc::oid4vci::{
-    AccessToken, CredentialResponseResolved, CredentialResult, Holder, IssuerMetadata,
-    TokenResponse,
+    AccessToken, AuthzFlow, CredentialOfferParams, CredentialResponseResolved, CredentialResult,
+    Holder, IssuerMetadata, TokenResponse,
 };
 use agent_sdk::vc::{oid4vci, Credential, CredentialMetadata};
 use async_trait::async_trait;
@@ -19,8 +19,11 @@ use std::io;
 use std::pin::Pin;
 use url::Url;
 
-pub type AuthorizationCallback =
+pub type AuthorizationCodeCallback =
     Box<dyn FnOnce(Url) -> Pin<Box<dyn Future<Output = Result<String, io::Error>> + Send>> + Send>;
+pub type AuthorizationCallback = Box<
+    dyn FnOnce(AuthzFlow) -> Pin<Box<dyn Future<Output = Result<String, io::Error>> + Send>> + Send,
+>;
 
 #[napi]
 pub struct OID4VCIHolder(Box<dyn _HolderWrapperTrait>);
@@ -41,21 +44,74 @@ impl OID4VCIHolder {
     }
 
     #[napi(
-        ts_args_type = "scope: string, authorization_callback: (url: string) => Promise<string>",
+        ts_args_type = "scope: string, authorization_code_callback: (url: string) => Promise<string>",
         ts_return_type = "Promise<TokenResponse>"
     )]
     pub async fn authz_code_flow_with_scope(
         &self,
         scope: String,
-        authorization_callback: ThreadsafeFunction<String, ErrorStrategy::Fatal>,
+        authorization_code_callback: ThreadsafeFunction<String, ErrorStrategy::Fatal>,
     ) -> napi::Result<JsonObject> {
         self.0
             .authz_code_flow_with_scope(
                 scope,
                 Box::new(move |url| {
                     Box::pin(async move {
-                        let result = authorization_callback
+                        let result = authorization_code_callback
                             .call_async::<Promise<String>>(url.to_string())
+                            .await
+                            .unwrap()
+                            .await;
+
+                        match result {
+                            Ok(s) => Ok(s),
+                            Err(e) => Err(io::Error::new(io::ErrorKind::Other, format!("{:?}", e))),
+                        }
+                    })
+                }),
+            )
+            .await
+            .map_err(|err| napi::Error::from_reason(format!("{:?}", err)))
+            .and_then(to_json_object)
+    }
+
+    #[napi(
+        ts_args_type = "offer_params: CredentialOfferParameters, authorization_callback: (authorization_flow: { type: \"authorize\", url: string } | { type: \"preauthorized\" }) => Promise<string>",
+        ts_return_type = "Promise<TokenResponse>"
+    )]
+    pub async fn get_access_token(
+        &self,
+        offer_params: JsonObject,
+        authorization_callback: ThreadsafeFunction<JsonObject, ErrorStrategy::Fatal>,
+    ) -> napi::Result<JsonObject> {
+        self.0
+            .get_access_token(
+                &from_json_object(offer_params)?,
+                Box::new(move |authz_flow: AuthzFlow| {
+                    let mut authz_flow_json_object = JsonObject::new();
+
+                    match authz_flow {
+                        AuthzFlow::Preauthorized => {
+                            authz_flow_json_object.insert(
+                                "type".to_string(),
+                                serde_json::Value::String("preauthorized".to_string()),
+                            );
+                        }
+                        AuthzFlow::Authorize(url) => {
+                            authz_flow_json_object.insert(
+                                "type".to_string(),
+                                serde_json::Value::String("authorize".to_string()),
+                            );
+                            authz_flow_json_object.insert(
+                                "url".to_string(),
+                                serde_json::Value::String(url.to_string()),
+                            );
+                        }
+                    };
+
+                    Box::pin(async move {
+                        let result = authorization_callback
+                            .call_async::<Promise<String>>(authz_flow_json_object)
                             .await
                             .unwrap()
                             .await;
@@ -152,7 +208,7 @@ trait _HolderWrapperTrait: Send + Sync {
     async fn authz_code_flow_with_scope(
         &self,
         scope: String,
-        authorization_callback: AuthorizationCallback,
+        authorization_callback: AuthorizationCodeCallback,
     ) -> oid4vci::Result<TokenResponse>;
 
     async fn request_credential(
@@ -168,6 +224,12 @@ trait _HolderWrapperTrait: Send + Sync {
         credential: &Credential,
         credential_metadata: &CredentialMetadata,
     ) -> oid4vci::Result<()>;
+
+    async fn get_access_token(
+        &self,
+        offer_params: &CredentialOfferParams,
+        authorization_callback: AuthorizationCallback,
+    ) -> oid4vci::Result<TokenResponse>;
 }
 
 pub struct _HolderWrapper<H: Holder>(pub(crate) H);
@@ -181,7 +243,7 @@ impl<H: Holder> _HolderWrapperTrait for _HolderWrapper<H> {
     async fn authz_code_flow_with_scope(
         &self,
         scope: String,
-        authorization_callback: AuthorizationCallback,
+        authorization_callback: AuthorizationCodeCallback,
     ) -> oid4vci::Result<TokenResponse> {
         self.0
             .authz_code_flow_with_scope(scope, authorization_callback)
@@ -207,6 +269,16 @@ impl<H: Holder> _HolderWrapperTrait for _HolderWrapper<H> {
     ) -> oid4vci::Result<()> {
         self.0
             .store_credential(credential, credential_metadata)
+            .await
+    }
+
+    async fn get_access_token(
+        &self,
+        offer_params: &CredentialOfferParams,
+        authorization_callback: AuthorizationCallback,
+    ) -> oid4vci::Result<TokenResponse> {
+        self.0
+            .get_access_token(offer_params, authorization_callback)
             .await
     }
 }

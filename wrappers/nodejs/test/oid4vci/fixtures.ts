@@ -1,6 +1,7 @@
 import {
 	AuthMetadata,
 	Claims,
+    CredentialOfferParameters,
 	CredentialOfferGrants,
 	OID4VCICredentialMetadata,
 	OID4VCICredentialOffer,
@@ -9,6 +10,7 @@ import {
 	CredentialFormats,
 	JwkAlgorithm,
 } from "../../index";
+import {PRE_AUTH_CODE_KEY, PRE_AUTH_GRANT_KEY} from "../../types";
 
 export const ISSUER_ENDPOINT = "http://localhost:9000";
 export const TOKEN_ENDPOINT = `${ISSUER_ENDPOINT}/auth/token`;
@@ -154,3 +156,30 @@ export const CRED_RESPONSE = {
 	c_nonce_expires_in: 86440,
 	notification_id: "1111",
 };
+
+export const CRED_OFFER_WITH_PRE_AUTH_GRANT: CredentialOfferParameters = {
+	credential_issuer: ISSUER_ENDPOINT,
+	credential_configuration_ids: [
+		CRED_DEF_ID,
+	],
+	grants: {
+		[PRE_AUTH_GRANT_KEY]: {
+			[PRE_AUTH_CODE_KEY]: "code",
+			tx_code: null,
+			interval: null,
+			authorization_server: `${ISSUER_ENDPOINT}/auth`
+		}
+	}
+}
+
+export const CRED_OFFER_WITH_AUTH_GRANT: CredentialOfferParameters = {
+	credential_issuer: ISSUER_ENDPOINT,
+	credential_configuration_ids: [
+		CRED_DEF_ID,
+	],
+	grants: {
+		authorization_code: {
+			issuer_state: "state",
+		}
+	}
+}

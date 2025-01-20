@@ -121,3 +121,149 @@ impl<HC: HttpClient> CredentialOfferResolver<HC> {
         Ok(offer_params)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::http::MockHttpClient;
+    use crate::utils::http::test::mock_http_once;
+    use crate::vc::oid4vci::tests::fixtures::{
+        sample_offer_with_auth_code_grant, sample_offer_with_pre_auth_code_grant,
+    };
+    use crate::vc::oid4vci::PreAuthorizedCode;
+    use oauth2::http::{Method, StatusCode};
+    use oid4vci::types::{CredentialConfigurationId, IssuerState};
+    use rstest::rstest;
+    use serde_json::json;
+
+    #[rstest]
+    #[case::offer_by_reference_with_auth_code_grant_success(
+        "openid-credential-offer://?credential_offer_uri=http://localhost:8088/credential_offer",
+        sample_offer_with_auth_code_grant(None)
+    )]
+    #[case::offer_by_reference_with_pre_auth_code_grant_success(
+        "openid-credential-offer://?credential_offer_uri=http://localhost:8088/credential_offer",
+        sample_offer_with_pre_auth_code_grant("pre_auth_code")
+    )]
+    #[tokio::test]
+    async fn resolve_offer_by_reference_works_correctly(
+        #[case] offer_uri: &str,
+        #[case] offer_response: CredentialOfferParams,
+    ) {
+        let mut http_client = MockHttpClient::new();
+        mock_http_once(
+            &mut http_client,
+            Method::GET,
+            Url::parse("http://localhost:8088/credential_offer").unwrap(),
+            offer_response.clone(),
+            StatusCode::OK,
+        );
+
+        let resolver = CredentialOfferResolver::with_http_client(http_client);
+        let resolved_offer = resolver
+            .resolve(Url::parse(offer_uri).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(json!(resolved_offer), json!(offer_response));
+    }
+
+    #[rstest]
+    #[case::offer_with_auth_code_grant_success(
+        "{%22credential_issuer%22:%22http://localhost:8088%22,%22credential_configuration_ids%22:[%22SD_JWT_cred_1%22,%22JSON_LDP_cred_2%22],%22grants%22:{%22authorization_code%22:{%22issuer_state%22:%22state%22,%22authorization_server%22:%22http://localhost:8088%22}}}",
+        "auth_code"
+    )]
+    #[case::offer_with_pre_auth_code_grant_success(
+        "{%22credential_issuer%22:%22http://localhost:8088%22,%22credential_configuration_ids%22:[%22SD_JWT_cred_1%22,%22JSON_LDP_cred_2%22],%22grants%22:{%22urn:ietf:params:oauth:grant-type:pre-authorized_code%22:{%22pre-authorized_code%22:%22code%22,%22tx_code%22:null,%22interval%22:null,%22authorization_server%22:%22http://localhost:8088%22}}}",
+        "pre-auth_code",
+    )]
+    #[tokio::test]
+    async fn resolve_offer_by_value_works_correctly(
+        #[case] encoded_offer: &str,
+        #[case] flow: &str,
+    ) {
+        let resolver = CredentialOfferResolver::new().unwrap();
+        let resolved_offer = resolver
+            .resolve(
+                Url::parse(&format!(
+                    "openid-credential-offer://?credential_offer={encoded_offer}"
+                ))
+                .unwrap(),
+            )
+            .await
+            .unwrap();
+        let grant = resolved_offer.grants.unwrap();
+        match flow {
+            "auth_code" => {
+                let grant = grant.authorization_code.unwrap();
+                assert_eq!(
+                    grant.issuer_state(),
+                    Some(&IssuerState::new("state".to_string())),
+                );
+                assert_eq!(
+                    grant.authorization_server().unwrap().to_string(),
+                    "http://localhost:8088".to_string()
+                )
+            }
+            _ => {
+                let grant = grant.pre_authorized_code.unwrap();
+
+                assert_eq!(
+                    grant.pre_authorized_code(),
+                    &PreAuthorizedCode::new("code".to_string())
+                );
+                assert_eq!(
+                    grant.authorization_server().unwrap().to_string(),
+                    "http://localhost:8088".to_string()
+                )
+            }
+        }
+
+        assert_eq!(
+            resolved_offer.credential_issuer.to_string(),
+            "http://localhost:8088".to_string()
+        );
+        assert_eq!(
+            resolved_offer.credential_configuration_ids,
+            vec![
+                CredentialConfigurationId::new("SD_JWT_cred_1".to_string()),
+                CredentialConfigurationId::new("JSON_LDP_cred_2".to_string())
+            ]
+        );
+    }
+
+    #[tokio::test]
+    #[should_panic(
+        expected = "invalid type: string \"{}\", expected struct CredentialOfferParameters"
+    )]
+    async fn resolve_offer_by_reference_fails_when_response_contains_invalid_data() {
+        let mut http_client = MockHttpClient::new();
+        mock_http_once(
+            &mut http_client,
+            Method::GET,
+            Url::parse("http://localhost:8088/credential_offer").unwrap(),
+            json!("{}"),
+            StatusCode::OK,
+        );
+
+        let resolver = CredentialOfferResolver::with_http_client(http_client);
+        let resolved_offer = resolver
+            .resolve(Url::parse("openid-credential-offer://?credential_offer_uri=http://localhost:8088/credential_offer").unwrap())
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    #[should_panic(expected = "RelativeUrlWithoutBase")]
+    async fn resolve_offer_by_reference_fails_when_offer_uri_is_invalid() {
+        let resolver = CredentialOfferResolver::new().unwrap();
+        let resolved_offer = resolver
+            .resolve(
+                Url::parse(
+                    "invalid_scheme://?credential_offer_uri=http://localhost:8088/credential_offer",
+                )
+                .unwrap(),
+            )
+            .await
+            .unwrap();
+    }
+}
