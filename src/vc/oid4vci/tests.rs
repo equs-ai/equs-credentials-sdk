@@ -3,9 +3,12 @@ pub mod fixtures {
     use crate::vc::claims::Claims;
     use crate::vc::oid4vci::metadata::IssuerMetadata;
     use crate::vc::oid4vci::{
-        AuthorizationMetadata, CredDefMetadata, CredentialRequest, CredentialResponse,
+        AuthorizationCodeGrant, AuthorizationMetadata, CredDefMetadata, CredentialOfferGrants,
+        CredentialOfferParams, CredentialRequest, CredentialResponse, PreAuthorizedCode,
+        PreAuthorizedCodeGrant,
     };
     use oauth2::AccessToken;
+    use oid4vci::types::{CredentialConfigurationId, IssuerUrl};
     use serde_json::{json, Value};
     use time::OffsetDateTime;
 
@@ -410,5 +413,29 @@ pub mod fixtures {
         });
 
         resp
+    }
+
+    pub fn sample_offer_with_auth_code_grant(cred_def_id: Option<&str>) -> CredentialOfferParams {
+        let auth_code_grant = AuthorizationCodeGrant::new(None, None)
+            .set_authorization_server(Some(IssuerUrl::new(AUTH_URL.to_string()).unwrap()));
+
+        CredentialOfferParams {
+            credential_issuer: IssuerUrl::new(ISSUER_URL.to_string()).unwrap(),
+            credential_configuration_ids: vec![CredentialConfigurationId::new(
+                cred_def_id.unwrap_or(CRED_DEF_ID).to_string(),
+            )],
+            grants: Some(CredentialOfferGrants::new(Some(auth_code_grant), None)),
+        }
+    }
+
+    pub fn sample_offer_with_pre_auth_code_grant(code: &str) -> CredentialOfferParams {
+        let pre_auth_grant = PreAuthorizedCodeGrant::new(PreAuthorizedCode::new(code.to_string()))
+            .set_authorization_server(Some(IssuerUrl::new(AUTH_URL.to_string()).unwrap()));
+
+        CredentialOfferParams {
+            credential_issuer: IssuerUrl::new(ISSUER_URL.to_string()).unwrap(),
+            credential_configuration_ids: vec![],
+            grants: Some(CredentialOfferGrants::new(None, Some(pre_auth_grant))),
+        }
     }
 }

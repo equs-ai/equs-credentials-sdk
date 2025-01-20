@@ -4,6 +4,7 @@ export * from "./presentation-submission";
 export * from "./did-document";
 export * from "./claims";
 export * from "./credential-offer-grants";
+export * from "./credential-offer";
 export * from "./issuer-metadata";
 export * from "./auth-metadata";
 export * from "./token-response";

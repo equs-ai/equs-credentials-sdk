@@ -614,20 +614,6 @@ where
         Ok(data.to_owned())
     }
 
-    #[instrument(level = Level::TRACE, skip_all, err(), ret())]
-    fn validate_if_offer_supported(&self) -> Result<()> {
-        // TODO: implement validation logic to support limitation for pre-authorized code
-        /*
-            When the Pre-Authorized Grant Type is used, it is RECOMMENDED
-            that the Credential Issuer issues an Access Token
-            valid only for the Credentials indicated in the Credential Offer (see Section 4.1).
-            The Wallet SHOULD obtain a separate Access Token if it wants to request issuance
-            of any Credentials that were not included in the Credential Offer,
-            but were discoverable from the Credential Issuer's credential_configurations_supported metadata parameter.
-        */
-        Ok(())
-    }
-
     #[instrument(level = Level::TRACE, ret())]
     fn extract_nonce(resp: &oid4vci::core::credential::Response) -> Option<NonceData> {
         resp.c_nonce().map(|nonce| NonceData {
@@ -737,9 +723,10 @@ mod tests {
     use crate::vault::{MockVault, Vault};
     use crate::vc::oid4vci::tests::fixtures::{
         fake_access_token, sample_access_token, sample_authorization_metadata,
-        sample_cred_response, sample_credential_definition, sample_nonce, SampleIssuerMetadata,
-        ACCESS_TOKEN, AUTH_URL, CRED_DEF_ID, ISSUER_URL, NOTIFICATION_ID, REQ_URI_CODE, SCOPE,
-        SD_JWT_CREDS,
+        sample_cred_response, sample_credential_definition, sample_nonce,
+        sample_offer_with_auth_code_grant, sample_offer_with_pre_auth_code_grant,
+        SampleIssuerMetadata, ACCESS_TOKEN, AUTH_URL, CRED_DEF_ID, ISSUER_URL, NOTIFICATION_ID,
+        REQ_URI_CODE, SCOPE, SD_JWT_CREDS,
     };
     use crate::vc::oid4vci::{CredentialRequest, CredentialResult, Holder};
     use crate::vc::VCFormat;
@@ -750,7 +737,7 @@ mod tests {
     use std::io;
 
     #[tokio::test]
-    async fn holder_requests_access_token_correctly() {
+    async fn authorization_code_flow_with_scope_works_correctly() {
         let mut http_client = MockHttpClient::new();
 
         mock_http_once(
@@ -786,6 +773,104 @@ mod tests {
                 assert!(url.query().unwrap().contains(REQ_URI_CODE));
 
                 async { Ok::<String, io::Error>("fake_auth_code".to_string()) }
+            })
+            .await
+            .unwrap();
+
+        assert_eq!(
+            serde_json::to_value(&token_response).unwrap(),
+            sample_access_token_response()
+        );
+    }
+
+    #[rstest]
+    #[case::offer_with_auth_code_grant_success(
+        sample_offer_with_auth_code_grant(None),
+        "auth_code",
+        json!(sample_authorization_metadata()),
+        "grant_type=authorization_code&code=auth_code"
+    )]
+    #[case::offer_with_pre_auth_code_grant_success(
+        sample_offer_with_pre_auth_code_grant("pre_auth_code"),
+        "pre_auth_code",
+        json!(sample_authorization_metadata()),
+        "grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Apre-authorized_code&pre-authorized_code=pre_auth_code&tx_code=pre_auth_code&client_id=fake_client_id"
+    )]
+    #[should_panic(expected = "Unsupported credential definition IDs: invalid_scope")]
+    #[case::fals_when_offer_with_auth_code_grant_contains_invalid_scope(
+        sample_offer_with_auth_code_grant(Some("invalid_scope")),
+        "auth_code",
+        json!(sample_authorization_metadata()),
+        "grant_type=authorization_code&code=auth_code"
+    )]
+    #[should_panic(expected = "Discovery error")]
+    #[case::fails_when_offer_with_pre_auth_code_grant_refers_to_invalid_auth_srv_metadata(sample_offer_with_pre_auth_code_grant("pre_auth_code"),
+        "pre_auth_code",
+        json!(SampleIssuerMetadata::with_sdjwtvc_conf()),
+        "grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Apre-authorized_code&pre-authorized_code=pre_auth_code&tx_code=pre_auth_code&client_id=fake_client_id"
+    )]
+    #[tokio::test]
+    async fn get_access_token(
+        #[case] offer: CredentialOfferParams,
+        #[case] code: &str,
+        #[case] auth_srv_metadata: serde_json::Value,
+        #[case] token_req_body: &str,
+    ) {
+        let mut http_client = MockHttpClient::new();
+
+        if code == "auth_code" {
+            mock_http_once(
+                &mut http_client,
+                Method::POST,
+                par_request_endpoint(),
+                json!({
+                   "request_uri": "urn:ietf:params:oauth:request_uri:".to_owned() + REQ_URI_CODE,
+                   "expires_in": 86400,
+                }),
+                StatusCode::CREATED,
+            );
+        } else {
+            mock_http_once(
+                &mut http_client,
+                Method::GET,
+                auth_srv_metadata_request_endpoint(),
+                auth_srv_metadata,
+                StatusCode::OK,
+            );
+        }
+
+        let token_req_body = token_req_body.to_owned();
+        mock_http_req_predicate(
+            &mut http_client,
+            Method::POST,
+            access_token_endpoint(),
+            move |req_body| {
+                assert!(req_body.contains(&token_req_body));
+                true
+            },
+            sample_access_token_response(),
+            StatusCode::OK,
+            1.into(),
+        );
+
+        let holder_service = holder_service_from_issuer_metadata(
+            http_client,
+            InMemVault::new(),
+            LocalKms::new(),
+            SampleIssuerMetadata::with_sdjwtvc_conf(),
+        )
+        .await;
+
+        let token_response = holder_service
+            .get_access_token(&offer, |authz_flow: AuthzFlow| {
+                match authz_flow {
+                    AuthzFlow::Preauthorized => {}
+                    AuthzFlow::Authorize(url) => {
+                        assert!(url.to_string().starts_with(AUTH_URL));
+                        assert!(url.query().unwrap().contains(REQ_URI_CODE));
+                    }
+                }
+                async { Ok::<String, io::Error>(code.to_string()) }
             })
             .await
             .unwrap();
@@ -1133,8 +1218,13 @@ mod tests {
     fn access_token_endpoint() -> Url {
         Url::parse(AUTH_URL).unwrap().join("/token").unwrap()
     }
-
     fn credential_endpoint() -> Url {
         Url::parse(ISSUER_URL).unwrap().join("/credential").unwrap()
+    }
+    fn auth_srv_metadata_request_endpoint() -> Url {
+        Url::parse(AUTH_URL)
+            .unwrap()
+            .join("/.well-known/openid-configuration")
+            .unwrap()
     }
 }
