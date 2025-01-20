@@ -8,6 +8,10 @@ use std::ops::Deref;
 use std::str::FromStr;
 use strum_macros::{Display, IntoStaticStr};
 
+/// `Result` alias for Crypto-specific [Error].
+pub type Result<T> = core::result::Result<T, Error>;
+pub type JWK = jwk::JWK;
+
 /// `Crypto` Error.
 ///
 /// Enumerates general errors expected during `Crypto` operations.
@@ -37,6 +41,12 @@ pub enum Error {
         #[snafu(implicit)]
         location: Location,
     },
+    #[snafu(display("Incorrect key: {details}"))]
+    IncorrectKey {
+        details: String,
+        #[snafu(implicit)]
+        location: Location,
+    },
     #[snafu(display("Derivation not supported for: {kid}"))]
     DerivationNotSupported { kid: String },
     #[snafu(display("Derivation error: {details}"))]
@@ -53,9 +63,6 @@ pub enum Error {
     },
 }
 
-/// `Result` alias for Crypto-specific [Error].
-pub type Result<T> = core::result::Result<T, Error>;
-
 /// Enum with supported `Crypto` algorithms.
 ///
 /// *NOTE*: more algs to be supported later.
@@ -65,38 +72,31 @@ pub enum Alg {
     ES256,
     ES256K,
     EdDSA,
+    BBS,
 }
 
-impl FromStr for Alg {
-    type Err = Error;
-
-    fn from_str(s: &str) -> Result<Alg> {
-        match s {
-            "ES256" => Ok(Alg::ES256),
-            "ES256K" => Ok(Alg::ES256K),
-            "EdDSA" => Ok(Alg::EdDSA),
-            _ => AlgNotSupportedSnafu { alg: s }.fail(),
-        }
-    }
+pub type BbsParameters = ssi::crypto::algorithm::BbsParameters;
+#[derive(Debug, Clone, Display)]
+#[non_exhaustive]
+pub enum SigningOptions {
+    BBS(BbsParameters),
 }
 
-impl TryFrom<&jwk::Algorithm> for Alg {
-    type Error = Error;
-
-    fn try_from(value: &jwk::Algorithm) -> Result<Alg> {
-        match value {
-            jwk::Algorithm::EdDSA => Ok(Alg::EdDSA),
-            jwk::Algorithm::ES256 => Ok(Alg::ES256),
-            jwk::Algorithm::ES256K => Ok(Alg::ES256K),
-            _ => AlgNotSupportedSnafu {
-                alg: serde_json::to_string(value).unwrap_or(format!("{:?}", value)),
-            }
-            .fail(),
-        }
-    }
+pub enum BbsVerifyingParameters {
+    Baseline {
+        header: [u8; 64],
+    },
+    Blind {
+        header: [u8; 64],
+        committed_messages: Option<Vec<Vec<u8>>>,
+        secret_prover_blind: Option<[u8; 32]>,
+        signer_blind: Option<[u8; 32]>,
+    },
 }
 
-pub type JWK = jwk::JWK;
+pub enum VerifyingOptions {
+    BBS(BbsVerifyingParameters),
+}
 
 /// An async `Signer` interface.
 ///
@@ -125,6 +125,32 @@ pub trait Signer: Sync + Send {
     /// * [Error::Signing] - fails to sign a payload.
     /// * [Error::AlgNotSupported] - algorithm is not supported.
     async fn sign(&self, payload: &[u8]) -> Result<Vec<u8>>;
+
+    /// Signs multiple binary payloads in a batch using multi signing.
+    ///
+    /// # Arguments
+    ///
+    /// * `payloads` - a slice of `Vec<u8>`, where each element represents a message to be signed.
+    /// * `opts` - extra signing options.
+    ///
+    /// # Returns
+    ///
+    /// A signed `payload` on success.
+    ///
+    /// # Errors
+    ///
+    /// * [Error::Signing] - ails to sign a payload.
+    /// * [Error::AlgNotSupported] - algorithm is not supported.
+    async fn sign_multi(
+        &self,
+        payloads: &[Vec<u8>],
+        opts: Option<SigningOptions>,
+    ) -> Result<Vec<u8>> {
+        AlgNotSupportedSnafu {
+            alg: self.alg().to_string(),
+        }
+        .fail()
+    }
 }
 
 /// An async `Verifier` interface.
@@ -143,6 +169,29 @@ pub trait Verifier: Sync + Send {
     ///
     /// * [Error::Verification] - verification failed.
     async fn verify(&self, data: &[u8], signature: &[u8]) -> Result<()>;
+
+    /// Verifies an array of data were signed using the given signature (Multi-Signature).
+    ///
+    /// # Arguments
+    ///
+    /// * `data` - an array of payload to be verified against the signature.
+    /// * `signature` - the corresponding signature.
+    /// * `opts` - extra verifying options.
+    ///
+    /// # Errors
+    ///
+    /// * [Error::Verification] - verification failed.
+    async fn verify_multi(
+        &self,
+        data: &[Vec<u8>],
+        signature: &[u8],
+        opts: Option<VerifyingOptions>,
+    ) -> Result<()> {
+        VerificationSnafu {
+            details: "Multi-signature is not supported by this Verifier",
+        }
+        .fail()
+    }
 }
 
 /// A general `Key` interface.
@@ -211,9 +260,7 @@ pub trait Suite: SigningKey + VerifyingKey + Sized {
     ///
     /// # Errors
     ///
-    /// * [Error::KeyNotSupported] - key is not supported.
-    /// * [Error::AlgNotSupported] - algorithm is not supported.
-    /// * [Error::KeyGeneration] - fails to generate a key.
+    /// * [Error::IncorrectKey] - wrong key bytes provided
     fn from_secret(bytes: Vec<u8>) -> Result<Self>;
 }
 
@@ -252,4 +299,33 @@ pub trait DerivationSuite<S: Suite>: Sync + Send {
     ///
     /// * [Error::Derivation] - fails to derive a key.
     async fn derive(&self, path: &str) -> Result<Vec<u8>>;
+}
+
+impl FromStr for Alg {
+    type Err = Error;
+
+    fn from_str(s: &str) -> Result<Alg> {
+        match s {
+            "ES256" => Ok(Alg::ES256),
+            "ES256K" => Ok(Alg::ES256K),
+            "EdDSA" => Ok(Alg::EdDSA),
+            _ => AlgNotSupportedSnafu { alg: s }.fail(),
+        }
+    }
+}
+
+impl TryFrom<&jwk::Algorithm> for Alg {
+    type Error = Error;
+
+    fn try_from(value: &jwk::Algorithm) -> Result<Alg> {
+        match value {
+            jwk::Algorithm::EdDSA => Ok(Alg::EdDSA),
+            jwk::Algorithm::ES256 => Ok(Alg::ES256),
+            jwk::Algorithm::ES256K => Ok(Alg::ES256K),
+            _ => AlgNotSupportedSnafu {
+                alg: serde_json::to_string(value).unwrap_or(format!("{:?}", value)),
+            }
+            .fail(),
+        }
+    }
 }

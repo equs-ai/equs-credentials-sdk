@@ -76,6 +76,7 @@ impl DIDPeer {
             KeyType::Ed25519 => VerificationMethodType::Ed25519VerificationKey2020,
             KeyType::P256 => VerificationMethodType::EcdsaSecp256k1VerificationKey2019,
             KeyType::K256 => VerificationMethodType::EcdsaSecp256k1VerificationKey2019,
+            KeyType::Bls12381 => VerificationMethodType::Bls12381G2Key2020,
         };
 
         let pub_key_jwk = convert_jwk(&jwk).map_err(|err| {

@@ -87,7 +87,7 @@ impl crypto::Signer for Ed25519 {
         err(),
         ret(),
     )]
-    async fn sign(&self, payload: &[u8]) -> Result<Vec<u8>, crypto::Error> {
+    async fn sign(&self, payload: &[u8]) -> crypto::Result<Vec<u8>> {
         let signature: Signature = self.signing_key.sign(payload);
         Ok(signature.to_vec())
     }

@@ -5,7 +5,7 @@ use common_macros::DebugError;
 use mockall::automock;
 use snafu::{Location, Snafu};
 use std::fmt::Debug;
-use strum_macros::{Display, EnumString, IntoStaticStr};
+use strum_macros::{Display, EnumIter, EnumString, IntoStaticStr};
 use tracing::{info, instrument, Level};
 
 /// `Kms` Error.
@@ -46,16 +46,15 @@ pub type KeyID = String;
 /// Enum with supported `Kms` key types.
 ///
 /// *NOTE*: more key types to be supported later.
-#[derive(Debug, PartialEq, Clone, Display, EnumString, IntoStaticStr)]
+#[derive(Debug, PartialEq, Clone, Display, EnumIter, EnumString, IntoStaticStr)]
 #[non_exhaustive]
 pub enum KeyType {
     Ed25519,
     P256,
     K256,
+    Bls12381,
     // etc
 }
-
-pub const SUPPORTED_KEYS: [KeyType; 3] = [KeyType::Ed25519, KeyType::P256, KeyType::K256];
 
 /// General options for key creation.
 #[derive(Debug, Default, PartialEq, Clone)]
@@ -199,31 +198,23 @@ where
 #[cfg(test)]
 pub mod test_util {
     use crate::kms;
-    use crate::kms::{KeyHandle, Kms, SUPPORTED_KEYS};
+    use crate::kms::{KeyHandle, KeyType, Kms};
+    use strum::IntoEnumIterator;
 
     pub async fn test_kms<KH: KeyHandle, KMS: Kms<KH>>(kms: KMS) {
-        for kt in SUPPORTED_KEYS {
+        for kt in KeyType::iter() {
             // Create a key
-            let create_res = kms.create(kt.clone(), kms::CreateOptions {}).await;
-            assert!(create_res.is_ok());
-            let kid = create_res.unwrap();
+            let kid = kms.create(kt.clone(), kms::CreateOptions {}).await.unwrap();
 
             // Get a handle to the key
-            let get_res = kms.get(&kid).await;
-            assert!(get_res.is_ok());
-            let kh = get_res.unwrap();
+            let kh = kms.get(&kid).await.unwrap();
 
             // Sign using handle
             let message = "abracadabra";
-
-            let s_res = kh.sign(message.as_bytes()).await;
-            assert!(s_res.is_ok());
-
-            let signature = s_res.unwrap();
+            let signature = kh.sign(message.as_bytes()).await.unwrap();
 
             // Verify using handle
-            let v_res = kh.verify(message.as_bytes(), &signature).await;
-            assert!(v_res.is_ok());
+            kh.verify(message.as_bytes(), &signature).await.unwrap();
 
             // Check JWK
             assert_ne!(kh.jwk(), None);

@@ -1,5 +1,14 @@
-use crate::crypto::{DerivationNotSupportedSnafu, DerivationSuite, Suite};
+use async_trait::async_trait;
+use snafu::ResultExt;
+use std::str::FromStr;
+use std::sync::Arc;
+use tracing::{instrument, Level};
+
+use crate::crypto::{
+    AlgNotSupportedSnafu, DerivationNotSupportedSnafu, DerivationSuite, SigningOptions, Suite,
+};
 use crate::inmem::crypto::bip32::Bip32;
+use crate::inmem::crypto::bls12381::Bls12381;
 use crate::inmem::crypto::ed25519::Ed25519;
 use crate::inmem::crypto::k256::K256;
 use crate::inmem::crypto::p256::P256;
@@ -8,17 +17,13 @@ use crate::kms::{CryptoSnafu, DerivativeKms, KeyID, Kms};
 use crate::kms::{Error, NotFoundSnafu, ResolvingSnafu};
 use crate::storage::Storage;
 use crate::{crypto, kms};
-use async_trait::async_trait;
-use snafu::ResultExt;
-use std::str::FromStr;
-use std::sync::Arc;
-use tracing::{instrument, Level};
 
 #[derive(Clone)]
 pub enum KeyHandle {
     Ed25519(Ed25519),
     P256(P256),
     K256(K256),
+    Bls12381(Bls12381),
 }
 
 impl KeyHandle {}
@@ -35,6 +40,7 @@ impl crypto::Signer for KeyHandle {
             KeyHandle::Ed25519(s) => s.alg(),
             KeyHandle::P256(s) => s.alg(),
             KeyHandle::K256(s) => s.alg(),
+            KeyHandle::Bls12381(s) => s.alg(),
         }
     }
 
@@ -49,6 +55,21 @@ impl crypto::Signer for KeyHandle {
             KeyHandle::Ed25519(s) => s.sign(payload).await,
             KeyHandle::P256(s) => s.sign(payload).await,
             KeyHandle::K256(s) => s.sign(payload).await,
+            KeyHandle::Bls12381(s) => s.sign(payload).await,
+        }
+    }
+
+    async fn sign_multi(
+        &self,
+        payloads: &[Vec<u8>],
+        opts: Option<SigningOptions>,
+    ) -> crypto::Result<Vec<u8>> {
+        match self {
+            KeyHandle::Bls12381(s) => s.sign_multi(payloads, opts).await,
+            _ => AlgNotSupportedSnafu {
+                alg: self.alg().to_string(),
+            }
+            .fail(),
         }
     }
 }
@@ -66,6 +87,7 @@ impl crypto::Verifier for KeyHandle {
             KeyHandle::Ed25519(s) => s.verify(data, signature).await,
             KeyHandle::P256(s) => s.verify(data, signature).await,
             KeyHandle::K256(s) => s.verify(data, signature).await,
+            KeyHandle::Bls12381(s) => s.verify(data, signature).await,
         }
     }
 }
@@ -83,6 +105,7 @@ impl crypto::Key for KeyHandle {
             KeyHandle::Ed25519(s) => s.pub_key(),
             KeyHandle::P256(s) => s.pub_key(),
             KeyHandle::K256(s) => s.pub_key(),
+            KeyHandle::Bls12381(s) => s.pub_key(),
         }
     }
 
@@ -96,6 +119,7 @@ impl crypto::Key for KeyHandle {
             KeyHandle::Ed25519(s) => s.jwk(),
             KeyHandle::P256(s) => s.jwk(),
             KeyHandle::K256(s) => s.jwk(),
+            KeyHandle::Bls12381(s) => s.jwk(),
         }
     }
 }
@@ -192,6 +216,7 @@ impl Kms<KeyHandle> for LocalKms {
             kms::KeyType::Ed25519 => Ed25519::gen(),
             kms::KeyType::P256 => P256::gen(),
             kms::KeyType::K256 => K256::gen(),
+            kms::KeyType::Bls12381 => Bls12381::gen(),
         };
 
         let kid = LocalKms::kid(kt, None);
@@ -223,6 +248,9 @@ impl Kms<KeyHandle> for LocalKms {
                 .context(CryptoSnafu)?,
             (kms::KeyType::K256, _) => K256::from_secret(payload.clone())
                 .map(KeyHandle::K256)
+                .context(CryptoSnafu)?,
+            (kms::KeyType::Bls12381, _) => Bls12381::from_secret(payload.clone())
+                .map(KeyHandle::Bls12381)
                 .context(CryptoSnafu)?,
         };
 
