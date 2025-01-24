@@ -91,6 +91,7 @@ async fn presentation_request_uri(state: web::Data<AppState>) -> HttpResponse {
         type_: ResponseType::VpTokenIdToken,
         mode: ResponseMode::DirectPost,
         submission_uri: response_uri,
+        state: None,
     };
 
     let pass_auth_req_object = PassAuthRequestObject::ByReference(request_uri.clone());
@@ -169,11 +170,13 @@ fn auth_resp_from_submitted_form(
     let presentation_submission =
         serde_json::from_str(form.get("presentation_submission").unwrap()).unwrap();
     let id_token = form.get("id_token").cloned();
+    let state = form.get("state").cloned();
 
     AuthorizationResponse {
         vp_token,
         presentation_submission,
         id_token,
+        state,
     }
 }
 

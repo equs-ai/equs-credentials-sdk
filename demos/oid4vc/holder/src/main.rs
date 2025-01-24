@@ -222,6 +222,7 @@ async fn same_device_presentation_flow(holder: impl HolderVp, kms: LocalKms) {
         type_: ResponseType::VpToken,
         mode: ResponseMode::Fragment,
         submission_uri: redirect_uri,
+        state: None,
     };
     let pass_auth_req_object = PassAuthRequestObject::ByValue;
 
@@ -286,6 +287,7 @@ fn retrieve_auth_resp_from_uri(url: Url) -> AuthorizationResponse {
         vp_token,
         presentation_submission,
         id_token: None,
+        state: None,
     }
 }
 

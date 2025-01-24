@@ -24,6 +24,8 @@ pub struct ProtocolError {
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     error_description: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    state: Option<String>,
 }
 
 impl ProtocolError {
@@ -34,32 +36,45 @@ impl ProtocolError {
     pub fn description(&self) -> &Option<String> {
         &self.error_description
     }
+    pub fn state(&self) -> &Option<String> {
+        &self.state
+    }
 
-    pub fn new(error_type: ErrorType, error_description: Option<String>) -> Self {
+    pub fn new(
+        error_type: ErrorType,
+        error_description: Option<String>,
+        state: Option<String>,
+    ) -> Self {
         Self {
             error: error_type,
             error_description,
+            state,
         }
     }
 
-    pub fn access_denied(message: &str) -> ProtocolError {
-        ProtocolError::new(ErrorType::AccessDenied, Some(message.to_owned()))
+    pub fn access_denied(message: &str, state: Option<String>) -> ProtocolError {
+        ProtocolError::new(ErrorType::AccessDenied, Some(message.to_owned()), state)
     }
 
-    pub fn vp_formats_not_supported(message: &str) -> ProtocolError {
-        ProtocolError::new(ErrorType::VpFormatsNotSupported, Some(message.to_owned()))
+    pub fn vp_formats_not_supported(message: &str, state: Option<String>) -> ProtocolError {
+        ProtocolError::new(
+            ErrorType::VpFormatsNotSupported,
+            Some(message.to_owned()),
+            state,
+        )
     }
 
-    pub fn invalid_request(message: &str) -> ProtocolError {
-        ProtocolError::new(ErrorType::InvalidRequest, Some(message.to_owned()))
+    pub fn invalid_request(message: &str, state: Option<String>) -> ProtocolError {
+        ProtocolError::new(ErrorType::InvalidRequest, Some(message.to_owned()), state)
     }
 }
 
-impl ProtocolSnafu<ErrorType, Option<String>> {
-    pub fn new(error: ErrorType, description: String) -> Self {
+impl ProtocolSnafu<ErrorType, Option<String>, Option<String>> {
+    pub fn new(error: ErrorType, description: String, state: String) -> Self {
         Self {
             error,
             error_description: Some(description),
+            state: Some(state),
         }
     }
 }

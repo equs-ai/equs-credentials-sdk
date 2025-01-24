@@ -100,7 +100,11 @@ where
             _ => None,
         };
 
-        let auth_resp = Self::create_auth_response(presentation_response, id_token)?;
+        let auth_resp = Self::create_auth_response(
+            presentation_response,
+            id_token,
+            auth_request.state.clone(),
+        )?;
 
         let redirect_url = self
             .submit_response(
@@ -117,6 +121,7 @@ where
     fn create_auth_response(
         presentation_response: PresentationResponse,
         id_token: Option<IdToken>,
+        state: Option<String>,
     ) -> Result<AuthorizationResponse> {
         let vp_token = VpToken::try_from(presentation_response.presentations)
             .context(AuthorizationResponseSnafu)?;
@@ -131,6 +136,7 @@ where
             vp_token,
             presentation_submission,
             id_token,
+            state,
         });
 
         Ok(auth_resp)
@@ -208,7 +214,10 @@ where
         }
 
         info!("matching credentials are not found, sending an authorization error response to the verifier...");
-        let err = ProtocolError::access_denied("matching credentials are not found");
+        let err = ProtocolError::access_denied(
+            "matching credentials are not found",
+            auth_request.state.clone(),
+        );
         self.submit_auth_error_resp(&auth_request.response_uri, &err)
             .await?;
 
@@ -265,7 +274,10 @@ where
         auth_request: &ResolvedAuthRequest,
     ) -> Result<RequestedPresentation> {
         let Some(creds) = creds_map.get(&presentation_input.id) else {
-            let err = ProtocolError::access_denied("matching credentials are not found");
+            let err = ProtocolError::access_denied(
+                "matching credentials are not found",
+                auth_request.state.clone(),
+            );
             self.submit_auth_error_resp(&auth_request.response_uri, &err)
                 .await?;
 
@@ -293,11 +305,14 @@ where
                 .contains_claim_format_with_payload(format, payload);
 
             if !found {
-                let body = ProtocolError::vp_formats_not_supported(&format!(
-                    "vp format = '{}' with {} algorithms is not supported",
-                    String::from(format.to_owned()),
-                    serde_json::to_string(&payload).unwrap_or_else(|_| "".to_string())
-                ));
+                let body = ProtocolError::vp_formats_not_supported(
+                    &format!(
+                        "vp format = '{}' with {} algorithms is not supported",
+                        String::from(format.to_owned()),
+                        serde_json::to_string(&payload).unwrap_or_else(|_| "".to_string())
+                    ),
+                    auth_request.state.clone(),
+                );
                 self.submit_auth_error_resp(&auth_request.response_uri, &body)
                     .await?;
 
@@ -343,6 +358,8 @@ where
             .parsed()
             .to_owned();
 
+        let state = aro.state();
+
         Ok(ResolvedAuthRequest {
             client_id: aro.client_id().0.to_owned(),
             presentation_definition: pres_def,
@@ -350,6 +367,7 @@ where
             response_type: aro.response_type().to_owned(),
             response_mode: aro.response_mode().to_owned(),
             response_uri: aro.return_uri().to_owned(),
+            state,
         })
     }
 
@@ -451,7 +469,10 @@ where
         auth_request: &ResolvedAuthRequest,
     ) -> Result<()> {
         info!("presentation request is declined, sending an authorization error response to the verifier...");
-        let err = ProtocolError::access_denied("consent to share the presentation is not given");
+        let err = ProtocolError::access_denied(
+            "consent to share the presentation is not given",
+            auth_request.state.clone(),
+        );
         let _ = self
             .submit_auth_error_resp(&auth_request.response_uri, &err)
             .await?;
@@ -529,18 +550,21 @@ where
         if !supported {
             return Err(openid4vp::core::error::Error::protocol_invalid_req(
                 "'redirect_uri' client_id_schema verification method is not supported",
+                decoded_request.state(),
             ));
         }
         let client_id = &decoded_request.client_id().0;
         let client_id_as_uri = Url::parse(client_id).map_err(|_| {
             openid4vp::core::error::Error::protocol_invalid_req(
                 "could not parse 'client_id' = {client_id} as uri, in 'redirect_uri' response method it must be uri",
+                decoded_request.state()
             )
         })?;
 
         if client_id_as_uri != *redirect_uri {
             return Err(openid4vp::core::error::Error::protocol_invalid_req(
                 &format!("in 'redirect_uri' response mode 'client_id' = {client_id} must be equal to 'redirect_uri' = {redirect_uri}"),
+                decoded_request.state()
             ));
         }
 
@@ -565,7 +589,7 @@ mod tests {
     use crate::vc::core::KeyMetadata;
     use crate::vc::oid4vp::protocol_error::ErrorType;
     use crate::vc::oid4vp::tests::fixtures::{
-        multi_presentation, single_presentation, REQUEST_URI, VERIFIER_URL,
+        multi_presentation, single_presentation, REQUEST_URI, STATE, VERIFIER_URL,
     };
     use crate::vc::oid4vp::tests::utils::{
         build_url, holder_service, validate_claims, PresentationTestCase,
@@ -612,13 +636,42 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn get_auth_request_with_state_success() {
+        let mut http_client = MockHttpClient::new();
+        mock_http_fn_with_plain_text_resp(
+            &mut http_client,
+            Method::GET,
+            build_url(VERIFIER_URL, "request"),
+            single_presentation::AUTH_REQUEST_WITH_STATE_JWT,
+            1.into(),
+        );
+        let holder = holder_service(http_client, LocalKms::new(), InMemVault::new()).await;
+        pub const REQUEST_URI: &str = "openid4vp://?client_id=did%3Akey%3AzDnaexoypPeJHz5xfdshV9NqsWT3BUmHvDUDe8VxWf6Ln23Uh&request_uri=http%3A%2F%2F127.0.0.1%3A55796%2Frequest";
+
+        let request_obj = holder
+            .get_authorization_request(&REQUEST_URI.parse().unwrap())
+            .await
+            .unwrap();
+
+        assert_eq!(request_obj.state, Some(STATE.to_string()));
+    }
+
     #[rstest]
     #[case::single_presentation_success(single_presentation::presentation_test_case(), false)]
+    #[case::single_presentation_with_state_success(
+        single_presentation::presentation_test_case_with_state(),
+        false
+    )]
     #[case::single_presentation_with_extra_credentials_success(
         single_presentation::presentation_test_case(),
         true
     )]
     #[case::multi_presentation_success(multi_presentation::presentation_test_case(), false)]
+    #[case::multi_presentation_with_state_success(
+        multi_presentation::presentation_test_case_with_state(),
+        false
+    )]
     #[case::multi_presentation_with_extra_credentials_success(
         multi_presentation::presentation_test_case(),
         true
@@ -765,6 +818,52 @@ mod tests {
                     .clone()
                     .unwrap()
                     .contains("algorithms is not supported"));
+
+                let mut response = HttpResponse::new(vec![]);
+                *response.status_mut() = StatusCode::OK;
+
+                Ok(response)
+            },
+            1.into(),
+        );
+
+        let holder = holder_service(http_client, kms, vault).await;
+
+        // Send auth response
+        holder
+            .present_credentials_auto(&test_case.request, &test_case.response_metadata)
+            .await
+            .unwrap();
+    }
+
+    #[rstest]
+    #[should_panic]
+    #[case::request_unsupported_credential_format_with_state(
+        request_unsupported_credential_format_case_with_state(),
+        false
+    )]
+    #[should_panic]
+    #[case::request_unsupported_credential_alg_with_state(
+        request_unsupported_credential_alg_case_with_state(),
+        false
+    )]
+    #[tokio::test]
+    async fn present_credential_auto_fails_with_state(
+        #[case] test_case: PresentationTestCase,
+        #[case] with_extra_creds: bool,
+    ) {
+        let kms = LocalKms::new();
+        let vault = test_case.prepare_vault(&kms, with_extra_creds).await;
+
+        let mut http_client = MockHttpClient::new();
+        mock_http_fn(
+            &mut http_client,
+            Method::POST,
+            build_url(VERIFIER_URL, "auth"),
+            |req| {
+                let err: ProtocolError =
+                    serde_urlencoded::from_bytes(req.body().as_slice()).unwrap();
+                assert_eq!(err.state().clone().unwrap(), STATE);
 
                 let mut response = HttpResponse::new(vec![]);
                 *response.status_mut() = StatusCode::OK;
@@ -964,11 +1063,19 @@ mod tests {
 
     #[rstest]
     #[case::single_presentation_success(single_presentation::presentation_test_case(), false)]
+    #[case::single_presentation_with_state_success(
+        single_presentation::presentation_test_case_with_state(),
+        false
+    )]
     #[case::single_presentation_with_extra_credentials_success(
         single_presentation::presentation_test_case(),
         true
     )]
     #[case::multi_presentation_success(multi_presentation::presentation_test_case(), false)]
+    #[case::multi_presentation_with_state_success(
+        multi_presentation::presentation_test_case_with_state(),
+        false
+    )]
     #[case::multi_presentation_with_extra_credentials_success(
         multi_presentation::presentation_test_case(),
         true
@@ -1060,7 +1167,9 @@ mod tests {
 
     #[rstest]
     #[case::single_presentation(single_presentation::presentation_test_case())]
+    #[case::single_presentation_with_state(single_presentation::presentation_test_case_with_state())]
     #[case::multi_presentation(multi_presentation::presentation_test_case())]
+    #[case::multi_presentation_with_state(multi_presentation::presentation_test_case_with_state())]
     #[tokio::test]
     async fn present_credential_success(#[case] test_case: PresentationTestCase) {
         let mut http_client = MockHttpClient::new();
@@ -1206,8 +1315,35 @@ mod tests {
         update_claim_format(test_case, cred_format)
     }
 
+    fn request_unsupported_credential_format_case_with_state() -> PresentationTestCase {
+        let test_case = single_presentation::presentation_test_case_with_state();
+        let cred_format: ClaimFormatMap = serde_json::from_value(json!({
+            "jwt_vc_json":{
+                "alg_values_supported":[
+                    "RS256"
+                ]
+            }
+        }))
+        .unwrap();
+
+        update_claim_format(test_case, cred_format)
+    }
+
     fn request_unsupported_credential_alg_case() -> PresentationTestCase {
         let test_case = single_presentation::presentation_test_case();
+        let cred_format: ClaimFormatMap = serde_json::from_value(json!({
+            "vc+sd-jwt":{
+                "sd-jwt_alg_values": ["RS256"],
+                "kb-jwt_alg_values": ["RS256"],
+            }
+        }))
+        .unwrap();
+
+        update_claim_format(test_case, cred_format)
+    }
+
+    fn request_unsupported_credential_alg_case_with_state() -> PresentationTestCase {
+        let test_case = single_presentation::presentation_test_case_with_state();
         let cred_format: ClaimFormatMap = serde_json::from_value(json!({
             "vc+sd-jwt":{
                 "sd-jwt_alg_values": ["RS256"],

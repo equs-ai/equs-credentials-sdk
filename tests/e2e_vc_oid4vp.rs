@@ -32,7 +32,7 @@ use utils::http::HttpClientEmulator;
 
 use crate::utils::fixtures::oid4vp::{
     multiple_sdjwt_presentation_case, single_jsonld_presentation_case,
-    single_sdjwt_presentation_case, Oid4VpTestCase, ValidateClaimsFunc, VERIFIER_URL,
+    single_sdjwt_presentation_case, Oid4VpTestCase, ValidateClaimsFunc, STATE, VERIFIER_URL,
 };
 use agent_sdk::did::DIDURL;
 use agent_sdk::inmem::kms::KeyHandle;
@@ -80,6 +80,7 @@ async fn credentials_presentation_and_verification(#[case] test_case: Oid4VpTest
         type_: ResponseType::VpTokenIdToken,
         mode: ResponseMode::DirectPost,
         submission_uri: response_uri,
+        state: Some(STATE.to_string()),
     };
 
     let (auth_request, session) = verifier
@@ -161,11 +162,14 @@ fn prepare_http_client_for_holder(
                 serde_json::from_str(form.get("presentation_submission").unwrap().as_str())
                     .unwrap();
             let id_token = form.get("id_token").cloned();
+            let state = form.get("state").cloned();
+            assert_eq!(state.clone().unwrap(), STATE);
 
             let auth_response = AuthorizationResponse {
                 vp_token,
                 presentation_submission,
                 id_token,
+                state,
             };
 
             let result = executor::block_on(verifier.verify_presentation(&auth_response, &session));

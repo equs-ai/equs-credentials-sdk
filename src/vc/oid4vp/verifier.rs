@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use openid4vp::core::authorization_request::parameters::{
-    ClientId, IdTokenType, Nonce as NonceSpruce, Scope,
+    ClientId, IdTokenType, Nonce as NonceSpruce, Scope, State,
 };
 use openid4vp::core::metadata::WalletMetadata;
 use openid4vp::verifier::by_reference::ByReference;
@@ -362,7 +362,9 @@ where
             },
             (_, mode) => {
                 return Err(Error::Protocol {
-                    source: ProtocolError::invalid_request(&format!("passing authorization request object by value or url is not supported in '{mode}' response mode")),
+                    source: ProtocolError::invalid_request(
+                        &format!("passing authorization request object by value or url is not supported in '{mode}' response mode"),
+                        auth_response_config.state.clone()),
 
                 })
             },
@@ -387,6 +389,11 @@ where
         let pass_req_obj = match pass_auth_request_object.to_owned() {
             PassAuthRequestObject::ByValue => ByReference::False,
             PassAuthRequestObject::ByReference(at) => ByReference::True { at },
+        };
+
+        let request_builder = match &auth_response_config.state {
+            Some(state) => request_builder.with_request_parameter(State(state.to_string())),
+            None => request_builder,
         };
 
         let (auth_request_url, auth_req_jwt) = request_builder
@@ -481,8 +488,8 @@ mod tests {
     use crate::vc::oid4vp::tests::fixtures::multi_presentation::{
         auth_response_options, submission_requirements,
     };
-    use crate::vc::oid4vp::tests::fixtures::VERIFIER_URL;
     use crate::vc::oid4vp::tests::fixtures::{multi_presentation, single_presentation, NONCE};
+    use crate::vc::oid4vp::tests::fixtures::{STATE, VERIFIER_URL};
     use crate::vc::oid4vp::tests::utils::{
         build_url, validate_claims, verifier_service, verifier_service_with_invalid_kid,
         verifier_service_with_signer_error, VerificationTestCase,
@@ -509,7 +516,7 @@ mod tests {
 
         let (verifier, did) = verifier_service().await;
 
-        let auth_resp_options = auth_response_options(build_url(VERIFIER_URL, "auth"));
+        let auth_resp_options = auth_response_options(build_url(VERIFIER_URL, "auth"), None);
 
         let (uri, _) = verifier
             .create_authorization_request(
@@ -531,7 +538,7 @@ mod tests {
     async fn auth_request_generating_fails_when_key_id_is_not_valid() {
         let presentation_definition = single_presentation::presentation_definition();
         let request_uri = build_url(VERIFIER_URL, "request");
-        let auth_resp_options = auth_response_options(build_url(VERIFIER_URL, "auth"));
+        let auth_resp_options = auth_response_options(build_url(VERIFIER_URL, "auth"), None);
 
         let (verifier, did) = verifier_service_with_invalid_kid().await;
 
@@ -556,7 +563,7 @@ mod tests {
     async fn auth_request_generating_fails_in_case_of_signer_error() {
         let presentation_definition = single_presentation::presentation_definition();
         let request_uri = build_url(VERIFIER_URL, "request");
-        let auth_resp_options = auth_response_options(build_url(VERIFIER_URL, "auth"));
+        let auth_resp_options = auth_response_options(build_url(VERIFIER_URL, "auth"), None);
 
         let (verifier, did) = verifier_service_with_signer_error().await;
 
@@ -584,7 +591,7 @@ mod tests {
 
         let (verifier, did) = verifier_service().await;
 
-        let auth_resp_options = auth_response_options(response_uri.clone());
+        let auth_resp_options = auth_response_options(response_uri.clone(), None);
 
         let (request_uri, session) = verifier
             .create_authorization_request(
@@ -626,13 +633,48 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn generate_auth_request_with_state_success() {
+        let presentation_definition = single_presentation::presentation_definition();
+        let response_uri: Url = build_url(VERIFIER_URL, "auth");
+
+        let (verifier, did) = verifier_service().await;
+
+        let auth_resp_options =
+            auth_response_options(response_uri.clone(), Some(STATE.to_string()));
+
+        let (request_uri, session) = verifier
+            .create_authorization_request(
+                &presentation_definition,
+                &auth_resp_options,
+                &PassAuthRequestObject::ByValue,
+                None,
+            )
+            .await
+            .unwrap();
+
+        let auth_request = AuthorizationRequest::from_query_params(request_uri.query().unwrap());
+
+        let hash_query: HashMap<String, String> = request_uri.query_pairs().into_owned().collect();
+        let auth_req_jwt_from_uri = hash_query.get("request").unwrap();
+
+        let request: AuthorizationRequestObject =
+            decode_unverified::<UntypedObject>(auth_req_jwt_from_uri)
+                .unwrap()
+                .try_into()
+                .unwrap();
+        let state = request.get::<State>().unwrap().unwrap();
+
+        assert_eq!(state.0, STATE);
+    }
+
+    #[tokio::test]
     async fn generate_siop_auth_request_by_value_success() {
         let presentation_definition = single_presentation::presentation_definition();
         let response_uri: Url = build_url(VERIFIER_URL, "auth");
 
         let (verifier, did) = verifier_service().await;
 
-        let mut auth_resp_options = auth_response_options(response_uri.clone());
+        let mut auth_resp_options = auth_response_options(response_uri.clone(), None);
         auth_resp_options.type_ = ResponseType::VpTokenIdToken;
 
         let (request_uri, session) = verifier
@@ -695,7 +737,7 @@ mod tests {
 
         let (verifier, did) = verifier_service().await;
 
-        let auth_resp_options = auth_response_options(build_url(VERIFIER_URL, "auth"));
+        let auth_resp_options = auth_response_options(build_url(VERIFIER_URL, "auth"), None);
 
         let (request, _) = verifier
             .create_authorization_request(

@@ -72,6 +72,7 @@ pub struct JsAuthResponseOptions {
     pub type_: String,
     pub mode: String,
     pub submission_uri: String,
+    pub state: Option<String>,
 }
 
 impl TryFrom<JsAuthResponseOptions> for AuthResponseOptions {
@@ -83,6 +84,7 @@ impl TryFrom<JsAuthResponseOptions> for AuthResponseOptions {
             mode: value.mode.into(),
             submission_uri: Url::parse(&value.submission_uri)
                 .map_err(|e| Error::from_reason(e.to_string()))?,
+            state: None,
         })
     }
 }
@@ -163,6 +165,7 @@ impl TryFrom<JsAuthorizationResponse> for AuthorizationResponse {
             vp_token: value.vp_token,
             id_token: value.id_token,
             presentation_submission: from_json_object(value.presentation_submission)?,
+            state: None,
         })
     }
 }

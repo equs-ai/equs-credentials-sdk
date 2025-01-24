@@ -111,6 +111,7 @@ impl TryFrom<AuthorizationRequest> for ResolvedAuthRequest {
             response_type: value.response_type.into(),
             response_mode: value.response_mode.into(),
             response_uri: parse_url_arg(&value.response_uri)?,
+            state: None,
         })
     }
 }
