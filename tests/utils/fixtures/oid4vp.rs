@@ -25,6 +25,7 @@ pub struct Oid4VpTestCase {
 }
 
 pub const VERIFIER_URL: &str = "http://example.com";
+pub const STATE: &str = "d7a4bdce-d46f-48b3-ad85-4fcc5e124ad8";
 
 fn sample_jsonld_resident_card_credential() -> (Oid4VpTestCredential, InputDescriptor) {
     let format = Oid4VpTestCredentialFormat::LdpVc(

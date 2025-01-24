@@ -95,6 +95,7 @@ pub struct ResolvedAuthRequest {
     pub response_type: ResponseType,
     pub response_mode: ResponseMode,
     pub response_uri: Url,
+    pub state: Option<String>,
 }
 
 /// An `OID4VP` response configuration of authorization request object.
@@ -103,6 +104,7 @@ pub struct AuthResponseOptions {
     pub type_: ResponseType,
     pub mode: ResponseMode,
     pub submission_uri: Url,
+    pub state: Option<String>,
 }
 
 /// An OID4VP authorization response.
@@ -114,6 +116,7 @@ pub struct AuthorizationResponse {
     pub vp_token: serde_json::Value,
     pub presentation_submission: PresentationSubmission,
     pub id_token: Option<String>,
+    pub state: Option<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -331,7 +334,7 @@ impl From<SpruceErr> for Error {
                 source: Oid4VpLibSnafu.into_error(e),
             },
             SpruceErr::Protocol(e) => Self::Protocol {
-                source: ProtocolError::new(e.r#type, e.description),
+                source: ProtocolError::new(e.r#type, e.description, e.state),
             },
         }
     }
