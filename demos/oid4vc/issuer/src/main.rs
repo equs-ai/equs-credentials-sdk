@@ -1,7 +1,7 @@
 use actix_web::http::header::Header;
 use actix_web::{web, App, Error, HttpRequest, HttpResponse, HttpServer};
 use actix_web_httpauth::headers::authorization::{Authorization, Bearer};
-use agent_sdk::did::DID;
+use agent_sdk::did::{DIDBuf, DIDResolver, DID};
 use agent_sdk::inmem::kms::LocalKms;
 use agent_sdk::inmem::storage::InMemStorage;
 use agent_sdk::kms;
@@ -18,7 +18,9 @@ use std::ops::Add;
 
 use actix_web::cookie::time;
 use actix_web::cookie::time::OffsetDateTime;
+use agent_sdk::did::didkey::DIDKey;
 use agent_sdk::did::didweb::DIDWeb;
+use agent_sdk::did::universal::UniversalResolver;
 use agent_sdk::did::DIDDoc;
 use agent_sdk::inmem::nonce::LocalNonceGenerator;
 use agent_sdk::reqwest::builder::ReqwestClientBuilder;
@@ -266,15 +268,27 @@ async fn get_user_attributes(cred_def: &CredDefMetadata) -> Result<Claims, Error
         _ => panic!("unsupported format"),
     };
 
-    if vc_type == "PermanentResidentCard" {
-        return Ok(json!({
-            "type": ["PermanentResident", "Person"],
-            "givenName": "John",
-            "familyName": "Doe",
-            "birthDate": "09/09/1989",
-        })
-        .try_into()
-        .unwrap());
+    match vc_type.as_str() {
+        "PermanentResidentCard" => {
+            return Ok(json!({
+                "type": ["PermanentResident", "Person"],
+                "givenName": "John",
+                "familyName": "Doe",
+                "birthDate": "09/09/1989",
+            })
+            .try_into()
+            .unwrap());
+        }
+        "AlumniCredential" => {
+            return Ok(json!({
+                "id": "http://university.example/credentials/58473",
+                "alumniOf": "The Example University",
+            })
+            .try_into()
+            .unwrap());
+        }
+
+        _ => {}
     }
 
     let (realm_name, user_name, keycloak_url) = (
@@ -376,8 +390,12 @@ async fn issuer() -> (impl oid4vci::Issuer, DIDDoc) {
 
     let issuer_metadata = sample_issuer_metadata(ISSUER_SERVER_URL, AUTH_SRV_URL);
 
-    let issuer = oid4vci::IssuerBuilder::new(kms, nonce_gen, issuer_metadata, key_metadata)
+    let issuer = oid4vci::IssuerBuilder::new(kms.clone(), nonce_gen, issuer_metadata, key_metadata)
         .with_http_client(ReqwestClientBuilder::new().insecure().build().unwrap())
+        .with_dedicated_key_metadata(
+            JSON_LD_V2_CRED_DEF,
+            &create_dedicated_metadata_for_json_ld_v2(&kms).await,
+        )
         .with_clock_skew(time::Duration::minutes(1))
         .token_validation_introspect(
             // Url::parse("http://localhost:8080/idp/realms/pid-issuer-realm/protocol/openid-connect/token/introspect").unwrap(),
@@ -393,6 +411,25 @@ async fn issuer() -> (impl oid4vci::Issuer, DIDDoc) {
 
     println!("Done");
     (issuer, did_doc)
+}
+
+async fn create_dedicated_metadata_for_json_ld_v2(kms: &LocalKms) -> KeyMetadata {
+    let (kid, kh) = kms
+        .create_and_handle(kms::KeyType::Ed25519, kms::CreateOptions {})
+        .await
+        .unwrap();
+
+    let did = DIDKey::generate(kh).unwrap();
+    let vm = UniversalResolver::default()
+        .resolve_into_any_verification_method(DIDBuf::from_string(did).unwrap().as_did())
+        .await
+        .unwrap()
+        .unwrap()
+        .id
+        .as_did_url()
+        .to_string();
+
+    KeyMetadata { did_url: vm, kid }
 }
 
 async fn create_did_and_key_metadata(kms: &LocalKms) -> (DID, KeyMetadata, DIDDoc) {
@@ -411,8 +448,9 @@ async fn create_did_and_key_metadata(kms: &LocalKms) -> (DID, KeyMetadata, DIDDo
     (did, KeyMetadata { kid, did_url: vm }, did_doc)
 }
 
-const CRED_DEF_1: &str = "SD_JWT_cred_1";
-const CRED_DEF_2: &str = "JSON_LDP_cred_2";
+const SD_JWT_CRED_DEF: &str = "SD_JWT_cred_1";
+const JSON_LD_V1_CRED_DEF: &str = "JSON_LDP_cred_2";
+const JSON_LD_V2_CRED_DEF: &str = "JSON_LDP_cred_3";
 
 fn sample_issuer_metadata(iss_url: &str, authz_url: &str) -> IssuerMetadata {
     let metadata = serde_json::from_value(json!(
@@ -421,7 +459,7 @@ fn sample_issuer_metadata(iss_url: &str, authz_url: &str) -> IssuerMetadata {
           "authorization_servers": [authz_url],
           "credential_endpoint": iss_url.to_owned()+"/credential",
           "credential_configurations_supported": {
-            CRED_DEF_1: {
+            SD_JWT_CRED_DEF: {
               "format": "vc+sd-jwt",
               "scope": "SD_JWT_cred_scope",
               "cryptographic_binding_methods_supported": [
@@ -459,7 +497,7 @@ fn sample_issuer_metadata(iss_url: &str, authz_url: &str) -> IssuerMetadata {
                 "country": {},
               }
             },
-            CRED_DEF_2: {
+            JSON_LD_V1_CRED_DEF: {
                 "format": "ldp_vc",
                 "scope": "SD_JWT_cred_scope",
                 "@context": [
@@ -495,6 +533,54 @@ fn sample_issuer_metadata(iss_url: &str, authz_url: &str) -> IssuerMetadata {
                         "commuterClassification": {},
                         "residentSince": {},
                         "gpa": {}
+                    }
+                },
+                "display": [
+                    {
+                        "name": "University Credential",
+                        "locale": "en-US",
+                        "logo": {
+                            "uri": "https://exampleuniversity.com/public/logo.png",
+                            "alt_text": "a square logo of a university"
+                        },
+                        "background_color": "#12107c",
+                        "background_image": {
+                            "uri": "https://university.example.edu/public/background-image.png"
+                        },
+                        "text_color": "#FFFFFF"
+                    }
+                ]
+            },
+            JSON_LD_V2_CRED_DEF: {
+                "format": "ldp_vc",
+                "scope": "SD_JWT_cred_scope",
+                "@context": [
+                    "https://www.w3.org/ns/credentials/v2",
+                    "https://www.w3.org/ns/credentials/examples/v2"
+                ],
+                "type": [
+                    "VerifiableCredential",
+                    "AlumniCredential"
+                ],
+                "cryptographic_binding_methods_supported": [
+                    "jwk"
+                ],
+                "credential_signing_alg_values_supported": [
+                    "EcdsaRdfc2019",
+                    "EdDsaRdfc2022"
+                ],
+                "credential_definition": {
+                    "@context": [
+                        "https://www.w3.org/ns/credentials/v2",
+                        "https://www.w3.org/ns/credentials/examples/v2"
+                    ],
+                    "type": [
+                        "VerifiableCredential",
+                        "AlumniCredential"
+                    ],
+                    "credentialSubject": {
+                        "id": {},
+                        "alumniOf": {},
                     }
                 },
                 "display": [

@@ -10,7 +10,7 @@ pub type ValidateClaimsFunc = dyn Fn(Claims) + Send + Sync;
 
 pub enum Oid4VpTestCredentialFormat {
     SdJwt(VCMetadata),
-    LdpVc(JsonLdAPIVCMetadata),
+    LdpVc(Box<JsonLdAPIVCMetadata>),
 }
 pub struct Oid4VpTestCredential {
     pub format: Oid4VpTestCredentialFormat,
@@ -28,7 +28,7 @@ pub const VERIFIER_URL: &str = "http://example.com";
 pub const STATE: &str = "d7a4bdce-d46f-48b3-ad85-4fcc5e124ad8";
 
 fn sample_jsonld_resident_card_credential() -> (Oid4VpTestCredential, InputDescriptor) {
-    let format = Oid4VpTestCredentialFormat::LdpVc(
+    let format = Oid4VpTestCredentialFormat::LdpVc(Box::new(
         JsonLdAPIVCMetadata::new(
             vec![
                 IriRefBuf::from_str("https://www.w3.org/2018/credentials/v1").unwrap(),
@@ -40,7 +40,7 @@ fn sample_jsonld_resident_card_credential() -> (Oid4VpTestCredential, InputDescr
             ],
         )
         .unwrap(),
-    );
+    ));
 
     let credential = Oid4VpTestCredential {
         format,

@@ -34,7 +34,7 @@ pub enum Error {
         location: Location,
     },
 
-    #[snafu(display("Multiple credential subjects are not supported error"))]
+    #[snafu(display("Multiple credential subjects are not supported"))]
     MultipleSubjectNotSupported {
         #[snafu(implicit)]
         location: Location,
@@ -46,7 +46,7 @@ pub enum Error {
         location: Location,
     },
 
-    #[snafu(display("Multiple credentials are not supported error"))]
+    #[snafu(display("Multiple credentials are not supported"))]
     MultipleCredentialsNotSupported {
         #[snafu(implicit)]
         location: Location,
@@ -170,12 +170,21 @@ pub enum Error {
         #[snafu(implicit)]
         location: Location,
     },
+
+    #[snafu(display("Could not parse disclosures"))]
+    JsonPointerParsing {
+        source: ssi::json_pointer::InvalidJsonPointer,
+        #[snafu(implicit)]
+        location: Location,
+    },
 }
 
 pub type Result<T> = core::result::Result<T, Error>;
 
 #[derive(Debug, Default)]
-pub struct VerifyOptions {}
+pub struct VerifyOptions {
+    pub selective_claims: Option<Vec<String>>,
+}
 
 #[async_trait]
 pub trait API<CL, C, P, CM, PM, VR>
@@ -221,8 +230,8 @@ pub trait HasCredential<C> {
     fn get_credential(&self) -> Result<C>;
 }
 
-pub trait GetExpirationClaim<CL, EC> {
-    fn get_expiration_claim(claims: &CL) -> Option<EC>;
+pub trait GetDateTimeClaim<CL, EC> {
+    fn get_date_time_claim(exp_key: &str, claims: &CL) -> Option<EC>;
 }
 
 pub(super) async fn resolve_verification_method(did: &str) -> Result<DIDVerificationMethod> {

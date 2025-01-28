@@ -100,6 +100,14 @@ impl Claim {
     }
 
     #[instrument(level = Level::TRACE, ret())]
+    pub fn as_str(&self) -> Option<&str> {
+        match self {
+            Self::String(claim_str) => Some(claim_str),
+            _ => None,
+        }
+    }
+
+    #[instrument(level = Level::TRACE, ret())]
     pub fn get(&self, key: &str) -> Option<&Claim> {
         if let Self::Object(map) = self {
             return map.get(key);

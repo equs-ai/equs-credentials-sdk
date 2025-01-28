@@ -2,7 +2,9 @@ use crate::vc::claims::{Claim, Claims};
 use common_macros::DebugError;
 use serde_json::{json, Value as Json, Value};
 use snafu::{Location, Snafu};
+use ssi::JsonPointerBuf;
 use std::fmt::Debug;
+use std::str::FromStr;
 use tracing::{instrument, Level};
 
 type Level_ = Level;
@@ -132,6 +134,24 @@ fn path_to_json_helper(
     }
 
     Ok(())
+}
+
+pub fn path_to_json_pointer(path: &str) -> Result<JsonPointerBuf> {
+    let pointer_str = path
+        .trim_start_matches('$')
+        .replace(".", "/")
+        .replace("[", "/")
+        .replace("*", "")
+        .replace("]", "")
+        .trim_end_matches('/')
+        .to_string();
+
+    JsonPointerBuf::from_str(&pointer_str).map_err(|e| {
+        ParsingSnafu {
+            details: format!("could not create json pointer from json path = {path}: {e}"),
+        }
+        .build()
+    })
 }
 
 // TODO: get rid of Claim -> String convertation since it is considered to be insecure

@@ -29,7 +29,7 @@ use crate::vc::formats::{
     KeyTypeNotSupportedSnafu, ParsingSnafu, PresentationSnafu, ProofValidationSnafu, SigningSnafu,
     VerifyOptions, VerifyingSnafu, API,
 };
-use crate::vc::formats::{GetExpirationClaim, Result};
+use crate::vc::formats::{GetDateTimeClaim, Result};
 
 pub(crate) const VCT_CLAIM: &str = "vct";
 pub(crate) const EXP_CLAIM: &str = "exp";
@@ -181,7 +181,7 @@ impl SdJwtAPI {
         claims.put_dt(IAT_CLAIM, iat);
         claims.put_dt(NBF_CLAIM, nbf);
 
-        let exp = Self::get_expiration_claim(&claims)
+        let exp = Self::get_date_time_claim(EXP_CLAIM, &claims)
             .unwrap_or_else(|| time::OffsetDateTime::now_utc() + metadata.lifetime);
         claims.put_dt(EXP_CLAIM, exp);
 
@@ -322,9 +322,9 @@ impl SdJwtAPI {
     }
 }
 
-impl GetExpirationClaim<Claims, time::OffsetDateTime> for SdJwtAPI {
-    fn get_expiration_claim(claims: &Claims) -> Option<time::OffsetDateTime> {
-        get_time_based_claim(claims, EXP_CLAIM)
+impl GetDateTimeClaim<Claims, time::OffsetDateTime> for SdJwtAPI {
+    fn get_date_time_claim(exp: &str, claims: &Claims) -> Option<time::OffsetDateTime> {
+        get_time_based_claim(claims, exp)
     }
 }
 
@@ -570,7 +570,7 @@ mod tests {
         let vc_from_vp = vp.get_credential().unwrap();
         SdJwtAPI::verify_signature(&vc_from_vp, &iss_jwk).unwrap();
 
-        let disclosed = SdJwtAPI::verify_vp(&vp, &nonce, "verifier-id", VerifyOptions {})
+        let disclosed = SdJwtAPI::verify_vp(&vp, &nonce, "verifier-id", VerifyOptions::default())
             .await
             .unwrap();
 
@@ -681,7 +681,7 @@ mod tests {
         .await
         .unwrap();
 
-        let disclosed = SdJwtAPI::verify_vp(&vp, nonce, verifier_id, VerifyOptions {})
+        let disclosed = SdJwtAPI::verify_vp(&vp, nonce, verifier_id, VerifyOptions::default())
             .await
             .unwrap();
 
@@ -804,7 +804,7 @@ mod tests {
             &"not-a-valid-vp".to_string(),
             &random_nonce().await,
             "verifier-id",
-            VerifyOptions {},
+            VerifyOptions::default(),
         )
         .await;
 
@@ -828,7 +828,7 @@ mod tests {
             .unwrap();
 
         // But Verifier should deny it
-        let res = SdJwtAPI::verify_vp(&vp, &nonce, "verifier-id", VerifyOptions {}).await;
+        let res = SdJwtAPI::verify_vp(&vp, &nonce, "verifier-id", VerifyOptions::default()).await;
 
         assert!(matches!(res.err(), Some(Error::Verifying { .. })));
     }

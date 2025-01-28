@@ -265,11 +265,16 @@ pub fn default_presentation_definition() -> PresentationDefinition {
         .set_format(format);
 
     PresentationDefinition::new(Uuid::new_v4().to_string(), input_descriptor_1)
-        .add_input_descriptor(serde_json::from_str(INPUT_DESCRIPTOR_FOR_CRED_DEF_2).unwrap())
+        .add_input_descriptor(
+            serde_json::from_str(INPUT_DESCRIPTOR_FOR_JSON_LD_V1_CRED_DEF).unwrap(),
+        )
+        .add_input_descriptor(
+            serde_json::from_str(INPUT_DESCRIPTOR_FOR_JSON_LD_V2_CRED_DEF).unwrap(),
+        )
         .set_name("Example with selective disclosure".to_owned())
 }
 
-const INPUT_DESCRIPTOR_FOR_CRED_DEF_2: &str = r#"{
+const INPUT_DESCRIPTOR_FOR_JSON_LD_V1_CRED_DEF: &str = r#"{
     "id": "resident-card",
     "name": "Identity VC",
     "purpose": "We want a resident card",
@@ -289,6 +294,33 @@ const INPUT_DESCRIPTOR_FOR_CRED_DEF_2: &str = r#"{
                     "type": "array",
                     "contains": {
                         "const": "PermanentResidentCard"
+                    }
+                }
+            }
+        ]
+    }
+}"#;
+
+const INPUT_DESCRIPTOR_FOR_JSON_LD_V2_CRED_DEF: &str = r#"{
+    "id": "alumni-card",
+    "name": "University VC",
+    "purpose": "We want a diploma",
+    "format": {
+        "ldp_vc": {
+           "proof_type": [
+            "EcdsaRdfc2019",
+            "EdDsaRdfc2022"
+           ]
+        }
+    },
+    "constraints": {
+        "fields": [
+            {
+                "path": ["$.type"],
+                "filter": {
+                    "type": "array",
+                    "contains": {
+                        "const": "AlumniCredential"
                     }
                 }
             }
