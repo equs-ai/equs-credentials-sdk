@@ -73,6 +73,19 @@ impl AskarVault {
         err(),
         ret(),
     )]
+    async fn get_all(&self) -> Result<Vec<Entry>, aries_askar::Error> {
+        let mut session = self.0.session(None).await?;
+        session
+            .fetch_all(None, None, None, None, false, false)
+            .await
+    }
+
+    #[instrument(
+        level = Level::TRACE,
+        skip(self),
+        err(),
+        ret(),
+    )]
     async fn find(&self, filter: TagFilter) -> Result<Vec<Entry>, aries_askar::Error> {
         let mut session = self.0.session(None).await?;
         session
@@ -194,6 +207,23 @@ impl Vault for AskarVault {
         })?;
 
         entry.map(entry_to_credential).transpose()
+    }
+
+    #[instrument(
+        level = Level::TRACE,
+        skip(self),
+        err(),
+        ret(),
+    )]
+    async fn get_credentials(&self) -> Result<Vec<CredentialEntry>, Error> {
+        let entries = self.get_all().await.map_err(|err| {
+            StoringSnafu {
+                details: err.to_string(),
+            }
+            .build()
+        })?;
+
+        entries.into_iter().map(entry_to_credential).collect()
     }
 
     #[instrument(
@@ -335,7 +365,7 @@ fn entry_to_credential(entry: Entry) -> Result<CredentialEntry, Error> {
         }
         SD_JWT_VC => Credential::SdJwt(credential_str),
         _ => FormatNotSupportedSnafu {
-            format: entry.category,
+            format: entry.category.clone(),
         }
         .fail()?,
     };
@@ -353,7 +383,11 @@ fn entry_to_credential(entry: Entry) -> Result<CredentialEntry, Error> {
         .value()
         .to_owned();
 
-    Ok(CredentialEntry { credential, kid })
+    Ok(CredentialEntry {
+        credential,
+        kid,
+        id: AskarVaultId(entry.category, entry.name).into(),
+    })
 }
 
 #[cfg(test)]
@@ -425,7 +459,8 @@ mod tests {
             serde_json::to_value(&get1_res).unwrap(),
             serde_json::to_value(CredentialEntry {
                 credential: Credential::SdJwt(cred1.clone()),
-                kid: "1234".into()
+                kid: "1234".into(),
+                id: get1_res.clone().unwrap().id
             })
             .unwrap(),
         );
@@ -433,9 +468,29 @@ mod tests {
             serde_json::to_value(&get2_res).unwrap(),
             serde_json::to_value(CredentialEntry {
                 credential: Credential::LdpVc(serde_json::from_str(cred2str).unwrap()),
-                kid: "1234".into()
+                kid: "1234".into(),
+                id: get2_res.clone().unwrap().id
             })
             .unwrap(),
+        );
+
+        let get_all_res = vault.get_credentials().await.unwrap();
+
+        assert_eq!(
+            serde_json::to_value(get_all_res).unwrap(),
+            serde_json::to_value(vec![
+                CredentialEntry {
+                    credential: Credential::SdJwt(cred1.clone()),
+                    kid: "1234".into(),
+                    id: get1_res.clone().unwrap().id
+                },
+                CredentialEntry {
+                    credential: Credential::LdpVc(serde_json::from_str(cred2str).unwrap()),
+                    kid: "1234".into(),
+                    id: get2_res.unwrap().id
+                }
+            ])
+            .unwrap()
         );
 
         let find_res = vault
@@ -455,7 +510,8 @@ mod tests {
             serde_json::to_value(find_res).unwrap(),
             serde_json::to_value(vec![CredentialEntry {
                 credential: Credential::SdJwt(cred1),
-                kid: "1234".into()
+                kid: "1234".into(),
+                id: get1_res.unwrap().id
             }])
             .unwrap()
         );

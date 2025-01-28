@@ -8,7 +8,7 @@ interface IssuerMetadataDisplay {
 }
 
 export interface CredentialMetadataDisplayLogo {
-	url: string;
+	uri: string;
 	alt_text: string;
 }
 

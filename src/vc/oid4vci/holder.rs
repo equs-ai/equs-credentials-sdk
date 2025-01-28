@@ -451,10 +451,10 @@ where
         &self,
         credential: &Credential,
         credential_metadata: &CredentialMetadata,
-    ) -> Result<()> {
+    ) -> Result<String> {
         info!("storing credential is started");
 
-        let _ = self
+        let id = self
             .holder
             .store_credential(credential, credential_metadata)
             .await
@@ -462,7 +462,7 @@ where
 
         info!("credential is stored");
 
-        Ok(())
+        Ok(id)
     }
 }
 

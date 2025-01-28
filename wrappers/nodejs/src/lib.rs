@@ -9,4 +9,4 @@ pub(crate) mod utils;
 pub mod vault;
 pub mod vc;
 
-pub use utils::{enable_logs, resolve_metadata};
+pub use utils::{enable_logs, parse_claims, resolve_metadata};

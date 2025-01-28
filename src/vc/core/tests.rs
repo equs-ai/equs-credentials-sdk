@@ -22,6 +22,7 @@ pub mod fixtures {
 
     pub const VCT: &str = "https://issuer.net/cred_schema";
     pub const CRED_TYPE: &str = "PermanentResident";
+    pub const CREDENTIAL_ID: &str = "abcde";
 
     pub fn fake_ldp_vc_cred() -> json_ld_vc::VC {
         let mut context = ssi::claims::vc::syntax::Context::default();
@@ -466,6 +467,7 @@ pub mod utils {
             CredentialEntry {
                 credential,
                 kid: h_kid,
+                id: CREDENTIAL_ID.to_string(),
             }
         }
 

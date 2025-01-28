@@ -1,6 +1,7 @@
 use crate::vc::core::{JsCredential, JsCredentialMetadata, JsKeyMetadata};
 use crate::vc::JsonObject;
 use agent_sdk::vc::metadata::{CredentialMetadataProcessor, DefaultMetadataProcessor};
+use agent_sdk::vc::{Credential, HasClaims};
 use napi_derive::napi;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
@@ -37,6 +38,15 @@ pub async fn resolve_metadata(
     let metadata = metadata.into();
     let result = DefaultMetadataProcessor::resolve_metadata(&credential, metadata).unwrap();
     result.try_into()
+}
+
+#[napi(ts_return_type = "Promise<Claims>")]
+pub async fn parse_claims(credential: JsCredential) -> Result<JsonObject, napi::Error> {
+    let credential: Credential = credential.try_into()?;
+    let claims = credential
+        .parse_claims()
+        .map_err(|err| napi::Error::from_reason(err.to_string()))?;
+    to_json_object(claims)
 }
 
 #[napi]

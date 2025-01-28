@@ -64,6 +64,18 @@ where
     /// * [Error::Resolving] - fails to resolve a value.
     async fn get(&self, k: &K) -> Result<Option<V>>;
 
+    /// Returns all values.
+    ///
+    /// # Returns
+    ///
+    /// `Vec<V>` on success.
+    /// Empty vector if no keys were found.
+    ///
+    /// # Errors
+    ///
+    /// * [Error::Resolving] - fails to resolve a value.
+    async fn get_all(&self) -> Result<Vec<V>>;
+
     /// Delete an entry from the `Storage`.
     ///
     /// # Arguments

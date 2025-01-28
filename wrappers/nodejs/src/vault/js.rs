@@ -16,6 +16,8 @@ pub struct JsVault {
         ThreadsafeFunction<(JsCredential, JsCredentialMetadata), ErrorStrategy::Fatal>,
     #[napi(ts_type = "(id: string) => Promise<CredentialEntry | null>")]
     pub get_credential: ThreadsafeFunction<String, ErrorStrategy::Fatal>,
+    #[napi(ts_type = "() => Promise<Array<CredentialEntry>>")]
+    pub get_credentials: ThreadsafeFunction<(), ErrorStrategy::Fatal>,
     #[napi(ts_type = "(criteria: Array<CredentialFilter>) => Promise<Array<CredentialEntry>>")]
     pub find_credentials: ThreadsafeFunction<Vec<JsCredentialFilter>, ErrorStrategy::Fatal>,
 }
@@ -74,6 +76,26 @@ impl Vault for JsVault {
         promise
             .await
             .and_then(|entry| entry.map(TryInto::try_into).transpose())
+            .map_err(|err| {
+                ResolvingSnafu {
+                    details: err.to_string(),
+                }
+                .build()
+            })
+    }
+
+    async fn get_credentials(&self) -> vault::Result<Vec<CredentialEntry>> {
+        let promise: Promise<Vec<JsCredentialEntry>> =
+            self.get_credentials.call_async(()).await.map_err(|err| {
+                ResolvingSnafu {
+                    details: err.to_string(),
+                }
+                .build()
+            })?;
+
+        promise
+            .await
+            .and_then(|entries| entries.into_iter().map(TryInto::try_into).collect())
             .map_err(|err| {
                 ResolvingSnafu {
                     details: err.to_string(),

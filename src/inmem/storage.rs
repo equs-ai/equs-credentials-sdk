@@ -35,6 +35,11 @@ where
         Ok(v)
     }
 
+    async fn get_all(&self) -> Result<Vec<V>> {
+        let v = self.map.read().await.values().cloned().collect();
+        Ok(v)
+    }
+
     async fn delete(&self, k: &K) -> Result<()> {
         let _ = self.map.write().await.remove(k);
         Ok(())

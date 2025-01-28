@@ -18,6 +18,7 @@ pub use unified::UnifiedVault;
 pub struct JsCredentialEntry {
     pub credential: JsCredential,
     pub kid: String,
+    pub id: String,
 }
 
 impl TryFrom<CredentialEntry> for JsCredentialEntry {
@@ -27,6 +28,7 @@ impl TryFrom<CredentialEntry> for JsCredentialEntry {
         Ok(JsCredentialEntry {
             credential: value.credential.try_into()?,
             kid: value.kid,
+            id: value.id,
         })
     }
 }
@@ -38,6 +40,7 @@ impl TryFrom<JsCredentialEntry> for CredentialEntry {
         Ok(CredentialEntry {
             credential: value.credential.try_into()?,
             kid: value.kid,
+            id: value.id,
         })
     }
 }

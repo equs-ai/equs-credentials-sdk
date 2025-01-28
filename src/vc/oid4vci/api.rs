@@ -368,6 +368,10 @@ pub trait Holder: Send + Sync {
     /// * `credential` - a `Credential` to save.
     /// * `credential_metadata` - the corresponding `CredentialMetadata`.
     ///
+    /// # Returns
+    ///
+    /// `id` on success.
+    ///
     /// # Errors
     ///
     /// * [InternalError::Vault] - error with [Vault](crate::vault::Vault).
@@ -375,7 +379,7 @@ pub trait Holder: Send + Sync {
         &self,
         credential: &Credential,
         credential_metadata: &CredentialMetadata,
-    ) -> Result<()>;
+    ) -> Result<String>;
 }
 
 impl From<RequestError<HttpError>> for Error {
