@@ -1,7 +1,7 @@
 use crate::kms;
 use crate::nonce::Nonce;
 use crate::vc::claims::Claims;
-use crate::vc::core::api::{ContextParsingSnafu, DidUrlParsingSnafu};
+use crate::vc::core::api::{ContextParsingSnafu, InvalidDIDUrlSnafu};
 use crate::vc::core::{
     AlgNotSupportedSnafu, CredDefNotFoundSnafu, CredentialOfferContent, FormatNotSupportedSnafu,
     InconsistentProtocolDataSnafu, KMSSnafu, ProofFormatNotSupportedSnafu, ProofSnafu, Result,
@@ -20,7 +20,7 @@ use crate::vc::pop::jwt_pop::JwtProofOfPossession;
 use crate::vc::pop::ProofOfPossession;
 use crate::vc::{pop, Credential, VCFormat};
 use async_trait::async_trait;
-use iref::IriRefBuf;
+use iref::{IriRefBuf, UriBuf};
 use snafu::{ensure, ResultExt};
 use ssi::dids::DIDURLBuf;
 use std::marker::PhantomData;
@@ -194,6 +194,7 @@ where
             Some(CredentialDefinitionData::Ldp {
                 contexts: ctx_strs,
                 vc_types,
+                credential_id,
             }) => {
                 let mut contexts = vec![];
                 for context in ctx_strs {
@@ -201,7 +202,21 @@ where
                     contexts.push(c);
                 }
 
-                json_ld_vc::VCMetadata::new(contexts, vc_types).context(VCSnafu)?
+                let mut metadata =
+                    json_ld_vc::VCMetadata::new(contexts, vc_types).context(VCSnafu)?;
+                if let Some(credential_id) = credential_id {
+                    let cred_id = UriBuf::from_str(&credential_id).map_err(|e| {
+                        InconsistentProtocolDataSnafu {
+                            format: format!(
+                                "ldp-vc credential ID should be URI: id = {credential_id}"
+                            ),
+                        }
+                        .build()
+                    })?;
+                    metadata.set_credential_id(cred_id);
+                }
+
+                metadata
             }
             _ => InconsistentProtocolDataSnafu {
                 format: VCFormat::LdpVc.to_string(),
@@ -284,7 +299,12 @@ where
 
         let key_meta = &cred_def.key_metadata;
 
-        let did_url = DIDURLBuf::from_str(&key_meta.did_url).context(DidUrlParsingSnafu)?;
+        let did_url = DIDURLBuf::from_str(&key_meta.did_url).map_err(|e| {
+            InvalidDIDUrlSnafu {
+                input: format!("{}: {}", key_meta.did_url, e),
+            }
+            .build()
+        })?;
 
         info!("access to the key {}", key_meta.kid);
         let kh = self.kms.get(&key_meta.kid).await.context(KMSSnafu)?;

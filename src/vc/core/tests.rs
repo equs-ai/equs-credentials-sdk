@@ -10,6 +10,7 @@ pub mod fixtures {
     use ssi::claims::data_integrity::Proofs;
     use ssi::claims::vc::syntax::IdOr;
     use ssi::claims::vc::v1::syntax::CredentialType;
+    use ssi::claims::vc::v1::SpecializedJsonCredential;
     use ssi::json_ld::syntax::ContextEntry;
     use std::collections::HashMap;
     use std::str::FromStr;
@@ -28,7 +29,7 @@ pub mod fixtures {
             IriRefBuf::new("https://placeholder.com".to_string()).unwrap(),
         ));
         let types = ssi::claims::vc::syntax::Types::<CredentialType>::default();
-        let cred = json_ld_vc::Credential {
+        let cred = json_ld_vc::Credential::V1(SpecializedJsonCredential {
             context,
             id: None,
             types,
@@ -42,7 +43,7 @@ pub mod fixtures {
             credential_schema: vec![],
             refresh_services: vec![],
             additional_properties: Default::default(),
-        };
+        });
 
         json_ld_vc::VC::new(cred, Proofs::default())
     }
@@ -180,6 +181,7 @@ pub mod utils {
                         "https://w3id.org/citizenship/v1".to_string(),
                     ],
                     vc_types: vec![CRED_TYPE.to_owned()],
+                    credential_id: None,
                 }),
                 claim_format: ClaimFormat::LdpVc {
                     proof_type: vec!["EcdsaSecp256r1Signature2019".to_string()],
@@ -226,10 +228,14 @@ pub mod utils {
         pub async fn assert_credential(&self, vc: &Credential) {
             match (&self.format, vc) {
                 (VCFormat::SdJwtVc, Credential::SdJwt(cred)) => {
-                    SdJwtAPI::verify_vc(cred, VerifyOptions {}).await.unwrap();
+                    SdJwtAPI::verify_vc(cred, VerifyOptions::default())
+                        .await
+                        .unwrap();
                 }
                 (VCFormat::LdpVc, Credential::LdpVc(cred)) => {
-                    JsonLdAPI::verify_vc(cred, VerifyOptions {}).await.unwrap();
+                    JsonLdAPI::verify_vc(cred, VerifyOptions::default())
+                        .await
+                        .unwrap();
                 }
                 _ => unimplemented!(),
             }
@@ -562,7 +568,7 @@ pub mod utils {
             kh: impl KeyHandle,
             nonce: &Nonce,
         ) -> json_ld_vc::VP {
-            let vp_meta = json_ld_vc::VPMetadata::new().unwrap();
+            let vp_meta = json_ld_vc::VPMetadata::new(vc).unwrap();
 
             JsonLdAPI::create_vp(vc, kh, nonce, VERIFIER_ID, vp_meta)
                 .await

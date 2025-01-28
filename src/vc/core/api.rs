@@ -11,7 +11,6 @@ use async_trait::async_trait;
 use common_macros::DebugError;
 use serde::{Deserialize, Serialize};
 use snafu::{Location, Snafu};
-use ssi::dids::InvalidDIDURL;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use time::Duration;
@@ -81,6 +80,7 @@ pub enum CredentialDefinitionData {
     Ldp {
         contexts: Vec<String>,
         vc_types: Vec<String>,
+        credential_id: Option<String>,
     },
 }
 
@@ -233,16 +233,9 @@ pub enum Error {
         #[snafu(implicit)]
         location: Location,
     },
-    #[snafu(display("Could not parse context(string) as Iri parsing error"))]
+    #[snafu(display("Could not parse context as Iri"))]
     ContextParsing {
         source: iref::iri::InvalidIriRef<String>,
-        #[snafu(implicit)]
-        location: Location,
-    },
-
-    #[snafu(display("Could not parse did url"))]
-    DidUrlParsing {
-        source: InvalidDIDURL<String>,
         #[snafu(implicit)]
         location: Location,
     },

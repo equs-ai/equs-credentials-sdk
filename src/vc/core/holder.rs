@@ -121,10 +121,10 @@ where
         trace!(?credential);
 
         match credential {
-            Credential::SdJwt(cred) => SdJwtAPI::verify_vc(cred, VerifyOptions {})
+            Credential::SdJwt(cred) => SdJwtAPI::verify_vc(cred, VerifyOptions::default())
                 .await
                 .context(VCSnafu),
-            Credential::LdpVc(cred) => JsonLdAPI::verify_vc(cred, VerifyOptions {})
+            Credential::LdpVc(cred) => JsonLdAPI::verify_vc(cred, VerifyOptions::default())
                 .await
                 .context(VCSnafu),
             _ => FormatNotSupportedSnafu {
@@ -200,7 +200,8 @@ where
                     key,
                     nonce,
                     verifier_id,
-                    json_ld_vc::VPMetadata::new().context(VCSnafu)?,
+                    json_ld_vc::VPMetadata::from_presentation_input(vc, presentation_input)
+                        .context(VCSnafu)?,
                 )
                 .await
                 .context(VCSnafu)?;

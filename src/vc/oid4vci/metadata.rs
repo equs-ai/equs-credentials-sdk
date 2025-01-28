@@ -169,7 +169,11 @@ fn json_ld_protocol_data(
 
     let vc_types = metadata.credential_definition().r#type().clone();
 
-    CredentialDefinitionData::Ldp { contexts, vc_types }
+    CredentialDefinitionData::Ldp {
+        contexts,
+        vc_types,
+        credential_id: None,
+    }
 }
 
 #[instrument(level = Level::TRACE, err(), ret())]

@@ -25,14 +25,15 @@ impl Verifier for VerifierService {
     ) -> Result<Claims> {
         let cred_claims: Claims = match presentation {
             Presentation::SdJwtVp(vp) => {
-                SdJwtAPI::verify_vp(vp, nonce, &self.verifier_id, VerifyOptions {})
+                SdJwtAPI::verify_vp(vp, nonce, &self.verifier_id, VerifyOptions::default())
                     .await
                     .context(VCSnafu)
             }
             Presentation::LdpVp(vp) => {
-                let _ = JsonLdAPI::verify_vp(vp, nonce, &self.verifier_id, VerifyOptions {})
-                    .await
-                    .context(VCSnafu)?;
+                let _ =
+                    JsonLdAPI::verify_vp(vp, nonce, &self.verifier_id, VerifyOptions::default())
+                        .await
+                        .context(VCSnafu)?;
 
                 let claims = Claims::try_from(serde_json::to_value(vp).context(ParseSnafu)?)
                     .context(ClaimsSnafu)?;

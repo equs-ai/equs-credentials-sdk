@@ -56,7 +56,9 @@ const DEFAULT_WALLET_METADATA: &str = r#"{
         "ldp_vc": {
            "proof_type": [
             "Ed25519Signature2018",
-            "EcdsaSecp256k1Signature2019"
+            "EcdsaSecp256k1Signature2019",
+            "EcdsaRdfc2019",
+            "EdDsaRdfc2022"
            ]
         }
     },

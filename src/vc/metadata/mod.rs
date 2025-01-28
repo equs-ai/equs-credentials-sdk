@@ -1,4 +1,5 @@
 use snafu::{Location, Snafu};
+use ssi::json_ld::JsonLdNodeObject;
 use std::fmt::Debug;
 use tracing::{instrument, Level};
 
@@ -70,9 +71,7 @@ impl DefaultMetadataProcessor {
     fn type_(credential: &Credential) -> Result<String> {
         match credential {
             Credential::LdpVc(ldp_vc) => {
-                let type_ = ldp_vc
-                    .types
-                    .additional_types()
+                let type_ = Vec::<String>::from(ldp_vc.json_ld_type())
                     .last()
                     .unwrap_or(&"VerifiableCredential".to_string())
                     .to_owned();

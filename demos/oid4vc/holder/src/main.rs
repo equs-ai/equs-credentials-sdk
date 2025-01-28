@@ -34,7 +34,8 @@ use time::OffsetDateTime;
 use uuid::Uuid;
 
 const CRED_DEF_ID_1: &str = "SD_JWT_cred_1";
-const CRED_DEF_ID_2: &str = "JSON_LDP_cred_2";
+const JSON_LD_V1_CRED_DEF_ID: &str = "JSON_LDP_cred_2";
+const JSON_LD_V2_CRED_DEF_ID: &str = "JSON_LDP_cred_3";
 
 const SCOPE: &str = "SD_JWT_cred_scope";
 
@@ -94,9 +95,19 @@ async fn run_issuance_flow(
     // For subsequent requests to the Issuer, Holder must reuse the nonce from the previous response
     let (_, key_metadata) = create_did_and_key_metadata(&kms).await;
 
+    let resp = request_credential(
+        &holder,
+        JSON_LD_V1_CRED_DEF_ID,
+        token_resp.access_token(),
+        resp.nonce_data.as_ref(),
+        key_metadata,
+    )
+    .await;
+
+    let (_, key_metadata) = create_did_and_key_metadata(&kms).await;
     let _ = request_credential(
         &holder,
-        CRED_DEF_ID_2,
+        JSON_LD_V2_CRED_DEF_ID,
         token_resp.access_token(),
         resp.nonce_data.as_ref(),
         key_metadata,
@@ -655,7 +666,7 @@ const INPUT_DESCRIPTOR_FOR_CRED_DEF_2: &str = r#"{
         "ldp_vc": {
            "proof_type": [
             "Ed25519Signature2018",
-            "EcdsaSecp256k1Signature2019"
+            "EcdsaSecp256k1Signature2019",
            ]
         }
     },

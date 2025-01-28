@@ -254,7 +254,7 @@ async fn create_vc(
                 claims,
                 (DIDURL::new(&key_metadata.did_url).unwrap(), kh),
                 (DIDURL::new(holder_did_url).unwrap(), holder_kh),
-                metadata,
+                *metadata,
             )
             .await
             .unwrap();
