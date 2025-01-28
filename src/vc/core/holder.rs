@@ -323,7 +323,9 @@ mod tests {
         create_did_and_key_metadata, create_did_and_key_metadata_by_key_type,
     };
     use crate::vault::{CredentialEntry, FormatNotSupportedSnafu, MockVault, Vault};
-    use crate::vc::core::tests::fixtures::{sample_cred_def_offer, CRED_DEF_ID, VERIFIER_ID};
+    use crate::vc::core::tests::fixtures::{
+        sample_cred_def_offer, CREDENTIAL_ID, CRED_DEF_ID, VERIFIER_ID,
+    };
     use crate::vc::core::tests::utils::{random_nonce, CredTestCase};
     use crate::vc::core::{Error, Holder, HolderMetadata, HolderService, KeyMetadata};
     use crate::vc::{CredentialMetadata, HasVCFormat};
@@ -543,10 +545,10 @@ mod tests {
         let kms = LocalKms::new();
         let vault = InMemVault::new();
 
-        let entry1 = case.generate_vc(&kms).await;
-        let entry2 = case.generate_vc(&kms).await;
+        let mut entry1 = case.generate_vc(&kms).await;
+        let mut entry2 = case.generate_vc(&kms).await;
 
-        vault.store_entries(vec![&entry1, &entry2]).await.unwrap();
+        let ids = vault.store_entries(vec![&entry1, &entry2]).await.unwrap();
 
         let holder = holder_service(kms, vault);
 
@@ -560,6 +562,8 @@ mod tests {
             panic!("failed to serialize credentials as json array");
         };
 
+        entry1.id = ids[0].clone();
+        entry2.id = ids[1].clone();
         assert!(json_creds.contains(&serde_json::to_value(entry1).unwrap()));
         assert!(json_creds.contains(&serde_json::to_value(entry2).unwrap()));
 
@@ -676,6 +680,7 @@ mod tests {
                 &CredentialEntry {
                     credential: case.invalid_cred(),
                     kid: key_metadata.kid,
+                    id: CREDENTIAL_ID.to_string(),
                 },
             )
             .await;

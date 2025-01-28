@@ -42,6 +42,20 @@ impl NativeVault {
     }
 
     #[napi]
+    pub async fn get_credentials(&self) -> napi::Result<Vec<JsCredentialEntry>> {
+        let credentials = self
+            .0
+            .get_credentials()
+            .await
+            .map_err(|err| napi::Error::from_reason(format!("{err:?}")))?;
+
+        credentials
+            .into_iter()
+            .map(|entry| entry.try_into())
+            .collect()
+    }
+
+    #[napi]
     pub async fn find_credentials(
         &self,
         filters: Vec<&JsCredentialFilter>,

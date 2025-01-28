@@ -33,6 +33,13 @@ impl Vault for UnifiedVault {
         }
     }
 
+    async fn get_credentials(&self) -> agent_sdk::vault::Result<Vec<CredentialEntry>> {
+        match self {
+            UnifiedVault::Js(js) => js.get_credentials().await,
+            UnifiedVault::Native(native) => native.inner().get_credentials().await,
+        }
+    }
+
     async fn find_credentials(
         &self,
         filters: Vec<CredentialFilter>,

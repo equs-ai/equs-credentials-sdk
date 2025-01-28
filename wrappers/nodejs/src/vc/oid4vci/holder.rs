@@ -152,7 +152,7 @@ impl OID4VCIHolder {
         &self,
         credential: JsCredential,
         credential_metadata: JsCredentialMetadata,
-    ) -> napi::Result<()> {
+    ) -> napi::Result<String> {
         self.0
             .store_credential(&credential.try_into()?, &credential_metadata.into())
             .await
@@ -223,7 +223,7 @@ trait _HolderWrapperTrait: Send + Sync {
         &self,
         credential: &Credential,
         credential_metadata: &CredentialMetadata,
-    ) -> oid4vci::Result<()>;
+    ) -> oid4vci::Result<String>;
 
     async fn get_access_token(
         &self,
@@ -266,7 +266,7 @@ impl<H: Holder> _HolderWrapperTrait for _HolderWrapper<H> {
         &self,
         credential: &Credential,
         credential_metadata: &CredentialMetadata,
-    ) -> oid4vci::Result<()> {
+    ) -> oid4vci::Result<String> {
         self.0
             .store_credential(credential, credential_metadata)
             .await

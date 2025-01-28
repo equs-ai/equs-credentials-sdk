@@ -215,6 +215,7 @@ impl Vault for InMemVault {
         let entry = CredentialEntry {
             credential,
             kid: metadata.kid.clone(),
+            id: storage_id.clone(),
         };
 
         let _ = self
@@ -241,6 +242,21 @@ impl Vault for InMemVault {
     )]
     async fn get_credential(&self, id: &str) -> Result<Option<CredentialEntry>, Error> {
         self.storage.get(&id.to_string()).await.map_err(|err| {
+            StoringSnafu {
+                details: err.to_string(),
+            }
+            .build()
+        })
+    }
+
+    #[instrument(
+        level = Level::TRACE,
+        skip(self),
+        err(),
+        ret(),
+    )]
+    async fn get_credentials(&self) -> Result<Vec<CredentialEntry>, Error> {
+        self.storage.get_all().await.map_err(|err| {
             StoringSnafu {
                 details: err.to_string(),
             }

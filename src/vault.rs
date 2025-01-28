@@ -60,6 +60,7 @@ pub enum CredentialFilter {
 pub struct CredentialEntry {
     pub credential: vc::Credential,
     pub kid: kms::KeyID,
+    pub id: String,
 }
 
 /// An async `Vault` interface for managing Verifiable Credentials.
@@ -108,6 +109,18 @@ pub trait Vault: Send + Sync {
     /// * [Error::Resolving] - fails to access the storage.
     async fn get_credential(&self, id: &str) -> Result<Option<CredentialEntry>>;
 
+    /// List all `CredentialEntry`s in `Vault`
+    ///
+    /// # Returns
+    ///
+    /// A Vector of `CredentialEntry` on success.
+    /// In case if there are no entries an empty Vector should be returned.
+    ///
+    /// # Errors
+    ///
+    /// * [Error::Resolving] - fails to revolve the values.
+    async fn get_credentials(&self) -> Result<Vec<CredentialEntry>>;
+
     /// Find the matching `CredentialEntry`s in `Vault`
     ///
     /// # Arguments
@@ -122,6 +135,8 @@ pub trait Vault: Send + Sync {
     /// # Errors
     ///
     /// * [Error::Resolving] - fails to revolve the values.
+    ///
+    ///
     async fn find_credentials(
         &self,
         filters: Vec<CredentialFilter>,
@@ -181,23 +196,49 @@ pub mod test_util {
         let get1_res = vault.get_credential(&cred1_id).await.unwrap();
         let get2_res = vault.get_credential(&cred2_id).await.unwrap();
 
+        let actual_resp1 = get1_res.unwrap();
         assert_eq!(
-            serde_json::to_value(get1_res.unwrap()).unwrap(),
+            serde_json::to_value(&actual_resp1).unwrap(),
             serde_json::to_value(CredentialEntry {
                 credential: Credential::SdJwt(cred1.clone()),
-                kid: "1234".into()
+                kid: "1234".into(),
+                id: actual_resp1.clone().id
             })
             .unwrap(),
         );
 
+        let actual_resp2 = get2_res.unwrap();
         assert_eq!(
-            serde_json::to_value(get2_res.unwrap()).unwrap(),
+            serde_json::to_value(&actual_resp2).unwrap(),
             serde_json::to_value(CredentialEntry {
                 credential: Credential::LdpVc(cred2.clone()),
-                kid: "1234".into()
+                kid: "1234".into(),
+                id: actual_resp2.clone().id
             })
             .unwrap(),
         );
+
+        let get_all_res = vault.get_credentials().await.unwrap();
+
+        let serde_json::Value::Array(get_all_values) = serde_json::to_value(&get_all_res).unwrap()
+        else {
+            panic!("failed to serialize credentials as json array");
+        };
+
+        let expected_entry_sd_jwt = CredentialEntry {
+            credential: Credential::SdJwt(cred1.clone()),
+            kid: "1234".into(),
+            id: actual_resp1.clone().id,
+        };
+
+        let expected_entry_ldp_vc = CredentialEntry {
+            credential: Credential::LdpVc(cred2),
+            kid: "1234".into(),
+            id: actual_resp2.id,
+        };
+
+        assert!(get_all_values.contains(&serde_json::to_value(expected_entry_sd_jwt).unwrap()));
+        assert!(get_all_values.contains(&serde_json::to_value(expected_entry_ldp_vc).unwrap()));
 
         let find_res = vault
             .find_credentials(vec![
@@ -216,7 +257,8 @@ pub mod test_util {
             serde_json::to_value(find_res).unwrap(),
             serde_json::Value::Array(vec![serde_json::to_value(CredentialEntry {
                 credential: Credential::SdJwt(cred1),
-                kid: "1234".into()
+                kid: "1234".into(),
+                id: actual_resp1.id
             })
             .unwrap()])
         );

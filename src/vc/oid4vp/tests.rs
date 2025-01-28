@@ -8,6 +8,7 @@ pub mod fixtures {
     pub const CLIENT_ID: &str = "wallet-dev";
     pub const STATE: &str = "1d8b0d93-86e8-4135-87d4-524bb0500bf3";
     pub const REQUEST_URI: &str = "openid4vp://?client_id=did%3Akey%3AzDnaex9UKhcwNpfrPva1HLj6DECNHhHkmuY6xszv1KGWksvfL&request_uri=http%3A%2F%2F127.0.0.1%3A55796%2Frequest";
+    pub const CREDENTIAL_ID: &str = "abcde";
 
     pub mod single_presentation {
         use crate::nonce::Nonce;
@@ -656,7 +657,7 @@ pub mod utils {
     use crate::vc::metadata::{CredentialMetadataProcessor, DefaultMetadataProcessor};
     use crate::vc::oid4vp::holder::HolderService;
     use crate::vc::oid4vp::signer::Signer;
-    use crate::vc::oid4vp::tests::fixtures::VERIFIER_URL;
+    use crate::vc::oid4vp::tests::fixtures::{CREDENTIAL_ID, VERIFIER_URL};
     use crate::vc::oid4vp::tests::CredTypeWithClaims;
     use crate::vc::oid4vp::verifier::VerifierService;
     use crate::vc::oid4vp::{
@@ -842,6 +843,7 @@ pub mod utils {
                     vec![CredentialEntry {
                         credential: Credential::SdJwt(sd_jwt_vc),
                         kid: kid.to_string(),
+                        id: CREDENTIAL_ID.to_string(),
                     }],
                 );
             }
