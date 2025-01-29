@@ -1,5 +1,5 @@
 {
-  "name": "agent-sdk-linux-x64-gnu",
+  "name": "@equstng/agent-sdk-linux-x64-gnu",
   "version": "0.0.0",
   "os": [
     "linux"

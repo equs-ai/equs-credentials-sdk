@@ -7,7 +7,7 @@ import {
   PassAuthRequestObject,
   TracingLogFormat,
   TracingLogLevel,
-} from "../../../../../wrappers/nodejs";
+} from "@equstng/agent-sdk";
 import * as express from "express";
 import { urlencoded } from "express";
 import { json } from "body-parser";

@@ -5,7 +5,7 @@ import {
   KeyMetadata,
   KeyType,
   NativeKms,
-} from "../../../../../wrappers/nodejs";
+} from "@equstng/agent-sdk";
 
 export type DidAndKeyMetadata = {
   did: string;

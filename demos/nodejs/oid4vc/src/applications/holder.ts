@@ -15,7 +15,7 @@ import {
   resolveMetadata,
   TracingLogFormat,
   TracingLogLevel,
-} from "../../../../../wrappers/nodejs";
+} from "@equstng/agent-sdk";
 import { config } from "../components/config";
 import { createDidAndKeyMetadata, readFromCLI } from "../components/utils";
 

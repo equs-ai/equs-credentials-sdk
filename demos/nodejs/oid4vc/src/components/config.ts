@@ -4,7 +4,7 @@ import {
   JwkAlgorithm,
   OID4VCIIssuerMetadata,
   PresentationDefinition,
-} from "../../../../../wrappers/nodejs";
+} from "@equstng/agent-sdk";
 
 export class Config {
   readonly servers = {

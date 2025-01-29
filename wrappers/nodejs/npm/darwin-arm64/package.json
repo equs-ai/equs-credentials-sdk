@@ -1,15 +1,15 @@
 {
-  "name": "@equstng/agent-sdk-darwin-x64",
+  "name": "@equstng/agent-sdk-darwin-arm64",
   "version": "0.0.0",
   "os": [
     "darwin"
   ],
   "cpu": [
-    "x64"
+    "arm64"
   ],
-  "main": "agent-sdk.darwin-x64.node",
+  "main": "agent-sdk.darwin-arm64.node",
   "files": [
-    "agent-sdk.darwin-x64.node"
+    "agent-sdk.darwin-arm64.node"
   ],
   "license": "MIT",
   "engines": {
