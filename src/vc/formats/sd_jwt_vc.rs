@@ -817,7 +817,7 @@ mod tests {
 
         let kms = LocalKms::new();
         let (_, kh) = kms
-            .create_and_handle(KeyType::P256, CreateOptions {})
+            .create_and_handle(KeyType::P256, CreateOptions::default())
             .await
             .unwrap();
 
@@ -837,7 +837,7 @@ mod tests {
     async fn get_vm_from_did_doc_works_for_didkey() {
         let kms = LocalKms::new();
         let (_, kh) = kms
-            .create_and_handle(KeyType::P256, CreateOptions {})
+            .create_and_handle(KeyType::P256, CreateOptions::default())
             .await
             .unwrap();
 

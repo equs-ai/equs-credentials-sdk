@@ -94,6 +94,8 @@ pub struct JsKms {
     pub create: ThreadsafeFunction<JsKeyType, ErrorStrategy::Fatal>,
     #[napi(ts_type = "(kid: string) => Promise<KeyHandle>")]
     pub get: ThreadsafeFunction<String, ErrorStrategy::Fatal>,
+    #[napi(ts_type = "(pk: Array<number>) => Promise<KeyHandle>")]
+    pub get_by_public_key: ThreadsafeFunction<Vec<u8>, ErrorStrategy::Fatal>,
 }
 
 #[async_trait]
@@ -124,6 +126,26 @@ impl Kms<JsKeyHandle> for JsKms {
     async fn get(&self, kid: &KeyID) -> kms::Result<JsKeyHandle> {
         let promise: Promise<JsKeyHandle> =
             self.get.call_async(kid.to_string()).await.map_err(|err| {
+                kms::ResolvingSnafu {
+                    details: err.to_string(),
+                }
+                .build()
+            })?;
+
+        promise.await.map_err(|err| {
+            kms::ResolvingSnafu {
+                details: err.to_string(),
+            }
+            .build()
+        })
+    }
+
+    async fn get_by_public_key(&self, public_key: &[u8]) -> kms::Result<JsKeyHandle> {
+        let promise: Promise<JsKeyHandle> = self
+            .get_by_public_key
+            .call_async(public_key.to_vec())
+            .await
+            .map_err(|err| {
                 kms::ResolvingSnafu {
                     details: err.to_string(),
                 }

@@ -6,7 +6,6 @@ use oid4vci::proof_of_possession::{
 use snafu::ResultExt;
 use ssi::claims::jws;
 use ssi::dids::DIDURLBuf;
-use ssi::jwk::JWK;
 use tracing::{debug, instrument, trace, Level};
 
 use crate::crypto;
@@ -102,18 +101,6 @@ impl pop::ProofOfPossession<String> for JwtProofOfPossession {
 
         let alg = header.algorithm;
         (&alg).try_into().context(CryptoSnafu)
-    }
-}
-
-impl crypto::Key for JWK {
-    #[instrument(level = Level::TRACE, skip_all, err(), ret())]
-    fn pub_key(&self) -> Result<Vec<u8>, crypto::Error> {
-        unimplemented!()
-    }
-
-    #[instrument(level = Level::TRACE, skip_all, ret())]
-    fn jwk(&self) -> Option<JWK> {
-        Some(self.to_owned())
     }
 }
 

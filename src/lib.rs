@@ -21,6 +21,7 @@ pub mod did;
 mod utils;
 pub mod vc;
 
+pub mod didcomm;
 #[cfg(any(test, feature = "in-memory"))]
 pub mod inmem;
 pub mod nonce;

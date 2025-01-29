@@ -68,7 +68,7 @@ impl NativeKms {
     #[napi]
     pub async fn create(&self, kt: JsKeyType) -> napi::Result<String> {
         self.0
-            .create(kt.into(), CreateOptions {})
+            .create(kt.into(), CreateOptions::default())
             .await
             .map_err(|err| napi::Error::from_reason(format!("{err:?}")))
     }

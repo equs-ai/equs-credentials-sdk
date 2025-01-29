@@ -1,10 +1,6 @@
 use crate::crypto::{Key, JWK};
-use crate::did::{
-    DIDDoc, DidDocGenerationSnafu, DidGenerationSnafu, DocumentMetadata, ResolutionMetadata,
-    Result, DID,
-};
-use crate::kms::KeyType;
-use did_parser_nom::DidUrl;
+use crate::did;
+use crate::did::{DidDocGenerationSnafu, DidGenerationSnafu, Result};
 use did_peer::peer_did::numalgos::numalgo4::construction_did_doc::{
     DidPeer4ConstructionDidDocument, DidPeer4VerificationMethod,
 };
@@ -13,6 +9,7 @@ use did_peer::peer_did::PeerDid;
 use did_peer::resolver::options::PublicKeyEncoding;
 use did_peer::resolver::{PeerDidResolutionOptions, PeerDidResolver};
 use did_resolver::did_doc::schema::did_doc::DidDocument;
+use did_resolver::did_doc::schema::service::Service;
 use did_resolver::did_doc::schema::types::jsonwebkey::JsonWebKey;
 use did_resolver::did_doc::schema::verification_method::{
     PublicKeyField, VerificationMethodKind, VerificationMethodType,
@@ -21,11 +18,14 @@ use did_resolver::shared_types::did_document_metadata::DidDocumentMetadata;
 use did_resolver::traits::resolvable::resolution_metadata::DidResolutionMetadata;
 use did_resolver::traits::resolvable::resolution_output::DidResolutionOutput;
 use did_resolver::traits::resolvable::DidResolvable;
-use serde_json::Value;
+use snafu::ensure;
 use ssi::dids::resolution::{Error, Options, Output};
 use ssi::dids::{DIDMethod, DIDResolver as SpruceResolver};
 use std::collections::HashSet;
 use tracing::{instrument, Level};
+
+type DidUrl = did_parser_nom::DidUrl;
+type VerificationMethod = did_resolver::did_doc::schema::verification_method::VerificationMethod;
 
 type Level_ = Level;
 
@@ -42,6 +42,20 @@ const ECDSA_SECP_256K1_RECOVERY_METHOD_2020: &str =
     "https://w3id.org/security#EcdsaSecp256k1RecoveryMethod2020";
 const MULTIKEY: &str = "https://w3id.org/security#Multikey";
 
+#[derive(Debug, Eq, Hash, PartialEq)]
+pub enum VerificationRelationshipType {
+    Authentication,
+    Assertion,
+    KeyAgreement,
+    CapabilityInvocation,
+    CapabilityDelegation,
+}
+
+pub struct VerificationMethodKey<'a> {
+    pub key: &'a dyn Key,
+    pub verification_relationships: HashSet<VerificationRelationshipType>,
+}
+
 pub struct DIDPeer {
     resolver: PeerDidResolver,
 }
@@ -54,48 +68,46 @@ impl DIDPeer {
         }
     }
 
-    #[instrument(level = Level::TRACE, skip(key), err(), ret())]
-    pub fn generate_did_peer4(key: &impl Key, key_type: KeyType) -> Result<DID> {
-        let jwk = key.jwk().ok_or_else(|| {
-            DidDocGenerationSnafu {
-                details: "the key does not support JWK form",
-            }
-            .build()
-        })?;
-
-        let mut construction_did_doc = DidPeer4ConstructionDidDocument::new();
-
-        let did_url = DidUrl::parse("#key-0".into()).map_err(|err| {
+    #[instrument(level = Level::TRACE, skip(keys), err(), ret())]
+    pub fn generate_did_peer4(
+        keys: &[VerificationMethodKey],
+        services: &[&did::Service],
+    ) -> Result<did::DID> {
+        ensure!(
+            !keys.is_empty(),
             DidGenerationSnafu {
-                details: err.to_string(),
+                details: "To generate did:peer, at least one key must be provided."
             }
-            .build()
-        })?;
+        );
 
-        let vm_type = match key_type {
-            KeyType::Ed25519 => VerificationMethodType::Ed25519VerificationKey2020,
-            KeyType::P256 => VerificationMethodType::EcdsaSecp256k1VerificationKey2019,
-            KeyType::K256 => VerificationMethodType::EcdsaSecp256k1VerificationKey2019,
-            KeyType::Bls12381 => VerificationMethodType::Bls12381G2Key2020,
-        };
+        let mut construction_did_doc = DidPeer4ConstructionDidDocument::default();
 
-        let pub_key_jwk = convert_jwk(&jwk).map_err(|err| {
-            DidGenerationSnafu {
-                details: "Public JWK generation failed",
-            }
-            .build()
-        })?;
+        for (index, key) in keys.iter().enumerate() {
+            Self::add_verification_method(
+                index,
+                key.key,
+                &key.verification_relationships,
+                &mut construction_did_doc,
+            )?
+        }
 
-        let verification_method = DidPeer4VerificationMethod::builder()
-            .id(did_url.clone())
-            .verification_method_type(vm_type)
-            .public_key(PublicKeyField::Jwk {
-                public_key_jwk: pub_key_jwk,
-            })
-            .build();
+        for service in services {
+            let json = serde_json::to_value(service).map_err(|err| {
+                DidGenerationSnafu {
+                    details: err.to_string(),
+                }
+                .build()
+            })?;
 
-        construction_did_doc.add_verification_method(verification_method);
-        construction_did_doc.add_assertion_method_ref(did_url);
+            let service: Service = serde_json::from_value(json).map_err(|err| {
+                DidGenerationSnafu {
+                    details: err.to_string(),
+                }
+                .build()
+            })?;
+
+            construction_did_doc.add_service(service)
+        }
 
         let peer_did_4 = PeerDid::<Numalgo4>::new(construction_did_doc).map_err(|err| {
             DidGenerationSnafu {
@@ -105,6 +117,67 @@ impl DIDPeer {
         })?;
 
         Ok(peer_did_4.did().did().to_string())
+    }
+
+    fn add_verification_method(
+        index: usize,
+        key: &dyn Key,
+        verification_relationships: &HashSet<VerificationRelationshipType>,
+        construction_did_doc: &mut DidPeer4ConstructionDidDocument,
+    ) -> Result<()> {
+        let jwk = key.jwk().ok_or_else(|| {
+            DidDocGenerationSnafu {
+                details: "the key does not support JWK form",
+            }
+            .build()
+        })?;
+
+        let vm_id = DidUrl::parse(format!("#key-{index}")).map_err(|err| {
+            DidGenerationSnafu {
+                details: err.to_string(),
+            }
+            .build()
+        })?;
+
+        let pub_key_jwk = convert_jwk(&jwk).map_err(|err| {
+            DidGenerationSnafu {
+                details: format!("Public JWK generation failed {err}"),
+            }
+            .build()
+        })?;
+
+        let verification_method = DidPeer4VerificationMethod::builder()
+            .id(vm_id.clone())
+            .verification_method_type(VerificationMethodType::JsonWebKey2020)
+            .public_key(PublicKeyField::Jwk {
+                public_key_jwk: pub_key_jwk,
+            })
+            .build();
+
+        construction_did_doc.add_verification_method(verification_method);
+
+        for verification_relationship in verification_relationships {
+            match verification_relationship {
+                VerificationRelationshipType::Authentication => {
+                    construction_did_doc.add_authentication_ref(vm_id.clone())
+                }
+                VerificationRelationshipType::Assertion => {
+                    construction_did_doc.add_assertion_method_ref(vm_id.clone())
+                }
+                VerificationRelationshipType::KeyAgreement => {
+                    // TODO: Create Verification Method with the type X25519KeyAgreementKey2020 for ED25519
+                    construction_did_doc.add_key_agreement_ref(vm_id.clone());
+                }
+                VerificationRelationshipType::CapabilityInvocation => {
+                    construction_did_doc.add_capability_invocation_ref(vm_id.clone());
+                }
+                VerificationRelationshipType::CapabilityDelegation => {
+                    construction_did_doc.add_capability_delegation_ref(vm_id.clone());
+                }
+            }
+        }
+
+        Ok(())
     }
 }
 
@@ -174,20 +247,16 @@ fn convert_jwk(jwk: &JWK) -> serde_json::Result<JsonWebKey> {
 }
 
 #[instrument(level = Level::TRACE, err(), ret())]
-fn convert_did_doc(did_doc: &DidDocument) -> std::result::Result<DIDDoc, Error> {
-    let mut did_doc_map = match serde_json::to_value(did_doc) {
-        Ok(Value::Object(did_doc)) => did_doc,
-        Err(err) => {
-            return Err(Error::InvalidData(ssi::dids::document::InvalidData::Json(
-                err,
-            )))
-        }
-        _ => {
-            return Err(Error::RepresentationNotSupported(
-                "could not convert did doc to json object".to_string(),
-            ))
-        }
-    };
+fn convert_did_doc(did_doc: &DidDocument) -> std::result::Result<did::DIDDoc, Error> {
+    let mut did_doc_map = serde_json::to_value(did_doc)
+        .map_err(|err| Error::InvalidData(ssi::dids::document::InvalidData::Json(err)))?
+        .as_object()
+        .cloned()
+        .ok_or_else(|| {
+            Error::RepresentationNotSupported(
+                "could not convert did doc to JSON object".to_string(),
+            )
+        })?;
 
     if did_doc_map.get("@context").is_none() {
         // find all VerificationMethod objects in the DID Document
@@ -208,13 +277,13 @@ fn convert_did_doc(did_doc: &DidDocument) -> std::result::Result<DIDDoc, Error> 
             .map(|s| s.to_string())
             .collect();
 
-        let mut contexts = vec![Value::String(DID_V1_CONTEXT.to_string())];
+        let mut contexts = vec![serde_json::Value::String(DID_V1_CONTEXT.to_string())];
 
         for vm_type_context in vm_type_contexts {
-            contexts.push(Value::String(vm_type_context));
+            contexts.push(serde_json::Value::String(vm_type_context));
         }
 
-        did_doc_map.insert("@context".to_string(), Value::Array(contexts));
+        did_doc_map.insert("@context".to_string(), serde_json::Value::Array(contexts));
     }
 
     // It was found that `ssi-0.7.0` crate implementation that is used
@@ -237,35 +306,40 @@ fn convert_did_doc(did_doc: &DidDocument) -> std::result::Result<DIDDoc, Error> 
         })
     });
 
-    serde_json::from_value(Value::Object(did_doc_map))
+    serde_json::from_value(serde_json::Value::Object(did_doc_map))
         .map_err(|e| Error::InvalidData(ssi::dids::document::InvalidData::JsonLd(e)))
 }
 
 #[instrument(level = Level::TRACE)]
-fn relative_verification_method_id_to_absolute(vm: &mut Value, did_str: &str) {
+fn relative_verification_method_id_to_absolute(vm: &mut serde_json::Value, did_str: &str) {
     let Some(vm_map) = vm.as_object_mut() else {
         return;
     };
 
-    let Some(Value::String(id)) = vm_map.get("id") else {
+    let Some(serde_json::Value::String(id)) = vm_map.get("id") else {
         return;
     };
 
     if id.starts_with('#') {
-        vm_map.insert("id".to_string(), Value::String(format!("{did_str}{id}")));
+        vm_map.insert(
+            "id".to_string(),
+            serde_json::Value::String(format!("{did_str}{id}")),
+        );
     }
 }
 
 #[instrument(level = Level::TRACE, ret())]
-fn convert_did_doc_metadata(did_doc_metadata: DidDocumentMetadata) -> DocumentMetadata {
-    DocumentMetadata {
+fn convert_did_doc_metadata(did_doc_metadata: DidDocumentMetadata) -> did::DocumentMetadata {
+    did::DocumentMetadata {
         deactivated: did_doc_metadata.deactivated(),
     }
 }
 
 #[instrument(level = Level::TRACE, ret())]
-fn convert_resolution_metadata(resolution_metadata: DidResolutionMetadata) -> ResolutionMetadata {
-    ResolutionMetadata {
+fn convert_resolution_metadata(
+    resolution_metadata: DidResolutionMetadata,
+) -> did::ResolutionMetadata {
+    did::ResolutionMetadata {
         content_type: resolution_metadata.content_type().cloned(),
     }
 }
@@ -288,12 +362,43 @@ mod tests {
         #[case] vm_type: &str,
     ) {
         let kms = crate::inmem::kms::LocalKms::new();
-        let (_, key) = kms
-            .create_and_handle(key_type.clone(), kms::CreateOptions {})
+        let (_, key_0) = kms
+            .create_and_handle(key_type.clone(), kms::CreateOptions::default())
             .await
             .unwrap();
 
-        let did = DIDPeer::generate_did_peer4(&key, key_type).unwrap();
+        let (_, key_1) = kms
+            .create_and_handle(key_type.clone(), kms::CreateOptions::default())
+            .await
+            .unwrap();
+
+        let keys = vec![
+            VerificationMethodKey {
+                key: &key_0,
+                verification_relationships: vec![
+                    VerificationRelationshipType::Assertion,
+                    VerificationRelationshipType::Authentication,
+                ]
+                .into_iter()
+                .collect(),
+            },
+            VerificationMethodKey {
+                key: &key_1,
+                verification_relationships: vec![VerificationRelationshipType::KeyAgreement]
+                    .into_iter()
+                    .collect(),
+            },
+        ];
+
+        let service_json: serde_json::Value = serde_json::json!({
+            "id":"did:example:123#linked-domain",
+            "type": "LinkedDomains",
+            "serviceEndpoint": "https://bar.example.com/"
+        });
+
+        let service = serde_json::from_value(service_json.clone()).unwrap();
+
+        let did = DIDPeer::generate_did_peer4(&keys, &[&service]).unwrap();
 
         assert!(did.starts_with("did:peer:4"));
         let did_peer = did_parser_nom::Did::parse(did).unwrap();
@@ -309,15 +414,37 @@ mod tests {
             .await
             .unwrap();
 
-        // ensure that the DID's verification method type is correct according to key type
+        // ensure that the DID's verification methods are correct
         assert_eq!(
-            did_document.verification_method()[0]
-                .verification_method_type()
-                .to_string(),
-            vm_type.to_string()
+            serde_json::to_value(key_0.jwk().unwrap()).unwrap(),
+            public_key_to_jwk(did_document.verification_method()[0].public_key_field()),
         );
 
-        assert!(!did_document.assertion_method().is_empty());
+        assert_eq!(
+            serde_json::to_value(key_1.jwk().unwrap()).unwrap(),
+            public_key_to_jwk(did_document.verification_method()[1].public_key_field()),
+        );
+
+        assert!(matches!(
+            &did_document.authentication()[0],
+            VerificationMethodKind::Resolvable(did_url) if did_url.did_url() == "#key-0",
+        ));
+
+        assert!(matches!(
+            &did_document.assertion_method()[0],
+            VerificationMethodKind::Resolvable(did_url) if did_url.did_url() == "#key-0"
+        ));
+
+        assert!(matches!(
+            &did_document.key_agreement()[0],
+            VerificationMethodKind::Resolvable(did_url) if did_url.did_url() == "#key-1"
+        ));
+
+        // ensure that Service is correct
+        assert_eq!(
+            serde_json::to_value(&did_document.service()[0]).unwrap(),
+            service_json
+        );
     }
 
     #[rstest]
@@ -342,9 +469,9 @@ mod tests {
 
         assert_eq!(
             serde_json::to_value(document.clone().property_set.get("@context").unwrap()).unwrap(),
-            Value::Array(vec![
-                Value::String("https://www.w3.org/ns/did/v1".to_string()),
-                Value::String(vm_context.to_string())
+            serde_json::Value::Array(vec![
+                serde_json::Value::String("https://www.w3.org/ns/did/v1".to_string()),
+                serde_json::Value::String(vm_context.to_string())
             ])
         );
 
@@ -356,11 +483,17 @@ mod tests {
 
     #[tokio::test]
     async fn did_peer_4_generating_fails_on_invalid_jwk() {
-        let result = DIDPeer::generate_did_peer4(&no_jwk_key(), KeyType::P256);
+        let result = DIDPeer::generate_did_peer4(
+            &[VerificationMethodKey {
+                key: &no_jwk_key(),
+                verification_relationships: Default::default(),
+            }],
+            &[],
+        );
 
         assert!(matches!(
             result.err().unwrap(),
-            crate::did::Error::DidDocGeneration { .. }
+            did::Error::DidDocGeneration { .. }
         ));
     }
 
@@ -374,6 +507,13 @@ mod tests {
         let resolution_result = resolver.resolve(ssi::dids::DID::new(&did).unwrap()).await;
 
         assert!(resolution_result.is_err());
+    }
+
+    fn public_key_to_jwk(public_key: &PublicKeyField) -> serde_json::Value {
+        match public_key {
+            PublicKeyField::Jwk { public_key_jwk } => serde_json::to_value(public_key_jwk).unwrap(),
+            _ => panic!("Unexpected public key type"),
+        }
     }
 
     fn sample_did_peer_4_ed25519() -> &'static str {

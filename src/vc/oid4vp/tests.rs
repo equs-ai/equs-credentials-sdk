@@ -776,7 +776,7 @@ pub mod utils {
 
             // Save credentials
             let holder_key = kms
-                .create_and_handle(KeyType::P256, CreateOptions {})
+                .create_and_handle(KeyType::P256, CreateOptions::default())
                 .await
                 .unwrap();
             self.store_creds(&vault, holder_key).await;
@@ -784,7 +784,7 @@ pub mod utils {
             if with_extra_creds {
                 // Save extra credentials using another holder key
                 let another_holder_key = kms
-                    .create_and_handle(KeyType::P256, CreateOptions {})
+                    .create_and_handle(KeyType::P256, CreateOptions::default())
                     .await
                     .unwrap();
                 self.store_creds(&vault, another_holder_key).await;
@@ -889,7 +889,7 @@ pub mod utils {
         pub async fn vp_token(&self, nonce: &Nonce, verifier_id: &str) -> serde_json::Value {
             let kms = LocalKms::new();
             let (_, holder_key_handle) = kms
-                .create_and_handle(KeyType::P256, CreateOptions {})
+                .create_and_handle(KeyType::P256, CreateOptions::default())
                 .await
                 .unwrap();
 

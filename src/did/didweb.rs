@@ -320,7 +320,7 @@ mod tests {
         let did = "did:web:test.example.com";
         let kms = crate::inmem::kms::LocalKms::new();
         let (_, key) = kms
-            .create_and_handle(key_type, kms::CreateOptions {})
+            .create_and_handle(key_type, kms::CreateOptions::default())
             .await
             .unwrap();
 
@@ -359,7 +359,7 @@ mod tests {
     async fn did_doc_generating_fails_when_did_is_not_valid(#[case] invalid_did: &str) {
         let kms = crate::inmem::kms::LocalKms::new();
         let (_, key) = kms
-            .create_and_handle(KeyType::Ed25519, kms::CreateOptions {})
+            .create_and_handle(KeyType::Ed25519, kms::CreateOptions::default())
             .await
             .unwrap();
 

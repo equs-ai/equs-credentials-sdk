@@ -535,7 +535,7 @@ async fn resolve_offer() -> CredentialOfferParams {
 
 async fn create_did_and_key_metadata(kms: &LocalKms) -> (DID, KeyMetadata) {
     let (kid, kh) = kms
-        .create_and_handle(kms::KeyType::P256, kms::CreateOptions {})
+        .create_and_handle(kms::KeyType::P256, kms::CreateOptions::default())
         .await
         .unwrap();
 

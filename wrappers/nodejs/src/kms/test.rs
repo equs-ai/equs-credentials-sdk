@@ -15,7 +15,7 @@ pub async fn create_key_metadata(kms: Either<&NativeKms, JsKms>) -> JsKeyMetadat
 
 async fn _create_key_metadata(kms: UnifiedKms) -> JsKeyMetadata {
     let (kid, kh) = kms
-        .create_and_handle(kms::KeyType::P256, kms::CreateOptions {})
+        .create_and_handle(kms::KeyType::P256, kms::CreateOptions::default())
         .await
         .unwrap();
 

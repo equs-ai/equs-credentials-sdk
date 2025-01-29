@@ -19,7 +19,7 @@ pub async fn create_did_and_key_metadata_by_key_type(
     kt: KeyType,
 ) -> (DID, KeyMetadata) {
     let (kid, kh) = kms
-        .create_and_handle(kt, kms::CreateOptions {})
+        .create_and_handle(kt, kms::CreateOptions::default())
         .await
         .unwrap();
 
@@ -46,7 +46,7 @@ pub async fn create_did_url_and_key_handle(
     key_type: KeyType,
 ) -> (DIDURLBuf, impl KeyHandle) {
     let (_, kh) = kms
-        .create_and_handle(key_type, kms::CreateOptions {})
+        .create_and_handle(key_type, kms::CreateOptions::default())
         .await
         .unwrap();
 
@@ -66,7 +66,7 @@ pub async fn create_did_url_and_key_handle_kid(
     key_type: KeyType,
 ) -> (DIDURLBuf, KeyID, impl KeyHandle) {
     let (kid, kh) = kms
-        .create_and_handle(key_type, kms::CreateOptions {})
+        .create_and_handle(key_type, kms::CreateOptions::default())
         .await
         .unwrap();
 

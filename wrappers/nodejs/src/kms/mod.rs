@@ -67,6 +67,13 @@ impl<KH: KeyHandle + 'static> Kms<KeyHandleWrapper> for KmsWrapper<KH> {
 
         Ok(KeyHandleWrapper(arc.clone(), arc.clone()))
     }
+
+    async fn get_by_public_key(&self, public_key: &[u8]) -> kms::Result<KeyHandleWrapper> {
+        let key_handle = self.0.get_by_public_key(public_key).await?;
+        let arc = Arc::new(key_handle);
+
+        Ok(KeyHandleWrapper(arc.clone(), arc.clone()))
+    }
 }
 
 #[napi(js_name = "KeyType")]
