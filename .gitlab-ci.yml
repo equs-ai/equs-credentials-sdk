@@ -7,6 +7,7 @@ include:
   - project: 'build-images/synopsys-detect'
     ref: main
     file: '/templates/.gitlab-ci-blackduck-signature.yml'
+  - local: "wrappers/nodejs/publish.yml"
 
 stages:
   - scan
@@ -19,6 +20,9 @@ variables:
   RUST_VERSION: "1.82.0"
   NODE_VERSION: "20.18.0"
   VERSION_REGEX: /^[0-9]+\.[0-9]+\.[0-9]+$/
+  REGISTRY: "git.slock.it/api/v4/projects/1387/packages/npm/"
+  REGISTRY_URL: "https://git.slock.it/api/v4/projects/1387/packages/npm/"
+
 
 # Shared configurations
 
@@ -114,8 +118,11 @@ nodejs-demo-build-job:
   <<: *nodejs_job_configs
   stage: build
   script:
-    - NODE_ENV=development npm i --prefix wrappers/nodejs
-    - NODE_ENV=development npm i --prefix demos/nodejs/oid4vc
+    - npm config set "@equstng:registry" 'https://${CI_SERVER_HOST}/api/v4/projects/${CI_PROJECT_ID}/packages/npm/'
+    - npm config set -- '//${CI_SERVER_HOST}/api/v4/projects/${CI_PROJECT_ID}/packages/npm/:_authToken' "${CI_JOB_TOKEN}"
+    - npm i -ignore-scripts --prefix wrappers/nodejs
+    - npm run build:debug --prefix wrappers/nodejs
+    - npm i --prefix demos/nodejs/oid4vc
     - npm run build --prefix demos/nodejs/oid4vc
   only:
     - merge_requests
@@ -172,7 +179,8 @@ nodejs-test-job:
   <<: *nodejs_job_configs
   stage: test
   script:
-    - NODE_ENV=development npm i --prefix wrappers/nodejs
+    - npm i --prefix wrappers/nodejs
+    - npm run build:debug --prefix wrappers/nodejs
     - npm run test --prefix wrappers/nodejs
   only:
     - merge_requests
@@ -198,4 +206,3 @@ release_artifacts_job:
     - if: $CI_COMMIT_TAG && $CI_COMMIT_TAG =~ $VERSION_REGEX
       when: always
     - when: never
-

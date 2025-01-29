@@ -1,11 +1,17 @@
 {
-  "name": "agent-sdk",
+  "name": "@equstng/agent-sdk",
   "version": "0.5.0",
   "main": "index.js",
   "types": "index.d.ts",
   "napi": {
     "name": "agent-sdk",
-    "triples": {}
+    "triples": {
+      "additional": [
+        "aarch64-apple-darwin",
+        "x86_64-apple-darwin",
+        "x86_64-unknown-linux-gnu"
+      ]
+    }
   },
   "license": "MIT",
   "ava": {
@@ -15,22 +21,22 @@
     "node": ">= 10"
   },
   "scripts": {
+    "manual_scripts": "node scripts/fix-type-names.mjs && node scripts/add-import-line.mjs",
     "artifacts": "napi artifacts",
-    "build": "napi build --platform --release && node scripts/fix-type-names.mjs && node scripts/add-import-line.mjs",
-    "build:debug": "napi build --features=in-memory --platform && node scripts/fix-type-names.mjs && node scripts/add-import-line.mjs",
-    "prepublishOnly": "napi prepublish -t npm",
+    "build": "napi build --platform --release && npm run manual_scripts",
+    "build:debug": "napi build --features=in-memory --platform && npm run manual_scripts",
     "test": "jest -w=1",
     "universal": "napi universal",
     "version": "napi version",
-    "postinstall": "if [ \"$NODE_ENV\" = \"development\" ]; then npm run build:debug; else npm run build; fi"
+    "postinstall": "npm i --ignore-scripts"
   },
-  "packageManager": "yarn@4.5.0",
+  "packageManager": "yarn@4.6.0",
   "dependencies": {
-    "jwt-decode": "^4.0.0",
+    "@napi-rs/cli": "^2.18.4",
     "oauth4webapi": "^3.1.4"
   },
   "devDependencies": {
-    "@napi-rs/cli": "^2.18.4",
+    "jwt-decode": "^4.0.0",
     "@types/base-64": "^1.0.2",
     "@types/jest": "^29.5.13",
     "@types/node-jose": "^1.1.13",
@@ -51,5 +57,13 @@
     "ts-node": "^10.9.2",
     "tsconfig-paths": "^4.2.0",
     "typescript": "^5.6.3"
-  }
+  },
+  "os": [
+    "darwin",
+    "linux"
+  ],
+  "cpu": [
+    "x64",
+    "arm64"
+  ]
 }
