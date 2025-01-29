@@ -82,6 +82,17 @@ pub enum InternalError {
         location: Location,
         source: vc::core::Error,
     },
+
+    #[snafu(display("VC status error"))]
+    VCStatus {
+        #[snafu(implicit)]
+        location: Location,
+        source: vc::core::Error,
+    },
+
+    #[snafu(display("VC is not valid: {details}"))]
+    VCNotValid { details: String },
+
     #[snafu(display("Url parse error"))]
     UrlParse {
         #[snafu(implicit)]

@@ -65,6 +65,7 @@ impl OID4VCIIssuer {
                 &token,
                 &from_json_object(claims)?,
                 &mut oid4vci_session,
+                None,
             )
             .await;
 

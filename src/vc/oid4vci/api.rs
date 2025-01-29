@@ -1,6 +1,7 @@
 use crate::http::HttpError;
 use crate::nonce::NonceData;
 use crate::vc::claims::Claims;
+use crate::vc::core::api::CredentialStatusInfo;
 use crate::vc::core::KeyMetadata;
 use crate::vc::oid4vci::internal_error::RequestSnafu;
 use crate::vc::oid4vci::{metadata, InternalError, ProtocolError};
@@ -187,6 +188,7 @@ pub trait Issuer: Send + Sync {
     /// * `token` - an access token used for authorization.
     /// * `claims` - claims to include into the `Credential`.
     /// * `session` - a `&mut` session object which contains `Nonce` and other state.
+    /// * `status_info` - an object which contains information for status validation.
     /// Will be updated if the state was changed.
     ///
     /// # Returns
@@ -208,6 +210,7 @@ pub trait Issuer: Send + Sync {
         token: &str,
         claims: &Claims,
         session: &mut IssuanceSession,
+        status_info: Option<CredentialStatusInfo>,
     ) -> Result<CredentialResponse>;
 }
 

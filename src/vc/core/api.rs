@@ -1,11 +1,14 @@
 use crate::crypto;
+use crate::http::HttpClient;
 use crate::kms::Error as KmsError;
 use crate::nonce::Nonce;
 use crate::vault::{CredentialEntry, Error as VaultError};
 use crate::vc::claims::Claims;
+use crate::vc::status_formats::StatusListFormat;
+use crate::vc::VCStatusesData;
 use crate::vc::{
     formats::Error as VCError, pop, pop::Error as ProofError, Credential, CredentialMetadata,
-    Presentation, VCFormat,
+    Presentation, StatusList, VCFormat,
 };
 use async_trait::async_trait;
 use common_macros::DebugError;
@@ -13,7 +16,9 @@ use serde::{Deserialize, Serialize};
 use snafu::{Location, Snafu};
 use std::collections::HashMap;
 use std::fmt::Debug;
+use strum_macros::Display;
 use time::Duration;
+use url::Url;
 
 /// A metadata for the `Issuer`.
 ///
@@ -25,6 +30,22 @@ pub struct IssuerMetadata {
     pub issuer_id: String,
     pub cred_defs: Vec<CredentialDefinition>,
     pub protocol_data: Option<IssuerMetadataData>, // Protocol specific
+}
+
+// TODO: add doc
+#[derive(Debug, PartialEq, Clone)]
+pub struct StatusIssuerMetadata {
+    pub issuer_id: String,
+    pub supported_status_lists: Vec<StatusListDefinition>,
+}
+
+// TODO: add doc
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct StatusListDefinition {
+    pub id: String,
+    pub format: StatusListFormat,
+    // pub supported_signing_algs: Option<Vec<crypto::Alg>>,
+    pub key_metadata: KeyMetadata,
 }
 
 /// A protocol-specific data for the `Issuer`.
@@ -135,6 +156,13 @@ pub struct CredentialRequest {
     pub protocol_data: Option<CredentialRequestData>, // Protocol specific
 }
 
+// TODO: add doc
+#[derive(Debug)]
+pub enum CredentialStatusInfo {
+    TokenStatusList { idx: u32, uri: Url },
+    BitstringStatusList,
+}
+
 /// A protocol-specific data for the `CredentialRequest`.
 ///
 /// *NOTE*: will be extended in the next releases.
@@ -239,6 +267,28 @@ pub enum Error {
         #[snafu(implicit)]
         location: Location,
     },
+
+    #[snafu(display("Could not obtain VC status"))]
+    VCStatus {
+        source: crate::vc::status_formats::Error,
+        #[snafu(implicit)]
+        location: Location,
+    },
+
+    #[snafu(display("status_list field not provided"))]
+    StatusListNotProvided,
+
+    #[snafu(display("Credential status not supported"))]
+    CredentialStatusNotSupported,
+
+    #[snafu(display("Credential status protocol is not supported by format: {format}"))]
+    CredentialStatusProtocolNotSupported { format: String },
+
+    #[snafu(display("Status list creating failed: {details}"))]
+    StatusListCreating { details: String },
+
+    #[snafu(display("Inconsistent status list issuance data: {details}"))]
+    InconsistentStatusListData { details: String },
 }
 
 /// `Result` alias for vc:core API [Error].
@@ -303,7 +353,18 @@ pub trait Issuer: Send + Sync {
         credential_request: &CredentialRequest,
         claims: &Claims,
         nonce: &Nonce,
+        status_info: Option<CredentialStatusInfo>, // TODO: consider moving it to CredentialRequest
     ) -> Result<Credential>;
+}
+
+// TODO: add doc
+#[async_trait]
+pub trait StatusIssuer: Send + Sync {
+    async fn issue_status_list(
+        &self,
+        status_list_id: &str,
+        statuses: VCStatusesData,
+    ) -> Result<StatusList>;
 }
 
 /// An async low-level protocol-agnostic `Holder` API.
@@ -455,6 +516,17 @@ pub trait Holder: Send + Sync {
     ) -> Result<Presentation>;
 }
 
+// TODO: add doc
+// TODO: consider one more abstract enum as a basic for all standards
+#[derive(Debug, Display, PartialEq)]
+pub enum VCStatus {
+    NotProvided,
+    Valid,
+    Invalid,
+    Suspended,
+    AppSpecific(u8),
+}
+
 /// An async low-level protocol-agnostic `Verifier` API.
 ///
 /// Provides basic method for verification of `VP`s.
@@ -484,4 +556,11 @@ pub trait Verifier: Send + Sync {
         nonce: &Nonce,
         presentation: &Presentation,
     ) -> Result<Claims>;
+
+    // TODO: add doc
+    async fn obtain_credential_status(
+        &self,
+        presentation: &Presentation,
+        http_client: &dyn HttpClient, // TODO: is it ok to use `dyn`?
+    ) -> Result<VCStatus>;
 }

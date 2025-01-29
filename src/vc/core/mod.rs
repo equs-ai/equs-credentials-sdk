@@ -1,6 +1,7 @@
 pub(crate) mod api;
 mod holder;
 mod issuer;
+pub mod status_issuer;
 mod verifier;
 
 #[cfg(test)]

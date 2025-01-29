@@ -10,11 +10,13 @@ pub use crate::vc::formats::Error as VCFormatError;
 pub use crate::vc::formats::API as VCFormatsAPI;
 use crate::vc::formats::{sd_jwt_vc, FormatNotSupportedSnafu, HasCredential};
 pub use crate::vc::presentation_exchange::ClaimFormat;
+use crate::vc::status_formats::status_list_token_jwt;
 use serde::{Deserialize, Serialize};
 
 pub(crate) mod formats;
 mod pop;
 pub mod presentation_exchange;
+pub mod status_formats; // TODO: check visibility
 
 pub mod claims;
 pub mod core;
@@ -40,6 +42,18 @@ pub enum Credential {
     JwtVcJsonLd(String),
     // etc
     // ISOMdl(String),
+}
+
+#[derive(Debug)]
+#[non_exhaustive]
+pub enum VCStatusesData {
+    StatusListToken(status_list_token_jwt::VCStatuses),
+    BitstringStatusList, // Not supported yet
+}
+
+#[derive(Debug)]
+pub enum StatusList {
+    StatusListTokenJwt(status_list_token_jwt::StatusList),
 }
 
 impl HasVCFormat for Credential {

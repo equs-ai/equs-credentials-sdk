@@ -8,10 +8,12 @@ use snafu::ensure;
 use std::str::FromStr;
 use tracing::{instrument, Level};
 
-const ALLOWED_CONTENT_TYPE_HEADERS: [&str; 3] = [
+const ALLOWED_CONTENT_TYPE_HEADERS: [&str; 5] = [
     MIME_TYPE_JSON,
     MIME_TYPE_TEXT_PLAIN,
     MIME_TYPE_FORM_URLENCODED,
+    "application/statuslist+jwt", // TODO: hardcoded value
+    "application/statuslist+cwt",
 ];
 
 pub(crate) struct ContentTypeValidator;

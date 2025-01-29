@@ -11,21 +11,29 @@ use agent_sdk::inmem::nonce::LocalNonceGenerator;
 use agent_sdk::inmem::vault::InMemVault;
 use agent_sdk::kms::Kms;
 use agent_sdk::nonce::NonceGenerator;
+use agent_sdk::reqwest::builder::ReqwestClientBuilder;
+use agent_sdk::vc::core::status_issuer::StatusIssuerService;
 use agent_sdk::vc::core::IssuerService;
 use agent_sdk::vc::core::VerifierService;
 use agent_sdk::vc::core::{
     CredentialDefinition, CredentialDefinitionData, Holder, HolderMetadata, Issuer, IssuerMetadata,
-    PopFormat, Verifier,
+    PopFormat, StatusIssuer, StatusIssuerMetadata, StatusListDefinition, Verifier,
 };
 use agent_sdk::vc::core::{HolderService, KeyMetadata};
 use agent_sdk::vc::metadata::{CredentialMetadataProcessor, DefaultMetadataProcessor};
 use agent_sdk::vc::presentation_exchange::InputDescriptor;
+use agent_sdk::vc::status_formats::status_list_token_jwt::VCStatuses;
+use agent_sdk::vc::status_formats::StatusListFormat;
+use agent_sdk::vc::VCStatusesData;
 use agent_sdk::{kms, vc};
 use serde_json::json;
 use std::collections::HashMap;
 use std::str::FromStr;
+use url::Url;
 use utils::fixtures::{sample_claims_sdjwt, SCOPE, VC_TYPE, VERIFIER_ID};
 use utils::helpers::create_did_keymetadata_keyhandle;
+
+const STATUS_LIST_PATH: &str = "/status_list";
 
 #[tokio::test]
 async fn sd_jwt_credential_issuance_and_presentation_verification() {
@@ -54,7 +62,7 @@ async fn sd_jwt_credential_issuance_and_presentation_verification() {
     println!("Claims: {:?}", claims);
 
     let vc = issuer
-        .issue_credential(&request, &claims, &nonce)
+        .issue_credential(&request, &claims, &nonce, None)
         .await
         .unwrap();
 
@@ -150,7 +158,7 @@ async fn bbs_plus_credential_issuance_and_presentation_verification() {
     println!("Claims: {}", serde_json::to_string_pretty(&claims).unwrap());
 
     let vc = issuer
-        .issue_credential(&request, &claims, &nonce)
+        .issue_credential(&request, &claims, &nonce, None)
         .await
         .unwrap();
 
@@ -234,6 +242,116 @@ async fn bbs_plus_credential_issuance_and_presentation_verification() {
     assert!(!cred_subject.contains_key("degree"));
 }
 
+#[tokio::test]
+async fn credential_issuance_and_status_verification() {
+    // Initialization
+    let (mut server_list_server, status_list_url) = run_status_list_server().await;
+
+    let holder_kms = LocalKms::new();
+    let nonce_gen = LocalNonceGenerator::default();
+
+    let status_issuer = build_status_issuer(status_list_url.clone()).await;
+    let issuer = build_issuer_with_sd_jwt_credential_profile().await;
+    let holder = build_holder(holder_kms.clone()).await;
+    let verifier = build_verifier(VERIFIER_ID);
+
+    // Status list issuance and serving
+    println!("Status list issuance...\n");
+    let status_list_jwt = issue_status_list_with_revoked_indexes(&status_issuer, vec![]).await;
+    println!("Status list token JWT: {}\n", status_list_jwt);
+    serve_status_list(&mut server_list_server, status_list_jwt);
+
+    println!("Issue credential...");
+
+    let offer = issuer.offer_credential(SCOPE, None);
+    let offer = offer.unwrap();
+
+    let nonce = nonce_gen.generate().await.unwrap();
+    let (_, key_metadata, _) = create_did_keymetadata_keyhandle(&holder_kms).await;
+    let request = holder
+        .request_credential(&offer, &nonce, &key_metadata)
+        .await;
+    let request = request.unwrap();
+
+    let claims = sample_claims_sdjwt();
+
+    println!("Claims: {:?}", claims);
+
+    let status_info = agent_sdk::vc::core::CredentialStatusInfo::TokenStatusList {
+        idx: 1,
+        uri: status_list_url,
+    };
+    let vc = issuer
+        .issue_credential(&request, &claims, &nonce, Some(status_info))
+        .await
+        .unwrap();
+
+    println!("Credential {:?}", &vc);
+
+    let vc_meta = DefaultMetadataProcessor::resolve_metadata(&vc, key_metadata).unwrap();
+    let _ = holder.store_credential(&vc, &vc_meta).await.unwrap();
+
+    println!("Present proof...");
+
+    let input_descriptor: InputDescriptor = serde_json::from_value(json!({
+        "id": "Identity-1",
+        "name": "Identity VC",
+        "purpose": "We want a resident card",
+        "format": {
+            "vc+sd-jwt": {
+                "sd-jwt_alg_values": ["ES256", "EdDSA"],
+                "kb-jwt_alg_values": ["ES256", "EdDSA"],
+            }
+        },
+        "constraints": {
+            "fields": [
+                {
+                    "path": ["$.vct"],
+                    "filter": {
+                        "type": "string",
+                        "const": "https://credentials.example.com/identity_credential"
+                    }
+                },
+                {
+                    "path": ["$.given_name"],
+                },
+                {
+                    "path": ["$.family_name"],
+                }
+            ]
+        }
+    }))
+    .unwrap();
+
+    let nonce = LocalNonceGenerator::default().generate().await.unwrap();
+
+    let vp_res = holder
+        .create_presentation_auto(&nonce, VERIFIER_ID, &input_descriptor.try_into().unwrap())
+        .await;
+
+    let vp = vp_res.unwrap();
+    println!("Presentation {:?}", vp);
+
+    let ver_res = verifier.verify_presentation(&nonce, &vp).await;
+    assert!(ver_res.is_ok());
+
+    let res_claims = ver_res.unwrap();
+    println!("Presentation claims {:?}", res_claims);
+
+    assert!(res_claims.get("given_name").is_some());
+    assert!(res_claims.get("family_name").is_some());
+    // should return not only requested claims, but all in credential
+    assert!(res_claims.get("dob").is_some());
+
+    let http_client = ReqwestClientBuilder::new().insecure().build().unwrap();
+    let cred_status = verifier
+        .obtain_credential_status(&vp, &http_client)
+        .await
+        .unwrap();
+
+    println!("{:?}", cred_status);
+}
+
 async fn build_issuer_with_sd_jwt_credential_profile() -> impl Issuer {
     // Initialization
     println!("Issuer creating...");
@@ -315,6 +433,30 @@ async fn build_issuer_with_bbs_plus_credential_profile() -> impl Issuer {
     IssuerService::new(kms, metadata)
 }
 
+async fn build_status_issuer(status_list_url: Url) -> impl StatusIssuer {
+    // Initialization
+    println!("Status issuer creating...");
+
+    let kms = LocalKms::new();
+    let (_, key_metadata, _) = create_did_keymetadata_keyhandle(&kms).await;
+
+    let metadata = StatusIssuerMetadata {
+        issuer_id: "123456".to_string(),
+        supported_status_lists: vec![StatusListDefinition {
+            id: "test".to_string(),
+            format: StatusListFormat::StatusListTokenJwt(
+                agent_sdk::vc::status_formats::status_list_token_jwt::SLMetadata {
+                    statuses_nr: 32,
+                    status_list_url,
+                },
+            ),
+            key_metadata,
+        }],
+    };
+
+    StatusIssuerService::new(kms, metadata)
+}
+
 async fn build_holder(kms: LocalKms) -> impl Holder {
     // Initialization
     println!("Holder creating...");
@@ -332,4 +474,45 @@ async fn build_holder(kms: LocalKms) -> impl Holder {
 
 fn build_verifier(id: &str) -> impl Verifier {
     VerifierService::new(id)
+}
+
+async fn run_status_list_server() -> (mockito::ServerGuard, Url) {
+    let server = mockito::Server::new_async().await;
+    let port_idx = server.url().rfind(':').unwrap() + 1;
+    let port = &server.url()[port_idx..];
+
+    let status_list_url_string = format!("http://localhost:{port}{STATUS_LIST_PATH}");
+    let status_list_url = Url::try_from(status_list_url_string.as_str()).unwrap();
+    println!("status list URL: {status_list_url_string}");
+
+    (server, status_list_url)
+}
+
+fn serve_status_list(server: &mut mockito::ServerGuard, status_list: String) {
+    server
+        .mock("GET", STATUS_LIST_PATH)
+        .with_status(200)
+        .with_header("content-type", "application/statuslist+jwt")
+        .with_body(status_list)
+        .create();
+}
+
+async fn issue_status_list_with_revoked_indexes(
+    status_issuer: &impl StatusIssuer,
+    revoked: Vec<usize>,
+) -> String {
+    let mut statuses = VCStatuses::new();
+
+    for idx in revoked {
+        statuses.set(idx, 1);
+    }
+
+    let status_list = status_issuer
+        .issue_status_list("test", VCStatusesData::StatusListToken(statuses))
+        .await
+        .unwrap();
+
+    let crate::vc::StatusList::StatusListTokenJwt(status_list) = status_list;
+
+    status_list
 }

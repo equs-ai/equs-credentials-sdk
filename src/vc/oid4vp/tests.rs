@@ -978,6 +978,7 @@ pub mod utils {
             inner,
             kms,
             nonce_gen,
+            MockHttpClient::new(),
             did.clone(),
             key_metadata,
             Some(client_metadata),
@@ -1008,6 +1009,7 @@ pub mod utils {
             vc::core::VerifierService::new(&did),
             kms_mock,
             LocalNonceGenerator::default(),
+            MockHttpClient::new(),
             did.clone(),
             key_metadata,
             None,
@@ -1047,6 +1049,7 @@ pub mod utils {
                 vct: vct.to_owned(),
                 lifetime: time::Duration::days(365),
                 disclosures,
+                credential_status: None,
             },
         )
         .await
