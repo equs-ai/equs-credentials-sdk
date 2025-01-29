@@ -1,7 +1,11 @@
 use aries_askar::crypto::alg::EcCurves;
+use aries_askar::entry::{EntryTag, TagFilter};
 use aries_askar::kms::{KeyAlg, LocalKey};
 use aries_askar::Store;
 use async_trait::async_trait;
+use base64::prelude::BASE64_STANDARD;
+use base64::Engine;
+use sha2::{Digest, Sha256};
 use snafu::{ensure, ResultExt};
 use std::sync::Arc;
 use tracing::{instrument, Level};
@@ -10,9 +14,11 @@ use agent_sdk::crypto::{
     Alg, AlgNotSupportedSnafu, Error as CryptoError, Key, KeyNotSupportedSnafu, Signer, SigningKey,
     SigningSnafu, VerificationSnafu, Verifier, VerifyingKey, JWK,
 };
+use agent_sdk::inmem::crypto::k256::K256;
+use agent_sdk::inmem::crypto::p256::P256;
 use agent_sdk::kms::{
-    CreateOptions, CreationSnafu, CryptoSnafu, Error as KmsError, KeyHandle, KeyID, KeyType, Kms,
-    NotFoundSnafu, ResolvingSnafu,
+    CreateOptions, CreationSnafu, CryptoSnafu, Error as KmsError, Error, KeyHandle, KeyID, KeyType,
+    Kms, NotFoundSnafu, ResolvingSnafu,
 };
 
 #[derive(Debug, Clone)]
@@ -129,7 +135,7 @@ impl Verifier for AskarKeyHandle {
 
 impl KeyHandle for AskarKeyHandle {}
 
-const KID_LENGTH: usize = 10;
+const KID_LENGTH: usize = 16;
 
 #[derive(Debug)]
 pub struct AskarKms(Store);
@@ -149,10 +155,15 @@ impl AskarKms {
         err(),
         ret(),
     )]
-    async fn insert_key(&self, key_id: &str, key: &LocalKey) -> Result<(), aries_askar::Error> {
+    async fn insert_key(
+        &self,
+        key_id: &str,
+        key: &LocalKey,
+        tags: Option<&[EntryTag]>,
+    ) -> Result<(), aries_askar::Error> {
         let mut session = self.0.session(None).await?;
         session
-            .insert_key(key_id, key, None, None, None, None)
+            .insert_key(key_id, key, None, None, tags, None)
             .await?;
         session.commit().await?;
 
@@ -174,6 +185,69 @@ impl AskarKms {
             .map(|key_entry| key_entry.load_local_key())
             .transpose()
     }
+
+    async fn get_key_by_public_key(
+        &self,
+        public_key: &[u8],
+    ) -> Result<Option<LocalKey>, aries_askar::Error> {
+        let mut session = self.0.session(None).await?;
+
+        let public_key_filter = TagFilter::exist(vec![Self::public_key_to_id(public_key)]);
+
+        session
+            .fetch_all_keys(None, None, Some(public_key_filter), None, false)
+            .await?
+            .first()
+            .map(|key_entry| key_entry.load_local_key())
+            .transpose()
+    }
+
+    pub async fn map_kid_to_public_key(kid: &str, key: &LocalKey) -> Result<Vec<EntryTag>, Error> {
+        let mut tags: Vec<EntryTag> = vec![];
+
+        let public_key = key
+            .to_public_bytes()
+            .map_err(|e| {
+                CreationSnafu {
+                    details: e.to_string(),
+                }
+                .build()
+            })?
+            .to_vec();
+
+        let public_key_id = Self::public_key_to_id(&public_key);
+        tags.push(EntryTag::Encrypted(
+            public_key_id.to_owned(),
+            kid.to_string(),
+        ));
+
+        let re_encoded_key = match key.algorithm() {
+            KeyAlg::EcCurve(EcCurves::Secp256k1) => Some(K256::re_encode_public_key(
+                &public_key,
+                !K256::is_compressed_public_key(&public_key)?,
+            )?),
+            KeyAlg::EcCurve(EcCurves::Secp256r1) => Some(P256::re_encode_public_key(
+                &public_key,
+                !P256::is_compressed_public_key(&public_key)?,
+            )?),
+            _ => None,
+        };
+
+        if let Some(re_encoded_key) = re_encoded_key {
+            let re_encoded_pk_id = Self::public_key_to_id(&re_encoded_key);
+            tags.push(EntryTag::Encrypted(re_encoded_pk_id, kid.to_string()));
+        }
+
+        Ok(tags)
+    }
+
+    fn public_key_to_id(public_key: &[u8]) -> String {
+        let mut hasher = Sha256::new();
+        hasher.update(public_key);
+        let hash = hasher.finalize().to_vec();
+
+        BASE64_STANDARD.encode(&hash[..16])
+    }
 }
 
 #[async_trait]
@@ -194,12 +268,16 @@ impl Kms<AskarKeyHandle> for AskarKms {
         })?;
 
         let kid = random_string::generate(KID_LENGTH, random_string::charsets::ALPHA);
-        self.insert_key(&kid, &key).await.map_err(|e| {
-            CreationSnafu {
-                details: e.to_string(),
-            }
-            .build()
-        })?;
+        let tags = Self::map_kid_to_public_key(&kid, &key).await?;
+
+        self.insert_key(&kid, &key, Some(&tags))
+            .await
+            .map_err(|e| {
+                CreationSnafu {
+                    details: e.to_string(),
+                }
+                .build()
+            })?;
 
         Ok(kid)
     }
@@ -221,6 +299,23 @@ impl Kms<AskarKeyHandle> for AskarKms {
                 .build()
             })?
             .ok_or_else(|| NotFoundSnafu { id: kid }.build())?;
+
+        let sign_algorithm = key_alg_to_alg(key.algorithm()).context(CryptoSnafu)?;
+
+        Ok(AskarKeyHandle(Arc::new(key), sign_algorithm))
+    }
+
+    async fn get_by_public_key(&self, public_key: &[u8]) -> Result<AskarKeyHandle, KmsError> {
+        let key = self
+            .get_key_by_public_key(public_key)
+            .await
+            .map_err(|err| {
+                ResolvingSnafu {
+                    details: err.to_string(),
+                }
+                .build()
+            })?
+            .ok_or_else(|| NotFoundSnafu { id: "Public Key" }.build())?;
 
         let sign_algorithm = key_alg_to_alg(key.algorithm()).context(CryptoSnafu)?;
 
@@ -270,26 +365,24 @@ mod tests {
     pub async fn test_kms<KH: KeyHandle, KMS: Kms<KH>>(kms: KMS) {
         for kt in [kms::KeyType::Ed25519, kms::KeyType::P256] {
             // Create a key
-            let create_res = kms.create(kt.clone(), kms::CreateOptions {}).await;
-            assert!(create_res.is_ok());
-            let kid = create_res.unwrap();
+            let kid = kms
+                .create(kt.clone(), kms::CreateOptions::default())
+                .await
+                .unwrap();
 
             // Get a handle to the key
-            let get_res = kms.get(&kid).await;
-            assert!(get_res.is_ok());
-            let kh = get_res.unwrap();
+            let kh = kms.get(&kid).await.unwrap();
+
+            // Get a handle to the key by Public Key
+            kms.get_by_public_key(&kh.pub_key().unwrap()).await.unwrap();
 
             // Sign using handle
             let message = "abracadabra";
 
-            let s_res = kh.sign(message.as_bytes()).await;
-            assert!(s_res.is_ok());
-
-            let signature = s_res.unwrap();
+            let signature = kh.sign(message.as_bytes()).await.unwrap();
 
             // Verify using handle
-            let v_res = kh.verify(message.as_bytes(), &signature).await;
-            assert!(v_res.is_ok());
+            kh.verify(message.as_bytes(), &signature).await.unwrap();
 
             // Check JWK
             assert_ne!(kh.jwk(), None);

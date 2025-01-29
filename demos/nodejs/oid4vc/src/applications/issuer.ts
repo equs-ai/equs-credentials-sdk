@@ -9,17 +9,17 @@ import {
   TracingLogLevel,
 } from "../../../../../wrappers/nodejs";
 import * as express from "express";
-import { config } from "../components/config";
-import { json } from "body-parser";
-import { createDidAndKeyMetadata } from "../components/utils";
-import {PRE_AUTH_GRANT_KEY} from "../../../../../wrappers/nodejs/types/credential-offer-grants";
+import {config} from "../components/config";
+import {json} from "body-parser";
+import {createDidAndKeyMetadata} from "../components/utils";
+import {PRE_AUTH_GRANT_KEY} from "../../../../../wrappers/nodejs";
 
 async function main(): Promise<void> {
   await enableLogs(TracingLogFormat.Full, TracingLogLevel.Info);
 
   const kms = inMemKms();
   const nonceGenerator = localNonceGenerator();
-  const { keyMetadata } = await createDidAndKeyMetadata(kms);
+  const {keyMetadata} = await createDidAndKeyMetadata(kms);
 
   const issuer = await new Oid4VciIssuerBuilder(
     kms,
@@ -69,7 +69,7 @@ async function main(): Promise<void> {
       const result = issuer.createCredentialOffer(
         ["SD_JWT_cred_1", "SD_JWT_cred_2"],
         {
-          authorization_code: { issuer_state: undefined },
+          authorization_code: {issuer_state: undefined},
           [PRE_AUTH_GRANT_KEY]: undefined,
         },
       );
@@ -79,7 +79,7 @@ async function main(): Promise<void> {
     }
   });
 
-  const { port, host } = config.servers.issuer;
+  const {port, host} = config.servers.issuer;
 
   app.listen(port, host);
   console.log(`Started listening on ${host}:${port}`);

@@ -1,7 +1,6 @@
-use crate::crypto::{DerivationSnafu, Result};
-use crate::crypto::{DerivationSuite, KeyGenerationSnafu};
+use crate::crypto;
+use crate::crypto::{DerivationSnafu, KeyGenerationSnafu};
 use crate::inmem::crypto::k256::K256;
-use async_trait::async_trait;
 use bip32::{DerivationPath, XPrv};
 use std::str::FromStr;
 use tracing::{instrument, Level};
@@ -11,21 +10,30 @@ pub struct Bip32 {
     seed: Vec<u8>,
 }
 
-#[async_trait]
-impl DerivationSuite<K256> for Bip32 {
+impl Bip32 {
+    /// Creates a BIP32 from a seed key.
+    ///
+    /// # Arguments
+    ///
+    /// * `seed` - a seed value.
+    ///
+    /// # Returns
+    ///
+    /// A derivation suite for the provided seed.
     #[instrument(level = Level::TRACE, skip_all)]
-    fn from_seed(seed: &[u8]) -> Self {
+    pub fn from_seed(seed: &[u8]) -> Self {
         Self {
             seed: seed.to_vec(),
         }
     }
 
-    #[instrument(
-        level = Level::TRACE,
-        skip_all,
-        err(),
-    )]
-    fn suite(&self) -> Result<K256> {
+    /// Returns the corresponding `Suite` for signing/verification.
+    ///
+    /// # Returns
+    ///
+    /// A crypto `Suite`.
+    #[instrument(level = Level::TRACE, skip_all, err())]
+    pub fn suite(&self) -> crypto::Result<K256> {
         let key = XPrv::new(&self.seed).map_err(|e| {
             KeyGenerationSnafu {
                 details: e.to_string(),
@@ -36,13 +44,21 @@ impl DerivationSuite<K256> for Bip32 {
         Ok(K256::new(key.private_key().to_owned()))
     }
 
-    #[instrument(
-        level = Level::TRACE,
-        skip_all,
-        err(),
-        ret(),
-    )]
-    async fn derive(&self, path: &str) -> Result<Vec<u8>> {
+    /// Derives a key for specified path.
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - a derivation path.
+    ///
+    /// # Returns
+    ///
+    /// Private key bytes.
+    ///
+    /// # Errors
+    ///
+    /// * [crypto::Error::Derivation] - fails to derive a key.
+    #[instrument(level = Level::TRACE, skip_all, err(), ret())]
+    pub async fn derive(&self, path: &str) -> crypto::Result<Vec<u8>> {
         let derivation_path = DerivationPath::from_str(path).map_err(|err| {
             DerivationSnafu {
                 details: err.to_string(),

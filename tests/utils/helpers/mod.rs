@@ -12,7 +12,7 @@ use std::str::FromStr;
 
 pub async fn create_did_keymetadata_keyhandle(kms: &LocalKms) -> (DID, KeyMetadata, KeyHandle) {
     let (kid, kh) = kms
-        .create_and_handle(kms::KeyType::P256, kms::CreateOptions {})
+        .create_and_handle(kms::KeyType::P256, kms::CreateOptions::default())
         .await
         .unwrap();
 

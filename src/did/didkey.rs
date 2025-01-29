@@ -70,7 +70,10 @@ mod tests {
         let kms = LocalKms::new();
 
         for kt in kms::KeyType::iter() {
-            let (_, kh) = kms.create_and_handle(kt, CreateOptions {}).await.unwrap();
+            let (_, kh) = kms
+                .create_and_handle(kt, CreateOptions::default())
+                .await
+                .unwrap();
 
             let did = DIDKey::generate(kh.clone()).unwrap();
             assert!(did.starts_with("did:key:"));

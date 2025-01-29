@@ -1,5 +1,5 @@
-import { Alg, createKeyMetadata, KeyHandle, wrapJsKms, KeyType } from "../index";
-import { JWK, JWS } from "node-jose";
+import {Alg, createKeyMetadata, KeyHandle, wrapJsKms, KeyType} from "../index";
+import {JWK, JWS} from "node-jose";
 
 describe("KMS: ", () => {
 	test("generate Key Metadata using JS KMS", async () => {
@@ -51,7 +51,7 @@ async function mockKms() {
 		alg: Alg.ES256,
 		async sign(payload: Uint8Array): Promise<Uint8Array> {
 			const payloadBuffer = Buffer.from(payload);
-			const signature = await JWS.createSign({ format: "compact", alg: "ES256" }, key)
+			const signature = await JWS.createSign({format: "compact", alg: "ES256"}, key)
 				.update(payloadBuffer)
 				.final();
 			return new Uint8Array(Buffer.from(String(signature)));
@@ -73,5 +73,11 @@ async function mockKms() {
 		async get(kid: string): Promise<KeyHandle> {
 			return keyHandle;
 		},
+		async getByPublicKey(pk: Array<number>): Promise<KeyHandle> {
+			if (pk !== publicKey)
+				throw new Error(`Key Handle Not found`);
+
+			return keyHandle;
+		}
 	};
 }

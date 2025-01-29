@@ -242,7 +242,8 @@ where
                         else {
                             return false;
                         };
-                        return supported.vct() == sd_jwt_req.vct();
+
+                        supported.vct() == sd_jwt_req.vct()
                     }),
                 CredentialRequestWithFormat::LdpVc(ldp_req) => self
                     .issuer_metadata
@@ -254,8 +255,9 @@ where
                         else {
                             return false;
                         };
-                        return supported.credential_definition().r#type()
-                            == ldp_req.credential_definition().r#type();
+
+                        supported.credential_definition().r#type()
+                            == ldp_req.credential_definition().r#type()
                     }),
                 _ => ProtocolSnafu::new(
                     ErrorType::UnsupportedCredentialFormat,

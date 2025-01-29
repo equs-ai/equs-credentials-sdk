@@ -7,6 +7,7 @@ use snafu::{Location, Snafu};
 use std::fmt::Debug;
 use strum_macros::{Display, EnumIter, EnumString, IntoStaticStr};
 use tracing::{info, instrument, Level};
+use zeroize::Zeroize;
 
 /// `Kms` Error.
 ///
@@ -116,6 +117,22 @@ where
     /// * [Error::Crypto] - crypto error, refer to [crypto::Error].
     async fn get(&self, kid: &KeyID) -> Result<KH>;
 
+    /// Returns [KeyHandle] for the provided `Public Key`.
+    ///
+    /// # Arguments
+    ///
+    /// * `public_key` -  a `Public Key` of the requested key.
+    ///
+    /// # Returns
+    ///
+    /// A `KeyHandle` supporting basic crypto primitives on success.
+    ///
+    /// # Errors
+    /// * [Error::NotFound] - key is not found.
+    /// * [Error::Resolving] - fails to resolve a key.
+    /// * [Error::Crypto] - crypto error, refer to [crypto::Error].
+    async fn get_by_public_key(&self, public_key: &[u8]) -> Result<KH>;
+
     /// Utility method to create a key and get the corresponding [KeyHandle].
     ///
     /// # Arguments
@@ -145,9 +162,54 @@ where
 /// *NOTE*: more key types to be supported later.
 #[derive(Debug, PartialEq, Clone, Display, EnumString, IntoStaticStr)]
 #[non_exhaustive]
-pub enum Derivation {
+pub enum DerivationType {
     BIP32,
+    ECDH1PU,
+    ECDHES,
     // etc
+}
+
+#[derive(Debug, PartialEq, Clone, Display)]
+pub enum BIP32Params {
+    MasterDerive { seed: Vec<u8> },
+    ChildDerive { path: String, master_kid: KeyID },
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct KeyPair {
+    pub private_key: Option<Vec<u8>>,
+    pub public_key: Vec<u8>,
+}
+
+impl Drop for KeyPair {
+    fn drop(&mut self) {
+        self.private_key.zeroize();
+        self.public_key.zeroize();
+    }
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct ECDH1PUParams {
+    pub key_type: KeyType,
+    pub ephem_key: KeyPair,
+    pub send_key: KeyPair,
+    pub recip_key: KeyPair,
+    pub alg: Vec<u8>,
+    pub apu: Vec<u8>,
+    pub apv: Vec<u8>,
+    pub cc_tag: Vec<u8>,
+    pub receive: bool,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct ECDHESParams {
+    pub key_type: KeyType,
+    pub ephem_key: KeyPair,
+    pub recip_key: KeyPair,
+    pub alg: Vec<u8>,
+    pub apu: Vec<u8>,
+    pub apv: Vec<u8>,
+    pub receive: bool,
 }
 
 /// An async `DerivativeKms` is an extension for `Kms` to support key derivation.
@@ -156,43 +218,24 @@ pub enum Derivation {
 ///
 /// Adds up master key's creation from a seed and derivation.
 #[async_trait]
-pub trait DerivativeKms<KH>: Kms<KH>
-where
-    KH: KeyHandle,
-{
-    /// Create and store a derivative master key from seed in `Kms`.
-    ///
-    /// # Arguments
-    ///
-    /// * `seed` - a seed value used for the key creation.
-    /// * `der` - derivation to be used for the child keys.
-    ///
-    /// # Returns
-    ///
-    /// A `KeyId` for the created key on success.
-    ///
-    /// # Errors
-    ///
-    /// * [Error::Creation] - fails to create a key.
-    /// * [Error::Crypto] - crypto error, refer to [crypto::Error].
-    async fn create_from_seed(&self, seed: &[u8], der: Derivation) -> Result<KeyID>;
+pub trait DerivativeKms<DP> {
+    type Output;
 
-    /// Derive a key from the provided master using the corresponding derivation `path`.
+    /// Derive a key using provided derivation method
     ///
     /// # Arguments
     ///
-    /// * `path` - a derivation path.
-    /// * `master_kid` - KID of a master key.
+    /// * `derivation` - a derivation method.
     ///
     /// # Returns
     ///
-    /// A `KeyId` for the created key on success.
+    /// A `KeyId` for the derived key on success.
     ///
     /// # Errors
     ///
     /// * [Error::Creation] - fails to create a key.
     /// * [Error::Crypto] - crypto error, refer to [crypto::Error].
-    async fn derive(&self, path: &str, master_kid: &KeyID) -> Result<KeyID>;
+    async fn derive(&self, derivation: DP) -> Result<Self::Output>;
 }
 
 #[cfg(test)]
@@ -204,10 +247,16 @@ pub mod test_util {
     pub async fn test_kms<KH: KeyHandle, KMS: Kms<KH>>(kms: KMS) {
         for kt in KeyType::iter() {
             // Create a key
-            let kid = kms.create(kt.clone(), kms::CreateOptions {}).await.unwrap();
+            let kid = kms
+                .create(kt.clone(), kms::CreateOptions::default())
+                .await
+                .unwrap();
 
             // Get a handle to the key
             let kh = kms.get(&kid).await.unwrap();
+
+            // Get a handle to the key by public key
+            kms.get_by_public_key(&kh.pub_key().unwrap()).await.unwrap();
 
             // Sign using handle
             let message = "abracadabra";

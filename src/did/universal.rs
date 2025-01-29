@@ -23,7 +23,7 @@ type Level_ = Level;
 /// `did:key`
 /// `did:peer`
 /// `did:web`
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct UniversalResolver {}
 
 impl DIDResolver for UniversalResolver {
@@ -187,7 +187,7 @@ mod tests {
         let kms = LocalKms::new();
 
         let (_, kh) = kms
-            .create_and_handle(kms::KeyType::P256, CreateOptions {})
+            .create_and_handle(kms::KeyType::P256, CreateOptions::default())
             .await
             .unwrap();
 

@@ -424,7 +424,7 @@ mod tests {
                 ("$.email.work".to_string(), "email@email.com".to_string()),
             ],
         };
-        let cred2str = r###"{
+        let cred2 = r###"{
             "@context": "https://www.w3.org/2018/credentials/v1",
             "id": "http://example.org/credentials/3731",
             "type": ["VerifiableCredential"],
@@ -434,7 +434,6 @@ mod tests {
                 "id": "did:example:d23dd687a7dc6787646f2eb98d0"
             }
         }"###;
-        let cred2 = serde_json::from_str(cred2str).unwrap();
         let cred2_meta = CredentialMetadata {
             type_: "VerifiableCredential".into(),
             kid: "1234".into(),
@@ -448,50 +447,56 @@ mod tests {
             .await
             .unwrap();
         let cred2_id = vault
-            .store_credential(Credential::LdpVc(cred2), &cred2_meta)
+            .store_credential(
+                Credential::LdpVc(serde_json::from_str(cred2).unwrap()),
+                &cred2_meta,
+            )
             .await
             .unwrap();
 
-        let get1_res = vault.get_credential(&cred1_id).await.unwrap();
-        let get2_res = vault.get_credential(&cred2_id).await.unwrap();
+        let get1_res = vault.get_credential(&cred1_id).await.unwrap().unwrap();
+        let get2_res = vault.get_credential(&cred2_id).await.unwrap().unwrap();
 
         assert_eq!(
             serde_json::to_value(&get1_res).unwrap(),
             serde_json::to_value(CredentialEntry {
                 credential: Credential::SdJwt(cred1.clone()),
                 kid: "1234".into(),
-                id: get1_res.clone().unwrap().id
+                id: get1_res.clone().id
             })
             .unwrap(),
         );
         assert_eq!(
             serde_json::to_value(&get2_res).unwrap(),
             serde_json::to_value(CredentialEntry {
-                credential: Credential::LdpVc(serde_json::from_str(cred2str).unwrap()),
+                credential: Credential::LdpVc(serde_json::from_str(cred2).unwrap()),
                 kid: "1234".into(),
-                id: get2_res.clone().unwrap().id
+                id: get2_res.clone().id
             })
             .unwrap(),
         );
 
         let get_all_res = vault.get_credentials().await.unwrap();
 
-        assert_eq!(
-            serde_json::to_value(get_all_res).unwrap(),
-            serde_json::to_value(vec![
-                CredentialEntry {
-                    credential: Credential::SdJwt(cred1.clone()),
-                    kid: "1234".into(),
-                    id: get1_res.clone().unwrap().id
-                },
-                CredentialEntry {
-                    credential: Credential::LdpVc(serde_json::from_str(cred2str).unwrap()),
-                    kid: "1234".into(),
-                    id: get2_res.unwrap().id
-                }
-            ])
-            .unwrap()
-        );
+        let serde_json::Value::Array(get_all_values) = serde_json::to_value(&get_all_res).unwrap()
+        else {
+            panic!("failed to serialize credentials as json array");
+        };
+
+        let expected_entry_sd_jwt = CredentialEntry {
+            credential: Credential::SdJwt(cred1.clone()),
+            kid: "1234".into(),
+            id: get1_res.clone().id,
+        };
+
+        let expected_entry_ldp_vc = CredentialEntry {
+            credential: Credential::LdpVc(serde_json::from_str(cred2).unwrap()),
+            kid: "1234".into(),
+            id: get2_res.id,
+        };
+
+        assert!(get_all_values.contains(&serde_json::to_value(expected_entry_sd_jwt).unwrap()));
+        assert!(get_all_values.contains(&serde_json::to_value(expected_entry_ldp_vc).unwrap()));
 
         let find_res = vault
             .find_credentials(vec![
@@ -511,7 +516,7 @@ mod tests {
             serde_json::to_value(vec![CredentialEntry {
                 credential: Credential::SdJwt(cred1),
                 kid: "1234".into(),
-                id: get1_res.unwrap().id
+                id: get1_res.id
             }])
             .unwrap()
         );

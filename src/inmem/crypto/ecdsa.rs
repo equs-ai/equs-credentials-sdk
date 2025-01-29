@@ -4,6 +4,7 @@ use tracing::{instrument, Level};
 
 use crate::crypto;
 use crate::inmem::crypto::HasAlg;
+use crate::kms::CreationSnafu;
 use ecdsa::elliptic_curve::generic_array::ArrayLength;
 use ecdsa::elliptic_curve::ops::Invert;
 use ecdsa::elliptic_curve::point::PointCompression;
@@ -30,12 +31,49 @@ where
 
 impl<C> Ecdsa<C>
 where
-    C: PrimeCurve + CurveArithmetic,
+    C: PrimeCurve + CurveArithmetic + PointCompression + DigestPrimitive + HasJWK + HasAlg,
     Scalar<C>: Invert<Output = CtOption<Scalar<C>>> + SignPrimitive<C>,
     SignatureSize<C>: ArrayLength<u8>,
+    AffinePoint<C>: FromEncodedPoint<C> + ToEncodedPoint<C> + VerifyPrimitive<C>,
+    FieldBytesSize<C>: sec1::ModulusSize,
 {
     pub(crate) fn new(signing_key: EcdsaSigningKey<C>) -> Self {
         Self { signing_key }
+    }
+
+    #[instrument(level = Level::TRACE, skip_all, err(), ret())]
+    pub fn is_compressed_public_key(public_key: &[u8]) -> Result<bool, crate::kms::Error> {
+        ecdsa::EncodedPoint::<C>::from_bytes(public_key)
+            .map(|encoded_point| encoded_point.is_compressed())
+            .map_err(|err| {
+                CreationSnafu {
+                    details: err.to_string(),
+                }
+                .build()
+            })
+    }
+
+    #[instrument(level = Level::TRACE, skip(public_key), err())]
+    pub fn re_encode_public_key(
+        public_key: &[u8],
+        compress: bool,
+    ) -> Result<Vec<u8>, crate::kms::Error> {
+        let encoded_point = ecdsa::EncodedPoint::<C>::from_bytes(public_key).map_err(|err| {
+            CreationSnafu {
+                details: err.to_string(),
+            }
+            .build()
+        })?;
+
+        let verifying_key =
+            ecdsa::VerifyingKey::<C>::from_encoded_point(&encoded_point).map_err(|err| {
+                CreationSnafu {
+                    details: err.to_string(),
+                }
+                .build()
+            })?;
+
+        Ok(verifying_key.to_encoded_point(compress).as_bytes().to_vec())
     }
 }
 

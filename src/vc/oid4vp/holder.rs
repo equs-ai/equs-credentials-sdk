@@ -1177,7 +1177,7 @@ mod tests {
 
         let kms = LocalKms::new();
         let key = kms
-            .create_and_handle(KeyType::P256, CreateOptions {})
+            .create_and_handle(KeyType::P256, CreateOptions::default())
             .await
             .unwrap();
         let holder = holder_service(http_client, kms, InMemVault::new()).await;
@@ -1241,7 +1241,7 @@ mod tests {
 
         let kms = LocalKms::new();
         let key = kms
-            .create_and_handle(KeyType::P256, CreateOptions {})
+            .create_and_handle(KeyType::P256, CreateOptions::default())
             .await
             .unwrap();
         let holder = holder_service(http_client, kms, InMemVault::new()).await;

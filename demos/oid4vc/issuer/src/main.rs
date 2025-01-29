@@ -434,7 +434,7 @@ async fn create_dedicated_metadata_for_json_ld_v2(kms: &LocalKms) -> KeyMetadata
 
 async fn create_did_and_key_metadata(kms: &LocalKms) -> (DID, KeyMetadata, DIDDoc) {
     let (kid, kh) = kms
-        .create_and_handle(kms::KeyType::P256, kms::CreateOptions {})
+        .create_and_handle(kms::KeyType::P256, kms::CreateOptions::default())
         .await
         .unwrap();
 

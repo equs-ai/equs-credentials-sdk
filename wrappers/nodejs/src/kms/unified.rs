@@ -27,6 +27,16 @@ impl Kms<KeyHandleWrapper> for UnifiedKms {
             UnifiedKms::Native(native) => native.inner().get(kid).await,
         }
     }
+
+    async fn get_by_public_key(
+        &self,
+        public_key: &[u8],
+    ) -> agent_sdk::kms::Result<KeyHandleWrapper> {
+        match self {
+            UnifiedKms::Js(js) => js.get_by_public_key(public_key).await.map(Into::into),
+            UnifiedKms::Native(native) => native.inner().get_by_public_key(public_key).await,
+        }
+    }
 }
 
 impl From<Either<&NativeKms, JsKms>> for UnifiedKms {
