@@ -1,14 +1,22 @@
+use crate::http::HttpClient;
 use crate::nonce::Nonce;
 use crate::vc::claims::Claims;
-use crate::vc::core::api::{ClaimsSnafu, ParseSnafu};
+use crate::vc::core::api::ParseSnafu;
+use crate::vc::core::api::VCStatus;
 use crate::vc::core::Result;
-use crate::vc::core::{FormatNotSupportedSnafu, VCSnafu, Verifier};
+use crate::vc::core::{
+    ClaimsSnafu, CredentialStatusNotSupportedSnafu, FormatNotSupportedSnafu, VCSnafu,
+    VCStatusSnafu, Verifier,
+};
 use crate::vc::formats::json_ld_vc::JsonLdAPI;
 use crate::vc::formats::sd_jwt_vc::SdJwtAPI;
 use crate::vc::formats::{VerifyOptions, API};
-use crate::vc::Presentation;
+use crate::vc::status_formats::status_list_token_jwt::StatusListJwt;
+use crate::vc::status_formats::API as VCStatusFormatsAPI;
+use crate::vc::{HasClaims, Presentation};
 use async_trait::async_trait;
 use snafu::ResultExt;
+use std::convert::TryFrom;
 use tracing::{instrument, Level};
 
 pub struct VerifierService {
@@ -45,6 +53,18 @@ impl Verifier for VerifierService {
 
         Ok(cred_claims)
     }
+
+    #[instrument(level = Level::TRACE, skip(self, http_client), err(), ret())]
+    async fn obtain_credential_status(
+        &self,
+        presentation: &Presentation,
+        http_client: &dyn HttpClient,
+    ) -> Result<VCStatus> {
+        match presentation {
+            Presentation::SdJwtVp(vp) => self.obtain_sd_jwt_vc_status(vp, http_client).await,
+            _ => CredentialStatusNotSupportedSnafu.fail(),
+        }
+    }
 }
 
 impl VerifierService {
@@ -53,6 +73,19 @@ impl VerifierService {
         Self {
             verifier_id: verifier_id.to_owned(),
         }
+    }
+
+    #[instrument(level = Level::TRACE, skip(self, http_client), err(), ret())]
+    async fn obtain_sd_jwt_vc_status(
+        &self,
+        presentation: &crate::vc::formats::sd_jwt_vc::Presentation,
+        http_client: &dyn HttpClient,
+    ) -> Result<VCStatus> {
+        let claims = presentation.parse_claims().context(VCSnafu)?;
+
+        StatusListJwt::get_vc_status(&claims, http_client)
+            .await
+            .context(VCStatusSnafu)
     }
 }
 

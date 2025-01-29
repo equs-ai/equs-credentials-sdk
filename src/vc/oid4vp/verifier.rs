@@ -14,15 +14,17 @@ use url::Url;
 
 use crate::did::universal::UniversalResolver;
 use crate::did::JWKResolver;
+use crate::http::HttpClient;
 use crate::kms::{KeyHandle, Kms};
 use crate::nonce::{Nonce, NonceGenerator};
 use crate::vc;
 use crate::vc::claims::{Claim, Claims};
-use crate::vc::core::KeyMetadata;
+use crate::vc::core::{KeyMetadata, VCStatus};
 use crate::vc::oid4vp as api;
 use crate::vc::oid4vp::internal_error::{
     ClaimsSnafu, DidUrlResolutionSnafu, IdTokenValidationSnafu, JsonSnafu, KMSSnafu,
-    NonceGenerationSnafu, Oid4VpLibSnafu, ParseSnafu, PresentationExchangeSnafu, VCSnafu,
+    NonceGenerationSnafu, Oid4VpLibSnafu, ParseSnafu, PresentationExchangeSnafu, VCNotValidSnafu,
+    VCSnafu, VCStatusSnafu,
 };
 use crate::vc::oid4vp::metadata::{default_client_metadata, default_wallet_metadata};
 use crate::vc::oid4vp::signer::Signer;
@@ -34,6 +36,7 @@ use crate::vc::presentation_exchange;
 use crate::vc::presentation_exchange::{
     validate_against_presentation_definition, PresentationDefinition, PresentationResponse,
 };
+use crate::vc::Presentation;
 use openid4vp::core::response::parameters::IdTokenBody as IdToken;
 use ssi::dids::DIDURLBuf;
 use std::collections::HashMap;
@@ -55,33 +58,37 @@ pub struct VerifierMetadata {
     pub client_metadata: ClientMetadata,
 }
 
-pub struct VerifierService<VF, KH, KMS, NG>
+pub struct VerifierService<VF, KH, KMS, NG, HC>
 where
     VF: vc::core::Verifier,
     KH: KeyHandle,
     KMS: Kms<KH>,
     NG: NonceGenerator,
+    HC: HttpClient,
 {
     verifier: VF,
     metadata: VerifierMetadata,
     kms: KMS,
     nonce_generator: NG,
+    http_client: HC,
     public_jwk_resolver: UniversalResolver,
     _marker: PhantomData<KH>,
 }
 
-impl<VF, KH, KMS, NG> VerifierService<VF, KH, KMS, NG>
+impl<VF, KH, KMS, NG, HC> VerifierService<VF, KH, KMS, NG, HC>
 where
     VF: vc::core::Verifier,
     KH: KeyHandle,
     KMS: Kms<KH>,
     NG: NonceGenerator,
+    HC: HttpClient,
 {
-    #[instrument(level = Level::TRACE, skip(verifier, kms, nonce_generator))]
+    #[instrument(level = Level::TRACE, skip(verifier, kms, nonce_generator, http_client))]
     pub fn new(
         verifier: VF,
         kms: KMS,
         nonce_generator: NG,
+        http_client: HC,
         client_id: String,
         key_metadata: KeyMetadata,
         client_metadata: Option<ClientMetadata>,
@@ -99,6 +106,7 @@ where
             public_jwk_resolver: UniversalResolver::default(),
             kms,
             nonce_generator,
+            http_client,
             verifier,
             _marker: Default::default(),
         }
@@ -106,12 +114,13 @@ where
 }
 
 #[async_trait]
-impl<VF, KH, KMS, NG> api::Verifier for VerifierService<VF, KH, KMS, NG>
+impl<VF, KH, KMS, NG, HC> api::Verifier for VerifierService<VF, KH, KMS, NG, HC>
 where
     VF: vc::core::Verifier,
     KH: KeyHandle,
     KMS: Kms<KH>,
     NG: NonceGenerator,
+    HC: HttpClient,
 {
     #[instrument(level = Level::TRACE, skip(self), ret())]
     async fn create_authorization_request(
@@ -182,12 +191,13 @@ where
     }
 }
 
-impl<VF, KH, KMS, NG> VerifierService<VF, KH, KMS, NG>
+impl<VF, KH, KMS, NG, HC> VerifierService<VF, KH, KMS, NG, HC>
 where
     VF: vc::core::Verifier,
     KH: KeyHandle,
     KMS: Kms<KH>,
     NG: NonceGenerator,
+    HC: HttpClient,
 {
     #[instrument(level = Level::TRACE, skip(self), err(), ret())]
     async fn validate_id_token(&self, id_token: &str, nonce: &Nonce) -> Result<IdToken> {
@@ -434,6 +444,31 @@ where
                 .verify_presentation(nonce, &requested_presentation.presentation)
                 .await
                 .context(VCSnafu)?;
+
+            if let Presentation::SdJwtVp(_) = requested_presentation.presentation {
+                let vc_status = self
+                    .verifier
+                    .obtain_credential_status(
+                        &requested_presentation.presentation,
+                        &self.http_client,
+                    )
+                    .await
+                    .context(VCStatusSnafu)?;
+
+                match vc_status {
+                    VCStatus::NotProvided => {
+                        info!("VC does not include status information");
+                    }
+                    VCStatus::Valid => {
+                        info!("VC is valid");
+                    }
+                    _ => VCNotValidSnafu {
+                        details: format!("status is {vc_status}"),
+                    }
+                    .fail()?,
+                }
+            }
+
             ids.push(requested_presentation.id.clone());
             result.insert(requested_presentation.id, claims.into());
         }

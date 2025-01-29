@@ -3,7 +3,8 @@ use crate::nonce::Nonce;
 use crate::vc::claims::Claims;
 use crate::vc::core::api::{ContextParsingSnafu, InvalidDIDUrlSnafu};
 use crate::vc::core::{
-    AlgNotSupportedSnafu, CredDefNotFoundSnafu, CredentialOfferContent, FormatNotSupportedSnafu,
+    AlgNotSupportedSnafu, CredDefNotFoundSnafu, CredentialOfferContent,
+    CredentialStatusProtocolNotSupportedSnafu, FormatNotSupportedSnafu,
     InconsistentProtocolDataSnafu, KMSSnafu, ProofFormatNotSupportedSnafu, ProofSnafu, Result,
     VCSnafu,
 };
@@ -11,11 +12,15 @@ use crate::vc::core::{
     CredentialDefinition, CredentialDefinitionData, CredentialOffer, CredentialOfferData,
     CredentialRequest, Issuer, IssuerMetadata,
 };
+
+use crate::vc::core::api::CredentialStatusInfo;
+
 use crate::vc::formats::json_ld_vc;
 use crate::vc::formats::json_ld_vc::JsonLdAPI;
 use crate::vc::formats::sd_jwt_vc;
 use crate::vc::formats::sd_jwt_vc::SdJwtAPI;
 use crate::vc::formats::API;
+
 use crate::vc::pop::jwt_pop::JwtProofOfPossession;
 use crate::vc::pop::ProofOfPossession;
 use crate::vc::{pop, Credential, VCFormat};
@@ -70,6 +75,7 @@ where
         credential_request: &CredentialRequest,
         claims: &Claims,
         nonce: &Nonce,
+        status_info: Option<CredentialStatusInfo>,
     ) -> Result<Credential> {
         trace!(?credential_request, ?claims, ?nonce);
 
@@ -103,7 +109,8 @@ where
             VCFormat::SdJwtVc => {
                 trace!(claims_to_issue = ?claims);
 
-                let metadata = self.sd_jwt_vc_metadata(claims, cred_def.protocol_data.clone())?;
+                let metadata =
+                    self.sd_jwt_vc_metadata(claims, cred_def.protocol_data.clone(), status_info)?;
                 let cred = SdJwtAPI::create_vc(
                     claims.clone(),
                     (&iss_did, iss_key),
@@ -118,7 +125,8 @@ where
             VCFormat::LdpVc => {
                 trace!(claims_to_issue = ?claims);
 
-                let metadata = self.json_ld_vc_metadata(cred_def.protocol_data.clone())?;
+                let metadata =
+                    self.json_ld_vc_metadata(cred_def.protocol_data.clone(), status_info)?;
                 let cred = JsonLdAPI::create_vc(
                     claims.clone(),
                     (&iss_did, iss_key),
@@ -161,6 +169,7 @@ where
         &self,
         claims: &sd_jwt_vc::Claims,
         protocol_data: Option<CredentialDefinitionData>,
+        status_info: Option<CredentialStatusInfo>,
     ) -> Result<sd_jwt_vc::VCMetadata> {
         trace!(?protocol_data);
 
@@ -169,11 +178,29 @@ where
                 vct,
                 disclosures,
                 lifetime,
-            }) => sd_jwt_vc::VCMetadata {
-                vct: vct.to_owned(),
-                lifetime: lifetime.unwrap_or(time::Duration::days(365)),
-                disclosures: disclosures.to_owned(),
-            },
+            }) => {
+                // TODO: try to reduce nesting here
+                let credential_status = match status_info {
+                    None => None,
+                    Some(CredentialStatusInfo::TokenStatusList { idx, uri }) => {
+                        Some(crate::vc::formats::sd_jwt_vc::CredentialStatus {
+                            status_list_credential_url: uri,
+                            status_list_index: idx,
+                        })
+                    }
+                    Some(_) => CredentialStatusProtocolNotSupportedSnafu {
+                        format: VCFormat::SdJwtVc.to_string(),
+                    }
+                    .fail()?,
+                };
+
+                sd_jwt_vc::VCMetadata {
+                    vct: vct.to_owned(),
+                    lifetime: lifetime.unwrap_or(time::Duration::days(365)),
+                    disclosures: disclosures.to_owned(),
+                    credential_status,
+                }
+            }
             _ => InconsistentProtocolDataSnafu {
                 format: VCFormat::SdJwtVc.to_string(),
             }
@@ -187,8 +214,17 @@ where
     fn json_ld_vc_metadata(
         &self,
         protocol_data: Option<CredentialDefinitionData>,
+        status_info: Option<CredentialStatusInfo>,
     ) -> Result<json_ld_vc::VCMetadata> {
         trace!(?protocol_data);
+
+        match status_info {
+            None => {}
+            _ => CredentialStatusProtocolNotSupportedSnafu {
+                format: VCFormat::LdpVc.to_string(),
+            }
+            .fail()?,
+        }
 
         let metadata = match protocol_data {
             Some(CredentialDefinitionData::Ldp {
@@ -395,7 +431,7 @@ mod tests {
         let request = case.create_cred_request(proof);
 
         let credential = issuer
-            .issue_credential(&request, &case.claims, &nonce)
+            .issue_credential(&request, &case.claims, &nonce, None)
             .await
             .unwrap();
 
@@ -425,7 +461,7 @@ mod tests {
             case.create_cred_request_with_pop_tolerance(proof, time::Duration::seconds(3));
 
         let credential = issuer
-            .issue_credential(&request, &case.claims, &nonce)
+            .issue_credential(&request, &case.claims, &nonce, None)
             .await
             .unwrap();
 
@@ -454,7 +490,7 @@ mod tests {
         let request = case.create_cred_request(proof);
 
         let credential = issuer
-            .issue_credential(&request, &case.claims, &nonce)
+            .issue_credential(&request, &case.claims, &nonce, None)
             .await
             .unwrap();
     }
@@ -479,7 +515,7 @@ mod tests {
         };
 
         let res = issuer
-            .issue_credential(&request, &case.claims, &nonce)
+            .issue_credential(&request, &case.claims, &nonce, None)
             .await;
 
         assert!(matches!(res.err(), Some(Error::CredDefNotFound { .. })));
@@ -501,7 +537,7 @@ mod tests {
         let request = case.create_cred_request(proof);
 
         let res = issuer
-            .issue_credential(&request, &case.claims, &nonce)
+            .issue_credential(&request, &case.claims, &nonce, None)
             .await;
 
         assert!(matches!(
@@ -526,7 +562,7 @@ mod tests {
         let request = case.create_cred_request(proof);
 
         let res = issuer
-            .issue_credential(&request, &case.claims, &nonce)
+            .issue_credential(&request, &case.claims, &nonce, None)
             .await;
 
         assert!(matches!(res.err(), Some(Error::Proof { .. })));
@@ -553,7 +589,7 @@ mod tests {
         let request = case.create_cred_request(proof);
 
         let res = issuer
-            .issue_credential(&request, &case.claims, &nonce)
+            .issue_credential(&request, &case.claims, &nonce, None)
             .await;
 
         assert!(matches!(res.err(), Some(Error::KMS { .. })));

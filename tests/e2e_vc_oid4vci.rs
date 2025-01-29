@@ -159,7 +159,7 @@ async fn credential_endpoint(
     let mut session_lock = session.lock().await;
 
     let result = issuer
-        .issue_credential(&cred_req, &token, &claims, session_lock.borrow_mut())
+        .issue_credential(&cred_req, &token, &claims, session_lock.borrow_mut(), None)
         .await;
 
     assert!(session_lock.borrow().nonce.is_some());

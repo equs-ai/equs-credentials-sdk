@@ -1,3 +1,4 @@
+use crate::vc::claims::Claim;
 use async_trait::async_trait;
 use jsonwebtoken::{DecodingKey, Header};
 use sd_jwt_rs::resolver::KeyResolver;
@@ -14,6 +15,7 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 use std::ops::Deref;
 use tracing::{instrument, trace, Level};
+use url::Url;
 
 use crate::crypto::{Key, Signer};
 use crate::did::universal::UniversalResolver;
@@ -21,6 +23,7 @@ use crate::did::DIDURL;
 use crate::nonce::Nonce;
 use crate::utils;
 use crate::utils::b64;
+use crate::utils::serde::get_time_based_claim;
 use crate::utils::serde::Helpers;
 use crate::vc::core::{PresentationInput, PresentationRestriction};
 use crate::vc::formats::vc::SD_JWT_VC;
@@ -55,7 +58,7 @@ pub type Credential = String;
 pub type Presentation = String;
 
 pub struct SignerWrapper<S: Signer> {
-    signer: S,
+    pub(crate) signer: S, // TODO: make it private again
 }
 
 #[async_trait]
@@ -117,12 +120,19 @@ impl KeyResolver for DidKeyResolver<UniversalResolver> {
     }
 }
 
+#[derive(Debug)]
+pub struct CredentialStatus {
+    pub status_list_credential_url: Url,
+    pub status_list_index: u32,
+}
+
 // Metadata
 #[derive(Debug, Default)]
 pub struct VCMetadata {
     pub vct: String,
     pub lifetime: time::Duration,
     pub disclosures: Vec<String>,
+    pub credential_status: Option<CredentialStatus>,
 }
 
 #[derive(Debug, Default)]
@@ -184,6 +194,34 @@ impl SdJwtAPI {
         let exp = Self::get_date_time_claim(EXP_CLAIM, &claims)
             .unwrap_or_else(|| time::OffsetDateTime::now_utc() + metadata.lifetime);
         claims.put_dt(EXP_CLAIM, exp);
+
+        claims
+    }
+
+    #[instrument(level = Level::TRACE, ret())]
+    fn set_cred_status_info(mut claims: Claims, metadata: &VCMetadata) -> Claims {
+        let Some(ref cred_status) = metadata.credential_status else {
+            return claims;
+        };
+
+        let mut status_list: HashMap<String, Claim> = HashMap::new();
+
+        status_list.insert(
+            "idx".to_string(),
+            Claim::UInt(cred_status.status_list_index.into()),
+        );
+        status_list.insert(
+            "uri".to_string(),
+            Claim::String(cred_status.status_list_credential_url.to_string()),
+        );
+
+        let status_list = Claim::Object(status_list);
+
+        let mut status: HashMap<String, Claim> = HashMap::new();
+        status.insert("status_list".to_string(), status_list);
+        let status = Claim::Object(status);
+
+        claims.insert("status".to_string(), status);
 
         claims
     }
@@ -328,13 +366,6 @@ impl GetDateTimeClaim<Claims, time::OffsetDateTime> for SdJwtAPI {
     }
 }
 
-fn get_time_based_claim(claims: &Claims, key: &str) -> Option<time::OffsetDateTime> {
-    claims
-        .get(key)
-        .and_then(|v| v.as_int())
-        .and_then(|v| time::OffsetDateTime::from_unix_timestamp(*v).ok())
-}
-
 #[async_trait]
 impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata, Claims> for SdJwtAPI {
     #[instrument(level = Level::TRACE, skip(issuer_data, holder_data), err(), ret())]
@@ -356,6 +387,7 @@ impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata, Claims> for S
         let sgn_wrapper = SignerWrapper { signer };
 
         let claims = SdJwtAPI::prepare_claims(claims, iss_did_url, hld_did_url, &metadata);
+        let claims = SdJwtAPI::set_cred_status_info(claims, &metadata);
         let headers = SdJwtAPI::extra_headers(iss_did_url);
         trace!(resolved_headers = ?headers);
 
@@ -905,6 +937,7 @@ mod tests {
             vct: "https://issuer.net/cred_schema".to_owned(),
             lifetime: time::Duration::days(365),
             disclosures: vec!["$.name".to_owned(), "$.surname".to_owned()],
+            credential_status: None,
         }
     }
 

@@ -103,7 +103,7 @@ async fn issue_endpoint(
 
     let resp = state
         .issuer
-        .issue_credential(&cred_req, &token, &claims, &mut dummy_session)
+        .issue_credential(&cred_req, &token, &claims, &mut dummy_session, None)
         .await;
 
     match resp {

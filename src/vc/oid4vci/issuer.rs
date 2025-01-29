@@ -2,6 +2,7 @@ use crate::http::HttpClient;
 use crate::nonce::{Nonce, NonceData, NonceGenerator};
 use crate::vc;
 use crate::vc::claims::Claims;
+use crate::vc::core::api::CredentialStatusInfo;
 use crate::vc::core::{CredentialRequestData, Proof as AsdkProof, Proof};
 use crate::vc::formats::sd_jwt_vc::{EXP_CLAIM, IAT_CLAIM, NBF_CLAIM, VCT_CLAIM};
 use crate::vc::oid4vci::internal_error::{
@@ -146,6 +147,7 @@ where
         token: &str,
         claims: &Claims,
         session: &mut IssuanceSession,
+        status_info: Option<CredentialStatusInfo>,
     ) -> Result<CredentialResponse> {
         info!("issuance of credential is started");
         trace!(credential_request = ?cred_request, %token, claims_to_issue = ?claims);
@@ -190,7 +192,7 @@ where
 
         let result = self
             .issuer
-            .issue_credential(&cred_req, claims, &nonce.value)
+            .issue_credential(&cred_req, claims, &nonce.value, status_info)
             .await;
 
         let credential = match result {
@@ -654,6 +656,7 @@ mod tests {
                 ACCESS_TOKEN,
                 &sample_claims(),
                 &mut sample_session_with_nonce(),
+                None,
             )
             .await;
 
@@ -682,6 +685,7 @@ mod tests {
                 ACCESS_TOKEN,
                 &claims,
                 &mut sample_session_with_nonce(),
+                None,
             )
             .await;
 
@@ -711,6 +715,7 @@ mod tests {
                 ACCESS_TOKEN,
                 &sample_claims(),
                 &mut IssuanceSession::default(),
+                None,
             )
             .await;
 
@@ -747,6 +752,7 @@ mod tests {
                 ACCESS_TOKEN,
                 &sample_claims(),
                 &mut sample_session_with_nonce(),
+                None,
             )
             .await
             .unwrap();
@@ -779,6 +785,7 @@ mod tests {
                 ACCESS_TOKEN,
                 &sample_claims(),
                 &mut sample_session_with_nonce(),
+                None,
             )
             .await;
 
@@ -911,7 +918,13 @@ mod tests {
         let claims = Claims::new();
         let issuer_service = issuer_service(None, None).await;
         issuer_service
-            .issue_credential(&credential_request, "fake_token", &claims, &mut session)
+            .issue_credential(
+                &credential_request,
+                "fake_token",
+                &claims,
+                &mut session,
+                None,
+            )
             .await
             .unwrap();
     }
@@ -933,7 +946,13 @@ mod tests {
 
         let issuer_service = issuer_service(None, None).await;
         issuer_service
-            .issue_credential(&credential_request, "fake_token", &claims, &mut session)
+            .issue_credential(
+                &credential_request,
+                "fake_token",
+                &claims,
+                &mut session,
+                None,
+            )
             .await
             .unwrap();
     }
@@ -947,7 +966,13 @@ mod tests {
 
         let issuer_service = issuer_service(None, None).await;
         issuer_service
-            .issue_credential(&credential_request, "fake_token", &claims, &mut session)
+            .issue_credential(
+                &credential_request,
+                "fake_token",
+                &claims,
+                &mut session,
+                None,
+            )
             .await
             .unwrap();
     }
@@ -964,7 +989,13 @@ mod tests {
         let issuer_service =
             issuer_service_with_metadata(None, None, sample_issuer_metadata_without_scope()).await;
         issuer_service
-            .issue_credential(&credential_request, "fake_token", &claims, &mut session)
+            .issue_credential(
+                &credential_request,
+                "fake_token",
+                &claims,
+                &mut session,
+                None,
+            )
             .await
             .unwrap();
     }
@@ -978,7 +1009,13 @@ mod tests {
 
         let issuer_service = issuer_service(None, None).await;
         issuer_service
-            .issue_credential(&credential_request, "fake_token", &claims, &mut session)
+            .issue_credential(
+                &credential_request,
+                "fake_token",
+                &claims,
+                &mut session,
+                None,
+            )
             .await
             .unwrap();
     }
@@ -996,7 +1033,13 @@ mod tests {
             issuer_service_with_metadata(None, None, sample_issuer_metadata_with_incorrect_scope())
                 .await;
         issuer_service
-            .issue_credential(&credential_request, ACCESS_TOKEN, &claims, &mut session)
+            .issue_credential(
+                &credential_request,
+                ACCESS_TOKEN,
+                &claims,
+                &mut session,
+                None,
+            )
             .await
             .unwrap();
     }
@@ -1015,6 +1058,7 @@ mod tests {
                 ACCESS_TOKEN_WITHOUT_SCOPE,
                 &claims,
                 &mut session,
+                None,
             )
             .await
             .unwrap();
@@ -1034,6 +1078,7 @@ mod tests {
                 ACCESS_TOKEN,
                 &claims,
                 &mut sample_session_with_nonce(),
+                None,
             )
             .await
             .unwrap();
@@ -1059,6 +1104,7 @@ mod tests {
                 ACCESS_TOKEN,
                 &claims,
                 &mut sample_session_with_nonce(),
+                None,
             )
             .await
             .unwrap();

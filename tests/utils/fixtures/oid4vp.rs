@@ -97,6 +97,7 @@ fn sample_sdjwt_identity_credential() -> (Oid4VpTestCredential, InputDescriptor)
             "$.surname".to_owned(),
             "$.address".to_owned(),
         ],
+        credential_status: None,
     });
 
     let credential = Oid4VpTestCredential {
@@ -159,6 +160,7 @@ fn sample_sdjwt_degree_credential() -> (Oid4VpTestCredential, InputDescriptor) {
             "$.surname".to_owned(),
             "$.address".to_owned(),
         ],
+        credential_status: None,
     });
 
     let credential = Oid4VpTestCredential {

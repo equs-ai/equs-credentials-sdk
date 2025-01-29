@@ -126,7 +126,7 @@ async fn issue_credential(
 
     let resp = state
         .issuer
-        .issue_credential(&cred_req, &token, &claims, &mut session)
+        .issue_credential(&cred_req, &token, &claims, &mut session, None)
         .await;
 
     state.storage.put(token, session).await.unwrap();

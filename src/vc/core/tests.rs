@@ -133,6 +133,7 @@ pub mod utils {
     use std::str::FromStr;
     use time::{Duration, OffsetDateTime};
     use uuid::Uuid;
+
     pub async fn random_nonce() -> Nonce {
         let nonce_gen = LocalNonceGenerator::default();
         nonce_gen.generate().await.unwrap()
@@ -519,6 +520,7 @@ pub mod utils {
                 vct: vct.to_string(),
                 disclosures: disclosures.to_owned(),
                 lifetime: Default::default(),
+                credential_status: None,
             };
 
             SdJwtAPI::create_vc(claims.clone(), iss_data, hld_data, vc_meta)

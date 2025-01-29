@@ -95,6 +95,13 @@ pub fn accumulate_claim_names(json_obj: &Value, parent_key: String, keys: &mut V
     }
 }
 
+pub fn get_time_based_claim(claims: &Claims, key: &str) -> Option<time::OffsetDateTime> {
+    claims
+        .get(key)
+        .and_then(|v| v.as_int())
+        .and_then(|v| time::OffsetDateTime::from_unix_timestamp(*v).ok())
+}
+
 #[cfg(test)]
 mod tests {
     use crate::nonce::{Nonce, NonceData};

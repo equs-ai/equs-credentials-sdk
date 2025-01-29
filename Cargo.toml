@@ -55,6 +55,11 @@ chrono = "0.4.38"
 openidconnect = "4.0.0-rc.1"
 zeroize = "1.8.1"
 zkryptium = "0.2.2"
+json-syntax = "0.12.5"
+ssi-claims-core = "0.1.2"
+ssi-dids = "0.2.1"
+ssi-status = "0.3.0"
+flate2 = "1.0.35"
 
 # InMEM dependencies
 # crypto/kms dependencies

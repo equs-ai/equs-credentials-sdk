@@ -25,12 +25,12 @@ pub enum Error {
 }
 
 /// A builder for creating an `OID4VP` `Verifier` instance.
-#[derive(Clone)]
-pub struct VerifierBuilder<KH, KMS, NG>
+pub struct VerifierBuilder<KH, KMS, NG, HC>
 where
     KH: kms::KeyHandle,
     KMS: kms::Kms<KH>,
     NG: NonceGenerator,
+    HC: HttpClient,
 {
     // data
     client_id: String,
@@ -40,11 +40,12 @@ where
     // services
     kms: KMS,
     nonce_generator: NG,
+    http_client: Result<HC, HttpError>,
 
     _marker: PhantomData<KH>,
 }
 
-impl<KH, KMS, NG> VerifierBuilder<KH, KMS, NG>
+impl<KH, KMS, NG> VerifierBuilder<KH, KMS, NG, ReqwestClient>
 where
     KH: kms::KeyHandle,
     KMS: kms::Kms<KH>,
@@ -61,33 +62,39 @@ where
     /// # Returns
     ///
     /// A new `VerifierBuilder` instance
-    #[instrument(
-        level = Level::TRACE,
-        skip(kms, nonce_generator),
-    )]
+    #[instrument(level = Level::TRACE, skip(kms, nonce_generator))]
     pub fn new(
         kms: KMS,
         nonce_generator: NG,
         key_metadata: KeyMetadata,
         client_id: String,
     ) -> Self {
+        let http_client = ReqwestClientBuilder::new().build().map_err(|e| {
+            HttpSnafu {
+                details: e.to_string(),
+            }
+            .build()
+        });
+
         info!("oid4vp-verifier builder is initialized");
         Self {
             client_id,
             key_metadata,
             kms,
             nonce_generator,
+            http_client,
             client_metadata: None,
             _marker: Default::default(),
         }
     }
 }
 
-impl<KH, KMS, NG> VerifierBuilder<KH, KMS, NG>
+impl<KH, KMS, NG, HC> VerifierBuilder<KH, KMS, NG, HC>
 where
     KH: kms::KeyHandle,
     KMS: kms::Kms<KH>,
     NG: NonceGenerator,
+    HC: HttpClient,
 {
     /// Sets the Verifier's client metadata.
     ///
@@ -106,6 +113,31 @@ where
         self
     }
 
+    /// Use a specific `HttpClient`.
+    ///
+    /// # Arguments
+    ///
+    /// * `http_client` - a http client.
+    #[instrument(
+        level = Level::TRACE,
+        skip_all,
+    )]
+    pub fn with_http_client<HC_: HttpClient + 'static>(
+        self,
+        http_client: HC_,
+    ) -> VerifierBuilder<KH, KMS, NG, HC_> {
+        VerifierBuilder {
+            http_client: Ok(http_client),
+            // copied
+            client_id: self.client_id,
+            key_metadata: self.key_metadata,
+            client_metadata: self.client_metadata,
+            kms: self.kms,
+            nonce_generator: self.nonce_generator,
+            _marker: Default::default(),
+        }
+    }
+
     /// Builds the `Verifier` API instance based on the current configuration of the builder.
     ///
     /// # Returns
@@ -121,12 +153,20 @@ where
         err(),
     )]
     pub async fn build(self) -> Result<impl api::Verifier, Error> {
+        let http_client = self.http_client.map_err(|e| {
+            BuildSnafu {
+                details: format!("Cannot initialize http client: {e}"),
+            }
+            .build()
+        })?;
+
         let inner = vc::core::VerifierService::new(&self.client_id);
 
         let verifier = VerifierService::new(
             inner,
             self.kms,
             self.nonce_generator,
+            http_client,
             self.client_id,
             self.key_metadata,
             self.client_metadata,

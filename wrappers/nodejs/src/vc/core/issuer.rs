@@ -41,6 +41,7 @@ impl VCCoreIssuer {
                 &credential_request.into(),
                 &claims,
                 &serde_json::from_value(Value::String(nonce))?,
+                None,
             )
             .await
             .map_err(|e| Error::from_reason(e.to_string()))
