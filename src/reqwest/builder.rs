@@ -1,6 +1,4 @@
-use reqwest::redirect::Policy;
 use reqwest::Client;
-use reqwest_tracing::TracingMiddleware;
 use tracing::{instrument, Level};
 
 use super::ReqwestClient;
@@ -9,12 +7,14 @@ use crate::reqwest::middleware::ValidatorMiddleware;
 use crate::reqwest::validators::content_size::ContentSizeLimiter;
 use crate::reqwest::validators::content_type::ContentTypeValidator;
 
+#[cfg(not(target_arch = "wasm32"))]
 pub type Certificate = reqwest::Certificate;
 
 #[derive(Debug)]
 pub struct ReqwestClientBuilder {
     content_size_limiter: ContentSizeLimiter,
     insecure: bool,
+    #[cfg(not(target_arch = "wasm32"))]
     trusted_root_certs: Vec<Certificate>,
 }
 
@@ -24,6 +24,7 @@ impl ReqwestClientBuilder {
         Self {
             content_size_limiter: ContentSizeLimiter::unlimited(),
             insecure: false,
+            #[cfg(not(target_arch = "wasm32"))]
             trusted_root_certs: vec![],
         }
     }
@@ -94,6 +95,7 @@ impl ReqwestClientBuilder {
     ///     .build();
     /// ```
     #[cfg(debug_assertions)]
+    #[cfg(not(target_arch = "wasm32"))]
     #[instrument(level = Level::TRACE, ret())]
     pub fn add_trusted_root_certificate(mut self, cert: Certificate) -> Self {
         self.trusted_root_certs.push(cert);
@@ -157,46 +159,64 @@ impl ReqwestClientBuilder {
     /// * [crate::http::HttpError] - fails to build client.
     #[instrument(level = Level::TRACE, ret())]
     pub fn build(self) -> Result<ReqwestClient> {
-        let client = if self.insecure {
-            Client::builder()
-                .https_only(false)
-                .danger_accept_invalid_certs(true)
+        #[cfg(target_arch = "wasm32")]
+        {
+            let wasm_client = Client::builder().build().map_err(|err| {
+                HttpSnafu {
+                    details: err.to_string(),
+                }
                 .build()
-                .map_err(|err| {
+            })?;
+
+            return Ok(ReqwestClient { wasm_client });
+        }
+
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            use reqwest::redirect::Policy;
+            use reqwest_tracing::TracingMiddleware;
+
+            let client = if self.insecure {
+                Client::builder()
+                    .https_only(false)
+                    .danger_accept_invalid_certs(true)
+                    .build()
+                    .map_err(|err| {
+                        HttpSnafu {
+                            details: err.to_string(),
+                        }
+                        .build()
+                    })?
+            } else {
+                let mut builder = Client::builder()
+                    .https_only(true)
+                    .use_rustls_tls()
+                    .min_tls_version(reqwest::tls::Version::TLS_1_2)
+                    .redirect(Policy::none());
+
+                for cert in self.trusted_root_certs {
+                    builder = builder.add_root_certificate(cert)
+                }
+
+                builder.build().map_err(|err| {
                     HttpSnafu {
                         details: err.to_string(),
                     }
                     .build()
                 })?
-        } else {
-            let mut builder = Client::builder()
-                .https_only(true)
-                .use_rustls_tls()
-                .min_tls_version(reqwest::tls::Version::TLS_1_2)
-                .redirect(Policy::none());
+            };
 
-            for cert in self.trusted_root_certs {
-                builder = builder.add_root_certificate(cert)
-            }
+            let client_with_middleware = reqwest_middleware::ClientBuilder::new(client)
+                .with(ValidatorMiddleware::new(
+                    self.content_size_limiter,
+                    ContentTypeValidator,
+                ))
+                .with(TracingMiddleware::default())
+                .build();
 
-            builder.build().map_err(|err| {
-                HttpSnafu {
-                    details: err.to_string(),
-                }
-                .build()
-            })?
-        };
-
-        let client_with_middleware = reqwest_middleware::ClientBuilder::new(client)
-            .with(ValidatorMiddleware::new(
-                self.content_size_limiter,
-                ContentTypeValidator,
-            ))
-            .with(TracingMiddleware::default())
-            .build();
-
-        Ok(ReqwestClient {
-            client: client_with_middleware,
-        })
+            Ok(ReqwestClient {
+                client: client_with_middleware,
+            })
+        }
     }
 }

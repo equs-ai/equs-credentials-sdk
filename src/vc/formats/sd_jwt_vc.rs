@@ -9,7 +9,6 @@ use sd_jwt_rs::{
 };
 use serde_json::{Map, Value};
 use snafu::ResultExt;
-use ssi::dids::DIDResolver;
 use ssi::jwk::{JWKResolver, JWK};
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -19,7 +18,7 @@ use url::Url;
 
 use crate::crypto::{Key, Signer};
 use crate::did::universal::UniversalResolver;
-use crate::did::DIDURL;
+use crate::did::{DIDResolver, DIDURL};
 use crate::nonce::Nonce;
 use crate::utils;
 use crate::utils::b64;
@@ -87,6 +86,7 @@ impl<R: JWKResolver> DidKeyResolver<R> {
     }
 }
 
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 #[async_trait]
 impl Default for DidKeyResolver<UniversalResolver> {
     #[instrument(level = Level::TRACE, skip_all)]
@@ -95,6 +95,7 @@ impl Default for DidKeyResolver<UniversalResolver> {
     }
 }
 
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 #[async_trait]
 impl KeyResolver for DidKeyResolver<UniversalResolver> {
     #[instrument(level = Level::TRACE, skip(self), err())]
@@ -366,6 +367,7 @@ impl GetDateTimeClaim<Claims, time::OffsetDateTime> for SdJwtAPI {
     }
 }
 
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 #[async_trait]
 impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata, Claims> for SdJwtAPI {
     #[instrument(level = Level::TRACE, skip(issuer_data, holder_data), err(), ret())]

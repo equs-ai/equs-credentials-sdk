@@ -240,6 +240,7 @@ where
     }
 }
 
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 #[async_trait]
 impl<HL, HC> api::Holder for HolderService<HL, HC>
 where
@@ -625,9 +626,22 @@ where
         })
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     fn http_closure(
         &self,
     ) -> impl Fn(HttpRequest) -> Pin<Box<dyn Future<Output = crate::http::Result<HttpResponse>> + Send>>
+    {
+        let client = self.http_client.clone();
+        move |req| {
+            let client = client.clone();
+            Box::pin(async move { client.async_call(req).await })
+        }
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    fn http_closure(
+        &self,
+    ) -> impl Fn(HttpRequest) -> Pin<Box<dyn Future<Output = crate::http::Result<HttpResponse>>>>
     {
         let client = self.http_client.clone();
         move |req| {

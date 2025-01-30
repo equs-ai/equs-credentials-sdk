@@ -121,6 +121,7 @@ pub struct VerifyOptions {
     pub clock_tolerance: Option<time::Duration>,
 }
 
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 #[async_trait]
 pub trait ProofOfPossession<P> {
     async fn generate<S>(

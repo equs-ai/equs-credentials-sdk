@@ -130,6 +130,7 @@ pub type Result<T> = core::result::Result<T, Error>;
 ///
 /// Use [IssuerBuilder](crate::vc::oid4vci::IssuerBuilder) to instantiate a service.
 /// Existing implementation of the API is not exposed.
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 #[async_trait]
 pub trait Issuer: Send + Sync {
     /// Returns the `Metadata` of the `Issuer`.
@@ -231,6 +232,7 @@ pub trait Issuer: Send + Sync {
 ///
 /// Use [HolderBuilder](crate::vc::oid4vci::HolderBuilder) to instantiate a service.
 /// Existing implementation of the API is not exposed.
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 #[async_trait]
 pub trait Holder: Send + Sync {
     /// Returns the `Metadata` of the `Issuer`.

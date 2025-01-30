@@ -19,9 +19,9 @@ rust-version = "1.82"
 common-macros = { path = "./common-macros" }
 
 oid4vci = { git = "ssh://git@git.slock.it/open-source/oid4vci-rs.git", rev = "ef7b3925" }
-openid4vp = { git = "ssh://git@git.slock.it/open-source/oid4vp-rs.git", rev = "3e7cb46c" }
-sd-jwt-rs = { git = "ssh://git@git.slock.it/open-source/sd-jwt-rust.git", rev = "8bcff25e" }
-didcomm = { git = "ssh://git@git.slock.it/open-source/didcomm-rust.git", rev = "c90b9f3c" }
+openid4vp = { git = "ssh://git@git.slock.it/open-source/oid4vp-rs.git", rev = "69001c33" }
+sd-jwt-rs = { git = "ssh://git@git.slock.it/open-source/sd-jwt-rust.git", rev = "cc541b0d" }
+didcomm = { git = "ssh://git@git.slock.it/open-source/didcomm-rust.git", rev = "db41780d" }
 
 did_peer = { tag = "0.65.0", git = "https://github.com/hyperledger/aries-vcx" }
 did_resolver = { tag = "0.65.0", git = "https://github.com/hyperledger/aries-vcx" }
@@ -42,8 +42,7 @@ async-trait = "0.1.85"
 strum_macros = "0.26.4"
 strum = { version = "0.26.3", features = ["derive"] }
 reqwest = { version = "0.12.9", features = ["rustls-tls"] }
-reqwest-middleware = "0.4.0"
-reqwest-tracing = "0.5.5"
+
 uuid = { version = "1.10.0", features = ["v4"] }
 url = "=2.5.2"
 anyhow = "1.0.86"
@@ -73,6 +72,10 @@ rand = { version = "0.8.5", optional = true }
 random-string = { version = "1.1.0", optional = true }
 async-rwlock = { version = "1.3.0", optional = true }
 ecdsa = { version = "0.16.9", optional = true }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+reqwest-middleware = { version =  "0.4.0", default-features = false }
+reqwest-tracing = { version = "0.5.5", default-features = false }
 
 [dev-dependencies]
 tokio = { version = "1.25.0", features = ["macros"] }

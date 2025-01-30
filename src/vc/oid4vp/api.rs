@@ -149,6 +149,7 @@ pub enum Error {
 ///
 /// Use [HolderBuilder](crate::vc::oid4vp::HolderBuilder) to instantiate a service.
 /// Existing implementation of the API is not exposed.
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 #[async_trait]
 pub trait Holder: Send + Sync {
     /// Fetches the `OID4VP` authorization request object from the provided URI.
@@ -271,6 +272,7 @@ pub trait Holder: Send + Sync {
 ///
 /// Use [VerifierBuilder](crate::vc::oid4vp::VerifierBuilder) to instantiate a service.
 /// Existing implementation of the API is not exposed.
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 #[async_trait]
 pub trait Verifier: Send + Sync {
     /// Creates an `OID4VP` authorization request.

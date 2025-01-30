@@ -301,6 +301,7 @@ pub type Result<T> = core::result::Result<T, Error>;
 /// # Implementation
 ///
 /// Implementation for `Issuer`: [IssuerService](crate::vc::core::issuer::IssuerService).
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 #[async_trait]
 pub trait Issuer: Send + Sync {
     /// Create a `CredentialOffer` based on some `CredentialDefinition`.
@@ -358,6 +359,7 @@ pub trait Issuer: Send + Sync {
 }
 
 // TODO: add doc
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 #[async_trait]
 pub trait StatusIssuer: Send + Sync {
     async fn issue_status_list(
@@ -374,6 +376,7 @@ pub trait StatusIssuer: Send + Sync {
 /// # Implementation
 ///
 /// Implementation for `Holder`: [HolderService](crate::vc::core::holder::HolderService).
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 #[async_trait]
 pub trait Holder: Send + Sync {
     /// Prepare a `CredentialRequest`.
@@ -534,6 +537,7 @@ pub enum VCStatus {
 /// # Implementation
 ///
 /// Implementation for `Verifier`: [VerifierService](crate::vc::core::verifier::VerifierService).
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 #[async_trait]
 pub trait Verifier: Send + Sync {
     /// Verify a `Presentation`.
