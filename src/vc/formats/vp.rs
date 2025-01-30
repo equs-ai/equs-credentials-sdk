@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 
-pub const SD_JWT_VP: &str = "vc+sd-jwt";
+pub const SD_JWT_VP: &str = "dc+sd-jwt";
 pub const JWT_VP: &str = "jwt_vp";
 pub const LDP_VP: &str = "ldp_vp";
 

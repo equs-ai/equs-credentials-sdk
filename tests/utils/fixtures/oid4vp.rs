@@ -119,7 +119,7 @@ fn sample_sdjwt_identity_credential() -> (Oid4VpTestCredential, InputDescriptor)
             "name": "Identity VC",
             "purpose": "We want an identity",
             "format": {
-                "vc+sd-jwt": {
+                "dc+sd-jwt": {
                    "sd-jwt_alg_values": [
                       "ES256",
                       "EdDSA"
@@ -184,7 +184,7 @@ fn sample_sdjwt_degree_credential() -> (Oid4VpTestCredential, InputDescriptor) {
             "id": "Degree-1",
             "name": "Degree VC",
             "format": {
-                "vc+sd-jwt": {
+                "dc+sd-jwt": {
                    "sd-jwt_alg_values": [
                       "ES256",
                       "EdDSA"

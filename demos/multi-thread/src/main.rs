@@ -242,7 +242,7 @@ fn sample_issuer_metadata(iss_url: &str) -> IssuerMetadata {
           "credential_endpoint": iss_url.to_owned()+"/credential",
           "credential_configurations_supported": {
             "SD_JWT_cred": {
-              "format": "vc+sd-jwt",
+              "format": "dc+sd-jwt",
               "scope": "SD_JWT_cred",
               "vct": "https://credentials.example.com/identity_credential",
               "claims": {

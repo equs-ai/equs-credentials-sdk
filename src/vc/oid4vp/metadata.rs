@@ -8,7 +8,7 @@ type Level_ = Level;
 
 const DEFAULT_CLIENT_METADATA: &str = r#"{
     "vp_formats": {
-        "vc+sd-jwt": {
+        "dc+sd-jwt": {
             "alg": [
                 "EdDSA",
                 "ES256"
@@ -49,7 +49,7 @@ const DEFAULT_WALLET_METADATA: &str = r#"{
     ],
     "vp_formats_supported":
     {
-        "vc+sd-jwt": {
+        "dc+sd-jwt": {
             "sd-jwt_alg_values": ["EdDSA", "ES256"],
             "kb-jwt_alg_values": ["EdDSA", "ES256"]
         },

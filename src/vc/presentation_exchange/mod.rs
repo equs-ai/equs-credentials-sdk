@@ -699,7 +699,7 @@ mod tests {
             result,
             [PresentationInput {
                 id: "descriptor_id".to_string(),
-                format: Some("vc+sd-jwt".to_string()),
+                format: Some("dc+sd-jwt".to_string()),
                 restrictions: vec![PresentationRestriction {
                     fields: vec!["$.vct".to_string()],
                     value: Some("https://credentials.example.com/identity_credential".to_string()),
@@ -902,7 +902,7 @@ mod tests {
 
     fn sample_input_descriptor_format_sdjwtvc() -> ClaimFormatMap {
         serde_json::from_value(json!({
-            "vc+sd-jwt": {
+            "dc+sd-jwt": {
               "sd-jwt_alg_values": ["ES256", "EdDSA"],
               "kb-jwt_alg_values": ["ES256", "EdDSA"]
             }

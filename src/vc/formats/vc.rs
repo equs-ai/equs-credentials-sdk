@@ -7,7 +7,7 @@ use std::str::FromStr;
 pub const JWT_VC_JSON: &str = "jwt_vc_json";
 pub const JWT_VC_JSON_LD: &str = "jwt_vc_json-ld";
 pub const LDP_VC: &str = "ldp_vc";
-pub const SD_JWT_VC: &str = "vc+sd-jwt";
+pub const SD_JWT_VC: &str = "dc+sd-jwt";
 pub const MSO_MDOC: &str = "MsoMdoc";
 
 /// Basic enum for supported `VC` formats.

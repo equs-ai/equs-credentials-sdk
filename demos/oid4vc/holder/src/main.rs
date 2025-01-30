@@ -627,7 +627,7 @@ const INPUT_DESCRIPTOR_FOR_CRED_DEF_1: &str = r#"{
     "name": "Identity VC",
     "purpose": "We want a resident card",
     "format": {
-        "vc+sd-jwt": {
+        "dc+sd-jwt": {
         "sd-jwt_alg_values": [
           "ES256",
           "EdDSA"

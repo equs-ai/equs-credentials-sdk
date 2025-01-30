@@ -55,7 +55,7 @@ pub mod fixtures {
     //
     // header:
     // {
-    //     "typ": "vc+sd-jwt",
+    //     "typ": "dc+sd-jwt",
     //     "alg": "ES256",
     //     "kid": "did:key:zDnaeujPqZ5EjHmfkrzYweLfMqr8aqA3ot3Btc4Fe9tyLqkmR#zDnaeujPqZ5EjHmfkrzYweLfMqr8aqA3ot3Btc4Fe9tyLqkmR"
     // }
@@ -102,7 +102,7 @@ pub mod fixtures {
                     "credential_endpoint": ISSUER_URL.to_owned()+"/credential",
                     "credential_configurations_supported": {
                         CRED_DEF_ID: {
-                            "format": "vc+sd-jwt",
+                            "format": "dc+sd-jwt",
                             "scope": "SD_JWT_cred",
                             "cryptographic_binding_methods_supported": [
                                 "jwk"
@@ -234,7 +234,7 @@ pub mod fixtures {
     pub fn sample_credential_definition() -> CredDefMetadata {
         let cred_def = serde_json::from_value(json!({
             "$key$": CRED_DEF_ID,
-            "format": "vc+sd-jwt",
+            "format": "dc+sd-jwt",
             "scope": "SD_JWT_cred",
             "cryptographic_binding_methods_supported": [
                 "jwk"
@@ -284,7 +284,7 @@ pub mod fixtures {
         pub fn with_sdjwtvc_conf() -> CredentialRequest {
             serde_json::from_value(json!(
                 {
-                    "format":"vc+sd-jwt",
+                    "format":"dc+sd-jwt",
                     "vct":"SD_JWT_cred",
                     "proof":{
                         "proof_type":"jwt",
@@ -351,7 +351,7 @@ pub mod fixtures {
     pub fn sample_cred_response() -> CredentialResponse {
         let cred_response = serde_json::from_value(json!(
             {
-                "format":"vc+sd-jwt",
+                "format":"dc+sd-jwt",
                 "credential": SD_JWT_CREDS,
                 "c_nonce":"0GtZieAoAL_3Zafyn6TgCA",
                 "c_nonce_expires_in":86440,

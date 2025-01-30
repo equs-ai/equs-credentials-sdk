@@ -793,7 +793,7 @@ mod tests {
         false
     )]
     #[should_panic(
-        expected = "vp format = 'vc+sd-jwt' with {\"sd-jwt_alg_values\":[\"RS256\"],\"kb-jwt_alg_values\":[\"RS256\"]} algorithms is not supported"
+        expected = "vp format = 'dc+sd-jwt' with {\"sd-jwt_alg_values\":[\"RS256\"],\"kb-jwt_alg_values\":[\"RS256\"]} algorithms is not supported"
     )]
     #[case::request_unsupported_credential_alg(request_unsupported_credential_alg_case(), false)]
     #[tokio::test]
@@ -1332,7 +1332,7 @@ mod tests {
     fn request_unsupported_credential_alg_case() -> PresentationTestCase {
         let test_case = single_presentation::presentation_test_case();
         let cred_format: ClaimFormatMap = serde_json::from_value(json!({
-            "vc+sd-jwt":{
+            "dc+sd-jwt":{
                 "sd-jwt_alg_values": ["RS256"],
                 "kb-jwt_alg_values": ["RS256"],
             }
@@ -1345,7 +1345,7 @@ mod tests {
     fn request_unsupported_credential_alg_case_with_state() -> PresentationTestCase {
         let test_case = single_presentation::presentation_test_case_with_state();
         let cred_format: ClaimFormatMap = serde_json::from_value(json!({
-            "vc+sd-jwt":{
+            "dc+sd-jwt":{
                 "sd-jwt_alg_values": ["RS256"],
                 "kb-jwt_alg_values": ["RS256"],
             }

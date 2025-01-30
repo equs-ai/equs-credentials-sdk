@@ -43,7 +43,7 @@ pub type Result<T> = core::result::Result<T, Error>;
 /// Filter to be used in [Vault::find_credentials].
 ///
 /// # Variants
-/// - `Format(String)`: Filters credentials based on their format (e.g., "vc+sd-jwt").
+/// - `Format(String)`: Filters credentials based on their format (e.g., "dc+sd-jwt").
 /// - `Fields(Vec<String>)`: Filters credentials based on the presence of specific tag keys.
 /// - `FieldValue(String, String)`: Filters credentials where a specific tag key matches a given value.
 #[derive(Debug, PartialEq, Clone)]

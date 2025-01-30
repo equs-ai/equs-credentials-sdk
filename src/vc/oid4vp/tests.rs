@@ -7,7 +7,7 @@ pub mod fixtures {
     pub const NONCE: &str = "n0NcE";
     pub const CLIENT_ID: &str = "wallet-dev";
     pub const STATE: &str = "1d8b0d93-86e8-4135-87d4-524bb0500bf3";
-    pub const REQUEST_URI: &str = "openid4vp://?client_id=did%3Akey%3AzDnaex9UKhcwNpfrPva1HLj6DECNHhHkmuY6xszv1KGWksvfL&request_uri=http%3A%2F%2F127.0.0.1%3A55796%2Frequest";
+    pub const REQUEST_URI: &str = "openid4vp://?client_id=did%3Akey%3AzDnaehgaHKAP7LAA3Kwa4FjXjJ1G3BcaHqr5gfRySJcGDgBtV&request_uri=http%3A%2F%2F127.0.0.1%3A55796%2Frequest";
     pub const CREDENTIAL_ID: &str = "abcde";
 
     pub mod single_presentation {
@@ -27,7 +27,7 @@ pub mod fixtures {
                  "name":"Identity VC",
                  "purpose":"We want an identity",
                  "format":{
-                    "vc+sd-jwt":{
+                    "dc+sd-jwt":{
                         "sd-jwt_alg_values": ["ES256", "EdDSA"],
                         "kb-jwt_alg_values": ["ES256", "EdDSA"]
                     }
@@ -60,17 +60,17 @@ pub mod fixtures {
             "descriptor_map": [
                 {
                     "id": "Identity-1",
-                    "format": "vc+sd-jwt",
+                    "format": "dc+sd-jwt",
                     "path": "$"
                 }
             ]
         }"#;
 
-        pub const AUTH_REQUEST_JWT: &str = "eyJhbGciOiJFUzI1NiIsImtpZCI6ImRpZDprZXk6ekRuYWV4OVVLaGN3TnBmclB2YTFITGo2REVDTkhoSGttdVk2eHN6djFLR1drc3ZmTCN6RG5hZXg5VUtoY3dOcGZyUHZhMUhMajZERUNOSGhIa211WTZ4c3p2MUtHV2tzdmZMIiwidHlwIjoiSldUIn0.eyJyZXNwb25zZV9tb2RlIjoiZGlyZWN0X3Bvc3QiLCJyZXNwb25zZV90eXBlIjoidnBfdG9rZW4iLCJub25jZSI6IlhVY2ZUTmZKLWQ1cG05OVhVS0c3bUdLdWt3WGVEYXNhUmxnaEtFcEd4aDAiLCJjbGllbnRfbWV0YWRhdGEiOnsidnBfZm9ybWF0cyI6eyJ2YytzZC1qd3QiOnsiYWxnIjpbIkVkRFNBIiwiRVMyNTYiXX19fSwiY2xpZW50X2lkIjoiZGlkOmtleTp6RG5hZXg5VUtoY3dOcGZyUHZhMUhMajZERUNOSGhIa211WTZ4c3p2MUtHV2tzdmZMIiwiY2xpZW50X2lkX3NjaGVtZSI6ImRpZCIsInByZXNlbnRhdGlvbl9kZWZpbml0aW9uIjp7ImlkIjoiMzI3YWQxNzEtYzgwYS00ODViLWIwOTgtNTBkN2FkMjc4ZWY2IiwiaW5wdXRfZGVzY3JpcHRvcnMiOlt7ImlkIjoiSWRlbnRpdHktMSIsImNvbnN0cmFpbnRzIjp7ImZpZWxkcyI6W3sicGF0aCI6WyIkLm5hbWUiXSwicHJlZGljYXRlIjpudWxsLCJvcHRpb25hbCI6dHJ1ZSwiaW50ZW50X3RvX3JldGFpbiI6ZmFsc2V9LHsicGF0aCI6WyIkLnZjdCJdLCJwcmVkaWNhdGUiOm51bGwsImZpbHRlciI6eyJ0eXBlIjoic3RyaW5nIiwiY29uc3QiOiJodHRwczovL2NyZWRlbnRpYWxzLmV4YW1wbGUuY29tL2lkZW50aXR5X2NyZWRlbnRpYWwifSwiaW50ZW50X3RvX3JldGFpbiI6ZmFsc2V9XX0sIm5hbWUiOiJJZGVudGl0eSBWQyIsInB1cnBvc2UiOiJXZSB3YW50IGFuIGlkZW50aXR5IiwiZm9ybWF0Ijp7InZjK3NkLWp3dCI6eyJzZC1qd3RfYWxnX3ZhbHVlcyI6WyJFUzI1NiIsIkVkRFNBIl0sImtiLWp3dF9hbGdfdmFsdWVzIjpbIkVTMjU2IiwiRWREU0EiXX19fV0sIm5hbWUiOiJFeGFtcGxlIHdpdGggc2VsZWN0aXZlIGRpc2Nsb3N1cmUifSwicmVzcG9uc2VfdXJpIjoiaHR0cDovLzEyNy4wLjAuMTo1NTc5Ni9hdXRoIn0.E5Y-Vk_ncPljaRr562qVkFRhAxYIBw_2BoajKJc8Wm-y8qQb2CcmKaHURoWxc6IG3ky7AWLs1ubI28WWak5WJA";
+        pub const AUTH_REQUEST_JWT: &str = "eyJhbGciOiJFUzI1NiIsImtpZCI6ImRpZDprZXk6ekRuYWVoZ2FIS0FQN0xBQTNLd2E0RmpYakoxRzNCY2FIcXI1Z2ZSeVNKY0dEZ0J0ViN6RG5hZWhnYUhLQVA3TEFBM0t3YTRGalhqSjFHM0JjYUhxcjVnZlJ5U0pjR0RnQnRWIiwidHlwIjoiSldUIn0.eyJyZXNwb25zZV90eXBlIjoidnBfdG9rZW4iLCJyZXNwb25zZV9tb2RlIjoiZGlyZWN0X3Bvc3QiLCJub25jZSI6IjNEYUx3ZGk4OXFEZ3BscFN3QXNwWDZ3V3ptNnBMa3phTjNYdWstYXI1elkiLCJjbGllbnRfbWV0YWRhdGEiOnsidnBfZm9ybWF0cyI6eyJkYytzZC1qd3QiOnsiYWxnIjpbIkVkRFNBIiwiRVMyNTYiXX19fSwiY2xpZW50X2lkIjoiZGlkOmtleTp6RG5hZWhnYUhLQVA3TEFBM0t3YTRGalhqSjFHM0JjYUhxcjVnZlJ5U0pjR0RnQnRWIiwiY2xpZW50X2lkX3NjaGVtZSI6ImRpZCIsInByZXNlbnRhdGlvbl9kZWZpbml0aW9uIjp7ImlkIjoiMzI3YWQxNzEtYzgwYS00ODViLWIwOTgtNTBkN2FkMjc4ZWY2IiwiaW5wdXRfZGVzY3JpcHRvcnMiOlt7ImlkIjoiSWRlbnRpdHktMSIsImNvbnN0cmFpbnRzIjp7ImZpZWxkcyI6W3sicGF0aCI6WyIkLm5hbWUiXSwib3B0aW9uYWwiOnRydWUsInByZWRpY2F0ZSI6bnVsbCwiaW50ZW50X3RvX3JldGFpbiI6ZmFsc2V9LHsicGF0aCI6WyIkLnZjdCJdLCJmaWx0ZXIiOnsidHlwZSI6InN0cmluZyIsImNvbnN0IjoiaHR0cHM6Ly9jcmVkZW50aWFscy5leGFtcGxlLmNvbS9pZGVudGl0eV9jcmVkZW50aWFsIn0sInByZWRpY2F0ZSI6bnVsbCwiaW50ZW50X3RvX3JldGFpbiI6ZmFsc2V9XX0sIm5hbWUiOiJJZGVudGl0eSBWQyIsInB1cnBvc2UiOiJXZSB3YW50IGFuIGlkZW50aXR5IiwiZm9ybWF0Ijp7ImRjK3NkLWp3dCI6eyJzZC1qd3RfYWxnX3ZhbHVlcyI6WyJFUzI1NiIsIkVkRFNBIl0sImtiLWp3dF9hbGdfdmFsdWVzIjpbIkVTMjU2IiwiRWREU0EiXX19fV0sIm5hbWUiOiJFeGFtcGxlIHdpdGggc2VsZWN0aXZlIGRpc2Nsb3N1cmUifSwicmVzcG9uc2VfdXJpIjoiaHR0cDovLzEyNy4wLjAuMTo1NTc5Ni9hdXRoIn0.PHtlxQ3XoC-ohUfRlm7EHe700WI4qZnmrTFBnS0ohq7Q0rNZtMiNMPKamp3hk-E88HzppGbvppn_Z7zEh3fjmA";
         pub const AUTH_REQUEST_WITH_STATE_JWT: &str = "eyJhbGciOiJFUzI1NiIsImtpZCI6ImRpZDprZXk6ekRuYWV4b3lwUGVKSHo1eGZkc2hWOU5xc1dUM0JVbUh2RFVEZThWeFdmNkxuMjNVaCN6RG5hZXhveXBQZUpIejV4ZmRzaFY5TnFzV1QzQlVtSHZEVURlOFZ4V2Y2TG4yM1VoIiwidHlwIjoiSldUIn0.eyJyZXNwb25zZV90eXBlIjoidnBfdG9rZW4iLCJzdGF0ZSI6IjFkOGIwZDkzLTg2ZTgtNDEzNS04N2Q0LTUyNGJiMDUwMGJmMyIsInJlc3BvbnNlX21vZGUiOiJkaXJlY3RfcG9zdCIsIm5vbmNlIjoiTm9ELTBmdGYxcWFUS0NNWjloWmVJdV9HZEhjdUZhM0hvUTgxLXBXZklQWSIsImNsaWVudF9tZXRhZGF0YSI6eyJzdWJqZWN0X3N5bnRheF90eXBlc19zdXBwb3J0ZWQiOlsiZGlkOmtleSJdfSwiY2xpZW50X2lkIjoiZGlkOmtleTp6RG5hZXhveXBQZUpIejV4ZmRzaFY5TnFzV1QzQlVtSHZEVURlOFZ4V2Y2TG4yM1VoIiwiY2xpZW50X2lkX3NjaGVtZSI6ImRpZCIsInByZXNlbnRhdGlvbl9kZWZpbml0aW9uIjp7ImlkIjoiMzI3YWQxNzEtYzgwYS00ODViLWIwOTgtNTBkN2FkMjc4ZWY2IiwiaW5wdXRfZGVzY3JpcHRvcnMiOlt7ImlkIjoiSWRlbnRpdHktMSIsImNvbnN0cmFpbnRzIjp7ImZpZWxkcyI6W3sicGF0aCI6WyIkLnZjdCJdLCJmaWx0ZXIiOnsidHlwZSI6InN0cmluZyIsImNvbnN0IjoiaHR0cHM6Ly9jcmVkZW50aWFscy5leGFtcGxlLmNvbS9pZGVudGl0eV9jcmVkZW50aWFsIn0sInByZWRpY2F0ZSI6bnVsbCwiaW50ZW50X3RvX3JldGFpbiI6ZmFsc2V9LHsicGF0aCI6WyIkLm5hbWUiXSwicHJlZGljYXRlIjpudWxsLCJpbnRlbnRfdG9fcmV0YWluIjpmYWxzZX1dfSwibmFtZSI6IklkZW50aXR5IFZDIiwicHVycG9zZSI6IldlIHdhbnQgYW4gaWRlbnRpdHkiLCJmb3JtYXQiOnsidmMrc2Qtand0Ijp7InNkLWp3dF9hbGdfdmFsdWVzIjpbIkVTMjU2IiwiRWREU0EiXSwia2Itand0X2FsZ192YWx1ZXMiOlsiRVMyNTYiLCJFZERTQSJdfX19XX0sInJlc3BvbnNlX3VyaSI6Imh0dHA6Ly8xMjcuMC4wLjE6NTU3OTYvYXV0aCJ9.j7OamoDYuCdMsTZ_dar7_KrZx7fufanTFWPB5LQk86UeAZ9yI_QHsGsmb1j9HkAnkVpgerShVJ3dO3HuxD-tPA";
         pub const AUTH_REQUEST: &str = r#"
             {
-              "client_id": "did:key:zDnaex9UKhcwNpfrPva1HLj6DECNHhHkmuY6xszv1KGWksvfL",
+              "client_id": "did:key:zDnaehgaHKAP7LAA3Kwa4FjXjJ1G3BcaHqr5gfRySJcGDgBtV",
               "state": null,
               "presentation_definition": {
                 "id": "327ad171-c80a-485b-b098-50d7ad278ef6",
@@ -103,7 +103,7 @@ pub mod fixtures {
                     "name": "Identity VC",
                     "purpose": "We want an identity",
                     "format": {
-                      "vc+sd-jwt": {
+                      "dc+sd-jwt": {
                         "sd-jwt_alg_values": [
                           "ES256",
                           "EdDSA"
@@ -118,7 +118,7 @@ pub mod fixtures {
                 ],
                 "name": "Example with selective disclosure"
               },
-              "nonce": "XUcfTNfJ-d5pm99XUKG7mGKukwXeDasaRlghKEpGxh0",
+              "nonce": "3DaLwdi89qDgplpSwAspX6wWzm6pLkzaN3Xuk-ar5zY",
               "response_mode": "direct_post",
               "response_type": "vp_token",
               "response_uri": "http://127.0.0.1:55796/auth"
@@ -160,7 +160,7 @@ pub mod fixtures {
                     "name": "Identity VC",
                     "purpose": "We want an identity",
                     "format": {
-                      "vc+sd-jwt": {
+                      "dc+sd-jwt": {
                         "sd-jwt_alg_values": [
                           "ES256",
                           "EdDSA"
@@ -264,7 +264,7 @@ pub mod fixtures {
                  "name":"Identity VC",
                  "purpose":"We want an identity",
                  "format":{
-                    "vc+sd-jwt":{
+                    "dc+sd-jwt":{
                        "sd-jwt_alg_values": [
                           "ES256",
                           "EdDSA"
@@ -301,7 +301,7 @@ pub mod fixtures {
                  "name":"Identity VC",
                  "purpose":"We want an identity",
                  "format":{
-                    "vc+sd-jwt":{
+                    "dc+sd-jwt":{
                        "sd-jwt_alg_values": [
                           "ES256",
                           "EdDSA"
@@ -341,12 +341,12 @@ pub mod fixtures {
             "descriptor_map": [
                 {
                     "id": "Identity-1",
-                    "format": "vc+sd-jwt",
+                    "format": "dc+sd-jwt",
                     "path": "$[0]"
                 },
                 {
                     "id": "SD_JWT_cred",
-                    "format": "vc+sd-jwt",
+                    "format": "dc+sd-jwt",
                     "path": "$[1]"
                 }
             ]
@@ -364,7 +364,7 @@ pub mod fixtures {
                      "name":"Identity VC",
                      "purpose":"We want an identity",
                      "format":{
-                        "vc+sd-jwt":{
+                        "dc+sd-jwt":{
                            "sd-jwt_alg_values": [
                                 "ES256",
                                 "EdDSA"
@@ -401,7 +401,7 @@ pub mod fixtures {
                      "name":"Identity VC",
                      "purpose":"We want an identity",
                      "format":{
-                        "vc+sd-jwt":{
+                        "dc+sd-jwt":{
                            "sd-jwt_alg_values": [
                               "ES256",
                               "EdDSA"
@@ -452,7 +452,7 @@ pub mod fixtures {
                      "name":"Identity VC",
                      "purpose":"We want an identity",
                      "format":{
-                        "vc+sd-jwt":{
+                        "dc+sd-jwt":{
                            "sd-jwt_alg_values": [
                                 "ES256",
                                 "EdDSA"
@@ -489,7 +489,7 @@ pub mod fixtures {
                      "name":"Identity VC",
                      "purpose":"We want an identity",
                      "format":{
-                        "vc+sd-jwt":{
+                        "dc+sd-jwt":{
                            "sd-jwt_alg_values": [
                               "ES256",
                               "EdDSA"
