@@ -21,6 +21,7 @@ use crate::vc::pop::{
 
 pub struct JwtProofOfPossession {}
 
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 #[async_trait]
 impl pop::ProofOfPossession<String> for JwtProofOfPossession {
     #[instrument(level = Level::TRACE, skip(key), err(), ret())]

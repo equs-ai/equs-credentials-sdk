@@ -26,6 +26,7 @@ where
     _marker: PhantomData<KH>,
 }
 
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 #[async_trait]
 impl<KH, KMS> StatusIssuer for StatusIssuerService<KH, KMS>
 where

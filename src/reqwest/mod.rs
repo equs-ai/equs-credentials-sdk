@@ -4,19 +4,22 @@ pub mod validators;
 
 use async_trait::async_trait;
 use oauth2::{HttpRequest, HttpResponse};
-use reqwest_middleware::ClientWithMiddleware;
-use std::time::Duration;
 use tracing::{info, instrument};
 
 use crate::http::{HttpClient, HttpError, HttpSnafu, Result};
 
 #[derive(Debug, Clone)]
 pub struct ReqwestClient {
-    client: ClientWithMiddleware,
+    #[cfg(not(target_arch = "wasm32"))]
+    client: reqwest_middleware::ClientWithMiddleware,
+    #[cfg(target_arch = "wasm32")]
+    wasm_client: reqwest::Client,
 }
 
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 #[async_trait]
 impl HttpClient for ReqwestClient {
+    #[cfg(not(target_arch = "wasm32"))]
     #[instrument(
         skip_all,
         name = "HTTP async call"
@@ -33,7 +36,7 @@ impl HttpClient for ReqwestClient {
             .client
             .request(parts.method, parts.uri.to_string())
             .body(body)
-            .timeout(Duration::from_secs(30));
+            .timeout(std::time::Duration::from_secs(30));
 
         for (name, value) in parts.headers.iter() {
             request_builder = request_builder.header(name.as_str(), value.as_bytes());
@@ -47,6 +50,62 @@ impl HttpClient for ReqwestClient {
         })?;
 
         let response = self.client.execute(req).await.map_err(|err| {
+            HttpSnafu {
+                details: err.to_string(),
+            }
+            .build()
+        })?;
+
+        let status_code = response.status();
+        let headers = response.headers().to_owned();
+
+        let chunks = response.bytes().await.map_err(|err| {
+            HttpSnafu {
+                details: err.to_string(),
+            }
+            .build()
+        })?;
+
+        info!("HTTP response is successfully handled: status code = {status_code}");
+
+        let resp_body = chunks.to_vec();
+        let mut response = HttpResponse::new(resp_body);
+        *response.status_mut() = status_code;
+        *response.headers_mut() = headers;
+
+        Ok(response)
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    #[instrument(
+        skip_all,
+        name = "HTTP async call"
+        fields(
+            url = request.uri().to_string(),
+            method = request.method().as_str(),
+        )
+        err(),
+    )]
+    async fn async_call(&self, request: HttpRequest) -> Result<HttpResponse> {
+        let (parts, body) = request.into_parts();
+        info!("Making HTTP request is started");
+        let mut request_builder = self
+            .wasm_client
+            .request(parts.method, parts.uri.to_string())
+            .body(body);
+
+        for (name, value) in parts.headers.iter() {
+            request_builder = request_builder.header(name.as_str(), value.as_bytes());
+        }
+
+        let req = request_builder.build().map_err(|err| {
+            HttpSnafu {
+                details: err.to_string(),
+            }
+            .build()
+        })?;
+
+        let response = self.wasm_client.execute(req).await.map_err(|err| {
             HttpSnafu {
                 details: err.to_string(),
             }

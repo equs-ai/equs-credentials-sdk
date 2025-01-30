@@ -23,6 +23,7 @@ pub struct VerifierService {
     verifier_id: String,
 }
 
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 #[async_trait]
 impl Verifier for VerifierService {
     #[instrument(level = Level::TRACE, skip(self), err(), ret())]

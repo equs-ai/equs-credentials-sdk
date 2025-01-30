@@ -61,6 +61,7 @@ pub enum StatusListFormat {
     StatusListTokenCwt,
 }
 
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 #[async_trait]
 pub trait API<ST, SL, MD> {
     async fn create_status_list<S>(

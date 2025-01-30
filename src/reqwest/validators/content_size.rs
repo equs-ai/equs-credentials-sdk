@@ -79,6 +79,7 @@ impl ContentSizeLimiter {
         }
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     #[instrument(level = Level::TRACE, skip(self), ret(), err())]
     pub(crate) async fn limit_response_body(&self, response: &mut Response) -> Result<Vec<u8>> {
         let mut resp_body: Vec<u8> = match response.content_length() {
