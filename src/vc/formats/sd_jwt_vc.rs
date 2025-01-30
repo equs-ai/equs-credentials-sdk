@@ -241,7 +241,7 @@ impl SdJwtAPI {
 
         parts.next().ok_or_else(|| {
             ParsingSnafu {
-                details: "Strip disclosure failed for 'vc+sd_jwt' credential",
+                details: "Strip disclosure failed for 'dc+sd_jwt' credential",
             }
             .build()
         })

@@ -3,50 +3,50 @@ import { OID4VCICredentialMetadata } from "./credential-metadata";
 export type KeyProofType = "jwt" | "cwt";
 
 interface IssuerMetadataDisplay {
-	name?: string;
-	locale?: string;
+  name?: string;
+  locale?: string;
 }
 
 export interface CredentialMetadataDisplayLogo {
-	uri: string;
-	alt_text: string;
+  uri: string;
+  alt_text: string;
 }
 
 export interface CredentialMetadataDisplay {
-	name: string;
-	locale?: string;
-	logo?: CredentialMetadataDisplayLogo;
-	description?: string;
-	background_color?: string;
-	text_color?: string;
+  name: string;
+  locale?: string;
+  logo?: CredentialMetadataDisplayLogo;
+  description?: string;
+  background_color?: string;
+  text_color?: string;
 }
 
 export interface ProofType {
-	proof_signing_alg_values_supported: Array<string>;
+  proof_signing_alg_values_supported: Array<string>;
 
-	[key: string]: any;
+  [key: string]: any;
 }
 
 export interface CredentialSubjectClaims {
-	mandatory?: boolean;
-	value_type?: string;
-	display?: Array<IssuerMetadataDisplay>;
+  mandatory?: boolean;
+  value_type?: string;
+  display?: Array<IssuerMetadataDisplay>;
 
-	[key: string]: unknown;
+  [key: string]: unknown;
 }
 
 export interface IssuerMetadata {
-	credential_issuer: string;
-	authorization_servers?: Array<string>;
-	credential_endpoint: string;
-	batch_credential_endpoint?: string;
-	deferred_credential_endpoint?: string;
-	notification_endpoint?: string;
-	credential_response_encryption_alg_values_supported?: Array<string>;
-	credential_response_encryption_enc_values_supported?: Array<string>;
-	require_credential_response_encryption?: boolean;
-	credential_configurations_supported: Record<string, OID4VCICredentialMetadata>;
-	display?: IssuerMetadataDisplay[];
+  credential_issuer: string;
+  authorization_servers?: Array<string>;
+  credential_endpoint: string;
+  batch_credential_endpoint?: string;
+  deferred_credential_endpoint?: string;
+  notification_endpoint?: string;
+  credential_response_encryption_alg_values_supported?: Array<string>;
+  credential_response_encryption_enc_values_supported?: Array<string>;
+  require_credential_response_encryption?: boolean;
+  credential_configurations_supported: Record<string, OID4VCICredentialMetadata>;
+  display?: IssuerMetadataDisplay[];
 }
 
 export type OID4VCIIssuerMetadata = IssuerMetadata;

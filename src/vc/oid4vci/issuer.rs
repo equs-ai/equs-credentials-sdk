@@ -1199,7 +1199,7 @@ mod tests {
     fn sample_sdjwtvc_credential_request_with_fake_vct() -> CredentialRequest {
         serde_json::from_value(json!(
             {
-                "format":"vc+sd-jwt",
+                "format":"dc+sd-jwt",
                 "vct":"fake_sd_jwt_cred",
                 "proof":{
                     "proof_type":"jwt",
@@ -1214,7 +1214,7 @@ mod tests {
     fn sample_sdjwtvc_credential_request_with_empty_proofs_jwt() -> CredentialRequest {
         serde_json::from_value(json!(
             {
-                "format":"vc+sd-jwt",
+                "format":"dc+sd-jwt",
                 "vct":"SD_JWT_cred",
                 "proof":{
                     "proof_type":"jwt",
@@ -1229,7 +1229,7 @@ mod tests {
     fn sample_sdjwtvc_credential_request_with_cwt_proof_format() -> CredentialRequest {
         serde_json::from_value(json!(
             {
-                "format":"vc+sd-jwt",
+                "format":"dc+sd-jwt",
                 "vct":"SD_JWT_cred",
                 "proof":{
                     "proof_type":"cwt",
@@ -1244,7 +1244,7 @@ mod tests {
     fn sample_sdjwtvc_credential_request_without_proof() -> CredentialRequest {
         serde_json::from_value(json!(
             {
-                "format":"vc+sd-jwt",
+                "format":"dc+sd-jwt",
                 "vct":"fake_sd_jwt_cred",
                 "credential_response_encryption":null
             }
@@ -1260,7 +1260,7 @@ mod tests {
                 "credential_endpoint": ISSUER_URL.to_owned()+"/credential",
                 "credential_configurations_supported": {
                     CRED_DEF_ID: {
-                    "format": "vc+sd-jwt",
+                    "format": "dc+sd-jwt",
                     "vct": "SD_JWT_cred",
                     "claims": {},
                     },
@@ -1278,7 +1278,7 @@ mod tests {
                 "credential_endpoint": ISSUER_URL.to_owned()+"/credential",
                 "credential_configurations_supported": {
                     CRED_DEF_ID: {
-                    "format": "vc+sd-jwt",
+                    "format": "dc+sd-jwt",
                     "vct": "SD_JWT_cred",
                     "scope": "fake_scope",
                     "claims": {},

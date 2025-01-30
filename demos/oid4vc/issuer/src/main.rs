@@ -460,7 +460,7 @@ fn sample_issuer_metadata(iss_url: &str, authz_url: &str) -> IssuerMetadata {
           "credential_endpoint": iss_url.to_owned()+"/credential",
           "credential_configurations_supported": {
             SD_JWT_CRED_DEF: {
-              "format": "vc+sd-jwt",
+              "format": "dc+sd-jwt",
               "scope": "SD_JWT_cred_scope",
               "cryptographic_binding_methods_supported": [
                 "jwk"

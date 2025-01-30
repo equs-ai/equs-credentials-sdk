@@ -136,7 +136,7 @@ async fn credential_endpoint(
 ) -> HttpResponse {
     let cred_req_str = std::str::from_utf8(req.body().as_slice()).unwrap();
 
-    let claims = if cred_req_str.contains("\"vc+sd-jwt\"") {
+    let claims = if cred_req_str.contains("\"dc+sd-jwt\"") {
         sample_claims_sdjwt()
     } else if cred_req_str.contains("\"ldp_vc\"") {
         sample_claims_jsonld()

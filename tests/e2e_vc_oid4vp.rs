@@ -291,7 +291,7 @@ fn default_verifier_metadata() -> ClientMetadata {
 
 const DEFAULT_CLIENT_METADATA: &str = r#"{
     "vp_formats": {
-        "vc+sd-jwt": {
+        "dc+sd-jwt": {
             "alg": [
                 "EdDSA",
                 "ES256"

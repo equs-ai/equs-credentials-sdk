@@ -78,7 +78,7 @@ async fn sd_jwt_credential_issuance_and_presentation_verification() {
         "name": "Identity VC",
         "purpose": "We want a resident card",
         "format": {
-            "vc+sd-jwt": {
+            "dc+sd-jwt": {
                 "sd-jwt_alg_values": ["ES256", "EdDSA"],
                 "kb-jwt_alg_values": ["ES256", "EdDSA"],
             }
@@ -298,7 +298,7 @@ async fn credential_issuance_and_status_verification() {
         "name": "Identity VC",
         "purpose": "We want a resident card",
         "format": {
-            "vc+sd-jwt": {
+            "dc+sd-jwt": {
                 "sd-jwt_alg_values": ["ES256", "EdDSA"],
                 "kb-jwt_alg_values": ["ES256", "EdDSA"],
             }

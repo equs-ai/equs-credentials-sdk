@@ -1,55 +1,55 @@
 import { ClaimFormatMap } from "./common";
 
 declare enum Predicate {
-	Required = 0,
-	Preferred = 1,
+  Required = 0,
+  Preferred = 1,
 }
 
 interface ConstraintsField {
-	path: Array<string>;
-	id?: string;
-	purpose?: string;
-	name?: string;
-	predicate?: Predicate;
-	filter?: any;
-	optional?: boolean;
-	intent_to_retain?: boolean;
+  path: Array<string>;
+  id?: string;
+  purpose?: string;
+  name?: string;
+  predicate?: Predicate;
+  filter?: any;
+  optional?: boolean;
+  intent_to_retain?: boolean;
 }
 
 declare enum ConstraintsLimitDisclosure {
-	Required = 0,
-	Preferred = 1,
+  Required = 0,
+  Preferred = 1,
 }
 
 interface Constraints {
-	fields?: Array<ConstraintsField>;
-	limit_disclosure?: ConstraintsLimitDisclosure;
+  fields?: Array<ConstraintsField>;
+  limit_disclosure?: ConstraintsLimitDisclosure;
 }
 
 export type ClaimFormatPayload =
-	| { alg: string[] }
-	| { alg_values_supported: string[] }
-	| { proof_type: string[] }
-	| {
-			"sd-jwt_alg_values": string[];
-			"kb-jwt_alg_values": string[];
-	  }
-	| any;
+  | { alg: string[] }
+  | { alg_values_supported: string[] }
+  | { proof_type: string[] }
+  | {
+      "sd-jwt_alg_values": string[];
+      "kb-jwt_alg_values": string[];
+    }
+  | any;
 
 interface InputDescriptor {
-	id: string;
-	constraints: Constraints;
-	name?: string;
-	purpose?: string;
-	format: Partial<ClaimFormatMap>;
-	group?: Array<string>;
+  id: string;
+  constraints: Constraints;
+  name?: string;
+  purpose?: string;
+  format: Partial<ClaimFormatMap>;
+  group?: Array<string>;
 }
 
 export interface PresentationDefinition {
-	id: string;
-	input_descriptors: Array<InputDescriptor>;
-	submission_requirements?: Array<any>;
-	name?: string;
-	purpose?: string;
-	format?: Partial<ClaimFormatMap>;
+  id: string;
+  input_descriptors: Array<InputDescriptor>;
+  submission_requirements?: Array<any>;
+  name?: string;
+  purpose?: string;
+  format?: Partial<ClaimFormatMap>;
 }

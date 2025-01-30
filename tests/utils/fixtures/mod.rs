@@ -54,7 +54,7 @@ pub fn sample_issuer_metadata() -> IssuerMetadata {
           "credential_endpoint": ISSUER_URL.to_owned()+"/credential",
           "credential_configurations_supported": {
             "SD_JWT_cred_1": {
-              "format": "vc+sd-jwt",
+              "format": "dc+sd-jwt",
               "scope": SCOPE.to_owned(),
               "cryptographic_binding_methods_supported": [
                 "jwk"
@@ -77,7 +77,7 @@ pub fn sample_issuer_metadata() -> IssuerMetadata {
               }
             },
             "SD_JWT_cred_2": {
-              "format": "vc+sd-jwt",
+              "format": "dc+sd-jwt",
               "scope": SCOPE.to_owned(),
               "cryptographic_binding_methods_supported": [
                 "jwk"

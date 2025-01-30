@@ -399,7 +399,7 @@ mod tests {
     fn sample_credential_definition() -> CredDefMetadata {
         let cred_def = serde_json::from_value(json!({
             "$key$": CRED_DEF_ID,
-            "format": "vc+sd-jwt",
+            "format": "dc+sd-jwt",
             "scope": "SD_JWT_cred",
             "cryptographic_binding_methods_supported": [
                 "jwk"
