@@ -5,6 +5,7 @@ use crate::nonce::Nonce;
 use crate::vault::{CredentialEntry, Error as VaultError};
 use crate::vc::claims::Claims;
 use crate::vc::status_formats::StatusListFormat;
+use crate::vc::VCStatus;
 use crate::vc::VCStatusesData;
 use crate::vc::{
     formats::Error as VCError, pop, pop::Error as ProofError, Credential, CredentialMetadata,
@@ -16,7 +17,6 @@ use serde::{Deserialize, Serialize};
 use snafu::{Location, Snafu};
 use std::collections::HashMap;
 use std::fmt::Debug;
-use strum_macros::Display;
 use time::Duration;
 use url::Url;
 
@@ -519,17 +519,6 @@ pub trait Holder: Send + Sync {
     ) -> Result<Presentation>;
 }
 
-// TODO: add doc
-// TODO: consider one more abstract enum as a basic for all standards
-#[derive(Debug, Display, PartialEq)]
-pub enum VCStatus {
-    NotProvided,
-    Valid,
-    Invalid,
-    Suspended,
-    AppSpecific(u8),
-}
-
 /// An async low-level protocol-agnostic `Verifier` API.
 ///
 /// Provides basic method for verification of `VP`s.
@@ -566,5 +555,5 @@ pub trait Verifier: Send + Sync {
         &self,
         presentation: &Presentation,
         http_client: &dyn HttpClient, // TODO: is it ok to use `dyn`?
-    ) -> Result<VCStatus>;
+    ) -> Result<Option<VCStatus>>;
 }

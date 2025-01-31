@@ -22,7 +22,7 @@ use agent_sdk::vc::core::{
 use agent_sdk::vc::core::{HolderService, KeyMetadata};
 use agent_sdk::vc::metadata::{CredentialMetadataProcessor, DefaultMetadataProcessor};
 use agent_sdk::vc::presentation_exchange::InputDescriptor;
-use agent_sdk::vc::status_formats::status_list_token_jwt::VCStatuses;
+use agent_sdk::vc::status_formats::status_list_token_jwt::{VCStatus, VCStatuses};
 use agent_sdk::vc::status_formats::StatusListFormat;
 use agent_sdk::vc::VCStatusesData;
 use agent_sdk::{kms, vc};
@@ -504,7 +504,7 @@ async fn issue_status_list_with_revoked_indexes(
     let mut statuses = VCStatuses::new();
 
     for idx in revoked {
-        statuses.set(idx, 1);
+        statuses.set(idx, VCStatus::Invalid);
     }
 
     let status_list = status_issuer

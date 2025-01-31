@@ -20,7 +20,6 @@ use tracing::{instrument, trace, Level};
 
 use crate::http::HttpClient;
 use crate::utils::serde::get_time_based_claim;
-use crate::vc::core::api::VCStatus;
 use crate::vc::formats::sd_jwt_vc::SdJwtAPI;
 use crate::vc::formats::VerifyOptions;
 use crate::vc::formats::API as VCFormatsAPI;
@@ -33,6 +32,7 @@ use serde_json::Value;
 use ssi_status::token_status_list::json::JsonStatusList;
 use ssi_status::token_status_list::json::Status;
 use ssi_status::token_status_list::{BitString, StatusSize};
+use strum_macros::Display;
 use url::Url;
 
 use crate::vc::status_formats::StatusListCreatingSnafu;
@@ -52,7 +52,40 @@ const DEFAULT_STATUS_SIZE: u8 = 1;
 
 pub type StatusList = String;
 
-#[derive(Debug, Default)]
+// TODO: add doc
+#[derive(Debug, Display, PartialEq)]
+pub enum VCStatus {
+    Valid,
+    Invalid,
+    Suspended,
+    AppSpecific(u8),
+}
+
+impl From<VCStatus> for u8 {
+    #[instrument(level = Level::TRACE, ret())]
+    fn from(status: VCStatus) -> Self {
+        match status {
+            VCStatus::Valid => 0x00,
+            VCStatus::Invalid => 0x01,
+            VCStatus::Suspended => 0x02,
+            VCStatus::AppSpecific(val) => val,
+        }
+    }
+}
+
+impl From<u8> for VCStatus {
+    #[instrument(level = Level::TRACE, ret())]
+    fn from(val: u8) -> Self {
+        match val {
+            0x00 => VCStatus::Valid,
+            0x01 => VCStatus::Invalid,
+            0x02 => VCStatus::Suspended,
+            _ => VCStatus::AppSpecific(val), // TODO: check if the values 0x10...0xff comply with the standard
+        }
+    }
+}
+
+#[derive(Debug, Default, Clone)]
 pub struct VCStatuses {
     pub(crate) statuses: HashMap<usize, u8>,
 }
@@ -66,8 +99,8 @@ impl VCStatuses {
     }
 
     #[instrument(level = Level::TRACE, ret())]
-    pub fn set(&mut self, index: usize, status: u8) {
-        self.statuses.insert(index, status);
+    pub fn set(&mut self, index: usize, status: VCStatus) {
+        self.statuses.insert(index, status.into());
     }
 }
 
@@ -82,7 +115,7 @@ pub struct StatusListJwt;
 
 #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 #[async_trait]
-impl API<VCStatuses, StatusList, SLMetadata> for StatusListJwt {
+impl API<VCStatus, VCStatuses, StatusList, SLMetadata> for StatusListJwt {
     #[instrument(level = Level::TRACE, skip(issuer_data), err(), ret())]
     async fn create_status_list<S>(
         statuses: VCStatuses,
@@ -126,9 +159,12 @@ impl API<VCStatuses, StatusList, SLMetadata> for StatusListJwt {
             })
     }
 
-    async fn get_vc_status(vc_claims: &Claims, http_client: &dyn HttpClient) -> Result<VCStatus> {
+    async fn get_vc_status(
+        vc_claims: &Claims,
+        http_client: &dyn HttpClient,
+    ) -> Result<Option<VCStatus>> {
         let Some(status_claim) = vc_claims.get(STATUS_CLAIM) else {
-            return Ok(VCStatus::NotProvided);
+            return Ok(None);
         };
 
         let status_value = Value::try_from(status_claim.clone()).context(ClaimsSnafu)?;
@@ -147,12 +183,7 @@ impl API<VCStatuses, StatusList, SLMetadata> for StatusListJwt {
             .build()
         })?;
 
-        match cred_status {
-            0x00 => Ok(VCStatus::Valid),
-            0x01 => Ok(VCStatus::Invalid),
-            0x02 => Ok(VCStatus::Suspended),
-            _ => Ok(VCStatus::AppSpecific(cred_status)), // TODO: check values 0x10 ... 0xff. Are the valid according to the standard?
-        }
+        Ok(Some(cred_status.into()))
     }
 }
 
@@ -332,13 +363,12 @@ impl StatusListJwt {
 #[cfg(test)]
 mod tests {
 
-    use super::{SLMetadata, StatusListJwt, VCStatuses};
+    use super::{SLMetadata, StatusListJwt, VCStatus, VCStatuses};
     use crate::http::MockHttpClient;
     use crate::inmem::kms::LocalKms;
     use crate::kms::KeyType;
     use crate::utils::http::test::mock_http_fn_with_plain_text_resp;
     use crate::utils::test_utils::create_did_url_and_key_handle;
-    use crate::vc::core::api::VCStatus;
     use crate::vc::status_formats::API;
     use oauth2::http::Method;
     use rstest::rstest;
@@ -358,8 +388,7 @@ mod tests {
 
         let mut statuses = VCStatuses::new();
         let vc_index: usize = 1;
-        let vc_status: u8 = 1;
-        statuses.set(vc_index, vc_status);
+        statuses.set(vc_index, VCStatus::Invalid);
 
         let status_list_jwt =
             StatusListJwt::create_status_list(statuses, (&iss_did, key_handle), &metadata)
@@ -422,7 +451,7 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(vc_status, expected_status);
+        assert_eq!(vc_status, Some(expected_status));
     }
 
     fn status_list_token_jwt_with_revoked_idx_1() -> &'static str {

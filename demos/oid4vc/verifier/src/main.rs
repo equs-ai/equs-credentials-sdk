@@ -5,6 +5,7 @@ use agent_sdk::inmem::kms::LocalKms;
 use agent_sdk::inmem::storage::InMemStorage;
 use agent_sdk::kms;
 use agent_sdk::kms::Kms;
+use agent_sdk::reqwest::builder::ReqwestClientBuilder;
 use agent_sdk::storage::Storage;
 use agent_sdk::vc::core::KeyMetadata;
 
@@ -147,16 +148,27 @@ async fn presentation_response(
         .unwrap()
         .unwrap();
 
-    let verified_claims = state
+    let result = state
         .verifier
         .verify_presentation(&wallet_auth_resp, &session)
-        .await
-        .unwrap();
+        .await;
 
-    println!(
-        "Verifier claims: {}",
-        serde_json::to_string_pretty(&verified_claims).unwrap()
-    );
+    match result {
+        Ok(verified_claims) => {
+            println!(
+                "Verified claims: {}",
+                serde_json::to_string_pretty(&verified_claims).unwrap()
+            );
+        }
+        Err(oid4vp::Error::Internal {
+            source: oid4vp::InternalError::VCNotValid { details },
+        }) => {
+            println!("{details}");
+        }
+        Err(err) => {
+            println!("Error: {err}");
+        }
+    }
 
     HttpResponse::Ok().finish()
 }
@@ -189,6 +201,7 @@ async fn verifier() -> impl oid4vp::Verifier {
 
     let verifier = oid4vp::VerifierBuilder::new(kms, nonce_gen, key_metadata, did)
         .with_client_metadata(default_verifier_metadata())
+        .with_http_client(ReqwestClientBuilder::new().insecure().build().unwrap())
         .build()
         .await
         .unwrap();

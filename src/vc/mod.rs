@@ -44,11 +44,19 @@ pub enum Credential {
     // ISOMdl(String),
 }
 
+// TODO: add doc
 #[derive(Debug)]
 #[non_exhaustive]
 pub enum VCStatusesData {
     StatusListToken(status_list_token_jwt::VCStatuses),
     BitstringStatusList, // Not supported yet
+}
+
+// TODO: add doc
+#[derive(Debug)]
+pub enum VCStatus {
+    StatusListToken(crate::vc::status_formats::status_list_token_jwt::VCStatus),
+    // BitstringStatusList,
 }
 
 #[derive(Debug)]

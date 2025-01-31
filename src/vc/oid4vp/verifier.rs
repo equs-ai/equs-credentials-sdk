@@ -19,7 +19,7 @@ use crate::kms::{KeyHandle, Kms};
 use crate::nonce::{Nonce, NonceGenerator};
 use crate::vc;
 use crate::vc::claims::{Claim, Claims};
-use crate::vc::core::{KeyMetadata, VCStatus};
+use crate::vc::core::KeyMetadata;
 use crate::vc::oid4vp as api;
 use crate::vc::oid4vp::internal_error::{
     ClaimsSnafu, DidUrlResolutionSnafu, IdTokenValidationSnafu, JsonSnafu, KMSSnafu,
@@ -36,7 +36,9 @@ use crate::vc::presentation_exchange;
 use crate::vc::presentation_exchange::{
     validate_against_presentation_definition, PresentationDefinition, PresentationResponse,
 };
+use crate::vc::status_formats::status_list_token_jwt;
 use crate::vc::Presentation;
+use crate::vc::VCStatus;
 use openid4vp::core::response::parameters::IdTokenBody as IdToken;
 use ssi::dids::DIDURLBuf;
 use std::collections::HashMap;
@@ -457,14 +459,16 @@ where
                     .context(VCStatusSnafu)?;
 
                 match vc_status {
-                    VCStatus::NotProvided => {
+                    None => {
                         info!("VC does not include status information");
                     }
-                    VCStatus::Valid => {
+
+                    Some(VCStatus::StatusListToken(status_list_token_jwt::VCStatus::Valid)) => {
                         info!("VC is valid");
                     }
-                    _ => VCNotValidSnafu {
-                        details: format!("status is {vc_status}"),
+
+                    Some(VCStatus::StatusListToken(status)) => VCNotValidSnafu {
+                        details: format!("status is {status}"),
                     }
                     .fail()?,
                 }

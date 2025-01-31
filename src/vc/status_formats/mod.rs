@@ -1,7 +1,6 @@
 use crate::crypto::Signer;
 use crate::http::HttpClient;
 use crate::vc::claims::Claims;
-use crate::vc::core::api::VCStatus;
 use async_trait::async_trait;
 use common_macros::DebugError;
 use serde::{Deserialize, Serialize};
@@ -63,7 +62,7 @@ pub enum StatusListFormat {
 
 #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 #[async_trait]
-pub trait API<ST, SL, MD> {
+pub trait API<CS, ST, SL, MD> {
     async fn create_status_list<S>(
         statuses: ST,
         issuer_data: (&DIDURL, S),
@@ -72,5 +71,5 @@ pub trait API<ST, SL, MD> {
     where
         S: Signer;
 
-    async fn get_vc_status(vc_claims: &Claims, http_client: &dyn HttpClient) -> Result<VCStatus>;
+    async fn get_vc_status(vc_claims: &Claims, http_client: &dyn HttpClient) -> Result<Option<CS>>;
 }

@@ -2,7 +2,6 @@ use crate::http::HttpClient;
 use crate::nonce::Nonce;
 use crate::vc::claims::Claims;
 use crate::vc::core::api::ParseSnafu;
-use crate::vc::core::api::VCStatus;
 use crate::vc::core::Result;
 use crate::vc::core::{
     ClaimsSnafu, CredentialStatusNotSupportedSnafu, FormatNotSupportedSnafu, VCSnafu,
@@ -13,6 +12,7 @@ use crate::vc::formats::sd_jwt_vc::SdJwtAPI;
 use crate::vc::formats::{VerifyOptions, API};
 use crate::vc::status_formats::status_list_token_jwt::StatusListJwt;
 use crate::vc::status_formats::API as VCStatusFormatsAPI;
+use crate::vc::VCStatus;
 use crate::vc::{HasClaims, Presentation};
 use async_trait::async_trait;
 use snafu::ResultExt;
@@ -60,7 +60,7 @@ impl Verifier for VerifierService {
         &self,
         presentation: &Presentation,
         http_client: &dyn HttpClient,
-    ) -> Result<VCStatus> {
+    ) -> Result<Option<VCStatus>> {
         match presentation {
             Presentation::SdJwtVp(vp) => self.obtain_sd_jwt_vc_status(vp, http_client).await,
             _ => CredentialStatusNotSupportedSnafu.fail(),
@@ -81,12 +81,17 @@ impl VerifierService {
         &self,
         presentation: &crate::vc::formats::sd_jwt_vc::Presentation,
         http_client: &dyn HttpClient,
-    ) -> Result<VCStatus> {
+    ) -> Result<Option<VCStatus>> {
         let claims = presentation.parse_claims().context(VCSnafu)?;
 
-        StatusListJwt::get_vc_status(&claims, http_client)
+        let status = StatusListJwt::get_vc_status(&claims, http_client)
             .await
-            .context(VCStatusSnafu)
+            .context(VCStatusSnafu)?;
+
+        match status {
+            Some(vc_status) => Ok(Some(VCStatus::StatusListToken(vc_status))),
+            None => Ok(None),
+        }
     }
 }
 
