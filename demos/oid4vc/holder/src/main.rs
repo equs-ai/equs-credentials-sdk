@@ -50,11 +50,22 @@ async fn main() {
     // Holders creation
     let (oid4vci_holder, resolved_offer) = oid4vci_holder(kms.clone(), vault.clone()).await;
 
-    let oid4vp_holder = oid4vp_holder(kms.clone(), vault.clone()).await;
-
     // Running flows
     run_issuance_flow(oid4vci_holder, kms.clone(), resolved_offer).await;
-    run_presentation_flow(oid4vp_holder, kms).await;
+
+    loop {
+        let holder = oid4vp_holder(kms.clone(), vault.clone()).await;
+        run_presentation_flow(holder, kms.clone()).await;
+
+        println!("To revoke issued SdJwtVc please perform HTTP GET http://localhost:8088/revoke");
+        println!("To repeat the presentation flow please enter 'yes'");
+        let input = input_from_console("Failed to read input");
+
+        match input.as_str() {
+            "yes" => {}
+            _ => break,
+        }
+    }
 
     println!("Done");
 }

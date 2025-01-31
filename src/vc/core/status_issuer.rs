@@ -132,8 +132,7 @@ mod tests {
     use crate::utils::test_utils::create_did_and_key_metadata;
     use crate::vc::core::api::StatusIssuer;
     use crate::vc::core::{StatusIssuerMetadata, StatusListDefinition};
-    use crate::vc::status_formats::status_list_token_jwt::SLMetadata;
-    use crate::vc::status_formats::status_list_token_jwt::VCStatuses;
+    use crate::vc::status_formats::status_list_token_jwt::{SLMetadata, VCStatus, VCStatuses};
     use crate::vc::status_formats::StatusListFormat;
     use crate::vc::StatusList;
     use crate::vc::VCStatusesData;
@@ -161,8 +160,7 @@ mod tests {
 
         let mut statuses = VCStatuses::new();
         let vc_index: usize = 1;
-        let vc_status: u8 = 1;
-        statuses.set(vc_index, vc_status);
+        statuses.set(vc_index, VCStatus::Invalid);
 
         let status_list = issuer
             .issue_status_list("test", VCStatusesData::StatusListToken(statuses))

@@ -1,35 +1,42 @@
 use actix_web::http::header::Header;
 use actix_web::{web, App, Error, HttpRequest, HttpResponse, HttpServer};
 use actix_web_httpauth::headers::authorization::{Authorization, Bearer};
+use agent_sdk::did::didkey::DIDKey;
+use agent_sdk::did::universal::UniversalResolver;
 use agent_sdk::did::{DIDBuf, DIDResolver, DID};
 use agent_sdk::inmem::kms::LocalKms;
 use agent_sdk::inmem::storage::InMemStorage;
 use agent_sdk::kms;
 use agent_sdk::kms::Kms;
 use agent_sdk::storage::Storage;
-use agent_sdk::vc::core::KeyMetadata;
+use agent_sdk::vc::core::{CredentialStatusInfo, KeyMetadata};
 use agent_sdk::vc::oid4vci::{
     AuthorizationCodeGrant, AuthorizationMetadata, CredDefMetadata, CredDefMetadataProfile,
     CredentialOfferGrants, CredentialRequest, IssuanceSession, IssuerMetadata, IssuerUrl,
     PreAuthorizedCode, PreAuthorizedCodeGrant, TokenRequest, TokenResponse,
 };
 use std::collections::HashMap;
-use std::ops::Add;
+use std::ops::{Add, Deref, DerefMut};
+use std::str::FromStr;
 
 use actix_web::cookie::time;
 use actix_web::cookie::time::OffsetDateTime;
-use agent_sdk::did::didkey::DIDKey;
 use agent_sdk::did::didweb::DIDWeb;
-use agent_sdk::did::universal::UniversalResolver;
 use agent_sdk::did::DIDDoc;
 use agent_sdk::inmem::nonce::LocalNonceGenerator;
 use agent_sdk::reqwest::builder::ReqwestClientBuilder;
 use agent_sdk::vc::claims::Claims;
+use agent_sdk::vc::core::status_issuer::StatusIssuerService;
+use agent_sdk::vc::core::{StatusIssuer, StatusIssuerMetadata, StatusListDefinition};
 use agent_sdk::vc::oid4vci;
+use agent_sdk::vc::status_formats::status_list_token_jwt::{VCStatus, VCStatuses};
+use agent_sdk::vc::status_formats::StatusListFormat;
+use agent_sdk::vc::VCStatusesData;
 use keycloak::{KeycloakAdmin, KeycloakAdminToken};
 use reqwest::Url;
 use serde_json::json;
 use std::sync::Arc;
+use std::sync::Mutex;
 use std::time::Duration;
 
 const ISSUER_SERVER_URL: &str = "http://localhost:8088";
@@ -50,11 +57,15 @@ const AUTH_METADATA_ENDPOINT_PATH: &str = "/.well-known/openid-configuration";
 const TOKEN_ENDPOINT_PATH: &str = "/token";
 const TOKEN_INTROSPECT_PATH: &str = "/introspection";
 const DUMMY_ACCESS_TOKEN: &str = "eyJhbGciOiJSUzI1NiIsInR5cCIgOiAiSldUIiwia2lkIiA6ICJQY2xZUDZ2UmsxTHBLRGZqU08yRGEzNXJtR1JmaTkzNjJDcFJFeUpmOHAwIn0.eyJleHAiOjE3MzY5NDI0MTQsImlhdCI6MTczNjk0MjExNCwiYXV0aF90aW1lIjoxNzM2OTQyMTEyLCJqdGkiOiI0MzEwNjlkMS01ZjIzLTQ5MjAtYjA1Zi01NWI2NjM1MDQxODYiLCJpc3MiOiJodHRwOi8vbG9jYWxob3N0OjgwODAvaWRwL3JlYWxtcy9waWQtaXNzdWVyLXJlYWxtIiwic3ViIjoiNjBiOGJhNWYtYzczZi00OTc2LWIwZGEtNDhkMGU1MzMzNWRlIiwidHlwIjoiQmVhcmVyIiwiYXpwIjoid2FsbGV0LWRldiIsInNpZCI6IjQwZTYyNDY3LTUzZmMtNGQyOS05ZGZmLTJlN2Y4NDRjM2UzMiIsImFsbG93ZWQtb3JpZ2lucyI6WyIvKiJdLCJzY29wZSI6IlNEX0pXVF9jcmVkX3Njb3BlIn0.g4Ll7wiGq9VrxwAcGeARHB1mziDYMQBSmKHl_KGyBZccUvMGlH7ZPIegW_FLFJg4ZSz3IyId2xchuXP8LaSAghgLf9HmKA4XWlVhvx4wP90aj9bj2fdD9UUuSwQIeRlkZe7DTNookyClsqKJ2uIBzvaLoID2_4_RAvqmNi_grIe-ruus4thyp5NsQdEoudErok5DQiM_N2Wz5zg2MRrECjZL4kX-CrEiSaGaikTR-Lxc9UpvLr8mmmEwz7O4BOCDukyslzCZylmC32lttMYzU2Cno_XsIOvXtfGzwNjzZ-ohF9ThnpHvl7EexoZeDaPP2oYSDJOdrh33BB879DGuHw";
+const STATUS_LIST_URL_PATH: &str = "/status_list";
+const VC_REVOKE_PATH: &str = "/revoke";
 
 struct AppState {
     issuer: Arc<dyn oid4vci::Issuer>,
+    status_issuer: Arc<dyn StatusIssuer>,
     storage: InMemStorage<String, IssuanceSession>,
     did_doc: DIDDoc,
+    vc_statuses: Mutex<VCStatuses>,
 }
 
 #[actix_web::main]
@@ -62,11 +73,14 @@ async fn main() -> std::io::Result<()> {
     tracing_subscriber::fmt::init();
 
     let (issuer, did_document) = issuer().await;
+    let status_issuer = status_issuer().await;
 
     let app_state = web::Data::new(AppState {
         issuer: Arc::new(issuer),
+        status_issuer: Arc::new(status_issuer),
         storage: InMemStorage::new(),
         did_doc: did_document,
+        vc_statuses: Mutex::new(VCStatuses::new()),
     });
     HttpServer::new(move || {
         App::new()
@@ -95,6 +109,8 @@ async fn main() -> std::io::Result<()> {
                 AUTH_METADATA_ENDPOINT_PATH,
                 web::get().to(issuer_auth_metadata),
             )
+            .route(STATUS_LIST_URL_PATH, web::get().to(status_list))
+            .route(VC_REVOKE_PATH, web::get().to(revoke_vc))
             .app_data(app_state.clone())
     })
     .bind(("127.0.0.1", 8088))?
@@ -113,6 +129,15 @@ async fn issue_credential(
         .to_owned();
 
     let cred_def = state.issuer.get_cred_def_metadata(&cred_req).unwrap();
+    let cred_def_id = cred_def.id().to_string();
+
+    let cred_status_info = match cred_def_id.as_str() {
+        "SD_JWT_cred_1" => Some(CredentialStatusInfo::TokenStatusList {
+            idx: 1,
+            uri: Url::from_str("http://localhost:8088/status_list").unwrap(),
+        }),
+        _ => None, // Only SdJwtVc format supports revocation feature
+    };
 
     // Depending on the concrete `CredDef` requested Claims would be different
     let claims = get_user_attributes(&cred_def).await?;
@@ -126,7 +151,7 @@ async fn issue_credential(
 
     let resp = state
         .issuer
-        .issue_credential(&cred_req, &token, &claims, &mut session, None)
+        .issue_credential(&cred_req, &token, &claims, &mut session, cred_status_info)
         .await;
 
     state.storage.put(token, session).await.unwrap();
@@ -259,6 +284,29 @@ async fn issuer_auth_metadata() -> HttpResponse {
 
 async fn did_doc(state: web::Data<AppState>) -> HttpResponse {
     HttpResponse::Ok().json(state.did_doc.clone())
+}
+
+async fn status_list(state: web::Data<AppState>) -> HttpResponse {
+    let statuses = state.vc_statuses.lock().unwrap().deref().clone();
+    let status_list_token_jwt = issue_status_list(&(*state.status_issuer), statuses).await;
+
+    HttpResponse::Ok()
+        .append_header(("Content-type", "application/statuslist+jwt"))
+        .body(status_list_token_jwt)
+}
+
+async fn revoke_vc(state: web::Data<AppState>) -> HttpResponse {
+    let vc_index: usize = 1; // TODO: read it from http request
+
+    state
+        .vc_statuses
+        .lock()
+        .unwrap()
+        .deref_mut()
+        .set(vc_index, VCStatus::Invalid);
+    println!("VC with index {vc_index} is revoked");
+
+    HttpResponse::Ok().body("OK")
 }
 
 async fn get_user_attributes(cred_def: &CredDefMetadata) -> Result<Claims, Error> {
@@ -411,6 +459,55 @@ async fn issuer() -> (impl oid4vci::Issuer, DIDDoc) {
 
     println!("Done");
     (issuer, did_doc)
+}
+
+async fn status_issuer() -> impl StatusIssuer {
+    println!("Initializing status issuer...");
+
+    let kms = LocalKms::new();
+    let (kid, kh) = kms
+        .create_and_handle(kms::KeyType::P256, kms::CreateOptions {})
+        .await
+        .unwrap();
+
+    let did = DIDKey::generate(kh).unwrap();
+
+    let vm = UniversalResolver::default()
+        .resolve_into_any_verification_method(DIDBuf::from_string(did.clone()).unwrap().as_did())
+        .await
+        .unwrap()
+        .unwrap()
+        .id
+        .as_did_url()
+        .to_string();
+
+    let metadata = StatusIssuerMetadata {
+        issuer_id: did,
+        supported_status_lists: vec![StatusListDefinition {
+            id: "test".to_string(),
+            format: StatusListFormat::StatusListTokenJwt(
+                agent_sdk::vc::status_formats::status_list_token_jwt::SLMetadata {
+                    statuses_nr: 32,
+                    status_list_url: Url::from_str("http://localhost:8088/status_list").unwrap(),
+                },
+            ),
+            key_metadata: KeyMetadata { kid, did_url: vm },
+        }],
+    };
+
+    println!("Done");
+    StatusIssuerService::new(kms, metadata)
+}
+
+async fn issue_status_list(issuer: &dyn StatusIssuer, statuses: VCStatuses) -> String {
+    let status_list = issuer
+        .issue_status_list("test", VCStatusesData::StatusListToken(statuses))
+        .await
+        .unwrap();
+
+    let agent_sdk::vc::StatusList::StatusListTokenJwt(status_list) = status_list;
+
+    status_list
 }
 
 async fn create_dedicated_metadata_for_json_ld_v2(kms: &LocalKms) -> KeyMetadata {
