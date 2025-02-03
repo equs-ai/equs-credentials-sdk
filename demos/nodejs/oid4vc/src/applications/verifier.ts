@@ -75,7 +75,7 @@ async function main(): Promise<void> {
     try {
       const fullUrl = req.protocol + "://" + req.get("host") + req.originalUrl;
       const authReqObject = appState.authReqObjStorage.get(fullUrl);
-      res.contentType("text/plain").send(authReqObject);
+      res.contentType("application/oauth-authz-req+jwt").send(authReqObject);
     } catch (e: any) {
       res.status(500).send(e.message);
     }

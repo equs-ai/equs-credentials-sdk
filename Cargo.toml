@@ -19,7 +19,7 @@ rust-version = "1.82"
 common-macros = { path = "./common-macros" }
 
 oid4vci = { git = "ssh://git@git.slock.it/open-source/oid4vci-rs.git", rev = "ef7b3925" }
-openid4vp = { git = "ssh://git@git.slock.it/open-source/oid4vp-rs.git", rev = "69001c33" }
+openid4vp = { git = "ssh://git@git.slock.it/open-source/oid4vp-rs.git", rev = "fd87fbb8" }
 sd-jwt-rs = { git = "ssh://git@git.slock.it/open-source/sd-jwt-rust.git", rev = "cc541b0d" }
 didcomm = { git = "ssh://git@git.slock.it/open-source/didcomm-rust.git", rev = "db41780d" }
 
@@ -74,7 +74,7 @@ async-rwlock = { version = "1.3.0", optional = true }
 ecdsa = { version = "0.16.9", optional = true }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-reqwest-middleware = { version =  "0.4.0", default-features = false }
+reqwest-middleware = { version = "0.4.0", default-features = false }
 reqwest-tracing = { version = "0.5.5", default-features = false }
 
 [dev-dependencies]

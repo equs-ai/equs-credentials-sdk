@@ -78,7 +78,7 @@ async fn presentation_request_object(req: HttpRequest, state: web::Data<AppState
         .unwrap();
 
     HttpResponse::Ok()
-        .content_type("text/plain")
+        .content_type("application/oauth-authz-req+jwt")
         .body(auth_req_object)
 }
 

@@ -7,6 +7,7 @@
 - [Logging](logging.md)
 - [API Wrappers](wrappers.md)
 - [Publish release](release.md)
+- [Conformance testing](conformance-tests.md)
 
 ## Rust API Guidelines
 

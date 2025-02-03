@@ -298,6 +298,11 @@ fn retrieve_auth_resp_from_uri(url: Url) -> AuthorizationResponse {
     let vp_token_str = presentation_resp_map.get("vp_token").unwrap();
     let vp_token =
         serde_json::from_str(vp_token_str).unwrap_or(serde_json::to_value(vp_token_str).unwrap());
+
+    let state = presentation_resp_map
+        .get("state")
+        .map(|state| state.to_owned());
+
     let presentation_submission = serde_json::from_str(
         presentation_resp_map
             .get("presentation_submission")
@@ -309,7 +314,7 @@ fn retrieve_auth_resp_from_uri(url: Url) -> AuthorizationResponse {
         vp_token,
         presentation_submission,
         id_token: None,
-        state: None,
+        state,
     }
 }
 
