@@ -50,7 +50,9 @@ describe("OID4VP Holder: ", () => {
   afterEach(async () => await mockServer.stop());
 
   test("resolve Authorization request", async () => {
-    await mockServer.forGet("/request").thenReply(200, AUTH_REQUEST_JWT, { "content-type": "text/plain" });
+    await mockServer
+      .forGet("/request")
+      .thenReply(200, AUTH_REQUEST_JWT, { "content-type": "application/oauth-authz-req+jwt" });
 
     const authorizationRequest = await holder.getAuthorizationRequest(
       "openid4vp://?client_id=did%3Akey%3AzDnaew3eTeAimofYSsjE7RxSvpU4LX9h5wPzVvkrBn5hGPXpa&request_uri=http%3A%2F%2Flocalhost%3A9001%2Frequest",

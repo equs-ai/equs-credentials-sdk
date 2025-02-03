@@ -561,14 +561,14 @@ where
         let client_id_as_uri = Url::parse(client_id).map_err(|_| {
             openid4vp::core::error::Error::protocol_invalid_req(
                 "could not parse 'client_id' = {client_id} as uri, in 'redirect_uri' response method it must be uri",
-                decoded_request.state()
+                decoded_request.state(),
             )
         })?;
 
         if client_id_as_uri != *redirect_uri {
             return Err(openid4vp::core::error::Error::protocol_invalid_req(
                 &format!("in 'redirect_uri' response mode 'client_id' = {client_id} must be equal to 'redirect_uri' = {redirect_uri}"),
-                decoded_request.state()
+                decoded_request.state(),
             ));
         }
 

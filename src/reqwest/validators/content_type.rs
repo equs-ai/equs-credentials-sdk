@@ -1,5 +1,7 @@
 use super::{ContentTypeSnafu, Result};
-use crate::utils::http::{MIME_TYPE_FORM_URLENCODED, MIME_TYPE_JSON, MIME_TYPE_TEXT_PLAIN};
+use crate::utils::http::{
+    MIME_TYPE_FORM_URLENCODED, MIME_TYPE_JSON, MIME_TYPE_OAUTH_REQ_JWT, MIME_TYPE_TEXT_PLAIN,
+};
 use mime::Mime;
 use oauth2::http::header::ACCEPT;
 use oauth2::http::{HeaderMap, HeaderValue};
@@ -8,10 +10,11 @@ use snafu::ensure;
 use std::str::FromStr;
 use tracing::{instrument, Level};
 
-const ALLOWED_CONTENT_TYPE_HEADERS: [&str; 5] = [
+const ALLOWED_CONTENT_TYPE_HEADERS: [&str; 6] = [
     MIME_TYPE_JSON,
     MIME_TYPE_TEXT_PLAIN,
     MIME_TYPE_FORM_URLENCODED,
+    MIME_TYPE_OAUTH_REQ_JWT,
     "application/statuslist+jwt", // TODO: hardcoded value
     "application/statuslist+cwt",
 ];
