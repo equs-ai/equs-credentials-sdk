@@ -592,6 +592,12 @@ mod tests {
     use crate::vc::claims::{Claim, Claims};
     use crate::vc::core::KeyMetadata;
     use crate::vc::oid4vp::protocol_error::ErrorType;
+    use crate::vc::oid4vp::tests::fixtures::single_presentation::{
+        presentation_test_case_with_constraints_for_particular_fields,
+        presentation_test_case_with_filter_by_cred_type,
+        presentation_test_case_with_filter_by_cred_type_and_email,
+        presentation_test_case_with_optional_field,
+    };
     use crate::vc::oid4vp::tests::fixtures::{
         multi_presentation, single_presentation, REQUEST_URI, STATE, VERIFIER_URL,
     };
@@ -662,34 +668,21 @@ mod tests {
     }
 
     #[rstest]
-    #[case::single_presentation_success(single_presentation::presentation_test_case(), false)]
+    #[case::single_presentation_success(single_presentation::presentation_test_case())]
     #[case::single_presentation_with_state_success(
-        single_presentation::presentation_test_case_with_state(),
-        false
+        single_presentation::presentation_test_case_with_state()
     )]
-    #[case::single_presentation_with_extra_credentials_success(
-        single_presentation::presentation_test_case(),
-        true
-    )]
-    #[case::multi_presentation_success(multi_presentation::presentation_test_case(), false)]
+    #[case::multi_presentation_success(multi_presentation::presentation_test_case())]
     #[case::multi_presentation_with_state_success(
-        multi_presentation::presentation_test_case_with_state(),
-        false
-    )]
-    #[case::multi_presentation_with_extra_credentials_success(
-        multi_presentation::presentation_test_case(),
-        true
+        multi_presentation::presentation_test_case_with_state()
     )]
     #[tokio::test]
-    async fn present_credential_auto_success(
-        #[case] test_case: PresentationTestCase,
-        #[case] with_extra_creds: bool,
-    ) {
+    async fn present_credential_auto_success(#[case] test_case: PresentationTestCase) {
         let mut http_client = MockHttpClient::new();
         test_case.mock_http_auth_response_endpoint(&mut http_client, None);
 
         let kms = LocalKms::new();
-        let vault = test_case.prepare_vault(&kms, with_extra_creds).await;
+        let vault = test_case.prepare_vault(&kms).await;
         let holder = holder_service(http_client, kms, vault).await;
 
         // Send auth response
@@ -708,7 +701,7 @@ mod tests {
         let mut http_client = MockHttpClient::new();
         test_case.mock_http_auth_response_endpoint(&mut http_client, None);
 
-        let vault = test_case.prepare_vault(&kms, false).await;
+        let vault = test_case.prepare_vault(&kms).await;
         let holder = holder_service(http_client, kms, vault).await;
 
         // Send auth response
@@ -749,7 +742,7 @@ mod tests {
         );
 
         let kms = LocalKms::new();
-        let vault = test_case.prepare_vault(&kms, false).await;
+        let vault = test_case.prepare_vault(&kms).await;
         let holder = holder_service(http_client, kms, vault).await;
 
         // Send auth response
@@ -792,21 +785,15 @@ mod tests {
     #[should_panic(
         expected = "vp format = 'jwt_vc_json' with {\"alg_values_supported\":[\"RS256\"]} algorithms is not supported"
     )]
-    #[case::request_unsupported_credential_format(
-        request_unsupported_credential_format_case(),
-        false
-    )]
+    #[case::request_unsupported_credential_format(request_unsupported_credential_format_case())]
     #[should_panic(
         expected = "vp format = 'dc+sd-jwt' with {\"sd-jwt_alg_values\":[\"RS256\"],\"kb-jwt_alg_values\":[\"RS256\"]} algorithms is not supported"
     )]
-    #[case::request_unsupported_credential_alg(request_unsupported_credential_alg_case(), false)]
+    #[case::request_unsupported_credential_alg(request_unsupported_credential_alg_case())]
     #[tokio::test]
-    async fn present_credential_auto_fails(
-        #[case] test_case: PresentationTestCase,
-        #[case] with_extra_creds: bool,
-    ) {
+    async fn present_credential_auto_fails(#[case] test_case: PresentationTestCase) {
         let kms = LocalKms::new();
-        let vault = test_case.prepare_vault(&kms, with_extra_creds).await;
+        let vault = test_case.prepare_vault(&kms).await;
 
         let mut http_client = MockHttpClient::new();
         mock_http_fn(
@@ -843,21 +830,16 @@ mod tests {
     #[rstest]
     #[should_panic]
     #[case::request_unsupported_credential_format_with_state(
-        request_unsupported_credential_format_case_with_state(),
-        false
+        request_unsupported_credential_format_case_with_state()
     )]
     #[should_panic]
     #[case::request_unsupported_credential_alg_with_state(
-        request_unsupported_credential_alg_case_with_state(),
-        false
+        request_unsupported_credential_alg_case_with_state()
     )]
     #[tokio::test]
-    async fn present_credential_auto_fails_with_state(
-        #[case] test_case: PresentationTestCase,
-        #[case] with_extra_creds: bool,
-    ) {
+    async fn present_credential_auto_fails_with_state(#[case] test_case: PresentationTestCase) {
         let kms = LocalKms::new();
-        let vault = test_case.prepare_vault(&kms, with_extra_creds).await;
+        let vault = test_case.prepare_vault(&kms).await;
 
         let mut http_client = MockHttpClient::new();
         mock_http_fn(
@@ -897,7 +879,7 @@ mod tests {
         let (_, key_metadata) = create_did_and_key_metadata(&kms).await;
         let mut http_client = MockHttpClient::new();
         test_case.mock_http_auth_response_endpoint(&mut http_client, None);
-        let vault = test_case.prepare_vault(&kms, false).await;
+        let vault = test_case.prepare_vault(&kms).await;
 
         let holder = holder_service(http_client, kms, vault).await;
         holder
@@ -1023,7 +1005,7 @@ mod tests {
         );
 
         let kms = LocalKms::new();
-        let vault = test_case.prepare_vault(&kms, false).await;
+        let vault = test_case.prepare_vault(&kms).await;
         let holder = holder_service(http_client, kms, vault).await;
 
         // Send auth response
@@ -1055,7 +1037,7 @@ mod tests {
         );
 
         let kms = LocalKms::new();
-        let vault = test_case.prepare_vault(&kms, false).await;
+        let vault = test_case.prepare_vault(&kms).await;
         let holder = holder_service(http_client, kms, vault).await;
 
         // Send auth response
@@ -1066,31 +1048,36 @@ mod tests {
     }
 
     #[rstest]
-    #[case::single_presentation_success(single_presentation::presentation_test_case(), false)]
+    #[case::single_presentation_success(single_presentation::presentation_test_case())]
     #[case::single_presentation_with_state_success(
-        single_presentation::presentation_test_case_with_state(),
-        false
+        single_presentation::presentation_test_case_with_state()
     )]
-    #[case::single_presentation_with_extra_credentials_success(
-        single_presentation::presentation_test_case(),
-        true
-    )]
-    #[case::multi_presentation_success(multi_presentation::presentation_test_case(), false)]
+    #[case::multi_presentation_success(multi_presentation::presentation_test_case())]
     #[case::multi_presentation_with_state_success(
-        multi_presentation::presentation_test_case_with_state(),
-        false
+        multi_presentation::presentation_test_case_with_state()
     )]
-    #[case::multi_presentation_with_extra_credentials_success(
-        multi_presentation::presentation_test_case(),
-        true
+    #[case::single_presentation_filter_by_path_success(
+        single_presentation::presentation_test_case_filter_by_path()
+    )]
+    #[case::single_presentation_with_filter_by_cred_type_success(
+        presentation_test_case_with_filter_by_cred_type()
+    )]
+    #[case::single_presentation_with_filter_by_cred_type_and_email_success(
+        presentation_test_case_with_filter_by_cred_type_and_email()
+    )]
+    #[case::single_presentation_with_optional_field_success(
+        presentation_test_case_with_optional_field()
+    )]
+    #[case::single_presentation_with_constraints_for_particular_fields_success(
+        presentation_test_case_with_constraints_for_particular_fields()
+    )]
+    #[case::multi_presentation_filter_by_path_success(
+        multi_presentation::presentation_test_case_filter_by_path()
     )]
     #[tokio::test]
-    async fn find_credentials_success(
-        #[case] test_case: PresentationTestCase,
-        #[case] with_extra_creds: bool,
-    ) {
+    async fn find_credentials_success(#[case] test_case: PresentationTestCase) {
         let kms = LocalKms::new();
-        let vault = test_case.prepare_vault(&kms, with_extra_creds).await;
+        let vault = test_case.prepare_vault(&kms).await;
         let holder = holder_service(MockHttpClient::new(), kms, vault).await;
 
         let credential_mapping = holder
@@ -1118,30 +1105,27 @@ mod tests {
             .map(|c| c.try_into().unwrap())
             .collect();
 
-        let mut cred_data = test_case.credential_data;
-        if with_extra_creds {
-            cred_data.extend(cred_data.clone())
-        }
-
         assert!(
             !retrieved_credentials_claims.is_empty(),
             "Credentials not found"
         );
 
-        // TODO: Should also validate extra credentials
-        for (expected_type, expected_claims) in cred_data {
+        let expected_cred_data = test_case.expected_credential_data;
+
+        for (expected_type, expected_claims) in expected_cred_data.clone() {
             let claims = retrieved_credentials_claims
                 .iter()
                 .find(|retrieved_claims| {
-                    if let Some(Claim::String(sss)) = retrieved_claims.get("vct") {
-                        return expected_type == sss;
+                    if let Some(Claim::String(vct)) = retrieved_claims.get("vct") {
+                        return expected_type == vct;
                     }
 
                     false
-                })
-                .unwrap();
+                });
 
-            validate_claims(claims, &(expected_type, expected_claims));
+            if let Some(claim) = claims {
+                validate_claims(claim, &(expected_type, expected_claims))
+            }
         }
     }
 
@@ -1149,7 +1133,7 @@ mod tests {
     async fn find_credentials_returns_empty_list() {
         let test_case = requested_credential_not_exist_case();
         let kms = LocalKms::new();
-        let vault = test_case.prepare_vault(&kms, false).await;
+        let vault = test_case.prepare_vault(&kms).await;
         let holder = holder_service(MockHttpClient::new(), kms, vault).await;
 
         let credential_mapping = holder

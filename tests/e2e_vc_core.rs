@@ -94,9 +94,6 @@ async fn sd_jwt_credential_issuance_and_presentation_verification() {
                 },
                 {
                     "path": ["$.given_name"],
-                },
-                {
-                    "path": ["$.family_name"],
                 }
             ]
         }
@@ -119,8 +116,8 @@ async fn sd_jwt_credential_issuance_and_presentation_verification() {
     println!("Presentation claims {:?}", res_claims);
 
     assert!(res_claims.get("given_name").is_some());
-    assert!(res_claims.get("family_name").is_some());
-    // should return not only requested claims, but all in credential
+    // should not return family_name as it is not selectively disclosed
+    assert!(res_claims.get("family_name").is_none());
     assert!(res_claims.get("dob").is_some());
 }
 
