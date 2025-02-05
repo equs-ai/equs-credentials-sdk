@@ -460,15 +460,15 @@ where
 
                 match vc_status {
                     None => {
-                        info!("VC does not include status information");
+                        info!("Verifiable Credential does not contain the status information");
                     }
 
                     Some(VCStatus::StatusListToken(status_list_token_jwt::VCStatus::Valid)) => {
-                        info!("VC is valid");
+                        info!("The status of the verifiable credential is valid.");
                     }
 
                     Some(VCStatus::StatusListToken(status)) => VCNotValidSnafu {
-                        details: format!("status is {status}"),
+                        details: format!("The status of the verifiable credential is '{status}'"),
                     }
                     .fail()?,
                 }

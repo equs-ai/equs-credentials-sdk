@@ -1,0 +1,116 @@
+@startuml
+'https://plantuml.com/sequence-diagram
+!pragma teoz true
+
+autonumber
+
+actor "Holder" as HH
+participant "Holder App" as H
+participant "Issuer Service" as I
+participant "Verifier Service" as V
+participant "Auth Server" as A
+
+autonumber 1
+I -> I: <b>from_issuer_metadata(issuer_metadata,...)
+
+...
+
+autonumber 2
+I -> I: <b>create_credential_offer(...)\n(Pre-Authorized Code, Credential Definition IDs)
+autonumber stop
+I --> H: CredentialOffer (out-of-band)
+I --> HH: Optionally may send the Transaction code(<b>tx_code</b>) \nthrough third party channel (email/phone number)
+...
+
+autonumber 3.1
+H -> H++: <b>resolve_credential_offer(offer_uri)
+autonumber 3.2
+H -> H++: <b>from_credential_offer(credential_offer_params)
+autonumber stop
+H --> I: GET /.well-known/openid-credential-issuer HTTP/1.1
+autonumber 3.3
+I -> I: <b>get_issuer_metadata()
+autonumber stop
+I --> H: IssuerMetadata
+destroy H
+...
+
+autonumber 4
+H -> H: <b>get_issuer_metadata()
+autonumber stop
+H --> HH: (Optional)\nShow Credential Definitions (Schema) in UI
+H --> HH: (Optional)\nShow Credential Offer in UI
+...
+
+autonumber 5.1
+H -> H++: <b>get_access_token(credential_offer_params, tx_code_callback)
+autonumber 5.1
+HH <- H++: <b>tx_code_callback</b> is executed
+HH -> H: (Optionally) forwards <b>tx_code</b> to\n <b>tx_code_callback</b>
+
+autonumber stop
+H --> A: POST /token_endpoint_url?pre-authorized_code=code&tx_code=code.. HTTP/1.1
+A --> H: TokenResponse
+destroy H
+...
+
+autonumber 6.1
+H -> H++: <b>request_credential(token_response, ...)
+autonumber stop
+H --> I: POST /credential HTTP/1.1
+I --> A: Token introspect
+autonumber 6.2
+I -> I: <b>issue_credential(...)
+autonumber stop
+I --> H: Credential
+destroy H
+...
+
+autonumber 7
+H -> H: <b>store_credential(...)
+...
+
+autonumber 8.1
+V -> V: <b>create_authorization_request(...)
+autonumber stop
+
+alt Out-of-band
+V --> H: (AuthorizationRequest, <authorization-response-uri>)
+else GET /<authorization_req_uri> HTTP/1.1
+V --> H: <authorization_req_uri>
+autonumber 8.2
+H -> H++: <b>get_authorization_request(authorization_req_uri, ...)
+autonumber stop
+H --> V: GET /<authorization_req_uri> HTTP/1.1
+V --> H: (AuthorizationRequest, <authorization-response-uri>)
+destroy H
+end
+...
+
+
+alt Auto-select credentials
+autonumber 9
+H -> H++: <b>present_credentials_auto(auth_request, ...)
+autonumber stop
+H --> H: <find credentials>
+H --> V:  POST /<authorization-response-uri> HTTP/1.1
+autonumber 10
+V -> V: <b> verify_presentation(...)
+destroy  H
+
+else User selects/approves credentials for the presentation
+autonumber 9.1
+H -> H: <b>find_vcs_for_presentation(auth_request, ...)
+autonumber stop
+HH --> H: <out-of-band>: Select/Approve selection
+autonumber 9.2
+H -> H++: <b>present_credentials(auth_request, credential_mapping_selected, ...)
+autonumber stop
+H --> V:  POST /<authorization-response-uri> HTTP/1.1
+autonumber 10
+V -> V: <b> verify_presentation(...)
+destroy  H
+end
+
+
+@enduml
