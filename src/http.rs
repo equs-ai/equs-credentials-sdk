@@ -1,3 +1,5 @@
+//! APIs for implementing HTTP Client.
+
 use async_trait::async_trait;
 use common_macros::DebugError;
 #[cfg(test)]

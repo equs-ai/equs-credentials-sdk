@@ -1,3 +1,5 @@
+//! APIs for implementing Nonce generator.
+
 use crate::utils::b64;
 use crate::utils::serde::{int_to_duration, int_to_offset_date_time};
 use async_trait::async_trait;

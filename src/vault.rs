@@ -1,3 +1,5 @@
+//! APIs for implementing Verifiable Credentials Vault
+
 use std::fmt::Debug;
 
 use crate::{kms, vc};

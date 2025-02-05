@@ -1,3 +1,5 @@
+//! APIs for implementing Key Management Service.
+
 use crate::crypto;
 use async_trait::async_trait;
 use common_macros::DebugError;
@@ -175,6 +177,7 @@ pub enum BIP32Params {
     ChildDerive { path: String, master_kid: KeyID },
 }
 
+/// Public and Private key pair.
 #[derive(Debug, PartialEq, Clone)]
 pub struct KeyPair {
     pub private_key: Option<Vec<u8>>,
@@ -188,6 +191,7 @@ impl Drop for KeyPair {
     }
 }
 
+/// Parameters required for performing an ECDH-1PU key derivation.
 #[derive(Debug, PartialEq, Clone)]
 pub struct ECDH1PUParams {
     pub key_type: KeyType,
@@ -201,6 +205,7 @@ pub struct ECDH1PUParams {
     pub receive: bool,
 }
 
+/// Parameters required for performing an ECDH-ES key derivation.
 #[derive(Debug, PartialEq, Clone)]
 pub struct ECDHESParams {
     pub key_type: KeyType,

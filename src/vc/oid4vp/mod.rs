@@ -1,3 +1,5 @@
+//! OID4VP Spec implementation.
+
 pub(crate) mod api;
 pub(crate) mod holder;
 pub(super) mod signer;

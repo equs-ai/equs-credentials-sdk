@@ -1,3 +1,5 @@
+//! DIDComm V2 Messaging
+
 use crate::did::DIDResolver;
 use crate::didcomm::did_resolver::DidResolverWrapper;
 use crate::didcomm::kms::KmsWrapper;
@@ -11,17 +13,28 @@ use tracing::{instrument, Level};
 mod did_resolver;
 mod kms;
 
+/// Algorithms for authenticated encryption.
 pub type AuthCryptAlg = didcomm::algorithms::AuthCryptAlg;
+/// DIDComm message attachment.
 pub type Attachment = didcomm::Attachment;
+/// Builder for a DIDComm message attachment.
 pub type AttachmentBuilder = didcomm::AttachmentBuilder;
+/// DIDComm message
 pub type Message = didcomm::Message;
+/// Builder for a DIDComm message.
 pub type MessageBuilder = didcomm::MessageBuilder;
+/// Allow fine configuration of packing process
 pub type PackEncryptedOptions = didcomm::PackEncryptedOptions;
+/// Additional metadata about this encrypt method execution like used keys identifiers, used messaging service.
 pub type PackEncryptedMetadata = didcomm::PackEncryptedMetadata;
+/// Additional metadata about this pack method execution like used key identifiers.
 pub type PackSignedMetadata = didcomm::PackSignedMetadata;
+/// Allows fine customization of unpacking process
 pub type UnpackOptions = didcomm::UnpackOptions;
+/// Additional metadata about this unpack method execution like trust predicates and used keys identifiers.
 pub type UnpackMetadata = didcomm::UnpackMetadata;
 
+/// Error expected during `DIDComm Messaging` operations.
 #[derive(Snafu, DebugError)]
 #[snafu(visibility(pub))]
 #[snafu(display("DIDComm error"))]
@@ -31,6 +44,7 @@ pub struct Error {
     location: Location,
 }
 
+/// `Result` alias for `DIDComm`-specific [Error].
 pub type Result<T> = std::result::Result<T, Error>;
 
 /// A DIDComm service that provides packing and unpacking of DIDComm messages.

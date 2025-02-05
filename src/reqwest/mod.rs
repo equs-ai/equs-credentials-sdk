@@ -1,3 +1,5 @@
+//! HTTP Client implementation based on Reqwest crate
+
 pub mod builder;
 pub(super) mod middleware;
 pub mod validators;

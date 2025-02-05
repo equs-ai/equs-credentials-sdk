@@ -9,6 +9,13 @@
 #![allow(clippy::assigning_clones)]
 // #![forbid(unsafe_code)]
 
+//! # Agent SDK (ASDK)
+//!
+//! - ASDK is an SDK (library) providing building blocks for Self-Sovereign Identity (SSI) use cases.
+//! - ASDK is written in Rust; supported wrappers/builds for node.js, wasm(javascript wrapper is in progress)
+//! - ASDK is not an end-user application, but just an ASDK. Applications integrating ASDK will need to implement some interfaces (such as KMS and Vault) or Web endpoints (OID4VC). See [How To Use ASDK](#how-to-use-asdk-in-applications) below.
+//! - ASDK supports multiple SSI protocols and specifications (see below).
+
 // external
 pub mod crypto;
 pub mod http;

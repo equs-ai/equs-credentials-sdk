@@ -1,3 +1,5 @@
+//! Universal DID Resolver.
+
 use super::didpeer::DIDPeer;
 use crate::did::ProofValidationError;
 use iref::Iri;

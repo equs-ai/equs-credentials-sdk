@@ -1,3 +1,5 @@
+//! SSI standards implementations.
+
 use crate::crypto::Alg;
 use crate::vc::claims::Claims;
 pub use crate::vc::formats::json_ld_vc::{
@@ -44,7 +46,7 @@ pub enum Credential {
     // ISOMdl(String),
 }
 
-// TODO: add doc
+/// Enum to represent the different ways to encode VC Statuses data.
 #[derive(Debug)]
 #[non_exhaustive]
 pub enum VCStatusesData {
@@ -52,13 +54,14 @@ pub enum VCStatusesData {
     BitstringStatusList, // Not supported yet
 }
 
-// TODO: add doc
+/// Enum to provide an abstraction over the underlying VC status representation.
 #[derive(Debug)]
 pub enum VCStatus {
-    StatusListToken(crate::vc::status_formats::status_list_token_jwt::VCStatus),
+    StatusListToken(status_list_token_jwt::VCStatus),
     // BitstringStatusList,
 }
 
+/// Enum to represent different types of status lists.
 #[derive(Debug)]
 pub enum StatusList {
     StatusListTokenJwt(status_list_token_jwt::StatusList),

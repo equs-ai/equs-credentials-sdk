@@ -1,3 +1,5 @@
+//! VC formats
+
 use std::fmt::Debug;
 
 use crate::crypto;

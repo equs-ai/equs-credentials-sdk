@@ -1,3 +1,5 @@
+//! APIs for implementing Storage.
+
 use async_trait::async_trait;
 use common_macros::DebugError;
 use snafu::{Location, Snafu};
