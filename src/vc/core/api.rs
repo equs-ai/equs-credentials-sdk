@@ -32,19 +32,26 @@ pub struct IssuerMetadata {
     pub protocol_data: Option<IssuerMetadataData>, // Protocol specific
 }
 
-// TODO: add doc
+/// A metadata for the `Status Issuer`
+///
+/// This structure encapsulates all the necessary data required to handle the issuance of status lists.
 #[derive(Debug, PartialEq, Clone)]
 pub struct StatusIssuerMetadata {
     pub issuer_id: String,
     pub supported_status_lists: Vec<StatusListDefinition>,
 }
 
-// TODO: add doc
+/// Defines a token status list associated metadata for issuance.
+///
+/// # Fields
+///
+/// - `id`: a unique identifier for the status list definition.
+/// - `format`: the format of the status list
+/// - `key_metadata`: the metadata of the cryptographic key that is used to sign a status list.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct StatusListDefinition {
     pub id: String,
     pub format: StatusListFormat,
-    // pub supported_signing_algs: Option<Vec<crypto::Alg>>,
     pub key_metadata: KeyMetadata,
 }
 
@@ -156,7 +163,12 @@ pub struct CredentialRequest {
     pub protocol_data: Option<CredentialRequestData>, // Protocol specific
 }
 
-// TODO: add doc
+/// An enumeration that defines the different representations for credential status information.
+///
+/// # Variants:
+///
+/// * `TokenStatusList` - Indicates that the status is managed using a token-based status list.
+/// * `BitstringStatusList` - Indicates that the status is managed using a bitstring representation
 #[derive(Debug)]
 pub enum CredentialStatusInfo {
     TokenStatusList { idx: u32, uri: Url },
@@ -358,10 +370,26 @@ pub trait Issuer: Send + Sync {
     ) -> Result<Credential>;
 }
 
-// TODO: add doc
+/// Status lists Issuer.
+///
+/// Provides method for issuing VC status lists
 #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 #[async_trait]
 pub trait StatusIssuer: Send + Sync {
+    /// Issues a new status list for a given status list identifier and a set of credential statuses.
+    ///
+    /// # Arguments
+    ///
+    /// * `status_list_id` - a unique identifier of the status list definition.
+    /// * `statuses` - credential statuses data.
+    ///
+    /// # Returns
+    ///
+    ///  The issued `StatusList` if successful.
+    ///
+    /// # Errors
+    ///
+    /// * [Error] an error if the issuance process fails.
     async fn issue_status_list(
         &self,
         status_list_id: &str,
@@ -550,7 +578,20 @@ pub trait Verifier: Send + Sync {
         presentation: &Presentation,
     ) -> Result<Claims>;
 
-    // TODO: add doc
+    /// Obtains the status for presented VC.
+    ///
+    /// # Arguments
+    ///
+    /// * `presentation` - a `Presentation` containing VC data.
+    /// * `http_client` - a http client.
+    ///
+    /// # Returns
+    ///
+    /// VC Status on success
+    ///
+    /// # Errors
+    ///
+    /// * [Error] an error if the obtaining process fails.
     async fn obtain_credential_status(
         &self,
         presentation: &Presentation,
