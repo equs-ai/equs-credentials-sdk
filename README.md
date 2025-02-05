@@ -34,11 +34,11 @@ See [Components](docs/asdk-components.png).
   - W3C VC JSON-LD V1 (ECDSA, EdDSA)
   - W3C VC JSON-LD V2 (ECDSA, EdDSA, BBS+ 2023)
 - VC Exchange Protocols:
-    - OID4VCI (draft 15)
+    - OID4VCI (draft 14)
         - Authorization Code Flow using scope Parameter to Request Issuance of a Credential
         - Preauthorized Code Flow using scope Parameter to Request Issuance of a Credential
           - **NOTE**: The generation and validation of the access token is delegated to the application side.
-    - OID4VP (draft 23)
+    - OID4VP (draft 20)
         - DIF.PresentationExchange query language to request the presentations
         - Cross Device Flow
         - Same Device Flow
