@@ -1,3 +1,5 @@
+//! did:key method.
+
 use tracing::{instrument, Level};
 
 type Level_ = Level;
@@ -5,6 +7,7 @@ type Level_ = Level;
 use crate::did::{DidGenerationSnafu, KeyNotSupportedSnafu, Result, DID};
 use crate::{crypto, did};
 
+/// Enumerates general errors expected during `did:key` operations.
 pub type Error = did::Error;
 
 /// A general `did:key` service.

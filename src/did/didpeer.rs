@@ -1,3 +1,5 @@
+//! did:peer method.
+
 use crate::crypto::{Key, JWK};
 use crate::did;
 use crate::did::{DidDocGenerationSnafu, DidGenerationSnafu, Result};
@@ -42,6 +44,7 @@ const ECDSA_SECP_256K1_RECOVERY_METHOD_2020: &str =
     "https://w3id.org/security#EcdsaSecp256k1RecoveryMethod2020";
 const MULTIKEY: &str = "https://w3id.org/security#Multikey";
 
+/// The types of verification relationships that a key may support
 #[derive(Debug, Eq, Hash, PartialEq)]
 pub enum VerificationRelationshipType {
     Authentication,
@@ -51,11 +54,13 @@ pub enum VerificationRelationshipType {
     CapabilityDelegation,
 }
 
+/// Verification method key used in the DID Document
 pub struct VerificationMethodKey<'a> {
     pub key: &'a dyn Key,
     pub verification_relationships: HashSet<VerificationRelationshipType>,
 }
 
+/// A general `did:peer` service.
 pub struct DIDPeer {
     resolver: PeerDidResolver,
 }
@@ -68,6 +73,22 @@ impl DIDPeer {
         }
     }
 
+    /// Generates a `did:peer` using Peer DID Method 4.
+    ///
+    /// # Parameters
+    ///
+    /// - `keys`: [VerificationMethodKey] objects representing the cryptographic keys
+    ///   that will be embedded in the DID document.
+    /// - `services`: [did::Service] objects representing the service
+    ///   endpoints that will be embedded in the DID document.
+    ///
+    /// # Returns
+    ///
+    /// A new generated `did:peer`.
+    ///
+    /// # Errors
+    ///
+    /// * [did::Error::DidGeneration] - `DID` generation failure.
     #[instrument(level = Level::TRACE, skip(keys), err(), ret())]
     pub fn generate_did_peer4(
         keys: &[VerificationMethodKey],

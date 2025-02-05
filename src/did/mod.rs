@@ -1,3 +1,5 @@
+//! DID methods and DID resolvers.
+
 use common_macros::DebugError;
 use iref::iri::InvalidIriRef;
 use snafu::{Location, Snafu};
@@ -12,11 +14,11 @@ pub mod didpeer;
 pub mod didweb;
 pub mod universal;
 
+/// Enumerates errors expected during `Proof Validation` operations.
 pub use ssi::claims::ProofValidationError;
 pub use ssi::dids::DIDBuf;
 pub use ssi::dids::DIDResolver;
-/// `DID` Error.
-///
+
 /// Enumerates general errors expected during `DID` operations.
 #[derive(Snafu, DebugError)]
 #[snafu(visibility(pub))]
@@ -89,16 +91,27 @@ pub type Result<T> = core::result::Result<T, Error>;
 
 // Basic types definitions
 pub use ssi::jwk::JWKResolver;
+/// Decentralized identifier
 pub type DID = String;
+/// DID URL an identifier of a network location for a specific resource.
 pub type DIDURL = ssi::dids::DIDURL;
+/// Provides methods for the creation of a `DIDURL`.
 pub type DIDURLBuf = ssi::dids::DIDURLBuf;
+/// DID document in a specific representation.
 pub type DIDDoc = ssi::dids::document::representation::Represented;
+/// DID document metadata
 pub type DocumentMetadata = ssi::dids::document::Metadata;
+/// DID Verification Method
 pub type VerificationMethodMap = ssi::dids::document::verification_method::DIDVerificationMethod;
+/// Service express ways of communicating with the DID subject or related entities.
 pub type Service = ssi::dids::document::Service;
+/// DID resolution metadata.
 pub type ResolutionMetadata = ssi::dids::resolution::Metadata;
+/// DID resolution options
 pub type ResolutionOptions = ssi::dids::resolution::Options;
+/// DID document representation media type.
 pub type ResolutionOptionsMediaType = ssi::dids::document::representation::MediaType;
+/// DID parameters.
 pub type ResolutionOptionsParameters = ssi::dids::resolution::Parameters;
 
 /// A result of `DID` resolution.

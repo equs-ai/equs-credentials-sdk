@@ -1,3 +1,5 @@
+//! Revocation Status List APIs.
+
 use crate::crypto::Signer;
 use crate::http::HttpClient;
 use crate::vc::claims::Claims;
@@ -51,8 +53,10 @@ pub enum Error {
     VCStatus { details: String },
 }
 
+/// `Result` alias for `Status List` API [Error].
 pub type Result<T> = core::result::Result<T, Error>;
 
+/// Supported formats for status list tokens
 #[derive(Debug, Display, PartialEq, Clone, Serialize, Deserialize)]
 // #[non_exhaustive]
 pub enum StatusListFormat {

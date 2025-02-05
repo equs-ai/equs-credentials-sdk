@@ -1,3 +1,5 @@
+//! Credential Claims module
+
 use common_macros::DebugError;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -17,6 +19,7 @@ pub enum Error {
     Float,
 }
 
+/// Credential Claims
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct Claims {
     #[serde(flatten)]

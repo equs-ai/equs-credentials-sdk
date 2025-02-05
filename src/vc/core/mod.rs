@@ -1,3 +1,5 @@
+//! SSI Core module
+
 pub(crate) mod api;
 mod holder;
 mod issuer;

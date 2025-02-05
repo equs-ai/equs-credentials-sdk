@@ -1,3 +1,5 @@
+//! Proof-of-Possession
+
 use crate::crypto;
 use crate::did::DIDURL;
 use crate::nonce::Nonce;

@@ -1,3 +1,5 @@
+//! did:web method.
+
 use crate::crypto::{Key, JWK};
 use crate::did::{
     DIDDoc, DidBufCreationSnafu, DidDocGenerationSnafu, DidGenerationSnafu, DidUrlBufCreationSnafu,

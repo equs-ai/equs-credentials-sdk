@@ -1,3 +1,5 @@
+//! Credential metadata and metadata processors.
+
 use snafu::{Location, Snafu};
 use ssi::json_ld::JsonLdNodeObject;
 use std::fmt::Debug;

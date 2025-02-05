@@ -1,3 +1,5 @@
+//! APIs for implementing cryptographic primitives.
+
 use async_trait::async_trait;
 use common_macros::DebugError;
 use serde::{Deserialize, Serialize};
@@ -10,11 +12,11 @@ use strum_macros::{Display, IntoStaticStr};
 
 /// `Result` alias for Crypto-specific [Error].
 pub type Result<T> = core::result::Result<T, Error>;
+
+/// JSON Web Key
 pub type JWK = jwk::JWK;
 
-/// `Crypto` Error.
-///
-/// Enumerates general errors expected during `Crypto` operations.
+/// Enumerates general errors encountered during `Crypto` operations.
 #[derive(Snafu, DebugError)]
 #[snafu(visibility(pub))]
 #[non_exhaustive]
@@ -75,13 +77,17 @@ pub enum Alg {
     BBS,
 }
 
+/// Parameters for BBS signature schemes.
 pub type BbsParameters = ssi::crypto::algorithm::BbsParameters;
+
+/// Additional signing options
 #[derive(Debug, Clone, Display)]
 #[non_exhaustive]
 pub enum SigningOptions {
     BBS(BbsParameters),
 }
 
+/// Parameters for BBS Signature verification
 pub enum BbsVerifyingParameters {
     Baseline {
         header: [u8; 64],
@@ -94,6 +100,7 @@ pub enum BbsVerifyingParameters {
     },
 }
 
+/// Additional verifying options
 pub enum VerifyingOptions {
     BBS(BbsVerifyingParameters),
 }

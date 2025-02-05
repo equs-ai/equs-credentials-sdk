@@ -1,3 +1,5 @@
+//! DIF Presentation Exchange related methods.
+
 use crate::utils::logs::sanitize_log_msg;
 use crate::vc::core::{PresentationInput, PresentationRestriction};
 use crate::vc::{formats, Presentation};

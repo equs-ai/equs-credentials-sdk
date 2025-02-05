@@ -1,3 +1,5 @@
+//! Token Status List Spec implementations.
+
 use crate::crypto::Signer;
 use crate::did::DIDURL;
 use crate::vc::claims::{Claim, Claims};
@@ -52,7 +54,14 @@ const DEFAULT_STATUS_SIZE: u8 = 1;
 
 pub type StatusList = String;
 
-// TODO: add doc
+/// # Status type values.
+///
+/// A status describes the state, mode, condition or stage of an entity that is described by the Status List.
+///
+/// # Variants:
+/// - `0x00` "VALID": The status of the Token is valid, correct or legal.
+/// - `0x01` "INVALID": The status of the Token is revoked, annulled, taken back, recalled or cancelled. This state is irreversible.
+/// - `0x02` "SUSPENDED": The status of the Token is temporarily invalid, hanging, debarred from privilege. This state is reversible.
 #[derive(Debug, Display, PartialEq)]
 pub enum VCStatus {
     Valid,
@@ -85,6 +94,17 @@ impl From<u8> for VCStatus {
     }
 }
 
+/// # VC Statuses
+///
+/// This structure represents a **Status List** used to track the status of Verifiable Credentials.
+///
+/// # Fields
+///
+/// - `statuses`: is a **hash map** where:
+///   - `key`: represents the **index** of a credential in the status list.
+///   - `value`: represents the **status code** (e.g., `VALID`, `INVALID`, `SUSPENDED`).
+///
+///
 #[derive(Debug, Default, Clone)]
 pub struct VCStatuses {
     pub(crate) statuses: HashMap<usize, u8>,

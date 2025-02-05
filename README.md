@@ -151,8 +151,12 @@ cargo doc --no-deps
    - Authorization Code Flow - Keycloak can be used as Authorization Server
        - Either issue a new access token with the required scope (see [VC OID4VC API Auth Code: Full Flow](docs/vc-oid4vc-api-auth-code-full.png)), 
        - or re-use existing access token, but make sure that CredDefID is included as one of the scope values (see [VC OID4VC API Auth Code: Already Authorized](docs/vc-oid4vc-api-auth-code-already-authorized.png))
-   - Pre-Authorized Code Flow - Authorization Server which can handle the exchange of the pre-authorized code and optionally the transaction code for the access token
-       - See [VC OID4VC API Pre-Authorized Code: Full Flow](docs/vc-oid4vc-api-pre-auth-code-full.png)
+   - Pre-Authorized Code Flow - There are two main options:
+       - Use an existing OAuth server that supports the grant type `urn:ietf:params:oauth:grant-type:pre-authorized_cod`.
+       - Implement a custom authorization server with following endpoints:
+           - `Token Endpoint` that validates the pre-authorized code and optional transaction code and issues an access token. 
+           For more details, see [section 6.1 of the OID4VCI specification](https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0.html#section-6.1).
+           - `Token Introspection Endpoint` that allows the Issuer to check token status before processing credential requests.
 
 **Web App: VC Status List Issuer**
 1. Implement application/platform specific KMS
