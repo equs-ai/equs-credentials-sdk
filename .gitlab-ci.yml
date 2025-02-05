@@ -100,10 +100,6 @@ build-job:
   stage: build
   script:
     - cargo build --all-features --workspace
-    - apt-get update
-    - apt-get update && apt-get install -y clang
-    - rustup target add wasm32-unknown-unknown
-    - cargo build --target wasm32-unknown-unknown --all-features
   only:
     - merge_requests
     - main
@@ -158,7 +154,7 @@ lint-job:
   stage: lint
   script:
     - rustup component add clippy
-    - cargo clippy --workspace --all-targets --all-features -- -Dwarnings
+    - cargo clippy --workspace --exclude wasm --all-targets --all-features -- -Dwarnings
   only:
     - merge_requests
     - main
@@ -186,6 +182,26 @@ nodejs-test-job:
     - npm i --prefix wrappers/nodejs
     - npm run build:debug --prefix wrappers/nodejs
     - npm run test --prefix wrappers/nodejs
+  only:
+    - merge_requests
+    - main
+
+wasm-test-job:
+  image: cimg/node:${NODE_VERSION}-browsers
+  before_script:
+    - curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain ${RUST_VERSION}
+    - source "$HOME/.cargo/env"
+    - *cargo_local_deps_script
+    - sudo apt-get update
+    - sudo apt-get install -y clang
+    - curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+  stage: test
+  script:
+    - cd wrappers/wasm
+    - WASM_TARGET=nodejs make
+    - cd ./test
+    - npm install
+    - npm run test-puppeteer
   only:
     - merge_requests
     - main

@@ -6,6 +6,7 @@ members = [
     "demos/multi-thread",
     "plugins/askar",
     "wrappers/nodejs",
+    "wrappers/wasm",
     "common-macros",
 ]
 
