@@ -1,6 +1,6 @@
 @startuml
 'https://plantuml.com/component-diagram
-left to right direction
+'left to right direction
 
 package "Applications" as App #LightBlue  {
    [KMS Impl] as KMSApp
@@ -12,7 +12,7 @@ package "ASDK" as ASDK {
 
      package "Pluggable" #LightGray {
          [KMS Interface] as KMS #Green
-         [Vault Interface] as Vault #Green
+         [Vault Interface\n(store/find VCs)] as Vault #Green
      }
 
     package "Public API" as API #LightGray {
@@ -31,7 +31,8 @@ package "ASDK" as ASDK {
         [VC Formats] as VCF #Green
         VCCore --> VCF
 
-        [DIDComm] as DIDComm #Orange
+        [Protocol Engine] as PE #Orange
+        [DIDComm] as DIDComm #Green
         [Utils] #Green
     }
 
@@ -40,13 +41,14 @@ package "ASDK" as ASDK {
 'API ---> Int
 VCOID ---> VCCore
 Aries ---> VCCore
-DIDCommP ---> DIDComm
+DIDCommP ---> PE
+PE --> DIDComm
 
 VaultApp --|> Vault
 KMSApp --|> KMS
 AppL --> API
 
-note left of ASDK: Green - already implemented;\nOrange - later versions
+note right of ASDK: Green - already implemented;\nOrange - later versions
 
 
 @enduml

@@ -103,6 +103,10 @@ async fn main() -> std::io::Result<()> {
                 web::get().to(credential_offer_with_pre_auth_code_grant),
             )
             .route(DID_DOC_URL_PATH, web::get().to(did_doc))
+            // NOTE: The following two endpoints simulate the generation and validation of an access token
+            // when a pre-authorized code flow is executed on the holder side
+            // Access token generation is not supported on agent-sdk,
+            // for validation one of the 'agent_sdk::vc::oid4vci::token_validation' implementations is used
             .route(TOKEN_ENDPOINT_PATH, web::post().to(generate_token))
             .route(TOKEN_INTROSPECT_PATH, web::post().to(validate_token))
             .route(
@@ -132,11 +136,11 @@ async fn issue_credential(
     let cred_def_id = cred_def.id().to_string();
 
     let cred_status_info = match cred_def_id.as_str() {
-        "SD_JWT_cred_1" => Some(CredentialStatusInfo::TokenStatusList {
+        SD_JWT_CRED_DEF => Some(CredentialStatusInfo::TokenStatusList {
             idx: 1,
             uri: Url::from_str("http://localhost:8088/status_list").unwrap(),
         }),
-        _ => None, // Only SdJwtVc format supports revocation feature
+        _ => None, // Other formats not supported yet
     };
 
     // Depending on the concrete `CredDef` requested Claims would be different
@@ -181,7 +185,7 @@ async fn credential_offer_with_auth_code_grant(state: web::Data<AppState>) -> Ht
     let (credential_offer, url) = state
         .issuer
         .create_credential_offer(
-            vec!["SD_JWT_cred_1", "JSON_LDP_cred_2"],
+            vec![SD_JWT_CRED_DEF, JSON_LD_V1_CRED_DEF, JSON_LD_V2_CRED_DEF],
             &CredentialOfferGrants {
                 authorization_code: Some(pre_auth_grant),
                 pre_authorized_code: None,
@@ -202,7 +206,7 @@ async fn credential_offer_with_pre_auth_code_grant(state: web::Data<AppState>) -
     let (credential_offer, url) = state
         .issuer
         .create_credential_offer(
-            vec!["SD_JWT_cred_1", "JSON_LDP_cred_2"],
+            vec![SD_JWT_CRED_DEF, JSON_LD_V1_CRED_DEF, JSON_LD_V2_CRED_DEF],
             &CredentialOfferGrants {
                 authorization_code: None,
                 pre_authorized_code: Some(pre_auth_grant),

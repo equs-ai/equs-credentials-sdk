@@ -9,7 +9,7 @@
 
 ## About ASDK
 - ASDK is an SDK (library) providing building blocks for Self-Sovereign Identity (SSI) use cases.  
-- ASDK is written in Rust; language wrappers will be added later (see Roadmap below).  
+- ASDK is written in Rust; supported wrappers/builds for node.js, wasm(javascript wrapper is in progress)
 - ASDK is not an end-user application, but just an ASDK. Applications integrating ASDK will need to implement some interfaces (such as KMS and Vault) or Web endpoints (OID4VC). See [How To Use ASDK](#how-to-use-asdk-in-applications) below.
 - ASDK supports multiple SSI protocols and specifications (see below). 
 
@@ -30,38 +30,47 @@ Other diagrams:
 See [Components](docs/asdk-components.png).
 #### Implemented
 - VC Formats:
-  - SD-JWT VC (version: TBD)
-  - W3C JSON-LD (version: TBD)
+  - SD-JWT VC (ECDSA, EdDSA)
+  - W3C VC JSON-LD V1 (ECDSA, EdDSA)
+  - W3C VC JSON-LD V2 (ECDSA, EdDSA, BBS+ 2023)
 - VC Exchange Protocols:
-    - OID4VCI (draft 14)
+    - OID4VCI (draft 15)
         - Authorization Code Flow using scope Parameter to Request Issuance of a Credential
-    - OID4VP (draft 22)
+        - Preauthorized Code Flow using scope Parameter to Request Issuance of a Credential
+          - **NOTE**: The generation and validation of the access token is delegated to the application side.
+    - OID4VP (draft 23)
+        - DIF.PresentationExchange query language to request the presentations
         - Cross Device Flow
+        - Same Device Flow
+        - SIOPv2 extension (draft 13)
+- VC Status:
+  - Token Status List (draft-07)
+    - Supported Format
+      - JWT
 - DID methods
-  - did:key (version: TBD)
-  - did:web (version: TBD)
+  - did:key
+  - did:web
+  - did:peer
+- DIDComm V2
 
 #### Planned
 - VC Formats:
-    - W3C JSON-LD + BBS+
-    - W3C JWT
-    - Hyperledger AnonCreds
+    - mDL
 - VC Exchange Protocols:
     - OID4VCI
-      - Pre-authorized Code Flow 
       - Authorization Code Flow Using Authorization Details Parameter
     - OID4VP
-      - Same Device Flow
+      - Digital Credentials Query Language (DCQL)
       - Response Mode "direct_post.jwt"
     - Aries AIPv2
 - DID methods
-    - did:peer
-    - did:ethr or similar
-- DIDComm and Protocols Engine 
+    - did:ethr
+    - did:webvh
+- Protocols Engine over DIDComm V2
 
 ## How To Build and Run
 Pre-requisites:
-- rustc version >=1.79
+- rustc version >=1.82
 
 ```
 cargo build --all-features
@@ -96,13 +105,14 @@ cargo doc --no-deps
 
 ### Demos
 
-- [OID4VC web service](demos/oid4vc/README.md)
+- [OID4VC web services on pure Rust](demos/oid4vc/README.md)
+- [OID4VC end-to-end flows on Node.js](demos/oid4vc/README.md)
 - [Multi-thread support](demos/multi-thread/README.md)
 
 ## How to Use ASDK in Applications
 
 ### OID4VC
-An example of integration: https://git.slock.it/equstng/proof-of-concepts/asdk-demo-oid4vc-service
+[An example of integration:](demos/oid4vc/README.md)
 
 ![asdk-integration](docs/asdk-apps-integration.png)
 
@@ -112,10 +122,12 @@ An example of integration: https://git.slock.it/equstng/proof-of-concepts/asdk-d
 2. Implement application/platform specific Vault (to store and find Verifiable Credentials)
 3. Integrate OID4VC Holder API
    - [VC OID4VC API Auth Code: Full Flow](docs/vc-oid4vc-api-auth-code-full.png) or  [VC OID4VC API Auth Code: Already Authorized](docs/vc-oid4vc-api-auth-code-already-authorized.png)
+   - [VC OID4VC API Pre-Authorized Code Flow](docs/vc-oid4vc-api-pre-auth-code-full.png)
    - For VCI refer to:
      - [Holder VCI API](src/vc/oid4vci/api.rs)
      - [Holder VCI Builder](src/vc/oid4vci/builder.rs)
      - [Holder VCI Service](src/vc/oid4vci/holder.rs) (not publicly exposed)
+     - [Credential Offer Resolver VCI Service](src/vc/oid4vci/credential_offer_resolver.rs)
    - For VP refer to:
      - [Holder VP API](src/vc/oid4vp/api.rs)
      - [Holder VP Builder](src/vc/oid4vp/builder.rs)
@@ -126,18 +138,28 @@ An example of integration: https://git.slock.it/equstng/proof-of-concepts/asdk-d
 1. Implement application/platform specific KMS
 2. Instantiate OID4VC Issuer Service
     - [VC OID4VC API Auth Code: Full Flow](docs/vc-oid4vc-api-auth-code-full.png) or  [VC OID4VC API Auth Code: Already Authorized](docs/vc-oid4vc-api-auth-code-already-authorized.png)
+    - [VC OID4VC API Pre-Authorized Code Flow](docs/vc-oid4vc-api-pre-auth-code-full.png)
     - [Issuer API](src/vc/oid4vci/api.rs)
     - [Issuer Builder](src/vc/oid4vci/builder.rs)
     - [Issuer Service](src/vc/oid4vci/issuer.rs) (not publicly exposed)
 3. Create Issuer Metadata
-4. Create Credential Offer (optional)
+4. Create Credential Offer (optional for auth code flow but required for pre-authorized code flow)
 5. Implement the following endpoints. Each endpoint should call the corresponding ASDK Issuer API method.
     - GET /.well-known/openid-credential-issuer HTTP/1.1: `get_issuer_metadata`
     - POST /credential HTTP/1.1: `issue_credential`
-6. Integrate Authorization Server (KeyCloak)
-    - Either issue a new access token with the required scope (see [VC OID4VC API Auth Code: Full Flow](docs/vc-oid4vc-api-auth-code-full.png)), 
-    - or re-use existing access token, but make sure that CredDefID is included as one of the scope values (see [VC OID4VC API Auth Code: Already Authorized](docs/vc-oid4vc-api-auth-code-already-authorized.png))
+6. Integrate Authorization Server 
+   - Authorization Code Flow - Keycloak can be used as Authorization Server
+       - Either issue a new access token with the required scope (see [VC OID4VC API Auth Code: Full Flow](docs/vc-oid4vc-api-auth-code-full.png)), 
+       - or re-use existing access token, but make sure that CredDefID is included as one of the scope values (see [VC OID4VC API Auth Code: Already Authorized](docs/vc-oid4vc-api-auth-code-already-authorized.png))
+   - Pre-Authorized Code Flow - Authorization Server which can handle the exchange of the pre-authorized code and optionally the transaction code for the access token
+       - See [VC OID4VC API Pre-Authorized Code: Full Flow](docs/vc-oid4vc-api-pre-auth-code-full.png)
 
+**Web App: VC Status List Issuer**
+1. Implement application/platform specific KMS
+2. Instantiate Status Issuer Service
+    - [Status Issuer API](src/vc/core/api.rs)
+    - [Status Issuer Service](src/vc/core/status_issuer.rs)
+3. Create a status list and make it publicly available on the web
 
 **Web App: Verifier**
 1. Integrate OID4VC Verifier Service
@@ -154,7 +176,7 @@ An example of integration: https://git.slock.it/equstng/proof-of-concepts/asdk-d
 ASDK contains an example of KMS and Vault (not part of default build) based on [aries-askar](https://github.com/hyperledger/aries-askar), see [src/askar](plugins/askar). The current implementations are not recommended  for production (just demo purposes), but production ones can be created based on it.
 
 ## Dependencies
-- https://github.com/spruceid/ssi (v0.7.0)
+- https://github.com/spruceid/ssi (v0.10.1)
 - https://github.com/openwallet-foundation-labs/sd-jwt-rust
 - https://github.com/hyperledger/aries-askar (Test/Demo purposes, not part of default build)
 

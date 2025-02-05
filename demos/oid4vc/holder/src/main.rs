@@ -50,24 +50,17 @@ async fn main() {
     // Holders creation
     let (oid4vci_holder, resolved_offer) = oid4vci_holder(kms.clone(), vault.clone()).await;
 
-    // Running flows
+    // Running OID4VCI flow
     run_issuance_flow(oid4vci_holder, kms.clone(), resolved_offer).await;
 
-    loop {
-        let holder = oid4vp_holder(kms.clone(), vault.clone()).await;
-        run_presentation_flow(holder, kms.clone()).await;
+    // Running OID4VP flow
+    let holder = oid4vp_holder(kms.clone(), vault.clone()).await;
+    run_presentation_flow(holder, kms.clone()).await;
 
-        println!("To revoke issued SdJwtVc please perform HTTP GET http://localhost:8088/revoke");
-        println!("To repeat the presentation flow please enter 'yes'");
-        let input = input_from_console("Failed to read input");
+    // Optionally check revocation flow
+    revocation_flow(kms.clone(), vault).await;
 
-        match input.as_str() {
-            "yes" => {}
-            _ => break,
-        }
-    }
-
-    println!("Done");
+    println!("OID4VC flows are successfully completed!");
 }
 
 async fn run_issuance_flow(
@@ -291,6 +284,38 @@ async fn same_device_presentation_flow(holder: impl HolderVp, kms: LocalKms) {
     );
 }
 
+async fn revocation_flow(kms: LocalKms, vault: InMemVault) {
+    println!("To check Revocation flow for SD-JWT credential please enter 'y'");
+    let input = input_from_console("Failed to read input");
+
+    match input.as_str() {
+        "y" => {
+            let client = reqwest::Client::new();
+            println!("Sending http 'GET' request to http://localhost:8080/revoke to revoke SD-JWT credential");
+            let resp = client
+                .get("http://localhost:8088/revoke")
+                .send()
+                .await
+                .unwrap();
+            if resp.status().is_success() {
+                println!("SD-JWT credential is revoked!");
+                println!("Restarting OID4VP flow..");
+
+                let holder = oid4vp_holder(kms.clone(), vault.clone()).await;
+                run_presentation_flow(holder, kms.clone()).await;
+            } else {
+                println!(
+                    "Revoke http call is failed: status_code = {}",
+                    resp.status().as_u16()
+                );
+            }
+        }
+        _ => {
+            println!("Revocation flow check is missed!");
+        }
+    }
+}
+
 fn retrieve_auth_resp_from_uri(url: Url) -> AuthorizationResponse {
     let presentation_resp_map: HashMap<String, String> =
         serde_urlencoded::from_str(url.fragment().unwrap()).unwrap();
@@ -326,6 +351,7 @@ async fn verifier(client_id: &str) -> impl Verifier {
 
     let verifier =
         oid4vp::VerifierBuilder::new(kms, nonce_gen, key_metadata, client_id.to_string())
+            .with_http_client(ReqwestClientBuilder::new().insecure().build().unwrap())
             .build()
             .await
             .unwrap();
@@ -364,7 +390,11 @@ async fn present_credential(
             for (id, creds) in credentials.iter() {
                 let claims = get_claims_from_cred_entries(creds);
                 if claims.is_empty() {
-                    println!("id = {}, credentials = {:?}", id, creds)
+                    println!(
+                        "id = {}, credentials = {}",
+                        id,
+                        serde_json::to_string_pretty(&creds).unwrap()
+                    );
                 } else {
                     println!("id = {}, credentials = [{}]", id, claims.join(","))
                 }
@@ -601,14 +631,26 @@ async fn get_access_token_by_resolving_offer(
                 );
                 println!("{}", url);
 
-                print!("Please enter a authorization code: ");
+                print!("Please enter an authorization code: ");
                 io::stdout().flush().unwrap();
                 input_from_console("Failed to read authorization code")
             }
             AuthzFlow::Preauthorized => {
-                print!("Please enter a transaction code: ");
-                io::stdout().flush().unwrap();
-                input_from_console("Failed to read transaction code")
+                println!("If you have a transaction code from the Issuer, please enter 'y'");
+                let input = input_from_console("Failed to read input");
+
+                match input.as_str() {
+                    "y" => {
+                        print!("Please enter a transaction code: ");
+                        io::stdout().flush().unwrap();
+                        input_from_console("Failed to read transaction code")
+                    }
+                    _ => {
+                        // When "oid4vc/issuer" web service is used as the Issuer, we just mock dummy transaction code.
+                        // agent-sdk does not handle the generation and validation of transaction code
+                        "tx_code".to_string()
+                    }
+                }
             }
         };
         async { Ok::<String, io::Error>(code) }
@@ -682,7 +724,7 @@ const INPUT_DESCRIPTOR_FOR_CRED_DEF_2: &str = r#"{
         "ldp_vc": {
            "proof_type": [
             "Ed25519Signature2018",
-            "EcdsaSecp256k1Signature2019",
+            "EcdsaSecp256k1Signature2019"
            ]
         }
     },
