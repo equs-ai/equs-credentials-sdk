@@ -1,5 +1,6 @@
 use crate::utils::to_json_object;
 use crate::vc::JsonObject;
+#[cfg(debug_assertions)]
 use agent_sdk::reqwest::builder::ReqwestClientBuilder;
 use agent_sdk::vc::oid4vci::CredentialOfferResolver;
 use napi::{Error, Result};

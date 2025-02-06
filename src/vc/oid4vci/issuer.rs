@@ -91,7 +91,7 @@ where
 }
 
 #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
-#[async_trait]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl<IS, HC, NG> api::Issuer for IssuerService<IS, HC, NG>
 where
     IS: vc::core::Issuer,

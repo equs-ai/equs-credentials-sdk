@@ -325,7 +325,7 @@ where
 }
 
 #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
-#[async_trait]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl<HL, HC, KH, KMS> api::Holder for HolderService<HL, HC, KH, KMS>
 where
     HL: vc::core::Holder,
@@ -483,7 +483,7 @@ where
 }
 
 #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
-#[async_trait]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl<HL, HC, KH, KMS> AsyncHttpClient for HolderService<HL, HC, KH, KMS>
 where
     HL: vc::core::Holder,
@@ -497,7 +497,7 @@ where
 }
 
 #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
-#[async_trait]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl<HL, HC, KH, KMS> Wallet for HolderService<HL, HC, KH, KMS>
 where
     HL: vc::core::Holder,
@@ -517,7 +517,7 @@ where
 }
 
 #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
-#[async_trait]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl<HL, HC, KH, KMS> RequestVerifier for HolderService<HL, HC, KH, KMS>
 where
     HL: vc::core::Holder,

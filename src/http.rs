@@ -26,9 +26,9 @@ pub type Result<T> = std::result::Result<T, HttpError>;
 /// An async `HttpClient` interface used for internal Http(s) calls in the APIs.
 ///
 /// Should be implemented by any adapter to be used with `ASDK`.
-#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 #[cfg_attr(test, automock)]
-#[async_trait]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 pub trait HttpClient: Sync + Send {
     /// Make an async HTTP call.
     ///

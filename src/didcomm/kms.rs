@@ -1,8 +1,3 @@
-use crate::crypto::{Alg, Key};
-use crate::did::JWKResolver;
-use crate::kms;
-use crate::kms::{DerivativeKms, ECDH1PUParams, ECDHESParams, KeyHandle, KeyPair, KeyType, Kms};
-use crate::utils::jwk;
 use async_trait::async_trait;
 use didcomm::secrets::{
     A256Kw, AesKey, KeyManagementService, KeySecretBytes, KidOrJwk, KnownKeyAlg,
@@ -12,28 +7,33 @@ use ssi::JWK;
 use std::marker::PhantomData;
 use std::str::FromStr;
 
-pub(super) struct KmsWrapper<KMS, KH, R>
+use crate::crypto::{Alg, Key};
+use crate::did::universal::UniversalResolver;
+use crate::did::JWKResolver;
+use crate::kms;
+use crate::kms::{DerivativeKms, ECDH1PUParams, ECDHESParams, KeyHandle, KeyPair, KeyType, Kms};
+use crate::utils::jwk;
+
+pub(super) struct KmsWrapper<KMS, KH>
 where
     KMS: Kms<KH>
         + DerivativeKms<ECDH1PUParams, Output = Vec<u8>>
         + DerivativeKms<ECDHESParams, Output = Vec<u8>>,
     KH: KeyHandle,
-    R: JWKResolver,
 {
     kms: KMS,
-    resolver: R,
+    resolver: UniversalResolver,
     _phantom: PhantomData<KH>,
 }
 
-impl<KMS, KH, R> KmsWrapper<KMS, KH, R>
+impl<KMS, KH> KmsWrapper<KMS, KH>
 where
     KMS: Kms<KH>
         + DerivativeKms<ECDH1PUParams, Output = Vec<u8>>
         + DerivativeKms<ECDHESParams, Output = Vec<u8>>,
     KH: KeyHandle,
-    R: JWKResolver,
 {
-    pub fn new(kms: KMS, resolver: R) -> Self {
+    pub fn new(kms: KMS, resolver: UniversalResolver) -> Self {
         Self {
             kms,
             resolver,
@@ -122,14 +122,14 @@ where
     }
 }
 
-#[async_trait(?Send)]
-impl<KMS, KH, R> KeyManagementService for KmsWrapper<KMS, KH, R>
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
+impl<KMS, KH> KeyManagementService for KmsWrapper<KMS, KH>
 where
     KMS: Kms<KH>
         + DerivativeKms<ECDH1PUParams, Output = Vec<u8>>
         + DerivativeKms<ECDHESParams, Output = Vec<u8>>,
     KH: KeyHandle,
-    R: JWKResolver,
 {
     async fn get_key_alg(&self, secret_id: &str) -> didcomm::error::Result<KnownKeyAlg> {
         self.get_by_secret_id(secret_id)

@@ -223,7 +223,7 @@ pub struct ECDHESParams {
 ///
 /// Adds up master key's creation from a seed and derivation.
 #[async_trait]
-pub trait DerivativeKms<DP> {
+pub trait DerivativeKms<DP>: Send + Sync {
     type Output;
 
     /// Derive a key using provided derivation method

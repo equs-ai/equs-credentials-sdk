@@ -108,7 +108,7 @@ nodejs-wrapper-build-job:
   <<: *nodejs_job_configs
   stage: build
   script:
-    - NODE_ENV=development npm i --prefix wrappers/nodejs
+    - npm i --prefix wrappers/nodejs
     - npm run build --prefix wrappers/nodejs
   only:
     - merge_requests

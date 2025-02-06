@@ -1,4 +1,5 @@
 mod key;
+mod peer;
 mod web;
 
 use crate::utils::to_json_object;

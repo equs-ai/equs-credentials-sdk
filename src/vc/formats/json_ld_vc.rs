@@ -533,7 +533,7 @@ impl GetDateTimeClaim<Claims, DateTime> for JsonLdAPI {
 }
 
 #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
-#[async_trait]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl API<Claims, VC, VP, VCMetadata, VPMetadata, ()> for JsonLdAPI {
     #[instrument(level = Level::TRACE, skip(issuer_data, holder_data), err(), ret())]
     async fn create_vc<S, K>(

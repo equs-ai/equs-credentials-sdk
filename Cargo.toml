@@ -55,9 +55,6 @@ chrono = "0.4.38"
 openidconnect = "4.0.0-rc.1"
 zeroize = "1.8.1"
 zkryptium = "0.2.2"
-json-syntax = "0.12.5"
-ssi-claims-core = "0.1.2"
-ssi-dids = "0.2.1"
 ssi-status = "0.3.0"
 flate2 = "1.0.35"
 
@@ -75,6 +72,7 @@ async-rwlock = { version = "1.3.0", optional = true }
 ecdsa = { version = "0.16.9", optional = true }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+didcomm = { git = "ssh://git@git.slock.it/open-source/didcomm-rust.git", rev = "db41780d", features = ["uniffi"] }
 reqwest-middleware = { version = "0.4.0", default-features = false }
 reqwest-tracing = { version = "0.5.5", default-features = false }
 
