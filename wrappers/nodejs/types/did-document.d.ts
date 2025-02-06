@@ -6,7 +6,7 @@ export interface DIDVerificationMethod {
   [key: string]: unknown;
 }
 
-interface Service {
+export interface Service {
   id: string;
   type: string;
   serviceEndpoint: string | string[] | Record<string, any>;

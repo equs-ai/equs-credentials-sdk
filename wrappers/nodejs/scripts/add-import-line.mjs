@@ -21,6 +21,13 @@ import fs from "fs/promises";
       "OID4VCICredentialOffer",
       "ClientMetadata",
       "WalletMetadata",
+      "DIDCommMessage",
+      "PackEncryptedOptions",
+      "PackEncryptedMetadata",
+      "PackSignedMetadata",
+      "UnpackMetadata",
+      "UnpackOptions",
+      "Service",
     ];
     let import_str = `import { ${exported_types.join(", ")} } from "${TYPES_FILE_PATH}";\nexport * from "${TYPES_FILE_PATH}";\n`;
     content = import_str + content;

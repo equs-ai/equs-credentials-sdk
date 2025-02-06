@@ -1,4 +1,7 @@
 export * from "./common";
+export * from "./didcomm-message";
+export * from "./didcomm-pack";
+export * from "./didcomm-unpack";
 export * from "./presentation-definition";
 export * from "./presentation-submission";
 export * from "./did-document";

@@ -134,7 +134,7 @@ pub struct SLMetadata {
 pub struct StatusListJwt;
 
 #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
-#[async_trait]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl API<VCStatus, VCStatuses, StatusList, SLMetadata> for StatusListJwt {
     #[instrument(level = Level::TRACE, skip(issuer_data), err(), ret())]
     async fn create_status_list<S>(

@@ -4,18 +4,20 @@ use serde::Serialize;
 use ssi::dids::document::verification_method::ValueOrReference;
 use ssi::dids::DIDBuf;
 
+use crate::did::universal::UniversalResolver;
 use crate::did::{DIDDoc, DIDResolver};
 
-pub(super) struct DidResolverWrapper<D: DIDResolver>(D);
+pub(super) struct DidResolverWrapper(UniversalResolver);
 
-impl<D: DIDResolver> DidResolverWrapper<D> {
-    pub fn new(did_resolver: D) -> Self {
+impl DidResolverWrapper {
+    pub fn new(did_resolver: UniversalResolver) -> Self {
         DidResolverWrapper(did_resolver)
     }
 }
 
-#[async_trait(?Send)]
-impl<D: DIDResolver> didcomm::did::DIDResolver for DidResolverWrapper<D> {
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
+impl didcomm::did::DIDResolver for DidResolverWrapper {
     async fn resolve(&self, did: &str) -> didcomm::error::Result<Option<didcomm::did::DIDDoc>> {
         let did_buf = DIDBuf::from_string(did.to_string())
             .map_err(|err| didcomm::error::Error::new(didcomm::error::ErrorKind::Malformed, err))?;

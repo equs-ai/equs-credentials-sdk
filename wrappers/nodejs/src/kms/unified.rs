@@ -17,14 +17,14 @@ impl Kms<KeyHandleWrapper> for UnifiedKms {
     async fn create(&self, kt: KeyType, opts: CreateOptions) -> agent_sdk::kms::Result<KeyID> {
         match self {
             UnifiedKms::Js(js) => js.create(kt, opts).await,
-            UnifiedKms::Native(native) => native.inner().create(kt, opts).await,
+            UnifiedKms::Native(native) => native.base.create(kt, opts).await,
         }
     }
 
     async fn get(&self, kid: &KeyID) -> agent_sdk::kms::Result<KeyHandleWrapper> {
         match self {
             UnifiedKms::Js(js) => js.get(kid).await.map(Into::into),
-            UnifiedKms::Native(native) => native.inner().get(kid).await,
+            UnifiedKms::Native(native) => native.base.get(kid).await,
         }
     }
 
@@ -34,7 +34,7 @@ impl Kms<KeyHandleWrapper> for UnifiedKms {
     ) -> agent_sdk::kms::Result<KeyHandleWrapper> {
         match self {
             UnifiedKms::Js(js) => js.get_by_public_key(public_key).await.map(Into::into),
-            UnifiedKms::Native(native) => native.inner().get_by_public_key(public_key).await,
+            UnifiedKms::Native(native) => native.base.get_by_public_key(public_key).await,
         }
     }
 }

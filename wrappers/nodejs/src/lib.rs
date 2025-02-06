@@ -1,5 +1,6 @@
 #![deny(clippy::all)]
 pub mod did;
+pub mod didcomm;
 pub mod http;
 #[cfg(any(test, feature = "in-memory"))]
 pub mod inmem;

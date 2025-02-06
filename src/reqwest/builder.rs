@@ -3,8 +3,10 @@ use tracing::{instrument, Level};
 
 use super::ReqwestClient;
 use crate::http::{HttpSnafu, Result};
+#[cfg(not(target_arch = "wasm32"))]
 use crate::reqwest::middleware::ValidatorMiddleware;
 use crate::reqwest::validators::content_size::ContentSizeLimiter;
+#[cfg(not(target_arch = "wasm32"))]
 use crate::reqwest::validators::content_type::ContentTypeValidator;
 
 #[cfg(not(target_arch = "wasm32"))]

@@ -87,7 +87,7 @@ impl<R: JWKResolver> DidKeyResolver<R> {
 }
 
 #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
-#[async_trait]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl Default for DidKeyResolver<UniversalResolver> {
     #[instrument(level = Level::TRACE, skip_all)]
     fn default() -> Self {
@@ -96,7 +96,7 @@ impl Default for DidKeyResolver<UniversalResolver> {
 }
 
 #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
-#[async_trait]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl KeyResolver for DidKeyResolver<UniversalResolver> {
     #[instrument(level = Level::TRACE, skip(self), err())]
     async fn resolve(&self, did: &str, header: &Header) -> sd_jwt_rs::error::Result<DecodingKey> {
@@ -368,7 +368,7 @@ impl GetDateTimeClaim<Claims, time::OffsetDateTime> for SdJwtAPI {
 }
 
 #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
-#[async_trait]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata, Claims> for SdJwtAPI {
     #[instrument(level = Level::TRACE, skip(issuer_data, holder_data), err(), ret())]
     async fn create_vc<S, K>(

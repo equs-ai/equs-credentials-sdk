@@ -65,7 +65,7 @@ pub enum StatusListFormat {
 }
 
 #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
-#[async_trait]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 pub trait API<CS, ST, SL, MD> {
     async fn create_status_list<S>(
         statuses: ST,

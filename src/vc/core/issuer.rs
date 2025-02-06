@@ -43,7 +43,7 @@ where
 }
 
 #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
-#[async_trait]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl<KH, KMS> Issuer for IssuerService<KH, KMS>
 where
     KH: kms::KeyHandle,

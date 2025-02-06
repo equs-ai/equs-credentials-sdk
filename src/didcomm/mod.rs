@@ -1,14 +1,14 @@
 //! DIDComm V2 Messaging
 
-use crate::did::DIDResolver;
+use common_macros::DebugError;
+use snafu::{Location, ResultExt, Snafu};
+use std::marker::PhantomData;
+use tracing::{instrument, Level};
+
+use crate::did::universal::UniversalResolver;
 use crate::didcomm::did_resolver::DidResolverWrapper;
 use crate::didcomm::kms::KmsWrapper;
 use crate::kms::{DerivativeKms, ECDH1PUParams, ECDHESParams, KeyHandle, Kms};
-use common_macros::DebugError;
-use snafu::{Location, ResultExt, Snafu};
-use ssi::jwk::JWKResolver;
-use std::marker::PhantomData;
-use tracing::{instrument, Level};
 
 mod did_resolver;
 mod kms;
@@ -48,24 +48,20 @@ pub struct Error {
 pub type Result<T> = std::result::Result<T, Error>;
 
 /// A DIDComm service that provides packing and unpacking of DIDComm messages.
-struct DIDCommService<D, R, KMS, KH>
+pub struct DIDCommService<KMS, KH>
 where
-    D: DIDResolver,
-    R: JWKResolver,
     KMS: Kms<KH>
         + DerivativeKms<ECDH1PUParams, Output = Vec<u8>>
         + DerivativeKms<ECDHESParams, Output = Vec<u8>>,
     KH: KeyHandle,
 {
-    kms: KmsWrapper<KMS, KH, R>,
-    did_resolver: DidResolverWrapper<D>,
+    kms: KmsWrapper<KMS, KH>,
+    did_resolver: DidResolverWrapper,
     _phantom: PhantomData<KH>,
 }
 
-impl<D, R, KMS, KH> DIDCommService<D, R, KMS, KH>
+impl<KMS, KH> DIDCommService<KMS, KH>
 where
-    D: DIDResolver,
-    R: JWKResolver,
     KMS: Kms<KH>
         + DerivativeKms<ECDH1PUParams, Output = Vec<u8>>
         + DerivativeKms<ECDHESParams, Output = Vec<u8>>,
@@ -83,9 +79,9 @@ where
     ///
     /// A new instance of [`DIDCommService`].
     #[instrument(level = Level::TRACE, skip_all)]
-    pub fn new(kms: KMS, did_resolver: D, jwk_resolver: R) -> Self {
+    pub fn new(kms: KMS, did_resolver: UniversalResolver) -> Self {
         DIDCommService {
-            kms: KmsWrapper::new(kms, jwk_resolver),
+            kms: KmsWrapper::new(kms, did_resolver.clone()),
             did_resolver: DidResolverWrapper::new(did_resolver),
             _phantom: PhantomData,
         }
@@ -217,7 +213,7 @@ mod test {
     use serde_json::json;
 
     #[tokio::test]
-    async fn test_didcomm_pack_encrypted() {
+    async fn pack_encrypted_succeeded() {
         let kms = LocalKms::new();
         let (sender_did, sender_key_metadata) =
             create_did_and_key_metadata_by_key_type(&kms, KeyType::P256).await;
@@ -234,7 +230,7 @@ mod test {
         .finalize();
 
         let did_resolver = UniversalResolver::default();
-        let didcomm_service = DIDCommService::new(kms, did_resolver.clone(), did_resolver);
+        let didcomm_service = DIDCommService::new(kms, did_resolver);
 
         let encryption_options = didcomm::PackEncryptedOptions {
             protect_sender: true,
@@ -270,8 +266,100 @@ mod test {
         assert_eq!(msg.body, json!("example-body"));
     }
 
+    #[should_panic(expected = "No sender secrets found")]
     #[tokio::test]
-    async fn test_didcomm_pack_signed() {
+    async fn pack_encrypted_failed_with_incorrect_seder_did() {
+        let kms = LocalKms::new();
+
+        let sender_did = "did:peer:4zQmdrR8n3sYAuDh7n3Ztwhc22dFTLwXcq6M75AXPuvdCMWw:z3c91SEw\
+        qVio1Xpv8jBeTSQK3C9ahjbRvKxyLd6H8EnhfG5cCg9cqyxxUpLdeeMzs5raX3YyJbrNqoNqVPoZ6iHtAKGx24VDxbm\
+        BTKWkm4YYcSXAJEKxWfrteVzXLATrfBqZz4t8UcTpL4g61JRcxfSepifdJARJdJe4idgfTcVKR3YQ1hYQchNX443PnP\
+        XsG1NJ9U5Jb6AHQK78Y7ydDUqj15RUxQdqCsURhFqoCASnB9DN9JCP6zpqCzy2cW2AVcXNLGrd3HLoCBDUScXhqrwy4\
+        8hcYHW86eRwQmYvgJPCrMLkLe5KRABQic2XEvHsv5HsCQFFpfTD6iSyqqSB2W3YvkvLb5giFwJsCz1PpXbKZt9gDkgP\
+        H54RmqFG1Y8Y4Mx2A9umWhJuUdS"
+            .to_string();
+
+        let (recipient_did, recipient_key_metadata) =
+            create_did_and_key_metadata_by_key_type(&kms, KeyType::P256).await;
+
+        let didcomm_service = DIDCommService::new(kms, UniversalResolver::default());
+
+        let encryption_options = didcomm::PackEncryptedOptions {
+            protect_sender: true,
+            ..Default::default()
+        };
+
+        let msg = Message::build(
+            sender_did.to_owned(),
+            recipient_did.to_owned(),
+            json!("example-body"),
+        )
+        .to(recipient_did.to_owned())
+        .from(sender_did.to_owned())
+        .finalize();
+
+        didcomm_service
+            .pack_encrypted(
+                &msg,
+                &recipient_did,
+                Some(&sender_did),
+                None,
+                &encryption_options,
+            )
+            .await
+            .unwrap();
+    }
+
+    #[should_panic(expected = "No recipient secrets found")]
+    #[tokio::test]
+    async fn unpack_failed_with_incorrect_recipient_did() {
+        let kms = LocalKms::new();
+
+        let (sender_did, sender_key_metadata) =
+            create_did_and_key_metadata_by_key_type(&kms, KeyType::P256).await;
+        let recipient_did = "did:peer:4zQmdrR8n3sYAuDh7n3Ztwhc22dFTLwXcq6M75AXPuvdCMWw:z3c91SEw\
+        qVio1Xpv8jBeTSQK3C9ahjbRvKxyLd6H8EnhfG5cCg9cqyxxUpLdeeMzs5raX3YyJbrNqoNqVPoZ6iHtAKGx24VDxbm\
+        BTKWkm4YYcSXAJEKxWfrteVzXLATrfBqZz4t8UcTpL4g61JRcxfSepifdJARJdJe4idgfTcVKR3YQ1hYQchNX443PnP\
+        XsG1NJ9U5Jb6AHQK78Y7ydDUqj15RUxQdqCsURhFqoCASnB9DN9JCP6zpqCzy2cW2AVcXNLGrd3HLoCBDUScXhqrwy4\
+        8hcYHW86eRwQmYvgJPCrMLkLe5KRABQic2XEvHsv5HsCQFFpfTD6iSyqqSB2W3YvkvLb5giFwJsCz1PpXbKZt9gDkgP\
+        H54RmqFG1Y8Y4Mx2A9umWhJuUdS"
+            .to_string();
+
+        let didcomm_service = DIDCommService::new(kms, UniversalResolver::default());
+
+        let encryption_options = didcomm::PackEncryptedOptions {
+            protect_sender: true,
+            ..Default::default()
+        };
+
+        let msg = Message::build(
+            sender_did.to_owned(),
+            recipient_did.to_owned(),
+            json!("example-body"),
+        )
+        .to(recipient_did.to_owned())
+        .from(sender_did.to_owned())
+        .finalize();
+
+        let (packed_msg, _) = didcomm_service
+            .pack_encrypted(
+                &msg,
+                &recipient_did,
+                Some(&sender_did),
+                None,
+                &encryption_options,
+            )
+            .await
+            .unwrap();
+
+        didcomm_service
+            .unpack(&packed_msg, &UnpackOptions::default())
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn pack_signed_succeeded() {
         let kms = LocalKms::new();
         let did_resolver = UniversalResolver::default();
 
@@ -285,7 +373,7 @@ mod test {
         )
         .finalize();
 
-        let didcomm_service = DIDCommService::new(kms.clone(), did_resolver.clone(), did_resolver);
+        let didcomm_service = DIDCommService::new(kms.clone(), did_resolver);
 
         let (signed_msg, _) = didcomm_service
             .pack_signed(&msg, &sender_did)
@@ -301,11 +389,11 @@ mod test {
     }
 
     #[tokio::test]
-    async fn test_didcomm_pack_plaintext() {
+    async fn pack_plaintext_succeeded() {
         let kms = LocalKms::new();
         let did_resolver = UniversalResolver::default();
 
-        let didcomm_service = DIDCommService::new(kms, did_resolver.clone(), did_resolver);
+        let didcomm_service = DIDCommService::new(kms, did_resolver);
 
         let msg = Message::build(
             "1234567890".to_owned(),

@@ -1,6 +1,8 @@
 use crate::reqwest::validators::content_size::ContentSizeLimiter;
 use crate::reqwest::validators::content_type::ContentTypeValidator;
+#[cfg(not(target_arch = "wasm32"))]
 use reqwest::{Request, Response};
+#[cfg(not(target_arch = "wasm32"))]
 use tracing::warn;
 
 pub struct ValidatorMiddleware {
