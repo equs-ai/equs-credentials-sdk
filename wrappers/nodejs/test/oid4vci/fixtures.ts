@@ -1,7 +1,6 @@
 import {
   AuthMetadata,
   Claims,
-  CredentialOfferParameters,
   CredentialOfferGrants,
   OID4VCICredentialMetadata,
   OID4VCICredentialOffer,
@@ -157,7 +156,7 @@ export const CRED_RESPONSE = {
   notification_id: "1111",
 };
 
-export const CRED_OFFER_WITH_PRE_AUTH_GRANT: CredentialOfferParameters = {
+export const CRED_OFFER_WITH_PRE_AUTH_GRANT: OID4VCICredentialOffer = {
   credential_issuer: ISSUER_ENDPOINT,
   credential_configuration_ids: [CRED_DEF_ID],
   grants: {
@@ -170,7 +169,7 @@ export const CRED_OFFER_WITH_PRE_AUTH_GRANT: CredentialOfferParameters = {
   },
 };
 
-export const CRED_OFFER_WITH_AUTH_GRANT: CredentialOfferParameters = {
+export const CRED_OFFER_WITH_AUTH_GRANT: OID4VCICredentialOffer = {
   credential_issuer: ISSUER_ENDPOINT,
   credential_configuration_ids: [CRED_DEF_ID],
   grants: {

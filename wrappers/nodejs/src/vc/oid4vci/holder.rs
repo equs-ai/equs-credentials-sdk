@@ -76,7 +76,7 @@ impl OID4VCIHolder {
     }
 
     #[napi(
-        ts_args_type = "offer_params: CredentialOfferParameters, authorization_callback: (authorization_flow: { type: \"authorize\", url: string } | { type: \"preauthorized\" }) => Promise<string>",
+        ts_args_type = "offer_params: OID4VCICredentialOffer, authorization_callback: (authorization_flow: { type: \"authorize\", url: string } | { type: \"preauthorized\" }) => Promise<string>",
         ts_return_type = "Promise<TokenResponse>"
     )]
     pub async fn get_access_token(

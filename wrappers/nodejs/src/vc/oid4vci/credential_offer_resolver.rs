@@ -35,7 +35,7 @@ impl OID4VCICredentialOfferResolver {
         Ok(resolver)
     }
 
-    #[napi(ts_return_type = "Promise<CredentialOfferParameters>")]
+    #[napi(ts_return_type = "Promise<OID4VCICredentialOffer>")]
     pub async fn resolve(&self, offer_uri: String) -> Result<JsonObject> {
         let offer_uri = Url::parse(&offer_uri).map_err(|e| Error::from_reason(e.to_string()))?;
         self.0
