@@ -12,7 +12,6 @@ import fs from "fs/promises";
       "DIDVerificationMethod",
       "Claims",
       "CredentialOfferGrants",
-      "CredentialOfferParameters",
       "AuthMetadata",
       "TokenResponse",
       "OID4VCICredentialRequest",
