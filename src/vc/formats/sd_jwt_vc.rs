@@ -401,7 +401,7 @@ impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata, Claims> for S
         })?;
         trace!(resolved_holder_jwk = ?jwk);
 
-        let disclosures = metadata
+        let disclosures: Vec<&str> = metadata
             .disclosures
             .iter()
             .map(|d| d.as_str())
@@ -414,13 +414,19 @@ impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata, Claims> for S
             .collect();
         trace!(resolved_disclosures = ?disclosures);
 
+        let sd_strategy = if !disclosures.is_empty() {
+            ClaimsForSelectiveDisclosureStrategy::Custom(disclosures)
+        } else {
+            ClaimsForSelectiveDisclosureStrategy::AllLevels
+        };
+
         let mut issuer = SDJWTIssuer::new(sgn_wrapper);
         let claims = claims.try_into().context(ClaimsSnafu)?;
 
         issuer
             .issue_sd_jwt(
                 claims,
-                ClaimsForSelectiveDisclosureStrategy::Custom(disclosures),
+                sd_strategy,
                 Some(jwk),
                 false,
                 SDJWTSerializationFormat::Compact,
@@ -617,6 +623,85 @@ mod tests {
         );
         assert!(disclosed.get("surname").is_none());
         assert!(disclosed.get(IAT_CLAIM).is_none());
+    }
+
+    #[tokio::test]
+    async fn sd_jwt_issuance_make_all_levels_disclosable_by_default() {
+        let kms = LocalKms::new();
+        let (hld_did_url, hld_kh) = create_did_url_and_key_handle(&kms, KeyType::P256).await;
+        let (iss_did_url, iss_kh) = create_did_url_and_key_handle(&kms, KeyType::P256).await;
+        let iss_jwk = iss_kh.jwk().unwrap();
+
+        let mut claims = sample_claims();
+        let exp = OffsetDateTime::now_utc()
+            .add(time::Duration::days(365))
+            .unix_timestamp();
+        let nbf = OffsetDateTime::now_utc()
+            .add(time::Duration::days(1))
+            .unix_timestamp();
+        let iat = OffsetDateTime::now_utc().unix_timestamp();
+        claims.insert(EXP_CLAIM.to_string(), Claim::Int(exp));
+        claims.insert(NBF_CLAIM.to_string(), Claim::Int(nbf));
+        claims.insert(IAT_CLAIM.to_string(), Claim::Int(iat));
+
+        let vc_metadata = sample_vc_metadata_with_empty_disclosures();
+        let vc = SdJwtAPI::create_vc(
+            claims,
+            (&iss_did_url, iss_kh),
+            (&hld_did_url, hld_kh.clone()),
+            vc_metadata,
+        )
+        .await
+        .unwrap();
+
+        SdJwtAPI::verify_vc(&vc, Default::default()).await.unwrap();
+
+        let claims = vc.parse_claims().unwrap();
+        assert!(claims.get("name").is_some());
+        assert!(claims.get("surname").is_some());
+        assert_eq!(
+            claims.get("dob").unwrap(),
+            &Claim::String("09/09/1989".to_string())
+        );
+        assert_eq!(
+            claims.get(SUB_CLAIM).unwrap(),
+            &Claim::String(hld_did_url.did().to_string())
+        );
+        assert_eq!(
+            claims.get(ISS_CLAIM).unwrap(),
+            &Claim::String(iss_did_url.did().to_string())
+        );
+        assert_eq!(
+            claims.get(VCT_CLAIM).unwrap(),
+            &Claim::String("https://issuer.net/cred_schema".to_string())
+        );
+        assert_eq!(claims.get(EXP_CLAIM).unwrap(), &Claim::Int(exp));
+        assert_eq!(claims.get(NBF_CLAIM).unwrap(), &Claim::Int(nbf));
+        assert_eq!(claims.get(IAT_CLAIM).unwrap(), &Claim::Int(iat));
+
+        let nonce = random_nonce().await;
+        let vp = SdJwtAPI::create_vp(
+            &vc,
+            hld_kh,
+            &nonce,
+            "verifier-id",
+            sample_vp_metadata_with_empty_disclosures(),
+        )
+        .await
+        .unwrap();
+
+        let vc_from_vp = vp.get_credential().unwrap();
+        SdJwtAPI::verify_signature(&vc_from_vp, &iss_jwk).unwrap();
+
+        let disclosed = SdJwtAPI::verify_vp(&vp, &nonce, "verifier-id", VerifyOptions::default())
+            .await
+            .unwrap();
+
+        // all claims disclosed by default (VC metadata disclosures is empty vec[])
+        assert!(disclosed.get("name").is_none());
+        assert!(disclosed.get("surname").is_none());
+        assert!(disclosed.get("dob").is_none());
+        assert!(disclosed.get("address").is_none());
     }
 
     #[tokio::test]
@@ -929,6 +1014,10 @@ mod tests {
             "name": "John",
             "surname": "Doe",
             "dob": "09/09/1989",
+            "address": {
+                "country": "UK",
+                "city": "London"
+            }
         })
         .try_into()
         .unwrap()
@@ -943,6 +1032,15 @@ mod tests {
         }
     }
 
+    fn sample_vc_metadata_with_empty_disclosures() -> VCMetadata {
+        VCMetadata {
+            vct: "https://issuer.net/cred_schema".to_owned(),
+            lifetime: time::Duration::days(365),
+            disclosures: vec![],
+            credential_status: None,
+        }
+    }
+
     fn sample_vp_metadata() -> VPMetadata {
         VPMetadata {
             disclosures: json!({
@@ -951,6 +1049,12 @@ mod tests {
             .as_object()
             .unwrap()
             .to_owned(),
+        }
+    }
+
+    fn sample_vp_metadata_with_empty_disclosures() -> VPMetadata {
+        VPMetadata {
+            disclosures: serde_json::Map::new(),
         }
     }
 }
