@@ -1,8 +1,7 @@
+use crate::inmem::index_storage::IndexStorage;
 use crate::inmem::storage::InMemStorage;
-use crate::inmem::tag::TagStorage;
-use crate::inmem::utils::intersection;
 use crate::storage::Storage;
-use crate::vault::{CredentialEntry, CredentialFilter, Error, StoringSnafu, Vault};
+use crate::vault::{CredentialEntry, EmptyFieldsSnafu, Error, StoringSnafu, Vault};
 use crate::vc::{Credential, CredentialMetadata};
 use async_trait::async_trait;
 use futures::future;
@@ -10,10 +9,12 @@ use std::collections::HashSet;
 use std::sync::Arc;
 use tracing::{instrument, Level};
 
+type Level_ = Level;
+
 #[derive(Debug, Clone)]
 pub struct InMemVault {
     storage: Arc<InMemStorage<String, CredentialEntry>>,
-    indexes: TagStorage,
+    indexes: IndexStorage,
 }
 
 impl InMemVault {
@@ -24,7 +25,7 @@ impl InMemVault {
     pub fn new() -> Self {
         Self {
             storage: Arc::new(InMemStorage::new()),
-            indexes: TagStorage::new(),
+            indexes: IndexStorage::new(),
         }
     }
 
@@ -34,22 +35,8 @@ impl InMemVault {
         ret(),
     )]
     async fn update_index(&self, metadata: &CredentialMetadata, storage_id: &str) {
-        self.indexes
-            .put_tag(&("type".to_string(), metadata.type_.to_owned()), storage_id)
-            .await;
-        self.indexes
-            .put_tag(
-                &("format".to_string(), metadata.format.to_string()),
-                storage_id,
-            )
-            .await;
-
-        for tag in &metadata.tags {
-            let (name, _) = tag;
-            self.indexes.put_tag(tag, storage_id).await;
-            self.indexes
-                .put_tag_name(name.to_string(), storage_id)
-                .await;
+        for field in &metadata.fields {
+            self.indexes.put_index(field.to_owned(), storage_id).await;
         }
     }
 
@@ -82,16 +69,8 @@ impl InMemVault {
     }
 
     #[instrument(level = Level::TRACE, skip(self), ret())]
-    async fn find_by_filters(&self, filters: CredentialFilter) -> HashSet<String> {
-        match filters {
-            CredentialFilter::Format(format) => {
-                self.indexes.get_ids(&("format".to_string(), format)).await
-            }
-            CredentialFilter::TagKeys(tag_names) => {
-                self.indexes.get_ids_for_tag_names(tag_names).await
-            }
-            CredentialFilter::Tag(name, val) => self.indexes.get_ids(&(name, val)).await,
-        }
+    async fn find_by_fields(&self, fields: Vec<String>) -> HashSet<String> {
+        self.indexes.get_ids_for_indexes(fields).await
     }
 }
 
@@ -162,27 +141,13 @@ impl Vault for InMemVault {
         })
     }
 
-    #[instrument(
-        level = Level::TRACE,
-        skip(self),
-        err(),
-        ret(),
-    )]
-    async fn find_credentials(
-        &self,
-        filters: Vec<CredentialFilter>,
-    ) -> Result<Vec<CredentialEntry>, Error> {
-        let ids = future::join_all(
-            filters
-                .into_iter()
-                .map(|filter| self.find_by_filters(filter)),
-        )
-        .await;
+    async fn find_credentials(&self, fields: Vec<String>) -> Result<Vec<CredentialEntry>, Error> {
+        if fields.is_empty() {
+            EmptyFieldsSnafu.fail()?
+        };
 
-        let ids = intersection(&ids);
-
+        let ids = self.find_by_fields(fields).await;
         let creds = future::try_join_all(ids.iter().map(|id| self.get_credential(id))).await?;
-
         Ok(creds.into_iter().flatten().collect())
     }
 }

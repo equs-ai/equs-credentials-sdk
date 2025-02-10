@@ -5,6 +5,7 @@ import {
   inMemVault,
   IssuerMetadata,
   PresentationInput,
+  PresentationRestrictionValueType,
   VCFormat,
 } from "../../index";
 import { createDidAndKeyMetadata } from "../utils/utils";
@@ -32,7 +33,10 @@ export class Utils {
       restrictions: [
         {
           fields: ["$.vct"],
-          value: "https://credentials.example.com/identity_credential",
+          value: {
+            type: PresentationRestrictionValueType.String,
+            value: "https://credentials.example.com/identity_credential",
+          },
           optional: false,
         },
         {

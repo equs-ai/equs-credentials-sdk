@@ -1,6 +1,8 @@
 use std::collections::HashSet;
 use tracing::{instrument, Level};
 
+type Level_ = Level;
+
 #[instrument(level = Level::TRACE, ret())]
 pub(super) fn intersection(id_sets: &[HashSet<String>]) -> HashSet<String> {
     if let Some(first) = id_sets.first() {

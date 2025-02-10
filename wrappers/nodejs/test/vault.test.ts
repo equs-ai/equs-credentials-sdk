@@ -1,4 +1,4 @@
-import { Alg, wrapJsVault, VCFormat, Vault, CredentialFilter } from "../index";
+import { Alg, Vault, VCFormat, wrapJsVault } from "../index";
 
 const CREDENTIAL_DATA = {
   id: "test",
@@ -19,7 +19,7 @@ const CREDENTIAL_DATA = {
     format: VCFormat.SdJwtVc,
     kid: "kid",
     alg: Alg.ES256,
-    tags: [{ key: "firstname", value: "John" }],
+    fields: ["firstname"],
   },
 };
 
@@ -45,7 +45,7 @@ describe("Vault: ", () => {
   test("find Credentials", async () => {
     const vault = await wrapJsVault(mockVault(CREDENTIAL_DATA));
 
-    await vault.findCredentials([CredentialFilter.byFormat("dc+sd-jwt")]);
+    await vault.findCredentials(["format"]);
 
     return;
   });
@@ -95,10 +95,8 @@ function mockVault(credential_data): Vault {
       ];
     },
 
-    async findCredentials(criteria: CredentialFilter[]) {
-      const value = await criteria[0].value();
-      if (!(value.type === "Format" && value.format === "dc+sd-jwt"))
-        throw new Error(`Invalid criteria: ${JSON.stringify(criteria)}`);
+    async findCredentials(fields: string[]) {
+      if (!fields.length) throw new Error("Fields are empty");
 
       return [
         {

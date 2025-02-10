@@ -7,12 +7,14 @@ use uuid::Uuid;
 
 use agent_sdk::crypto::Alg;
 use agent_sdk::vault::{
-    CredentialEntry, CredentialFilter, Error, FormatNotSupportedSnafu, ResolvingSnafu,
+    CredentialEntry, EmptyFieldsSnafu, Error, FormatNotSupportedSnafu, ResolvingSnafu,
     StoringSnafu, VCSnafu, Vault,
 };
 use agent_sdk::vc::{
-    Credential, CredentialMetadata, VCFormat, JWT_VC_JSON, JWT_VC_JSON_LD, LDP_VC, SD_JWT_VC,
+    Credential, CredentialMetadata, JWT_VC_JSON, JWT_VC_JSON_LD, LDP_VC, SD_JWT_VC,
 };
+
+type _Level = Level;
 
 pub const TAG_TYPE: &str = "type_";
 pub const TAG_FORMAT: &str = "format";
@@ -103,14 +105,10 @@ impl AskarVault {
         metadata: &CredentialMetadata,
     ) -> Result<Entry, Error> {
         let name = Uuid::new_v4().to_string();
-        let mut tags = vec![
-            EntryTag::Encrypted(TAG_TYPE.to_string(), metadata.type_.to_owned()),
-            EntryTag::Encrypted(
-                TAG_FORMAT.to_string(),
-                <&VCFormat as Into<&str>>::into(&metadata.format).to_string(),
-            ),
-            EntryTag::Encrypted(TAG_KID.to_string(), metadata.kid.to_owned()),
-        ];
+        let mut tags = vec![EntryTag::Encrypted(
+            TAG_KID.to_string(),
+            metadata.kid.to_owned(),
+        )];
 
         if let Some(alg) = metadata.alg {
             tags.push(EntryTag::Encrypted(
@@ -119,8 +117,8 @@ impl AskarVault {
             ))
         }
 
-        for (name, value) in &metadata.tags {
-            tags.push(EntryTag::Encrypted(name.to_owned(), value.to_owned()))
+        for tag in &metadata.fields {
+            tags.push(EntryTag::Encrypted(tag.to_owned(), "".to_owned()))
         }
 
         match credential {
@@ -232,11 +230,11 @@ impl Vault for AskarVault {
         err(),
         ret(),
     )]
-    async fn find_credentials(
-        &self,
-        filters: Vec<CredentialFilter>,
-    ) -> Result<Vec<CredentialEntry>, Error> {
-        let tag_filter = map_credential_filter_to_tags(filters).ok_or_else(|| {
+    async fn find_credentials(&self, fields: Vec<String>) -> Result<Vec<CredentialEntry>, Error> {
+        if fields.is_empty() {
+            EmptyFieldsSnafu.fail()?
+        };
+        let tag_filter = map_credential_fields_to_tags(fields).ok_or_else(|| {
             StoringSnafu {
                 details: "empty tag filter",
             }
@@ -320,17 +318,8 @@ impl From<AskarVaultId> for String {
 }
 
 #[instrument(level = Level::TRACE, ret())]
-fn map_credential_filter_to_tags(filters: Vec<CredentialFilter>) -> Option<TagFilter> {
-    let mut tags = vec![];
-    for filter in filters {
-        let tag = match filter {
-            CredentialFilter::Format(format) => TagFilter::is_eq(TAG_FORMAT, format),
-            CredentialFilter::Tag(name, value) => TagFilter::is_eq(name, value),
-            CredentialFilter::TagKeys(names) => TagFilter::exist(names),
-            _ => continue,
-        };
-        tags.push(tag)
-    }
+fn map_credential_fields_to_tags(fields: Vec<String>) -> Option<TagFilter> {
+    let tags = vec![TagFilter::exist(fields)];
 
     if tags.is_empty() {
         return None;
@@ -393,7 +382,7 @@ fn entry_to_credential(entry: Entry) -> Result<CredentialEntry, Error> {
 #[cfg(test)]
 mod tests {
     use crate::AskarStorage;
-    use agent_sdk::vault::{CredentialEntry, CredentialFilter, Vault};
+    use agent_sdk::vault::{CredentialEntry, Vault};
     use agent_sdk::vc::{Credential, CredentialMetadata, VCFormat};
 
     // TODO: consider splitting this test into several small unit tests
@@ -415,13 +404,10 @@ mod tests {
             kid: "1234".into(),
             format: VCFormat::SdJwtVc,
             alg: None,
-            tags: vec![
-                (
-                    "$.vct".to_string(),
-                    "https://credentials.example.com/identity_credential".to_string(),
-                ),
-                ("$.name".to_string(), "John".to_string()),
-                ("$.email.work".to_string(), "email@email.com".to_string()),
+            fields: vec![
+                "$.vct".to_string(),
+                "$.name".to_string(),
+                "$.email.work".to_string(),
             ],
         };
         let cred2 = r###"{
@@ -439,7 +425,7 @@ mod tests {
             kid: "1234".into(),
             format: VCFormat::LdpVc,
             alg: None,
-            tags: vec![],
+            fields: vec![],
         };
 
         let cred1_id = vault
@@ -500,13 +486,9 @@ mod tests {
 
         let find_res = vault
             .find_credentials(vec![
-                CredentialFilter::Format(VCFormat::SdJwtVc.to_string()),
-                CredentialFilter::TagKeys(vec!["$.name".to_string()]),
-                CredentialFilter::Tag("$.email.work".to_string(), "email@email.com".to_string()),
-                CredentialFilter::Tag(
-                    "$.vct".to_string(),
-                    "https://credentials.example.com/identity_credential".to_string(),
-                ),
+                "$.name".to_string(),
+                "$.email.work".to_string(),
+                "$.vct".to_string(),
             ])
             .await
             .unwrap();

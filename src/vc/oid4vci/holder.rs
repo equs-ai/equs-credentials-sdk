@@ -1060,7 +1060,7 @@ mod tests {
             kid: "1234".into(),
             format: VCFormat::SdJwtVc,
             alg: None,
-            tags: vec![],
+            fields: vec![],
         };
 
         let result = holder_service

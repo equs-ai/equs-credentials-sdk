@@ -20,8 +20,8 @@ use crate::inmem::crypto::bls12381::Bls12381;
 use crate::inmem::crypto::ed25519::Ed25519;
 use crate::inmem::crypto::k256::K256;
 use crate::inmem::crypto::p256::P256;
+use crate::inmem::index_storage::IndexStorage;
 use crate::inmem::storage::InMemStorage;
-use crate::inmem::tag::TagStorage;
 use crate::kms::{
     BIP32Params, CreationSnafu, CryptoSnafu, DerivationType, DerivativeKms, ECDH1PUParams,
     ECDHESParams, KeyID, KeyPair, Kms,
@@ -150,7 +150,7 @@ pub type Bytes = Vec<u8>;
 #[derive(Debug, Clone)]
 pub struct LocalKms {
     storage: Arc<InMemStorage<KeyID, Bytes>>,
-    indexes: TagStorage,
+    indexes: IndexStorage,
 }
 
 const KID_LENGTH: usize = 10;
@@ -163,7 +163,7 @@ impl LocalKms {
     pub fn new() -> Self {
         Self {
             storage: Arc::new(InMemStorage::new()),
-            indexes: TagStorage::new(),
+            indexes: IndexStorage::new(),
         }
     }
 
@@ -174,7 +174,7 @@ impl LocalKms {
     pub fn for_store(storage: InMemStorage<KeyID, Bytes>) -> Self {
         Self {
             storage: Arc::new(storage),
-            indexes: TagStorage::new(),
+            indexes: IndexStorage::new(),
         }
     }
 
@@ -238,7 +238,7 @@ impl LocalKms {
         kt: kms::KeyType,
     ) -> Result<(), Error> {
         let public_key_id = Self::public_key_to_id(public_key);
-        self.indexes.put_tag_name(public_key_id, kid).await;
+        self.indexes.put_index(public_key_id, kid).await;
 
         let re_encoded_key = match kt {
             kms::KeyType::K256 => Some(K256::re_encode_public_key(
@@ -254,7 +254,7 @@ impl LocalKms {
 
         if let Some(re_encoded_key) = re_encoded_key {
             let re_encoded_pk_id = Self::public_key_to_id(&re_encoded_key);
-            self.indexes.put_tag_name(re_encoded_pk_id, kid).await;
+            self.indexes.put_index(re_encoded_pk_id, kid).await;
         }
 
         Ok(())
@@ -264,7 +264,7 @@ impl LocalKms {
         let public_key_id = Self::public_key_to_id(public_key);
         let kid = self
             .indexes
-            .get_ids_for_tag_names(vec![public_key_id.clone()])
+            .get_ids_for_indexes(vec![public_key_id.clone()])
             .await
             .iter()
             .next()

@@ -1,4 +1,4 @@
-import { CredentialFilter, inMemKms, inMemVault, IssuerDiscovery, Oid4VciHolderBuilder, VCFormat } from "../../index";
+import { inMemKms, inMemVault, IssuerDiscovery, Oid4VciHolderBuilder, VCFormat } from "../../index";
 import {
   ACCESS_TOKEN,
   ACCESS_TOKEN_RESPONSE,
@@ -118,18 +118,12 @@ describe("OID4VCI Holder: ", () => {
       type: CRED_TYPE,
       kid: "1234",
       format: VCFormat.SdJwtVc,
-      tags: [
-        { key: "$.vct", value: "https://credentials.example.com/identity_credential" },
-        { key: "$.name", value: "John" },
-      ],
+      fields: ["$.vct", "$.name"],
     };
 
     await vciHolder.storeCredential(credential, metadata);
 
-    const criteria = [
-      CredentialFilter.byFormat("dc+sd-jwt"),
-      CredentialFilter.byTags("$.vct", "https://credentials.example.com/identity_credential"),
-    ];
+    const criteria = ["$.vct"];
     const credentialEntries = await vault.findCredentials(criteria);
 
     expect(credentialEntries).toEqual([{ credential, kid: "1234", id: credentialEntries[0].id }]);

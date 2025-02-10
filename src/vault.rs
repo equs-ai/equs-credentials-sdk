@@ -1,14 +1,15 @@
 //! APIs for implementing Verifiable Credentials Vault
 
-use std::fmt::Debug;
-
+use crate::vc::Credential;
 use crate::{kms, vc};
 use async_trait::async_trait;
 use common_macros::DebugError;
+use jsonpath_rust::JsonPathParserError;
 #[cfg(test)]
 use mockall::automock;
 use serde::{Deserialize, Serialize};
 use snafu::{Location, Snafu};
+use std::fmt::Debug;
 
 /// `Vault` Error.
 ///
@@ -37,30 +38,30 @@ pub enum Error {
         #[snafu(implicit)]
         location: Location,
     },
+
+    #[snafu(display("Claims parsing error"))]
+    ClaimsParsing { source: vc::formats::Error },
+
+    #[snafu(display("Claims did not pass filtering: {details}"))]
+    ClaimsDidNotPassFiltering { details: String },
+
+    #[snafu(display("Cannot create JSONPath"))]
+    CannotCreateJSONPath { source: JsonPathParserError },
+
+    #[snafu(display("Unsupported credential format: {format}"))]
+    UnsupportedCredentialFormat { format: String },
+
+    #[snafu(display("Empty fields provided"))]
+    EmptyFields,
 }
 
 /// `Result` alias for Vault-specific [Error].
 pub type Result<T> = core::result::Result<T, Error>;
 
-/// Filter to be used in [Vault::find_credentials].
-///
-/// # Variants
-/// - `Format(String)`: Filters credentials based on their format (e.g., "dc+sd-jwt").
-/// - `Fields(Vec<String>)`: Filters credentials based on the presence of specific tag keys.
-/// - `FieldValue(String, String)`: Filters credentials where a specific tag key matches a given value.
-#[derive(Debug, PartialEq, Clone)]
-#[non_exhaustive]
-pub enum CredentialFilter {
-    Format(String),
-    TagKeys(Vec<String>),
-    Tag(String, String),
-    // etc
-}
-
 /// A struct for stored `Credential` in `Vault` with some extra information.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CredentialEntry {
-    pub credential: vc::Credential,
+    pub credential: Credential,
     pub kid: kms::KeyID,
     pub id: String,
 }
@@ -91,7 +92,7 @@ pub trait Vault: Send + Sync {
     /// * [Error::Storing] - fails to store the values.
     async fn store_credential(
         &self,
-        credential: vc::Credential,
+        credential: Credential,
         metadata: &vc::CredentialMetadata,
     ) -> Result<String>;
 
@@ -127,27 +128,24 @@ pub trait Vault: Send + Sync {
     ///
     /// # Arguments
     ///
-    /// * `criterias` -  a vec of [CredentialFilter] to search for credentials.
+    /// * `fields` -  a vec of  to search for credentials.
     ///
     /// # Returns
     ///
-    /// A Vector of `CredentialEntry` matched the provided `criterias` on success.
-    /// In case if nothing meets the `criterias` an empty Vector should be returned.
+    /// A Vector of `CredentialEntry` matched the provided `fields` on success.
+    /// In case if nothing meets the `fields` an empty Vector should be returned.
     ///
     /// # Errors
     ///
     /// * [Error::Resolving] - fails to revolve the values.
     ///
     ///
-    async fn find_credentials(
-        &self,
-        filters: Vec<CredentialFilter>,
-    ) -> Result<Vec<CredentialEntry>>;
+    async fn find_credentials(&self, fields: Vec<String>) -> Result<Vec<CredentialEntry>>;
 }
 
 #[cfg(test)]
 pub mod test_util {
-    use crate::vault::{CredentialEntry, CredentialFilter, Vault};
+    use crate::vault::{CredentialEntry, Vault};
     use crate::vc::{Credential, CredentialMetadata, VCFormat};
 
     pub async fn test_vault<V: Vault>(vault: V) {
@@ -158,13 +156,10 @@ pub mod test_util {
             kid: "1234".into(),
             format: VCFormat::SdJwtVc,
             alg: None,
-            tags: vec![
-                (
-                    "$.vct".to_string(),
-                    "https://credentials.example.com/identity_credential".to_string(),
-                ),
-                ("$.name".to_string(), "John".to_string()),
-                ("$.email.work".to_string(), "email@email.com".to_string()),
+            fields: vec![
+                "$.vct".to_string(),
+                "$.name".to_string(),
+                "$.email.work".to_string(),
             ],
         };
         let cred2str = r###"{
@@ -183,7 +178,7 @@ pub mod test_util {
             kid: "1234".into(),
             format: VCFormat::LdpVc,
             alg: None,
-            tags: vec![],
+            fields: vec![],
         };
 
         let cred1_id = vault
@@ -244,13 +239,10 @@ pub mod test_util {
 
         let find_res = vault
             .find_credentials(vec![
-                CredentialFilter::Format(VCFormat::SdJwtVc.to_string()),
-                CredentialFilter::TagKeys(vec!["$.name".to_string()]),
-                CredentialFilter::Tag("$.email.work".to_string(), "email@email.com".to_string()),
-                CredentialFilter::Tag(
-                    "$.vct".to_string(),
-                    "https://credentials.example.com/identity_credential".to_string(),
-                ),
+                "format".to_string(),
+                "$.name".to_string(),
+                "$.email.work".to_string(),
+                "$.vct".to_string(),
             ])
             .await
             .unwrap();

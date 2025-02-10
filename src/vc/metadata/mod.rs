@@ -105,7 +105,7 @@ impl DefaultMetadataProcessor {
     }
 
     #[instrument(level = Level::TRACE, skip(credential), err())]
-    fn resolve_tags(credential: &Credential) -> Result<Vec<(String, String)>> {
+    fn resolve_fields(credential: &Credential) -> Result<Vec<String>> {
         let claims = credential.parse_claims().map_err(|err| {
             ResolvingSnafu {
                 details: format!("{err:?}"),
@@ -113,18 +113,18 @@ impl DefaultMetadataProcessor {
             .build()
         })?;
 
-        let tags: Vec<(String, String)> = utils::json::claims_to_json_path(claims)
+        let fields: Vec<String> = utils::json::claims_to_json_path(claims)
             .map_err(|err| {
                 ResolvingSnafu {
-                    details: format!("Unable to create tags for claims: {err}"),
+                    details: format!("Unable to create fields for claims: {err}"),
                 }
                 .build()
             })?
             .iter()
-            .map(|(k, v)| (k.to_owned(), v.to_owned()))
+            .map(|(k, _)| k.to_owned())
             .collect();
 
-        Ok(tags)
+        Ok(fields)
     }
 }
 
@@ -146,7 +146,7 @@ impl CredentialMetadataProcessor for DefaultMetadataProcessor {
             format,
             kid: key_metadata.kid,
             alg: None,
-            tags: Self::resolve_tags(credential)?,
+            fields: Self::resolve_fields(credential)?,
         })
     }
 }
@@ -250,70 +250,49 @@ mod tests {
     }
 
     #[test]
-    fn resolve_sd_jwt_cred_tags() {
+    fn resolve_sd_jwt_cred_fields() {
         let credential = Credential::SdJwt(SD_JWT_CRED.into());
-        let mut tags = DefaultMetadataProcessor::resolve_tags(&credential).unwrap();
+        let mut fields = DefaultMetadataProcessor::resolve_fields(&credential).unwrap();
 
-        tags.sort();
+        fields.sort();
 
         assert_eq!(
-            tags,
+            fields,
             vec![
-                ("$.dob".to_string(), "09/09/1989".to_string()),
-                ("$.exp".to_string(), "1758670181".to_string()),
-                ("$.iat".to_string(), "1727134181".to_string()),
-                (
-                    "$.iss".to_string(),
-                    "did:key:z6MkhEcbQWUFDpjbrmPZNwSrP88Xta7stHTo4QiA5AmrpHaY".to_string()
-                ),
-                ("$.name".to_string(), "John".to_string()),
-                ("$.nbf".to_string(), "1727134181".to_string()),
-                (
-                    "$.sub".to_string(),
-                    "did:key:z6MkqLdRvJwvhEoakcdyQvL5koo2iHfDnicd5xor567ujpmr".to_string()
-                ),
-                ("$.surname".to_string(), "Doe".to_string()),
-                (
-                    "$.vct".to_string(),
-                    "https://issuer.net/cred_schema".to_string()
-                ),
+                "$.dob".to_string(),
+                "$.exp".to_string(),
+                "$.iat".to_string(),
+                "$.iss".to_string(),
+                "$.name".to_string(),
+                "$.nbf".to_string(),
+                "$.sub".to_string(),
+                "$.surname".to_string(),
+                "$.vct".to_string(),
             ]
         );
     }
 
     #[test]
-    fn resolve_js_ld_cred_tags() {
+    fn resolve_js_ld_cred_fields() {
         let credential = Credential::LdpVc(VC::new(
             serde_json::from_str(LDP_VC_CRED).unwrap(),
             Default::default(),
         ));
 
-        let mut tags = DefaultMetadataProcessor::resolve_tags(&credential).unwrap();
+        let mut fields = DefaultMetadataProcessor::resolve_fields(&credential).unwrap();
 
-        tags.sort();
+        fields.sort();
 
         assert_eq!(
-            tags,
+            fields,
             vec![
-                (
-                    "$.@context[*]".to_string(),
-                    "https://www.w3.org/2018/credentials/v1".to_string()
-                ),
-                (
-                    "$.credentialSubject.id".to_string(),
-                    "did:example:d23dd687a7dc6787646f2eb98d0".to_string()
-                ),
-                (
-                    "$.id".to_string(),
-                    "http://example.org/credentials/3731".to_string()
-                ),
-                (
-                    "$.issuanceDate".to_string(),
-                    "2020-08-19T21:41:50Z".to_string()
-                ),
-                ("$.issuer".to_string(), "did:example:foo".to_string()),
-                ("$.type[*]".to_string(), "UniversityDegree".to_string()),
-                ("$.type[*]".to_string(), "VerifiableCredential".to_string()),
+                "$.@context[*]".to_string(),
+                "$.credentialSubject.id".to_string(),
+                "$.id".to_string(),
+                "$.issuanceDate".to_string(),
+                "$.issuer".to_string(),
+                "$.type[*]".to_string(),
+                "$.type[*]".to_string(),
             ]
         )
     }

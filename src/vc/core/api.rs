@@ -13,8 +13,9 @@ use crate::vc::{
 };
 use async_trait::async_trait;
 use common_macros::DebugError;
+use regex::Regex;
 use serde::{Deserialize, Serialize};
-use snafu::{Location, Snafu};
+use snafu::{Location, ResultExt, Snafu};
 use std::collections::HashMap;
 use std::fmt::Debug;
 use time::Duration;
@@ -192,7 +193,7 @@ pub struct CredentialRequestData {
 #[derive(Debug, PartialEq, Clone)]
 pub struct PresentationRestriction {
     pub fields: Vec<String>,
-    pub value: Option<String>,
+    pub value: Option<PresentationRestrictionValue>,
     pub optional: bool,
 }
 
@@ -301,6 +302,12 @@ pub enum Error {
 
     #[snafu(display("Inconsistent status list issuance data: {details}"))]
     InconsistentStatusListData { details: String },
+
+    #[snafu(display("Cannot create regex"))]
+    CannotCreateRegex { source: regex::Error },
+
+    #[snafu(display("Claims did not pass filtering: {details}"))]
+    ClaimsDidNotPassFiltering { details: String },
 }
 
 /// `Result` alias for vc:core API [Error].
@@ -597,4 +604,33 @@ pub trait Verifier: Send + Sync {
         presentation: &Presentation,
         http_client: &dyn HttpClient, // TODO: is it ok to use `dyn`?
     ) -> Result<Option<VCStatus>>;
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum PresentationRestrictionValue {
+    Const(String),
+    Pattern(String),
+}
+
+impl PresentationRestrictionValue {
+    pub fn validate_claim(&self, value: String) -> Result<()> {
+        let claim = value.trim_matches('\"').trim();
+
+        match &self {
+            PresentationRestrictionValue::Pattern(pattern) => {
+                let regex = Regex::new(pattern).context(CannotCreateRegexSnafu)?;
+
+                if !regex.is_match(claim) {
+                    ClaimsDidNotPassFilteringSnafu { details: claim }.fail()?
+                }
+            }
+            PresentationRestrictionValue::Const(string) => {
+                if !claim.cmp(string).is_eq() {
+                    ClaimsDidNotPassFilteringSnafu { details: claim }.fail()?
+                }
+            }
+        }
+
+        Ok(())
+    }
 }

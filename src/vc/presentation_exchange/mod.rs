@@ -1,8 +1,12 @@
 //! DIF Presentation Exchange related methods.
 
 use crate::utils::logs::sanitize_log_msg;
+use crate::vault::{
+    CannotCreateJSONPathSnafu, ClaimsParsingSnafu, UnsupportedCredentialFormatSnafu,
+};
+use crate::vc::core::api::PresentationRestrictionValue;
 use crate::vc::core::{PresentationInput, PresentationRestriction};
-use crate::vc::{formats, Presentation};
+use crate::vc::{formats, Credential, HasClaims, HasVCFormat, Presentation};
 use common_macros::DebugError;
 use openid4vp::core::presentation_submission::NoClaimsDecoder;
 use serde::{Deserialize, Serialize};
@@ -40,7 +44,7 @@ pub type JsonPath = serde_json_path::JsonPath;
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct FieldFilter {
     #[serde(rename = "type")]
-    type_: String,
+    type_: Option<String>,
     #[serde(flatten)]
     properties: Option<FieldFilterProperties>,
 }
@@ -49,6 +53,8 @@ struct FieldFilter {
 enum FieldFilterProperties {
     #[serde(rename = "const")]
     Const(String),
+    #[serde(rename = "pattern")]
+    Pattern(String),
     #[serde(rename = "items")]
     Items {
         #[serde(rename = "enum")]
@@ -93,6 +99,9 @@ pub enum Error {
         location: Location,
         source: openid4vp::core::presentation_submission::SubmissionValidationError,
     },
+
+    #[snafu(display("Json path creation error"))]
+    JsonPathCreation { source: serde_json_path::ParseError },
 }
 
 pub type Result<T> = core::result::Result<T, Error>;
@@ -507,10 +516,9 @@ fn extract_vp_format(input_descriptor: &InputDescriptor) -> Result<ClaimFormatDe
 fn resolve_credential_restriction(
     constraints: &ConstraintsField,
 ) -> Result<Vec<PresentationRestriction>> {
-    let fields = constraints
-        .path
-        .iter()
-        .map(|path| generalize_json_path(&path.to_string()))
+    let fields = (&constraints.path)
+        .into_iter()
+        .map(|path| path.to_string())
         .collect();
 
     let filter = constraints
@@ -529,7 +537,7 @@ fn resolve_credential_restriction(
     Ok(restrictions)
 }
 
-fn generalize_json_path(path: &str) -> String {
+fn generalize_json_path(path: &str) -> Result<String> {
     let path_segments: Vec<&str> = path.split('.').collect();
 
     let mut result = String::new();
@@ -550,7 +558,10 @@ fn generalize_json_path(path: &str) -> String {
         result.push_str(segment);
     }
 
-    result
+    let result = JsonPath::from_str(&result.to_string())
+        .context(JsonPathCreationSnafu)?
+        .to_string();
+    Ok(result)
 }
 
 fn build_restrictions(
@@ -569,9 +580,16 @@ fn build_restrictions(
     match filter_properties {
         FieldFilterProperties::Const(const_) => vec![PresentationRestriction {
             fields,
-            value: Some(const_),
+            value: Some(PresentationRestrictionValue::Const(const_)),
             optional,
         }],
+        FieldFilterProperties::Pattern(const_) => {
+            vec![PresentationRestriction {
+                fields,
+                value: Some(PresentationRestrictionValue::Pattern(const_)),
+                optional,
+            }]
+        }
         FieldFilterProperties::Items { enum_ } => {
             let fields: Vec<String> = fields.iter().map(|field| format!("{field}[*]")).collect();
 
@@ -579,7 +597,7 @@ fn build_restrictions(
                 .iter()
                 .map(move |value| PresentationRestriction {
                     fields: fields.clone(),
-                    value: Some(value.to_owned()),
+                    value: Some(PresentationRestrictionValue::Const(value.to_owned())),
                     optional,
                 })
                 .collect()
@@ -589,11 +607,55 @@ fn build_restrictions(
 
             vec![PresentationRestriction {
                 fields,
-                value: Some(const_),
+                value: Some(PresentationRestrictionValue::Const(const_)),
                 optional,
             }]
         }
     }
+}
+
+pub fn validate_credential(
+    credential: &Credential,
+    presentation_input: &PresentationInput,
+) -> crate::vault::Result<()> {
+    let claims = credential.parse_claims().context(ClaimsParsingSnafu)?;
+
+    if let Some(format) = &presentation_input.format {
+        if !credential.format().to_string().cmp(format).is_eq() {
+            UnsupportedCredentialFormatSnafu { format }.fail()?
+        }
+    }
+
+    for pr in &presentation_input.restrictions {
+        for field in &pr.fields {
+            let json_path_field =
+                jsonpath_rust::JsonPath::from_str(field).context(CannotCreateJSONPathSnafu)?;
+            let json_claims = json!(claims.claims());
+            let claims = json_path_field.find_slice(&json_claims);
+
+            let has_value = claims.first().is_some_and(|claim| claim.has_value());
+            if !has_value && !pr.optional {
+                crate::vault::ClaimsDidNotPassFilteringSnafu { details: field }.fail()?
+            }
+
+            let mut is_valid = true;
+            for claim in claims {
+                if let Some(value) = &pr.value {
+                    if value.validate_claim(claim.to_data().to_string()).is_ok() {
+                        is_valid = true;
+                        break;
+                    } else {
+                        is_valid = false;
+                    }
+                }
+            }
+            if !is_valid {
+                crate::vault::ClaimsDidNotPassFilteringSnafu { details: field }.fail()?
+            }
+        }
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]
@@ -704,7 +766,9 @@ mod tests {
                 format: Some("dc+sd-jwt".to_string()),
                 restrictions: vec![PresentationRestriction {
                     fields: vec!["$.vct".to_string()],
-                    value: Some("https://credentials.example.com/identity_credential".to_string()),
+                    value: Some(PresentationRestrictionValue::Const(
+                        "https://credentials.example.com/identity_credential".to_string()
+                    )),
                     optional: false,
                 }],
             }]
@@ -728,12 +792,16 @@ mod tests {
                 restrictions: vec![
                     PresentationRestriction {
                         fields: vec!["$.type[*]".to_string()],
-                        value: Some("VerifiableCredential".to_string()),
+                        value: Some(PresentationRestrictionValue::Const(
+                            "VerifiableCredential".to_string()
+                        )),
                         optional: false,
                     },
                     PresentationRestriction {
                         fields: vec!["$.type[*]".to_string()],
-                        value: Some("PermanentResidentCard".to_string()),
+                        value: Some(PresentationRestrictionValue::Const(
+                            "PermanentResidentCard".to_string()
+                        )),
                         optional: false,
                     }
                 ],
@@ -757,7 +825,9 @@ mod tests {
                 format: Some("ldp_vc".to_string()),
                 restrictions: vec![PresentationRestriction {
                     fields: vec!["$.type[*]".to_string()],
-                    value: Some("PermanentResidentCard".to_string()),
+                    value: Some(PresentationRestrictionValue::Const(
+                        "PermanentResidentCard".to_string()
+                    )),
                     optional: false,
                 }],
             }]
@@ -846,14 +916,13 @@ mod tests {
     }
 
     #[rstest]
-    #[case::no_indices("root.child.grandchild", "root.child.grandchild")]
-    #[case::single_index("root.child[0].grandchild", "root.child[*].grandchild")]
-    #[case::multi_index("root.child[0].grandchild[1]", "root.child[*].grandchild[*]")]
-    #[case::single_sigment("[0]", "[*]")]
+    #[case::no_indices("$.root.child.grandchild", "$.root.child.grandchild")]
+    #[case::single_index("$.root.child[0].grandchild", "$.root.child[*].grandchild")]
+    #[case::multi_index("$.root.child[0].grandchild[1]", "$.root.child[*].grandchild[*]")]
+    #[case::single_sigment("$[0]", "$[*]")]
     fn test_generalize_json_path(#[case] input: &str, #[case] expected: &str) {
-        assert_eq!(generalize_json_path(input), expected);
+        assert_eq!(generalize_json_path(input).unwrap(), expected);
     }
-
     fn create_single_presentation_definition() -> PresentationDefinition {
         let input_descriptor = create_input_descriptor(
             "descriptor_id",

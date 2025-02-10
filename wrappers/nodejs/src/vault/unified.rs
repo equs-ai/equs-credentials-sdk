@@ -1,6 +1,6 @@
 use crate::vault::JsVault;
 use crate::vault::NativeVault;
-use agent_sdk::vault::{CredentialEntry, CredentialFilter, Vault};
+use agent_sdk::vault::{CredentialEntry, EmptyFieldsSnafu, Vault};
 use agent_sdk::vc::{Credential, CredentialMetadata};
 use async_trait::async_trait;
 use napi::Either;
@@ -42,11 +42,14 @@ impl Vault for UnifiedVault {
 
     async fn find_credentials(
         &self,
-        filters: Vec<CredentialFilter>,
+        fields: Vec<String>,
     ) -> agent_sdk::vault::Result<Vec<CredentialEntry>> {
+        if fields.is_empty() {
+            EmptyFieldsSnafu.fail()?
+        };
         match self {
-            UnifiedVault::Js(js) => js.find_credentials(filters).await,
-            UnifiedVault::Native(native) => native.inner().find_credentials(filters).await,
+            UnifiedVault::Js(js) => js.find_credentials(fields).await,
+            UnifiedVault::Native(native) => native.inner().find_credentials(fields).await,
         }
     }
 }

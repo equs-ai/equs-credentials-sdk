@@ -2,6 +2,7 @@ import {
   createHolder,
   createIssuer,
   createVerifier,
+  PresentationRestrictionValueType,
   resolveMetadata,
   VcCoreHolder,
   VcCoreIssuer,
@@ -110,7 +111,10 @@ describe("VC::Core", () => {
         restrictions: [
           {
             fields: ["$.vct"],
-            value: temp_store_map,
+            value: {
+              type: PresentationRestrictionValueType.String,
+              value: temp_store_map,
+            },
             optional: false,
           },
           {
