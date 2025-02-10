@@ -1,15 +1,14 @@
 import {
   AuthMetadata,
   Claims,
+  CredentialFormats,
   CredentialOfferGrants,
+  JwkAlgorithm,
   OID4VCICredentialMetadata,
   OID4VCICredentialOffer,
   OID4VCICredentialRequest,
   OID4VCIIssuerMetadata,
-  CredentialFormats,
-  JwkAlgorithm,
 } from "../../index";
-import { PRE_AUTH_CODE_KEY, PRE_AUTH_GRANT_KEY } from "../../types";
 
 export const ISSUER_ENDPOINT = "http://localhost:9000";
 export const TOKEN_ENDPOINT = `${ISSUER_ENDPOINT}/auth/token`;
@@ -160,8 +159,8 @@ export const CRED_OFFER_WITH_PRE_AUTH_GRANT: OID4VCICredentialOffer = {
   credential_issuer: ISSUER_ENDPOINT,
   credential_configuration_ids: [CRED_DEF_ID],
   grants: {
-    [PRE_AUTH_GRANT_KEY]: {
-      [PRE_AUTH_CODE_KEY]: "code",
+    "urn:ietf:params:oauth:grant-type:pre-authorized_code": {
+      "pre-authorized_code": "code",
       tx_code: null,
       interval: null,
       authorization_server: `${ISSUER_ENDPOINT}/auth`,
