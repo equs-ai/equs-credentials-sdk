@@ -7,7 +7,7 @@ use tracing::{debug, info, instrument, trace, Level};
 
 use crate::crypto::Alg;
 use crate::nonce::Nonce;
-use crate::vault::{CredentialEntry, CredentialFilter};
+use crate::vault::CredentialEntry;
 use crate::vc::core::{
     CredentialOffer, CredentialRequest, CredentialRequestData, Holder, HolderMetadata, KeyMetadata,
     PresentationInput, Proof,
@@ -23,6 +23,7 @@ use crate::vc::formats::sd_jwt_vc::{SdJwtAPI, VPMetadata};
 use crate::vc::formats::{VerifyOptions, API};
 use crate::vc::pop::jwt_pop::JwtProofOfPossession;
 use crate::vc::pop::ProofOfPossession;
+use crate::vc::presentation_exchange::validate_credential;
 use crate::vc::{pop, Credential, CredentialMetadata, HasVCFormat, Presentation};
 use crate::{kms, vault};
 
@@ -161,16 +162,25 @@ where
     ) -> Result<Vec<CredentialEntry>> {
         trace!(?presentation_input);
 
-        let filters = self.resolve_filters(presentation_input);
+        let fields = presentation_input
+            .restrictions
+            .iter()
+            .flat_map(|pr| pr.fields.clone())
+            .collect();
 
         info!("search for credentials in the vault");
         let credentials = self
             .vault
-            .find_credentials(filters)
+            .find_credentials(fields)
             .await
             .context(VaultSnafu)?;
 
-        Ok(credentials.into_iter().collect())
+        let result = credentials
+            .into_iter()
+            .filter(|entry| validate_credential(&entry.credential, presentation_input).is_ok())
+            .collect();
+
+        Ok(result)
     }
 
     #[instrument(level = Level::TRACE, skip(self), err(), ret())]
@@ -281,37 +291,6 @@ where
         debug!(resolved_did = ?did_url);
 
         Ok((did_url, kh))
-    }
-
-    #[instrument(level = Level::TRACE, skip(self), ret())]
-    fn resolve_filters(&self, input: &PresentationInput) -> Vec<CredentialFilter> {
-        trace!(presentation_input = ?input);
-
-        let mut filters = vec![];
-
-        if let Some(format) = &input.format {
-            filters.push(CredentialFilter::Format(format.to_owned()));
-        }
-
-        for restriction in &input.restrictions {
-            if restriction.optional {
-                continue;
-            }
-
-            match &restriction.value {
-                Some(value) => {
-                    let result: Vec<CredentialFilter> = restriction
-                        .fields
-                        .iter()
-                        .map(|field| CredentialFilter::Tag(field.to_string(), value.to_string()))
-                        .collect();
-                    filters.extend(result)
-                }
-                None => filters.push(CredentialFilter::TagKeys(restriction.fields.clone())),
-            }
-        }
-
-        filters
     }
 }
 
@@ -487,7 +466,7 @@ mod tests {
             format: case.format.clone(),
             kid: entry.kid.clone(),
             alg: None,
-            tags: vec![],
+            fields: vec![],
         };
 
         let holder = holder_service(kms, vault.clone());
@@ -526,7 +505,7 @@ mod tests {
             format: case.format.clone(),
             kid: entry.kid.clone(),
             alg: None,
-            tags: vec![],
+            fields: vec![],
         };
 
         let holder = holder_service(kms, vault);

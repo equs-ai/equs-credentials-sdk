@@ -90,7 +90,7 @@ pub struct CredentialMetadata {
     pub format: VCFormat,
     pub kid: String,
     pub alg: Option<Alg>,
-    pub tags: Vec<(String, String)>,
+    pub fields: Vec<String>,
 }
 
 /// Verifiable Presentation (`VP`)

@@ -5,6 +5,7 @@ mod verifier;
 use crate::utils::{from_json_object, to_json_object};
 use crate::vc::JsonObject;
 use agent_sdk::crypto::Alg;
+use agent_sdk::vc::core::PresentationRestrictionValue;
 use agent_sdk::vc::core::{
     CredentialDefinition, CredentialOffer, CredentialOfferContent, CredentialOfferData,
     CredentialRequest, CredentialRequestData, Display, HolderMetadata, IssuerMetadata,
@@ -171,19 +172,13 @@ impl TryFrom<JsCredential> for Credential {
     }
 }
 
-#[napi(object)]
-pub struct Tag {
-    pub key: String,
-    pub value: String,
-}
-
 #[napi(js_name = "CredentialMetadata", object)]
 pub struct JsCredentialMetadata {
     pub type_: String,
     pub format: JsVCFormat,
     pub kid: String,
     pub alg: Option<JsAlg>,
-    pub tags: Vec<Tag>,
+    pub fields: Vec<String>,
 }
 
 impl From<JsCredentialMetadata> for CredentialMetadata {
@@ -193,11 +188,7 @@ impl From<JsCredentialMetadata> for CredentialMetadata {
             format: value.format.into(),
             kid: value.kid,
             alg: value.alg.map(|value| value.into()),
-            tags: value
-                .tags
-                .into_iter()
-                .map(|tag| (tag.key, tag.value))
-                .collect(),
+            fields: value.fields,
         }
     }
 }
@@ -211,11 +202,7 @@ impl TryFrom<CredentialMetadata> for JsCredentialMetadata {
             format: value.format.try_into()?,
             kid: value.kid,
             alg: value.alg.map(|value| value.try_into()).transpose()?,
-            tags: value
-                .tags
-                .into_iter()
-                .map(|(key, value)| Tag { key, value })
-                .collect(),
+            fields: value.fields,
         })
     }
 }
@@ -396,10 +383,49 @@ impl TryFrom<CredentialOffer> for JsCredentialOffer {
     }
 }
 
+#[napi(js_name = "PresentationRestrictionValueType")]
+pub enum JsPresentationRestrictionValueType {
+    String,
+    Pattern,
+}
+
+#[napi(js_name = "PresentationRestrictionValue", object)]
+pub struct JsPresentationRestrictionValue {
+    pub type_: JsPresentationRestrictionValueType,
+    pub value: String,
+}
+
+impl From<JsPresentationRestrictionValue> for PresentationRestrictionValue {
+    fn from(value: JsPresentationRestrictionValue) -> Self {
+        match value.type_ {
+            JsPresentationRestrictionValueType::String => {
+                PresentationRestrictionValue::Const(value.value)
+            }
+            JsPresentationRestrictionValueType::Pattern => {
+                PresentationRestrictionValue::Pattern(value.value)
+            }
+        }
+    }
+}
+impl From<PresentationRestrictionValue> for JsPresentationRestrictionValue {
+    fn from(value: PresentationRestrictionValue) -> Self {
+        match value {
+            PresentationRestrictionValue::Const(value) => Self {
+                type_: JsPresentationRestrictionValueType::String,
+                value,
+            },
+            PresentationRestrictionValue::Pattern(value) => Self {
+                type_: JsPresentationRestrictionValueType::Pattern,
+                value,
+            },
+        }
+    }
+}
+
 #[napi(js_name = "PresentationRestriction", object)]
 pub struct JsPresentationRestriction {
     pub fields: Vec<String>,
-    pub value: Option<String>,
+    pub value: Option<JsPresentationRestrictionValue>,
     pub optional: bool,
 }
 
@@ -407,7 +433,7 @@ impl From<JsPresentationRestriction> for PresentationRestriction {
     fn from(value: JsPresentationRestriction) -> Self {
         Self {
             fields: value.fields,
-            value: value.value,
+            value: value.value.map(|v| v.into()),
             optional: value.optional,
         }
     }
@@ -417,7 +443,7 @@ impl From<PresentationRestriction> for JsPresentationRestriction {
     fn from(value: PresentationRestriction) -> Self {
         Self {
             fields: value.fields,
-            value: value.value,
+            value: value.value.map(|v| v.into()),
             optional: value.optional,
         }
     }

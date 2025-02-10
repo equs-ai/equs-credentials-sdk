@@ -565,6 +565,263 @@ pub mod fixtures {
                 response_metadata: Default::default(),
             }
         }
+        pub fn presentation_test_case_with_constraints_with_patterns() -> PresentationTestCase {
+            let cred: CredTypeWithClaims = (
+                "employee_credential_1",
+                json!({
+                    "name": "John",
+                    "email": "john@example.com",
+                    "age": 35,
+                    "position": "lead engineer",
+                    "address": {
+                        "country": "UK",
+                        "city": "London"
+                    },
+                    "birthDate": "1980-01-01",
+                    "graduationYear": 2020
+
+                })
+                .try_into()
+                .unwrap(),
+            );
+            let credential_data: Vec<CredTypeWithClaims> = vec![cred.clone()];
+
+            let constraints = r#"
+                {
+                  "fields": [
+                    {
+                      "path": [
+                        "$.email"
+                      ],
+                      "filter": {
+                        "type": "string",
+                        "pattern": "^[\\w\\.-]+@[a-zA-Z\\d\\.-]+\\.[a-zA-Z]{2,}$"
+                      }
+                    },
+                    {
+                      "path": [
+                        "$.address.country",
+                        "$.address.city"
+                      ],
+                      "filter": {
+                        "type": "string",
+                        "pattern": "^\\p{L}+$"
+                      }
+                    },
+                    {
+                      "path": [
+                        "$.position"
+                      ],
+                      "filter": {
+                        "type": "string",
+                        "const": "lead engineer"
+                      },
+                      "optional": false
+                    },
+                    {
+                      "path": [
+                        "$.birthDate"
+                      ],
+                      "filter": {
+                        "pattern": "^(?P<year>\\d{4})-(0[1-9]|1[0-2])-(0[1-9]|[12]\\d|3[01])$"
+                      },
+                      "optional": false
+                    },
+                    {
+                      "path": [
+                        "$.graduationYear"
+                      ],
+                      "filter": {
+                        "type": "string",
+                        "pattern": "^\\d{4}$"
+                      },
+                      "optional": true
+                    },
+                    {
+                      "path": [
+                        "$.status"
+                      ],
+                      "optional": true
+                    }
+                  ]
+                }
+                "#;
+
+            let auth_request_str = PresentationTestCase::build_auth_request(constraints);
+            let auth_request = serde_json::from_str(&auth_request_str).unwrap();
+
+            let presentation_submission = serde_json::from_str(PRESENTATION_SUBMISSION).unwrap();
+
+            PresentationTestCase {
+                request: auth_request,
+                credential_data,
+                expected_credential_data: vec![cred],
+                presentation_submission,
+                response_metadata: Default::default(),
+            }
+        }
+        pub fn presentation_test_case_with_constraints_with_invalid_value_for_pattern(
+        ) -> PresentationTestCase {
+            let cred: CredTypeWithClaims = (
+                "employee_credential_1",
+                json!({
+                    "name": "John",
+                    "email": "john@example.com",
+                    "age": 35,
+                    "position": "lead engineer",
+                    "address": {
+                        "country": "UK",
+                        "city": "London"
+                    },
+                    "birthDate": "1980:01:01",
+                })
+                .try_into()
+                .unwrap(),
+            );
+            let credential_data: Vec<CredTypeWithClaims> = vec![cred.clone()];
+
+            let constraints = r#"
+                {
+                  "fields": [
+                    {
+                      "path": [
+                        "$.email"
+                      ],
+                      "filter": {
+                        "type": "string",
+                        "pattern": "^[\\w\\.-]+@[a-zA-Z\\d\\.-]+\\.[a-zA-Z]{2,}$"
+                      }
+                    },
+                    {
+                      "path": [
+                        "$.birthDate"
+                      ],
+                      "filter": {
+                        "pattern": "^(?P<year>\\d{4})-(0[1-9]|1[0-2])-(0[1-9]|[12]\\d|3[01])$"
+                      },
+                      "optional": false
+                    }
+                  ]
+                }
+                "#;
+
+            let auth_request_str = PresentationTestCase::build_auth_request(constraints);
+            let auth_request = serde_json::from_str(&auth_request_str).unwrap();
+
+            let presentation_submission = serde_json::from_str(PRESENTATION_SUBMISSION).unwrap();
+
+            PresentationTestCase {
+                request: auth_request,
+                credential_data,
+                expected_credential_data: vec![cred],
+                presentation_submission,
+                response_metadata: Default::default(),
+            }
+        }
+        pub fn presentation_test_case_with_constraints_with_invalid_value_for_const(
+        ) -> PresentationTestCase {
+            let cred: CredTypeWithClaims = (
+                "employee_credential_1",
+                json!({
+                    "name": "John",
+                    "email": "john@example.com",
+                    "age": 35,
+                    "position": "Senior developer"
+
+                })
+                .try_into()
+                .unwrap(),
+            );
+            let credential_data: Vec<CredTypeWithClaims> = vec![cred.clone()];
+
+            let constraints = r#"
+                {
+                  "fields": [
+                    {
+                      "path": [
+                        "$.email"
+                      ],
+                      "filter": {
+                        "type": "string",
+                        "pattern": "^[\\w\\.-]+@[a-zA-Z\\d\\.-]+\\.[a-zA-Z]{2,}$"
+                      }
+                    },
+                    {
+                      "path": [
+                        "$.position"
+                      ],
+                      "filter": {
+                        "type": "string",
+                        "const": "lead engineer"
+                      }
+                    }
+                  ]
+                }
+                "#;
+
+            let auth_request_str = PresentationTestCase::build_auth_request(constraints);
+            let auth_request = serde_json::from_str(&auth_request_str).unwrap();
+
+            let presentation_submission = serde_json::from_str(PRESENTATION_SUBMISSION).unwrap();
+
+            PresentationTestCase {
+                request: auth_request,
+                credential_data,
+                expected_credential_data: vec![cred],
+                presentation_submission,
+                response_metadata: Default::default(),
+            }
+        }
+        pub fn presentation_test_case_with_constraints_with_absent_required_claim(
+        ) -> PresentationTestCase {
+            let cred: CredTypeWithClaims = (
+                "employee_credential_1",
+                json!({
+                    "name": "John",
+                    "email": "john@example.com",
+                    "age": 35,
+                    "position": "lead engineer",
+                })
+                .try_into()
+                .unwrap(),
+            );
+            let credential_data: Vec<CredTypeWithClaims> = vec![cred.clone()];
+
+            let constraints = r#"
+                {
+                  "fields": [
+                  {
+                      "path": [
+                        "$.email"
+                      ],
+                      "filter": {
+                        "type": "string",
+                        "pattern": "^[\\w\\.-]+@[a-zA-Z\\d\\.-]+\\.[a-zA-Z]{2,}$"
+                      }
+                    },
+                    {
+                      "path": [
+                        "$.status"
+                      ],
+                      "optional": false
+                    }
+                  ]
+                }
+                "#;
+
+            let auth_request_str = PresentationTestCase::build_auth_request(constraints);
+            let auth_request = serde_json::from_str(&auth_request_str).unwrap();
+
+            let presentation_submission = serde_json::from_str(PRESENTATION_SUBMISSION).unwrap();
+
+            PresentationTestCase {
+                request: auth_request,
+                credential_data,
+                expected_credential_data: vec![cred],
+                presentation_submission,
+                response_metadata: Default::default(),
+            }
+        }
 
         pub fn presentation_test_case_with_state() -> PresentationTestCase {
             PresentationTestCase {
@@ -1131,6 +1388,7 @@ pub mod utils {
     use crate::vault::{CredentialEntry, Vault};
     use crate::vc;
     use crate::vc::claims::{Claim, Claims};
+    use crate::vc::core::api::PresentationRestrictionValue;
     use crate::vc::core::KeyMetadata;
     use crate::vc::formats::sd_jwt_vc;
     use crate::vc::formats::sd_jwt_vc::{SdJwtAPI, VPMetadata};
@@ -1303,7 +1561,7 @@ pub mod utils {
                     .iter()
                     .find(|(vct, _)| {
                         input.restrictions.iter().any(|restriction| {
-                            matches!(restriction.value.as_ref(), Some(value) if value == &vct.to_string())
+                            matches!(restriction.value.as_ref(), Some(PresentationRestrictionValue::Const(value)) if value == &vct.to_string())
                         })
                     })
                     .unwrap();

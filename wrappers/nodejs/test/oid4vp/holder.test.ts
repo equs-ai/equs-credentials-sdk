@@ -40,10 +40,7 @@ describe("OID4VP Holder: ", () => {
       type: VC_TYPE,
       kid: keyMetadata.kid,
       format: VCFormat.SdJwtVc,
-      tags: [
-        { key: "$.vct", value: "https://credentials.example.com/identity_credential" },
-        { key: "$.name", value: "John" },
-      ],
+      fields: ["$.vct", "$.name"],
     };
   });
 

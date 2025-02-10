@@ -116,6 +116,7 @@ pub mod utils {
     use crate::utils::test_utils::create_did_url_and_key_handle_kid;
     use crate::vault::CredentialEntry;
     use crate::vc::claims::Claims;
+    use crate::vc::core::api::PresentationRestrictionValue;
     use crate::vc::core::tests::fixtures::*;
     use crate::vc::core::{
         CredentialDefinitionData, CredentialRequest, CredentialRequestData, PresentationInput,
@@ -166,7 +167,12 @@ pub mod utils {
                 claims: json!({
                     "givenName": "Jane",
                     "familyName": "Smith",
-                    "birthDate": "1978-07-17"
+                    "birthDate": "1978-07-17",
+                    "children": {
+                        "givenName": "Arthur",
+                        "familyName": "Morgan",
+                        "birthDate": "1999-07-10",
+                    }
                 })
                 .try_into()
                 .unwrap(),
@@ -328,12 +334,23 @@ pub mod utils {
                     restrictions: vec![
                         PresentationRestriction {
                             fields: vec!["$.vct".to_string()],
-                            value: Some(self.type_.to_owned()),
+                            value: Some(PresentationRestrictionValue::Const(self.type_.to_owned())),
                             optional: false,
                         },
                         PresentationRestriction {
                             fields: vec!["$.givenName".to_string(), "$.familyName".to_string()],
                             value: None,
+                            optional: true,
+                        },
+                        PresentationRestriction {
+                            fields: vec![
+                                "$.birthDate".to_string(),
+                                "$.children.birthDate".to_string(),
+                            ],
+                            value: Some(PresentationRestrictionValue::Pattern(
+                                r"^(?P<year>\d{4})-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$"
+                                    .to_string(),
+                            )),
                             optional: false,
                         },
                     ],
@@ -344,7 +361,7 @@ pub mod utils {
                     restrictions: vec![
                         PresentationRestriction {
                             fields: vec!["$.type[*]".to_string()],
-                            value: Some(self.type_.to_owned()),
+                            value: Some(PresentationRestrictionValue::Const(self.type_.to_owned())),
                             optional: false,
                         },
                         PresentationRestriction {

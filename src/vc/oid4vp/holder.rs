@@ -594,6 +594,10 @@ mod tests {
     use crate::vc::oid4vp::protocol_error::ErrorType;
     use crate::vc::oid4vp::tests::fixtures::single_presentation::{
         presentation_test_case_with_constraints_for_particular_fields,
+        presentation_test_case_with_constraints_with_absent_required_claim,
+        presentation_test_case_with_constraints_with_invalid_value_for_const,
+        presentation_test_case_with_constraints_with_invalid_value_for_pattern,
+        presentation_test_case_with_constraints_with_patterns,
         presentation_test_case_with_filter_by_cred_type,
         presentation_test_case_with_filter_by_cred_type_and_email,
         presentation_test_case_with_optional_field,
@@ -977,11 +981,13 @@ mod tests {
         ));
     }
 
+    #[rstest]
+    #[case::requested_credential_not_exist_case(requested_credential_not_exist_case())]
     #[should_panic(expected = "Credential not found")]
     #[tokio::test]
-    async fn present_credential_auto_fails_when_credentials_are_not_found() {
-        let test_case = requested_credential_not_exist_case();
-
+    async fn present_credential_auto_fails_when_credentials_are_not_found(
+        #[case] test_case: PresentationTestCase,
+    ) {
         let mut http_client = MockHttpClient::new();
         mock_http_fn(
             &mut http_client,
@@ -1074,59 +1080,28 @@ mod tests {
     #[case::multi_presentation_filter_by_path_success(
         multi_presentation::presentation_test_case_filter_by_path()
     )]
+    #[case::presentation_test_case_with_constraints_with_patterns(
+        presentation_test_case_with_constraints_with_patterns()
+    )]
     #[tokio::test]
     async fn find_credentials_success(#[case] test_case: PresentationTestCase) {
-        let kms = LocalKms::new();
-        let vault = test_case.prepare_vault(&kms).await;
-        let holder = holder_service(MockHttpClient::new(), kms, vault).await;
+        find_credentials(test_case).await;
+    }
 
-        let credential_mapping = holder
-            .find_vcs_for_presentation(&test_case.request)
-            .await
-            .unwrap();
-
-        let retrieved_credentials: Vec<Credential> = test_case
-            .request
-            .presentation_definition
-            .input_descriptors()
-            .iter()
-            .flat_map(|descriptor| credential_mapping.get(&descriptor.id).unwrap().clone())
-            .map(|entry| entry.credential)
-            .collect();
-
-        let retrieved_credentials_claims: Vec<Claims> = retrieved_credentials
-            .iter()
-            .filter_map(|credential| match credential {
-                Credential::SdJwt(sd_jwt_vc) => {
-                    decode_sd_jwt(sd_jwt_vc.to_owned(), SDJWTSerializationFormat::Compact).ok()
-                }
-                _ => None,
-            })
-            .map(|c| c.try_into().unwrap())
-            .collect();
-
-        assert!(
-            !retrieved_credentials_claims.is_empty(),
-            "Credentials not found"
-        );
-
-        let expected_cred_data = test_case.expected_credential_data;
-
-        for (expected_type, expected_claims) in expected_cred_data.clone() {
-            let claims = retrieved_credentials_claims
-                .iter()
-                .find(|retrieved_claims| {
-                    if let Some(Claim::String(vct)) = retrieved_claims.get("vct") {
-                        return expected_type == vct;
-                    }
-
-                    false
-                });
-
-            if let Some(claim) = claims {
-                validate_claims(claim, &(expected_type, expected_claims))
-            }
-        }
+    #[rstest]
+    #[case::presentation_test_case_with_constraints_with_invalid_value_for_pattern(
+        presentation_test_case_with_constraints_with_invalid_value_for_pattern()
+    )]
+    #[case::presentation_test_case_with_constraints_with_invalid_value_for_const(
+        presentation_test_case_with_constraints_with_invalid_value_for_const()
+    )]
+    #[case::presentation_test_case_with_constraints_with_absent_required_claim(
+        presentation_test_case_with_constraints_with_absent_required_claim()
+    )]
+    #[should_panic(expected = "Credentials not found")]
+    #[tokio::test]
+    async fn find_credentials_fails_with_constraints(#[case] test_case: PresentationTestCase) {
+        find_credentials(test_case).await;
     }
 
     #[tokio::test]
@@ -1239,6 +1214,60 @@ mod tests {
             .present_credentials(&test_case.request, &credential_mapping, &Default::default())
             .await
             .unwrap();
+    }
+
+    async fn find_credentials(case: PresentationTestCase) {
+        let kms = LocalKms::new();
+        let vault = case.prepare_vault(&kms).await;
+        let holder = holder_service(MockHttpClient::new(), kms, vault).await;
+
+        let credential_mapping = holder
+            .find_vcs_for_presentation(&case.request)
+            .await
+            .unwrap();
+
+        let retrieved_credentials: Vec<Credential> = case
+            .request
+            .presentation_definition
+            .input_descriptors()
+            .iter()
+            .flat_map(|descriptor| credential_mapping.get(&descriptor.id).unwrap().clone())
+            .map(|entry| entry.credential)
+            .collect();
+
+        let retrieved_credentials_claims: Vec<Claims> = retrieved_credentials
+            .iter()
+            .filter_map(|credential| match credential {
+                Credential::SdJwt(sd_jwt_vc) => {
+                    decode_sd_jwt(sd_jwt_vc.to_owned(), SDJWTSerializationFormat::Compact).ok()
+                }
+                _ => None,
+            })
+            .map(|c| c.try_into().unwrap())
+            .collect();
+
+        assert!(
+            !retrieved_credentials_claims.is_empty(),
+            "Credentials not found"
+        );
+
+        let expected_cred_data = case.expected_credential_data;
+
+        for (expected_type, expected_claims) in expected_cred_data.clone() {
+            let claims = retrieved_credentials_claims
+                .iter()
+                .find(|retrieved_claims| {
+                    if let Some(Claim::String(vct)) = retrieved_claims.get("vct") {
+                        return expected_type == vct;
+                    }
+
+                    false
+                });
+
+            if let Some(claim) = claims {
+                validate_claims(claim, &(expected_type, expected_claims))
+            }
+        }
     }
 
     fn siop_case(key_metadata: KeyMetadata) -> PresentationTestCase {
