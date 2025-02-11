@@ -1,5 +1,6 @@
 mod holder;
 mod issuer;
+mod status_issuer;
 mod verifier;
 
 use crate::utils::{from_json_object, to_json_object};
@@ -8,9 +9,18 @@ use agent_sdk::crypto::Alg;
 use agent_sdk::vc::core::PresentationRestrictionValue;
 use agent_sdk::vc::core::{
     CredentialDefinition, CredentialOffer, CredentialOfferContent, CredentialOfferData,
-    CredentialRequest, CredentialRequestData, Display, HolderMetadata, IssuerMetadata,
-    IssuerMetadataData, KeyMetadata, PresentationInput, PresentationRestriction, Proof,
+    CredentialRequest, CredentialRequestData, CredentialStatusInfo, Display, HolderMetadata,
+    IssuerMetadata, IssuerMetadataData, KeyMetadata, PresentationInput, PresentationRestriction,
+    Proof,
 };
+
+use agent_sdk::vc::core::StatusIssuerMetadata;
+use agent_sdk::vc::core::StatusListDefinition;
+use agent_sdk::vc::status_formats::status_list_token_jwt;
+use agent_sdk::vc::VCStatus;
+use agent_sdk::vc::{StatusList, VCStatusesData};
+
+use crate::vc::status_formats::JsStatusListFormat;
 use agent_sdk::vc::{Credential, CredentialMetadata, HasVCFormat, Presentation, VCFormat};
 use napi::Error;
 use napi_derive::napi;
@@ -296,6 +306,313 @@ impl From<JsCredentialOfferData> for CredentialOfferData {
 impl From<CredentialOfferData> for JsCredentialOfferData {
     fn from(_value: CredentialOfferData) -> Self {
         Self {}
+    }
+}
+
+#[napi(js_name = "CredentialStatusInfoFormat")]
+pub enum JsCredentialStatusInfoFormat {
+    TokenStatusList,
+    BitstringStatusList,
+}
+
+#[napi(js_name = "CredentialStatusInfo", object)]
+pub struct JsCredentialStatusInfo {
+    pub format: JsCredentialStatusInfoFormat,
+    pub payload: JsonObject, // TODO: create an interface manually
+}
+
+impl TryFrom<CredentialStatusInfo> for JsCredentialStatusInfo {
+    type Error = Error;
+
+    fn try_from(value: CredentialStatusInfo) -> Result<Self, Error> {
+        let result = match value {
+            CredentialStatusInfo::TokenStatusList { idx, uri } => JsCredentialStatusInfo {
+                format: JsCredentialStatusInfoFormat::TokenStatusList,
+                payload: to_json_object(json!({ "idx": idx, "uri": uri }))?,
+            },
+            CredentialStatusInfo::BitstringStatusList => JsCredentialStatusInfo {
+                format: JsCredentialStatusInfoFormat::BitstringStatusList,
+                payload: JsonObject::new(),
+            },
+        };
+        Ok(result)
+    }
+}
+
+impl TryFrom<JsCredentialStatusInfo> for CredentialStatusInfo {
+    type Error = Error;
+
+    fn try_from(value: JsCredentialStatusInfo) -> Result<Self, Error> {
+        let result = match value.format {
+            JsCredentialStatusInfoFormat::TokenStatusList => {
+                let idx: u32 = value
+                    .payload
+                    .get("idx")
+                    .ok_or_else(|| napi::Error::from_reason("'idx' must be in payload"))?
+                    .as_u64()
+                    .ok_or_else(|| napi::Error::from_reason("'idx' must be an unsigned int"))?
+                    .try_into()
+                    .map_err(|_| napi::Error::from_reason("'idx' can not be converted to u32"))?;
+
+                let uri: url::Url = value
+                    .payload
+                    .get("uri")
+                    .ok_or_else(|| napi::Error::from_reason("'uri' must be in payload"))?
+                    .as_str()
+                    .ok_or_else(|| napi::Error::from_reason("'uri' must be a valid URL"))?
+                    .try_into()
+                    .map_err(|e: url::ParseError| Error::from_reason(e.to_string()))?;
+
+                CredentialStatusInfo::TokenStatusList { idx, uri }
+            }
+
+            JsCredentialStatusInfoFormat::BitstringStatusList => {
+                CredentialStatusInfo::BitstringStatusList
+            }
+        };
+        Ok(result)
+    }
+}
+
+#[napi(js_name = "VCStatusesDataFormat")]
+pub enum JsVCStatusesDataFormat {
+    StatusListToken,
+    BitstringStatusList,
+}
+
+#[napi(js_name = "VCStatusesData", object)]
+pub struct JsVCStatusesData {
+    pub format: JsVCStatusesDataFormat,
+    pub payload: JsonObject,
+}
+
+impl TryFrom<VCStatusesData> for JsVCStatusesData {
+    type Error = Error;
+
+    fn try_from(value: VCStatusesData) -> Result<Self, Error> {
+        match value {
+            VCStatusesData::StatusListToken(statuses) => Ok(JsVCStatusesData {
+                format: JsVCStatusesDataFormat::StatusListToken,
+                payload: to_json_object(statuses)?,
+            }),
+
+            VCStatusesData::BitstringStatusList => Ok(JsVCStatusesData {
+                format: JsVCStatusesDataFormat::BitstringStatusList,
+                payload: JsonObject::new(),
+            }),
+
+            _ => Err(napi::Error::from_reason("unsupported format")),
+        }
+    }
+}
+
+impl TryFrom<JsVCStatusesData> for VCStatusesData {
+    type Error = Error;
+
+    fn try_from(value: JsVCStatusesData) -> Result<Self, Error> {
+        let result = match value.format {
+            JsVCStatusesDataFormat::StatusListToken => {
+                VCStatusesData::StatusListToken(from_json_object(value.payload)?)
+            }
+
+            JsVCStatusesDataFormat::BitstringStatusList => VCStatusesData::BitstringStatusList,
+        };
+        Ok(result)
+    }
+}
+
+#[napi(js_name = "StatusListFmt")]
+pub enum JsStatusListFmt {
+    StatusListTokenJwt,
+}
+
+#[napi(js_name = "StatusList", object)]
+pub struct JsStatusList {
+    pub format: JsStatusListFmt,
+    pub payload: JsonObject,
+}
+
+impl TryFrom<StatusList> for JsStatusList {
+    type Error = Error;
+
+    fn try_from(value: StatusList) -> Result<Self, Error> {
+        match value {
+            StatusList::StatusListTokenJwt(status_list) => Ok(JsStatusList {
+                format: JsStatusListFmt::StatusListTokenJwt,
+                payload: to_json_object(json!({"jwt": status_list}))?,
+            }),
+        }
+    }
+}
+
+impl TryFrom<JsStatusList> for StatusList {
+    type Error = Error;
+
+    fn try_from(value: JsStatusList) -> Result<Self, Error> {
+        let result = match value.format {
+            JsStatusListFmt::StatusListTokenJwt => {
+                let status_list_jwt = value
+                    .payload
+                    .get("jwt")
+                    .ok_or_else(|| napi::Error::from_reason("'jwt' must be in payload"))?
+                    .as_str()
+                    .ok_or_else(|| napi::Error::from_reason("'jwt' must be a string"))?
+                    .to_owned();
+
+                StatusList::StatusListTokenJwt(status_list_jwt)
+            }
+        };
+
+        Ok(result)
+    }
+}
+
+#[napi(js_name = "VCStatusFormat")]
+pub enum JsVCStatusFormat {
+    StatusListToken,
+}
+
+// TODO: consider moving it from `vc::core` to `vc`
+#[napi(js_name = "VCStatus", object)]
+pub struct JsVCStatus {
+    pub format: JsVCStatusFormat,
+    pub payload: JsonObject,
+}
+
+impl TryFrom<VCStatus> for JsVCStatus {
+    type Error = Error;
+
+    fn try_from(value: VCStatus) -> Result<Self, Error> {
+        match value {
+            VCStatus::StatusListToken(status) => {
+                let status_payload = match status {
+                    status_list_token_jwt::VCStatus::Valid => json!({"status": "VALID"}),
+                    status_list_token_jwt::VCStatus::Invalid => json!({"status": "INVALID"}),
+                    status_list_token_jwt::VCStatus::Suspended => json!({"status": "SUSPENDED"}),
+                    status_list_token_jwt::VCStatus::AppSpecific(val) => {
+                        json!({"status": "APPSPECIFIC", "value": val})
+                    }
+                };
+
+                Ok(JsVCStatus {
+                    format: JsVCStatusFormat::StatusListToken,
+                    payload: to_json_object(status_payload)?,
+                })
+            }
+        }
+    }
+}
+
+impl TryFrom<JsVCStatus> for VCStatus {
+    type Error = Error;
+
+    fn try_from(value: JsVCStatus) -> Result<Self, Error> {
+        let result = match value.format {
+            JsVCStatusFormat::StatusListToken => {
+                let status_str = value
+                    .payload
+                    .get("status")
+                    .ok_or_else(|| napi::Error::from_reason("'status' must be in payload"))?
+                    .as_str()
+                    .ok_or_else(|| napi::Error::from_reason("'status' must be a string"))?;
+
+                let status = match status_str {
+                    "VALID" => Ok(status_list_token_jwt::VCStatus::Valid),
+                    "INVALID" => Ok(status_list_token_jwt::VCStatus::Invalid),
+                    "SUSPENDED" => Ok(status_list_token_jwt::VCStatus::Suspended),
+                    "APPSPECIFIC" => {
+                        let val: u8 = value
+                            .payload
+                            .get("value")
+                            .ok_or_else(|| napi::Error::from_reason("'value' must be in payload"))?
+                            .as_u64()
+                            .ok_or_else(|| {
+                                napi::Error::from_reason("'value' must be an unsigned int")
+                            })?
+                            .try_into()
+                            .map_err(|_| {
+                                napi::Error::from_reason("'value' can not be converted to u8")
+                            })?;
+
+                        Ok(status_list_token_jwt::VCStatus::AppSpecific(val))
+                    }
+                    _ => Err(napi::Error::from_reason(format!(
+                        "Unsupported value of the 'status' field: {status_str}"
+                    ))),
+                }?;
+
+                VCStatus::StatusListToken(status)
+            }
+        };
+
+        Ok(result)
+    }
+}
+
+#[napi(object, js_name = "StatusListDefinition")]
+pub struct JsStatusListDefinition {
+    pub id: String,
+    pub format: JsStatusListFormat,
+    pub key_metadata: JsKeyMetadata,
+}
+
+#[napi]
+impl TryFrom<JsStatusListDefinition> for StatusListDefinition {
+    type Error = Error;
+    fn try_from(value: JsStatusListDefinition) -> Result<Self, Error> {
+        Ok(Self {
+            id: value.id,
+            format: value.format.try_into()?,
+            key_metadata: value.key_metadata.into(),
+        })
+    }
+}
+
+#[napi]
+impl TryFrom<StatusListDefinition> for JsStatusListDefinition {
+    type Error = Error;
+    fn try_from(value: StatusListDefinition) -> Result<Self, Error> {
+        Ok(Self {
+            id: value.id,
+            format: value.format.try_into()?,
+            key_metadata: value.key_metadata.into(),
+        })
+    }
+}
+
+#[napi(object, js_name = "StatusIssuerMetadata")]
+pub struct JsStatusIssuerMetadata {
+    pub issuer_id: String,
+    pub supported_status_lists: Vec<JsStatusListDefinition>,
+}
+
+#[napi]
+impl TryFrom<JsStatusIssuerMetadata> for StatusIssuerMetadata {
+    type Error = Error;
+    fn try_from(value: JsStatusIssuerMetadata) -> Result<Self, Error> {
+        Ok(Self {
+            issuer_id: value.issuer_id,
+            supported_status_lists: value
+                .supported_status_lists
+                .into_iter()
+                .map(TryFrom::try_from)
+                .collect::<Result<Vec<StatusListDefinition>, Error>>()?,
+        })
+    }
+}
+
+#[napi]
+impl TryFrom<StatusIssuerMetadata> for JsStatusIssuerMetadata {
+    type Error = Error;
+    fn try_from(value: StatusIssuerMetadata) -> Result<Self, Error> {
+        Ok(Self {
+            issuer_id: value.issuer_id,
+            supported_status_lists: value
+                .supported_status_lists
+                .into_iter()
+                .map(TryFrom::try_from)
+                .collect::<Result<Vec<JsStatusListDefinition>, Error>>()?,
+        })
     }
 }
 

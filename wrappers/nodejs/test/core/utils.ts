@@ -7,6 +7,9 @@ import {
   PresentationInput,
   PresentationRestrictionValueType,
   VCFormat,
+  CredentialStatusInfoFormat,
+  StatusIssuerMetadata,
+  StatusListFormatFmt,
 } from "../../index";
 import { createDidAndKeyMetadata } from "../utils/utils";
 
@@ -16,6 +19,13 @@ export class Utils {
   readonly scope = "SD_JWT_cred_sample";
   readonly kms = inMemKms();
   readonly vault = inMemVault();
+  readonly credStatusInfo = {
+    format: CredentialStatusInfoFormat.TokenStatusList,
+    payload: {
+      idx: 1,
+      uri: "http://example.com/status_list",
+    },
+  };
 
   get claims() {
     return {
@@ -76,6 +86,25 @@ export class Utils {
       params: {},
       protocolData: undefined,
       url: "http://localhost:35001",
+    };
+  }
+
+  async getStatusIssuerMetadata(): Promise<StatusIssuerMetadata> {
+    return {
+      issuerId: "test",
+      supportedStatusLists: [
+        {
+          id: "test_status_list",
+          format: {
+            format: StatusListFormatFmt.StatusListTokenJwt,
+            payload: {
+              statuses_nr: 32,
+              status_list_url: "http://localhost/status_list",
+            },
+          },
+          keyMetadata: await this.getKeyMetadata(),
+        }
+      ]
     };
   }
 

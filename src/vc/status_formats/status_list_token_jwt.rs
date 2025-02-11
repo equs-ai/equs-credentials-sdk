@@ -105,7 +105,7 @@ impl From<u8> for VCStatus {
 ///   - `value`: represents the **status code** (e.g., `VALID`, `INVALID`, `SUSPENDED`).
 ///
 ///
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct VCStatuses {
     pub(crate) statuses: HashMap<usize, u8>,
 }

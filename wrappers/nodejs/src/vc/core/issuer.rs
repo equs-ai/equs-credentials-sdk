@@ -1,6 +1,8 @@
 use crate::kms::{JsKms, NativeKms, UnifiedKms};
 use crate::vc::core::{JsCredential, JsIssuerMetadata};
-use crate::vc::core::{JsCredentialOffer, JsCredentialOfferData, JsCredentialRequest};
+use crate::vc::core::{
+    JsCredentialOffer, JsCredentialOfferData, JsCredentialRequest, JsCredentialStatusInfo,
+};
 use agent_sdk::vc::claims::Error as ClaimsError;
 use agent_sdk::vc::core::{Issuer, IssuerMetadata, IssuerService as CoreIssuerService};
 use napi::{Either, Error};
@@ -31,17 +33,20 @@ impl VCCoreIssuer {
         credential_request: JsCredentialRequest,
         #[napi(ts_arg_type = "Claims")] claims: Value,
         nonce: String,
+        status_info: Option<JsCredentialStatusInfo>,
     ) -> Result<JsCredential, Error> {
         let claims = claims
             .try_into()
-            .map_err(|e: ClaimsError| Error::from_reason(e.to_string()))?; // TODO: discuss it
+            .map_err(|e: ClaimsError| Error::from_reason(e.to_string()))?;
+
+        let status_info = status_info.map(|s| s.try_into()).transpose()?;
 
         self.0
             .issue_credential(
                 &credential_request.into(),
                 &claims,
                 &serde_json::from_value(Value::String(nonce))?,
-                None,
+                status_info,
             )
             .await
             .map_err(|e| Error::from_reason(e.to_string()))

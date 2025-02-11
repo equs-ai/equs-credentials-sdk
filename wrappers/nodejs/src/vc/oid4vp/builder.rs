@@ -58,6 +58,16 @@ impl OID4VPVerifierBuilder {
             self.client_id.clone(),
         );
 
+        #[cfg(debug_assertions)]
+        {
+            builder = builder.with_http_client(
+                ReqwestClientBuilder::new()
+                    .insecure() // TODO: is it ok?
+                    .build()
+                    .map_err(|err| Error::from_reason(format!("{:?}", err)))?,
+            )
+        }
+
         if let Some(client_metadata) = &self.client_metadata {
             builder = builder.with_client_metadata(
                 ClientMetadata::try_from(from_json_object::<serde_json::Value>(
