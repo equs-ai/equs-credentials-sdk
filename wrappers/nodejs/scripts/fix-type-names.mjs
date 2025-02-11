@@ -23,6 +23,12 @@ const replacements = [
   { from: "JsKeyHandle", to: "KeyHandle" },
   { from: "JsPresentation", to: "Presentation" },
   { from: "JsPresentationInput", to: "PresentationInput" },
+  { from: "JsCredentialStatusInfo", to: "CredentialStatusInfo" },
+  { from: "JsVCStatusesData", to: "VCStatusesData" },
+  { from: "JsVCStatus", to: "VCStatus" },
+  { from: "JsStatusList", to: "StatusList" },
+  { from: "JsStatusIssuerMetadata", to: "StatusIssuerMetadata" },
+  { from: "JsStatusListFormat", to: "StatusListFormat" },
   { from: "JsonObject", to: "Record<string, any>" },
 ];
 

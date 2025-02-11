@@ -5,6 +5,7 @@ use napi_derive::napi;
 
 use crate::nonce::JsNonceData;
 use crate::utils::{from_json_object, to_json_object};
+use crate::vc::core::JsCredentialStatusInfo;
 use crate::vc::JsonObject;
 
 #[napi]
@@ -55,8 +56,14 @@ impl OID4VCIIssuer {
         token: String,
         #[napi(ts_arg_type = "Claims")] claims: JsonObject,
         session: IssuanceSession,
+        status_info: Option<JsCredentialStatusInfo>,
     ) -> Result<IssuanceResult> {
         let mut oid4vci_session = session.try_into()?;
+
+        let status_info = match status_info {
+            Some(status) => Some(status.try_into()?),
+            None => None,
+        };
 
         let result = self
             .0
@@ -65,7 +72,7 @@ impl OID4VCIIssuer {
                 &token,
                 &from_json_object(claims)?,
                 &mut oid4vci_session,
-                None,
+                status_info,
             )
             .await;
 

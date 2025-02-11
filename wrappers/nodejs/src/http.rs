@@ -8,7 +8,7 @@ use napi::{Error, Result};
 use napi_derive::napi;
 use oauth2::http::{HeaderMap, HeaderName, HeaderValue, Method, StatusCode, Uri};
 use oauth2::{HttpRequest, HttpResponse};
-use serde_json::Map;
+use serde_json::{Map, Value};
 
 #[napi(js_name = "HttpMethod")]
 pub enum JsHttpMethod {
@@ -190,7 +190,14 @@ fn parse_json_to_header_map(value: JsonObject) -> Result<HeaderMap> {
     for (key, value) in value {
         let header_name = HeaderName::from_bytes(key.as_bytes())
             .map_err(|e| Error::from_reason(e.to_string()))?;
-        let header_value = HeaderValue::from_str(&value.to_string())
+
+        let header_value_str = value.as_str().ok_or_else(|| {
+            napi::Error::from_reason(format!(
+                "value of the header '{header_name}' is not a string"
+            ))
+        })?;
+
+        let header_value = HeaderValue::from_str(header_value_str)
             .map_err(|e| Error::from_reason(e.to_string()))?;
 
         headers.insert(header_name, header_value);
@@ -200,14 +207,11 @@ fn parse_json_to_header_map(value: JsonObject) -> Result<HeaderMap> {
 fn parse_header_map_to_map(value: &HeaderMap) -> Result<JsonObject> {
     let mut headers = Map::new();
     for (key, value) in value.iter() {
-        headers.insert(
-            key.to_string(),
-            serde_json::from_str(
-                value
-                    .to_str()
-                    .map_err(|e| Error::from_reason(e.to_string()))?,
-            )?,
-        );
+        let value_str = value
+            .to_str()
+            .map_err(|e| Error::from_reason(e.to_string()))?;
+
+        headers.insert(key.to_string(), Value::String(value_str.to_owned()));
     }
     Ok(headers)
 }

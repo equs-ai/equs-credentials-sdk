@@ -1,5 +1,6 @@
 import {
   createHolder,
+  createStatusIssuer,
   createIssuer,
   createVerifier,
   PresentationRestrictionValueType,
@@ -7,18 +8,46 @@ import {
   VcCoreHolder,
   VcCoreIssuer,
   VcCoreVerifier,
+  VcCoreStatusIssuer,
+  VCStatusesDataFormat,
+  HttpClient,
+  HttpRequest,
+  HttpResponse,
 } from "../../index";
 import { jwtDecode } from "jwt-decode";
 import { Utils } from "./utils";
 
 describe("VC::Core", () => {
   const utils = new Utils();
+  let statusIssuer: VcCoreStatusIssuer;
   let issuer: VcCoreIssuer;
   let holder: VcCoreHolder;
 
   beforeEach(async () => {
+    statusIssuer = createStatusIssuer(utils.kms, await utils.getStatusIssuerMetadata())
     issuer = createIssuer(utils.kms, await utils.getIssuerMetadata());
     holder = createHolder(utils.kms, utils.vault, { clientId: "wallet-dev" });
+  });
+
+  describe("StatusIssuer", () => {
+    it("issue status list", async () => {
+      const result = await statusIssuer.issueStatusList("test_status_list", {
+        format: VCStatusesDataFormat.StatusListToken,
+        payload: {
+          statuses: {
+            "2": 1 // 'INVALID' (1) status for the VC with index 2
+          }
+        },
+      });
+
+      const decoded = jwtDecode(result.payload.jwt);
+
+      expect(decoded).toMatchObject({
+        sub: "http://localhost/status_list",
+        status_list : { lst: 'eNpjYWBgAAAAFAAF', bits: 1 }
+      });
+      expect(decoded.iat).toBeDefined();
+    });
   });
 
   describe("Issuer", () => {
@@ -36,11 +65,13 @@ describe("VC::Core", () => {
         },
         utils.claims,
         utils.nonce,
+        utils.credStatusInfo,
       );
 
       const decoded = jwtDecode<typeof utils.claims>(result.payload);
 
       expect(decoded).toMatchObject({ date: "09/09/1989", address: "221B Baker Street" });
+      expect(decoded).toMatchObject({ status: { status_list: { idx: 1, uri: "http://example.com/status_list" } } });
     });
     it("offer credential", async () => {
       const result = issuer.offerCredential(utils.scope, undefined);
@@ -77,7 +108,7 @@ describe("VC::Core", () => {
         utils.nonce,
         keyMetadata,
       );
-      const credential = await issuer.issueCredential(credentialRequest, utils.claims, utils.nonce);
+      const credential = await issuer.issueCredential(credentialRequest, utils.claims, utils.nonce, utils.credStatusInfo);
       const metadata = await resolveMetadata(credential, keyMetadata);
       const result = await holder.storeCredential(credential, metadata);
       expect(result).toBeDefined();
@@ -89,7 +120,7 @@ describe("VC::Core", () => {
         utils.nonce,
         await utils.getKeyMetadata(),
       );
-      const credential = await issuer.issueCredential(credentialRequest, utils.claims, utils.nonce);
+      const credential = await issuer.issueCredential(credentialRequest, utils.claims, utils.nonce, utils.credStatusInfo);
       const result = await holder.verifyCredential(credential);
       expect(result).toBeUndefined();
     });
@@ -102,7 +133,7 @@ describe("VC::Core", () => {
         utils.nonce,
         keyMetadata,
       );
-      const credential = await issuer.issueCredential(credentialRequest, utils.claims, utils.nonce);
+      const credential = await issuer.issueCredential(credentialRequest, utils.claims, utils.nonce, utils.credStatusInfo);
       const metadata = await resolveMetadata(credential, keyMetadata);
       await holder.storeCredential(credential, { ...metadata, type: temp_store_map });
 
@@ -156,18 +187,36 @@ describe("VC::Core", () => {
       verifier = createVerifier(utils.verifierId);
     });
 
-    it("verify presentation", async () => {
+    it("verify presentation and VC status", async () => {
       await requestAndStoreCredential(holder, issuer, utils);
 
       const presentation = await holder.createPresentationAuto(utils.nonce, utils.verifierId, utils.presentationInput);
 
       const result = await verifier.verifyPresentation(utils.nonce, presentation);
+
       expect(result).toMatchObject({
         address: "221B Baker Street",
         date: "09/09/1989",
         vct: "https://credentials.example.com/identity_credential",
         surname: "Doe",
       });
+
+      const client: HttpClient = {
+        asyncCall: async (_: HttpRequest): Promise<HttpResponse> => {
+          // status list is generated with all indexes with status value 'VALID'
+          // except the value for index 2 which is 'INVALID'
+          const status_list_jwt = "eyJ0eXAiOiJzdGF0dXNsaXN0K2p3dCIsImFsZyI6IkVTMjU2Iiwia2lkIjoiZGlkOmtleTp6RG5hZXV4SHU2R3VGWUE0QVIxcWZiRkpLQUMxVmlHRVBnTTFmV0NTRDJETEVObmVBI3pEbmFldXhIdTZHdUZZQTRBUjFxZmJGSktBQzFWaUdFUGdNMWZXQ1NEMkRMRU5uZUEifQ.eyJzdGF0dXNfbGlzdCI6eyJiaXRzIjoxLCJsc3QiOiJlTnBqWVdCZ0FBQUFGQUFGIn0sInN1YiI6Imh0dHA6Ly9leGFtcGxlLmNvbS9zdGF0dXNfbGlzdCIsImlhdCI6MTczOTIxMTcxNSwiX3NkX2FsZyI6InNoYS0yNTYifQ.rkJzhn4WEUHAbxcrNl4VWDee8UV5tTLMGvqEVGC60H-NmWI-4F-lj8p4aImHwyW5B8iEN5myfp8mcLliFVeuNA~";
+
+          return {
+            statusCode: 200,
+            body: status_list_jwt,
+            headers: { "content-type": "application/statuslist+jwt" },
+          };
+        },
+      };
+
+      const vc_status = await verifier.obtainCredentialStatus(presentation, client);
+      expect(vc_status).toMatchObject({ payload: { status: "VALID" } });
     });
   });
 });
@@ -176,7 +225,7 @@ async function requestAndStoreCredential(holder: VcCoreHolder, issuer: VcCoreIss
   const keyMetadata = await utils.getKeyMetadata();
   const offer = issuer.offerCredential(utils.scope);
   const credentialRequest = await holder.requestCredential(offer, utils.nonce, keyMetadata);
-  const credential = await issuer.issueCredential(credentialRequest, utils.claims, utils.nonce);
+  const credential = await issuer.issueCredential(credentialRequest, utils.claims, utils.nonce, utils.credStatusInfo);
   const metadata = await resolveMetadata(credential, keyMetadata);
   await holder.storeCredential(credential, metadata);
 }
