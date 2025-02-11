@@ -24,9 +24,9 @@ openid4vp = { git = "ssh://git@git.slock.it/open-source/oid4vp-rs.git", rev = "f
 sd-jwt-rs = { git = "ssh://git@git.slock.it/open-source/sd-jwt-rust.git", rev = "cc541b0d" }
 didcomm = { git = "ssh://git@git.slock.it/open-source/didcomm-rust.git", rev = "db41780d" }
 
-did_peer = { tag = "0.65.0", git = "https://github.com/hyperledger/aries-vcx" }
-did_resolver = { tag = "0.65.0", git = "https://github.com/hyperledger/aries-vcx" }
-did_parser_nom = { tag = "0.65.0", git = "https://github.com/hyperledger/aries-vcx" }
+did_peer = { git = "ssh://git@git.slock.it/open-source/aries-vcx.git", rev = "fc818ef5" }
+did_resolver = { git = "ssh://git@git.slock.it/open-source/aries-vcx.git", rev = "fc818ef5" }
+did_parser_nom = { git = "ssh://git@git.slock.it/open-source/aries-vcx.git", rev = "fc818ef5" }
 
 oauth2 = "5.0.0-rc.1"
 serde_json = "1.0.120"

@@ -202,7 +202,9 @@ where
 
 #[cfg(test)]
 mod test {
-    use crate::did::didpeer::{DIDPeer, VerificationMethodKey, VerificationRelationshipType};
+    use crate::did::didpeer::{
+        DIDPeer, DidPeerService, VerificationMethodKey, VerificationRelationshipType,
+    };
     use crate::did::universal::UniversalResolver;
     use crate::did::{DIDResolver, DID};
     use crate::didcomm::{DIDCommService, Message, UnpackOptions};
@@ -247,6 +249,10 @@ mod test {
             )
             .await
             .unwrap();
+        assert_eq!(
+            metadata.messaging_service.unwrap().service_endpoint,
+            "https://example.com/path"
+        );
 
         let (msg, metadata) = didcomm_service
             .unpack(&packed_msg, &UnpackOptions::default())
@@ -268,7 +274,7 @@ mod test {
 
     #[should_panic(expected = "No sender secrets found")]
     #[tokio::test]
-    async fn pack_encrypted_failed_with_incorrect_seder_did() {
+    async fn pack_encrypted_failed_with_incorrect_sender_did() {
         let kms = LocalKms::new();
 
         let sender_did = "did:peer:4zQmdrR8n3sYAuDh7n3Ztwhc22dFTLwXcq6M75AXPuvdCMWw:z3c91SEw\
@@ -423,21 +429,19 @@ mod test {
             .await
             .unwrap();
 
-        // TODO: did_peer crate does not support the service format expected in didcomm crate.
-        //  In did_peer service_endpoint is a URL, but in didcomm service_endpoint is expected as an object
-        // let service: Service = serde_json::from_value(json! ({
-        //     "id": "did:example:123456789abcdefghi#didcomm-1",
-        //     "type": "DIDCommMessaging",
-        //     "serviceEndpoint": [{
-        //         "uri": "https://example.com/path",
-        //         "accept": [
-        //             "didcomm/v2",
-        //             "didcomm/aip2;env=rfc587"
-        //         ],
-        //         "routingKeys": ["did:example:somemediator#somekey"]
-        //     }]
-        // }))
-        // .unwrap();
+        let service: DidPeerService = serde_json::from_value(json! ({
+            "id": "#didcomm-1",
+            "type": "DIDCommMessaging",
+            "serviceEndpoint": {
+                "uri": "https://example.com/path",
+                "accept": [
+                    "didcomm/v2",
+                    "didcomm/aip2;env=rfc587"
+                ],
+                "routingKeys": ["#key-0"]
+            }
+        }))
+        .unwrap();
 
         let did = DIDPeer::generate_did_peer4(
             &[VerificationMethodKey {
@@ -450,7 +454,7 @@ mod test {
                 .into_iter()
                 .collect(),
             }],
-            &[],
+            &[service],
         )
         .unwrap();
 
