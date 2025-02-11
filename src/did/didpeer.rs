@@ -20,6 +20,7 @@ use did_resolver::shared_types::did_document_metadata::DidDocumentMetadata;
 use did_resolver::traits::resolvable::resolution_metadata::DidResolutionMetadata;
 use did_resolver::traits::resolvable::resolution_output::DidResolutionOutput;
 use did_resolver::traits::resolvable::DidResolvable;
+use serde_json::Value;
 use snafu::ensure;
 use ssi::dids::resolution::{Error, Options, Output};
 use ssi::dids::{DIDMethod, DIDResolver as SpruceResolver};
@@ -27,6 +28,7 @@ use std::collections::HashSet;
 use tracing::{instrument, Level};
 
 type DidUrl = did_parser_nom::DidUrl;
+pub type DidPeerService = Service;
 type VerificationMethod = did_resolver::did_doc::schema::verification_method::VerificationMethod;
 
 type Level_ = Level;
@@ -92,7 +94,7 @@ impl DIDPeer {
     #[instrument(level = Level::TRACE, skip(keys), err(), ret())]
     pub fn generate_did_peer4(
         keys: &[VerificationMethodKey],
-        services: &[&did::Service],
+        services: &[Service],
     ) -> Result<did::DID> {
         ensure!(
             !keys.is_empty(),
@@ -113,21 +115,7 @@ impl DIDPeer {
         }
 
         for service in services {
-            let json = serde_json::to_value(service).map_err(|err| {
-                DidGenerationSnafu {
-                    details: err.to_string(),
-                }
-                .build()
-            })?;
-
-            let service: Service = serde_json::from_value(json).map_err(|err| {
-                DidGenerationSnafu {
-                    details: err.to_string(),
-                }
-                .build()
-            })?;
-
-            construction_did_doc.add_service(service)
+            construction_did_doc.add_service(service.clone())
         }
 
         let peer_did_4 = PeerDid::<Numalgo4>::new(construction_did_doc).map_err(|err| {
@@ -322,30 +310,77 @@ fn convert_did_doc(did_doc: &DidDocument) -> std::result::Result<did::DIDDoc, Er
     did_doc_map.get_mut("verificationMethod").and_then(|vms| {
         vms.as_array_mut().map(|vms_arr| {
             for vm in vms_arr {
-                relative_verification_method_id_to_absolute(vm, did_doc.id().did());
+                relative_id_to_absolute(vm, did_doc.id().did());
             }
         })
     });
 
-    serde_json::from_value(serde_json::Value::Object(did_doc_map))
+    did_doc_map.get_mut("service").and_then(|services| {
+        services.as_array_mut().map(|services_arr| {
+            for svc in services_arr {
+                relative_id_to_absolute(svc, did_doc.id().did());
+
+                let Some(svc_type) = svc.get("type") else {
+                    return;
+                };
+                if svc_type != "DIDCommMessaging" {
+                    return;
+                }
+
+                let Some(endpoint) = svc.get_mut("serviceEndpoint") else {
+                    return;
+                };
+
+                match endpoint {
+                    Value::Object(map) => {
+                        relative_routing_keys_to_absolute(endpoint, did_doc.id().did());
+                    }
+                    Value::Array(endpoints) => {
+                        endpoints.iter_mut().for_each(|endpoint| {
+                            relative_routing_keys_to_absolute(endpoint, did_doc.id().did());
+                        });
+                    }
+                    _ => return,
+                }
+            }
+        })
+    });
+
+    serde_json::from_value(Value::Object(did_doc_map))
         .map_err(|e| Error::InvalidData(ssi::dids::document::InvalidData::JsonLd(e)))
 }
 
 #[instrument(level = Level::TRACE)]
-fn relative_verification_method_id_to_absolute(vm: &mut serde_json::Value, did_str: &str) {
-    let Some(vm_map) = vm.as_object_mut() else {
+fn relative_id_to_absolute(obj: &mut Value, did_str: &str) {
+    let Some(map) = obj.as_object_mut() else {
         return;
     };
 
-    let Some(serde_json::Value::String(id)) = vm_map.get("id") else {
+    let Some(Value::String(id)) = map.get("id") else {
         return;
     };
 
     if id.starts_with('#') {
-        vm_map.insert(
-            "id".to_string(),
-            serde_json::Value::String(format!("{did_str}{id}")),
-        );
+        map.insert("id".to_string(), Value::String(format!("{did_str}{id}")));
+    }
+}
+
+#[instrument(level = Level::TRACE)]
+fn relative_routing_keys_to_absolute(obj: &mut Value, did_str: &str) {
+    let Some(map) = obj.as_object_mut() else {
+        return;
+    };
+
+    let Some(Value::Array(routing_keys)) = map.get_mut("routingKeys") else {
+        return;
+    };
+
+    for key in routing_keys.iter_mut() {
+        if let Value::String(key_str) = key {
+            if key_str.starts_with('#') {
+                *key_str = format!("{did_str}{key_str}");
+            }
+        }
     }
 }
 
@@ -419,7 +454,7 @@ mod tests {
 
         let service = serde_json::from_value(service_json.clone()).unwrap();
 
-        let did = DIDPeer::generate_did_peer4(&keys, &[&service]).unwrap();
+        let did = DIDPeer::generate_did_peer4(&keys, &[service]).unwrap();
 
         assert!(did.starts_with("did:peer:4"));
         let did_peer = did_parser_nom::Did::parse(did).unwrap();

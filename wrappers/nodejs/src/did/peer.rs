@@ -1,8 +1,9 @@
 use crate::kms::js::JsKeyHandle;
 use crate::utils::from_json_object;
 use crate::vc::JsonObject;
-use agent_sdk::did;
-use agent_sdk::did::didpeer::{DIDPeer, VerificationMethodKey, VerificationRelationshipType};
+use agent_sdk::did::didpeer::{
+    DIDPeer, DidPeerService, VerificationMethodKey, VerificationRelationshipType,
+};
 use napi::Error;
 use napi_derive::napi;
 
@@ -40,11 +41,11 @@ impl JsDIDPeer {
         let vm_keys: Vec<VerificationMethodKey> = keys.iter().map(Into::into).collect();
         let parsed_services = services
             .into_iter()
-            .map(from_json_object::<did::Service>)
+            .map(from_json_object::<DidPeerService>)
             .collect::<napi::Result<Vec<_>>>()?;
-        let service_refs: Vec<&did::Service> = parsed_services.iter().collect();
+        let service_refs = parsed_services.as_slice();
 
-        DIDPeer::generate_did_peer4(&vm_keys, &service_refs)
+        DIDPeer::generate_did_peer4(&vm_keys, service_refs)
             .map_err(|e| Error::from_reason(e.to_string()))
     }
 }
