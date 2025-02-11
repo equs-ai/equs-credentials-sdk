@@ -84,7 +84,7 @@ impl TryFrom<JsAuthResponseOptions> for AuthResponseOptions {
             mode: value.mode.into(),
             submission_uri: Url::parse(&value.submission_uri)
                 .map_err(|e| Error::from_reason(e.to_string()))?,
-            state: None,
+            state: value.state,
         })
     }
 }
@@ -155,6 +155,7 @@ pub struct JsAuthorizationResponse {
     pub id_token: Option<String>,
     #[napi(ts_type = "PresentationSubmission")]
     pub presentation_submission: JsonObject,
+    pub state: Option<String>,
 }
 
 impl TryFrom<JsAuthorizationResponse> for AuthorizationResponse {
@@ -165,7 +166,7 @@ impl TryFrom<JsAuthorizationResponse> for AuthorizationResponse {
             vp_token: value.vp_token,
             id_token: value.id_token,
             presentation_submission: from_json_object(value.presentation_submission)?,
-            state: None,
+            state: value.state,
         })
     }
 }

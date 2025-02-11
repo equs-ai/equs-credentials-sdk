@@ -1,4 +1,5 @@
 import {
+  AuthorizationResponse,
   AuthResponseOptions,
   enableLogs,
   inMemKms,
@@ -41,11 +42,13 @@ async function main(): Promise<void> {
     try {
       const responseUri = `http://${host}:${port}/present`;
       const requestUri = `http://${host}:${port}/request`;
+      const state = "abc380ab-d143-4cdc-936f-43deb4b740c9";
 
       let authResponseOptions: AuthResponseOptions = {
         mode: "direct_post",
         type: "vp_token",
         submissionUri: responseUri,
+        state,
       };
 
       const { authorizationRequestUri, session } =
@@ -93,9 +96,10 @@ async function main(): Promise<void> {
           "presentation_submission does not exist in request body!",
         );
 
-      const authorizationResponse = {
+      const authorizationResponse: AuthorizationResponse = {
         vpToken: JSON.parse(vpToken),
         presentationSubmission: JSON.parse(presentationSubmission),
+        state: req.body.state,
       };
 
       const session = appState.presentationSessionStorage.get(

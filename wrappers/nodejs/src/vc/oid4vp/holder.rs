@@ -98,6 +98,7 @@ pub struct AuthorizationRequest {
     pub response_type: String,
     pub response_mode: String,
     pub response_uri: String,
+    pub state: Option<String>,
 }
 
 impl TryFrom<AuthorizationRequest> for ResolvedAuthRequest {
@@ -111,7 +112,7 @@ impl TryFrom<AuthorizationRequest> for ResolvedAuthRequest {
             response_type: value.response_type.into(),
             response_mode: value.response_mode.into(),
             response_uri: parse_url_arg(&value.response_uri)?,
-            state: None,
+            state: value.state,
         })
     }
 }
@@ -127,6 +128,7 @@ impl TryFrom<ResolvedAuthRequest> for AuthorizationRequest {
             response_type: value.response_type.into(),
             response_mode: value.response_mode.into(),
             response_uri: value.response_uri.to_string(),
+            state: value.state,
         })
     }
 }
