@@ -11,7 +11,7 @@ import {
   Oid4VpHolderBuilder,
   VCFormat,
 } from "../../index";
-import { AUTH_REQUEST, AUTH_REQUEST_JWT, VC, VC_TYPE } from "./fixtures";
+import { AUTH_REQUEST, AUTH_REQUEST_JWT, STATE, VC, VC_TYPE } from "./fixtures";
 import { createDidAndKeyMetadata } from "../utils/utils";
 
 describe("OID4VP Holder: ", () => {
@@ -52,7 +52,7 @@ describe("OID4VP Holder: ", () => {
       .thenReply(200, AUTH_REQUEST_JWT, { "content-type": "application/oauth-authz-req+jwt" });
 
     const authorizationRequest = await holder.getAuthorizationRequest(
-      "openid4vp://?client_id=did%3Akey%3AzDnaew3eTeAimofYSsjE7RxSvpU4LX9h5wPzVvkrBn5hGPXpa&request_uri=http%3A%2F%2Flocalhost%3A9001%2Frequest",
+      "openid4vp://?client_id=did%3Akey%3AzDnaeeTG88wpPhMzuDRvLRTTyNMyJip5e6TLmsjyvPiSYUFk7&request_uri=http%3A%2F%2Flocalhost%3A9001%2Frequest",
     );
     expect(authorizationRequest).toEqual(AUTH_REQUEST);
   });
@@ -106,6 +106,8 @@ async function handleRequest(request: CompletedRequest): Promise<{ statusCode: 2
 
   if (!form_data.presentation_submission?.length || !form_data.vp_token?.length)
     throw new Error("Form data is invalid");
+
+  expect(form_data.state).toEqual(STATE);
 
   return { statusCode: 200, body: "" };
 }
