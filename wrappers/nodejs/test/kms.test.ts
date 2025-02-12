@@ -1,9 +1,11 @@
-import { Alg, createKeyMetadata, KeyHandle, wrapJsKms, KeyType } from "../index";
+import { Alg, createKeyMetadata, KeyHandle, KeyType, Kms } from "../";
 import { JWK, JWS } from "node-jose";
+import { getNativeOrKms } from "../types/utils";
 
 describe("KMS: ", () => {
   test("generate Key Metadata using JS KMS", async () => {
-    const key_metadata = await createKeyMetadata(await mockKms());
+    const kms = getNativeOrKms(await mockKms());
+    const key_metadata = await createKeyMetadata(kms);
 
     const expected_key_metadata = {
       didUrl:
@@ -15,7 +17,7 @@ describe("KMS: ", () => {
   });
 
   test("sign and verify", async () => {
-    const kms = wrapJsKms(await mockKms());
+    const kms = getNativeOrKms(await mockKms());
     const keyHandle = await kms.get("test");
 
     const payload = new TextEncoder().encode("Secure payload");
@@ -25,6 +27,56 @@ describe("KMS: ", () => {
     return;
   });
 });
+
+class MockKms implements Kms {
+  constructor(readonly _keyHandle: MockKeyHandle) {}
+
+  async create(kt: KeyType): Promise<string> {
+    return "test";
+  }
+
+  async get(kid: string): Promise<KeyHandle> {
+    return this._keyHandle;
+  }
+
+  async getByPublicKey(pk: Array<number>): Promise<KeyHandle> {
+    if (pk !== this._keyHandle.pubKey) throw new Error(`Key Handle Not found`);
+
+    return this._keyHandle;
+  }
+}
+
+class MockKeyHandle implements KeyHandle {
+  constructor(
+    readonly key: JWK.Key,
+    readonly keyStore: JWK.KeyStore,
+    readonly pubKey: number[],
+    readonly jwk: string,
+    readonly alg: Alg,
+  ) {}
+
+  async sign(payload: Uint8Array): Promise<Uint8Array> {
+    const payloadBuffer = Buffer.from(payload);
+    const signature = await JWS.createSign(
+      {
+        format: "compact",
+        alg: "ES256",
+      },
+      this.key,
+    )
+      .update(payloadBuffer)
+      .final();
+    return new Uint8Array(Buffer.from(String(signature)));
+  }
+
+  async verify(data: Uint8Array, signature: Uint8Array): Promise<void> {
+    const signatureStr = Buffer.from(signature).toString("utf8");
+    const result = await JWS.createVerify(this.keyStore).verify(signatureStr);
+    const payload = Buffer.from(result.payload).toString();
+    const expected_payload = Buffer.from(data).toString("utf8");
+    if (payload !== expected_payload) throw new Error(`Verification failed: Actual: ${payload}, Expected: ${data}`);
+  }
+}
 
 async function mockKms() {
   const jwkWithPrivateKey = {
@@ -46,35 +98,7 @@ async function mockKms() {
   const publicKey = Array.from(publicKeyBytes);
   const jwk = JSON.stringify(key.toJSON());
 
-  const keyHandle: KeyHandle = {
-    pubKey: publicKey,
-    jwk: jwk,
-    alg: Alg.ES256,
-    async sign(payload: Uint8Array): Promise<Uint8Array> {
-      const payloadBuffer = Buffer.from(payload);
-      const signature = await JWS.createSign({ format: "compact", alg: "ES256" }, key).update(payloadBuffer).final();
-      return new Uint8Array(Buffer.from(String(signature)));
-    },
-    async verify(data: Uint8Array, signature: Uint8Array): Promise<void> {
-      const signatureStr = Buffer.from(signature).toString("utf8");
-      const result = await JWS.createVerify(keystore).verify(signatureStr);
-      const payload = Buffer.from(result.payload).toString();
-      const expected_payload = Buffer.from(data).toString("utf8");
-      if (payload !== expected_payload) throw new Error(`Verification failed: Actual: ${payload}, Expected: ${data}`);
-    },
-  };
+  const keyHandle = new MockKeyHandle(key, keystore, publicKey, jwk, Alg.ES256);
 
-  return {
-    async create(kt: KeyType): Promise<string> {
-      return "test";
-    },
-    async get(kid: string): Promise<KeyHandle> {
-      return keyHandle;
-    },
-    async getByPublicKey(pk: Array<number>): Promise<KeyHandle> {
-      if (pk !== publicKey) throw new Error(`Key Handle Not found`);
-
-      return keyHandle;
-    },
-  };
+  return new MockKms(keyHandle);
 }

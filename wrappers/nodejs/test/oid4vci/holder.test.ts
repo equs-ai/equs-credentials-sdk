@@ -1,4 +1,4 @@
-import { inMemKms, inMemVault, IssuerDiscovery, Oid4VciHolderBuilder, VCFormat } from "../../index";
+import { inMemKms, inMemVault, IssuerDiscovery, Oid4VciHolderBuilder, VCFormat } from "../../";
 import {
   ACCESS_TOKEN,
   ACCESS_TOKEN_RESPONSE,
@@ -42,7 +42,7 @@ describe("OID4VCI Holder: ", () => {
 
     const vciHolder = await buildHolder();
 
-    const token_response = await vciHolder.authzCodeFlowWithScope(SCOPE, async (_) => "code");
+    const token_response = await vciHolder.authzCodeFlowWithScope(SCOPE, async () => "code");
 
     expect(token_response).toEqual(ACCESS_TOKEN_RESPONSE);
   });
@@ -79,6 +79,8 @@ describe("OID4VCI Holder: ", () => {
   });
 
   test("request Credential", async () => {
+    // todo fix test with removing native kms
+    // return;
     await mockServer.forPost("/credential").thenJson(200, CRED_RESPONSE);
 
     const kms = inMemKms();
@@ -131,5 +133,12 @@ describe("OID4VCI Holder: ", () => {
 });
 
 async function buildHolder(kms = inMemKms(), vault = inMemVault()) {
-  return await new Oid4VciHolderBuilder(kms, vault, "client_id", IssuerDiscovery.fromOffer(CRED_OFFER)).build();
+  const builder = new Oid4VciHolderBuilder({
+    kms,
+    vault,
+    clientId: "client_id",
+    issuerDiscovery: IssuerDiscovery.fromOffer(CRED_OFFER),
+    redirectUrl: undefined,
+  });
+  return await builder.build();
 }

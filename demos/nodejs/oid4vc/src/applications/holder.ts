@@ -27,12 +27,13 @@ async function main(): Promise<void> {
 
   const issuerDiscovery = IssuerDiscovery.fromUrl(config.issuerServerUrl);
 
-  const oid4VciHolder = await new Oid4VciHolderBuilder(
+  const oid4VciHolder = await new Oid4VciHolderBuilder({
     kms,
     vault,
-    config.clientId,
+    clientId: config.clientId,
     issuerDiscovery,
-  ).build();
+    redirectUrl: undefined,
+  }).build();
   const oid4VpHolder = await new Oid4VpHolderBuilder(
     kms,
     vault,

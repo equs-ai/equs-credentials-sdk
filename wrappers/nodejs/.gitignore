@@ -199,5 +199,6 @@ package-lock.json
 
 *.node
 
-/index.d.ts
-/index.js
+*.d.ts
+./binary.js
+./index.js

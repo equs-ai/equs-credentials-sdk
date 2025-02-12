@@ -1,4 +1,4 @@
-import { NativeNonceGenerator, wrapJsNonceGenerator } from "../index.js";
+import { NativeNonceGenerator, wrapJsNonceGenerator } from "../";
 
 describe("Nonce: ", () => {
   test("generate Nonce", async () => {

@@ -22,9 +22,10 @@
   },
   "scripts": {
     "manual_scripts": "node scripts/fix-type-names.mjs && node scripts/add-import-line.mjs",
+    "napi:build": "napi build $npm_config_napi_flags --platform --js binary.js --dts binary.d.ts && npm run manual_scripts && rm -rf build/ && tsc index.ts -d",
     "artifacts": "napi artifacts",
-    "build": "napi build --platform --release && npm run manual_scripts",
-    "build:debug": "napi build --features=in-memory --platform && npm run manual_scripts",
+    "build": "npm run napi:build --napi_flags=--release",
+    "build:debug": "npm run napi:build --napi_flags=--features=in-memory",
     "test": "jest -w=1",
     "universal": "napi universal",
     "version": "napi version",
@@ -32,7 +33,6 @@
   },
   "packageManager": "yarn@4.6.0",
   "dependencies": {
-    "@napi-rs/cli": "^2.18.4",
     "oauth4webapi": "^3.1.4"
   },
   "devDependencies": {
@@ -49,6 +49,7 @@
     "jest": "^29.7.0",
     "jest-cli": "^29.7.0",
     "mockttp": "^3.15.3",
+    "@napi-rs/cli": "^2.18.4",
     "node-jose": "^2.2.0",
     "prettier": "^3.2.5",
     "reflect-metadata": "^0.2.1",

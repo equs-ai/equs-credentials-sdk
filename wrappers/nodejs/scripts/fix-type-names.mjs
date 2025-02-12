@@ -34,15 +34,15 @@ const replacements = [
 
 (async () => {
   try {
-    let content = await fs.readFile("index.d.ts", "utf8");
+    let content = await fs.readFile("binary.d.ts", "utf8");
 
     for (const { from, to } of replacements) {
       const regex = new RegExp(`\\b${from}\\b`, "g"); // Match whole word only
       content = content.replace(regex, to);
-      console.log(`Replaced "${from}" with "${to}" in index.d.ts`);
+      console.log(`Replaced "${from}" with "${to}" in binary.d.ts`);
     }
 
-    await fs.writeFile("index.d.ts", content, "utf8");
+    await fs.writeFile("binary.d.ts", content, "utf8");
   } catch (error) {
     console.error("Error occurred:", error);
   }

@@ -5,22 +5,22 @@ import {
   localNonceGenerator,
   Oid4VpVerifierBuilder,
   PassAuthRequestObject,
-} from "../../index.js";
-import { AUTH_REQUEST_JWT, CLAIMS, PRESENTATION_DEFINITION, PRESENTATION_SUBMISSION, STATE, VP } from "./fixtures";
+} from "../../";
+import { CLAIMS, PRESENTATION_DEFINITION, PRESENTATION_SUBMISSION, STATE, VP } from "./fixtures";
 import { createDidAndKeyMetadata } from "../utils/utils";
 
 describe("OID4VP Verifier: ", () => {
   test("create Authorization Request", async () => {
     const verifier = await buildVerifier();
 
-    let authResponseOptions: AuthResponseOptions = {
+    const authResponseOptions: AuthResponseOptions = {
       mode: "direct_post",
       type: "vp_token",
       submissionUri: "http://localhost:9001/response",
       state: STATE,
     };
 
-    let authReqByValue = await verifier.createAuthorizationRequest(
+    const authReqByValue = await verifier.createAuthorizationRequest(
       PRESENTATION_DEFINITION,
       authResponseOptions,
       PassAuthRequestObject.byValue(),
@@ -35,7 +35,7 @@ describe("OID4VP Verifier: ", () => {
     expect(authReqByValue.session.presentationDefinition).toMatchObject(PRESENTATION_DEFINITION);
     expect(expected_state).toEqual(STATE);
 
-    let authReqByReference = await verifier.createAuthorizationRequest(
+    const authReqByReference = await verifier.createAuthorizationRequest(
       PRESENTATION_DEFINITION,
       authResponseOptions,
       PassAuthRequestObject.byReference("http://localhost:9001/request"),
@@ -70,9 +70,9 @@ describe("OID4VP Verifier: ", () => {
 });
 
 async function buildVerifier(client_id = "did:key:zDnaeagvW2eDWc2yVw7B98ovcJ8jddn7T9Mh3y5Vikys6y4kX") {
-  let kms = inMemKms();
-  let nonce_generator = localNonceGenerator();
-  let { keyMetadata } = await createDidAndKeyMetadata(kms);
+  const kms = inMemKms();
+  const nonce_generator = localNonceGenerator();
+  const { keyMetadata } = await createDidAndKeyMetadata(kms);
 
   return await new Oid4VpVerifierBuilder(kms, nonce_generator, keyMetadata, client_id).build();
 }

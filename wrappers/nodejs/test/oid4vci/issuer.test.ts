@@ -1,4 +1,4 @@
-import { inMemKms, localNonceGenerator, OID4VCIIssuer, Oid4VciIssuerBuilder } from "../../index";
+import { inMemKms, localNonceGenerator, OID4VCIIssuer, Oid4VciIssuerBuilder } from "../../";
 import {
   ACCESS_TOKEN,
   CLAIMS,

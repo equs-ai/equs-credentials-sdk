@@ -1,4 +1,4 @@
-import { Alg, Vault, VCFormat, wrapJsVault } from "../index";
+import { Alg, Vault, VCFormat, wrapJsVault } from "../";
 
 const CREDENTIAL_DATA = {
   id: "test",

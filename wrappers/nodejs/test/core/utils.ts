@@ -10,7 +10,7 @@ import {
   CredentialStatusInfoFormat,
   StatusIssuerMetadata,
   StatusListFormatFmt,
-} from "../../index";
+} from "../../";
 import { createDidAndKeyMetadata } from "../utils/utils";
 
 export class Utils {
