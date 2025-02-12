@@ -402,6 +402,8 @@ async fn get_user_attributes(cred_def: &CredDefMetadata) -> Result<Claims, Error
             "codes": [ claims_json["postal_code"][0], "10001" ]
         });
         claims_json["country"] = serde_json::Value::from("US");
+        claims_json["age"] = serde_json::Value::Number(27.into());
+        claims_json["age_over_18"] = serde_json::Value::Bool(true);
 
         let _ = claims_json.as_object_mut().is_some_and(|m| {
             m.insert(
@@ -581,6 +583,7 @@ fn sample_issuer_metadata(iss_url: &str, authz_url: &str) -> IssuerMetadata {
               "vct": "https://credentials.example.com/identity_credential_1",
               "claims": {
                 "given_name": {},
+                "age": {},
                 "age_over_18": {},
                 "street": {},
                 "email": {
