@@ -7,8 +7,8 @@ use uuid::Uuid;
 
 use agent_sdk::crypto::Alg;
 use agent_sdk::vault::{
-    CredentialEntry, EmptyFieldsSnafu, Error, FormatNotSupportedSnafu, ResolvingSnafu,
-    StoringSnafu, VCSnafu, Vault,
+    CredentialEntry, DeletingSnafu, EmptyFieldsSnafu, Error, FormatNotSupportedSnafu,
+    ResolvingSnafu, StoringSnafu, VCSnafu, Vault,
 };
 use agent_sdk::vc::{
     Credential, CredentialMetadata, JWT_VC_JSON, JWT_VC_JSON_LD, LDP_VC, SD_JWT_VC,
@@ -56,6 +56,20 @@ impl AskarVault {
             entity.category.to_owned(),
             entity.name.to_owned(),
         ))
+    }
+
+    #[instrument(
+        level = Level::TRACE,
+        skip(self),
+        err(),
+        ret(),
+    )]
+    async fn remove(&self, id: AskarVaultId) -> Result<(), aries_askar::Error> {
+        let mut session = self.0.session(None).await?;
+        session.remove(id.category(), id.name()).await?;
+        session.commit().await?;
+
+        Ok(())
     }
 
     #[instrument(
@@ -196,9 +210,24 @@ impl Vault for AskarVault {
         err(),
         ret(),
     )]
+    async fn delete_credential(&self, id: &str) -> Result<(), Error> {
+        self.remove(id.try_into()?).await.map_err(|err| {
+            DeletingSnafu {
+                details: err.to_string(),
+            }
+            .build()
+        })
+    }
+
+    #[instrument(
+        level = Level::TRACE,
+        skip(self),
+        err(),
+        ret(),
+    )]
     async fn get_credential(&self, id: &str) -> Result<Option<CredentialEntry>, Error> {
         let entry = self.get(id.try_into()?).await.map_err(|err| {
-            StoringSnafu {
+            ResolvingSnafu {
                 details: err.to_string(),
             }
             .build()
@@ -215,7 +244,7 @@ impl Vault for AskarVault {
     )]
     async fn get_credentials(&self) -> Result<Vec<CredentialEntry>, Error> {
         let entries = self.get_all().await.map_err(|err| {
-            StoringSnafu {
+            ResolvingSnafu {
                 details: err.to_string(),
             }
             .build()
@@ -235,14 +264,14 @@ impl Vault for AskarVault {
             EmptyFieldsSnafu.fail()?
         };
         let tag_filter = map_credential_fields_to_tags(fields).ok_or_else(|| {
-            StoringSnafu {
+            ResolvingSnafu {
                 details: "empty tag filter",
             }
             .build()
         })?;
 
         let entries = self.find(tag_filter).await.map_err(|err| {
-            StoringSnafu {
+            ResolvingSnafu {
                 details: err.to_string(),
             }
             .build()
@@ -502,5 +531,9 @@ mod tests {
             }])
             .unwrap()
         );
+
+        vault.delete_credential(&cred1_id).await.unwrap();
+        let get1_res = vault.get_credential(&cred1_id).await.unwrap();
+        assert!(get1_res.is_none());
     }
 }

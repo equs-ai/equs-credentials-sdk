@@ -26,6 +26,13 @@ impl Vault for UnifiedVault {
         }
     }
 
+    async fn delete_credential(&self, id: &str) -> agent_sdk::vault::Result<()> {
+        match self {
+            UnifiedVault::Js(js) => js.delete_credential(id).await,
+            UnifiedVault::Native(native) => native.inner().delete_credential(id).await,
+        }
+    }
+
     async fn get_credential(&self, id: &str) -> agent_sdk::vault::Result<Option<CredentialEntry>> {
         match self {
             UnifiedVault::Js(js) => js.get_credential(id).await,

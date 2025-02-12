@@ -5,6 +5,7 @@ export type KeyProofType = "jwt" | "cwt";
 interface IssuerMetadataDisplay {
   name?: string;
   locale?: string;
+  logo?: CredentialMetadataDisplayLogo;
 }
 
 export interface CredentialMetadataDisplayLogo {

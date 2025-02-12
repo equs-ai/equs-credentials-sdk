@@ -26,6 +26,12 @@ pub enum Error {
         #[snafu(implicit)]
         location: Location,
     },
+    #[snafu(display("Credential deleting error: {details}"))]
+    Deleting {
+        details: String,
+        #[snafu(implicit)]
+        location: Location,
+    },
     #[snafu(display("Credential resolving error: {details}"))]
     Resolving {
         details: String,
@@ -96,6 +102,21 @@ pub trait Vault: Send + Sync {
         metadata: &vc::CredentialMetadata,
     ) -> Result<String>;
 
+    /// Delete a `CredentialEntry` with `Credential` from `Vault`
+    ///
+    /// # Arguments
+    ///
+    /// * `id` -  `ID` of the stored [CredentialEntry].
+    ///
+    /// # Returns
+    ///
+    /// `()` on success.
+    ///
+    /// # Errors
+    ///
+    /// * [Error::Deleting] - fails to delete the `Credential`.
+    async fn delete_credential(&self, id: &str) -> Result<()>;
+
     /// Get a `CredentialEntry` with `Credential` from `Vault`
     ///
     /// # Arguments
@@ -121,7 +142,7 @@ pub trait Vault: Send + Sync {
     ///
     /// # Errors
     ///
-    /// * [Error::Resolving] - fails to revolve the values.
+    /// * [Error::Resolving] - fails to resolve the values.
     async fn get_credentials(&self) -> Result<Vec<CredentialEntry>>;
 
     /// Find the matching `CredentialEntry`s in `Vault`
@@ -137,7 +158,7 @@ pub trait Vault: Send + Sync {
     ///
     /// # Errors
     ///
-    /// * [Error::Resolving] - fails to revolve the values.
+    /// * [Error::Resolving] - fails to resolve the values.
     ///
     ///
     async fn find_credentials(&self, fields: Vec<String>) -> Result<Vec<CredentialEntry>>;
@@ -256,5 +277,9 @@ pub mod test_util {
             })
             .unwrap()])
         );
+
+        vault.delete_credential(&cred1_id).await.unwrap();
+        let get1_res = vault.get_credential(&cred1_id).await.unwrap();
+        assert!(get1_res.is_none());
     }
 }
