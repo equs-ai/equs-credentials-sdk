@@ -186,6 +186,17 @@ nodejs-test-job:
     - merge_requests
     - main
 
+#askar-plugin-nodejs-test-job:
+#  <<: *nodejs_job_configs
+#  stage: test
+#  script:
+#    - npm i --prefix plugins/askar/wrappers/nodejs
+#    - npm run build:debug --prefix plugins/askar/wrappers/nodejs
+#    - npm run test --prefix plugins/askar/wrappers/nodejs
+#  only:
+#    - merge_requests
+#    - main
+
 wasm-test-job:
   image: cimg/node:${NODE_VERSION}-browsers
   before_script:
