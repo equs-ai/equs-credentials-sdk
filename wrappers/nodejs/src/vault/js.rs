@@ -13,7 +13,7 @@ use napi_derive::napi;
 #[derive(Clone)]
 #[napi(js_name = "Vault", object, object_to_js = false)]
 pub struct JsVault {
-    #[napi(ts_type = "(credential: Credential, metadata: CredentialMetadata) => Promise<String>")]
+    #[napi(ts_type = "(credential: Credential, metadata: CredentialMetadata) => Promise<string>")]
     pub store_credential:
         ThreadsafeFunction<(JsCredential, JsCredentialMetadata), ErrorStrategy::Fatal>,
     #[napi(ts_type = "(id: string) => Promise<void>")]

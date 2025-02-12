@@ -5,6 +5,7 @@ members = [
     "demos/oid4vc/holder",
     "demos/multi-thread",
     "plugins/askar",
+    "plugins/askar/wrappers/nodejs",
     "wrappers/nodejs",
     "wrappers/wasm",
     "common-macros",

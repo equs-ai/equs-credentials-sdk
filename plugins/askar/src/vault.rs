@@ -1,36 +1,43 @@
 use aries_askar::entry::{Entry, EntryKind, EntryTag, TagFilter};
-use aries_askar::Store;
 use async_trait::async_trait;
 use snafu::ensure;
 use tracing::{instrument, Level};
 use uuid::Uuid;
 
+use crate::AskarStorage;
 use agent_sdk::crypto::Alg;
 use agent_sdk::vault::{
-    CredentialEntry, DeletingSnafu, EmptyFieldsSnafu, Error, FormatNotSupportedSnafu,
-    ResolvingSnafu, StoringSnafu, VCSnafu, Vault,
+    DeletingSnafu, EmptyFieldsSnafu, Error, FormatNotSupportedSnafu, ResolvingSnafu, StoringSnafu,
+    VCSnafu,
 };
-use agent_sdk::vc::{
-    Credential, CredentialMetadata, JWT_VC_JSON, JWT_VC_JSON_LD, LDP_VC, SD_JWT_VC,
-};
+use agent_sdk::vc::{JWT_VC_JSON, JWT_VC_JSON_LD, LDP_VC, SD_JWT_VC};
 
-type _Level = Level;
+pub use agent_sdk::vault::{CredentialEntry, Vault};
+pub use agent_sdk::vc::{Credential, CredentialMetadata, HasVCFormat, VCFormat};
 
 pub const TAG_TYPE: &str = "type_";
 pub const TAG_FORMAT: &str = "format";
 pub const TAG_KID: &str = "kid";
 pub const TAG_ALG: &str = "alg";
 
-#[derive(Debug)]
-pub struct AskarVault(Store);
+#[derive(Clone, Debug)]
+pub struct AskarVault(AskarStorage);
 
 impl AskarVault {
     #[instrument(
         level = Level::TRACE,
         ret(),
     )]
-    pub(super) fn new(store: Store) -> Self {
-        AskarVault(store)
+    pub fn new(storage: AskarStorage) -> Self {
+        AskarVault(storage)
+    }
+
+    #[instrument(
+        level = Level::TRACE,
+        ret(),
+    )]
+    pub async fn close_vault(self) -> Result<(), aries_askar::Error> {
+        self.0.close().await
     }
 
     #[instrument(
@@ -40,7 +47,8 @@ impl AskarVault {
         ret(),
     )]
     async fn insert(&self, entity: &Entry) -> Result<AskarVaultId, aries_askar::Error> {
-        let mut session = self.0.session(None).await?;
+        let mut session = self.0.session().await?;
+
         session
             .insert(
                 &entity.category,
@@ -65,7 +73,7 @@ impl AskarVault {
         ret(),
     )]
     async fn remove(&self, id: AskarVaultId) -> Result<(), aries_askar::Error> {
-        let mut session = self.0.session(None).await?;
+        let mut session = self.0.session().await?;
         session.remove(id.category(), id.name()).await?;
         session.commit().await?;
 
@@ -79,7 +87,7 @@ impl AskarVault {
         ret(),
     )]
     async fn get(&self, id: AskarVaultId) -> Result<Option<Entry>, aries_askar::Error> {
-        let mut seesion = self.0.session(None).await?;
+        let mut seesion = self.0.session().await?;
         seesion.fetch(id.category(), id.name(), false).await
     }
 
@@ -90,7 +98,7 @@ impl AskarVault {
         ret(),
     )]
     async fn get_all(&self) -> Result<Vec<Entry>, aries_askar::Error> {
-        let mut session = self.0.session(None).await?;
+        let mut session = self.0.session().await?;
         session
             .fetch_all(None, None, None, None, false, false)
             .await
@@ -103,7 +111,7 @@ impl AskarVault {
         ret(),
     )]
     async fn find(&self, filter: TagFilter) -> Result<Vec<Entry>, aries_askar::Error> {
-        let mut session = self.0.session(None).await?;
+        let mut session = self.0.session().await?;
         session
             .fetch_all(None, Some(filter), None, None, false, false)
             .await
@@ -410,22 +418,33 @@ fn entry_to_credential(entry: Entry) -> Result<CredentialEntry, Error> {
 
 #[cfg(test)]
 mod tests {
-    use crate::AskarStorage;
+    use crate::vault::AskarVault;
+    use crate::{AskarStorage, AskarStorageConfig, KeyMethod};
     use agent_sdk::vault::{CredentialEntry, Vault};
     use agent_sdk::vc::{Credential, CredentialMetadata, VCFormat};
 
     // TODO: consider splitting this test into several small unit tests
     #[tokio::test]
     async fn test_askar_vault() {
-        let storage = AskarStorage::create("sEcrEt", Some("Askar-Wallet".to_string()))
-            .await
-            .unwrap();
-        let vault = storage.vault();
-        test_vault(vault).await;
-        storage.close().await.unwrap();
+        let storage = AskarStorage::create(
+            &AskarStorageConfig {
+                db_url: "sqlite://:memory:".to_owned(),
+                key_method: KeyMethod::DeriveKey,
+                pass_key: "1234".to_string(),
+                profile: "test".to_string(),
+            },
+            false,
+        )
+        .await
+        .unwrap();
+
+        let vault = AskarVault::new(storage);
+        test_vault(&vault).await;
+
+        vault.close_vault().await.unwrap();
     }
 
-    pub async fn test_vault<V: Vault>(vault: V) {
+    pub async fn test_vault<V: Vault>(vault: &V) {
         // test data
         let cred1 = "token".to_string();
         let cred1_meta = CredentialMetadata {

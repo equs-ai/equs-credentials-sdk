@@ -13,6 +13,7 @@
   "author": "aziz.mukhtorjonov@dsr-corporation.com",
   "dependencies": {
     "@equstng/agent-sdk": "../../../wrappers/nodejs",
+    "@equstng/agent-sdk-askar-storage": "../../../plugins/askar/wrappers/nodejs",
     "body-parser": "^2.0.1",
     "express": "^5.0.0"
   },

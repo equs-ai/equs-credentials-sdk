@@ -1,25 +1,36 @@
 use aries_askar::crypto::alg::EcCurves;
+use aries_askar::crypto::generic_array::ArrayLength;
 use aries_askar::entry::{EntryTag, TagFilter};
 use aries_askar::kms::{KeyAlg, LocalKey};
-use aries_askar::Store;
 use async_trait::async_trait;
 use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
+use bip32::secp256k1::elliptic_curve::ops::Invert;
+use bip32::secp256k1::elliptic_curve::point::PointCompression;
+use bip32::secp256k1::elliptic_curve::sec1::{FromEncodedPoint, ToEncodedPoint};
+use bip32::secp256k1::elliptic_curve::subtle::CtOption;
+use bip32::secp256k1::elliptic_curve::{
+    sec1, AffinePoint, CurveArithmetic, FieldBytesSize, PrimeCurve, Scalar,
+};
+use ecdsa::hazmat::{DigestPrimitive, SignPrimitive, VerifyPrimitive};
+use ecdsa::SignatureSize;
 use sha2::{Digest, Sha256};
 use snafu::{ensure, ResultExt};
 use std::sync::Arc;
 use tracing::{instrument, Level};
 
+use crate::AskarStorage;
 use agent_sdk::crypto::{
-    Alg, AlgNotSupportedSnafu, Error as CryptoError, Key, KeyNotSupportedSnafu, Signer, SigningKey,
-    SigningSnafu, VerificationSnafu, Verifier, VerifyingKey, JWK,
+    AlgNotSupportedSnafu, Error as CryptoError, KeyNotSupportedSnafu, SigningSnafu,
+    VerificationSnafu, JWK,
 };
-use agent_sdk::inmem::crypto::k256::K256;
-use agent_sdk::inmem::crypto::p256::P256;
 use agent_sdk::kms::{
-    CreateOptions, CreationSnafu, CryptoSnafu, Error as KmsError, Error, KeyHandle, KeyID, KeyType,
-    Kms, NotFoundSnafu, ResolvingSnafu,
+    CreateOptions, CreationSnafu, CryptoSnafu, Error as KmsError, Error, KeyHandle, KeyID,
+    NotFoundSnafu, ResolvingSnafu,
 };
+
+pub use agent_sdk::crypto::{Alg, Key, Signer, SigningKey, Verifier, VerifyingKey};
+pub use agent_sdk::kms::{KeyType, Kms};
 
 #[derive(Debug, Clone)]
 pub struct AskarKeyHandle(Arc<LocalKey>, Alg);
@@ -33,6 +44,7 @@ impl AskarKeyHandle {
     fn askar_sign_type(&self) -> Result<&'static str, CryptoError> {
         match self.alg() {
             Alg::ES256 => Ok("es256"),
+            Alg::ES256K => Ok("es256k"),
             Alg::EdDSA => Ok("eddsa"),
             _ => AlgNotSupportedSnafu {
                 alg: format!("{}", self.alg()),
@@ -136,17 +148,26 @@ impl Verifier for AskarKeyHandle {
 impl KeyHandle for AskarKeyHandle {}
 
 const KID_LENGTH: usize = 16;
+const PUBLIC_KEY_TAG_NAME: &str = "public_key";
 
-#[derive(Debug)]
-pub struct AskarKms(Store);
+#[derive(Clone, Debug)]
+pub struct AskarKms(AskarStorage);
 
 impl AskarKms {
     #[instrument(
         level = Level::TRACE,
         skip_all
     )]
-    pub(super) fn new(store: Store) -> Self {
-        AskarKms(store)
+    pub fn new(storage: AskarStorage) -> Self {
+        AskarKms(storage)
+    }
+
+    #[instrument(
+        level = Level::TRACE,
+        ret(),
+    )]
+    pub async fn close_kms(self) -> Result<(), aries_askar::Error> {
+        self.0.close().await
     }
 
     #[instrument(
@@ -161,7 +182,7 @@ impl AskarKms {
         key: &LocalKey,
         tags: Option<&[EntryTag]>,
     ) -> Result<(), aries_askar::Error> {
-        let mut session = self.0.session(None).await?;
+        let mut session = self.0.session().await?;
         session
             .insert_key(key_id, key, None, None, tags, None)
             .await?;
@@ -177,7 +198,7 @@ impl AskarKms {
         ret(),
     )]
     async fn get_key(&self, key_id: &str) -> Result<Option<LocalKey>, aries_askar::Error> {
-        let mut session = self.0.session(None).await?;
+        let mut session = self.0.session().await?;
 
         session
             .fetch_key(key_id, false)
@@ -190,9 +211,10 @@ impl AskarKms {
         &self,
         public_key: &[u8],
     ) -> Result<Option<LocalKey>, aries_askar::Error> {
-        let mut session = self.0.session(None).await?;
+        let mut session = self.0.session().await?;
 
-        let public_key_filter = TagFilter::exist(vec![Self::public_key_to_id(public_key)]);
+        let public_key_filter =
+            TagFilter::is_eq(PUBLIC_KEY_TAG_NAME, Self::public_key_to_id(public_key));
 
         session
             .fetch_all_keys(None, None, Some(public_key_filter), None, false)
@@ -202,7 +224,7 @@ impl AskarKms {
             .transpose()
     }
 
-    pub async fn map_kid_to_public_key(kid: &str, key: &LocalKey) -> Result<Vec<EntryTag>, Error> {
+    pub async fn create_public_key_tags(key: &LocalKey) -> Result<Vec<EntryTag>, Error> {
         let mut tags: Vec<EntryTag> = vec![];
 
         let public_key = key
@@ -217,25 +239,32 @@ impl AskarKms {
 
         let public_key_id = Self::public_key_to_id(&public_key);
         tags.push(EntryTag::Encrypted(
+            PUBLIC_KEY_TAG_NAME.to_string(),
             public_key_id.to_owned(),
-            kid.to_string(),
         ));
 
         let re_encoded_key = match key.algorithm() {
-            KeyAlg::EcCurve(EcCurves::Secp256k1) => Some(K256::re_encode_public_key(
-                &public_key,
-                !K256::is_compressed_public_key(&public_key)?,
-            )?),
-            KeyAlg::EcCurve(EcCurves::Secp256r1) => Some(P256::re_encode_public_key(
-                &public_key,
-                !P256::is_compressed_public_key(&public_key)?,
-            )?),
+            KeyAlg::EcCurve(EcCurves::Secp256r1) => {
+                Some(Self::re_encode_public_key::<p256::NistP256>(
+                    &public_key,
+                    !Self::is_compressed_public_key::<p256::NistP256>(&public_key)?,
+                )?)
+            }
+            KeyAlg::EcCurve(EcCurves::Secp256k1) => {
+                Some(Self::re_encode_public_key::<bip32::secp256k1::Secp256k1>(
+                    &public_key,
+                    !Self::is_compressed_public_key::<bip32::secp256k1::Secp256k1>(&public_key)?,
+                )?)
+            }
             _ => None,
         };
 
         if let Some(re_encoded_key) = re_encoded_key {
             let re_encoded_pk_id = Self::public_key_to_id(&re_encoded_key);
-            tags.push(EntryTag::Encrypted(re_encoded_pk_id, kid.to_string()));
+            tags.push(EntryTag::Encrypted(
+                PUBLIC_KEY_TAG_NAME.to_string(),
+                re_encoded_pk_id,
+            ));
         }
 
         Ok(tags)
@@ -246,7 +275,51 @@ impl AskarKms {
         hasher.update(public_key);
         let hash = hasher.finalize().to_vec();
 
-        BASE64_STANDARD.encode(&hash[..16])
+        BASE64_STANDARD.encode(&hash)
+    }
+
+    pub fn re_encode_public_key<C>(public_key: &[u8], compress: bool) -> Result<Vec<u8>, Error>
+    where
+        C: PrimeCurve + CurveArithmetic + PointCompression + DigestPrimitive,
+        Scalar<C>: Invert<Output = CtOption<Scalar<C>>> + SignPrimitive<C>,
+        SignatureSize<C>: ArrayLength<u8>,
+        AffinePoint<C>: FromEncodedPoint<C> + ToEncodedPoint<C> + VerifyPrimitive<C>,
+        FieldBytesSize<C>: sec1::ModulusSize,
+    {
+        let encoded_point = ecdsa::EncodedPoint::<C>::from_bytes(public_key).map_err(|err| {
+            CreationSnafu {
+                details: err.to_string(),
+            }
+            .build()
+        })?;
+
+        let verifying_key =
+            ecdsa::VerifyingKey::<C>::from_encoded_point(&encoded_point).map_err(|err| {
+                CreationSnafu {
+                    details: err.to_string(),
+                }
+                .build()
+            })?;
+
+        Ok(verifying_key.to_encoded_point(compress).as_bytes().to_vec())
+    }
+
+    pub fn is_compressed_public_key<C>(public_key: &[u8]) -> Result<bool, Error>
+    where
+        C: PrimeCurve + CurveArithmetic + PointCompression + DigestPrimitive,
+        Scalar<C>: Invert<Output = CtOption<Scalar<C>>> + SignPrimitive<C>,
+        SignatureSize<C>: ArrayLength<u8>,
+        AffinePoint<C>: FromEncodedPoint<C> + ToEncodedPoint<C> + VerifyPrimitive<C>,
+        FieldBytesSize<C>: sec1::ModulusSize,
+    {
+        ecdsa::EncodedPoint::<C>::from_bytes(public_key)
+            .map(|encoded_point| encoded_point.is_compressed())
+            .map_err(|err| {
+                CreationSnafu {
+                    details: err.to_string(),
+                }
+                .build()
+            })
     }
 }
 
@@ -268,7 +341,7 @@ impl Kms<AskarKeyHandle> for AskarKms {
         })?;
 
         let kid = random_string::generate(KID_LENGTH, random_string::charsets::ALPHA);
-        let tags = Self::map_kid_to_public_key(&kid, &key).await?;
+        let tags = Self::create_public_key_tags(&key).await?;
 
         self.insert_key(&kid, &key, Some(&tags))
             .await
@@ -327,6 +400,7 @@ fn key_alg_to_alg(key_alg: KeyAlg) -> Result<Alg, CryptoError> {
     match key_alg {
         KeyAlg::Ed25519 => Ok(Alg::EdDSA),
         KeyAlg::EcCurve(EcCurves::Secp256r1) => Ok(Alg::ES256),
+        KeyAlg::EcCurve(EcCurves::Secp256k1) => Ok(Alg::ES256K),
         _ => AlgNotSupportedSnafu {
             alg: key_alg.as_str(),
         }
@@ -337,6 +411,7 @@ fn key_alg_to_alg(key_alg: KeyAlg) -> Result<Alg, CryptoError> {
 fn key_type_to_key_alg(key_type: KeyType) -> Result<KeyAlg, CryptoError> {
     match key_type {
         KeyType::P256 => Ok(KeyAlg::EcCurve(EcCurves::Secp256r1)),
+        KeyType::K256 => Ok(KeyAlg::EcCurve(EcCurves::Secp256k1)),
         KeyType::Ed25519 => Ok(KeyAlg::Ed25519),
         _ => KeyNotSupportedSnafu {
             type_: format!("{}", key_type),
@@ -347,23 +422,38 @@ fn key_type_to_key_alg(key_type: KeyType) -> Result<KeyAlg, CryptoError> {
 
 #[cfg(test)]
 mod tests {
-    use crate::AskarStorage;
+    use crate::kms::AskarKms;
+    use crate::{AskarStorage, AskarStorageConfig, KeyMethod};
     use agent_sdk::kms;
     use agent_sdk::kms::{KeyHandle, Kms};
 
     // TODO: consider splitting this test into several small unit tests
     #[tokio::test]
     async fn test_askar_kms() {
-        let storage = AskarStorage::create("sEcrEt", Some("Askar-Wallet".to_string()))
-            .await
-            .unwrap();
-        let kms = storage.kms();
-        test_kms(kms).await;
-        storage.close().await.unwrap();
+        let storage = AskarStorage::create(
+            &AskarStorageConfig {
+                db_url: "sqlite://:memory:".to_owned(),
+                key_method: KeyMethod::DeriveKey,
+                pass_key: "1234".to_string(),
+                profile: "test".to_string(),
+            },
+            false,
+        )
+        .await
+        .unwrap();
+        let kms = AskarKms::new(storage);
+
+        test_kms(&kms).await;
+
+        kms.close_kms().await.unwrap();
     }
 
-    pub async fn test_kms<KH: KeyHandle, KMS: Kms<KH>>(kms: KMS) {
-        for kt in [kms::KeyType::Ed25519, kms::KeyType::P256] {
+    pub async fn test_kms<KH: KeyHandle, KMS: Kms<KH>>(kms: &KMS) {
+        for kt in [
+            kms::KeyType::Ed25519,
+            kms::KeyType::P256,
+            kms::KeyType::K256,
+        ] {
             // Create a key
             let kid = kms
                 .create(kt.clone(), kms::CreateOptions::default())
