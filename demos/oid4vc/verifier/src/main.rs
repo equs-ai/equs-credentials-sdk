@@ -257,11 +257,20 @@ pub fn default_presentation_definition() -> PresentationDefinition {
         .set_filter(&country_filter)
         .unwrap();
 
+    let age_over_18_filter = json!({
+        "type": "boolean",
+        "const": true
+    });
+    let over_18_constraint = ConstraintsField::new(JsonPath::parse("$.age_over_18").unwrap())
+        .set_filter(&age_over_18_filter)
+        .unwrap();
+
     let constraints = Constraints::new()
         .add_constraint(vct_constraint)
         .add_constraint(email_constraint)
         .add_constraint(username_constraint)
-        .add_constraint(country_constraint);
+        .add_constraint(country_constraint)
+        .add_constraint(over_18_constraint);
 
     let mut format = ClaimFormatMap::new();
     format.insert(
