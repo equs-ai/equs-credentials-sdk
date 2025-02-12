@@ -31,6 +31,14 @@ impl NativeVault {
     }
 
     #[napi]
+    pub async fn delete_credential(&self, id: String) -> napi::Result<()> {
+        self.0
+            .delete_credential(&id)
+            .await
+            .map_err(|err| napi::Error::from_reason(format!("{err:?}")))
+    }
+
+    #[napi]
     pub async fn get_credential(&self, id: String) -> napi::Result<Option<JsCredentialEntry>> {
         let credential = self
             .0

@@ -33,6 +33,15 @@ describe("Vault: ", () => {
     expect(id).toEqual(data.id);
   });
 
+  test("delete Credential", async () => {
+    const data = CREDENTIAL_DATA;
+    const vault = await wrapJsVault(mockVault(data));
+
+    const entry = await vault.deleteCredential(data.id);
+
+    expect(entry).toBeUndefined();
+  });
+
   test("get Credential", async () => {
     const data = CREDENTIAL_DATA;
     const vault = await wrapJsVault(mockVault(data));
@@ -43,11 +52,19 @@ describe("Vault: ", () => {
   });
 
   test("find Credentials", async () => {
+    const data = CREDENTIAL_DATA;
     const vault = await wrapJsVault(mockVault(CREDENTIAL_DATA));
 
-    await vault.findCredentials(["format"]);
+    const entries = await vault.findCredentials(["format"]);
+    expect(entries).toEqual([{ credential: data.credential, kid: data.metadata.kid, id: data.id }]);
+  });
 
-    return;
+  test("get Credentials", async () => {
+    const data = CREDENTIAL_DATA;
+    const vault = await wrapJsVault(mockVault(CREDENTIAL_DATA));
+
+    const entries = await vault.getCredentials();
+    expect(entries).toEqual([{ credential: data.credential, kid: data.metadata.kid, id: data.id }]);
   });
 });
 
@@ -73,6 +90,12 @@ function mockVault(credential_data): Vault {
         throw new Error(`Invalid metadata: ${JSON.stringify(metadata)}`);
 
       return credential_data.id;
+    },
+
+    async deleteCredential(id) {
+      if (id !== credential_data.id) throw new Error(`Invalid ID: ${id}`);
+
+      return;
     },
 
     async getCredential(id) {

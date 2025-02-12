@@ -1,7 +1,9 @@
 use crate::inmem::index_storage::IndexStorage;
 use crate::inmem::storage::InMemStorage;
 use crate::storage::Storage;
-use crate::vault::{CredentialEntry, EmptyFieldsSnafu, Error, StoringSnafu, Vault};
+use crate::vault::{
+    CredentialEntry, DeletingSnafu, EmptyFieldsSnafu, Error, ResolvingSnafu, StoringSnafu, Vault,
+};
 use crate::vc::{Credential, CredentialMetadata};
 use async_trait::async_trait;
 use futures::future;
@@ -117,9 +119,24 @@ impl Vault for InMemVault {
         err(),
         ret(),
     )]
+    async fn delete_credential(&self, id: &str) -> Result<(), Error> {
+        self.storage.delete(&id.to_string()).await.map_err(|err| {
+            DeletingSnafu {
+                details: err.to_string(),
+            }
+            .build()
+        })
+    }
+
+    #[instrument(
+        level = Level::TRACE,
+        skip(self),
+        err(),
+        ret(),
+    )]
     async fn get_credential(&self, id: &str) -> Result<Option<CredentialEntry>, Error> {
         self.storage.get(&id.to_string()).await.map_err(|err| {
-            StoringSnafu {
+            ResolvingSnafu {
                 details: err.to_string(),
             }
             .build()
@@ -134,7 +151,7 @@ impl Vault for InMemVault {
     )]
     async fn get_credentials(&self) -> Result<Vec<CredentialEntry>, Error> {
         self.storage.get_all().await.map_err(|err| {
-            StoringSnafu {
+            ResolvingSnafu {
                 details: err.to_string(),
             }
             .build()

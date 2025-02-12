@@ -1,7 +1,9 @@
 use crate::vault::JsCredentialEntry;
 use crate::vc::core::{JsCredential, JsCredentialMetadata};
 use agent_sdk::vault;
-use agent_sdk::vault::{CredentialEntry, EmptyFieldsSnafu, ResolvingSnafu, StoringSnafu, Vault};
+use agent_sdk::vault::{
+    CredentialEntry, DeletingSnafu, EmptyFieldsSnafu, ResolvingSnafu, StoringSnafu, Vault,
+};
 use agent_sdk::vc::{Credential, CredentialMetadata};
 use async_trait::async_trait;
 use napi::bindgen_prelude::Promise;
@@ -14,6 +16,8 @@ pub struct JsVault {
     #[napi(ts_type = "(credential: Credential, metadata: CredentialMetadata) => Promise<String>")]
     pub store_credential:
         ThreadsafeFunction<(JsCredential, JsCredentialMetadata), ErrorStrategy::Fatal>,
+    #[napi(ts_type = "(id: string) => Promise<void>")]
+    pub delete_credential: ThreadsafeFunction<String, ErrorStrategy::Fatal>,
     #[napi(ts_type = "(id: string) => Promise<CredentialEntry | null>")]
     pub get_credential: ThreadsafeFunction<String, ErrorStrategy::Fatal>,
     #[napi(ts_type = "() => Promise<Array<CredentialEntry>>")]
@@ -55,6 +59,26 @@ impl Vault for JsVault {
 
         promise.await.map_err(|err| {
             StoringSnafu {
+                details: err.to_string(),
+            }
+            .build()
+        })
+    }
+
+    async fn delete_credential(&self, id: &str) -> vault::Result<()> {
+        let promise: Promise<()> = self
+            .delete_credential
+            .call_async(id.to_string())
+            .await
+            .map_err(|err| {
+                DeletingSnafu {
+                    details: err.to_string(),
+                }
+                .build()
+            })?;
+
+        promise.await.map_err(|err| {
+            DeletingSnafu {
                 details: err.to_string(),
             }
             .build()
