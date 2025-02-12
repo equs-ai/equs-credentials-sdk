@@ -1,4 +1,4 @@
-import { DIDResolution, DIDVerificationMethod } from "../../types";
+import { DIDResolution, DIDVerificationMethod } from "../../";
 
 export class Utils {
   readonly webVerificationMethod = {

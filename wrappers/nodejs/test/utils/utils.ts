@@ -1,4 +1,4 @@
-import { createUniversalDidResolver, DIDKey, KeyMetadata, KeyType, NativeKms } from "../../index";
+import { createUniversalDidResolver, DIDKey, KeyMetadata, KeyType, NativeKms } from "../../";
 
 export type DidAndKeyMetadata = {
   did: string;

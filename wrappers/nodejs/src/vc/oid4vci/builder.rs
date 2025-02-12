@@ -111,70 +111,6 @@ impl OID4VCIIssuerBuilder {
     }
 }
 
-#[napi]
-pub struct OID4VCIHolderBuilder {
-    kms: UnifiedKms,
-    vault: UnifiedVault,
-    client_id: String,
-    issuer_discovery: JsIssuerDiscovery,
-    redirect_url: Option<String>,
-}
-
-#[napi]
-impl OID4VCIHolderBuilder {
-    #[napi(constructor)]
-    pub fn new(
-        kms: Either<&NativeKms, JsKms>,
-        vault: Either<&NativeVault, JsVault>,
-        client_id: String,
-        issuer_discovery: &JsIssuerDiscovery,
-    ) -> Self {
-        OID4VCIHolderBuilder {
-            kms: kms.into(),
-            vault: vault.into(),
-            client_id,
-            issuer_discovery: issuer_discovery.clone(),
-            redirect_url: None,
-        }
-    }
-
-    #[napi]
-    pub fn with_redirect_url(&mut self, redirect_url: String) {
-        self.redirect_url = Some(redirect_url);
-    }
-
-    #[napi]
-    pub async fn build(&self) -> Result<OID4VCIHolder> {
-        let mut builder = HolderBuilder::new(
-            self.kms.clone(),
-            self.vault.clone(),
-            self.client_id.to_owned(),
-            self.issuer_discovery.0.clone(),
-        );
-
-        #[cfg(debug_assertions)]
-        {
-            builder = builder.with_http_client(
-                ReqwestClientBuilder::new()
-                    .insecure()
-                    .build()
-                    .map_err(|err| Error::from_reason(format!("{:?}", err)))?,
-            )
-        }
-
-        if let Some(url) = &self.redirect_url {
-            builder = builder.with_redirect_url(url.to_string());
-        }
-
-        let holder = builder
-            .build()
-            .await
-            .map_err(|err| Error::from_reason(format!("{:?}", err)))?;
-
-        Ok(OID4VCIHolder::from_holder(holder))
-    }
-}
-
 #[derive(Clone)]
 #[napi(js_name = "IssuerDiscovery")]
 pub struct JsIssuerDiscovery(IssuerDiscovery);
@@ -210,4 +146,38 @@ impl JsIssuerDiscovery {
 enum TokenValidation {
     Introspect(String, Option<String>),
     Jwks(String),
+}
+
+#[napi]
+pub async fn _build_vci_holder(
+    kms: Either<&NativeKms, JsKms>,
+    vault: Either<&NativeVault, JsVault>,
+    client_id: String,
+    issuer_discovery: &JsIssuerDiscovery,
+    redirect_url: Option<String>,
+) -> Result<OID4VCIHolder> {
+    let kms: UnifiedKms = kms.into();
+    let vault: UnifiedVault = vault.into();
+    let mut builder = HolderBuilder::new(kms, vault, client_id, issuer_discovery.0.to_owned());
+
+    #[cfg(debug_assertions)]
+    {
+        builder = builder.with_http_client(
+            ReqwestClientBuilder::new()
+                .insecure()
+                .build()
+                .map_err(|err| Error::from_reason(format!("{:?}", err)))?,
+        )
+    }
+
+    if let Some(url) = redirect_url {
+        builder = builder.with_redirect_url(url.to_string());
+    }
+
+    let holder = builder
+        .build()
+        .await
+        .map_err(|err| Error::from_reason(format!("{:?}", err)))?;
+
+    Ok(OID4VCIHolder::from_holder(holder))
 }

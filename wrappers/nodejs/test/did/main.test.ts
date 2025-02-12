@@ -1,4 +1,4 @@
-import { createUniversalDidResolver, DIDKey, DIDVerificationMethod, inMemKms, KeyHandle, KeyType } from "../../index";
+import { createUniversalDidResolver, DIDKey, DIDVerificationMethod, inMemKms, KeyHandle, KeyType } from "../../";
 import { Utils } from "./utils";
 
 describe("DID: ", () => {

@@ -10,7 +10,7 @@ import {
   Oid4VpHolder,
   Oid4VpHolderBuilder,
   VCFormat,
-} from "../../index";
+} from "../../";
 import { AUTH_REQUEST, AUTH_REQUEST_JWT, STATE, VC, VC_TYPE } from "./fixtures";
 import { createDidAndKeyMetadata } from "../utils/utils";
 

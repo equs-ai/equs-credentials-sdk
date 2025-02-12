@@ -8,7 +8,7 @@ import {
   OID4VCICredentialOffer,
   OID4VCICredentialRequest,
   OID4VCIIssuerMetadata,
-} from "../../index";
+} from "../../";
 
 export const ISSUER_ENDPOINT = "http://localhost:9000";
 export const TOKEN_ENDPOINT = `${ISSUER_ENDPOINT}/auth/token`;

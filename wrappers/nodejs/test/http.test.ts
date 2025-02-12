@@ -1,4 +1,4 @@
-import { forHttpRequestTest, HttpClient, HttpMethod, HttpRequest, HttpResponse } from "../index";
+import { forHttpRequestTest, HttpClient, HttpMethod, HttpRequest, HttpResponse } from "../";
 
 describe("Http client: ", () => {
   test("async call", async () => {

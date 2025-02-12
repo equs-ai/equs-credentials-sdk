@@ -1,4 +1,4 @@
-import { Oid4VciCredentialOfferResolver } from "../../index";
+import { Oid4VciCredentialOfferResolver } from "../../";
 import { AUTH_SERVER_METADATA, CRED_OFFER_WITH_PRE_AUTH_GRANT } from "./fixtures";
 import { getLocal } from "mockttp";
 

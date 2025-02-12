@@ -13,7 +13,7 @@ import {
   HttpClient,
   HttpRequest,
   HttpResponse,
-} from "../../index";
+} from "../../";
 import { jwtDecode } from "jwt-decode";
 import { Utils } from "./utils";
 
