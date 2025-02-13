@@ -1,10 +1,10 @@
 import { Alg, createKeyMetadata, KeyHandle, KeyType, Kms } from "../";
 import { JWK, JWS } from "node-jose";
-import { getNativeOrKms } from "../types/utils";
+import { contextEnsuredKms } from "../types/utils";
 
 describe("KMS: ", () => {
   test("generate Key Metadata using JS KMS", async () => {
-    const kms = getNativeOrKms(await mockKms());
+    const kms = contextEnsuredKms(await mockKms());
     const key_metadata = await createKeyMetadata(kms);
 
     const expected_key_metadata = {
@@ -17,7 +17,7 @@ describe("KMS: ", () => {
   });
 
   test("sign and verify", async () => {
-    const kms = getNativeOrKms(await mockKms());
+    const kms = contextEnsuredKms(await mockKms());
     const keyHandle = await kms.get("test");
 
     const payload = new TextEncoder().encode("Secure payload");

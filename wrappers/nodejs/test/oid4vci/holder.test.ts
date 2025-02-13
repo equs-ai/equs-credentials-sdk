@@ -1,4 +1,4 @@
-import { inMemKms, inMemVault, IssuerDiscovery, Oid4VciHolderBuilder, VCFormat } from "../../";
+import { inMemKms, inMemVault, IssuerDiscovery, OID4VCIHolderBuilder, VCFormat } from "../../";
 import {
   ACCESS_TOKEN,
   ACCESS_TOKEN_RESPONSE,
@@ -133,12 +133,6 @@ describe("OID4VCI Holder: ", () => {
 });
 
 async function buildHolder(kms = inMemKms(), vault = inMemVault()) {
-  const builder = new Oid4VciHolderBuilder({
-    kms,
-    vault,
-    clientId: "client_id",
-    issuerDiscovery: IssuerDiscovery.fromOffer(CRED_OFFER),
-    redirectUrl: undefined,
-  });
+  const builder = new OID4VCIHolderBuilder(kms, vault, "client_id", IssuerDiscovery.fromOffer(CRED_OFFER));
   return await builder.build();
 }

@@ -8,7 +8,7 @@ import {
   NativeKms,
   NativeVault,
   Oid4VpHolder,
-  Oid4VpHolderBuilder,
+  OID4VPHolderBuilder,
   VCFormat,
 } from "../../";
 import { AUTH_REQUEST, AUTH_REQUEST_JWT, STATE, VC, VC_TYPE } from "./fixtures";
@@ -29,7 +29,7 @@ describe("OID4VP Holder: ", () => {
     await mockServer.start(9001);
     kms = inMemKms();
     vault = inMemVault();
-    holder = await new Oid4VpHolderBuilder(kms, vault, "client_id").build();
+    holder = await new OID4VPHolderBuilder(kms, vault, "client_id").build();
 
     keyMetadata = (await createDidAndKeyMetadata(kms)).keyMetadata;
     credential = {

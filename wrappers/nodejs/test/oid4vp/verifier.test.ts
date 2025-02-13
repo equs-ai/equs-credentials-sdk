@@ -3,7 +3,7 @@ import {
   AuthResponseOptions,
   inMemKms,
   localNonceGenerator,
-  Oid4VpVerifierBuilder,
+  OID4VPVerifierBuilder,
   PassAuthRequestObject,
 } from "../../";
 import { CLAIMS, PRESENTATION_DEFINITION, PRESENTATION_SUBMISSION, STATE, VP } from "./fixtures";
@@ -69,10 +69,10 @@ describe("OID4VP Verifier: ", () => {
   });
 });
 
-async function buildVerifier(client_id = "did:key:zDnaeagvW2eDWc2yVw7B98ovcJ8jddn7T9Mh3y5Vikys6y4kX") {
+async function buildVerifier(clientId = "did:key:zDnaeagvW2eDWc2yVw7B98ovcJ8jddn7T9Mh3y5Vikys6y4kX") {
   const kms = inMemKms();
-  const nonce_generator = localNonceGenerator();
+  const nonceGenerator = localNonceGenerator();
   const { keyMetadata } = await createDidAndKeyMetadata(kms);
 
-  return await new Oid4VpVerifierBuilder(kms, nonce_generator, keyMetadata, client_id).build();
+  return await new OID4VPVerifierBuilder(kms, nonceGenerator, keyMetadata, clientId).build();
 }

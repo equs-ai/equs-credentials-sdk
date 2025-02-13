@@ -2,7 +2,7 @@
 use agent_sdk::reqwest::builder::ReqwestClientBuilder;
 
 use agent_sdk::vc::core::KeyMetadata;
-use agent_sdk::vc::oid4vci::{HolderBuilder, IssuerBuilder, IssuerDiscovery};
+use agent_sdk::vc::oid4vci::{HolderBuilder, IssuerBuilder, IssuerDiscovery, IssuerMetadata};
 use napi::{Either, Error, Result};
 use napi_derive::napi;
 use std::collections::HashMap;
@@ -15,101 +15,8 @@ use crate::vault::{JsVault, NativeVault, UnifiedVault};
 use crate::vc::core::JsKeyMetadata;
 use crate::vc::oid4vci::holder::OID4VCIHolder;
 use crate::vc::oid4vci::issuer::OID4VCIIssuer;
+use crate::vc::oid4vci::{JsDuration, JsTokenValidation};
 use crate::vc::JsonObject;
-
-#[napi]
-pub struct OID4VCIIssuerBuilder {
-    kms: UnifiedKms,
-    nonce_generator: UnifiedNonceGenerator,
-    issuer_metadata: JsonObject,
-    key_metadata: KeyMetadata,
-    token_validation: Option<TokenValidation>,
-    clock_skew: Option<time::Duration>,
-    dedicated_keys: HashMap<String, KeyMetadata>,
-}
-
-#[napi]
-impl OID4VCIIssuerBuilder {
-    #[napi(constructor)]
-    pub fn new(
-        kms: Either<&NativeKms, JsKms>,
-        nonce_generator: Either<&NativeNonceGenerator, JsNonceGenerator>,
-        #[napi(ts_arg_type = "OID4VCIIssuerMetadata")] issuer_metadata: JsonObject,
-        key_metadata: JsKeyMetadata,
-    ) -> Self {
-        OID4VCIIssuerBuilder {
-            kms: kms.into(),
-            nonce_generator: nonce_generator.into(),
-            issuer_metadata,
-            key_metadata: key_metadata.into(),
-            token_validation: None,
-            clock_skew: None,
-            dedicated_keys: HashMap::new(),
-        }
-    }
-
-    #[napi]
-    pub fn token_validation_introspect(&mut self, url: String, header: Option<String>) {
-        self.token_validation = Some(TokenValidation::Introspect(url, header));
-    }
-
-    #[napi]
-    pub fn token_validation_jwks(&mut self, url: String) {
-        self.token_validation = Some(TokenValidation::Jwks(url));
-    }
-
-    #[napi]
-    pub fn with_clock_skew(&mut self, duration: i64) {
-        self.clock_skew = Some(time::Duration::seconds(duration))
-    }
-
-    #[napi]
-    pub fn with_dedicated_key_metadata(
-        &mut self,
-        credential_configuration_id: String,
-        key_metadata: JsKeyMetadata,
-    ) {
-        self.dedicated_keys
-            .insert(credential_configuration_id, key_metadata.into());
-    }
-
-    #[napi]
-    pub async fn build(&self) -> Result<OID4VCIIssuer> {
-        let mut builder = IssuerBuilder::new(
-            self.kms.clone(),
-            self.nonce_generator.clone(),
-            from_json_object(self.issuer_metadata.clone())?,
-            self.key_metadata.clone(),
-        );
-
-        if let Some(validation) = &self.token_validation {
-            match validation {
-                TokenValidation::Introspect(url, header) => {
-                    builder =
-                        builder.token_validation_introspect(parse_url_arg(url)?, header.to_owned())
-                }
-                TokenValidation::Jwks(url) => {
-                    builder = builder.token_validation_jwks(parse_url_arg(url)?)
-                }
-            }
-        }
-
-        if let Some(duration) = self.clock_skew {
-            builder = builder.with_clock_skew(duration);
-        }
-
-        for (key, value) in &self.dedicated_keys {
-            builder = builder.with_dedicated_key_metadata(key, value);
-        }
-
-        let issuer = builder
-            .build()
-            .await
-            .map_err(|err| Error::from_reason(format!("{:?}", err)))?;
-
-        Ok(OID4VCIIssuer(Box::new(issuer)))
-    }
-}
 
 #[derive(Clone)]
 #[napi(js_name = "IssuerDiscovery")]
@@ -143,7 +50,7 @@ impl JsIssuerDiscovery {
     }
 }
 
-enum TokenValidation {
+pub enum TokenValidation {
     Introspect(String, Option<String>),
     Jwks(String),
 }
@@ -180,4 +87,64 @@ pub async fn _build_vci_holder(
         .map_err(|err| Error::from_reason(format!("{:?}", err)))?;
 
     Ok(OID4VCIHolder::from_holder(holder))
+}
+
+#[napi]
+pub async fn _build_vci_issuer(
+    kms: Either<&NativeKms, JsKms>,
+    nonce_generator: Either<&NativeNonceGenerator, JsNonceGenerator>,
+    #[napi(ts_arg_type = "OID4VCIIssuerMetadata")] issuer_metadata: JsonObject,
+    key_metadata: JsKeyMetadata,
+    token_validation: Option<JsTokenValidation>,
+    clock_skew: Option<JsDuration>,
+    dedicated_keys: HashMap<String, JsKeyMetadata>,
+) -> Result<OID4VCIIssuer> {
+    let kms: UnifiedKms = kms.into();
+    let nonce_generator: UnifiedNonceGenerator = nonce_generator.into();
+    let issuer_metadata: IssuerMetadata =
+        serde_json::from_value(from_json_object(issuer_metadata)?)?;
+    let key_metadata: KeyMetadata = key_metadata.into();
+    let token_validation: Option<TokenValidation> = token_validation
+        .map(TokenValidation::try_from)
+        .transpose()?;
+    let clock_skew: Option<time::Duration> =
+        clock_skew.map(time::Duration::try_from).transpose()?;
+    let mut builder = IssuerBuilder::new(kms, nonce_generator, issuer_metadata, key_metadata);
+
+    #[cfg(debug_assertions)]
+    {
+        builder = builder.with_http_client(
+            ReqwestClientBuilder::new()
+                .insecure()
+                .build()
+                .map_err(|err| Error::from_reason(format!("{:?}", err)))?,
+        )
+    }
+
+    if let Some(validation) = &token_validation {
+        match validation {
+            TokenValidation::Introspect(url, header) => {
+                builder =
+                    builder.token_validation_introspect(parse_url_arg(url)?, header.to_owned())
+            }
+            TokenValidation::Jwks(url) => {
+                builder = builder.token_validation_jwks(parse_url_arg(url)?)
+            }
+        }
+    }
+
+    if let Some(duration) = clock_skew {
+        builder = builder.with_clock_skew(duration);
+    }
+
+    for (key, value) in &dedicated_keys {
+        builder = builder.with_dedicated_key_metadata(key, &value.clone().into());
+    }
+
+    let issuer = builder
+        .build()
+        .await
+        .map_err(|err| Error::from_reason(format!("{:?}", err)))?;
+
+    Ok(OID4VCIIssuer(Box::new(issuer)))
 }
