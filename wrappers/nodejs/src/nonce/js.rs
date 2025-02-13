@@ -8,7 +8,7 @@ use napi_derive::napi;
 #[derive(Clone)]
 #[napi(js_name = "NonceGenerator", object, object_to_js = false)]
 pub struct JsNonceGenerator {
-    #[napi(ts_type = "() => Promise<String>")]
+    #[napi(ts_type = "() => Promise<string>")]
     pub generate: ThreadsafeFunction<(), ErrorStrategy::Fatal>,
 }
 

@@ -9,9 +9,9 @@ import {
   NativeKms,
   NonceData,
   Oid4VciHolder,
-  Oid4VciHolderBuilder,
+  OID4VCIHolderBuilder,
   Oid4VpHolder,
-  Oid4VpHolderBuilder,
+  OID4VPHolderBuilder,
   resolveMetadata,
   TracingLogFormat,
   TracingLogLevel,
@@ -27,14 +27,14 @@ async function main(): Promise<void> {
 
   const issuerDiscovery = IssuerDiscovery.fromUrl(config.issuerServerUrl);
 
-  const oid4VciHolder = await new Oid4VciHolderBuilder({
+  const oid4VciHolder = await new OID4VCIHolderBuilder(
     kms,
     vault,
-    clientId: config.clientId,
+    config.clientId,
     issuerDiscovery,
-    redirectUrl: undefined,
-  }).build();
-  const oid4VpHolder = await new Oid4VpHolderBuilder(
+  ).build();
+
+  const oid4VpHolder = await new OID4VPHolderBuilder(
     kms,
     vault,
     config.clientId,

@@ -200,5 +200,7 @@ package-lock.json
 *.node
 
 *.d.ts
-./binary.js
-./index.js
+*.js
+!.eslintrc.js
+!jest.config.puppeteer.js
+!jest-puppeteer.config.js

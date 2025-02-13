@@ -4,7 +4,7 @@ import {
   enableLogs,
   inMemKms,
   localNonceGenerator,
-  Oid4VpVerifierBuilder,
+  OID4VPVerifierBuilder,
   PassAuthRequestObject,
   TracingLogFormat,
   TracingLogLevel,
@@ -24,7 +24,7 @@ async function main(): Promise<void> {
   const { did, keyMetadata } = await createDidAndKeyMetadata(kms);
 
   const appState = {
-    verifier: await new Oid4VpVerifierBuilder(
+    verifier: await new OID4VPVerifierBuilder(
       kms,
       nonceGenerator,
       keyMetadata,

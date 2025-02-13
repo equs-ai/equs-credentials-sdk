@@ -4,7 +4,7 @@ import {
   IssuanceResultType,
   IssuanceSession,
   localNonceGenerator,
-  Oid4VciIssuerBuilder,
+  OID4VCIIssuerBuilder,
   TracingLogFormat,
   TracingLogLevel,
 } from "@equstng/agent-sdk";
@@ -20,7 +20,7 @@ async function main(): Promise<void> {
   const nonceGenerator = localNonceGenerator();
   const { keyMetadata } = await createDidAndKeyMetadata(kms);
 
-  const issuer = await new Oid4VciIssuerBuilder(
+  const issuer = await new OID4VCIIssuerBuilder(
     kms,
     nonceGenerator,
     config.issuerMetadata,

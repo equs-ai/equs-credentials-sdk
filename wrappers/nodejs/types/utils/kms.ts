@@ -20,6 +20,6 @@ class WrappedKms {
   }
 }
 
-export function getNativeOrKms(kms: NativeKms | Kms): NativeKms | Kms {
+export function contextEnsuredKms(kms: NativeKms | Kms): NativeKms | Kms {
   return kms instanceof NativeKms ? kms : new WrappedKms(kms);
 }
