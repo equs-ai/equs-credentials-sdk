@@ -4,7 +4,14 @@
   "main": "index.js",
   "types": "index.d.ts",
   "napi": {
-    "name": "agent-sdk-askar-storage"
+    "name": "agent-sdk-askar-storage",
+    "triples": {
+      "additional": [
+        "aarch64-apple-darwin",
+        "x86_64-apple-darwin",
+        "x86_64-unknown-linux-gnu"
+      ]
+    }
   },
   "ava": {
     "timeout": "3m"
@@ -14,9 +21,8 @@
   },
   "scripts": {
     "manual_scripts": "node scripts/add-import-line.mjs",
+    "build": "CARGO_TARGET_DIR=../../target napi build --platform --release --js binary.js --dts binary.d.ts && npm run manual_scripts && rm -rf build/ && rm index.d.ts || true  && tsc index.ts -d",
     "artifacts": "napi artifacts",
-    "build": "CARGO_TARGET_DIR=../../target napi build --platform --release && npm run manual_scripts",
-    "build:debug": "CARGO_TARGET_DIR=../../target napi build --platform && npm run manual_scripts",
     "test": "jest -w=1",
     "universal": "napi universal",
     "version": "napi version",

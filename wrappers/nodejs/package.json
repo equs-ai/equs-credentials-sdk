@@ -22,7 +22,7 @@
   },
   "scripts": {
     "manual_scripts": "node scripts/fix-type-names.mjs && node scripts/add-import-line.mjs",
-    "napi:build": "napi build $npm_config_napi_flags --platform --js binary.js --dts binary.d.ts && npm run manual_scripts && rm -rf build/ && tsc index.ts -d",
+    "napi:build": "napi build $npm_config_napi_flags --platform --js binary.js --dts binary.d.ts && npm run manual_scripts && rm -rf build/ && rm index.d.ts || true && tsc index.ts -d",
     "artifacts": "napi artifacts",
     "build": "npm run napi:build --napi_flags=--release",
     "build:debug": "npm run napi:build --napi_flags=--features=in-memory",

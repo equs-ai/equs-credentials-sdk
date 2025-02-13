@@ -1,6 +1,7 @@
 import { KeyHandle, KeyType, Kms, NativeKms } from "../../binary";
+import { WrappedKeyHandle } from "./keyHandle";
 
-class WrappedKms {
+class WrappedKms implements Kms {
   constructor(private readonly kms: Kms) {
     this.create = this.create.bind(this);
     this.get = this.get.bind(this);
@@ -12,11 +13,13 @@ class WrappedKms {
   }
 
   async get(kid: string): Promise<KeyHandle> {
-    return await this.kms.get(kid);
+    const keyHandle = await this.kms.get(kid);
+    return new WrappedKeyHandle(keyHandle);
   }
 
   async getByPublicKey(pk: Array<number>): Promise<KeyHandle> {
-    return await this.kms.getByPublicKey(pk);
+    const keyHandle = await this.kms.getByPublicKey(pk);
+    return new WrappedKeyHandle(keyHandle);
   }
 }
 

@@ -11,9 +11,7 @@
     "allowSyntheticDefaultImports": true,
     "target": "ESNext",
     "sourceMap": true,
-    "outDir": ".",
+    "outDir": "./build",
     "baseUrl": "./"
-  },
-  "include": ["index.ts", "types/**/*.ts"],
-  "exclude": ["node_modules", "index.d.ts"],
+  }
 }

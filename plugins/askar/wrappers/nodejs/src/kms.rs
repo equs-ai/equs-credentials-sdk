@@ -5,16 +5,16 @@ use napi::{Error, Result};
 use napi_derive::napi;
 
 #[napi]
-pub struct AskarKms(askar::kms::AskarKms);
+pub struct InternalAskarKms(askar::kms::AskarKms);
 
 #[napi]
-impl AskarKms {
+impl InternalAskarKms {
     #[napi(constructor)]
     pub fn new(storage: &AskarStorage) -> Self {
         let storage = storage.clone();
         let kms = askar::kms::AskarKms::new(storage.0.clone());
 
-        AskarKms(kms)
+        InternalAskarKms(kms)
     }
 
     #[napi]
@@ -26,20 +26,20 @@ impl AskarKms {
     }
 
     #[napi]
-    pub async fn get(&self, kid: String) -> Result<AskarKeyHandle> {
+    pub async fn get(&self, kid: String) -> Result<InternalAskarKeyHandle> {
         self.0
             .get(&kid)
             .await
-            .map(AskarKeyHandle)
+            .map(InternalAskarKeyHandle)
             .map_err(|e| Error::from_reason(e.to_string()))
     }
 
     #[napi]
-    pub async fn get_by_public_key(&self, public_key: Vec<u8>) -> Result<AskarKeyHandle> {
+    pub async fn get_by_public_key(&self, public_key: Vec<u8>) -> Result<InternalAskarKeyHandle> {
         self.0
             .get_by_public_key(public_key.as_slice())
             .await
-            .map(AskarKeyHandle)
+            .map(InternalAskarKeyHandle)
             .map_err(|e| Error::from_reason(e.to_string()))
     }
 
@@ -57,11 +57,11 @@ impl AskarKms {
 }
 
 #[napi]
-pub struct AskarKeyHandle(askar::kms::AskarKeyHandle);
+pub struct InternalAskarKeyHandle(askar::kms::AskarKeyHandle);
 
 #[napi]
-impl AskarKeyHandle {
-    #[napi]
+impl InternalAskarKeyHandle {
+    #[napi(getter)]
     pub fn pub_key(&self) -> Result<Vec<u8>> {
         self.0
             .pub_key()
@@ -69,14 +69,14 @@ impl AskarKeyHandle {
             .map_err(|e| Error::from_reason(e.to_string()))
     }
 
-    #[napi]
+    #[napi(getter)]
     pub fn jwk(&self) -> Option<String> {
         self.0
             .jwk()
             .and_then(|value| serde_json::to_string(&value).ok())
     }
 
-    #[napi]
+    #[napi(getter)]
     pub fn alg(&self) -> Result<Alg> {
         self.0.alg().try_into()
     }

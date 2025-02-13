@@ -84,7 +84,6 @@ impl AskarStorage {
     #[napi]
     pub async unsafe fn change_active_profile(&mut self, profile: String) -> Result<()> {
         self.0
-            .to_owned()
             .change_active_profile(profile)
             .await
             .map_err(|e| Error::from_reason(e.to_string()))?;
