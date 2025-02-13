@@ -1,10 +1,10 @@
 import { Credential, CredentialEntry, CredentialMetadata, NativeVault, Vault } from "../../binary";
-import { contextEnsuredKms } from "./kms";
 
-class WrappedVault {
+class WrappedVault implements Vault {
   constructor(private readonly vault: Vault) {
     this.storeCredential = this.storeCredential.bind(this);
     this.deleteCredential = this.deleteCredential.bind(this);
+    this.findCredentials = this.findCredentials.bind(this);
     this.getCredential = this.getCredential.bind(this);
     this.getCredentials = this.getCredentials.bind(this);
     this.findCredentials = this.findCredentials.bind(this);
@@ -18,16 +18,16 @@ class WrappedVault {
     return await this.vault.deleteCredential(id);
   }
 
+  async findCredentials(criteria: Array<string>): Promise<Array<CredentialEntry>> {
+    return await this.vault.findCredentials(criteria);
+  }
+
   async getCredential(id: string): Promise<CredentialEntry | null> {
     return await this.vault.getCredential(id);
   }
 
   async getCredentials(): Promise<Array<CredentialEntry>> {
     return await this.vault.getCredentials();
-  }
-
-  async findCredentials(criteria: Array<string>): Promise<Array<CredentialEntry>> {
-    return await this.vault.findCredentials(criteria);
   }
 }
 

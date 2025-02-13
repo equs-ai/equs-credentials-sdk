@@ -418,6 +418,10 @@ async fn present_credential(
         }
     };
 
+    if let Some(url) = redirect_url.clone() {
+        println!("Redirect url: {}", url);
+    }
+
     redirect_url
 }
 
@@ -709,8 +713,17 @@ const INPUT_DESCRIPTOR_FOR_CRED_DEF_1: &str = r#"{
             "path": ["$.username"]
           },
           {
+              "path": [
+                "$.birthDate"
+              ],
+              "filter": {
+                "pattern": "^\\d{4}$"
+              },
+              "optional": false
+            },
+          {
             "path": ["$.email.work"],
-            "optional": true
+            "optional": false
           }
         ]
     }

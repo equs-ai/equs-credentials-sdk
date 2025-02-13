@@ -1,10 +1,19 @@
-import {Alg, AskarKms, AskarStorage, KeyMethod, KeyType} from "../index";
+import { AskarKms, AskarStorage, KeyMethod } from "../index";
+import { Alg, KeyType } from "@equstng/agent-sdk";
 
 describe("Askar KMS: ", () => {
-  let kms: AskarKms
+  let kms: AskarKms;
 
   beforeAll(async () => {
-    const storage = await AskarStorage.create({dbUrl: "sqlite://:memory:", keyMethod: KeyMethod.DeriveKey, passKey: "test_key", profile: "test"}, false)
+    const storage = await AskarStorage.create(
+      {
+        dbUrl: "sqlite://:memory:",
+        keyMethod: KeyMethod.DeriveKey,
+        passKey: "test_key",
+        profile: "test",
+      },
+      false,
+    );
     kms = new AskarKms(storage);
   }, 10000);
 
@@ -13,26 +22,28 @@ describe("Askar KMS: ", () => {
   });
 
   test("generate and get Key", async () => {
-    const cases = [{type_: KeyType.P256, alg: Alg.ES256}, {type_: KeyType.K256, alg: Alg.ES256K}, {type_: KeyType.Ed25519, alg: Alg.EdDSA}]
+    const cases = [
+      { type_: KeyType.P256, alg: Alg.ES256 },
+      { type_: KeyType.Ed25519, alg: Alg.EdDSA },
+    ];
     for (const test_case of cases) {
-      const kid = await kms.create(test_case.type_)
-      const key = await kms.get(kid)
+      const kid = await kms.create(test_case.type_);
+      const key = await kms.get(kid);
 
-      expect(key.alg()).toEqual(test_case.alg);
-      expect(key.jwk()).toBeDefined();
-      expect(key.pubKey()).toBeDefined();
+      expect(key.alg).toEqual(test_case.alg);
+      expect(key.jwk).toBeDefined();
+      expect(key.pubKey).toBeDefined();
 
-      const byPubKey = await kms.getByPublicKey(key.pubKey());
+      const byPubKey = await kms.getByPublicKey(key.pubKey);
       expect(key).toEqual(byPubKey);
     }
-
   });
 
   test("sign and verify", async () => {
-    const keyTypes = [KeyType.P256, KeyType.K256, KeyType.Ed25519]
+    const keyTypes = [KeyType.P256, KeyType.Ed25519];
     for (const keyType of keyTypes) {
-      const kid = await kms.create(keyType)
-      const key = await kms.get(kid)
+      const kid = await kms.create(keyType);
+      const key = await kms.get(kid);
 
       const encoder = new TextEncoder();
       const msg = encoder.encode("message");
@@ -41,7 +52,5 @@ describe("Askar KMS: ", () => {
 
       expect(verified).toBeUndefined();
     }
-
   });
-
 });

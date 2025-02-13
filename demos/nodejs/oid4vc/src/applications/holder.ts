@@ -3,9 +3,8 @@ import {
   CredentialImmediate,
   CredentialResponse,
   enableLogs,
-  inMemKms,
-  inMemVault,
   IssuerDiscovery,
+  Kms,
   NativeKms,
   NonceData,
   Oid4VciHolder,
@@ -18,12 +17,27 @@ import {
 } from "@equstng/agent-sdk";
 import { config } from "../components/config";
 import { createDidAndKeyMetadata, readFromCLI } from "../components/utils";
+import {
+  AskarKms,
+  AskarStorage,
+  AskarStorageConfig,
+  AskarVault,
+  KeyMethod,
+} from "@equstng/agent-sdk-askar-storage";
 
 async function main(): Promise<void> {
   await enableLogs(TracingLogFormat.Full, TracingLogLevel.Info);
 
-  const kms = inMemKms();
-  const vault = inMemVault();
+  const storageConfig = {
+    dbUrl: "sqlite://:memory:",
+    keyMethod: KeyMethod.DeriveKey,
+    passKey: "test_key",
+    profile: "test",
+  } satisfies AskarStorageConfig;
+
+  const storage = await AskarStorage.create(storageConfig, false);
+  const kms = new AskarKms(storage);
+  const vault = new AskarVault(storage);
 
   const issuerDiscovery = IssuerDiscovery.fromUrl(config.issuerServerUrl);
 
@@ -51,7 +65,7 @@ setImmediate(main);
 
 async function issuanceFlow(
   holder: Oid4VciHolder,
-  kms: NativeKms,
+  kms: NativeKms | Kms,
 ): Promise<void> {
   const tokenResp = await holder.authzCodeFlowWithScope(
     "SD_JWT_cred_scope",
@@ -95,7 +109,7 @@ function isCredentialImmediate(
 
 async function requestAndStoreCredential(
   holder: Oid4VciHolder,
-  kms: NativeKms,
+  kms: NativeKms | Kms,
   credDefId: string,
   accessToken: string,
   nonceData: NonceData | undefined,

@@ -4,6 +4,8 @@ import {
   DIDKey,
   KeyMetadata,
   KeyType,
+  Kms,
+  NativeKeyHandle,
   NativeKms,
 } from "@equstng/agent-sdk";
 
@@ -27,15 +29,18 @@ export async function readFromCLI(message: string): Promise<string> {
 }
 
 export async function createDidAndKeyMetadata(
-  kms: NativeKms,
+  kms: NativeKms | Kms,
 ): Promise<DidAndKeyMetadata> {
   const keyId = await kms.create(KeyType.P256);
   const keyHandle = await kms.get(keyId);
+
+  const isNativeKms = keyHandle instanceof NativeKeyHandle;
+
   const didKey = new DIDKey();
   const did = didKey.generate({
-    alg: keyHandle.alg(),
-    jwk: keyHandle.jwk() ?? undefined,
-    pubKey: keyHandle.pubKey(),
+    alg: isNativeKms ? keyHandle.alg() : keyHandle.alg,
+    jwk: (isNativeKms ? keyHandle.jwk() : keyHandle.jwk) ?? undefined,
+    pubKey: isNativeKms ? keyHandle.pubKey() : keyHandle.pubKey,
     sign: keyHandle.sign,
     verify: keyHandle.verify,
   });
