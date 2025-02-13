@@ -3,7 +3,7 @@
 1. Create a new release tag.
    1. Verify that the demo application runs successfully and passes all flows.
    2. Verify that the latest commit in the main branch contains all changes to be included in the release.
-   3. Verify that the version in the Cargo.toml file has changed.
+   3. Verify that the version in the Cargo.toml and package.json files have changed.
    4. Create a new tag for the release. Replace <version> with the appropriate version number (e.g., 0.4.2):
        ```shell
        git tag <version>
