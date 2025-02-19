@@ -1,22 +1,35 @@
 {
   "compilerOptions": {
     "rootDir": ".",
+    "baseUrl": "./",
+    "outDir": "pkg",
     "declaration": true,
     "emitDeclarationOnly": false,
     "module": "commonjs",
+    "strict": true,
     "lib": [
-      "ESNext"
+      "ESNext",
+      "dom"
     ],
     "removeComments": true,
     "emitDecoratorMetadata": true,
     "experimentalDecorators": true,
     "allowSyntheticDefaultImports": true,
-    "target": "ESNext"
+    "target": "ESNext",
+    "paths": {
+      "./binary": [
+        "./wrappers/wasm/pkg/binary"
+      ],
+      "./dist": [
+        "./wrappers/wasm/pkg/dist"
+      ]
+    }
   },
   "include": [
     "index.ts"
   ],
   "exclude": [
-    "node_modules"
+    "node_modules",
+    "test"
   ]
 }

@@ -1,5 +1,14 @@
-import { buildVpHolder, Kms, NativeKms, NativeVault, OID4VPHolder, Vault, WalletMetadata } from "../../../";
-import { contextEnsuredKms, contextEnsuredVault } from "../../utils";
+import {
+  buildVpHolder,
+  contextEnsuredKms,
+  contextEnsuredVault,
+  Kms,
+  NativeKms,
+  NativeVault,
+  OID4VPHolder,
+  Vault,
+  WalletMetadata,
+} from "../../..";
 
 export class OID4VPHolderBuilder {
   private readonly kms: NativeKms | Kms;

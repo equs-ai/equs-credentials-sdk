@@ -1,4 +1,4 @@
-import { Credential, CredentialEntry, CredentialMetadata, NativeVault, Vault } from "../../binary";
+import { Credential, CredentialEntry, CredentialMetadata, NativeVault, Vault } from "../..";
 
 class WrappedVault implements Vault {
   constructor(private readonly vault: Vault) {

@@ -1,5 +1,7 @@
 import {
   buildVciIssuer,
+  contextEnsuredKms,
+  contextEnsuredNonceGenerator,
   Duration,
   KeyMetadata,
   Kms,
@@ -10,9 +12,7 @@ import {
   OID4VCIIssuerMetadata,
   TokenValidation,
   TokenValidationEnum,
-} from "../../../";
-import { contextEnsuredKms } from "../../utils";
-import { contextEnsuredNonceGenerator } from "../../utils/nonce-generator";
+} from "../../..";
 
 export class OID4VCIIssuerBuilder {
   private readonly kms: NativeKms | Kms;
@@ -37,7 +37,11 @@ export class OID4VCIIssuerBuilder {
   }
 
   tokenValidationIntrospect(url: string, header?: string | undefined): void {
-    this.tokenValidation = { type: TokenValidationEnum.Introspect, url, header };
+    this.tokenValidation = {
+      type: TokenValidationEnum.Introspect,
+      url,
+      header,
+    };
   }
 
   tokenValidationJwks(url: string): void {

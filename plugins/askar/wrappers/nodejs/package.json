@@ -21,7 +21,7 @@
   },
   "scripts": {
     "manual_scripts": "node scripts/add-import-line.mjs",
-    "build": "CARGO_TARGET_DIR=../../target napi build --platform --release --js binary.js --dts binary.d.ts && npm run manual_scripts && rm -rf build/ && rm index.d.ts || true  && tsc index.ts -d",
+    "build": "CARGO_TARGET_DIR=../../target napi build --platform --release --js binary.js --dts binary.d.ts && npm run manual_scripts && rm -rf build/ && tsc",
     "artifacts": "napi artifacts",
     "test": "jest -w=1",
     "universal": "napi universal",

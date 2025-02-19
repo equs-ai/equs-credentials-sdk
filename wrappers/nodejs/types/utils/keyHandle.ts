@@ -1,4 +1,4 @@
-import { Alg, KeyHandle } from "../../";
+import { Alg, KeyHandle } from "../..";
 
 export class WrappedKeyHandle implements KeyHandle {
   constructor(private readonly keyHandle: KeyHandle) {

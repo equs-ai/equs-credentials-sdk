@@ -1,4 +1,3 @@
-export * from "./auth-metadata";
 export * from "./claims";
 export * from "./client-metadata";
 export * from "./common";

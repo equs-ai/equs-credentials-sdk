@@ -1,2 +1,2 @@
-export * from "./didcomm";
+export * from "./utils";
 export * from "./vc";

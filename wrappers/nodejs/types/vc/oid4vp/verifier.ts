@@ -1,6 +1,8 @@
 import {
   buildVpVerifier,
   ClientMetadata,
+  contextEnsuredKms,
+  contextEnsuredNonceGenerator,
   KeyMetadata,
   Kms,
   NativeKms,
@@ -8,8 +10,6 @@ import {
   NonceGenerator,
   OID4VPVerifier,
 } from "../../../";
-import { contextEnsuredKms } from "../../utils";
-import { contextEnsuredNonceGenerator } from "../../utils/nonce-generator";
 
 export class OID4VPVerifierBuilder {
   private readonly kms: NativeKms | Kms;

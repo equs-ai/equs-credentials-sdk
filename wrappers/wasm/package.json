@@ -3,12 +3,12 @@
   "version": "0.5.1",
   "description": "JS tests for agent-sdk wasm32",
   "scripts": {
-    "test": "jest",
+    "test": "test/node_modules/.bin/jest",
     "check": "tslint -c tslint.json 'src/**/*.ts'",
     "test-puppeteer": "jest --config=jest.config.puppeteer.js"
   },
   "dependencies": {
-    "agent-sdk": "file:../pkg"
+    "agent-sdk": "./pkg"
   },
   "packageManager": "yarn@4.6.0",
   "devDependencies": {
@@ -19,6 +19,6 @@
     "jest-puppeteer": "^9.0.0",
     "puppeteer": "^22.0.0",
     "ts-jest": "^29.0.0",
-    "typescript": "^5.0.0"
+    "typescript": "^5.7.3"
   }
 }

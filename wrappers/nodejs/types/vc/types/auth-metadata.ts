@@ -1,3 +1,3 @@
-import { AuthorizationServer } from "oauth4webapi/build/";
+import { AuthorizationServer } from "oauth4webapi";
 
 export type AuthMetadata = AuthorizationServer;
