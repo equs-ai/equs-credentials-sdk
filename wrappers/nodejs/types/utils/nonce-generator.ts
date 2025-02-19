@@ -1,4 +1,4 @@
-import { NativeNonceGenerator, NonceGenerator } from "../../binary";
+import { NativeNonceGenerator, NonceGenerator } from "../..";
 
 class WrappedNonceGenerator {
   constructor(private readonly nonceGenerator: NonceGenerator) {

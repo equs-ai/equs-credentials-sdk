@@ -214,9 +214,9 @@ wasm-test-job:
   stage: test
   script:
     - cd wrappers/wasm
+    - npm install
     - WASM_TARGET=nodejs make
     - cd ./test
-    - npm install
     - npm run test-puppeteer
   only:
     - merge_requests

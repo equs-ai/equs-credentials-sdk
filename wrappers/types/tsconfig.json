@@ -1,23 +1,25 @@
 {
   "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": "./",
+    "declaration": true,
+    "emitDeclarationOnly": false,
+    "module": "commonjs",
+    "strict": true,
     "lib": [
       "ESNext"
     ],
-    "module": "commonjs",
-    "declaration": true,
     "removeComments": true,
     "emitDecoratorMetadata": true,
     "experimentalDecorators": true,
     "allowSyntheticDefaultImports": true,
-    "emitDeclarationOnly": false,
-    "target": "ESNext",
-    "outDir": ".",
-    "baseUrl": "./"
+    "target": "ESNext"
   },
   "include": [
     "index.ts"
   ],
   "exclude": [
-    "node_modules"
+    "node_modules",
+    "dist"
   ]
 }

@@ -36,7 +36,7 @@ export interface CredentialSubjectClaims {
   [key: string]: unknown;
 }
 
-export interface IssuerMetadata {
+interface IssuerMetadata {
   credential_issuer: string;
   authorization_servers?: Array<string>;
   credential_endpoint: string;
@@ -46,7 +46,10 @@ export interface IssuerMetadata {
   credential_response_encryption_alg_values_supported?: Array<string>;
   credential_response_encryption_enc_values_supported?: Array<string>;
   require_credential_response_encryption?: boolean;
-  credential_configurations_supported: Record<string, OID4VCICredentialMetadata>;
+  credential_configurations_supported: Record<
+    string,
+    OID4VCICredentialMetadata
+  >;
   display?: IssuerMetadataDisplay[];
 }
 

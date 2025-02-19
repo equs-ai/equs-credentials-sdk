@@ -9,7 +9,7 @@ use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::future_to_promise;
 
 #[wasm_bindgen(typescript_custom_section)]
-const TS_IMPORT: &'static str = include_str!("../../../nodejs/index.ts");
+const TS_IMPORT: &'static str = include_str!("../../index.ts");
 
 #[wasm_bindgen]
 pub struct NativeDIDResolver(Rc<UniversalResolver>);

@@ -1,5 +1,14 @@
-import { buildVciHolder, JsIssuerDiscovery, Kms, NativeKms, NativeVault, OID4VCIHolder, Vault } from "../../../";
-import { contextEnsuredKms, contextEnsuredVault } from "../../utils";
+import {
+  buildVciHolder,
+  contextEnsuredKms,
+  contextEnsuredVault,
+  JsIssuerDiscovery,
+  Kms,
+  NativeKms,
+  NativeVault,
+  OID4VCIHolder,
+  Vault,
+} from "../../..";
 
 export class OID4VCIHolderBuilder {
   private readonly kms: NativeKms | Kms;

@@ -2,7 +2,7 @@ import fs from "fs/promises";
 
 (async () => {
   try {
-    const TYPES_FILE_PATH = "./types";
+    const TYPES_FILE_PATH = "./";
     let content = await fs.readFile("binary.d.ts", "utf8");
     const exported_types = [
       "PresentationDefinition",
@@ -28,7 +28,7 @@ import fs from "fs/promises";
       "UnpackOptions",
       "Service",
     ];
-    let import_str = `import { ${exported_types.join(", ")} } from "${TYPES_FILE_PATH}";\nexport * from "${TYPES_FILE_PATH}";\n`;
+    let import_str = `import { ${exported_types.join(", ")} } from "${TYPES_FILE_PATH}";\n`;
     content = import_str + content;
 
     console.log(`Added import line in binary.d.ts`);
