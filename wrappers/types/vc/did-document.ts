@@ -12,7 +12,7 @@ export interface Service {
   serviceEndpoint: string | string[] | Record<string, any>;
 }
 
-interface IProof {
+export interface IProof {
   type: string;
 
   [key: string]: unknown;
@@ -36,11 +36,11 @@ export interface DIDDocument {
   [key: string]: unknown;
 }
 
-interface DocMetadata {
+export interface DocMetadata {
   deactivated?: boolean;
 }
 
-interface Metadata {
+export interface Metadata {
   contentType?: string;
 }
 

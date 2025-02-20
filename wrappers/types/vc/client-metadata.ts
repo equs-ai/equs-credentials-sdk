@@ -1,6 +1,6 @@
 import { ClaimFormatMap } from "./common";
 
-interface JWKs {
+export interface JWKs {
   keys: Array<Record<string, any>>;
 }
 

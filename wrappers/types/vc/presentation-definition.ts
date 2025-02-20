@@ -1,11 +1,11 @@
 import { ClaimFormatMap } from "./common";
 
-declare enum Predicate {
+export declare enum Predicate {
   Required = 0,
   Preferred = 1,
 }
 
-interface ConstraintsField {
+export interface ConstraintsField {
   path: Array<string>;
   id?: string;
   purpose?: string;
@@ -16,12 +16,12 @@ interface ConstraintsField {
   intent_to_retain?: boolean;
 }
 
-declare enum ConstraintsLimitDisclosure {
+export declare enum ConstraintsLimitDisclosure {
   Required = 0,
   Preferred = 1,
 }
 
-interface Constraints {
+export interface Constraints {
   fields?: Array<ConstraintsField>;
   limit_disclosure?: ConstraintsLimitDisclosure;
 }
@@ -36,7 +36,7 @@ export type ClaimFormatPayload =
     }
   | any;
 
-interface InputDescriptor {
+export interface InputDescriptor {
   id: string;
   constraints: Constraints;
   name?: string;

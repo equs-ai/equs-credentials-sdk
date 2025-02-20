@@ -1,15 +1,8 @@
 type TokenType = "Bearer" | "Mac";
 
-interface Duration {
-  secs: number;
-  nanos: number;
-}
-
-type Nonce = string;
-
-interface StandartTokenResponse<TT extends TokenType> {
+export type TokenResponse = {
   access_token: string;
-  token_type: TT;
+  token_type: TokenType;
   expires_in?: number;
   refresh_token?: string;
   scopes: Array<string>;
@@ -17,4 +10,3 @@ interface StandartTokenResponse<TT extends TokenType> {
   [key: string]: unknown;
 }
 
-export type TokenResponse = StandartTokenResponse<TokenType>;

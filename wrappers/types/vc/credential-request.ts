@@ -1,8 +1,8 @@
 import { JwkAlgorithm } from "./common";
 
-type Proof = { proof_type: "jwt"; jwt: string } | { proof_type: "cwt"; cwt: string };
+export type CredentialRequestProof = { proof_type: "jwt"; jwt: string } | { proof_type: "cwt"; cwt: string };
 
-interface JWK {
+export interface JWK {
   use?: string;
   key_ops?: Array<string>;
   alg?: JwkAlgorithm;
@@ -15,20 +15,20 @@ interface JWK {
   [key: string]: unknown;
 }
 
-interface CredentialResponseEncryption {
+export interface CredentialResponseEncryption {
   jwk?: JWK;
   alg?: string;
   enc?: string;
 }
 
-type SDJWTRequest = {
+export type SDJWTRequest = {
   format: "dc+sd-jwt";
   vct: string;
 };
 
 export interface OID4VCICredentialRequest {
   credential_identifier?: string;
-  proof?: Proof;
+  proof?: CredentialRequestProof;
   credential_response_encryption?: CredentialResponseEncryption;
 
   [key: string]: SDJWTRequest | unknown;
