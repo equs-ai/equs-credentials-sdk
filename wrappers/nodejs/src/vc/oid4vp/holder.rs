@@ -4,7 +4,7 @@ use crate::vc::core::JsKeyMetadata;
 use crate::vc::JsonObject;
 use agent_sdk::vault::CredentialEntry;
 use agent_sdk::vc::oid4vp::{
-    AuthorizationResponseMetadata, CredentialMapping, ResolvedAuthRequest,
+    AuthorizationResponseMetadata, CredentialMapping, CredentialsMapping, ResolvedAuthRequest,
 };
 use agent_sdk::vc::oid4vp::{Holder, IdTokenMetadata};
 use napi::{Error, Result};
@@ -59,20 +59,20 @@ impl OID4VPHolder {
         &self,
         auth_request: AuthorizationRequest,
     ) -> Result<HashMap<String, Vec<JsCredentialEntry>>> {
-        let credential_mapping = self
+        let credentials_mapping = self
             .0
             .find_vcs_for_presentation(&auth_request.try_into()?)
             .await
             .map_err(|err| Error::from_reason(format!("{:?}", err)))?;
 
-        convert_to_js_credential_mapping(credential_mapping)
+        convert_to_js_credentials_mapping(credentials_mapping)
     }
 
     #[napi]
     pub async fn present_credentials(
         &self,
         auth_request: AuthorizationRequest,
-        credential_mapping: HashMap<String, Vec<JsCredentialEntry>>,
+        credential_mapping: HashMap<String, JsCredentialEntry>,
         auth_response_metadata: JsAuthorizationResponseMetadata,
     ) -> Result<Option<String>> {
         let result = self
@@ -165,8 +165,8 @@ impl TryFrom<JsAuthorizationResponseMetadata> for AuthorizationResponseMetadata 
     }
 }
 
-fn convert_to_js_credential_mapping(
-    input: CredentialMapping,
+fn convert_to_js_credentials_mapping(
+    input: CredentialsMapping,
 ) -> Result<HashMap<String, Vec<JsCredentialEntry>>> {
     input
         .into_iter()
@@ -179,14 +179,13 @@ fn convert_to_js_credential_mapping(
 }
 
 fn convert_from_js_credential_mapping(
-    input: HashMap<String, Vec<JsCredentialEntry>>,
+    input: HashMap<String, JsCredentialEntry>,
 ) -> Result<CredentialMapping> {
     input
         .into_iter()
-        .map(|(key, vec)| {
-            let converted_vec: Result<Vec<CredentialEntry>> =
-                vec.into_iter().map(|entry| entry.try_into()).collect();
-            converted_vec.map(|v| (key, v))
+        .map(|(key, val)| {
+            let converted_val: Result<CredentialEntry> = val.try_into();
+            converted_val.map(|v| (key, v))
         })
         .collect()
 }

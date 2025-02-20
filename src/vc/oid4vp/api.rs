@@ -13,7 +13,8 @@ use std::collections::HashMap;
 use std::fmt::Debug;
 use url::Url;
 
-pub type CredentialMapping = HashMap<String, Vec<CredentialEntry>>;
+pub type CredentialsMapping = HashMap<String, Vec<CredentialEntry>>;
+pub type CredentialMapping = HashMap<String, CredentialEntry>;
 pub type ClientMetadata = openid4vp::core::authorization_request::parameters::ClientMetadata;
 pub type WalletMetadata = openid4vp::core::metadata::WalletMetadata;
 pub type ResponseType = openid4vp::core::authorization_request::parameters::ResponseType;
@@ -218,7 +219,7 @@ pub trait Holder: Send + Sync {
     async fn find_vcs_for_presentation(
         &self,
         auth_request: &ResolvedAuthRequest,
-    ) -> Result<CredentialMapping, Error>;
+    ) -> Result<CredentialsMapping, Error>;
 
     /// Manually presents credentials to the Verifier.
     ///

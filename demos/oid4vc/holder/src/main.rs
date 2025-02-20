@@ -17,7 +17,7 @@ use agent_sdk::vc::oid4vci::{
 };
 use agent_sdk::vc::oid4vci::{CredentialOfferResolver, Holder as HolderVci};
 use agent_sdk::vc::oid4vp::{
-    AuthResponseOptions, AuthorizationResponse, AuthorizationResponseMetadata,
+    AuthResponseOptions, AuthorizationResponse, AuthorizationResponseMetadata, CredentialsMapping,
     PassAuthRequestObject, ResolvedAuthRequest, ResponseMode, ResponseType,
 };
 use agent_sdk::vc::oid4vp::{CredentialMapping, Holder as HolderVp};
@@ -459,7 +459,7 @@ async fn resolve_auth_resp_metadata(
 
 fn collect_selected_cred_entries(
     input_from_console: String,
-    cred_entries: &CredentialMapping,
+    cred_entries: &CredentialsMapping,
 ) -> CredentialMapping {
     let mut selected = CredentialMapping::new();
     for item in input_from_console.split(',') {
@@ -477,7 +477,7 @@ fn collect_selected_cred_entries(
             )
             .expect("selected credential is not found");
 
-        selected.insert(id.to_owned(), vec![cred_entry.to_owned()]);
+        selected.insert(id.to_owned(), cred_entry.to_owned());
     }
 
     selected

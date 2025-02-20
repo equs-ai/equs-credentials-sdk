@@ -13,13 +13,14 @@ use crate::vc::oid4vp::internal_error::{
 use crate::vc::oid4vp::metadata::default_wallet_metadata;
 use crate::vc::oid4vp::signer::Signer;
 use crate::vc::oid4vp::{
-    AuthorizationResponseMetadata, CredentialMapping, ProtocolError, ResolvedAuthRequest,
+    AuthorizationResponseMetadata, CredentialMapping, CredentialsMapping, ProtocolError,
+    ResolvedAuthRequest,
 };
 use crate::vc::presentation_exchange::{PresentationResponse, RequestedPresentation};
 use crate::vc::{oid4vp as api, presentation_exchange};
 use crate::{utils, vc};
 use async_trait::async_trait;
-use futures::{future, StreamExt};
+use futures::future;
 use oauth2::http::{Request, Response};
 use openid4vp::core::authorization_request::parameters::ResponseType;
 use openid4vp::core::authorization_request::verification::{did, RequestVerifier};
@@ -34,7 +35,7 @@ use snafu::ResultExt;
 use ssi::dids::DIDURLBuf;
 use std::marker::PhantomData;
 use std::str::FromStr;
-use tracing::{error, info, instrument, Level};
+use tracing::{info, instrument, Level};
 use url::Url;
 
 pub type Error = api::Error;
@@ -185,43 +186,25 @@ where
     #[instrument(level = Level::TRACE, skip(self), err(), ret())]
     async fn create_presentation_by_input(
         &self,
-        credentials: &Vec<CredentialEntry>,
+        credential: &CredentialEntry,
         presentation_input: &PresentationInput,
         auth_request: &ResolvedAuthRequest,
     ) -> Result<RequestedPresentation> {
-        let stream = futures::stream::iter(credentials);
-        let events = stream.filter_map(|cred| async {
-            self.holder
-                .create_presentation(
-                    &auth_request.nonce,
-                    auth_request.client_id.as_str(),
-                    presentation_input,
-                    cred,
-                )
-                .await
-                .inspect_err(|e| {
-                    error!("could not create a presentation\n: Cause: {e}");
-                })
-                .ok()
-        });
-        let mut events = Box::pin(events);
+        let presentation = self
+            .holder
+            .create_presentation(
+                &auth_request.nonce,
+                auth_request.client_id.as_str(),
+                presentation_input,
+                credential,
+            )
+            .await
+            .context(VCSnafu)?;
 
-        if let Some(presentation) = events.next().await {
-            return Ok(RequestedPresentation {
-                id: presentation_input.id.to_owned(),
-                presentation,
-            });
-        }
-
-        info!("matching credentials are not found, sending an authorization error response to the verifier...");
-        let err = ProtocolError::access_denied(
-            "matching credentials are not found",
-            auth_request.state.clone(),
-        );
-        self.submit_auth_error_resp(&auth_request.response_uri, &err)
-            .await?;
-
-        CredentialNotFoundSnafu.fail()?
+        Ok(RequestedPresentation {
+            id: presentation_input.id.to_owned(),
+            presentation,
+        })
     }
 
     #[instrument(level = Level::TRACE, skip(self), err(), ret())]
@@ -269,11 +252,11 @@ where
     #[instrument(level = Level::TRACE, skip(self), err(), ret())]
     async fn create_presentation_from_creds_map(
         &self,
-        creds_map: &CredentialMapping,
+        cred_map: &CredentialMapping,
         presentation_input: &PresentationInput,
         auth_request: &ResolvedAuthRequest,
     ) -> Result<RequestedPresentation> {
-        let Some(creds) = creds_map.get(&presentation_input.id) else {
+        let Some(cred) = cred_map.get(&presentation_input.id) else {
             let err = ProtocolError::access_denied(
                 "matching credentials are not found",
                 auth_request.state.clone(),
@@ -284,7 +267,7 @@ where
             CredentialNotFoundSnafu.fail()?
         };
 
-        self.create_presentation_by_input(creds, presentation_input, auth_request)
+        self.create_presentation_by_input(cred, presentation_input, auth_request)
             .await
     }
 
@@ -398,7 +381,18 @@ where
                     .await
                     .context(VCSnafu)?;
 
-                self.create_presentation_by_input(&creds, presentation_input, auth_request)
+                let Some(cred) = creds.first() else {
+                    let err = ProtocolError::access_denied(
+                        "matching credentials are not found",
+                        auth_request.state.clone(),
+                    );
+                    self.submit_auth_error_resp(&auth_request.response_uri, &err)
+                        .await?;
+
+                    CredentialNotFoundSnafu.fail()?
+                };
+
+                self.create_presentation_by_input(cred, presentation_input, auth_request)
                     .await
             }))
             .await?;
@@ -416,8 +410,8 @@ where
     async fn find_vcs_for_presentation(
         &self,
         auth_request: &ResolvedAuthRequest,
-    ) -> Result<CredentialMapping> {
-        let mut creds_map = CredentialMapping::new();
+    ) -> Result<CredentialsMapping> {
+        let mut creds_map = CredentialsMapping::new();
 
         let presentation_inputs =
             presentation_exchange::split_to_inputs(&auth_request.presentation_definition, None)
@@ -438,7 +432,7 @@ where
     async fn present_credentials(
         &self,
         auth_request: &ResolvedAuthRequest,
-        creds_map: &CredentialMapping,
+        cred_map: &CredentialMapping,
         auth_response_metadata: &AuthorizationResponseMetadata,
     ) -> Result<Option<Url>> {
         info!("presenting verifiable presentations is started");
@@ -451,7 +445,7 @@ where
 
         let presentations =
             future::try_join_all(presentation_inputs.iter().map(|presentation_input| async {
-                self.create_presentation_from_creds_map(creds_map, presentation_input, auth_request)
+                self.create_presentation_from_creds_map(cred_map, presentation_input, auth_request)
                     .await
             }))
             .await?;
