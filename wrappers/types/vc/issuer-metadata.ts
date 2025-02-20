@@ -2,7 +2,7 @@ import { OID4VCICredentialMetadata } from "./credential-metadata";
 
 export type KeyProofType = "jwt" | "cwt";
 
-interface IssuerMetadataDisplay {
+export interface IssuerMetadataDisplay {
   name?: string;
   locale?: string;
   logo?: CredentialMetadataDisplayLogo;

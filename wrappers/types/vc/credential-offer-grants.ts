@@ -1,15 +1,15 @@
-interface AuthorizationCodeGrant {
+export interface AuthorizationCodeGrant {
   issuer_state?: string;
   authorization_server?: string;
 }
 
-interface TransactionCode {
+export interface TransactionCode {
   length?: number;
   input_mode?: string;
   description?: string;
 }
 
-interface PreAuthorizationCodeGrant {
+export interface PreAuthorizationCodeGrant {
   "pre-authorized_code": string;
   tx_code?: TransactionCode;
   interval?: number;

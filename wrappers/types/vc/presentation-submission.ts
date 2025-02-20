@@ -1,6 +1,6 @@
 import { CredentialFormats } from "./common";
 
-interface DescriptorMap {
+export interface DescriptorMap {
   id: string;
   format: CredentialFormats;
   path: string;
