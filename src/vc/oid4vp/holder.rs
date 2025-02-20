@@ -593,15 +593,8 @@ mod tests {
     use crate::vc::claims::{Claim, Claims};
     use crate::vc::core::KeyMetadata;
     use crate::vc::oid4vp::protocol_error::ErrorType;
-    use crate::vc::oid4vp::tests::fixtures::single_presentation::{
-        presentation_test_case_with_constraints_for_particular_fields,
-        presentation_test_case_with_constraints_with_absent_required_claim,
-        presentation_test_case_with_constraints_with_invalid_value_for_const,
-        presentation_test_case_with_constraints_with_invalid_value_for_pattern,
-        presentation_test_case_with_constraints_with_patterns,
-        presentation_test_case_with_filter_by_cred_type,
-        presentation_test_case_with_filter_by_cred_type_and_email,
-        presentation_test_case_with_optional_field,
+    use crate::vc::oid4vp::tests::fixtures::single_presentation::sd_jwt::{
+        AUTH_REQUEST, AUTH_REQUEST_JWT, AUTH_REQUEST_WITH_STATE_JWT,
     };
     use crate::vc::oid4vp::tests::fixtures::{
         multi_presentation, single_presentation, REQUEST_URI, STATE, VERIFIER_URL,
@@ -613,7 +606,7 @@ mod tests {
         AuthorizationResponseMetadata, Error, Holder, IdTokenMetadata, InternalError,
         ProtocolError, ResponseType,
     };
-    use crate::vc::presentation_exchange::ClaimFormatMap;
+    use crate::vc::presentation_exchange::{ClaimFormatDesignation, ClaimFormatMap};
     use crate::vc::Credential;
     use oauth2::http::Method;
     use oauth2::reqwest::StatusCode;
@@ -632,7 +625,7 @@ mod tests {
             &mut http_client,
             Method::GET,
             build_url(VERIFIER_URL, "request"),
-            single_presentation::AUTH_REQUEST_JWT,
+            AUTH_REQUEST_JWT,
             1.into(),
         );
         let holder = holder_service(http_client, LocalKms::new(), InMemVault::new()).await;
@@ -645,9 +638,7 @@ mod tests {
 
         assert_eq!(
             serde_json::to_value(&request_obj).unwrap(),
-            single_presentation::AUTH_REQUEST
-                .parse::<serde_json::Value>()
-                .unwrap()
+            AUTH_REQUEST.parse::<serde_json::Value>().unwrap()
         );
     }
 
@@ -658,7 +649,7 @@ mod tests {
             &mut http_client,
             Method::GET,
             build_url(VERIFIER_URL, "request"),
-            single_presentation::AUTH_REQUEST_WITH_STATE_JWT,
+            AUTH_REQUEST_WITH_STATE_JWT,
             1.into(),
         );
         let holder = holder_service(http_client, LocalKms::new(), InMemVault::new()).await;
@@ -673,9 +664,11 @@ mod tests {
     }
 
     #[rstest]
-    #[case::single_presentation_success(single_presentation::presentation_test_case())]
-    #[case::single_presentation_with_state_success(
-        single_presentation::presentation_test_case_with_state()
+    #[case::single_presentation::single_presentation_success(
+        single_presentation::sd_jwt::presentation_test_case()
+    )]
+    #[case::single_presentation::single_presentation_with_state_success(
+        single_presentation::sd_jwt::presentation_test_case_with_state()
     )]
     #[case::multi_presentation_success(multi_presentation::presentation_test_case())]
     #[case::multi_presentation_with_state_success(
@@ -718,7 +711,7 @@ mod tests {
 
     #[tokio::test]
     async fn present_credential_auto_success_with_excluded_claims() {
-        let test_case = single_presentation::presentation_test_case();
+        let test_case = single_presentation::sd_jwt::presentation_test_case();
 
         let mut auth_response_metadata = AuthorizationResponseMetadata::default();
         auth_response_metadata
@@ -1027,7 +1020,7 @@ mod tests {
     )]
     #[tokio::test]
     async fn present_credential_auto_fails_on_internal_server_error() {
-        let test_case = single_presentation::presentation_test_case();
+        let test_case = single_presentation::sd_jwt::presentation_test_case();
 
         let mut http_client = MockHttpClient::new();
         mock_http_fn(
@@ -1055,34 +1048,61 @@ mod tests {
     }
 
     #[rstest]
-    #[case::single_presentation_success(single_presentation::presentation_test_case())]
-    #[case::single_presentation_with_state_success(
-        single_presentation::presentation_test_case_with_state()
+    // sd_jwt
+    #[case::single_presentation::sd_jwt_single_presentation_success(
+        single_presentation::sd_jwt::presentation_test_case()
+    )]
+    #[case::single_presentation::sd_jwt_single_presentation_with_state_success(
+        single_presentation::sd_jwt::presentation_test_case_with_state()
     )]
     #[case::multi_presentation_success(multi_presentation::presentation_test_case())]
     #[case::multi_presentation_with_state_success(
         multi_presentation::presentation_test_case_with_state()
     )]
-    #[case::single_presentation_filter_by_path_success(
-        single_presentation::presentation_test_case_filter_by_path()
+    #[case::single_presentation::sd_jwt_single_presentation_filter_by_path_success(
+        single_presentation::sd_jwt::presentation_test_case_filter_by_path()
     )]
-    #[case::single_presentation_with_filter_by_cred_type_success(
-        presentation_test_case_with_filter_by_cred_type()
+    #[case::single_presentation::sd_jwt_single_presentation_with_filter_by_cred_type_success(
+        single_presentation::sd_jwt::presentation_test_case_with_filter_by_cred_type()
     )]
-    #[case::single_presentation_with_filter_by_cred_type_and_email_success(
-        presentation_test_case_with_filter_by_cred_type_and_email()
+    #[case::single_presentation::sd_jwt_single_presentation_with_filter_by_cred_type_and_email_success(
+        single_presentation::sd_jwt::presentation_test_case_with_filter_by_cred_type_and_email()
     )]
-    #[case::single_presentation_with_optional_field_success(
-        presentation_test_case_with_optional_field()
+    #[case::single_presentation::sd_jwt_single_presentation_with_optional_field_success(
+        single_presentation::sd_jwt::presentation_test_case_with_optional_field()
     )]
-    #[case::single_presentation_with_constraints_for_particular_fields_success(
-        presentation_test_case_with_constraints_for_particular_fields()
+    #[case::single_presentation::sd_jwt_single_presentation_with_constraints_for_particular_fields_success(
+        single_presentation::sd_jwt::presentation_test_case_with_constraints_for_particular_fields(
+        )
     )]
     #[case::multi_presentation_filter_by_path_success(
         multi_presentation::presentation_test_case_filter_by_path()
     )]
-    #[case::presentation_test_case_with_constraints_with_patterns(
-        presentation_test_case_with_constraints_with_patterns()
+    #[case::single_presentation::sd_jwt::sd_jwt_single_presentation_with_constraints_with_patterns(
+        single_presentation::sd_jwt::presentation_test_case_with_constraints_with_patterns()
+    )]
+    // json_ld
+    #[case::single_presentation::json_ld_single_presentation_success(
+        single_presentation::json_ld::presentation_test_case()
+    )]
+    #[case::single_presentation::json_ld_single_presentation_filter_by_path_success(
+        single_presentation::json_ld::presentation_test_case_filter_by_path()
+    )]
+    #[case::single_presentation::json_ld_single_presentation_with_filter_by_cred_type_success(
+        single_presentation::json_ld::presentation_test_case_with_filter_by_cred_type()
+    )]
+    #[case::single_presentation::json_ld_single_presentation_with_filter_by_cred_type_and_email_success(
+        single_presentation::json_ld::presentation_test_case_with_filter_by_cred_type_and_email()
+    )]
+    #[case::single_presentation::json_ld_single_presentation_with_optional_field_success(
+        single_presentation::json_ld::presentation_test_case_with_optional_field()
+    )]
+    #[case::single_presentation::json_ld_single_presentation_with_constraints_for_particular_fields_success(
+        single_presentation::json_ld::presentation_test_case_with_constraints_for_particular_fields(
+        )
+    )]
+    #[case::json_ld::json_ld_single_presentation_with_constraints_with_patterns(
+        single_presentation::json_ld::presentation_test_case_with_constraints_with_patterns()
     )]
     #[tokio::test]
     async fn find_credentials_success(#[case] test_case: PresentationTestCase) {
@@ -1090,14 +1110,25 @@ mod tests {
     }
 
     #[rstest]
-    #[case::presentation_test_case_with_constraints_with_invalid_value_for_pattern(
-        presentation_test_case_with_constraints_with_invalid_value_for_pattern()
+    // sd_jwt
+    #[case::sd_jwt::sd_jwt_presentation_test_case_with_constraints_with_invalid_value_for_pattern(
+        single_presentation::sd_jwt::presentation_test_case_with_constraints_with_invalid_value_for_pattern()
     )]
-    #[case::presentation_test_case_with_constraints_with_invalid_value_for_const(
-        presentation_test_case_with_constraints_with_invalid_value_for_const()
+    #[case::sd_jwt::sd_jwt_presentation_test_case_with_constraints_with_invalid_value_for_const(
+        single_presentation::sd_jwt::presentation_test_case_with_constraints_with_invalid_value_for_const()
     )]
-    #[case::presentation_test_case_with_constraints_with_absent_required_claim(
-        presentation_test_case_with_constraints_with_absent_required_claim()
+    #[case::sd_jwt::sd_jwt_presentation_test_case_with_constraints_with_absent_required_claim(
+        single_presentation::sd_jwt::presentation_test_case_with_constraints_with_absent_required_claim()
+    )]
+    // json_ld
+    #[case::json_ld::json_ld_presentation_test_case_with_constraints_with_invalid_value_for_pattern_json_ld(
+        single_presentation::json_ld::presentation_test_case_with_constraints_with_invalid_value_for_pattern()
+    )]
+    #[case::json_ld::json_ld_presentation_test_case_with_constraints_with_invalid_value_for_constjson_ld(
+        single_presentation::json_ld::presentation_test_case_with_constraints_with_invalid_value_for_const()
+    )]
+    #[case::json_ld::json_ld_presentation_test_case_with_constraints_with_absent_required_claimjson_ld(
+        single_presentation::json_ld::presentation_test_case_with_constraints_with_absent_required_claim()
     )]
     #[should_panic(expected = "Credentials not found")]
     #[tokio::test]
@@ -1130,8 +1161,10 @@ mod tests {
     }
 
     #[rstest]
-    #[case::single_presentation(single_presentation::presentation_test_case())]
-    #[case::single_presentation_with_state(single_presentation::presentation_test_case_with_state())]
+    #[case::single_presentation::sd_jwt(single_presentation::sd_jwt::presentation_test_case())]
+    #[case::single_presentation::sd_jwt_with_state(
+        single_presentation::sd_jwt::presentation_test_case_with_state()
+    )]
     #[case::multi_presentation(multi_presentation::presentation_test_case())]
     #[case::multi_presentation_with_state(multi_presentation::presentation_test_case_with_state())]
     #[tokio::test]
@@ -1182,13 +1215,20 @@ mod tests {
             .unwrap();
     }
 
+    #[rstest]
+    #[case::sd_jwt::sd_jwt_present_credential_fails_on_internal_server_error(
+        single_presentation::sd_jwt::presentation_test_case()
+    )]
+    #[case::json_ld::json_ld_present_credential_fails_on_internal_server_error(
+        single_presentation::json_ld::presentation_test_case()
+    )]
     #[should_panic(
         expected = "response: status_code=500 Internal Server Error, response_body=Internal Server Error"
     )]
     #[tokio::test]
-    async fn present_credential_fails_on_internal_server_error() {
-        let test_case = single_presentation::presentation_test_case();
-
+    async fn present_credential_fails_on_internal_server_error(
+        #[case] test_case: PresentationTestCase,
+    ) {
         let mut http_client = MockHttpClient::new();
         mock_http_fn(
             &mut http_client,
@@ -1242,6 +1282,9 @@ mod tests {
                 Credential::SdJwt(sd_jwt_vc) => {
                     decode_sd_jwt(sd_jwt_vc.to_owned(), SDJWTSerializationFormat::Compact).ok()
                 }
+                Credential::LdpVc(json_ld_vc) => {
+                    serde_json::to_value(json_ld_vc.clone().claims).ok()
+                }
                 _ => None,
             })
             .map(|c| c.try_into().unwrap())
@@ -1252,27 +1295,37 @@ mod tests {
             "Credentials not found"
         );
 
-        let expected_cred_data = case.expected_credential_data;
+        let expected_cred_data = &case.expected_credential_data;
 
-        for (expected_type, expected_claims) in expected_cred_data.clone() {
+        for expected_claims in expected_cred_data.clone() {
             let claims = retrieved_credentials_claims
                 .iter()
-                .find(|retrieved_claims| {
-                    if let Some(Claim::String(vct)) = retrieved_claims.get("vct") {
-                        return expected_type == vct;
+                .find(|retrieved_claims| match &case.credential_format {
+                    ClaimFormatDesignation::SdJwtVc => {
+                        let expected_type = expected_claims.get("vct").unwrap().as_str().unwrap();
+                        if let Some(Claim::String(vct)) = retrieved_claims.get("vct") {
+                            return expected_type == vct;
+                        }
+                        true
                     }
-
-                    false
+                    ClaimFormatDesignation::LdpVc => {
+                        let expected_type = expected_claims.get("type").unwrap().as_vec().unwrap();
+                        if let Some(Claim::Array(type_)) = retrieved_claims.get("type") {
+                            return expected_type == type_;
+                        }
+                        true
+                    }
+                    _ => true,
                 });
 
             if let Some(claim) = claims {
-                validate_claims(claim, &(expected_type, expected_claims))
+                validate_claims(&case.credential_format, claim, &expected_claims)
             }
         }
     }
 
     fn siop_case(key_metadata: KeyMetadata) -> PresentationTestCase {
-        let mut test_case = single_presentation::presentation_test_case();
+        let mut test_case = single_presentation::sd_jwt::presentation_test_case();
         test_case.request.response_type = ResponseType::VpTokenIdToken;
 
         test_case.response_metadata.id_token_metadata = Some(IdTokenMetadata {
@@ -1284,7 +1337,7 @@ mod tests {
     }
 
     fn siop_id_token_metadata_not_declared_case() -> PresentationTestCase {
-        let mut test_case = single_presentation::presentation_test_case();
+        let mut test_case = single_presentation::sd_jwt::presentation_test_case();
         test_case.request.response_type = ResponseType::VpTokenIdToken;
 
         test_case.response_metadata.id_token_metadata = None;
@@ -1293,7 +1346,7 @@ mod tests {
     }
 
     fn siop_invalid_key_metadata_case() -> PresentationTestCase {
-        let mut test_case = single_presentation::presentation_test_case();
+        let mut test_case = single_presentation::sd_jwt::presentation_test_case();
         test_case.request.response_type = ResponseType::VpTokenIdToken;
 
         let key_metadata = KeyMetadata {
@@ -1309,18 +1362,19 @@ mod tests {
     }
 
     fn requested_credential_not_exist_case() -> PresentationTestCase {
-        let mut test_case = single_presentation::presentation_test_case();
-        test_case.credential_data = vec![(
-            "https://credentials.example.com/degree_credential",
-            json!({"name": "John", "degree": "Bachelor"})
-                .try_into()
-                .unwrap(),
-        )];
+        let mut test_case = single_presentation::sd_jwt::presentation_test_case();
+        test_case.credential_data = vec![json!({
+            "vct": "https://credentials.example.com/degree_credential",
+            "name": "John",
+            "degree": "Bachelor"
+        })
+        .try_into()
+        .unwrap()];
         test_case
     }
 
     fn request_unsupported_credential_format_case() -> PresentationTestCase {
-        let test_case = single_presentation::presentation_test_case();
+        let test_case = single_presentation::sd_jwt::presentation_test_case();
         let cred_format: ClaimFormatMap = serde_json::from_value(json!({
             "jwt_vc_json":{
                 "alg_values_supported":[
@@ -1334,7 +1388,7 @@ mod tests {
     }
 
     fn request_unsupported_credential_format_case_with_state() -> PresentationTestCase {
-        let test_case = single_presentation::presentation_test_case_with_state();
+        let test_case = single_presentation::sd_jwt::presentation_test_case_with_state();
         let cred_format: ClaimFormatMap = serde_json::from_value(json!({
             "jwt_vc_json":{
                 "alg_values_supported":[
@@ -1348,7 +1402,7 @@ mod tests {
     }
 
     fn request_unsupported_credential_alg_case() -> PresentationTestCase {
-        let test_case = single_presentation::presentation_test_case();
+        let test_case = single_presentation::sd_jwt::presentation_test_case();
         let cred_format: ClaimFormatMap = serde_json::from_value(json!({
             "dc+sd-jwt":{
                 "sd-jwt_alg_values": ["RS256"],
@@ -1361,7 +1415,7 @@ mod tests {
     }
 
     fn request_unsupported_credential_alg_case_with_state() -> PresentationTestCase {
-        let test_case = single_presentation::presentation_test_case_with_state();
+        let test_case = single_presentation::sd_jwt::presentation_test_case_with_state();
         let cred_format: ClaimFormatMap = serde_json::from_value(json!({
             "dc+sd-jwt":{
                 "sd-jwt_alg_values": ["RS256"],

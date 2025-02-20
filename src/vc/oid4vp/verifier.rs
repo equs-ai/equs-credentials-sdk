@@ -537,7 +537,7 @@ mod tests {
     use crate::vc::oid4vp::verifier::VP_TOKEN;
     use crate::vc::oid4vp::InternalError;
     use crate::vc::oid4vp::{PassAuthRequestObject, PresentationSession, ResponseType, Verifier};
-    use crate::vc::presentation_exchange::PresentationDefinition;
+    use crate::vc::presentation_exchange::{ClaimFormatDesignation, PresentationDefinition};
     use openid4vp::core::authorization_request::{
         AuthorizationRequest, AuthorizationRequestObject,
     };
@@ -551,7 +551,7 @@ mod tests {
 
     #[tokio::test]
     async fn generate_auth_request_by_reference_success() {
-        let presentation_definition = single_presentation::presentation_definition();
+        let presentation_definition = single_presentation::sd_jwt::presentation_definition();
         let request_uri = build_url(VERIFIER_URL, "request");
 
         let (verifier, did) = verifier_service().await;
@@ -576,7 +576,7 @@ mod tests {
 
     #[tokio::test]
     async fn auth_request_generating_fails_when_key_id_is_not_valid() {
-        let presentation_definition = single_presentation::presentation_definition();
+        let presentation_definition = single_presentation::sd_jwt::presentation_definition();
         let request_uri = build_url(VERIFIER_URL, "request");
         let auth_resp_options = auth_response_options(build_url(VERIFIER_URL, "auth"), None);
 
@@ -601,7 +601,7 @@ mod tests {
 
     #[tokio::test]
     async fn auth_request_generating_fails_in_case_of_signer_error() {
-        let presentation_definition = single_presentation::presentation_definition();
+        let presentation_definition = single_presentation::sd_jwt::presentation_definition();
         let request_uri = build_url(VERIFIER_URL, "request");
         let auth_resp_options = auth_response_options(build_url(VERIFIER_URL, "auth"), None);
 
@@ -626,7 +626,7 @@ mod tests {
 
     #[tokio::test]
     async fn generate_auth_request_by_value_success() {
-        let presentation_definition = single_presentation::presentation_definition();
+        let presentation_definition = single_presentation::sd_jwt::presentation_definition();
         let response_uri: Url = build_url(VERIFIER_URL, "auth");
 
         let (verifier, did) = verifier_service().await;
@@ -674,7 +674,7 @@ mod tests {
 
     #[tokio::test]
     async fn generate_auth_request_with_state_success() {
-        let presentation_definition = single_presentation::presentation_definition();
+        let presentation_definition = single_presentation::sd_jwt::presentation_definition();
         let response_uri: Url = build_url(VERIFIER_URL, "auth");
 
         let (verifier, did) = verifier_service().await;
@@ -709,7 +709,7 @@ mod tests {
 
     #[tokio::test]
     async fn generate_siop_auth_request_by_value_success() {
-        let presentation_definition = single_presentation::presentation_definition();
+        let presentation_definition = single_presentation::sd_jwt::presentation_definition();
         let response_uri: Url = build_url(VERIFIER_URL, "auth");
 
         let (verifier, did) = verifier_service().await;
@@ -791,7 +791,7 @@ mod tests {
     }
 
     #[rstest]
-    #[case::single_presentation_success(single_presentation::verification_test_case())]
+    #[case::single_presentation_success(single_presentation::sd_jwt::verification_test_case())]
     #[case::multi_presentation_success(multi_presentation::verification_test_case())]
     #[case::multi_presentation_success(submission_requirements_satisfied_case())]
     #[tokio::test]
@@ -816,7 +816,7 @@ mod tests {
 
     #[tokio::test]
     async fn verify_auth_response_with_id_token_success() {
-        let test_case = single_presentation::verification_test_case();
+        let test_case = single_presentation::sd_jwt::verification_test_case();
         let (verifier, client_id) = verifier_service().await;
         let kms = LocalKms::new();
         let session = PresentationSession {
@@ -903,7 +903,7 @@ mod tests {
         #[case] audience: Option<String>,
         #[case] lifetime: Option<time::Duration>,
     ) {
-        let test_case = single_presentation::verification_test_case();
+        let test_case = single_presentation::sd_jwt::verification_test_case();
         let (verifier, client_id) = verifier_service().await;
         let kms = LocalKms::new();
         let session = PresentationSession {
@@ -957,12 +957,16 @@ mod tests {
                 _ => panic!("cred_claims is not an object"),
             };
 
-            validate_claims(&cred_claims, &credential_data);
+            validate_claims(
+                &ClaimFormatDesignation::SdJwtVc,
+                &cred_claims,
+                &credential_data,
+            );
         }
     }
 
     fn presentation_definition_with_empty_id() -> PresentationDefinition {
-        let mut presentation_definition = single_presentation::presentation_definition();
+        let mut presentation_definition = single_presentation::sd_jwt::presentation_definition();
         presentation_definition = PresentationDefinition::new(
             "".to_string(),
             presentation_definition
@@ -976,20 +980,20 @@ mod tests {
     }
 
     fn presentation_definition_with_empty_descriptors() -> PresentationDefinition {
-        let mut presentation_definition = single_presentation::presentation_definition();
+        let mut presentation_definition = single_presentation::sd_jwt::presentation_definition();
         presentation_definition.input_descriptors_mut().clear();
 
         presentation_definition
     }
 
     fn invalid_nonce_case() -> VerificationTestCase {
-        let mut test_case = single_presentation::verification_test_case();
+        let mut test_case = single_presentation::sd_jwt::verification_test_case();
         test_case.session.nonce = Nonce::from_secret("other-nonce".to_owned());
         test_case
     }
 
     fn empty_descriptor_map_case() -> VerificationTestCase {
-        let mut test_case = single_presentation::verification_test_case();
+        let mut test_case = single_presentation::sd_jwt::verification_test_case();
         test_case
             .presentation_submission
             .descriptor_map_mut()
@@ -998,28 +1002,31 @@ mod tests {
     }
 
     fn presentation_not_provided_case() -> VerificationTestCase {
-        let mut test_case = single_presentation::verification_test_case();
+        let mut test_case = single_presentation::sd_jwt::verification_test_case();
         test_case.session.presentation_definition = multi_presentation::presentation_definition();
         test_case
     }
 
     fn presentation_with_different_claim_values_case() -> VerificationTestCase {
-        let mut test_case = single_presentation::verification_test_case();
-        test_case.credential_data = vec![(
-            "https://credentials.example.com/degree_credential",
-            json!({"name": "John", "degree": "Bachelor"})
-                .try_into()
-                .unwrap(),
-        )];
+        let mut test_case = single_presentation::sd_jwt::verification_test_case();
+        test_case.credential_data = vec![json!({
+            "vct": "https://credentials.example.com/degree_credential",
+            "name": "John",
+            "degree": "Bachelor"
+        })
+        .try_into()
+        .unwrap()];
         test_case
     }
 
     fn presentation_claim_not_found_case() -> VerificationTestCase {
-        let mut test_case = single_presentation::verification_test_case();
-        test_case.credential_data = vec![(
-            "https://credentials.example.com/identity_credential",
-            json!({"degree": "Bachelor"}).try_into().unwrap(),
-        )];
+        let mut test_case = single_presentation::sd_jwt::verification_test_case();
+        test_case.credential_data = vec![json!({
+            "vct": "https://credentials.example.com/identity_credential",
+            "degree": "Bachelor"
+        })
+        .try_into()
+        .unwrap()];
         test_case
     }
 
