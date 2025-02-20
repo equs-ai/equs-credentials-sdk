@@ -1,6 +1,7 @@
 import { CompletedRequest, getLocal } from "mockttp";
 import {
   Credential,
+  CredentialEntry,
   CredentialMetadata,
   inMemKms,
   inMemVault,
@@ -93,9 +94,16 @@ describe("OID4VP Holder: ", () => {
 
     await vault.storeCredential(credential, metadata);
 
-    let mapping = await holder.findVcsForPresentation(AUTH_REQUEST);
+    let credentialsMapping = await holder.findVcsForPresentation(AUTH_REQUEST);
+    let credentialMapping: Record<string, CredentialEntry> = Object.entries(credentialsMapping).reduce(
+      (acc, [key, values]) => {
+        acc[key] = values[0];
+        return acc;
+      },
+      {},
+    );
 
-    const result = await holder.presentCredentials(AUTH_REQUEST, mapping, {});
+    const result = await holder.presentCredentials(AUTH_REQUEST, credentialMapping, {});
 
     expect(result).toBeNull();
   });
