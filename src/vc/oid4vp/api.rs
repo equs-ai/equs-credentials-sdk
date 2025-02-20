@@ -90,6 +90,7 @@ pub struct PresentationSession {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ResolvedAuthRequest {
     pub client_id: String,
+    pub client_metadata: ClientMetadata,
     pub presentation_definition: PresentationDefinition,
     pub nonce: Nonce,
     pub response_type: ResponseType,

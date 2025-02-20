@@ -92,6 +92,8 @@ impl OID4VPHolder {
 #[napi(object)]
 pub struct AuthorizationRequest {
     pub client_id: String,
+    #[napi(ts_type = "ClientMetadata")]
+    pub client_metadata: JsonObject,
     #[napi(ts_type = "PresentationDefinition")]
     pub presentation_definition: JsonObject,
     pub nonce: String,
@@ -107,6 +109,7 @@ impl TryFrom<AuthorizationRequest> for ResolvedAuthRequest {
     fn try_from(value: AuthorizationRequest) -> Result<Self> {
         Ok(ResolvedAuthRequest {
             client_id: value.client_id,
+            client_metadata: from_json_object(value.client_metadata)?,
             presentation_definition: from_json_object(value.presentation_definition)?,
             nonce: serde_json::from_value(serde_json::Value::String(value.nonce))?,
             response_type: value.response_type.into(),
@@ -123,6 +126,7 @@ impl TryFrom<ResolvedAuthRequest> for AuthorizationRequest {
     fn try_from(value: ResolvedAuthRequest) -> Result<Self> {
         Ok(AuthorizationRequest {
             client_id: value.client_id,
+            client_metadata: to_json_object(&value.client_metadata)?,
             presentation_definition: to_json_object(&value.presentation_definition)?,
             nonce: value.nonce.secret().to_string(),
             response_type: value.response_type.into(),

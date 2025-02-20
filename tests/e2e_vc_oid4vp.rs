@@ -110,6 +110,10 @@ async fn credentials_presentation_and_verification(#[case] test_case: Oid4VpTest
         .unwrap();
 
     println!("{:?}", &request_object);
+    assert_eq!(
+        serde_json::to_value(&request_object.client_metadata).unwrap(),
+        serde_json::from_str::<serde_json::Value>(DEFAULT_CLIENT_METADATA).unwrap()
+    );
 
     println!("9. Present Credential Auto");
 

@@ -200,8 +200,7 @@ package-lock.json
 *.node
 
 *.d.ts
-./binary.js
-./index.js
+*.js
 
 # Test db files
 *.db*

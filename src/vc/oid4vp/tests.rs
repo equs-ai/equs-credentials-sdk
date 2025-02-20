@@ -121,9 +121,15 @@ pub mod fixtures {
               "nonce": "3DaLwdi89qDgplpSwAspX6wWzm6pLkzaN3Xuk-ar5zY",
               "response_mode": "direct_post",
               "response_type": "vp_token",
-              "response_uri": "http://127.0.0.1:55796/auth"
-            }
-        "#;
+              "response_uri": "http://127.0.0.1:55796/auth",
+              "client_metadata": {
+                "vp_formats": {
+                    "dc+sd-jwt": {
+                        "alg": ["EdDSA", "ES256"]
+                    }
+                }
+              }
+            }"#;
 
         pub const AUTH_REQUEST_WITH_STATE: &str = r#"
             {
@@ -178,7 +184,14 @@ pub mod fixtures {
               "nonce": "XUcfTNfJ-d5pm99XUKG7mGKukwXeDasaRlghKEpGxh0",
               "response_mode": "direct_post",
               "response_type": "vp_token",
-              "response_uri": "http://127.0.0.1:55796/auth"
+              "response_uri": "http://127.0.0.1:55796/auth",
+              "client_metadata": {
+                "vp_formats": {
+                    "dc+sd-jwt": {
+                        "alg": ["EdDSA", "ES256"]
+                    }
+                }
+              }
             }
         "#;
 
@@ -1039,7 +1052,14 @@ pub mod fixtures {
            "nonce":"n0NcE",
            "response_mode":"direct_post",
            "response_type": "vp_token",
-           "response_uri":"http://127.0.0.1:55796/auth"
+           "response_uri":"http://127.0.0.1:55796/auth",
+           "client_metadata": {
+                "vp_formats": {
+                    "dc+sd-jwt": {
+                        "alg": ["EdDSA", "ES256"]
+                    }
+                }
+           }
         }"#;
 
         const AUTH_REQUEST_WITH_STATE: &str = r#"
@@ -1127,7 +1147,14 @@ pub mod fixtures {
            "nonce":"n0NcE",
            "response_mode":"direct_post",
            "response_type": "vp_token",
-           "response_uri":"http://127.0.0.1:55796/auth"
+           "response_uri":"http://127.0.0.1:55796/auth",
+           "client_metadata": {
+                "vp_formats": {
+                    "dc+sd-jwt": {
+                        "alg": ["EdDSA", "ES256"]
+                    }
+                }
+           }
         }"#;
 
         pub fn presentation_definition() -> PresentationDefinition {
@@ -1308,7 +1335,14 @@ pub mod fixtures {
                "nonce":"n0NcE",
                "response_mode":"direct_post",
                "response_type": "vp_token",
-               "response_uri":"http://127.0.0.1:55796/auth"
+               "response_uri":"http://127.0.0.1:55796/auth",
+               "client_metadata": {
+                    "vp_formats": {
+                        "dc+sd-jwt": {
+                            "alg": ["EdDSA", "ES256"]
+                        }
+                    }
+              }
             }"#;
             let auth_request = serde_json::from_str(auth_request_str).unwrap();
 
@@ -1639,7 +1673,14 @@ pub mod utils {
               "nonce": "nonce",
               "response_mode": "direct_post",
               "response_type": "vp_token",
-              "response_uri": "http://127.0.0.1:55796/auth"
+              "response_uri": "http://127.0.0.1:55796/auth",
+              "client_metadata": {{
+                "vp_formats": {{
+                    "dc+sd-jwt": {{
+                        "alg": ["EdDSA", "ES256"]
+                    }}
+                }}
+              }}
             }}"#
             )
         }
