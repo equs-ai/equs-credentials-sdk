@@ -1,7 +1,3 @@
-use crate::vc::claims::Claims;
-
-type CredTypeWithClaims = (&'static str, Claims);
-
 pub mod fixtures {
     pub const VERIFIER_URL: &str = "http://127.0.0.1:55796";
     pub const NONCE: &str = "n0NcE";
@@ -11,577 +7,395 @@ pub mod fixtures {
     pub const CREDENTIAL_ID: &str = "abcde";
 
     pub mod single_presentation {
-        use crate::nonce::Nonce;
-        use crate::vc::oid4vp::tests::fixtures::NONCE;
-        use crate::vc::oid4vp::tests::utils::{PresentationTestCase, VerificationTestCase};
-        use crate::vc::oid4vp::tests::CredTypeWithClaims;
-        use crate::vc::oid4vp::{PresentationSession, ResolvedAuthRequest};
-        use crate::vc::presentation_exchange::{PresentationDefinition, PresentationSubmission};
-        use serde_json::json;
+        pub mod json_ld {
+            use crate::vc::claims::Claims;
+            use crate::vc::oid4vp::tests::utils::PresentationTestCase;
+            use crate::vc::oid4vp::ResolvedAuthRequest;
+            use crate::vc::presentation_exchange::{
+                ClaimFormatDesignation, PresentationSubmission,
+            };
+            use serde_json::json;
 
-        const PRESENTATION_DEFINITION: &str = r#"{
-           "id":"327ad171-c80a-485b-b098-50d7ad278ef6",
-           "input_descriptors":[
-              {
-                 "id":"Identity-1",
-                 "name":"Identity VC",
-                 "purpose":"We want an identity",
-                 "format":{
-                    "dc+sd-jwt":{
-                        "sd-jwt_alg_values": ["ES256", "EdDSA"],
-                        "kb-jwt_alg_values": ["ES256", "EdDSA"]
+            const PRESENTATION_SUBMISSION: &str = r#"{
+                "id": "00000000-0000-0000-0000-000000000000",
+                "definition_id": "327ad171-c80a-485b-b098-50d7ad278ef6",
+                "descriptor_map": [
+                    {
+                        "id": "Identity-1",
+                        "format": "ldp_vc",
+                        "path": "$"
                     }
-                 },
-                 "constraints":{
-                    "fields":[
-                       {
-                          "path":[
-                             "$.vct"
-                          ],
-                          "filter":{
-                             "type":"string",
-                             "const":"https://credentials.example.com/identity_credential"
-                          }
-                       },
-                       {
-                          "path":[
-                             "$.name"
-                          ]
-                       }
-                    ]
-                 }
-              }
-           ]
-        }"#;
+                ]
+            }"#;
 
-        const PRESENTATION_SUBMISSION: &str = r#"{
-            "id": "00000000-0000-0000-0000-000000000000",
-            "definition_id": "327ad171-c80a-485b-b098-50d7ad278ef6",
-            "descriptor_map": [
-                {
-                    "id": "Identity-1",
-                    "format": "dc+sd-jwt",
-                    "path": "$"
-                }
-            ]
-        }"#;
-
-        pub const AUTH_REQUEST_JWT: &str = "eyJhbGciOiJFUzI1NiIsImtpZCI6ImRpZDprZXk6ekRuYWVoZ2FIS0FQN0xBQTNLd2E0RmpYakoxRzNCY2FIcXI1Z2ZSeVNKY0dEZ0J0ViN6RG5hZWhnYUhLQVA3TEFBM0t3YTRGalhqSjFHM0JjYUhxcjVnZlJ5U0pjR0RnQnRWIiwidHlwIjoiSldUIn0.eyJyZXNwb25zZV90eXBlIjoidnBfdG9rZW4iLCJyZXNwb25zZV9tb2RlIjoiZGlyZWN0X3Bvc3QiLCJub25jZSI6IjNEYUx3ZGk4OXFEZ3BscFN3QXNwWDZ3V3ptNnBMa3phTjNYdWstYXI1elkiLCJjbGllbnRfbWV0YWRhdGEiOnsidnBfZm9ybWF0cyI6eyJkYytzZC1qd3QiOnsiYWxnIjpbIkVkRFNBIiwiRVMyNTYiXX19fSwiY2xpZW50X2lkIjoiZGlkOmtleTp6RG5hZWhnYUhLQVA3TEFBM0t3YTRGalhqSjFHM0JjYUhxcjVnZlJ5U0pjR0RnQnRWIiwiY2xpZW50X2lkX3NjaGVtZSI6ImRpZCIsInByZXNlbnRhdGlvbl9kZWZpbml0aW9uIjp7ImlkIjoiMzI3YWQxNzEtYzgwYS00ODViLWIwOTgtNTBkN2FkMjc4ZWY2IiwiaW5wdXRfZGVzY3JpcHRvcnMiOlt7ImlkIjoiSWRlbnRpdHktMSIsImNvbnN0cmFpbnRzIjp7ImZpZWxkcyI6W3sicGF0aCI6WyIkLm5hbWUiXSwib3B0aW9uYWwiOnRydWUsInByZWRpY2F0ZSI6bnVsbCwiaW50ZW50X3RvX3JldGFpbiI6ZmFsc2V9LHsicGF0aCI6WyIkLnZjdCJdLCJmaWx0ZXIiOnsidHlwZSI6InN0cmluZyIsImNvbnN0IjoiaHR0cHM6Ly9jcmVkZW50aWFscy5leGFtcGxlLmNvbS9pZGVudGl0eV9jcmVkZW50aWFsIn0sInByZWRpY2F0ZSI6bnVsbCwiaW50ZW50X3RvX3JldGFpbiI6ZmFsc2V9XX0sIm5hbWUiOiJJZGVudGl0eSBWQyIsInB1cnBvc2UiOiJXZSB3YW50IGFuIGlkZW50aXR5IiwiZm9ybWF0Ijp7ImRjK3NkLWp3dCI6eyJzZC1qd3RfYWxnX3ZhbHVlcyI6WyJFUzI1NiIsIkVkRFNBIl0sImtiLWp3dF9hbGdfdmFsdWVzIjpbIkVTMjU2IiwiRWREU0EiXX19fV0sIm5hbWUiOiJFeGFtcGxlIHdpdGggc2VsZWN0aXZlIGRpc2Nsb3N1cmUifSwicmVzcG9uc2VfdXJpIjoiaHR0cDovLzEyNy4wLjAuMTo1NTc5Ni9hdXRoIn0.PHtlxQ3XoC-ohUfRlm7EHe700WI4qZnmrTFBnS0ohq7Q0rNZtMiNMPKamp3hk-E88HzppGbvppn_Z7zEh3fjmA";
-        pub const AUTH_REQUEST_WITH_STATE_JWT: &str = "eyJhbGciOiJFUzI1NiIsImtpZCI6ImRpZDprZXk6ekRuYWV4b3lwUGVKSHo1eGZkc2hWOU5xc1dUM0JVbUh2RFVEZThWeFdmNkxuMjNVaCN6RG5hZXhveXBQZUpIejV4ZmRzaFY5TnFzV1QzQlVtSHZEVURlOFZ4V2Y2TG4yM1VoIiwidHlwIjoiSldUIn0.eyJyZXNwb25zZV90eXBlIjoidnBfdG9rZW4iLCJzdGF0ZSI6IjFkOGIwZDkzLTg2ZTgtNDEzNS04N2Q0LTUyNGJiMDUwMGJmMyIsInJlc3BvbnNlX21vZGUiOiJkaXJlY3RfcG9zdCIsIm5vbmNlIjoiTm9ELTBmdGYxcWFUS0NNWjloWmVJdV9HZEhjdUZhM0hvUTgxLXBXZklQWSIsImNsaWVudF9tZXRhZGF0YSI6eyJzdWJqZWN0X3N5bnRheF90eXBlc19zdXBwb3J0ZWQiOlsiZGlkOmtleSJdfSwiY2xpZW50X2lkIjoiZGlkOmtleTp6RG5hZXhveXBQZUpIejV4ZmRzaFY5TnFzV1QzQlVtSHZEVURlOFZ4V2Y2TG4yM1VoIiwiY2xpZW50X2lkX3NjaGVtZSI6ImRpZCIsInByZXNlbnRhdGlvbl9kZWZpbml0aW9uIjp7ImlkIjoiMzI3YWQxNzEtYzgwYS00ODViLWIwOTgtNTBkN2FkMjc4ZWY2IiwiaW5wdXRfZGVzY3JpcHRvcnMiOlt7ImlkIjoiSWRlbnRpdHktMSIsImNvbnN0cmFpbnRzIjp7ImZpZWxkcyI6W3sicGF0aCI6WyIkLnZjdCJdLCJmaWx0ZXIiOnsidHlwZSI6InN0cmluZyIsImNvbnN0IjoiaHR0cHM6Ly9jcmVkZW50aWFscy5leGFtcGxlLmNvbS9pZGVudGl0eV9jcmVkZW50aWFsIn0sInByZWRpY2F0ZSI6bnVsbCwiaW50ZW50X3RvX3JldGFpbiI6ZmFsc2V9LHsicGF0aCI6WyIkLm5hbWUiXSwicHJlZGljYXRlIjpudWxsLCJpbnRlbnRfdG9fcmV0YWluIjpmYWxzZX1dfSwibmFtZSI6IklkZW50aXR5IFZDIiwicHVycG9zZSI6IldlIHdhbnQgYW4gaWRlbnRpdHkiLCJmb3JtYXQiOnsidmMrc2Qtand0Ijp7InNkLWp3dF9hbGdfdmFsdWVzIjpbIkVTMjU2IiwiRWREU0EiXSwia2Itand0X2FsZ192YWx1ZXMiOlsiRVMyNTYiLCJFZERTQSJdfX19XX0sInJlc3BvbnNlX3VyaSI6Imh0dHA6Ly8xMjcuMC4wLjE6NTU3OTYvYXV0aCJ9.j7OamoDYuCdMsTZ_dar7_KrZx7fufanTFWPB5LQk86UeAZ9yI_QHsGsmb1j9HkAnkVpgerShVJ3dO3HuxD-tPA";
-        pub const AUTH_REQUEST: &str = r#"
-            {
-              "client_id": "did:key:zDnaehgaHKAP7LAA3Kwa4FjXjJ1G3BcaHqr5gfRySJcGDgBtV",
-              "state": null,
-              "presentation_definition": {
-                "id": "327ad171-c80a-485b-b098-50d7ad278ef6",
-                "input_descriptors": [
-                  {
-                    "id": "Identity-1",
-                    "constraints": {
-                      "fields": [
-                        {
-                          "path": [
-                            "$.name"
-                          ],
-                          "predicate": null,
-                          "optional": true,
-                          "intent_to_retain": false
-                        },
-                        {
-                          "path": [
-                            "$.vct"
-                          ],
-                          "predicate": null,
-                          "filter": {
-                            "type": "string",
-                            "const": "https://credentials.example.com/identity_credential"
-                          },
-                          "intent_to_retain": false
-                        }
-                      ]
-                    },
-                    "name": "Identity VC",
-                    "purpose": "We want an identity",
-                    "format": {
-                      "dc+sd-jwt": {
-                        "sd-jwt_alg_values": [
-                          "ES256",
-                          "EdDSA"
-                        ],
-                        "kb-jwt_alg_values": [
-                          "ES256",
-                          "EdDSA"
-                        ]
-                      }
-                    }
-                  }
-                ],
-                "name": "Example with selective disclosure"
-              },
-              "nonce": "3DaLwdi89qDgplpSwAspX6wWzm6pLkzaN3Xuk-ar5zY",
-              "response_mode": "direct_post",
-              "response_type": "vp_token",
-              "response_uri": "http://127.0.0.1:55796/auth",
-              "client_metadata": {
-                "vp_formats": {
-                    "dc+sd-jwt": {
-                        "alg": ["EdDSA", "ES256"]
-                    }
-                }
+            const PRESENTATION_DEFINITION_FORMAT: &str = r#"{
+              "ldp_vc": {
+                "proof_type": ["EcdsaRdfc2019", "EdDsaRdfc2022"]
               }
             }"#;
 
-        pub const AUTH_REQUEST_WITH_STATE: &str = r#"
-            {
-              "client_id": "did:key:zDnaex9UKhcwNpfrPva1HLj6DECNHhHkmuY6xszv1KGWksvfL",
-              "state": "1d8b0d93-86e8-4135-87d4-524bb0500bf3",
-              "presentation_definition": {
-                "id": "327ad171-c80a-485b-b098-50d7ad278ef6",
-                "input_descriptors": [
-                  {
-                    "id": "Identity-1",
-                    "constraints": {
+            pub const AUTH_REQUEST: &str = r#"
+                {
+                  "client_id": "did:key:zDnaehgaHKAP7LAA3Kwa4FjXjJ1G3BcaHqr5gfRySJcGDgBtV",
+                  "state": null,
+                  "presentation_definition": {
+                    "id": "327ad171-c80a-485b-b098-50d7ad278ef6",
+                    "input_descriptors": [
+                      {
+                        "id": "Identity-1",
+                        "constraints": {
+                          "fields": [
+                            {
+                              "path": [
+                                "$.credentialSubject.name.givenName",
+                                "$.credentialSubject.name.familyName"
+                              ]
+                            },
+                            {
+                              "path": [
+                                "$.type"
+                              ],
+                              "filter": {
+                                "type": "array",
+                                "contains": {
+                                    "const": "VerifiableCredential"
+                                }
+                              }
+                            },
+                            {
+                                "path": ["$.issuer"]
+                            }
+                          ]
+                        },
+                        "name": "Identity VC",
+                        "purpose": "We want an identity",
+                         "format": {
+                            "ldp_vc": {
+                                "proof_type": [
+                                    "EcdsaRdfc2019",
+                                    "EdDsaRdfc2022"
+                               ]
+                            }
+                        }
+                      }
+                    ],
+                    "name": "Example with selective disclosure"
+                  },
+                  "nonce": "3DaLwdi89qDgplpSwAspX6wWzm6pLkzaN3Xuk-ar5zY",
+                  "response_mode": "direct_post",
+                  "response_type": "vp_token",
+                  "response_uri": "http://127.0.0.1:55796/auth",
+                  "client_metadata": {
+                    "vp_formats": {
+                        "dc+sd-jwt": {
+                            "alg": [
+                                "EdDSA",
+                                "ES256"
+                            ]
+                        }
+                    }
+                  }
+                }
+            "#;
+
+            pub fn presentation_submission() -> PresentationSubmission {
+                serde_json::from_str(PRESENTATION_SUBMISSION).unwrap()
+            }
+
+            pub fn auth_request() -> ResolvedAuthRequest {
+                serde_json::from_str(AUTH_REQUEST).unwrap()
+            }
+
+            pub fn credential_1() -> Claims {
+                json!({
+                    "type": vec![
+                        "VerifiableCredential".to_string(),
+                        "AlumniCredential".to_string(),
+                    ],
+                    "name": {
+                        "givenName": "John",
+                        "familyName": "Jones"
+                    }
+                })
+                .try_into()
+                .unwrap()
+            }
+
+            pub fn credential_2() -> Claims {
+                json!({
+                    "type": vec![
+                        "VerifiableCredential".to_string(),
+                        "AlumniCredential2".to_string(),
+                    ],
+                    "name": "Mike",
+                    "degree": "Bachelors"
+                })
+                .try_into()
+                .unwrap()
+            }
+
+            pub fn credential_3() -> Claims {
+                json!({
+                    "type": vec![
+                        "VerifiableCredential".to_string(),
+                        "UniversityDegreeCredential".to_string(),
+                    ],
+                    "name": "Alex",
+                    "degree": "Masters",
+                    "college": "Oxford University"
+                })
+                .try_into()
+                .unwrap()
+            }
+
+            pub fn credential_4() -> Claims {
+                json!({
+                    "type": vec![
+                        "VerifiableCredential".to_string(),
+                        "UniversityDegreeCredential2".to_string(),
+                    ],
+                    "name": "Mark",
+                    "degree": "Bachelors",
+                })
+                .try_into()
+                .unwrap()
+            }
+
+            pub fn presentation_test_case() -> PresentationTestCase {
+                PresentationTestCase {
+                    credential_format: ClaimFormatDesignation::LdpVc,
+                    request: auth_request(),
+                    credential_data: vec![credential_1()],
+                    presentation_submission: presentation_submission(),
+                    response_metadata: Default::default(),
+                    expected_credential_data: vec![credential_1()],
+                }
+            }
+
+            pub fn presentation_test_case_filter_by_path() -> PresentationTestCase {
+                let credential_data: Vec<Claims> =
+                    vec![credential_1(), credential_2(), credential_3()];
+
+                let constraints = r#"
+                {
+                  "fields": [
+                    {
+                      "path": [
+                        "$.credentialSubject.college"
+                      ]
+                    }
+                  ]
+                }
+                "#;
+                let auth_request = PresentationTestCase::build_auth_request(
+                    PRESENTATION_DEFINITION_FORMAT,
+                    constraints,
+                );
+                let presentation_submission =
+                    serde_json::from_str(PRESENTATION_SUBMISSION).unwrap();
+
+                PresentationTestCase {
+                    credential_format: ClaimFormatDesignation::LdpVc,
+                    request: auth_request,
+                    credential_data,
+                    presentation_submission,
+                    response_metadata: Default::default(),
+                    expected_credential_data: vec![credential_3()],
+                }
+            }
+
+            pub fn presentation_test_case_with_filter_by_cred_type() -> PresentationTestCase {
+                let credential_data: Vec<Claims> =
+                    vec![credential_1(), credential_2(), credential_3()];
+
+                let constraints = r#"
+                    {
                       "fields": [
                         {
                           "path": [
-                            "$.name"
+                            "$.type"
                           ],
-                          "predicate": null,
-                          "optional": true,
-                          "intent_to_retain": false
+                          "filter": {
+                            "type": "array",
+                            "contains": {
+                                "const": "AlumniCredential"
+                            }
+                          }
+                        }
+                      ]
+                    }
+                    "#;
+                let auth_request = PresentationTestCase::build_auth_request(
+                    PRESENTATION_DEFINITION_FORMAT,
+                    constraints,
+                );
+                let presentation_submission =
+                    serde_json::from_str(PRESENTATION_SUBMISSION).unwrap();
+
+                PresentationTestCase {
+                    credential_format: ClaimFormatDesignation::LdpVc,
+                    request: auth_request,
+                    credential_data,
+                    expected_credential_data: vec![credential_1()],
+                    presentation_submission,
+                    response_metadata: Default::default(),
+                }
+            }
+
+            pub fn presentation_test_case_with_filter_by_cred_type_and_email(
+            ) -> PresentationTestCase {
+                let credential_data: Vec<Claims> = vec![
+                    credential_1(),
+                    credential_2(),
+                    credential_3(),
+                    credential_4(),
+                ];
+
+                let constraints = r#"
+                    {
+                      "fields": [
+                        {
+                          "path": [
+                            "$.type"
+                          ],
+                          "filter": {
+                            "type": "array",
+                            "contains": {
+                                "const": "UniversityDegreeCredential2"
+                            }
+                          }
                         },
                         {
                           "path": [
-                            "$.vct"
+                            "$.credentialSubject.degree"
                           ],
-                          "predicate": null,
                           "filter": {
                             "type": "string",
-                            "const": "https://credentials.example.com/identity_credential"
-                          },
-                          "intent_to_retain": false
+                            "const": "Bachelors"
+                          }
                         }
                       ]
-                    },
-                    "name": "Identity VC",
-                    "purpose": "We want an identity",
-                    "format": {
-                      "dc+sd-jwt": {
-                        "sd-jwt_alg_values": [
-                          "ES256",
-                          "EdDSA"
-                        ],
-                        "kb-jwt_alg_values": [
-                          "ES256",
-                          "EdDSA"
-                        ]
-                      }
                     }
-                  }
-                ],
-                "name": "Example with selective disclosure"
-              },
-              "nonce": "XUcfTNfJ-d5pm99XUKG7mGKukwXeDasaRlghKEpGxh0",
-              "response_mode": "direct_post",
-              "response_type": "vp_token",
-              "response_uri": "http://127.0.0.1:55796/auth",
-              "client_metadata": {
-                "vp_formats": {
-                    "dc+sd-jwt": {
-                        "alg": ["EdDSA", "ES256"]
+                    "#;
+                let auth_request = PresentationTestCase::build_auth_request(
+                    PRESENTATION_DEFINITION_FORMAT,
+                    constraints,
+                );
+                let presentation_submission =
+                    serde_json::from_str(PRESENTATION_SUBMISSION).unwrap();
+
+                PresentationTestCase {
+                    credential_format: ClaimFormatDesignation::LdpVc,
+                    request: auth_request,
+                    credential_data,
+                    expected_credential_data: vec![credential_4()],
+                    presentation_submission,
+                    response_metadata: Default::default(),
+                }
+            }
+
+            pub fn presentation_test_case_with_optional_field() -> PresentationTestCase {
+                let credential_data: Vec<Claims> = vec![
+                    credential_1(),
+                    credential_2(),
+                    credential_3(),
+                    credential_4(),
+                ];
+
+                let constraints = r#"
+                    {
+                      "fields": [
+                        {
+                          "path": [
+                            "$.type"
+                          ],
+                          "filter": {
+                            "type": "array",
+                            "contains": {
+                                "const": "AlumniCredential"
+                            }
+                          }
+                        },
+                        {
+                          "path": [
+                            "$.credentialSubject.degree"
+                          ],
+                          "optional": true
+                        }
+                      ]
                     }
+                    "#;
+                let auth_request = PresentationTestCase::build_auth_request(
+                    PRESENTATION_DEFINITION_FORMAT,
+                    constraints,
+                );
+                let presentation_submission =
+                    serde_json::from_str(PRESENTATION_SUBMISSION).unwrap();
+
+                PresentationTestCase {
+                    credential_format: ClaimFormatDesignation::LdpVc,
+                    request: auth_request,
+                    credential_data,
+                    expected_credential_data: vec![credential_1()],
+                    presentation_submission,
+                    response_metadata: Default::default(),
                 }
-              }
             }
-        "#;
 
-        pub fn presentation_definition() -> PresentationDefinition {
-            serde_json::from_str(PRESENTATION_DEFINITION).unwrap()
-        }
+            pub fn presentation_test_case_with_constraints_for_particular_fields(
+            ) -> PresentationTestCase {
+                let credential_data: Vec<Claims> = vec![
+                    credential_1(),
+                    credential_2(),
+                    credential_3(),
+                    credential_4(),
+                ];
 
-        pub fn presentation_submission() -> PresentationSubmission {
-            serde_json::from_str(PRESENTATION_SUBMISSION).unwrap()
-        }
-
-        pub fn auth_request() -> ResolvedAuthRequest {
-            serde_json::from_str(AUTH_REQUEST).unwrap()
-        }
-
-        pub fn auth_request_with_state() -> ResolvedAuthRequest {
-            serde_json::from_str(AUTH_REQUEST_WITH_STATE).unwrap()
-        }
-
-        pub fn credential_data() -> Vec<CredTypeWithClaims> {
-            vec![(
-                "https://credentials.example.com/identity_credential",
-                json!({"name": "John"}).try_into().unwrap(),
-            )]
-        }
-
-        pub fn presentation_session() -> PresentationSession {
-            PresentationSession {
-                nonce: Nonce::from_secret(NONCE.to_owned()),
-                presentation_definition: presentation_definition(),
-                auth_request_jwt: Default::default(),
-            }
-        }
-
-        pub fn presentation_test_case() -> PresentationTestCase {
-            PresentationTestCase {
-                request: auth_request(),
-                credential_data: credential_data(),
-                presentation_submission: presentation_submission(),
-                response_metadata: Default::default(),
-                expected_credential_data: vec![(
-                    "https://credentials.example.com/identity_credential",
-                    json!({"name": "John"}).try_into().unwrap(),
-                )],
-            }
-        }
-
-        pub fn presentation_test_case_filter_by_path() -> PresentationTestCase {
-            let cred1: CredTypeWithClaims = (
-                "student_credential",
-                json!({
-                    "name": "Mike",
-                    "email": {
-                        "work": "work@mike.com",
-                        "personal": "personal@mike.com"
+                let constraints = r#"
+                    {
+                      "fields": [
+                        {
+                          "path": [
+                            "$.credentialSubject.name"
+                          ]
+                        },
+                        {
+                          "path": [
+                            "$.type",
+                            "$.credentialSubject.degree"
+                          ]
+                        },
+                        {
+                          "path": [
+                            "$.credentialSubject.college"
+                          ],
+                          "optional": false
+                        }
+                      ]
                     }
-                })
-                .try_into()
-                .unwrap(),
-            );
-            let cred2: CredTypeWithClaims = (
-                "employee_credential",
-                json!({
-                    "name": "John",
-                    "email": "john@example.com"
-                })
-                .try_into()
-                .unwrap(),
-            );
-            let credential_data: Vec<CredTypeWithClaims> = vec![cred1.clone(), cred2];
+                    "#;
+                let auth_request = PresentationTestCase::build_auth_request(
+                    PRESENTATION_DEFINITION_FORMAT,
+                    constraints,
+                );
+                let presentation_submission =
+                    serde_json::from_str(PRESENTATION_SUBMISSION).unwrap();
 
-            let constraints = r#"
-            {
-              "fields": [
-                {
-                  "path": [
-                    "$.email.personal"
-                  ]
+                PresentationTestCase {
+                    credential_format: ClaimFormatDesignation::LdpVc,
+                    request: auth_request,
+                    credential_data,
+                    expected_credential_data: vec![credential_3()],
+                    presentation_submission,
+                    response_metadata: Default::default(),
                 }
-              ]
             }
-            "#;
-            let auth_request_str = PresentationTestCase::build_auth_request(constraints);
-            let auth_request = serde_json::from_str(&auth_request_str).unwrap();
-
-            let presentation_submission = serde_json::from_str(PRESENTATION_SUBMISSION).unwrap();
-
-            PresentationTestCase {
-                request: auth_request,
-                credential_data,
-                presentation_submission,
-                response_metadata: Default::default(),
-                expected_credential_data: vec![cred1],
-            }
-        }
-
-        pub fn presentation_test_case_with_filter_by_cred_type() -> PresentationTestCase {
-            let cred1: CredTypeWithClaims = (
-                "student_credential",
-                json!({
-                    "name": "Mike",
-                    "email": "mike@example.com",
-                })
-                .try_into()
-                .unwrap(),
-            );
-            let cred2: CredTypeWithClaims = (
-                "employee_credential",
-                json!({
-                    "name": "John",
-                    "email": "john@example.com",
-                })
-                .try_into()
-                .unwrap(),
-            );
-            let cred3: CredTypeWithClaims = (
-                "employee_credential",
-                json!({
-                    "name": "Alex",
-                    "email": "alex@example.com",
-                })
-                .try_into()
-                .unwrap(),
-            );
-            let credential_data: Vec<CredTypeWithClaims> = vec![cred1.clone(), cred2, cred3];
-
-            let constraints = r#"
-            {
-              "fields": [
-                {
-                  "path": [
-                    "$.vct"
-                  ],
-                  "filter": {
-                    "type": "string",
-                    "const": "student_credential"
-                  }
-                }
-              ]
-            }
-            "#;
-            let auth_request_str = PresentationTestCase::build_auth_request(constraints);
-            let auth_request = serde_json::from_str(&auth_request_str).unwrap();
-
-            let presentation_submission = serde_json::from_str(PRESENTATION_SUBMISSION).unwrap();
-
-            PresentationTestCase {
-                request: auth_request,
-                credential_data,
-                expected_credential_data: vec![cred1],
-                presentation_submission,
-                response_metadata: Default::default(),
-            }
-        }
-
-        pub fn presentation_test_case_with_filter_by_cred_type_and_email() -> PresentationTestCase {
-            let cred1: CredTypeWithClaims = (
-                "student_credential",
-                json!({
-                    "name": "Mike",
-                    "email": "mike@example.com",
-                    "age": 20
-                })
-                .try_into()
-                .unwrap(),
-            );
-            let cred2: CredTypeWithClaims = (
-                "employee_credential",
-                json!({
-                    "name": "John",
-                    "email": "john@example.com",
-                    "age": 35
-                })
-                .try_into()
-                .unwrap(),
-            );
-            let cred3: CredTypeWithClaims = (
-                "employee_credential",
-                json!({
-                    "name": "Alex",
-                    "email": "alex@example.com",
-                    "age": 26
-                })
-                .try_into()
-                .unwrap(),
-            );
-            let credential_data: Vec<CredTypeWithClaims> = vec![cred1, cred2.clone(), cred3];
-
-            let constraints = r#"
-            {
-              "fields": [
-                {
-                  "path": [
-                    "$.vct"
-                  ],
-                  "filter": {
-                    "type": "string",
-                    "const": "employee_credential"
-                  }
-                },
-                {
-                  "path": [
-                    "$.email"
-                  ],
-                  "filter": {
-                    "type": "string",
-                    "const": "john@example.com"
-                  }
-                }
-              ]
-            }
-            "#;
-            let auth_request_str = PresentationTestCase::build_auth_request(constraints);
-            let auth_request = serde_json::from_str(&auth_request_str).unwrap();
-
-            let presentation_submission = serde_json::from_str(PRESENTATION_SUBMISSION).unwrap();
-
-            PresentationTestCase {
-                request: auth_request,
-                credential_data,
-                expected_credential_data: vec![cred2],
-                presentation_submission,
-                response_metadata: Default::default(),
-            }
-        }
-
-        pub fn presentation_test_case_with_optional_field() -> PresentationTestCase {
-            let cred1: CredTypeWithClaims = (
-                "student_credential",
-                json!({
-                    "name": "Mike",
-                    "email": "mike@example.com",
-                    "age": 20
-                })
-                .try_into()
-                .unwrap(),
-            );
-            let cred2: CredTypeWithClaims = (
-                "employee_credential_1",
-                json!({
-                    "name": "John",
-                    "email": "john@example.com",
-                    "age": 35,
-                    "position": "lead engineer"
-                })
-                .try_into()
-                .unwrap(),
-            );
-            let cred3: CredTypeWithClaims = (
-                "employee_credential_2",
-                json!({
-                    "name": "Alex",
-                    "email": "alex@example.com",
-                    "age": 26
-
-                })
-                .try_into()
-                .unwrap(),
-            );
-            let credential_data: Vec<CredTypeWithClaims> = vec![cred1, cred2, cred3.clone()];
-
-            let constraints = r#"
-            {
-              "fields": [
-                {
-                  "path": [
-                    "$.vct"
-                  ],
-                  "filter": {
-                    "type": "string",
-                    "const": "employee_credential_2"
-                  }
-                },
-                {
-                  "path": [
-                    "$.position"
-                  ],
-                  "optional": true
-                }
-              ]
-            }
-            "#;
-            let auth_request_str = PresentationTestCase::build_auth_request(constraints);
-            let auth_request = serde_json::from_str(&auth_request_str).unwrap();
-
-            let presentation_submission = serde_json::from_str(PRESENTATION_SUBMISSION).unwrap();
-
-            PresentationTestCase {
-                request: auth_request,
-                credential_data,
-                expected_credential_data: vec![cred3],
-                presentation_submission,
-                response_metadata: Default::default(),
-            }
-        }
-
-        pub fn presentation_test_case_with_constraints_for_particular_fields(
-        ) -> PresentationTestCase {
-            let cred1: CredTypeWithClaims = (
-                "student_credential",
-                json!({
-                    "name": "Mike",
-                    "email": "mike@example.com",
-                    "age": 20
-                })
-                .try_into()
-                .unwrap(),
-            );
-            let cred2: CredTypeWithClaims = (
-                "employee_credential_1",
-                json!({
-                    "name": "John",
-                    "email": "john@example.com",
-                    "age": 35,
-                    "position": "lead engineer",
-                    "address": {
-                        "country": "UK",
-                        "city": "London"
-                    }
-                })
-                .try_into()
-                .unwrap(),
-            );
-            let cred3: CredTypeWithClaims = (
-                "employee_credential_2",
-                json!({
-                    "name": "Alex",
-                    "email": "alex@example.com",
-                    "age": 26,
-                    "position": "senior engineer"
-
-                })
-                .try_into()
-                .unwrap(),
-            );
-            let cred4: CredTypeWithClaims = (
-                "employee_credential_3",
-                json!({
-                    "name": "Luis",
-                    "email": "luis@example.com",
-                    "age": 18,
-
-                })
-                .try_into()
-                .unwrap(),
-            );
-            let credential_data: Vec<CredTypeWithClaims> = vec![cred1, cred2.clone(), cred3, cred4];
-
-            let constraints = r#"
-            {
-              "fields": [
-                {
-                  "path": [
-                    "$.email"
-                  ]
-                },
-                {
-                  "path": [
-                    "$.vct",
-                    "$.address.country",
-                    "$.address.city"
-                  ]
-                },
-                {
-                  "path": [
-                    "$.position"
-                  ],
-                  "optional": false
-                }
-              ]
-            }
-            "#;
-
-            let auth_request_str = PresentationTestCase::build_auth_request(constraints);
-            let auth_request = serde_json::from_str(&auth_request_str).unwrap();
-
-            let presentation_submission = serde_json::from_str(PRESENTATION_SUBMISSION).unwrap();
-
-            PresentationTestCase {
-                request: auth_request,
-                credential_data,
-                expected_credential_data: vec![cred2],
-                presentation_submission,
-                response_metadata: Default::default(),
-            }
-        }
-        pub fn presentation_test_case_with_constraints_with_patterns() -> PresentationTestCase {
-            let cred: CredTypeWithClaims = (
-                "employee_credential_1",
-                json!({
+            pub fn presentation_test_case_with_constraints_with_patterns() -> PresentationTestCase {
+                let cred: Claims = json!({
+                    "type": vec![
+                        "VerifiableCredential".to_string(),
+                        "AlumniCredential".to_string(),
+                    ],
                     "name": "John",
                     "email": "john@example.com",
                     "age": 35,
@@ -595,89 +409,91 @@ pub mod fixtures {
 
                 })
                 .try_into()
-                .unwrap(),
-            );
-            let credential_data: Vec<CredTypeWithClaims> = vec![cred.clone()];
-
-            let constraints = r#"
-                {
-                  "fields": [
+                .unwrap();
+                let credential_data: Vec<Claims> = vec![cred.clone()];
+                let constraints = r#"
                     {
-                      "path": [
-                        "$.email"
-                      ],
-                      "filter": {
-                        "type": "string",
-                        "pattern": "^[\\w\\.-]+@[a-zA-Z\\d\\.-]+\\.[a-zA-Z]{2,}$"
-                      }
-                    },
-                    {
-                      "path": [
-                        "$.address.country",
-                        "$.address.city"
-                      ],
-                      "filter": {
-                        "type": "string",
-                        "pattern": "^\\p{L}+$"
-                      }
-                    },
-                    {
-                      "path": [
-                        "$.position"
-                      ],
-                      "filter": {
-                        "type": "string",
-                        "const": "lead engineer"
-                      },
-                      "optional": false
-                    },
-                    {
-                      "path": [
-                        "$.birthDate"
-                      ],
-                      "filter": {
-                        "pattern": "^(?P<year>\\d{4})-(0[1-9]|1[0-2])-(0[1-9]|[12]\\d|3[01])$"
-                      },
-                      "optional": false
-                    },
-                    {
-                      "path": [
-                        "$.graduationYear"
-                      ],
-                      "filter": {
-                        "type": "string",
-                        "pattern": "^\\d{4}$"
-                      },
-                      "optional": true
-                    },
-                    {
-                      "path": [
-                        "$.status"
-                      ],
-                      "optional": true
+                      "fields": [
+                        {
+                          "path": [
+                            "$.credentialSubject.email"
+                          ],
+                          "filter": {
+                            "type": "string",
+                            "pattern": "^[\\w\\.-]+@[a-zA-Z\\d\\.-]+\\.[a-zA-Z]{2,}$"
+                          }
+                        },
+                        {
+                          "path": [
+                            "$.credentialSubject.address.country",
+                            "$.credentialSubject.address.city"
+                          ],
+                          "filter": {
+                            "type": "string",
+                            "pattern": "^\\p{L}+$"
+                          }
+                        },
+                        {
+                          "path": [
+                            "$.credentialSubject.position"
+                          ],
+                          "filter": {
+                            "type": "string",
+                            "const": "lead engineer"
+                          },
+                          "optional": false
+                        },
+                        {
+                          "path": [
+                            "$.credentialSubject.birthDate"
+                          ],
+                          "filter": {
+                            "pattern": "^(?P<year>\\d{4})-(0[1-9]|1[0-2])-(0[1-9]|[12]\\d|3[01])$"
+                          },
+                          "optional": false
+                        },
+                        {
+                          "path": [
+                            "$.credentialSubject.graduationYear"
+                          ],
+                          "filter": {
+                            "type": "string",
+                            "pattern": "^\\d{4}$"
+                          },
+                          "optional": true
+                        },
+                        {
+                          "path": [
+                            "$.credentialSubject.status"
+                          ],
+                          "optional": true
+                        }
+                      ]
                     }
-                  ]
+                    "#;
+                let auth_request = PresentationTestCase::build_auth_request(
+                    PRESENTATION_DEFINITION_FORMAT,
+                    constraints,
+                );
+                let presentation_submission =
+                    serde_json::from_str(PRESENTATION_SUBMISSION).unwrap();
+
+                PresentationTestCase {
+                    credential_format: ClaimFormatDesignation::LdpVc,
+                    request: auth_request,
+                    credential_data,
+                    expected_credential_data: vec![cred],
+                    presentation_submission,
+                    response_metadata: Default::default(),
                 }
-                "#;
-
-            let auth_request_str = PresentationTestCase::build_auth_request(constraints);
-            let auth_request = serde_json::from_str(&auth_request_str).unwrap();
-
-            let presentation_submission = serde_json::from_str(PRESENTATION_SUBMISSION).unwrap();
-
-            PresentationTestCase {
-                request: auth_request,
-                credential_data,
-                expected_credential_data: vec![cred],
-                presentation_submission,
-                response_metadata: Default::default(),
             }
-        }
-        pub fn presentation_test_case_with_constraints_with_invalid_value_for_pattern(
-        ) -> PresentationTestCase {
-            let cred: CredTypeWithClaims = (
-                "employee_credential_1",
-                json!({
+            pub fn presentation_test_case_with_constraints_with_invalid_value_for_pattern(
+            ) -> PresentationTestCase {
+                let cred: Claims = json!({
+                    "type": vec![
+                        "VerifiableCredential".to_string(),
+                        "AlumniCredential".to_string(),
+                    ],
                     "name": "John",
                     "email": "john@example.com",
                     "age": 35,
@@ -689,53 +505,56 @@ pub mod fixtures {
                     "birthDate": "1980:01:01",
                 })
                 .try_into()
-                .unwrap(),
-            );
-            let credential_data: Vec<CredTypeWithClaims> = vec![cred.clone()];
+                .unwrap();
+                let credential_data: Vec<Claims> = vec![cred.clone()];
 
-            let constraints = r#"
-                {
-                  "fields": [
+                let constraints = r#"
                     {
-                      "path": [
-                        "$.email"
-                      ],
-                      "filter": {
-                        "type": "string",
-                        "pattern": "^[\\w\\.-]+@[a-zA-Z\\d\\.-]+\\.[a-zA-Z]{2,}$"
-                      }
-                    },
-                    {
-                      "path": [
-                        "$.birthDate"
-                      ],
-                      "filter": {
-                        "pattern": "^(?P<year>\\d{4})-(0[1-9]|1[0-2])-(0[1-9]|[12]\\d|3[01])$"
-                      },
-                      "optional": false
+                      "fields": [
+                        {
+                          "path": [
+                            "$.credentialSubject.email"
+                          ],
+                          "filter": {
+                            "type": "string",
+                            "pattern": "^[\\w\\.-]+@[a-zA-Z\\d\\.-]+\\.[a-zA-Z]{2,}$"
+                          }
+                        },
+                        {
+                          "path": [
+                            "$.credentialSubject.birthDate"
+                          ],
+                          "filter": {
+                            "pattern": "^(?P<year>\\d{4})-(0[1-9]|1[0-2])-(0[1-9]|[12]\\d|3[01])$"
+                          },
+                          "optional": false
+                        }
+                      ]
                     }
-                  ]
+                    "#;
+                let auth_request = PresentationTestCase::build_auth_request(
+                    PRESENTATION_DEFINITION_FORMAT,
+                    constraints,
+                );
+                let presentation_submission =
+                    serde_json::from_str(PRESENTATION_SUBMISSION).unwrap();
+
+                PresentationTestCase {
+                    credential_format: ClaimFormatDesignation::LdpVc,
+                    request: auth_request,
+                    credential_data,
+                    expected_credential_data: vec![cred],
+                    presentation_submission,
+                    response_metadata: Default::default(),
                 }
-                "#;
-
-            let auth_request_str = PresentationTestCase::build_auth_request(constraints);
-            let auth_request = serde_json::from_str(&auth_request_str).unwrap();
-
-            let presentation_submission = serde_json::from_str(PRESENTATION_SUBMISSION).unwrap();
-
-            PresentationTestCase {
-                request: auth_request,
-                credential_data,
-                expected_credential_data: vec![cred],
-                presentation_submission,
-                response_metadata: Default::default(),
             }
-        }
-        pub fn presentation_test_case_with_constraints_with_invalid_value_for_const(
-        ) -> PresentationTestCase {
-            let cred: CredTypeWithClaims = (
-                "employee_credential_1",
-                json!({
+            pub fn presentation_test_case_with_constraints_with_invalid_value_for_const(
+            ) -> PresentationTestCase {
+                let cred: Claims = json!({
+                    "type": vec![
+                        "VerifiableCredential".to_string(),
+                        "AlumniCredential".to_string(),
+                    ],
                     "name": "John",
                     "email": "john@example.com",
                     "age": 35,
@@ -743,123 +562,874 @@ pub mod fixtures {
 
                 })
                 .try_into()
-                .unwrap(),
-            );
-            let credential_data: Vec<CredTypeWithClaims> = vec![cred.clone()];
+                .unwrap();
+                let credential_data: Vec<Claims> = vec![cred.clone()];
 
-            let constraints = r#"
-                {
-                  "fields": [
+                let constraints = r#"
                     {
-                      "path": [
-                        "$.email"
-                      ],
-                      "filter": {
-                        "type": "string",
-                        "pattern": "^[\\w\\.-]+@[a-zA-Z\\d\\.-]+\\.[a-zA-Z]{2,}$"
-                      }
-                    },
-                    {
-                      "path": [
-                        "$.position"
-                      ],
-                      "filter": {
-                        "type": "string",
-                        "const": "lead engineer"
-                      }
+                      "fields": [
+                        {
+                          "path": [
+                            "$.credentialSubject.email"
+                          ],
+                          "filter": {
+                            "type": "string",
+                            "pattern": "^[\\w\\.-]+@[a-zA-Z\\d\\.-]+\\.[a-zA-Z]{2,}$"
+                          }
+                        },
+                        {
+                          "path": [
+                            "$.credentialSubject.position"
+                          ],
+                          "filter": {
+                            "type": "string",
+                            "const": "lead engineer"
+                          }
+                        }
+                      ]
                     }
-                  ]
+                    "#;
+                let auth_request = PresentationTestCase::build_auth_request(
+                    PRESENTATION_DEFINITION_FORMAT,
+                    constraints,
+                );
+                let presentation_submission =
+                    serde_json::from_str(PRESENTATION_SUBMISSION).unwrap();
+
+                PresentationTestCase {
+                    credential_format: ClaimFormatDesignation::LdpVc,
+                    request: auth_request,
+                    credential_data,
+                    expected_credential_data: vec![cred],
+                    presentation_submission,
+                    response_metadata: Default::default(),
                 }
-                "#;
-
-            let auth_request_str = PresentationTestCase::build_auth_request(constraints);
-            let auth_request = serde_json::from_str(&auth_request_str).unwrap();
-
-            let presentation_submission = serde_json::from_str(PRESENTATION_SUBMISSION).unwrap();
-
-            PresentationTestCase {
-                request: auth_request,
-                credential_data,
-                expected_credential_data: vec![cred],
-                presentation_submission,
-                response_metadata: Default::default(),
             }
-        }
-        pub fn presentation_test_case_with_constraints_with_absent_required_claim(
-        ) -> PresentationTestCase {
-            let cred: CredTypeWithClaims = (
-                "employee_credential_1",
-                json!({
+            pub fn presentation_test_case_with_constraints_with_absent_required_claim(
+            ) -> PresentationTestCase {
+                let cred: Claims = json!({
+                    "type": vec![
+                        "VerifiableCredential".to_string(),
+                        "AlumniCredential2".to_string(),
+                    ],
                     "name": "John",
                     "email": "john@example.com",
                     "age": 35,
                     "position": "lead engineer",
                 })
                 .try_into()
-                .unwrap(),
-            );
-            let credential_data: Vec<CredTypeWithClaims> = vec![cred.clone()];
+                .unwrap();
+                let credential_data: Vec<Claims> = vec![cred.clone()];
 
-            let constraints = r#"
+                let constraints = r#"
+                    {
+                      "fields": [
+                      {
+                          "path": [
+                            "$.credentialSubject.email"
+                          ],
+                          "filter": {
+                            "type": "string",
+                            "pattern": "^[\\w\\.-]+@[a-zA-Z\\d\\.-]+\\.[a-zA-Z]{2,}$"
+                          }
+                        },
+                        {
+                          "path": [
+                            "$.credentialSubject.status"
+                          ],
+                          "optional": false
+                        }
+                      ]
+                    }
+                    "#;
+                let auth_request = PresentationTestCase::build_auth_request(
+                    PRESENTATION_DEFINITION_FORMAT,
+                    constraints,
+                );
+                let presentation_submission =
+                    serde_json::from_str(PRESENTATION_SUBMISSION).unwrap();
+
+                PresentationTestCase {
+                    credential_format: ClaimFormatDesignation::LdpVc,
+                    request: auth_request,
+                    credential_data,
+                    expected_credential_data: vec![cred],
+                    presentation_submission,
+                    response_metadata: Default::default(),
+                }
+            }
+        }
+        pub mod sd_jwt {
+            use crate::nonce::Nonce;
+            use crate::vc::claims::Claims;
+            use crate::vc::oid4vp::tests::fixtures::NONCE;
+            use crate::vc::oid4vp::tests::utils::{PresentationTestCase, VerificationTestCase};
+            use crate::vc::oid4vp::{PresentationSession, ResolvedAuthRequest};
+            use crate::vc::presentation_exchange::{
+                PresentationDefinition, PresentationSubmission,
+            };
+            use openid4vp::core::credential_format::ClaimFormatDesignation;
+            use serde_json::json;
+
+            const PRESENTATION_DEFINITION_FORMAT: &str = r#"{
+              "dc+sd-jwt": {
+                "sd-jwt_alg_values": ["ES256", "EdDSA"],
+                "kb-jwt_alg_values": ["ES256", "EdDSA"]
+              }
+            }"#;
+
+            const PRESENTATION_DEFINITION: &str = r#"{
+               "id":"327ad171-c80a-485b-b098-50d7ad278ef6",
+               "input_descriptors":[
+                  {
+                     "id":"Identity-1",
+                     "name":"Identity VC",
+                     "purpose":"We want an identity",
+                     "format":{
+                        "dc+sd-jwt":{
+                            "sd-jwt_alg_values": ["ES256", "EdDSA"],
+                            "kb-jwt_alg_values": ["ES256", "EdDSA"]
+                        }
+                     },
+                     "constraints":{
+                        "fields":[
+                           {
+                              "path":[
+                                 "$.vct"
+                              ],
+                              "filter":{
+                                 "type":"string",
+                                 "const":"https://credentials.example.com/identity_credential"
+                              }
+                           },
+                           {
+                              "path":[
+                                 "$.name"
+                              ]
+                           }
+                        ]
+                     }
+                  }
+               ]
+            }"#;
+
+            const PRESENTATION_SUBMISSION: &str = r#"{
+            "id": "00000000-0000-0000-0000-000000000000",
+            "definition_id": "327ad171-c80a-485b-b098-50d7ad278ef6",
+            "descriptor_map": [
+                {
+                    "id": "Identity-1",
+                    "format": "dc+sd-jwt",
+                    "path": "$"
+                }
+            ]
+        }"#;
+
+            pub const AUTH_REQUEST_JWT: &str = "eyJhbGciOiJFUzI1NiIsImtpZCI6ImRpZDprZXk6ekRuYWVoZ2FIS0FQN0xBQTNLd2E0RmpYakoxRzNCY2FIcXI1Z2ZSeVNKY0dEZ0J0ViN6RG5hZWhnYUhLQVA3TEFBM0t3YTRGalhqSjFHM0JjYUhxcjVnZlJ5U0pjR0RnQnRWIiwidHlwIjoiSldUIn0.eyJyZXNwb25zZV90eXBlIjoidnBfdG9rZW4iLCJyZXNwb25zZV9tb2RlIjoiZGlyZWN0X3Bvc3QiLCJub25jZSI6IjNEYUx3ZGk4OXFEZ3BscFN3QXNwWDZ3V3ptNnBMa3phTjNYdWstYXI1elkiLCJjbGllbnRfbWV0YWRhdGEiOnsidnBfZm9ybWF0cyI6eyJkYytzZC1qd3QiOnsiYWxnIjpbIkVkRFNBIiwiRVMyNTYiXX19fSwiY2xpZW50X2lkIjoiZGlkOmtleTp6RG5hZWhnYUhLQVA3TEFBM0t3YTRGalhqSjFHM0JjYUhxcjVnZlJ5U0pjR0RnQnRWIiwiY2xpZW50X2lkX3NjaGVtZSI6ImRpZCIsInByZXNlbnRhdGlvbl9kZWZpbml0aW9uIjp7ImlkIjoiMzI3YWQxNzEtYzgwYS00ODViLWIwOTgtNTBkN2FkMjc4ZWY2IiwiaW5wdXRfZGVzY3JpcHRvcnMiOlt7ImlkIjoiSWRlbnRpdHktMSIsImNvbnN0cmFpbnRzIjp7ImZpZWxkcyI6W3sicGF0aCI6WyIkLm5hbWUiXSwib3B0aW9uYWwiOnRydWUsInByZWRpY2F0ZSI6bnVsbCwiaW50ZW50X3RvX3JldGFpbiI6ZmFsc2V9LHsicGF0aCI6WyIkLnZjdCJdLCJmaWx0ZXIiOnsidHlwZSI6InN0cmluZyIsImNvbnN0IjoiaHR0cHM6Ly9jcmVkZW50aWFscy5leGFtcGxlLmNvbS9pZGVudGl0eV9jcmVkZW50aWFsIn0sInByZWRpY2F0ZSI6bnVsbCwiaW50ZW50X3RvX3JldGFpbiI6ZmFsc2V9XX0sIm5hbWUiOiJJZGVudGl0eSBWQyIsInB1cnBvc2UiOiJXZSB3YW50IGFuIGlkZW50aXR5IiwiZm9ybWF0Ijp7ImRjK3NkLWp3dCI6eyJzZC1qd3RfYWxnX3ZhbHVlcyI6WyJFUzI1NiIsIkVkRFNBIl0sImtiLWp3dF9hbGdfdmFsdWVzIjpbIkVTMjU2IiwiRWREU0EiXX19fV0sIm5hbWUiOiJFeGFtcGxlIHdpdGggc2VsZWN0aXZlIGRpc2Nsb3N1cmUifSwicmVzcG9uc2VfdXJpIjoiaHR0cDovLzEyNy4wLjAuMTo1NTc5Ni9hdXRoIn0.PHtlxQ3XoC-ohUfRlm7EHe700WI4qZnmrTFBnS0ohq7Q0rNZtMiNMPKamp3hk-E88HzppGbvppn_Z7zEh3fjmA";
+            pub const AUTH_REQUEST_WITH_STATE_JWT: &str = "eyJhbGciOiJFUzI1NiIsImtpZCI6ImRpZDprZXk6ekRuYWV4b3lwUGVKSHo1eGZkc2hWOU5xc1dUM0JVbUh2RFVEZThWeFdmNkxuMjNVaCN6RG5hZXhveXBQZUpIejV4ZmRzaFY5TnFzV1QzQlVtSHZEVURlOFZ4V2Y2TG4yM1VoIiwidHlwIjoiSldUIn0.eyJyZXNwb25zZV90eXBlIjoidnBfdG9rZW4iLCJzdGF0ZSI6IjFkOGIwZDkzLTg2ZTgtNDEzNS04N2Q0LTUyNGJiMDUwMGJmMyIsInJlc3BvbnNlX21vZGUiOiJkaXJlY3RfcG9zdCIsIm5vbmNlIjoiTm9ELTBmdGYxcWFUS0NNWjloWmVJdV9HZEhjdUZhM0hvUTgxLXBXZklQWSIsImNsaWVudF9tZXRhZGF0YSI6eyJzdWJqZWN0X3N5bnRheF90eXBlc19zdXBwb3J0ZWQiOlsiZGlkOmtleSJdfSwiY2xpZW50X2lkIjoiZGlkOmtleTp6RG5hZXhveXBQZUpIejV4ZmRzaFY5TnFzV1QzQlVtSHZEVURlOFZ4V2Y2TG4yM1VoIiwiY2xpZW50X2lkX3NjaGVtZSI6ImRpZCIsInByZXNlbnRhdGlvbl9kZWZpbml0aW9uIjp7ImlkIjoiMzI3YWQxNzEtYzgwYS00ODViLWIwOTgtNTBkN2FkMjc4ZWY2IiwiaW5wdXRfZGVzY3JpcHRvcnMiOlt7ImlkIjoiSWRlbnRpdHktMSIsImNvbnN0cmFpbnRzIjp7ImZpZWxkcyI6W3sicGF0aCI6WyIkLnZjdCJdLCJmaWx0ZXIiOnsidHlwZSI6InN0cmluZyIsImNvbnN0IjoiaHR0cHM6Ly9jcmVkZW50aWFscy5leGFtcGxlLmNvbS9pZGVudGl0eV9jcmVkZW50aWFsIn0sInByZWRpY2F0ZSI6bnVsbCwiaW50ZW50X3RvX3JldGFpbiI6ZmFsc2V9LHsicGF0aCI6WyIkLm5hbWUiXSwicHJlZGljYXRlIjpudWxsLCJpbnRlbnRfdG9fcmV0YWluIjpmYWxzZX1dfSwibmFtZSI6IklkZW50aXR5IFZDIiwicHVycG9zZSI6IldlIHdhbnQgYW4gaWRlbnRpdHkiLCJmb3JtYXQiOnsidmMrc2Qtand0Ijp7InNkLWp3dF9hbGdfdmFsdWVzIjpbIkVTMjU2IiwiRWREU0EiXSwia2Itand0X2FsZ192YWx1ZXMiOlsiRVMyNTYiLCJFZERTQSJdfX19XX0sInJlc3BvbnNlX3VyaSI6Imh0dHA6Ly8xMjcuMC4wLjE6NTU3OTYvYXV0aCJ9.j7OamoDYuCdMsTZ_dar7_KrZx7fufanTFWPB5LQk86UeAZ9yI_QHsGsmb1j9HkAnkVpgerShVJ3dO3HuxD-tPA";
+            pub const AUTH_REQUEST: &str = r#"
+                {
+                  "client_id": "did:key:zDnaehgaHKAP7LAA3Kwa4FjXjJ1G3BcaHqr5gfRySJcGDgBtV",
+                  "state": null,
+                  "presentation_definition": {
+                    "id": "327ad171-c80a-485b-b098-50d7ad278ef6",
+                    "input_descriptors": [
+                      {
+                        "id": "Identity-1",
+                        "constraints": {
+                          "fields": [
+                            {
+                              "path": [
+                                "$.name"
+                              ],
+                              "predicate": null,
+                              "optional": true,
+                              "intent_to_retain": false
+                            },
+                            {
+                              "path": [
+                                "$.vct"
+                              ],
+                              "predicate": null,
+                              "filter": {
+                                "type": "string",
+                                "const": "https://credentials.example.com/identity_credential"
+                              },
+                              "intent_to_retain": false
+                            }
+                          ]
+                        },
+                        "name": "Identity VC",
+                        "purpose": "We want an identity",
+                        "format": {
+                          "dc+sd-jwt": {
+                            "sd-jwt_alg_values": [
+                              "ES256",
+                              "EdDSA"
+                            ],
+                            "kb-jwt_alg_values": [
+                              "ES256",
+                              "EdDSA"
+                            ]
+                          }
+                        }
+                      }
+                    ],
+                    "name": "Example with selective disclosure"
+                  },
+                  "nonce": "3DaLwdi89qDgplpSwAspX6wWzm6pLkzaN3Xuk-ar5zY",
+                  "response_mode": "direct_post",
+                  "response_type": "vp_token",
+                  "response_uri": "http://127.0.0.1:55796/auth",
+                  "client_metadata": {
+                    "vp_formats": {
+                        "dc+sd-jwt": {
+                            "alg": ["EdDSA", "ES256"]
+                        }
+                    }
+                  }
+                }"#;
+
+            pub const AUTH_REQUEST_WITH_STATE: &str = r#"
+                {
+                  "client_id": "did:key:zDnaex9UKhcwNpfrPva1HLj6DECNHhHkmuY6xszv1KGWksvfL",
+                  "state": "1d8b0d93-86e8-4135-87d4-524bb0500bf3",
+                  "presentation_definition": {
+                    "id": "327ad171-c80a-485b-b098-50d7ad278ef6",
+                    "input_descriptors": [
+                      {
+                        "id": "Identity-1",
+                        "constraints": {
+                          "fields": [
+                            {
+                              "path": [
+                                "$.name"
+                              ],
+                              "predicate": null,
+                              "optional": true,
+                              "intent_to_retain": false
+                            },
+                            {
+                              "path": [
+                                "$.vct"
+                              ],
+                              "predicate": null,
+                              "filter": {
+                                "type": "string",
+                                "const": "https://credentials.example.com/identity_credential"
+                              },
+                              "intent_to_retain": false
+                            }
+                          ]
+                        },
+                        "name": "Identity VC",
+                        "purpose": "We want an identity",
+                        "format": {
+                          "dc+sd-jwt": {
+                            "sd-jwt_alg_values": [
+                              "ES256",
+                              "EdDSA"
+                            ],
+                            "kb-jwt_alg_values": [
+                              "ES256",
+                              "EdDSA"
+                            ]
+                          }
+                        }
+                      }
+                    ],
+                    "name": "Example with selective disclosure"
+                  },
+                  "nonce": "XUcfTNfJ-d5pm99XUKG7mGKukwXeDasaRlghKEpGxh0",
+                  "response_mode": "direct_post",
+                  "response_type": "vp_token",
+                  "response_uri": "http://127.0.0.1:55796/auth",
+                "client_metadata": {
+                "vp_formats": {
+                    "dc+sd-jwt": {
+                        "alg": ["EdDSA", "ES256"]
+                    }
+                }
+              }}
+            "#;
+
+            pub fn presentation_definition() -> PresentationDefinition {
+                serde_json::from_str(PRESENTATION_DEFINITION).unwrap()
+            }
+
+            pub fn presentation_submission() -> PresentationSubmission {
+                serde_json::from_str(PRESENTATION_SUBMISSION).unwrap()
+            }
+
+            pub fn auth_request() -> ResolvedAuthRequest {
+                serde_json::from_str(AUTH_REQUEST).unwrap()
+            }
+
+            pub fn auth_request_with_state() -> ResolvedAuthRequest {
+                serde_json::from_str(AUTH_REQUEST_WITH_STATE).unwrap()
+            }
+
+            pub fn credential_1() -> Claims {
+                json!({
+                    "vct":"https://credentials.example.com/identity_credential",
+                    "name": "Mark",
+                })
+                .try_into()
+                .unwrap()
+            }
+
+            pub fn credential_2() -> Claims {
+                json!({
+                    "vct": "https://credentials.example.com/student_credential_1",
+                    "name": "Mike",
+                    "email": {
+                        "university": "university@mike.com",
+                        "personal": "personal@mike.com"
+                    },
+                    "address": {
+                        "country": "UK",
+                        "city": "London"
+                    },
+                    "age": 20
+                })
+                .try_into()
+                .unwrap()
+            }
+            pub fn credential_3() -> Claims {
+                json!({
+                    "vct": "https://credentials.example.com/student_credential_2",
+                    "name": "John",
+                    "email": "john@example.com"
+                })
+                .try_into()
+                .unwrap()
+            }
+
+            pub fn credential_4() -> Claims {
+                json!({
+                    "vct": "https://credentials.example.com/employee_credential",
+                    "name": "Alex",
+                    "email": "alex@example.com"
+                })
+                .try_into()
+                .unwrap()
+            }
+
+            pub fn presentation_session() -> PresentationSession {
+                PresentationSession {
+                    nonce: Nonce::from_secret(NONCE.to_owned()),
+                    presentation_definition: presentation_definition(),
+                    auth_request_jwt: Default::default(),
+                }
+            }
+
+            pub fn presentation_test_case() -> PresentationTestCase {
+                PresentationTestCase {
+                    credential_format: ClaimFormatDesignation::SdJwtVc,
+                    request: auth_request(),
+                    credential_data: vec![credential_1()],
+                    presentation_submission: presentation_submission(),
+                    response_metadata: Default::default(),
+                    expected_credential_data: vec![credential_1()],
+                }
+            }
+
+            pub fn presentation_test_case_filter_by_path() -> PresentationTestCase {
+                let credential_data: Vec<Claims> =
+                    vec![credential_1(), credential_2(), credential_3()];
+
+                let constraints = r#"
                 {
                   "fields": [
-                  {
-                      "path": [
-                        "$.email"
-                      ],
-                      "filter": {
-                        "type": "string",
-                        "pattern": "^[\\w\\.-]+@[a-zA-Z\\d\\.-]+\\.[a-zA-Z]{2,}$"
-                      }
-                    },
                     {
                       "path": [
-                        "$.status"
-                      ],
-                      "optional": false
+                        "$.email.personal"
+                      ]
                     }
                   ]
                 }
                 "#;
+                let auth_request = PresentationTestCase::build_auth_request(
+                    PRESENTATION_DEFINITION_FORMAT,
+                    constraints,
+                );
+                let presentation_submission =
+                    serde_json::from_str(PRESENTATION_SUBMISSION).unwrap();
 
-            let auth_request_str = PresentationTestCase::build_auth_request(constraints);
-            let auth_request = serde_json::from_str(&auth_request_str).unwrap();
-
-            let presentation_submission = serde_json::from_str(PRESENTATION_SUBMISSION).unwrap();
-
-            PresentationTestCase {
-                request: auth_request,
-                credential_data,
-                expected_credential_data: vec![cred],
-                presentation_submission,
-                response_metadata: Default::default(),
+                PresentationTestCase {
+                    credential_format: ClaimFormatDesignation::SdJwtVc,
+                    request: auth_request,
+                    credential_data,
+                    presentation_submission,
+                    response_metadata: Default::default(),
+                    expected_credential_data: vec![credential_2()],
+                }
             }
-        }
 
-        pub fn presentation_test_case_with_state() -> PresentationTestCase {
-            PresentationTestCase {
-                request: auth_request_with_state(),
-                credential_data: credential_data(),
-                presentation_submission: presentation_submission(),
-                response_metadata: Default::default(),
-                expected_credential_data: credential_data(),
+            pub fn presentation_test_case_with_filter_by_cred_type() -> PresentationTestCase {
+                let credential_data: Vec<Claims> = vec![
+                    credential_1(),
+                    credential_2(),
+                    credential_3(),
+                    credential_4(),
+                ];
+
+                let constraints = r#"
+                    {
+                      "fields": [
+                        {
+                          "path": [
+                            "$.vct"
+                          ],
+                          "filter": {
+                            "type": "string",
+                            "const": "https://credentials.example.com/employee_credential"
+                          }
+                        }
+                      ]
+                    }
+                    "#;
+                let auth_request = PresentationTestCase::build_auth_request(
+                    PRESENTATION_DEFINITION_FORMAT,
+                    constraints,
+                );
+                let presentation_submission =
+                    serde_json::from_str(PRESENTATION_SUBMISSION).unwrap();
+
+                PresentationTestCase {
+                    credential_format: ClaimFormatDesignation::SdJwtVc,
+                    request: auth_request,
+                    credential_data,
+                    expected_credential_data: vec![credential_4()],
+                    presentation_submission,
+                    response_metadata: Default::default(),
+                }
             }
-        }
 
-        pub fn verification_test_case() -> VerificationTestCase {
-            VerificationTestCase {
-                credential_data: credential_data(),
-                presentation_submission: presentation_submission(),
-                session: presentation_session(),
+            pub fn presentation_test_case_with_filter_by_cred_type_and_email(
+            ) -> PresentationTestCase {
+                let credential_data: Vec<Claims> = vec![
+                    credential_1(),
+                    credential_2(),
+                    credential_3(),
+                    credential_4(),
+                ];
+
+                let constraints = r#"
+                    {
+                      "fields": [
+                        {
+                          "path": [
+                            "$.vct"
+                          ],
+                          "filter": {
+                            "type": "string",
+                            "const": "https://credentials.example.com/student_credential_2"
+                          }
+                        },
+                        {
+                          "path": [
+                            "$.email"
+                          ],
+                          "filter": {
+                            "type": "string",
+                            "const": "john@example.com"
+                          }
+                        }
+                      ]
+                    }
+                    "#;
+                let auth_request = PresentationTestCase::build_auth_request(
+                    PRESENTATION_DEFINITION_FORMAT,
+                    constraints,
+                );
+                let presentation_submission =
+                    serde_json::from_str(PRESENTATION_SUBMISSION).unwrap();
+
+                PresentationTestCase {
+                    credential_format: ClaimFormatDesignation::SdJwtVc,
+                    request: auth_request,
+                    credential_data,
+                    expected_credential_data: vec![credential_3()],
+                    presentation_submission,
+                    response_metadata: Default::default(),
+                }
+            }
+
+            pub fn presentation_test_case_with_optional_field() -> PresentationTestCase {
+                let credential_data: Vec<Claims> =
+                    vec![credential_2(), credential_3(), credential_4()];
+
+                let constraints = r#"
+                    {
+                      "fields": [
+                        {
+                          "path": [
+                            "$.vct"
+                          ],
+                          "filter": {
+                            "type": "string",
+                            "const": "https://credentials.example.com/student_credential_1"
+                          }
+                        },
+                        {
+                          "path": [
+                            "$.age"
+                          ],
+                          "optional": true
+                        }
+                      ]
+                    }
+                    "#;
+                let auth_request = PresentationTestCase::build_auth_request(
+                    PRESENTATION_DEFINITION_FORMAT,
+                    constraints,
+                );
+                let presentation_submission =
+                    serde_json::from_str(PRESENTATION_SUBMISSION).unwrap();
+
+                PresentationTestCase {
+                    credential_format: ClaimFormatDesignation::SdJwtVc,
+                    request: auth_request,
+                    credential_data,
+                    expected_credential_data: vec![credential_2()],
+                    presentation_submission,
+                    response_metadata: Default::default(),
+                }
+            }
+
+            pub fn presentation_test_case_with_constraints_for_particular_fields(
+            ) -> PresentationTestCase {
+                let credential_data: Vec<Claims> = vec![
+                    credential_1(),
+                    credential_2(),
+                    credential_3(),
+                    credential_4(),
+                ];
+
+                let constraints = r#"
+                    {
+                      "fields": [
+                        {
+                          "path": [
+                            "$.email"
+                          ]
+                        },
+                        {
+                          "path": [
+                            "$.vct",
+                            "$.address.country",
+                            "$.address.city"
+                          ]
+                        },
+                        {
+                          "path": [
+                            "$.age"
+                          ],
+                          "optional": false
+                        }
+                      ]
+                    }
+                    "#;
+                let auth_request = PresentationTestCase::build_auth_request(
+                    PRESENTATION_DEFINITION_FORMAT,
+                    constraints,
+                );
+                let presentation_submission =
+                    serde_json::from_str(PRESENTATION_SUBMISSION).unwrap();
+
+                PresentationTestCase {
+                    credential_format: ClaimFormatDesignation::SdJwtVc,
+                    request: auth_request,
+                    credential_data,
+                    expected_credential_data: vec![credential_2()],
+                    presentation_submission,
+                    response_metadata: Default::default(),
+                }
+            }
+            pub fn presentation_test_case_with_constraints_with_patterns() -> PresentationTestCase {
+                let cred: Claims = json!({
+                    "vct": "https://credentials.example.com/employee_credential",
+                    "name": "John",
+                    "email": "john@example.com",
+                    "age": 35,
+                    "position": "lead engineer",
+                    "address": {
+                        "country": "UK",
+                        "city": "London"
+                    },
+                    "birthDate": "1980-01-01",
+                    "graduationYear": 2020
+
+                })
+                .try_into()
+                .unwrap();
+                let credential_data: Vec<Claims> = vec![cred.clone()];
+                let constraints = r#"
+                    {
+                      "fields": [
+                        {
+                          "path": [
+                            "$.email"
+                          ],
+                          "filter": {
+                            "type": "string",
+                            "pattern": "^[\\w\\.-]+@[a-zA-Z\\d\\.-]+\\.[a-zA-Z]{2,}$"
+                          }
+                        },
+                        {
+                          "path": [
+                            "$.address.country",
+                            "$.address.city"
+                          ],
+                          "filter": {
+                            "type": "string",
+                            "pattern": "^\\p{L}+$"
+                          }
+                        },
+                        {
+                          "path": [
+                            "$.position"
+                          ],
+                          "filter": {
+                            "type": "string",
+                            "const": "lead engineer"
+                          },
+                          "optional": false
+                        },
+                        {
+                          "path": [
+                            "$.birthDate"
+                          ],
+                          "filter": {
+                            "pattern": "^(?P<year>\\d{4})-(0[1-9]|1[0-2])-(0[1-9]|[12]\\d|3[01])$"
+                          },
+                          "optional": false
+                        },
+                        {
+                          "path": [
+                            "$.graduationYear"
+                          ],
+                          "filter": {
+                            "type": "string",
+                            "pattern": "^\\d{4}$"
+                          },
+                          "optional": true
+                        },
+                        {
+                          "path": [
+                            "$.status"
+                          ],
+                          "optional": true
+                        }
+                      ]
+                    }
+                    "#;
+                let auth_request = PresentationTestCase::build_auth_request(
+                    PRESENTATION_DEFINITION_FORMAT,
+                    constraints,
+                );
+                let presentation_submission =
+                    serde_json::from_str(PRESENTATION_SUBMISSION).unwrap();
+
+                PresentationTestCase {
+                    credential_format: ClaimFormatDesignation::SdJwtVc,
+                    request: auth_request,
+                    credential_data,
+                    expected_credential_data: vec![cred],
+                    presentation_submission,
+                    response_metadata: Default::default(),
+                }
+            }
+            pub fn presentation_test_case_with_constraints_with_invalid_value_for_pattern(
+            ) -> PresentationTestCase {
+                let cred: Claims = json!({
+                    "vct": "https://credentials.example.com/employee_credential",
+                    "name": "John",
+                    "email": "john@example.com",
+                    "age": 35,
+                    "position": "lead engineer",
+                    "address": {
+                        "country": "UK",
+                        "city": "London"
+                    },
+                    "birthDate": "1980:01:01",
+                })
+                .try_into()
+                .unwrap();
+                let credential_data: Vec<Claims> = vec![cred.clone()];
+
+                let constraints = r#"
+                    {
+                      "fields": [
+                        {
+                          "path": [
+                            "$.email"
+                          ],
+                          "filter": {
+                            "type": "string",
+                            "pattern": "^[\\w\\.-]+@[a-zA-Z\\d\\.-]+\\.[a-zA-Z]{2,}$"
+                          }
+                        },
+                        {
+                          "path": [
+                            "$.birthDate"
+                          ],
+                          "filter": {
+                            "pattern": "^(?P<year>\\d{4})-(0[1-9]|1[0-2])-(0[1-9]|[12]\\d|3[01])$"
+                          },
+                          "optional": false
+                        }
+                      ]
+                    }
+                    "#;
+                let auth_request = PresentationTestCase::build_auth_request(
+                    PRESENTATION_DEFINITION_FORMAT,
+                    constraints,
+                );
+                let presentation_submission =
+                    serde_json::from_str(PRESENTATION_SUBMISSION).unwrap();
+
+                PresentationTestCase {
+                    credential_format: ClaimFormatDesignation::SdJwtVc,
+                    request: auth_request,
+                    credential_data,
+                    expected_credential_data: vec![cred],
+                    presentation_submission,
+                    response_metadata: Default::default(),
+                }
+            }
+            pub fn presentation_test_case_with_constraints_with_invalid_value_for_const(
+            ) -> PresentationTestCase {
+                let cred: Claims = json!({
+                    "vct": "https://credentials.example.com/employee_credential",
+                    "name": "John",
+                    "email": "john@example.com",
+                    "age": 35,
+                    "position": "Senior developer"
+
+                })
+                .try_into()
+                .unwrap();
+                let credential_data: Vec<Claims> = vec![cred.clone()];
+
+                let constraints = r#"
+                    {
+                      "fields": [
+                        {
+                          "path": [
+                            "$.email"
+                          ],
+                          "filter": {
+                            "type": "string",
+                            "pattern": "^[\\w\\.-]+@[a-zA-Z\\d\\.-]+\\.[a-zA-Z]{2,}$"
+                          }
+                        },
+                        {
+                          "path": [
+                            "$.position"
+                          ],
+                          "filter": {
+                            "type": "string",
+                            "const": "lead engineer"
+                          }
+                        }
+                      ]
+                    }
+                    "#;
+                let auth_request = PresentationTestCase::build_auth_request(
+                    PRESENTATION_DEFINITION_FORMAT,
+                    constraints,
+                );
+                let presentation_submission =
+                    serde_json::from_str(PRESENTATION_SUBMISSION).unwrap();
+
+                PresentationTestCase {
+                    credential_format: ClaimFormatDesignation::SdJwtVc,
+                    request: auth_request,
+                    credential_data,
+                    expected_credential_data: vec![cred],
+                    presentation_submission,
+                    response_metadata: Default::default(),
+                }
+            }
+            pub fn presentation_test_case_with_constraints_with_absent_required_claim(
+            ) -> PresentationTestCase {
+                let cred: Claims = json!({
+                    "vct": "https://credentials.example.com/employee_credential",
+                    "name": "John",
+                    "email": "john@example.com",
+                    "age": 35,
+                    "position": "lead engineer",
+                })
+                .try_into()
+                .unwrap();
+                let credential_data: Vec<Claims> = vec![cred.clone()];
+
+                let constraints = r#"
+                    {
+                      "fields": [
+                      {
+                          "path": [
+                            "$.email"
+                          ],
+                          "filter": {
+                            "type": "string",
+                            "pattern": "^[\\w\\.-]+@[a-zA-Z\\d\\.-]+\\.[a-zA-Z]{2,}$"
+                          }
+                        },
+                        {
+                          "path": [
+                            "$.status"
+                          ],
+                          "optional": false
+                        }
+                      ]
+                    }
+                    "#;
+                let auth_request = PresentationTestCase::build_auth_request(
+                    PRESENTATION_DEFINITION_FORMAT,
+                    constraints,
+                );
+                let presentation_submission =
+                    serde_json::from_str(PRESENTATION_SUBMISSION).unwrap();
+
+                PresentationTestCase {
+                    credential_format: ClaimFormatDesignation::SdJwtVc,
+                    request: auth_request,
+                    credential_data,
+                    expected_credential_data: vec![cred],
+                    presentation_submission,
+                    response_metadata: Default::default(),
+                }
+            }
+
+            pub fn presentation_test_case_with_state() -> PresentationTestCase {
+                PresentationTestCase {
+                    credential_format: ClaimFormatDesignation::SdJwtVc,
+                    request: auth_request_with_state(),
+                    credential_data: vec![credential_1()],
+                    presentation_submission: presentation_submission(),
+                    response_metadata: Default::default(),
+                    expected_credential_data: vec![credential_1()],
+                }
+            }
+
+            pub fn verification_test_case() -> VerificationTestCase {
+                VerificationTestCase {
+                    credential_data: vec![credential_1()],
+                    presentation_submission: presentation_submission(),
+                    session: presentation_session(),
+                }
             }
         }
     }
 
     pub mod multi_presentation {
         use crate::nonce::Nonce;
+        use crate::vc::claims::Claims;
         use crate::vc::oid4vp::tests::fixtures::NONCE;
         use crate::vc::oid4vp::tests::utils::{PresentationTestCase, VerificationTestCase};
-        use crate::vc::oid4vp::tests::CredTypeWithClaims;
         use crate::vc::oid4vp::{
             AuthResponseOptions, PresentationSession, ResolvedAuthRequest, ResponseMode,
             ResponseType,
@@ -868,6 +1438,7 @@ pub mod fixtures {
             PresentationDefinition, PresentationSubmission, SubmissionRequirement,
             SubmissionRequirementBase, SubmissionRequirementObject, SubmissionRequirementPick,
         };
+        use openid4vp::core::credential_format::ClaimFormatDesignation;
         use serde_json::json;
         use url::Url;
 
@@ -935,7 +1506,7 @@ pub mod fixtures {
                           ],
                           "filter":{
                              "type":"string",
-                             "const":"SD_JWT_cred"
+                             "const":"https://credentials.example.com/employee_credential"
                           }
                        },
                        {
@@ -1035,7 +1606,7 @@ pub mod fixtures {
                               ],
                               "filter":{
                                  "type":"string",
-                                 "const":"SD_JWT_cred"
+                                 "const":"https://credentials.example.com/employee_credential"
                               }
                            },
                            {
@@ -1130,7 +1701,7 @@ pub mod fixtures {
                               ],
                               "filter":{
                                  "type":"string",
-                                 "const":"SD_JWT_cred"
+                                 "const":"https://credentials.example.com/employee_credential"
                               }
                            },
                            {
@@ -1189,30 +1760,26 @@ pub mod fixtures {
             serde_json::from_str(AUTH_REQUEST_WITH_STATE).unwrap()
         }
 
-        pub fn credential_data() -> Vec<CredTypeWithClaims> {
+        pub fn credential_data() -> Vec<Claims> {
             vec![
-                (
-                    "https://credentials.example.com/identity_credential",
-                    json!({
-                        "name": "John",
-                        "surname": "Doe",
-                        "date": "09/09/1989",
-                    })
-                    .try_into()
-                    .unwrap(),
-                ),
-                (
-                    "SD_JWT_cred",
-                    json!({
-                        "name": "John",
-                        "email": {
-                            "work": "work@example.com",
-                            "personal": "personal@example.com"
-                        },
-                    })
-                    .try_into()
-                    .unwrap(),
-                ),
+                json!({
+                    "vct": "https://credentials.example.com/identity_credential",
+                    "name": "John",
+                    "surname": "Doe",
+                    "date": "09/09/1989",
+                })
+                .try_into()
+                .unwrap(),
+                json!({
+                    "vct": "https://credentials.example.com/employee_credential",
+                    "name": "John",
+                    "email": {
+                        "work": "work@example.com",
+                        "personal": "personal@example.com"
+                    },
+                })
+                .try_into()
+                .unwrap(),
             ]
         }
 
@@ -1226,6 +1793,7 @@ pub mod fixtures {
 
         pub fn presentation_test_case() -> PresentationTestCase {
             PresentationTestCase {
+                credential_format: ClaimFormatDesignation::SdJwtVc,
                 request: auth_request(),
                 credential_data: credential_data(),
                 presentation_submission: presentation_submission(),
@@ -1235,39 +1803,32 @@ pub mod fixtures {
         }
 
         pub fn presentation_test_case_filter_by_path() -> PresentationTestCase {
-            let cred1: CredTypeWithClaims = (
-                "cred_1",
-                json!({
-                    "name": "Mike",
-                    "age": 20,
-                    "address": {
-                        "country": "UK",
-                        "city": "London"
-                    }
-                })
-                .try_into()
-                .unwrap(),
-            );
-            let cred2: CredTypeWithClaims = (
-                "cred_2",
-                json!({
-                    "name": "John",
-                    "email": "john@example.com"
-                })
-                .try_into()
-                .unwrap(),
-            );
-            let cred3: CredTypeWithClaims = (
-                "cred_3",
-                json!({
-                    "email": "alex@example.com",
-                    "age": 35
-                })
-                .try_into()
-                .unwrap(),
-            );
-            let credential_data: Vec<CredTypeWithClaims> =
-                vec![cred1.clone(), cred2, cred3.clone()];
+            let cred1: Claims = json!({
+                "vct": "https://credentials.example.com/student_credential_1",
+                "name": "Mike",
+                "age": 20,
+                "address": {
+                    "country": "UK",
+                    "city": "London"
+                }
+            })
+            .try_into()
+            .unwrap();
+            let cred2: Claims = json!({
+                "vct": "https://credentials.example.com/student_credential_2",
+                "name": "John",
+                "email": "john@example.com"
+            })
+            .try_into()
+            .unwrap();
+            let cred3: Claims = json!({
+                "vct": "https://credentials.example.com/student_credential_3",
+                "email": "alex@example.com",
+                "age": 35
+            })
+            .try_into()
+            .unwrap();
+            let credential_data: Vec<Claims> = vec![cred1.clone(), cred2, cred3.clone()];
             let auth_request_str = r#"
             {
                "client_id":"did:key:zDnaeagvW2eDWc2yVw7B98ovcJ8jddn7T9Mh3y5Vikys6y4kX",
@@ -1366,6 +1927,7 @@ pub mod fixtures {
                 serde_json::from_str(presentation_submission_str).unwrap();
 
             PresentationTestCase {
+                credential_format: ClaimFormatDesignation::SdJwtVc,
                 request: auth_request,
                 expected_credential_data: vec![cred1, cred3],
                 credential_data,
@@ -1376,6 +1938,7 @@ pub mod fixtures {
 
         pub fn presentation_test_case_with_state() -> PresentationTestCase {
             PresentationTestCase {
+                credential_format: ClaimFormatDesignation::SdJwtVc,
                 request: auth_request_with_state(),
                 credential_data: credential_data(),
                 presentation_submission: presentation_submission(),
@@ -1421,24 +1984,27 @@ pub mod utils {
     use crate::utils::test_utils::failed_signer_key;
     use crate::vault::{CredentialEntry, Vault};
     use crate::vc;
-    use crate::vc::claims::{Claim, Claims};
+    use crate::vc::claims::Claims;
     use crate::vc::core::api::PresentationRestrictionValue;
     use crate::vc::core::KeyMetadata;
-    use crate::vc::formats::sd_jwt_vc;
+    use crate::vc::formats::json_ld_vc::JsonLdAPI;
     use crate::vc::formats::sd_jwt_vc::{SdJwtAPI, VPMetadata};
+    use crate::vc::formats::{json_ld_vc, sd_jwt_vc};
     use crate::vc::metadata::{CredentialMetadataProcessor, DefaultMetadataProcessor};
     use crate::vc::oid4vp::holder::HolderService;
     use crate::vc::oid4vp::signer::Signer;
     use crate::vc::oid4vp::tests::fixtures::{CREDENTIAL_ID, VERIFIER_URL};
-    use crate::vc::oid4vp::tests::CredTypeWithClaims;
     use crate::vc::oid4vp::verifier::VerifierService;
     use crate::vc::oid4vp::{
         AuthorizationResponse, AuthorizationResponseMetadata, ClientMetadata, CredentialMapping,
         Holder, PresentationSession, ResolvedAuthRequest, ResponseType, Verifier,
     };
-    use crate::vc::presentation_exchange::PresentationSubmission;
-    use crate::vc::{presentation_exchange, Credential, VCFormatsAPI, VCMetadata};
+    use crate::vc::presentation_exchange::{ClaimFormatDesignation, PresentationSubmission};
+    use crate::vc::{
+        presentation_exchange, Credential, JsonLdAPIVCMetadata, VCFormatsAPI, VCMetadata,
+    };
     use async_trait::async_trait;
+    use iref::UriBuf;
     use oauth2::http::{Method, Request, Response, StatusCode};
     use openid4vp::core::metadata::parameters::SubjectSyntaxTypesSupported;
     use openid4vp::core::object::UntypedObject;
@@ -1450,16 +2016,29 @@ pub mod utils {
     use sd_jwt_rs::SDJWTSerializationFormat;
     use serde_json::{json, Value};
     use ssi::dids::DIDURLBuf;
+    use ssi::json_ld::IriRefBuf;
     use std::collections::HashMap;
     use std::str::FromStr;
     use url::Url;
 
     pub struct PresentationTestCase {
+        pub credential_format: ClaimFormatDesignation,
         pub request: ResolvedAuthRequest,
-        pub credential_data: Vec<CredTypeWithClaims>,
+        pub credential_data: Vec<Claims>,
         pub presentation_submission: PresentationSubmission,
         pub response_metadata: AuthorizationResponseMetadata,
-        pub expected_credential_data: Vec<CredTypeWithClaims>,
+        pub expected_credential_data: Vec<Claims>,
+    }
+
+    struct MockAuthResponseHelperParams {
+        credential_format: ClaimFormatDesignation,
+        expected_credential_data: Vec<Claims>,
+        expected_presentation_submission: PresentationSubmission,
+        client_id: String,
+        nonce: Nonce,
+        response_type: ResponseType,
+        request: String,
+        expected_state: Option<String>,
     }
 
     impl PresentationTestCase {
@@ -1474,21 +2053,23 @@ pub mod utils {
             let nonce = self.request.nonce.clone();
             let response_type = self.request.response_type.clone();
             let state = self.request.state.clone();
+            let credential_format = self.credential_format.clone();
 
             mock_http_req_async_predicate(
                 http_client,
                 Method::POST,
                 build_url(VERIFIER_URL, "auth"),
                 move |request| {
-                    Self::mock_http_auth_response_endpoint_helper(
-                        expected_credential_data.clone(),
-                        expected_presentation_submission.clone(),
-                        client_id.clone(),
-                        nonce.clone(),
-                        response_type.clone(),
+                    Self::mock_http_auth_response_endpoint_helper(MockAuthResponseHelperParams {
+                        credential_format: credential_format.clone(),
+                        expected_credential_data: expected_credential_data.clone(),
+                        expected_presentation_submission: expected_presentation_submission.clone(),
+                        client_id: client_id.clone(),
+                        nonce: nonce.clone(),
+                        response_type: response_type.clone(),
                         request,
-                        state.clone(),
-                    )
+                        expected_state: state.clone(),
+                    })
                 },
                 PostRedirection {
                     redirect_uri: build_url(VERIFIER_URL, "redirect"),
@@ -1499,18 +2080,22 @@ pub mod utils {
         }
 
         async fn mock_http_auth_response_endpoint_helper(
-            expected_credential_data: Vec<CredTypeWithClaims>,
-            expected_presentation_submission: PresentationSubmission,
-            client_id: String,
-            nonce: Nonce,
-            response_type: ResponseType,
-            request: String,
-            expected_state: Option<String>,
+            MockAuthResponseHelperParams {
+                credential_format,
+                expected_credential_data,
+                expected_presentation_submission,
+                client_id,
+                nonce,
+                response_type,
+                request,
+                expected_state,
+            }: MockAuthResponseHelperParams,
         ) -> bool {
             let form = serde_urlencoded::from_bytes(request.as_bytes()).unwrap();
             let claims = Self::extract_claims(&form);
             for index in 0..claims.len() {
                 validate_claims(
+                    &credential_format,
                     claims.get(index).unwrap(),
                     expected_credential_data.get(index).unwrap(),
                 )
@@ -1559,22 +2144,47 @@ pub mod utils {
 
         pub async fn store_creds(&self, vault: &InMemVault, holder_key: (KeyID, KeyHandle)) {
             let (holder_kid, holder_key_handle) = holder_key;
-            for (vct, claims) in &self.credential_data {
-                let credential =
-                    Credential::SdJwt(create_sd_jwt_vc(vct, claims, &holder_key_handle).await);
-                let metadata = DefaultMetadataProcessor::resolve_metadata(
-                    &credential,
-                    KeyMetadata {
-                        did_url: "did:fake:test".to_string(),
-                        kid: holder_kid.to_owned(),
-                    },
-                )
-                .unwrap();
 
-                let res = vault
-                    .store_credential(credential.clone(), &metadata)
-                    .await
-                    .unwrap();
+            match &self.credential_format {
+                ClaimFormatDesignation::SdJwtVc => {
+                    for claims in &self.credential_data {
+                        let credential =
+                            Credential::SdJwt(create_sd_jwt_vc(claims, &holder_key_handle).await);
+                        let metadata = DefaultMetadataProcessor::resolve_metadata(
+                            &credential,
+                            KeyMetadata {
+                                did_url: "did:fake:test".to_string(),
+                                kid: holder_kid.to_owned(),
+                            },
+                        )
+                        .unwrap();
+
+                        let res = vault
+                            .store_credential(credential.clone(), &metadata)
+                            .await
+                            .unwrap();
+                    }
+                }
+                ClaimFormatDesignation::LdpVc => {
+                    for claims in &self.credential_data {
+                        let credential =
+                            Credential::LdpVc(create_json_ld_vc(claims, &holder_key_handle).await);
+                        let metadata = DefaultMetadataProcessor::resolve_metadata(
+                            &credential,
+                            KeyMetadata {
+                                did_url: "did:fake:test".to_string(),
+                                kid: holder_kid.to_owned(),
+                            },
+                        )
+                        .unwrap();
+
+                        let res = vault
+                            .store_credential(credential.clone(), &metadata)
+                            .await
+                            .unwrap();
+                    }
+                }
+                _ => {}
             }
         }
 
@@ -1590,26 +2200,56 @@ pub mod utils {
             let mut result = CredentialMapping::new();
 
             for input in inputs {
-                let (vct, claims) = self
-                    .credential_data
-                    .iter()
-                    .find(|(vct, _)| {
-                        input.restrictions.iter().any(|restriction| {
-                            matches!(restriction.value.as_ref(), Some(PresentationRestrictionValue::Const(value)) if value == &vct.to_string())
+                match &self.credential_format {
+                    ClaimFormatDesignation::SdJwtVc => {
+                        let claims = self
+                            .credential_data
+                            .iter()
+                            .find(|claim| {
+                                let vct = claim.get("vct").unwrap().as_str().unwrap();
+                                input.restrictions.iter().any(|restriction| {
+                                    matches!(restriction.value.as_ref(), Some(PresentationRestrictionValue::Const(value)) if value == &vct.to_string())
+                                })
+                            })
+                            .unwrap();
+
+                        let vc = create_sd_jwt_vc(claims, &key_handle).await;
+
+                        result.insert(
+                            input.id,
+                            vec![CredentialEntry {
+                                credential: Credential::SdJwt(vc),
+                                kid: kid.to_string(),
+                                id: CREDENTIAL_ID.to_string(),
+                            }],
+                        );
+                    }
+                    ClaimFormatDesignation::LdpVc => {
+                        let claims = self.credential_data
+                        .iter()
+                        .find(|claim| {
+                            let type_ = claim.get("type").unwrap().as_vec().unwrap();
+                            let types: Vec<&str> =
+                                type_.iter().map(|ty| ty.as_str().unwrap()).collect();
+                            input.restrictions.iter().any(|restriction| {
+                                matches!(restriction.value.as_ref(), Some(PresentationRestrictionValue::Const(value)) if types.contains(&value.as_str()))
+                            })
                         })
-                    })
-                    .unwrap();
+                        .unwrap();
 
-                let sd_jwt_vc = create_sd_jwt_vc(vct, claims, &key_handle).await;
+                        let vc = create_json_ld_vc(claims, &key_handle).await;
 
-                result.insert(
-                    input.id,
-                    vec![CredentialEntry {
-                        credential: Credential::SdJwt(sd_jwt_vc),
-                        kid: kid.to_string(),
-                        id: CREDENTIAL_ID.to_string(),
-                    }],
-                );
+                        result.insert(
+                            input.id,
+                            vec![CredentialEntry {
+                                credential: Credential::LdpVc(vc),
+                                kid: kid.to_string(),
+                                id: CREDENTIAL_ID.to_string(),
+                            }],
+                        );
+                    }
+                    _ => {}
+                }
             }
 
             result
@@ -1617,17 +2257,17 @@ pub mod utils {
 
         pub fn extract_claims(form: &HashMap<String, String>) -> Vec<Claims> {
             let vp_token = form.get("vp_token").unwrap();
-            let vp_token_value: serde_json::Value =
+            let vp_token_value: Value =
                 serde_json::from_str(vp_token).unwrap_or(serde_json::to_value(vp_token).unwrap());
 
             match vp_token_value {
-                serde_json::Value::String(token) => {
+                Value::String(token) => {
                     vec![decode_sd_jwt(token, SDJWTSerializationFormat::Compact)
                         .unwrap()
                         .try_into()
                         .unwrap()]
                 }
-                serde_json::Value::Array(tokens) => tokens
+                Value::Array(tokens) => tokens
                     .into_iter()
                     .map(|value| {
                         decode_sd_jwt(
@@ -1642,39 +2282,28 @@ pub mod utils {
             }
         }
 
-        pub fn build_auth_request(constraints: &str) -> String {
-            format!(
+        pub fn build_auth_request(format: &str, constraints: &str) -> ResolvedAuthRequest {
+            let auth_request_str = format!(
                 r#"{{
-              "client_id": "did:key:zDnaehgaHKAP7LAA3Kwa4FjXjJ1G3BcaHqr5gfRySJcGDgBtV",
-              "state": null,
-              "presentation_definition": {{
-                "id": "327ad171-c80a-485b-b098-50d7ad278ef6",
-                "input_descriptors": [
-                  {{
-                    "id": "Identity-1",
-                    "name": "Identity VC",
-                    "purpose": "We want an identity",
-                    "format": {{
-                      "dc+sd-jwt": {{
-                        "sd-jwt_alg_values": [
-                          "ES256",
-                          "EdDSA"
-                        ],
-                        "kb-jwt_alg_values": [
-                          "ES256",
-                          "EdDSA"
-                        ]
+                  "client_id": "did:key:zDnaehgaHKAP7LAA3Kwa4FjXjJ1G3BcaHqr5gfRySJcGDgBtV",
+                  "state": null,
+                  "presentation_definition": {{
+                    "id": "327ad171-c80a-485b-b098-50d7ad278ef6",
+                    "input_descriptors": [
+                      {{
+                        "id": "Identity-1",
+                        "name": "Identity VC",
+                        "purpose": "We want an identity",
+                        "format": {format},
+                        "constraints": {constraints}
                       }}
-                    }},
-                    "constraints": {constraints}
-                  }}
-                ]
-              }},
-              "nonce": "nonce",
-              "response_mode": "direct_post",
-              "response_type": "vp_token",
-              "response_uri": "http://127.0.0.1:55796/auth",
-              "client_metadata": {{
+                    ]
+                  }},
+                  "nonce": "nonce",
+                  "response_mode": "direct_post",
+                  "response_type": "vp_token",
+                  "response_uri": "http://127.0.0.1:55796/auth",
+                "client_metadata": {{
                 "vp_formats": {{
                     "dc+sd-jwt": {{
                         "alg": ["EdDSA", "ES256"]
@@ -1682,12 +2311,14 @@ pub mod utils {
                 }}
               }}
             }}"#
-            )
+            );
+
+            serde_json::from_str(&auth_request_str).unwrap()
         }
     }
 
     pub struct VerificationTestCase {
-        pub credential_data: Vec<CredTypeWithClaims>,
+        pub credential_data: Vec<Claims>,
         pub presentation_submission: PresentationSubmission,
         pub session: PresentationSession,
     }
@@ -1701,8 +2332,8 @@ pub mod utils {
                 .unwrap();
 
             let mut presentations: Vec<sd_jwt_vc::Presentation> = vec![];
-            for (vct, claims) in self.credential_data.iter() {
-                let vc = create_sd_jwt_vc(vct, claims, &holder_key_handle).await;
+            for claims in self.credential_data.iter() {
+                let vc = create_sd_jwt_vc(claims, &holder_key_handle).await;
                 let vp = create_sd_jwt_vp(
                     &vc,
                     claims.clone().try_into().unwrap(),
@@ -1830,7 +2461,6 @@ pub mod utils {
     }
 
     pub async fn create_sd_jwt_vc(
-        vct: &str,
         claims: &Claims,
         holder_key_handle: &KeyHandle,
     ) -> sd_jwt_vc::Credential {
@@ -1848,6 +2478,7 @@ pub mod utils {
             .map(|key| format!("$.{}", key))
             .collect();
 
+        let vct = claims.get("vct").unwrap().as_str().unwrap();
         SdJwtAPI::create_vc(
             claims.clone(),
             (&issuer_did_url, issuer_key_handle),
@@ -1863,9 +2494,47 @@ pub mod utils {
         .unwrap()
     }
 
+    pub async fn create_json_ld_vc(
+        claims: &Claims,
+        holder_key_handle: &KeyHandle,
+    ) -> json_ld_vc::VC {
+        let kms = LocalKms::new();
+
+        let (issuer_did_url, issuer_key_handle) =
+            test_utils::create_did_url_and_key_handle(&kms, KeyType::Bls12381).await;
+
+        let did = DIDKey::generate(holder_key_handle.clone()).unwrap();
+        let holder_did_url = DIDURLBuf::from_str(&did).unwrap();
+        let type_ = claims.get("type").unwrap().as_vec().unwrap();
+
+        let mut vc_metadata = JsonLdAPIVCMetadata::new(
+            vec![
+                IriRefBuf::from_str("https://www.w3.org/ns/credentials/v2").unwrap(),
+                IriRefBuf::from_str("https://www.w3.org/ns/credentials/examples/v2").unwrap(),
+            ],
+            type_
+                .iter()
+                .map(|claim| claim.as_str().unwrap().to_string())
+                .collect(),
+        )
+        .unwrap();
+        vc_metadata.mandatory_claims = Some(vec!["/type".parse().unwrap()]);
+        vc_metadata.credential_id =
+            Some(UriBuf::from_str("urn:uuid:7a6cafb9-11c3-41a8-98d8-8b5a45c2548f").unwrap());
+
+        JsonLdAPI::create_vc(
+            claims.clone(),
+            (&issuer_did_url, issuer_key_handle),
+            (&holder_did_url, holder_key_handle.clone()),
+            vc_metadata,
+        )
+        .await
+        .unwrap()
+    }
+
     pub async fn create_sd_jwt_vp(
         vc: &sd_jwt_vc::Credential,
-        disclosures: serde_json::Value,
+        disclosures: Value,
         nonce: &Nonce,
         verifier_id: &str,
         holder_key_handle: &KeyHandle,
@@ -1883,16 +2552,44 @@ pub mod utils {
         .unwrap()
     }
 
-    pub fn validate_claims(claims: &Claims, credential_data: &CredTypeWithClaims) {
-        let (vct, expected_claims) = credential_data;
-        assert_eq!(claims.get("vct").unwrap(), &Claim::String(vct.to_string()));
+    pub fn validate_claims(
+        credential_format: &ClaimFormatDesignation,
+        claims: &Claims,
+        expected_credential_data: &Claims,
+    ) {
+        match credential_format {
+            ClaimFormatDesignation::SdJwtVc => {
+                let actual_vct = claims.get("vct").unwrap();
 
-        for (key, value) in expected_claims.claims() {
-            assert_eq!(
-                claims.get(key).unwrap(),
-                value,
-                "Claims: expected {key}: {value}"
-            );
+                let expected_claims = expected_credential_data;
+                let expected_vct = expected_claims.get("vct").unwrap();
+                assert_eq!(actual_vct, expected_vct);
+
+                for (key, value) in expected_claims.claims() {
+                    assert_eq!(
+                        claims.get(key).unwrap(),
+                        value,
+                        "Claims: expected {key}: {value}"
+                    );
+                }
+            }
+            ClaimFormatDesignation::LdpVc => {
+                let actual_type = claims.get("type").unwrap();
+
+                let expected_claims = expected_credential_data;
+                let expected_type = expected_claims.get("type").unwrap();
+
+                assert_eq!(actual_type, expected_type);
+
+                for (key, value) in expected_claims.claims() {
+                    assert_eq!(
+                        claims.get("credentialSubject").unwrap().get(key).unwrap(),
+                        value,
+                        "Claims: expected {key}: {value}"
+                    );
+                }
+            }
+            _ => {}
         }
     }
 

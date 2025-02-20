@@ -126,6 +126,14 @@ impl Claim {
             _ => None,
         }
     }
+
+    #[instrument(level = Level::TRACE, ret())]
+    pub fn as_vec(&self) -> Option<&Vec<Claim>> {
+        match self {
+            Self::Array(vec) => Some(vec),
+            _ => None,
+        }
+    }
 }
 
 impl TryFrom<Claim> for Value {
