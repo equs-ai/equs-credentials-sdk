@@ -363,6 +363,7 @@ where
 
         Ok(ResolvedAuthRequest {
             client_id: aro.client_id().0.to_owned(),
+            client_metadata: aro.client_metadata().to_owned(),
             presentation_definition: pres_def,
             nonce: Nonce::from_secret(aro.nonce().as_str().to_owned()),
             response_type: aro.response_type().to_owned(),

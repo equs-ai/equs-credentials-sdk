@@ -48,6 +48,13 @@ export const PRESENTATION_DEFINITION: PresentationDefinition = {
 
 export const AUTH_REQUEST: AuthorizationRequest = {
   clientId: "did:key:zDnaeeTG88wpPhMzuDRvLRTTyNMyJip5e6TLmsjyvPiSYUFk7",
+  clientMetadata: {
+    vp_formats: {
+      "dc+sd-jwt": {
+        alg: ["EdDSA", "ES256"],
+      },
+    },
+  },
   presentationDefinition: PRESENTATION_DEFINITION,
   responseUri: "http://localhost:9001/response",
   responseMode: "direct_post",
