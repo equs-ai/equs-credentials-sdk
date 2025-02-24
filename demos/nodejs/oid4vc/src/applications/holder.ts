@@ -1,4 +1,5 @@
 import {
+  AuthorizationRequest,
   CredentialDeferred,
   CredentialImmediate,
   CredentialResponse,
@@ -56,9 +57,6 @@ async function main(): Promise<void> {
 
   await issuanceFlow(oid4VciHolder, kms);
   await presentationFlow(oid4VpHolder);
-
-  console.log("End of e2e demo! Demo finished successfully!");
-  console.log("You can find results on verifier side");
 }
 
 setImmediate(main);
@@ -97,8 +95,36 @@ async function presentationFlow(holder: Oid4VpHolder): Promise<void> {
   console.log("Auth request received: ");
   console.dir(authRequest, { depth: 2 });
 
+  const shouldDecline = await readFromCLI(
+    "Do you want to decline authorization request? Insert 'yes' to decline",
+  );
+
+  if (["yes", "y"].includes(shouldDecline))
+    return await declineFlow(holder, authRequest);
+
+  return await presentFlow(holder, authRequest);
+}
+
+async function declineFlow(
+  holder: Oid4VpHolder,
+  authRequest: AuthorizationRequest,
+): Promise<void> {
+  console.log("Declining Authorization request");
+  await holder.declineAuthorizationRequest(authRequest);
+  console.log("End of e2e demo! Authorization request has been declined!");
+  return;
+}
+
+async function presentFlow(
+  holder: Oid4VpHolder,
+  authRequest: AuthorizationRequest,
+): Promise<void> {
   console.log("Holder sends authorization/presentation response to Verifier");
   await holder.presentCredentialsAuto(authRequest, {});
+
+  console.log(
+    "End of e2e demo! Demo finished successfully! You can find results on verifier application",
+  );
 }
 
 function isCredentialImmediate(

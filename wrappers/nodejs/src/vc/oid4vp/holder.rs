@@ -87,6 +87,20 @@ impl OID4VPHolder {
 
         Ok(result.map(|url: Url| url.to_string()))
     }
+
+    #[napi]
+    pub async fn decline_authorization_request(
+        &self,
+        auth_request: AuthorizationRequest,
+    ) -> Result<()> {
+        let auth_request: ResolvedAuthRequest = auth_request.try_into()?;
+        self.0
+            .decline_authorization_request(&auth_request)
+            .await
+            .map_err(|err| Error::from_reason(err.to_string()))?;
+
+        Ok(())
+    }
 }
 
 #[napi(object)]

@@ -84,9 +84,19 @@ async function main(): Promise<void> {
     }
   });
 
-  app.post("/present", async (req, res) => {
+  app.post("/present", async (req, res): Promise<void> => {
     try {
       console.log(`Request body: `, req.body);
+
+      if (req.body.error) {
+        res.status(200).contentType("application/json").send({
+          error: `Authorization response error from holder`,
+          request: req.body,
+        });
+
+        return;
+      }
+
       const vpToken = req.body.vp_token;
       if (!vpToken) throw new Error("vp_token does not exist in request body!");
 
@@ -113,7 +123,7 @@ async function main(): Promise<void> {
 
       res.status(200).contentType("application/json").send();
     } catch (e: any) {
-      res.status(500).send(e.message);
+      res.status(500).send();
     }
   });
 

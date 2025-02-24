@@ -107,6 +107,24 @@ describe("OID4VP Holder: ", () => {
 
     expect(result).toBeNull();
   });
+
+  test("decline authorization request", async () => {
+    let response;
+    await mockServer.forPost("/response").thenCallback(async (request): Promise<any> => {
+      response = await request.body.getFormData();
+      return {};
+    });
+
+    await vault.storeCredential(credential, metadata);
+
+    await holder.declineAuthorizationRequest(AUTH_REQUEST);
+
+    expect(response).toEqual({
+      error: "access_denied",
+      error_description: "consent to share the presentation is not given",
+      state: "eea7b48e-1866-41b4-beae-03b95d41670c",
+    });
+  });
 });
 
 async function handleRequest(request: CompletedRequest): Promise<{ statusCode: 200; body: "" }> {
