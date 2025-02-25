@@ -1,17 +1,17 @@
 import {
   Alg,
   CredentialOfferContentFormat,
+  CredentialStatusInfoFormat,
   inMemKms,
   inMemVault,
   IssuerMetadata,
   PresentationInput,
   PresentationRestrictionValueType,
-  VCFormat,
-  CredentialStatusInfoFormat,
   StatusIssuerMetadata,
   StatusListFormatFmt,
+  VCFormat,
 } from "../../";
-import { createDidAndKeyMetadata } from "../utils/utils";
+import { createDidAndKeyMetadata } from "../utils";
 
 export class Utils {
   readonly nonce = "KB50VOm9I-kPLT9mAACV8g";
@@ -103,8 +103,8 @@ export class Utils {
             },
           },
           keyMetadata: await this.getKeyMetadata(),
-        }
-      ]
+        },
+      ],
     };
   }
 

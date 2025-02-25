@@ -1,6 +1,5 @@
-import { Alg, createKeyMetadata, KeyHandle, KeyType, Kms } from "../";
+import { Alg, contextEnsuredKms, createKeyMetadata, KeyHandle, KeyType, Kms } from "..";
 import { JWK, JWS } from "node-jose";
-import { contextEnsuredKms } from "../types/utils";
 
 describe("KMS: ", () => {
   test("generate Key Metadata using JS KMS", async () => {

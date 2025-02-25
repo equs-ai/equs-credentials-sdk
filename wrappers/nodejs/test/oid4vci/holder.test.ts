@@ -15,7 +15,7 @@ import {
   SD_JWT_CREDS,
 } from "./fixtures";
 import { getLocal } from "mockttp";
-import { createDidAndKeyMetadata } from "../utils/utils";
+import { createDidAndKeyMetadata } from "../utils";
 
 describe("OID4VCI Holder: ", () => {
   const mockServer = getLocal();

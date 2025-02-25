@@ -13,7 +13,7 @@ import {
   VCFormat,
 } from "../../";
 import { AUTH_REQUEST, AUTH_REQUEST_JWT, STATE, VC, VC_TYPE } from "./fixtures";
-import { createDidAndKeyMetadata } from "../utils/utils";
+import { createDidAndKeyMetadata } from "../utils";
 
 describe("OID4VP Holder: ", () => {
   const mockServer = getLocal();

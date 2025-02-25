@@ -91,7 +91,7 @@ impl<R: JWKResolver> DidKeyResolver<R> {
 impl Default for DidKeyResolver<UniversalResolver> {
     #[instrument(level = Level::TRACE, skip_all)]
     fn default() -> Self {
-        DidKeyResolver::new(UniversalResolver {})
+        DidKeyResolver::new(UniversalResolver::default())
     }
 }
 

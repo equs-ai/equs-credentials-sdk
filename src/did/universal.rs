@@ -1,10 +1,13 @@
 //! Universal DID Resolver.
 
-use super::didpeer::DIDPeer;
-use crate::did::ProofValidationError;
+use crate::did::didpeer::DIDPeer;
+use crate::did::{
+    MethodAlreadyExistsSnafu, ProofValidationError, ResolutionError, ResolutionOutput,
+};
+use async_trait::async_trait;
 use iref::Iri;
 use ssi::dids::resolution::{Options, Output};
-use ssi::dids::{AnyDidMethod, DIDMethod, DIDResolver, VerificationMethodDIDResolver, DID};
+use ssi::dids::{AnyDidMethod, DIDResolver as SpruceResolver, VerificationMethodDIDResolver, DID};
 use ssi::jwk::JWKResolver;
 use ssi::prelude::AnyMethod;
 use ssi::verification_methods::{
@@ -13,10 +16,39 @@ use ssi::verification_methods::{
 };
 use ssi::JWK;
 use std::borrow::Cow;
+use std::collections::HashMap;
 use std::ops::Deref;
+use std::sync::Arc;
 use tracing::{instrument, Level};
 
 type Level_ = Level;
+
+const EXISTING_DID_METHODS: [&str; 7] = ["ethr", "ion", "jwk", "key", "pkh", "tz", "web"];
+
+#[async_trait]
+pub trait DIDResolver: Send + Sync {
+    /// Resolves a DID representation.
+    ///
+    /// Fetches the DID document representation referenced by the input DID
+    /// using the given options.
+    ///
+    /// See: <https://www.w3.org/TR/did-core/#did-resolution>
+    ///
+    /// # Arguments
+    ///
+    /// * `did` - DID string in `[u8]` format
+    /// * `options` - Resolution options
+    ///
+    /// # Returns
+    /// `ResolutionOutput` with `DIDDoc`.
+    async fn resolve_representation<'a>(
+        &'a self,
+        did: &'a DID,
+        options: Options,
+    ) -> Result<ResolutionOutput, ResolutionError>;
+
+    fn method_name(&self) -> String;
+}
 
 /// An Universal `DID` resolver.
 ///
@@ -25,24 +57,59 @@ type Level_ = Level;
 /// `did:key`
 /// `did:peer`
 /// `did:web`
-#[derive(Default, Clone)]
-pub struct UniversalResolver {}
+#[derive(Clone)]
+pub struct UniversalResolver {
+    dids: HashMap<String, Arc<dyn DIDResolver>>,
+}
 
-impl DIDResolver for UniversalResolver {
+impl UniversalResolver {
+    pub fn add_resolver(&mut self, resolver: impl DIDResolver + 'static) -> super::Result<()> {
+        if self.already_exists(resolver.method_name().as_str()) {
+            MethodAlreadyExistsSnafu {
+                method: resolver.method_name(),
+            }
+            .fail()?
+        }
+        self.dids.insert(resolver.method_name(), Arc::new(resolver));
+        Ok(())
+    }
+
+    fn already_exists(&self, method: &str) -> bool {
+        EXISTING_DID_METHODS.contains(&method) || self.dids.contains_key(method)
+    }
+}
+
+impl Default for UniversalResolver {
+    fn default() -> Self {
+        let did_peer = DIDPeer::new();
+        let mut dids: HashMap<String, Arc<dyn DIDResolver>> = HashMap::new();
+        dids.insert(did_peer.method_name(), Arc::new(did_peer));
+        Self { dids }
+    }
+}
+
+impl SpruceResolver for UniversalResolver {
     #[instrument(level = Level::TRACE, skip(self), ret())]
     async fn resolve_representation<'a>(
         &'a self,
         did: &'a DID,
         options: Options,
-    ) -> Result<Output<Vec<u8>>, ssi::dids::resolution::Error> {
-        let result = match did.method_name() {
-            DIDPeer::DID_METHOD_NAME => DIDPeer::new().resolve_representation(did, options).await,
-            _ => {
-                AnyDidMethod::default()
-                    .resolve_representation(did, options)
-                    .await
-            }
-        }?;
+    ) -> Result<Output<Vec<u8>>, ResolutionError> {
+        let custom = self.dids.get(did.method_name());
+
+        let result: Output<Vec<u8>> = if let Some(custom) = custom {
+            let resolution = custom.resolve_representation(did, options).await?;
+
+            Output::<Vec<u8>>::new(
+                resolution.document.to_bytes(),
+                resolution.document_metadata,
+                resolution.metadata,
+            )
+        } else {
+            AnyDidMethod::default()
+                .resolve_representation(did, options)
+                .await?
+        };
 
         Ok(Output {
             metadata: result.metadata,
@@ -62,7 +129,7 @@ impl VerificationMethodResolver for UniversalResolver {
         method: Option<ReferenceOrOwnedRef<'_, Self::Method>>,
         options: ResolutionOptions,
     ) -> Result<Cow<Self::Method>, VerificationMethodResolutionError> {
-        let vmdr = VerificationMethodDIDResolver::new(UniversalResolver {});
+        let vmdr = VerificationMethodDIDResolver::new(UniversalResolver::default());
         let vm = vmdr
             .resolve_verification_method_with(issuer, method, options)
             .await?
@@ -80,7 +147,7 @@ impl JWKResolver for UniversalResolver {
         key_id: Option<&str>,
     ) -> Result<Cow<JWK>, ProofValidationError> {
         let resolver: VerificationMethodDIDResolver<_, AnyMethod> =
-            VerificationMethodDIDResolver::new(UniversalResolver {});
+            VerificationMethodDIDResolver::new(UniversalResolver::default());
 
         let jwk = resolver.fetch_public_jwk(key_id).await?.deref().clone();
 
@@ -91,12 +158,15 @@ impl JWKResolver for UniversalResolver {
 #[cfg(test)]
 mod tests {
     use crate::did::didkey::DIDKey;
-    use crate::did::universal::UniversalResolver;
-    use crate::did::{DIDResolver, DID};
+    use crate::did::universal::{DIDResolver, UniversalResolver};
+    use crate::did::{DIDResolver as SpruceResolver, DocumentMetadata, ResolutionOutput, DID};
     use crate::inmem::kms::LocalKms;
     use crate::kms;
     use crate::kms::{CreateOptions, Kms};
+    use async_trait::async_trait;
+    use rstest::rstest;
     use serde_json::json;
+    use ssi::dids::resolution::{Error, Metadata, Options, Output};
 
     #[tokio::test]
     async fn universal_resolver_supports_didkey() {
@@ -184,6 +254,84 @@ mod tests {
             .err();
         assert!(resolution.unwrap().to_string().contains("not supported"));
     }
+    #[tokio::test]
+    async fn universal_resolver_uses_custom_did_resolver() {
+        let mut resolver = UniversalResolver::default();
+        resolver
+            .add_resolver(MockDIDResolver {
+                method_name: "mock".to_string(),
+            })
+            .unwrap();
+        let did = ssi::dids::DID::new("did:mock:12345").unwrap();
+
+        let resolution = resolver
+            .resolve_representation(did, Default::default())
+            .await
+            .unwrap();
+
+        assert_eq!(
+            String::from_utf8(resolution.document).unwrap(),
+            mock_resolution_document(did)
+        );
+    }
+    #[tokio::test]
+    async fn universal_resolver_uses_several_custom_did_resolvers() {
+        let mut resolver = UniversalResolver::default();
+        resolver
+            .add_resolver(MockDIDResolver {
+                method_name: "mock".to_string(),
+            })
+            .unwrap();
+        resolver
+            .add_resolver(MockDIDResolver {
+                method_name: "anothermock".to_string(),
+            })
+            .unwrap();
+        let did_mock = ssi::dids::DID::new("did:mock:12345").unwrap();
+        let did_another_mock = ssi::dids::DID::new("did:anothermock:12345").unwrap();
+
+        let resolution_mock = resolver
+            .resolve_representation(did_mock, Default::default())
+            .await
+            .unwrap();
+        let resolution_another_mock = resolver
+            .resolve_representation(did_another_mock, Default::default())
+            .await
+            .unwrap();
+
+        assert_eq!(
+            String::from_utf8(resolution_mock.document).unwrap(),
+            mock_resolution_document(did_mock)
+        );
+        assert_eq!(
+            String::from_utf8(resolution_another_mock.document).unwrap(),
+            mock_resolution_document(did_another_mock)
+        );
+    }
+
+    #[rstest]
+    #[case("mock", "mock")]
+    #[case("mock", "peer")]
+    #[case("web", "peer")]
+    #[case("web", "key")]
+    #[tokio::test]
+    #[should_panic(expected = "Method already exists")]
+    async fn universal_resolver_throws_error_on_adding_already_existing_method(
+        #[case] method1: String,
+        #[case] method2: String,
+    ) {
+        let mut resolver = UniversalResolver::default();
+        resolver
+            .add_resolver(MockDIDResolver {
+                method_name: method1,
+            })
+            .unwrap();
+        resolver
+            .add_resolver(MockDIDResolver {
+                method_name: method2,
+            })
+            .unwrap();
+    }
 
     async fn didkey() -> DID {
         let kms = LocalKms::new();
@@ -194,5 +342,52 @@ mod tests {
             .unwrap();
 
         DIDKey::generate(kh.clone()).unwrap()
+    }
+
+    struct MockDIDResolver {
+        method_name: String,
+    }
+
+    #[async_trait]
+    impl DIDResolver for MockDIDResolver {
+        async fn resolve_representation<'a>(
+            &'a self,
+            did: &'a ssi::dids::DID,
+            options: Options,
+        ) -> Result<ResolutionOutput, Error> {
+            Ok(Output {
+                metadata: Metadata::default(),
+                document: serde_json::from_str(&mock_resolution_document(did)).unwrap(),
+                document_metadata: DocumentMetadata::default(),
+            })
+        }
+        fn method_name(&self) -> String {
+            self.method_name.to_string()
+        }
+    }
+
+    fn mock_resolution_document(did: &ssi::dids::DID) -> String {
+        json!(
+            {
+                "id": &did.to_string(),
+                "verificationMethod": [
+                  {
+                    "id": did.to_string() + "#key-0",
+                    "type": "Ed25519VerificationKey2020",
+                    "controller": &did.to_string(),
+                    "publicKeyJwk": {
+                      "kty": "OKP",
+                      "crv": "Ed25519",
+                      "x": "pbaXXx7XTNbX9ExtlLm2YECzixhs1_BLSD79SwtRTPY"
+                    }
+                  }
+                ],
+                "@context": [
+                  "https://www.mockdid.org/ns/did/v1",
+                  "https://mockdid.org/security#Ed25519VerificationKey2020"
+                ]
+              }
+        )
+        .to_string()
     }
 }

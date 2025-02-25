@@ -7,7 +7,7 @@ import {
   PassAuthRequestObject,
 } from "../../";
 import { CLAIMS, PRESENTATION_DEFINITION, PRESENTATION_SUBMISSION, STATE, VP } from "./fixtures";
-import { createDidAndKeyMetadata } from "../utils/utils";
+import { createDidAndKeyMetadata } from "../utils";
 
 describe("OID4VP Verifier: ", () => {
   test("create Authorization Request", async () => {

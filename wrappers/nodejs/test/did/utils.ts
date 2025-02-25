@@ -1,4 +1,5 @@
-import { DIDResolution, DIDVerificationMethod } from "../../";
+import { DIDVerificationMethod } from "../../";
+import { DIDDocument } from "../../../types";
 
 export class Utils {
   readonly webVerificationMethod = {
@@ -47,7 +48,7 @@ export class Utils {
     },
   };
 
-  readonly didResolution: DIDResolution = {
+  readonly didResolution = {
     document: {
       "@context": ["https://www.w3.org/ns/did/v1", "https://w3id.org/security/multikey/v1"],
       id: expect.stringContaining("did:key:"),
@@ -65,4 +66,21 @@ export class Utils {
     metadata: { contentType: "application/did+ld+json" },
     document_metadata: { deactivated: null },
   };
+
+  mockDidResolution(methodName: string): DIDDocument {
+    return {
+      "@context": ["https://www.w3.org/ns/did/v1", "https://w3id.org/security/multikey/v1"],
+      id: `did:${methodName}:12345`,
+      authentication: [`did:${methodName}:12345#key-1`],
+      assertionMethod: [`did:${methodName}:12345#key-1`],
+      verificationMethod: [
+        {
+          controller: `did:${methodName}:12345`,
+          id: `did:${methodName}:12345`,
+          publicKeyMultibase: "z1BcDfGmZ",
+          type: "Multikey",
+        },
+      ],
+    };
+  }
 }

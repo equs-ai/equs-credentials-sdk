@@ -1,4 +1,4 @@
-import { createUniversalDidResolver, DIDKey, KeyMetadata, KeyType, NativeKms } from "../../";
+import { DIDKey, KeyMetadata, KeyType, NativeKms, UniversalDIDResolver } from "../../";
 
 export type DidAndKeyMetadata = {
   did: string;
@@ -17,7 +17,7 @@ export async function createDidAndKeyMetadata(kms: NativeKms): Promise<DidAndKey
     verify: keyHandle.verify,
   });
 
-  const universalDidResolver = createUniversalDidResolver();
+  const universalDidResolver = new UniversalDIDResolver();
 
   const vm = await universalDidResolver.resolveVerificationMethod(did);
 
