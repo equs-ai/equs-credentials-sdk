@@ -1,12 +1,12 @@
 import { createInterface } from "node:readline";
 import {
-  createUniversalDidResolver,
   DIDKey,
   KeyMetadata,
   KeyType,
   Kms,
   NativeKeyHandle,
   NativeKms,
+  UniversalDIDResolver,
 } from "@equstng/agent-sdk";
 
 export type DidAndKeyMetadata = {
@@ -45,7 +45,7 @@ export async function createDidAndKeyMetadata(
     verify: keyHandle.verify,
   });
 
-  const universalDidResolver = createUniversalDidResolver();
+  const universalDidResolver = new UniversalDIDResolver();
 
   const vm = await universalDidResolver.resolveVerificationMethod(did);
 

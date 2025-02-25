@@ -85,7 +85,8 @@ where
     NG: NonceGenerator,
     HC: HttpClient,
 {
-    #[instrument(level = Level::TRACE, skip(verifier, kms, nonce_generator, http_client))]
+    #[allow(clippy::too_many_arguments)]
+    #[instrument(level = Level::TRACE, skip(verifier, kms, nonce_generator, http_client, did_resolver))]
     pub fn new(
         verifier: VF,
         kms: KMS,
@@ -93,6 +94,7 @@ where
         http_client: HC,
         client_id: String,
         key_metadata: KeyMetadata,
+        did_resolver: UniversalResolver,
         client_metadata: Option<ClientMetadata>,
     ) -> Self {
         let metadata = VerifierMetadata {
@@ -105,7 +107,7 @@ where
 
         Self {
             metadata,
-            public_jwk_resolver: UniversalResolver::default(),
+            public_jwk_resolver: did_resolver,
             kms,
             nonce_generator,
             http_client,

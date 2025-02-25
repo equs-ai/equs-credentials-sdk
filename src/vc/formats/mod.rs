@@ -3,6 +3,7 @@
 use std::fmt::Debug;
 
 use crate::crypto;
+use crate::did::DIDResolver;
 use crate::nonce::Nonce;
 use async_trait::async_trait;
 use common_macros::DebugError;
@@ -239,7 +240,6 @@ pub trait GetDateTimeClaim<CL, EC> {
 
 pub(super) async fn resolve_verification_method(did: &str) -> Result<DIDVerificationMethod> {
     use crate::did::universal::UniversalResolver;
-    use crate::did::DIDResolver;
 
     UniversalResolver::default()
         .resolve_into_any_verification_method(ssi::dids::DID::new(did).map_err(|e| {

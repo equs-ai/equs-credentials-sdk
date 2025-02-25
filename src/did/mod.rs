@@ -26,6 +26,8 @@ pub use ssi::dids::DIDResolver;
 pub enum Error {
     #[snafu(display("Unsupported method: {method}"))]
     MethodNotSupported { method: String },
+    #[snafu(display("Method already exists: {method}"))]
+    MethodAlreadyExists { method: String },
     #[snafu(display("Unsupported key: {type_}"))]
     KeyNotSupported { type_: String },
     #[snafu(display("Invalid format of DID: {details}"))]
@@ -93,6 +95,7 @@ pub type Result<T> = core::result::Result<T, Error>;
 pub use ssi::jwk::JWKResolver;
 /// Decentralized identifier
 pub type DID = String;
+pub type SpruceDID = ssi::dids::DID;
 /// DID URL an identifier of a network location for a specific resource.
 pub type DIDURL = ssi::dids::DIDURL;
 /// Provides methods for the creation of a `DIDURL`.
@@ -109,6 +112,8 @@ pub type Service = ssi::dids::document::Service;
 pub type ResolutionMetadata = ssi::dids::resolution::Metadata;
 /// DID resolution options
 pub type ResolutionOptions = ssi::dids::resolution::Options;
+pub type ResolutionOutput = ssi::dids::resolution::Output;
+pub type ResolutionError = ssi::dids::resolution::Error;
 /// DID document representation media type.
 pub type ResolutionOptionsMediaType = ssi::dids::document::representation::MediaType;
 /// DID parameters.

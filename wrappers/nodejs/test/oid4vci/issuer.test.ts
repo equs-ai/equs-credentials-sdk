@@ -9,7 +9,7 @@ import {
   GRANTS,
   ISSUER_METADATA,
 } from "./fixtures";
-import { createDidAndKeyMetadata } from "../utils/utils";
+import { createDidAndKeyMetadata } from "../utils";
 
 describe("OID4VCI Issuer: ", () => {
   let issuer: OID4VCIIssuer;

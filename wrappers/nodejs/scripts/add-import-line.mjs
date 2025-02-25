@@ -8,7 +8,6 @@ import fs from "fs/promises";
       "PresentationDefinition",
       "PresentationSubmission",
       "DIDDocument",
-      "DIDResolution",
       "DIDVerificationMethod",
       "Claims",
       "CredentialOfferGrants",
@@ -27,6 +26,7 @@ import fs from "fs/promises";
       "UnpackMetadata",
       "UnpackOptions",
       "Service",
+      "ResolutionOptionsParameter",
     ];
     let import_str = `import { ${exported_types.join(", ")} } from "${TYPES_FILE_PATH}";\n`;
     content = import_str + content;

@@ -1971,6 +1971,7 @@ pub mod fixtures {
 
 pub mod utils {
     use crate::did::didkey::DIDKey;
+    use crate::did::universal::UniversalResolver;
     use crate::http::{HttpClient, MockHttpClient};
     use crate::inmem::kms::{KeyHandle, LocalKms};
     use crate::inmem::nonce::LocalNonceGenerator;
@@ -2391,7 +2392,7 @@ pub mod utils {
             },
         );
 
-        HolderService::new(inner, http_client, kms, None)
+        HolderService::new(inner, http_client, kms, UniversalResolver::default(), None)
     }
 
     async fn create_verifier_service(invalid_key_id: bool) -> (impl Verifier, String) {
@@ -2419,6 +2420,7 @@ pub mod utils {
             MockHttpClient::new(),
             did.clone(),
             key_metadata,
+            UniversalResolver::default(),
             Some(client_metadata),
         );
 
@@ -2450,6 +2452,7 @@ pub mod utils {
             MockHttpClient::new(),
             did.clone(),
             key_metadata,
+            UniversalResolver::default(),
             None,
         );
 
@@ -2603,7 +2606,13 @@ pub mod utils {
             },
         );
 
-        let holder = HolderService::new(inner, MockHttpClient::new(), kms.clone(), None);
+        let holder = HolderService::new(
+            inner,
+            MockHttpClient::new(),
+            kms.clone(),
+            UniversalResolver::default(),
+            None,
+        );
         let (did, metadata) = create_did_and_key_metadata(&kms).await;
 
         let key = kms.get(&metadata.kid).await.unwrap();

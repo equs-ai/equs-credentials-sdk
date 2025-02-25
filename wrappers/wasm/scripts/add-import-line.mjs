@@ -8,7 +8,7 @@ import fs from "fs/promises";
 
 		let content = await fs.readFile(file, encoding);
 		const exported_types = [
-			"DIDVerificationMethod", "DIDResolution",
+			"DIDVerificationMethod",
 		];
 		let import_str = `import { ${exported_types.join(", ")} } from "${typesFilePath}";\n`;
 		content = import_str + content;

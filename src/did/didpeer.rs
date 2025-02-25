@@ -2,7 +2,9 @@
 
 use crate::crypto::{Key, JWK};
 use crate::did;
-use crate::did::{DidDocGenerationSnafu, DidGenerationSnafu, Result};
+use crate::did::universal::DIDResolver;
+use crate::did::{DidDocGenerationSnafu, DidGenerationSnafu, ResolutionOutput, Result};
+use async_trait::async_trait;
 use did_peer::peer_did::numalgos::numalgo4::construction_did_doc::{
     DidPeer4ConstructionDidDocument, DidPeer4VerificationMethod,
 };
@@ -23,7 +25,7 @@ use did_resolver::traits::resolvable::DidResolvable;
 use serde_json::Value;
 use snafu::ensure;
 use ssi::dids::resolution::{Error, Options, Output};
-use ssi::dids::{DIDMethod, DIDResolver as SpruceResolver};
+use ssi::dids::DIDMethod;
 use std::collections::HashSet;
 use tracing::{instrument, Level};
 
@@ -190,13 +192,14 @@ impl DIDPeer {
     }
 }
 
-impl SpruceResolver for DIDPeer {
+#[async_trait]
+impl DIDResolver for DIDPeer {
     #[instrument(level = Level::TRACE, skip(self), ret())]
     async fn resolve_representation<'a>(
         &'a self,
         did: &'a ssi::dids::DID,
         options: Options,
-    ) -> std::result::Result<Output<Vec<u8>>, Error> {
+    ) -> std::result::Result<ResolutionOutput, Error> {
         let did_peer = did_parser_nom::Did::parse(did.to_string()).map_err(|err| {
             Error::Internal(format!("could not parse did:peer = {}: {}", did, err))
         })?;
@@ -220,9 +223,13 @@ impl SpruceResolver for DIDPeer {
 
         Ok(Output {
             metadata: convert_resolution_metadata(did_resolution_metadata),
-            document: did_doc.to_bytes(),
+            document: did_doc,
             document_metadata: convert_did_doc_metadata(did_document_metadata),
         })
+    }
+
+    fn method_name(&self) -> String {
+        Self::DID_METHOD_NAME.to_string()
     }
 }
 impl DIDMethod for DIDPeer {
@@ -517,11 +524,10 @@ mod tests {
         let resolver = DIDPeer::new();
 
         let document = resolver
-            .resolve(ssi::dids::DID::new(&did).unwrap())
+            .resolve_representation(ssi::dids::DID::new(&did).unwrap(), Default::default())
             .await
             .unwrap()
-            .document
-            .into_document();
+            .document;
 
         assert_eq!(
             serde_json::to_value(document.clone().property_set.get("@context").unwrap()).unwrap(),
@@ -560,7 +566,9 @@ mod tests {
     async fn did_resolving_fails_when_did_is_not_did_peer4_long(#[case] did: &str) {
         let resolver = DIDPeer::new();
 
-        let resolution_result = resolver.resolve(ssi::dids::DID::new(&did).unwrap()).await;
+        let resolution_result = resolver
+            .resolve_representation(ssi::dids::DID::new(&did).unwrap(), Default::default())
+            .await;
 
         assert!(resolution_result.is_err());
     }

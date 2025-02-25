@@ -1,5 +1,6 @@
-import { createUniversalDidResolver, DIDKey, DIDVerificationMethod, inMemKms, KeyHandle, KeyType } from "../../";
+import { DIDKey, DIDVerificationMethod, inMemKms, KeyHandle, KeyType, UniversalDIDResolver } from "../../";
 import { Utils } from "./utils";
+import { MockDID } from "./custom";
 
 describe("DID: ", () => {
   let did: string;
@@ -28,7 +29,7 @@ describe("DID: ", () => {
   });
 
   describe("Universal Resolver: ", () => {
-    const resolver = createUniversalDidResolver();
+    const resolver = new UniversalDIDResolver();
 
     test("Resolve verification method", async () => {
       const result = await resolver.resolveVerificationMethod(did);
@@ -45,6 +46,39 @@ describe("DID: ", () => {
     test("Resolve method", async () => {
       const result = await resolver.resolve(did);
       expect(result).toEqual(utils.didResolution);
+    });
+  });
+
+  describe("Custom Resolver: ", () => {
+    test("Success flow", async () => {
+      const resolver = new UniversalDIDResolver();
+      resolver.addResolver(new MockDID("mock"));
+      const result = await resolver.resolve("did:mock:12345");
+      expect(result).toBeDefined();
+    });
+
+    test("Success flow", async () => {
+      const resolver = new UniversalDIDResolver();
+      resolver.addResolver(new MockDID("mock"));
+      resolver.addResolver(new MockDID("anothermock"));
+      const result1 = await resolver.resolve("did:mock:12345");
+      const result2 = await resolver.resolve("did:anothermock:456789");
+      console.log(result1, utils.mockDidResolution("mock"));
+      expect(result1.document).toEqual(utils.mockDidResolution("mock"));
+      expect(result2.document).toEqual(utils.mockDidResolution("anothermock"));
+    });
+
+    test("Multiple addition of same method", async () => {
+      try {
+        const customResolver = new MockDID("mock");
+        const resolver = new UniversalDIDResolver();
+        resolver.addResolver(customResolver);
+        resolver.addResolver(customResolver);
+      } catch (error) {
+        expect(error.toString()).toBe("Error: Method already exists: mock");
+        return;
+      }
+      throw new Error("Custom Resolver: Multiple addition of same method failed to resolve collision of method names");
     });
   });
 });

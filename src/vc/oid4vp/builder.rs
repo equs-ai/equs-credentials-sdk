@@ -1,3 +1,4 @@
+use crate::did::universal::{DIDResolver, UniversalResolver};
 use crate::http::{HttpClient, HttpError, HttpSnafu};
 use crate::nonce::NonceGenerator;
 use crate::reqwest::builder::ReqwestClientBuilder;
@@ -40,6 +41,7 @@ where
     // services
     kms: KMS,
     nonce_generator: NG,
+    did_resolver: UniversalResolver,
     http_client: Result<HC, HttpError>,
 
     _marker: PhantomData<KH>,
@@ -83,6 +85,7 @@ where
             kms,
             nonce_generator,
             http_client,
+            did_resolver: UniversalResolver::default(),
             client_metadata: None,
             _marker: Default::default(),
         }
@@ -113,6 +116,35 @@ where
         self
     }
 
+    /// Sets the Verifier's client metadata.
+    ///
+    /// This method allows setting custom did resolver for the Verifier.
+    /// If did resolver is provided, it will be added to Universal resolver.
+    /// Otherwise, default Universal resolver will be used.
+    ///
+    /// # Arguments
+    ///
+    /// * `did_resolver` - a did resolver implementing `DIDResolver` trait
+    #[instrument(
+        level = Level::TRACE,
+        skip(self, did_resolver),
+    )]
+    pub fn with_did_resolver(
+        mut self,
+        did_resolver: impl DIDResolver + 'static,
+    ) -> Result<Self, Error> {
+        self.did_resolver
+            .add_resolver(did_resolver)
+            .map_err(|err| {
+                BuildSnafu {
+                    details: err.to_string(),
+                }
+                .build()
+            })?;
+
+        Ok(self)
+    }
+
     /// Use a specific `HttpClient`.
     ///
     /// # Arguments
@@ -133,6 +165,7 @@ where
             key_metadata: self.key_metadata,
             client_metadata: self.client_metadata,
             kms: self.kms,
+            did_resolver: self.did_resolver,
             nonce_generator: self.nonce_generator,
             _marker: Default::default(),
         }
@@ -169,6 +202,7 @@ where
             http_client,
             self.client_id,
             self.key_metadata,
+            self.did_resolver,
             self.client_metadata,
         );
 
@@ -193,6 +227,7 @@ where
     // services
     kms: KMS,
     vault: V,
+    did_resolver: UniversalResolver,
     // TODO: Should be HTTP client type, not Result
     http_client: Result<HC, HttpError>,
 
@@ -235,6 +270,7 @@ where
             kms,
             vault,
             http_client,
+            did_resolver: UniversalResolver::default(),
             wallet_metadata: None,
             _marker: Default::default(),
         }
@@ -264,6 +300,38 @@ where
         self.wallet_metadata = Some(wallet_metadata);
         self
     }
+    /// Sets custom did resolver for the holder.
+    ///
+    /// This method allows providing a custom did resolver.
+    /// If provided, it can be used to resolve did into the did document
+    ///
+    /// # Errors
+    ///
+    /// [Error::Build] - if did method already exists.
+    ///
+    /// # Arguments
+    ///
+    /// * `did_resolver` - did resolver implementing `DIDResolver`.
+    #[instrument(
+        level = Level::TRACE,
+        skip(self, did_resolver),
+    )]
+    pub fn with_did_resolver(
+        mut self,
+        did_resolver: impl DIDResolver + 'static,
+    ) -> Result<Self, Error> {
+        let mut universal_resolver = UniversalResolver::default();
+        universal_resolver
+            .add_resolver(did_resolver)
+            .map_err(|err| {
+                BuildSnafu {
+                    details: err.to_string(),
+                }
+                .build()
+            })?;
+        self.did_resolver = universal_resolver;
+        Ok(self)
+    }
 
     /// Sets a custom HTTP client for the holder.
     ///
@@ -286,6 +354,7 @@ where
             wallet_metadata: self.wallet_metadata,
             kms: self.kms,
             vault: self.vault,
+            did_resolver: self.did_resolver,
             http_client: Ok(http_client),
             _marker: Default::default(),
         }
@@ -320,7 +389,13 @@ where
             .build()
         })?;
 
-        let holder = HolderService::new(inner, http_client, self.kms, self.wallet_metadata);
+        let holder = HolderService::new(
+            inner,
+            http_client,
+            self.kms,
+            self.did_resolver,
+            self.wallet_metadata,
+        );
 
         info!("oid4vp-holder service is initialized");
 

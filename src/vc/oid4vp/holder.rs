@@ -64,8 +64,14 @@ where
     KH: KeyHandle,
     KMS: Kms<KH>,
 {
-    #[instrument(level = Level::TRACE, skip(holder, http_client, kms))]
-    pub fn new(holder: HL, http_client: HC, kms: KMS, metadata: Option<WalletMetadata>) -> Self {
+    #[instrument(level = Level::TRACE, skip(holder, http_client, kms, resolver))]
+    pub fn new(
+        holder: HL,
+        http_client: HC,
+        kms: KMS,
+        resolver: UniversalResolver,
+        metadata: Option<WalletMetadata>,
+    ) -> Self {
         let metadata = metadata.unwrap_or(default_wallet_metadata());
 
         info!("oid4vp-holder service is initialized");
@@ -73,7 +79,7 @@ where
         Self {
             holder,
             metadata,
-            public_jwk_resolver: UniversalResolver::default(),
+            public_jwk_resolver: resolver,
             kms,
             http_client,
             _marker: Default::default(),
@@ -573,6 +579,7 @@ where
 
 #[cfg(test)]
 mod tests {
+    use crate::did::universal::UniversalResolver;
     use crate::http::MockHttpClient;
     use crate::inmem::kms::LocalKms;
     use crate::inmem::vault::InMemVault;
@@ -902,8 +909,13 @@ mod tests {
             },
         );
 
-        let holder =
-            crate::vc::oid4vp::holder::HolderService::new(inner, http_client, kms_mock, None);
+        let holder = vc::oid4vp::holder::HolderService::new(
+            inner,
+            http_client,
+            kms_mock,
+            UniversalResolver::default(),
+            None,
+        );
 
         let key_handle = kms.get(&key_metadata.kid).await.unwrap();
         let credential_mapping = test_case
@@ -946,8 +958,13 @@ mod tests {
             },
         );
 
-        let holder =
-            crate::vc::oid4vp::holder::HolderService::new(inner, http_client, kms_mock, None);
+        let holder = crate::vc::oid4vp::holder::HolderService::new(
+            inner,
+            http_client,
+            kms_mock,
+            UniversalResolver::default(),
+            None,
+        );
 
         let credential_mapping = test_case
             .build_credential_mapping((key_metadata.kid, key_handle))
