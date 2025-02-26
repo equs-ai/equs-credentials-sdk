@@ -13,7 +13,7 @@ members = [
 
 [package]
 name = "agent-sdk"
-version = "0.6.0"
+version = "0.6.1"
 edition = "2021"
 rust-version = "1.82"
 
@@ -58,6 +58,7 @@ zeroize = "1.8.1"
 zkryptium = "0.2.2"
 ssi-status = "0.3.0"
 flate2 = "1.0.35"
+base64ct = "=1.6.0"
 
 # InMEM dependencies
 # crypto/kms dependencies
