@@ -16,7 +16,7 @@ Every package you need is already installed in `package.json`. If you develop fu
 
 To install use development environment as ASDK should compile with all the features:
 ```shell
-NODE_ENV=development npm i
+npm i
 ```
 
 ### Setup keycloak by [instructions](../../keycloak/README.md)
