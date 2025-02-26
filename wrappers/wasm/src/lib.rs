@@ -1,4 +1,5 @@
 pub mod did;
+mod http;
 mod utils;
 
 #[cfg(feature = "wee_alloc")]

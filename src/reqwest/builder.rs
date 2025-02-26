@@ -6,11 +6,13 @@ use crate::http::{HttpSnafu, Result};
 #[cfg(not(target_arch = "wasm32"))]
 use crate::reqwest::middleware::ValidatorMiddleware;
 use crate::reqwest::validators::content_size::ContentSizeLimiter;
-#[cfg(not(target_arch = "wasm32"))]
 use crate::reqwest::validators::content_type::ContentTypeValidator;
 
 #[cfg(not(target_arch = "wasm32"))]
 pub type Certificate = reqwest::Certificate;
+
+#[cfg(target_arch = "wasm32")]
+use crate::reqwest::WasmClient;
 
 #[derive(Debug)]
 pub struct ReqwestClientBuilder {
@@ -123,7 +125,14 @@ impl ReqwestClientBuilder {
     ///
     /// Returns an instance of `Self` with the `insecure` option enabled.
     ///
-    #[cfg(debug_assertions)]
+    #[cfg(all(not(target_arch = "wasm32"), debug_assertions))]
+    #[instrument(level = Level::TRACE, ret())]
+    pub fn insecure(mut self) -> Self {
+        self.insecure = true;
+        self
+    }
+
+    #[cfg(target_arch = "wasm32")]
     #[instrument(level = Level::TRACE, ret())]
     pub fn insecure(mut self) -> Self {
         self.insecure = true;
@@ -163,14 +172,21 @@ impl ReqwestClientBuilder {
     pub fn build(self) -> Result<ReqwestClient> {
         #[cfg(target_arch = "wasm32")]
         {
-            let wasm_client = Client::builder().build().map_err(|err| {
+            let client = Client::builder().build().map_err(|err| {
                 HttpSnafu {
                     details: err.to_string(),
                 }
                 .build()
             })?;
 
-            return Ok(ReqwestClient { wasm_client });
+            return Ok(ReqwestClient {
+                wasm_client: WasmClient {
+                    client,
+                    content_size_limiter: self.content_size_limiter,
+                    insecure: self.insecure,
+                    content_type_validator: ContentTypeValidator,
+                },
+            });
         }
 
         #[cfg(not(target_arch = "wasm32"))]
