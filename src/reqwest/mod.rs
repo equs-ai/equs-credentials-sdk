@@ -3,19 +3,24 @@
 pub mod builder;
 pub(super) mod middleware;
 pub mod validators;
+pub mod wasm;
 
 use async_trait::async_trait;
 use oauth2::{HttpRequest, HttpResponse};
 use tracing::{info, instrument};
 
 use crate::http::{HttpClient, HttpError, HttpSnafu, Result};
+use crate::reqwest::validators::HttpPayloadError;
+
+#[cfg(target_arch = "wasm32")]
+use crate::reqwest::wasm::WasmClient;
 
 #[derive(Debug, Clone)]
 pub struct ReqwestClient {
     #[cfg(not(target_arch = "wasm32"))]
     client: reqwest_middleware::ClientWithMiddleware,
     #[cfg(target_arch = "wasm32")]
-    wasm_client: reqwest::Client,
+    wasm_client: WasmClient,
 }
 
 #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
@@ -89,49 +94,22 @@ impl HttpClient for ReqwestClient {
         err(),
     )]
     async fn async_call(&self, request: HttpRequest) -> Result<HttpResponse> {
-        let (parts, body) = request.into_parts();
         info!("Making HTTP request is started");
-        let mut request_builder = self
-            .wasm_client
-            .request(parts.method, parts.uri.to_string())
-            .body(body);
-
-        for (name, value) in parts.headers.iter() {
-            request_builder = request_builder.header(name.as_str(), value.as_bytes());
-        }
-
-        let req = request_builder.build().map_err(|err| {
-            HttpSnafu {
-                details: err.to_string(),
-            }
-            .build()
-        })?;
-
-        let response = self.wasm_client.execute(req).await.map_err(|err| {
-            HttpSnafu {
-                details: err.to_string(),
-            }
-            .build()
-        })?;
-
-        let status_code = response.status();
-        let headers = response.headers().to_owned();
-
-        let chunks = response.bytes().await.map_err(|err| {
-            HttpSnafu {
-                details: err.to_string(),
-            }
-            .build()
-        })?;
-
-        info!("HTTP response is successfully handled: status code = {status_code}");
-
-        let resp_body = chunks.to_vec();
-        let mut response = HttpResponse::new(resp_body);
-        *response.status_mut() = status_code;
-        *response.headers_mut() = headers;
-
+        let response = self.wasm_client.async_call(request).await?;
+        info!(
+            "HTTP response is successfully handled: status code = {0}",
+            response.status()
+        );
         Ok(response)
+    }
+}
+
+impl From<HttpPayloadError> for HttpError {
+    fn from(value: HttpPayloadError) -> Self {
+        HttpSnafu {
+            details: value.to_string(),
+        }
+        .build()
     }
 }
 

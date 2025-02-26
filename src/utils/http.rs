@@ -9,6 +9,8 @@ pub const MIME_TYPE_FORM_URLENCODED: &str = "application/x-www-form-urlencoded";
 pub const MIME_TYPE_JSON: &str = "application/json";
 pub const MIME_TYPE_OAUTH_REQ_JWT: &str = "application/oauth-authz-req+jwt";
 pub const MIME_TYPE_TEXT_PLAIN: &str = "text/plain";
+pub const MIME_STATUSLIST_JWT: &str = "application/statuslist+jwt";
+pub const MIME_STATUSLIST_CWT: &str = "application/statuslist+cwt";
 
 pub(crate) enum MimeType {
     AppFormUrlEnc,
