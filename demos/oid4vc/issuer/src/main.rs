@@ -3,7 +3,7 @@ use actix_web::{web, App, Error, HttpRequest, HttpResponse, HttpServer};
 use actix_web_httpauth::headers::authorization::{Authorization, Bearer};
 use agent_sdk::did::didkey::DIDKey;
 use agent_sdk::did::universal::UniversalResolver;
-use agent_sdk::did::{DIDBuf, DIDResolver, DID};
+use agent_sdk::did::{DIDBuf, DIDResolver, VerificationMethodKey, DID};
 use agent_sdk::inmem::kms::LocalKms;
 use agent_sdk::inmem::storage::InMemStorage;
 use agent_sdk::kms;
@@ -21,6 +21,7 @@ use std::str::FromStr;
 
 use actix_web::cookie::time;
 use actix_web::cookie::time::OffsetDateTime;
+use agent_sdk::crypto::Key;
 use agent_sdk::did::didweb::DIDWeb;
 use agent_sdk::did::DIDDoc;
 use agent_sdk::inmem::nonce::LocalNonceGenerator;
@@ -542,7 +543,12 @@ async fn create_did_and_key_metadata(kms: &LocalKms) -> (DID, KeyMetadata, DIDDo
         .unwrap();
 
     let did = DIDWeb::generate_did_from_url(ISSUER_SERVER_URL).unwrap();
-    let did_doc = DIDWeb::generate_did_document(&did, &kh).unwrap();
+    let key: &dyn Key = &kh;
+    let vm_keys = vec![VerificationMethodKey {
+        key,
+        verification_relationships: Default::default(),
+    }];
+    let did_doc = DIDWeb::generate_did_document(&did, &vm_keys).unwrap();
     let vm = format!("{did}#key-0");
 
     println!("Generated DID {}", did.clone());

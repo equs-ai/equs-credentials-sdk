@@ -202,11 +202,9 @@ where
 
 #[cfg(test)]
 mod test {
-    use crate::did::didpeer::{
-        DIDPeer, DidPeerService, VerificationMethodKey, VerificationRelationshipType,
-    };
+    use crate::did::didpeer::{DIDPeer, DidPeerService};
     use crate::did::universal::UniversalResolver;
-    use crate::did::{DIDResolver, DID};
+    use crate::did::{DIDResolver, VerificationMethodKey, VerificationRelationshipType, DID};
     use crate::didcomm::{DIDCommService, Message, UnpackOptions};
     use crate::inmem::kms::LocalKms;
     use crate::kms;

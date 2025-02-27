@@ -3,7 +3,10 @@
 use crate::crypto::{Key, JWK};
 use crate::did;
 use crate::did::universal::DIDResolver;
-use crate::did::{DidDocGenerationSnafu, DidGenerationSnafu, ResolutionOutput, Result};
+use crate::did::{
+    DidDocGenerationSnafu, DidGenerationSnafu, ResolutionOutput, Result, VerificationMethodKey,
+    VerificationRelationshipType,
+};
 use async_trait::async_trait;
 use did_peer::peer_did::numalgos::numalgo4::construction_did_doc::{
     DidPeer4ConstructionDidDocument, DidPeer4VerificationMethod,
@@ -47,22 +50,6 @@ const BLS_12381_G2_KEY_2020: &str = "https://w3id.org/security#Bls12381G2Key2020
 const ECDSA_SECP_256K1_RECOVERY_METHOD_2020: &str =
     "https://w3id.org/security#EcdsaSecp256k1RecoveryMethod2020";
 const MULTIKEY: &str = "https://w3id.org/security#Multikey";
-
-/// The types of verification relationships that a key may support
-#[derive(Debug, Eq, Hash, PartialEq)]
-pub enum VerificationRelationshipType {
-    Authentication,
-    Assertion,
-    KeyAgreement,
-    CapabilityInvocation,
-    CapabilityDelegation,
-}
-
-/// Verification method key used in the DID Document
-pub struct VerificationMethodKey<'a> {
-    pub key: &'a dyn Key,
-    pub verification_relationships: HashSet<VerificationRelationshipType>,
-}
 
 /// A general `did:peer` service.
 pub struct DIDPeer {

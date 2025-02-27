@@ -1,26 +1,10 @@
-use crate::kms::js::JsKeyHandle;
+use crate::did::{JsVerificationMethodKey, JsVerificationRelationshipType};
 use crate::utils::from_json_object;
 use crate::vc::JsonObject;
-use agent_sdk::did::didpeer::{
-    DIDPeer, DidPeerService, VerificationMethodKey, VerificationRelationshipType,
-};
+use agent_sdk::did::didpeer::{DIDPeer, DidPeerService};
+use agent_sdk::did::{VerificationMethodKey, VerificationRelationshipType};
 use napi::Error;
 use napi_derive::napi;
-
-#[napi(js_name = "VerificationRelationshipType")]
-pub enum JsVerificationRelationshipType {
-    Authentication,
-    Assertion,
-    KeyAgreement,
-    CapabilityInvocation,
-    CapabilityDelegation,
-}
-
-#[napi(js_name = "VerificationRelationshipKey", object, object_to_js = false)]
-pub struct JsVerificationMethodKey {
-    pub key: JsKeyHandle,
-    pub verification_relationships: Vec<JsVerificationRelationshipType>,
-}
 
 #[napi(js_name = "DIDPeer")]
 pub struct JsDIDPeer;
