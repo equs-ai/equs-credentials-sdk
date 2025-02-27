@@ -30,6 +30,7 @@ const replacements = [
   { from: "JsStatusIssuerMetadata", to: "StatusIssuerMetadata" },
   { from: "JsStatusListFormat", to: "StatusListFormat" },
   { from: "JsTokenValidation", to: "TokenValidation" },
+  { from: "JsVerificationMethodKey", to: "VerificationMethodKey" },
   { from: "JsDuration", to: "Duration" },
   { from: "JsonObject", to: "Record<string, any>" },
 ];

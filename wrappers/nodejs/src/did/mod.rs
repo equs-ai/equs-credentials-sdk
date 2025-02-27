@@ -2,6 +2,7 @@ mod key;
 mod peer;
 mod web;
 
+use crate::kms::js::JsKeyHandle;
 use crate::utils::{from_json_object, to_json_object};
 use crate::vc::JsonObject;
 use agent_sdk::did::universal::{DIDResolver, UniversalResolver};
@@ -16,6 +17,20 @@ use napi::{Error, Result};
 use napi_derive::napi;
 use std::str::FromStr;
 
+#[napi(js_name = "VerificationRelationshipType")]
+pub enum JsVerificationRelationshipType {
+    Authentication,
+    Assertion,
+    KeyAgreement,
+    CapabilityInvocation,
+    CapabilityDelegation,
+}
+
+#[napi(js_name = "VerificationMethodKey", object, object_to_js = false)]
+pub struct JsVerificationMethodKey {
+    pub key: JsKeyHandle,
+    pub verification_relationships: Vec<JsVerificationRelationshipType>,
+}
 #[napi(js_name = "_UniversalDIDResolver")]
 pub struct JsUniversalDIDResolver {
     inner: UniversalResolver,

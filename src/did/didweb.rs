@@ -1,21 +1,24 @@
 //! did:web method.
 
-use crate::crypto::{Key, JWK};
+use crate::crypto::JWK;
 use crate::did::{
     DIDDoc, DidBufCreationSnafu, DidDocGenerationSnafu, DidGenerationSnafu, DidUrlBufCreationSnafu,
-    InvalidDidFormatSnafu, IriRefCreationSnafu, KeyNotSupportedSnafu, ParseSnafu, Result, DID,
+    InvalidDidFormatSnafu, IriRefCreationSnafu, KeyNotSupportedSnafu, ParseSnafu, Result,
+    VerificationMethodKey, VerificationRelationshipType, DID,
 };
 use regex::Regex;
+use serde_json::Value;
 use snafu::ResultExt;
 use ssi::dids::document::representation::json_ld::DIDContext;
 use ssi::dids::document::verification_method::ValueOrReference;
+use ssi::dids::document::DIDVerificationMethod;
 use ssi::dids::ssi_json_ld::syntax::ContextEntry;
 use ssi::dids::{DIDBuf, DIDURLBuf, DIDURLReferenceBuf, Document};
 use ssi::json_ld::IriRefBuf;
 use ssi::jwk::Params;
 use ssi::security::multibase::Base;
 use ssi::security::MultibaseBuf;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::str::FromStr;
 use tracing::{instrument, Level};
 use url::Url;
@@ -109,7 +112,8 @@ impl DIDWeb {
     /// # Arguments
     ///
     /// * `did` - a `DID` for which the [DIDDoc] is generated.
-    /// * `key` - a public key [Key] that is a verification method for the `DID`.
+    /// - `keys`: [VerificationMethodKey] objects representing the cryptographic keys
+    ///   that will be embedded in the DID document.
     ///
     /// # Returns
     ///
@@ -118,58 +122,116 @@ impl DIDWeb {
     /// # Errors
     ///
     /// * [crate::did::Error::KeyNotSupported] - key type is not supported.
-    #[instrument(level = Level::TRACE, skip(key), err(), ret())]
-    pub fn generate_did_document(did: &str, key: &impl Key) -> Result<DIDDoc> {
+    #[instrument(level = Level::TRACE, skip(keys), err(), ret())]
+    pub fn generate_did_document(did: &str, keys: &[VerificationMethodKey]) -> Result<DIDDoc> {
         validate_didweb(did)?;
 
-        let jwk = key.jwk().ok_or_else(|| {
+        let mut document = Document::new(DIDBuf::from_str(did).context(DidBufCreationSnafu)?);
+        let mut vm_type_iris = HashSet::new();
+        for (index, key) in keys.iter().enumerate() {
+            let jwk = Self::validate_jwk_key(key)?;
+            let (vm_type, vm_type_iri, (public_key_name, public_key_value)) =
+                Self::extract_verification_method_params(&jwk)?;
+            vm_type_iris.insert(vm_type_iri);
+
+            Self::add_verification_method(
+                did,
+                index,
+                (vm_type, (public_key_name, public_key_value)),
+                &key.verification_relationships,
+                &mut document,
+            )?;
+        }
+
+        let context_entries = vm_type_iris
+            .iter()
+            .map(|iri_ref| ContextEntry::IriRef(iri_ref.to_owned()))
+            .collect();
+        let options = ssi::dids::document::representation::Options::JsonLd({
+            ssi::dids::document::representation::json_ld::Options {
+                context: ssi::dids::document::representation::json_ld::Context::array(
+                    DIDContext::V1,
+                    context_entries,
+                ),
+            }
+        });
+        Ok(DIDDoc::new(document, options))
+    }
+
+    fn validate_jwk_key(verification_method_key: &VerificationMethodKey) -> Result<JWK> {
+        let jwk = verification_method_key.key.jwk().ok_or_else(|| {
             DidDocGenerationSnafu {
                 details: "the key does not support JWK form",
             }
             .build()
         })?;
+        Ok(jwk)
+    }
 
-        let (vm_type, vm_type_iri, (public_key_name, public_key_value)) =
-            Self::extract_verification_method_params(&jwk)?;
-
-        let mut document = Document::new(DIDBuf::from_str(did).context(DidBufCreationSnafu)?);
-
-        let array = vec![ContextEntry::IriRef(vm_type_iri)];
+    fn add_verification_method(
+        did: &str,
+        index: usize,
+        (vm_type, (public_key_name, public_key_value)): (&str, (String, Value)),
+        verification_relationships: &HashSet<VerificationRelationshipType>,
+        construction_did_doc: &mut Document,
+    ) -> Result<()> {
         let mut properties = BTreeMap::new();
         properties.insert(public_key_name, public_key_value);
-        let default_vm = ssi::dids::document::DIDVerificationMethod {
-            id: DIDURLBuf::from_string(format!("{}#key-0", did)).context(DidUrlBufCreationSnafu)?,
+        let verification_method = DIDVerificationMethod {
+            id: DIDURLBuf::from_string(format!("{}#key-{}", did, index))
+                .context(DidUrlBufCreationSnafu)?,
             type_: vm_type.to_string(),
             controller: DIDBuf::from_str(did).context(DidBufCreationSnafu)?,
             properties,
         };
 
-        let did_url_buf = default_vm.id.clone();
-
-        document.verification_method = vec![default_vm];
-
-        document.verification_relationships.assertion_method = vec![ValueOrReference::Reference(
-            DIDURLReferenceBuf::Absolute(did_url_buf),
-        )];
-
-        let options = ssi::dids::document::representation::Options::JsonLd({
-            ssi::dids::document::representation::json_ld::Options {
-                context: ssi::dids::document::representation::json_ld::Context::array(
-                    DIDContext::V1,
-                    array,
-                ),
+        for verification_relationship in verification_relationships {
+            let did_url_buf = ValueOrReference::Reference(DIDURLReferenceBuf::Absolute(
+                verification_method.id.clone(),
+            ));
+            match verification_relationship {
+                VerificationRelationshipType::Authentication => {
+                    construction_did_doc
+                        .verification_relationships
+                        .authentication
+                        .push(did_url_buf);
+                }
+                VerificationRelationshipType::Assertion => {
+                    construction_did_doc
+                        .verification_relationships
+                        .assertion_method
+                        .push(did_url_buf);
+                }
+                VerificationRelationshipType::KeyAgreement => {
+                    // TODO: Create Verification Method with the type X25519KeyAgreementKey2020 for ED25519
+                    construction_did_doc
+                        .verification_relationships
+                        .key_agreement
+                        .push(did_url_buf);
+                }
+                VerificationRelationshipType::CapabilityInvocation => {
+                    construction_did_doc
+                        .verification_relationships
+                        .capability_invocation
+                        .push(did_url_buf);
+                }
+                VerificationRelationshipType::CapabilityDelegation => {
+                    construction_did_doc
+                        .verification_relationships
+                        .capability_delegation
+                        .push(did_url_buf);
+                }
             }
-        });
+        }
+        construction_did_doc
+            .verification_method
+            .push(verification_method);
 
-        let did_doc = DIDDoc::new(document, options);
-
-        Ok(did_doc)
+        Ok(())
     }
 
     #[instrument(level = Level::TRACE, err(), ret())]
-    fn extract_verification_method_params(
-        jwk: &JWK,
-    ) -> Result<(&str, IriRefBuf, (String, serde_json::Value))> {
+    fn extract_verification_method_params(jwk: &JWK) -> Result<(&str, IriRefBuf, (String, Value))> {
         let result = match jwk.params {
             Params::OKP(ref params) => match &params.curve[..] {
                 "Ed25519" => {
@@ -178,10 +240,7 @@ impl DIDWeb {
                         ED25519_VM_TYPE,
                         IriRefBuf::new(ED25519_VM_TYPE_IRI.to_string())
                             .context(IriRefCreationSnafu)?,
-                        (
-                            "publicKeyBase58".to_string(),
-                            serde_json::Value::String(key),
-                        ),
+                        ("publicKeyBase58".to_string(), Value::String(key)),
                     )
                 }
                 _ => {
@@ -265,6 +324,7 @@ fn validate_didweb(did: &str) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::crypto::Key;
     use crate::did::Error;
     use crate::kms;
     use crate::kms::KeyType;
@@ -312,41 +372,82 @@ mod tests {
         ));
     }
 
-    #[rstest]
-    #[case::p256((KeyType::P256, ECDSASECP256R1_VM_TYPE,ECDSASECP256R1_VM_TYPE_IRI))]
-    #[case::ed25519((KeyType::Ed25519, ED25519_VM_TYPE, ED25519_VM_TYPE_IRI))]
     #[tokio::test]
-    async fn did_doc_is_generated_correctly(#[case] test_case: (KeyType, &str, &str)) {
-        let (key_type, vm_type, vm_type_iri) = test_case;
-
+    async fn did_doc_is_generated_correctly() {
         let did = "did:web:test.example.com";
+        let expected_did_doc_without_context = |random1: &str, random2: &str| -> Value {
+            json!({
+                "id": did,
+                "keyAgreement": [
+                    "did:web:test.example.com#key-0",
+                    "did:web:test.example.com#key-1",
+                ],
+                "verificationMethod": [
+                     {
+                        "id": "did:web:test.example.com#key-0",
+                        "type": ECDSASECP256R1_VM_TYPE,
+                        "controller": did,
+                        "publicKeyMultibase": random1,
+                    },
+                    {
+                        "id": "did:web:test.example.com#key-1",
+                        "type": ED25519_VM_TYPE,
+                        "controller": did,
+                        "publicKeyBase58": random2,
+                    },
+                ],
+            })
+        };
+
         let kms = crate::inmem::kms::LocalKms::new();
-        let (_, key) = kms
-            .create_and_handle(key_type, kms::CreateOptions::default())
+        let (_, key_handle_p256) = kms
+            .create_and_handle(KeyType::P256, kms::CreateOptions::default())
             .await
             .unwrap();
+        let (_, key_handle_ed25519) = kms
+            .create_and_handle(KeyType::Ed25519, kms::CreateOptions::default())
+            .await
+            .unwrap();
+        let key_p256: &dyn Key = &key_handle_p256;
+        let key_ed25519: &dyn Key = &key_handle_ed25519;
+        let keys = vec![
+            VerificationMethodKey {
+                key: key_p256,
+                verification_relationships: HashSet::from_iter([
+                    VerificationRelationshipType::KeyAgreement,
+                ]),
+            },
+            VerificationMethodKey {
+                key: key_ed25519,
+                verification_relationships: HashSet::from_iter([
+                    VerificationRelationshipType::KeyAgreement,
+                ]),
+            },
+        ];
+        let did_doc = DIDWeb::generate_did_document(did, &keys).unwrap();
+        let mut actual_did_doc_value = serde_json::to_value(&did_doc).unwrap();
+        let public_key_multibase = actual_did_doc_value["verificationMethod"][0]
+            ["publicKeyMultibase"]
+            .as_str()
+            .unwrap();
+        let public_key_base58 = actual_did_doc_value["verificationMethod"][1]["publicKeyBase58"]
+            .as_str()
+            .unwrap();
+        let expected_did_doc_value =
+            expected_did_doc_without_context(public_key_multibase, public_key_base58);
 
-        let did_doc = DIDWeb::generate_did_document(did, &key).unwrap();
-        assert_eq!(
-            serde_json::to_value(&did_doc)
-                .unwrap()
-                .get("@context")
-                .unwrap()
-                .to_owned(),
-            serde_json::to_value(json!(["https://www.w3.org/ns/did/v1", vm_type_iri])).unwrap()
+        let binding = actual_did_doc_value
+            .as_object_mut()
+            .unwrap()
+            .remove("@context")
+            .unwrap();
+        let actual_context = binding.as_array().unwrap();
+        assert!(
+            actual_context.contains(&serde_json::to_value("https://www.w3.org/ns/did/v1").unwrap())
         );
-
-        assert_eq!(did_doc.id, did);
-
-        assert_eq!(
-            did_doc.verification_method[0].id,
-            DIDURLBuf::new(format!("{did}#key-0").as_bytes().to_vec()).unwrap()
-        );
-        assert_eq!(did_doc.verification_method[0].type_, vm_type.to_string());
-        assert_eq!(
-            did_doc.verification_method[0].controller,
-            DIDBuf::from_str(did).unwrap()
-        );
+        assert!(actual_context.contains(&serde_json::to_value(ECDSASECP256R1_VM_TYPE_IRI).unwrap()));
+        assert!(actual_context.contains(&serde_json::to_value(ED25519_VM_TYPE_IRI).unwrap()));
+        assert_eq!(actual_did_doc_value, expected_did_doc_value);
     }
 
     #[rstest]
@@ -360,12 +461,17 @@ mod tests {
     #[tokio::test]
     async fn did_doc_generating_fails_when_did_is_not_valid(#[case] invalid_did: &str) {
         let kms = crate::inmem::kms::LocalKms::new();
-        let (_, key) = kms
+        let (_, key_handle) = kms
             .create_and_handle(KeyType::Ed25519, kms::CreateOptions::default())
             .await
             .unwrap();
 
-        let result = DIDWeb::generate_did_document(invalid_did, &key);
+        let key: &dyn Key = &key_handle;
+        let keys = vec![VerificationMethodKey {
+            key,
+            verification_relationships: Default::default(),
+        }];
+        let result = DIDWeb::generate_did_document(invalid_did, &keys);
 
         assert!(matches!(
             result.err().unwrap(),
@@ -376,7 +482,12 @@ mod tests {
     #[tokio::test]
     async fn did_doc_generating_fails_on_invalid_jwk() {
         let did = "did:web:test.example.com";
-        let result = DIDWeb::generate_did_document(did, &no_jwk_key());
+        let binding = no_jwk_key();
+        let verification_method_keys = vec![VerificationMethodKey {
+            key: &binding,
+            verification_relationships: Default::default(),
+        }];
+        let result = DIDWeb::generate_did_document(did, &verification_method_keys);
 
         assert!(matches!(
             result.err().unwrap(),

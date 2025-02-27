@@ -4,6 +4,7 @@ use common_macros::DebugError;
 use iref::iri::InvalidIriRef;
 use snafu::{Location, Snafu};
 use ssi::dids::{InvalidDID, InvalidDIDURL};
+use std::collections::HashSet;
 use std::fmt::Debug;
 use tracing::Level;
 
@@ -92,7 +93,9 @@ pub enum Error {
 pub type Result<T> = core::result::Result<T, Error>;
 
 // Basic types definitions
+use crate::crypto::Key;
 pub use ssi::jwk::JWKResolver;
+
 /// Decentralized identifier
 pub type DID = String;
 pub type SpruceDID = ssi::dids::DID;
@@ -127,4 +130,20 @@ pub struct Resolution {
     pub metadata: ResolutionMetadata,
     pub doc: Option<DIDDoc>,
     pub doc_metadata: Option<DocumentMetadata>,
+}
+
+/// The types of verification relationships that a key may support
+#[derive(Debug, Eq, Hash, PartialEq)]
+pub enum VerificationRelationshipType {
+    Authentication,
+    Assertion,
+    KeyAgreement,
+    CapabilityInvocation,
+    CapabilityDelegation,
+}
+
+/// Verification method key used in the DID Document
+pub struct VerificationMethodKey<'a> {
+    pub key: &'a dyn Key,
+    pub verification_relationships: HashSet<VerificationRelationshipType>,
 }
