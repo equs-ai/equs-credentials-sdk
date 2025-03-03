@@ -1,3 +1,33 @@
+use agent_sdk::vc::metadata::{CredentialMetadataProcessor, DefaultMetadataProcessor};
+use js_sys::JSON;
+use serde::de::DeserializeOwned;
+use serde::Serialize;
+use serde_wasm_bindgen::Serializer;
+use wasm_bindgen::prelude::wasm_bindgen;
+use wasm_bindgen::{JsCast, JsError, JsValue};
+
+use crate::vc::{Credential, CredentialMetadata, JsCredential};
+use crate::KeyMetadata;
+
+#[wasm_bindgen(js_name = resolveMetadata)]
+pub async fn resolve_metadata(
+    credential: Credential,
+    metadata: KeyMetadata,
+) -> Result<CredentialMetadata, JsError> {
+    let js_credential: JsCredential = convert_to_rust_object(credential)?;
+    let credential = js_credential.try_into()?;
+    let metadata = convert_to_rust_object(metadata)?;
+
+    let result = DefaultMetadataProcessor::resolve_metadata(&credential, metadata)
+        .map_err(|err| JsError::new(&format!("{:?}", err)))?;
+    let credential_metadata: agent_sdk::vc::CredentialMetadata = result
+        .try_into()
+        .map_err(|err| JsError::new(&format!("{:?}", err)))?;
+
+    convert_to_opaque_object_unchecked(credential_metadata)
+}
+
+#[allow(unused)]
 pub fn set_panic_hook() {
     // When the `console_error_panic_hook` feature is enabled, we can call the
     // `set_panic_hook` function at least once during initialization, and then
@@ -7,4 +37,37 @@ pub fn set_panic_hook() {
     // https://github.com/rustwasm/console_error_panic_hook#readme
     #[cfg(feature = "console_error_panic_hook")]
     console_error_panic_hook::set_once();
+}
+
+#[allow(unused)]
+pub fn js_value_to_string(value: JsValue) -> String {
+    if let Some(s) = value.as_string() {
+        s
+    } else if let Ok(json) = JSON::stringify(&value) {
+        json.as_string().unwrap_or_else(|| format!("{:?}", value))
+    } else {
+        format!("{:?}", value)
+    }
+}
+
+pub fn convert_to_rust_object<T: JsCast, R: DeserializeOwned>(value: T) -> Result<R, JsError> {
+    serde_wasm_bindgen::from_value(value.into()).map_err(JsError::from)
+}
+
+#[allow(unused)]
+pub fn convert_to_opaque_object<T: Serialize, R: JsCast>(value: T) -> Result<R, JsError> {
+    let js_value = value
+        .serialize(&Serializer::json_compatible())
+        .map_err(JsError::from)?;
+
+    js_value
+        .dyn_into()
+        .map_err(|err| JsError::new(&format!("Failed to convert: {}", js_value_to_string(err))))
+}
+
+pub fn convert_to_opaque_object_unchecked<T: Serialize, R: JsCast>(value: T) -> Result<R, JsError> {
+    value
+        .serialize(&Serializer::json_compatible())
+        .map(|value| value.unchecked_into())
+        .map_err(JsError::from)
 }

@@ -1,5 +1,5 @@
 PKG_NAME ?= agent-sdk
-PKG_VERSION ?= 0.5.1
+PKG_VERSION ?= 0.6.0
 WASM_TARGET ?= nodejs
 
 ifndef PROJECT_DIR
@@ -27,6 +27,8 @@ build: $(WASM_DIR) pkg_clean
 	wasm-pack build --target $(WASM_TARGET) --out-name binary
 	sed -i -r "s/\"name\": \"[^\"]*\"/\"name\": \"$(PKG_NAME)\"/g" $(WASM_PKG_DIR_NAME)/package.json
 	sed -i -r "s/\"version\": \"[^\"]*\"/\"version\": \"$(PKG_VERSION)\"/g" $(WASM_PKG_DIR_NAME)/package.json
+	sed -i -r "s/\"main\": \"[^\"]*\"/\"main\": \"index.js\"/g" $(WASM_PKG_DIR_NAME)/package.json
+	sed -i -r "s/\"types\": \"[^\"]*\"/\"types\": \"index.d.ts\"/g" $(WASM_PKG_DIR_NAME)/package.json
 	npx tsc -p $(TYPES_DIR) && mv $(TYPES_DIR)/dist $(WASM_PKG_DIR)/dist
 	node scripts/add-import-line.mjs
 	npx tsc

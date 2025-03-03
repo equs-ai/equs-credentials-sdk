@@ -4,7 +4,7 @@ pub mod http;
 pub mod json;
 pub mod jwk;
 pub mod logs;
+pub mod maybe_send;
 pub mod serde;
-
 #[cfg(test)]
 pub(crate) mod test_utils;

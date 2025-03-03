@@ -100,7 +100,7 @@ build-job:
   <<: *rust_job_configs
   stage: build
   script:
-    - cargo build --all-features --workspace
+    - cargo build --all-features --workspace --exclude wasm
   only:
     - merge_requests
     - main
@@ -215,9 +215,9 @@ wasm-test-job:
   script:
     - cd wrappers/wasm
     - npm install
-    - WASM_TARGET=nodejs make
+    - make
     - cd ./test
-    - npm run test-puppeteer
+    - npm run test
   only:
     - merge_requests
     - main

@@ -1,66 +1,56 @@
-use agent_sdk::did::universal::UniversalResolver;
-use agent_sdk::did::{DIDBuf, DIDResolver};
-use js_sys::Promise;
-use serde::Serialize;
-use serde_wasm_bindgen::Serializer;
-use std::rc::Rc;
-use std::str::FromStr;
-use wasm_bindgen::prelude::*;
-use wasm_bindgen_futures::future_to_promise;
+use crate::inmem::kms::InMemKeyHandle;
+use crate::utils;
+use std::collections::HashSet;
+use wasm_bindgen::prelude::wasm_bindgen;
+use wasm_bindgen::JsError;
 
-#[wasm_bindgen(typescript_custom_section)]
-const TS_IMPORT: &'static str = include_str!("../../index.ts");
+mod key;
+mod universal_resolver;
+mod web;
+
+/// Verification method key used in the DID Document
+#[wasm_bindgen]
+pub struct VerificationMethodKey {
+    key: agent_sdk::inmem::kms::KeyHandle,
+    verification_relationships: HashSet<agent_sdk::did::VerificationRelationshipType>,
+}
 
 #[wasm_bindgen]
-pub struct NativeDIDResolver(Rc<UniversalResolver>);
-
-#[wasm_bindgen]
-impl NativeDIDResolver {
+impl VerificationMethodKey {
+    /// Creates a new `VerificationMethodKey`.
+    ///
+    /// # Arguments
+    ///
+    /// * `key` - a key to include in DID document.
+    /// * `verification_relationships` - A vector of verification relationship types.
     #[wasm_bindgen(constructor)]
-    pub fn new() -> NativeDIDResolver {
-        let resolver = UniversalResolver::default();
+    pub fn new(
+        key: &InMemKeyHandle,
+        verification_relationships: Vec<VerificationRelationshipType>,
+    ) -> Result<Self, JsError> {
+        let verification_relationships = verification_relationships
+            .into_iter()
+            .map(utils::convert_to_rust_object)
+            .collect::<Result<HashSet<_>, _>>()?;
 
-        NativeDIDResolver(Rc::new(resolver))
-    }
-
-    #[wasm_bindgen(unchecked_return_type = "DIDVerificationMethod")]
-    pub async fn resolve_verification_method(&self, did: String) -> Promise {
-        let resolver = self.0.clone();
-        future_to_promise(async move {
-            let vm = resolver
-                .resolve_into_any_verification_method(
-                    &DIDBuf::from_str(&did).map_err(JsError::from)?,
-                )
-                .await
-                .map_err(JsError::from)?;
-
-            let ser = Serializer::json_compatible();
-            let res = vm.serialize(&ser).map_err(JsError::from)?;
-
-            Ok(res)
+        Ok(Self {
+            key: key.inner().clone(),
+            verification_relationships,
         })
     }
+}
 
-    #[wasm_bindgen(unchecked_return_type = "DIDResolution")]
-    pub async fn resolve(&self, did: String) -> Promise {
-        let resolver = self.0.clone();
-        future_to_promise(async move {
-            let output = resolver
-                .resolve(&DIDBuf::from_str(&did).map_err(JsError::from)?)
-                .await
-                .map_err(JsError::from)
-                .map(|output| {
-                    serde_json::json!({
-                        "document": output.document,
-                        "metadata": output.metadata,
-                        "document_metadata": output.document_metadata,
-                    })
-                })?;
+#[wasm_bindgen]
+extern "C" {
+    #[wasm_bindgen(typescript_type = "VerificationRelationshipType")]
+    pub type VerificationRelationshipType;
 
-            let ser = Serializer::json_compatible();
-            let res = output.serialize(&ser).map_err(JsError::from)?;
+    #[wasm_bindgen(typescript_type = "DIDDocument")]
+    pub type DIDDocument;
 
-            Ok(res)
-        })
-    }
+    #[wasm_bindgen(typescript_type = "DIDVerificationMethod")]
+    pub type DIDVerificationMethod;
+
+    #[wasm_bindgen(typescript_type = "DIDResolution")]
+    pub type DIDResolution;
 }
