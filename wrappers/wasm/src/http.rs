@@ -2,11 +2,13 @@ use agent_sdk::http::HttpClient as ASDKHttpClient;
 use agent_sdk::reqwest::ReqwestClient;
 use js_sys::{Object, Promise, Reflect};
 use oauth2::http::{HeaderMap, HeaderName, HeaderValue, Method, Uri};
-use std::rc::Rc;
 use wasm_bindgen::prelude::wasm_bindgen;
 use wasm_bindgen::{JsError, JsValue};
 use wasm_bindgen_futures::future_to_promise;
 
+/// An enum of HTTP methods available for making requests.
+///
+/// This enum includes commonly used HTTP methods
 #[wasm_bindgen]
 #[derive(Clone, Copy, Debug)]
 pub enum HttpMethod {
@@ -31,6 +33,13 @@ pub struct HttpRequest {
 
 #[wasm_bindgen]
 impl HttpRequest {
+    /// Creates a new `HttpRequest` instance.
+    /// # Arguments
+    ///
+    /// * `url` - The URL for the request.
+    /// * `method` - The `HttpMethod` that indicates the HTTP method to use.
+    /// * `headers` - The `HTTPRequest` headers.
+    /// * `body` -The request body.
     #[wasm_bindgen(constructor)]
     pub fn new(url: String, method: HttpMethod, headers: JsValue, body: Option<String>) -> Self {
         HttpRequest {
@@ -41,21 +50,25 @@ impl HttpRequest {
         }
     }
 
+    /// The URL of the HTTP request.
     #[wasm_bindgen(getter)]
     pub fn url(&self) -> String {
         self.url.clone()
     }
 
+    /// The HTTP method of the request.
     #[wasm_bindgen(getter)]
     pub fn method(&self) -> HttpMethod {
         self.method
     }
 
+    /// The headers of the HTTP request.
     #[wasm_bindgen(getter)]
     pub fn headers(&self) -> JsValue {
         self.headers.clone()
     }
 
+    /// The body of the HTTP request.
     #[wasm_bindgen(getter)]
     pub fn body(&self) -> Option<String> {
         self.body.clone()
@@ -109,16 +122,19 @@ pub struct HttpResponse {
 
 #[wasm_bindgen]
 impl HttpResponse {
+    /// The HTTP status code of the response.
     #[wasm_bindgen(getter)]
     pub fn status_code(&self) -> u16 {
         self.status_code
     }
 
+    /// The HTTP headers of the response.
     #[wasm_bindgen(getter)]
     pub fn headers(&self) -> JsValue {
         self.headers.clone()
     }
 
+    /// The body of the response.
     #[wasm_bindgen(getter)]
     pub fn body(&self) -> Option<String> {
         self.body.clone()
@@ -209,28 +225,45 @@ fn convert_option_string_to_vec_u8(value: Option<String>) -> Vec<u8> {
 }
 
 #[wasm_bindgen]
-pub struct HttpClient(Rc<ReqwestClient>);
+pub struct HttpClient(ReqwestClient);
 
 #[wasm_bindgen]
 impl HttpClient {
+    /// Creates a new `HttpClient` instance using the default, secure configuration.
     #[wasm_bindgen(constructor)]
     pub fn new() -> Result<HttpClient, JsError> {
         agent_sdk::reqwest::builder::ReqwestClientBuilder::new()
             .build()
-            .map(|client| HttpClient(Rc::new(client)))
+            .map(|client| HttpClient(client))
             .map_err(JsError::from)
     }
 
+    /// Creates a new `HttpClient` instance with an insecure configuration.
     #[wasm_bindgen]
     pub fn insecure() -> Result<HttpClient, JsError> {
         agent_sdk::reqwest::builder::ReqwestClientBuilder::new()
             .insecure()
             .build()
-            .map(|client| HttpClient(Rc::new(client)))
+            .map(|client| HttpClient(client))
             .map_err(JsError::from)
     }
 
-    #[wasm_bindgen(unchecked_return_type = "Promise<HttpResponse>")]
+    /// Asynchronously sends an HTTP request and returns an `HttpResponse`.
+    ///
+    /// # Arguments
+    ///
+    /// * `request` - An `HttpRequest` instance.
+    ///
+    /// # Returns
+    ///
+    /// An `HttpResponse` object.
+    ///
+    /// # Errors
+    ///
+    /// Errors may occur if:
+    /// - The asynchronous HTTP call fails (e.g., network issues, server errors).
+    /// - The response headers or body cannot be processed correctly.
+    #[wasm_bindgen(js_name = asyncCall, unchecked_return_type = "Promise<HttpResponse>")]
     pub fn async_call(&self, request: HttpRequest) -> Promise {
         let client = self.0.clone();
 
@@ -291,6 +324,12 @@ impl HttpClient {
 
             Ok(JsValue::from(response))
         })
+    }
+}
+
+impl HttpClient {
+    pub fn inner(&self) -> ReqwestClient {
+        self.0.clone()
     }
 }
 

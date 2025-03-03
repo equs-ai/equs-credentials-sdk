@@ -1,4 +1,4 @@
-export class Utils {
+export class Fixtures {
   readonly didResolution = {
     document: {
       "@context": [
@@ -17,8 +17,8 @@ export class Utils {
         },
       ],
     },
-    metadata: { contentType: "application/did+ld+json" },
+    metadata: {contentType: "application/did+ld+json"},
     // @ts-ignore
-    document_metadata: { deactivated: null },
+    document_metadata: {deactivated: null},
   };
 }

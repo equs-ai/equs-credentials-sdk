@@ -1,13 +1,13 @@
-import { NativeDIDResolver } from "agent-sdk";
-import { Utils } from "./utils";
+import {UniversalDIDResolver} from "agent-sdk";
+import {Fixtures} from "./fixtures";
 
 describe("DID: ", () => {
-  const utils = new Utils();
+  const fixtures = new Fixtures();
   describe("Universal Resolver: ", () => {
-    const resolver = new NativeDIDResolver();
+    const resolver = new UniversalDIDResolver();
 
     test("Resolve verification method", async () => {
-      const result = await resolver.resolve_verification_method(
+      const result = await resolver.resolveVerificationMethod(
         "did:key:zDnaefX6jBNVFnFeUPMRGo6exaVdJ1TRCwuhm296PbB5gPTj6",
       );
       expect(result).toEqual(
@@ -26,7 +26,7 @@ describe("DID: ", () => {
       const result = await resolver.resolve(
         "did:key:zDnaefX6jBNVFnFeUPMRGo6exaVdJ1TRCwuhm296PbB5gPTj6",
       );
-      expect(result).toEqual(utils.didResolution);
+      expect(result).toEqual(fixtures.didResolution);
     });
   });
 });

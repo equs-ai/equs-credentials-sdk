@@ -5,13 +5,13 @@ edition = "2021"
 rust-version = "1.82"
 
 [features]
-default = ['console_error_panic_hook']
+default = ['console_error_panic_hook', 'instant/wasm-bindgen', 'instant/inaccurate']
 
 [lib]
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-agent-sdk = { path = "../.." }
+agent-sdk = { path = "../..", features = ["in-memory"] }
 
 async-trait = '0.1.85'
 wasm-bindgen-futures = '0.4.50'
@@ -21,6 +21,8 @@ serde = { version = "1.0.217", features = ["derive"] }
 serde-wasm-bindgen = "0.6.5"
 oauth2 = "5.0.0-rc.1"
 web-sys = { version = "0.3", features = ["console"] }
+url = { version = "2.5.2", features = ["serde"] }
+instant = "0.1.12"
 
 [dependencies.wasm-bindgen]
 version = '0.2.100'
@@ -32,9 +34,6 @@ optional = true
 [dependencies.wee_alloc]
 version = '0.4'
 optional = true
-
-[dev-dependencies]
-wasm-bindgen-test = '0.3'
 
 [profile.release]
 opt-level = 's'

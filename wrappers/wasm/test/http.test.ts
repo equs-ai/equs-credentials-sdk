@@ -1,11 +1,11 @@
-import { HttpMethod, HttpRequest, HttpClient } from "agent-sdk";
+import {HttpMethod, HttpRequest, HttpClient} from "agent-sdk";
 
 describe("HTTP Client: ", () => {
   jest.setTimeout(30000);
   let HTTP_URL = "http://httpbin.org/get";
   let HTTPS_URL = "https://httpbin.org/get";
   const HTTP_METHOD = HttpMethod.Get;
-  const HEADERS = { "Accept": "application/json" };
+  const HEADERS = {"Accept": "application/json"};
 
   describe("Secure mode: ", () => {
     test("should success with https url on secure mode", async () => {
@@ -17,7 +17,7 @@ describe("HTTP Client: ", () => {
         null,
       );
 
-      const result = await client.async_call(request);
+      const result = await client.asyncCall(request);
       expect(result).toBeDefined();
       expect(result.status_code).toBe(200);
 
@@ -32,7 +32,7 @@ describe("HTTP Client: ", () => {
         null,
       );
 
-      await expect(client.async_call(request)).rejects.toThrow();
+      await expect(client.asyncCall(request)).rejects.toThrow();
     });
   });
 
@@ -46,7 +46,7 @@ describe("HTTP Client: ", () => {
         null,
       );
 
-      const result = await client.async_call(request);
+      const result = await client.asyncCall(request);
       expect(result).toBeDefined();
       expect(result.status_code).toBe(200);
     });

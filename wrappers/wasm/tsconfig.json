@@ -6,7 +6,7 @@
     "declaration": true,
     "emitDeclarationOnly": false,
     "module": "commonjs",
-    "strict": true,
+    "strict": false,
     "lib": [
       "ESNext",
       "dom"

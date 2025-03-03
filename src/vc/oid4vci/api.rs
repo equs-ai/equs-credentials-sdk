@@ -1,5 +1,6 @@
 use crate::http::HttpError;
 use crate::nonce::NonceData;
+use crate::utils::maybe_send::MaybeSend;
 use crate::vc::claims::Claims;
 use crate::vc::core::api::CredentialStatusInfo;
 use crate::vc::core::KeyMetadata;
@@ -274,8 +275,8 @@ pub trait Holder: Send + Sync {
         authorization_callback: AC,
     ) -> Result<TokenResponse>
     where
-        AC: FnOnce(url::Url) -> F + Send,
-        F: Future<Output = std::result::Result<String, E>> + Send,
+        AC: FnOnce(url::Url) -> F + MaybeSend,
+        F: Future<Output = std::result::Result<String, E>> + MaybeSend,
         E: std::error::Error + 'static;
 
     /// Gets an access token using a resolved credential offer.
@@ -324,8 +325,8 @@ pub trait Holder: Send + Sync {
         authorization_callback: AC,
     ) -> Result<TokenResponse>
     where
-        AC: FnOnce(AuthzFlow) -> F + Send,
-        F: Future<Output = std::result::Result<String, E>> + Send,
+        AC: FnOnce(AuthzFlow) -> F + MaybeSend,
+        F: Future<Output = std::result::Result<String, E>> + MaybeSend,
         E: std::error::Error + 'static;
 
     /// Request a `Credential` for the provided `CredentialDefinition`.

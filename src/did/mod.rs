@@ -2,6 +2,7 @@
 
 use common_macros::DebugError;
 use iref::iri::InvalidIriRef;
+use serde::{Deserialize, Serialize};
 use snafu::{Location, Snafu};
 use ssi::dids::{InvalidDID, InvalidDIDURL};
 use std::collections::HashSet;
@@ -95,6 +96,7 @@ pub type Result<T> = core::result::Result<T, Error>;
 // Basic types definitions
 use crate::crypto::Key;
 pub use ssi::jwk::JWKResolver;
+use strum_macros::{EnumString, IntoStaticStr};
 
 /// Decentralized identifier
 pub type DID = String;
@@ -133,7 +135,7 @@ pub struct Resolution {
 }
 
 /// The types of verification relationships that a key may support
-#[derive(Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq, Serialize, Deserialize, EnumString, IntoStaticStr)]
 pub enum VerificationRelationshipType {
     Authentication,
     Assertion,
