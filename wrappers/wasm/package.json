@@ -1,6 +1,6 @@
 {
   "name": "@equstng/agent-sdk-wasm",
-  "version": "0.6.1",
+  "version": "0.6.2",
   "description": "WASM wrappers of ASDK",
   "main": "index.js",
   "types": "index.d.ts",
