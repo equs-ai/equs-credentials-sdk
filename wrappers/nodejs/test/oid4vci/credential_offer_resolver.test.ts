@@ -1,6 +1,6 @@
-import {Oid4VciCredentialOfferResolver} from "../../";
-import {AUTH_SERVER_METADATA, CRED_OFFER_WITH_PRE_AUTH_GRANT} from "./fixtures";
-import {getLocal} from "mockttp";
+import { Oid4VciCredentialOfferResolver } from "../../";
+import { AUTH_SERVER_METADATA, CRED_OFFER_WITH_PRE_AUTH_GRANT } from "./fixtures";
+import { getLocal } from "mockttp";
 
 describe("OID4VCI Credential Offer resolver: ", () => {
   test("resolve offer by reference with pre-authorized code grant", async () => {

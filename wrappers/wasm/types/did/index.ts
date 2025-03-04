@@ -1,4 +1,4 @@
-export * from "./resolution"
+export * from "./resolution";
 
 /**
  * The types of verification relationships that a key may support

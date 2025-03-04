@@ -11,6 +11,7 @@ import {
 import * as express from "express";
 import { config } from "../components/config";
 import { json } from "body-parser";
+import * as cors from "cors";
 import { createDidAndKeyMetadata } from "../components/utils";
 
 async function main(): Promise<void> {
@@ -29,6 +30,7 @@ async function main(): Promise<void> {
 
   const app = express();
   app.use(json());
+  app.use(cors());
 
   const sessions = new Map<string, IssuanceSession>();
 

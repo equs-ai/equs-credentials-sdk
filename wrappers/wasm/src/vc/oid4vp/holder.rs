@@ -152,6 +152,7 @@ impl OID4VPHolder {
     ) -> Result<Option<String>, JsError> {
         let auth_request = utils::convert_to_rust_object(auth_request)?;
         let credential_mapping = utils::convert_to_rust_object(credential_mapping)
+            .map_err(|err| JsError::new(&format!("{:?}", err)))
             .and_then(convert_from_js_credential_mapping)?;
 
         let result = self

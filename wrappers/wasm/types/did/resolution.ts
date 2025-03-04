@@ -1,12 +1,12 @@
-// @ts-ignore
-import {DIDDocument} from "../../dist"
+// @ts-expect-error dist will be available after build
+import { DIDDocument } from "../../dist";
 
 export interface DIDDocMetadata {
-  deactivated?: boolean
+  deactivated?: boolean;
 }
 
 export interface DIDMetadata {
-  contentType?: string
+  contentType?: string;
 }
 
 /**
@@ -18,7 +18,7 @@ export interface DIDMetadata {
  * - `metadata`: Additional resolution metadata (e.g., content type).
  */
 export interface DIDResolution {
-  document: DIDDocument
-  documentMetadata: DIDDocMetadata
-  metadata: DIDMetadata
+  document: DIDDocument;
+  documentMetadata: DIDDocMetadata;
+  metadata: DIDMetadata;
 }

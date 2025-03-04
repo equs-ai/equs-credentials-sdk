@@ -13,12 +13,12 @@ export enum KeyType {
 }
 
 export interface NonceData {
-  value: string
-  expires_in?: number
-  created: number
+  value: string;
+  expires_in?: number;
+  created: number;
 }
 
 export interface KeyMetadata {
-  did_url: string
-  kid: string
+  did_url: string;
+  kid: string;
 }

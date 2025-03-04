@@ -5,12 +5,14 @@
     "outDir": "pkg",
     "declaration": true,
     "emitDeclarationOnly": false,
-    "module": "commonjs",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
     "strict": false,
     "lib": [
       "ESNext",
       "dom"
     ],
+    "preserveConstEnums": true,
     "removeComments": true,
     "emitDecoratorMetadata": true,
     "experimentalDecorators": true,
@@ -26,7 +28,7 @@
     }
   },
   "include": [
-    "index.ts"
+    "types"
   ],
   "exclude": [
     "node_modules",

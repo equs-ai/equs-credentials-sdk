@@ -23,7 +23,7 @@ variables:
     - if: $CI_COMMIT_TAG && $CI_COMMIT_TAG =~ $VERSION_REGEX
     - when: never
 
-publish_target:
+publish_nodejs_target:
   <<: *nodejs_to_registry_template
   script:
     - |
@@ -47,7 +47,7 @@ publish_target:
     ALIAS: $ALIAS
     TARGET: $TARGET
 
-publish_target_dev:
+publish_nodejs_target_dev:
   <<: *nodejs_to_registry_template
   script:
     - |
@@ -71,7 +71,7 @@ publish_target_dev:
     ALIAS: $ALIAS
     TARGET: $TARGET
 
-publish_wrapper:
+publish_nodejs_wrapper:
   <<: *nodejs_to_registry_template
   script:
     - |
@@ -79,7 +79,7 @@ publish_wrapper:
       chmod +x scripts/build_and_publish_wrapper.sh
       NPM_TOKEN=${CI_JOB_TOKEN} ENVIRONMENT=production scripts/build_and_publish_wrapper.sh
 
-publish_wrapper_dev:
+publish_nodejs_wrapper_dev:
   <<: *nodejs_to_registry_template
   script:
     - |

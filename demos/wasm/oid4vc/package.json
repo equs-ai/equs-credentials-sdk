@@ -1,0 +1,43 @@
+{
+  "name": "oid4vc",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "config": {
+    "wasm_asdk_wrapper_path": "--prefix=../../../wrappers/wasm",
+    "nodejs_demo_path": "--prefix=../../nodejs/oid4vc"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "lint": "prettier --write .",
+    "preview": "vite preview",
+    "issuer": "npm run issuer $npm_package_config_nodejs_demo_path",
+    "verifier": "npm run verifier $npm_package_config_nodejs_demo_path",
+    "holder": "npm run dev",
+    "prepare_wasm_asdk_wrapper": "npm i $npm_package_config_wasm_asdk_wrapper_path && npm run build $npm_package_config_wasm_asdk_wrapper_path",
+    "prepare_nodejs_demo": "npm i $npm_package_config_nodejs_demo_path && npm run build $npm_package_config_nodejs_demo_path",
+    "preinstall": "npm run prepare_wasm_asdk_wrapper && npm run prepare_nodejs_demo"
+  },
+  "dependencies": {
+    "@equstng/agent-sdk": "../../../wrappers/wasm/pkg",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.21.0",
+    "@types/node": "^22.13.5",
+    "@types/react": "^19.0.10",
+    "@types/react-dom": "^19.0.4",
+    "@vitejs/plugin-react": "^4.3.4",
+    "eslint": "^9.21.0",
+    "prettier": "^3.2.5",
+    "eslint-plugin-react-hooks": "^5.1.0",
+    "eslint-plugin-react-refresh": "^0.4.19",
+    "globals": "^15.15.0",
+    "ts-loader": "^9.5.2",
+    "typescript": "~5.7.2",
+    "typescript-eslint": "^8.24.1",
+    "vite": "^6.2.0"
+  }
+}

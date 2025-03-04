@@ -1,5 +1,3 @@
-
-
 ## How to build
 
 Install `wasm-pack` from https://rustwasm.github.io/wasm-pack/installer/ and then
@@ -18,22 +16,16 @@ wasm-pack build --target=nodejs # Will output modules that can be directly consu
 wasm-pack build --target=web # Will output modules that can be directly consumed in browser without bundler usage
 ```
 
-## How to test in NodeJS
+### Note tests are run in Node.js environment thus need WASM package with Node.js target.
+
+Default build is aimed at web target. In order to build for Node.js run:
 
 ```bash
-WASM_TARGET=nodejs make
-cd ./tests-js
-npm install
-npm test
+    make WASM_TARGET=nodejs
 ```
 
-## How to test in Browser
+Build script is already included into test script so can be simply run via:
 
 ```bash
-WASM_TARGET=nodejs make
-cd ./test
-npm install
-npm run test-puppeteer
+    npm run test
 ```
-
-_Note tests will be executed with jest+puppeteer in Chromium installed inside node_modules._

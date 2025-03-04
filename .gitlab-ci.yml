@@ -8,6 +8,7 @@ include:
     ref: main
     file: '/templates/.gitlab-ci-blackduck-signature.yml'
   - local: "wrappers/nodejs/publish.yml"
+  - local: "wrappers/wasm/publish.yml"
   - local: "plugins/askar/wrappers/nodejs/publish.yml"
 
 stages:

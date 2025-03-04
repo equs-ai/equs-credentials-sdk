@@ -1,4 +1,4 @@
-import {Alg} from "../crypto";
+import { Alg } from "../crypto";
 
 /**
  * Formats for Verifiable Credentials
@@ -19,8 +19,8 @@ export enum VCFormat {
  * - `payload`: the serialized credential data (e.g., a SD-JWT or JSON-LD document)
  */
 export interface Credential {
-  format: VCFormat,
-  payload: string,
+  format: VCFormat;
+  payload: string;
 }
 
 /**
@@ -32,9 +32,9 @@ export interface Credential {
  * - `id`: Credential ID
  */
 export interface CredentialEntry {
-  credential: Credential,
-  kid: string,
-  id: string,
+  credential: Credential;
+  kid: string;
+  id: string;
 }
 
 /**
@@ -48,9 +48,9 @@ export interface CredentialEntry {
  * - `fields`: The fields contained in the credential.
  */
 export interface CredentialMetadata {
-  type: string
-  format: VCFormat
-  kid: string
-  alg?: Alg
-  fields: Array<string>
+  type: string;
+  format: VCFormat;
+  kid: string;
+  alg?: Alg;
+  fields: Array<string>;
 }

@@ -1,17 +1,20 @@
-import {CompletedRequest, getLocal} from "mockttp";
+import { CompletedRequest, getLocal } from "mockttp";
 import {
   Credential,
   CredentialEntry,
   CredentialMetadata,
+  DIDKey,
+  HttpClient,
   InMemKms,
   InMemVault,
   KeyMetadata,
   OID4VPHolder,
-  VCFormat,
-  HttpClient,
-  OID4VPHolderBuilder, PresentationSubmission, KeyType, DIDKey, UniversalDIDResolver,
-} from "agent-sdk";
-import {AUTH_REQUEST, AUTH_REQUEST_JWT, PRESENTATION_SUBMISSION, STATE, VC, VC_TYPE} from "./fixtures";
+  OID4VPHolderBuilder,
+  UniversalDIDResolver,
+} from "../../../pkg";
+import { AUTH_REQUEST, AUTH_REQUEST_JWT, PRESENTATION_SUBMISSION, STATE, VC, VC_TYPE } from "./fixtures";
+import { PresentationSubmission } from "../../../../types";
+import { KeyType, VCFormat } from "../../../types";
 
 describe("OID4VP Holder: ", () => {
   const mockServer = getLocal();
@@ -28,9 +31,9 @@ describe("OID4VP Holder: ", () => {
     mockServer.reset();
     kms = new InMemKms();
     vault = new InMemVault();
-    holder = await new OID4VPHolderBuilder(kms, vault, "client_id").withHttpClient(HttpClient.insecure()).build()
+    holder = await new OID4VPHolderBuilder(kms, vault, "client_id").withHttpClient(HttpClient.insecure()).build();
 
-    let keyMetadata = await createKeyMetadata(kms)
+    let keyMetadata = await createKeyMetadata(kms);
 
     credential = {
       format: VCFormat.SdJwtVc,
@@ -49,7 +52,7 @@ describe("OID4VP Holder: ", () => {
   test("resolve Authorization request", async () => {
     await mockServer
       .forGet("/request")
-      .thenReply(200, AUTH_REQUEST_JWT, {"content-type": "application/oauth-authz-req+jwt"});
+      .thenReply(200, AUTH_REQUEST_JWT, { "content-type": "application/oauth-authz-req+jwt" });
 
     const authorizationRequest = await holder.getAuthorizationRequest(
       "openid4vp://?client_id=did%3Akey%3AzDnaeeTG88wpPhMzuDRvLRTTyNMyJip5e6TLmsjyvPiSYUFk7&request_uri=http%3A%2F%2Flocalhost%3A9001%2Frequest",
@@ -93,13 +96,13 @@ async function handleRequest(request: CompletedRequest): Promise<{ statusCode: 2
   const presentationSubmission: PresentationSubmission = JSON.parse(form_data.presentation_submission as string);
   presentationSubmission.id = PRESENTATION_SUBMISSION.id;
 
-  expect(presentationSubmission).toEqual(PRESENTATION_SUBMISSION)
+  expect(presentationSubmission).toEqual(PRESENTATION_SUBMISSION);
 
   if (!form_data.vp_token?.length) throw new Error("Form data is invalid");
 
   expect(form_data.state).toEqual(STATE);
 
-  return {statusCode: 200, body: ""};
+  return { statusCode: 200, body: "" };
 }
 
 async function createKeyMetadata(kms: InMemKms): Promise<KeyMetadata> {

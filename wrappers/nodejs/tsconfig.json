@@ -4,19 +4,13 @@
     "declaration": true,
     "emitDeclarationOnly": false,
     "module": "commonjs",
-    "lib": [
-      "ESNext"
-    ],
+    "lib": ["ESNext"],
     "removeComments": true,
     "emitDecoratorMetadata": true,
     "experimentalDecorators": true,
     "allowSyntheticDefaultImports": true,
     "target": "ESNext"
   },
-  "include": [
-    "index.ts"
-  ],
-  "exclude": [
-    "node_modules"
-  ]
+  "include": ["index.ts"],
+  "exclude": ["node_modules"]
 }
