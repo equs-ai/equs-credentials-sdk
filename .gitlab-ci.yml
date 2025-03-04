@@ -216,8 +216,6 @@ wasm-test-job:
   script:
     - cd wrappers/wasm
     - npm install
-    - make
-    - cd ./test
     - npm run test
   only:
     - merge_requests
