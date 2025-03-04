@@ -1,0 +1,34 @@
+variables:
+  REGISTRY_URL: https://${CI_SERVER_HOST}/api/v4/projects/${CI_PROJECT_ID}/packages/npm/
+
+.cargo_local_deps_script: &cargo_local_deps_script
+  - sed -i "s|ssh://git@git.slock.it/|https://gitlab-ci-token:${CI_JOB_TOKEN}@git.slock.it/|" Cargo.toml
+
+.wasm_job_configs: &wasm_job_configs
+  image: node:${NODE_VERSION}
+  before_script:
+    - curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain ${RUST_VERSION}
+    - apt-get update && apt-get install -y clang
+    - source "$HOME/.cargo/env"
+    - *cargo_local_deps_script
+
+.wasm_to_registry_template: &wasm_to_registry_template
+  <<: *wasm_job_configs
+  stage: release
+  rules:
+    - if: $CI_COMMIT_TAG && $CI_COMMIT_TAG =~ $VERSION_REGEX
+    - when: never
+
+publish_wasm_wrapper:
+  <<: *wasm_to_registry_template
+  script:
+    - |
+      cd wrappers/wasm
+      rustup target add wasm32-unknown-unknown
+      cargo install wasm-pack
+      npm i
+      npm run build
+      cp .npmrc pkg/.npmrc
+      cp .npmignore pkg/.npmignore
+      cd pkg
+      NPM_TOKEN=${CI_JOB_TOKEN} npm publish --registry="https://git.slock.it/api/v4/projects/1387/packages/npm/"

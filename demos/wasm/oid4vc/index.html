@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link href="/vite.svg" rel="icon" type="image/svg+xml" />
+    <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+    <link href="src/index.css" rel="stylesheet" />
+    <link href="src/App.css" rel="stylesheet" />
+    <title>Vite + React + TS</title>
+  </head>
+  <body>
+    <div id="root"></div>
+
+    <div class="container" id="welcome">
+      <h1>Welcome to Agent SDK Web Assembly Demonstration!</h1>
+      <p>Click the button to start demo</p>
+      <button id="startButton">Start</button>
+    </div>
+
+    <div class="container" id="thankYou">
+      <h1>Thank you for participating!</h1>
+      <p>The demo has ended.</p>
+      <button id="restartButton">Restart</button>
+    </div>
+
+    <script type="module">
+      import { start } from "./src/applications/holder";
+
+      async function startDemo() {
+        document.getElementById("welcome").style.display = "none";
+
+        await start();
+
+        document.getElementById("thankYou").style.display = "block";
+      }
+
+      function restartDemo() {
+        location.reload();
+      }
+
+      document.getElementById("startButton").addEventListener("click", startDemo);
+      document.getElementById("restartButton").addEventListener("click", restartDemo);
+    </script>
+  </body>
+</html>

@@ -2,6 +2,7 @@
   "bail": false,
   "verbose": true,
   "moduleFileExtensions": ["js", "ts", "d.ts"],
+  "preset": "jest-puppeteer",
   "transform": {
     "^.+\\.(ts|tsx)$": "ts-jest"
   },

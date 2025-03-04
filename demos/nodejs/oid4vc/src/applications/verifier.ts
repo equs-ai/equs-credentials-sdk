@@ -14,6 +14,7 @@ import { urlencoded } from "express";
 import { json } from "body-parser";
 import { config } from "../components/config";
 import { createDidAndKeyMetadata } from "../components/utils";
+import * as cors from "cors";
 
 async function main(): Promise<void> {
   await enableLogs(TracingLogFormat.Full, TracingLogLevel.Info);
@@ -36,6 +37,7 @@ async function main(): Promise<void> {
 
   const app = express();
   app.use(json());
+  app.use(cors());
   app.use(urlencoded({ extended: true }));
 
   app.get("/request_uri", async (req, res) => {

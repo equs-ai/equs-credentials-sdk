@@ -1,4 +1,5 @@
-import {Alg, InMemKms, KeyType} from "agent-sdk";
+import { InMemKms } from "../../pkg";
+import { Alg, KeyType } from "../../types";
 
 describe("InMemKMS: ", () => {
   test("Sign and Verify", async () => {
@@ -10,10 +11,10 @@ describe("InMemKMS: ", () => {
     expect(keyHandleByPublicKey.alg).toEqual(Alg.ES256);
     expect(keyHandleByPublicKey.jwk).toEqual(keyHandle.jwk);
 
-    const text = 'example text';
+    const text = "example text";
     const text_bytes = Buffer.from(text, "utf-8");
 
-    const signature = await keyHandle.sign(text_bytes)
+    const signature = await keyHandle.sign(text_bytes);
 
     await keyHandle.verify(text_bytes, signature);
   });

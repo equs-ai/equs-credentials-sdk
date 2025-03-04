@@ -24,7 +24,7 @@ describe("VC::Core", () => {
   let holder: VcCoreHolder;
 
   beforeEach(async () => {
-    statusIssuer = createStatusIssuer(utils.kms, await utils.getStatusIssuerMetadata())
+    statusIssuer = createStatusIssuer(utils.kms, await utils.getStatusIssuerMetadata());
     issuer = createIssuer(utils.kms, await utils.getIssuerMetadata());
     holder = createHolder(utils.kms, utils.vault, { clientId: "wallet-dev" });
   });
@@ -35,8 +35,8 @@ describe("VC::Core", () => {
         format: VCStatusesDataFormat.StatusListToken,
         payload: {
           statuses: {
-            "2": 1 // 'INVALID' (1) status for the VC with index 2
-          }
+            "2": 1, // 'INVALID' (1) status for the VC with index 2
+          },
         },
       });
 
@@ -44,7 +44,7 @@ describe("VC::Core", () => {
 
       expect(decoded).toMatchObject({
         sub: "http://localhost/status_list",
-        status_list : { lst: 'eNpjYWBgAAAAFAAF', bits: 1 }
+        status_list: { lst: "eNpjYWBgAAAAFAAF", bits: 1 },
       });
       expect(decoded.iat).toBeDefined();
     });
@@ -108,7 +108,12 @@ describe("VC::Core", () => {
         utils.nonce,
         keyMetadata,
       );
-      const credential = await issuer.issueCredential(credentialRequest, utils.claims, utils.nonce, utils.credStatusInfo);
+      const credential = await issuer.issueCredential(
+        credentialRequest,
+        utils.claims,
+        utils.nonce,
+        utils.credStatusInfo,
+      );
       const metadata = await resolveMetadata(credential, keyMetadata);
       const result = await holder.storeCredential(credential, metadata);
       expect(result).toBeDefined();
@@ -120,7 +125,12 @@ describe("VC::Core", () => {
         utils.nonce,
         await utils.getKeyMetadata(),
       );
-      const credential = await issuer.issueCredential(credentialRequest, utils.claims, utils.nonce, utils.credStatusInfo);
+      const credential = await issuer.issueCredential(
+        credentialRequest,
+        utils.claims,
+        utils.nonce,
+        utils.credStatusInfo,
+      );
       const result = await holder.verifyCredential(credential);
       expect(result).toBeUndefined();
     });
@@ -133,7 +143,12 @@ describe("VC::Core", () => {
         utils.nonce,
         keyMetadata,
       );
-      const credential = await issuer.issueCredential(credentialRequest, utils.claims, utils.nonce, utils.credStatusInfo);
+      const credential = await issuer.issueCredential(
+        credentialRequest,
+        utils.claims,
+        utils.nonce,
+        utils.credStatusInfo,
+      );
       const metadata = await resolveMetadata(credential, keyMetadata);
       await holder.storeCredential(credential, { ...metadata, type: temp_store_map });
 
@@ -205,7 +220,8 @@ describe("VC::Core", () => {
         asyncCall: async (_: HttpRequest): Promise<HttpResponse> => {
           // status list is generated with all indexes with status value 'VALID'
           // except the value for index 2 which is 'INVALID'
-          const status_list_jwt = "eyJ0eXAiOiJzdGF0dXNsaXN0K2p3dCIsImFsZyI6IkVTMjU2Iiwia2lkIjoiZGlkOmtleTp6RG5hZXV4SHU2R3VGWUE0QVIxcWZiRkpLQUMxVmlHRVBnTTFmV0NTRDJETEVObmVBI3pEbmFldXhIdTZHdUZZQTRBUjFxZmJGSktBQzFWaUdFUGdNMWZXQ1NEMkRMRU5uZUEifQ.eyJzdGF0dXNfbGlzdCI6eyJiaXRzIjoxLCJsc3QiOiJlTnBqWVdCZ0FBQUFGQUFGIn0sInN1YiI6Imh0dHA6Ly9leGFtcGxlLmNvbS9zdGF0dXNfbGlzdCIsImlhdCI6MTczOTIxMTcxNSwiX3NkX2FsZyI6InNoYS0yNTYifQ.rkJzhn4WEUHAbxcrNl4VWDee8UV5tTLMGvqEVGC60H-NmWI-4F-lj8p4aImHwyW5B8iEN5myfp8mcLliFVeuNA~";
+          const status_list_jwt =
+            "eyJ0eXAiOiJzdGF0dXNsaXN0K2p3dCIsImFsZyI6IkVTMjU2Iiwia2lkIjoiZGlkOmtleTp6RG5hZXV4SHU2R3VGWUE0QVIxcWZiRkpLQUMxVmlHRVBnTTFmV0NTRDJETEVObmVBI3pEbmFldXhIdTZHdUZZQTRBUjFxZmJGSktBQzFWaUdFUGdNMWZXQ1NEMkRMRU5uZUEifQ.eyJzdGF0dXNfbGlzdCI6eyJiaXRzIjoxLCJsc3QiOiJlTnBqWVdCZ0FBQUFGQUFGIn0sInN1YiI6Imh0dHA6Ly9leGFtcGxlLmNvbS9zdGF0dXNfbGlzdCIsImlhdCI6MTczOTIxMTcxNSwiX3NkX2FsZyI6InNoYS0yNTYifQ.rkJzhn4WEUHAbxcrNl4VWDee8UV5tTLMGvqEVGC60H-NmWI-4F-lj8p4aImHwyW5B8iEN5myfp8mcLliFVeuNA~";
 
           return {
             statusCode: 200,

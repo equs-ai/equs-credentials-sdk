@@ -1,23 +1,31 @@
 {
-  "name": "asdk-demo-nodejs-issuer",
+  "name": "asdk-demo-nodejs",
   "version": "0.1.0",
   "description": "Node.js demo for Agent-SDK",
   "main": "",
+  "config": {
+    "nodejs_asdk_wrapper_path": "--prefix=../../../wrappers/nodejs",
+    "askar_storage_wrapper_path": "--prefix=../../../plugins/askar/wrappers/nodejs"
+  },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
     "build": "rm -rf build && tsc",
     "issuer": "node build/applications/issuer.js",
+    "verifier": "node build/applications/verifier.js",
     "holder": "node build/applications/holder.js",
-    "verifier": "node build/applications/verifier.js"
+    "prepare_nodejs_asdk_wrapper": "npm i $npm_package_config_nodejs_asdk_wrapper_path && npm run build:debug $npm_package_config_nodejs_asdk_wrapper_path",
+    "prepare_askar_storage_wrapper": "npm i $npm_package_config_askar_storage_wrapper_path && npm run build $npm_package_config_askar_storage_wrapper_path",
+    "preinstall": "npm run prepare_nodejs_asdk_wrapper && npm run prepare_askar_storage_wrapper"
   },
   "author": "aziz.mukhtorjonov@dsr-corporation.com",
   "dependencies": {
     "@equstng/agent-sdk": "../../../wrappers/nodejs",
     "@equstng/agent-sdk-askar-storage": "../../../plugins/askar/wrappers/nodejs",
     "body-parser": "^2.0.1",
+    "cors": "^2.8.5",
     "express": "^5.0.0"
   },
   "devDependencies": {
+    "@types/cors": "^2.8.17",
     "@types/express": "^5.0.0",
     "@types/node": "^20.11.30",
     "@typescript-eslint/eslint-plugin": "^7.4.0",

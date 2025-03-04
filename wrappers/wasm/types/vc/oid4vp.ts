@@ -1,7 +1,7 @@
-import {CredentialEntry} from "./credential";
-import {KeyMetadata} from "../crypto";
+import { CredentialEntry } from "./credential";
+import { KeyMetadata } from "../crypto";
 // @ts-ignore
-import {ClientMetadata, PresentationDefinition} from "../../dist";
+import { ClientMetadata, PresentationDefinition } from "../../dist";
 
 /**
  * A `OID4VP` authorization request.
@@ -13,14 +13,14 @@ import {ClientMetadata, PresentationDefinition} from "../../dist";
  * `response_uri` URI to send the response.
  */
 export interface AuthorizationRequest {
-  client_id: string
-  presentation_definition: PresentationDefinition
-  client_metadata: ClientMetadata
-  nonce: string
-  response_type: string
-  response_mode: string
-  response_uri: string
-  state?: string
+  client_id: string;
+  presentation_definition: PresentationDefinition;
+  client_metadata: ClientMetadata;
+  nonce: string;
+  response_type: string;
+  response_mode: string;
+  response_uri: string;
+  state?: string;
 }
 
 /**
@@ -32,8 +32,8 @@ export interface AuthorizationRequest {
  * - `id_token_metadata`: metadata containing the signing key and lifetime for the SIOP ID token
  */
 export interface AuthorizationResponseMetadata {
-  claims_to_exclude?: Record<string, Array<string>>
-  id_token_metadata?: IdTokenMetadata
+  claims_to_exclude?: Record<string, Array<string>>;
+  id_token_metadata?: IdTokenMetadata;
 }
 
 /**
@@ -43,8 +43,8 @@ export interface AuthorizationResponseMetadata {
  * - `lifetime`: lifetime of the ID token.
  */
 export interface IdTokenMetadata {
-  key_metadata: KeyMetadata
-  lifetime: number
+  key_metadata: KeyMetadata;
+  lifetime: number;
 }
 
 /**

@@ -1,9 +1,18 @@
-PKG_NAME ?= agent-sdk
-PKG_VERSION ?= 0.6.0
-WASM_TARGET ?= nodejs
+PKG_NAME ?= $(shell npm pkg get name | tr -d '"')
+PKG_VERSION ?= $(shell npm pkg get version | tr -d '"')
+PKG_MAIN ?= $(shell npm pkg get main | tr -d '"')
+PKG_TYPES ?= $(shell npm pkg get types | tr -d '"')
+WASM_TARGET ?= web
 
 ifndef PROJECT_DIR
 PROJECT_DIR := $(shell git rev-parse --show-toplevel)
+endif
+
+UNAME_S := $(shell uname -s)
+ifeq ($(UNAME_S), Darwin)
+    SED_INPLACE = sed -i "" -E
+else
+    SED_INPLACE = sed -i -r
 endif
 
 WASM_DIR_NAME := wasm
@@ -13,6 +22,8 @@ WASM_PKG_DIR_NAME := pkg
 WASM_PKG_DIR := $(WASM_DIR)/$(WASM_PKG_DIR_NAME)
 
 TYPES_DIR := $(PROJECT_DIR)/wrappers/types
+TS_MODULE := esm
+TYPES_TS_CONFIG := $(TYPES_DIR)/tsconfig.$(TS_MODULE).json
 
 .PHONY: all \
 		pkg_clean build install publish clean
@@ -24,16 +35,16 @@ pkg_clean:
 
 build: $(WASM_DIR) pkg_clean
 	cd $<
-	wasm-pack build --target $(WASM_TARGET) --out-name binary
-	sed -i -r "s/\"name\": \"[^\"]*\"/\"name\": \"$(PKG_NAME)\"/g" $(WASM_PKG_DIR_NAME)/package.json
-	sed -i -r "s/\"version\": \"[^\"]*\"/\"version\": \"$(PKG_VERSION)\"/g" $(WASM_PKG_DIR_NAME)/package.json
-	sed -i -r "s/\"main\": \"[^\"]*\"/\"main\": \"index.js\"/g" $(WASM_PKG_DIR_NAME)/package.json
-	sed -i -r "s/\"types\": \"[^\"]*\"/\"types\": \"index.d.ts\"/g" $(WASM_PKG_DIR_NAME)/package.json
-	npx tsc -p $(TYPES_DIR) && mv $(TYPES_DIR)/dist $(WASM_PKG_DIR)/dist
+	wasm-pack build --target $(WASM_TARGET) --out-name index
+	$(SED_INPLACE) "s|\"name\": \"[^\"]*\"|\"name\": \"$(PKG_NAME)\"|g" $(WASM_PKG_DIR)/package.json
+	$(SED_INPLACE) "s|\"version\": \"[^\"]*\"|\"version\": \"$(PKG_VERSION)\"|g" $(WASM_PKG_DIR)/package.json
+	$(SED_INPLACE) "s|\"main\": \"[^\"]*\"|\"main\": \"$(PKG_MAIN)\"|g" $(WASM_PKG_DIR)/package.json
+	$(SED_INPLACE) "s|\"types\": \"[^\"]*\"|\"types\": \"$(PKG_TYPES)\"|g" $(WASM_PKG_DIR)/package.json
+	$(SED_INPLACE) "/\"files\": \\[/,/\\],/d" $(WASM_PKG_DIR)/package.json
+	npx tsc -p $(TYPES_TS_CONFIG) && mv $(TYPES_DIR)/dist/$(TS_MODULE) $(WASM_PKG_DIR)/dist
 	node scripts/add-import-line.mjs
+	node scripts/add-export-line-$(TS_MODULE).mjs
 	npx tsc
-
-
 
 install: $(WASM_PKG_DIR)
 	cd $< && npm install .

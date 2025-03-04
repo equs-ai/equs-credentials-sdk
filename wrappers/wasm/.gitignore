@@ -4,6 +4,9 @@ Cargo.lock
 bin/
 pkg/
 wasm-pack.log
+**/*.d.ts
+**/*.js
+!scripts
 
 **/*-lock.json
 **/*node_modules

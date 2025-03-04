@@ -4,19 +4,20 @@ import fs from "fs/promises";
   try {
     const externalTypesFilePath = "./dist";
     const internalTypesFilePath = "./types";
-    const file = "pkg/binary.d.ts";
-    const encoding = "utf8"
+    const typesFile = "pkg/index.d.ts";
+    const encoding = "utf8";
 
-    let content = await fs.readFile(file, encoding);
+    let typesContent = await fs.readFile(typesFile, encoding);
     const exported_external_types = [
       "DIDVerificationMethod",
       "OID4VCIIssuerMetadata",
       "OID4VCICredentialOffer",
       "TokenResponse",
       "DIDDocument",
-      "WalletMetadata"
+      "WalletMetadata",
     ];
     const exported_internal_types = [
+      "DIDResolution",
       "Alg",
       "AuthorizationRequest",
       "Credential",
@@ -25,20 +26,17 @@ import fs from "fs/promises";
       "CredentialMapping",
       "CredentialsMapping",
       "CredentialMetadata",
-      "DIDResolution",
       "KeyMetadata",
       "KeyType",
       "NonceData",
-      "VerificationRelationshipType"
+      "VerificationRelationshipType",
     ];
     let import_external_str = `import { ${exported_external_types.join(", ")} } from "${externalTypesFilePath}";\n`;
     let import_internal_str = `import { ${exported_internal_types.join(", ")} } from "${internalTypesFilePath}";\n`;
 
-    content = import_external_str + import_internal_str + content;
+    await fs.writeFile(typesFile, import_external_str + import_internal_str + typesContent, encoding);
 
-    console.log(`Added import line in ${file}`);
-
-    await fs.writeFile(file, content, encoding);
+    console.log(`Added import line in ${typesFile}`);
   } catch (error) {
     console.error("Error occurred:", error);
   }

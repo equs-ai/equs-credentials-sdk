@@ -1,6 +1,6 @@
 {
   "compilerOptions": {
-    "outDir": "./dist",
+    "outDir": "./dist/cjs",
     "rootDir": "./",
     "declaration": true,
     "emitDeclarationOnly": false,

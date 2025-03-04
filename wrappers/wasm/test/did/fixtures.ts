@@ -1,10 +1,7 @@
 export class Fixtures {
   readonly didResolution = {
     document: {
-      "@context": [
-        "https://www.w3.org/ns/did/v1",
-        "https://w3id.org/security/multikey/v1",
-      ],
+      "@context": ["https://www.w3.org/ns/did/v1", "https://w3id.org/security/multikey/v1"],
       id: expect.stringContaining("did:key:"),
       authentication: [expect.stringContaining("did:key:")],
       assertionMethod: [expect.stringContaining("did:key:")],
@@ -17,8 +14,8 @@ export class Fixtures {
         },
       ],
     },
-    metadata: {contentType: "application/did+ld+json"},
+    metadata: { contentType: "application/did+ld+json" },
     // @ts-ignore
-    document_metadata: {deactivated: null},
+    document_metadata: { deactivated: null },
   };
 }

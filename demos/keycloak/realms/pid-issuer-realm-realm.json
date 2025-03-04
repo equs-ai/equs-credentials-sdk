@@ -992,6 +992,7 @@
         "eu.europa.ec.euidi://authorization"
       ],
       "webOrigins": [
+        "http://localhost:3000",
         "/*"
       ],
       "notBefore": 0,

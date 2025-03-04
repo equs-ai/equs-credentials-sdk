@@ -1,4 +1,5 @@
-import {NonceData} from "../crypto";
+import { NonceData } from "../crypto";
+import { Credential } from "./credential";
 
 /**
  * A deferred credential response.
@@ -9,7 +10,7 @@ import {NonceData} from "../crypto";
  * - `transaction_id`: can be used to poll or reference the transaction status for a later retrieval.
  */
 export interface CredentialDeferred {
-  transaction_id: string
+  transaction_id: string;
 }
 
 /**
@@ -24,8 +25,8 @@ export interface CredentialDeferred {
  * - `notification_id`: for tracking notification events related to the issuance.
  */
 export interface CredentialImmediate {
-  credential: Credential
-  notification_id?: string
+  credential: Credential;
+  notification_id?: string;
 }
 
 /**
@@ -36,6 +37,6 @@ export interface CredentialImmediate {
  * - `nonce_data`: contains optional `NonceData` for subsequent calls.
  */
 export interface CredentialResponse {
-  data: CredentialDeferred | CredentialImmediate
-  nonce_data?: NonceData
+  data: CredentialDeferred | CredentialImmediate;
+  nonce_data?: NonceData;
 }

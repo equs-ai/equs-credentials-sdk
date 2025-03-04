@@ -1,10 +1,6 @@
-import {
-  DIDWeb,
-  InMemKms,
-  KeyType,
-  VerificationMethodKey,
-  VerificationRelationshipType
-} from "agent-sdk";
+import { DIDWeb, InMemKms, VerificationMethodKey } from "../../pkg";
+import { KeyType } from "../../types";
+import { VerificationRelationshipType } from "../../types/did";
 
 describe("did:web: ", () => {
   test("generate DID from URL", async () => {
@@ -29,10 +25,7 @@ describe("did:web: ", () => {
     ]);
 
     let expected_did_doc = {
-      "@context": [
-        "https://www.w3.org/ns/did/v1",
-        "https://w3id.org/security#EcdsaSecp256r1VerificationKey2019"
-      ],
+      "@context": ["https://www.w3.org/ns/did/v1", "https://w3id.org/security#EcdsaSecp256r1VerificationKey2019"],
       id: did,
       authentication: ["did:web:test.example.com#key-0"],
       keyAgreement: ["did:web:test.example.com#key-0"],
@@ -49,7 +42,7 @@ describe("did:web: ", () => {
     let did_doc = didWeb.generateDidDocument(did, [verificationMethodKey]);
     expected_did_doc.verificationMethod[0].publicKeyMultibase = did_doc.verificationMethod[0][
       "publicKeyMultibase"
-      ] as string;
+    ] as string;
 
     expect(did_doc).toEqual(expected_did_doc);
   });

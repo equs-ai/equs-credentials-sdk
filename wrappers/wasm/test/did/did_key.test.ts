@@ -1,4 +1,5 @@
-import {DIDKey, InMemKms, KeyType} from "agent-sdk";
+import { DIDKey, InMemKms } from "../../pkg";
+import { KeyType } from "../../types";
 
 describe("did:key: ", () => {
   test("generate DID", async () => {
