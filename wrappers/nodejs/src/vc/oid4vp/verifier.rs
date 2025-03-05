@@ -8,6 +8,13 @@ use napi::{Error, Result};
 use napi_derive::napi;
 use url::Url;
 
+/// The `OID4VP` `Verifier` API.
+///
+/// Supports presentation request and verification flow according to the `OID4VP` specification.
+/// See <https://openid.net/specs/openid-4-verifiable-presentations-1_0-ID2.html>.
+///
+/// @property createAuthorizationRequest - {@link OID4VPVerifier.createAuthorizationRequest}
+/// @property verifyPresentation - {@link OID4VPVerifier.verifyPresentation}
 #[napi]
 pub struct OID4VPVerifier(Box<dyn Verifier>);
 
@@ -19,6 +26,14 @@ impl OID4VPVerifier {
 
 #[napi]
 impl OID4VPVerifier {
+    /// Creates an `OID4VP` authorization request.
+    ///
+    /// @param {PresentationDefinition} presentationDefinition - the presentation definition specifying the presentation requirements.
+    /// @param {AuthResponseOptions} passAuthRequestObject - how to pass an authorization request object to holder, by value or by reference.
+    /// @param {PassAuthRequestObject} authResponseOptions - config about how and where to send authorization response.
+    /// @param {WalletMetadata | null} [walletMetadata] - optional metadata of holder. if it is `null`, default metadata will be used
+    ///
+    /// @returns {AuthorizationRequestWithSession}
     #[napi]
     pub async fn create_authorization_request(
         &self,
@@ -53,6 +68,12 @@ impl OID4VPVerifier {
         })
     }
 
+    /// Verifies the presentation provided by the Holder.
+    ///
+    /// @param {AuthorizationResponse} authorizationResponse - the authorization response containing the VP token and presentation submission.
+    /// @param {PresentationSession} session - a session object containing `Nonce` and {@link PresentationDefinition}, which are generated when the {@link OID4VPVerifier.createAuthorizationRequest} method is called.
+    ///
+    /// @returns {Claims} - The verified claims as a JSON object on success.
     #[napi(ts_return_type = "Promise<Claims>")]
     pub async fn verify_presentation(
         &self,
@@ -67,6 +88,7 @@ impl OID4VPVerifier {
     }
 }
 
+/// An `OID4VP` response configuration of authorization request object.
 #[napi(js_name = "AuthResponseOptions", object)]
 pub struct JsAuthResponseOptions {
     pub type_: String,
@@ -110,6 +132,11 @@ impl JsPassAuthRequestObject {
     }
 }
 
+/// A session with state managed during the presentation.
+///
+/// @property {string} nonce
+/// @property {PresentationDefinition} presentationDefinition
+/// @property {string | null} [authorizationRequestJwt]
 #[napi(js_name = "PresentationSession", object)]
 pub struct JsPresentationSession {
     pub nonce: String,
@@ -149,6 +176,12 @@ pub struct AuthorizationRequestWithSession {
     pub session: JsPresentationSession,
 }
 
+/// An OID4VP authorization response.
+///
+/// @property {any} vpToken - VP Token containing the Verifiable Presentation(s).
+/// @property {string | null} [idToken] - The OpenID Connect ID token used in the SIOP flow.
+/// @property {} presentationSubmission - Details of the submitted presentation.
+/// @property {string | null} [state] - The state may be used by a verifier to link requests and responses.
 #[napi(js_name = "AuthorizationResponse", object)]
 pub struct JsAuthorizationResponse {
     pub vp_token: serde_json::Value,

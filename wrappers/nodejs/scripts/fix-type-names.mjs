@@ -32,6 +32,8 @@ const replacements = [
   { from: "JsTokenValidation", to: "TokenValidation" },
   { from: "JsVerificationMethodKey", to: "VerificationMethodKey" },
   { from: "JsDuration", to: "Duration" },
+  { from: "JsAuthorizationResponseMetadata", to: "AuthorizationResponseMetadata" },
+  { from: "JsIdTokenMetadata", to: "IdTokenMetadata" },
   { from: "JsonObject", to: "Record<string, any>" },
 ];
 

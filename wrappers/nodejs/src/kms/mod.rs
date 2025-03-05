@@ -76,6 +76,7 @@ impl<KH: KeyHandle + 'static> Kms<KeyHandleWrapper> for KmsWrapper<KH> {
     }
 }
 
+/// Enum with supported {@link Kms} key types.
 #[napi(js_name = "KeyType")]
 pub enum JsKeyType {
     Ed25519,

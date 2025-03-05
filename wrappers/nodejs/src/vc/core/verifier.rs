@@ -8,11 +8,23 @@ use napi::Error;
 use napi_derive::napi;
 use serde_json::Value;
 
+/// An async low-level protocol-agnostic {@link Verifier} API.
+///
+/// Provides basic method for verification of `VP`s.
+///
+/// @property verifyPresentation - {@link VCCoreVerifier.verifyPresentation}
+/// @property obtainCredentialStatus - {@link VCCoreVerifier.obtainCredentialStatus}
 #[napi]
 pub struct VCCoreVerifier(pub(crate) Box<dyn Verifier>);
 
 #[napi]
 impl VCCoreVerifier {
+    /// Verify a {@link Presentation}.
+    ///
+    /// @param {string} nonce - a nonce used to generate {@link Presentation}.
+    /// @param {Presentation} presentation - a {@link Presentation} to verify.
+    ///
+    /// @returns {Claims} Verified {@link Claims} on success.
     #[napi(ts_return_type = "Promise<Claims>")]
     pub async fn verify_presentation(
         &self,
@@ -29,6 +41,12 @@ impl VCCoreVerifier {
             .and_then(to_json_object)
     }
 
+    /// Obtains the status for presented VC.
+    ///
+    /// @param {Presentation} presentation - a {@link Presentation} containing VC data.
+    /// @param {HttpClient} httpClient - a http client.
+    ///
+    /// @returns {VCStatus} VC Status on success
     #[napi]
     pub async fn obtain_credential_status(
         &self,

@@ -32,7 +32,7 @@ did_parser_nom = { git = "ssh://git@git.slock.it/open-source/aries-vcx.git", rev
 oauth2 = "5.0.0-rc.1"
 serde_json = "1.0.120"
 ssi = { version = "0.10.1", features = ["bbs"] }
-time = { version = "0.3.37", features = ["serde", "wasm-bindgen"] }
+time = { version = "=0.3.37", features = ["serde", "wasm-bindgen"] }
 serde = { version = "1.0.204", features = ["derive"] }
 serde_urlencoded = "0.7.1"
 serde_json_path = "0.7.1"

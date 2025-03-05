@@ -18,17 +18,28 @@ use crate::vc::oid4vci::issuer::OID4VCIIssuer;
 use crate::vc::oid4vci::{JsDuration, JsTokenValidation};
 use crate::vc::JsonObject;
 
+/// An enum containing options of discovery of the `Issuer` for a `Holder`
+///
+/// @property fromUrl - {@link IssuerDiscovery.fromUrl}
+/// @property fromOffer - {@link IssuerDiscovery.fromOffer}
+/// @property fromMetadata - {@link IssuerDiscovery.fromMetadata}
 #[derive(Clone)]
 #[napi(js_name = "IssuerDiscovery")]
 pub struct JsIssuerDiscovery(IssuerDiscovery);
 
 #[napi]
 impl JsIssuerDiscovery {
+    /// Creates `IssuerDiscovery` from url
+    ///
+    /// @param {string} url - issuer url
     #[napi(factory)]
     pub fn from_url(url: String) -> Self {
         JsIssuerDiscovery(IssuerDiscovery::Url(url))
     }
 
+    /// Creates `IssuerDiscovery` from {@link OID4VCICredentialOffer}
+    ///
+    /// @param {OID4VCICredentialOffer} credentialOffer - credential offer
     #[napi(factory)]
     pub fn from_offer(
         #[napi(ts_arg_type = "OID4VCICredentialOffer")] credential_offer: JsonObject,
@@ -38,6 +49,10 @@ impl JsIssuerDiscovery {
         Ok(JsIssuerDiscovery(IssuerDiscovery::Offer(credential_offer)))
     }
 
+    /// Creates `IssuerDiscovery` from {@link OID4VCIIssuerMetadata} and {@link AuthMetadata}
+    ///
+    /// @param {OID4VCIIssuerMetadata} issuerMetadata - issuer metadata
+    /// @param {AuthMetadata} authMetadata - authorization metadata
     #[napi(
         factory,
         ts_args_type = "issuerMetadata: OID4VCIIssuerMetadata, authMetadata: AuthMetadata"

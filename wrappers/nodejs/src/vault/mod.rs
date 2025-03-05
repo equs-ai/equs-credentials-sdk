@@ -12,6 +12,11 @@ pub use js::JsVault;
 pub use native::NativeVault;
 pub use unified::UnifiedVault;
 
+/// An interface for stored {@link Credential} in {@link Vault} with some extra information.
+///
+/// @property {Credential} credential
+/// @property {string} kid - key ID
+/// @property {string} id - ID of `CredentialEntry`
 #[napi(js_name = "CredentialEntry", object)]
 pub struct JsCredentialEntry {
     pub credential: JsCredential,

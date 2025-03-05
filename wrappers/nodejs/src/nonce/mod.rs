@@ -13,6 +13,7 @@ pub use js::JsNonceGenerator;
 pub use native::NativeNonceGenerator;
 pub use unified::UnifiedNonceGenerator;
 
+/// An interface containing nonce with created time and duration.
 #[napi(js_name = "NonceData", object)]
 pub struct JsNonceData {
     pub nonce: String,

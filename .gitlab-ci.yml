@@ -136,7 +136,7 @@ doc-build-job:
   <<: *rust_job_configs
   stage: build
   script:
-    - RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --workspace --all-features
+    - RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --workspace --all-features --exclude nodejs
   only:
     - merge_requests
     - main

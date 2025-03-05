@@ -1,3 +1,5 @@
+use crate::kms::{JsKeyType, KeyHandleWrapper, KmsWrapper};
+use crate::vc::core::JsAlg;
 use agent_sdk::crypto::{SigningKey, VerifyingKey};
 use agent_sdk::kms::{
     BIP32Params, CreateOptions, DerivativeKms, ECDH1PUParams, ECDHESParams, KeyHandle, KeyID, Kms,
@@ -6,15 +8,22 @@ use napi::bindgen_prelude::Uint8Array;
 use napi_derive::napi;
 use std::sync::Arc;
 
-use crate::kms::{JsKeyType, KeyHandleWrapper, KmsWrapper};
-use crate::vc::core::JsAlg;
-
+/// `Native Key Handle`
+///
+/// @property pubKey -  {@link NativeKeyHandle.pubKey}
+/// @property jwk - {@link NativeKeyHandle.jwk}
+/// @property alg - {@link NativeKeyHandle.alg}
+/// @property sign - {@link NativeKeyHandle.sign}
+/// @property verify - {@link NativeKeyHandle.verify}
 #[derive(Clone)]
 #[napi]
 pub struct NativeKeyHandle(Arc<dyn SigningKey>, Arc<dyn VerifyingKey>);
 
 #[napi]
 impl NativeKeyHandle {
+    /// Returns the public key for the corresponding handle.
+    ///
+    /// @returns {Array<number>} - Public key bytes.
     #[napi]
     pub fn pub_key(&self) -> napi::Result<Vec<u8>> {
         self.0
@@ -23,6 +32,11 @@ impl NativeKeyHandle {
             .map_err(|err| napi::Error::from_reason(format!("{err:?}")))
     }
 
+    /// Returns the public key in JWK form if it's supported.
+    ///
+    /// @returns {string | null}
+    /// * string jwk if the public key can be represented as JWK
+    /// * `null` if the JWK-form is not supported.
     #[napi]
     pub fn jwk(&self) -> Option<String> {
         self.0
@@ -30,11 +44,19 @@ impl NativeKeyHandle {
             .and_then(|value| serde_json::to_string(&value).ok())
     }
 
+    /// Returns algorithm of the signer.
+    ///
+    /// @returns {Alg} - An {@link Alg} enum value.
     #[napi]
     pub fn alg(&self) -> napi::Result<JsAlg> {
         self.0.alg().try_into()
     }
 
+    /// Sign the provided binary payload.
+    ///
+    /// @param {Uint8Array} payload - an array of bytes to be signed.
+    ///
+    /// @returns {Uint8Array} signed `payload` on success.
     #[napi]
     pub async fn sign(&self, payload: &[u8]) -> napi::Result<Uint8Array> {
         self.0
@@ -44,6 +66,12 @@ impl NativeKeyHandle {
             .map_err(|err| napi::Error::from_reason(format!("{err:?}")))
     }
 
+    /// Verify that a signed data was signed using the provided signature.
+    ///
+    /// @param {Uint8Array} data - a payload to be verified against the signature.
+    /// @param {Uint8Array} signature - the corresponding signature.
+    ///
+    /// @returns {void}
     #[napi]
     pub async fn verify(&self, data: &[u8], signature: &[u8]) -> napi::Result<()> {
         self.1
@@ -94,6 +122,11 @@ impl NativeKms {
         self.ecdhes = Some(Arc::new(derivative_kms));
     }
 
+    /// Create and store a key in `Kms`.
+    ///
+    /// @param {KeyType} kt - a {@link KeyType} for the key.
+    ///
+    /// @returns {string} - A `KeyId` for the created key on success.
     #[napi]
     pub async fn create(&self, kt: JsKeyType) -> napi::Result<String> {
         self.base
@@ -102,6 +135,11 @@ impl NativeKms {
             .map_err(|err| napi::Error::from_reason(format!("{err:?}")))
     }
 
+    /// Returns {@link KeyHandle} for the provided `KID`.
+    ///
+    /// @param {string} kid - a `KeyId` of the requested key.
+    ///
+    /// @returns {KeyHandle} - A {@link KeyHandle} supporting basic crypto primitives on success.
     #[napi]
     pub async fn get(&self, kid: String) -> napi::Result<NativeKeyHandle> {
         self.base

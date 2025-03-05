@@ -10,6 +10,41 @@ use napi::bindgen_prelude::Promise;
 use napi::threadsafe_function::{ErrorStrategy, ThreadsafeFunction};
 use napi_derive::napi;
 
+/// `Vault`
+///
+/// An async `Vault` interface for managing Verifiable Credentials.
+///
+/// Should be implemented by any adapter to be used with `ASDK`.
+///
+/// Supports storing, retrieving and finding {@link Credential}
+///
+/// @property {(credential: Credential, metadata: CredentialMetadata) => Promise<string>} storeCredential - Stores the {@link Credential} in `Vault`
+///
+/// * `credential` - the {@link Credential} to store
+///
+/// * `metadata` - the corresponding {@link CredentialMetadata}
+///
+/// * `returns` An `ID` of the stored `credential` on success
+///
+/// @property {(id: string) => Promise<void>} deleteCredential - Delete a {@link CredentialEntry} with {@link Credential} from `Vault`
+///
+/// * `id` -  `ID` of the stored {@link CredentialEntry}
+///
+/// @property {(id: string) => Promise<CredentialEntry | null>} getCredential - Get a {@link CredentialEntry} with {@link Credential} from `Vault`
+///
+/// * `id` - `ID` of the stored {@link CredentialEntry}
+///
+/// * `returns` {@link CredentialEntry} on success. `null` if no {@link CredentialEntry} was found by `id`
+///
+/// @property {() => Promise<Array<CredentialEntry>>} getCredentials - List all {@link CredentialEntry}s in `Vault`
+///
+/// * `returns` an array of {@link CredentialEntry} on success. In case if there are no entries an empty array should be returned
+///
+/// @property {(criteria: Array<string>) => Promise<Array<CredentialEntry>>} findCredentials - Find the matching {@link CredentialEntry}s in `Vault`
+///
+/// * `criteria` -  an array of {@link Credential} fields to search for credentials.
+///
+/// * `returns` An array of {@link CredentialEntry} matched the provided `fields` on success. In case if nothing meets the `fields` an empty array should be returned
 #[derive(Clone)]
 #[napi(js_name = "Vault", object, object_to_js = false)]
 pub struct JsVault {

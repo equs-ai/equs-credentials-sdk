@@ -149,7 +149,7 @@ pub trait Vault: Send + Sync {
     ///
     /// # Arguments
     ///
-    /// * `fields` -  a vec of  to search for credentials.
+    /// * `fields` -  a vec of fields to search for credentials.
     ///
     /// # Returns
     ///

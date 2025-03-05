@@ -26,6 +26,10 @@ use napi::Error;
 use napi_derive::napi;
 use serde_json::{json, to_string};
 
+/// A helper interface for handling Keys and `DID`s for the services.
+///
+/// @property {string} didUrl - `DID` url of the party
+/// @property {string} kid - corresponding key ID to access the key
 #[derive(Clone)]
 #[napi(js_name = "KeyMetadata", object)]
 pub struct JsKeyMetadata {
@@ -125,6 +129,10 @@ impl TryFrom<Alg> for JsAlg {
     }
 }
 
+/// Verifiable Credential (`VC`)
+///
+/// @property {VCFormat} format - format of `VC`
+/// @property {string} payload - `VC` in a string representation
 #[derive(Clone)]
 #[napi(js_name = "Credential", object)]
 pub struct JsCredential {
@@ -185,6 +193,15 @@ impl TryFrom<JsCredential> for Credential {
     }
 }
 
+/// `Credential Metadata`
+///
+/// Contains the various data related to some {@link Credential}.
+///
+/// @property {string} type - type of {@link Credential}
+/// @property {VCFormat} format - format of {@link Credential}
+/// @property {string} kid - The Key ID representing the ID of the cryptographic key used to sign the presentation of a credential.
+/// @property {Alg} [alg] - Algorithm of {@link Credential}
+/// @property {Array<string>} fields - Fields to filter by
 #[napi(js_name = "CredentialMetadata", object)]
 pub struct JsCredentialMetadata {
     pub type_: String,
@@ -220,6 +237,10 @@ impl TryFrom<CredentialMetadata> for JsCredentialMetadata {
     }
 }
 
+/// An interface for handling Proof of Possession.
+///
+/// @property {string} format - Format of `proof`
+/// @property {string} proof - Value of `proof`
 #[napi(js_name = "Proof", object)]
 pub struct JsProof {
     pub format: String,
@@ -244,6 +265,9 @@ impl From<Proof> for JsProof {
     }
 }
 
+/// A protocol-specific data for the {@link CredentialRequest}.
+///
+/// @property {number} [proofTolerance] - Duration of proof (in seconds)
 #[napi(js_name = "CredentialRequestData", object)]
 pub struct JsCredentialRequestData {
     pub proof_tolerance: Option<i64>,
@@ -265,6 +289,16 @@ impl From<CredentialRequestData> for JsCredentialRequestData {
     }
 }
 
+/// A `CredentialRequest` entity.
+///
+/// Contains the data related to requested {@link Credential}.
+///
+/// Built by `Holder` to be propagated later to the `Issuer` in exchange for actual {@link Credential}.
+///
+/// @property {string} credDefId - ID of credential definition
+/// @property {string} [credOfferId] - ID of credential offer
+/// @property {Proof} proof - proof of possession (MANDATORY)
+/// @property {CredentialRequestData} [protocolData] - credential request data
 #[napi(js_name = "CredentialRequest", object)]
 pub struct JsCredentialRequest {
     pub cred_def_id: String,
@@ -297,6 +331,9 @@ impl From<CredentialRequest> for JsCredentialRequest {
     }
 }
 
+/// A protocol-specific data for the {@link CredentialOffer}
+///
+/// *NOTE*: will be extended in the next releases.
 #[napi(js_name = "CredentialOfferData", object)]
 pub struct JsCredentialOfferData {}
 
@@ -312,12 +349,22 @@ impl From<CredentialOfferData> for JsCredentialOfferData {
     }
 }
 
+/// An enum that defines the different formats of representations for credential status information.
+///
+/// # Variants:
+///
+/// * `TokenStatusList` - Indicates that the status is managed using a token-based status list.
+/// * `BitstringStatusList` - Indicates that the status is managed using a bitstring representation
 #[napi(js_name = "CredentialStatusInfoFormat")]
 pub enum JsCredentialStatusInfoFormat {
     TokenStatusList,
     BitstringStatusList,
 }
 
+/// Credential Status
+///
+/// @property {CredentialStatusInfoFormat} format - format of `Credential Status Info`
+/// @property {Record<string, any>} payload - payload of `Credential Status Info` depending on format
 #[napi(js_name = "CredentialStatusInfo", object)]
 pub struct JsCredentialStatusInfo {
     pub format: JsCredentialStatusInfoFormat,
@@ -552,6 +599,11 @@ impl TryFrom<JsVCStatus> for VCStatus {
     }
 }
 
+/// Defines a token status list associated metadata for issuance.
+///
+/// @property {string} id: a unique identifier for the status list definition.
+/// @property {StatusListFormat} format: the format of the {@link StatusList}
+/// @property {KeyMetadata} keyMetadata: the metadata of the cryptographic key that is used to sign a status list.
 #[napi(object, js_name = "StatusListDefinition")]
 pub struct JsStatusListDefinition {
     pub id: String,
@@ -583,6 +635,12 @@ impl TryFrom<StatusListDefinition> for JsStatusListDefinition {
     }
 }
 
+/// A metadata for the {@link VcCoreStatusIssuer}
+///
+/// This interface encapsulates all the necessary data required to handle the issuance of status lists.
+///
+/// @property {string} issuerId - ID of `Issuer`
+/// @property {StatusListDefinition} supportedStatusLists - supported status lists
 #[napi(object, js_name = "StatusIssuerMetadata")]
 pub struct JsStatusIssuerMetadata {
     pub issuer_id: String,
@@ -625,6 +683,10 @@ pub enum JsCredentialOfferContentFormat {
     SupportedProofs,
 }
 
+/// An interface defining content for a {@link CredentialOffer}
+///
+/// @property {CredentialOfferContentFormat} format - format of `credential offer content`
+/// @property {Record<string, any>} payload - value of `credential offer content`
 #[napi(js_name = "CredentialOfferContent", object)]
 pub struct JsCredentialOfferContent {
     pub format: JsCredentialOfferContentFormat,
@@ -666,6 +728,17 @@ impl TryFrom<JsCredentialOfferContent> for CredentialOfferContent {
     }
 }
 
+/// A `CredentialOffer` entity.
+///
+/// Contains the data related to offered {@link Credential}.
+///
+/// Generated by `Issuer` to be used later by `Holder` to build a proper {@link CredentialRequest}.
+///
+/// @property {string} [credOfferId] - ID of `credential offer`
+/// @property {string} issuerId - ID of `Issuer`
+/// @property {string} credDefId - ID of {@link CredentialDefinition}
+/// @property {CredentialOfferContent} credDefId - content of `credential offer`
+/// @property {CredentialOfferData} protocolData - protocol data of `credential offer`
 #[napi(js_name = "CredentialOffer", object)]
 pub struct JsCredentialOffer {
     pub cred_offer_id: Option<String>,
@@ -742,6 +815,11 @@ impl From<PresentationRestrictionValue> for JsPresentationRestrictionValue {
     }
 }
 
+/// Represents a restrictions for presented credentials.
+///
+/// @property {Array<string>} fields - A list of field names that must be present in the credential.
+/// @property {PresentationRestrictionValue} [value] - An optional value that the field(s) must match.
+/// @property {boolean} optional - A flag indicates whether the specified field(s) is optional.
 #[napi(js_name = "PresentationRestriction", object)]
 pub struct JsPresentationRestriction {
     pub fields: Vec<String>,
@@ -769,6 +847,13 @@ impl From<PresentationRestriction> for JsPresentationRestriction {
     }
 }
 
+/// An entity used to prepare a {@link Presentation} for the `Verifier`.
+///
+/// Contains the parameters used by `Holder` to find a suitable {@link Credential}s.
+///
+/// @property {string} id - ID of `presentation input`
+/// @property {string} [format] - format of `presentation input`
+/// @property {Array<PresentationRestriction>} [restrictions] - restrictions of `presentation input`
 #[napi(js_name = "PresentationInput", object)]
 pub struct JsPresentationInput {
     pub id: String,
@@ -808,6 +893,12 @@ pub enum JsPresentationFormat {
     SdJwtVp,
 }
 
+/// Verifiable Presentation (`VP`)
+///
+/// Each enum value represents different format of `VP` and contains an actual serializable `VP` body.
+///
+/// @property {PresentationFormat} format - format of `VP`
+/// @property {string} payload - value of `VP` in a string representation
 #[napi(js_name = "Presentation", object)]
 pub struct JsPresentation {
     pub format: JsPresentationFormat,
@@ -854,6 +945,9 @@ impl TryFrom<Presentation> for JsPresentation {
     }
 }
 
+/// A protocol-specific data for the `Issuer`.
+///
+/// *NOTE*: will be extended in the next releases.
 #[napi(js_name = "IssuerMetadataData", object)]
 pub struct JsIssuerMetadataData {}
 
@@ -869,6 +963,9 @@ impl From<JsIssuerMetadataData> for IssuerMetadataData {
     }
 }
 
+/// An interface that defines how to display the claim.
+///
+/// *NOTE*: will be extended in the next releases.
 #[napi(js_name = "Display", object)]
 pub struct JsDisplay {}
 
@@ -884,6 +981,19 @@ impl From<JsDisplay> for Display {
     }
 }
 
+/// A `CredentialDefinition` for the `Issuer`.
+///
+/// Defines the Credential Schema and enlists the claims expected in the corresponding {@link Credential}.
+/// Contains other various data necessary for creation of {@link Credential} as well.
+///
+/// @property {string} credDefId - ID of `credential definition`
+/// @property {VCFormat} format - format of {@link Credential}
+/// @property {Record<string, any>} claims - claims
+/// @property {Record<string, any>} [supportedProofs] - supported proofs
+/// @property {Array<Alg>} [supportedSigningAlgs] - supported signing `algorithms`
+/// @property {Display} [display] - `display`
+/// @property {Record<string, any>} [protocolData] - protocol data
+/// @property {KeyMetadata} keyMetadata - key metadata
 #[napi(js_name = "CredentialDefinition", object)]
 pub struct JsCredentialDefinition {
     pub cred_def_id: String,
@@ -944,6 +1054,15 @@ impl TryFrom<JsCredentialDefinition> for CredentialDefinition {
     }
 }
 
+/// A metadata for the `Issuer`.
+///
+/// Encapsulates all necessary data needed to handle issuance of the {@link Credential}s.
+///
+/// One `IssuerMetadata` supports multiple {@link CredentialDefinition}s.
+///
+/// @property {string} issuerId - ID of `Issuer`
+/// @property {Array<CredentialDefinition>} credDefs - credential definitions
+/// @property {IssuerMetadataData} [protocolData] - protocol metadata
 #[napi(object, js_name = "IssuerMetadata")]
 pub struct JsIssuerMetadata {
     pub issuer_id: String,
@@ -983,6 +1102,11 @@ impl TryFrom<IssuerMetadata> for JsIssuerMetadata {
     }
 }
 
+/// A metadata for the `Holder`.
+///
+/// Encapsulates all necessary data needed to request a {@link Credential}.
+///
+/// @property {string} clientId - ID of client
 #[napi(js_name = "HolderMetadata", object)]
 pub struct JsHolderMetadata {
     pub client_id: String,
