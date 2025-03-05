@@ -9,6 +9,13 @@ use napi_derive::napi;
 use crate::kms::JsKeyType;
 use crate::vc::core::JsAlg;
 
+/// `Key Handle`
+///
+/// @property {Array<number>} [pubKey] - public key bytes
+/// @property {string} [jwk] - jwk
+/// @property {Alg} alg - Key Handle algorithm
+/// @property {(payload: Uint8Array) => Promise<Uint8Array>} sign - Sign the provided binary payload.
+/// @property {(data: Uint8Array, signature: Uint8Array) => Promise<void>} verify - Verify that a signed data was signed using the provided signature.
 #[derive(Clone)]
 #[napi(js_name = "KeyHandle", object, object_to_js = false)]
 pub struct JsKeyHandle {
@@ -87,6 +94,12 @@ impl Verifier for JsKeyHandle {
 
 impl KeyHandle for JsKeyHandle {}
 
+/// `Kms`
+///
+/// @property {(kt: KeyType) => Promise<string>} create - Create and store a key in {@link Kms}.
+/// @property {(kid: string) => Promise<KeyHandle>} get - Returns {@link KeyHandle} for the provided `KID`
+/// @property {(pk: Array<number>) => Promise<KeyHandle>} getByPublicKey - Returns {@link KeyHandle} for the provided `Public Key`
+///
 #[derive(Clone)]
 #[napi(js_name = "Kms", object, object_to_js = false)]
 pub struct JsKms {

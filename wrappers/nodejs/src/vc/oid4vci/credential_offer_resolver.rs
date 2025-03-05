@@ -7,6 +7,8 @@ use napi::{Error, Result};
 use napi_derive::napi;
 use url::Url;
 
+/// @property resolve - {@link OID4VCICredentialOfferResolver.resolve}
+
 #[napi]
 pub struct OID4VCICredentialOfferResolver(
     CredentialOfferResolver<agent_sdk::reqwest::ReqwestClient>,
@@ -15,6 +17,7 @@ pub struct OID4VCICredentialOfferResolver(
 #[napi]
 #[allow(unused)]
 impl OID4VCICredentialOfferResolver {
+    /// Returns a new {@link OID4VCICredentialOfferResolver} to resolve {@link OID4VCICredentialOffer}
     #[napi(constructor)]
     pub fn new() -> Result<Self> {
         let mut inner_resolver = CredentialOfferResolver::new()
@@ -35,6 +38,11 @@ impl OID4VCICredentialOfferResolver {
         Ok(resolver)
     }
 
+    /// Resolves the {@link OID4VCICredentialOffer} from the credential offer uri
+    ///
+    /// @param {string} offerUri - offer uri obtained from the credential issuer.
+    ///
+    /// @returns {OID4VCICredentialOffer} - A resolved credential offer params {@link OID4VCICredentialOffer}.
     #[napi(ts_return_type = "Promise<OID4VCICredentialOffer>")]
     pub async fn resolve(&self, offer_uri: String) -> Result<JsonObject> {
         let offer_uri = Url::parse(&offer_uri).map_err(|e| Error::from_reason(e.to_string()))?;

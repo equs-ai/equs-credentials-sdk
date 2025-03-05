@@ -5,11 +5,22 @@ use agent_sdk::vc::core::{status_issuer::StatusIssuerService, StatusIssuer, Stat
 use napi::{Either, Error};
 use napi_derive::napi;
 
+/// Status lists Issuer.
+///
+/// Provides method for issuing VC status lists
+///
+/// @property issueStatusList - {@link VCCoreStatusIssuer.issueStatusList}
 #[napi]
 pub struct VCCoreStatusIssuer(pub(crate) Box<dyn StatusIssuer>);
 
 #[napi]
 impl VCCoreStatusIssuer {
+    /// Issues a new status list for a given status list identifier and a set of credential statuses.
+    ///
+    /// @param {string} statusListId - a unique identifier of the status list definition.
+    /// @param {VCStatusesData} statuses - credential statuses data.
+    ///
+    /// @returns {StatusList} - The issued {@link StatusList} if successful.
     #[napi]
     pub async fn issue_status_list(
         &self,

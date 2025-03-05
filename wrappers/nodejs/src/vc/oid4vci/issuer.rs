@@ -8,11 +8,27 @@ use crate::utils::{from_json_object, to_json_object};
 use crate::vc::core::JsCredentialStatusInfo;
 use crate::vc::JsonObject;
 
+/// An async `oid4vci` `Issuer` API.
+///
+/// Supports issuance flow according to the `oid4vci` standard.
+/// See <https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0.html>.
+///
+/// # Supported features
+///
+/// * exposing metadata
+/// * credential issuance (immediate)
+/// * credential offer generation
+///
+/// @property getIssuerMetadata - {@link OID4VCIIssuer.getIssuerMetadata}
+/// @property getCredDefMetadata - {@link OID4VCIIssuer.getCredDefMetadata}
+/// @property createCredentialOffer - {@link OID4VCIIssuer.createCredentialOffer}
+/// @property issueCredential - {@link OID4VCIIssuer.issueCredential}
 #[napi]
 pub struct OID4VCIIssuer(pub(crate) Box<dyn Issuer>);
 
 #[napi]
 impl OID4VCIIssuer {
+    /// @returns {IssuerMetadata}
     #[napi(ts_return_type = "OID4VCIIssuerMetadata")]
     pub fn get_issuer_metadata(&self) -> Result<JsonObject> {
         let issuer_metadata = self.0.get_issuer_metadata();
@@ -20,6 +36,11 @@ impl OID4VCIIssuer {
         to_json_object(issuer_metadata)
     }
 
+    /// @param {OID4VCICredentialRequest} credRequest - credential request
+    ///
+    /// @returns {OID4VCICredentialMetadata | null}
+    /// * if `credRequest` contains valid values.
+    /// * `null` otherwise
     #[napi(
         ts_args_type = "credRequest: OID4VCICredentialRequest",
         ts_return_type = "OID4VCICredentialMetadata | null"
@@ -31,6 +52,15 @@ impl OID4VCIIssuer {
             .transpose()
     }
 
+    /// Create a {@link CredentialOffer} for multiple `CredDef` ids.
+    ///
+    /// Generated {@link CredentialOffer} matches provided {@link CredentialDefinition}s
+    /// and should be later used by `Holder` to create a corresponding {@link CredentialRequest}.
+    ///
+    /// @param {Array<string>} credDefIds - a vector with {@link CredentialDefinition} IDs.
+    /// @param {CredentialOfferGrants} grants - grant types of the generated `Offer`, contains which flow is defined - pre-authorized/authorized.
+    ///
+    /// @returns {CredentialOffer} - A `CredentialOfferParams` and the corresponding Url to be shared with `Holder` on success.
     #[napi]
     pub fn create_credential_offer(
         &self,
@@ -49,6 +79,21 @@ impl OID4VCIIssuer {
         })
     }
 
+    /// Issue a {@link Credential} based on the provided {@link CredentialRequest}.
+    ///
+    /// {@link CredentialRequest} should match some existing {@link CredentialDefinition} defined in the {@link IssuerMetadata}.
+    /// `Proof of Possession` is mandatory.
+    ///
+    /// This method should be used for `Immediate` credential issuance.
+    /// `Deferred` option is not supported yet.
+    ///
+    /// @param {OID4VCICredentialRequest} credRequest - a {@link CredentialRequest} used for {@link Credential} generation.
+    /// @param {string} token - an access token used for authorization.
+    /// @param {Claims} claims - claims to include into the {@link Credential}.
+    /// @param {IssuanceSession} session - session object which contains `Nonce` and other state.
+    /// @param {CredentialStatusInfo} [statusInfo] - an object which contains information for status validation.
+    ///
+    /// @returns {IssuanceResult} A {@link IssuanceResult} (containing serialized {@linkCredential}) on success.
     #[napi]
     pub async fn issue_credential(
         &self,

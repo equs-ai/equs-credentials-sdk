@@ -30,6 +30,12 @@ pub fn parse_url_arg(url: &str) -> napi::Result<Url> {
 }
 
 #[napi]
+/// Resolve a {@link CredentialMetadata} for {@link Credential}.
+///
+/// @param {Credential} credential - a {@link Credential}.
+/// @param {KeyMetadata} metadata - a key meta of the `Holder` used for {@link Credential} generation.
+///
+/// @returns {CredentialMetadata} - A {@link CredentialMetadata} of the provided {@link Credential} on success.
 pub async fn resolve_metadata(
     credential: JsCredential,
     metadata: JsKeyMetadata,

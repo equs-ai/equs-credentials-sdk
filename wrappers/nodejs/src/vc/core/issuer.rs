@@ -9,11 +9,28 @@ use napi::{Either, Error};
 use napi_derive::napi;
 use serde_json::Value;
 
+/// An async low-level protocol-agnostic `Issuer` API.
+///
+/// Provides the methods for creating a {@link CredentialOffer} and issuing a {@link Credential}.
+///
+/// @property offerCredential - {@link VCCoreIssuer.offerCredential}
+/// @property issueCredential - {@link VCCoreIssuer.issueCredential}
+///
 #[napi]
 pub struct VCCoreIssuer(pub(crate) Box<dyn Issuer>);
 
 #[napi]
 impl VCCoreIssuer {
+    /// Create a {@link CredentialOffer} based on some {@link CredentialDefinition}.
+    ///
+    ///
+    /// Generated {@link CredentialOffer} matches provided {@link CredentialDefinition}
+    /// and should be later used by `Holder` to create a corresponding {@link CredentialRequest}.
+    ///
+    /// @param {string} credDefId - a {@link CredentialDefinition}s ID used for {@link CredentialOffer} creation.
+    /// @param {CredentialOfferData} [protocolData] - protocol-specific data.
+    ///
+    /// @returns {CredentialOffer} - A {@link CredentialOffer} to be shared with `Holder` on success.
     #[napi]
     pub fn offer_credential(
         &self,
@@ -27,6 +44,16 @@ impl VCCoreIssuer {
             .and_then(|v| v.try_into())
     }
 
+    /// Issue a {@link Credential} based on the {@link CredentialRequest}.
+    ///
+    /// {@link CredentialRequest} should match some existing {@link CredentialDefinition} of the `Issuer`.
+    ///
+    /// @param {CredentialRequest} credentialRequest - a {@link CredentialRequest} used for {@link Credential} generation.
+    /// @param {Claims} claims - claims to include into the {@link Credential}.
+    /// @param {string} nonce - a nonce to validate the {@link Proof} included in the {@link CredentialRequest}.
+    /// @param {CredentialStatusInfo} statusInfo - credential status info
+    ///
+    /// @returns {Credential} An issued {@link Credential} on success.
     #[napi]
     pub async fn issue_credential(
         &self,

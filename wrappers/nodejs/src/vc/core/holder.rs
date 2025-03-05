@@ -9,11 +9,28 @@ use napi::{Either, Error};
 use napi_derive::napi;
 use serde_json::Value;
 
+/// An async low-level protocol-agnostic `Holder` API.
+///
+/// Supports issuance and presentation flow.
+///
+/// @property requestCredential - {@link VCCoreHolder.requestCredential}
+/// @property storeCredential - {@link VCCoreHolder.storeCredential}
+/// @property verifyCredential - {@link VCCoreHolder.verifyCredential}
+/// @property createPresentationAuto - {@link VCCoreHolder.createPresentationAuto}
+/// @property findVcsForPresentation - {@link VCCoreHolder.findVcsForPresentation}
+/// @property createPresentation - {@link VCCoreHolder.createPresentation}
 #[napi]
 pub struct VCCoreHolder(pub(crate) Box<dyn Holder>);
 
 #[napi]
 impl VCCoreHolder {
+    /// Prepare a {@link CredentialRequest}.
+    ///
+    /// @param {CredentialOffer} credentialOffer - a {@link CredentialOffer} with definition of which {@link Credential} to request.
+    /// @param {string} nonce - a nonce to generate a `ProofOfPossession`.
+    /// @param {KeyMetadata} keyMetadata - a {@link KeyMetadata} for corresponding key to be used for signing operations.
+    ///
+    /// @returns {CredentialRequest} - A {@link CredentialRequest} to be used by `Issuer` on success.
     #[napi]
     pub async fn request_credential(
         &self,
@@ -32,6 +49,14 @@ impl VCCoreHolder {
             .map_err(|e| Error::from_reason(e.to_string()))
     }
 
+    /// Store a {@link Credential}.
+    ///
+    /// This method will store the `credential` into the {@link Vault} under the hood.
+    ///
+    /// @param {Credential} credential - a {@link Credential} to save.
+    /// @param {CredentialMetadata} metadata - the corresponding {@link CredentialMetadata}.
+    ///
+    /// @returns {string} - An ID of the entry on success.
     #[napi]
     pub async fn store_credential(
         &self,
@@ -44,6 +69,13 @@ impl VCCoreHolder {
             .map_err(|e| Error::from_reason(e.to_string()))
     }
 
+    /// Verify a {@link Credential} against an Issuer signature.
+    ///
+    /// This method will validate the `credential` signature.
+    ///
+    /// @param {Credential} credential - a {@link Credential} to save.
+    ///
+    /// @returns {void}
     #[napi]
     pub async fn verify_credential(&self, credential: JsCredential) -> Result<(), Error> {
         self.0
@@ -52,6 +84,17 @@ impl VCCoreHolder {
             .map_err(|e| Error::from_reason(e.to_string()))
     }
 
+    /// Create a Verifiable Presentation automatically.
+    ///
+    /// `Holder` will automatically select first {@link Credential} that matched the {@link PresentationInput}.
+    ///
+    /// @param {string} `nonce` - a nonce form {@link Verifier} to be used to generate `VP`.
+    /// @param {string} `verifierId` - an ID of the {@link Verifier}.
+    /// @param {PresentationInput} `presentationInput` - an input with data related to requested `VC`s.
+    ///
+    /// @returns {Presentation}
+    /// * A generated {@link Presentation} on success
+    /// * Error will be thrown if no suitable {@link Credential} was found
     #[napi]
     pub async fn create_presentation_auto(
         &self,
@@ -70,6 +113,13 @@ impl VCCoreHolder {
             .and_then(|v| v.try_into())
     }
 
+    /// Find the suitable {@link CredentialEntry}s for the provided {@link PresentationInput}.
+    ///
+    /// @param {PresentationInput} presentationInput - an input with data related to requested `VC`s.
+    ///
+    /// @returns {Array<CredentialEntry>}
+    /// * An array of {@link CredentialEntry} matched the provided {@link PresentationInput} on success
+    /// * An empty array if nothing meets the `presentationInput`
     #[napi]
     pub async fn find_vcs_for_presentation(
         &self,
@@ -88,6 +138,14 @@ impl VCCoreHolder {
             })
     }
 
+    /// Create a Verifiable Presentation.
+    ///
+    /// @param {string} `nonce` - a nonce from {@link Verifier} to be used to generate `VP`.
+    /// @param {string} `verifierId` - an ID of the {@link Verifier}.
+    /// @param {PresentationInput} `presentationInput` - an input with the data defining the requested `VC`s.
+    /// @param {CredentialEntry} `credential` - an actual {@link CredentialEntry} for the {@link Presentation}.
+    ///
+    /// @returns {Presentation} - A generated {@link Presentation} on success.
     #[napi]
     pub async fn create_presentation(
         &self,

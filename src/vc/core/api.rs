@@ -113,7 +113,7 @@ pub enum CredentialDefinitionData {
     },
 }
 
-/// A `CredentialOffer` entity.
+/// A `CredentialOffer` entity
 ///
 /// Contains the data related to offered `Credential`.
 ///

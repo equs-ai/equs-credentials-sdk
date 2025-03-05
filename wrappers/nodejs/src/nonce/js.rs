@@ -5,6 +5,12 @@ use napi::bindgen_prelude::Promise;
 use napi::threadsafe_function::{ErrorStrategy, ThreadsafeFunction};
 use napi_derive::napi;
 
+/// An async generic `NonceGenerator` interface for generating nonce.
+///
+/// Supports `generate` operation.
+///
+/// @property {() => Promise<string>} generate - method to create nonce
+///
 #[derive(Clone)]
 #[napi(js_name = "NonceGenerator", object, object_to_js = false)]
 pub struct JsNonceGenerator {
