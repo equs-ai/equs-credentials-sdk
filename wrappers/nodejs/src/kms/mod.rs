@@ -80,6 +80,7 @@ impl<KH: KeyHandle + 'static> Kms<KeyHandleWrapper> for KmsWrapper<KH> {
 pub enum JsKeyType {
     Ed25519,
     P256,
+    K256,
 }
 
 impl From<JsKeyType> for KeyType {
@@ -87,6 +88,7 @@ impl From<JsKeyType> for KeyType {
         match value {
             JsKeyType::Ed25519 => KeyType::Ed25519,
             JsKeyType::P256 => KeyType::P256,
+            JsKeyType::K256 => KeyType::K256,
         }
     }
 }
@@ -95,12 +97,17 @@ impl TryFrom<KeyType> for JsKeyType {
     type Error = napi::Error;
 
     fn try_from(value: KeyType) -> napi::Result<Self> {
-        match value {
-            KeyType::Ed25519 => Ok(JsKeyType::Ed25519),
-            KeyType::P256 => Ok(JsKeyType::P256),
-            _ => Err(napi::Error::from_reason(format!(
-                "Unsupported key type {value}"
-            ))),
-        }
+        let key_type = match value {
+            KeyType::Ed25519 => JsKeyType::Ed25519,
+            KeyType::P256 => JsKeyType::P256,
+            KeyType::K256 => JsKeyType::K256,
+            _ => {
+                return Err(napi::Error::from_reason(format!(
+                    "Unsupported key type {value}"
+                )))
+            }
+        };
+
+        Ok(key_type)
     }
 }

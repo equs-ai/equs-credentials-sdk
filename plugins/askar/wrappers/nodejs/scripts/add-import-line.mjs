@@ -8,6 +8,8 @@ import fs from "fs/promises";
       "Credential",
       "CredentialMetadata",
       "CredentialEntry",
+      "KeyType",
+      "Alg"
     ];
     let import_str = `import { ${exported_types.join(", ")} } from "${TYPES_FILE_PATH}";\n`;
     content = import_str + content;
