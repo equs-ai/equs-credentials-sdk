@@ -92,6 +92,7 @@ impl TryFrom<VCFormat> for JsVCFormat {
 #[napi(js_name = "Alg")]
 pub enum JsAlg {
     ES256,
+    ES256K,
     EdDSA,
 }
 
@@ -99,6 +100,7 @@ impl From<JsAlg> for Alg {
     fn from(value: JsAlg) -> Self {
         match value {
             JsAlg::ES256 => Alg::ES256,
+            JsAlg::ES256K => Alg::ES256K,
             JsAlg::EdDSA => Alg::EdDSA,
         }
     }
@@ -110,6 +112,7 @@ impl TryFrom<Alg> for JsAlg {
     fn try_from(value: Alg) -> napi::Result<Self> {
         let alg = match value {
             Alg::ES256 => JsAlg::ES256,
+            Alg::ES256K => JsAlg::ES256K,
             Alg::EdDSA => JsAlg::EdDSA,
             _ => {
                 return Err(Error::from_reason(format!(
