@@ -7,7 +7,7 @@ pub mod status_issuer;
 mod verifier;
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;
 
 pub use super::pop::Format as PopFormat;
 pub use holder::HolderService;
