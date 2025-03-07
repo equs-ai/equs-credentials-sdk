@@ -2,15 +2,18 @@
 
 use crate::utils::logs::sanitize_log_msg;
 use crate::vault::{
-    CannotCreateJSONPathSnafu, ClaimsParsingSnafu, UnsupportedCredentialFormatSnafu,
+    CannotCreateJSONPathSnafu, ClaimsDidNotPassFilteringSnafu, ClaimsParsingSnafu,
+    UnsupportedCredentialFormatSnafu,
 };
+use crate::vc::claims::Claims;
 use crate::vc::core::api::PresentationRestrictionValue;
 use crate::vc::core::{PresentationInput, PresentationRestriction};
 use crate::vc::{formats, Credential, HasClaims, HasVCFormat, Presentation};
 use common_macros::DebugError;
+use jsonpath_rust::JsonPathValue;
 use openid4vp::core::presentation_submission::NoClaimsDecoder;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value as Json};
+use serde_json::{json, Value as Json, Value};
 use snafu::{Location, ResultExt, Snafu};
 use std::collections::HashMap;
 use std::fmt::Debug;
@@ -627,40 +630,61 @@ pub fn validate_credential(
     }
 
     for pr in &presentation_input.restrictions {
-        for field in &pr.fields {
-            let json_path_field =
-                jsonpath_rust::JsonPath::from_str(field).context(CannotCreateJSONPathSnafu)?;
-            let json_claims = json!(claims.claims());
-            let claims = json_path_field.find_slice(&json_claims);
-
-            let has_value = claims.first().is_some_and(|claim| claim.has_value());
-            if !has_value && !pr.optional {
-                crate::vault::ClaimsDidNotPassFilteringSnafu { details: field }.fail()?
-            }
-
-            let mut is_valid = true;
-            for claim in claims {
-                if let Some(value) = &pr.value {
-                    if value.validate_claim(claim.to_data().to_string()).is_ok() {
-                        is_valid = true;
-                        break;
-                    } else {
-                        is_valid = false;
-                    }
-                }
-            }
-            if !is_valid {
-                crate::vault::ClaimsDidNotPassFilteringSnafu { details: field }.fail()?
-            }
-        }
+        validate_restrictions(pr, &claims)?
     }
 
     Ok(())
 }
 
+fn validate_restrictions(
+    presentation_restriction: &PresentationRestriction,
+    claims: &Claims,
+) -> crate::vault::Result<()> {
+    for field in &presentation_restriction.fields {
+        let json_path_field =
+            jsonpath_rust::JsonPath::from_str(field).context(CannotCreateJSONPathSnafu)?;
+        let json_claims = json!(claims.claims());
+        let claims = json_path_field.find_slice(&json_claims);
+
+        let has_value = claims.first().is_some_and(|claim| claim.has_value());
+        if !has_value && !presentation_restriction.optional {
+            continue;
+        }
+
+        if validate_claims_with_restriction_value(claims, presentation_restriction).is_ok() {
+            return Ok(());
+        }
+    }
+    ClaimsDidNotPassFilteringSnafu {
+        details: &presentation_restriction.fields.join(", "),
+    }
+    .fail()
+}
+
+fn validate_claims_with_restriction_value(
+    claims: Vec<JsonPathValue<Value>>,
+    presentation_restriction: &PresentationRestriction,
+) -> crate::vault::Result<()> {
+    for claim in claims {
+        if let Some(value) = &presentation_restriction.value {
+            if value.validate_claim(claim.to_data().to_string()).is_ok() {
+                return Ok(());
+            }
+        } else {
+            return Ok(());
+        }
+    }
+    ClaimsDidNotPassFilteringSnafu {
+        details: &presentation_restriction.fields.join(", "),
+    }
+    .fail()?
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::inmem::kms::LocalKms;
+    use crate::vc::core::tests::utils::CredTestCase;
     use openid4vp::core::{
         credential_format::ClaimFormatDesignation,
         input_descriptor::{ConstraintsField, InputDescriptor},
@@ -832,6 +856,34 @@ mod tests {
                 }],
             }]
         )
+    }
+
+    #[rstest]
+    #[case::ldp_vc(CredTestCase::ldp_vc())]
+    #[case::sd_jwt(CredTestCase::sd_jwt())]
+    #[tokio::test]
+    async fn credential_validated_using_disjunction(#[case] cred_test_case: CredTestCase) {
+        let credential = cred_test_case.generate_vc(&LocalKms::new()).await;
+        let mut presentation_input = cred_test_case.create_presentation_input();
+
+        presentation_input.restrictions[0]
+            .fields
+            .insert(0, "$.field.will.pass.whilst.other.field.passes".to_string());
+        validate_credential(&credential.credential, &presentation_input).unwrap()
+    }
+    #[rstest]
+    #[case::ldp_vc(CredTestCase::ldp_vc())]
+    #[case::sd_jwt(CredTestCase::sd_jwt())]
+    #[tokio::test]
+    #[should_panic(expected = "Claims did not pass filtering: $.field.will.not.pass")]
+    async fn credential_validated_fails_on_non_existing_field(
+        #[case] cred_test_case: CredTestCase,
+    ) {
+        let credential = cred_test_case.generate_vc(&LocalKms::new()).await;
+        let mut presentation_input = cred_test_case.create_presentation_input();
+
+        presentation_input.restrictions[0].fields = vec!["$.field.will.not.pass".to_string()];
+        validate_credential(&credential.credential, &presentation_input).unwrap()
     }
 
     #[tokio::test]

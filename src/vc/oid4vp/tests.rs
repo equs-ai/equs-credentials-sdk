@@ -416,7 +416,9 @@ pub mod fixtures {
                       "fields": [
                         {
                           "path": [
-                            "$.credentialSubject.email"
+                            "$.credentialSubject.fakEmail",
+                            "$.credentialSubject.email",
+                            "$.credentialSubject.fakEmail2"
                           ],
                           "filter": {
                             "type": "string",
@@ -425,8 +427,11 @@ pub mod fixtures {
                         },
                         {
                           "path": [
+                            "$.credentialSubject.address.not.exist.start",
                             "$.credentialSubject.address.country",
-                            "$.credentialSubject.address.city"
+                            "$.credentialSubject.address.not.exist.middle",
+                            "$.credentialSubject.address.city",
+                            "$.credentialSubject.address.not.exist.end"
                           ],
                           "filter": {
                             "type": "string",
@@ -513,7 +518,9 @@ pub mod fixtures {
                       "fields": [
                         {
                           "path": [
-                            "$.credentialSubject.email"
+                            "$.fake.field",
+                            "$.credentialSubject.email",
+                            "$.fake.field2"
                           ],
                           "filter": {
                             "type": "string",
@@ -522,7 +529,9 @@ pub mod fixtures {
                         },
                         {
                           "path": [
-                            "$.credentialSubject.birthDate"
+                            "$.credentialSubject.fakeDate",
+                            "$.credentialSubject.birthDate",
+                            "$.credentialSubject.fakeBirthDate"
                           ],
                           "filter": {
                             "pattern": "^(?P<year>\\d{4})-(0[1-9]|1[0-2])-(0[1-9]|[12]\\d|3[01])$"
