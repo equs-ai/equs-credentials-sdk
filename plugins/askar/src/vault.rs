@@ -356,13 +356,17 @@ impl From<AskarVaultId> for String {
 
 #[instrument(level = Level::TRACE, ret())]
 fn map_credential_fields_to_tags(fields: Vec<String>) -> Option<TagFilter> {
-    let tags = vec![TagFilter::exist(fields)];
+    // TODO we use exist but it requires Vec<String>. A bit of confusable. Search for better solution
+    let tags = fields
+        .iter()
+        .map(|field| TagFilter::exist(vec![field.to_owned()]))
+        .collect::<Vec<TagFilter>>();
 
     if tags.is_empty() {
         return None;
     }
 
-    Some(TagFilter::all_of(tags))
+    Some(TagFilter::any_of(tags))
 }
 
 fn entry_to_credential(entry: Entry) -> Result<CredentialEntry, Error> {
@@ -422,43 +426,10 @@ mod tests {
     use crate::{AskarStorage, AskarStorageConfig, KeyMethod};
     use agent_sdk::vault::{CredentialEntry, Vault};
     use agent_sdk::vc::{Credential, CredentialMetadata, VCFormat};
+    use rstest::rstest;
 
-    // TODO: consider splitting this test into several small unit tests
-    #[tokio::test]
-    async fn test_askar_vault() {
-        let storage = AskarStorage::create(
-            &AskarStorageConfig {
-                db_url: "sqlite://:memory:".to_owned(),
-                key_method: KeyMethod::DeriveKey,
-                pass_key: "1234".to_string(),
-                profile: "test".to_string(),
-            },
-            false,
-        )
-        .await
-        .unwrap();
-
-        let vault = AskarVault::new(storage);
-        test_vault(&vault).await;
-
-        vault.close_vault().await.unwrap();
-    }
-
-    pub async fn test_vault<V: Vault>(vault: &V) {
-        // test data
-        let cred1 = "token".to_string();
-        let cred1_meta = CredentialMetadata {
-            type_: "https://credentials.example.com/identity_credential".into(),
-            kid: "1234".into(),
-            format: VCFormat::SdJwtVc,
-            alg: None,
-            fields: vec![
-                "$.vct".to_string(),
-                "$.name".to_string(),
-                "$.email.work".to_string(),
-            ],
-        };
-        let cred2 = r###"{
+    const CRED_SD_JWT: &str = "token";
+    const CRED_LDP_VC: &str = r###"{
             "@context": "https://www.w3.org/2018/credentials/v1",
             "id": "http://example.org/credentials/3731",
             "type": ["VerifiableCredential"],
@@ -468,46 +439,55 @@ mod tests {
                 "id": "did:example:d23dd687a7dc6787646f2eb98d0"
             }
         }"###;
-        let cred2_meta = CredentialMetadata {
-            type_: "VerifiableCredential".into(),
-            kid: "1234".into(),
-            format: VCFormat::LdpVc,
-            alg: None,
-            fields: vec![],
-        };
 
-        let cred1_id = vault
-            .store_credential(Credential::SdJwt(cred1.clone()), &cred1_meta)
-            .await
-            .unwrap();
-        let cred2_id = vault
-            .store_credential(
-                Credential::LdpVc(serde_json::from_str(cred2).unwrap()),
-                &cred2_meta,
-            )
-            .await
-            .unwrap();
+    // TODO: consider splitting this test into several small unit tests
+    #[tokio::test]
+    async fn test_askar_vault() {
+        let vault = create_test_vault().await;
+
+        test_vault(&vault).await;
+
+        vault.close_vault().await.unwrap();
+    }
+
+    #[rstest]
+    #[case(vec!["$.name".to_string(), "$.email.work".to_string(), "$.vct".to_string()])]
+    #[case(vec!["$.name".to_string(), "$.email.work1".to_string(), "$.vct2".to_string()])]
+    #[case(vec!["$.name".to_string()])]
+    #[should_panic(expected = "left: Array []")]
+    #[case(vec!["$.name1".to_string()])]
+    #[should_panic(expected = "left: Array []")]
+    #[case(vec!["$.name1".to_string(), "$.email.work2".to_string(), "$.vct3".to_string()])]
+    #[tokio::test]
+    async fn askar_vault_mapping_credentials_uses_disjunction(#[case] fields: Vec<String>) {
+        let vault = create_test_vault().await;
+        let sd_jwt_cred_id = store_sd_jwt_to_vault(&vault).await;
+
+        let find_res = vault.find_credentials(fields).await.unwrap();
+
+        assert_eq!(
+            serde_json::to_value(find_res).unwrap(),
+            serde_json::to_value(vec![create_expected_entry_sd_jwt(sd_jwt_cred_id)]).unwrap()
+        );
+    }
+
+    async fn test_vault(vault: &AskarVault) {
+        let cred1_id = store_sd_jwt_to_vault(vault).await;
+        let cred2_id = store_ldp_vc_to_vault(vault).await;
 
         let get1_res = vault.get_credential(&cred1_id).await.unwrap().unwrap();
         let get2_res = vault.get_credential(&cred2_id).await.unwrap().unwrap();
 
+        let expected_entry_sd_jwt = create_expected_entry_sd_jwt(get1_res.clone().id);
+        let expected_entry_ldp_vc = create_expected_entry_ldp_vc(get2_res.clone().id);
+
         assert_eq!(
             serde_json::to_value(&get1_res).unwrap(),
-            serde_json::to_value(CredentialEntry {
-                credential: Credential::SdJwt(cred1.clone()),
-                kid: "1234".into(),
-                id: get1_res.clone().id
-            })
-            .unwrap(),
+            serde_json::to_value(expected_entry_sd_jwt.clone()).unwrap(),
         );
         assert_eq!(
             serde_json::to_value(&get2_res).unwrap(),
-            serde_json::to_value(CredentialEntry {
-                credential: Credential::LdpVc(serde_json::from_str(cred2).unwrap()),
-                kid: "1234".into(),
-                id: get2_res.clone().id
-            })
-            .unwrap(),
+            serde_json::to_value(expected_entry_ldp_vc.clone()).unwrap(),
         );
 
         let get_all_res = vault.get_credentials().await.unwrap();
@@ -517,20 +497,12 @@ mod tests {
             panic!("failed to serialize credentials as json array");
         };
 
-        let expected_entry_sd_jwt = CredentialEntry {
-            credential: Credential::SdJwt(cred1.clone()),
-            kid: "1234".into(),
-            id: get1_res.clone().id,
-        };
-
-        let expected_entry_ldp_vc = CredentialEntry {
-            credential: Credential::LdpVc(serde_json::from_str(cred2).unwrap()),
-            kid: "1234".into(),
-            id: get2_res.id,
-        };
-
-        assert!(get_all_values.contains(&serde_json::to_value(expected_entry_sd_jwt).unwrap()));
-        assert!(get_all_values.contains(&serde_json::to_value(expected_entry_ldp_vc).unwrap()));
+        assert!(
+            get_all_values.contains(&serde_json::to_value(expected_entry_sd_jwt.clone()).unwrap())
+        );
+        assert!(
+            get_all_values.contains(&serde_json::to_value(expected_entry_ldp_vc.clone()).unwrap())
+        );
 
         let find_res = vault
             .find_credentials(vec![
@@ -543,16 +515,76 @@ mod tests {
 
         assert_eq!(
             serde_json::to_value(find_res).unwrap(),
-            serde_json::to_value(vec![CredentialEntry {
-                credential: Credential::SdJwt(cred1),
-                kid: "1234".into(),
-                id: get1_res.id
-            }])
-            .unwrap()
+            serde_json::to_value(vec![expected_entry_sd_jwt.clone()]).unwrap()
         );
 
         vault.delete_credential(&cred1_id).await.unwrap();
         let get1_res = vault.get_credential(&cred1_id).await.unwrap();
         assert!(get1_res.is_none());
+    }
+
+    async fn create_test_vault() -> AskarVault {
+        let storage = AskarStorage::create(
+            &AskarStorageConfig {
+                db_url: "sqlite://:memory:".to_owned(),
+                key_method: KeyMethod::DeriveKey,
+                pass_key: "1234".to_string(),
+                profile: "test".to_string(),
+            },
+            false,
+        )
+        .await
+        .unwrap();
+
+        AskarVault::new(storage)
+    }
+
+    async fn store_sd_jwt_to_vault(vault: &AskarVault) -> String {
+        let cred_meta = CredentialMetadata {
+            type_: "https://credentials.example.com/identity_credential".into(),
+            kid: "1234".into(),
+            format: VCFormat::SdJwtVc,
+            alg: None,
+            fields: vec![
+                "$.vct".to_string(),
+                "$.name".to_string(),
+                "$.email.work".to_string(),
+            ],
+        };
+        vault
+            .store_credential(Credential::SdJwt(CRED_SD_JWT.to_string()), &cred_meta)
+            .await
+            .unwrap()
+    }
+    async fn store_ldp_vc_to_vault(vault: &AskarVault) -> String {
+        let cred_meta = CredentialMetadata {
+            type_: "VerifiableCredential".into(),
+            kid: "1234".into(),
+            format: VCFormat::LdpVc,
+            alg: None,
+            fields: vec![],
+        };
+        vault
+            .store_credential(
+                Credential::LdpVc(serde_json::from_str(CRED_LDP_VC).unwrap()),
+                &cred_meta,
+            )
+            .await
+            .unwrap()
+    }
+
+    fn create_expected_entry_sd_jwt(id: String) -> CredentialEntry {
+        CredentialEntry {
+            credential: Credential::SdJwt(CRED_SD_JWT.to_string()),
+            kid: "1234".into(),
+            id,
+        }
+    }
+    fn create_expected_entry_ldp_vc(id: String) -> CredentialEntry {
+        CredentialEntry {
+            credential: Credential::LdpVc(serde_json::from_str(CRED_LDP_VC).unwrap()),
+            kid: "1234".into(),
+            id,
+        }
     }
 }
