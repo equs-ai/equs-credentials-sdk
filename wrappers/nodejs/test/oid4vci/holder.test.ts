@@ -1,4 +1,4 @@
-import { inMemKms, inMemVault, IssuerDiscovery, OID4VCIHolderBuilder, VCFormat } from "../../";
+import { InMemKms, InMemVault, IssuerDiscovery, OID4VCIHolderBuilder, VCFormat } from "../../";
 import {
   ACCESS_TOKEN,
   ACCESS_TOKEN_RESPONSE,
@@ -83,7 +83,7 @@ describe("OID4VCI Holder: ", () => {
     // return;
     await mockServer.forPost("/credential").thenJson(200, CRED_RESPONSE);
 
-    const kms = inMemKms();
+    const kms = new InMemKms();
     const vciHolder = await buildHolder(kms);
     const nonce = {
       nonce: "KB50VOm9I-kPLT9mAACV8g",
@@ -110,8 +110,8 @@ describe("OID4VCI Holder: ", () => {
   });
 
   test("store Credential", async () => {
-    const vault = inMemVault();
-    const vciHolder = await buildHolder(inMemKms(), vault);
+    const vault = new InMemVault();
+    const vciHolder = await buildHolder(new InMemKms(), vault);
     const credential = {
       format: VCFormat.SdJwtVc,
       payload: SD_JWT_CREDS,
@@ -132,7 +132,7 @@ describe("OID4VCI Holder: ", () => {
   });
 });
 
-async function buildHolder(kms = inMemKms(), vault = inMemVault()) {
+async function buildHolder(kms = new InMemKms(), vault = new InMemVault()) {
   const builder = new OID4VCIHolderBuilder(kms, vault, "client_id", IssuerDiscovery.fromOffer(CRED_OFFER));
   return await builder.build();
 }

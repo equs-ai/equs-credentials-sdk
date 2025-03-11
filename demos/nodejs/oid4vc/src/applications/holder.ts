@@ -6,7 +6,6 @@ import {
   enableLogs,
   IssuerDiscovery,
   Kms,
-  NativeKms,
   NonceData,
   Oid4VciHolder,
   OID4VCIHolderBuilder,
@@ -61,10 +60,7 @@ async function main(): Promise<void> {
 
 setImmediate(main);
 
-async function issuanceFlow(
-  holder: Oid4VciHolder,
-  kms: NativeKms | Kms,
-): Promise<void> {
+async function issuanceFlow(holder: Oid4VciHolder, kms: Kms): Promise<void> {
   const tokenResp = await holder.authzCodeFlowWithScope(
     "SD_JWT_cred_scope",
     async (url: string) => await readFromCLI(`Get code from ${url}`),
@@ -135,7 +131,7 @@ function isCredentialImmediate(
 
 async function requestAndStoreCredential(
   holder: Oid4VciHolder,
-  kms: NativeKms | Kms,
+  kms: Kms,
   credDefId: string,
   accessToken: string,
   nonceData: NonceData | undefined,

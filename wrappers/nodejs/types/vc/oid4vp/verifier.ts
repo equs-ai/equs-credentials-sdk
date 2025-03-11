@@ -5,25 +5,18 @@ import {
   contextEnsuredNonceGenerator,
   KeyMetadata,
   Kms,
-  NativeKms,
-  NativeNonceGenerator,
   NonceGenerator,
   OID4VPVerifier,
 } from "../../../";
 
 export class OID4VPVerifierBuilder {
-  private readonly kms: NativeKms | Kms;
-  private readonly nonceGenerator: NativeNonceGenerator | NonceGenerator;
+  private readonly kms: Kms;
+  private readonly nonceGenerator: NonceGenerator;
   private readonly keyMetadata: KeyMetadata;
   private readonly clientId: string;
   private clientMetadata?: ClientMetadata;
 
-  constructor(
-    kms: NativeKms | Kms,
-    nonceGenerator: NativeNonceGenerator | NonceGenerator,
-    keyMetadata: KeyMetadata,
-    clientId: string,
-  ) {
+  constructor(kms: Kms, nonceGenerator: NonceGenerator, keyMetadata: KeyMetadata, clientId: string) {
     this.kms = kms;
     this.nonceGenerator = nonceGenerator;
     this.keyMetadata = keyMetadata;

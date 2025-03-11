@@ -1,8 +1,8 @@
-use crate::kms::{JsKms, NativeKms, UnifiedKms};
+use crate::kms::JsKms;
 use crate::vc::core::JsStatusIssuerMetadata;
 use crate::vc::core::{JsStatusList, JsVCStatusesData};
 use agent_sdk::vc::core::{status_issuer::StatusIssuerService, StatusIssuer, StatusIssuerMetadata};
-use napi::{Either, Error};
+use napi::Error;
 use napi_derive::napi;
 
 /// Status lists Issuer.
@@ -40,10 +40,9 @@ impl VCCoreStatusIssuer {
 #[allow(unused)]
 #[napi]
 pub fn create_status_issuer(
-    kms: Either<&NativeKms, JsKms>,
+    kms: JsKms,
     metadata: JsStatusIssuerMetadata,
 ) -> Result<VCCoreStatusIssuer, Error> {
-    let kms: UnifiedKms = kms.into();
     let metadata: StatusIssuerMetadata = metadata.try_into()?;
     let issuer_service = StatusIssuerService::new(kms, metadata);
 

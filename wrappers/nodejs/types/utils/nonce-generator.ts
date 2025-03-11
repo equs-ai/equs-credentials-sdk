@@ -1,4 +1,4 @@
-import { NativeNonceGenerator, NonceGenerator } from "../..";
+import { NonceGenerator } from "../..";
 
 class WrappedNonceGenerator {
   constructor(private readonly nonceGenerator: NonceGenerator) {
@@ -10,8 +10,6 @@ class WrappedNonceGenerator {
   }
 }
 
-export function contextEnsuredNonceGenerator(
-  nonceGenerator: NativeNonceGenerator | NonceGenerator,
-): NativeNonceGenerator | NonceGenerator {
-  return nonceGenerator instanceof NativeNonceGenerator ? nonceGenerator : new WrappedNonceGenerator(nonceGenerator);
+export function contextEnsuredNonceGenerator(nonceGenerator: NonceGenerator): NonceGenerator {
+  return new WrappedNonceGenerator(nonceGenerator);
 }

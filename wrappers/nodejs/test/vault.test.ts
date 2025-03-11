@@ -1,4 +1,4 @@
-import { Alg, Vault, VCFormat, wrapJsVault } from "../";
+import { Alg, Credential, CredentialEntry, CredentialMetadata, Vault, VaultTestHelper, VCFormat } from "../";
 
 const CREDENTIAL_DATA = {
   id: "test",
@@ -23,111 +23,76 @@ const CREDENTIAL_DATA = {
   },
 };
 
+function mockVault() {
+  return new MockVault(CREDENTIAL_DATA);
+}
+
+class MockVault implements Vault {
+  constructor(private readonly data: { id: string; credential: Credential; metadata: CredentialMetadata }) {
+    this.storeCredential = this.storeCredential.bind(this);
+    this.deleteCredential = this.deleteCredential.bind(this);
+    this.findCredentials = this.findCredentials.bind(this);
+    this.getCredential = this.getCredential.bind(this);
+    this.getCredentials = this.getCredentials.bind(this);
+  }
+
+  async storeCredential(credential: Credential, metadata: CredentialMetadata): Promise<string> {
+    expect(credential).toEqual(this.data.credential);
+    expect(metadata).toEqual(this.data.metadata);
+    return this.data.id;
+  }
+
+  async deleteCredential(id: string): Promise<void> {
+    expect(id).toEqual(this.data.id);
+    return;
+  }
+
+  async findCredentials(criteria: Array<string>): Promise<Array<CredentialEntry>> {
+    return [{ credential: CREDENTIAL_DATA.credential, id: this.data.id, kid: this.data.metadata.kid }];
+  }
+
+  async getCredential(id: string): Promise<CredentialEntry | null> {
+    return { credential: CREDENTIAL_DATA.credential, id: this.data.id, kid: this.data.metadata.kid };
+  }
+
+  async getCredentials(): Promise<Array<CredentialEntry>> {
+    return [{ credential: CREDENTIAL_DATA.credential, id: this.data.id, kid: this.data.metadata.kid }];
+  }
+}
+
 describe("Vault: ", () => {
-  test("store Credential", async () => {
-    const data = CREDENTIAL_DATA;
-    const vault = await wrapJsVault(mockVault(data));
-
+  const data = CREDENTIAL_DATA;
+  test("store credential", async () => {
+    const vault = new VaultTestHelper(mockVault());
     const id = await vault.storeCredential(data.credential, data.metadata);
-
     expect(id).toEqual(data.id);
   });
 
   test("delete Credential", async () => {
-    const data = CREDENTIAL_DATA;
-    const vault = await wrapJsVault(mockVault(data));
-
+    const vault = new VaultTestHelper(mockVault());
     const entry = await vault.deleteCredential(data.id);
 
     expect(entry).toBeUndefined();
   });
 
   test("get Credential", async () => {
-    const data = CREDENTIAL_DATA;
-    const vault = await wrapJsVault(mockVault(data));
-
+    const vault = new VaultTestHelper(mockVault());
     const entry = await vault.getCredential(data.id);
 
     expect(entry).toEqual({ credential: data.credential, kid: data.metadata.kid, id: data.id });
   });
 
   test("find Credentials", async () => {
-    const data = CREDENTIAL_DATA;
-    const vault = await wrapJsVault(mockVault(CREDENTIAL_DATA));
+    const vault = new VaultTestHelper(mockVault());
 
     const entries = await vault.findCredentials(["format"]);
     expect(entries).toEqual([{ credential: data.credential, kid: data.metadata.kid, id: data.id }]);
   });
 
   test("get Credentials", async () => {
-    const data = CREDENTIAL_DATA;
-    const vault = await wrapJsVault(mockVault(CREDENTIAL_DATA));
+    const vault = new VaultTestHelper(mockVault());
 
     const entries = await vault.getCredentials();
     expect(entries).toEqual([{ credential: data.credential, kid: data.metadata.kid, id: data.id }]);
   });
 });
-
-function mockVault(credential_data): Vault {
-  return {
-    async storeCredential(credential, metadata) {
-      if (
-        !(
-          credential.format === credential_data.credential.format &&
-          credential.payload === credential_data.credential.payload
-        )
-      )
-        throw new Error(`Invalid credential: ${JSON.stringify(credential)}`);
-
-      if (
-        !(
-          metadata.type === credential_data.metadata.type &&
-          metadata.format === credential_data.metadata.format &&
-          metadata.kid === credential_data.metadata.kid &&
-          metadata.alg === credential_data.metadata.alg
-        )
-      )
-        throw new Error(`Invalid metadata: ${JSON.stringify(metadata)}`);
-
-      return credential_data.id;
-    },
-
-    async deleteCredential(id) {
-      if (id !== credential_data.id) throw new Error(`Invalid ID: ${id}`);
-
-      return;
-    },
-
-    async getCredential(id) {
-      if (id !== credential_data.id) throw new Error(`Invalid ID: ${id}`);
-
-      return {
-        credential: credential_data.credential,
-        kid: credential_data.metadata.kid,
-        id: credential_data.id,
-      };
-    },
-
-    async getCredentials() {
-      return [
-        {
-          credential: credential_data.credential,
-          kid: credential_data.metadata.kid,
-          id: credential_data.id,
-        },
-      ];
-    },
-
-    async findCredentials(fields: string[]) {
-      if (!fields.length) throw new Error("Fields are empty");
-
-      return [
-        {
-          credential: credential_data.credential,
-          kid: credential_data.metadata.kid,
-          id: credential_data.id,
-        },
-      ];
-    },
-  };
-}

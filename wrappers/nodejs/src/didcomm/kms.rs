@@ -1,24 +1,90 @@
-use crate::kms::{KeyHandleWrapper, NativeKms};
+use crate::kms::JsKeyHandle;
+use crate::kms::{JsECDH1PUParams, JsECDHESParams, JsKeyType};
 use agent_sdk::kms;
 use agent_sdk::kms::{
-    CreateOptions, CreationSnafu, DerivativeKms, ECDH1PUParams, ECDHESParams, KeyID, KeyType, Kms,
+    CreateOptions, CreationSnafu, DerivationSnafu, DerivativeKms, ECDH1PUParams, ECDHESParams,
+    KeyID, KeyType, Kms, ResolvingSnafu,
 };
 use async_trait::async_trait;
+use napi::bindgen_prelude::Promise;
+use napi::threadsafe_function::{ErrorStrategy, ThreadsafeFunction};
+use napi_derive::napi;
 
-pub struct DIDCommKms(NativeKms);
+#[derive(Clone)]
+#[napi(js_name = "DIDCommKms", object, object_to_js = false)]
+pub struct DIDCommKms {
+    #[napi(ts_type = "(kt: KeyType) => Promise<string>")]
+    pub create: ThreadsafeFunction<JsKeyType, ErrorStrategy::Fatal>,
+    #[napi(ts_type = "(kid: string) => Promise<KeyHandle>")]
+    pub get: ThreadsafeFunction<String, ErrorStrategy::Fatal>,
+    #[napi(ts_type = "(pk: Array<number>) => Promise<KeyHandle>")]
+    pub get_by_public_key: ThreadsafeFunction<Vec<u8>, ErrorStrategy::Fatal>,
+    #[napi(ts_type = "(params: ECDH1PUParams) => Promise<Array<number>>")]
+    pub derive_ecdh1pu: ThreadsafeFunction<JsECDH1PUParams, ErrorStrategy::Fatal>,
+    #[napi(ts_type = "(params: ECDHESParams) => Promise<Array<number>>")]
+    pub derive_ecdhes: ThreadsafeFunction<JsECDHESParams, ErrorStrategy::Fatal>,
+}
 
 #[async_trait]
-impl Kms<KeyHandleWrapper> for DIDCommKms {
-    async fn create(&self, kt: KeyType, opts: CreateOptions) -> kms::Result<KeyID> {
-        self.0.base.create(kt, opts).await
+impl Kms<JsKeyHandle> for DIDCommKms {
+    async fn create(&self, kt: KeyType, _: CreateOptions) -> kms::Result<KeyID> {
+        let kt = kt.try_into().map_err(|err: napi::Error| {
+            CreationSnafu {
+                details: err.to_string(),
+            }
+            .build()
+        })?;
+
+        let promise: Promise<String> = self.create.call_async(kt).await.map_err(|err| {
+            CreationSnafu {
+                details: err.to_string(),
+            }
+            .build()
+        })?;
+
+        promise.await.map_err(|err| {
+            kms::CreationSnafu {
+                details: err.to_string(),
+            }
+            .build()
+        })
     }
 
-    async fn get(&self, kid: &KeyID) -> kms::Result<KeyHandleWrapper> {
-        self.0.base.get(kid).await
+    async fn get(&self, kid: &KeyID) -> kms::Result<JsKeyHandle> {
+        let promise: Promise<JsKeyHandle> =
+            self.get.call_async(kid.to_string()).await.map_err(|err| {
+                ResolvingSnafu {
+                    details: err.to_string(),
+                }
+                .build()
+            })?;
+
+        promise.await.map_err(|err| {
+            ResolvingSnafu {
+                details: err.to_string(),
+            }
+            .build()
+        })
     }
 
-    async fn get_by_public_key(&self, public_key: &[u8]) -> kms::Result<KeyHandleWrapper> {
-        self.0.base.get_by_public_key(public_key).await
+    async fn get_by_public_key(&self, public_key: &[u8]) -> kms::Result<JsKeyHandle> {
+        let promise: Promise<JsKeyHandle> = self
+            .get_by_public_key
+            .call_async(public_key.to_vec())
+            .await
+            .map_err(|err| {
+                ResolvingSnafu {
+                    details: err.to_string(),
+                }
+                .build()
+            })?;
+
+        promise.await.map_err(|err| {
+            ResolvingSnafu {
+                details: err.to_string(),
+            }
+            .build()
+        })
     }
 }
 
@@ -26,15 +92,30 @@ impl Kms<KeyHandleWrapper> for DIDCommKms {
 impl DerivativeKms<ECDH1PUParams> for DIDCommKms {
     type Output = Vec<u8>;
 
-    async fn derive(&self, params: ECDH1PUParams) -> kms::Result<Vec<u8>> {
-        let derivative_kms = self.0.ecdh1pu.as_ref().ok_or_else(|| {
-            CreationSnafu {
-                details: "ECDH1-PU Key derivation is not supported",
+    async fn derive(&self, params: ECDH1PUParams) -> kms::Result<Self::Output> {
+        let params = params.try_into().map_err(|err: napi::Error| {
+            DerivationSnafu {
+                details: err.to_string(),
             }
             .build()
         })?;
+        let promise: Promise<Vec<u8>> =
+            self.derive_ecdh1pu
+                .call_async(params)
+                .await
+                .map_err(|err| {
+                    DerivationSnafu {
+                        details: err.to_string(),
+                    }
+                    .build()
+                })?;
 
-        derivative_kms.derive(params).await
+        promise.await.map_err(|err| {
+            DerivationSnafu {
+                details: err.to_string(),
+            }
+            .build()
+        })
     }
 }
 
@@ -42,20 +123,26 @@ impl DerivativeKms<ECDH1PUParams> for DIDCommKms {
 impl DerivativeKms<ECDHESParams> for DIDCommKms {
     type Output = Vec<u8>;
 
-    async fn derive(&self, params: ECDHESParams) -> kms::Result<Vec<u8>> {
-        let derivative_kms = self.0.ecdhes.as_ref().ok_or_else(|| {
-            CreationSnafu {
-                details: "ECDH1-ES Key derivation is not supported",
+    async fn derive(&self, params: ECDHESParams) -> kms::Result<Self::Output> {
+        let params = params.try_into().map_err(|err: napi::Error| {
+            DerivationSnafu {
+                details: err.to_string(),
             }
             .build()
         })?;
+        let promise: Promise<Vec<u8>> =
+            self.derive_ecdhes.call_async(params).await.map_err(|err| {
+                DerivationSnafu {
+                    details: err.to_string(),
+                }
+                .build()
+            })?;
 
-        derivative_kms.derive(params).await
-    }
-}
-
-impl From<&NativeKms> for DIDCommKms {
-    fn from(value: &NativeKms) -> Self {
-        DIDCommKms(value.clone())
+        promise.await.map_err(|err| {
+            DerivationSnafu {
+                details: err.to_string(),
+            }
+            .build()
+        })
     }
 }

@@ -4,20 +4,18 @@ import {
   contextEnsuredVault,
   JsIssuerDiscovery,
   Kms,
-  NativeKms,
-  NativeVault,
   OID4VCIHolder,
   Vault,
 } from "../../..";
 
 export class OID4VCIHolderBuilder {
-  private readonly kms: NativeKms | Kms;
-  private readonly vault: NativeVault | Vault;
+  private readonly kms: Kms;
+  private readonly vault: Vault;
   private readonly clientId: string;
   private readonly issuerDiscovery: JsIssuerDiscovery;
   private redirectUrl?: string;
 
-  constructor(kms: NativeKms | Kms, vault: NativeVault | Vault, clientId: string, issuerDiscovery: JsIssuerDiscovery) {
+  constructor(kms: Kms, vault: Vault, clientId: string, issuerDiscovery: JsIssuerDiscovery) {
     this.kms = kms;
     this.vault = vault;
     this.clientId = clientId;

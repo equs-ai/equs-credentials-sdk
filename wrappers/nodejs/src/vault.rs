@@ -1,4 +1,3 @@
-use crate::vault::JsCredentialEntry;
 use crate::vc::core::{JsCredential, JsCredentialMetadata};
 use agent_sdk::vault;
 use agent_sdk::vault::{
@@ -9,6 +8,41 @@ use async_trait::async_trait;
 use napi::bindgen_prelude::Promise;
 use napi::threadsafe_function::{ErrorStrategy, ThreadsafeFunction};
 use napi_derive::napi;
+/// An interface for stored {@link Credential} in {@link Vault} with some extra information.
+///
+/// @property {Credential} credential
+/// @property {string} kid - key ID
+/// @property {string} id - ID of `CredentialEntry`
+#[napi(js_name = "CredentialEntry", object)]
+pub struct JsCredentialEntry {
+    pub credential: JsCredential,
+    pub kid: String,
+    pub id: String,
+}
+
+impl TryFrom<CredentialEntry> for JsCredentialEntry {
+    type Error = napi::Error;
+
+    fn try_from(value: CredentialEntry) -> napi::Result<Self> {
+        Ok(JsCredentialEntry {
+            credential: value.credential.try_into()?,
+            kid: value.kid,
+            id: value.id,
+        })
+    }
+}
+
+impl TryFrom<JsCredentialEntry> for CredentialEntry {
+    type Error = napi::Error;
+
+    fn try_from(value: JsCredentialEntry) -> napi::Result<Self> {
+        Ok(CredentialEntry {
+            credential: value.credential.try_into()?,
+            kid: value.kid,
+            id: value.id,
+        })
+    }
+}
 
 /// `Vault`
 ///
@@ -187,5 +221,73 @@ impl Vault for JsVault {
                 }
                 .build()
             })
+    }
+}
+
+#[cfg(debug_assertions)]
+pub mod test_utils {
+    use super::{JsCredentialEntry, JsVault};
+    use crate::vc::core::{JsCredential, JsCredentialMetadata};
+    use agent_sdk::vault::Vault;
+    use napi_derive::napi;
+
+    #[napi]
+    pub struct VaultTestHelper(JsVault);
+
+    #[napi]
+    impl VaultTestHelper {
+        #[napi(constructor)]
+        pub fn new(vault: JsVault) -> Self {
+            VaultTestHelper(vault)
+        }
+
+        #[napi]
+        pub async fn store_credential(
+            &self,
+            credential: JsCredential,
+            metadata: JsCredentialMetadata,
+        ) -> String {
+            self.0
+                .store_credential(credential.try_into().unwrap(), &metadata.into())
+                .await
+                .unwrap()
+        }
+
+        #[napi]
+        pub async fn delete_credential(&self, id: String) {
+            self.0.delete_credential(&id).await.unwrap()
+        }
+
+        #[napi]
+        pub async fn find_credentials(&self, fields: Vec<String>) -> Vec<JsCredentialEntry> {
+            self.0
+                .find_credentials(fields)
+                .await
+                .unwrap()
+                .iter()
+                .map(|c| c.to_owned().try_into().unwrap())
+                .collect()
+        }
+
+        #[napi]
+        pub async fn get_credentials(&self) -> Vec<JsCredentialEntry> {
+            self.0
+                .get_credentials()
+                .await
+                .unwrap()
+                .iter()
+                .map(|c| c.to_owned().try_into().unwrap())
+                .collect()
+        }
+
+        #[napi]
+        pub async fn get_credential(&self, id: String) -> JsCredentialEntry {
+            self.0
+                .get_credential(&id)
+                .await
+                .unwrap()
+                .map(|c| c.to_owned().try_into().unwrap())
+                .unwrap()
+        }
     }
 }

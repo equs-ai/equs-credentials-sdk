@@ -1,4 +1,4 @@
-import { inMemKms, localNonceGenerator, OID4VCIIssuer, OID4VCIIssuerBuilder } from "../../";
+import { InMemKms, LocalNonceGenerator, OID4VCIIssuer, OID4VCIIssuerBuilder } from "../../";
 import {
   ACCESS_TOKEN,
   CLAIMS,
@@ -15,8 +15,8 @@ describe("OID4VCI Issuer: ", () => {
   let issuer: OID4VCIIssuer;
 
   beforeEach(async () => {
-    const kms = inMemKms();
-    const nonce_generator = localNonceGenerator();
+    const kms = new InMemKms();
+    const nonce_generator = new LocalNonceGenerator();
     const { keyMetadata } = await createDidAndKeyMetadata(kms);
 
     issuer = await new OID4VCIIssuerBuilder(kms, nonce_generator, ISSUER_METADATA, keyMetadata).build();

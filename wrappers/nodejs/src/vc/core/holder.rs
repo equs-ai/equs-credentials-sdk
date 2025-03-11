@@ -1,11 +1,11 @@
-use crate::kms::{JsKms, NativeKms, UnifiedKms};
-use crate::vault::{JsCredentialEntry, JsVault, NativeVault, UnifiedVault};
+use crate::kms::JsKms;
+use crate::vault::{JsCredentialEntry, JsVault};
 use crate::vc::core::{JsCredential, JsCredentialMetadata, JsHolderMetadata, JsKeyMetadata};
 use crate::vc::core::{
     JsCredentialOffer, JsCredentialRequest, JsPresentation, JsPresentationInput,
 };
 use agent_sdk::vc::core::{Holder, HolderService as CoreHolderService};
-use napi::{Either, Error};
+use napi::Error;
 use napi_derive::napi;
 use serde_json::Value;
 
@@ -169,13 +169,7 @@ impl VCCoreHolder {
 
 #[allow(unused)]
 #[napi]
-pub fn create_holder(
-    kms: Either<&NativeKms, JsKms>,
-    vault: Either<&NativeVault, JsVault>,
-    metadata: JsHolderMetadata,
-) -> VCCoreHolder {
-    let kms: UnifiedKms = kms.into();
-    let vault: UnifiedVault = vault.into();
+pub fn create_holder(kms: JsKms, vault: JsVault, metadata: JsHolderMetadata) -> VCCoreHolder {
     let metadata = metadata.into();
     let holder_service = CoreHolderService::new(kms, vault, metadata);
     VCCoreHolder(Box::new(holder_service))

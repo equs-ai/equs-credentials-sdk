@@ -1,4 +1,4 @@
-import { Credential, CredentialEntry, CredentialMetadata, NativeVault, Vault } from "../..";
+import { Credential, CredentialEntry, CredentialMetadata, Vault } from "../..";
 
 class WrappedVault implements Vault {
   constructor(private readonly vault: Vault) {
@@ -31,6 +31,6 @@ class WrappedVault implements Vault {
   }
 }
 
-export function contextEnsuredVault(vault: NativeVault | Vault): NativeVault | Vault {
-  return vault instanceof NativeVault ? vault : new WrappedVault(vault);
+export function contextEnsuredVault(vault: Vault): Vault {
+  return new WrappedVault(vault);
 }

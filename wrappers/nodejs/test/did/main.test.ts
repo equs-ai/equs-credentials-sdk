@@ -1,4 +1,4 @@
-import { DIDKey, DIDVerificationMethod, inMemKms, KeyHandle, KeyType, UniversalDIDResolver } from "../../";
+import { DIDKey, DIDVerificationMethod, InMemKms, KeyHandle, KeyType, UniversalDIDResolver } from "../../";
 import { Utils } from "./utils";
 import { MockDID } from "./custom";
 
@@ -8,15 +8,15 @@ describe("DID: ", () => {
   const utils = new Utils();
 
   beforeEach(async () => {
-    const kms = inMemKms();
+    const kms = new InMemKms();
     const key = await kms.create(KeyType.Ed25519);
     const nativeKeyHandle = await kms.get(key);
     const didKey = new DIDKey();
 
     keyHandle = {
-      alg: nativeKeyHandle.alg(),
-      jwk: nativeKeyHandle.jwk(),
-      pubKey: nativeKeyHandle.pubKey(),
+      alg: nativeKeyHandle.alg,
+      jwk: nativeKeyHandle.jwk,
+      pubKey: nativeKeyHandle.pubKey,
       sign: nativeKeyHandle.sign,
       verify: nativeKeyHandle.verify,
     };
@@ -63,7 +63,6 @@ describe("DID: ", () => {
       resolver.addResolver(new MockDID("anothermock"));
       const result1 = await resolver.resolve("did:mock:12345");
       const result2 = await resolver.resolve("did:anothermock:456789");
-      console.log(result1, utils.mockDidResolution("mock"));
       expect(result1.document).toEqual(utils.mockDidResolution("mock"));
       expect(result2.document).toEqual(utils.mockDidResolution("anothermock"));
     });

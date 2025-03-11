@@ -3,11 +3,10 @@ import {
   Credential,
   CredentialEntry,
   CredentialMetadata,
-  inMemKms,
-  inMemVault,
+  InMemKms,
+  InMemVault,
   KeyMetadata,
-  NativeKms,
-  NativeVault,
+  Kms,
   Oid4VpHolder,
   OID4VPHolderBuilder,
   VCFormat,
@@ -18,8 +17,8 @@ import { createDidAndKeyMetadata } from "../utils";
 describe("OID4VP Holder: ", () => {
   const mockServer = getLocal();
 
-  let kms: NativeKms;
-  let vault: NativeVault;
+  let kms: Kms;
+  let vault: InMemVault;
   let holder: Oid4VpHolder;
 
   let keyMetadata: KeyMetadata;
@@ -28,8 +27,8 @@ describe("OID4VP Holder: ", () => {
 
   beforeEach(async () => {
     await mockServer.start(9001);
-    kms = inMemKms();
-    vault = inMemVault();
+    kms = new InMemKms();
+    vault = new InMemVault();
     holder = await new OID4VPHolderBuilder(kms, vault, "client_id").build();
 
     keyMetadata = (await createDidAndKeyMetadata(kms)).keyMetadata;
