@@ -3,15 +3,14 @@ use agent_sdk::reqwest::builder::ReqwestClientBuilder;
 
 use agent_sdk::vc::core::KeyMetadata;
 use agent_sdk::vc::oid4vci::{HolderBuilder, IssuerBuilder, IssuerDiscovery, IssuerMetadata};
-use napi::{Either, Error, Result};
+use napi::{Error, Result};
 use napi_derive::napi;
 use std::collections::HashMap;
 
-use crate::kms::NativeKms;
-use crate::kms::{JsKms, UnifiedKms};
-use crate::nonce::{JsNonceGenerator, NativeNonceGenerator, UnifiedNonceGenerator};
+use crate::kms::JsKms;
+use crate::nonce::JsNonceGenerator;
 use crate::utils::{from_json_object, parse_url_arg};
-use crate::vault::{JsVault, NativeVault, UnifiedVault};
+use crate::vault::JsVault;
 use crate::vc::core::JsKeyMetadata;
 use crate::vc::oid4vci::holder::OID4VCIHolder;
 use crate::vc::oid4vci::issuer::OID4VCIIssuer;
@@ -72,14 +71,12 @@ pub enum TokenValidation {
 
 #[napi]
 pub async fn _build_vci_holder(
-    kms: Either<&NativeKms, JsKms>,
-    vault: Either<&NativeVault, JsVault>,
+    kms: JsKms,
+    vault: JsVault,
     client_id: String,
     issuer_discovery: &JsIssuerDiscovery,
     redirect_url: Option<String>,
 ) -> Result<OID4VCIHolder> {
-    let kms: UnifiedKms = kms.into();
-    let vault: UnifiedVault = vault.into();
     let mut builder = HolderBuilder::new(kms, vault, client_id, issuer_discovery.0.to_owned());
 
     #[cfg(debug_assertions)]
@@ -106,16 +103,14 @@ pub async fn _build_vci_holder(
 
 #[napi]
 pub async fn _build_vci_issuer(
-    kms: Either<&NativeKms, JsKms>,
-    nonce_generator: Either<&NativeNonceGenerator, JsNonceGenerator>,
+    kms: JsKms,
+    nonce_generator: JsNonceGenerator,
     #[napi(ts_arg_type = "OID4VCIIssuerMetadata")] issuer_metadata: JsonObject,
     key_metadata: JsKeyMetadata,
     token_validation: Option<JsTokenValidation>,
     clock_skew: Option<JsDuration>,
     dedicated_keys: HashMap<String, JsKeyMetadata>,
 ) -> Result<OID4VCIIssuer> {
-    let kms: UnifiedKms = kms.into();
-    let nonce_generator: UnifiedNonceGenerator = nonce_generator.into();
     let issuer_metadata: IssuerMetadata =
         serde_json::from_value(from_json_object(issuer_metadata)?)?;
     let key_metadata: KeyMetadata = key_metadata.into();

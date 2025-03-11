@@ -2,7 +2,7 @@ mod key;
 mod peer;
 mod web;
 
-use crate::kms::js::JsKeyHandle;
+use crate::kms::JsKeyHandle;
 use crate::utils::{from_json_object, to_json_object};
 use crate::vc::JsonObject;
 use agent_sdk::did::universal::{DIDResolver, UniversalResolver};

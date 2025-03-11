@@ -32,6 +32,12 @@ pub enum Error {
         #[snafu(implicit)]
         location: Location,
     },
+    #[snafu(display("Key derivation error: {details}"))]
+    Derivation {
+        details: String,
+        #[snafu(implicit)]
+        location: Location,
+    },
     #[snafu(display("Crypto error"))]
     Crypto {
         #[snafu(implicit)]

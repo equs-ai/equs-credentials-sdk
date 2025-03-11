@@ -5,8 +5,6 @@ import {
   Duration,
   KeyMetadata,
   Kms,
-  NativeKms,
-  NativeNonceGenerator,
   NonceGenerator,
   OID4VCIIssuer,
   OID4VCIIssuerMetadata,
@@ -15,8 +13,8 @@ import {
 } from "../../..";
 
 export class OID4VCIIssuerBuilder {
-  private readonly kms: NativeKms | Kms;
-  private readonly nonceGenerator: NativeNonceGenerator | NonceGenerator;
+  private readonly kms: Kms;
+  private readonly nonceGenerator: NonceGenerator;
   private readonly issuerMetadata: OID4VCIIssuerMetadata;
   private readonly keyMetadata: KeyMetadata;
   private tokenValidation?: TokenValidation;
@@ -24,8 +22,8 @@ export class OID4VCIIssuerBuilder {
   private dedicatedKeys: Record<string, KeyMetadata>;
 
   constructor(
-    kms: NativeKms | Kms,
-    nonceGenerator: NativeNonceGenerator | NonceGenerator,
+    kms: Kms,
+    nonceGenerator: NonceGenerator,
     issuerMetadata: OID4VCIIssuerMetadata,
     keyMetadata: KeyMetadata,
   ) {

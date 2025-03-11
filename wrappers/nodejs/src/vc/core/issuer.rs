@@ -1,11 +1,11 @@
-use crate::kms::{JsKms, NativeKms, UnifiedKms};
+use crate::kms::JsKms;
 use crate::vc::core::{JsCredential, JsIssuerMetadata};
 use crate::vc::core::{
     JsCredentialOffer, JsCredentialOfferData, JsCredentialRequest, JsCredentialStatusInfo,
 };
 use agent_sdk::vc::claims::Error as ClaimsError;
 use agent_sdk::vc::core::{Issuer, IssuerMetadata, IssuerService as CoreIssuerService};
-use napi::{Either, Error};
+use napi::Error;
 use napi_derive::napi;
 use serde_json::Value;
 
@@ -83,11 +83,7 @@ impl VCCoreIssuer {
 
 #[allow(unused)]
 #[napi]
-pub fn create_issuer(
-    kms: Either<&NativeKms, JsKms>,
-    metadata: JsIssuerMetadata,
-) -> Result<VCCoreIssuer, Error> {
-    let kms: UnifiedKms = kms.into();
+pub fn create_issuer(kms: JsKms, metadata: JsIssuerMetadata) -> Result<VCCoreIssuer, Error> {
     let metadata: IssuerMetadata = metadata.try_into()?;
     let issuer_service = CoreIssuerService::new(kms, metadata);
     Ok(VCCoreIssuer(Box::new(issuer_service)))

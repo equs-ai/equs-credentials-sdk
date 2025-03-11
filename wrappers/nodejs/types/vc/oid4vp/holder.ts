@@ -3,20 +3,18 @@ import {
   contextEnsuredKms,
   contextEnsuredVault,
   Kms,
-  NativeKms,
-  NativeVault,
   OID4VPHolder,
   Vault,
   WalletMetadata,
 } from "../../..";
 
 export class OID4VPHolderBuilder {
-  private readonly kms: NativeKms | Kms;
-  private readonly vault: NativeVault | Vault;
+  private readonly kms: Kms;
+  private readonly vault: Vault;
   private readonly clientId: string;
   private walletMetadata?: WalletMetadata;
 
-  constructor(kms: NativeKms | Kms, vault: NativeVault | Vault, clientId: string) {
+  constructor(kms: Kms, vault: Vault, clientId: string) {
     this.kms = kms;
     this.vault = vault;
     this.clientId = clientId;

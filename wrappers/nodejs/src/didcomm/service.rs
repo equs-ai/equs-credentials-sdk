@@ -1,5 +1,5 @@
 use crate::didcomm::kms::DIDCommKms;
-use crate::kms::{KeyHandleWrapper, NativeKms};
+use crate::kms::JsKeyHandle;
 use crate::utils::{from_json_object, to_json_object};
 use crate::vc::JsonObject;
 use agent_sdk::did::universal::UniversalResolver;
@@ -30,16 +30,14 @@ pub struct UnpackResult {
 }
 
 #[napi(js_name = "DIDCommService")]
-pub struct JsDIDCommService(DIDCommService<DIDCommKms, KeyHandleWrapper>);
+pub struct JsDIDCommService(DIDCommService<DIDCommKms, JsKeyHandle>);
 
 #[allow(clippy::new_without_default)]
 #[napi]
 impl JsDIDCommService {
     #[napi(constructor)]
-    pub fn new(kms: &NativeKms) -> Self {
+    pub fn new(kms: DIDCommKms) -> Self {
         let universal_resolver = UniversalResolver::default();
-        let kms: DIDCommKms = kms.into();
-
         let inner_service = DIDCommService::new(kms, universal_resolver);
 
         JsDIDCommService(inner_service)

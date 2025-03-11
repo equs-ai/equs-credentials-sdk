@@ -1,16 +1,16 @@
-import { DIDWeb, inMemKms, KeyHandle, KeyType, VerificationMethodKey, VerificationRelationshipType } from "../../";
+import { DIDWeb, InMemKms, KeyHandle, KeyType, VerificationMethodKey, VerificationRelationshipType } from "../../";
 
 describe("did:web: ", () => {
   test("generate did document", async () => {
     const did = "did:web:test.example.com";
-    const kms = inMemKms();
+    const kms = new InMemKms();
     const key = await kms.create(KeyType.P256);
     const nativeKeyHandle = await kms.get(key);
     const didWeb = new DIDWeb();
     let keyHandle: KeyHandle = {
-      alg: nativeKeyHandle.alg(),
-      jwk: nativeKeyHandle.jwk(),
-      pubKey: nativeKeyHandle.pubKey(),
+      alg: nativeKeyHandle.alg,
+      jwk: nativeKeyHandle.jwk,
+      pubKey: nativeKeyHandle.pubKey,
       sign: nativeKeyHandle.sign,
       verify: nativeKeyHandle.verify,
     };

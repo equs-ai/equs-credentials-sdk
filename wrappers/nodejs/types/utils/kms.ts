@@ -1,4 +1,4 @@
-import { KeyHandle, KeyType, Kms, NativeKms } from "../../binary";
+import { KeyHandle, KeyType, Kms } from "../../binary";
 import { WrappedKeyHandle } from "./keyHandle";
 
 class WrappedKms implements Kms {
@@ -23,6 +23,6 @@ class WrappedKms implements Kms {
   }
 }
 
-export function contextEnsuredKms(kms: NativeKms | Kms): NativeKms | Kms {
-  return kms instanceof NativeKms ? kms : new WrappedKms(kms);
+export function contextEnsuredKms(kms: Kms): Kms {
+  return new WrappedKms(kms);
 }

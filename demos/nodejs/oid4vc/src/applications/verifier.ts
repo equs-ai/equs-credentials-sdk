@@ -2,8 +2,8 @@ import {
   AuthorizationResponse,
   AuthResponseOptions,
   enableLogs,
-  inMemKms,
-  localNonceGenerator,
+  InMemKms,
+  LocalNonceGenerator,
   OID4VPVerifierBuilder,
   PassAuthRequestObject,
   TracingLogFormat,
@@ -20,8 +20,8 @@ async function main(): Promise<void> {
   await enableLogs(TracingLogFormat.Full, TracingLogLevel.Info);
 
   const { port, host } = config.servers.verifier;
-  const kms = inMemKms();
-  const nonceGenerator = localNonceGenerator();
+  const kms = new InMemKms();
+  const nonceGenerator = new LocalNonceGenerator();
   const { did, keyMetadata } = await createDidAndKeyMetadata(kms);
 
   const appState = {

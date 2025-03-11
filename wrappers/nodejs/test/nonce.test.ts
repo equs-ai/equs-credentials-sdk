@@ -1,28 +1,25 @@
-import { NativeNonceGenerator, wrapJsNonceGenerator } from "../";
+import { NonceGenerator, NonceGeneratorTestHelper } from "../";
 
 describe("Nonce: ", () => {
+  const NONCE = "nOnce";
+
+  function mockNonceGenerator() {
+    return new MockNonceGenerator(NONCE);
+  }
+
+  class MockNonceGenerator implements NonceGenerator {
+    constructor(private readonly nonce: string) {
+      this.generate = this.generate.bind(this);
+    }
+
+    async generate(): Promise<string> {
+      return this.nonce;
+    }
+  }
+
   test("generate Nonce", async () => {
-    const nonceGenerator = createNonceGenerator();
-
+    const nonceGenerator = new NonceGeneratorTestHelper(mockNonceGenerator());
     const nonce = await nonceGenerator.generate();
-
     expect(nonce).toEqual("nOnce");
   });
-
-  test("generate Nonce with expiration", async () => {
-    const nonceGenerator = createNonceGenerator();
-
-    const nonce = await nonceGenerator.withExpiration(3600);
-
-    expect(nonce.nonce).toEqual("nOnce");
-    expect(nonce.expiresIn).toEqual(3600);
-  });
 });
-
-function createNonceGenerator(): NativeNonceGenerator {
-  return wrapJsNonceGenerator({
-    async generate() {
-      return "nOnce";
-    },
-  });
-}

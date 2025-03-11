@@ -1,9 +1,11 @@
 import {
   Alg,
+  contextEnsuredKms,
+  contextEnsuredVault,
   CredentialOfferContentFormat,
   CredentialStatusInfoFormat,
-  inMemKms,
-  inMemVault,
+  InMemKms,
+  InMemVault,
   IssuerMetadata,
   PresentationInput,
   PresentationRestrictionValueType,
@@ -17,8 +19,8 @@ export class Utils {
   readonly nonce = "KB50VOm9I-kPLT9mAACV8g";
   readonly verifierId = "Verifier-id";
   readonly scope = "SD_JWT_cred_sample";
-  readonly kms = inMemKms();
-  readonly vault = inMemVault();
+  readonly kms = contextEnsuredKms(new InMemKms());
+  readonly vault = contextEnsuredVault(new InMemVault());
   readonly credStatusInfo = {
     format: CredentialStatusInfoFormat.TokenStatusList,
     payload: {

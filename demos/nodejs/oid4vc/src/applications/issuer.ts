@@ -1,9 +1,9 @@
 import {
   enableLogs,
-  inMemKms,
+  InMemKms,
   IssuanceResultType,
   IssuanceSession,
-  localNonceGenerator,
+  LocalNonceGenerator,
   OID4VCIIssuerBuilder,
   TracingLogFormat,
   TracingLogLevel,
@@ -17,8 +17,8 @@ import { createDidAndKeyMetadata } from "../components/utils";
 async function main(): Promise<void> {
   await enableLogs(TracingLogFormat.Full, TracingLogLevel.Info);
 
-  const kms = inMemKms();
-  const nonceGenerator = localNonceGenerator();
+  const kms = new InMemKms();
+  const nonceGenerator = new LocalNonceGenerator();
   const { keyMetadata } = await createDidAndKeyMetadata(kms);
 
   const issuer = await new OID4VCIIssuerBuilder(

@@ -1,17 +1,19 @@
 import {
+  DIDCommKms,
   DIDCommMessage,
   DIDCommService,
   DIDPeer,
-  inMemKms,
+  InMemKms,
   KeyType,
-  NativeKms,
+  Kms,
   VerificationRelationshipType,
+  contextEnsuredDIDCommKms,
 } from "../";
 
 describe("DIDComm: ", () => {
   test("pack encrypted", async () => {
-    const senderKms = inMemKms();
-    const recipientKms = inMemKms();
+    const senderKms = contextEnsuredDIDCommKms(new InMemKms());
+    const recipientKms = contextEnsuredDIDCommKms(new InMemKms());
 
     const senderDid = await generate_did_peer(senderKms);
     const recipientDid = await generate_did_peer(recipientKms);
@@ -38,11 +40,12 @@ describe("DIDComm: ", () => {
   });
 
   test("pack signed", async () => {
-    const senderKms = inMemKms();
+    const senderKms = contextEnsuredDIDCommKms(new InMemKms());
+    const recipientKms = contextEnsuredDIDCommKms(new InMemKms());
     const senderDid = await generate_did_peer(senderKms);
 
     const senderDIDCommService = new DIDCommService(senderKms);
-    const recipientDIDCommService = new DIDCommService(inMemKms());
+    const recipientDIDCommService = new DIDCommService(recipientKms);
 
     const message: DIDCommMessage = {
       id: "123456",
@@ -59,7 +62,8 @@ describe("DIDComm: ", () => {
   });
 
   test("pack plaintext", async () => {
-    const didCommService = new DIDCommService(inMemKms());
+    const kms = contextEnsuredDIDCommKms(new InMemKms());
+    const didCommService = new DIDCommService(kms);
 
     const message: DIDCommMessage = {
       id: "123456",
@@ -76,7 +80,7 @@ describe("DIDComm: ", () => {
   });
 });
 
-async function generate_did_peer(kms: NativeKms): Promise<string> {
+async function generate_did_peer(kms: Kms | DIDCommKms): Promise<string> {
   const kid = await kms.create(KeyType.P256);
   const keyHandle = await kms.get(kid);
 
@@ -84,9 +88,9 @@ async function generate_did_peer(kms: NativeKms): Promise<string> {
     [
       {
         key: {
-          alg: keyHandle.alg(),
-          jwk: keyHandle.jwk() ?? undefined,
-          pubKey: keyHandle.pubKey(),
+          alg: keyHandle.alg,
+          jwk: keyHandle.jwk,
+          pubKey: keyHandle.pubKey,
           sign: keyHandle.sign,
           verify: keyHandle.verify,
         },
