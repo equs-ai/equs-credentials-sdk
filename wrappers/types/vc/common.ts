@@ -1,5 +1,6 @@
 import { ClaimFormatPayload } from "./presentation-definition";
 
+/** Basic enum for supported `VC` formats */
 export const enum CredentialFormats {
   VCSDJWT = "dc+sd-jwt",
   JWTVCJSON = "jwt_vc_json",
@@ -8,6 +9,7 @@ export const enum CredentialFormats {
   MSOMDOC = "mso_mdoc",
 }
 
+/** Enum for algorithm intended for use with the JWK key */
 export const enum JwkAlgorithm {
   HS256 = "HS256",
   HS384 = "HS384",
@@ -28,4 +30,7 @@ export const enum JwkAlgorithm {
   ESBlake2bK = "ESBlake2bK",
 }
 
+/**
+ * A JSON object of claim formats.
+ */
 export type ClaimFormatMap = Record<string, ClaimFormatPayload>;
