@@ -9,7 +9,7 @@
     "lib": [
       "ESNext"
     ],
-    "removeComments": true,
+    "removeComments": false,
     "emitDecoratorMetadata": true,
     "experimentalDecorators": true,
     "allowSyntheticDefaultImports": true,
