@@ -1,5 +1,6 @@
 //! APIs for implementing cryptographic primitives.
 
+use crate::utils::wasm::{WasmNotSend, WasmNotSync};
 use async_trait::async_trait;
 use common_macros::DebugError;
 use serde::{Deserialize, Serialize};
@@ -108,8 +109,9 @@ pub enum VerifyingOptions {
 /// An async `Signer` interface.
 ///
 /// Exposes primitives to sign a binary payload.
-#[async_trait]
-pub trait Signer: Sync + Send {
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
+pub trait Signer: WasmNotSync + WasmNotSend {
     /// Returns algorithm of the signer.
     ///
     /// # Returns
@@ -163,8 +165,9 @@ pub trait Signer: Sync + Send {
 /// An async `Verifier` interface.
 ///
 /// Exposes primitives to verify that a binary data was correctly signed.
-#[async_trait]
-pub trait Verifier: Sync + Send {
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
+pub trait Verifier: WasmNotSync + WasmNotSend {
     /// Verify that a signed data was signed using the provided signature.
     ///
     /// # Arguments
@@ -204,7 +207,7 @@ pub trait Verifier: Sync + Send {
 /// A general `Key` interface.
 ///
 /// Exposes the public key and the JWK if suitable.
-pub trait Key: Sync + Send {
+pub trait Key: WasmNotSync + WasmNotSend {
     /// Returns the public key for the corresponding handle.
     ///
     /// # Returns
@@ -236,17 +239,18 @@ impl Key for Box<dyn Key> {
 }
 
 /// Utility trait that combines [Signer] and [Key].
-#[async_trait]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 pub trait SigningKey: Key + Signer {}
 
 /// Utility trait that combines [Verifier] and [Key].
-#[async_trait]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 pub trait VerifyingKey: Key + Verifier {}
 
 /// A crypto `Suite` with support of signing/verification.
 ///
 /// Supports extra methods to generate key material.
-#[async_trait]
 pub trait Suite: SigningKey + VerifyingKey + Sized {
     /// Generate a private key.
     ///

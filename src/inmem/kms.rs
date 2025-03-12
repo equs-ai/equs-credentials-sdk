@@ -40,7 +40,8 @@ pub enum KeyHandle {
 
 impl KeyHandle {}
 
-#[async_trait]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl crypto::Signer for KeyHandle {
     #[instrument(
         level = Level::TRACE,
@@ -86,7 +87,8 @@ impl crypto::Signer for KeyHandle {
     }
 }
 
-#[async_trait]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl crypto::Verifier for KeyHandle {
     #[instrument(
         level = Level::TRACE,
@@ -104,7 +106,8 @@ impl crypto::Verifier for KeyHandle {
     }
 }
 
-#[async_trait]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl crypto::Key for KeyHandle {
     #[instrument(
         level = Level::TRACE,
@@ -136,13 +139,16 @@ impl crypto::Key for KeyHandle {
     }
 }
 
-#[async_trait]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl crypto::SigningKey for KeyHandle {}
 
-#[async_trait]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl crypto::VerifyingKey for KeyHandle {}
 
-#[async_trait]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl kms::KeyHandle for KeyHandle {}
 
 pub type Bytes = Vec<u8>;
@@ -407,7 +413,8 @@ impl LocalKms {
     }
 }
 
-#[async_trait]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl Kms<KeyHandle> for LocalKms {
     #[instrument(
         level = Level::TRACE,
@@ -475,7 +482,8 @@ impl Kms<KeyHandle> for LocalKms {
     }
 }
 
-#[async_trait]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl DerivativeKms<BIP32Params> for LocalKms {
     type Output = KeyID;
 
@@ -490,7 +498,8 @@ impl DerivativeKms<BIP32Params> for LocalKms {
     }
 }
 
-#[async_trait]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl DerivativeKms<ECDH1PUParams> for LocalKms {
     type Output = Vec<u8>;
 
@@ -533,7 +542,8 @@ impl DerivativeKms<ECDH1PUParams> for LocalKms {
     }
 }
 
-#[async_trait]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl DerivativeKms<ECDHESParams> for LocalKms {
     type Output = Vec<u8>;
 

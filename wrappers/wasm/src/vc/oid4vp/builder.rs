@@ -1,7 +1,8 @@
+use crate::did::resolver::{DIDResolver, JsDIDResolver};
 use crate::http::HttpClient;
-use crate::inmem::kms::InMemKms;
-use crate::inmem::vault::InMemVault;
+use crate::kms::{JsKeyHandle, JsKms, Kms};
 use crate::utils;
+use crate::vault::{JsVault, Vault};
 use crate::vc::oid4vp::holder::OID4VPHolder;
 use crate::vc::oid4vp::WalletMetadata;
 use agent_sdk::vc::oid4vp::HolderBuilder;
@@ -11,12 +12,7 @@ use wasm_bindgen::JsError;
 /// A builder for creating an `OID4VP` `Holder` API instance.
 #[wasm_bindgen]
 pub struct OID4VPHolderBuilder(
-    HolderBuilder<
-        agent_sdk::inmem::kms::KeyHandle,
-        agent_sdk::inmem::kms::LocalKms,
-        agent_sdk::inmem::vault::InMemVault,
-        agent_sdk::reqwest::ReqwestClient,
-    >,
+    HolderBuilder<JsKeyHandle, JsKms, JsVault, agent_sdk::reqwest::ReqwestClient>,
 );
 
 #[wasm_bindgen]
@@ -29,8 +25,12 @@ impl OID4VPHolderBuilder {
     /// * `vault` - a Vault service used for securely storing credentials.
     /// * `client_id` - the Client ID of the `Holder`.
     #[wasm_bindgen(constructor)]
-    pub fn new(kms: &InMemKms, vault: &InMemVault, client_id: String) -> Self {
-        OID4VPHolderBuilder(HolderBuilder::new(kms.inner(), vault.inner(), client_id))
+    pub fn new(kms: Kms, vault: Vault, client_id: String) -> Self {
+        OID4VPHolderBuilder(HolderBuilder::new(
+            JsKms::new(kms),
+            JsVault::new(vault),
+            client_id,
+        ))
     }
 
     /// Sets a custom HTTP client for the holder.
@@ -44,6 +44,22 @@ impl OID4VPHolderBuilder {
     #[wasm_bindgen(js_name = withHttpClient)]
     pub fn with_http_client(self, client: &HttpClient) -> Self {
         OID4VPHolderBuilder(self.0.with_http_client(client.inner()))
+    }
+
+    /// Sets custom did resolver for the holder.
+    ///
+    /// This method allows providing a custom did resolver.
+    /// If provided, it can be used to resolve did into the did document
+    ///
+    /// # Arguments
+    ///
+    /// * `did_resolver` - did resolver implementing `DIDResolver`.
+    #[wasm_bindgen(js_name = withDidResolver)]
+    pub fn with_did_resolver(self, did_resolver: DIDResolver) -> Result<Self, JsError> {
+        self.0
+            .with_did_resolver(JsDIDResolver::new(did_resolver))
+            .map(OID4VPHolderBuilder)
+            .map_err(JsError::from)
     }
 
     /// Sets custom wallet metadata for the holder.

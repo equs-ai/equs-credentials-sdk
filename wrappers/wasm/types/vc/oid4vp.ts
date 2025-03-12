@@ -6,11 +6,13 @@ import { ClientMetadata, PresentationDefinition } from "../../dist";
 /**
  * A `OID4VP` authorization request.
  *
- * `client_id` Verifier's identifier.
- * `presentation_definition` Rules for the required Verifiable Presentation(s).
- * `nonce` Unique value to prevent replay attacks.
- * `response_mode` Method for returning the authorization response.
- * `response_uri` URI to send the response.
+ * @property {string} `client_id` - Verifier's identifier.
+ * @property {PresentationDefinition} `presentation_definition` - Rules for the required Verifiable Presentation(s).
+ * @property {ClientMetadata} `client_metadata` - Metadata information about the client.
+ * @property {string} `nonce` - Unique value to prevent replay attacks.
+ * @property {string} `response_mode` - Method for returning the authorization response.
+ * @property {string} `response_uri` - URI to send the response.
+ * @property {string} `state` - A value to keep state between the auth request and the response.
  */
 export interface AuthorizationRequest {
   client_id: string;
@@ -28,8 +30,8 @@ export interface AuthorizationRequest {
  *
  * # Fields
  *
- * - `claims_to_exclude` - map of claims divided by input descriptors that need to be excluded.
- * - `id_token_metadata`: metadata containing the signing key and lifetime for the SIOP ID token
+ * @property {Record<string, Array<string>>} `claims_to_exclude` - A map of claims divided by input descriptors that need to be excluded.
+ * @property {IdTokenMetadata} `id_token_metadata` - The metadata containing the signing key and lifetime for the SIOPv2 ID token
  */
 export interface AuthorizationResponseMetadata {
   claims_to_exclude?: Record<string, Array<string>>;
@@ -39,8 +41,8 @@ export interface AuthorizationResponseMetadata {
 /**
  * Metadata for an ID Token.
  *
- * - `id_token_key`: metadata for the key used to sign the SIOP ID token.
- * - `lifetime`: lifetime of the ID token.
+ * @property {KeyMetadata} `key_metadata` - The metadata for the key used to sign the SIOPv2 ID token.
+ * @property {number} `lifetime` - The lifetime of the ID token.
  */
 export interface IdTokenMetadata {
   key_metadata: KeyMetadata;

@@ -17,6 +17,7 @@ use crate::did::JWKResolver;
 use crate::http::HttpClient;
 use crate::kms::{KeyHandle, Kms};
 use crate::nonce::{Nonce, NonceGenerator};
+use crate::utils::wasm::{WasmNotSend, WasmNotSync};
 use crate::vc;
 use crate::vc::claims::{Claim, Claims};
 use crate::vc::core::KeyMetadata;
@@ -362,7 +363,7 @@ where
         pass_auth_request_object: &PassAuthRequestObject,
         wallet_metadata: &WalletMetadata,
         verifier_builder: openid4vp::verifier::VerifierBuilder<
-            impl openid4vp::verifier::client::Client + Send + Sync,
+            impl openid4vp::verifier::client::Client + WasmNotSend + WasmNotSync,
         >,
     ) -> Result<(Url, Option<String>)> {
         let auth_req_type = match (pass_auth_request_object.to_owned(), &auth_response_config.mode) {

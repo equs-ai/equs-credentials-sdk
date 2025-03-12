@@ -179,7 +179,8 @@ impl DIDPeer {
     }
 }
 
-#[async_trait]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl DIDResolver for DIDPeer {
     #[instrument(level = Level::TRACE, skip(self), ret())]
     async fn resolve_representation<'a>(

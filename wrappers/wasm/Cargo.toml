@@ -6,6 +6,7 @@ rust-version = "1.82"
 
 [features]
 default = ['console_error_panic_hook', 'instant/wasm-bindgen', 'instant/inaccurate']
+test-utils = []
 
 [lib]
 crate-type = ["cdylib", "rlib"]

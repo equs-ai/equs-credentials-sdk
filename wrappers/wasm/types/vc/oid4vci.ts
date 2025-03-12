@@ -6,8 +6,7 @@ import { Credential } from "./credential";
  *
  * Used when the credential issuance process is asynchronous and the credential is not immediately available.
  *
- * # Fields:
- * - `transaction_id`: can be used to poll or reference the transaction status for a later retrieval.
+ * @property {string} transaction_id - Can be used to poll or reference the transaction status for a later retrieval.
  */
 export interface CredentialDeferred {
   transaction_id: string;
@@ -20,9 +19,8 @@ export interface CredentialDeferred {
  * It contains the issued `credential` and may include an optional `notification_id` for tracking
  * notification events related to the issuance.
  *
- * # Fields:
- * - `credential`: Verifiable Credential.
- * - `notification_id`: for tracking notification events related to the issuance.
+ * @property {Credential} credential - Verifiable Credential.
+ * @property {string} notification_id - For tracking notification events related to the issuance.
  */
 export interface CredentialImmediate {
   credential: Credential;
@@ -32,9 +30,9 @@ export interface CredentialImmediate {
 /**
  * An OID4VP credential response
  *
- * # Fields:
- * - `data`: contains `CredentialResult`.
- * - `nonce_data`: contains optional `NonceData` for subsequent calls.
+ * @property {CredentialDeferred|CredentialImmediate} data - The credential response data,
+ * which may be either a {@link CredentialDeferred} or a {@link CredentialImmediate}.
+ * @property {NonceData} nonce_data - The {@link NonceData} to be used in subsequent calls, as defined by.
  */
 export interface CredentialResponse {
   data: CredentialDeferred | CredentialImmediate;

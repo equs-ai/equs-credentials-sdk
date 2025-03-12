@@ -31,7 +31,8 @@ impl<S: SigningKey> Debug for Signer<S> {
     }
 }
 
-#[async_trait]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl<S: SigningKey> openid4vp::signer::Signer for Signer<S> {
     type Error = anyhow::Error;
 

@@ -1,17 +1,20 @@
-use crate::nonce::Nonce;
-use crate::vault::CredentialEntry;
-use crate::vc::claims::Claims;
-use crate::vc::core::KeyMetadata;
-use crate::vc::oid4vp::{InternalError, ProtocolError};
-use crate::vc::presentation_exchange::{PresentationDefinition, PresentationSubmission};
-
 use async_trait::async_trait;
 use common_macros::DebugError;
+use openid4vp::core::error::Error as SpruceErr;
 use serde::{Deserialize, Serialize};
 use snafu::{IntoError, Snafu};
 use std::collections::HashMap;
 use std::fmt::Debug;
 use url::Url;
+
+use crate::nonce::Nonce;
+use crate::utils::wasm::{WasmNotSend, WasmNotSync};
+use crate::vault::CredentialEntry;
+use crate::vc::claims::Claims;
+use crate::vc::core::KeyMetadata;
+use crate::vc::oid4vp::internal_error::Oid4VpLibSnafu;
+use crate::vc::oid4vp::{InternalError, ProtocolError};
+use crate::vc::presentation_exchange::{PresentationDefinition, PresentationSubmission};
 
 pub type CredentialsMapping = HashMap<String, Vec<CredentialEntry>>;
 pub type CredentialMapping = HashMap<String, CredentialEntry>;
@@ -24,7 +27,7 @@ pub type ResponseMode = openid4vp::core::authorization_request::parameters::Resp
 ///
 /// - `id_token_key`: metadata for the key used to sign the SIOP ID token.
 /// - `lifetime`: lifetime of the ID token.
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct IdTokenMetadata {
     pub key_metadata: KeyMetadata,
     pub lifetime: time::Duration,
@@ -44,7 +47,7 @@ pub struct IdTokenMetadata {
 /// let mut map = HashMap::new();
 /// map.insert("Identity-1", vec!["$.name".to_string()]);
 /// ```
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Serialize, Deserialize)]
 pub struct AuthorizationResponseMetadata {
     pub claims_to_exclude: Option<HashMap<String, Vec<String>>>,
     pub id_token_metadata: Option<IdTokenMetadata>,
@@ -153,7 +156,7 @@ pub enum Error {
 /// Existing implementation of the API is not exposed.
 #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 #[cfg_attr(not(target_arch = "wasm32"), async_trait)]
-pub trait Holder: Send + Sync {
+pub trait Holder: WasmNotSend + WasmNotSync {
     /// Fetches the `OID4VP` authorization request object from the provided URI.
     /// If the validation of authorization request fails then related `ProtocolError` response will be sent to the `response_uri` endpoint
     ///
@@ -276,7 +279,7 @@ pub trait Holder: Send + Sync {
 /// Existing implementation of the API is not exposed.
 #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 #[cfg_attr(not(target_arch = "wasm32"), async_trait)]
-pub trait Verifier: Send + Sync {
+pub trait Verifier: WasmNotSend + WasmNotSync {
     /// Creates an `OID4VP` authorization request.
     ///
     /// # Arguments
@@ -327,9 +330,6 @@ pub trait Verifier: Send + Sync {
         session: &PresentationSession,
     ) -> Result<Claims, Error>;
 }
-
-use crate::vc::oid4vp::internal_error::Oid4VpLibSnafu;
-use openid4vp::core::error::Error as SpruceErr;
 
 impl From<SpruceErr> for Error {
     fn from(value: SpruceErr) -> Self {

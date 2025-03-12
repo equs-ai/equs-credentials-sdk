@@ -3,6 +3,7 @@ use agent_sdk::did::{DIDBuf, DIDResolver};
 use std::str::FromStr;
 use wasm_bindgen::prelude::*;
 
+use crate::did::resolver::JsDIDResolver;
 use crate::did::{DIDResolution, DIDVerificationMethod};
 use crate::utils;
 
@@ -51,18 +52,23 @@ impl UniversalDIDResolver {
     /// See: <https://www.w3.org/TR/did-core/#did-resolution>
     #[wasm_bindgen]
     pub async fn resolve(&self, did: String) -> Result<DIDResolution, JsError> {
-        let output = self
-            .0
+        self.0
             .resolve(&DIDBuf::from_str(&did).map_err(JsError::from)?)
             .await
-            .map_err(|err| JsError::new(&format!("{:?}", err)))?;
+            .map_err(|err| JsError::new(&format!("{:?}", err)))
+            .and_then(TryInto::try_into)
+    }
 
-        let json_value = serde_json::json!({
-            "document": output.document,
-            "metadata": output.metadata,
-            "document_metadata": output.document_metadata,
-        });
-
-        utils::convert_to_opaque_object_unchecked(json_value)
+    /// Adds a new DID resolver.
+    ///
+    /// Using this method, a new resolver can be added to extend support for additional DID methods.
+    #[wasm_bindgen(js_name = addResolver)]
+    pub fn add_resolver(
+        &mut self,
+        resolver: crate::did::resolver::DIDResolver,
+    ) -> Result<(), JsError> {
+        self.0
+            .add_resolver(JsDIDResolver::new(resolver))
+            .map_err(|err| JsError::new(&format!("{:?}", err)))
     }
 }

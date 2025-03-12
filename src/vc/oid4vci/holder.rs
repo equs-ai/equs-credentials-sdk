@@ -1,6 +1,6 @@
 use crate::http::HttpClient;
 use crate::nonce::{Nonce, NonceData};
-use crate::utils::maybe_send::MaybeSend;
+use crate::utils::wasm::WasmNotSend;
 use crate::vc;
 use crate::vc::core::{CredentialOfferContent, KeyMetadata, Proof as AsdkProof};
 use crate::vc::oid4vci::internal_error::{
@@ -260,8 +260,8 @@ where
         authorization_callback: AC,
     ) -> Result<token::Response>
     where
-        AC: FnOnce(Url) -> F + MaybeSend,
-        F: Future<Output = std::result::Result<String, E>> + MaybeSend,
+        AC: FnOnce(Url) -> F + WasmNotSend,
+        F: Future<Output = std::result::Result<String, E>> + WasmNotSend,
         E: std::error::Error + 'static,
     {
         info!("authorization code flow is started");
@@ -286,8 +286,8 @@ where
         authorization_callback: AC,
     ) -> Result<api::TokenResponse>
     where
-        AC: FnOnce(AuthzFlow) -> F + MaybeSend,
-        F: Future<Output = std::result::Result<String, E>> + MaybeSend,
+        AC: FnOnce(AuthzFlow) -> F + WasmNotSend,
+        F: Future<Output = std::result::Result<String, E>> + WasmNotSend,
         E: std::error::Error + 'static,
     {
         let grants = offer_params.grants.as_ref().ok_or_else(|| {
@@ -480,8 +480,8 @@ where
         callback: AC,
     ) -> Result<token::Response>
     where
-        AC: FnOnce(Url) -> F + MaybeSend,
-        F: Future<Output = std::result::Result<String, E>> + MaybeSend,
+        AC: FnOnce(Url) -> F + WasmNotSend,
+        F: Future<Output = std::result::Result<String, E>> + WasmNotSend,
         E: std::error::Error + 'static,
     {
         info!("authorization is started");
