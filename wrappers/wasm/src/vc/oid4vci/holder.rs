@@ -1,3 +1,9 @@
+use crate::crypto::{KeyMetadata, NonceData};
+use crate::utils;
+use crate::vc::oid4vci::{
+    CredentialResponse, OID4VCICredentialOffer, OID4VCIIssuerMetadata, TokenResponse,
+};
+use crate::vc::{Credential, CredentialMetadata, JsCredential};
 use agent_sdk::vc::oid4vci::{
     AccessToken, AuthzFlow, CredentialOfferParams, CredentialResponseResolved, Holder,
     IssuerMetadata,
@@ -13,12 +19,6 @@ use url::Url;
 use wasm_bindgen::prelude::wasm_bindgen;
 use wasm_bindgen::{JsCast, JsError, JsValue};
 use wasm_bindgen_futures::JsFuture;
-
-use crate::vc::oid4vci::{
-    CredentialResponse, OID4VCICredentialOffer, OID4VCIIssuerMetadata, TokenResponse,
-};
-use crate::vc::{Credential, CredentialMetadata, JsCredential};
-use crate::{utils, KeyMetadata, NonceData};
 
 #[wasm_bindgen(typescript_custom_section)]
 const TS_TYPE: &str = r#"
@@ -306,7 +306,7 @@ impl OID4VCIHolder {
 }
 
 #[async_trait(?Send)]
-trait _HolderWrapperTrait: Send + Sync {
+trait _HolderWrapperTrait {
     fn get_issuer_metadata(&self) -> IssuerMetadata;
 
     async fn authz_code_flow_with_scope(

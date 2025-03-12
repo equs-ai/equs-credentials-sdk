@@ -70,7 +70,8 @@ impl crypto::Key for Ed25519 {
     }
 }
 
-#[async_trait]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl crypto::Signer for Ed25519 {
     #[instrument(
         level = Level::TRACE,
@@ -93,7 +94,8 @@ impl crypto::Signer for Ed25519 {
     }
 }
 
-#[async_trait]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl crypto::Verifier for Ed25519 {
     #[instrument(
         level = Level::TRACE,

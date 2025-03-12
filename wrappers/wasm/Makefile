@@ -3,6 +3,13 @@ PKG_VERSION ?= $(shell npm pkg get version | tr -d '"')
 PKG_MAIN ?= $(shell npm pkg get main | tr -d '"')
 PKG_TYPES ?= $(shell npm pkg get types | tr -d '"')
 WASM_TARGET ?= web
+FEATURES ?=
+
+ifeq ($(strip $(FEATURES)),)
+    FEATURES_OPTION =
+else
+    FEATURES_OPTION = -- --features $(FEATURES)
+endif
 
 ifndef PROJECT_DIR
 PROJECT_DIR := $(shell git rev-parse --show-toplevel)
@@ -35,7 +42,7 @@ pkg_clean:
 
 build: $(WASM_DIR) pkg_clean
 	cd $<
-	wasm-pack build --target $(WASM_TARGET) --out-name index
+	wasm-pack build --target $(WASM_TARGET) --out-name index $(FEATURES_OPTION)
 	$(SED_INPLACE) "s|\"name\": \"[^\"]*\"|\"name\": \"$(PKG_NAME)\"|g" $(WASM_PKG_DIR)/package.json
 	$(SED_INPLACE) "s|\"version\": \"[^\"]*\"|\"version\": \"$(PKG_VERSION)\"|g" $(WASM_PKG_DIR)/package.json
 	$(SED_INPLACE) "s|\"main\": \"[^\"]*\"|\"main\": \"$(PKG_MAIN)\"|g" $(WASM_PKG_DIR)/package.json

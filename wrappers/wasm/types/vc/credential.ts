@@ -1,7 +1,7 @@
 import { Alg } from "../crypto";
 
 /**
- * Formats for Verifiable Credentials
+ * Formats for Verifiable Credentials.
  */
 export enum VCFormat {
   JwtVcJson = "JwtVcJson",
@@ -12,11 +12,10 @@ export enum VCFormat {
 }
 
 /**
- * Verifiable Credential
+ * Verifiable Credential.
  *
- * Fields:
- * - `format`: Verifiable Credentials format
- * - `payload`: the serialized credential data (e.g., a SD-JWT or JSON-LD document)
+ * @property {VCFormat} format - Verifiable Credentials format.
+ * @property {string} payload - the serialized credential data (e.g., a SD-JWT or JSON-LD document).
  */
 export interface Credential {
   format: VCFormat;
@@ -26,10 +25,9 @@ export interface Credential {
 /**
  * An interface for stored `Credential` in `Vault` with some extra information.
  *
- * Fields:
- * - `credential`: Verifiable Credential
- * - `kid`: The ID of the cryptographic key
- * - `id`: Credential ID
+ * @property {Credential} credential - Verifiable Credential.
+ * @property {string} kid - The ID of the cryptographic key.
+ * @property {string} id - Credential ID.
  */
 export interface CredentialEntry {
   credential: Credential;
@@ -40,12 +38,11 @@ export interface CredentialEntry {
 /**
  * Credential Metadata.
  *
- * Fields:
- * - `type`: The type of the Verifiable Credential.
- * - `format`: The format of the Verifiable Credential.
- * - `kid`: The key identifier, representing the ID of the cryptographic key used to sign or verify the credential.
- * - `alg`: The signing algorithm used.
- * - `fields`: The fields contained in the credential.
+ * @property {string} type - The type of the Verifiable Credential.
+ * @property {VCFormat} format - The format of the Verifiable Credential.
+ * @property {string} kid - The key identifier, representing the ID of the cryptographic key used to sign or verify the credential.
+ * @property {Alg} alg - The signing algorithm used.
+ * @property {Array<string>} fields - TThe fields contained in the credential.
  */
 export interface CredentialMetadata {
   type: string;

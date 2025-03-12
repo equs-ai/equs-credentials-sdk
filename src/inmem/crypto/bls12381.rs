@@ -30,7 +30,8 @@ impl Key for Bls12381 {
     }
 }
 
-#[async_trait]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl Signer for Bls12381 {
     fn alg(&self) -> Alg {
         Alg::BBS
@@ -61,7 +62,8 @@ impl Signer for Bls12381 {
 
 impl VerifyingKey for Bls12381 {}
 
-#[async_trait]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl Verifier for Bls12381 {
     async fn verify(&self, data: &[u8], signature: &[u8]) -> crypto::Result<()> {
         self.verify_multi(&[data.to_vec()], signature, None).await

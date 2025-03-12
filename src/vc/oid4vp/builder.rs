@@ -300,6 +300,7 @@ where
         self.wallet_metadata = Some(wallet_metadata);
         self
     }
+
     /// Sets custom did resolver for the holder.
     ///
     /// This method allows providing a custom did resolver.

@@ -1,28 +1,57 @@
 import { Fixtures } from "./fixtures";
-import { UniversalDIDResolver } from "../../pkg";
+import { DIDResolution, DIDResolver, ResolutionOptions, UniversalDIDResolver } from "../../pkg";
 
-describe("DID: ", () => {
+describe("Universal Resolver: ", () => {
   const fixtures = new Fixtures();
-  describe("Universal Resolver: ", () => {
-    const resolver = new UniversalDIDResolver();
+  const resolver = new UniversalDIDResolver();
 
-    test("Resolve verification method", async () => {
-      const result = await resolver.resolveVerificationMethod(
-        "did:key:zDnaefX6jBNVFnFeUPMRGo6exaVdJ1TRCwuhm296PbB5gPTj6",
-      );
-      expect(result).toEqual(
-        expect.objectContaining({
-          id: "did:key:zDnaefX6jBNVFnFeUPMRGo6exaVdJ1TRCwuhm296PbB5gPTj6#zDnaefX6jBNVFnFeUPMRGo6exaVdJ1TRCwuhm296PbB5gPTj6",
-          type: "Multikey",
-          controller: "did:key:zDnaefX6jBNVFnFeUPMRGo6exaVdJ1TRCwuhm296PbB5gPTj6",
-          publicKeyMultibase: "zDnaefX6jBNVFnFeUPMRGo6exaVdJ1TRCwuhm296PbB5gPTj6",
-        }),
-      );
-    });
+  test("Resolve verification method", async () => {
+    const result = await resolver.resolveVerificationMethod(
+      "did:key:zDnaefX6jBNVFnFeUPMRGo6exaVdJ1TRCwuhm296PbB5gPTj6",
+    );
+    expect(result).toEqual(
+      expect.objectContaining({
+        id: "did:key:zDnaefX6jBNVFnFeUPMRGo6exaVdJ1TRCwuhm296PbB5gPTj6#zDnaefX6jBNVFnFeUPMRGo6exaVdJ1TRCwuhm296PbB5gPTj6",
+        type: "Multikey",
+        controller: "did:key:zDnaefX6jBNVFnFeUPMRGo6exaVdJ1TRCwuhm296PbB5gPTj6",
+        publicKeyMultibase: "zDnaefX6jBNVFnFeUPMRGo6exaVdJ1TRCwuhm296PbB5gPTj6",
+      }),
+    );
+  });
 
-    test("Resolve method", async () => {
-      const result = await resolver.resolve("did:key:zDnaefX6jBNVFnFeUPMRGo6exaVdJ1TRCwuhm296PbB5gPTj6");
-      expect(result).toEqual(fixtures.didResolution);
-    });
+  test("Resolve method", async () => {
+    const result = await resolver.resolve("did:key:zDnaefX6jBNVFnFeUPMRGo6exaVdJ1TRCwuhm296PbB5gPTj6");
+    expect(result).toEqual(fixtures.didResolution);
+  });
+
+  test("Resolve custom method", async () => {
+    const customResolver = new MockDIDResolver(
+      "custom",
+      "did:custom:zDnaefX6jBNVFnFeUPMRGo6exaVdJ1TRCwuhm296PbB5gPTj6",
+      fixtures.customDidResolution,
+    );
+
+    resolver.addResolver(customResolver);
+
+
+    const result = await resolver.resolve("did:custom:zDnaefX6jBNVFnFeUPMRGo6exaVdJ1TRCwuhm296PbB5gPTj6");
+    expect(result).toEqual(fixtures.customDidResolution);
   });
 });
+
+
+class MockDIDResolver implements DIDResolver {
+
+  constructor(
+    public readonly methodName: string,
+    private readonly did: `did:${string}:${string}`,
+    private readonly didResolution: DIDResolution,
+  ) {
+  }
+
+  async resolveRepresentation(did: `did:${string}:${string}`, _: ResolutionOptions): Promise<DIDResolution> {
+    expect(did).toEqual(this.did);
+
+    return this.didResolution;
+  }
+}

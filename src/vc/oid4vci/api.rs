@@ -1,12 +1,3 @@
-use crate::http::HttpError;
-use crate::nonce::NonceData;
-use crate::utils::maybe_send::MaybeSend;
-use crate::vc::claims::Claims;
-use crate::vc::core::api::CredentialStatusInfo;
-use crate::vc::core::KeyMetadata;
-use crate::vc::oid4vci::internal_error::RequestSnafu;
-use crate::vc::oid4vci::{metadata, InternalError, ProtocolError};
-use crate::vc::{Credential, CredentialMetadata};
 use async_trait::async_trait;
 use oid4vci::core::profiles::{CoreProfilesCredentialRequest, CoreProfilesCredentialResponse};
 use oid4vci::credential::{RequestError, Response};
@@ -15,6 +6,16 @@ use snafu::{IntoError, Snafu};
 use std::fmt::Debug;
 use std::future::Future;
 use tracing::{instrument, Level};
+
+use crate::http::HttpError;
+use crate::nonce::NonceData;
+use crate::utils::wasm::{WasmNotSend, WasmNotSync};
+use crate::vc::claims::Claims;
+use crate::vc::core::api::CredentialStatusInfo;
+use crate::vc::core::KeyMetadata;
+use crate::vc::oid4vci::internal_error::RequestSnafu;
+use crate::vc::oid4vci::{metadata, InternalError, ProtocolError};
+use crate::vc::{Credential, CredentialMetadata};
 
 type Level_ = Level;
 
@@ -133,7 +134,7 @@ pub type Result<T> = core::result::Result<T, Error>;
 /// Existing implementation of the API is not exposed.
 #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 #[cfg_attr(not(target_arch = "wasm32"), async_trait)]
-pub trait Issuer: Send + Sync {
+pub trait Issuer: WasmNotSend + WasmNotSync {
     /// Returns the `Metadata` of the `Issuer`.
     ///
     /// # Returns
@@ -235,7 +236,7 @@ pub trait Issuer: Send + Sync {
 /// Existing implementation of the API is not exposed.
 #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 #[cfg_attr(not(target_arch = "wasm32"), async_trait)]
-pub trait Holder: Send + Sync {
+pub trait Holder: WasmNotSend + WasmNotSync {
     /// Returns the `Metadata` of the `Issuer`.
     ///
     /// # Returns
@@ -275,8 +276,8 @@ pub trait Holder: Send + Sync {
         authorization_callback: AC,
     ) -> Result<TokenResponse>
     where
-        AC: FnOnce(url::Url) -> F + MaybeSend,
-        F: Future<Output = std::result::Result<String, E>> + MaybeSend,
+        AC: FnOnce(url::Url) -> F + WasmNotSend,
+        F: Future<Output = std::result::Result<String, E>> + WasmNotSend,
         E: std::error::Error + 'static;
 
     /// Gets an access token using a resolved credential offer.
@@ -325,8 +326,8 @@ pub trait Holder: Send + Sync {
         authorization_callback: AC,
     ) -> Result<TokenResponse>
     where
-        AC: FnOnce(AuthzFlow) -> F + MaybeSend,
-        F: Future<Output = std::result::Result<String, E>> + MaybeSend,
+        AC: FnOnce(AuthzFlow) -> F + WasmNotSend,
+        F: Future<Output = std::result::Result<String, E>> + WasmNotSend,
         E: std::error::Error + 'static;
 
     /// Request a `Credential` for the provided `CredentialDefinition`.

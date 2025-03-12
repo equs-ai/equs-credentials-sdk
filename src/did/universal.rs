@@ -4,6 +4,7 @@ use crate::did::didpeer::DIDPeer;
 use crate::did::{
     MethodAlreadyExistsSnafu, ProofValidationError, ResolutionError, ResolutionOutput,
 };
+use crate::utils::wasm::{WasmNotSend, WasmNotSync};
 use async_trait::async_trait;
 use iref::Iri;
 use ssi::dids::resolution::{Options, Output};
@@ -25,8 +26,9 @@ type Level_ = Level;
 
 const EXISTING_DID_METHODS: [&str; 7] = ["ethr", "ion", "jwk", "key", "pkh", "tz", "web"];
 
-#[async_trait]
-pub trait DIDResolver: Send + Sync {
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
+pub trait DIDResolver: WasmNotSend + WasmNotSync {
     /// Resolves a DID representation.
     ///
     /// Fetches the DID document representation referenced by the input DID
@@ -63,6 +65,17 @@ pub struct UniversalResolver {
 }
 
 impl UniversalResolver {
+    /// Adds a new DID resolver.
+    ///
+    /// Using this method, a new resolver can be added to extend support for additional DID methods.
+    ///
+    /// # Arguments
+    ///
+    /// * `resolver` - An instance of a type that implements [`DIDResolver`].
+    ///
+    /// # Errors
+    ///
+    /// `MethodAlreadyExists` if a resolver with the same method name already exists.
     pub fn add_resolver(&mut self, resolver: impl DIDResolver + 'static) -> super::Result<()> {
         if self.already_exists(resolver.method_name().as_str()) {
             MethodAlreadyExistsSnafu {

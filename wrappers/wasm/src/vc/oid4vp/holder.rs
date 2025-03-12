@@ -5,7 +5,9 @@ use wasm_bindgen::prelude::wasm_bindgen;
 use wasm_bindgen::JsError;
 
 use crate::utils;
-use crate::vc::oid4vp::{AuthorizationRequest, CredentialMapping, CredentialsMapping};
+use crate::vc::oid4vp::{
+    AuthorizationRequest, AuthorizationResponseMetadata, CredentialMapping, CredentialsMapping,
+};
 use crate::vc::JsCredentialEntry;
 
 /// The `OID4VP` `Holder` API.
@@ -79,16 +81,17 @@ impl OID4VPHolder {
     pub async fn present_credentials_auto(
         &self,
         auth_request: AuthorizationRequest,
+        metadata: Option<AuthorizationResponseMetadata>,
     ) -> Result<Option<String>, JsError> {
         let auth_request = utils::convert_to_rust_object(auth_request)?;
+        let metadata = metadata
+            .map(utils::convert_to_rust_object)
+            .transpose()?
+            .unwrap_or_else(|| agent_sdk::vc::oid4vp::AuthorizationResponseMetadata::default());
 
         let result = self
             .0
-            .present_credentials_auto(
-                &auth_request,
-                // TODO: implement metadata conversion and add it to function parameters
-                &agent_sdk::vc::oid4vp::AuthorizationResponseMetadata::default(),
-            )
+            .present_credentials_auto(&auth_request, &metadata)
             .await
             .map_err(|err| JsError::new(&format!("{:?}", err)))?;
 
@@ -149,20 +152,20 @@ impl OID4VPHolder {
         &self,
         auth_request: AuthorizationRequest,
         credential_mapping: CredentialMapping,
+        metadata: Option<AuthorizationResponseMetadata>,
     ) -> Result<Option<String>, JsError> {
         let auth_request = utils::convert_to_rust_object(auth_request)?;
         let credential_mapping = utils::convert_to_rust_object(credential_mapping)
             .map_err(|err| JsError::new(&format!("{:?}", err)))
             .and_then(convert_from_js_credential_mapping)?;
+        let metadata = metadata
+            .map(utils::convert_to_rust_object)
+            .transpose()?
+            .unwrap_or_else(|| agent_sdk::vc::oid4vp::AuthorizationResponseMetadata::default());
 
         let result = self
             .0
-            .present_credentials(
-                &auth_request,
-                &credential_mapping,
-                // TODO: implement metadata conversion and add it to function parameters
-                &agent_sdk::vc::oid4vp::AuthorizationResponseMetadata::default(),
-            )
+            .present_credentials(&auth_request, &credential_mapping, &metadata)
             .await
             .map_err(|err| JsError::new(&format!("{:?}", err)))?;
 

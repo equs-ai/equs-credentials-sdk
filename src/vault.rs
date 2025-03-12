@@ -1,5 +1,6 @@
 //! APIs for implementing Verifiable Credentials Vault
 
+use crate::utils::wasm::{WasmNotSend, WasmNotSync};
 use crate::vc::Credential;
 use crate::{kms, vc};
 use async_trait::async_trait;
@@ -78,8 +79,9 @@ pub struct CredentialEntry {
 ///
 /// Supports storing, retrieving and finding [vc::Credential].
 #[cfg_attr(test, automock)]
-#[async_trait]
-pub trait Vault: Send + Sync {
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
+pub trait Vault: WasmNotSend + WasmNotSync {
     /// Stores the `Credential` in `Vault`.
     ///
     /// # Arguments

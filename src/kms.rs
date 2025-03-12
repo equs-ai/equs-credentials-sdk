@@ -1,6 +1,7 @@
 //! APIs for implementing Key Management Service.
 
 use crate::crypto;
+use crate::utils::wasm::{WasmNotSend, WasmNotSync};
 use async_trait::async_trait;
 use common_macros::DebugError;
 #[cfg(test)]
@@ -86,8 +87,9 @@ pub trait KeyHandle: crypto::SigningKey + crypto::VerifyingKey + crypto::Key + C
 ///
 /// Supports key's creation and retrieving the `KeyHandle` with support of basic `Crypto`.
 #[cfg_attr(test, automock)]
-#[async_trait]
-pub trait Kms<KH>: Send + Sync
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
+pub trait Kms<KH>: WasmNotSend + WasmNotSync
 where
     KH: KeyHandle,
 {
@@ -228,7 +230,8 @@ pub struct ECDHESParams {
 /// Could be implemented by any adapter to be used with `ASDK`.
 ///
 /// Adds up master key's creation from a seed and derivation.
-#[async_trait]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 pub trait DerivativeKms<DP>: Send + Sync {
     type Output;
 

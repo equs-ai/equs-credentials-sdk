@@ -18,7 +18,7 @@
   "scripts": {
     "build": "make",
     "lint": "prettier --write .",
-    "test": "npm run build  WASM_TARGET=nodejs TS_MODULE=cjs && jest -w=1 --config=jest.config.json",
+    "test": "npm run build  WASM_TARGET=nodejs TS_MODULE=cjs FEATURES=test-utils && jest -w=1 --config=jest.config.json",
     "check": "tslint -c tslint.json 'src/**/*.ts'"
   },
   "packageManager": "yarn@4.6.0",

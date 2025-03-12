@@ -2,6 +2,7 @@ use crate::crypto;
 use crate::http::HttpClient;
 use crate::kms::Error as KmsError;
 use crate::nonce::Nonce;
+use crate::utils::wasm::{WasmNotSend, WasmNotSync};
 use crate::vault::{CredentialEntry, Error as VaultError};
 use crate::vc::claims::Claims;
 use crate::vc::status_formats::StatusListFormat;
@@ -322,7 +323,7 @@ pub type Result<T> = core::result::Result<T, Error>;
 /// Implementation for `Issuer`: [IssuerService](crate::vc::core::issuer::IssuerService).
 #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 #[cfg_attr(not(target_arch = "wasm32"), async_trait)]
-pub trait Issuer: Send + Sync {
+pub trait Issuer: WasmNotSend + WasmNotSync {
     /// Create a `CredentialOffer` based on some `CredentialDefinition`.
     ///
     ///
@@ -382,7 +383,7 @@ pub trait Issuer: Send + Sync {
 /// Provides method for issuing VC status lists
 #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 #[cfg_attr(not(target_arch = "wasm32"), async_trait)]
-pub trait StatusIssuer: Send + Sync {
+pub trait StatusIssuer: WasmNotSend + WasmNotSync {
     /// Issues a new status list for a given status list identifier and a set of credential statuses.
     ///
     /// # Arguments
@@ -413,7 +414,7 @@ pub trait StatusIssuer: Send + Sync {
 /// Implementation for `Holder`: [HolderService](crate::vc::core::holder::HolderService).
 #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 #[cfg_attr(not(target_arch = "wasm32"), async_trait)]
-pub trait Holder: Send + Sync {
+pub trait Holder: WasmNotSend + WasmNotSync {
     /// Prepare a `CredentialRequest`.
     ///
     /// # Arguments

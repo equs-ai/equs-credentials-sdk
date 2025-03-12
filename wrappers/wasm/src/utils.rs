@@ -1,3 +1,5 @@
+use crate::crypto::KeyMetadata;
+use crate::vc::{Credential, CredentialMetadata, JsCredential};
 use agent_sdk::vc::metadata::{CredentialMetadataProcessor, DefaultMetadataProcessor};
 use js_sys::JSON;
 use serde::de::DeserializeOwned;
@@ -5,9 +7,6 @@ use serde::Serialize;
 use serde_wasm_bindgen::Serializer;
 use wasm_bindgen::prelude::wasm_bindgen;
 use wasm_bindgen::{JsCast, JsError, JsValue};
-
-use crate::vc::{Credential, CredentialMetadata, JsCredential};
-use crate::KeyMetadata;
 
 #[wasm_bindgen(js_name = resolveMetadata)]
 pub async fn resolve_metadata(
@@ -48,6 +47,11 @@ pub fn js_value_to_string(value: JsValue) -> String {
     } else {
         format!("{:?}", value)
     }
+}
+
+pub fn get_property(value: &JsValue, key: &str) -> Result<JsValue, JsError> {
+    js_sys::Reflect::get(value, &JsValue::from_str(key))
+        .map_err(|err| JsError::new(&js_value_to_string(err)))
 }
 
 pub fn convert_to_rust_object<T: JsCast, R: DeserializeOwned>(value: T) -> Result<R, JsError> {

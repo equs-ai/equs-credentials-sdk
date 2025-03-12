@@ -60,7 +60,8 @@ pub struct SignerWrapper<S: Signer> {
     pub(crate) signer: S, // TODO: make it private again
 }
 
-#[async_trait]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl<S: Signer> sd_jwt_rs::signer::SDJWTSigner for SignerWrapper<S> {
     #[instrument(level = Level::TRACE, skip(self), ret())]
     fn algorithm(&self) -> &str {

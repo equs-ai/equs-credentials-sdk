@@ -1,7 +1,7 @@
 use crate::http::HttpClient;
-use crate::inmem::kms::InMemKms;
-use crate::inmem::vault::InMemVault;
+use crate::kms::{JsKeyHandle, JsKms, Kms};
 use crate::utils;
+use crate::vault::{JsVault, Vault};
 use crate::vc::oid4vci::holder::OID4VCIHolder;
 use crate::vc::oid4vci::{OID4VCICredentialOffer, OID4VCIIssuerMetadata};
 use agent_sdk::vc::oid4vci::HolderBuilder;
@@ -54,12 +54,7 @@ impl IssuerDiscovery {
 /// A builder for instantiating `oid4vci` `Holder`.
 #[wasm_bindgen]
 pub struct OID4VCIHolderBuilder(
-    HolderBuilder<
-        agent_sdk::inmem::kms::KeyHandle,
-        agent_sdk::inmem::kms::LocalKms,
-        agent_sdk::inmem::vault::InMemVault,
-        agent_sdk::reqwest::ReqwestClient,
-    >,
+    HolderBuilder<JsKeyHandle, JsKms, JsVault, agent_sdk::reqwest::ReqwestClient>,
 );
 
 #[wasm_bindgen]
@@ -75,14 +70,14 @@ impl OID4VCIHolderBuilder {
     ///   Either `CredentialOffer`, `IssuerMetadata` and `AuthorizationMetadata` or `Issuer` url.
     #[wasm_bindgen(constructor)]
     pub fn new(
-        kms: &InMemKms,
-        vault: &InMemVault,
+        kms: Kms,
+        vault: Vault,
         client_id: String,
         issuer_discovery: &IssuerDiscovery,
     ) -> Self {
         let builder = HolderBuilder::new(
-            kms.inner(),
-            vault.inner(),
+            JsKms::new(kms),
+            JsVault::new(vault),
             client_id,
             issuer_discovery.inner(),
         );

@@ -219,7 +219,7 @@ impl TryFrom<BIP32Params> for JsBIP32Params {
 /// @property {string} [jwk] - jwk
 /// @property {Alg} alg - Key Handle algorithm
 /// @property {(payload: Uint8Array) => Promise<Uint8Array>} sign - Sign the provided binary payload.
-/// @property {(data: Uint8Array, signature: Uint8Array) => Promise<void>} verify - Verify that a signed data was signed using the provided signature.
+/// @property {(data: Uint8Array, signature: Uint8Array) => Promise<void>} verify - Verifies a cryptographic signature for given binary data.
 #[derive(Clone)]
 #[napi(js_name = "KeyHandle", object, object_to_js = false)]
 pub struct JsKeyHandle {

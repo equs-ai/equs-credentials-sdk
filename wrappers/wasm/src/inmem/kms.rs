@@ -1,3 +1,5 @@
+use crate::crypto::{Alg, KeyType};
+use crate::utils;
 use agent_sdk::crypto::{Key, Signer, Verifier};
 use agent_sdk::inmem::kms::{KeyHandle, LocalKms};
 use agent_sdk::kms;
@@ -5,8 +7,6 @@ use agent_sdk::kms::{CreateOptions, KeyID, Kms};
 use std::str::FromStr;
 use wasm_bindgen::prelude::wasm_bindgen;
 use wasm_bindgen::JsError;
-
-use crate::{utils, Alg, KeyType};
 
 #[wasm_bindgen]
 pub struct InMemKeyHandle(KeyHandle);
@@ -41,7 +41,7 @@ impl InMemKeyHandle {
         self.0.jwk().map(|jwk| jwk.to_string())
     }
 
-    #[wasm_bindgen(getter)]
+    #[wasm_bindgen(getter, js_name = pubKey)]
     pub fn pub_key(&self) -> Result<Vec<u8>, JsError> {
         self.0
             .pub_key()
