@@ -5,6 +5,21 @@ use napi::{Error, Result};
 use napi_derive::napi;
 use serde::{Deserialize, Serialize};
 
+/// `Askar Vault`
+///
+/// An async `Vault` interface for managing Verifiable Credentials.
+///
+/// Should be implemented to be used with `Askar`.
+///
+/// Supports storing, retrieving, deleting, and finding {@link Credential}.
+/// Supports closing {@link Vault}
+///
+/// @method storeCredential - {@link AskarVault.storeCredential}
+/// @method deleteCredential - {@link AskarVault.deleteCredential}
+/// @method getCredential - {@link AskarVault.getCredential}
+/// @method getCredentials - {@link AskarVault.getCredentials}
+/// @method findCredentials - {@link AskarVault.findCredentials}
+/// @method closeVault - {@link AskarVault.closeVault}
 #[napi]
 pub struct AskarVault(askar::vault::AskarVault);
 
@@ -18,6 +33,12 @@ impl AskarVault {
         AskarVault(vault)
     }
 
+    /// Stores the {@link Credential} in {@link Vault}.
+    ///
+    /// @param {Credential} credential - the {@link Credential} to store
+    /// @param {CredentialMetadata} metadata - the corresponding {@link CredentialMetadata}
+    ///
+    /// @returns {string} An `ID` of the stored `credential` on success
     #[allow(private_interfaces)]
     #[napi]
     pub async fn store_credential(
@@ -31,6 +52,13 @@ impl AskarVault {
             .map_err(|e| Error::from_reason(e.to_string()))
     }
 
+    /// Get a {@link CredentialEntry} with {@link Credential} from {@link Vault}
+    ///
+    /// @param {string} id - `ID` of the stored {@link CredentialEntry}
+    ///
+    /// @returns {CredentialEntry | null}
+    /// * {@link CredentialEntry} on success
+    /// * `null` if no {@link CredentialEntry} was found by `id`
     #[allow(private_interfaces)]
     #[napi(ts_return_type = "Promise<CredentialEntry | null>")]
     pub async fn get_credential(&self, id: String) -> Result<Option<InnerCredentialEntry>> {
@@ -43,6 +71,11 @@ impl AskarVault {
         credential.map(|entry| entry.try_into()).transpose()
     }
 
+    /// List all {@link CredentialEntry}s in {@link Vault}
+    ///
+    /// @returns {Array<CredentialEntry>}
+    /// * An array of {@link CredentialEntry} on success
+    /// * Empty array if there are no entries
     #[allow(private_interfaces)]
     #[napi(ts_return_type = "Promise<Array<CredentialEntry>>")]
     pub async fn get_credentials(&self) -> Result<Vec<InnerCredentialEntry>> {
@@ -58,6 +91,11 @@ impl AskarVault {
             .collect()
     }
 
+    /// Delete a {@link CredentialEntry} with {@link Credential} from {@link Vault}
+    ///
+    /// @param {string} id -  `ID` of the stored {@link CredentialEntry}
+    ///
+    /// @returns {void}
     #[napi]
     pub async fn delete_credential(&self, id: String) -> Result<()> {
         self.0
@@ -66,6 +104,13 @@ impl AskarVault {
             .map_err(|e| Error::from_reason(e.to_string()))
     }
 
+    /// Find the matching {@link CredentialEntry}s in {@link Vault}
+    ///
+    /// @param {Array<string>} fields -  an array of fields to search for credentials.
+    ///
+    /// @returns {Array<CredentialEntry>}
+    /// * An array of {@link CredentialEntry} matched the provided `fields` on success
+    /// * An empty array if nothing meets the `fields`
     #[allow(private_interfaces)]
     #[napi(ts_return_type = "Promise<Array<CredentialEntry>>")]
     pub async fn find_credentials(&self, fields: Vec<String>) -> Result<Vec<InnerCredentialEntry>> {
@@ -81,6 +126,9 @@ impl AskarVault {
             .collect()
     }
 
+    /// Closes the connection to the {@link Vault}
+    ///
+    /// @returns {void}
     #[allow(clippy::missing_safety_doc)]
     #[napi]
     pub async unsafe fn close_vault(&mut self) -> Result<()> {

@@ -43,7 +43,7 @@ jsonwebtoken = "9.3.0"
 async-trait = "0.1.85"
 strum_macros = "0.26.4"
 strum = { version = "0.26.3", features = ["derive"] }
-reqwest = { version = "0.12.9", features = ["rustls-tls"] }
+reqwest = { version = "=0.12.12", features = ["rustls-tls"] }
 
 uuid = { version = "1.10.0", features = ["v4"] }
 url = "=2.5.2"
