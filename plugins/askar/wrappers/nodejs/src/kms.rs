@@ -4,6 +4,12 @@ use napi::bindgen_prelude::{FromNapiValue, ToNapiValue, Uint8Array};
 use napi::{sys, Error, Result, Status};
 use napi_derive::napi;
 
+/// `Askar Kms`
+///
+/// @method {(kt: KeyType) => Promise<string>} create - Create and store a key in {@link Kms}.
+/// @method {(kid: string) => Promise<KeyHandle>} get - Returns {@link KeyHandle} for the provided `KID`
+/// @method {(pk: Array<number>) => Promise<KeyHandle>} getByPublicKey - Returns {@link KeyHandle} for the provided `Public Key`
+///
 #[napi]
 pub struct AskarKms(askar::kms::AskarKms);
 
@@ -17,6 +23,11 @@ impl AskarKms {
         AskarKms(kms)
     }
 
+    /// Create and store a key in `Askar Kms`.
+    ///
+    /// @param {KeyType} kt - a {@link KeyType} for the key.
+    ///
+    /// @returns {Promise<string>} - A `KeyId` for the created key on success.
     #[napi]
     pub async fn create(&self, kt: KeyType) -> Result<String> {
         self.0
@@ -25,6 +36,11 @@ impl AskarKms {
             .map_err(|e| Error::from_reason(e.to_string()))
     }
 
+    /// Returns {@link KeyHandle} for the provided `KID`.
+    ///
+    /// @param {string} kid - a `KeyId` of the requested key.
+    ///
+    /// @returns {Promise<KeyHandle>} - A {@link KeyHandle} supporting basic crypto primitives on success.
     #[napi]
     pub async fn get(&self, kid: String) -> Result<AskarKeyHandle> {
         self.0
@@ -34,6 +50,11 @@ impl AskarKms {
             .map_err(|e| Error::from_reason(e.to_string()))
     }
 
+    /// Returns {@link KeyHandle} for the provided public key.
+    ///
+    /// @param {Array<number>} public_key - a public key for the requested key.
+    ///
+    /// @returns {Promise<KeyHandle>} - A {@link KeyHandle} supporting basic crypto primitives on success.
     #[napi]
     pub async fn get_by_public_key(&self, public_key: Vec<u8>) -> Result<AskarKeyHandle> {
         self.0
@@ -43,6 +64,9 @@ impl AskarKms {
             .map_err(|e| Error::from_reason(e.to_string()))
     }
 
+    /// Closes current kms connection
+    ///
+    /// @returns {Promise<void>}
     #[allow(clippy::missing_safety_doc)]
     #[napi]
     pub async unsafe fn close_kms(&mut self) -> Result<()> {
@@ -56,9 +80,20 @@ impl AskarKms {
     }
 }
 
+/// `Askar Key Handle`
+///
+/// @property pubKey -  {@link AskarKeyHandle.pubKey}
+/// @property jwk - {@link AskarKeyHandle.jwk}
+/// @property alg - {@link AskarKeyHandle.alg}
+/// @method sign - {@link AskarKeyHandle.sign}
+/// @method verify - {@link AskarKeyHandle.verify}
 #[napi]
 pub struct AskarKeyHandle {
     inner: askar::kms::AskarKeyHandle,
+    /// The public key in JWK form if it's supported.
+    ///
+    /// * string jwk if the public key can be represented as JWK
+    /// * `undefined` if the JWK-form is not supported.
     pub jwk: Option<String>,
 }
 
@@ -70,6 +105,10 @@ impl AskarKeyHandle {
             .and_then(|value| serde_json::to_string(&value).ok());
         AskarKeyHandle { inner: handle, jwk }
     }
+
+    /// Returns the public key for the corresponding handle.
+    ///
+    /// @returns {Array<number>} - Public key bytes.
     #[napi(getter)]
     pub fn pub_key(&self) -> Result<Vec<u8>> {
         self.inner
@@ -78,11 +117,19 @@ impl AskarKeyHandle {
             .map_err(|e| Error::from_reason(e.to_string()))
     }
 
+    /// Returns algorithm of the signer.
+    ///
+    /// @returns {Alg} - An {@link Alg} enum value.
     #[napi(getter)]
     pub fn alg(&self) -> Result<Alg> {
         self.inner.alg().try_into()
     }
 
+    /// Sign the provided binary payload.
+    ///
+    /// @param {Uint8Array} payload - an array of bytes to be signed.
+    ///
+    /// @returns {Uint8Array} signed `payload` on success.
     #[napi]
     pub async fn sign(&self, payload: &[u8]) -> Result<Uint8Array> {
         self.inner
@@ -92,6 +139,12 @@ impl AskarKeyHandle {
             .map_err(|e| Error::from_reason(e.to_string()))
     }
 
+    /// Verifies a cryptographic signature for given binary data.
+    ///
+    /// @param {Uint8Array} data - the original binary data that was signed.
+    /// @param {Uint8Array} signature - the corresponding signature.
+    ///
+    /// @returns {void}
     #[napi]
     pub async fn verify(&self, data: &[u8], signature: &[u8]) -> Result<()> {
         self.inner
