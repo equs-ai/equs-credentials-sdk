@@ -1,5 +1,10 @@
 import { Credential, CredentialEntry, CredentialMetadata } from "./vc";
 
+export type VaultPagination = {
+  page: number;
+  batch_size: number;
+};
+
 /**
  * `Vault`
  *
@@ -43,18 +48,21 @@ export interface Vault {
   /**
    * Lists all CredentialEntries.
    *
+   * @param {VaultPagination} [pagination] - An object to control pagination of data get from `Vault`
+   *
    * @returns {Promise<Array<CredentialEntry>>} - An array of CredentialEntries.
    * The array will be empty if no entries exist.
    */
-  getCredentials(): Promise<Array<CredentialEntry>>;
+  getCredentials(pagination?: VaultPagination): Promise<Array<CredentialEntry>>;
 
   /**
    * Searches for CredentialEntries based on given criteria.
    *
    * @param {Array<string>} criteria - An array of fields or keywords to search for credentials.
+   * @param {VaultPagination} [pagination] - An object to control pagination of data get from `Vault`
    *
    * @returns {Promise<Array<CredentialEntry>>} - An array of matching CredentialEntries.
    * The array will be empty if no entries meet the criteria.
    */
-  findCredentials(criteria: Array<string>): Promise<Array<CredentialEntry>>;
+  findCredentials(criteria: Array<string>, pagination?: VaultPagination): Promise<Array<CredentialEntry>>;
 }

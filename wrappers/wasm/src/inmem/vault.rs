@@ -1,8 +1,34 @@
 use crate::utils;
-use crate::vc::{Credential, CredentialEntry, CredentialMetadata, JsCredential, JsCredentialEntry};
+use crate::vc::{
+    Credential, CredentialEntry, CredentialMetadata, JsCredential, JsCredentialEntry,
+    VaultPagination,
+};
 use agent_sdk::vault::Vault;
+use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::wasm_bindgen;
 use wasm_bindgen::JsError;
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct JsVaultPagination {
+    page: u32,
+    batch_size: u32,
+}
+
+impl TryFrom<agent_sdk::vault::VaultPagination> for JsVaultPagination {
+    type Error = JsError;
+    fn try_from(value: agent_sdk::vault::VaultPagination) -> Result<Self, Self::Error> {
+        Ok(Self {
+            batch_size: value.batch_size as u32,
+            page: value.page as u32,
+        })
+    }
+}
+impl TryFrom<JsVaultPagination> for agent_sdk::vault::VaultPagination {
+    type Error = JsError;
+    fn try_from(value: JsVaultPagination) -> Result<Self, Self::Error> {
+        Ok(Self::new(value.page as usize, value.batch_size as usize))
+    }
+}
 
 #[wasm_bindgen]
 pub struct InMemVault(agent_sdk::inmem::vault::InMemVault);
@@ -51,10 +77,21 @@ impl InMemVault {
     }
 
     #[wasm_bindgen(js_name = getCredentials)]
-    pub async fn get_credentials(&self) -> Result<Vec<CredentialEntry>, JsError> {
+    pub async fn get_credentials(
+        &self,
+        pagination: Option<VaultPagination>,
+    ) -> Result<Vec<CredentialEntry>, JsError> {
+        let pagination = if let Some(pagination) = pagination {
+            let pagination: agent_sdk::vault::VaultPagination =
+                utils::convert_to_rust_object(pagination)?;
+            Some(pagination)
+        } else {
+            None
+        };
+
         let creds = self
             .0
-            .get_credentials()
+            .get_credentials(pagination)
             .await
             .map_err(|err| JsError::new(&format!("{:?}", err)))?;
 
@@ -75,10 +112,19 @@ impl InMemVault {
     pub async fn find_credentials(
         &self,
         fields: Vec<String>,
+        pagination: Option<VaultPagination>,
     ) -> Result<Vec<CredentialEntry>, JsError> {
+        let pagination = if let Some(pagination) = pagination {
+            let pagination: agent_sdk::vault::VaultPagination =
+                utils::convert_to_rust_object(pagination)?;
+            Some(pagination)
+        } else {
+            None
+        };
+
         let creds = self
             .0
-            .find_credentials(fields)
+            .find_credentials(fields, pagination)
             .await
             .map_err(|err| JsError::new(&format!("{:?}", err)))?;
 

@@ -34,6 +34,7 @@ import fs from "fs/promises";
       "Kms",
       "NonceData",
       "VerificationRelationshipType",
+      "VaultPagination",
       "Vault",
     ];
     let import_external_str = `import { ${exported_external_types.join(", ")} } from "${externalTypesFilePath}";\n`;

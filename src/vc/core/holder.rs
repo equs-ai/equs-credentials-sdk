@@ -171,7 +171,7 @@ where
         info!("search for credentials in the vault");
         let credentials = self
             .vault
-            .find_credentials(fields)
+            .find_credentials(fields, None)
             .await
             .context(VaultSnafu)?;
 
@@ -566,7 +566,7 @@ mod tests {
         let kms = LocalKms::new();
 
         let mut vault = MockVault::new();
-        vault.expect_find_credentials().return_once(|_| {
+        vault.expect_find_credentials().return_once(|_, _| {
             FormatNotSupportedSnafu {
                 format: "test".to_string(),
             }
@@ -700,7 +700,7 @@ mod tests {
         let kms = LocalKms::new();
 
         let mut vault = MockVault::new();
-        vault.expect_find_credentials().return_once(|_| {
+        vault.expect_find_credentials().return_once(|_, _| {
             FormatNotSupportedSnafu {
                 format: "test".to_string(),
             }

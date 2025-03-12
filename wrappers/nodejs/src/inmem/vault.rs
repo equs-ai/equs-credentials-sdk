@@ -1,4 +1,4 @@
-use crate::vault::JsCredentialEntry;
+use crate::vault::{JsCredentialEntry, JsVaultPagination};
 use crate::vc::core::{JsCredential, JsCredentialMetadata};
 use agent_sdk::vault::Vault;
 use napi::Result;
@@ -48,10 +48,13 @@ impl InMemVault {
     }
 
     #[napi]
-    pub async fn get_credentials(&self) -> Result<Vec<JsCredentialEntry>> {
+    pub async fn get_credentials(
+        &self,
+        pagination: Option<JsVaultPagination>,
+    ) -> Result<Vec<JsCredentialEntry>> {
         let credentials = self
             .0
-            .get_credentials()
+            .get_credentials(pagination.map(From::from))
             .await
             .map_err(|err| napi::Error::from_reason(format!("{err:?}")))?;
 
@@ -62,10 +65,14 @@ impl InMemVault {
     }
 
     #[napi]
-    pub async fn find_credentials(&self, fields: Vec<String>) -> Result<Vec<JsCredentialEntry>> {
+    pub async fn find_credentials(
+        &self,
+        fields: Vec<String>,
+        pagination: Option<JsVaultPagination>,
+    ) -> Result<Vec<JsCredentialEntry>> {
         let credentials = self
             .0
-            .find_credentials(fields)
+            .find_credentials(fields, pagination.map(From::from))
             .await
             .map_err(|err| napi::Error::from_reason(format!("{err:?}")))?;
 

@@ -46,4 +46,25 @@ describe("InMemVault: ", () => {
 
     expect(emptyCredentials).toEqual([]);
   });
+  test("get with pagination", async () => {
+    const vault = new InMemVault();
+
+    const sdJwt: Credential = {
+      format: VCFormat.SdJwtVc,
+      payload: SD_JWT_VC,
+    };
+
+    const sdJwtMetadata = {
+      type: VC_TYPE,
+      kid: "kid",
+      format: VCFormat.SdJwtVc,
+      fields: ["$.vct", "$.name"],
+    };
+
+    for (let i = 0; i < 10; i++) {
+      await vault.storeCredential(sdJwt, sdJwtMetadata);
+    }
+    const credentials = await vault.getCredentials({ page: 3, batch_size: 3 });
+    expect(credentials.length).toEqual(1);
+  });
 });

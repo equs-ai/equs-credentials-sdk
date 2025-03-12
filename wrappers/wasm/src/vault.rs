@@ -1,6 +1,6 @@
 use crate::utils;
-use crate::vc::{Credential, CredentialMetadata, JsCredential, JsCredentialEntry};
-use agent_sdk::vault::{DeletingSnafu, ResolvingSnafu, StoringSnafu};
+use crate::vc::{Credential, CredentialMetadata, JsCredential, JsCredentialEntry, VaultPagination};
+use agent_sdk::vault::{DeletingSnafu, PaginationParsingSnafu, ResolvingSnafu, StoringSnafu};
 use async_trait::async_trait;
 use wasm_bindgen::prelude::wasm_bindgen;
 use wasm_bindgen::JsValue;
@@ -24,12 +24,16 @@ extern "C" {
     pub async fn get_credential(this: &Vault, id: &str) -> Result<JsValue, JsValue>;
 
     #[wasm_bindgen(structural, method, catch, js_name = getCredentials)]
-    pub async fn get_credentials(this: &Vault) -> Result<js_sys::Array, JsValue>;
+    pub async fn get_credentials(
+        this: &Vault,
+        pagination: Option<VaultPagination>,
+    ) -> Result<js_sys::Array, JsValue>;
 
     #[wasm_bindgen(structural, method, catch, js_name = findCredentials)]
     pub async fn find_credentials(
         this: &Vault,
         fields: Vec<String>,
+        pagination: Option<VaultPagination>,
     ) -> Result<js_sys::Array, JsValue>;
 }
 
@@ -134,8 +138,22 @@ impl agent_sdk::vault::Vault for JsVault {
 
     async fn get_credentials(
         &self,
+        pagination: Option<agent_sdk::vault::VaultPagination>,
     ) -> agent_sdk::vault::Result<Vec<agent_sdk::vault::CredentialEntry>> {
-        let credential_entries = self.0.get_credentials().await.map_err(|e| {
+        let pagination = if let Some(pagination) = pagination {
+            let pagination: VaultPagination =
+                utils::convert_to_opaque_object(pagination).map_err(|_| {
+                    PaginationParsingSnafu {
+                        details: "Could not convert pagination to an opaque object".to_string(),
+                    }
+                    .build()
+                })?;
+            Some(pagination)
+        } else {
+            None
+        };
+
+        let credential_entries = self.0.get_credentials(pagination).await.map_err(|e| {
             ResolvingSnafu {
                 details: utils::js_value_to_string(e),
             }
@@ -151,13 +169,31 @@ impl agent_sdk::vault::Vault for JsVault {
     async fn find_credentials(
         &self,
         fields: Vec<String>,
+        pagination: Option<agent_sdk::vault::VaultPagination>,
     ) -> agent_sdk::vault::Result<Vec<agent_sdk::vault::CredentialEntry>> {
-        let credential_entries = self.0.find_credentials(fields).await.map_err(|e| {
-            ResolvingSnafu {
-                details: utils::js_value_to_string(e),
-            }
-            .build()
-        })?;
+        let pagination = if let Some(pagination) = pagination {
+            let pagination: VaultPagination =
+                utils::convert_to_opaque_object(pagination).map_err(|_| {
+                    PaginationParsingSnafu {
+                        details: "Could not convert pagination to an opaque object".to_string(),
+                    }
+                    .build()
+                })?;
+            Some(pagination)
+        } else {
+            None
+        };
+
+        let credential_entries =
+            self.0
+                .find_credentials(fields, pagination)
+                .await
+                .map_err(|e| {
+                    ResolvingSnafu {
+                        details: utils::js_value_to_string(e),
+                    }
+                    .build()
+                })?;
 
         credential_entries
             .into_iter()
@@ -172,8 +208,9 @@ pub mod test_utils {
     use crate::vault::JsVault;
     use crate::vc::{
         Credential, CredentialEntry, CredentialMetadata, JsCredential, JsCredentialEntry,
+        VaultPagination,
     };
-    use agent_sdk::vault::Vault;
+    use agent_sdk::vault::{PaginationParsingSnafu, Vault};
     use wasm_bindgen::prelude::wasm_bindgen;
 
     #[wasm_bindgen]
@@ -223,8 +260,26 @@ pub mod test_utils {
         }
 
         #[wasm_bindgen(js_name = getCredentials)]
-        pub async fn get_credentials(&self) -> Vec<CredentialEntry> {
-            let creds = self.0.get_credentials().await.unwrap();
+        pub async fn get_credentials(
+            &self,
+            pagination: Option<VaultPagination>,
+        ) -> Vec<CredentialEntry> {
+            let pagination = if let Some(pagination) = pagination {
+                let pagination: agent_sdk::vault::VaultPagination =
+                    utils::convert_to_rust_object(pagination)
+                        .map_err(|_| {
+                            PaginationParsingSnafu {
+                                details: "Could not convert pagination to a rust object"
+                                    .to_string(),
+                            }
+                            .build()
+                        })
+                        .unwrap();
+                Some(pagination)
+            } else {
+                None
+            };
+            let creds = self.0.get_credentials(pagination).await.unwrap();
 
             let js_cred_entries: Vec<JsCredentialEntry> = creds
                 .into_iter()
@@ -240,8 +295,28 @@ pub mod test_utils {
         }
 
         #[wasm_bindgen(js_name = findCredentials)]
-        pub async fn find_credentials(&self, fields: Vec<String>) -> Vec<CredentialEntry> {
-            let creds = self.0.find_credentials(fields).await.unwrap();
+        pub async fn find_credentials(
+            &self,
+            fields: Vec<String>,
+            pagination: Option<VaultPagination>,
+        ) -> Vec<CredentialEntry> {
+            let pagination = if let Some(pagination) = pagination {
+                let pagination: agent_sdk::vault::VaultPagination =
+                    utils::convert_to_rust_object(pagination)
+                        .map_err(|_| {
+                            PaginationParsingSnafu {
+                                details: "Could not convert pagination to a rust object"
+                                    .to_string(),
+                            }
+                            .build()
+                        })
+                        .unwrap();
+                Some(pagination)
+            } else {
+                None
+            };
+
+            let creds = self.0.find_credentials(fields, pagination).await.unwrap();
 
             let js_cred_entries: Vec<JsCredentialEntry> = creds
                 .into_iter()

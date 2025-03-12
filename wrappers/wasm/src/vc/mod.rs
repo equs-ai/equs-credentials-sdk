@@ -16,6 +16,9 @@ extern "C" {
 
     #[wasm_bindgen(typescript_type = "CredentialMetadata")]
     pub type CredentialMetadata;
+
+    #[wasm_bindgen(typescript_type = "VaultPagination")]
+    pub type VaultPagination;
 }
 
 #[derive(Debug, Serialize, Deserialize)]
