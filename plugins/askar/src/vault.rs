@@ -1,4 +1,5 @@
 use aries_askar::entry::{Entry, EntryKind, EntryTag, TagFilter};
+use aries_askar::storage::backend::OrderBy;
 use async_trait::async_trait;
 use snafu::ensure;
 use tracing::{instrument, Level};
@@ -12,7 +13,7 @@ use agent_sdk::vault::{
 };
 use agent_sdk::vc::{JWT_VC_JSON, JWT_VC_JSON_LD, LDP_VC, SD_JWT_VC};
 
-pub use agent_sdk::vault::{CredentialEntry, Vault};
+pub use agent_sdk::vault::{CredentialEntry, Vault, VaultPagination};
 pub use agent_sdk::vc::{Credential, CredentialMetadata, HasVCFormat, VCFormat};
 
 pub const TAG_TYPE: &str = "type_";
@@ -100,7 +101,7 @@ impl AskarVault {
     async fn get_all(&self) -> Result<Vec<Entry>, aries_askar::Error> {
         let mut session = self.0.session().await?;
         session
-            .fetch_all(None, None, None, None, false, false)
+            .fetch_all(None, None, None, Some(OrderBy::Id), false, false)
             .await
     }
 
@@ -115,6 +116,37 @@ impl AskarVault {
         session
             .fetch_all(None, Some(filter), None, None, false, false)
             .await
+    }
+
+    #[instrument(
+        level = Level::TRACE,
+        skip(self),
+        err(),
+        ret(),
+    )]
+    async fn get_with_pagination(
+        self,
+        filter: Option<TagFilter>,
+        offset: usize,
+        limit: usize,
+    ) -> Result<Vec<Entry>, aries_askar::Error> {
+        let mut cursor = self
+            .0
+            .store
+            .scan(
+                Some(self.0.profile),
+                None,
+                filter,
+                Some(offset as i64),
+                Some(limit as i64),
+                Some(OrderBy::Id),
+                false,
+            )
+            .await?;
+
+        // No close method for cursor but it only returns limited number of elements skipping first elements regarding to offset & limit parameters. Connection pool is open until every element is consumed
+        // TODO Close cursor when method appears
+        Ok(cursor.fetch_next().await?.unwrap_or(Default::default()))
     }
 
     #[instrument(
@@ -250,8 +282,18 @@ impl Vault for AskarVault {
         err(),
         ret(),
     )]
-    async fn get_credentials(&self) -> Result<Vec<CredentialEntry>, Error> {
-        let entries = self.get_all().await.map_err(|err| {
+    async fn get_credentials(
+        &self,
+        pagination: Option<VaultPagination>,
+    ) -> Result<Vec<CredentialEntry>, Error> {
+        let entries = if let Some(pagination) = pagination {
+            self.to_owned()
+                .get_with_pagination(None, pagination.skip_amount(), pagination.batch_size)
+                .await
+        } else {
+            self.get_all().await
+        }
+        .map_err(|err| {
             ResolvingSnafu {
                 details: err.to_string(),
             }
@@ -267,10 +309,15 @@ impl Vault for AskarVault {
         err(),
         ret(),
     )]
-    async fn find_credentials(&self, fields: Vec<String>) -> Result<Vec<CredentialEntry>, Error> {
+    async fn find_credentials(
+        &self,
+        fields: Vec<String>,
+        pagination: Option<VaultPagination>,
+    ) -> Result<Vec<CredentialEntry>, Error> {
         if fields.is_empty() {
             EmptyFieldsSnafu.fail()?
         };
+
         let tag_filter = map_credential_fields_to_tags(fields).ok_or_else(|| {
             ResolvingSnafu {
                 details: "empty tag filter",
@@ -278,7 +325,18 @@ impl Vault for AskarVault {
             .build()
         })?;
 
-        let entries = self.find(tag_filter).await.map_err(|err| {
+        let entries = if let Some(pagination) = pagination {
+            self.to_owned()
+                .get_with_pagination(
+                    Some(tag_filter),
+                    pagination.skip_amount(),
+                    pagination.batch_size,
+                )
+                .await
+        } else {
+            self.find(tag_filter).await
+        }
+        .map_err(|err| {
             ResolvingSnafu {
                 details: err.to_string(),
             }
@@ -424,7 +482,7 @@ fn entry_to_credential(entry: Entry) -> Result<CredentialEntry, Error> {
 mod tests {
     use crate::vault::AskarVault;
     use crate::{AskarStorage, AskarStorageConfig, KeyMethod};
-    use agent_sdk::vault::{CredentialEntry, Vault};
+    use agent_sdk::vault::{CredentialEntry, Vault, VaultPagination};
     use agent_sdk::vc::{Credential, CredentialMetadata, VCFormat};
     use rstest::rstest;
 
@@ -463,12 +521,146 @@ mod tests {
         let vault = create_test_vault().await;
         let sd_jwt_cred_id = store_sd_jwt_to_vault(&vault).await;
 
-        let find_res = vault.find_credentials(fields).await.unwrap();
+        let find_res = vault.find_credentials(fields, None).await.unwrap();
 
         assert_eq!(
             serde_json::to_value(find_res).unwrap(),
             serde_json::to_value(vec![create_expected_entry_sd_jwt(sd_jwt_cred_id)]).unwrap()
         );
+    }
+
+    #[tokio::test]
+    async fn get_credentials_without_pagination_returns_all_credentials() {
+        let vault = create_test_vault().await;
+
+        for i in 0..10 {
+            vault
+                .store_credential(
+                    get_credential_sd_jwt().clone(),
+                    &get_empty_credential_metadata_sd_jwt(i.to_string()),
+                )
+                .await
+                .unwrap();
+        }
+        let credentials = vault.get_credentials(None).await.unwrap();
+
+        assert_eq!(credentials.len(), 10);
+    }
+    #[rstest]
+    #[case(10, 0, 5, 5)]
+    #[case(10, 0, 10, 10)]
+    #[case(10, 10, 11, 0)]
+    #[case(10, 3, 3, 1)]
+    #[tokio::test]
+    async fn get_credentials_with_pagination_succeed(
+        #[case] amount_to_store: usize,
+        #[case] page: usize,
+        #[case] batch_size: usize,
+        #[case] amount_to_get_from_vault: usize,
+    ) {
+        let vault = create_test_vault().await;
+
+        let mut page_index = 0;
+
+        for i in 1..amount_to_store + 1 {
+            if i % batch_size == 0 {
+                page_index += 1
+            }
+            vault
+                .store_credential(
+                    get_credential_sd_jwt().clone(),
+                    &get_empty_credential_metadata_sd_jwt(page_index.to_string()),
+                )
+                .await
+                .unwrap();
+        }
+        let credentials = vault
+            .get_credentials(Some(VaultPagination::new(page, batch_size)))
+            .await
+            .unwrap();
+
+        assert_eq!(credentials.len(), amount_to_get_from_vault);
+        if amount_to_get_from_vault != 0 {
+            assert_eq!(credentials.first().unwrap().kid, page.to_string());
+        }
+    }
+
+    #[tokio::test]
+    async fn find_credentials_without_pagination_returns_all_credentials() {
+        let vault = create_test_vault().await;
+
+        for i in 0..10 {
+            vault
+                .store_credential(
+                    get_credential_sd_jwt().clone(),
+                    &get_credential_metadata_sd_jwt_with_fields(i.to_string()),
+                )
+                .await
+                .unwrap();
+        }
+        let credentials = vault
+            .find_credentials(vec!["$.vct".to_string()], None)
+            .await
+            .unwrap();
+
+        assert_eq!(credentials.len(), 10);
+    }
+
+    #[rstest]
+    #[case(vec!["$.vct".to_string()], 0, 5, 5)]
+    #[case(vec!["$.fake".to_string()], 0, 5, 0)]
+    #[case(vec!["$.vct".to_string()], 3, 3, 1)]
+    #[case(vec!["$.vct".to_string()], 5, 3, 0)]
+    #[tokio::test]
+    async fn find_credentials_with_pagination_succeeds(
+        #[case] fields: Vec<String>,
+        #[case] page: usize,
+        #[case] batch_size: usize,
+        #[case] result_amount: usize,
+    ) {
+        let vault = create_test_vault().await;
+
+        for i in 0..10 {
+            vault
+                .store_credential(
+                    get_credential_sd_jwt().clone(),
+                    &get_credential_metadata_sd_jwt_with_fields(i.to_string()),
+                )
+                .await
+                .unwrap();
+        }
+        let credentials = vault
+            .find_credentials(fields, Some(VaultPagination::new(page, batch_size)))
+            .await
+            .unwrap();
+
+        assert_eq!(credentials.len(), result_amount);
+    }
+
+    fn get_credential_sd_jwt() -> Credential {
+        Credential::SdJwt("token".to_string())
+    }
+    fn get_empty_credential_metadata_sd_jwt(kid: String) -> CredentialMetadata {
+        CredentialMetadata {
+            type_: "https://credentials.example.com/identity_credential".into(),
+            kid,
+            format: VCFormat::SdJwtVc,
+            alg: None,
+            fields: vec![],
+        }
+    }
+    fn get_credential_metadata_sd_jwt_with_fields(kid: String) -> CredentialMetadata {
+        CredentialMetadata {
+            type_: "https://credentials.example.com/identity_credential".into(),
+            kid,
+            format: VCFormat::SdJwtVc,
+            alg: None,
+            fields: vec![
+                "$.vct".to_string(),
+                "$.name".to_string(),
+                "$.email.work".to_string(),
+            ],
+        }
     }
 
     async fn test_vault(vault: &AskarVault) {
@@ -490,7 +682,7 @@ mod tests {
             serde_json::to_value(expected_entry_ldp_vc.clone()).unwrap(),
         );
 
-        let get_all_res = vault.get_credentials().await.unwrap();
+        let get_all_res = vault.get_credentials(None).await.unwrap();
 
         let serde_json::Value::Array(get_all_values) = serde_json::to_value(&get_all_res).unwrap()
         else {
@@ -505,11 +697,14 @@ mod tests {
         );
 
         let find_res = vault
-            .find_credentials(vec![
-                "$.name".to_string(),
-                "$.email.work".to_string(),
-                "$.vct".to_string(),
-            ])
+            .find_credentials(
+                vec![
+                    "$.name".to_string(),
+                    "$.email.work".to_string(),
+                    "$.vct".to_string(),
+                ],
+                None,
+            )
             .await
             .unwrap();
 

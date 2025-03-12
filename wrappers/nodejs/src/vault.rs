@@ -2,6 +2,7 @@ use crate::vc::core::{JsCredential, JsCredentialMetadata};
 use agent_sdk::vault;
 use agent_sdk::vault::{
     CredentialEntry, DeletingSnafu, EmptyFieldsSnafu, ResolvingSnafu, StoringSnafu, Vault,
+    VaultPagination,
 };
 use agent_sdk::vc::{Credential, CredentialMetadata};
 use async_trait::async_trait;
@@ -41,6 +42,30 @@ impl TryFrom<JsCredentialEntry> for CredentialEntry {
             kid: value.kid,
             id: value.id,
         })
+    }
+}
+
+/// An interface for pagination in Vault. `page` * `batchSize` - number of elements to skip and then takes `batchSize` number of elements
+///
+/// @property {page} page - page index
+/// @property {batchSize} batchSize - size of batch to get
+#[napi(js_name = "VaultPagination", object)]
+pub struct JsVaultPagination {
+    pub page: u32,
+    pub batch_size: u32,
+}
+
+impl From<JsVaultPagination> for VaultPagination {
+    fn from(value: JsVaultPagination) -> Self {
+        Self::new(value.page as usize, value.batch_size as usize)
+    }
+}
+impl From<VaultPagination> for JsVaultPagination {
+    fn from(value: VaultPagination) -> Self {
+        Self {
+            page: value.page as u32,
+            batch_size: value.batch_size as u32,
+        }
     }
 }
 
@@ -90,9 +115,10 @@ pub struct JsVault {
     #[napi(ts_type = "(id: string) => Promise<CredentialEntry | null>")]
     pub get_credential: ThreadsafeFunction<String, ErrorStrategy::Fatal>,
     #[napi(ts_type = "() => Promise<Array<CredentialEntry>>")]
-    pub get_credentials: ThreadsafeFunction<(), ErrorStrategy::Fatal>,
+    pub get_credentials: ThreadsafeFunction<Option<JsVaultPagination>, ErrorStrategy::Fatal>,
     #[napi(ts_type = "(criteria: Array<string>) => Promise<Array<CredentialEntry>>")]
-    pub find_credentials: ThreadsafeFunction<Vec<String>, ErrorStrategy::Fatal>,
+    pub find_credentials:
+        ThreadsafeFunction<(Vec<String>, Option<JsVaultPagination>), ErrorStrategy::Fatal>,
 }
 
 #[async_trait]
@@ -177,9 +203,15 @@ impl Vault for JsVault {
             })
     }
 
-    async fn get_credentials(&self) -> vault::Result<Vec<CredentialEntry>> {
-        let promise: Promise<Vec<JsCredentialEntry>> =
-            self.get_credentials.call_async(()).await.map_err(|err| {
+    async fn get_credentials(
+        &self,
+        pagination: Option<VaultPagination>,
+    ) -> vault::Result<Vec<CredentialEntry>> {
+        let promise: Promise<Vec<JsCredentialEntry>> = self
+            .get_credentials
+            .call_async(pagination.map(From::from))
+            .await
+            .map_err(|err| {
                 ResolvingSnafu {
                     details: err.to_string(),
                 }
@@ -197,13 +229,17 @@ impl Vault for JsVault {
             })
     }
 
-    async fn find_credentials(&self, fields: Vec<String>) -> vault::Result<Vec<CredentialEntry>> {
+    async fn find_credentials(
+        &self,
+        fields: Vec<String>,
+        pagination: Option<VaultPagination>,
+    ) -> vault::Result<Vec<CredentialEntry>> {
         if fields.is_empty() {
             EmptyFieldsSnafu.fail()?
         };
         let promise: Promise<Vec<JsCredentialEntry>> = self
             .find_credentials
-            .call_async(fields)
+            .call_async((fields, pagination.map(From::from)))
             .await
             .map_err(|err| {
                 ResolvingSnafu {
@@ -226,7 +262,7 @@ impl Vault for JsVault {
 
 #[cfg(debug_assertions)]
 pub mod test_utils {
-    use super::{JsCredentialEntry, JsVault};
+    use super::{JsCredentialEntry, JsVault, JsVaultPagination};
     use crate::vc::core::{JsCredential, JsCredentialMetadata};
     use agent_sdk::vault::Vault;
     use napi_derive::napi;
@@ -259,9 +295,13 @@ pub mod test_utils {
         }
 
         #[napi]
-        pub async fn find_credentials(&self, fields: Vec<String>) -> Vec<JsCredentialEntry> {
+        pub async fn find_credentials(
+            &self,
+            fields: Vec<String>,
+            pagination: Option<JsVaultPagination>,
+        ) -> Vec<JsCredentialEntry> {
             self.0
-                .find_credentials(fields)
+                .find_credentials(fields, pagination.map(From::from))
                 .await
                 .unwrap()
                 .iter()
@@ -270,9 +310,12 @@ pub mod test_utils {
         }
 
         #[napi]
-        pub async fn get_credentials(&self) -> Vec<JsCredentialEntry> {
+        pub async fn get_credentials(
+            &self,
+            pagination: Option<JsVaultPagination>,
+        ) -> Vec<JsCredentialEntry> {
             self.0
-                .get_credentials()
+                .get_credentials(pagination.map(From::from))
                 .await
                 .unwrap()
                 .iter()

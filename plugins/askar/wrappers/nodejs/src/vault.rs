@@ -1,6 +1,8 @@
 use crate::kms::Alg;
 use crate::AskarStorage;
-use askar::vault::{Credential, CredentialEntry, CredentialMetadata, HasVCFormat, VCFormat, Vault};
+use askar::vault::{
+    Credential, CredentialEntry, CredentialMetadata, HasVCFormat, VCFormat, Vault, VaultPagination,
+};
 use napi::{Error, Result};
 use napi_derive::napi;
 use serde::{Deserialize, Serialize};
@@ -78,10 +80,13 @@ impl AskarVault {
     /// * Empty array if there are no entries
     #[allow(private_interfaces)]
     #[napi(ts_return_type = "Promise<Array<CredentialEntry>>")]
-    pub async fn get_credentials(&self) -> Result<Vec<InnerCredentialEntry>> {
+    pub async fn get_credentials(
+        &self,
+        pagination: Option<InnerVaultPagination>,
+    ) -> Result<Vec<InnerCredentialEntry>> {
         let credentials = self
             .0
-            .get_credentials()
+            .get_credentials(pagination.map(From::from))
             .await
             .map_err(|e| Error::from_reason(e.to_string()))?;
 
@@ -113,10 +118,14 @@ impl AskarVault {
     /// * An empty array if nothing meets the `fields`
     #[allow(private_interfaces)]
     #[napi(ts_return_type = "Promise<Array<CredentialEntry>>")]
-    pub async fn find_credentials(&self, fields: Vec<String>) -> Result<Vec<InnerCredentialEntry>> {
+    pub async fn find_credentials(
+        &self,
+        fields: Vec<String>,
+        pagination: Option<InnerVaultPagination>,
+    ) -> Result<Vec<InnerCredentialEntry>> {
         let credentials = self
             .0
-            .find_credentials(fields)
+            .find_credentials(fields, pagination.map(From::from))
             .await
             .map_err(|e| Error::from_reason(e.to_string()))?;
 
@@ -260,5 +269,29 @@ impl TryFrom<CredentialEntry> for InnerCredentialEntry {
             kid: value.kid,
             id: value.id,
         })
+    }
+}
+
+/// An interface for pagination in Vault. `page` * `batchSize` - number of elements to skip and then takes `batchSize` number of elements
+///
+/// @property {page} page - page index
+/// @property {batchSize} batchSize - size of batch to get
+#[napi(object)]
+struct InnerVaultPagination {
+    pub page: u32,
+    pub batch_size: u32,
+}
+
+impl From<InnerVaultPagination> for VaultPagination {
+    fn from(value: InnerVaultPagination) -> Self {
+        Self::new(value.page as usize, value.batch_size as usize)
+    }
+}
+impl From<VaultPagination> for InnerVaultPagination {
+    fn from(value: VaultPagination) -> Self {
+        Self {
+            page: value.page as u32,
+            batch_size: value.batch_size as u32,
+        }
     }
 }

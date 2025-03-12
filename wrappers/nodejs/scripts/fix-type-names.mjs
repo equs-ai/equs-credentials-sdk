@@ -37,6 +37,7 @@ const replacements = [
   { from: "JsBIP32Params", to: "BIP32Params" },
   { from: "JsAuthorizationResponseMetadata", to: "AuthorizationResponseMetadata" },
   { from: "JsIdTokenMetadata", to: "IdTokenMetadata" },
+  { from: "JsVaultPagination", to: "VaultPagination" },
   { from: "JsonObject", to: "Record<string, any>" },
 ];
 

@@ -60,6 +60,9 @@ pub enum Error {
 
     #[snafu(display("Empty fields provided"))]
     EmptyFields,
+
+    #[snafu(display("Pagination parsing"))]
+    PaginationParsing { details: String },
 }
 
 /// `Result` alias for Vault-specific [Error].
@@ -71,6 +74,23 @@ pub struct CredentialEntry {
     pub credential: Credential,
     pub kid: kms::KeyID,
     pub id: String,
+}
+
+/// A struct for pagination in Vault
+#[derive(Debug, Serialize, Deserialize)]
+pub struct VaultPagination {
+    pub page: usize,
+    pub batch_size: usize,
+}
+
+impl VaultPagination {
+    pub fn new(page: usize, batch_size: usize) -> Self {
+        Self { page, batch_size }
+    }
+
+    pub fn skip_amount(&self) -> usize {
+        self.page * self.batch_size
+    }
 }
 
 /// An async `Vault` interface for managing Verifiable Credentials.
@@ -137,6 +157,10 @@ pub trait Vault: WasmNotSend + WasmNotSync {
 
     /// List all `CredentialEntry`s in `Vault`
     ///
+    /// # Arguments
+    ///
+    /// * `pagination` -  an optional [VaultPagination] field for results' pagination.
+    ///
     /// # Returns
     ///
     /// A Vector of `CredentialEntry` on success.
@@ -145,13 +169,17 @@ pub trait Vault: WasmNotSend + WasmNotSync {
     /// # Errors
     ///
     /// * [Error::Resolving] - fails to resolve the values.
-    async fn get_credentials(&self) -> Result<Vec<CredentialEntry>>;
+    async fn get_credentials(
+        &self,
+        pagination: Option<VaultPagination>,
+    ) -> Result<Vec<CredentialEntry>>;
 
     /// Find the matching `CredentialEntry`s in `Vault`
     ///
     /// # Arguments
     ///
     /// * `fields` -  a vec of fields to search for credentials.
+    /// * `pagination` -  an optional [VaultPagination] field for results' pagination.
     ///
     /// # Returns
     ///
@@ -163,7 +191,11 @@ pub trait Vault: WasmNotSend + WasmNotSync {
     /// * [Error::Resolving] - fails to resolve the values.
     ///
     ///
-    async fn find_credentials(&self, fields: Vec<String>) -> Result<Vec<CredentialEntry>>;
+    async fn find_credentials(
+        &self,
+        fields: Vec<String>,
+        pagination: Option<VaultPagination>,
+    ) -> Result<Vec<CredentialEntry>>;
 }
 
 #[cfg(test)]
@@ -238,7 +270,7 @@ pub mod test_util {
             .unwrap(),
         );
 
-        let get_all_res = vault.get_credentials().await.unwrap();
+        let get_all_res = vault.get_credentials(None).await.unwrap();
 
         let serde_json::Value::Array(get_all_values) = serde_json::to_value(&get_all_res).unwrap()
         else {
@@ -261,12 +293,15 @@ pub mod test_util {
         assert!(get_all_values.contains(&serde_json::to_value(expected_entry_ldp_vc).unwrap()));
 
         let find_res = vault
-            .find_credentials(vec![
-                "format".to_string(),
-                "$.name".to_string(),
-                "$.email.work".to_string(),
-                "$.vct".to_string(),
-            ])
+            .find_credentials(
+                vec![
+                    "format".to_string(),
+                    "$.name".to_string(),
+                    "$.email.work".to_string(),
+                    "$.vct".to_string(),
+                ],
+                None,
+            )
             .await
             .unwrap();
 
