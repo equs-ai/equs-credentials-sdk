@@ -19,11 +19,13 @@ describe("Vault: ", () => {
     fields: ["$.vct", "$.name"],
   };
 
-  const credentialEntries: Array<CredentialEntry> = [{
-    credential: sdJwt,
-    kid: "kid",
-    id: credentialId,
-  }];
+  const credentialEntries: Array<CredentialEntry> = [
+    {
+      credential: sdJwt,
+      kid: "kid",
+      id: credentialId,
+    },
+  ];
 
   test("Delete Credential", async () => {
     await new VaultTestHelper(mockVault()).deleteCredential(credentialId);
@@ -65,14 +67,12 @@ describe("Vault: ", () => {
 });
 
 class MockVault implements Vault {
-
   constructor(
     private readonly credentialId: string,
     private readonly criteria: Array<string>,
     private readonly credentialEntries: Array<CredentialEntry>,
     private readonly metadata: CredentialMetadata,
-  ) {
-  }
+  ) {}
 
   async deleteCredential(id: string): Promise<void> {
     expect(id).toEqual(this.credentialId);
@@ -102,5 +102,4 @@ class MockVault implements Vault {
 
     return this.credentialId;
   }
-
 }

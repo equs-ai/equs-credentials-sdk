@@ -15,13 +15,13 @@ pub struct IssuerDiscovery(agent_sdk::vc::oid4vci::IssuerDiscovery);
 #[wasm_bindgen]
 impl IssuerDiscovery {
     /// Creates an `IssuerDiscovery` instance using an Issuer URL.
-    #[wasm_bindgen]
+    #[wasm_bindgen(js_name = fromUrl)]
     pub fn from_url(url: String) -> Self {
         IssuerDiscovery(agent_sdk::vc::oid4vci::IssuerDiscovery::Url(url))
     }
 
     /// Creates an `IssuerDiscovery` instance from a credential offer.
-    #[wasm_bindgen]
+    #[wasm_bindgen(js_name = fromOffer)]
     pub fn from_offer(credential_offer: OID4VCICredentialOffer) -> Result<Self, JsError> {
         let credential_offer = utils::convert_to_rust_object(credential_offer)?;
 
@@ -31,7 +31,7 @@ impl IssuerDiscovery {
     }
 
     /// Creates an `IssuerDiscovery` instance from issuer metadata and authentication metadata.
-    #[wasm_bindgen]
+    #[wasm_bindgen(js_name = "fromMetadata")]
     pub fn from_metadata(
         issuer_metadata: OID4VCIIssuerMetadata,
         auth_metadata: JsValue,

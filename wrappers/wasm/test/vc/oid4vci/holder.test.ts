@@ -97,7 +97,7 @@ describe("OID4VCI Holder: ", () => {
     const vciHolder = await buildHolder(utils, kms);
     const nonce = {
       value: "KB50VOm9I-kPLT9mAACV8g",
-      expires_in: 86400,
+      expiresIn: 86400,
       created: 1728732136,
     };
     const { keyMetadata } = await createDidAndKeyMetadata(kms);
@@ -114,7 +114,7 @@ describe("OID4VCI Holder: ", () => {
       },
       nonce_data: {
         value: "0GtZieAoAL_3Zafyn6TgCA",
-        expires_in: 86440,
+        expiresIn: 86440,
       },
     });
   });
@@ -143,7 +143,7 @@ describe("OID4VCI Holder: ", () => {
 });
 
 async function buildHolder(utils: Utils, kms = new InMemKms(), vault = new InMemVault()) {
-  return await new OID4VCIHolderBuilder(kms, vault, "client_id", IssuerDiscovery.from_offer(utils.credOffer))
+  return await new OID4VCIHolderBuilder(kms, vault, "client_id", IssuerDiscovery.fromOffer(utils.credOffer))
     .withHttpClient(HttpClient.insecure())
     .build();
 }
@@ -165,7 +165,7 @@ export async function createDidAndKeyMetadata(kms: InMemKms): Promise<DidAndKeyM
   const vm = await universalDidResolver.resolveVerificationMethod(did);
 
   const keyMetadata: KeyMetadata = {
-    did_url: vm.id,
+    didUrl: vm.id,
     kid: keyId,
   };
 

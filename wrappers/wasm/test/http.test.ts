@@ -14,7 +14,7 @@ describe("HTTP Client: ", () => {
 
       const result = await client.asyncCall(request);
       expect(result).toBeDefined();
-      expect(result.status_code).toBe(200);
+      expect(result.statusCode).toBe(200);
     });
 
     test("should throw error with http url on secure mode", async () => {
@@ -32,7 +32,7 @@ describe("HTTP Client: ", () => {
 
       const result = await client.asyncCall(request);
       expect(result).toBeDefined();
-      expect(result.status_code).toBe(200);
+      expect(result.statusCode).toBe(200);
     });
   });
 });

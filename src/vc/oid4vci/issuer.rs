@@ -1140,7 +1140,7 @@ mod tests {
         let nonce_data: NonceData = serde_json::from_value(json!(
             {
                 "value": NONCE,
-                "expires_in": NONCE_EXPIRES_IN,
+                "expiresIn": NONCE_EXPIRES_IN,
                 "created": created_time
             }
         ))

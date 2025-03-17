@@ -47,18 +47,18 @@ export const PRESENTATION_DEFINITION: PresentationDefinition = {
 };
 
 export const AUTH_REQUEST: AuthorizationRequest = {
-  clientId: "did:key:zDnaeeTG88wpPhMzuDRvLRTTyNMyJip5e6TLmsjyvPiSYUFk7",
-  clientMetadata: {
+  client_id: "did:key:zDnaeeTG88wpPhMzuDRvLRTTyNMyJip5e6TLmsjyvPiSYUFk7",
+  client_metadata: {
     vp_formats: {
       "dc+sd-jwt": {
         alg: ["EdDSA", "ES256"],
       },
     },
   },
-  presentationDefinition: PRESENTATION_DEFINITION,
-  responseUri: "http://localhost:9001/response",
-  responseMode: "direct_post",
-  responseType: "vp_token",
+  presentation_definition: PRESENTATION_DEFINITION,
+  response_uri: "http://localhost:9001/response",
+  response_mode: "direct_post",
+  response_type: "vp_token",
   nonce: "YztANglRdmP4ChxsrcS8UcGYoPWwkgiUImkBrQmgWkU",
   state: STATE,
 };

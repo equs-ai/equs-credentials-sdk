@@ -225,12 +225,14 @@ impl OID4VCIHolder {
 
 #[napi(object)]
 pub struct CredentialDeferred {
+    #[napi(js_name = "transaction_id")]
     pub transaction_id: String,
 }
 
 #[napi(object)]
 pub struct CredentialImmediate {
     pub credential: JsCredential,
+    #[napi(js_name = "notification_id")]
     pub notification_id: Option<String>,
 }
 

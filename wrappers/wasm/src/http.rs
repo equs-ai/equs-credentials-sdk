@@ -123,7 +123,7 @@ pub struct HttpResponse {
 #[wasm_bindgen]
 impl HttpResponse {
     /// The HTTP status code of the response.
-    #[wasm_bindgen(getter)]
+    #[wasm_bindgen(getter, js_name = statusCode)]
     pub fn status_code(&self) -> u16 {
         self.status_code
     }

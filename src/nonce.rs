@@ -13,6 +13,7 @@ use zeroize::{Zeroize, ZeroizeOnDrop};
 
 /// A struct containing nonce with created time and duration.
 #[derive(Debug, Clone, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub struct NonceData {
     pub value: Nonce,
     #[serde(deserialize_with = "int_to_offset_date_time")]

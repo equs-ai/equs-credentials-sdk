@@ -1,8 +1,16 @@
 import { Credential, CredentialEntry, CredentialMetadata } from "./vc";
 
+/**
+ * `VaultPagination`
+ *
+ * An interface to control pagination of data get from {@link Vault}
+
+ * @property {number} page - No. of page.
+ * @property {number} batchSize - Amount of data to get in one batch.
+ */
 export type VaultPagination = {
   page: number;
-  batch_size: number;
+  batchSize: number;
 };
 
 /**
