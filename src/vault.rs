@@ -80,6 +80,7 @@ pub struct CredentialEntry {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct VaultPagination {
     pub page: usize,
+    #[serde(rename = "batchSize")]
     pub batch_size: usize,
 }
 

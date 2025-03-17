@@ -77,7 +77,7 @@ export class Utils {
           display: undefined,
           protocol_data: undefined,
           key_metadata: {
-            did_url: keyMetadata.didUrl,
+            didUrl: keyMetadata.didUrl,
             kid: keyMetadata.kid,
           },
         },

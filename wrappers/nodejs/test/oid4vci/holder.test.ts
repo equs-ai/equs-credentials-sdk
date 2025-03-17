@@ -100,7 +100,7 @@ describe("OID4VCI Holder: ", () => {
           format: VCFormat.SdJwtVc,
           payload: SD_JWT_CREDS,
         },
-        notificationId: "1111",
+        notification_id: "1111",
       },
       nonceData: {
         nonce: "0GtZieAoAL_3Zafyn6TgCA",

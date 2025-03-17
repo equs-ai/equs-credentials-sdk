@@ -83,6 +83,7 @@ pub struct CredentialDefinition {
 ///
 /// Contains `DIDURL` of the party and the corresponding `KID` to access the key.
 #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct KeyMetadata {
     pub did_url: String,
     pub kid: String,

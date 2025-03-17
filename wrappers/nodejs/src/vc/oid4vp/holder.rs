@@ -152,14 +152,21 @@ impl OID4VPHolder {
 
 #[napi(object)]
 pub struct AuthorizationRequest {
+    #[napi(js_name = "client_id")]
     pub client_id: String,
-    #[napi(ts_type = "ClientMetadata")]
+    #[napi(ts_type = "ClientMetadata", js_name = "client_metadata")]
     pub client_metadata: JsonObject,
-    #[napi(ts_type = "PresentationDefinition")]
+    #[napi(
+        ts_type = "PresentationDefinition",
+        js_name = "presentation_definition"
+    )]
     pub presentation_definition: JsonObject,
     pub nonce: String,
+    #[napi(js_name = "response_type")]
     pub response_type: String,
+    #[napi(js_name = "response_mode")]
     pub response_mode: String,
+    #[napi(js_name = "response_uri")]
     pub response_uri: String,
     pub state: Option<String>,
 }

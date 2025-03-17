@@ -117,7 +117,7 @@ async function createKeyMetadata(kms: InMemKms): Promise<KeyMetadata> {
   const vm = await universalDidResolver.resolveVerificationMethod(did);
 
   return {
-    did_url: vm.id,
+    didUrl: vm.id,
     kid: keyId,
   };
 }

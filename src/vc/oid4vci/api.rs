@@ -45,7 +45,7 @@ pub type ErrorType = oid4vci::credential::ErrorType;
 /// Enum value `Credential` contains issued [Credential].
 ///
 /// *NOTE*: `deferred` flow and `notifications` currently are not supported.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum CredentialResult {
     Deferred {
         transaction_id: String,
@@ -60,7 +60,8 @@ pub enum CredentialResult {
 ///
 /// `data` contains `CredentialResult`.
 /// `nonce_data` contains optional `NonceData` for subsequent calls.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CredentialResponseResolved {
     pub data: CredentialResult,
     pub nonce_data: Option<NonceData>,

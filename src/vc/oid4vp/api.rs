@@ -28,6 +28,7 @@ pub type ResponseMode = openid4vp::core::authorization_request::parameters::Resp
 /// - `id_token_key`: metadata for the key used to sign the SIOP ID token.
 /// - `lifetime`: lifetime of the ID token.
 #[derive(Debug, Serialize, Deserialize)]
+#[serde[rename_all = "camelCase"]]
 pub struct IdTokenMetadata {
     pub key_metadata: KeyMetadata,
     pub lifetime: time::Duration,
@@ -48,6 +49,7 @@ pub struct IdTokenMetadata {
 /// map.insert("Identity-1", vec!["$.name".to_string()]);
 /// ```
 #[derive(Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AuthorizationResponseMetadata {
     pub claims_to_exclude: Option<HashMap<String, Vec<String>>>,
     pub id_token_metadata: Option<IdTokenMetadata>,

@@ -32,7 +32,7 @@ impl Serialize for NonceData {
 
         state.serialize_field("value", &self.value)?;
         state.serialize_field("created", &unix_timestamp)?;
-        state.serialize_field("expires_in", &seconds)?;
+        state.serialize_field("expiresIn", &seconds)?;
         state.end()
     }
 }
@@ -139,7 +139,7 @@ mod tests {
             expires_in: Some(Duration::seconds(86440)),
         };
 
-        let expected = r#"{"value":"nOnCe","created":1727962239,"expires_in":86440}"#;
+        let expected = r#"{"value":"nOnCe","created":1727962239,"expiresIn":86440}"#;
         let nonce_to_check = serde_json::to_string(&nonce_data).unwrap();
 
         assert_eq!(expected, nonce_to_check)
