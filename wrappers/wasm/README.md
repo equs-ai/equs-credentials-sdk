@@ -29,3 +29,27 @@ Build script is already included into test script so can be simply run via:
 ```bash
     npm run test
 ```
+
+### Compilation Issues on macOS with Apple Clang
+
+When compiling Rust projects targeting `wasm32-unknown-unknown` on macOS, you might encounter errors like:
+
+```bash
+warning: ring@0.17.14: error: unable to create target: 'No available targets are compatible with triple "wasm32-unknown-unknown"'
+```
+
+This issue often arises because Apple's version of the Clang compiler doesn't support the `wasm32-unknown-unknown target`. To resolve this:
+
+1. Install LLVM via Homebrew:
+```bash
+brew install llvm
+```
+2. Update Your PATH to Use LLVM's Clang:
+```bash
+echo 'export PATH="/opt/homebrew/opt/llvm/bin:$PATH"' >> ~/.zshrc
+source ~/.zshrc
+```
+3. Verify the Installation:
+```
+clang --version
+```

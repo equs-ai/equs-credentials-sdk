@@ -8,6 +8,7 @@ members = [
     "plugins/askar/wrappers/nodejs",
     "wrappers/nodejs",
     "wrappers/wasm",
+    "wrappers/uniffi",
     "common-macros",
 ]
 
