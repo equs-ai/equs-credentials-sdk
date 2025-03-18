@@ -1,0 +1,11 @@
+[Remote]
+dictionary DIDDocMetadata {
+    boolean? deactivated;
+};
+
+[Remote]
+dictionary DIDMetadata {
+    string? content_type;
+};
+
+namespace asdk {};
