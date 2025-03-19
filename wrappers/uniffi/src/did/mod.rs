@@ -1,4 +1,5 @@
 use agent_sdk::did::{DIDBuf, DIDURLBuf, ResolutionOutput, VerificationMethodMap};
+use serde_json::Value;
 use std::collections::HashMap;
 use std::str::FromStr;
 
@@ -78,7 +79,14 @@ impl TryFrom<VerificationMethodMap> for VerificationMethod {
         let properties = value
             .properties
             .iter()
-            .map(|(k, v)| serde_json::to_string(v).map(|val| (k.to_owned(), val)))
+            .map(|(key, value)| {
+                let result = match value {
+                    Value::String(str) => Ok(str.to_owned()),
+                    _ => serde_json::to_string(value),
+                };
+
+                result.map(|val| (key.to_owned(), val))
+            })
             .collect::<Result<_, _>>()
             .map_err(|err| Error::DIDResolution {
                 details: err.to_string(),

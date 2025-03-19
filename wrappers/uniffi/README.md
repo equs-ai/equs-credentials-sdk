@@ -1,20 +1,31 @@
-# ASDK FFI
+# SDK FFI
 
-This crate provides UniFFI integration for exposing ASDK functionality to platforms such as Swift, Kotlin, Python, and more.
+This crate provides UniFFI integration for exposing SDK functionality to platforms such as Swift, Kotlin, Python, and more.
 
 ## Building
 
-Debug build:
+Build the UniFFI binary for your target platform using the commands below.
+
+**Debug build:**
 ```bash
-cargo build
+make debug
 ```
 
-Release build:
+**Release build:**
 ```bash
-cargo build --release
+make
 ```
 
-Generating Bindings
+## Testing
+
+### Kotlin
+
+The Kotlin tests are located in the `kotlin` directory, which is a standard Gradle project with tests under src/test/kotlin.
+
+**Run Kotlin tests:**
+
+In order to run these tests, you will need to have the JDK installed.
+
 ```bash
-cargo run --bin uniffi-bindgen generate --library ../../target/release/libasdk{.dylib/.so/.dll} --language {kotlin/swift} --out-dir {output dir}
+make test
 ```
