@@ -221,6 +221,18 @@ wasm-test-job:
     - merge_requests
     - main
 
+kotlin-test-job:
+  <<: *rust_job_configs
+  stage: test
+  script:
+    - apt-get update
+    - apt-get install -y openjdk-17-jdk
+    - cd wrappers/uniffi
+    - make test
+  only:
+    - merge_requests
+    - main
+
 # Release stage
 release_artifacts_job:
   <<: *rust_job_configs
