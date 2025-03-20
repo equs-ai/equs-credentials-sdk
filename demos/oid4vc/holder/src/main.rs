@@ -187,12 +187,12 @@ async fn run_presentation_flow(holder: impl HolderVp, kms: LocalKms) {
 
     match input.as_str() {
         "1" => {
-            println!("Same device flow is started ...");
+            println!("Cross device flow is started ...");
             input.clear();
             cross_device_presentation_flow(holder, kms).await
         }
         "2" => {
-            println!("Cross device flow is started ...");
+            println!("Same device flow is started ...");
             input.clear();
             same_device_presentation_flow(holder, kms).await
         }

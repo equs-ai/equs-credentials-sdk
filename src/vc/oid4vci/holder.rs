@@ -939,20 +939,21 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn holder_resolves_credential_definition_correctly() {
+    async fn holder_resolves_credential_definition_pop_lifetime_correctly() {
         let http_client = MockHttpClient::new();
 
+        let kms = LocalKms::new();
+        let vault = InMemVault::new();
         let holder_service = holder_service_from_issuer_metadata(
             http_client,
-            InMemVault::new(),
-            LocalKms::new(),
+            vault,
+            kms,
             SampleIssuerMetadata::with_sdjwtvc_conf(),
         )
         .await;
 
         let cred_def_to_check = holder_service.resolve_cred_def(CRED_DEF_ID).unwrap();
-
-        assert_eq!(cred_def_to_check, sample_credential_definition())
+        assert_eq!(cred_def_to_check, sample_credential_definition());
     }
 
     #[tokio::test]
@@ -1204,6 +1205,7 @@ mod tests {
         let client_id = "fake_client_id";
         let holder_metadata = vc::core::HolderMetadata {
             client_id: client_id.to_owned(),
+            pop_lifetime: time::Duration::minutes(5),
         };
 
         let inner = vc::core::HolderService::new(kms, vault, holder_metadata);

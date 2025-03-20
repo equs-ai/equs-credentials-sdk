@@ -2216,7 +2216,7 @@ pub mod utils {
                             .credential_data
                             .iter()
                             .find(|claim| {
-                                let vct = claim.get("vct").unwrap().as_str().unwrap();
+                                let vct = claim["vct"].as_str().unwrap();
                                 input.restrictions.iter().any(|restriction| {
                                     matches!(restriction.value.as_ref(), Some(PresentationRestrictionValue::Const(value)) if value == &vct.to_string())
                                 })
@@ -2238,7 +2238,7 @@ pub mod utils {
                         let claims = self.credential_data
                         .iter()
                         .find(|claim| {
-                            let type_ = claim.get("type").unwrap().as_vec().unwrap();
+                            let type_ = claim["type"].as_vec().unwrap();
                             let types: Vec<&str> =
                                 type_.iter().map(|ty| ty.as_str().unwrap()).collect();
                             input.restrictions.iter().any(|restriction| {
@@ -2398,6 +2398,7 @@ pub mod utils {
             vault,
             vc::core::HolderMetadata {
                 client_id: "client_id".to_string(),
+                pop_lifetime: time::Duration::minutes(5),
             },
         );
 
@@ -2490,7 +2491,7 @@ pub mod utils {
             .map(|key| format!("$.{}", key))
             .collect();
 
-        let vct = claims.get("vct").unwrap().as_str().unwrap();
+        let vct = claims["vct"].as_str().unwrap();
         SdJwtAPI::create_vc(
             claims.clone(),
             (&issuer_did_url, issuer_key_handle),
@@ -2517,7 +2518,7 @@ pub mod utils {
 
         let did = DIDKey::generate(holder_key_handle.clone()).unwrap();
         let holder_did_url = DIDURLBuf::from_str(&did).unwrap();
-        let type_ = claims.get("type").unwrap().as_vec().unwrap();
+        let type_ = claims["type"].as_vec().unwrap();
 
         let mut vc_metadata = JsonLdAPIVCMetadata::new(
             vec![
@@ -2528,6 +2529,7 @@ pub mod utils {
                 .iter()
                 .map(|claim| claim.as_str().unwrap().to_string())
                 .collect(),
+            time::Duration::days(5 * 365),
         )
         .unwrap();
         vc_metadata.mandatory_claims = Some(vec!["/type".parse().unwrap()]);
@@ -2571,32 +2573,27 @@ pub mod utils {
     ) {
         match credential_format {
             ClaimFormatDesignation::SdJwtVc => {
-                let actual_vct = claims.get("vct").unwrap();
+                let actual_vct = &claims["vct"];
 
                 let expected_claims = expected_credential_data;
-                let expected_vct = expected_claims.get("vct").unwrap();
+                let expected_vct = &expected_claims["vct"];
                 assert_eq!(actual_vct, expected_vct);
 
                 for (key, value) in expected_claims.claims() {
-                    assert_eq!(
-                        claims.get(key).unwrap(),
-                        value,
-                        "Claims: expected {key}: {value}"
-                    );
+                    assert_eq!(&claims[key], value, "Claims: expected {key}: {value}");
                 }
             }
             ClaimFormatDesignation::LdpVc => {
-                let actual_type = claims.get("type").unwrap();
+                let actual_type = &claims["type"];
 
                 let expected_claims = expected_credential_data;
-                let expected_type = expected_claims.get("type").unwrap();
+                let expected_type = &expected_claims["type"];
 
                 assert_eq!(actual_type, expected_type);
 
                 for (key, value) in expected_claims.claims() {
                     assert_eq!(
-                        claims.get("credentialSubject").unwrap().get(key).unwrap(),
-                        value,
+                        &claims["credentialSubject"][key], value,
                         "Claims: expected {key}: {value}"
                     );
                 }
@@ -2612,6 +2609,7 @@ pub mod utils {
             InMemVault::new(),
             vc::core::HolderMetadata {
                 client_id: "client_id".to_string(),
+                pop_lifetime: time::Duration::minutes(5),
             },
         );
 

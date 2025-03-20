@@ -72,7 +72,7 @@ where
                 pop::GenerateOptions {
                     audience: credential_offer.issuer_id.clone(),
                     issuer: None,
-                    lifetime: None,
+                    lifetime: self.metadata.pop_lifetime,
                 },
             )
             .await
@@ -726,6 +726,7 @@ mod tests {
             vault,
             HolderMetadata {
                 client_id: "wallet-dev".to_string(),
+                pop_lifetime: time::Duration::minutes(5),
             },
         )
     }

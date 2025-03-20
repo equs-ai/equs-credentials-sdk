@@ -157,7 +157,7 @@ pub mod utils {
                 protocol_data: Some(CredentialDefinitionData::SdJwt {
                     vct: VCT.to_owned(),
                     disclosures: vec!["$.givenName".to_owned(), "$.familyName".to_owned()],
-                    lifetime: None,
+                    lifetime: Duration::days(5 * 365),
                 }),
                 claim_format: ClaimFormat::SdJwtVc {
                     jwt_alg_values: vec!["ES256".to_string()],
@@ -190,6 +190,7 @@ pub mod utils {
                     ],
                     vc_types: vec![CRED_TYPE.to_owned()],
                     credential_id: None,
+                    lifetime: Duration::days(5 * 365),
                 }),
                 claim_format: ClaimFormat::LdpVc {
                     proof_type: vec!["EcdsaSecp256r1Signature2019".to_string()],
@@ -279,17 +280,16 @@ pub mod utils {
         pub async fn assert_verified_claims(&self, verified_claims: &Claims) {
             let verified_claims = match &self.format {
                 VCFormat::LdpVc => {
-                    let vcs = verified_claims.get("verifiableCredential").unwrap();
+                    let vcs = &verified_claims["verifiableCredential"];
 
-                    vcs.get("credentialSubject").unwrap()
+                    &vcs["credentialSubject"]
                 }
                 _ => &verified_claims.clone().into(),
             };
 
             let case_claims = self.claims.claims();
             for (name, val) in case_claims {
-                let verified = verified_claims.get(name).unwrap();
-                assert_eq!(val, verified)
+                assert_eq!(val, &verified_claims[name])
             }
         }
 
@@ -393,7 +393,7 @@ pub mod utils {
                     GenerateOptions {
                         audience: ISSUER_ID.to_string(),
                         issuer: None,
-                        lifetime: None,
+                        lifetime: time::Duration::minutes(5),
                     },
                 )
                 .await
@@ -576,6 +576,7 @@ pub mod utils {
                     .map(|s| IriRefBuf::from_str(s).unwrap())
                     .collect(),
                 vc_types.to_owned(),
+                time::Duration::days(5 * 365),
             )
             .unwrap();
 

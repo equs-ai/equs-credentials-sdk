@@ -6,6 +6,7 @@ use crate::nonce::JsNonceGenerator;
 use crate::utils::from_json_object;
 use crate::vault::JsVault;
 use crate::vc::core::JsKeyMetadata;
+use crate::vc::oid4vci::JsDuration;
 use crate::vc::oid4vp::holder::OID4VPHolder;
 use crate::vc::oid4vp::verifier::OID4VPVerifier;
 use crate::vc::JsonObject;
@@ -59,6 +60,7 @@ pub async fn _build_vp_holder(
     vault: JsVault,
     client_id: String,
     #[napi(ts_arg_type = "WalletMetadata | null | undefined")] wallet_metadata: Option<JsonObject>,
+    pop_lifetime: Option<JsDuration>,
 ) -> Result<OID4VPHolder> {
     let mut builder = agent_sdk::vc::oid4vp::HolderBuilder::new(kms, vault, client_id);
 
@@ -76,6 +78,9 @@ pub async fn _build_vp_holder(
         builder = builder.with_wallet_metadata(serde_json::from_value(from_json_object(
             wallet_metadata.clone(),
         )?)?)
+    }
+    if let Some(duration) = pop_lifetime {
+        builder = builder.with_pop_lifetime(duration.try_into()?);
     }
 
     let holder = builder

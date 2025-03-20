@@ -1,7 +1,7 @@
 import {
   Alg,
   contextEnsuredKms,
-  contextEnsuredVault,
+  contextEnsuredVault, CredentialDefinitionFormat,
   CredentialOfferContentFormat,
   CredentialStatusInfoFormat,
   InMemKms,
@@ -102,6 +102,7 @@ export class Utils {
             payload: {
               statuses_nr: 32,
               status_list_url: "http://localhost/status_list",
+              status_size: 1,
             },
           },
           keyMetadata: await this.getKeyMetadata(),
@@ -122,11 +123,12 @@ export class Utils {
           supportedSigningAlgs: [Alg.ES256, Alg.EdDSA],
           display: undefined,
           protocolData: {
-            SdJwt: {
-              vct: "https://credentials.example.com/identity_credential",
-              disclosures: ["$.name", "$.surname"],
-              lifetime: undefined,
-            },
+              format: CredentialDefinitionFormat.SdJwt,
+              payload: {
+                vct: "https://credentials.example.com/identity_credential",
+                disclosures: ["$.name", "$.surname"],
+                lifetime: 300000000
+              }
           },
           keyMetadata: await this.getKeyMetadata(),
         },

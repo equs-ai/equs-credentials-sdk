@@ -6,6 +6,7 @@ use serde_json::Value;
 use snafu::Snafu;
 use std::collections::HashMap;
 use std::convert::{From, TryFrom};
+use std::ops::Index;
 use strum::Display;
 use tracing::{instrument, Level};
 use zeroize::Zeroize;
@@ -80,6 +81,14 @@ impl From<Claims> for Claim {
     }
 }
 
+impl Index<&str> for Claims {
+    type Output = Claim;
+    fn index(&self, key: &str) -> &Self::Output {
+        self.get(key)
+            .expect("no such value for the given key exists")
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Display, Clone, PartialEq)]
 #[serde(untagged)]
 pub enum Claim {
@@ -121,6 +130,13 @@ impl Claim {
 
     #[instrument(level = Level::TRACE, ret())]
     pub fn as_object(&self) -> Option<&HashMap<String, Claim>> {
+        match self {
+            Self::Object(map) => Some(map),
+            _ => None,
+        }
+    }
+
+    pub fn as_object_mut(&mut self) -> Option<&mut HashMap<String, Claim>> {
         match self {
             Self::Object(map) => Some(map),
             _ => None,
@@ -171,6 +187,14 @@ impl From<Value> for Claim {
 impl Drop for Claim {
     fn drop(&mut self) {
         erase_claim(self);
+    }
+}
+
+impl Index<&str> for Claim {
+    type Output = Claim;
+    fn index(&self, key: &str) -> &Self::Output {
+        self.get(key)
+            .expect("no such value for the given key exists")
     }
 }
 
@@ -269,13 +293,11 @@ mod tests {
         .try_into()
         .unwrap();
 
-        assert_eq!(
-            claims.get("key").unwrap(),
-            &Claim::String("test_value".to_string())
-        );
+        assert_eq!(&claims["key"], &Claim::String("test_value".to_string()));
     }
 
     #[tokio::test]
+    #[should_panic(expected = "no such value for the given key exists")]
     async fn claims_get_returns_none_if_the_key_does_not_exist() {
         let claims: Claims = json!({
             "key": "test_value"
@@ -283,7 +305,7 @@ mod tests {
         .try_into()
         .unwrap();
 
-        assert!(claims.get("invalid_key").is_none());
+        let val = claims["invalid_key"].clone();
     }
 
     #[tokio::test]
@@ -313,7 +335,7 @@ mod tests {
     #[case((json!({}), Claim::Object(HashMap::new())))]
     #[case(nested_objects_case())]
     #[tokio::test]
-    async fn convertaion_json_value_to_claim_works_correctly(#[case] test_case: (Value, Claim)) {
+    async fn conversion_json_value_to_claim_works_correctly(#[case] test_case: (Value, Claim)) {
         let (json_value, expected_claim) = test_case;
         let claim: Claim = json_value.into();
         assert_eq!(claim, expected_claim);
@@ -331,7 +353,7 @@ mod tests {
     #[case((json!({}), Claim::Object(HashMap::new())))]
     #[case(nested_objects_case())]
     #[tokio::test]
-    async fn convertaion_claim_to_json_value_works_correctly(#[case] test_case: (Value, Claim)) {
+    async fn conversion_claim_to_json_value_works_correctly(#[case] test_case: (Value, Claim)) {
         let (expected_json_value, claim) = test_case;
         let json_value: Value = claim.try_into().unwrap();
         assert_eq!(json_value, expected_json_value);
@@ -343,12 +365,12 @@ mod tests {
     #[case(Claim::Float(f64::NEG_INFINITY))]
     #[tokio::test]
     #[should_panic(expected = "Float value can not be converted to Value::Number")]
-    async fn convertaion_claim_to_json_fails_when_float_is_not_finite(#[case] claim: Claim) {
+    async fn conversion_claim_to_json_fails_when_float_is_not_finite(#[case] claim: Claim) {
         let json_value: Value = claim.try_into().unwrap();
     }
 
     #[tokio::test]
-    async fn convertaion_json_value_to_claims_works_correctly() {
+    async fn conversion_json_value_to_claims_works_correctly() {
         let json_value = json!({
             "key_null": null,
             "key_bool": true,
@@ -362,31 +384,28 @@ mod tests {
 
         let claims: Claims = json_value.try_into().unwrap();
 
-        assert_eq!(claims.get("key_null").unwrap(), &Claim::Null);
-        assert_eq!(claims.get("key_bool").unwrap(), &Claim::Bool(true));
-        assert_eq!(claims.get("key_int").unwrap(), &Claim::Int(-12345));
-        assert_eq!(claims.get("key_uint").unwrap(), &Claim::UInt(u64::MAX));
-        assert_eq!(claims.get("key_float").unwrap(), &Claim::Float(123.45));
+        assert_eq!(&claims["key_null"], &Claim::Null);
+        assert_eq!(&claims["key_bool"], &Claim::Bool(true));
+        assert_eq!(&claims["key_int"], &Claim::Int(-12345));
+        assert_eq!(&claims["key_uint"], &Claim::UInt(u64::MAX));
+        assert_eq!(&claims["key_float"], &Claim::Float(123.45));
         assert_eq!(
-            claims.get("key_string").unwrap(),
+            &claims["key_string"],
             &Claim::String("test_value".to_string())
         );
-        assert_eq!(claims.get("key_array").unwrap(), &Claim::Array(vec![]));
-        assert_eq!(
-            claims.get("key_object").unwrap(),
-            &Claim::Object(HashMap::new())
-        );
+        assert_eq!(&claims["key_array"], &Claim::Array(vec![]));
+        assert_eq!(&claims["key_object"], &Claim::Object(HashMap::new()));
     }
 
     #[tokio::test]
     #[should_panic(expected = "Json value is not a Value::Object")]
-    async fn convertaion_json_value_to_claims_fails_when_json_is_not_an_object() {
+    async fn conversion_json_value_to_claims_fails_when_json_is_not_an_object() {
         let json_value = json!("test");
         let claims: Claims = json_value.try_into().unwrap();
     }
 
     #[tokio::test]
-    async fn convertaion_claims_to_json_value_works_correctly() {
+    async fn conversion_claims_to_json_value_works_correctly() {
         let mut claims = Claims::new();
 
         claims.insert("key_null".to_string(), Claim::Null);

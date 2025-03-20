@@ -169,6 +169,63 @@ pub mod fixtures {
             metadata.unwrap()
         }
 
+        pub fn with_custom_issuer_metadata_for_ldp_vc() -> IssuerMetadata {
+            serde_json::from_value(json!({
+                "credential_issuer": ISSUER_URL,
+                "credential_endpoint": ISSUER_URL.to_owned()+"/credential",
+                "credential_configurations_supported": {
+                    "LdpVc": {
+                    "format": "ldp_vc",
+                    "scope": "SD_JWT_cred",
+                    "@context": [
+                        "https://www.w3.org/ns/credentials/v2",
+                        "https://www.w3.org/ns/credentials/examples/v2"
+                    ],
+                    "type": [
+                        "VerifiableCredential",
+                    ],
+                    "cryptographic_binding_methods_supported": [
+                        "jwk"
+                    ],
+                    "credential_signing_alg_values_supported": [
+                        "EcdsaRdfc2019",
+                        "EdDsaRdfc2022"
+                    ],
+                    "credential_definition": {
+                        "@context": [
+                            "https://www.w3.org/ns/credentials/v2",
+                            "https://www.w3.org/ns/credentials/examples/v2"
+                        ],
+                        "type": [
+                            "VerifiableCredential",
+                        ],
+                        "credentialSubject": {
+                                "vct": {},
+                                "given_name": {},
+                                "family_name": {},
+                                "dob": {},
+                        }
+                    },
+                    "display": [
+                        {
+                            "name": "University Credential",
+                            "locale": "en-US",
+                            "logo": {
+                                "uri": "https://exampleuniversity.com/public/logo.png",
+                                "alt_text": "a square logo of a university"
+                            },
+                            "background_color": "#12107c",
+                            "background_image": {
+                                "uri": "https://university.example.edu/public/background-image.png"
+                            },
+                            "text_color": "#FFFFFF"
+                        }
+                    ]
+            }
+                },
+            }))
+            .unwrap()
+        }
         pub fn with_isomdl_conf() -> IssuerMetadata {
             let metadata = serde_json::from_value(json!(
                 {
@@ -333,6 +390,37 @@ pub mod fixtures {
                         "credentialSubject": {},
                     }),
                 }
+            ))
+            .unwrap()
+        }
+
+        pub fn with_ldp_vc_conf_correct() -> CredentialRequest {
+            serde_json::from_value(json!(
+                {
+                    "id": "LdpVc",
+                    "type": ["VerifiableCredential"],
+                    "issuer": "did:example:foo",
+                    "scope": "SD_JWT_cred",
+                    "issuanceDate": "2020-08-19T21:41:50Z",
+                     "@context": "https://www.w3.org/2018/credentials/v1",
+                     "credentialSubject": {
+                       "id": "did:example:d23dd687a7dc6787646f2eb98d0"
+                      },
+                    "format": "ldp_vc",
+                    "proof": {
+                        "proof_type":"jwt",
+                        "jwt": SAMPLE_PROOF_JWT,
+                    },
+                    "credential_definition": json!({
+                        "@context": [],
+                        "type": [
+                        "VerifiableCredential",
+                    ],
+                        "credentialSubject": {
+                    },
+                    }),
+                }
+
             ))
             .unwrap()
         }

@@ -845,15 +845,9 @@ mod tests {
 
         validate_vp_token_against_expected_claims(test_case, &verified_claims);
 
-        let id_token_claims: IdToken = serde_json::from_value(
-            verified_claims
-                .get(ID_TOKEN)
-                .unwrap()
-                .to_owned()
-                .try_into()
-                .unwrap(),
-        )
-        .unwrap();
+        let id_token_claims: IdToken =
+            serde_json::from_value(verified_claims[ID_TOKEN].to_owned().try_into().unwrap())
+                .unwrap();
         assert_eq!(id_token_claims.audience, client_id);
         assert_eq!(id_token_claims.nonce, session.nonce.secret());
     }
@@ -943,12 +937,7 @@ mod tests {
                 .unwrap()
                 .id;
 
-            let cred_claims = verified_claims
-                .get(VP_TOKEN)
-                .unwrap()
-                .get(cred_id)
-                .unwrap()
-                .clone();
+            let cred_claims = verified_claims[VP_TOKEN][cred_id].clone();
 
             let cred_claims = match &cred_claims {
                 Claim::Object(map) => {

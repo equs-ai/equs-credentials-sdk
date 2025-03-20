@@ -132,6 +132,7 @@ mod tests {
     use crate::utils::test_utils::create_did_and_key_metadata;
     use crate::vc::core::api::StatusIssuer;
     use crate::vc::core::{StatusIssuerMetadata, StatusListDefinition};
+    use crate::vc::presentation_exchange::StatusSize;
     use crate::vc::status_formats::status_list_token_jwt::{SLMetadata, VCStatus, VCStatuses};
     use crate::vc::status_formats::StatusListFormat;
     use crate::vc::StatusList;
@@ -151,6 +152,7 @@ mod tests {
                 format: StatusListFormat::StatusListTokenJwt(SLMetadata {
                     statuses_nr: 32,
                     status_list_url: Url::from_str("http://example.com/status_list").unwrap(),
+                    status_size: StatusSize::try_from(1u8).unwrap(),
                 }),
                 key_metadata,
             }],

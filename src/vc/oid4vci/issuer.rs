@@ -600,7 +600,9 @@ mod tests {
     use crate::utils::http::test::mock_http_req_body;
     use crate::utils::test_utils::create_did_and_key_metadata;
     use crate::vc::claims::Claim;
+    use crate::vc::formats::json_ld_vc::JsonLdAPI;
     use crate::vc::formats::sd_jwt_vc::SdJwtAPI;
+    use crate::vc::formats::GetDateTimeClaim;
     use crate::vc::oid4vci::issuer::TokenValidation::ByJwks;
     use crate::vc::oid4vci::metadata::convert_metadata;
     use crate::vc::oid4vci::tests::fixtures::{
@@ -611,6 +613,7 @@ mod tests {
     };
     use crate::vc::oid4vci::Error::Protocol;
     use crate::vc::oid4vci::{token_validation, AuthorizationCodeGrant};
+    use crate::vc::{Credential, HasClaims};
     use api::Issuer;
     use oauth2::http::{Method, StatusCode};
     use openidconnect::JsonWebKeySetUrl;
@@ -618,6 +621,7 @@ mod tests {
     use serde_json::json;
     use time::OffsetDateTime;
 
+    const CUSTOM_CRED_LIFETIME: i64 = 1024;
     #[tokio::test]
     async fn get_issuer_metadata_returns_correct_data() {
         let issuer = issuer_service(None, None).await;
@@ -662,6 +666,99 @@ mod tests {
             .await;
 
         iss_result.unwrap();
+    }
+
+    #[tokio::test]
+    async fn default_credential_lifetime_works_for_sd_jwt() {
+        let issuer = issuer_service_with_metadata(
+            None,
+            None,
+            SampleIssuerMetadata::with_sdjwtvc_conf(),
+            Some(Duration::days(CUSTOM_CRED_LIFETIME)),
+        )
+        .await;
+
+        let iss_result = issuer
+            .issue_credential(
+                &SampleCredentialRequest::with_sdjwtvc_conf(),
+                ACCESS_TOKEN,
+                &sample_claims(),
+                &mut sample_session_with_nonce(),
+                None,
+            )
+            .await;
+
+        let t = iss_result.unwrap();
+        match t.response_kind() {
+            ResponseEnum::Immediate { credential } => {
+                let credential: Credential = credential.try_into().unwrap();
+                match credential {
+                    Credential::SdJwt(cred) => {
+                        let claims = cred.parse_claims().unwrap();
+                        let exp_real = *claims.get("exp").unwrap().as_int().unwrap();
+                        let exp_expected = (OffsetDateTime::now_utc()
+                            + Duration::days(CUSTOM_CRED_LIFETIME))
+                        .unix_timestamp();
+                        assert_eq!(exp_real, exp_expected);
+                    }
+                    _ => {
+                        assert_eq!(false, true);
+                    }
+                }
+            }
+            _ => {
+                assert_eq!(false, true);
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn default_credential_lifetime_works_for_ldp_json() {
+        let issuer = issuer_service_with_metadata(
+            None,
+            None,
+            SampleIssuerMetadata::with_custom_issuer_metadata_for_ldp_vc(),
+            Some(Duration::days(CUSTOM_CRED_LIFETIME)),
+        )
+        .await;
+
+        let iss_result = issuer
+            .issue_credential(
+                &SampleCredentialRequest::with_ldp_vc_conf_correct(),
+                ACCESS_TOKEN,
+                &sample_claims(),
+                &mut sample_session_with_nonce(),
+                None,
+            )
+            .await;
+
+        let t = iss_result.unwrap();
+        match t.response_kind() {
+            ResponseEnum::Immediate { credential } => {
+                let credential: Credential = credential.try_into().unwrap();
+                match credential {
+                    Credential::LdpVc(cred) => {
+                        let claims = cred.parse_claims().unwrap();
+                        let exp_real = JsonLdAPI::get_date_time_claim("validUntil", &claims)
+                            .unwrap()
+                            .date_time
+                            .and_utc()
+                            .timestamp();
+                        let exp_expected = (OffsetDateTime::now_utc()
+                            + Duration::days(CUSTOM_CRED_LIFETIME))
+                        .unix_timestamp();
+                        //There seems to be a delay of 1second
+                        assert!(i64::abs(exp_real - exp_expected) < 3);
+                    }
+                    _ => {
+                        assert_eq!(false, true);
+                    }
+                }
+            }
+            _ => {
+                assert_eq!(false, true);
+            }
+        }
     }
 
     #[tokio::test]
@@ -860,7 +957,6 @@ mod tests {
     #[rstest]
     #[case(SampleCredentialRequest::with_jwtvcjson_conf())]
     #[case(SampleCredentialRequest::with_jwtldvc_conf())]
-    #[case(SampleCredentialRequest::with_ldpvc_conf())]
     #[case(SampleCredentialRequest::with_msomdoc_conf())]
     #[tokio::test]
     async fn get_cred_def_metadata_returns_none_on_unsupported_credential_format(
@@ -933,7 +1029,6 @@ mod tests {
     #[rstest]
     #[case(SampleCredentialRequest::with_jwtvcjson_conf())]
     #[case(SampleCredentialRequest::with_jwtldvc_conf())]
-    #[case(SampleCredentialRequest::with_ldpvc_conf())]
     #[case(SampleCredentialRequest::with_msomdoc_conf())]
     #[tokio::test]
     #[should_panic(
@@ -988,7 +1083,8 @@ mod tests {
         let mut session = sample_session_with_nonce();
 
         let issuer_service =
-            issuer_service_with_metadata(None, None, sample_issuer_metadata_without_scope()).await;
+            issuer_service_with_metadata(None, None, sample_issuer_metadata_without_scope(), None)
+                .await;
         issuer_service
             .issue_credential(
                 &credential_request,
@@ -1030,9 +1126,13 @@ mod tests {
         let claims = Claims::new();
         let mut session = sample_session_with_nonce();
 
-        let issuer_service =
-            issuer_service_with_metadata(None, None, sample_issuer_metadata_with_incorrect_scope())
-                .await;
+        let issuer_service = issuer_service_with_metadata(
+            None,
+            None,
+            sample_issuer_metadata_with_incorrect_scope(),
+            None,
+        )
+        .await;
         issuer_service
             .issue_credential(
                 &credential_request,
@@ -1171,6 +1271,7 @@ mod tests {
             http_client,
             token_validation,
             SampleIssuerMetadata::with_sdjwtvc_conf(),
+            None,
         )
         .await
     }
@@ -1179,6 +1280,7 @@ mod tests {
         http_client: Option<MockHttpClient>,
         token_validation: Option<TokenValidation<MockHttpClient>>,
         issuer_metadata: IssuerMetadata,
+        cred_lifetime: Option<Duration>,
     ) -> IssuerService<impl vc::core::Issuer, impl HttpClient, impl NonceGenerator> {
         let kms = LocalKms::new();
         let nonce_gen = LocalNonceGenerator::default();
@@ -1189,8 +1291,13 @@ mod tests {
         );
 
         let (_, key_metadata) = create_did_and_key_metadata(&kms).await;
-        let issuer_metadata_inner =
-            convert_metadata(&issuer_metadata, &Default::default(), &key_metadata).unwrap();
+        let issuer_metadata_inner = convert_metadata(
+            &issuer_metadata,
+            &Default::default(),
+            &key_metadata,
+            cred_lifetime.unwrap_or(Duration::days(5 * 365)),
+        )
+        .unwrap();
 
         let inner = vc::core::IssuerService::new(kms, issuer_metadata_inner);
 

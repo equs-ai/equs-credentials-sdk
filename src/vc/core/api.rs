@@ -95,6 +95,7 @@ pub struct KeyMetadata {
 #[derive(Debug, PartialEq, Clone)]
 pub struct HolderMetadata {
     pub client_id: String,
+    pub pop_lifetime: Duration,
 }
 
 /// A format-specific data for the `CredentialDefinition`.
@@ -106,12 +107,13 @@ pub enum CredentialDefinitionData {
     SdJwt {
         vct: String,
         disclosures: Vec<String>,
-        lifetime: Option<time::Duration>,
+        lifetime: Duration,
     },
     Ldp {
         contexts: Vec<String>,
         vc_types: Vec<String>,
         credential_id: Option<String>,
+        lifetime: Duration,
     },
 }
 

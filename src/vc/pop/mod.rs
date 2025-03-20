@@ -113,7 +113,7 @@ pub type Result<T> = core::result::Result<T, Error>;
 pub struct GenerateOptions {
     pub audience: String,
     pub issuer: Option<String>,
-    pub lifetime: Option<time::Duration>,
+    pub lifetime: time::Duration,
 }
 
 #[derive(Debug, PartialEq, Clone, Default)]
