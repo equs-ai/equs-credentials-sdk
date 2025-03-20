@@ -3,6 +3,8 @@ use crate::nonce::NonceGenerator;
 use crate::reqwest::builder::ReqwestClientBuilder;
 use crate::reqwest::ReqwestClient;
 use crate::vc::core::KeyMetadata;
+use crate::vc::core::DEFAULT_CRED_LIFETIME_DAYS;
+use crate::vc::core::DEFAULT_POP_LIFETIME_MINUTES;
 use crate::vc::oid4vci as api;
 use crate::vc::oid4vci::holder::HolderService;
 use crate::vc::oid4vci::issuer::{IssuerService, TokenValidation};
@@ -16,6 +18,7 @@ use snafu::{Location, Snafu};
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::marker::PhantomData;
+use time::Duration;
 use tracing::{debug, info, instrument, Level};
 use url::Url;
 
@@ -59,6 +62,7 @@ where
     token_params: Option<TokenParams>,
     clock_skew: Option<time::Duration>,
     cred_conf_ids_with_key_metadata: HashMap<String, KeyMetadata>,
+    cred_lifetime: Duration,
 
     // services
     kms: KMS,
@@ -120,6 +124,7 @@ where
             nonce_generator,
             token_params: None,
             clock_skew: None,
+            cred_lifetime: Duration::days(DEFAULT_CRED_LIFETIME_DAYS),
             cred_conf_ids_with_key_metadata: Default::default(),
             _marker: Default::default(),
         }
@@ -154,6 +159,7 @@ where
             token_params: self.token_params,
             clock_skew: self.clock_skew,
             kms: self.kms,
+            cred_lifetime: self.cred_lifetime,
             nonce_generator: self.nonce_generator,
             cred_conf_ids_with_key_metadata: Default::default(),
             _marker: Default::default(),
@@ -233,6 +239,22 @@ where
         self
     }
 
+    /// Sets the creds lifetime.
+    ///
+    /// # Arguments
+    ///
+    /// * `duration` - The duration to set for cred lifetime.
+    ///   or other time units supported by `time::Duration`.
+    ///
+    #[instrument(
+        level = Level::TRACE,
+        skip(self)
+    )]
+    pub fn with_default_cred_lifetime(mut self, duration: Duration) -> Self {
+        self.cred_lifetime = duration;
+        self
+    }
+
     /// Builds an `Issuer`.
     ///
     /// # Returns
@@ -248,6 +270,7 @@ where
             &self.issuer_metadata,
             &self.cred_conf_ids_with_key_metadata,
             &self.key_metadata,
+            self.cred_lifetime,
         )
         .map_err(|e| {
             BuildSnafu {
@@ -307,6 +330,7 @@ where
     kms: KMS,
     vault: V,
     http_client: Result<HC, HttpError>,
+    pop_lifetime: Duration,
 
     _marker: PhantomData<KH>,
 }
@@ -356,6 +380,7 @@ where
             http_client,
             iss_discovery,
             redirect_url: "urn:ietf:wg:oauth:2.0:oob".to_string(),
+            pop_lifetime: Duration::minutes(DEFAULT_POP_LIFETIME_MINUTES),
             _marker: Default::default(),
         }
     }
@@ -382,6 +407,20 @@ where
         self
     }
 
+    /// Use a specific `pop_lifetime`.
+    ///
+    /// # Arguments
+    ///
+    /// * `pop_lifetime` - The expiration for Proof Of Possession
+    #[instrument(
+        level = Level::TRACE,
+        skip(self),
+    )]
+    pub fn with_pop_lifetime(mut self, pop_lifetime: Duration) -> Self {
+        self.pop_lifetime = pop_lifetime;
+        self
+    }
+
     /// Use a specific `HttpClient`.
     ///
     /// # Arguments
@@ -404,6 +443,7 @@ where
             kms: self.kms,
             vault: self.vault,
             _marker: Default::default(),
+            pop_lifetime: self.pop_lifetime,
         }
     }
 
@@ -420,6 +460,7 @@ where
     pub async fn build(self) -> Result<impl api::Holder, Error> {
         let holder_metadata = vc::core::HolderMetadata {
             client_id: self.client_id.clone(),
+            pop_lifetime: self.pop_lifetime,
         };
         let inner = vc::core::HolderService::new(self.kms, self.vault, holder_metadata);
 

@@ -22,18 +22,23 @@ use agent_sdk::vc::core::{
 use agent_sdk::vc::core::{HolderService, KeyMetadata};
 use agent_sdk::vc::metadata::{CredentialMetadataProcessor, DefaultMetadataProcessor};
 use agent_sdk::vc::presentation_exchange::InputDescriptor;
+use agent_sdk::vc::presentation_exchange::StatusSize;
 use agent_sdk::vc::status_formats::status_list_token_jwt::{VCStatus, VCStatuses};
 use agent_sdk::vc::status_formats::StatusListFormat;
 use agent_sdk::vc::VCStatusesData;
 use agent_sdk::{kms, vc};
+use oid4vci::proof_of_possession::ProofOfPossession;
 use serde_json::json;
 use std::collections::HashMap;
 use std::str::FromStr;
+use time::Duration;
 use url::Url;
 use utils::fixtures::{sample_claims_sdjwt, SCOPE, VC_TYPE, VERIFIER_ID};
 use utils::helpers::create_did_keymetadata_keyhandle;
 
 const STATUS_LIST_PATH: &str = "/status_list";
+const CLAIM_EXP_DAYS: i64 = 1024;
+const POP_EXP_MINUTES: i64 = 8;
 
 #[tokio::test]
 async fn sd_jwt_credential_issuance_and_presentation_verification() {
@@ -56,6 +61,14 @@ async fn sd_jwt_credential_issuance_and_presentation_verification() {
         .request_credential(&offer, &nonce, &key_metadata)
         .await;
     let request = request.unwrap();
+
+    // tests pop exp time. The exp time for pop is set during holder build
+    let proof = &request.proof.proof;
+    let pop = ProofOfPossession::from_jwt(proof.as_str(), UniversalResolver::default())
+        .await
+        .unwrap();
+    let exp = time::OffsetDateTime::now_utc() + Duration::minutes(POP_EXP_MINUTES);
+    assert_eq!(pop.body.expires_at.unix_timestamp(), exp.unix_timestamp());
 
     let claims = sample_claims_sdjwt();
 
@@ -114,6 +127,10 @@ async fn sd_jwt_credential_issuance_and_presentation_verification() {
 
     let res_claims = ver_res.unwrap();
     println!("Presentation claims {:?}", res_claims);
+
+    // tests claim expiration. It was set during issuer creation
+    let exp = time::OffsetDateTime::now_utc() + Duration::days(CLAIM_EXP_DAYS);
+    assert_eq!(res_claims["exp"].as_int().unwrap(), &exp.unix_timestamp());
 
     assert!(res_claims.get("given_name").is_some());
     // should not return family_name as it is not selectively disclosed
@@ -221,19 +238,12 @@ async fn bbs_plus_credential_issuance_and_presentation_verification() {
         serde_json::to_string_pretty(&res_claims).unwrap()
     );
 
-    let vp = res_claims
-        .get("verifiableCredential")
-        .unwrap()
+    let vp = res_claims["verifiableCredential"]
         .as_object()
         .unwrap()
         .clone();
 
-    let cred_subject = vp
-        .get("credentialSubject")
-        .unwrap()
-        .as_object()
-        .unwrap()
-        .clone();
+    let cred_subject = vp["credentialSubject"].as_object().unwrap().clone();
 
     assert!(cred_subject.contains_key("alumniOf"));
     assert!(!cred_subject.contains_key("degree"));
@@ -368,7 +378,7 @@ async fn build_issuer_with_sd_jwt_credential_profile() -> impl Issuer {
             protocol_data: Some(CredentialDefinitionData::SdJwt {
                 vct: VC_TYPE.to_string(),
                 disclosures: vec!["$.given_name".to_owned(), "$.family_name".to_owned()],
-                lifetime: None,
+                lifetime: Duration::days(CLAIM_EXP_DAYS),
             }),
             key_metadata,
         }],
@@ -421,6 +431,7 @@ async fn build_issuer_with_bbs_plus_credential_profile() -> impl Issuer {
                     "AlumniCredential".to_string(),
                 ],
                 credential_id: Some("urn:uuid:7a6cafb9-11c3-41a8-98d8-8b5a45c2548f".to_string()),
+                lifetime: Duration::days(5 * 365),
             }),
             key_metadata,
         }],
@@ -442,9 +453,10 @@ async fn build_status_issuer(status_list_url: Url) -> impl StatusIssuer {
         supported_status_lists: vec![StatusListDefinition {
             id: "test".to_string(),
             format: StatusListFormat::StatusListTokenJwt(
-                agent_sdk::vc::status_formats::status_list_token_jwt::SLMetadata {
+                vc::status_formats::status_list_token_jwt::SLMetadata {
                     statuses_nr: 32,
                     status_list_url,
+                    status_size: StatusSize::try_from(1u8).unwrap(),
                 },
             ),
             key_metadata,
@@ -465,6 +477,7 @@ async fn build_holder(kms: LocalKms) -> impl Holder {
         vault,
         HolderMetadata {
             client_id: "client_id".into(),
+            pop_lifetime: time::Duration::minutes(POP_EXP_MINUTES),
         },
     )
 }

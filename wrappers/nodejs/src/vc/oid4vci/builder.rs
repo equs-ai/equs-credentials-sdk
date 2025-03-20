@@ -1,12 +1,6 @@
 #[cfg(debug_assertions)]
 use agent_sdk::reqwest::builder::ReqwestClientBuilder;
 
-use agent_sdk::vc::core::KeyMetadata;
-use agent_sdk::vc::oid4vci::{HolderBuilder, IssuerBuilder, IssuerDiscovery, IssuerMetadata};
-use napi::{Error, Result};
-use napi_derive::napi;
-use std::collections::HashMap;
-
 use crate::kms::JsKms;
 use crate::nonce::JsNonceGenerator;
 use crate::utils::{from_json_object, parse_url_arg};
@@ -16,6 +10,11 @@ use crate::vc::oid4vci::holder::OID4VCIHolder;
 use crate::vc::oid4vci::issuer::OID4VCIIssuer;
 use crate::vc::oid4vci::{JsDuration, JsTokenValidation};
 use crate::vc::JsonObject;
+use agent_sdk::vc::core::KeyMetadata;
+use agent_sdk::vc::oid4vci::{HolderBuilder, IssuerBuilder, IssuerDiscovery, IssuerMetadata};
+use napi::{Error, Result};
+use napi_derive::napi;
+use std::collections::HashMap;
 
 /// An enum containing options of discovery of the `Issuer` for a `Holder`
 ///
@@ -76,6 +75,7 @@ pub async fn _build_vci_holder(
     client_id: String,
     issuer_discovery: &JsIssuerDiscovery,
     redirect_url: Option<String>,
+    pop_lifetime: Option<JsDuration>,
 ) -> Result<OID4VCIHolder> {
     let mut builder = HolderBuilder::new(kms, vault, client_id, issuer_discovery.0.to_owned());
 
@@ -93,6 +93,10 @@ pub async fn _build_vci_holder(
         builder = builder.with_redirect_url(url.to_string());
     }
 
+    if let Some(duration) = pop_lifetime {
+        builder = builder.with_pop_lifetime(duration.try_into()?);
+    }
+
     let holder = builder
         .build()
         .await
@@ -102,6 +106,7 @@ pub async fn _build_vci_holder(
 }
 
 #[napi]
+#[allow(clippy::too_many_arguments)]
 pub async fn _build_vci_issuer(
     kms: JsKms,
     nonce_generator: JsNonceGenerator,
@@ -110,6 +115,7 @@ pub async fn _build_vci_issuer(
     token_validation: Option<JsTokenValidation>,
     clock_skew: Option<JsDuration>,
     dedicated_keys: HashMap<String, JsKeyMetadata>,
+    cred_lifetime: Option<JsDuration>,
 ) -> Result<OID4VCIIssuer> {
     let issuer_metadata: IssuerMetadata =
         serde_json::from_value(from_json_object(issuer_metadata)?)?;
@@ -120,6 +126,10 @@ pub async fn _build_vci_issuer(
     let clock_skew: Option<time::Duration> =
         clock_skew.map(time::Duration::try_from).transpose()?;
     let mut builder = IssuerBuilder::new(kms, nonce_generator, issuer_metadata, key_metadata);
+
+    if let Some(cred_lifetime) = cred_lifetime {
+        builder = builder.with_default_cred_lifetime(cred_lifetime.try_into()?);
+    }
 
     #[cfg(debug_assertions)]
     {

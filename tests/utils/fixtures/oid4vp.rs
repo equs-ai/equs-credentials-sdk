@@ -38,6 +38,7 @@ fn sample_jsonld_resident_card_credential() -> (Oid4VpTestCredential, InputDescr
                 "VerifiableCredential".to_string(),
                 "PermanentResident".to_string(),
             ],
+            time::Duration::days(5 * 365),
         )
         .unwrap(),
     ));
@@ -226,45 +227,18 @@ pub fn single_jsonld_presentation_case() -> Oid4VpTestCase {
 
     let validate: Box<ValidateClaimsFunc> = Box::new(|claims| {
         assert_eq!(
-            claims
-                .get("vp_token")
-                .unwrap()
-                .get("resident-card")
-                .unwrap()
-                .get("verifiableCredential")
-                .unwrap()
-                .get("credentialSubject")
-                .unwrap()
-                .get("givenName")
-                .unwrap(),
+            &claims["vp_token"]["resident-card"]["verifiableCredential"]["credentialSubject"]
+                ["givenName"],
             &Claim::String("John".to_string())
         );
         assert_eq!(
-            claims
-                .get("vp_token")
-                .unwrap()
-                .get("resident-card")
-                .unwrap()
-                .get("verifiableCredential")
-                .unwrap()
-                .get("credentialSubject")
-                .unwrap()
-                .get("familyName")
-                .unwrap(),
+            &claims["vp_token"]["resident-card"]["verifiableCredential"]["credentialSubject"]
+                ["familyName"],
             &Claim::String("Doe".to_string())
         );
         assert_eq!(
-            claims
-                .get("vp_token")
-                .unwrap()
-                .get("resident-card")
-                .unwrap()
-                .get("verifiableCredential")
-                .unwrap()
-                .get("credentialSubject")
-                .unwrap()
-                .get("birthDate")
-                .unwrap(),
+            &claims["vp_token"]["resident-card"]["verifiableCredential"]["credentialSubject"]
+                ["birthDate"],
             &Claim::String("09/09/1989".to_string())
         );
     });
@@ -286,23 +260,11 @@ pub fn single_sdjwt_presentation_case() -> Oid4VpTestCase {
 
     let validate: Box<ValidateClaimsFunc> = Box::new(|claims| {
         assert_eq!(
-            claims
-                .get("vp_token")
-                .unwrap()
-                .get("Identity-1")
-                .unwrap()
-                .get("vct")
-                .unwrap(),
+            &claims["vp_token"]["Identity-1"]["vct"],
             &Claim::String("https://credentials.example.com/identity_credential".to_string())
         );
         assert_eq!(
-            claims
-                .get("vp_token")
-                .unwrap()
-                .get("Identity-1")
-                .unwrap()
-                .get("name")
-                .unwrap(),
+            &claims["vp_token"]["Identity-1"]["name"],
             &Claim::String("John".to_string())
         );
     });
@@ -326,45 +288,19 @@ pub fn multiple_sdjwt_presentation_case() -> Oid4VpTestCase {
 
     let validate: Box<ValidateClaimsFunc> = Box::new(|claims| {
         assert_eq!(
-            claims
-                .get("vp_token")
-                .unwrap()
-                .get("Identity-1")
-                .unwrap()
-                .get("vct")
-                .unwrap(),
+            &claims["vp_token"]["Identity-1"]["vct"],
             &Claim::String("https://credentials.example.com/identity_credential".to_string())
         );
         assert_eq!(
-            claims
-                .get("vp_token")
-                .unwrap()
-                .get("Identity-1")
-                .unwrap()
-                .get("name")
-                .unwrap(),
+            &claims["vp_token"]["Identity-1"]["name"],
             &Claim::String("John".to_string())
         );
         assert_eq!(
-            claims
-                .get("vp_token")
-                .unwrap()
-                .get("Degree-1")
-                .unwrap()
-                .get("vct")
-                .unwrap(),
+            &claims["vp_token"]["Degree-1"]["vct"],
             &Claim::String("https://credentials.example.com/degree_credential".to_string())
         );
         assert_eq!(
-            claims
-                .get("vp_token")
-                .unwrap()
-                .get("Degree-1")
-                .unwrap()
-                .get("degree")
-                .unwrap()
-                .get("type")
-                .unwrap(),
+            &claims["vp_token"]["Degree-1"]["degree"]["type"],
             &Claim::String("BachelorDegree".to_string())
         );
     });

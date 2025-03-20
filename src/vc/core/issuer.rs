@@ -197,7 +197,7 @@ where
 
                 sd_jwt_vc::VCMetadata {
                     vct: vct.to_owned(),
-                    lifetime: lifetime.unwrap_or(time::Duration::days(365)),
+                    lifetime,
                     disclosures: disclosures.to_owned(),
                     credential_status,
                 }
@@ -232,6 +232,7 @@ where
                 contexts: ctx_strs,
                 vc_types,
                 credential_id,
+                lifetime,
             }) => {
                 let mut contexts = vec![];
                 for context in ctx_strs {
@@ -240,7 +241,7 @@ where
                 }
 
                 let mut metadata =
-                    json_ld_vc::VCMetadata::new(contexts, vc_types).context(VCSnafu)?;
+                    json_ld_vc::VCMetadata::new(contexts, vc_types, lifetime).context(VCSnafu)?;
                 if let Some(credential_id) = credential_id {
                     let cred_id = UriBuf::from_str(&credential_id).map_err(|e| {
                         InconsistentProtocolDataSnafu {

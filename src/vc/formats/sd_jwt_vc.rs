@@ -583,25 +583,22 @@ mod tests {
         let claims = vc.parse_claims().unwrap();
         assert!(claims.get("name").is_some());
         assert!(claims.get("surname").is_some());
+        assert_eq!(&claims["dob"], &Claim::String("09/09/1989".to_string()));
         assert_eq!(
-            claims.get("dob").unwrap(),
-            &Claim::String("09/09/1989".to_string())
-        );
-        assert_eq!(
-            claims.get(SUB_CLAIM).unwrap(),
+            &claims[SUB_CLAIM],
             &Claim::String(hld_did_url.did().to_string())
         );
         assert_eq!(
-            claims.get(ISS_CLAIM).unwrap(),
+            &claims[ISS_CLAIM],
             &Claim::String(iss_did_url.did().to_string())
         );
         assert_eq!(
-            claims.get(VCT_CLAIM).unwrap(),
+            &claims[VCT_CLAIM],
             &Claim::String("https://issuer.net/cred_schema".to_string())
         );
-        assert_eq!(claims.get(EXP_CLAIM).unwrap(), &Claim::Int(exp));
-        assert_eq!(claims.get(NBF_CLAIM).unwrap(), &Claim::Int(nbf));
-        assert_eq!(claims.get(IAT_CLAIM).unwrap(), &Claim::Int(iat));
+        assert_eq!(&claims[EXP_CLAIM], &Claim::Int(exp));
+        assert_eq!(&claims[NBF_CLAIM], &Claim::Int(nbf));
+        assert_eq!(&claims[IAT_CLAIM], &Claim::Int(iat));
 
         let nonce = random_nonce().await;
         let vp = SdJwtAPI::create_vp(&vc, hld_kh, &nonce, "verifier-id", sample_vp_metadata())
@@ -618,10 +615,7 @@ mod tests {
         assert!(disclosed.get("name").is_some());
         assert!(disclosed.get(EXP_CLAIM).is_some());
         assert!(disclosed.get(NBF_CLAIM).is_some());
-        assert_eq!(
-            disclosed.get("name").unwrap(),
-            &Claim::String("John".to_string())
-        );
+        assert_eq!(&disclosed["name"], &Claim::String("John".to_string()));
         assert!(disclosed.get("surname").is_none());
         assert!(disclosed.get(IAT_CLAIM).is_none());
     }
@@ -660,25 +654,22 @@ mod tests {
         let claims = vc.parse_claims().unwrap();
         assert!(claims.get("name").is_some());
         assert!(claims.get("surname").is_some());
+        assert_eq!(&claims["dob"], &Claim::String("09/09/1989".to_string()));
         assert_eq!(
-            claims.get("dob").unwrap(),
-            &Claim::String("09/09/1989".to_string())
-        );
-        assert_eq!(
-            claims.get(SUB_CLAIM).unwrap(),
+            &claims[SUB_CLAIM],
             &Claim::String(hld_did_url.did().to_string())
         );
         assert_eq!(
-            claims.get(ISS_CLAIM).unwrap(),
+            &claims[ISS_CLAIM],
             &Claim::String(iss_did_url.did().to_string())
         );
         assert_eq!(
-            claims.get(VCT_CLAIM).unwrap(),
+            &claims[VCT_CLAIM],
             &Claim::String("https://issuer.net/cred_schema".to_string())
         );
-        assert_eq!(claims.get(EXP_CLAIM).unwrap(), &Claim::Int(exp));
-        assert_eq!(claims.get(NBF_CLAIM).unwrap(), &Claim::Int(nbf));
-        assert_eq!(claims.get(IAT_CLAIM).unwrap(), &Claim::Int(iat));
+        assert_eq!(&claims[EXP_CLAIM], &Claim::Int(exp));
+        assert_eq!(&claims[NBF_CLAIM], &Claim::Int(nbf));
+        assert_eq!(&claims[IAT_CLAIM], &Claim::Int(iat));
 
         let nonce = random_nonce().await;
         let vp = SdJwtAPI::create_vp(
@@ -807,10 +798,7 @@ mod tests {
 
         assert!(disclosed.get("optional_claim").is_none());
         assert!(disclosed.get("name").is_some());
-        assert_eq!(
-            disclosed.get("name").unwrap(),
-            &Claim::String("John".to_string())
-        );
+        assert_eq!(&disclosed["name"], &Claim::String("John".to_string()));
     }
 
     #[tokio::test]

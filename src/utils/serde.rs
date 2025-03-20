@@ -114,10 +114,7 @@ mod tests {
         let mut claims = Claims::new();
         claims.put_str("key", "value");
 
-        assert_eq!(
-            claims.get("key").unwrap(),
-            &Claim::String("value".to_string())
-        );
+        assert_eq!(&claims["key"], &Claim::String("value".to_string()));
     }
 
     #[test]
@@ -127,7 +124,7 @@ mod tests {
         let dt = OffsetDateTime::from_unix_timestamp(now).unwrap();
         claims.put_dt("key", dt);
 
-        assert_eq!(claims.get("key").unwrap(), &Claim::Int(now));
+        assert_eq!(&claims["key"], &Claim::Int(now));
     }
 
     #[test]

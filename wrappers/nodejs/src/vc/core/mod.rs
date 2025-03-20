@@ -6,13 +6,13 @@ mod verifier;
 use crate::utils::{from_json_object, to_json_object};
 use crate::vc::JsonObject;
 use agent_sdk::crypto::Alg;
-use agent_sdk::vc::core::PresentationRestrictionValue;
 use agent_sdk::vc::core::{
     CredentialDefinition, CredentialOffer, CredentialOfferContent, CredentialOfferData,
     CredentialRequest, CredentialRequestData, CredentialStatusInfo, Display, HolderMetadata,
     IssuerMetadata, IssuerMetadataData, KeyMetadata, PresentationInput, PresentationRestriction,
     Proof,
 };
+use agent_sdk::vc::core::{CredentialDefinitionData, PresentationRestrictionValue};
 
 use agent_sdk::vc::core::StatusIssuerMetadata;
 use agent_sdk::vc::core::StatusListDefinition;
@@ -20,11 +20,13 @@ use agent_sdk::vc::status_formats::status_list_token_jwt;
 use agent_sdk::vc::VCStatus;
 use agent_sdk::vc::{StatusList, VCStatusesData};
 
+use crate::vc::oid4vci::JsDuration;
 use crate::vc::status_formats::JsStatusListFormat;
 use agent_sdk::vc::{Credential, CredentialMetadata, HasVCFormat, Presentation, VCFormat};
 use napi::Error;
 use napi_derive::napi;
 use serde_json::{json, to_string};
+use time::Duration;
 
 /// A helper interface for handling Keys and `DID`s for the services.
 ///
@@ -346,6 +348,169 @@ impl From<JsCredentialOfferData> for CredentialOfferData {
 impl From<CredentialOfferData> for JsCredentialOfferData {
     fn from(_value: CredentialOfferData) -> Self {
         Self {}
+    }
+}
+
+/// An enum that defines the different formats of representations for credential definition.
+///
+/// # Variants:
+///
+/// * `SdJwt` - Indicates that the credential is in SD JWT format.
+/// * `Ldp` - Indicates that the credential is in LD Json format.
+#[napi(js_name = "CredentialDefinitionFormat")]
+pub enum JsCredentialDefinitionDataFormat {
+    SdJwt,
+    Ldp,
+}
+
+/// Credential Definition Data
+///
+/// @property {CredentialDefinitionDataFormat} format - format of `Credential`
+/// @property {JsonObject} payload - payload of `Credential format related params`
+#[napi(js_name = "CredentialDefinitionData", object)]
+pub struct JsCredentialDefinitionData {
+    pub format: JsCredentialDefinitionDataFormat,
+    pub payload: JsonObject,
+}
+
+impl TryFrom<CredentialDefinitionData> for JsCredentialDefinitionData {
+    type Error = Error;
+    fn try_from(value: CredentialDefinitionData) -> Result<Self, Error> {
+        let result = match value {
+            CredentialDefinitionData::SdJwt {
+                vct,
+                disclosures,
+                lifetime,
+            } => JsCredentialDefinitionData {
+                format: JsCredentialDefinitionDataFormat::SdJwt,
+                payload: to_json_object(
+                    json!({ "vct": vct, "disclosures": disclosures, "lifetime": lifetime.whole_nanoseconds() }),
+                )?,
+            },
+            CredentialDefinitionData::Ldp {
+                contexts,
+                vc_types,
+                credential_id,
+                lifetime,
+            } => JsCredentialDefinitionData {
+                format: JsCredentialDefinitionDataFormat::Ldp,
+                payload: to_json_object(
+                    json!({"contexts": contexts, "vc_types": vc_types, "credential_id": credential_id.unwrap_or("".to_string()), "lifetime": lifetime.whole_nanoseconds() }),
+                )?,
+            },
+            _ => {
+                return Err(Error::from_reason(
+                    "Cannot convert CredentialDefinitionData to JsCredentialDefinitionData",
+                ));
+            }
+        };
+        Ok(result)
+    }
+}
+impl TryFrom<JsCredentialDefinitionData> for CredentialDefinitionData {
+    type Error = Error;
+    fn try_from(value: JsCredentialDefinitionData) -> Result<Self, Error> {
+        let result = match value.format {
+            JsCredentialDefinitionDataFormat::SdJwt => {
+                let vct: String = value
+                    .payload
+                    .get("vct")
+                    .ok_or_else(|| napi::Error::from_reason("'vct' must be in payload"))?
+                    .as_str()
+                    .ok_or_else(|| napi::Error::from_reason("'vct' must be a String"))?
+                    .into();
+                let disclosures: Vec<String> = value
+                    .payload
+                    .get("disclosures")
+                    .ok_or_else(|| napi::Error::from_reason("'disclosures' must be in payload"))?
+                    .as_array()
+                    .ok_or_else(|| napi::Error::from_reason("'disclosures' must be an array"))?
+                    .iter()
+                    .map(|v| {
+                        v.as_str()
+                            .ok_or_else(|| {
+                                Error::from_reason("Couldnt convert value disclosure to str")
+                            })
+                            .unwrap()
+                            .to_string()
+                    })
+                    .collect();
+                let lifetime: i64 = value
+                    .payload
+                    .get("lifetime")
+                    .ok_or_else(|| napi::Error::from_reason("'lifetime' must be in payload"))?
+                    .as_i64()
+                    .ok_or_else(|| napi::Error::from_reason("'lifetime' must be a i64"))?;
+                let lifetime = Duration::nanoseconds(lifetime);
+
+                CredentialDefinitionData::SdJwt {
+                    vct,
+                    disclosures,
+                    lifetime,
+                }
+            }
+            JsCredentialDefinitionDataFormat::Ldp => {
+                let contexts: Vec<String> = value
+                    .payload
+                    .get("contexts")
+                    .ok_or_else(|| napi::Error::from_reason("'contexts' must be in payload"))?
+                    .as_array()
+                    .ok_or_else(|| napi::Error::from_reason("'contexts' must be an array"))?
+                    .iter()
+                    .map(|v| {
+                        v.as_str()
+                            .ok_or_else(|| {
+                                Error::from_reason("Couldnt convert value contexts to str")
+                            })
+                            .unwrap()
+                            .to_string()
+                    })
+                    .collect();
+                let lifetime: i64 = value
+                    .payload
+                    .get("lifetime")
+                    .ok_or_else(|| napi::Error::from_reason("'lifetime' must be in payload"))?
+                    .as_i64()
+                    .ok_or_else(|| napi::Error::from_reason("'lifetime' must be a i64"))?;
+                let lifetime = Duration::nanoseconds(lifetime);
+
+                let vc_types: Vec<String> = value
+                    .payload
+                    .get("vc_types")
+                    .ok_or_else(|| napi::Error::from_reason("'vc_types' must be in payload"))?
+                    .as_array()
+                    .ok_or_else(|| napi::Error::from_reason("'vc_types' must be an array"))?
+                    .iter()
+                    .map(|v| {
+                        v.as_str()
+                            .ok_or_else(|| {
+                                Error::from_reason("Couldnt convert value disclosure to str")
+                            })
+                            .unwrap()
+                            .to_string()
+                    })
+                    .collect();
+                let credential_id: String = value
+                    .payload
+                    .get("credential_id")
+                    .ok_or_else(|| napi::Error::from_reason("'credential_id' must be in payload"))?
+                    .as_str()
+                    .ok_or_else(|| napi::Error::from_reason(""))?
+                    .to_string();
+                let credential_id = if credential_id.is_empty() {
+                    None
+                } else {
+                    Some(credential_id)
+                };
+                CredentialDefinitionData::Ldp {
+                    contexts,
+                    vc_types,
+                    credential_id,
+                    lifetime,
+                }
+            }
+        };
+        Ok(result)
     }
 }
 
@@ -1002,7 +1167,7 @@ pub struct JsCredentialDefinition {
     pub supported_proofs: Option<JsonObject>,
     pub supported_signing_algs: Option<Vec<JsAlg>>,
     pub display: Option<JsDisplay>,
-    pub protocol_data: Option<JsonObject>,
+    pub protocol_data: Option<JsCredentialDefinitionData>,
     pub key_metadata: JsKeyMetadata,
 }
 
@@ -1024,7 +1189,7 @@ impl TryFrom<CredentialDefinition> for JsCredentialDefinition {
             supported_proofs,
             supported_signing_algs: Some(supported_signing_algs),
             display: value.display.map(|v| v.into()),
-            protocol_data: Some(to_json_object(value.protocol_data)?),
+            protocol_data: Some(value.protocol_data.unwrap().try_into()?),
             key_metadata: value.key_metadata.into(),
         })
     }
@@ -1048,7 +1213,7 @@ impl TryFrom<JsCredentialDefinition> for CredentialDefinition {
             supported_proofs,
             supported_signing_algs: Some(supported_signing_algs),
             display: value.display.map(|v| v.into()),
-            protocol_data: value.protocol_data.map(from_json_object).transpose()?,
+            protocol_data: Some(value.protocol_data.unwrap().try_into()?),
             key_metadata: value.key_metadata.into(),
         })
     }
@@ -1110,6 +1275,7 @@ impl TryFrom<IssuerMetadata> for JsIssuerMetadata {
 #[napi(js_name = "HolderMetadata", object)]
 pub struct JsHolderMetadata {
     pub client_id: String,
+    pub pop_lifetime: JsDuration,
 }
 
 #[napi]
@@ -1117,6 +1283,7 @@ impl From<JsHolderMetadata> for HolderMetadata {
     fn from(value: JsHolderMetadata) -> Self {
         Self {
             client_id: value.client_id,
+            pop_lifetime: value.pop_lifetime.try_into().unwrap(),
         }
     }
 }
@@ -1126,6 +1293,7 @@ impl From<HolderMetadata> for JsHolderMetadata {
     fn from(value: HolderMetadata) -> Self {
         Self {
             client_id: value.client_id,
+            pop_lifetime: value.pop_lifetime.try_into().unwrap(),
         }
     }
 }

@@ -48,9 +48,8 @@ impl pop::ProofOfPossession<String> for JwtProofOfPossession {
                 )?,
             },
         };
-        let exp = opts.lifetime.unwrap_or(time::Duration::minutes(5));
 
-        let pop = ProofOfPossession::generate(params, exp);
+        let pop = ProofOfPossession::generate(params, opts.lifetime);
 
         let signing_input = pop.to_jwt_signing_input().context(ConversionSnafu)?;
         let signed = key.sign(&signing_input).await.context(CryptoSnafu)?;
@@ -220,7 +219,7 @@ mod tests {
         GenerateOptions {
             audience: "did:web:issuer.com".to_string(),
             issuer: Some("client-id".to_string()),
-            lifetime: None,
+            lifetime: time::Duration::minutes(5),
         }
     }
 

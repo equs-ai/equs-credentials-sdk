@@ -40,8 +40,6 @@ use url::Url;
 
 pub type Error = api::Error;
 pub type Result<T> = core::result::Result<T, Error>;
-const ID_TOKEN_JWT_PROOF_TYPE: &str = "JWT";
-
 pub struct HolderService<HL, HC, KH, KMS>
 where
     HL: vc::core::Holder,
@@ -906,6 +904,7 @@ mod tests {
             InMemVault::new(),
             vc::core::HolderMetadata {
                 client_id: "client_id".to_string(),
+                pop_lifetime: time::Duration::minutes(5),
             },
         );
 
@@ -955,6 +954,7 @@ mod tests {
             InMemVault::new(),
             vc::core::HolderMetadata {
                 client_id: "client_id".to_string(),
+                pop_lifetime: time::Duration::minutes(5),
             },
         );
 
@@ -1313,14 +1313,14 @@ mod tests {
                 .iter()
                 .find(|retrieved_claims| match &case.credential_format {
                     ClaimFormatDesignation::SdJwtVc => {
-                        let expected_type = expected_claims.get("vct").unwrap().as_str().unwrap();
+                        let expected_type = expected_claims["vct"].as_str().unwrap();
                         if let Some(Claim::String(vct)) = retrieved_claims.get("vct") {
                             return expected_type == vct;
                         }
                         true
                     }
                     ClaimFormatDesignation::LdpVc => {
-                        let expected_type = expected_claims.get("type").unwrap().as_vec().unwrap();
+                        let expected_type = expected_claims["type"].as_vec().unwrap();
                         if let Some(Claim::Array(type_)) = retrieved_claims.get("type") {
                             return expected_type == type_;
                         }

@@ -15,3 +15,6 @@ pub use issuer::IssuerService;
 pub use verifier::VerifierService;
 
 pub use api::*;
+
+pub const DEFAULT_CRED_LIFETIME_DAYS: i64 = 5 * 365;
+pub const DEFAULT_POP_LIFETIME_MINUTES: i64 = 5;

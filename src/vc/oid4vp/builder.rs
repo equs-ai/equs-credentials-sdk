@@ -4,6 +4,7 @@ use crate::nonce::NonceGenerator;
 use crate::reqwest::builder::ReqwestClientBuilder;
 use crate::reqwest::ReqwestClient;
 use crate::vc::core::KeyMetadata;
+use crate::vc::core::DEFAULT_POP_LIFETIME_MINUTES;
 use crate::vc::oid4vp as api;
 use crate::vc::oid4vp::holder::HolderService;
 use crate::vc::oid4vp::verifier::VerifierService;
@@ -12,6 +13,7 @@ use common_macros::DebugError;
 use snafu::{Location, Snafu};
 use std::fmt::Debug;
 use std::marker::PhantomData;
+use time::Duration;
 use tracing::{debug, info, instrument, Level};
 
 /// An `OID4VP` Builder errors.
@@ -230,6 +232,7 @@ where
     did_resolver: UniversalResolver,
     // TODO: Should be HTTP client type, not Result
     http_client: Result<HC, HttpError>,
+    pop_lifetime: time::Duration,
 
     _marker: PhantomData<KH>,
 }
@@ -272,6 +275,7 @@ where
             http_client,
             did_resolver: UniversalResolver::default(),
             wallet_metadata: None,
+            pop_lifetime: Duration::minutes(DEFAULT_POP_LIFETIME_MINUTES),
             _marker: Default::default(),
         }
     }
@@ -298,6 +302,20 @@ where
     )]
     pub fn with_wallet_metadata(mut self, wallet_metadata: api::WalletMetadata) -> Self {
         self.wallet_metadata = Some(wallet_metadata);
+        self
+    }
+
+    /// Use a specific `pop_lifetime`.
+    ///
+    /// # Arguments
+    ///
+    /// * `pop_lifetime` - The expiration for Proof Of Possession
+    #[instrument(
+        level = Level::TRACE,
+        skip(self),
+    )]
+    pub fn with_pop_lifetime(mut self, pop_lifetime: Duration) -> Self {
+        self.pop_lifetime = pop_lifetime;
         self
     }
 
@@ -357,6 +375,7 @@ where
             vault: self.vault,
             did_resolver: self.did_resolver,
             http_client: Ok(http_client),
+            pop_lifetime: self.pop_lifetime,
             _marker: Default::default(),
         }
     }
@@ -378,6 +397,7 @@ where
     pub async fn build(self) -> Result<impl api::Holder, Error> {
         let holder_metadata = vc::core::HolderMetadata {
             client_id: self.client_id,
+            pop_lifetime: self.pop_lifetime,
         };
 
         debug!(?holder_metadata);

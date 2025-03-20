@@ -25,6 +25,7 @@ use crate::utils::serde::get_time_based_claim;
 use crate::vc::formats::sd_jwt_vc::SdJwtAPI;
 use crate::vc::formats::VerifyOptions;
 use crate::vc::formats::API as VCFormatsAPI;
+use crate::vc::presentation_exchange::StatusSize;
 use crate::vc::status_formats::API;
 use crate::vc::HasClaims;
 use flate2::Compression;
@@ -33,7 +34,7 @@ use oauth2::http::Method;
 use serde_json::Value;
 use ssi_status::token_status_list::json::JsonStatusList;
 use ssi_status::token_status_list::json::Status;
-use ssi_status::token_status_list::{BitString, StatusSize};
+use ssi_status::token_status_list::BitString;
 use strum_macros::Display;
 use url::Url;
 
@@ -50,8 +51,6 @@ const STATUS_CLAIM: &str = "status";
 
 const STATUS_LIST_TYPE: &str = "statuslist+jwt";
 const CONTENT_TYPE_HEADER: &str = "application/statuslist+jwt";
-const DEFAULT_STATUS_SIZE: u8 = 1;
-
 pub type StatusList = String;
 
 /// # Status type values.
@@ -128,6 +127,7 @@ impl VCStatuses {
 pub struct SLMetadata {
     pub statuses_nr: usize,
     pub status_list_url: Url,
+    pub status_size: StatusSize,
     // pub lifetime: time::Duration, // TODO:
 }
 
@@ -213,14 +213,7 @@ impl StatusListJwt {
         statuses: &VCStatuses,
         metadata: &SLMetadata,
     ) -> Result<JsonStatusList> {
-        let status_size: StatusSize = StatusSize::try_from(DEFAULT_STATUS_SIZE).map_err(|err| {
-            StatusListCreatingSnafu {
-                details: err.to_string(),
-            }
-            .build()
-        })?;
-
-        let mut bit_string = BitString::new_zeroed(status_size, metadata.statuses_nr);
+        let mut bit_string = BitString::new_zeroed(metadata.status_size, metadata.statuses_nr);
 
         for (index, value) in statuses.statuses.iter() {
             bit_string.set(*index, *value).map_err(|err| {
@@ -382,13 +375,13 @@ impl StatusListJwt {
 
 #[cfg(test)]
 mod tests {
-
     use super::{SLMetadata, StatusListJwt, VCStatus, VCStatuses};
     use crate::http::MockHttpClient;
     use crate::inmem::kms::LocalKms;
     use crate::kms::KeyType;
     use crate::utils::http::test::mock_http_fn_with_plain_text_resp;
     use crate::utils::test_utils::create_did_url_and_key_handle;
+    use crate::vc::presentation_exchange::StatusSize;
     use crate::vc::status_formats::API;
     use oauth2::http::Method;
     use rstest::rstest;
@@ -404,6 +397,7 @@ mod tests {
         let metadata = SLMetadata {
             statuses_nr: 32,
             status_list_url: Url::from_str("http://example.com/status_list").unwrap(),
+            status_size: StatusSize::try_from(1u8).unwrap(),
         };
 
         let mut statuses = VCStatuses::new();

@@ -30,6 +30,7 @@ use agent_sdk::vc::claims::Claims;
 use agent_sdk::vc::core::status_issuer::StatusIssuerService;
 use agent_sdk::vc::core::{StatusIssuer, StatusIssuerMetadata, StatusListDefinition};
 use agent_sdk::vc::oid4vci;
+use agent_sdk::vc::presentation_exchange::StatusSize;
 use agent_sdk::vc::status_formats::status_list_token_jwt::{VCStatus, VCStatuses};
 use agent_sdk::vc::status_formats::StatusListFormat;
 use agent_sdk::vc::VCStatusesData;
@@ -60,6 +61,7 @@ const TOKEN_INTROSPECT_PATH: &str = "/introspection";
 const DUMMY_ACCESS_TOKEN: &str = "eyJhbGciOiJSUzI1NiIsInR5cCIgOiAiSldUIiwia2lkIiA6ICJQY2xZUDZ2UmsxTHBLRGZqU08yRGEzNXJtR1JmaTkzNjJDcFJFeUpmOHAwIn0.eyJleHAiOjE3MzY5NDI0MTQsImlhdCI6MTczNjk0MjExNCwiYXV0aF90aW1lIjoxNzM2OTQyMTEyLCJqdGkiOiI0MzEwNjlkMS01ZjIzLTQ5MjAtYjA1Zi01NWI2NjM1MDQxODYiLCJpc3MiOiJodHRwOi8vbG9jYWxob3N0OjgwODAvaWRwL3JlYWxtcy9waWQtaXNzdWVyLXJlYWxtIiwic3ViIjoiNjBiOGJhNWYtYzczZi00OTc2LWIwZGEtNDhkMGU1MzMzNWRlIiwidHlwIjoiQmVhcmVyIiwiYXpwIjoid2FsbGV0LWRldiIsInNpZCI6IjQwZTYyNDY3LTUzZmMtNGQyOS05ZGZmLTJlN2Y4NDRjM2UzMiIsImFsbG93ZWQtb3JpZ2lucyI6WyIvKiJdLCJzY29wZSI6IlNEX0pXVF9jcmVkX3Njb3BlIn0.g4Ll7wiGq9VrxwAcGeARHB1mziDYMQBSmKHl_KGyBZccUvMGlH7ZPIegW_FLFJg4ZSz3IyId2xchuXP8LaSAghgLf9HmKA4XWlVhvx4wP90aj9bj2fdD9UUuSwQIeRlkZe7DTNookyClsqKJ2uIBzvaLoID2_4_RAvqmNi_grIe-ruus4thyp5NsQdEoudErok5DQiM_N2Wz5zg2MRrECjZL4kX-CrEiSaGaikTR-Lxc9UpvLr8mmmEwz7O4BOCDukyslzCZylmC32lttMYzU2Cno_XsIOvXtfGzwNjzZ-ohF9ThnpHvl7EexoZeDaPP2oYSDJOdrh33BB879DGuHw";
 const STATUS_LIST_URL_PATH: &str = "/status_list";
 const VC_REVOKE_PATH: &str = "/revoke";
+const DEFAULT_STATUS_SIZE: u8 = 1;
 
 struct AppState {
     issuer: Arc<dyn oid4vci::Issuer>,
@@ -488,6 +490,7 @@ async fn status_issuer() -> impl StatusIssuer {
         .as_did_url()
         .to_string();
 
+    let status_size: StatusSize = StatusSize::try_from(DEFAULT_STATUS_SIZE).unwrap();
     let metadata = StatusIssuerMetadata {
         issuer_id: did,
         supported_status_lists: vec![StatusListDefinition {
@@ -496,6 +499,7 @@ async fn status_issuer() -> impl StatusIssuer {
                 agent_sdk::vc::status_formats::status_list_token_jwt::SLMetadata {
                     statuses_nr: 32,
                     status_list_url: Url::from_str("http://localhost:8088/status_list").unwrap(),
+                    status_size,
                 },
             ),
             key_metadata: KeyMetadata { kid, did_url: vm },
