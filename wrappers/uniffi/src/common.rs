@@ -1,9 +1,31 @@
+use serde::{Deserialize, Deserializer};
+
 pub type Result<T> = std::result::Result<T, Error>;
+
+#[derive(uniffi::Enum, Debug)]
+pub enum OID4VCIProtocolErrorType {
+    InvalidToken,
+    InvalidCredentialRequest,
+    UnsupportedCredentialType,
+    UnsupportedCredentialFormat,
+    InvalidProof,
+    InvalidEncryptionParameters,
+}
 
 #[derive(uniffi::Error, Debug)]
 pub enum Error {
     OID4VPHolder(String),
-    DIDResolution { details: String },
+    OID4VCIInternal(String),
+    OID4VCIProtocol {
+        error: OID4VCIProtocolErrorType,
+        error_description: Option<String>,
+        c_nonce: Option<String>,
+        c_nonce_expires_in: Option<u64>,
+    },
+    DIDResolution {
+        details: String,
+    },
+    Vault(String),
 }
 
 impl std::fmt::Display for Error {
@@ -11,6 +33,20 @@ impl std::fmt::Display for Error {
         match self {
             Error::OID4VPHolder(s) => write!(f, "OID4VP Holder service error: {s}"),
             Error::DIDResolution { details } => write!(f, "DID resolution error: {details}"),
+            Error::OID4VCIInternal(s) => write!(f, "OID4VCI Internal error: {s}"),
+            Error::OID4VCIProtocol {
+                error,
+                error_description,
+                ..
+            } => {
+                write!(
+                    f,
+                    "OID4VCI Internal error: {:?} {}",
+                    error,
+                    error_description.as_deref().unwrap_or("")
+                )
+            }
+            Error::Vault(s) => write!(f, "Vault error: {s}"),
         }
     }
 }
@@ -26,3 +62,38 @@ uniffi::custom_type!(JsonValue, String, {
         Ok(serde_json::from_str(&val)?)
     }
 });
+
+pub type Duration = time::Duration;
+
+uniffi::custom_type!(Duration, i64, {
+    remote,
+    lower: |val: &Duration| val.whole_seconds(),
+    try_lift: |seconds: i64| Ok(Duration::seconds(seconds))
+});
+
+pub type OffsetDateTime = time::OffsetDateTime;
+
+uniffi::custom_type!(OffsetDateTime, i64, {
+    remote,
+    lower: |val: &OffsetDateTime| val.unix_timestamp(),
+    try_lift: |seconds: i64| Ok(OffsetDateTime::from_unix_timestamp(seconds)?)
+});
+
+pub fn deserialize_space_delimited_vec<'de, T, D>(
+    deserializer: D,
+) -> std::result::Result<T, D::Error>
+where
+    T: Default + Deserialize<'de>,
+    D: Deserializer<'de>,
+{
+    if let Some(space_delimited) = Option::<String>::deserialize(deserializer)? {
+        let entries = space_delimited
+            .split(' ')
+            .map(|s| serde_json::Value::String(s.to_string()))
+            .collect();
+        T::deserialize(serde_json::Value::Array(entries)).map_err(serde::de::Error::custom)
+    } else {
+        // If the JSON value is null, use the default value.
+        Ok(T::default())
+    }
+}

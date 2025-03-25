@@ -1,8 +1,11 @@
+#![allow(dead_code)]
+#![allow(clippy::new_without_default)]
+
 mod common;
-mod did;
+mod crypto;
+pub mod did;
+pub mod inmem;
 mod utils;
 pub mod vc;
 
-pub use did::*;
-
-uniffi::include_scaffolding!("asdk");
+uniffi::setup_scaffolding!();
