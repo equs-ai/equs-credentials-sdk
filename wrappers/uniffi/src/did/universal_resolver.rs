@@ -2,7 +2,8 @@ use agent_sdk::did::universal::UniversalResolver;
 use agent_sdk::did::{DIDBuf, DIDResolver};
 use std::str::FromStr;
 
-use crate::did::{DIDResolution, Error, VerificationMethod};
+use crate::common::{Error, Result};
+use crate::did::{DIDResolution, VerificationMethod};
 
 /// An Universal `DID` resolver.
 ///
@@ -33,7 +34,7 @@ impl UniversalDIDResolver {
     pub async fn resolve_verification_method(
         &self,
         did: String,
-    ) -> Result<Option<VerificationMethod>, Error> {
+    ) -> Result<Option<VerificationMethod>> {
         let did = DIDBuf::from_str(&did).map_err(|err| Error::DIDResolution {
             details: format!("{err:?}"),
         })?;
@@ -53,7 +54,7 @@ impl UniversalDIDResolver {
     /// Fetches the DID document referenced by the input DID.
     ///
     /// See: <https://www.w3.org/TR/did-core/#did-resolution>
-    pub async fn resolve(&self, did: String) -> Result<DIDResolution, Error> {
+    pub async fn resolve(&self, did: String) -> Result<DIDResolution> {
         let did = DIDBuf::from_str(&did).map_err(|err| Error::DIDResolution {
             details: format!("{err:?}"),
         })?;
