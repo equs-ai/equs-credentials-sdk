@@ -1,3 +1,4 @@
+use crate::common::{Error, Result};
 use agent_sdk::did::{DIDBuf, DIDURLBuf, ResolutionOutput, VerificationMethodMap};
 use serde_json::Value;
 use std::collections::HashMap;
@@ -8,19 +9,6 @@ pub use agent_sdk::did::DocumentMetadata as DIDDocMetadata;
 pub use agent_sdk::did::ResolutionMetadata as DIDMetadata;
 
 pub mod universal_resolver;
-
-#[derive(uniffi::Error, Debug)]
-pub enum Error {
-    DIDResolution { details: String },
-}
-
-impl std::fmt::Display for Error {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Error::DIDResolution { details } => write!(f, "DID resolution error: {}", details),
-        }
-    }
-}
 
 #[derive(uniffi::Record)]
 pub struct VerificationMethod {
@@ -45,7 +33,7 @@ pub struct VerificationMethod {
 impl TryFrom<VerificationMethod> for VerificationMethodMap {
     type Error = Error;
 
-    fn try_from(value: VerificationMethod) -> Result<Self, Self::Error> {
+    fn try_from(value: VerificationMethod) -> Result<Self> {
         let id = DIDURLBuf::from_str(&value.id).map_err(|err| Error::DIDResolution {
             details: err.to_string(),
         })?;
@@ -58,7 +46,7 @@ impl TryFrom<VerificationMethod> for VerificationMethodMap {
             .properties
             .iter()
             .map(|(k, v)| serde_json::to_value(v).map(|val| (k.to_owned(), val)))
-            .collect::<Result<_, _>>()
+            .collect::<std::result::Result<_, _>>()
             .map_err(|err| Error::DIDResolution {
                 details: err.to_string(),
             })?;
@@ -75,7 +63,7 @@ impl TryFrom<VerificationMethod> for VerificationMethodMap {
 impl TryFrom<VerificationMethodMap> for VerificationMethod {
     type Error = Error;
 
-    fn try_from(value: VerificationMethodMap) -> Result<Self, Self::Error> {
+    fn try_from(value: VerificationMethodMap) -> Result<Self> {
         let properties = value
             .properties
             .iter()
@@ -87,7 +75,7 @@ impl TryFrom<VerificationMethodMap> for VerificationMethod {
 
                 result.map(|val| (key.to_owned(), val))
             })
-            .collect::<Result<_, _>>()
+            .collect::<std::result::Result<_, _>>()
             .map_err(|err| Error::DIDResolution {
                 details: err.to_string(),
             })?;
@@ -116,7 +104,7 @@ pub struct DIDResolution {
 impl TryFrom<ResolutionOutput> for DIDResolution {
     type Error = Error;
 
-    fn try_from(value: ResolutionOutput) -> Result<Self, Self::Error> {
+    fn try_from(value: ResolutionOutput) -> Result<Self> {
         let document =
             serde_json::to_string(&value.document).map_err(|err| Error::DIDResolution {
                 details: err.to_string(),

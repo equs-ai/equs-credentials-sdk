@@ -5,7 +5,6 @@ use serde::{Deserialize, Serialize};
 use snafu::{IntoError, Snafu};
 use std::collections::HashMap;
 use std::fmt::Debug;
-use url::Url;
 
 use crate::nonce::Nonce;
 use crate::utils::wasm::{WasmNotSend, WasmNotSync};
@@ -22,6 +21,7 @@ pub type ClientMetadata = openid4vp::core::authorization_request::parameters::Cl
 pub type WalletMetadata = openid4vp::core::metadata::WalletMetadata;
 pub type ResponseType = openid4vp::core::authorization_request::parameters::ResponseType;
 pub type ResponseMode = openid4vp::core::authorization_request::parameters::ResponseMode;
+pub type Url = url::Url;
 
 /// Metadata for an ID Token.
 ///
