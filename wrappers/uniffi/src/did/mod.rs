@@ -4,9 +4,8 @@ use serde_json::Value;
 use std::collections::HashMap;
 use std::str::FromStr;
 
-pub use agent_sdk::did::DIDDoc;
-pub use agent_sdk::did::DocumentMetadata as DIDDocMetadata;
-pub use agent_sdk::did::ResolutionMetadata as DIDMetadata;
+pub type DIDDocMetadata = agent_sdk::did::DocumentMetadata;
+pub type DIDMetadata = agent_sdk::did::ResolutionMetadata;
 
 pub mod universal_resolver;
 
@@ -87,6 +86,16 @@ impl TryFrom<VerificationMethodMap> for VerificationMethod {
             properties,
         })
     }
+}
+
+#[uniffi::remote(Record)]
+pub struct DIDDocMetadata {
+    pub deactivated: Option<bool>,
+}
+
+#[uniffi::remote(Record)]
+pub struct DIDMetadata {
+    pub content_type: Option<String>,
 }
 
 /// The result of a DID resolution.

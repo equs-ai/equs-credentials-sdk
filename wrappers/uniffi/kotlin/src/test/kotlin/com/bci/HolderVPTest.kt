@@ -1,4 +1,6 @@
 import com.bci.*
+import com.bci.HolderVCITest.Companion.ISSUER_ENDPOINT
+import com.bci.HolderVCITest.Companion.SD_JWT_CRED
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import okhttp3.mockwebserver.MockResponse
@@ -46,20 +48,16 @@ class HolderVPTest {
             mockServer = MockWebServer()
             mockServer.start(9001)
             runBlocking {
-                holder = Oid4vpHolder.buildHolderForTest(CLIENT_ID)
+                val inMemKms = InMemKms()
+                val inMemVault = InMemVault()
 
-                val metadata = Json.parseToJsonElement("""
-                    {
-                      "type": "https://credentials.example.com/identity_credential",
-                      "format": "SdJwtVc",
-                      "kid": "1234",
-                      "fields": [
-                        "$.vct",
-                        "$.name"
-                      ]
-                    }
-                """).toString()
-                holder.storeCredential(Credential(VcFormat.SD_JWT_VC, VC), metadata)
+                val didAndKeyMetadata = createDidAndKeyMetadata(inMemKms)
+                val credential = Credential(format = VcFormat.SD_JWT_VC, payload = VC)
+                val metadata = resolveMetadata(credential, didAndKeyMetadata.keyMetadata)
+
+                holder = Oid4vpHolderBuilder(inMemKms, inMemVault, CLIENT_ID).build()
+
+                inMemVault.storeCredential(credential, metadata)
             }
         }
 

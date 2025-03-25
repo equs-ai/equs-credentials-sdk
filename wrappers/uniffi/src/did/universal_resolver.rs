@@ -15,7 +15,6 @@ use crate::did::{DIDResolution, VerificationMethod};
 #[derive(uniffi::Object)]
 pub struct UniversalDIDResolver(UniversalResolver);
 
-#[allow(clippy::new_without_default)]
 #[uniffi::export]
 impl UniversalDIDResolver {
     /// Creates a new Universal `DID` resolver.
