@@ -1,4 +1,4 @@
-package org.bci.com.bci
+package com.bci.asdk
 
 import java.io.File
 

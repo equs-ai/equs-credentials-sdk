@@ -1,11 +1,11 @@
-import com.bci.*
 import com.bci.HolderVCITest.Companion.ISSUER_ENDPOINT
 import com.bci.HolderVCITest.Companion.SD_JWT_CRED
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
-import org.bci.com.bci.setJniLibPath
+import com.bci.asdk.setJniLibPath
+import com.bci.asdk.*
 import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test

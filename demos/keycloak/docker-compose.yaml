@@ -20,8 +20,8 @@ services:
       - KC_HOSTNAME=localhost
       - KC_HOSTNAME_STRICT=false
       - KC_HOSTNAME_STRICT_BACKCHANNEL=false
-#      - KC_HTTPS_CERTIFICATE_FILE=/etc/ssl/certs/keycloak.tls.crt
-#      - KC_HTTPS_CERTIFICATE_KEY_FILE=/etc/ssl/certs/keycloak.tls.key
+      #      - KC_HTTPS_CERTIFICATE_FILE=/etc/ssl/certs/keycloak.tls.crt
+      #      - KC_HTTPS_CERTIFICATE_KEY_FILE=/etc/ssl/certs/keycloak.tls.key
       - KC_HEALTH_ENABLED=true
       - KC_METRICS_ENABLED=true
       - KC_SPI_THEME_STATIC_MAX_AGE=-1

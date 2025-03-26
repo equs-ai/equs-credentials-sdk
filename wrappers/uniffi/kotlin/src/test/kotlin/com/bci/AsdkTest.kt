@@ -1,6 +1,5 @@
-import com.bci.*
+import com.bci.asdk.*
 import kotlinx.coroutines.test.runTest
-import org.bci.com.bci.setJniLibPath
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
