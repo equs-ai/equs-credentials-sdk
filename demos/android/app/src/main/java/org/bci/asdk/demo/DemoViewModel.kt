@@ -1,0 +1,130 @@
+package org.bci.asdk.demo
+
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.bci.asdk.AuthCodeCallback
+import com.bci.asdk.AuthorizationRequest
+import com.bci.asdk.AuthorizationResponseMetadata
+import com.bci.asdk.Credential
+import com.bci.asdk.CredentialResultEnum
+import com.bci.asdk.DidAndKeyMetadata
+import com.bci.asdk.IdTokenMetadata
+import com.bci.asdk.InMemKms
+import com.bci.asdk.InMemVault
+import com.bci.asdk.IssuerDiscoveryEnum
+import com.bci.asdk.NonceData
+import com.bci.asdk.Oid4vciHolder
+import com.bci.asdk.Oid4vciHolderBuilder
+import com.bci.asdk.Oid4vpHolder
+import com.bci.asdk.Oid4vpHolderBuilder
+import com.bci.asdk.createDidAndKeyMetadata
+import com.bci.asdk.resolveMetadata
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.receiveAsFlow
+import kotlinx.coroutines.launch
+
+const val CLIENT_ID = "wallet-dev"
+const val SCOPE = "SD_JWT_cred_scope"
+const val SD_JWT_CRED_DEF = "SD_JWT_cred_1"
+const val ISSUER_URL = "http://localhost:8088"
+const val VP_REQUEST_URI = "http://localhost:8098/request_uri"
+
+class DemoViewModel : ViewModel() {
+    private lateinit var holderVc: Oid4vciHolder
+    private lateinit var holderVp: Oid4vpHolder
+    private lateinit var didAndKeyMetadata: DidAndKeyMetadata
+    private var token: String? = null
+
+    private val authChannel = Channel<String>()
+    val authRequest = authChannel.receiveAsFlow()
+
+    private val credChannel = Channel<Credential>()
+    val credential = credChannel.receiveAsFlow()
+
+    private val presentationChannel = Channel<AuthorizationRequest>()
+    val presentationRequest = presentationChannel.receiveAsFlow()
+
+    fun submitCode(url: String, code: String) {
+        viewModelScope.launch {
+            pendingResponses[url]?.complete(code)
+            pendingResponses.remove(url)
+        }
+    }
+
+    init {
+        viewModelScope.launch {
+            val(holderVc_, holderVp_, didAndKeyMetadata_) = initialize()
+            holderVc = holderVc_
+            holderVp = holderVp_
+            didAndKeyMetadata = didAndKeyMetadata_
+        }
+    }
+
+    private val pendingResponses = mutableMapOf<String, CompletableDeferred<String>>()
+
+    private val authCodeCallback = object : AuthCodeCallback {
+        override suspend fun authenticate(url: String): String {
+            val response = CompletableDeferred<String>()
+            pendingResponses[url] = response
+            authChannel.send(url)
+
+            return response.await()
+        }
+    }
+
+    fun startAuthentication() {
+        viewModelScope.launch {
+            token = holderVc.authzCodeFlowWithScope(SCOPE, authCodeCallback).accessToken
+        }
+    }
+
+    fun startCredentialRequest() {
+        token?.let {
+            viewModelScope.launch {
+                val result = requestAndStoreCredential(it, SD_JWT_CRED_DEF, null)
+                credChannel.send(result.first)
+            }
+        }
+    }
+
+    private suspend fun requestAndStoreCredential(token: String, credDefId: String, nonce: NonceData?): Pair<Credential, NonceData?> {
+        val response = holderVc.requestCredential(
+            token,
+            credDefId,
+            nonce,
+            didAndKeyMetadata.keyMetadata
+        )
+
+        val credential = (response.data as CredentialResultEnum.Immediate).credential
+
+        val metadata = resolveMetadata(credential, didAndKeyMetadata.keyMetadata)
+        holderVc.storeCredential(credential, metadata)
+
+        return Pair(credential, response.nonceData)
+    }
+
+    fun starPresentation(url: String) {
+        viewModelScope.launch {
+            val authRequest = holderVp.getAuthorizationRequest(url)
+            presentationChannel.send(authRequest)
+
+            val idTokenMetadata = IdTokenMetadata(didAndKeyMetadata.keyMetadata, 5)
+
+            holderVp.presentCredentialsAuto(
+                authRequest,
+                AuthorizationResponseMetadata(null, idTokenMetadata)
+            )
+        }
+    }
+
+    private suspend fun initialize(): Triple<Oid4vciHolder, Oid4vpHolder, DidAndKeyMetadata> {
+        val kms = InMemKms()
+        val vault = InMemVault()
+        val holderVp = Oid4vpHolderBuilder(kms, vault, CLIENT_ID).build()
+        val holderVci = Oid4vciHolderBuilder(kms, vault, CLIENT_ID, IssuerDiscoveryEnum.Url(ISSUER_URL)).build()
+        val didAndKeyMetadata = createDidAndKeyMetadata(kms)
+
+        return Triple(holderVci, holderVp, didAndKeyMetadata)
+    }
+}
