@@ -21,7 +21,7 @@ export async function createDidAndKeyMetadata(kms: InMemKms): Promise<DidAndKeyM
   }
 
   const keyMetadata: KeyMetadata = {
-    did_url: vm.id,
+    didUrl: vm.id,
     kid: keyId,
   };
 

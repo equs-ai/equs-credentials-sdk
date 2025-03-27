@@ -28,7 +28,7 @@ export async function start(): Promise<void> {
   const kms = new InMemKms();
   const vault = new InMemVault();
 
-  const issuerDiscovery = IssuerDiscovery.from_url(config.issuerServerUrl);
+  const issuerDiscovery = IssuerDiscovery.fromUrl(config.issuerServerUrl);
   const oid4VciHolder = await new OID4VCIHolderBuilder(kms, vault, config.clientId, issuerDiscovery)
     .withHttpClient(HttpClient.insecure())
     .build();
@@ -59,7 +59,7 @@ async function issuanceFlow(holder: OID4VCIHolder, kms: InMemKms): Promise<void>
     tokenResp.access_token,
     undefined,
   );
-  await requestAndStoreCredential(holder, kms, "SD_JWT_cred_2", tokenResp.access_token, credentialResponse.nonce_data);
+  await requestAndStoreCredential(holder, kms, "SD_JWT_cred_2", tokenResp.access_token, credentialResponse.nonceData);
 }
 
 async function presentationFlow(holder: OID4VPHolder): Promise<void> {
