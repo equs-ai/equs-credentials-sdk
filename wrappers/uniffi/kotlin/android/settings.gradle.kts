@@ -7,7 +7,7 @@
  * in the user guide at https://docs.gradle.org/5.0/userguide/multi_project_builds.html
  */
 
-rootProject.name = "com.bci.asdk_0.8.1"
+rootProject.name = "com.bci.asdk"
 
 pluginManagement {
     repositories {
