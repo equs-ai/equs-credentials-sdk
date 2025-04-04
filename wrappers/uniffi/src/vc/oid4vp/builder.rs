@@ -1,4 +1,5 @@
 use agent_sdk::inmem::kms::LocalKms;
+#[cfg(debug_assertions)]
 use agent_sdk::reqwest::builder::ReqwestClientBuilder;
 use agent_sdk::vc::oid4vp::HolderBuilder;
 
@@ -26,20 +27,27 @@ impl OID4VPHolderBuilder {
     }
 
     pub async fn build(&self) -> Result<OID4VPHolder> {
-        let holder = HolderBuilder::new(
+        #[allow(unused_mut)]
+        let mut builder = HolderBuilder::new(
             self.kms.clone(),
             self.vault.clone(),
             self.client_id.to_owned(),
-        )
-        .with_http_client(
-            ReqwestClientBuilder::new()
-                .insecure()
-                .build()
-                .map_err(|e| Error::OID4VPHolder(e.to_string()))?,
-        )
-        .build()
-        .await
-        .map_err(|e| Error::OID4VPHolder(e.to_string()))?;
+        );
+
+        #[cfg(debug_assertions)]
+        {
+            builder = builder.with_http_client(
+                ReqwestClientBuilder::new()
+                    .insecure()
+                    .build()
+                    .map_err(|e| Error::OID4VPHolder(e.to_string()))?,
+            )
+        }
+
+        let holder = builder
+            .build()
+            .await
+            .map_err(|e| Error::OID4VPHolder(e.to_string()))?;
 
         Ok(OID4VPHolder::new(holder))
     }

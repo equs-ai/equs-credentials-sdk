@@ -228,7 +228,7 @@ kotlin-test-job:
     - apt-get update
     - apt-get install -y openjdk-17-jdk
     - cd wrappers/uniffi
-    - make test
+    - make kotlin-test
   only:
     - merge_requests
     - main

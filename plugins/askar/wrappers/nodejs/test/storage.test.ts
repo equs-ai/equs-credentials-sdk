@@ -62,9 +62,7 @@ describe("Askar Storage: ", () => {
     expect(removed).toEqual(true);
     storage
       .changeActiveProfile(activeProfile)
-      .catch((e) =>
-        expect(e.message).toEqual("Session profile has been removed"),
-      );
+      .catch((e) => expect(e.message).toEqual("Profile not found"));
 
     await AskarStorage.remove(config.dbUrl);
   }, 20000);

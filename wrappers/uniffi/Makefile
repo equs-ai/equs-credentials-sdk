@@ -1,4 +1,4 @@
-all: release android-aar
+all: kotlin-test android-aar
 
 UNAME_S := $(shell uname -s)
 ifeq ($(UNAME_S),Linux)
@@ -11,19 +11,19 @@ ifeq ($(OS),Windows_NT)
     BINARY_NAME = libasdk.dll
 endif
 
-release:
+kotlin-release-build:
 	@echo "Building the UniFFI binary in release mode..."
 	cargo build --release
 
-debug:
+kotlin-debug-build:
 	@echo "Building the UniFFI binary in debug mode..."
 	cargo build
 
-generate_kotlin_debug: debug
+kotlin-generate_kotlin_debug: kotlin-debug-build
 	@echo "Generating Kotlin bindings..."
 	cargo run --bin uniffi-bindgen generate --library ../../target/debug/$(BINARY_NAME) --language kotlin --out-dir kotlin/src/main/kotlin
 
-test: generate_kotlin_debug
+kotlin-test: kotlin-generate_kotlin_debug
 	@echo "Running Kotlin tests..."
 	cd kotlin && ./gradlew -x android:test
 
@@ -85,3 +85,41 @@ android-aar: android-generate-bindings android-copy-libs
 	cd kotlin && ./gradlew :android:assembleRelease
 	@echo "AAR package built at: kotlin/android/build/outputs/aar/android-release.aar"
 	cd kotlin && rm -rf ./android/src/main/jniLibs/*/libasdk.so
+
+ios-release-build:
+	@echo "Generating binaries for x86_64 and aarch64"
+	cargo build --release --target x86_64-apple-ios
+	cargo build --release --target aarch64-apple-ios-sim
+	cargo build --release --target aarch64-apple-ios
+
+ios-debug-build:
+	@echo "Generating binaries for x86_64 and aarch64"
+	cargo build --target x86_64-apple-ios
+	cargo build --target aarch64-apple-ios-sim
+	cargo build --target aarch64-apple-ios
+
+ios-create-fat-lib: ios-debug-build
+	@echo "Creating a fat library for x86_64 and aarch64 simulators"
+	mkdir -p ../../target/ios-simulator-fat/debug
+	lipo -create \
+            ../../target/x86_64-apple-ios/debug/libasdk.a \
+            ../../target/aarch64-apple-ios-sim/debug/libasdk.a \
+            -output ../../target/ios-simulator-fat/debug/libasdk.a
+
+ios-generate-ffi-debug: ios-debug-build
+	@echo "Generating framework module mapping and FFI bindings"
+	cargo run --bin uniffi-bindgen-swift -- ../../target/aarch64-apple-ios/debug/libasdk.a ../../target/uniffi-xcframework-debug --swift-sources --headers --modulemap --module-name asdkFFI --modulemap-filename module.modulemap
+	mkdir -p swift/Sources/asdk
+	mv ../../target/uniffi-xcframework-debug/*.swift swift/Sources/asdk/
+
+ios-generate-xcframework-debug: ios-generate-ffi-debug ios-create-fat-lib
+	@echo "Generating XCFramework"
+	rm -rf ../../target/ios
+	xcodebuild -create-xcframework \
+            -library ../../target/ios-simulator-fat/debug/libasdk.a -headers ../../target/uniffi-xcframework-debug \
+            -library ../../target/aarch64-apple-ios/debug/libasdk.a -headers ../../target/uniffi-xcframework-debug \
+            -output ../../target/ios/debug/asdk.xcframework
+
+ios-test: ios-generate-xcframework-debug
+	@echo "Run tests"
+	cd swift && xcodebuild test -scheme asdk -destination "name=iPhone 16"
