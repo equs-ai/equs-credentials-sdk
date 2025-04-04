@@ -3,6 +3,7 @@ use crate::inmem::kms::InMemKms;
 use crate::inmem::vault::InMemVault;
 use crate::vc::oid4vci::holder::OID4VCIHolder;
 use agent_sdk::inmem::kms::LocalKms;
+#[cfg(debug_assertions)]
 use agent_sdk::reqwest::builder::ReqwestClientBuilder;
 use uniffi::custom_type;
 
@@ -81,21 +82,28 @@ impl OID4VCIHolderBuilder {
     }
 
     pub async fn build(&self) -> Result<OID4VCIHolder> {
-        let holder = agent_sdk::vc::oid4vci::HolderBuilder::new(
+        #[allow(unused_mut)]
+        let mut builder = agent_sdk::vc::oid4vci::HolderBuilder::new(
             self.kms.clone(),
             self.vault.clone(),
             self.client_id.to_owned(),
             self.issuer_discovery.clone(),
-        )
-        .with_http_client(
-            ReqwestClientBuilder::new()
-                .insecure()
-                .build()
-                .map_err(|e| Error::OID4VCIInternal(e.to_string()))?,
-        )
-        .build()
-        .await
-        .map_err(|e| Error::OID4VPHolder(e.to_string()))?;
+        );
+
+        #[cfg(debug_assertions)]
+        {
+            builder = builder.with_http_client(
+                ReqwestClientBuilder::new()
+                    .insecure()
+                    .build()
+                    .map_err(|e| Error::OID4VCIInternal(e.to_string()))?,
+            )
+        }
+
+        let holder = builder
+            .build()
+            .await
+            .map_err(|e| Error::OID4VPHolder(e.to_string()))?;
 
         Ok(OID4VCIHolder::new(holder))
     }

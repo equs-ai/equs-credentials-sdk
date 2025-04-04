@@ -1,14 +1,20 @@
+#[cfg(debug_assertions)]
 use agent_sdk::did::didkey::DIDKey;
+#[cfg(debug_assertions)]
 use agent_sdk::did::universal::UniversalResolver;
+#[cfg(debug_assertions)]
 use agent_sdk::did::{DIDBuf, DIDResolver};
+#[cfg(debug_assertions)]
 use agent_sdk::kms::{CreateOptions, KeyType, Kms};
 use agent_sdk::vc::metadata::{CredentialMetadataProcessor, DefaultMetadataProcessor};
 use agent_sdk::vc::oid4vp::Url;
+#[cfg(debug_assertions)]
 use std::str::FromStr;
 use uniffi::deps::anyhow;
 
 use crate::common::{Error, Result};
 use crate::crypto::KeyMetadata;
+#[cfg(debug_assertions)]
 use crate::inmem::kms::InMemKms;
 use crate::vc::{Credential, CredentialMetadata};
 

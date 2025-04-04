@@ -8,26 +8,26 @@ Build the UniFFI binary for your target platform using the commands below.
 
 **Debug build:**
 ```bash
-make debug
+make kotlin debug-build
 ```
 
 **Release build:**
 ```bash
-make
+make kotlin release-build
 ```
 
 ## Testing
 
 ### Kotlin
 
-The Kotlin tests are located in the `kotlin` directory, which is a standard Gradle project with tests under src/test/kotlin.
+The Kotlin tests are located in the `kotlin` directory, which is a standard Gradle project with tests under `src/test/kotlin`.
 
 **Run Kotlin tests:**
 
 In order to run these tests, you will need to have the JDK installed.
 
 ```bash
-make test
+make kotlin test
 ```
 
 
@@ -92,6 +92,44 @@ rustup target add aarch64-linux-android armv7-linux-androideabi i686-linux-andro
 
 ### 6. Run `android-aar` target of Makefile:
 ```bash
-make android-aar
+make kotlin android-aar
 ```
 On success, `aar` file must be outputted in `./kotlin/android/build/outputs/aar/android-release.aar`
+
+# iOS
+
+### 1. Setup Xcode Command-Line Tools
+
+```bash
+xcode-select --installxcrun simctl
+xcodebuild -runFirstLaunch
+```
+
+
+
+### 2. Install Rust iOS and macOS Targets
+
+```bash
+rustup target add aarch64-apple-ios
+rustup target add x86_64-apple-ios
+rustup target add aarch64-apple-ios-sim
+```
+
+### 3. Generate the XCFramework and Swift Bindings
+```bash
+make ios-generate-xcframework-debug
+```
+
+## Testing
+
+The Swift tests are located in the `swift` directory, which is a Swift Package with tests under `Tests/AsdkTest/`.
+
+**Run Swift tests:**
+
+In order to run these tests, you will need to have the iOS simulator installed.
+
+```bash
+make ios-test
+```
+
+
