@@ -20,7 +20,7 @@ export class MockDID implements DIDResolver {
         ],
       },
       metadata: { contentType: "application/did+ld+json" },
-      documentMetadata: { deactivated: false },
+      document_metadata: { deactivated: false },
     };
   }
 }

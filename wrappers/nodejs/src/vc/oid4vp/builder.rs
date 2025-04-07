@@ -1,6 +1,4 @@
-#[cfg(debug_assertions)]
-use agent_sdk::reqwest::builder::ReqwestClientBuilder;
-
+use crate::http::ReqwestHttpClient;
 use crate::kms::JsKms;
 use crate::nonce::JsNonceGenerator;
 use crate::utils::from_json_object;
@@ -22,20 +20,11 @@ pub async fn _build_vp_verifier(
     key_metadata: JsKeyMetadata,
     client_id: String,
     #[napi(ts_arg_type = "ClientMetadata | null | undefined")] client_metadata: Option<JsonObject>,
+    http_client: Option<&ReqwestHttpClient>,
 ) -> Result<OID4VPVerifier> {
     let key_metadata: KeyMetadata = key_metadata.into();
     let mut builder =
         agent_sdk::vc::oid4vp::VerifierBuilder::new(kms, nonce_generator, key_metadata, client_id);
-
-    #[cfg(debug_assertions)]
-    {
-        builder = builder.with_http_client(
-            ReqwestClientBuilder::new()
-                .insecure() // TODO: is it ok?
-                .build()
-                .map_err(|err| Error::from_reason(format!("{:?}", err)))?,
-        )
-    }
 
     if let Some(client_metadata) = &client_metadata {
         builder = builder.with_client_metadata(
@@ -44,6 +33,10 @@ pub async fn _build_vp_verifier(
             )?)
             .map_err(|err| Error::new(Status::InvalidArg, err))?,
         );
+    }
+
+    if let Some(http_client) = http_client {
+        builder = builder.with_http_client(http_client.inner())
     }
 
     let verifier = builder
@@ -60,19 +53,10 @@ pub async fn _build_vp_holder(
     vault: JsVault,
     client_id: String,
     #[napi(ts_arg_type = "WalletMetadata | null | undefined")] wallet_metadata: Option<JsonObject>,
+    http_client: Option<&ReqwestHttpClient>,
     pop_lifetime: Option<JsDuration>,
 ) -> Result<OID4VPHolder> {
     let mut builder = agent_sdk::vc::oid4vp::HolderBuilder::new(kms, vault, client_id);
-
-    #[cfg(debug_assertions)]
-    {
-        builder = builder.with_http_client(
-            ReqwestClientBuilder::new()
-                .insecure()
-                .build()
-                .map_err(|err| Error::from_reason(format!("{:?}", err)))?,
-        )
-    }
 
     if let Some(wallet_metadata) = &wallet_metadata {
         builder = builder.with_wallet_metadata(serde_json::from_value(from_json_object(
@@ -81,6 +65,10 @@ pub async fn _build_vp_holder(
     }
     if let Some(duration) = pop_lifetime {
         builder = builder.with_pop_lifetime(duration.try_into()?);
+    }
+
+    if let Some(http_client) = http_client {
+        builder = builder.with_http_client(http_client.inner())
     }
 
     let holder = builder

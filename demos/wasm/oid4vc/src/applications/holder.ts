@@ -9,7 +9,7 @@ import init, {
   CredentialDeferred,
   CredentialImmediate,
   CredentialResponse,
-  HttpClient,
+  ReqwestHttpClient,
   InMemKms,
   InMemVault,
   IssuerDiscovery,
@@ -30,11 +30,11 @@ export async function start(): Promise<void> {
 
   const issuerDiscovery = IssuerDiscovery.fromUrl(config.issuerServerUrl);
   const oid4VciHolder = await new OID4VCIHolderBuilder(kms, vault, config.clientId, issuerDiscovery)
-    .withHttpClient(HttpClient.insecure())
+    .withHttpClient(ReqwestHttpClient.insecure())
     .build();
 
   const oid4VpHolder = await new OID4VPHolderBuilder(kms, vault, config.clientId)
-    .withHttpClient(HttpClient.insecure())
+    .withHttpClient(ReqwestHttpClient.insecure())
     .build();
 
   await issuanceFlow(oid4VciHolder, kms);

@@ -1,4 +1,4 @@
-import { DIDResolution } from "../../pkg";
+import { DIDResolution } from "agent-sdk";
 
 export class Fixtures {
   readonly didResolution = {
@@ -17,7 +17,6 @@ export class Fixtures {
       ],
     },
     metadata: { contentType: "application/did+ld+json" },
-    // @ts-ignore
     document_metadata: { deactivated: null },
   };
 
@@ -37,7 +36,6 @@ export class Fixtures {
       ],
     },
     metadata: { contentType: "application/did+ld+json" },
-    // @ts-ignore
-    document_metadata: { deactivated: null },
+    document_metadata: { deactivated: false },
   };
 }

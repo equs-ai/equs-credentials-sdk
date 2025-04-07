@@ -1,7 +1,8 @@
 import {
   Alg,
   contextEnsuredKms,
-  contextEnsuredVault, CredentialDefinitionFormat,
+  contextEnsuredVault,
+  CredentialDefinitionFormat,
   CredentialOfferContentFormat,
   CredentialStatusInfoFormat,
   InMemKms,
@@ -123,12 +124,12 @@ export class Utils {
           supportedSigningAlgs: [Alg.ES256, Alg.EdDSA],
           display: undefined,
           protocolData: {
-              format: CredentialDefinitionFormat.SdJwt,
-              payload: {
-                vct: "https://credentials.example.com/identity_credential",
-                disclosures: ["$.name", "$.surname"],
-                lifetime: 300000000
-              }
+            format: CredentialDefinitionFormat.SdJwt,
+            payload: {
+              vct: "https://credentials.example.com/identity_credential",
+              disclosures: ["$.name", "$.surname"],
+              lifetime: 300000000,
+            },
           },
           keyMetadata: await this.getKeyMetadata(),
         },

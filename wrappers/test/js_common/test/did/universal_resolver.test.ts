@@ -1,5 +1,5 @@
 import { Fixtures } from "./fixtures";
-import { DIDResolution, DIDResolver, ResolutionOptions, UniversalDIDResolver } from "../../pkg";
+import { DIDResolution, DIDResolver, ResolutionOptions, UniversalDIDResolver } from "agent-sdk";
 
 describe("Universal Resolver: ", () => {
   const fixtures = new Fixtures();
@@ -33,21 +33,17 @@ describe("Universal Resolver: ", () => {
 
     resolver.addResolver(customResolver);
 
-
     const result = await resolver.resolve("did:custom:zDnaefX6jBNVFnFeUPMRGo6exaVdJ1TRCwuhm296PbB5gPTj6");
     expect(result).toEqual(fixtures.customDidResolution);
   });
 });
 
-
 class MockDIDResolver implements DIDResolver {
-
   constructor(
     public readonly methodName: string,
     private readonly did: `did:${string}:${string}`,
     private readonly didResolution: DIDResolution,
-  ) {
-  }
+  ) {}
 
   async resolveRepresentation(did: `did:${string}:${string}`, _: ResolutionOptions): Promise<DIDResolution> {
     expect(did).toEqual(this.did);

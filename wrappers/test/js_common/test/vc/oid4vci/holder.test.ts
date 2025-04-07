@@ -1,7 +1,7 @@
 import { getLocal } from "mockttp";
 import {
   DIDKey,
-  HttpClient,
+  ReqwestHttpClient,
   InMemKms,
   InMemVault,
   IssuerDiscovery,
@@ -9,13 +9,15 @@ import {
   OID4VCIHolderBuilder,
   resolveMetadata,
   UniversalDIDResolver,
-} from "../../../pkg";
+  KeyType,
+  VCFormat,
+  NonceData,
+} from "agent-sdk";
 import { Utils } from "./fixtures";
-import { KeyType, VCFormat } from "../../../types";
 
 describe("OID4VCI Holder: ", () => {
   const mockServer = getLocal();
-  let port = 9000;
+  const port = 9000;
   const utils = new Utils({ issuerUrlPort: port });
 
   beforeAll(async () => {
@@ -89,13 +91,11 @@ describe("OID4VCI Holder: ", () => {
   });
 
   test("request Credential", async () => {
-    // todo fix test with removing native kms
-    // return;
     await mockServer.forPost("/credential").thenJson(200, utils.credResponse);
 
     const kms = new InMemKms();
     const vciHolder = await buildHolder(utils, kms);
-    const nonce = {
+    const nonce: NonceData = {
       value: "KB50VOm9I-kPLT9mAACV8g",
       expiresIn: 86400,
       created: 1728732136,
@@ -112,7 +112,7 @@ describe("OID4VCI Holder: ", () => {
         },
         notification_id: "1111",
       },
-      nonce_data: {
+      nonceData: {
         value: "0GtZieAoAL_3Zafyn6TgCA",
         expiresIn: 86440,
       },
@@ -144,7 +144,7 @@ describe("OID4VCI Holder: ", () => {
 
 async function buildHolder(utils: Utils, kms = new InMemKms(), vault = new InMemVault()) {
   return await new OID4VCIHolderBuilder(kms, vault, "client_id", IssuerDiscovery.fromOffer(utils.credOffer))
-    .withHttpClient(HttpClient.insecure())
+    .withHttpClient(ReqwestHttpClient.insecure())
     .build();
 }
 

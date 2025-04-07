@@ -4,17 +4,18 @@ import {
   CredentialEntry,
   CredentialMetadata,
   DIDKey,
-  HttpClient,
   InMemKms,
   InMemVault,
   KeyMetadata,
   OID4VPHolder,
   OID4VPHolderBuilder,
   UniversalDIDResolver,
-} from "../../../pkg";
+  PresentationSubmission,
+  KeyType,
+  VCFormat,
+  ReqwestHttpClient,
+} from "agent-sdk";
 import { AUTH_REQUEST, AUTH_REQUEST_JWT, PRESENTATION_SUBMISSION, STATE, VC, VC_TYPE } from "./fixtures";
-import { PresentationSubmission } from "../../../../types";
-import { KeyType, VCFormat } from "../../../types";
 
 describe("OID4VP Holder: ", () => {
   const mockServer = getLocal();
@@ -31,9 +32,11 @@ describe("OID4VP Holder: ", () => {
     mockServer.reset();
     kms = new InMemKms();
     vault = new InMemVault();
-    holder = await new OID4VPHolderBuilder(kms, vault, "client_id").withHttpClient(HttpClient.insecure()).build();
+    holder = await new OID4VPHolderBuilder(kms, vault, "client_id")
+      .withHttpClient(ReqwestHttpClient.insecure())
+      .build();
 
-    let keyMetadata = await createKeyMetadata(kms);
+    const keyMetadata = await createKeyMetadata(kms);
 
     credential = {
       format: VCFormat.SdJwtVc,
@@ -65,9 +68,9 @@ describe("OID4VP Holder: ", () => {
 
     await vault.storeCredential(credential, metadata);
 
-    const result = await holder.presentCredentialsAuto(AUTH_REQUEST);
+    const result = await holder.presentCredentialsAuto(AUTH_REQUEST, {});
 
-    expect(result).toBeUndefined();
+    expect(result).toBeFalsy();
   });
 
   test("present Credentials", async () => {
@@ -75,8 +78,8 @@ describe("OID4VP Holder: ", () => {
 
     await vault.storeCredential(credential, metadata);
 
-    let credentialsMapping = await holder.findVcsForPresentation(AUTH_REQUEST);
-    let credentialMapping: Record<string, CredentialEntry> = Object.entries(credentialsMapping).reduce(
+    const credentialsMapping = await holder.findVcsForPresentation(AUTH_REQUEST);
+    const credentialMapping: Record<string, CredentialEntry> = Object.entries(credentialsMapping).reduce(
       (acc, [key, values]) => {
         acc[key] = values[0];
         return acc;
@@ -84,9 +87,9 @@ describe("OID4VP Holder: ", () => {
       {},
     );
 
-    const result = await holder.presentCredentials(AUTH_REQUEST, credentialMapping);
+    const result = await holder.presentCredentials(AUTH_REQUEST, credentialMapping, {});
 
-    expect(result).toBeUndefined();
+    expect(result).toBeFalsy();
   });
 });
 

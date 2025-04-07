@@ -10,7 +10,7 @@ describe("Askar Storage: ", () => {
       passKey: "test_key",
       profile: "test",
     };
-    await AskarStorage.create(config, false);
+    await AskarStorage.create(config, true);
   }, 10000);
 
   test("open, close and recreate", async () => {

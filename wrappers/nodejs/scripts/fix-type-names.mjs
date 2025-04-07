@@ -30,7 +30,6 @@ const replacements = [
   { from: "JsStatusIssuerMetadata", to: "StatusIssuerMetadata" },
   { from: "JsStatusListFormat", to: "StatusListFormat" },
   { from: "JsTokenValidation", to: "TokenValidation" },
-  { from: "JsVerificationMethodKey", to: "VerificationMethodKey" },
   { from: "JsDuration", to: "Duration" },
   { from: "JsECDHESParams", to: "ECDHESParams" },
   { from: "JsECDH1PUParams", to: "ECDH1PUParams" },

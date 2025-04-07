@@ -1,4 +1,4 @@
-import { InMemKms, LocalNonceGenerator, OID4VCIIssuer, OID4VCIIssuerBuilder } from "../../";
+import { InMemKms, LocalNonceGenerator, NonceData, OID4VCIIssuer, OID4VCIIssuerBuilder } from "../../";
 import {
   ACCESS_TOKEN,
   CLAIMS,
@@ -44,12 +44,13 @@ describe("OID4VCI Issuer: ", () => {
   });
 
   test("issue Credential", async () => {
+    const nonce = {
+      value: "KB50VOm9I-kPLT9mAACV8g",
+      expiresIn: 864484848,
+      created: 1728843957,
+    } satisfies NonceData;
     const session = {
-      nonce: {
-        nonce: "KB50VOm9I-kPLT9mAACV8g",
-        expiresIn: 864484848,
-        created: 1728843957,
-      },
+      nonce,
     };
 
     const result = await issuer.issueCredential(CRED_REQUEST, ACCESS_TOKEN, CLAIMS, session);

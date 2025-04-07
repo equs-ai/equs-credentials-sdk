@@ -19,10 +19,11 @@ impl JsDIDPeer {
 
     #[napi]
     pub fn generate_did_peer4(
-        keys: Vec<JsVerificationMethodKey>,
+        keys: Vec<&JsVerificationMethodKey>,
         #[napi(ts_arg_type = "Array<Service>")] services: Vec<JsonObject>,
     ) -> napi::Result<String> {
-        let vm_keys: Vec<VerificationMethodKey> = keys.iter().map(Into::into).collect();
+        let vm_keys: Vec<VerificationMethodKey> =
+            keys.iter().map(|key| key.to_owned().into()).collect();
         let parsed_services = services
             .into_iter()
             .map(from_json_object::<DidPeerService>)

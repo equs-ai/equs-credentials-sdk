@@ -8,6 +8,7 @@ import {
   Kms,
   VerificationRelationshipType,
   contextEnsuredDIDCommKms,
+  VerificationMethodKey,
 } from "../";
 
 describe("DIDComm: ", () => {
@@ -86,20 +87,20 @@ async function generate_did_peer(kms: Kms | DIDCommKms): Promise<string> {
 
   return DIDPeer.generateDidPeer4(
     [
-      {
-        key: {
+      new VerificationMethodKey(
+        {
           alg: keyHandle.alg,
           jwk: keyHandle.jwk,
           pubKey: keyHandle.pubKey,
           sign: keyHandle.sign,
           verify: keyHandle.verify,
         },
-        verificationRelationships: [
+        [
           VerificationRelationshipType.Authentication,
           VerificationRelationshipType.Assertion,
           VerificationRelationshipType.KeyAgreement,
         ],
-      },
+      ),
     ],
     [],
   );

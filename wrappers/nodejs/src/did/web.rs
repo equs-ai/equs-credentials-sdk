@@ -28,9 +28,10 @@ impl JsDIDWeb {
     pub fn generate_did_document(
         &self,
         did: String,
-        keys: Vec<JsVerificationMethodKey>,
+        keys: Vec<&JsVerificationMethodKey>,
     ) -> Result<JsonObject> {
-        let vm_keys: Vec<VerificationMethodKey> = keys.iter().map(Into::into).collect();
+        let vm_keys: Vec<VerificationMethodKey> =
+            keys.iter().map(|key| key.to_owned().into()).collect();
         DIDWeb::generate_did_document(&did, &vm_keys)
             .map_err(|e| Error::from_reason(e.to_string()))
             .and_then(to_json_object)

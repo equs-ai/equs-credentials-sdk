@@ -28,35 +28,7 @@ describe("DID: ", () => {
     expect(did).toEqual(expect.stringContaining("did:key:"));
   });
 
-  describe("Universal Resolver: ", () => {
-    const resolver = new UniversalDIDResolver();
-
-    test("Resolve verification method", async () => {
-      const result = await resolver.resolveVerificationMethod(did);
-      expect(result).toEqual(
-        expect.objectContaining({
-          id: expect.stringContaining("did:key:"),
-          controller: expect.stringContaining("did:key:"),
-          type: "Multikey",
-          publicKeyMultibase: expect.stringMatching("^z[1-9A-HJ-NP-Za-km-z]+$"),
-        } as DIDVerificationMethod),
-      );
-    });
-
-    test("Resolve method", async () => {
-      const result = await resolver.resolve(did);
-      expect(result).toEqual(utils.didResolution);
-    });
-  });
-
   describe("Custom Resolver: ", () => {
-    test("Success flow", async () => {
-      const resolver = new UniversalDIDResolver();
-      resolver.addResolver(new MockDID("mock"));
-      const result = await resolver.resolve("did:mock:12345");
-      expect(result).toBeDefined();
-    });
-
     test("Success flow", async () => {
       const resolver = new UniversalDIDResolver();
       resolver.addResolver(new MockDID("mock"));

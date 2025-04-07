@@ -6,8 +6,8 @@ import {
   OID4VCICredentialMetadata,
   OID4VCICredentialOffer,
   OID4VCIIssuerMetadata,
-} from "../../../pkg";
-import { OID4VCICredentialRequest } from "../../../../types";
+  OID4VCICredentialRequest,
+} from "agent-sdk";
 
 export class Utils {
   readonly proofJWT =

@@ -1,7 +1,6 @@
+use crate::http::ReqwestHttpClient;
 use crate::utils::to_json_object;
 use crate::vc::JsonObject;
-#[cfg(debug_assertions)]
-use agent_sdk::reqwest::builder::ReqwestClientBuilder;
 use agent_sdk::vc::oid4vci::CredentialOfferResolver;
 use napi::{Error, Result};
 use napi_derive::napi;
@@ -9,7 +8,7 @@ use url::Url;
 
 /// @property resolve - {@link OID4VCICredentialOfferResolver.resolve}
 
-#[napi]
+#[napi(js_name = "OID4VCICredentialOfferResolver")]
 pub struct OID4VCICredentialOfferResolver(
     CredentialOfferResolver<agent_sdk::reqwest::ReqwestClient>,
 );
@@ -23,19 +22,24 @@ impl OID4VCICredentialOfferResolver {
         let mut inner_resolver = CredentialOfferResolver::new()
             .map_err(|err| Error::from_reason(format!("{:?}", err)))?;
 
-        #[cfg(debug_assertions)]
-        {
-            inner_resolver = CredentialOfferResolver::with_http_client(
-                ReqwestClientBuilder::new()
-                    .insecure()
-                    .build()
-                    .map_err(|err| Error::from_reason(format!("{:?}", err)))?,
-            )
-        }
-
         let resolver = OID4VCICredentialOfferResolver(inner_resolver);
 
         Ok(resolver)
+    }
+
+    /// Returns a new {@link OID4VCICredentialOfferResolver} to resolve credential offer params {@link OID4VCICredentialOffer}
+    /// by using a specific {@link ReqwestHttpClient}.
+    ///
+    /// @param {ReqwestHttpClient} httpClient - Reqwest Http client
+    ///
+    /// @returns {OID4VCICredentialOfferResolver}
+    #[napi(factory, ts_return_type = "OID4VCICredentialOfferResolver")]
+    pub fn with_http_client(
+        http_client: &ReqwestHttpClient,
+    ) -> Result<OID4VCICredentialOfferResolver> {
+        let resolver = CredentialOfferResolver::with_http_client(http_client.inner());
+
+        Ok(OID4VCICredentialOfferResolver(resolver))
     }
 
     /// Resolves the {@link OID4VCICredentialOffer} from the credential offer uri

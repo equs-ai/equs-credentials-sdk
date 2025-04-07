@@ -24,9 +24,10 @@ Default build is aimed at web target. In order to build for Node.js run:
     make WASM_TARGET=nodejs
 ```
 
-Build script is already included into test script so can be simply run via:
+Wrappers should be built before testing
 
 ```bash
+    npm run build:nodejs
     npm run test
 ```
 
@@ -38,18 +39,24 @@ When compiling Rust projects targeting `wasm32-unknown-unknown` on macOS, you mi
 warning: ring@0.17.14: error: unable to create target: 'No available targets are compatible with triple "wasm32-unknown-unknown"'
 ```
 
-This issue often arises because Apple's version of the Clang compiler doesn't support the `wasm32-unknown-unknown target`. To resolve this:
+This issue often arises because Apple's version of the Clang compiler doesn't support the
+`wasm32-unknown-unknown target`. To resolve this:
 
 1. Install LLVM via Homebrew:
+
 ```bash
 brew install llvm
 ```
+
 2. Update Your PATH to Use LLVM's Clang:
+
 ```bash
 echo 'export PATH="/opt/homebrew/opt/llvm/bin:$PATH"' >> ~/.zshrc
 source ~/.zshrc
 ```
+
 3. Verify the Installation:
+
 ```
 clang --version
 ```

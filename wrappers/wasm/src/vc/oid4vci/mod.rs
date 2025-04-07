@@ -53,7 +53,7 @@ impl TryFrom<CredentialResponseResolved> for CredentialResponse {
             }
         };
 
-        json_value["nonce_data"] = nonce_data;
+        json_value["nonceData"] = nonce_data;
 
         let json_str = serde_json::to_string(&json_value)?;
 

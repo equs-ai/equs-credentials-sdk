@@ -10,7 +10,7 @@ use time::{Duration, OffsetDateTime};
 /// An interface containing nonce with created time and duration.
 #[napi(js_name = "NonceData", object)]
 pub struct JsNonceData {
-    pub nonce: String,
+    pub value: String,
     pub expires_in: Option<i64>,
     pub created: i64,
 }
@@ -19,7 +19,7 @@ impl TryFrom<JsNonceData> for NonceData {
     type Error = Error;
 
     fn try_from(value: JsNonceData) -> napi::Result<Self> {
-        let nonce = serde_json::from_value(serde_json::Value::String(value.nonce))?;
+        let nonce = serde_json::from_value(serde_json::Value::String(value.value))?;
 
         let created = OffsetDateTime::from_unix_timestamp(value.created).map_err(|err| {
             Error::new(Status::InvalidArg, format!("Incorrect created time: {err}"))
@@ -43,7 +43,7 @@ impl From<NonceData> for JsNonceData {
         let expires_in = value.expires_in.map(|value| value.whole_seconds());
 
         Self {
-            nonce,
+            value: nonce,
             expires_in,
             created,
         }

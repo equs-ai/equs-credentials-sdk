@@ -1,0 +1,14 @@
+/target
+**/*.rs.bk
+Cargo.lock
+bin/
+pkg/
+wasm-pack.log
+**/*.d.ts
+**/*.js
+!.eslintrc.js
+!scripts
+
+*-lock.json
+node_modules
+coverage

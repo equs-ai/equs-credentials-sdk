@@ -36,6 +36,7 @@ import fs from "fs/promises";
       "VerificationRelationshipType",
       "VaultPagination",
       "Vault",
+      "HttpRequest",
     ];
     let import_external_str = `import { ${exported_external_types.join(", ")} } from "${externalTypesFilePath}";\n`;
     let import_internal_str = `import { ${exported_internal_types.join(", ")} } from "${internalTypesFilePath}";\n`;

@@ -9,8 +9,8 @@ import { Alg, KeyType } from "./crypto";
  * @property pubKey - {@link KeyHandle.pubKey}
  * @property jwk - {@link KeyHandle.jwk}
  * @property alg - {@link KeyHandle.alg}
- * @method sign - {@link KeyHandle.sign}
- * @method verify - {@link KeyHandle.verify}
+ * @property sign - {@link KeyHandle.sign}
+ * @property verify - {@link KeyHandle.verify}
  */
 export interface KeyHandle {
   /**

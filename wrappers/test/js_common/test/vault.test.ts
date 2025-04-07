@@ -1,5 +1,4 @@
-import { VCFormat } from "../types";
-import { Credential, CredentialEntry, CredentialMetadata, Vault, VaultTestHelper } from "../pkg";
+import { VCFormat, Credential, CredentialEntry, CredentialMetadata, Vault, VaultTestHelper } from "agent-sdk";
 
 const SD_JWT_VC =
   "eyJ0eXAiOiJ2YytzZC1qd3QiLCJhbGciOiJFUzI1NiIsImtpZCI6ImRpZDprZXk6ekRuYWV4ZWgzVDFDemlXV1NFZVdweXVUa1hxaVQ1aWtpQ3c1aVpRUkJ2NEhYdWV4NiN6RG5hZXhlaDNUMUN6aVdXU0VlV3B5dVRrWHFpVDVpa2lDdzVpWlFSQnY0SFh1ZXg2In0.eyJfc2QiOlsiZkp1Ri1FNUMzTnhleU5UTnNMbm1DX1pnM2FNYkVwTGF1QV9aWVFnU1B3VSJdLCJ2Y3QiOiJodHRwczovL2NyZWRlbnRpYWxzLmV4YW1wbGUuY29tL2lkZW50aXR5X2NyZWRlbnRpYWwiLCJzdWIiOiJkaWQ6a2V5OnpEbmFlajlRYWRnZFpudTh1RFhaWGQ0NTQ1ZGZKQUV2bVY2bm43eGFZVXF6Y3JQdk0iLCJuYmYiOjE3Mjg4ODI2MTEsIl9zZF9hbGciOiJzaGEtMjU2IiwiaXNzIjoiZGlkOmtleTp6RG5hZXhlaDNUMUN6aVdXU0VlV3B5dVRrWHFpVDVpa2lDdzVpWlFSQnY0SFh1ZXg2IiwiaWF0IjoxNzI4ODgyNjExLCJleHAiOjE3NjA0MTg2MTEsImNuZiI6eyJqd2siOnsia3R5IjoiRUMiLCJjcnYiOiJQLTI1NiIsIngiOiJGaEFNdi1UWGcyZ1NlOGpqZkhVcWdkTzdfMjZlSG9tWVNweUxxQk05WlNZIiwieSI6IkFNelNtSXRoMHZCUTFmZjI4RlF6c1paSS1XckxZdXFxSFI4TF9HbHZrWXMifX19.usBLTsyl9fgJWPjJvbyJlpaDmfXZNRuxJCt9voME2VAAb0GhncwakNACMUdAqS9fMU5e9Y9p-KUsuOOXXVAlmg~WyI4elFmQkItS3FZSHVKcW5wVER2c1VRIiwgIm5hbWUiLCAiSm9obiJd~";
@@ -40,7 +39,7 @@ describe("Vault: ", () => {
   test("Get credential with non-existent credential ID", async () => {
     const credential = await new VaultTestHelper(mockVault()).getCredential("cred:9876");
 
-    expect(credential).toBeUndefined();
+    expect(credential).toBeFalsy();
   });
 
   test("Get Credentials", async () => {
@@ -72,7 +71,13 @@ class MockVault implements Vault {
     private readonly criteria: Array<string>,
     private readonly credentialEntries: Array<CredentialEntry>,
     private readonly metadata: CredentialMetadata,
-  ) {}
+  ) {
+    this.deleteCredential = this.deleteCredential.bind(this);
+    this.findCredentials = this.findCredentials.bind(this);
+    this.getCredential = this.getCredential.bind(this);
+    this.getCredentials = this.getCredentials.bind(this);
+    this.storeCredential = this.storeCredential.bind(this);
+  }
 
   async deleteCredential(id: string): Promise<void> {
     expect(id).toEqual(this.credentialId);

@@ -8,30 +8,18 @@
     "module": "ESNext",
     "moduleResolution": "bundler",
     "strict": false,
-    "lib": [
-      "ESNext",
-      "dom"
-    ],
-    "preserveConstEnums": true,
+    "lib": ["ESNext", "dom"],
+    "preserveConstEnums": false,
     "removeComments": false,
     "emitDecoratorMetadata": true,
     "experimentalDecorators": true,
     "allowSyntheticDefaultImports": true,
     "target": "ESNext",
     "paths": {
-      "./binary": [
-        "./wrappers/wasm/pkg/binary"
-      ],
-      "./dist": [
-        "./wrappers/wasm/pkg/dist"
-      ]
+      "./binary": ["./wrappers/wasm/pkg/binary"],
+      "./dist": ["./wrappers/wasm/pkg/dist"]
     }
   },
-  "include": [
-    "types"
-  ],
-  "exclude": [
-    "node_modules",
-    "test"
-  ]
+  "include": ["types"],
+  "exclude": ["node_modules", "test"]
 }

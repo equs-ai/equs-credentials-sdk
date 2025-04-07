@@ -2,6 +2,7 @@ import {
   buildVciHolder,
   contextEnsuredKms,
   contextEnsuredVault,
+  HttpClient,
   JsIssuerDiscovery,
   Kms,
   OID4VCIHolder,
@@ -14,6 +15,7 @@ export class OID4VCIHolderBuilder {
   private readonly clientId: string;
   private readonly issuerDiscovery: JsIssuerDiscovery;
   private redirectUrl?: string;
+  private httpClient?: HttpClient;
 
   constructor(kms: Kms, vault: Vault, clientId: string, issuerDiscovery: JsIssuerDiscovery) {
     this.kms = kms;
@@ -22,8 +24,14 @@ export class OID4VCIHolderBuilder {
     this.issuerDiscovery = issuerDiscovery;
   }
 
-  withRedirectUrl(redirect_url: string): void {
-    this.redirectUrl = redirect_url;
+  withRedirectUrl(redirectUrl: string): this {
+    this.redirectUrl = redirectUrl;
+    return this;
+  }
+
+  withHttpClient(httpClient: HttpClient): this {
+    this.httpClient = httpClient;
+    return this;
   }
 
   async build(): Promise<OID4VCIHolder> {
@@ -33,6 +41,8 @@ export class OID4VCIHolderBuilder {
       this.clientId,
       this.issuerDiscovery,
       this.redirectUrl,
+      this.httpClient,
+      undefined,
     );
   }
 }

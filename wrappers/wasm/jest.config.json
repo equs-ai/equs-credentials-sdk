@@ -2,9 +2,14 @@
   "bail": false,
   "verbose": true,
   "moduleFileExtensions": ["js", "ts", "d.ts"],
-  "preset": "jest-puppeteer",
+  "preset": "ts-jest",
   "transform": {
-    "^.+\\.(ts|tsx)$": "ts-jest"
+    "^.+\\.(ts|tsx)$": [
+      "ts-jest",
+      {
+        "tsconfig": "tsconfig.cjs.json"
+      }
+    ]
   },
   "testPathIgnorePatterns": ["/node_modules/", "/build/"],
   "modulePaths": ["<rootDir>/"],

@@ -1,6 +1,7 @@
 use crate::vc::JsonObject;
 use agent_sdk::http;
 use agent_sdk::http::{HttpClient, HttpSnafu};
+use agent_sdk::reqwest::ReqwestClient;
 use async_trait::async_trait;
 use napi::bindgen_prelude::Promise;
 use napi::threadsafe_function::{ErrorStrategy, ThreadsafeFunction};
@@ -170,10 +171,17 @@ impl HttpClient for JsHttpClient {
 }
 
 #[napi]
-pub struct NativeHttpClient(Box<dyn HttpClient>);
+pub struct ReqwestHttpClient(ReqwestClient);
 
 #[napi]
-impl NativeHttpClient {
+impl ReqwestHttpClient {
+    #[napi(constructor)]
+    pub fn new() -> Result<Self> {
+        agent_sdk::reqwest::builder::ReqwestClientBuilder::new()
+            .build()
+            .map(ReqwestHttpClient)
+            .map_err(|e| Error::from_reason(e.to_string()))
+    }
     #[napi]
     pub async fn async_call(&self, request: JsHttpRequest) -> Result<JsHttpResponse> {
         self.0
@@ -181,6 +189,22 @@ impl NativeHttpClient {
             .await
             .map_err(|e| Error::from_reason(e.to_string()))?
             .try_into()
+    }
+    pub fn inner(&self) -> ReqwestClient {
+        self.0.clone()
+    }
+}
+#[cfg(debug_assertions)]
+#[napi]
+impl ReqwestHttpClient {
+    #[cfg(debug_assertions)]
+    #[napi(factory)]
+    pub fn insecure() -> Result<ReqwestHttpClient> {
+        agent_sdk::reqwest::builder::ReqwestClientBuilder::new()
+            .insecure()
+            .build()
+            .map(ReqwestHttpClient)
+            .map_err(|e| Error::from_reason(e.to_string()))
     }
 }
 

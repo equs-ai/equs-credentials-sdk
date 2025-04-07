@@ -26,7 +26,10 @@ describe("VC::Core", () => {
   beforeEach(async () => {
     statusIssuer = createStatusIssuer(utils.kms, await utils.getStatusIssuerMetadata());
     issuer = createIssuer(utils.kms, await utils.getIssuerMetadata());
-    holder = createHolder(utils.kms, utils.vault, { clientId: "wallet-dev", popLifetime: {nanoseconds: 0, seconds: 300} });
+    holder = createHolder(utils.kms, utils.vault, {
+      clientId: "wallet-dev",
+      popLifetime: { nanoseconds: 0, seconds: 300 },
+    });
   });
 
   describe("StatusIssuer", () => {
