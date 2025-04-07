@@ -13,12 +13,12 @@ export interface DIDMetadata {
  * The result of a DID resolution.
  *
  * @property {DIDDocument} document - The resolved DID Document.
- * @property {DIDDocMetadata} documentMetadata - Metadata related to the DID Document (e.g., deactivation status).
+ * @property {DIDDocMetadata} document_metadata - Metadata related to the DID Document (e.g., deactivation status).
  * @property {DIDDocMetadata} metadata - Additional resolution metadata (e.g., content type).
  */
 export interface DIDResolution {
   document: DIDDocument;
-  documentMetadata: DIDDocMetadata;
+  document_metadata: DIDDocMetadata;
   metadata: DIDMetadata;
 }
 

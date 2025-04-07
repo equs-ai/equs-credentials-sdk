@@ -125,14 +125,7 @@ impl ReqwestClientBuilder {
     ///
     /// Returns an instance of `Self` with the `insecure` option enabled.
     ///
-    #[cfg(all(not(target_arch = "wasm32"), debug_assertions))]
-    #[instrument(level = Level::TRACE, ret())]
-    pub fn insecure(mut self) -> Self {
-        self.insecure = true;
-        self
-    }
-
-    #[cfg(target_arch = "wasm32")]
+    #[cfg(debug_assertions)]
     #[instrument(level = Level::TRACE, ret())]
     pub fn insecure(mut self) -> Self {
         self.insecure = true;

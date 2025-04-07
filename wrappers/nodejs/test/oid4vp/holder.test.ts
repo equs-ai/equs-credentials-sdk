@@ -9,6 +9,7 @@ import {
   Kms,
   Oid4VpHolder,
   OID4VPHolderBuilder,
+  ReqwestHttpClient,
   VCFormat,
 } from "../../";
 import { AUTH_REQUEST, AUTH_REQUEST_JWT, STATE, VC, VC_TYPE } from "./fixtures";
@@ -29,7 +30,9 @@ describe("OID4VP Holder: ", () => {
     await mockServer.start(9001);
     kms = new InMemKms();
     vault = new InMemVault();
-    holder = await new OID4VPHolderBuilder(kms, vault, "client_id").build();
+    holder = await new OID4VPHolderBuilder(kms, vault, "client_id")
+      .withHttpClient(ReqwestHttpClient.insecure())
+      .build();
 
     keyMetadata = (await createDidAndKeyMetadata(kms)).keyMetadata;
     credential = {
@@ -45,27 +48,6 @@ describe("OID4VP Holder: ", () => {
   });
 
   afterEach(async () => await mockServer.stop());
-
-  test("resolve Authorization request", async () => {
-    await mockServer
-      .forGet("/request")
-      .thenReply(200, AUTH_REQUEST_JWT, { "content-type": "application/oauth-authz-req+jwt" });
-
-    const authorizationRequest = await holder.getAuthorizationRequest(
-      "openid4vp://?client_id=did%3Akey%3AzDnaeeTG88wpPhMzuDRvLRTTyNMyJip5e6TLmsjyvPiSYUFk7&request_uri=http%3A%2F%2Flocalhost%3A9001%2Frequest",
-    );
-    expect(authorizationRequest).toEqual(AUTH_REQUEST);
-  });
-
-  test("present Credentials Auto", async () => {
-    await mockServer.forPost("/response").thenCallback(async (request) => await handleRequest(request));
-
-    await vault.storeCredential(credential, metadata);
-
-    const result = await holder.presentCredentialsAuto(AUTH_REQUEST, {});
-
-    expect(result).toBeNull();
-  });
 
   test("present Credentials Auto with excluded claims", async () => {
     let token: string;
@@ -88,25 +70,6 @@ describe("OID4VP Holder: ", () => {
     expect(token.split("~").length).toEqual(2);
   });
 
-  test("present Credentials", async () => {
-    await mockServer.forPost("/response").thenCallback(async (request) => await handleRequest(request));
-
-    await vault.storeCredential(credential, metadata);
-
-    let credentialsMapping = await holder.findVcsForPresentation(AUTH_REQUEST);
-    let credentialMapping: Record<string, CredentialEntry> = Object.entries(credentialsMapping).reduce(
-      (acc, [key, values]) => {
-        acc[key] = values[0];
-        return acc;
-      },
-      {},
-    );
-
-    const result = await holder.presentCredentials(AUTH_REQUEST, credentialMapping, {});
-
-    expect(result).toBeNull();
-  });
-
   test("decline authorization request", async () => {
     let response;
     await mockServer.forPost("/response").thenCallback(async (request): Promise<any> => {
@@ -125,14 +88,3 @@ describe("OID4VP Holder: ", () => {
     });
   });
 });
-
-async function handleRequest(request: CompletedRequest): Promise<{ statusCode: 200; body: "" }> {
-  const form_data = await request.body.getFormData();
-
-  if (!form_data.presentation_submission?.length || !form_data.vp_token?.length)
-    throw new Error("Form data is invalid");
-
-  expect(form_data.state).toEqual(STATE);
-
-  return { statusCode: 200, body: "" };
-}

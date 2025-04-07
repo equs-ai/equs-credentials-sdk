@@ -183,9 +183,14 @@ nodejs-test-job:
   <<: *nodejs_job_configs
   stage: test
   script:
-    - npm i --prefix wrappers/nodejs
-    - npm run build:debug --prefix wrappers/nodejs
-    - npm run test --prefix wrappers/nodejs
+    - cd wrappers/nodejs
+    - npm i
+    - npm run build:debug
+    - npm run test
+    - cd ../test/js_common
+    - npm pkg set dependencies.agent-sdk=file:../../nodejs
+    - npm i
+    - npm run test:nodejs
   only:
     - merge_requests
     - main
@@ -216,7 +221,13 @@ wasm-test-job:
   script:
     - cd wrappers/wasm
     - npm install
-    - npm run test
+    - npm run build:dev
+    #    Enable when tests are added
+    #    - npm run test
+    - cd ../test/js_common
+    - npm pkg set dependencies.agent-sdk=file:../../wasm/pkg
+    - npm i
+    - npm run test:wasm
   only:
     - merge_requests
     - main

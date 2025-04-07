@@ -1,5 +1,4 @@
-import { Credential, CredentialEntry, InMemVault } from "../../pkg";
-import { VCFormat } from "../../types";
+import { Credential, CredentialEntry, InMemVault, VCFormat } from "agent-sdk";
 import { VC_TYPE } from "../vc/oid4vp/fixtures";
 
 const SD_JWT_VC =

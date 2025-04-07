@@ -1,6 +1,4 @@
-#[cfg(debug_assertions)]
-use agent_sdk::reqwest::builder::ReqwestClientBuilder;
-
+use crate::http::ReqwestHttpClient;
 use crate::kms::JsKms;
 use crate::nonce::JsNonceGenerator;
 use crate::utils::{from_json_object, parse_url_arg};
@@ -75,22 +73,17 @@ pub async fn _build_vci_holder(
     client_id: String,
     issuer_discovery: &JsIssuerDiscovery,
     redirect_url: Option<String>,
+    http_client: Option<&ReqwestHttpClient>,
     pop_lifetime: Option<JsDuration>,
 ) -> Result<OID4VCIHolder> {
     let mut builder = HolderBuilder::new(kms, vault, client_id, issuer_discovery.0.to_owned());
 
-    #[cfg(debug_assertions)]
-    {
-        builder = builder.with_http_client(
-            ReqwestClientBuilder::new()
-                .insecure()
-                .build()
-                .map_err(|err| Error::from_reason(format!("{:?}", err)))?,
-        )
-    }
-
     if let Some(url) = redirect_url {
         builder = builder.with_redirect_url(url.to_string());
+    }
+
+    if let Some(http_client) = http_client {
+        builder = builder.with_http_client(http_client.inner())
     }
 
     if let Some(duration) = pop_lifetime {
@@ -129,16 +122,6 @@ pub async fn _build_vci_issuer(
 
     if let Some(cred_lifetime) = cred_lifetime {
         builder = builder.with_default_cred_lifetime(cred_lifetime.try_into()?);
-    }
-
-    #[cfg(debug_assertions)]
-    {
-        builder = builder.with_http_client(
-            ReqwestClientBuilder::new()
-                .insecure()
-                .build()
-                .map_err(|err| Error::from_reason(format!("{:?}", err)))?,
-        )
     }
 
     if let Some(validation) = &token_validation {

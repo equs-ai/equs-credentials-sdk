@@ -21,19 +21,19 @@ agent-sdk-os-arch)
 
 1. You need to make sure you can connect to [packages storage](https://git.slock.it/equstng/).
 2. Update global npm configs (Yes, this is necessary because ASDK does not see where to download binary packages)
-    1. Get your personal token from [gitlab](https://docs.gitlab.com/ee/user/profile/personal_access_tokens.html)
-    2. Add next configs to your ~/.npmrc
-       ```text
-       registry=https://git.slock.it/api/v4/projects/1387/packages/npm/
-       //git.slock.it/api/v4/projects/1387/packages/npm/:_authToken="${PERSONAL_ACCESS_TOKEN}"
-       ```
-       or you can run next scripts with your tokens
-       ```shell
-       npm config set registry https://git.slock.it/api/v4/projects/1387/packages/npm/
-       ```
-       ```shell
-       npm config set //git.slock.it/api/v4/projects/1387/packages/npm/:_authToken ${PERSONAL_ACCESS_TOKEN}
-       ```
+   1. Get your personal token from [gitlab](https://docs.gitlab.com/ee/user/profile/personal_access_tokens.html)
+   2. Add next configs to your ~/.npmrc
+      ```text
+      registry=https://git.slock.it/api/v4/projects/1387/packages/npm/
+      //git.slock.it/api/v4/projects/1387/packages/npm/:_authToken="${PERSONAL_ACCESS_TOKEN}"
+      ```
+      or you can run next scripts with your tokens
+      ```shell
+      npm config set registry https://git.slock.it/api/v4/projects/1387/packages/npm/
+      ```
+      ```shell
+      npm config set //git.slock.it/api/v4/projects/1387/packages/npm/:_authToken ${PERSONAL_ACCESS_TOKEN}
+      ```
 3. Install ASDK. Do not ignore postinstall script for ASDK (Simply do not use --ignore-scripts)
    ```shell
    npm i @equstng/agent-sdk
@@ -62,7 +62,7 @@ Follow these steps to install Node.js wrapped ASDK as dependency to your Node.js
    ```shell
    yarn add agent-sdk@git+ssh://git@git.slock.it/equstng/agent-sdk/agent-sdk
    ```
-   
+
    You can specify package alias instead of `agent-sdk`
 
 2. **Default postinstall**:

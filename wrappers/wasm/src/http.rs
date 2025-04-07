@@ -6,10 +6,27 @@ use wasm_bindgen::prelude::wasm_bindgen;
 use wasm_bindgen::{JsError, JsValue};
 use wasm_bindgen_futures::future_to_promise;
 
+#[wasm_bindgen]
+extern "C" {
+    #[wasm_bindgen(typescript_type = "HttpRequest")]
+    pub type JsHttpRequest;
+
+    #[wasm_bindgen(method, getter)]
+    pub fn url(this: &JsHttpRequest) -> String;
+
+    #[wasm_bindgen(method, getter)]
+    pub fn method(this: &JsHttpRequest) -> String;
+
+    #[wasm_bindgen(method, getter)]
+    pub fn headers(this: &JsHttpRequest) -> JsValue;
+
+    #[wasm_bindgen(method, getter)]
+    pub fn body(this: &JsHttpRequest) -> Option<String>;
+}
+
 /// An enum of HTTP methods available for making requests.
 ///
 /// This enum includes commonly used HTTP methods
-#[wasm_bindgen]
 #[derive(Clone, Copy, Debug)]
 pub enum HttpMethod {
     Get,
@@ -23,7 +40,6 @@ pub enum HttpMethod {
     Trace,
 }
 
-#[wasm_bindgen]
 pub struct HttpRequest {
     url: String,
     method: HttpMethod,
@@ -31,47 +47,36 @@ pub struct HttpRequest {
     body: Option<String>,
 }
 
-#[wasm_bindgen]
-impl HttpRequest {
-    /// Creates a new `HttpRequest` instance.
-    /// # Arguments
-    ///
-    /// * `url` - The URL for the request.
-    /// * `method` - The `HttpMethod` that indicates the HTTP method to use.
-    /// * `headers` - The `HTTPRequest` headers.
-    /// * `body` -The request body.
-    #[wasm_bindgen(constructor)]
-    pub fn new(url: String, method: HttpMethod, headers: JsValue, body: Option<String>) -> Self {
-        HttpRequest {
-            url,
-            method,
-            headers,
-            body,
-        }
+impl TryFrom<JsHttpRequest> for HttpRequest {
+    type Error = JsError;
+    fn try_from(value: JsHttpRequest) -> Result<Self, Self::Error> {
+        Ok(Self {
+            url: value.url(),
+            method: value.method().try_into()?,
+            headers: value.headers(),
+            body: value.body(),
+        })
     }
+}
 
-    /// The URL of the HTTP request.
-    #[wasm_bindgen(getter)]
-    pub fn url(&self) -> String {
-        self.url.clone()
-    }
+impl TryFrom<String> for HttpMethod {
+    type Error = JsError;
 
-    /// The HTTP method of the request.
-    #[wasm_bindgen(getter)]
-    pub fn method(&self) -> HttpMethod {
-        self.method
-    }
-
-    /// The headers of the HTTP request.
-    #[wasm_bindgen(getter)]
-    pub fn headers(&self) -> JsValue {
-        self.headers.clone()
-    }
-
-    /// The body of the HTTP request.
-    #[wasm_bindgen(getter)]
-    pub fn body(&self) -> Option<String> {
-        self.body.clone()
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        Ok(match value.as_str() {
+            "GET" => HttpMethod::Get,
+            "POST" => HttpMethod::Post,
+            "PUT" => HttpMethod::Put,
+            "DELETE" => HttpMethod::Delete,
+            "HEAD" => HttpMethod::Head,
+            "OPTIONS" => HttpMethod::Options,
+            "CONNECT" => HttpMethod::Connect,
+            "PATCH" => HttpMethod::Patch,
+            "TRACE" => HttpMethod::Trace,
+            _ => Err(JsError::new(
+                format!("Invalid HTTP Method value: {}", value).as_str(),
+            ))?,
+        })
     }
 }
 
@@ -225,26 +230,27 @@ fn convert_option_string_to_vec_u8(value: Option<String>) -> Vec<u8> {
 }
 
 #[wasm_bindgen]
-pub struct HttpClient(ReqwestClient);
+pub struct ReqwestHttpClient(ReqwestClient);
 
 #[wasm_bindgen]
-impl HttpClient {
+impl ReqwestHttpClient {
     /// Creates a new `HttpClient` instance using the default, secure configuration.
     #[wasm_bindgen(constructor)]
-    pub fn new() -> Result<HttpClient, JsError> {
+    pub fn new() -> Result<ReqwestHttpClient, JsError> {
         agent_sdk::reqwest::builder::ReqwestClientBuilder::new()
             .build()
-            .map(|client| HttpClient(client))
+            .map(|client| ReqwestHttpClient(client))
             .map_err(JsError::from)
     }
 
     /// Creates a new `HttpClient` instance with an insecure configuration.
+    #[cfg(debug_assertions)]
     #[wasm_bindgen]
-    pub fn insecure() -> Result<HttpClient, JsError> {
+    pub fn insecure() -> Result<ReqwestHttpClient, JsError> {
         agent_sdk::reqwest::builder::ReqwestClientBuilder::new()
             .insecure()
             .build()
-            .map(|client| HttpClient(client))
+            .map(|client| ReqwestHttpClient(client))
             .map_err(JsError::from)
     }
 
@@ -264,8 +270,10 @@ impl HttpClient {
     /// - The asynchronous HTTP call fails (e.g., network issues, server errors).
     /// - The response headers or body cannot be processed correctly.
     #[wasm_bindgen(js_name = asyncCall, unchecked_return_type = "Promise<HttpResponse>")]
-    pub fn async_call(&self, request: HttpRequest) -> Promise {
+    pub fn async_call(&self, request: JsHttpRequest) -> Promise {
         let client = self.0.clone();
+
+        let request: HttpRequest = request.try_into().unwrap();
 
         web_sys::console::info_1(&JsValue::from(format!(
             "Making HTTP request is started: method - {:?}, url - {}",
@@ -327,7 +335,7 @@ impl HttpClient {
     }
 }
 
-impl HttpClient {
+impl ReqwestHttpClient {
     pub fn inner(&self) -> ReqwestClient {
         self.0.clone()
     }

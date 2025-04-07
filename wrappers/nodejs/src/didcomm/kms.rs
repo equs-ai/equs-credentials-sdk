@@ -6,7 +6,7 @@ use agent_sdk::kms::{
     KeyID, KeyType, Kms, ResolvingSnafu,
 };
 use async_trait::async_trait;
-use napi::bindgen_prelude::Promise;
+use napi::bindgen_prelude::{Promise, Uint8Array};
 use napi::threadsafe_function::{ErrorStrategy, ThreadsafeFunction};
 use napi_derive::napi;
 
@@ -17,8 +17,8 @@ pub struct DIDCommKms {
     pub create: ThreadsafeFunction<JsKeyType, ErrorStrategy::Fatal>,
     #[napi(ts_type = "(kid: string) => Promise<KeyHandle>")]
     pub get: ThreadsafeFunction<String, ErrorStrategy::Fatal>,
-    #[napi(ts_type = "(pk: Array<number>) => Promise<KeyHandle>")]
-    pub get_by_public_key: ThreadsafeFunction<Vec<u8>, ErrorStrategy::Fatal>,
+    #[napi(ts_type = "(pk: Uint8Array) => Promise<KeyHandle>")]
+    pub get_by_public_key: ThreadsafeFunction<Uint8Array, ErrorStrategy::Fatal>,
     #[napi(ts_type = "(params: ECDH1PUParams) => Promise<Array<number>>")]
     pub derive_ecdh1pu: ThreadsafeFunction<JsECDH1PUParams, ErrorStrategy::Fatal>,
     #[napi(ts_type = "(params: ECDHESParams) => Promise<Array<number>>")]
@@ -70,7 +70,7 @@ impl Kms<JsKeyHandle> for DIDCommKms {
     async fn get_by_public_key(&self, public_key: &[u8]) -> kms::Result<JsKeyHandle> {
         let promise: Promise<JsKeyHandle> = self
             .get_by_public_key
-            .call_async(public_key.to_vec())
+            .call_async(Uint8Array::from(public_key))
             .await
             .map_err(|err| {
                 ResolvingSnafu {

@@ -26,11 +26,26 @@ pub enum JsVerificationRelationshipType {
     CapabilityDelegation,
 }
 
-#[napi(js_name = "VerificationMethodKey", object, object_to_js = false)]
+#[napi(js_name = "VerificationMethodKey")]
 pub struct JsVerificationMethodKey {
-    pub key: JsKeyHandle,
-    pub verification_relationships: Vec<JsVerificationRelationshipType>,
+    key: JsKeyHandle,
+    verification_relationships: Vec<JsVerificationRelationshipType>,
 }
+
+#[napi]
+impl JsVerificationMethodKey {
+    #[napi(constructor)]
+    pub fn new(
+        key: JsKeyHandle,
+        verification_relationships: Vec<JsVerificationRelationshipType>,
+    ) -> Self {
+        Self {
+            key,
+            verification_relationships,
+        }
+    }
+}
+
 #[napi(js_name = "_UniversalDIDResolver")]
 pub struct JsUniversalDIDResolver {
     inner: UniversalResolver,
@@ -151,6 +166,7 @@ impl From<JsResolutionMetadata> for ResolutionMetadata {
 pub struct JsResolutionOutput {
     #[napi(ts_type = "DIDDocument")]
     pub document: JsonObject,
+    #[napi(js_name = "document_metadata")]
     pub document_metadata: JsDocumentMetadata,
     pub metadata: JsResolutionMetadata,
 }

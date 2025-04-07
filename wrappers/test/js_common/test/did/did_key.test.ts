@@ -1,5 +1,4 @@
-import { DIDKey, InMemKms } from "../../pkg";
-import { KeyType } from "../../types";
+import { DIDKey, InMemKms, KeyType } from "agent-sdk";
 
 describe("did:key: ", () => {
   test("generate DID", async () => {
@@ -9,7 +8,7 @@ describe("did:key: ", () => {
 
     const didKey = new DIDKey();
 
-    let did = didKey.generate(keyHandle);
+    const did = didKey.generate(keyHandle);
 
     expect(did.startsWith("did:key")).toBeTruthy();
   });

@@ -34,7 +34,7 @@ describe("Askar KMS: ", () => {
       expect(key.jwk).toBeDefined();
       expect(key.pubKey).toBeDefined();
 
-      const byPubKey = await kms.getByPublicKey(key.pubKey);
+      const byPubKey = await kms.getByPublicKey(Uint8Array.from(key.pubKey));
       expect(key).toEqual(byPubKey);
     }
   });

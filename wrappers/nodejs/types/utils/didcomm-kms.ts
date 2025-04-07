@@ -1,4 +1,4 @@
-import { DIDCommKms, ECDH1PUParams, ECDHESParams, KeyHandle, KeyType } from "../../binary";
+import { DIDCommKms, ECDH1PUParams, ECDHESParams, KeyHandle, KeyType } from "../..";
 import { WrappedKeyHandle } from "./keyHandle";
 
 class WrappedDIDCommKms implements DIDCommKms {
@@ -19,7 +19,7 @@ class WrappedDIDCommKms implements DIDCommKms {
     return new WrappedKeyHandle(keyHandle);
   }
 
-  async getByPublicKey(pk: Array<number>): Promise<KeyHandle> {
+  async getByPublicKey(pk: Uint8Array): Promise<KeyHandle> {
     const keyHandle = await this.kms.getByPublicKey(pk);
     return new WrappedKeyHandle(keyHandle);
   }

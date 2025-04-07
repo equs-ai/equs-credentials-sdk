@@ -1,31 +1,21 @@
-import { KeyHandle, KeyHandleTestHelper, Kms, KmsTestHelper } from "../pkg";
-import { Alg, KeyType } from "../types";
+import { Alg, KeyType, KeyHandle, KeyHandleTestHelper, Kms, KmsTestHelper } from "agent-sdk";
 
 describe("KMS: ", () => {
-  const publicKey = Uint8Array.from(Buffer.from(
-    "huX4QOwcvioB2N3njNOnTOtElUvf7KIQnm6NvdfK2bs4qWecmcxVAXxyCBYuzxSpVRG7ETk9mO3RjUzsFUtDCg",
-    "base64",
-  ));
-
-  const jwk = JSON.stringify(
-    {
-      kty: "EC",
-      kid: "618d228e-4767-4aa2-8683-c35c86d7025c",
-      crv: "P-256",
-      x: "huX4QOwcvioB2N3njNOnTOtElUvf7KIQnm6NvdfK2bs",
-      y: "4qWecmcxVAXxyCBYuzxSpVRG7ETk9mO3RjUzsFUtDCg",
-    },
+  const publicKey = Array.from(
+    Buffer.from("huX4QOwcvioB2N3njNOnTOtElUvf7KIQnm6NvdfK2bs4qWecmcxVAXxyCBYuzxSpVRG7ETk9mO3RjUzsFUtDCg", "base64"),
   );
 
-  const payload = Uint8Array.from(Buffer.from(
-    "cmF3X3Rlc3RfdmFsdWU=",
-    "base64",
-  ));
+  const jwk = JSON.stringify({
+    crv: "P-256",
+    kid: "618d228e-4767-4aa2-8683-c35c86d7025c",
+    kty: "EC",
+    x: "huX4QOwcvioB2N3njNOnTOtElUvf7KIQnm6NvdfK2bs",
+    y: "4qWecmcxVAXxyCBYuzxSpVRG7ETk9mO3RjUzsFUtDCg",
+  });
 
-  const signature = Uint8Array.from(Buffer.from(
-    "ZW5jcnlwdGVkX3Rlc3RfdmFsdWU=",
-    "base64",
-  ));
+  const payload = Uint8Array.from(Buffer.from("cmF3X3Rlc3RfdmFsdWU=", "base64"));
+
+  const signature = Uint8Array.from(Buffer.from("ZW5jcnlwdGVkX3Rlc3RfdmFsdWU=", "base64"));
 
   describe("KeyHandle: ", () => {
     test("get signing algorithm", async () => {
@@ -37,13 +27,13 @@ describe("KMS: ", () => {
     test("get public key", async () => {
       const test_key_handle = new KeyHandleTestHelper(mockKeyHandle());
 
-      expect(test_key_handle.pubKey).toEqual(publicKey);
+      expect(Array.from(test_key_handle.pubKey)).toEqual(publicKey);
     });
 
     test("get jwk", async () => {
       const test_key_handle = new KeyHandleTestHelper(mockKeyHandle());
 
-      expect(test_key_handle.pubKey).toEqual(publicKey);
+      expect(JSON.parse(test_key_handle.jwk)).toMatchObject(JSON.parse(jwk));
     });
 
     test("sign", async () => {
@@ -68,40 +58,37 @@ describe("KMS: ", () => {
   test("get by Key ID", async () => {
     const key_handle = await new KmsTestHelper(mockKms()).get("test_kid");
 
-    expect(key_handle.pubKey).toEqual(publicKey);
+    expect(Array.from(key_handle.pubKey)).toEqual(publicKey);
   });
 
   test("get by Public Key", async () => {
-    const key_handle = await new KmsTestHelper(mockKms()).getByPublicKey(publicKey);
+    const key_handle = await new KmsTestHelper(mockKms()).getByPublicKey(Uint8Array.from(publicKey));
 
-    expect(key_handle.pubKey).toEqual(publicKey);
+    expect(Array.from(key_handle.pubKey)).toEqual(publicKey);
   });
 
   function mockKeyHandle() {
-    return new MockKeyHandle(
-      Alg.ES256,
-      payload,
-      signature,
-      publicKey,
-      jwk,
-    );
+    return new MockKeyHandle(Alg.ES256, payload, signature, publicKey, jwk);
   }
 
   function mockKms() {
     return new MockKms(KeyType.P256, "test_kid", mockKeyHandle());
   }
-
 });
 
 class MockKeyHandle implements KeyHandle {
+  readonly pubKey: KeyHandle["pubKey"];
 
   constructor(
-    public readonly alg: Alg,
+    readonly alg: Alg,
     private readonly expected_payload: Uint8Array,
     private readonly expected_signature: Uint8Array,
-    public readonly pubKey?: Uint8Array,
-    public readonly jwk?: string,
+    pubKey?: number[] | Uint8Array,
+    readonly jwk?: string,
   ) {
+    this.pubKey = pubKey as KeyHandle["pubKey"];
+    this.sign = this.sign.bind(this);
+    this.verify = this.verify.bind(this);
   }
 
   async sign(payload: Uint8Array): Promise<Uint8Array> {
@@ -122,6 +109,9 @@ class MockKms implements Kms {
     private readonly kid: string,
     private readonly keyHandle: MockKeyHandle,
   ) {
+    this.create = this.create.bind(this);
+    this.get = this.get.bind(this);
+    this.getByPublicKey = this.getByPublicKey.bind(this);
   }
 
   async create(kt: KeyType): Promise<string> {
@@ -137,7 +127,7 @@ class MockKms implements Kms {
   }
 
   async getByPublicKey(pk: Uint8Array): Promise<KeyHandle> {
-    expect(pk).toEqual(this.keyHandle.pubKey);
+    expect(pk).toEqual(Uint8Array.from(this.keyHandle.pubKey));
 
     return this.keyHandle;
   }

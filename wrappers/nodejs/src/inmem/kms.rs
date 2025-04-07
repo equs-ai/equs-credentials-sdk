@@ -110,9 +110,9 @@ impl InMemKms {
     }
 
     #[napi]
-    pub async fn get_by_public_key(&self, public_key: Vec<u8>) -> Result<InMemKeyHandle> {
+    pub async fn get_by_public_key(&self, public_key: &[u8]) -> Result<InMemKeyHandle> {
         self.0
-            .get_by_public_key(public_key.as_slice())
+            .get_by_public_key(public_key)
             .await
             .map(InMemKeyHandle::new)
             .map_err(|err| Error::from_reason(format!("{err:?}")))

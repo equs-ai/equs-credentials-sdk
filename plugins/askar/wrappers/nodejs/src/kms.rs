@@ -8,7 +8,7 @@ use napi_derive::napi;
 ///
 /// @method {(kt: KeyType) => Promise<string>} create - Create and store a key in {@link Kms}.
 /// @method {(kid: string) => Promise<KeyHandle>} get - Returns {@link KeyHandle} for the provided `KID`
-/// @method {(pk: Array<number>) => Promise<KeyHandle>} getByPublicKey - Returns {@link KeyHandle} for the provided `Public Key`
+/// @method {(pk: Uint8Array) => Promise<KeyHandle>} getByPublicKey - Returns {@link KeyHandle} for the provided `Public Key`
 ///
 #[napi]
 pub struct AskarKms(askar::kms::AskarKms);
@@ -52,13 +52,13 @@ impl AskarKms {
 
     /// Returns {@link KeyHandle} for the provided public key.
     ///
-    /// @param {Array<number>} public_key - a public key for the requested key.
+    /// @param {Uint8Array} publicKey - a public key for the requested key.
     ///
     /// @returns {Promise<KeyHandle>} - A {@link KeyHandle} supporting basic crypto primitives on success.
     #[napi]
-    pub async fn get_by_public_key(&self, public_key: Vec<u8>) -> Result<AskarKeyHandle> {
+    pub async fn get_by_public_key(&self, public_key: Uint8Array) -> Result<AskarKeyHandle> {
         self.0
-            .get_by_public_key(public_key.as_slice())
+            .get_by_public_key(&public_key)
             .await
             .map(AskarKeyHandle::new)
             .map_err(|e| Error::from_reason(e.to_string()))

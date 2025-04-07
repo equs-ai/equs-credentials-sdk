@@ -14,13 +14,10 @@ describe("did:web: ", () => {
       sign: nativeKeyHandle.sign,
       verify: nativeKeyHandle.verify,
     };
-    const verificationMethodKey: VerificationMethodKey = {
-      key: keyHandle,
-      verificationRelationships: [
-        VerificationRelationshipType.KeyAgreement,
-        VerificationRelationshipType.Authentication,
-      ],
-    };
+    const verificationMethodKey = new VerificationMethodKey(keyHandle, [
+      VerificationRelationshipType.KeyAgreement,
+      VerificationRelationshipType.Authentication,
+    ]);
 
     let expected_did_doc = {
       "@context": ["https://www.w3.org/ns/did/v1", "https://w3id.org/security#EcdsaSecp256r1VerificationKey2019"],

@@ -324,13 +324,12 @@ pub mod test_utils {
         }
 
         #[napi]
-        pub async fn get_credential(&self, id: String) -> JsCredentialEntry {
+        pub async fn get_credential(&self, id: String) -> Option<JsCredentialEntry> {
             self.0
                 .get_credential(&id)
                 .await
                 .unwrap()
                 .map(|c| c.to_owned().try_into().unwrap())
-                .unwrap()
         }
     }
 }

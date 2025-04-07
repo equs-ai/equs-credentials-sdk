@@ -1,5 +1,5 @@
 use crate::did::resolver::{DIDResolver, JsDIDResolver};
-use crate::http::HttpClient;
+use crate::http::ReqwestHttpClient;
 use crate::kms::{JsKeyHandle, JsKms, Kms};
 use crate::utils;
 use crate::vault::{JsVault, Vault};
@@ -42,7 +42,7 @@ impl OID4VPHolderBuilder {
     ///
     /// * `http_client` - a custom HTTP client instance.
     #[wasm_bindgen(js_name = withHttpClient)]
-    pub fn with_http_client(self, client: &HttpClient) -> Self {
+    pub fn with_http_client(self, client: &ReqwestHttpClient) -> Self {
         OID4VPHolderBuilder(self.0.with_http_client(client.inner()))
     }
 

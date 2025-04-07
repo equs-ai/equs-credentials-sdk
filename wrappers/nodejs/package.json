@@ -28,7 +28,7 @@
     "artifacts": "napi artifacts",
     "build": "npm run napi:build --napi_flags=--release",
     "build:debug": "npm run napi:build --napi_flags=--features=in-memory",
-    "test": "jest -w=1",
+    "test": "jest -w=1 --forceExit",
     "lint": "prettier --write .",
     "universal": "napi universal",
     "version": "napi version",

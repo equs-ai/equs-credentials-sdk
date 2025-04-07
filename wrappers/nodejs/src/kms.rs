@@ -311,8 +311,8 @@ pub struct JsKms {
     pub create: ThreadsafeFunction<JsKeyType, ErrorStrategy::Fatal>,
     #[napi(ts_type = "(kid: string) => Promise<KeyHandle>")]
     pub get: ThreadsafeFunction<String, ErrorStrategy::Fatal>,
-    #[napi(ts_type = "(pk: Array<number>) => Promise<KeyHandle>")]
-    pub get_by_public_key: ThreadsafeFunction<Vec<u8>, ErrorStrategy::Fatal>,
+    #[napi(ts_type = "(pk: Uint8Array) => Promise<KeyHandle>")]
+    pub get_by_public_key: ThreadsafeFunction<Uint8Array, ErrorStrategy::Fatal>,
 }
 
 #[async_trait]
@@ -360,7 +360,7 @@ impl Kms<JsKeyHandle> for JsKms {
     async fn get_by_public_key(&self, public_key: &[u8]) -> kms::Result<JsKeyHandle> {
         let promise: Promise<JsKeyHandle> = self
             .get_by_public_key
-            .call_async(public_key.to_vec())
+            .call_async(Uint8Array::from(public_key))
             .await
             .map_err(|err| {
                 kms::ResolvingSnafu {
@@ -467,7 +467,7 @@ pub mod test_utils {
         }
 
         #[napi]
-        pub async fn get_by_public_key(&self, pub_key: Vec<u8>) -> KeyHandleTestHelper {
+        pub async fn get_by_public_key(&self, pub_key: Uint8Array) -> KeyHandleTestHelper {
             self.0
                 .get_by_public_key(&pub_key)
                 .await

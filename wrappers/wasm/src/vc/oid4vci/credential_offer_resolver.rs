@@ -1,4 +1,4 @@
-use crate::http::HttpClient;
+use crate::http::ReqwestHttpClient;
 use crate::utils::convert_to_opaque_object_unchecked;
 use crate::vc::oid4vci::OID4VCICredentialOffer;
 use agent_sdk::vc::oid4vci::CredentialOfferResolver;
@@ -25,7 +25,7 @@ impl OID4VCICredentialOfferResolver {
     }
 
     /// Returns a new [CredentialOfferResolver] to resolve credential offer params [OID4VCICredentialOffer]
-    /// by using a specific [HttpClient].
+    /// by using a specific [ReqwestHttpClient].
     ///
     /// # Arguments
     ///
@@ -35,7 +35,7 @@ impl OID4VCICredentialOfferResolver {
     ///
     /// A new credential offer resolver.
     #[wasm_bindgen(js_name = withHttpClient)]
-    pub fn with_http_client(http_client: HttpClient) -> Self {
+    pub fn with_http_client(http_client: ReqwestHttpClient) -> Self {
         let resolver = CredentialOfferResolver::with_http_client(http_client.inner());
 
         OID4VCICredentialOfferResolver(resolver)
