@@ -10,3 +10,8 @@ DerivedData/
 
 ### Generated Code ###
 **/asdk.swift
+
+### Swift Package Manager ###
+Packages/
+Package.pins
+Package.resolved

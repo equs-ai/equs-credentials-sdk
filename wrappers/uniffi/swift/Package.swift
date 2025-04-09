@@ -5,12 +5,15 @@ import PackageDescription
 
 let package = Package(
     name: "asdk",
-    platforms: [.iOS(.v15), .macOS(.v10_15)],
+    platforms: [.iOS(.v15)],
     products: [
         // Products define the executables and libraries a package produces, making them visible to other packages.
         .library(
             name: "Asdk",
             targets: ["Asdk"]),
+    ],
+    dependencies: [
+        .package(url: "https://github.com/httpswift/swifter.git", .upToNextMajor(from: "1.5.0"))
     ],
     targets: [
         // Targets are the basic building blocks of a package, defining a module or a test suite.
@@ -21,7 +24,10 @@ let package = Package(
             path: "Sources/Asdk"),
         .testTarget(
             name: "AsdkTests",
-            dependencies: ["Asdk"],
+            dependencies: [
+                "Asdk",
+                .product(name: "Swifter", package: "swifter")
+            ],
             path: "Tests/AsdkTests"),
         .binaryTarget(
             name: "AsdkFFI",
