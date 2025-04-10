@@ -906,6 +906,7 @@ mod tests {
                 client_id: "client_id".to_string(),
                 pop_lifetime: time::Duration::minutes(5),
             },
+            UniversalResolver::default(),
         );
 
         let holder = vc::oid4vp::holder::HolderService::new(
@@ -956,6 +957,7 @@ mod tests {
                 client_id: "client_id".to_string(),
                 pop_lifetime: time::Duration::minutes(5),
             },
+            UniversalResolver::default(),
         );
 
         let holder = crate::vc::oid4vp::holder::HolderService::new(

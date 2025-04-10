@@ -567,7 +567,7 @@ pub trait Holder: WasmNotSend + WasmNotSync {
 /// Implementation for `Verifier`: [VerifierService](crate::vc::core::verifier::VerifierService).
 #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 #[cfg_attr(not(target_arch = "wasm32"), async_trait)]
-pub trait Verifier: Send + Sync {
+pub trait Verifier: WasmNotSend + WasmNotSync {
     /// Verify a `Presentation`.
     ///
     /// # Arguments

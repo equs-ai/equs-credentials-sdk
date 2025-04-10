@@ -1,3 +1,4 @@
+use crate::did::universal::{DIDResolver, UniversalResolver};
 use crate::http::{HttpClient, HttpError, HttpSnafu};
 use crate::nonce::NonceGenerator;
 use crate::reqwest::builder::ReqwestClientBuilder;
@@ -68,6 +69,7 @@ where
     kms: KMS,
     http_client: Result<HC, HttpError>,
     nonce_generator: NG,
+    did_resolver: UniversalResolver,
 
     _marker: PhantomData<KH>,
 }
@@ -126,6 +128,7 @@ where
             clock_skew: None,
             cred_lifetime: Duration::days(DEFAULT_CRED_LIFETIME_DAYS),
             cred_conf_ids_with_key_metadata: Default::default(),
+            did_resolver: UniversalResolver::default(),
             _marker: Default::default(),
         }
     }
@@ -162,6 +165,7 @@ where
             cred_lifetime: self.cred_lifetime,
             nonce_generator: self.nonce_generator,
             cred_conf_ids_with_key_metadata: Default::default(),
+            did_resolver: self.did_resolver,
             _marker: Default::default(),
         }
     }
@@ -255,6 +259,39 @@ where
         self
     }
 
+    /// Sets custom did resolver for the Issuer.
+    ///
+    /// This method allows providing a custom did resolver.
+    /// If provided, it can be used to resolve did into the did document
+    ///
+    /// # Errors
+    ///
+    /// [Error::Build] - if did method already exists.
+    ///
+    /// # Arguments
+    ///
+    /// * `did_resolver` - did resolver implementing `DIDResolver`.
+    #[instrument(
+        level = Level::TRACE,
+        skip(self, did_resolver),
+    )]
+    pub fn with_did_resolver(
+        mut self,
+        did_resolver: impl DIDResolver + 'static,
+    ) -> Result<Self, Error> {
+        let mut universal_resolver = UniversalResolver::default();
+        universal_resolver
+            .add_resolver(did_resolver)
+            .map_err(|err| {
+                BuildSnafu {
+                    details: err.to_string(),
+                }
+                .build()
+            })?;
+        self.did_resolver = universal_resolver;
+        Ok(self)
+    }
+
     /// Builds an `Issuer`.
     ///
     /// # Returns
@@ -278,7 +315,7 @@ where
             }
             .build()
         })?;
-        let inner = vc::core::IssuerService::new(self.kms, issuer_metadata);
+        let inner = vc::core::IssuerService::new(self.kms, issuer_metadata, self.did_resolver);
 
         let http_client = self.http_client.map_err(|e| {
             BuildSnafu {
@@ -331,6 +368,7 @@ where
     vault: V,
     http_client: Result<HC, HttpError>,
     pop_lifetime: Duration,
+    did_resolver: UniversalResolver,
 
     _marker: PhantomData<KH>,
 }
@@ -381,6 +419,7 @@ where
             iss_discovery,
             redirect_url: "urn:ietf:wg:oauth:2.0:oob".to_string(),
             pop_lifetime: Duration::minutes(DEFAULT_POP_LIFETIME_MINUTES),
+            did_resolver: UniversalResolver::default(),
             _marker: Default::default(),
         }
     }
@@ -421,6 +460,39 @@ where
         self
     }
 
+    /// Sets custom did resolver for the Holder.
+    ///
+    /// This method allows providing a custom did resolver.
+    /// If provided, it can be used to resolve did into the did document
+    ///
+    /// # Errors
+    ///
+    /// [Error::Build] - if did method already exists.
+    ///
+    /// # Arguments
+    ///
+    /// * `did_resolver` - did resolver implementing `DIDResolver`.
+    #[instrument(
+        level = Level::TRACE,
+        skip(self, did_resolver),
+    )]
+    pub fn with_did_resolver(
+        mut self,
+        did_resolver: impl DIDResolver + 'static,
+    ) -> Result<Self, Error> {
+        let mut universal_resolver = UniversalResolver::default();
+        universal_resolver
+            .add_resolver(did_resolver)
+            .map_err(|err| {
+                BuildSnafu {
+                    details: err.to_string(),
+                }
+                .build()
+            })?;
+        self.did_resolver = universal_resolver;
+        Ok(self)
+    }
+
     /// Use a specific `HttpClient`.
     ///
     /// # Arguments
@@ -444,6 +516,7 @@ where
             vault: self.vault,
             _marker: Default::default(),
             pop_lifetime: self.pop_lifetime,
+            did_resolver: self.did_resolver,
         }
     }
 
@@ -462,7 +535,8 @@ where
             client_id: self.client_id.clone(),
             pop_lifetime: self.pop_lifetime,
         };
-        let inner = vc::core::HolderService::new(self.kms, self.vault, holder_metadata);
+        let inner =
+            vc::core::HolderService::new(self.kms, self.vault, holder_metadata, self.did_resolver);
 
         let http_client = self.http_client.map_err(|e| {
             BuildSnafu {

@@ -99,6 +99,12 @@ impl JsUniversalDIDResolver {
     }
 }
 
+impl From<&JsUniversalDIDResolver> for UniversalResolver {
+    fn from(value: &JsUniversalDIDResolver) -> UniversalResolver {
+        value.inner.clone()
+    }
+}
+
 #[napi(js_name = "ResolutionOptions")]
 pub struct JsResolutionOptions {
     #[napi(ts_type = "'application/did+json' | 'application/did+ld+json'")]

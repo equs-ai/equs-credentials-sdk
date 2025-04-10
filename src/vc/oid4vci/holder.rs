@@ -730,6 +730,7 @@ impl TryInto<SpruceProof> for AsdkProof {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::did::universal::UniversalResolver;
     use crate::http::MockHttpClient;
     use crate::inmem::kms::LocalKms;
     use crate::inmem::vault::InMemVault;
@@ -1208,7 +1209,8 @@ mod tests {
             pop_lifetime: time::Duration::minutes(5),
         };
 
-        let inner = vc::core::HolderService::new(kms, vault, holder_metadata);
+        let inner =
+            vc::core::HolderService::new(kms, vault, holder_metadata, UniversalResolver::default());
 
         HolderService::from_metadata(
             inner,

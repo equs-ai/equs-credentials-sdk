@@ -1,11 +1,11 @@
 use crate::crypto::{Alg, Key, Signer, SigningOptions};
 use crate::did::universal::UniversalResolver;
-use crate::did::DIDURL;
+use crate::did::{DIDResolver, DIDURL};
 use crate::nonce::Nonce;
 use crate::vc::claims::{Claim, Claims};
 use crate::vc::core::PresentationInput;
 use crate::vc::formats::{
-    resolve_verification_method, ClaimsSnafu, CryptoSuiteCreationSnafu, GetDateTimeClaim,
+    ClaimsSnafu, CredentialCreationSnafu, CryptoSuiteCreationSnafu, DIDSnafu, GetDateTimeClaim,
     HasClaims, HasCredential, IriBufParsingSnafu, IriRefParsingSnafu, JsonPointerParsingSnafu,
     JsonSnafu, KeyTypeNotSupportedSnafu, MultipleCredentialsNotSupportedSnafu,
     MultipleSubjectNotSupportedSnafu, NoCredentialSnafu, ParsingSnafu, PresentationSnafu, Result,
@@ -114,11 +114,13 @@ pub struct VPMetadata {
     pub contexts: Context,
     pub type_: OneOrMany<String>,
     pub disclosures: Vec<JsonPointerBuf>,
+    pub nonce: Nonce,
+    pub verifier_id: String,
 }
 
 impl VPMetadata {
     #[instrument(level = Level::TRACE, ret())]
-    pub fn new(vc: &VC) -> Result<Self> {
+    pub fn new(vc: &VC, nonce: Nonce, verifier_id: String) -> Result<Self> {
         let is_v2 = vc.json_ld_context().iter().any(|c| {
             c.as_slice()
                 .contains(&IriRef(CREDENTIALS_V2_CONTEXT_IRI.to_owned().into()))
@@ -141,16 +143,19 @@ impl VPMetadata {
             contexts: Context::One(IriRef(context)),
             type_: types,
             disclosures: vec![],
+            nonce,
+            verifier_id,
         })
     }
 
     pub fn set_disclosures(&mut self, disclosures: Vec<JsonPointerBuf>) {
         self.disclosures = disclosures;
     }
-
     pub fn from_presentation_input(
         vc: &VC,
         presentation_input: &PresentationInput,
+        nonce: Nonce,
+        verifier_id: String,
     ) -> Result<Self> {
         let disclosures = if JsonLdAPI::is_bbs_plus_signed(vc) {
             JsonLdAPI::resolve_disclosures_for_bbs_plus_signed_vc(presentation_input)?
@@ -158,7 +163,7 @@ impl VPMetadata {
             vec![]
         };
 
-        let mut metadata = Self::new(vc)?;
+        let mut metadata = Self::new(vc, nonce, verifier_id)?;
         metadata.set_disclosures(disclosures);
 
         Ok(metadata)
@@ -217,6 +222,7 @@ impl HasCredential<VC> for VP {
     }
 }
 
+#[derive(Default, Debug)]
 pub struct JsonLdAPI;
 struct JsonLdSigner<S: Signer + Key> {
     signer: Arc<S>,
@@ -314,7 +320,11 @@ impl JsonLdAPI {
     }
 
     #[instrument(level = Level::TRACE, ret())]
-    fn create_presentation(vc: VC, metadata: VPMetadata, holder_did: &str) -> Result<Presentation> {
+    fn create_presentation(
+        vc: VC,
+        metadata: &VPMetadata,
+        holder_did: &str,
+    ) -> Result<Presentation> {
         let vc = match vc.claims {
             Credential::V1(v1_vc) => {
                 let (context, types) =
@@ -363,11 +373,12 @@ impl JsonLdAPI {
         Ok(vc)
     }
 
-    #[instrument(level = Level::TRACE, err(), ret())]
+    #[instrument(level = Level::TRACE, skip(did_resolver), err(), ret())]
     async fn create_vp_for_bbs_plus_signed_vc(
         vc: VC,
         metadata: VPMetadata,
         holder_did: &str,
+        did_resolver: UniversalResolver,
     ) -> Result<VP> {
         let (context, types) =
             Self::resolve_context_and_types(&metadata.contexts, &metadata.type_)?;
@@ -378,7 +389,7 @@ impl JsonLdAPI {
             .build()
         })?);
 
-        let verifier = VerificationParameters::from_resolver(UniversalResolver::default());
+        let verifier = VerificationParameters::from_resolver(did_resolver.clone());
         let mut selection_opts = AnySelectionOptions::default();
         selection_opts.selective_pointers = metadata.disclosures;
 
@@ -547,12 +558,13 @@ impl GetDateTimeClaim<Claims, DateTime> for JsonLdAPI {
 #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 #[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl API<Claims, VC, VP, VCMetadata, VPMetadata, ()> for JsonLdAPI {
-    #[instrument(level = Level::TRACE, skip(issuer_data, holder_data), err(), ret())]
+    #[instrument(level = Level::TRACE, skip(issuer_data, holder_data, did_resolver), err(), ret())]
     async fn create_vc<S, K>(
         claims: Claims,
         issuer_data: (&DIDURL, S),
         holder_data: (&DIDURL, K),
         metadata: VCMetadata,
+        did_resolver: UniversalResolver,
     ) -> Result<VC>
     where
         S: Signer + Key,
@@ -567,8 +579,6 @@ impl API<Claims, VC, VP, VCMetadata, VPMetadata, ()> for JsonLdAPI {
             }
             .build()
         })?;
-
-        let resolver = UniversalResolver::default();
 
         let vc = JsonLdAPI::create_credential(
             &metadata,
@@ -602,7 +612,7 @@ impl API<Claims, VC, VP, VCMetadata, VPMetadata, ()> for JsonLdAPI {
             .sign_with(
                 ssi::claims::SignatureEnvironment::default(),
                 vc,
-                &resolver,
+                &did_resolver,
                 signer,
                 ProofOptions::from_method(issuer_data.0.as_iri().into()),
                 sign_opts,
@@ -611,13 +621,12 @@ impl API<Claims, VC, VP, VCMetadata, VPMetadata, ()> for JsonLdAPI {
             .context(SpruceSigningSnafu)
     }
 
-    #[instrument(level = Level::TRACE, skip(holder_signer, nonce), err(), ret())]
+    #[instrument(level = Level::TRACE, skip(holder_signer, did_resolver), err(), ret())]
     async fn create_vp<S>(
         credential: &VC,
         holder_signer: S,
-        nonce: &Nonce,
-        verifier_id: &str,
         metadata: VPMetadata,
+        did_resolver: UniversalResolver,
     ) -> Result<VP>
     where
         S: Signer + Key,
@@ -653,13 +662,13 @@ impl API<Claims, VC, VP, VCMetadata, VPMetadata, ()> for JsonLdAPI {
                 credential.to_owned(),
                 metadata,
                 &holder_did,
+                did_resolver,
             )
             .await;
         }
-        let vp = JsonLdAPI::create_presentation(credential.to_owned(), metadata, &holder_did)?;
+        let vp = JsonLdAPI::create_presentation(credential.to_owned(), &metadata, &holder_did)?;
 
-        let resolver = UniversalResolver::default();
-        let verifier = VerificationParameters::from_resolver(&resolver);
+        let verifier = VerificationParameters::from_resolver(&did_resolver);
 
         let (suite, sign_opts) = match &credential.claims {
             Credential::V2(_) => {
@@ -681,7 +690,28 @@ impl API<Claims, VC, VP, VCMetadata, VPMetadata, ()> for JsonLdAPI {
             signer: Arc::new(holder_signer),
         });
 
-        let verification_method = resolve_verification_method(&holder_did).await?;
+        let verification_method = did_resolver
+            .resolve_into_any_verification_method(ssi::dids::DID::new(&holder_did).map_err(
+                |e| {
+                    DIDSnafu {
+                        details: e.to_string(),
+                    }
+                    .build()
+                },
+            )?)
+            .await
+            .map_err(|e| {
+                CredentialCreationSnafu {
+                    details: format!("Can not resolve verification method: {e}"),
+                }
+                .build()
+            })?
+            .ok_or_else(|| {
+                CredentialCreationSnafu {
+                    details: "Can not find verification method",
+                }
+                .build()
+            })?;
         let verification_method_id =
             IriBuf::from_str(&verification_method.id).context(IriBufParsingSnafu)?;
 
@@ -689,18 +719,21 @@ impl API<Claims, VC, VP, VCMetadata, VPMetadata, ()> for JsonLdAPI {
             ReferenceOrOwned::Reference(verification_method_id.clone()),
             AnyInputSuiteOptions::new(),
         );
-        params.nonce = Some(nonce.secret().to_owned());
+        params.nonce = Some(metadata.nonce.secret().to_owned());
 
         suite
-            .sign(vp, resolver, &signer, params)
+            .sign(vp, did_resolver.clone(), &signer, params)
             .await
             .context(SpruceSigningSnafu)
     }
 
-    #[instrument(level = Level::TRACE, err(), ret())]
-    async fn verify_vc(credential: &VC, opts: VerifyOptions) -> Result<()> {
-        let resolver = UniversalResolver::default();
-        let verifier = VerificationParameters::from_resolver(resolver);
+    #[instrument(level = Level::TRACE, skip(did_resolver), err(), ret())]
+    async fn verify_vc(
+        credential: &VC,
+        opts: VerifyOptions,
+        did_resolver: UniversalResolver,
+    ) -> Result<()> {
+        let verifier = VerificationParameters::from_resolver(did_resolver);
 
         let credential = if Self::is_bbs_plus_signed(credential) {
             let selection_opts = Self::prepare_bbs_plus_selection_opts(opts)?;
@@ -729,15 +762,15 @@ impl API<Claims, VC, VP, VCMetadata, VPMetadata, ()> for JsonLdAPI {
         Ok(())
     }
 
-    #[instrument(level = Level::TRACE, skip(nonce), err(), ret())]
+    #[instrument(level = Level::TRACE, skip(nonce, did_resolver), err(), ret())]
     async fn verify_vp(
         presentation: &VP,
         nonce: &Nonce,
         verifier_id: &str,
         opts: VerifyOptions,
+        did_resolver: UniversalResolver,
     ) -> Result<()> {
-        let resolver = UniversalResolver::default();
-        let verifier = VerificationParameters::from_resolver(resolver);
+        let verifier = VerificationParameters::from_resolver(did_resolver);
 
         match &presentation.claims {
             Presentation::V2(vp) if presentation.proofs.is_empty() => {
@@ -888,11 +921,12 @@ mod tests {
             (&iss_did_url, iss_kh),
             (&hld_did_url, hld_kh),
             metadata,
+            UniversalResolver::default(),
         )
         .await
         .unwrap();
 
-        JsonLdAPI::verify_vc(&vc, VerifyOptions::default())
+        JsonLdAPI::verify_vc(&vc, VerifyOptions::default(), UniversalResolver::default())
             .await
             .unwrap();
 
@@ -972,11 +1006,12 @@ mod tests {
             (&iss_did_url, iss_kh),
             (&hld_did_url, hld_kh),
             metadata,
+            UniversalResolver::default(),
         )
         .await
         .unwrap();
 
-        JsonLdAPI::verify_vc(&vc, VerifyOptions::default())
+        JsonLdAPI::verify_vc(&vc, VerifyOptions::default(), UniversalResolver::default())
             .await
             .unwrap();
 
@@ -1052,6 +1087,7 @@ mod tests {
             (&iss_did_url, iss_kh),
             (&hld_did_url, hld_kh.clone()),
             metadata,
+            UniversalResolver::default(),
         )
         .await
         .unwrap();
@@ -1063,7 +1099,9 @@ mod tests {
                 "/credentialSubject/alumniOf".parse().unwrap(),
             ]),
         };
-        JsonLdAPI::verify_vc(&vc_base, ver_opts).await.unwrap();
+        JsonLdAPI::verify_vc(&vc_base, ver_opts, UniversalResolver::default())
+            .await
+            .unwrap();
 
         let vc = serde_json::to_value(&vc_base)
             .unwrap()
@@ -1135,6 +1173,7 @@ mod tests {
             (&iss_did_url, failed_signer_key(iss_kh)),
             (&hld_did_url, hld_kh),
             metadata,
+            UniversalResolver::default(),
         )
         .await;
 
@@ -1164,6 +1203,7 @@ mod tests {
             (&iss_did_url, no_jwk_key()),
             (&hld_did_url, hld_kh),
             metadata,
+            UniversalResolver::default(),
         )
         .await;
 
@@ -1209,6 +1249,7 @@ mod tests {
             (&iss_did_url, iss_kh),
             (&hld_did_url, hld_kh),
             metadata,
+            UniversalResolver::default(),
         )
         .await;
 
@@ -1244,6 +1285,7 @@ mod tests {
             (&iss_did_url, iss_kh),
             (&hld_did_url, hld_kh.clone()),
             metadata,
+            UniversalResolver::default(),
         )
         .await
         .unwrap();
@@ -1253,9 +1295,8 @@ mod tests {
         let presentation = JsonLdAPI::create_vp(
             &vc,
             hld_kh,
-            &nonce,
-            "verifier_id",
-            VPMetadata::new(&vc).unwrap(),
+            VPMetadata::new(&vc, nonce.to_owned(), "verifier_id".to_string()).unwrap(),
+            UniversalResolver::default(),
         )
         .await
         .unwrap();
@@ -1265,6 +1306,7 @@ mod tests {
             &nonce,
             "verifier_id",
             VerifyOptions::default(),
+            UniversalResolver::default(),
         )
         .await
         .unwrap();
@@ -1333,6 +1375,7 @@ mod tests {
             (&iss_did_url, iss_kh),
             (&hld_did_url, hld_kh.clone()),
             metadata,
+            UniversalResolver::default(),
         )
         .await
         .unwrap();
@@ -1342,9 +1385,8 @@ mod tests {
         let presentation = JsonLdAPI::create_vp(
             &vc,
             hld_kh,
-            &nonce,
-            "verifier_id",
-            VPMetadata::new(&vc).unwrap(),
+            VPMetadata::new(&vc, nonce.to_owned(), "verifier_id".to_string()).unwrap(),
+            UniversalResolver::default(),
         )
         .await
         .unwrap();
@@ -1354,6 +1396,7 @@ mod tests {
             &nonce,
             "verifier_id",
             VerifyOptions::default(),
+            UniversalResolver::default(),
         )
         .await
         .unwrap();
@@ -1426,24 +1469,32 @@ mod tests {
             (&iss_did_url, iss_kh),
             (&hld_did_url, hld_kh.clone()),
             metadata,
+            UniversalResolver::default(),
         )
         .await
         .unwrap();
 
-        let mut vp_metadata = VPMetadata::new(&vc_base).unwrap();
+        let nonce = LocalNonceGenerator::default().generate().await.unwrap();
+        let mut vp_metadata =
+            VPMetadata::new(&vc_base, nonce.clone(), "verifier_id".to_string()).unwrap();
         vp_metadata.disclosures = vec![
             "/type".parse().unwrap(),
             "/issuer".parse().unwrap(),
             "/credentialSubject/alumniOf".parse().unwrap(),
         ];
-        let nonce = LocalNonceGenerator::default().generate().await.unwrap();
-        let vp = JsonLdAPI::create_vp(&vc_base, hld_kh, &nonce, "verifier_id", vp_metadata)
+        let vp = JsonLdAPI::create_vp(&vc_base, hld_kh, vp_metadata, UniversalResolver::default())
             .await
             .unwrap();
 
-        JsonLdAPI::verify_vp(&vp, &nonce, "verifier_id", VerifyOptions::default())
-            .await
-            .unwrap();
+        JsonLdAPI::verify_vp(
+            &vp,
+            &nonce,
+            "verifier_id",
+            VerifyOptions::default(),
+            UniversalResolver::default(),
+        )
+        .await
+        .unwrap();
         let vp = serde_json::to_value(vp)
             .unwrap()
             .as_object()
@@ -1511,6 +1562,7 @@ mod tests {
             (&iss_did_url, iss_kh),
             (&hld_did_url, hld_kh.clone()),
             metadata,
+            UniversalResolver::default(),
         )
         .await
         .unwrap();
@@ -1520,9 +1572,8 @@ mod tests {
         let result = JsonLdAPI::create_vp(
             &vc,
             failed_signer_key(hld_kh),
-            &nonce,
-            "verifier_id",
-            VPMetadata::new(&vc).unwrap(),
+            VPMetadata::new(&vc, nonce, "verifier_id".to_string()).unwrap(),
+            UniversalResolver::default(),
         )
         .await;
 
@@ -1550,6 +1601,7 @@ mod tests {
             (&iss_did_url, iss_kh),
             (&hld_did_url, hld_kh),
             metadata,
+            UniversalResolver::default(),
         )
         .await
         .unwrap();
@@ -1559,9 +1611,8 @@ mod tests {
         let result = JsonLdAPI::create_vp(
             &vc,
             no_jwk_key(),
-            &nonce,
-            "verifier_id",
-            VPMetadata::new(&vc).unwrap(),
+            VPMetadata::new(&vc, nonce, "verifier_id".to_string()).unwrap(),
+            UniversalResolver::default(),
         )
         .await;
 

@@ -2400,6 +2400,7 @@ pub mod utils {
                 client_id: "client_id".to_string(),
                 pop_lifetime: time::Duration::minutes(5),
             },
+            UniversalResolver::default(),
         );
 
         HolderService::new(inner, http_client, kms, UniversalResolver::default(), None)
@@ -2416,7 +2417,7 @@ pub mod utils {
             key_metadata.kid = "invalid_key_id".to_string();
         }
 
-        let inner = vc::core::VerifierService::new(&did);
+        let inner = vc::core::VerifierService::new(&did, UniversalResolver::default());
         let sub_syntax_types = SubjectSyntaxTypesSupported(vec!["did:key".to_string()]);
 
         let mut client_metadata =
@@ -2456,7 +2457,7 @@ pub mod utils {
             .returning(move |_| Ok(failed_signer_key(key_handle.clone())));
 
         let verifier = VerifierService::new(
-            vc::core::VerifierService::new(&did),
+            vc::core::VerifierService::new(&did, UniversalResolver::default()),
             kms_mock,
             LocalNonceGenerator::default(),
             MockHttpClient::new(),
@@ -2502,6 +2503,7 @@ pub mod utils {
                 disclosures,
                 credential_status: None,
             },
+            UniversalResolver::default(),
         )
         .await
         .unwrap()
@@ -2541,6 +2543,7 @@ pub mod utils {
             (&issuer_did_url, issuer_key_handle),
             (&holder_did_url, holder_key_handle.clone()),
             vc_metadata,
+            UniversalResolver::default(),
         )
         .await
         .unwrap()
@@ -2556,11 +2559,12 @@ pub mod utils {
         SdJwtAPI::create_vp(
             vc,
             holder_key_handle.clone(),
-            nonce,
-            verifier_id,
             VPMetadata {
                 disclosures: disclosures.as_object().unwrap().to_owned(),
+                nonce: nonce.to_owned(),
+                verifier_id: verifier_id.to_string(),
             },
+            UniversalResolver::default(),
         )
         .await
         .unwrap()
@@ -2611,6 +2615,7 @@ pub mod utils {
                 client_id: "client_id".to_string(),
                 pop_lifetime: time::Duration::minutes(5),
             },
+            UniversalResolver::default(),
         );
 
         let holder = HolderService::new(

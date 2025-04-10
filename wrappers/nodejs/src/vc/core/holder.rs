@@ -1,3 +1,4 @@
+use crate::did::JsUniversalDIDResolver;
 use crate::kms::JsKms;
 use crate::vault::{JsCredentialEntry, JsVault};
 use crate::vc::core::{JsCredential, JsCredentialMetadata, JsHolderMetadata, JsKeyMetadata};
@@ -169,8 +170,13 @@ impl VCCoreHolder {
 
 #[allow(unused)]
 #[napi]
-pub fn create_holder(kms: JsKms, vault: JsVault, metadata: JsHolderMetadata) -> VCCoreHolder {
+pub fn create_holder(
+    kms: JsKms,
+    vault: JsVault,
+    metadata: JsHolderMetadata,
+    did_resolver: &JsUniversalDIDResolver,
+) -> VCCoreHolder {
     let metadata = metadata.into();
-    let holder_service = CoreHolderService::new(kms, vault, metadata);
+    let holder_service = CoreHolderService::new(kms, vault, metadata, did_resolver.into());
     VCCoreHolder(Box::new(holder_service))
 }

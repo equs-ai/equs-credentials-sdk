@@ -1,3 +1,4 @@
+use crate::did::JsUniversalDIDResolver;
 use crate::http::JsHttpClient;
 use crate::utils::to_json_object;
 use crate::vc::core::JsPresentation;
@@ -65,7 +66,10 @@ impl VCCoreVerifier {
 
 #[allow(unused)]
 #[napi]
-pub fn create_verifier(verifier_id: String) -> VCCoreVerifier {
-    let verifier_service = CoreVerifierService::new(&verifier_id);
+pub fn create_verifier(
+    verifier_id: String,
+    did_resolver: &JsUniversalDIDResolver,
+) -> VCCoreVerifier {
+    let verifier_service = CoreVerifierService::new(&verifier_id, did_resolver.into());
     VCCoreVerifier(Box::new(verifier_service))
 }

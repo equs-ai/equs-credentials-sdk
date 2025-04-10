@@ -1,3 +1,4 @@
+use crate::did::JsDIDResolver;
 use crate::http::ReqwestHttpClient;
 use crate::kms::JsKms;
 use crate::nonce::JsNonceGenerator;
@@ -21,6 +22,7 @@ pub async fn _build_vp_verifier(
     client_id: String,
     #[napi(ts_arg_type = "ClientMetadata | null | undefined")] client_metadata: Option<JsonObject>,
     http_client: Option<&ReqwestHttpClient>,
+    did_resolver: Option<JsDIDResolver>,
 ) -> Result<OID4VPVerifier> {
     let key_metadata: KeyMetadata = key_metadata.into();
     let mut builder =
@@ -33,6 +35,9 @@ pub async fn _build_vp_verifier(
             )?)
             .map_err(|err| Error::new(Status::InvalidArg, err))?,
         );
+    }
+    if let Some(did_resolver) = did_resolver {
+        builder = builder.with_did_resolver(did_resolver).unwrap();
     }
 
     if let Some(http_client) = http_client {
@@ -55,6 +60,7 @@ pub async fn _build_vp_holder(
     #[napi(ts_arg_type = "WalletMetadata | null | undefined")] wallet_metadata: Option<JsonObject>,
     http_client: Option<&ReqwestHttpClient>,
     pop_lifetime: Option<JsDuration>,
+    did_resolver: Option<JsDIDResolver>,
 ) -> Result<OID4VPHolder> {
     let mut builder = agent_sdk::vc::oid4vp::HolderBuilder::new(kms, vault, client_id);
 
@@ -71,6 +77,9 @@ pub async fn _build_vp_holder(
         builder = builder.with_http_client(http_client.inner())
     }
 
+    if let Some(did_resolver) = did_resolver {
+        builder = builder.with_did_resolver(did_resolver).unwrap();
+    }
     let holder = builder
         .build()
         .await

@@ -1,6 +1,7 @@
 //! Revocation Status List APIs.
 
 use crate::crypto::Signer;
+use crate::did::universal::UniversalResolver;
 use crate::http::HttpClient;
 use crate::vc::claims::Claims;
 use async_trait::async_trait;
@@ -75,5 +76,9 @@ pub trait API<CS, ST, SL, MD> {
     where
         S: Signer;
 
-    async fn get_vc_status(vc_claims: &Claims, http_client: &dyn HttpClient) -> Result<Option<CS>>;
+    async fn get_vc_status(
+        vc_claims: &Claims,
+        http_client: &dyn HttpClient,
+        did_resolver: UniversalResolver,
+    ) -> Result<Option<CS>>;
 }

@@ -13,6 +13,7 @@ import {
   HttpClient,
   HttpRequest,
   HttpResponse,
+  _UniversalDIDResolver,
 } from "../../";
 import { jwtDecode } from "jwt-decode";
 import { Utils } from "./utils";
@@ -25,11 +26,13 @@ describe("VC::Core", () => {
 
   beforeEach(async () => {
     statusIssuer = createStatusIssuer(utils.kms, await utils.getStatusIssuerMetadata());
-    issuer = createIssuer(utils.kms, await utils.getIssuerMetadata());
-    holder = createHolder(utils.kms, utils.vault, {
-      clientId: "wallet-dev",
-      popLifetime: { nanoseconds: 0, seconds: 300 },
-    });
+    issuer = createIssuer(utils.kms, await utils.getIssuerMetadata(), new _UniversalDIDResolver());
+    holder = createHolder(
+      utils.kms,
+      utils.vault,
+      { clientId: "wallet-dev", popLifetime: { nanoseconds: 0, seconds: 300 } },
+      new _UniversalDIDResolver(),
+    );
   });
 
   describe("StatusIssuer", () => {
@@ -202,7 +205,7 @@ describe("VC::Core", () => {
   describe("Verifier", () => {
     let verifier: VcCoreVerifier;
     beforeEach(async () => {
-      verifier = createVerifier(utils.verifierId);
+      verifier = createVerifier(utils.verifierId, new _UniversalDIDResolver());
     });
 
     it("verify presentation and VC status", async () => {

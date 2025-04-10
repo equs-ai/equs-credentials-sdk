@@ -195,7 +195,7 @@ where
             .build()
         })?;
 
-        let inner = vc::core::VerifierService::new(&self.client_id);
+        let inner = vc::core::VerifierService::new(&self.client_id, self.did_resolver.clone());
 
         let verifier = VerifierService::new(
             inner,
@@ -402,7 +402,12 @@ where
 
         debug!(?holder_metadata);
 
-        let inner = vc::core::HolderService::new(self.kms.clone(), self.vault, holder_metadata);
+        let inner = vc::core::HolderService::new(
+            self.kms.clone(),
+            self.vault,
+            holder_metadata,
+            self.did_resolver.clone(),
+        );
         let http_client = self.http_client.map_err(|e| {
             BuildSnafu {
                 details: format!("Cannot initialize http client: {e}"),

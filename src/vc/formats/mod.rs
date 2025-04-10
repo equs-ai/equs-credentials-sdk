@@ -3,13 +3,12 @@
 use std::fmt::Debug;
 
 use crate::crypto;
-use crate::did::DIDResolver;
+use crate::did::universal::UniversalResolver;
 use crate::nonce::Nonce;
 use async_trait::async_trait;
 use common_macros::DebugError;
 use snafu::{Location, Snafu};
 use ssi::claims::SignatureError;
-use ssi::dids::document::DIDVerificationMethod;
 use ssi::dids::DIDURL;
 
 pub mod json_ld_vc;
@@ -201,6 +200,7 @@ where
         issuer_data: (&DIDURL, S),
         holder_data: (&DIDURL, K),
         metadata: CM,
+        did_resolver: UniversalResolver,
     ) -> Result<C>
     where
         S: crypto::Signer + crypto::Key,
@@ -209,20 +209,24 @@ where
     async fn create_vp<S>(
         credential: &C,
         holder_signer: S,
-        nonce: &Nonce,
-        verifier_id: &str,
         metadata: PM,
+        did_resolver: UniversalResolver,
     ) -> Result<P>
     where
         S: crypto::Signer + crypto::Key;
 
-    async fn verify_vc(credential: &C, opts: VerifyOptions) -> Result<()>;
+    async fn verify_vc(
+        credential: &C,
+        opts: VerifyOptions,
+        did_resolver: UniversalResolver,
+    ) -> Result<()>;
 
     async fn verify_vp(
         presentation: &P,
         nonce: &Nonce,
         verifier_id: &str,
         opts: VerifyOptions,
+        did_resolver: UniversalResolver,
     ) -> Result<VR>;
 }
 
@@ -236,29 +240,4 @@ pub trait HasCredential<C> {
 
 pub trait GetDateTimeClaim<CL, EC> {
     fn get_date_time_claim(exp_key: &str, claims: &CL) -> Option<EC>;
-}
-
-pub(super) async fn resolve_verification_method(did: &str) -> Result<DIDVerificationMethod> {
-    use crate::did::universal::UniversalResolver;
-
-    UniversalResolver::default()
-        .resolve_into_any_verification_method(ssi::dids::DID::new(did).map_err(|e| {
-            DIDSnafu {
-                details: e.to_string(),
-            }
-            .build()
-        })?)
-        .await
-        .map_err(|e| {
-            CredentialCreationSnafu {
-                details: format!("Can not resolve verification method: {e}"),
-            }
-            .build()
-        })?
-        .ok_or_else(|| {
-            CredentialCreationSnafu {
-                details: "Can not find verification method",
-            }
-            .build()
-        })
 }

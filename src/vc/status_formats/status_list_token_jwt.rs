@@ -20,12 +20,14 @@ use sd_jwt_rs::{ClaimsForSelectiveDisclosureStrategy, SDJWTIssuer, SDJWTSerializ
 use std::collections::HashMap;
 use tracing::{instrument, trace, Level};
 
+use crate::did::universal::UniversalResolver;
 use crate::http::HttpClient;
 use crate::utils::serde::get_time_based_claim;
 use crate::vc::formats::sd_jwt_vc::SdJwtAPI;
 use crate::vc::formats::VerifyOptions;
 use crate::vc::formats::API as VCFormatsAPI;
 use crate::vc::presentation_exchange::StatusSize;
+use crate::vc::status_formats::StatusListCreatingSnafu;
 use crate::vc::status_formats::API;
 use crate::vc::HasClaims;
 use flate2::Compression;
@@ -37,8 +39,6 @@ use ssi_status::token_status_list::json::Status;
 use ssi_status::token_status_list::BitString;
 use strum_macros::Display;
 use url::Url;
-
-use crate::vc::status_formats::StatusListCreatingSnafu;
 
 // TODO: consider moving the constants in some common module
 // to share them between SdJwtVc format as well
@@ -182,6 +182,7 @@ impl API<VCStatus, VCStatuses, StatusList, SLMetadata> for StatusListJwt {
     async fn get_vc_status(
         vc_claims: &Claims,
         http_client: &dyn HttpClient,
+        did_resolver: UniversalResolver,
     ) -> Result<Option<VCStatus>> {
         let Some(status_claim) = vc_claims.get(STATUS_CLAIM) else {
             return Ok(None);
@@ -193,6 +194,7 @@ impl API<VCStatus, VCStatuses, StatusList, SLMetadata> for StatusListJwt {
         let bit_string = StatusListJwt::fetch_bitstring_status_list(
             http_client,
             status.status_list.uri.as_str(),
+            did_resolver,
         )
         .await?;
 
@@ -266,10 +268,11 @@ impl StatusListJwt {
         headers
     }
 
-    #[instrument(level = Level::TRACE, skip(http_client), err(), ret())]
+    #[instrument(level = Level::TRACE, skip(http_client, did_resolver), err(), ret())]
     async fn fetch_bitstring_status_list(
         http_client: &dyn HttpClient,
         url: &str,
+        did_resolver: UniversalResolver,
     ) -> Result<BitString> {
         let http_req = http::request::Builder::new()
             .uri(url)
@@ -303,6 +306,7 @@ impl StatusListJwt {
             VerifyOptions {
                 selective_claims: None,
             },
+            did_resolver,
         ) // TODO: consider using sd_jwt API directly
         .await
         .map_err(|err| {
@@ -376,6 +380,7 @@ impl StatusListJwt {
 #[cfg(test)]
 mod tests {
     use super::{SLMetadata, StatusListJwt, VCStatus, VCStatuses};
+    use crate::did::universal::UniversalResolver;
     use crate::http::MockHttpClient;
     use crate::inmem::kms::LocalKms;
     use crate::kms::KeyType;
@@ -461,9 +466,10 @@ mod tests {
         .try_into()
         .unwrap();
 
-        let vc_status = StatusListJwt::get_vc_status(&claims, &http_client)
-            .await
-            .unwrap();
+        let vc_status =
+            StatusListJwt::get_vc_status(&claims, &http_client, UniversalResolver::default())
+                .await
+                .unwrap();
 
         assert_eq!(vc_status, Some(expected_status));
     }

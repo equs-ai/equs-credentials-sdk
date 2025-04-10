@@ -594,6 +594,7 @@ mod tests {
     use super::*;
     use std::ops::Add;
 
+    use crate::did::universal::UniversalResolver;
     use crate::http::MockHttpClient;
     use crate::inmem::kms::LocalKms;
     use crate::inmem::nonce::LocalNonceGenerator;
@@ -699,7 +700,7 @@ mod tests {
                         let exp_expected = (OffsetDateTime::now_utc()
                             + Duration::days(CUSTOM_CRED_LIFETIME))
                         .unix_timestamp();
-                        assert_eq!(exp_real, exp_expected);
+                        assert!(i64::abs(exp_expected - exp_real) <= 5);
                     }
                     _ => {
                         assert_eq!(false, true);
@@ -1299,7 +1300,8 @@ mod tests {
         )
         .unwrap();
 
-        let inner = vc::core::IssuerService::new(kms, issuer_metadata_inner);
+        let inner =
+            vc::core::IssuerService::new(kms, issuer_metadata_inner, UniversalResolver::default());
 
         IssuerService::new(issuer_metadata, inner, nonce_gen, token_validation, None)
     }

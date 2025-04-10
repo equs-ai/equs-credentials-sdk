@@ -385,7 +385,7 @@ async fn build_issuer_with_sd_jwt_credential_profile() -> impl Issuer {
         protocol_data: None,
     };
 
-    IssuerService::new(kms, metadata)
+    IssuerService::new(kms, metadata, UniversalResolver::default())
 }
 
 async fn build_issuer_with_bbs_plus_credential_profile() -> impl Issuer {
@@ -438,7 +438,7 @@ async fn build_issuer_with_bbs_plus_credential_profile() -> impl Issuer {
         protocol_data: None,
     };
 
-    IssuerService::new(kms, metadata)
+    IssuerService::new(kms, metadata, UniversalResolver::default())
 }
 
 async fn build_status_issuer(status_list_url: Url) -> impl StatusIssuer {
@@ -479,11 +479,12 @@ async fn build_holder(kms: LocalKms) -> impl Holder {
             client_id: "client_id".into(),
             pop_lifetime: time::Duration::minutes(POP_EXP_MINUTES),
         },
+        UniversalResolver::default(),
     )
 }
 
 fn build_verifier(id: &str) -> impl Verifier {
-    VerifierService::new(id)
+    VerifierService::new(id, UniversalResolver::default())
 }
 
 async fn run_status_list_server() -> (mockito::ServerGuard, Url) {

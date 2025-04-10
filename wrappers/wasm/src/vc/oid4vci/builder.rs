@@ -1,3 +1,4 @@
+use crate::did::resolver::{DIDResolver, JsDIDResolver};
 use crate::http::ReqwestHttpClient;
 use crate::kms::{JsKeyHandle, JsKms, Kms};
 use crate::utils;
@@ -103,6 +104,19 @@ impl OID4VCIHolderBuilder {
     #[wasm_bindgen(js_name = withHttpClient)]
     pub fn with_http_client(self, client: &ReqwestHttpClient) -> Self {
         OID4VCIHolderBuilder(self.0.with_http_client(client.inner()))
+    }
+
+    /// Use a specific `did_resolver`.
+    ///
+    /// # Arguments
+    ///
+    /// * `did_resolver` - a custom did resolver.
+    #[wasm_bindgen(js_name = withDidResolver)]
+    pub fn with_did_resolver(self, did_resolver: DIDResolver) -> Result<Self, JsError> {
+        self.0
+            .with_did_resolver(JsDIDResolver::new(did_resolver))
+            .map(OID4VCIHolderBuilder)
+            .map_err(JsError::from)
     }
 
     /// Builds a `Holder`.

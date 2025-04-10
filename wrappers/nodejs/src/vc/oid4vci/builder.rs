@@ -1,3 +1,7 @@
+#[cfg(debug_assertions)]
+use agent_sdk::reqwest::builder::ReqwestClientBuilder;
+
+use crate::did::JsDIDResolver;
 use crate::http::ReqwestHttpClient;
 use crate::kms::JsKms;
 use crate::nonce::JsNonceGenerator;
@@ -67,6 +71,7 @@ pub enum TokenValidation {
 }
 
 #[napi]
+#[allow(clippy::too_many_arguments)]
 pub async fn _build_vci_holder(
     kms: JsKms,
     vault: JsVault,
@@ -75,6 +80,7 @@ pub async fn _build_vci_holder(
     redirect_url: Option<String>,
     http_client: Option<&ReqwestHttpClient>,
     pop_lifetime: Option<JsDuration>,
+    did_resolver: Option<JsDIDResolver>,
 ) -> Result<OID4VCIHolder> {
     let mut builder = HolderBuilder::new(kms, vault, client_id, issuer_discovery.0.to_owned());
 
@@ -90,6 +96,9 @@ pub async fn _build_vci_holder(
         builder = builder.with_pop_lifetime(duration.try_into()?);
     }
 
+    if let Some(did_resolver) = did_resolver {
+        builder = builder.with_did_resolver(did_resolver).unwrap();
+    }
     let holder = builder
         .build()
         .await
@@ -109,6 +118,7 @@ pub async fn _build_vci_issuer(
     clock_skew: Option<JsDuration>,
     dedicated_keys: HashMap<String, JsKeyMetadata>,
     cred_lifetime: Option<JsDuration>,
+    did_resolver: Option<JsDIDResolver>,
 ) -> Result<OID4VCIIssuer> {
     let issuer_metadata: IssuerMetadata =
         serde_json::from_value(from_json_object(issuer_metadata)?)?;
@@ -122,6 +132,19 @@ pub async fn _build_vci_issuer(
 
     if let Some(cred_lifetime) = cred_lifetime {
         builder = builder.with_default_cred_lifetime(cred_lifetime.try_into()?);
+    }
+
+    if let Some(did_resolver) = did_resolver {
+        builder = builder.with_did_resolver(did_resolver).unwrap();
+    }
+    #[cfg(debug_assertions)]
+    {
+        builder = builder.with_http_client(
+            ReqwestClientBuilder::new()
+                .insecure()
+                .build()
+                .map_err(|err| Error::from_reason(format!("{:?}", err)))?,
+        )
     }
 
     if let Some(validation) = &token_validation {

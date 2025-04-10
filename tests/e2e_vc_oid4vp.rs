@@ -34,6 +34,7 @@ use crate::utils::fixtures::oid4vp::{
     multiple_sdjwt_presentation_case, single_jsonld_presentation_case,
     single_sdjwt_presentation_case, Oid4VpTestCase, ValidateClaimsFunc, STATE, VERIFIER_URL,
 };
+use agent_sdk::did::universal::UniversalResolver;
 use agent_sdk::did::DIDURL;
 use agent_sdk::inmem::kms::KeyHandle;
 use agent_sdk::inmem::nonce::LocalNonceGenerator;
@@ -235,6 +236,7 @@ async fn create_vc(
                 (DIDURL::new(&key_metadata.did_url).unwrap(), kh),
                 (DIDURL::new(holder_did_url).unwrap(), holder_kh),
                 metadata,
+                UniversalResolver::default(),
             )
             .await
             .unwrap();
@@ -259,6 +261,7 @@ async fn create_vc(
                 (DIDURL::new(&key_metadata.did_url).unwrap(), kh),
                 (DIDURL::new(holder_did_url).unwrap(), holder_kh),
                 *metadata,
+                UniversalResolver::default(),
             )
             .await
             .unwrap();
