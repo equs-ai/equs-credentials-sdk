@@ -25,12 +25,14 @@ export class OID4VPVerifierBuilder {
     this.clientId = clientId;
   }
 
-  withClientMetadata(clientMetadata: ClientMetadata): void {
+  withClientMetadata(clientMetadata: ClientMetadata): this {
     this.clientMetadata = clientMetadata;
+    return this;
   }
 
-  withHttpClient(httpClient: HttpClient): void {
+  withHttpClient(httpClient: HttpClient): this {
     this.httpClient = httpClient;
+    return this;
   }
 
   async build(): Promise<OID4VPVerifier> {

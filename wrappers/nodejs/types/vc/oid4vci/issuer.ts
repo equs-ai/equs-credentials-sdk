@@ -34,26 +34,30 @@ export class OID4VCIIssuerBuilder {
     this.dedicatedKeys = {};
   }
 
-  tokenValidationIntrospect(url: string, header?: string | undefined): void {
+  tokenValidationIntrospect(url: string, header?: string | undefined): this {
     this.tokenValidation = {
       type: TokenValidationEnum.Introspect,
       url,
       header,
     };
+    return this;
   }
 
-  tokenValidationJwks(url: string): void {
+  tokenValidationJwks(url: string): this {
     this.tokenValidation = { type: TokenValidationEnum.Jwks, url };
+    return this;
   }
 
-  withClockSkew(duration: number): void {
+  withClockSkew(duration: number): this {
     this.clockSkew = { seconds: duration, nanoseconds: 0 };
+    return this;
   }
 
-  withDedicatedKeyMetadata(credentialConfigurationId: string, keyMetadata: KeyMetadata): void {
+  withDedicatedKeyMetadata(credentialConfigurationId: string, keyMetadata: KeyMetadata): this {
     this.dedicatedKeys = {
       [credentialConfigurationId]: keyMetadata,
     };
+    return this;
   }
 
   async build(): Promise<OID4VCIIssuer> {

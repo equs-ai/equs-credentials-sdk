@@ -11,6 +11,7 @@ import {
   OID4VCIHolderBuilder,
   Oid4VpHolder,
   OID4VPHolderBuilder,
+  ReqwestHttpClient,
   resolveMetadata,
   TracingLogFormat,
   TracingLogLevel,
@@ -41,18 +42,24 @@ async function main(): Promise<void> {
 
   const issuerDiscovery = IssuerDiscovery.fromUrl(config.issuerServerUrl);
 
+  const insecureHttpClient = ReqwestHttpClient.insecure();
+
   const oid4VciHolder = await new OID4VCIHolderBuilder(
     kms,
     vault,
     config.clientId,
     issuerDiscovery,
-  ).build();
+  )
+    .withHttpClient(insecureHttpClient)
+    .build();
 
   const oid4VpHolder = await new OID4VPHolderBuilder(
     kms,
     vault,
     config.clientId,
-  ).build();
+  )
+    .withHttpClient(insecureHttpClient)
+    .build();
 
   await issuanceFlow(oid4VciHolder, kms);
   await presentationFlow(oid4VpHolder);
