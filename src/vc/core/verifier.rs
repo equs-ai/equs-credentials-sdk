@@ -1,3 +1,4 @@
+use crate::did::universal::UniversalResolver;
 use crate::http::HttpClient;
 use crate::nonce::Nonce;
 use crate::vc::claims::Claims;
@@ -21,6 +22,7 @@ use tracing::{instrument, Level};
 
 pub struct VerifierService {
     verifier_id: String,
+    did_resolver: UniversalResolver,
 }
 
 #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
@@ -33,16 +35,29 @@ impl Verifier for VerifierService {
         presentation: &Presentation,
     ) -> Result<Claims> {
         let cred_claims: Claims = match presentation {
-            Presentation::SdJwtVp(vp) => {
-                SdJwtAPI::verify_vp(vp, nonce, &self.verifier_id, VerifyOptions::default())
-                    .await
-                    .context(VCSnafu)
-            }
+            Presentation::SdJwtVp(vp) => SdJwtAPI::verify_vp(
+                vp,
+                nonce,
+                &self.verifier_id,
+                VerifyOptions {
+                    selective_claims: Default::default(),
+                },
+                self.did_resolver.clone(),
+            )
+            .await
+            .context(VCSnafu),
             Presentation::LdpVp(vp) => {
-                let _ =
-                    JsonLdAPI::verify_vp(vp, nonce, &self.verifier_id, VerifyOptions::default())
-                        .await
-                        .context(VCSnafu)?;
+                let _ = JsonLdAPI::verify_vp(
+                    vp,
+                    nonce,
+                    &self.verifier_id,
+                    VerifyOptions {
+                        selective_claims: Default::default(),
+                    },
+                    self.did_resolver.clone(),
+                )
+                .await
+                .context(VCSnafu)?;
 
                 let claims = Claims::try_from(serde_json::to_value(vp).context(ParseSnafu)?)
                     .context(ClaimsSnafu)?;
@@ -69,10 +84,11 @@ impl Verifier for VerifierService {
 }
 
 impl VerifierService {
-    #[instrument(level = Level::TRACE)]
-    pub fn new(verifier_id: &str) -> Self {
+    #[instrument(level = Level::TRACE, skip(did_resolver))]
+    pub fn new(verifier_id: &str, did_resolver: UniversalResolver) -> Self {
         Self {
             verifier_id: verifier_id.to_owned(),
+            did_resolver,
         }
     }
 
@@ -84,7 +100,7 @@ impl VerifierService {
     ) -> Result<Option<VCStatus>> {
         let claims = presentation.parse_claims().context(VCSnafu)?;
 
-        let status = StatusListJwt::get_vc_status(&claims, http_client)
+        let status = StatusListJwt::get_vc_status(&claims, http_client, self.did_resolver.clone())
             .await
             .context(VCStatusSnafu)?;
 
@@ -97,6 +113,7 @@ impl VerifierService {
 
 #[cfg(test)]
 mod tests {
+    use crate::did::universal::UniversalResolver;
     use crate::inmem::kms::LocalKms;
     use crate::vc::core::tests::fixtures::VERIFIER_ID;
     use crate::vc::core::tests::utils::{random_nonce, CredTestCase};
@@ -142,6 +159,6 @@ mod tests {
     }
 
     fn verifier_service() -> impl Verifier {
-        VerifierService::new(VERIFIER_ID)
+        VerifierService::new(VERIFIER_ID, UniversalResolver::default())
     }
 }

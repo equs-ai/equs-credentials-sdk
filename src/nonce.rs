@@ -40,7 +40,7 @@ impl NonceData {
 }
 
 /// A nonce value to assign a value into `Nonce`.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, ZeroizeOnDrop)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq, ZeroizeOnDrop)]
 pub struct Nonce(String);
 
 impl Nonce {

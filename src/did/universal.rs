@@ -63,7 +63,6 @@ pub trait DIDResolver: WasmNotSend + WasmNotSync {
 pub struct UniversalResolver {
     dids: HashMap<String, Arc<dyn DIDResolver>>,
 }
-
 impl UniversalResolver {
     /// Adds a new DID resolver.
     ///
@@ -142,7 +141,7 @@ impl VerificationMethodResolver for UniversalResolver {
         method: Option<ReferenceOrOwnedRef<'_, Self::Method>>,
         options: ResolutionOptions,
     ) -> Result<Cow<Self::Method>, VerificationMethodResolutionError> {
-        let vmdr = VerificationMethodDIDResolver::new(UniversalResolver::default());
+        let vmdr = VerificationMethodDIDResolver::new(self.clone());
         let vm = vmdr
             .resolve_verification_method_with(issuer, method, options)
             .await?
@@ -160,7 +159,7 @@ impl JWKResolver for UniversalResolver {
         key_id: Option<&str>,
     ) -> Result<Cow<JWK>, ProofValidationError> {
         let resolver: VerificationMethodDIDResolver<_, AnyMethod> =
-            VerificationMethodDIDResolver::new(UniversalResolver::default());
+            VerificationMethodDIDResolver::new(self.clone());
 
         let jwk = resolver.fetch_public_jwk(key_id).await?.deref().clone();
 

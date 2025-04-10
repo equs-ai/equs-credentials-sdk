@@ -1,3 +1,4 @@
+use crate::did::JsUniversalDIDResolver;
 use crate::kms::JsKms;
 use crate::vc::core::{JsCredential, JsIssuerMetadata};
 use crate::vc::core::{
@@ -83,8 +84,12 @@ impl VCCoreIssuer {
 
 #[allow(unused)]
 #[napi]
-pub fn create_issuer(kms: JsKms, metadata: JsIssuerMetadata) -> Result<VCCoreIssuer, Error> {
+pub fn create_issuer(
+    kms: JsKms,
+    metadata: JsIssuerMetadata,
+    did_resolver: &JsUniversalDIDResolver,
+) -> Result<VCCoreIssuer, Error> {
     let metadata: IssuerMetadata = metadata.try_into()?;
-    let issuer_service = CoreIssuerService::new(kms, metadata);
+    let issuer_service = CoreIssuerService::new(kms, metadata, did_resolver.into());
     Ok(VCCoreIssuer(Box::new(issuer_service)))
 }

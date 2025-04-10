@@ -108,6 +108,7 @@ pub mod fixtures {
 pub mod utils {
     use crate::crypto::Key;
     use crate::crypto::Signer;
+    use crate::did::universal::UniversalResolver;
     use crate::did::DIDURL;
     use crate::inmem::kms::LocalKms;
     use crate::inmem::nonce::LocalNonceGenerator;
@@ -225,6 +226,7 @@ pub mod utils {
                         issuer: None,
                         ..Default::default()
                     },
+                    &UniversalResolver::default(),
                 )
                 .await
                 .unwrap(),
@@ -237,14 +239,22 @@ pub mod utils {
         pub async fn assert_credential(&self, vc: &Credential) {
             match (&self.format, vc) {
                 (VCFormat::SdJwtVc, Credential::SdJwt(cred)) => {
-                    SdJwtAPI::verify_vc(cred, VerifyOptions::default())
-                        .await
-                        .unwrap();
+                    SdJwtAPI::verify_vc(
+                        cred,
+                        VerifyOptions::default(),
+                        UniversalResolver::default(),
+                    )
+                    .await
+                    .unwrap();
                 }
                 (VCFormat::LdpVc, Credential::LdpVc(cred)) => {
-                    JsonLdAPI::verify_vc(cred, VerifyOptions::default())
-                        .await
-                        .unwrap();
+                    JsonLdAPI::verify_vc(
+                        cred,
+                        VerifyOptions::default(),
+                        UniversalResolver::default(),
+                    )
+                    .await
+                    .unwrap();
                 }
                 _ => unimplemented!(),
             }
@@ -540,9 +550,15 @@ pub mod utils {
                 credential_status: None,
             };
 
-            SdJwtAPI::create_vc(claims.clone(), iss_data, hld_data, vc_meta)
-                .await
-                .unwrap()
+            SdJwtAPI::create_vc(
+                claims.clone(),
+                iss_data,
+                hld_data,
+                vc_meta,
+                UniversalResolver::default(),
+            )
+            .await
+            .unwrap()
         }
 
         async fn sd_jwt_vp(
@@ -556,9 +572,11 @@ pub mod utils {
                     .iter()
                     .map(|d| (d.to_owned().replace("$.", ""), json!(true)))
                     .collect(),
+                nonce: nonce.to_owned(),
+                verifier_id: VERIFIER_ID.to_string(),
             };
 
-            SdJwtAPI::create_vp(vc, kh, nonce, VERIFIER_ID, vp_meta)
+            SdJwtAPI::create_vp(vc, kh, vp_meta, UniversalResolver::default())
                 .await
                 .unwrap()
         }
@@ -580,9 +598,15 @@ pub mod utils {
             )
             .unwrap();
 
-            JsonLdAPI::create_vc(claims.clone(), iss_data, hld_data, vc_meta)
-                .await
-                .unwrap()
+            JsonLdAPI::create_vc(
+                claims.clone(),
+                iss_data,
+                hld_data,
+                vc_meta,
+                UniversalResolver::default(),
+            )
+            .await
+            .unwrap()
         }
 
         async fn json_ld_vp(
@@ -590,9 +614,10 @@ pub mod utils {
             kh: impl KeyHandle,
             nonce: &Nonce,
         ) -> json_ld_vc::VP {
-            let vp_meta = json_ld_vc::VPMetadata::new(vc).unwrap();
+            let vp_meta =
+                json_ld_vc::VPMetadata::new(vc, nonce.to_owned(), VERIFIER_ID.to_string()).unwrap();
 
-            JsonLdAPI::create_vp(vc, kh, nonce, VERIFIER_ID, vp_meta)
+            JsonLdAPI::create_vp(vc, kh, vp_meta, UniversalResolver::default())
                 .await
                 .unwrap()
         }

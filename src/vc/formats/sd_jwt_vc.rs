@@ -27,7 +27,7 @@ use crate::utils::serde::Helpers;
 use crate::vc::core::{PresentationInput, PresentationRestriction};
 use crate::vc::formats::vc::SD_JWT_VC;
 use crate::vc::formats::{
-    resolve_verification_method, ClaimsSnafu, HasClaims, HasCredential, JWSSnafu,
+    ClaimsSnafu, CredentialCreationSnafu, DIDSnafu, HasClaims, HasCredential, JWSSnafu,
     KeyTypeNotSupportedSnafu, ParsingSnafu, PresentationSnafu, ProofValidationSnafu, SigningSnafu,
     VerifyOptions, VerifyingSnafu, API,
 };
@@ -141,6 +141,8 @@ pub struct VCMetadata {
 pub struct VPMetadata {
     // TODO: should we change it to Claims?
     pub disclosures: Map<String, Value>,
+    pub nonce: Nonce,
+    pub verifier_id: String,
 }
 
 impl HasClaims<Claims> for Credential {
@@ -172,6 +174,7 @@ impl HasCredential<Credential> for Presentation {
     }
 }
 
+#[derive(Debug)]
 pub struct SdJwtAPI;
 
 impl SdJwtAPI {
@@ -258,13 +261,12 @@ impl SdJwtAPI {
         Ok(())
     }
 
-    #[instrument(level = Level::TRACE, err(), ret())]
-    async fn get_jwk_from_jwt(jwt: &str) -> Result<Cow<JWK>> {
+    #[instrument(level = Level::TRACE, skip(did_resolver), err(), ret())]
+    async fn get_jwk_from_jwt(jwt: &str, did_resolver: UniversalResolver) -> Result<Cow<JWK>> {
         let (header, payload) = ssi::claims::jws::decode_unverified(jwt).context(JWSSnafu)?;
-        let resolver = UniversalResolver::default();
 
         let vm = match header.key_id {
-            Some(did_url) => resolver
+            Some(did_url) => did_resolver
                 .fetch_public_jwk(Some(&did_url))
                 .await
                 .map_err(|e| {
@@ -294,8 +296,29 @@ impl SdJwtAPI {
                     .build()
                 })?;
 
-                let vm = resolve_verification_method(&iss_did).await?;
-                resolver
+                let vm = did_resolver
+                    .resolve_into_any_verification_method(ssi::dids::DID::new(&iss_did).map_err(
+                        |e| {
+                            DIDSnafu {
+                                details: e.to_string(),
+                            }
+                            .build()
+                        },
+                    )?)
+                    .await
+                    .map_err(|e| {
+                        CredentialCreationSnafu {
+                            details: format!("Can not resolve verification method: {e}"),
+                        }
+                        .build()
+                    })?
+                    .ok_or_else(|| {
+                        CredentialCreationSnafu {
+                            details: "Can not find verification method",
+                        }
+                        .build()
+                    })?;
+                did_resolver
                     .fetch_public_jwk(Some(vm.id.as_str()))
                     .await
                     .context(ProofValidationSnafu)?
@@ -371,12 +394,13 @@ impl GetDateTimeClaim<Claims, time::OffsetDateTime> for SdJwtAPI {
 #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 #[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata, Claims> for SdJwtAPI {
-    #[instrument(level = Level::TRACE, skip(issuer_data, holder_data), err(), ret())]
+    #[instrument(level = Level::TRACE, skip(issuer_data, holder_data, _did_resolver), err(), ret())]
     async fn create_vc<S, K>(
         claims: Claims,
         issuer_data: (&DIDURL, S),
         holder_data: (&DIDURL, K),
         metadata: VCMetadata,
+        _did_resolver: UniversalResolver,
     ) -> Result<Credential>
     where
         S: Signer,
@@ -442,13 +466,12 @@ impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata, Claims> for S
             })
     }
 
-    #[instrument(level = Level::TRACE, skip(holder_signer), err(), ret())]
+    #[instrument(level = Level::TRACE, skip(holder_signer, _did_resolver), err(), ret())]
     async fn create_vp<S>(
         credential: &Credential,
         holder_signer: S,
-        nonce: &Nonce,
-        verifier_id: &str,
         metadata: VPMetadata,
+        _did_resolver: UniversalResolver,
     ) -> Result<Presentation>
     where
         S: Signer,
@@ -468,8 +491,8 @@ impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata, Claims> for S
         holder
             .create_presentation(
                 metadata.disclosures,
-                Some(nonce.secret().to_owned()),
-                Some(verifier_id.to_string()),
+                Some(metadata.nonce.secret().to_owned()),
+                Some(metadata.verifier_id),
                 Some(sgn_wrapper),
             )
             .await
@@ -481,22 +504,27 @@ impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata, Claims> for S
             })
     }
 
-    #[instrument(level = Level::TRACE, err(), ret())]
-    async fn verify_vc(credential: &Credential, opts: VerifyOptions) -> Result<()> {
+    #[instrument(level = Level::TRACE, skip(did_resolver), err(), ret())]
+    async fn verify_vc(
+        credential: &Credential,
+        opts: VerifyOptions,
+        did_resolver: UniversalResolver,
+    ) -> Result<()> {
         let plain_jwt = Self::strip_disclosures(credential)?;
-        let jwk = Self::get_jwk_from_jwt(plain_jwt).await?;
+        let jwk = Self::get_jwk_from_jwt(plain_jwt, did_resolver).await?;
 
         Self::verify_signature(credential, &jwk)
     }
 
-    #[instrument(level = Level::TRACE, err(), ret())]
+    #[instrument(level = Level::TRACE, skip(did_resolver), err(), ret())]
     async fn verify_vp(
         presentation: &Presentation,
         nonce: &Nonce,
         verifier_id: &str,
         _opts: VerifyOptions,
+        did_resolver: UniversalResolver,
     ) -> Result<Claims> {
-        let key_resolver = DidKeyResolver::default();
+        let key_resolver = DidKeyResolver::new(did_resolver);
         let mut verifier = SDJWTVerifier::new(Box::new(key_resolver));
 
         let claims_json = verifier
@@ -574,11 +602,14 @@ mod tests {
             (&iss_did_url, iss_kh),
             (&hld_did_url, hld_kh.clone()),
             vc_metadata,
+            UniversalResolver::default(),
         )
         .await
         .unwrap();
 
-        SdJwtAPI::verify_vc(&vc, Default::default()).await.unwrap();
+        SdJwtAPI::verify_vc(&vc, Default::default(), UniversalResolver::default())
+            .await
+            .unwrap();
 
         let claims = vc.parse_claims().unwrap();
         assert!(claims.get("name").is_some());
@@ -601,16 +632,27 @@ mod tests {
         assert_eq!(&claims[IAT_CLAIM], &Claim::Int(iat));
 
         let nonce = random_nonce().await;
-        let vp = SdJwtAPI::create_vp(&vc, hld_kh, &nonce, "verifier-id", sample_vp_metadata())
-            .await
-            .unwrap();
+        let vp = SdJwtAPI::create_vp(
+            &vc,
+            hld_kh,
+            sample_vp_metadata(nonce.clone(), "verifier-id".to_string()),
+            UniversalResolver::default(),
+        )
+        .await
+        .unwrap();
 
         let vc_from_vp = vp.get_credential().unwrap();
         SdJwtAPI::verify_signature(&vc_from_vp, &iss_jwk).unwrap();
 
-        let disclosed = SdJwtAPI::verify_vp(&vp, &nonce, "verifier-id", VerifyOptions::default())
-            .await
-            .unwrap();
+        let disclosed = SdJwtAPI::verify_vp(
+            &vp,
+            &nonce,
+            "verifier-id",
+            VerifyOptions::default(),
+            UniversalResolver::default(),
+        )
+        .await
+        .unwrap();
 
         assert!(disclosed.get("name").is_some());
         assert!(disclosed.get(EXP_CLAIM).is_some());
@@ -645,11 +687,14 @@ mod tests {
             (&iss_did_url, iss_kh),
             (&hld_did_url, hld_kh.clone()),
             vc_metadata,
+            UniversalResolver::default(),
         )
         .await
         .unwrap();
 
-        SdJwtAPI::verify_vc(&vc, Default::default()).await.unwrap();
+        SdJwtAPI::verify_vc(&vc, Default::default(), UniversalResolver::default())
+            .await
+            .unwrap();
 
         let claims = vc.parse_claims().unwrap();
         assert!(claims.get("name").is_some());
@@ -675,9 +720,8 @@ mod tests {
         let vp = SdJwtAPI::create_vp(
             &vc,
             hld_kh,
-            &nonce,
-            "verifier-id",
-            sample_vp_metadata_with_empty_disclosures(),
+            sample_vp_metadata_with_empty_disclosures(nonce.clone(), "verifier-id".to_string()),
+            UniversalResolver::default(),
         )
         .await
         .unwrap();
@@ -685,9 +729,15 @@ mod tests {
         let vc_from_vp = vp.get_credential().unwrap();
         SdJwtAPI::verify_signature(&vc_from_vp, &iss_jwk).unwrap();
 
-        let disclosed = SdJwtAPI::verify_vp(&vp, &nonce, "verifier-id", VerifyOptions::default())
-            .await
-            .unwrap();
+        let disclosed = SdJwtAPI::verify_vp(
+            &vp,
+            &nonce,
+            "verifier-id",
+            VerifyOptions::default(),
+            UniversalResolver::default(),
+        )
+        .await
+        .unwrap();
 
         // all claims disclosed by default (VC metadata disclosures is empty vec[])
         assert!(disclosed.get("name").is_none());
@@ -707,6 +757,7 @@ mod tests {
             (&iss_did_url, failed_signer_key(iss_kh)),
             (&hld_did_url, hld_kh),
             sample_vc_metadata(),
+            UniversalResolver::default(),
         )
         .await;
 
@@ -727,6 +778,7 @@ mod tests {
             (&iss_did_url, iss_kh),
             (&hld_did_url, no_jwk_key()),
             sample_vc_metadata(),
+            UniversalResolver::default(),
         )
         .await;
 
@@ -747,6 +799,7 @@ mod tests {
             (&iss_did_url, iss_kh),
             (&hld_did_url, hld_kh.clone()),
             sample_vc_metadata(),
+            UniversalResolver::default(),
         )
         .await
         .unwrap();
@@ -755,9 +808,8 @@ mod tests {
         let result = SdJwtAPI::create_vp(
             &vc,
             failed_signer_key(hld_kh),
-            &nonce,
-            "verifier-id",
-            sample_vp_metadata(),
+            sample_vp_metadata(nonce, "verifier-id".to_string()),
+            UniversalResolver::default(),
         )
         .await;
 
@@ -777,8 +829,6 @@ mod tests {
         let vp = SdJwtAPI::create_vp(
             &vc,
             hld_kh,
-            nonce,
-            verifier_id,
             VPMetadata {
                 disclosures: json!({
                     "optional_claim" : "optional",
@@ -787,14 +837,23 @@ mod tests {
                 .as_object()
                 .unwrap()
                 .to_owned(),
+                nonce: nonce.to_owned(),
+                verifier_id: verifier_id.to_string(),
             },
+            UniversalResolver::default(),
         )
         .await
         .unwrap();
 
-        let disclosed = SdJwtAPI::verify_vp(&vp, nonce, verifier_id, VerifyOptions::default())
-            .await
-            .unwrap();
+        let disclosed = SdJwtAPI::verify_vp(
+            &vp,
+            nonce,
+            verifier_id,
+            VerifyOptions::default(),
+            UniversalResolver::default(),
+        )
+        .await
+        .unwrap();
 
         assert!(disclosed.get("optional_claim").is_none());
         assert!(disclosed.get("name").is_some());
@@ -815,6 +874,7 @@ mod tests {
             (&iss_did_url, iss_kh),
             (&hld_did_url, hld_kh),
             sample_vc_metadata(),
+            UniversalResolver::default(),
         )
         .await;
 
@@ -833,6 +893,7 @@ mod tests {
             (&iss_did_url, iss_kh),
             (hld_did_url, hld_kh),
             sample_vc_metadata(),
+            UniversalResolver::default(),
         )
         .await;
 
@@ -841,7 +902,12 @@ mod tests {
 
     #[tokio::test]
     async fn sd_jwt_verify_vc_fails_on_invalid_cred() {
-        let res = SdJwtAPI::verify_vc(&"not-a-valid-sd-jwt".to_string(), Default::default()).await;
+        let res = SdJwtAPI::verify_vc(
+            &"not-a-valid-sd-jwt".to_string(),
+            Default::default(),
+            UniversalResolver::default(),
+        )
+        .await;
         assert!(matches!(res.err(), Some(Error::JWS { .. })));
     }
 
@@ -849,7 +915,7 @@ mod tests {
     async fn sd_jwt_verify_vc_fails_on_resolving_vm() {
         let vc = sample_sd_jwt_vc_did_example().await;
 
-        let res = SdJwtAPI::verify_vc(&vc, Default::default()).await;
+        let res = SdJwtAPI::verify_vc(&vc, Default::default(), UniversalResolver::default()).await;
         assert!(matches!(res.err(), Some(Error::Parsing { .. })));
     }
 
@@ -873,9 +939,8 @@ mod tests {
         let res = SdJwtAPI::create_vp(
             &"not-a-valid-sd-jwt".to_string(),
             hld_kh,
-            &random_nonce().await,
-            "verifier-id",
-            sample_vp_metadata(),
+            sample_vp_metadata(random_nonce().await, "verifier-id".to_string()),
+            UniversalResolver::default(),
         )
         .await;
 
@@ -890,8 +955,6 @@ mod tests {
         let res = SdJwtAPI::create_vp(
             &vc,
             hld_kh,
-            &random_nonce().await,
-            "verifier-id",
             VPMetadata {
                 disclosures: json!({
                     "some_other_claim" : true
@@ -899,7 +962,10 @@ mod tests {
                 .as_object()
                 .unwrap()
                 .to_owned(),
+                nonce: random_nonce().await,
+                verifier_id: "verifier-id".to_string(),
             },
+            UniversalResolver::default(),
         )
         .await;
 
@@ -913,6 +979,7 @@ mod tests {
             &random_nonce().await,
             "verifier-id",
             VerifyOptions::default(),
+            UniversalResolver::default(),
         )
         .await;
 
@@ -931,12 +998,24 @@ mod tests {
 
         let nonce = random_nonce().await;
         // VP can be generated using another signature
-        let vp = SdJwtAPI::create_vp(&vc, kh, &nonce, "verifier-id", sample_vp_metadata())
-            .await
-            .unwrap();
+        let vp = SdJwtAPI::create_vp(
+            &vc,
+            kh,
+            sample_vp_metadata(nonce.clone(), "verifier-id".to_string()),
+            UniversalResolver::default(),
+        )
+        .await
+        .unwrap();
 
         // But Verifier should deny it
-        let res = SdJwtAPI::verify_vp(&vp, &nonce, "verifier-id", VerifyOptions::default()).await;
+        let res = SdJwtAPI::verify_vp(
+            &vp,
+            &nonce,
+            "verifier-id",
+            VerifyOptions::default(),
+            UniversalResolver::default(),
+        )
+        .await;
 
         assert!(matches!(res.err(), Some(Error::Verifying { .. })));
     }
@@ -970,6 +1049,7 @@ mod tests {
             (&iss_did_url, i_kh),
             (&hld_did_url, h_kh.clone()),
             sample_vc_metadata(),
+            UniversalResolver::default(),
         )
         .await
         .unwrap();
@@ -989,6 +1069,7 @@ mod tests {
             (iss_did_url, i_kh),
             (&hld_did_url, h_kh),
             sample_vc_metadata(),
+            UniversalResolver::default(),
         )
         .await
         .unwrap()
@@ -1030,7 +1111,7 @@ mod tests {
         }
     }
 
-    fn sample_vp_metadata() -> VPMetadata {
+    fn sample_vp_metadata(nonce: Nonce, verifier_id: String) -> VPMetadata {
         VPMetadata {
             disclosures: json!({
                 "name" : true
@@ -1038,12 +1119,16 @@ mod tests {
             .as_object()
             .unwrap()
             .to_owned(),
+            nonce,
+            verifier_id,
         }
     }
 
-    fn sample_vp_metadata_with_empty_disclosures() -> VPMetadata {
+    fn sample_vp_metadata_with_empty_disclosures(nonce: Nonce, verifier_id: String) -> VPMetadata {
         VPMetadata {
             disclosures: serde_json::Map::new(),
+            nonce,
+            verifier_id,
         }
     }
 }

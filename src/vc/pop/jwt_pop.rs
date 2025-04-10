@@ -59,15 +59,14 @@ impl pop::ProofOfPossession<String> for JwtProofOfPossession {
         Ok(jws)
     }
 
-    #[instrument(level = Level::TRACE, err())]
+    #[instrument(level = Level::TRACE, err(), skip(did_resolver))]
     async fn verify(
         proof: String,
         nonce: &Nonce,
         opts: VerifyOptions,
+        did_resolver: &UniversalResolver,
     ) -> Result<(DIDURLBuf, Box<dyn crypto::Key>), Error> {
-        let resolver = UniversalResolver::default();
-
-        let pop = ProofOfPossession::from_jwt(proof.as_str(), resolver)
+        let pop = ProofOfPossession::from_jwt(proof.as_str(), did_resolver)
             .await
             .context(ParsingSnafu)?;
 
@@ -110,6 +109,7 @@ mod tests {
     use serde_json::{Map, Value};
 
     use crate::crypto::Key;
+    use crate::did::universal::UniversalResolver;
     use crate::did::DIDURL;
     use crate::inmem::kms::LocalKms;
     use crate::inmem::nonce::LocalNonceGenerator;
@@ -142,9 +142,14 @@ mod tests {
         assert_eq!(decoded.get("iss").unwrap(), "client-id");
         assert!(decoded.contains_key("nonce"));
 
-        let (v_did_url, key) = JwtProofOfPossession::verify(proof, &nonce, sample_verify_opts())
-            .await
-            .unwrap();
+        let (v_did_url, key) = JwtProofOfPossession::verify(
+            proof,
+            &nonce,
+            sample_verify_opts(),
+            &UniversalResolver::default(),
+        )
+        .await
+        .unwrap();
 
         assert_eq!(v_did_url.did(), did_url.did());
         assert_eq!(key.jwk().unwrap(), jwk);
@@ -189,6 +194,7 @@ mod tests {
             "invalid-jwt".to_string(),
             &random_nonce().await,
             sample_verify_opts(),
+            &UniversalResolver::default(),
         )
         .await;
 
@@ -206,7 +212,13 @@ mod tests {
             .unwrap();
 
         let nonce2 = random_nonce().await;
-        let res = JwtProofOfPossession::verify(proof, &nonce2, sample_verify_opts()).await;
+        let res = JwtProofOfPossession::verify(
+            proof,
+            &nonce2,
+            sample_verify_opts(),
+            &UniversalResolver::default(),
+        )
+        .await;
 
         assert!(matches!(res.err(), Some(Error::Verification { .. })));
     }

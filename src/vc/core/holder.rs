@@ -6,6 +6,7 @@ use std::marker::PhantomData;
 use tracing::{debug, info, instrument, trace, Level};
 
 use crate::crypto::Alg;
+use crate::did::universal::UniversalResolver;
 use crate::nonce::Nonce;
 use crate::vault::CredentialEntry;
 use crate::vc::core::{
@@ -37,6 +38,7 @@ where
     vault: V,
     metadata: HolderMetadata,
     _marker: PhantomData<KH>,
+    did_resolver: UniversalResolver,
 }
 
 #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
@@ -123,12 +125,24 @@ where
         trace!(?credential);
 
         match credential {
-            Credential::SdJwt(cred) => SdJwtAPI::verify_vc(cred, VerifyOptions::default())
-                .await
-                .context(VCSnafu),
-            Credential::LdpVc(cred) => JsonLdAPI::verify_vc(cred, VerifyOptions::default())
-                .await
-                .context(VCSnafu),
+            Credential::SdJwt(cred) => SdJwtAPI::verify_vc(
+                cred,
+                VerifyOptions {
+                    selective_claims: Default::default(),
+                },
+                self.did_resolver.clone(),
+            )
+            .await
+            .context(VCSnafu),
+            Credential::LdpVc(cred) => JsonLdAPI::verify_vc(
+                cred,
+                VerifyOptions {
+                    selective_claims: Default::default(),
+                },
+                self.did_resolver.clone(),
+            )
+            .await
+            .context(VCSnafu),
             _ => FormatNotSupportedSnafu {
                 format: credential.format().to_string(),
             }
@@ -198,24 +212,32 @@ where
             Credential::SdJwt(vc) => {
                 let disclosures =
                     SdJwtAPI::resolve_disclosures(presentation_input).context(VCSnafu)?;
-                let vp =
-                    SdJwtAPI::create_vp(vc, key, nonce, verifier_id, VPMetadata { disclosures })
-                        .await
-                        .context(VCSnafu)?;
+                let vp = SdJwtAPI::create_vp(
+                    vc,
+                    key,
+                    VPMetadata {
+                        disclosures,
+                        nonce: nonce.clone(),
+                        verifier_id: verifier_id.to_string(),
+                    },
+                    self.did_resolver.clone(),
+                )
+                .await
+                .context(VCSnafu)?;
 
                 Presentation::SdJwtVp(vp)
             }
             Credential::LdpVc(vc) => {
-                let vp = JsonLdAPI::create_vp(
+                let metadata = json_ld_vc::VPMetadata::from_presentation_input(
                     vc,
-                    key,
-                    nonce,
-                    verifier_id,
-                    json_ld_vc::VPMetadata::from_presentation_input(vc, presentation_input)
-                        .context(VCSnafu)?,
+                    presentation_input,
+                    nonce.to_owned(),
+                    verifier_id.to_string(),
                 )
-                .await
                 .context(VCSnafu)?;
+                let vp = JsonLdAPI::create_vp(vc, key, metadata, self.did_resolver.clone())
+                    .await
+                    .context(VCSnafu)?;
 
                 Presentation::LdpVp(vp)
             }
@@ -235,8 +257,13 @@ where
     KH: kms::KeyHandle,
     V: vault::Vault,
 {
-    #[instrument(level = Level::TRACE, skip(kms, vault))]
-    pub fn new(kms: KMS, vault: V, metadata: HolderMetadata) -> Self {
+    #[instrument(level = Level::TRACE, skip(kms, vault, did_resolver))]
+    pub fn new(
+        kms: KMS,
+        vault: V,
+        metadata: HolderMetadata,
+        did_resolver: UniversalResolver,
+    ) -> Self {
         debug!(holder_metadata = ?metadata);
 
         Self {
@@ -244,6 +271,7 @@ where
             vault,
             metadata,
             _marker: Default::default(),
+            did_resolver,
         }
     }
 
@@ -296,6 +324,7 @@ where
 
 #[cfg(test)]
 mod tests {
+    use crate::did::universal::UniversalResolver;
     use crate::inmem::kms::LocalKms;
     use crate::inmem::vault::InMemVault;
     use crate::kms::KeyType;
@@ -728,6 +757,7 @@ mod tests {
                 client_id: "wallet-dev".to_string(),
                 pop_lifetime: time::Duration::minutes(5),
             },
+            UniversalResolver::default(),
         )
     }
 }

@@ -21,6 +21,7 @@ use crate::vc::formats::sd_jwt_vc;
 use crate::vc::formats::sd_jwt_vc::SdJwtAPI;
 use crate::vc::formats::API;
 
+use crate::did::universal::UniversalResolver;
 use crate::vc::pop::jwt_pop::JwtProofOfPossession;
 use crate::vc::pop::ProofOfPossession;
 use crate::vc::{pop, Credential, VCFormat};
@@ -39,6 +40,7 @@ where
 {
     kms: KMS,
     metadata: IssuerMetadata,
+    did_resolver: UniversalResolver,
     _marker: PhantomData<KH>,
 }
 
@@ -87,7 +89,7 @@ where
         let (hld_did, hld_key) = match pop_fmt {
             pop::Format::Jwt => {
                 let verification_opts = self.resolve_pop_verification_options(credential_request);
-                JwtProofOfPossession::verify(proof, nonce, verification_opts)
+                JwtProofOfPossession::verify(proof, nonce, verification_opts, &self.did_resolver)
             }
             .await
             .context(ProofSnafu)?,
@@ -117,6 +119,7 @@ where
                     (&iss_did, iss_key),
                     (&hld_did, hld_key),
                     metadata,
+                    self.did_resolver.clone(),
                 )
                 .await
                 .context(VCSnafu)?;
@@ -133,6 +136,7 @@ where
                     (&iss_did, iss_key),
                     (&hld_did, hld_key),
                     metadata,
+                    self.did_resolver.clone(),
                 )
                 .await
                 .context(VCSnafu)?;
@@ -156,11 +160,12 @@ where
     KH: kms::KeyHandle,
     KMS: kms::Kms<KH>,
 {
-    #[instrument(level = Level::TRACE, skip(kms))]
-    pub fn new(kms: KMS, metadata: IssuerMetadata) -> Self {
+    #[instrument(level = Level::TRACE, skip(kms, resolver))]
+    pub fn new(kms: KMS, metadata: IssuerMetadata, resolver: UniversalResolver) -> Self {
         Self {
             kms,
             metadata,
+            did_resolver: resolver,
             _marker: Default::default(),
         }
     }
@@ -385,6 +390,7 @@ where
 
 #[cfg(test)]
 mod tests {
+    use crate::did::universal::UniversalResolver;
     use crate::inmem::kms::LocalKms;
     use crate::kms::KeyType;
     use crate::utils::test_utils::create_did_and_key_metadata;
@@ -602,6 +608,10 @@ mod tests {
         key_metadata: KeyMetadata,
         case: &CredTestCase,
     ) -> impl Issuer {
-        IssuerService::new(kms, sample_issuer_metadata(key_metadata, case))
+        IssuerService::new(
+            kms,
+            sample_issuer_metadata(key_metadata, case),
+            UniversalResolver::default(),
+        )
     }
 }

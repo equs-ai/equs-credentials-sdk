@@ -1,6 +1,7 @@
 //! Proof-of-Possession
 
 use crate::crypto;
+use crate::did::universal::UniversalResolver;
 use crate::did::DIDURL;
 use crate::nonce::Nonce;
 use async_trait::async_trait;
@@ -139,6 +140,7 @@ pub trait ProofOfPossession<P> {
         proof: P,
         nonce: &Nonce,
         opts: VerifyOptions,
+        did_resolver: &UniversalResolver,
     ) -> Result<(DIDURLBuf, Box<dyn crypto::Key>)>;
 
     fn alg(proof: &P) -> Result<crypto::Alg>;
