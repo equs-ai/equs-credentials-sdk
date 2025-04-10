@@ -6,6 +6,7 @@ import {
   LocalNonceGenerator,
   OID4VPVerifierBuilder,
   PassAuthRequestObject,
+  ReqwestHttpClient,
   TracingLogFormat,
   TracingLogLevel,
 } from "@equstng/agent-sdk";
@@ -24,13 +25,17 @@ async function main(): Promise<void> {
   const nonceGenerator = new LocalNonceGenerator();
   const { did, keyMetadata } = await createDidAndKeyMetadata(kms);
 
+  const verifier = await new OID4VPVerifierBuilder(
+    kms,
+    nonceGenerator,
+    keyMetadata,
+    did,
+  )
+    .withHttpClient(ReqwestHttpClient.insecure())
+    .build();
+
   const appState = {
-    verifier: await new OID4VPVerifierBuilder(
-      kms,
-      nonceGenerator,
-      keyMetadata,
-      did,
-    ).build(),
+    verifier,
     authReqObjStorage: new Map(),
     presentationSessionStorage: new Map(),
   };
