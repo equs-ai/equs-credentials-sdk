@@ -110,8 +110,26 @@ nodejs-wrapper-build-job:
   <<: *nodejs_job_configs
   stage: build
   script:
-    - npm i --prefix wrappers/nodejs
-    - npm run build --prefix wrappers/nodejs
+    - cd wrappers/nodejs
+    - npm i
+    - npm run build
+  only:
+    - merge_requests
+    - main
+wasm-wrapper-build-job:
+  image: cimg/node:${NODE_VERSION}-browsers
+  before_script:
+    - curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain ${RUST_VERSION}
+    - source "$HOME/.cargo/env"
+    - *cargo_local_deps_script
+    - sudo apt-get update
+    - sudo apt-get install -y clang
+    - curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+  stage: build
+  script:
+    - cd wrappers/wasm
+    - npm i
+    - npm run build
   only:
     - merge_requests
     - main
@@ -120,14 +138,27 @@ nodejs-demo-build-job:
   <<: *nodejs_job_configs
   stage: build
   script:
-    - npm config set "@equstng:registry" 'https://${CI_SERVER_HOST}/api/v4/projects/${CI_PROJECT_ID}/packages/npm/'
-    - npm config set -- '//${CI_SERVER_HOST}/api/v4/projects/${CI_PROJECT_ID}/packages/npm/:_authToken' "${CI_JOB_TOKEN}"
-    - npm i -ignore-scripts --prefix wrappers/nodejs
-    - npm run build:debug --prefix wrappers/nodejs
-    - npm i -ignore-scripts --prefix plugins/askar/wrappers/nodejs
-    - npm run build --prefix plugins/askar/wrappers/nodejs
-    - npm i --prefix demos/nodejs/oid4vc
-    - npm run build --prefix demos/nodejs/oid4vc
+    - cd demos/nodejs/oid4vc
+    - npm i
+    - npm run build
+  only:
+    - merge_requests
+    - main
+
+wasm-demo-build-job:
+  image: cimg/node:${NODE_VERSION}-browsers
+  before_script:
+    - curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain ${RUST_VERSION}
+    - source "$HOME/.cargo/env"
+    - *cargo_local_deps_script
+    - sudo apt-get update
+    - sudo apt-get install -y clang
+    - curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+  stage: build
+  script:
+    - cd demos/wasm/oid4vc
+    - npm i
+    - npm run build
   only:
     - merge_requests
     - main
@@ -221,7 +252,7 @@ wasm-test-job:
   script:
     - cd wrappers/wasm
     - npm install
-    - npm run build:dev
+    - npm run build:dev:cjs
     #    Enable when tests are added
     #    - npm run test
     - cd ../test/js_common

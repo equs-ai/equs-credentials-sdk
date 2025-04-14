@@ -22,8 +22,6 @@ import init, {
 } from "@equstng/agent-sdk";
 
 export async function start(): Promise<void> {
-  console.log("=".repeat(100));
-
   await init();
   const kms = new InMemKms();
   const vault = new InMemVault();

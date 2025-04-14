@@ -15,7 +15,7 @@
     "issuer": "npm run issuer $npm_package_config_nodejs_demo_path",
     "verifier": "npm run verifier $npm_package_config_nodejs_demo_path",
     "holder": "npm run dev",
-    "prepare_wasm_asdk_wrapper": "npm i $npm_package_config_wasm_asdk_wrapper_path && npm run build $npm_package_config_wasm_asdk_wrapper_path",
+    "prepare_wasm_asdk_wrapper": "npm i $npm_package_config_wasm_asdk_wrapper_path && npm run build:dev $npm_package_config_wasm_asdk_wrapper_path",
     "prepare_nodejs_demo": "npm i $npm_package_config_nodejs_demo_path && npm run build $npm_package_config_nodejs_demo_path",
     "preinstall": "npm run prepare_wasm_asdk_wrapper && npm run prepare_nodejs_demo"
   },
