@@ -31,4 +31,19 @@ publish_wasm_wrapper:
       cp .npmrc pkg/.npmrc
       cp .npmignore pkg/.npmignore
       cd pkg
-      NPM_TOKEN=${CI_JOB_TOKEN} npm publish --registry="https://git.slock.it/api/v4/projects/1387/packages/npm/"
+      NPM_TOKEN=${CI_JOB_TOKEN} npm publish --registry=$REGISTRY_URL
+
+
+publish_wasm_dev_wrapper:
+  <<: *wasm_to_registry_template
+  script:
+    - |
+      cd wrappers/wasm
+      rustup target add wasm32-unknown-unknown
+      cargo install wasm-pack
+      npm i
+      npm run build:dev
+      cp .npmrc pkg/.npmrc
+      cp .npmignore pkg/.npmignore
+      cd pkg
+      NPM_TOKEN=${CI_JOB_TOKEN} npm publish --registry=$REGISTRY_URL

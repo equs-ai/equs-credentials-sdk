@@ -17,7 +17,8 @@
   ],
   "scripts": {
     "build": "make",
-    "build:dev": "npm run build  WASM_TARGET=nodejs TS_MODULE=cjs FEATURES=\"test-utils\" DEBUG=true",
+    "build:dev": "make FEATURES=\"test-utils\" DEV=true",
+    "build:dev:cjs": "npm run build:dev WASM_TARGET=nodejs TS_MODULE=cjs",
     "lint": "prettier --write .",
     "test": "jest -w=1 --config=jest.config.json",
     "check": "tslint -c tslint.json 'src/**/*.ts'"
@@ -35,6 +36,7 @@
     "jest": "^29.7.0",
     "ts-jest": "^29.2.6",
     "typescript": "^5.7.3",
-    "mockttp": "^3.15.3"
+    "mockttp": "^3.15.3",
+    "wasm-pack": "^0.13.1"
   }
 }

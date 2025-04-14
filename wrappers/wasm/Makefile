@@ -4,7 +4,7 @@ PKG_MAIN ?= $(shell npm pkg get main | tr -d '"')
 PKG_TYPES ?= $(shell npm pkg get types | tr -d '"')
 WASM_TARGET ?= web
 FEATURES ?=
-DEBUG ?=
+DEV ?=
 
 ifeq ($(strip $(FEATURES)),)
     FEATURES_OPTION =
@@ -12,10 +12,12 @@ else
     FEATURES_OPTION = -- --features $(FEATURES)
 endif
 
-ifeq ($(DEBUG), true)
+ifeq ($(DEV), true)
     BUILD_MODE = --dev
+    PKG_NAME = $(shell npm pkg get name | tr -d '"')-dev
 else
     BUILD_MODE =
+    PKG_NAME = $(shell npm pkg get name | tr -d '"')
 endif
 
 ifndef PROJECT_DIR

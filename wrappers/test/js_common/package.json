@@ -9,15 +9,13 @@
   },
   "scripts": {
     "lint": "prettier --write .",
-    "setup:wasm": "npm i $npm_package_config_wasm_path && npm run build:dev $npm_package_config_wasm_path && npm pkg set dependencies.agent-sdk=file:../../wasm/pkg && npm install",
+    "setup:wasm": "npm i $npm_package_config_wasm_path && npm run build:dev:cjs $npm_package_config_wasm_path && npm pkg set dependencies.agent-sdk=file:../../wasm/pkg && npm install",
     "setup:nodejs": "npm i $npm_package_config_nodejs_path && npm run build:debug $npm_package_config_nodejs_path && npm pkg set dependencies.agent-sdk=file:../../nodejs && npm install",
     "test:wasm": "jest --config=jest.wasm.config.json -w=1 --forceExit",
     "test:nodejs": "jest --config=jest.nodejs.config.json -w=1 --forceExit"
   },
   "packageManager": "yarn@4.6.0",
-  "dependencies": {
-    "agent-sdk": "file:../../nodejs"
-  },
+  "dependencies": {},
   "devDependencies": {
     "@types/jest": "^29.0.0",
     "@types/jest-environment-puppeteer": "^5.0.0",
