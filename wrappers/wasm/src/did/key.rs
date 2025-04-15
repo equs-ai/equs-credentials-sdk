@@ -1,4 +1,4 @@
-use crate::inmem::kms::InMemKeyHandle;
+use crate::kms::{JsKeyHandle, KeyHandle};
 use wasm_bindgen::prelude::wasm_bindgen;
 use wasm_bindgen::JsError;
 
@@ -29,8 +29,8 @@ impl DIDKey {
     /// # Errors
     ///
     /// * Returns an error if the underlying DID generation process fails.
-    pub fn generate(&self, key: &InMemKeyHandle) -> Result<String, JsError> {
-        agent_sdk::did::didkey::DIDKey::generate(key.inner().clone())
+    pub fn generate(&self, key: KeyHandle) -> Result<String, JsError> {
+        agent_sdk::did::didkey::DIDKey::generate(JsKeyHandle::new(key))
             .map(|v| v.to_string())
             .map_err(|err| JsError::new(&format!("{:?}", err)))
     }
