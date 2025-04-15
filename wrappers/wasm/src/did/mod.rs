@@ -1,4 +1,4 @@
-use crate::inmem::kms::InMemKeyHandle;
+use crate::kms::{JsKeyHandle, KeyHandle};
 use crate::utils;
 use agent_sdk::did::ResolutionOutput;
 use std::collections::HashSet;
@@ -75,7 +75,7 @@ impl TryFrom<ResolutionOutput> for DIDResolution {
 /// Verification method key used in the DID Document
 #[wasm_bindgen]
 pub struct VerificationMethodKey {
-    key: agent_sdk::inmem::kms::KeyHandle,
+    key: JsKeyHandle,
     verification_relationships: HashSet<agent_sdk::did::VerificationRelationshipType>,
 }
 
@@ -89,7 +89,7 @@ impl VerificationMethodKey {
     /// * `verification_relationships` - A vector of verification relationship types.
     #[wasm_bindgen(constructor)]
     pub fn new(
-        key: &InMemKeyHandle,
+        key: KeyHandle,
         verification_relationships: Vec<VerificationRelationshipType>,
     ) -> Result<Self, JsError> {
         let verification_relationships = verification_relationships
@@ -98,7 +98,7 @@ impl VerificationMethodKey {
             .collect::<Result<HashSet<_>, _>>()?;
 
         Ok(Self {
-            key: key.inner().clone(),
+            key: JsKeyHandle::new(key),
             verification_relationships,
         })
     }
