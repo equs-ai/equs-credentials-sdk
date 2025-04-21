@@ -1,5 +1,5 @@
 pub mod fixtures {
-    use crate::nonce::{Nonce, NonceData};
+    use crate::nonce::{Nonce, NonceHandler};
     use crate::vc::claims::Claims;
     use crate::vc::oid4vci::metadata::IssuerMetadata;
     use crate::vc::oid4vci::{
@@ -7,10 +7,10 @@ pub mod fixtures {
         CredentialOfferParams, CredentialRequest, CredentialResponse, PreAuthorizedCode,
         PreAuthorizedCodeGrant,
     };
+    use async_trait::async_trait;
     use oauth2::AccessToken;
     use oid4vci::types::{CredentialConfigurationId, IssuerUrl};
     use serde_json::{json, Value};
-    use time::OffsetDateTime;
 
     pub const ISSUER_URL: &str = "https://issuer-backend.com";
     pub const AUTH_URL: &str = "https://authz-backend.com";
@@ -92,6 +92,20 @@ pub mod fixtures {
     pub const REQ_URI_CODE: &str = "fake_request_uri";
     pub const AUTH_REDIRECT_URL: &str = "urn:ietf:wg:oauth:2.0:oob";
 
+    #[derive(Default)]
+    pub struct MockNonceHandler {}
+
+    #[async_trait]
+    impl NonceHandler for MockNonceHandler {
+        async fn generate(&self) -> crate::nonce::Result<Nonce> {
+            Ok(Nonce::from_secret(NONCE.to_string()))
+        }
+
+        async fn validate(&self, nonce: &Nonce) -> crate::nonce::Result<bool> {
+            Ok(true)
+        }
+    }
+
     pub struct SampleIssuerMetadata {}
     impl SampleIssuerMetadata {
         pub fn with_sdjwtvc_conf() -> IssuerMetadata {
@@ -100,6 +114,7 @@ pub mod fixtures {
                     "credential_issuer": ISSUER_URL,
                     "authorization_servers": [AUTH_URL],
                     "credential_endpoint": ISSUER_URL.to_owned()+"/credential",
+                    "nonce_endpoint": ISSUER_URL.to_owned()+"/nonce",
                     "credential_configurations_supported": {
                         CRED_DEF_ID: {
                             "format": "dc+sd-jwt",
@@ -136,6 +151,7 @@ pub mod fixtures {
                 {
                     "credential_issuer": ISSUER_URL,
                     "credential_endpoint": ISSUER_URL.to_owned()+"/credential",
+                    "nonce_endpoint": ISSUER_URL.to_owned()+"/nonce",
                     "credential_configurations_supported": {
                         SCOPE: {
                             "format": "jwt_vc_json",
@@ -154,6 +170,7 @@ pub mod fixtures {
                 {
                     "credential_issuer": ISSUER_URL,
                     "credential_endpoint": ISSUER_URL.to_owned()+"/credential",
+                    "nonce_endpoint": ISSUER_URL.to_owned()+"/nonce",
                     "credential_configurations_supported": {
                         SCOPE: {
                             "format": "jwt_vc_json-ld",
@@ -173,6 +190,7 @@ pub mod fixtures {
             serde_json::from_value(json!({
                 "credential_issuer": ISSUER_URL,
                 "credential_endpoint": ISSUER_URL.to_owned()+"/credential",
+                "nonce_endpoint": ISSUER_URL.to_owned()+"/nonce",
                 "credential_configurations_supported": {
                     "LdpVc": {
                     "format": "ldp_vc",
@@ -323,14 +341,6 @@ pub mod fixtures {
 
     pub fn fake_access_token() -> AccessToken {
         AccessToken::new("".to_string())
-    }
-
-    pub fn sample_nonce() -> NonceData {
-        NonceData {
-            value: Nonce::from_secret(NONCE.to_owned()),
-            created: OffsetDateTime::now_utc(),
-            expires_in: None,
-        }
     }
 
     pub const SAMPLE_PROOF_JWT: &str = "eyJhbGciOiJFUzI1NiIsImtpZCI6ImRpZDprZXk6ekRuYWVxTnJnR1RBV3FVVlNVRnFvWFh3bjhONThVc2JLRVpDeUUyWlk5ZFRHS3B3cyN6RG5hZXFOcmdHVEFXcVVWU1VGcW9YWHduOE41OFVzYktFWkN5RTJaWTlkVEdLcHdzIiwidHlwIjoib3BlbmlkNHZjaS1wcm9vZitqd3QifQ.eyJhdWQiOiJodHRwczovL2lzc3Vlci1iYWNrZW5kLmNvbSIsIm5iZiI6MTczNTkwMTAzNCwiaWF0IjoxNzM1OTAxMDM0LCJleHAiOjY2MTQ4NTE1MTQsIm5vbmNlIjoiS0I1MFZPbTlJLWtQTFQ5bUFBQ1Y4ZyJ9.2flsRA_XKGFm4JBpvRHkV3QKLMo81OawQHL1YQdwVRo3OnZeugQJevWz8q-_lD-fo6U9_z_KuLNt9tQr_5A5Iw";

@@ -32,9 +32,7 @@ export interface CredentialImmediate {
  *
  * @property {CredentialDeferred|CredentialImmediate} data - The credential response data,
  * which may be either a {@link CredentialDeferred} or a {@link CredentialImmediate}.
- * @property {NonceData} nonceData - The {@link NonceData} to be used in subsequent calls, as defined by.
  */
 export interface CredentialResponse {
   data: CredentialDeferred | CredentialImmediate;
-  nonceData?: NonceData;
 }

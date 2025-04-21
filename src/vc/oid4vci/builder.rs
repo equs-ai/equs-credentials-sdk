@@ -1,6 +1,6 @@
 use crate::did::universal::{DIDResolver, UniversalResolver};
 use crate::http::{HttpClient, HttpError, HttpSnafu};
-use crate::nonce::NonceGenerator;
+use crate::nonce::{Nonce, NonceHandler};
 use crate::reqwest::builder::ReqwestClientBuilder;
 use crate::reqwest::ReqwestClient;
 use crate::vc::core::KeyMetadata;
@@ -13,6 +13,7 @@ use crate::vc::oid4vci::metadata::convert_metadata;
 use crate::vc::oid4vci::token_validation::{ByJwks, Introspect};
 use crate::vc::oid4vci::CredentialOfferParams;
 use crate::{kms, vault, vc};
+use async_trait::async_trait;
 use common_macros::DebugError;
 use openidconnect::JsonWebKeySetUrl;
 use snafu::{Location, Snafu};
@@ -50,12 +51,12 @@ pub enum IssuerDiscovery {
 }
 
 /// A builder for instantiating `oid4vci` `Issuer`.
-pub struct IssuerBuilder<KH, KMS, HC, NG>
+pub struct IssuerBuilder<KH, KMS, HC, NH>
 where
     KH: kms::KeyHandle,
     KMS: kms::Kms<KH>,
     HC: HttpClient,
-    NG: NonceGenerator,
+    NH: NonceHandler,
 {
     // data
     issuer_metadata: api::IssuerMetadata,
@@ -68,24 +69,22 @@ where
     // services
     kms: KMS,
     http_client: Result<HC, HttpError>,
-    nonce_generator: NG,
+    nonce_handler: Option<NH>,
     did_resolver: UniversalResolver,
 
     _marker: PhantomData<KH>,
 }
 
-impl<KH, KMS, NG> IssuerBuilder<KH, KMS, ReqwestClient, NG>
+impl<KH, KMS> IssuerBuilder<KH, KMS, ReqwestClient, InternalNonceHandler>
 where
     KH: kms::KeyHandle,
     KMS: kms::Kms<KH>,
-    NG: NonceGenerator,
 {
     /// Returns a new `Builder` initialized with defaults.
     ///
     /// # Arguments
     ///
     /// * `kms` - an inner KMS.
-    /// * `nonce_generator` - a nonce generator.
     /// * `issuer_metadata` - an `IssuerMetadata`.
     /// * `key_metadata` - a default `KeyMetadata` with `DIDURL` and `KID` to be used for signing operations.
     ///    If you want to specify a dedicated `KeyMedata` per `credential_configuration_id`, please
@@ -101,14 +100,9 @@ where
     /// A new builder.
     #[instrument(
         level = Level::TRACE,
-        skip(kms, nonce_generator),
+        skip(kms),
     )]
-    pub fn new(
-        kms: KMS,
-        nonce_generator: NG,
-        issuer_metadata: api::IssuerMetadata,
-        key_metadata: KeyMetadata,
-    ) -> Self {
+    pub fn new(kms: KMS, issuer_metadata: api::IssuerMetadata, key_metadata: KeyMetadata) -> Self {
         let http_client = ReqwestClientBuilder::new().build().map_err(|e| {
             HttpSnafu {
                 details: e.to_string(),
@@ -123,7 +117,7 @@ where
             key_metadata,
             kms,
             http_client,
-            nonce_generator,
+            nonce_handler: None,
             token_params: None,
             clock_skew: None,
             cred_lifetime: Duration::days(DEFAULT_CRED_LIFETIME_DAYS),
@@ -134,12 +128,12 @@ where
     }
 }
 
-impl<KH, KMS, HC, NG> IssuerBuilder<KH, KMS, HC, NG>
+impl<KH, KMS, HC, NH> IssuerBuilder<KH, KMS, HC, NH>
 where
     KH: kms::KeyHandle,
     KMS: kms::Kms<KH>,
     HC: HttpClient + 'static,
-    NG: NonceGenerator,
+    NH: NonceHandler,
 {
     /// Use a specific `HttpClient`.
     ///
@@ -153,7 +147,7 @@ where
     pub fn with_http_client<HC_: HttpClient + 'static>(
         self,
         http_client: HC_,
-    ) -> IssuerBuilder<KH, KMS, HC_, NG> {
+    ) -> IssuerBuilder<KH, KMS, HC_, NH> {
         IssuerBuilder {
             http_client: Ok(http_client),
             // copied
@@ -163,7 +157,7 @@ where
             clock_skew: self.clock_skew,
             kms: self.kms,
             cred_lifetime: self.cred_lifetime,
-            nonce_generator: self.nonce_generator,
+            nonce_handler: self.nonce_handler,
             cred_conf_ids_with_key_metadata: Default::default(),
             did_resolver: self.did_resolver,
             _marker: Default::default(),
@@ -197,6 +191,36 @@ where
     pub fn token_validation_jwks(mut self, url: Url) -> Self {
         self.token_params = Some(TokenParams::Jwks(url));
         self
+    }
+
+    /// Use a Nonce Handler to enable the `Nonce` generation and validation. Generated `Nonce` will be
+    /// incorporated into proofs in the Credential Request.
+    ///
+    /// # Arguments
+    ///
+    /// * `nonce_handler` - an implementation of `NonceHandler` trait.
+    #[instrument(
+        level = Level::TRACE,
+        skip(self, nonce_handler),
+    )]
+    pub fn with_nonce_handler<NH_: NonceHandler>(
+        self,
+        nonce_handler: NH_,
+    ) -> IssuerBuilder<KH, KMS, HC, NH_> {
+        IssuerBuilder {
+            nonce_handler: Some(nonce_handler),
+            // copied
+            http_client: self.http_client,
+            issuer_metadata: self.issuer_metadata,
+            key_metadata: self.key_metadata,
+            token_params: self.token_params,
+            clock_skew: self.clock_skew,
+            kms: self.kms,
+            cred_lifetime: self.cred_lifetime,
+            cred_conf_ids_with_key_metadata: Default::default(),
+            did_resolver: self.did_resolver,
+            _marker: Default::default(),
+        }
     }
 
     /// Sets a `KeyMetadata` to be used for signing operations of the credential
@@ -335,10 +359,18 @@ where
             _ => None,
         };
 
+        if self.issuer_metadata.nonce_endpoint().is_some() && self.nonce_handler.is_none() {
+            BuildSnafu {
+                details: "Nonce Handler is required while enabling nonce endpoint. \
+                Please provide the Nonce Handler implementation by calling 'nonce_handler' builder function".to_string(),
+            }
+                .fail()?
+        }
+
         let issuer = IssuerService::new(
             self.issuer_metadata,
             inner,
-            self.nonce_generator,
+            self.nonce_handler,
             token_validation,
             self.clock_skew,
         );
@@ -599,12 +631,29 @@ where
     }
 }
 
+/// DON'T USE: The following struct is only used to work around a compilation problem related
+/// to type inference when using the IssuerBuilder::new() function
+pub struct InternalNonceHandler {
+    _private: (),
+}
+
+#[async_trait]
+impl NonceHandler for InternalNonceHandler {
+    async fn generate(&self) -> crate::nonce::Result<Nonce> {
+        unimplemented!()
+    }
+
+    async fn validate(&self, nonce: &Nonce) -> crate::nonce::Result<bool> {
+        unimplemented!()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::http::MockHttpClient;
     use crate::inmem::kms::LocalKms;
-    use crate::inmem::nonce::LocalNonceGenerator;
+    use crate::inmem::nonce::LocalNonceHandler;
     use crate::inmem::vault::InMemVault;
     use crate::utils::http::test::mock_http_once;
     use crate::utils::test_utils::create_did_and_key_metadata;
@@ -626,18 +675,54 @@ mod tests {
     async fn building_issuer_works() {
         let http_client = MockHttpClient::new();
         let kms = LocalKms::new();
-        let nonce_gen = LocalNonceGenerator::default();
+        let nonce_gen = LocalNonceHandler::default();
         let (_, key_metadata) = create_did_and_key_metadata(&kms).await;
 
-        let builder = IssuerBuilder::new(
-            kms,
-            nonce_gen,
-            SampleIssuerMetadata::with_sdjwtvc_conf(),
-            key_metadata,
-        )
-        .token_validation_jwks(Url::parse("http://issuer.org/certs").unwrap())
-        .with_clock_skew(time::Duration::minutes(1))
-        .with_http_client(http_client);
+        let builder =
+            IssuerBuilder::new(kms, SampleIssuerMetadata::with_sdjwtvc_conf(), key_metadata)
+                .with_nonce_handler(nonce_gen)
+                .token_validation_jwks(Url::parse("http://issuer.org/certs").unwrap())
+                .with_clock_skew(time::Duration::minutes(1))
+                .with_http_client(http_client);
+
+        let result = builder.build().await;
+
+        result.unwrap();
+    }
+
+    #[tokio::test]
+    async fn building_issuer_works_when_nonce_handler_is_not_provided() {
+        let http_client = MockHttpClient::new();
+        let kms = LocalKms::new();
+        let nonce_gen = LocalNonceHandler::default();
+        let (_, key_metadata) = create_did_and_key_metadata(&kms).await;
+
+        let mut metadata = SampleIssuerMetadata::with_sdjwtvc_conf();
+        metadata = metadata.set_nonce_endpoint(None);
+
+        let builder = IssuerBuilder::new(kms, metadata, key_metadata)
+            .token_validation_jwks(Url::parse("http://issuer.org/certs").unwrap())
+            .with_clock_skew(time::Duration::minutes(1))
+            .with_http_client(http_client);
+
+        let result = builder.build().await;
+
+        result.unwrap();
+    }
+
+    #[tokio::test]
+    #[should_panic(expected = "Nonce Handler is required while enabling nonce endpoint")]
+    async fn building_issuer_fails_when_nonce_handler_is_provided_but_nonce_endpoint_is_missed() {
+        let http_client = MockHttpClient::new();
+        let kms = LocalKms::new();
+        let nonce_gen = LocalNonceHandler::default();
+        let (_, key_metadata) = create_did_and_key_metadata(&kms).await;
+
+        let builder =
+            IssuerBuilder::new(kms, SampleIssuerMetadata::with_sdjwtvc_conf(), key_metadata)
+                .token_validation_jwks(Url::parse("http://issuer.org/certs").unwrap())
+                .with_clock_skew(time::Duration::minutes(1))
+                .with_http_client(http_client);
 
         let result = builder.build().await;
 

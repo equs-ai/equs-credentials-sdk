@@ -1,14 +1,14 @@
-use crate::crypto::{KeyMetadata, NonceData};
+use crate::crypto::KeyMetadata;
 use crate::utils;
 use crate::vc::oid4vci::{
     CredentialResponse, OID4VCICredentialOffer, OID4VCIIssuerMetadata, TokenResponse,
 };
 use crate::vc::{Credential, CredentialMetadata, JsCredential};
+use agent_sdk::vc;
 use agent_sdk::vc::oid4vci::{
     AccessToken, AuthzFlow, CredentialOfferParams, CredentialResponseResolved, Holder,
     IssuerMetadata,
 };
-use agent_sdk::{nonce, vc};
 use async_trait::async_trait;
 use js_sys::{Function, Promise};
 use serde::Serialize;
@@ -242,7 +242,6 @@ impl OID4VCIHolder {
     ///
     /// * `token` - an access token.
     /// * `cred_def_id` - a `CredentialDefinition` ID.
-    /// * `nonce` - an optional nonce. If not set `Holder` will re-request nonce from the `Issuer` automatically.
     /// * `key_metadata` - a `KeyMetadata` for corresponding key to be used for signing operations.
     ///
     /// # Returns
@@ -258,15 +257,13 @@ impl OID4VCIHolder {
         &self,
         token: String,
         cred_def_id: String,
-        nonce: Option<NonceData>,
         key_metadata: KeyMetadata,
     ) -> Result<CredentialResponse, JsError> {
-        let nonce = nonce.map(utils::convert_to_rust_object).transpose()?;
         let token = serde_json::from_value(serde_json::Value::String(token))?;
         let key_metadata = utils::convert_to_rust_object(key_metadata)?;
 
         self.0
-            .request_credential(&token, &cred_def_id, nonce, &key_metadata)
+            .request_credential(&token, &cred_def_id, &key_metadata)
             .await
             .map_err(|err| JsError::new(&format!("{:?}", err)))
             .and_then(TryInto::try_into)
@@ -319,7 +316,6 @@ trait _HolderWrapperTrait {
         &self,
         token: &AccessToken,
         cred_def_id: &str,
-        nonce: Option<nonce::NonceData>,
         key_metadata: &vc::core::KeyMetadata,
     ) -> vc::oid4vci::Result<CredentialResponseResolved>;
 
@@ -358,11 +354,10 @@ impl<H: Holder> _HolderWrapperTrait for _HolderWrapper<H> {
         &self,
         token: &AccessToken,
         cred_def_id: &str,
-        nonce: Option<nonce::NonceData>,
         key_metadata: &vc::core::KeyMetadata,
     ) -> vc::oid4vci::Result<CredentialResponseResolved> {
         self.0
-            .request_credential(token, cred_def_id, nonce.as_ref(), key_metadata)
+            .request_credential(token, cred_def_id, key_metadata)
             .await
     }
 

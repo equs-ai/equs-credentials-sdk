@@ -3,7 +3,7 @@ import {
   AuthResponseOptions,
   enableLogs,
   InMemKms,
-  LocalNonceGenerator,
+  LocalNonceHandler,
   OID4VPVerifierBuilder,
   PassAuthRequestObject,
   ReqwestHttpClient,
@@ -22,12 +22,12 @@ async function main(): Promise<void> {
 
   const { port, host } = config.servers.verifier;
   const kms = new InMemKms();
-  const nonceGenerator = new LocalNonceGenerator();
+  const nonceHandler = new LocalNonceHandler();
   const { did, keyMetadata } = await createDidAndKeyMetadata(kms);
 
   const verifier = await new OID4VPVerifierBuilder(
     kms,
-    nonceGenerator,
+    nonceHandler,
     keyMetadata,
     did,
   )

@@ -6,21 +6,21 @@ import {
   HttpClient,
   KeyMetadata,
   Kms,
-  NonceGenerator,
+  NonceHandler,
   OID4VPVerifier,
 } from "../../../";
 
 export class OID4VPVerifierBuilder {
   private readonly kms: Kms;
-  private readonly nonceGenerator: NonceGenerator;
+  private readonly nonceHandler: NonceHandler;
   private readonly keyMetadata: KeyMetadata;
   private readonly clientId: string;
   private clientMetadata?: ClientMetadata;
   private httpClient?: HttpClient;
 
-  constructor(kms: Kms, nonceGenerator: NonceGenerator, keyMetadata: KeyMetadata, clientId: string) {
+  constructor(kms: Kms, NonceHandler: NonceHandler, keyMetadata: KeyMetadata, clientId: string) {
     this.kms = kms;
-    this.nonceGenerator = nonceGenerator;
+    this.nonceHandler = NonceHandler;
     this.keyMetadata = keyMetadata;
     this.clientId = clientId;
   }
@@ -38,7 +38,7 @@ export class OID4VPVerifierBuilder {
   async build(): Promise<OID4VPVerifier> {
     return await buildVpVerifier(
       contextEnsuredKms(this.kms),
-      contextEnsuredNonceGenerator(this.nonceGenerator),
+      contextEnsuredNonceGenerator(this.nonceHandler),
       this.keyMetadata,
       this.clientId,
       this.clientMetadata,

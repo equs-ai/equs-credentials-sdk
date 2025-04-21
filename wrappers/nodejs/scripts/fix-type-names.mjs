@@ -17,7 +17,6 @@ const replacements = [
   { from: "JsKeyMetadata", to: "KeyMetadata" },
   { from: "JsDIDAndKeyMetadata", to: "DIDAndKeyMetadata" },
   { from: "JsAuthResponseOptions", to: "AuthResponseOptions" },
-  { from: "JsNonceData", to: "NonceData" },
   { from: "JsIssuerMetadata", to: "IssuerMetadata" },
   { from: "JsHolderMetadata", to: "HolderMetadata" },
   { from: "JsKeyHandle", to: "KeyHandle" },

@@ -29,6 +29,7 @@ class HolderVCITest {
                   "credential_issuer": "$ISSUER_ENDPOINT",
                   "authorization_servers": ["$ISSUER_ENDPOINT/auth"],
                   "credential_endpoint": "$ISSUER_ENDPOINT/credential",
+                  "nonce_endpoint": "$ISSUER_ENDPOINT/nonce",
                   "credential_configurations_supported": {
                     "IDENTITY_SD_JWT": {
                       "format": "dc+sd-jwt",
@@ -107,9 +108,15 @@ class HolderVCITest {
                 {
                   "format": "dc+sd-jwt",
                   "credential": "$SD_JWT_CRED",
-                  "c_nonce": "0GtZieAoAL_3Zafyn6TgCA",
-                  "c_nonce_expires_in": 86400,
                   "notification_id": "1111"
+                }
+            """
+        )
+
+        val nonceResponse = Json.parseToJsonElement(
+            """
+                {
+                  "c_nonce": "0GtZieAoAL_3Zafyn6TgCA"
                 }
             """
         )
@@ -138,6 +145,7 @@ class HolderVCITest {
                         "/auth/par/request" -> mockResponse.setResponseCode(201).setBody(pushedAuthResponse.toString())
                         "/auth/token" -> mockResponse.setResponseCode(200).setBody(tokenResponse.toString())
                         "/credential" -> mockResponse.setResponseCode(200).setBody(credentialResponse.toString())
+                        "/nonce" -> mockResponse.setResponseCode(200).setBody(nonceResponse.toString())
                         else -> mockResponse.setResponseCode(404)
                     }
                 }
@@ -168,8 +176,6 @@ class HolderVCITest {
             expiresIn = 86400U,
             refreshToken = null,
             scopes = arrayListOf("SD_JWT_cred"),
-            cNonce = "tZignsnFbp",
-            cNonceExpiresIn = null,
             authorizationDetails = null,
         )
 
@@ -197,8 +203,6 @@ class HolderVCITest {
             expiresIn = 86400U,
             refreshToken = null,
             scopes = arrayListOf("SD_JWT_cred"),
-            cNonce = "tZignsnFbp",
-            cNonceExpiresIn = null,
             authorizationDetails = null,
         )
 
@@ -237,16 +241,12 @@ class HolderVCITest {
         val inMemKms = InMemKms();
         val didAndKeyMetadata = createDidAndKeyMetadata(inMemKms)
 
-        val nonce = NonceData("KB50VOm9I-kPLT9mAACV8g", 1728732136, 86400)
-
-        val actual = buildHolder(inMemKms).requestCredential(ACCESS_TOKEN, "IDENTITY_SD_JWT", nonce, didAndKeyMetadata.keyMetadata)
+        val actual = buildHolder(inMemKms).requestCredential(ACCESS_TOKEN, "IDENTITY_SD_JWT", didAndKeyMetadata.keyMetadata)
 
         assertEquals(CredentialResultEnum.Immediate(
             credential = Credential(format = VcFormat.SD_JWT_VC, payload = SD_JWT_CRED),
             notificationId = "1111",
         ), actual.data)
-        assertEquals("0GtZieAoAL_3Zafyn6TgCA", actual.nonceData?.value)
-        assertEquals( 86400, actual.nonceData?.expiresIn)
     }
 
     @Test

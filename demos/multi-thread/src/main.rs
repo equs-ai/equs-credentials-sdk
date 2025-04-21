@@ -1,4 +1,3 @@
-use actix_web::cookie::time::OffsetDateTime;
 use actix_web::http::header::Header;
 use actix_web::{web, App, Error, HttpRequest, HttpResponse, HttpServer};
 use actix_web_httpauth::headers::authorization::{Authorization, Bearer};
@@ -6,17 +5,16 @@ use agent_sdk::did::didkey::DIDKey;
 use agent_sdk::did::universal::UniversalResolver;
 use agent_sdk::did::{DIDBuf, DIDResolver, DID};
 use agent_sdk::inmem::kms::LocalKms;
-use agent_sdk::inmem::nonce::LocalNonceGenerator;
+use agent_sdk::inmem::nonce::LocalNonceHandler;
 use agent_sdk::inmem::vault::InMemVault;
 use agent_sdk::kms;
 use agent_sdk::kms::Kms;
-use agent_sdk::nonce::{Nonce, NonceData};
 use agent_sdk::reqwest::builder::ReqwestClientBuilder;
 use agent_sdk::vc::core::KeyMetadata;
 use agent_sdk::vc::oid4vci;
 use agent_sdk::vc::oid4vci::{
     AccessToken, AuthorizationMetadata, CredentialRequest, CredentialResponseResolved,
-    CredentialResult, IssuanceSession, IssuerDiscovery, IssuerMetadata,
+    CredentialResult, IssuerDiscovery, IssuerMetadata,
 };
 use agent_sdk::vc::oid4vci::{Holder, Issuer};
 use rand::distributions::Alphanumeric;
@@ -29,7 +27,6 @@ const DEFAULT_RUNS: u32 = 100;
 const SERVER_URL: &str = "http://localhost:4000";
 // Contains scope `SD_JWT_cred`
 const DUMMY_TOKEN: &str =  "eyJhbGciOiJSUzI1NiIsInR5cCIgOiAiSldUIiwia2lkIiA6ICJQY2xZUDZ2UmsxTHBLRGZqU08yRGEzNXJtR1JmaTkzNjJDcFJFeUpmOHAwIn0.eyJleHAiOjE3MjQzOTg0OTQsImlhdCI6MTcyNDM5ODE5NCwiYXV0aF90aW1lIjoxNzI0Mzk4MTgyLCJqdGkiOiIwYjRmZTM5MC00OTIxLTQwNDItYjdlMS1iMDNiM2QxOTYyMjkiLCJpc3MiOiJodHRwOi8vbG9jYWxob3N0OjgwODAvaWRwL3JlYWxtcy9waWQtaXNzdWVyLXJlYWxtIiwic3ViIjoiNjBiOGJhNWYtYzczZi00OTc2LWIwZGEtNDhkMGU1MzMzNWRlIiwidHlwIjoiQmVhcmVyIiwiYXpwIjoid2FsbGV0LWRldiIsInNpZCI6ImYxNWIzZTExLWZmMjgtNDRkZi04ZmNmLWE3N2QyNDcxNGEyMyIsImFsbG93ZWQtb3JpZ2lucyI6WyIvKiJdLCJzY29wZSI6IlNEX0pXVF9jcmVkIn0.pLGGmOApXnQCY6CwuFzxFXEN36aDJ-iE0TM_esYJ_qtijhUtWq5zI9lD-iGzhTSdwZ7Y51eUKtqmJXHixzBo847vmMeGla4Ko6JTY-4vVAIQ1Hk1xzl25ALuZNwxGbljlysjzBgCxeAjZo3fE0HTI5y6NItptIU8aY3ykoIX9xE81ZkexbVrR495cEX7UIgUgCZyhj8lXUMWFrNFBhELnzzFGdX01Dq3B-KflY9ACVaw-_U9bT6EzDI0-0Cyx2K658EU9VpDjBSR6URT5I9quvx1qoYMFPv7zhjW3sUASIVwThe4CvWCCR8Kf8rsnEQ2qnchn0f6gn9thxi51FGkvA";
-const DUMMY_NONCE: &str = "nOncE";
 
 struct AppState {
     issuer: Box<dyn Issuer>,
@@ -95,15 +92,9 @@ async fn issue_endpoint(
     .try_into()
     .unwrap();
 
-    let mut dummy_session = IssuanceSession {
-        nonce: Some(sample_nonce()),
-        notification_id: None,
-        transaction_id: None,
-    };
-
     let resp = state
         .issuer
-        .issue_credential(&cred_req, &token, &claims, &mut dummy_session, None)
+        .issue_credential(&cred_req, &token, &claims, None)
         .await;
 
     match resp {
@@ -116,10 +107,11 @@ async fn issue_endpoint(
 
 async fn oid4vci_issuer(issuer_metadata: IssuerMetadata) -> impl Issuer {
     let kms = LocalKms::new();
-    let nonce_gen = LocalNonceGenerator::default();
+    let nonce_handler = LocalNonceHandler::default();
     let (_, key_metadata) = create_did_and_key_metadata(&kms).await;
 
-    oid4vci::IssuerBuilder::new(kms, nonce_gen, issuer_metadata, key_metadata)
+    oid4vci::IssuerBuilder::new(kms, issuer_metadata, key_metadata)
+        .with_nonce_handler(nonce_handler)
         .with_http_client(ReqwestClientBuilder::new().insecure().build().unwrap())
         .build()
         .await
@@ -165,12 +157,7 @@ async fn run_holder() -> Result<(), String> {
     .await;
 
     let res = holder
-        .request_credential(
-            &dummy_token,
-            "SD_JWT_cred",
-            Some(&sample_nonce()),
-            &key_metadata,
-        )
+        .request_credential(&dummy_token, "SD_JWT_cred", &key_metadata)
         .await;
 
     match res {
@@ -224,14 +211,6 @@ async fn create_did_and_key_metadata(kms: &LocalKms) -> (DID, KeyMetadata) {
             did_url: vm.to_string(),
         },
     )
-}
-
-fn sample_nonce() -> NonceData {
-    NonceData {
-        value: Nonce::from_secret(DUMMY_NONCE.to_owned()),
-        created: OffsetDateTime::now_utc(),
-        expires_in: None,
-    }
 }
 
 fn sample_issuer_metadata(iss_url: &str) -> IssuerMetadata {

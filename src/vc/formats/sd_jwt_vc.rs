@@ -553,9 +553,9 @@ mod tests {
     use crate::did::universal::UniversalResolver;
     use crate::did::{DIDResolver, DIDURL};
     use crate::inmem::kms::LocalKms;
-    use crate::inmem::nonce::LocalNonceGenerator;
+    use crate::inmem::nonce::LocalNonceHandler;
     use crate::kms::{CreateOptions, KeyHandle, KeyType, Kms};
-    use crate::nonce::{Nonce, NonceGenerator};
+    use crate::nonce::{Nonce, NonceHandler};
     use crate::utils::serde::Helpers;
     use crate::utils::test_utils::{create_did_url_and_key_handle, failed_signer_key, no_jwk_key};
     use crate::vc::claims::Claim;
@@ -1076,7 +1076,7 @@ mod tests {
     }
 
     async fn random_nonce() -> Nonce {
-        LocalNonceGenerator::default().generate().await.unwrap()
+        LocalNonceHandler::default().generate().await.unwrap()
     }
 
     fn sample_claims() -> Claims {

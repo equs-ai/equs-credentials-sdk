@@ -36,13 +36,13 @@ impl VCCoreHolder {
     pub async fn request_credential(
         &self,
         credential_offer: JsCredentialOffer,
-        nonce: String,
+        nonce: Option<String>,
         key_metadata: JsKeyMetadata,
     ) -> Result<JsCredentialRequest, Error> {
         self.0
             .request_credential(
                 &credential_offer.try_into()?,
-                &serde_json::from_value(Value::String(nonce))?,
+                nonce.map(agent_sdk::nonce::Nonce::from_secret),
                 &key_metadata.into(),
             )
             .await

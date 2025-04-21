@@ -53,7 +53,7 @@ where
     async fn request_credential(
         &self,
         credential_offer: &CredentialOffer,
-        nonce: &Nonce,
+        nonce: Option<Nonce>,
         key_metadata: &KeyMetadata,
     ) -> Result<CredentialRequest> {
         trace!(?credential_offer, ?nonce);
@@ -353,15 +353,15 @@ mod tests {
 
         let offer = sample_cred_def_offer(&case);
 
-        let nonce = random_nonce().await;
+        let nonce = Some(random_nonce().await);
 
         let request = holder
-            .request_credential(&offer, &nonce, &key_metadata)
+            .request_credential(&offer, nonce.clone(), &key_metadata)
             .await
             .unwrap();
 
         assert_eq!(request.cred_def_id, CRED_DEF_ID);
-        case.assert_proof_of_possession(request.proof, &nonce, &key_metadata.did_url)
+        case.assert_proof_of_possession(request.proof, nonce, &key_metadata.did_url)
             .await;
     }
 
@@ -378,10 +378,10 @@ mod tests {
 
         let holder = holder_service(kms, vault);
         let offer = sample_cred_def_offer(&CredTestCase::sd_jwt());
-        let nonce = random_nonce().await;
+        let nonce = Some(random_nonce().await);
 
         let result = holder
-            .request_credential(&offer, &nonce, &key_metadata)
+            .request_credential(&offer, nonce, &key_metadata)
             .await;
 
         assert!(matches!(result.err().unwrap(), Error::KMS { .. }));
@@ -399,12 +399,12 @@ mod tests {
         let holder = holder_service(kms, vault);
 
         let offer = sample_cred_def_offer(&case);
-        let nonce = random_nonce().await;
+        let nonce = Some(random_nonce().await);
 
         let res = holder
             .request_credential(
                 &offer,
-                &nonce,
+                nonce.clone(),
                 &KeyMetadata {
                     did_url: "".to_string(),
                     ..key_metadata
@@ -417,7 +417,7 @@ mod tests {
         let res = holder
             .request_credential(
                 &offer,
-                &nonce,
+                nonce,
                 &KeyMetadata {
                     kid: "not-found".to_string(),
                     ..key_metadata
@@ -442,10 +442,10 @@ mod tests {
         let holder = holder_service(kms, vault);
 
         let offer = sample_cred_def_offer(&case);
-        let nonce = random_nonce().await;
+        let nonce = Some(random_nonce().await);
 
         let res = holder
-            .request_credential(&offer, &nonce, &key_metadata)
+            .request_credential(&offer, nonce, &key_metadata)
             .await;
 
         assert!(matches!(res.err(), Some(Error::ProofFormatRequired)));

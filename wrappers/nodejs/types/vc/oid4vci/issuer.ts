@@ -1,11 +1,10 @@
 import {
   buildVciIssuer,
   contextEnsuredKms,
-  contextEnsuredNonceGenerator,
   Duration,
   KeyMetadata,
   Kms,
-  NonceGenerator,
+  NonceHandler,
   OID4VCIIssuer,
   OID4VCIIssuerMetadata,
   TokenValidation,
@@ -14,24 +13,23 @@ import {
 
 export class OID4VCIIssuerBuilder {
   private readonly kms: Kms;
-  private readonly nonceGenerator: NonceGenerator;
   private readonly issuerMetadata: OID4VCIIssuerMetadata;
   private readonly keyMetadata: KeyMetadata;
+  private nonceHandler?: NonceHandler;
   private tokenValidation?: TokenValidation;
   private clockSkew?: Duration;
   private dedicatedKeys: Record<string, KeyMetadata>;
 
-  constructor(
-    kms: Kms,
-    nonceGenerator: NonceGenerator,
-    issuerMetadata: OID4VCIIssuerMetadata,
-    keyMetadata: KeyMetadata,
-  ) {
+  constructor(kms: Kms, issuerMetadata: OID4VCIIssuerMetadata, keyMetadata: KeyMetadata) {
     this.kms = kms;
-    this.nonceGenerator = nonceGenerator;
     this.issuerMetadata = issuerMetadata;
     this.keyMetadata = keyMetadata;
     this.dedicatedKeys = {};
+  }
+
+  withNonceHandler(nonceHandler: NonceHandler): this {
+    this.nonceHandler = nonceHandler;
+    return this;
   }
 
   tokenValidationIntrospect(url: string, header?: string | undefined): this {
@@ -63,7 +61,7 @@ export class OID4VCIIssuerBuilder {
   async build(): Promise<OID4VCIIssuer> {
     return await buildVciIssuer(
       contextEnsuredKms(this.kms),
-      contextEnsuredNonceGenerator(this.nonceGenerator),
+      this.nonceHandler,
       this.issuerMetadata,
       this.keyMetadata,
       this.tokenValidation,

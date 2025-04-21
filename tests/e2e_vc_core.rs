@@ -7,10 +7,10 @@ use agent_sdk::did::didkey::DIDKey;
 use agent_sdk::did::universal::UniversalResolver;
 use agent_sdk::did::{DIDBuf, DIDResolver};
 use agent_sdk::inmem::kms::LocalKms;
-use agent_sdk::inmem::nonce::LocalNonceGenerator;
+use agent_sdk::inmem::nonce::LocalNonceHandler;
 use agent_sdk::inmem::vault::InMemVault;
 use agent_sdk::kms::Kms;
-use agent_sdk::nonce::NonceGenerator;
+use agent_sdk::nonce::NonceHandler;
 use agent_sdk::reqwest::builder::ReqwestClientBuilder;
 use agent_sdk::vc::core::status_issuer::StatusIssuerService;
 use agent_sdk::vc::core::IssuerService;
@@ -44,7 +44,7 @@ const POP_EXP_MINUTES: i64 = 8;
 async fn sd_jwt_credential_issuance_and_presentation_verification() {
     // Initialization
     let holder_kms = LocalKms::new();
-    let nonce_gen = LocalNonceGenerator::default();
+    let nonce_gen = LocalNonceHandler::default();
 
     let issuer = build_issuer_with_sd_jwt_credential_profile().await;
     let holder = build_holder(holder_kms.clone()).await;
@@ -55,10 +55,10 @@ async fn sd_jwt_credential_issuance_and_presentation_verification() {
     let offer = issuer.offer_credential(SCOPE, None);
     let offer = offer.unwrap();
 
-    let nonce = nonce_gen.generate().await.unwrap();
+    let nonce = Some(nonce_gen.generate().await.unwrap());
     let (_, key_metadata, _) = create_did_keymetadata_keyhandle(&holder_kms).await;
     let request = holder
-        .request_credential(&offer, &nonce, &key_metadata)
+        .request_credential(&offer, nonce.clone(), &key_metadata)
         .await;
     let request = request.unwrap();
 
@@ -75,7 +75,7 @@ async fn sd_jwt_credential_issuance_and_presentation_verification() {
     println!("Claims: {:?}", claims);
 
     let vc = issuer
-        .issue_credential(&request, &claims, &nonce, None)
+        .issue_credential(&request, &claims, nonce, None)
         .await
         .unwrap();
 
@@ -113,7 +113,7 @@ async fn sd_jwt_credential_issuance_and_presentation_verification() {
     }))
     .unwrap();
 
-    let nonce = LocalNonceGenerator::default().generate().await.unwrap();
+    let nonce = LocalNonceHandler::default().generate().await.unwrap();
 
     let vp_res = holder
         .create_presentation_auto(&nonce, VERIFIER_ID, &input_descriptor.try_into().unwrap())
@@ -142,7 +142,7 @@ async fn sd_jwt_credential_issuance_and_presentation_verification() {
 async fn bbs_plus_credential_issuance_and_presentation_verification() {
     // Initialization
     let holder_kms = LocalKms::new();
-    let nonce_gen = LocalNonceGenerator::default();
+    let nonce_gen = LocalNonceHandler::default();
 
     let issuer = build_issuer_with_bbs_plus_credential_profile().await;
     let holder = build_holder(holder_kms.clone()).await;
@@ -153,10 +153,10 @@ async fn bbs_plus_credential_issuance_and_presentation_verification() {
     let offer = issuer.offer_credential("LdpVc_cred", None);
     let offer = offer.unwrap();
 
-    let nonce = nonce_gen.generate().await.unwrap();
+    let nonce = Some(nonce_gen.generate().await.unwrap());
     let (did, key_metadata, _) = create_did_keymetadata_keyhandle(&holder_kms).await;
     let request = holder
-        .request_credential(&offer, &nonce, &key_metadata)
+        .request_credential(&offer, nonce.clone(), &key_metadata)
         .await;
     let request = request.unwrap();
 
@@ -172,7 +172,7 @@ async fn bbs_plus_credential_issuance_and_presentation_verification() {
     println!("Claims: {}", serde_json::to_string_pretty(&claims).unwrap());
 
     let vc = issuer
-        .issue_credential(&request, &claims, &nonce, None)
+        .issue_credential(&request, &claims, nonce, None)
         .await
         .unwrap();
 
@@ -217,7 +217,7 @@ async fn bbs_plus_credential_issuance_and_presentation_verification() {
     }))
     .unwrap();
 
-    let nonce = LocalNonceGenerator::default().generate().await.unwrap();
+    let nonce = LocalNonceHandler::default().generate().await.unwrap();
 
     let vp_res = holder
         .create_presentation_auto(&nonce, VERIFIER_ID, &input_descriptor.try_into().unwrap())
@@ -255,7 +255,7 @@ async fn credential_issuance_and_status_verification() {
     let (mut server_list_server, status_list_url) = run_status_list_server().await;
 
     let holder_kms = LocalKms::new();
-    let nonce_gen = LocalNonceGenerator::default();
+    let nonce_gen = LocalNonceHandler::default();
 
     let status_issuer = build_status_issuer(status_list_url.clone()).await;
     let issuer = build_issuer_with_sd_jwt_credential_profile().await;
@@ -273,10 +273,10 @@ async fn credential_issuance_and_status_verification() {
     let offer = issuer.offer_credential(SCOPE, None);
     let offer = offer.unwrap();
 
-    let nonce = nonce_gen.generate().await.unwrap();
+    let nonce = Some(nonce_gen.generate().await.unwrap());
     let (_, key_metadata, _) = create_did_keymetadata_keyhandle(&holder_kms).await;
     let request = holder
-        .request_credential(&offer, &nonce, &key_metadata)
+        .request_credential(&offer, nonce.clone(), &key_metadata)
         .await;
     let request = request.unwrap();
 
@@ -289,7 +289,7 @@ async fn credential_issuance_and_status_verification() {
         uri: status_list_url,
     };
     let vc = issuer
-        .issue_credential(&request, &claims, &nonce, Some(status_info))
+        .issue_credential(&request, &claims, nonce, Some(status_info))
         .await
         .unwrap();
 
@@ -330,7 +330,7 @@ async fn credential_issuance_and_status_verification() {
     }))
     .unwrap();
 
-    let nonce = LocalNonceGenerator::default().generate().await.unwrap();
+    let nonce = LocalNonceHandler::default().generate().await.unwrap();
 
     let vp_res = holder
         .create_presentation_auto(&nonce, VERIFIER_ID, &input_descriptor.try_into().unwrap())

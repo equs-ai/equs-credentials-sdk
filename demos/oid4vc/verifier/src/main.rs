@@ -10,7 +10,7 @@ use agent_sdk::storage::Storage;
 use agent_sdk::vc::core::KeyMetadata;
 
 use agent_sdk::did::universal::UniversalResolver;
-use agent_sdk::inmem::nonce::LocalNonceGenerator;
+use agent_sdk::inmem::nonce::LocalNonceHandler;
 use agent_sdk::vc::oid4vp;
 use agent_sdk::vc::oid4vp::{
     AuthResponseOptions, AuthorizationResponse, ClientMetadata, PassAuthRequestObject,
@@ -195,7 +195,7 @@ fn auth_resp_from_submitted_form(
 async fn verifier() -> impl oid4vp::Verifier {
     println!("Initializing verifier...");
     let kms = LocalKms::new();
-    let nonce_gen = LocalNonceGenerator::default();
+    let nonce_gen = LocalNonceHandler::default();
     // In the real service these should be generated beforehand/taken from configuration/persistence
     let (did, key_metadata) = create_did_and_key_metadata(&kms).await;
 

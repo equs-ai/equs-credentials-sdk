@@ -13,7 +13,6 @@ import init, {
   InMemKms,
   InMemVault,
   IssuerDiscovery,
-  NonceData,
   OID4VCIHolder,
   OID4VCIHolderBuilder,
   OID4VPHolder,
@@ -50,14 +49,13 @@ async function issuanceFlow(holder: OID4VCIHolder, kms: InMemKms): Promise<void>
     return result;
   });
 
-  const credentialResponse = await requestAndStoreCredential(
+  await requestAndStoreCredential(
     holder,
     kms,
     "SD_JWT_cred_1",
     tokenResp.access_token,
-    undefined,
   );
-  await requestAndStoreCredential(holder, kms, "SD_JWT_cred_2", tokenResp.access_token, credentialResponse.nonceData);
+  await requestAndStoreCredential(holder, kms, "SD_JWT_cred_2", tokenResp.access_token);
 }
 
 async function presentationFlow(holder: OID4VPHolder): Promise<void> {
@@ -87,11 +85,10 @@ async function requestAndStoreCredential(
   kms: InMemKms,
   credDefId: string,
   accessToken: string,
-  nonceData: NonceData | undefined,
 ): Promise<CredentialResponse> {
   const { keyMetadata } = await createDidAndKeyMetadata(kms);
 
-  const credentialResponse = await holder.requestCredential(accessToken, credDefId, nonceData, keyMetadata);
+  const credentialResponse = await holder.requestCredential(accessToken, credDefId, keyMetadata);
 
   const credential = credentialResponse.data;
 

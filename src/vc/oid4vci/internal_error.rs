@@ -102,8 +102,8 @@ pub enum InternalError {
         location: Location,
         source: metadata::Error,
     },
-    #[snafu(display("Nonce generation error"))]
-    NonceGeneration {
+    #[snafu(display("Nonce Handler error"))]
+    NonceHandler {
         #[snafu(implicit)]
         location: Location,
         source: nonce::Error,

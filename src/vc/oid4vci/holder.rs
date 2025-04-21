@@ -1,11 +1,11 @@
 use crate::http::HttpClient;
-use crate::nonce::{Nonce, NonceData};
+use crate::nonce::Nonce;
 use crate::utils::wasm::WasmNotSend;
 use crate::vc;
 use crate::vc::core::{CredentialOfferContent, KeyMetadata, Proof as AsdkProof};
 use crate::vc::oid4vci::internal_error::{
-    AuthorizationCallbackSnafu, DiscoverySnafu, HolderServiceSnafu, IssuerServiceSnafu,
-    MetadataSnafu, ParseSnafu, TypeConversionSnafu, UrlParseSnafu, VCSnafu,
+    AuthorizationCallbackSnafu, DiscoverySnafu, HolderServiceSnafu, MetadataSnafu, ParseSnafu,
+    TypeConversionSnafu, UrlParseSnafu, VCSnafu,
 };
 use crate::vc::oid4vci::protocol_error::ProtocolSnafu;
 use crate::vc::oid4vci::AuthzFlow::Authorize;
@@ -38,7 +38,6 @@ use std::future::Future;
 use std::pin::Pin;
 use std::string::ToString;
 use std::sync::Arc;
-use time::{Duration, OffsetDateTime};
 use tracing::{debug, info, instrument, trace, Level};
 
 pub type Error = api::Error;
@@ -358,7 +357,6 @@ where
         &self,
         token: &AccessToken,
         cred_def_id: &str,
-        nonce: Option<&NonceData>,
         key_metadata: &KeyMetadata,
     ) -> Result<CredentialResponseResolved> {
         info!("requesting a credential flow is started");
@@ -405,15 +403,12 @@ where
         };
         trace!(credential_offer = ?offer);
 
-        let nonce = match nonce {
-            Some(val) => val,
-            None => &self.request_nonce(token.clone(), req_base.clone()).await?,
-        };
+        let nonce = self.request_nonce().await?;
         trace!(resolved_nonce = ?nonce);
 
         let req = self
             .holder
-            .request_credential(offer, &nonce.value, key_metadata)
+            .request_credential(offer, nonce, key_metadata)
             .await
             .context(VCSnafu)?;
         trace!(resolved_request = ?req);
@@ -442,10 +437,7 @@ where
 
         info!("requesting a credential flow is succeeded");
 
-        Ok(CredentialResponseResolved {
-            data: cred_result,
-            nonce_data: Self::extract_nonce(&resp),
-        })
+        Ok(CredentialResponseResolved { data: cred_result })
     }
 
     #[instrument(level = Level::TRACE, skip(self), err(), ret())]
@@ -555,44 +547,23 @@ where
     }
 
     #[instrument(level = Level::TRACE, skip(self), err(), ret())]
-    async fn request_nonce(
-        &self,
-        token: AccessToken,
-        cred_req: CoreProfilesCredentialRequest,
-    ) -> Result<NonceData> {
-        // TODO: Returning nonce should be optional
-        let resp = self
-            .client
-            .request_credential(token, cred_req)
-            .request_async(&self.http_closure())
-            .await
-            .map_err(|e| e.into());
+    async fn request_nonce(&self) -> Result<Option<Nonce>> {
+        let resp = match self.client.request_nonce() {
+            Some(req) => req.request_async(&self.http_closure()).await.map_err(|e| {
+                HolderServiceSnafu {
+                    details: format!("Could not fetch a nonce: {e}"),
+                }
+                .build()
+            })?,
 
-        trace!(nonce_response = ?resp);
+            None => {
+                debug!("Issuer does not support a nonce endpoint");
 
-        match resp {
-            Ok(_) => IssuerServiceSnafu {
-                details: "Issuer does not provide a nonce",
+                return Ok(None);
             }
-            .fail()?,
+        };
 
-            Err(Error::Protocol { source }) => {
-                let nonce = source.nonce().ok_or(
-                    HolderServiceSnafu {
-                        details: "Providing PoP without nonce is unsupported",
-                    }
-                    .build(),
-                )?;
-
-                Ok(NonceData {
-                    value: nonce.to_owned(),
-                    expires_in: source.nonce_expiration().map(|e| e.to_owned()),
-                    created: OffsetDateTime::now_utc(),
-                })
-            }
-
-            Err(error) => Err(error)?,
-        }
+        Ok(Some(Nonce::from_secret(resp.c_nonce().secret().to_owned())))
     }
 
     #[instrument(level = Level::TRACE, skip(self), err(), ret())]
@@ -614,17 +585,6 @@ where
         debug!(resolved_credential_metadata = ?data);
 
         Ok(data.to_owned())
-    }
-
-    #[instrument(level = Level::TRACE, ret())]
-    fn extract_nonce(resp: &oid4vci::core::credential::Response) -> Option<NonceData> {
-        resp.c_nonce().map(|nonce| NonceData {
-            value: Nonce::from_secret(nonce.secret().to_owned()),
-            expires_in: resp
-                .c_nonce_expires_in()
-                .map(|e| Duration::seconds(e.to_owned())),
-            created: time::OffsetDateTime::now_utc(),
-        })
     }
 
     #[cfg(not(target_arch = "wasm32"))]
@@ -739,15 +699,13 @@ mod tests {
     use crate::vault::{MockVault, Vault};
     use crate::vc::oid4vci::tests::fixtures::{
         fake_access_token, sample_access_token, sample_authorization_metadata,
-        sample_cred_response, sample_credential_definition, sample_nonce,
-        sample_offer_with_auth_code_grant, sample_offer_with_pre_auth_code_grant,
-        SampleIssuerMetadata, ACCESS_TOKEN, AUTH_URL, CRED_DEF_ID, ISSUER_URL, NOTIFICATION_ID,
-        REQ_URI_CODE, SCOPE, SD_JWT_CREDS,
+        sample_cred_response, sample_credential_definition, sample_offer_with_auth_code_grant,
+        sample_offer_with_pre_auth_code_grant, SampleIssuerMetadata, ACCESS_TOKEN, AUTH_URL,
+        CRED_DEF_ID, ISSUER_URL, NOTIFICATION_ID, REQ_URI_CODE, SCOPE, SD_JWT_CREDS,
     };
     use crate::vc::oid4vci::{CredentialRequest, CredentialResult, Holder};
     use crate::vc::VCFormat;
     use oauth2::http::{Method, StatusCode};
-    use oid4vci::core::profiles::CoreProfilesCredentialRequest;
     use rstest::rstest;
     use serde_json::json;
     use std::io;
@@ -905,26 +863,12 @@ mod tests {
         mock_http_once(
             &mut http_client,
             Method::POST,
-            credential_endpoint(),
+            nonce_endpoint(),
             json!({
-               "error": "invalid_proof",
-               "error_description": "Provide PoP",
                "c_nonce": nonce,
-               "c_nonce_expires_in": 8600,
             }),
-            StatusCode::BAD_REQUEST,
+            StatusCode::CREATED,
         );
-
-        let token = AccessToken::new(ACCESS_TOKEN.to_owned());
-        let cred_req = CoreProfilesCredentialRequest::WithFormat {
-            _credential_identifier: (),
-            inner: CredentialRequestWithFormat::VcSdJwt(
-                vc_sd_jwt::CredentialRequestWithFormat::new(
-                    CRED_DEF_ID.to_owned(),
-                    Default::default(),
-                ),
-            ),
-        };
 
         let holder_service = holder_service_from_issuer_metadata(
             http_client,
@@ -934,7 +878,7 @@ mod tests {
         )
         .await;
 
-        let nonce_to_check = holder_service.request_nonce(token, cred_req).await.unwrap();
+        let nonce_to_check = holder_service.request_nonce().await.unwrap().unwrap();
 
         assert_eq!(nonce_to_check.secret(), nonce)
     }
@@ -976,6 +920,16 @@ mod tests {
             1.into(),
         );
 
+        mock_http_once(
+            &mut http_client,
+            Method::POST,
+            nonce_endpoint(),
+            json!({
+               "c_nonce": "nOnCe",
+            }),
+            StatusCode::CREATED,
+        );
+
         let kms = LocalKms::new();
         let (_, key_metadata) = create_did_and_key_metadata(&kms).await;
 
@@ -988,12 +942,7 @@ mod tests {
         .await;
 
         let _ = holder
-            .request_credential(
-                &sample_access_token(),
-                CRED_DEF_ID,
-                Some(&sample_nonce()),
-                &key_metadata,
-            )
+            .request_credential(&sample_access_token(), CRED_DEF_ID, &key_metadata)
             .await;
     }
 
@@ -1009,6 +958,16 @@ mod tests {
             StatusCode::OK,
         );
 
+        mock_http_once(
+            &mut http_client,
+            Method::POST,
+            nonce_endpoint(),
+            json!({
+               "c_nonce": "nOnCe",
+            }),
+            StatusCode::CREATED,
+        );
+
         let kms = LocalKms::new();
         let (_, key_metadata) = create_did_and_key_metadata(&kms).await;
 
@@ -1021,12 +980,7 @@ mod tests {
         .await;
 
         let response = holder
-            .request_credential(
-                &sample_access_token(),
-                CRED_DEF_ID,
-                Some(&sample_nonce()),
-                &key_metadata,
-            )
+            .request_credential(&sample_access_token(), CRED_DEF_ID, &key_metadata)
             .await
             .unwrap();
 
@@ -1091,7 +1045,6 @@ mod tests {
             .request_credential(
                 &sample_access_token(),
                 "unexpected_cred_def_id",
-                Some(&sample_nonce()),
                 &key_metadata,
             )
             .await
@@ -1117,19 +1070,14 @@ mod tests {
         .await;
 
         let result = holder_service
-            .request_credential(
-                &sample_access_token(),
-                SCOPE,
-                Some(&sample_nonce()),
-                &key_metadata,
-            )
+            .request_credential(&sample_access_token(), SCOPE, &key_metadata)
             .await
             .unwrap();
     }
 
     #[tokio::test]
-    #[should_panic(expected = "Issuer does not provide a nonce")]
-    async fn holder_fails_with_no_nonce_provided() {
+    #[should_panic(expected = "Could not fetch a nonce: Server returned invalid response")]
+    async fn holder_fails_when_nonce_endpoint_returns_error() {
         let mut http_client = MockHttpClient::new();
 
         let kms = LocalKms::new();
@@ -1143,6 +1091,14 @@ mod tests {
             StatusCode::OK,
         );
 
+        mock_http_once(
+            &mut http_client,
+            Method::POST,
+            nonce_endpoint(),
+            json!({}),
+            StatusCode::INTERNAL_SERVER_ERROR,
+        );
+
         let holder_service = holder_service_from_issuer_metadata(
             http_client,
             InMemVault::new(),
@@ -1152,7 +1108,7 @@ mod tests {
         .await;
 
         let result = holder_service
-            .request_credential(&sample_access_token(), CRED_DEF_ID, None, &key_metadata)
+            .request_credential(&sample_access_token(), CRED_DEF_ID, &key_metadata)
             .await
             .unwrap();
     }
@@ -1169,10 +1125,18 @@ mod tests {
             json!({
                "error": ErrorType::InvalidToken,
                "error_description": "Could not parse the access token",
-               "c_nonce": "n0nce",
-               "c_nonce_expires_in": 8600,
             }),
             StatusCode::BAD_REQUEST,
+        );
+
+        mock_http_once(
+            &mut http_client,
+            Method::POST,
+            nonce_endpoint(),
+            json!({
+               "c_nonce": "nOnCe",
+            }),
+            StatusCode::CREATED,
         );
 
         let kms = LocalKms::new();
@@ -1187,12 +1151,7 @@ mod tests {
         .await;
 
         let response = holder
-            .request_credential(
-                &fake_access_token(),
-                CRED_DEF_ID,
-                Some(&sample_nonce()),
-                &key_metadata,
-            )
+            .request_credential(&fake_access_token(), CRED_DEF_ID, &key_metadata)
             .await
             .unwrap();
     }
@@ -1239,6 +1198,9 @@ mod tests {
     }
     fn credential_endpoint() -> Url {
         Url::parse(ISSUER_URL).unwrap().join("/credential").unwrap()
+    }
+    fn nonce_endpoint() -> Url {
+        Url::parse(ISSUER_URL).unwrap().join("/nonce").unwrap()
     }
     fn auth_srv_metadata_request_endpoint() -> Url {
         Url::parse(AUTH_URL)

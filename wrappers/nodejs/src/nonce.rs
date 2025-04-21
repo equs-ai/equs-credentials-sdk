@@ -1,70 +1,27 @@
 use agent_sdk::nonce;
-use agent_sdk::nonce::{GenerateSnafu, Nonce, NonceData, NonceGenerator};
+use agent_sdk::nonce::{GenerateSnafu, Nonce, NonceHandler, ValidateSnafu};
 use async_trait::async_trait;
 use napi::bindgen_prelude::Promise;
 use napi::threadsafe_function::{ErrorStrategy, ThreadsafeFunction};
-use napi::{Error, Status};
 use napi_derive::napi;
-use time::{Duration, OffsetDateTime};
 
-/// An interface containing nonce with created time and duration.
-#[napi(js_name = "NonceData", object)]
-pub struct JsNonceData {
-    pub value: String,
-    pub expires_in: Option<i64>,
-    pub created: i64,
-}
-
-impl TryFrom<JsNonceData> for NonceData {
-    type Error = Error;
-
-    fn try_from(value: JsNonceData) -> napi::Result<Self> {
-        let nonce = serde_json::from_value(serde_json::Value::String(value.value))?;
-
-        let created = OffsetDateTime::from_unix_timestamp(value.created).map_err(|err| {
-            Error::new(Status::InvalidArg, format!("Incorrect created time: {err}"))
-        })?;
-
-        let expires_in = value.expires_in.map(Duration::seconds);
-
-        Ok(Self {
-            value: nonce,
-            expires_in,
-            created,
-        })
-    }
-}
-
-impl From<NonceData> for JsNonceData {
-    fn from(value: NonceData) -> Self {
-        let nonce = value.value.secret().to_string();
-
-        let created = value.created.unix_timestamp();
-        let expires_in = value.expires_in.map(|value| value.whole_seconds());
-
-        Self {
-            value: nonce,
-            expires_in,
-            created,
-        }
-    }
-}
-
-/// An async generic `NonceGenerator` interface for generating nonce.
+/// An async generic `NonceHandler` interface for generating nonce  .
 ///
 /// Supports `generate` operation.
 ///
 /// @property {() => Promise<string>} generate - method to create nonce
 ///
 #[derive(Clone)]
-#[napi(js_name = "NonceGenerator", object, object_to_js = false)]
-pub struct JsNonceGenerator {
+#[napi(js_name = "NonceHandler", object, object_to_js = false)]
+pub struct JsNonceHandler {
     #[napi(ts_type = "() => Promise<string>")]
     pub generate: ThreadsafeFunction<(), ErrorStrategy::Fatal>,
+    #[napi(ts_type = "(nonce: string) => Promise<boolean>")]
+    pub validate: ThreadsafeFunction<String, ErrorStrategy::Fatal>,
 }
 
 #[async_trait]
-impl NonceGenerator for JsNonceGenerator {
+impl NonceHandler for JsNonceHandler {
     async fn generate(&self) -> nonce::Result<Nonce> {
         let promise: Promise<String> = self.generate.call_async(()).await.map_err(|err| {
             GenerateSnafu {
@@ -85,27 +42,55 @@ impl NonceGenerator for JsNonceGenerator {
                 .build()
             })
     }
+
+    async fn validate(&self, nonce: &Nonce) -> nonce::Result<bool> {
+        let promise: Promise<bool> = self
+            .validate
+            .call_async(nonce.secret().to_owned())
+            .await
+            .map_err(|err| {
+                ValidateSnafu {
+                    details: err.to_string(),
+                }
+                .build()
+            })?;
+
+        promise.await.map_err(|err| {
+            ValidateSnafu {
+                details: err.to_string(),
+            }
+            .build()
+        })
+    }
 }
 
 #[cfg(debug_assertions)]
 pub mod test_utils {
-    use super::JsNonceGenerator;
-    use agent_sdk::nonce::NonceGenerator;
+    use super::JsNonceHandler;
+    use agent_sdk::nonce::NonceHandler;
     use napi_derive::napi;
 
     #[napi]
-    pub struct NonceGeneratorTestHelper(JsNonceGenerator);
+    pub struct NonceHandlerTestHelper(JsNonceHandler);
 
     #[napi]
-    impl NonceGeneratorTestHelper {
+    impl NonceHandlerTestHelper {
         #[napi(constructor)]
-        pub fn new(nonce_generator: JsNonceGenerator) -> Self {
-            NonceGeneratorTestHelper(nonce_generator)
+        pub fn new(nonce_handler: JsNonceHandler) -> Self {
+            NonceHandlerTestHelper(nonce_handler)
         }
 
         #[napi]
         pub async fn generate(&self) -> String {
             self.0.generate().await.unwrap().secret().to_string()
+        }
+
+        #[napi]
+        pub async fn validate(&self, nonce: String) -> bool {
+            self.0
+                .validate(&agent_sdk::nonce::Nonce::from_secret(nonce))
+                .await
+                .unwrap()
         }
     }
 }

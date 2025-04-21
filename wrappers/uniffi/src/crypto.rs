@@ -1,8 +1,5 @@
-use crate::common::{Duration, OffsetDateTime};
-
 pub type KeyMetadata = agent_sdk::vc::core::KeyMetadata;
 pub type Nonce = agent_sdk::nonce::Nonce;
-pub type NonceData = agent_sdk::nonce::NonceData;
 
 uniffi::custom_type!(Nonce, String, {
     remote,
@@ -14,11 +11,4 @@ uniffi::custom_type!(Nonce, String, {
 pub struct KeyMetadata {
     pub did_url: String,
     pub kid: String,
-}
-
-#[uniffi::remote(Record)]
-pub struct NonceData {
-    pub value: Nonce,
-    pub created: OffsetDateTime,
-    pub expires_in: Option<Duration>,
 }

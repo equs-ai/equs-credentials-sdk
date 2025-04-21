@@ -1,8 +1,6 @@
-use crate::nonce::JsNonceData;
 use crate::utils::{from_json_object, to_json_object};
 use crate::vc::core::{JsCredential, JsCredentialMetadata, JsKeyMetadata};
 use crate::vc::JsonObject;
-use agent_sdk::nonce::NonceData;
 use agent_sdk::vc::core::KeyMetadata;
 use agent_sdk::vc::oid4vci::{
     AccessToken, AuthzFlow, CredentialOfferParams, CredentialResponseResolved, CredentialResult,
@@ -179,7 +177,6 @@ impl OID4VCIHolder {
     ///
     /// @param {string} token - an access token.
     /// @param {string} credDefId - a {@link CredentialDefinition} ID.
-    /// @param {NonceData} nonce - an optional nonce. If not set `Holder` will re-request nonce from the `Issuer` automatically.
     /// @param {KeyMetadata} keyMetadata - a {@link KeyMetadata} for corresponding key to be used for signing operations.
     ///
     /// @returns {CredentialResponse} - A {@link CredentialResponse} (Immediate or Deferred) on success.
@@ -188,15 +185,13 @@ impl OID4VCIHolder {
         &self,
         token: String,
         cred_def_id: String,
-        nonce: Option<JsNonceData>,
         key_metadata: JsKeyMetadata,
     ) -> napi::Result<CredentialResponse> {
-        let nonce = nonce.map(|data| data.try_into()).transpose()?;
         let token = serde_json::from_value(serde_json::Value::String(token))?;
         let key_metadata = key_metadata.into();
 
         self.0
-            .request_credential(&token, &cred_def_id, nonce, &key_metadata)
+            .request_credential(&token, &cred_def_id, &key_metadata)
             .await
             .map_err(|err| napi::Error::from_reason(format!("{:?}", err)))
             .and_then(TryInto::try_into)
@@ -239,7 +234,6 @@ pub struct CredentialImmediate {
 #[napi(object)]
 pub struct CredentialResponse {
     pub data: Either<CredentialDeferred, CredentialImmediate>,
-    pub nonce_data: Option<JsNonceData>,
 }
 
 impl TryFrom<CredentialResponseResolved> for CredentialResponse {
@@ -259,10 +253,7 @@ impl TryFrom<CredentialResponseResolved> for CredentialResponse {
             }),
         };
 
-        Ok(Self {
-            data,
-            nonce_data: value.nonce_data.map(|value| value.into()),
-        })
+        Ok(Self { data })
     }
 }
 
@@ -280,7 +271,6 @@ trait _HolderWrapperTrait: Send + Sync {
         &self,
         token: &AccessToken,
         cred_def_id: &str,
-        nonce: Option<NonceData>,
         key_metadata: &KeyMetadata,
     ) -> oid4vci::Result<CredentialResponseResolved>;
 
@@ -319,11 +309,10 @@ impl<H: Holder> _HolderWrapperTrait for _HolderWrapper<H> {
         &self,
         token: &AccessToken,
         cred_def_id: &str,
-        nonce: Option<NonceData>,
         key_metadata: &KeyMetadata,
     ) -> oid4vci::Result<CredentialResponseResolved> {
         self.0
-            .request_credential(token, cred_def_id, nonce.as_ref(), key_metadata)
+            .request_credential(token, cred_def_id, key_metadata)
             .await
     }
 

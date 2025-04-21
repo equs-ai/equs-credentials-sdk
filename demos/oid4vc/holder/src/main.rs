@@ -2,11 +2,10 @@ use agent_sdk::did::didkey::DIDKey;
 use agent_sdk::did::universal::UniversalResolver;
 use agent_sdk::did::{DIDBuf, DIDResolver, DID};
 use agent_sdk::inmem::kms::LocalKms;
-use agent_sdk::inmem::nonce::LocalNonceGenerator;
+use agent_sdk::inmem::nonce::LocalNonceHandler;
 use agent_sdk::inmem::vault::InMemVault;
 use agent_sdk::kms;
 use agent_sdk::kms::Kms;
-use agent_sdk::nonce::{Nonce, NonceData};
 use agent_sdk::reqwest::builder::ReqwestClientBuilder;
 use agent_sdk::vault::CredentialEntry;
 use agent_sdk::vc::core::KeyMetadata;
@@ -30,7 +29,6 @@ use reqwest::Url;
 use std::collections::HashMap;
 use std::io;
 use std::io::Write;
-use time::OffsetDateTime;
 use uuid::Uuid;
 
 const CRED_DEF_ID_1: &str = "SD_JWT_cred_1";
@@ -72,26 +70,14 @@ async fn run_issuance_flow(
 
     let token_resp = run_authz_flow(&holder, offer).await;
     println!("Issuance started");
-    // In most cases there will be no nonce attached to the `token_response`
-    // Holder will automatically resolve it and re-request a new nonce
-    let nonce = token_resp
-        .extra_fields()
-        .clone()
-        .c_nonce
-        .map(|n| NonceData {
-            value: Nonce::from_secret(n.secret().clone()),
-            created: OffsetDateTime::now_utc(),
-            expires_in: None,
-        });
 
     // In the real service these should be generated beforehand/taken from configuration/persistence
     let (_, key_metadata) = create_did_and_key_metadata(&kms).await;
 
-    let resp = request_credential(
+    let _ = request_credential(
         &holder,
         CRED_DEF_ID_1,
         token_resp.access_token(),
-        nonce.as_ref(),
         key_metadata,
     )
     .await;
@@ -99,11 +85,10 @@ async fn run_issuance_flow(
     // For subsequent requests to the Issuer, Holder must reuse the nonce from the previous response
     let (_, key_metadata) = create_did_and_key_metadata(&kms).await;
 
-    let resp = request_credential(
+    let _ = request_credential(
         &holder,
         JSON_LD_V1_CRED_DEF_ID,
         token_resp.access_token(),
-        resp.nonce_data.as_ref(),
         key_metadata,
     )
     .await;
@@ -113,7 +98,6 @@ async fn run_issuance_flow(
         &holder,
         JSON_LD_V2_CRED_DEF_ID,
         token_resp.access_token(),
-        resp.nonce_data.as_ref(),
         key_metadata,
     )
     .await;
@@ -141,7 +125,6 @@ async fn request_credential(
     holder: &impl HolderVci,
     cred_def_id: &str,
     token: &AccessToken,
-    nonce: Option<&NonceData>,
     key_metadata: KeyMetadata,
 ) -> CredentialResponseResolved {
     println!(
@@ -150,7 +133,7 @@ async fn request_credential(
     );
 
     let cred_resp = holder
-        .request_credential(token, cred_def_id, nonce, &key_metadata)
+        .request_credential(token, cred_def_id, &key_metadata)
         .await
         .unwrap();
 
@@ -346,7 +329,7 @@ fn retrieve_auth_resp_from_uri(url: Url) -> AuthorizationResponse {
 async fn verifier(client_id: &str) -> impl Verifier {
     println!("1.1 Initializing verifier...");
     let kms = LocalKms::new();
-    let nonce_gen = LocalNonceGenerator::default();
+    let nonce_gen = LocalNonceHandler::default();
     let (_, key_metadata) = create_did_and_key_metadata(&kms).await;
 
     let verifier =

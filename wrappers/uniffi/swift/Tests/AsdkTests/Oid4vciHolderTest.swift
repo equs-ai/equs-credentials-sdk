@@ -46,6 +46,13 @@ import Swifter
 						with: Oid4vciHolderTestConstants.CredentialResponse)
 				))
 		}
+		self.server["/nonce"] = { request in
+			return HttpResponse.ok(
+				.json(
+					try! JSONSerialization.jsonObject(
+						with: Oid4vciHolderTestConstants.NonceResponse)
+				))
+		}
 		try server.start(9000)
 	}
 
@@ -105,17 +112,11 @@ import Swifter
 			issuerDiscovery: IssuerDiscovery.offer(Oid4vciHolderTestConstants.CredentialOffer)
 		).build()
 
-		let nonce = NonceData(
-			value: "KB50VOm9I-kPLT9mAACV8g",
-			created: OffsetDateTime(1728732136),
-			expiresIn: Duration(86400))
-
 		let didAndKeyMetadata = await createDidAndKeyMetadata(kms: kms)
 
 		let credResponse = try await holder.requestCredential(
 			token: Oid4vciHolderTestConstants.AccessToken,
 			credDefId: Oid4vciHolderTestConstants.CredDefId,
-			nonce: nonce,
 			keyMetadata: didAndKeyMetadata.keyMetadata)
 
 		#expect(
@@ -217,7 +218,7 @@ enum Oid4vciHolderTestConstants {
 		"""
 
 	static let IssuerMetadata = """
-		{"credential_issuer":"http://localhost:9000","authorization_servers":["http://localhost:9000/auth"],"credential_endpoint":"http://localhost:9000/credential","credential_configurations_supported":{"\(CredDefId)":{"scope":"SD_JWT_cred","cryptographic_binding_methods_supported":["jwk"],"proof_types_supported":{"jwt":{"proof_signing_alg_values_supported":["ES256"]}},"format":"dc+sd-jwt","credential_signing_alg_values_supported":["ES256"],"claims":{"dob":{"mandatory":true,"value_type":"number","display":[{"name":"Date of birth"}]},"given_name":{"mandatory":true,"value_type":"string","display":[{"name":"Name"}]},"family_name":{"mandatory":true,"value_type":"string","display":[{"name":"Surname"}]}},"vct":"SD_JWT_cred"}}}
+		{"credential_issuer":"http://localhost:9000","authorization_servers":["http://localhost:9000/auth"],"credential_endpoint":"http://localhost:9000/credential","nonce_endpoint":"http://localhost:9000/nonce","credential_configurations_supported":{"\(CredDefId)":{"scope":"SD_JWT_cred","cryptographic_binding_methods_supported":["jwk"],"proof_types_supported":{"jwt":{"proof_signing_alg_values_supported":["ES256"]}},"format":"dc+sd-jwt","credential_signing_alg_values_supported":["ES256"],"claims":{"dob":{"mandatory":true,"value_type":"number","display":[{"name":"Date of birth"}]},"given_name":{"mandatory":true,"value_type":"string","display":[{"name":"Name"}]},"family_name":{"mandatory":true,"value_type":"string","display":[{"name":"Surname"}]}},"vct":"SD_JWT_cred"}}}
 		"""
 
 	static let AuthServerMetadata = """
@@ -236,6 +237,10 @@ enum Oid4vciHolderTestConstants {
 		"eyJ0eXAiOiJ2YytzZC1qd3QiLCJhbGciOiJFUzI1NiIsImtpZCI6ImRpZDprZXk6ekRuYWV1alBxWjVFakhtZmtyell3ZUxmTXFyOGFxQTNvdDNCdGM0RmU5dHlMcWttUiN6RG5hZXVqUHFaNUVqSG1ma3J6WXdlTGZNcXI4YXFBM290M0J0YzRGZTl0eUxxa21SIn0.eyJfc2QiOlsiQ1Q1bzFMZk5XRE9LT3h4NDJCWUc0NzU0bFpIeTZ0MG5PUGtGRWRmb3FvTSIsIks3bWEwTmZxR0NfM0xQdG12cWtySTR5ckpsdkg0VFU2OWU3SXYtN0VJbzQiLCJyZVlhTkZCV0h6VjE3Y3Z1cTNyRmpVSTNHeDVKc19EbW5VWlNFUmQ0aFpzIl0sInZjdCI6IlNEX0pXVF9jcmVkIiwic3ViIjoiZGlkOmtleTp6RG5hZW5wbnRDa1huRENuYURrNjJMeE5xUGM0Q01kMzJmYmhpVnNaVjVLcFBURzJjIiwibmJmIjoxNzI1NTMzMjU0LCJfc2RfYWxnIjoic2hhLTI1NiIsImlzcyI6ImRpZDprZXk6ekRuYWV1alBxWjVFakhtZmtyell3ZUxmTXFyOGFxQTNvdDNCdGM0RmU5dHlMcWttUiIsImlhdCI6MTcyNTUzMzI1NCwiZXhwIjoxNzU3MDY5MjU0LCJjbmYiOnsiandrIjp7Imt0eSI6IkVDIiwiY3J2IjoiUC0yNTYiLCJ4IjoiVExuNjZxYm5QZXhLeUZtZ3h1Y1kzSlpyZHhCRGpBc3ItbXkya1dBYms4ayIsInkiOiJzaFl6eUVUOENyWVcyTXhPU0FCSkxhbUpPTGV3LWpQbE9aeHdTUzZrWGdjIn19fQ.CBBzIiTjRs2bmKENQcRY14wVnl2vnIjJY9u3AYrA9KQDjqCXZXSzoxQlripAM6Ud_QaYNrZcHK2EVo4QlH3k9w~WyJvMFR4dEw4QWh1TFJXUmduSDk4NF9RIiwgImdpdmVuX25hbWUiLCAiSm9obiJd~WyJ2SVMzZXNQTHlRUHRRZ0JMZ09GYWFnIiwgImZhbWlseV9uYW1lIiwgIkRvZSJd~WyJsaW81cXNVZHZJX3V3eUdiRmFtTnFRIiwgImRvYiIsICIwOS8wOS8xOTg5Il0~"
 
 	static let CredentialResponse = """
-		{"format":"dc+sd-jwt","credential":"\(CredentialResponseImmediatePayload)","c_nonce":"0GtZieAoAL_3Zafyn6TgCA","c_nonce_expires_in":86440,"notification_id":"1111"}
+		{"format":"dc+sd-jwt","credential":"\(CredentialResponseImmediatePayload)","notification_id":"1111"}
+		""".data(using: .utf8)!
+
+	static let NonceResponse = """
+		{"c_nonce":"0GtZieAoAL_3Zafyn6TgCA"}
 		""".data(using: .utf8)!
 }

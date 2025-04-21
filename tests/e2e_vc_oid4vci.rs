@@ -5,8 +5,7 @@ mod utils;
 use agent_sdk::http::HttpClient;
 use agent_sdk::inmem::kms::LocalKms;
 use agent_sdk::vc::oid4vci;
-use agent_sdk::vc::oid4vci::{CredentialOfferGrants, Holder, IssuanceSession, Issuer};
-use async_mutex::Mutex;
+use agent_sdk::vc::oid4vci::{CredentialOfferGrants, Holder, Issuer};
 use futures::executor;
 use oauth2::http::Method;
 use oauth2::http::StatusCode;
@@ -14,8 +13,6 @@ use oauth2::{HttpRequest, HttpResponse, TokenResponse};
 use oid4vci::AuthorizationCodeGrant;
 use rstest::rstest;
 use serde_json::json;
-use std::borrow::{Borrow, BorrowMut};
-use std::sync::Arc;
 use std::{io, str};
 use utils::http::HttpClientEmulator;
 use uuid::Uuid;
@@ -94,7 +91,6 @@ async fn autorized_code_flow_using_scopes(#[case] validate_token: bool) {
         .request_credential(
             token_response.access_token(),
             "SD_JWT_cred_1",
-            None,
             &key_metadata,
         )
         .await
@@ -102,19 +98,10 @@ async fn autorized_code_flow_using_scopes(#[case] validate_token: bool) {
 
     println!("Credential 1: {:?}", response.data);
 
-    // Extra check that subsequent nonce returned
-    let nonce_data = response.nonce_data;
-    assert!(nonce_data.is_some());
-
     // 6.2 Holder requests LDPVC_cred_1 credentials with the same token
     let (_, key_metadata, _) = create_did_keymetadata_keyhandle(&kms).await;
     let response = holder
-        .request_credential(
-            token_response.access_token(),
-            "LDPVC_cred_1",
-            nonce_data.as_ref(),
-            &key_metadata,
-        )
+        .request_credential(token_response.access_token(), "LDPVC_cred_1", &key_metadata)
         .await
         .unwrap();
 
@@ -129,11 +116,7 @@ async fn autorized_code_flow_using_scopes(#[case] validate_token: bool) {
     }
 }
 
-async fn credential_endpoint(
-    issuer: &impl Issuer,
-    req: HttpRequest,
-    session: Arc<Mutex<IssuanceSession>>,
-) -> HttpResponse {
+async fn credential_endpoint(issuer: &impl Issuer, req: HttpRequest) -> HttpResponse {
     let cred_req_str = std::str::from_utf8(req.body().as_slice()).unwrap();
 
     let claims = if cred_req_str.contains("\"dc+sd-jwt\"") {
@@ -156,13 +139,9 @@ async fn credential_endpoint(
         .unwrap()
         .to_string();
 
-    let mut session_lock = session.lock().await;
-
     let result = issuer
-        .issue_credential(&cred_req, &token, &claims, session_lock.borrow_mut(), None)
+        .issue_credential(&cred_req, &token, &claims, None)
         .await;
-
-    assert!(session_lock.borrow().nonce.is_some());
 
     println!("result: {:?}", result);
 
@@ -239,11 +218,20 @@ fn prepare_http_client_for_holder(
         }),
     );
 
-    let session = Arc::new(Mutex::new(IssuanceSession::default()));
+    let nonce_future = executor::block_on(issuer.generate_nonce()).unwrap();
+    http_client.add_handler(
+        sample_issuer_url().join("/nonce").unwrap(),
+        Box::new(move |_| {
+            Ok(HttpResponse::new(
+                serde_json::to_vec(&nonce_future).unwrap(),
+            ))
+        }),
+    );
+
     http_client.add_handler(
         sample_issuer_url().join("/credential").unwrap(),
         Box::new(move |req| {
-            let fut = credential_endpoint(&issuer, req, Arc::clone(&session));
+            let fut = credential_endpoint(&issuer, req);
             let result = executor::block_on(fut); // TODO: get rid of `block_on` here
             Ok(result)
         }),
