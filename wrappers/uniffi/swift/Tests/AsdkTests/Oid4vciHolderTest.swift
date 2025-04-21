@@ -61,7 +61,7 @@ import Swifter
 	}
 
 	@Test func retrieveIssuerMetadata() async throws {
-		let holder = try await self.buildHolder()
+		let holder = await self.buildHolder()
 		let metadata = try holder.getIssuerMetadata().data(using: .utf8)!
 
 		compareJsonValues(
@@ -70,7 +70,7 @@ import Swifter
 	}
 
 	@Test func authorizeUsingAuthCode() async throws {
-		let holder = try await self.buildHolder()
+		let holder = await self.buildHolder()
 
 		let tokenResponse = try await holder.authzCodeFlowWithScope(
 			scope: "SD_JWT_cred", authorizationCodeCallback: AuthorizationCodeCallback())
@@ -80,7 +80,7 @@ import Swifter
 
 	@Test func getAccessTokenByUsingResolvedCredentialOfferWithPreAuthorizedCodeGrant() async throws
 	{
-		let holder = try await self.buildHolder()
+		let holder = await self.buildHolder()
 
 		let result = try await holder.getAccessToken(
 			offerParams: Oid4vciHolderTestConstants.CredentialOfferWithPreAuthGrant,
@@ -92,7 +92,7 @@ import Swifter
 
 	@Test func getAccessTokenByUsingResolvedCredentialOfferWithAuthorizationCodeGrant() async throws
 	{
-		let holder = try! await self.buildHolder()
+		let holder = await self.buildHolder()
 
 		let result = try await holder.getAccessToken(
 			offerParams: Oid4vciHolderTestConstants.CredentialOfferWithAuthGrant,

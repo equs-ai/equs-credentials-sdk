@@ -1,15 +1,47 @@
 use crate::common::{Error, Result};
-use agent_sdk::did::{DIDBuf, DIDURLBuf, ResolutionOutput, VerificationMethodMap};
+use crate::inmem::keyhandle::InMemKeyHandle;
+use agent_sdk::did::{
+    DIDBuf, DIDURLBuf, ResolutionOutput, VerificationMethodMap, VerificationRelationshipType,
+};
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::str::FromStr;
 
 pub type DIDDocMetadata = agent_sdk::did::DocumentMetadata;
 pub type DIDMetadata = agent_sdk::did::ResolutionMetadata;
 
+pub mod key;
 pub mod universal_resolver;
+pub mod web;
 
-#[derive(uniffi::Record)]
+#[uniffi::remote(Enum)]
+pub enum VerificationRelationshipType {
+    Authentication,
+    Assertion,
+    KeyAgreement,
+    CapabilityInvocation,
+    CapabilityDelegation,
+}
+
+#[derive(uniffi::Object)]
+pub struct VerificationMethodKey {
+    key: InMemKeyHandle,
+    verification_relationships: HashSet<VerificationRelationshipType>,
+}
+
+#[uniffi::export]
+impl VerificationMethodKey {
+    #[uniffi::constructor]
+    pub fn new(kh: &InMemKeyHandle, verifications: Vec<VerificationRelationshipType>) -> Self {
+        Self {
+            key: kh.clone(),
+            verification_relationships: HashSet::from_iter(verifications),
+        }
+    }
+}
+
+#[derive(uniffi::Record, Serialize, Deserialize)]
 pub struct VerificationMethod {
     /// Verification method identifier.
     pub id: String,
@@ -17,6 +49,7 @@ pub struct VerificationMethod {
     /// type [property](https://www.w3.org/TR/did-core/#dfn-did-urls) of a verification method map.
     /// Should be registered in [DID Specification
     /// registries - Verification method types](https://www.w3.org/TR/did-spec-registries/#verification-method-types).
+    #[serde(rename = "type")]
     pub type_: String,
 
     /// [controller](https://w3c-ccg.github.io/ld-proofs/#controller) property of a verification
@@ -26,6 +59,7 @@ pub struct VerificationMethod {
     pub controller: String,
 
     /// Verification methods properties.
+    #[serde(flatten)]
     pub properties: HashMap<String, String>,
 }
 

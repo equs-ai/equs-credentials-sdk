@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use uniffi::custom_type;
 
 mod builder;
+mod credential_offer_resolver;
 pub mod holder;
 
 pub type CredentialResult = agent_sdk::vc::oid4vci::CredentialResult;
