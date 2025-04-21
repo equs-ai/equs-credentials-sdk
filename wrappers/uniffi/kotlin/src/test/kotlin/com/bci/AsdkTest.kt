@@ -40,7 +40,8 @@ class AsdkTest {
 
         assertEquals(expected, actual)
     }
-    
+
+
     @Test
     fun testResolveVerificationMethod() = runTest {
         val universalDidResolver = UniversalDidResolver()
@@ -51,7 +52,7 @@ class AsdkTest {
             controller = DID,
             properties = mapOf("publicKeyMultibase" to "zDnaefX6jBNVFnFeUPMRGo6exaVdJ1TRCwuhm296PbB5gPTj6"),
         )
-        
+
         val actual = universalDidResolver.resolveVerificationMethod(DID)
 
         assertEquals(expected, actual)

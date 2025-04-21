@@ -10,13 +10,13 @@ Build the UniFFI binary for your target platform using the commands below.
 **Debug build:**
 
 ```bash
-  make kotlin debug-build
+  make kotlin-debug-build
 ```
 
 **Release build:**
 
 ```bash
-  make kotlin release-build
+  make kotlin-release-build
 ```
 
 ## Testing
@@ -31,7 +31,7 @@ The Kotlin tests are located in the `kotlin` directory, which is a standard Grad
 In order to run these tests, you will need to have the JDK installed.
 
 ```bash
-  make kotlin test
+  make kotlin-test
 ```
 
 # Android
@@ -111,7 +111,7 @@ ar = "llvm-ar"
 ### 6. Run `android-aar` target of Makefile:
 
 ```bash
-  make kotlin android-aar
+  make kotlin-android-aar
 ```
 
 On success, `aar` file must be outputted in `./kotlin/android/build/outputs/aar/android-release.aar`
