@@ -1270,6 +1270,32 @@ mod tests {
             .unwrap();
     }
 
+    #[tokio::test]
+    async fn decline_authorization_request_succeeds() {
+        let mut http_client = MockHttpClient::new();
+
+        mock_http_fn(
+            &mut http_client,
+            Method::POST,
+            build_url("http://127.0.0.1:55796", "/auth"),
+            |req| {
+                let body = String::from_utf8(req.body().to_owned()).unwrap();
+
+                assert_eq!(body, "error=access_denied&error_description=consent+to+share+the+presentation+is+not+given");
+
+                Ok(HttpResponse::default())
+            },
+            1.into(),
+        );
+
+        let holder = holder_service(http_client, LocalKms::new(), InMemVault::new()).await;
+
+        holder
+            .decline_authorization_request(&serde_json::from_str(AUTH_REQUEST).unwrap())
+            .await
+            .unwrap();
+    }
+
     async fn find_credentials(case: PresentationTestCase) {
         let kms = LocalKms::new();
         let vault = case.prepare_vault(&kms).await;
