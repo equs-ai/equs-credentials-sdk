@@ -171,6 +171,22 @@ impl OID4VPHolder {
 
         Ok(result.map(|url: Url| url.to_string()))
     }
+
+    /// Decline the authorization request by sending authorization error response to the `response_uri` endpoint.
+    ///
+    /// @param {AuthorizationRequest} auth_request - the resolved authorization request.
+    #[wasm_bindgen(js_name = declineAuthorizationRequest)]
+    pub async fn decline_authorization_request(
+        &self,
+        auth_request: AuthorizationRequest,
+    ) -> Result<(), JsError> {
+        let auth_request = utils::convert_to_rust_object(auth_request)?;
+
+        self.0
+            .decline_authorization_request(&auth_request)
+            .await
+            .map_err(|err| JsError::new(&format!("{:?}", err)))
+    }
 }
 
 fn convert_to_js_credentials_mapping(
