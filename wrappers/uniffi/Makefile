@@ -25,7 +25,7 @@ kotlin-generate_kotlin_debug: kotlin-debug-build
 
 kotlin-test: kotlin-generate_kotlin_debug
 	@echo "Running Kotlin tests..."
-	cd kotlin && ./gradlew -x android:test
+	cd kotlin && ./gradlew test -x android:test
 
 
 ANDROID_NDK_HOME ?= $(HOME)/Library/Android/sdk/ndk/android-ndk-r28

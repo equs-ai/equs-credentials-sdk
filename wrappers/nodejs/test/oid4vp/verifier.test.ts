@@ -2,7 +2,7 @@ import {
   AuthorizationResponse,
   AuthResponseOptions,
   InMemKms,
-  LocalNonceGenerator,
+  LocalNonceHandler,
   OID4VPVerifierBuilder,
   PassAuthRequestObject,
 } from "../../";
@@ -71,7 +71,7 @@ describe("OID4VP Verifier: ", () => {
 
 async function buildVerifier(clientId = "did:key:zDnaeagvW2eDWc2yVw7B98ovcJ8jddn7T9Mh3y5Vikys6y4kX") {
   const kms = new InMemKms();
-  const nonceGenerator = new LocalNonceGenerator();
+  const nonceGenerator = new LocalNonceHandler();
   const { keyMetadata } = await createDidAndKeyMetadata(kms);
 
   return await new OID4VPVerifierBuilder(kms, nonceGenerator, keyMetadata, clientId).build();

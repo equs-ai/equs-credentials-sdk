@@ -111,9 +111,9 @@ pub mod utils {
     use crate::did::universal::UniversalResolver;
     use crate::did::DIDURL;
     use crate::inmem::kms::LocalKms;
-    use crate::inmem::nonce::LocalNonceGenerator;
+    use crate::inmem::nonce::LocalNonceHandler;
     use crate::kms::{KeyHandle, KeyType, Kms};
-    use crate::nonce::{Nonce, NonceGenerator};
+    use crate::nonce::{Nonce, NonceHandler};
     use crate::utils::test_utils::create_did_url_and_key_handle_kid;
     use crate::vault::CredentialEntry;
     use crate::vc::claims::Claims;
@@ -137,7 +137,7 @@ pub mod utils {
     use uuid::Uuid;
 
     pub async fn random_nonce() -> Nonce {
-        let nonce_gen = LocalNonceGenerator::default();
+        let nonce_gen = LocalNonceHandler::default();
         nonce_gen.generate().await.unwrap()
     }
 
@@ -214,16 +214,21 @@ pub mod utils {
     }
 
     impl CredTestCase {
-        pub async fn assert_proof_of_possession(&self, proof: Proof, nonce: &Nonce, did_url: &str) {
+        pub async fn assert_proof_of_possession(
+            &self,
+            proof: Proof,
+            nonce: Option<Nonce>,
+            did_url: &str,
+        ) {
             assert_eq!(proof.format, self.pop_format.to_string());
 
             let (v_did_url, _) = match &self.pop_format {
                 pop::Format::Jwt => JwtProofOfPossession::verify(
                     proof.proof.clone(),
-                    nonce,
                     pop::VerifyOptions {
                         audience: ISSUER_ID.into(),
                         issuer: None,
+                        nonce,
                         ..Default::default()
                     },
                     &UniversalResolver::default(),
@@ -392,7 +397,12 @@ pub mod utils {
             }
         }
 
-        pub async fn generate_pop(&self, kms: &LocalKms, nonce: &Nonce, kt: KeyType) -> String {
+        pub async fn generate_pop(
+            &self,
+            kms: &LocalKms,
+            nonce: Option<Nonce>,
+            kt: KeyType,
+        ) -> String {
             let (hld_did_url, h_kid, h_kh) = create_did_url_and_key_handle_kid(kms, kt).await;
 
             match &self.pop_format {
@@ -415,7 +425,7 @@ pub mod utils {
         pub async fn generate_pop_with_lifetime(
             &self,
             kms: &LocalKms,
-            nonce: &Nonce,
+            nonce: Option<Nonce>,
             kt: KeyType,
             not_before: Option<OffsetDateTime>,
             exp: Option<OffsetDateTime>,
@@ -434,7 +444,8 @@ pub mod utils {
                             .checked_add(Duration::minutes(5))
                             .unwrap(),
                     ),
-                    nonce: oid4vci::types::Nonce::new(nonce.secret().to_owned()),
+                    nonce: nonce
+                        .map(|nonce| oid4vci::types::Nonce::new(nonce.secret().to_string())),
                 },
                 controller: ProofOfPossessionController {
                     vm: Some(hld_did_url.to_owned()),

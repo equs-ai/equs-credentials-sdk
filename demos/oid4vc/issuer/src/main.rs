@@ -5,15 +5,13 @@ use agent_sdk::did::didkey::DIDKey;
 use agent_sdk::did::universal::UniversalResolver;
 use agent_sdk::did::{DIDBuf, DIDResolver, VerificationMethodKey, DID};
 use agent_sdk::inmem::kms::LocalKms;
-use agent_sdk::inmem::storage::InMemStorage;
 use agent_sdk::kms;
 use agent_sdk::kms::Kms;
-use agent_sdk::storage::Storage;
 use agent_sdk::vc::core::{CredentialStatusInfo, KeyMetadata};
 use agent_sdk::vc::oid4vci::{
     AuthorizationCodeGrant, AuthorizationMetadata, CredDefMetadata, CredDefMetadataProfile,
-    CredentialOfferGrants, CredentialRequest, IssuanceSession, IssuerMetadata, IssuerUrl,
-    PreAuthorizedCode, PreAuthorizedCodeGrant, TokenRequest, TokenResponse,
+    CredentialOfferGrants, CredentialRequest, IssuerMetadata, IssuerUrl, PreAuthorizedCode,
+    PreAuthorizedCodeGrant, TokenRequest, TokenResponse,
 };
 use std::collections::HashMap;
 use std::ops::{Add, Deref, DerefMut};
@@ -24,7 +22,7 @@ use actix_web::cookie::time::OffsetDateTime;
 use agent_sdk::crypto::Key;
 use agent_sdk::did::didweb::DIDWeb;
 use agent_sdk::did::DIDDoc;
-use agent_sdk::inmem::nonce::LocalNonceGenerator;
+use agent_sdk::inmem::nonce::LocalNonceHandler;
 use agent_sdk::reqwest::builder::ReqwestClientBuilder;
 use agent_sdk::vc::claims::Claims;
 use agent_sdk::vc::core::status_issuer::StatusIssuerService;
@@ -46,6 +44,7 @@ const AUTH_SRV_URL: &str = "http://localhost:8080/idp/realms/pid-issuer-realm";
 const CRED_OFFER_SCHEME: &str = "openid-credential-offer://";
 
 const CREDENTIAL_URL_PATH: &str = "/credential";
+const NONCE_URL_PATH: &str = "/nonce";
 const METADATA_URL_PATH: &str = "/.well-known/openid-credential-issuer";
 const CREDENTIAL_OFFER_WITH_AUTH_CODE_GRANT_URL_PATH: &str = "/credential_offer_auth_code_grant";
 const CREDENTIAL_OFFER_WITH_PRE_AUTH_CODE_GRANT_URL_PATH: &str =
@@ -66,7 +65,6 @@ const DEFAULT_STATUS_SIZE: u8 = 1;
 struct AppState {
     issuer: Arc<dyn oid4vci::Issuer>,
     status_issuer: Arc<dyn StatusIssuer>,
-    storage: InMemStorage<String, IssuanceSession>,
     did_doc: DIDDoc,
     vc_statuses: Mutex<VCStatuses>,
 }
@@ -81,13 +79,13 @@ async fn main() -> std::io::Result<()> {
     let app_state = web::Data::new(AppState {
         issuer: Arc::new(issuer),
         status_issuer: Arc::new(status_issuer),
-        storage: InMemStorage::new(),
         did_doc: did_document,
         vc_statuses: Mutex::new(VCStatuses::new()),
     });
     HttpServer::new(move || {
         App::new()
             .route(CREDENTIAL_URL_PATH, web::post().to(issue_credential))
+            .route(NONCE_URL_PATH, web::post().to(generate_nonce))
             .route(METADATA_URL_PATH, web::get().to(issue_metadata))
             .route(
                 CREATE_CREDENTIAL_OFFER_URI_WITH_AUTH_CODE_GRANT_PATH,
@@ -149,19 +147,10 @@ async fn issue_credential(
     // Depending on the concrete `CredDef` requested Claims would be different
     let claims = get_user_attributes(&cred_def).await?;
 
-    let mut session = state
-        .storage
-        .get(&token)
-        .await
-        .unwrap()
-        .unwrap_or(IssuanceSession::default());
-
     let resp = state
         .issuer
-        .issue_credential(&cred_req, &token, &claims, &mut session, cred_status_info)
+        .issue_credential(&cred_req, &token, &claims, cred_status_info)
         .await;
-
-    state.storage.put(token, session).await.unwrap();
 
     println!("Issuance Result: {:?}", resp);
 
@@ -179,6 +168,15 @@ async fn issue_metadata(state: web::Data<AppState>) -> HttpResponse {
     HttpResponse::Ok()
         .insert_header(("Content-Type", "application/json"))
         .json(serde_json::to_value(metadata).unwrap())
+}
+
+async fn generate_nonce(state: web::Data<AppState>) -> HttpResponse {
+    let nonce_response = state.issuer.generate_nonce().await.unwrap();
+
+    HttpResponse::Ok()
+        .insert_header(("Content-Type", "application/json"))
+        .insert_header(("Cache-Control", "no-store"))
+        .json(serde_json::to_value(nonce_response).unwrap())
 }
 
 async fn credential_offer_with_auth_code_grant(state: web::Data<AppState>) -> HttpResponse {
@@ -441,13 +439,14 @@ async fn get_user_attributes(cred_def: &CredDefMetadata) -> Result<Claims, Error
 async fn issuer() -> (impl oid4vci::Issuer, DIDDoc) {
     println!("Initializing issuer...");
     let kms = LocalKms::new();
-    let nonce_gen = LocalNonceGenerator::default();
+    let nonce_handler = LocalNonceHandler::default();
     // In the real service these should be generated beforehand/taken from configuration/persistence
     let (_, key_metadata, did_doc) = create_did_and_key_metadata(&kms).await;
 
     let issuer_metadata = sample_issuer_metadata(ISSUER_SERVER_URL, AUTH_SRV_URL);
 
-    let issuer = oid4vci::IssuerBuilder::new(kms.clone(), nonce_gen, issuer_metadata, key_metadata)
+    let issuer = oid4vci::IssuerBuilder::new(kms.clone(), issuer_metadata, key_metadata)
+        .with_nonce_handler(nonce_handler)
         .with_http_client(ReqwestClientBuilder::new().insecure().build().unwrap())
         .with_dedicated_key_metadata(
             JSON_LD_V2_CRED_DEF,
@@ -571,6 +570,7 @@ fn sample_issuer_metadata(iss_url: &str, authz_url: &str) -> IssuerMetadata {
           "credential_issuer": iss_url,
           "authorization_servers": [authz_url],
           "credential_endpoint": iss_url.to_owned()+"/credential",
+          "nonce_endpoint": iss_url.to_owned()+"/nonce",
           "credential_configurations_supported": {
             SD_JWT_CRED_DEF: {
               "format": "dc+sd-jwt",

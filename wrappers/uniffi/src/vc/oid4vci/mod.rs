@@ -1,5 +1,4 @@
 use crate::common::JsonValue;
-use crate::crypto::NonceData;
 use crate::vc::Credential;
 use oauth2::helpers::{deserialize_space_delimited_vec, serialize_space_delimited_vec};
 use serde::{Deserialize, Serialize};
@@ -42,7 +41,6 @@ custom_type!(CredentialResult, CredentialResultEnum, {
 #[uniffi::remote(Record)]
 pub struct CredentialResponse {
     pub data: CredentialResult,
-    pub nonce_data: Option<NonceData>,
 }
 
 #[derive(uniffi::Record, Clone, Debug, Deserialize, Serialize)]
@@ -59,10 +57,6 @@ pub struct TokenResponseData {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(default)]
     pub scopes: Option<Vec<String>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub c_nonce: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub c_nonce_expires_in: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub authorization_details: Option<JsonValue>,
 }

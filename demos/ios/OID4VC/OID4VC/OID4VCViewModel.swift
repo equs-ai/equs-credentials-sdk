@@ -90,7 +90,7 @@ class OID4VCViewModel : ObservableObject, AuthCodeCallback {
         do {
             let didAndKeyMetadata = await createDidAndKeyMetadata(kms: kms)
             
-            let credentialResponse = try await self.oid4vciHolder.requestCredential(token: token, credDefId: Constants.sdJwtCredDefId, nonce: nil, keyMetadata: didAndKeyMetadata.keyMetadata)
+            let credentialResponse = try await self.oid4vciHolder.requestCredential(token: token, credDefId: Constants.sdJwtCredDefId, keyMetadata: didAndKeyMetadata.keyMetadata)
             
             switch credentialResponse.data {
             case .deferred(transactionId: _):

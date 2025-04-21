@@ -12,7 +12,6 @@ import com.bci.asdk.IdTokenMetadata
 import com.bci.asdk.InMemKms
 import com.bci.asdk.InMemVault
 import com.bci.asdk.IssuerDiscoveryEnum
-import com.bci.asdk.NonceData
 import com.bci.asdk.Oid4vciHolder
 import com.bci.asdk.Oid4vciHolderBuilder
 import com.bci.asdk.Oid4vpHolder
@@ -82,17 +81,16 @@ class DemoViewModel : ViewModel() {
     fun startCredentialRequest() {
         token?.let {
             viewModelScope.launch {
-                val result = requestAndStoreCredential(it, SD_JWT_CRED_DEF, null)
-                credChannel.send(result.first)
+                val credentialResult = requestAndStoreCredential(it, SD_JWT_CRED_DEF)
+                credChannel.send(credentialResult)
             }
         }
     }
 
-    private suspend fun requestAndStoreCredential(token: String, credDefId: String, nonce: NonceData?): Pair<Credential, NonceData?> {
+    private suspend fun requestAndStoreCredential(token: String, credDefId: String): Credential {
         val response = holderVc.requestCredential(
             token,
             credDefId,
-            nonce,
             didAndKeyMetadata.keyMetadata
         )
 
@@ -101,7 +99,7 @@ class DemoViewModel : ViewModel() {
         val metadata = resolveMetadata(credential, didAndKeyMetadata.keyMetadata)
         holderVc.storeCredential(credential, metadata)
 
-        return Pair(credential, response.nonceData)
+        return credential
     }
 
     fun starPresentation(url: String) {

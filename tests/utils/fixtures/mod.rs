@@ -52,6 +52,7 @@ pub fn sample_issuer_metadata() -> IssuerMetadata {
           "credential_issuer": ISSUER_URL,
           "authorization_servers": [AUTHZ_URL],
           "credential_endpoint": ISSUER_URL.to_owned()+"/credential",
+          "nonce_endpoint": ISSUER_URL.to_owned()+"/nonce",
           "credential_configurations_supported": {
             "SD_JWT_cred_1": {
               "format": "dc+sd-jwt",

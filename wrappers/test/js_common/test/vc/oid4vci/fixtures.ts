@@ -52,6 +52,7 @@ export class Utils {
       credential_issuer: this.issuerEndpoint,
       authorization_servers: [`${this.issuerEndpoint}/auth`],
       credential_endpoint: `${this.issuerEndpoint}/credential`,
+      nonce_endpoint: `${this.issuerEndpoint}/nonce`,
       credential_configurations_supported: {
         IDENTITY_SD_JWT: {
           format: CredentialFormats.VCSDJWT,
@@ -190,9 +191,13 @@ export class Utils {
     return {
       format: "dc+sd-jwt",
       credential: this.sdJWTCreds,
-      c_nonce: "0GtZieAoAL_3Zafyn6TgCA",
-      c_nonce_expires_in: 86440,
       notification_id: "1111",
+    };
+  }
+
+  get nonceResponse() {
+    return {
+      c_nonce: "KB50VOm9I-kPLT9mAACV8g",
     };
   }
 

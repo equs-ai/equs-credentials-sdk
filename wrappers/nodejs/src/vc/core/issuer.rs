@@ -60,7 +60,7 @@ impl VCCoreIssuer {
         &self,
         credential_request: JsCredentialRequest,
         #[napi(ts_arg_type = "Claims")] claims: Value,
-        nonce: String,
+        nonce: Option<String>,
         status_info: Option<JsCredentialStatusInfo>,
     ) -> Result<JsCredential, Error> {
         let claims = claims
@@ -73,7 +73,7 @@ impl VCCoreIssuer {
             .issue_credential(
                 &credential_request.into(),
                 &claims,
-                &serde_json::from_value(Value::String(nonce))?,
+                nonce.map(agent_sdk::nonce::Nonce::from_secret),
                 status_info,
             )
             .await

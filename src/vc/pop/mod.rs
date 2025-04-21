@@ -120,6 +120,7 @@ pub struct GenerateOptions {
 #[derive(Debug, PartialEq, Clone, Default)]
 pub struct VerifyOptions {
     pub audience: String,
+    pub nonce: Option<Nonce>,
     pub issuer: Option<String>,
     pub clock_tolerance: Option<time::Duration>,
 }
@@ -130,7 +131,7 @@ pub trait ProofOfPossession<P> {
     async fn generate<S>(
         did_url: &DIDURL,
         key: S,
-        nonce: &Nonce,
+        nonce: Option<Nonce>,
         opts: GenerateOptions,
     ) -> Result<P>
     where
@@ -138,7 +139,6 @@ pub trait ProofOfPossession<P> {
 
     async fn verify(
         proof: P,
-        nonce: &Nonce,
         opts: VerifyOptions,
         did_resolver: &UniversalResolver,
     ) -> Result<(DIDURLBuf, Box<dyn crypto::Key>)>;

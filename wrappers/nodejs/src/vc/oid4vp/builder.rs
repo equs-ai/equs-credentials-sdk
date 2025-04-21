@@ -1,7 +1,7 @@
 use crate::did::JsDIDResolver;
 use crate::http::ReqwestHttpClient;
 use crate::kms::JsKms;
-use crate::nonce::JsNonceGenerator;
+use crate::nonce::JsNonceHandler;
 use crate::utils::from_json_object;
 use crate::vault::JsVault;
 use crate::vc::core::JsKeyMetadata;
@@ -17,7 +17,7 @@ use napi_derive::napi;
 #[napi]
 pub async fn _build_vp_verifier(
     kms: JsKms,
-    nonce_generator: JsNonceGenerator,
+    nonce_generator: JsNonceHandler,
     key_metadata: JsKeyMetadata,
     client_id: String,
     #[napi(ts_arg_type = "ClientMetadata | null | undefined")] client_metadata: Option<JsonObject>,

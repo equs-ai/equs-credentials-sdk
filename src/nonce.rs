@@ -1,43 +1,12 @@
 //! APIs for implementing Nonce generator.
 
 use crate::utils::b64;
-use crate::utils::serde::{int_to_duration, int_to_offset_date_time};
 use async_trait::async_trait;
 use common_macros::DebugError;
 use serde::{Deserialize, Serialize};
 use snafu::{Location, Snafu};
 use std::fmt::Debug;
-use std::ops::Add;
-use time::{Duration, OffsetDateTime};
 use zeroize::{Zeroize, ZeroizeOnDrop};
-
-/// A struct containing nonce with created time and duration.
-#[derive(Debug, Clone, Deserialize, PartialEq)]
-#[serde(rename_all = "camelCase")]
-pub struct NonceData {
-    pub value: Nonce,
-    #[serde(deserialize_with = "int_to_offset_date_time")]
-    pub created: OffsetDateTime,
-    #[serde(deserialize_with = "int_to_duration")]
-    pub expires_in: Option<Duration>,
-}
-
-impl NonceData {
-    pub(crate) fn secret(&self) -> &str {
-        self.value.secret()
-    }
-}
-
-impl NonceData {
-    pub fn is_expired(&self) -> bool {
-        if let Some(expires_in) = self.expires_in {
-            let expires = self.created.add(expires_in);
-            return OffsetDateTime::now_utc() > expires;
-        }
-
-        false
-    }
-}
 
 /// A nonce value to assign a value into `Nonce`.
 #[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq, ZeroizeOnDrop)]
@@ -62,7 +31,7 @@ impl Nonce {
 
 /// `NonceGenerator` Error.
 ///
-/// All implementations of [NonceGenerator] should leverage this enum for error handling.
+/// All implementations of [NonceHandler] should leverage this enum for error handling.
 #[derive(Snafu, DebugError)]
 #[snafu(visibility(pub))]
 #[non_exhaustive]
@@ -73,16 +42,22 @@ pub enum Error {
         #[snafu(implicit)]
         location: Location,
     },
+    #[snafu(display("Nonce validation error: {details}"))]
+    Validate {
+        details: String,
+        #[snafu(implicit)]
+        location: Location,
+    },
 }
 
 /// `Result` alias for Nonce-specific [Error].
 pub type Result<T> = core::result::Result<T, Error>;
 
-/// An async generic `NonceGenerator` interface for generating nonce.
+/// An async generic `NonceHandler` interface for generating nonce.
 ///
 /// Supports `generate` and `with_expiration` operations.
 #[async_trait]
-pub trait NonceGenerator: Send + Sync {
+pub trait NonceHandler: Send + Sync {
     /// Generates a `Nonce`.
     ///
     ///
@@ -95,30 +70,20 @@ pub trait NonceGenerator: Send + Sync {
     /// * [Error::Generate] - fails to generate the `Nonce`.
     async fn generate(&self) -> Result<Nonce>;
 
-    /// Creates a `NonceData` with a provided expiration.
+    /// Validate the existence and expiration of a `Nonce`.
     ///
     /// # Arguments
     ///
-    /// * `expiration` - an active duration of `Nonce`.
+    /// * `nonce` -`Nonce` to validate.
     ///
     /// # Returns
     ///
-    /// A `NonceData` on success.
+    /// `true` if nonce is active or valid.
     ///
     /// # Errors
     ///
-    /// * [Error::Generate] - fails to generate the `NonceData`.
-    async fn with_expiration(&self, expiration: Duration) -> Result<NonceData> {
-        let nonce = self.generate().await?;
-
-        let nonce_data = NonceData {
-            value: nonce,
-            created: OffsetDateTime::now_utc(),
-            expires_in: Some(expiration),
-        };
-
-        Ok(nonce_data)
-    }
+    /// * [Error::Validate] - fails to validate a 'Nonce'.
+    async fn validate(&self, nonce: &Nonce) -> Result<bool>;
 }
 
 #[cfg(test)]

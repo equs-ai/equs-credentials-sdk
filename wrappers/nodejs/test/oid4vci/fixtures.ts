@@ -3,7 +3,7 @@ import {
   Claims,
   CredentialFormats,
   CredentialOfferGrants,
-  JwkAlgorithm,
+  JwkAlgorithm, NonceHandler,
   OID4VCICredentialMetadata,
   OID4VCICredentialOffer,
   OID4VCICredentialRequest,
@@ -177,3 +177,18 @@ export const CRED_OFFER_WITH_AUTH_GRANT: OID4VCICredentialOffer = {
     },
   },
 };
+
+export class MockNonceHandler implements NonceHandler {
+  constructor(private readonly nonce: string) {
+    this.generate = this.generate.bind(this);
+    this.validate = this.validate.bind(this);
+  }
+
+  async generate(): Promise<string> {
+    return this.nonce;
+  }
+
+  async validate(nonce: string): Promise<boolean> {
+    return true;
+  }
+}

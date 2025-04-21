@@ -8,7 +8,6 @@ use std::future::Future;
 use tracing::{instrument, Level};
 
 use crate::http::HttpError;
-use crate::nonce::NonceData;
 use crate::utils::wasm::{WasmNotSend, WasmNotSync};
 use crate::vc::claims::Claims;
 use crate::vc::core::api::CredentialStatusInfo;
@@ -35,6 +34,7 @@ pub type PreAuthorizedCode = oid4vci::types::PreAuthorizedCode;
 pub type PreAuthorizedCodeGrant = oid4vci::credential_offer::PreAuthorizedCodeGrant;
 pub type TokenRequest = oid4vci::token::Request;
 pub type TokenResponse = oid4vci::token::Response;
+pub type NonceResponse = oid4vci::nonce::Response;
 pub type TxCode = oid4vci::types::TxCode;
 pub type AuthorizationCodeGrant = oid4vci::credential_offer::AuthorizationCodeGrant;
 pub type AccessToken = oauth2::AccessToken;
@@ -64,17 +64,6 @@ pub enum CredentialResult {
 #[serde(rename_all = "camelCase")]
 pub struct CredentialResponseResolved {
     pub data: CredentialResult,
-    pub nonce_data: Option<NonceData>,
-}
-
-/// A session with state managed during the issuance.
-///
-/// Contains [NonceData].
-#[derive(Clone, Debug, Default, Deserialize, Serialize)]
-pub struct IssuanceSession {
-    pub nonce: Option<NonceData>,
-    pub notification_id: Option<String>,
-    pub transaction_id: Option<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -151,6 +140,17 @@ pub trait Issuer: WasmNotSend + WasmNotSync {
     /// `None` otherwise
     fn get_cred_def_metadata(&self, cred_request: &CredentialRequest) -> Option<CredDefMetadata>;
 
+    /// Generates the fresh `Nonce` that will be incorporated into proofs in the `CredentialRequest`.
+    ///
+    /// # Returns
+    ///
+    /// `NonceResponse` containing a nonce to be used when creating a proof of possession of the key proof on Holder side
+    ///
+    /// # Errors
+    ///
+    /// * [InternalError::NonceHandler] - fails to handle nonce generation.
+    async fn generate_nonce(&self) -> Result<NonceResponse>;
+
     /// Create a `CredentialOffer` for multiple `CredDef` ids.
     ///
     /// Generated `CredentialOffer` matches provided `CredentialDefinition`s
@@ -191,7 +191,6 @@ pub trait Issuer: WasmNotSend + WasmNotSync {
     /// * `cred_request` - a `CredentialRequest` used for `Credential` generation.
     /// * `token` - an access token used for authorization.
     /// * `claims` - claims to include into the `Credential`.
-    /// * `session` - a `&mut` session object which contains `Nonce` and other state.
     /// * `status_info` - an object which contains information for status validation.
     /// Will be updated if the state was changed.
     ///
@@ -213,7 +212,6 @@ pub trait Issuer: WasmNotSend + WasmNotSync {
         cred_request: &CredentialRequest,
         token: &str,
         claims: &Claims,
-        session: &mut IssuanceSession,
         status_info: Option<CredentialStatusInfo>,
     ) -> Result<CredentialResponse>;
 }
@@ -342,7 +340,6 @@ pub trait Holder: WasmNotSend + WasmNotSync {
     ///
     /// * `token` - an access token.
     /// * `cred_def_id` - a `CredentialDefinition` ID.
-    /// * `nonce` - an optional nonce. If not set `Holder` will re-request nonce from the `Issuer` automatically.
     /// * `key_metadata` - a `KeyMetadata` for corresponding key to be used for signing operations.
     ///
     /// # Returns
@@ -363,7 +360,6 @@ pub trait Holder: WasmNotSend + WasmNotSync {
         &self,
         token: &AccessToken,
         cred_def_id: &str,
-        nonce: Option<&NonceData>,
         key_metadata: &KeyMetadata,
     ) -> Result<CredentialResponseResolved>;
 

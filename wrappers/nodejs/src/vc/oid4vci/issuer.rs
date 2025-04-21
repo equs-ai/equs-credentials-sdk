@@ -3,7 +3,6 @@ use agent_sdk::vc::oid4vci::Issuer;
 use napi::{Error, Result};
 use napi_derive::napi;
 
-use crate::nonce::JsNonceData;
 use crate::utils::{from_json_object, to_json_object};
 use crate::vc::core::JsCredentialStatusInfo;
 use crate::vc::JsonObject;
@@ -52,6 +51,26 @@ impl OID4VCIIssuer {
             .transpose()
     }
 
+    /// Generate a fresh nonce by using {@link NonceHandler}
+    ///
+    /// Generated nonce inside the {@link NonceResponse} to be later used by `Holder` to create a proof of possession
+    /// that will be incorporated into proofs in the {@link CredentialRequest}.
+    ///
+    ///
+    /// @returns {NonceResponse} - A `NonceResponse` with the fresh nonce.
+    #[napi]
+    pub async fn generate_nonce(&self) -> Result<NonceResponse> {
+        let response = self
+            .0
+            .generate_nonce()
+            .await
+            .map_err(|err| Error::from_reason(format!("{:?}", err)))?;
+
+        Ok(NonceResponse {
+            c_nonce: response.c_nonce().secret().to_string(),
+        })
+    }
+
     /// Create a {@link CredentialOffer} for multiple `CredDef` ids.
     ///
     /// Generated {@link CredentialOffer} matches provided {@link CredentialDefinition}s
@@ -90,7 +109,6 @@ impl OID4VCIIssuer {
     /// @param {OID4VCICredentialRequest} credRequest - a {@link CredentialRequest} used for {@link Credential} generation.
     /// @param {string} token - an access token used for authorization.
     /// @param {Claims} claims - claims to include into the {@link Credential}.
-    /// @param {IssuanceSession} session - session object which contains `Nonce` and other state.
     /// @param {CredentialStatusInfo} [statusInfo] - an object which contains information for status validation.
     ///
     /// @returns {IssuanceResult} A {@link IssuanceResult} (containing serialized {@linkCredential}) on success.
@@ -100,11 +118,8 @@ impl OID4VCIIssuer {
         #[napi(ts_arg_type = "OID4VCICredentialRequest")] cred_request: JsonObject,
         token: String,
         #[napi(ts_arg_type = "Claims")] claims: JsonObject,
-        session: IssuanceSession,
         status_info: Option<JsCredentialStatusInfo>,
     ) -> Result<IssuanceResult> {
-        let mut oid4vci_session = session.try_into()?;
-
         let status_info = match status_info {
             Some(status) => Some(status.try_into()?),
             None => None,
@@ -116,7 +131,6 @@ impl OID4VCIIssuer {
                 &from_json_object(cred_request)?,
                 &token,
                 &from_json_object(claims)?,
-                &mut oid4vci_session,
                 status_info,
             )
             .await;
@@ -125,12 +139,10 @@ impl OID4VCIIssuer {
             Ok(cred_response) => Ok(IssuanceResult {
                 type_: IssuanceResultType::CredResponse,
                 value: to_json_object(cred_response)?,
-                session: oid4vci_session.into(),
             }),
             Err(oid4vci::Error::Protocol { source }) => Ok(IssuanceResult {
                 type_: IssuanceResultType::ProtocolError,
                 value: to_json_object(source)?,
-                session: oid4vci_session.into(),
             }),
             Err(err) => Err(Error::from_reason(format!("{:?}", err))),
         }
@@ -143,6 +155,12 @@ pub struct CredentialOffer {
     pub url: String,
 }
 
+#[napi(object)]
+pub struct NonceResponse {
+    #[napi(js_name = "c_nonce")]
+    pub c_nonce: String,
+}
+
 #[napi]
 pub enum IssuanceResultType {
     CredResponse,
@@ -153,36 +171,4 @@ pub enum IssuanceResultType {
 pub struct IssuanceResult {
     pub type_: IssuanceResultType,
     pub value: JsonObject,
-    pub session: IssuanceSession,
-}
-
-#[napi(object)]
-pub struct IssuanceSession {
-    pub nonce: Option<JsNonceData>,
-    pub notification_id: Option<String>,
-    pub transaction_id: Option<String>,
-}
-
-impl TryFrom<IssuanceSession> for oid4vci::IssuanceSession {
-    type Error = Error;
-
-    fn try_from(value: IssuanceSession) -> Result<Self> {
-        let nonce = value.nonce.map(|nonce| nonce.try_into()).transpose()?;
-
-        Ok(Self {
-            nonce,
-            notification_id: value.notification_id,
-            transaction_id: value.transaction_id,
-        })
-    }
-}
-
-impl From<oid4vci::IssuanceSession> for IssuanceSession {
-    fn from(value: oid4vci::IssuanceSession) -> Self {
-        Self {
-            nonce: value.nonce.map(|nonce| nonce.into()),
-            notification_id: value.notification_id,
-            transaction_id: value.transaction_id,
-        }
-    }
 }

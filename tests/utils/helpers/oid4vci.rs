@@ -14,7 +14,7 @@ use crate::utils::fixtures::{
 };
 
 use super::create_did_keymetadata_keyhandle;
-use agent_sdk::inmem::nonce::LocalNonceGenerator;
+use agent_sdk::inmem::nonce::LocalNonceHandler;
 use url::Url;
 
 pub async fn build_holder(
@@ -42,11 +42,12 @@ pub async fn build_issuer(
     introspect_ep: Option<Url>,
 ) -> impl Issuer {
     let kms = LocalKms::new();
-    let nonce_gen = LocalNonceGenerator::default();
+    let nonce_gen = LocalNonceHandler::default();
     let (_, key_metadata, _) = create_did_keymetadata_keyhandle(&kms).await;
 
-    let mut builder =
-        IssuerBuilder::new(kms, nonce_gen, metadata, key_metadata).with_http_client(http_client);
+    let mut builder = IssuerBuilder::new(kms, metadata, key_metadata)
+        .with_nonce_handler(nonce_gen)
+        .with_http_client(http_client);
 
     if let Some(ep) = introspect_ep {
         builder = builder.token_validation_introspect(ep, None);

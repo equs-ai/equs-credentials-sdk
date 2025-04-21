@@ -37,7 +37,7 @@ use crate::utils::fixtures::oid4vp::{
 use agent_sdk::did::universal::UniversalResolver;
 use agent_sdk::did::DIDURL;
 use agent_sdk::inmem::kms::KeyHandle;
-use agent_sdk::inmem::nonce::LocalNonceGenerator;
+use agent_sdk::inmem::nonce::LocalNonceHandler;
 use agent_sdk::vc::claims::Claims;
 use agent_sdk::vc::core::KeyMetadata;
 use agent_sdk::vc::metadata::{CredentialMetadataProcessor, DefaultMetadataProcessor};
@@ -192,7 +192,7 @@ fn prepare_http_client_for_holder(
 
 async fn build_verifier() -> impl Verifier {
     let kms = LocalKms::new();
-    let nonce_gen = LocalNonceGenerator::default();
+    let nonce_gen = LocalNonceHandler::default();
 
     let (did, key_metadata, _) = create_did_keymetadata_keyhandle(&kms).await;
 

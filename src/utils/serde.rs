@@ -1,7 +1,5 @@
-use crate::nonce::NonceData;
 use crate::vc::claims::{Claim, Claims};
-use serde::ser::SerializeStruct;
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use serde::{Deserialize, Deserializer, Serializer};
 use serde_json::Value;
 use time::{Duration, OffsetDateTime};
 
@@ -18,22 +16,6 @@ impl Helpers for Claims {
 
     fn put_dt(&mut self, k: &str, v: OffsetDateTime) {
         self.insert(k.to_string(), Claim::Int(v.unix_timestamp()));
-    }
-}
-
-impl Serialize for NonceData {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        let mut state = serializer.serialize_struct("NonceData", 3)?;
-        let unix_timestamp = self.created.unix_timestamp();
-        let seconds = self.expires_in.map(|d| d.whole_seconds());
-
-        state.serialize_field("value", &self.value)?;
-        state.serialize_field("created", &unix_timestamp)?;
-        state.serialize_field("expiresIn", &seconds)?;
-        state.end()
     }
 }
 
@@ -104,10 +86,9 @@ pub fn get_time_based_claim(claims: &Claims, key: &str) -> Option<time::OffsetDa
 
 #[cfg(test)]
 mod tests {
-    use crate::nonce::{Nonce, NonceData};
     use crate::utils::serde::Helpers;
     use crate::vc::claims::{Claim, Claims};
-    use time::{Duration, OffsetDateTime};
+    use time::OffsetDateTime;
 
     #[test]
     fn put_str_works_correctly() {
@@ -125,20 +106,5 @@ mod tests {
         claims.put_dt("key", dt);
 
         assert_eq!(&claims["key"], &Claim::Int(now));
-    }
-
-    #[test]
-    fn serialization_of_nonce_data_works_correctly() {
-        let nonce_offset_date_time = OffsetDateTime::from_unix_timestamp(1727962239).unwrap();
-        let nonce_data = NonceData {
-            value: Nonce::from_secret("nOnCe".to_owned()),
-            created: nonce_offset_date_time,
-            expires_in: Some(Duration::seconds(86440)),
-        };
-
-        let expected = r#"{"value":"nOnCe","created":1727962239,"expiresIn":86440}"#;
-        let nonce_to_check = serde_json::to_string(&nonce_data).unwrap();
-
-        assert_eq!(expected, nonce_to_check)
     }
 }

@@ -1983,7 +1983,7 @@ pub mod utils {
     use crate::did::universal::UniversalResolver;
     use crate::http::{HttpClient, MockHttpClient};
     use crate::inmem::kms::{KeyHandle, LocalKms};
-    use crate::inmem::nonce::LocalNonceGenerator;
+    use crate::inmem::nonce::LocalNonceHandler;
     use crate::inmem::vault::InMemVault;
     use crate::kms::MockKms;
     use crate::kms::{CreateOptions, KeyID, KeyType, Kms};
@@ -2408,7 +2408,7 @@ pub mod utils {
 
     async fn create_verifier_service(invalid_key_id: bool) -> (impl Verifier, String) {
         let kms = LocalKms::new();
-        let nonce_gen = LocalNonceGenerator::default();
+        let nonce_gen = LocalNonceHandler::default();
         let (did, key_metadata) = create_did_and_key_metadata(&kms).await;
 
         let mut key_metadata = key_metadata;
@@ -2459,7 +2459,7 @@ pub mod utils {
         let verifier = VerifierService::new(
             vc::core::VerifierService::new(&did, UniversalResolver::default()),
             kms_mock,
-            LocalNonceGenerator::default(),
+            LocalNonceHandler::default(),
             MockHttpClient::new(),
             did.clone(),
             key_metadata,

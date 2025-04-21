@@ -28,9 +28,7 @@ impl TryFrom<CredentialResponseResolved> for CredentialResponse {
     type Error = JsError;
 
     fn try_from(value: CredentialResponseResolved) -> Result<Self, Self::Error> {
-        let nonce_data = serde_json::to_value(&value.nonce_data)?;
-
-        let mut json_value = match value.data {
+        let json_value = match value.data {
             CredentialResult::Deferred { transaction_id } => {
                 json!({
                     "data": {
@@ -52,8 +50,6 @@ impl TryFrom<CredentialResponseResolved> for CredentialResponse {
                 })
             }
         };
-
-        json_value["nonceData"] = nonce_data;
 
         let json_str = serde_json::to_string(&json_value)?;
 

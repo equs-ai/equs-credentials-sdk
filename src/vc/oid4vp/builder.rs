@@ -1,6 +1,6 @@
 use crate::did::universal::{DIDResolver, UniversalResolver};
 use crate::http::{HttpClient, HttpError, HttpSnafu};
-use crate::nonce::NonceGenerator;
+use crate::nonce::NonceHandler;
 use crate::reqwest::builder::ReqwestClientBuilder;
 use crate::reqwest::ReqwestClient;
 use crate::vc::core::KeyMetadata;
@@ -32,7 +32,7 @@ pub struct VerifierBuilder<KH, KMS, NG, HC>
 where
     KH: kms::KeyHandle,
     KMS: kms::Kms<KH>,
-    NG: NonceGenerator,
+    NG: NonceHandler,
     HC: HttpClient,
 {
     // data
@@ -53,7 +53,7 @@ impl<KH, KMS, NG> VerifierBuilder<KH, KMS, NG, ReqwestClient>
 where
     KH: kms::KeyHandle,
     KMS: kms::Kms<KH>,
-    NG: NonceGenerator,
+    NG: NonceHandler,
 {
     /// Creates a new instance of `VerifierBuilder` with default configurations.
     ///
@@ -98,7 +98,7 @@ impl<KH, KMS, NG, HC> VerifierBuilder<KH, KMS, NG, HC>
 where
     KH: kms::KeyHandle,
     KMS: kms::Kms<KH>,
-    NG: NonceGenerator,
+    NG: NonceHandler,
     HC: HttpClient,
 {
     /// Sets the Verifier's client metadata.
@@ -433,7 +433,7 @@ where
 mod tests {
     use crate::http::MockHttpClient;
     use crate::inmem::kms::LocalKms;
-    use crate::inmem::nonce::LocalNonceGenerator;
+    use crate::inmem::nonce::LocalNonceHandler;
     use crate::inmem::vault::InMemVault;
     use crate::utils::test_utils::create_did_and_key_metadata;
     use crate::vc::oid4vp::metadata::{default_client_metadata, default_wallet_metadata};
@@ -467,7 +467,7 @@ mod tests {
     #[tokio::test]
     async fn build_verifier() {
         let kms = LocalKms::new();
-        let nonce_gen = LocalNonceGenerator::default();
+        let nonce_gen = LocalNonceHandler::default();
         let (did, key_metadata) = create_did_and_key_metadata(&kms).await;
 
         let verifier = VerifierBuilder::new(kms, nonce_gen, key_metadata, did.clone())
@@ -480,7 +480,7 @@ mod tests {
     #[tokio::test]
     async fn build_verifier_with_defaults() {
         let kms = LocalKms::new();
-        let nonce_gen = LocalNonceGenerator::default();
+        let nonce_gen = LocalNonceHandler::default();
         let (did, key_metadata) = create_did_and_key_metadata(&kms).await;
 
         let verifier = VerifierBuilder::new(kms, nonce_gen, key_metadata, did.clone())

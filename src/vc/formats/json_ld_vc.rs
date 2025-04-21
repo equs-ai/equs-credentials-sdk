@@ -884,9 +884,9 @@ impl<S: Signer + Key> ssi::verification_methods::Signer<AnyMethod> for JsonLdSig
 mod tests {
     use super::*;
     use crate::inmem::kms::LocalKms;
-    use crate::inmem::nonce::LocalNonceGenerator;
+    use crate::inmem::nonce::LocalNonceHandler;
     use crate::kms::KeyType;
-    use crate::nonce::NonceGenerator;
+    use crate::nonce::NonceHandler;
     use crate::utils::test_utils::create_did_url_and_key_handle;
     use crate::utils::test_utils::{failed_signer_key, no_jwk_key};
     use crate::vc::claims::Claim;
@@ -1290,7 +1290,7 @@ mod tests {
         .await
         .unwrap();
 
-        let nonce = LocalNonceGenerator::default().generate().await.unwrap();
+        let nonce = LocalNonceHandler::default().generate().await.unwrap();
 
         let presentation = JsonLdAPI::create_vp(
             &vc,
@@ -1380,7 +1380,7 @@ mod tests {
         .await
         .unwrap();
 
-        let nonce = LocalNonceGenerator::default().generate().await.unwrap();
+        let nonce = LocalNonceHandler::default().generate().await.unwrap();
 
         let presentation = JsonLdAPI::create_vp(
             &vc,
@@ -1474,7 +1474,7 @@ mod tests {
         .await
         .unwrap();
 
-        let nonce = LocalNonceGenerator::default().generate().await.unwrap();
+        let nonce = LocalNonceHandler::default().generate().await.unwrap();
         let mut vp_metadata =
             VPMetadata::new(&vc_base, nonce.clone(), "verifier_id".to_string()).unwrap();
         vp_metadata.disclosures = vec![
@@ -1567,7 +1567,7 @@ mod tests {
         .await
         .unwrap();
 
-        let nonce = LocalNonceGenerator::default().generate().await.unwrap();
+        let nonce = LocalNonceHandler::default().generate().await.unwrap();
 
         let result = JsonLdAPI::create_vp(
             &vc,
@@ -1606,7 +1606,7 @@ mod tests {
         .await
         .unwrap();
 
-        let nonce = LocalNonceGenerator::default().generate().await.unwrap();
+        let nonce = LocalNonceHandler::default().generate().await.unwrap();
 
         let result = JsonLdAPI::create_vp(
             &vc,

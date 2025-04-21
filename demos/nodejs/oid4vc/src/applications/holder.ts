@@ -6,7 +6,6 @@ import {
   enableLogs,
   IssuerDiscovery,
   Kms,
-  NonceData,
   Oid4VciHolder,
   OID4VCIHolderBuilder,
   Oid4VpHolder,
@@ -73,19 +72,17 @@ async function issuanceFlow(holder: Oid4VciHolder, kms: Kms): Promise<void> {
     async (url: string) => await readFromCLI(`Get code from ${url}`),
   );
 
-  const credentialResponse = await requestAndStoreCredential(
+  await requestAndStoreCredential(
     holder,
     kms,
     "SD_JWT_cred_1",
     tokenResp.access_token,
-    undefined,
   );
   await requestAndStoreCredential(
     holder,
     kms,
     "SD_JWT_cred_2",
     tokenResp.access_token,
-    credentialResponse.nonceData,
   );
 }
 
@@ -141,14 +138,12 @@ async function requestAndStoreCredential(
   kms: Kms,
   credDefId: string,
   accessToken: string,
-  nonceData: NonceData | undefined,
 ): Promise<CredentialResponse> {
   const { keyMetadata } = await createDidAndKeyMetadata(kms);
 
   const credentialResponse = await holder.requestCredential(
     accessToken,
     credDefId,
-    nonceData,
     keyMetadata,
   );
 

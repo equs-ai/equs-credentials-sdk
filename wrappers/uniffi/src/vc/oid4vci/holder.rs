@@ -167,7 +167,6 @@ impl OID4VCIHolder {
     ///
     /// * `token` - an access token.
     /// * `cred_def_id` - a `CredentialDefinition` ID.
-    /// * `nonce` - an optional nonce. If not set `Holder` will re-request nonce from the `Issuer` automatically.
     /// * `key_metadata` - a `KeyMetadata` for corresponding key to be used for signing operations.
     ///
     /// # Returns
@@ -182,14 +181,13 @@ impl OID4VCIHolder {
         &self,
         token: String,
         cred_def_id: String,
-        nonce: Option<agent_sdk::nonce::NonceData>,
         key_metadata: agent_sdk::vc::core::KeyMetadata,
     ) -> Result<CredentialResponse> {
         let token = serde_json::from_value(serde_json::Value::String(token))
             .map_err(|err| Error::OID4VCIInternal(err.to_string()))?;
 
         self.0
-            .request_credential(&token, &cred_def_id, nonce, &key_metadata)
+            .request_credential(&token, &cred_def_id, &key_metadata)
             .await
             .map_err(|err| Error::OID4VCIInternal(format!("{:?}", err)))
     }
@@ -248,7 +246,6 @@ trait _HolderWrapperTrait: Send + Sync {
         &self,
         token: &agent_sdk::vc::oid4vci::AccessToken,
         cred_def_id: &str,
-        nonce: Option<agent_sdk::nonce::NonceData>,
         key_metadata: &agent_sdk::vc::core::KeyMetadata,
     ) -> agent_sdk::vc::oid4vci::Result<agent_sdk::vc::oid4vci::CredentialResponseResolved>;
 
@@ -287,11 +284,10 @@ impl<H: agent_sdk::vc::oid4vci::Holder> _HolderWrapperTrait for _HolderWrapper<H
         &self,
         token: &agent_sdk::vc::oid4vci::AccessToken,
         cred_def_id: &str,
-        nonce: Option<agent_sdk::nonce::NonceData>,
         key_metadata: &agent_sdk::vc::core::KeyMetadata,
     ) -> agent_sdk::vc::oid4vci::Result<agent_sdk::vc::oid4vci::CredentialResponseResolved> {
         self.0
-            .request_credential(token, cred_def_id, nonce.as_ref(), key_metadata)
+            .request_credential(token, cred_def_id, key_metadata)
             .await
     }
 

@@ -11,7 +11,7 @@ use agent_sdk::did::universal::UniversalResolver;
 use agent_sdk::did::{DIDBuf, DIDResolver, DID, DIDURL};
 use agent_sdk::http::HttpClient;
 use agent_sdk::inmem::kms::{KeyHandle, LocalKms};
-use agent_sdk::inmem::nonce::LocalNonceGenerator;
+use agent_sdk::inmem::nonce::LocalNonceHandler;
 use agent_sdk::inmem::vault::InMemVault;
 use agent_sdk::kms::Kms;
 use agent_sdk::vault::Vault;
@@ -19,8 +19,8 @@ use agent_sdk::vc::claims::Claims;
 use agent_sdk::vc::core::KeyMetadata;
 use agent_sdk::vc::metadata::{CredentialMetadataProcessor, DefaultMetadataProcessor};
 use agent_sdk::vc::oid4vci::{
-    CredentialOfferGrants, CredentialOfferParams, Holder, HolderBuilder, IssuanceSession, Issuer,
-    IssuerBuilder, IssuerDiscovery, IssuerMetadata,
+    CredentialOfferGrants, CredentialOfferParams, Holder, HolderBuilder, Issuer, IssuerBuilder,
+    IssuerDiscovery, IssuerMetadata,
 };
 use agent_sdk::vc::oid4vp::Holder as Oid4vpHolder;
 use agent_sdk::vc::oid4vp::{
@@ -32,7 +32,6 @@ use agent_sdk::vc::{
     oid4vci, Credential, CredentialMetadata, VCFormatsAPI, VCFormatsJsonLdAPI, VCFormatsSdJwtAPI,
 };
 use agent_sdk::{crypto, kms};
-use async_mutex::Mutex;
 use futures::executor;
 use oauth2::http::header::CONTENT_TYPE;
 use oauth2::http::StatusCode;
@@ -41,10 +40,8 @@ use oauth2::{HttpRequest, HttpResponse, TokenResponse};
 use oid4vci::AuthorizationCodeGrant;
 use rstest::rstest;
 use serde_json::json;
-use std::borrow::{Borrow, BorrowMut};
 use std::collections::HashMap;
 use std::str::FromStr;
-use std::sync::Arc;
 use std::{io, str};
 use url::Url;
 use utils::fixtures::{
@@ -125,7 +122,6 @@ async fn authorized_code_flow_using_custom_did_resolver(#[case] validate_token: 
         .request_credential(
             token_response.access_token(),
             "SD_JWT_cred_1",
-            None,
             &key_metadata,
         )
         .await
@@ -133,19 +129,10 @@ async fn authorized_code_flow_using_custom_did_resolver(#[case] validate_token: 
 
     println!("Credential 1: {:?}", response.data);
 
-    // Extra check that subsequent nonce returned
-    let nonce_data = response.nonce_data;
-    assert!(nonce_data.is_some());
-
     // 6.2 Holder requests LDPVC_cred_1 credentials with the same token
     let (_, key_metadata, _) = create_did_keymetadata_keyhandle_with_test_did_resolver(&kms).await;
     let response = holder
-        .request_credential(
-            token_response.access_token(),
-            "LDPVC_cred_1",
-            nonce_data.as_ref(),
-            &key_metadata,
-        )
+        .request_credential(token_response.access_token(), "LDPVC_cred_1", &key_metadata)
         .await
         .unwrap();
 
@@ -255,11 +242,7 @@ async fn oid4vp_credentials_presentation_and_verification_with_custom_did_resolv
         .unwrap();
 }
 
-async fn credential_endpoint(
-    issuer: &impl Issuer,
-    req: HttpRequest,
-    session: Arc<Mutex<IssuanceSession>>,
-) -> HttpResponse {
+async fn credential_endpoint(issuer: &impl Issuer, req: HttpRequest) -> HttpResponse {
     let cred_req_str = std::str::from_utf8(req.body().as_slice()).unwrap();
 
     let claims = if cred_req_str.contains("\"dc+sd-jwt\"") {
@@ -282,13 +265,9 @@ async fn credential_endpoint(
         .unwrap()
         .to_string();
 
-    let mut session_lock = session.lock().await;
-
     let result = issuer
-        .issue_credential(&cred_req, &token, &claims, session_lock.borrow_mut(), None)
+        .issue_credential(&cred_req, &token, &claims, None)
         .await;
-
-    assert!(session_lock.borrow().nonce.is_some());
 
     println!("result: {:?}", result);
 
@@ -365,11 +344,20 @@ fn prepare_http_client_for_holder(
         }),
     );
 
-    let session = Arc::new(Mutex::new(IssuanceSession::default()));
+    let nonce_future = executor::block_on(issuer.generate_nonce()).unwrap();
+    http_client.add_handler(
+        sample_issuer_url().join("/nonce").unwrap(),
+        Box::new(move |_| {
+            Ok(HttpResponse::new(
+                serde_json::to_vec(&nonce_future).unwrap(),
+            ))
+        }),
+    );
+
     http_client.add_handler(
         sample_issuer_url().join("/credential").unwrap(),
         Box::new(move |req| {
-            let fut = credential_endpoint(&issuer, req, Arc::clone(&session));
+            let fut = credential_endpoint(&issuer, req);
             let result = executor::block_on(fut); // TODO: get rid of `block_on` here
             Ok(result)
         }),
@@ -442,10 +430,11 @@ async fn build_issuer_with_test_did_resolver(
     introspect_ep: Option<Url>,
 ) -> impl Issuer {
     let kms = LocalKms::new();
-    let nonce_gen = LocalNonceGenerator::default();
+    let nonce_gen = LocalNonceHandler::default();
     let (_, key_metadata, _) = create_did_keymetadata_keyhandle_with_test_did_resolver(&kms).await;
 
-    let mut builder = IssuerBuilder::new(kms, nonce_gen, metadata, key_metadata)
+    let mut builder = IssuerBuilder::new(kms, metadata, key_metadata)
+        .with_nonce_handler(nonce_gen)
         .with_http_client(http_client)
         .with_did_resolver(TestDIDResolver::new(CUSTOM_METHOD_NAME.to_string()))
         .unwrap();
@@ -629,7 +618,7 @@ async fn create_vc_with_test_did_resolver(
 
 async fn build_verifier_with_test_did_resolver() -> impl Verifier {
     let kms = LocalKms::new();
-    let nonce_gen = LocalNonceGenerator::default();
+    let nonce_gen = LocalNonceHandler::default();
 
     let (did, key_metadata, _) =
         create_did_keymetadata_keyhandle_with_custom_did_resolver(&kms).await;

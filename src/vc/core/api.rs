@@ -359,7 +359,7 @@ pub trait Issuer: WasmNotSend + WasmNotSync {
     ///
     /// * `credential_request` - a `CredentialRequest` used for `Credential` generation.
     /// * `claims` - claims to include into the `Credential`.
-    /// * `nonce` - a nonce to validate the `Proof` included in the `CredentialRequest`.
+    /// * `nonce` - an optional nonce to validate the `Proof` included in the `CredentialRequest`.
     ///
     /// # Returns
     ///
@@ -376,7 +376,7 @@ pub trait Issuer: WasmNotSend + WasmNotSync {
         &self,
         credential_request: &CredentialRequest,
         claims: &Claims,
-        nonce: &Nonce,
+        nonce: Option<Nonce>,
         status_info: Option<CredentialStatusInfo>, // TODO: consider moving it to CredentialRequest
     ) -> Result<Credential>;
 }
@@ -423,7 +423,7 @@ pub trait Holder: WasmNotSend + WasmNotSync {
     /// # Arguments
     ///
     /// * `credential_offer` - a `CredentialOffer`.with definition of which `Credential` to request.
-    /// * `nonce` - a nonce to generate a `ProofOfPossession`.
+    /// * `nonce` - optional nonce to generate a `ProofOfPossession`.
     /// * `key_metadata` - a `KeyMetadata` for corresponding key to be used for signing operations.
     ///
     /// # Returns
@@ -439,7 +439,7 @@ pub trait Holder: WasmNotSend + WasmNotSync {
     async fn request_credential(
         &self,
         credential_offer: &CredentialOffer,
-        nonce: &Nonce,
+        nonce: Option<Nonce>,
         key_metadata: &KeyMetadata,
     ) -> Result<CredentialRequest>;
 

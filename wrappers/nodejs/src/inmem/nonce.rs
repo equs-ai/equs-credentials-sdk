@@ -1,18 +1,16 @@
-use crate::nonce::JsNonceData;
-use agent_sdk::nonce::NonceGenerator;
+use agent_sdk::nonce::NonceHandler;
 use napi::{Error, Result};
 use napi_derive::napi;
-use time::Duration;
 
 #[napi]
-pub struct LocalNonceGenerator(agent_sdk::inmem::nonce::LocalNonceGenerator);
+pub struct LocalNonceHandler(agent_sdk::inmem::nonce::LocalNonceHandler);
 
 #[napi]
-impl LocalNonceGenerator {
+impl LocalNonceHandler {
     #[napi(constructor)]
     pub fn new() -> Self {
-        let nonce_generator = agent_sdk::inmem::nonce::LocalNonceGenerator::default();
-        LocalNonceGenerator(nonce_generator)
+        let nonce_generator = agent_sdk::inmem::nonce::LocalNonceHandler::default();
+        LocalNonceHandler(nonce_generator)
     }
     #[napi]
     pub async fn generate(&self) -> Result<String> {
@@ -26,18 +24,20 @@ impl LocalNonceGenerator {
     }
 
     #[napi]
-    pub async fn with_expiration(&self, expiration: i64) -> Result<JsNonceData> {
-        self.0
-            .with_expiration(Duration::seconds(expiration))
+    pub async fn validate(&self, nonce: String) -> Result<bool> {
+        let validation = self
+            .0
+            .validate(&agent_sdk::nonce::Nonce::from_secret(nonce))
             .await
-            .map(Into::into)
-            .map_err(|err| napi::Error::from_reason(format!("{err:?}")))
+            .map_err(|e| Error::from_reason(e.to_string()))?;
+
+        Ok(validation)
     }
 }
 
-impl Default for LocalNonceGenerator {
+impl Default for LocalNonceHandler {
     fn default() -> Self {
-        let nonce_generator = agent_sdk::inmem::nonce::LocalNonceGenerator::default();
-        LocalNonceGenerator(nonce_generator)
+        let nonce_generator = agent_sdk::inmem::nonce::LocalNonceHandler::default();
+        LocalNonceHandler(nonce_generator)
     }
 }

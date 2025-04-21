@@ -1,4 +1,4 @@
-import { InMemKms, LocalNonceGenerator, NonceData, OID4VCIIssuer, OID4VCIIssuerBuilder } from "../../";
+import {InMemKms, OID4VCIIssuer, OID4VCIIssuerBuilder} from "../../";
 import {
   ACCESS_TOKEN,
   CLAIMS,
@@ -8,18 +8,22 @@ import {
   CRED_REQUEST,
   GRANTS,
   ISSUER_METADATA,
+  MockNonceHandler,
 } from "./fixtures";
 import { createDidAndKeyMetadata } from "../utils";
 
 describe("OID4VCI Issuer: ", () => {
   let issuer: OID4VCIIssuer;
+  const NONCE = "KB50VOm9I-kPLT9mAACV8g"
 
   beforeEach(async () => {
     const kms = new InMemKms();
-    const nonce_generator = new LocalNonceGenerator();
+    const mockNonceHandler = new MockNonceHandler(NONCE);
     const { keyMetadata } = await createDidAndKeyMetadata(kms);
 
-    issuer = await new OID4VCIIssuerBuilder(kms, nonce_generator, ISSUER_METADATA, keyMetadata).build();
+    issuer = await new OID4VCIIssuerBuilder(kms, ISSUER_METADATA, keyMetadata)
+        .withNonceHandler(mockNonceHandler)
+        .build();
   });
 
   test("retrieve Metadata", async () => {
@@ -43,17 +47,17 @@ describe("OID4VCI Issuer: ", () => {
     });
   });
 
-  test("issue Credential", async () => {
-    const nonce = {
-      value: "KB50VOm9I-kPLT9mAACV8g",
-      expiresIn: 864484848,
-      created: 1728843957,
-    } satisfies NonceData;
-    const session = {
-      nonce,
-    };
+  test("generate Nonce", async () => {
+    const credentialOffer = await issuer.generateNonce();
 
-    const result = await issuer.issueCredential(CRED_REQUEST, ACCESS_TOKEN, CLAIMS, session);
+    expect(credentialOffer).toMatchObject({
+      c_nonce: NONCE
+    });
+  });
+
+  test("issue Credential", async () => {
+
+    const result = await issuer.issueCredential(CRED_REQUEST, ACCESS_TOKEN, CLAIMS);
     expect(result.value.credential?.length).toBeTruthy();
   });
 });

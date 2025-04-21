@@ -77,7 +77,7 @@ where
         &self,
         credential_request: &CredentialRequest,
         claims: &Claims,
-        nonce: &Nonce,
+        nonce: Option<Nonce>,
         status_info: Option<CredentialStatusInfo>,
     ) -> Result<Credential> {
         trace!(?credential_request, ?claims, ?nonce);
@@ -88,8 +88,9 @@ where
 
         let (hld_did, hld_key) = match pop_fmt {
             pop::Format::Jwt => {
-                let verification_opts = self.resolve_pop_verification_options(credential_request);
-                JwtProofOfPossession::verify(proof, nonce, verification_opts, &self.did_resolver)
+                let verification_opts =
+                    self.resolve_pop_verification_options(credential_request, nonce);
+                JwtProofOfPossession::verify(proof, verification_opts, &self.did_resolver)
             }
             .await
             .context(ProofSnafu)?,
@@ -373,6 +374,7 @@ where
     fn resolve_pop_verification_options(
         &self,
         credential_request: &CredentialRequest,
+        nonce: Option<Nonce>,
     ) -> pop::VerifyOptions {
         let clock_tolerance = credential_request
             .protocol_data
@@ -381,6 +383,7 @@ where
             .unwrap_or_default();
 
         pop::VerifyOptions {
+            nonce,
             audience: self.metadata.issuer_id.clone(),
             clock_tolerance,
             issuer: None,
@@ -431,15 +434,15 @@ mod tests {
         let kms = LocalKms::new();
         let (_, key_metadata) = create_did_and_key_metadata(&kms).await;
 
-        let nonce = random_nonce().await;
-        let proof = case.generate_pop(&kms, &nonce, KeyType::P256).await;
+        let nonce = Some(random_nonce().await);
+        let proof = case.generate_pop(&kms, nonce.clone(), KeyType::P256).await;
 
         let issuer = issuer_service(kms, key_metadata, &case);
 
         let request = case.create_cred_request(proof);
 
         let credential = issuer
-            .issue_credential(&request, &case.claims, &nonce, None)
+            .issue_credential(&request, &case.claims, nonce, None)
             .await
             .unwrap();
 
@@ -452,11 +455,11 @@ mod tests {
         let kms = LocalKms::new();
         let (_, key_metadata) = create_did_and_key_metadata(&kms).await;
 
-        let nonce = random_nonce().await;
+        let nonce = Some(random_nonce().await);
         let proof = case
             .generate_pop_with_lifetime(
                 &kms,
-                &nonce,
+                nonce.clone(),
                 KeyType::P256,
                 OffsetDateTime::now_utc().checked_add(time::Duration::seconds(3)),
                 OffsetDateTime::now_utc().checked_add(time::Duration::minutes(5)),
@@ -469,7 +472,7 @@ mod tests {
             case.create_cred_request_with_pop_tolerance(proof, time::Duration::seconds(3));
 
         let credential = issuer
-            .issue_credential(&request, &case.claims, &nonce, None)
+            .issue_credential(&request, &case.claims, nonce, None)
             .await
             .unwrap();
 
@@ -483,11 +486,11 @@ mod tests {
         let kms = LocalKms::new();
         let (_, key_metadata) = create_did_and_key_metadata(&kms).await;
 
-        let nonce = random_nonce().await;
+        let nonce = Some(random_nonce().await);
         let proof = case
             .generate_pop_with_lifetime(
                 &kms,
-                &nonce,
+                nonce.clone(),
                 KeyType::P256,
                 OffsetDateTime::now_utc().checked_add(time::Duration::seconds(3)),
                 OffsetDateTime::now_utc().checked_add(time::Duration::minutes(5)),
@@ -498,7 +501,7 @@ mod tests {
         let request = case.create_cred_request(proof);
 
         let credential = issuer
-            .issue_credential(&request, &case.claims, &nonce, None)
+            .issue_credential(&request, &case.claims, nonce, None)
             .await
             .unwrap();
     }
@@ -511,8 +514,8 @@ mod tests {
         let kms = LocalKms::new();
         let (_, key_metadata) = create_did_and_key_metadata(&kms).await;
 
-        let nonce = random_nonce().await;
-        let proof = case.generate_pop(&kms, &nonce, KeyType::P256).await;
+        let nonce = Some(random_nonce().await);
+        let proof = case.generate_pop(&kms, nonce.clone(), KeyType::P256).await;
 
         let issuer = issuer_service(kms, key_metadata, &case);
 
@@ -523,7 +526,7 @@ mod tests {
         };
 
         let res = issuer
-            .issue_credential(&request, &case.claims, &nonce, None)
+            .issue_credential(&request, &case.claims, nonce, None)
             .await;
 
         assert!(matches!(res.err(), Some(Error::CredDefNotFound { .. })));
@@ -537,15 +540,17 @@ mod tests {
         let kms = LocalKms::new();
         let (_, key_metadata) = create_did_and_key_metadata(&kms).await;
 
-        let nonce = random_nonce().await;
-        let proof = case.generate_pop(&kms, &nonce, KeyType::Ed25519).await;
+        let nonce = Some(random_nonce().await);
+        let proof = case
+            .generate_pop(&kms, nonce.clone(), KeyType::Ed25519)
+            .await;
 
         let issuer = issuer_service(kms, key_metadata, &case);
 
         let request = case.create_cred_request(proof);
 
         let res = issuer
-            .issue_credential(&request, &case.claims, &nonce, None)
+            .issue_credential(&request, &case.claims, nonce, None)
             .await;
 
         assert!(matches!(
@@ -562,7 +567,7 @@ mod tests {
         let kms = LocalKms::new();
         let (_, key_metadata) = create_did_and_key_metadata(&kms).await;
 
-        let nonce = random_nonce().await;
+        let nonce = Some(random_nonce().await);
         let proof = "invalid_proof".to_string();
 
         let issuer = issuer_service(kms, key_metadata, &case);
@@ -570,7 +575,7 @@ mod tests {
         let request = case.create_cred_request(proof);
 
         let res = issuer
-            .issue_credential(&request, &case.claims, &nonce, None)
+            .issue_credential(&request, &case.claims, nonce, None)
             .await;
 
         assert!(matches!(res.err(), Some(Error::Proof { .. })));
@@ -584,8 +589,8 @@ mod tests {
         let kms = LocalKms::new();
         let (_, key_metadata) = create_did_and_key_metadata(&kms).await;
 
-        let nonce = random_nonce().await;
-        let proof = case.generate_pop(&kms, &nonce, KeyType::P256).await;
+        let nonce = Some(random_nonce().await);
+        let proof = case.generate_pop(&kms, nonce.clone(), KeyType::P256).await;
 
         let key_metadata = KeyMetadata {
             did_url: key_metadata.did_url,
@@ -597,7 +602,7 @@ mod tests {
         let request = case.create_cred_request(proof);
 
         let res = issuer
-            .issue_credential(&request, &case.claims, &nonce, None)
+            .issue_credential(&request, &case.claims, nonce, None)
             .await;
 
         assert!(matches!(res.err(), Some(Error::KMS { .. })));

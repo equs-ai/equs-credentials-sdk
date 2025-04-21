@@ -4,7 +4,7 @@ use agent_sdk::reqwest::builder::ReqwestClientBuilder;
 use crate::did::JsDIDResolver;
 use crate::http::ReqwestHttpClient;
 use crate::kms::JsKms;
-use crate::nonce::JsNonceGenerator;
+use crate::nonce::JsNonceHandler;
 use crate::utils::{from_json_object, parse_url_arg};
 use crate::vault::JsVault;
 use crate::vc::core::JsKeyMetadata;
@@ -111,7 +111,7 @@ pub async fn _build_vci_holder(
 #[allow(clippy::too_many_arguments)]
 pub async fn _build_vci_issuer(
     kms: JsKms,
-    nonce_generator: JsNonceGenerator,
+    nonce_handler: Option<JsNonceHandler>,
     #[napi(ts_arg_type = "OID4VCIIssuerMetadata")] issuer_metadata: JsonObject,
     key_metadata: JsKeyMetadata,
     token_validation: Option<JsTokenValidation>,
@@ -128,7 +128,7 @@ pub async fn _build_vci_issuer(
         .transpose()?;
     let clock_skew: Option<time::Duration> =
         clock_skew.map(time::Duration::try_from).transpose()?;
-    let mut builder = IssuerBuilder::new(kms, nonce_generator, issuer_metadata, key_metadata);
+    let mut builder = IssuerBuilder::new(kms, issuer_metadata, key_metadata);
 
     if let Some(cred_lifetime) = cred_lifetime {
         builder = builder.with_default_cred_lifetime(cred_lifetime.try_into()?);
@@ -167,10 +167,20 @@ pub async fn _build_vci_issuer(
         builder = builder.with_dedicated_key_metadata(key, &value.clone().into());
     }
 
-    let issuer = builder
-        .build()
-        .await
-        .map_err(|err| Error::from_reason(format!("{:?}", err)))?;
+    if let Some(nonce_handler) = nonce_handler {
+        let issuer = builder
+            .with_nonce_handler(nonce_handler)
+            .build()
+            .await
+            .map_err(|err| Error::from_reason(format!("{:?}", err)))?;
 
-    Ok(OID4VCIIssuer(Box::new(issuer)))
+        Ok(OID4VCIIssuer(Box::new(issuer)))
+    } else {
+        let issuer = builder
+            .build()
+            .await
+            .map_err(|err| Error::from_reason(format!("{:?}", err)))?;
+
+        Ok(OID4VCIIssuer(Box::new(issuer)))
+    }
 }

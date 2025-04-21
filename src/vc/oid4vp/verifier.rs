@@ -16,7 +16,7 @@ use crate::did::universal::UniversalResolver;
 use crate::did::JWKResolver;
 use crate::http::HttpClient;
 use crate::kms::{KeyHandle, Kms};
-use crate::nonce::{Nonce, NonceGenerator};
+use crate::nonce::{Nonce, NonceHandler};
 use crate::utils::wasm::{WasmNotSend, WasmNotSync};
 use crate::vc;
 use crate::vc::claims::{Claim, Claims};
@@ -66,7 +66,7 @@ where
     VF: vc::core::Verifier,
     KH: KeyHandle,
     KMS: Kms<KH>,
-    NG: NonceGenerator,
+    NG: NonceHandler,
     HC: HttpClient,
 {
     verifier: VF,
@@ -83,7 +83,7 @@ where
     VF: vc::core::Verifier,
     KH: KeyHandle,
     KMS: Kms<KH>,
-    NG: NonceGenerator,
+    NG: NonceHandler,
     HC: HttpClient,
 {
     #[allow(clippy::too_many_arguments)]
@@ -125,7 +125,7 @@ where
     VF: vc::core::Verifier,
     KH: KeyHandle,
     KMS: Kms<KH>,
-    NG: NonceGenerator,
+    NG: NonceHandler,
     HC: HttpClient,
 {
     #[instrument(level = Level::TRACE, skip(self), ret())]
@@ -202,7 +202,7 @@ where
     VF: vc::core::Verifier,
     KH: KeyHandle,
     KMS: Kms<KH>,
-    NG: NonceGenerator,
+    NG: NonceHandler,
     HC: HttpClient,
 {
     #[instrument(level = Level::TRACE, skip(self), err(), ret())]

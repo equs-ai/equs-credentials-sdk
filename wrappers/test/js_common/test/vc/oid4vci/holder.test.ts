@@ -11,7 +11,6 @@ import {
   UniversalDIDResolver,
   KeyType,
   VCFormat,
-  NonceData,
 } from "agent-sdk";
 import { Utils } from "./fixtures";
 
@@ -92,17 +91,13 @@ describe("OID4VCI Holder: ", () => {
 
   test("request Credential", async () => {
     await mockServer.forPost("/credential").thenJson(200, utils.credResponse);
+    await mockServer.forPost("/nonce").thenJson(201, utils.nonceResponse);
 
     const kms = new InMemKms();
     const vciHolder = await buildHolder(utils, kms);
-    const nonce: NonceData = {
-      value: "KB50VOm9I-kPLT9mAACV8g",
-      expiresIn: 86400,
-      created: 1728732136,
-    };
     const { keyMetadata } = await createDidAndKeyMetadata(kms);
 
-    const cred_response = await vciHolder.requestCredential(utils.accessToken, utils.credDefId, nonce, keyMetadata);
+    const cred_response = await vciHolder.requestCredential(utils.accessToken, utils.credDefId, keyMetadata);
 
     expect(cred_response).toMatchObject({
       data: {
@@ -111,10 +106,6 @@ describe("OID4VCI Holder: ", () => {
           payload: utils.sdJWTCreds,
         },
         notification_id: "1111",
-      },
-      nonceData: {
-        value: "0GtZieAoAL_3Zafyn6TgCA",
-        expiresIn: 86440,
       },
     });
   });

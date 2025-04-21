@@ -2,8 +2,7 @@ import {
   enableLogs,
   InMemKms,
   IssuanceResultType,
-  IssuanceSession,
-  LocalNonceGenerator,
+  LocalNonceHandler,
   OID4VCIIssuerBuilder,
   TracingLogFormat,
   TracingLogLevel,
@@ -18,36 +17,39 @@ async function main(): Promise<void> {
   await enableLogs(TracingLogFormat.Full, TracingLogLevel.Info);
 
   const kms = new InMemKms();
-  const nonceGenerator = new LocalNonceGenerator();
+  const nonceHandler = new LocalNonceHandler();
   const { keyMetadata } = await createDidAndKeyMetadata(kms);
 
   const issuer = await new OID4VCIIssuerBuilder(
     kms,
-    nonceGenerator,
     config.issuerMetadata,
     keyMetadata,
-  ).build();
+  ).withNonceHandler(nonceHandler).build();
 
   const app = express();
   app.use(json());
   app.use(cors());
 
-  const sessions = new Map<string, IssuanceSession>();
+  app.get("/nonce", async (req, res) => {
+    try {
+      const result = await issuer.generateNonce();
+      res.send(result);
+    } catch (e: any) {
+      res.status(500).send(e.message);
+    }
+  });
 
   app.post("/credential", async (req, res) => {
     const accessToken = req.header("authorization")?.split(" ")[1];
     if (!accessToken) throw new Error("Auth token is not provided");
-
-    const session = sessions.get(accessToken) ?? {};
 
     try {
       const result = await issuer.issueCredential(
         req.body,
         accessToken,
         config.claims,
-        session,
       );
-      sessions.set(accessToken, result.session);
+
       res
         .status(result.type === IssuanceResultType.ProtocolError ? 400 : 200)
         .send(result.value);
