@@ -60,6 +60,7 @@ zkryptium = "0.2.2"
 ssi-status = "0.3.0"
 flate2 = "1.0.35"
 base64ct = "=1.6.0"
+libm = "=0.2.11"
 
 # InMEM dependencies
 # crypto/kms dependencies

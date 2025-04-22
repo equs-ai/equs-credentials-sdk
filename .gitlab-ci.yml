@@ -29,11 +29,23 @@ variables:
 # Shared configurations
 
 .cargo_local_deps_script: &cargo_local_deps_script
-  - sed -i "s|ssh://git@git.slock.it/|https://gitlab-ci-token:${CI_JOB_TOKEN}@git.slock.it/|" Cargo.toml
+  - |
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+    sed -i '' "s|ssh://git@git.slock.it/|https://gitlab-ci-token:${CI_JOB_TOKEN}@git.slock.it/|" Cargo.toml
+    else
+    sed -i "s|ssh://git@git.slock.it/|https://gitlab-ci-token:${CI_JOB_TOKEN}@git.slock.it/|" Cargo.toml
+    fi
 
 .rust_job_configs: &rust_job_configs
   image: rust:${RUST_VERSION}
   before_script:
+    - *cargo_local_deps_script
+
+
+.swift_job_configs: &swift_job_configs
+  before_script:
+    - curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain ${RUST_VERSION}
+    - source "$HOME/.cargo/env"
     - *cargo_local_deps_script
 
 .nodejs_job_configs: &nodejs_job_configs
@@ -271,6 +283,19 @@ kotlin-test-job:
     - apt-get install -y openjdk-17-jdk
     - cd wrappers/uniffi
     - make kotlin-test
+  only:
+    - merge_requests
+    - main
+
+swift-test-job:
+  <<: *swift_job_configs
+  stage: test
+  script:
+    - rustup target add aarch64-apple-ios x86_64-apple-ios aarch64-apple-ios-sim
+    - cd wrappers/uniffi
+    - make ios-test
+  tags:
+    - macos
   only:
     - merge_requests
     - main
