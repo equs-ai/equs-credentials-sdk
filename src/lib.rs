@@ -25,11 +25,11 @@ pub mod vault;
 
 // core
 pub mod did;
-mod utils;
-pub mod vc;
-
+#[cfg(not(target_arch = "wasm32"))]
 pub mod didcomm;
 #[cfg(any(test, feature = "in-memory"))]
 pub mod inmem;
 pub mod nonce;
 pub mod reqwest;
+mod utils;
+pub mod vc;

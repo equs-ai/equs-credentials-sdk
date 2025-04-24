@@ -1,11 +1,11 @@
-use crate::didcomm::kms::DIDCommKms;
-use crate::kms::JsKeyHandle;
-use crate::utils::{from_json_object, to_json_object};
-use crate::vc::JsonObject;
 use agent_sdk::did::universal::UniversalResolver;
-use agent_sdk::didcomm::{DIDCommService, PackEncryptedOptions, UnpackOptions};
+use agent_sdk::didcomm::core::envelope::{EnvelopeService, PackEncryptedOptions, UnpackOptions};
 use napi::Error;
 use napi_derive::napi;
+
+use crate::didcomm::kms::DIDCommKms;
+use crate::utils::{from_json_object, to_json_object};
+use crate::vc::JsonObject;
 
 #[napi(object)]
 pub struct PackEncryptedResult {
@@ -30,7 +30,7 @@ pub struct UnpackResult {
 }
 
 #[napi(js_name = "DIDCommService")]
-pub struct JsDIDCommService(DIDCommService<DIDCommKms, JsKeyHandle>);
+pub struct JsDIDCommService(EnvelopeService);
 
 #[allow(clippy::new_without_default)]
 #[napi]
@@ -38,7 +38,8 @@ impl JsDIDCommService {
     #[napi(constructor)]
     pub fn new(kms: DIDCommKms) -> Self {
         let universal_resolver = UniversalResolver::default();
-        let inner_service = DIDCommService::new(kms, universal_resolver);
+
+        let inner_service = EnvelopeService::new(kms, universal_resolver);
 
         JsDIDCommService(inner_service)
     }

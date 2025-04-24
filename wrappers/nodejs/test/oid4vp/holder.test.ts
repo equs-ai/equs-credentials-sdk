@@ -1,7 +1,6 @@
-import { CompletedRequest, getLocal } from "mockttp";
+import { getLocal } from "mockttp";
 import {
   Credential,
-  CredentialEntry,
   CredentialMetadata,
   InMemKms,
   InMemVault,
@@ -12,7 +11,7 @@ import {
   ReqwestHttpClient,
   VCFormat,
 } from "../../";
-import { AUTH_REQUEST, AUTH_REQUEST_JWT, STATE, VC, VC_TYPE } from "./fixtures";
+import { AUTH_REQUEST, VC, VC_TYPE } from "./fixtures";
 import { createDidAndKeyMetadata } from "../utils";
 
 describe("OID4VP Holder: ", () => {

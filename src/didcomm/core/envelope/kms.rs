@@ -14,11 +14,25 @@ use crate::kms;
 use crate::kms::{DerivativeKms, ECDH1PUParams, ECDHESParams, KeyHandle, KeyPair, KeyType, Kms};
 use crate::utils::jwk;
 
-pub(super) struct KmsWrapper<KMS, KH>
+pub trait DIDCommKms<KH: KeyHandle>:
+    Kms<KH>
+    + DerivativeKms<ECDH1PUParams, Output = Vec<u8>>
+    + DerivativeKms<ECDHESParams, Output = Vec<u8>>
+{
+}
+
+impl<T, KH> DIDCommKms<KH> for T
 where
-    KMS: Kms<KH>
+    T: Kms<KH>
         + DerivativeKms<ECDH1PUParams, Output = Vec<u8>>
         + DerivativeKms<ECDHESParams, Output = Vec<u8>>,
+    KH: KeyHandle,
+{
+}
+
+pub struct KmsWrapper<KMS, KH>
+where
+    KMS: DIDCommKms<KH>,
     KH: KeyHandle,
 {
     kms: KMS,
@@ -28,9 +42,7 @@ where
 
 impl<KMS, KH> KmsWrapper<KMS, KH>
 where
-    KMS: Kms<KH>
-        + DerivativeKms<ECDH1PUParams, Output = Vec<u8>>
-        + DerivativeKms<ECDHESParams, Output = Vec<u8>>,
+    KMS: DIDCommKms<KH>,
     KH: KeyHandle,
 {
     pub fn new(kms: KMS, resolver: UniversalResolver) -> Self {
@@ -126,9 +138,7 @@ where
 #[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl<KMS, KH> KeyManagementService for KmsWrapper<KMS, KH>
 where
-    KMS: Kms<KH>
-        + DerivativeKms<ECDH1PUParams, Output = Vec<u8>>
-        + DerivativeKms<ECDHESParams, Output = Vec<u8>>,
+    KMS: DIDCommKms<KH>,
     KH: KeyHandle,
 {
     async fn get_key_alg(&self, secret_id: &str) -> didcomm::error::Result<KnownKeyAlg> {
