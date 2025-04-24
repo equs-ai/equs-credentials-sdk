@@ -7,7 +7,8 @@ use ssi::dids::DIDBuf;
 use crate::did::universal::UniversalResolver;
 use crate::did::{DIDDoc, DIDResolver};
 
-pub(super) struct DidResolverWrapper(UniversalResolver);
+#[derive(Clone)]
+pub struct DidResolverWrapper(UniversalResolver);
 
 impl DidResolverWrapper {
     pub fn new(did_resolver: UniversalResolver) -> Self {

@@ -35,9 +35,14 @@ pub type Result<T> = core::result::Result<T, Error>;
 #[async_trait]
 pub trait Storage<K, V>: Send + Sync
 where
-    V: 'static + Send + Sync,
+    V: Send + Sync + 'static,
     K: Send + Sync,
 {
+    type Transaction: Transaction<K, V> + Send + Sync + 'static;
+
+    /// Start a storage transaction
+    async fn begin_transaction(&self) -> Self::Transaction;
+
     /// Put a key-value into the storage.
     ///
     /// # Arguments
@@ -88,4 +93,61 @@ where
     ///
     /// * [Error::Modification] - fails to delete the record.
     async fn delete(&self, k: &K) -> Result<()>;
+}
+
+pub trait Transaction<K, V>
+where
+    V: Send + Sync + 'static,
+    K: Send + Sync,
+{
+    /// Put a key-value into the storage.
+    ///
+    /// # Arguments
+    ///
+    /// * `k` - the key.
+    /// * `v` - the value.
+    ///
+    /// # Errors
+    ///
+    /// * [Error::Modification] - fails to insert the key-value.
+    fn put(&mut self, key: K, value: V) -> Result<()>;
+
+    /// Returns a value for the provided key.
+    ///
+    /// # Arguments
+    ///
+    /// * `k` - a key.
+    ///
+    /// # Returns
+    ///
+    /// `Some(value)` on success.
+    /// `None` if no value was found by `key`.
+    ///
+    /// # Errors
+    ///
+    /// * [Error::Resolving] - fails to resolve a value.
+    fn get(&self, k: &K) -> Result<Option<V>>;
+
+    /// Returns all values.
+    ///
+    /// # Returns
+    ///
+    /// `Vec<V>` on success.
+    /// Empty vector if no keys were found.
+    ///
+    /// # Errors
+    ///
+    /// * [Error::Resolving] - fails to resolve a value.
+    fn get_all(&self) -> Result<Vec<V>>;
+
+    /// Delete an entry from the `Storage`.
+    ///
+    /// # Arguments
+    ///
+    /// * `k` - a key.
+    ///
+    /// # Errors
+    ///
+    /// * [Error::Modification] - fails to delete the record.
+    fn delete(&mut self, k: &K) -> Result<()>;
 }

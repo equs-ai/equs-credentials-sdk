@@ -1,4 +1,3 @@
-import { NonceData } from "../crypto";
 import { Credential } from "./credential";
 
 /**

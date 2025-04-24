@@ -7,7 +7,6 @@ DerivedData/
 .swiftpm/xcode/package.xcworkspace/contents.xcworkspacedata
 .netrc
 .index-build
-Package.resolved
 
 ### Generated Code ###
 **/asdk.swift
