@@ -95,7 +95,8 @@ class OID4VCViewModel : ObservableObject, AuthCodeCallback {
             switch credentialResponse.data {
             case .deferred(transactionId: _):
                 self.credential = .error("Request for credential is deferred")
-            case .immediate(credential: let credential, notificationId: _):
+            case .immediate(credentials: let credentials, notificationId: _):
+            	let credential = credentials[0]
                 self.credential = .ready(data: credential.payload)
                 
                 let metadata = try await resolveMetadata(credential: credential, metadata: didAndKeyMetadata.keyMetadata)

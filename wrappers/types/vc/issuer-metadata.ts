@@ -10,11 +10,11 @@ export interface IssuerMetadataDisplay {
 
 /**
  * @property {string} uri REQUIRED. String value that contains a URI where the Wallet can obtain the logo of the Credential from the Credential Issuer. The Wallet needs to determine the scheme, since the URI value could use the https: scheme, the data: scheme, etc.
- * @property {string} alt_text OPTIONAL. String value of the alternative text for the logo image.
+ * @property {string} [alt_text] OPTIONAL. String value of the alternative text for the logo image.
  */
 export interface CredentialMetadataDisplayLogo {
   uri: string;
-  alt_text: string;
+  alt_text?: string;
 }
 
 
