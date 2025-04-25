@@ -4,8 +4,7 @@ use crate::vc::{pop, HasVCFormat, VCFormat};
 use crate::{crypto, utils, vc};
 use common_macros::DebugError;
 use oid4vci::core::profiles::{
-    CoreProfilesCredentialConfiguration, CoreProfilesCredentialResponseType,
-    CredentialRequestWithFormat,
+    CoreProfilesCredentialConfiguration, CoreProfilesCredentialResponseType, CredentialRequest,
 };
 use oid4vci::metadata::credential_issuer::CredentialConfiguration;
 use oid4vci::proof_of_possession::KeyProofType;
@@ -227,14 +226,14 @@ impl From<&KeyProofType> for pop::Format {
     }
 }
 
-impl HasVCFormat for CredentialRequestWithFormat {
+impl HasVCFormat for CredentialRequest {
     fn format(&self) -> VCFormat {
         match self {
-            CredentialRequestWithFormat::JwtVcJson(_) => VCFormat::JwtVcJson,
-            CredentialRequestWithFormat::JwtVcJsonLd(_) => VCFormat::JwtVcJsonLD,
-            CredentialRequestWithFormat::LdpVc(_) => VCFormat::LdpVc,
-            CredentialRequestWithFormat::MsoMdoc(_) => VCFormat::MsoMdoc,
-            CredentialRequestWithFormat::VcSdJwt(_) => VCFormat::SdJwtVc,
+            CredentialRequest::JwtVcJson(_) => VCFormat::JwtVcJson,
+            CredentialRequest::JwtVcJsonLd(_) => VCFormat::JwtVcJsonLD,
+            CredentialRequest::LdpVc(_) => VCFormat::LdpVc,
+            CredentialRequest::MsoMdoc(_) => VCFormat::MsoMdoc,
+            CredentialRequest::VcSdJwt(_) => VCFormat::SdJwtVc,
         }
     }
 }
@@ -242,11 +241,11 @@ impl HasVCFormat for CredentialRequestWithFormat {
 impl HasVCFormat for CoreProfilesCredentialResponseType {
     fn format(&self) -> VCFormat {
         match self {
-            CoreProfilesCredentialResponseType::JwtVcJson(_) => VCFormat::JwtVcJson,
-            CoreProfilesCredentialResponseType::JwtVcJsonLd(_) => VCFormat::JwtVcJsonLD,
-            CoreProfilesCredentialResponseType::LdpVc(_) => VCFormat::LdpVc,
-            CoreProfilesCredentialResponseType::MsoMdoc(_) => VCFormat::MsoMdoc,
-            CoreProfilesCredentialResponseType::VcSdJwt(_) => VCFormat::SdJwtVc,
+            CoreProfilesCredentialResponseType::JwtVcJson { .. } => VCFormat::JwtVcJson,
+            CoreProfilesCredentialResponseType::JwtVcJsonLd { .. } => VCFormat::JwtVcJsonLD,
+            CoreProfilesCredentialResponseType::LdpVc { .. } => VCFormat::LdpVc,
+            CoreProfilesCredentialResponseType::MsoMdoc { .. } => VCFormat::MsoMdoc,
+            CoreProfilesCredentialResponseType::VcSdJwt { .. } => VCFormat::SdJwtVc,
         }
     }
 }

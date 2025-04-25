@@ -351,7 +351,6 @@ pub mod fixtures {
         pub fn with_sdjwtvc_conf() -> CredentialRequest {
             serde_json::from_value(json!(
                 {
-                    "format":"dc+sd-jwt",
                     "vct":"SD_JWT_cred",
                     "proof":{
                         "proof_type":"jwt",
@@ -366,7 +365,6 @@ pub mod fixtures {
         pub fn with_jwtvcjson_conf() -> CredentialRequest {
             serde_json::from_value(json!(
                 {
-                    "format":"jwt_vc_json",
                     "credential_definition": json!({
                     "type": [],
                     "credentialSubject": {},
@@ -379,7 +377,6 @@ pub mod fixtures {
         pub fn with_jwtldvc_conf() -> CredentialRequest {
             serde_json::from_value(json!(
                 {
-                    "format":"jwt_vc_json-ld",
                     "credential_definition": json!({
                         "@context": [],
                         "type": [],
@@ -393,7 +390,6 @@ pub mod fixtures {
         pub fn with_ldpvc_conf() -> CredentialRequest {
             serde_json::from_value(json!(
                 {
-                    "format":"ldp_vc",
                     "credential_definition": json!({
                         "@context": [],
                         "type": [],
@@ -407,16 +403,6 @@ pub mod fixtures {
         pub fn with_ldp_vc_conf_correct() -> CredentialRequest {
             serde_json::from_value(json!(
                 {
-                    "id": "LdpVc",
-                    "type": ["VerifiableCredential"],
-                    "issuer": "did:example:foo",
-                    "scope": "SD_JWT_cred",
-                    "issuanceDate": "2020-08-19T21:41:50Z",
-                     "@context": "https://www.w3.org/2018/credentials/v1",
-                     "credentialSubject": {
-                       "id": "did:example:d23dd687a7dc6787646f2eb98d0"
-                      },
-                    "format": "ldp_vc",
                     "proof": {
                         "proof_type":"jwt",
                         "jwt": SAMPLE_PROOF_JWT,
@@ -438,7 +424,6 @@ pub mod fixtures {
         pub fn with_msomdoc_conf() -> CredentialRequest {
             serde_json::from_value(json!(
                 {
-                    "format":"mso_mdoc",
                      "doctype": "",
                 }
             ))
@@ -449,10 +434,7 @@ pub mod fixtures {
     pub fn sample_cred_response() -> CredentialResponse {
         let cred_response = serde_json::from_value(json!(
             {
-                "format":"dc+sd-jwt",
-                "credential": SD_JWT_CREDS,
-                "c_nonce":"0GtZieAoAL_3Zafyn6TgCA",
-                "c_nonce_expires_in":86440,
+                "credentials": [{"credential": SD_JWT_CREDS}],
                 "notification_id": NOTIFICATION_ID
             }
         ));

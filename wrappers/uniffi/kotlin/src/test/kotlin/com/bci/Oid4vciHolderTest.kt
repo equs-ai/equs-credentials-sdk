@@ -97,7 +97,6 @@ class HolderVCITest {
                   "access_token": "$ACCESS_TOKEN", 
                   "token_type": "bearer",
                   "scope": "SD_JWT_cred",
-                  "c_nonce": "tZignsnFbp",
                   "expires_in": 86400
                 }
               """
@@ -106,8 +105,7 @@ class HolderVCITest {
         val credentialResponse = Json.parseToJsonElement(
             """
                 {
-                  "format": "dc+sd-jwt",
-                  "credential": "$SD_JWT_CRED",
+                  "credentials": [{"credential":"$SD_JWT_CRED"}],
                   "notification_id": "1111"
                 }
             """
@@ -244,7 +242,7 @@ class HolderVCITest {
         val actual = buildHolder(inMemKms).requestCredential(ACCESS_TOKEN, "IDENTITY_SD_JWT", didAndKeyMetadata.keyMetadata)
 
         assertEquals(CredentialResultEnum.Immediate(
-            credential = Credential(format = VcFormat.SD_JWT_VC, payload = SD_JWT_CRED),
+            credentials = arrayListOf(Credential(format = VcFormat.SD_JWT_VC, payload = SD_JWT_CRED)),
             notificationId = "1111",
         ), actual.data)
     }

@@ -130,7 +130,7 @@ async function presentFlow(
 function isCredentialImmediate(
   credential: CredentialImmediate | CredentialDeferred,
 ): credential is CredentialImmediate {
-  return Object.hasOwn(credential, "credential");
+  return Object.hasOwn(credential, "credentials");
 }
 
 async function requestAndStoreCredential(
@@ -147,16 +147,17 @@ async function requestAndStoreCredential(
     keyMetadata,
   );
 
-  const credential = credentialResponse.data;
+  const credentialImmediate = credentialResponse.data;
 
-  if (!isCredentialImmediate(credential))
+  if (!isCredentialImmediate(credentialImmediate))
     throw new Error("Credential response is Deferred. Unexpected result!");
 
+  const credential = credentialImmediate.credentials.pop()!;
   const credentialMetadata = await resolveMetadata(
-    credential.credential,
+    credential,
     keyMetadata,
   );
 
-  await holder.storeCredential(credential.credential, credentialMetadata);
+  await holder.storeCredential(credential, credentialMetadata);
   return credentialResponse;
 }

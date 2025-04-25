@@ -106,7 +106,10 @@ async fn autorized_code_flow_using_scopes(#[case] validate_token: bool) {
         .unwrap();
 
     match response.data {
-        oid4vci::CredentialResult::Credential { credential, .. } => {
+        oid4vci::CredentialResult::Credential {
+            credentials: credential,
+            ..
+        } => {
             println!(
                 "Credential 2: {}",
                 serde_json::to_string_pretty(&credential).unwrap()
@@ -119,9 +122,9 @@ async fn autorized_code_flow_using_scopes(#[case] validate_token: bool) {
 async fn credential_endpoint(issuer: &impl Issuer, req: HttpRequest) -> HttpResponse {
     let cred_req_str = std::str::from_utf8(req.body().as_slice()).unwrap();
 
-    let claims = if cred_req_str.contains("\"dc+sd-jwt\"") {
+    let claims = if cred_req_str.contains("\"vct\"") {
         sample_claims_sdjwt()
-    } else if cred_req_str.contains("\"ldp_vc\"") {
+    } else if cred_req_str.contains("\"credential_definition\"") {
         sample_claims_jsonld()
     } else {
         panic!("unsupported format of requested credential");

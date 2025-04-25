@@ -20,7 +20,7 @@ use async_trait::async_trait;
 use oauth2::Scope;
 use oid4vci::core::profiles::{
     CoreProfilesCredentialConfiguration, CoreProfilesCredentialRequest,
-    CoreProfilesCredentialResponseType, CredentialRequestWithFormat,
+    CoreProfilesCredentialResponseType,
 };
 use oid4vci::credential::{ErrorType, Response, ResponseEnum};
 use oid4vci::credential_offer::{CredentialOfferGrants, CredentialOfferParameters};
@@ -226,7 +226,7 @@ where
             };
 
         let resp = Response::new(ResponseEnum::Immediate {
-            credential: credential.try_into()?,
+            credentials: vec![credential.try_into()?],
         });
 
         info!("credential is issued");
@@ -246,8 +246,8 @@ where
         trace!(credential_request = ?req);
 
         let result = match req.additional_profile_fields() {
-            CoreProfilesCredentialRequest::WithFormat { inner, .. } => match inner {
-                CredentialRequestWithFormat::VcSdJwt(sd_jwt_req) => self
+            CoreProfilesCredentialRequest::Default { inner, .. } => match inner {
+                oid4vci::core::profiles::CredentialRequest::VcSdJwt(sd_jwt_req) => self
                     .issuer_metadata
                     .credential_configurations_supported()
                     .iter()
@@ -260,7 +260,7 @@ where
 
                         supported.vct() == sd_jwt_req.vct()
                     }),
-                CredentialRequestWithFormat::LdpVc(ldp_req) => self
+                oid4vci::core::profiles::CredentialRequest::LdpVc(ldp_req) => self
                     .issuer_metadata
                     .credential_configurations_supported()
                     .iter()
@@ -551,7 +551,9 @@ impl TryInto<CoreProfilesCredentialResponseType> for vc::Credential {
                     }
                     .build()
                 })?;
-                Ok(CoreProfilesCredentialResponseType::JwtVcJson(jws_buf))
+                Ok(CoreProfilesCredentialResponseType::JwtVcJson {
+                    credential: jws_buf,
+                })
             }
             vc::Credential::JwtVcJsonLd(cred) => {
                 let jws_buf = JwsBuf::from_str(cred.as_str()).map_err(|e| {
@@ -561,13 +563,17 @@ impl TryInto<CoreProfilesCredentialResponseType> for vc::Credential {
                     .build()
                 })?;
 
-                Ok(CoreProfilesCredentialResponseType::JwtVcJsonLd(jws_buf))
+                Ok(CoreProfilesCredentialResponseType::JwtVcJsonLd {
+                    credential: jws_buf,
+                })
             }
             vc::Credential::LdpVc(cred) => {
                 let cred = serde_json::to_value(&cred).context(ParseSnafu)?;
-                Ok(CoreProfilesCredentialResponseType::LdpVc(cred))
+                Ok(CoreProfilesCredentialResponseType::LdpVc { credential: cred })
             }
-            vc::Credential::SdJwt(cred) => Ok(CoreProfilesCredentialResponseType::VcSdJwt(cred)),
+            vc::Credential::SdJwt(cred) => {
+                Ok(CoreProfilesCredentialResponseType::VcSdJwt { credential: cred })
+            }
         }
     }
 }
@@ -692,8 +698,8 @@ mod tests {
 
         let t = iss_result.unwrap();
         match t.response_kind() {
-            ResponseEnum::Immediate { credential } => {
-                let credential: Credential = credential.try_into().unwrap();
+            ResponseEnum::Immediate { credentials } => {
+                let credential: Credential = credentials.first().unwrap().try_into().unwrap();
                 match credential {
                     Credential::SdJwt(cred) => {
                         let claims = cred.parse_claims().unwrap();
@@ -736,8 +742,8 @@ mod tests {
 
         let t = iss_result.unwrap();
         match t.response_kind() {
-            ResponseEnum::Immediate { credential } => {
-                let credential: Credential = credential.try_into().unwrap();
+            ResponseEnum::Immediate { credentials } => {
+                let credential: Credential = credentials.first().unwrap().try_into().unwrap();
                 match credential {
                     Credential::LdpVc(cred) => {
                         let claims = cred.parse_claims().unwrap();
@@ -790,15 +796,17 @@ mod tests {
 
         let resp = iss_result.unwrap();
 
-        if let ResponseEnum::Immediate {
-            credential: CoreProfilesCredentialResponseType::VcSdJwt(resp),
-        } = resp.response_kind()
-        {
-            let claims_str = SdJwtAPI::strip_disclosures(resp).unwrap();
-            let claims: Map<String, Value> = decode_unverified(claims_str).unwrap();
-            assert_eq!(claims.get(EXP_CLAIM).unwrap(), exp);
-            assert_eq!(claims.get(NBF_CLAIM).unwrap(), nbf);
-            assert_eq!(claims.get(IAT_CLAIM).unwrap(), iat);
+        if let ResponseEnum::Immediate { credentials } = resp.response_kind() {
+            assert_eq!(credentials.len(), 1);
+            if let CoreProfilesCredentialResponseType::VcSdJwt { credential } = &credentials[0] {
+                let claims_str = SdJwtAPI::strip_disclosures(credential).unwrap();
+                let claims: Map<String, Value> = decode_unverified(claims_str).unwrap();
+                assert_eq!(claims.get(EXP_CLAIM).unwrap(), exp);
+                assert_eq!(claims.get(NBF_CLAIM).unwrap(), nbf);
+                assert_eq!(claims.get(IAT_CLAIM).unwrap(), iat);
+            } else {
+                panic!("wrong credential type returned");
+            }
         } else {
             unreachable!()
         }

@@ -75,9 +75,9 @@ async function presentationFlow(holder: OID4VPHolder): Promise<void> {
 }
 
 function isCredentialImmediate(
-  credential: CredentialImmediate | CredentialDeferred,
-): credential is CredentialImmediate {
-  return Object.hasOwn(credential, "credential");
+  credentials: CredentialImmediate | CredentialDeferred,
+): credentials is CredentialImmediate {
+  return Object.hasOwn(credentials, "credentials");
 }
 
 async function requestAndStoreCredential(
@@ -90,12 +90,13 @@ async function requestAndStoreCredential(
 
   const credentialResponse = await holder.requestCredential(accessToken, credDefId, keyMetadata);
 
-  const credential = credentialResponse.data;
+  const credentialImmediate = credentialResponse.data;
 
-  if (!isCredentialImmediate(credential)) throw new Error("Credential response is Deferred. Unexpected result!");
+  if (!isCredentialImmediate(credentialImmediate)) throw new Error("Credential response is Deferred. Unexpected result!");
 
-  const credentialMetadata = await resolveMetadata(credential.credential, keyMetadata);
+  const credential = credentialImmediate.credentials.pop()!;
+  const credentialMetadata = await resolveMetadata(credential, keyMetadata);
 
-  await holder.storeCredential(credential.credential, credentialMetadata);
+  await holder.storeCredential(credential, credentialMetadata);
   return credentialResponse;
 }

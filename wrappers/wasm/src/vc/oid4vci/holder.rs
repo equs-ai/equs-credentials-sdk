@@ -247,7 +247,6 @@ impl OID4VCIHolder {
     /// # Returns
     ///
     /// A `CredentialResponseResolved` (Immediate or Deferred) on success.
-    /// Optionally includes `NonceData` for the next requests.
     ///
     /// # Errors
     ///

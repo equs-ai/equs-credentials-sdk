@@ -37,14 +37,17 @@ impl TryFrom<CredentialResponseResolved> for CredentialResponse {
                 })
             }
             CredentialResult::Credential {
-                credential,
+                credentials,
                 notification_id,
             } => {
-                let js_credential: JsCredential = credential.try_into()?;
+                let mut js_credentials: Vec<JsCredential> = vec![];
+                for credential in credentials {
+                    js_credentials.push(credential.try_into()?);
+                }
 
                 json!({
                     "data": {
-                        "credential": js_credential,
+                        "credentials": js_credentials,
                         "notification_id": notification_id,
                     }
                 })

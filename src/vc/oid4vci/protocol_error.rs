@@ -9,10 +9,6 @@ use std::fmt::Debug;
 /// See <https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0.html>.
 ///
 /// Should be treated like 4xx errors.
-///
-/// # Nonce
-///
-/// `Holder`s MUST use `c_nonce` and `c_nonce_expires_in` for subsequent requests if they're returned.
 #[derive(Snafu, Clone, Deserialize, Serialize)]
 #[snafu(visibility(pub))]
 #[snafu(display(
