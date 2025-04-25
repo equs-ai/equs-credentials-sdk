@@ -1,6 +1,7 @@
 import {
   buildVciIssuer,
   contextEnsuredKms,
+  contextEnsuredNonceHandler,
   Duration,
   KeyMetadata,
   Kms,
@@ -61,7 +62,7 @@ export class OID4VCIIssuerBuilder {
   async build(): Promise<OID4VCIIssuer> {
     return await buildVciIssuer(
       contextEnsuredKms(this.kms),
-      this.nonceHandler,
+      this.nonceHandler ? contextEnsuredNonceHandler(this.nonceHandler) : null,
       this.issuerMetadata,
       this.keyMetadata,
       this.tokenValidation,

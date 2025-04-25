@@ -35,6 +35,7 @@ export class Config {
     credential_issuer: this.issuerServerUrl,
     authorization_servers: [`${this.keycloakUrl}/idp/realms/pid-issuer-realm`],
     credential_endpoint: `${this.issuerServerUrl}/credential`,
+    nonce_endpoint: `${this.issuerServerUrl}/nonce`,
     credential_configurations_supported: {
       SD_JWT_cred_1: {
         format: CredentialFormats.VCSDJWT,

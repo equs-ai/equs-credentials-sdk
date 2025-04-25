@@ -51,15 +51,14 @@ pub trait StatefulProtocol: Protocol {
     /// The protocol state machine.
     type StateMachine: StateMachine;
 
-    /// Handle a message
+    /// Dispatch an incoming message.
     ///
     /// # Arguments
-    /// * `direction` - Specify whether to send or receive message
     /// * `msg` - The message to handle
     ///
     /// # Errors
     ///
-    /// Returns an error if fails to handle the message.
+    /// Returns an error if fails to dispatch the message.
     async fn dispatch_incoming_message(&self, message: Message) -> Result<()> {
         // Validate incoming DIDComm message
         self.validate_message(&message).await?;

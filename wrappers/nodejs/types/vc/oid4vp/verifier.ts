@@ -2,7 +2,7 @@ import {
   buildVpVerifier,
   ClientMetadata,
   contextEnsuredKms,
-  contextEnsuredNonceGenerator,
+  contextEnsuredNonceHandler,
   HttpClient,
   KeyMetadata,
   Kms,
@@ -38,7 +38,7 @@ export class OID4VPVerifierBuilder {
   async build(): Promise<OID4VPVerifier> {
     return await buildVpVerifier(
       contextEnsuredKms(this.kms),
-      contextEnsuredNonceGenerator(this.nonceHandler),
+      contextEnsuredNonceHandler(this.nonceHandler),
       this.keyMetadata,
       this.clientId,
       this.clientMetadata,

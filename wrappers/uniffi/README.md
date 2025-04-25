@@ -111,7 +111,7 @@ ar = "llvm-ar"
 ### 6. Run `android-aar` target of Makefile:
 
 ```bash
-  make kotlin-android-aar
+  make android-aar
 ```
 
 On success, `aar` file must be outputted in `./kotlin/android/build/outputs/aar/android-release.aar`
