@@ -42,7 +42,7 @@ pub type ErrorType = oid4vci::credential::ErrorType;
 
 /// A result of the Credential issuance handled by `Holder`
 ///
-/// Enum value `Credential` contains issued [Credential].
+/// Enum value `Credential` contains issued [Credential]s.
 ///
 /// *NOTE*: `deferred` flow and `notifications` currently are not supported.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -51,7 +51,7 @@ pub enum CredentialResult {
         transaction_id: String,
     },
     Credential {
-        credential: Credential,
+        credentials: Vec<Credential>,
         notification_id: Option<String>,
     },
 }

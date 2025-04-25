@@ -101,7 +101,6 @@ export const PROOF_JWT =
   "eyJhbGciOiJFUzI1NiIsImtpZCI6ImRpZDprZXk6ekRuYWVmM2lLZTFGV3U4QUtOM25yUEpCdWtTenNTNE5KNm95b0xiVjh1QkNTR2ZjZiN6RG5hZWYzaUtlMUZXdThBS04zbnJQSkJ1a1N6c1M0Tko2b3lvTGJWOHVCQ1NHZmNmIiwidHlwIjoib3BlbmlkNHZjaS1wcm9vZitqd3QifQ.eyJhdWQiOiJodHRwOi8vbG9jYWxob3N0OjkwMDAiLCJuYmYiOjE3MzYxODIzOTcsImlhdCI6MTczNjE4MjM5NywiZXhwIjo0ODg5NzgyMzk3LCJub25jZSI6IktCNTBWT205SS1rUExUOW1BQUNWOGcifQ.IteWgE_LbL7lanDu3CJDdwGheGRDrJdh_gn-ldOraEWazE_kTtcgXMp4WJG871FOqRzI8lphSxWfqrGBXG4wxA";
 
 export const CRED_REQUEST: OID4VCICredentialRequest = {
-  format: "dc+sd-jwt",
   vct: "SD_JWT_cred",
   proof: {
     proof_type: "jwt",
@@ -150,8 +149,6 @@ export const SD_JWT_CREDS =
 export const CRED_RESPONSE = {
   format: "dc+sd-jwt",
   credential: SD_JWT_CREDS,
-  c_nonce: "0GtZieAoAL_3Zafyn6TgCA",
-  c_nonce_expires_in: 86440,
   notification_id: "1111",
 };
 

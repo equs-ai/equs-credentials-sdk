@@ -26,7 +26,7 @@ use oid4vci::core::authorization::AuthorizationDetailsObject;
 use oid4vci::core::client::Client;
 use oid4vci::core::profiles::{
     ldp_vc, vc_sd_jwt, CoreProfilesCredentialConfiguration, CoreProfilesCredentialRequest,
-    CoreProfilesCredentialResponseType, CredentialRequestWithFormat,
+    CoreProfilesCredentialResponseType,
 };
 use oid4vci::credential::{ErrorType, ResponseEnum};
 use oid4vci::metadata::MetadataDiscovery;
@@ -365,13 +365,12 @@ where
 
         let req_with_format = match &cred_def.profile_specific_fields() {
             CoreProfilesCredentialConfiguration::VcSdJwt(det) => {
-                CredentialRequestWithFormat::VcSdJwt(vc_sd_jwt::CredentialRequestWithFormat::new(
-                    det.vct().to_owned(),
-                    Default::default(),
-                ))
+                oid4vci::core::profiles::CredentialRequest::VcSdJwt(
+                    vc_sd_jwt::CredentialRequest::new(det.vct().to_owned()),
+                )
             }
             CoreProfilesCredentialConfiguration::LdpVc(det) => {
-                CredentialRequestWithFormat::LdpVc(ldp_vc::CredentialRequestWithFormat::new(
+                oid4vci::core::profiles::CredentialRequest::LdpVc(ldp_vc::CredentialRequest::new(
                     ldp_vc::authorization_detail::CredentialDefinition::default()
                         .set_context(det.credential_definition().context().to_owned())
                         .set_type(det.credential_definition().r#type().to_owned()),
@@ -387,7 +386,7 @@ where
             .fail()?,
         };
 
-        let req_base = CoreProfilesCredentialRequest::WithFormat {
+        let req_base = CoreProfilesCredentialRequest::Default {
             inner: req_with_format,
             _credential_identifier: (),
         };
@@ -424,15 +423,16 @@ where
 
         let cred_result: CredentialResult = (&resp).try_into()?;
 
-        if let CredentialResult::Credential { credential, .. } = &cred_result {
+        if let CredentialResult::Credential { credentials, .. } = &cred_result {
             info!("credential is received");
 
-            self.holder
-                .verify_credential(credential)
-                .await
-                .context(VCSnafu)?;
-
-            info!("credential is verified");
+            for credential in credentials {
+                self.holder
+                    .verify_credential(credential)
+                    .await
+                    .context(VCSnafu)?;
+            }
+            info!("credential(s) is verified");
         }
 
         info!("requesting a credential flow is succeeded");
@@ -618,10 +618,17 @@ impl TryInto<CredentialResult> for &CredentialResponse {
     #[instrument(level = Level::TRACE, skip_all, err(), ret())]
     fn try_into(self) -> std::result::Result<CredentialResult, Self::Error> {
         let result = match self.response_kind() {
-            ResponseEnum::Immediate { credential } => CredentialResult::Credential {
-                credential: credential.try_into()?,
-                notification_id: self.notification_id().map(|v| v.to_owned()),
-            },
+            ResponseEnum::Immediate { credentials } => {
+                let mut creds: Vec<Credential> = vec![];
+                for cred in credentials {
+                    creds.push(cred.try_into()?)
+                }
+
+                CredentialResult::Credential {
+                    credentials: creds,
+                    notification_id: self.notification_id().map(|v| v.to_owned()),
+                }
+            }
             ResponseEnum::Deferred { transaction_id } => CredentialResult::Deferred {
                 transaction_id: transaction_id.clone().ok_or(
                     TypeConversionSnafu {
@@ -631,11 +638,6 @@ impl TryInto<CredentialResult> for &CredentialResponse {
                     .build(),
                 )?,
             },
-            ResponseEnum::ImmediateMany { .. } => ProtocolSnafu::new(
-                ErrorType::InvalidCredentialRequest,
-                "'ImmediateMany' credential response type is not supported".to_string(),
-            )
-            .fail()?,
         };
 
         Ok(result)
@@ -648,12 +650,12 @@ impl TryInto<Credential> for &CoreProfilesCredentialResponseType {
     #[instrument(level = Level::TRACE, skip_all, err(), ret())]
     fn try_into(self) -> std::result::Result<Credential, Self::Error> {
         let credential = match self {
-            CoreProfilesCredentialResponseType::VcSdJwt(sd_jwt) => {
-                Credential::SdJwt(sd_jwt.to_owned())
+            CoreProfilesCredentialResponseType::VcSdJwt { credential } => {
+                Credential::SdJwt(credential.to_owned())
             }
-            CoreProfilesCredentialResponseType::LdpVc(ldp_vc) => {
-                Credential::LdpVc(serde_json::from_value(ldp_vc.to_owned()).context(ParseSnafu)?)
-            }
+            CoreProfilesCredentialResponseType::LdpVc { credential } => Credential::LdpVc(
+                serde_json::from_value(credential.to_owned()).context(ParseSnafu)?,
+            ),
             _ => ProtocolSnafu::new(
                 ErrorType::UnsupportedCredentialFormat,
                 format!("Unsupported credential format: {}", self.format()),
@@ -984,13 +986,25 @@ mod tests {
             .await
             .unwrap();
 
-        assert!(matches!(
-            response.data,
-            CredentialResult::Credential {
-                credential: Credential::SdJwt(jwt),
-                notification_id: Some(notification_id)
-            } if jwt == SD_JWT_CREDS && notification_id == NOTIFICATION_ID
-        ));
+        let CredentialResult::Credential {
+            credentials,
+            notification_id: Some(notification_id),
+        } = response.data
+        else {
+            panic!("did not receive credential");
+        };
+
+        assert_eq!(credentials.len(), 1);
+
+        match &credentials[0] {
+            Credential::SdJwt(cred) => {
+                assert_eq!(cred, SD_JWT_CREDS);
+                assert_eq!(notification_id, NOTIFICATION_ID);
+            }
+            _ => {
+                panic!("did not receive sd-jwt credential");
+            }
+        }
     }
 
     #[tokio::test]

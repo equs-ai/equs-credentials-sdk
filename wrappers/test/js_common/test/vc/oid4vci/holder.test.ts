@@ -101,10 +101,12 @@ describe("OID4VCI Holder: ", () => {
 
     expect(cred_response).toMatchObject({
       data: {
-        credential: {
-          format: VCFormat.SdJwtVc,
-          payload: utils.sdJWTCreds,
-        },
+        credentials: [
+            {
+              format: VCFormat.SdJwtVc,
+              payload: utils.sdJWTCreds,
+            }
+         ],
         notification_id: "1111",
       },
     });

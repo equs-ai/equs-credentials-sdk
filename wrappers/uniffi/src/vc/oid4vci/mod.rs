@@ -18,7 +18,7 @@ pub enum CredentialResultEnum {
         transaction_id: String,
     },
     Immediate {
-        credential: Credential,
+        credentials: Vec<Credential>,
         notification_id: Option<String>,
     },
 }
@@ -28,14 +28,14 @@ custom_type!(CredentialResult, CredentialResultEnum, {
     lower: |credential_result| match credential_result {
         CredentialResult::Deferred { transaction_id } =>
             CredentialResultEnum::Deferred { transaction_id },
-        CredentialResult::Credential { credential, notification_id } =>
-            CredentialResultEnum::Immediate { credential, notification_id },
+        CredentialResult::Credential { credentials, notification_id } =>
+            CredentialResultEnum::Immediate { credentials, notification_id },
     },
     try_lift: |credential_result| match credential_result {
         CredentialResultEnum::Deferred { transaction_id } =>
             Ok(CredentialResult::Deferred { transaction_id }),
-        CredentialResultEnum::Immediate { credential, notification_id } =>
-            Ok(CredentialResult::Credential { credential, notification_id }),
+        CredentialResultEnum::Immediate { credentials, notification_id } =>
+            Ok(CredentialResult::Credential { credentials, notification_id }),
     },
 });
 

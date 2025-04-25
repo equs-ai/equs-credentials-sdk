@@ -137,15 +137,15 @@ async fn request_credential(
         .await
         .unwrap();
 
-    let credential = match &cred_resp.data {
-        CredentialResult::Credential { credential, .. } => credential,
+    let credentials = match &cred_resp.data {
+        CredentialResult::Credential { credentials, .. } => credentials,
         _ => unreachable!(),
     };
 
     println!(
         "Credential ({}):\n{}",
         cred_def_id,
-        serde_json::to_string_pretty(credential).unwrap()
+        serde_json::to_string_pretty(credentials).unwrap()
     );
 
     println!(
@@ -153,13 +153,16 @@ async fn request_credential(
         cred_def_id
     );
 
-    let metadata = DefaultMetadataProcessor::resolve_metadata(credential, key_metadata).unwrap();
-    holder
-        .store_credential(credential, &metadata)
-        .await
-        .unwrap();
+    for credential in credentials {
+        let metadata =
+            DefaultMetadataProcessor::resolve_metadata(credential, key_metadata.clone()).unwrap();
+        holder
+            .store_credential(credential, &metadata)
+            .await
+            .unwrap();
 
-    println!("Credential saved");
+        println!("Credential saved");
+    }
 
     cred_resp
 }

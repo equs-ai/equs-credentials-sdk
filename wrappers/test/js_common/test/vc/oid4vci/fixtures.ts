@@ -136,7 +136,6 @@ export class Utils {
 
   get credRequest(): OID4VCICredentialRequest {
     return {
-      format: "dc+sd-jwt",
       vct: "SD_JWT_cred",
       proof: {
         proof_type: "jwt",
@@ -189,8 +188,12 @@ export class Utils {
 
   get credResponse() {
     return {
-      format: "dc+sd-jwt",
-      credential: this.sdJWTCreds,
+      credentials: [
+        {
+          format: "dc+sd-jwt",
+          credential: this.sdJWTCreds,
+        }
+      ],
       notification_id: "1111",
     };
   }

@@ -18,11 +18,11 @@ export interface CredentialDeferred {
  * It contains the issued `credential` and may include an optional `notification_id` for tracking
  * notification events related to the issuance.
  *
- * @property {Credential} credential - Verifiable Credential.
+ * @property {Array<Credential>} credentials - Verifiable Credentials.
  * @property {string} notification_id - For tracking notification events related to the issuance.
  */
 export interface CredentialImmediate {
-  credential: Credential;
+  credentials: Array<Credential>;
   notification_id?: string;
 }
 

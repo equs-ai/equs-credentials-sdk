@@ -19,8 +19,6 @@ pub enum Error {
     OID4VCIProtocol {
         error: OID4VCIProtocolErrorType,
         error_description: Option<String>,
-        c_nonce: Option<String>,
-        c_nonce_expires_in: Option<u64>,
     },
     DIDResolution {
         details: String,

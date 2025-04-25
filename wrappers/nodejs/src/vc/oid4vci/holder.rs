@@ -226,7 +226,7 @@ pub struct CredentialDeferred {
 
 #[napi(object)]
 pub struct CredentialImmediate {
-    pub credential: JsCredential,
+    pub credentials: Vec<JsCredential>,
     #[napi(js_name = "notification_id")]
     pub notification_id: Option<String>,
 }
@@ -245,12 +245,19 @@ impl TryFrom<CredentialResponseResolved> for CredentialResponse {
                 Either::A(CredentialDeferred { transaction_id })
             }
             CredentialResult::Credential {
-                credential,
+                credentials,
                 notification_id,
-            } => Either::B(CredentialImmediate {
-                credential: credential.try_into()?,
-                notification_id,
-            }),
+            } => {
+                let mut creds: Vec<JsCredential> = vec![];
+                for credential in credentials {
+                    creds.push(credential.try_into()?);
+                }
+
+                Either::B(CredentialImmediate {
+                    credentials: creds,
+                    notification_id,
+                })
+            }
         };
 
         Ok(Self { data })

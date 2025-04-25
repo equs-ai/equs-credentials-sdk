@@ -58,6 +58,7 @@ describe("OID4VCI Issuer: ", () => {
   test("issue Credential", async () => {
 
     const result = await issuer.issueCredential(CRED_REQUEST, ACCESS_TOKEN, CLAIMS);
-    expect(result.value.credential?.length).toBeTruthy();
+    expect(result.value.credentials.length).toEqual(1);
+    expect(result.value.credentials[0]).toBeTruthy();
   });
 });
