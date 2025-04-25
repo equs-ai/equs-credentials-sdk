@@ -94,7 +94,7 @@ class DemoViewModel : ViewModel() {
             didAndKeyMetadata.keyMetadata
         )
 
-        val credential = (response.data as CredentialResultEnum.Immediate).credential
+        val credential = (response.data as CredentialResultEnum.Immediate).credentials.first()
 
         val metadata = resolveMetadata(credential, didAndKeyMetadata.keyMetadata)
         holderVc.storeCredential(credential, metadata)
