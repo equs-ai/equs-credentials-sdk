@@ -1,6 +1,6 @@
 import { NonceHandler } from "../..";
 
-class WrappedNonceGenerator {
+class WrappedNonceHandler {
   constructor(private readonly nonceHandler: NonceHandler) {
     this.generate = this.generate.bind(this);
     this.validate = this.validate.bind(this);
@@ -15,6 +15,6 @@ class WrappedNonceGenerator {
   }
 }
 
-export function contextEnsuredNonceGenerator(nonceGenerator: NonceHandler): NonceHandler {
-  return new WrappedNonceGenerator(nonceGenerator);
+export function contextEnsuredNonceHandler(nonceGenerator: NonceHandler): NonceHandler {
+  return new WrappedNonceHandler(nonceGenerator);
 }

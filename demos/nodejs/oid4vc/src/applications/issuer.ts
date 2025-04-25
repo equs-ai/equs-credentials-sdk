@@ -24,13 +24,15 @@ async function main(): Promise<void> {
     kms,
     config.issuerMetadata,
     keyMetadata,
-  ).withNonceHandler(nonceHandler).build();
+  )
+    .withNonceHandler(nonceHandler)
+    .build();
 
   const app = express();
   app.use(json());
   app.use(cors());
 
-  app.get("/nonce", async (req, res) => {
+  app.post("/nonce", async (req, res) => {
     try {
       const result = await issuer.generateNonce();
       res.send(result);
