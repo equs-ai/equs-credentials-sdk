@@ -26,7 +26,7 @@
     "manual_scripts": "node scripts/fix-type-names.mjs && node scripts/add-import-line.mjs",
     "napi:build": "napi build $npm_config_napi_flags --platform --js binary.js --dts binary.d.ts && npm run manual_scripts && npm run build:nodejs",
     "artifacts": "napi artifacts",
-    "build": "npm run napi:build --napi_flags=--release",
+    "build": "npm run napi:build --napi_flags=\"--profile release-strip\"",
     "build:debug": "npm run napi:build --napi_flags=--features=in-memory",
     "test": "jest -w=1 --forceExit",
     "lint": "prettier --write .",

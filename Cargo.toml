@@ -102,3 +102,14 @@ tokio = { version = "1.25.0", features = ["macros"] }
 [features]
 in-memory = ["dep:rand", "dep:ed25519-dalek", "dep:p256", "dep:bip32", "dep:random-string", "dep:ecdsa", "dep:askar-crypto"]
 didcomm-http-trasnport = ["dep:http", "dep:hyper", "dep:tokio"]
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+# Set to true when WASM allows using profiles or throws no error for strip=true
+strip = "debuginfo"
+
+[profile.release-strip]
+inherits = "release"
+strip = true
