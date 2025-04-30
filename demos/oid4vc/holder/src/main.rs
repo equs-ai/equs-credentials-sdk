@@ -700,10 +700,10 @@ const INPUT_DESCRIPTOR_FOR_CRED_DEF_1: &str = r#"{
           },
           {
               "path": [
-                "$.birthDate"
+                "$.birthdate"
               ],
               "filter": {
-                "pattern": "^\\d{4}$"
+                "pattern": "^(?P<year>\\d{4})-(0[1-9]|1[0-2])-(0[1-9]|[12]\\d|3[01])$"
               },
               "optional": false
             },
