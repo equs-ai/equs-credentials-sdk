@@ -405,6 +405,7 @@ async fn get_user_attributes(cred_def: &CredDefMetadata) -> Result<Claims, Error
         claims_json["country"] = serde_json::Value::from("US");
         claims_json["age"] = serde_json::Value::Number(27.into());
         claims_json["age_over_18"] = serde_json::Value::Bool(true);
+        claims_json["birthdate"] = serde_json::Value::String("1954-04-12".to_owned());
 
         let _ = claims_json.as_object_mut().is_some_and(|m| {
             m.insert(
