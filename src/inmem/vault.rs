@@ -44,21 +44,20 @@ impl InMemVault {
     }
 
     #[cfg(test)]
-    pub(crate) async fn store_entry(&self, entry: &CredentialEntry) -> Result<String, Error> {
+    pub(crate) async fn store_entry(
+        &self,
+        entry: &CredentialEntry,
+        did_url: String,
+    ) -> Result<String, Error> {
         let credential = entry.credential.to_owned();
         let kid = entry.kid.to_owned();
 
         use crate::vc::core::api::KeyMetadata;
         use crate::vc::metadata::{CredentialMetadataProcessor, DefaultMetadataProcessor};
 
-        let metadata = DefaultMetadataProcessor::resolve_metadata(
-            &credential,
-            KeyMetadata {
-                did_url: "to-be-ignored".to_string(),
-                kid,
-            },
-        )
-        .unwrap();
+        let metadata =
+            DefaultMetadataProcessor::resolve_metadata(&credential, KeyMetadata { did_url, kid })
+                .unwrap();
 
         self.store_credential(credential, &metadata).await
     }
@@ -66,9 +65,14 @@ impl InMemVault {
     #[cfg(test)]
     pub(crate) async fn store_entries(
         &self,
-        entries: Vec<&CredentialEntry>,
+        entries: Vec<(&CredentialEntry, &str)>,
     ) -> Result<Vec<String>, Error> {
-        future::try_join_all(entries.iter().map(|entry| self.store_entry(entry))).await
+        future::try_join_all(
+            entries
+                .iter()
+                .map(|(entry, did_url)| self.store_entry(entry, did_url.to_string())),
+        )
+        .await
     }
 
     #[instrument(level = Level::TRACE, skip(self), ret())]

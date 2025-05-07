@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use oid4vci::core::profiles::{CoreProfilesCredentialRequest, CoreProfilesCredentialResponse};
+use oid4vci::core::profiles::CoreProfilesCredentialResponse;
 use oid4vci::credential::{RequestError, Response};
 use serde::{Deserialize, Serialize};
 use snafu::{IntoError, Snafu};
@@ -28,7 +28,7 @@ pub type CredentialOffer = oid4vci::credential_offer::CredentialOffer;
 pub type CredentialOfferGrants = oid4vci::credential_offer::CredentialOfferGrants;
 pub type CredentialOfferParams = oid4vci::credential_offer::CredentialOfferParameters;
 pub type CredentialOfferRequest = oid4vci::types::CredentialOfferRequest;
-pub type CredentialRequest = oid4vci::credential::Request<CoreProfilesCredentialRequest>;
+pub type CredentialRequest = oid4vci::credential::Request;
 pub type CredentialResponse = Response<CoreProfilesCredentialResponse>;
 pub type PreAuthorizedCode = oid4vci::types::PreAuthorizedCode;
 pub type PreAuthorizedCodeGrant = oid4vci::credential_offer::PreAuthorizedCodeGrant;
@@ -340,7 +340,7 @@ pub trait Holder: WasmNotSend + WasmNotSync {
     ///
     /// * `token` - an access token.
     /// * `cred_def_id` - a `CredentialDefinition` ID.
-    /// * `key_metadata` - a `KeyMetadata` for corresponding key to be used for signing operations.
+    /// * `keys_metadata` - a slice of `KeyMetadata` for corresponding keys to be used for signing operations.
     ///
     /// # Returns
     ///
@@ -360,7 +360,7 @@ pub trait Holder: WasmNotSend + WasmNotSync {
         &self,
         token: &AccessToken,
         cred_def_id: &str,
-        key_metadata: &KeyMetadata,
+        keys_metadata: &[KeyMetadata],
     ) -> Result<CredentialResponseResolved>;
 
     /// Store a `Credential`.

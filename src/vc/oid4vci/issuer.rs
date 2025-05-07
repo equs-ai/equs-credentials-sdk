@@ -15,15 +15,15 @@ use crate::vc::oid4vci::{
     CredDefMetadata, CredentialOfferParams, CredentialRequest, CredentialResponse, IssuerMetadata,
     NonceResponse,
 };
-use crate::vc::{oid4vci as api, pop, HasVCFormat};
+use crate::vc::{oid4vci as api, pop, Credential, HasVCFormat};
 use async_trait::async_trait;
 use oauth2::Scope;
 use oid4vci::core::profiles::{
-    CoreProfilesCredentialConfiguration, CoreProfilesCredentialRequest,
-    CoreProfilesCredentialResponseType,
+    CoreProfilesCredentialConfiguration, CoreProfilesCredentialResponseType,
 };
 use oid4vci::credential::{ErrorType, Response, ResponseEnum};
 use oid4vci::credential_offer::{CredentialOfferGrants, CredentialOfferParameters};
+use oid4vci::metadata::credential_issuer::BatchCredentialIssuance;
 use oid4vci::proof_of_possession::{Proof as SpruceProof, ProofOfPossession};
 use oid4vci::types::CredentialConfigurationId;
 use serde_json::{Map, Value};
@@ -180,7 +180,6 @@ where
             ProtocolSnafu::new(ErrorType::InvalidProof, INVALID_PROOF_ERR_DESC.to_string())
                 .fail()?
         };
-        let nonce = self.resolve_and_validate_nonce(proof).await?;
 
         let (cred_def_id, cred_def) = self.resolve_cred_def(cred_request)?;
 
@@ -197,37 +196,21 @@ where
         }
         self.validate_claim_names(claims, &cred_def)?;
 
-        let proof = Proof::from(proof);
+        let credentials = match proof {
+            oid4vci::credential::Proof::One(proof) => {
+                let credential = self
+                    .single_issuance(claims, status_info.as_ref(), proof, cred_def_id.as_str())
+                    .await?;
 
-        let cred_req = vc::core::CredentialRequest {
-            cred_def_id,
-            proof,
-            protocol_data: self.resolve_cred_req_protocol_data(),
-            cred_offer_id: None,
+                Vec::from([credential.try_into()?])
+            }
+            oid4vci::credential::Proof::Many(proofs) => {
+                self.batch_issuance(claims, status_info, cred_def_id, proofs)
+                    .await?
+            }
         };
 
-        let result = self
-            .issuer
-            .issue_credential(&cred_req, claims, nonce, status_info)
-            .await;
-
-        let credential = match result {
-                Err(vc::core::Error::Proof { source, .. }) => {
-                    debug!("Proof of possession verification error: {}", source.to_string());
-                    self.resolve_pop_protocol_error(source).fail()?
-                }
-                Err(vc::core::Error::ProofFormatNotSupported { format }) =>
-                    ProtocolSnafu::new(
-                        ErrorType::InvalidProof,
-                        format!("proof of possession with '{format}' format is not supported. {INVALID_PROOF_ERR_DESC}")
-                    )
-                    .fail()?,
-                _ => result.context(VCSnafu)?,
-            };
-
-        let resp = Response::new(ResponseEnum::Immediate {
-            credentials: vec![credential.try_into()?],
-        });
+        let resp = Response::new(ResponseEnum::Immediate { credentials });
 
         info!("credential is issued");
 
@@ -245,56 +228,29 @@ where
     fn resolve_cred_def(&self, req: &CredentialRequest) -> Result<(String, CredDefMetadata)> {
         trace!(credential_request = ?req);
 
-        let result = match req.additional_profile_fields() {
-            CoreProfilesCredentialRequest::Default { inner, .. } => match inner {
-                oid4vci::core::profiles::CredentialRequest::VcSdJwt(sd_jwt_req) => self
-                    .issuer_metadata
-                    .credential_configurations_supported()
-                    .iter()
-                    .find(|cred_metadata| {
-                        let CoreProfilesCredentialConfiguration::VcSdJwt(supported) =
-                            cred_metadata.profile_specific_fields()
-                        else {
-                            return false;
-                        };
-
-                        supported.vct() == sd_jwt_req.vct()
-                    }),
-                oid4vci::core::profiles::CredentialRequest::LdpVc(ldp_req) => self
-                    .issuer_metadata
-                    .credential_configurations_supported()
-                    .iter()
-                    .find(|cred_metadata| {
-                        let CoreProfilesCredentialConfiguration::LdpVc(supported) =
-                            cred_metadata.profile_specific_fields()
-                        else {
-                            return false;
-                        };
-
-                        supported.credential_definition().r#type()
-                            == ldp_req.credential_definition().r#type()
-                    }),
-                _ => ProtocolSnafu::new(
-                    ErrorType::UnsupportedCredentialFormat,
-                    format!("Unsupported credential format: {:#?}", inner.format()),
-                )
-                .fail()?,
-            },
-            _ => ProtocolSnafu::new(
-                ErrorType::InvalidCredentialRequest,
-                "Credential request with credential configuration id is not supported".to_string(),
-            )
-            .fail()?,
-        }
-        .ok_or(
+        let oid4vci::credential::CredentialId::CredentialConfigurationId(cred_conf_id) =
+            &req.credential_id
+        else {
             ProtocolSnafu::new(
-                ErrorType::UnsupportedCredentialType,
-                "Credential configuration id is not found".to_string(),
+                ErrorType::InvalidCredentialRequest,
+                "Credential request by providing 'credential_identifier' field is not supported"
+                    .to_string(),
             )
-            .build(),
-        )?;
+            .fail()?
+        };
 
-        Ok((result.id().to_string().to_owned(), result.to_owned()))
+        let cred_conf = self.issuer_metadata
+            .credential_configurations_supported()
+            .iter()
+            .find(|cc| cc.id() == cred_conf_id)
+            .ok_or_else(|| {
+                ProtocolSnafu::new(
+                    ErrorType::InvalidCredentialRequest,
+                    format!("Credential configuration with 'credential_configuration_id' = {} is not found in the supported credential configurations metadata", **cred_conf_id)
+                ).build()
+        })?;
+
+        Ok((cred_conf.id().to_string().to_owned(), cred_conf.to_owned()))
     }
 
     #[instrument(level = Level::TRACE, skip(self), err(), ret())]
@@ -518,6 +474,119 @@ where
 
         None
     }
+
+    #[instrument(level = Level::TRACE, skip(self), ret())]
+    async fn single_issuance(
+        &self,
+        claims: &Claims,
+        status_info: Option<&CredentialStatusInfo>,
+        proof: &oid4vci::proof_of_possession::Proof,
+        cred_def_id: &str,
+    ) -> Result<Credential> {
+        let nonce = self.resolve_and_validate_nonce(proof).await?;
+        let proof = Proof::from(proof);
+
+        let cred_req = vc::core::CredentialRequest {
+            cred_def_id: cred_def_id.to_string(),
+            proof,
+            protocol_data: self.resolve_cred_req_protocol_data(),
+            cred_offer_id: None,
+        };
+
+        let result = self
+            .issuer
+            .issue_credential(&cred_req, claims, nonce, status_info.cloned())
+            .await;
+
+        let credential = match result {
+            Err(vc::core::Error::Proof { source, .. }) => {
+                debug!("Proof of possession verification error: {}", source.to_string());
+                self.resolve_pop_protocol_error(source).fail()?
+            }
+            Err(vc::core::Error::ProofFormatNotSupported { format }) =>
+                ProtocolSnafu::new(
+                    ErrorType::InvalidProof,
+                    format!("proof of possession with '{format}' format is not supported. {INVALID_PROOF_ERR_DESC}")
+                )
+                    .fail()?,
+            _ => result.context(VCSnafu)?,
+        };
+        Ok(credential)
+    }
+
+    #[instrument(level = Level::TRACE, skip(self), ret())]
+    async fn batch_issuance(
+        &self,
+        claims: &Claims,
+        status_info: Option<CredentialStatusInfo>,
+        cred_def_id: String,
+        proofs: &oid4vci::credential::ProofMany,
+    ) -> Result<Vec<CoreProfilesCredentialResponseType>> {
+        ensure!(
+            proofs.len() > 0,
+            ProtocolSnafu::new(
+                ErrorType::InvalidCredentialRequest,
+                "Batch credential issuance without proof of possessions is not supported"
+                    .to_string(),
+            )
+        );
+
+        let Some(&BatchCredentialIssuance { batch_size }) =
+            self.issuer_metadata.batch_credential_issuance()
+        else {
+            ProtocolSnafu::new(
+                ErrorType::InvalidCredentialRequest,
+                "Batch Credential issuance is not supported".to_string(),
+            )
+            .fail()?
+        };
+
+        ensure!(
+            batch_size as usize >= proofs.len(),
+            ProtocolSnafu::new(
+                ErrorType::InvalidCredentialRequest,
+                format!("Batch Credential issuance with batch size equal to {} is not supported. Please provide proof of possessions with size less or equal to {}", proofs.len(), batch_size),
+            )
+        );
+
+        let mut credentials: Vec<CoreProfilesCredentialResponseType> = vec![];
+        match proofs {
+            oid4vci::credential::ProofMany::LdpVp(ldp_vps) => {
+                for ldp_vp in ldp_vps {
+                    let credential = self
+                        .single_issuance(
+                            claims,
+                            status_info.as_ref(),
+                            &oid4vci::proof_of_possession::Proof::LdpVp {
+                                ldp_vp: ldp_vp.to_owned(),
+                            },
+                            cred_def_id.as_str(),
+                        )
+                        .await?;
+
+                    credentials.push(credential.try_into()?);
+                }
+            }
+            oid4vci::credential::ProofMany::Jwt(jwts) => {
+                for jwt in jwts {
+                    let credential = self
+                        .single_issuance(
+                            claims,
+                            status_info.as_ref(),
+                            &oid4vci::proof_of_possession::Proof::Jwt {
+                                jwt: jwt.to_owned(),
+                            },
+                            cred_def_id.as_str(),
+                        )
+                        .await?;
+
+                    credentials.push(credential.try_into()?);
+                }
+            }
+        }
+
+        Ok(credentials)
+    }
 }
 
 impl From<&SpruceProof> for AsdkProof {
@@ -526,10 +595,6 @@ impl From<&SpruceProof> for AsdkProof {
             SpruceProof::Jwt { jwt } => AsdkProof {
                 format: "jwt".to_string(),
                 proof: jwt.to_string(),
-            },
-            SpruceProof::Cwt { cwt } => AsdkProof {
-                format: "cwt".to_string(),
-                proof: cwt.to_owned(),
             },
             SpruceProof::LdpVp { ldp_vp } => AsdkProof {
                 format: "ldp_vp".to_string(),
@@ -603,9 +668,10 @@ mod tests {
     };
     use crate::vc::oid4vci::Error::Protocol;
     use crate::vc::oid4vci::{token_validation, AuthorizationCodeGrant};
-    use crate::vc::{Credential, HasClaims};
+    use crate::vc::{Credential, HasClaims, VCFormat};
     use api::Issuer;
     use oauth2::http::{Method, StatusCode};
+    use oid4vci::credential::CredentialId;
     use openidconnect::JsonWebKeySetUrl;
     use rstest::rstest;
     use serde_json::json;
@@ -647,7 +713,7 @@ mod tests {
 
         let iss_result = issuer
             .issue_credential(
-                &SampleCredentialRequest::with_sdjwtvc_conf(),
+                &SampleCredentialRequest::with_cred_configuration_id(),
                 ACCESS_TOKEN,
                 &sample_claims(),
                 None,
@@ -666,7 +732,7 @@ mod tests {
 
         let iss_result = issuer
             .issue_credential(
-                &SampleCredentialRequest::with_sdjwtvc_conf(),
+                &SampleCredentialRequest::with_cred_configuration_id(),
                 ACCESS_TOKEN,
                 &sample_claims(),
                 None,
@@ -689,7 +755,7 @@ mod tests {
 
         let iss_result = issuer
             .issue_credential(
-                &SampleCredentialRequest::with_sdjwtvc_conf(),
+                &SampleCredentialRequest::with_cred_configuration_id(),
                 ACCESS_TOKEN,
                 &sample_claims(),
                 None,
@@ -721,6 +787,121 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn batch_credential_issuance_works() {
+        let issuer = issuer_service_with_metadata(
+            None,
+            None,
+            Some(MockNonceHandler::default()),
+            SampleIssuerMetadata::with_sdjwtvc_conf(),
+            Some(Duration::days(CUSTOM_CRED_LIFETIME)),
+        )
+        .await;
+
+        let iss_result = issuer
+            .issue_credential(
+                &SampleCredentialRequest::with_cred_configuration_id_and_multiple_proofs(),
+                ACCESS_TOKEN,
+                &sample_claims(),
+                None,
+            )
+            .await;
+
+        let t = iss_result.unwrap();
+        match t.response_kind() {
+            ResponseEnum::Immediate { credentials } => {
+                assert_eq!(credentials.len(), 3);
+
+                for credential in credentials {
+                    assert_eq!(credential.format(), VCFormat::SdJwtVc)
+                }
+            }
+            _ => {
+                panic!("Unexpected response kind (Deferred)");
+            }
+        }
+    }
+
+    #[tokio::test]
+    #[should_panic(expected = "Batch Credential issuance is not supported")]
+    async fn batch_credential_issuance_not_supported() {
+        let mut issuer_metadata = SampleIssuerMetadata::with_sdjwtvc_conf();
+        issuer_metadata = issuer_metadata.set_batch_credential_issuance(None);
+
+        let issuer = issuer_service_with_metadata(
+            None,
+            None,
+            Some(MockNonceHandler::default()),
+            issuer_metadata,
+            Some(Duration::days(CUSTOM_CRED_LIFETIME)),
+        )
+        .await;
+
+        issuer
+            .issue_credential(
+                &SampleCredentialRequest::with_cred_configuration_id_and_multiple_proofs(),
+                ACCESS_TOKEN,
+                &sample_claims(),
+                None,
+            )
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    #[should_panic(
+        expected = "Batch credential issuance without proof of possessions is not supported"
+    )]
+    async fn batch_credential_issuance_fails_when_proofs_are_missed() {
+        let issuer = issuer_service_with_metadata(
+            None,
+            None,
+            Some(MockNonceHandler::default()),
+            SampleIssuerMetadata::with_sdjwtvc_conf(),
+            Some(Duration::days(CUSTOM_CRED_LIFETIME)),
+        )
+        .await;
+
+        issuer
+            .issue_credential(
+                &SampleCredentialRequest::with_empty_proofs(),
+                ACCESS_TOKEN,
+                &sample_claims(),
+                None,
+            )
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    #[should_panic(
+        expected = "Batch Credential issuance with batch size equal to 3 is not supported"
+    )]
+    async fn batch_credential_issuance_fails_batch_size_limit_exceeded() {
+        let mut issuer_metadata = SampleIssuerMetadata::with_sdjwtvc_conf();
+        issuer_metadata = issuer_metadata
+            .set_batch_credential_issuance(Some(BatchCredentialIssuance { batch_size: 2 }));
+
+        let issuer = issuer_service_with_metadata(
+            None,
+            None,
+            Some(MockNonceHandler::default()),
+            issuer_metadata,
+            Some(Duration::days(CUSTOM_CRED_LIFETIME)),
+        )
+        .await;
+
+        issuer
+            .issue_credential(
+                &SampleCredentialRequest::with_cred_configuration_id_and_multiple_proofs(),
+                ACCESS_TOKEN,
+                &sample_claims(),
+                None,
+            )
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
     async fn default_credential_lifetime_works_for_ldp_json() {
         let issuer = issuer_service_with_metadata(
             None,
@@ -731,13 +912,13 @@ mod tests {
         )
         .await;
 
+        let mut cred_req = SampleCredentialRequest::with_cred_configuration_id();
+        cred_req.credential_id = CredentialId::CredentialConfigurationId(
+            CredentialConfigurationId::new("LdpVc".to_string()),
+        );
+
         let iss_result = issuer
-            .issue_credential(
-                &SampleCredentialRequest::with_ldp_vc_conf_correct(),
-                ACCESS_TOKEN,
-                &sample_claims(),
-                None,
-            )
+            .issue_credential(&cred_req, ACCESS_TOKEN, &sample_claims(), None)
             .await;
 
         let t = iss_result.unwrap();
@@ -787,7 +968,7 @@ mod tests {
 
         let iss_result = issuer
             .issue_credential(
-                &SampleCredentialRequest::with_sdjwtvc_conf(),
+                &SampleCredentialRequest::with_cred_configuration_id(),
                 ACCESS_TOKEN,
                 &claims,
                 None,
@@ -818,7 +999,7 @@ mod tests {
 
         let iss_result = issuer
             .issue_credential(
-                &SampleCredentialRequest::with_sdjwtvc_conf(),
+                &SampleCredentialRequest::with_cred_configuration_id(),
                 ACCESS_TOKEN,
                 &sample_claims(),
                 None,
@@ -859,7 +1040,7 @@ mod tests {
 
         let iss_result = issuer
             .issue_credential(
-                &SampleCredentialRequest::with_sdjwtvc_conf(),
+                &SampleCredentialRequest::with_cred_configuration_id(),
                 ACCESS_TOKEN,
                 &sample_claims(),
                 None,
@@ -913,7 +1094,7 @@ mod tests {
 
         let iss_result = issuer
             .issue_credential(
-                &SampleCredentialRequest::with_sdjwtvc_conf(),
+                &SampleCredentialRequest::with_cred_configuration_id(),
                 ACCESS_TOKEN,
                 &sample_claims(),
                 None,
@@ -930,7 +1111,7 @@ mod tests {
     async fn resolve_cred_def_succeeds_with_correct_data() {
         let issuer_service = issuer_service(None, None, None::<LocalNonceHandler>).await;
 
-        let cred_req = SampleCredentialRequest::with_sdjwtvc_conf();
+        let cred_req = SampleCredentialRequest::with_cred_configuration_id();
         let (cred_def_id, cred_def_metadata) = issuer_service.resolve_cred_def(&cred_req).unwrap();
 
         assert_eq!(
@@ -976,23 +1157,10 @@ mod tests {
         validate_res.unwrap()
     }
 
-    #[rstest]
-    #[case(SampleCredentialRequest::with_jwtvcjson_conf())]
-    #[case(SampleCredentialRequest::with_jwtldvc_conf())]
-    #[case(SampleCredentialRequest::with_msomdoc_conf())]
     #[tokio::test]
-    async fn get_cred_def_metadata_returns_none_on_unsupported_credential_format(
-        #[case] credential_request: CredentialRequest,
-    ) {
+    async fn get_cred_def_metadata_returns_none_on_unknown_cred_configuration_id() {
         let issuer_service = issuer_service(None, None, Some(LocalNonceHandler::default())).await;
-        let result = issuer_service.get_cred_def_metadata(&credential_request);
-        assert_eq!(result, None);
-    }
-
-    #[tokio::test]
-    async fn get_cred_def_metadata_returns_none_on_incorrect_sd_jwt_cred() {
-        let issuer_service = issuer_service(None, None, Some(LocalNonceHandler::default())).await;
-        let cred_req = sample_sdjwtvc_credential_request_with_fake_vct();
+        let cred_req = sample_sdjwtvc_credential_request_with_cred_conf_id("unknown_cred_conf_id");
         let result = issuer_service.get_cred_def_metadata(&cred_req);
         assert_eq!(result, None);
     }
@@ -1023,30 +1191,33 @@ mod tests {
             .unwrap();
     }
 
-    #[rstest]
-    #[case(SampleCredentialRequest::with_jwtvcjson_conf())]
-    #[case(SampleCredentialRequest::with_jwtldvc_conf())]
-    #[case(SampleCredentialRequest::with_msomdoc_conf())]
     #[tokio::test]
     #[should_panic(
-        expected = "Credential Issuer requires key proof to be bound to a Credential Issuer provided nonce."
+        expected = "Credential request by providing 'credential_identifier' field is not supported"
     )]
-    async fn issue_credential_fails_on_unsupported_format(
-        #[case] credential_request: CredentialRequest,
+    async fn issue_credential_fails_when_credential_request_provided_by_credential_identifier_field(
     ) {
         let claims = Claims::new();
 
         let issuer_service = issuer_service(None, None, Some(LocalNonceHandler::default())).await;
         issuer_service
-            .issue_credential(&credential_request, "fake_token", &claims, None)
+            .issue_credential(
+                &SampleCredentialRequest::with_cred_identifier(),
+                "fake_token",
+                &claims,
+                None,
+            )
             .await
             .unwrap();
     }
 
     #[tokio::test]
-    #[should_panic(expected = "Credential configuration id is not found")]
+    #[should_panic(
+        expected = "Credential configuration with 'credential_configuration_id' = unknown_cred_conf_id is not found in the supported credential configurations metadata"
+    )]
     async fn issue_credential_fails_on_incorrect_cred_def() {
-        let credential_request = sample_sdjwtvc_credential_request_with_fake_vct();
+        let credential_request =
+            sample_sdjwtvc_credential_request_with_cred_conf_id("unknown_cred_conf_id");
         let claims = Claims::new();
 
         let issuer_service = issuer_service(None, None, Some(MockNonceHandler::default())).await;
@@ -1061,7 +1232,7 @@ mod tests {
         expected = "No scope set for Credential definition ID: SD_JWT_cred_sample. Only scope authorization supported"
     )]
     async fn issue_credential_fails_on_absent_scope() {
-        let credential_request = SampleCredentialRequest::with_sdjwtvc_conf();
+        let credential_request = SampleCredentialRequest::with_cred_configuration_id();
         let claims = Claims::new();
 
         let issuer_service = issuer_service_with_metadata(
@@ -1081,7 +1252,7 @@ mod tests {
     #[tokio::test]
     #[should_panic(expected = "Could not parse the access token")]
     async fn issue_credential_fails_on_non_decodable_token() {
-        let credential_request = SampleCredentialRequest::with_sdjwtvc_conf();
+        let credential_request = SampleCredentialRequest::with_cred_configuration_id();
         let claims = Claims::new();
 
         let issuer_service = issuer_service(None, None, Some(MockNonceHandler::default())).await;
@@ -1096,7 +1267,7 @@ mod tests {
         expected = "Access token should have scope=\\\"fake_scope\\\" for issuing \\\"SD_JWT_cred_sample\\\""
     )]
     async fn issue_credential_fails_on_incorrect_scope() {
-        let credential_request = SampleCredentialRequest::with_sdjwtvc_conf();
+        let credential_request = SampleCredentialRequest::with_cred_configuration_id();
         let claims = Claims::new();
 
         let issuer_service = issuer_service_with_metadata(
@@ -1116,7 +1287,7 @@ mod tests {
     #[tokio::test]
     #[should_panic(expected = "Access token does not have \\\"scope\\\" field")]
     async fn issue_credential_fails_on_absent_token_scope() {
-        let credential_request = SampleCredentialRequest::with_sdjwtvc_conf();
+        let credential_request = SampleCredentialRequest::with_cred_configuration_id();
         let claims = Claims::new();
 
         let issuer_service = issuer_service(None, None, Some(MockNonceHandler::default())).await;
@@ -1141,7 +1312,7 @@ mod tests {
         let issuer = issuer_service(None, None, Some(MockNonceHandler::default())).await;
         issuer
             .issue_credential(
-                &SampleCredentialRequest::with_sdjwtvc_conf(),
+                &SampleCredentialRequest::with_cred_configuration_id(),
                 ACCESS_TOKEN,
                 &claims,
                 None,
@@ -1247,11 +1418,12 @@ mod tests {
         )
     }
 
-    fn sample_sdjwtvc_credential_request_with_fake_vct() -> CredentialRequest {
+    fn sample_sdjwtvc_credential_request_with_cred_conf_id(
+        cred_conf_id: &str,
+    ) -> CredentialRequest {
         serde_json::from_value(json!(
             {
-                "format":"dc+sd-jwt",
-                "vct":"fake_sd_jwt_cred",
+                "credential_configuration_id":cred_conf_id,
                 "proof":{
                     "proof_type":"jwt",
                     "jwt":SAMPLE_PROOF_JWT
@@ -1265,8 +1437,7 @@ mod tests {
     fn sample_sdjwtvc_credential_request_with_empty_proofs_jwt() -> CredentialRequest {
         serde_json::from_value(json!(
             {
-                "format":"dc+sd-jwt",
-                "vct":"SD_JWT_cred",
+                "credential_configuration_id":CRED_DEF_ID,
                 "proof":{
                     "proof_type":"jwt",
                     "jwt":""
@@ -1295,8 +1466,7 @@ mod tests {
     fn sample_sdjwtvc_credential_request_without_proof() -> CredentialRequest {
         serde_json::from_value(json!(
             {
-                "format":"dc+sd-jwt",
-                "vct":"fake_sd_jwt_cred",
+                "credential_configuration_id":CRED_DEF_ID,
                 "credential_response_encryption":null
             }
         ))

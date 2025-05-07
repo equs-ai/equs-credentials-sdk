@@ -122,7 +122,7 @@ async fn authorized_code_flow_using_custom_did_resolver(#[case] validate_token: 
         .request_credential(
             token_response.access_token(),
             "SD_JWT_cred_1",
-            &key_metadata,
+            &[key_metadata],
         )
         .await
         .unwrap();
@@ -132,7 +132,11 @@ async fn authorized_code_flow_using_custom_did_resolver(#[case] validate_token: 
     // 6.2 Holder requests LDPVC_cred_1 credentials with the same token
     let (_, key_metadata, _) = create_did_keymetadata_keyhandle_with_test_did_resolver(&kms).await;
     let response = holder
-        .request_credential(token_response.access_token(), "LDPVC_cred_1", &key_metadata)
+        .request_credential(
+            token_response.access_token(),
+            "LDPVC_cred_1",
+            &[key_metadata],
+        )
         .await
         .unwrap();
 
@@ -247,10 +251,10 @@ async fn oid4vp_credentials_presentation_and_verification_with_custom_did_resolv
 
 async fn credential_endpoint(issuer: &impl Issuer, req: HttpRequest) -> HttpResponse {
     let cred_req_str = std::str::from_utf8(req.body().as_slice()).unwrap();
-
-    let claims = if cred_req_str.contains("\"vct\"") {
+    println!("Credential Request==============\n: {}", cred_req_str);
+    let claims = if cred_req_str.contains("SD_JWT_cred") {
         sample_claims_sdjwt()
-    } else if cred_req_str.contains("\"credential_definition\"") {
+    } else if cred_req_str.contains("LDPVC_cred") {
         sample_claims_jsonld()
     } else {
         panic!("unsupported format of requested credential");

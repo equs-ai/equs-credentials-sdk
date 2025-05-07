@@ -53,6 +53,9 @@ export class Utils {
       authorization_servers: [`${this.issuerEndpoint}/auth`],
       credential_endpoint: `${this.issuerEndpoint}/credential`,
       nonce_endpoint: `${this.issuerEndpoint}/nonce`,
+      batch_credential_issuance: {
+        batch_size: 2
+      },
       credential_configurations_supported: {
         IDENTITY_SD_JWT: {
           format: CredentialFormats.VCSDJWT,
@@ -189,6 +192,22 @@ export class Utils {
   get credResponse() {
     return {
       credentials: [
+        {
+          format: "dc+sd-jwt",
+          credential: this.sdJWTCreds,
+        }
+      ],
+      notification_id: "1111",
+    };
+  }
+
+  get batchCredResponse() {
+    return {
+      credentials: [
+        {
+          format: "dc+sd-jwt",
+          credential: this.sdJWTCreds,
+        },
         {
           format: "dc+sd-jwt",
           credential: this.sdJWTCreds,

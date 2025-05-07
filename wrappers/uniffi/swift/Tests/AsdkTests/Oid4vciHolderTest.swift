@@ -40,6 +40,15 @@ import Swifter
 				))
 		}
 		self.server["/credential"] = { request in
+            let body = String(decoding: request.body, as: UTF8.self)
+            if body.contains("proofs") {
+                return HttpResponse.ok(
+                    .json(
+                        try! JSONSerialization.jsonObject(
+                            with: Oid4vciHolderTestConstants.BatchCredentialResponse)
+                ))
+            }
+
 			return HttpResponse.ok(
 				.json(
 					try! JSONSerialization.jsonObject(
@@ -117,13 +126,48 @@ import Swifter
 		let credResponse = try await holder.requestCredential(
 			token: Oid4vciHolderTestConstants.AccessToken,
 			credDefId: Oid4vciHolderTestConstants.CredDefId,
-			keyMetadata: didAndKeyMetadata.keyMetadata)
+			keyMetadata: [didAndKeyMetadata.keyMetadata])
 
 		#expect(
 			credResponse.data
 				== .immediate(
 					credentials: [
 					    Credential(
+					        format: VcFormat.sdJwtVc,
+					        payload: Oid4vciHolderTestConstants.CredentialResponseImmediatePayload
+					    )
+					],
+					notificationId: "1111"))
+
+	}
+
+	@Test func requestMultipleCredentials() async throws {
+		let kms = InMemKms()
+		let vault = InMemVault()
+		let holder = try await Oid4vciHolderBuilder(
+			kms: kms,
+			vault: vault,
+			clientId: "client_id",
+			issuerDiscovery: IssuerDiscovery.offer(Oid4vciHolderTestConstants.CredentialOffer)
+		).build()
+
+		let didAndKeyMetadata1 = await createDidAndKeyMetadata(kms: kms)
+		let didAndKeyMetadata2 = await createDidAndKeyMetadata(kms: kms)
+
+		let credResponse = try await holder.requestCredential(
+			token: Oid4vciHolderTestConstants.AccessToken,
+			credDefId: Oid4vciHolderTestConstants.CredDefId,
+			keyMetadata: [didAndKeyMetadata1.keyMetadata, didAndKeyMetadata2.keyMetadata])
+
+		#expect(
+			credResponse.data
+				== .immediate(
+					credentials: [
+					    Credential(
+					        format: VcFormat.sdJwtVc,
+					        payload: Oid4vciHolderTestConstants.CredentialResponseImmediatePayload
+					    ),
+					     Credential(
 					        format: VcFormat.sdJwtVc,
 					        payload: Oid4vciHolderTestConstants.CredentialResponseImmediatePayload
 					    )
@@ -146,7 +190,8 @@ import Swifter
 			format: VcFormat.sdJwtVc,
 			payload: Oid4vciHolderTestConstants.CredentialResponseImmediatePayload)
 
-		let didAndKeyMetadata = await createDidAndKeyMetadata(kms: kms)
+		var didAndKeyMetadata = await createDidAndKeyMetadata(kms: kms)
+        didAndKeyMetadata.keyMetadata.didUrl = "did:key:zDnaenpntCkXnDCnaDk62LxNqPc4CMd32fbhiVsZV5KpPTG2c#zDnaenpntCkXnDCnaDk62LxNqPc4CMd32fbhiVsZV5KpPTG2c"
 
 		let metadata = try await resolveMetadata(
 			credential: credential, metadata: didAndKeyMetadata.keyMetadata);
@@ -221,7 +266,7 @@ enum Oid4vciHolderTestConstants {
 		"""
 
 	static let IssuerMetadata = """
-		{"credential_issuer":"http://localhost:9000","authorization_servers":["http://localhost:9000/auth"],"credential_endpoint":"http://localhost:9000/credential","nonce_endpoint":"http://localhost:9000/nonce","credential_configurations_supported":{"\(CredDefId)":{"scope":"SD_JWT_cred","cryptographic_binding_methods_supported":["jwk"],"proof_types_supported":{"jwt":{"proof_signing_alg_values_supported":["ES256"]}},"format":"dc+sd-jwt","credential_signing_alg_values_supported":["ES256"],"claims":{"dob":{"mandatory":true,"value_type":"number","display":[{"name":"Date of birth"}]},"given_name":{"mandatory":true,"value_type":"string","display":[{"name":"Name"}]},"family_name":{"mandatory":true,"value_type":"string","display":[{"name":"Surname"}]}},"vct":"SD_JWT_cred"}}}
+		{"credential_issuer":"http://localhost:9000","authorization_servers":["http://localhost:9000/auth"],"credential_endpoint":"http://localhost:9000/credential","nonce_endpoint":"http://localhost:9000/nonce","batch_credential_issuance":{"batch_size":2},"credential_configurations_supported":{"\(CredDefId)":{"scope":"SD_JWT_cred","cryptographic_binding_methods_supported":["jwk"],"proof_types_supported":{"jwt":{"proof_signing_alg_values_supported":["ES256"]}},"format":"dc+sd-jwt","credential_signing_alg_values_supported":["ES256"],"claims":{"dob":{"mandatory":true,"value_type":"number","display":[{"name":"Date of birth"}]},"given_name":{"mandatory":true,"value_type":"string","display":[{"name":"Name"}]},"family_name":{"mandatory":true,"value_type":"string","display":[{"name":"Surname"}]}},"vct":"SD_JWT_cred"}}}
 		"""
 
 	static let AuthServerMetadata = """
@@ -241,6 +286,10 @@ enum Oid4vciHolderTestConstants {
 
 	static let CredentialResponse = """
 		{"credentials":[{"credential": "\(CredentialResponseImmediatePayload)"}], "notification_id":"1111"}
+		""".data(using: .utf8)!
+
+	static let BatchCredentialResponse = """
+		{"credentials":[{"credential": "\(CredentialResponseImmediatePayload)"}, {"credential": "\(CredentialResponseImmediatePayload)"}], "notification_id":"1111"}
 		""".data(using: .utf8)!
 
 	static let NonceResponse = """

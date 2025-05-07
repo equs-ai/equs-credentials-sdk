@@ -120,7 +120,9 @@ import Testing
 		let inMemKms = InMemKms()
 		let inMemVault = InMemVault()
 
-		let didAndKeyMetadata = await createDidAndKeyMetadata(kms: inMemKms)
+		var didAndKeyMetadata = await createDidAndKeyMetadata(kms: inMemKms)
+		didAndKeyMetadata.keyMetadata.didUrl = "did:key:zDnaej9QadgdZnu8uDXZXd4545dfJAEvmV6nn7xaYUqzcrPvM#zDnaej9QadgdZnu8uDXZXd4545dfJAEvmV6nn7xaYUqzcrPvM"
+
 		let credential = Credential(
 			format: VcFormat.sdJwtVc, payload: Oid4vpHolderTestConstants.sdJwtPayload)
 		let metadata = try await resolveMetadata(

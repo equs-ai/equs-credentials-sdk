@@ -864,7 +864,7 @@ mod tests {
     #[case::sd_jwt(CredTestCase::sd_jwt())]
     #[tokio::test]
     async fn credential_validated_using_disjunction(#[case] cred_test_case: CredTestCase) {
-        let credential = cred_test_case.generate_vc(&LocalKms::new()).await;
+        let (credential, _) = cred_test_case.generate_vc(&LocalKms::new()).await;
         let mut presentation_input = cred_test_case.create_presentation_input();
 
         presentation_input.restrictions[0]
@@ -880,7 +880,7 @@ mod tests {
     async fn credential_validated_fails_on_non_existing_field(
         #[case] cred_test_case: CredTestCase,
     ) {
-        let credential = cred_test_case.generate_vc(&LocalKms::new()).await;
+        let (credential, _) = cred_test_case.generate_vc(&LocalKms::new()).await;
         let mut presentation_input = cred_test_case.create_presentation_input();
 
         presentation_input.restrictions[0].fields = vec!["$.field.will.not.pass".to_string()];

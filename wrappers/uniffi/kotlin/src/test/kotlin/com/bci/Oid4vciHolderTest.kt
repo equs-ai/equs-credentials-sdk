@@ -30,6 +30,9 @@ class HolderVCITest {
                   "authorization_servers": ["$ISSUER_ENDPOINT/auth"],
                   "credential_endpoint": "$ISSUER_ENDPOINT/credential",
                   "nonce_endpoint": "$ISSUER_ENDPOINT/nonce",
+                  "batch_credential_issuance": {
+                    "batch_size": 2
+                  },
                   "credential_configurations_supported": {
                     "IDENTITY_SD_JWT": {
                       "format": "dc+sd-jwt",
@@ -111,6 +114,15 @@ class HolderVCITest {
             """
         )
 
+        val batchCredentialResponse = Json.parseToJsonElement(
+            """
+                {
+                  "credentials": [{"credential":"$SD_JWT_CRED"}, {"credential":"$SD_JWT_CRED"}],
+                  "notification_id": "1111"
+                }
+            """
+        )
+
         val nonceResponse = Json.parseToJsonElement(
             """
                 {
@@ -142,7 +154,13 @@ class HolderVCITest {
 
                         "/auth/par/request" -> mockResponse.setResponseCode(201).setBody(pushedAuthResponse.toString())
                         "/auth/token" -> mockResponse.setResponseCode(200).setBody(tokenResponse.toString())
-                        "/credential" -> mockResponse.setResponseCode(200).setBody(credentialResponse.toString())
+                        "/credential" -> {
+                            if (request.body.toString().contains("proofs")) {
+                                mockResponse.setResponseCode(200).setBody(batchCredentialResponse.toString())
+                            } else {
+                                mockResponse.setResponseCode(200).setBody(credentialResponse.toString())
+                            }
+                        }
                         "/nonce" -> mockResponse.setResponseCode(200).setBody(nonceResponse.toString())
                         else -> mockResponse.setResponseCode(404)
                     }
@@ -239,10 +257,31 @@ class HolderVCITest {
         val inMemKms = InMemKms();
         val didAndKeyMetadata = createDidAndKeyMetadata(inMemKms)
 
-        val actual = buildHolder(inMemKms).requestCredential(ACCESS_TOKEN, "IDENTITY_SD_JWT", didAndKeyMetadata.keyMetadata)
+        val actual = buildHolder(inMemKms).requestCredential(ACCESS_TOKEN, "IDENTITY_SD_JWT", arrayListOf(didAndKeyMetadata.keyMetadata))
 
         assertEquals(CredentialResultEnum.Immediate(
             credentials = arrayListOf(Credential(format = VcFormat.SD_JWT_VC, payload = SD_JWT_CRED)),
+            notificationId = "1111",
+        ), actual.data)
+    }
+
+    @Test
+    fun testRequestMultipleCredentials() = runTest {
+        val inMemKms = InMemKms();
+        val didAndKeyMetadata1 = createDidAndKeyMetadata(inMemKms)
+        val didAndKeyMetadata2 = createDidAndKeyMetadata(inMemKms)
+
+        val actual = buildHolder(inMemKms).requestCredential(
+            ACCESS_TOKEN,
+            "IDENTITY_SD_JWT",
+            arrayListOf(didAndKeyMetadata1.keyMetadata, didAndKeyMetadata2.keyMetadata)
+        )
+
+        assertEquals(CredentialResultEnum.Immediate(
+            credentials = arrayListOf(
+                Credential(format = VcFormat.SD_JWT_VC, payload = SD_JWT_CRED),
+                Credential(format = VcFormat.SD_JWT_VC, payload = SD_JWT_CRED)
+            ),
             notificationId = "1111",
         ), actual.data)
     }
@@ -253,6 +292,8 @@ class HolderVCITest {
         val inMemVault = InMemVault()
 
         val didAndKeyMetadata = createDidAndKeyMetadata(inMemKms)
+        didAndKeyMetadata.keyMetadata.didUrl = "did:key:zDnaenpntCkXnDCnaDk62LxNqPc4CMd32fbhiVsZV5KpPTG2c#zDnaenpntCkXnDCnaDk62LxNqPc4CMd32fbhiVsZV5KpPTG2c"
+
         val credential = Credential(format = VcFormat.SD_JWT_VC, payload = SD_JWT_CRED)
         val metadata = resolveMetadata(credential, didAndKeyMetadata.keyMetadata)
 

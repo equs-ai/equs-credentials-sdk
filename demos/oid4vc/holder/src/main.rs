@@ -1,6 +1,6 @@
 use agent_sdk::did::didkey::DIDKey;
 use agent_sdk::did::universal::UniversalResolver;
-use agent_sdk::did::{DIDBuf, DIDResolver, DID};
+use agent_sdk::did::{DIDBuf, DIDResolver};
 use agent_sdk::inmem::kms::LocalKms;
 use agent_sdk::inmem::nonce::LocalNonceHandler;
 use agent_sdk::inmem::vault::InMemVault;
@@ -72,33 +72,33 @@ async fn run_issuance_flow(
     println!("Issuance started");
 
     // In the real service these should be generated beforehand/taken from configuration/persistence
-    let (_, key_metadata) = create_did_and_key_metadata(&kms).await;
+    let key_metadata_1 = create_key_metadata(&kms).await;
+    let key_metadata_2 = create_key_metadata(&kms).await;
 
     let _ = request_credential(
         &holder,
         CRED_DEF_ID_1,
         token_resp.access_token(),
-        key_metadata,
+        &[key_metadata_1, key_metadata_2],
     )
     .await;
 
-    // For subsequent requests to the Issuer, Holder must reuse the nonce from the previous response
-    let (_, key_metadata) = create_did_and_key_metadata(&kms).await;
+    let key_metadata = create_key_metadata(&kms).await;
 
     let _ = request_credential(
         &holder,
         JSON_LD_V1_CRED_DEF_ID,
         token_resp.access_token(),
-        key_metadata,
+        &[key_metadata],
     )
     .await;
 
-    let (_, key_metadata) = create_did_and_key_metadata(&kms).await;
+    let key_metadata = create_key_metadata(&kms).await;
     let _ = request_credential(
         &holder,
         JSON_LD_V2_CRED_DEF_ID,
         token_resp.access_token(),
-        key_metadata,
+        &[key_metadata],
     )
     .await;
 
@@ -125,7 +125,7 @@ async fn request_credential(
     holder: &impl HolderVci,
     cred_def_id: &str,
     token: &AccessToken,
-    key_metadata: KeyMetadata,
+    keys_metadata: &[KeyMetadata],
 ) -> CredentialResponseResolved {
     println!(
         "1. Holder requesting credential `cred_def_id={}` ...",
@@ -133,7 +133,7 @@ async fn request_credential(
     );
 
     let cred_resp = holder
-        .request_credential(token, cred_def_id, &key_metadata)
+        .request_credential(token, cred_def_id, keys_metadata)
         .await
         .unwrap();
 
@@ -153,7 +153,7 @@ async fn request_credential(
         cred_def_id
     );
 
-    for credential in credentials {
+    for (credential, key_metadata) in credentials.iter().zip(keys_metadata.iter()) {
         let metadata =
             DefaultMetadataProcessor::resolve_metadata(credential, key_metadata.clone()).unwrap();
         holder
@@ -333,7 +333,7 @@ async fn verifier(client_id: &str) -> impl Verifier {
     println!("1.1 Initializing verifier...");
     let kms = LocalKms::new();
     let nonce_gen = LocalNonceHandler::default();
-    let (_, key_metadata) = create_did_and_key_metadata(&kms).await;
+    let key_metadata = create_key_metadata(&kms).await;
 
     let verifier =
         oid4vp::VerifierBuilder::new(kms, nonce_gen, key_metadata, client_id.to_string())
@@ -432,7 +432,7 @@ async fn resolve_auth_resp_metadata(
     };
 
     if auth_request.response_type == ResponseType::VpTokenIdToken {
-        let (_, key_metadata) = create_did_and_key_metadata(&kms).await;
+        let key_metadata = create_key_metadata(&kms).await;
 
         auth_resp_metadata.id_token_metadata = Some(IdTokenMetadata {
             key_metadata,
@@ -569,7 +569,7 @@ async fn resolve_offer() -> CredentialOfferParams {
     .unwrap()
 }
 
-async fn create_did_and_key_metadata(kms: &LocalKms) -> (DID, KeyMetadata) {
+async fn create_key_metadata(kms: &LocalKms) -> KeyMetadata {
     let (kid, kh) = kms
         .create_and_handle(kms::KeyType::P256, kms::CreateOptions::default())
         .await
@@ -588,7 +588,8 @@ async fn create_did_and_key_metadata(kms: &LocalKms) -> (DID, KeyMetadata) {
 
     println!("Generated DID {did}");
     println!("Generated DIDURL {vm}");
-    (did, KeyMetadata { kid, did_url: vm })
+
+    KeyMetadata { kid, did_url: vm }
 }
 
 async fn authorize_holder(holder: &impl oid4vci::Holder) -> TokenResponse {

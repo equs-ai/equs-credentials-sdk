@@ -144,7 +144,7 @@ async function requestAndStoreCredential(
   const credentialResponse = await holder.requestCredential(
     accessToken,
     credDefId,
-    keyMetadata,
+    [keyMetadata],
   );
 
   const credentialImmediate = credentialResponse.data;

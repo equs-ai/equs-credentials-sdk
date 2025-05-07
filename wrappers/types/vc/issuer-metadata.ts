@@ -101,7 +101,9 @@ interface IssuerMetadata {
   authorization_servers?: Array<string>;
   credential_endpoint: string;
   nonce_endpoint?: string;
-  batch_credential_endpoint?: string;
+  batch_credential_issuance?: {
+    batch_size: number
+  };
   deferred_credential_endpoint?: string;
   notification_endpoint?: string;
   credential_response_encryption?: CredentialResponseEncryption,

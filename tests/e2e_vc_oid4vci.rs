@@ -91,7 +91,7 @@ async fn autorized_code_flow_using_scopes(#[case] validate_token: bool) {
         .request_credential(
             token_response.access_token(),
             "SD_JWT_cred_1",
-            &key_metadata,
+            &[key_metadata],
         )
         .await
         .unwrap();
@@ -101,7 +101,11 @@ async fn autorized_code_flow_using_scopes(#[case] validate_token: bool) {
     // 6.2 Holder requests LDPVC_cred_1 credentials with the same token
     let (_, key_metadata, _) = create_did_keymetadata_keyhandle(&kms).await;
     let response = holder
-        .request_credential(token_response.access_token(), "LDPVC_cred_1", &key_metadata)
+        .request_credential(
+            token_response.access_token(),
+            "LDPVC_cred_1",
+            &[key_metadata],
+        )
         .await
         .unwrap();
 
@@ -122,9 +126,9 @@ async fn autorized_code_flow_using_scopes(#[case] validate_token: bool) {
 async fn credential_endpoint(issuer: &impl Issuer, req: HttpRequest) -> HttpResponse {
     let cred_req_str = std::str::from_utf8(req.body().as_slice()).unwrap();
 
-    let claims = if cred_req_str.contains("\"vct\"") {
+    let claims = if cred_req_str.contains("SD_JWT_cred") {
         sample_claims_sdjwt()
-    } else if cred_req_str.contains("\"credential_definition\"") {
+    } else if cred_req_str.contains("LDPVC_cred") {
         sample_claims_jsonld()
     } else {
         panic!("unsupported format of requested credential");

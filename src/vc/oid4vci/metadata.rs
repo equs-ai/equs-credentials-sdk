@@ -4,7 +4,7 @@ use crate::vc::{pop, HasVCFormat, VCFormat};
 use crate::{crypto, utils, vc};
 use common_macros::DebugError;
 use oid4vci::core::profiles::{
-    CoreProfilesCredentialConfiguration, CoreProfilesCredentialResponseType, CredentialRequest,
+    CoreProfilesCredentialConfiguration, CoreProfilesCredentialResponseType,
 };
 use oid4vci::metadata::credential_issuer::CredentialConfiguration;
 use oid4vci::proof_of_possession::KeyProofType;
@@ -123,7 +123,6 @@ pub fn supported_proofs(
                 .map(|key_proof_type_supported| {
                     let fmt: pop::Format = match key_proof_type_supported.to_owned().key {
                         KeyProofType::Jwt => pop::Format::Jwt,
-                        KeyProofType::Cwt => pop::Format::Cwt,
                         KeyProofType::LdpVp => pop::Format::Ldp,
                     };
                     let algs = key_proof_type_supported
@@ -220,20 +219,7 @@ impl From<&KeyProofType> for pop::Format {
     fn from(value: &KeyProofType) -> Self {
         match value {
             KeyProofType::Jwt => pop::Format::Jwt,
-            KeyProofType::Cwt => pop::Format::Cwt,
             KeyProofType::LdpVp => pop::Format::Ldp,
-        }
-    }
-}
-
-impl HasVCFormat for CredentialRequest {
-    fn format(&self) -> VCFormat {
-        match self {
-            CredentialRequest::JwtVcJson(_) => VCFormat::JwtVcJson,
-            CredentialRequest::JwtVcJsonLd(_) => VCFormat::JwtVcJsonLD,
-            CredentialRequest::LdpVc(_) => VCFormat::LdpVc,
-            CredentialRequest::MsoMdoc(_) => VCFormat::MsoMdoc,
-            CredentialRequest::VcSdJwt(_) => VCFormat::SdJwtVc,
         }
     }
 }

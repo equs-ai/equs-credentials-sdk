@@ -97,11 +97,43 @@ describe("OID4VCI Holder: ", () => {
     const vciHolder = await buildHolder(utils, kms);
     const { keyMetadata } = await createDidAndKeyMetadata(kms);
 
-    const cred_response = await vciHolder.requestCredential(utils.accessToken, utils.credDefId, keyMetadata);
+    const cred_response = await vciHolder.requestCredential(utils.accessToken, utils.credDefId, [keyMetadata]);
 
     expect(cred_response).toMatchObject({
       data: {
         credentials: [
+            {
+              format: VCFormat.SdJwtVc,
+              payload: utils.sdJWTCreds,
+            }
+         ],
+        notification_id: "1111",
+      },
+    });
+  });
+
+  test("request multiple Credentials - Batch issuance", async () => {
+    await mockServer.forPost("/credential").thenJson(200, utils.batchCredResponse);
+    await mockServer.forPost("/nonce").thenJson(201, utils.nonceResponse);
+
+    const kms = new InMemKms();
+    const vciHolder = await buildHolder(utils, kms);
+    const didAndKeyMetadata1 = await createDidAndKeyMetadata(kms);
+    const didAndKeyMetadata2 = await createDidAndKeyMetadata(kms);
+
+    const cred_response = await vciHolder.requestCredential(
+        utils.accessToken,
+        utils.credDefId,
+        [didAndKeyMetadata1.keyMetadata, didAndKeyMetadata2.keyMetadata]
+    );
+
+    expect(cred_response).toMatchObject({
+      data: {
+        credentials: [
+            {
+              format: VCFormat.SdJwtVc,
+              payload: utils.sdJWTCreds,
+            },
             {
               format: VCFormat.SdJwtVc,
               payload: utils.sdJWTCreds,
@@ -122,7 +154,10 @@ describe("OID4VCI Holder: ", () => {
       payload: utils.sdJWTCreds,
     };
 
-    const { keyMetadata } = await createDidAndKeyMetadata(kms);
+    const keyMetadata: KeyMetadata = {
+      kid: "1",
+      didUrl: "did:key:zDnaenpntCkXnDCnaDk62LxNqPc4CMd32fbhiVsZV5KpPTG2c#zDnaenpntCkXnDCnaDk62LxNqPc4CMd32fbhiVsZV5KpPTG2c"
+    };
 
     const metadata = await resolveMetadata(credential, keyMetadata);
 
