@@ -5,7 +5,7 @@ import {
   CRED_DEF_ID,
   CRED_DEF_METADATA,
   CRED_OFFER,
-  CRED_REQUEST,
+  CRED_REQUEST, CRED_REQUEST_FOR_BATCH_ISSUANCE,
   GRANTS,
   ISSUER_METADATA,
   MockNonceHandler,
@@ -60,5 +60,13 @@ describe("OID4VCI Issuer: ", () => {
     const result = await issuer.issueCredential(CRED_REQUEST, ACCESS_TOKEN, CLAIMS);
     expect(result.value.credentials.length).toEqual(1);
     expect(result.value.credentials[0]).toBeTruthy();
+  });
+
+  test("issue multiple Credential - Batch issuance", async () => {
+
+    const result = await issuer.issueCredential(CRED_REQUEST_FOR_BATCH_ISSUANCE, ACCESS_TOKEN, CLAIMS);
+    expect(result.value.credentials.length).toEqual(2);
+    expect(result.value.credentials[0]).toBeTruthy();
+    expect(result.value.credentials[1]).toBeTruthy();
   });
 });

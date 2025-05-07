@@ -2,7 +2,7 @@ use crate::http::HttpClient;
 use crate::nonce::Nonce;
 use crate::utils::wasm::WasmNotSend;
 use crate::vc;
-use crate::vc::core::{CredentialOfferContent, KeyMetadata, Proof as AsdkProof};
+use crate::vc::core::{CredentialOffer, CredentialOfferContent, KeyMetadata, Proof as AsdkProof};
 use crate::vc::oid4vci::internal_error::{
     AuthorizationCallbackSnafu, DiscoverySnafu, HolderServiceSnafu, MetadataSnafu, ParseSnafu,
     TypeConversionSnafu, UrlParseSnafu, VCSnafu,
@@ -24,13 +24,11 @@ use oauth2::{
 };
 use oid4vci::core::authorization::AuthorizationDetailsObject;
 use oid4vci::core::client::Client;
-use oid4vci::core::profiles::{
-    ldp_vc, vc_sd_jwt, CoreProfilesCredentialConfiguration, CoreProfilesCredentialRequest,
-    CoreProfilesCredentialResponseType,
-};
-use oid4vci::credential::{ErrorType, ResponseEnum};
+use oid4vci::core::profiles::CoreProfilesCredentialResponseType;
+use oid4vci::credential::{CredentialId, ErrorType, ResponseEnum};
+use oid4vci::metadata::credential_issuer::BatchCredentialIssuance;
 use oid4vci::metadata::MetadataDiscovery;
-use oid4vci::proof_of_possession::Proof as SpruceProof;
+use oid4vci::proof_of_possession::{Proof as SpruceProof, Proof};
 use oid4vci::token;
 use oid4vci::types::{CredentialConfigurationId, IssuerUrl};
 use snafu::{ensure, ResultExt};
@@ -357,43 +355,14 @@ where
         &self,
         token: &AccessToken,
         cred_def_id: &str,
-        key_metadata: &KeyMetadata,
+        keys_metadata: &[KeyMetadata],
     ) -> Result<CredentialResponseResolved> {
         info!("requesting a credential flow is started");
 
         let cred_def = self.resolve_cred_def(cred_def_id)?;
 
-        let req_with_format = match &cred_def.profile_specific_fields() {
-            CoreProfilesCredentialConfiguration::VcSdJwt(det) => {
-                oid4vci::core::profiles::CredentialRequest::VcSdJwt(
-                    vc_sd_jwt::CredentialRequest::new(det.vct().to_owned()),
-                )
-            }
-            CoreProfilesCredentialConfiguration::LdpVc(det) => {
-                oid4vci::core::profiles::CredentialRequest::LdpVc(ldp_vc::CredentialRequest::new(
-                    ldp_vc::authorization_detail::CredentialDefinition::default()
-                        .set_context(det.credential_definition().context().to_owned())
-                        .set_type(det.credential_definition().r#type().to_owned()),
-                ))
-            }
-            _ => ProtocolSnafu::new(
-                ErrorType::UnsupportedCredentialFormat,
-                format!(
-                    "Unsupported credential format: {}",
-                    cred_def.profile_specific_fields().format()
-                ),
-            )
-            .fail()?,
-        };
-
-        let req_base = CoreProfilesCredentialRequest::Default {
-            inner: req_with_format,
-            _credential_identifier: (),
-        };
-        trace!(request_profile = ?req_base);
-
         let supported_proofs = metadata::supported_proofs(&cred_def).context(MetadataSnafu)?;
-        let offer = &vc::core::CredentialOffer {
+        let offer = &CredentialOffer {
             cred_offer_id: None,
             issuer_id: self.issuer_metadata.credential_issuer().to_string(),
             cred_def_id: cred_def_id.to_owned(),
@@ -405,17 +374,15 @@ where
         let nonce = self.request_nonce().await?;
         trace!(resolved_nonce = ?nonce);
 
-        let req = self
-            .holder
-            .request_credential(offer, nonce, key_metadata)
-            .await
-            .context(VCSnafu)?;
-        trace!(resolved_request = ?req);
+        let proof = self.resolve_proof(keys_metadata, offer, nonce).await?;
 
         let credential_request = self
             .client
-            .request_credential(token.to_owned(), req_base)
-            .set_proof(Some(req.proof.try_into()?));
+            .request_credential(
+                token.to_owned(),
+                CredentialId::CredentialConfigurationId(cred_def.id().to_owned()),
+            )
+            .set_proof(proof);
 
         let resp = credential_request
             .request_async(&self.http_closure())
@@ -424,7 +391,7 @@ where
         let cred_result: CredentialResult = (&resp).try_into()?;
 
         if let CredentialResult::Credential { credentials, .. } = &cred_result {
-            info!("credential is received");
+            info!("credential(s) is received");
 
             for credential in credentials {
                 self.holder
@@ -587,6 +554,72 @@ where
         Ok(data.to_owned())
     }
 
+    #[instrument(level = Level::TRACE, skip(self), err(), ret())]
+    async fn resolve_proof(
+        &self,
+        keys_metadata: &[KeyMetadata],
+        offer: &CredentialOffer,
+        nonce: Option<Nonce>,
+    ) -> Result<Option<oid4vci::credential::Proof>> {
+        let mut proofs: Vec<SpruceProof> = vec![];
+        for key_metadata in keys_metadata {
+            let req = self
+                .holder
+                .request_credential(offer, nonce.clone(), key_metadata)
+                .await
+                .context(VCSnafu)?;
+
+            proofs.push(req.proof.try_into()?);
+        }
+
+        let proof = match proofs.as_slice() {
+            [] => None,
+            [proof] => Some(oid4vci::credential::Proof::One(proof.clone())),
+            _ => Some(self.resolve_proofs_for_batch_issuance(proofs)?),
+        };
+
+        Ok(proof)
+    }
+
+    #[instrument(level = Level::TRACE, skip(self), err(), ret())]
+    fn resolve_proofs_for_batch_issuance(
+        &self,
+        proofs: Vec<SpruceProof>,
+    ) -> Result<oid4vci::credential::Proof> {
+        match self.issuer_metadata.batch_credential_issuance() {
+            None => {
+                ProtocolSnafu::new(
+                    ErrorType::InvalidCredentialRequest,
+                    "Batch credential issuance is not supported by the issuer. Please provide a single key metadata".to_string(),
+                ).fail()?
+            }
+            Some(&BatchCredentialIssuance { batch_size }) if (batch_size as usize) < proofs.len() => {
+                ProtocolSnafu::new(
+                    ErrorType::InvalidCredentialRequest,
+                    format!("Batch credential issuance limit exceeded. Please provide keys metadata size less or equal to {batch_size}"),
+                ).fail()?
+            }
+            _ => {
+                let jwt_proofs: Vec<_> = proofs
+                    .into_iter()
+                    .filter_map(|proof| match proof {
+                        Proof::Jwt { jwt } => Some(jwt),
+                        Proof::LdpVp { .. } => ProtocolSnafu::new(
+                            ErrorType::InvalidProof,
+                            "Unsupported proof type: ldp_vp".to_string(),
+                        )
+                            .fail()
+                            .ok(),
+                    })
+                    .collect();
+
+                Ok(oid4vci::credential::Proof::Many(
+                    oid4vci::credential::ProofMany::Jwt(jwt_proofs),
+                ))
+            }
+        }
+    }
+
     #[cfg(not(target_arch = "wasm32"))]
     fn http_closure(
         &self,
@@ -675,9 +708,6 @@ impl TryInto<SpruceProof> for AsdkProof {
             "jwt" => SpruceProof::Jwt {
                 jwt: self.proof.to_owned(),
             },
-            "cwt" => SpruceProof::Cwt {
-                cwt: self.proof.to_owned(),
-            },
             _ => ProtocolSnafu::new(
                 ErrorType::InvalidProof,
                 format!("Unsupported proof type: {}", self.format),
@@ -701,9 +731,10 @@ mod tests {
     use crate::vault::{MockVault, Vault};
     use crate::vc::oid4vci::tests::fixtures::{
         fake_access_token, sample_access_token, sample_authorization_metadata,
-        sample_cred_response, sample_credential_definition, sample_offer_with_auth_code_grant,
-        sample_offer_with_pre_auth_code_grant, SampleIssuerMetadata, ACCESS_TOKEN, AUTH_URL,
-        CRED_DEF_ID, ISSUER_URL, NOTIFICATION_ID, REQ_URI_CODE, SCOPE, SD_JWT_CREDS,
+        sample_batch_cred_response, sample_cred_response, sample_credential_definition,
+        sample_offer_with_auth_code_grant, sample_offer_with_pre_auth_code_grant,
+        SampleIssuerMetadata, ACCESS_TOKEN, AUTH_URL, CRED_DEF_ID, ISSUER_URL, NOTIFICATION_ID,
+        REQ_URI_CODE, SCOPE, SD_JWT_CREDS,
     };
     use crate::vc::oid4vci::{CredentialRequest, CredentialResult, Holder};
     use crate::vc::VCFormat;
@@ -944,8 +975,9 @@ mod tests {
         .await;
 
         let _ = holder
-            .request_credential(&sample_access_token(), CRED_DEF_ID, &key_metadata)
-            .await;
+            .request_credential(&sample_access_token(), CRED_DEF_ID, &[key_metadata])
+            .await
+            .unwrap();
     }
 
     #[tokio::test]
@@ -982,7 +1014,7 @@ mod tests {
         .await;
 
         let response = holder
-            .request_credential(&sample_access_token(), CRED_DEF_ID, &key_metadata)
+            .request_credential(&sample_access_token(), CRED_DEF_ID, &[key_metadata])
             .await
             .unwrap();
 
@@ -1003,6 +1035,72 @@ mod tests {
             }
             _ => {
                 panic!("did not receive sd-jwt credential");
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn holder_requests_multiple_credentials_correctly() {
+        let mut http_client = MockHttpClient::new();
+
+        mock_http_once(
+            &mut http_client,
+            Method::POST,
+            credential_endpoint(),
+            sample_batch_cred_response(),
+            StatusCode::OK,
+        );
+
+        mock_http_once(
+            &mut http_client,
+            Method::POST,
+            nonce_endpoint(),
+            json!({
+               "c_nonce": "nOnCe",
+            }),
+            StatusCode::CREATED,
+        );
+
+        let kms = LocalKms::new();
+        let (_, key_metadata_1) = create_did_and_key_metadata(&kms).await;
+        let (_, key_metadata_2) = create_did_and_key_metadata(&kms).await;
+
+        let holder = holder_service_from_issuer_metadata(
+            http_client,
+            InMemVault::new(),
+            kms,
+            SampleIssuerMetadata::with_sdjwtvc_conf(),
+        )
+        .await;
+
+        let response = holder
+            .request_credential(
+                &sample_access_token(),
+                CRED_DEF_ID,
+                &[key_metadata_1, key_metadata_2],
+            )
+            .await
+            .unwrap();
+
+        let CredentialResult::Credential {
+            credentials,
+            notification_id: Some(notification_id),
+        } = response.data
+        else {
+            panic!("did not receive credential");
+        };
+
+        assert_eq!(credentials.len(), 2);
+
+        for credential in credentials {
+            match &credential {
+                Credential::SdJwt(cred) => {
+                    assert_eq!(cred, SD_JWT_CREDS);
+                    assert_eq!(notification_id, NOTIFICATION_ID);
+                }
+                _ => {
+                    panic!("did not receive sd-jwt credential");
+                }
             }
         }
     }
@@ -1059,32 +1157,88 @@ mod tests {
             .request_credential(
                 &sample_access_token(),
                 "unexpected_cred_def_id",
-                &key_metadata,
+                &[key_metadata],
             )
             .await
             .unwrap();
     }
 
-    #[rstest]
-    #[case(SampleIssuerMetadata::with_jwtvc_conf())]
-    #[case(SampleIssuerMetadata::with_jwtldvc_conf())]
-    #[case(SampleIssuerMetadata::with_isomdl_conf())]
     #[tokio::test]
-    #[should_panic(expected = "Unsupported credential format")]
-    async fn holder_fails_on_unsupported_credential_formats(#[case] test_metadata: IssuerMetadata) {
+    #[should_panic(expected = "Batch credential issuance is not supported by the issuer")]
+    async fn holder_fails_requesting_credentials_when_issuer_does_not_support_batch_issuance() {
+        let mut issuer_metadata = SampleIssuerMetadata::with_sdjwtvc_conf();
+        issuer_metadata = issuer_metadata.set_batch_credential_issuance(None);
+
+        let mut http_client = MockHttpClient::new();
+        mock_http_once(
+            &mut http_client,
+            Method::POST,
+            nonce_endpoint(),
+            json!({
+               "c_nonce": "nOnCe",
+            }),
+            StatusCode::CREATED,
+        );
+
         let kms = LocalKms::new();
-        let (_, key_metadata) = create_did_and_key_metadata(&kms).await;
+        let (_, key_metadata_1) = create_did_and_key_metadata(&kms).await;
+        let (_, key_metadata_2) = create_did_and_key_metadata(&kms).await;
 
         let holder_service = holder_service_from_issuer_metadata(
-            MockHttpClient::new(),
+            http_client,
             InMemVault::new(),
             kms,
-            test_metadata,
+            issuer_metadata,
         )
         .await;
 
         let result = holder_service
-            .request_credential(&sample_access_token(), SCOPE, &key_metadata)
+            .request_credential(
+                &sample_access_token(),
+                CRED_DEF_ID,
+                &[key_metadata_1, key_metadata_2],
+            )
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    #[should_panic(expected = "Batch credential issuance limit exceeded")]
+    async fn holder_fails_requesting_credentials_when_batch_issuance_size_exceeded() {
+        let mut issuer_metadata = SampleIssuerMetadata::with_sdjwtvc_conf();
+        issuer_metadata = issuer_metadata
+            .set_batch_credential_issuance(Some(BatchCredentialIssuance { batch_size: 2 }));
+
+        let mut http_client = MockHttpClient::new();
+        mock_http_once(
+            &mut http_client,
+            Method::POST,
+            nonce_endpoint(),
+            json!({
+               "c_nonce": "nOnCe",
+            }),
+            StatusCode::CREATED,
+        );
+
+        let kms = LocalKms::new();
+        let (_, key_metadata_1) = create_did_and_key_metadata(&kms).await;
+        let (_, key_metadata_2) = create_did_and_key_metadata(&kms).await;
+        let (_, key_metadata_3) = create_did_and_key_metadata(&kms).await;
+
+        let holder_service = holder_service_from_issuer_metadata(
+            http_client,
+            InMemVault::new(),
+            kms,
+            issuer_metadata,
+        )
+        .await;
+
+        let result = holder_service
+            .request_credential(
+                &sample_access_token(),
+                CRED_DEF_ID,
+                &[key_metadata_1, key_metadata_2, key_metadata_3],
+            )
             .await
             .unwrap();
     }
@@ -1122,7 +1276,7 @@ mod tests {
         .await;
 
         let result = holder_service
-            .request_credential(&sample_access_token(), CRED_DEF_ID, &key_metadata)
+            .request_credential(&sample_access_token(), CRED_DEF_ID, &[key_metadata])
             .await
             .unwrap();
     }
@@ -1165,7 +1319,7 @@ mod tests {
         .await;
 
         let response = holder
-            .request_credential(&fake_access_token(), CRED_DEF_ID, &key_metadata)
+            .request_credential(&fake_access_token(), CRED_DEF_ID, &[key_metadata])
             .await
             .unwrap();
     }

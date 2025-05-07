@@ -459,7 +459,7 @@ mod tests {
         let kms = LocalKms::new();
         let vault = InMemVault::new();
 
-        let entry = case.generate_vc(&kms).await;
+        let (entry, _) = case.generate_vc(&kms).await;
 
         let holder = holder_service(kms, vault);
 
@@ -489,7 +489,7 @@ mod tests {
         let kms = LocalKms::new();
         let vault = InMemVault::new();
 
-        let entry = case.generate_vc(&kms).await;
+        let (entry, _) = case.generate_vc(&kms).await;
         let cred_metadata = CredentialMetadata {
             type_: case.type_.to_string(),
             format: case.format.clone(),
@@ -528,7 +528,7 @@ mod tests {
 
         let kms = LocalKms::new();
 
-        let entry = case.generate_vc(&kms).await;
+        let (entry, _) = case.generate_vc(&kms).await;
         let cred_metadata = CredentialMetadata {
             type_: case.type_.to_string(),
             format: case.format.clone(),
@@ -554,10 +554,16 @@ mod tests {
         let kms = LocalKms::new();
         let vault = InMemVault::new();
 
-        let mut entry1 = case.generate_vc(&kms).await;
-        let mut entry2 = case.generate_vc(&kms).await;
+        let (mut entry1, did_url1) = case.generate_vc(&kms).await;
+        let (mut entry2, did_url2) = case.generate_vc(&kms).await;
 
-        let ids = vault.store_entries(vec![&entry1, &entry2]).await.unwrap();
+        let ids = vault
+            .store_entries(vec![
+                (&entry1, did_url1.as_str()),
+                (&entry2, did_url2.as_str()),
+            ])
+            .await
+            .unwrap();
 
         let holder = holder_service(kms, vault);
 
@@ -619,7 +625,7 @@ mod tests {
         let kms = LocalKms::new();
         let vault = InMemVault::new();
 
-        let entry = case.generate_vc(&kms).await;
+        let (entry, _) = case.generate_vc(&kms).await;
 
         let holder = holder_service(kms, vault.clone());
 
@@ -647,7 +653,7 @@ mod tests {
         let kms = LocalKms::new();
         let vault = InMemVault::new();
 
-        let entry = case.generate_vc(&kms).await;
+        let (entry, _) = case.generate_vc(&kms).await;
 
         let holder = holder_service(kms, vault.clone());
 
@@ -705,8 +711,11 @@ mod tests {
         let kms = LocalKms::new();
         let vault = InMemVault::new();
 
-        let entry = case.generate_vc(&kms).await;
-        vault.store_entries(vec![&entry]).await.unwrap();
+        let (entry, did_url) = case.generate_vc(&kms).await;
+        vault
+            .store_entries(vec![(&entry, did_url.as_str())])
+            .await
+            .unwrap();
 
         let holder = holder_service(kms, vault);
 
@@ -736,7 +745,7 @@ mod tests {
             .fail()
         });
 
-        let entry = case.generate_vc(&kms).await;
+        let (entry, _) = case.generate_vc(&kms).await;
 
         let holder = holder_service(kms, vault);
 

@@ -157,7 +157,7 @@ async fn run_holder() -> Result<(), String> {
     .await;
 
     let res = holder
-        .request_credential(&dummy_token, "SD_JWT_cred", &key_metadata)
+        .request_credential(&dummy_token, "SD_JWT_cred", &[key_metadata])
         .await;
 
     match res {

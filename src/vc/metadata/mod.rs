@@ -1,6 +1,6 @@
 //! Credential metadata and metadata processors.
 
-use snafu::{Location, Snafu};
+use snafu::{ensure, Location, Snafu};
 use ssi::json_ld::JsonLdNodeObject;
 use std::fmt::Debug;
 use tracing::{instrument, Level};
@@ -11,6 +11,7 @@ use crate::vc::core::KeyMetadata;
 use crate::vc::formats::HasClaims;
 use crate::vc::{Credential, CredentialMetadata, HasVCFormat};
 use common_macros::DebugError;
+
 type Level_ = Level;
 
 /// `Metadata` Error.
@@ -141,6 +142,39 @@ impl CredentialMetadataProcessor for DefaultMetadataProcessor {
         let format = credential.format();
         let type_ = Self::type_(credential)?;
 
+        let claims = credential.parse_claims().map_err(|err| {
+            ResolvingSnafu {
+                details: format!("{err:?}"),
+            }
+            .build()
+        })?;
+
+        match credential {
+            Credential::SdJwt(_) => {
+                validate_did_match(
+                    claims.get("sub"),
+                    &key_metadata,
+                    "Cannot retrieve a 'sub' field of sd-jwt credential",
+                )?;
+            }
+            Credential::LdpVc(_) => {
+                validate_did_match(
+                    claims
+                        .get("credentialSubject")
+                        .and_then(|cred_sub| cred_sub.get("id")),
+                    &key_metadata,
+                    "Cannot retrieve a 'credentialSubject' field of json-ld-vc credential",
+                )?;
+            }
+            Credential::JwtVcJson(_) | Credential::JwtVcJsonLd(_) => {
+                return Err(FormatNotSupportedSnafu {
+                    format: "Credential with jwt-vc-json or jwt-vc-json-ld is not supported"
+                        .to_string(),
+                }
+                .fail()?)
+            }
+        }
+
         Ok(CredentialMetadata {
             type_,
             format,
@@ -149,6 +183,34 @@ impl CredentialMetadataProcessor for DefaultMetadataProcessor {
             fields: Self::resolve_fields(credential)?,
         })
     }
+}
+
+#[instrument(level = Level::TRACE, err())]
+fn validate_did_match(
+    subject_claim_value: Option<&Claim>,
+    key_metadata: &KeyMetadata,
+    missing_field_message: &str,
+) -> Result<()> {
+    let cred_did = match subject_claim_value {
+        Some(Claim::String(did)) => did,
+        _ => ResolvingSnafu {
+            details: missing_field_message.to_string(),
+        }
+        .fail()?,
+    };
+
+    ensure!(
+        key_metadata.did_url.starts_with(cred_did.as_str()),
+        ResolvingSnafu {
+            details: format!(
+                "Credential and key-metadata DIDs does not match: credential DID = {}, key metadata DID url = {}",
+                cred_did,
+                key_metadata.did_url
+            ),
+        }
+    );
+
+    Ok(())
 }
 
 #[cfg(test)]

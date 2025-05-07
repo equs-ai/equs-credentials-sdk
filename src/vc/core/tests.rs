@@ -459,7 +459,7 @@ pub mod utils {
             pop.to_jwt_with_signature(signed).unwrap()
         }
 
-        pub async fn generate_vc(&self, kms: &LocalKms) -> CredentialEntry {
+        pub async fn generate_vc(&self, kms: &LocalKms) -> (CredentialEntry, String) {
             let (hld_did_url, h_kid, h_kh) =
                 create_did_url_and_key_handle_kid(kms, KeyType::P256).await;
             let (iss_did_url, _, i_kh) =
@@ -503,11 +503,14 @@ pub mod utils {
                 _ => unimplemented!(),
             };
 
-            CredentialEntry {
-                credential,
-                kid: h_kid,
-                id: CREDENTIAL_ID.to_string(),
-            }
+            (
+                CredentialEntry {
+                    credential,
+                    kid: h_kid,
+                    id: CREDENTIAL_ID.to_string(),
+                },
+                hld_did_url.to_string(),
+            )
         }
 
         pub async fn generate_vp(

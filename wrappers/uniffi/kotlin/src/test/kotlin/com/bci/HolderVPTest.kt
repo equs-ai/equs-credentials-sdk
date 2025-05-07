@@ -52,6 +52,7 @@ class HolderVPTest {
                 val inMemVault = InMemVault()
 
                 val didAndKeyMetadata = createDidAndKeyMetadata(inMemKms)
+                didAndKeyMetadata.keyMetadata.didUrl = "did:key:zDnaej9QadgdZnu8uDXZXd4545dfJAEvmV6nn7xaYUqzcrPvM#zDnaej9QadgdZnu8uDXZXd4545dfJAEvmV6nn7xaYUqzcrPvM"
                 val credential = Credential(format = VcFormat.SD_JWT_VC, payload = VC)
                 val metadata = resolveMetadata(credential, didAndKeyMetadata.keyMetadata)
 

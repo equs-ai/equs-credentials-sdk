@@ -242,7 +242,7 @@ impl OID4VCIHolder {
     ///
     /// * `token` - an access token.
     /// * `cred_def_id` - a `CredentialDefinition` ID.
-    /// * `key_metadata` - a `KeyMetadata` for corresponding key to be used for signing operations.
+    /// * `key_metadata` - a slice of `KeyMetadata` for corresponding keys to be used for signing operations.
     ///
     /// # Returns
     ///
@@ -256,13 +256,17 @@ impl OID4VCIHolder {
         &self,
         token: String,
         cred_def_id: String,
-        key_metadata: KeyMetadata,
+        key_metadata: Vec<KeyMetadata>,
     ) -> Result<CredentialResponse, JsError> {
         let token = serde_json::from_value(serde_json::Value::String(token))?;
-        let key_metadata = utils::convert_to_rust_object(key_metadata)?;
+
+        let mut sdk_key_metadata: Vec<vc::core::KeyMetadata> = vec![];
+        for km in key_metadata {
+            sdk_key_metadata.push(utils::convert_to_rust_object(km)?)
+        }
 
         self.0
-            .request_credential(&token, &cred_def_id, &key_metadata)
+            .request_credential(&token, &cred_def_id, sdk_key_metadata.as_slice())
             .await
             .map_err(|err| JsError::new(&format!("{:?}", err)))
             .and_then(TryInto::try_into)
@@ -315,7 +319,7 @@ trait _HolderWrapperTrait {
         &self,
         token: &AccessToken,
         cred_def_id: &str,
-        key_metadata: &vc::core::KeyMetadata,
+        key_metadata: &[vc::core::KeyMetadata],
     ) -> vc::oid4vci::Result<CredentialResponseResolved>;
 
     async fn store_credential(
@@ -353,7 +357,7 @@ impl<H: Holder> _HolderWrapperTrait for _HolderWrapper<H> {
         &self,
         token: &AccessToken,
         cred_def_id: &str,
-        key_metadata: &vc::core::KeyMetadata,
+        key_metadata: &[vc::core::KeyMetadata],
     ) -> vc::oid4vci::Result<CredentialResponseResolved> {
         self.0
             .request_credential(token, cred_def_id, key_metadata)

@@ -177,7 +177,7 @@ impl OID4VCIHolder {
     ///
     /// @param {string} token - an access token.
     /// @param {string} credDefId - a {@link CredentialDefinition} ID.
-    /// @param {KeyMetadata} keyMetadata - a {@link KeyMetadata} for corresponding key to be used for signing operations.
+    /// @param {KeyMetadata} keyMetadata - a slice of {@link KeyMetadata} for corresponding keys to be used for signing operations.
     ///
     /// @returns {CredentialResponse} - A {@link CredentialResponse} (Immediate or Deferred) on success.
     #[napi]
@@ -185,13 +185,13 @@ impl OID4VCIHolder {
         &self,
         token: String,
         cred_def_id: String,
-        key_metadata: JsKeyMetadata,
+        key_metadata: Vec<JsKeyMetadata>,
     ) -> napi::Result<CredentialResponse> {
         let token = serde_json::from_value(serde_json::Value::String(token))?;
-        let key_metadata = key_metadata.into();
+        let key_metadata: Vec<_> = key_metadata.into_iter().map(Into::into).collect();
 
         self.0
-            .request_credential(&token, &cred_def_id, &key_metadata)
+            .request_credential(&token, &cred_def_id, key_metadata.as_slice())
             .await
             .map_err(|err| napi::Error::from_reason(format!("{:?}", err)))
             .and_then(TryInto::try_into)
@@ -278,7 +278,7 @@ trait _HolderWrapperTrait: Send + Sync {
         &self,
         token: &AccessToken,
         cred_def_id: &str,
-        key_metadata: &KeyMetadata,
+        key_metadata: &[KeyMetadata],
     ) -> oid4vci::Result<CredentialResponseResolved>;
 
     async fn store_credential(
@@ -316,7 +316,7 @@ impl<H: Holder> _HolderWrapperTrait for _HolderWrapper<H> {
         &self,
         token: &AccessToken,
         cred_def_id: &str,
-        key_metadata: &KeyMetadata,
+        key_metadata: &[KeyMetadata],
     ) -> oid4vci::Result<CredentialResponseResolved> {
         self.0
             .request_credential(token, cred_def_id, key_metadata)

@@ -21,7 +21,6 @@ pub mod jwt_pop;
 pub enum Format {
     Jwt,
     Ldp,
-    Cwt,
 }
 
 impl From<&Format> for &'static str {
@@ -29,7 +28,6 @@ impl From<&Format> for &'static str {
         match value {
             Format::Jwt => "jwt",
             Format::Ldp => "ldp",
-            Format::Cwt => "cwt",
         }
     }
 }
@@ -41,7 +39,6 @@ impl FromStr for Format {
         match s {
             "jwt" => Ok(Format::Jwt),
             "ldp" => Ok(Format::Ldp),
-            "cwt" => Ok(Format::Cwt),
             _ => FormatNotSupportedSnafu { format: s }.fail(),
         }
     }

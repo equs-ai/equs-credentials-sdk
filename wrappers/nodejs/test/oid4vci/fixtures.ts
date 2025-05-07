@@ -21,6 +21,9 @@ export const ISSUER_METADATA: OID4VCIIssuerMetadata = {
   credential_issuer: ISSUER_ENDPOINT,
   authorization_servers: [`${ISSUER_ENDPOINT}/auth`],
   credential_endpoint: `${ISSUER_ENDPOINT}/credential`,
+  batch_credential_issuance: {
+    batch_size: 2
+  },
   credential_configurations_supported: {
     IDENTITY_SD_JWT: {
       format: CredentialFormats.VCSDJWT,
@@ -101,10 +104,21 @@ export const PROOF_JWT =
   "eyJhbGciOiJFUzI1NiIsImtpZCI6ImRpZDprZXk6ekRuYWVmM2lLZTFGV3U4QUtOM25yUEpCdWtTenNTNE5KNm95b0xiVjh1QkNTR2ZjZiN6RG5hZWYzaUtlMUZXdThBS04zbnJQSkJ1a1N6c1M0Tko2b3lvTGJWOHVCQ1NHZmNmIiwidHlwIjoib3BlbmlkNHZjaS1wcm9vZitqd3QifQ.eyJhdWQiOiJodHRwOi8vbG9jYWxob3N0OjkwMDAiLCJuYmYiOjE3MzYxODIzOTcsImlhdCI6MTczNjE4MjM5NywiZXhwIjo0ODg5NzgyMzk3LCJub25jZSI6IktCNTBWT205SS1rUExUOW1BQUNWOGcifQ.IteWgE_LbL7lanDu3CJDdwGheGRDrJdh_gn-ldOraEWazE_kTtcgXMp4WJG871FOqRzI8lphSxWfqrGBXG4wxA";
 
 export const CRED_REQUEST: OID4VCICredentialRequest = {
-  vct: "SD_JWT_cred",
+  credential_configuration_id: CRED_DEF_ID,
   proof: {
     proof_type: "jwt",
     jwt: PROOF_JWT,
+  },
+  credential_response_encryption: null,
+};
+
+export const CRED_REQUEST_FOR_BATCH_ISSUANCE: OID4VCICredentialRequest = {
+  credential_configuration_id: CRED_DEF_ID,
+  proofs: {
+    jwt: [
+      PROOF_JWT,
+      PROOF_JWT
+    ]
   },
   credential_response_encryption: null,
 };

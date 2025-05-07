@@ -115,6 +115,9 @@ pub mod fixtures {
                     "authorization_servers": [AUTH_URL],
                     "credential_endpoint": ISSUER_URL.to_owned()+"/credential",
                     "nonce_endpoint": ISSUER_URL.to_owned()+"/nonce",
+                    "batch_credential_issuance": {
+                        "batch_size": 3
+                    },
                     "credential_configurations_supported": {
                         CRED_DEF_ID: {
                             "format": "dc+sd-jwt",
@@ -348,83 +351,51 @@ pub mod fixtures {
     pub struct SampleCredentialRequest {}
 
     impl SampleCredentialRequest {
-        pub fn with_sdjwtvc_conf() -> CredentialRequest {
+        pub fn with_cred_configuration_id() -> CredentialRequest {
             serde_json::from_value(json!(
                 {
-                    "vct":"SD_JWT_cred",
+                    "credential_configuration_id":"SD_JWT_cred_sample",
                     "proof":{
                         "proof_type":"jwt",
                         "jwt": SAMPLE_PROOF_JWT,
                     },
-                    "credential_response_encryption":null
                 }
             ))
             .unwrap()
         }
 
-        pub fn with_jwtvcjson_conf() -> CredentialRequest {
+        pub fn with_cred_configuration_id_and_multiple_proofs() -> CredentialRequest {
             serde_json::from_value(json!(
                 {
-                    "credential_definition": json!({
-                    "type": [],
-                    "credentialSubject": {},
-                }),
+                    "credential_configuration_id":"SD_JWT_cred_sample",
+                    "proofs":{
+                        "jwt": [SAMPLE_PROOF_JWT, SAMPLE_PROOF_JWT, SAMPLE_PROOF_JWT],
+                    },
                 }
             ))
             .unwrap()
         }
 
-        pub fn with_jwtldvc_conf() -> CredentialRequest {
+        pub fn with_empty_proofs() -> CredentialRequest {
             serde_json::from_value(json!(
                 {
-                    "credential_definition": json!({
-                        "@context": [],
-                        "type": [],
-                        "credentialSubject": {},
-                    }),
+                    "credential_configuration_id":"SD_JWT_cred_sample",
+                    "proofs":{
+                        "jwt": [],
+                    },
                 }
             ))
             .unwrap()
         }
 
-        pub fn with_ldpvc_conf() -> CredentialRequest {
+        pub fn with_cred_identifier() -> CredentialRequest {
             serde_json::from_value(json!(
                 {
-                    "credential_definition": json!({
-                        "@context": [],
-                        "type": [],
-                        "credentialSubject": {},
-                    }),
-                }
-            ))
-            .unwrap()
-        }
-
-        pub fn with_ldp_vc_conf_correct() -> CredentialRequest {
-            serde_json::from_value(json!(
-                {
-                    "proof": {
+                    "credential_identifier":"CivilEngineeringDegree-2023",
+                    "proof":{
                         "proof_type":"jwt",
                         "jwt": SAMPLE_PROOF_JWT,
                     },
-                    "credential_definition": json!({
-                        "@context": [],
-                        "type": [
-                        "VerifiableCredential",
-                    ],
-                        "credentialSubject": {
-                    },
-                    }),
-                }
-
-            ))
-            .unwrap()
-        }
-
-        pub fn with_msomdoc_conf() -> CredentialRequest {
-            serde_json::from_value(json!(
-                {
-                     "doctype": "",
                 }
             ))
             .unwrap()
@@ -435,6 +406,16 @@ pub mod fixtures {
         let cred_response = serde_json::from_value(json!(
             {
                 "credentials": [{"credential": SD_JWT_CREDS}],
+                "notification_id": NOTIFICATION_ID
+            }
+        ));
+        cred_response.unwrap()
+    }
+
+    pub fn sample_batch_cred_response() -> CredentialResponse {
+        let cred_response = serde_json::from_value(json!(
+            {
+                "credentials": [{"credential": SD_JWT_CREDS}, {"credential": SD_JWT_CREDS}],
                 "notification_id": NOTIFICATION_ID
             }
         ));

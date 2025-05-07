@@ -88,7 +88,7 @@ async function requestAndStoreCredential(
 ): Promise<CredentialResponse> {
   const { keyMetadata } = await createDidAndKeyMetadata(kms);
 
-  const credentialResponse = await holder.requestCredential(accessToken, credDefId, keyMetadata);
+  const credentialResponse = await holder.requestCredential(accessToken, credDefId, [keyMetadata]);
 
   const credentialImmediate = credentialResponse.data;
 

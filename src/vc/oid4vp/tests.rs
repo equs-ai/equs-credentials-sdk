@@ -2158,12 +2158,13 @@ pub mod utils {
             match &self.credential_format {
                 ClaimFormatDesignation::SdJwtVc => {
                     for claims in &self.credential_data {
-                        let credential =
-                            Credential::SdJwt(create_sd_jwt_vc(claims, &holder_key_handle).await);
+                        let (sd_jwt_plain, did_url) =
+                            create_sd_jwt_vc(claims, &holder_key_handle).await;
+                        let credential = Credential::SdJwt(sd_jwt_plain);
                         let metadata = DefaultMetadataProcessor::resolve_metadata(
                             &credential,
                             KeyMetadata {
-                                did_url: "did:fake:test".to_string(),
+                                did_url,
                                 kid: holder_kid.to_owned(),
                             },
                         )
@@ -2177,12 +2178,13 @@ pub mod utils {
                 }
                 ClaimFormatDesignation::LdpVc => {
                     for claims in &self.credential_data {
-                        let credential =
-                            Credential::LdpVc(create_json_ld_vc(claims, &holder_key_handle).await);
+                        let (ldp_vc_plain, did_url) =
+                            create_json_ld_vc(claims, &holder_key_handle).await;
+                        let credential = Credential::LdpVc(ldp_vc_plain);
                         let metadata = DefaultMetadataProcessor::resolve_metadata(
                             &credential,
                             KeyMetadata {
-                                did_url: "did:fake:test".to_string(),
+                                did_url,
                                 kid: holder_kid.to_owned(),
                             },
                         )
@@ -2223,7 +2225,7 @@ pub mod utils {
                             })
                             .unwrap();
 
-                        let vc = create_sd_jwt_vc(claims, &key_handle).await;
+                        let (vc, _) = create_sd_jwt_vc(claims, &key_handle).await;
 
                         result.insert(
                             input.id,
@@ -2247,7 +2249,7 @@ pub mod utils {
                         })
                         .unwrap();
 
-                        let vc = create_json_ld_vc(claims, &key_handle).await;
+                        let (vc, _) = create_json_ld_vc(claims, &key_handle).await;
 
                         result.insert(
                             input.id,
@@ -2343,7 +2345,7 @@ pub mod utils {
 
             let mut presentations: Vec<sd_jwt_vc::Presentation> = vec![];
             for claims in self.credential_data.iter() {
-                let vc = create_sd_jwt_vc(claims, &holder_key_handle).await;
+                let (vc, _) = create_sd_jwt_vc(claims, &holder_key_handle).await;
                 let vp = create_sd_jwt_vp(
                     &vc,
                     claims.clone().try_into().unwrap(),
@@ -2477,7 +2479,7 @@ pub mod utils {
     pub async fn create_sd_jwt_vc(
         claims: &Claims,
         holder_key_handle: &KeyHandle,
-    ) -> sd_jwt_vc::Credential {
+    ) -> (sd_jwt_vc::Credential, String) {
         let kms = LocalKms::new();
 
         let (issuer_did_url, issuer_key_handle) =
@@ -2493,7 +2495,7 @@ pub mod utils {
             .collect();
 
         let vct = claims["vct"].as_str().unwrap();
-        SdJwtAPI::create_vc(
+        let credential = SdJwtAPI::create_vc(
             claims.clone(),
             (&issuer_did_url, issuer_key_handle),
             (&holder_did_url, holder_key_handle.clone()),
@@ -2506,13 +2508,15 @@ pub mod utils {
             UniversalResolver::default(),
         )
         .await
-        .unwrap()
+        .unwrap();
+
+        (credential, holder_did_url.to_string())
     }
 
     pub async fn create_json_ld_vc(
         claims: &Claims,
         holder_key_handle: &KeyHandle,
-    ) -> json_ld_vc::VC {
+    ) -> (json_ld_vc::VC, String) {
         let kms = LocalKms::new();
 
         let (issuer_did_url, issuer_key_handle) =
@@ -2538,7 +2542,7 @@ pub mod utils {
         vc_metadata.credential_id =
             Some(UriBuf::from_str("urn:uuid:7a6cafb9-11c3-41a8-98d8-8b5a45c2548f").unwrap());
 
-        JsonLdAPI::create_vc(
+        let credential = JsonLdAPI::create_vc(
             claims.clone(),
             (&issuer_did_url, issuer_key_handle),
             (&holder_did_url, holder_key_handle.clone()),
@@ -2546,7 +2550,9 @@ pub mod utils {
             UniversalResolver::default(),
         )
         .await
-        .unwrap()
+        .unwrap();
+
+        (credential, holder_did_url.to_string())
     }
 
     pub async fn create_sd_jwt_vp(

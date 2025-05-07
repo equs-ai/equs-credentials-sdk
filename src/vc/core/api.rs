@@ -174,7 +174,7 @@ pub struct CredentialRequest {
 ///
 /// * `TokenStatusList` - Indicates that the status is managed using a token-based status list.
 /// * `BitstringStatusList` - Indicates that the status is managed using a bitstring representation
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum CredentialStatusInfo {
     TokenStatusList { idx: u32, uri: Url },
     BitstringStatusList,
