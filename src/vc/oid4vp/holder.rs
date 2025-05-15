@@ -6,7 +6,7 @@ use crate::utils::http::MimeType;
 use crate::vault::CredentialEntry;
 use crate::vc::core::PresentationInput;
 use crate::vc::oid4vp::internal_error::{
-    AuthorizationResponseSnafu, CredentialNotFoundSnafu, HttpClientSnafu, IdTokenGenerationSnafu,
+    AuthorizationResponseSnafu, HttpClientSnafu, IdTokenGenerationSnafu,
     IdTokenMetadataNotFoundSnafu, IdTokenParseSnafu, JsonSnafu, KMSSnafu, ParseSnafu,
     PresentationExchangeSnafu, VCSnafu,
 };
@@ -14,7 +14,7 @@ use crate::vc::oid4vp::metadata::default_wallet_metadata;
 use crate::vc::oid4vp::signer::Signer;
 use crate::vc::oid4vp::{
     AuthorizationResponseMetadata, CredentialMapping, CredentialsMapping, ProtocolError,
-    ResolvedAuthRequest,
+    ResolvedAuthRequest, ResponseMode,
 };
 use crate::vc::presentation_exchange::{PresentationResponse, RequestedPresentation};
 use crate::vc::{oid4vp as api, presentation_exchange};
@@ -212,45 +212,68 @@ where
     }
 
     #[instrument(level = Level::TRACE, skip(self), err(), ret())]
-    async fn resolve_auth_resp_endpoint(&self, request_uri: &Url) -> Result<Url> {
+    async fn resolve_auth_resp_endpoint_and_mode(
+        &self,
+        request_uri: &Url,
+    ) -> Result<(Url, ResponseMode)> {
         let auth_req =
             AuthorizationRequest::from_url(request_uri, &self.metadata.authorization_endpoint().0)?;
 
-        let url = match auth_req {
-            AuthorizationRequest::Plain(aro) => aro.return_uri().to_owned(),
+        let (url, mode) = match auth_req {
+            AuthorizationRequest::Plain(aro) => {
+                (aro.return_uri().to_owned(), aro.response_mode().to_owned())
+            }
             AuthorizationRequest::Signed(signed_req) => {
-                signed_req.resolve_response_uri(self).await?
+                signed_req.resolve_response_uri_and_mode(self).await?
             }
         };
 
-        Ok(url)
+        Ok((url, mode))
     }
 
     #[instrument(level = Level::TRACE, skip(self), err(), ret())]
-    async fn submit_auth_error_resp(&self, response_uri: &Url, body: &ProtocolError) -> Result<()> {
-        let body = serde_urlencoded::to_string(body).map_err(|e| {
+    async fn handle_auth_error_resp(
+        &self,
+        response_uri: &Url,
+        response_mode: &ResponseMode,
+        mut error: ProtocolError,
+    ) -> Result<ProtocolError> {
+        let encoded = serde_urlencoded::to_string(&error).map_err(|e| {
             ParseSnafu {
                 details: format!("could not serialize protocol error into form-urlencoded: {e}"),
             }
             .build()
         })?;
-        let req = utils::http::generate_post_req(
-            response_uri,
-            MimeType::AppFormUrlEnc,
-            MimeType::AppJson,
-            body.into_bytes(),
-        )
-        .context(HttpClientSnafu)?;
 
-        let _ = self
-            .http_client
-            .async_call(req)
-            .await
-            .context(HttpClientSnafu)?;
+        match response_mode {
+            ResponseMode::DirectPost | ResponseMode::DirectPostJwt => {
+                let req = utils::http::generate_post_req(
+                    response_uri,
+                    MimeType::AppFormUrlEnc,
+                    MimeType::AppJson,
+                    encoded.into_bytes(),
+                )
+                .context(HttpClientSnafu)?;
 
-        info!("authorization error response is sent to verifier");
+                let _ = self
+                    .http_client
+                    .async_call(req)
+                    .await
+                    .context(HttpClientSnafu)?;
 
-        Ok(())
+                info!("authorization error response is sent to verifier");
+
+                Ok(error)
+            }
+            _ => {
+                let mut response_uri = response_uri.clone();
+                response_uri.set_fragment(Some(&encoded));
+
+                error.set_redirect_uri(Some(response_uri));
+
+                Ok(error)
+            }
+        }
     }
 
     #[instrument(level = Level::TRACE, skip(self), err(), ret())]
@@ -265,10 +288,15 @@ where
                 "matching credentials are not found",
                 auth_request.state.clone(),
             );
-            self.submit_auth_error_resp(&auth_request.response_uri, &err)
+            let source = self
+                .handle_auth_error_resp(
+                    &auth_request.response_uri,
+                    &auth_request.response_mode,
+                    err,
+                )
                 .await?;
 
-            CredentialNotFoundSnafu.fail()?
+            return Err(Error::Protocol { source });
         };
 
         self.create_presentation_by_input(cred, presentation_input, auth_request)
@@ -300,10 +328,15 @@ where
                     ),
                     auth_request.state.clone(),
                 );
-                self.submit_auth_error_resp(&auth_request.response_uri, &body)
+                let err = self
+                    .handle_auth_error_resp(
+                        &auth_request.response_uri,
+                        &auth_request.response_mode,
+                        body,
+                    )
                     .await?;
 
-                return Err(Error::Protocol { source: body });
+                return Err(Error::Protocol { source: err });
             }
         }
 
@@ -329,24 +362,37 @@ where
 
         let aro = match aro_result {
             Ok(aro) => aro,
-            Err(Error::Protocol { source: body }) => {
-                let response_uri = self.resolve_auth_resp_endpoint(request_uri).await?;
+            Err(Error::Protocol { source }) => {
+                let (response_uri, response_mode) = self
+                    .resolve_auth_resp_endpoint_and_mode(request_uri)
+                    .await?;
 
-                info!("authorization request validation is failed, sending an authorization error response to the verifier...");
-                self.submit_auth_error_resp(&response_uri, &body).await?;
+                info!("authorization request validation is failed, handling an authorization error response...");
+                let source = self
+                    .handle_auth_error_resp(&response_uri, &response_mode, source)
+                    .await?;
 
-                return Err(Error::Protocol { source: body });
+                return Err(Error::Protocol { source });
             }
             Err(e) => return Err(e),
         };
 
-        let pres_def = aro
+        let pres_def = match aro
             .resolve_presentation_definition(self)
-            .await?
-            .parsed()
-            .to_owned();
+            .await
+            .map_err(Error::from)
+        {
+            Ok(p) => p.parsed().to_owned(),
+            Err(Error::Protocol { source }) => {
+                info!("presentation definition resolution is failed, handling an authorization error response...");
+                let source = self
+                    .handle_auth_error_resp(aro.return_uri(), aro.response_mode(), source)
+                    .await?;
 
-        let state = aro.state();
+                return Err(Error::Protocol { source });
+            }
+            Err(e) => return Err(e),
+        };
 
         Ok(ResolvedAuthRequest {
             client_id: aro.client_id().0.to_owned(),
@@ -356,7 +402,7 @@ where
             response_type: aro.response_type().to_owned(),
             response_mode: aro.response_mode().to_owned(),
             response_uri: aro.return_uri().to_owned(),
-            state,
+            state: aro.state(),
         })
     }
 
@@ -390,10 +436,15 @@ where
                         "matching credentials are not found",
                         auth_request.state.clone(),
                     );
-                    self.submit_auth_error_resp(&auth_request.response_uri, &err)
+                    let source = self
+                        .handle_auth_error_resp(
+                            &auth_request.response_uri,
+                            &auth_request.response_mode,
+                            err,
+                        )
                         .await?;
 
-                    CredentialNotFoundSnafu.fail()?
+                    return Err(Error::Protocol { source });
                 };
 
                 self.create_presentation_by_input(cred, presentation_input, auth_request)
@@ -467,17 +518,17 @@ where
     async fn decline_authorization_request(
         &self,
         auth_request: &ResolvedAuthRequest,
-    ) -> Result<()> {
+    ) -> Result<Option<Url>> {
         info!("presentation request is declined, sending an authorization error response to the verifier...");
         let err = ProtocolError::access_denied(
             "consent to share the presentation is not given",
             auth_request.state.clone(),
         );
-        let _ = self
-            .submit_auth_error_resp(&auth_request.response_uri, &err)
+        let err = self
+            .handle_auth_error_resp(&auth_request.response_uri, &auth_request.response_mode, err)
             .await?;
 
-        Ok(())
+        Ok(err.redirect_uri().cloned())
     }
 }
 
@@ -610,6 +661,7 @@ mod tests {
     use oauth2::http::Method;
     use oauth2::reqwest::StatusCode;
     use oauth2::HttpResponse;
+    use openid4vp::core::authorization_request::parameters::ResponseMode;
     use openid4vp::core::response::PostRedirection;
     use rstest::rstest;
     use sd_jwt_rs::utils::decode_sd_jwt;
@@ -824,6 +876,29 @@ mod tests {
             .unwrap();
     }
 
+    #[tokio::test]
+    async fn same_device_flow_present_credential_auto_failure_case_returns_redirect_uri_in_error() {
+        let mut test_case = request_unsupported_credential_format_case();
+        test_case.request.response_mode = ResponseMode::Fragment;
+
+        let kms = LocalKms::new();
+        let vault = test_case.prepare_vault(&kms).await;
+
+        let holder = holder_service(MockHttpClient::new(), kms, vault).await;
+
+        // Send auth response
+        let result = holder
+            .present_credentials_auto(&test_case.request, &test_case.response_metadata)
+            .await;
+
+        match result {
+            Err(Error::Protocol { source }) => {
+                assert_eq!(source.redirect_uri().unwrap().to_string(), "http://127.0.0.1:55796/auth#error=vp_formats_not_supported&error_description=vp+format+%3D+%27jwt_vc_json%27+with+%7B%22alg_values_supported%22%3A%5B%22RS256%22%5D%7D+algorithms+is+not+supported");
+            }
+            _ => panic!("Expected protocol error, got {:?}", result),
+        }
+    }
+
     #[rstest]
     #[should_panic]
     #[case::request_unsupported_credential_format_with_state(
@@ -990,7 +1065,7 @@ mod tests {
 
     #[rstest]
     #[case::requested_credential_not_exist_case(requested_credential_not_exist_case())]
-    #[should_panic(expected = "Credential not found")]
+    #[should_panic(expected = "matching credentials are not found")]
     #[tokio::test]
     async fn present_credential_auto_fails_when_credentials_are_not_found(
         #[case] test_case: PresentationTestCase,
@@ -1294,6 +1369,31 @@ mod tests {
             .decline_authorization_request(&serde_json::from_str(AUTH_REQUEST).unwrap())
             .await
             .unwrap();
+    }
+
+    #[tokio::test]
+    async fn decline_authorization_request_returns_url_in_same_device_flow() {
+        let holder =
+            holder_service(MockHttpClient::new(), LocalKms::new(), InMemVault::new()).await;
+        let mut auth_req: serde_json::Map<String, serde_json::Value> =
+            serde_json::from_str(AUTH_REQUEST).unwrap();
+        auth_req.insert(
+            "response_mode".to_string(),
+            serde_json::Value::String("fragment".to_string()),
+        );
+
+        let redirect_url = holder
+            .decline_authorization_request(
+                &serde_json::from_value(serde_json::Value::Object(auth_req)).unwrap(),
+            )
+            .await
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(
+            redirect_url.fragment().unwrap(),
+            "error=access_denied&error_description=consent+to+share+the+presentation+is+not+given"
+        );
     }
 
     async fn find_credentials(case: PresentationTestCase) {

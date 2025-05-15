@@ -1,3 +1,4 @@
+use crate::vc::oid4vp::Url;
 use common_macros::DebugError;
 use serde::{Deserialize, Serialize};
 use snafu::Snafu;
@@ -26,6 +27,8 @@ pub struct ProtocolError {
     error_description: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     state: Option<String>,
+    #[serde(skip_serializing)]
+    redirect_uri: Option<Url>,
 }
 
 impl ProtocolError {
@@ -40,6 +43,14 @@ impl ProtocolError {
         &self.state
     }
 
+    pub fn set_redirect_uri(&mut self, uri: Option<Url>) {
+        self.redirect_uri = uri;
+    }
+
+    pub fn redirect_uri(&self) -> Option<&Url> {
+        self.redirect_uri.as_ref()
+    }
+
     pub fn new(
         error_type: ErrorType,
         error_description: Option<String>,
@@ -49,6 +60,7 @@ impl ProtocolError {
             error: error_type,
             error_description,
             state,
+            redirect_uri: None,
         }
     }
 
@@ -69,12 +81,13 @@ impl ProtocolError {
     }
 }
 
-impl ProtocolSnafu<ErrorType, Option<String>, Option<String>> {
+impl ProtocolSnafu<ErrorType, Option<String>, Option<String>, Option<Url>> {
     pub fn new(error: ErrorType, description: String, state: String) -> Self {
         Self {
             error,
             error_description: Some(description),
             state: Some(state),
+            redirect_uri: None,
         }
     }
 }

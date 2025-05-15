@@ -134,19 +134,23 @@ impl OID4VPHolder {
 
     /// Decline the authorization request by sending authorization error response to the `response_uri` endpoint.
     ///
+    /// @returns {string | null}
+    /// An optional redirect URL(in case of Same Device Flow) where the error response is embedded as a fragment.
+    ///
     /// @param {AuthorizationRequest} authRequest - the resolved authorization request.
     #[napi]
     pub async fn decline_authorization_request(
         &self,
         auth_request: AuthorizationRequest,
-    ) -> Result<()> {
+    ) -> Result<Option<String>> {
         let auth_request: ResolvedAuthRequest = auth_request.try_into()?;
-        self.0
+        let redirect_url = self
+            .0
             .decline_authorization_request(&auth_request)
             .await
             .map_err(|err| Error::from_reason(err.to_string()))?;
 
-        Ok(())
+        Ok(redirect_url.map(|url| url.to_string()))
     }
 }
 

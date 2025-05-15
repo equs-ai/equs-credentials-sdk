@@ -175,17 +175,23 @@ impl OID4VPHolder {
     /// Decline the authorization request by sending authorization error response to the `response_uri` endpoint.
     ///
     /// @param {AuthorizationRequest} auth_request - the resolved authorization request.
+    ///
+    /// @returns {string | null}
+    /// An optional redirect URL(in case of Same Device Flow) where the error response is embedded as a fragment.
     #[wasm_bindgen(js_name = declineAuthorizationRequest)]
     pub async fn decline_authorization_request(
         &self,
         auth_request: AuthorizationRequest,
-    ) -> Result<(), JsError> {
+    ) -> Result<Option<String>, JsError> {
         let auth_request = utils::convert_to_rust_object(auth_request)?;
 
-        self.0
+        let redirect_url = self
+            .0
             .decline_authorization_request(&auth_request)
             .await
-            .map_err(|err| JsError::new(&format!("{:?}", err)))
+            .map_err(|err| JsError::new(&format!("{:?}", err)))?;
+
+        Ok(redirect_url.map(|url| url.to_string()))
     }
 }
 

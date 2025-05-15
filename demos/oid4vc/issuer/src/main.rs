@@ -572,6 +572,9 @@ fn sample_issuer_metadata(iss_url: &str, authz_url: &str) -> IssuerMetadata {
           "authorization_servers": [authz_url],
           "credential_endpoint": iss_url.to_owned()+"/credential",
           "nonce_endpoint": iss_url.to_owned()+"/nonce",
+          "batch_credential_issuance": {
+            "batch_size": 2
+          },
           "credential_configurations_supported": {
             SD_JWT_CRED_DEF: {
               "format": "dc+sd-jwt",
