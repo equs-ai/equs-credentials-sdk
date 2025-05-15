@@ -51,7 +51,7 @@ pkg_clean:
 
 build: $(WASM_DIR) pkg_clean
 	cd $<
-	wasm-pack build $(BUILD_MODE) --target $(WASM_TARGET) --out-name index $(FEATURES_OPTION)
+	RUSTFLAGS="--cfg getrandom_backend=\"wasm_js\"" wasm-pack build $(BUILD_MODE) --target $(WASM_TARGET) --out-name index $(FEATURES_OPTION)
 	$(SED_INPLACE) "s|\"name\": \"[^\"]*\"|\"name\": \"$(PKG_NAME)\"|g" $(WASM_PKG_DIR)/package.json
 	$(SED_INPLACE) "s|\"version\": \"[^\"]*\"|\"version\": \"$(PKG_VERSION)\"|g" $(WASM_PKG_DIR)/package.json
 	$(SED_INPLACE) "s|\"main\": \"[^\"]*\"|\"main\": \"$(PKG_MAIN)\"|g" $(WASM_PKG_DIR)/package.json

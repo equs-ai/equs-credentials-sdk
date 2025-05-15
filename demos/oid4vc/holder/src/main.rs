@@ -355,7 +355,7 @@ async fn present_credential(
 
     let mut input = input_from_console("Failed to read presentation mode");
 
-    let redirect_url = match input.as_str() {
+    let presentation_result = match input.as_str() {
         "1" => {
             println!("2. Holder sends authorization/presentation response to Verifier!");
 
@@ -363,7 +363,6 @@ async fn present_credential(
             holder
                 .present_credentials_auto(auth_request, &auth_response_metadata)
                 .await
-                .unwrap()
         }
         "2" => {
             let credentials = holder
@@ -397,10 +396,17 @@ async fn present_credential(
             holder
                 .present_credentials(auth_request, &selected, &auth_response_metadata)
                 .await
-                .unwrap()
         }
         _ => {
             panic!("Invalid input, please retry the flow");
+        }
+    };
+
+    let redirect_url = match presentation_result {
+        Ok(redirect_url) => redirect_url,
+        Err(oid4vp::Error::Protocol { source }) => source.redirect_uri().cloned(),
+        Err(e) => {
+            panic!("Internal error while presenting credentials, {e}");
         }
     };
 
@@ -709,7 +715,7 @@ const INPUT_DESCRIPTOR_FOR_CRED_DEF_1: &str = r#"{
               "optional": false
             },
           {
-            "path": ["$.email.work"],
+            "path": ["$.email.corporative"],
             "optional": false
           }
         ]

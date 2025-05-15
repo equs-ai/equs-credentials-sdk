@@ -172,6 +172,9 @@ pub trait Holder: WasmNotSend + WasmNotSync {
     ///
     /// # Errors
     ///
+    /// *NOTE:* In case of Same Device Flow, `redirect_uri` field of `Error` must contain URL where
+    /// authorization error response is embedded as a fragment.
+    ///
     /// * [ProtocolError] - if the validation of authorization request fails
     /// * [InternalError::UrlParse] - if the request URI is invalid
     /// * [InternalError::Oid4VpLib] - if the resolution of the authorization request fails.
@@ -197,6 +200,9 @@ pub trait Holder: WasmNotSend + WasmNotSync {
     ///
     /// # Errors
     ///
+    /// *NOTE:* In case of Same Device Flow, `redirect_uri` field of `Error` must contain URL where
+    /// authorization error response is embedded as a fragment.
+    ///
     /// * [InternalError::PresentationExchange] - if there is an issue with parsing the presentation metadata.
     /// * [InternalError::VC] - if a required credential is not found.
     /// * [InternalError::AuthorizationResponse] - if the submission of the authorization response fails.
@@ -219,6 +225,9 @@ pub trait Holder: WasmNotSend + WasmNotSync {
     ///
     /// # Errors
     ///
+    /// *NOTE:* In case of Same Device Flow, `redirect_uri` field of `Error` must contain URL where
+    /// authorization error response is embedded as a fragment.
+    ///
     /// * [InternalError::PresentationExchange] - If there is an issue with parsing the presentation metadata.
     /// * [InternalError::VC] - If an error occurs in the `vc::core` during credential search and extraction
     async fn find_vcs_for_presentation(
@@ -240,6 +249,9 @@ pub trait Holder: WasmNotSend + WasmNotSync {
     ///
     /// # Errors
     ///
+    /// *NOTE:* In case of Same Device Flow, `redirect_uri` field of `Error` must contain URL where
+    /// authorization error response is embedded as a fragment.
+    ///
     /// * [InternalError::PresentationExchange] - If there is an issue with parsing the presentation metadata.
     /// * [InternalError::Parse] - if there is an issue with parsing the generated authorization response.
     /// * [InternalError::AuthorizationResponse] - if the submission of the authorization response fails.
@@ -255,6 +267,9 @@ pub trait Holder: WasmNotSend + WasmNotSync {
     /// # Arguments
     ///
     /// * `auth_request` - the resolved authorization request.
+    /// # Returns
+    ///
+    /// An optional redirect URL(in case of Same Device Flow) where the error response is embedded as a fragment.
     ///
     /// # Errors
     ///
@@ -262,7 +277,7 @@ pub trait Holder: WasmNotSend + WasmNotSync {
     async fn decline_authorization_request(
         &self,
         auth_request: &ResolvedAuthRequest,
-    ) -> Result<(), Error>;
+    ) -> Result<Option<Url>, Error>;
 }
 
 /// The `OID4VP` `Verifier` API.
