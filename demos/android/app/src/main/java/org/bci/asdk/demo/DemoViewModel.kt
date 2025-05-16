@@ -91,7 +91,7 @@ class DemoViewModel : ViewModel() {
         val response = holderVc.requestCredential(
             token,
             credDefId,
-            didAndKeyMetadata.keyMetadata
+            arrayListOf(didAndKeyMetadata.keyMetadata)
         )
 
         val credential = (response.data as CredentialResultEnum.Immediate).credentials.first()
