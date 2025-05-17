@@ -30,21 +30,21 @@ Other diagrams:
 See [Components](docs/asdk-components.png).
 #### Implemented
 - VC Formats:
-  - SD-JWT VC (ECDSA, EdDSA)
-  - W3C VC JSON-LD V1 (ECDSA, EdDSA)
-  - W3C VC JSON-LD V2 (ECDSA, EdDSA, BBS+ 2023)
+  - SD-JWT VC (ECDSA, EdDSA) - [draft-ietf-oauth-sd-jwt-vc-08](https://datatracker.ietf.org/doc/draft-ietf-oauth-sd-jwt-vc/)
+  - W3C VC JSON-LD V1 (ECDSA, EdDSA) - [Verifiable Credentials Data Model v1.1](https://www.w3.org/TR/2022/REC-vc-data-model-20220303/)
+  - W3C VC JSON-LD V2 (ECDSA, EdDSA, BBS+ 2023) - [Verifiable Credentials Data Model v2.0](https://www.w3.org/TR/vc-data-model-2.0/)
 - VC Exchange Protocols:
-    - OID4VCI (draft 14)
+    - OID4VCI [draft 14](https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0-14.html)
         - Authorization Code Flow using scope Parameter to Request Issuance of a Credential
         - Preauthorized Code Flow using scope Parameter to Request Issuance of a Credential
           - **NOTE**: The generation and validation of the access token is delegated to the application side.
-    - OID4VP (draft 20)
+    - OID4VP [draft 20](https://openid.net/specs/openid-4-verifiable-presentations-1_0-20.html)
         - DIF.PresentationExchange query language to request the presentations
         - Cross Device Flow
         - Same Device Flow
-        - SIOPv2 extension (draft 13)
+        - SIOPv2 extension [draft 13](https://openid.net/specs/openid-connect-self-issued-v2-1_0.html)
 - VC Status:
-  - Token Status List (draft-07)
+  - Token Status List [draft-ietf-oauth-status-list-07](https://datatracker.ietf.org/doc/draft-ietf-oauth-status-list/07/)
     - Supported Format
       - JWT
 - DID methods
