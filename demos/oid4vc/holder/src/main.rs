@@ -715,7 +715,7 @@ const INPUT_DESCRIPTOR_FOR_CRED_DEF_1: &str = r#"{
               "optional": false
             },
           {
-            "path": ["$.email.corporative"],
+            "path": ["$.email.work"],
             "optional": false
           }
         ]
