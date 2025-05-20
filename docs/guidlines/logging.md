@@ -90,11 +90,11 @@ Each developer must follow these rules when adding the new features into codebas
 ### Logging of sensitive data
 
 For debug purposes it's allowed to log sensitive values with `trace` and `debug` levels.
-Release builds will not reveal any logs with level less that `warn` since there is an option
+Release builds will not reveal any logs with level less that `debug` since there is an option
 in `Cargo.toml` that [blocks it](https://docs.rs/tracing/latest/tracing/level_filters/index.html):
 
 ```
-tracing = { version = "0.1.40", features = ["attributes", "release_max_level_warn"] }
+tracing = { version = "0.1.40", features = ["attributes", "release_max_level_debug"] }
 ```
 
 
