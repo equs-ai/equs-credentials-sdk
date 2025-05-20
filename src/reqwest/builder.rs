@@ -125,7 +125,6 @@ impl ReqwestClientBuilder {
     ///
     /// Returns an instance of `Self` with the `insecure` option enabled.
     ///
-    #[cfg(debug_assertions)]
     #[instrument(level = Level::TRACE, ret())]
     pub fn insecure(mut self) -> Self {
         self.insecure = true;
