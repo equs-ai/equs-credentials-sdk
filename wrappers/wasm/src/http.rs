@@ -244,7 +244,6 @@ impl ReqwestHttpClient {
     }
 
     /// Creates a new `HttpClient` instance with an insecure configuration.
-    #[cfg(debug_assertions)]
     #[wasm_bindgen]
     pub fn insecure() -> Result<ReqwestHttpClient, JsError> {
         agent_sdk::reqwest::builder::ReqwestClientBuilder::new()

@@ -193,11 +193,7 @@ impl ReqwestHttpClient {
     pub fn inner(&self) -> ReqwestClient {
         self.0.clone()
     }
-}
-#[cfg(debug_assertions)]
-#[napi]
-impl ReqwestHttpClient {
-    #[cfg(debug_assertions)]
+
     #[napi(factory)]
     pub fn insecure() -> Result<ReqwestHttpClient> {
         agent_sdk::reqwest::builder::ReqwestClientBuilder::new()
