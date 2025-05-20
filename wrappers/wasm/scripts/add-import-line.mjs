@@ -15,6 +15,7 @@ import fs from "fs/promises";
       "TokenResponse",
       "DIDDocument",
       "WalletMetadata",
+      "Claims",
     ];
     const exported_internal_types = [
       "DIDResolution",

@@ -1,12 +1,20 @@
 use crate::crypto::KeyMetadata;
 use crate::vc::{Credential, CredentialMetadata, JsCredential};
 use agent_sdk::vc::metadata::{CredentialMetadataProcessor, DefaultMetadataProcessor};
+use agent_sdk::vc::HasClaims;
 use js_sys::JSON;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use serde_wasm_bindgen::Serializer;
 use wasm_bindgen::prelude::wasm_bindgen;
 use wasm_bindgen::{JsCast, JsError, JsValue};
+
+#[wasm_bindgen]
+extern "C" {
+
+    #[wasm_bindgen(typescript_type = "Claims")]
+    pub type Claims;
+}
 
 #[wasm_bindgen(js_name = resolveMetadata)]
 pub async fn resolve_metadata(
@@ -24,6 +32,17 @@ pub async fn resolve_metadata(
         .map_err(|err| JsError::new(&format!("{:?}", err)))?;
 
     convert_to_opaque_object_unchecked(credential_metadata)
+}
+
+#[wasm_bindgen(js_name = parseClaims)]
+pub async fn parse_claims(credential: Credential) -> Result<Claims, JsError> {
+    let js_credential: JsCredential = convert_to_rust_object(credential)?;
+    let credential: agent_sdk::vc::Credential = js_credential.try_into()?;
+    let claims = credential
+        .parse_claims()
+        .map_err(|err| JsError::new(&format!("{:?}", err)))?;
+
+    convert_to_opaque_object_unchecked(claims)
 }
 
 #[allow(unused)]
