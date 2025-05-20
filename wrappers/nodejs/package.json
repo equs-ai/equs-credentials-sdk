@@ -1,6 +1,6 @@
 {
   "name": "@equstng/agent-sdk",
-  "version": "0.8.3",
+  "version": "0.8.4",
   "main": "index.js",
   "types": "index.d.ts",
   "napi": {
