@@ -31,7 +31,7 @@ publish_wasm_wrapper:
       cp .npmrc pkg/.npmrc
       cp .npmignore pkg/.npmignore
       cd pkg
-      NPM_TOKEN=${CI_JOB_TOKEN} npm publish --registry=$REGISTRY_URL
+      NPM_TOKEN=${CI_JOB_TOKEN} npm publish --registry=$REGISTRY_URL --tag latest
 
 
 publish_wasm_dev_wrapper:
@@ -46,4 +46,4 @@ publish_wasm_dev_wrapper:
       cp .npmrc pkg/.npmrc
       cp .npmignore pkg/.npmignore
       cd pkg
-      NPM_TOKEN=${CI_JOB_TOKEN} npm publish --registry=$REGISTRY_URL
+      NPM_TOKEN=${CI_JOB_TOKEN} npm publish --registry=$REGISTRY_URL --tag dev

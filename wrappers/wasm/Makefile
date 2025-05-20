@@ -14,10 +14,7 @@ endif
 
 ifeq ($(DEV), true)
     BUILD_MODE = --dev
-    PKG_NAME = $(shell npm pkg get name | tr -d '"')-dev
-else
-    BUILD_MODE =
-    PKG_NAME = $(shell npm pkg get name | tr -d '"')
+    PKG_VERSION = $(shell npm pkg get version | tr -d '"')-dev
 endif
 
 ifndef PROJECT_DIR
