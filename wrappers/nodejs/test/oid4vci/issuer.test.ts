@@ -23,6 +23,8 @@ describe("OID4VCI Issuer: ", () => {
 
     issuer = await new OID4VCIIssuerBuilder(kms, ISSUER_METADATA, keyMetadata)
         .withNonceHandler(mockNonceHandler)
+        .withDefaultCredentialLifetime(3600 * 24)
+        .withCredentialLifetime(CRED_DEF_ID, 3600)
         .build();
   });
 

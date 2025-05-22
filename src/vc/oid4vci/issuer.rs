@@ -646,6 +646,7 @@ impl TryInto<CoreProfilesCredentialResponseType> for vc::Credential {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashMap;
     use std::ops::Add;
 
     use crate::did::universal::UniversalResolver;
@@ -750,6 +751,7 @@ mod tests {
             Some(MockNonceHandler::default()),
             SampleIssuerMetadata::with_sdjwtvc_conf(),
             Some(Duration::days(CUSTOM_CRED_LIFETIME)),
+            None,
         )
         .await;
 
@@ -794,6 +796,7 @@ mod tests {
             Some(MockNonceHandler::default()),
             SampleIssuerMetadata::with_sdjwtvc_conf(),
             Some(Duration::days(CUSTOM_CRED_LIFETIME)),
+            None,
         )
         .await;
 
@@ -833,6 +836,7 @@ mod tests {
             Some(MockNonceHandler::default()),
             issuer_metadata,
             Some(Duration::days(CUSTOM_CRED_LIFETIME)),
+            None,
         )
         .await;
 
@@ -858,6 +862,7 @@ mod tests {
             Some(MockNonceHandler::default()),
             SampleIssuerMetadata::with_sdjwtvc_conf(),
             Some(Duration::days(CUSTOM_CRED_LIFETIME)),
+            None,
         )
         .await;
 
@@ -887,6 +892,7 @@ mod tests {
             Some(MockNonceHandler::default()),
             issuer_metadata,
             Some(Duration::days(CUSTOM_CRED_LIFETIME)),
+            None,
         )
         .await;
 
@@ -909,6 +915,7 @@ mod tests {
             Some(MockNonceHandler::default()),
             SampleIssuerMetadata::with_custom_issuer_metadata_for_ldp_vc(),
             Some(Duration::days(CUSTOM_CRED_LIFETIME)),
+            None,
         )
         .await;
 
@@ -948,6 +955,45 @@ mod tests {
                 assert_eq!(false, true);
             }
         }
+    }
+
+    #[tokio::test]
+    async fn credential_lifetime_per_cred_def_id_works() {
+        let cred_req = SampleCredentialRequest::with_cred_configuration_id();
+        let duration = Duration::days(100);
+        let issuer = issuer_service_with_metadata(
+            None,
+            None,
+            Some(MockNonceHandler::default()),
+            SampleIssuerMetadata::with_sdjwtvc_conf(),
+            Some(Duration::days(CUSTOM_CRED_LIFETIME)),
+            Some(HashMap::from([(
+                CredentialConfigurationId::new(CRED_DEF_ID.to_string()),
+                duration,
+            )])),
+        )
+        .await;
+
+        let claims = match issuer
+            .issue_credential(&cred_req, ACCESS_TOKEN, &sample_claims(), None)
+            .await
+            .unwrap()
+            .response_kind()
+        {
+            ResponseEnum::Immediate { credentials } => {
+                let credential: Credential = credentials.first().unwrap().try_into().unwrap();
+                credential.parse_claims().unwrap()
+            }
+            _ => panic!("Expected immediate response kind"),
+        };
+
+        let exp = SdJwtAPI::get_date_time_claim(EXP_CLAIM, &claims)
+            .unwrap()
+            .unix_timestamp();
+
+        let exp_expected = (OffsetDateTime::now_utc() + duration).unix_timestamp();
+        //There seems to be a delay of 1second
+        assert!(i64::abs(exp - exp_expected) < 3);
     }
 
     #[tokio::test]
@@ -1241,6 +1287,7 @@ mod tests {
             None::<LocalNonceHandler>,
             sample_issuer_metadata_without_scope(),
             None,
+            None,
         )
         .await;
         issuer_service
@@ -1275,6 +1322,7 @@ mod tests {
             None,
             Some(MockNonceHandler::default()),
             sample_issuer_metadata_with_incorrect_scope(),
+            None,
             None,
         )
         .await;
@@ -1379,6 +1427,7 @@ mod tests {
             nonce_handler,
             SampleIssuerMetadata::with_sdjwtvc_conf(),
             None,
+            None,
         )
         .await
     }
@@ -1389,6 +1438,7 @@ mod tests {
         nonce_handler: Option<NH>,
         issuer_metadata: IssuerMetadata,
         cred_lifetime: Option<Duration>,
+        cred_lifetime_per_cred_conf_id: Option<HashMap<CredentialConfigurationId, Duration>>,
     ) -> IssuerService<impl vc::core::Issuer, impl HttpClient, impl NonceHandler> {
         let kms = LocalKms::new();
         let introspect = Introspect::new(
@@ -1403,6 +1453,7 @@ mod tests {
             &Default::default(),
             &key_metadata,
             cred_lifetime.unwrap_or(Duration::days(5 * 365)),
+            cred_lifetime_per_cred_conf_id.unwrap_or_default(),
         )
         .unwrap();
 
