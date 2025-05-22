@@ -15,6 +15,7 @@ use crate::vc::oid4vci::CredentialOfferParams;
 use crate::{kms, vault, vc};
 use async_trait::async_trait;
 use common_macros::DebugError;
+use oid4vci::types::CredentialConfigurationId;
 use openidconnect::JsonWebKeySetUrl;
 use snafu::{Location, Snafu};
 use std::collections::HashMap;
@@ -64,7 +65,8 @@ where
     token_params: Option<TokenParams>,
     clock_skew: Option<time::Duration>,
     cred_conf_ids_with_key_metadata: HashMap<String, KeyMetadata>,
-    cred_lifetime: Duration,
+    default_cred_lifetime: Duration,
+    cred_lifetime_per_cred_conf_id: HashMap<CredentialConfigurationId, Duration>,
 
     // services
     kms: KMS,
@@ -120,7 +122,8 @@ where
             nonce_handler: None,
             token_params: None,
             clock_skew: None,
-            cred_lifetime: Duration::days(DEFAULT_CRED_LIFETIME_DAYS),
+            default_cred_lifetime: Duration::days(DEFAULT_CRED_LIFETIME_DAYS),
+            cred_lifetime_per_cred_conf_id: HashMap::new(),
             cred_conf_ids_with_key_metadata: Default::default(),
             did_resolver: UniversalResolver::default(),
             _marker: Default::default(),
@@ -156,7 +159,8 @@ where
             token_params: self.token_params,
             clock_skew: self.clock_skew,
             kms: self.kms,
-            cred_lifetime: self.cred_lifetime,
+            default_cred_lifetime: self.default_cred_lifetime,
+            cred_lifetime_per_cred_conf_id: self.cred_lifetime_per_cred_conf_id,
             nonce_handler: self.nonce_handler,
             cred_conf_ids_with_key_metadata: Default::default(),
             did_resolver: self.did_resolver,
@@ -216,7 +220,8 @@ where
             token_params: self.token_params,
             clock_skew: self.clock_skew,
             kms: self.kms,
-            cred_lifetime: self.cred_lifetime,
+            default_cred_lifetime: self.default_cred_lifetime,
+            cred_lifetime_per_cred_conf_id: self.cred_lifetime_per_cred_conf_id,
             cred_conf_ids_with_key_metadata: Default::default(),
             did_resolver: self.did_resolver,
             _marker: Default::default(),
@@ -279,7 +284,31 @@ where
         skip(self)
     )]
     pub fn with_default_cred_lifetime(mut self, duration: Duration) -> Self {
-        self.cred_lifetime = duration;
+        self.default_cred_lifetime = duration;
+        self
+    }
+
+    /// Sets the credential lifetime for given credential configuration id.
+    ///
+    /// # Arguments
+    ///
+    /// * `duration` - The duration to set for cred lifetime.
+    ///   or other time units supported by `time::Duration`.
+    ///
+    #[instrument(
+        level = Level::TRACE,
+        skip(self)
+    )]
+    pub fn with_credential_lifetime(
+        mut self,
+        credential_configuration_id: String,
+        duration: Duration,
+    ) -> Self {
+        self.cred_lifetime_per_cred_conf_id.insert(
+            CredentialConfigurationId::new(credential_configuration_id),
+            duration,
+        );
+
         self
     }
 
@@ -331,7 +360,8 @@ where
             &self.issuer_metadata,
             &self.cred_conf_ids_with_key_metadata,
             &self.key_metadata,
-            self.cred_lifetime,
+            self.default_cred_lifetime,
+            self.cred_lifetime_per_cred_conf_id,
         )
         .map_err(|e| {
             BuildSnafu {
@@ -705,6 +735,29 @@ mod tests {
             .with_clock_skew(time::Duration::minutes(1))
             .with_http_client(http_client);
 
+        let result = builder.build().await;
+
+        result.unwrap();
+    }
+
+    #[tokio::test]
+    async fn building_issuer_works_when_cred_lifetime_is_set_per_cred_conf_id() {
+        let http_client = MockHttpClient::new();
+        let kms = LocalKms::new();
+        let nonce_gen = LocalNonceHandler::default();
+        let (_, key_metadata) = create_did_and_key_metadata(&kms).await;
+
+        let mut metadata = SampleIssuerMetadata::with_sdjwtvc_conf();
+        metadata = metadata.set_nonce_endpoint(None);
+
+        let cred_configuration_id = metadata
+            .credential_configurations_supported()
+            .first()
+            .unwrap()
+            .id()
+            .to_string();
+        let builder = IssuerBuilder::new(kms, metadata, key_metadata)
+            .with_credential_lifetime(cred_configuration_id, Duration::days(365));
         let result = builder.build().await;
 
         result.unwrap();

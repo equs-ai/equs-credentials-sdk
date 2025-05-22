@@ -25,6 +25,7 @@ async function main(): Promise<void> {
     config.issuerMetadata,
     keyMetadata,
   )
+    .withCredentialLifetime("SD_JWT_cred_1", 3600 * 24 * 365)
     .withNonceHandler(nonceHandler)
     .build();
 

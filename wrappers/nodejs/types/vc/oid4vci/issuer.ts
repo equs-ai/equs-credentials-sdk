@@ -20,12 +20,15 @@ export class OID4VCIIssuerBuilder {
   private tokenValidation?: TokenValidation;
   private clockSkew?: Duration;
   private dedicatedKeys: Record<string, KeyMetadata>;
+  private credentialLifetimes: Record<string, Duration>;
+  private defaultCredentialLifetime?: Duration;
 
   constructor(kms: Kms, issuerMetadata: OID4VCIIssuerMetadata, keyMetadata: KeyMetadata) {
     this.kms = kms;
     this.issuerMetadata = issuerMetadata;
     this.keyMetadata = keyMetadata;
     this.dedicatedKeys = {};
+    this.credentialLifetimes = {};
   }
 
   withNonceHandler(nonceHandler: NonceHandler): this {
@@ -59,6 +62,20 @@ export class OID4VCIIssuerBuilder {
     return this;
   }
 
+  withCredentialLifetime(credentialConfigurationId: string, duration: number): this {
+    this.credentialLifetimes = {
+      [credentialConfigurationId]: { seconds: duration, nanoseconds: 0 },
+    };
+
+    return this;
+  }
+
+  withDefaultCredentialLifetime(duration: number): this {
+    this.defaultCredentialLifetime = { seconds: duration, nanoseconds: 0 };
+
+    return this;
+  }
+
   async build(): Promise<OID4VCIIssuer> {
     return await buildVciIssuer(
       contextEnsuredKms(this.kms),
@@ -68,6 +85,8 @@ export class OID4VCIIssuerBuilder {
       this.tokenValidation,
       this.clockSkew,
       this.dedicatedKeys || {},
+      this.defaultCredentialLifetime,
+      this.credentialLifetimes,
     );
   }
 }

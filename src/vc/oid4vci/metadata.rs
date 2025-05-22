@@ -8,6 +8,7 @@ use oid4vci::core::profiles::{
 };
 use oid4vci::metadata::credential_issuer::CredentialConfiguration;
 use oid4vci::proof_of_possession::KeyProofType;
+use oid4vci::types::CredentialConfigurationId;
 use snafu::{Location, ResultExt, Snafu};
 use std::collections::HashMap;
 use std::fmt::Debug;
@@ -42,19 +43,23 @@ pub fn convert_metadata(
     issuer_metadata: &IssuerMetadata,
     cred_def_ids_with_key_metadata: &HashMap<String, KeyMetadata>,
     default_key_metadata: &KeyMetadata,
-    cred_lifetime: Duration,
+    default_cred_lifetime: Duration,
+    cred_lifetime_per_cred_conf_id: HashMap<CredentialConfigurationId, Duration>,
 ) -> Result<vc::core::IssuerMetadata> {
     let cred_defs = issuer_metadata
         .credential_configurations_supported()
         .iter()
         .map(|cc| {
+            let cred_lifetime = cred_lifetime_per_cred_conf_id
+                .get(cc.id())
+                .unwrap_or(&default_cred_lifetime);
             cred_definition(
                 cc.id(),
                 cc,
                 cred_def_ids_with_key_metadata
                     .get(cc.id().as_str())
                     .unwrap_or(default_key_metadata),
-                cred_lifetime,
+                cred_lifetime.to_owned(),
             )
         })
         .collect::<Result<Vec<CredentialDefinition>>>()?;
@@ -285,6 +290,7 @@ mod tests {
             &HashMap::from([(CRED_DEF_ID.to_owned(), cred_def_key_metadata)]),
             &default_key_metadata,
             Duration::days(5 * 365),
+            Default::default(),
         )
         .unwrap();
 

@@ -118,6 +118,7 @@ pub async fn _build_vci_issuer(
     clock_skew: Option<JsDuration>,
     dedicated_keys: HashMap<String, JsKeyMetadata>,
     cred_lifetime: Option<JsDuration>,
+    cred_lifetime_per_cred_conf_id: HashMap<String, JsDuration>,
     did_resolver: Option<JsDIDResolver>,
 ) -> Result<OID4VCIIssuer> {
     let issuer_metadata: IssuerMetadata =
@@ -132,6 +133,10 @@ pub async fn _build_vci_issuer(
 
     if let Some(cred_lifetime) = cred_lifetime {
         builder = builder.with_default_cred_lifetime(cred_lifetime.try_into()?);
+    }
+
+    for (cred_conf_id, lifetime) in cred_lifetime_per_cred_conf_id {
+        builder = builder.with_credential_lifetime(cred_conf_id, lifetime.try_into()?);
     }
 
     if let Some(did_resolver) = did_resolver {
