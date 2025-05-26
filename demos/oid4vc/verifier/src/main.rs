@@ -365,14 +365,21 @@ pub fn default_dcql_qury() -> DCQL {
                 {
                     "id": "1",
                     "path": ["username"],
-                    "values": ["John Doe", "John", "Jon"],
                 },
                 {
                     "id": "2",
                     "path": ["email", "work"]
-                }
+                },
+                {
+                    "id": "3",
+                    "path": ["age_over_18"]
+                },
+                {
+                    "id": "4",
+                    "path": ["country"]
+                },
             ],
-            "claim_sets": [[1], [2]]
+            "claim_sets": [["1"], ["2"], ["3"], ["4"]]
         }
     ))
     .unwrap();
