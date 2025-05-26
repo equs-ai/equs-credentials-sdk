@@ -8,14 +8,16 @@ import fs from "fs/promises";
     const jsFile = "pkg/index.js";
     const encoding = "utf8";
 
-    let typesContent = await fs.readFile(typesFile, encoding);
-    let jsContent = await fs.readFile(jsFile, encoding);
-    let exportTypesStr = `export * from \"${externalTypesFilePath}\";\n`;
-    let exportDistStr = `export * from \"${internalTypesFilePath}\";\n`;
-    let exportJsStr = `\nmodule.exports = require(\"${internalTypesFilePath}\");\n`;
+    const typesContent = await fs.readFile(typesFile, encoding);
+    const jsContent = await fs.readFile(jsFile, encoding);
+    const exportTypesStr = `export * from \"${externalTypesFilePath}\";\n`;
+    const exportDistStr = `export * from \"${internalTypesFilePath}\";\n`;
+    const exportTypesJsStr = `\nconst internalTypes = require(\"${internalTypesFilePath}\");\n`;
+    const exportDistJsStr = `\nconst externalTypes = require(\"${externalTypesFilePath}\");\n`;
+    const exportJsStr = `module.exports = {...internalTypes, ...externalTypes}`;
 
     await fs.writeFile(typesFile, exportTypesStr + exportDistStr + typesContent, encoding);
-    await fs.writeFile(jsFile, exportJsStr + jsContent, encoding);
+    await fs.writeFile(jsFile, exportTypesJsStr + exportDistJsStr + exportJsStr + jsContent, encoding);
 
     console.log(`Added import and export lines in ${typesFile}`);
   } catch (error) {

@@ -11,15 +11,16 @@ use agent_sdk::vc::core::KeyMetadata;
 
 use agent_sdk::did::universal::UniversalResolver;
 use agent_sdk::inmem::nonce::LocalNonceHandler;
-use agent_sdk::vc::oid4vp;
+use agent_sdk::vc::dcql::{DCQLCredential, DCQL};
 use agent_sdk::vc::oid4vp::{
     AuthResponseOptions, AuthorizationResponse, ClientMetadata, PassAuthRequestObject,
-    PresentationSession, ResponseMode, ResponseType,
+    PresentationSession, ResolvedPresentationQuery, ResponseMode, ResponseType,
 };
 use agent_sdk::vc::presentation_exchange::{
-    ClaimFormatDesignation, ClaimFormatMap, ClaimFormatPayload, Constraints, ConstraintsField,
-    InputDescriptor, JsonPath, PresentationDefinition,
+    ClaimFormatMap, ClaimFormatPayload, Constraints, ConstraintsField, InputDescriptor,
+    PresentationDefinition, PresentationSubmission,
 };
+use agent_sdk::vc::{oid4vp, ClaimFormatDesignation, JsonPath};
 use reqwest::Url;
 use serde_json::json;
 use std::collections::HashMap;
@@ -29,9 +30,9 @@ use uuid::Uuid;
 
 const SERVER_URL: &str = "http://localhost:8098";
 const AUTH_REQUEST_URL_PATH: &str = "/request_uri";
+const AUTH_REQUEST_URL_PATH_FOR_DCQL: &str = "/request_uri/dcql";
 const AUTH_REQUEST_OBJECT_URL_PATH: &str = "/request";
 const AUTH_RESPONSE_URL_PATH: &str = "/present";
-
 struct AppState {
     verifier: Arc<dyn oid4vp::Verifier>,
     auth_req_obj_storage: InMemStorage<String, Option<String>>,
@@ -52,6 +53,10 @@ async fn main() -> std::io::Result<()> {
             .route(
                 AUTH_REQUEST_URL_PATH,
                 web::get().to(presentation_request_uri),
+            )
+            .route(
+                AUTH_REQUEST_URL_PATH_FOR_DCQL,
+                web::get().to(dcql_request_uri),
             )
             .route(
                 AUTH_REQUEST_OBJECT_URL_PATH,
@@ -100,7 +105,7 @@ async fn presentation_request_uri(state: web::Data<AppState>) -> HttpResponse {
     let (auth_req, session) = state
         .verifier
         .create_authorization_request(
-            &default_presentation_definition(),
+            &ResolvedPresentationQuery::PresentationDefinition(default_presentation_definition()),
             &auth_resp_config,
             &pass_auth_req_object,
             None,
@@ -116,7 +121,7 @@ async fn presentation_request_uri(state: web::Data<AppState>) -> HttpResponse {
 
     state
         .presentation_session_storage
-        .put(session.presentation_definition.id().to_owned(), session)
+        .put("pd".to_string(), session)
         .await
         .unwrap();
 
@@ -125,6 +130,48 @@ async fn presentation_request_uri(state: web::Data<AppState>) -> HttpResponse {
         .body(auth_req.to_string())
 }
 
+async fn dcql_request_uri(state: web::Data<AppState>) -> HttpResponse {
+    let response_uri =
+        Url::parse(format!("{}{}", SERVER_URL, AUTH_RESPONSE_URL_PATH).as_str()).unwrap();
+    let request_uri =
+        Url::parse(format!("{}{}", SERVER_URL, AUTH_REQUEST_OBJECT_URL_PATH).as_str()).unwrap();
+
+    let auth_resp_config = AuthResponseOptions {
+        type_: ResponseType::VpTokenIdToken,
+        mode: ResponseMode::DirectPost,
+        submission_uri: response_uri,
+        state: None,
+    };
+
+    let pass_auth_req_object = PassAuthRequestObject::ByReference(request_uri.clone());
+
+    let (auth_req, session) = state
+        .verifier
+        .create_authorization_request(
+            &ResolvedPresentationQuery::DCQL(default_dcql_qury()),
+            &auth_resp_config,
+            &pass_auth_req_object,
+            None,
+        )
+        .await
+        .unwrap();
+
+    state
+        .auth_req_obj_storage
+        .put(request_uri.to_string(), session.auth_request_jwt.to_owned())
+        .await
+        .unwrap();
+
+    state
+        .presentation_session_storage
+        .put("dcql".to_string(), session)
+        .await
+        .unwrap();
+
+    HttpResponse::Ok()
+        .content_type("text/plain")
+        .body(auth_req.to_string())
+}
 async fn presentation_response(
     state: web::Data<AppState>,
     req: web::Form<HashMap<String, String>>,
@@ -141,12 +188,20 @@ async fn presentation_response(
 
     let wallet_auth_resp = auth_resp_from_submitted_form(&req);
 
-    let session = state
-        .presentation_session_storage
-        .get(wallet_auth_resp.presentation_submission.definition_id())
-        .await
-        .unwrap()
-        .unwrap();
+    let session = match wallet_auth_resp.clone().presentation_submission {
+        Some(_presentation_submission) => state
+            .presentation_session_storage
+            .get(&"pd".to_string())
+            .await
+            .unwrap()
+            .unwrap(),
+        None => state
+            .presentation_session_storage
+            .get(&"dcql".to_string())
+            .await
+            .unwrap()
+            .unwrap(),
+    };
 
     let result = state
         .verifier
@@ -179,14 +234,19 @@ fn auth_resp_from_submitted_form(
     let vp_token_str = form.get("vp_token").unwrap();
     let vp_token =
         serde_json::from_str(vp_token_str).unwrap_or(serde_json::to_value(vp_token_str).unwrap());
-    let presentation_submission =
-        serde_json::from_str(form.get("presentation_submission").unwrap()).unwrap();
+
+    let mut ps: Option<PresentationSubmission> = None;
+    if let Some(val) = form.get("presentation_submission") {
+        if let Ok(raw) = serde_json::from_str(val) {
+            ps = Some(raw);
+        }
+    }
     let id_token = form.get("id_token").cloned();
     let state = form.get("state").cloned();
 
     AuthorizationResponse {
         vp_token,
-        presentation_submission,
+        presentation_submission: ps,
         id_token,
         state,
     }
@@ -294,6 +354,30 @@ pub fn default_presentation_definition() -> PresentationDefinition {
             serde_json::from_str(INPUT_DESCRIPTOR_FOR_JSON_LD_V2_CRED_DEF).unwrap(),
         )
         .set_name("Example with selective disclosure".to_owned())
+}
+
+pub fn default_dcql_qury() -> DCQL {
+    let desc: DCQLCredential = serde_json::from_value(json!(
+        {
+            "id": "pid",
+            "format": "dc+sd-jwt",
+            "claims": [
+                {
+                    "id": "1",
+                    "path": ["username"],
+                    "values": ["John Doe", "John", "Jon"],
+                },
+                {
+                    "id": "2",
+                    "path": ["email", "work"]
+                }
+            ],
+            "claim_sets": [[1], [2]]
+        }
+    ))
+    .unwrap();
+
+    DCQL::new(vec![desc])
 }
 
 const INPUT_DESCRIPTOR_FOR_JSON_LD_V1_CRED_DEF: &str = r#"{

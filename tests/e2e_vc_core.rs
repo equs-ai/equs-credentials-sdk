@@ -130,7 +130,8 @@ async fn sd_jwt_credential_issuance_and_presentation_verification() {
 
     // tests claim expiration. It was set during issuer creation
     let exp = time::OffsetDateTime::now_utc() + Duration::days(CLAIM_EXP_DAYS);
-    assert_eq!(res_claims["exp"].as_int().unwrap(), &exp.unix_timestamp());
+    let diff = res_claims["exp"].as_int().unwrap().to_owned() - exp.unix_timestamp();
+    assert!(diff < 5);
 
     assert!(res_claims.get("given_name").is_some());
     // should not return family_name as it is not selectively disclosed

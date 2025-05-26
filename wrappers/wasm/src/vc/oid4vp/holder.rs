@@ -83,7 +83,7 @@ impl OID4VPHolder {
         auth_request: AuthorizationRequest,
         metadata: Option<AuthorizationResponseMetadata>,
     ) -> Result<Option<String>, JsError> {
-        let auth_request = utils::convert_to_rust_object(auth_request)?;
+        let auth_request = utils::convert_to_rust_object(auth_request.getAuthRequest())?;
         let metadata = metadata
             .map(utils::convert_to_rust_object)
             .transpose()?
@@ -119,7 +119,7 @@ impl OID4VPHolder {
         &self,
         auth_request: AuthorizationRequest,
     ) -> Result<CredentialsMapping, JsError> {
-        let auth_request = utils::convert_to_rust_object(auth_request)?;
+        let auth_request = utils::convert_to_rust_object(auth_request.getAuthRequest())?;
 
         let credentials_mapping = self
             .0
@@ -154,7 +154,7 @@ impl OID4VPHolder {
         credential_mapping: CredentialMapping,
         metadata: Option<AuthorizationResponseMetadata>,
     ) -> Result<Option<String>, JsError> {
-        let auth_request = utils::convert_to_rust_object(auth_request)?;
+        let auth_request = utils::convert_to_rust_object(auth_request.getAuthRequest())?;
         let credential_mapping = utils::convert_to_rust_object(credential_mapping)
             .map_err(|err| JsError::new(&format!("{:?}", err)))
             .and_then(convert_from_js_credential_mapping)?;
@@ -183,7 +183,7 @@ impl OID4VPHolder {
         &self,
         auth_request: AuthorizationRequest,
     ) -> Result<Option<String>, JsError> {
-        let auth_request = utils::convert_to_rust_object(auth_request)?;
+        let auth_request = utils::convert_to_rust_object(auth_request.getAuthRequest())?;
 
         let redirect_url = self
             .0

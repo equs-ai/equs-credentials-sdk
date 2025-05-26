@@ -8,7 +8,10 @@ use crate::vault::{
 use crate::vc::claims::Claims;
 use crate::vc::core::api::PresentationRestrictionValue;
 use crate::vc::core::{PresentationInput, PresentationRestriction};
-use crate::vc::{formats, Credential, HasClaims, HasVCFormat, Presentation};
+use crate::vc::{
+    formats, ClaimFormatDesignation, Credential, HasClaims, HasVCFormat, JsonPath, Presentation,
+    RequestedPresentation,
+};
 use common_macros::DebugError;
 use jsonpath_rust::JsonPathValue;
 use openid4vp::core::presentation_submission::NoClaimsDecoder;
@@ -20,7 +23,6 @@ use std::fmt::Debug;
 use std::str::FromStr;
 use tracing::{instrument, Level};
 use uuid::Uuid;
-
 // IDE removes Level from imports due to absence of usage. This way it is used now
 type Level_ = Level;
 
@@ -28,7 +30,6 @@ pub type Constraints = openid4vp::core::input_descriptor::Constraints;
 pub type ConstraintsField = openid4vp::core::input_descriptor::ConstraintsField;
 pub type ClaimFormatMap = openid4vp::core::credential_format::ClaimFormatMap;
 pub type ClaimFormat = openid4vp::core::credential_format::ClaimFormat;
-pub type ClaimFormatDesignation = openid4vp::core::credential_format::ClaimFormatDesignation;
 pub type ClaimFormatPayload = openid4vp::core::credential_format::ClaimFormatPayload;
 pub type DescriptorMap = openid4vp::core::presentation_submission::DescriptorMap;
 pub type InputDescriptor = openid4vp::core::input_descriptor::InputDescriptor;
@@ -42,7 +43,6 @@ pub type SubmissionRequirementBase =
 pub type SubmissionRequirementPick =
     openid4vp::core::presentation_definition::SubmissionRequirementPick;
 pub type GroupId = openid4vp::core::input_descriptor::GroupId;
-pub type JsonPath = serde_json_path::JsonPath;
 pub type StatusSize = ssi_status::token_status_list::StatusSize;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -75,7 +75,9 @@ enum FieldFilterProperties {
 #[non_exhaustive]
 pub enum Error {
     #[snafu(display("Unsupported format: {format}"))]
-    FormatNotSupported { format: String },
+    FormatNotSupported {
+        format: String,
+    },
     #[snafu(display("Parse error: {details}"))]
     Parse {
         details: String,
@@ -105,16 +107,13 @@ pub enum Error {
     },
 
     #[snafu(display("Json path creation error"))]
-    JsonPathCreation { source: serde_json_path::ParseError },
+    JsonPathCreation {
+        source: serde_json_path::ParseError,
+    },
+    NotFound,
 }
 
 pub type Result<T> = core::result::Result<T, Error>;
-
-#[derive(Debug, Clone)]
-pub(crate) struct RequestedPresentation {
-    pub id: String,
-    pub presentation: Presentation,
-}
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct PresentationResponse {
@@ -173,10 +172,9 @@ pub fn resolve_presentation_response(
     presentation_definition: &PresentationDefinition,
 ) -> Result<Vec<RequestedPresentation>> {
     let mut result: Vec<RequestedPresentation> = vec![];
-
     for input_descriptor in presentation_definition.input_descriptors() {
-        let descriptor_map = presentation_response
-            .presentation_submission
+        let ps = presentation_response.clone().presentation_submission;
+        let descriptor_map = ps
             .descriptor_map()
             .iter()
             .find(|item| item.id == input_descriptor.id);
@@ -199,7 +197,7 @@ pub fn resolve_presentation_response(
             ClaimFormatDesignation::SdJwtVc => {
                 let prs_json = extract_json_presentation(
                     presentation_response,
-                    input_descriptor,
+                    input_descriptor.clone().id,
                     &descriptor_map.path,
                 )?;
 
@@ -228,7 +226,11 @@ pub fn resolve_presentation_response(
                         .build()
                     })?;
 
-                    extract_json_presentation(presentation_response, input_descriptor, &path)?
+                    extract_json_presentation(
+                        presentation_response,
+                        input_descriptor.clone().id,
+                        &path,
+                    )?
                 } else {
                     &presentation_response.presentations
                 };
@@ -262,7 +264,7 @@ pub fn resolve_presentation_response(
 
 fn extract_json_presentation<'a>(
     presentation_response: &'a PresentationResponse,
-    input_descriptor: &'a InputDescriptor,
+    input_descriptor_id: String,
     path: &JsonPath,
 ) -> Result<&'a serde_json::Value> {
     path.query(&presentation_response.presentations)
@@ -271,7 +273,7 @@ fn extract_json_presentation<'a>(
             ParseSnafu {
                 details: format!(
                     "Requested presentation \"{}\" not found by path {}: {}",
-                    input_descriptor.id,
+                    input_descriptor_id,
                     sanitize_log_msg(&path.to_string()),
                     e
                 ),
@@ -282,7 +284,7 @@ fn extract_json_presentation<'a>(
             ParseSnafu {
                 details: format!(
                     "Requested presentation \"{}\" not found by path {}",
-                    input_descriptor.id,
+                    input_descriptor_id,
                     sanitize_log_msg(&path.to_string())
                 ),
             }
@@ -386,12 +388,11 @@ fn process_requested_presentation(
 }
 
 #[instrument(level = Level::TRACE, err(), ret())]
-pub fn split_to_inputs(
+pub fn split_to_inputs_for_pd(
     presentation_definition: &PresentationDefinition,
     claims_to_exclude: Option<&HashMap<String, Vec<String>>>,
 ) -> Result<Vec<PresentationInput>> {
     let mut inputs: Vec<PresentationInput> = vec![];
-
     for desc in presentation_definition.input_descriptors() {
         let mut updated_desc = desc.to_owned();
 
@@ -704,16 +705,22 @@ mod tests {
 
         let result =
             prepare_presentation_response(&[requested_presentation], &presentation_definition)
-                .unwrap();
+                .unwrap()
+                .clone();
 
-        let presentation_submission_id = result.presentation_submission.id().to_owned();
+        let presentation_submission_id = result
+            .clone()
+            .presentation_submission
+            .clone()
+            .id()
+            .to_owned();
 
         assert_eq!(
-            result,
+            result.clone(),
             PresentationResponse {
                 presentations: sample_sdjwt_presentation(),
                 presentation_submission: PresentationSubmission::new(
-                    presentation_submission_id,
+                    presentation_submission_id.to_owned(),
                     "presentation_definition_id".to_string(),
                     vec![DescriptorMap::new(
                         "descriptor_id".to_string(),
@@ -782,7 +789,7 @@ mod tests {
     async fn split_to_inputs_returns_correct_presentation_inputs_for_sdjwt() {
         let presentation_definition = create_single_presentation_definition();
 
-        let result = split_to_inputs(&presentation_definition, None).unwrap();
+        let result = split_to_inputs_for_pd(&presentation_definition, None).unwrap();
 
         assert_eq!(
             result,
@@ -807,7 +814,7 @@ mod tests {
             sample_ldp_presentation_descriptor_with_enum(),
         );
 
-        let result = split_to_inputs(&presentation_definition, None).unwrap();
+        let result = split_to_inputs_for_pd(&presentation_definition, None).unwrap();
 
         assert_eq!(
             result,
@@ -841,7 +848,7 @@ mod tests {
             sample_ldp_presentation_descriptor_with_contains(),
         );
 
-        let result = split_to_inputs(&presentation_definition, None).unwrap();
+        let result = split_to_inputs_for_pd(&presentation_definition, None).unwrap();
 
         assert_eq!(
             result,

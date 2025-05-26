@@ -60,7 +60,7 @@ async function main(): Promise<void> {
 
       const { authorizationRequestUri, session } =
         await appState.verifier.createAuthorizationRequest(
-          config.presentationDefinition,
+          config.resolvedPresentationQuery,
           authResponseOptions,
           PassAuthRequestObject.byReference(requestUri),
           null,
@@ -71,7 +71,7 @@ async function main(): Promise<void> {
         session.authorizationRequestJwt,
       );
       appState.presentationSessionStorage.set(
-        session.presentationDefinition.id,
+        "some_id",
         session,
       );
 

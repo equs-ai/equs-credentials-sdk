@@ -5,12 +5,13 @@ import {
   LocalNonceHandler,
   OID4VPVerifierBuilder,
   PassAuthRequestObject,
+  PresentationSession,
 } from "../../";
-import { CLAIMS, PRESENTATION_DEFINITION, PRESENTATION_SUBMISSION, STATE, VP } from "./fixtures";
+import { CLAIMS, PRESENTATION_DEFINITION, PRESENTATION_QUERY, PRESENTATION_SUBMISSION, STATE, VP } from "./fixtures";
 import { createDidAndKeyMetadata } from "../utils";
 
 describe("OID4VP Verifier: ", () => {
-  test("create Authorization Request", async () => {
+  test("create Authorization Request by Value", async () => {
     const verifier = await buildVerifier();
 
     const authResponseOptions: AuthResponseOptions = {
@@ -21,7 +22,7 @@ describe("OID4VP Verifier: ", () => {
     };
 
     const authReqByValue = await verifier.createAuthorizationRequest(
-      PRESENTATION_DEFINITION,
+      PRESENTATION_QUERY,
       authResponseOptions,
       PassAuthRequestObject.byValue(),
       null,
@@ -32,11 +33,24 @@ describe("OID4VP Verifier: ", () => {
 
     expect(authReqByValue.authorizationRequestUri).toContain("request=eyJh");
     expect(authReqByValue.session.nonce?.length).toBeTruthy();
-    expect(authReqByValue.session.presentationDefinition).toMatchObject(PRESENTATION_DEFINITION);
+    expect(authReqByValue.session.resolvedPresentationQuery.presentation_definition).toMatchObject(
+      PRESENTATION_DEFINITION,
+    );
     expect(expected_state).toEqual(STATE);
+  });
+
+  test("create Authorization Request by Reference", async () => {
+    const verifier = await buildVerifier();
+
+    const authResponseOptions: AuthResponseOptions = {
+      mode: "direct_post",
+      type: "vp_token",
+      submissionUri: "http://localhost:9001/response",
+      state: STATE,
+    };
 
     const authReqByReference = await verifier.createAuthorizationRequest(
-      PRESENTATION_DEFINITION,
+      PRESENTATION_QUERY,
       authResponseOptions,
       PassAuthRequestObject.byReference("http://localhost:9001/request"),
       null,
@@ -44,16 +58,17 @@ describe("OID4VP Verifier: ", () => {
 
     expect(authReqByReference.authorizationRequestUri).toContain("request_uri=http%3A%2F%2Flocalhost%3A9001%2Frequest");
     expect(authReqByReference.session.nonce?.length).toBeTruthy();
-    expect(authReqByReference.session.presentationDefinition).toMatchObject(PRESENTATION_DEFINITION);
-    expect(expected_state).toEqual(STATE);
+    expect(authReqByReference.session.resolvedPresentationQuery.presentation_definition).toMatchObject(
+      PRESENTATION_DEFINITION,
+    );
   });
 
   test("verify Authorization Response", async () => {
     const verifier = await buildVerifier("did:key:zDnaefQAPFVQt9sfU63hyqYgPza2pDSXSJrPrCG5paT5eaQJb");
 
-    const session = {
+    const session: PresentationSession = {
       nonce: "n0NcE",
-      presentationDefinition: PRESENTATION_DEFINITION,
+      presentation_query: PRESENTATION_QUERY,
       authorizationRequestJwt: "",
     };
 

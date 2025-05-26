@@ -6,8 +6,8 @@ use crate::utils::from_json_object;
 use crate::vault::JsVault;
 use crate::vc::core::JsKeyMetadata;
 use crate::vc::oid4vci::JsDuration;
-use crate::vc::oid4vp::holder::OID4VPHolder;
-use crate::vc::oid4vp::verifier::OID4VPVerifier;
+use crate::vc::oid4vp::holder::InnerOID4VPHolder;
+use crate::vc::oid4vp::verifier::InternalOID4VPVerifier;
 use crate::vc::JsonObject;
 use agent_sdk::vc::core::KeyMetadata;
 use agent_sdk::vc::oid4vp::ClientMetadata;
@@ -23,7 +23,7 @@ pub async fn _build_vp_verifier(
     #[napi(ts_arg_type = "ClientMetadata | null | undefined")] client_metadata: Option<JsonObject>,
     http_client: Option<&ReqwestHttpClient>,
     did_resolver: Option<JsDIDResolver>,
-) -> Result<OID4VPVerifier> {
+) -> Result<InternalOID4VPVerifier> {
     let key_metadata: KeyMetadata = key_metadata.into();
     let mut builder =
         agent_sdk::vc::oid4vp::VerifierBuilder::new(kms, nonce_generator, key_metadata, client_id);
@@ -49,7 +49,7 @@ pub async fn _build_vp_verifier(
         .await
         .map_err(|err| Error::from_reason(format!("{:?}", err)))?;
 
-    Ok(OID4VPVerifier::from_verifier(verifier))
+    Ok(InternalOID4VPVerifier::from_verifier(verifier))
 }
 
 #[napi]
@@ -61,7 +61,7 @@ pub async fn _build_vp_holder(
     http_client: Option<&ReqwestHttpClient>,
     pop_lifetime: Option<JsDuration>,
     did_resolver: Option<JsDIDResolver>,
-) -> Result<OID4VPHolder> {
+) -> Result<InnerOID4VPHolder> {
     let mut builder = agent_sdk::vc::oid4vp::HolderBuilder::new(kms, vault, client_id);
 
     if let Some(wallet_metadata) = &wallet_metadata {
@@ -85,5 +85,5 @@ pub async fn _build_vp_holder(
         .await
         .map_err(|err| Error::from_reason(format!("{:?}", err)))?;
 
-    Ok(OID4VPHolder::from_holder(holder))
+    Ok(InnerOID4VPHolder::from_holder(holder))
 }

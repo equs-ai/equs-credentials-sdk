@@ -1,12 +1,13 @@
 import { getLocal } from "mockttp";
 import {
+  AuthorizationRequest,
   Credential,
   CredentialMetadata,
   InMemKms,
   InMemVault,
   KeyMetadata,
   Kms,
-  Oid4VpHolder,
+  OID4VPHolder,
   OID4VPHolderBuilder,
   ReqwestHttpClient,
   VCFormat,
@@ -19,7 +20,7 @@ describe("OID4VP Holder: ", () => {
 
   let kms: Kms;
   let vault: InMemVault;
-  let holder: Oid4VpHolder;
+  let holder: OID4VPHolder;
 
   let keyMetadata: KeyMetadata;
   let credential: Credential;
@@ -62,7 +63,7 @@ describe("OID4VP Holder: ", () => {
 
     await vault.storeCredential(credential, metadata);
 
-    await holder.presentCredentialsAuto(AUTH_REQUEST, {
+    await holder.presentCredentialsAuto(new AuthorizationRequest(AUTH_REQUEST), {
       claimsToExclude: { "Identity-1": ["$.name"] },
     });
 

@@ -5,19 +5,20 @@ use crate::nonce::Nonce;
 use crate::utils::http::MimeType;
 use crate::vault::CredentialEntry;
 use crate::vc::core::PresentationInput;
+use crate::vc::dcql::{filter_claims_using_claim_sets, DCQL};
 use crate::vc::oid4vp::internal_error::{
-    AuthorizationResponseSnafu, HttpClientSnafu, IdTokenGenerationSnafu,
-    IdTokenMetadataNotFoundSnafu, IdTokenParseSnafu, JsonSnafu, KMSSnafu, ParseSnafu,
-    PresentationExchangeSnafu, VCSnafu,
+    AuthorizationResponseSnafu, CredentialNotFoundSnafu, DCQLSnafu, HttpClientSnafu,
+    IdTokenGenerationSnafu, IdTokenMetadataNotFoundSnafu, IdTokenParseSnafu, JsonSnafu, KMSSnafu,
+    ParseSnafu, PresentationExchangeSnafu, VCSnafu,
 };
 use crate::vc::oid4vp::metadata::default_wallet_metadata;
 use crate::vc::oid4vp::signer::Signer;
 use crate::vc::oid4vp::{
     AuthorizationResponseMetadata, CredentialMapping, CredentialsMapping, ProtocolError,
-    ResolvedAuthRequest, ResponseMode,
+    ResolvedAuthRequest, ResolvedPresentationQuery, ResponseMode,
 };
-use crate::vc::presentation_exchange::{PresentationResponse, RequestedPresentation};
-use crate::vc::{oid4vp as api, presentation_exchange};
+use crate::vc::presentation_exchange::PresentationDefinition;
+use crate::vc::{dcql, oid4vp as api, presentation_exchange, RequestedPresentation};
 use crate::{utils, vc};
 use async_trait::async_trait;
 use futures::future;
@@ -33,6 +34,7 @@ use openid4vp::core::util::http::AsyncHttpClient;
 use openid4vp::wallet::{IdTokenParams, Wallet};
 use snafu::ResultExt;
 use ssi::dids::DIDURLBuf;
+use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::str::FromStr;
 use tracing::{info, instrument, Level};
@@ -91,12 +93,6 @@ where
         auth_request: &ResolvedAuthRequest,
         auth_response_metadata: &AuthorizationResponseMetadata,
     ) -> Result<Option<Url>> {
-        let presentation_response = presentation_exchange::prepare_presentation_response(
-            &presentations,
-            &auth_request.presentation_definition,
-        )
-        .context(PresentationExchangeSnafu)?;
-
         let id_token = match auth_request.response_type {
             ResponseType::VpTokenIdToken => Some(
                 self.generate_id_token(auth_request, auth_response_metadata)
@@ -105,11 +101,7 @@ where
             _ => None,
         };
 
-        let auth_resp = Self::create_auth_response(
-            presentation_response,
-            id_token,
-            auth_request.state.clone(),
-        )?;
+        let auth_resp = Self::create_auth_response(&presentations, id_token, auth_request)?;
 
         let redirect_url = self
             .submit_response(
@@ -124,24 +116,40 @@ where
 
     #[instrument(level = Level::TRACE, err(), ret())]
     fn create_auth_response(
-        presentation_response: PresentationResponse,
+        requested_presentations: &[RequestedPresentation],
         id_token: Option<IdToken>,
-        state: Option<String>,
+        auth_request: &ResolvedAuthRequest,
     ) -> Result<AuthorizationResponse> {
-        let vp_token = VpToken::try_from(presentation_response.presentations)
-            .context(AuthorizationResponseSnafu)?;
-
-        let pres_sub_json = serde_json::to_value(&presentation_response.presentation_submission)
-            .context(JsonSnafu)?;
-
-        let presentation_submission =
-            PresentationSubmission::try_from(pres_sub_json).context(AuthorizationResponseSnafu)?;
+        let (vp_token, ps) = match auth_request.resolved_presentation_query.clone() {
+            ResolvedPresentationQuery::DCQL(dcql) => {
+                let vp_token_json =
+                    dcql::prepare_vp_token_response_for_dcql(requested_presentations)
+                        .context(DCQLSnafu)?;
+                let vp_token =
+                    VpToken::try_from(vp_token_json).context(AuthorizationResponseSnafu)?;
+                (vp_token, None)
+            }
+            ResolvedPresentationQuery::PresentationDefinition(pd) => {
+                let pr = presentation_exchange::prepare_presentation_response(
+                    requested_presentations,
+                    &pd,
+                )
+                .context(PresentationExchangeSnafu)?;
+                let vp_token =
+                    VpToken::try_from(pr.presentations).context(AuthorizationResponseSnafu)?;
+                let ps_json =
+                    serde_json::to_value(pr.presentation_submission).context(JsonSnafu)?;
+                let ps = PresentationSubmission::try_from(ps_json)
+                    .context(AuthorizationResponseSnafu)?;
+                (vp_token, Some(ps))
+            }
+        };
 
         let auth_resp = AuthorizationResponse::Unencoded(UnencodedAuthorizationResponse {
             vp_token,
-            presentation_submission,
+            presentation_submission: ps,
             id_token,
-            state,
+            state: auth_request.state.clone(),
         });
 
         Ok(auth_resp)
@@ -308,39 +316,183 @@ where
         &self,
         auth_request: &ResolvedAuthRequest,
     ) -> Result<()> {
-        let formats_map = auth_request
-            .presentation_definition
-            .input_descriptors()
-            .iter()
-            .flat_map(|d| &d.format);
-        for (format, payload) in formats_map {
-            let found = self
-                .metadata
-                .vp_formats_supported()
-                .contains_claim_format_with_payload(format, payload);
+        match auth_request.resolved_presentation_query.clone() {
+            ResolvedPresentationQuery::PresentationDefinition(pd) => {
+                let formats_map = pd.input_descriptors().iter().flat_map(|d| &d.format);
+                for (format, payload) in formats_map {
+                    let found = self
+                        .metadata
+                        .vp_formats_supported()
+                        .contains_claim_format_with_payload(format, payload);
 
-            if !found {
-                let body = ProtocolError::vp_formats_not_supported(
-                    &format!(
-                        "vp format = '{}' with {} algorithms is not supported",
-                        String::from(format.to_owned()),
-                        serde_json::to_string(&payload).unwrap_or_else(|_| "".to_string())
-                    ),
+                    if !found {
+                        let body = ProtocolError::vp_formats_not_supported(
+                            &format!(
+                                "vp format = '{}' with {} algorithms is not supported",
+                                String::from(format.to_owned()),
+                                serde_json::to_string(&payload).unwrap_or_else(|_| "".to_string())
+                            ),
+                            auth_request.state.clone(),
+                        );
+
+                        let err = self
+                            .handle_auth_error_resp(
+                                &auth_request.response_uri,
+                                &auth_request.response_mode,
+                                body,
+                            )
+                            .await?;
+
+                        return Err(Error::Protocol { source: err });
+                    }
+                }
+            }
+            ResolvedPresentationQuery::DCQL(dcql) => {
+                let formats = dcql.credentials().iter().map(|d| d.format());
+                for format in formats {
+                    let found = self
+                        .metadata
+                        .vp_formats_supported()
+                        .0
+                        .to_owned()
+                        .keys()
+                        .any(|k| k == format);
+
+                    if !found {
+                        let body = ProtocolError::vp_formats_not_supported(
+                            &format!(
+                                "vp format = '{}' is not supported",
+                                String::from(format.to_owned()),
+                            ),
+                            auth_request.state.clone(),
+                        );
+                        let err = self
+                            .handle_auth_error_resp(
+                                &auth_request.response_uri,
+                                &auth_request.response_mode,
+                                body,
+                            )
+                            .await?;
+
+                        return Err(Error::Protocol { source: err });
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    #[instrument(level = Level::TRACE, skip(self), err(), ret())]
+    async fn present_credentials_auto_with_pd(
+        &self,
+        auth_request: &ResolvedAuthRequest,
+        pd: PresentationDefinition,
+        claims_to_exclude: Option<&HashMap<String, Vec<String>>>,
+    ) -> Result<Vec<RequestedPresentation>> {
+        let presentation_inputs =
+            presentation_exchange::split_to_inputs_for_pd(&pd, claims_to_exclude)
+                .context(PresentationExchangeSnafu)?;
+        let presentations =
+            future::try_join_all(presentation_inputs.iter().map(|presentation_input| async {
+                let creds = self
+                    .holder
+                    .find_vcs_for_presentation(presentation_input)
+                    .await
+                    .context(VCSnafu)?;
+
+                let Some(cred) = creds.first() else {
+                    let err = ProtocolError::access_denied(
+                        "matching credentials are not found",
+                        auth_request.state.clone(),
+                    );
+                    let err = self
+                        .handle_auth_error_resp(
+                            &auth_request.response_uri,
+                            &auth_request.response_mode,
+                            err,
+                        )
+                        .await?;
+
+                    return Err(Error::Protocol { source: err });
+                };
+
+                self.create_presentation_by_input(cred, presentation_input, auth_request)
+                    .await
+            }))
+            .await?;
+        Ok(presentations)
+    }
+
+    #[instrument(level = Level::TRACE, skip(self), err(), ret())]
+    async fn present_credentials_auto_with_dcql(
+        &self,
+        auth_request: &ResolvedAuthRequest,
+        dcql: DCQL,
+    ) -> Result<Vec<RequestedPresentation>> {
+        let presentations: Vec<RequestedPresentation>;
+        let presentation_inputs = dcql::split_to_inputs_for_dcql(dcql.credentials());
+        let mut id_to_pres_input: HashMap<String, PresentationInput> = HashMap::new();
+        dcql.credentials().iter().for_each(|cred| {
+            if let Some(pi) = presentation_inputs
+                .iter()
+                .find(|&p| p.id == *cred.id().as_str())
+            {
+                id_to_pres_input.insert(cred.id().as_str().to_owned(), pi.clone());
+            }
+        });
+
+        let pairs = future::try_join_all(dcql.credentials().iter().map(|credential| async {
+            if !id_to_pres_input.contains_key(credential.id().as_str()) {
+                CredentialNotFoundSnafu.fail()?;
+            }
+            let pi = id_to_pres_input[credential.id().as_str()].clone();
+            let creds = self
+                .holder
+                .find_vcs_for_presentation(&pi)
+                .await
+                .context(VCSnafu)?;
+            let creds = filter_claims_using_claim_sets(credential, creds);
+            let Some(cred) = creds.first() else {
+                let err = ProtocolError::access_denied(
+                    "matching credentials are not found",
                     auth_request.state.clone(),
                 );
                 let err = self
                     .handle_auth_error_resp(
                         &auth_request.response_uri,
                         &auth_request.response_mode,
-                        body,
+                        err,
                     )
                     .await?;
 
                 return Err(Error::Protocol { source: err });
-            }
+            };
+            Ok::<(&str, CredentialEntry), Error>((credential.id().as_str(), cred.clone()))
+        }))
+        .await?;
+        let id_to_cred: HashMap<_, _> = pairs.into_iter().collect();
+        let to_be_returned_credentials =
+            dcql::filter_creds_with_cred_sets(id_to_cred.clone(), dcql.to_owned());
+        if let Ok(to_be_returned_credentials) = to_be_returned_credentials {
+            presentations =
+                future::try_join_all(to_be_returned_credentials.iter().map(|credential| async {
+                    if !id_to_pres_input.contains_key(credential.id().as_str()) {
+                        CredentialNotFoundSnafu.fail()?;
+                    }
+                    let pi = id_to_pres_input[credential.id().as_str()].clone();
+                    if !id_to_cred.contains_key(credential.id().as_str()) {
+                        CredentialNotFoundSnafu.fail()?;
+                    }
+                    let cred = id_to_cred[credential.id().as_str()].clone();
+                    self.create_presentation_by_input(&cred, &pi, auth_request)
+                        .await
+                }))
+                .await?
+        } else {
+            presentations = vec![];
         }
-
-        Ok(())
+        Ok(presentations)
     }
 }
 
@@ -377,12 +529,12 @@ where
             Err(e) => return Err(e),
         };
 
-        let pres_def = match aro
-            .resolve_presentation_definition(self)
+        let rpq = match aro
+            .resolve_presentation_query(self)
             .await
             .map_err(Error::from)
         {
-            Ok(p) => p.parsed().to_owned(),
+            Ok(p) => p,
             Err(Error::Protocol { source }) => {
                 info!("presentation definition resolution is failed, handling an authorization error response...");
                 let source = self
@@ -397,7 +549,7 @@ where
         Ok(ResolvedAuthRequest {
             client_id: aro.client_id().0.to_owned(),
             client_metadata: aro.client_metadata().to_owned(),
-            presentation_definition: pres_def,
+            resolved_presentation_query: rpq,
             nonce: Nonce::from_secret(aro.nonce().as_str().to_owned()),
             response_type: aro.response_type().to_owned(),
             response_mode: aro.response_mode().to_owned(),
@@ -417,40 +569,22 @@ where
         self.validate_against_supported_vp_formats(auth_request)
             .await?;
 
-        let presentation_inputs = presentation_exchange::split_to_inputs(
-            &auth_request.presentation_definition,
-            auth_response_metadata.claims_to_exclude.as_ref(),
-        )
-        .context(PresentationExchangeSnafu)?;
-
-        let presentations =
-            future::try_join_all(presentation_inputs.iter().map(|presentation_input| async {
-                let creds = self
-                    .holder
-                    .find_vcs_for_presentation(presentation_input)
-                    .await
-                    .context(VCSnafu)?;
-
-                let Some(cred) = creds.first() else {
-                    let err = ProtocolError::access_denied(
-                        "matching credentials are not found",
-                        auth_request.state.clone(),
-                    );
-                    let source = self
-                        .handle_auth_error_resp(
-                            &auth_request.response_uri,
-                            &auth_request.response_mode,
-                            err,
-                        )
-                        .await?;
-
-                    return Err(Error::Protocol { source });
-                };
-
-                self.create_presentation_by_input(cred, presentation_input, auth_request)
-                    .await
-            }))
-            .await?;
+        let presentations = match auth_request.clone().resolved_presentation_query {
+            ResolvedPresentationQuery::PresentationDefinition(pd) => {
+                info!("presentation exchange flow is used");
+                self.present_credentials_auto_with_pd(
+                    auth_request,
+                    pd,
+                    auth_response_metadata.claims_to_exclude.as_ref(),
+                )
+                .await?
+            }
+            ResolvedPresentationQuery::DCQL(dcql) => {
+                info!("dcql flow is used");
+                self.present_credentials_auto_with_dcql(auth_request, dcql)
+                    .await?
+            }
+        };
 
         let redirect_url = self
             .submit_presentation(presentations, auth_request, auth_response_metadata)
@@ -467,10 +601,15 @@ where
         auth_request: &ResolvedAuthRequest,
     ) -> Result<CredentialsMapping> {
         let mut creds_map = CredentialsMapping::new();
-
-        let presentation_inputs =
-            presentation_exchange::split_to_inputs(&auth_request.presentation_definition, None)
-                .context(PresentationExchangeSnafu)?;
+        let presentation_inputs = match auth_request.clone().resolved_presentation_query {
+            ResolvedPresentationQuery::PresentationDefinition(pd) => {
+                presentation_exchange::split_to_inputs_for_pd(&pd, None)
+                    .context(PresentationExchangeSnafu)?
+            }
+            ResolvedPresentationQuery::DCQL(dcql) => {
+                dcql::split_to_inputs_for_dcql(dcql.credentials())
+            }
+        };
         for pres_input in presentation_inputs.iter() {
             let creds = self
                 .holder
@@ -492,13 +631,19 @@ where
     ) -> Result<Option<Url>> {
         info!("presenting verifiable presentations is started");
 
-        let presentation_inputs = presentation_exchange::split_to_inputs(
-            &auth_request.presentation_definition,
-            auth_response_metadata.claims_to_exclude.as_ref(),
-        )
-        .context(PresentationExchangeSnafu)?;
-
-        let presentations =
+        let presentation_inputs = match auth_request.clone().resolved_presentation_query {
+            ResolvedPresentationQuery::PresentationDefinition(pd) => {
+                presentation_exchange::split_to_inputs_for_pd(
+                    &pd,
+                    auth_response_metadata.claims_to_exclude.as_ref(),
+                )
+                .context(PresentationExchangeSnafu)?
+            }
+            ResolvedPresentationQuery::DCQL(dcql) => {
+                dcql::split_to_inputs_for_dcql(dcql.credentials())
+            }
+        };
+        let presentations: Vec<RequestedPresentation> =
             future::try_join_all(presentation_inputs.iter().map(|presentation_input| async {
                 self.create_presentation_from_creds_map(cred_map, presentation_input, auth_request)
                     .await
@@ -654,10 +799,10 @@ mod tests {
     };
     use crate::vc::oid4vp::{
         AuthorizationResponseMetadata, Error, Holder, IdTokenMetadata, InternalError,
-        ProtocolError, ResponseType,
+        ProtocolError, ResolvedPresentationQuery, ResponseType,
     };
-    use crate::vc::presentation_exchange::{ClaimFormatDesignation, ClaimFormatMap};
-    use crate::vc::Credential;
+    use crate::vc::presentation_exchange::ClaimFormatMap;
+    use crate::vc::{ClaimFormatDesignation, Credential};
     use oauth2::http::Method;
     use oauth2::reqwest::StatusCode;
     use oauth2::HttpResponse;
@@ -1238,7 +1383,9 @@ mod tests {
 
         let retrieved_credentials: Vec<vc::Credential> = test_case
             .request
-            .presentation_definition
+            .resolved_presentation_query
+            .get_presentation_definition()
+            .unwrap()
             .input_descriptors()
             .iter()
             .flat_map(|descriptor| credential_mapping.get(&descriptor.id).unwrap().clone())
@@ -1408,7 +1555,9 @@ mod tests {
 
         let retrieved_credentials: Vec<Credential> = case
             .request
-            .presentation_definition
+            .resolved_presentation_query
+            .get_presentation_definition()
+            .unwrap()
             .input_descriptors()
             .iter()
             .flat_map(|descriptor| credential_mapping.get(&descriptor.id).unwrap().clone())
@@ -1449,7 +1598,7 @@ mod tests {
                     }
                     ClaimFormatDesignation::LdpVc => {
                         let expected_type = expected_claims["type"].as_vec().unwrap();
-                        if let Some(Claim::Array(type_)) = retrieved_claims.get("type") {
+                        if let Some(Claim::Array(type_)) = &retrieved_claims.get("type") {
                             return expected_type == type_;
                         }
                         true
@@ -1572,24 +1721,25 @@ mod tests {
     ) -> PresentationTestCase {
         let mut input_desc = test_case
             .request
-            .presentation_definition
+            .resolved_presentation_query
+            .get_presentation_definition()
+            .unwrap()
             .input_descriptors()
             .clone();
         if let Some(i) = input_desc.get_mut(0) {
             *i = i.to_owned().set_format(cred_format)
         }
 
-        test_case
+        let mut pd = test_case
             .request
-            .presentation_definition
-            .input_descriptors_mut()
-            .clear();
-
-        test_case
-            .request
-            .presentation_definition
-            .input_descriptors_mut()
-            .append(&mut input_desc);
+            .resolved_presentation_query
+            .get_presentation_definition()
+            .unwrap()
+            .clone();
+        pd.input_descriptors_mut().clear();
+        pd.input_descriptors_mut().append(&mut input_desc);
+        test_case.request.resolved_presentation_query =
+            ResolvedPresentationQuery::PresentationDefinition(pd);
 
         test_case
     }

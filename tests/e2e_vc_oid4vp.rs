@@ -7,6 +7,7 @@ use oauth2::http::header::CONTENT_TYPE;
 use oauth2::http::{HeaderValue, Method};
 use oauth2::HttpResponse;
 use rstest::rstest;
+use serde_json::Value;
 use std::collections::HashMap;
 use url::Url;
 use utils::fixtures::oid4vp::Oid4VpTestCredentialFormat;
@@ -18,7 +19,7 @@ use agent_sdk::inmem::vault::InMemVault;
 use agent_sdk::vault::Vault;
 use agent_sdk::vc::oid4vp::{
     AuthResponseOptions, AuthorizationResponseMetadata, ClientMetadata, IdTokenMetadata,
-    PassAuthRequestObject, ResponseMode, ResponseType,
+    PassAuthRequestObject, ResolvedPresentationQuery, ResponseMode, ResponseType,
 };
 use agent_sdk::vc::oid4vp::{AuthorizationResponse, Holder};
 use agent_sdk::vc::oid4vp::{HolderBuilder, PresentationSession};
@@ -86,7 +87,7 @@ async fn credentials_presentation_and_verification(#[case] test_case: Oid4VpTest
 
     let (auth_request, session) = verifier
         .create_authorization_request(
-            &test_case.presentation_definition,
+            &ResolvedPresentationQuery::PresentationDefinition(test_case.presentation_definition),
             &auth_resp_options,
             &PassAuthRequestObject::ByReference(request_uri.clone()),
             None,
@@ -99,6 +100,98 @@ async fn credentials_presentation_and_verification(#[case] test_case: Oid4VpTest
         verifier,
         test_case.validate,
         session,
+        false,
+    );
+
+    // Create Holder
+    let holder = build_holder(http_client, holder_kms, holder_vault).await;
+
+    println!("8.2 Holder: Get Authorization Request");
+    let request_object = holder
+        .get_authorization_request(&auth_request)
+        .await
+        .unwrap();
+
+    println!("{:?}", &request_object);
+    assert_eq!(
+        serde_json::to_value(&request_object.client_metadata).unwrap(),
+        serde_json::from_str::<serde_json::Value>(DEFAULT_CLIENT_METADATA).unwrap()
+    );
+
+    println!("9. Present Credential Auto");
+
+    let auth_resp_metadata = AuthorizationResponseMetadata {
+        claims_to_exclude: None,
+        id_token_metadata: Some(IdTokenMetadata {
+            key_metadata: holder_key_metadata,
+            lifetime: time::Duration::minutes(5),
+        }),
+    };
+
+    holder
+        .present_credentials_auto(&request_object, &auth_resp_metadata)
+        .await
+        .unwrap();
+}
+
+#[rstest]
+#[case::single_jsonld_presentation(single_jsonld_presentation_case())]
+#[case::single_sdjwt_presentation(single_sdjwt_presentation_case())]
+#[case::multiple_sdjwt_presentation(multiple_sdjwt_presentation_case())]
+#[tokio::test]
+async fn credentials_presentation_and_verification_with_dcql(#[case] test_case: Oid4VpTestCase) {
+    println!("7. Store Credential");
+    let holder_kms = LocalKms::new();
+    let (holder_key_metadata, holder_kh) = generate_did_key_and_vm(&holder_kms).await;
+    let holder_vault = InMemVault::new();
+
+    // Create and store VCs
+    for credential in test_case.credentials {
+        let (vc, vc_meta) = create_vc(
+            credential.format,
+            &holder_key_metadata.did_url,
+            holder_key_metadata.kid.clone(),
+            holder_kh.clone(),
+            credential.claims,
+        )
+        .await;
+
+        println!("\nvc: {:?}\n", vc);
+
+        holder_vault.store_credential(vc, &vc_meta).await.unwrap();
+    }
+
+    // Create Verifier
+    let verifier = build_verifier().await;
+
+    println!("8.1 Verifier: Create Authorization Request");
+    // TODO: We should not use a test constant for Presentation Definition here,
+    //  we need to build a new one (as every Verifier will build it).
+    let response_uri: Url = format!("{}/auth", VERIFIER_URL).parse().unwrap();
+    let request_uri: Url = format!("{}/request", &VERIFIER_URL).parse().unwrap();
+    let auth_resp_options = AuthResponseOptions {
+        type_: ResponseType::VpTokenIdToken,
+        mode: ResponseMode::DirectPost,
+        submission_uri: response_uri,
+        state: Some(STATE.to_string()),
+    };
+
+    let (auth_request, session) = verifier
+        .create_authorization_request(
+            &ResolvedPresentationQuery::DCQL(test_case.dcql.unwrap()),
+            &auth_resp_options,
+            &PassAuthRequestObject::ByReference(request_uri.clone()),
+            None,
+        )
+        .await
+        .unwrap();
+
+    let http_client = prepare_http_client_for_holder(
+        session.auth_request_jwt.clone().unwrap(),
+        verifier,
+        test_case.validate,
+        session,
+        true,
     );
 
     // Create Holder
@@ -137,6 +230,7 @@ fn prepare_http_client_for_holder(
     verifier: impl Verifier + 'static,
     validate_claims_func: Box<ValidateClaimsFunc>,
     session: PresentationSession,
+    is_dcql: bool,
 ) -> impl HttpClient {
     let mut http_client = HttpClientEmulator::new();
 
@@ -161,11 +255,26 @@ fn prepare_http_client_for_holder(
             let form: HashMap<String, String> = serde_urlencoded::from_bytes(req.body()).unwrap();
             // Retrieve vp_token and presentation_definition from submitted form
             let vp_token_str = form.get("vp_token").unwrap().as_str();
-            let vp_token = serde_json::from_str(vp_token_str)
-                .unwrap_or(serde_json::to_value(vp_token_str).unwrap());
-            let presentation_submission =
-                serde_json::from_str(form.get("presentation_submission").unwrap().as_str())
-                    .unwrap();
+            let vp_token = match is_dcql {
+                true => {
+                    let vp_token: HashMap<String, Value> =
+                        serde_json::from_str(vp_token_str).unwrap();
+                    serde_json::to_value(vp_token).unwrap()
+                }
+                false => serde_json::from_str(vp_token_str)
+                    .unwrap_or(serde_json::to_value(vp_token_str).unwrap()),
+            };
+            println!(
+                "vp_token: {:?}",
+                serde_json::to_string_pretty(&vp_token).unwrap()
+            );
+            let presentation_submission = match is_dcql {
+                true => None,
+                false => {
+                    serde_json::from_str(form.get("presentation_submission").unwrap().as_str())
+                        .unwrap()
+                }
+            };
             let id_token = form.get("id_token").cloned();
             let state = form.get("state").cloned();
             assert_eq!(state.clone().unwrap(), STATE);
@@ -179,7 +288,10 @@ fn prepare_http_client_for_holder(
 
             let result = executor::block_on(verifier.verify_presentation(&auth_response, &session));
             let claims = result.unwrap();
-            println!("Presentation Claims: {:?}", claims);
+            println!(
+                "Presentation Claims: {:?}",
+                serde_json::to_string_pretty(&claims)
+            );
 
             validate_claims_func(claims);
 

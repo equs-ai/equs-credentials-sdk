@@ -1,5 +1,6 @@
 use crate::vc::claims::{Claim, Claims};
 use common_macros::DebugError;
+use openid4vp::core::dcql::PathValue;
 use serde_json::{json, Value as Json, Value};
 use snafu::{Location, Snafu};
 use ssi::JsonPointerBuf;
@@ -194,6 +195,23 @@ fn flatten_claims(
         }
     }
     Ok(())
+}
+pub fn json_path_as_string(paths: &Vec<PathValue>) -> String {
+    let mut result = "$".to_string();
+    for path in paths {
+        match path {
+            PathValue::String(s) => {
+                result.push_str(&format!(".{}", s));
+            }
+            PathValue::Usize(index) => {
+                result.push_str(&format!("[{}]", index));
+            }
+            PathValue::Null => {
+                result.push_str("[*]");
+            }
+        }
+    }
+    result.to_string()
 }
 
 #[cfg(test)]

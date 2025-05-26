@@ -53,6 +53,7 @@ const ALWAYS_REVEALED_CLAIMS: [&str; 6] = [
 pub type SdJwtRsError = sd_jwt_rs::error::Error;
 
 pub use crate::vc::claims::Claims;
+
 pub type Credential = String;
 pub type Presentation = String;
 

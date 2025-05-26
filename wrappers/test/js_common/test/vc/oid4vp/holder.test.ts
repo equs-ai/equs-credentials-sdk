@@ -1,5 +1,6 @@
 import { CompletedRequest, getLocal } from "mockttp";
 import {
+  AuthorizationRequest,
   Credential,
   CredentialEntry,
   CredentialMetadata,
@@ -7,13 +8,13 @@ import {
   InMemKms,
   InMemVault,
   KeyMetadata,
+  KeyType,
   OID4VPHolder,
   OID4VPHolderBuilder,
-  UniversalDIDResolver,
   PresentationSubmission,
-  KeyType,
-  VCFormat,
   ReqwestHttpClient,
+  UniversalDIDResolver,
+  VCFormat,
 } from "agent-sdk";
 import { AUTH_REQUEST, AUTH_REQUEST_JWT, PRESENTATION_SUBMISSION, STATE, VC, VC_TYPE } from "./fixtures";
 
@@ -67,8 +68,7 @@ describe("OID4VP Holder: ", () => {
     await mockServer.forPost("/response").thenCallback(async (request) => await handleRequest(request));
 
     await vault.storeCredential(credential, metadata);
-
-    const result = await holder.presentCredentialsAuto(AUTH_REQUEST, {});
+    const result = await holder.presentCredentialsAuto(new AuthorizationRequest(AUTH_REQUEST), {});
 
     expect(result).toBeFalsy();
   });
@@ -78,7 +78,7 @@ describe("OID4VP Holder: ", () => {
 
     await vault.storeCredential(credential, metadata);
 
-    const credentialsMapping = await holder.findVcsForPresentation(AUTH_REQUEST);
+    const credentialsMapping = await holder.findVcsForPresentation(new AuthorizationRequest(AUTH_REQUEST));
     const credentialMapping: Record<string, CredentialEntry> = Object.entries(credentialsMapping).reduce(
       (acc, [key, values]) => {
         acc[key] = values[0];
@@ -87,7 +87,7 @@ describe("OID4VP Holder: ", () => {
       {},
     );
 
-    const result = await holder.presentCredentials(AUTH_REQUEST, credentialMapping, {});
+    const result = await holder.presentCredentials(new AuthorizationRequest(AUTH_REQUEST), credentialMapping, {});
 
     expect(result).toBeFalsy();
   });
@@ -101,7 +101,7 @@ describe("OID4VP Holder: ", () => {
 
     await vault.storeCredential(credential, metadata);
 
-    await holder.declineAuthorizationRequest(AUTH_REQUEST);
+    await holder.declineAuthorizationRequest(new AuthorizationRequest(AUTH_REQUEST));
 
     expect(response).toEqual({
       error: "access_denied",

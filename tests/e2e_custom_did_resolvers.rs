@@ -22,12 +22,12 @@ use agent_sdk::vc::oid4vci::{
     CredentialOfferGrants, CredentialOfferParams, Holder, HolderBuilder, Issuer, IssuerBuilder,
     IssuerDiscovery, IssuerMetadata,
 };
-use agent_sdk::vc::oid4vp::Holder as Oid4vpHolder;
 use agent_sdk::vc::oid4vp::{
     AuthResponseOptions, AuthorizationResponse, AuthorizationResponseMetadata, ClientMetadata,
     IdTokenMetadata, PassAuthRequestObject, PresentationSession, ResponseMode, ResponseType,
     Verifier, VerifierBuilder,
 };
+use agent_sdk::vc::oid4vp::{Holder as Oid4vpHolder, ResolvedPresentationQuery};
 use agent_sdk::vc::{
     oid4vci, Credential, CredentialMetadata, VCFormatsAPI, VCFormatsJsonLdAPI, VCFormatsSdJwtAPI,
 };
@@ -202,7 +202,7 @@ async fn oid4vp_credentials_presentation_and_verification_with_custom_did_resolv
 
     let (auth_request, session) = verifier
         .create_authorization_request(
-            &test_case.presentation_definition,
+            &ResolvedPresentationQuery::PresentationDefinition(test_case.presentation_definition),
             &auth_resp_options,
             &PassAuthRequestObject::ByReference(request_uri.clone()),
             None,

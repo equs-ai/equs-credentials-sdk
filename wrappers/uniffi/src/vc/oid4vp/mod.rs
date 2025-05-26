@@ -44,7 +44,7 @@ impl TryFrom<AuthorizationRequest> for ResolvedAuthRequest {
             client_id: value.client_id,
             client_metadata: serde_json::from_value(value.client_metadata)
                 .map_err(|e| Error::OID4VPHolder(format!("{e:?}")))?,
-            presentation_definition: serde_json::from_value(value.presentation_definition)
+            resolved_presentation_query: serde_json::from_value(value.presentation_definition)
                 .map_err(|e| Error::OID4VPHolder(format!("{e:?}")))?,
             nonce: serde_json::from_value(serde_json::Value::String(value.nonce))
                 .map_err(|e| Error::OID4VPHolder(format!("{e:?}")))?,
@@ -65,7 +65,7 @@ impl TryFrom<ResolvedAuthRequest> for AuthorizationRequest {
             client_id: value.client_id,
             client_metadata: serde_json::to_value(&value.client_metadata)
                 .map_err(|e| Error::OID4VPHolder(format!("{e:?}")))?,
-            presentation_definition: serde_json::to_value(&value.presentation_definition)
+            presentation_definition: serde_json::to_value(&value.resolved_presentation_query)
                 .map_err(|e| Error::OID4VPHolder(format!("{e:?}")))?,
             nonce: value.nonce.secret().to_string(),
             response_type: value.response_type.into(),

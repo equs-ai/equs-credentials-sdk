@@ -1,34 +1,34 @@
 use crate::utils::{from_json_object, parse_url_arg, to_json_object};
 use crate::vc::JsonObject;
 use agent_sdk::vc::oid4vp::{
-    AuthResponseOptions, AuthorizationResponse, PassAuthRequestObject, PresentationSession,
-    Verifier, WalletMetadata,
+    AuthResponseOptions, AuthorizationResponse, PassAuthRequestObject,
+    PresentationSession as RustPresentationSession, Verifier, WalletMetadata,
 };
 use napi::{Error, Result};
 use napi_derive::napi;
 use url::Url;
 
 /// The `OID4VP` `Verifier` API.
-///
+/// This verifier api is used as the inner api the main wrapper in Node.js implementation
 /// Supports presentation request and verification flow according to the `OID4VP` specification.
 /// See <https://openid.net/specs/openid-4-verifiable-presentations-1_0-ID2.html>.
 ///
 /// @property createAuthorizationRequest - {@link OID4VPVerifier.createAuthorizationRequest}
 /// @property verifyPresentation - {@link OID4VPVerifier.verifyPresentation}
 #[napi]
-pub struct OID4VPVerifier(Box<dyn Verifier>);
+pub struct InternalOID4VPVerifier(Box<dyn Verifier>);
 
-impl OID4VPVerifier {
-    pub fn from_verifier<V: Verifier + 'static>(verifier: V) -> OID4VPVerifier {
-        OID4VPVerifier(Box::new(verifier))
+impl InternalOID4VPVerifier {
+    pub fn from_verifier<V: Verifier + 'static>(verifier: V) -> InternalOID4VPVerifier {
+        InternalOID4VPVerifier(Box::new(verifier))
     }
 }
 
 #[napi]
-impl OID4VPVerifier {
+impl InternalOID4VPVerifier {
     /// Creates an `OID4VP` authorization request.
     ///
-    /// @param {PresentationDefinition} presentationDefinition - the presentation definition specifying the presentation requirements.
+    /// @param {ResolvedPresentationQuery} resolved_presentation_query - the presentation definition specifying the presentation requirements.
     /// @param {AuthResponseOptions} passAuthRequestObject - how to pass an authorization request object to holder, by value or by reference.
     /// @param {PassAuthRequestObject} authResponseOptions - config about how and where to send authorization response.
     /// @param {WalletMetadata | null} [walletMetadata] - optional metadata of holder. if it is `null`, default metadata will be used
@@ -37,7 +37,7 @@ impl OID4VPVerifier {
     #[napi]
     pub async fn create_authorization_request(
         &self,
-        #[napi(ts_arg_type = "PresentationDefinition")] presentation_definition: JsonObject,
+        #[napi(ts_arg_type = "ResolvedPresentationQuery")] resolved_presentation_query: JsonObject,
         auth_response_options: JsAuthResponseOptions,
         pass_auth_request_object: &JsPassAuthRequestObject,
         #[napi(ts_arg_type = "WalletMetadata | undefined | null")] wallet_metadata: Option<
@@ -53,7 +53,7 @@ impl OID4VPVerifier {
         let (aut_req_obj_uri, session) = self
             .0
             .create_authorization_request(
-                &from_json_object(presentation_definition)?,
+                &from_json_object(resolved_presentation_query)?,
                 &auth_response_options.try_into()?,
                 &pass_auth_request_object.0,
                 wallet_metadata.as_ref(),
@@ -71,7 +71,7 @@ impl OID4VPVerifier {
     /// Verifies the presentation provided by the Holder.
     ///
     /// @param {AuthorizationResponse} authorizationResponse - the authorization response containing the VP token and presentation submission.
-    /// @param {PresentationSession} session - a session object containing `Nonce` and {@link PresentationDefinition}, which are generated when the {@link OID4VPVerifier.createAuthorizationRequest} method is called.
+    /// @param {_PresentationSession} session - a session object containing `Nonce` and {@link ResolvedPresentationQuery}, which are generated when the {@link OID4VPVerifier.createAuthorizationRequest} method is called.
     ///
     /// @returns {Claims} - The verified claims as a JSON object on success.
     #[napi(ts_return_type = "Promise<Claims>")]
@@ -115,6 +115,19 @@ impl TryFrom<JsAuthResponseOptions> for AuthResponseOptions {
 #[napi(js_name = "PassAuthRequestObject")]
 pub struct JsPassAuthRequestObject(PassAuthRequestObject);
 
+/// A session with state managed during the presentation.
+///
+/// @property {string} nonce
+/// @property {ResolvedPresentationQuery} resolved_presentation_query
+/// @property {string | null} [authorizationRequestJwt]
+#[napi(object, js_name = "_PresentationSession")]
+pub struct JsPresentationSession {
+    pub nonce: String,
+    #[napi(ts_type = "ResolvedPresentationQuery")]
+    pub resolved_presentation_query: JsonObject,
+    pub authorization_request_jwt: Option<String>,
+}
+
 #[napi]
 impl JsPassAuthRequestObject {
     #[napi(factory)]
@@ -132,38 +145,25 @@ impl JsPassAuthRequestObject {
     }
 }
 
-/// A session with state managed during the presentation.
-///
-/// @property {string} nonce
-/// @property {PresentationDefinition} presentationDefinition
-/// @property {string | null} [authorizationRequestJwt]
-#[napi(js_name = "PresentationSession", object)]
-pub struct JsPresentationSession {
-    pub nonce: String,
-    #[napi(ts_type = "PresentationDefinition")]
-    pub presentation_definition: JsonObject,
-    pub authorization_request_jwt: Option<String>,
-}
-
-impl TryFrom<PresentationSession> for JsPresentationSession {
+impl TryFrom<RustPresentationSession> for JsPresentationSession {
     type Error = Error;
 
-    fn try_from(value: PresentationSession) -> Result<Self> {
+    fn try_from(value: RustPresentationSession) -> Result<Self> {
         Ok(Self {
             nonce: value.nonce.secret().to_string(),
-            presentation_definition: to_json_object(value.presentation_definition)?,
+            resolved_presentation_query: to_json_object(value.resolved_presentation_query)?,
             authorization_request_jwt: value.auth_request_jwt,
         })
     }
 }
 
-impl TryFrom<JsPresentationSession> for PresentationSession {
+impl TryFrom<JsPresentationSession> for RustPresentationSession {
     type Error = Error;
 
     fn try_from(value: JsPresentationSession) -> Result<Self> {
         Ok(Self {
             nonce: serde_json::from_value(serde_json::Value::String(value.nonce))?,
-            presentation_definition: from_json_object(value.presentation_definition)?,
+            resolved_presentation_query: from_json_object(value.resolved_presentation_query)?,
             auth_request_jwt: value.authorization_request_jwt,
         })
     }

@@ -123,6 +123,7 @@ pub mod utils {
         CredentialDefinitionData, CredentialRequest, CredentialRequestData, PresentationInput,
         PresentationRestriction, Proof,
     };
+    use crate::vc::dcql::DCQLCredential;
     use crate::vc::formats::json_ld_vc::JsonLdAPI;
     use crate::vc::formats::sd_jwt_vc::SdJwtAPI;
     use crate::vc::formats::{json_ld_vc, sd_jwt_vc, HasCredential, VerifyOptions};
@@ -397,6 +398,59 @@ pub mod utils {
             }
         }
 
+        pub fn create_dcql_credential(&self) -> DCQLCredential {
+            match self.format {
+                VCFormat::SdJwtVc => {
+                    let dcql_credential: DCQLCredential = serde_json::from_value(json!(
+                        {
+                            "id": "some_id",
+                            "format": "dc+sd-jwt",
+                            "meta": {
+                                "vct_values": ["https://issuer.net/cred_schema"]
+                            },
+                            "claims": [
+                                {
+                                    "path": ["field", "will", "pass", "whilst","giveName"]
+                                },
+                                {
+                                    "path": ["credentialSubject", "givenName"]
+                                },
+                                {
+                                    "path": ["credentialSubject", "familyName"]
+                                }
+                            ]
+                        }
+                    ))
+                    .unwrap();
+                    dcql_credential
+                }
+                VCFormat::LdpVc => {
+                    let dcql_credential: DCQLCredential = serde_json::from_value(json!(
+                        {
+                            "id": "some_id",
+                            "format": "ldp_vc",
+                            "claims": [
+                                {
+                                    "path": ["will", "pass", "whilst","giveName", "type", null]
+                                },
+                                {
+                                    "path": ["familyName"]
+                                },
+                                {
+                                    "path": ["birthDate"]
+                                },
+                                {
+                                    "path": ["children", "birthDate"]
+                                },
+                            ]
+                        }
+                    ))
+                    .unwrap();
+                    dcql_credential
+                }
+                _ => panic!("unsupported format"),
+            }
+        }
         pub async fn generate_pop(
             &self,
             kms: &LocalKms,

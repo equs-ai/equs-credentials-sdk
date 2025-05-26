@@ -8,7 +8,7 @@ import {
   Kms,
   Oid4VciHolder,
   OID4VCIHolderBuilder,
-  Oid4VpHolder,
+  OID4VPHolder,
   OID4VPHolderBuilder,
   ReqwestHttpClient,
   resolveMetadata,
@@ -86,7 +86,7 @@ async function issuanceFlow(holder: Oid4VciHolder, kms: Kms): Promise<void> {
   );
 }
 
-async function presentationFlow(holder: Oid4VpHolder): Promise<void> {
+async function presentationFlow(holder: OID4VPHolder): Promise<void> {
   const requestURI = await readFromCLI(
     `Please enter presentation request URI from http://${config.servers.verifier.host}:${config.servers.verifier.port}/request_uri`,
   );
@@ -100,13 +100,13 @@ async function presentationFlow(holder: Oid4VpHolder): Promise<void> {
   );
 
   if (["yes", "y"].includes(shouldDecline))
-    return await declineFlow(holder, authRequest);
+    return await declineFlow(holder, new AuthorizationRequest(authRequest));
 
-  return await presentFlow(holder, authRequest);
+  return await presentFlow(holder, new AuthorizationRequest(authRequest));
 }
 
 async function declineFlow(
-  holder: Oid4VpHolder,
+  holder: OID4VPHolder,
   authRequest: AuthorizationRequest,
 ): Promise<void> {
   console.log("Declining Authorization request");
@@ -116,7 +116,7 @@ async function declineFlow(
 }
 
 async function presentFlow(
-  holder: Oid4VpHolder,
+  holder: OID4VPHolder,
   authRequest: AuthorizationRequest,
 ): Promise<void> {
   console.log("Holder sends authorization/presentation response to Verifier");
@@ -153,10 +153,7 @@ async function requestAndStoreCredential(
     throw new Error("Credential response is Deferred. Unexpected result!");
 
   const credential = credentialImmediate.credentials.pop()!;
-  const credentialMetadata = await resolveMetadata(
-    credential,
-    keyMetadata,
-  );
+  const credentialMetadata = await resolveMetadata(credential, keyMetadata);
 
   await holder.storeCredential(credential, credentialMetadata);
   return credentialResponse;

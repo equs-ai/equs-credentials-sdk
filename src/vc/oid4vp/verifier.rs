@@ -21,25 +21,26 @@ use crate::utils::wasm::{WasmNotSend, WasmNotSync};
 use crate::vc;
 use crate::vc::claims::{Claim, Claims};
 use crate::vc::core::KeyMetadata;
-use crate::vc::oid4vp as api;
 use crate::vc::oid4vp::internal_error::{
-    ClaimsSnafu, DidUrlResolutionSnafu, IdTokenValidationSnafu, JsonSnafu, KMSSnafu,
+    ClaimsSnafu, DCQLSnafu, DidUrlResolutionSnafu, IdTokenValidationSnafu, JsonSnafu, KMSSnafu,
     NonceGenerationSnafu, Oid4VpLibSnafu, ParseSnafu, PresentationExchangeSnafu, VCNotValidSnafu,
     VCSnafu, VCStatusSnafu,
 };
 use crate::vc::oid4vp::metadata::{default_client_metadata, default_wallet_metadata};
 use crate::vc::oid4vp::signer::Signer;
+use crate::vc::oid4vp::Error::Protocol;
 use crate::vc::oid4vp::{
     AuthResponseOptions, AuthorizationResponse, ClientMetadata, PassAuthRequestObject,
-    PresentationSession, ProtocolError, ResponseMode, ResponseType,
+    PresentationSession, ProtocolError, ResolvedPresentationQuery, ResponseMode, ResponseType,
 };
 use crate::vc::presentation_exchange;
 use crate::vc::presentation_exchange::{
-    validate_against_presentation_definition, PresentationDefinition, PresentationResponse,
+    validate_against_presentation_definition, PresentationResponse,
 };
 use crate::vc::status_formats::status_list_token_jwt;
 use crate::vc::Presentation;
 use crate::vc::VCStatus;
+use crate::vc::{dcql, oid4vp as api};
 use openid4vp::core::response::parameters::IdTokenBody as IdToken;
 use ssi::dids::DIDURLBuf;
 use std::collections::HashMap;
@@ -131,7 +132,7 @@ where
     #[instrument(level = Level::TRACE, skip(self), ret())]
     async fn create_authorization_request(
         &self,
-        presentation_definition: &PresentationDefinition,
+        presentation_definition: &ResolvedPresentationQuery,
         auth_response_config: &AuthResponseOptions,
         pass_auth_request_object: &PassAuthRequestObject,
         wallet_metadata: Option<&WalletMetadata>,
@@ -156,7 +157,7 @@ where
         let session = PresentationSession {
             nonce,
             auth_request_jwt,
-            presentation_definition: presentation_definition.to_owned(),
+            resolved_presentation_query: presentation_definition.to_owned(),
         };
 
         info!("authorization request object is created");
@@ -172,7 +173,7 @@ where
     ) -> Result<Claims> {
         let vp_token_claims = self
             .do_verify_presentation(
-                &session.presentation_definition,
+                &session.resolved_presentation_query,
                 &session.nonce,
                 auth_response,
             )
@@ -303,7 +304,7 @@ where
     #[instrument(level = Level::TRACE, skip(self), err(), ret())]
     async fn build_authorization_request(
         &self,
-        presentation_definition: &PresentationDefinition,
+        presentation_definition: &ResolvedPresentationQuery,
         nonce: Nonce,
         auth_response_config: &AuthResponseOptions,
         pass_auth_request_object: &PassAuthRequestObject,
@@ -357,7 +358,7 @@ where
     #[instrument(level = Level::TRACE, skip(self), err(), ret())]
     async fn build_authorization_request_helper(
         &self,
-        presentation_definition: &PresentationDefinition,
+        presentation_definition: &ResolvedPresentationQuery,
         nonce: Nonce,
         auth_response_config: &AuthResponseOptions,
         pass_auth_request_object: &PassAuthRequestObject,
@@ -407,13 +408,20 @@ where
             PassAuthRequestObject::ByReference(at) => ByReference::True { at },
         };
 
-        let request_builder = match &auth_response_config.state {
+        let mut request_builder = match &auth_response_config.state {
             Some(state) => request_builder.with_request_parameter(State(state.to_string())),
             None => request_builder,
         };
 
+        match presentation_definition {
+            ResolvedPresentationQuery::PresentationDefinition(pd) => {
+                request_builder = request_builder.with_presentation_definition(pd.clone());
+            }
+            ResolvedPresentationQuery::DCQL(dcql) => {
+                request_builder = request_builder.with_dcql(dcql.clone());
+            }
+        }
         let (auth_request_url, auth_req_jwt) = request_builder
-            .with_presentation_definition(presentation_definition.to_owned())
             .with_request_parameter(auth_response_config.mode.to_owned())
             .with_request_parameter(NonceSpruce::from(nonce.secret()))
             .with_request_parameter(self.metadata.client_metadata.clone())
@@ -426,23 +434,37 @@ where
     #[instrument(level = Level::TRACE, skip(self), err(), ret())]
     async fn do_verify_presentation(
         &self,
-        presentation_definition: &PresentationDefinition,
+        presentation_definition: &ResolvedPresentationQuery,
         nonce: &Nonce,
         authorization_response: &AuthorizationResponse,
     ) -> Result<Claim> {
         let mut result: HashMap<String, Claim> = HashMap::new();
         let mut ids = vec![]; // we need it to preserve order of items in the array
 
-        let presentation_response = PresentationResponse {
-            presentations: authorization_response.vp_token.clone(),
-            presentation_submission: authorization_response.presentation_submission.clone(),
-        };
+        let requested_presentations = match presentation_definition {
+            ResolvedPresentationQuery::DCQL(dcql) => {
+                dcql::resolve_presentation_response(authorization_response.vp_token.clone(), dcql)
+                    .context(DCQLSnafu)?
+            }
+            ResolvedPresentationQuery::PresentationDefinition(pd) => {
+                let ps = authorization_response
+                    .presentation_submission
+                    .clone()
+                    .ok_or_else(|| Protocol {
+                        source: ProtocolError::invalid_request(
+                            "Invalid Authorization response, 'presentation_submission' is not provided",
+                            None,
+                        ),
+                    })?;
 
-        let requested_presentations = presentation_exchange::resolve_presentation_response(
-            &presentation_response,
-            presentation_definition,
-        )
-        .context(PresentationExchangeSnafu)?;
+                let presentation_response = PresentationResponse {
+                    presentations: authorization_response.vp_token.clone(),
+                    presentation_submission: ps,
+                };
+                presentation_exchange::resolve_presentation_response(&presentation_response, pd)
+                    .context(PresentationExchangeSnafu)?
+            }
+        };
 
         for requested_presentation in requested_presentations {
             let claims = self
@@ -496,23 +518,44 @@ where
                 }
 
                 let claims = Json::Array(arr);
-                validate_against_presentation_definition(
-                    &claims,
-                    presentation_definition,
-                    &authorization_response.presentation_submission,
-                )
-                .context(PresentationExchangeSnafu)?;
+                match presentation_definition {
+                    ResolvedPresentationQuery::PresentationDefinition(pd) => {
+                        validate_against_presentation_definition(
+                            &claims,
+                            pd,
+                            &authorization_response
+                                .clone()
+                                .presentation_submission
+                                .unwrap(),
+                        )
+                        .context(PresentationExchangeSnafu)?;
+                    }
+                    ResolvedPresentationQuery::DCQL(dcql) => {
+                        //TODO maybe validate
+                    }
+                }
             }
             _ => {
                 if let Some(claim) = result.values().find(|_| true) {
                     // TODO: figure out how to secure erase sensitive data
                     // after Claim -> Value convertation
-                    validate_against_presentation_definition(
-                        &claim.clone().try_into().context(ClaimsSnafu)?,
-                        presentation_definition,
-                        &authorization_response.presentation_submission,
-                    )
-                    .context(PresentationExchangeSnafu)?;
+
+                    match presentation_definition {
+                        ResolvedPresentationQuery::PresentationDefinition(pd) => {
+                            validate_against_presentation_definition(
+                                &claim.clone().try_into().context(ClaimsSnafu)?,
+                                pd,
+                                &authorization_response
+                                    .clone()
+                                    .presentation_submission
+                                    .unwrap(),
+                            )
+                            .context(PresentationExchangeSnafu)?;
+                        }
+                        ResolvedPresentationQuery::DCQL(dcql) => {
+                            //TODO maybe validate
+                        }
+                    }
                 }
             }
         };
@@ -540,7 +583,8 @@ mod tests {
     use crate::vc::oid4vp::verifier::VP_TOKEN;
     use crate::vc::oid4vp::InternalError;
     use crate::vc::oid4vp::{PassAuthRequestObject, PresentationSession, ResponseType, Verifier};
-    use crate::vc::presentation_exchange::{ClaimFormatDesignation, PresentationDefinition};
+    use crate::vc::presentation_exchange::PresentationDefinition;
+    use crate::vc::ClaimFormatDesignation;
     use openid4vp::core::authorization_request::{
         AuthorizationRequest, AuthorizationRequestObject,
     };
@@ -658,10 +702,11 @@ mod tests {
                 .unwrap();
 
         let actual_presentation_definition = request
-            .resolve_presentation_definition(&MockHttpClient::new())
+            .resolve_presentation_query(&MockHttpClient::new())
             .await
             .unwrap()
-            .into_parsed();
+            .get_presentation_definition()
+            .unwrap();
 
         assert_eq!(
             session.auth_request_jwt.unwrap(),
@@ -669,7 +714,12 @@ mod tests {
         );
         assert_eq!(
             serde_json::to_value(&actual_presentation_definition).unwrap(),
-            serde_json::to_value(&presentation_definition).unwrap()
+            serde_json::to_value(
+                presentation_definition
+                    .get_presentation_definition()
+                    .unwrap()
+            )
+            .unwrap()
         );
         assert_eq!(request.client_id().0, did);
         assert_eq!(request.return_uri(), &response_uri);
@@ -742,18 +792,23 @@ mod tests {
                 .unwrap();
 
         let actual_presentation_definition = request
-            .resolve_presentation_definition(&MockHttpClient::new())
+            .resolve_presentation_query(&MockHttpClient::new())
             .await
             .unwrap()
-            .into_parsed();
-
+            .get_presentation_definition()
+            .unwrap();
         assert_eq!(
             session.auth_request_jwt.unwrap(),
             auth_req_jwt_from_uri.to_owned()
         );
         assert_eq!(
             serde_json::to_value(&actual_presentation_definition).unwrap(),
-            serde_json::to_value(&presentation_definition).unwrap()
+            serde_json::to_value(
+                presentation_definition
+                    .get_presentation_definition()
+                    .unwrap()
+            )
+            .unwrap()
         );
         assert_eq!(request.client_id().0, did);
         assert_eq!(request.return_uri(), &response_uri);
@@ -784,7 +839,7 @@ mod tests {
 
         let (request, _) = verifier
             .create_authorization_request(
-                &presentation_definition,
+                &ResolvedPresentationQuery::PresentationDefinition(presentation_definition),
                 &auth_resp_options,
                 &PassAuthRequestObject::ByReference(request_uri),
                 None,
@@ -803,7 +858,7 @@ mod tests {
         let kms = LocalKms::new();
         let session = PresentationSession {
             nonce: Nonce::from_secret(NONCE.to_owned()),
-            presentation_definition: test_case.session.presentation_definition.clone(),
+            resolved_presentation_query: test_case.session.resolved_presentation_query.clone(),
             auth_request_jwt: Default::default(),
         };
 
@@ -824,7 +879,7 @@ mod tests {
         let kms = LocalKms::new();
         let session = PresentationSession {
             nonce: Nonce::from_secret(NONCE.to_owned()),
-            presentation_definition: test_case.session.presentation_definition.clone(),
+            resolved_presentation_query: test_case.session.resolved_presentation_query.clone(),
             auth_request_jwt: Default::default(),
         };
 
@@ -905,7 +960,7 @@ mod tests {
         let kms = LocalKms::new();
         let session = PresentationSession {
             nonce: Nonce::from_secret(NONCE.to_owned()),
-            presentation_definition: test_case.session.presentation_definition.clone(),
+            resolved_presentation_query: test_case.session.resolved_presentation_query.clone(),
             auth_request_jwt: Default::default(),
         };
 
@@ -958,7 +1013,10 @@ mod tests {
     }
 
     fn presentation_definition_with_empty_id() -> PresentationDefinition {
-        let mut presentation_definition = single_presentation::sd_jwt::presentation_definition();
+        let mut presentation_definition = single_presentation::sd_jwt::presentation_definition()
+            .get_presentation_definition()
+            .unwrap()
+            .to_owned();
         presentation_definition = PresentationDefinition::new(
             "".to_string(),
             presentation_definition
@@ -972,7 +1030,10 @@ mod tests {
     }
 
     fn presentation_definition_with_empty_descriptors() -> PresentationDefinition {
-        let mut presentation_definition = single_presentation::sd_jwt::presentation_definition();
+        let mut presentation_definition = single_presentation::sd_jwt::presentation_definition()
+            .get_presentation_definition()
+            .unwrap()
+            .to_owned();
         presentation_definition.input_descriptors_mut().clear();
 
         presentation_definition
@@ -995,7 +1056,10 @@ mod tests {
 
     fn presentation_not_provided_case() -> VerificationTestCase {
         let mut test_case = single_presentation::sd_jwt::verification_test_case();
-        test_case.session.presentation_definition = multi_presentation::presentation_definition();
+        test_case.session.resolved_presentation_query =
+            ResolvedPresentationQuery::PresentationDefinition(
+                multi_presentation::presentation_definition(),
+            );
         test_case
     }
 
@@ -1024,28 +1088,34 @@ mod tests {
 
     fn submission_requirements_satisfied_case() -> VerificationTestCase {
         let mut test_case = multi_presentation::verification_test_case();
-        let _ = test_case
+        let mut pd = test_case
+            .clone()
             .session
-            .presentation_definition
-            .input_descriptors_mut()
-            .get_mut(0)
-            .map(|i| {
-                i.groups.push("A".to_string());
-            });
-        test_case.session.presentation_definition = test_case
-            .session
-            .presentation_definition
+            .clone()
+            .resolved_presentation_query
+            .get_presentation_definition()
+            .unwrap()
+            .clone()
             .set_submission_requirements(submission_requirements(1));
-
+        if let Some(i) = pd.input_descriptors_mut().get_mut(0) {
+            i.groups.push("A".to_string());
+        }
+        test_case.session.resolved_presentation_query =
+            ResolvedPresentationQuery::PresentationDefinition(pd);
         test_case
     }
 
     fn submission_requirements_unsatisfied_case() -> VerificationTestCase {
         let mut test_case = submission_requirements_satisfied_case();
-        test_case.session.presentation_definition = test_case
+        let mut pd = test_case
             .session
-            .presentation_definition
-            .set_submission_requirements(submission_requirements(2));
+            .resolved_presentation_query
+            .get_presentation_definition()
+            .unwrap()
+            .clone();
+        pd = pd.set_submission_requirements(submission_requirements(2));
+        test_case.session.resolved_presentation_query =
+            ResolvedPresentationQuery::PresentationDefinition(pd);
 
         test_case
     }

@@ -14,7 +14,7 @@ use time::ext::NumericalDuration;
 use url::Url;
 
 /// The `OID4VP` `Holder` API.
-///
+/// This is an inner holder api used by the main wrapper in Node.js implementation
 /// Supports presentation flow according to the `OID4VP` specification.
 /// See <https://openid.net/specs/openid-4-verifiable-presentations-1_0-ID2.html>.
 ///
@@ -24,16 +24,16 @@ use url::Url;
 /// @property findVcsForPresentation - {@link OID4VPHolder.findVcsForPresentation}
 /// @property presentCredentials - {@link OID4VPHolder.presentCredentials}
 #[napi]
-pub struct OID4VPHolder(Box<dyn Holder>);
+pub struct InnerOID4VPHolder(Box<dyn Holder>);
 
-impl OID4VPHolder {
-    pub fn from_holder<H: Holder + 'static>(holder: H) -> OID4VPHolder {
-        OID4VPHolder(Box::new(holder))
+impl InnerOID4VPHolder {
+    pub fn from_holder<H: Holder + 'static>(holder: H) -> InnerOID4VPHolder {
+        InnerOID4VPHolder(Box::new(holder))
     }
 }
 
 #[napi]
-impl OID4VPHolder {
+impl InnerOID4VPHolder {
     /// Fetches the `OID4VP` authorization request object from the provided URI.
     /// If the validation of authorization request fails then related `ProtocolError` response will be sent to the `response_uri` endpoint
     ///
@@ -44,7 +44,7 @@ impl OID4VPHolder {
     pub async fn get_authorization_request(
         &self,
         request_uri: String,
-    ) -> Result<AuthorizationRequest> {
+    ) -> Result<_AuthorizationRequest> {
         self.0
             .get_authorization_request(&parse_url_arg(&request_uri)?)
             .await
@@ -67,7 +67,7 @@ impl OID4VPHolder {
     #[napi]
     pub async fn present_credentials_auto(
         &self,
-        auth_request: AuthorizationRequest,
+        auth_request: _AuthorizationRequest,
         auth_response_metadata: JsAuthorizationResponseMetadata,
     ) -> Result<Option<String>> {
         let result = self
@@ -92,7 +92,7 @@ impl OID4VPHolder {
     #[napi]
     pub async fn find_vcs_for_presentation(
         &self,
-        auth_request: AuthorizationRequest,
+        auth_request: _AuthorizationRequest,
     ) -> Result<HashMap<String, Vec<JsCredentialEntry>>> {
         let credentials_mapping = self
             .0
@@ -115,7 +115,7 @@ impl OID4VPHolder {
     #[napi]
     pub async fn present_credentials(
         &self,
-        auth_request: AuthorizationRequest,
+        auth_request: _AuthorizationRequest,
         credential_mapping: HashMap<String, JsCredentialEntry>,
         auth_response_metadata: JsAuthorizationResponseMetadata,
     ) -> Result<Option<String>> {
@@ -141,7 +141,7 @@ impl OID4VPHolder {
     #[napi]
     pub async fn decline_authorization_request(
         &self,
-        auth_request: AuthorizationRequest,
+        auth_request: _AuthorizationRequest,
     ) -> Result<Option<String>> {
         let auth_request: ResolvedAuthRequest = auth_request.try_into()?;
         let redirect_url = self
@@ -154,17 +154,17 @@ impl OID4VPHolder {
     }
 }
 
-#[napi(object)]
-pub struct AuthorizationRequest {
+#[napi(object, js_name = "_AuthorizationRequest")]
+pub struct _AuthorizationRequest {
     #[napi(js_name = "client_id")]
     pub client_id: String,
     #[napi(ts_type = "ClientMetadata", js_name = "client_metadata")]
     pub client_metadata: JsonObject,
     #[napi(
-        ts_type = "PresentationDefinition",
-        js_name = "presentation_definition"
+        ts_type = "ResolvedPresentationQuery",
+        js_name = "resolved_presentation_query"
     )]
-    pub presentation_definition: JsonObject,
+    pub resolved_presentation_query: JsonObject,
     pub nonce: String,
     #[napi(js_name = "response_type")]
     pub response_type: String,
@@ -175,14 +175,14 @@ pub struct AuthorizationRequest {
     pub state: Option<String>,
 }
 
-impl TryFrom<AuthorizationRequest> for ResolvedAuthRequest {
+impl TryFrom<_AuthorizationRequest> for ResolvedAuthRequest {
     type Error = Error;
 
-    fn try_from(value: AuthorizationRequest) -> Result<Self> {
+    fn try_from(value: _AuthorizationRequest) -> Result<Self> {
         Ok(ResolvedAuthRequest {
             client_id: value.client_id,
             client_metadata: from_json_object(value.client_metadata)?,
-            presentation_definition: from_json_object(value.presentation_definition)?,
+            resolved_presentation_query: from_json_object(value.resolved_presentation_query)?,
             nonce: serde_json::from_value(serde_json::Value::String(value.nonce))?,
             response_type: value.response_type.into(),
             response_mode: value.response_mode.into(),
@@ -192,14 +192,14 @@ impl TryFrom<AuthorizationRequest> for ResolvedAuthRequest {
     }
 }
 
-impl TryFrom<ResolvedAuthRequest> for AuthorizationRequest {
+impl TryFrom<ResolvedAuthRequest> for _AuthorizationRequest {
     type Error = Error;
 
     fn try_from(value: ResolvedAuthRequest) -> Result<Self> {
-        Ok(AuthorizationRequest {
+        Ok(_AuthorizationRequest {
             client_id: value.client_id,
             client_metadata: to_json_object(&value.client_metadata)?,
-            presentation_definition: to_json_object(&value.presentation_definition)?,
+            resolved_presentation_query: to_json_object(&value.resolved_presentation_query)?,
             nonce: value.nonce.secret().to_string(),
             response_type: value.response_type.into(),
             response_mode: value.response_mode.into(),

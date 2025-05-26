@@ -15,12 +15,12 @@ import fs from "fs/promises";
       "TokenResponse",
       "DIDDocument",
       "WalletMetadata",
+      "WrappedAuthRequest",
       "Claims",
     ];
     const exported_internal_types = [
       "DIDResolution",
       "Alg",
-      "AuthorizationRequest",
       "AuthorizationResponseMetadata",
       "Credential",
       "CredentialEntry",
