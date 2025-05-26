@@ -3,7 +3,8 @@ import {
   Claims,
   CredentialFormats,
   CredentialOfferGrants,
-  JwkAlgorithm, NonceHandler,
+  JwkAlgorithm,
+  NonceHandler,
   OID4VCICredentialMetadata,
   OID4VCICredentialOffer,
   OID4VCICredentialRequest,
@@ -22,7 +23,7 @@ export const ISSUER_METADATA: OID4VCIIssuerMetadata = {
   authorization_servers: [`${ISSUER_ENDPOINT}/auth`],
   credential_endpoint: `${ISSUER_ENDPOINT}/credential`,
   batch_credential_issuance: {
-    batch_size: 2
+    batch_size: 2,
   },
   credential_configurations_supported: {
     IDENTITY_SD_JWT: {
@@ -115,10 +116,7 @@ export const CRED_REQUEST: OID4VCICredentialRequest = {
 export const CRED_REQUEST_FOR_BATCH_ISSUANCE: OID4VCICredentialRequest = {
   credential_configuration_id: CRED_DEF_ID,
   proofs: {
-    jwt: [
-      PROOF_JWT,
-      PROOF_JWT
-    ]
+    jwt: [PROOF_JWT, PROOF_JWT],
   },
   credential_response_encryption: null,
 };

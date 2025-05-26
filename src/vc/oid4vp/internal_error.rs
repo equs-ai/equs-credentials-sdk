@@ -1,6 +1,6 @@
 use crate::kms::Error as KmsError;
 use crate::vc::claims::Error as ClaimsError;
-use crate::vc::presentation_exchange;
+use crate::vc::{dcql, presentation_exchange};
 use crate::{http, nonce, vc};
 use common_macros::DebugError;
 use snafu::{Location, Snafu};
@@ -104,6 +104,12 @@ pub enum InternalError {
         #[snafu(implicit)]
         location: Location,
         source: presentation_exchange::Error,
+    },
+    #[snafu(display("DCQL error"))]
+    DCQL {
+        #[snafu(implicit)]
+        location: Location,
+        source: dcql::Error,
     },
     #[snafu(display("Http error"))]
     HttpClient {

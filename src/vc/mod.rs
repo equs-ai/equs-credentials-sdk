@@ -22,11 +22,20 @@ pub mod status_formats; // TODO: check visibility
 
 pub mod claims;
 pub mod core;
+pub mod dcql;
 pub mod metadata;
 pub mod oid4vci;
 pub mod oid4vp;
 
 pub use formats::HasClaims;
+
+pub type ClaimFormatDesignation = openid4vp::core::credential_format::ClaimFormatDesignation;
+pub type JsonPath = serde_json_path::JsonPath;
+#[derive(Debug, Clone)]
+pub(crate) struct RequestedPresentation {
+    pub id: String,
+    pub presentation: Presentation,
+}
 
 /// Verifiable Credential (`VC`)
 ///

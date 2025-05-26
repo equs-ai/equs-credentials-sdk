@@ -3,7 +3,7 @@ import {
   CredentialFormats,
   JwkAlgorithm,
   OID4VCIIssuerMetadata,
-  PresentationDefinition,
+  PresentationQuery,
 } from "@equstng/agent-sdk";
 
 export class Config {
@@ -85,60 +85,64 @@ export class Config {
     },
   };
 
-  readonly presentationDefinition: PresentationDefinition = {
-    id: "1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed",
-    input_descriptors: [
-      {
-        id: "Identity-1",
-        name: "Identity VC",
-        purpose: "We want an identity",
-        format: {
-          "dc+sd-jwt": {
-            "sd-jwt_alg_values": ["ES256", "EdDSA"],
-            "kb-jwt_alg_values": ["ES256", "EdDSA"],
+  readonly resolvedPresentationQuery: PresentationQuery = {
+    presentation_definition: {
+      id: "1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed",
+      input_descriptors: [
+        {
+          id: "Identity-1",
+          name: "Identity VC",
+          purpose: "We want an identity",
+          format: {
+            "dc+sd-jwt": {
+              "sd-jwt_alg_values": ["ES256", "EdDSA"],
+              "kb-jwt_alg_values": ["ES256", "EdDSA"],
+            },
+          },
+          constraints: {
+            fields: [
+              {
+                path: ["$.vct"],
+                filter: {
+                  type: "string",
+                  const:
+                    "https://credentials.example.com/identity_credential_1",
+                },
+              },
+              {
+                path: ["$.given_name", "$.family_name"],
+              },
+            ],
           },
         },
-        constraints: {
-          fields: [
-            {
-              path: ["$.vct"],
-              filter: {
-                type: "string",
-                const: "https://credentials.example.com/identity_credential_1",
+        {
+          id: "Identity-2",
+          name: "Identity VC",
+          purpose: "We want an identity",
+          format: {
+            "dc+sd-jwt": {
+              "sd-jwt_alg_values": ["ES256", "EdDSA"],
+              "kb-jwt_alg_values": ["ES256", "EdDSA"],
+            },
+          },
+          constraints: {
+            fields: [
+              {
+                path: ["$.email", "$.username"],
               },
-            },
-            {
-              path: ["$.given_name", "$.family_name"],
-            },
-          ],
-        },
-      },
-      {
-        id: "Identity-2",
-        name: "Identity VC",
-        purpose: "We want an identity",
-        format: {
-          "dc+sd-jwt": {
-            "sd-jwt_alg_values": ["ES256", "EdDSA"],
-            "kb-jwt_alg_values": ["ES256", "EdDSA"],
+              {
+                path: ["$.vct"],
+                filter: {
+                  type: "string",
+                  const:
+                    "https://credentials.example.com/identity_credential_2",
+                },
+              },
+            ],
           },
         },
-        constraints: {
-          fields: [
-            {
-              path: ["$.email", "$.username"],
-            },
-            {
-              path: ["$.vct"],
-              filter: {
-                type: "string",
-                const: "https://credentials.example.com/identity_credential_2",
-              },
-            },
-          ],
-        },
-      },
-    ],
+      ],
+    },
   };
 }
 

@@ -1,29 +1,7 @@
-import { CredentialEntry } from "./credential";
-import { KeyMetadata } from "../crypto";
+import {CredentialEntry} from "./credential";
+import {KeyMetadata} from "../crypto";
 // @ts-ignore
-import { ClientMetadata, PresentationDefinition } from "../../dist";
-
-/**
- * A `OID4VP` authorization request.
- *
- * @property {string} client_id - Verifier's identifier.
- * @property {PresentationDefinition} presentation_definition - Rules for the required Verifiable Presentation(s).
- * @property {ClientMetadata} client_metadata - Metadata information about the client.
- * @property {string} nonce - Unique value to prevent replay attacks.
- * @property {string} response_mode - Method for returning the authorization response.
- * @property {string} response_uri - URI to send the response.
- * @property {string} state - A value to keep state between the auth request and the response.
- */
-export interface AuthorizationRequest {
-  client_id: string;
-  presentation_definition: PresentationDefinition;
-  client_metadata: ClientMetadata;
-  nonce: string;
-  response_type: string;
-  response_mode: string;
-  response_uri: string;
-  state?: string;
-}
+import {ClientMetadata, PresentationDefinition} from "../../";
 
 /**
  * Metadata for an Authorization Response.

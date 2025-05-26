@@ -9,7 +9,6 @@ import init, {
   CredentialDeferred,
   CredentialImmediate,
   CredentialResponse,
-  ReqwestHttpClient,
   InMemKms,
   InMemVault,
   IssuerDiscovery,
@@ -17,6 +16,7 @@ import init, {
   OID4VCIHolderBuilder,
   OID4VPHolder,
   OID4VPHolderBuilder,
+  ReqwestHttpClient,
   resolveMetadata,
 } from "@equstng/agent-sdk";
 
@@ -49,12 +49,7 @@ async function issuanceFlow(holder: OID4VCIHolder, kms: InMemKms): Promise<void>
     return result;
   });
 
-  await requestAndStoreCredential(
-    holder,
-    kms,
-    "SD_JWT_cred_1",
-    tokenResp.access_token,
-  );
+  await requestAndStoreCredential(holder, kms, "SD_JWT_cred_1", tokenResp.access_token);
   await requestAndStoreCredential(holder, kms, "SD_JWT_cred_2", tokenResp.access_token);
 }
 
@@ -92,7 +87,8 @@ async function requestAndStoreCredential(
 
   const credentialImmediate = credentialResponse.data;
 
-  if (!isCredentialImmediate(credentialImmediate)) throw new Error("Credential response is Deferred. Unexpected result!");
+  if (!isCredentialImmediate(credentialImmediate))
+    throw new Error("Credential response is Deferred. Unexpected result!");
 
   const credential = credentialImmediate.credentials.pop()!;
   const credentialMetadata = await resolveMetadata(credential, keyMetadata);

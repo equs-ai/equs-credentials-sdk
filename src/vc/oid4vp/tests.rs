@@ -11,9 +11,8 @@ pub mod fixtures {
             use crate::vc::claims::Claims;
             use crate::vc::oid4vp::tests::utils::PresentationTestCase;
             use crate::vc::oid4vp::ResolvedAuthRequest;
-            use crate::vc::presentation_exchange::{
-                ClaimFormatDesignation, PresentationSubmission,
-            };
+            use crate::vc::presentation_exchange::PresentationSubmission;
+            use crate::vc::ClaimFormatDesignation;
             use serde_json::json;
 
             const PRESENTATION_SUBMISSION: &str = r#"{
@@ -673,7 +672,9 @@ pub mod fixtures {
             use crate::vc::claims::Claims;
             use crate::vc::oid4vp::tests::fixtures::NONCE;
             use crate::vc::oid4vp::tests::utils::{PresentationTestCase, VerificationTestCase};
-            use crate::vc::oid4vp::{PresentationSession, ResolvedAuthRequest};
+            use crate::vc::oid4vp::{
+                PresentationSession, ResolvedAuthRequest, ResolvedPresentationQuery,
+            };
             use crate::vc::presentation_exchange::{
                 PresentationDefinition, PresentationSubmission,
             };
@@ -862,8 +863,10 @@ pub mod fixtures {
               }}
             "#;
 
-            pub fn presentation_definition() -> PresentationDefinition {
-                serde_json::from_str(PRESENTATION_DEFINITION).unwrap()
+            pub fn presentation_definition() -> ResolvedPresentationQuery {
+                let pd: PresentationDefinition =
+                    serde_json::from_str(PRESENTATION_DEFINITION).unwrap();
+                ResolvedPresentationQuery::PresentationDefinition(pd)
             }
 
             pub fn presentation_submission() -> PresentationSubmission {
@@ -927,7 +930,7 @@ pub mod fixtures {
             pub fn presentation_session() -> PresentationSession {
                 PresentationSession {
                     nonce: Nonce::from_secret(NONCE.to_owned()),
-                    presentation_definition: presentation_definition(),
+                    resolved_presentation_query: presentation_definition(),
                     auth_request_jwt: Default::default(),
                 }
             }
@@ -1440,8 +1443,8 @@ pub mod fixtures {
         use crate::vc::oid4vp::tests::fixtures::NONCE;
         use crate::vc::oid4vp::tests::utils::{PresentationTestCase, VerificationTestCase};
         use crate::vc::oid4vp::{
-            AuthResponseOptions, PresentationSession, ResolvedAuthRequest, ResponseMode,
-            ResponseType,
+            AuthResponseOptions, PresentationSession, ResolvedAuthRequest,
+            ResolvedPresentationQuery, ResponseMode, ResponseType,
         };
         use crate::vc::presentation_exchange::{
             PresentationDefinition, PresentationSubmission, SubmissionRequirement,
@@ -1795,7 +1798,9 @@ pub mod fixtures {
         pub fn presentation_session() -> PresentationSession {
             PresentationSession {
                 nonce: Nonce::from_secret(NONCE.to_owned()),
-                presentation_definition: presentation_definition(),
+                resolved_presentation_query: ResolvedPresentationQuery::PresentationDefinition(
+                    presentation_definition(),
+                ),
                 auth_request_jwt: Default::default(),
             }
         }
@@ -2009,9 +2014,10 @@ pub mod utils {
         AuthorizationResponse, AuthorizationResponseMetadata, ClientMetadata, CredentialMapping,
         Holder, PresentationSession, ResolvedAuthRequest, ResponseType, Verifier,
     };
-    use crate::vc::presentation_exchange::{ClaimFormatDesignation, PresentationSubmission};
+    use crate::vc::presentation_exchange::PresentationSubmission;
     use crate::vc::{
-        presentation_exchange, Credential, JsonLdAPIVCMetadata, VCFormatsAPI, VCMetadata,
+        presentation_exchange, ClaimFormatDesignation, Credential, JsonLdAPIVCMetadata,
+        VCFormatsAPI, VCMetadata,
     };
     use async_trait::async_trait;
     use iref::UriBuf;
@@ -2205,9 +2211,15 @@ pub mod utils {
             holder_key: (KeyID, KeyHandle),
         ) -> CredentialMapping {
             let (kid, key_handle) = holder_key;
-            let inputs =
-                presentation_exchange::split_to_inputs(&self.request.presentation_definition, None)
-                    .unwrap();
+            let inputs = presentation_exchange::split_to_inputs_for_pd(
+                &self
+                    .request
+                    .resolved_presentation_query
+                    .get_presentation_definition()
+                    .unwrap(),
+                None,
+            )
+            .unwrap();
 
             let mut result = CredentialMapping::new();
 
@@ -2329,6 +2341,7 @@ pub mod utils {
         }
     }
 
+    #[derive(Clone)]
     pub struct VerificationTestCase {
         pub credential_data: Vec<Claims>,
         pub presentation_submission: PresentationSubmission,
@@ -2371,7 +2384,7 @@ pub mod utils {
         ) -> AuthorizationResponse {
             AuthorizationResponse {
                 vp_token: self.vp_token(nonce, verifier_id).await,
-                presentation_submission: self.presentation_submission.clone(),
+                presentation_submission: Some(self.presentation_submission.clone()),
                 id_token: None,
                 state: None,
             }

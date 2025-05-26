@@ -1,3 +1,11 @@
+use crate::nonce::Nonce;
+use crate::utils::wasm::{WasmNotSend, WasmNotSync};
+use crate::vault::CredentialEntry;
+use crate::vc::claims::Claims;
+use crate::vc::core::KeyMetadata;
+use crate::vc::oid4vp::internal_error::Oid4VpLibSnafu;
+use crate::vc::oid4vp::{InternalError, ProtocolError};
+use crate::vc::presentation_exchange::PresentationSubmission;
 use async_trait::async_trait;
 use common_macros::DebugError;
 use openid4vp::core::error::Error as SpruceErr;
@@ -6,21 +14,15 @@ use snafu::{IntoError, Snafu};
 use std::collections::HashMap;
 use std::fmt::Debug;
 
-use crate::nonce::Nonce;
-use crate::utils::wasm::{WasmNotSend, WasmNotSync};
-use crate::vault::CredentialEntry;
-use crate::vc::claims::Claims;
-use crate::vc::core::KeyMetadata;
-use crate::vc::oid4vp::internal_error::Oid4VpLibSnafu;
-use crate::vc::oid4vp::{InternalError, ProtocolError};
-use crate::vc::presentation_exchange::{PresentationDefinition, PresentationSubmission};
-
 pub type CredentialsMapping = HashMap<String, Vec<CredentialEntry>>;
 pub type CredentialMapping = HashMap<String, CredentialEntry>;
 pub type ClientMetadata = openid4vp::core::authorization_request::parameters::ClientMetadata;
 pub type WalletMetadata = openid4vp::core::metadata::WalletMetadata;
 pub type ResponseType = openid4vp::core::authorization_request::parameters::ResponseType;
 pub type ResponseMode = openid4vp::core::authorization_request::parameters::ResponseMode;
+
+pub type ResolvedPresentationQuery =
+    openid4vp::core::authorization_request::ResolvedPresentationQuery;
 pub type Url = url::Url;
 
 /// Metadata for an ID Token.
@@ -78,11 +80,11 @@ impl AuthorizationResponseMetadata {
 
 /// A session with state managed during the presentation.
 ///
-/// Contains [Nonce, PresentationDefinition].
+/// Contains [Nonce, ResolvedPresentationQuery].
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct PresentationSession {
     pub nonce: Nonce,
-    pub presentation_definition: PresentationDefinition,
+    pub resolved_presentation_query: ResolvedPresentationQuery,
     pub auth_request_jwt: Option<String>,
 }
 
@@ -97,7 +99,8 @@ pub struct PresentationSession {
 pub struct ResolvedAuthRequest {
     pub client_id: String,
     pub client_metadata: ClientMetadata,
-    pub presentation_definition: PresentationDefinition,
+    #[serde(flatten)]
+    pub resolved_presentation_query: ResolvedPresentationQuery,
     pub nonce: Nonce,
     pub response_type: ResponseType,
     pub response_mode: ResponseMode,
@@ -121,7 +124,7 @@ pub struct AuthResponseOptions {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct AuthorizationResponse {
     pub vp_token: serde_json::Value,
-    pub presentation_submission: PresentationSubmission,
+    pub presentation_submission: Option<PresentationSubmission>,
     pub id_token: Option<String>,
     pub state: Option<String>,
 }
@@ -319,7 +322,7 @@ pub trait Verifier: WasmNotSend + WasmNotSync {
     /// * [InternalError::NonceGeneration] - if an error occurs during generation of nonce
     async fn create_authorization_request(
         &self,
-        presentation_definition: &PresentationDefinition,
+        presentation_definition: &ResolvedPresentationQuery,
         auth_response_options: &AuthResponseOptions,
         pass_auth_request_object: &PassAuthRequestObject,
         wallet_metadata: Option<&WalletMetadata>,

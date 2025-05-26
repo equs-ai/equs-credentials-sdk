@@ -9,6 +9,7 @@ use agent_sdk::kms::Kms;
 use agent_sdk::reqwest::builder::ReqwestClientBuilder;
 use agent_sdk::vault::CredentialEntry;
 use agent_sdk::vc::core::KeyMetadata;
+use agent_sdk::vc::dcql::{DCQLCredential, DCQL};
 use agent_sdk::vc::metadata::{CredentialMetadataProcessor, DefaultMetadataProcessor};
 use agent_sdk::vc::oid4vci::{
     AuthzFlow, CredentialOfferParams, CredentialResponseResolved, CredentialResult,
@@ -17,7 +18,8 @@ use agent_sdk::vc::oid4vci::{
 use agent_sdk::vc::oid4vci::{CredentialOfferResolver, Holder as HolderVci};
 use agent_sdk::vc::oid4vp::{
     AuthResponseOptions, AuthorizationResponse, AuthorizationResponseMetadata, CredentialsMapping,
-    PassAuthRequestObject, ResolvedAuthRequest, ResponseMode, ResponseType,
+    PassAuthRequestObject, ResolvedAuthRequest, ResolvedPresentationQuery, ResponseMode,
+    ResponseType,
 };
 use agent_sdk::vc::oid4vp::{CredentialMapping, Holder as HolderVp};
 use agent_sdk::vc::oid4vp::{IdTokenMetadata, Verifier};
@@ -26,6 +28,7 @@ use agent_sdk::vc::HasClaims;
 use agent_sdk::vc::{oid4vci, oid4vp, Credential};
 use oauth2::{AccessToken, TokenResponse as _TokenResponse};
 use reqwest::Url;
+use serde_json::json;
 use std::collections::HashMap;
 use std::io;
 use std::io::Write;
@@ -178,6 +181,7 @@ async fn run_presentation_flow(holder: impl HolderVp, kms: LocalKms) {
             cross_device_presentation_flow(holder, kms).await
         }
         "2" => {
+            //TODO to be fixed.
             println!("Same device flow is started ...");
             input.clear();
             same_device_presentation_flow(holder, kms).await
@@ -193,10 +197,11 @@ async fn run_presentation_flow(holder: impl HolderVp, kms: LocalKms) {
 async fn cross_device_presentation_flow(holder: impl HolderVp, kms: LocalKms) {
     println!("1. Holder tries to parse authorization/presentation request of Verifier");
 
-    println!("Please enter presentation request URI from http://localhost:8098/request_uri:");
-    io::stdout().flush().unwrap();
-
-    let input = input_from_console("Failed to read presentation request uri");
+    println!("Please enter the presentation flow request URI type from the following:");
+    println!("- If you  want to use DCQL flow, go to http://localhost:8098/request_uri/dcql and enter request URI from there");
+    println!("- If you want to use PresentationDefinition flow, go to http://localhost:8098/request_uri and enter request URI from there");
+    println!("Enter the request URI here:");
+    let input = input_from_console("Failed to get the flow request URI");
     let request_uri = input
         .parse()
         .unwrap_or_else(|_| panic!("Incorrect URI: {input}"));
@@ -215,6 +220,24 @@ async fn cross_device_presentation_flow(holder: impl HolderVp, kms: LocalKms) {
 }
 
 async fn same_device_presentation_flow(holder: impl HolderVp, kms: LocalKms) {
+    println!("Please enter the flow type:");
+    println!("1. Use DCQL flow");
+    println!("2. Use PresentationDefinition flow");
+    let input = input_from_console("Failed to get presentation flow");
+    let cp = match input.as_str() {
+        "1" => {
+            println!("Using DCQL flow ...");
+            ResolvedPresentationQuery::DCQL(default_dcql_qury())
+        }
+        "2" => {
+            println!("Using PresentationDefinition flow ...");
+            ResolvedPresentationQuery::PresentationDefinition(default_presentation_definition())
+        }
+        _ => {
+            println!("Invalid input, please retry the flow");
+            panic!("Invalid input, please retry the flow");
+        }
+    };
     let redirect_uri = Url::parse("http://verifier.example.com/cb").unwrap();
     let verifier = verifier(redirect_uri.as_ref()).await;
     println!("1.2 Verifier generates authorization request");
@@ -228,12 +251,7 @@ async fn same_device_presentation_flow(holder: impl HolderVp, kms: LocalKms) {
     let pass_auth_req_object = PassAuthRequestObject::ByValue;
 
     let (request_uri, session) = verifier
-        .create_authorization_request(
-            &default_presentation_definition(),
-            &auth_resp_config,
-            &pass_auth_req_object,
-            None,
-        )
+        .create_authorization_request(&cp, &auth_resp_config, &pass_auth_req_object, None)
         .await
         .unwrap();
 
@@ -675,6 +693,30 @@ pub fn default_presentation_definition() -> PresentationDefinition {
     PresentationDefinition::new(Uuid::new_v4().to_string(), input_descriptor_1)
         .add_input_descriptor(serde_json::from_str(INPUT_DESCRIPTOR_FOR_CRED_DEF_2).unwrap())
         .set_name("Example with selective disclosure".to_owned())
+}
+
+pub fn default_dcql_qury() -> DCQL {
+    let desc: DCQLCredential = serde_json::from_value(json!(
+        {
+            "id": "pid",
+            "format": "dc+sd-jwt",
+            "claims": [
+                {
+                    "id": "1",
+                    "path": ["username"],
+                    "values": ["John Doe", "John", "Jon"],
+                },
+                {
+                    "id": "2",
+                    "path": ["email", "work"]
+                }
+            ],
+            "claim_sets": [[1], [2]]
+        }
+    ))
+    .unwrap();
+
+    DCQL::new(vec![desc])
 }
 
 const INPUT_DESCRIPTOR_FOR_CRED_DEF_1: &str = r#"{

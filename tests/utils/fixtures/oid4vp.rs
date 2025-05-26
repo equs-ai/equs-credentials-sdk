@@ -1,4 +1,5 @@
 use agent_sdk::vc::claims::{Claim, Claims};
+use agent_sdk::vc::dcql::{DCQLCredential, DCQL};
 use agent_sdk::vc::presentation_exchange::PresentationDefinition;
 use agent_sdk::vc::{JsonLdAPIVCMetadata, VCMetadata};
 use openid4vp::core::input_descriptor::InputDescriptor;
@@ -21,6 +22,7 @@ pub struct Oid4VpTestCredential {
 pub struct Oid4VpTestCase {
     pub credentials: Vec<Oid4VpTestCredential>,
     pub presentation_definition: PresentationDefinition,
+    pub dcql: Option<DCQL>,
     pub validate: Box<ValidateClaimsFunc>,
 }
 
@@ -58,7 +60,7 @@ fn sample_jsonld_resident_card_credential() -> (Oid4VpTestCredential, InputDescr
 
     let input_descriptor = serde_json::from_value(json!(
         {
-            "id": "resident-card",
+            "id": "residentCard",
             "name": "Identity VC",
             "purpose": "We want an identity",
             "format": {
@@ -89,6 +91,40 @@ fn sample_jsonld_resident_card_credential() -> (Oid4VpTestCredential, InputDescr
     (credential, input_descriptor)
 }
 
+pub fn sample_dcql_query_ldp_vc() -> DCQL {
+    let desc: DCQLCredential = serde_json::from_value(json!(
+                  {
+                      "id": "residentCard",
+                  "format": "ldp_vc",
+                  // "claims": [
+                  //   {"path": ["type"]},
+                  // ]
+                  }
+    ))
+    .unwrap();
+
+    DCQL::new(vec![desc])
+}
+
+pub fn sample_dcql_query_sdjwt() -> DCQL {
+    let desc: DCQLCredential = serde_json::from_value(json!(
+        {
+          "id": "identity",
+          "format": "dc+sd-jwt",
+          "claims": [
+            {
+              "path": [
+                "name"
+              ]
+            }
+          ]
+        }
+    ))
+    .unwrap();
+
+    DCQL::new(vec![desc])
+}
+
 fn sample_sdjwt_identity_credential() -> (Oid4VpTestCredential, InputDescriptor) {
     let format = Oid4VpTestCredentialFormat::SdJwt(VCMetadata {
         vct: "https://credentials.example.com/identity_credential".to_owned(),
@@ -116,7 +152,7 @@ fn sample_sdjwt_identity_credential() -> (Oid4VpTestCredential, InputDescriptor)
 
     let input_descriptor = serde_json::from_value(json!(
         {
-            "id": "Identity-1",
+            "id": "identity",
             "name": "Identity VC",
             "purpose": "We want an identity",
             "format": {
@@ -182,7 +218,7 @@ fn sample_sdjwt_degree_credential() -> (Oid4VpTestCredential, InputDescriptor) {
 
     let input_descriptor = serde_json::from_value(json!(
         {
-            "id": "Degree-1",
+            "id": "Degree1",
             "name": "Degree VC",
             "format": {
                 "dc+sd-jwt": {
@@ -219,6 +255,7 @@ fn sample_sdjwt_degree_credential() -> (Oid4VpTestCredential, InputDescriptor) {
 
 pub fn single_jsonld_presentation_case() -> Oid4VpTestCase {
     let (credential, descriptor) = sample_jsonld_resident_card_credential();
+    let dcql = sample_dcql_query_ldp_vc();
 
     let presentation_definition = PresentationDefinition::new(
         "1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed".to_string(),
@@ -227,17 +264,17 @@ pub fn single_jsonld_presentation_case() -> Oid4VpTestCase {
 
     let validate: Box<ValidateClaimsFunc> = Box::new(|claims| {
         assert_eq!(
-            &claims["vp_token"]["resident-card"]["verifiableCredential"]["credentialSubject"]
+            &claims["vp_token"]["residentCard"]["verifiableCredential"]["credentialSubject"]
                 ["givenName"],
             &Claim::String("John".to_string())
         );
         assert_eq!(
-            &claims["vp_token"]["resident-card"]["verifiableCredential"]["credentialSubject"]
+            &claims["vp_token"]["residentCard"]["verifiableCredential"]["credentialSubject"]
                 ["familyName"],
             &Claim::String("Doe".to_string())
         );
         assert_eq!(
-            &claims["vp_token"]["resident-card"]["verifiableCredential"]["credentialSubject"]
+            &claims["vp_token"]["residentCard"]["verifiableCredential"]["credentialSubject"]
                 ["birthDate"],
             &Claim::String("09/09/1989".to_string())
         );
@@ -247,11 +284,13 @@ pub fn single_jsonld_presentation_case() -> Oid4VpTestCase {
         credentials: vec![credential],
         presentation_definition,
         validate,
+        dcql: Some(dcql),
     }
 }
 
 pub fn single_sdjwt_presentation_case() -> Oid4VpTestCase {
     let (credential, descriptor) = sample_sdjwt_identity_credential();
+    let dcql = sample_dcql_query_sdjwt();
 
     let presentation_definition = PresentationDefinition::new(
         "1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed".to_string(),
@@ -260,11 +299,11 @@ pub fn single_sdjwt_presentation_case() -> Oid4VpTestCase {
 
     let validate: Box<ValidateClaimsFunc> = Box::new(|claims| {
         assert_eq!(
-            &claims["vp_token"]["Identity-1"]["vct"],
+            &claims["vp_token"]["identity"]["vct"],
             &Claim::String("https://credentials.example.com/identity_credential".to_string())
         );
         assert_eq!(
-            &claims["vp_token"]["Identity-1"]["name"],
+            &claims["vp_token"]["identity"]["name"],
             &Claim::String("John".to_string())
         );
     });
@@ -273,12 +312,14 @@ pub fn single_sdjwt_presentation_case() -> Oid4VpTestCase {
         credentials: vec![credential],
         presentation_definition,
         validate,
+        dcql: Some(dcql),
     }
 }
 
 pub fn multiple_sdjwt_presentation_case() -> Oid4VpTestCase {
     let (cred_identity, descriptor_identity) = sample_sdjwt_identity_credential();
     let (cred_degree, descriptor_degree) = sample_sdjwt_degree_credential();
+    let dcql = sample_dcql_query_for_multiple_sdjwt();
 
     let presentation_definition = PresentationDefinition::new(
         "1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed".to_string(),
@@ -288,19 +329,19 @@ pub fn multiple_sdjwt_presentation_case() -> Oid4VpTestCase {
 
     let validate: Box<ValidateClaimsFunc> = Box::new(|claims| {
         assert_eq!(
-            &claims["vp_token"]["Identity-1"]["vct"],
+            &claims["vp_token"]["identity"]["vct"],
             &Claim::String("https://credentials.example.com/identity_credential".to_string())
         );
         assert_eq!(
-            &claims["vp_token"]["Identity-1"]["name"],
+            &claims["vp_token"]["identity"]["name"],
             &Claim::String("John".to_string())
         );
         assert_eq!(
-            &claims["vp_token"]["Degree-1"]["vct"],
+            &claims["vp_token"]["Degree1"]["vct"],
             &Claim::String("https://credentials.example.com/degree_credential".to_string())
         );
         assert_eq!(
-            &claims["vp_token"]["Degree-1"]["degree"]["type"],
+            &claims["vp_token"]["Degree1"]["degree"]["type"],
             &Claim::String("BachelorDegree".to_string())
         );
     });
@@ -309,5 +350,47 @@ pub fn multiple_sdjwt_presentation_case() -> Oid4VpTestCase {
         credentials: vec![cred_identity, cred_degree],
         presentation_definition,
         validate,
+        dcql: Some(dcql),
     }
+}
+
+pub fn sample_dcql_query_for_multiple_sdjwt() -> DCQL {
+    let desc1: DCQLCredential = serde_json::from_value(json!(
+                  {
+                      "id": "identity",
+                  "format": "dc+sd-jwt",
+                  "claims": [
+                    {"path": ["name"]},
+                    {
+                        "path": ["vct"],
+                        "values": ["https://credentials.example.com/identity_credential"]
+                    },
+                  ]
+                  }
+    ))
+    .unwrap();
+    let desc2: DCQLCredential = serde_json::from_value(json!(
+      {
+          "id": "Degree1",
+          "format": "dc+sd-jwt",
+          "claims": [
+            {
+              "path": [
+                "name"
+              ]
+            },
+            {
+              "path": [
+                "vct"
+              ],
+              "values": [
+                "https://credentials.example.com/degree_credential"
+              ]
+            }
+          ]
+      }
+    ))
+    .unwrap();
+
+    DCQL::new(vec![desc1, desc2])
 }

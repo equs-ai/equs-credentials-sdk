@@ -1,9 +1,9 @@
 import {
   Claims,
+  CommonAuthorizationRequest,
   CredentialFormats,
   PresentationDefinition,
   PresentationSubmission,
-  AuthorizationRequest,
 } from "agent-sdk";
 
 export const AUTH_REQUEST_JWT =
@@ -46,7 +46,7 @@ export const PRESENTATION_DEFINITION: PresentationDefinition = {
   ],
 };
 
-export const AUTH_REQUEST: AuthorizationRequest = {
+export const AUTH_REQUEST: CommonAuthorizationRequest = {
   client_id: "did:key:zDnaeeTG88wpPhMzuDRvLRTTyNMyJip5e6TLmsjyvPiSYUFk7",
   client_metadata: {
     vp_formats: {

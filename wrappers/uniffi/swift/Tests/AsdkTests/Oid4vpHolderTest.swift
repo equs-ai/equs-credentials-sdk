@@ -121,7 +121,8 @@ import Testing
 		let inMemVault = InMemVault()
 
 		var didAndKeyMetadata = await createDidAndKeyMetadata(kms: inMemKms)
-		didAndKeyMetadata.keyMetadata.didUrl = "did:key:zDnaej9QadgdZnu8uDXZXd4545dfJAEvmV6nn7xaYUqzcrPvM#zDnaej9QadgdZnu8uDXZXd4545dfJAEvmV6nn7xaYUqzcrPvM"
+		didAndKeyMetadata.keyMetadata.didUrl =
+			"did:key:zDnaej9QadgdZnu8uDXZXd4545dfJAEvmV6nn7xaYUqzcrPvM#zDnaej9QadgdZnu8uDXZXd4545dfJAEvmV6nn7xaYUqzcrPvM"
 
 		let credential = Credential(
 			format: VcFormat.sdJwtVc, payload: Oid4vpHolderTestConstants.sdJwtPayload)
@@ -140,49 +141,52 @@ import Testing
 enum Oid4vpHolderTestConstants {
 	static let presentationDefinition = """
 		{
-		   "id":"1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed",
-		   "input_descriptors":[
-		      {
-		         "id":"Identity-1",
-		         "constraints":{
-		            "fields":[
-		               {
-		                  "path":[
-		                     "$.vct"
-		                  ],
-		                  "filter":{
-		                     "type":"string",
-		                     "const":"https://credentials.example.com/identity_credential"
-		                  },
-		                  "predicate":null,
-		                  "intent_to_retain":false
-		               },
-		               {
-		                  "path":[
-		                     "$.name"
-		                  ],
-		                  "optional":true,
-		                  "predicate":null,
-		                  "intent_to_retain":false
-		               }
-		            ]
-		         },
-		         "name":"Identity VC",
-		         "purpose":"We want an identity",
-		         "format":{
-		            "dc+sd-jwt":{
-		               "sd-jwt_alg_values":[
-		                  "ES256",
-		                  "EdDSA"
-		               ],
-		               "kb-jwt_alg_values":[
-		                  "ES256",
-		                  "EdDSA"
-		               ]
-		            }
-		         }
-		      }
-		   ]
+		   "presentation_definition":
+		    {
+				   "id":"1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed",
+				   "input_descriptors":[
+				      {
+				         "id":"Identity-1",
+				         "constraints":{
+				            "fields":[
+				               {
+				                  "path":[
+				                     "$.vct"
+				                  ],
+				                  "filter":{
+				                     "type":"string",
+				                     "const":"https://credentials.example.com/identity_credential"
+				                  },
+				                  "predicate":null,
+				                  "intent_to_retain":false
+				               },
+				               {
+				                  "path":[
+				                     "$.name"
+				                  ],
+				                  "optional":true,
+				                  "predicate":null,
+				                  "intent_to_retain":false
+				               }
+				            ]
+				         },
+				         "name":"Identity VC",
+				         "purpose":"We want an identity",
+				         "format":{
+				            "dc+sd-jwt":{
+				               "sd-jwt_alg_values":[
+				                  "ES256",
+				                  "EdDSA"
+				               ],
+				               "kb-jwt_alg_values":[
+				                  "ES256",
+				                  "EdDSA"
+				               ]
+				            }
+				         }
+				      }
+				   ]
+		}
 		}
 		"""
 

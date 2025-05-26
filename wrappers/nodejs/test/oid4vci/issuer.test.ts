@@ -1,11 +1,12 @@
-import {InMemKms, OID4VCIIssuer, OID4VCIIssuerBuilder} from "../../";
+import { InMemKms, OID4VCIIssuer, OID4VCIIssuerBuilder } from "../../";
 import {
   ACCESS_TOKEN,
   CLAIMS,
   CRED_DEF_ID,
   CRED_DEF_METADATA,
   CRED_OFFER,
-  CRED_REQUEST, CRED_REQUEST_FOR_BATCH_ISSUANCE,
+  CRED_REQUEST,
+  CRED_REQUEST_FOR_BATCH_ISSUANCE,
   GRANTS,
   ISSUER_METADATA,
   MockNonceHandler,
@@ -14,7 +15,7 @@ import { createDidAndKeyMetadata } from "../utils";
 
 describe("OID4VCI Issuer: ", () => {
   let issuer: OID4VCIIssuer;
-  const NONCE = "KB50VOm9I-kPLT9mAACV8g"
+  const NONCE = "KB50VOm9I-kPLT9mAACV8g";
 
   beforeEach(async () => {
     const kms = new InMemKms();
@@ -53,19 +54,17 @@ describe("OID4VCI Issuer: ", () => {
     const credentialOffer = await issuer.generateNonce();
 
     expect(credentialOffer).toMatchObject({
-      c_nonce: NONCE
+      c_nonce: NONCE,
     });
   });
 
   test("issue Credential", async () => {
-
     const result = await issuer.issueCredential(CRED_REQUEST, ACCESS_TOKEN, CLAIMS);
     expect(result.value.credentials.length).toEqual(1);
     expect(result.value.credentials[0]).toBeTruthy();
   });
 
   test("issue multiple Credential - Batch issuance", async () => {
-
     const result = await issuer.issueCredential(CRED_REQUEST_FOR_BATCH_ISSUANCE, ACCESS_TOKEN, CLAIMS);
     expect(result.value.credentials.length).toEqual(2);
     expect(result.value.credentials[0]).toBeTruthy();

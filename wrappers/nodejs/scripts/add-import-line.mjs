@@ -5,6 +5,7 @@ import fs from "fs/promises";
     const TYPES_FILE_PATH = "./";
     let content = await fs.readFile("binary.d.ts", "utf8");
     const exported_types = [
+      "ResolvedPresentationQuery",
       "PresentationDefinition",
       "PresentationSubmission",
       "DIDDocument",

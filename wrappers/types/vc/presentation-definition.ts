@@ -1,8 +1,8 @@
-import { ClaimFormatMap } from "./common";
+import {ClaimFormatMap} from "./common";
 
 export declare enum Predicate {
-  Required = 0,
-  Preferred = 1,
+    Required = 0,
+    Preferred = 1,
 }
 
 /**
@@ -13,14 +13,14 @@ export declare enum Predicate {
  * @see {@link https://identity.foundation/presentation-exchange/spec/v2.0.0/#input-descriptor-object|Input Descriptor Object Specification}
  */
 export interface ConstraintsField {
-  path: Array<string>;
-  id?: string;
-  purpose?: string;
-  name?: string;
-  predicate?: Predicate;
-  filter?: any;
-  optional?: boolean;
-  intent_to_retain?: boolean;
+    path: Array<string>;
+    id?: string;
+    purpose?: string;
+    name?: string;
+    predicate?: Predicate;
+    filter?: any;
+    optional?: boolean;
+    intent_to_retain?: boolean;
 }
 
 /**
@@ -31,8 +31,8 @@ export interface ConstraintsField {
  * @property {number} Preferred Selective disclosure is preferred but not mandatory
  */
 export declare enum ConstraintsLimitDisclosure {
-  Required = 0,
-  Preferred = 1,
+    Required = 0,
+    Preferred = 1,
 }
 
 /**
@@ -44,22 +44,22 @@ export declare enum ConstraintsLimitDisclosure {
  * @see {@link https://identity.foundation/presentation-exchange/spec/v2.0.0/#input-descriptor-object|Input Descriptor Object Specification}
  */
 export interface Constraints {
-  fields?: Array<ConstraintsField>;
-  limit_disclosure?: ConstraintsLimitDisclosure;
+    fields?: Array<ConstraintsField>;
+    limit_disclosure?: ConstraintsLimitDisclosure;
 }
 
 /**
  * Claim format payload
  */
 export type ClaimFormatPayload =
-  | { alg: string[] }
-  | { alg_values_supported: string[] }
-  | { proof_type: string[] }
-  | {
-  "sd-jwt_alg_values": string[];
-  "kb-jwt_alg_values": string[];
+    | { alg: string[] }
+    | { alg_values_supported: string[] }
+    | { proof_type: string[] }
+    | {
+    "sd-jwt_alg_values": string[];
+    "kb-jwt_alg_values": string[];
 }
-  | any;
+    | any;
 
 /**
  * Input Descriptors are objects used to describe the information a
@@ -72,12 +72,12 @@ export type ClaimFormatPayload =
  * @see {@link https://identity.foundation/presentation-exchange/spec/v2.0.0/#input-descriptor-object|Input Descriptor Object Specification}
  */
 export interface InputDescriptor {
-  id: string;
-  constraints: Constraints;
-  name?: string;
-  purpose?: string;
-  format: Partial<ClaimFormatMap>;
-  group?: Array<string>;
+    id: string;
+    constraints: Constraints;
+    name?: string;
+    purpose?: string;
+    format: Partial<ClaimFormatMap>;
+    group?: Array<string>;
 }
 
 
@@ -95,10 +95,12 @@ export interface InputDescriptor {
  * @see {@link https://identity.foundation/presentation-exchange/spec/v2.0.0/#presentation-definition|Presentation Definition Specification}
  */
 export interface PresentationDefinition {
-  id: string;
-  input_descriptors: Array<InputDescriptor>;
-  submission_requirements?: Array<any>;
-  name?: string;
-  purpose?: string;
-  format?: Partial<ClaimFormatMap>;
+    id: string;
+    input_descriptors: Array<InputDescriptor>;
+    submission_requirements?: Array<any>;
+    name?: string;
+    purpose?: string;
+    format?: Partial<ClaimFormatMap>;
 }
+
+

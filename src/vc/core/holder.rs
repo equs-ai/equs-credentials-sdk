@@ -180,14 +180,17 @@ where
             .restrictions
             .iter()
             .flat_map(|pr| pr.fields.clone())
-            .collect();
+            .collect::<Vec<_>>();
 
         info!("search for credentials in the vault");
-        let credentials = self
-            .vault
-            .find_credentials(fields, None)
-            .await
-            .context(VaultSnafu)?;
+        let credentials: Vec<CredentialEntry> = if !fields.is_empty() {
+            self.vault
+                .find_credentials(fields, None)
+                .await
+                .context(VaultSnafu)?
+        } else {
+            self.vault.get_credentials(None).await.context(VaultSnafu)?
+        };
 
         let result = credentials
             .into_iter()
@@ -196,7 +199,6 @@ where
 
         Ok(result)
     }
-
     #[instrument(level = Level::TRACE, skip(self), err(), ret())]
     async fn create_presentation(
         &self,
@@ -250,7 +252,6 @@ where
         Ok(presentation)
     }
 }
-
 impl<KH, KMS, V> HolderService<KH, KMS, V>
 where
     KMS: kms::Kms<KH>,

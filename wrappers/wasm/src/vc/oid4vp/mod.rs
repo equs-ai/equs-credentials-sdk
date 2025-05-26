@@ -10,13 +10,11 @@ extern "C" {
 
     #[wasm_bindgen(typescript_type = "PresentationDefinition")]
     pub type PresentationDefinition;
-
-    #[wasm_bindgen(typescript_type = "AuthorizationRequest")]
-    pub type AuthorizationRequest;
-
     #[wasm_bindgen(typescript_type = "AuthorizationResponseMetadata")]
     pub type AuthorizationResponseMetadata;
 
+    #[wasm_bindgen(typescript_type = "RustAuthorizationRequest")]
+    pub type RustAuthorizationRequest;
     #[wasm_bindgen(typescript_type = "CredentialMapping")]
     pub type CredentialMapping;
 
@@ -25,4 +23,13 @@ extern "C" {
 
     #[wasm_bindgen(typescript_type = "WalletMetadata")]
     pub type WalletMetadata;
+}
+
+#[wasm_bindgen]
+extern "C" {
+    #[wasm_bindgen(typescript_type = "AuthorizationRequest")]
+    pub type AuthorizationRequest;
+
+    #[wasm_bindgen(method)]
+    fn getAuthRequest(this: &AuthorizationRequest) -> RustAuthorizationRequest;
 }
