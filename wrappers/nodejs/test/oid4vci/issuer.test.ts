@@ -1,4 +1,4 @@
-import { InMemKms, OID4VCIIssuer, OID4VCIIssuerBuilder } from "../../";
+import { HttpRequest, HttpResponse, InMemKms, OID4VCIIssuer, OID4VCIIssuerBuilder, ReqwestHttpClient } from "../../";
 import {
   ACCESS_TOKEN,
   CLAIMS,
@@ -23,10 +23,50 @@ describe("OID4VCI Issuer: ", () => {
     const { keyMetadata } = await createDidAndKeyMetadata(kms);
 
     issuer = await new OID4VCIIssuerBuilder(kms, ISSUER_METADATA, keyMetadata)
-        .withNonceHandler(mockNonceHandler)
-        .withDefaultCredentialLifetime(3600 * 24)
-        .withCredentialLifetime(CRED_DEF_ID, 3600)
-        .build();
+      .withNonceHandler(mockNonceHandler)
+      .withDefaultCredentialLifetime(3600 * 24)
+      .withCredentialLifetime(CRED_DEF_ID, 3600)
+      .build();
+  });
+
+  // todo enable when custom http client providing will work
+  test.skip("Custom http client", async () => {
+    const kms = new InMemKms();
+    const mockNonceHandler = new MockNonceHandler(NONCE);
+    const { keyMetadata } = await createDidAndKeyMetadata(kms);
+    let result: HttpResponse;
+    const httpClient = {
+      asyncCall: async (request: HttpRequest) => {
+        result = {
+          statusCode: 200,
+          headers: {},
+          body: "success",
+        };
+        return result;
+      },
+    };
+
+    issuer = await new OID4VCIIssuerBuilder(kms, ISSUER_METADATA, keyMetadata)
+      .withNonceHandler(mockNonceHandler)
+      .withDefaultCredentialLifetime(3600 * 24)
+      .withCredentialLifetime(CRED_DEF_ID, 3600)
+      .withHttpClient(httpClient)
+      .tokenValidationJwks("https://google.com")
+      .build();
+
+    await issuer.issueCredential(CRED_REQUEST, ACCESS_TOKEN, CLAIMS);
+
+    expect(result).toEqual({
+      statusCode: 200,
+      headers: {},
+      body: "success",
+    });
+  });
+
+  test("validate token", async () => {
+    const issuerMetadata = issuer.getIssuerMetadata();
+
+    expect(issuerMetadata).toMatchObject(ISSUER_METADATA);
   });
 
   test("retrieve Metadata", async () => {

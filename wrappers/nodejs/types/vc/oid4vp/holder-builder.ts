@@ -2,9 +2,9 @@ import {
   buildVpHolder,
   contextEnsuredKms,
   contextEnsuredVault,
-  HttpClient,
   Kms,
   OID4VPHolder,
+  ReqwestHttpClient,
   Vault,
   WalletMetadata,
 } from "../../..";
@@ -14,7 +14,7 @@ export class OID4VPHolderBuilder {
   private readonly vault: Vault;
   private readonly clientId: string;
   private walletMetadata?: WalletMetadata;
-  private httpClient?: HttpClient;
+  private httpClient?: ReqwestHttpClient;
 
   constructor(kms: Kms, vault: Vault, clientId: string) {
     this.kms = kms;
@@ -27,7 +27,7 @@ export class OID4VPHolderBuilder {
     return this;
   }
 
-  withHttpClient(client: HttpClient): this {
+  withHttpClient(client: ReqwestHttpClient): this {
     this.httpClient = client;
     return this;
   }

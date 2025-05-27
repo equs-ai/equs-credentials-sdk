@@ -80,6 +80,7 @@ pub async fn _build_vp_holder(
     if let Some(did_resolver) = did_resolver {
         builder = builder.with_did_resolver(did_resolver).unwrap();
     }
+
     let holder = builder
         .build()
         .await

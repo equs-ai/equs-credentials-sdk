@@ -3,10 +3,10 @@ import {
   ClientMetadata,
   contextEnsuredKms,
   contextEnsuredNonceHandler,
-  HttpClient,
   KeyMetadata,
   Kms,
   NonceHandler,
+  ReqwestHttpClient,
 } from "../../../";
 import { OID4VPVerifier } from "./verifier";
 
@@ -16,7 +16,7 @@ export class OID4VPVerifierBuilder {
   private readonly keyMetadata: KeyMetadata;
   private readonly clientId: string;
   private clientMetadata?: ClientMetadata;
-  private httpClient?: HttpClient;
+  private httpClient?: ReqwestHttpClient;
 
   constructor(kms: Kms, NonceHandler: NonceHandler, keyMetadata: KeyMetadata, clientId: string) {
     this.kms = kms;
@@ -30,7 +30,7 @@ export class OID4VPVerifierBuilder {
     return this;
   }
 
-  withHttpClient(httpClient: HttpClient): this {
+  withHttpClient(httpClient: ReqwestHttpClient): this {
     this.httpClient = httpClient;
     return this;
   }

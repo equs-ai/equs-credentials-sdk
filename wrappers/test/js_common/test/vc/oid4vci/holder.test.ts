@@ -1,15 +1,15 @@
 import { getLocal } from "mockttp";
 import {
   DIDKey,
-  ReqwestHttpClient,
   InMemKms,
   InMemVault,
   IssuerDiscovery,
   KeyMetadata,
+  KeyType,
   OID4VCIHolderBuilder,
+  ReqwestHttpClient,
   resolveMetadata,
   UniversalDIDResolver,
-  KeyType,
   VCFormat,
 } from "agent-sdk";
 import { Utils } from "./fixtures";
@@ -102,11 +102,11 @@ describe("OID4VCI Holder: ", () => {
     expect(cred_response).toMatchObject({
       data: {
         credentials: [
-            {
-              format: VCFormat.SdJwtVc,
-              payload: utils.sdJWTCreds,
-            }
-         ],
+          {
+            format: VCFormat.SdJwtVc,
+            payload: utils.sdJWTCreds,
+          },
+        ],
         notification_id: "1111",
       },
     });
@@ -121,24 +121,23 @@ describe("OID4VCI Holder: ", () => {
     const didAndKeyMetadata1 = await createDidAndKeyMetadata(kms);
     const didAndKeyMetadata2 = await createDidAndKeyMetadata(kms);
 
-    const cred_response = await vciHolder.requestCredential(
-        utils.accessToken,
-        utils.credDefId,
-        [didAndKeyMetadata1.keyMetadata, didAndKeyMetadata2.keyMetadata]
-    );
+    const cred_response = await vciHolder.requestCredential(utils.accessToken, utils.credDefId, [
+      didAndKeyMetadata1.keyMetadata,
+      didAndKeyMetadata2.keyMetadata,
+    ]);
 
     expect(cred_response).toMatchObject({
       data: {
         credentials: [
-            {
-              format: VCFormat.SdJwtVc,
-              payload: utils.sdJWTCreds,
-            },
-            {
-              format: VCFormat.SdJwtVc,
-              payload: utils.sdJWTCreds,
-            }
-         ],
+          {
+            format: VCFormat.SdJwtVc,
+            payload: utils.sdJWTCreds,
+          },
+          {
+            format: VCFormat.SdJwtVc,
+            payload: utils.sdJWTCreds,
+          },
+        ],
         notification_id: "1111",
       },
     });
@@ -156,7 +155,8 @@ describe("OID4VCI Holder: ", () => {
 
     const keyMetadata: KeyMetadata = {
       kid: "1",
-      didUrl: "did:key:zDnaenpntCkXnDCnaDk62LxNqPc4CMd32fbhiVsZV5KpPTG2c#zDnaenpntCkXnDCnaDk62LxNqPc4CMd32fbhiVsZV5KpPTG2c"
+      didUrl:
+        "did:key:zDnaenpntCkXnDCnaDk62LxNqPc4CMd32fbhiVsZV5KpPTG2c#zDnaenpntCkXnDCnaDk62LxNqPc4CMd32fbhiVsZV5KpPTG2c",
     };
 
     const metadata = await resolveMetadata(credential, keyMetadata);
