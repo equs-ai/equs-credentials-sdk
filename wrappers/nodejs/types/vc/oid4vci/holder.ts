@@ -2,10 +2,10 @@ import {
   buildVciHolder,
   contextEnsuredKms,
   contextEnsuredVault,
-  HttpClient,
   JsIssuerDiscovery,
   Kms,
   OID4VCIHolder,
+  ReqwestHttpClient,
   Vault,
 } from "../../..";
 
@@ -15,7 +15,7 @@ export class OID4VCIHolderBuilder {
   private readonly clientId: string;
   private readonly issuerDiscovery: JsIssuerDiscovery;
   private redirectUrl?: string;
-  private httpClient?: HttpClient;
+  private httpClient?: ReqwestHttpClient;
 
   constructor(kms: Kms, vault: Vault, clientId: string, issuerDiscovery: JsIssuerDiscovery) {
     this.kms = kms;
@@ -29,7 +29,7 @@ export class OID4VCIHolderBuilder {
     return this;
   }
 
-  withHttpClient(httpClient: HttpClient): this {
+  withHttpClient(httpClient: ReqwestHttpClient): this {
     this.httpClient = httpClient;
     return this;
   }

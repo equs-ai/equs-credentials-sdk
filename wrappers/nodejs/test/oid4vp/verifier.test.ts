@@ -1,11 +1,13 @@
 import {
   AuthorizationResponse,
   AuthResponseOptions,
+  HttpRequest,
   InMemKms,
   LocalNonceHandler,
   OID4VPVerifierBuilder,
   PassAuthRequestObject,
   PresentationSession,
+  ReqwestHttpClient,
 } from "../../";
 import { CLAIMS, PRESENTATION_DEFINITION, PRESENTATION_QUERY, PRESENTATION_SUBMISSION, STATE, VP } from "./fixtures";
 import { createDidAndKeyMetadata } from "../utils";
@@ -89,5 +91,7 @@ async function buildVerifier(clientId = "did:key:zDnaeagvW2eDWc2yVw7B98ovcJ8jddn
   const nonceGenerator = new LocalNonceHandler();
   const { keyMetadata } = await createDidAndKeyMetadata(kms);
 
-  return await new OID4VPVerifierBuilder(kms, nonceGenerator, keyMetadata, clientId).build();
+  return await new OID4VPVerifierBuilder(kms, nonceGenerator, keyMetadata, clientId)
+    .withHttpClient(ReqwestHttpClient.insecure())
+    .build();
 }

@@ -1,6 +1,3 @@
-#[cfg(debug_assertions)]
-use agent_sdk::reqwest::builder::ReqwestClientBuilder;
-
 use crate::did::JsDIDResolver;
 use crate::http::ReqwestHttpClient;
 use crate::kms::JsKms;
@@ -88,10 +85,6 @@ pub async fn _build_vci_holder(
         builder = builder.with_redirect_url(url.to_string());
     }
 
-    if let Some(http_client) = http_client {
-        builder = builder.with_http_client(http_client.inner())
-    }
-
     if let Some(duration) = pop_lifetime {
         builder = builder.with_pop_lifetime(duration.try_into()?);
     }
@@ -99,11 +92,15 @@ pub async fn _build_vci_holder(
     if let Some(did_resolver) = did_resolver {
         builder = builder.with_did_resolver(did_resolver).unwrap();
     }
+
+    if let Some(http_client) = http_client {
+        builder = builder.with_http_client(http_client.inner());
+    }
+
     let holder = builder
         .build()
         .await
-        .map_err(|err| Error::from_reason(format!("{:?}", err)))?;
-
+        .map_err(|e| Error::from_reason(format!("{:?}", e)))?;
     Ok(OID4VCIHolder::from_holder(holder))
 }
 
@@ -120,6 +117,7 @@ pub async fn _build_vci_issuer(
     cred_lifetime: Option<JsDuration>,
     cred_lifetime_per_cred_conf_id: HashMap<String, JsDuration>,
     did_resolver: Option<JsDIDResolver>,
+    http_client: Option<&ReqwestHttpClient>,
 ) -> Result<OID4VCIIssuer> {
     let issuer_metadata: IssuerMetadata =
         serde_json::from_value(from_json_object(issuer_metadata)?)?;
@@ -142,15 +140,6 @@ pub async fn _build_vci_issuer(
     if let Some(did_resolver) = did_resolver {
         builder = builder.with_did_resolver(did_resolver).unwrap();
     }
-    #[cfg(debug_assertions)]
-    {
-        builder = builder.with_http_client(
-            ReqwestClientBuilder::new()
-                .insecure()
-                .build()
-                .map_err(|err| Error::from_reason(format!("{:?}", err)))?,
-        )
-    }
 
     if let Some(validation) = &token_validation {
         match validation {
@@ -172,20 +161,22 @@ pub async fn _build_vci_issuer(
         builder = builder.with_dedicated_key_metadata(key, &value.clone().into());
     }
 
+    if let Some(http_client) = http_client {
+        builder = builder.with_http_client(http_client.inner());
+    }
+
     if let Some(nonce_handler) = nonce_handler {
         let issuer = builder
             .with_nonce_handler(nonce_handler)
             .build()
             .await
-            .map_err(|err| Error::from_reason(format!("{:?}", err)))?;
-
+            .map_err(|e| Error::from_reason(format!("{:?}", e)))?;
         Ok(OID4VCIIssuer(Box::new(issuer)))
     } else {
         let issuer = builder
             .build()
             .await
-            .map_err(|err| Error::from_reason(format!("{:?}", err)))?;
-
+            .map_err(|e| Error::from_reason(format!("{:?}", e)))?;
         Ok(OID4VCIIssuer(Box::new(issuer)))
     }
 }

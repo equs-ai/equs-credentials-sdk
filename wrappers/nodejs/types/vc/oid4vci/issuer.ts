@@ -8,6 +8,7 @@ import {
   NonceHandler,
   OID4VCIIssuer,
   OID4VCIIssuerMetadata,
+  ReqwestHttpClient,
   TokenValidation,
   TokenValidationEnum,
 } from "../../..";
@@ -22,6 +23,7 @@ export class OID4VCIIssuerBuilder {
   private dedicatedKeys: Record<string, KeyMetadata>;
   private credentialLifetimes: Record<string, Duration>;
   private defaultCredentialLifetime?: Duration;
+  private httpClient: ReqwestHttpClient;
 
   constructor(kms: Kms, issuerMetadata: OID4VCIIssuerMetadata, keyMetadata: KeyMetadata) {
     this.kms = kms;
@@ -66,13 +68,16 @@ export class OID4VCIIssuerBuilder {
     this.credentialLifetimes = {
       [credentialConfigurationId]: { seconds: duration, nanoseconds: 0 },
     };
-
     return this;
   }
 
   withDefaultCredentialLifetime(duration: number): this {
     this.defaultCredentialLifetime = { seconds: duration, nanoseconds: 0 };
+    return this;
+  }
 
+  withHttpClient(httpClient: ReqwestHttpClient): this {
+    this.httpClient = httpClient;
     return this;
   }
 
@@ -87,6 +92,8 @@ export class OID4VCIIssuerBuilder {
       this.dedicatedKeys || {},
       this.defaultCredentialLifetime,
       this.credentialLifetimes,
+      undefined,
+      this.httpClient,
     );
   }
 }
