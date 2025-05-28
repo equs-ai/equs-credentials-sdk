@@ -26,7 +26,7 @@ export class OID4VPHolder {
    *   @param {string} requestUri - a request URI provided by the authorization URL.
    *   @returns {CommonAuthorizationRequest} A {@link CommonAuthorizationRequest} with the presentation definition and other relevant details on success.
    */
-  async getAuthorizationRequest(requestUri: string): Promise<CommonAuthorizationRequest> {
+  async getAuthorizationRequest(requestUri: string): Promise<AuthorizationRequest> {
     const authRequest = await this.inner.getAuthorizationRequest(requestUri);
 
     const query: PresentationQuery = Object.hasOwn(authRequest, "dcql_query")
@@ -36,7 +36,7 @@ export class OID4VPHolder {
       : {
           presentation_definition: authRequest.resolved_presentation_query.presentation_definition,
         };
-    return {
+    return new AuthorizationRequest({
       client_id: authRequest.client_id,
       client_metadata: authRequest.client_metadata,
       response_uri: authRequest.response_uri,
@@ -45,7 +45,7 @@ export class OID4VPHolder {
       nonce: authRequest.nonce,
       state: authRequest.state,
       ...query,
-    };
+    });
   }
 
   /**

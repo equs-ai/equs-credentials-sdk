@@ -55,7 +55,7 @@ build: $(WASM_DIR) pkg_clean
 	$(SED_INPLACE) "s|\"types\": \"[^\"]*\"|\"types\": \"$(PKG_TYPES)\"|g" $(WASM_PKG_DIR)/package.json
 	$(SED_INPLACE) "/\"files\": \\[/,/\\],/d" $(WASM_PKG_DIR)/package.json
 	npx tsc -p $(TYPES_DIR)/$(TYPES_TS_CONFIG) && mv $(TYPES_DIR)/dist/$(TS_MODULE) $(WASM_PKG_DIR)/dist
-	node scripts/add-import-line.mjs
+	node scripts/add-import-line-$(TS_MODULE).mjs
 	node scripts/add-export-line-$(TS_MODULE).mjs
 	npx tsc -p $(TYPES_TS_CONFIG)
 

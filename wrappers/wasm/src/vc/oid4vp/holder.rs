@@ -57,6 +57,7 @@ impl OID4VPHolder {
             .await
             .map_err(|err| JsError::new(&format!("{:?}", err)))
             .and_then(utils::convert_to_opaque_object_unchecked)
+            .map(|c| AuthorizationRequest::new(&c))
     }
 
     /// Automatically presents credentials to the Verifier based on the authorization request.

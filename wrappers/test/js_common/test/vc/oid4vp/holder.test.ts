@@ -61,7 +61,7 @@ describe("OID4VP Holder: ", () => {
     const authorizationRequest = await holder.getAuthorizationRequest(
       "openid4vp://?client_id=did%3Akey%3AzDnaeeTG88wpPhMzuDRvLRTTyNMyJip5e6TLmsjyvPiSYUFk7&request_uri=http%3A%2F%2Flocalhost%3A9001%2Frequest",
     );
-    expect(authorizationRequest).toEqual(AUTH_REQUEST);
+    expect(authorizationRequest.getAuthRequest()).toEqual(AUTH_REQUEST);
   });
 
   test("present Credentials Auto", async () => {
