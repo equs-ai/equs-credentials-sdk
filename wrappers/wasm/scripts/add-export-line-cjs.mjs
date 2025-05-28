@@ -14,7 +14,7 @@ import fs from "fs/promises";
     const exportDistStr = `export * from \"${internalTypesFilePath}\";\n`;
     const exportTypesJsStr = `\nconst internalTypes = require(\"${internalTypesFilePath}\");\n`;
     const exportDistJsStr = `\nconst externalTypes = require(\"${externalTypesFilePath}\");\n`;
-    const exportJsStr = `module.exports = {...internalTypes, ...externalTypes}`;
+    const exportJsStr = `module.exports = {...internalTypes, ...externalTypes};\n`;
 
     await fs.writeFile(typesFile, exportTypesStr + exportDistStr + typesContent, encoding);
     await fs.writeFile(jsFile, exportTypesJsStr + exportDistJsStr + exportJsStr + jsContent, encoding);

@@ -100,9 +100,9 @@ async function presentationFlow(holder: OID4VPHolder): Promise<void> {
   );
 
   if (["yes", "y"].includes(shouldDecline))
-    return await declineFlow(holder, new AuthorizationRequest(authRequest));
+    return await declineFlow(holder, authRequest);
 
-  return await presentFlow(holder, new AuthorizationRequest(authRequest));
+  return await presentFlow(holder, authRequest);
 }
 
 async function declineFlow(

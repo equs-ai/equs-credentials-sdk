@@ -5,20 +5,24 @@ import fs from "fs/promises";
     const externalTypesFilePath = "./dist";
     const internalTypesFilePath = "./types";
     const typesFile = "pkg/index.d.ts";
+    const jsFile = "pkg/index.js";
     const encoding = "utf8";
 
     let typesContent = await fs.readFile(typesFile, encoding);
-    const exported_external_types = [
+    let jsContent = await fs.readFile(jsFile, encoding);
+
+    const importedExternalTypes = [
       "DIDVerificationMethod",
       "OID4VCIIssuerMetadata",
       "OID4VCICredentialOffer",
       "TokenResponse",
       "DIDDocument",
       "WalletMetadata",
-      "WrappedAuthRequest",
       "Claims",
+      "AuthorizationRequest",
+      "CommonAuthorizationRequest",
     ];
-    const exported_internal_types = [
+    const importedInternalTypes = [
       "DIDResolution",
       "Alg",
       "AuthorizationResponseMetadata",
@@ -39,10 +43,16 @@ import fs from "fs/promises";
       "Vault",
       "HttpRequest",
     ];
-    let import_external_str = `import { ${exported_external_types.join(", ")} } from "${externalTypesFilePath}";\n`;
-    let import_internal_str = `import { ${exported_internal_types.join(", ")} } from "${internalTypesFilePath}";\n`;
 
-    await fs.writeFile(typesFile, import_external_str + import_internal_str + typesContent, encoding);
+    const importedExternalValues = ["AuthorizationRequest"];
+
+    const importExternalTypesStr = `import { ${importedExternalTypes.join(", ")} } from "${externalTypesFilePath}";\n`;
+    const importInternalTypesStr = `import { ${importedInternalTypes.join(", ")} } from "${internalTypesFilePath}";\n`;
+
+    const importedExternalValuesStr = `const { ${importedExternalValues.join(", ")} } = require("${externalTypesFilePath}");\n`;
+
+    await fs.writeFile(typesFile, importExternalTypesStr + importInternalTypesStr + typesContent, encoding);
+    await fs.writeFile(jsFile, importedExternalValuesStr + jsContent, encoding);
 
     console.log(`Added import line in ${typesFile}`);
   } catch (error) {
