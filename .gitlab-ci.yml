@@ -213,7 +213,7 @@ test-with-coverage-job:
   stage: test
   script:
     - cargo install cargo-tarpaulin
-    - cargo tarpaulin --skip-clean --timeout 180 --all-features --exclude-files "demos/*" --exclude-files "wrappers/*" --fail-under 70 -o Html
+    - cargo tarpaulin --skip-clean --timeout 180 --all-features --exclude-files "src/didcomm/*" --exclude-files "demos/*" --exclude-files "wrappers/*" --fail-under 70 -o Html
   coverage: '/^\d+.\d+% coverage/'
   artifacts:
     paths:

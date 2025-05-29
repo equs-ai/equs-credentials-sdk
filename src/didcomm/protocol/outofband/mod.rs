@@ -1,5 +1,4 @@
 use std::marker::PhantomData;
-use std::sync::Arc;
 
 use async_trait::async_trait;
 use common_macros::DebugError;
@@ -7,29 +6,26 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use snafu::{Location, ResultExt, Snafu};
 use ssi::dids::document::Represented;
-use tracing::debug;
 use url::Url;
-use uuid::Uuid;
 
 use crate::did::didpeer::{DIDPeer, DidPeerService};
-use crate::did::universal::UniversalResolver;
 use crate::did::{DIDResolver, VerificationMethodKey, VerificationRelationshipType, DID};
 use crate::didcomm::agent::Agent;
 use crate::didcomm::connection::{
-    Connection, ConnectionRecord, ConnectionRole, ConnectionState, CreateOptions,
+    ConnectionRecord, ConnectionRole, ConnectionService, ConnectionState, CreateOptions,
 };
-use crate::didcomm::core::envelope::Message;
 use crate::didcomm::core::event_emitter::EventEmitter;
-use crate::didcomm::core::protocol;
+use crate::didcomm::core::message_id::MessageId;
+use crate::didcomm::core::protocol::message_handler::MessageHandler;
 use crate::didcomm::core::protocol::Protocol;
 use crate::didcomm::service::DIDCOMM_SCHEME;
 use crate::didcomm::{agent, connection, service};
 use crate::kms::{KeyHandle, KeyType, Kms};
 use crate::{did, kms};
 
-pub const PROTOCOL_NAME: &str = "out-of-band";
-pub const PROTOCOL_VERSION: &str = "2.0";
-pub const INVITATION_TYPE: &str = "https://didcomm.org/out-of-band/2.0/invitation";
+const PROTOCOL_NAME: &str = "out-of-band";
+const PROTOCOL_VERSION: &str = "2.0";
+const INVITATION_TYPE: &str = "https://didcomm.org/out-of-band/2.0/invitation";
 
 pub const INVITATION_CREATED_EVENT: &str = "oob-invitation-created";
 pub const INVITATION_ACCEPTED_EVENT: &str = "oob-invitation-accepted";
@@ -114,11 +110,9 @@ pub struct OutOfBandV2Protocol<KMS, KH, C>
 where
     KMS: Kms<KH> + Clone + 'static,
     KH: KeyHandle + 'static,
-    C: Connection + Clone + 'static,
+    C: ConnectionService + Clone + 'static,
 {
-    kms: KMS,
-    did_resolver: UniversalResolver,
-    connection: C,
+    agent: Agent<KMS, KH, C>,
     endpoint: Url,
     pub event_emitter: EventEmitter<&'static str, Event>,
     _phantom: PhantomData<KH>,
@@ -128,13 +122,11 @@ impl<KMS, KH, C> OutOfBandV2Protocol<KMS, KH, C>
 where
     KMS: Kms<KH> + Clone + 'static,
     KH: KeyHandle + 'static,
-    C: Connection + Clone + 'static,
+    C: ConnectionService + Clone + 'static,
 {
-    pub fn new(agent: &Agent<KMS, KH>, connection: C) -> Self {
+    pub fn new(agent: &Agent<KMS, KH, C>) -> Self {
         Self {
-            kms: agent.kms().clone(),
-            did_resolver: agent.did_resolver().clone(),
-            connection,
+            agent: agent.clone(),
             endpoint: agent.configuration().endpoint.to_owned(),
             event_emitter: EventEmitter::<&'static str, Event>::new(),
             _phantom: PhantomData,
@@ -148,7 +140,7 @@ where
     ) -> Result<(Url, ConnectionRecord)> {
         let my_did = self.create_did(config.key_type.clone()).await?;
         let invite = Invitation {
-            id: Uuid::new_v4().to_string(),
+            id: MessageId::new().to_string(),
             type_: INVITATION_TYPE.to_string(),
             from: my_did.clone(),
             body: InvitationBody {
@@ -161,7 +153,8 @@ where
 
         // Create a connection and invitation using the connection service
         let connection = self
-            .connection
+            .agent
+            .connection_service()
             .create_connection(
                 &my_did,
                 CreateOptions {
@@ -170,6 +163,7 @@ where
                     alias: None,
                     role: ConnectionRole::Inviter,
                     state: ConnectionState::Invited,
+                    pthid: invite.id.to_owned(),
                     metadata: Default::default(),
                 },
             )
@@ -198,7 +192,8 @@ where
 
     async fn create_did(&self, key_type: KeyType) -> Result<DID> {
         let (_, kh) = self
-            .kms
+            .agent
+            .kms()
             .create_and_handle(key_type, Default::default())
             .await
             .context(KMSSnafu)?;
@@ -243,7 +238,8 @@ where
     ) -> Result<ConnectionRecord> {
         let their_did = ssi::dids::DID::new(invitation.from.as_bytes()).unwrap();
         let resolution = self
-            .did_resolver
+            .agent
+            .did_resolver()
             .resolve_representation(their_did, Default::default())
             .await
             .unwrap()
@@ -252,32 +248,69 @@ where
 
         let my_did = self.create_did(key_type.clone()).await?;
         let mut connection = self
-            .connection
+            .agent
+            .connection_service()
             .create_connection(
                 &my_did,
                 CreateOptions {
                     label: invitation.body.goal.clone(),
                     role: ConnectionRole::Invitee,
-                    state: ConnectionState::Completed,
+                    state: ConnectionState::Accepted,
                     alias: None,
                     auto_accept: Some(true),
                     metadata: Default::default(),
+                    pthid: invitation.id.to_owned(),
                 },
             )
             .await
             .context(ConnectionSnafu)?;
 
-        connection.parent_thread_id = Some(invitation.id.clone());
+        connection.thread_id = Some(invitation.id.clone());
         connection.their_did = Some(their_did_doc.document().id.to_string());
         connection.label = Some(invitation.body.goal_code);
         connection.alias = invitation.body.goal;
 
-        self.connection
+        self.agent
+            .connection_service()
             .update_connection(connection.clone())
             .await
-            .unwrap();
+            .context(ConnectionSnafu)?;
 
         Ok(connection)
+    }
+
+    pub async fn establish_connection(
+        &self,
+        connection_id: &str,
+        their_did: Option<String>,
+        key_type: KeyType,
+    ) -> Result<()> {
+        let mut connection = self
+            .agent
+            .connection_service()
+            .get_connection(connection_id)
+            .await
+            .context(ConnectionSnafu)?;
+
+        match connection.state {
+            ConnectionState::Invited => {
+                let new_did = self.create_did(key_type).await?;
+                connection.my_did = new_did;
+                connection.their_did = their_did;
+                connection.state = ConnectionState::Completed;
+            }
+            ConnectionState::Accepted => {
+                connection.their_did = their_did;
+                connection.state = ConnectionState::Completed;
+            }
+            _ => return Ok(()),
+        }
+
+        self.agent
+            .connection_service()
+            .update_connection(connection)
+            .await
+            .context(ConnectionSnafu)
     }
 
     /// Parse an invitation from a URL or JSON string
@@ -329,7 +362,7 @@ impl<KMS, KH, C> Protocol for OutOfBandV2Protocol<KMS, KH, C>
 where
     KMS: Kms<KH> + Clone + 'static,
     KH: KeyHandle,
-    C: Connection + Clone + 'static,
+    C: ConnectionService + Clone + 'static,
 {
     fn protocol_name(&self) -> &'static str {
         PROTOCOL_NAME
@@ -339,48 +372,8 @@ where
         PROTOCOL_VERSION
     }
 
-    async fn handle(&self, msg: Message) -> protocol::Result<()> {
-        debug!("Handling OOB v2 invitation message: {:?}", msg);
-
-        let invitation_json = serde_json::to_value(&msg).map_err(|err| {
-            protocol::Snafu {
-                details: err.to_string(),
-            }
-            .build()
-        })?;
-        let invitation = serde_json::from_value(invitation_json).map_err(|err| {
-            protocol::Snafu {
-                details: err.to_string(),
-            }
-            .build()
-        })?;
-
-        self.event_emitter
-            .emit(
-                INVITATION_RECEIVED_EVENT,
-                Event::InvitationReceived { invitation },
-            )
-            .await;
-
-        Ok(())
-    }
-}
-
-/// Handler for OOB v2 invitation messages
-pub struct InvitationHandler {
-    connection_service: Arc<dyn Connection>,
-    event_emitter: Arc<EventEmitter<&'static str, Event>>,
-}
-
-impl InvitationHandler {
-    pub fn new(
-        connection_service: Arc<dyn Connection>,
-        event_emitter: Arc<EventEmitter<&'static str, Event>>,
-    ) -> Self {
-        Self {
-            connection_service,
-            event_emitter,
-        }
+    fn get_message_handlers(&self) -> Vec<&dyn MessageHandler> {
+        vec![]
     }
 }
 

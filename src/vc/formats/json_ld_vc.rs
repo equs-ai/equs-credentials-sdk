@@ -230,13 +230,15 @@ struct JsonLdSigner<S: Signer + Key> {
 
 impl JsonLdAPI {
     #[instrument(level = Level::TRACE, ret())]
-    fn create_credential(
+    pub fn create_credential(
         metadata: &VCMetadata,
         iss_did: &str,
-        holder_did: &str,
+        holder_did: Option<&str>,
         mut claims: Claims,
     ) -> Result<Credential> {
-        claims.insert("id".to_string(), Claim::String(holder_did.to_string()));
+        if let Some(did) = holder_did {
+            claims.insert("id".to_string(), Claim::String(did.to_string()));
+        }
 
         let now = chrono::Local::now().to_utc();
         let lifetime = FixedOffset::from_str(&metadata.lifetime.to_string()).ok();
@@ -317,6 +319,55 @@ impl JsonLdAPI {
         };
 
         Ok(vc)
+    }
+
+    pub async fn sign_credential<S>(
+        vc: Credential,
+        issuer_data: (&DIDURL, S),
+        mandatory_claims: Option<Vec<JsonPointerBuf>>,
+        did_resolver: UniversalResolver,
+    ) -> Result<VC>
+    where
+        S: Signer + Key,
+    {
+        let singing_alg = issuer_data.1.alg().to_owned();
+        let pub_key = issuer_data.1.jwk().ok_or_else(|| {
+            KeyTypeNotSupportedSnafu {
+                type_: "JWK incompatible",
+            }
+            .build()
+        })?;
+        let signer = LocalSigner(JsonLdSigner {
+            signer: Arc::new(issuer_data.1),
+        });
+
+        let (suite, sign_opts) = match &vc {
+            Credential::V2(vc_v2) => {
+                Self::select_crypto_suite_for_v2_signing(&singing_alg, mandatory_claims)?
+            }
+            _ => {
+                let suite = AnySuite::pick(&pub_key, None).ok_or_else(|| {
+                    CryptoSuiteCreationSnafu {
+                        details: "Could not pick crypto suite to sign json-ld v1 credential",
+                    }
+                    .build()
+                })?;
+
+                (suite, Default::default())
+            }
+        };
+
+        suite
+            .sign_with(
+                ssi::claims::SignatureEnvironment::default(),
+                vc,
+                &did_resolver,
+                signer,
+                ProofOptions::from_method(issuer_data.0.as_iri().into()),
+                sign_opts,
+            )
+            .await
+            .context(SpruceSigningSnafu)
     }
 
     #[instrument(level = Level::TRACE, ret())]
@@ -573,52 +624,16 @@ impl API<Claims, VC, VP, VCMetadata, VPMetadata, ()> for JsonLdAPI {
         trace!(issuer_did_url = ?{issuer_data.0}, holder_did_url = ?{holder_data.0});
 
         let iss_did = issuer_data.0.did();
-        let pub_key = issuer_data.1.jwk().ok_or_else(|| {
-            KeyTypeNotSupportedSnafu {
-                type_: "JWK incompatible",
-            }
-            .build()
-        })?;
+        let holder_did = holder_data.0.did();
 
         let vc = JsonLdAPI::create_credential(
             &metadata,
             iss_did.as_str(),
-            holder_data.0.did().as_str(),
+            Some(holder_did.as_str()),
             claims,
         )?;
 
-        let singing_alg = issuer_data.1.alg().to_owned();
-        let signer = LocalSigner(JsonLdSigner {
-            signer: Arc::new(issuer_data.1),
-        });
-
-        let (suite, sign_opts) = match &vc {
-            Credential::V2(vc_v2) => {
-                Self::select_crypto_suite_for_v2_signing(&singing_alg, metadata.mandatory_claims)?
-            }
-            _ => {
-                let suite = AnySuite::pick(&pub_key, None).ok_or_else(|| {
-                    CryptoSuiteCreationSnafu {
-                        details: "Could not pick crypto suite to sign json-ld v1 credential",
-                    }
-                    .build()
-                })?;
-
-                (suite, Default::default())
-            }
-        };
-
-        suite
-            .sign_with(
-                ssi::claims::SignatureEnvironment::default(),
-                vc,
-                &did_resolver,
-                signer,
-                ProofOptions::from_method(issuer_data.0.as_iri().into()),
-                sign_opts,
-            )
-            .await
-            .context(SpruceSigningSnafu)
+        JsonLdAPI::sign_credential(vc, issuer_data, metadata.mandatory_claims, did_resolver).await
     }
 
     #[instrument(level = Level::TRACE, skip(holder_signer, did_resolver), err(), ret())]

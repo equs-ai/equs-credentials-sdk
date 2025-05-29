@@ -1,8 +1,10 @@
 pub mod dispatcher;
 pub mod envelope;
-pub(crate) mod event_emitter;
+pub mod event_emitter;
+pub(crate) mod key_mutex;
+pub mod message_id;
 pub mod message_receiver;
 pub mod message_sender;
-pub mod parsed_message_type;
+pub mod message_type;
 pub mod protocol;
 pub mod protocol_registry;

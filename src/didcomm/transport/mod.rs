@@ -1,5 +1,7 @@
 #[cfg(feature = "didcomm-http-trasnport")]
 pub mod http;
+#[cfg(test)]
+pub mod mock;
 
 use async_trait::async_trait;
 use common_macros::DebugError;

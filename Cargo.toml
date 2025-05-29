@@ -64,7 +64,7 @@ libm = "=0.2.11"
 async-lock = "3.4.0"
 async-channel = "2.3.1"
 getrandom = { version = "0.3.3", features = ["wasm_js"] }
-
+lazy_static = "1.5.0"
 
 # InMEM dependencies
 # crypto/kms dependencies
@@ -81,6 +81,7 @@ jsonpath-rust = "0.7.5"
 hyper = { version = "0.14.32", features = ["full"], optional = true }
 http = { version = "0.2", optional = true }
 tokio = { version = "1.25.0", features = ["macros"], optional = true }
+libc = "0.2.172"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 didcomm = { git = "ssh://git@git.slock.it/open-source/didcomm-rust.git", rev = "db41780d", features = ["uniffi"] }
@@ -98,7 +99,6 @@ p256 = "0.13.2"
 bip32 = "0.5.2"
 random-string = "1.1.0"
 ecdsa = "0.16.9"
-tokio = { version = "1.25.0", features = ["macros"] }
 
 [features]
 in-memory = ["dep:rand", "dep:ed25519-dalek", "dep:p256", "dep:bip32", "dep:random-string", "dep:ecdsa", "dep:askar-crypto"]

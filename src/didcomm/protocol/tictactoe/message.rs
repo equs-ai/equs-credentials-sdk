@@ -55,14 +55,16 @@ impl Move {
     }
 }
 
-#[derive(EnumString, Display, Debug, Clone, Serialize, Deserialize, IntoStaticStr, PartialEq)]
+#[derive(
+    EnumString, Display, Debug, Clone, Serialize, Deserialize, IntoStaticStr, PartialEq, Eq,
+)]
 pub enum Mark {
     X,
     O,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct MoveMessage {
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct MoveMessageBody {
     pub me: Mark,
     pub moves: Vec<Move>, // Array of move strings
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -70,8 +72,8 @@ pub struct MoveMessage {
 }
 
 // The "outcome" message structure
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct OutcomeMessage {
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct OutcomeMessageBody {
     pub winner: Option<Mark>, // "X", "O", or--in the case of a draw--"none"
     #[serde(skip_serializing_if = "Option::is_none")]
     pub comment: Option<String>,

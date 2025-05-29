@@ -5,7 +5,6 @@ use crate::didcomm::transport::{
     TransportType, UnsupportedTransportSnafu,
 };
 use crate::http::HttpClient;
-use crate::utils::http::MIME_TYPE_TEXT_PLAIN;
 use async_lock::{Mutex, RwLock};
 use async_trait::async_trait;
 use futures::channel::oneshot;
@@ -101,28 +100,21 @@ impl HttpTransport {
             .build()
         })?;
 
-        // Process the message
-        match message_receiver.receive_message(&body_bytes).await {
-            Ok(_) => {
-                // Return a success response
-                let response = Response::builder()
-                    .status(StatusCode::ACCEPTED)
-                    .body(Body::empty())
-                    .unwrap();
-                Ok(response)
-            }
-            Err(e) => {
-                println!("Error processing message: {:?}", e);
+        let message_receiver = message_receiver.clone();
+        tokio::task::spawn(async move {
+            // Process the message
+            let result = message_receiver.receive_message(&body_bytes).await;
 
-                // Return an error response
-                let response = Response::builder()
-                    .status(StatusCode::BAD_REQUEST)
-                    .header(hyper::header::CONTENT_TYPE, MIME_TYPE_TEXT_PLAIN)
-                    .body(Body::from("Error processing message"))
-                    .unwrap();
-                Ok(response)
+            if let Err(e) = result {
+                // TODO Send Problem Report
             }
-        }
+        });
+
+        let response = Response::builder()
+            .status(StatusCode::ACCEPTED)
+            .body(Body::empty())
+            .unwrap();
+        Ok(response)
     }
 }
 

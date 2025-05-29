@@ -4,14 +4,15 @@ use snafu::{Location, ResultExt, Snafu};
 use tracing::{debug, instrument};
 
 use crate::didcomm::core::envelope::Message;
-use crate::didcomm::core::parsed_message_type::ParsedMessageType;
 use crate::didcomm::core::protocol_registry::ProtocolRegistry;
-use crate::didcomm::core::{parsed_message_type, protocol, protocol_registry};
+use crate::didcomm::core::{message_type, protocol, protocol_registry};
 
 #[derive(Snafu, DebugError)]
 #[snafu(visibility(pub(super)))]
 #[non_exhaustive]
 pub enum Error {
+    #[snafu(display("Cannot handle the message type: {type_}"))]
+    HandlerNotFound { type_: String },
     #[snafu(display("Protocol error"))]
     Protocol {
         source: protocol::Error,
@@ -26,7 +27,7 @@ pub enum Error {
     },
     #[snafu(display("Incorrect message type"))]
     IncorrectMessageType {
-        source: parsed_message_type::Error,
+        source: message_type::Error,
         #[snafu(implicit)]
         location: Location,
     },
@@ -67,21 +68,27 @@ impl DispatcherService {
 impl Dispatcher for DispatcherService {
     #[instrument(skip(self, msg), fields(message_id = msg.id, message_type = msg.type_))]
     async fn dispatch(&self, msg: Message) -> Result<()> {
-        let parsed_message_type =
-            ParsedMessageType::from_message_type(&msg.type_).context(IncorrectMessageTypeSnafu)?;
+        let (_, family, version, type_) =
+            message_type::parse_message_type(&msg.type_).context(IncorrectMessageTypeSnafu)?;
 
-        let handler = self
+        let protocol = self
             .protocol_registry
-            .get_protocol(
-                &parsed_message_type.protocol_name,
-                &parsed_message_type.protocol_version,
-            )
+            .get_protocol(&family, &version)
             .await
             .context(ProtocolRegistrySnafu)?;
 
-        debug!("Handling message with handler");
-        handler.handle(msg).await.context(ProtocolSnafu)?;
+        debug!(
+            "Handling message with handler for message type {}",
+            &msg.type_
+        );
 
-        Ok(())
+        let message_handlers = protocol.get_message_handlers();
+
+        let handler = message_handlers
+            .iter()
+            .find(|handler| handler.supported_message_types().contains(&type_.as_str()))
+            .ok_or_else(|| HandlerNotFoundSnafu { type_ }.build())?;
+
+        handler.handle(msg).await.context(ProtocolSnafu)
     }
 }

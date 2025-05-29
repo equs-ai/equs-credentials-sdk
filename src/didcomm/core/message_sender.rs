@@ -118,8 +118,8 @@ impl MessageSender {
 
 #[derive(Default, Debug, Clone, Deserialize)]
 pub struct SendOptions<'a> {
-    from: Option<&'a str>,
-    sign_by: Option<&'a str>,
+    pub from: Option<&'a str>,
+    pub sign_by: Option<&'a str>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
