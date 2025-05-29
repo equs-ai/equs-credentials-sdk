@@ -1,13 +1,12 @@
 import {PresentationDefinition} from "./presentation-definition";
 import {ClientMetadata} from "./client-metadata";
 import {Dcql} from "./dcql";
-import {ResolvedPresentationQuery} from "./resolved-presentation-query";
 
 
 type InternalRustAuthorizationRequest = {
     client_id: string,
     client_metadata: ClientMetadata,
-    resolved_presentation_query: ResolvedPresentationQuery,
+    resolved_presentation_query: PresentationQuery,
     nonce: string,
     response_type: string,
     response_mode: string,
@@ -39,47 +38,31 @@ export class AuthorizationRequest {
         this.authRequest = params;
     }
 
-    private get dcql(): InternalRustAuthorizationRequest {
-        return {
-            client_id: this.authRequest.client_id,
-            nonce: this.authRequest.nonce,
-            state: this.authRequest.state,
-            response_mode: this.authRequest.response_mode,
-            response_uri: this.authRequest.response_uri,
-            response_type: this.authRequest.response_type,
-            client_metadata: this.authRequest.client_metadata,
-            resolved_presentation_query: {
-                dcql_query: this.authRequest.dcql_query,
-            },
+    get presentationQuery(): PresentationQuery {
+        if (this.authRequest.dcql_query) return {
+            dcql_query: this.authRequest.dcql_query,
         };
-    }
-
-    private get pd(): InternalRustAuthorizationRequest {
-        return {
-            client_id: this.authRequest.client_id,
-            nonce: this.authRequest.nonce,
-            state: this.authRequest.state,
-            response_mode: this.authRequest.response_mode,
-            response_uri: this.authRequest.response_uri,
-            response_type: this.authRequest.response_type,
-            client_metadata: this.authRequest.client_metadata,
-            resolved_presentation_query: {
-                presentation_definition: this.authRequest.presentation_definition,
-            },
+        if (this.authRequest.presentation_definition) return {
+            presentation_definition: this.authRequest.presentation_definition,
         };
+        throw new Error("Either dcql_query or presentation_definition must be provided");
     }
 
     toRustObject(): InternalRustAuthorizationRequest {
-        return this.isDCQL(this.authRequest) ? this.dcql : this.pd;
+
+        return {
+            client_id: this.authRequest.client_id,
+            nonce: this.authRequest.nonce,
+            state: this.authRequest.state,
+            response_mode: this.authRequest.response_mode,
+            response_uri: this.authRequest.response_uri,
+            response_type: this.authRequest.response_type,
+            client_metadata: this.authRequest.client_metadata,
+            resolved_presentation_query: this.presentationQuery,
+        }
     }
 
     getAuthRequest(): CommonAuthorizationRequest {
         return this.authRequest;
-    }
-
-    private isDCQL(
-        authRequest: CommonAuthorizationRequest,
-    ): authRequest is AuthorizationRequestWithoutRPQ & ResolvedPresentationQueryWithDCQL {
-        return Object.hasOwn(authRequest, "dcql_query");
     }
 }

@@ -23,7 +23,7 @@ use agent_sdk::vc::oid4vp::{
 };
 use agent_sdk::vc::oid4vp::{CredentialMapping, Holder as HolderVp};
 use agent_sdk::vc::oid4vp::{IdTokenMetadata, Verifier};
-use agent_sdk::vc::presentation_exchange::PresentationDefinition;
+use agent_sdk::vc::presentation_exchange::{PresentationDefinition, PresentationSubmission};
 use agent_sdk::vc::HasClaims;
 use agent_sdk::vc::{oid4vci, oid4vp, Credential};
 use oauth2::{AccessToken, TokenResponse as _TokenResponse};
@@ -227,7 +227,7 @@ async fn same_device_presentation_flow(holder: impl HolderVp, kms: LocalKms) {
     let cp = match input.as_str() {
         "1" => {
             println!("Using DCQL flow ...");
-            ResolvedPresentationQuery::DCQL(default_dcql_qury())
+            ResolvedPresentationQuery::DCQL(default_dcql_query())
         }
         "2" => {
             println!("Using PresentationDefinition flow ...");
@@ -332,12 +332,11 @@ fn retrieve_auth_resp_from_uri(url: Url) -> AuthorizationResponse {
         .get("state")
         .map(|state| state.to_owned());
 
-    let presentation_submission = serde_json::from_str(
-        presentation_resp_map
-            .get("presentation_submission")
-            .unwrap(),
-    )
-    .unwrap();
+    let presentation_submission: Option<PresentationSubmission> =
+        match presentation_resp_map.get("presentation_submission") {
+            None => None,
+            Some(s) => serde_json::from_str(s).ok(),
+        };
 
     AuthorizationResponse {
         vp_token,
@@ -695,7 +694,7 @@ pub fn default_presentation_definition() -> PresentationDefinition {
         .set_name("Example with selective disclosure".to_owned())
 }
 
-pub fn default_dcql_qury() -> DCQL {
+pub fn default_dcql_query() -> DCQL {
     let desc: DCQLCredential = serde_json::from_value(json!(
         {
             "id": "pid",
@@ -704,14 +703,21 @@ pub fn default_dcql_qury() -> DCQL {
                 {
                     "id": "1",
                     "path": ["username"],
-                    "values": ["John Doe", "John", "Jon"],
                 },
                 {
                     "id": "2",
                     "path": ["email", "work"]
-                }
+                },
+                {
+                    "id": "3",
+                    "path": ["age_over_18"]
+                },
+                {
+                    "id": "4",
+                    "path": ["country"]
+                },
             ],
-            "claim_sets": [[1], [2]]
+            "claim_sets": [["1"], ["2"], ["3"], ["4"]]
         }
     ))
     .unwrap();

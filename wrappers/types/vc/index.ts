@@ -12,6 +12,5 @@ export * from "./presentation-submission";
 export * from "./token-response";
 export * from "./wallet-metadata";
 export * from "./authorization-request";
-export * from "./presentation-session";
 export * from "./dcql";
 export * from "./resolved-presentation-query";
