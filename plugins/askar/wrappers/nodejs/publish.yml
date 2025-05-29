@@ -23,7 +23,7 @@ variables:
     - if: $CI_COMMIT_TAG && $CI_COMMIT_TAG =~ $VERSION_REGEX
     - when: never
 
-publish_target:
+publish_askar_nodejs_target:
   <<: *nodejs_askar_storage_to_registry_template
   script:
     - |
@@ -47,7 +47,7 @@ publish_target:
     ALIAS: $ALIAS
     TARGET: $TARGET
 
-publish_wrapper:
+publish_askar_nodejs_wrapper:
   <<: *nodejs_askar_storage_to_registry_template
   script:
     - |
