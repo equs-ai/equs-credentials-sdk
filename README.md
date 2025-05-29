@@ -34,9 +34,10 @@ See [Components](docs/asdk-components.png).
   - W3C VC JSON-LD V1 (ECDSA, EdDSA) - [Verifiable Credentials Data Model v1.1](https://www.w3.org/TR/2022/REC-vc-data-model-20220303/)
   - W3C VC JSON-LD V2 (ECDSA, EdDSA, BBS+ 2023) - [Verifiable Credentials Data Model v2.0](https://www.w3.org/TR/vc-data-model-2.0/)
 - VC Exchange Protocols:
-    - OID4VCI [draft 14](https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0-14.html)
+    - OID4VCI [draft 15](https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0-15.html)
         - Authorization Code Flow using scope Parameter to Request Issuance of a Credential
         - Preauthorized Code Flow using scope Parameter to Request Issuance of a Credential
+        - Batch issuance
           - **NOTE**: The generation and validation of the access token is delegated to the application side.
     - OID4VP [draft 20](https://openid.net/specs/openid-4-verifiable-presentations-1_0-20.html)
         - DIF.PresentationExchange query language to request the presentations
