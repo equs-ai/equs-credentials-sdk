@@ -1,7 +1,6 @@
 import {
   AuthorizationRequest,
   AuthorizationResponseMetadata,
-  CommonAuthorizationRequest,
   CredentialEntry,
   InnerOID4VPHolder,
   PresentationQuery,
@@ -24,7 +23,7 @@ export class OID4VPHolder {
    *   Fetches the `OID4VP` authorization request object from the provided URI.
    *   If the validation of authorization request fails then related `ProtocolError` response will be sent to the `response_uri` endpoint
    *   @param {string} requestUri - a request URI provided by the authorization URL.
-   *   @returns {CommonAuthorizationRequest} A {@link CommonAuthorizationRequest} with the presentation definition and other relevant details on success.
+   *   @returns {AuthorizationRequest} A {@link AuthorizationRequest}
    */
   async getAuthorizationRequest(requestUri: string): Promise<AuthorizationRequest> {
     const authRequest = await this.inner.getAuthorizationRequest(requestUri);

@@ -1,5 +1,4 @@
-import { DIDVerificationMethod } from "../../";
-import { DIDDocument } from "../../../types";
+import { DIDDocument, DIDVerificationMethod } from "../../";
 
 export class Utils {
   readonly webVerificationMethod = {

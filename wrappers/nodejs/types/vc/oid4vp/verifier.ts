@@ -7,7 +7,6 @@ import {
   InternalOID4VPVerifier,
   JsPassAuthRequestObject,
   PresentationQuery,
-  PresentationSession,
   ResolvedPresentationQuery,
   WalletMetadata,
 } from "../../..";
@@ -45,21 +44,12 @@ export class OID4VPVerifier {
   }
 
   /**
-   *    Verifies the presentation provided by the Holder.
+   *    Verifies the presentation provided by the Holdepsr.
    *    @param {AuthorizationResponse} authorizationResponse - the authorization response containing the VP token and presentation submission.
-   *    @param { PresentationSession} session - a session object containing `Nonce` and {@link PresentationQuery}, which are generated when the {@link OID4VPVerifier.createAuthorizationRequest} method is called.
+   *    @param { _PresentationSession} session - a session object containing `Nonce` and {@link resolvedPresentationQuery: ResolvedPresentationQuery}, which are generated when the {@link OID4VPVerifier.createAuthorizationRequest} method is called.
    *    @returns {Claims} - The verified claims as a JSON object on success.
    */
-  verifyPresentation(authorizationResponse: AuthorizationResponse, session: PresentationSession): Promise<Claims> {
-    const rpq: ResolvedPresentationQuery = {
-      presentation_definition: session.presentation_query.presentation_definition,
-      dcql_query: session.presentation_query.dcql_query,
-    };
-    const ps: _PresentationSession = {
-      nonce: session.nonce,
-      resolvedPresentationQuery: rpq,
-      authorizationRequestJwt: session.authorizationRequestJwt,
-    };
-    return this.inner.verifyPresentation(authorizationResponse, ps);
+  verifyPresentation(authorizationResponse: AuthorizationResponse, session: _PresentationSession): Promise<Claims> {
+    return this.inner.verifyPresentation(authorizationResponse, session);
   }
 }

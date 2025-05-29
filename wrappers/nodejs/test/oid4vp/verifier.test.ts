@@ -1,13 +1,13 @@
 import {
+  _PresentationSession,
   AuthorizationResponse,
   AuthResponseOptions,
-  HttpRequest,
   InMemKms,
   LocalNonceHandler,
   OID4VPVerifierBuilder,
   PassAuthRequestObject,
-  PresentationSession,
   ReqwestHttpClient,
+  ResolvedPresentationQuery,
 } from "../../";
 import { CLAIMS, PRESENTATION_DEFINITION, PRESENTATION_QUERY, PRESENTATION_SUBMISSION, STATE, VP } from "./fixtures";
 import { createDidAndKeyMetadata } from "../utils";
@@ -68,9 +68,13 @@ describe("OID4VP Verifier: ", () => {
   test("verify Authorization Response", async () => {
     const verifier = await buildVerifier("did:key:zDnaefQAPFVQt9sfU63hyqYgPza2pDSXSJrPrCG5paT5eaQJb");
 
-    const session: PresentationSession = {
+    const rpq: ResolvedPresentationQuery = {
+      presentation_definition: PRESENTATION_QUERY.presentation_definition,
+      dcql_query: PRESENTATION_QUERY.dcql_query,
+    };
+    const session: _PresentationSession = {
       nonce: "n0NcE",
-      presentation_query: PRESENTATION_QUERY,
+      resolvedPresentationQuery: rpq,
       authorizationRequestJwt: "",
     };
 

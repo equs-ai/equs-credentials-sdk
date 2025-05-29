@@ -4,6 +4,7 @@ use agent_sdk::vc::oid4vp::{
     AuthResponseOptions, AuthorizationResponse, PassAuthRequestObject,
     PresentationSession as RustPresentationSession, Verifier, WalletMetadata,
 };
+use agent_sdk::vc::presentation_exchange::PresentationSubmission;
 use napi::{Error, Result};
 use napi_derive::napi;
 use url::Url;
@@ -180,14 +181,14 @@ pub struct AuthorizationRequestWithSession {
 ///
 /// @property {any} vpToken - VP Token containing the Verifiable Presentation(s).
 /// @property {string | null} [idToken] - The OpenID Connect ID token used in the SIOP flow.
-/// @property {} presentationSubmission - Details of the submitted presentation.
+/// @property {PresentationSubmission} presentationSubmission - Details of the submitted presentation.
 /// @property {string | null} [state] - The state may be used by a verifier to link requests and responses.
 #[napi(js_name = "AuthorizationResponse", object)]
 pub struct JsAuthorizationResponse {
     pub vp_token: serde_json::Value,
     pub id_token: Option<String>,
     #[napi(ts_type = "PresentationSubmission")]
-    pub presentation_submission: JsonObject,
+    pub presentation_submission: Option<JsonObject>,
     pub state: Option<String>,
 }
 
@@ -195,10 +196,14 @@ impl TryFrom<JsAuthorizationResponse> for AuthorizationResponse {
     type Error = Error;
 
     fn try_from(value: JsAuthorizationResponse) -> Result<Self> {
+        let ps: Option<PresentationSubmission> = value
+            .presentation_submission
+            .map(from_json_object)
+            .transpose()?;
         Ok(Self {
             vp_token: value.vp_token,
             id_token: value.id_token,
-            presentation_submission: from_json_object(value.presentation_submission)?,
+            presentation_submission: ps,
             state: value.state,
         })
     }

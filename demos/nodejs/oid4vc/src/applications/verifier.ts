@@ -17,6 +17,8 @@ import { config } from "../components/config";
 import { createDidAndKeyMetadata } from "../components/utils";
 import * as cors from "cors";
 
+const SESSION_ID = "session_id";
+
 async function main(): Promise<void> {
   await enableLogs(TracingLogFormat.Full, TracingLogLevel.Info);
 
@@ -70,10 +72,7 @@ async function main(): Promise<void> {
         requestUri,
         session.authorizationRequestJwt,
       );
-      appState.presentationSessionStorage.set(
-        "some_id",
-        session,
-      );
+      appState.presentationSessionStorage.set(SESSION_ID, session);
 
       res.contentType("text/plain").send(authorizationRequestUri);
     } catch (e: any) {
@@ -119,9 +118,7 @@ async function main(): Promise<void> {
         state: req.body.state,
       };
 
-      const session = appState.presentationSessionStorage.get(
-        authorizationResponse.presentationSubmission.definition_id,
-      );
+      const session = appState.presentationSessionStorage.get(SESSION_ID);
       const verifiedClaims = await appState.verifier.verifyPresentation(
         authorizationResponse,
         session,

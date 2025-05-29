@@ -148,7 +148,7 @@ async fn dcql_request_uri(state: web::Data<AppState>) -> HttpResponse {
     let (auth_req, session) = state
         .verifier
         .create_authorization_request(
-            &ResolvedPresentationQuery::DCQL(default_dcql_qury()),
+            &ResolvedPresentationQuery::DCQL(default_dcql_query()),
             &auth_resp_config,
             &pass_auth_req_object,
             None,
@@ -356,7 +356,7 @@ pub fn default_presentation_definition() -> PresentationDefinition {
         .set_name("Example with selective disclosure".to_owned())
 }
 
-pub fn default_dcql_qury() -> DCQL {
+pub fn default_dcql_query() -> DCQL {
     let desc: DCQLCredential = serde_json::from_value(json!(
         {
             "id": "pid",
