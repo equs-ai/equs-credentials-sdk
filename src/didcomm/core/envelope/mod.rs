@@ -22,6 +22,8 @@ pub use kms::DIDCommKms;
 pub type AuthCryptAlg = didcomm::algorithms::AuthCryptAlg;
 /// DIDComm message attachment.
 pub type Attachment = didcomm::Attachment;
+/// DIDComm message attachment data.
+pub type AttachmentData = didcomm::AttachmentData;
 /// Builder for a DIDComm message attachment.
 pub type AttachmentBuilder = didcomm::AttachmentBuilder;
 /// DIDComm message

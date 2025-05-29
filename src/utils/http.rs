@@ -3,6 +3,8 @@ use oauth2::http::header::CONTENT_TYPE;
 use oauth2::http::{HeaderMap, Method};
 use oauth2::HttpRequest;
 use reqwest::header::{HeaderValue, ACCEPT};
+use serde::{Deserialize, Serialize};
+use strum_macros::Display;
 use url::Url;
 
 pub const MIME_TYPE_FORM_URLENCODED: &str = "application/x-www-form-urlencoded";
@@ -13,14 +15,15 @@ pub const MIME_STATUSLIST_JWT: &str = "application/statuslist+jwt";
 pub const MIME_STATUSLIST_CWT: &str = "application/statuslist+cwt";
 pub const MIME_DIDCOMM_ENCRYPTED_JSON: &str = "application/didcomm-encrypted+json";
 
-pub(crate) enum MimeType {
+#[derive(Display, Debug, Serialize, Deserialize, PartialEq, Clone)]
+pub enum MimeType {
     AppFormUrlEnc,
     AppJson,
     TextPlain,
 }
 
 impl MimeType {
-    fn as_str(&self) -> &'static str {
+    pub fn as_str(&self) -> &'static str {
         match self {
             MimeType::AppFormUrlEnc => MIME_TYPE_FORM_URLENCODED,
             MimeType::AppJson => MIME_TYPE_JSON,

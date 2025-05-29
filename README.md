@@ -44,6 +44,8 @@ See [Components](docs/asdk-components.png).
         - Cross Device Flow
         - Same Device Flow
         - SIOPv2 extension [draft 13](https://openid.net/specs/openid-connect-self-issued-v2-1_0.html)
+        - Digital Credentials Query Language (DCQL)
+      - WACI Issue Credential Protocol 3.0
 - VC Status:
   - Token Status List [draft-ietf-oauth-status-list-07](https://datatracker.ietf.org/doc/draft-ietf-oauth-status-list/07/)
     - Supported Format
@@ -53,6 +55,7 @@ See [Components](docs/asdk-components.png).
   - did:web
   - did:peer
 - DIDComm V2
+  - Protocols Engine over DIDComm V2
 
 #### Planned
 - VC Formats:
@@ -61,13 +64,11 @@ See [Components](docs/asdk-components.png).
     - OID4VCI
       - Authorization Code Flow Using Authorization Details Parameter
     - OID4VP
-      - Digital Credentials Query Language (DCQL)
       - Response Mode "direct_post.jwt"
-    - Aries AIPv2
+    - WACI Present Proof Protocol 3.0
 - DID methods
     - did:ethr
     - did:webvh
-- Protocols Engine over DIDComm V2
 
 ## How To Build and Run
 Pre-requisites:

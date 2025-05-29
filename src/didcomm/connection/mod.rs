@@ -1,19 +1,38 @@
-use crate::did::DID;
-use crate::storage::Storage;
+#[cfg(any(test, feature = "in-memory"))]
+pub mod in_mem;
+#[cfg(test)]
+pub mod test_utils;
+
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use common_macros::DebugError;
 use didcomm::Attachment;
 use serde::{Deserialize, Serialize};
-use snafu::{Location, ResultExt, Snafu};
+use snafu::{Location, Snafu};
 use std::collections::HashMap;
 use std::fmt;
-use uuid::Uuid;
+
+use crate::did::DID;
+
+#[derive(Snafu, DebugError)]
+#[non_exhaustive]
+pub enum Error {
+    #[snafu(display("Storage service error"))]
+    Storage {
+        source: crate::storage::Error,
+        #[snafu(implicit)]
+        location: Location,
+    },
+    #[snafu(display("Connection with id = {id} not found"))]
+    ConnectionNotFound { id: String },
+    #[snafu(display("Connection is not in the completed state"))]
+    ConnectionNotCompleted,
+}
 
 pub type Result<T> = std::result::Result<T, Error>;
 
 #[async_trait]
-pub trait Connection: Send + Sync {
+pub trait ConnectionService: Send + Sync {
     /// Create a new connection
     async fn create_connection(
         &self,
@@ -24,6 +43,7 @@ pub trait Connection: Send + Sync {
     /// Update a connection
     async fn update_connection(&self, connection: ConnectionRecord) -> Result<()>;
 
+    /// Get a connection by ID
     async fn get_connection(&self, id: &str) -> Result<ConnectionRecord>;
 }
 
@@ -32,6 +52,7 @@ pub enum ConnectionState {
     #[default]
     Initial,
     Invited,
+    Accepted,
     Abandoned,
     Completed,
 }
@@ -41,6 +62,7 @@ impl fmt::Display for ConnectionState {
         match self {
             ConnectionState::Initial => write!(f, "initial"),
             ConnectionState::Invited => write!(f, "invited"),
+            ConnectionState::Accepted => write!(f, "accepted"),
             ConnectionState::Completed => write!(f, "completed"),
             ConnectionState::Abandoned => write!(f, "abandoned"),
         }
@@ -74,6 +96,14 @@ pub struct ConnectionRecord {
     pub updated_at: DateTime<Utc>,
 }
 
+impl ConnectionRecord {
+    pub fn their_did(&self) -> Result<String> {
+        self.their_did
+            .clone()
+            .ok_or_else(|| ConnectionNotCompletedSnafu.build())
+    }
+}
+
 #[derive(Clone, Serialize, Deserialize)]
 pub struct CreateOptions {
     pub role: ConnectionRole,
@@ -81,6 +111,7 @@ pub struct CreateOptions {
     pub label: Option<String>,
     pub alias: Option<String>,
     pub auto_accept: Option<bool>,
+    pub pthid: String,
     pub metadata: HashMap<String, serde_json::Value>,
 }
 
@@ -93,7 +124,7 @@ impl ConnectionRecord {
 
 /// Query parameters for finding connections
 #[derive(Debug, Default, Clone)]
-pub struct ConnectlonQuery {
+pub struct ConnectionQuery {
     pub id: Option<String>,
     pub thread_id: Option<String>,
     pub my_did: Option<String>,
@@ -119,91 +150,4 @@ pub struct InvitationBody {
     pub goal: String,
     pub goal_code: String,
     pub accept: Vec<String>,
-}
-
-#[derive(Snafu, DebugError)]
-#[non_exhaustive]
-pub enum Error {
-    #[snafu(display("Storage service error"))]
-    Storage {
-        source: crate::storage::Error,
-        #[snafu(implicit)]
-        location: Location,
-    },
-    #[snafu(display("Connection with id = {id} not found"))]
-    ConnectionNotFound { id: String },
-}
-
-#[derive(Clone)]
-/// The ConnectionService service defines methods for managing connections
-pub struct ConnectionService<S>
-where
-    S: Storage<String, ConnectionRecord> + Clone + 'static,
-{
-    storage: S,
-}
-
-impl<S> ConnectionService<S>
-where
-    S: Storage<String, ConnectionRecord> + Clone + 'static,
-{
-    pub fn new(storage: S) -> Self {
-        Self { storage }
-    }
-}
-
-#[async_trait]
-impl<S> Connection for ConnectionService<S>
-where
-    S: Storage<String, ConnectionRecord> + Clone + 'static,
-{
-    /// Create a new connection
-    async fn create_connection(
-        &self,
-        my_did: &DID,
-        create_options: CreateOptions,
-    ) -> Result<ConnectionRecord> {
-        let connection = ConnectionRecord {
-            id: Uuid::new_v4().to_string(),
-            state: ConnectionState::Initial,
-            role: ConnectionRole::Inviter,
-            my_did: my_did.to_string(),
-            thread_id: None,
-            their_did: None,
-            parent_thread_id: None,
-            their_endpoint: None,
-            label: create_options.label,
-            alias: create_options.alias,
-            auto_accept: create_options.auto_accept.unwrap_or(true),
-            metadata: create_options.metadata,
-            created_at: Utc::now(),
-            updated_at: Utc::now(),
-        };
-
-        self.storage
-            .put(connection.id.to_owned(), connection.clone())
-            .await
-            .context(StorageSnafu)?;
-
-        Ok(connection)
-    }
-
-    /// Update a connection
-    async fn update_connection(&self, connection: ConnectionRecord) -> Result<()> {
-        self.storage
-            .put(connection.id.to_owned(), connection)
-            .await
-            .context(StorageSnafu)
-    }
-    /// Get a connection by ID
-    async fn get_connection(&self, id: &str) -> Result<ConnectionRecord> {
-        let connection = self
-            .storage
-            .get(&id.to_string())
-            .await
-            .context(StorageSnafu)?
-            .ok_or_else(|| ConnectionNotFoundSnafu { id: id.to_string() }.build())?;
-
-        Ok(connection)
-    }
 }

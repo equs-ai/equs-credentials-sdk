@@ -28,6 +28,7 @@ use crate::vc::presentation_exchange::validate_credential;
 use crate::vc::{pop, Credential, CredentialMetadata, HasVCFormat, Presentation};
 use crate::{kms, vault};
 
+#[derive(Clone)]
 pub struct HolderService<KH, KMS, V>
 where
     KMS: kms::Kms<KH>,

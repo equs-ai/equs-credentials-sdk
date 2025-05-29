@@ -2,7 +2,6 @@ use async_trait::async_trait;
 use common_macros::DebugError;
 use serde::{Deserialize, Serialize};
 use snafu::{Location, ResultExt, Snafu};
-use std::sync::Arc;
 use time::OffsetDateTime;
 use tracing::{debug, info};
 use uuid::Uuid;
@@ -10,9 +9,12 @@ use uuid::Uuid;
 use crate::did::DID;
 use crate::didcomm;
 use crate::didcomm::agent;
+use crate::didcomm::connection::ConnectionService;
 use crate::didcomm::core::envelope::{Attachment, Message};
 use crate::didcomm::core::event_emitter::EventEmitter;
+use crate::didcomm::core::message_type::{MessageType, MessageTypePrefix};
 use crate::didcomm::core::protocol;
+use crate::didcomm::core::protocol::message_handler::MessageHandler;
 use crate::didcomm::core::protocol::Protocol;
 use crate::didcomm::service::DIDCommService;
 use crate::kms::{KeyHandle, Kms};
@@ -20,9 +22,9 @@ use crate::storage;
 use crate::storage::Storage;
 
 // Protocol constants
-pub const PROTOCOL_NAME: &str = "basicmessage";
-pub const PROTOCOL_VERSION: &str = "2.0";
-pub const MESSAGE_TYPE: &str = "https://didcomm.org/basicmessage/2.0/message";
+const PROTOCOL_NAME: &str = "basicmessage";
+const PROTOCOL_VERSION: &str = "2.0";
+const MESSAGE_TYPE: &str = "message";
 
 pub const MESSAGE_RECEIVED_EVENT: &str = "basic-message-received";
 pub const MESSAGE_SENT_EVENT: &str = "basic-message-sent";
@@ -128,10 +130,12 @@ where
     S: Storage<String, BasicMessageRecord> + Clone + 'static,
 {
     /// Create a new Basic Message Protocol instance
-    pub async fn new<KMS, KH>(agent: &agent::Agent<KMS, KH>, storage: S) -> Self
+    pub async fn new<KMS, KH, C>(agent: &agent::Agent<KMS, KH, C>, storage: S) -> Self
     where
         KMS: Kms<KH> + Clone,
         KH: KeyHandle,
+        C: ConnectionService + Clone,
+        S: Storage<String, BasicMessageRecord> + Clone + 'static,
     {
         Self {
             service: agent.didcomm_service().clone(),
@@ -146,7 +150,13 @@ where
         };
         let message = Message::build(
             Uuid::new_v4().to_string(),
-            MESSAGE_TYPE.to_string(),
+            MessageType {
+                prefix: MessageTypePrefix::Endpoint,
+                family: PROTOCOL_NAME.to_string(),
+                version: PROTOCOL_VERSION.to_string(),
+                type_: MESSAGE_TYPE.to_string(),
+            }
+            .to_string(),
             serde_json::to_value(basic_msg).context(ParseSnafu)?,
         )
         .finalize();
@@ -173,7 +183,13 @@ where
         // Create the DIDComm message
         let mut msg_builder = Message::build(
             message_id.clone(),
-            MESSAGE_TYPE.to_string(),
+            MessageType {
+                prefix: MessageTypePrefix::Endpoint,
+                family: PROTOCOL_NAME.to_string(),
+                version: PROTOCOL_VERSION.to_string(),
+                type_: MESSAGE_TYPE.to_string(),
+            }
+            .to_string(),
             serde_json::to_value(message_content).context(ParseSnafu)?,
         );
         msg_builder = msg_builder.from(my_did.clone());
@@ -235,6 +251,20 @@ where
         PROTOCOL_VERSION
     }
 
+    fn get_message_handlers(&self) -> Vec<&dyn MessageHandler> {
+        vec![self]
+    }
+}
+
+#[async_trait]
+impl<S> MessageHandler for BasicMessageProtocol<S>
+where
+    S: Storage<String, BasicMessageRecord> + Clone + 'static,
+{
+    fn supported_message_types(&self) -> &[&str] {
+        &[MESSAGE_TYPE]
+    }
+
     async fn handle(&self, msg: Message) -> protocol::Result<()> {
         debug!("Handling basic message: {:?}", msg);
 
@@ -272,23 +302,5 @@ where
         self.event_emitter.emit(MESSAGE_RECEIVED_EVENT, event).await;
 
         Ok(())
-    }
-}
-
-// Handler for basic message messages
-pub struct BasicMessageHandler {
-    connection_service: Arc<dyn crate::didcomm::connection::Connection>,
-    event_emitter: Arc<EventEmitter<&'static str, Event>>,
-}
-
-impl BasicMessageHandler {
-    pub fn new(
-        connection_service: Arc<dyn crate::didcomm::connection::Connection>,
-        event_emitter: Arc<EventEmitter<&'static str, Event>>,
-    ) -> Self {
-        Self {
-            connection_service,
-            event_emitter,
-        }
     }
 }
