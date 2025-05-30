@@ -8,6 +8,7 @@
 - [API Wrappers](wrappers.md)
 - [Publish release](release.md)
 - [Conformance testing](conformance-tests.md)
+- [Protocol Engine](protocol-engine.md)
 
 ## Rust API Guidelines
 
