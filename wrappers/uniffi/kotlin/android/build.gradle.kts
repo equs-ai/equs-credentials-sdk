@@ -4,7 +4,7 @@ plugins {
 }
 
 val group = "com.bci.asdk"
-val version = "0.8.5"
+val version = "0.8.6"
 
 repositories {
     google()
