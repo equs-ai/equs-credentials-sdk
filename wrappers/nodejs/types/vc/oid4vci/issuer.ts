@@ -20,8 +20,8 @@ export class OID4VCIIssuerBuilder {
   private nonceHandler?: NonceHandler;
   private tokenValidation?: TokenValidation;
   private clockSkew?: Duration;
-  private dedicatedKeys: Record<string, KeyMetadata>;
-  private credentialLifetimes: Record<string, Duration>;
+  private dedicatedKeys: Map<string, KeyMetadata>;
+  private credentialLifetimes: Map<string, Duration>;
   private defaultCredentialLifetime?: Duration;
   private httpClient: ReqwestHttpClient;
 
@@ -29,8 +29,8 @@ export class OID4VCIIssuerBuilder {
     this.kms = kms;
     this.issuerMetadata = issuerMetadata;
     this.keyMetadata = keyMetadata;
-    this.dedicatedKeys = {};
-    this.credentialLifetimes = {};
+    this.dedicatedKeys = new Map();
+    this.credentialLifetimes = new Map();
   }
 
   withNonceHandler(nonceHandler: NonceHandler): this {
@@ -58,16 +58,12 @@ export class OID4VCIIssuerBuilder {
   }
 
   withDedicatedKeyMetadata(credentialConfigurationId: string, keyMetadata: KeyMetadata): this {
-    this.dedicatedKeys = {
-      [credentialConfigurationId]: keyMetadata,
-    };
+    this.dedicatedKeys.set(credentialConfigurationId, keyMetadata);
     return this;
   }
 
-  withCredentialLifetime(credentialConfigurationId: string, duration: number): this {
-    this.credentialLifetimes = {
-      [credentialConfigurationId]: { seconds: duration, nanoseconds: 0 },
-    };
+  withCredentialLifetime(credentialConfigurationId: string, seconds: number): this {
+    this.credentialLifetimes.set(credentialConfigurationId, { seconds, nanoseconds: 0 });
     return this;
   }
 
@@ -89,9 +85,9 @@ export class OID4VCIIssuerBuilder {
       this.keyMetadata,
       this.tokenValidation,
       this.clockSkew,
-      this.dedicatedKeys || {},
+      Object.fromEntries(this.dedicatedKeys.entries()),
       this.defaultCredentialLifetime,
-      this.credentialLifetimes,
+      Object.fromEntries(this.credentialLifetimes.entries()),
       undefined,
       this.httpClient,
     );

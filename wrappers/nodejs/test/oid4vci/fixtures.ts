@@ -11,68 +11,72 @@ import {
   OID4VCIIssuerMetadata,
 } from "../../";
 
-export const ISSUER_ENDPOINT = "http://localhost:9000";
-export const TOKEN_ENDPOINT = `${ISSUER_ENDPOINT}/auth/token`;
-export const PUSHED_AUTH_REQUEST_ENDPOINT = `${ISSUER_ENDPOINT}/auth/par/request`;
-export const CRED_DEF_ID = "IDENTITY_SD_JWT";
-export const CRED_TYPE = "SD_JWT_cred";
-export const SCOPE = "SD_JWT_cred";
+export const IssuerEndpoint = "http://localhost:9000";
+export const TokenEndpoint = `${IssuerEndpoint}/auth/token`;
+export const PushedAuthRequestEndpoint = `${IssuerEndpoint}/auth/par/request`;
+export const CredDefId1 = "IDENTITY_SD_JWT_1";
+export const CredDefId2 = "IDENTITY_SD_JWT_2";
+export const CredType = "SD_JWT_cred";
+export const Scope = "SD_JWT_cred";
+
+const CredentialDefinition = {
+  format: CredentialFormats.VCSDJWT,
+  scope: Scope,
+  cryptographic_binding_methods_supported: ["jwk"],
+  credential_signing_alg_values_supported: [JwkAlgorithm.ES256],
+  proof_types_supported: {
+    jwt: {
+      proof_signing_alg_values_supported: ["ES256"],
+    },
+  },
+  vct: CredType,
+  claims: {
+    given_name: {
+      display: [{ name: "Name" }],
+      mandatory: true,
+      value_type: "string",
+    },
+    family_name: {
+      display: [{ name: "Surname" }],
+      mandatory: true,
+      value_type: "string",
+    },
+    dob: {
+      display: [{ name: "Date of birth" }],
+      mandatory: true,
+      value_type: "number",
+    },
+  },
+} satisfies OID4VCICredentialMetadata;
 
 export const ISSUER_METADATA: OID4VCIIssuerMetadata = {
-  credential_issuer: ISSUER_ENDPOINT,
-  authorization_servers: [`${ISSUER_ENDPOINT}/auth`],
-  credential_endpoint: `${ISSUER_ENDPOINT}/credential`,
+  credential_issuer: IssuerEndpoint,
+  authorization_servers: [`${IssuerEndpoint}/auth`],
+  credential_endpoint: `${IssuerEndpoint}/credential`,
   batch_credential_issuance: {
     batch_size: 2,
   },
   credential_configurations_supported: {
-    IDENTITY_SD_JWT: {
-      format: CredentialFormats.VCSDJWT,
-      scope: SCOPE,
-      cryptographic_binding_methods_supported: ["jwk"],
-      credential_signing_alg_values_supported: [JwkAlgorithm.ES256],
-      proof_types_supported: {
-        jwt: {
-          proof_signing_alg_values_supported: ["ES256"],
-        },
-      },
-      vct: CRED_TYPE,
-      claims: {
-        given_name: {
-          display: [{ name: "Name" }],
-          mandatory: true,
-          value_type: "string",
-        },
-        family_name: {
-          display: [{ name: "Surname" }],
-          mandatory: true,
-          value_type: "string",
-        },
-        dob: {
-          display: [{ name: "Date of birth" }],
-          mandatory: true,
-          value_type: "number",
-        },
-      },
-    },
+    [CredDefId1]: CredentialDefinition,
+    [CredDefId2]: CredentialDefinition,
   },
 };
 
 export const AUTH_SERVER_METADATA: AuthMetadata = {
-  issuer: `${ISSUER_ENDPOINT}/auth`,
-  authorization_endpoint: `${ISSUER_ENDPOINT}/auth`,
-  token_endpoint: TOKEN_ENDPOINT,
-  introspection_endpoint: `${ISSUER_ENDPOINT}/auth/introspection`,
-  jwks_uri: `${ISSUER_ENDPOINT}/auth/jwks`,
+  issuer: `${IssuerEndpoint}/auth`,
+  authorization_endpoint: `${IssuerEndpoint}/auth`,
+  token_endpoint: TokenEndpoint,
+  introspection_endpoint: `${IssuerEndpoint}/auth/introspection`,
+  jwks_uri: `${IssuerEndpoint}/auth/jwks`,
   grant_types_supported: ["authorization_code"],
   response_types_supported: ["code", "token"],
   subject_types_supported: ["public"],
   id_token_signing_alg_values_supported: ["ES256"],
-  pushed_authorization_request_endpoint: PUSHED_AUTH_REQUEST_ENDPOINT,
+  pushed_authorization_request_endpoint: PushedAuthRequestEndpoint,
 };
 
 export const CRED_DEF_METADATA: OID4VCICredentialMetadata = {
-  scope: SCOPE,
+  scope: Scope,
   cryptographic_binding_methods_supported: ["jwk"],
   proof_types_supported: {
     jwt: {
@@ -104,8 +108,16 @@ export const CRED_DEF_METADATA: OID4VCICredentialMetadata = {
 export const PROOF_JWT =
   "eyJhbGciOiJFUzI1NiIsImtpZCI6ImRpZDprZXk6ekRuYWVmM2lLZTFGV3U4QUtOM25yUEpCdWtTenNTNE5KNm95b0xiVjh1QkNTR2ZjZiN6RG5hZWYzaUtlMUZXdThBS04zbnJQSkJ1a1N6c1M0Tko2b3lvTGJWOHVCQ1NHZmNmIiwidHlwIjoib3BlbmlkNHZjaS1wcm9vZitqd3QifQ.eyJhdWQiOiJodHRwOi8vbG9jYWxob3N0OjkwMDAiLCJuYmYiOjE3MzYxODIzOTcsImlhdCI6MTczNjE4MjM5NywiZXhwIjo0ODg5NzgyMzk3LCJub25jZSI6IktCNTBWT205SS1rUExUOW1BQUNWOGcifQ.IteWgE_LbL7lanDu3CJDdwGheGRDrJdh_gn-ldOraEWazE_kTtcgXMp4WJG871FOqRzI8lphSxWfqrGBXG4wxA";
 
-export const CRED_REQUEST: OID4VCICredentialRequest = {
-  credential_configuration_id: CRED_DEF_ID,
+export const CredRequest1: OID4VCICredentialRequest = {
+  credential_configuration_id: CredDefId1,
+  proof: {
+    proof_type: "jwt",
+    jwt: PROOF_JWT,
+  },
+  credential_response_encryption: null,
+};
+export const CredRequest2: OID4VCICredentialRequest = {
+  credential_configuration_id: CredDefId2,
   proof: {
     proof_type: "jwt",
     jwt: PROOF_JWT,
@@ -114,7 +126,7 @@ export const CRED_REQUEST: OID4VCICredentialRequest = {
 };
 
 export const CRED_REQUEST_FOR_BATCH_ISSUANCE: OID4VCICredentialRequest = {
-  credential_configuration_id: CRED_DEF_ID,
+  credential_configuration_id: CredDefId1,
   proofs: {
     jwt: [PROOF_JWT, PROOF_JWT],
   },
@@ -129,8 +141,8 @@ export const GRANTS: CredentialOfferGrants = {
 };
 
 export const CRED_OFFER: OID4VCICredentialOffer = {
-  credential_issuer: ISSUER_ENDPOINT,
-  credential_configuration_ids: [CRED_DEF_ID],
+  credential_issuer: IssuerEndpoint,
+  credential_configuration_ids: [CredDefId1],
   grants: GRANTS,
 };
 
@@ -165,21 +177,21 @@ export const CRED_RESPONSE = {
 };
 
 export const CRED_OFFER_WITH_PRE_AUTH_GRANT: OID4VCICredentialOffer = {
-  credential_issuer: ISSUER_ENDPOINT,
-  credential_configuration_ids: [CRED_DEF_ID],
+  credential_issuer: IssuerEndpoint,
+  credential_configuration_ids: [CredDefId1],
   grants: {
     "urn:ietf:params:oauth:grant-type:pre-authorized_code": {
       "pre-authorized_code": "code",
       tx_code: null,
       interval: null,
-      authorization_server: `${ISSUER_ENDPOINT}/auth`,
+      authorization_server: `${IssuerEndpoint}/auth`,
     },
   },
 };
 
 export const CRED_OFFER_WITH_AUTH_GRANT: OID4VCICredentialOffer = {
-  credential_issuer: ISSUER_ENDPOINT,
-  credential_configuration_ids: [CRED_DEF_ID],
+  credential_issuer: IssuerEndpoint,
+  credential_configuration_ids: [CredDefId1],
   grants: {
     authorization_code: {
       issuer_state: "state",

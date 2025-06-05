@@ -1,17 +1,20 @@
-import { HttpRequest, HttpResponse, InMemKms, OID4VCIIssuer, OID4VCIIssuerBuilder, ReqwestHttpClient } from "../../";
+import { HttpRequest, HttpResponse, InMemKms, OID4VCIIssuer, OID4VCIIssuerBuilder } from "../../";
 import {
   ACCESS_TOKEN,
   CLAIMS,
-  CRED_DEF_ID,
   CRED_DEF_METADATA,
   CRED_OFFER,
-  CRED_REQUEST,
   CRED_REQUEST_FOR_BATCH_ISSUANCE,
+  CredDefId1,
+  CredDefId2,
+  CredRequest1,
+  CredRequest2,
   GRANTS,
   ISSUER_METADATA,
   MockNonceHandler,
 } from "./fixtures";
 import { createDidAndKeyMetadata } from "../utils";
+import { jwtDecode } from "jwt-decode";
 
 describe("OID4VCI Issuer: ", () => {
   let issuer: OID4VCIIssuer;
@@ -25,7 +28,8 @@ describe("OID4VCI Issuer: ", () => {
     issuer = await new OID4VCIIssuerBuilder(kms, ISSUER_METADATA, keyMetadata)
       .withNonceHandler(mockNonceHandler)
       .withDefaultCredentialLifetime(3600 * 24)
-      .withCredentialLifetime(CRED_DEF_ID, 3600)
+      .withCredentialLifetime(CredDefId1, 3600 * 24 * 365)
+      .withCredentialLifetime(CredDefId2, 3600 * 24 * 365 * 5)
       .build();
   });
 
@@ -49,12 +53,12 @@ describe("OID4VCI Issuer: ", () => {
     issuer = await new OID4VCIIssuerBuilder(kms, ISSUER_METADATA, keyMetadata)
       .withNonceHandler(mockNonceHandler)
       .withDefaultCredentialLifetime(3600 * 24)
-      .withCredentialLifetime(CRED_DEF_ID, 3600)
+      .withCredentialLifetime(CredDefId1, 3600)
       .withHttpClient(httpClient)
       .tokenValidationJwks("https://google.com")
       .build();
 
-    await issuer.issueCredential(CRED_REQUEST, ACCESS_TOKEN, CLAIMS);
+    await issuer.issueCredential(CredRequest1, ACCESS_TOKEN, CLAIMS);
 
     expect(result).toEqual({
       statusCode: 200,
@@ -76,17 +80,17 @@ describe("OID4VCI Issuer: ", () => {
   });
 
   test("retrieve Credential Definition Metadata", async () => {
-    const credDefMetadata = issuer.getCredDefMetadata(CRED_REQUEST);
+    const credDefMetadata = issuer.getCredDefMetadata(CredRequest1);
 
     expect(credDefMetadata).toMatchObject(CRED_DEF_METADATA);
   });
 
   test("create Credential Offer", async () => {
-    const credentialOffer = issuer.createCredentialOffer([CRED_DEF_ID], GRANTS);
+    const credentialOffer = issuer.createCredentialOffer([CredDefId1], GRANTS);
 
     expect(credentialOffer).toMatchObject({
       params: CRED_OFFER,
-      url: "openid-credential-offer://?credential_offer={%22credential_issuer%22:%22http://localhost:9000%22,%22credential_configuration_ids%22:[%22IDENTITY_SD_JWT%22],%22grants%22:{%22authorization_code%22:{%22issuer_state%22:null,%22authorization_server%22:null}}}",
+      url: "openid-credential-offer://?credential_offer={%22credential_issuer%22:%22http://localhost:9000%22,%22credential_configuration_ids%22:[%22IDENTITY_SD_JWT_1%22],%22grants%22:{%22authorization_code%22:{%22issuer_state%22:null,%22authorization_server%22:null}}}",
     });
   });
 
@@ -99,9 +103,13 @@ describe("OID4VCI Issuer: ", () => {
   });
 
   test("issue Credential", async () => {
-    const result = await issuer.issueCredential(CRED_REQUEST, ACCESS_TOKEN, CLAIMS);
-    expect(result.value.credentials.length).toEqual(1);
-    expect(result.value.credentials[0]).toBeTruthy();
+    const result1 = await issuer.issueCredential(CredRequest1, ACCESS_TOKEN, CLAIMS);
+    const result2 = await issuer.issueCredential(CredRequest2, ACCESS_TOKEN, CLAIMS);
+    const credential1 = jwtDecode(result1.value.credentials[0].credential);
+    const credential2 = jwtDecode(result2.value.credentials[0].credential);
+
+    expect(credential1.exp * 1000 - Date.now()).toBeGreaterThan(364 * 24 * 60 * 60 * 1000);
+    expect(credential2.exp * 1000 - Date.now()).toBeGreaterThan(5 * 364 * 24 * 60 * 60 * 1000);
   });
 
   test("issue multiple Credential - Batch issuance", async () => {
