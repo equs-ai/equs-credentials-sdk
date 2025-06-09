@@ -21,6 +21,8 @@ use zeroize::Zeroize;
 pub enum Error {
     #[snafu(display("Key not found for ID: {id}"))]
     NotFound { id: String },
+    #[snafu(display("Key get error: {details}"))]
+    Get { details: String },
     #[snafu(display("Key creation error: {details}"))]
     Creation {
         details: String,

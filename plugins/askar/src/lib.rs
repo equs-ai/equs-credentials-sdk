@@ -1,6 +1,3 @@
-// Below rule has bug: https://github.com/rust-lang/rust-clippy/issues/12281
-#![allow(clippy::blocks_in_conditions)]
-
 use aries_askar::storage::KdfMethod;
 use aries_askar::{Error, PassKey, Session, Store, StoreKeyMethod};
 use serde::Deserialize;
@@ -123,6 +120,7 @@ impl AskarStorage {
     }
 
     /// Create a new transaction session against the store
+    #[allow(dead_code)] // todo fix
     #[instrument(level = Level::TRACE, err(), ret())]
     pub(crate) async fn transaction(&self) -> Result<Session> {
         self.store.transaction(Some(self.profile.clone())).await

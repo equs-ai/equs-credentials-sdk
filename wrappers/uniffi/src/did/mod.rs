@@ -1,12 +1,16 @@
 use crate::common::{Error, Result};
-use crate::inmem::keyhandle::InMemKeyHandle;
+use crate::key_handle::WrappedKeyHandle;
+use agent_sdk::did::universal::DIDResolver as ASDKDIDResolver;
 use agent_sdk::did::{
-    DIDBuf, DIDURLBuf, ResolutionOutput, VerificationMethodMap, VerificationRelationshipType,
+    DIDBuf, DIDURLBuf, ResolutionError, ResolutionOptions, ResolutionOptionsMediaType,
+    ResolutionOutput, SpruceDID, VerificationMethodMap, VerificationRelationshipType,
 };
+use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use std::str::FromStr;
+use std::sync::Arc;
 
 pub type DIDDocMetadata = agent_sdk::did::DocumentMetadata;
 pub type DIDMetadata = agent_sdk::did::ResolutionMetadata;
@@ -14,6 +18,81 @@ pub type DIDMetadata = agent_sdk::did::ResolutionMetadata;
 pub mod key;
 pub mod universal_resolver;
 pub mod web;
+
+#[uniffi::remote(Enum)]
+pub enum ResolutionOptionsMediaType {
+    Json,
+    JsonLd,
+}
+
+#[derive(uniffi::Record)]
+pub struct DIDResolutionOptions {
+    pub accept: Option<ResolutionOptionsMediaType>,
+    pub parameters: Value,
+}
+
+impl TryFrom<ResolutionOptions> for DIDResolutionOptions {
+    type Error = Error;
+    fn try_from(value: ResolutionOptions) -> Result<Self> {
+        Ok(Self {
+            accept: value.accept,
+            parameters: serde_json::to_value(value.parameters).map_err(|e| {
+                Error::DIDResolution {
+                    details: format!(
+                        "Resolution options parameter parsing error: {:#?}",
+                        e.to_string()
+                    ),
+                }
+            })?,
+        })
+    }
+}
+
+#[uniffi::export(with_foreign)]
+#[async_trait]
+pub trait DIDResolver: Send + Sync {
+    async fn resolve_representation(
+        &self,
+        did: String,
+        options: DIDResolutionOptions,
+    ) -> Result<DIDResolution>;
+
+    fn method_name(&self) -> String;
+}
+
+pub struct WrappedDIDResolver(Arc<dyn DIDResolver>);
+impl WrappedDIDResolver {
+    pub fn new(inner: Arc<dyn DIDResolver>) -> Self {
+        Self(inner)
+    }
+    pub fn inner(&self) -> Arc<dyn DIDResolver> {
+        self.0.to_owned()
+    }
+}
+
+#[async_trait]
+impl ASDKDIDResolver for WrappedDIDResolver {
+    async fn resolve_representation<'a>(
+        &'a self,
+        did: &'a SpruceDID,
+        options: ResolutionOptions,
+    ) -> std::result::Result<ResolutionOutput, ResolutionError> {
+        let options = options
+            .try_into()
+            .map_err(|_| ResolutionError::InvalidOptions)?;
+
+        self.inner()
+            .resolve_representation(did.to_string(), options)
+            .await
+            .map_err(|e| ResolutionError::Internal(e.to_string()))?
+            .try_into()
+            .map_err(|_| ResolutionError::Internal("Could not resolve representation".to_string()))
+    }
+
+    fn method_name(&self) -> String {
+        self.inner().method_name()
+    }
+}
 
 #[uniffi::remote(Enum)]
 pub enum VerificationRelationshipType {
@@ -26,16 +105,16 @@ pub enum VerificationRelationshipType {
 
 #[derive(uniffi::Object)]
 pub struct VerificationMethodKey {
-    key: InMemKeyHandle,
+    key: WrappedKeyHandle,
     verification_relationships: HashSet<VerificationRelationshipType>,
 }
 
 #[uniffi::export]
 impl VerificationMethodKey {
     #[uniffi::constructor]
-    pub fn new(kh: &InMemKeyHandle, verifications: Vec<VerificationRelationshipType>) -> Self {
+    pub fn new(kh: WrappedKeyHandle, verifications: Vec<VerificationRelationshipType>) -> Self {
         Self {
-            key: kh.clone(),
+            key: kh,
             verification_relationships: HashSet::from_iter(verifications),
         }
     }
@@ -133,7 +212,7 @@ pub struct DIDMetadata {
 }
 
 /// The result of a DID resolution.
-#[derive(uniffi::Record)]
+#[derive(uniffi::Record, Debug)]
 pub struct DIDResolution {
     // TODO: Use DID document structure instead of string
     /// The resolved DID Document
@@ -154,6 +233,22 @@ impl TryFrom<ResolutionOutput> for DIDResolution {
             })?;
 
         Ok(DIDResolution {
+            document,
+            document_metadata: value.document_metadata,
+            metadata: value.metadata,
+        })
+    }
+}
+impl TryFrom<DIDResolution> for ResolutionOutput {
+    type Error = Error;
+
+    fn try_from(value: DIDResolution) -> Result<Self> {
+        let document =
+            serde_json::from_str(&value.document).map_err(|err| Error::DIDResolution {
+                details: err.to_string(),
+            })?;
+
+        Ok(ResolutionOutput {
             document,
             document_metadata: value.document_metadata,
             metadata: value.metadata,

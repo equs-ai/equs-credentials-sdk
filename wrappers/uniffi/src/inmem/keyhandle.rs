@@ -1,36 +1,11 @@
+use crate::common::{Error, Result};
+use crate::key_handle::KeyHandle;
 use crate::vc::Alg;
-use agent_sdk::crypto::{Key, Signer, Verifier, JWK};
+use agent_sdk::crypto::{Key, Signer, Verifier};
 use agent_sdk::inmem::kms::KeyHandle as ASDKInMemKeyHandle;
+use async_trait::async_trait;
 
-type Result<T> = std::result::Result<T, InMemKeyHandleError>;
-
-#[derive(uniffi::Error, Debug)]
-pub enum InMemKeyHandleError {
-    PubKey(String),
-    Sign(String),
-    Verify(String),
-    Jwk(String),
-}
-impl std::fmt::Display for InMemKeyHandleError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            InMemKeyHandleError::PubKey(s) => {
-                write!(f, "InMem KeyHandle pub key error: {s}")
-            }
-            InMemKeyHandleError::Sign(s) => {
-                write!(f, "InMem KeyHandle sign error: {s}")
-            }
-            InMemKeyHandleError::Verify(s) => {
-                write!(f, "InMem KeyHandle verify error: {s}")
-            }
-            InMemKeyHandleError::Jwk(s) => {
-                write!(f, "InMem KeyHandle jwk error: {s}")
-            }
-        }
-    }
-}
-
-#[derive(uniffi::Object, Clone)]
+#[derive(Clone)]
 pub struct InMemKeyHandle {
     inner: ASDKInMemKeyHandle,
 }
@@ -44,34 +19,43 @@ impl InMemKeyHandle {
     }
 }
 
-impl Key for InMemKeyHandle {
-    fn pub_key(&self) -> agent_sdk::crypto::Result<Vec<u8>> {
-        self.inner.pub_key()
+#[async_trait]
+impl KeyHandle for InMemKeyHandle {
+    fn pub_key(&self) -> Result<Vec<u8>> {
+        self.inner.pub_key().map_err(|e| {
+            Error::KeyHandle(format!(
+                "InMemKeyHandle pub key error: {:#?}",
+                e.to_string()
+            ))
+        })
     }
 
-    fn jwk(&self) -> Option<JWK> {
-        self.inner.jwk()
+    fn jwk(&self) -> Option<String> {
+        self.inner
+            .jwk()
+            .as_ref()
+            .and_then(|jwk| serde_json::to_string(jwk).ok())
     }
-}
-
-#[uniffi::export()]
-impl InMemKeyHandle {
     fn alg(&self) -> Alg {
         self.inner.alg()
     }
 
-    async fn sign(&self, payload: &[u8]) -> Result<Vec<u8>> {
+    async fn sign(&self, payload: Vec<u8>) -> Result<Vec<u8>> {
         self.inner
-            .sign(payload)
+            .sign(payload.as_slice())
             .await
             .map(Into::into)
-            .map_err(|err| InMemKeyHandleError::Sign(err.to_string()))
+            .map_err(|e| {
+                Error::KeyHandle(format!("InMemKeyHandle sign error: {:#?}", e.to_string()))
+            })
     }
 
-    async fn verify(&self, data: &[u8], signature: &[u8]) -> Result<()> {
+    async fn verify(&self, data: Vec<u8>, signature: Vec<u8>) -> Result<()> {
         self.inner
-            .verify(data, signature)
+            .verify(data.as_slice(), signature.as_slice())
             .await
-            .map_err(|err| InMemKeyHandleError::Verify(err.to_string()))
+            .map_err(|e| {
+                Error::KeyHandle(format!("InMemKeyHandle verify error: {:#?}", e.to_string()))
+            })
     }
 }

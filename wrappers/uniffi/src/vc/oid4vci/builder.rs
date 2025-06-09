@@ -1,10 +1,9 @@
 use crate::common::{Error, JsonValue, Result};
-use crate::inmem::kms::InMemKms;
-use crate::inmem::vault::InMemVault;
+use crate::http::{HttpClient, WrappedHttpClient};
+use crate::kms::{Kms, WrappedKms};
+use crate::vault::{Vault, WrappedVault};
 use crate::vc::oid4vci::holder::OID4VCIHolder;
-use agent_sdk::inmem::kms::LocalKms;
-#[cfg(debug_assertions)]
-use agent_sdk::reqwest::builder::ReqwestClientBuilder;
+use std::sync::Arc;
 use uniffi::custom_type;
 
 pub type IssuerDiscovery = agent_sdk::vc::oid4vci::IssuerDiscovery;
@@ -58,47 +57,42 @@ custom_type!(IssuerDiscovery, IssuerDiscoveryEnum, {
 
 #[derive(uniffi::Object)]
 struct OID4VCIHolderBuilder {
-    kms: LocalKms,
-    vault: agent_sdk::inmem::vault::InMemVault,
+    kms: WrappedKms,
+    vault: WrappedVault,
     client_id: String,
     issuer_discovery: IssuerDiscovery,
+    http_client: WrappedHttpClient,
 }
 
 #[uniffi::export(async_runtime = "tokio")]
 impl OID4VCIHolderBuilder {
     #[uniffi::constructor]
     pub fn new(
-        kms: &InMemKms,
-        vault: &InMemVault,
+        kms: Arc<dyn Kms>,
+        vault: Arc<dyn Vault>,
         client_id: String,
         issuer_discovery: IssuerDiscovery,
+        http_client: Arc<dyn HttpClient>,
     ) -> OID4VCIHolderBuilder {
         OID4VCIHolderBuilder {
-            kms: kms.inner(),
-            vault: vault.inner(),
+            kms: WrappedKms::new(kms),
+            vault: WrappedVault::new(vault),
             client_id,
             issuer_discovery,
+            http_client: WrappedHttpClient::new(http_client),
         }
     }
 
     pub async fn build(&self) -> Result<OID4VCIHolder> {
         #[allow(unused_mut)]
         let mut builder = agent_sdk::vc::oid4vci::HolderBuilder::new(
-            self.kms.clone(),
-            self.vault.clone(),
+            self.kms.to_owned(),
+            self.vault.to_owned(),
             self.client_id.to_owned(),
             self.issuer_discovery.clone(),
         );
 
-        #[cfg(debug_assertions)]
-        {
-            builder = builder.with_http_client(
-                ReqwestClientBuilder::new()
-                    .insecure()
-                    .build()
-                    .map_err(|e| Error::OID4VCIInternal(e.to_string()))?,
-            )
-        }
+        let builder = builder.with_http_client(self.http_client.to_owned());
 
         let holder = builder
             .build()

@@ -1,35 +1,17 @@
-use agent_sdk::vault::Vault;
+use agent_sdk::vault::Vault as ASDKVault;
 use agent_sdk::vc::{Credential, CredentialMetadata};
+use async_trait::async_trait;
 
 use crate::common::{Error, Result};
+use crate::vault::{CredentialEntry, Vault, VaultPagination};
 
-pub type CredentialEntry = agent_sdk::vault::CredentialEntry;
-
-#[uniffi::remote(Record)]
-pub struct CredentialEntry {
-    pub credential: Credential,
-    pub kid: String,
-    pub id: String,
-}
-
-#[derive(uniffi::Object)]
+#[derive(uniffi::Object, Debug)]
 pub struct InMemVault(agent_sdk::inmem::vault::InMemVault);
 
 #[uniffi::export()]
-impl InMemVault {
-    #[uniffi::constructor]
-    pub fn new() -> Self {
-        InMemVault(agent_sdk::inmem::vault::InMemVault::new())
-    }
-
-    pub async fn get_credential(&self, id: String) -> Result<Option<CredentialEntry>> {
-        self.0
-            .get_credential(&id)
-            .await
-            .map_err(|err| Error::Vault(format!("{:?}", err)))
-    }
-
-    pub async fn store_credential(
+#[async_trait]
+impl Vault for InMemVault {
+    async fn store_credential(
         &self,
         credential: Credential,
         metadata: CredentialMetadata,
@@ -38,6 +20,53 @@ impl InMemVault {
             .store_credential(credential, &metadata)
             .await
             .map_err(|err| Error::Vault(format!("{:?}", err)))
+    }
+
+    async fn delete_credential(&self, id: String) -> Result<()> {
+        self.0
+            .delete_credential(&id)
+            .await
+            .map_err(|err| Error::Vault(format!("{:?}", err)))
+    }
+
+    async fn get_credential(&self, id: String) -> Result<Option<CredentialEntry>> {
+        self.0
+            .get_credential(&id)
+            .await
+            .map_err(|err| Error::Vault(format!("{:?}", err)))
+    }
+
+    async fn get_credentials(
+        &self,
+        pagination: Option<VaultPagination>,
+    ) -> Result<Vec<CredentialEntry>> {
+        let pagination = pagination.map(Into::into);
+
+        self.0
+            .get_credentials(pagination)
+            .await
+            .map_err(|err| Error::Vault(format!("{:?}", err)))
+    }
+
+    async fn find_credentials(
+        &self,
+        fields: Vec<String>,
+        pagination: Option<VaultPagination>,
+    ) -> Result<Vec<CredentialEntry>> {
+        let pagination = pagination.map(Into::into);
+
+        self.0
+            .find_credentials(fields, pagination)
+            .await
+            .map_err(|err| Error::Vault(format!("{:?}", err)))
+    }
+}
+
+#[uniffi::export()]
+impl InMemVault {
+    #[uniffi::constructor]
+    fn new() -> Self {
+        InMemVault(agent_sdk::inmem::vault::InMemVault::new())
     }
 }
 

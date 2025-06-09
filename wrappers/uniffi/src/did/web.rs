@@ -41,7 +41,7 @@ impl DIDWeb {
         for key in keys.iter() {
             vmk.push(ASDKVerificationMethodKey {
                 verification_relationships: key.verification_relationships.to_owned(),
-                key: key.key.inner(),
+                key: &key.key,
             });
         }
 

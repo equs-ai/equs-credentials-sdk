@@ -1,14 +1,15 @@
 use crate::vc::JsonObject;
 use agent_sdk::http;
-use agent_sdk::http::{HttpClient, HttpSnafu};
+use agent_sdk::http::{
+    HeaderMap, HeaderName, HeaderValue, HttpClient, HttpMethod, HttpRequest, HttpResponse,
+    HttpSnafu, StatusCode, Uri,
+};
 use agent_sdk::reqwest::ReqwestClient;
 use async_trait::async_trait;
 use napi::bindgen_prelude::Promise;
 use napi::threadsafe_function::{ErrorStrategy, ThreadsafeFunction};
 use napi::{Error, Result};
 use napi_derive::napi;
-use oauth2::http::{HeaderMap, HeaderName, HeaderValue, Method, StatusCode, Uri};
-use oauth2::{HttpRequest, HttpResponse};
 use serde_json::{Map, Value};
 
 #[napi(js_name = "HttpMethod")]
@@ -24,35 +25,35 @@ pub enum JsHttpMethod {
     TRACE,
 }
 
-impl From<JsHttpMethod> for Method {
+impl From<JsHttpMethod> for HttpMethod {
     fn from(value: JsHttpMethod) -> Self {
         match value {
-            JsHttpMethod::GET => Method::GET,
-            JsHttpMethod::POST => Method::POST,
-            JsHttpMethod::PUT => Method::PUT,
-            JsHttpMethod::DELETE => Method::DELETE,
-            JsHttpMethod::HEAD => Method::HEAD,
-            JsHttpMethod::OPTIONS => Method::OPTIONS,
-            JsHttpMethod::CONNECT => Method::CONNECT,
-            JsHttpMethod::PATCH => Method::PATCH,
-            JsHttpMethod::TRACE => Method::TRACE,
+            JsHttpMethod::GET => HttpMethod::GET,
+            JsHttpMethod::POST => HttpMethod::POST,
+            JsHttpMethod::PUT => HttpMethod::PUT,
+            JsHttpMethod::DELETE => HttpMethod::DELETE,
+            JsHttpMethod::HEAD => HttpMethod::HEAD,
+            JsHttpMethod::OPTIONS => HttpMethod::OPTIONS,
+            JsHttpMethod::CONNECT => HttpMethod::CONNECT,
+            JsHttpMethod::PATCH => HttpMethod::PATCH,
+            JsHttpMethod::TRACE => HttpMethod::TRACE,
         }
     }
 }
 
-impl TryFrom<&Method> for JsHttpMethod {
+impl TryFrom<&HttpMethod> for JsHttpMethod {
     type Error = Error;
-    fn try_from(value: &Method) -> Result<Self> {
+    fn try_from(value: &HttpMethod) -> Result<Self> {
         match *value {
-            Method::GET => Ok(JsHttpMethod::GET),
-            Method::POST => Ok(JsHttpMethod::POST),
-            Method::PUT => Ok(JsHttpMethod::PUT),
-            Method::DELETE => Ok(JsHttpMethod::DELETE),
-            Method::HEAD => Ok(JsHttpMethod::HEAD),
-            Method::OPTIONS => Ok(JsHttpMethod::OPTIONS),
-            Method::CONNECT => Ok(JsHttpMethod::CONNECT),
-            Method::PATCH => Ok(JsHttpMethod::PATCH),
-            Method::TRACE => Ok(JsHttpMethod::TRACE),
+            HttpMethod::GET => Ok(JsHttpMethod::GET),
+            HttpMethod::POST => Ok(JsHttpMethod::POST),
+            HttpMethod::PUT => Ok(JsHttpMethod::PUT),
+            HttpMethod::DELETE => Ok(JsHttpMethod::DELETE),
+            HttpMethod::HEAD => Ok(JsHttpMethod::HEAD),
+            HttpMethod::OPTIONS => Ok(JsHttpMethod::OPTIONS),
+            HttpMethod::CONNECT => Ok(JsHttpMethod::CONNECT),
+            HttpMethod::PATCH => Ok(JsHttpMethod::PATCH),
+            HttpMethod::TRACE => Ok(JsHttpMethod::TRACE),
             _ => Err(Error::from_reason("Invalid HTTP method")),
         }
     }

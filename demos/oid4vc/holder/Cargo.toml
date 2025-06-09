@@ -14,4 +14,4 @@ uuid = { version = "1.10.0", features = ["v4"] }
 serde_urlencoded = "0.7.1"
 tracing-subscriber = "0.3.18"
 
-agent-sdk = { path = "../../..", features = ["in-memory"]}
+agent-sdk = { path = "../../..", features = ["in-memory"] }

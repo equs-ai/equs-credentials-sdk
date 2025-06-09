@@ -19,7 +19,7 @@ import Testing
 	}
 
 	@Test func getAuthorizationRequest() async throws {
-		self.server["/auth_request"] = { (request: HttpRequest) -> HttpResponse in
+        self.server["/auth_request"] = { (request: Swifter.HttpRequest) -> Swifter.HttpResponse in
 			return .ok(
 				.data(
 					Oid4vpHolderTestConstants.authRequestJwt.data(using: .utf8)!,
@@ -46,7 +46,7 @@ import Testing
 
 	@Test func presentCredentialsAuto() async throws {
 		try await confirmation("Auth Response is not received") { confirmResponse in
-			self.server["/response"] = { (request: HttpRequest) -> HttpResponse in
+            self.server["/response"] = { (request: Swifter.HttpRequest) -> Swifter.HttpResponse in
 				let body = String(bytes: request.body, encoding: String.Encoding.utf8)!
 					.removingPercentEncoding!
 
@@ -68,7 +68,7 @@ import Testing
 
 	@Test func presentCredentials() async throws {
 		try await confirmation("Auth Response is not received") { confirmResponse in
-			self.server["/response"] = { (request: HttpRequest) -> HttpResponse in
+            self.server["/response"] = { (request: Swifter.HttpRequest) -> Swifter.HttpResponse in
 				let body = String(bytes: request.body, encoding: String.Encoding.utf8)!
 					.removingPercentEncoding!
 
@@ -99,7 +99,7 @@ import Testing
 			"error=access_denied&error_description=consent+to+share+the+presentation+is+not+given&state=eea7b48e-1866-41b4-beae-03b95d41670c"
 
 		try await confirmation("Decline Response is not received") { confirmResponse in
-			self.server["/response"] = { (request: HttpRequest) -> HttpResponse in
+            self.server["/response"] = { (request: Swifter.HttpRequest) -> Swifter.HttpResponse in
 				let body = String(bytes: request.body, encoding: String.Encoding.utf8)!
 
 				#expect(body == expectedResponse)

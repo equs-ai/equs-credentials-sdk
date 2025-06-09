@@ -2,8 +2,8 @@ use agent_sdk::vc::oid4vp::{Holder, ResolvedAuthRequest, Url};
 use std::collections::HashMap;
 
 use crate::common::{Error, Result};
-use crate::inmem::vault::CredentialEntry;
 use crate::utils::parse_url_arg;
+use crate::vault::CredentialEntry;
 use crate::vc::oid4vp::{AuthorizationRequest, AuthorizationResponseMetadata};
 
 /// The `OID4VP` `Holder` API.

@@ -167,7 +167,7 @@ pub(crate) fn validate_against_presentation_definition(
 }
 
 #[instrument(level = Level::TRACE, err(), ret())]
-pub fn resolve_presentation_response(
+pub(crate) fn resolve_presentation_response(
     presentation_response: &PresentationResponse,
     presentation_definition: &PresentationDefinition,
 ) -> Result<Vec<RequestedPresentation>> {
