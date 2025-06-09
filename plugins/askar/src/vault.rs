@@ -350,6 +350,7 @@ impl Vault for AskarVault {
 struct AskarVaultId(String, String);
 
 impl AskarVaultId {
+    #[allow(dead_code)] // todo fix
     #[instrument(
         level = Level::TRACE,
         ret(),

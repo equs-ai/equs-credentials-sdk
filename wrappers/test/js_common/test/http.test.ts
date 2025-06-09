@@ -44,7 +44,7 @@ describe("HTTP Client: ", () => {
 
     test.failing("should throw error with http url on secure mode", async () => {
       const client = new ReqwestHttpClient();
-      await client.asyncCall(httpsRequest);
+      await client.asyncCall(httpRequest);
     });
   });
 

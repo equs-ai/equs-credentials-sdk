@@ -10,20 +10,20 @@ import Swifter
 		self.server = HttpServer()
 
 		self.server["/.well-known/openid-credential-issuer"] = { request in
-			return HttpResponse.ok(
+            return Swifter.HttpResponse.ok(
 				.json(
 					try! JSONSerialization.jsonObject(
 						with: Oid4vciHolderTestConstants.IssuerMetadata.data(using: .utf8)!)))
 		}
 		self.server["/auth/.well-known/openid-configuration"] = { request in
-			return HttpResponse.ok(
+            return Swifter.HttpResponse.ok(
 				.json(
 					try! JSONSerialization.jsonObject(
 						with: Oid4vciHolderTestConstants.AuthServerMetadata)
 				))
 		}
 		self.server["/auth/par/request"] = { request in
-			return HttpResponse.raw(
+            return Swifter.HttpResponse.raw(
 				201,
 				"Created",
 				["Content-Type": "application/json"],
@@ -33,7 +33,7 @@ import Swifter
 			)
 		}
 		self.server["/auth/token"] = { request in
-			return HttpResponse.ok(
+            return Swifter.HttpResponse.ok(
 				.json(
 					try! JSONSerialization.jsonObject(
 						with: Oid4vciHolderTestConstants.AccessTokenResponse)
@@ -42,21 +42,21 @@ import Swifter
 		self.server["/credential"] = { request in
             let body = String(decoding: request.body, as: UTF8.self)
             if body.contains("proofs") {
-                return HttpResponse.ok(
+                return Swifter.HttpResponse.ok(
                     .json(
                         try! JSONSerialization.jsonObject(
                             with: Oid4vciHolderTestConstants.BatchCredentialResponse)
                 ))
             }
 
-			return HttpResponse.ok(
+            return Swifter.HttpResponse.ok(
 				.json(
 					try! JSONSerialization.jsonObject(
 						with: Oid4vciHolderTestConstants.CredentialResponse)
 				))
 		}
 		self.server["/nonce"] = { request in
-			return HttpResponse.ok(
+            return Swifter.HttpResponse.ok(
 				.json(
 					try! JSONSerialization.jsonObject(
 						with: Oid4vciHolderTestConstants.NonceResponse)
@@ -118,7 +118,8 @@ import Swifter
 			kms: kms,
 			vault: vault,
 			clientId: "client_id",
-			issuerDiscovery: IssuerDiscovery.offer(Oid4vciHolderTestConstants.CredentialOffer)
+			issuerDiscovery: IssuerDiscovery.offer(Oid4vciHolderTestConstants.CredentialOffer),
+            httpClient: ReqwestHttpClient.insecure()
 		).build()
 
 		let didAndKeyMetadata = await createDidAndKeyMetadata(kms: kms)
@@ -148,7 +149,8 @@ import Swifter
 			kms: kms,
 			vault: vault,
 			clientId: "client_id",
-			issuerDiscovery: IssuerDiscovery.offer(Oid4vciHolderTestConstants.CredentialOffer)
+			issuerDiscovery: IssuerDiscovery.offer(Oid4vciHolderTestConstants.CredentialOffer),
+            httpClient: ReqwestHttpClient.insecure()
 		).build()
 
 		let didAndKeyMetadata1 = await createDidAndKeyMetadata(kms: kms)
@@ -183,7 +185,8 @@ import Swifter
 			kms: kms,
 			vault: vault,
 			clientId: "client_id",
-			issuerDiscovery: IssuerDiscovery.offer(Oid4vciHolderTestConstants.CredentialOffer)
+			issuerDiscovery: IssuerDiscovery.offer(Oid4vciHolderTestConstants.CredentialOffer),
+            httpClient: ReqwestHttpClient.insecure()
 		).build()
 
 		let credential = Credential(
@@ -209,7 +212,8 @@ import Swifter
 	private func buildHolder() async -> Oid4vciHolder {
 		return try! await Oid4vciHolderBuilder(
 			kms: InMemKms(), vault: InMemVault(), clientId: "client_id",
-			issuerDiscovery: IssuerDiscovery.offer(Oid4vciHolderTestConstants.CredentialOffer)
+			issuerDiscovery: IssuerDiscovery.offer(Oid4vciHolderTestConstants.CredentialOffer),
+            httpClient: ReqwestHttpClient.insecure()
 		).build()
 	}
 }

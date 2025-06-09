@@ -103,9 +103,11 @@ dependency_scanning:
     when: always
     reports:
       dependency_scanning: gl-dependency-scanning-report.json
-  only:
-    - merge_requests
-    - main
+  #  only:
+  #    - merge_requests
+  #    - main
+  rules:
+    - when: never
 
 # Build stage
 

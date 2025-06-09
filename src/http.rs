@@ -4,7 +4,6 @@ use async_trait::async_trait;
 use common_macros::DebugError;
 #[cfg(test)]
 use mockall::automock;
-use oauth2::{HttpRequest, HttpResponse};
 use snafu::{Location, Snafu};
 use std::fmt::Debug;
 
@@ -19,6 +18,9 @@ pub struct HttpError {
     #[snafu(implicit)]
     location: Location,
 }
+pub use oauth2::http::{HeaderMap, HeaderName, HeaderValue, Method as HttpMethod, StatusCode, Uri};
+
+pub use oauth2::{HttpRequest, HttpResponse};
 
 /// `Result` alias for `HttpClient`-specific [HttpError].
 pub type Result<T> = std::result::Result<T, HttpError>;

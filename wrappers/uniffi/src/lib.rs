@@ -4,8 +4,12 @@
 mod common;
 mod crypto;
 pub mod did;
+pub mod http;
 pub mod inmem;
+pub mod key_handle;
+pub mod kms;
 mod utils;
+mod vault;
 pub mod vc;
 
 uniffi::setup_scaffolding!();

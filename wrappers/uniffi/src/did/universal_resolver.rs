@@ -1,9 +1,9 @@
-use agent_sdk::did::universal::UniversalResolver;
-use agent_sdk::did::{DIDBuf, DIDResolver};
-use std::str::FromStr;
-
 use crate::common::{Error, Result};
-use crate::did::{DIDResolution, VerificationMethod};
+use crate::did::{DIDResolution, DIDResolver, VerificationMethod, WrappedDIDResolver};
+use agent_sdk::did::universal::UniversalResolver;
+use agent_sdk::did::{DIDBuf, DIDResolver as ASDKSpruceDIDResolver};
+use std::str::FromStr;
+use std::sync::Arc;
 
 /// An Universal `DID` resolver.
 ///
@@ -19,10 +19,18 @@ pub struct UniversalDIDResolver(UniversalResolver);
 impl UniversalDIDResolver {
     /// Creates a new Universal `DID` resolver.
     #[uniffi::constructor]
-    pub fn new() -> UniversalDIDResolver {
-        let resolver = UniversalResolver::default();
+    pub fn new(resolvers: Option<Vec<Arc<dyn DIDResolver>>>) -> Result<UniversalDIDResolver> {
+        let mut universal_resolver = UniversalResolver::default();
 
-        UniversalDIDResolver(resolver)
+        if let Some(resolvers) = resolvers {
+            for resolver in resolvers {
+                universal_resolver
+                    .add_resolver(WrappedDIDResolver::new(resolver))
+                    .map_err(|e| Error::DIDResolver(e.to_string()))?;
+            }
+        }
+
+        Ok(UniversalDIDResolver(universal_resolver))
     }
 
     /// Resolves a DID and extracts one of the verification methods it defines.

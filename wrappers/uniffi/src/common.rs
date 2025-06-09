@@ -23,7 +23,14 @@ pub enum Error {
     DIDResolution {
         details: String,
     },
+    DIDResolver(String),
     Vault(String),
+    Kms(String),
+    KeyHandle(String),
+    HttpAsyncCall(String),
+    HttpRequestParsing(String),
+    HttpResponseParsing(String),
+    HttpMethodParsing(String),
 }
 
 impl std::fmt::Display for Error {
@@ -44,7 +51,14 @@ impl std::fmt::Display for Error {
                     error_description.as_deref().unwrap_or("")
                 )
             }
+            Error::DIDResolver(s) => write!(f, "DID Resolver error: {s}"),
             Error::Vault(s) => write!(f, "Vault error: {s}"),
+            Error::Kms(s) => write!(f, "Kms error: {s}"),
+            Error::KeyHandle(s) => write!(f, "KeyHandle error: {s}"),
+            Error::HttpAsyncCall(s) => write!(f, "Http async call error: {s}"),
+            Error::HttpRequestParsing(s) => write!(f, "Http Request parsing error: {s}"),
+            Error::HttpResponseParsing(s) => write!(f, "Http Response parsing error: {s}"),
+            Error::HttpMethodParsing(s) => write!(f, "Http method parsing error: {s}"),
         }
     }
 }

@@ -1,55 +1,53 @@
+use super::super::kms::KeyType;
+use crate::common::{Error, Result};
 use crate::inmem::keyhandle::InMemKeyHandle;
+use crate::key_handle::WrappedKeyHandle;
+use crate::kms::Kms;
 use agent_sdk::inmem::kms::LocalKms;
-use agent_sdk::kms::{CreateOptions, KeyType, Kms};
+use agent_sdk::kms::{CreateOptions, Kms as ASDKKms};
+use async_trait::async_trait;
+use std::sync::Arc;
 
-type Result<T> = std::result::Result<T, InMemKmsError>;
-
-#[derive(uniffi::Error, Debug)]
-pub enum InMemKmsError {
-    Create(String),
-    Get(String),
-}
-impl std::fmt::Display for InMemKmsError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            InMemKmsError::Create(s) => write!(f, "InMem Kms create error: {s}"),
-            InMemKmsError::Get(s) => write!(f, "InMem Kms get error: {s}"),
-        }
-    }
-}
-
-#[uniffi::remote(Enum)]
-#[non_exhaustive]
-pub enum KeyType {
-    Ed25519,
-    P256,
-    K256,
-    Bls12381,
-}
-
-#[derive(uniffi::Object)]
+#[derive(uniffi::Object, Debug)]
 pub struct InMemKms(LocalKms);
 
 #[uniffi::export()]
 impl InMemKms {
     #[uniffi::constructor]
-    pub fn new() -> Self {
+    fn new() -> Self {
         InMemKms(LocalKms::new())
     }
+}
 
-    pub async fn create(&self, kt: KeyType) -> Result<String> {
+#[uniffi::export()]
+#[async_trait]
+impl Kms for InMemKms {
+    async fn create(&self, kt: KeyType) -> Result<String> {
         self.0
             .create(kt, CreateOptions::default())
             .await
-            .map_err(|e| InMemKmsError::Get(e.to_string()))
+            .map_err(|e| Error::Kms(format!("InMemKms create error: {:#?}", e.to_string())))
     }
 
-    pub async fn get(&self, kid: String) -> Result<InMemKeyHandle> {
-        self.0
+    async fn get(&self, kid: String) -> Result<WrappedKeyHandle> {
+        let kh = self
+            .0
             .get(&kid)
             .await
-            .map(InMemKeyHandle::new)
-            .map_err(|e| InMemKmsError::Get(e.to_string()))
+            .map_err(|e| Error::Kms(format!("InMemKms get error: {:#?}", e.to_string())))?;
+
+        Ok(WrappedKeyHandle::new(Arc::new(InMemKeyHandle::new(kh))))
+    }
+
+    async fn get_by_public_key(&self, public_key: Vec<u8>) -> Result<WrappedKeyHandle> {
+        let kh = self.0.get_by_public_key(&public_key).await.map_err(|e| {
+            Error::Kms(format!(
+                "InMemKms get_by_public_key error {:#?}",
+                e.to_string()
+            ))
+        })?;
+
+        Ok(WrappedKeyHandle::new(Arc::new(InMemKeyHandle::new(kh))))
     }
 }
 

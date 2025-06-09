@@ -28,7 +28,7 @@ class AsdkTest {
 
     @Test
     fun testResolve() = runTest {
-        val universalDidResolver = UniversalDidResolver()
+        val universalDidResolver = UniversalDidResolver(null)
 
         val expected = DidResolution(
             document = DID_DOCUMENT,
@@ -44,7 +44,7 @@ class AsdkTest {
 
     @Test
     fun testResolveVerificationMethod() = runTest {
-        val universalDidResolver = UniversalDidResolver()
+        val universalDidResolver = UniversalDidResolver(null)
 
         val expected = VerificationMethod(
             id = "$DID#zDnaefX6jBNVFnFeUPMRGo6exaVdJ1TRCwuhm296PbB5gPTj6",

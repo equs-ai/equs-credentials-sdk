@@ -1,4 +1,4 @@
-use crate::inmem::keyhandle::InMemKeyHandle;
+use crate::key_handle::WrappedKeyHandle;
 use agent_sdk::did::didkey::DIDKey as ASDKDIDKey;
 
 #[derive(uniffi::Error, Debug)]
@@ -26,7 +26,7 @@ impl DIDKey {
         Self(ASDKDIDKey {})
     }
 
-    pub fn generate(&self, key: &InMemKeyHandle) -> Result<String> {
-        ASDKDIDKey::generate(key.to_owned()).map_err(|err| DIDKeyError::Generate(err.to_string()))
+    pub fn generate(&self, key: WrappedKeyHandle) -> Result<String> {
+        ASDKDIDKey::generate(key).map_err(|err| DIDKeyError::Generate(err.to_string()))
     }
 }

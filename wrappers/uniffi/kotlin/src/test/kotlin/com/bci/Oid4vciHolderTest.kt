@@ -1,17 +1,18 @@
 package com.bci
 
+import com.bci.asdk.*
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import okhttp3.mockwebserver.Dispatcher
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import okhttp3.mockwebserver.RecordedRequest
-import com.bci.asdk.setJniLibPath
-import com.bci.asdk.*
 import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
+import com.bci.asdk.Kms as ASDKKms
+import com.bci.asdk.Vault as ASDKVault
 
 
 class HolderVCITest {
@@ -161,13 +162,14 @@ class HolderVCITest {
                                 mockResponse.setResponseCode(200).setBody(credentialResponse.toString())
                             }
                         }
+
                         "/nonce" -> mockResponse.setResponseCode(200).setBody(nonceResponse.toString())
                         else -> mockResponse.setResponseCode(404)
                     }
                 }
             }
 
-            mockServer.dispatcher = dispatcher;
+            mockServer.dispatcher = dispatcher
         }
 
         @JvmStatic
@@ -254,20 +256,26 @@ class HolderVCITest {
 
     @Test
     fun testRequestCredential() = runTest {
-        val inMemKms = InMemKms();
+        val inMemKms = InMemKms()
         val didAndKeyMetadata = createDidAndKeyMetadata(inMemKms)
 
-        val actual = buildHolder(inMemKms).requestCredential(ACCESS_TOKEN, "IDENTITY_SD_JWT", arrayListOf(didAndKeyMetadata.keyMetadata))
+        val actual = buildHolder(inMemKms).requestCredential(
+            ACCESS_TOKEN,
+            "IDENTITY_SD_JWT",
+            arrayListOf(didAndKeyMetadata.keyMetadata)
+        )
 
-        assertEquals(CredentialResultEnum.Immediate(
-            credentials = arrayListOf(Credential(format = VcFormat.SD_JWT_VC, payload = SD_JWT_CRED)),
-            notificationId = "1111",
-        ), actual.data)
+        assertEquals(
+            CredentialResultEnum.Immediate(
+                credentials = arrayListOf(Credential(format = VcFormat.SD_JWT_VC, payload = SD_JWT_CRED)),
+                notificationId = "1111",
+            ), actual.data
+        )
     }
 
     @Test
     fun testRequestMultipleCredentials() = runTest {
-        val inMemKms = InMemKms();
+        val inMemKms = InMemKms()
         val didAndKeyMetadata1 = createDidAndKeyMetadata(inMemKms)
         val didAndKeyMetadata2 = createDidAndKeyMetadata(inMemKms)
 
@@ -277,13 +285,15 @@ class HolderVCITest {
             arrayListOf(didAndKeyMetadata1.keyMetadata, didAndKeyMetadata2.keyMetadata)
         )
 
-        assertEquals(CredentialResultEnum.Immediate(
-            credentials = arrayListOf(
-                Credential(format = VcFormat.SD_JWT_VC, payload = SD_JWT_CRED),
-                Credential(format = VcFormat.SD_JWT_VC, payload = SD_JWT_CRED)
-            ),
-            notificationId = "1111",
-        ), actual.data)
+        assertEquals(
+            CredentialResultEnum.Immediate(
+                credentials = arrayListOf(
+                    Credential(format = VcFormat.SD_JWT_VC, payload = SD_JWT_CRED),
+                    Credential(format = VcFormat.SD_JWT_VC, payload = SD_JWT_CRED)
+                ),
+                notificationId = "1111",
+            ), actual.data
+        )
     }
 
     @Test
@@ -292,7 +302,8 @@ class HolderVCITest {
         val inMemVault = InMemVault()
 
         val didAndKeyMetadata = createDidAndKeyMetadata(inMemKms)
-        didAndKeyMetadata.keyMetadata.didUrl = "did:key:zDnaenpntCkXnDCnaDk62LxNqPc4CMd32fbhiVsZV5KpPTG2c#zDnaenpntCkXnDCnaDk62LxNqPc4CMd32fbhiVsZV5KpPTG2c"
+        didAndKeyMetadata.keyMetadata.didUrl =
+            "did:key:zDnaenpntCkXnDCnaDk62LxNqPc4CMd32fbhiVsZV5KpPTG2c#zDnaenpntCkXnDCnaDk62LxNqPc4CMd32fbhiVsZV5KpPTG2c"
 
         val credential = Credential(format = VcFormat.SD_JWT_VC, payload = SD_JWT_CRED)
         val metadata = resolveMetadata(credential, didAndKeyMetadata.keyMetadata)
@@ -304,6 +315,12 @@ class HolderVCITest {
         assertEquals(credential, entry?.credential)
     }
 
-    private suspend fun buildHolder(kms: InMemKms = InMemKms(), vault: InMemVault = InMemVault()) =
-        Oid4vciHolderBuilder(kms, vault, "client_id", IssuerDiscoveryEnum.Url(ISSUER_ENDPOINT)).build()
+    private suspend fun buildHolder(kms: ASDKKms = InMemKms(), vault: ASDKVault = InMemVault()) =
+        Oid4vciHolderBuilder(
+            kms,
+            vault,
+            "client_id",
+            IssuerDiscoveryEnum.Url(ISSUER_ENDPOINT),
+            ReqwestHttpClient.insecure()
+        ).build()
 }
