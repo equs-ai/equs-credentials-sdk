@@ -1,6 +1,6 @@
 use crate::did::VerificationMethodKey;
-use agent_sdk::did::didweb::DIDWeb as ASDKDIDWeb;
 use agent_sdk::did::VerificationMethodKey as ASDKVerificationMethodKey;
+use agent_sdk::did::didweb::DIDWeb as ASDKDIDWeb;
 use std::sync::Arc;
 
 #[derive(uniffi::Error, Debug)]

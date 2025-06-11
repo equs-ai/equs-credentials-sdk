@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use std::convert::{From, TryFrom};
 use std::ops::Index;
 use strum::Display;
-use tracing::{instrument, Level};
+use tracing::{Level, instrument};
 use zeroize::Zeroize;
 
 #[derive(Snafu, DebugError)]

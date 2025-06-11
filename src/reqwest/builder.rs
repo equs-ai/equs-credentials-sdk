@@ -1,5 +1,5 @@
 use reqwest::Client;
-use tracing::{instrument, Level};
+use tracing::{Level, instrument};
 
 use super::ReqwestClient;
 use crate::http::{HttpSnafu, Result};

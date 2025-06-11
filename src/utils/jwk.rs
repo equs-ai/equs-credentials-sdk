@@ -1,9 +1,9 @@
 use crate::crypto::{AlgNotSupportedSnafu, KeyNotSupportedSnafu};
 use crate::{crypto, kms};
-use ssi::crypto::{ed25519, k256, p256};
-use ssi::jwk::{serialize_p256, serialize_secp256k1, Params};
 use ssi::JWK;
-use tracing::{instrument, Level};
+use ssi::crypto::{ed25519, k256, p256};
+use ssi::jwk::{Params, serialize_p256, serialize_secp256k1};
+use tracing::{Level, instrument};
 
 impl crypto::Key for JWK {
     #[instrument(level = Level::TRACE, skip_all, err())]

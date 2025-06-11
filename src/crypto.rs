@@ -257,7 +257,7 @@ pub trait Suite: SigningKey + VerifyingKey + Sized {
     /// # Returns
     ///
     /// Private key bytes.
-    fn gen() -> Vec<u8>;
+    fn generate() -> Vec<u8>;
 
     /// Build a `Suite` from a secret key.
     ///

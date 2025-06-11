@@ -1,14 +1,14 @@
 use agent_sdk::vc::oid4vp::Holder;
 use std::collections::HashMap;
 use url::Url;
-use wasm_bindgen::prelude::wasm_bindgen;
 use wasm_bindgen::JsError;
+use wasm_bindgen::prelude::wasm_bindgen;
 
 use crate::utils;
+use crate::vc::JsCredentialEntry;
 use crate::vc::oid4vp::{
     AuthorizationRequest, AuthorizationResponseMetadata, CredentialMapping, CredentialsMapping,
 };
-use crate::vc::JsCredentialEntry;
 
 /// The `OID4VP` `Holder` API.
 ///

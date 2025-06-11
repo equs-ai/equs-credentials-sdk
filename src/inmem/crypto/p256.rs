@@ -1,7 +1,7 @@
 use crate::crypto::Alg;
-use crate::inmem::crypto::ecdsa::{Ecdsa, HasJWK};
 use crate::inmem::crypto::HasAlg;
-use tracing::{instrument, Level};
+use crate::inmem::crypto::ecdsa::{Ecdsa, HasJWK};
+use tracing::{Level, instrument};
 
 pub type P256 = Ecdsa<p256::NistP256>;
 

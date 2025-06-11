@@ -1,10 +1,10 @@
 use crate::crypto::KeyMetadata;
 use crate::vc::{Credential, CredentialMetadata, JsCredential};
-use agent_sdk::vc::metadata::{CredentialMetadataProcessor, DefaultMetadataProcessor};
 use agent_sdk::vc::HasClaims;
+use agent_sdk::vc::metadata::{CredentialMetadataProcessor, DefaultMetadataProcessor};
 use js_sys::JSON;
-use serde::de::DeserializeOwned;
 use serde::Serialize;
+use serde::de::DeserializeOwned;
 use serde_wasm_bindgen::Serializer;
 use wasm_bindgen::prelude::wasm_bindgen;
 use wasm_bindgen::{JsCast, JsError, JsValue};

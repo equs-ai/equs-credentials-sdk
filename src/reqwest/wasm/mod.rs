@@ -16,7 +16,7 @@ impl WasmClient {
     pub async fn async_call(&self, request: HttpRequest) -> crate::http::Result<HttpResponse> {
         let (parts, body) = request.into_parts();
 
-        if !self.insecure && !parts.uri.scheme_str().map_or(false, |s| s == "https") {
+        if !self.insecure && parts.uri.scheme_str() != Some("https") {
             return Err(HttpSnafu {
                 details: "Only HTTPS connections are allowed".to_string(),
             }

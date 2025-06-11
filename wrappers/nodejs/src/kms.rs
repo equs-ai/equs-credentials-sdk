@@ -1,5 +1,5 @@
 use crate::vc::core::{JsAlg, JsKeyMetadata};
-use agent_sdk::crypto::{Alg, Key, Signer, SigningKey, Verifier, VerifyingKey, JWK};
+use agent_sdk::crypto::{Alg, JWK, Key, Signer, SigningKey, Verifier, VerifyingKey};
 use agent_sdk::did::didkey::DIDKey;
 use agent_sdk::did::universal::UniversalResolver;
 use agent_sdk::did::{DIDBuf, DIDResolver};

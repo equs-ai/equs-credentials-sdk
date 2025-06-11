@@ -9,7 +9,7 @@ use oauth2::http::{HeaderMap, HeaderValue};
 use reqwest::header::CONTENT_TYPE;
 use snafu::ensure;
 use std::str::FromStr;
-use tracing::{instrument, Level};
+use tracing::{Level, instrument};
 
 const ALLOWED_CONTENT_TYPE_HEADERS: [&str; 7] = [
     MIME_TYPE_JSON,

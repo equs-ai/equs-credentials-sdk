@@ -1,6 +1,6 @@
 use super::{ContentSizeSnafu, Result};
 use reqwest::Response;
-use tracing::{instrument, Level};
+use tracing::{Level, instrument};
 
 /// `ContentLimiter` struct represents limitations of request/response body size.
 #[derive(Clone, Debug)]

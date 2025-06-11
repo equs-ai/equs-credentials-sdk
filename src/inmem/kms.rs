@@ -6,13 +6,13 @@ use askar_crypto::kdf::ecdh_es::EcdhEs;
 use askar_crypto::kdf::{FromKeyDerivation, KeyDerivation, KeyExchange};
 use askar_crypto::repr::{KeyPublicBytes, KeySecretBytes, ToSecretBytes};
 use async_trait::async_trait;
-use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
-use snafu::{ensure, IntoError, ResultExt};
+use base64::prelude::BASE64_STANDARD;
+use snafu::{IntoError, ResultExt, ensure};
 use ssi::crypto::hashes::sha256::sha256;
 use std::str::FromStr;
 use std::sync::Arc;
-use tracing::{instrument, Level};
+use tracing::{Level, instrument};
 
 use crate::crypto::{AlgNotSupportedSnafu, DerivationNotSupportedSnafu, SigningOptions, Suite};
 use crate::inmem::crypto::bip32::Bip32;
@@ -229,7 +229,7 @@ impl LocalKms {
     }
 
     fn generate_key_pair<S: Suite>() -> Result<(Vec<u8>, Vec<u8>), Error> {
-        let private_key = S::gen();
+        let private_key = S::generate();
         let public_key = S::from_secret(private_key.to_owned())
             .and_then(|key| key.pub_key())
             .context(CryptoSnafu)?;
@@ -580,8 +580,8 @@ mod tests {
     use crate::inmem::kms::LocalKms;
     use crate::kms::test_util::test_kms;
     use crate::kms::{BIP32Params, CreateOptions, DerivativeKms, Error, KeyType, Kms};
-    use bip32::secp256k1::elliptic_curve::rand_core::OsRng;
     use bip32::Mnemonic;
+    use bip32::secp256k1::elliptic_curve::rand_core::OsRng;
 
     #[tokio::test]
     async fn e2e() {
@@ -607,10 +607,12 @@ mod tests {
         let master_kh = kms.get(&master_kid).await.unwrap();
 
         let signature = master_kh.sign(PAYLOAD.as_bytes()).await.unwrap();
-        assert!(master_kh
-            .verify(PAYLOAD.as_bytes(), signature.as_slice())
-            .await
-            .is_ok());
+        assert!(
+            master_kh
+                .verify(PAYLOAD.as_bytes(), signature.as_slice())
+                .await
+                .is_ok()
+        );
 
         let paths: [&str; 2] = ["m/0/2147483647'/1/2147483646'", "m/838373'/0'/0'/0'/0'"];
 
@@ -626,10 +628,12 @@ mod tests {
             let derived_kh = kms.get(&derived_kid).await.unwrap();
 
             let signature = derived_kh.sign(PAYLOAD.as_bytes()).await.unwrap();
-            assert!(derived_kh
-                .verify(PAYLOAD.as_bytes(), signature.as_slice())
-                .await
-                .is_ok());
+            assert!(
+                derived_kh
+                    .verify(PAYLOAD.as_bytes(), signature.as_slice())
+                    .await
+                    .is_ok()
+            );
         }
     }
 

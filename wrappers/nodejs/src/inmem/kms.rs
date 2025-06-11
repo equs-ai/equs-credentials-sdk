@@ -27,7 +27,6 @@ impl InMemKeyHandle {
     pub fn pub_key(&self) -> Result<Vec<u8>> {
         self.inner
             .pub_key()
-            .map(Into::into)
             .map_err(|err| Error::from_reason(format!("{err:?}")))
     }
 

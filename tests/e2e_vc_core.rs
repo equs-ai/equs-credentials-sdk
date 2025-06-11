@@ -12,9 +12,10 @@ use agent_sdk::inmem::vault::InMemVault;
 use agent_sdk::kms::Kms;
 use agent_sdk::nonce::NonceHandler;
 use agent_sdk::reqwest::builder::ReqwestClientBuilder;
-use agent_sdk::vc::core::status_issuer::StatusIssuerService;
+use agent_sdk::vc::VCStatusesData;
 use agent_sdk::vc::core::IssuerService;
 use agent_sdk::vc::core::VerifierService;
+use agent_sdk::vc::core::status_issuer::StatusIssuerService;
 use agent_sdk::vc::core::{
     CredentialDefinition, CredentialDefinitionData, Holder, HolderMetadata, Issuer, IssuerMetadata,
     PopFormat, StatusIssuer, StatusIssuerMetadata, StatusListDefinition, Verifier,
@@ -23,9 +24,8 @@ use agent_sdk::vc::core::{HolderService, KeyMetadata};
 use agent_sdk::vc::metadata::{CredentialMetadataProcessor, DefaultMetadataProcessor};
 use agent_sdk::vc::presentation_exchange::InputDescriptor;
 use agent_sdk::vc::presentation_exchange::StatusSize;
-use agent_sdk::vc::status_formats::status_list_token_jwt::{VCStatus, VCStatuses};
 use agent_sdk::vc::status_formats::StatusListFormat;
-use agent_sdk::vc::VCStatusesData;
+use agent_sdk::vc::status_formats::status_list_token_jwt::{VCStatus, VCStatuses};
 use agent_sdk::{kms, vc};
 use oid4vci::proof_of_possession::ProofOfPossession;
 use serde_json::json;
@@ -33,7 +33,7 @@ use std::collections::HashMap;
 use std::str::FromStr;
 use time::Duration;
 use url::Url;
-use utils::fixtures::{sample_claims_sdjwt, SCOPE, VC_TYPE, VERIFIER_ID};
+use utils::fixtures::{SCOPE, VC_TYPE, VERIFIER_ID, sample_claims_sdjwt};
 use utils::helpers::create_did_keymetadata_keyhandle;
 
 const STATUS_LIST_PATH: &str = "/status_list";

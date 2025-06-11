@@ -5,7 +5,7 @@ use crate::nonce::Nonce;
 use crate::utils::http::MimeType;
 use crate::vault::CredentialEntry;
 use crate::vc::core::PresentationInput;
-use crate::vc::dcql::{filter_claims_using_claim_sets, DCQL};
+use crate::vc::dcql::{DCQL, filter_claims_using_claim_sets};
 use crate::vc::oid4vp::internal_error::{
     AuthorizationResponseSnafu, CredentialNotFoundSnafu, DCQLSnafu, HttpClientSnafu,
     IdTokenGenerationSnafu, IdTokenMetadataNotFoundSnafu, IdTokenParseSnafu, JsonSnafu, KMSSnafu,
@@ -18,13 +18,13 @@ use crate::vc::oid4vp::{
     ResolvedAuthRequest, ResolvedPresentationQuery, ResponseMode,
 };
 use crate::vc::presentation_exchange::PresentationDefinition;
-use crate::vc::{dcql, oid4vp as api, presentation_exchange, RequestedPresentation};
+use crate::vc::{RequestedPresentation, dcql, oid4vp as api, presentation_exchange};
 use crate::{utils, vc};
 use async_trait::async_trait;
 use futures::future;
 use oauth2::http::{Request, Response};
 use openid4vp::core::authorization_request::parameters::ResponseType;
-use openid4vp::core::authorization_request::verification::{did, RequestVerifier};
+use openid4vp::core::authorization_request::verification::{RequestVerifier, did};
 use openid4vp::core::authorization_request::{AuthorizationRequest, AuthorizationRequestObject};
 use openid4vp::core::metadata::WalletMetadata;
 use openid4vp::core::presentation_submission::PresentationSubmission;
@@ -37,7 +37,7 @@ use ssi::dids::DIDURLBuf;
 use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::str::FromStr;
-use tracing::{info, instrument, Level};
+use tracing::{Level, info, instrument};
 use url::Url;
 
 pub type Error = api::Error;
@@ -519,7 +519,9 @@ where
                     .resolve_auth_resp_endpoint_and_mode(request_uri)
                     .await?;
 
-                info!("authorization request validation is failed, handling an authorization error response...");
+                info!(
+                    "authorization request validation is failed, handling an authorization error response..."
+                );
                 let source = self
                     .handle_auth_error_resp(&response_uri, &response_mode, source)
                     .await?;
@@ -536,7 +538,9 @@ where
         {
             Ok(p) => p,
             Err(Error::Protocol { source }) => {
-                info!("presentation definition resolution is failed, handling an authorization error response...");
+                info!(
+                    "presentation definition resolution is failed, handling an authorization error response..."
+                );
                 let source = self
                     .handle_auth_error_resp(aro.return_uri(), aro.response_mode(), source)
                     .await?;
@@ -664,7 +668,9 @@ where
         &self,
         auth_request: &ResolvedAuthRequest,
     ) -> Result<Option<Url>> {
-        info!("presentation request is declined, sending an authorization error response to the verifier...");
+        info!(
+            "presentation request is declined, sending an authorization error response to the verifier..."
+        );
         let err = ProtocolError::access_denied(
             "consent to share the presentation is not given",
             auth_request.state.clone(),
@@ -762,7 +768,9 @@ where
 
         if client_id_as_uri != *redirect_uri {
             return Err(openid4vp::core::error::Error::protocol_invalid_req(
-                &format!("in 'redirect_uri' response mode 'client_id' = {client_id} must be equal to 'redirect_uri' = {redirect_uri}"),
+                &format!(
+                    "in 'redirect_uri' response mode 'client_id' = {client_id} must be equal to 'redirect_uri' = {redirect_uri}"
+                ),
                 decoded_request.state(),
             ));
         }
@@ -792,10 +800,10 @@ mod tests {
         AUTH_REQUEST, AUTH_REQUEST_JWT, AUTH_REQUEST_WITH_STATE_JWT,
     };
     use crate::vc::oid4vp::tests::fixtures::{
-        multi_presentation, single_presentation, REQUEST_URI, STATE, VERIFIER_URL,
+        REQUEST_URI, STATE, VERIFIER_URL, multi_presentation, single_presentation,
     };
     use crate::vc::oid4vp::tests::utils::{
-        build_url, holder_service, validate_claims, PresentationTestCase,
+        PresentationTestCase, build_url, holder_service, validate_claims,
     };
     use crate::vc::oid4vp::{
         AuthorizationResponseMetadata, Error, Holder, IdTokenMetadata, InternalError,
@@ -803,14 +811,14 @@ mod tests {
     };
     use crate::vc::presentation_exchange::ClaimFormatMap;
     use crate::vc::{ClaimFormatDesignation, Credential};
+    use oauth2::HttpResponse;
     use oauth2::http::Method;
     use oauth2::reqwest::StatusCode;
-    use oauth2::HttpResponse;
     use openid4vp::core::authorization_request::parameters::ResponseMode;
     use openid4vp::core::response::PostRedirection;
     use rstest::rstest;
-    use sd_jwt_rs::utils::decode_sd_jwt;
     use sd_jwt_rs::SDJWTSerializationFormat;
+    use sd_jwt_rs::utils::decode_sd_jwt;
     use serde_json::json;
     use std::collections::HashMap;
 
@@ -998,11 +1006,12 @@ mod tests {
                 let err: ProtocolError =
                     serde_urlencoded::from_bytes(req.body().as_slice()).unwrap();
                 assert_eq!(err.error_type(), &ErrorType::VpFormatsNotSupported);
-                assert!(err
-                    .description()
-                    .clone()
-                    .unwrap()
-                    .contains("algorithms is not supported"));
+                assert!(
+                    err.description()
+                        .clone()
+                        .unwrap()
+                        .contains("algorithms is not supported")
+                );
 
                 let mut response = HttpResponse::new(vec![]);
                 *response.status_mut() = StatusCode::OK;
@@ -1038,7 +1047,10 @@ mod tests {
 
         match result {
             Err(Error::Protocol { source }) => {
-                assert_eq!(source.redirect_uri().unwrap().to_string(), "http://127.0.0.1:55796/auth#error=vp_formats_not_supported&error_description=vp+format+%3D+%27jwt_vc_json%27+with+%7B%22alg_values_supported%22%3A%5B%22RS256%22%5D%7D+algorithms+is+not+supported");
+                assert_eq!(
+                    source.redirect_uri().unwrap().to_string(),
+                    "http://127.0.0.1:55796/auth#error=vp_formats_not_supported&error_description=vp+format+%3D+%27jwt_vc_json%27+with+%7B%22alg_values_supported%22%3A%5B%22RS256%22%5D%7D+algorithms+is+not+supported"
+                );
             }
             _ => panic!("Expected protocol error, got {:?}", result),
         }
@@ -1503,7 +1515,10 @@ mod tests {
             |req| {
                 let body = String::from_utf8(req.body().to_owned()).unwrap();
 
-                assert_eq!(body, "error=access_denied&error_description=consent+to+share+the+presentation+is+not+given");
+                assert_eq!(
+                    body,
+                    "error=access_denied&error_description=consent+to+share+the+presentation+is+not+given"
+                );
 
                 Ok(HttpResponse::default())
             },
@@ -1651,13 +1666,15 @@ mod tests {
 
     fn requested_credential_not_exist_case() -> PresentationTestCase {
         let mut test_case = single_presentation::sd_jwt::presentation_test_case();
-        test_case.credential_data = vec![json!({
-            "vct": "https://credentials.example.com/degree_credential",
-            "name": "John",
-            "degree": "Bachelor"
-        })
-        .try_into()
-        .unwrap()];
+        test_case.credential_data = vec![
+            json!({
+                "vct": "https://credentials.example.com/degree_credential",
+                "name": "John",
+                "degree": "Bachelor"
+            })
+            .try_into()
+            .unwrap(),
+        ];
         test_case
     }
 

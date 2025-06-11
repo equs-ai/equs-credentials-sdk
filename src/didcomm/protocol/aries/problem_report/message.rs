@@ -62,7 +62,7 @@ impl ProblemReport {
 
     pub fn add_arg(mut self, arg: String) -> Self {
         match &mut self.body.args {
-            Some(ref mut v) => v.push(arg),
+            Some(v) => v.push(arg),
             None => self.body.args = Some(vec![arg]),
         }
         self

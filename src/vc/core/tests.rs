@@ -9,8 +9,8 @@ pub mod fixtures {
     use iref::{IriRefBuf, UriBuf};
     use ssi::claims::data_integrity::Proofs;
     use ssi::claims::vc::syntax::IdOr;
-    use ssi::claims::vc::v1::syntax::CredentialType;
     use ssi::claims::vc::v1::SpecializedJsonCredential;
+    use ssi::claims::vc::v1::syntax::CredentialType;
     use ssi::json_ld::syntax::ContextEntry;
     use std::collections::HashMap;
     use std::str::FromStr;
@@ -108,8 +108,8 @@ pub mod fixtures {
 pub mod utils {
     use crate::crypto::Key;
     use crate::crypto::Signer;
-    use crate::did::universal::UniversalResolver;
     use crate::did::DIDURL;
+    use crate::did::universal::UniversalResolver;
     use crate::inmem::kms::LocalKms;
     use crate::inmem::nonce::LocalNonceHandler;
     use crate::kms::{KeyHandle, KeyType, Kms};
@@ -126,10 +126,10 @@ pub mod utils {
     use crate::vc::dcql::DCQLCredential;
     use crate::vc::formats::json_ld_vc::JsonLdAPI;
     use crate::vc::formats::sd_jwt_vc::SdJwtAPI;
-    use crate::vc::formats::{json_ld_vc, sd_jwt_vc, HasCredential, VerifyOptions};
+    use crate::vc::formats::{HasCredential, VerifyOptions, json_ld_vc, sd_jwt_vc};
     use crate::vc::pop::jwt_pop::JwtProofOfPossession;
     use crate::vc::pop::{GenerateOptions, ProofOfPossession};
-    use crate::vc::{pop, ClaimFormat, Credential, Presentation, VCFormat, VCFormatsAPI};
+    use crate::vc::{ClaimFormat, Credential, Presentation, VCFormat, VCFormatsAPI, pop};
     use iref::IriRefBuf;
     use oid4vci::proof_of_possession::{ProofOfPossessionBody, ProofOfPossessionController};
     use serde_json::json;

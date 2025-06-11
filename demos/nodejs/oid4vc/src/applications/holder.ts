@@ -62,6 +62,8 @@ async function main(): Promise<void> {
 
   await issuanceFlow(oid4VciHolder, kms);
   await presentationFlow(oid4VpHolder);
+  await storage.close();
+  process.exit(0);
 }
 
 setImmediate(main);

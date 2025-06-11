@@ -1,8 +1,8 @@
 use crate::crypto::Alg;
-use crate::inmem::crypto::ecdsa::{Ecdsa, HasJWK};
 use crate::inmem::crypto::HasAlg;
+use crate::inmem::crypto::ecdsa::{Ecdsa, HasJWK};
 use bip32::secp256k1;
-use tracing::{instrument, Level};
+use tracing::{Level, instrument};
 
 pub type K256 = Ecdsa<secp256k1::Secp256k1>;
 

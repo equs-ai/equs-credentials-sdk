@@ -18,8 +18,8 @@ use utils::http::HttpClientEmulator;
 use uuid::Uuid;
 
 use utils::fixtures::{
-    sample_authz_url, sample_claims_jsonld, sample_claims_sdjwt, sample_issuer_metadata,
-    sample_issuer_url, ACCESS_TOKEN, AUTHZ_URL, SCOPE,
+    ACCESS_TOKEN, AUTHZ_URL, SCOPE, sample_authz_url, sample_claims_jsonld, sample_claims_sdjwt,
+    sample_issuer_metadata, sample_issuer_url,
 };
 
 use crate::utils::helpers::create_did_keymetadata_keyhandle;

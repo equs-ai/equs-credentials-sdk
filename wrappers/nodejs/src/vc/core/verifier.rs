@@ -1,9 +1,9 @@
 use crate::did::JsUniversalDIDResolver;
 use crate::http::JsHttpClient;
 use crate::utils::to_json_object;
+use crate::vc::JsonObject;
 use crate::vc::core::JsPresentation;
 use crate::vc::core::JsVCStatus;
-use crate::vc::JsonObject;
 use agent_sdk::vc::core::{Verifier, VerifierService as CoreVerifierService};
 use napi::Error;
 use napi_derive::napi;

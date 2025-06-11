@@ -3,8 +3,8 @@ use crate::vc::oid4vp::internal_error::ParseSnafu;
 use async_trait::async_trait;
 use ssi::jwk::JWK;
 use std::fmt::{Debug, Formatter};
-use tracing::instrument;
 use tracing::Level;
+use tracing::instrument;
 
 pub(super) struct Signer<S: SigningKey> {
     signer: S,

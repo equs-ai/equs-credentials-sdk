@@ -21,12 +21,12 @@ use crate::didcomm::protocol::aries::issuance::message::credential::Credential;
 use crate::didcomm::protocol::aries::issuance::message::credential_offer::CredentialOffer;
 use crate::didcomm::protocol::aries::issuance::protocol::IssuanceProtocol;
 use crate::didcomm::protocol::aries::issuance::{
-    AgentSnafu, ConnectionSnafu, InvalidAttachmentSnafu, InvalidStateSnafu, OOBSnafu, Result,
-    StorageSnafu, ISSUE_CREDENTIAL, OFFER_CREDENTIAL,
+    AgentSnafu, ConnectionSnafu, ISSUE_CREDENTIAL, InvalidAttachmentSnafu, InvalidStateSnafu,
+    OFFER_CREDENTIAL, OOBSnafu, Result, StorageSnafu,
 };
+use crate::didcomm::protocol::aries::problem_report::PROBLEM_REPORT;
 use crate::didcomm::protocol::aries::problem_report::message::ProblemReport;
 use crate::didcomm::protocol::aries::problem_report::protocol::ProblemReportProtocol;
-use crate::didcomm::protocol::aries::problem_report::PROBLEM_REPORT;
 use crate::didcomm::protocol::outofband::OutOfBandV2Protocol;
 use crate::kms::KeyType;
 use crate::storage::Storage;

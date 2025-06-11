@@ -14,10 +14,10 @@ use agent_sdk::vc::core::{
 };
 use agent_sdk::vc::core::{CredentialDefinitionData, PresentationRestrictionValue};
 
+use agent_sdk::vc::VCStatus;
 use agent_sdk::vc::core::StatusIssuerMetadata;
 use agent_sdk::vc::core::StatusListDefinition;
 use agent_sdk::vc::status_formats::status_list_token_jwt;
-use agent_sdk::vc::VCStatus;
 use agent_sdk::vc::{StatusList, VCStatusesData};
 
 use crate::vc::oid4vci::JsDuration;
@@ -123,7 +123,7 @@ impl TryFrom<Alg> for JsAlg {
             _ => {
                 return Err(Error::from_reason(format!(
                     "Unsupported algorithm: {value}"
-                )))
+                )));
             }
         };
 
@@ -167,7 +167,7 @@ impl TryFrom<Credential> for JsCredential {
                 return Err(Error::from_reason(format!(
                     "Unsupported credential format {}",
                     value.format()
-                )))
+                )));
             }
         };
 
@@ -187,7 +187,7 @@ impl TryFrom<JsCredential> for Credential {
             JsVCFormat::MsoMdoc => {
                 return Err(Error::from_reason(
                     "Unsupported credential format: MSO MDOC",
-                ))
+                ));
             }
         };
 

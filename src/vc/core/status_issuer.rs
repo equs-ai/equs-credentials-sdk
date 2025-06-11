@@ -1,20 +1,20 @@
 use crate::kms;
+use crate::vc::StatusList;
+use crate::vc::VCStatusesData;
 use crate::vc::core::{
     FormatNotSupportedSnafu, InconsistentStatusListDataSnafu, InvalidDIDUrlSnafu, KMSSnafu, Result,
     StatusListCreatingSnafu,
 };
 use crate::vc::core::{StatusIssuer, StatusIssuerMetadata, StatusListDefinition};
-use crate::vc::status_formats::status_list_token_jwt::StatusListJwt;
-use crate::vc::status_formats::StatusListFormat;
 use crate::vc::status_formats::API;
-use crate::vc::StatusList;
-use crate::vc::VCStatusesData;
+use crate::vc::status_formats::StatusListFormat;
+use crate::vc::status_formats::status_list_token_jwt::StatusListJwt;
 use async_trait::async_trait;
 use snafu::ResultExt;
 use ssi::dids::DIDURLBuf;
 use std::marker::PhantomData;
 use std::str::FromStr;
-use tracing::{debug, info, instrument, trace, Level};
+use tracing::{Level, debug, info, instrument, trace};
 
 pub struct StatusIssuerService<KH, KMS>
 where
@@ -78,7 +78,7 @@ where
                 return FormatNotSupportedSnafu {
                     format: status_list_def.format.to_string(),
                 }
-                .fail()
+                .fail();
             }
         };
 
@@ -130,13 +130,13 @@ mod tests {
     use super::StatusIssuerService;
     use crate::inmem::kms::LocalKms;
     use crate::utils::test_utils::create_did_and_key_metadata;
+    use crate::vc::StatusList;
+    use crate::vc::VCStatusesData;
     use crate::vc::core::api::StatusIssuer;
     use crate::vc::core::{StatusIssuerMetadata, StatusListDefinition};
     use crate::vc::presentation_exchange::StatusSize;
-    use crate::vc::status_formats::status_list_token_jwt::{SLMetadata, VCStatus, VCStatuses};
     use crate::vc::status_formats::StatusListFormat;
-    use crate::vc::StatusList;
-    use crate::vc::VCStatusesData;
+    use crate::vc::status_formats::status_list_token_jwt::{SLMetadata, VCStatus, VCStatuses};
     use std::str::FromStr;
     use url::Url;
 

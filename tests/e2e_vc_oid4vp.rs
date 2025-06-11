@@ -3,9 +3,9 @@
 mod utils;
 
 use futures::executor;
+use oauth2::HttpResponse;
 use oauth2::http::header::CONTENT_TYPE;
 use oauth2::http::{HeaderValue, Method};
-use oauth2::HttpResponse;
 use rstest::rstest;
 use serde_json::Value;
 use std::collections::HashMap;
@@ -17,6 +17,7 @@ use agent_sdk::http::HttpClient;
 use agent_sdk::inmem::kms::LocalKms;
 use agent_sdk::inmem::vault::InMemVault;
 use agent_sdk::vault::Vault;
+use agent_sdk::vc::VCFormatsAPI;
 use agent_sdk::vc::oid4vp::{
     AuthResponseOptions, AuthorizationResponseMetadata, ClientMetadata, IdTokenMetadata,
     PassAuthRequestObject, ResolvedPresentationQuery, ResponseMode, ResponseType,
@@ -24,7 +25,6 @@ use agent_sdk::vc::oid4vp::{
 use agent_sdk::vc::oid4vp::{AuthorizationResponse, Holder};
 use agent_sdk::vc::oid4vp::{HolderBuilder, PresentationSession};
 use agent_sdk::vc::oid4vp::{Verifier, VerifierBuilder};
-use agent_sdk::vc::VCFormatsAPI;
 use agent_sdk::vc::{Credential, CredentialMetadata};
 use agent_sdk::vc::{VCFormatsJsonLdAPI, VCFormatsSdJwtAPI};
 
@@ -32,11 +32,11 @@ use utils::helpers::create_did_keymetadata_keyhandle;
 use utils::http::HttpClientEmulator;
 
 use crate::utils::fixtures::oid4vp::{
-    multiple_sdjwt_presentation_case, single_jsonld_presentation_case,
-    single_sdjwt_presentation_case, Oid4VpTestCase, ValidateClaimsFunc, STATE, VERIFIER_URL,
+    Oid4VpTestCase, STATE, VERIFIER_URL, ValidateClaimsFunc, multiple_sdjwt_presentation_case,
+    single_jsonld_presentation_case, single_sdjwt_presentation_case,
 };
-use agent_sdk::did::universal::UniversalResolver;
 use agent_sdk::did::DIDURL;
+use agent_sdk::did::universal::UniversalResolver;
 use agent_sdk::inmem::kms::KeyHandle;
 use agent_sdk::inmem::nonce::LocalNonceHandler;
 use agent_sdk::vc::claims::Claims;

@@ -1,6 +1,6 @@
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::{DecodeError, Engine};
-use tracing::{instrument, Level};
+use tracing::{Level, instrument};
 
 #[instrument(
     level = Level::TRACE,

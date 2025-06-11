@@ -131,11 +131,11 @@ mod tests {
     use crate::utils::http::MIME_TYPE_TEXT_PLAIN;
     use oauth2::http::header::ACCEPT;
     use oauth2::http::{HeaderName, HeaderValue, Method, Uri};
-    use oauth2::{http, HttpRequest};
-    use reqwest::header::{CONTENT_TYPE, SET_COOKIE};
+    use oauth2::{HttpRequest, http};
     use reqwest::StatusCode;
+    use reqwest::header::{CONTENT_TYPE, SET_COOKIE};
     use rstest::rstest;
-    use serde_json::{json, Value};
+    use serde_json::{Value, json};
     use std::str::FromStr;
 
     const MIME_TYPE_TEXT_PLAIN_WITH_CHARSET: &str = "text/plain; charset=utf-8";

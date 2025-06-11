@@ -1,7 +1,7 @@
 use async_lock::RwLock;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
-use tracing::{instrument, Level};
+use tracing::{Level, instrument};
 
 type Level_ = Level;
 

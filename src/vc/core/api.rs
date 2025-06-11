@@ -4,13 +4,13 @@ use crate::kms::Error as KmsError;
 use crate::nonce::Nonce;
 use crate::utils::wasm::{WasmNotSend, WasmNotSync};
 use crate::vault::{CredentialEntry, Error as VaultError};
-use crate::vc::claims::Claims;
-use crate::vc::status_formats::StatusListFormat;
 use crate::vc::VCStatus;
 use crate::vc::VCStatusesData;
+use crate::vc::claims::Claims;
+use crate::vc::status_formats::StatusListFormat;
 use crate::vc::{
-    formats::Error as VCError, pop, pop::Error as ProofError, Credential, CredentialMetadata,
-    Presentation, StatusList, VCFormat,
+    Credential, CredentialMetadata, Presentation, StatusList, VCFormat, formats::Error as VCError,
+    pop, pop::Error as ProofError,
 };
 use async_trait::async_trait;
 use common_macros::DebugError;

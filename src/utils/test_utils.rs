@@ -1,7 +1,7 @@
 use crate::crypto::{Alg, Key, Signer, SigningKey, Verifier, VerifyingKey};
 use crate::did::didkey::DIDKey;
 use crate::did::universal::UniversalResolver;
-use crate::did::{DIDResolver, DID};
+use crate::did::{DID, DIDResolver};
 use crate::inmem::kms::LocalKms;
 use crate::kms::{KeyHandle, KeyID, KeyType, Kms};
 use crate::vc::core::KeyMetadata;
@@ -44,7 +44,7 @@ pub async fn create_did_and_key_metadata_by_key_type(
 pub async fn create_did_url_and_key_handle(
     kms: &LocalKms,
     key_type: KeyType,
-) -> (DIDURLBuf, impl KeyHandle) {
+) -> (DIDURLBuf, impl KeyHandle + use<>) {
     let (_, kh) = kms
         .create_and_handle(key_type, kms::CreateOptions::default())
         .await

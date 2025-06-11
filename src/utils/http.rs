@@ -1,8 +1,8 @@
 use crate::http::HttpSnafu;
+use oauth2::HttpRequest;
 use oauth2::http::header::CONTENT_TYPE;
 use oauth2::http::{HeaderMap, Method};
-use oauth2::HttpRequest;
-use reqwest::header::{HeaderValue, ACCEPT};
+use reqwest::header::{ACCEPT, HeaderValue};
 use serde::{Deserialize, Serialize};
 use strum_macros::Display;
 use url::Url;

@@ -41,13 +41,9 @@ impl KeyHandle for InMemKeyHandle {
     }
 
     async fn sign(&self, payload: Vec<u8>) -> Result<Vec<u8>> {
-        self.inner
-            .sign(payload.as_slice())
-            .await
-            .map(Into::into)
-            .map_err(|e| {
-                Error::KeyHandle(format!("InMemKeyHandle sign error: {:#?}", e.to_string()))
-            })
+        self.inner.sign(payload.as_slice()).await.map_err(|e| {
+            Error::KeyHandle(format!("InMemKeyHandle sign error: {:#?}", e.to_string()))
+        })
     }
 
     async fn verify(&self, data: Vec<u8>, signature: Vec<u8>) -> Result<()> {

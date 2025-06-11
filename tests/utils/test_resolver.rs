@@ -1,10 +1,10 @@
 use agent_sdk::crypto;
 use agent_sdk::did::didkey::DIDKey;
 use agent_sdk::did::universal::DIDResolver;
-use agent_sdk::did::{ResolutionError, ResolutionOutput, DID};
+use agent_sdk::did::{DID, ResolutionError, ResolutionOutput};
 use async_trait::async_trait;
 use ssi::dids::resolution::{Options, Output};
-pub use ssi::dids::{DIDKey as SpruceDIDKey, DIDResolver as SpruceDIDResolver, DID as SpruceDID};
+pub use ssi::dids::{DID as SpruceDID, DIDKey as SpruceDIDKey, DIDResolver as SpruceDIDResolver};
 
 pub struct TestDIDResolver {
     method_name: String,

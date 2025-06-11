@@ -1,12 +1,12 @@
 use async_trait::async_trait;
 
 use crate::didcomm::connection::ConnectionService;
-use crate::didcomm::core::protocol::message_handler::MessageHandler;
 use crate::didcomm::core::protocol::Protocol;
-use crate::didcomm::protocol::aries::issuance::holder::states::HolderState;
+use crate::didcomm::core::protocol::message_handler::MessageHandler;
 use crate::didcomm::protocol::aries::issuance::holder::Holder;
-use crate::didcomm::protocol::aries::issuance::issuer::states::IssuerState;
+use crate::didcomm::protocol::aries::issuance::holder::states::HolderState;
 use crate::didcomm::protocol::aries::issuance::issuer::Issuer;
+use crate::didcomm::protocol::aries::issuance::issuer::states::IssuerState;
 use crate::didcomm::protocol::aries::issuance::{PROTOCOL_NAME, PROTOCOL_VERSION};
 use crate::kms::{KeyHandle, Kms};
 use crate::storage::Storage;

@@ -1,6 +1,6 @@
 use crate::crypto::{Alg, Error, KeyGenerationSnafu, SigningSnafu, VerificationSnafu};
 use async_trait::async_trait;
-use tracing::{instrument, Level};
+use tracing::{Level, instrument};
 
 use crate::crypto;
 use crate::inmem::crypto::HasAlg;
@@ -10,7 +10,7 @@ use ecdsa::elliptic_curve::ops::Invert;
 use ecdsa::elliptic_curve::point::PointCompression;
 use ecdsa::elliptic_curve::sec1::{FromEncodedPoint, ToEncodedPoint};
 use ecdsa::elliptic_curve::subtle::CtOption;
-use ecdsa::elliptic_curve::{sec1, AffinePoint, CurveArithmetic, FieldBytesSize, Scalar};
+use ecdsa::elliptic_curve::{AffinePoint, CurveArithmetic, FieldBytesSize, Scalar, sec1};
 use ecdsa::hazmat::{DigestPrimitive, SignPrimitive, VerifyPrimitive};
 use ecdsa::signature::rand_core::OsRng;
 use ecdsa::signature::{Signer, Verifier};
@@ -113,7 +113,7 @@ where
         level = Level::TRACE,
         ret(),
     )]
-    fn gen() -> Vec<u8> {
+    fn generate() -> Vec<u8> {
         let signing_key = EcdsaSigningKey::<C>::random(&mut OsRng);
         signing_key.to_bytes().to_vec()
     }

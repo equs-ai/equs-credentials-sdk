@@ -1,17 +1,17 @@
 use crate::did::universal::{DIDResolver, UniversalResolver};
 use crate::http::{HttpClient, HttpError, HttpSnafu};
 use crate::nonce::{Nonce, NonceHandler};
-use crate::reqwest::builder::ReqwestClientBuilder;
 use crate::reqwest::ReqwestClient;
-use crate::vc::core::KeyMetadata;
+use crate::reqwest::builder::ReqwestClientBuilder;
 use crate::vc::core::DEFAULT_CRED_LIFETIME_DAYS;
 use crate::vc::core::DEFAULT_POP_LIFETIME_MINUTES;
+use crate::vc::core::KeyMetadata;
 use crate::vc::oid4vci as api;
+use crate::vc::oid4vci::CredentialOfferParams;
 use crate::vc::oid4vci::holder::HolderService;
 use crate::vc::oid4vci::issuer::{IssuerService, TokenValidation};
 use crate::vc::oid4vci::metadata::convert_metadata;
 use crate::vc::oid4vci::token_validation::{ByJwks, Introspect};
-use crate::vc::oid4vci::CredentialOfferParams;
 use crate::{kms, vault, vc};
 use async_trait::async_trait;
 use common_macros::DebugError;
@@ -22,7 +22,7 @@ use std::collections::HashMap;
 use std::fmt::Debug;
 use std::marker::PhantomData;
 use time::Duration;
-use tracing::{debug, info, instrument, Level};
+use tracing::{Level, debug, info, instrument};
 use url::Url;
 
 /// An `OID4VCI` Builder errors.
@@ -687,10 +687,10 @@ mod tests {
     use crate::inmem::vault::InMemVault;
     use crate::utils::http::test::mock_http_once;
     use crate::utils::test_utils::create_did_and_key_metadata;
-    use crate::vc::oid4vci::tests::fixtures::{
-        sample_authorization_metadata, SampleIssuerMetadata, AUTH_REDIRECT_URL, ISSUER_URL, SCOPE,
-    };
     use crate::vc::oid4vci::IssuerUrl;
+    use crate::vc::oid4vci::tests::fixtures::{
+        AUTH_REDIRECT_URL, ISSUER_URL, SCOPE, SampleIssuerMetadata, sample_authorization_metadata,
+    };
     use oauth2::http::{Method, StatusCode};
     use oid4vci::credential_offer::CredentialOfferParameters;
     use oid4vci::types::CredentialConfigurationId;

@@ -1,12 +1,12 @@
 use crate::vc::claims::{Claim, Claims};
 use common_macros::DebugError;
 use openid4vp::core::dcql::PathValue;
-use serde_json::{json, Value as Json, Value};
+use serde_json::{Value as Json, Value, json};
 use snafu::{Location, Snafu};
 use ssi::JsonPointerBuf;
 use std::fmt::Debug;
 use std::str::FromStr;
-use tracing::{instrument, Level};
+use tracing::{Level, instrument};
 
 type Level_ = Level;
 

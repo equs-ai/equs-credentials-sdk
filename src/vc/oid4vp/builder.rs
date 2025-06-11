@@ -1,10 +1,10 @@
 use crate::did::universal::{DIDResolver, UniversalResolver};
 use crate::http::{HttpClient, HttpError, HttpSnafu};
 use crate::nonce::NonceHandler;
-use crate::reqwest::builder::ReqwestClientBuilder;
 use crate::reqwest::ReqwestClient;
-use crate::vc::core::KeyMetadata;
+use crate::reqwest::builder::ReqwestClientBuilder;
 use crate::vc::core::DEFAULT_POP_LIFETIME_MINUTES;
+use crate::vc::core::KeyMetadata;
 use crate::vc::oid4vp as api;
 use crate::vc::oid4vp::holder::HolderService;
 use crate::vc::oid4vp::verifier::VerifierService;
@@ -14,7 +14,7 @@ use snafu::{Location, Snafu};
 use std::fmt::Debug;
 use std::marker::PhantomData;
 use time::Duration;
-use tracing::{debug, info, instrument, Level};
+use tracing::{Level, debug, info, instrument};
 
 /// An `OID4VP` Builder errors.
 #[derive(Snafu, DebugError)]

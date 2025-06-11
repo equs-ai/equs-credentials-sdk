@@ -9,15 +9,15 @@ use ssi::dids::document::Represented;
 use url::Url;
 
 use crate::did::didpeer::{DIDPeer, DidPeerService};
-use crate::did::{DIDResolver, VerificationMethodKey, VerificationRelationshipType, DID};
+use crate::did::{DID, DIDResolver, VerificationMethodKey, VerificationRelationshipType};
 use crate::didcomm::agent::Agent;
 use crate::didcomm::connection::{
     ConnectionRecord, ConnectionRole, ConnectionService, ConnectionState, CreateOptions,
 };
 use crate::didcomm::core::event_emitter::EventEmitter;
 use crate::didcomm::core::message_id::MessageId;
-use crate::didcomm::core::protocol::message_handler::MessageHandler;
 use crate::didcomm::core::protocol::Protocol;
+use crate::didcomm::core::protocol::message_handler::MessageHandler;
 use crate::didcomm::service::DIDCOMM_SCHEME;
 use crate::didcomm::{agent, connection, service};
 use crate::kms::{KeyHandle, KeyType, Kms};

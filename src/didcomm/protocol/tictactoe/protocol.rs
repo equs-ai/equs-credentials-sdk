@@ -8,19 +8,19 @@ use crate::didcomm::core::envelope::Message;
 use crate::didcomm::core::event_emitter::EventEmitter;
 use crate::didcomm::core::message_sender::SendOptions;
 use crate::didcomm::core::protocol;
+use crate::didcomm::core::protocol::Protocol;
 use crate::didcomm::core::protocol::message_handler::{
     MessageHandler, StatefulMessageHandler, StatefulMessageHandlerWrapper,
 };
 use crate::didcomm::core::protocol::state_machine::StateMachine;
-use crate::didcomm::core::protocol::Protocol;
 use crate::didcomm::protocol::tictactoe;
+use crate::didcomm::protocol::tictactoe::fsm::TicTacToeStateMachine;
 use crate::didcomm::protocol::tictactoe::fsm::event::TicTacToeEvent;
 use crate::didcomm::protocol::tictactoe::fsm::state::TicTacToeState;
-use crate::didcomm::protocol::tictactoe::fsm::TicTacToeStateMachine;
 use crate::didcomm::protocol::tictactoe::message::{Move, MoveMessageBody, OutcomeMessageBody};
 use crate::didcomm::protocol::tictactoe::{
-    ConnectionSnafu, GameNotFoundSnafu, ProtocolSnafu, TicTacToeDIDCommMessage, TicTacToeGame,
-    MOVE_MESSAGE_TYPE, OUTCOME_MESSAGE_TYPE, PROTOCOL_NAME, PROTOCOL_VERSION,
+    ConnectionSnafu, GameNotFoundSnafu, MOVE_MESSAGE_TYPE, OUTCOME_MESSAGE_TYPE, PROTOCOL_NAME,
+    PROTOCOL_VERSION, ProtocolSnafu, TicTacToeDIDCommMessage, TicTacToeGame,
 };
 use crate::didcomm::service::DIDCommService;
 use crate::kms::{KeyHandle, Kms};

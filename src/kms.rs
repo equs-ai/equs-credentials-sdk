@@ -9,7 +9,7 @@ use mockall::automock;
 use snafu::{Location, Snafu};
 use std::fmt::Debug;
 use strum_macros::{Display, EnumIter, EnumString, IntoStaticStr};
-use tracing::{info, instrument, Level};
+use tracing::{Level, info, instrument};
 use zeroize::Zeroize;
 
 /// `Kms` Error.

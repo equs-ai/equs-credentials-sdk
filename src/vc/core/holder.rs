@@ -3,7 +3,7 @@ use snafu::ResultExt;
 use ssi::dids::DIDURLBuf;
 use std::collections::HashMap;
 use std::marker::PhantomData;
-use tracing::{debug, info, instrument, trace, Level};
+use tracing::{Level, debug, info, instrument, trace};
 
 use crate::crypto::Alg;
 use crate::did::universal::UniversalResolver;
@@ -21,11 +21,11 @@ use crate::vc::core::{
 use crate::vc::formats::json_ld_vc;
 use crate::vc::formats::json_ld_vc::JsonLdAPI;
 use crate::vc::formats::sd_jwt_vc::{SdJwtAPI, VPMetadata};
-use crate::vc::formats::{VerifyOptions, API};
-use crate::vc::pop::jwt_pop::JwtProofOfPossession;
+use crate::vc::formats::{API, VerifyOptions};
 use crate::vc::pop::ProofOfPossession;
+use crate::vc::pop::jwt_pop::JwtProofOfPossession;
 use crate::vc::presentation_exchange::validate_credential;
-use crate::vc::{pop, Credential, CredentialMetadata, HasVCFormat, Presentation};
+use crate::vc::{Credential, CredentialMetadata, HasVCFormat, Presentation, pop};
 use crate::{kms, vault};
 
 #[derive(Clone)]
@@ -84,7 +84,7 @@ where
                 return FormatNotSupportedSnafu {
                     format: pop_fmt.to_string(),
                 }
-                .fail()
+                .fail();
             }
         };
         trace!(resolved_proof = %proof);
@@ -335,9 +335,9 @@ mod tests {
     };
     use crate::vault::{CredentialEntry, FormatNotSupportedSnafu, MockVault, Vault};
     use crate::vc::core::tests::fixtures::{
-        sample_cred_def_offer, CREDENTIAL_ID, CRED_DEF_ID, VERIFIER_ID,
+        CRED_DEF_ID, CREDENTIAL_ID, VERIFIER_ID, sample_cred_def_offer,
     };
-    use crate::vc::core::tests::utils::{random_nonce, CredTestCase};
+    use crate::vc::core::tests::utils::{CredTestCase, random_nonce};
     use crate::vc::core::{Error, Holder, HolderMetadata, HolderService, KeyMetadata};
     use crate::vc::{CredentialMetadata, HasVCFormat};
     use rstest::rstest;

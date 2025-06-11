@@ -6,21 +6,24 @@ use openid4vp::core::metadata::WalletMetadata;
 use openid4vp::verifier::by_reference::ByReference;
 use openid4vp::verifier::request_builder::RequestType;
 use serde_json::Value as Json;
-use snafu::{ensure, ResultExt};
+use snafu::{ResultExt, ensure};
 use std::fmt::Debug;
 use std::marker::PhantomData;
-use tracing::{info, instrument, Level};
+use tracing::{Level, info, instrument};
 use url::Url;
 
-use crate::did::universal::UniversalResolver;
 use crate::did::JWKResolver;
+use crate::did::universal::UniversalResolver;
 use crate::http::HttpClient;
 use crate::kms::{KeyHandle, Kms};
 use crate::nonce::{Nonce, NonceHandler};
 use crate::utils::wasm::{WasmNotSend, WasmNotSync};
 use crate::vc;
+use crate::vc::Presentation;
+use crate::vc::VCStatus;
 use crate::vc::claims::{Claim, Claims};
 use crate::vc::core::KeyMetadata;
+use crate::vc::oid4vp::Error::Protocol;
 use crate::vc::oid4vp::internal_error::{
     ClaimsSnafu, DCQLSnafu, DidUrlResolutionSnafu, IdTokenValidationSnafu, JsonSnafu, KMSSnafu,
     NonceGenerationSnafu, Oid4VpLibSnafu, ParseSnafu, PresentationExchangeSnafu, VCNotValidSnafu,
@@ -28,18 +31,15 @@ use crate::vc::oid4vp::internal_error::{
 };
 use crate::vc::oid4vp::metadata::{default_client_metadata, default_wallet_metadata};
 use crate::vc::oid4vp::signer::Signer;
-use crate::vc::oid4vp::Error::Protocol;
 use crate::vc::oid4vp::{
     AuthResponseOptions, AuthorizationResponse, ClientMetadata, PassAuthRequestObject,
     PresentationSession, ProtocolError, ResolvedPresentationQuery, ResponseMode, ResponseType,
 };
 use crate::vc::presentation_exchange;
 use crate::vc::presentation_exchange::{
-    validate_against_presentation_definition, PresentationResponse,
+    PresentationResponse, validate_against_presentation_definition,
 };
 use crate::vc::status_formats::status_list_token_jwt;
-use crate::vc::Presentation;
-use crate::vc::VCStatus;
 use crate::vc::{dcql, oid4vp as api};
 use openid4vp::core::response::parameters::IdTokenBody as IdToken;
 use ssi::dids::DIDURLBuf;
@@ -259,9 +259,12 @@ where
         );
 
         ensure!(
-            id_token.subject == did && id_token.issuer == did ,
+            id_token.subject == did && id_token.issuer == did,
             IdTokenValidationSnafu {
-                details: &format!("id token 'subject' and 'issuer' values must be equal, expected {}, got 'subject' = {} and 'issuer' = {}", did, id_token.subject, id_token.issuer),
+                details: &format!(
+                    "id token 'subject' and 'issuer' values must be equal, expected {}, got 'subject' = {} and 'issuer' = {}",
+                    did, id_token.subject, id_token.issuer
+                ),
             }
         );
 
@@ -367,24 +370,32 @@ where
             impl openid4vp::verifier::client::Client + WasmNotSend + WasmNotSync,
         >,
     ) -> Result<(Url, Option<String>)> {
-        let auth_req_type = match (pass_auth_request_object.to_owned(), &auth_response_config.mode) {
-            (PassAuthRequestObject::ByValue, ResponseMode::FragmentJwt | ResponseMode::Fragment) => {
-                RequestType::Plain
-            },
-            (PassAuthRequestObject::ByValue,  ResponseMode::DirectPost | ResponseMode::DirectPostJwt) => {
-                RequestType::SignedJwt(ByReference::False)
-            },
-            (PassAuthRequestObject::ByReference(at),  ResponseMode::DirectPost | ResponseMode::DirectPostJwt) => {
-                RequestType::SignedJwt(ByReference::True { at })
-            },
+        let auth_req_type = match (
+            pass_auth_request_object.to_owned(),
+            &auth_response_config.mode,
+        ) {
+            (
+                PassAuthRequestObject::ByValue,
+                ResponseMode::FragmentJwt | ResponseMode::Fragment,
+            ) => RequestType::Plain,
+            (
+                PassAuthRequestObject::ByValue,
+                ResponseMode::DirectPost | ResponseMode::DirectPostJwt,
+            ) => RequestType::SignedJwt(ByReference::False),
+            (
+                PassAuthRequestObject::ByReference(at),
+                ResponseMode::DirectPost | ResponseMode::DirectPostJwt,
+            ) => RequestType::SignedJwt(ByReference::True { at }),
             (_, mode) => {
                 return Err(Error::Protocol {
                     source: ProtocolError::invalid_request(
-                        &format!("passing authorization request object by value or url is not supported in '{mode}' response mode"),
-                        auth_response_config.state.clone()),
-
-                })
-            },
+                        &format!(
+                            "passing authorization request object by value or url is not supported in '{mode}' response mode"
+                        ),
+                        auth_response_config.state.clone(),
+                    ),
+                });
+            }
         };
 
         let verifier = verifier_builder
@@ -570,21 +581,21 @@ mod tests {
     use crate::http::MockHttpClient;
     use crate::inmem::kms::LocalKms;
     use crate::nonce::Nonce;
+    use crate::vc::ClaimFormatDesignation;
     use crate::vc::claims::Claims;
+    use crate::vc::oid4vp::InternalError;
     use crate::vc::oid4vp::tests::fixtures::multi_presentation::{
         auth_response_options, submission_requirements,
     };
-    use crate::vc::oid4vp::tests::fixtures::{multi_presentation, single_presentation, NONCE};
+    use crate::vc::oid4vp::tests::fixtures::{NONCE, multi_presentation, single_presentation};
     use crate::vc::oid4vp::tests::fixtures::{STATE, VERIFIER_URL};
     use crate::vc::oid4vp::tests::utils::{
-        build_url, validate_claims, verifier_service, verifier_service_with_invalid_kid,
-        verifier_service_with_signer_error, VerificationTestCase,
+        VerificationTestCase, build_url, validate_claims, verifier_service,
+        verifier_service_with_invalid_kid, verifier_service_with_signer_error,
     };
     use crate::vc::oid4vp::verifier::VP_TOKEN;
-    use crate::vc::oid4vp::InternalError;
     use crate::vc::oid4vp::{PassAuthRequestObject, PresentationSession, ResponseType, Verifier};
     use crate::vc::presentation_exchange::PresentationDefinition;
-    use crate::vc::ClaimFormatDesignation;
     use openid4vp::core::authorization_request::{
         AuthorizationRequest, AuthorizationRequestObject,
     };
@@ -1065,24 +1076,28 @@ mod tests {
 
     fn presentation_with_different_claim_values_case() -> VerificationTestCase {
         let mut test_case = single_presentation::sd_jwt::verification_test_case();
-        test_case.credential_data = vec![json!({
-            "vct": "https://credentials.example.com/degree_credential",
-            "name": "John",
-            "degree": "Bachelor"
-        })
-        .try_into()
-        .unwrap()];
+        test_case.credential_data = vec![
+            json!({
+                "vct": "https://credentials.example.com/degree_credential",
+                "name": "John",
+                "degree": "Bachelor"
+            })
+            .try_into()
+            .unwrap(),
+        ];
         test_case
     }
 
     fn presentation_claim_not_found_case() -> VerificationTestCase {
         let mut test_case = single_presentation::sd_jwt::verification_test_case();
-        test_case.credential_data = vec![json!({
-            "vct": "https://credentials.example.com/identity_credential",
-            "degree": "Bachelor"
-        })
-        .try_into()
-        .unwrap()];
+        test_case.credential_data = vec![
+            json!({
+                "vct": "https://credentials.example.com/identity_credential",
+                "degree": "Bachelor"
+            })
+            .try_into()
+            .unwrap(),
+        ];
         test_case
     }
 

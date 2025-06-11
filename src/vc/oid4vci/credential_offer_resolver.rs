@@ -1,12 +1,12 @@
 use crate::http::{HttpClient, HttpError};
-use crate::reqwest::builder::ReqwestClientBuilder;
 use crate::reqwest::ReqwestClient;
+use crate::reqwest::builder::ReqwestClientBuilder;
 use crate::vc::oid4vci::{CredentialOffer, CredentialOfferParams, CredentialOfferRequest};
 use common_macros::DebugError;
 use snafu::{Location, ResultExt, Snafu};
 use std::fmt::Debug;
 use std::sync::Arc;
-use tracing::{info, instrument, Level};
+use tracing::{Level, info, instrument};
 use url::Url;
 
 /// An `OID4VCI` Credential offer resolver errors.
@@ -127,10 +127,10 @@ mod tests {
     use super::*;
     use crate::http::MockHttpClient;
     use crate::utils::http::test::mock_http_once;
+    use crate::vc::oid4vci::PreAuthorizedCode;
     use crate::vc::oid4vci::tests::fixtures::{
         sample_offer_with_auth_code_grant, sample_offer_with_pre_auth_code_grant,
     };
-    use crate::vc::oid4vci::PreAuthorizedCode;
     use oauth2::http::{Method, StatusCode};
     use oid4vci::types::{CredentialConfigurationId, IssuerState};
     use rstest::rstest;
@@ -174,7 +174,7 @@ mod tests {
     )]
     #[case::offer_with_pre_auth_code_grant_success(
         "{%22credential_issuer%22:%22http://localhost:8088%22,%22credential_configuration_ids%22:[%22SD_JWT_cred_1%22,%22JSON_LDP_cred_2%22],%22grants%22:{%22urn:ietf:params:oauth:grant-type:pre-authorized_code%22:{%22pre-authorized_code%22:%22code%22,%22tx_code%22:null,%22interval%22:null,%22authorization_server%22:%22http://localhost:8088%22}}}",
-        "pre-auth_code",
+        "pre-auth_code"
     )]
     #[tokio::test]
     async fn resolve_offer_by_value_works_correctly(

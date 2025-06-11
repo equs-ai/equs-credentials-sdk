@@ -10,7 +10,7 @@ use async_trait::async_trait;
 use futures::future;
 use std::collections::HashSet;
 use std::sync::Arc;
-use tracing::{instrument, Level};
+use tracing::{Level, instrument};
 
 type Level_ = Level;
 
@@ -245,14 +245,11 @@ mod tests {
         #[case] page: usize,
         #[case] batch_size: usize,
     ) {
-        let amount_to_store = 10;
+        let amount_to_store: usize = 10;
 
         let amount_to_skip = page * batch_size;
-        let remaining_amount = if amount_to_store > amount_to_skip {
-            amount_to_store - amount_to_skip
-        } else {
-            0
-        };
+        let remaining_amount = amount_to_store.saturating_sub(amount_to_skip);
+
         let amount_to_get_from_vault = if remaining_amount > batch_size {
             batch_size
         } else {

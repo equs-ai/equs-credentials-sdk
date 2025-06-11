@@ -2,8 +2,8 @@ use crate::did::{DIDResolution, ResolutionOptions};
 use crate::utils;
 use agent_sdk::did::{ResolutionError, ResolutionOutput, SpruceDID};
 use async_trait::async_trait;
-use wasm_bindgen::prelude::wasm_bindgen;
 use wasm_bindgen::JsValue;
+use wasm_bindgen::prelude::wasm_bindgen;
 
 #[wasm_bindgen]
 extern "C" {

@@ -1,12 +1,12 @@
 use crate::crypto::{Alg, KeyType};
 use crate::utils;
-use agent_sdk::crypto::{Key, Signer, SigningKey, SigningSnafu, Verifier, VerifyingKey, JWK};
+use agent_sdk::crypto::{JWK, Key, Signer, SigningKey, SigningSnafu, Verifier, VerifyingKey};
 use agent_sdk::kms::{CreateOptions, CreationSnafu, KeyID, ResolvingSnafu};
 use async_trait::async_trait;
 use std::ops::Deref;
 use std::rc::Rc;
-use wasm_bindgen::prelude::wasm_bindgen;
 use wasm_bindgen::JsValue;
+use wasm_bindgen::prelude::wasm_bindgen;
 
 #[wasm_bindgen]
 extern "C" {
@@ -172,8 +172,8 @@ pub mod test_utils {
     use agent_sdk::kms::{CreateOptions, KeyID, Kms};
     use std::rc::Rc;
     use std::str::FromStr;
-    use wasm_bindgen::prelude::wasm_bindgen;
     use wasm_bindgen::JsError;
+    use wasm_bindgen::prelude::wasm_bindgen;
 
     #[wasm_bindgen]
     struct KeyHandleTestHelper(JsKeyHandle);

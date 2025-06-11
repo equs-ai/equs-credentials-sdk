@@ -7,10 +7,10 @@ use crate::didcomm::agent::Agent;
 use crate::didcomm::connection::{ConnectionRecord, ConnectionService};
 use crate::didcomm::protocol::aries::common::message::status::Status;
 use crate::didcomm::protocol::aries::common::message::thread::Thread;
+use crate::didcomm::protocol::aries::issuance::issuer::IssuerMessages;
 use crate::didcomm::protocol::aries::issuance::issuer::states::{
     InitialState, IssuerState, OfferSentState, RequestReceivedState,
 };
-use crate::didcomm::protocol::aries::issuance::issuer::IssuerMessages;
 use crate::didcomm::protocol::aries::issuance::message::credential::Credential;
 use crate::didcomm::protocol::aries::issuance::message::credential_offer::CredentialOffer;
 use crate::didcomm::protocol::aries::issuance::{
@@ -73,7 +73,9 @@ where
                     (state_data, Status::Rejected(Some(problem_report))).into(),
                 ),
                 _ => {
-                    warn!("In this state Credential Issuance can accept only Request, Proposal and Problem Report");
+                    warn!(
+                        "In this state Credential Issuance can accept only Request, Proposal and Problem Report"
+                    );
                     IssuerState::OfferSent(state_data)
                 }
             },
@@ -84,24 +86,24 @@ where
                     IssuerState::RequestReceived(state_data)
                 }
             },
-            IssuerState::CredentialSent(state_data) => {
-                match cim {
-                    IssuerMessages::ProblemReport(problem_report) => {
-                        info!("Interaction closed with failure");
-                        IssuerState::Finished(
-                            (state_data, Status::Rejected(Some(problem_report))).into(),
-                        )
-                    }
-                    IssuerMessages::CredentialAck(_ack) => {
-                        info!("Interaction closed with success");
-                        IssuerState::Finished(state_data.into())
-                    }
-                    _ => {
-                        warn!("In this state Credential Issuance can accept only Ack and Problem Report");
-                        IssuerState::CredentialSent(state_data)
-                    }
+            IssuerState::CredentialSent(state_data) => match cim {
+                IssuerMessages::ProblemReport(problem_report) => {
+                    info!("Interaction closed with failure");
+                    IssuerState::Finished(
+                        (state_data, Status::Rejected(Some(problem_report))).into(),
+                    )
                 }
-            }
+                IssuerMessages::CredentialAck(_ack) => {
+                    info!("Interaction closed with success");
+                    IssuerState::Finished(state_data.into())
+                }
+                _ => {
+                    warn!(
+                        "In this state Credential Issuance can accept only Ack and Problem Report"
+                    );
+                    IssuerState::CredentialSent(state_data)
+                }
+            },
             IssuerState::Finished(state_data) => {
                 warn!("Exchange is finished, no agent can be sent or received");
                 IssuerState::Finished(state_data)
@@ -134,7 +136,7 @@ where
             | IssuerState::CredentialSent(_) => None,
             IssuerState::Finished(ref status) => match &status.status {
                 Status::Success | Status::Undefined => None,
-                Status::Rejected(ref problem_report) => problem_report.as_ref(),
+                Status::Rejected(problem_report) => problem_report.as_ref(),
                 Status::Failed(problem_report) => Some(problem_report),
             },
         }

@@ -3,7 +3,7 @@ use crate::crypto::{DerivationSnafu, KeyGenerationSnafu};
 use crate::inmem::crypto::k256::K256;
 use bip32::{DerivationPath, XPrv};
 use std::str::FromStr;
-use tracing::{instrument, Level};
+use tracing::{Level, instrument};
 
 #[derive(Clone)]
 pub struct Bip32 {

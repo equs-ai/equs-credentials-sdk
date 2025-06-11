@@ -1,7 +1,7 @@
 use crate::did::{DIDDocument, VerificationMethodKey};
 use crate::utils::convert_to_opaque_object_unchecked;
-use wasm_bindgen::prelude::wasm_bindgen;
 use wasm_bindgen::JsError;
+use wasm_bindgen::prelude::wasm_bindgen;
 
 /// A general `did:web` service.
 ///

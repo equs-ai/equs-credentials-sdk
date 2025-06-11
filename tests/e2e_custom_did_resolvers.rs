@@ -3,12 +3,12 @@
 mod utils;
 
 use crate::utils::fixtures::oid4vp::{
+    Oid4VpTestCase, Oid4VpTestCredentialFormat, STATE, VERIFIER_URL, ValidateClaimsFunc,
     multiple_sdjwt_presentation_case, single_jsonld_presentation_case,
-    single_sdjwt_presentation_case, Oid4VpTestCase, Oid4VpTestCredentialFormat, ValidateClaimsFunc,
-    STATE, VERIFIER_URL,
+    single_sdjwt_presentation_case,
 };
 use agent_sdk::did::universal::UniversalResolver;
-use agent_sdk::did::{DIDBuf, DIDResolver, DID, DIDURL};
+use agent_sdk::did::{DID, DIDBuf, DIDResolver, DIDURL};
 use agent_sdk::http::HttpClient;
 use agent_sdk::inmem::kms::{KeyHandle, LocalKms};
 use agent_sdk::inmem::nonce::LocalNonceHandler;
@@ -29,12 +29,12 @@ use agent_sdk::vc::oid4vp::{
 };
 use agent_sdk::vc::oid4vp::{Holder as Oid4vpHolder, ResolvedPresentationQuery};
 use agent_sdk::vc::{
-    oid4vci, Credential, CredentialMetadata, VCFormatsAPI, VCFormatsJsonLdAPI, VCFormatsSdJwtAPI,
+    Credential, CredentialMetadata, VCFormatsAPI, VCFormatsJsonLdAPI, VCFormatsSdJwtAPI, oid4vci,
 };
 use agent_sdk::{crypto, kms};
 use futures::executor;
-use oauth2::http::header::CONTENT_TYPE;
 use oauth2::http::StatusCode;
+use oauth2::http::header::CONTENT_TYPE;
 use oauth2::http::{HeaderValue, Method};
 use oauth2::{HttpRequest, HttpResponse, TokenResponse};
 use oid4vci::AuthorizationCodeGrant;
@@ -45,8 +45,8 @@ use std::str::FromStr;
 use std::{io, str};
 use url::Url;
 use utils::fixtures::{
-    sample_authz_url, sample_claims_jsonld, sample_claims_sdjwt, sample_issuer_metadata,
-    sample_issuer_url, ACCESS_TOKEN, AUTHZ_URL, SCOPE,
+    ACCESS_TOKEN, AUTHZ_URL, SCOPE, sample_authz_url, sample_claims_jsonld, sample_claims_sdjwt,
+    sample_issuer_metadata, sample_issuer_url,
 };
 use utils::helpers::oid4vci::setup_http_static_handlers;
 use utils::http::HttpClientEmulator;

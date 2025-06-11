@@ -107,7 +107,10 @@ impl From<(RequestSentState, ProblemReport, Thread, Reason)> for FinishedHolderS
     fn from(
         (state, problem_report, thread, reason): (RequestSentState, ProblemReport, Thread, Reason),
     ) -> Self {
-        trace!("HolderSM: transit state from RequestSentState to FinishedHolderState with ProblemReport: {:?}", problem_report);
+        trace!(
+            "HolderSM: transit state from RequestSentState to FinishedHolderState with ProblemReport: {:?}",
+            problem_report
+        );
         trace!("Thread: {:?}", thread);
         FinishedHolderState {
             offer: state.offer,
@@ -128,7 +131,10 @@ impl From<(OfferReceivedState, ProblemReport, Thread, Reason)> for FinishedHolde
             Reason,
         ),
     ) -> Self {
-        trace!("HolderSM: transit state from OfferReceivedState to FinishedHolderState with ProblemReport: {:?}", problem_report);
+        trace!(
+            "HolderSM: transit state from OfferReceivedState to FinishedHolderState with ProblemReport: {:?}",
+            problem_report
+        );
         trace!("Thread: {:?}", problem_report.thread);
         FinishedHolderState {
             offer: Some(state.offer),

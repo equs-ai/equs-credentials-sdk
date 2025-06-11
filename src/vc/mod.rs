@@ -2,15 +2,15 @@
 
 use crate::crypto::Alg;
 use crate::vc::claims::Claims;
+pub use crate::vc::formats::API as VCFormatsAPI;
+pub use crate::vc::formats::Error as VCFormatError;
 pub use crate::vc::formats::json_ld_vc::{
     JsonLdAPI as VCFormatsJsonLdAPI, VCMetadata as JsonLdAPIVCMetadata,
 };
 pub use crate::vc::formats::sd_jwt_vc::{SdJwtAPI as VCFormatsSdJwtAPI, VCMetadata};
 pub use crate::vc::formats::vc::*;
 pub use crate::vc::formats::vp::*;
-pub use crate::vc::formats::Error as VCFormatError;
-pub use crate::vc::formats::API as VCFormatsAPI;
-use crate::vc::formats::{sd_jwt_vc, FormatNotSupportedSnafu, HasCredential};
+use crate::vc::formats::{FormatNotSupportedSnafu, HasCredential, sd_jwt_vc};
 pub use crate::vc::presentation_exchange::ClaimFormat;
 use crate::vc::status_formats::status_list_token_jwt;
 use serde::{Deserialize, Serialize};

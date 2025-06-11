@@ -3,11 +3,11 @@ use crate::http::ReqwestHttpClient;
 use crate::kms::{JsKeyHandle, JsKms, Kms};
 use crate::utils;
 use crate::vault::{JsVault, Vault};
-use crate::vc::oid4vp::holder::OID4VPHolder;
 use crate::vc::oid4vp::WalletMetadata;
+use crate::vc::oid4vp::holder::OID4VPHolder;
 use agent_sdk::vc::oid4vp::HolderBuilder;
-use wasm_bindgen::prelude::wasm_bindgen;
 use wasm_bindgen::JsError;
+use wasm_bindgen::prelude::wasm_bindgen;
 
 /// A builder for creating an `OID4VP` `Holder` API instance.
 #[wasm_bindgen]

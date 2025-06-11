@@ -1,5 +1,5 @@
 use std::collections::HashSet;
-use tracing::{instrument, Level};
+use tracing::{Level, instrument};
 
 type Level_ = Level;
 

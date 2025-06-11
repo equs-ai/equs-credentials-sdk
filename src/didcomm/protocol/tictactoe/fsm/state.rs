@@ -4,10 +4,10 @@ use std::pin::Pin;
 use strum_macros::Display;
 
 use crate::didcomm::core::protocol;
+use crate::didcomm::protocol::tictactoe::TicTacToeGame;
 use crate::didcomm::protocol::tictactoe::message::{
     Mark, Move, MoveMessageBody, OutcomeMessageBody,
 };
-use crate::didcomm::protocol::tictactoe::TicTacToeGame;
 
 type IsDoneFuture = Pin<Box<dyn Future<Output = protocol::Result<bool>> + Send + 'static>>;
 

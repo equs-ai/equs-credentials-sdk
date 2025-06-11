@@ -77,8 +77,8 @@ pub mod tests {
     use crate::didcomm::core::envelope::Attachment;
     use crate::didcomm::protocol::aries::issuance::message::attachment_formats;
     use crate::utils::http::MimeType;
-    use base64::prelude::BASE64_STANDARD;
     use base64::Engine;
+    use base64::prelude::BASE64_STANDARD;
     use serde_json::json;
 
     #[test]

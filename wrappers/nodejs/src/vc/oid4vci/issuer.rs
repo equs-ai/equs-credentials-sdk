@@ -4,8 +4,8 @@ use napi::{Error, Result};
 use napi_derive::napi;
 
 use crate::utils::{from_json_object, to_json_object};
-use crate::vc::core::JsCredentialStatusInfo;
 use crate::vc::JsonObject;
+use crate::vc::core::JsCredentialStatusInfo;
 
 /// An async `oid4vci` `Issuer` API.
 ///

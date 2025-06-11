@@ -10,7 +10,7 @@ pub mod fixtures {
     use async_trait::async_trait;
     use oauth2::AccessToken;
     use oid4vci::types::{CredentialConfigurationId, IssuerUrl};
-    use serde_json::{json, Value};
+    use serde_json::{Value, json};
 
     pub const ISSUER_URL: &str = "https://issuer-backend.com";
     pub const AUTH_URL: &str = "https://authz-backend.com";

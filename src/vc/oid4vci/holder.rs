@@ -3,19 +3,19 @@ use crate::nonce::Nonce;
 use crate::utils::wasm::WasmNotSend;
 use crate::vc;
 use crate::vc::core::{CredentialOffer, CredentialOfferContent, KeyMetadata, Proof as AsdkProof};
+use crate::vc::oid4vci::AuthzFlow::Authorize;
 use crate::vc::oid4vci::internal_error::{
     AuthorizationCallbackSnafu, DiscoverySnafu, HolderServiceSnafu, MetadataSnafu, ParseSnafu,
     TypeConversionSnafu, UrlParseSnafu, VCSnafu,
 };
 use crate::vc::oid4vci::protocol_error::ProtocolSnafu;
-use crate::vc::oid4vci::AuthzFlow::Authorize;
 use crate::vc::oid4vci::{
-    metadata, AuthorizationMetadata, AuthzFlow, CredDefMetadata, CredentialOfferParams,
-    CredentialResponse, CredentialResponseResolved, CredentialResult, IssuerMetadata,
-    PreAuthorizedCode, TxCode,
+    AuthorizationMetadata, AuthzFlow, CredDefMetadata, CredentialOfferParams, CredentialResponse,
+    CredentialResponseResolved, CredentialResult, IssuerMetadata, PreAuthorizedCode, TxCode,
+    metadata,
 };
-use crate::vc::{oid4vci as api, HasVCFormat};
 use crate::vc::{Credential, CredentialMetadata};
+use crate::vc::{HasVCFormat, oid4vci as api};
 use async_trait::async_trait;
 use oauth2::url::Url;
 use oauth2::{
@@ -26,17 +26,17 @@ use oid4vci::core::authorization::AuthorizationDetailsObject;
 use oid4vci::core::client::Client;
 use oid4vci::core::profiles::CoreProfilesCredentialResponseType;
 use oid4vci::credential::{CredentialId, ErrorType, ResponseEnum};
-use oid4vci::metadata::credential_issuer::BatchCredentialIssuance;
 use oid4vci::metadata::MetadataDiscovery;
+use oid4vci::metadata::credential_issuer::BatchCredentialIssuance;
 use oid4vci::proof_of_possession::{Proof as SpruceProof, Proof};
 use oid4vci::token;
 use oid4vci::types::{CredentialConfigurationId, IssuerUrl};
-use snafu::{ensure, ResultExt};
+use snafu::{ResultExt, ensure};
 use std::future::Future;
 use std::pin::Pin;
 use std::string::ToString;
 use std::sync::Arc;
-use tracing::{debug, info, instrument, trace, Level};
+use tracing::{Level, debug, info, instrument, trace};
 
 pub type Error = api::Error;
 pub type Result<T> = core::result::Result<T, Error>;
@@ -729,15 +729,15 @@ mod tests {
     use crate::utils::http::test::{mock_http_once, mock_http_req_predicate};
     use crate::utils::test_utils::create_did_and_key_metadata;
     use crate::vault::{MockVault, Vault};
+    use crate::vc::VCFormat;
     use crate::vc::oid4vci::tests::fixtures::{
-        fake_access_token, sample_access_token, sample_authorization_metadata,
-        sample_batch_cred_response, sample_cred_response, sample_credential_definition,
-        sample_offer_with_auth_code_grant, sample_offer_with_pre_auth_code_grant,
-        SampleIssuerMetadata, ACCESS_TOKEN, AUTH_URL, CRED_DEF_ID, ISSUER_URL, NOTIFICATION_ID,
-        REQ_URI_CODE, SCOPE, SD_JWT_CREDS,
+        ACCESS_TOKEN, AUTH_URL, CRED_DEF_ID, ISSUER_URL, NOTIFICATION_ID, REQ_URI_CODE, SCOPE,
+        SD_JWT_CREDS, SampleIssuerMetadata, fake_access_token, sample_access_token,
+        sample_authorization_metadata, sample_batch_cred_response, sample_cred_response,
+        sample_credential_definition, sample_offer_with_auth_code_grant,
+        sample_offer_with_pre_auth_code_grant,
     };
     use crate::vc::oid4vci::{CredentialRequest, CredentialResult, Holder};
-    use crate::vc::VCFormat;
     use oauth2::http::{Method, StatusCode};
     use rstest::rstest;
     use serde_json::json;

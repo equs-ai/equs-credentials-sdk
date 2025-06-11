@@ -69,7 +69,7 @@ impl OID4VCIHolder {
     ///
     /// * `scope` - a scope for the desired `CredentialDefinition`s.
     /// * `authorization_callback` - a callback to retrieve an authorization code by the given `auth_url`.
-    ///     Requires application layer interaction.
+    ///   Requires application layer interaction.
     ///
     /// # Returns
     ///
@@ -91,9 +91,7 @@ impl OID4VCIHolder {
                         authorization_code_callback
                             .authenticate(url.to_string())
                             .await
-                            .map_err(|err| {
-                                io::Error::new(io::ErrorKind::Other, format!("{:?}", err))
-                            })
+                            .map_err(|err| io::Error::other(format!("{:?}", err)))
                     })
                 }),
             )
@@ -146,9 +144,7 @@ impl OID4VCIHolder {
                         authorization_callback
                             .authenticate(authz_flow.into())
                             .await
-                            .map_err(|err| {
-                                io::Error::new(io::ErrorKind::Other, format!("{:?}", err))
-                            })
+                            .map_err(|err| io::Error::other(format!("{:?}", err)))
                     })
                 }),
             )

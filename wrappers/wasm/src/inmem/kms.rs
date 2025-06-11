@@ -5,8 +5,8 @@ use agent_sdk::inmem::kms::{KeyHandle, LocalKms};
 use agent_sdk::kms;
 use agent_sdk::kms::{CreateOptions, KeyID, Kms};
 use std::str::FromStr;
-use wasm_bindgen::prelude::wasm_bindgen;
 use wasm_bindgen::JsError;
+use wasm_bindgen::prelude::wasm_bindgen;
 
 #[wasm_bindgen]
 pub struct InMemKeyHandle(KeyHandle);
