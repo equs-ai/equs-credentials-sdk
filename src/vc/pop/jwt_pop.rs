@@ -6,12 +6,12 @@ use oid4vci::proof_of_possession::{
 use snafu::ResultExt;
 use ssi::claims::jws;
 use ssi::dids::DIDURLBuf;
-use tracing::{debug, instrument, trace, Level};
+use tracing::{Level, debug, instrument, trace};
 
 use crate::crypto;
 use crate::crypto::{Alg, SigningKey};
-use crate::did::universal::UniversalResolver;
 use crate::did::DIDURL;
+use crate::did::universal::UniversalResolver;
 use crate::nonce::Nonce;
 use crate::vc::pop;
 use crate::vc::pop::{
@@ -110,8 +110,8 @@ mod tests {
     use serde_json::{Map, Value};
 
     use crate::crypto::Key;
-    use crate::did::universal::UniversalResolver;
     use crate::did::DIDURL;
+    use crate::did::universal::UniversalResolver;
     use crate::inmem::kms::LocalKms;
     use crate::inmem::nonce::LocalNonceHandler;
     use crate::kms::KeyType;

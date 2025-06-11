@@ -1,8 +1,8 @@
 [package]
 name = "holder"
 version = "0.1.0"
-edition = "2021"
-rust-version = "1.82"
+edition = "2024"
+rust-version = "1.87"
 
 [dependencies]
 tokio = { version = "1.25.0", features = ["rt", "rt-multi-thread", "macros"] }

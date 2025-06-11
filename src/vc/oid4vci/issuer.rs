@@ -15,7 +15,7 @@ use crate::vc::oid4vci::{
     CredDefMetadata, CredentialOfferParams, CredentialRequest, CredentialResponse, IssuerMetadata,
     NonceResponse,
 };
-use crate::vc::{oid4vci as api, pop, Credential, HasVCFormat};
+use crate::vc::{Credential, HasVCFormat, oid4vci as api, pop};
 use async_trait::async_trait;
 use oauth2::Scope;
 use oid4vci::core::profiles::{
@@ -27,12 +27,12 @@ use oid4vci::metadata::credential_issuer::BatchCredentialIssuance;
 use oid4vci::proof_of_possession::{Proof as SpruceProof, ProofOfPossession};
 use oid4vci::types::CredentialConfigurationId;
 use serde_json::{Map, Value};
-use snafu::{ensure, ResultExt};
-use ssi::claims::jwt::decode_unverified;
+use snafu::{ResultExt, ensure};
 use ssi::claims::JwsBuf;
+use ssi::claims::jwt::decode_unverified;
 use std::str::FromStr;
 use time::Duration;
-use tracing::{debug, error, info, instrument, trace, warn, Level};
+use tracing::{Level, debug, error, info, instrument, trace, warn};
 use url::Url;
 
 const CRED_OFFER_URI: &str = "openid-credential-offer://";
@@ -545,7 +545,11 @@ where
             batch_size as usize >= proofs.len(),
             ProtocolSnafu::new(
                 ErrorType::InvalidCredentialRequest,
-                format!("Batch Credential issuance with batch size equal to {} is not supported. Please provide proof of possessions with size less or equal to {}", proofs.len(), batch_size),
+                format!(
+                    "Batch Credential issuance with batch size equal to {} is not supported. Please provide proof of possessions with size less or equal to {}",
+                    proofs.len(),
+                    batch_size
+                ),
             )
         );
 
@@ -656,19 +660,19 @@ mod tests {
     use crate::utils::http::test::mock_http_req_body;
     use crate::utils::test_utils::create_did_and_key_metadata;
     use crate::vc::claims::Claim;
+    use crate::vc::formats::GetDateTimeClaim;
     use crate::vc::formats::json_ld_vc::JsonLdAPI;
     use crate::vc::formats::sd_jwt_vc::SdJwtAPI;
-    use crate::vc::formats::GetDateTimeClaim;
+    use crate::vc::oid4vci::Error::Protocol;
     use crate::vc::oid4vci::issuer::TokenValidation::ByJwks;
     use crate::vc::oid4vci::metadata::convert_metadata;
     use crate::vc::oid4vci::tests::fixtures::{
-        sample_claims, sample_credential_definition, sample_credential_offer, MockNonceHandler,
-        SampleCredentialRequest, SampleIssuerMetadata, ACCESS_TOKEN, ACCESS_TOKEN_WITHOUT_SCOPE,
-        AUTH_URL, CRED_DEF_ID, ISSUER_URL, JWKS_URL, NONCE, SAMPLE_PROOF_JWT, SCOPE,
-        TOKEN_INTROSPECT_URL,
+        ACCESS_TOKEN, ACCESS_TOKEN_WITHOUT_SCOPE, AUTH_URL, CRED_DEF_ID, ISSUER_URL, JWKS_URL,
+        MockNonceHandler, NONCE, SAMPLE_PROOF_JWT, SCOPE, SampleCredentialRequest,
+        SampleIssuerMetadata, TOKEN_INTROSPECT_URL, sample_claims, sample_credential_definition,
+        sample_credential_offer,
     };
-    use crate::vc::oid4vci::Error::Protocol;
-    use crate::vc::oid4vci::{token_validation, AuthorizationCodeGrant};
+    use crate::vc::oid4vci::{AuthorizationCodeGrant, token_validation};
     use crate::vc::{Credential, HasClaims, VCFormat};
     use api::Issuer;
     use oauth2::http::{Method, StatusCode};
@@ -1241,8 +1245,8 @@ mod tests {
     #[should_panic(
         expected = "Credential request by providing 'credential_identifier' field is not supported"
     )]
-    async fn issue_credential_fails_when_credential_request_provided_by_credential_identifier_field(
-    ) {
+    async fn issue_credential_fails_when_credential_request_provided_by_credential_identifier_field()
+     {
         let claims = Claims::new();
 
         let issuer_service = issuer_service(None, None, Some(LocalNonceHandler::default())).await;

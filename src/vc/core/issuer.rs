@@ -15,23 +15,23 @@ use crate::vc::core::{
 
 use crate::vc::core::api::CredentialStatusInfo;
 
+use crate::vc::formats::API;
 use crate::vc::formats::json_ld_vc;
 use crate::vc::formats::json_ld_vc::JsonLdAPI;
 use crate::vc::formats::sd_jwt_vc;
 use crate::vc::formats::sd_jwt_vc::SdJwtAPI;
-use crate::vc::formats::API;
 
 use crate::did::universal::UniversalResolver;
-use crate::vc::pop::jwt_pop::JwtProofOfPossession;
 use crate::vc::pop::ProofOfPossession;
-use crate::vc::{pop, Credential, VCFormat};
+use crate::vc::pop::jwt_pop::JwtProofOfPossession;
+use crate::vc::{Credential, VCFormat, pop};
 use async_trait::async_trait;
 use iref::{IriRefBuf, UriBuf};
-use snafu::{ensure, ResultExt};
+use snafu::{ResultExt, ensure};
 use ssi::dids::DIDURLBuf;
 use std::marker::PhantomData;
 use std::str::FromStr;
-use tracing::{debug, info, instrument, trace, Level};
+use tracing::{Level, debug, info, instrument, trace};
 
 pub struct IssuerService<KH, KMS>
 where
@@ -98,7 +98,7 @@ where
                 return ProofFormatNotSupportedSnafu {
                     format: pop_fmt.to_string(),
                 }
-                .fail()
+                .fail();
             }
         };
         debug!(resolved_holder_did = ?hld_did);
@@ -148,7 +148,7 @@ where
                 return FormatNotSupportedSnafu {
                     format: vc_fmt.to_string(),
                 }
-                .fail()
+                .fail();
             }
         };
 
@@ -398,9 +398,9 @@ mod tests {
     use crate::kms::KeyType;
     use crate::utils::test_utils::create_did_and_key_metadata;
     use crate::vc::core::tests::fixtures::{
-        sample_cred_def, sample_issuer_metadata, CRED_DEF_ID, ISSUER_ID,
+        CRED_DEF_ID, ISSUER_ID, sample_cred_def, sample_issuer_metadata,
     };
-    use crate::vc::core::tests::utils::{random_nonce, CredTestCase};
+    use crate::vc::core::tests::utils::{CredTestCase, random_nonce};
     use crate::vc::core::{
         CredentialOfferContent, CredentialRequest, Error, Issuer, IssuerService, KeyMetadata,
     };

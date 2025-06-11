@@ -63,7 +63,7 @@ impl TryFrom<Credential> for CredentialData {
                 return Err(Error::OID4VCIInternal(format!(
                     "Unsupported credential format {}",
                     value.format()
-                )))
+                )));
             }
         };
 
@@ -86,13 +86,13 @@ impl TryFrom<CredentialData> for Credential {
             VCFormat::MsoMdoc => {
                 return Err(Error::OID4VPHolder(
                     "Unsupported credential format: MSO MDOC".to_string(),
-                ))
+                ));
             }
             _ => {
                 return Err(Error::OID4VCIInternal(format!(
                     "Unsupported credential format {}",
                     value.format
-                )))
+                )));
             }
         };
 

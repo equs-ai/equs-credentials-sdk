@@ -9,19 +9,19 @@ use crate::vc::claims::Claims;
 use crate::vc::core::api::PresentationRestrictionValue;
 use crate::vc::core::{PresentationInput, PresentationRestriction};
 use crate::vc::{
-    formats, ClaimFormatDesignation, Credential, HasClaims, HasVCFormat, JsonPath, Presentation,
-    RequestedPresentation,
+    ClaimFormatDesignation, Credential, HasClaims, HasVCFormat, JsonPath, Presentation,
+    RequestedPresentation, formats,
 };
 use common_macros::DebugError;
 use jsonpath_rust::JsonPathValue;
 use openid4vp::core::presentation_submission::NoClaimsDecoder;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value as Json, Value};
+use serde_json::{Value as Json, Value, json};
 use snafu::{Location, ResultExt, Snafu};
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::str::FromStr;
-use tracing::{instrument, Level};
+use tracing::{Level, instrument};
 use uuid::Uuid;
 // IDE removes Level from imports due to absence of usage. This way it is used now
 type Level_ = Level;
@@ -692,7 +692,7 @@ mod tests {
         input_descriptor::{ConstraintsField, InputDescriptor},
     };
     use rstest::rstest;
-    use serde_json::{json, Value};
+    use serde_json::{Value, json};
     use std::str::FromStr;
 
     #[tokio::test]

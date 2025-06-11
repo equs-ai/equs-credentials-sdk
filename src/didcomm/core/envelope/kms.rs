@@ -8,8 +8,8 @@ use std::marker::PhantomData;
 use std::str::FromStr;
 
 use crate::crypto::{Alg, Key};
-use crate::did::universal::UniversalResolver;
 use crate::did::JWKResolver;
+use crate::did::universal::UniversalResolver;
 use crate::kms;
 use crate::kms::{DerivativeKms, ECDH1PUParams, ECDHESParams, KeyHandle, KeyPair, KeyType, Kms};
 use crate::utils::jwk;

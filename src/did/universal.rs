@@ -7,20 +7,20 @@ use crate::did::{
 use crate::utils::wasm::{WasmNotSend, WasmNotSync};
 use async_trait::async_trait;
 use iref::Iri;
+use ssi::JWK;
 use ssi::dids::resolution::{Options, Output};
-use ssi::dids::{AnyDidMethod, DIDResolver as SpruceResolver, VerificationMethodDIDResolver, DID};
+use ssi::dids::{AnyDidMethod, DID, DIDResolver as SpruceResolver, VerificationMethodDIDResolver};
 use ssi::jwk::JWKResolver;
 use ssi::prelude::AnyMethod;
 use ssi::verification_methods::{
     ReferenceOrOwnedRef, ResolutionOptions, VerificationMethodResolutionError,
     VerificationMethodResolver,
 };
-use ssi::JWK;
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::ops::Deref;
 use std::sync::Arc;
-use tracing::{instrument, Level};
+use tracing::{Level, instrument};
 
 type Level_ = Level;
 
@@ -171,7 +171,7 @@ impl JWKResolver for UniversalResolver {
 mod tests {
     use crate::did::didkey::DIDKey;
     use crate::did::universal::{DIDResolver, UniversalResolver};
-    use crate::did::{DIDResolver as SpruceResolver, DocumentMetadata, ResolutionOutput, DID};
+    use crate::did::{DID, DIDResolver as SpruceResolver, DocumentMetadata, ResolutionOutput};
     use crate::inmem::kms::LocalKms;
     use crate::kms;
     use crate::kms::{CreateOptions, Kms};

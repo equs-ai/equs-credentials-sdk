@@ -1,8 +1,8 @@
 //! Proof-of-Possession
 
 use crate::crypto;
-use crate::did::universal::UniversalResolver;
 use crate::did::DIDURL;
+use crate::did::universal::UniversalResolver;
 use crate::nonce::Nonce;
 use async_trait::async_trait;
 use common_macros::DebugError;

@@ -2,8 +2,8 @@ use crate::utils;
 use crate::vc::{Credential, CredentialMetadata, JsCredential, JsCredentialEntry, VaultPagination};
 use agent_sdk::vault::{DeletingSnafu, PaginationParsingSnafu, ResolvingSnafu, StoringSnafu};
 use async_trait::async_trait;
-use wasm_bindgen::prelude::wasm_bindgen;
 use wasm_bindgen::JsValue;
+use wasm_bindgen::prelude::wasm_bindgen;
 
 #[wasm_bindgen]
 extern "C" {

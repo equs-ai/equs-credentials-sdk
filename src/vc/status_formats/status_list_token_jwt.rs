@@ -18,25 +18,25 @@ use snafu::ResultExt;
 
 use sd_jwt_rs::{ClaimsForSelectiveDisclosureStrategy, SDJWTIssuer, SDJWTSerializationFormat};
 use std::collections::HashMap;
-use tracing::{instrument, trace, Level};
+use tracing::{Level, instrument, trace};
 
 use crate::did::universal::UniversalResolver;
 use crate::http::HttpClient;
 use crate::utils::serde::get_time_based_claim;
-use crate::vc::formats::sd_jwt_vc::SdJwtAPI;
-use crate::vc::formats::VerifyOptions;
-use crate::vc::formats::API as VCFormatsAPI;
-use crate::vc::presentation_exchange::StatusSize;
-use crate::vc::status_formats::StatusListCreatingSnafu;
-use crate::vc::status_formats::API;
 use crate::vc::HasClaims;
+use crate::vc::formats::API as VCFormatsAPI;
+use crate::vc::formats::VerifyOptions;
+use crate::vc::formats::sd_jwt_vc::SdJwtAPI;
+use crate::vc::presentation_exchange::StatusSize;
+use crate::vc::status_formats::API;
+use crate::vc::status_formats::StatusListCreatingSnafu;
 use flate2::Compression;
 use oauth2::http;
 use oauth2::http::Method;
 use serde_json::Value;
+use ssi_status::token_status_list::BitString;
 use ssi_status::token_status_list::json::JsonStatusList;
 use ssi_status::token_status_list::json::Status;
-use ssi_status::token_status_list::BitString;
 use strum_macros::Display;
 use url::Url;
 

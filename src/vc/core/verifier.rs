@@ -1,24 +1,24 @@
 use crate::did::universal::UniversalResolver;
 use crate::http::HttpClient;
 use crate::nonce::Nonce;
+use crate::vc::VCStatus;
 use crate::vc::claims::Claims;
-use crate::vc::core::api::ParseSnafu;
 use crate::vc::core::Result;
+use crate::vc::core::api::ParseSnafu;
 use crate::vc::core::{
     ClaimsSnafu, CredentialStatusNotSupportedSnafu, FormatNotSupportedSnafu, VCSnafu,
     VCStatusSnafu, Verifier,
 };
 use crate::vc::formats::json_ld_vc::JsonLdAPI;
 use crate::vc::formats::sd_jwt_vc::SdJwtAPI;
-use crate::vc::formats::{VerifyOptions, API};
-use crate::vc::status_formats::status_list_token_jwt::StatusListJwt;
+use crate::vc::formats::{API, VerifyOptions};
 use crate::vc::status_formats::API as VCStatusFormatsAPI;
-use crate::vc::VCStatus;
+use crate::vc::status_formats::status_list_token_jwt::StatusListJwt;
 use crate::vc::{HasClaims, Presentation};
 use async_trait::async_trait;
 use snafu::ResultExt;
 use std::convert::TryFrom;
-use tracing::{instrument, Level};
+use tracing::{Level, instrument};
 
 pub struct VerifierService {
     verifier_id: String,
@@ -116,7 +116,7 @@ mod tests {
     use crate::did::universal::UniversalResolver;
     use crate::inmem::kms::LocalKms;
     use crate::vc::core::tests::fixtures::VERIFIER_ID;
-    use crate::vc::core::tests::utils::{random_nonce, CredTestCase};
+    use crate::vc::core::tests::utils::{CredTestCase, random_nonce};
     use crate::vc::core::{Error, Verifier, VerifierService};
     use rstest::rstest;
 

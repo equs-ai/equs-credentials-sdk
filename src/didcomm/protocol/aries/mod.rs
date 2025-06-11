@@ -7,13 +7,13 @@ pub mod problem_report;
 mod tests {
     use url::Url;
 
-    use crate::didcomm::agent::test_utils::setup_agent;
     use crate::didcomm::agent::AgentConfig;
-    use crate::didcomm::protocol::aries::issuance::holder::states::HolderState;
+    use crate::didcomm::agent::test_utils::setup_agent;
     use crate::didcomm::protocol::aries::issuance::holder::Holder;
+    use crate::didcomm::protocol::aries::issuance::holder::states::HolderState;
+    use crate::didcomm::protocol::aries::issuance::issuer::Issuer;
     use crate::didcomm::protocol::aries::issuance::issuer::fixture::credential_info;
     use crate::didcomm::protocol::aries::issuance::issuer::states::IssuerState;
-    use crate::didcomm::protocol::aries::issuance::issuer::Issuer;
     use crate::didcomm::protocol::outofband::InvitationConfig;
     use crate::inmem::storage::InMemStorage;
     use crate::inmem::vault::InMemVault;

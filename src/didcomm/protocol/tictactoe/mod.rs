@@ -10,7 +10,7 @@ use crate::storage;
 use common_macros::DebugError;
 use fsm::event::TicTacToeEvent;
 use serde::de::DeserializeOwned;
-use snafu::{ensure, Location, Snafu};
+use snafu::{Location, Snafu, ensure};
 use std::collections::HashSet;
 const PROTOCOL_NAME: &str = "tictactoe";
 const PROTOCOL_VERSION: &str = "1.0";

@@ -2,7 +2,7 @@ pub(crate) mod oid4vci;
 
 use agent_sdk::did::didkey::DIDKey;
 use agent_sdk::did::universal::UniversalResolver;
-use agent_sdk::did::{DIDResolver, DID};
+use agent_sdk::did::{DID, DIDResolver};
 use agent_sdk::inmem::kms::{KeyHandle, LocalKms};
 use agent_sdk::kms;
 use agent_sdk::kms::Kms;

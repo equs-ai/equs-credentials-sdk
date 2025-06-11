@@ -1,10 +1,10 @@
-use crate::vc::core::{JsCredential, JsCredentialMetadata, JsKeyMetadata};
 use crate::vc::JsonObject;
+use crate::vc::core::{JsCredential, JsCredentialMetadata, JsKeyMetadata};
 use agent_sdk::vc::metadata::{CredentialMetadataProcessor, DefaultMetadataProcessor};
 use agent_sdk::vc::{Credential, HasClaims};
 use napi_derive::napi;
-use serde::de::DeserializeOwned;
 use serde::Serialize;
+use serde::de::DeserializeOwned;
 use tracing::Level;
 use url::Url;
 

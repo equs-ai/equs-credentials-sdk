@@ -1,6 +1,6 @@
 //! did:peer method.
 
-use crate::crypto::{Key, JWK};
+use crate::crypto::{JWK, Key};
 use crate::did;
 use crate::did::universal::DIDResolver;
 use crate::did::{
@@ -8,11 +8,11 @@ use crate::did::{
     VerificationRelationshipType,
 };
 use async_trait::async_trait;
+use did_peer::peer_did::PeerDid;
+use did_peer::peer_did::numalgos::numalgo4::Numalgo4;
 use did_peer::peer_did::numalgos::numalgo4::construction_did_doc::{
     DidPeer4ConstructionDidDocument, DidPeer4VerificationMethod,
 };
-use did_peer::peer_did::numalgos::numalgo4::Numalgo4;
-use did_peer::peer_did::PeerDid;
 use did_peer::resolver::options::PublicKeyEncoding;
 use did_peer::resolver::{PeerDidResolutionOptions, PeerDidResolver};
 use did_resolver::did_doc::schema::did_doc::DidDocument;
@@ -22,15 +22,15 @@ use did_resolver::did_doc::schema::verification_method::{
     PublicKeyField, VerificationMethodKind, VerificationMethodType,
 };
 use did_resolver::shared_types::did_document_metadata::DidDocumentMetadata;
+use did_resolver::traits::resolvable::DidResolvable;
 use did_resolver::traits::resolvable::resolution_metadata::DidResolutionMetadata;
 use did_resolver::traits::resolvable::resolution_output::DidResolutionOutput;
-use did_resolver::traits::resolvable::DidResolvable;
 use serde_json::Value;
 use snafu::ensure;
-use ssi::dids::resolution::{Error, Options, Output};
 use ssi::dids::DIDMethod;
+use ssi::dids::resolution::{Error, Options, Output};
 use std::collections::HashSet;
-use tracing::{instrument, Level};
+use tracing::{Level, instrument};
 
 type DidUrl = did_parser_nom::DidUrl;
 pub type DidPeerService = Service;

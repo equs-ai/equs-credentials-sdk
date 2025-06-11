@@ -1,11 +1,11 @@
 use common_macros::DebugError;
 use lazy_static::lazy_static;
 use regex::{Match, Regex};
-use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
+use serde::{Deserialize, Deserializer, Serialize, Serializer, de};
 use snafu::Snafu;
 use std::fmt::Display;
 use strum_macros::EnumIter;
-use tracing::{debug, instrument, Level};
+use tracing::{Level, debug, instrument};
 
 #[derive(Snafu, DebugError)]
 #[non_exhaustive]

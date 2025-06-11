@@ -9,11 +9,11 @@ use sd_jwt_rs::{
 };
 use serde_json::{Map, Value};
 use snafu::ResultExt;
-use ssi::jwk::{JWKResolver, JWK};
+use ssi::jwk::{JWK, JWKResolver};
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::ops::Deref;
-use tracing::{instrument, trace, Level};
+use tracing::{Level, instrument, trace};
 use url::Url;
 
 use crate::crypto::{Key, Signer};
@@ -22,14 +22,14 @@ use crate::did::{DIDResolver, DIDURL};
 use crate::nonce::Nonce;
 use crate::utils;
 use crate::utils::b64;
-use crate::utils::serde::get_time_based_claim;
 use crate::utils::serde::Helpers;
+use crate::utils::serde::get_time_based_claim;
 use crate::vc::core::{PresentationInput, PresentationRestriction};
 use crate::vc::formats::vc::SD_JWT_VC;
 use crate::vc::formats::{
-    ClaimsSnafu, CredentialCreationSnafu, DIDSnafu, HasClaims, HasCredential, JWSSnafu,
+    API, ClaimsSnafu, CredentialCreationSnafu, DIDSnafu, HasClaims, HasCredential, JWSSnafu,
     KeyTypeNotSupportedSnafu, ParsingSnafu, PresentationSnafu, ProofValidationSnafu, SigningSnafu,
-    VerifyOptions, VerifyingSnafu, API,
+    VerifyOptions, VerifyingSnafu,
 };
 use crate::vc::formats::{GetDateTimeClaim, Result};
 
@@ -561,10 +561,10 @@ mod tests {
     use crate::utils::test_utils::{create_did_url_and_key_handle, failed_signer_key, no_jwk_key};
     use crate::vc::claims::Claim;
     use crate::vc::formats::sd_jwt_vc::{
-        Claims, Credential, SdJwtAPI, VCMetadata, VPMetadata, EXP_CLAIM, IAT_CLAIM, ISS_CLAIM,
-        NBF_CLAIM, SUB_CLAIM, VCT_CLAIM,
+        Claims, Credential, EXP_CLAIM, IAT_CLAIM, ISS_CLAIM, NBF_CLAIM, SUB_CLAIM, SdJwtAPI,
+        VCMetadata, VCT_CLAIM, VPMetadata,
     };
-    use crate::vc::formats::{Error, HasClaims, HasCredential, VerifyOptions, API};
+    use crate::vc::formats::{API, Error, HasClaims, HasCredential, VerifyOptions};
     use rstest::rstest;
     use serde_json::json;
     use std::ops::Add;

@@ -1,9 +1,9 @@
 //! Credential metadata and metadata processors.
 
-use snafu::{ensure, Location, Snafu};
+use snafu::{Location, Snafu, ensure};
 use ssi::json_ld::JsonLdNodeObject;
 use std::fmt::Debug;
-use tracing::{instrument, Level};
+use tracing::{Level, instrument};
 
 use crate::utils;
 use crate::vc::claims::Claim;
@@ -171,7 +171,7 @@ impl CredentialMetadataProcessor for DefaultMetadataProcessor {
                     format: "Credential with jwt-vc-json or jwt-vc-json-ld is not supported"
                         .to_string(),
                 }
-                .fail()?)
+                .fail()?);
             }
         }
 
@@ -204,8 +204,7 @@ fn validate_did_match(
         ResolvingSnafu {
             details: format!(
                 "Credential and key-metadata DIDs does not match: credential DID = {}, key metadata DID url = {}",
-                cred_did,
-                key_metadata.did_url
+                cred_did, key_metadata.did_url
             ),
         }
     );

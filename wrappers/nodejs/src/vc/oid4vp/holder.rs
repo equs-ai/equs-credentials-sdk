@@ -1,7 +1,7 @@
 use crate::utils::{from_json_object, parse_url_arg, to_json_object};
 use crate::vault::JsCredentialEntry;
-use crate::vc::core::JsKeyMetadata;
 use crate::vc::JsonObject;
+use crate::vc::core::JsKeyMetadata;
 use agent_sdk::vault::CredentialEntry;
 use agent_sdk::vc::oid4vp::{
     AuthorizationResponseMetadata, CredentialMapping, CredentialsMapping, ResolvedAuthRequest,

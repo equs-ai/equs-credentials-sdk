@@ -1,10 +1,10 @@
 //! did:key method.
 
-use tracing::{instrument, Level};
+use tracing::{Level, instrument};
 
 type Level_ = Level;
 
-use crate::did::{DidGenerationSnafu, KeyNotSupportedSnafu, Result, DID};
+use crate::did::{DID, DidGenerationSnafu, KeyNotSupportedSnafu, Result};
 use crate::{crypto, did};
 
 /// Enumerates general errors expected during `did:key` operations.

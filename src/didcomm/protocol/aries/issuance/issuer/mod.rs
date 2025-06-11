@@ -18,9 +18,9 @@ use crate::didcomm::core::key_mutex::KeyMutex;
 use crate::didcomm::core::message_type::parse_message_type;
 use crate::didcomm::core::protocol;
 use crate::didcomm::core::protocol::message_handler::MessageHandler;
+use crate::didcomm::protocol::aries::empty::EMPTY;
 use crate::didcomm::protocol::aries::empty::message::Empty;
 use crate::didcomm::protocol::aries::empty::protocol::EmptyProtocol;
-use crate::didcomm::protocol::aries::empty::EMPTY;
 use crate::didcomm::protocol::aries::issuance::issuer::states::{InitialState, IssuerState};
 use crate::didcomm::protocol::aries::issuance::message::credential_offer::CredentialOffer;
 use crate::didcomm::protocol::aries::issuance::message::credential_proposal::CredentialProposal;
@@ -28,11 +28,11 @@ use crate::didcomm::protocol::aries::issuance::message::credential_request::Cred
 use crate::didcomm::protocol::aries::issuance::protocol::IssuanceProtocol;
 use crate::didcomm::protocol::aries::issuance::{
     AgentSnafu, ConnectionSnafu, DidUrlResolutionSnafu, InvalidAttributesStructureSnafu,
-    InvalidStateSnafu, OOBSnafu, Result, StorageSnafu, PROPOSE_CREDENTIAL, REQUEST_CREDENTIAL,
+    InvalidStateSnafu, OOBSnafu, PROPOSE_CREDENTIAL, REQUEST_CREDENTIAL, Result, StorageSnafu,
 };
+use crate::didcomm::protocol::aries::problem_report::PROBLEM_REPORT;
 use crate::didcomm::protocol::aries::problem_report::message::ProblemReport;
 use crate::didcomm::protocol::aries::problem_report::protocol::ProblemReportProtocol;
-use crate::didcomm::protocol::aries::problem_report::PROBLEM_REPORT;
 use crate::didcomm::protocol::outofband::{InvitationConfig, OutOfBandV2Protocol};
 use crate::kms::{KeyHandle, KeyType, Kms};
 use crate::storage::Storage;
@@ -431,11 +431,11 @@ pub mod test {
     use crate::didcomm::connection::{ConnectionService, ConnectionState};
     use crate::didcomm::core::message_id::MessageId;
     use crate::didcomm::protocol::aries::common::message::thread::Thread;
+    use crate::didcomm::protocol::aries::issuance::issuer::Issuer;
     use crate::didcomm::protocol::aries::issuance::issuer::fixture::credential_info;
     use crate::didcomm::protocol::aries::issuance::issuer::states::{
         InitialState, IssuerState, OfferSentState,
     };
-    use crate::didcomm::protocol::aries::issuance::issuer::Issuer;
     use crate::didcomm::protocol::aries::issuance::message::credential_offer::CredentialOffer;
     use crate::didcomm::protocol::outofband::InvitationConfig;
     use crate::inmem::kms::LocalKms;

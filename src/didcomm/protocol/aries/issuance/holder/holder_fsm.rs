@@ -8,10 +8,10 @@ use crate::didcomm::connection::ConnectionService;
 use crate::didcomm::protocol::aries::common::message::status::Status;
 use crate::didcomm::protocol::aries::common::message::thread::Thread;
 use crate::didcomm::protocol::aries::empty::message::Empty;
+use crate::didcomm::protocol::aries::issuance::holder::HolderMessages;
 use crate::didcomm::protocol::aries::issuance::holder::states::{
     FinishedHolderState, HolderState, OfferReceivedState, RequestSentState,
 };
-use crate::didcomm::protocol::aries::issuance::holder::HolderMessages;
 use crate::didcomm::protocol::aries::issuance::message::credential::Credential;
 use crate::didcomm::protocol::aries::issuance::message::credential_offer::CredentialOffer;
 use crate::didcomm::protocol::aries::issuance::message::credential_request::CredentialRequest;
@@ -115,7 +115,9 @@ where
                     state_data.send_credential_reject(comment, &agent).await?
                 }
                 _ => {
-                    warn!("In this state Credential Issuance can accept only Credential and Problem Report");
+                    warn!(
+                        "In this state Credential Issuance can accept only Credential and Problem Report"
+                    );
                     HolderState::RequestSent(state_data)
                 }
             },
@@ -206,7 +208,7 @@ where
             HolderState::OfferReceived(_) | HolderState::RequestSent(_) => None,
             HolderState::Finished(ref status) => match &status.status {
                 Status::Success | Status::Undefined => None,
-                Status::Rejected(ref problem_report) => problem_report.as_ref(),
+                Status::Rejected(problem_report) => problem_report.as_ref(),
                 Status::Failed(problem_report) => Some(problem_report),
             },
         }

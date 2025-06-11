@@ -1,16 +1,16 @@
 use crate::utils::{from_json_object, to_json_object};
-use crate::vc::core::{JsCredential, JsCredentialMetadata, JsKeyMetadata};
 use crate::vc::JsonObject;
+use crate::vc::core::{JsCredential, JsCredentialMetadata, JsKeyMetadata};
 use agent_sdk::vc::core::KeyMetadata;
 use agent_sdk::vc::oid4vci::{
     AccessToken, AuthzFlow, CredentialOfferParams, CredentialResponseResolved, CredentialResult,
     Holder, IssuerMetadata, TokenResponse,
 };
-use agent_sdk::vc::{oid4vci, Credential, CredentialMetadata};
+use agent_sdk::vc::{Credential, CredentialMetadata, oid4vci};
 use async_trait::async_trait;
+use napi::Either;
 use napi::bindgen_prelude::Promise;
 use napi::threadsafe_function::{ErrorStrategy, ThreadsafeFunction};
-use napi::Either;
 use napi_derive::napi;
 use std::future::Future;
 use std::io;
@@ -90,7 +90,7 @@ impl OID4VCIHolder {
 
                         match result {
                             Ok(s) => Ok(s),
-                            Err(e) => Err(io::Error::new(io::ErrorKind::Other, format!("{:?}", e))),
+                            Err(e) => Err(io::Error::other(format!("{:?}", e))),
                         }
                     })
                 }),
@@ -157,7 +157,7 @@ impl OID4VCIHolder {
 
                         match result {
                             Ok(s) => Ok(s),
-                            Err(e) => Err(io::Error::new(io::ErrorKind::Other, format!("{:?}", e))),
+                            Err(e) => Err(io::Error::other(format!("{:?}", e))),
                         }
                     })
                 }),

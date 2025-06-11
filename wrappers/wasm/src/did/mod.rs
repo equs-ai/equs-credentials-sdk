@@ -2,8 +2,8 @@ use crate::kms::{JsKeyHandle, KeyHandle};
 use crate::utils;
 use agent_sdk::did::ResolutionOutput;
 use std::collections::HashSet;
-use wasm_bindgen::prelude::wasm_bindgen;
 use wasm_bindgen::JsError;
+use wasm_bindgen::prelude::wasm_bindgen;
 
 mod key;
 pub mod resolver;

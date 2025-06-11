@@ -8,11 +8,11 @@ pub mod fixtures {
 
     pub mod single_presentation {
         pub mod json_ld {
-            use crate::vc::claims::Claims;
-            use crate::vc::oid4vp::tests::utils::PresentationTestCase;
-            use crate::vc::oid4vp::ResolvedAuthRequest;
-            use crate::vc::presentation_exchange::PresentationSubmission;
             use crate::vc::ClaimFormatDesignation;
+            use crate::vc::claims::Claims;
+            use crate::vc::oid4vp::ResolvedAuthRequest;
+            use crate::vc::oid4vp::tests::utils::PresentationTestCase;
+            use crate::vc::presentation_exchange::PresentationSubmission;
             use serde_json::json;
 
             const PRESENTATION_SUBMISSION: &str = r#"{
@@ -241,8 +241,8 @@ pub mod fixtures {
                 }
             }
 
-            pub fn presentation_test_case_with_filter_by_cred_type_and_email(
-            ) -> PresentationTestCase {
+            pub fn presentation_test_case_with_filter_by_cred_type_and_email()
+            -> PresentationTestCase {
                 let credential_data: Vec<Claims> = vec![
                     credential_1(),
                     credential_2(),
@@ -341,8 +341,8 @@ pub mod fixtures {
                 }
             }
 
-            pub fn presentation_test_case_with_constraints_for_particular_fields(
-            ) -> PresentationTestCase {
+            pub fn presentation_test_case_with_constraints_for_particular_fields()
+            -> PresentationTestCase {
                 let credential_data: Vec<Claims> = vec![
                     credential_1(),
                     credential_2(),
@@ -491,8 +491,8 @@ pub mod fixtures {
                     response_metadata: Default::default(),
                 }
             }
-            pub fn presentation_test_case_with_constraints_with_invalid_value_for_pattern(
-            ) -> PresentationTestCase {
+            pub fn presentation_test_case_with_constraints_with_invalid_value_for_pattern()
+            -> PresentationTestCase {
                 let cred: Claims = json!({
                     "type": vec![
                         "VerifiableCredential".to_string(),
@@ -556,8 +556,8 @@ pub mod fixtures {
                     response_metadata: Default::default(),
                 }
             }
-            pub fn presentation_test_case_with_constraints_with_invalid_value_for_const(
-            ) -> PresentationTestCase {
+            pub fn presentation_test_case_with_constraints_with_invalid_value_for_const()
+            -> PresentationTestCase {
                 let cred: Claims = json!({
                     "type": vec![
                         "VerifiableCredential".to_string(),
@@ -613,8 +613,8 @@ pub mod fixtures {
                     response_metadata: Default::default(),
                 }
             }
-            pub fn presentation_test_case_with_constraints_with_absent_required_claim(
-            ) -> PresentationTestCase {
+            pub fn presentation_test_case_with_constraints_with_absent_required_claim()
+            -> PresentationTestCase {
                 let cred: Claims = json!({
                     "type": vec![
                         "VerifiableCredential".to_string(),
@@ -1018,8 +1018,8 @@ pub mod fixtures {
                 }
             }
 
-            pub fn presentation_test_case_with_filter_by_cred_type_and_email(
-            ) -> PresentationTestCase {
+            pub fn presentation_test_case_with_filter_by_cred_type_and_email()
+            -> PresentationTestCase {
                 let credential_data: Vec<Claims> = vec![
                     credential_1(),
                     credential_2(),
@@ -1110,8 +1110,8 @@ pub mod fixtures {
                 }
             }
 
-            pub fn presentation_test_case_with_constraints_for_particular_fields(
-            ) -> PresentationTestCase {
+            pub fn presentation_test_case_with_constraints_for_particular_fields()
+            -> PresentationTestCase {
                 let credential_data: Vec<Claims> = vec![
                     credential_1(),
                     credential_2(),
@@ -1253,8 +1253,8 @@ pub mod fixtures {
                     response_metadata: Default::default(),
                 }
             }
-            pub fn presentation_test_case_with_constraints_with_invalid_value_for_pattern(
-            ) -> PresentationTestCase {
+            pub fn presentation_test_case_with_constraints_with_invalid_value_for_pattern()
+            -> PresentationTestCase {
                 let cred: Claims = json!({
                     "vct": "https://credentials.example.com/employee_credential",
                     "name": "John",
@@ -1311,8 +1311,8 @@ pub mod fixtures {
                     response_metadata: Default::default(),
                 }
             }
-            pub fn presentation_test_case_with_constraints_with_invalid_value_for_const(
-            ) -> PresentationTestCase {
+            pub fn presentation_test_case_with_constraints_with_invalid_value_for_const()
+            -> PresentationTestCase {
                 let cred: Claims = json!({
                     "vct": "https://credentials.example.com/employee_credential",
                     "name": "John",
@@ -1365,8 +1365,8 @@ pub mod fixtures {
                     response_metadata: Default::default(),
                 }
             }
-            pub fn presentation_test_case_with_constraints_with_absent_required_claim(
-            ) -> PresentationTestCase {
+            pub fn presentation_test_case_with_constraints_with_absent_required_claim()
+            -> PresentationTestCase {
                 let cred: Claims = json!({
                     "vct": "https://credentials.example.com/employee_credential",
                     "name": "John",
@@ -2000,8 +2000,8 @@ pub mod utils {
     use crate::vault::{CredentialEntry, Vault};
     use crate::vc;
     use crate::vc::claims::Claims;
-    use crate::vc::core::api::PresentationRestrictionValue;
     use crate::vc::core::KeyMetadata;
+    use crate::vc::core::api::PresentationRestrictionValue;
     use crate::vc::formats::json_ld_vc::JsonLdAPI;
     use crate::vc::formats::sd_jwt_vc::{SdJwtAPI, VPMetadata};
     use crate::vc::formats::{json_ld_vc, sd_jwt_vc};
@@ -2016,21 +2016,21 @@ pub mod utils {
     };
     use crate::vc::presentation_exchange::PresentationSubmission;
     use crate::vc::{
-        presentation_exchange, ClaimFormatDesignation, Credential, JsonLdAPIVCMetadata,
-        VCFormatsAPI, VCMetadata,
+        ClaimFormatDesignation, Credential, JsonLdAPIVCMetadata, VCFormatsAPI, VCMetadata,
+        presentation_exchange,
     };
     use async_trait::async_trait;
     use iref::UriBuf;
     use oauth2::http::{Method, Request, Response, StatusCode};
     use openid4vp::core::metadata::parameters::SubjectSyntaxTypesSupported;
     use openid4vp::core::object::UntypedObject;
-    use openid4vp::core::response::parameters::IdToken;
     use openid4vp::core::response::PostRedirection;
+    use openid4vp::core::response::parameters::IdToken;
     use openid4vp::core::util::http::AsyncHttpClient;
     use openid4vp::wallet::{IdTokenParams, Wallet};
-    use sd_jwt_rs::utils::decode_sd_jwt;
     use sd_jwt_rs::SDJWTSerializationFormat;
-    use serde_json::{json, Value};
+    use sd_jwt_rs::utils::decode_sd_jwt;
+    use serde_json::{Value, json};
     use ssi::dids::DIDURLBuf;
     use ssi::json_ld::IriRefBuf;
     use std::collections::HashMap;
@@ -2286,10 +2286,12 @@ pub mod utils {
 
             match vp_token_value {
                 Value::String(token) => {
-                    vec![decode_sd_jwt(token, SDJWTSerializationFormat::Compact)
-                        .unwrap()
-                        .try_into()
-                        .unwrap()]
+                    vec![
+                        decode_sd_jwt(token, SDJWTSerializationFormat::Compact)
+                            .unwrap()
+                            .try_into()
+                            .unwrap(),
+                    ]
                 }
                 Value::Array(tokens) => tokens
                     .into_iter()

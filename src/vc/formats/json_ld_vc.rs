@@ -5,21 +5,22 @@ use crate::nonce::Nonce;
 use crate::vc::claims::{Claim, Claims};
 use crate::vc::core::PresentationInput;
 use crate::vc::formats::{
-    ClaimsSnafu, CredentialCreationSnafu, CryptoSuiteCreationSnafu, DIDSnafu, GetDateTimeClaim,
-    HasClaims, HasCredential, IriBufParsingSnafu, IriRefParsingSnafu, JsonPointerParsingSnafu,
-    JsonSnafu, KeyTypeNotSupportedSnafu, MultipleCredentialsNotSupportedSnafu,
-    MultipleSubjectNotSupportedSnafu, NoCredentialSnafu, ParsingSnafu, PresentationSnafu, Result,
-    SigningSnafu, SpruceSigningSnafu, VerifyOptions, VerifyingSnafu, API,
+    API, ClaimsSnafu, CredentialCreationSnafu, CryptoSuiteCreationSnafu, DIDSnafu,
+    GetDateTimeClaim, HasClaims, HasCredential, IriBufParsingSnafu, IriRefParsingSnafu,
+    JsonPointerParsingSnafu, JsonSnafu, KeyTypeNotSupportedSnafu,
+    MultipleCredentialsNotSupportedSnafu, MultipleSubjectNotSupportedSnafu, NoCredentialSnafu,
+    ParsingSnafu, PresentationSnafu, Result, SigningSnafu, SpruceSigningSnafu, VerifyOptions,
+    VerifyingSnafu,
 };
 use async_trait::async_trait;
 use chrono::FixedOffset;
-use serde::de::{DeserializeOwned, IntoDeserializer};
 use serde::Deserialize;
-use snafu::{ensure, ResultExt};
+use serde::de::{DeserializeOwned, IntoDeserializer};
+use snafu::{ResultExt, ensure};
 use ssi::claims::data_integrity::{AnyInputSuiteOptions, AnySelectionOptions, AnySignatureOptions};
+use ssi::claims::vc::AnySpecializedJsonCredential;
 use ssi::claims::vc::syntax::IdOr;
 use ssi::claims::vc::v2::CREDENTIALS_V2_CONTEXT_IRI;
-use ssi::claims::vc::AnySpecializedJsonCredential;
 use ssi::claims::{
     MessageSignatureError, SignatureError, VerifiableClaims, VerificationParameters,
 };
@@ -27,7 +28,7 @@ use ssi::dids::ssi_json_ld;
 use ssi::json_ld::iref::UriBuf;
 use ssi::json_ld::syntax::ContextEntry::IriRef;
 use ssi::json_ld::{
-    IriBuf, IriRefBuf, JsonLdObject, CREDENTIALS_V1_CONTEXT, CREDENTIALS_V2_CONTEXT,
+    CREDENTIALS_V1_CONTEXT, CREDENTIALS_V2_CONTEXT, IriBuf, IriRefBuf, JsonLdObject,
 };
 use ssi::prelude::{
     AnyJsonPresentation, AnyMethod, AnySuite, CryptographicSuite, DataIntegrity, ProofOptions,
@@ -40,7 +41,7 @@ use std::borrow::Cow;
 use std::str::FromStr;
 use std::sync::Arc;
 use time::Duration;
-use tracing::{instrument, trace, Level};
+use tracing::{Level, instrument, trace};
 
 pub type Credential = AnySpecializedJsonCredential<Claims>;
 pub type VC = DataIntegrity<Credential, AnySuite>;
@@ -907,7 +908,7 @@ mod tests {
     use crate::vc::claims::Claim;
     use crate::vc::formats::Error;
     use rstest::rstest;
-    use serde_json::{json, Value};
+    use serde_json::{Value, json};
 
     #[rstest]
     #[case::p256(KeyType::P256, "EcdsaSecp256r1Signature2019")]

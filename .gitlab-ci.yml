@@ -19,7 +19,7 @@ stages:
   - release
 
 variables:
-  RUST_VERSION: "1.82.0"
+  RUST_VERSION: "1.87.0"
   NODE_VERSION: "20.18.0"
   VERSION_REGEX: /^[0-9]+\.[0-9]+\.[0-9]+$/
   REGISTRY: "git.slock.it/api/v4/projects/1387/packages/npm/"
@@ -103,11 +103,9 @@ dependency_scanning:
     when: always
     reports:
       dependency_scanning: gl-dependency-scanning-report.json
-  #  only:
-  #    - merge_requests
-  #    - main
-  rules:
-    - when: never
+  only:
+    - merge_requests
+    - main
 
 # Build stage
 

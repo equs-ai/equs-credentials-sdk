@@ -1,5 +1,5 @@
 use agent_sdk::vc::claims::{Claim, Claims};
-use agent_sdk::vc::dcql::{DCQLCredential, DCQL};
+use agent_sdk::vc::dcql::{DCQL, DCQLCredential};
 use agent_sdk::vc::presentation_exchange::PresentationDefinition;
 use agent_sdk::vc::{JsonLdAPIVCMetadata, VCMetadata};
 use openid4vp::core::input_descriptor::InputDescriptor;
@@ -264,18 +264,15 @@ pub fn single_jsonld_presentation_case() -> Oid4VpTestCase {
 
     let validate: Box<ValidateClaimsFunc> = Box::new(|claims| {
         assert_eq!(
-            &claims["vp_token"]["residentCard"]["verifiableCredential"]["credentialSubject"]
-                ["givenName"],
+            &claims["vp_token"]["residentCard"]["verifiableCredential"]["credentialSubject"]["givenName"],
             &Claim::String("John".to_string())
         );
         assert_eq!(
-            &claims["vp_token"]["residentCard"]["verifiableCredential"]["credentialSubject"]
-                ["familyName"],
+            &claims["vp_token"]["residentCard"]["verifiableCredential"]["credentialSubject"]["familyName"],
             &Claim::String("Doe".to_string())
         );
         assert_eq!(
-            &claims["vp_token"]["residentCard"]["verifiableCredential"]["credentialSubject"]
-                ["birthDate"],
+            &claims["vp_token"]["residentCard"]["verifiableCredential"]["credentialSubject"]["birthDate"],
             &Claim::String("09/09/1989".to_string())
         );
     });

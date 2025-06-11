@@ -8,8 +8,9 @@ use agent_sdk::kms;
 use agent_sdk::kms::Kms;
 use agent_sdk::reqwest::builder::ReqwestClientBuilder;
 use agent_sdk::vault::CredentialEntry;
+use agent_sdk::vc::HasClaims;
 use agent_sdk::vc::core::KeyMetadata;
-use agent_sdk::vc::dcql::{DCQLCredential, DCQL};
+use agent_sdk::vc::dcql::{DCQL, DCQLCredential};
 use agent_sdk::vc::metadata::{CredentialMetadataProcessor, DefaultMetadataProcessor};
 use agent_sdk::vc::oid4vci::{
     AuthzFlow, CredentialOfferParams, CredentialResponseResolved, CredentialResult,
@@ -24,8 +25,7 @@ use agent_sdk::vc::oid4vp::{
 use agent_sdk::vc::oid4vp::{CredentialMapping, Holder as HolderVp};
 use agent_sdk::vc::oid4vp::{IdTokenMetadata, Verifier};
 use agent_sdk::vc::presentation_exchange::{PresentationDefinition, PresentationSubmission};
-use agent_sdk::vc::HasClaims;
-use agent_sdk::vc::{oid4vci, oid4vp, Credential};
+use agent_sdk::vc::{Credential, oid4vci, oid4vp};
 use oauth2::{AccessToken, TokenResponse as _TokenResponse};
 use reqwest::Url;
 use serde_json::json;
@@ -171,7 +171,9 @@ async fn request_credential(
 }
 
 async fn run_presentation_flow(holder: impl HolderVp, kms: LocalKms) {
-    println!("Please enter the number to execute presentation flow:\n 1 - Cross Device\n 2 - Same device");
+    println!(
+        "Please enter the number to execute presentation flow:\n 1 - Cross Device\n 2 - Same device"
+    );
     let mut input = input_from_console("Failed to read selected presentation flow");
 
     match input.as_str() {
@@ -198,8 +200,12 @@ async fn cross_device_presentation_flow(holder: impl HolderVp, kms: LocalKms) {
     println!("1. Holder tries to parse authorization/presentation request of Verifier");
 
     println!("Please enter the presentation flow request URI type from the following:");
-    println!("- If you  want to use DCQL flow, go to http://localhost:8098/request_uri/dcql and enter request URI from there");
-    println!("- If you want to use PresentationDefinition flow, go to http://localhost:8098/request_uri and enter request URI from there");
+    println!(
+        "- If you  want to use DCQL flow, go to http://localhost:8098/request_uri/dcql and enter request URI from there"
+    );
+    println!(
+        "- If you want to use PresentationDefinition flow, go to http://localhost:8098/request_uri and enter request URI from there"
+    );
     println!("Enter the request URI here:");
     let input = input_from_console("Failed to get the flow request URI");
     let request_uri = input
@@ -245,7 +251,7 @@ async fn same_device_presentation_flow(holder: impl HolderVp, kms: LocalKms) {
     let auth_resp_config = AuthResponseOptions {
         type_: ResponseType::VpToken,
         mode: ResponseMode::Fragment,
-        submission_uri: redirect_uri,
+        submission_uri: redirect_uri.to_owned(),
         state: None,
     };
     let pass_auth_req_object = PassAuthRequestObject::ByValue;
@@ -295,7 +301,9 @@ async fn revocation_flow(kms: LocalKms, vault: InMemVault) {
     match input.as_str() {
         "y" => {
             let client = reqwest::Client::new();
-            println!("Sending http 'GET' request to http://localhost:8080/revoke to revoke SD-JWT credential");
+            println!(
+                "Sending http 'GET' request to http://localhost:8080/revoke to revoke SD-JWT credential"
+            );
             let resp = client
                 .get("http://localhost:8088/revoke")
                 .send()
@@ -368,7 +376,9 @@ async fn present_credential(
     kms: LocalKms,
     auth_request: &ResolvedAuthRequest,
 ) -> Option<Url> {
-    println!("Please enter the number to send presentation by:\n 1 - Auto\n 2 - Selecting from the credential list");
+    println!(
+        "Please enter the number to send presentation by:\n 1 - Auto\n 2 - Selecting from the credential list"
+    );
 
     let mut input = input_from_console("Failed to read presentation mode");
 
@@ -402,7 +412,9 @@ async fn present_credential(
                 }
             }
 
-            println!("Please enter the selected credential by splitting \"id\" and selected \"index\" with \"=\" : for example: \"Identity-1=0,Identity-2=1,...\"`");
+            println!(
+                "Please enter the selected credential by splitting \"id\" and selected \"index\" with \"=\" : for example: \"Identity-1=0,Identity-2=1,...\"`"
+            );
 
             input = input_from_console("Failed to read the selected credential");
             let selected = collect_selected_cred_entries(input, &credentials);
@@ -548,7 +560,9 @@ async fn oid4vci_holder(
 }
 
 async fn get_issuer_discovery_mode() -> (IssuerDiscovery, Option<CredentialOfferParams>) {
-    println!("Please enter the number to initialize holder from:\n 1 - Issuer URL\n 2 - By resolving a credential Offer");
+    println!(
+        "Please enter the number to initialize holder from:\n 1 - Issuer URL\n 2 - By resolving a credential Offer"
+    );
     let mut input = input_from_console("Failed to read holder initialization mode");
 
     match input.as_str() {

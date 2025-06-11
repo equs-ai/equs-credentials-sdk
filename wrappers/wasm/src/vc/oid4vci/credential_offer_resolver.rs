@@ -3,8 +3,8 @@ use crate::utils::convert_to_opaque_object_unchecked;
 use crate::vc::oid4vci::OID4VCICredentialOffer;
 use agent_sdk::vc::oid4vci::CredentialOfferResolver;
 use url::Url;
-use wasm_bindgen::prelude::wasm_bindgen;
 use wasm_bindgen::JsError;
+use wasm_bindgen::prelude::wasm_bindgen;
 
 /// A Credential Offer resolver.
 ///

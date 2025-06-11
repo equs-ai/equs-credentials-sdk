@@ -5,15 +5,15 @@ use serde::{Deserialize, Serialize};
 use snafu::{IntoError, Snafu};
 use std::fmt::Debug;
 use std::future::Future;
-use tracing::{instrument, Level};
+use tracing::{Level, instrument};
 
 use crate::http::HttpError;
 use crate::utils::wasm::{WasmNotSend, WasmNotSync};
 use crate::vc::claims::Claims;
-use crate::vc::core::api::CredentialStatusInfo;
 use crate::vc::core::KeyMetadata;
+use crate::vc::core::api::CredentialStatusInfo;
 use crate::vc::oid4vci::internal_error::RequestSnafu;
-use crate::vc::oid4vci::{metadata, InternalError, ProtocolError};
+use crate::vc::oid4vci::{InternalError, ProtocolError, metadata};
 use crate::vc::{Credential, CredentialMetadata};
 
 type Level_ = Level;

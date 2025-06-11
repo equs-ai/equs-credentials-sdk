@@ -1,5 +1,5 @@
-use agent_sdk::reqwest::builder::ReqwestClientBuilder;
 use agent_sdk::reqwest::ReqwestClient;
+use agent_sdk::reqwest::builder::ReqwestClientBuilder;
 use agent_sdk::vc::oid4vci::CredentialOfferResolver as ASDKCredentialOfferResolver;
 use agent_sdk::vc::oid4vp::Url;
 

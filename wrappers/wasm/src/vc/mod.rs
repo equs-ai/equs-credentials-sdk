@@ -1,7 +1,7 @@
 use agent_sdk::vc::VCFormat;
 use serde::{Deserialize, Serialize};
-use wasm_bindgen::prelude::wasm_bindgen;
 use wasm_bindgen::JsError;
+use wasm_bindgen::prelude::wasm_bindgen;
 
 mod oid4vci;
 mod oid4vp;

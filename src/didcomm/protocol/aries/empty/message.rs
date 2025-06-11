@@ -28,7 +28,7 @@ impl Empty {
 
     pub fn add_ack_id(mut self, id: String) -> Self {
         match &mut self.ack {
-            Some(ref mut v) => v.push(id),
+            Some(v) => v.push(id),
             None => self.ack = Some(vec![id]),
         }
         self
@@ -36,7 +36,7 @@ impl Empty {
 
     pub fn add_ack_ids(mut self, mut ids: Vec<String>) -> Self {
         match &mut self.ack {
-            Some(ref mut v) => v.append(&mut ids),
+            Some(v) => v.append(&mut ids),
             None => self.ack = Some(ids),
         }
         self

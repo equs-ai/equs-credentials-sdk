@@ -8,7 +8,7 @@ use didcomm::secrets::KeyManagementService;
 use snafu::{Location, ResultExt, Snafu};
 use std::ops::Deref;
 use std::sync::Arc;
-use tracing::{instrument, Level};
+use tracing::{Level, instrument};
 
 use crate::did::universal::UniversalResolver;
 use crate::kms::KeyHandle;
@@ -209,7 +209,7 @@ impl EnvelopeService {
 mod test {
     use crate::did::didpeer::{DIDPeer, DidPeerService};
     use crate::did::universal::UniversalResolver;
-    use crate::did::{DIDResolver, VerificationMethodKey, VerificationRelationshipType, DID};
+    use crate::did::{DID, DIDResolver, VerificationMethodKey, VerificationRelationshipType};
     use crate::didcomm::core::envelope::{EnvelopeService, Message, UnpackOptions};
     use crate::inmem::kms::LocalKms;
     use crate::kms;
@@ -265,10 +265,12 @@ mod test {
         assert!(metadata.encrypted);
         assert!(metadata.authenticated);
         assert!(metadata.encrypted_from_kid.is_some());
-        assert!(metadata
-            .encrypted_from_kid
-            .unwrap()
-            .starts_with(&sender_did));
+        assert!(
+            metadata
+                .encrypted_from_kid
+                .unwrap()
+                .starts_with(&sender_did)
+        );
 
         assert_eq!(msg.from, Some(sender_did));
         assert_eq!(msg.to, Some(vec![recipient_did]));

@@ -3,7 +3,7 @@ use crate::utils::http::{MIME_TYPE_FORM_URLENCODED, MIME_TYPE_JSON};
 use crate::utils::logs::sanitize_log_msg;
 use common_macros::DebugError;
 use oauth2::basic::BasicTokenType;
-use oauth2::http::header::{InvalidHeaderValue, ACCEPT, AUTHORIZATION, CONTENT_TYPE};
+use oauth2::http::header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE, InvalidHeaderValue};
 use oauth2::http::uri::InvalidUri;
 use oauth2::http::{HeaderMap, HeaderValue, Method, Request, StatusCode, Uri};
 use oauth2::{
@@ -11,11 +11,11 @@ use oauth2::{
 };
 use openidconnect::core::CoreJsonWebKey;
 use openidconnect::{DiscoveryError, JsonWebKey, JsonWebKeyId, JsonWebKeySet, JsonWebKeySetUrl};
-use snafu::{ensure, Location, ResultExt, Snafu};
+use snafu::{Location, ResultExt, Snafu, ensure};
 use std::fmt::Debug;
 use std::str::FromStr;
 use std::sync::Arc;
-use tracing::{debug, instrument, trace, Level};
+use tracing::{Level, debug, instrument, trace};
 use url::Url;
 
 pub type Result<T> = core::result::Result<T, Error>;
@@ -246,10 +246,10 @@ mod tests {
     use crate::http::MockHttpClient;
     use crate::utils::http::test::mock_http_fn;
     use crate::vc::oid4vci::tests::fixtures::{
-        sample_introspect_response, sample_jwks, JWKS_URL, TOKEN_INTROSPECT_URL,
+        JWKS_URL, TOKEN_INTROSPECT_URL, sample_introspect_response, sample_jwks,
     };
     use oauth2::HttpResponse;
-    use serde_json::{json, Value};
+    use serde_json::{Value, json};
 
     const TOKEN: &str = "eyJhbGciOiJSUzI1NiIsInR5cCIgOiAiSldUIiwia2lkIiA6ICJQY2xZUDZ2UmsxTHBLRGZqU08yRGEzNXJtR1JmaTkzNjJDcFJFeUpmOHAwIn0.eyJleHAiOjE3MjY4NDY2NDcsImlhdCI6MTcyNjgxMDgzOSwiYXV0aF90aW1lIjoxNzI2ODEwNjQ3LCJqdGkiOiJlNWIxZjFjNC1kYjEzLTRkODgtYmJkMi0yN2NkMDkxYzc1ZGEiLCJpc3MiOiJodHRwOi8vbG9jYWxob3N0OjgwODAvaWRwL3JlYWxtcy9waWQtaXNzdWVyLXJlYWxtIiwic3ViIjoiNjBiOGJhNWYtYzczZi00OTc2LWIwZGEtNDhkMGU1MzMzNWRlIiwidHlwIjoiQmVhcmVyIiwiYXpwIjoid2FsbGV0LWRldiIsInNpZCI6IjFmZTg0ZWI3LTE5MTEtNDBlYi04ZGNmLWRiMzYwN2E2OGQ4ZiIsImFsbG93ZWQtb3JpZ2lucyI6WyIvKiJdLCJzY29wZSI6IlNEX0pXVF9jcmVkX3Njb3BlIn0.Sj6R0q7nnumcspoZOMS6KhOFf4yCia9KAF4uSjUShLq4xUgO-GaprdFjk3zX6koNr1dj_fVdi0Kq0Msxm3JkgJ4tNJRksF_n2pGhgfTfsGW6llZr_ZcO_bYugWYbbyUuw88QqGVhVjdiGfffkg3YC6UP-2-nK96BgQGu9UmbSxSwYYeZdoCc1vqUglN_0zwZ3FSmZ9J12QBb7rvK-lPPMhKeXByaHyuz_MtQguEmi0GOg4J1v3DHQZz5aFEG7W9-zYKRVO3EXHgolOrzobnNgQyfpE0SzHkokLKrEddudbSATvUAT9DXihXHYCRPouf3pnSpV3WPl6Kxh46RdfNw-w";
 

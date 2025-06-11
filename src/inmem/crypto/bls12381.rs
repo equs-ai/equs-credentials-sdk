@@ -1,7 +1,7 @@
 use crate::crypto;
 use crate::crypto::{
-    Alg, BbsParameters, BbsVerifyingParameters, IncorrectKeySnafu, Key, Signer, SigningKey,
-    SigningOptions, SigningSnafu, VerificationSnafu, Verifier, VerifyingKey, VerifyingOptions, JWK,
+    Alg, BbsParameters, BbsVerifyingParameters, IncorrectKeySnafu, JWK, Key, Signer, SigningKey,
+    SigningOptions, SigningSnafu, VerificationSnafu, Verifier, VerifyingKey, VerifyingOptions,
 };
 use async_trait::async_trait;
 use ssi::bbs::BBSplusSecretKey;
@@ -145,7 +145,7 @@ impl Verifier for Bls12381 {
 }
 
 impl crypto::Suite for Bls12381 {
-    fn gen() -> Vec<u8> {
+    fn generate() -> Vec<u8> {
         let mut rng = rand::rngs::OsRng {};
         ssi::bbs::generate_secret_key(&mut rng).to_bytes().to_vec()
     }

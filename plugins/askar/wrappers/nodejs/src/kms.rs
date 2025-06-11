@@ -113,7 +113,6 @@ impl AskarKeyHandle {
     pub fn pub_key(&self) -> Result<Vec<u8>> {
         self.inner
             .pub_key()
-            .map(Into::into)
             .map_err(|e| Error::from_reason(e.to_string()))
     }
 

@@ -308,12 +308,14 @@ pub mod test_util {
 
         assert_eq!(
             serde_json::to_value(find_res).unwrap(),
-            serde_json::Value::Array(vec![serde_json::to_value(CredentialEntry {
-                credential: Credential::SdJwt(cred1),
-                kid: "1234".into(),
-                id: actual_resp1.id
-            })
-            .unwrap()])
+            serde_json::Value::Array(vec![
+                serde_json::to_value(CredentialEntry {
+                    credential: Credential::SdJwt(cred1),
+                    kid: "1234".into(),
+                    id: actual_resp1.id
+                })
+                .unwrap()
+            ])
         );
 
         vault.delete_credential(&cred1_id).await.unwrap();

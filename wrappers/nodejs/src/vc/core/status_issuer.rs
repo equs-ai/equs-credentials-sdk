@@ -1,7 +1,7 @@
 use crate::kms::JsKms;
 use crate::vc::core::JsStatusIssuerMetadata;
 use crate::vc::core::{JsStatusList, JsVCStatusesData};
-use agent_sdk::vc::core::{status_issuer::StatusIssuerService, StatusIssuer, StatusIssuerMetadata};
+use agent_sdk::vc::core::{StatusIssuer, StatusIssuerMetadata, status_issuer::StatusIssuerService};
 use napi::Error;
 use napi_derive::napi;
 

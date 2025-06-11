@@ -4,8 +4,8 @@ use crate::didcomm::core::message_type::{MessageType, MessageTypePrefix};
 use crate::didcomm::protocol::aries::common::message::thread::Thread;
 use crate::didcomm::protocol::aries::issuance::message::credential_preview::CredentialPreviewData;
 use crate::didcomm::protocol::aries::issuance::{
-    Error, InvalidAttachmentEncodingSnafu, InvalidAttributesStructureSnafu, ParseSnafu, Result,
-    OFFER_CREDENTIAL, PROTOCOL_NAME, PROTOCOL_VERSION,
+    Error, InvalidAttachmentEncodingSnafu, InvalidAttributesStructureSnafu, OFFER_CREDENTIAL,
+    PROTOCOL_NAME, PROTOCOL_VERSION, ParseSnafu, Result,
 };
 use crate::utils::http::MimeType;
 use crate::vc::formats::json_ld_vc;
@@ -169,8 +169,8 @@ threadlike!(CredentialOffer);
 pub mod tests {
     use super::*;
     use crate::didcomm::protocol::aries::issuance::message::attachment_formats;
-    use base64::prelude::BASE64_STANDARD;
     use base64::Engine;
+    use base64::prelude::BASE64_STANDARD;
     use serde_json::json;
 
     #[test]

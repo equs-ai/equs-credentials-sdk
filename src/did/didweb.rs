@@ -2,25 +2,25 @@
 
 use crate::crypto::JWK;
 use crate::did::{
-    DIDDoc, DidBufCreationSnafu, DidDocGenerationSnafu, DidGenerationSnafu, DidUrlBufCreationSnafu,
-    InvalidDidFormatSnafu, IriRefCreationSnafu, KeyNotSupportedSnafu, ParseSnafu, Result,
-    VerificationMethodKey, VerificationRelationshipType, DID,
+    DID, DIDDoc, DidBufCreationSnafu, DidDocGenerationSnafu, DidGenerationSnafu,
+    DidUrlBufCreationSnafu, InvalidDidFormatSnafu, IriRefCreationSnafu, KeyNotSupportedSnafu,
+    ParseSnafu, Result, VerificationMethodKey, VerificationRelationshipType,
 };
 use regex::Regex;
 use serde_json::Value;
 use snafu::ResultExt;
+use ssi::dids::document::DIDVerificationMethod;
 use ssi::dids::document::representation::json_ld::DIDContext;
 use ssi::dids::document::verification_method::ValueOrReference;
-use ssi::dids::document::DIDVerificationMethod;
 use ssi::dids::ssi_json_ld::syntax::ContextEntry;
 use ssi::dids::{DIDBuf, DIDURLBuf, DIDURLReferenceBuf, Document};
 use ssi::json_ld::IriRefBuf;
 use ssi::jwk::Params;
-use ssi::security::multibase::Base;
 use ssi::security::MultibaseBuf;
+use ssi::security::multibase::Base;
 use std::collections::{BTreeMap, HashSet};
 use std::str::FromStr;
-use tracing::{instrument, Level};
+use tracing::{Level, instrument};
 use url::Url;
 
 type Level_ = Level;
@@ -426,10 +426,10 @@ mod tests {
         ];
         let did_doc = DIDWeb::generate_did_document(did, &keys).unwrap();
         let mut actual_did_doc_value = serde_json::to_value(&did_doc).unwrap();
-        let public_key_multibase = actual_did_doc_value["verificationMethod"][0]
-            ["publicKeyMultibase"]
-            .as_str()
-            .unwrap();
+        let public_key_multibase =
+            actual_did_doc_value["verificationMethod"][0]["publicKeyMultibase"]
+                .as_str()
+                .unwrap();
         let public_key_base58 = actual_did_doc_value["verificationMethod"][1]["publicKeyBase58"]
             .as_str()
             .unwrap();
@@ -445,7 +445,9 @@ mod tests {
         assert!(
             actual_context.contains(&serde_json::to_value("https://www.w3.org/ns/did/v1").unwrap())
         );
-        assert!(actual_context.contains(&serde_json::to_value(ECDSASECP256R1_VM_TYPE_IRI).unwrap()));
+        assert!(
+            actual_context.contains(&serde_json::to_value(ECDSASECP256R1_VM_TYPE_IRI).unwrap())
+        );
         assert!(actual_context.contains(&serde_json::to_value(ED25519_VM_TYPE_IRI).unwrap()));
         assert_eq!(actual_did_doc_value, expected_did_doc_value);
     }

@@ -3,7 +3,7 @@ use crate::crypto::{MalformedSnafu, VerificationSnafu};
 use async_trait::async_trait;
 use ed25519_dalek::{SecretKey, Signature, Signer, SigningKey};
 use rand::rngs::OsRng;
-use tracing::{instrument, Level};
+use tracing::{Level, instrument};
 
 #[derive(Debug, Clone)]
 pub struct Ed25519 {
@@ -19,7 +19,7 @@ impl crypto::Suite for Ed25519 {
         level = Level::TRACE,
         ret(),
     )]
-    fn gen() -> Vec<u8> {
+    fn generate() -> Vec<u8> {
         let signing_key: SigningKey = SigningKey::generate(&mut OsRng);
         signing_key.to_bytes().to_vec()
     }
@@ -60,13 +60,7 @@ impl crypto::Key for Ed25519 {
     )]
     fn jwk(&self) -> Option<ssi::jwk::JWK> {
         let pubk = self.pub_key().ok()?;
-        let s: &[u8] = &pubk;
-
-        if let Ok(jwk) = ssi::jwk::ed25519_parse(s) {
-            Some(jwk)
-        } else {
-            None
-        }
+        ssi::jwk::ed25519_parse(&pubk).ok()
     }
 }
 

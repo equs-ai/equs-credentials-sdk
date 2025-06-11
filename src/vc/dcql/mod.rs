@@ -11,7 +11,7 @@ use crate::vc::{ClaimFormatDesignation, HasClaims, Presentation, RequestedPresen
 use crate::vc::{Credential, HasVCFormat, JsonPath};
 use common_macros::DebugError;
 use openid4vp::core::dcql::{DcqlClaim, DcqlCredential, DcqlCredentialSet, PathValue, ValueType};
-use serde_json::{json, Map, Value};
+use serde_json::{Map, Value, json};
 use snafu::{Location, ResultExt, Snafu};
 use std::cmp::Ordering;
 use std::collections::HashMap;
@@ -84,27 +84,24 @@ fn get_restrictions_for_dcql_credential(
 
 fn get_restriction_for_type(credential: &DCQLCredential) -> Option<PresentationRestriction> {
     match credential.format() {
-        ClaimFormatDesignation::SdJwtVc => {
-            let vct_claim = credential
-                .meta()
-                .and_then(|meta| meta.get_vct_values())
-                .map(|vct_values| {
-                    let values = vct_values
-                        .iter()
-                        .map(|val| ValueType::String(val.to_string()))
-                        .collect::<Vec<_>>();
-                    let fields = vec![json::json_path_as_string(&vec![PathValue::String(
-                        "vct".to_string(),
-                    )])];
+        ClaimFormatDesignation::SdJwtVc => credential
+            .meta()
+            .and_then(|meta| meta.get_vct_values())
+            .map(|vct_values| {
+                let values = vct_values
+                    .iter()
+                    .map(|val| ValueType::String(val.to_string()))
+                    .collect::<Vec<_>>();
+                let fields = vec![json::json_path_as_string(&vec![PathValue::String(
+                    "vct".to_string(),
+                )])];
 
-                    PresentationRestriction {
-                        fields,
-                        value: get_restriction_value_from_dcql_claim_values(&values),
-                        optional: true,
-                    }
-                });
-            vct_claim
-        }
+                PresentationRestriction {
+                    fields,
+                    value: get_restriction_value_from_dcql_claim_values(&values),
+                    optional: true,
+                }
+            }),
         //TODO in draft 22 only SdJwtVc is supported. LDPVC is to be supported in later drafts
         _ => None,
     }
@@ -171,15 +168,14 @@ fn get_claim_set_with_path_instead_of_id(
             claim_id_to_path_map.insert(id.to_string(), path);
         }
     });
-    let claim_set_with_path = claim_sets
+    claim_sets
         .iter()
         .map(|cs| {
             cs.iter()
                 .map(|id| claim_id_to_path_map[id].clone())
                 .collect()
         })
-        .collect::<Vec<Vec<String>>>();
-    claim_set_with_path
+        .collect::<Vec<Vec<String>>>()
 }
 
 fn check_cred_contains_all_paths(
@@ -463,16 +459,16 @@ mod tests {
         PresentationInput, PresentationRestriction, PresentationRestrictionValue,
     };
     use crate::vc::dcql::{
-        filter_claims_using_claim_sets, filter_creds_with_cred_sets, resolve_presentation_response,
-        split_to_inputs_for_dcql, validate_credential_for_dcql, DCQLCredential, DCQL,
+        DCQL, DCQLCredential, filter_claims_using_claim_sets, filter_creds_with_cred_sets,
+        resolve_presentation_response, split_to_inputs_for_dcql, validate_credential_for_dcql,
     };
     use crate::vc::formats::json_ld_vc::JsonLdAPI;
-    use crate::vc::formats::sd_jwt_vc::{SdJwtAPI, EXP_CLAIM, IAT_CLAIM, NBF_CLAIM};
+    use crate::vc::formats::sd_jwt_vc::{EXP_CLAIM, IAT_CLAIM, NBF_CLAIM, SdJwtAPI};
     use crate::vc::{ClaimFormatDesignation, Credential, VCFormatsAPI, VCMetadata};
     use iref::IriRefBuf;
     use openid4vp::core::dcql::DcqlCredentialSet;
     use rstest::rstest;
-    use serde_json::{json, Value};
+    use serde_json::{Value, json};
     use std::collections::HashMap;
     use std::ops::Add;
     use std::str::FromStr;

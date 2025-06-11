@@ -1,5 +1,5 @@
-use crate::didcomm::core::protocol::message_handler::MessageHandler;
 use crate::didcomm::core::protocol::Protocol;
+use crate::didcomm::core::protocol::message_handler::MessageHandler;
 use crate::didcomm::protocol::aries::problem_report::{PROTOCOL_NAME, PROTOCOL_VERSION};
 
 pub struct ProblemReportProtocol {

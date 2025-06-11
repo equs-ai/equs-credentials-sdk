@@ -1,6 +1,6 @@
 use crate::crypto::{Alg, AlgNotSupportedSnafu};
 use crate::vc::core::{CredentialDefinition, CredentialDefinitionData, KeyMetadata};
-use crate::vc::{pop, HasVCFormat, VCFormat};
+use crate::vc::{HasVCFormat, VCFormat, pop};
 use crate::{crypto, utils, vc};
 use common_macros::DebugError;
 use oid4vci::core::profiles::{
@@ -15,7 +15,7 @@ use std::fmt::Debug;
 use std::ops::Deref;
 use std::str::FromStr;
 use time::Duration;
-use tracing::{instrument, trace, Level};
+use tracing::{Level, instrument, trace};
 
 pub type IssuerMetadata = oid4vci::core::metadata::CredentialIssuerMetadata;
 pub type CredentialMetadata = CredentialConfiguration<CoreProfilesCredentialConfiguration>;
@@ -258,8 +258,8 @@ mod tests {
     use super::*;
     use crate::inmem::kms::LocalKms;
     use crate::utils::test_utils::create_did_and_key_metadata;
-    use crate::vc::oid4vci::tests::fixtures::{AUTH_URL, CRED_DEF_ID, ISSUER_URL};
     use crate::vc::oid4vci::CredDefMetadata;
+    use crate::vc::oid4vci::tests::fixtures::{AUTH_URL, CRED_DEF_ID, ISSUER_URL};
     use crate::vc::pop::Format;
     use serde_json::json;
 
@@ -271,13 +271,15 @@ mod tests {
 
         let metadata = sample_issuer_metadata();
         let cred_def_metadata = sample_credential_definition();
-        let cred_defs = vec![cred_definition(
-            CRED_DEF_ID,
-            &cred_def_metadata,
-            &cred_def_key_metadata,
-            Duration::days(5 * 365),
-        )
-        .unwrap()];
+        let cred_defs = vec![
+            cred_definition(
+                CRED_DEF_ID,
+                &cred_def_metadata,
+                &cred_def_key_metadata,
+                Duration::days(5 * 365),
+            )
+            .unwrap(),
+        ];
 
         let expected = vc::core::IssuerMetadata {
             issuer_id: metadata.credential_issuer().to_string(),

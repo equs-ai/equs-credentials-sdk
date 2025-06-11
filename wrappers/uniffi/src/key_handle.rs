@@ -1,8 +1,8 @@
 use crate::common::Result;
 use crate::vc::Alg;
 use agent_sdk::crypto::{
-    Error as ASDKError, Key, Result as ASDKResult, Signer, SigningKey, SigningSnafu,
-    VerificationSnafu, Verifier, VerifyingKey, JWK,
+    Error as ASDKError, JWK, Key, Result as ASDKResult, Signer, SigningKey, SigningSnafu,
+    VerificationSnafu, Verifier, VerifyingKey,
 };
 use agent_sdk::kms::KeyHandle as ASDKKeyHandle;
 use async_trait::async_trait;

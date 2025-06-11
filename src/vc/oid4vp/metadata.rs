@@ -1,8 +1,8 @@
 use crate::vc::oid4vp::ClientMetadata;
-use openid4vp::core::metadata::parameters::verifier::VpFormats;
 use openid4vp::core::metadata::WalletMetadata;
+use openid4vp::core::metadata::parameters::verifier::VpFormats;
 use openid4vp::core::object::UntypedObject;
-use tracing::{instrument, Level};
+use tracing::{Level, instrument};
 
 type Level_ = Level;
 

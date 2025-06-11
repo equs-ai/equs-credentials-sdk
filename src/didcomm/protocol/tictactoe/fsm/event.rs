@@ -4,8 +4,8 @@ use crate::didcomm::core::protocol::{Error, Result, Snafu};
 use crate::didcomm::core::{message_type, protocol};
 use crate::didcomm::protocol::tictactoe::message::{MoveMessageBody, OutcomeMessageBody};
 use crate::didcomm::protocol::tictactoe::{
-    TicTacToeDIDCommMessage, MOVE_MESSAGE_TYPE, OUTCOME_MESSAGE_TYPE, PROTOCOL_NAME,
-    PROTOCOL_VERSION,
+    MOVE_MESSAGE_TYPE, OUTCOME_MESSAGE_TYPE, PROTOCOL_NAME, PROTOCOL_VERSION,
+    TicTacToeDIDCommMessage,
 };
 use serde::Serialize;
 use strum_macros::Display;

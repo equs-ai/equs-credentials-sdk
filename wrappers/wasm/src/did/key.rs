@@ -1,6 +1,6 @@
 use crate::kms::{JsKeyHandle, KeyHandle};
-use wasm_bindgen::prelude::wasm_bindgen;
 use wasm_bindgen::JsError;
+use wasm_bindgen::prelude::wasm_bindgen;
 
 /// A general `did:key` service.
 ///

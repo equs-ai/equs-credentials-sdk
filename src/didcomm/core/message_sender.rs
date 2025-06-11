@@ -4,8 +4,8 @@ use snafu::{Location, ResultExt, Snafu};
 use std::sync::Arc;
 use time::OffsetDateTime;
 
-use crate::did::universal::UniversalResolver;
 use crate::did::DID;
+use crate::did::universal::UniversalResolver;
 use crate::didcomm::core::envelope;
 use crate::didcomm::core::envelope::{EnvelopeService, Message};
 use crate::didcomm::core::event_emitter::EventEmitter;

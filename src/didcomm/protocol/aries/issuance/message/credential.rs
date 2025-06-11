@@ -1,18 +1,18 @@
-use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
+use base64::prelude::BASE64_STANDARD;
 use didcomm::AttachmentData;
 use serde::{Deserialize, Serialize};
-use snafu::{ensure, ResultExt};
+use snafu::{ResultExt, ensure};
 
 use crate::didcomm::core::envelope::Attachment;
 use crate::didcomm::core::message_id::MessageId;
 use crate::didcomm::core::message_type::{MessageType, MessageTypePrefix};
 use crate::didcomm::protocol::aries::common::message::thread::Thread;
-use crate::didcomm::protocol::aries::issuance::message::attachment_formats;
 use crate::didcomm::protocol::aries::issuance::Result;
+use crate::didcomm::protocol::aries::issuance::message::attachment_formats;
 use crate::didcomm::protocol::aries::issuance::{
-    InvalidAttachmentEncodingSnafu, InvalidAttachmentSnafu, InvalidCredentialRequestSnafu,
-    ParseSnafu, ISSUE_CREDENTIAL, PROTOCOL_NAME, PROTOCOL_VERSION,
+    ISSUE_CREDENTIAL, InvalidAttachmentEncodingSnafu, InvalidAttachmentSnafu,
+    InvalidCredentialRequestSnafu, PROTOCOL_NAME, PROTOCOL_VERSION, ParseSnafu,
 };
 use crate::utils::http::MimeType;
 use crate::vc::formats::json_ld_vc;
@@ -55,7 +55,7 @@ impl Credential {
 
     pub fn add_please_ack_id(mut self, id: String) -> Self {
         match &mut self.please_ack {
-            Some(ref mut v) => v.push(id),
+            Some(v) => v.push(id),
             None => self.please_ack = Some(vec![id]),
         }
         self
@@ -147,8 +147,8 @@ threadlike!(Credential);
 
 #[cfg(test)]
 pub mod tests {
-    use base64::prelude::BASE64_STANDARD;
     use base64::Engine;
+    use base64::prelude::BASE64_STANDARD;
     use serde_json::json;
 
     use crate::didcomm::core::envelope::Attachment;

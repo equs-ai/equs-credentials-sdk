@@ -134,7 +134,10 @@ impl From<RequestReceivedState> for FinishedState {
 
 impl From<(RequestReceivedState, Status)> for FinishedState {
     fn from((state, status): (RequestReceivedState, Status)) -> Self {
-        trace!("IssuerSM: transit state from RequestReceivedState to FinishedState with ProblemReport: {:?}", status);
+        trace!(
+            "IssuerSM: transit state from RequestReceivedState to FinishedState with ProblemReport: {:?}",
+            status
+        );
         trace!("Thread: {:?}", state.thread);
         FinishedState {
             cred_id: None,
@@ -160,7 +163,10 @@ impl From<CredentialSentState> for FinishedState {
 
 impl From<(CredentialSentState, Status)> for FinishedState {
     fn from((state, status): (CredentialSentState, Status)) -> Self {
-        trace!("IssuerSM: transit state from CredentialSentState to FinishedState with ProblemReport: {:?}", status);
+        trace!(
+            "IssuerSM: transit state from CredentialSentState to FinishedState with ProblemReport: {:?}",
+            status
+        );
         trace!("Thread: {:?}", state.thread);
         FinishedState {
             cred_id: None,

@@ -4,8 +4,8 @@ use crate::vc::{
     VaultPagination,
 };
 use agent_sdk::vault::Vault;
-use wasm_bindgen::prelude::wasm_bindgen;
 use wasm_bindgen::JsError;
+use wasm_bindgen::prelude::wasm_bindgen;
 
 #[wasm_bindgen]
 pub struct InMemVault(agent_sdk::inmem::vault::InMemVault);
