@@ -18,11 +18,11 @@ use url::Url;
 /// Supports presentation flow according to the `OID4VP` specification.
 /// See <https://openid.net/specs/openid-4-verifiable-presentations-1_0-ID2.html>.
 ///
-/// @property getIssuerMetadata - {@link OID4VPHolder.getIssuerMetadata}
-/// @property getAuthorizationRequest - {@link OID4VPHolder.getAuthorizationRequest}
-/// @property presentCredentialsAuto - {@link OID4VPHolder.presentCredentialsAuto}
-/// @property findVcsForPresentation - {@link OID4VPHolder.findVcsForPresentation}
-/// @property presentCredentials - {@link OID4VPHolder.presentCredentials}
+/// @property getAuthorizationRequest - {@link InnerOID4VPHolder.getAuthorizationRequest}
+/// @property presentCredentialsAuto - {@link InnerOID4VPHolder.presentCredentialsAuto}
+/// @property findVcsForPresentation - {@link InnerOID4VPHolder.findVcsForPresentation}
+/// @property presentCredentials - {@link InnerOID4VPHolder.presentCredentials}
+/// @property declineAuthorizationRequest - {@link InnerOID4VPHolder.declineAuthorizationRequest}
 #[napi]
 pub struct InnerOID4VPHolder(Box<dyn Holder>);
 
@@ -137,7 +137,7 @@ impl InnerOID4VPHolder {
     /// @returns {string | null}
     /// An optional redirect URL(in case of Same Device Flow) where the error response is embedded as a fragment.
     ///
-    /// @param {AuthorizationRequest} authRequest - the resolved authorization request.
+    /// @param {_AuthorizationRequest} authRequest - the resolved authorization request.
     #[napi]
     pub async fn decline_authorization_request(
         &self,

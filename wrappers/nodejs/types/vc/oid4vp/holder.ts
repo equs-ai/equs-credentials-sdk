@@ -10,11 +10,11 @@ import {
  *  The `OID4VP` `Holder` API.
  * Supports presentation flow according to the `OID4VP` specification.
  * See <https://openid.net/specs/openid-4-verifiable-presentations-1_0-ID2.html>.
- * @property getIssuerMetadata - {@link OID4VPHolder.getIssuerMetadata}
  * @property getAuthorizationRequest - {@link OID4VPHolder.getAuthorizationRequest}
  * @property presentCredentialsAuto - {@link OID4VPHolder.presentCredentialsAuto}
  * @property findVcsForPresentation - {@link OID4VPHolder.findVcsForPresentation}
  * @property presentCredentials - {@link OID4VPHolder.presentCredentials}
+ * @property declineAuthorizationRequest - {@link OID4VPHolder.declineAuthorizationRequest}
  */
 export class OID4VPHolder {
   constructor(private readonly inner: InnerOID4VPHolder) {}
@@ -99,7 +99,7 @@ export class OID4VPHolder {
    * An optional redirect URL(in case of Same Device Flow) where the error response is embedded as a fragment.
    * @param {AuthorizationRequest} authRequest - the resolved authorization request.
    */
-  async declineAuthorizationRequest(authRequest: AuthorizationRequest): Promise<void> {
-    await this.inner.declineAuthorizationRequest(authRequest.toRustObject());
+  async declineAuthorizationRequest(authRequest: AuthorizationRequest): Promise<string | null> {
+    return await this.inner.declineAuthorizationRequest(authRequest.toRustObject());
   }
 }
