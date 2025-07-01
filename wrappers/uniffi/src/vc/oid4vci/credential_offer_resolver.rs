@@ -1,7 +1,7 @@
-use agent_sdk::reqwest::ReqwestClient;
-use agent_sdk::reqwest::builder::ReqwestClientBuilder;
+use crate::http::{HttpClient, WrappedHttpClient};
 use agent_sdk::vc::oid4vci::CredentialOfferResolver as ASDKCredentialOfferResolver;
 use agent_sdk::vc::oid4vp::Url;
+use std::sync::Arc;
 
 type Result<T> = std::result::Result<T, CredentialOfferResolverError>;
 
@@ -24,26 +24,14 @@ impl std::fmt::Display for CredentialOfferResolverError {
 }
 
 #[derive(uniffi::Object)]
-pub struct CredentialOfferResolver(ASDKCredentialOfferResolver<ReqwestClient>);
+pub struct CredentialOfferResolver(ASDKCredentialOfferResolver<WrappedHttpClient>);
 
 #[uniffi::export(async_runtime = "tokio")]
 impl CredentialOfferResolver {
     #[uniffi::constructor]
-    pub fn new() -> Result<CredentialOfferResolver> {
-        #[allow(unused_assignments)]
-        let mut resolver = ASDKCredentialOfferResolver::new()
-            .map_err(|e| CredentialOfferResolverError::Constructor(e.to_string()))?;
-
-        #[cfg(debug_assertions)]
-        {
-            resolver = ASDKCredentialOfferResolver::with_http_client(
-                ReqwestClientBuilder::new()
-                    .insecure()
-                    .build()
-                    .map_err(|e| CredentialOfferResolverError::Constructor(e.to_string()))?,
-            )
-        }
-
+    pub fn new(http_client: Arc<dyn HttpClient>) -> Result<CredentialOfferResolver> {
+        let resolver =
+            ASDKCredentialOfferResolver::with_http_client(WrappedHttpClient::new(http_client));
         Ok(CredentialOfferResolver(resolver))
     }
 

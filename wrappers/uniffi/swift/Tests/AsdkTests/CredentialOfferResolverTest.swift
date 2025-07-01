@@ -32,7 +32,7 @@ import Swifter
 	}
 
 	@Test func resolveOfferByReferenceWithPreAuthorizedCodeGrant() async throws {
-		let resolver = try? CredentialOfferResolver()
+		let resolver = try? CredentialOfferResolver(httpClient: ReqwestHttpClient.insecure())
 
 		let resolvedOffer = try? await resolver?.resolve(
 			offerUri:
@@ -45,7 +45,7 @@ import Swifter
 	}
 
 	@Test func resolveOfferByValueWithPreAuthorizedCodeGrant() async throws {
-		let resolver = try? CredentialOfferResolver()
+		let resolver = try? CredentialOfferResolver(httpClient: ReqwestHttpClient.insecure())
 
 		let resolvedOffer = try? await resolver?.resolve(
 			offerUri:

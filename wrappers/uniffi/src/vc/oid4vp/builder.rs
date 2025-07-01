@@ -1,48 +1,44 @@
-use agent_sdk::inmem::kms::LocalKms;
-#[cfg(debug_assertions)]
-use agent_sdk::reqwest::builder::ReqwestClientBuilder;
 use agent_sdk::vc::oid4vp::HolderBuilder;
+use std::sync::Arc;
 
 use crate::common::{Error, Result};
-use crate::inmem::kms::InMemKms;
-use crate::inmem::vault::InMemVault;
+use crate::http::{HttpClient, WrappedHttpClient};
+use crate::kms::{Kms, WrappedKms};
+use crate::vault::{Vault, WrappedVault};
 use crate::vc::oid4vp::holder::OID4VPHolder;
 
 #[derive(uniffi::Object)]
 struct OID4VPHolderBuilder {
-    kms: LocalKms,
-    vault: agent_sdk::inmem::vault::InMemVault,
+    kms: WrappedKms,
+    vault: WrappedVault,
     client_id: String,
+    http_client: WrappedHttpClient,
 }
 
 #[uniffi::export(async_runtime = "tokio")]
 impl OID4VPHolderBuilder {
     #[uniffi::constructor]
-    pub fn new(kms: &InMemKms, vault: &InMemVault, client_id: String) -> OID4VPHolderBuilder {
+    pub fn new(
+        kms: Arc<dyn Kms>,
+        vault: Arc<dyn Vault>,
+        client_id: String,
+        http_client: Arc<dyn HttpClient>,
+    ) -> OID4VPHolderBuilder {
         OID4VPHolderBuilder {
-            kms: kms.inner(),
-            vault: vault.inner(),
+            kms: WrappedKms::new(kms),
+            vault: WrappedVault::new(vault),
             client_id,
+            http_client: WrappedHttpClient::new(http_client),
         }
     }
 
     pub async fn build(&self) -> Result<OID4VPHolder> {
-        #[allow(unused_mut)]
-        let mut builder = HolderBuilder::new(
+        let builder = HolderBuilder::new(
             self.kms.clone(),
             self.vault.clone(),
             self.client_id.to_owned(),
-        );
-
-        #[cfg(debug_assertions)]
-        {
-            builder = builder.with_http_client(
-                ReqwestClientBuilder::new()
-                    .insecure()
-                    .build()
-                    .map_err(|e| Error::OID4VPHolder(e.to_string()))?,
-            )
-        }
+        )
+        .with_http_client(self.http_client.to_owned());
 
         let holder = builder
             .build()
