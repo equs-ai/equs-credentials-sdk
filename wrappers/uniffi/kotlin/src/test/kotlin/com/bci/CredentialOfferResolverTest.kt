@@ -1,6 +1,6 @@
 package com.bci
 
-import com.bci.asdk.CredentialOfferResolver
+import com.bci.asdk.*
 import com.bci.asdk.setJniLibPath
 import kotlinx.coroutines.test.runTest
 import okhttp3.mockwebserver.MockResponse
@@ -48,7 +48,7 @@ class CredentialOfferResolverTest {
             MockResponse().setResponseCode(200).setBody(AuthServerMetadata)
         )
 
-        val resolver = CredentialOfferResolver()
+        val resolver = CredentialOfferResolver(ReqwestHttpClient.insecure())
 
         val resolvedOffer =
             resolver.resolve("openid-credential-offer://?credential_offer_uri=http://localhost:9001/credential_offer")
@@ -59,7 +59,7 @@ class CredentialOfferResolverTest {
     @Test
     fun resolveOfferByValueWithPreAuthorizedCodeGrant() = runTest {
 
-        val resolver = CredentialOfferResolver()
+        val resolver = CredentialOfferResolver(ReqwestHttpClient.insecure())
 
         val resolvedOffer =
             resolver.resolve("openid-credential-offer://?credential_offer={%22credential_issuer%22:%22http://localhost:9001%22,%22credential_configuration_ids%22:[%22IDENTITY_SD_JWT%22],%22grants%22:{%22urn:ietf:params:oauth:grant-type:pre-authorized_code%22:{%22pre-authorized_code%22:%22code%22,%22tx_code%22:null,%22interval%22:null,%22authorization_server%22:%22http://localhost:9001/auth%22}}}")

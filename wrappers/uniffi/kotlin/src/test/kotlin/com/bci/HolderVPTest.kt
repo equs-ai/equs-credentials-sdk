@@ -56,7 +56,7 @@ class HolderVPTest {
                 val credential = Credential(format = VcFormat.SD_JWT_VC, payload = VC)
                 val metadata = resolveMetadata(credential, didAndKeyMetadata.keyMetadata)
 
-                holder = Oid4vpHolderBuilder(inMemKms, inMemVault, CLIENT_ID).build()
+                holder = Oid4vpHolderBuilder(inMemKms, inMemVault, CLIENT_ID, ReqwestHttpClient.insecure()).build()
 
                 inMemVault.storeCredential(credential, metadata)
             }
