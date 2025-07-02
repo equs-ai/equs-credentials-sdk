@@ -4,6 +4,12 @@
     1. Verify that the demo application runs successfully and passes all flows.
     2. Verify that the latest commit in the main branch contains all changes to be included in the release.
     3. Verify that the version in the Cargo.toml and package.json files have changed.
+        1. [ASDK Rust version (Main)](../../Cargo.toml)
+        2. [ASDK Node.js version](../../wrappers/nodejs/package.json)
+        3. [ASDK WASM version](../../wrappers/wasm/package.json)
+        4. [ASDK Askar plugin](../../plugins/askar/wrappers/nodejs/package.json)
+        5. [ASDK Android version](../../wrappers/uniffi/kotlin/android/build.gradle.kts)
+        6. [ASDK IOS version](../../wrappers/uniffi/scripts/build_and_publish_ios.sh)
     4. Create a new tag for the release.
         - Using local terminal: replace <version> with the appropriate version number (e.g., 0.4.2):
              ```shell

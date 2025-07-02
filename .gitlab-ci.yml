@@ -9,6 +9,7 @@ include:
     file: '/templates/.gitlab-ci-blackduck-signature.yml'
   - local: "wrappers/nodejs/publish.yml"
   - local: "wrappers/wasm/publish.yml"
+  - local: "wrappers/uniffi/publish.yml"
   - local: "plugins/askar/wrappers/nodejs/publish.yml"
 
 stages:
@@ -22,8 +23,6 @@ variables:
   RUST_VERSION: "1.87.0"
   NODE_VERSION: "20.18.0"
   VERSION_REGEX: /^[0-9]+\.[0-9]+\.[0-9]+$/
-  REGISTRY: "git.slock.it/api/v4/projects/1387/packages/npm/"
-  REGISTRY_URL: "https://git.slock.it/api/v4/projects/1387/packages/npm/"
 
 
 # Shared configurations

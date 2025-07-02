@@ -1,5 +1,5 @@
 variables:
-  REGISTRY_URL: https://${CI_SERVER_HOST}/api/v4/projects/${CI_PROJECT_ID}/packages/npm/
+  REGISTRY_URL_NPM: https://${CI_SERVER_HOST}/api/v4/projects/${CI_PROJECT_ID}/packages/npm/
 
 .cargo_local_deps_script: &cargo_local_deps_script
   - |

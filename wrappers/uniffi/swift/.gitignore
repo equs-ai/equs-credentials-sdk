@@ -10,6 +10,8 @@ DerivedData/
 
 ### Generated Code ###
 **/asdk.swift
+ios/
+asdk.xcframework
 
 ### Swift Package Manager ###
 Packages/
