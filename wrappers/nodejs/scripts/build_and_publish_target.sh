@@ -1,6 +1,5 @@
 #!/bin/bash
 
-REGISTRY_URL="https://git.slock.it/api/v4/projects/1387/packages/npm/"
 BINARY_NAME="agent-sdk.${ALIAS}.node"
 VERSION=$(npm pkg get version | tr -d '"')
 
@@ -38,7 +37,7 @@ cp .npmrc "npm/${ALIAS}/.npmrc"
 npx napi version
 
 cd "npm/${ALIAS}"
-NPM_TOKEN=${NPM_TOKEN} npm publish --registry=${REGISTRY_URL} --tag ${TAG}
+NPM_TOKEN=${NPM_TOKEN} npm publish --registry=${REGISTRY_URL_NPM} --tag ${TAG}
 
 
 if [ "$ENVIRONMENT" == "development" ]; then

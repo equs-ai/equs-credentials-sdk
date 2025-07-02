@@ -45,7 +45,7 @@ Using Command-line:
 ```
 
 ```bash
-  sdkmanager "ndk;28.0.13004108"
+  sdkmanager "ndk;29.0.13599879"
 ```
 
 ### 2. Set Environment Variables
@@ -54,9 +54,9 @@ Add these lines to your `~/.zshrc` or `~/.bash_profile`:
 
 ```bash
   export ANDROID_HOME=$HOME/Library/Android/sdk
-  export ANDROID_NDK_HOME=$ANDROID_HOME/ndk/28.0.13004108  # Use your NDK version instead of '28.0.13004108'
+  export ANDROID_NDK_HOME=$ANDROID_HOME/ndk/29.0.13599879  # Use your NDK version instead of '29.0.13599879'
   export PATH=$PATH:$ANDROID_HOME/tools/bin:$ANDROID_HOME/platform-tools
-  export PATH=$PATH:$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/darwin-x86_64/bin # Use your platform folder 'darwin-x86_64'
+  export PATH=$PATH:$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/darwin-arm64/bin # Use your platform folder darwin arm64
 ```
 
 Reload your shell:
@@ -74,9 +74,9 @@ Check that you are able to see the C libraries for each of the architecture-Andr
 You should see the similar output as below:
 
 ```
-$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/darwin-x86_64/bin/x86_64-linux-android35-clang
-$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/darwin-x86_64/bin/x86_64-linux-android34-clang
-$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/darwin-x86_64/bin/x86_64-linux-android33-clang
+$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/darwin-arm64/bin/aarch64-linux-android35-clang
+$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/darwin-arm64/bin/aarch64-linux-android34-clang
+$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/darwin-arm64/bin/aarch64-linux-android33-clang
 ...
 ```
 
@@ -157,15 +157,13 @@ Make sure you refresh your profile
 ### 2. Install Rust iOS and macOS Targets
 
 ```bash
-  rustup target add aarch64-apple-ios
-  rustup target add x86_64-apple-ios
-  rustup target add aarch64-apple-ios-sim
+  rustup target add aarch64-apple-ios x86_64-apple-ios aarch64-apple-ios-sim
 ```
 
 ### 3. Generate the XCFramework and Swift Bindings
 
 ```bash
-  make ios-generate-xcframework-debug
+  make ios-generate-xcframework-dev
 ```
 
 ## Testing

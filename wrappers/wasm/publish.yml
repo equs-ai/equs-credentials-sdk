@@ -1,8 +1,13 @@
 variables:
-  REGISTRY_URL: https://${CI_SERVER_HOST}/api/v4/projects/${CI_PROJECT_ID}/packages/npm/
+  REGISTRY_URL_NPM: https://${CI_SERVER_HOST}/api/v4/projects/${CI_PROJECT_ID}/packages/npm/
 
 .cargo_local_deps_script: &cargo_local_deps_script
-  - sed -i "s|ssh://git@git.slock.it/|https://gitlab-ci-token:${CI_JOB_TOKEN}@git.slock.it/|" Cargo.toml
+  - |
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+    sed -i '' "s|ssh://git@git.slock.it/|https://gitlab-ci-token:${CI_JOB_TOKEN}@git.slock.it/|" Cargo.toml
+    else
+    sed -i "s|ssh://git@git.slock.it/|https://gitlab-ci-token:${CI_JOB_TOKEN}@git.slock.it/|" Cargo.toml
+    fi
 
 .wasm_job_configs: &wasm_job_configs
   image: node:${NODE_VERSION}
@@ -31,7 +36,7 @@ publish_wasm_wrapper:
       cp .npmrc pkg/.npmrc
       cp .npmignore pkg/.npmignore
       cd pkg
-      NPM_TOKEN=${CI_JOB_TOKEN} npm publish --registry=$REGISTRY_URL --tag latest
+      NPM_TOKEN=${CI_JOB_TOKEN} npm publish --registry=$REGISTRY_URL_NPM --tag latest
 
 
 publish_wasm_dev_wrapper:
@@ -46,4 +51,4 @@ publish_wasm_dev_wrapper:
       cp .npmrc pkg/.npmrc
       cp .npmignore pkg/.npmignore
       cd pkg
-      NPM_TOKEN=${CI_JOB_TOKEN} npm publish --registry=$REGISTRY_URL --tag dev
+      NPM_TOKEN=${CI_JOB_TOKEN} npm publish --registry=$REGISTRY_URL_NPM --tag dev

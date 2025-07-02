@@ -1,0 +1,96 @@
+variables:
+  REGISTRY_URL_IOS: https://${CI_SERVER_HOST}/api/v4/projects/${CI_PROJECT_ID}/packages/generic/
+  ANDROID_HOME: ${CI_PROJECT_DIR}/Android
+  NDK_VERSION: 29.0.13599879
+
+.cargo_local_deps_script: &cargo_local_deps_script
+  - |
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+      sed -i '' "s|ssh://git@git.slock.it/|https://gitlab-ci-token:${CI_JOB_TOKEN}@git.slock.it/|" Cargo.toml
+    else
+      sed -i "s|ssh://git@git.slock.it/|https://gitlab-ci-token:${CI_JOB_TOKEN}@git.slock.it/|" Cargo.toml
+    fi
+
+
+.ios_job_configs: &ios_job_configs
+  tags:
+    - macos
+  image: rust:${RUST_VERSION}
+  before_script:
+    - brew update
+    - brew install curl unzip zip git jq openssl pkg-config swift swiftlint
+    - curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain ${RUST_VERSION}
+    - source "$HOME/.cargo/env"
+    - rustup target add aarch64-apple-ios x86_64-apple-ios aarch64-apple-ios-sim
+    - swift --version
+    - cargo --version
+    - *cargo_local_deps_script
+.ios_to_registry_template: &ios_to_registry_template
+  <<: *ios_job_configs
+  stage: release
+  rules:
+    - if: $CI_COMMIT_TAG && $CI_COMMIT_TAG =~ $VERSION_REGEX
+    - when: never
+
+publish_ios_wrapper:
+  <<: *ios_to_registry_template
+  script:
+    - cd wrappers/uniffi
+    - chmod +x ./scripts/build_and_publish_ios.sh
+    - ./scripts/build_and_publish_ios.sh
+publish_ios_wrapper_dev:
+  <<: *ios_to_registry_template
+  script:
+    - cd wrappers/uniffi
+    - chmod +x ./scripts/build_and_publish_ios.sh
+    - ENVIRONMENT=development ./scripts/build_and_publish_ios.sh
+
+
+.android_job_configs: &android_job_configs
+  image: openjdk:17-jdk-slim
+  before_script:
+    - apt-get update && apt-get install -y curl unzip wget git build-essential pkg-config libssl-dev
+    - curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain ${RUST_VERSION}
+    - source "$HOME/.cargo/env"
+    - |
+      mkdir -p "$ANDROID_HOME/cmdline-tools"
+      wget -q https://dl.google.com/android/repository/commandlinetools-linux-10406996_latest.zip -O tools.zip
+      unzip -q tools.zip -d "$ANDROID_HOME/cmdline-tools/temp"
+      mv "$ANDROID_HOME/cmdline-tools/temp/cmdline-tools" "$ANDROID_HOME/cmdline-tools/latest"
+      rm -rf tools.zip "$ANDROID_HOME/cmdline-tools/temp"
+
+      export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/$NDK_VERSION"
+      export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$PATH"
+      yes | sdkmanager --licenses || true
+
+      sdkmanager --sdk_root=$ANDROID_HOME \
+        "platform-tools" "platforms;android-33" "build-tools;34.0.0" \
+        "emulator" "ndk;$NDK_VERSION" \
+        "system-images;android-33;google_apis;x86_64"
+
+    - export PATH="$ANDROID_HOME/ndk/$NDK_VERSION/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH"
+    - *cargo_local_deps_script
+.android_to_registry_template: &android_to_registry_template
+  <<: *android_job_configs
+  stage: release
+  rules:
+    - if: $CI_COMMIT_TAG && $CI_COMMIT_TAG =~ $VERSION_REGEX
+    - when: never
+
+publish_android_wrapper:
+  <<: *android_to_registry_template
+  script:
+    - |
+      cd wrappers/uniffi
+      make android-aar
+      cd kotlin
+      ./gradlew publish
+
+publish_android_wrapper_dev:
+  <<: *android_to_registry_template
+  script:
+    - |
+      cd wrappers/uniffi
+      make android-aar-dev
+      cd kotlin
+      ./gradlew publish -Penv=development

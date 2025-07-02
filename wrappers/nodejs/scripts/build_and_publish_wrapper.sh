@@ -1,6 +1,5 @@
 #!/bin/bash
 
-REGISTRY_URL="https://git.slock.it/api/v4/projects/1387/packages/npm/"
 VERSION=$(npm pkg get version | tr -d '"')
 
 if [ -z "$NPM_TOKEN" ]; then
@@ -21,7 +20,7 @@ npm i --ignore-scripts
 npm i -g typescript @napi-rs/cli
 npx npm run $BUILD_SCRIPT
 npx napi prepublish --skip-gh-release
-NPM_TOKEN=${NPM_TOKEN} npm publish --registry=${REGISTRY_URL} --tag ${TAG}
+NPM_TOKEN=${NPM_TOKEN} npm publish --registry=${REGISTRY_URL_NPM} --tag ${TAG}
 
 if [ "$ENVIRONMENT" == "development" ]; then
   npm version $VERSION
