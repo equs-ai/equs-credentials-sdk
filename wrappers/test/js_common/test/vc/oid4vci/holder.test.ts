@@ -33,7 +33,7 @@ describe("OID4VCI Holder: ", () => {
     await mockServer.stop();
   });
 
-  test("retrieve Issuer Metadata", async () => {
+  it("retrieve Issuer Metadata", async () => {
     const vciHolder = await buildHolder(utils);
 
     const issuerMetadata = vciHolder.getIssuerMetadata();
@@ -41,7 +41,7 @@ describe("OID4VCI Holder: ", () => {
     expect(issuerMetadata).toMatchObject(utils.issuerMetadata);
   });
 
-  test("authorize using auth code", async () => {
+  it("authorize using auth code", async () => {
     await mockServer.forPost("/auth/par/request").thenJson(201, utils.codeResponse);
     await mockServer.forPost("/auth/token").thenJson(200, utils.accessTokenResponse);
 
@@ -58,7 +58,7 @@ describe("OID4VCI Holder: ", () => {
     expect(token_response).toEqual(utils.accessTokenResponse);
   });
 
-  test("get access token by using resolved credential offer with pre-authorized code grant", async () => {
+  it("get access token by using resolved credential offer with pre-authorized code grant", async () => {
     await mockServer.forPost("/auth/token").thenJson(200, utils.accessTokenResponse);
 
     const vciHolder = await buildHolder(utils);
@@ -74,7 +74,7 @@ describe("OID4VCI Holder: ", () => {
     expect(token_response).toEqual(utils.accessTokenResponse);
   });
 
-  test("get access token by using resolved credential offer with authorization code grant", async () => {
+  it("get access token by using resolved credential offer with authorization code grant", async () => {
     await mockServer.forPost("/auth/par/request").thenJson(201, utils.codeResponse);
     await mockServer.forPost("/auth/token").thenJson(200, utils.accessTokenResponse);
 
@@ -89,7 +89,7 @@ describe("OID4VCI Holder: ", () => {
     expect(token_response).toEqual(utils.accessTokenResponse);
   });
 
-  test("request Credential", async () => {
+  it("request Credential", async () => {
     await mockServer.forPost("/credential").thenJson(200, utils.credResponse);
     await mockServer.forPost("/nonce").thenJson(201, utils.nonceResponse);
 
@@ -112,7 +112,7 @@ describe("OID4VCI Holder: ", () => {
     });
   });
 
-  test("request multiple Credentials - Batch issuance", async () => {
+  it("request multiple Credentials - Batch issuance", async () => {
     await mockServer.forPost("/credential").thenJson(200, utils.batchCredResponse);
     await mockServer.forPost("/nonce").thenJson(201, utils.nonceResponse);
 
@@ -143,7 +143,7 @@ describe("OID4VCI Holder: ", () => {
     });
   });
 
-  test("store Credential", async () => {
+  it("store Credential", async () => {
     const vault = new InMemVault();
     const kms = new InMemKms();
     const vciHolder = await buildHolder(utils, kms, vault);

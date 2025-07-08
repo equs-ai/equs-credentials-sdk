@@ -12,10 +12,34 @@ use openid4vp::core::error::Error as SpruceErr;
 use serde::{Deserialize, Serialize};
 use snafu::{IntoError, Snafu};
 use std::collections::HashMap;
-use std::fmt::Debug;
+use std::fmt::{Debug, Display, Formatter};
 
-pub type CredentialsMapping = HashMap<String, Vec<CredentialEntry>>;
 pub type CredentialMapping = HashMap<String, CredentialEntry>;
+pub type CredentialsMapping = HashMap<String, CredentialsFindResult>;
+
+#[derive(Debug, Serialize, Deserialize)]
+pub enum CredentialsFindResult {
+    Credentials(Vec<CredentialEntry>),
+    Reasons(Vec<FindVCsFailReason>),
+}
+
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
+pub struct FindVCsFailReason {
+    pub paths: Vec<String>,
+    pub type_: String,
+    pub value: String,
+}
+
+impl Display for FindVCsFailReason {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "paths: {:?}, type: {}, value: {}",
+            self.paths, self.type_, self.value
+        )
+    }
+}
+
 pub type ClientMetadata = openid4vp::core::authorization_request::parameters::ClientMetadata;
 pub type WalletMetadata = openid4vp::core::metadata::WalletMetadata;
 pub type ResponseType = openid4vp::core::authorization_request::parameters::ResponseType;

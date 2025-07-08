@@ -7,6 +7,7 @@ use crate::vault::{CredentialEntry, Error as VaultError};
 use crate::vc::VCStatus;
 use crate::vc::VCStatusesData;
 use crate::vc::claims::Claims;
+use crate::vc::oid4vp::CredentialsFindResult;
 use crate::vc::status_formats::StatusListFormat;
 use crate::vc::{
     Credential, CredentialMetadata, Presentation, StatusList, VCFormat, formats::Error as VCError,
@@ -230,8 +231,8 @@ pub enum Error {
     ClaimsNotFound { details: String },
     #[snafu(display("Proof format required"))]
     ProofFormatRequired,
-    #[snafu(display("Requested credential not found"))]
-    RequestedCredentialNotFound,
+    #[snafu(display("Requested credential not found: {details}"))]
+    RequestedCredentialNotFound { details: String },
     #[snafu(display("Inconsistent protocol data for format: {format}"))]
     InconsistentProtocolData { format: String },
     #[snafu(display("Unsupported format: {format}"))]
@@ -528,7 +529,7 @@ pub trait Holder: WasmNotSend + WasmNotSync {
     async fn find_vcs_for_presentation(
         &self,
         presentation_input: &PresentationInput,
-    ) -> Result<Vec<CredentialEntry>>;
+    ) -> Result<CredentialsFindResult>;
 
     /// Create a Verifiable Presentation.
     ///
@@ -617,24 +618,28 @@ pub enum PresentationRestrictionValue {
 }
 
 impl PresentationRestrictionValue {
-    pub fn validate_claim(&self, value: String) -> Result<()> {
+    pub fn validate_claim(&self, value: String) -> Result<bool> {
         let claim = value.trim_matches('\"').trim();
 
+        let result = match &self {
+            PresentationRestrictionValue::Pattern(pattern) => Regex::new(pattern)
+                .context(CannotCreateRegexSnafu)?
+                .is_match(claim),
+            PresentationRestrictionValue::Const(string) => claim.cmp(string).is_eq(),
+        };
+        Ok(result)
+    }
+
+    pub fn get_type(&self) -> String {
         match &self {
-            PresentationRestrictionValue::Pattern(pattern) => {
-                let regex = Regex::new(pattern).context(CannotCreateRegexSnafu)?;
-
-                if !regex.is_match(claim) {
-                    ClaimsDidNotPassFilteringSnafu { details: claim }.fail()?
-                }
-            }
-            PresentationRestrictionValue::Const(string) => {
-                if !claim.cmp(string).is_eq() {
-                    ClaimsDidNotPassFilteringSnafu { details: claim }.fail()?
-                }
-            }
+            PresentationRestrictionValue::Const(_) => "const".to_string(),
+            PresentationRestrictionValue::Pattern(_) => "pattern".to_string(),
         }
-
-        Ok(())
+    }
+    pub fn get_value(&self) -> String {
+        match &self {
+            PresentationRestrictionValue::Const(value) => value.to_owned(),
+            PresentationRestrictionValue::Pattern(value) => value.to_owned(),
+        }
     }
 }

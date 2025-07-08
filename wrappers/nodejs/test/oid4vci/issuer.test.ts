@@ -67,25 +67,25 @@ describe("OID4VCI Issuer: ", () => {
     });
   });
 
-  test("validate token", async () => {
+  it("validate token", async () => {
     const issuerMetadata = issuer.getIssuerMetadata();
 
     expect(issuerMetadata).toMatchObject(ISSUER_METADATA);
   });
 
-  test("retrieve Metadata", async () => {
+  it("retrieve Metadata", async () => {
     const issuerMetadata = issuer.getIssuerMetadata();
 
     expect(issuerMetadata).toMatchObject(ISSUER_METADATA);
   });
 
-  test("retrieve Credential Definition Metadata", async () => {
+  it("retrieve Credential Definition Metadata", async () => {
     const credDefMetadata = issuer.getCredDefMetadata(CredRequest1);
 
     expect(credDefMetadata).toMatchObject(CRED_DEF_METADATA);
   });
 
-  test("create Credential Offer", async () => {
+  it("create Credential Offer", async () => {
     const credentialOffer = issuer.createCredentialOffer([CredDefId1], GRANTS);
 
     expect(credentialOffer).toMatchObject({
@@ -94,7 +94,7 @@ describe("OID4VCI Issuer: ", () => {
     });
   });
 
-  test("generate Nonce", async () => {
+  it("generate Nonce", async () => {
     const credentialOffer = await issuer.generateNonce();
 
     expect(credentialOffer).toMatchObject({
@@ -102,7 +102,7 @@ describe("OID4VCI Issuer: ", () => {
     });
   });
 
-  test("issue Credential", async () => {
+  it("issue Credential", async () => {
     const result1 = await issuer.issueCredential(CredRequest1, ACCESS_TOKEN, CLAIMS);
     const result2 = await issuer.issueCredential(CredRequest2, ACCESS_TOKEN, CLAIMS);
     const credential1 = jwtDecode(result1.value.credentials[0].credential);
@@ -112,7 +112,7 @@ describe("OID4VCI Issuer: ", () => {
     expect(credential2.exp * 1000 - Date.now()).toBeGreaterThan(5 * 364 * 24 * 60 * 60 * 1000);
   });
 
-  test("issue multiple Credential - Batch issuance", async () => {
+  it("issue multiple Credential - Batch issuance", async () => {
     const result = await issuer.issueCredential(CRED_REQUEST_FOR_BATCH_ISSUANCE, ACCESS_TOKEN, CLAIMS);
     expect(result.value.credentials.length).toEqual(2);
     expect(result.value.credentials[0]).toBeTruthy();

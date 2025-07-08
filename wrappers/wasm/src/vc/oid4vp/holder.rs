@@ -1,14 +1,16 @@
-use agent_sdk::vc::oid4vp::Holder;
+use agent_sdk::vc::oid4vp::{CredentialsMapping as ASDKCredentialsMapping, Holder};
+use js_sys::{Object, Reflect};
 use std::collections::HashMap;
 use url::Url;
-use wasm_bindgen::JsError;
 use wasm_bindgen::prelude::wasm_bindgen;
+use wasm_bindgen::{JsCast, JsError, JsValue};
 
 use crate::utils;
-use crate::vc::JsCredentialEntry;
+use crate::utils::convert_to_opaque_object;
 use crate::vc::oid4vp::{
     AuthorizationRequest, AuthorizationResponseMetadata, CredentialMapping, CredentialsMapping,
 };
+use crate::vc::{CredentialsFindResult, JsCredentialEntry};
 
 /// The `OID4VP` `Holder` API.
 ///
@@ -17,7 +19,7 @@ use crate::vc::oid4vp::{
 ///
 /// # Features
 ///
-/// * Fetches authorization requests from verifiers.
+/// * Fetch authorization requests from verifiers.
 /// * Discovers credentials required for presentation requests.
 /// * Supports both automatic and manual credential presentation.
 #[wasm_bindgen]
@@ -128,9 +130,9 @@ impl OID4VPHolder {
             .await
             .map_err(|err| JsError::new(&format!("{:?}", err)))?;
 
-        let js_value = convert_to_js_credentials_mapping(credentials_mapping)?;
-
-        utils::convert_to_opaque_object_unchecked(js_value)
+        let map = convert_to_js_credentials_mapping(credentials_mapping)?;
+        let js_object = convert_hash_map_of_credentials_to_js_object(map)?;
+        Ok(js_object.unchecked_into())
     }
 
     /// Manually presents credentials to the Verifier.
@@ -139,7 +141,7 @@ impl OID4VPHolder {
     ///
     /// * `auth_request` - the resolved authorization request.
     /// * `credential_mapping` - the map of credentials required for the presentation.
-    /// * `metadata` -the authorization response metadata.
+    /// * `metadata` - the authorization response metadata.
     ///
     /// # Returns
     ///
@@ -196,17 +198,16 @@ impl OID4VPHolder {
     }
 }
 
-fn convert_to_js_credentials_mapping(
-    input: HashMap<String, Vec<agent_sdk::vault::CredentialEntry>>,
-) -> Result<HashMap<String, Vec<JsCredentialEntry>>, JsError> {
-    input
-        .into_iter()
-        .map(|(key, vec)| {
-            let converted_vec: Result<Vec<JsCredentialEntry>, JsError> =
-                vec.into_iter().map(TryInto::try_into).collect();
-            converted_vec.map(|vec| (key, vec))
-        })
-        .collect()
+pub fn convert_to_js_credentials_mapping(
+    input: ASDKCredentialsMapping,
+) -> Result<HashMap<String, CredentialsFindResult>, JsError> {
+    let mut result: HashMap<String, CredentialsFindResult> = HashMap::new();
+
+    for (id, cred_find_result) in input {
+        result.insert(id, cred_find_result.try_into()?);
+    }
+
+    Ok(result)
 }
 
 fn convert_from_js_credential_mapping(
@@ -220,4 +221,21 @@ fn convert_from_js_credential_mapping(
             converted_val.map(|v| (key, v))
         })
         .collect()
+}
+
+pub fn convert_hash_map_of_credentials_to_js_object(
+    map: HashMap<String, CredentialsFindResult>,
+) -> Result<JsValue, JsError> {
+    let obj = Object::new();
+
+    for (key, value) in map {
+        Reflect::set(
+            &obj,
+            &JsValue::from_str(&key),
+            &convert_to_opaque_object(value)?,
+        )
+        .map_err(|_| JsError::new("Failed at setting reflect in WASM conversion"))?;
+    }
+
+    Ok(obj.into())
 }

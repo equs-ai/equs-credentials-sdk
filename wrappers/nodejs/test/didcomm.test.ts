@@ -12,7 +12,7 @@ import {
 } from "../";
 
 describe("DIDComm: ", () => {
-  test("pack encrypted", async () => {
+  it("pack encrypted", async () => {
     const senderKms = contextEnsuredDIDCommKms(new InMemKms());
     const recipientKms = contextEnsuredDIDCommKms(new InMemKms());
 
@@ -40,7 +40,7 @@ describe("DIDComm: ", () => {
     expect(unpackResult.message).toEqual(message);
   });
 
-  test("pack signed", async () => {
+  it("pack signed", async () => {
     const senderKms = contextEnsuredDIDCommKms(new InMemKms());
     const recipientKms = contextEnsuredDIDCommKms(new InMemKms());
     const senderDid = await generate_did_peer(senderKms);
@@ -62,7 +62,7 @@ describe("DIDComm: ", () => {
     expect(unpackResult.message).toEqual(message);
   });
 
-  test("pack plaintext", async () => {
+  it("pack plaintext", async () => {
     const kms = contextEnsuredDIDCommKms(new InMemKms());
     const didCommService = new DIDCommService(kms);
 

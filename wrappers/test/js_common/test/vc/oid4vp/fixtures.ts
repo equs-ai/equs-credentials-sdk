@@ -45,6 +45,41 @@ export const PRESENTATION_DEFINITION: PresentationDefinition = {
     },
   ],
 };
+export const PRESENTATION_DEFINITION_FAKE: PresentationDefinition = {
+  id: "1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed",
+  input_descriptors: [
+    {
+      id: "Identity-1",
+      name: "Identity VC",
+      purpose: "We want an identity",
+      format: {
+        "dc+sd-jwt": {
+          "sd-jwt_alg_values": ["ES256", "EdDSA"],
+          "kb-jwt_alg_values": ["ES256", "EdDSA"],
+        },
+      },
+      constraints: {
+        fields: [
+          {
+            path: ["$.vct"],
+            predicate: null,
+            filter: {
+              type: "string",
+              const: "https://credentials.example.com/identity_credential_1",
+            },
+            intent_to_retain: false,
+          },
+          {
+            path: ["$.name"],
+            intent_to_retain: false,
+            predicate: null,
+            optional: true,
+          },
+        ],
+      },
+    },
+  ],
+};
 
 export const AUTH_REQUEST: CommonAuthorizationRequest = {
   client_id: "did:key:zDnaeeTG88wpPhMzuDRvLRTTyNMyJip5e6TLmsjyvPiSYUFk7",
@@ -61,6 +96,10 @@ export const AUTH_REQUEST: CommonAuthorizationRequest = {
   response_type: "vp_token",
   nonce: "YztANglRdmP4ChxsrcS8UcGYoPWwkgiUImkBrQmgWkU",
   state: STATE,
+};
+export const AUTH_REQUEST_FAKE: CommonAuthorizationRequest = {
+  ...AUTH_REQUEST,
+  presentation_definition: PRESENTATION_DEFINITION_FAKE,
 };
 
 export const PRESENTATION_SUBMISSION: PresentationSubmission = {

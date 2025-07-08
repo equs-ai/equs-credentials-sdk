@@ -1,7 +1,7 @@
 import { InMemKms, Alg, KeyType } from "agent-sdk";
 
 describe("InMemKMS: ", () => {
-  test("Sign and Verify", async () => {
+  it("Sign and Verify", async () => {
     const kms = new InMemKms();
     const kid = await kms.create(KeyType.P256);
     const keyHandle = await kms.get(kid);

@@ -25,7 +25,7 @@ kotlin-generate_kotlin_debug: kotlin-debug-build
 
 kotlin-test: kotlin-generate_kotlin_debug
 	@echo "Running Kotlin tests..."
-	cd kotlin && ./gradlew test -x android:test
+	cd kotlin && ./gradlew test -x android:test --info
 
 NDK_VERSION := 29.0.13599879
 

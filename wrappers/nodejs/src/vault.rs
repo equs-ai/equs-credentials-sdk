@@ -4,11 +4,14 @@ use agent_sdk::vault::{
     CredentialEntry, DeletingSnafu, EmptyFieldsSnafu, ResolvingSnafu, StoringSnafu, Vault,
     VaultPagination,
 };
+use agent_sdk::vc::oid4vp::{CredentialsFindResult, FindVCsFailReason};
 use agent_sdk::vc::{Credential, CredentialMetadata};
 use async_trait::async_trait;
+use napi::Either;
 use napi::bindgen_prelude::Promise;
 use napi::threadsafe_function::{ErrorStrategy, ThreadsafeFunction};
 use napi_derive::napi;
+
 /// An interface for stored {@link Credential} in {@link Vault} with some extra information.
 ///
 /// @property {Credential} credential
@@ -42,6 +45,59 @@ impl TryFrom<JsCredentialEntry> for CredentialEntry {
             kid: value.kid,
             id: value.id,
         })
+    }
+}
+
+/// An interface for stored {@link Credential} in {@link Vault} with some extra information.
+///
+/// @property {Array<string>} paths - of field to search for
+/// @property {string} type - type of field
+/// @property {string} value - value of field to be checked for with type
+#[napi(js_name = "FindVCsFailReason", object)]
+pub struct JsFindVCsFailReason {
+    pub paths: Vec<String>,
+    pub type_: String,
+    pub value: String,
+}
+
+impl TryFrom<FindVCsFailReason> for JsFindVCsFailReason {
+    type Error = napi::Error;
+
+    fn try_from(value: FindVCsFailReason) -> napi::Result<Self> {
+        Ok(JsFindVCsFailReason {
+            paths: value.paths,
+            type_: value.type_,
+            value: value.value,
+        })
+    }
+}
+
+#[napi(object, js_name = "CredentialsFindResult")]
+pub struct JsCredentialsFindResult {
+    pub data: Either<Vec<JsCredentialEntry>, Vec<JsFindVCsFailReason>>,
+}
+
+impl TryFrom<CredentialsFindResult> for JsCredentialsFindResult {
+    type Error = napi::Error;
+    fn try_from(value: CredentialsFindResult) -> napi::Result<Self> {
+        let data = match value {
+            CredentialsFindResult::Credentials(creds) => {
+                let mut result: Vec<JsCredentialEntry> = vec![];
+                for cred in creds {
+                    result.push(cred.try_into()?);
+                }
+                Either::A(result)
+            }
+            CredentialsFindResult::Reasons(reasons) => {
+                let mut result: Vec<JsFindVCsFailReason> = vec![];
+                for reason in reasons {
+                    result.push(reason.try_into()?);
+                }
+                Either::B(result)
+            }
+        };
+
+        Ok(Self { data })
     }
 }
 

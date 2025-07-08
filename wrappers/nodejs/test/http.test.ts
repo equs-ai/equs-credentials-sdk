@@ -1,7 +1,7 @@
 import { forHttpRequestTest, HttpClient, HttpMethod, HttpRequest, HttpResponse } from "../";
 
 describe("Http client: ", () => {
-  test("async call", async () => {
+  it("async call", async () => {
     const response = {
       statusCode: 201,
       body: '{bodyKey: "bodyValue"}',

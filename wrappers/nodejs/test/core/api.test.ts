@@ -14,6 +14,7 @@ import {
   HttpRequest,
   HttpResponse,
   _UniversalDIDResolver,
+  CredentialEntry,
 } from "../../";
 import { jwtDecode } from "jwt-decode";
 import { Utils } from "./utils";
@@ -22,17 +23,15 @@ describe("VC::Core", () => {
   const utils = new Utils();
   let statusIssuer: VcCoreStatusIssuer;
   let issuer: VcCoreIssuer;
-  let holder: VcCoreHolder;
-
+  const holder = createHolder(
+    utils.kms,
+    utils.vault,
+    { clientId: "wallet-dev", popLifetime: { nanoseconds: 0, seconds: 300 } },
+    new _UniversalDIDResolver(),
+  );
   beforeEach(async () => {
     statusIssuer = createStatusIssuer(utils.kms, await utils.getStatusIssuerMetadata());
     issuer = createIssuer(utils.kms, await utils.getIssuerMetadata(), new _UniversalDIDResolver());
-    holder = createHolder(
-      utils.kms,
-      utils.vault,
-      { clientId: "wallet-dev", popLifetime: { nanoseconds: 0, seconds: 300 } },
-      new _UniversalDIDResolver(),
-    );
   });
 
   describe("StatusIssuer", () => {
@@ -175,7 +174,7 @@ describe("VC::Core", () => {
           },
         ],
       });
-      expect(result[0].credential.payload).toBeDefined();
+      expect((result.data[0] as CredentialEntry).credential.payload).toBeDefined();
     });
 
     it("create presentation auto", async () => {
@@ -194,7 +193,7 @@ describe("VC::Core", () => {
         utils.nonce,
         utils.verifierId,
         utils.presentationInput,
-        credentialEntry[0],
+        credentialEntry.data[0] as CredentialEntry,
       );
       const decoded = jwtDecode<typeof utils.claims>(result.payload);
 

@@ -1,7 +1,7 @@
 import { DIDKey, InMemKms, KeyType } from "agent-sdk";
 
 describe("did:key: ", () => {
-  test("generate DID with InMem KeyHandle", async () => {
+  it("generate DID with InMem KeyHandle", async () => {
     const kms = new InMemKms();
     const kid = await kms.create(KeyType.P256);
     const keyHandle = await kms.get(kid);
@@ -13,7 +13,7 @@ describe("did:key: ", () => {
     expect(did.startsWith("did:key")).toBeTruthy();
   });
 
-  test("generate DID with NOT an instance of InMem KeyHandle", async () => {
+  it("generate DID with NOT an instance of InMem KeyHandle", async () => {
     const kms = new InMemKms();
     const kid = await kms.create(KeyType.P256);
     const keyHandle = await kms.get(kid);

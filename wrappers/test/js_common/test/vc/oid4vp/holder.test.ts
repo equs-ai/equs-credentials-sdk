@@ -16,7 +16,15 @@ import {
   UniversalDIDResolver,
   VCFormat,
 } from "agent-sdk";
-import { AUTH_REQUEST, AUTH_REQUEST_JWT, PRESENTATION_SUBMISSION, STATE, VC, VC_TYPE } from "./fixtures";
+import {
+  AUTH_REQUEST,
+  AUTH_REQUEST_FAKE,
+  AUTH_REQUEST_JWT,
+  PRESENTATION_SUBMISSION,
+  STATE,
+  VC,
+  VC_TYPE,
+} from "./fixtures";
 
 describe("OID4VP Holder: ", () => {
   const mockServer = getLocal();
@@ -53,7 +61,7 @@ describe("OID4VP Holder: ", () => {
 
   afterAll(async () => await mockServer.stop());
 
-  test("resolve Authorization request", async () => {
+  it("resolve authorization request", async () => {
     await mockServer
       .forGet("/request")
       .thenReply(200, AUTH_REQUEST_JWT, { "content-type": "application/oauth-authz-req+jwt" });
@@ -64,7 +72,7 @@ describe("OID4VP Holder: ", () => {
     expect(authorizationRequest.getAuthRequest()).toEqual(AUTH_REQUEST);
   });
 
-  test("present Credentials Auto", async () => {
+  it("present credentials auto", async () => {
     await mockServer.forPost("/response").thenCallback(async (request) => await handleRequest(request));
 
     await vault.storeCredential(credential, metadata);
@@ -73,26 +81,58 @@ describe("OID4VP Holder: ", () => {
     expect(result).toBeFalsy();
   });
 
-  test("present Credentials", async () => {
+  it("present Credentials Auto with excluded claims", async () => {
+    let token: string;
+    await mockServer.forPost("/response").thenCallback(async (request) => {
+      const form_data = await request.body.getFormData();
+
+      token = form_data.vp_token as string;
+      if (!form_data.presentation_submission?.length || !form_data.vp_token?.length)
+        throw new Error("Form data is invalid");
+
+      return { statusCode: 200, body: "" };
+    });
+
+    await vault.storeCredential(credential, metadata);
+
+    await holder.presentCredentialsAuto(new AuthorizationRequest(AUTH_REQUEST), {
+      claimsToExclude: { "Identity-1": ["$.name"] },
+    });
+
+    expect(token.split("~").length).toEqual(2);
+  });
+
+  it("findVcsForPresentation returns credential entries for succeeded filtering", async () => {
     await mockServer.forPost("/response").thenCallback(async (request) => await handleRequest(request));
 
     await vault.storeCredential(credential, metadata);
 
     const credentialsMapping = await holder.findVcsForPresentation(new AuthorizationRequest(AUTH_REQUEST));
-    const credentialMapping: Record<string, CredentialEntry> = Object.entries(credentialsMapping).reduce(
-      (acc, [key, values]) => {
-        acc[key] = values[0];
-        return acc;
-      },
-      {},
-    );
 
-    const result = await holder.presentCredentials(new AuthorizationRequest(AUTH_REQUEST), credentialMapping, {});
-
-    expect(result).toBeFalsy();
+    for (const key in credentialsMapping) {
+      expect(key).toBe("Identity-1");
+      expect((credentialsMapping[key].data[0] as CredentialEntry).credential).toMatchObject(credential);
+    }
   });
 
-  test("decline authorization request", async () => {
+  it("findVcsForPresentation returns reasons for failed filtering", async () => {
+    await mockServer.forPost("/response").thenCallback(async (request) => await handleRequest(request));
+
+    await vault.storeCredential(credential, metadata);
+
+    const credentialsMapping = await holder.findVcsForPresentation(new AuthorizationRequest(AUTH_REQUEST_FAKE));
+
+    for (const key in credentialsMapping) {
+      expect(key).toBe("Identity-1");
+      expect(credentialsMapping[key].data[0]).toMatchObject({
+        paths: ["$.vct"],
+        type: "const",
+        value: "https://credentials.example.com/identity_credential_1",
+      });
+    }
+  });
+
+  it("decline authorization request", async () => {
     let response;
     await mockServer.forPost("/response").thenCallback(async (request): Promise<any> => {
       response = await request.body.getFormData();

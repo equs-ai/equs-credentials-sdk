@@ -2,18 +2,18 @@
 
 use crate::utils::logs::sanitize_log_msg;
 use crate::vault::{
-    CannotCreateJSONPathSnafu, ClaimsDidNotPassFilteringSnafu, ClaimsParsingSnafu,
+    CannotCreateJSONPathSnafu, ClaimsParsingSnafu, ClaimsValidationSnafu,
     UnsupportedCredentialFormatSnafu,
 };
 use crate::vc::claims::Claims;
 use crate::vc::core::api::PresentationRestrictionValue;
 use crate::vc::core::{PresentationInput, PresentationRestriction};
+use crate::vc::oid4vp::FindVCsFailReason;
 use crate::vc::{
     ClaimFormatDesignation, Credential, HasClaims, HasVCFormat, JsonPath, Presentation,
     RequestedPresentation, formats,
 };
 use common_macros::DebugError;
-use jsonpath_rust::JsonPathValue;
 use openid4vp::core::presentation_submission::NoClaimsDecoder;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value as Json, Value, json};
@@ -23,6 +23,7 @@ use std::fmt::Debug;
 use std::str::FromStr;
 use tracing::{Level, instrument};
 use uuid::Uuid;
+
 // IDE removes Level from imports due to absence of usage. This way it is used now
 type Level_ = Level;
 
@@ -622,7 +623,7 @@ fn build_restrictions(
 pub fn validate_credential(
     credential: &Credential,
     presentation_input: &PresentationInput,
-) -> crate::vault::Result<()> {
+) -> crate::vault::Result<Option<Vec<FindVCsFailReason>>> {
     let claims = credential.parse_claims().context(ClaimsParsingSnafu)?;
 
     if let Some(format) = &presentation_input.format {
@@ -631,55 +632,74 @@ pub fn validate_credential(
         }
     }
 
+    let mut reasons_of_failure: Vec<FindVCsFailReason> = vec![];
+
     for pr in &presentation_input.restrictions {
-        validate_restrictions(pr, &claims)?
+        let reason_of_failure_inner = validate_restriction(pr, &claims)?;
+        if let Some(reason) = reason_of_failure_inner {
+            reasons_of_failure.push(reason);
+        }
     }
 
-    Ok(())
+    if reasons_of_failure.is_empty() {
+        return Ok(None);
+    }
+
+    Ok(Some(reasons_of_failure))
 }
 
-fn validate_restrictions(
+fn validate_restriction(
     presentation_restriction: &PresentationRestriction,
     claims: &Claims,
-) -> crate::vault::Result<()> {
+) -> crate::vault::Result<Option<FindVCsFailReason>> {
+    let mut claims_values: Vec<Value> = vec![];
+
     for field in &presentation_restriction.fields {
         let json_path_field =
             jsonpath_rust::JsonPath::from_str(field).context(CannotCreateJSONPathSnafu)?;
-        let json_claims = json!(claims.claims());
-        let claims = json_path_field.find_slice(&json_claims);
-
-        let has_value = claims.first().is_some_and(|claim| claim.has_value());
-        if !has_value && !presentation_restriction.optional {
-            continue;
-        }
-
-        if validate_claims_with_restriction_value(claims, presentation_restriction).is_ok() {
-            return Ok(());
-        }
+        let claims_data = json!(claims.claims());
+        let claims = &json_path_field.find_slice(&claims_data);
+        claims_values.extend(
+            claims
+                .iter()
+                .map(|c| c.to_owned().to_data())
+                .filter(|v| !v.is_null())
+                .collect::<Vec<Value>>(),
+        )
     }
-    ClaimsDidNotPassFilteringSnafu {
-        details: &presentation_restriction.fields.join(", "),
-    }
-    .fail()
-}
 
-fn validate_claims_with_restriction_value(
-    claims: Vec<JsonPathValue<Value>>,
-    presentation_restriction: &PresentationRestriction,
-) -> crate::vault::Result<()> {
-    for claim in claims {
-        if let Some(value) = &presentation_restriction.value {
-            if value.validate_claim(claim.to_data().to_string()).is_ok() {
-                return Ok(());
-            }
+    if claims_values.is_empty() {
+        return if presentation_restriction.optional {
+            Ok(None)
         } else {
-            return Ok(());
+            Ok(Some(FindVCsFailReason {
+                paths: presentation_restriction.fields.to_owned(),
+                type_: "optional".to_string(),
+                value: presentation_restriction.optional.to_string(),
+            }))
+        };
+    }
+
+    if let Some(pr_value) = &presentation_restriction.value {
+        for claim in claims_values {
+            let is_valid = pr_value.validate_claim(claim.to_string()).map_err(|e| {
+                ClaimsValidationSnafu {
+                    details: e.to_string(),
+                }
+                .build()
+            })?;
+            if is_valid {
+                return Ok(None);
+            }
         }
+        Ok(Some(FindVCsFailReason {
+            paths: presentation_restriction.fields.to_owned(),
+            type_: pr_value.get_type(),
+            value: pr_value.get_value(),
+        }))
+    } else {
+        Ok(None)
     }
-    ClaimsDidNotPassFilteringSnafu {
-        details: &presentation_restriction.fields.join(", "),
-    }
-    .fail()?
 }
 
 #[cfg(test)]
@@ -877,13 +897,19 @@ mod tests {
         presentation_input.restrictions[0]
             .fields
             .insert(0, "$.field.will.pass.whilst.other.field.passes".to_string());
-        validate_credential(&credential.credential, &presentation_input).unwrap()
+        let result = validate_credential(&credential.credential, &presentation_input).unwrap();
+
+        if let Some(reasons) = result {
+            panic!(
+                "Unexpected behavior! Creds has passed filtering {:#?}",
+                reasons
+            )
+        }
     }
     #[rstest]
     #[case::ldp_vc(CredTestCase::ldp_vc())]
     #[case::sd_jwt(CredTestCase::sd_jwt())]
     #[tokio::test]
-    #[should_panic(expected = "Claims did not pass filtering: $.field.will.not.pass")]
     async fn credential_validated_fails_on_non_existing_field(
         #[case] cred_test_case: CredTestCase,
     ) {
@@ -891,7 +917,13 @@ mod tests {
         let mut presentation_input = cred_test_case.create_presentation_input();
 
         presentation_input.restrictions[0].fields = vec!["$.field.will.not.pass".to_string()];
-        validate_credential(&credential.credential, &presentation_input).unwrap()
+        let result = validate_credential(&credential.credential, &presentation_input).unwrap();
+
+        if let Some(reasons) = result {
+            assert_eq!(reasons.len(), 1);
+        } else {
+            panic!("Unexpected behavior! Creds has passed filtering")
+        }
     }
 
     #[tokio::test]

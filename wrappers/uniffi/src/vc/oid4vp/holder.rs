@@ -3,7 +3,7 @@ use std::collections::HashMap;
 
 use crate::common::{Error, Result};
 use crate::utils::parse_url_arg;
-use crate::vault::CredentialEntry;
+use crate::vault::{CredentialEntry, CredentialsFindResult, CredentialsSearchResult};
 use crate::vc::oid4vp::{AuthorizationRequest, AuthorizationResponseMetadata};
 
 /// The `OID4VP` `Holder` API.
@@ -81,11 +81,37 @@ impl OID4VPHolder {
     pub async fn find_vcs_for_presentation(
         &self,
         auth_request: AuthorizationRequest,
-    ) -> Result<HashMap<String, Vec<CredentialEntry>>> {
-        self.0
+    ) -> Result<HashMap<String, CredentialsFindResult>> {
+        let vcs_for_presentation = self
+            .0
             .find_vcs_for_presentation(&auth_request.try_into()?)
             .await
-            .map_err(|err| Error::OID4VPHolder(format!("{:?}", err)))
+            .map_err(|err| Error::OID4VPHolder(format!("{:?}", err)))?;
+
+        let mut result = HashMap::<String, CredentialsFindResult>::new();
+
+        for (key, value) in vcs_for_presentation {
+            match value {
+                agent_sdk::vc::oid4vp::CredentialsFindResult::Credentials(creds) => {
+                    result.insert(
+                        key,
+                        CredentialsFindResult {
+                            data: CredentialsSearchResult::Credentials(creds),
+                        },
+                    );
+                }
+                agent_sdk::vc::oid4vp::CredentialsFindResult::Reasons(reasons) => {
+                    result.insert(
+                        key,
+                        CredentialsFindResult {
+                            data: CredentialsSearchResult::Reasons(reasons),
+                        },
+                    );
+                }
+            }
+        }
+
+        Ok(result)
     }
 
     /// Manually presents credentials to the Verifier.

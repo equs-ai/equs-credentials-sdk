@@ -1,5 +1,5 @@
 use crate::utils::{from_json_object, parse_url_arg, to_json_object};
-use crate::vault::JsCredentialEntry;
+use crate::vault::{JsCredentialEntry, JsCredentialsFindResult};
 use crate::vc::JsonObject;
 use crate::vc::core::JsKeyMetadata;
 use agent_sdk::vault::CredentialEntry;
@@ -93,7 +93,7 @@ impl InnerOID4VPHolder {
     pub async fn find_vcs_for_presentation(
         &self,
         auth_request: _AuthorizationRequest,
-    ) -> Result<HashMap<String, Vec<JsCredentialEntry>>> {
+    ) -> Result<HashMap<String, JsCredentialsFindResult>> {
         let credentials_mapping = self
             .0
             .find_vcs_for_presentation(&auth_request.try_into()?)
@@ -244,15 +244,14 @@ impl TryFrom<JsAuthorizationResponseMetadata> for AuthorizationResponseMetadata 
 
 fn convert_to_js_credentials_mapping(
     input: CredentialsMapping,
-) -> Result<HashMap<String, Vec<JsCredentialEntry>>> {
-    input
-        .into_iter()
-        .map(|(key, vec)| {
-            let converted_vec: Result<Vec<JsCredentialEntry>> =
-                vec.into_iter().map(|entry| entry.try_into()).collect();
-            converted_vec.map(|vec| (key, vec))
-        })
-        .collect()
+) -> Result<HashMap<String, JsCredentialsFindResult>> {
+    let mut result = HashMap::new();
+
+    for (key, value) in input {
+        result.insert(key, value.try_into()?);
+    }
+
+    Ok(result)
 }
 
 fn convert_from_js_credential_mapping(

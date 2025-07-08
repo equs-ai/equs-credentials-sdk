@@ -49,9 +49,6 @@ pub enum Error {
     #[snafu(display("Claims parsing error"))]
     ClaimsParsing { source: vc::formats::Error },
 
-    #[snafu(display("Claims did not pass filtering: {details}"))]
-    ClaimsDidNotPassFiltering { details: String },
-
     #[snafu(display("Cannot create JSONPath"))]
     CannotCreateJSONPath { source: JsonPathParserError },
 
@@ -63,6 +60,9 @@ pub enum Error {
 
     #[snafu(display("Pagination parsing"))]
     PaginationParsing { details: String },
+
+    #[snafu(display("Error during claims validation: {details}"))]
+    ClaimsValidation { details: String },
 }
 
 /// `Result` alias for Vault-specific [Error].

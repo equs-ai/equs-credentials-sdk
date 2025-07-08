@@ -1,7 +1,7 @@
 import { DIDWeb, InMemKms, KeyHandle, KeyType, VerificationMethodKey, VerificationRelationshipType } from "../../";
 
 describe("did:web: ", () => {
-  test("generate did document", async () => {
+  it("generate did document", async () => {
     const did = "did:web:test.example.com";
     const kms = new InMemKms();
     const key = await kms.create(KeyType.P256);

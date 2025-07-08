@@ -24,35 +24,35 @@ describe("Vault: ", () => {
     },
   ];
 
-  test("Delete Credential", async () => {
+  it("Delete Credential", async () => {
     await new VaultTestHelper(mockVault()).deleteCredential(credentialId);
   });
 
-  test("Get Credential", async () => {
+  it("Get Credential", async () => {
     const credential = await new VaultTestHelper(mockVault()).getCredential(credentialId);
 
     expect(credential).toEqual(credentialEntries[0]);
   });
 
-  test("Get credential with non-existent credential ID", async () => {
+  it("Get credential with non-existent credential ID", async () => {
     const credential = await new VaultTestHelper(mockVault()).getCredential("cred:9876");
 
     expect(credential).toBeFalsy();
   });
 
-  test("Get Credentials", async () => {
+  it("Get Credentials", async () => {
     const credentials = await new VaultTestHelper(mockVault()).getCredentials();
 
     expect(credentials).toEqual(credentialEntries);
   });
 
-  test("find Credentials", async () => {
+  it("find Credentials", async () => {
     const credentials = await new VaultTestHelper(mockVault()).findCredentials(sdJwtMetadata.fields);
 
     expect(credentials).toEqual(credentialEntries);
   });
 
-  test("Store Credential", async () => {
+  it("Store Credential", async () => {
     const credentials = await new VaultTestHelper(mockVault()).storeCredential(sdJwt, sdJwtMetadata);
 
     expect(credentials).toEqual(credentialId);
