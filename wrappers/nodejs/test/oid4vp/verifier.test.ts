@@ -13,7 +13,7 @@ import { CLAIMS, PRESENTATION_DEFINITION, PRESENTATION_QUERY, PRESENTATION_SUBMI
 import { createDidAndKeyMetadata } from "../utils";
 
 describe("OID4VP Verifier: ", () => {
-  test("create Authorization Request by Value", async () => {
+  it("create Authorization Request by Value", async () => {
     const verifier = await buildVerifier();
 
     const authResponseOptions: AuthResponseOptions = {
@@ -41,7 +41,7 @@ describe("OID4VP Verifier: ", () => {
     expect(expected_state).toEqual(STATE);
   });
 
-  test("create Authorization Request by Reference", async () => {
+  it("create Authorization Request by Reference", async () => {
     const verifier = await buildVerifier();
 
     const authResponseOptions: AuthResponseOptions = {
@@ -65,7 +65,7 @@ describe("OID4VP Verifier: ", () => {
     );
   });
 
-  test("verify Authorization Response", async () => {
+  it("verify Authorization Response", async () => {
     const verifier = await buildVerifier("did:key:zDnaefQAPFVQt9sfU63hyqYgPza2pDSXSJrPrCG5paT5eaQJb");
 
     const rpq: ResolvedPresentationQuery = {

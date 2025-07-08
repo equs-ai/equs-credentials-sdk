@@ -1,6 +1,6 @@
 use crate::did::JsUniversalDIDResolver;
 use crate::kms::JsKms;
-use crate::vault::{JsCredentialEntry, JsVault};
+use crate::vault::{JsCredentialEntry, JsCredentialsFindResult, JsVault};
 use crate::vc::core::{JsCredential, JsCredentialMetadata, JsHolderMetadata, JsKeyMetadata};
 use crate::vc::core::{
     JsCredentialOffer, JsCredentialRequest, JsPresentation, JsPresentationInput,
@@ -125,18 +125,12 @@ impl VCCoreHolder {
     pub async fn find_vcs_for_presentation(
         &self,
         presentation_input: JsPresentationInput,
-    ) -> Result<Vec<JsCredentialEntry>, Error> {
+    ) -> Result<JsCredentialsFindResult, Error> {
         self.0
             .find_vcs_for_presentation(&presentation_input.try_into()?)
             .await
             .map_err(|e| Error::from_reason(e.to_string()))
-            .and_then(|value| {
-                let mut vector: Vec<JsCredentialEntry> = vec![];
-                for cred_entry in value {
-                    vector.push(cred_entry.try_into()?);
-                }
-                Ok(vector)
-            })
+            .and_then(|value| value.try_into())
     }
 
     /// Create a Verifiable Presentation.

@@ -5,7 +5,7 @@ describe("Universal Resolver: ", () => {
   const fixtures = new Fixtures();
   const resolver = new UniversalDIDResolver();
 
-  test("Resolve verification method", async () => {
+  it("Resolve verification method", async () => {
     const result = await resolver.resolveVerificationMethod(
       "did:key:zDnaefX6jBNVFnFeUPMRGo6exaVdJ1TRCwuhm296PbB5gPTj6",
     );
@@ -19,12 +19,12 @@ describe("Universal Resolver: ", () => {
     );
   });
 
-  test("Resolve method", async () => {
+  it("Resolve method", async () => {
     const result = await resolver.resolve("did:key:zDnaefX6jBNVFnFeUPMRGo6exaVdJ1TRCwuhm296PbB5gPTj6");
     expect(result).toEqual(fixtures.didResolution);
   });
 
-  test("Resolve custom method", async () => {
+  it("Resolve custom method", async () => {
     const customResolver = new MockDIDResolver(
       "custom",
       "did:custom:zDnaefX6jBNVFnFeUPMRGo6exaVdJ1TRCwuhm296PbB5gPTj6",

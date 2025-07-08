@@ -18,50 +18,50 @@ describe("KMS: ", () => {
   const signature = Uint8Array.from(Buffer.from("ZW5jcnlwdGVkX3Rlc3RfdmFsdWU=", "base64"));
 
   describe("KeyHandle: ", () => {
-    test("get signing algorithm", async () => {
+    it("get signing algorithm", async () => {
       const test_key_handle = new KeyHandleTestHelper(mockKeyHandle());
 
       expect(test_key_handle.alg).toEqual(Alg.ES256);
     });
 
-    test("get public key", async () => {
+    it("get public key", async () => {
       const test_key_handle = new KeyHandleTestHelper(mockKeyHandle());
 
       expect(Array.from(test_key_handle.pubKey)).toEqual(publicKey);
     });
 
-    test("get jwk", async () => {
+    it("get jwk", async () => {
       const test_key_handle = new KeyHandleTestHelper(mockKeyHandle());
 
       expect(JSON.parse(test_key_handle.jwk)).toMatchObject(JSON.parse(jwk));
     });
 
-    test("sign", async () => {
+    it("sign", async () => {
       const test_key_handle = new KeyHandleTestHelper(mockKeyHandle());
 
       expect(await test_key_handle.sign(payload)).toEqual(signature);
     });
 
-    test("verify", async () => {
+    it("verify", async () => {
       const test_key_handle = new KeyHandleTestHelper(mockKeyHandle());
 
       await test_key_handle.verify(payload, signature);
     });
   });
 
-  test("create", async () => {
+  it("create", async () => {
     const kid = await new KmsTestHelper(mockKms()).create(KeyType.P256);
 
     expect(kid).toEqual("test_kid");
   });
 
-  test("get by Key ID", async () => {
+  it("get by Key ID", async () => {
     const key_handle = await new KmsTestHelper(mockKms()).get("test_kid");
 
     expect(Array.from(key_handle.pubKey)).toEqual(publicKey);
   });
 
-  test("get by Public Key", async () => {
+  it("get by Public Key", async () => {
     const key_handle = await new KmsTestHelper(mockKms()).getByPublicKey(Uint8Array.from(publicKey));
 
     expect(Array.from(key_handle.pubKey)).toEqual(publicKey);

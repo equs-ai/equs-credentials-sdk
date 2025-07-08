@@ -24,12 +24,12 @@ describe("DID: ", () => {
     did = didKey.generate(keyHandle);
   });
 
-  test("Value", async () => {
+  it("Value", async () => {
     expect(did).toEqual(expect.stringContaining("did:key:"));
   });
 
   describe("Custom Resolver: ", () => {
-    test("Success flow", async () => {
+    it("Success flow", async () => {
       const resolver = new UniversalDIDResolver();
       resolver.addResolver(new MockDID("mock"));
       resolver.addResolver(new MockDID("anothermock"));
@@ -39,7 +39,7 @@ describe("DID: ", () => {
       expect(result2.document).toEqual(utils.mockDidResolution("anothermock"));
     });
 
-    test("Multiple addition of same method", async () => {
+    it("Multiple addition of same method", async () => {
       try {
         const customResolver = new MockDID("mock");
         const resolver = new UniversalDIDResolver();

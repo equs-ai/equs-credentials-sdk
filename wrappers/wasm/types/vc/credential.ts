@@ -35,6 +35,12 @@ export interface CredentialEntry {
   id: string;
 }
 
+export interface FindVCsFailReason {
+  paths: Array<string>;
+  type: string;
+  value: string;
+}
+
 /**
  * Credential Metadata.
  *

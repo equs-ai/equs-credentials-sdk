@@ -83,7 +83,30 @@ import Testing
 			let credentials = try await holder.findVcsForPresentation(
 				authRequest: Oid4vpHolderTestConstants.authRequest)
 
-			let credentialMapping = credentials.mapValues { $0.first! }
+			var credentialMapping: [String: CredentialEntry] = [:]
+
+			for (key, result) in credentials {
+				switch result.data {
+				case .credentials(let credentials):
+					guard let first = credentials.first else {
+						throw NSError(
+							domain: "ExtractError", code: 1,
+							userInfo: [
+								NSLocalizedDescriptionKey: "No credentials found for key: \(key)"
+							])
+					}
+					credentialMapping[key] = first
+
+				case .reasons(let reasons):
+					let reasonDescriptions = reasons.map { "\($0)" }.joined(separator: "; ")
+					throw NSError(
+						domain: "ExtractError", code: 2,
+						userInfo: [
+							NSLocalizedDescriptionKey:
+								"Failed to find credentials for key: \(key); reasons: \(reasonDescriptions)"
+						])
+				}
+			}
 
 			let _ = try await holder.presentCredentials(
 				authRequest: Oid4vpHolderTestConstants.authRequest,
@@ -91,6 +114,60 @@ import Testing
 				authResponseMetadata: AuthorizationResponseMetadata(
 					claimsToExclude: nil, idTokenMetadata: nil)
 			)
+		}
+	}
+
+	@Test
+	func findVcsForPresentationReturnsCredentials() async throws {
+
+		let credentialsMapping = try await self.holder.findVcsForPresentation(
+			authRequest: Oid4vpHolderTestConstants.authRequest)
+
+		for (key, result) in credentialsMapping {
+			switch result.data {
+			case .credentials(let creds):
+				guard let credential = creds.first else {
+					throw NSError(
+						domain: "ExtractError", code: 2,
+						userInfo: [
+							NSLocalizedDescriptionKey:
+								#"No credentials found for key: \#(key)"#
+						])
+				}
+				#expect(credential.credential.format == VcFormat.sdJwtVc)
+
+			case .reasons(let reasons):
+				throw NSError(
+					domain: "ExtractError", code: 2,
+					userInfo: [
+						NSLocalizedDescriptionKey:
+							#"Expected credentials, found reasons of failure \#(key): \#(reasons)"#
+					])
+			}
+		}
+	}
+
+	@Test
+	func findVcsForPresentationReturnsReasonsOfFailure() async throws {
+
+		let credentialsMapping = try await self.holder.findVcsForPresentation(
+			authRequest: Oid4vpHolderTestConstants.authRequestFake)
+
+		for (key, result) in credentialsMapping {
+			switch result.data {
+			case .credentials(let creds):
+				throw NSError(
+					domain: "ExtractError", code: 2,
+					userInfo: [
+						NSLocalizedDescriptionKey:
+							#"Expected reasons of failure, found credentials \#(key): \#(creds)"#
+					])
+
+			case .reasons(let reasons):
+				#expect(reasons[0].paths.contains("$.vct"))
+				#expect(reasons[0].type == "const")
+				#expect(reasons[0].value == "https://credentials.example.com/identity_credential_1")
+			}
 		}
 	}
 
@@ -190,6 +267,56 @@ enum Oid4vpHolderTestConstants {
 		}
 		}
 		"""
+	static let presentationDefinitionFake = """
+		{
+		   "presentation_definition":
+		    {
+				   "id":"1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed",
+				   "input_descriptors":[
+				      {
+				         "id":"Identity-1",
+				         "constraints":{
+				            "fields":[
+				               {
+				                  "path":[
+				                     "$.vct"
+				                  ],
+				                  "filter":{
+				                     "type":"string",
+				                     "const":"https://credentials.example.com/identity_credential_1"
+				                  },
+				                  "predicate":null,
+				                  "intent_to_retain":false
+				               },
+				               {
+				                  "path":[
+				                     "$.name"
+				                  ],
+				                  "optional":true,
+				                  "predicate":null,
+				                  "intent_to_retain":false
+				               }
+				            ]
+				         },
+				         "name":"Identity VC",
+				         "purpose":"We want an identity",
+				         "format":{
+				            "dc+sd-jwt":{
+				               "sd-jwt_alg_values":[
+				                  "ES256",
+				                  "EdDSA"
+				               ],
+				               "kb-jwt_alg_values":[
+				                  "ES256",
+				                  "EdDSA"
+				               ]
+				            }
+				         }
+				      }
+				   ]
+		}
+		}
+		"""
 
 	static let clientMetadata = """
 		{
@@ -209,6 +336,16 @@ enum Oid4vpHolderTestConstants {
 		clientId: "did:key:zDnaeeTG88wpPhMzuDRvLRTTyNMyJip5e6TLmsjyvPiSYUFk7",
 		clientMetadata: clientMetadata,
 		presentationDefinition: presentationDefinition,
+		nonce: "YztANglRdmP4ChxsrcS8UcGYoPWwkgiUImkBrQmgWkU",
+		responseType: "vp_token",
+		responseMode: "direct_post",
+		responseUri: "http://localhost:9001/response",
+		state: "eea7b48e-1866-41b4-beae-03b95d41670c"
+	)
+	static let authRequestFake = AuthorizationRequest(
+		clientId: "did:key:zDnaeeTG88wpPhMzuDRvLRTTyNMyJip5e6TLmsjyvPiSYUFk7",
+		clientMetadata: clientMetadata,
+		presentationDefinition: presentationDefinitionFake,
 		nonce: "YztANglRdmP4ChxsrcS8UcGYoPWwkgiUImkBrQmgWkU",
 		responseType: "vp_token",
 		responseMode: "direct_post",

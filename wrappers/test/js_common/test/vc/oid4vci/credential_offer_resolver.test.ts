@@ -6,7 +6,7 @@ describe("OID4VCI Credential Offer resolver: ", () => {
   const port = 9000;
   const utils = new Utils({ issuerUrlPort: port });
 
-  test("resolve offer by reference with pre-authorized code grant", async () => {
+  it("resolve offer by reference with pre-authorized code grant", async () => {
     const mockServer = getLocal();
     await mockServer.start(port);
 
@@ -24,7 +24,7 @@ describe("OID4VCI Credential Offer resolver: ", () => {
     await mockServer.stop();
   });
 
-  test("resolve offer by value with pre-authorized code grant", async () => {
+  it("resolve offer by value with pre-authorized code grant", async () => {
     const resolver = OID4VCICredentialOfferResolver.withHttpClient(ReqwestHttpClient.insecure());
 
     const resolvedOffer = await resolver.resolve(

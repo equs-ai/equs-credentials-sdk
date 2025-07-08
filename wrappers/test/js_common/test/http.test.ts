@@ -49,7 +49,7 @@ describe("HTTP Client: ", () => {
   });
 
   describe("Insecure mode: ", () => {
-    test("should success with http url on insecure mode", async () => {
+    it("should success with http url on insecure mode", async () => {
       const client = ReqwestHttpClient.insecure();
 
       const result = await client.asyncCall(httpRequest);

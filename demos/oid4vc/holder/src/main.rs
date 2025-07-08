@@ -7,7 +7,6 @@ use agent_sdk::inmem::vault::InMemVault;
 use agent_sdk::kms;
 use agent_sdk::kms::Kms;
 use agent_sdk::reqwest::builder::ReqwestClientBuilder;
-use agent_sdk::vault::CredentialEntry;
 use agent_sdk::vc::HasClaims;
 use agent_sdk::vc::core::KeyMetadata;
 use agent_sdk::vc::dcql::{DCQL, DCQLCredential};
@@ -18,9 +17,9 @@ use agent_sdk::vc::oid4vci::{
 };
 use agent_sdk::vc::oid4vci::{CredentialOfferResolver, Holder as HolderVci};
 use agent_sdk::vc::oid4vp::{
-    AuthResponseOptions, AuthorizationResponse, AuthorizationResponseMetadata, CredentialsMapping,
-    PassAuthRequestObject, ResolvedAuthRequest, ResolvedPresentationQuery, ResponseMode,
-    ResponseType,
+    AuthResponseOptions, AuthorizationResponse, AuthorizationResponseMetadata,
+    CredentialsFindResult, CredentialsMapping, PassAuthRequestObject, ResolvedAuthRequest,
+    ResolvedPresentationQuery, ResponseMode, ResponseType,
 };
 use agent_sdk::vc::oid4vp::{CredentialMapping, Holder as HolderVp};
 use agent_sdk::vc::oid4vp::{IdTokenMetadata, Verifier};
@@ -488,38 +487,52 @@ fn collect_selected_cred_entries(
             .split_once('=')
             .expect("Could parse selected credential");
 
-        let cred_entry: &CredentialEntry = cred_entries
+        let cred_find_result = cred_entries
             .get(id)
-            .expect("selected credential is not found")
-            .get(
-                index
-                    .parse::<usize>()
-                    .expect("could convert selected index to \"int\""),
-            )
             .expect("selected credential is not found");
 
-        selected.insert(id.to_owned(), cred_entry.to_owned());
+        match cred_find_result {
+            CredentialsFindResult::Credentials(creds) => {
+                let cred_entry = creds
+                    .get(
+                        index
+                            .parse::<usize>()
+                            .expect("could convert selected index to \"int\""),
+                    )
+                    .expect("selected credential is not found");
+
+                selected.insert(id.to_owned(), cred_entry.to_owned());
+            }
+            CredentialsFindResult::Reasons(reasons) => {
+                panic!("Unexpected cred type reasons: {reasons:?}");
+            }
+        }
     }
 
     selected
 }
 
-fn get_claims_from_cred_entries(creds: &Vec<CredentialEntry>) -> Vec<String> {
-    let mut claims = vec![];
+fn get_claims_from_cred_entries(creds: &CredentialsFindResult) -> Vec<String> {
+    match creds {
+        CredentialsFindResult::Credentials(creds) => {
+            let mut claims = vec![];
+            for cred_entry in creds {
+                if let Credential::SdJwt(sd_jwt) = &cred_entry.credential {
+                    let claim_json = sd_jwt
+                        .parse_claims()
+                        .expect("Could not retrieve claims from sd-jwt");
+                    let claim = serde_json::to_string_pretty(&claim_json)
+                        .expect("Could not convert claim from Json to String");
 
-    for cred_entry in creds {
-        if let Credential::SdJwt(sd_jwt) = &cred_entry.credential {
-            let claim_json = sd_jwt
-                .parse_claims()
-                .expect("Could not retrieve claims from sd-jwt");
-            let claim = serde_json::to_string_pretty(&claim_json)
-                .expect("Could not convert claim from Json to String");
-
-            claims.push(claim)
+                    claims.push(claim)
+                }
+            }
+            claims
+        }
+        CredentialsFindResult::Reasons(reasons) => {
+            panic!("Expected credentials, found reasons: {:#?}", reasons)
         }
     }
-
-    claims
 }
 
 async fn oid4vp_holder(kms: LocalKms, vault: InMemVault) -> impl oid4vp::Holder {

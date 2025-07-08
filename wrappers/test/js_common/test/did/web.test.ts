@@ -17,7 +17,7 @@ describe("did:web: ", () => {
     ],
   };
 
-  test("generate DID from URL", async () => {
+  it("generate DID from URL", async () => {
     const url = "https://example.com/users/alice";
     const didWeb = new DIDWeb();
 
@@ -26,7 +26,7 @@ describe("did:web: ", () => {
     expect(did).toEqual("did:web:example.com:users:alice");
   });
 
-  test("generate DID document with InMem KeyHandle", async () => {
+  it("generate DID document with InMem KeyHandle", async () => {
     const did = "did:web:test.example.com";
     const kms = new InMemKms();
     const kid = await kms.create(KeyType.P256);
@@ -46,7 +46,7 @@ describe("did:web: ", () => {
     expect(did_doc).toEqual(expectedDidDoc);
   });
 
-  test("generate DID document with NOT an instance of InMem KeyHandle", async () => {
+  it("generate DID document with NOT an instance of InMem KeyHandle", async () => {
     const did = "did:web:test.example.com";
     const kms = new InMemKms();
     const kid = await kms.create(KeyType.P256);

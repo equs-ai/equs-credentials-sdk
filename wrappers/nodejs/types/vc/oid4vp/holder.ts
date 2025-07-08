@@ -2,6 +2,7 @@ import {
   AuthorizationRequest,
   AuthorizationResponseMetadata,
   CredentialEntry,
+  CredentialsFindResult,
   InnerOID4VPHolder,
   PresentationQuery,
 } from "../../..";
@@ -72,7 +73,7 @@ export class OID4VPHolder {
    * An object of credentials that satisfy the authorization request's requirements.
    * If no matching credentials are found, an empty object is returned.
    */
-  async findVcsForPresentation(authRequest: AuthorizationRequest): Promise<Record<string, Array<CredentialEntry>>> {
+  async findVcsForPresentation(authRequest: AuthorizationRequest): Promise<Record<string, CredentialsFindResult>> {
     return await this.inner.findVcsForPresentation(authRequest.toRustObject());
   }
 

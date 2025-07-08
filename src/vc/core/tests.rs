@@ -142,6 +142,7 @@ pub mod utils {
         nonce_gen.generate().await.unwrap()
     }
 
+    #[derive(Clone)]
     pub struct CredTestCase {
         pub format: VCFormat,
         pub pop_format: pop::Format,
@@ -180,7 +181,6 @@ pub mod utils {
                 .unwrap(),
             }
         }
-
         pub fn ldp_vc() -> CredTestCase {
             CredTestCase {
                 format: VCFormat::LdpVc,
@@ -351,6 +351,63 @@ pub mod utils {
                         PresentationRestriction {
                             fields: vec!["$.vct".to_string()],
                             value: Some(PresentationRestrictionValue::Const(self.type_.to_owned())),
+                            optional: false,
+                        },
+                        PresentationRestriction {
+                            fields: vec!["$.givenName".to_string(), "$.familyName".to_string()],
+                            value: None,
+                            optional: true,
+                        },
+                        PresentationRestriction {
+                            fields: vec![
+                                "$.birthDate".to_string(),
+                                "$.children.birthDate".to_string(),
+                            ],
+                            value: Some(PresentationRestrictionValue::Pattern(
+                                r"^(?P<year>\d{4})-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$"
+                                    .to_string(),
+                            )),
+                            optional: false,
+                        },
+                    ],
+                },
+                VCFormat::LdpVc => PresentationInput {
+                    id: Uuid::new_v4().to_string(),
+                    format: Some(self.claim_format.name()),
+                    restrictions: vec![
+                        PresentationRestriction {
+                            fields: vec!["$.type[*]".to_string()],
+                            value: Some(PresentationRestrictionValue::Const(self.type_.to_owned())),
+                            optional: false,
+                        },
+                        PresentationRestriction {
+                            fields: vec![
+                                "$.credentialSubject.givenName".to_string(),
+                                "$.credentialSubject.familyName".to_string(),
+                            ],
+                            value: None,
+                            optional: false,
+                        },
+                    ],
+                },
+                _ => PresentationInput {
+                    id: Uuid::new_v4().to_string(),
+                    format: Some(self.claim_format.name()),
+                    restrictions: vec![],
+                },
+            }
+        }
+        pub fn create_presentation_input_with_wrong_vct(&self) -> PresentationInput {
+            match self.format {
+                VCFormat::SdJwtVc => PresentationInput {
+                    id: Uuid::new_v4().to_string(),
+                    format: Some(self.claim_format.name()),
+                    restrictions: vec![
+                        PresentationRestriction {
+                            fields: vec!["$.vct".to_string()],
+                            value: Some(PresentationRestrictionValue::Const(
+                                "https://issuer.net/cred_schema_1".to_string(),
+                            )),
                             optional: false,
                         },
                         PresentationRestriction {

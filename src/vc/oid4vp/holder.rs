@@ -14,8 +14,8 @@ use crate::vc::oid4vp::internal_error::{
 use crate::vc::oid4vp::metadata::default_wallet_metadata;
 use crate::vc::oid4vp::signer::Signer;
 use crate::vc::oid4vp::{
-    AuthorizationResponseMetadata, CredentialMapping, CredentialsMapping, ProtocolError,
-    ResolvedAuthRequest, ResolvedPresentationQuery, ResponseMode,
+    AuthorizationResponseMetadata, CredentialMapping, CredentialsFindResult, CredentialsMapping,
+    ProtocolError, ResolvedAuthRequest, ResolvedPresentationQuery, ResponseMode,
 };
 use crate::vc::presentation_exchange::PresentationDefinition;
 use crate::vc::{RequestedPresentation, dcql, oid4vp as api, presentation_exchange};
@@ -401,26 +401,50 @@ where
                     .await
                     .context(VCSnafu)?;
 
-                let Some(cred) = creds.first() else {
-                    let err = ProtocolError::access_denied(
-                        "matching credentials are not found",
-                        auth_request.state.clone(),
-                    );
-                    let err = self
-                        .handle_auth_error_resp(
-                            &auth_request.response_uri,
-                            &auth_request.response_mode,
-                            err,
+                let err = match creds {
+                    CredentialsFindResult::Credentials(creds) => {
+                        if let Some(cred) = creds.first() {
+                            return self
+                                .create_presentation_by_input(
+                                    cred,
+                                    presentation_input,
+                                    auth_request,
+                                )
+                                .await
+                        } else {
+                            ProtocolError::access_denied(
+                                "matching credentials are not found",
+                                auth_request.state.clone(),
+                            )
+                        }
+                    }
+                    CredentialsFindResult::Reasons(reasons) => {
+                        let reasons_str = reasons
+                            .iter()
+                            .map(ToString::to_string)
+                            .collect::<Vec<_>>()
+                            .join(";\n");
+                        ProtocolError::access_denied(
+                            &format!(
+                                "matching credentials are not found!\nPresentation input id: {};\nreasons: {}",
+                                presentation_input.id,
+                                reasons_str
+                            ),
+                            auth_request.state.clone(),
                         )
-                        .await?;
-
-                    return Err(Error::Protocol { source: err });
+                    }
                 };
 
-                self.create_presentation_by_input(cred, presentation_input, auth_request)
-                    .await
-            }))
-            .await?;
+                let err = self
+                    .handle_auth_error_resp(
+                        &auth_request.response_uri,
+                        &auth_request.response_mode,
+                        err,
+                    )
+                    .await?;
+
+                Err(Error::Protocol { source: err })
+            })).await?;
         Ok(presentations)
     }
 
@@ -452,23 +476,40 @@ where
                 .find_vcs_for_presentation(&pi)
                 .await
                 .context(VCSnafu)?;
-            let creds = filter_claims_using_claim_sets(credential, creds);
-            let Some(cred) = creds.first() else {
-                let err = ProtocolError::access_denied(
-                    "matching credentials are not found",
-                    auth_request.state.clone(),
-                );
-                let err = self
-                    .handle_auth_error_resp(
-                        &auth_request.response_uri,
-                        &auth_request.response_mode,
-                        err,
+            let err = match creds {
+                CredentialsFindResult::Credentials(creds) => {
+                    let creds = filter_claims_using_claim_sets(credential, creds);
+                    if let Some(cred) = creds.first() {
+                        return Ok((credential.id().as_str(), cred.clone()))
+                    } else {
+                        ProtocolError::access_denied(
+                            "matching credentials are not found",
+                            auth_request.state.clone(),
+                        )
+                    }
+                }
+                CredentialsFindResult::Reasons(reasons) => {
+                    let reasons_str = reasons
+                        .iter()
+                        .map(ToString::to_string)
+                        .collect::<Vec<_>>()
+                        .join(";\n");
+                    ProtocolError::access_denied(
+                        &format!("matching credentials are not found!\n Presentation input id: {};\n reasons: {}", pi.id, reasons_str),
+                        auth_request.state.clone(),
                     )
-                    .await?;
-
-                return Err(Error::Protocol { source: err });
+                }
             };
-            Ok::<(&str, CredentialEntry), Error>((credential.id().as_str(), cred.clone()))
+
+            let err = self
+                .handle_auth_error_resp(
+                    &auth_request.response_uri,
+                    &auth_request.response_mode,
+                    err,
+                )
+                .await?;
+
+            Err(Error::Protocol { source: err })
         }))
         .await?;
         let id_to_cred: HashMap<_, _> = pairs.into_iter().collect();
@@ -806,8 +847,8 @@ mod tests {
         PresentationTestCase, build_url, holder_service, validate_claims,
     };
     use crate::vc::oid4vp::{
-        AuthorizationResponseMetadata, Error, Holder, IdTokenMetadata, InternalError,
-        ProtocolError, ResolvedPresentationQuery, ResponseType,
+        AuthorizationResponseMetadata, CredentialsFindResult, Error, FindVCsFailReason, Holder,
+        IdTokenMetadata, InternalError, ProtocolError, ResolvedPresentationQuery, ResponseType,
     };
     use crate::vc::presentation_exchange::ClaimFormatMap;
     use crate::vc::{ClaimFormatDesignation, Credential};
@@ -1350,8 +1391,89 @@ mod tests {
         single_presentation::json_ld::presentation_test_case_with_constraints_with_patterns()
     )]
     #[tokio::test]
-    async fn find_credentials_success(#[case] test_case: PresentationTestCase) {
-        find_credentials(test_case).await;
+    async fn find_credentials_success(#[case] case: PresentationTestCase) {
+        let kms = LocalKms::new();
+        let vault = case.prepare_vault(&kms).await;
+        let holder = holder_service(MockHttpClient::new(), kms, vault).await;
+
+        let credential_mapping = holder
+            .find_vcs_for_presentation(&case.request)
+            .await
+            .unwrap();
+
+        let retrieved_credentials: Vec<Credential> = case
+            .request
+            .resolved_presentation_query
+            .get_presentation_definition()
+            .unwrap()
+            .input_descriptors()
+            .iter()
+            .flat_map(|descriptor| {
+                let result = credential_mapping.get(&descriptor.id).unwrap();
+                match result {
+                    CredentialsFindResult::Credentials(creds) => creds,
+                    CredentialsFindResult::Reasons(reasons) => {
+                        let reasons_str = reasons
+                            .iter()
+                            .map(ToString::to_string)
+                            .collect::<Vec<_>>()
+                            .join(";\n");
+                        panic!(
+                            "Unexpected VcForPresentationResult type: reasons: {}",
+                            reasons_str
+                        );
+                    }
+                }
+            })
+            .map(|entry| entry.credential.clone())
+            .collect();
+
+        let retrieved_credentials_claims: Vec<Claims> = retrieved_credentials
+            .iter()
+            .filter_map(|credential| match credential {
+                Credential::SdJwt(sd_jwt_vc) => {
+                    decode_sd_jwt(sd_jwt_vc.to_owned(), SDJWTSerializationFormat::Compact).ok()
+                }
+                Credential::LdpVc(json_ld_vc) => {
+                    serde_json::to_value(json_ld_vc.clone().claims).ok()
+                }
+                _ => None,
+            })
+            .map(|c| c.try_into().unwrap())
+            .collect();
+
+        assert!(
+            !retrieved_credentials_claims.is_empty(),
+            "Credentials not found"
+        );
+
+        let expected_cred_data = &case.expected_credential_data;
+
+        for expected_claims in expected_cred_data.clone() {
+            let claims = retrieved_credentials_claims
+                .iter()
+                .find(|retrieved_claims| match &case.credential_format {
+                    ClaimFormatDesignation::SdJwtVc => {
+                        let expected_type = expected_claims["vct"].as_str().unwrap();
+                        if let Some(Claim::String(vct)) = retrieved_claims.get("vct") {
+                            return expected_type == vct;
+                        }
+                        true
+                    }
+                    ClaimFormatDesignation::LdpVc => {
+                        let expected_type = expected_claims["type"].as_vec().unwrap();
+                        if let Some(Claim::Array(type_)) = &retrieved_claims.get("type") {
+                            return expected_type == type_;
+                        }
+                        true
+                    }
+                    _ => true,
+                });
+
+            if let Some(claim) = claims {
+                validate_claims(&case.credential_format, claim, &expected_claims)
+            }
+        }
     }
 
     #[rstest]
@@ -1375,10 +1497,39 @@ mod tests {
     #[case::json_ld::json_ld_presentation_test_case_with_constraints_with_absent_required_claimjson_ld(
         single_presentation::json_ld::presentation_test_case_with_constraints_with_absent_required_claim()
     )]
-    #[should_panic(expected = "Credentials not found")]
     #[tokio::test]
-    async fn find_credentials_fails_with_constraints(#[case] test_case: PresentationTestCase) {
-        find_credentials(test_case).await;
+    async fn find_credentials_fails_with_constraints(#[case] case: PresentationTestCase) {
+        let kms = LocalKms::new();
+        let vault = case.prepare_vault(&kms).await;
+        let holder = holder_service(MockHttpClient::new(), kms, vault).await;
+
+        let credential_mapping = holder
+            .find_vcs_for_presentation(&case.request)
+            .await
+            .unwrap();
+
+        let presentation_definition = case
+            .request
+            .resolved_presentation_query
+            .get_presentation_definition()
+            .unwrap();
+
+        let input_descriptors = presentation_definition.input_descriptors();
+
+        for id in input_descriptors {
+            let result = credential_mapping.get(&id.id).unwrap();
+            match result {
+                CredentialsFindResult::Credentials(creds) => {
+                    panic!(
+                        "Unexpected VcForPresentationResult type: creds: {:#?}",
+                        creds
+                    )
+                }
+                CredentialsFindResult::Reasons(reasons) => {
+                    assert_eq!(reasons.len(), 1);
+                }
+            }
+        }
     }
 
     #[tokio::test]
@@ -1393,18 +1544,35 @@ mod tests {
             .await
             .unwrap();
 
-        let retrieved_credentials: Vec<vc::Credential> = test_case
+        let presentation_definition = test_case
             .request
             .resolved_presentation_query
             .get_presentation_definition()
-            .unwrap()
-            .input_descriptors()
-            .iter()
-            .flat_map(|descriptor| credential_mapping.get(&descriptor.id).unwrap().clone())
-            .map(|entry| entry.credential)
-            .collect();
+            .unwrap();
+        let input_descriptors = presentation_definition.input_descriptors();
 
-        assert!(retrieved_credentials.is_empty());
+        for id in input_descriptors {
+            let result = credential_mapping.get(&id.id).unwrap();
+            match result {
+                CredentialsFindResult::Credentials(creds) => {
+                    panic!(
+                        "Unexpected VcForPresentationResult type: credentials: {:#?}",
+                        creds
+                    )
+                }
+                CredentialsFindResult::Reasons(reasons) => {
+                    assert_eq!(
+                        reasons[0],
+                        FindVCsFailReason {
+                            paths: vec!["$.vct".to_string()],
+                            type_: "const".to_string(),
+                            value: "https://credentials.example.com/identity_credential"
+                                .to_string()
+                        }
+                    );
+                }
+            }
+        }
     }
 
     #[rstest]
@@ -1556,75 +1724,6 @@ mod tests {
             redirect_url.fragment().unwrap(),
             "error=access_denied&error_description=consent+to+share+the+presentation+is+not+given"
         );
-    }
-
-    async fn find_credentials(case: PresentationTestCase) {
-        let kms = LocalKms::new();
-        let vault = case.prepare_vault(&kms).await;
-        let holder = holder_service(MockHttpClient::new(), kms, vault).await;
-
-        let credential_mapping = holder
-            .find_vcs_for_presentation(&case.request)
-            .await
-            .unwrap();
-
-        let retrieved_credentials: Vec<Credential> = case
-            .request
-            .resolved_presentation_query
-            .get_presentation_definition()
-            .unwrap()
-            .input_descriptors()
-            .iter()
-            .flat_map(|descriptor| credential_mapping.get(&descriptor.id).unwrap().clone())
-            .map(|entry| entry.credential)
-            .collect();
-
-        let retrieved_credentials_claims: Vec<Claims> = retrieved_credentials
-            .iter()
-            .filter_map(|credential| match credential {
-                Credential::SdJwt(sd_jwt_vc) => {
-                    decode_sd_jwt(sd_jwt_vc.to_owned(), SDJWTSerializationFormat::Compact).ok()
-                }
-                Credential::LdpVc(json_ld_vc) => {
-                    serde_json::to_value(json_ld_vc.clone().claims).ok()
-                }
-                _ => None,
-            })
-            .map(|c| c.try_into().unwrap())
-            .collect();
-
-        assert!(
-            !retrieved_credentials_claims.is_empty(),
-            "Credentials not found"
-        );
-
-        let expected_cred_data = &case.expected_credential_data;
-
-        for expected_claims in expected_cred_data.clone() {
-            let claims = retrieved_credentials_claims
-                .iter()
-                .find(|retrieved_claims| match &case.credential_format {
-                    ClaimFormatDesignation::SdJwtVc => {
-                        let expected_type = expected_claims["vct"].as_str().unwrap();
-                        if let Some(Claim::String(vct)) = retrieved_claims.get("vct") {
-                            return expected_type == vct;
-                        }
-                        true
-                    }
-                    ClaimFormatDesignation::LdpVc => {
-                        let expected_type = expected_claims["type"].as_vec().unwrap();
-                        if let Some(Claim::Array(type_)) = &retrieved_claims.get("type") {
-                            return expected_type == type_;
-                        }
-                        true
-                    }
-                    _ => true,
-                });
-
-            if let Some(claim) = claims {
-                validate_claims(&case.credential_format, claim, &expected_claims)
-            }
-        }
     }
 
     fn siop_case(key_metadata: KeyMetadata) -> PresentationTestCase {

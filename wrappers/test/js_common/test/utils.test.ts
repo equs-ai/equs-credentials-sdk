@@ -2,7 +2,7 @@ import { Credential, parseClaims, VCFormat } from "agent-sdk";
 import { Fixtures } from "./fixtures";
 
 describe("Utils: ", () => {
-  test("parse_claims", async () => {
+  it("parse_claims", async () => {
     const credential: Credential = {
       format: VCFormat.SdJwtVc,
       payload: Fixtures.SDJWTVCPayload,

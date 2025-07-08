@@ -22,7 +22,7 @@ describe("Nonce: ", () => {
     }
   }
 
-  test("generate Nonce", async () => {
+  it("generate Nonce", async () => {
     const nonceGenerator = new NonceHandlerTestHelper(mockNonceGenerator());
     const nonce = await nonceGenerator.generate();
     expect(nonce).toEqual("nOnce");

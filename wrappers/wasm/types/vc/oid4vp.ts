@@ -1,7 +1,5 @@
-import {CredentialEntry} from "./credential";
-import {KeyMetadata} from "../crypto";
-// @ts-ignore
-import {ClientMetadata, PresentationDefinition} from "../../";
+import { CredentialEntry, FindVCsFailReason } from "./credential";
+import { KeyMetadata } from "../crypto";
 
 /**
  * Metadata for an Authorization Response.
@@ -27,6 +25,8 @@ export interface IdTokenMetadata {
   lifetime: number;
 }
 
+export type CredentialsFindResult = { data: CredentialEntry[] | FindVCsFailReason[] };
+
 /**
  * A mapping an input descriptor ID to a single credential entry.
  */
@@ -34,4 +34,4 @@ export type CredentialMapping = Record<string, CredentialEntry>;
 /**
  * A mapping an input descriptor ID to an array of credential entries.
  */
-export type CredentialsMapping = Record<string, Array<CredentialEntry>>;
+export type CredentialsMapping = Record<string, CredentialsFindResult>;

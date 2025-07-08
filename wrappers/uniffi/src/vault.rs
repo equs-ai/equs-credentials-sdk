@@ -9,12 +9,31 @@ use std::fmt::Debug;
 use std::sync::Arc;
 
 use agent_sdk::vault::{DeletingSnafu, Error as ASDKError, Result as ASDKResult};
+use agent_sdk::vc::oid4vp::FindVCsFailReason;
 
 #[uniffi::remote(Record)]
 pub struct CredentialEntry {
     pub credential: Credential,
     pub kid: String,
     pub id: String,
+}
+
+#[uniffi::remote(Record)]
+pub struct FindVCsFailReason {
+    paths: Vec<String>,
+    type_: String,
+    value: String,
+}
+
+#[derive(uniffi::Enum)]
+pub enum CredentialsSearchResult {
+    Credentials(Vec<CredentialEntry>),
+    Reasons(Vec<FindVCsFailReason>),
+}
+
+#[derive(uniffi::Record)]
+pub struct CredentialsFindResult {
+    pub(crate) data: CredentialsSearchResult,
 }
 
 #[derive(uniffi::Record)]
