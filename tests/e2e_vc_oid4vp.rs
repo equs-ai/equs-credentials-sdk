@@ -2,16 +2,6 @@
 
 mod utils;
 
-use futures::executor;
-use oauth2::HttpResponse;
-use oauth2::http::header::CONTENT_TYPE;
-use oauth2::http::{HeaderValue, Method};
-use rstest::rstest;
-use serde_json::Value;
-use std::collections::HashMap;
-use url::Url;
-use utils::fixtures::oid4vp::Oid4VpTestCredentialFormat;
-
 use agent_sdk::crypto;
 use agent_sdk::http::HttpClient;
 use agent_sdk::inmem::kms::LocalKms;
@@ -27,6 +17,17 @@ use agent_sdk::vc::oid4vp::{HolderBuilder, PresentationSession};
 use agent_sdk::vc::oid4vp::{Verifier, VerifierBuilder};
 use agent_sdk::vc::{Credential, CredentialMetadata};
 use agent_sdk::vc::{VCFormatsJsonLdAPI, VCFormatsSdJwtAPI};
+use futures::executor;
+use oauth2::HttpResponse;
+use oauth2::http::header::CONTENT_TYPE;
+use oauth2::http::{HeaderValue, Method};
+use openid4vp::core::authorization_request::parameters::HttpMethodForAuth;
+use rstest::rstest;
+use serde_json::Value;
+use std::collections::HashMap;
+use url::Url;
+use utils::fixtures::oid4vp::NONCE;
+use utils::fixtures::oid4vp::{MockNonceHandler, Oid4VpTestCredentialFormat};
 
 use utils::helpers::create_did_keymetadata_keyhandle;
 use utils::http::HttpClientEmulator;
@@ -89,7 +90,10 @@ async fn credentials_presentation_and_verification(#[case] test_case: Oid4VpTest
         .create_authorization_request(
             &ResolvedPresentationQuery::PresentationDefinition(test_case.presentation_definition),
             &auth_resp_options,
-            &PassAuthRequestObject::ByReference(request_uri.clone()),
+            &PassAuthRequestObject::ByReference {
+                uri: request_uri.clone(),
+                method: Some(HttpMethodForAuth::POST),
+            },
             None,
         )
         .await
@@ -101,6 +105,7 @@ async fn credentials_presentation_and_verification(#[case] test_case: Oid4VpTest
         test_case.validate,
         session,
         false,
+        Method::POST,
     );
 
     // Create Holder
@@ -180,7 +185,10 @@ async fn credentials_presentation_and_verification_with_dcql(#[case] test_case: 
         .create_authorization_request(
             &ResolvedPresentationQuery::DCQL(test_case.dcql.unwrap()),
             &auth_resp_options,
-            &PassAuthRequestObject::ByReference(request_uri.clone()),
+            &PassAuthRequestObject::ByReference {
+                uri: request_uri.clone(),
+                method: None,
+            },
             None,
         )
         .await
@@ -192,6 +200,7 @@ async fn credentials_presentation_and_verification_with_dcql(#[case] test_case: 
         test_case.validate,
         session,
         true,
+        Method::GET,
     );
 
     // Create Holder
@@ -231,13 +240,21 @@ fn prepare_http_client_for_holder(
     validate_claims_func: Box<ValidateClaimsFunc>,
     session: PresentationSession,
     is_dcql: bool,
+    http_method_for_auth: Method,
 ) -> impl HttpClient {
     let mut http_client = HttpClientEmulator::new();
 
     http_client.add_handler(
         Url::parse(VERIFIER_URL).unwrap().join("/request").unwrap(),
         Box::new(move |req| {
-            assert_eq!(req.method(), Method::GET);
+            assert_eq!(req.method(), http_method_for_auth);
+            if http_method_for_auth == Method::POST {
+                assert!(
+                    String::from_utf8(req.body().to_owned())
+                        .unwrap()
+                        .contains(NONCE)
+                );
+            }
             let mut resp = HttpResponse::new(Vec::from(request_object_jwt.to_owned()));
             resp.headers_mut()
                 .insert(CONTENT_TYPE, HeaderValue::from_static("text/plain"));
@@ -322,6 +339,7 @@ async fn build_holder(
 ) -> impl Holder {
     HolderBuilder::new(kms, vault, "wallet-dev".to_string())
         .with_http_client(http_client)
+        .with_nonce_handler(Box::new(MockNonceHandler::default()))
         .build()
         .await
         .unwrap()

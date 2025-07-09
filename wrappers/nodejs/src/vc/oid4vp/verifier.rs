@@ -1,7 +1,7 @@
 use crate::utils::{from_json_object, parse_url_arg, to_json_object};
 use crate::vc::JsonObject;
 use agent_sdk::vc::oid4vp::{
-    AuthResponseOptions, AuthorizationResponse, PassAuthRequestObject,
+    AuthResponseOptions, AuthorizationResponse, HttpMethodForAuth, PassAuthRequestObject,
     PresentationSession as RustPresentationSession, Verifier, WalletMetadata,
 };
 use agent_sdk::vc::presentation_exchange::PresentationSubmission;
@@ -137,10 +137,12 @@ impl JsPassAuthRequestObject {
     }
 
     #[napi(factory)]
-    pub fn by_reference(uri: String) -> Result<Self> {
+    pub fn by_reference(uri: String, method: Option<JsHttpMethodForAuth>) -> Result<Self> {
         let auth_req_obj_uri = parse_url_arg(&uri)?;
-        let pass_by_reference =
-            JsPassAuthRequestObject(PassAuthRequestObject::ByReference(auth_req_obj_uri));
+        let pass_by_reference = JsPassAuthRequestObject(PassAuthRequestObject::ByReference {
+            uri: auth_req_obj_uri,
+            method: method.map(|v| v.to_raw()),
+        });
 
         Ok(pass_by_reference)
     }
@@ -206,5 +208,20 @@ impl TryFrom<JsAuthorizationResponse> for AuthorizationResponse {
             presentation_submission: ps,
             state: value.state,
         })
+    }
+}
+
+#[napi(js_name = "HttpMethodForAuth")]
+pub enum JsHttpMethodForAuth {
+    GET,
+    POST,
+}
+
+impl JsHttpMethodForAuth {
+    fn to_raw(self) -> HttpMethodForAuth {
+        match self {
+            JsHttpMethodForAuth::GET => HttpMethodForAuth::GET,
+            JsHttpMethodForAuth::POST => HttpMethodForAuth::POST,
+        }
     }
 }

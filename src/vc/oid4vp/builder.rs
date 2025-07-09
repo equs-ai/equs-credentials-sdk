@@ -233,7 +233,7 @@ where
     // TODO: Should be HTTP client type, not Result
     http_client: Result<HC, HttpError>,
     pop_lifetime: time::Duration,
-
+    nonce_handler: Option<Box<dyn NonceHandler>>,
     _marker: PhantomData<KH>,
 }
 
@@ -277,6 +277,7 @@ where
             wallet_metadata: None,
             pop_lifetime: Duration::minutes(DEFAULT_POP_LIFETIME_MINUTES),
             _marker: Default::default(),
+            nonce_handler: None,
         }
     }
 }
@@ -377,6 +378,34 @@ where
             http_client: Ok(http_client),
             pop_lifetime: self.pop_lifetime,
             _marker: Default::default(),
+            nonce_handler: self.nonce_handler,
+        }
+    }
+
+    /// Sets custom nonce_handler for the holder.
+    ///
+    /// This NonceHandler is used to generate 'wallet_nonce' and to validate it
+    /// during fetching AuthorizationRequest via reference.
+    /// Details can be found here: <https://openid.net/specs/openid-4-verifiable-presentations-1_0-ID3.html#name-request-uri-method-post>
+    /// If not provided, wallet nonce is not handled
+    ///
+    /// # Arguments
+    ///
+    /// * `nonce_handler` - an implementation of NonceHandler trait.
+    pub fn with_nonce_handler(
+        self,
+        nonce_handler: Box<dyn NonceHandler>,
+    ) -> HolderBuilder<KH, KMS, V, HC> {
+        HolderBuilder {
+            client_id: self.client_id,
+            wallet_metadata: self.wallet_metadata,
+            kms: self.kms,
+            vault: self.vault,
+            did_resolver: self.did_resolver,
+            http_client: self.http_client,
+            pop_lifetime: self.pop_lifetime,
+            _marker: Default::default(),
+            nonce_handler: Some(nonce_handler),
         }
     }
 
@@ -421,6 +450,7 @@ where
             self.kms,
             self.did_resolver,
             self.wallet_metadata,
+            self.nonce_handler,
         );
 
         info!("oid4vp-holder service is initialized");

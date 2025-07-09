@@ -100,7 +100,10 @@ async fn presentation_request_uri(state: web::Data<AppState>) -> HttpResponse {
         state: None,
     };
 
-    let pass_auth_req_object = PassAuthRequestObject::ByReference(request_uri.clone());
+    let pass_auth_req_object = PassAuthRequestObject::ByReference {
+        uri: request_uri.clone(),
+        method: None,
+    };
 
     let (auth_req, session) = state
         .verifier
@@ -143,7 +146,10 @@ async fn dcql_request_uri(state: web::Data<AppState>) -> HttpResponse {
         state: None,
     };
 
-    let pass_auth_req_object = PassAuthRequestObject::ByReference(request_uri.clone());
+    let pass_auth_req_object = PassAuthRequestObject::ByReference {
+        uri: request_uri.clone(),
+        method: None,
+    };
 
     let (auth_req, session) = state
         .verifier

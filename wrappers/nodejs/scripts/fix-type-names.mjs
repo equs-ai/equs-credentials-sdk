@@ -36,6 +36,7 @@ const replacements = [
   { from: "JsAuthorizationResponseMetadata", to: "AuthorizationResponseMetadata" },
   { from: "JsIdTokenMetadata", to: "IdTokenMetadata" },
   { from: "JsVaultPagination", to: "VaultPagination" },
+  { from: "JsHttpMethodForAuth", to: "HttpMethodForAuth" },
   { from: "JsonObject", to: "Record<string, any>" },
 ];
 

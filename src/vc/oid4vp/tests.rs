@@ -2420,7 +2420,14 @@ pub mod utils {
             UniversalResolver::default(),
         );
 
-        HolderService::new(inner, http_client, kms, UniversalResolver::default(), None)
+        HolderService::new(
+            inner,
+            http_client,
+            kms,
+            UniversalResolver::default(),
+            None,
+            None,
+        )
     }
 
     async fn create_verifier_service(invalid_key_id: bool) -> (impl Verifier, String) {
@@ -2644,6 +2651,7 @@ pub mod utils {
             MockHttpClient::new(),
             kms.clone(),
             UniversalResolver::default(),
+            None,
             None,
         );
         let (did, metadata) = create_did_and_key_metadata(&kms).await;

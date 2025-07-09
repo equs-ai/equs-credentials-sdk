@@ -22,7 +22,7 @@ rust-version = "1.87"
 common-macros = { path = "./common-macros" }
 
 oid4vci = { git = "ssh://git@git.slock.it/open-source/oid4vci-rs.git", rev = "94fac9cc" }
-openid4vp = { git = "ssh://git@git.slock.it/open-source/oid4vp-rs.git", rev = "3a07c986" }
+openid4vp = { git = "ssh://git@git.slock.it/open-source/oid4vp-rs.git", rev = "49d170a0" }
 sd-jwt-rs = { git = "ssh://git@git.slock.it/open-source/sd-jwt-rust.git", rev = "3725931d" }
 didcomm = { git = "ssh://git@git.slock.it/open-source/didcomm-rust.git", rev = "db41780d" }
 

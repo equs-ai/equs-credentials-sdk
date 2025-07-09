@@ -667,7 +667,8 @@ pub struct InternalNonceHandler {
     _private: (),
 }
 
-#[async_trait]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl NonceHandler for InternalNonceHandler {
     async fn generate(&self) -> crate::nonce::Result<Nonce> {
         unimplemented!()

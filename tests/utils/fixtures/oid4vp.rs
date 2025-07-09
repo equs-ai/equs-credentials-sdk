@@ -1,13 +1,17 @@
+use agent_sdk::nonce;
+use agent_sdk::nonce::{Nonce, NonceHandler};
 use agent_sdk::vc::claims::{Claim, Claims};
 use agent_sdk::vc::dcql::{DCQL, DCQLCredential};
 use agent_sdk::vc::presentation_exchange::PresentationDefinition;
 use agent_sdk::vc::{JsonLdAPIVCMetadata, VCMetadata};
+use async_trait::async_trait;
 use openid4vp::core::input_descriptor::InputDescriptor;
 use serde_json::json;
 use ssi::dids::ssi_json_ld::IriRefBuf;
 use std::str::FromStr;
 
 pub type ValidateClaimsFunc = dyn Fn(Claims) + Send + Sync;
+pub const NONCE: &str = "some_nonce";
 
 pub enum Oid4VpTestCredentialFormat {
     SdJwt(VCMetadata),
@@ -390,4 +394,18 @@ pub fn sample_dcql_query_for_multiple_sdjwt() -> DCQL {
     .unwrap();
 
     DCQL::new(vec![desc1, desc2])
+}
+
+#[derive(Default)]
+pub struct MockNonceHandler {}
+
+#[async_trait]
+impl NonceHandler for MockNonceHandler {
+    async fn generate(&self) -> nonce::Result<Nonce> {
+        Ok(Nonce::from_secret(NONCE.to_string()))
+    }
+
+    async fn validate(&self, _nonce: &Nonce) -> nonce::Result<bool> {
+        Ok(true)
+    }
 }

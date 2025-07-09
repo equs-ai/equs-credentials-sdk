@@ -44,6 +44,20 @@ import Testing
 		#expect(actual.state == Oid4vpHolderTestConstants.authRequest.state)
 	}
 
+    @Test func checkCustomNonceHandler() async throws {
+        self.server["/request"] = { (request: Swifter.HttpRequest) -> Swifter.HttpResponse in
+            let body = String(data: Data(request.body), encoding: .utf8) ?? "<invalid body>"
+            #expect(body.contains("some_nonce"))
+            return .ok(
+                .data(
+                	Oid4vpHolderTestConstants.authRequestJwt.data(using: .utf8)!,
+                	contentType: "application/oauth-authz-req+jwt"))
+        }
+
+        let actual: AuthorizationRequest = try await self.holder.getAuthorizationRequest(
+            requestUri: Oid4vpHolderTestConstants.requestUriWithMethod)
+    }
+
 	@Test func presentCredentialsAuto() async throws {
 		try await confirmation("Auth Response is not received") { confirmResponse in
 			self.server["/response"] = { (request: Swifter.HttpRequest) -> Swifter.HttpResponse in
@@ -196,6 +210,7 @@ import Testing
 	private static func setupHolder() async throws -> Oid4vpHolder {
 		let inMemKms = InMemKms()
 		let inMemVault = InMemVault()
+		let nonceHandler = MockNonceHandler(nonce: "some_nonce")
 
 		var didAndKeyMetadata = await createDidAndKeyMetadata(kms: inMemKms)
 		didAndKeyMetadata.keyMetadata.didUrl =
@@ -209,7 +224,8 @@ import Testing
 
 		let holder = try await Oid4vpHolderBuilder(
 			kms: inMemKms, vault: inMemVault, clientId: Oid4vpHolderTestConstants.clientId,
-			httpClient: ReqwestHttpClient.insecure()
+			httpClient: ReqwestHttpClient.insecure(),
+			nonceHandler: nonceHandler
 		).build()
 
 		return holder
@@ -331,7 +347,8 @@ enum Oid4vpHolderTestConstants {
 	static let clientId = "wallet-dev"
 	static let requestUri =
 		"openid4vp://?client_id=did%3Akey%3AzDnaeeTG88wpPhMzuDRvLRTTyNMyJip5e6TLmsjyvPiSYUFk7&request_uri=http%3A%2F%2Flocalhost%3A9001%2Fauth_request"
-
+	static let requestUriWithMethod =
+	    "openid4vp://?client_id=did:key:zDnaeeTG88wpPhMzuDRvLRTTyNMyJip5e6TLmsjyvPiSYUFk7&request_uri_method=post&request_uri=http://localhost:9001/request"
 	static let authRequest = AuthorizationRequest(
 		clientId: "did:key:zDnaeeTG88wpPhMzuDRvLRTTyNMyJip5e6TLmsjyvPiSYUFk7",
 		clientMetadata: clientMetadata,
