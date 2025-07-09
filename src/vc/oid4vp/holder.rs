@@ -426,7 +426,7 @@ where
                             .join(";\n");
                         ProtocolError::access_denied(
                             &format!(
-                                "matching credentials are not found!\nPresentation input id: {};\nreasons: {}",
+                                "matching credentials are not found! Presentation input id: {}; reasons: {}",
                                 presentation_input.id,
                                 reasons_str
                             ),
@@ -495,7 +495,7 @@ where
                         .collect::<Vec<_>>()
                         .join(";\n");
                     ProtocolError::access_denied(
-                        &format!("matching credentials are not found!\n Presentation input id: {};\n reasons: {}", pi.id, reasons_str),
+                        &format!("matching credentials are not found! Presentation input id: {}; reasons: {}", pi.id, reasons_str),
                         auth_request.state.clone(),
                     )
                 }

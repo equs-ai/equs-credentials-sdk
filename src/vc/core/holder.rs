@@ -9,7 +9,7 @@ use crate::crypto::Alg;
 use crate::did::universal::UniversalResolver;
 use crate::nonce::Nonce;
 use crate::vault::CredentialEntry;
-use crate::vc::core::api::ClaimsDidNotPassFilteringSnafu;
+use crate::vc::core::api::{ClaimsDidNotPassFilteringSnafu, CredentialsFromVaultNotFoundSnafu};
 use crate::vc::core::{
     CredentialOffer, CredentialRequest, CredentialRequestData, Holder, HolderMetadata, KeyMetadata,
     PresentationInput, Proof,
@@ -207,6 +207,10 @@ where
         } else {
             self.vault.get_credentials(None).await.context(VaultSnafu)?
         };
+
+        if credentials.is_empty() {
+            CredentialsFromVaultNotFoundSnafu.fail()?
+        }
 
         let mut reasons = vec![];
         let mut credentials_result = vec![];
