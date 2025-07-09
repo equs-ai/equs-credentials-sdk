@@ -209,7 +209,10 @@ where
         };
 
         if credentials.is_empty() {
-            CredentialsFromVaultNotFoundSnafu.fail()?
+            CredentialsFromVaultNotFoundSnafu {
+                id: &presentation_input.id,
+            }
+            .fail()?
         }
 
         let mut reasons = vec![];
