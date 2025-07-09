@@ -1,23 +1,28 @@
 import {
+  _UniversalDIDResolver,
+  Alg,
   createHolder,
-  createStatusIssuer,
   createIssuer,
+  createStatusIssuer,
   createVerifier,
+  HttpClient,
+  HttpRequest,
+  HttpResponse,
+  KeyType,
   PresentationRestrictionValueType,
   resolveMetadata,
   VcCoreHolder,
   VcCoreIssuer,
-  VcCoreVerifier,
   VcCoreStatusIssuer,
+  VcCoreVerifier,
   VCStatusesDataFormat,
-  HttpClient,
-  HttpRequest,
-  HttpResponse,
-  _UniversalDIDResolver,
   CredentialEntry,
 } from "../../";
 import { jwtDecode } from "jwt-decode";
 import { Utils } from "./utils";
+import { OID4VCIStatusIssuerBuilder } from "../../types/vc/oid4vci/status-issuer";
+import { MockKeyHandle } from "./mockKeyHandle";
+import { MockKms } from "./mockKms";
 
 describe("VC::Core", () => {
   const utils = new Utils();
@@ -52,6 +57,39 @@ describe("VC::Core", () => {
         status_list: { lst: "eNpjYWBgAAAAFAAF", bits: 1 },
       });
       expect(decoded.iat).toBeDefined();
+    });
+  });
+
+  describe("StatusIssuerBuilder", () => {
+    it("test status issuer builder", async () => {
+      const payload = Uint8Array.from(Buffer.from("cmF3X3Rlc3RfdmFsdWU=", "base64"));
+      const signature = Uint8Array.from(Buffer.from("ZW5jcnlwdGVkX3Rlc3RfdmFsdWU=", "base64"));
+      const publicKey = Array.from(
+        Buffer.from("huX4QOwcvioB2N3njNOnTOtElUvf7KIQnm6NvdfK2bs4qWecmcxVAXxyCBYuzxSpVRG7ETk9mO3RjUzsFUtDCg", "base64"),
+      );
+      const jwk = JSON.stringify({
+        crv: "P-256",
+        kid: "618d228e-4767-4aa2-8683-c35c86d7025c",
+        kty: "EC",
+        x: "huX4QOwcvioB2N3njNOnTOtElUvf7KIQnm6NvdfK2bs",
+        y: "4qWecmcxVAXxyCBYuzxSpVRG7ETk9mO3RjUzsFUtDCg",
+      });
+
+      let kms = new MockKms(
+        KeyType.P256,
+        "some_string",
+        new MockKeyHandle(Alg.ES256, payload, signature, publicKey, jwk),
+      );
+      let metadata = await utils.getStatusIssuerMetadata();
+      let statusIssuerFromBuilder = new OID4VCIStatusIssuerBuilder(kms, metadata).build();
+      const result = await statusIssuerFromBuilder.issueStatusList("test_status_list", {
+        format: VCStatusesDataFormat.StatusListToken,
+        payload: {
+          statuses: {
+            "2": 1, // 'INVALID' (1) status for the VC with index 2
+          },
+        },
+      });
     });
   });
 
