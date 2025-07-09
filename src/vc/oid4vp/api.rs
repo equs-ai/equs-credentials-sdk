@@ -49,6 +49,8 @@ pub type ResolvedPresentationQuery =
     openid4vp::core::authorization_request::ResolvedPresentationQuery;
 pub type Url = url::Url;
 
+pub type HttpMethodForAuth = openid4vp::core::authorization_request::parameters::HttpMethodForAuth;
+
 /// Metadata for an ID Token.
 ///
 /// - `id_token_key`: metadata for the key used to sign the SIOP ID token.
@@ -156,7 +158,10 @@ pub struct AuthorizationResponse {
 #[derive(Clone, Debug)]
 pub enum PassAuthRequestObject {
     ByValue,
-    ByReference(Url),
+    ByReference {
+        uri: Url,
+        method: Option<HttpMethodForAuth>,
+    },
 }
 
 #[derive(Snafu, DebugError)]

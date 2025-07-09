@@ -1,7 +1,7 @@
 use crate::did::universal::UniversalResolver;
 use crate::http::HttpClient;
 use crate::kms::{KeyHandle, Kms};
-use crate::nonce::Nonce;
+use crate::nonce::{Nonce, NonceHandler};
 use crate::utils::http::MimeType;
 use crate::vault::CredentialEntry;
 use crate::vc::core::PresentationInput;
@@ -23,7 +23,7 @@ use crate::{utils, vc};
 use async_trait::async_trait;
 use futures::future;
 use oauth2::http::{Request, Response};
-use openid4vp::core::authorization_request::parameters::ResponseType;
+use openid4vp::core::authorization_request::parameters::{ResponseType, WalletNonce};
 use openid4vp::core::authorization_request::verification::{RequestVerifier, did};
 use openid4vp::core::authorization_request::{AuthorizationRequest, AuthorizationRequestObject};
 use openid4vp::core::metadata::WalletMetadata;
@@ -55,6 +55,7 @@ where
     kms: KMS,
     http_client: HC,
     _marker: PhantomData<KH>,
+    nonce_handler: Option<Box<dyn NonceHandler>>,
 }
 
 impl<HL, HC, KH, KMS> HolderService<HL, HC, KH, KMS>
@@ -64,13 +65,14 @@ where
     KH: KeyHandle,
     KMS: Kms<KH>,
 {
-    #[instrument(level = Level::TRACE, skip(holder, http_client, kms, resolver))]
+    #[instrument(level = Level::TRACE, skip(holder, http_client, kms, resolver, nonce_handler))]
     pub fn new(
         holder: HL,
         http_client: HC,
         kms: KMS,
         resolver: UniversalResolver,
         metadata: Option<WalletMetadata>,
+        nonce_handler: Option<Box<dyn NonceHandler>>,
     ) -> Self {
         let metadata = metadata.unwrap_or(default_wallet_metadata());
 
@@ -83,6 +85,7 @@ where
             kms,
             http_client,
             _marker: Default::default(),
+            nonce_handler,
         }
     }
 
@@ -756,6 +759,25 @@ where
     fn http_client(&self) -> &Self::HttpClient {
         self
     }
+    async fn generate_nonce(&self) -> anyhow::Result<Option<WalletNonce>> {
+        match &self.nonce_handler {
+            Some(nh) => {
+                let nonce = nh.generate().await.map_err(anyhow::Error::new)?;
+                Ok(Some(WalletNonce(nonce.secret().to_string())))
+            }
+            None => Ok(None),
+        }
+    }
+
+    async fn validate_nonce(&self, nonce: &WalletNonce) -> anyhow::Result<bool> {
+        match &self.nonce_handler {
+            Some(nh) => {
+                let nonce = Nonce::from_secret(nonce.0.clone());
+                nh.validate(&nonce).await.map_err(anyhow::Error::new)
+            }
+            None => Ok(true),
+        }
+    }
 }
 
 #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
@@ -787,17 +809,18 @@ where
     async fn redirect_uri(
         &self,
         decoded_request: &AuthorizationRequestObject,
-        redirect_uri: &Url,
+        redirect_uri: String,
     ) -> anyhow::Result<(), openid4vp::core::error::Error> {
-        let supported = self
-            .metadata()
-            .is_client_id_schema_supported(decoded_request.client_id_scheme());
-
-        if !supported {
-            return Err(openid4vp::core::error::Error::protocol_invalid_req(
-                "'redirect_uri' client_id_schema verification method is not supported",
-                decoded_request.state(),
-            ));
+        if let Some(client_id_scheme) = decoded_request.client_id().resolve_scheme() {
+            let supported = self
+                .metadata()
+                .is_client_id_schema_supported(&client_id_scheme);
+            if !supported {
+                return Err(openid4vp::core::error::Error::protocol_invalid_req(
+                    "'redirect_uri' client_id_schema verification method is not supported",
+                    decoded_request.state(),
+                ));
+            }
         }
         let client_id = &decoded_request.client_id().0;
         let client_id_as_uri = Url::parse(client_id).map_err(|_| {
@@ -806,8 +829,14 @@ where
                 decoded_request.state(),
             )
         })?;
+        let redirect_uri = Url::parse(redirect_uri.as_str()).map_err(|_| {
+            openid4vp::core::error::Error::protocol_invalid_req(
+                "could not parse 'redirect_uri' = {redirect_uri} as uri, in 'redirect_uri' response method it must be uri",
+                decoded_request.state(),
+            )
+        })?;
 
-        if client_id_as_uri != *redirect_uri {
+        if client_id_as_uri != redirect_uri {
             return Err(openid4vp::core::error::Error::protocol_invalid_req(
                 &format!(
                     "in 'redirect_uri' response mode 'client_id' = {client_id} must be equal to 'redirect_uri' = {redirect_uri}"
@@ -1188,6 +1217,7 @@ mod tests {
             kms_mock,
             UniversalResolver::default(),
             None,
+            None,
         );
 
         let key_handle = kms.get(&key_metadata.kid).await.unwrap();
@@ -1238,6 +1268,7 @@ mod tests {
             http_client,
             kms_mock,
             UniversalResolver::default(),
+            None,
             None,
         );
 

@@ -204,7 +204,10 @@ async fn oid4vp_credentials_presentation_and_verification_with_custom_did_resolv
         .create_authorization_request(
             &ResolvedPresentationQuery::PresentationDefinition(test_case.presentation_definition),
             &auth_resp_options,
-            &PassAuthRequestObject::ByReference(request_uri.clone()),
+            &PassAuthRequestObject::ByReference {
+                uri: request_uri.clone(),
+                method: None,
+            },
             None,
         )
         .await

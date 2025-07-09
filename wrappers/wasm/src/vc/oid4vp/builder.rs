@@ -1,6 +1,7 @@
 use crate::did::resolver::{DIDResolver, JsDIDResolver};
 use crate::http::ReqwestHttpClient;
 use crate::kms::{JsKeyHandle, JsKms, Kms};
+use crate::nonce::{JsNonceHandler, NonceHandler};
 use crate::utils;
 use crate::vault::{JsVault, Vault};
 use crate::vc::oid4vp::WalletMetadata;
@@ -26,11 +27,8 @@ impl OID4VPHolderBuilder {
     /// * `client_id` - the Client ID of the `Holder`.
     #[wasm_bindgen(constructor)]
     pub fn new(kms: Kms, vault: Vault, client_id: String) -> Self {
-        OID4VPHolderBuilder(HolderBuilder::new(
-            JsKms::new(kms),
-            JsVault::new(vault),
-            client_id,
-        ))
+        let builder = HolderBuilder::new(JsKms::new(kms), JsVault::new(vault), client_id);
+        OID4VPHolderBuilder(builder)
     }
 
     /// Sets a custom HTTP client for the holder.
@@ -77,6 +75,24 @@ impl OID4VPHolderBuilder {
         Ok(OID4VPHolderBuilder(
             self.0.with_wallet_metadata(wallet_metadata),
         ))
+    }
+
+    /// Sets custom nonce_handler for the holder.
+    ///
+    /// This NonceHandler is used to generate 'wallet_nonce' and to validate it
+    /// during fetching AuthorizationRequest via reference.
+    /// Details can be found here: https://openid.net/specs/openid-4-verifiable-presentations-1_0-ID3.html#name-request-uri-method-post
+    /// If not provided, wallet nonce is not handled
+    ///
+    /// # Arguments
+    ///
+    /// * `nonce_handler` - in implementation of NonceHandler trait.
+    #[wasm_bindgen(js_name = withNonceHandler)]
+    pub fn with_nonce_handler(self, nonce_handler: NonceHandler) -> Self {
+        OID4VPHolderBuilder(
+            self.0
+                .with_nonce_handler(Box::new(JsNonceHandler::new(nonce_handler))),
+        )
     }
 
     /// Builds the `Holder` API instance based on the current configuration of the builder.

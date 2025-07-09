@@ -38,6 +38,7 @@ import fs from "fs/promises";
       "KeyType",
       "Kms",
       "NonceData",
+      "NonceHandler",
       "VerificationRelationshipType",
       "VaultPagination",
       "Vault",

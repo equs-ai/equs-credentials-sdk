@@ -1,6 +1,7 @@
 //! APIs for implementing Nonce generator.
 
 use crate::utils::b64;
+use crate::utils::wasm::{WasmNotSend, WasmNotSync};
 use async_trait::async_trait;
 use common_macros::DebugError;
 use serde::{Deserialize, Serialize};
@@ -56,8 +57,10 @@ pub type Result<T> = core::result::Result<T, Error>;
 /// An async generic `NonceHandler` interface for generating nonce.
 ///
 /// Supports `generate` and `with_expiration` operations.
-#[async_trait]
-pub trait NonceHandler: Send + Sync {
+///
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
+pub trait NonceHandler: WasmNotSend + WasmNotSync {
     /// Generates a `Nonce`.
     ///
     ///

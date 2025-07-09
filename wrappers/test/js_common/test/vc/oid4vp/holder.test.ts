@@ -25,6 +25,7 @@ import {
   VC,
   VC_TYPE,
 } from "./fixtures";
+import { MockNonceHandler } from "./mockNonceHandler";
 
 describe("OID4VP Holder: ", () => {
   const mockServer = getLocal();
@@ -43,6 +44,7 @@ describe("OID4VP Holder: ", () => {
     vault = new InMemVault();
     holder = await new OID4VPHolderBuilder(kms, vault, "client_id")
       .withHttpClient(ReqwestHttpClient.insecure())
+      .withNonceHandler(new MockNonceHandler("some_nonce"))
       .build();
 
     const keyMetadata = await createKeyMetadata(kms);
@@ -70,6 +72,22 @@ describe("OID4VP Holder: ", () => {
       "openid4vp://?client_id=did%3Akey%3AzDnaeeTG88wpPhMzuDRvLRTTyNMyJip5e6TLmsjyvPiSYUFk7&request_uri=http%3A%2F%2Flocalhost%3A9001%2Frequest",
     );
     expect(authorizationRequest.getAuthRequest()).toEqual(AUTH_REQUEST);
+  });
+
+  it("check mock nonce handler passed properly", async () => {
+    await mockServer.forPost("/request").thenCallback(async (request): Promise<any> => {
+      let body = await request.body.getText();
+      expect(body).toContain("some_nonce");
+      return {
+        statusCode: 200,
+        headers: { "content-type": "application/oauth-authz-req+jwt" },
+        body: AUTH_REQUEST_JWT,
+      };
+    });
+
+    const authorizationRequest = await holder.getAuthorizationRequest(
+      "openid4vp://?client_id=did:key:zDnaeeTG88wpPhMzuDRvLRTTyNMyJip5e6TLmsjyvPiSYUFk7&request_uri_method=post&request_uri=http://localhost:9001/request",
+    );
   });
 
   it("present credentials auto", async () => {

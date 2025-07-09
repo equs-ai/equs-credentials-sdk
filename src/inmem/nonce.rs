@@ -3,6 +3,7 @@ use crate::nonce::{GenerateSnafu, Nonce, NonceHandler, Result, ValidateSnafu};
 use crate::storage::Storage;
 use async_trait::async_trait;
 
+#[derive(Debug, Clone)]
 pub struct LocalNonceHandler {
     storage: InMemStorage<String, Nonce>,
 }
@@ -15,7 +16,8 @@ impl Default for LocalNonceHandler {
     }
 }
 
-#[async_trait]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl NonceHandler for LocalNonceHandler {
     async fn generate(&self) -> Result<Nonce> {
         let bytes: [u8; 32] = rand::random();

@@ -41,6 +41,7 @@ use crate::vc::presentation_exchange::{
 };
 use crate::vc::status_formats::status_list_token_jwt;
 use crate::vc::{dcql, oid4vp as api};
+use openid4vp::core::authorization_request::RequestReference;
 use openid4vp::core::response::parameters::IdTokenBody as IdToken;
 use ssi::dids::DIDURLBuf;
 use std::collections::HashMap;
@@ -383,9 +384,12 @@ where
                 ResponseMode::DirectPost | ResponseMode::DirectPostJwt,
             ) => RequestType::SignedJwt(ByReference::False),
             (
-                PassAuthRequestObject::ByReference(at),
+                PassAuthRequestObject::ByReference { uri, method },
                 ResponseMode::DirectPost | ResponseMode::DirectPostJwt,
-            ) => RequestType::SignedJwt(ByReference::True { at }),
+            ) => RequestType::SignedJwt(ByReference::True(RequestReference {
+                request_uri: uri,
+                request_uri_method: method,
+            })),
             (_, mode) => {
                 return Err(Error::Protocol {
                     source: ProtocolError::invalid_request(
@@ -416,7 +420,12 @@ where
 
         let pass_req_obj = match pass_auth_request_object.to_owned() {
             PassAuthRequestObject::ByValue => ByReference::False,
-            PassAuthRequestObject::ByReference(at) => ByReference::True { at },
+            PassAuthRequestObject::ByReference { uri, method } => {
+                ByReference::True(RequestReference {
+                    request_uri: uri,
+                    request_uri_method: method,
+                })
+            }
         };
 
         let mut request_builder = match &auth_response_config.state {
@@ -583,7 +592,6 @@ mod tests {
     use crate::nonce::Nonce;
     use crate::vc::ClaimFormatDesignation;
     use crate::vc::claims::Claims;
-    use crate::vc::oid4vp::InternalError;
     use crate::vc::oid4vp::tests::fixtures::multi_presentation::{
         auth_response_options, submission_requirements,
     };
@@ -594,6 +602,7 @@ mod tests {
         verifier_service_with_invalid_kid, verifier_service_with_signer_error,
     };
     use crate::vc::oid4vp::verifier::VP_TOKEN;
+    use crate::vc::oid4vp::{HttpMethodForAuth, InternalError};
     use crate::vc::oid4vp::{PassAuthRequestObject, PresentationSession, ResponseType, Verifier};
     use crate::vc::presentation_exchange::PresentationDefinition;
     use openid4vp::core::authorization_request::{
@@ -611,6 +620,7 @@ mod tests {
     async fn generate_auth_request_by_reference_success() {
         let presentation_definition = single_presentation::sd_jwt::presentation_definition();
         let request_uri = build_url(VERIFIER_URL, "request");
+        let request_uri_method = "post";
 
         let (verifier, did) = verifier_service().await;
 
@@ -620,7 +630,10 @@ mod tests {
             .create_authorization_request(
                 &presentation_definition,
                 &auth_resp_options,
-                &PassAuthRequestObject::ByReference(request_uri.clone()),
+                &PassAuthRequestObject::ByReference {
+                    uri: request_uri.clone(),
+                    method: Some(HttpMethodForAuth::POST),
+                },
                 None,
             )
             .await
@@ -630,6 +643,10 @@ mod tests {
 
         assert_eq!(hash_query.get("client_id").unwrap(), &did);
         assert_eq!(hash_query.get("request_uri").unwrap(), request_uri.as_str());
+        assert_eq!(
+            hash_query.get("request_uri_method").unwrap(),
+            request_uri_method
+        );
     }
 
     #[tokio::test]
@@ -644,7 +661,10 @@ mod tests {
             .create_authorization_request(
                 &presentation_definition,
                 &auth_resp_options,
-                &PassAuthRequestObject::ByReference(request_uri),
+                &PassAuthRequestObject::ByReference {
+                    uri: request_uri,
+                    method: None,
+                },
                 None,
             )
             .await;
@@ -669,7 +689,10 @@ mod tests {
             .create_authorization_request(
                 &presentation_definition,
                 &auth_resp_options,
-                &PassAuthRequestObject::ByReference(request_uri),
+                &PassAuthRequestObject::ByReference {
+                    uri: request_uri,
+                    method: None,
+                },
                 None,
             )
             .await;
@@ -852,7 +875,10 @@ mod tests {
             .create_authorization_request(
                 &ResolvedPresentationQuery::PresentationDefinition(presentation_definition),
                 &auth_resp_options,
-                &PassAuthRequestObject::ByReference(request_uri),
+                &PassAuthRequestObject::ByReference {
+                    uri: request_uri,
+                    method: None,
+                },
                 None,
             )
             .await

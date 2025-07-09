@@ -53,6 +53,7 @@ pub async fn _build_vp_verifier(
 }
 
 #[napi]
+#[allow(clippy::too_many_arguments)]
 pub async fn _build_vp_holder(
     kms: JsKms,
     vault: JsVault,
@@ -61,6 +62,7 @@ pub async fn _build_vp_holder(
     http_client: Option<&ReqwestHttpClient>,
     pop_lifetime: Option<JsDuration>,
     did_resolver: Option<JsDIDResolver>,
+    nonce_handler: Option<JsNonceHandler>,
 ) -> Result<InnerOID4VPHolder> {
     let mut builder = agent_sdk::vc::oid4vp::HolderBuilder::new(kms, vault, client_id);
 
@@ -81,6 +83,9 @@ pub async fn _build_vp_holder(
         builder = builder.with_did_resolver(did_resolver).unwrap();
     }
 
+    if let Some(nonce_handler) = nonce_handler {
+        builder = builder.with_nonce_handler(Box::new(nonce_handler));
+    }
     let holder = builder
         .build()
         .await

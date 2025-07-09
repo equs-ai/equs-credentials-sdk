@@ -1,5 +1,6 @@
 import com.bci.HolderVCITest.Companion.ISSUER_ENDPOINT
 import com.bci.HolderVCITest.Companion.SD_JWT_CRED
+import com.bci.MockNonceHandler
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import okhttp3.mockwebserver.MockResponse
@@ -12,6 +13,8 @@ import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
 
 import kotlinx.serialization.json.Json
+import okhttp3.mockwebserver.Dispatcher
+import okhttp3.mockwebserver.RecordedRequest
 import java.util.concurrent.TimeUnit
 import kotlin.collections.component1
 import kotlin.collections.component2
@@ -77,7 +80,8 @@ class HolderVPTest {
                 val credential = Credential(format = VcFormat.SD_JWT_VC, payload = VC)
                 val metadata = resolveMetadata(credential, didAndKeyMetadata.keyMetadata)
 
-                holder = Oid4vpHolderBuilder(inMemKms, inMemVault, CLIENT_ID, ReqwestHttpClient.insecure()).build()
+                holder = Oid4vpHolderBuilder(inMemKms, inMemVault, CLIENT_ID, ReqwestHttpClient.insecure(),
+                    MockNonceHandler("some_nonce")).build()
 
                 inMemVault.storeCredential(credential, metadata)
             }
@@ -101,6 +105,24 @@ class HolderVPTest {
 
         val authorizationRequest = holder.getAuthorizationRequest(REQUEST_URI)
         assertEquals(authRequest, authorizationRequest)
+    }
+
+    @Test
+    fun testCustomNonceHandler() = runTest {
+        val mockServer = MockWebServer()
+        mockServer.start(9002)
+
+        mockServer.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setBody(AUTH_REQUEST_JWT)
+                .setHeader("content-type", "application/oauth-authz-req+jwt")
+        )
+        holder.getAuthorizationRequest("openid4vp://?client_id=did:key:zDnaeeTG88wpPhMzuDRvLRTTyNMyJip5e6TLmsjyvPiSYUFk7&request_uri_method=post&request_uri=http://localhost:9002/request")
+        val request = mockServer.takeRequest()
+        val body = request.body.readUtf8();
+        assert(request.method.equals("POST"))
+        assert(body.contains("some_nonce"))
     }
 
     @Test
