@@ -299,6 +299,9 @@ pub enum Error {
     #[snafu(display("Credential status not supported"))]
     CredentialStatusNotSupported,
 
+    #[snafu(display("No credential were found from vault"))]
+    CredentialsFromVaultNotFound,
+
     #[snafu(display("Credential status protocol is not supported by format: {format}"))]
     CredentialStatusProtocolNotSupported { format: String },
 

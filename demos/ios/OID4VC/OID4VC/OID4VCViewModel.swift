@@ -172,7 +172,8 @@ final class OID4VCViewModel: ObservableObject, AuthCodeCallback {
 		try await Oid4vpHolderBuilder(
 			kms: kms,
 			vault: vault,
-			clientId: Constants.clientId
+			clientId: Constants.clientId,
+			httpClient: ReqwestHttpClient.insecure()
 		).build()
 	}
 }
