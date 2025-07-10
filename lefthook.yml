@@ -1,0 +1,8 @@
+# If you change anything here - do not forget to update docs/guidelines/dev.md
+
+pre-commit:
+  commands:
+    rust_fmt:
+      run: cargo fmt --all -- --check
+    rust_clippy:
+      run: cargo clippy --workspace --exclude wasm --all-targets --all-features -- -D warnings

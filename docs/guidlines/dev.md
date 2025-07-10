@@ -17,6 +17,22 @@ These guidelines provide standards for readability, usability and legibility.
 
 ## Linting and Formatting
 
+### Use hooks for automated linting & formatting
+
+ASDK uses [lefthook](https://lefthook.dev/intro.html) for hooks.
+
+Ensure you have installed lefthook. Lookup for installation [here](https://lefthook.dev/installation/)
+
+Make sure you install lefthook into git hooks by running
+
+```bash
+  lefthook install
+```
+
+Done! You now have hooks.
+
+For manual linting, follow the instructions below
+
 ### Use `rustfmt` for Consistent Code Formatting
 
 `rustfmt` ensures that code follows Rust's official style guidelines. It is essential for maintaining a uniform
