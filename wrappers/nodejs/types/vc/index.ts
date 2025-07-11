@@ -4,3 +4,4 @@ export * from "./oid4vp/holder";
 export * from "./oid4vp/verifier-builder";
 export * from "./types/auth-metadata";
 export * from "./oid4vp/holder-builder";
+export * from "./oid4vci/status-issuer";

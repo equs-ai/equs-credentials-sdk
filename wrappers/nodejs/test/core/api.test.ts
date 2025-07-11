@@ -5,10 +5,12 @@ import {
   createIssuer,
   createStatusIssuer,
   createVerifier,
+  CredentialEntry,
   HttpClient,
   HttpRequest,
   HttpResponse,
   KeyType,
+  OID4VCIStatusIssuerBuilder,
   PresentationRestrictionValueType,
   resolveMetadata,
   VcCoreHolder,
@@ -16,11 +18,9 @@ import {
   VcCoreStatusIssuer,
   VcCoreVerifier,
   VCStatusesDataFormat,
-  CredentialEntry,
 } from "../../";
 import { jwtDecode } from "jwt-decode";
 import { Utils } from "./utils";
-import { OID4VCIStatusIssuerBuilder } from "../../types/vc/oid4vci/status-issuer";
 import { MockKeyHandle } from "./mockKeyHandle";
 import { MockKms } from "./mockKms";
 
