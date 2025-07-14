@@ -25,7 +25,7 @@ export interface IdTokenMetadata {
   lifetime: number;
 }
 
-export type CredentialsFindResult = { data: CredentialEntry[] | FindVCsFailReason[] };
+export type CredentialsFindResult = { data: CredentialEntry[] | FindVCsFailReason[][] };
 
 /**
  * A mapping an input descriptor ID to a single credential entry.

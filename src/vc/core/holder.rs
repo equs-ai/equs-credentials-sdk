@@ -9,7 +9,7 @@ use crate::crypto::Alg;
 use crate::did::universal::UniversalResolver;
 use crate::nonce::Nonce;
 use crate::vault::CredentialEntry;
-use crate::vc::core::api::{ClaimsDidNotPassFilteringSnafu, CredentialsFromVaultNotFoundSnafu};
+use crate::vc::core::api::ClaimsDidNotPassFilteringSnafu;
 use crate::vc::core::{
     CredentialOffer, CredentialRequest, CredentialRequestData, Holder, HolderMetadata, KeyMetadata,
     PresentationInput, Proof,
@@ -23,7 +23,7 @@ use crate::vc::formats::json_ld_vc;
 use crate::vc::formats::json_ld_vc::JsonLdAPI;
 use crate::vc::formats::sd_jwt_vc::{SdJwtAPI, VPMetadata};
 use crate::vc::formats::{API, VerifyOptions};
-use crate::vc::oid4vp::CredentialsFindResult;
+use crate::vc::oid4vp::{CredentialsFindResult, FindVCsFailReason};
 use crate::vc::pop::ProofOfPossession;
 use crate::vc::pop::jwt_pop::JwtProofOfPossession;
 use crate::vc::presentation_exchange::validate_credential;
@@ -161,28 +161,19 @@ where
         presentation_input: &PresentationInput,
     ) -> Result<Presentation> {
         let credentials = self.find_vcs_for_presentation(presentation_input).await?;
-        match credentials {
-            CredentialsFindResult::Credentials(credentials) => {
-                let selected = credentials.first().ok_or(
-                    RequestedCredentialNotFoundSnafu {
-                        details: "No credential found",
-                    }
-                    .build(),
-                )?;
-                let presentation = self
-                    .create_presentation(nonce, verifier_id, presentation_input, selected)
-                    .await?;
-                Ok(presentation)
+
+        if let CredentialsFindResult::Credentials(credentials) = credentials {
+            if let Some(credential) = credentials.first() {
+                return self
+                    .create_presentation(nonce, verifier_id, presentation_input, credential)
+                    .await;
             }
-            CredentialsFindResult::Reasons(reasons) => Err(RequestedCredentialNotFoundSnafu {
-                details: reasons
-                    .iter()
-                    .map(ToString::to_string)
-                    .collect::<Vec<_>>()
-                    .join(";\n"),
-            }
-            .build()),
         }
+
+        RequestedCredentialNotFoundSnafu {
+            details: "No credential found",
+        }
+        .fail()
     }
 
     #[instrument(level = Level::TRACE, skip(self), err(), ret())]
@@ -209,10 +200,13 @@ where
         };
 
         if credentials.is_empty() {
-            CredentialsFromVaultNotFoundSnafu {
-                id: &presentation_input.id,
-            }
-            .fail()?
+            return Ok(CredentialsFindResult::Reasons(vec![vec![
+                FindVCsFailReason {
+                    paths: vec![],
+                    type_: "".to_string(),
+                    value: "No credentials found".to_string(),
+                },
+            ]]));
         }
 
         let mut reasons = vec![];
@@ -227,13 +221,14 @@ where
                     .build()
                 })?;
             if let Some(inner_reasons) = result {
-                reasons.extend(inner_reasons);
+                reasons.push(inner_reasons);
             } else {
                 credentials_result.push(entry);
             }
         }
 
         let result = if credentials_result.is_empty() {
+            reasons.sort_by_key(|a| a.len());
             CredentialsFindResult::Reasons(reasons)
         } else {
             CredentialsFindResult::Credentials(credentials_result)
@@ -649,6 +644,8 @@ mod tests {
                 "Wrong return type from holder.find_vcs_for_presentation. Should be empty credentials, thus - reasons of not passing filtering"
             )
         };
+
+        assert_eq!(reasons.len(), 2);
     }
     #[tokio::test]
     async fn holder_find_vcs_for_presentation_returns_reasons() {
@@ -688,6 +685,25 @@ mod tests {
             .unwrap();
 
         let holder = holder_service(kms, vault);
+
+        let case_for_input = CredTestCase {
+            type_: "https://issuer.net/cred_schema_2".to_string(),
+            ..case_1.clone()
+        };
+
+        let input = case_for_input.create_presentation_input();
+
+        let creds = holder.find_vcs_for_presentation(&input).await.unwrap();
+
+        let CredentialsFindResult::Reasons(reasons) = creds else {
+            panic!(
+                "Wrong return type from holder.find_vcs_for_presentation. Should reasons of not passing filtering",
+            )
+        };
+
+        assert_eq!(reasons.len(), 2);
+        assert_eq!(reasons[0].len(), 1);
+        assert_eq!(reasons[1].len(), 2);
 
         let input = case_1.create_presentation_input_with_wrong_vct();
 
