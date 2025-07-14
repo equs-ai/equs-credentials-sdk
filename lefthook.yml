@@ -1,6 +1,6 @@
 # If you change anything here - do not forget to update docs/guidelines/dev.md
 
-pre-commit:
+pre-push:
   commands:
     rust_fmt:
       run: cargo fmt --all -- --check

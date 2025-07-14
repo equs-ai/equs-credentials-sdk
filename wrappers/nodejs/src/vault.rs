@@ -74,7 +74,7 @@ impl TryFrom<FindVCsFailReason> for JsFindVCsFailReason {
 
 #[napi(object, js_name = "CredentialsFindResult")]
 pub struct JsCredentialsFindResult {
-    pub data: Either<Vec<JsCredentialEntry>, Vec<JsFindVCsFailReason>>,
+    pub data: Either<Vec<JsCredentialEntry>, Vec<Vec<JsFindVCsFailReason>>>,
 }
 
 impl TryFrom<CredentialsFindResult> for JsCredentialsFindResult {
@@ -89,9 +89,13 @@ impl TryFrom<CredentialsFindResult> for JsCredentialsFindResult {
                 Either::A(result)
             }
             CredentialsFindResult::Reasons(reasons) => {
-                let mut result: Vec<JsFindVCsFailReason> = vec![];
+                let mut result: Vec<Vec<JsFindVCsFailReason>> = vec![];
                 for reason in reasons {
-                    result.push(reason.try_into()?);
+                    let mut inner_result: Vec<JsFindVCsFailReason> = vec![];
+                    for inner_reason in reason {
+                        inner_result.push(inner_reason.try_into()?);
+                    }
+                    result.push(inner_result);
                 }
                 Either::B(result)
             }

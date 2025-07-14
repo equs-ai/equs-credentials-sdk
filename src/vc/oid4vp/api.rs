@@ -20,7 +20,7 @@ pub type CredentialsMapping = HashMap<String, CredentialsFindResult>;
 #[derive(Debug, Serialize, Deserialize)]
 pub enum CredentialsFindResult {
     Credentials(Vec<CredentialEntry>),
-    Reasons(Vec<FindVCsFailReason>),
+    Reasons(Vec<Vec<FindVCsFailReason>>),
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]

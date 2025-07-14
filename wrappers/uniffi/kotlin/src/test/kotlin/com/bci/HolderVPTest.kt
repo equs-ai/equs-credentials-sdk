@@ -219,14 +219,25 @@ class HolderVPTest {
                 }
 
                 is CredentialsSearchResult.Reasons -> {
-                    data.v1.forEach { reason ->
-                        if (reason.paths != listOf("$.vct") || reason.type != "const") {
-                            throw IllegalStateException(
-                                "Unexpected reason for key: $key\nExpected paths = [\"$.vct\"], type = \"const\"\nBut got: paths = ${reason.paths}, type = ${reason.type}"
-                            )
-                        }
+                    if (data.v1.size != 1) {
+                        throw IllegalStateException("Expected exactly 1 reason group for key: $key, but got ${data.v1.size}")
+                    }
+
+                    val reasonGroup = data.v1[0]
+                    if (reasonGroup.size != 1) {
+                        throw IllegalStateException("Expected exactly 1 reason in the group for key: $key, but got ${reasonGroup.size}")
+                    }
+
+                    val reason = reasonGroup[0]
+                    if (reason.paths != listOf("$.vct") || reason.type != "const") {
+                        throw IllegalStateException(
+                            "Unexpected reason for key: $key\n" +
+                            "Expected paths = [\"$.vct\"], type = \"const\"\n" +
+                            "But got: paths = ${reason.paths}, type = ${reason.type}"
+                        )
                     }
                 }
+
             }
         }
     }

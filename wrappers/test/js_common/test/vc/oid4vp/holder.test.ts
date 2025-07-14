@@ -129,6 +129,7 @@ describe("OID4VP Holder: ", () => {
 
     for (const key in credentialsMapping) {
       expect(key).toBe("Identity-1");
+      expect(credentialsMapping[key].data).toHaveLength(1);
       expect((credentialsMapping[key].data[0] as CredentialEntry).credential).toMatchObject(credential);
     }
   });
@@ -142,7 +143,9 @@ describe("OID4VP Holder: ", () => {
 
     for (const key in credentialsMapping) {
       expect(key).toBe("Identity-1");
-      expect(credentialsMapping[key].data[0]).toMatchObject({
+      expect(credentialsMapping[key].data).toHaveLength(1);
+      expect(credentialsMapping[key].data[0]).toHaveLength(1);
+      expect(credentialsMapping[key].data[0][0]).toMatchObject({
         paths: ["$.vct"],
         type: "const",
         value: "https://credentials.example.com/identity_credential_1",

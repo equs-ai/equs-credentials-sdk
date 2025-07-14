@@ -44,19 +44,19 @@ import Testing
 		#expect(actual.state == Oid4vpHolderTestConstants.authRequest.state)
 	}
 
-    @Test func checkCustomNonceHandler() async throws {
-        self.server["/request"] = { (request: Swifter.HttpRequest) -> Swifter.HttpResponse in
-            let body = String(data: Data(request.body), encoding: .utf8) ?? "<invalid body>"
-            #expect(body.contains("some_nonce"))
-            return .ok(
-                .data(
-                	Oid4vpHolderTestConstants.authRequestJwt.data(using: .utf8)!,
-                	contentType: "application/oauth-authz-req+jwt"))
-        }
+	@Test func checkCustomNonceHandler() async throws {
+		self.server["/request"] = { (request: Swifter.HttpRequest) -> Swifter.HttpResponse in
+			let body = String(data: Data(request.body), encoding: .utf8) ?? "<invalid body>"
+			#expect(body.contains("some_nonce"))
+			return .ok(
+				.data(
+					Oid4vpHolderTestConstants.authRequestJwt.data(using: .utf8)!,
+					contentType: "application/oauth-authz-req+jwt"))
+		}
 
-        let actual: AuthorizationRequest = try await self.holder.getAuthorizationRequest(
-            requestUri: Oid4vpHolderTestConstants.requestUriWithMethod)
-    }
+		let actual: AuthorizationRequest = try await self.holder.getAuthorizationRequest(
+			requestUri: Oid4vpHolderTestConstants.requestUriWithMethod)
+	}
 
 	@Test func presentCredentialsAuto() async throws {
 		try await confirmation("Auth Response is not received") { confirmResponse in
@@ -177,10 +177,19 @@ import Testing
 							#"Expected reasons of failure, found credentials \#(key): \#(creds)"#
 					])
 
-			case .reasons(let reasons):
-				#expect(reasons[0].paths.contains("$.vct"))
-				#expect(reasons[0].type == "const")
-				#expect(reasons[0].value == "https://credentials.example.com/identity_credential_1")
+			case .reasons(let groupedReasons):
+				#expect(groupedReasons.count == 1, "Expected exactly one group of reasons")
+				let reasons = groupedReasons[0]
+
+				#expect(reasons.count == 1, "Expected exactly one reason in the group")
+				let reason = reasons[0]
+
+				#expect(reason.paths == ["$.vct"], "Expected paths to be [\"$.vct\"]")
+				#expect(reason.type == "const", "Expected type to be \"const\"")
+				#expect(
+					reason.value == "https://credentials.example.com/identity_credential_1",
+					"Unexpected value")
+
 			}
 		}
 	}
@@ -348,7 +357,7 @@ enum Oid4vpHolderTestConstants {
 	static let requestUri =
 		"openid4vp://?client_id=did%3Akey%3AzDnaeeTG88wpPhMzuDRvLRTTyNMyJip5e6TLmsjyvPiSYUFk7&request_uri=http%3A%2F%2Flocalhost%3A9001%2Fauth_request"
 	static let requestUriWithMethod =
-	    "openid4vp://?client_id=did:key:zDnaeeTG88wpPhMzuDRvLRTTyNMyJip5e6TLmsjyvPiSYUFk7&request_uri_method=post&request_uri=http://localhost:9001/request"
+		"openid4vp://?client_id=did:key:zDnaeeTG88wpPhMzuDRvLRTTyNMyJip5e6TLmsjyvPiSYUFk7&request_uri_method=post&request_uri=http://localhost:9001/request"
 	static let authRequest = AuthorizationRequest(
 		clientId: "did:key:zDnaeeTG88wpPhMzuDRvLRTTyNMyJip5e6TLmsjyvPiSYUFk7",
 		clientMetadata: clientMetadata,

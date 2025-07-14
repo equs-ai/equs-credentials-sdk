@@ -5,7 +5,7 @@ use crate::nonce::{Nonce, NonceHandler};
 use crate::utils::http::MimeType;
 use crate::vault::CredentialEntry;
 use crate::vc::core::PresentationInput;
-use crate::vc::dcql::{DCQL, filter_claims_using_claim_sets};
+use crate::vc::dcql::DCQL;
 use crate::vc::oid4vp::internal_error::{
     AuthorizationResponseSnafu, CredentialNotFoundSnafu, DCQLSnafu, HttpClientSnafu,
     IdTokenGenerationSnafu, IdTokenMetadataNotFoundSnafu, IdTokenParseSnafu, JsonSnafu, KMSSnafu,
@@ -404,39 +404,22 @@ where
                     .await
                     .context(VCSnafu)?;
 
-                let err = match creds {
-                    CredentialsFindResult::Credentials(creds) => {
-                        if let Some(cred) = creds.first() {
-                            return self
-                                .create_presentation_by_input(
-                                    cred,
-                                    presentation_input,
-                                    auth_request,
-                                )
-                                .await
-                        } else {
-                            ProtocolError::access_denied(
-                                "matching credentials are not found",
-                                auth_request.state.clone(),
+                if let CredentialsFindResult::Credentials(credentials) = creds {
+                    if let Some(cred_entry) = credentials.first() {
+                        return self
+                            .create_presentation_by_input(
+                                cred_entry,
+                                presentation_input,
+                                auth_request,
                             )
-                        }
+                            .await;
                     }
-                    CredentialsFindResult::Reasons(reasons) => {
-                        let reasons_str = reasons
-                            .iter()
-                            .map(ToString::to_string)
-                            .collect::<Vec<_>>()
-                            .join(";\n");
-                        ProtocolError::access_denied(
-                            &format!(
-                                "matching credentials are not found! Presentation input id: {}; reasons: {}",
-                                presentation_input.id,
-                                reasons_str
-                            ),
-                            auth_request.state.clone(),
-                        )
-                    }
-                };
+                }
+
+                let err = ProtocolError::access_denied(
+                    "matching credentials are not found",
+                    auth_request.state.clone(),
+                );
 
                 let err = self
                     .handle_auth_error_resp(
@@ -447,7 +430,8 @@ where
                     .await?;
 
                 Err(Error::Protocol { source: err })
-            })).await?;
+            }))
+            .await?;
         Ok(presentations)
     }
 
@@ -479,30 +463,17 @@ where
                 .find_vcs_for_presentation(&pi)
                 .await
                 .context(VCSnafu)?;
-            let err = match creds {
-                CredentialsFindResult::Credentials(creds) => {
-                    let creds = filter_claims_using_claim_sets(credential, creds);
-                    if let Some(cred) = creds.first() {
-                        return Ok((credential.id().as_str(), cred.clone()))
-                    } else {
-                        ProtocolError::access_denied(
-                            "matching credentials are not found",
-                            auth_request.state.clone(),
-                        )
-                    }
+
+            if let CredentialsFindResult::Credentials(credentials) = creds {
+                if let Some(cred_entry) = credentials.first() {
+                    return Ok((credential.id().as_str(), cred_entry.clone()));
                 }
-                CredentialsFindResult::Reasons(reasons) => {
-                    let reasons_str = reasons
-                        .iter()
-                        .map(ToString::to_string)
-                        .collect::<Vec<_>>()
-                        .join(";\n");
-                    ProtocolError::access_denied(
-                        &format!("matching credentials are not found! Presentation input id: {}; reasons: {}", pi.id, reasons_str),
-                        auth_request.state.clone(),
-                    )
-                }
-            };
+            }
+
+            let err = ProtocolError::access_denied(
+                "matching credentials are not found",
+                auth_request.state.clone(),
+            );
 
             let err = self
                 .handle_auth_error_resp(
@@ -1446,6 +1417,7 @@ mod tests {
                     CredentialsFindResult::Reasons(reasons) => {
                         let reasons_str = reasons
                             .iter()
+                            .flatten()
                             .map(ToString::to_string)
                             .collect::<Vec<_>>()
                             .join(";\n");
@@ -1558,6 +1530,7 @@ mod tests {
                 }
                 CredentialsFindResult::Reasons(reasons) => {
                     assert_eq!(reasons.len(), 1);
+                    assert_eq!(reasons.first().unwrap().len(), 1);
                 }
             }
         }
@@ -1592,8 +1565,10 @@ mod tests {
                     )
                 }
                 CredentialsFindResult::Reasons(reasons) => {
+                    assert_eq!(reasons.len(), 1);
+                    assert_eq!(reasons[0].len(), 1);
                     assert_eq!(
-                        reasons[0],
+                        reasons[0][0],
                         FindVCsFailReason {
                             paths: vec!["$.vct".to_string()],
                             type_: "const".to_string(),

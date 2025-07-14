@@ -28,7 +28,7 @@ pub struct FindVCsFailReason {
 #[derive(uniffi::Enum)]
 pub enum CredentialsSearchResult {
     Credentials(Vec<CredentialEntry>),
-    Reasons(Vec<FindVCsFailReason>),
+    Reasons(Vec<Vec<FindVCsFailReason>>),
 }
 
 #[derive(uniffi::Record)]

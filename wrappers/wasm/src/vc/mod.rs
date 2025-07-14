@@ -161,8 +161,12 @@ impl TryFrom<ASDKCredentialsSearchResult> for CredentialsFindResult {
             ASDKCredentialsSearchResult::Reasons(reasons) => {
                 let mut result = vec![];
                 for reason in reasons {
-                    let item: JsFindVCsFailReason = reason.try_into()?;
-                    result.push(serde_json::to_value(item)?);
+                    let mut inner_result = vec![];
+                    for inner_reason in reason {
+                        let item: JsFindVCsFailReason = inner_reason.try_into()?;
+                        inner_result.push(serde_json::to_value(item)?);
+                    }
+                    result.push(serde_json::to_value(inner_result)?);
                 }
                 result
             }
