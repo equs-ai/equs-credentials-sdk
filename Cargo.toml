@@ -47,7 +47,7 @@ strum = { version = "0.26.3", features = ["derive"] }
 reqwest = { version = "=0.12.12", features = ["rustls-tls"] }
 
 uuid = { version = "1.10.0", features = ["v4"] }
-url = "=2.5.2"
+url = "=2.5.4"
 anyhow = "1.0.86"
 tracing = { version = "0.1.40", features = ["attributes", "release_max_level_debug"] }
 snafu = "0.8.4"
@@ -59,12 +59,12 @@ zeroize = "1.8.1"
 zkryptium = "0.2.2"
 ssi-status = "0.3.0"
 flate2 = "1.0.35"
-base64ct = "=1.6.0"
-libm = "=0.2.11"
 async-lock = "3.4.0"
 async-channel = "2.3.1"
-getrandom = { version = "0.3.3", features = ["wasm_js"] }
 lazy_static = "1.5.0"
+jsonpath-rust = "0.7.5"
+bs58 = "0.5.1"
+
 
 # InMEM dependencies
 # crypto/kms dependencies
@@ -72,16 +72,13 @@ p256 = { version = "0.13.2", optional = true }
 ed25519-dalek = { version = "2.1.1", optional = true }
 bip32 = { version = "0.5.2", optional = true }
 askar-crypto = { version = "=0.3.3", optional = true }
-bs58 = "0.5.1"
 # service
 rand = { version = "0.8.5", optional = true }
 random-string = { version = "1.1.0", optional = true }
 ecdsa = { version = "0.16.9", optional = true }
-jsonpath-rust = "0.7.5"
 hyper = { version = "0.14.32", features = ["full"], optional = true }
 http = { version = "0.2", optional = true }
 tokio = { version = "1.25.0", features = ["macros"], optional = true }
-libc = "0.2.172"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 didcomm = { git = "ssh://git@git.slock.it/open-source/didcomm-rust.git", rev = "db41780d", features = ["uniffi"] }
