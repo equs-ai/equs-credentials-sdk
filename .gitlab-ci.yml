@@ -1,12 +1,6 @@
 include:
   - template: Security/SAST.gitlab-ci.yml
   - template: Security/Secret-Detection.gitlab-ci.yml
-  - project: 'build-images/synopsys-detect'
-    ref: main
-    file: '/templates/.gitlab-ci-blackduck-intelligent.yml'
-  - project: 'build-images/synopsys-detect'
-    ref: main
-    file: '/templates/.gitlab-ci-blackduck-signature.yml'
   - local: "wrappers/nodejs/publish.yml"
   - local: "wrappers/wasm/publish.yml"
   - local: "wrappers/uniffi/publish.yml"
@@ -53,28 +47,6 @@ variables:
     - curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain ${RUST_VERSION}
     - source "$HOME/.cargo/env"
     - *cargo_local_deps_script
-
-.black_duck_scan: &black_duck_scan
-  stage: scan
-  before_script:
-    - curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain ${RUST_VERSION}
-    - source "$HOME/.cargo/env"
-    - *cargo_local_deps_script
-    - cargo generate-lockfile
-
-# Scan stage
-
-black duck scan branches:
-  <<: *black_duck_scan
-
-black duck signature scan branches:
-  <<: *black_duck_scan
-
-black duck scan tags:
-  <<: *black_duck_scan
-
-black duck signature scan tags:
-  <<: *black_duck_scan
 
 semgrep-sast:
   stage: scan
