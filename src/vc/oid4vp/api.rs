@@ -44,6 +44,7 @@ pub type ClientMetadata = openid4vp::core::authorization_request::parameters::Cl
 pub type WalletMetadata = openid4vp::core::metadata::WalletMetadata;
 pub type ResponseType = openid4vp::core::authorization_request::parameters::ResponseType;
 pub type ResponseMode = openid4vp::core::authorization_request::parameters::ResponseMode;
+pub type ClientIdScheme = openid4vp::core::authorization_request::parameters::ClientIdScheme;
 
 pub type ResolvedPresentationQuery =
     openid4vp::core::authorization_request::ResolvedPresentationQuery;

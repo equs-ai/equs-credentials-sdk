@@ -799,7 +799,257 @@ pub mod fixtures {
                     }
                   }
                 }"#;
+            pub const AUTH_REQUEST_WITH_WRONG_CLIENT_ID: &str = r#"
+                {
+                  "client_id": "did:key:1",
+                  "state": null,
+                  "presentation_definition": {
+                    "id": "327ad171-c80a-485b-b098-50d7ad278ef6",
+                    "input_descriptors": [
+                      {
+                        "id": "Identity-1",
+                        "constraints": {
+                          "fields": [
+                            {
+                              "path": [
+                                "$.name"
+                              ],
+                              "predicate": null,
+                              "optional": true,
+                              "intent_to_retain": false
+                            },
+                            {
+                              "path": [
+                                "$.vct"
+                              ],
+                              "predicate": null,
+                              "filter": {
+                                "type": "string",
+                                "const": "https://credentials.example.com/identity_credential"
+                              },
+                              "intent_to_retain": false
+                            }
+                          ]
+                        },
+                        "name": "Identity VC",
+                        "purpose": "We want an identity",
+                        "format": {
+                          "dc+sd-jwt": {
+                            "sd-jwt_alg_values": [
+                              "ES256",
+                              "EdDSA"
+                            ],
+                            "kb-jwt_alg_values": [
+                              "ES256",
+                              "EdDSA"
+                            ]
+                          }
+                        }
+                      }
+                    ],
+                    "name": "Example with selective disclosure"
+                  },
+                  "nonce": "3DaLwdi89qDgplpSwAspX6wWzm6pLkzaN3Xuk-ar5zY",
+                  "response_mode": "direct_post",
+                  "response_type": "vp_token",
+                  "response_uri": "http://127.0.0.1:55796/auth",
+                  "client_metadata": {
+                    "vp_formats": {
+                        "dc+sd-jwt": {
+                            "alg": ["EdDSA", "ES256"]
+                        }
+                    }
+                  }
+                }"#;
 
+            pub const AUTH_REQUEST_WITH_UNSUPPORTED_CLIENT_ID_SCHEME: &str = r#"
+                {
+                  "client_id": "web-origin:some-link",
+                  "state": null,
+                  "presentation_definition": {
+                    "id": "327ad171-c80a-485b-b098-50d7ad278ef6",
+                    "input_descriptors": [
+                      {
+                        "id": "Identity-1",
+                        "constraints": {
+                          "fields": [
+                            {
+                              "path": [
+                                "$.name"
+                              ],
+                              "predicate": null,
+                              "optional": true,
+                              "intent_to_retain": false
+                            },
+                            {
+                              "path": [
+                                "$.vct"
+                              ],
+                              "predicate": null,
+                              "filter": {
+                                "type": "string",
+                                "const": "https://credentials.example.com/identity_credential"
+                              },
+                              "intent_to_retain": false
+                            }
+                          ]
+                        },
+                        "name": "Identity VC",
+                        "purpose": "We want an identity",
+                        "format": {
+                          "dc+sd-jwt": {
+                            "sd-jwt_alg_values": [
+                              "ES256",
+                              "EdDSA"
+                            ],
+                            "kb-jwt_alg_values": [
+                              "ES256",
+                              "EdDSA"
+                            ]
+                          }
+                        }
+                      }
+                    ],
+                    "name": "Example with selective disclosure"
+                  },
+                  "nonce": "3DaLwdi89qDgplpSwAspX6wWzm6pLkzaN3Xuk-ar5zY",
+                  "response_mode": "direct_post",
+                  "response_type": "vp_token",
+                  "response_uri": "http://127.0.0.1:55796/auth",
+                  "client_metadata": {
+                    "vp_formats": {
+                        "dc+sd-jwt": {
+                            "alg": ["EdDSA", "ES256"]
+                        }
+                    }
+                  }
+                }"#;
+
+            pub const AUTH_REQUEST_WITH_NON_URL_SCHEME: &str = r#"
+                {
+                  "client_id": "redirect_uri:non-link-id",
+                  "state": null,
+                  "presentation_definition": {
+                    "id": "327ad171-c80a-485b-b098-50d7ad278ef6",
+                    "input_descriptors": [
+                      {
+                        "id": "Identity-1",
+                        "constraints": {
+                          "fields": [
+                            {
+                              "path": [
+                                "$.name"
+                              ],
+                              "predicate": null,
+                              "optional": true,
+                              "intent_to_retain": false
+                            },
+                            {
+                              "path": [
+                                "$.vct"
+                              ],
+                              "predicate": null,
+                              "filter": {
+                                "type": "string",
+                                "const": "https://credentials.example.com/identity_credential"
+                              },
+                              "intent_to_retain": false
+                            }
+                          ]
+                        },
+                        "name": "Identity VC",
+                        "purpose": "We want an identity",
+                        "format": {
+                          "dc+sd-jwt": {
+                            "sd-jwt_alg_values": [
+                              "ES256",
+                              "EdDSA"
+                            ],
+                            "kb-jwt_alg_values": [
+                              "ES256",
+                              "EdDSA"
+                            ]
+                          }
+                        }
+                      }
+                    ],
+                    "name": "Example with selective disclosure"
+                  },
+                  "nonce": "3DaLwdi89qDgplpSwAspX6wWzm6pLkzaN3Xuk-ar5zY",
+                  "response_mode": "direct_post",
+                  "response_type": "vp_token",
+                  "response_uri": "http://127.0.0.1:55796/auth",
+                  "client_metadata": {
+                    "vp_formats": {
+                        "dc+sd-jwt": {
+                            "alg": ["EdDSA", "ES256"]
+                        }
+                    }
+                  }
+                }"#;
+
+            pub const AUTH_REQUEST_WITH_REDIRECT_URI: &str = r#"
+                {
+                  "client_id": "redirect_uri:https://localhost:8080",
+                  "state": null,
+                  "presentation_definition": {
+                    "id": "327ad171-c80a-485b-b098-50d7ad278ef6",
+                    "input_descriptors": [
+                      {
+                        "id": "Identity-1",
+                        "constraints": {
+                          "fields": [
+                            {
+                              "path": [
+                                "$.name"
+                              ],
+                              "predicate": null,
+                              "optional": true,
+                              "intent_to_retain": false
+                            },
+                            {
+                              "path": [
+                                "$.vct"
+                              ],
+                              "predicate": null,
+                              "filter": {
+                                "type": "string",
+                                "const": "https://credentials.example.com/identity_credential"
+                              },
+                              "intent_to_retain": false
+                            }
+                          ]
+                        },
+                        "name": "Identity VC",
+                        "purpose": "We want an identity",
+                        "format": {
+                          "dc+sd-jwt": {
+                            "sd-jwt_alg_values": [
+                              "ES256",
+                              "EdDSA"
+                            ],
+                            "kb-jwt_alg_values": [
+                              "ES256",
+                              "EdDSA"
+                            ]
+                          }
+                        }
+                      }
+                    ],
+                    "name": "Example with selective disclosure"
+                  },
+                  "nonce": "3DaLwdi89qDgplpSwAspX6wWzm6pLkzaN3Xuk-ar5zY",
+                  "response_mode": "direct_post",
+                  "response_type": "vp_token",
+                  "response_uri": "http://127.0.0.1:55796/auth",
+                  "client_metadata": {
+                    "vp_formats": {
+                        "dc+sd-jwt": {
+                            "alg": ["EdDSA", "ES256"]
+                        }
+                    }
+                  }
+                }"#;
             pub const AUTH_REQUEST_WITH_STATE: &str = r#"
                 {
                   "client_id": "did:key:zDnaex9UKhcwNpfrPva1HLj6DECNHhHkmuY6xszv1KGWksvfL",
@@ -2022,6 +2272,7 @@ pub mod utils {
     use async_trait::async_trait;
     use iref::UriBuf;
     use oauth2::http::{Method, Request, Response, StatusCode};
+    use openid4vp::core::authorization_request::verification::RequestVerifier;
     use openid4vp::core::metadata::parameters::SubjectSyntaxTypesSupported;
     use openid4vp::core::object::UntypedObject;
     use openid4vp::core::response::PostRedirection;
@@ -2410,6 +2661,31 @@ pub mod utils {
         kms: LocalKms,
         vault: InMemVault,
     ) -> impl Holder {
+        let inner = vc::core::HolderService::new(
+            kms.clone(),
+            vault,
+            vc::core::HolderMetadata {
+                client_id: "client_id".to_string(),
+                pop_lifetime: time::Duration::minutes(5),
+            },
+            UniversalResolver::default(),
+        );
+
+        HolderService::new(
+            inner,
+            http_client,
+            kms,
+            UniversalResolver::default(),
+            None,
+            None,
+        )
+    }
+
+    pub async fn request_verifier(
+        http_client: impl HttpClient,
+        kms: LocalKms,
+        vault: InMemVault,
+    ) -> impl RequestVerifier {
         let inner = vc::core::HolderService::new(
             kms.clone(),
             vault,

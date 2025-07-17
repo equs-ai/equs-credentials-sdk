@@ -25,9 +25,9 @@ use crate::vc::claims::{Claim, Claims};
 use crate::vc::core::KeyMetadata;
 use crate::vc::oid4vp::Error::Protocol;
 use crate::vc::oid4vp::internal_error::{
-    ClaimsSnafu, DCQLSnafu, DidUrlResolutionSnafu, IdTokenValidationSnafu, JsonSnafu, KMSSnafu,
-    NonceGenerationSnafu, Oid4VpLibSnafu, ParseSnafu, PresentationExchangeSnafu, VCNotValidSnafu,
-    VCSnafu, VCStatusSnafu,
+    ClaimsSnafu, ClientIdSnafu, DCQLSnafu, DidUrlResolutionSnafu, IdTokenValidationSnafu,
+    JsonSnafu, KMSSnafu, NonceGenerationSnafu, Oid4VpLibSnafu, ParseSnafu,
+    PresentationExchangeSnafu, VCNotValidSnafu, VCSnafu, VCStatusSnafu,
 };
 use crate::vc::oid4vp::metadata::{default_client_metadata, default_wallet_metadata};
 use crate::vc::oid4vp::signer::Signer;
@@ -316,7 +316,9 @@ where
     ) -> Result<(Url, Option<String>)> {
         match &auth_response_config.mode {
             ResponseMode::FragmentJwt | ResponseMode::Fragment => {
-                let client = RedirectUriClient::new(ClientId(self.metadata.client_id.to_owned()));
+                let client = RedirectUriClient::new(
+                    ClientId::new(self.metadata.client_id.to_owned()).context(ClientIdSnafu)?,
+                );
                 let verifier_builder = openid4vp::verifier::Verifier::builder().with_client(client);
                 self.build_authorization_request_helper(
                     presentation_definition,
@@ -755,7 +757,7 @@ mod tests {
             )
             .unwrap()
         );
-        assert_eq!(request.client_id().0, did);
+        assert_eq!(request.client_id().get_id().to_owned(), did);
         assert_eq!(request.return_uri(), &response_uri);
     }
 
@@ -844,7 +846,7 @@ mod tests {
             )
             .unwrap()
         );
-        assert_eq!(request.client_id().0, did);
+        assert_eq!(request.client_id().get_id().to_owned(), did);
         assert_eq!(request.return_uri(), &response_uri);
         assert_eq!(
             request.get::<Scope>().unwrap().unwrap(),
