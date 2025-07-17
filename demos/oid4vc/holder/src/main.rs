@@ -17,7 +17,7 @@ use agent_sdk::vc::oid4vci::{
 };
 use agent_sdk::vc::oid4vci::{CredentialOfferResolver, Holder as HolderVci};
 use agent_sdk::vc::oid4vp::{
-    AuthResponseOptions, AuthorizationResponse, AuthorizationResponseMetadata,
+    AuthResponseOptions, AuthorizationResponse, AuthorizationResponseMetadata, ClientIdScheme,
     CredentialsFindResult, CredentialsMapping, PassAuthRequestObject, ResolvedAuthRequest,
     ResolvedPresentationQuery, ResponseMode, ResponseType,
 };
@@ -244,7 +244,8 @@ async fn same_device_presentation_flow(holder: impl HolderVp, kms: LocalKms) {
         }
     };
     let redirect_uri = Url::parse("http://verifier.example.com/cb").unwrap();
-    let verifier = verifier(redirect_uri.as_ref()).await;
+    let client_id = format!("{}:{}", ClientIdScheme::RedirectUri, redirect_uri.as_str());
+    let verifier = verifier(client_id.as_str()).await;
     println!("1.2 Verifier generates authorization request");
 
     let auth_resp_config = AuthResponseOptions {

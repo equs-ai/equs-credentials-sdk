@@ -566,7 +566,7 @@ where
         };
 
         Ok(ResolvedAuthRequest {
-            client_id: aro.client_id().0.to_owned(),
+            client_id: aro.client_id().get_full_id(),
             client_metadata: aro.client_metadata().to_owned(),
             resolved_presentation_query: rpq,
             nonce: Nonce::from_secret(aro.nonce().as_str().to_owned()),
@@ -782,21 +782,23 @@ where
         decoded_request: &AuthorizationRequestObject,
         redirect_uri: String,
     ) -> anyhow::Result<(), openid4vp::core::error::Error> {
-        if let Some(client_id_scheme) = decoded_request.client_id().resolve_scheme() {
-            let supported = self
-                .metadata()
-                .is_client_id_schema_supported(&client_id_scheme);
-            if !supported {
-                return Err(openid4vp::core::error::Error::protocol_invalid_req(
-                    "'redirect_uri' client_id_schema verification method is not supported",
-                    decoded_request.state(),
-                ));
-            }
+        let supported = self
+            .metadata()
+            .is_client_id_schema_supported(decoded_request.client_id().get_scheme());
+        if !supported {
+            return Err(openid4vp::core::error::Error::protocol_invalid_req(
+                format!(
+                    "The scheme '{}' is not supported",
+                    decoded_request.client_id().get_scheme()
+                )
+                .as_str(),
+                decoded_request.state(),
+            ));
         }
-        let client_id = &decoded_request.client_id().0;
-        let client_id_as_uri = Url::parse(client_id).map_err(|_| {
+        let client_id_value = &decoded_request.client_id().get_id();
+        let client_id_as_uri = Url::parse(client_id_value).map_err(|_| {
             openid4vp::core::error::Error::protocol_invalid_req(
-                "could not parse 'client_id' = {client_id} as uri, in 'redirect_uri' response method it must be uri",
+                format!("could not parse 'client_id' = {client_id_value} as uri, in 'redirect_uri' response method it must be uri").as_str(),
                 decoded_request.state(),
             )
         })?;
@@ -810,7 +812,8 @@ where
         if client_id_as_uri != redirect_uri {
             return Err(openid4vp::core::error::Error::protocol_invalid_req(
                 &format!(
-                    "in 'redirect_uri' response mode 'client_id' = {client_id} must be equal to 'redirect_uri' = {redirect_uri}"
+                    "in 'redirect_uri' response mode 'client_id' = {} must be equal to 'redirect_uri' = {}",
+                    client_id_value, redirect_uri
                 ),
                 decoded_request.state(),
             ));
@@ -838,13 +841,15 @@ mod tests {
     use crate::vc::core::KeyMetadata;
     use crate::vc::oid4vp::protocol_error::ErrorType;
     use crate::vc::oid4vp::tests::fixtures::single_presentation::sd_jwt::{
-        AUTH_REQUEST, AUTH_REQUEST_JWT, AUTH_REQUEST_WITH_STATE_JWT,
+        AUTH_REQUEST, AUTH_REQUEST_JWT, AUTH_REQUEST_WITH_NON_URL_SCHEME,
+        AUTH_REQUEST_WITH_REDIRECT_URI, AUTH_REQUEST_WITH_STATE_JWT,
+        AUTH_REQUEST_WITH_UNSUPPORTED_CLIENT_ID_SCHEME, AUTH_REQUEST_WITH_WRONG_CLIENT_ID,
     };
     use crate::vc::oid4vp::tests::fixtures::{
         REQUEST_URI, STATE, VERIFIER_URL, multi_presentation, single_presentation,
     };
     use crate::vc::oid4vp::tests::utils::{
-        PresentationTestCase, build_url, holder_service, validate_claims,
+        PresentationTestCase, build_url, holder_service, request_verifier, validate_claims,
     };
     use crate::vc::oid4vp::{
         AuthorizationResponseMetadata, CredentialsFindResult, Error, FindVCsFailReason, Holder,
@@ -855,7 +860,9 @@ mod tests {
     use oauth2::HttpResponse;
     use oauth2::http::Method;
     use oauth2::reqwest::StatusCode;
+    use openid4vp::core::authorization_request::AuthorizationRequestObject;
     use openid4vp::core::authorization_request::parameters::ResponseMode;
+    use openid4vp::core::authorization_request::verification::RequestVerifier;
     use openid4vp::core::response::PostRedirection;
     use rstest::rstest;
     use sd_jwt_rs::SDJWTSerializationFormat;
@@ -885,6 +892,72 @@ mod tests {
             serde_json::to_value(&request_obj).unwrap(),
             AUTH_REQUEST.parse::<serde_json::Value>().unwrap()
         );
+    }
+
+    #[tokio::test]
+    async fn request_verifier_verifies_for_did_successfully() {
+        let request_verifier =
+            request_verifier(MockHttpClient::new(), LocalKms::new(), InMemVault::new()).await;
+        let aro: AuthorizationRequestObject = serde_json::from_str(AUTH_REQUEST).unwrap();
+        request_verifier
+            .did(&aro, AUTH_REQUEST_JWT.to_string())
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    #[should_panic(
+        expected = "DIDs from 'kid' (did:key:zDnaehgaHKAP7LAA3Kwa4FjXjJ1G3BcaHqr5gfRySJcGDgBtV) and 'client_id' (did:key:1) do not match"
+    )]
+    async fn request_verifier_verifies_for_did_unsuccessfully() {
+        let request_verifier =
+            request_verifier(MockHttpClient::new(), LocalKms::new(), InMemVault::new()).await;
+        let aro: AuthorizationRequestObject =
+            serde_json::from_str(AUTH_REQUEST_WITH_WRONG_CLIENT_ID).unwrap();
+        request_verifier
+            .did(&aro, AUTH_REQUEST_JWT.to_string())
+            .await
+            .unwrap();
+    }
+
+    #[rstest]
+    #[should_panic(expected = "The scheme 'web-origin' is not supported")]
+    #[case(
+        AUTH_REQUEST_WITH_UNSUPPORTED_CLIENT_ID_SCHEME,
+        "https://localhost:8080"
+    )]
+    #[should_panic(
+        expected = "could not parse 'client_id' = non-link-id as uri, in 'redirect_uri' response method it must be uri"
+    )]
+    #[case(AUTH_REQUEST_WITH_NON_URL_SCHEME, "https://localhost:8080")]
+    #[should_panic(
+        expected = "in 'redirect_uri' response mode 'client_id' = https://localhost:8080 must be equal to 'redirect_uri' = https://wronglink:8080/"
+    )]
+    #[case(AUTH_REQUEST_WITH_REDIRECT_URI, "https://wronglink:8080")]
+    #[tokio::test]
+    async fn request_verifier_for_redirect_gets_unsupported_scheme(
+        #[case] auth_request: &str,
+        #[case] redirect_uri: String,
+    ) {
+        let request_verifier =
+            request_verifier(MockHttpClient::new(), LocalKms::new(), InMemVault::new()).await;
+        let aro: AuthorizationRequestObject = serde_json::from_str(auth_request).unwrap();
+        request_verifier
+            .redirect_uri(&aro, redirect_uri)
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn request_verifier_for_redirect_successfully() {
+        let request_verifier =
+            request_verifier(MockHttpClient::new(), LocalKms::new(), InMemVault::new()).await;
+        let aro: AuthorizationRequestObject =
+            serde_json::from_str(AUTH_REQUEST_WITH_REDIRECT_URI).unwrap();
+        request_verifier
+            .redirect_uri(&aro, "https://localhost:8080".to_string())
+            .await
+            .unwrap();
     }
 
     #[tokio::test]
