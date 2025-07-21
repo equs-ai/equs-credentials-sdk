@@ -85,19 +85,16 @@ impl OID4VCIHolderBuilder {
 
     pub async fn build(&self) -> Result<OID4VCIHolder> {
         #[allow(unused_mut)]
-        let mut builder = agent_sdk::vc::oid4vci::HolderBuilder::new(
+        let mut holder = agent_sdk::vc::oid4vci::HolderBuilder::new(
             self.kms.to_owned(),
             self.vault.to_owned(),
             self.client_id.to_owned(),
             self.issuer_discovery.clone(),
-        );
-
-        let builder = builder.with_http_client(self.http_client.to_owned());
-
-        let holder = builder
-            .build()
-            .await
-            .map_err(|e| Error::OID4VPHolder(e.to_string()))?;
+            self.http_client.to_owned(),
+        )
+        .build()
+        .await
+        .map_err(|e| Error::OID4VPHolder(e.to_string()))?;
 
         Ok(OID4VCIHolder::new(holder))
     }

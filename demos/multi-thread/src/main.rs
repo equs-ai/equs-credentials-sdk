@@ -182,8 +182,8 @@ async fn oid4vci_holder(
         vault,
         "wallet-dev".to_owned(),
         IssuerDiscovery::Metadata(issuer_metadata, authz_metadata),
+        ReqwestClientBuilder::new().insecure().build().unwrap(),
     )
-    .with_http_client(ReqwestClientBuilder::new().insecure().build().unwrap())
     .build()
     .await
     .unwrap()

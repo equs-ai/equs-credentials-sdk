@@ -541,11 +541,15 @@ async fn oid4vp_holder(kms: LocalKms, vault: InMemVault) -> impl oid4vp::Holder 
 
     let client_id = "wallet-dev".to_owned();
 
-    let holder = oid4vp::HolderBuilder::new(kms, vault, client_id)
-        .with_http_client(ReqwestClientBuilder::new().insecure().build().unwrap())
-        .build()
-        .await
-        .unwrap();
+    let holder = oid4vp::HolderBuilder::new(
+        kms,
+        vault,
+        client_id,
+        ReqwestClientBuilder::new().insecure().build().unwrap(),
+    )
+    .build()
+    .await
+    .unwrap();
 
     println!("Done");
 
@@ -561,12 +565,17 @@ async fn oid4vci_holder(
     println!("Initializing oid4vci holder...");
     let client_id = "wallet-dev".to_owned();
 
-    let holder = oid4vci::HolderBuilder::new(kms, vault, client_id, iss_discovery)
-        .with_redirect_url("urn:ietf:wg:oauth:2.0:oob".to_string())
-        .with_http_client(ReqwestClientBuilder::new().insecure().build().unwrap())
-        .build()
-        .await
-        .unwrap();
+    let holder = oid4vci::HolderBuilder::new(
+        kms,
+        vault,
+        client_id,
+        iss_discovery,
+        ReqwestClientBuilder::new().insecure().build().unwrap(),
+    )
+    .with_redirect_url("urn:ietf:wg:oauth:2.0:oob".to_string())
+    .build()
+    .await
+    .unwrap();
 
     println!("Done");
 

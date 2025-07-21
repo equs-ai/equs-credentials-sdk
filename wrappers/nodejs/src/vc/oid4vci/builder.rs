@@ -75,11 +75,17 @@ pub async fn _build_vci_holder(
     client_id: String,
     issuer_discovery: &JsIssuerDiscovery,
     redirect_url: Option<String>,
-    http_client: Option<&ReqwestHttpClient>,
+    http_client: &ReqwestHttpClient,
     pop_lifetime: Option<JsDuration>,
     did_resolver: Option<JsDIDResolver>,
 ) -> Result<OID4VCIHolder> {
-    let mut builder = HolderBuilder::new(kms, vault, client_id, issuer_discovery.0.to_owned());
+    let mut builder = HolderBuilder::new(
+        kms,
+        vault,
+        client_id,
+        issuer_discovery.0.to_owned(),
+        http_client.inner(),
+    );
 
     if let Some(url) = redirect_url {
         builder = builder.with_redirect_url(url.to_string());
@@ -91,10 +97,6 @@ pub async fn _build_vci_holder(
 
     if let Some(did_resolver) = did_resolver {
         builder = builder.with_did_resolver(did_resolver).unwrap();
-    }
-
-    if let Some(http_client) = http_client {
-        builder = builder.with_http_client(http_client.inner());
     }
 
     let holder = builder

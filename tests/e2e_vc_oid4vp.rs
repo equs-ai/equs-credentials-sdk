@@ -337,8 +337,7 @@ async fn build_holder(
     kms: LocalKms,
     vault: InMemVault,
 ) -> impl Holder {
-    HolderBuilder::new(kms, vault, "wallet-dev".to_string())
-        .with_http_client(http_client)
+    HolderBuilder::new(kms, vault, "wallet-dev".to_string(), http_client)
         .with_nonce_handler(Box::new(MockNonceHandler::default()))
         .build()
         .await

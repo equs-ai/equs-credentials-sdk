@@ -13,6 +13,7 @@ use common_macros::DebugError;
 use snafu::{Location, Snafu};
 use std::fmt::Debug;
 use std::marker::PhantomData;
+use std::sync::Arc;
 use time::Duration;
 use tracing::{Level, debug, info, instrument};
 
@@ -20,6 +21,7 @@ use tracing::{Level, debug, info, instrument};
 #[derive(Snafu, DebugError)]
 #[non_exhaustive]
 pub enum Error {
+    #[snafu(display("Could not build {}", details))]
     Build {
         details: String,
         #[snafu(implicit)]
@@ -230,18 +232,18 @@ where
     kms: KMS,
     vault: V,
     did_resolver: UniversalResolver,
-    // TODO: Should be HTTP client type, not Result
-    http_client: Result<HC, HttpError>,
+    http_client: Arc<HC>,
     pop_lifetime: time::Duration,
     nonce_handler: Option<Box<dyn NonceHandler>>,
     _marker: PhantomData<KH>,
 }
 
-impl<KH, KMS, V> HolderBuilder<KH, KMS, V, ReqwestClient>
+impl<KH, KMS, V, HC> HolderBuilder<KH, KMS, V, HC>
 where
     KH: kms::KeyHandle,
     KMS: kms::Kms<KH> + Clone,
     V: vault::Vault,
+    HC: HttpClient,
 {
     /// Creates a new instance of `HolderBuilder` with default configurations.
     ///
@@ -256,23 +258,16 @@ where
     /// A new `HolderBuilder` instance.
     #[instrument(
         level = Level::TRACE,
-        skip(kms, vault)
+        skip(kms, vault, http_client),
     )]
-    pub fn new(kms: KMS, vault: V, client_id: String) -> Self {
-        let http_client = ReqwestClientBuilder::new().build().map_err(|e| {
-            HttpSnafu {
-                details: e.to_string(),
-            }
-            .build()
-        });
-
+    pub fn new(kms: KMS, vault: V, client_id: String, http_client: HC) -> Self {
         info!("oid4vp-holder builder is initialized");
 
         Self {
             client_id,
             kms,
             vault,
-            http_client,
+            http_client: Arc::new(http_client),
             did_resolver: UniversalResolver::default(),
             wallet_metadata: None,
             pop_lifetime: Duration::minutes(DEFAULT_POP_LIFETIME_MINUTES),
@@ -375,7 +370,7 @@ where
             kms: self.kms,
             vault: self.vault,
             did_resolver: self.did_resolver,
-            http_client: Ok(http_client),
+            http_client: Arc::new(http_client),
             pop_lifetime: self.pop_lifetime,
             _marker: Default::default(),
             nonce_handler: self.nonce_handler,
@@ -436,17 +431,12 @@ where
             self.vault,
             holder_metadata,
             self.did_resolver.clone(),
+            self.http_client.clone(),
         );
-        let http_client = self.http_client.map_err(|e| {
-            BuildSnafu {
-                details: format!("Cannot initialize http client: {e}"),
-            }
-            .build()
-        })?;
 
         let holder = HolderService::new(
             inner,
-            http_client,
+            self.http_client,
             self.kms,
             self.did_resolver,
             self.wallet_metadata,
@@ -475,8 +465,7 @@ mod tests {
         let kms = LocalKms::new();
         let vault = InMemVault::new();
 
-        HolderBuilder::new(kms, vault, CLIENT_ID.to_owned())
-            .with_http_client(MockHttpClient::new())
+        HolderBuilder::new(kms, vault, CLIENT_ID.to_owned(), MockHttpClient::new())
             .with_wallet_metadata(default_wallet_metadata())
             .build()
             .await
@@ -488,7 +477,7 @@ mod tests {
         let kms = LocalKms::new();
         let vault = InMemVault::new();
 
-        HolderBuilder::new(kms, vault, CLIENT_ID.to_owned())
+        HolderBuilder::new(kms, vault, CLIENT_ID.to_owned(), MockHttpClient::new())
             .build()
             .await
             .unwrap();

@@ -690,7 +690,7 @@ mod tests {
     #[case::sd_jwt(CredTestCase::sd_jwt())]
     #[tokio::test]
     async fn credential_validated_using_disjunction(#[case] cred_test_case: CredTestCase) {
-        let (credential, _) = cred_test_case.generate_vc(&LocalKms::new()).await;
+        let (credential, _) = cred_test_case.generate_vc(&LocalKms::new(), None).await;
         let dcql_credential: DCQLCredential = cred_test_case.create_dcql_credential();
 
         validate_credential_for_dcql(&credential.credential, &dcql_credential).unwrap()

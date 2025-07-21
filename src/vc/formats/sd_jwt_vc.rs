@@ -13,12 +13,14 @@ use ssi::jwk::{JWK, JWKResolver};
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::ops::Deref;
+use time::OffsetDateTime;
 use tracing::{Level, instrument, trace};
 use url::Url;
 
 use crate::crypto::{Key, Signer};
 use crate::did::universal::UniversalResolver;
 use crate::did::{DIDResolver, DIDURL};
+use crate::http::HttpClient;
 use crate::nonce::Nonce;
 use crate::utils;
 use crate::utils::b64;
@@ -27,9 +29,9 @@ use crate::utils::serde::get_time_based_claim;
 use crate::vc::core::{PresentationInput, PresentationRestriction};
 use crate::vc::formats::vc::SD_JWT_VC;
 use crate::vc::formats::{
-    API, ClaimsSnafu, CredentialCreationSnafu, DIDSnafu, HasClaims, HasCredential, JWSSnafu,
-    KeyTypeNotSupportedSnafu, ParsingSnafu, PresentationSnafu, ProofValidationSnafu, SigningSnafu,
-    VerifyOptions, VerifyingSnafu,
+    API, CheckCredential, ClaimsSnafu, CredentialCreationSnafu, DIDSnafu, HasClaims, HasCredential,
+    JWSSnafu, KeyTypeNotSupportedSnafu, ParsingSnafu, PresentationSnafu, ProofValidationSnafu,
+    SigningSnafu, StatusCheckSnafu, VerifyOptions, VerifyingSnafu,
 };
 use crate::vc::formats::{GetDateTimeClaim, Result};
 
@@ -53,6 +55,8 @@ const ALWAYS_REVEALED_CLAIMS: [&str; 6] = [
 pub type SdJwtRsError = sd_jwt_rs::error::Error;
 
 pub use crate::vc::claims::Claims;
+use crate::vc::status_formats::API as StatusFormatAPI;
+use crate::vc::status_formats::status_list_token_jwt::{StatusListJwt, VCStatus};
 
 pub type Credential = String;
 pub type Presentation = String;
@@ -163,6 +167,38 @@ impl HasClaims<Claims> for Credential {
 
         let claims = value.try_into().context(ClaimsSnafu)?;
         Ok(claims)
+    }
+}
+
+impl CheckCredential for Credential {
+    async fn is_expired(&self) -> Result<bool> {
+        let claims = self.parse_claims()?;
+        let time = SdJwtAPI::get_date_time_claim(EXP_CLAIM, &claims);
+
+        let result = if let Some(exp_time) = time {
+            OffsetDateTime::now_utc() > exp_time
+        } else {
+            false
+        };
+
+        Ok(result)
+    }
+    async fn is_valid(
+        &self,
+        http_client: &dyn HttpClient,
+        did_resolver: UniversalResolver,
+    ) -> Result<bool> {
+        let claims = self.parse_claims()?;
+        let status = StatusListJwt::get_vc_status(&claims, http_client, did_resolver)
+            .await
+            .map_err(|e| {
+                StatusCheckSnafu {
+                    details: e.to_string(),
+                }
+                .build()
+            })?;
+
+        Ok(status.is_none_or(|s| s == VCStatus::Valid))
     }
 }
 

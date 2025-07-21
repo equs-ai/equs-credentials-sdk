@@ -1,4 +1,5 @@
 use crate::did::JsUniversalDIDResolver;
+use crate::http::ReqwestHttpClient;
 use crate::kms::JsKms;
 use crate::vault::{JsCredentialEntry, JsCredentialsFindResult, JsVault};
 use crate::vc::core::{JsCredential, JsCredentialMetadata, JsHolderMetadata, JsKeyMetadata};
@@ -9,6 +10,7 @@ use agent_sdk::vc::core::{Holder, HolderService as CoreHolderService};
 use napi::Error;
 use napi_derive::napi;
 use serde_json::Value;
+use std::sync::Arc;
 
 /// An async low-level protocol-agnostic `Holder` API.
 ///
@@ -169,8 +171,15 @@ pub fn create_holder(
     vault: JsVault,
     metadata: JsHolderMetadata,
     did_resolver: &JsUniversalDIDResolver,
+    http_client: &ReqwestHttpClient,
 ) -> VCCoreHolder {
     let metadata = metadata.into();
-    let holder_service = CoreHolderService::new(kms, vault, metadata, did_resolver.into());
+    let holder_service = CoreHolderService::new(
+        kms,
+        vault,
+        metadata,
+        did_resolver.into(),
+        Arc::new(http_client.inner()),
+    );
     VCCoreHolder(Box::new(holder_service))
 }

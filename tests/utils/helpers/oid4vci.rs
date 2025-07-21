@@ -29,8 +29,8 @@ pub async fn build_holder(
         vault,
         "wallet-dev".to_string(),
         IssuerDiscovery::Offer(credential_offer),
+        http_client,
     )
-    .with_http_client(http_client)
     .build()
     .await
     .unwrap()

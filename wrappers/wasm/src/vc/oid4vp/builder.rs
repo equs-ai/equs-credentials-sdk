@@ -26,22 +26,14 @@ impl OID4VPHolderBuilder {
     /// * `vault` - a Vault service used for securely storing credentials.
     /// * `client_id` - the Client ID of the `Holder`.
     #[wasm_bindgen(constructor)]
-    pub fn new(kms: Kms, vault: Vault, client_id: String) -> Self {
-        let builder = HolderBuilder::new(JsKms::new(kms), JsVault::new(vault), client_id);
+    pub fn new(kms: Kms, vault: Vault, client_id: String, http_client: &ReqwestHttpClient) -> Self {
+        let builder = HolderBuilder::new(
+            JsKms::new(kms),
+            JsVault::new(vault),
+            client_id,
+            http_client.inner(),
+        );
         OID4VPHolderBuilder(builder)
-    }
-
-    /// Sets a custom HTTP client for the holder.
-    ///
-    /// This method allows providing a custom HTTP client for the holder.
-    /// If not provided, a default HTTP client will be used.
-    ///
-    /// # Arguments
-    ///
-    /// * `http_client` - a custom HTTP client instance.
-    #[wasm_bindgen(js_name = withHttpClient)]
-    pub fn with_http_client(self, client: &ReqwestHttpClient) -> Self {
-        OID4VPHolderBuilder(self.0.with_http_client(client.inner()))
     }
 
     /// Sets custom did resolver for the holder.

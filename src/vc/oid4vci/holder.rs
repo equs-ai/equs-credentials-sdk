@@ -67,7 +67,7 @@ where
     #[instrument(level = Level::TRACE, skip(holder, http_client), err())]
     pub async fn from_iss_url(
         holder: HL,
-        http_client: HC,
+        http_client: Arc<HC>,
         issuer_url: String,
         client_id: String,
         redirect_url: String, // urn:ietf:wg:oauth:2.0:oob
@@ -91,7 +91,7 @@ where
     #[instrument(level = Level::TRACE, skip(holder, http_client), err())]
     pub async fn from_credential_offer(
         holder: HL,
-        http_client: HC,
+        http_client: Arc<HC>,
         offer: &CredentialOfferParams,
         client_id: String,
         redirect_url: String,
@@ -117,13 +117,11 @@ where
     #[instrument(level = Level::TRACE, skip(holder, http_client), err())]
     async fn from_iss_url_with_configs(
         holder: HL,
-        http_client: HC,
+        http_client: Arc<HC>,
         issuer_url: String,
         client_id: String,
         redirect_url: String, // urn:ietf:wg:oauth:2.0:oob
     ) -> Result<Self> {
-        let http_client = Arc::new(http_client);
-
         let client = http_client.clone();
         let http_closure = move |req| {
             let client = client.clone();
@@ -161,7 +159,7 @@ where
     #[instrument(level = Level::TRACE, skip(holder, http_client), err())]
     pub fn from_metadata(
         holder: HL,
-        http_client: HC,
+        http_client: Arc<HC>,
         issuer_metadata: IssuerMetadata,
         authz_metadata: AuthorizationMetadata,
         client_id: String,
@@ -169,7 +167,7 @@ where
     ) -> Result<Self> {
         let holder_service = Self::new(
             holder,
-            Arc::new(http_client),
+            http_client,
             issuer_metadata,
             authz_metadata,
             client_id,
@@ -1330,14 +1328,20 @@ mod tests {
         kms: LocalKms,
         issuer_metadata: IssuerMetadata,
     ) -> HolderService<impl vc::core::Holder, impl HttpClient> {
+        let http_client = Arc::new(http_client);
         let client_id = "fake_client_id";
         let holder_metadata = vc::core::HolderMetadata {
             client_id: client_id.to_owned(),
             pop_lifetime: time::Duration::minutes(5),
         };
 
-        let inner =
-            vc::core::HolderService::new(kms, vault, holder_metadata, UniversalResolver::default());
+        let inner = vc::core::HolderService::new(
+            kms,
+            vault,
+            holder_metadata,
+            UniversalResolver::default(),
+            http_client.clone(),
+        );
 
         HolderService::from_metadata(
             inner,

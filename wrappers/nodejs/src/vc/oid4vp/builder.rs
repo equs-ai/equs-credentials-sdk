@@ -59,12 +59,13 @@ pub async fn _build_vp_holder(
     vault: JsVault,
     client_id: String,
     #[napi(ts_arg_type = "WalletMetadata | null | undefined")] wallet_metadata: Option<JsonObject>,
-    http_client: Option<&ReqwestHttpClient>,
+    http_client: &ReqwestHttpClient,
     pop_lifetime: Option<JsDuration>,
     did_resolver: Option<JsDIDResolver>,
     nonce_handler: Option<JsNonceHandler>,
 ) -> Result<InnerOID4VPHolder> {
-    let mut builder = agent_sdk::vc::oid4vp::HolderBuilder::new(kms, vault, client_id);
+    let mut builder =
+        agent_sdk::vc::oid4vp::HolderBuilder::new(kms, vault, client_id, http_client.inner());
 
     if let Some(wallet_metadata) = &wallet_metadata {
         builder = builder.with_wallet_metadata(serde_json::from_value(from_json_object(
@@ -73,10 +74,6 @@ pub async fn _build_vp_holder(
     }
     if let Some(duration) = pop_lifetime {
         builder = builder.with_pop_lifetime(duration.try_into()?);
-    }
-
-    if let Some(http_client) = http_client {
-        builder = builder.with_http_client(http_client.inner())
     }
 
     if let Some(did_resolver) = did_resolver {

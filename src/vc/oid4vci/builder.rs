@@ -21,6 +21,7 @@ use snafu::{Location, Snafu};
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::marker::PhantomData;
+use std::sync::Arc;
 use time::Duration;
 use tracing::{Level, debug, info, instrument};
 use url::Url;
@@ -428,18 +429,19 @@ where
     // services
     kms: KMS,
     vault: V,
-    http_client: Result<HC, HttpError>,
+    http_client: Arc<HC>,
     pop_lifetime: Duration,
     did_resolver: UniversalResolver,
 
     _marker: PhantomData<KH>,
 }
 
-impl<KH, KMS, V> HolderBuilder<KH, KMS, V, ReqwestClient>
+impl<KH, KMS, V, HC> HolderBuilder<KH, KMS, V, HC>
 where
     KH: kms::KeyHandle,
     KMS: kms::Kms<KH>,
     V: vault::Vault,
+    HC: HttpClient,
 {
     /// Returns a new `Builder` initialized with defaults.
     ///
@@ -461,23 +463,22 @@ where
     /// A new builder.
     #[instrument(
         level = Level::TRACE,
-        skip(kms, vault),
+        skip(kms, vault, http_client),
     )]
-    pub fn new(kms: KMS, vault: V, client_id: String, iss_discovery: IssuerDiscovery) -> Self {
-        let http_client = ReqwestClientBuilder::new().build().map_err(|e| {
-            HttpSnafu {
-                details: e.to_string(),
-            }
-            .build()
-        });
-
+    pub fn new(
+        kms: KMS,
+        vault: V,
+        client_id: String,
+        iss_discovery: IssuerDiscovery,
+        http_client: HC,
+    ) -> Self {
         info!("oid4vci-holder builder is initialized");
 
         Self {
             client_id,
             kms,
             vault,
-            http_client,
+            http_client: Arc::new(http_client),
             iss_discovery,
             redirect_url: "urn:ietf:wg:oauth:2.0:oob".to_string(),
             pop_lifetime: Duration::minutes(DEFAULT_POP_LIFETIME_MINUTES),
@@ -555,33 +556,6 @@ where
         Ok(self)
     }
 
-    /// Use a specific `HttpClient`.
-    ///
-    /// # Arguments
-    ///
-    /// * `http_client` - a http client.
-    #[instrument(
-        level = Level::TRACE,
-        skip_all,
-    )]
-    pub fn with_http_client<HC_: HttpClient>(
-        self,
-        http_client: HC_,
-    ) -> HolderBuilder<KH, KMS, V, HC_> {
-        HolderBuilder {
-            http_client: Ok(http_client),
-            // copied
-            iss_discovery: self.iss_discovery,
-            client_id: self.client_id,
-            redirect_url: self.redirect_url,
-            kms: self.kms,
-            vault: self.vault,
-            _marker: Default::default(),
-            pop_lifetime: self.pop_lifetime,
-            did_resolver: self.did_resolver,
-        }
-    }
-
     /// Builds a `Holder`.
     ///
     /// # Returns
@@ -597,15 +571,14 @@ where
             client_id: self.client_id.clone(),
             pop_lifetime: self.pop_lifetime,
         };
-        let inner =
-            vc::core::HolderService::new(self.kms, self.vault, holder_metadata, self.did_resolver);
 
-        let http_client = self.http_client.map_err(|e| {
-            BuildSnafu {
-                details: format!("Cannot initialize http client: {e}"),
-            }
-            .build()
-        })?;
+        let inner = vc::core::HolderService::new(
+            self.kms,
+            self.vault,
+            holder_metadata,
+            self.did_resolver,
+            self.http_client.clone(),
+        );
 
         let holder = match self.iss_discovery {
             IssuerDiscovery::Offer(offer) => {
@@ -613,7 +586,7 @@ where
 
                 HolderService::from_credential_offer(
                     inner,
-                    http_client,
+                    self.http_client,
                     &offer,
                     self.client_id,
                     self.redirect_url,
@@ -628,7 +601,7 @@ where
 
                 HolderService::from_metadata(
                     inner,
-                    http_client,
+                    self.http_client,
                     iss_meta,
                     authz_meta,
                     self.client_id,
@@ -640,7 +613,7 @@ where
 
                 HolderService::from_iss_url(
                     inner,
-                    http_client,
+                    self.http_client,
                     url,
                     self.client_id,
                     self.redirect_url,
@@ -814,13 +787,17 @@ mod tests {
         }
 
         let vault = InMemVault::new();
-        let builder = HolderBuilder::new(kms, vault, "fake_client_id".to_string(), discovery)
-            .with_http_client(http_client)
-            .with_redirect_url(AUTH_REDIRECT_URL.to_string());
-
-        let result = builder.build().await;
-
-        result.unwrap();
+        HolderBuilder::new(
+            kms,
+            vault,
+            "fake_client_id".to_string(),
+            discovery,
+            http_client,
+        )
+        .with_redirect_url(AUTH_REDIRECT_URL.to_string())
+        .build()
+        .await
+        .unwrap();
     }
 
     fn issuer_discovery_from_offer() -> IssuerDiscovery {

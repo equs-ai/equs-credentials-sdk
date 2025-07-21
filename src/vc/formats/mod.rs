@@ -4,6 +4,7 @@ use std::fmt::Debug;
 
 use crate::crypto;
 use crate::did::universal::UniversalResolver;
+use crate::http::HttpClient;
 use crate::nonce::Nonce;
 use async_trait::async_trait;
 use common_macros::DebugError;
@@ -82,6 +83,13 @@ pub enum Error {
         location: Location,
     },
 
+    #[snafu(display("Error during checking status: {details}"))]
+    StatusCheck {
+        details: String,
+        #[snafu(implicit)]
+        location: Location,
+    },
+
     #[snafu(display("Presentation error: {details}"))]
     Presentation {
         details: String,
@@ -127,13 +135,6 @@ pub enum Error {
     #[snafu(display("Proof validation error"))]
     ProofValidation {
         source: ssi::claims::ProofValidationError,
-        #[snafu(implicit)]
-        location: Location,
-    },
-
-    #[snafu(display("Claims can not be resolved: {details}"))]
-    ClaimsResolving {
-        details: String,
         #[snafu(implicit)]
         location: Location,
     },
@@ -236,6 +237,15 @@ pub trait HasClaims<CL> {
 
 pub trait HasCredential<C> {
     fn get_credential(&self) -> Result<C>;
+}
+
+pub trait CheckCredential {
+    async fn is_expired(&self) -> Result<bool>;
+    async fn is_valid(
+        &self,
+        http_client: &dyn HttpClient,
+        did_resolver: UniversalResolver,
+    ) -> Result<bool>;
 }
 
 pub trait GetDateTimeClaim<CL, EC> {

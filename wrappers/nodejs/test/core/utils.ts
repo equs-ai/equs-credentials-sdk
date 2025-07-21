@@ -26,7 +26,7 @@ export class Utils {
     format: CredentialStatusInfoFormat.TokenStatusList,
     payload: {
       idx: 1,
-      uri: "http://example.com/status_list",
+      uri: "http://localhost:9001/status_list",
     },
   };
 
@@ -102,7 +102,7 @@ export class Utils {
             format: StatusListFormatFmt.StatusListTokenJwt,
             payload: {
               statuses_nr: 32,
-              status_list_url: "http://localhost/status_list",
+              status_list_url: "http://localhost:9001/status_list",
               status_size: 1,
             },
           },
@@ -128,7 +128,7 @@ export class Utils {
             payload: {
               vct: "https://credentials.example.com/identity_credential",
               disclosures: ["$.name", "$.surname"],
-              lifetime: 300000000,
+              lifetime: 10 * 60 * 1000,
             },
           },
           keyMetadata: await this.getKeyMetadata(),

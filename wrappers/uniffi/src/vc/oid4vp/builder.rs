@@ -41,8 +41,8 @@ impl OID4VPHolderBuilder {
             self.kms.clone(),
             self.vault.clone(),
             self.client_id.to_owned(),
-        )
-        .with_http_client(self.http_client.to_owned());
+            self.http_client.to_owned(),
+        );
         if let Some(nonce_handler) = self.nonce_handler.clone() {
             builder = builder.with_nonce_handler(Box::new(nonce_handler.to_owned()));
         }

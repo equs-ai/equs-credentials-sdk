@@ -26,13 +26,15 @@ export async function start(): Promise<void> {
   const vault = new InMemVault();
 
   const issuerDiscovery = IssuerDiscovery.fromUrl(config.issuerServerUrl);
-  const oid4VciHolder = await new OID4VCIHolderBuilder(kms, vault, config.clientId, issuerDiscovery)
-    .withHttpClient(ReqwestHttpClient.insecure())
-    .build();
+  const oid4VciHolder = await new OID4VCIHolderBuilder(
+    kms,
+    vault,
+    config.clientId,
+    issuerDiscovery,
+    ReqwestHttpClient.insecure(),
+  ).build();
 
-  const oid4VpHolder = await new OID4VPHolderBuilder(kms, vault, config.clientId)
-    .withHttpClient(ReqwestHttpClient.insecure())
-    .build();
+  const oid4VpHolder = await new OID4VPHolderBuilder(kms, vault, config.clientId, ReqwestHttpClient.insecure()).build();
 
   await issuanceFlow(oid4VciHolder, kms);
   await presentationFlow(oid4VpHolder);

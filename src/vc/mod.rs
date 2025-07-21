@@ -10,10 +10,12 @@ pub use crate::vc::formats::json_ld_vc::{
 pub use crate::vc::formats::sd_jwt_vc::{SdJwtAPI as VCFormatsSdJwtAPI, VCMetadata};
 pub use crate::vc::formats::vc::*;
 pub use crate::vc::formats::vp::*;
-use crate::vc::formats::{FormatNotSupportedSnafu, HasCredential, sd_jwt_vc};
+use crate::vc::formats::{CheckCredential, FormatNotSupportedSnafu, HasCredential, sd_jwt_vc};
 pub use crate::vc::presentation_exchange::ClaimFormat;
 use crate::vc::status_formats::status_list_token_jwt;
+use common_macros::DebugError;
 use serde::{Deserialize, Serialize};
+use snafu::{Location, ResultExt, Snafu};
 
 pub(crate) mod formats;
 mod pop;
@@ -27,7 +29,29 @@ pub mod metadata;
 pub mod oid4vci;
 pub mod oid4vp;
 
+use crate::did::universal::UniversalResolver;
+use crate::http::HttpClient;
 pub use formats::HasClaims;
+
+/// `Credential` Error.
+///
+/// All implementations of [Credential] should leverage this enum for error handling.
+#[derive(Snafu, DebugError)]
+#[snafu(visibility(pub))]
+#[non_exhaustive]
+pub enum Error {
+    #[snafu(display("Could not check expiration status"))]
+    ExpirationCheck {
+        source: formats::Error,
+        #[snafu(implicit)]
+        location: Location,
+    },
+
+    #[snafu(display("Status validation error: {source}"))]
+    StatusValidation { source: formats::Error },
+}
+
+type Result<T> = std::result::Result<T, Error>;
 
 pub type ClaimFormatDesignation = openid4vp::core::credential_format::ClaimFormatDesignation;
 pub type JsonPath = serde_json_path::JsonPath;
@@ -53,6 +77,34 @@ pub enum Credential {
     JwtVcJsonLd(String),
     // etc
     // ISOMdl(String),
+}
+
+impl Credential {
+    pub async fn is_expired(&self) -> Result<bool> {
+        match self {
+            Credential::SdJwt(credential) => {
+                credential.is_expired().await.context(ExpirationCheckSnafu)
+            }
+            Credential::LdpVc(credential) => {
+                credential.is_expired().await.context(ExpirationCheckSnafu)
+            }
+            _ => Ok(false),
+        }
+    }
+
+    pub async fn is_valid(
+        &self,
+        http_client: &dyn HttpClient,
+        did_resolver: UniversalResolver,
+    ) -> Result<bool> {
+        match self {
+            Credential::SdJwt(credential) => credential
+                .is_valid(http_client, did_resolver)
+                .await
+                .context(StatusValidationSnafu),
+            _ => Ok(true),
+        }
+    }
 }
 
 /// Enum to represent the different ways to encode VC Statuses data.
