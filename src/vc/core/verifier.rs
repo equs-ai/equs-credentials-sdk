@@ -129,7 +129,7 @@ mod tests {
 
         let nonce = random_nonce().await;
 
-        let (vc, _) = case.generate_vc(&kms).await;
+        let (vc, _) = case.generate_vc(&kms, None).await;
         let vp = case.generate_vp(&kms, &vc, &nonce).await;
 
         let verifier = verifier_service();
@@ -148,7 +148,7 @@ mod tests {
         let nonce1 = random_nonce().await;
         let nonce2 = random_nonce().await;
 
-        let (vc, _) = case.generate_vc(&kms).await;
+        let (vc, _) = case.generate_vc(&kms, None).await;
         let vp = case.generate_vp(&kms, &vc, &nonce1).await;
 
         let verifier = verifier_service();

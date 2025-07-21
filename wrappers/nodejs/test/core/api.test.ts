@@ -12,6 +12,7 @@ import {
   KeyType,
   OID4VCIStatusIssuerBuilder,
   PresentationRestrictionValueType,
+  ReqwestHttpClient,
   resolveMetadata,
   VcCoreHolder,
   VcCoreIssuer,
@@ -23,20 +24,45 @@ import { jwtDecode } from "jwt-decode";
 import { Utils } from "./utils";
 import { MockKeyHandle } from "./mockKeyHandle";
 import { MockKms } from "./mockKms";
+import { getLocal } from "mockttp";
 
 describe("VC::Core", () => {
+  const mockServer = getLocal();
+  const port = 9001;
+
   const utils = new Utils();
   let statusIssuer: VcCoreStatusIssuer;
   let issuer: VcCoreIssuer;
   const holder = createHolder(
     utils.kms,
     utils.vault,
-    { clientId: "wallet-dev", popLifetime: { nanoseconds: 0, seconds: 300 } },
+    {
+      clientId: "wallet-dev",
+      popLifetime: { nanoseconds: 0, seconds: 300 },
+    },
     new _UniversalDIDResolver(),
+    ReqwestHttpClient.insecure(),
   );
+
+  beforeAll(async () => {
+    await mockServer.start(port);
+  });
+
   beforeEach(async () => {
     statusIssuer = createStatusIssuer(utils.kms, await utils.getStatusIssuerMetadata());
     issuer = createIssuer(utils.kms, await utils.getIssuerMetadata(), new _UniversalDIDResolver());
+
+    const statusList = await statusIssuer.issueStatusList("test_status_list", {
+      format: VCStatusesDataFormat.StatusListToken,
+      payload: {
+        statuses: {
+          "1": 0, // 'Valid' (0) status for the VC with index 1
+        },
+      },
+    });
+    await mockServer
+      .forGet("/status_list")
+      .thenReply(200, statusList.payload.jwt, { "content-type": "application/statuslist+jwt" });
   });
 
   describe("StatusIssuer", () => {
@@ -53,7 +79,7 @@ describe("VC::Core", () => {
       const decoded = jwtDecode(result.payload.jwt);
 
       expect(decoded).toMatchObject({
-        sub: "http://localhost/status_list",
+        sub: "http://localhost:9001/status_list",
         status_list: { lst: "eNpjYWBgAAAAFAAF", bits: 1 },
       });
       expect(decoded.iat).toBeDefined();
@@ -90,6 +116,7 @@ describe("VC::Core", () => {
           },
         },
       });
+      expect(result).toMatchObject({ format: 0, payload: { jwt: expect.any(String) } });
     });
   });
 
@@ -114,7 +141,7 @@ describe("VC::Core", () => {
       const decoded = jwtDecode<typeof utils.claims>(result.payload);
 
       expect(decoded).toMatchObject({ date: "09/09/1989", address: "221B Baker Street" });
-      expect(decoded).toMatchObject({ status: { status_list: { idx: 1, uri: "http://example.com/status_list" } } });
+      expect(decoded).toMatchObject({ status: { status_list: { idx: 1, uri: "http://localhost:9001/status_list" } } });
     });
     it("offer credential", async () => {
       const result = issuer.offerCredential(utils.scope, undefined);
@@ -212,7 +239,7 @@ describe("VC::Core", () => {
           },
         ],
       });
-      expect((result.data[0] as CredentialEntry).credential.payload).toBeDefined();
+      expect((result.data[0] as CredentialEntry).credential?.payload).toBeDefined();
     });
 
     it("create presentation auto", async () => {
@@ -264,7 +291,7 @@ describe("VC::Core", () => {
           // status list is generated with all indexes with status value 'VALID'
           // except the value for index 2 which is 'INVALID'
           const status_list_jwt =
-            "eyJ0eXAiOiJzdGF0dXNsaXN0K2p3dCIsImFsZyI6IkVTMjU2Iiwia2lkIjoiZGlkOmtleTp6RG5hZXV4SHU2R3VGWUE0QVIxcWZiRkpLQUMxVmlHRVBnTTFmV0NTRDJETEVObmVBI3pEbmFldXhIdTZHdUZZQTRBUjFxZmJGSktBQzFWaUdFUGdNMWZXQ1NEMkRMRU5uZUEifQ.eyJzdGF0dXNfbGlzdCI6eyJiaXRzIjoxLCJsc3QiOiJlTnBqWVdCZ0FBQUFGQUFGIn0sInN1YiI6Imh0dHA6Ly9leGFtcGxlLmNvbS9zdGF0dXNfbGlzdCIsImlhdCI6MTczOTIxMTcxNSwiX3NkX2FsZyI6InNoYS0yNTYifQ.rkJzhn4WEUHAbxcrNl4VWDee8UV5tTLMGvqEVGC60H-NmWI-4F-lj8p4aImHwyW5B8iEN5myfp8mcLliFVeuNA~";
+            "eyJ0eXAiOiJzdGF0dXNsaXN0K2p3dCIsImFsZyI6IkVTMjU2Iiwia2lkIjoiZGlkOmtleTp6RG5hZVVoM1I5Z3U0MUFzekJhOVVEckFTdTV4WnRGWk44UHV5Y3dYbThZQmJiTFdRI3pEbmFlVWgzUjlndTQxQXN6QmE5VURyQVN1NXhadEZaTjhQdXljd1htOFlCYmJMV1EifQ.eyJpYXQiOjE3NTMwNTIyMTMsInN1YiI6Imh0dHA6Ly9sb2NhbGhvc3Q6OTAwMS9zdGF0dXNfbGlzdCIsInN0YXR1c19saXN0Ijp7ImxzdCI6ImVOcGpZR0JnQUFBQUJBQUIiLCJiaXRzIjoxfSwiX3NkX2FsZyI6InNoYS0yNTYifQ.lVgb-pNxOyf1TBC-oqP0e2UFddohlnK4Y_JKTcbZXjAxWJxcSaSqHvWR_DYIglZilhzUgpeJ0_2UGkUIpZ8xQA~";
 
           return {
             statusCode: 200,

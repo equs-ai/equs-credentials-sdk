@@ -31,6 +31,7 @@ use oid4vci::proof_of_possession::ProofOfPossession;
 use serde_json::json;
 use std::collections::HashMap;
 use std::str::FromStr;
+use std::sync::Arc;
 use time::Duration;
 use url::Url;
 use utils::fixtures::{SCOPE, VC_TYPE, VERIFIER_ID, sample_claims_sdjwt};
@@ -481,6 +482,7 @@ async fn build_holder(kms: LocalKms) -> impl Holder {
             pop_lifetime: time::Duration::minutes(POP_EXP_MINUTES),
         },
         UniversalResolver::default(),
+        Arc::new(ReqwestClientBuilder::new().insecure().build().unwrap()),
     )
 }
 

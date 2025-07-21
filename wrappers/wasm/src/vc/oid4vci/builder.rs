@@ -75,12 +75,14 @@ impl OID4VCIHolderBuilder {
         vault: Vault,
         client_id: String,
         issuer_discovery: &IssuerDiscovery,
+        http_client: &ReqwestHttpClient,
     ) -> Self {
         let builder = HolderBuilder::new(
             JsKms::new(kms),
             JsVault::new(vault),
             client_id,
             issuer_discovery.inner(),
+            http_client.inner(),
         );
 
         OID4VCIHolderBuilder(builder)
@@ -94,16 +96,6 @@ impl OID4VCIHolderBuilder {
     #[wasm_bindgen(js_name = withRedirectUrl)]
     pub fn with_redirect_url(self, redirect_url: String) -> Self {
         OID4VCIHolderBuilder(self.0.with_redirect_url(redirect_url))
-    }
-
-    /// Use a specific `HttpClient`.
-    ///
-    /// # Arguments
-    ///
-    /// * `http_client` - a http client.
-    #[wasm_bindgen(js_name = withHttpClient)]
-    pub fn with_http_client(self, client: &ReqwestHttpClient) -> Self {
-        OID4VCIHolderBuilder(self.0.with_http_client(client.inner()))
     }
 
     /// Use a specific `did_resolver`.

@@ -500,8 +500,8 @@ async fn build_holder_with_test_did_resolver(
         vault,
         "wallet-dev".to_string(),
         IssuerDiscovery::Offer(credential_offer),
+        http_client,
     )
-    .with_http_client(http_client)
     .with_did_resolver(TestDIDResolver::new(CUSTOM_METHOD_NAME.to_string()))
     .unwrap()
     .build()
@@ -514,8 +514,7 @@ async fn build_holder_for_oid4vp_with_test_did_resolver(
     kms: LocalKms,
     vault: InMemVault,
 ) -> impl Oid4vpHolder {
-    agent_sdk::vc::oid4vp::HolderBuilder::new(kms, vault, "wallet-dev".to_string())
-        .with_http_client(http_client)
+    agent_sdk::vc::oid4vp::HolderBuilder::new(kms, vault, "wallet-dev".to_string(), http_client)
         .with_did_resolver(TestDIDResolver::new(CUSTOM_METHOD_NAME.to_string()))
         .unwrap()
         .build()

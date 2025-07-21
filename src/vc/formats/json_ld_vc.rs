@@ -1,11 +1,12 @@
 use crate::crypto::{Alg, Key, Signer, SigningOptions};
 use crate::did::universal::UniversalResolver;
 use crate::did::{DIDResolver, DIDURL};
+use crate::http::HttpClient;
 use crate::nonce::Nonce;
 use crate::vc::claims::{Claim, Claims};
 use crate::vc::core::PresentationInput;
 use crate::vc::formats::{
-    API, ClaimsSnafu, CredentialCreationSnafu, CryptoSuiteCreationSnafu, DIDSnafu,
+    API, CheckCredential, ClaimsSnafu, CredentialCreationSnafu, CryptoSuiteCreationSnafu, DIDSnafu,
     GetDateTimeClaim, HasClaims, HasCredential, IriBufParsingSnafu, IriRefParsingSnafu,
     JsonPointerParsingSnafu, JsonSnafu, KeyTypeNotSupportedSnafu,
     MultipleCredentialsNotSupportedSnafu, MultipleSubjectNotSupportedSnafu, NoCredentialSnafu,
@@ -186,6 +187,29 @@ impl HasClaims<Claims> for VC {
             .context(ClaimsSnafu)?;
 
         Ok(claims)
+    }
+}
+
+impl CheckCredential for VC {
+    async fn is_expired(&self) -> Result<bool> {
+        let claims = self.parse_claims()?;
+        let time = JsonLdAPI::get_date_time_claim("expirationDate", &claims);
+
+        let result = if let Some(exp_time) = time {
+            DateTime::now() > exp_time
+        } else {
+            false
+        };
+
+        Ok(result)
+    }
+    async fn is_valid(
+        &self,
+        http_client: &dyn HttpClient,
+        did_resolver: UniversalResolver,
+    ) -> Result<bool> {
+        // todo implement for json ld
+        Ok(true)
     }
 }
 

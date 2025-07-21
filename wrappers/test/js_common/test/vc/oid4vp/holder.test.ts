@@ -24,6 +24,7 @@ import {
   STATE,
   VC,
   VC_TYPE,
+  VC_WITH_STATUS,
 } from "./fixtures";
 import { MockNonceHandler } from "./mockNonceHandler";
 
@@ -42,8 +43,7 @@ describe("OID4VP Holder: ", () => {
     mockServer.reset();
     kms = new InMemKms();
     vault = new InMemVault();
-    holder = await new OID4VPHolderBuilder(kms, vault, "client_id")
-      .withHttpClient(ReqwestHttpClient.insecure())
+    holder = await new OID4VPHolderBuilder(kms, vault, "client_id", ReqwestHttpClient.insecure())
       .withNonceHandler(new MockNonceHandler("some_nonce"))
       .build();
 
@@ -85,7 +85,7 @@ describe("OID4VP Holder: ", () => {
       };
     });
 
-    const authorizationRequest = await holder.getAuthorizationRequest(
+    await holder.getAuthorizationRequest(
       "openid4vp://?client_id=did:key:zDnaeeTG88wpPhMzuDRvLRTTyNMyJip5e6TLmsjyvPiSYUFk7&request_uri_method=post&request_uri=http://localhost:9001/request",
     );
   });
@@ -121,8 +121,6 @@ describe("OID4VP Holder: ", () => {
   });
 
   it("findVcsForPresentation returns credential entries for succeeded filtering", async () => {
-    await mockServer.forPost("/response").thenCallback(async (request) => await handleRequest(request));
-
     await vault.storeCredential(credential, metadata);
 
     const credentialsMapping = await holder.findVcsForPresentation(new AuthorizationRequest(AUTH_REQUEST));
@@ -135,8 +133,6 @@ describe("OID4VP Holder: ", () => {
   });
 
   it("findVcsForPresentation returns reasons for failed filtering", async () => {
-    await mockServer.forPost("/response").thenCallback(async (request) => await handleRequest(request));
-
     await vault.storeCredential(credential, metadata);
 
     const credentialsMapping = await holder.findVcsForPresentation(new AuthorizationRequest(AUTH_REQUEST_FAKE));
@@ -149,6 +145,33 @@ describe("OID4VP Holder: ", () => {
         paths: ["$.vct"],
         type: "const",
         value: "https://credentials.example.com/identity_credential_1",
+      });
+    }
+  });
+
+  it("findVcsForPresentation filter out revoked credentials", async () => {
+    const credential = {
+      format: VCFormat.SdJwtVc,
+      payload: VC_WITH_STATUS,
+    };
+    const statusListJwt =
+      "eyJ0eXAiOiJzdGF0dXNsaXN0K2p3dCIsImFsZyI6IkVTMjU2Iiwia2lkIjoiZGlkOmtleTp6RG5hZVVDemI0RHMyRU44anVRRnJEclNoVjZBd1cxTjlZdlJ3WHdZUWdGeGVpdk1KI3pEbmFlVUN6YjREczJFTjhqdVFGckRyU2hWNkF3VzFOOVl2UndYd1lRZ0Z4ZWl2TUoifQ.eyJzdGF0dXNfbGlzdCI6eyJiaXRzIjoxLCJsc3QiOiJlTnBqWVdCZ0FBQUFGQUFGIn0sInN1YiI6Imh0dHA6Ly9sb2NhbGhvc3Q6OTAwMS9zdGF0dXNfbGlzdCIsImlhdCI6MTc1MzA1NDIzOCwiX3NkX2FsZyI6InNoYS0yNTYifQ.ZW5jcnlwdGVkX3Rlc3RfdmFsdWU~";
+    await mockServer
+      .forGet("/status_list")
+      .thenReply(200, statusListJwt, { "content-type": "application/statuslist+jwt" });
+
+    await vault.storeCredential(credential, metadata);
+
+    const credentialsMapping = await holder.findVcsForPresentation(new AuthorizationRequest(AUTH_REQUEST_FAKE));
+
+    for (const key in credentialsMapping) {
+      expect(key).toBe("Identity-1");
+      expect(credentialsMapping[key].data).toHaveLength(1);
+      expect(credentialsMapping[key].data[0]).toHaveLength(1);
+      expect(credentialsMapping[key].data[0][0]).toMatchObject({
+        paths: [],
+        type: "validity",
+        value: "No valid credentials found",
       });
     }
   });

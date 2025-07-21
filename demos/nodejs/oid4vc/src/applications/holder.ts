@@ -48,17 +48,15 @@ async function main(): Promise<void> {
     vault,
     config.clientId,
     issuerDiscovery,
-  )
-    .withHttpClient(insecureHttpClient)
-    .build();
+    insecureHttpClient,
+  ).build();
 
   const oid4VpHolder = await new OID4VPHolderBuilder(
     kms,
     vault,
     config.clientId,
-  )
-    .withHttpClient(insecureHttpClient)
-    .build();
+    insecureHttpClient,
+  ).build();
 
   await issuanceFlow(oid4VciHolder, kms);
   await presentationFlow(oid4VpHolder);

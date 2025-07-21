@@ -3,13 +3,18 @@ use snafu::ResultExt;
 use ssi::dids::DIDURLBuf;
 use std::collections::HashMap;
 use std::marker::PhantomData;
+use std::ops::Deref;
+use std::sync::Arc;
 use tracing::{Level, debug, info, instrument, trace};
 
 use crate::crypto::Alg;
 use crate::did::universal::UniversalResolver;
+use crate::http::HttpClient;
 use crate::nonce::Nonce;
 use crate::vault::CredentialEntry;
-use crate::vc::core::api::ClaimsDidNotPassFilteringSnafu;
+use crate::vc::core::api::{
+    ClaimsDidNotPassFilteringSnafu, ExpirationCheckSnafu, StatusCheckSnafu,
+};
 use crate::vc::core::{
     CredentialOffer, CredentialRequest, CredentialRequestData, Holder, HolderMetadata, KeyMetadata,
     PresentationInput, Proof,
@@ -31,26 +36,29 @@ use crate::vc::{Credential, CredentialMetadata, HasVCFormat, Presentation, pop};
 use crate::{kms, vault};
 
 #[derive(Clone)]
-pub struct HolderService<KH, KMS, V>
+pub struct HolderService<KH, KMS, V, HC>
 where
     KMS: kms::Kms<KH>,
     KH: kms::KeyHandle,
     V: vault::Vault,
+    HC: HttpClient,
 {
     kms: KMS,
     vault: V,
-    metadata: HolderMetadata,
     _marker: PhantomData<KH>,
+    metadata: HolderMetadata,
     did_resolver: UniversalResolver,
+    http_client: Arc<HC>,
 }
 
 #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 #[cfg_attr(not(target_arch = "wasm32"), async_trait)]
-impl<KH, KMS, V> Holder for HolderService<KH, KMS, V>
+impl<KH, KMS, V, HC> Holder for HolderService<KH, KMS, V, HC>
 where
     KMS: kms::Kms<KH>,
     KH: kms::KeyHandle,
     V: vault::Vault,
+    HC: HttpClient,
 {
     #[instrument(level = Level::TRACE, skip(self), err(), ret())]
     async fn request_credential(
@@ -213,6 +221,23 @@ where
         let mut credentials_result = vec![];
 
         for entry in credentials {
+            if entry
+                .credential
+                .is_expired()
+                .await
+                .context(ExpirationCheckSnafu)?
+            {
+                continue;
+            }
+            if !entry
+                .credential
+                .is_valid(self.http_client.deref(), self.did_resolver.to_owned())
+                .await
+                .context(StatusCheckSnafu)?
+            {
+                continue;
+            }
+
             let result =
                 validate_credential(&entry.credential, presentation_input).map_err(|e| {
                     ClaimsDidNotPassFilteringSnafu {
@@ -227,14 +252,21 @@ where
             }
         }
 
-        let result = if credentials_result.is_empty() {
-            reasons.sort_by_key(|a| a.len());
-            CredentialsFindResult::Reasons(reasons)
-        } else {
-            CredentialsFindResult::Credentials(credentials_result)
-        };
+        if !credentials_result.is_empty() {
+            return Ok(CredentialsFindResult::Credentials(credentials_result));
+        }
 
-        Ok(result)
+        if reasons.is_empty() {
+            return Ok(CredentialsFindResult::Reasons(vec![vec![
+                FindVCsFailReason {
+                    paths: vec![],
+                    type_: "validity".to_string(),
+                    value: "No valid credentials found".to_string(),
+                },
+            ]]));
+        }
+        reasons.sort_by_key(|a| a.len());
+        Ok(CredentialsFindResult::Reasons(reasons))
     }
     #[instrument(level = Level::TRACE, skip(self), err(), ret())]
     async fn create_presentation(
@@ -289,18 +321,20 @@ where
         Ok(presentation)
     }
 }
-impl<KH, KMS, V> HolderService<KH, KMS, V>
+impl<KH, KMS, V, HC> HolderService<KH, KMS, V, HC>
 where
     KMS: kms::Kms<KH>,
     KH: kms::KeyHandle,
     V: vault::Vault,
+    HC: HttpClient,
 {
-    #[instrument(level = Level::TRACE, skip(kms, vault, did_resolver))]
+    #[instrument(level = Level::TRACE, skip(kms, vault, did_resolver, http_client))]
     pub fn new(
         kms: KMS,
         vault: V,
         metadata: HolderMetadata,
         did_resolver: UniversalResolver,
+        http_client: Arc<HC>,
     ) -> Self {
         debug!(holder_metadata = ?metadata);
 
@@ -310,6 +344,7 @@ where
             metadata,
             _marker: Default::default(),
             did_resolver,
+            http_client,
         }
     }
 
@@ -362,26 +397,38 @@ where
 
 #[cfg(test)]
 mod tests {
+    use crate::did::didkey::DIDKey;
     use crate::did::universal::UniversalResolver;
-    use crate::inmem::kms::LocalKms;
+    use crate::did::{DID, DIDBuf, DIDResolver};
+    use crate::inmem::kms::{KeyHandle, LocalKms};
     use crate::inmem::vault::InMemVault;
-    use crate::kms::KeyType;
+    use crate::kms::{KeyType, Kms};
+    use crate::reqwest::builder::ReqwestClientBuilder;
     use crate::utils::test_utils::{
         create_did_and_key_metadata, create_did_and_key_metadata_by_key_type,
     };
     use crate::vault::{CredentialEntry, FormatNotSupportedSnafu, MockVault, Vault};
+    use crate::vc::core::status_issuer::StatusIssuerService;
     use crate::vc::core::tests::fixtures::{
         CRED_DEF_ID, CREDENTIAL_ID, VERIFIER_ID, sample_cred_def_offer,
     };
     use crate::vc::core::tests::utils::{CredTestCase, random_nonce};
     use crate::vc::core::{
-        CredentialDefinitionData, Error, Holder, HolderMetadata, HolderService, KeyMetadata,
+        CredentialDefinitionData, CredentialStatusInfo, Error, Holder, HolderMetadata,
+        HolderService, KeyMetadata, StatusIssuer, StatusIssuerMetadata, StatusListDefinition,
     };
-    use crate::vc::oid4vp::CredentialsFindResult;
-    use crate::vc::{CredentialMetadata, HasVCFormat};
+    use crate::vc::oid4vp::{CredentialsFindResult, FindVCsFailReason};
+    use crate::vc::presentation_exchange::StatusSize;
+    use crate::vc::status_formats::StatusListFormat;
+    use crate::vc::status_formats::status_list_token_jwt::{VCStatus, VCStatuses};
+    use crate::vc::{CredentialMetadata, HasVCFormat, VCStatusesData};
+    use crate::{kms, vc};
     use rstest::rstest;
     use serde_json::json;
+    use std::str::FromStr;
+    use std::sync::Arc;
     use time::Duration;
+    use url::Url;
 
     #[rstest]
     #[case::sd_jwt(CredTestCase::sd_jwt())]
@@ -502,7 +549,7 @@ mod tests {
         let kms = LocalKms::new();
         let vault = InMemVault::new();
 
-        let (entry, _) = case.generate_vc(&kms).await;
+        let (entry, _) = case.generate_vc(&kms, None).await;
 
         let holder = holder_service(kms, vault);
 
@@ -532,7 +579,7 @@ mod tests {
         let kms = LocalKms::new();
         let vault = InMemVault::new();
 
-        let (entry, _) = case.generate_vc(&kms).await;
+        let (entry, _) = case.generate_vc(&kms, None).await;
         let cred_metadata = CredentialMetadata {
             type_: case.type_.to_string(),
             format: case.format.clone(),
@@ -571,7 +618,7 @@ mod tests {
 
         let kms = LocalKms::new();
 
-        let (entry, _) = case.generate_vc(&kms).await;
+        let (entry, _) = case.generate_vc(&kms, None).await;
         let cred_metadata = CredentialMetadata {
             type_: case.type_.to_string(),
             format: case.format.clone(),
@@ -597,8 +644,8 @@ mod tests {
         let kms = LocalKms::new();
         let vault = InMemVault::new();
 
-        let (mut entry1, did_url1) = case.generate_vc(&kms).await;
-        let (mut entry2, did_url2) = case.generate_vc(&kms).await;
+        let (mut entry1, did_url1) = case.generate_vc(&kms, None).await;
+        let (mut entry2, did_url2) = case.generate_vc(&kms, None).await;
 
         let ids = vault
             .store_entries(vec![
@@ -647,6 +694,157 @@ mod tests {
 
         assert_eq!(reasons.len(), 2);
     }
+
+    #[rstest]
+    #[case::non_revoked_sd_jwt(CredTestCase::sd_jwt(), false)]
+    #[case::revoked_sd_jwt(CredTestCase::sd_jwt(), true)]
+    #[case::non_revoked_ldp_vc(CredTestCase::ldp_vc(), false)]
+    // #[case::revoked_ldp_vc(CredTestCase::ldp_vc(), true)] // NOT SUPPORTED YET
+    #[tokio::test]
+    async fn holder_find_vcs_filter_revoked_creds(
+        #[case] mut case: CredTestCase,
+        #[case] revoke: bool,
+    ) {
+        let server = httpmock::MockServer::start_async().await;
+
+        let host = server.host();
+        let port = server.port();
+        let server_list_path = "/status_list";
+
+        let status_list_url =
+            Url::parse(&format!("http://{host}:{port}{server_list_path}")).unwrap();
+
+        let staus_issuer = build_status_issuer(status_list_url.clone()).await;
+
+        let status_list = issue_status_list_with_revoked_indexes(&staus_issuer, vec![1]).await;
+
+        server
+            .mock_async(|when, then| {
+                when.method("GET").path(server_list_path);
+                then.status(200)
+                    .header("content-type", "application/statuslist+jwt")
+                    .body(status_list.clone());
+            })
+            .await;
+
+        if revoke {
+            case = CredTestCase {
+                status_list: Some(CredentialStatusInfo::TokenStatusList {
+                    idx: 1,
+                    uri: status_list_url,
+                }),
+                ..case
+            };
+        }
+
+        let kms = LocalKms::new();
+        let vault = InMemVault::new();
+
+        let (entry1, did_url1) = case.generate_vc(&kms, None).await;
+
+        let ids = vault
+            .store_entries(vec![(&entry1, did_url1.as_str())])
+            .await
+            .unwrap();
+
+        let holder = holder_service(kms, vault);
+
+        let input = case.create_presentation_input();
+
+        let creds = holder.find_vcs_for_presentation(&input).await.unwrap();
+
+        match creds {
+            CredentialsFindResult::Credentials(credentials) => {
+                if revoke {
+                    panic!(
+                        "Wrong return type from holder.find_vcs_for_presentation. Should be reason with 'No valid credentials found'"
+                    )
+                }
+                assert_eq!(credentials.len(), 1);
+            }
+            CredentialsFindResult::Reasons(reasons) => {
+                if revoke {
+                    assert_eq!(reasons.len(), 1);
+                    assert_eq!(reasons[0].len(), 1);
+                    assert_eq!(
+                        reasons[0][0],
+                        FindVCsFailReason {
+                            value: "No valid credentials found".to_string(),
+                            paths: vec![],
+                            type_: "validity".to_string()
+                        }
+                    );
+                } else {
+                    panic!(
+                        "Wrong return type from holder.find_vcs_for_presentation. Should be non empty credentials"
+                    )
+                }
+            }
+        }
+    }
+
+    #[rstest]
+    #[case::not_expired_sd_jwt(CredTestCase::sd_jwt(), false)]
+    #[case::expired_sd_jwt(CredTestCase::sd_jwt(), true)]
+    #[case::not_expired_ldp_vc(CredTestCase::ldp_vc(), false)]
+    #[case::expired_ldp_vc(CredTestCase::ldp_vc(), true)]
+    #[tokio::test]
+    async fn holder_find_vcs_filter_expired_creds(
+        #[case] case: CredTestCase,
+        #[case] expire: bool,
+    ) {
+        let kms = LocalKms::new();
+        let vault = InMemVault::new();
+
+        let lifetime = if expire {
+            Some(Default::default())
+        } else {
+            None
+        };
+
+        let (entry1, did_url1) = case.generate_vc(&kms, lifetime).await;
+
+        let ids = vault
+            .store_entries(vec![(&entry1, did_url1.as_str())])
+            .await
+            .unwrap();
+
+        let holder = holder_service(kms, vault);
+
+        let input = case.create_presentation_input();
+
+        let creds = holder.find_vcs_for_presentation(&input).await.unwrap();
+
+        match creds {
+            CredentialsFindResult::Credentials(credentials) => {
+                if expire {
+                    panic!(
+                        "Wrong return type from holder.find_vcs_for_presentation. Should be reason with 'No valid credentials found'"
+                    )
+                }
+                assert_eq!(credentials.len(), 1);
+            }
+            CredentialsFindResult::Reasons(reasons) => {
+                if expire {
+                    assert_eq!(reasons.len(), 1);
+                    assert_eq!(reasons[0].len(), 1);
+                    assert_eq!(
+                        reasons[0][0],
+                        FindVCsFailReason {
+                            value: "No valid credentials found".to_string(),
+                            paths: vec![],
+                            type_: "validity".to_string()
+                        }
+                    );
+                } else {
+                    panic!(
+                        "Wrong return type from holder.find_vcs_for_presentation. Should be non empty credentials"
+                    )
+                }
+            }
+        }
+    }
+
     #[tokio::test]
     async fn holder_find_vcs_for_presentation_returns_reasons() {
         let case_1 = CredTestCase::sd_jwt();
@@ -673,8 +871,8 @@ mod tests {
         let kms = LocalKms::new();
         let vault = InMemVault::new();
 
-        let (entry1, did_url1) = case_1.generate_vc(&kms).await;
-        let (entry2, did_url2) = case_2.generate_vc(&kms).await;
+        let (entry1, did_url1) = case_1.generate_vc(&kms, None).await;
+        let (entry2, did_url2) = case_2.generate_vc(&kms, None).await;
 
         let ids = vault
             .store_entries(vec![
@@ -750,7 +948,7 @@ mod tests {
         let kms = LocalKms::new();
         let vault = InMemVault::new();
 
-        let (entry, _) = case.generate_vc(&kms).await;
+        let (entry, _) = case.generate_vc(&kms, None).await;
 
         let holder = holder_service(kms, vault.clone());
 
@@ -778,7 +976,7 @@ mod tests {
         let kms = LocalKms::new();
         let vault = InMemVault::new();
 
-        let (entry, _) = case.generate_vc(&kms).await;
+        let (entry, _) = case.generate_vc(&kms, None).await;
 
         let holder = holder_service(kms, vault.clone());
 
@@ -836,7 +1034,7 @@ mod tests {
         let kms = LocalKms::new();
         let vault = InMemVault::new();
 
-        let (entry, did_url) = case.generate_vc(&kms).await;
+        let (entry, did_url) = case.generate_vc(&kms, None).await;
         vault
             .store_entries(vec![(&entry, did_url.as_str())])
             .await
@@ -870,7 +1068,7 @@ mod tests {
             .fail()
         });
 
-        let (entry, _) = case.generate_vc(&kms).await;
+        let (entry, _) = case.generate_vc(&kms, None).await;
 
         let holder = holder_service(kms, vault);
 
@@ -892,6 +1090,77 @@ mod tests {
                 pop_lifetime: time::Duration::minutes(5),
             },
             UniversalResolver::default(),
+            Arc::new(ReqwestClientBuilder::new().insecure().build().unwrap()),
+        )
+    }
+
+    async fn issue_status_list_with_revoked_indexes(
+        status_issuer: &impl StatusIssuer,
+        revoked: Vec<usize>,
+    ) -> String {
+        let mut statuses = VCStatuses::new();
+
+        for idx in revoked {
+            statuses.set(idx, VCStatus::Invalid);
+        }
+
+        let status_list = status_issuer
+            .issue_status_list("test", VCStatusesData::StatusListToken(statuses))
+            .await
+            .unwrap();
+
+        let crate::vc::StatusList::StatusListTokenJwt(status_list) = status_list;
+
+        status_list
+    }
+
+    async fn build_status_issuer(status_list_url: Url) -> impl StatusIssuer {
+        // Initialization
+        println!("Status issuer creating...");
+
+        let kms = LocalKms::new();
+        let (_, key_metadata, _) = create_did_keymetadata_keyhandle(&kms).await;
+
+        let metadata = StatusIssuerMetadata {
+            issuer_id: "123456".to_string(),
+            supported_status_lists: vec![StatusListDefinition {
+                id: "test".to_string(),
+                format: StatusListFormat::StatusListTokenJwt(
+                    vc::status_formats::status_list_token_jwt::SLMetadata {
+                        statuses_nr: 32,
+                        status_list_url,
+                        status_size: StatusSize::try_from(1u8).unwrap(),
+                    },
+                ),
+                key_metadata,
+            }],
+        };
+
+        StatusIssuerService::new(kms, metadata)
+    }
+
+    async fn create_did_keymetadata_keyhandle(kms: &LocalKms) -> (DID, KeyMetadata, KeyHandle) {
+        let (kid, kh) = kms
+            .create_and_handle(kms::KeyType::P256, kms::CreateOptions::default())
+            .await
+            .unwrap();
+
+        let did = DIDKey::generate(kh.clone()).unwrap();
+
+        let vm = UniversalResolver::default()
+            .resolve_into_any_verification_method(DIDBuf::from_str(&did).unwrap().as_did())
+            .await
+            .unwrap()
+            .unwrap()
+            .id;
+
+        (
+            did,
+            KeyMetadata {
+                kid,
+                did_url: vm.to_string(),
+            },
+            kh,
         )
     }
 }

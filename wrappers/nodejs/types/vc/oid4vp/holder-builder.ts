@@ -14,28 +14,20 @@ import {
 } from "../../..";
 
 export class OID4VPHolderBuilder {
-  private readonly kms: Kms;
-  private readonly vault: Vault;
-  private readonly clientId: string;
   private walletMetadata?: WalletMetadata;
-  private httpClient?: ReqwestHttpClient;
   private popLifetime?: Duration;
   private didResolver?: DIDResolver;
   private nonceHandler?: NonceHandler;
 
-  constructor(kms: Kms, vault: Vault, clientId: string) {
-    this.kms = kms;
-    this.vault = vault;
-    this.clientId = clientId;
-  }
+  constructor(
+    private readonly kms: Kms,
+    private readonly vault: Vault,
+    private readonly clientId: string,
+    private readonly httpClient: ReqwestHttpClient,
+  ) {}
 
   withWalletMetadata(walletMetadata: WalletMetadata): this {
     this.walletMetadata = walletMetadata;
-    return this;
-  }
-
-  withHttpClient(client: ReqwestHttpClient): this {
-    this.httpClient = client;
     return this;
   }
 
@@ -43,6 +35,7 @@ export class OID4VPHolderBuilder {
     this.didResolver = didResolver;
     return this;
   }
+
   /// Sets custom NonceHandler for the holder.
   ///
   /// This NonceHandler is used to generate 'wallet_nonce' and to validate it
@@ -62,6 +55,7 @@ export class OID4VPHolderBuilder {
     this.popLifetime = popLifetime;
     return this;
   }
+
   async build(): Promise<OID4VPHolder> {
     const holder = await buildVpHolder(
       contextEnsuredKms(this.kms),

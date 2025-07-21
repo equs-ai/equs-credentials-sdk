@@ -273,12 +273,14 @@ pub enum Error {
         location: Location,
         source: serde_json::Error,
     },
+
     #[snafu(display("Claims error"))]
     Claims {
         source: crate::vc::claims::Error,
         #[snafu(implicit)]
         location: Location,
     },
+
     #[snafu(display("Could not parse context as Iri"))]
     ContextParsing {
         source: iref::iri::InvalidIriRef<String>,
@@ -289,6 +291,13 @@ pub enum Error {
     #[snafu(display("Could not obtain VC status"))]
     VCStatus {
         source: crate::vc::status_formats::Error,
+        #[snafu(implicit)]
+        location: Location,
+    },
+
+    #[snafu(display("Error during checking status"))]
+    StatusCheck {
+        source: crate::vc::Error,
         #[snafu(implicit)]
         location: Location,
     },
@@ -313,6 +322,13 @@ pub enum Error {
 
     #[snafu(display("Claims did not pass filtering: {details}"))]
     ClaimsDidNotPassFiltering { details: String },
+
+    #[snafu(display("Could not check expiration status"))]
+    ExpirationCheck {
+        source: crate::vc::Error,
+        #[snafu(implicit)]
+        location: Location,
+    },
 }
 
 /// `Result` alias for vc:core API [Error].

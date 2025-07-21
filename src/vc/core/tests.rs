@@ -120,12 +120,12 @@ pub mod utils {
     use crate::vc::core::api::PresentationRestrictionValue;
     use crate::vc::core::tests::fixtures::*;
     use crate::vc::core::{
-        CredentialDefinitionData, CredentialRequest, CredentialRequestData, PresentationInput,
-        PresentationRestriction, Proof,
+        CredentialDefinitionData, CredentialRequest, CredentialRequestData, CredentialStatusInfo,
+        PresentationInput, PresentationRestriction, Proof,
     };
     use crate::vc::dcql::DCQLCredential;
     use crate::vc::formats::json_ld_vc::JsonLdAPI;
-    use crate::vc::formats::sd_jwt_vc::SdJwtAPI;
+    use crate::vc::formats::sd_jwt_vc::{CredentialStatus, SdJwtAPI};
     use crate::vc::formats::{HasCredential, VerifyOptions, json_ld_vc, sd_jwt_vc};
     use crate::vc::pop::jwt_pop::JwtProofOfPossession;
     use crate::vc::pop::{GenerateOptions, ProofOfPossession};
@@ -146,6 +146,7 @@ pub mod utils {
     pub struct CredTestCase {
         pub format: VCFormat,
         pub pop_format: pop::Format,
+        pub status_list: Option<CredentialStatusInfo>,
         pub protocol_data: Option<CredentialDefinitionData>,
         pub claim_format: ClaimFormat,
         pub type_: String,
@@ -157,6 +158,7 @@ pub mod utils {
             CredTestCase {
                 format: VCFormat::SdJwtVc,
                 pop_format: pop::Format::Jwt,
+                status_list: None,
                 protocol_data: Some(CredentialDefinitionData::SdJwt {
                     vct: VCT.to_owned(),
                     disclosures: vec!["$.givenName".to_owned(), "$.familyName".to_owned()],
@@ -185,6 +187,7 @@ pub mod utils {
             CredTestCase {
                 format: VCFormat::LdpVc,
                 pop_format: pop::Format::Jwt,
+                status_list: None,
                 protocol_data: Some(CredentialDefinitionData::Ldp {
                     contexts: vec![
                         "https://www.w3.org/2018/credentials/v1".to_string(),
@@ -570,7 +573,11 @@ pub mod utils {
             pop.to_jwt_with_signature(signed).unwrap()
         }
 
-        pub async fn generate_vc(&self, kms: &LocalKms) -> (CredentialEntry, String) {
+        pub async fn generate_vc(
+            &self,
+            kms: &LocalKms,
+            lifetime: Option<Duration>,
+        ) -> (CredentialEntry, String) {
             let (hld_did_url, h_kid, h_kh) =
                 create_did_url_and_key_handle_kid(kms, KeyType::P256).await;
             let (iss_did_url, _, i_kh) =
@@ -589,6 +596,8 @@ pub mod utils {
                         (&hld_did_url, h_kh),
                         vct,
                         disclosures,
+                        &self.status_list,
+                        lifetime.unwrap_or(Duration::hours(1)),
                     )
                     .await;
 
@@ -606,6 +615,8 @@ pub mod utils {
                         (&hld_did_url, h_kh),
                         contexts,
                         vc_types,
+                        &self.status_list,
+                        lifetime.unwrap_or(Duration::hours(1)),
                     )
                     .await;
 
@@ -667,12 +678,23 @@ pub mod utils {
             hld_data: (&DIDURL, impl KeyHandle),
             vct: &str,
             disclosures: &Vec<String>,
+            status: &Option<CredentialStatusInfo>,
+            lifetime: Duration,
         ) -> sd_jwt_vc::Credential {
             let vc_meta = sd_jwt_vc::VCMetadata {
                 vct: vct.to_string(),
                 disclosures: disclosures.to_owned(),
-                lifetime: Default::default(),
-                credential_status: None,
+                lifetime,
+                credential_status: status.to_owned().and_then(|s| {
+                    if let CredentialStatusInfo::TokenStatusList { idx, uri } = s {
+                        Some(CredentialStatus {
+                            status_list_credential_url: uri,
+                            status_list_index: idx,
+                        })
+                    } else {
+                        None
+                    }
+                }),
             };
 
             SdJwtAPI::create_vc(
@@ -712,6 +734,8 @@ pub mod utils {
             hld_data: (&DIDURL, impl KeyHandle),
             contexts: &[String],
             vc_types: &[String],
+            status: &Option<CredentialStatusInfo>,
+            lifetime: Duration,
         ) -> json_ld_vc::VC {
             let vc_meta = json_ld_vc::VCMetadata::new(
                 contexts
@@ -719,7 +743,7 @@ pub mod utils {
                     .map(|s| IriRefBuf::from_str(s).unwrap())
                     .collect(),
                 vc_types.to_owned(),
-                time::Duration::days(5 * 365),
+                lifetime,
             )
             .unwrap();
 

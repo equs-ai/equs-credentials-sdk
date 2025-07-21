@@ -384,7 +384,7 @@ impl TryFrom<CredentialDefinitionData> for JsCredentialDefinitionData {
             } => JsCredentialDefinitionData {
                 format: JsCredentialDefinitionDataFormat::SdJwt,
                 payload: to_json_object(
-                    json!({ "vct": vct, "disclosures": disclosures, "lifetime": lifetime.whole_nanoseconds() }),
+                    json!({ "vct": vct, "disclosures": disclosures, "lifetime": lifetime.whole_milliseconds() }),
                 )?,
             },
             CredentialDefinitionData::Ldp {
@@ -395,7 +395,7 @@ impl TryFrom<CredentialDefinitionData> for JsCredentialDefinitionData {
             } => JsCredentialDefinitionData {
                 format: JsCredentialDefinitionDataFormat::Ldp,
                 payload: to_json_object(
-                    json!({"contexts": contexts, "vc_types": vc_types, "credential_id": credential_id.unwrap_or("".to_string()), "lifetime": lifetime.whole_nanoseconds() }),
+                    json!({"contexts": contexts, "vc_types": vc_types, "credential_id": credential_id.unwrap_or("".to_string()), "lifetime": lifetime.whole_milliseconds() }),
                 )?,
             },
             _ => {
@@ -441,7 +441,7 @@ impl TryFrom<JsCredentialDefinitionData> for CredentialDefinitionData {
                     .ok_or_else(|| napi::Error::from_reason("'lifetime' must be in payload"))?
                     .as_i64()
                     .ok_or_else(|| napi::Error::from_reason("'lifetime' must be a i64"))?;
-                let lifetime = Duration::nanoseconds(lifetime);
+                let lifetime = Duration::milliseconds(lifetime);
 
                 CredentialDefinitionData::SdJwt {
                     vct,
@@ -472,7 +472,7 @@ impl TryFrom<JsCredentialDefinitionData> for CredentialDefinitionData {
                     .ok_or_else(|| napi::Error::from_reason("'lifetime' must be in payload"))?
                     .as_i64()
                     .ok_or_else(|| napi::Error::from_reason("'lifetime' must be a i64"))?;
-                let lifetime = Duration::nanoseconds(lifetime);
+                let lifetime = Duration::milliseconds(lifetime);
 
                 let vc_types: Vec<String> = value
                     .payload

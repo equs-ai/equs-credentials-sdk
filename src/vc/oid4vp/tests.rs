@@ -2286,6 +2286,7 @@ pub mod utils {
     use ssi::json_ld::IriRefBuf;
     use std::collections::HashMap;
     use std::str::FromStr;
+    use std::sync::Arc;
     use url::Url;
 
     pub struct PresentationTestCase {
@@ -2661,6 +2662,7 @@ pub mod utils {
         kms: LocalKms,
         vault: InMemVault,
     ) -> impl Holder {
+        let http_client = Arc::new(http_client);
         let inner = vc::core::HolderService::new(
             kms.clone(),
             vault,
@@ -2669,6 +2671,7 @@ pub mod utils {
                 pop_lifetime: time::Duration::minutes(5),
             },
             UniversalResolver::default(),
+            http_client.clone(),
         );
 
         HolderService::new(
@@ -2686,6 +2689,7 @@ pub mod utils {
         kms: LocalKms,
         vault: InMemVault,
     ) -> impl RequestVerifier {
+        let http_client = Arc::new(http_client);
         let inner = vc::core::HolderService::new(
             kms.clone(),
             vault,
@@ -2694,6 +2698,7 @@ pub mod utils {
                 pop_lifetime: time::Duration::minutes(5),
             },
             UniversalResolver::default(),
+            http_client.clone(),
         );
 
         HolderService::new(
@@ -2911,6 +2916,7 @@ pub mod utils {
     }
 
     pub async fn generate_did_based_id_token(params: IdTokenParams) -> String {
+        let http_client = Arc::new(MockHttpClient::new());
         let kms = LocalKms::new();
         let inner = vc::core::HolderService::new(
             kms.clone(),
@@ -2920,11 +2926,12 @@ pub mod utils {
                 pop_lifetime: time::Duration::minutes(5),
             },
             UniversalResolver::default(),
+            http_client.clone(),
         );
 
         let holder = HolderService::new(
             inner,
-            MockHttpClient::new(),
+            http_client,
             kms.clone(),
             UniversalResolver::default(),
             None,

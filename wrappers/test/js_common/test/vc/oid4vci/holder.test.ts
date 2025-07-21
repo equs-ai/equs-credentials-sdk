@@ -171,9 +171,13 @@ describe("OID4VCI Holder: ", () => {
 });
 
 async function buildHolder(utils: Utils, kms = new InMemKms(), vault = new InMemVault()) {
-  return await new OID4VCIHolderBuilder(kms, vault, "client_id", IssuerDiscovery.fromOffer(utils.credOffer))
-    .withHttpClient(ReqwestHttpClient.insecure())
-    .build();
+  return await new OID4VCIHolderBuilder(
+    kms,
+    vault,
+    "client_id",
+    IssuerDiscovery.fromOffer(utils.credOffer),
+    ReqwestHttpClient.insecure(),
+  ).build();
 }
 
 export type DidAndKeyMetadata = {

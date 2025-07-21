@@ -37,6 +37,7 @@ use ssi::dids::DIDURLBuf;
 use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::str::FromStr;
+use std::sync::Arc;
 use tracing::{Level, info, instrument};
 use url::Url;
 
@@ -53,7 +54,7 @@ where
     public_jwk_resolver: UniversalResolver,
     metadata: WalletMetadata,
     kms: KMS,
-    http_client: HC,
+    http_client: Arc<HC>,
     _marker: PhantomData<KH>,
     nonce_handler: Option<Box<dyn NonceHandler>>,
 }
@@ -68,7 +69,7 @@ where
     #[instrument(level = Level::TRACE, skip(holder, http_client, kms, resolver, nonce_handler))]
     pub fn new(
         holder: HL,
-        http_client: HC,
+        http_client: Arc<HC>,
         kms: KMS,
         resolver: UniversalResolver,
         metadata: Option<WalletMetadata>,
@@ -869,6 +870,7 @@ mod tests {
     use sd_jwt_rs::utils::decode_sd_jwt;
     use serde_json::json;
     use std::collections::HashMap;
+    use std::sync::Arc;
 
     #[tokio::test]
     async fn get_auth_request_success() {
@@ -1237,7 +1239,7 @@ mod tests {
         let (_, key_metadata) = create_did_and_key_metadata(&kms).await;
         let test_case = siop_case(key_metadata.clone());
 
-        let http_client = MockHttpClient::new();
+        let http_client = Arc::new(MockHttpClient::new());
         let key_handle = kms.get(&key_metadata.kid).await.unwrap();
 
         let mut kms_mock = MockKms::new();
@@ -1253,6 +1255,7 @@ mod tests {
                 pop_lifetime: time::Duration::minutes(5),
             },
             UniversalResolver::default(),
+            http_client.clone(),
         );
 
         let holder = vc::oid4vp::holder::HolderService::new(
@@ -1291,7 +1294,7 @@ mod tests {
         let (_, key_metadata) = create_did_and_key_metadata(&kms).await;
         let test_case = siop_case(key_metadata.clone());
 
-        let http_client = MockHttpClient::new();
+        let http_client = Arc::new(MockHttpClient::new());
         let key_handle = kms.get(&key_metadata.kid).await.unwrap();
 
         let mut kms_mock = MockKms::new();
@@ -1305,6 +1308,7 @@ mod tests {
                 pop_lifetime: time::Duration::minutes(5),
             },
             UniversalResolver::default(),
+            http_client.clone(),
         );
 
         let holder = crate::vc::oid4vp::holder::HolderService::new(
