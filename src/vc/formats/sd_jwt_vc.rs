@@ -29,9 +29,9 @@ use crate::utils::serde::get_time_based_claim;
 use crate::vc::core::{PresentationInput, PresentationRestriction};
 use crate::vc::formats::vc::SD_JWT_VC;
 use crate::vc::formats::{
-    API, CheckCredential, ClaimsSnafu, CredentialCreationSnafu, DIDSnafu, HasClaims, HasCredential,
-    JWSSnafu, KeyTypeNotSupportedSnafu, ParsingSnafu, PresentationSnafu, ProofValidationSnafu,
-    SigningSnafu, StatusCheckSnafu, VerifyOptions, VerifyingSnafu,
+    API, ClaimsSnafu, CredentialCreationSnafu, DIDSnafu, HasClaims, HasCredential, IsExpired,
+    IsValid, JWSSnafu, KeyTypeNotSupportedSnafu, ParsingSnafu, PresentationSnafu,
+    ProofValidationSnafu, SigningSnafu, StatusCheckSnafu, VerifyOptions, VerifyingSnafu,
 };
 use crate::vc::formats::{GetDateTimeClaim, Result};
 
@@ -167,38 +167,6 @@ impl HasClaims<Claims> for Credential {
 
         let claims = value.try_into().context(ClaimsSnafu)?;
         Ok(claims)
-    }
-}
-
-impl CheckCredential for Credential {
-    async fn is_expired(&self) -> Result<bool> {
-        let claims = self.parse_claims()?;
-        let time = SdJwtAPI::get_date_time_claim(EXP_CLAIM, &claims);
-
-        let result = if let Some(exp_time) = time {
-            OffsetDateTime::now_utc() > exp_time
-        } else {
-            false
-        };
-
-        Ok(result)
-    }
-    async fn is_valid(
-        &self,
-        http_client: &dyn HttpClient,
-        did_resolver: UniversalResolver,
-    ) -> Result<bool> {
-        let claims = self.parse_claims()?;
-        let status = StatusListJwt::get_vc_status(&claims, http_client, did_resolver)
-            .await
-            .map_err(|e| {
-                StatusCheckSnafu {
-                    details: e.to_string(),
-                }
-                .build()
-            })?;
-
-        Ok(status.is_none_or(|s| s == VCStatus::Valid))
     }
 }
 
@@ -422,9 +390,35 @@ impl SdJwtAPI {
     }
 }
 
-impl GetDateTimeClaim<Claims, time::OffsetDateTime> for SdJwtAPI {
+impl GetDateTimeClaim<Claims, OffsetDateTime> for SdJwtAPI {
     fn get_date_time_claim(exp: &str, claims: &Claims) -> Option<time::OffsetDateTime> {
         get_time_based_claim(claims, exp)
+    }
+}
+
+impl IsExpired<Claims> for SdJwtAPI {
+    fn is_expired(claims: &Claims) -> Result<bool> {
+        Ok(SdJwtAPI::get_date_time_claim(EXP_CLAIM, claims)
+            .is_some_and(|exp_time| OffsetDateTime::now_utc() > exp_time))
+    }
+}
+
+impl IsValid<Claims> for SdJwtAPI {
+    async fn is_valid(
+        claims: &Claims,
+        http_client: &dyn HttpClient,
+        did_resolver: UniversalResolver,
+    ) -> Result<bool> {
+        let status = StatusListJwt::get_vc_status(claims, http_client, did_resolver)
+            .await
+            .map_err(|e| {
+                StatusCheckSnafu {
+                    details: e.to_string(),
+                }
+                .build()
+            })?;
+
+        Ok(status.is_none_or(|s| s == VCStatus::Valid))
     }
 }
 

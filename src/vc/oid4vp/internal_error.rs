@@ -78,16 +78,16 @@ pub enum InternalError {
     },
     #[snafu(display("VC error"))]
     VC {
+        source: vc::core::Error,
         #[snafu(implicit)]
         location: Location,
-        source: vc::core::Error,
     },
 
     #[snafu(display("VC status error"))]
     VCStatus {
+        source: vc::core::Error,
         #[snafu(implicit)]
         location: Location,
-        source: vc::core::Error,
     },
 
     #[snafu(display("VC is not valid: {details}"))]

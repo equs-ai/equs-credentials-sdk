@@ -10,7 +10,7 @@ pub use crate::vc::formats::json_ld_vc::{
 pub use crate::vc::formats::sd_jwt_vc::{SdJwtAPI as VCFormatsSdJwtAPI, VCMetadata};
 pub use crate::vc::formats::vc::*;
 pub use crate::vc::formats::vp::*;
-use crate::vc::formats::{CheckCredential, FormatNotSupportedSnafu, HasCredential, sd_jwt_vc};
+use crate::vc::formats::{FormatNotSupportedSnafu, HasCredential, IsExpired, IsValid, sd_jwt_vc};
 pub use crate::vc::presentation_exchange::ClaimFormat;
 use crate::vc::status_formats::status_list_token_jwt;
 use common_macros::DebugError;
@@ -31,6 +31,8 @@ pub mod oid4vp;
 
 use crate::did::universal::UniversalResolver;
 use crate::http::HttpClient;
+use crate::vc::formats::json_ld_vc::JsonLdAPI;
+use crate::vc::formats::sd_jwt_vc::SdJwtAPI;
 pub use formats::HasClaims;
 
 /// `Credential` Error.
@@ -39,7 +41,14 @@ pub use formats::HasClaims;
 #[derive(Snafu, DebugError)]
 #[snafu(visibility(pub))]
 #[non_exhaustive]
-pub enum Error {
+pub enum CredentialError {
+    #[snafu(display("Error during parsing claims"))]
+    ParseClaims {
+        source: formats::Error,
+        #[snafu(implicit)]
+        location: Location,
+    },
+
     #[snafu(display("Could not check expiration status"))]
     ExpirationCheck {
         source: formats::Error,
@@ -48,10 +57,14 @@ pub enum Error {
     },
 
     #[snafu(display("Status validation error: {source}"))]
-    StatusValidation { source: formats::Error },
+    StatusValidation {
+        source: formats::Error,
+        #[snafu(implicit)]
+        location: Location,
+    },
 }
 
-type Result<T> = std::result::Result<T, Error>;
+type Result<T> = std::result::Result<T, CredentialError>;
 
 pub type ClaimFormatDesignation = openid4vp::core::credential_format::ClaimFormatDesignation;
 pub type JsonPath = serde_json_path::JsonPath;
@@ -80,16 +93,17 @@ pub enum Credential {
 }
 
 impl Credential {
-    pub async fn is_expired(&self) -> Result<bool> {
-        match self {
+    pub fn is_expired(&self) -> Result<bool> {
+        Ok(match self {
             Credential::SdJwt(credential) => {
-                credential.is_expired().await.context(ExpirationCheckSnafu)
+                let claims = credential.parse_claims().context(ParseClaimsSnafu)?;
+                SdJwtAPI::is_expired(&claims).context(ExpirationCheckSnafu)?
             }
             Credential::LdpVc(credential) => {
-                credential.is_expired().await.context(ExpirationCheckSnafu)
+                JsonLdAPI::is_expired(credential).context(ExpirationCheckSnafu)?
             }
-            _ => Ok(false),
-        }
+            _ => false,
+        })
     }
 
     pub async fn is_valid(
@@ -98,10 +112,12 @@ impl Credential {
         did_resolver: UniversalResolver,
     ) -> Result<bool> {
         match self {
-            Credential::SdJwt(credential) => credential
-                .is_valid(http_client, did_resolver)
-                .await
-                .context(StatusValidationSnafu),
+            Credential::SdJwt(credential) => {
+                let claims = credential.parse_claims().context(ParseClaimsSnafu)?;
+                SdJwtAPI::is_valid(&claims, http_client, did_resolver)
+                    .await
+                    .context(StatusValidationSnafu)
+            }
             _ => Ok(true),
         }
     }

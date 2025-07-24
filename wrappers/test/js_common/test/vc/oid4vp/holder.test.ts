@@ -20,6 +20,7 @@ import {
   AUTH_REQUEST,
   AUTH_REQUEST_FAKE,
   AUTH_REQUEST_JWT,
+  PRESENTATION_DEFINITION_FAKE,
   PRESENTATION_SUBMISSION,
   STATE,
   VC,
@@ -166,13 +167,22 @@ describe("OID4VP Holder: ", () => {
 
     for (const key in credentialsMapping) {
       expect(key).toBe("Identity-1");
-      expect(credentialsMapping[key].data).toHaveLength(1);
-      expect(credentialsMapping[key].data[0]).toHaveLength(1);
-      expect(credentialsMapping[key].data[0][0]).toMatchObject({
-        paths: [],
-        type: "validity",
-        value: "No valid credentials found",
-      });
+      expect(credentialsMapping[key].data).toHaveLength(PRESENTATION_DEFINITION_FAKE.input_descriptors.length);
+      expect(credentialsMapping[key].data[0]).toHaveLength(
+        PRESENTATION_DEFINITION_FAKE.input_descriptors[0].constraints.fields.length,
+      );
+      expect(credentialsMapping[key].data[0]).toMatchObject([
+        {
+          paths: ["$.vct"],
+          type: "const",
+          value: "https://credentials.example.com/identity_credential_1",
+        },
+        {
+          paths: ["$.name"],
+          type: null,
+          value: null,
+        },
+      ]);
     }
   });
 

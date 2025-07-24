@@ -11,6 +11,7 @@ use napi::Either;
 use napi::bindgen_prelude::Promise;
 use napi::threadsafe_function::{ErrorStrategy, ThreadsafeFunction};
 use napi_derive::napi;
+use serde_json::Value;
 
 /// An interface for stored {@link Credential} in {@link Vault} with some extra information.
 ///
@@ -56,8 +57,8 @@ impl TryFrom<JsCredentialEntry> for CredentialEntry {
 #[napi(js_name = "FindVCsFailReason", object)]
 pub struct JsFindVCsFailReason {
     pub paths: Vec<String>,
-    pub type_: String,
-    pub value: String,
+    pub type_: Option<Value>,
+    pub value: Option<Value>,
 }
 
 impl TryFrom<FindVCsFailReason> for JsFindVCsFailReason {
@@ -66,8 +67,8 @@ impl TryFrom<FindVCsFailReason> for JsFindVCsFailReason {
     fn try_from(value: FindVCsFailReason) -> napi::Result<Self> {
         Ok(JsFindVCsFailReason {
             paths: value.paths,
-            type_: value.type_,
-            value: value.value,
+            type_: value.type_.map(Value::String).or_else(|| Some(Value::Null)),
+            value: value.value.map(Value::String).or_else(|| Some(Value::Null)),
         })
     }
 }

@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use snafu::ResultExt;
 use ssi::dids::DIDURLBuf;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::marker::PhantomData;
 use std::ops::Deref;
 use std::sync::Arc;
@@ -12,9 +12,7 @@ use crate::did::universal::UniversalResolver;
 use crate::http::HttpClient;
 use crate::nonce::Nonce;
 use crate::vault::CredentialEntry;
-use crate::vc::core::api::{
-    ClaimsDidNotPassFilteringSnafu, ExpirationCheckSnafu, StatusCheckSnafu,
-};
+use crate::vc::core::api::ClaimsDidNotPassFilteringSnafu;
 use crate::vc::core::{
     CredentialOffer, CredentialRequest, CredentialRequestData, Holder, HolderMetadata, KeyMetadata,
     PresentationInput, Proof,
@@ -207,33 +205,18 @@ where
             self.vault.get_credentials(None).await.context(VaultSnafu)?
         };
 
-        if credentials.is_empty() {
-            return Ok(CredentialsFindResult::Reasons(vec![vec![
-                FindVCsFailReason {
-                    paths: vec![],
-                    type_: "".to_string(),
-                    value: "No credentials found".to_string(),
-                },
-            ]]));
-        }
-
-        let mut reasons = vec![];
+        let mut reasons: HashSet<Vec<FindVCsFailReason>> = HashSet::new();
         let mut credentials_result = vec![];
 
         for entry in credentials {
-            if entry
-                .credential
-                .is_expired()
-                .await
-                .context(ExpirationCheckSnafu)?
-            {
+            if let Ok(true) | Err(_) = entry.credential.is_expired() {
                 continue;
             }
-            if !entry
+
+            if let Ok(false) | Err(_) = entry
                 .credential
                 .is_valid(self.http_client.deref(), self.did_resolver.to_owned())
                 .await
-                .context(StatusCheckSnafu)?
             {
                 continue;
             }
@@ -246,7 +229,7 @@ where
                     .build()
                 })?;
             if let Some(inner_reasons) = result {
-                reasons.push(inner_reasons);
+                reasons.insert(inner_reasons);
             } else {
                 credentials_result.push(entry);
             }
@@ -257,16 +240,28 @@ where
         }
 
         if reasons.is_empty() {
-            return Ok(CredentialsFindResult::Reasons(vec![vec![
-                FindVCsFailReason {
-                    paths: vec![],
-                    type_: "validity".to_string(),
-                    value: "No valid credentials found".to_string(),
-                },
-            ]]));
+            let reasons = presentation_input
+                .restrictions
+                .iter()
+                .map(|pr| {
+                    FindVCsFailReason::new(
+                        pr.fields.to_owned(),
+                        pr.value.to_owned().map(|v| v.get_type()),
+                        pr.value.to_owned().map(|v| v.get_value()),
+                    )
+                })
+                .collect();
+
+            return Ok(CredentialsFindResult::Reasons(vec![reasons]));
         }
-        reasons.sort_by_key(|a| a.len());
-        Ok(CredentialsFindResult::Reasons(reasons))
+
+        let mut result = reasons
+            .into_iter()
+            .map(|set| set.into_iter().collect())
+            .collect::<Vec<Vec<FindVCsFailReason>>>();
+        result.sort_by_key(|a| a.len());
+
+        Ok(CredentialsFindResult::Reasons(result))
     }
     #[instrument(level = Level::TRACE, skip(self), err(), ret())]
     async fn create_presentation(
@@ -414,8 +409,8 @@ mod tests {
     };
     use crate::vc::core::tests::utils::{CredTestCase, random_nonce};
     use crate::vc::core::{
-        CredentialDefinitionData, CredentialStatusInfo, Error, Holder, HolderMetadata,
-        HolderService, KeyMetadata, StatusIssuer, StatusIssuerMetadata, StatusListDefinition,
+        CredentialDefinitionData, Error, Holder, HolderMetadata, HolderService, KeyMetadata,
+        StatusIssuer, StatusIssuerMetadata, StatusListDefinition,
     };
     use crate::vc::oid4vp::{CredentialsFindResult, FindVCsFailReason};
     use crate::vc::presentation_exchange::StatusSize;
@@ -692,14 +687,16 @@ mod tests {
             )
         };
 
-        assert_eq!(reasons.len(), 2);
+        assert_eq!(reasons.len(), 1);
+        assert_eq!(reasons[0].len(), 1);
     }
 
     #[rstest]
     #[case::non_revoked_sd_jwt(CredTestCase::sd_jwt(), false)]
     #[case::revoked_sd_jwt(CredTestCase::sd_jwt(), true)]
     #[case::non_revoked_ldp_vc(CredTestCase::ldp_vc(), false)]
-    // #[case::revoked_ldp_vc(CredTestCase::ldp_vc(), true)] // NOT SUPPORTED YET
+    #[should_panic(expected = "Format ldp_vc does not support status_list")]
+    #[case::revoked_ldp_vc(CredTestCase::ldp_vc(), true)] // NOT SUPPORTED YET
     #[tokio::test]
     async fn holder_find_vcs_filter_revoked_creds(
         #[case] mut case: CredTestCase,
@@ -728,13 +725,7 @@ mod tests {
             .await;
 
         if revoke {
-            case = CredTestCase {
-                status_list: Some(CredentialStatusInfo::TokenStatusList {
-                    idx: 1,
-                    uri: status_list_url,
-                }),
-                ..case
-            };
+            case = case.add_revoked_status(status_list_url);
         }
 
         let kms = LocalKms::new();
@@ -765,15 +756,15 @@ mod tests {
             CredentialsFindResult::Reasons(reasons) => {
                 if revoke {
                     assert_eq!(reasons.len(), 1);
-                    assert_eq!(reasons[0].len(), 1);
-                    assert_eq!(
-                        reasons[0][0],
-                        FindVCsFailReason {
-                            value: "No valid credentials found".to_string(),
-                            paths: vec![],
-                            type_: "validity".to_string()
-                        }
-                    );
+                    assert_eq!(reasons[0].len(), input.restrictions.len());
+
+                    for restriction in input.restrictions {
+                        assert!(reasons[0].contains(&FindVCsFailReason::new(
+                            restriction.to_owned().fields,
+                            restriction.to_owned().value.map(|v| v.get_type()),
+                            restriction.to_owned().value.map(|v| v.get_value()),
+                        )));
+                    }
                 } else {
                     panic!(
                         "Wrong return type from holder.find_vcs_for_presentation. Should be non empty credentials"
@@ -796,13 +787,9 @@ mod tests {
         let kms = LocalKms::new();
         let vault = InMemVault::new();
 
-        let lifetime = if expire {
-            Some(Default::default())
-        } else {
-            None
-        };
-
-        let (entry1, did_url1) = case.generate_vc(&kms, lifetime).await;
+        let (entry1, did_url1) = case
+            .generate_vc(&kms, expire.then_some(Default::default()))
+            .await;
 
         let ids = vault
             .store_entries(vec![(&entry1, did_url1.as_str())])
@@ -827,15 +814,15 @@ mod tests {
             CredentialsFindResult::Reasons(reasons) => {
                 if expire {
                     assert_eq!(reasons.len(), 1);
-                    assert_eq!(reasons[0].len(), 1);
-                    assert_eq!(
-                        reasons[0][0],
-                        FindVCsFailReason {
-                            value: "No valid credentials found".to_string(),
-                            paths: vec![],
-                            type_: "validity".to_string()
-                        }
-                    );
+                    assert_eq!(reasons[0].len(), input.restrictions.len());
+
+                    for restriction in input.restrictions {
+                        assert!(reasons[0].contains(&FindVCsFailReason::new(
+                            restriction.to_owned().fields,
+                            restriction.to_owned().value.map(|v| v.get_type()),
+                            restriction.to_owned().value.map(|v| v.get_value()),
+                        )));
+                    }
                 } else {
                     panic!(
                         "Wrong return type from holder.find_vcs_for_presentation. Should be non empty credentials"
@@ -876,6 +863,82 @@ mod tests {
 
         let ids = vault
             .store_entries(vec![
+                (&entry1, did_url1.as_str()),
+                (&entry2, did_url2.as_str()),
+            ])
+            .await
+            .unwrap();
+
+        let holder = holder_service(kms, vault);
+
+        let case_for_input = CredTestCase {
+            type_: "https://issuer.net/cred_schema_2".to_string(),
+            ..case_1.clone()
+        };
+
+        let input = case_for_input.create_presentation_input();
+
+        let creds = holder.find_vcs_for_presentation(&input).await.unwrap();
+
+        let CredentialsFindResult::Reasons(reasons) = creds else {
+            panic!(
+                "Wrong return type from holder.find_vcs_for_presentation. Should reasons of not passing filtering",
+            )
+        };
+
+        assert_eq!(reasons.len(), 2);
+        assert_eq!(reasons[0].len(), 1);
+        assert_eq!(reasons[1].len(), 2);
+
+        let input = case_1.create_presentation_input_with_wrong_vct();
+
+        let creds = holder.find_vcs_for_presentation(&input).await.unwrap();
+
+        let CredentialsFindResult::Reasons(reasons) = creds else {
+            panic!(
+                "Wrong return type from holder.find_vcs_for_presentation. Should reasons of not passing filtering",
+            )
+        };
+
+        assert_eq!(reasons.len(), 2);
+    }
+    #[tokio::test]
+    async fn holder_find_vcs_for_presentation_removes_duplicates() {
+        let case_1 = CredTestCase::sd_jwt();
+        let case_2 = CredTestCase {
+            protocol_data: Some(CredentialDefinitionData::SdJwt {
+                vct: "https://issuer.net/cred_schema_1".to_owned(),
+                disclosures: vec!["$.givenName".to_owned(), "$.familyName".to_owned()],
+                lifetime: Duration::days(5 * 365),
+            }),
+            claims: json!({
+                "givenName": "John",
+                "familyName": "Doe",
+                "birthDate": "1978-7-17",
+                "children": {
+                    "givenName": "John",
+                    "familyName": "Wick",
+                    "birthDate": "1999-7-10",
+                }
+            })
+            .try_into()
+            .unwrap(),
+            ..case_1.clone()
+        };
+        let kms = LocalKms::new();
+        let vault = InMemVault::new();
+
+        let (entry1, did_url1) = case_1.generate_vc(&kms, None).await;
+        let (entry2, did_url2) = case_2.generate_vc(&kms, None).await;
+
+        let ids = vault
+            .store_entries(vec![
+                (&entry1, did_url1.as_str()),
+                (&entry2, did_url2.as_str()),
+                (&entry1, did_url1.as_str()),
+                (&entry2, did_url2.as_str()),
+                (&entry1, did_url1.as_str()),
+                (&entry2, did_url2.as_str()),
                 (&entry1, did_url1.as_str()),
                 (&entry2, did_url2.as_str()),
             ])

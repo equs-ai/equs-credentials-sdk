@@ -239,10 +239,12 @@ pub trait HasCredential<C> {
     fn get_credential(&self) -> Result<C>;
 }
 
-pub trait CheckCredential {
-    async fn is_expired(&self) -> Result<bool>;
+pub trait IsExpired<C> {
+    fn is_expired(credential: &C) -> Result<bool>;
+}
+pub trait IsValid<C> {
     async fn is_valid(
-        &self,
+        claims: &C,
         http_client: &dyn HttpClient,
         did_resolver: UniversalResolver,
     ) -> Result<bool>;

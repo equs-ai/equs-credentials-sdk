@@ -19,15 +19,13 @@ use crate::kms::{KeyHandle, Kms};
 use crate::nonce::{Nonce, NonceHandler};
 use crate::utils::wasm::{WasmNotSend, WasmNotSync};
 use crate::vc;
-use crate::vc::Presentation;
-use crate::vc::VCStatus;
 use crate::vc::claims::{Claim, Claims};
 use crate::vc::core::KeyMetadata;
 use crate::vc::oid4vp::Error::Protocol;
 use crate::vc::oid4vp::internal_error::{
     ClaimsSnafu, ClientIdSnafu, DCQLSnafu, DidUrlResolutionSnafu, IdTokenValidationSnafu,
     JsonSnafu, KMSSnafu, NonceGenerationSnafu, Oid4VpLibSnafu, ParseSnafu,
-    PresentationExchangeSnafu, VCNotValidSnafu, VCSnafu, VCStatusSnafu,
+    PresentationExchangeSnafu, VCSnafu,
 };
 use crate::vc::oid4vp::metadata::{default_client_metadata, default_wallet_metadata};
 use crate::vc::oid4vp::signer::Signer;
@@ -39,7 +37,6 @@ use crate::vc::presentation_exchange;
 use crate::vc::presentation_exchange::{
     PresentationResponse, validate_against_presentation_definition,
 };
-use crate::vc::status_formats::status_list_token_jwt;
 use crate::vc::{dcql, oid4vp as api};
 use openid4vp::core::authorization_request::RequestReference;
 use openid4vp::core::response::parameters::IdTokenBody as IdToken;
@@ -491,35 +488,13 @@ where
         for requested_presentation in requested_presentations {
             let claims = self
                 .verifier
-                .verify_presentation(nonce, &requested_presentation.presentation)
+                .verify_presentation(
+                    nonce,
+                    &requested_presentation.presentation,
+                    &self.http_client,
+                )
                 .await
                 .context(VCSnafu)?;
-
-            if let Presentation::SdJwtVp(_) = requested_presentation.presentation {
-                let vc_status = self
-                    .verifier
-                    .obtain_credential_status(
-                        &requested_presentation.presentation,
-                        &self.http_client,
-                    )
-                    .await
-                    .context(VCStatusSnafu)?;
-
-                match vc_status {
-                    None => {
-                        info!("Verifiable Credential does not contain the status information");
-                    }
-
-                    Some(VCStatus::StatusListToken(status_list_token_jwt::VCStatus::Valid)) => {
-                        info!("The status of the verifiable credential is valid.");
-                    }
-
-                    Some(VCStatus::StatusListToken(status)) => VCNotValidSnafu {
-                        details: format!("The status of the verifiable credential is '{status}'"),
-                    }
-                    .fail()?,
-                }
-            }
 
             ids.push(requested_presentation.id.clone());
             result.insert(requested_presentation.id, claims.into());

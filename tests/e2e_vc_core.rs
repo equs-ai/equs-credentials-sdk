@@ -123,7 +123,13 @@ async fn sd_jwt_credential_issuance_and_presentation_verification() {
     let vp = vp_res.unwrap();
     println!("Presentation {:?}", vp);
 
-    let ver_res = verifier.verify_presentation(&nonce, &vp).await;
+    let ver_res = verifier
+        .verify_presentation(
+            &nonce,
+            &vp,
+            &ReqwestClientBuilder::new().insecure().build().unwrap(),
+        )
+        .await;
     assert!(ver_res.is_ok());
 
     let res_claims = ver_res.unwrap();
@@ -231,7 +237,13 @@ async fn bbs_plus_credential_issuance_and_presentation_verification() {
         serde_json::to_string_pretty(&vp).unwrap()
     );
 
-    let ver_res = verifier.verify_presentation(&nonce, &vp).await;
+    let ver_res = verifier
+        .verify_presentation(
+            &nonce,
+            &vp,
+            &ReqwestClientBuilder::new().insecure().build().unwrap(),
+        )
+        .await;
     assert!(ver_res.is_ok());
 
     let res_claims = ver_res.unwrap();
@@ -341,7 +353,13 @@ async fn credential_issuance_and_status_verification() {
     let vp = vp_res.unwrap();
     println!("Presentation {:?}", vp);
 
-    let ver_res = verifier.verify_presentation(&nonce, &vp).await;
+    let ver_res = verifier
+        .verify_presentation(
+            &nonce,
+            &vp,
+            &ReqwestClientBuilder::new().insecure().build().unwrap(),
+        )
+        .await;
     assert!(ver_res.is_ok());
 
     let res_claims = ver_res.unwrap();

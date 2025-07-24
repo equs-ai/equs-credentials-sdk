@@ -1,4 +1,3 @@
-use crate::crypto;
 use crate::http::HttpClient;
 use crate::kms::Error as KmsError;
 use crate::nonce::Nonce;
@@ -13,6 +12,7 @@ use crate::vc::{
     Credential, CredentialMetadata, Presentation, StatusList, VCFormat, formats::Error as VCError,
     pop, pop::Error as ProofError,
 };
+use crate::{crypto, vc};
 use async_trait::async_trait;
 use common_macros::DebugError;
 use regex::Regex;
@@ -288,16 +288,9 @@ pub enum Error {
         location: Location,
     },
 
-    #[snafu(display("Could not obtain VC status"))]
+    #[snafu(display("Could not obtain VC status {details}"))]
     VCStatus {
-        source: crate::vc::status_formats::Error,
-        #[snafu(implicit)]
-        location: Location,
-    },
-
-    #[snafu(display("Error during checking status"))]
-    StatusCheck {
-        source: crate::vc::Error,
+        details: String,
         #[snafu(implicit)]
         location: Location,
     },
@@ -323,12 +316,18 @@ pub enum Error {
     #[snafu(display("Claims did not pass filtering: {details}"))]
     ClaimsDidNotPassFiltering { details: String },
 
-    #[snafu(display("Could not check expiration status"))]
+    #[snafu(display("Credential is expired"))]
+    CredentialExpired,
+
+    #[snafu(display("Error during expiration check"))]
     ExpirationCheck {
-        source: crate::vc::Error,
+        source: vc::formats::Error,
         #[snafu(implicit)]
         location: Location,
     },
+
+    #[snafu(display("VC is not valid: {details}"))]
+    VCNotValid { details: String },
 }
 
 /// `Result` alias for vc:core API [Error].
@@ -604,6 +603,7 @@ pub trait Verifier: WasmNotSend + WasmNotSync {
         &self,
         nonce: &Nonce,
         presentation: &Presentation,
+        http_client: &dyn HttpClient,
     ) -> Result<Claims>;
 
     /// Obtains the status for presented VC.
