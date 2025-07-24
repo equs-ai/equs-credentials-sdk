@@ -1,5 +1,5 @@
 use crate::did::JsUniversalDIDResolver;
-use crate::http::JsHttpClient;
+use crate::http::{JsHttpClient, ReqwestHttpClient};
 use crate::utils::to_json_object;
 use crate::vc::JsonObject;
 use crate::vc::core::JsPresentation;
@@ -24,6 +24,7 @@ impl VCCoreVerifier {
     ///
     /// @param {string} nonce - a nonce used to generate {@link Presentation}.
     /// @param {Presentation} presentation - a {@link Presentation} to verify.
+    /// @param {ReqwestHttpClient} httpClient - an {@link ReqwestHttpClient} http client
     ///
     /// @returns {Claims} Verified {@link Claims} on success.
     #[napi(ts_return_type = "Promise<Claims>")]
@@ -31,11 +32,13 @@ impl VCCoreVerifier {
         &self,
         nonce: String,
         presentation: JsPresentation,
+        http_client: &ReqwestHttpClient,
     ) -> Result<JsonObject, Error> {
         self.0
             .verify_presentation(
                 &serde_json::from_value(Value::String(nonce))?,
                 &presentation.try_into()?,
+                &http_client.inner(),
             )
             .await
             .map_err(|e| Error::from_reason(e.to_string()))

@@ -277,7 +277,7 @@ describe("VC::Core", () => {
 
       const presentation = await holder.createPresentationAuto(utils.nonce, utils.verifierId, utils.presentationInput);
 
-      const result = await verifier.verifyPresentation(utils.nonce, presentation);
+      const result = await verifier.verifyPresentation(utils.nonce, presentation, ReqwestHttpClient.insecure());
 
       expect(result).toMatchObject({
         address: "221B Baker Street",

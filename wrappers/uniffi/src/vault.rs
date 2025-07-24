@@ -21,8 +21,8 @@ pub struct CredentialEntry {
 #[uniffi::remote(Record)]
 pub struct FindVCsFailReason {
     paths: Vec<String>,
-    type_: String,
-    value: String,
+    type_: Option<String>,
+    value: Option<String>,
 }
 
 #[derive(uniffi::Enum)]

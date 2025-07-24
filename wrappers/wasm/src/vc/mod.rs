@@ -112,8 +112,8 @@ impl TryFrom<JsCredentialEntry> for agent_sdk::vault::CredentialEntry {
 pub struct JsFindVCsFailReason {
     pub paths: Vec<String>,
     #[serde(rename = "type")]
-    pub type_: String,
-    pub value: String,
+    pub type_: Option<String>,
+    pub value: Option<String>,
 }
 
 impl TryFrom<FindVCsFailReason> for JsFindVCsFailReason {
@@ -121,18 +121,6 @@ impl TryFrom<FindVCsFailReason> for JsFindVCsFailReason {
 
     fn try_from(value: FindVCsFailReason) -> Result<Self, JsError> {
         Ok(JsFindVCsFailReason {
-            paths: value.paths,
-            type_: value.type_,
-            value: value.value,
-        })
-    }
-}
-
-impl TryFrom<JsFindVCsFailReason> for FindVCsFailReason {
-    type Error = JsError;
-
-    fn try_from(value: JsFindVCsFailReason) -> Result<Self, JsError> {
-        Ok(FindVCsFailReason {
             paths: value.paths,
             type_: value.type_,
             value: value.value,

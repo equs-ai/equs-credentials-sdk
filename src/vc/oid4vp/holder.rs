@@ -1646,12 +1646,11 @@ mod tests {
                     assert_eq!(reasons[0].len(), 1);
                     assert_eq!(
                         reasons[0][0],
-                        FindVCsFailReason {
-                            paths: vec!["$.vct".to_string()],
-                            type_: "const".to_string(),
-                            value: "https://credentials.example.com/identity_credential"
-                                .to_string()
-                        }
+                        FindVCsFailReason::new(
+                            vec!["$.vct".to_string()],
+                            Some("const".to_string()),
+                            Some("https://credentials.example.com/identity_credential".to_string())
+                        )
                     );
                 }
             }

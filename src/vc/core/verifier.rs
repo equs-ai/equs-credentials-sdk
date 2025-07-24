@@ -1,24 +1,26 @@
 use crate::did::universal::UniversalResolver;
 use crate::http::HttpClient;
 use crate::nonce::Nonce;
-use crate::vc::VCStatus;
 use crate::vc::claims::Claims;
 use crate::vc::core::Result;
-use crate::vc::core::api::ParseSnafu;
+use crate::vc::core::api::{
+    CredentialExpiredSnafu, ExpirationCheckSnafu, ParseSnafu, VCNotValidSnafu,
+};
 use crate::vc::core::{
     ClaimsSnafu, CredentialStatusNotSupportedSnafu, FormatNotSupportedSnafu, VCSnafu,
     VCStatusSnafu, Verifier,
 };
 use crate::vc::formats::json_ld_vc::JsonLdAPI;
 use crate::vc::formats::sd_jwt_vc::SdJwtAPI;
-use crate::vc::formats::{API, VerifyOptions};
-use crate::vc::status_formats::API as VCStatusFormatsAPI;
+use crate::vc::formats::{API, HasCredential, IsExpired, VerifyOptions};
 use crate::vc::status_formats::status_list_token_jwt::StatusListJwt;
+use crate::vc::status_formats::{API as VCStatusFormatsAPI, status_list_token_jwt};
 use crate::vc::{HasClaims, Presentation};
+use crate::vc::{HasVPFormat, VCStatus};
 use async_trait::async_trait;
 use snafu::ResultExt;
 use std::convert::TryFrom;
-use tracing::{Level, instrument};
+use tracing::{Level, info, instrument};
 
 pub struct VerifierService {
     verifier_id: String,
@@ -28,26 +30,54 @@ pub struct VerifierService {
 #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 #[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl Verifier for VerifierService {
-    #[instrument(level = Level::TRACE, skip(self), err(), ret())]
+    #[instrument(level = Level::TRACE, skip(self, http_client), err(), ret())]
     async fn verify_presentation(
         &self,
         nonce: &Nonce, // same as in create_presentation
         presentation: &Presentation,
+        http_client: &dyn HttpClient,
     ) -> Result<Claims> {
         let cred_claims: Claims = match presentation {
-            Presentation::SdJwtVp(vp) => SdJwtAPI::verify_vp(
-                vp,
-                nonce,
-                &self.verifier_id,
-                VerifyOptions {
-                    selective_claims: Default::default(),
-                },
-                self.did_resolver.clone(),
-            )
-            .await
-            .context(VCSnafu),
+            Presentation::SdJwtVp(vp) => {
+                let claims = SdJwtAPI::verify_vp(
+                    vp,
+                    nonce,
+                    &self.verifier_id,
+                    VerifyOptions {
+                        selective_claims: Default::default(),
+                    },
+                    self.did_resolver.clone(),
+                )
+                .await
+                .context(VCSnafu)?;
+
+                if SdJwtAPI::is_expired(&claims).context(ExpirationCheckSnafu)? {
+                    CredentialExpiredSnafu.fail()?
+                };
+
+                let vc_status = self
+                    .obtain_credential_status(presentation, http_client)
+                    .await?;
+
+                match vc_status {
+                    None => {
+                        info!("Verifiable Credential does not contain the status information");
+                    }
+
+                    Some(VCStatus::StatusListToken(status_list_token_jwt::VCStatus::Valid)) => {
+                        info!("The status of the verifiable credential is valid.");
+                    }
+
+                    Some(VCStatus::StatusListToken(status)) => VCNotValidSnafu {
+                        details: format!("The status of the verifiable credential is '{status}'"),
+                    }
+                    .fail()?,
+                }
+
+                claims
+            }
             Presentation::LdpVp(vp) => {
-                let _ = JsonLdAPI::verify_vp(
+                JsonLdAPI::verify_vp(
                     vp,
                     nonce,
                     &self.verifier_id,
@@ -62,10 +92,19 @@ impl Verifier for VerifierService {
                 let claims = Claims::try_from(serde_json::to_value(vp).context(ParseSnafu)?)
                     .context(ClaimsSnafu)?;
 
-                Ok(claims)
+                if JsonLdAPI::is_expired(&vp.get_credential().context(ExpirationCheckSnafu)?)
+                    .context(ExpirationCheckSnafu)?
+                {
+                    CredentialExpiredSnafu.fail()?
+                }
+
+                claims
             }
-            _ => FormatNotSupportedSnafu { format: "" }.fail(),
-        }?;
+            _ => FormatNotSupportedSnafu {
+                format: presentation.format().to_string(),
+            }
+            .fail()?,
+        };
 
         Ok(cred_claims)
     }
@@ -102,7 +141,12 @@ impl VerifierService {
 
         let status = StatusListJwt::get_vc_status(&claims, http_client, self.did_resolver.clone())
             .await
-            .context(VCStatusSnafu)?;
+            .map_err(|e| {
+                VCStatusSnafu {
+                    details: e.to_string(),
+                }
+                .build()
+            })?;
 
         match status {
             Some(vc_status) => Ok(Some(VCStatus::StatusListToken(vc_status))),
@@ -113,12 +157,27 @@ impl VerifierService {
 
 #[cfg(test)]
 mod tests {
+    use crate::did::didkey::DIDKey;
     use crate::did::universal::UniversalResolver;
-    use crate::inmem::kms::LocalKms;
+    use crate::did::{DID, DIDBuf, DIDResolver};
+    use crate::inmem::kms::{KeyHandle, LocalKms};
+    use crate::kms::Kms;
+    use crate::reqwest::builder::ReqwestClientBuilder;
+    use crate::vc::VCStatusesData;
+    use crate::vc::core::status_issuer::StatusIssuerService;
     use crate::vc::core::tests::fixtures::VERIFIER_ID;
     use crate::vc::core::tests::utils::{CredTestCase, random_nonce};
-    use crate::vc::core::{Error, Verifier, VerifierService};
+    use crate::vc::core::{
+        Error, KeyMetadata, StatusIssuer, StatusIssuerMetadata, StatusListDefinition, Verifier,
+        VerifierService,
+    };
+    use crate::vc::presentation_exchange::StatusSize;
+    use crate::vc::status_formats::StatusListFormat;
+    use crate::vc::status_formats::status_list_token_jwt::{VCStatus, VCStatuses};
+    use crate::{kms, vc};
     use rstest::rstest;
+    use std::str::FromStr;
+    use url::Url;
 
     #[rstest]
     #[case::sd_jwt(CredTestCase::sd_jwt())]
@@ -134,7 +193,109 @@ mod tests {
 
         let verifier = verifier_service();
 
-        let claims = verifier.verify_presentation(&nonce, &vp).await.unwrap();
+        let claims = verifier
+            .verify_presentation(
+                &nonce,
+                &vp,
+                &ReqwestClientBuilder::new().insecure().build().unwrap(),
+            )
+            .await
+            .unwrap();
+
+        case.assert_verified_claims(&claims).await;
+    }
+
+    #[rstest]
+    #[case::sd_jwt_non_expired(CredTestCase::sd_jwt(), false)]
+    #[case::ldp_vc_non_expired(CredTestCase::ldp_vc(), false)]
+    #[should_panic(expected = "Credential is expired")]
+    #[case::sd_jwt_expired(CredTestCase::sd_jwt(), true)]
+    #[should_panic(expected = "Credential is expired")]
+    #[case::ldp_vc_expired(CredTestCase::ldp_vc(), true)]
+    #[tokio::test]
+    async fn verifier_throws_error_on_expired_creds(
+        #[case] case: CredTestCase,
+        #[case] expire: bool,
+    ) {
+        let kms = LocalKms::new();
+
+        let nonce = random_nonce().await;
+
+        let (vc, _) = case
+            .generate_vc(&kms, expire.then_some(Default::default()))
+            .await;
+        let vp = case.generate_vp(&kms, &vc, &nonce).await;
+
+        let verifier = verifier_service();
+
+        let claims = verifier
+            .verify_presentation(
+                &nonce,
+                &vp,
+                &ReqwestClientBuilder::new().insecure().build().unwrap(),
+            )
+            .await
+            .unwrap();
+
+        case.assert_verified_claims(&claims).await;
+    }
+
+    #[rstest]
+    #[case::sd_jwt_non_revoked(CredTestCase::sd_jwt(), false)]
+    #[case::ldp_vc_non_revoked(CredTestCase::ldp_vc(), false)]
+    #[should_panic(expected = "Credential is expired")]
+    #[case::sd_jwt_expired(CredTestCase::sd_jwt(), true)]
+    #[should_panic(expected = "Format ldp_vc does not support status_list")]
+    #[case::ldp_vc_expired(CredTestCase::ldp_vc(), true)] // NOT SUPPORTED YET
+    #[tokio::test]
+    async fn verifier_throws_error_on_revoked_creds(
+        #[case] mut case: CredTestCase,
+        #[case] revoke: bool,
+    ) {
+        let server = httpmock::MockServer::start_async().await;
+
+        let host = server.host();
+        let port = server.port();
+        let server_list_path = "/status_list";
+
+        let status_list_url =
+            Url::parse(&format!("http://{host}:{port}{server_list_path}")).unwrap();
+
+        let staus_issuer = build_status_issuer(status_list_url.clone()).await;
+
+        let status_list = issue_status_list_with_revoked_indexes(&staus_issuer, vec![1]).await;
+
+        server
+            .mock_async(|when, then| {
+                when.method("GET").path(server_list_path);
+                then.status(200)
+                    .header("content-type", "application/statuslist+jwt")
+                    .body(status_list.clone());
+            })
+            .await;
+
+        if revoke {
+            case = case.add_revoked_status(status_list_url);
+        }
+
+        let kms = LocalKms::new();
+        let nonce = random_nonce().await;
+
+        let (vc, _) = case
+            .generate_vc(&kms, revoke.then_some(Default::default()))
+            .await;
+        let vp = case.generate_vp(&kms, &vc, &nonce).await;
+
+        let verifier = verifier_service();
+
+        let claims = verifier
+            .verify_presentation(
+                &nonce,
+                &vp,
+                &ReqwestClientBuilder::new().insecure().build().unwrap(),
+            )
+            .await
+            .unwrap();
 
         case.assert_verified_claims(&claims).await;
     }
@@ -153,12 +314,88 @@ mod tests {
 
         let verifier = verifier_service();
 
-        let res = verifier.verify_presentation(&nonce2, &vp).await;
+        let res = verifier
+            .verify_presentation(
+                &nonce2,
+                &vp,
+                &ReqwestClientBuilder::new().insecure().build().unwrap(),
+            )
+            .await;
 
         assert!(matches!(res.err(), Some(Error::VC { .. })));
     }
 
     fn verifier_service() -> impl Verifier {
         VerifierService::new(VERIFIER_ID, UniversalResolver::default())
+    }
+
+    async fn build_status_issuer(status_list_url: Url) -> impl StatusIssuer {
+        // Initialization
+        println!("Status issuer creating...");
+
+        let kms = LocalKms::new();
+        let (_, key_metadata, _) = create_did_keymetadata_keyhandle(&kms).await;
+
+        let metadata = StatusIssuerMetadata {
+            issuer_id: "123456".to_string(),
+            supported_status_lists: vec![StatusListDefinition {
+                id: "test".to_string(),
+                format: StatusListFormat::StatusListTokenJwt(
+                    vc::status_formats::status_list_token_jwt::SLMetadata {
+                        statuses_nr: 32,
+                        status_list_url,
+                        status_size: StatusSize::try_from(1u8).unwrap(),
+                    },
+                ),
+                key_metadata,
+            }],
+        };
+
+        StatusIssuerService::new(kms, metadata)
+    }
+
+    async fn create_did_keymetadata_keyhandle(kms: &LocalKms) -> (DID, KeyMetadata, KeyHandle) {
+        let (kid, kh) = kms
+            .create_and_handle(kms::KeyType::P256, kms::CreateOptions::default())
+            .await
+            .unwrap();
+
+        let did = DIDKey::generate(kh.clone()).unwrap();
+
+        let vm = UniversalResolver::default()
+            .resolve_into_any_verification_method(DIDBuf::from_str(&did).unwrap().as_did())
+            .await
+            .unwrap()
+            .unwrap()
+            .id;
+
+        (
+            did,
+            KeyMetadata {
+                kid,
+                did_url: vm.to_string(),
+            },
+            kh,
+        )
+    }
+
+    async fn issue_status_list_with_revoked_indexes(
+        status_issuer: &impl StatusIssuer,
+        revoked: Vec<usize>,
+    ) -> String {
+        let mut statuses = VCStatuses::new();
+
+        for idx in revoked {
+            statuses.set(idx, VCStatus::Invalid);
+        }
+
+        let status_list = status_issuer
+            .issue_status_list("test", VCStatusesData::StatusListToken(statuses))
+            .await
+            .unwrap();
+
+        let crate::vc::StatusList::StatusListTokenJwt(status_list) = status_list;
+
+        status_list
     }
 }

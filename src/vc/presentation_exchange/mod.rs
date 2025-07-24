@@ -673,11 +673,11 @@ fn validate_restriction(
         return if presentation_restriction.optional {
             Ok(None)
         } else {
-            Ok(Some(FindVCsFailReason {
-                paths: presentation_restriction.fields.to_owned(),
-                type_: "optional".to_string(),
-                value: presentation_restriction.optional.to_string(),
-            }))
+            Ok(Some(FindVCsFailReason::new(
+                presentation_restriction.fields.to_owned(),
+                Some("optional".to_string()),
+                Some(presentation_restriction.optional.to_string()),
+            )))
         };
     }
 
@@ -693,11 +693,11 @@ fn validate_restriction(
                 return Ok(None);
             }
         }
-        Ok(Some(FindVCsFailReason {
-            paths: presentation_restriction.fields.to_owned(),
-            type_: pr_value.get_type(),
-            value: pr_value.get_value(),
-        }))
+        Ok(Some(FindVCsFailReason::new(
+            presentation_restriction.fields.to_owned(),
+            Some(pr_value.get_type()),
+            Some(pr_value.get_value()),
+        )))
     } else {
         Ok(None)
     }

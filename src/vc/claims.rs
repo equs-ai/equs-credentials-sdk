@@ -35,6 +35,10 @@ impl Claims {
         }
     }
 
+    pub fn from_map(claims: HashMap<String, Claim>) -> Self {
+        Self { claims }
+    }
+
     #[instrument(level = Level::TRACE, ret())]
     pub fn claims(&self) -> &HashMap<String, Claim> {
         &self.claims

@@ -1,13 +1,12 @@
 use crate::crypto::{Alg, Key, Signer, SigningOptions};
 use crate::did::universal::UniversalResolver;
 use crate::did::{DIDResolver, DIDURL};
-use crate::http::HttpClient;
 use crate::nonce::Nonce;
 use crate::vc::claims::{Claim, Claims};
 use crate::vc::core::PresentationInput;
 use crate::vc::formats::{
-    API, CheckCredential, ClaimsSnafu, CredentialCreationSnafu, CryptoSuiteCreationSnafu, DIDSnafu,
-    GetDateTimeClaim, HasClaims, HasCredential, IriBufParsingSnafu, IriRefParsingSnafu,
+    API, ClaimsSnafu, CredentialCreationSnafu, CryptoSuiteCreationSnafu, DIDSnafu,
+    GetDateTimeClaim, HasClaims, HasCredential, IriBufParsingSnafu, IriRefParsingSnafu, IsExpired,
     JsonPointerParsingSnafu, JsonSnafu, KeyTypeNotSupportedSnafu,
     MultipleCredentialsNotSupportedSnafu, MultipleSubjectNotSupportedSnafu, NoCredentialSnafu,
     ParsingSnafu, PresentationSnafu, Result, SigningSnafu, SpruceSigningSnafu, VerifyOptions,
@@ -35,7 +34,7 @@ use ssi::prelude::{
     AnyJsonPresentation, AnyMethod, AnySuite, CryptographicSuite, DataIntegrity, ProofOptions,
 };
 use ssi::verification_methods::{LocalSigner, MessageSigner, ReferenceOrOwned};
-use ssi::xsd::DateTime;
+use ssi::xsd::{DateTime, DateTimeStamp};
 use ssi::{JsonPointerBuf, OneOrMany};
 use ssi_json_ld::syntax::Context;
 use std::borrow::Cow;
@@ -187,29 +186,6 @@ impl HasClaims<Claims> for VC {
             .context(ClaimsSnafu)?;
 
         Ok(claims)
-    }
-}
-
-impl CheckCredential for VC {
-    async fn is_expired(&self) -> Result<bool> {
-        let claims = self.parse_claims()?;
-        let time = JsonLdAPI::get_date_time_claim("expirationDate", &claims);
-
-        let result = if let Some(exp_time) = time {
-            DateTime::now() > exp_time
-        } else {
-            false
-        };
-
-        Ok(result)
-    }
-    async fn is_valid(
-        &self,
-        http_client: &dyn HttpClient,
-        did_resolver: UniversalResolver,
-    ) -> Result<bool> {
-        // todo implement for json ld
-        Ok(true)
     }
 }
 
@@ -628,6 +604,19 @@ impl GetDateTimeClaim<Claims, DateTime> for JsonLdAPI {
             .get(exp_key)
             .and_then(|v| v.to_owned().try_into().ok())
             .and_then(|v| serde_json::from_value(v).ok())
+    }
+}
+
+impl IsExpired<VC> for JsonLdAPI {
+    fn is_expired(credential: &VC) -> Result<bool> {
+        Ok(match &credential.claims {
+            Credential::V1(cred) => cred
+                .expiration_date
+                .is_some_and(|exp_time| DateTime::now() > exp_time),
+            Credential::V2(cred) => cred
+                .valid_until
+                .is_some_and(|exp_time| DateTimeStamp::now() > exp_time),
+        })
     }
 }
 

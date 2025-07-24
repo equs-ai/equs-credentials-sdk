@@ -135,6 +135,7 @@ pub mod utils {
     use serde_json::json;
     use std::str::FromStr;
     use time::{Duration, OffsetDateTime};
+    use url::Url;
     use uuid::Uuid;
 
     pub async fn random_nonce() -> Nonce {
@@ -213,6 +214,19 @@ pub mod utils {
                 })
                 .try_into()
                 .unwrap(),
+            }
+        }
+
+        pub fn add_revoked_status(self, status_list_url: Url) -> Self {
+            match self.format {
+                VCFormat::SdJwtVc => CredTestCase {
+                    status_list: Some(CredentialStatusInfo::TokenStatusList {
+                        idx: 1,
+                        uri: status_list_url,
+                    }),
+                    ..self
+                },
+                _ => panic!("Format {} does not support status_list", self.format),
             }
         }
     }

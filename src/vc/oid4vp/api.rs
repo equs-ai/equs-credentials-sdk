@@ -23,18 +23,28 @@ pub enum CredentialsFindResult {
     Reasons(Vec<Vec<FindVCsFailReason>>),
 }
 
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Serialize, Deserialize, Eq, Hash)]
 pub struct FindVCsFailReason {
     pub paths: Vec<String>,
-    pub type_: String,
-    pub value: String,
+    pub type_: Option<String>,
+    pub value: Option<String>,
+}
+
+impl FindVCsFailReason {
+    pub fn new(paths: Vec<String>, type_: Option<String>, value: Option<String>) -> Self {
+        Self {
+            paths,
+            type_,
+            value,
+        }
+    }
 }
 
 impl Display for FindVCsFailReason {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "paths: {:?}, type: {}, value: {}",
+            "paths: {:?}, type: {:#?}, value: {:#?}",
             self.paths, self.type_, self.value
         )
     }
