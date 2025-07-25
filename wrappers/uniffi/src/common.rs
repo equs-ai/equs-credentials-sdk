@@ -31,6 +31,7 @@ pub enum Error {
     HttpRequestParsing(String),
     HttpResponseParsing(String),
     HttpMethodParsing(String),
+    Parse(String),
 }
 
 impl std::fmt::Display for Error {
@@ -59,6 +60,7 @@ impl std::fmt::Display for Error {
             Error::HttpRequestParsing(s) => write!(f, "Http Request parsing error: {s}"),
             Error::HttpResponseParsing(s) => write!(f, "Http Response parsing error: {s}"),
             Error::HttpMethodParsing(s) => write!(f, "Http method parsing error: {s}"),
+            Error::Parse(s) => write!(f, "Error during parsing: {s}"),
         }
     }
 }
