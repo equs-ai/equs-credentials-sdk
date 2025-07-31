@@ -4,7 +4,7 @@
 
 1. Start keycloak
     ```bash
-    docker-compose up 
+    docker-compose up -d
     ```
 2. Execute below command to disable SSL
     ```bash
@@ -12,5 +12,5 @@
     ```
 3. Restart the container to apply changes
     ```bash
-     docker restart  keycloak
+     docker restart keycloak
     ```

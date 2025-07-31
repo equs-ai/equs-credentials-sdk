@@ -6,19 +6,16 @@ The Web server in the root represents the Issuer and Verifier sides and the hold
 
 ### Steps to run the demo
 
-1. Run an issuer server:
+1. Run issuer server:
     ```bash
-    cd issuer
-    cargo run
+    cargo run --manifest-path ./issuer/Cargo.toml
     ```
-2. Open a new terminal window. Go to the `verifier` folder and run a web server:
+2. Open a new terminal window. Run verifier server:
     ```bash
-    cd verifier
-    cargo run
+    cargo run --manifest-path ./verifier/Cargo.toml
     ```
-3. Open a new terminal window. Go to the `holder` folder and run demo
+3. Open a new terminal window. Run demo:
     ```bash
-    cd  holder
-    cargo run
+    cargo run --manifest-path ./holder/Cargo.toml
     ```
 4. Follow the instructions on the console.

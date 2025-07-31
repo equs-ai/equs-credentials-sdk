@@ -4,6 +4,9 @@ version = "0.1.0"
 edition = "2024"
 rust-version = "1.87"
 
+[features]
+noninteractive = []
+
 [dependencies]
 tokio = { version = "1.25.0", features = ["rt", "rt-multi-thread", "macros"] }
 oauth2 = "5.0.0-rc.1"

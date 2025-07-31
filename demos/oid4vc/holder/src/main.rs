@@ -1,3 +1,5 @@
+mod user_input;
+
 use agent_sdk::did::didkey::DIDKey;
 use agent_sdk::did::universal::UniversalResolver;
 use agent_sdk::did::{DIDBuf, DIDResolver};
@@ -30,8 +32,17 @@ use reqwest::Url;
 use serde_json::json;
 use std::collections::HashMap;
 use std::io;
-use std::io::Write;
 use uuid::Uuid;
+
+#[cfg(not(feature = "noninteractive"))]
+use user_input::cli::*;
+
+#[cfg(feature = "noninteractive")]
+use user_input::auto::*;
+
+use crate::user_input::{
+    CredentialSelectionMode, IssuerDiscoveryMode, PresentationFlow, ResolvedPresentationQueryType,
+};
 
 const CRED_DEF_ID_1: &str = "SD_JWT_cred_1";
 const JSON_LD_V1_CRED_DEF_ID: &str = "JSON_LDP_cred_2";
@@ -41,7 +52,9 @@ const SCOPE: &str = "SD_JWT_cred_scope";
 
 #[tokio::main]
 async fn main() {
-    tracing_subscriber::fmt::init();
+    tracing_subscriber::fmt::fmt()
+        .with_writer(io::stderr)
+        .init();
 
     // External components creation
     let kms = LocalKms::new();
@@ -170,46 +183,18 @@ async fn request_credential(
 }
 
 async fn run_presentation_flow(holder: impl HolderVp, kms: LocalKms) {
-    println!(
-        "Please enter the number to execute presentation flow:\n 1 - Cross Device\n 2 - Same device"
-    );
-    let mut input = input_from_console("Failed to read selected presentation flow");
-
-    match input.as_str() {
-        "1" => {
-            println!("Cross device flow is started ...");
-            input.clear();
-            cross_device_presentation_flow(holder, kms).await
-        }
-        "2" => {
-            //TODO to be fixed.
-            println!("Same device flow is started ...");
-            input.clear();
-            same_device_presentation_flow(holder, kms).await
-        }
-        _ => {
-            println!("Invalid input, please retry the flow");
-        }
+    let mode = ask_presentation_flow().await;
+    match mode {
+        PresentationFlow::CrossDevice => cross_device_presentation_flow(holder, kms).await,
+        PresentationFlow::SameDevice => same_device_presentation_flow(holder, kms).await,
     }
-
     println!("Presentation done");
 }
 
 async fn cross_device_presentation_flow(holder: impl HolderVp, kms: LocalKms) {
     println!("1. Holder tries to parse authorization/presentation request of Verifier");
 
-    println!("Please enter the presentation flow request URI type from the following:");
-    println!(
-        "- If you  want to use DCQL flow, go to http://localhost:8098/request_uri/dcql and enter request URI from there"
-    );
-    println!(
-        "- If you want to use PresentationDefinition flow, go to http://localhost:8098/request_uri and enter request URI from there"
-    );
-    println!("Enter the request URI here:");
-    let input = input_from_console("Failed to get the flow request URI");
-    let request_uri = input
-        .parse()
-        .unwrap_or_else(|_| panic!("Incorrect URI: {input}"));
+    let request_uri = ask_presentation_flow_request_uri().await;
 
     let auth_request = holder
         .get_authorization_request(&request_uri)
@@ -225,22 +210,15 @@ async fn cross_device_presentation_flow(holder: impl HolderVp, kms: LocalKms) {
 }
 
 async fn same_device_presentation_flow(holder: impl HolderVp, kms: LocalKms) {
-    println!("Please enter the flow type:");
-    println!("1. Use DCQL flow");
-    println!("2. Use PresentationDefinition flow");
-    let input = input_from_console("Failed to get presentation flow");
-    let cp = match input.as_str() {
-        "1" => {
+    let query_type = ask_presentation_flow_query_type().await;
+    let cp = match query_type {
+        ResolvedPresentationQueryType::Dcql => {
             println!("Using DCQL flow ...");
             ResolvedPresentationQuery::DCQL(default_dcql_query())
         }
-        "2" => {
+        ResolvedPresentationQueryType::PresentationDefinition => {
             println!("Using PresentationDefinition flow ...");
             ResolvedPresentationQuery::PresentationDefinition(default_presentation_definition())
-        }
-        _ => {
-            println!("Invalid input, please retry the flow");
-            panic!("Invalid input, please retry the flow");
         }
     };
     let redirect_uri = Url::parse("http://verifier.example.com/cb").unwrap();
@@ -295,36 +273,30 @@ async fn same_device_presentation_flow(holder: impl HolderVp, kms: LocalKms) {
 }
 
 async fn revocation_flow(kms: LocalKms, vault: InMemVault) {
-    println!("To check Revocation flow for SD-JWT credential please enter 'y'");
-    let input = input_from_console("Failed to read input");
-
-    match input.as_str() {
-        "y" => {
-            let client = reqwest::Client::new();
-            println!(
-                "Sending http 'GET' request to http://localhost:8080/revoke to revoke SD-JWT credential"
-            );
-            let resp = client
-                .get("http://localhost:8088/revoke")
-                .send()
-                .await
-                .unwrap();
-            if resp.status().is_success() {
-                println!("SD-JWT credential is revoked!");
+    if ask_revocation_confirmation().await {
+        let client = reqwest::Client::new();
+        println!("Sending http 'GET' request to the issuer to revoke SD-JWT credential");
+        let resp = client
+            .get("http://localhost:8088/revoke")
+            .send()
+            .await
+            .unwrap();
+        if resp.status().is_success() {
+            println!("SD-JWT credential was revoked!");
+            if ask_restart_after_revocation().await {
                 println!("Restarting OID4VP flow..");
 
                 let holder = oid4vp_holder(kms.clone(), vault.clone()).await;
                 run_presentation_flow(holder, kms.clone()).await;
-            } else {
-                println!(
-                    "Revoke http call is failed: status_code = {}",
-                    resp.status().as_u16()
-                );
             }
+        } else {
+            println!(
+                "Revoke http call is failed: status_code = {}",
+                resp.status().as_u16()
+            );
         }
-        _ => {
-            println!("Revocation flow check is missed!");
-        }
+    } else {
+        println!("Revocation flow check was skipped!");
     }
 }
 
@@ -376,14 +348,10 @@ async fn present_credential(
     kms: LocalKms,
     auth_request: &ResolvedAuthRequest,
 ) -> Option<Url> {
-    println!(
-        "Please enter the number to send presentation by:\n 1 - Auto\n 2 - Selecting from the credential list"
-    );
+    let mode = ask_presentation_credential_selection_mode().await;
 
-    let mut input = input_from_console("Failed to read presentation mode");
-
-    let presentation_result = match input.as_str() {
-        "1" => {
+    let presentation_result = match mode {
+        CredentialSelectionMode::Auto => {
             println!("2. Holder sends authorization/presentation response to Verifier!");
 
             let auth_response_metadata = resolve_auth_resp_metadata(auth_request, kms).await;
@@ -391,7 +359,7 @@ async fn present_credential(
                 .present_credentials_auto(auth_request, &auth_response_metadata)
                 .await
         }
-        "2" => {
+        CredentialSelectionMode::ManualSelection => {
             let credentials = holder
                 .find_vcs_for_presentation(auth_request)
                 .await
@@ -412,11 +380,7 @@ async fn present_credential(
                 }
             }
 
-            println!(
-                "Please enter the selected credential by splitting \"id\" and selected \"index\" with \"=\" : for example: \"Identity-1=0,Identity-2=1,...\"`"
-            );
-
-            input = input_from_console("Failed to read the selected credential");
+            let input = ask_credential_selection().await;
             let selected = collect_selected_cred_entries(input, &credentials);
 
             let auth_response_metadata = resolve_auth_resp_metadata(auth_request, kms).await;
@@ -425,9 +389,6 @@ async fn present_credential(
             holder
                 .present_credentials(auth_request, &selected, &auth_response_metadata)
                 .await
-        }
-        _ => {
-            panic!("Invalid input, please retry the flow");
         }
     };
 
@@ -450,20 +411,11 @@ async fn resolve_auth_resp_metadata(
     auth_request: &ResolvedAuthRequest,
     kms: LocalKms,
 ) -> AuthorizationResponseMetadata {
-    println!("Do you want to add claims to exclude?: y (yes) or anything else for no");
-    let input = input_from_console("Failed to read input on claims to exclude");
-    let mut auth_resp_metadata = match input.as_str() {
-        "y" => {
-            println!("Input id of input descriptor: ");
-            let id = input_from_console("Failed to read presentation mode");
-            println!("Input name of claim to exclude (use space for more than one): ");
-            let claims = input_from_console("Failed to read presentation mode");
-            let claims: Vec<String> = claims.split(' ').map(|s| s.to_string()).collect();
-            let mut map = HashMap::new();
-            map.insert(id, claims);
-            AuthorizationResponseMetadata::with_excluded_claims(map)
-        }
-        _ => Default::default(),
+    let mut auth_resp_metadata = if ask_presentation_claims_exclusion_confirmation().await {
+        let map = ask_presentation_claims_to_exclude().await;
+        AuthorizationResponseMetadata::with_excluded_claims(map)
+    } else {
+        Default::default()
     };
 
     if auth_request.response_type == ResponseType::VpTokenIdToken {
@@ -583,48 +535,29 @@ async fn oid4vci_holder(
 }
 
 async fn get_issuer_discovery_mode() -> (IssuerDiscovery, Option<CredentialOfferParams>) {
-    println!(
-        "Please enter the number to initialize holder from:\n 1 - Issuer URL\n 2 - By resolving a credential Offer"
-    );
-    let mut input = input_from_console("Failed to read holder initialization mode");
-
-    match input.as_str() {
-        "1" => {
-            println!("Please enter the Issuer URL");
-            input = input_from_console("Failed to read the Issuer URL");
-
-            (IssuerDiscovery::Url(input.to_string()), None)
+    let issuer_discovery_mode = ask_issuer_discovery_mode().await;
+    match issuer_discovery_mode {
+        IssuerDiscoveryMode::Url => {
+            let url = ask_issuer_url().await;
+            (IssuerDiscovery::Url(url), None)
         }
-        "2" => {
+        IssuerDiscoveryMode::CredentialOffer => {
             let offer_params = resolve_offer().await;
             (
                 IssuerDiscovery::Url(offer_params.credential_issuer.to_string()),
                 Some(offer_params),
             )
         }
-
-        _ => {
-            println!("Invalid input, please retry");
-            Box::pin(get_issuer_discovery_mode()).await
-        }
     }
 }
 
 async fn resolve_offer() -> CredentialOfferParams {
-    println!("Please select and enter the Credential offer Uri from:");
-    println!(
-        "- Offer with authorization code grant: http://localhost:8088/create_credential_offer_uri_auth_code_grant"
-    );
-    println!(
-        "- Offer with pre-authorized code grant: http://localhost:8088/create_credential_offer_uri_pre_auth_code_grant"
-    );
-
-    let input = input_from_console("Failed to read the value of the Credential offer");
+    let offer_url = ask_offer().await;
 
     CredentialOfferResolver::with_http_client(
         ReqwestClientBuilder::new().insecure().build().unwrap(),
     )
-    .resolve(Url::parse(&input).unwrap())
+    .resolve(Url::parse(&offer_url).unwrap())
     .await
     .unwrap()
 }
@@ -653,16 +586,7 @@ async fn create_key_metadata(kms: &LocalKms) -> KeyMetadata {
 }
 
 async fn authorize_holder(holder: &impl oid4vci::Holder) -> TokenResponse {
-    let callback = |url: Url| {
-        println!("Authorization URL. Authenticate with user \"tneal\" and password \"password\"");
-        println!("{}", url);
-
-        print!("Please enter an authorization code: ");
-        io::stdout().flush().unwrap();
-
-        let code = input_from_console("Failed to read auth code");
-        async { Ok::<String, io::Error>(code) }
-    };
+    let callback = |url: Url| ask_auth_code_by_url(url);
 
     holder
         .authz_code_flow_with_scope(SCOPE.to_owned(), callback)
@@ -674,37 +598,9 @@ async fn get_access_token_by_resolving_offer(
     holder: &impl oid4vci::Holder,
     offer_params: CredentialOfferParams,
 ) -> TokenResponse {
-    let callback = |authz_flow: AuthzFlow| {
-        let code = match authz_flow {
-            AuthzFlow::Authorize(url) => {
-                println!(
-                    "Authorization URL. Authenticate with user \"tneal\" and password \"password\""
-                );
-                println!("{}", url);
-
-                print!("Please enter an authorization code: ");
-                io::stdout().flush().unwrap();
-                input_from_console("Failed to read authorization code")
-            }
-            AuthzFlow::Preauthorized => {
-                println!("If you have a transaction code from the Issuer, please enter 'y'");
-                let input = input_from_console("Failed to read input");
-
-                match input.as_str() {
-                    "y" => {
-                        print!("Please enter a transaction code: ");
-                        io::stdout().flush().unwrap();
-                        input_from_console("Failed to read transaction code")
-                    }
-                    _ => {
-                        // When "oid4vc/issuer" web service is used as the Issuer, we just mock dummy transaction code.
-                        // agent-sdk does not handle the generation and validation of transaction code
-                        "tx_code".to_string()
-                    }
-                }
-            }
-        };
-        async { Ok::<String, io::Error>(code) }
+    let callback = async |authz_flow: AuthzFlow| {
+        let code = ask_auth_code_by_flow(authz_flow).await;
+        Ok::<String, io::Error>(code)
     };
 
     let access_token = holder
@@ -715,13 +611,6 @@ async fn get_access_token_by_resolving_offer(
     print!("Access token is successfully retrieved by resolving the credential offer");
 
     access_token
-}
-
-fn input_from_console(err_msg: &str) -> String {
-    let mut input = String::new();
-    io::stdin().read_line(&mut input).expect(err_msg);
-
-    input.replace('\n', "")
 }
 
 pub fn default_presentation_definition() -> PresentationDefinition {

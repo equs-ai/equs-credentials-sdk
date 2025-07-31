@@ -4,6 +4,10 @@ version = "0.1.0"
 edition = "2024"
 rust-version = "1.87"
 
+[features]
+# ci_demo feature disables some KeyCloak interactions to make CI demo workflows pass
+ci_demo = []
+
 [dependencies]
 actix-web = "4.8.0"
 actix-web-httpauth = "0.8.2"

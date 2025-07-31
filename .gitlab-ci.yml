@@ -11,6 +11,7 @@ stages:
   - build
   - lint
   - test
+  - demo
   - release
 
 variables:
@@ -271,7 +272,20 @@ swift-test-job:
     - merge_requests
     - main
 
+# Demo stage
+
+oid4vc-demo-job:
+  <<: *rust_job_configs
+  stage: demo
+  script:
+    - cd ./demos/oid4vc
+    - ./demo.sh
+  only:
+    - merge_requests
+    - main
+
 # Release stage
+
 release_artifacts_job:
   <<: *rust_job_configs
   stage: release
