@@ -14,7 +14,7 @@ use agent_sdk::vc::oid4vci::{
     PreAuthorizedCodeGrant, TokenRequest, TokenResponse,
 };
 use std::collections::HashMap;
-use std::ops::{Add, Deref, DerefMut};
+use std::ops::{Add, Deref, DerefMut, Sub};
 use std::str::FromStr;
 
 use actix_web::cookie::time;
@@ -32,6 +32,7 @@ use agent_sdk::vc::oid4vci;
 use agent_sdk::vc::presentation_exchange::StatusSize;
 use agent_sdk::vc::status_formats::StatusListFormat;
 use agent_sdk::vc::status_formats::status_list_token_jwt::{VCStatus, VCStatuses};
+#[allow(unused_imports)]
 use keycloak::{KeycloakAdmin, KeycloakAdminToken};
 use reqwest::Url;
 use serde_json::json;
@@ -344,97 +345,131 @@ async fn get_user_attributes(cred_def: &CredDefMetadata) -> Result<Claims, Error
         _ => {}
     }
 
-    let (realm_name, user_name, keycloak_url) = (
-        "pid-issuer-realm".to_owned(),
-        "tneal".to_owned(),
-        "http://localhost:8080/idp",
-    );
+    #[cfg(feature = "ci_demo")]
+    {
+        Ok(json!({
+            "username": "tneal",
+            "email": {
+                "personal": "tyler.neal@example.com",
+                "work": "tyler.neal@example.com"
+            },
+            "given_name": "Tyler",
+            "family_name": "Neal",
+            "birthdate": "1954-04-12",
+            "age": 21,
+            "age_over_18": true,
+            "country": "US",
+            "postal_code": 10001,
+            "exp": serde_json::Value::from(
+                OffsetDateTime::now_utc()
+                    .add(time::Duration::days(365))
+                    .unix_timestamp(),
+            ),
+            "nbf": serde_json::Value::from(
+                OffsetDateTime::now_utc()
+                    .sub(time::Duration::days(1))
+                    .unix_timestamp(),
+            ),
+            "iat": serde_json::Value::from(OffsetDateTime::now_utc().unix_timestamp())
+        })
+        .try_into()
+        .unwrap())
+    }
 
-    let client = reqwest::Client::builder()
-        .https_only(false)
-        .danger_accept_invalid_certs(true)
-        .build()
-        .unwrap();
-    let admin_token = KeycloakAdminToken::acquire_custom_realm(
-        keycloak_url,
-        "admin",
-        "password",
-        "master",
-        "admin-cli",
-        "password",
-        &client,
-    )
-    .await
-    .unwrap();
+    #[cfg(not(feature = "ci_demo"))]
+    {
+        let (realm_name, user_name, keycloak_url) = (
+            "pid-issuer-realm".to_owned(),
+            "tneal".to_owned(),
+            "http://localhost:8080/idp",
+        );
 
-    let keycloak_admin = KeycloakAdmin::new(keycloak_url, admin_token, client);
-
-    let users = keycloak_admin
-        .realm_users_get(
-            &realm_name,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            Some(user_name),
+        let client = reqwest::Client::builder()
+            .https_only(false)
+            .danger_accept_invalid_certs(true)
+            .build()
+            .unwrap();
+        let admin_token = KeycloakAdminToken::acquire_custom_realm(
+            keycloak_url,
+            "admin",
+            "password",
+            "master",
+            "admin-cli",
+            "password",
+            &client,
         )
         .await
         .unwrap();
 
-    if let Some(user) = users.first().cloned() {
-        let mut claims_json = serde_json::to_value(user.attributes).unwrap();
-        claims_json["family_name"] = serde_json::Value::from(user.last_name.to_owned());
-        claims_json["given_name"] = serde_json::Value::from(user.first_name.to_owned());
-        claims_json["username"] = serde_json::Value::from(user.username.to_owned());
-        claims_json["email"] = json!({
-            "personal": user.email.to_owned(),
-            "work": user.email.to_owned()
-        });
-        claims_json["postal_code"] = json!({
-            "codes": [ claims_json["postal_code"][0], "10001" ]
-        });
-        claims_json["country"] = serde_json::Value::from("US");
-        claims_json["age"] = serde_json::Value::Number(27.into());
-        claims_json["age_over_18"] = serde_json::Value::Bool(true);
-        claims_json["birthdate"] = serde_json::Value::String("1954-04-12".to_owned());
+        let keycloak_admin = KeycloakAdmin::new(keycloak_url, admin_token, client);
 
-        let _ = claims_json.as_object_mut().is_some_and(|m| {
-            m.insert(
-                "exp".to_string(),
-                serde_json::Value::from(
-                    OffsetDateTime::now_utc()
-                        .add(time::Duration::days(365))
-                        .unix_timestamp(),
-                ),
-            );
-            m.insert(
-                "nbf".to_string(),
-                serde_json::Value::from(
-                    OffsetDateTime::now_utc()
-                        .add(time::Duration::days(1))
-                        .unix_timestamp(),
-                ),
-            );
-            m.insert(
-                "iat".to_string(),
-                serde_json::Value::from(OffsetDateTime::now_utc().unix_timestamp()),
-            );
-            true
-        });
+        let users = keycloak_admin
+            .realm_users_get(
+                &realm_name,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                Some(user_name),
+            )
+            .await
+            .unwrap();
 
-        return Ok(claims_json.try_into().unwrap());
+        if let Some(user) = users.first().cloned() {
+            let mut claims_json = serde_json::to_value(user.attributes)?;
+            claims_json["family_name"] = serde_json::Value::from(user.last_name.to_owned());
+            claims_json["given_name"] = serde_json::Value::from(user.first_name.to_owned());
+            claims_json["username"] = serde_json::Value::from(user.username.to_owned());
+            claims_json["email"] = json!({
+                "personal": user.email.to_owned(),
+                "work": user.email.to_owned()
+            });
+            claims_json["postal_code"] = json!({
+                "codes": [ claims_json["postal_code"][0], "10001" ]
+            });
+            claims_json["country"] = serde_json::Value::from("US");
+            claims_json["age"] = serde_json::Value::Number(27.into());
+            claims_json["age_over_18"] = serde_json::Value::Bool(true);
+            claims_json["birthdate"] = serde_json::Value::String("1954-04-12".to_owned());
+
+            let _ = claims_json.as_object_mut().is_some_and(|m| {
+                m.insert(
+                    "exp".to_string(),
+                    serde_json::Value::from(
+                        OffsetDateTime::now_utc()
+                            .add(time::Duration::days(365))
+                            .unix_timestamp(),
+                    ),
+                );
+                m.insert(
+                    "nbf".to_string(),
+                    serde_json::Value::from(
+                        OffsetDateTime::now_utc()
+                            .add(time::Duration::days(1))
+                            .unix_timestamp(),
+                    ),
+                );
+                m.insert(
+                    "iat".to_string(),
+                    serde_json::Value::from(OffsetDateTime::now_utc().unix_timestamp()),
+                );
+                true
+            });
+
+            return Ok(claims_json.try_into().unwrap());
+        }
+
+        Ok(Claims::new())
     }
-
-    Ok(Claims::new())
 }
 
 async fn issuer() -> (impl oid4vci::Issuer, DIDDoc) {
@@ -565,13 +600,14 @@ const SD_JWT_CRED_DEF: &str = "SD_JWT_cred_1";
 const JSON_LD_V1_CRED_DEF: &str = "JSON_LDP_cred_2";
 const JSON_LD_V2_CRED_DEF: &str = "JSON_LDP_cred_3";
 
+#[allow(unused_variables)]
 fn sample_issuer_metadata(iss_url: &str, authz_url: &str) -> IssuerMetadata {
-    let metadata = serde_json::from_value(json!(
+    #[allow(unused_mut)]
+    let mut metadata: IssuerMetadata = serde_json::from_value(json!(
         {
           "credential_issuer": iss_url,
-          "authorization_servers": [authz_url],
-          "credential_endpoint": iss_url.to_owned()+"/credential",
-          "nonce_endpoint": iss_url.to_owned()+"/nonce",
+          "credential_endpoint": iss_url.to_owned() + "/credential",
+          "nonce_endpoint": iss_url.to_owned() + "/nonce",
           "batch_credential_issuance": {
             "batch_size": 2
           },
@@ -719,17 +755,24 @@ fn sample_issuer_metadata(iss_url: &str, authz_url: &str) -> IssuerMetadata {
             }
           }
         }
-    ));
+    ))
+    .unwrap();
 
-    metadata.unwrap()
+    #[cfg(not(feature = "ci_demo"))]
+    {
+        metadata = metadata
+            .set_authorization_servers(Some(vec![IssuerUrl::new(authz_url.to_owned()).unwrap()]));
+    }
+
+    metadata
 }
 
 pub fn sample_authorization_metadata() -> AuthorizationMetadata {
     let metadata = serde_json::from_value(json!(
         {
             "issuer": ISSUER_SERVER_URL,
-            "token_endpoint": ISSUER_SERVER_URL.to_owned()+TOKEN_ENDPOINT_PATH,
-            "introspection_endpoint": ISSUER_SERVER_URL.to_owned()+TOKEN_INTROSPECT_PATH,
+            "token_endpoint": ISSUER_SERVER_URL.to_owned() + TOKEN_ENDPOINT_PATH,
+            "introspection_endpoint": ISSUER_SERVER_URL.to_owned() + TOKEN_INTROSPECT_PATH,
             "pre-authorized_grant_anonymous_access_supported": true,
             "grant_types_supported": [
                 "urn:ietf:params:oauth:grant-type:pre-authorized_code",
