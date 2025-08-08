@@ -781,7 +781,7 @@ where
     async fn redirect_uri(
         &self,
         decoded_request: &AuthorizationRequestObject,
-        redirect_uri: String,
+        redirect_uri: &Url,
     ) -> anyhow::Result<(), openid4vp::core::error::Error> {
         let supported = self
             .metadata()
@@ -803,14 +803,8 @@ where
                 decoded_request.state(),
             )
         })?;
-        let redirect_uri = Url::parse(redirect_uri.as_str()).map_err(|_| {
-            openid4vp::core::error::Error::protocol_invalid_req(
-                "could not parse 'redirect_uri' = {redirect_uri} as uri, in 'redirect_uri' response method it must be uri",
-                decoded_request.state(),
-            )
-        })?;
 
-        if client_id_as_uri != redirect_uri {
+        if !client_id_as_uri.eq(redirect_uri) {
             return Err(openid4vp::core::error::Error::protocol_invalid_req(
                 &format!(
                     "in 'redirect_uri' response mode 'client_id' = {} must be equal to 'redirect_uri' = {}",
@@ -871,6 +865,7 @@ mod tests {
     use serde_json::json;
     use std::collections::HashMap;
     use std::sync::Arc;
+    use url::Url;
 
     #[tokio::test]
     async fn get_auth_request_success() {
@@ -945,7 +940,7 @@ mod tests {
             request_verifier(MockHttpClient::new(), LocalKms::new(), InMemVault::new()).await;
         let aro: AuthorizationRequestObject = serde_json::from_str(auth_request).unwrap();
         request_verifier
-            .redirect_uri(&aro, redirect_uri)
+            .redirect_uri(&aro, &Url::parse(&redirect_uri).unwrap())
             .await
             .unwrap();
     }
@@ -957,7 +952,7 @@ mod tests {
         let aro: AuthorizationRequestObject =
             serde_json::from_str(AUTH_REQUEST_WITH_REDIRECT_URI).unwrap();
         request_verifier
-            .redirect_uri(&aro, "https://localhost:8080".to_string())
+            .redirect_uri(&aro, &Url::parse("https://localhost:8080").unwrap())
             .await
             .unwrap();
     }
@@ -1149,7 +1144,7 @@ mod tests {
     #[tokio::test]
     async fn same_device_flow_present_credential_auto_failure_case_returns_redirect_uri_in_error() {
         let mut test_case = request_unsupported_credential_format_case();
-        test_case.request.response_mode = ResponseMode::Fragment;
+        test_case.request.response_mode = ResponseMode::DCAPI;
 
         let kms = LocalKms::new();
         let vault = test_case.prepare_vault(&kms).await;
