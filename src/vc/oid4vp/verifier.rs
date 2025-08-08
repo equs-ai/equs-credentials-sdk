@@ -312,7 +312,7 @@ where
         wallet_metadata: &WalletMetadata,
     ) -> Result<(Url, Option<String>)> {
         match &auth_response_config.mode {
-            ResponseMode::FragmentJwt | ResponseMode::Fragment => {
+            ResponseMode::DCAPIJwt | ResponseMode::DCAPI => {
                 let client = RedirectUriClient::new(
                     ClientId::new(self.metadata.client_id.to_owned()).context(ClientIdSnafu)?,
                 );
@@ -374,10 +374,9 @@ where
             pass_auth_request_object.to_owned(),
             &auth_response_config.mode,
         ) {
-            (
-                PassAuthRequestObject::ByValue,
-                ResponseMode::FragmentJwt | ResponseMode::Fragment,
-            ) => RequestType::Plain,
+            (PassAuthRequestObject::ByValue, ResponseMode::DCAPIJwt | ResponseMode::DCAPI) => {
+                RequestType::Plain
+            }
             (
                 PassAuthRequestObject::ByValue,
                 ResponseMode::DirectPost | ResponseMode::DirectPostJwt,

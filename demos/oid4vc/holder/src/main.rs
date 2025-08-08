@@ -228,7 +228,7 @@ async fn same_device_presentation_flow(holder: impl HolderVp, kms: LocalKms) {
 
     let auth_resp_config = AuthResponseOptions {
         type_: ResponseType::VpToken,
-        mode: ResponseMode::Fragment,
+        mode: ResponseMode::DCAPI,
         submission_uri: redirect_uri.to_owned(),
         state: None,
     };
