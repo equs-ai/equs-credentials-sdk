@@ -173,7 +173,8 @@ final class OID4VCViewModel: ObservableObject, AuthCodeCallback {
 			kms: kms,
 			vault: vault,
 			clientId: Constants.clientId,
-			httpClient: ReqwestHttpClient.insecure()
+			httpClient: ReqwestHttpClient.insecure(),
+            nonceHandler: nil
 		).build()
 	}
 }

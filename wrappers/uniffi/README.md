@@ -118,6 +118,8 @@ On success, `aar` file must be outputted in `./kotlin/android/build/outputs/aar/
 
 # iOS
 
+h4: #### IOS builds for IOS@17. This can be configured at [config.toml](./.cargo/config.toml)
+
 ### 1. Setup Xcode Command-Line Tools
 
 #### Install XCode

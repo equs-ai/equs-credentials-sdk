@@ -7,7 +7,10 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		6B344CDD2D9FF4ED00943C58 /* Asdk in Frameworks */ = {isa = PBXBuildFile; productRef = 6B344CDC2D9FF4ED00943C58 /* Asdk */; };
+		1E2F06532E4AF89400877B91 /* Asdk in Frameworks */ = {isa = PBXBuildFile; productRef = 1E2F06522E4AF89400877B91 /* Asdk */; };
+		1E2F06692E4AFA6700877B91 /* Asdk in Frameworks */ = {isa = PBXBuildFile; productRef = 1E2F06682E4AFA6700877B91 /* Asdk */; };
+		1E2F066C2E4AFB8500877B91 /* Asdk in Frameworks */ = {isa = PBXBuildFile; productRef = 1E2F066B2E4AFB8500877B91 /* Asdk */; };
+		1E2F066F2E4AFC7500877B91 /* Asdk in Frameworks */ = {isa = PBXBuildFile; productRef = 1E2F066E2E4AFC7500877B91 /* Asdk */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -27,7 +30,10 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				6B344CDD2D9FF4ED00943C58 /* Asdk in Frameworks */,
+				1E2F066C2E4AFB8500877B91 /* Asdk in Frameworks */,
+				1E2F06532E4AF89400877B91 /* Asdk in Frameworks */,
+				1E2F06692E4AFA6700877B91 /* Asdk in Frameworks */,
+				1E2F066F2E4AFC7500877B91 /* Asdk in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -70,7 +76,10 @@
 			);
 			name = OID4VC;
 			packageProductDependencies = (
-				6B344CDC2D9FF4ED00943C58 /* Asdk */,
+				1E2F06522E4AF89400877B91 /* Asdk */,
+				1E2F06682E4AFA6700877B91 /* Asdk */,
+				1E2F066B2E4AFB8500877B91 /* Asdk */,
+				1E2F066E2E4AFC7500877B91 /* Asdk */,
 			);
 			productName = OID4VC;
 			productReference = 6B344CA82D9FD31300943C58 /* OID4VC.app */;
@@ -101,7 +110,7 @@
 			mainGroup = 6B344C9F2D9FD31300943C58;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				6B344CDB2D9FF4ED00943C58 /* XCLocalSwiftPackageReference "../../../wrappers/uniffi/swift" */,
+				1E2F066D2E4AFC7500877B91 /* XCLocalSwiftPackageReference "../../../wrappers/uniffi/swift/ios/debug" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 6B344CA92D9FD31300943C58 /* Products */;
@@ -333,14 +342,26 @@
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
-		6B344CDB2D9FF4ED00943C58 /* XCLocalSwiftPackageReference "../../../wrappers/uniffi/swift" */ = {
+		1E2F066D2E4AFC7500877B91 /* XCLocalSwiftPackageReference "../../../wrappers/uniffi/swift/ios/debug" */ = {
 			isa = XCLocalSwiftPackageReference;
-			relativePath = ../../../wrappers/uniffi/swift;
+			relativePath = ../../../wrappers/uniffi/swift/ios/debug;
 		};
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
-		6B344CDC2D9FF4ED00943C58 /* Asdk */ = {
+		1E2F06522E4AF89400877B91 /* Asdk */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = Asdk;
+		};
+		1E2F06682E4AFA6700877B91 /* Asdk */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = Asdk;
+		};
+		1E2F066B2E4AFB8500877B91 /* Asdk */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = Asdk;
+		};
+		1E2F066E2E4AFC7500877B91 /* Asdk */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = Asdk;
 		};
