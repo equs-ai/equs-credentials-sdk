@@ -8,6 +8,8 @@ use askar_crypto::repr::{KeyPublicBytes, KeySecretBytes, ToSecretBytes};
 use async_trait::async_trait;
 use base64::Engine;
 use base64::prelude::BASE64_STANDARD;
+use rand::Rng;
+use rand::distr::Alphanumeric;
 use snafu::{IntoError, ResultExt, ensure};
 use ssi::crypto::hashes::sha256::sha256;
 use std::str::FromStr;
@@ -189,7 +191,11 @@ impl LocalKms {
         ret(),
     )]
     fn kid(key_type: kms::KeyType, derivation_type: Option<DerivationType>) -> KeyID {
-        let id = random_string::generate(KID_LENGTH, random_string::charsets::ALPHA);
+        let id = rand::rng()
+            .sample_iter(&Alphanumeric)
+            .take(KID_LENGTH)
+            .map(char::from)
+            .collect::<String>();
 
         format!(
             "{}:{}:{}",

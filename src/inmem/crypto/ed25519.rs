@@ -2,7 +2,7 @@ use crate::crypto;
 use crate::crypto::{MalformedSnafu, VerificationSnafu};
 use async_trait::async_trait;
 use ed25519_dalek::{SecretKey, Signature, Signer, SigningKey};
-use rand::rngs::OsRng;
+use ssi::crypto::rand::rngs::OsRng;
 use tracing::{Level, instrument};
 
 #[derive(Debug, Clone)]

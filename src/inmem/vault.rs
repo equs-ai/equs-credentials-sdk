@@ -8,6 +8,8 @@ use crate::vault::{
 use crate::vc::{Credential, CredentialMetadata};
 use async_trait::async_trait;
 use futures::future;
+use rand::Rng;
+use rand::distr::Alphanumeric;
 use std::collections::HashSet;
 use std::sync::Arc;
 use tracing::{Level, instrument};
@@ -95,7 +97,11 @@ impl Vault for InMemVault {
         credential: Credential,
         metadata: &CredentialMetadata,
     ) -> Result<String, Error> {
-        let storage_id = random_string::generate(5, random_string::charsets::ALPHA);
+        let storage_id = rand::rng()
+            .sample_iter(&Alphanumeric)
+            .take(5)
+            .map(char::from)
+            .collect::<String>();
 
         let entry = CredentialEntry {
             credential,

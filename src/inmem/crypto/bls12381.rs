@@ -146,8 +146,9 @@ impl Verifier for Bls12381 {
 
 impl crypto::Suite for Bls12381 {
     fn generate() -> Vec<u8> {
-        let mut rng = rand::rngs::OsRng {};
-        ssi::bbs::generate_secret_key(&mut rng).to_bytes().to_vec()
+        ssi::bbs::generate_secret_key(&mut ssi::crypto::rand::rngs::OsRng {})
+            .to_bytes()
+            .to_vec()
     }
 
     fn from_secret(bytes: Vec<u8>) -> crypto::Result<Self> {
