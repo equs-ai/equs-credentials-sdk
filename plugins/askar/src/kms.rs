@@ -14,6 +14,8 @@ use bip32::secp256k1::elliptic_curve::{
 };
 use ecdsa::hazmat::{DigestPrimitive, SignPrimitive, VerifyPrimitive};
 use ecdsa::SignatureSize;
+use rand::distr::Alphanumeric;
+use rand::Rng;
 use sha2::{Digest, Sha256};
 use snafu::{ensure, ResultExt};
 use std::sync::Arc;
@@ -340,7 +342,11 @@ impl Kms<AskarKeyHandle> for AskarKms {
             .build()
         })?;
 
-        let kid = random_string::generate(KID_LENGTH, random_string::charsets::ALPHA);
+        let kid = rand::rng()
+            .sample_iter(&Alphanumeric)
+            .take(KID_LENGTH)
+            .map(char::from)
+            .collect::<String>();
         let tags = Self::create_public_key_tags(&key).await?;
 
         self.insert_key(&kid, &key, Some(&tags))

@@ -73,8 +73,7 @@ ed25519-dalek = { version = "2.1.1", optional = true }
 bip32 = { version = "0.5.2", optional = true }
 askar-crypto = { version = "=0.3.3", optional = true }
 # service
-rand = { version = "0.8.5", optional = true }
-random-string = { version = "1.1.0", optional = true }
+rand = { version = "0.9.2", optional = true }
 ecdsa = { version = "0.16.9", optional = true }
 hyper = { version = "0.14.32", features = ["full"], optional = true }
 http = { version = "0.2", optional = true }
@@ -92,15 +91,13 @@ mockito = "1.5.0"
 httpmock = "0.8.0-alpha.1"
 rstest = "0.22.0"
 # InMEM dependencies
-rand = "0.8.5"
 ed25519-dalek = "2.1.1"
 p256 = "0.13.2"
 bip32 = "0.5.2"
-random-string = "1.1.0"
 ecdsa = "0.16.9"
 
 [features]
-in-memory = ["dep:rand", "dep:ed25519-dalek", "dep:p256", "dep:bip32", "dep:random-string", "dep:ecdsa", "dep:askar-crypto"]
+in-memory = ["dep:rand", "dep:ed25519-dalek", "dep:p256", "dep:bip32", "dep:ecdsa", "dep:askar-crypto"]
 didcomm-http-trasnport = ["dep:http", "dep:hyper", "dep:tokio"]
 
 [profile.release]
