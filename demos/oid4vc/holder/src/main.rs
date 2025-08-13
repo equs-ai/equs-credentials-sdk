@@ -10,7 +10,7 @@ use agent_sdk::kms;
 use agent_sdk::kms::Kms;
 use agent_sdk::reqwest::builder::ReqwestClientBuilder;
 use agent_sdk::vc::HasClaims;
-use agent_sdk::vc::core::KeyMetadata;
+use agent_sdk::vc::core::{KeyMetadata, ProofOfPossessionMetadata, ProofOfPossessionNotBefore};
 use agent_sdk::vc::dcql::{DCQL, DCQLCredential};
 use agent_sdk::vc::metadata::{CredentialMetadataProcessor, DefaultMetadataProcessor};
 use agent_sdk::vc::oid4vci::{
@@ -32,6 +32,7 @@ use reqwest::Url;
 use serde_json::json;
 use std::collections::HashMap;
 use std::io;
+use time::Duration;
 use uuid::Uuid;
 
 #[cfg(not(feature = "noninteractive"))]
@@ -525,6 +526,10 @@ async fn oid4vci_holder(
         ReqwestClientBuilder::new().insecure().build().unwrap(),
     )
     .with_redirect_url("urn:ietf:wg:oauth:2.0:oob".to_string())
+    .with_pop(ProofOfPossessionMetadata {
+        lifetime: Duration::minutes(5),
+        not_before: Some(ProofOfPossessionNotBefore::Leeway(Duration::seconds(10))),
+    })
     .build()
     .await
     .unwrap();

@@ -6,6 +6,7 @@ use crate::did::universal::UniversalResolver;
 use crate::nonce::Nonce;
 use async_trait::async_trait;
 use common_macros::DebugError;
+use oid4vci::proof_of_possession;
 use oid4vci::proof_of_possession::{ConversionError, ParsingError, VerificationError};
 use serde::{Deserialize, Serialize};
 use snafu::{Location, Snafu};
@@ -106,12 +107,14 @@ pub enum Error {
 }
 
 pub type Result<T> = core::result::Result<T, Error>;
+pub type ProofOfPossessionNotBefore = proof_of_possession::ProofOfPossessionNotBefore;
 
 #[derive(Debug, PartialEq, Clone, Default)]
 pub struct GenerateOptions {
     pub audience: String,
     pub issuer: Option<String>,
     pub lifetime: time::Duration,
+    pub not_before: Option<ProofOfPossessionNotBefore>,
 }
 
 #[derive(Debug, PartialEq, Clone, Default)]

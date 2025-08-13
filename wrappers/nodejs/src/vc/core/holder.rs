@@ -172,8 +172,8 @@ pub fn create_holder(
     metadata: JsHolderMetadata,
     did_resolver: &JsUniversalDIDResolver,
     http_client: &ReqwestHttpClient,
-) -> VCCoreHolder {
-    let metadata = metadata.into();
+) -> Result<VCCoreHolder, napi::Error> {
+    let metadata = metadata.try_into()?;
     let holder_service = CoreHolderService::new(
         kms,
         vault,
@@ -181,5 +181,5 @@ pub fn create_holder(
         did_resolver.into(),
         Arc::new(http_client.inner()),
     );
-    VCCoreHolder(Box::new(holder_service))
+    Ok(VCCoreHolder(Box::new(holder_service)))
 }

@@ -10,6 +10,8 @@ import {
   OID4VCIHolderBuilder,
   OID4VPHolder,
   OID4VPHolderBuilder,
+  ProofOfPossessionMetadataBuilder,
+  ProofOfPossessionNotBeforeFactory,
   ReqwestHttpClient,
   resolveMetadata,
   TracingLogFormat,
@@ -49,7 +51,15 @@ async function main(): Promise<void> {
     config.clientId,
     issuerDiscovery,
     insecureHttpClient,
-  ).build();
+  )
+    .withPop(
+      new ProofOfPossessionMetadataBuilder()
+        .withNotBefore(
+          ProofOfPossessionNotBeforeFactory.leeway({ seconds: 30, nanoseconds: 0 }),
+        )
+        .build(),
+    )
+    .build();
 
   const oid4VpHolder = await new OID4VPHolderBuilder(
     kms,

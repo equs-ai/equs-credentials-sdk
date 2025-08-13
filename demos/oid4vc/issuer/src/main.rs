@@ -14,6 +14,7 @@ use agent_sdk::vc::oid4vci::{
     PreAuthorizedCodeGrant, TokenRequest, TokenResponse,
 };
 use std::collections::HashMap;
+#[allow(unused_imports)]
 use std::ops::{Add, Deref, DerefMut, Sub};
 use std::str::FromStr;
 

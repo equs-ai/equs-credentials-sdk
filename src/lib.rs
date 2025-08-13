@@ -33,3 +33,5 @@ pub mod nonce;
 pub mod reqwest;
 mod utils;
 pub mod vc;
+
+pub use utils::chrono_time_mapping;

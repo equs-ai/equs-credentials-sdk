@@ -542,6 +542,7 @@ pub mod utils {
                         audience: ISSUER_ID.to_string(),
                         issuer: None,
                         lifetime: time::Duration::minutes(5),
+                        not_before: None,
                     },
                 )
                 .await

@@ -38,6 +38,7 @@ impl pop::ProofOfPossession<String> for JwtProofOfPossession {
             audience: opts.audience.clone(),
             issuer: opts.issuer.clone(),
             nonce: nonce.map(|n| oid4vci::types::Nonce::new(n.secret().to_owned())),
+            not_before: opts.not_before,
             controller: ProofOfPossessionController {
                 vm: Some(did_url.to_owned()),
                 jwk: key.jwk().ok_or(
@@ -263,6 +264,7 @@ mod tests {
             audience: "did:web:issuer.com".to_string(),
             issuer: Some("client-id".to_string()),
             lifetime: time::Duration::minutes(5),
+            not_before: None,
         }
     }
 

@@ -728,6 +728,7 @@ mod tests {
     use crate::utils::test_utils::create_did_and_key_metadata;
     use crate::vault::{MockVault, Vault};
     use crate::vc::VCFormat;
+    use crate::vc::core::ProofOfPossessionMetadata;
     use crate::vc::oid4vci::tests::fixtures::{
         ACCESS_TOKEN, AUTH_URL, CRED_DEF_ID, ISSUER_URL, NOTIFICATION_ID, REQ_URI_CODE, SCOPE,
         SD_JWT_CREDS, SampleIssuerMetadata, fake_access_token, sample_access_token,
@@ -1332,7 +1333,10 @@ mod tests {
         let client_id = "fake_client_id";
         let holder_metadata = vc::core::HolderMetadata {
             client_id: client_id.to_owned(),
-            pop_lifetime: time::Duration::minutes(5),
+            pop: ProofOfPossessionMetadata {
+                lifetime: time::Duration::minutes(5),
+                not_before: None,
+            },
         };
 
         let inner = vc::core::HolderService::new(

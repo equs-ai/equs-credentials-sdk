@@ -2250,8 +2250,8 @@ pub mod utils {
     use crate::vault::{CredentialEntry, Vault};
     use crate::vc;
     use crate::vc::claims::Claims;
-    use crate::vc::core::KeyMetadata;
     use crate::vc::core::api::PresentationRestrictionValue;
+    use crate::vc::core::{KeyMetadata, ProofOfPossessionMetadata};
     use crate::vc::formats::json_ld_vc::JsonLdAPI;
     use crate::vc::formats::sd_jwt_vc::{SdJwtAPI, VPMetadata};
     use crate::vc::formats::{json_ld_vc, sd_jwt_vc};
@@ -2668,7 +2668,10 @@ pub mod utils {
             vault,
             vc::core::HolderMetadata {
                 client_id: "client_id".to_string(),
-                pop_lifetime: time::Duration::minutes(5),
+                pop: ProofOfPossessionMetadata {
+                    lifetime: time::Duration::minutes(5),
+                    not_before: None,
+                },
             },
             UniversalResolver::default(),
             http_client.clone(),
@@ -2695,7 +2698,10 @@ pub mod utils {
             vault,
             vc::core::HolderMetadata {
                 client_id: "client_id".to_string(),
-                pop_lifetime: time::Duration::minutes(5),
+                pop: ProofOfPossessionMetadata {
+                    lifetime: time::Duration::minutes(5),
+                    not_before: None,
+                },
             },
             UniversalResolver::default(),
             http_client.clone(),
@@ -2923,7 +2929,10 @@ pub mod utils {
             InMemVault::new(),
             vc::core::HolderMetadata {
                 client_id: "client_id".to_string(),
-                pop_lifetime: time::Duration::minutes(5),
+                pop: ProofOfPossessionMetadata {
+                    lifetime: time::Duration::minutes(5),
+                    not_before: None,
+                },
             },
             UniversalResolver::default(),
             http_client.clone(),

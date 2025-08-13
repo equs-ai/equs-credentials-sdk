@@ -2,17 +2,19 @@ mod holder;
 mod issuer;
 mod status_issuer;
 mod verifier;
-
 use crate::utils::{from_json_object, to_json_object};
+
 use crate::vc::JsonObject;
+use agent_sdk::chrono_time_mapping::{TryIntoChrono, TryIntoTime};
 use agent_sdk::crypto::Alg;
 use agent_sdk::vc::core::{
     CredentialDefinition, CredentialOffer, CredentialOfferContent, CredentialOfferData,
-    CredentialRequest, CredentialRequestData, CredentialStatusInfo, Display, HolderMetadata,
-    IssuerMetadata, IssuerMetadataData, KeyMetadata, PresentationInput, PresentationRestriction,
-    Proof,
+    CredentialRequest, CredentialRequestData, CredentialStatusInfo, DEFAULT_POP_LIFETIME_MINUTES,
+    Display, HolderMetadata, IssuerMetadata, IssuerMetadataData, KeyMetadata, PresentationInput,
+    PresentationRestriction, Proof, ProofOfPossessionMetadata, ProofOfPossessionNotBefore,
 };
 use agent_sdk::vc::core::{CredentialDefinitionData, PresentationRestrictionValue};
+use chrono::{DateTime, Utc};
 
 use agent_sdk::vc::VCStatus;
 use agent_sdk::vc::core::StatusIssuerMetadata;
@@ -27,6 +29,7 @@ use napi::Error;
 use napi_derive::napi;
 use serde_json::{json, to_string};
 use time::Duration;
+use time::error::ComponentRange;
 
 /// A helper interface for handling Keys and `DID`s for the services.
 ///
@@ -1275,25 +1278,191 @@ impl TryFrom<IssuerMetadata> for JsIssuerMetadata {
 #[napi(js_name = "HolderMetadata", object)]
 pub struct JsHolderMetadata {
     pub client_id: String,
-    pub pop_lifetime: JsDuration,
+    pub pop: JsProofOfPossessionMetadata,
 }
 
 #[napi]
-impl From<JsHolderMetadata> for HolderMetadata {
-    fn from(value: JsHolderMetadata) -> Self {
-        Self {
+impl TryFrom<JsHolderMetadata> for HolderMetadata {
+    type Error = Error;
+
+    fn try_from(value: JsHolderMetadata) -> Result<Self, Error> {
+        Ok(Self {
             client_id: value.client_id,
-            pop_lifetime: value.pop_lifetime.try_into().unwrap(),
-        }
+            pop: value.pop.try_into()?,
+        })
     }
 }
 
 #[napi]
-impl From<HolderMetadata> for JsHolderMetadata {
-    fn from(value: HolderMetadata) -> Self {
-        Self {
+impl TryFrom<HolderMetadata> for JsHolderMetadata {
+    type Error = Error;
+
+    fn try_from(value: HolderMetadata) -> Result<Self, Error> {
+        Ok(Self {
             client_id: value.client_id,
-            pop_lifetime: value.pop_lifetime.try_into().unwrap(),
-        }
+            pop: value.pop.try_into()?,
+        })
     }
+}
+
+/// A metadata for the `ProofOfPossessionMetadata`.
+///
+/// Encapsulates all necessary data needed to generate a proof of possession.
+#[napi(js_name = "ProofOfPossessionMetadata", object)]
+pub struct JsProofOfPossessionMetadata {
+    pub lifetime: Option<JsDuration>,
+    pub not_before: Option<JsProofOfPossessionNotBefore>,
+}
+
+#[napi]
+impl TryFrom<JsProofOfPossessionMetadata> for ProofOfPossessionMetadata {
+    type Error = Error;
+
+    fn try_from(value: JsProofOfPossessionMetadata) -> Result<Self, Error> {
+        let lifetime = if let Some(time) = value.lifetime {
+            time.try_into()?
+        } else {
+            Duration::minutes(DEFAULT_POP_LIFETIME_MINUTES)
+        };
+        let nbf = if let Some(val) = value.not_before {
+            Some(val.try_into()?)
+        } else {
+            None
+        };
+        Ok(Self {
+            lifetime,
+            not_before: nbf,
+        })
+    }
+}
+
+#[napi]
+impl TryFrom<ProofOfPossessionMetadata> for JsProofOfPossessionMetadata {
+    type Error = Error;
+
+    fn try_from(value: ProofOfPossessionMetadata) -> Result<Self, Error> {
+        let js_not_before = if let Some(not_before) = value.not_before {
+            Some(not_before.try_into()?)
+        } else {
+            None
+        };
+        Ok(Self {
+            lifetime: Some(value.lifetime.into()),
+            not_before: js_not_before,
+        })
+    }
+}
+
+#[napi(js_name = "ProofOfPossessionNotBefore", object)]
+pub struct JsProofOfPossessionNotBefore {
+    pub strategy: JsProofOfPossessionNotBeforeStrategy,
+    pub fixed: Option<DateTime<Utc>>,
+    pub delay: Option<JsDuration>,
+    pub leeway: Option<JsDuration>,
+}
+
+/// Configures how Not Before claim (see [RFC7519](https://datatracker.ietf.org/doc/html/rfc7519#section-4.1.5)) must be specified.
+#[napi(js_name = "ProofOfPossessionNotBeforeStrategy")]
+pub enum JsProofOfPossessionNotBeforeStrategy {
+    /// Sets nbf the same as iat.
+    AsIssuedAt,
+    /// Sets nbf to provided timestamp.
+    Fixed,
+    /// Sets nbf with a given delay from iat.
+    ///
+    /// Example:
+    ///     `iat` is 10:00:00;
+    ///     `delay` is 5 min;
+    ///     then `nbf` will be 10:05:00.
+    Delay,
+    /// Sets nbf with a given leeway from iat.
+    ///
+    /// Example:
+    ///     `iat` is 10:00:00;
+    ///     `leeway` is 5 min;
+    ///     then `nbf` will be 9:55:00.
+    Leeway,
+}
+
+#[napi]
+impl TryFrom<JsProofOfPossessionNotBefore> for ProofOfPossessionNotBefore {
+    type Error = Error;
+
+    fn try_from(js_not_before: JsProofOfPossessionNotBefore) -> Result<Self, Error> {
+        Ok(match js_not_before.strategy {
+            JsProofOfPossessionNotBeforeStrategy::AsIssuedAt => {
+                ProofOfPossessionNotBefore::AsIssuedAt
+            }
+            JsProofOfPossessionNotBeforeStrategy::Fixed => {
+                let fixed = js_not_before
+                    .fixed
+                    .ok_or(Error::from_reason(
+                        "Fixed PoP generation strategy requires fixed time to be specified",
+                    ))?
+                    .try_into_time()
+                    .map_err(map_component_range_err)?;
+                ProofOfPossessionNotBefore::Fixed(fixed)
+            }
+            JsProofOfPossessionNotBeforeStrategy::Delay => {
+                let delay = js_not_before
+                    .delay
+                    .ok_or(Error::from_reason(
+                        "Delay PoP generation strategy requires delay time to be specified",
+                    ))
+                    .and_then(TryInto::try_into)?;
+                ProofOfPossessionNotBefore::Delay(delay)
+            }
+            JsProofOfPossessionNotBeforeStrategy::Leeway => {
+                let leeway = js_not_before
+                    .leeway
+                    .ok_or(Error::from_reason(
+                        "Leeway PoP generation strategy requires leeway time to be specified",
+                    ))
+                    .and_then(TryInto::try_into)?;
+                ProofOfPossessionNotBefore::Leeway(leeway)
+            }
+        })
+    }
+}
+
+#[napi]
+impl TryFrom<ProofOfPossessionNotBefore> for JsProofOfPossessionNotBefore {
+    type Error = Error;
+
+    fn try_from(value: ProofOfPossessionNotBefore) -> Result<Self, Error> {
+        Ok(match value {
+            ProofOfPossessionNotBefore::AsIssuedAt => JsProofOfPossessionNotBefore {
+                strategy: JsProofOfPossessionNotBeforeStrategy::AsIssuedAt,
+                fixed: None,
+                delay: None,
+                leeway: None,
+            },
+            ProofOfPossessionNotBefore::Fixed(time) => JsProofOfPossessionNotBefore {
+                strategy: JsProofOfPossessionNotBeforeStrategy::Fixed,
+                fixed: Some(time.try_into_chrono().map_err(|_| {
+                    Error::from_reason(
+                        "Failed to convertd time::OffsetDateTime to chrono::DateTime",
+                    )
+                })?),
+                delay: None,
+                leeway: None,
+            },
+            ProofOfPossessionNotBefore::Delay(delay) => JsProofOfPossessionNotBefore {
+                strategy: JsProofOfPossessionNotBeforeStrategy::Delay,
+                fixed: None,
+                delay: Some(delay.into()),
+                leeway: None,
+            },
+            ProofOfPossessionNotBefore::Leeway(leeway) => JsProofOfPossessionNotBefore {
+                strategy: JsProofOfPossessionNotBeforeStrategy::Leeway,
+                fixed: None,
+                delay: None,
+                leeway: Some(leeway.into()),
+            },
+        })
+    }
+}
+
+fn map_component_range_err(err: ComponentRange) -> Error {
+    Error::from_reason(format!("{}", err))
 }

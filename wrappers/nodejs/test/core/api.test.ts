@@ -38,7 +38,9 @@ describe("VC::Core", () => {
     utils.vault,
     {
       clientId: "wallet-dev",
-      popLifetime: { nanoseconds: 0, seconds: 300 },
+      pop: {
+        lifetime: { nanoseconds: 0, seconds: 300 }
+      },
     },
     new _UniversalDIDResolver(),
     ReqwestHttpClient.insecure(),

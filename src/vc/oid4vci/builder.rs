@@ -3,15 +3,16 @@ use crate::http::{HttpClient, HttpError, HttpSnafu};
 use crate::nonce::{Nonce, NonceHandler};
 use crate::reqwest::ReqwestClient;
 use crate::reqwest::builder::ReqwestClientBuilder;
-use crate::vc::core::DEFAULT_CRED_LIFETIME_DAYS;
 use crate::vc::core::DEFAULT_POP_LIFETIME_MINUTES;
 use crate::vc::core::KeyMetadata;
+use crate::vc::core::{DEFAULT_CRED_LIFETIME_DAYS, ProofOfPossessionMetadata};
 use crate::vc::oid4vci as api;
 use crate::vc::oid4vci::CredentialOfferParams;
 use crate::vc::oid4vci::holder::HolderService;
 use crate::vc::oid4vci::issuer::{IssuerService, TokenValidation};
 use crate::vc::oid4vci::metadata::convert_metadata;
 use crate::vc::oid4vci::token_validation::{ByJwks, Introspect};
+use crate::vc::pop::ProofOfPossessionNotBefore;
 use crate::{kms, vault, vc};
 use async_trait::async_trait;
 use common_macros::DebugError;
@@ -430,7 +431,7 @@ where
     kms: KMS,
     vault: V,
     http_client: Arc<HC>,
-    pop_lifetime: Duration,
+    pop: ProofOfPossessionMetadata,
     did_resolver: UniversalResolver,
 
     _marker: PhantomData<KH>,
@@ -481,7 +482,7 @@ where
             http_client: Arc::new(http_client),
             iss_discovery,
             redirect_url: "urn:ietf:wg:oauth:2.0:oob".to_string(),
-            pop_lifetime: Duration::minutes(DEFAULT_POP_LIFETIME_MINUTES),
+            pop: ProofOfPossessionMetadataBuilder::new().build(),
             did_resolver: UniversalResolver::default(),
             _marker: Default::default(),
         }
@@ -509,17 +510,17 @@ where
         self
     }
 
-    /// Use a specific `pop_lifetime`.
+    /// Use a specific `Proof of Possession` generation config.
     ///
     /// # Arguments
     ///
-    /// * `pop_lifetime` - The expiration for Proof Of Possession
+    /// * `pop` - Proof Of Possession generation config
     #[instrument(
         level = Level::TRACE,
         skip(self),
     )]
-    pub fn with_pop_lifetime(mut self, pop_lifetime: Duration) -> Self {
-        self.pop_lifetime = pop_lifetime;
+    pub fn with_pop(mut self, pop: ProofOfPossessionMetadata) -> Self {
+        self.pop = pop;
         self
     }
 
@@ -569,7 +570,7 @@ where
     pub async fn build(self) -> Result<impl api::Holder, Error> {
         let holder_metadata = vc::core::HolderMetadata {
             client_id: self.client_id.clone(),
-            pop_lifetime: self.pop_lifetime,
+            pop: self.pop,
         };
 
         let inner = vc::core::HolderService::new(
@@ -638,6 +639,37 @@ where
 /// to type inference when using the IssuerBuilder::new() function
 pub struct InternalNonceHandler {
     _private: (),
+}
+
+pub struct ProofOfPossessionMetadataBuilder {
+    lifetime: Duration,
+    not_before: Option<ProofOfPossessionNotBefore>,
+}
+
+impl ProofOfPossessionMetadataBuilder {
+    pub fn new() -> Self {
+        Self {
+            lifetime: Duration::minutes(DEFAULT_POP_LIFETIME_MINUTES),
+            not_before: None,
+        }
+    }
+
+    pub fn with_lifetime(mut self, lifetime: Duration) -> Self {
+        self.lifetime = lifetime;
+        self
+    }
+
+    pub fn with_not_before(mut self, not_before: ProofOfPossessionNotBefore) -> Self {
+        self.not_before = Some(not_before);
+        self
+    }
+
+    pub fn build(self) -> ProofOfPossessionMetadata {
+        ProofOfPossessionMetadata {
+            lifetime: self.lifetime,
+            not_before: self.not_before,
+        }
+    }
 }
 
 #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]

@@ -83,7 +83,8 @@ where
                 pop::GenerateOptions {
                     audience: credential_offer.issuer_id.clone(),
                     issuer: None,
-                    lifetime: self.metadata.pop_lifetime,
+                    lifetime: self.metadata.pop.lifetime,
+                    not_before: self.metadata.pop.not_before,
                 },
             )
             .await
@@ -410,7 +411,7 @@ mod tests {
     use crate::vc::core::tests::utils::{CredTestCase, random_nonce};
     use crate::vc::core::{
         CredentialDefinitionData, Error, Holder, HolderMetadata, HolderService, KeyMetadata,
-        StatusIssuer, StatusIssuerMetadata, StatusListDefinition,
+        ProofOfPossessionMetadata, StatusIssuer, StatusIssuerMetadata, StatusListDefinition,
     };
     use crate::vc::oid4vp::{CredentialsFindResult, FindVCsFailReason};
     use crate::vc::presentation_exchange::StatusSize;
@@ -1150,7 +1151,10 @@ mod tests {
             vault,
             HolderMetadata {
                 client_id: "wallet-dev".to_string(),
-                pop_lifetime: time::Duration::minutes(5),
+                pop: ProofOfPossessionMetadata {
+                    lifetime: Duration::minutes(5),
+                    not_before: None,
+                },
             },
             UniversalResolver::default(),
             Arc::new(ReqwestClientBuilder::new().insecure().build().unwrap()),
