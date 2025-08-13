@@ -2,15 +2,20 @@ import {
   buildVciHolder,
   contextEnsuredKms,
   contextEnsuredVault,
+  Duration,
   JsIssuerDiscovery,
   Kms,
   OID4VCIHolder,
+  ProofOfPossessionMetadata,
+  ProofOfPossessionNotBefore,
+  ProofOfPossessionNotBeforeStrategy,
   ReqwestHttpClient,
   Vault,
 } from "../../..";
 
 export class OID4VCIHolderBuilder {
   private redirectUrl?: string;
+  private pop: ProofOfPossessionMetadata;
 
   constructor(
     private readonly kms: Kms,
@@ -25,6 +30,11 @@ export class OID4VCIHolderBuilder {
     return this;
   }
 
+  withPop(pop: ProofOfPossessionMetadata): this {
+    this.pop = pop;
+    return this;
+  }
+
   async build(): Promise<OID4VCIHolder> {
     return await buildVciHolder(
       contextEnsuredKms(this.kms),
@@ -33,7 +43,7 @@ export class OID4VCIHolderBuilder {
       this.issuerDiscovery,
       this.redirectUrl,
       this.httpClient,
-      undefined,
+      this.pop,
     );
   }
 }

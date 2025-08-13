@@ -61,14 +61,12 @@ pub struct JsDuration {
     pub nanoseconds: i32,
 }
 
-impl TryFrom<Duration> for JsDuration {
-    type Error = Error;
-
-    fn try_from(duration: Duration) -> Result<Self, Error> {
-        Ok(JsDuration {
+impl From<Duration> for JsDuration {
+    fn from(duration: Duration) -> Self {
+        JsDuration {
             seconds: duration.whole_seconds(),
             nanoseconds: duration.subsec_nanoseconds(),
-        })
+        }
     }
 }
 

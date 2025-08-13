@@ -5,7 +5,7 @@ use crate::nonce::JsNonceHandler;
 use crate::utils::{from_json_object, parse_url_arg};
 use crate::vault::JsVault;
 use crate::vc::JsonObject;
-use crate::vc::core::JsKeyMetadata;
+use crate::vc::core::{JsKeyMetadata, JsProofOfPossessionMetadata};
 use crate::vc::oid4vci::holder::OID4VCIHolder;
 use crate::vc::oid4vci::issuer::OID4VCIIssuer;
 use crate::vc::oid4vci::{JsDuration, JsTokenValidation};
@@ -76,7 +76,7 @@ pub async fn _build_vci_holder(
     issuer_discovery: &JsIssuerDiscovery,
     redirect_url: Option<String>,
     http_client: &ReqwestHttpClient,
-    pop_lifetime: Option<JsDuration>,
+    pop: Option<JsProofOfPossessionMetadata>,
     did_resolver: Option<JsDIDResolver>,
 ) -> Result<OID4VCIHolder> {
     let mut builder = HolderBuilder::new(
@@ -91,8 +91,8 @@ pub async fn _build_vci_holder(
         builder = builder.with_redirect_url(url.to_string());
     }
 
-    if let Some(duration) = pop_lifetime {
-        builder = builder.with_pop_lifetime(duration.try_into()?);
+    if let Some(js_pop) = pop {
+        builder = builder.with_pop(js_pop.try_into()?);
     }
 
     if let Some(did_resolver) = did_resolver {

@@ -833,7 +833,7 @@ mod tests {
     use crate::utils::test_utils::{failed_signer_key, no_jwk_key};
     use crate::vc;
     use crate::vc::claims::{Claim, Claims};
-    use crate::vc::core::KeyMetadata;
+    use crate::vc::core::{KeyMetadata, ProofOfPossessionMetadata};
     use crate::vc::oid4vp::protocol_error::ErrorType;
     use crate::vc::oid4vp::tests::fixtures::single_presentation::sd_jwt::{
         AUTH_REQUEST, AUTH_REQUEST_JWT, AUTH_REQUEST_WITH_NON_URL_SCHEME,
@@ -1247,7 +1247,10 @@ mod tests {
             InMemVault::new(),
             vc::core::HolderMetadata {
                 client_id: "client_id".to_string(),
-                pop_lifetime: time::Duration::minutes(5),
+                pop: ProofOfPossessionMetadata {
+                    lifetime: time::Duration::minutes(5),
+                    not_before: None,
+                },
             },
             UniversalResolver::default(),
             http_client.clone(),
@@ -1300,7 +1303,10 @@ mod tests {
             InMemVault::new(),
             vc::core::HolderMetadata {
                 client_id: "client_id".to_string(),
-                pop_lifetime: time::Duration::minutes(5),
+                pop: ProofOfPossessionMetadata {
+                    lifetime: time::Duration::minutes(5),
+                    not_before: None,
+                },
             },
             UniversalResolver::default(),
             http_client.clone(),

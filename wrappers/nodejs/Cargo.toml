@@ -9,7 +9,7 @@ crate-type = ["cdylib"]
 
 [dependencies]
 # Default enable napi4 feature, see https://nodejs.org/api/n-api.html#node-api-version-matrix
-napi = { version = "2.16.11", default-features = false, features = ["napi4", "async", "serde-json"] }
+napi = { version = "2.16.11", default-features = false, features = ["napi5", "async", "serde-json", "chrono_date"] }
 napi-derive = "2.16.12"
 agent-sdk = { path = "../.." }
 serde = { version = "1.0.204", features = ["derive"] }

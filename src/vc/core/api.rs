@@ -96,8 +96,19 @@ pub struct KeyMetadata {
 #[derive(Debug, PartialEq, Clone)]
 pub struct HolderMetadata {
     pub client_id: String,
-    pub pop_lifetime: Duration,
+    pub pop: ProofOfPossessionMetadata,
 }
+
+/// A metadata for Proof of Possession generation.
+#[derive(Debug, PartialEq, Clone, Copy)]
+pub struct ProofOfPossessionMetadata {
+    /// Proof of possession lifetime
+    pub lifetime: Duration,
+    /// Proof of possession valid not before generation
+    pub not_before: Option<ProofOfPossessionNotBefore>,
+}
+
+pub type ProofOfPossessionNotBefore = pop::ProofOfPossessionNotBefore;
 
 /// A format-specific data for the `CredentialDefinition`.
 ///

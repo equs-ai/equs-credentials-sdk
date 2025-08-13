@@ -3,8 +3,8 @@ use crate::http::{HttpClient, HttpError, HttpSnafu};
 use crate::nonce::NonceHandler;
 use crate::reqwest::ReqwestClient;
 use crate::reqwest::builder::ReqwestClientBuilder;
-use crate::vc::core::DEFAULT_POP_LIFETIME_MINUTES;
 use crate::vc::core::KeyMetadata;
+use crate::vc::core::{DEFAULT_POP_LIFETIME_MINUTES, ProofOfPossessionMetadata};
 use crate::vc::oid4vp as api;
 use crate::vc::oid4vp::holder::HolderService;
 use crate::vc::oid4vp::verifier::VerifierService;
@@ -233,7 +233,7 @@ where
     vault: V,
     did_resolver: UniversalResolver,
     http_client: Arc<HC>,
-    pop_lifetime: time::Duration,
+    pop: ProofOfPossessionMetadata,
     nonce_handler: Option<Box<dyn NonceHandler>>,
     _marker: PhantomData<KH>,
 }
@@ -270,7 +270,10 @@ where
             http_client: Arc::new(http_client),
             did_resolver: UniversalResolver::default(),
             wallet_metadata: None,
-            pop_lifetime: Duration::minutes(DEFAULT_POP_LIFETIME_MINUTES),
+            pop: ProofOfPossessionMetadata {
+                lifetime: Duration::minutes(DEFAULT_POP_LIFETIME_MINUTES),
+                not_before: None,
+            },
             _marker: Default::default(),
             nonce_handler: None,
         }
@@ -301,17 +304,17 @@ where
         self
     }
 
-    /// Use a specific `pop_lifetime`.
+    /// Use a specific `Proof of Possession` generation config.
     ///
     /// # Arguments
     ///
-    /// * `pop_lifetime` - The expiration for Proof Of Possession
+    /// * `pop` - Proof Of Possession generation config
     #[instrument(
         level = Level::TRACE,
         skip(self),
     )]
-    pub fn with_pop_lifetime(mut self, pop_lifetime: Duration) -> Self {
-        self.pop_lifetime = pop_lifetime;
+    pub fn with_pop(mut self, pop: ProofOfPossessionMetadata) -> Self {
+        self.pop = pop;
         self
     }
 
@@ -371,7 +374,7 @@ where
             vault: self.vault,
             did_resolver: self.did_resolver,
             http_client: Arc::new(http_client),
-            pop_lifetime: self.pop_lifetime,
+            pop: self.pop,
             _marker: Default::default(),
             nonce_handler: self.nonce_handler,
         }
@@ -398,7 +401,7 @@ where
             vault: self.vault,
             did_resolver: self.did_resolver,
             http_client: self.http_client,
-            pop_lifetime: self.pop_lifetime,
+            pop: self.pop,
             _marker: Default::default(),
             nonce_handler: Some(nonce_handler),
         }
@@ -421,7 +424,7 @@ where
     pub async fn build(self) -> Result<impl api::Holder, Error> {
         let holder_metadata = vc::core::HolderMetadata {
             client_id: self.client_id,
-            pop_lifetime: self.pop_lifetime,
+            pop: self.pop,
         };
 
         debug!(?holder_metadata);

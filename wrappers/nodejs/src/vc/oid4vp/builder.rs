@@ -5,8 +5,7 @@ use crate::nonce::JsNonceHandler;
 use crate::utils::from_json_object;
 use crate::vault::JsVault;
 use crate::vc::JsonObject;
-use crate::vc::core::JsKeyMetadata;
-use crate::vc::oid4vci::JsDuration;
+use crate::vc::core::{JsKeyMetadata, JsProofOfPossessionMetadata};
 use crate::vc::oid4vp::holder::InnerOID4VPHolder;
 use crate::vc::oid4vp::verifier::InternalOID4VPVerifier;
 use agent_sdk::vc::core::KeyMetadata;
@@ -60,7 +59,7 @@ pub async fn _build_vp_holder(
     client_id: String,
     #[napi(ts_arg_type = "WalletMetadata | null | undefined")] wallet_metadata: Option<JsonObject>,
     http_client: &ReqwestHttpClient,
-    pop_lifetime: Option<JsDuration>,
+    pop: Option<JsProofOfPossessionMetadata>,
     did_resolver: Option<JsDIDResolver>,
     nonce_handler: Option<JsNonceHandler>,
 ) -> Result<InnerOID4VPHolder> {
@@ -72,8 +71,9 @@ pub async fn _build_vp_holder(
             wallet_metadata.clone(),
         )?)?)
     }
-    if let Some(duration) = pop_lifetime {
-        builder = builder.with_pop_lifetime(duration.try_into()?);
+
+    if let Some(js_pop) = pop {
+        builder = builder.with_pop(js_pop.try_into()?);
     }
 
     if let Some(did_resolver) = did_resolver {

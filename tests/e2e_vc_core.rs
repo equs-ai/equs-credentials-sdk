@@ -13,7 +13,6 @@ use agent_sdk::kms::Kms;
 use agent_sdk::nonce::NonceHandler;
 use agent_sdk::reqwest::builder::ReqwestClientBuilder;
 use agent_sdk::vc::VCStatusesData;
-use agent_sdk::vc::core::IssuerService;
 use agent_sdk::vc::core::VerifierService;
 use agent_sdk::vc::core::status_issuer::StatusIssuerService;
 use agent_sdk::vc::core::{
@@ -21,6 +20,7 @@ use agent_sdk::vc::core::{
     PopFormat, StatusIssuer, StatusIssuerMetadata, StatusListDefinition, Verifier,
 };
 use agent_sdk::vc::core::{HolderService, KeyMetadata};
+use agent_sdk::vc::core::{IssuerService, ProofOfPossessionMetadata};
 use agent_sdk::vc::metadata::{CredentialMetadataProcessor, DefaultMetadataProcessor};
 use agent_sdk::vc::presentation_exchange::InputDescriptor;
 use agent_sdk::vc::presentation_exchange::StatusSize;
@@ -497,7 +497,10 @@ async fn build_holder(kms: LocalKms) -> impl Holder {
         vault,
         HolderMetadata {
             client_id: "client_id".into(),
-            pop_lifetime: time::Duration::minutes(POP_EXP_MINUTES),
+            pop: ProofOfPossessionMetadata {
+                lifetime: time::Duration::minutes(POP_EXP_MINUTES),
+                not_before: None,
+            },
         },
         UniversalResolver::default(),
         Arc::new(ReqwestClientBuilder::new().insecure().build().unwrap()),

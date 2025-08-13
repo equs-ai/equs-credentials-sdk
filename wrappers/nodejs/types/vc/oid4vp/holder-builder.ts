@@ -4,7 +4,6 @@ import {
   contextEnsuredNonceHandler,
   contextEnsuredVault,
   DIDResolver,
-  Duration,
   Kms,
   NonceHandler,
   OID4VPHolder,
@@ -15,7 +14,6 @@ import {
 
 export class OID4VPHolderBuilder {
   private walletMetadata?: WalletMetadata;
-  private popLifetime?: Duration;
   private didResolver?: DIDResolver;
   private nonceHandler?: NonceHandler;
 
@@ -51,11 +49,6 @@ export class OID4VPHolderBuilder {
     return this;
   }
 
-  withPopLifetime(popLifetime: Duration): this {
-    this.popLifetime = popLifetime;
-    return this;
-  }
-
   async build(): Promise<OID4VPHolder> {
     const holder = await buildVpHolder(
       contextEnsuredKms(this.kms),
@@ -63,7 +56,7 @@ export class OID4VPHolderBuilder {
       this.clientId,
       this.walletMetadata,
       this.httpClient,
-      this.popLifetime,
+      undefined,
       this.didResolver,
       this.nonceHandler ? contextEnsuredNonceHandler(this.nonceHandler) : null,
     );
