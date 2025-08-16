@@ -30,23 +30,23 @@ const CredentialDefinition = {
     },
   },
   vct: CredType,
-  claims: {
-    given_name: {
+  claims: [
+    {
+      path: ["given_name"],
       display: [{ name: "Name" }],
       mandatory: true,
-      value_type: "string",
     },
-    family_name: {
+    {
+      path: ["family_name"],
       display: [{ name: "Surname" }],
       mandatory: true,
-      value_type: "string",
     },
-    dob: {
+    {
+      path: ["dob"],
       display: [{ name: "Date of birth" }],
       mandatory: true,
-      value_type: "number",
     },
-  },
+  ],
 } satisfies OID4VCICredentialMetadata;
 
 export const ISSUER_METADATA: OID4VCIIssuerMetadata = {
@@ -86,23 +86,23 @@ export const CRED_DEF_METADATA: OID4VCICredentialMetadata = {
   format: CredentialFormats.VCSDJWT,
   credential_signing_alg_values_supported: [JwkAlgorithm.ES256],
   vct: "SD_JWT_cred",
-  claims: {
-    given_name: {
-      mandatory: true,
-      value_type: "string",
-      display: [{ name: "Name" }],
-    },
-    dob: {
-      mandatory: true,
-      value_type: "number",
-      display: [{ name: "Date of birth" }],
-    },
-    family_name: {
-      mandatory: true,
-      value_type: "string",
-      display: [{ name: "Surname" }],
-    },
-  },
+    claims: [
+      {
+        path: ["given_name"],
+        display: [{ name: "Name" }],
+        mandatory: true,
+      },
+      {
+        path: ["family_name"],
+        display: [{ name: "Surname" }],
+        mandatory: true,
+      },
+      {
+        path: ["dob"],
+        display: [{ name: "Date of birth" }],
+        mandatory: true,
+      },
+    ],
 };
 
 export const PROOF_JWT =
