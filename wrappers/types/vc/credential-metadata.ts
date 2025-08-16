@@ -1,10 +1,9 @@
 import { CredentialFormats, JwkAlgorithm } from "./common";
-import { CredentialMetadataDisplay, CredentialSubjectClaims, KeyProofType, ProofType } from "./issuer-metadata";
+import { CredentialMetadataDisplay, CredentialSubjectClaim, KeyProofType, ProofType } from "./issuer-metadata";
 
 interface CredentialMetadataSdJwtVc extends CredentialMetadataCommon {
   format: CredentialFormats.VCSDJWT;
   vct: string;
-  claims?: CredentialSubjectClaims;
 }
 
 
@@ -15,6 +14,7 @@ interface CredentialMetadataCommon {
   credential_signing_alg_values_supported?: Array<JwkAlgorithm>;
   proof_types_supported?: Partial<Record<KeyProofType, ProofType>>;
   display?: Array<CredentialMetadataDisplay>;
+  claims?: Array<CredentialSubjectClaim>;
 
   [key: string]: unknown;
 }

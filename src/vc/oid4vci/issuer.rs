@@ -18,6 +18,7 @@ use crate::vc::oid4vci::{
 use crate::vc::{Credential, HasVCFormat, oid4vci as api, pop};
 use async_trait::async_trait;
 use oauth2::Scope;
+use oid4vci::core::profiles::claims::ClaimPathPointer;
 use oid4vci::core::profiles::{
     CoreProfilesCredentialConfiguration, CoreProfilesCredentialResponseType,
 };
@@ -246,9 +247,9 @@ where
             .ok_or_else(|| {
                 ProtocolSnafu::new(
                     ErrorType::InvalidCredentialRequest,
-                    format!("Credential configuration with 'credential_configuration_id' = {} is not found in the supported credential configurations metadata", **cred_conf_id)
+                    format!("Credential configuration with 'credential_configuration_id' = {} is not found in the supported credential configurations metadata", **cred_conf_id),
                 ).build()
-        })?;
+            })?;
 
         Ok((cred_conf.id().to_string().to_owned(), cred_conf.to_owned()))
     }
@@ -357,7 +358,6 @@ where
                     ),
                 ),
             );
-
             return Ok(());
         }
 
@@ -378,31 +378,34 @@ where
         let supported_claims = match cred_metadata.profile_specific_fields() {
             CoreProfilesCredentialConfiguration::VcSdJwt(metadata) => {
                 debug!(resolved_credential_metadata = ?metadata);
+                let well_known = &[VCT_CLAIM, NBF_CLAIM, IAT_CLAIM, EXP_CLAIM];
+                let mut json_claims =
+                    Vec::with_capacity(metadata.claims().len() + well_known.len());
 
-                match metadata.claims() {
-                    Some(claims) => {
-                        let mut supported: Vec<&str> = claims.keys().map(|k| k.as_str()).collect();
-                        supported.extend_from_slice(&[VCT_CLAIM, NBF_CLAIM, IAT_CLAIM, EXP_CLAIM]);
-
-                        supported
+                for claim in metadata.claims() {
+                    if let Some(ClaimPathPointer::ElementKey(key)) = claim.path().0.first() {
+                        json_claims.push(key.as_str());
                     }
-
-                    _ => return Ok(()),
                 }
+                json_claims.extend_from_slice(well_known);
+
+                json_claims
             }
             CoreProfilesCredentialConfiguration::LdpVc(metadata) => {
                 debug!(resolved_credential_metadata = ?metadata);
+                let well_known = &["type"];
+                let mut json_claims =
+                    Vec::with_capacity(metadata.claims().len() + well_known.len());
 
-                let mut supported: Vec<&str> = metadata
-                    .credential_definition()
-                    .credential_subject()
-                    .keys()
-                    .map(|k| k.as_str())
-                    .collect();
+                for claim in metadata.claims() {
+                    // The second pointer is taken since "credentialSubject" goes first.
+                    if let Some(ClaimPathPointer::ElementKey(key)) = claim.path().0.get(1) {
+                        json_claims.push(key.as_str());
+                    }
+                }
+                json_claims.extend_from_slice(well_known);
 
-                supported.push("type");
-
-                supported
+                json_claims
             }
             _ => ProtocolSnafu::new(
                 ErrorType::UnsupportedCredentialFormat,
@@ -506,7 +509,7 @@ where
             Err(vc::core::Error::ProofFormatNotSupported { format }) =>
                 ProtocolSnafu::new(
                     ErrorType::InvalidProof,
-                    format!("proof of possession with '{format}' format is not supported. {INVALID_PROOF_ERR_DESC}")
+                    format!("proof of possession with '{format}' format is not supported. {INVALID_PROOF_ERR_DESC}"),
                 )
                     .fail()?,
             _ => result.context(VCSnafu)?,
@@ -1538,7 +1541,7 @@ mod tests {
                     CRED_DEF_ID: {
                     "format": "dc+sd-jwt",
                     "vct": "SD_JWT_cred",
-                    "claims": {},
+                    "claims": [],
                     },
                 },
             }
@@ -1557,7 +1560,7 @@ mod tests {
                     "format": "dc+sd-jwt",
                     "vct": "SD_JWT_cred",
                     "scope": "fake_scope",
-                    "claims": {},
+                    "claims": [],
                     },
                 },
             }

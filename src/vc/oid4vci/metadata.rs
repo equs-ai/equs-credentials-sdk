@@ -1,8 +1,9 @@
 use crate::crypto::{Alg, AlgNotSupportedSnafu};
 use crate::vc::core::{CredentialDefinition, CredentialDefinitionData, KeyMetadata};
 use crate::vc::{HasVCFormat, VCFormat, pop};
-use crate::{crypto, utils, vc};
+use crate::{crypto, vc};
 use common_macros::DebugError;
+use oid4vci::core::profiles::claims::{ClaimPathPointer, CredentialConfigurationClaim};
 use oid4vci::core::profiles::{
     CoreProfilesCredentialConfiguration, CoreProfilesCredentialResponseType,
 };
@@ -12,7 +13,6 @@ use oid4vci::types::CredentialConfigurationId;
 use snafu::{Location, ResultExt, Snafu};
 use std::collections::HashMap;
 use std::fmt::Debug;
-use std::ops::Deref;
 use std::str::FromStr;
 use time::Duration;
 use tracing::{Level, instrument, trace};
@@ -148,20 +148,29 @@ fn sd_jwt_protocol_data(
     metadata: &oid4vci::core::profiles::vc_sd_jwt::CredentialConfiguration,
     cred_lifetime: Duration,
 ) -> CredentialDefinitionData {
-    let mut disclosures = vec![];
-
-    for (k, v) in metadata.claims().unwrap_or(&HashMap::new()) {
-        let parent_key = format!("$.{}", k.to_owned());
-        disclosures.push(parent_key.clone());
-        let json = serde_json::to_value(v.deref().to_owned()).unwrap_or(serde_json::Value::Null);
-        utils::serde::accumulate_claim_names(&json, parent_key, &mut disclosures);
-    }
-
     CredentialDefinitionData::SdJwt {
         vct: metadata.vct().to_owned(),
-        disclosures,
+        disclosures: map_to_json_paths(metadata.claims()),
         lifetime: cred_lifetime,
     }
+}
+
+fn map_to_json_paths(claims: &Vec<CredentialConfigurationClaim>) -> Vec<String> {
+    let mut paths = Vec::with_capacity(claims.len());
+
+    for claim in claims {
+        let mut jp = "$".to_owned();
+        for path_pointer in claim.path().0.iter() {
+            match path_pointer {
+                ClaimPathPointer::ElementKey(key) => jp = format!("{jp}.{key}"),
+                ClaimPathPointer::ElementIndex(idx) => jp = format!("{jp}[{idx}]"),
+                ClaimPathPointer::AllElements => jp = format!("{jp}[*]"),
+            }
+        }
+        paths.push(jp);
+    }
+
+    paths
 }
 
 #[instrument(level = Level::TRACE, ret())]
@@ -433,9 +442,9 @@ mod tests {
                 }
             },
             "vct": "SD_JWT_cred",
-            "claims": {
-                "given_name": {}
-            }
+            "claims": [
+                { "path": ["given_name"] }
+            ]
         }));
 
         cred_def.unwrap()
@@ -448,7 +457,6 @@ mod tests {
             "credential_definition": {
                 "@context": [],
                 "type": [],
-                "credential_subject": {},
             },
         }));
 

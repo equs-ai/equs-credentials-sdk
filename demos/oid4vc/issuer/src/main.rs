@@ -632,25 +632,22 @@ fn sample_issuer_metadata(iss_url: &str, authz_url: &str) -> IssuerMetadata {
                 }
               },
               "vct": "https://credentials.example.com/identity_credential_1",
-              "claims": {
-                "given_name": {},
-                "age": {},
-                "age_over_18": {},
-                "street": {},
-                "email": {
-                            "personal": {},
-                            "work": {}
-                        },
-                "username": {},
-                "postal_code": {"codes": [{}, {}]},
-                "locality": {},
-                "region": {},
-                "birthdate": {},
-                "gender": {},
-                "country": {},
-                "family_name": {},
-                "country": {},
-              }
+              "claims": [
+               { "path": ["given_name"] },
+               { "path": ["family_name"] },
+               { "path": ["age"] },
+               { "path": ["age_over_18"] },
+               { "path": ["street"] },
+               { "path": ["email", "personal"] },
+               { "path": ["email", "work"] },
+               { "path": ["username"] },
+               { "path": ["postal_code", "codes"] },
+               { "path": ["locality"] },
+               { "path": ["region"] },
+               { "path": ["birthdate"] },
+               { "path": ["gender"] },
+               { "path": ["country"] },
+              ]
             },
             JSON_LD_V1_CRED_DEF: {
                 "format": "ldp_vc",
@@ -678,18 +675,18 @@ fn sample_issuer_metadata(iss_url: &str, authz_url: &str) -> IssuerMetadata {
                     "type": [
                         "VerifiableCredential",
                         "PermanentResidentCard"
-                    ],
-                    "credentialSubject": {
-                        "givenName": {},
-                        "familyName": {},
-                        "gender": {},
-                        "birthDate": {},
-                        "birthCountry": {},
-                        "commuterClassification": {},
-                        "residentSince": {},
-                        "gpa": {}
-                    }
+                    ]
                 },
+                "claims": [
+                    { "path": ["credentialSubject", "givenName"] },
+                    { "path": ["credentialSubject", "familyName"] },
+                    { "path": ["credentialSubject", "gender"] },
+                    { "path": ["credentialSubject", "birthDate"] },
+                    { "path": ["credentialSubject", "birthCountry"] },
+                    { "path": ["credentialSubject", "commuterClassification"] },
+                    { "path": ["credentialSubject", "residentSince"] },
+                    { "path": ["credentialSubject", "gpa"] }
+                ],
                 "display": [
                     {
                         "name": "University Credential",
@@ -732,12 +729,12 @@ fn sample_issuer_metadata(iss_url: &str, authz_url: &str) -> IssuerMetadata {
                     "type": [
                         "VerifiableCredential",
                         "AlumniCredential"
-                    ],
-                    "credentialSubject": {
-                        "id": {},
-                        "alumniOf": {},
-                    }
+                    ]
                 },
+                "claims": [
+                    { "path": ["credentialSubject", "id"] },
+                    { "path": ["credentialSubject", "alumniOf"] }
+                ],
                 "display": [
                     {
                         "name": "University Credential",

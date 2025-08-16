@@ -136,11 +136,11 @@ pub mod fixtures {
                                 },
                             },
                             "vct": "SD_JWT_cred",
-                            "claims": {
-                                "given_name": {},
-                                "family_name": {},
-                                "dob": {},
-                            },
+                            "claims": [
+                                { "path": ["given_name"] },
+                                { "path": ["family_name"] },
+                                { "path": ["dob"] },
+                            ],
                         },
                     },
                 }
@@ -180,7 +180,6 @@ pub mod fixtures {
                             "credential_definition": {
                                 "@context": [],
                                 "type": [],
-                                "credential_subject": {},
                             },
                         },
                     },
@@ -220,13 +219,13 @@ pub mod fixtures {
                         "type": [
                             "VerifiableCredential",
                         ],
-                        "credentialSubject": {
-                                "vct": {},
-                                "given_name": {},
-                                "family_name": {},
-                                "dob": {},
-                        }
                     },
+                    "claims": [
+                        { "path": ["credentialSubject", "vct"] },
+                        { "path": ["credentialSubject", "given_name"] },
+                        { "path": ["credentialSubject", "family_name"] },
+                        { "path": ["credentialSubject", "dob"] },
+                    ],
                     "display": [
                         {
                             "name": "University Credential",
@@ -328,11 +327,11 @@ pub mod fixtures {
                 }
             },
             "vct": "SD_JWT_cred",
-            "claims": {
-                "given_name": {},
-                "family_name": {},
-                "dob": {}
-            }
+            "claims": [
+                { "path": ["given_name"] },
+                { "path": ["family_name"] },
+                { "path": ["dob"] },
+            ]
         }));
 
         cred_def.unwrap()

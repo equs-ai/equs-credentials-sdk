@@ -68,23 +68,23 @@ export class Utils {
             },
           },
           vct: this.credType,
-          claims: {
-            given_name: {
+          claims: [
+            {
+              path: ["given_name"],
               display: [{ name: "Name" }],
               mandatory: true,
-              value_type: "string",
             },
-            family_name: {
+            {
+              path: ["family_name"],
               display: [{ name: "Surname" }],
               mandatory: true,
-              value_type: "string",
             },
-            dob: {
+            {
+              path: ["dob"],
               display: [{ name: "Date of birth" }],
               mandatory: true,
-              value_type: "number",
             },
-          },
+          ],
         },
       },
     };
@@ -117,23 +117,23 @@ export class Utils {
       format: CredentialFormats.VCSDJWT,
       credential_signing_alg_values_supported: [JwkAlgorithm.ES256],
       vct: "SD_JWT_cred",
-      claims: {
-        given_name: {
+      claims: [
+        {
+          path: ["given_name"],
           mandatory: true,
-          value_type: "string",
           display: [{ name: "Name" }],
         },
-        dob: {
+        {
+          path: ["dob"],
           mandatory: true,
-          value_type: "number",
           display: [{ name: "Date of birth" }],
         },
-        family_name: {
+        {
+          path: ["family_name"],
           mandatory: true,
-          value_type: "string",
           display: [{ name: "Surname" }],
         },
-      },
+      ],
     };
   }
 

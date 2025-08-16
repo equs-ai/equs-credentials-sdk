@@ -48,18 +48,16 @@ export interface ProofType {
 }
 
 /**
- * Defines claims about the credential subject
+ * Defines claim about the credential subject
  *
+ * @property {string | number | null} [path] Claim path
  * @property {boolean} [mandatory] Whether the claim is required
- * @property {string} [value_type] The data type of the claim
  * @property {Array<IssuerMetadataDisplay>} [display] Display information for the claim
  */
-export interface CredentialSubjectClaims {
+export interface CredentialSubjectClaim {
+  path: Array<string | number | null>;
   mandatory?: boolean;
-  value_type?: string;
   display?: Array<IssuerMetadataDisplay>;
-
-  [key: string]: unknown;
 }
 
 /**

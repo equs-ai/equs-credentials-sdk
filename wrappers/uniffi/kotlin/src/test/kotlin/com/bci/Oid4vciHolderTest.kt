@@ -46,23 +46,23 @@ class HolderVCITest {
                         }
                       },
                       "vct": "SD_JWT_cred",
-                      "claims": {
-                        "given_name": {
+                      "claims": [
+                        {
+                          "path": ["given_name"],
                           "display": [{ "name": "Name" }],
-                          "mandatory": true,
-                          "value_type": "string"
+                          "mandatory": true
                         },
-                        "family_name": {
+                        {
+                          "path": ["family_name"],
                           "display": [{ "name": "Surname" }],
-                          "mandatory": true,
-                          "value_type": "string"
+                          "mandatory": true
                         },
-                        "dob": {
+                        {
+                          "path": ["dob"],
                           "display": [{ "name": "Date of birth" }],
-                          "mandatory": true,
-                          "value_type": "number"
+                          "mandatory": true
                         }
-                      }  
+                      ]
                     }
                   }
                 }

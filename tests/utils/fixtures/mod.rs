@@ -71,11 +71,11 @@ pub fn sample_issuer_metadata() -> IssuerMetadata {
                 }
               },
               "vct": "SD_JWT_cred_1",
-              "claims": {
-                "given_name": {},
-                "family_name": {},
-                "dob": {}
-              }
+              "claims": [
+                { "path": ["given_name"] },
+                { "path": ["family_name"] },
+                { "path": ["dob"] },
+              ]
             },
             "SD_JWT_cred_2": {
               "format": "dc+sd-jwt",
@@ -94,11 +94,11 @@ pub fn sample_issuer_metadata() -> IssuerMetadata {
                 }
               },
               "vct": "SD_JWT_cred_2",
-              "claims": {
-                "given_name": {},
-                "family_name": {},
-                "dob": {}
-              }
+              "claims": [
+                { "path": ["given_name"] },
+                { "path": ["family_name"] },
+                { "path": ["dob"] },
+              ]
             },
             "LDPVC_cred_1": {
               "scope": SCOPE.to_owned(),
@@ -119,17 +119,17 @@ pub fn sample_issuer_metadata() -> IssuerMetadata {
                   "VerifiableCredential",
                   "PermanentResidentCard"
                 ],
-                "credentialSubject": {
-                  "givenName": {},
-                  "residentSince": {},
-                  "birthDate": {},
-                  "birthCountry": {},
-                  "familyName": {},
-                  "gender": {},
-                  "commuterClassification": {},
-                  "gpa": {}
-                }
-              }
+              },
+              "claims": [
+                { "path": ["credentialSubject", "givenName"] },
+                { "path": ["credentialSubject", "residentSince"] },
+                { "path": ["credentialSubject", "birthDate"] },
+                { "path": ["credentialSubject", "birthCountry"] },
+                { "path": ["credentialSubject", "familyName"] },
+                { "path": ["credentialSubject", "gender"] },
+                { "path": ["credentialSubject", "commuterClassification"] },
+                { "path": ["credentialSubject", "gpa"] },
+              ]
             }
           }
         }
