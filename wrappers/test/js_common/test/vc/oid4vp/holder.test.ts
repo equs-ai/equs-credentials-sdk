@@ -20,6 +20,7 @@ import {
   AUTH_REQUEST,
   AUTH_REQUEST_FAKE,
   AUTH_REQUEST_JWT,
+  AUTH_REQUEST_WITH_DIRECT_POST_JWT,
   PRESENTATION_DEFINITION_FAKE,
   PRESENTATION_SUBMISSION,
   STATE,
@@ -96,6 +97,15 @@ describe("OID4VP Holder: ", () => {
 
     await vault.storeCredential(credential, metadata);
     const result = await holder.presentCredentialsAuto(new AuthorizationRequest(AUTH_REQUEST), {});
+
+    expect(result).toBeFalsy();
+  });
+
+  it("present credentials auto with direct post jwt", async () => {
+    await mockServer.forPost("/response").thenCallback(async (request) => await handleRequestForDirectPostJwt(request));
+
+    await vault.storeCredential(credential, metadata);
+    const result = await holder.presentCredentialsAuto(new AuthorizationRequest(AUTH_REQUEST_WITH_DIRECT_POST_JWT), {});
 
     expect(result).toBeFalsy();
   });
@@ -217,6 +227,13 @@ async function handleRequest(request: CompletedRequest): Promise<{ statusCode: 2
 
   expect(form_data.state).toEqual(STATE);
 
+  return { statusCode: 200, body: "" };
+}
+
+async function handleRequestForDirectPostJwt(request: CompletedRequest): Promise<{ statusCode: 200; body: "" }> {
+  const form_data = await request.body.getFormData();
+  expect(form_data.response);
+  expect((form_data.response as string).startsWith("ey"));
   return { statusCode: 200, body: "" };
 }
 

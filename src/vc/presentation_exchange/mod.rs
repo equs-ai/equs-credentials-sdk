@@ -627,10 +627,10 @@ pub fn validate_credential(
 ) -> crate::vault::Result<Option<Vec<FindVCsFailReason>>> {
     let claims = credential.parse_claims().context(ClaimsParsingSnafu)?;
 
-    if let Some(format) = &presentation_input.format {
-        if credential.format().to_string().cmp(format).is_ne() {
-            UnsupportedCredentialFormatSnafu { format }.fail()?
-        }
+    if let Some(format) = &presentation_input.format
+        && credential.format().to_string().cmp(format).is_ne()
+    {
+        UnsupportedCredentialFormatSnafu { format }.fail()?
     }
 
     let mut reasons_of_failure: Vec<FindVCsFailReason> = vec![];

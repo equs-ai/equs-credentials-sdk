@@ -22,6 +22,18 @@ pub enum InternalError {
         location: Location,
         source: anyhow::Error,
     },
+    #[snafu(display("Authorization Response mode unsupported"))]
+    AuthorizationResponseUnsupportedMode {
+        details: String,
+        #[snafu(implicit)]
+        location: Location,
+    },
+    #[snafu(display("Authorization Response jwe decryption error"))]
+    AuthorizationResponseDecryption {
+        details: String,
+        #[snafu(implicit)]
+        location: Location,
+    },
     #[snafu(display("Credential not found"))]
     CredentialNotFound,
     #[snafu(display("Please provide the metadata required to generate the ID token"))]
@@ -134,6 +146,12 @@ pub enum InternalError {
     #[snafu(display("DID url buf resolution error"))]
     DidUrlResolution {
         source: InvalidDIDURL<String>,
+        #[snafu(implicit)]
+        location: Location,
+    },
+    #[snafu(display("JWE error"))]
+    JWE {
+        details: String,
         #[snafu(implicit)]
         location: Location,
     },

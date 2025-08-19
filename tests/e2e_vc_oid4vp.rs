@@ -9,10 +9,10 @@ use agent_sdk::inmem::vault::InMemVault;
 use agent_sdk::vault::Vault;
 use agent_sdk::vc::VCFormatsAPI;
 use agent_sdk::vc::oid4vp::{
-    AuthResponseOptions, AuthorizationResponseMetadata, ClientMetadata, IdTokenMetadata,
-    PassAuthRequestObject, ResolvedPresentationQuery, ResponseMode, ResponseType,
+    AuthResponseOptions, AuthorizationResponse, AuthorizationResponseMetadata, ClientMetadata,
+    IdTokenMetadata, PassAuthRequestObject, ResolvedPresentationQuery, ResponseMode, ResponseType,
 };
-use agent_sdk::vc::oid4vp::{AuthorizationResponse, Holder};
+use agent_sdk::vc::oid4vp::{AuthorizationResponseObject, Holder};
 use agent_sdk::vc::oid4vp::{HolderBuilder, PresentationSession};
 use agent_sdk::vc::oid4vp::{Verifier, VerifierBuilder};
 use agent_sdk::vc::{Credential, CredentialMetadata};
@@ -296,14 +296,17 @@ fn prepare_http_client_for_holder(
             let state = form.get("state").cloned();
             assert_eq!(state.clone().unwrap(), STATE);
 
-            let auth_response = AuthorizationResponse {
+            let auth_response = AuthorizationResponseObject {
                 vp_token,
                 presentation_submission,
                 id_token,
                 state,
             };
 
-            let result = executor::block_on(verifier.verify_presentation(&auth_response, &session));
+            let result = executor::block_on(
+                verifier
+                    .verify_presentation(&AuthorizationResponse::Plain(auth_response), &session),
+            );
             let claims = result.unwrap();
             println!(
                 "Presentation Claims: {:?}",

@@ -19,7 +19,7 @@ impl Display for LogMessage<'_> {
     }
 }
 
-pub(crate) fn sanitize_log_msg(message: &str) -> LogMessage {
+pub(crate) fn sanitize_log_msg(message: &str) -> LogMessage<'_> {
     let encoding_not_required = message.chars().all(is_character_allowed);
 
     if encoding_not_required {

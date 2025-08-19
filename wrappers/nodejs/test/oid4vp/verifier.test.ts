@@ -1,6 +1,8 @@
 import {
   _PresentationSession,
   AuthorizationResponse,
+  AuthorizationResponseObject,
+  AuthorizationResponseType,
   AuthResponseOptions,
   InMemKms,
   LocalNonceHandler,
@@ -78,12 +80,16 @@ describe("OID4VP Verifier: ", () => {
       authorizationRequestJwt: "",
     };
 
-    const auth_response: AuthorizationResponse = {
+    const auth_response_object: AuthorizationResponseObject = {
       vpToken: VP,
       presentationSubmission: PRESENTATION_SUBMISSION,
       state: STATE,
     };
 
+    const auth_response: AuthorizationResponse = {
+      type: AuthorizationResponseType.Plain,
+      object: auth_response_object,
+    };
     const claims = await verifier.verifyPresentation(auth_response, session);
 
     expect(claims).toEqual(CLAIMS);

@@ -30,6 +30,7 @@ val presentationDefinitionJsonFake = Json.parseToJsonElement(
 
 //
 val clientMetadata = Json.parseToJsonElement("""{"vp_formats":{"dc+sd-jwt":{"alg":["EdDSA","ES256"]}}}""").toString()
+val clientMetadataWithDirectPostJwt = Json.parseToJsonElement("""{"vp_formats":{"dc+sd-jwt":{"alg":["EdDSA","ES256"]}},"jwks":{"keys":[{"kid":"ecdsa-kid","kty":"EC","crv":"P-256","x":"SSnPfyVhQgcU9Aaynqgi6QGhrq7K7WFEC0mAvpHG4TM","y":"rYQ5mLQLTs95WLBKKA8R5IjMTXjX13iZnzazsVectRY","alg":"ES256"}]}}""").toString()
 const val CLIENT_ID = "wallet-dev"
 const val REQUEST_URI =
     "openid4vp://?client_id=did%3Akey%3AzDnaeeTG88wpPhMzuDRvLRTTyNMyJip5e6TLmsjyvPiSYUFk7&request_uri=http%3A%2F%2Flocalhost%3A9001"
@@ -40,6 +41,17 @@ val authRequest = AuthorizationRequest(
     responseType = "vp_token",
     responseMode = "direct_post",
     responseUri = "http://localhost:9001/response",
+    nonce = "YztANglRdmP4ChxsrcS8UcGYoPWwkgiUImkBrQmgWkU",
+    state = "eea7b48e-1866-41b4-beae-03b95d41670c"
+)
+
+val authRequestWithDirectPostJwt = AuthorizationRequest(
+    clientId = "did:key:zDnaeeTG88wpPhMzuDRvLRTTyNMyJip5e6TLmsjyvPiSYUFk7",
+    clientMetadata = clientMetadataWithDirectPostJwt,
+    presentationDefinition = presentationDefinitionJson,
+    responseType = "vp_token",
+    responseMode = "direct_post.jwt",
+    responseUri = "http://localhost:9003/response",
     nonce = "YztANglRdmP4ChxsrcS8UcGYoPWwkgiUImkBrQmgWkU",
     state = "eea7b48e-1866-41b4-beae-03b95d41670c"
 )
@@ -140,6 +152,28 @@ class HolderVPTest {
         )
         assertNull(redirectUri)
     }
+
+    @Test
+    fun testPresentCredentialsAutoWithDirectPostJwt() = runTest {
+
+        // We need to check the request for this test. So we need a new mock server
+        val customMockServer = MockWebServer()
+        customMockServer.start(9003)
+        customMockServer.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setBody("")
+                .setHeader("content-type", "text/plain")
+        )
+        val redirectUri = holder.presentCredentialsAuto(
+            authRequestWithDirectPostJwt,
+            AuthorizationResponseMetadata(claimsToExclude = null, idTokenMetadata = null)
+        )
+        val request = customMockServer.takeRequest()
+        assert(request.body.readUtf8().startsWith("response=ey"))
+        assertNull(redirectUri)
+    }
+
 
     @Test
     fun testPresentCredentials() = runTest {

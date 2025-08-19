@@ -1,5 +1,7 @@
 import {
   AuthorizationResponse,
+  AuthorizationResponseObject,
+  AuthorizationResponseType,
   AuthResponseOptions,
   enableLogs,
   InMemKms,
@@ -112,10 +114,15 @@ async function main(): Promise<void> {
           "presentation_submission does not exist in request body!",
         );
 
-      const authorizationResponse: AuthorizationResponse = {
+      const authorizationResponseObject: AuthorizationResponseObject = {
         vpToken: JSON.parse(vpToken),
         presentationSubmission: JSON.parse(presentationSubmission),
         state: req.body.state,
+      };
+
+      const authorizationResponse: AuthorizationResponse = {
+        type: AuthorizationResponseType.Plain,
+        object: authorizationResponseObject,
       };
 
       const session = appState.presentationSessionStorage.get(SESSION_ID);

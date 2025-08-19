@@ -2,7 +2,7 @@ use aries_askar::entry::{Entry, EntryKind, EntryTag, TagFilter};
 use aries_askar::storage::backend::OrderBy;
 use async_trait::async_trait;
 use snafu::ensure;
-use tracing::{instrument, Level};
+use tracing::{Level, instrument};
 use uuid::Uuid;
 
 use crate::AskarStorage;

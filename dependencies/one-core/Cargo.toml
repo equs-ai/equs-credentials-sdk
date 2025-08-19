@@ -1,0 +1,22 @@
+[package]
+edition = "2024"
+name = "one-core"
+publish = false
+version = "0.1.0"
+
+[dependencies]
+async-trait = { version = "0.1" }
+bs58 = { version = "0.5" }
+ct-codecs = { version = "1.1" }
+hex = { version = "0.4", features = ["serde"] }
+one-crypto = { git = "https://github.com/procivis/one-core", package = "one-crypto", rev = "edee569" }
+secrecy = { version = "0.10.3", features = ["serde"] }
+serde = { version = "1.0" }
+serde_with = { version = "3.8", features = ["json", "time_0_3"] }
+strum = { version = "0.26", features = ["derive"] }
+thiserror = { version = "2.0" }
+
+[dev-dependencies]
+mockall = { version = "0.13" }
+tokio = { version = "1.44", features = ["rt-multi-thread", "macros"] }
+similar-asserts = { version = "1.7" }

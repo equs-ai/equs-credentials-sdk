@@ -80,6 +80,29 @@ import Testing
 		}
 	}
 
+	@Test func presentCredentialsAutoWithDirectPostJwt() async throws {
+		try await confirmation("Auth Response is not received") { confirmResponse in
+			self.server["/response"] = { (request: Swifter.HttpRequest) -> Swifter.HttpResponse in
+				let body = String(bytes: request.body, encoding: String.Encoding.utf8)!
+					.removingPercentEncoding!
+
+				#expect(body.contains(Oid4vpHolderTestConstants.responseString))
+
+				confirmResponse()
+				return .ok(.text(""))
+			}
+
+			let holder = try await Oid4vpHolderTests.setupHolder()
+
+			let _ = try await holder.presentCredentialsAuto(
+				authRequest: Oid4vpHolderTestConstants.authRequestWithDirectPostJwt,
+				authResponseMetadata: AuthorizationResponseMetadata(
+					claimsToExclude: nil, idTokenMetadata: nil)
+			)
+		}
+	}
+
+
 	@Test func presentCredentials() async throws {
 		try await confirmation("Auth Response is not received") { confirmResponse in
 			self.server["/response"] = { (request: Swifter.HttpRequest) -> Swifter.HttpResponse in
@@ -343,15 +366,33 @@ enum Oid4vpHolderTestConstants {
 		}
 		"""
 
-	static let clientMetadata = """
+	static let clientMetadataForDirectPostJwt = """
 		{
-		    "vp_formats":{
-		        "dc+sd-jwt":{
-		            "alg":["EdDSA","ES256"]
-		        }
+		  "vp_formats": {
+		    "dc+sd-jwt": {
+		      "alg": [
+		        "EdDSA",
+		        "ES256"
+		      ]
 		    }
+		  },
+		  "jwks": {
+		    "keys": [
+		      {
+		        "kid": "ecdsa-kid",
+		        "kty": "EC",
+		        "crv": "P-256",
+		        "x": "SSnPfyVhQgcU9Aaynqgi6QGhrq7K7WFEC0mAvpHG4TM",
+		        "y": "rYQ5mLQLTs95WLBKKA8R5IjMTXjX13iZnzazsVectRY",
+		        "alg": "ES256"
+		      }
+		    ]
+		  }
 		}
 		"""
+	static let clientMetadata = """
+        {"vp_formats":{"dc+sd-jwt":{"alg":["EdDSA","ES256"]}}}
+        """
 
 	static let clientId = "wallet-dev"
 	static let requestUri =
@@ -368,6 +409,17 @@ enum Oid4vpHolderTestConstants {
 		responseUri: "http://localhost:9001/response",
 		state: "eea7b48e-1866-41b4-beae-03b95d41670c"
 	)
+	static let authRequestWithDirectPostJwt = AuthorizationRequest(
+		clientId: "did:key:zDnaeeTG88wpPhMzuDRvLRTTyNMyJip5e6TLmsjyvPiSYUFk7",
+		clientMetadata: clientMetadataForDirectPostJwt,
+		presentationDefinition: presentationDefinition,
+		nonce: "YztANglRdmP4ChxsrcS8UcGYoPWwkgiUImkBrQmgWkU",
+		responseType: "vp_token",
+		responseMode: "direct_post.jwt",
+		responseUri: "http://localhost:9001/response",
+		state: "eea7b48e-1866-41b4-beae-03b95d41670c"
+	)
+
 	static let authRequestFake = AuthorizationRequest(
 		clientId: "did:key:zDnaeeTG88wpPhMzuDRvLRTTyNMyJip5e6TLmsjyvPiSYUFk7",
 		clientMetadata: clientMetadata,
@@ -384,4 +436,6 @@ enum Oid4vpHolderTestConstants {
 
 	static let sdJwtPayload =
 		"eyJ0eXAiOiJ2YytzZC1qd3QiLCJhbGciOiJFUzI1NiIsImtpZCI6ImRpZDprZXk6ekRuYWV4ZWgzVDFDemlXV1NFZVdweXVUa1hxaVQ1aWtpQ3c1aVpRUkJ2NEhYdWV4NiN6RG5hZXhlaDNUMUN6aVdXU0VlV3B5dVRrWHFpVDVpa2lDdzVpWlFSQnY0SFh1ZXg2In0.eyJfc2QiOlsiZkp1Ri1FNUMzTnhleU5UTnNMbm1DX1pnM2FNYkVwTGF1QV9aWVFnU1B3VSJdLCJ2Y3QiOiJodHRwczovL2NyZWRlbnRpYWxzLmV4YW1wbGUuY29tL2lkZW50aXR5X2NyZWRlbnRpYWwiLCJzdWIiOiJkaWQ6a2V5OnpEbmFlajlRYWRnZFpudTh1RFhaWGQ0NTQ1ZGZKQUV2bVY2bm43eGFZVXF6Y3JQdk0iLCJuYmYiOjE3Mjg4ODI2MTEsIl9zZF9hbGciOiJzaGEtMjU2IiwiaXNzIjoiZGlkOmtleTp6RG5hZXhlaDNUMUN6aVdXU0VlV3B5dVRrWHFpVDVpa2lDdzVpWlFSQnY0SFh1ZXg2IiwiaWF0IjoxNzI4ODgyNjExLCJleHAiOjE3NjA0MTg2MTEsImNuZiI6eyJqd2siOnsia3R5IjoiRUMiLCJjcnYiOiJQLTI1NiIsIngiOiJGaEFNdi1UWGcyZ1NlOGpqZkhVcWdkTzdfMjZlSG9tWVNweUxxQk05WlNZIiwieSI6IkFNelNtSXRoMHZCUTFmZjI4RlF6c1paSS1XckxZdXFxSFI4TF9HbHZrWXMifX19.usBLTsyl9fgJWPjJvbyJlpaDmfXZNRuxJCt9voME2VAAb0GhncwakNACMUdAqS9fMU5e9Y9p-KUsuOOXXVAlmg~WyI4elFmQkItS3FZSHVKcW5wVER2c1VRIiwgIm5hbWUiLCAiSm9obiJd~"
+
+	static let responseString = "response=ey"
 }

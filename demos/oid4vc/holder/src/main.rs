@@ -19,9 +19,10 @@ use agent_sdk::vc::oid4vci::{
 };
 use agent_sdk::vc::oid4vci::{CredentialOfferResolver, Holder as HolderVci};
 use agent_sdk::vc::oid4vp::{
-    AuthResponseOptions, AuthorizationResponse, AuthorizationResponseMetadata, ClientIdScheme,
-    CredentialsFindResult, CredentialsMapping, PassAuthRequestObject, ResolvedAuthRequest,
-    ResolvedPresentationQuery, ResponseMode, ResponseType,
+    AuthResponseOptions, AuthorizationResponse, AuthorizationResponseMetadata,
+    AuthorizationResponseObject, ClientIdScheme, CredentialsFindResult, CredentialsMapping,
+    PassAuthRequestObject, ResolvedAuthRequest, ResolvedPresentationQuery, ResponseMode,
+    ResponseType,
 };
 use agent_sdk::vc::oid4vp::{CredentialMapping, Holder as HolderVp};
 use agent_sdk::vc::oid4vp::{IdTokenMetadata, Verifier};
@@ -319,12 +320,12 @@ fn retrieve_auth_resp_from_uri(url: Url) -> AuthorizationResponse {
             Some(s) => serde_json::from_str(s).ok(),
         };
 
-    AuthorizationResponse {
+    AuthorizationResponse::Plain(AuthorizationResponseObject {
         vp_token,
         presentation_submission,
         id_token: None,
         state,
-    }
+    })
 }
 
 async fn verifier(client_id: &str) -> impl Verifier {

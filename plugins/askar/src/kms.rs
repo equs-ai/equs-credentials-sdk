@@ -3,28 +3,28 @@ use aries_askar::crypto::generic_array::ArrayLength;
 use aries_askar::entry::{EntryTag, TagFilter};
 use aries_askar::kms::{KeyAlg, LocalKey};
 use async_trait::async_trait;
-use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
+use base64::prelude::BASE64_STANDARD;
 use bip32::secp256k1::elliptic_curve::ops::Invert;
 use bip32::secp256k1::elliptic_curve::point::PointCompression;
 use bip32::secp256k1::elliptic_curve::sec1::{FromEncodedPoint, ToEncodedPoint};
 use bip32::secp256k1::elliptic_curve::subtle::CtOption;
 use bip32::secp256k1::elliptic_curve::{
-    sec1, AffinePoint, CurveArithmetic, FieldBytesSize, PrimeCurve, Scalar,
+    AffinePoint, CurveArithmetic, FieldBytesSize, PrimeCurve, Scalar, sec1,
 };
-use ecdsa::hazmat::{DigestPrimitive, SignPrimitive, VerifyPrimitive};
 use ecdsa::SignatureSize;
-use rand::distr::Alphanumeric;
+use ecdsa::hazmat::{DigestPrimitive, SignPrimitive, VerifyPrimitive};
 use rand::Rng;
+use rand::distr::Alphanumeric;
 use sha2::{Digest, Sha256};
-use snafu::{ensure, ResultExt};
+use snafu::{ResultExt, ensure};
 use std::sync::Arc;
-use tracing::{instrument, Level};
+use tracing::{Level, instrument};
 
 use crate::AskarStorage;
 use agent_sdk::crypto::{
-    AlgNotSupportedSnafu, Error as CryptoError, KeyNotSupportedSnafu, SigningSnafu,
-    VerificationSnafu, JWK,
+    AlgNotSupportedSnafu, Error as CryptoError, JWK, KeyNotSupportedSnafu, SigningSnafu,
+    VerificationSnafu,
 };
 use agent_sdk::kms::{
     CreateOptions, CreationSnafu, CryptoSnafu, Error as KmsError, Error, KeyHandle, KeyID,

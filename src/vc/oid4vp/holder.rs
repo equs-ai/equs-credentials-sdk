@@ -6,11 +6,13 @@ use crate::utils::http::MimeType;
 use crate::vault::CredentialEntry;
 use crate::vc::core::PresentationInput;
 use crate::vc::dcql::DCQL;
+use crate::vc::oid4vp::Error::Internal;
 use crate::vc::oid4vp::internal_error::{
-    AuthorizationResponseSnafu, CredentialNotFoundSnafu, DCQLSnafu, HttpClientSnafu,
-    IdTokenGenerationSnafu, IdTokenMetadataNotFoundSnafu, IdTokenParseSnafu, JsonSnafu, KMSSnafu,
-    ParseSnafu, PresentationExchangeSnafu, VCSnafu,
+    AuthorizationResponseSnafu, AuthorizationResponseUnsupportedModeSnafu, CredentialNotFoundSnafu,
+    DCQLSnafu, HttpClientSnafu, IdTokenGenerationSnafu, IdTokenMetadataNotFoundSnafu,
+    IdTokenParseSnafu, JsonSnafu, KMSSnafu, ParseSnafu, PresentationExchangeSnafu, VCSnafu,
 };
+use crate::vc::oid4vp::jwe_encryptor::JweEncryptor;
 use crate::vc::oid4vp::metadata::default_wallet_metadata;
 use crate::vc::oid4vp::signer::Signer;
 use crate::vc::oid4vp::{
@@ -28,10 +30,14 @@ use openid4vp::core::authorization_request::verification::{RequestVerifier, did}
 use openid4vp::core::authorization_request::{AuthorizationRequest, AuthorizationRequestObject};
 use openid4vp::core::metadata::WalletMetadata;
 use openid4vp::core::presentation_submission::PresentationSubmission;
+use openid4vp::core::response::AuthorizationResponse::Jwt;
 use openid4vp::core::response::parameters::{IdToken, VpToken};
-use openid4vp::core::response::{AuthorizationResponse, UnencodedAuthorizationResponse};
+use openid4vp::core::response::{
+    AuthorizationResponse, JwtAuthorizationResponse, UnencodedAuthorizationResponse,
+};
 use openid4vp::core::util::http::AsyncHttpClient;
 use openid4vp::wallet::{IdTokenParams, Wallet};
+use serde_json::{Map, Value, json};
 use snafu::ResultExt;
 use ssi::dids::DIDURLBuf;
 use std::collections::HashMap;
@@ -105,7 +111,7 @@ where
             _ => None,
         };
 
-        let auth_resp = Self::create_auth_response(&presentations, id_token, auth_request)?;
+        let auth_resp = Self::create_auth_response(&presentations, id_token, auth_request).await?;
 
         let redirect_url = self
             .submit_response(
@@ -119,7 +125,7 @@ where
     }
 
     #[instrument(level = Level::TRACE, err(), ret())]
-    fn create_auth_response(
+    async fn create_auth_response(
         requested_presentations: &[RequestedPresentation],
         id_token: Option<IdToken>,
         auth_request: &ResolvedAuthRequest,
@@ -149,14 +155,42 @@ where
             }
         };
 
-        let auth_resp = AuthorizationResponse::Unencoded(UnencodedAuthorizationResponse {
-            vp_token,
-            presentation_submission: ps,
-            id_token,
-            state: auth_request.state.clone(),
-        });
-
-        Ok(auth_resp)
+        match auth_request.response_mode.clone() {
+            ResponseMode::DirectPost | ResponseMode::DCAPI => Ok(AuthorizationResponse::Unencoded(
+                UnencodedAuthorizationResponse {
+                    vp_token: vp_token.clone(),
+                    presentation_submission: ps.clone(),
+                    id_token: id_token.clone(),
+                    state: auth_request.state.clone(),
+                },
+            )),
+            ResponseMode::DirectPostJwt | ResponseMode::DCAPIJwt => {
+                let metadata = auth_request.client_metadata.clone();
+                let encryptor = JweEncryptor::new(metadata);
+                let mut body = Map::new();
+                body.insert("vp_token".to_string(), json!(vp_token));
+                if let Some(id_token) = id_token {
+                    body.insert("id_token".to_string(), json!(id_token));
+                }
+                if let Some(state) = auth_request.state.clone() {
+                    body.insert("state".to_string(), json!(state));
+                }
+                if let Some(ps) = ps {
+                    body.insert("presentation_submission".to_string(), json!(ps));
+                }
+                let jwt = encryptor.encrypt(Value::Object(body)).await?;
+                Ok(Jwt(JwtAuthorizationResponse { response: jwt }))
+            }
+            ResponseMode::Unsupported(mode) => Err(Internal {
+                source: AuthorizationResponseUnsupportedModeSnafu {
+                    details: format!(
+                        "Given authorization response mode is not supported: {}",
+                        mode
+                    ),
+                }
+                .build(),
+            }),
+        }
     }
 
     #[instrument(level = Level::TRACE, skip(self), err(), ret())]
@@ -405,16 +439,12 @@ where
                     .await
                     .context(VCSnafu)?;
 
-                if let CredentialsFindResult::Credentials(credentials) = creds {
-                    if let Some(cred_entry) = credentials.first() {
-                        return self
-                            .create_presentation_by_input(
-                                cred_entry,
-                                presentation_input,
-                                auth_request,
-                            )
-                            .await;
-                    }
+                if let CredentialsFindResult::Credentials(credentials) = creds
+                    && let Some(cred_entry) = credentials.first()
+                {
+                    return self
+                        .create_presentation_by_input(cred_entry, presentation_input, auth_request)
+                        .await;
                 }
 
                 let err = ProtocolError::access_denied(
@@ -465,10 +495,10 @@ where
                 .await
                 .context(VCSnafu)?;
 
-            if let CredentialsFindResult::Credentials(credentials) = creds {
-                if let Some(cred_entry) = credentials.first() {
-                    return Ok((credential.id().as_str(), cred_entry.clone()));
-                }
+            if let CredentialsFindResult::Credentials(credentials) = creds
+                && let Some(cred_entry) = credentials.first()
+            {
+                return Ok((credential.id().as_str(), cred_entry.clone()));
             }
 
             let err = ProtocolError::access_denied(
@@ -991,6 +1021,23 @@ mod tests {
     )]
     #[tokio::test]
     async fn present_credential_auto_success(#[case] test_case: PresentationTestCase) {
+        let mut http_client = MockHttpClient::new();
+        test_case.mock_http_auth_response_endpoint(&mut http_client, None);
+
+        let kms = LocalKms::new();
+        let vault = test_case.prepare_vault(&kms).await;
+        let holder = holder_service(http_client, kms, vault).await;
+
+        // Send auth response
+        holder
+            .present_credentials_auto(&test_case.request, &test_case.response_metadata)
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn present_credential_auto_with_direct_post_jwt() {
+        let test_case = single_presentation::sd_jwt::presentation_test_case_with_direct_post_jwt();
         let mut http_client = MockHttpClient::new();
         test_case.mock_http_auth_response_endpoint(&mut http_client, None);
 

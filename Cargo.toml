@@ -16,7 +16,7 @@ members = [
 name = "agent-sdk"
 version = "0.10.0"
 edition = "2024"
-rust-version = "1.87"
+rust-version = "1.89.0"
 
 [dependencies]
 common-macros = { path = "./common-macros" }
@@ -29,6 +29,11 @@ didcomm = { git = "ssh://git@git.slock.it/open-source/didcomm-rust.git", rev = "
 did_peer = { git = "ssh://git@git.slock.it/open-source/aries-vcx.git", rev = "fc818ef5" }
 did_resolver = { git = "ssh://git@git.slock.it/open-source/aries-vcx.git", rev = "fc818ef5" }
 did_parser_nom = { git = "ssh://git@git.slock.it/open-source/aries-vcx.git", rev = "fc818ef5" }
+
+one-crypto = { git = "https://github.com/procivis/one-core", package = "one-crypto", rev = "edee569" }
+one-core = { path = "dependencies/one-core" }
+secrecy = "0.10.3"
+ed25519-compact = "2.1.1"
 
 oauth2 = "5.0.0-rc.1"
 serde_json = "1.0.120"
@@ -64,11 +69,11 @@ async-channel = "2.3.1"
 lazy_static = "1.5.0"
 jsonpath-rust = "0.7.5"
 bs58 = "0.5.1"
+p256 = "0.13.2"
 
 
 # InMEM dependencies
 # crypto/kms dependencies
-p256 = { version = "0.13.2", optional = true }
 ed25519-dalek = { version = "2.1.1", optional = true }
 bip32 = { version = "0.5.2", optional = true }
 askar-crypto = { version = "=0.3.3", optional = true }
@@ -78,6 +83,7 @@ ecdsa = { version = "0.16.9", optional = true }
 hyper = { version = "0.14.32", features = ["full"], optional = true }
 http = { version = "0.2", optional = true }
 tokio = { version = "1.25.0", features = ["macros"], optional = true }
+
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 didcomm = { git = "ssh://git@git.slock.it/open-source/didcomm-rust.git", rev = "db41780d", features = ["uniffi"] }
@@ -92,12 +98,11 @@ httpmock = "0.8.0-alpha.1"
 rstest = "0.22.0"
 # InMEM dependencies
 ed25519-dalek = "2.1.1"
-p256 = "0.13.2"
 bip32 = "0.5.2"
 ecdsa = "0.16.9"
 
 [features]
-in-memory = ["dep:rand", "dep:ed25519-dalek", "dep:p256", "dep:bip32", "dep:ecdsa", "dep:askar-crypto"]
+in-memory = ["dep:rand", "dep:ed25519-dalek", "dep:bip32", "dep:ecdsa", "dep:askar-crypto"]
 didcomm-http-trasnport = ["dep:http", "dep:hyper", "dep:tokio"]
 
 [profile.release]

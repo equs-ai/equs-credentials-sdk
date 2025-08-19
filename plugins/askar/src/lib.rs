@@ -1,7 +1,7 @@
 use aries_askar::storage::KdfMethod;
 use aries_askar::{Error, PassKey, Session, Store, StoreKeyMethod};
 use serde::Deserialize;
-use tracing::{instrument, Level};
+use tracing::{Level, instrument};
 use zeroize::Zeroize;
 
 pub mod kms;

@@ -15,7 +15,7 @@ stages:
   - release
 
 variables:
-  RUST_VERSION: "1.87.0"
+  RUST_VERSION: "1.89.0"
   NODE_VERSION: "20.18.0"
   VERSION_REGEX: /^[0-9]+\.[0-9]+\.[0-9]+$/
 
@@ -185,7 +185,7 @@ test-with-coverage-job:
   stage: test
   script:
     - cargo install cargo-tarpaulin
-    - cargo tarpaulin --skip-clean --timeout 180 --all-features --exclude-files "src/didcomm/*" --exclude-files "demos/*" --exclude-files "wrappers/*" --fail-under 70 -o Html
+    - cargo tarpaulin --skip-clean --timeout 180 --all-features --exclude-files "src/didcomm/*" --exclude-files "demos/*" --exclude-files "dependencies/one-core/*" --exclude-files "wrappers/*" --fail-under 70 -o Html
   coverage: '/^\d+.\d+% coverage/'
   artifacts:
     paths:

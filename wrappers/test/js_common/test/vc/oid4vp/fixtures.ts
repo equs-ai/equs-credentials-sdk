@@ -97,6 +97,27 @@ export const AUTH_REQUEST: CommonAuthorizationRequest = {
   nonce: "YztANglRdmP4ChxsrcS8UcGYoPWwkgiUImkBrQmgWkU",
   state: STATE,
 };
+
+export const AUTH_REQUEST_WITH_DIRECT_POST_JWT: CommonAuthorizationRequest = {
+  ...AUTH_REQUEST,
+  client_metadata: {
+    ...AUTH_REQUEST.client_metadata,
+    jwks: {
+      keys: [
+        {
+          kid: "ecdsa-kid",
+          kty: "EC",
+          crv: "P-256",
+          x: "SSnPfyVhQgcU9Aaynqgi6QGhrq7K7WFEC0mAvpHG4TM",
+          y: "rYQ5mLQLTs95WLBKKA8R5IjMTXjX13iZnzazsVectRY",
+          alg: "ES256",
+        },
+      ],
+    },
+  },
+  response_mode: "direct_post.jwt",
+};
+
 export const AUTH_REQUEST_FAKE: CommonAuthorizationRequest = {
   ...AUTH_REQUEST,
   presentation_definition: PRESENTATION_DEFINITION_FAKE,

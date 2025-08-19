@@ -5,7 +5,7 @@ use openid4vp::core::authorization_request::parameters::{
 use openid4vp::core::metadata::WalletMetadata;
 use openid4vp::verifier::by_reference::ByReference;
 use openid4vp::verifier::request_builder::RequestType;
-use serde_json::Value as Json;
+use serde_json::{Value as Json, Value};
 use snafu::{ResultExt, ensure};
 use std::fmt::Debug;
 use std::marker::PhantomData;
@@ -21,23 +21,26 @@ use crate::utils::wasm::{WasmNotSend, WasmNotSync};
 use crate::vc;
 use crate::vc::claims::{Claim, Claims};
 use crate::vc::core::KeyMetadata;
-use crate::vc::oid4vp::Error::Protocol;
+use crate::vc::oid4vp::Error::{Internal, Protocol};
 use crate::vc::oid4vp::internal_error::{
-    ClaimsSnafu, ClientIdSnafu, DCQLSnafu, DidUrlResolutionSnafu, IdTokenValidationSnafu,
-    JsonSnafu, KMSSnafu, NonceGenerationSnafu, Oid4VpLibSnafu, ParseSnafu,
-    PresentationExchangeSnafu, VCSnafu,
+    AuthorizationResponseDecryptionSnafu, ClaimsSnafu, ClientIdSnafu, DCQLSnafu,
+    DidUrlResolutionSnafu, IdTokenValidationSnafu, JsonSnafu, KMSSnafu, NonceGenerationSnafu,
+    Oid4VpLibSnafu, ParseSnafu, PresentationExchangeSnafu, VCSnafu,
 };
+use crate::vc::oid4vp::jwe_utils::{add_public_private_keys, get_private_key_handler};
 use crate::vc::oid4vp::metadata::{default_client_metadata, default_wallet_metadata};
 use crate::vc::oid4vp::signer::Signer;
 use crate::vc::oid4vp::{
-    AuthResponseOptions, AuthorizationResponse, ClientMetadata, PassAuthRequestObject,
-    PresentationSession, ProtocolError, ResolvedPresentationQuery, ResponseMode, ResponseType,
+    AuthResponseOptions, AuthorizationResponse, AuthorizationResponseObject, ClientMetadata,
+    PassAuthRequestObject, PresentationSession, ProtocolError, ResolvedPresentationQuery,
+    ResponseMode, ResponseType,
 };
 use crate::vc::presentation_exchange;
 use crate::vc::presentation_exchange::{
     PresentationResponse, validate_against_presentation_definition,
 };
 use crate::vc::{dcql, oid4vp as api};
+use one_crypto::jwe::{decrypt_jwe_payload, extract_jwe_header};
 use openid4vp::core::authorization_request::RequestReference;
 use openid4vp::core::response::parameters::IdTokenBody as IdToken;
 use ssi::dids::DIDURLBuf;
@@ -130,7 +133,7 @@ where
     #[instrument(level = Level::TRACE, skip(self), ret())]
     async fn create_authorization_request(
         &self,
-        presentation_definition: &ResolvedPresentationQuery,
+        resolved_presentation_query: &ResolvedPresentationQuery,
         auth_response_config: &AuthResponseOptions,
         pass_auth_request_object: &PassAuthRequestObject,
         wallet_metadata: Option<&WalletMetadata>,
@@ -144,7 +147,7 @@ where
 
         let (request_url, auth_request_jwt) = self
             .build_authorization_request(
-                presentation_definition,
+                resolved_presentation_query,
                 nonce.clone(),
                 auth_response_config,
                 pass_auth_request_object,
@@ -155,7 +158,7 @@ where
         let session = PresentationSession {
             nonce,
             auth_request_jwt,
-            resolved_presentation_query: presentation_definition.to_owned(),
+            resolved_presentation_query: resolved_presentation_query.to_owned(),
         };
 
         info!("authorization request object is created");
@@ -166,21 +169,25 @@ where
     #[instrument(level = Level::TRACE, skip(self), err(), ret())]
     async fn verify_presentation(
         &self,
-        auth_response: &AuthorizationResponse,
+        authorization_response: &AuthorizationResponse,
         session: &PresentationSession,
     ) -> Result<Claims> {
+        let authorization_response = self
+            .resolve_authorization_response(authorization_response)
+            .await?;
+
         let vp_token_claims = self
             .do_verify_presentation(
                 &session.resolved_presentation_query,
                 &session.nonce,
-                auth_response,
+                &authorization_response,
             )
             .await?;
 
         let mut claims = Claims::new();
         claims.insert(VP_TOKEN.to_string(), vp_token_claims);
 
-        if let Some(id_token) = &auth_response.id_token {
+        if let Some(id_token) = &authorization_response.id_token {
             let id_token_claims = self.validate_id_token(id_token, &session.nonce).await?;
 
             // TODO: get rid of IdTokenBody -> Value conversion, implement IdTokenBody -> Claim instead
@@ -204,6 +211,91 @@ where
     NG: NonceHandler,
     HC: HttpClient,
 {
+    #[instrument(level = Level::TRACE, skip(self), err(), ret())]
+    async fn resolve_authorization_response(
+        &self,
+        response: &AuthorizationResponse,
+    ) -> Result<AuthorizationResponseObject> {
+        match response {
+            AuthorizationResponse::Plain(auth_response) => Ok(auth_response.to_owned()),
+            AuthorizationResponse::Jwe(jwe_response) => {
+                let header = extract_jwe_header(jwe_response).map_err(|e| Internal {
+                    source: AuthorizationResponseDecryptionSnafu {
+                        details: format!("Error while getting the jwe header: {}", e),
+                    }
+                    .build(),
+                })?;
+                let kh = self.kms.get(&header.key_id).await.map_err(|e| Internal {
+                    source: AuthorizationResponseDecryptionSnafu {
+                        details: format!(
+                            "Error while getting the key handle for {} : {}",
+                            header.key_id, e
+                        ),
+                    }
+                    .build(),
+                })?;
+                let alg = kh.alg();
+                let private_key = add_public_private_keys(kh, alg)?;
+                let private_key_handle = get_private_key_handler(private_key, alg)?;
+
+                let decoded = decrypt_jwe_payload(jwe_response, private_key_handle.as_ref())
+                    .await
+                    .map_err(|e| Internal {
+                        source: AuthorizationResponseDecryptionSnafu {
+                            details: format!(
+                                "Error from one-core while decrypting the jwe response: {}",
+                                e
+                            ),
+                        }
+                        .build(),
+                    })?;
+                let claim_set: Value =
+                    serde_json::from_slice(decoded.as_slice()).map_err(|e| Internal {
+                        source: AuthorizationResponseDecryptionSnafu {
+                            details: format!(
+                                "Error while parsing the decrypted jwe payload: {}",
+                                e
+                            ),
+                        }
+                        .build(),
+                    })?;
+                let Value::Object(claim_set) = claim_set else {
+                    return Err(Internal {
+                        source: AuthorizationResponseDecryptionSnafu {
+                            details: "Error: The claim set must be an object",
+                        }
+                        .build(),
+                    });
+                };
+                let vp_token = claim_set
+                    .get("vp_token")
+                    .ok_or(Internal {
+                        source: AuthorizationResponseDecryptionSnafu {
+                            details: "Error: vp_token was not found".to_string(),
+                        }
+                        .build(),
+                    })?
+                    .to_owned();
+                let presentation_submission = claim_set
+                    .get("presentation_submission")
+                    .and_then(|value: &Value| serde_json::from_value(value.to_owned()).ok());
+                let id_token = claim_set
+                    .get("id_token")
+                    .and_then(|value: &Value| serde_json::from_value(value.to_owned()).ok());
+                let state = claim_set
+                    .get("state")
+                    .and_then(|value: &Value| serde_json::from_value(value.to_owned()).ok());
+
+                Ok(AuthorizationResponseObject {
+                    vp_token,
+                    presentation_submission,
+                    id_token,
+                    state,
+                })
+            }
+        }
+    }
+
     #[instrument(level = Level::TRACE, skip(self), err(), ret())]
     async fn validate_id_token(&self, id_token: &str, nonce: &Nonce) -> Result<IdToken> {
         let header: ssi::claims::jws::Header = ssi::claims::jws::decode_unverified(id_token)
@@ -305,7 +397,7 @@ where
     #[instrument(level = Level::TRACE, skip(self), err(), ret())]
     async fn build_authorization_request(
         &self,
-        presentation_definition: &ResolvedPresentationQuery,
+        resolved_presentation_query: &ResolvedPresentationQuery,
         nonce: Nonce,
         auth_response_config: &AuthResponseOptions,
         pass_auth_request_object: &PassAuthRequestObject,
@@ -318,7 +410,7 @@ where
                 );
                 let verifier_builder = openid4vp::verifier::Verifier::builder().with_client(client);
                 self.build_authorization_request_helper(
-                    presentation_definition,
+                    resolved_presentation_query,
                     nonce,
                     auth_response_config,
                     pass_auth_request_object,
@@ -346,7 +438,7 @@ where
                 let verifier_builder =
                     openid4vp::verifier::Verifier::builder().with_client(did_client);
                 self.build_authorization_request_helper(
-                    presentation_definition,
+                    resolved_presentation_query,
                     nonce,
                     auth_response_config,
                     pass_auth_request_object,
@@ -454,7 +546,7 @@ where
         &self,
         presentation_definition: &ResolvedPresentationQuery,
         nonce: &Nonce,
-        authorization_response: &AuthorizationResponse,
+        authorization_response: &AuthorizationResponseObject,
     ) -> Result<Claim> {
         let mut result: HashMap<String, Claim> = HashMap::new();
         let mut ids = vec![]; // we need it to preserve order of items in the array
@@ -578,7 +670,7 @@ mod tests {
         verifier_service_with_invalid_kid, verifier_service_with_signer_error,
     };
     use crate::vc::oid4vp::verifier::VP_TOKEN;
-    use crate::vc::oid4vp::{HttpMethodForAuth, InternalError};
+    use crate::vc::oid4vp::{HttpMethodForAuth, InternalError, ResolvedAuthRequest};
     use crate::vc::oid4vp::{PassAuthRequestObject, PresentationSession, ResponseType, Verifier};
     use crate::vc::presentation_exchange::PresentationDefinition;
     use openid4vp::core::authorization_request::{
@@ -587,10 +679,72 @@ mod tests {
     use openid4vp::core::object::UntypedObject;
     use openid4vp::wallet::IdTokenParams;
     use rstest::rstest;
-    use serde_json::json;
+    use serde_json::{from_value, json};
     use ssi::claims::jwt::decode_unverified;
     use std::collections::HashMap;
     use url::Url;
+    fn get_metadata() -> ClientMetadata {
+        let result: ResolvedAuthRequest = from_value(json!(
+           {
+              "response_uri": "https://some-link.com",
+              "client_id": "some_id",
+              "response_type": "vp_token",
+              "response_mode": "dc_api.jwt",
+              "nonce": "xyz123ltcaccescbwc777",
+              "dcql_query": {
+                "credentials": [
+                  {
+                    "id": "my_credential",
+                    "format": "dc+sd-jwt",
+                    "meta": {
+                      "vct_values": [
+                        "https://credentials.example.com/identity_credential"
+                      ]
+                    },
+                    "claims": [
+                      {
+                        "path": [
+                          "last_name"
+                        ]
+                      },
+                      {
+                        "path": [
+                          "first_name"
+                        ]
+                      },
+                      {
+                        "path": [
+                          "address",
+                          "postal_code"
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              "client_metadata": {
+                "jwks": {
+                  "keys": [
+                   {
+                      "kid": "ecdsa-kid",
+                      "kty": "EC",
+                      "crv": "P-256",
+                      "x": "SSnPfyVhQgcU9Aaynqgi6QGhrq7K7WFEC0mAvpHG4TM",
+                       "y": "rYQ5mLQLTs95WLBKKA8R5IjMTXjX13iZnzazsVectRY",
+                      "alg": "ECDSA"
+                    }
+                  ]
+                },
+                "encrypted_response_enc_values_supported": [
+                  "A256GCM",
+                ]
+              }
+           }
+        ))
+        .unwrap();
+
+        result.client_metadata
+    }
 
     #[tokio::test]
     async fn generate_auth_request_by_reference_success() {
@@ -878,7 +1032,7 @@ mod tests {
         let response = test_case.auth_response(&session.nonce, &client_id).await;
 
         let verified_claims = verifier
-            .verify_presentation(&response, &test_case.session)
+            .verify_presentation(&AuthorizationResponse::Plain(response), &test_case.session)
             .await
             .unwrap();
 
@@ -907,7 +1061,7 @@ mod tests {
             .await;
 
         let verified_claims = verifier
-            .verify_presentation(&response, &test_case.session)
+            .verify_presentation(&AuthorizationResponse::Plain(response), &test_case.session)
             .await
             .unwrap();
 
@@ -950,7 +1104,7 @@ mod tests {
         let response = test_case.auth_response(&nonce, &client_id).await;
 
         let verified_claims = verifier
-            .verify_presentation(&response, &test_case.session)
+            .verify_presentation(&AuthorizationResponse::Plain(response), &test_case.session)
             .await
             .unwrap();
     }
@@ -988,7 +1142,7 @@ mod tests {
             .await;
 
         let verified_claims = verifier
-            .verify_presentation(&response, &test_case.session)
+            .verify_presentation(&AuthorizationResponse::Plain(response), &test_case.session)
             .await
             .unwrap();
     }

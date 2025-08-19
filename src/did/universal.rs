@@ -140,7 +140,7 @@ impl VerificationMethodResolver for UniversalResolver {
         issuer: Option<&Iri>,
         method: Option<ReferenceOrOwnedRef<'_, Self::Method>>,
         options: ResolutionOptions,
-    ) -> Result<Cow<Self::Method>, VerificationMethodResolutionError> {
+    ) -> Result<Cow<'_, Self::Method>, VerificationMethodResolutionError> {
         let vmdr = VerificationMethodDIDResolver::new(self.clone());
         let vm = vmdr
             .resolve_verification_method_with(issuer, method, options)
@@ -157,7 +157,7 @@ impl JWKResolver for UniversalResolver {
     async fn fetch_public_jwk(
         &self,
         key_id: Option<&str>,
-    ) -> Result<Cow<JWK>, ProofValidationError> {
+    ) -> Result<Cow<'_, JWK>, ProofValidationError> {
         let resolver: VerificationMethodDIDResolver<_, AnyMethod> =
             VerificationMethodDIDResolver::new(self.clone());
 
