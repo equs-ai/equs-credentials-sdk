@@ -65,6 +65,8 @@ See [Components](docs/asdk-components.png).
         - Same Device Flow
         - SIOPv2 extension [draft 13](https://openid.net/specs/openid-connect-self-issued-v2-1_0.html)
         - Digital Credentials Query Language (DCQL)
+        - OID4VP
+            - Response Mode "direct_post.jwt"
 - VC Revocation:
     - Token Status List for SD-JWT
       VC [draft-ietf-oauth-status-list-07](https://datatracker.ietf.org/doc/draft-ietf-oauth-status-list/07/)
@@ -87,8 +89,6 @@ See [Components](docs/asdk-components.png).
     - OID4VCI
         - Authorization Code Flow Using Authorization Details Parameter
         - Deferred Issuance
-    - OID4VP
-        - Response Mode "direct_post.jwt"
     - WACI Present Proof Protocol 3.0
     - Aries AIPv2
 - DID methods
