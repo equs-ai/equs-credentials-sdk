@@ -7,6 +7,8 @@ pub(crate) mod verifier;
 
 mod builder;
 mod internal_error;
+mod jwe_encryptor;
+mod jwe_utils;
 mod metadata;
 mod protocol_error;
 #[cfg(test)]

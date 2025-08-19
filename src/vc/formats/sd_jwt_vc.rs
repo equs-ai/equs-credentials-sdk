@@ -267,7 +267,7 @@ impl SdJwtAPI {
     }
 
     #[instrument(level = Level::TRACE, skip(did_resolver), err(), ret())]
-    async fn get_jwk_from_jwt(jwt: &str, did_resolver: UniversalResolver) -> Result<Cow<JWK>> {
+    async fn get_jwk_from_jwt(jwt: &str, did_resolver: UniversalResolver) -> Result<Cow<'_, JWK>> {
         let (header, payload) = ssi::claims::jws::decode_unverified(jwt).context(JWSSnafu)?;
 
         let vm = match header.key_id {

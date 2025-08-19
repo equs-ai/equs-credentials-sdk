@@ -4,11 +4,12 @@ use agent_sdk::did::{DIDBuf, DIDResolver, DID};
 use agent_sdk::inmem::kms::LocalKms;
 use agent_sdk::inmem::storage::InMemStorage;
 use agent_sdk::kms;
-use agent_sdk::kms::Kms;
+use agent_sdk::kms::{CreateOptions, KeyType, Kms};
 use agent_sdk::reqwest::builder::ReqwestClientBuilder;
 use agent_sdk::storage::Storage;
 use agent_sdk::vc::core::KeyMetadata;
 
+use agent_sdk::crypto::{Key, SSIAlg, JWK};
 use agent_sdk::did::universal::UniversalResolver;
 use agent_sdk::inmem::nonce::LocalNonceHandler;
 use agent_sdk::vc::dcql::{DCQLCredential, DCQL};
@@ -18,11 +19,11 @@ use agent_sdk::vc::oid4vp::{
 };
 use agent_sdk::vc::presentation_exchange::{
     ClaimFormatMap, ClaimFormatPayload, Constraints, ConstraintsField, InputDescriptor,
-    PresentationDefinition, PresentationSubmission,
+    PresentationDefinition,
 };
 use agent_sdk::vc::{oid4vp, ClaimFormatDesignation, JsonPath};
 use reqwest::Url;
-use serde_json::json;
+use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::str::FromStr;
 use std::sync::Arc;
@@ -32,6 +33,7 @@ const SERVER_URL: &str = "http://localhost:8098";
 const AUTH_REQUEST_URL_PATH: &str = "/request_uri";
 const AUTH_REQUEST_URL_PATH_FOR_DCQL: &str = "/request_uri/dcql";
 const AUTH_REQUEST_OBJECT_URL_PATH: &str = "/request";
+const AUTH_REQUEST_OBJECT_URL_PATH_DCQL: &str = "/request/dcql";
 const AUTH_RESPONSE_URL_PATH: &str = "/present";
 struct AppState {
     verifier: Arc<dyn oid4vp::Verifier>,
@@ -63,12 +65,16 @@ async fn main() -> std::io::Result<()> {
                 web::get().to(presentation_request_object),
             )
             .route(
+                AUTH_REQUEST_OBJECT_URL_PATH_DCQL,
+                web::get().to(presentation_request_object),
+            )
+            .route(
                 AUTH_RESPONSE_URL_PATH,
                 web::post().to(presentation_response),
             )
             .app_data(app_state.clone())
     })
-    .bind(("127.0.0.1", 8098))?
+    .bind(("localhost", 8098))?
     .run()
     .await
 }
@@ -95,7 +101,7 @@ async fn presentation_request_uri(state: web::Data<AppState>) -> HttpResponse {
 
     let auth_resp_config = AuthResponseOptions {
         type_: ResponseType::VpTokenIdToken,
-        mode: ResponseMode::DirectPost,
+        mode: ResponseMode::DirectPostJwt,
         submission_uri: response_uri,
         state: None,
     };
@@ -124,10 +130,11 @@ async fn presentation_request_uri(state: web::Data<AppState>) -> HttpResponse {
 
     state
         .presentation_session_storage
-        .put("pd".to_string(), session)
+        .put("session".to_string(), session.clone())
         .await
         .unwrap();
 
+    println!("Chosen presentation flow is: PresentationDefinition");
     HttpResponse::Ok()
         .content_type("text/plain")
         .body(auth_req.to_string())
@@ -137,11 +144,12 @@ async fn dcql_request_uri(state: web::Data<AppState>) -> HttpResponse {
     let response_uri =
         Url::parse(format!("{}{}", SERVER_URL, AUTH_RESPONSE_URL_PATH).as_str()).unwrap();
     let request_uri =
-        Url::parse(format!("{}{}", SERVER_URL, AUTH_REQUEST_OBJECT_URL_PATH).as_str()).unwrap();
+        Url::parse(format!("{}{}", SERVER_URL, AUTH_REQUEST_OBJECT_URL_PATH_DCQL).as_str())
+            .unwrap();
 
     let auth_resp_config = AuthResponseOptions {
         type_: ResponseType::VpTokenIdToken,
-        mode: ResponseMode::DirectPost,
+        mode: ResponseMode::DirectPostJwt,
         submission_uri: response_uri,
         state: None,
     };
@@ -170,9 +178,11 @@ async fn dcql_request_uri(state: web::Data<AppState>) -> HttpResponse {
 
     state
         .presentation_session_storage
-        .put("dcql".to_string(), session)
+        .put("session".to_string(), session.clone())
         .await
         .unwrap();
+
+    println!("Chosen presentation flow is: DCQL");
 
     HttpResponse::Ok()
         .content_type("text/plain")
@@ -192,23 +202,14 @@ async fn presentation_response(
         return HttpResponse::Ok().finish();
     }
 
-    let wallet_auth_resp = auth_resp_from_submitted_form(&req);
+    let wallet_auth_resp = AuthorizationResponse::Jwe(req.get("response").unwrap().to_owned());
 
-    let session = match wallet_auth_resp.clone().presentation_submission {
-        Some(_presentation_submission) => state
-            .presentation_session_storage
-            .get(&"pd".to_string())
-            .await
-            .unwrap()
-            .unwrap(),
-        None => state
-            .presentation_session_storage
-            .get(&"dcql".to_string())
-            .await
-            .unwrap()
-            .unwrap(),
-    };
-
+    let session = state
+        .presentation_session_storage
+        .get(&"session".to_string())
+        .await
+        .unwrap()
+        .unwrap();
     let result = state
         .verifier
         .verify_presentation(&wallet_auth_resp, &session)
@@ -234,39 +235,36 @@ async fn presentation_response(
     HttpResponse::Ok().finish()
 }
 
-fn auth_resp_from_submitted_form(
-    form: &web::Form<HashMap<String, String>>,
-) -> AuthorizationResponse {
-    let vp_token_str = form.get("vp_token").unwrap();
-    let vp_token =
-        serde_json::from_str(vp_token_str).unwrap_or(serde_json::to_value(vp_token_str).unwrap());
-
-    let mut ps: Option<PresentationSubmission> = None;
-    if let Some(val) = form.get("presentation_submission") {
-        if let Ok(raw) = serde_json::from_str(val) {
-            ps = Some(raw);
-        }
-    }
-    let id_token = form.get("id_token").cloned();
-    let state = form.get("state").cloned();
-
-    AuthorizationResponse {
-        vp_token,
-        presentation_submission: ps,
-        id_token,
-        state,
-    }
-}
-
 async fn verifier() -> impl oid4vp::Verifier {
     println!("Initializing verifier...");
     let kms = LocalKms::new();
+    let key = kms
+        .create(KeyType::P256, CreateOptions::default())
+        .await
+        .unwrap();
+    let kh = kms.get(&key).await.unwrap();
+    let jwk = kh.jwk().unwrap();
+    let jwk = JWK {
+        key_id: Some(key),
+        public_key_use: Some("enc".to_string()),
+        algorithm: Some(SSIAlg::ES256),
+        ..jwk
+    };
+    let jwk = serde_json::to_value(&jwk).unwrap();
+    let Value::Object(jwk) = jwk else {
+        panic!("The jwk is not an object");
+    };
+    let mut metadata = default_verifier_metadata();
+    let mut jwks = metadata.jwks().unwrap().unwrap();
+    jwks.keys.push(jwk.clone());
+    metadata.0.insert(jwks);
+    println!("metadata with jwks: {:?}", metadata);
     let nonce_gen = LocalNonceHandler::default();
     // In the real service these should be generated beforehand/taken from configuration/persistence
     let (did, key_metadata) = create_did_and_key_metadata(&kms).await;
 
     let verifier = oid4vp::VerifierBuilder::new(kms, nonce_gen, key_metadata, did)
-        .with_client_metadata(default_verifier_metadata())
+        .with_client_metadata(metadata)
         .with_http_client(ReqwestClientBuilder::new().insecure().build().unwrap())
         .build()
         .await
@@ -448,28 +446,34 @@ const INPUT_DESCRIPTOR_FOR_JSON_LD_V2_CRED_DEF: &str = r#"{
 }"#;
 
 fn default_verifier_metadata() -> ClientMetadata {
-    ClientMetadata::try_from(
-        serde_json::from_str::<serde_json::Value>(DEFAULT_CLIENT_METADATA).unwrap(),
-    )
-    .unwrap()
+    ClientMetadata::try_from(serde_json::from_str::<Value>(DEFAULT_CLIENT_METADATA).unwrap())
+        .unwrap()
 }
 
 const DEFAULT_CLIENT_METADATA: &str = r#"{
-    "vp_formats": {
-        "dc+sd-jwt": {
-            "alg": [
-                "EdDSA",
-                "ES256"
-            ]
-        },
-        "ldp_vc": {
-          "proof_type": [
-            "Ed25519Signature2018",
-            "EcdsaSecp256k1Signature2019"
-          ]
-        }
+  "vp_formats": {
+    "dc+sd-jwt": {
+      "alg": [
+        "EdDSA",
+        "ES256"
+      ]
     },
-    "subject_syntax_types_supported": [
-        "did:key"
-    ]
+    "ldp_vc": {
+      "proof_type": [
+        "Ed25519Signature2018",
+        "EcdsaSecp256k1Signature2019"
+      ]
+    }
+  },
+  "subject_syntax_types_supported": [
+    "did:key"
+  ],
+  "jwks": {
+    "keys": []
+  },
+  "encrypted_response_enc_values_supported": [
+    "A256GCM"
+  ],
+  "authorization_encrypted_response_alg": "ECDH-ES",
+  "authorization_encrypted_response_enc": "A256GCM"
 }"#;

@@ -62,6 +62,10 @@ impl crypto::Key for Ed25519 {
         let pubk = self.pub_key().ok()?;
         ssi::jwk::ed25519_parse(&pubk).ok()
     }
+
+    fn private_key(&self) -> crypto::Result<Vec<u8>> {
+        Ok(self.signing_key.as_bytes().as_slice().to_vec())
+    }
 }
 
 #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]

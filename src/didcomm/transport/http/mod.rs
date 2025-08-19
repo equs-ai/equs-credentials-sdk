@@ -216,10 +216,10 @@ impl InboundTransport for HttpTransport {
             shutdown_tx.take()
         };
 
-        if let Some(tx) = tx {
-            if let Err(e) = tx.send(()) {
-                warn!("Failed to send shutdown signal: {:?}", e);
-            }
+        if let Some(tx) = tx
+            && let Err(e) = tx.send(())
+        {
+            warn!("Failed to send shutdown signal: {:?}", e);
         }
 
         // Set state to stopped

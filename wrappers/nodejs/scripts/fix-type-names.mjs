@@ -13,6 +13,8 @@ const replacements = [
   { from: "JsCredentialMetadata", to: "CredentialMetadata" },
   { from: "JsCredentialEntry", to: "CredentialEntry" },
   { from: "JsAuthorizationResponse", to: "AuthorizationResponse" },
+  { from: "JsAuthorizationResponseObject", to: "AuthorizationResponseObject" },
+  { from: "JsAuthorizationResponseType", to: "AuthorizationResponseType" },
   { from: "JsPresentationSession", to: "_PresentationSession" },
   { from: "JsKeyMetadata", to: "KeyMetadata" },
   { from: "JsDIDAndKeyMetadata", to: "DIDAndKeyMetadata" },

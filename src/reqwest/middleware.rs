@@ -35,16 +35,14 @@ impl reqwest_middleware::Middleware for ValidatorMiddleware {
             .body()
             .map(|body| body.as_bytes().map(|b| b.len()))
             .unwrap_or_default()
-        {
-            if self
+            && self
                 .content_size_limiter
                 .is_req_body_out_of_limit(request_body_size)
-            {
-                warn!(
-                    "Request body size is out of limit: request body size = {}",
-                    request_body_size
-                );
-            }
+        {
+            warn!(
+                "Request body size is out of limit: request body size = {}",
+                request_body_size
+            );
         }
 
         let content_type_to_accept = self

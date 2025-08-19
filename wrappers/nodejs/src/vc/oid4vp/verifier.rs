@@ -1,8 +1,9 @@
 use crate::utils::{from_json_object, parse_url_arg, to_json_object};
 use crate::vc::JsonObject;
 use agent_sdk::vc::oid4vp::{
-    AuthResponseOptions, AuthorizationResponse, HttpMethodForAuth, PassAuthRequestObject,
-    PresentationSession as RustPresentationSession, Verifier, WalletMetadata,
+    AuthResponseOptions, AuthorizationResponse, AuthorizationResponseObject, HttpMethodForAuth,
+    PassAuthRequestObject, PresentationSession as RustPresentationSession, Verifier,
+    WalletMetadata,
 };
 use agent_sdk::vc::presentation_exchange::PresentationSubmission;
 use napi::{Error, Result};
@@ -180,13 +181,53 @@ pub struct AuthorizationRequestWithSession {
 }
 
 /// An OID4VP authorization response.
+/// It can be either plain object as below or the Jwe response string of the fields below
+/// @property {any} vpToken - VP Token containing the Verifiable Presentation(s).
+/// @property {string | null} [idToken] - The OpenID Connect ID token used in the SIOP flow.
+/// @property {PresentationSubmission} presentationSubmission - Details of the submitted presentation.
+/// @property {string | null} [state] - The state may be used by a verifier to link requests and responses.
+#[napi(js_name = "AuthorizationResponseType")]
+pub enum JsAuthorizationResponseType {
+    Plain,
+    Jwe,
+}
+
+#[napi(js_name = "AuthorizationResponse", object)]
+pub struct JsAuthorizationResponse {
+    pub type_: JsAuthorizationResponseType,
+    pub object: Option<JsAuthorizationResponseObject>,
+    pub jwe: Option<String>,
+}
+
+impl TryFrom<JsAuthorizationResponse> for AuthorizationResponse {
+    type Error = Error;
+
+    fn try_from(value: JsAuthorizationResponse) -> std::result::Result<Self, Self::Error> {
+        match value.type_ {
+            JsAuthorizationResponseType::Plain => {
+                let object = value.object.ok_or(Error::from_reason(
+                    "AuthorizationResponseObject was expected but none",
+                ))?;
+                Ok(AuthorizationResponse::Plain(object.try_into()?))
+            }
+            JsAuthorizationResponseType::Jwe => {
+                let jwe = value.jwe.ok_or(Error::from_reason(
+                    "AuthorizationResponse Jwe was expected but none",
+                ))?;
+                Ok(AuthorizationResponse::Jwe(jwe))
+            }
+        }
+    }
+}
+
+/// An OID4VP authorization response object.
 ///
 /// @property {any} vpToken - VP Token containing the Verifiable Presentation(s).
 /// @property {string | null} [idToken] - The OpenID Connect ID token used in the SIOP flow.
 /// @property {PresentationSubmission} presentationSubmission - Details of the submitted presentation.
 /// @property {string | null} [state] - The state may be used by a verifier to link requests and responses.
-#[napi(js_name = "AuthorizationResponse", object)]
-pub struct JsAuthorizationResponse {
+#[napi(js_name = "AuthorizationResponseObject", object)]
+pub struct JsAuthorizationResponseObject {
     pub vp_token: serde_json::Value,
     pub id_token: Option<String>,
     #[napi(ts_type = "PresentationSubmission")]
@@ -194,10 +235,10 @@ pub struct JsAuthorizationResponse {
     pub state: Option<String>,
 }
 
-impl TryFrom<JsAuthorizationResponse> for AuthorizationResponse {
+impl TryFrom<JsAuthorizationResponseObject> for AuthorizationResponseObject {
     type Error = Error;
 
-    fn try_from(value: JsAuthorizationResponse) -> Result<Self> {
+    fn try_from(value: JsAuthorizationResponseObject) -> Result<Self> {
         let ps: Option<PresentationSubmission> = value
             .presentation_submission
             .map(from_json_object)

@@ -120,7 +120,9 @@ pub mod cli {
     }
 
     pub async fn ask_presentation_flow_request_uri() -> Url {
-        println!("Please enter the presentation flow request URI type from the following:");
+        println!(
+            "Please enter the presentation flow request URI type from the following. Note that last opened request uri overrides session thus will be used by verification"
+        );
         println!(
             "- If you  want to use DCQL flow, go to http://localhost:8098/request_uri/dcql and enter request URI from there"
         );

@@ -23,9 +23,9 @@ use agent_sdk::vc::oid4vci::{
     IssuerDiscovery, IssuerMetadata,
 };
 use agent_sdk::vc::oid4vp::{
-    AuthResponseOptions, AuthorizationResponse, AuthorizationResponseMetadata, ClientMetadata,
-    IdTokenMetadata, PassAuthRequestObject, PresentationSession, ResponseMode, ResponseType,
-    Verifier, VerifierBuilder,
+    AuthResponseOptions, AuthorizationResponse, AuthorizationResponseMetadata,
+    AuthorizationResponseObject, ClientMetadata, IdTokenMetadata, PassAuthRequestObject,
+    PresentationSession, ResponseMode, ResponseType, Verifier, VerifierBuilder,
 };
 use agent_sdk::vc::oid4vp::{Holder as Oid4vpHolder, ResolvedPresentationQuery};
 use agent_sdk::vc::{
@@ -414,14 +414,17 @@ fn prepare_holder_http_client_for_verifier(
             let state = form.get("state").cloned();
             assert_eq!(state.clone().unwrap(), STATE);
 
-            let auth_response = AuthorizationResponse {
+            let auth_response = AuthorizationResponseObject {
                 vp_token,
                 presentation_submission,
                 id_token,
                 state,
             };
 
-            let result = executor::block_on(verifier.verify_presentation(&auth_response, &session));
+            let result = executor::block_on(
+                verifier
+                    .verify_presentation(&AuthorizationResponse::Plain(auth_response), &session),
+            );
             let claims = result.unwrap();
             println!("Presentation Claims: {:?}", claims);
 

@@ -925,6 +925,78 @@ pub mod fixtures {
                   }
                 }"#;
 
+            pub const AUTH_REQUEST_WITH_DIRECT_POST_JWT_RESPONSE: &str = r#"
+                {
+                  "client_id": "did:key:zDnaehgaHKAP7LAA3Kwa4FjXjJ1G3BcaHqr5gfRySJcGDgBtV",
+                  "state": null,
+                  "presentation_definition": {
+                    "id": "327ad171-c80a-485b-b098-50d7ad278ef6",
+                    "input_descriptors": [
+                      {
+                        "id": "Identity-1",
+                        "constraints": {
+                          "fields": [
+                            {
+                              "path": [
+                                "$.name"
+                              ],
+                              "predicate": null,
+                              "optional": true,
+                              "intent_to_retain": false
+                            },
+                            {
+                              "path": [
+                                "$.vct"
+                              ],
+                              "predicate": null,
+                              "filter": {
+                                "type": "string",
+                                "const": "https://credentials.example.com/identity_credential"
+                              },
+                              "intent_to_retain": false
+                            }
+                          ]
+                        },
+                        "name": "Identity VC",
+                        "purpose": "We want an identity",
+                        "format": {
+                          "dc+sd-jwt": {
+                            "sd-jwt_alg_values": [
+                              "ES256",
+                              "EdDSA"
+                            ],
+                            "kb-jwt_alg_values": [
+                              "ES256",
+                              "EdDSA"
+                            ]
+                          }
+                        }
+                      }
+                    ],
+                    "name": "Example with selective disclosure"
+                  },
+                  "nonce": "3DaLwdi89qDgplpSwAspX6wWzm6pLkzaN3Xuk-ar5zY",
+                  "response_mode": "direct_post.jwt",
+                  "response_type": "vp_token",
+                  "response_uri": "http://127.0.0.1:55796/auth",
+                  "client_metadata": {
+                    "vp_formats": {
+                        "dc+sd-jwt": {
+                            "alg": ["EdDSA", "ES256"]
+                        }
+                    },
+                        "jwks": {
+                        "keys": [
+                        {
+                         "kty":"EC", "kid":"ac", "use":"enc", "crv":"P-256","alg":"ES256",
+                         "x": "SSnPfyVhQgcU9Aaynqgi6QGhrq7K7WFEC0mAvpHG4TM",
+                         "y": "rYQ5mLQLTs95WLBKKA8R5IjMTXjX13iZnzazsVectRY"
+                        }
+                       ]
+                      },
+                      "encrypted_response_enc_values_supported": ["A128GCM", "A128CBC-HS256"]
+                     }
+                }"#;
             pub const AUTH_REQUEST_WITH_NON_URL_SCHEME: &str = r#"
                 {
                   "client_id": "redirect_uri:non-link-id",
@@ -1126,6 +1198,9 @@ pub mod fixtures {
             pub fn auth_request() -> ResolvedAuthRequest {
                 serde_json::from_str(AUTH_REQUEST).unwrap()
             }
+            pub fn auth_request_with_direct_post_jwt_response() -> ResolvedAuthRequest {
+                serde_json::from_str(AUTH_REQUEST_WITH_DIRECT_POST_JWT_RESPONSE).unwrap()
+            }
 
             pub fn auth_request_with_state() -> ResolvedAuthRequest {
                 serde_json::from_str(AUTH_REQUEST_WITH_STATE).unwrap()
@@ -1189,6 +1264,17 @@ pub mod fixtures {
                 PresentationTestCase {
                     credential_format: ClaimFormatDesignation::SdJwtVc,
                     request: auth_request(),
+                    credential_data: vec![credential_1()],
+                    presentation_submission: presentation_submission(),
+                    response_metadata: Default::default(),
+                    expected_credential_data: vec![credential_1()],
+                }
+            }
+
+            pub fn presentation_test_case_with_direct_post_jwt() -> PresentationTestCase {
+                PresentationTestCase {
+                    credential_format: ClaimFormatDesignation::SdJwtVc,
+                    request: auth_request_with_direct_post_jwt_response(),
                     credential_data: vec![credential_1()],
                     presentation_submission: presentation_submission(),
                     response_metadata: Default::default(),
@@ -2257,12 +2343,14 @@ pub mod utils {
     use crate::vc::formats::{json_ld_vc, sd_jwt_vc};
     use crate::vc::metadata::{CredentialMetadataProcessor, DefaultMetadataProcessor};
     use crate::vc::oid4vp::holder::HolderService;
+    use crate::vc::oid4vp::jwe_utils::WrapperForES256Handle;
     use crate::vc::oid4vp::signer::Signer;
     use crate::vc::oid4vp::tests::fixtures::{CREDENTIAL_ID, VERIFIER_URL};
     use crate::vc::oid4vp::verifier::VerifierService;
     use crate::vc::oid4vp::{
-        AuthorizationResponse, AuthorizationResponseMetadata, ClientMetadata, CredentialMapping,
-        Holder, PresentationSession, ResolvedAuthRequest, ResponseType, Verifier,
+        AuthorizationResponseMetadata, AuthorizationResponseObject, ClientMetadata,
+        CredentialMapping, Holder, PresentationSession, ResolvedAuthRequest, ResponseType,
+        Verifier,
     };
     use crate::vc::presentation_exchange::PresentationSubmission;
     use crate::vc::{
@@ -2272,6 +2360,8 @@ pub mod utils {
     use async_trait::async_trait;
     use iref::UriBuf;
     use oauth2::http::{Method, Request, Response, StatusCode};
+    use one_crypto::jwe::PrivateKeyAgreementHandle;
+    use one_crypto::jwe::decrypt_jwe_payload;
     use openid4vp::core::authorization_request::verification::RequestVerifier;
     use openid4vp::core::metadata::parameters::SubjectSyntaxTypesSupported;
     use openid4vp::core::object::UntypedObject;
@@ -2359,8 +2449,40 @@ pub mod utils {
                 expected_state,
             }: MockAuthResponseHelperParams,
         ) -> bool {
-            let form = serde_urlencoded::from_bytes(request.as_bytes()).unwrap();
-            let claims = Self::extract_claims(&form);
+            let form: HashMap<String, String> =
+                serde_urlencoded::from_bytes(request.as_bytes()).unwrap();
+            let claims;
+            let mut presentation_submission: PresentationSubmission;
+            if form.contains_key::<String>(&String::from("response")) {
+                let response = form.get::<String>(&String::from("response")).unwrap();
+                let jwk = r#"{
+                         "kty": "EC",
+                         "crv": "P-256",
+                         "x": "SSnPfyVhQgcU9Aaynqgi6QGhrq7K7WFEC0mAvpHG4TM",
+                         "y": "rYQ5mLQLTs95WLBKKA8R5IjMTXjX13iZnzazsVectRY",
+                         "d": "rs9veoNnfQCH7kfsAis_nAHtpcEghiAzKry8R-de0eA"
+                     }"#;
+                let kh = wrap_p256_private_key(jwk);
+
+                let payload = decrypt_jwe_payload(response, &kh).await.unwrap();
+                let claim_set: Value = serde_json::from_slice(payload.as_slice()).unwrap();
+                let Value::Object(claim_set) = claim_set else {
+                    panic!("claim set must be Value::Object")
+                };
+                presentation_submission = serde_json::from_value(
+                    claim_set.get("presentation_submission").unwrap().clone(),
+                )
+                .unwrap();
+                let claim_set = claim_set
+                    .into_iter()
+                    .map(|(k, v)| (k.to_owned().to_string(), v.to_owned().to_string()))
+                    .collect::<HashMap<String, String>>();
+                claims = Self::extract_claims(&claim_set);
+            } else {
+                claims = Self::extract_claims(&form);
+                presentation_submission =
+                    serde_json::from_str(&form["presentation_submission"]).unwrap();
+            }
             for index in 0..claims.len() {
                 validate_claims(
                     &credential_format,
@@ -2369,8 +2491,6 @@ pub mod utils {
                 )
             }
 
-            let mut presentation_submission: PresentationSubmission =
-                serde_json::from_str(&form["presentation_submission"]).unwrap();
             presentation_submission = PresentationSubmission::new(
                 uuid::Uuid::default(),
                 presentation_submission.definition_id().to_owned(),
@@ -2538,12 +2658,8 @@ pub mod utils {
 
             match vp_token_value {
                 Value::String(token) => {
-                    vec![
-                        decode_sd_jwt(token, SDJWTSerializationFormat::Compact)
-                            .unwrap()
-                            .try_into()
-                            .unwrap(),
-                    ]
+                    let res = decode_sd_jwt(token, SDJWTSerializationFormat::Compact);
+                    vec![res.unwrap().try_into().unwrap()]
                 }
                 Value::Array(tokens) => tokens
                     .into_iter()
@@ -2635,8 +2751,8 @@ pub mod utils {
             &self,
             nonce: &Nonce,
             verifier_id: &str,
-        ) -> AuthorizationResponse {
-            AuthorizationResponse {
+        ) -> AuthorizationResponseObject {
+            AuthorizationResponseObject {
                 vp_token: self.vp_token(nonce, verifier_id).await,
                 presentation_submission: Some(self.presentation_submission.clone()),
                 id_token: None,
@@ -2649,7 +2765,7 @@ pub mod utils {
             nonce: &Nonce,
             verifier_id: &str,
             id_token_params: IdTokenParams,
-        ) -> AuthorizationResponse {
+        ) -> AuthorizationResponseObject {
             let mut auth_resp = self.auth_response(nonce, verifier_id).await;
             auth_resp.id_token = Some(generate_did_based_id_token(id_token_params).await);
 
@@ -2747,6 +2863,61 @@ pub mod utils {
         );
 
         (verifier, did)
+    }
+
+    async fn create_verifier_service_itself(
+        invalid_key_id: bool,
+    ) -> (
+        VerifierService<
+            vc::core::VerifierService,
+            KeyHandle,
+            LocalKms,
+            LocalNonceHandler,
+            MockHttpClient,
+        >,
+        String,
+    ) {
+        let kms = LocalKms::new();
+        let nonce_gen = LocalNonceHandler::default();
+        let (did, key_metadata) = create_did_and_key_metadata(&kms).await;
+
+        let mut key_metadata = key_metadata;
+
+        if invalid_key_id {
+            key_metadata.kid = "invalid_key_id".to_string();
+        }
+
+        let inner = vc::core::VerifierService::new(&did, UniversalResolver::default());
+        let sub_syntax_types = SubjectSyntaxTypesSupported(vec!["did:key".to_string()]);
+
+        let mut client_metadata =
+            ClientMetadata::try_from(Value::from(UntypedObject::default())).unwrap();
+        client_metadata.0.insert(sub_syntax_types);
+
+        let verifier = VerifierService::new(
+            inner,
+            kms,
+            nonce_gen,
+            MockHttpClient::new(),
+            did.clone(),
+            key_metadata,
+            UniversalResolver::default(),
+            Some(client_metadata),
+        );
+
+        (verifier, did)
+    }
+    pub async fn verifier_service_itself() -> (
+        VerifierService<
+            vc::core::VerifierService,
+            KeyHandle,
+            LocalKms,
+            LocalNonceHandler,
+            MockHttpClient,
+        >,
+        String,
+    ) {
+        create_verifier_service_itself(false).await
     }
 
     pub async fn verifier_service() -> (impl Verifier, String) {
@@ -2967,5 +3138,10 @@ pub mod utils {
                 .await
                 .map_err(|e| anyhow::Error::msg(e.to_string()))
         }
+    }
+
+    pub fn wrap_p256_private_key(jwk: &str) -> impl PrivateKeyAgreementHandle {
+        let key = p256::SecretKey::from_jwk_str(jwk).unwrap();
+        WrapperForES256Handle { key }
     }
 }

@@ -371,10 +371,10 @@ fn relative_routing_keys_to_absolute(obj: &mut Value, did_str: &str) {
     };
 
     for key in routing_keys.iter_mut() {
-        if let Value::String(key_str) = key {
-            if key_str.starts_with('#') {
-                *key_str = format!("{did_str}{key_str}");
-            }
+        if let Value::String(key_str) = key
+            && key_str.starts_with('#')
+        {
+            *key_str = format!("{did_str}{key_str}");
         }
     }
 }

@@ -159,11 +159,17 @@ pub struct AuthResponseOptions {
 /// `vp_token` VP Token containing the Verifiable Presentation(s).
 /// `presentation_submission` Details of the submitted presentation.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
-pub struct AuthorizationResponse {
+pub struct AuthorizationResponseObject {
     pub vp_token: serde_json::Value,
     pub presentation_submission: Option<PresentationSubmission>,
     pub id_token: Option<String>,
     pub state: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub enum AuthorizationResponse {
+    Plain(AuthorizationResponseObject),
+    Jwe(String),
 }
 
 #[derive(Clone, Debug)]

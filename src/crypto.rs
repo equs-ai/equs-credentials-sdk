@@ -17,6 +17,8 @@ pub type Result<T> = core::result::Result<T, Error>;
 /// JSON Web Key
 pub type JWK = jwk::JWK;
 
+pub type SSIAlg = jwk::algorithm::Algorithm;
+
 /// Enumerates general errors encountered during `Crypto` operations.
 #[derive(Snafu, DebugError)]
 #[snafu(visibility(pub))]
@@ -226,6 +228,14 @@ pub trait Key: WasmNotSync + WasmNotSend {
     /// `Some(jwk)` if the public key can be represented as JWK.
     /// `None` if the JWK-form is not supported.
     fn jwk(&self) -> Option<JWK>;
+
+    /// Returns the private key if no errors.
+    ///
+    fn private_key(&self) -> Result<Vec<u8>> {
+        Err(Error::KeyNotSupported {
+            type_: "Unimplemented key".to_string(),
+        })
+    }
 }
 
 impl Key for Box<dyn Key> {

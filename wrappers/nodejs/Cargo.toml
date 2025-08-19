@@ -2,7 +2,7 @@
 edition = "2024"
 name = "nodejs"
 version = "0.0.0"
-rust-version = "1.87.0"
+rust-version = "1.89.0"
 
 [lib]
 crate-type = ["cdylib"]

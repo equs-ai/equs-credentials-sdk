@@ -162,6 +162,10 @@ where
     fn jwk(&self) -> Option<ssi::jwk::JWK> {
         self.pub_key().ok().and_then(|key| C::jwk(key))
     }
+
+    fn private_key(&self) -> crypto::Result<Vec<u8>> {
+        Ok(self.signing_key.to_bytes().to_vec())
+    }
 }
 
 #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]

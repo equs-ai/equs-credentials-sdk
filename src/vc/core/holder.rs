@@ -169,12 +169,12 @@ where
     ) -> Result<Presentation> {
         let credentials = self.find_vcs_for_presentation(presentation_input).await?;
 
-        if let CredentialsFindResult::Credentials(credentials) = credentials {
-            if let Some(credential) = credentials.first() {
-                return self
-                    .create_presentation(nonce, verifier_id, presentation_input, credential)
-                    .await;
-            }
+        if let CredentialsFindResult::Credentials(credentials) = credentials
+            && let Some(credential) = credentials.first()
+        {
+            return self
+                .create_presentation(nonce, verifier_id, presentation_input, credential)
+                .await;
         }
 
         RequestedCredentialNotFoundSnafu {

@@ -14,6 +14,7 @@ use snafu::{IntoError, ResultExt, ensure};
 use ssi::crypto::hashes::sha256::sha256;
 use std::str::FromStr;
 use std::sync::Arc;
+use strum_macros::Display;
 use tracing::{Level, instrument};
 
 use crate::crypto::{AlgNotSupportedSnafu, DerivationNotSupportedSnafu, SigningOptions, Suite};
@@ -32,7 +33,7 @@ use crate::kms::{Error, NotFoundSnafu, ResolvingSnafu};
 use crate::storage::Storage;
 use crate::{crypto, kms};
 
-#[derive(Clone)]
+#[derive(Clone, Display)]
 pub enum KeyHandle {
     Ed25519(Ed25519),
     P256(P256),
@@ -137,6 +138,16 @@ impl crypto::Key for KeyHandle {
             KeyHandle::P256(s) => s.jwk(),
             KeyHandle::K256(s) => s.jwk(),
             KeyHandle::Bls12381(s) => s.jwk(),
+        }
+    }
+
+    fn private_key(&self) -> crypto::Result<Vec<u8>> {
+        match self {
+            KeyHandle::Ed25519(key) => key.private_key(),
+            KeyHandle::P256(key) => key.private_key(),
+            _ => Err(crypto::Error::KeyNotSupported {
+                type_: format!("Unsupported algorithm: {}", self),
+            }),
         }
     }
 }
