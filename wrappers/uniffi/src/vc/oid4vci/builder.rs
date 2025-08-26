@@ -2,7 +2,9 @@ use crate::common::{Error, JsonValue, Result};
 use crate::http::{HttpClient, WrappedHttpClient};
 use crate::kms::{Kms, WrappedKms};
 use crate::vault::{Vault, WrappedVault};
+use crate::vc::oid4vci::ProofOfPossessionMetadata;
 use crate::vc::oid4vci::holder::OID4VCIHolder;
+use agent_sdk::vc::core::ProofOfPossessionMetadata as ASDKPoPMetadata;
 use std::sync::Arc;
 use uniffi::custom_type;
 
@@ -62,6 +64,7 @@ struct OID4VCIHolderBuilder {
     client_id: String,
     issuer_discovery: IssuerDiscovery,
     http_client: WrappedHttpClient,
+    pop: ASDKPoPMetadata,
 }
 
 #[uniffi::export(async_runtime = "tokio")]
@@ -73,6 +76,7 @@ impl OID4VCIHolderBuilder {
         client_id: String,
         issuer_discovery: IssuerDiscovery,
         http_client: Arc<dyn HttpClient>,
+        pop: ProofOfPossessionMetadata,
     ) -> OID4VCIHolderBuilder {
         OID4VCIHolderBuilder {
             kms: WrappedKms::new(kms),
@@ -80,21 +84,24 @@ impl OID4VCIHolderBuilder {
             client_id,
             issuer_discovery,
             http_client: WrappedHttpClient::new(http_client),
+            pop,
         }
     }
 
     pub async fn build(&self) -> Result<OID4VCIHolder> {
-        #[allow(unused_mut)]
-        let mut holder = agent_sdk::vc::oid4vci::HolderBuilder::new(
+        let holder_builder = agent_sdk::vc::oid4vci::HolderBuilder::new(
             self.kms.to_owned(),
             self.vault.to_owned(),
             self.client_id.to_owned(),
             self.issuer_discovery.clone(),
             self.http_client.to_owned(),
         )
-        .build()
-        .await
-        .map_err(|e| Error::OID4VPHolder(e.to_string()))?;
+        .with_pop(self.pop.to_owned());
+
+        let holder = holder_builder
+            .build()
+            .await
+            .map_err(|e| Error::OID4VPHolder(e.to_string()))?;
 
         Ok(OID4VCIHolder::new(holder))
     }

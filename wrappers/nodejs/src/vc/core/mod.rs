@@ -22,7 +22,6 @@ use agent_sdk::vc::core::StatusListDefinition;
 use agent_sdk::vc::status_formats::status_list_token_jwt;
 use agent_sdk::vc::{StatusList, VCStatusesData};
 
-use crate::vc::oid4vci::JsDuration;
 use crate::vc::status_formats::JsStatusListFormat;
 use agent_sdk::vc::{Credential, CredentialMetadata, HasVCFormat, Presentation, VCFormat};
 use napi::Error;
@@ -1238,7 +1237,6 @@ pub struct JsIssuerMetadata {
     pub protocol_data: Option<JsIssuerMetadataData>,
 }
 
-#[napi]
 impl TryFrom<JsIssuerMetadata> for IssuerMetadata {
     type Error = Error;
     fn try_from(value: JsIssuerMetadata) -> Result<Self, Error> {
@@ -1254,7 +1252,6 @@ impl TryFrom<JsIssuerMetadata> for IssuerMetadata {
     }
 }
 
-#[napi]
 impl TryFrom<IssuerMetadata> for JsIssuerMetadata {
     type Error = Error;
     fn try_from(value: IssuerMetadata) -> Result<Self, Error> {
@@ -1281,7 +1278,6 @@ pub struct JsHolderMetadata {
     pub pop: JsProofOfPossessionMetadata,
 }
 
-#[napi]
 impl TryFrom<JsHolderMetadata> for HolderMetadata {
     type Error = Error;
 
@@ -1293,7 +1289,6 @@ impl TryFrom<JsHolderMetadata> for HolderMetadata {
     }
 }
 
-#[napi]
 impl TryFrom<HolderMetadata> for JsHolderMetadata {
     type Error = Error;
 
@@ -1310,17 +1305,16 @@ impl TryFrom<HolderMetadata> for JsHolderMetadata {
 /// Encapsulates all necessary data needed to generate a proof of possession.
 #[napi(js_name = "ProofOfPossessionMetadata", object)]
 pub struct JsProofOfPossessionMetadata {
-    pub lifetime: Option<JsDuration>,
+    pub lifetime: Option<i64>,
     pub not_before: Option<JsProofOfPossessionNotBefore>,
 }
 
-#[napi]
 impl TryFrom<JsProofOfPossessionMetadata> for ProofOfPossessionMetadata {
     type Error = Error;
 
     fn try_from(value: JsProofOfPossessionMetadata) -> Result<Self, Error> {
         let lifetime = if let Some(time) = value.lifetime {
-            time.try_into()?
+            Duration::seconds(time)
         } else {
             Duration::minutes(DEFAULT_POP_LIFETIME_MINUTES)
         };
@@ -1336,7 +1330,6 @@ impl TryFrom<JsProofOfPossessionMetadata> for ProofOfPossessionMetadata {
     }
 }
 
-#[napi]
 impl TryFrom<ProofOfPossessionMetadata> for JsProofOfPossessionMetadata {
     type Error = Error;
 
@@ -1347,22 +1340,22 @@ impl TryFrom<ProofOfPossessionMetadata> for JsProofOfPossessionMetadata {
             None
         };
         Ok(Self {
-            lifetime: Some(value.lifetime.into()),
+            lifetime: Some(value.lifetime.whole_seconds()),
             not_before: js_not_before,
         })
     }
 }
 
-#[napi(js_name = "ProofOfPossessionNotBefore", object)]
+#[napi(js_name = "InnerProofOfPossessionNotBefore", object)]
 pub struct JsProofOfPossessionNotBefore {
     pub strategy: JsProofOfPossessionNotBeforeStrategy,
     pub fixed: Option<DateTime<Utc>>,
-    pub delay: Option<JsDuration>,
-    pub leeway: Option<JsDuration>,
+    pub delay: Option<i64>,
+    pub leeway: Option<i64>,
 }
 
 /// Configures how Not Before claim (see [RFC7519](https://datatracker.ietf.org/doc/html/rfc7519#section-4.1.5)) must be specified.
-#[napi(js_name = "ProofOfPossessionNotBeforeStrategy")]
+#[napi(js_name = "InnerProofOfPossessionNotBeforeStrategy")]
 pub enum JsProofOfPossessionNotBeforeStrategy {
     /// Sets nbf the same as iat.
     AsIssuedAt,
@@ -1384,7 +1377,6 @@ pub enum JsProofOfPossessionNotBeforeStrategy {
     Leeway,
 }
 
-#[napi]
 impl TryFrom<JsProofOfPossessionNotBefore> for ProofOfPossessionNotBefore {
     type Error = Error;
 
@@ -1404,28 +1396,21 @@ impl TryFrom<JsProofOfPossessionNotBefore> for ProofOfPossessionNotBefore {
                 ProofOfPossessionNotBefore::Fixed(fixed)
             }
             JsProofOfPossessionNotBeforeStrategy::Delay => {
-                let delay = js_not_before
-                    .delay
-                    .ok_or(Error::from_reason(
-                        "Delay PoP generation strategy requires delay time to be specified",
-                    ))
-                    .and_then(TryInto::try_into)?;
-                ProofOfPossessionNotBefore::Delay(delay)
+                let delay = js_not_before.delay.ok_or(Error::from_reason(
+                    "Delay PoP generation strategy requires delay time to be specified",
+                ))?;
+                ProofOfPossessionNotBefore::Delay(Duration::seconds(delay))
             }
             JsProofOfPossessionNotBeforeStrategy::Leeway => {
-                let leeway = js_not_before
-                    .leeway
-                    .ok_or(Error::from_reason(
-                        "Leeway PoP generation strategy requires leeway time to be specified",
-                    ))
-                    .and_then(TryInto::try_into)?;
-                ProofOfPossessionNotBefore::Leeway(leeway)
+                let leeway = js_not_before.leeway.ok_or(Error::from_reason(
+                    "Leeway PoP generation strategy requires leeway time to be specified",
+                ))?;
+                ProofOfPossessionNotBefore::Leeway(Duration::seconds(leeway))
             }
         })
     }
 }
 
-#[napi]
 impl TryFrom<ProofOfPossessionNotBefore> for JsProofOfPossessionNotBefore {
     type Error = Error;
 
@@ -1450,14 +1435,14 @@ impl TryFrom<ProofOfPossessionNotBefore> for JsProofOfPossessionNotBefore {
             ProofOfPossessionNotBefore::Delay(delay) => JsProofOfPossessionNotBefore {
                 strategy: JsProofOfPossessionNotBeforeStrategy::Delay,
                 fixed: None,
-                delay: Some(delay.into()),
+                delay: Some(delay.whole_seconds()),
                 leeway: None,
             },
             ProofOfPossessionNotBefore::Leeway(leeway) => JsProofOfPossessionNotBefore {
                 strategy: JsProofOfPossessionNotBeforeStrategy::Leeway,
                 fixed: None,
                 delay: None,
-                leeway: Some(leeway.into()),
+                leeway: Some(leeway.whole_seconds()),
             },
         })
     }

@@ -6,6 +6,7 @@ use crate::vault::{CredentialEntry, Error as VaultError};
 use crate::vc::VCStatus;
 use crate::vc::VCStatusesData;
 use crate::vc::claims::Claims;
+use crate::vc::core::DEFAULT_POP_LIFETIME_MINUTES;
 use crate::vc::oid4vp::CredentialsFindResult;
 use crate::vc::status_formats::StatusListFormat;
 use crate::vc::{
@@ -106,6 +107,15 @@ pub struct ProofOfPossessionMetadata {
     pub lifetime: Duration,
     /// Proof of possession valid not before generation
     pub not_before: Option<ProofOfPossessionNotBefore>,
+}
+
+impl Default for ProofOfPossessionMetadata {
+    fn default() -> Self {
+        Self {
+            lifetime: Duration::minutes(DEFAULT_POP_LIFETIME_MINUTES),
+            not_before: None,
+        }
+    }
 }
 
 pub type ProofOfPossessionNotBefore = pop::ProofOfPossessionNotBefore;

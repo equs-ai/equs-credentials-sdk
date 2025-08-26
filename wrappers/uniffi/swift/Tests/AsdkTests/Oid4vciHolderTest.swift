@@ -119,7 +119,9 @@ import Swifter
 			vault: vault,
 			clientId: "client_id",
 			issuerDiscovery: IssuerDiscovery.offer(Oid4vciHolderTestConstants.CredentialOffer),
-            httpClient: ReqwestHttpClient.insecure()
+            httpClient: ReqwestHttpClient.insecure(),
+            pop: ProofOfPossessionMetadataBuilder().withNotBefore(notBefore: ProofOfPossessionNotBefore.leeway(300)).withLifetime(lifetime: 10)
+                            .build()
 		).build()
 
 		let didAndKeyMetadata = await createDidAndKeyMetadata(kms: kms)
@@ -150,7 +152,9 @@ import Swifter
 			vault: vault,
 			clientId: "client_id",
 			issuerDiscovery: IssuerDiscovery.offer(Oid4vciHolderTestConstants.CredentialOffer),
-            httpClient: ReqwestHttpClient.insecure()
+            httpClient: ReqwestHttpClient.insecure(),
+            pop: ProofOfPossessionMetadataBuilder().withNotBefore(notBefore: ProofOfPossessionNotBefore.leeway(300)).withLifetime(lifetime: 10)
+                            .build()
 		).build()
 
 		let didAndKeyMetadata1 = await createDidAndKeyMetadata(kms: kms)
@@ -186,7 +190,9 @@ import Swifter
 			vault: vault,
 			clientId: "client_id",
 			issuerDiscovery: IssuerDiscovery.offer(Oid4vciHolderTestConstants.CredentialOffer),
-            httpClient: ReqwestHttpClient.insecure()
+            httpClient: ReqwestHttpClient.insecure(),
+            pop: ProofOfPossessionMetadataBuilder().withNotBefore(notBefore: ProofOfPossessionNotBefore.leeway(300)).withLifetime(lifetime: 10)
+                                 .build()
 		).build()
 
 		let credential = Credential(
@@ -213,7 +219,9 @@ import Swifter
 		return try! await Oid4vciHolderBuilder(
 			kms: InMemKms(), vault: InMemVault(), clientId: "client_id",
 			issuerDiscovery: IssuerDiscovery.offer(Oid4vciHolderTestConstants.CredentialOffer),
-            httpClient: ReqwestHttpClient.insecure()
+            httpClient: ReqwestHttpClient.insecure(),
+            pop: ProofOfPossessionMetadataBuilder().withNotBefore(notBefore: ProofOfPossessionNotBefore.leeway(300)).withLifetime(lifetime: 10)
+                                 .build()
 		).build()
 	}
 }

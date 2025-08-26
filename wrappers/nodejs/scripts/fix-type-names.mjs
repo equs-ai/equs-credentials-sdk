@@ -40,8 +40,8 @@ const replacements = [
   { from: "JsVaultPagination", to: "VaultPagination" },
   { from: "JsHttpMethodForAuth", to: "HttpMethodForAuth" },
   { from: "JsProofOfPossessionMetadata", to: "ProofOfPossessionMetadata" },
-  { from: "JsProofOfPossessionNotBefore", to: "ProofOfPossessionNotBefore" },
-  { from: "JsProofOfPossessionNotBeforeStrategy", to: "ProofOfPossessionNotBeforeStrategy" },
+  { from: "JsProofOfPossessionNotBefore", to: "InnerProofOfPossessionNotBefore" },
+  { from: "JsProofOfPossessionNotBeforeStrategy", to: "InnerProofOfPossessionNotBeforeStrategy" },
   { from: "JsonObject", to: "Record<string, any>" },
 ];
 

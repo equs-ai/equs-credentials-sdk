@@ -39,7 +39,7 @@ describe("VC::Core", () => {
     {
       clientId: "wallet-dev",
       pop: {
-        lifetime: { nanoseconds: 0, seconds: 300 }
+        lifetime: 300
       },
     },
     new _UniversalDIDResolver(),

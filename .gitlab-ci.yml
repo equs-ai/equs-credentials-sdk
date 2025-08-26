@@ -31,7 +31,7 @@ variables:
     fi
 
 .rust_job_configs: &rust_job_configs
-  image: rust:${RUST_VERSION}
+  image: rust:${RUST_VERSION}-bookworm
   before_script:
     - *cargo_local_deps_script
 

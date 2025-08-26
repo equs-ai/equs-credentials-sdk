@@ -14,7 +14,7 @@ members = [
 
 [package]
 name = "agent-sdk"
-version = "0.10.0"
+version = "0.10.1"
 edition = "2024"
 rust-version = "1.89.0"
 

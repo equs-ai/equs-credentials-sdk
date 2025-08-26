@@ -2,13 +2,10 @@ import {
   buildVciHolder,
   contextEnsuredKms,
   contextEnsuredVault,
-  Duration,
   JsIssuerDiscovery,
   Kms,
   OID4VCIHolder,
   ProofOfPossessionMetadata,
-  ProofOfPossessionNotBefore,
-  ProofOfPossessionNotBeforeStrategy,
   ReqwestHttpClient,
   Vault,
 } from "../../..";
