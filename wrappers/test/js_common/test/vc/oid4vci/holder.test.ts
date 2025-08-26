@@ -6,7 +6,7 @@ import {
   IssuerDiscovery,
   KeyMetadata,
   KeyType,
-  OID4VCIHolderBuilder,
+  OID4VCIHolderBuilder, ProofOfPossessionMetadataBuilder, ProofOfPossessionNotBefore,
   ReqwestHttpClient,
   resolveMetadata,
   UniversalDIDResolver,
@@ -177,7 +177,14 @@ async function buildHolder(utils: Utils, kms = new InMemKms(), vault = new InMem
     "client_id",
     IssuerDiscovery.fromOffer(utils.credOffer),
     ReqwestHttpClient.insecure(),
-  ).build();
+  )
+    .withPop(
+      new ProofOfPossessionMetadataBuilder()
+        .withLifetime(300)
+        .withNotBefore(ProofOfPossessionNotBefore.leeway(10))
+        .build(),
+    )
+    .build();
 }
 
 export type DidAndKeyMetadata = {

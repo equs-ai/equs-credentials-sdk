@@ -34,4 +34,5 @@ pub mod reqwest;
 mod utils;
 pub mod vc;
 
+pub use time::{Duration, OffsetDateTime};
 pub use utils::chrono_time_mapping;

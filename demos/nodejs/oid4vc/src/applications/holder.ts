@@ -11,7 +11,7 @@ import {
   OID4VPHolder,
   OID4VPHolderBuilder,
   ProofOfPossessionMetadataBuilder,
-  ProofOfPossessionNotBeforeFactory,
+  ProofOfPossessionNotBefore,
   ReqwestHttpClient,
   resolveMetadata,
   TracingLogFormat,
@@ -55,7 +55,7 @@ async function main(): Promise<void> {
     .withPop(
       new ProofOfPossessionMetadataBuilder()
         .withNotBefore(
-          ProofOfPossessionNotBeforeFactory.leeway({ seconds: 30, nanoseconds: 0 }),
+          ProofOfPossessionNotBefore.leeway(10),
         )
         .build(),
     )

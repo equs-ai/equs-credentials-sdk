@@ -321,6 +321,9 @@ class HolderVCITest {
             vault,
             "client_id",
             IssuerDiscoveryEnum.Url(ISSUER_ENDPOINT),
-            ReqwestHttpClient.insecure()
+            ReqwestHttpClient.insecure(),
+            ProofOfPossessionMetadataBuilder().withNotBefore(ProofOfPossessionNotBefore.Leeway(300)).withLifetime(10)
+                .build()
+
         ).build()
 }

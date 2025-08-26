@@ -1,20 +1,19 @@
 import {
-  Duration,
   ProofOfPossessionMetadata,
-  ProofOfPossessionNotBefore,
-  ProofOfPossessionNotBeforeStrategy,
+  InnerProofOfPossessionNotBefore,
+  InnerProofOfPossessionNotBeforeStrategy,
 } from "../../../binary";
 
 export class ProofOfPossessionMetadataBuilder {
-  private lifetime?: Duration;
-  private notBefore?: ProofOfPossessionNotBefore;
+  private lifetime?: number;
+  private notBefore?: InnerProofOfPossessionNotBefore;
 
-  withLifetime(lifetime: Duration): this {
-    this.lifetime = lifetime;
+  withLifetime(lifetime_secs: number): this {
+    this.lifetime = lifetime_secs;
     return this;
   }
 
-  withNotBefore(notBefore: ProofOfPossessionNotBefore): this {
+  withNotBefore(notBefore: InnerProofOfPossessionNotBefore): this {
     this.notBefore = notBefore;
     return this;
   }
@@ -27,31 +26,31 @@ export class ProofOfPossessionMetadataBuilder {
   }
 }
 
-export class ProofOfPossessionNotBeforeFactory {
-  static asIssuedAt(): ProofOfPossessionNotBefore {
+export class ProofOfPossessionNotBefore {
+  static asIssuedAt(): InnerProofOfPossessionNotBefore {
     return {
-      strategy: ProofOfPossessionNotBeforeStrategy.AsIssuedAt,
+      strategy: InnerProofOfPossessionNotBeforeStrategy.AsIssuedAt,
     };
   }
 
-  static fixed(date: Date): ProofOfPossessionNotBefore {
+  static fixed(date: Date): InnerProofOfPossessionNotBefore {
     return {
-      strategy: ProofOfPossessionNotBeforeStrategy.Fixed,
+      strategy: InnerProofOfPossessionNotBeforeStrategy.Fixed,
       fixed: date,
     };
   }
 
-  static delay(delay: Duration): ProofOfPossessionNotBefore {
+  static delay(delay_secs: number): InnerProofOfPossessionNotBefore {
     return {
-      strategy: ProofOfPossessionNotBeforeStrategy.Delay,
-      delay: delay,
+      strategy: InnerProofOfPossessionNotBeforeStrategy.Delay,
+      delay: delay_secs,
     };
   }
 
-  static leeway(leeway: Duration): ProofOfPossessionNotBefore {
+  static leeway(leeway_secs: number): InnerProofOfPossessionNotBefore {
     return {
-      strategy: ProofOfPossessionNotBeforeStrategy.Leeway,
-      leeway: leeway,
+      strategy: InnerProofOfPossessionNotBeforeStrategy.Leeway,
+      leeway: leeway_secs,
     };
   }
 }
