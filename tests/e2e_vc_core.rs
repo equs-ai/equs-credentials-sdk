@@ -414,7 +414,7 @@ async fn build_issuer_with_bbs_plus_credential_profile() -> impl Issuer {
 
     let kms = LocalKms::new();
     let (kid, kh) = kms
-        .create_and_handle(kms::KeyType::Bls12381, kms::CreateOptions {})
+        .create_and_handle(kms::KeyType::Bls12381, kms::CreateOptions::default())
         .await
         .unwrap();
 
