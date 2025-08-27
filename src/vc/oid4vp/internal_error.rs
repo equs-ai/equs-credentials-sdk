@@ -28,7 +28,7 @@ pub enum InternalError {
         #[snafu(implicit)]
         location: Location,
     },
-    #[snafu(display("Authorization Response jwe decryption error"))]
+    #[snafu(display("Authorization Response jwe decryption error: {details}"))]
     AuthorizationResponseDecryption {
         details: String,
         #[snafu(implicit)]

@@ -89,7 +89,10 @@ where
     HC: HttpClient,
 {
     #[allow(clippy::too_many_arguments)]
-    #[instrument(level = Level::TRACE, skip(verifier, kms, nonce_generator, http_client, did_resolver))]
+    #[instrument(
+        level = Level::TRACE,
+        skip(verifier, kms, nonce_generator, http_client, did_resolver)
+    )]
     pub fn new(
         verifier: VF,
         kms: KMS,
@@ -660,17 +663,18 @@ mod tests {
     use crate::nonce::Nonce;
     use crate::vc::ClaimFormatDesignation;
     use crate::vc::claims::Claims;
+    use crate::vc::oid4vp::jwe_encryptor::JweEncryptor;
     use crate::vc::oid4vp::tests::fixtures::multi_presentation::{
         auth_response_options, submission_requirements,
     };
     use crate::vc::oid4vp::tests::fixtures::{NONCE, multi_presentation, single_presentation};
     use crate::vc::oid4vp::tests::fixtures::{STATE, VERIFIER_URL};
     use crate::vc::oid4vp::tests::utils::{
-        VerificationTestCase, build_url, validate_claims, verifier_service,
-        verifier_service_with_invalid_kid, verifier_service_with_signer_error,
+        VerificationTestCase, build_url, generate_client_metadata, validate_claims,
+        verifier_service, verifier_service_with_invalid_kid, verifier_service_with_signer_error,
     };
     use crate::vc::oid4vp::verifier::VP_TOKEN;
-    use crate::vc::oid4vp::{HttpMethodForAuth, InternalError, ResolvedAuthRequest};
+    use crate::vc::oid4vp::{HttpMethodForAuth, InternalError};
     use crate::vc::oid4vp::{PassAuthRequestObject, PresentationSession, ResponseType, Verifier};
     use crate::vc::presentation_exchange::PresentationDefinition;
     use openid4vp::core::authorization_request::{
@@ -678,73 +682,11 @@ mod tests {
     };
     use openid4vp::core::object::UntypedObject;
     use openid4vp::wallet::IdTokenParams;
-    use rstest::rstest;
-    use serde_json::{from_value, json};
+    use rstest::*;
+    use serde_json::{Map, json};
     use ssi::claims::jwt::decode_unverified;
     use std::collections::HashMap;
     use url::Url;
-    fn get_metadata() -> ClientMetadata {
-        let result: ResolvedAuthRequest = from_value(json!(
-           {
-              "response_uri": "https://some-link.com",
-              "client_id": "some_id",
-              "response_type": "vp_token",
-              "response_mode": "dc_api.jwt",
-              "nonce": "xyz123ltcaccescbwc777",
-              "dcql_query": {
-                "credentials": [
-                  {
-                    "id": "my_credential",
-                    "format": "dc+sd-jwt",
-                    "meta": {
-                      "vct_values": [
-                        "https://credentials.example.com/identity_credential"
-                      ]
-                    },
-                    "claims": [
-                      {
-                        "path": [
-                          "last_name"
-                        ]
-                      },
-                      {
-                        "path": [
-                          "first_name"
-                        ]
-                      },
-                      {
-                        "path": [
-                          "address",
-                          "postal_code"
-                        ]
-                      }
-                    ]
-                  }
-                ]
-              },
-              "client_metadata": {
-                "jwks": {
-                  "keys": [
-                   {
-                      "kid": "ecdsa-kid",
-                      "kty": "EC",
-                      "crv": "P-256",
-                      "x": "SSnPfyVhQgcU9Aaynqgi6QGhrq7K7WFEC0mAvpHG4TM",
-                       "y": "rYQ5mLQLTs95WLBKKA8R5IjMTXjX13iZnzazsVectRY",
-                      "alg": "ECDSA"
-                    }
-                  ]
-                },
-                "encrypted_response_enc_values_supported": [
-                  "A256GCM",
-                ]
-              }
-           }
-        ))
-        .unwrap();
-
-        result.client_metadata
-    }
 
     #[tokio::test]
     async fn generate_auth_request_by_reference_success() {
@@ -1098,7 +1040,6 @@ mod tests {
     #[tokio::test]
     async fn verify_auth_response_fails(#[case] test_case: VerificationTestCase) {
         let (verifier, client_id) = verifier_service().await;
-        let kms = LocalKms::new();
         let nonce = Nonce::from_secret(NONCE.to_owned());
 
         let response = test_case.auth_response(&nonce, &client_id).await;
@@ -1124,7 +1065,6 @@ mod tests {
     ) {
         let test_case = single_presentation::sd_jwt::verification_test_case();
         let (verifier, client_id) = verifier_service().await;
-        let kms = LocalKms::new();
         let session = PresentationSession {
             nonce: Nonce::from_secret(NONCE.to_owned()),
             resolved_presentation_query: test_case.session.resolved_presentation_query.clone(),
@@ -1143,6 +1083,112 @@ mod tests {
 
         let verified_claims = verifier
             .verify_presentation(&AuthorizationResponse::Plain(response), &test_case.session)
+            .await
+            .unwrap();
+    }
+
+    const JWE: &str = "eyJraWQiOiJhYyIsImVuYyI6IkExMjhDQkMtSFMyNTYiLCJhbGciOiJFQ0RILUVTIiwiYXB1IjoiYzI5dFpWOXViMjVqWlEiLCJhcHYiOiJjMjl0WlY5dWIyNWpaUSIsImVwayI6eyJrdHkiOiJFQyIsImNydiI6IlAtMjU2IiwieCI6IjZIaGh4WVlxbU9uc2NDLVkwZVNOYXJEZ0w0SGp5WW1BVXdJM3A2bkJ0eU0iLCJ5Ijoic3dYZ1BDbVdUR0RZSTJ6NGYtY2V5UE53dEhqRm9pNWZOY0Y0UTd2alNOYyJ9fQ..3zjOOJzGnCzYmEUp-xCgFA.CoDI0RyG7RV1K1oLb9jhqqMu-x55IWQFvQtFYsi3gzD1Shmb5o5TDWrnSX-66UZyHt_2yl0syKXDN557WUpazwRLckKituanU6fx0BFUARb0vyDnbHSvMNrLtJpfq7-pcsGqCg-6kCBNRV9NsvKrDyYqzlekyiAjO5eFR2fQ7x9r2IgI3kNZP9So6ZeQV5tESyiX5aX2sxPpplx9UlBquyTgLwWxfPvriuWuEwB09GmaEV9hSrfHTclZ-Pleltxjw3bKmm17gA1TzUhnjpw6GptkieVwWFplQO9xjyWV05V0EnaDZGeHpH2sGaA_uURXgei4V6YHjHq_Qor9LOY030OGNZr5VGEnD1UTCZlC__uzRGneBSGM_KqypBubGDS4DxrefF7AdRu1eDc1Gx846_9qgwT3K8bzI36pUGROboPCosJ2-l5_ICSghKqZJYUUubDOZpgLopPXQRwxSg84VGKlPs2U04JnhDlZkmGD5gNd3RKi1De5_2DfYxFyBJXF-mB8V4rWU3XwW1hcqD8ErY_1-vWa8oaxy7CoW7M0swdxza66xBuC8Rh2hVY6XNHpVltnG2RzViuZH2OYyPJ0O74uiuvneSjob7qpSi-jvfXHwDzWqu9te-mJT_3wk0MEFIVg3g8YZ6HBzDlOxEea_9aHwDpTz43-KEy5nfYvR_GTh0Tg-mu2qq-IZCBUnZQ1qtDGKBg-ixa9F7BNVz7Tcxc2UDaaByUjbGmQVTvYX2cuf2HFTqrQ4wYWws2fvMS0F9fjUQOL9dDvexdhqn7_raGN8zUSNsjW6tOubIayTXpgXCz4HvNLwZElh_fMK8Gb-5LAQcROzbkgECxT0LZcgFIBiMJbKAeAc8k0XyFek4f7MMMz6qCjQdZOrtrovGTLSIuUaB3cLVbrpq-JYKhwocn-iH6Bm_SLeTd5LjqMdLsDaXTNHvjXMPK1QT8ikSI846G1GvFBeL7Vek9q6t4pD18YuMsY7w9__V4az9KguWpZsJrULj7at831DGZfh0pa25Z_VdDKOjppb-j3ceROTolYCaZSTPrWyrDA_9cOjuKF_iF8bMbd2nGzmOHUd-tz096dcPUMJ9hets2cIU_8XOAoYYtTNCP3tXoP2ovLKptZsnuJsJuIgcP3kiQhuK05m8sfkMRRrJKci7wk6StbUHcO73v5olviO3ALDOZ5CsuAQeWO00BKTyjpNloeHt7t6gOEHM38gfebSIVNGxuWrrs0YL-VGcfDB91o7Cm8FScj0Qv_d0NT4snP46OBRQAaJdrX0_UBoxYhOyZQTBOzzhMXfuhMqn_NZuieglGqOUP25iexsaZPC8S4l-2HSFPv8m4t07GVgRW881XykozSR2L1CDz_JIsDtrVCEVWG-tnxVn4-1Lrt4VUhZOOrdqvjD9MkikX_Gysplmw0vMoS_26esWFAXhqtaRHlwAaoDoc8XmD_tvNiaPErj34imEFNBVffeyBHegA4WU_WydtA7MUOEt0xjO3hgUbRoAYB7w4c5Z94QFwOKC2IZl2Aj2Bz_r4LTESGpnUYd7810yJp_4PHpeAkE4LBmNaM5b1t_UVOnk7lkpnNOtXqqzeg_rdvzXhLjc-WyZvdNQt2m4LW6qpjNLBZ3jrrmZbeurQ2aqtDnnG2cjAxStpV7QJ16XRu6WPWamTriIMlEJfh7XzTREHd0TW79Kdk4fUTgzC1I1csKygh11e6-F3RI0xtXqsOd_k-uc-F6LNeIziQftaQeDY79XUpZed8xqJ5d9xIyrb2L9fHucPthg5btXeRrTNUaD76j6U-fewRRwdh1mWqmDIfIHmWzBRWAmMyFoUKDZKtDfz-iZPV_2I5RWbn6Jx3M02zEk6UCnH7t8IWT5aug02takkHRnEvD8ZNGljLs00MZjoe89Sz-Z0zPIJ-sXGIKXIbZITuU5H4yi7D6RLBDfZpRZPBJBjlFtF0WXlkItvaqQrUU31QLPRir73aTvTY6kKOGKfyg1BdLTtNyVoWJ7tbMTZH2UlJ8G8AA5X_gQQ0aD6mgdKCef0eha5NBQyJ-ATqSPhh1DD9RnWic2-CugNrIDhmFpcl8nDBfVokoNZsTWz62Pin9Cztp1f41T4T.jQWuxtlpSXrokaAhm440gQ";
+
+    #[rstest]
+    #[should_panic(expected = "Error while getting the jwe header")]
+    #[case("not_even_jwt")]
+    #[should_panic(expected = "Error while getting the key handle for ac")]
+    #[case(JWE)]
+    #[tokio::test]
+    async fn resolve_authorization_response_jwe_negative(#[case] jwt: &str) {
+        let (verifier, _) = verifier_service().await;
+
+        let result = verifier
+            .resolve_authorization_response(&AuthorizationResponse::Jwe(jwt.to_owned()))
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    #[should_panic(expected = "Error while getting the key handle")]
+    async fn resolve_authorization_response_jwe_wrong_kid() {
+        let (verifier, did) = verifier_service().await;
+        let test_case = single_presentation::sd_jwt::verification_test_case();
+
+        let wrong_kid = "wrong-kid";
+        let wrong_kid_metadata = generate_client_metadata(&LocalKms::new()).await;
+        println!(
+            "KEKS: {}",
+            serde_json::to_string_pretty(&wrong_kid_metadata).unwrap()
+        );
+        let encryptor = JweEncryptor::new(wrong_kid_metadata);
+        let jwt = encryptor
+            .encrypt(serde_json::to_value("{\"WRONG\":\"PAYLOAD\"}").unwrap())
+            .await
+            .unwrap();
+
+        let result = verifier
+            .resolve_authorization_response(&AuthorizationResponse::Jwe(jwt.to_owned()))
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    #[should_panic(expected = "Error: The claim set must be an object")]
+    async fn resolve_authorization_response_jwe_no_claims() {
+        let (verifier, did) = verifier_service().await;
+        let test_case = single_presentation::sd_jwt::verification_test_case();
+
+        let encryptor = JweEncryptor::new(verifier.metadata.client_metadata.clone());
+        let jwt = encryptor
+            .encrypt(serde_json::to_value("{\"WRONG\":\"PAYLOAD\"}").unwrap())
+            .await
+            .unwrap();
+
+        verifier
+            .resolve_authorization_response(&AuthorizationResponse::Jwe(jwt.to_owned()))
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    #[should_panic(expected = "Error: vp_token was not found")]
+    async fn resolve_authorization_response_jwe_no_vp_token() {
+        let (verifier, did) = verifier_service().await;
+        let test_case = single_presentation::sd_jwt::verification_test_case();
+
+        let encryptor = JweEncryptor::new(verifier.metadata.client_metadata.clone());
+        let mut body = Map::new();
+        body.insert(
+            "presentation_submission".to_string(),
+            json!(test_case.presentation_submission),
+        );
+        let jwt = encryptor.encrypt(Value::Object(body)).await.unwrap();
+
+        verifier
+            .resolve_authorization_response(&AuthorizationResponse::Jwe(jwt.to_owned()))
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn resolve_authorization_response_jwe_positive() {
+        let (verifier, did) = verifier_service().await;
+        let test_case = single_presentation::sd_jwt::verification_test_case();
+
+        let encryptor = JweEncryptor::new(verifier.metadata.client_metadata.clone());
+        let mut body = Map::new();
+        body.insert(
+            "vp_token".to_string(),
+            json!(
+                test_case
+                    .vp_token(&test_case.session.nonce, did.as_str())
+                    .await
+            ),
+        );
+        body.insert(
+            "presentation_submission".to_string(),
+            json!(test_case.presentation_submission),
+        );
+        let jwt = encryptor.encrypt(Value::Object(body)).await.unwrap();
+
+        verifier
+            .resolve_authorization_response(&AuthorizationResponse::Jwe(jwt.to_owned()))
             .await
             .unwrap();
     }

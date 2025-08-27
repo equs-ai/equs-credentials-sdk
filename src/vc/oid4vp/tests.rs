@@ -673,7 +673,7 @@ pub mod fixtures {
             use crate::vc::oid4vp::tests::fixtures::NONCE;
             use crate::vc::oid4vp::tests::utils::{PresentationTestCase, VerificationTestCase};
             use crate::vc::oid4vp::{
-                PresentationSession, ResolvedAuthRequest, ResolvedPresentationQuery,
+                ClientMetadata, PresentationSession, ResolvedAuthRequest, ResolvedPresentationQuery,
             };
             use crate::vc::presentation_exchange::{
                 PresentationDefinition, PresentationSubmission,
@@ -985,17 +985,17 @@ pub mod fixtures {
                             "alg": ["EdDSA", "ES256"]
                         }
                     },
-                        "jwks": {
-                        "keys": [
+                    "jwks": {
+                      "keys": [
                         {
-                         "kty":"EC", "kid":"ac", "use":"enc", "crv":"P-256","alg":"ES256",
-                         "x": "SSnPfyVhQgcU9Aaynqgi6QGhrq7K7WFEC0mAvpHG4TM",
-                         "y": "rYQ5mLQLTs95WLBKKA8R5IjMTXjX13iZnzazsVectRY"
+                          "kty":"EC", "kid":"ac", "use":"enc", "crv":"P-256","alg":"ES256",
+                          "x": "SSnPfyVhQgcU9Aaynqgi6QGhrq7K7WFEC0mAvpHG4TM",
+                          "y": "rYQ5mLQLTs95WLBKKA8R5IjMTXjX13iZnzazsVectRY"
                         }
-                       ]
-                      },
-                      "encrypted_response_enc_values_supported": ["A128GCM", "A128CBC-HS256"]
-                     }
+                     ]
+                    },
+                    "encrypted_response_enc_values_supported": ["A128GCM", "A128CBC-HS256"]
+                  }
                 }"#;
             pub const AUTH_REQUEST_WITH_NON_URL_SCHEME: &str = r#"
                 {
@@ -1183,6 +1183,22 @@ pub mod fixtures {
                     }
                 }
               }}
+            "#;
+
+            pub const CLIENT_METADATA_NO_KEYS: &str = r#"
+                {
+                    "vp_formats": {
+                        "dc+sd-jwt": {
+                            "alg": ["EdDSA", "ES256"]
+                        }
+                    },
+                    "jwks": {
+                        "keys": [
+
+                        ]
+                    },
+                    "encrypted_response_enc_values_supported": ["A128GCM", "A128CBC-HS256"]
+                }
             "#;
 
             pub fn presentation_definition() -> ResolvedPresentationQuery {
@@ -1770,6 +1786,10 @@ pub mod fixtures {
                     session: presentation_session(),
                 }
             }
+
+            pub fn client_metadata_no_keys() -> ClientMetadata {
+                serde_json::from_str(CLIENT_METADATA_NO_KEYS).unwrap()
+            }
         }
     }
 
@@ -2320,6 +2340,8 @@ pub mod fixtures {
 }
 
 pub mod utils {
+    use crate::crypto::Key;
+    use crate::crypto::{JWK, SSIAlg};
     use crate::did::didkey::DIDKey;
     use crate::did::universal::UniversalResolver;
     use crate::http::{HttpClient, MockHttpClient};
@@ -2345,6 +2367,7 @@ pub mod utils {
     use crate::vc::oid4vp::holder::HolderService;
     use crate::vc::oid4vp::jwe_utils::WrapperForES256Handle;
     use crate::vc::oid4vp::signer::Signer;
+    use crate::vc::oid4vp::tests::fixtures::single_presentation::sd_jwt::client_metadata_no_keys;
     use crate::vc::oid4vp::tests::fixtures::{CREDENTIAL_ID, VERIFIER_URL};
     use crate::vc::oid4vp::verifier::VerifierService;
     use crate::vc::oid4vp::{
@@ -2364,7 +2387,6 @@ pub mod utils {
     use one_crypto::jwe::decrypt_jwe_payload;
     use openid4vp::core::authorization_request::verification::RequestVerifier;
     use openid4vp::core::metadata::parameters::SubjectSyntaxTypesSupported;
-    use openid4vp::core::object::UntypedObject;
     use openid4vp::core::response::PostRedirection;
     use openid4vp::core::response::parameters::IdToken;
     use openid4vp::core::util::http::AsyncHttpClient;
@@ -2833,7 +2855,15 @@ pub mod utils {
         )
     }
 
-    async fn create_verifier_service(invalid_key_id: bool) -> (impl Verifier, String) {
+    type TestVerifierService = VerifierService<
+        vc::core::VerifierService,
+        KeyHandle,
+        LocalKms,
+        LocalNonceHandler,
+        MockHttpClient,
+    >;
+
+    async fn create_verifier_service(invalid_key_id: bool) -> (TestVerifierService, String) {
         let kms = LocalKms::new();
         let nonce_gen = LocalNonceHandler::default();
         let (did, key_metadata) = create_did_and_key_metadata(&kms).await;
@@ -2845,11 +2875,7 @@ pub mod utils {
         }
 
         let inner = vc::core::VerifierService::new(&did, UniversalResolver::default());
-        let sub_syntax_types = SubjectSyntaxTypesSupported(vec!["did:key".to_string()]);
-
-        let mut client_metadata =
-            ClientMetadata::try_from(Value::from(UntypedObject::default())).unwrap();
-        client_metadata.0.insert(sub_syntax_types);
+        let client_metadata = generate_client_metadata(&kms).await;
 
         let verifier = VerifierService::new(
             inner,
@@ -2865,67 +2891,49 @@ pub mod utils {
         (verifier, did)
     }
 
-    async fn create_verifier_service_itself(
-        invalid_key_id: bool,
-    ) -> (
-        VerifierService<
-            vc::core::VerifierService,
-            KeyHandle,
-            LocalKms,
-            LocalNonceHandler,
-            MockHttpClient,
-        >,
-        String,
-    ) {
-        let kms = LocalKms::new();
-        let nonce_gen = LocalNonceHandler::default();
-        let (did, key_metadata) = create_did_and_key_metadata(&kms).await;
-
-        let mut key_metadata = key_metadata;
-
-        if invalid_key_id {
-            key_metadata.kid = "invalid_key_id".to_string();
-        }
-
-        let inner = vc::core::VerifierService::new(&did, UniversalResolver::default());
-        let sub_syntax_types = SubjectSyntaxTypesSupported(vec!["did:key".to_string()]);
-
-        let mut client_metadata =
-            ClientMetadata::try_from(Value::from(UntypedObject::default())).unwrap();
-        client_metadata.0.insert(sub_syntax_types);
-
-        let verifier = VerifierService::new(
-            inner,
-            kms,
-            nonce_gen,
-            MockHttpClient::new(),
-            did.clone(),
-            key_metadata,
-            UniversalResolver::default(),
-            Some(client_metadata),
-        );
-
-        (verifier, did)
-    }
-    pub async fn verifier_service_itself() -> (
-        VerifierService<
-            vc::core::VerifierService,
-            KeyHandle,
-            LocalKms,
-            LocalNonceHandler,
-            MockHttpClient,
-        >,
-        String,
-    ) {
-        create_verifier_service_itself(false).await
-    }
-
-    pub async fn verifier_service() -> (impl Verifier, String) {
+    pub async fn verifier_service() -> (TestVerifierService, String) {
         create_verifier_service(false).await
     }
 
-    pub async fn verifier_service_with_invalid_kid() -> (impl Verifier, String) {
+    pub async fn verifier_service_with_invalid_kid() -> (
+        VerifierService<
+            vc::core::VerifierService,
+            KeyHandle,
+            LocalKms,
+            LocalNonceHandler,
+            MockHttpClient,
+        >,
+        String,
+    ) {
         create_verifier_service(true).await
+    }
+
+    pub async fn generate_client_metadata(kms: &LocalKms) -> ClientMetadata {
+        let key = kms
+            .create(KeyType::P256, CreateOptions::default())
+            .await
+            .unwrap();
+        let kh = kms.get(&key).await.unwrap();
+        let jwk = kh.jwk().unwrap();
+        let jwk = JWK {
+            key_id: Some(key),
+            public_key_use: Some("enc".to_string()),
+            algorithm: Some(SSIAlg::ES256),
+            ..jwk
+        };
+        let jwk = serde_json::to_value(&jwk).unwrap();
+        let Value::Object(jwk) = jwk else {
+            panic!("The jwk is not an object");
+        };
+
+        let sub_syntax_types = SubjectSyntaxTypesSupported(vec!["did:key".to_string()]);
+        let mut client_metadata = client_metadata_no_keys();
+        client_metadata.0.insert(sub_syntax_types);
+        let mut jwks = client_metadata.jwks().unwrap().unwrap();
+        jwks.keys.push(jwk.clone());
+        client_metadata.0.insert(jwks);
+
+        client_metadata
     }
 
     pub async fn verifier_service_with_signer_error() -> (impl Verifier, String) {

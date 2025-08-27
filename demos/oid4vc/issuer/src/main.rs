@@ -511,7 +511,7 @@ async fn status_issuer() -> impl StatusIssuer {
 
     let kms = LocalKms::new();
     let (kid, kh) = kms
-        .create_and_handle(kms::KeyType::P256, kms::CreateOptions {})
+        .create_and_handle(kms::KeyType::P256, kms::CreateOptions::default())
         .await
         .unwrap();
 
@@ -559,7 +559,7 @@ async fn issue_status_list(issuer: &dyn StatusIssuer, statuses: VCStatuses) -> S
 
 async fn create_dedicated_metadata_for_json_ld_v2(kms: &LocalKms) -> KeyMetadata {
     let (kid, kh) = kms
-        .create_and_handle(kms::KeyType::Ed25519, kms::CreateOptions {})
+        .create_and_handle(kms::KeyType::Ed25519, kms::CreateOptions::default())
         .await
         .unwrap();
 
