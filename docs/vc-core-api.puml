@@ -19,13 +19,13 @@ I --> H: <out-of-band>: send `CredentialOffer`
 ...
 
 autonumber 2.1
-H -> H: <b>request_credential</b>(credential_offer, nonce)
+H -> H: <b>request_credential</b>(credential_offer, nonce, key_metadata)
 H --> I: <out-of-band>: send `CredentialRequest`
 
 ...
 
 autonumber 3.1
-I -> I: <b>issue_credential</b>(credential_request, claims, nonce)
+I -> I: <b>issue_credential</b>(credential_request, claims, nonce, status_info)
 I --> H: <out-of-band>: send `(Credential, CredentialMetadata)`
 autonumber 4
 H -> H: <b>store_credential</b>(credential, credential_metadata)
@@ -37,19 +37,23 @@ V -> H: <out-of-band>: send `PresentationDefinition`
 
 alt Auto-select credentials
 autonumber 5.2.1
-H -> H: <b>create_presentation_auto</b>(presentation_input, nonce, verifier_id)
+H -> H: <b>create_presentation_auto</b>(nonce, verifier_id, presentation_input)
 
 else User selects/approves credentials for the presentation
 autonumber 5.2.1
 H -> H: <b>find_vcs_for_presentation</b>(presentation_input)
 H --> H: <out-of-band>: Select/Approve selection
-H -> H: <b>create_presentation</b>(presentation_input, credential, nonce, verifier_id)
+H -> H: <b>create_presentation</b>(nonce, verifier_id, presentation_input, credential)
 end
 autonumber 5.3
 H -> V: <out-of-band>: send `Presentation`
 ...
 
-autonumber 6
-V -> V: <b>verify_presentation</b>(\n    presentation_input, nonce, presentation)
+autonumber 6.1
+V -> V: <b>verify_presentation</b>(nonce, presentation, http_client)
+group sd_jwt
+V -> V: <b>obtain_credential_status</b>(presentation, http_client)
+end
+
 
 @enduml
