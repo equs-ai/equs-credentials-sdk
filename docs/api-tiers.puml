@@ -41,6 +41,7 @@ package "ASDK" as ASDK {
 'API ---> Int
 VCOID ---> VCCore
 AriesWACI ---> VCCore
+AriesWACI ---> PE
 DIDCommP ---> PE
 PE --> DIDComm
 

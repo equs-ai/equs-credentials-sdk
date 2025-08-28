@@ -16,7 +16,7 @@
     - WASM (TypeScript)
     - Kotlin
     - Swift
-- ASDK is not an end-user application, but just an ASDK. Applications integrating ASDK will need to implement some
+- ASDK is not an end-user application, but just an SDK. Applications integrating ASDK will need to implement some
   interfaces (such as KMS and Vault) or Web endpoints (OID4VC). See [How To Use ASDK](#how-to-use-asdk-in-applications)
   below.
 - ASDK supports multiple SSI protocols and specifications (see below).
@@ -47,9 +47,8 @@ See [Components](docs/asdk-components.png).
       EdDSA) - [draft-ietf-oauth-sd-jwt-vc-08](https://datatracker.ietf.org/doc/draft-ietf-oauth-sd-jwt-vc/)
     - W3C VC JSON-LD V1 (ECDSA,
       EdDSA) - [Verifiable Credentials Data Model v1.1](https://www.w3.org/TR/2022/REC-vc-data-model-20220303/)
-    - W3C VC JSON-LD V2 (ECDSA, EdDSA, BBS+
-        2023)
-            - [Verifiable Credentials Data Model v2.0](https://www.w3.org/TR/vc-data-model-2.0/)
+    - W3C VC JSON-LD V2 (ECDSA, EdDSA, BBS+ 2023)
+      - [Verifiable Credentials Data Model v2.0](https://www.w3.org/TR/vc-data-model-2.0/)
 - VC Exchange Protocols: Issuance
     - OID4VCI [draft 15](https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0-15.html)
         - Authorization Code Flow using scope Parameter to Request Issuance of a Credential
