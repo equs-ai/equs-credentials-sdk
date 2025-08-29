@@ -1,4 +1,5 @@
 use crate::kms::JsKms;
+use crate::result::IntoNapiError;
 use crate::vc::core::JsStatusIssuerMetadata;
 use crate::vc::core::{JsStatusList, JsVCStatusesData};
 use agent_sdk::vc::core::{StatusIssuer, StatusIssuerMetadata, status_issuer::StatusIssuerService};
@@ -32,7 +33,7 @@ impl VCCoreStatusIssuer {
         self.0
             .issue_status_list(status_list_id.as_str(), vc_statuses)
             .await
-            .map_err(|e| Error::from_reason(e.to_string()))
+            .map_err(IntoNapiError::into_napi_error)
             .and_then(|v| v.try_into())
     }
 }

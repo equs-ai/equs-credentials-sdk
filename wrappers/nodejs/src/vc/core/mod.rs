@@ -22,6 +22,7 @@ use agent_sdk::vc::core::StatusListDefinition;
 use agent_sdk::vc::status_formats::status_list_token_jwt;
 use agent_sdk::vc::{StatusList, VCStatusesData};
 
+use crate::result::IntoNapiError;
 use crate::vc::status_formats::JsStatusListFormat;
 use agent_sdk::vc::{Credential, CredentialMetadata, HasVCFormat, Presentation, VCFormat};
 use napi::Error;
@@ -29,6 +30,43 @@ use napi_derive::napi;
 use serde_json::{json, to_string};
 use time::Duration;
 use time::error::ComponentRange;
+
+impl IntoNapiError for agent_sdk::vc::core::Error {
+    fn into_napi_error(self) -> Error {
+        Error::from_reason(match self {
+            Self::CredDefNotFound { .. } => "CredDefNotFound",
+            Self::ClaimsNotFound { .. } => "ClaimsNotFound",
+            Self::ProofFormatRequired => "ProofFormatRequired",
+            Self::RequestedCredentialNotFound { .. } => "RequestedCredentialNotFound",
+            Self::InconsistentProtocolData { .. } => "InconsistentProtocolData",
+            Self::FormatNotSupported { .. } => "FormatNotSupported",
+            Self::AlgNotSupported { .. } => "AlgNotSupported",
+            Self::ProofFormatNotSupported { .. } => "ProofFormatNotSupported",
+            Self::InvalidDIDUrl { .. } => "InvalidDIDUrl",
+            Self::VC { .. } => "VC",
+            Self::Proof { .. } => "Proof",
+            Self::KMS { .. } => "KMS",
+            Self::Vault { .. } => "Vault",
+            Self::Parse { .. } => "Parse",
+            Self::Claims { .. } => "Claims",
+            Self::ContextParsing { .. } => "ContextParsing",
+            Self::VCStatus { .. } => "VCStatus",
+            Self::StatusListNotProvided => "StatusListNotProvided",
+            Self::CredentialStatusNotSupported => "CredentialStatusNotSupported",
+            Self::CredentialStatusProtocolNotSupported { .. } => {
+                "CredentialStatusProtocolNotSupported"
+            }
+            Self::StatusListCreating { .. } => "StatusListCreating",
+            Self::InconsistentStatusListData { .. } => "InconsistentStatusListData",
+            Self::CannotCreateRegex { .. } => "CannotCreateRegex",
+            Self::ClaimsDidNotPassFiltering { .. } => "ClaimsDidNotPassFiltering",
+            Self::CredentialExpired => "CredentialExpired",
+            Self::ExpirationCheck { .. } => "ExpirationCheck",
+            Self::VCNotValid { .. } => "VCNotValid",
+            _ => "Unknown",
+        })
+    }
+}
 
 /// A helper interface for handling Keys and `DID`s for the services.
 ///

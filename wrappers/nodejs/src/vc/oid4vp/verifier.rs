@@ -1,3 +1,4 @@
+use crate::result::IntoNapiError;
 use crate::utils::{from_json_object, parse_url_arg, to_json_object};
 use crate::vc::JsonObject;
 use agent_sdk::vc::oid4vp::{
@@ -61,7 +62,7 @@ impl InternalOID4VPVerifier {
                 wallet_metadata.as_ref(),
             )
             .await
-            .map_err(|err| Error::from_reason(format!("{:?}", err)))?;
+            .map_err(IntoNapiError::into_napi_error)?;
 
         Ok(AuthorizationRequestWithSession {
             authorization_request_uri: aut_req_obj_uri.into(),
@@ -85,7 +86,7 @@ impl InternalOID4VPVerifier {
         self.0
             .verify_presentation(&authorization_response.try_into()?, &session.try_into()?)
             .await
-            .map_err(|err| Error::from_reason(format!("{:?}", err)))
+            .map_err(IntoNapiError::into_napi_error)
             .and_then(to_json_object)
     }
 }

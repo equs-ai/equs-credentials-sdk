@@ -6,6 +6,7 @@ pub mod http;
 pub mod inmem;
 pub mod kms;
 mod nonce;
+mod result;
 pub(crate) mod utils;
 pub mod vault;
 pub mod vc;

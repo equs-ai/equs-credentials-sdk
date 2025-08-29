@@ -1,3 +1,4 @@
+use crate::result::IntoNapiError;
 use crate::utils::{from_json_object, to_json_object};
 use crate::vc::JsonObject;
 use crate::vc::core::{JsCredential, JsCredentialMetadata, JsKeyMetadata};
@@ -96,7 +97,7 @@ impl OID4VCIHolder {
                 }),
             )
             .await
-            .map_err(|err| napi::Error::from_reason(format!("{:?}", err)))
+            .map_err(IntoNapiError::into_napi_error)
             .and_then(to_json_object)
     }
 
@@ -163,7 +164,7 @@ impl OID4VCIHolder {
                 }),
             )
             .await
-            .map_err(|err| napi::Error::from_reason(format!("{:?}", err)))
+            .map_err(IntoNapiError::into_napi_error)
             .and_then(to_json_object)
     }
 
@@ -193,7 +194,7 @@ impl OID4VCIHolder {
         self.0
             .request_credential(&token, &cred_def_id, key_metadata.as_slice())
             .await
-            .map_err(|err| napi::Error::from_reason(format!("{:?}", err)))
+            .map_err(IntoNapiError::into_napi_error)
             .and_then(TryInto::try_into)
     }
 
@@ -214,7 +215,7 @@ impl OID4VCIHolder {
         self.0
             .store_credential(&credential.try_into()?, &credential_metadata.into())
             .await
-            .map_err(|err| napi::Error::from_reason(format!("{:?}", err)))
+            .map_err(IntoNapiError::into_napi_error)
     }
 }
 

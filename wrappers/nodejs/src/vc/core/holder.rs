@@ -1,6 +1,7 @@
 use crate::did::JsUniversalDIDResolver;
 use crate::http::ReqwestHttpClient;
 use crate::kms::JsKms;
+use crate::result::IntoNapiError;
 use crate::vault::{JsCredentialEntry, JsCredentialsFindResult, JsVault};
 use crate::vc::core::{JsCredential, JsCredentialMetadata, JsHolderMetadata, JsKeyMetadata};
 use crate::vc::core::{
@@ -49,7 +50,7 @@ impl VCCoreHolder {
             )
             .await
             .map(|v| v.into())
-            .map_err(|e| Error::from_reason(e.to_string()))
+            .map_err(IntoNapiError::into_napi_error)
     }
 
     /// Store a {@link Credential}.
@@ -69,7 +70,7 @@ impl VCCoreHolder {
         self.0
             .store_credential(&credential.try_into()?, &metadata.into())
             .await
-            .map_err(|e| Error::from_reason(e.to_string()))
+            .map_err(IntoNapiError::into_napi_error)
     }
 
     /// Verify a {@link Credential} against an Issuer signature.
@@ -84,7 +85,7 @@ impl VCCoreHolder {
         self.0
             .verify_credential(&credential.try_into()?)
             .await
-            .map_err(|e| Error::from_reason(e.to_string()))
+            .map_err(IntoNapiError::into_napi_error)
     }
 
     /// Create a Verifiable Presentation automatically.
@@ -112,7 +113,7 @@ impl VCCoreHolder {
                 &presentation_input.try_into()?,
             )
             .await
-            .map_err(|e| Error::from_reason(e.to_string()))
+            .map_err(IntoNapiError::into_napi_error)
             .and_then(|v| v.try_into())
     }
 
@@ -131,7 +132,7 @@ impl VCCoreHolder {
         self.0
             .find_vcs_for_presentation(&presentation_input.try_into()?)
             .await
-            .map_err(|e| Error::from_reason(e.to_string()))
+            .map_err(IntoNapiError::into_napi_error)
             .and_then(|value| value.try_into())
     }
 
@@ -159,7 +160,7 @@ impl VCCoreHolder {
                 &credential.try_into()?,
             )
             .await
-            .map_err(|e| Error::from_reason(e.to_string()))
+            .map_err(IntoNapiError::into_napi_error)
             .and_then(|v| v.try_into())
     }
 }
