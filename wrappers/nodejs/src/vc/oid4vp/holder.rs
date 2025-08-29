@@ -1,3 +1,4 @@
+use crate::result::IntoNapiError;
 use crate::utils::{from_json_object, parse_url_arg, to_json_object};
 use crate::vault::{JsCredentialEntry, JsCredentialsFindResult};
 use crate::vc::JsonObject;
@@ -48,7 +49,7 @@ impl InnerOID4VPHolder {
         self.0
             .get_authorization_request(&parse_url_arg(&request_uri)?)
             .await
-            .map_err(|err| Error::from_reason(format!("{:?}", err)))
+            .map_err(IntoNapiError::into_napi_error)
             .and_then(|result| result.try_into())
     }
 
@@ -77,7 +78,7 @@ impl InnerOID4VPHolder {
                 &auth_response_metadata.try_into()?,
             )
             .await
-            .map_err(|err| Error::from_reason(format!("{:?}", err)))?;
+            .map_err(IntoNapiError::into_napi_error)?;
 
         Ok(result.map(|url: Url| url.to_string()))
     }
@@ -98,7 +99,7 @@ impl InnerOID4VPHolder {
             .0
             .find_vcs_for_presentation(&auth_request.try_into()?)
             .await
-            .map_err(|err| Error::from_reason(format!("{:?}", err)))?;
+            .map_err(IntoNapiError::into_napi_error)?;
 
         convert_to_js_credentials_mapping(credentials_mapping)
     }
@@ -127,7 +128,7 @@ impl InnerOID4VPHolder {
                 &auth_response_metadata.try_into()?,
             )
             .await
-            .map_err(|err| Error::from_reason(format!("{:?}", err)))?;
+            .map_err(IntoNapiError::into_napi_error)?;
 
         Ok(result.map(|url: Url| url.to_string()))
     }
@@ -148,7 +149,7 @@ impl InnerOID4VPHolder {
             .0
             .decline_authorization_request(&auth_request)
             .await
-            .map_err(|err| Error::from_reason(err.to_string()))?;
+            .map_err(IntoNapiError::into_napi_error)?;
 
         Ok(redirect_url.map(|url| url.to_string()))
     }

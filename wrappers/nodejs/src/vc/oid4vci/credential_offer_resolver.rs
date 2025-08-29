@@ -1,4 +1,5 @@
 use crate::http::ReqwestHttpClient;
+use crate::result::IntoNapiError;
 use crate::utils::to_json_object;
 use crate::vc::JsonObject;
 use agent_sdk::vc::oid4vci::CredentialOfferResolver;
@@ -19,8 +20,8 @@ impl OID4VCICredentialOfferResolver {
     /// Returns a new {@link OID4VCICredentialOfferResolver} to resolve {@link OID4VCICredentialOffer}
     #[napi(constructor)]
     pub fn new() -> Result<Self> {
-        let mut inner_resolver = CredentialOfferResolver::new()
-            .map_err(|err| Error::from_reason(format!("{:?}", err)))?;
+        let mut inner_resolver =
+            CredentialOfferResolver::new().map_err(IntoNapiError::into_napi_error)?;
 
         let resolver = OID4VCICredentialOfferResolver(inner_resolver);
 
@@ -53,7 +54,7 @@ impl OID4VCICredentialOfferResolver {
         self.0
             .resolve(offer_uri)
             .await
-            .map_err(|err| napi::Error::from_reason(format!("{:?}", err)))
+            .map_err(IntoNapiError::into_napi_error)
             .and_then(to_json_object)
     }
 }

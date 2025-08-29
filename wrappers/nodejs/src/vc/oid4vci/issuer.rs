@@ -1,6 +1,7 @@
+use crate::result::IntoNapiError;
 use agent_sdk::vc::oid4vci;
 use agent_sdk::vc::oid4vci::Issuer;
-use napi::{Error, Result};
+use napi::Result;
 use napi_derive::napi;
 
 use crate::utils::{from_json_object, to_json_object};
@@ -64,7 +65,7 @@ impl OID4VCIIssuer {
             .0
             .generate_nonce()
             .await
-            .map_err(|err| Error::from_reason(format!("{:?}", err)))?;
+            .map_err(IntoNapiError::into_napi_error)?;
 
         Ok(NonceResponse {
             c_nonce: response.c_nonce().secret().to_string(),
@@ -90,7 +91,7 @@ impl OID4VCIIssuer {
         let (params, url) = self
             .0
             .create_credential_offer(cred_def_ids, &from_json_object(grants)?)
-            .map_err(|err| Error::from_reason(format!("{:?}", err)))?;
+            .map_err(IntoNapiError::into_napi_error)?;
 
         Ok(CredentialOffer {
             params: to_json_object(params)?,
@@ -144,7 +145,7 @@ impl OID4VCIIssuer {
                 type_: IssuanceResultType::ProtocolError,
                 value: to_json_object(source)?,
             }),
-            Err(err) => Err(Error::from_reason(format!("{:?}", err))),
+            Err(err) => Err(err.into_napi_error()),
         }
     }
 }

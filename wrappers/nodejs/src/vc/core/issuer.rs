@@ -1,5 +1,6 @@
 use crate::did::JsUniversalDIDResolver;
 use crate::kms::JsKms;
+use crate::result::IntoNapiError;
 use crate::vc::core::{JsCredential, JsIssuerMetadata};
 use crate::vc::core::{
     JsCredentialOffer, JsCredentialOfferData, JsCredentialRequest, JsCredentialStatusInfo,
@@ -41,7 +42,7 @@ impl VCCoreIssuer {
         let protocol_data = protocol_data.map(|value| value.into());
         self.0
             .offer_credential(&cred_def_id, protocol_data.as_ref())
-            .map_err(|e| Error::from_reason(e.to_string()))
+            .map_err(IntoNapiError::into_napi_error)
             .and_then(|v| v.try_into())
     }
 
@@ -77,7 +78,7 @@ impl VCCoreIssuer {
                 status_info,
             )
             .await
-            .map_err(|e| Error::from_reason(e.to_string()))
+            .map_err(IntoNapiError::into_napi_error)
             .and_then(|v| v.try_into())
     }
 }

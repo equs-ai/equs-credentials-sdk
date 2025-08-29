@@ -18,6 +18,7 @@ pub use builder::Error as BuilderError;
 pub use builder::HolderBuilder;
 pub use builder::VerifierBuilder;
 pub use internal_error::InternalError;
+pub use protocol_error::ErrorType;
 pub use protocol_error::ProtocolError;
 
 pub use api::*;

@@ -1,5 +1,6 @@
 use crate::did::JsUniversalDIDResolver;
 use crate::http::{JsHttpClient, ReqwestHttpClient};
+use crate::result::IntoNapiError;
 use crate::utils::to_json_object;
 use crate::vc::JsonObject;
 use crate::vc::core::JsPresentation;
@@ -41,7 +42,7 @@ impl VCCoreVerifier {
                 &http_client.inner(),
             )
             .await
-            .map_err(|e| Error::from_reason(e.to_string()))
+            .map_err(IntoNapiError::into_napi_error)
             .and_then(to_json_object)
     }
 
@@ -61,7 +62,7 @@ impl VCCoreVerifier {
             .0
             .obtain_credential_status(&presentation.try_into()?, &http_client)
             .await
-            .map_err(|e| Error::from_reason(e.to_string()))?;
+            .map_err(IntoNapiError::into_napi_error)?;
 
         result.map(TryInto::try_into).transpose()
     }
