@@ -904,6 +904,30 @@ mod tests {
         assert_eq!(reasons.len(), 2);
     }
     #[tokio::test]
+    async fn holder_find_credential_returns_reason_when_no_creds_found_in_vault() {
+        let case = CredTestCase::sd_jwt();
+
+        let kms = LocalKms::new();
+        let vault = InMemVault::new();
+
+        let (entry1, did_url1) = case.generate_vc(&kms, None).await;
+
+        let holder = holder_service(kms, vault);
+
+        let input = case.create_presentation_input();
+
+        let creds = holder.find_vcs_for_presentation(&input).await.unwrap();
+
+        let CredentialsFindResult::Reasons(reasons) = creds else {
+            panic!(
+                "Wrong return type from holder.find_vcs_for_presentation. Should reasons of not passing filtering",
+            )
+        };
+
+        assert_eq!(reasons.len(), 1);
+        assert_eq!(reasons.first().unwrap().len(), 3);
+    }
+    #[tokio::test]
     async fn holder_find_vcs_for_presentation_removes_duplicates() {
         let case_1 = CredTestCase::sd_jwt();
         let case_2 = CredTestCase {

@@ -594,7 +594,7 @@ mod tests {
         Claims, Credential, EXP_CLAIM, IAT_CLAIM, ISS_CLAIM, NBF_CLAIM, SUB_CLAIM, SdJwtAPI,
         VCMetadata, VCT_CLAIM, VPMetadata,
     };
-    use crate::vc::formats::{API, Error, HasClaims, HasCredential, VerifyOptions};
+    use crate::vc::formats::{API, Error, HasClaims, HasCredential, IsExpired, VerifyOptions};
     use rstest::rstest;
     use serde_json::json;
     use std::ops::Add;
@@ -691,6 +691,32 @@ mod tests {
         assert_eq!(&disclosed["name"], &Claim::String("John".to_string()));
         assert!(disclosed.get("surname").is_none());
         assert!(disclosed.get(IAT_CLAIM).is_none());
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn sd_jwt_fails_with_expiration() {
+        let kms = LocalKms::new();
+        let (hld_did_url, hld_kh) = create_did_url_and_key_handle(&kms, KeyType::P256).await;
+        let (iss_did_url, iss_kh) = create_did_url_and_key_handle(&kms, KeyType::P256).await;
+
+        let mut claims = sample_claims();
+        let exp = OffsetDateTime::now_utc()
+            .add(-time::Duration::days(365))
+            .unix_timestamp();
+        claims.insert(EXP_CLAIM.to_string(), Claim::Int(exp));
+
+        let vc = SdJwtAPI::create_vc(
+            claims,
+            (&iss_did_url, iss_kh),
+            (&hld_did_url, hld_kh.clone()),
+            sample_vc_metadata(),
+            UniversalResolver::default(),
+        )
+        .await
+        .unwrap();
+
+        assert!(SdJwtAPI::is_expired(&vc.parse_claims().unwrap()).unwrap());
     }
 
     #[tokio::test]
