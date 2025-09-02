@@ -54,9 +54,7 @@ async function main(): Promise<void> {
   )
     .withPop(
       new ProofOfPossessionMetadataBuilder()
-        .withNotBefore(
-          ProofOfPossessionNotBefore.leeway(10),
-        )
+        .withNotBefore(ProofOfPossessionNotBefore.leeway(10))
         .build(),
     )
     .build();

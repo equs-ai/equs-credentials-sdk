@@ -1,5 +1,5 @@
+use crate::error::IntoNapiError;
 use crate::http::ReqwestHttpClient;
-use crate::result::IntoNapiError;
 use crate::utils::to_json_object;
 use crate::vc::JsonObject;
 use agent_sdk::vc::oid4vci::CredentialOfferResolver;

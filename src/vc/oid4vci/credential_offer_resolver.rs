@@ -12,7 +12,6 @@ use url::Url;
 /// An `OID4VCI` Credential offer resolver errors.
 #[derive(Snafu, DebugError)]
 #[snafu(visibility(pub))]
-#[non_exhaustive]
 pub enum Error {
     #[snafu(display("Offer resolution error"))]
     Resolve {

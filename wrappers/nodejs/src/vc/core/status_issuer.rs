@@ -1,5 +1,5 @@
+use crate::error::IntoNapiError;
 use crate::kms::JsKms;
-use crate::result::IntoNapiError;
 use crate::vc::core::JsStatusIssuerMetadata;
 use crate::vc::core::{JsStatusList, JsVCStatusesData};
 use agent_sdk::vc::core::{StatusIssuer, StatusIssuerMetadata, status_issuer::StatusIssuerService};

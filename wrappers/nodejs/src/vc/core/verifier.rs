@@ -1,6 +1,6 @@
 use crate::did::JsUniversalDIDResolver;
+use crate::error::IntoNapiError;
 use crate::http::{JsHttpClient, ReqwestHttpClient};
-use crate::result::IntoNapiError;
 use crate::utils::to_json_object;
 use crate::vc::JsonObject;
 use crate::vc::core::JsPresentation;

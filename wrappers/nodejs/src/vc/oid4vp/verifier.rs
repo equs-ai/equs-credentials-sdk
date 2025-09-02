@@ -1,4 +1,4 @@
-use crate::result::IntoNapiError;
+use crate::error::IntoNapiError;
 use crate::utils::{from_json_object, parse_url_arg, to_json_object};
 use crate::vc::JsonObject;
 use agent_sdk::vc::oid4vp::{

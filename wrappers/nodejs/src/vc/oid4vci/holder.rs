@@ -1,4 +1,4 @@
-use crate::result::IntoNapiError;
+use crate::error::IntoNapiError;
 use crate::utils::{from_json_object, to_json_object};
 use crate::vc::JsonObject;
 use crate::vc::core::{JsCredential, JsCredentialMetadata, JsKeyMetadata};

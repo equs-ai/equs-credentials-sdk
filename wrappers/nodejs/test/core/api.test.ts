@@ -39,7 +39,7 @@ describe("VC::Core", () => {
     {
       clientId: "wallet-dev",
       pop: {
-        lifetime: 300
+        lifetime: 300,
       },
     },
     new _UniversalDIDResolver(),
@@ -145,6 +145,7 @@ describe("VC::Core", () => {
       expect(decoded).toMatchObject({ date: "09/09/1989", address: "221B Baker Street" });
       expect(decoded).toMatchObject({ status: { status_list: { idx: 1, uri: "http://localhost:9001/status_list" } } });
     });
+
     it("offer credential", async () => {
       const result = issuer.offerCredential(utils.scope, undefined);
 
