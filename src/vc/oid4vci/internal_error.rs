@@ -13,7 +13,6 @@ use std::fmt::Debug;
 /// Should be treated like 5xx errors.
 #[derive(Snafu, DebugError)]
 #[snafu(visibility(pub(super)))]
-#[non_exhaustive]
 pub enum InternalError {
     #[snafu(display("Credential definition not found for ID: {id}"))]
     CredDefNotFound {

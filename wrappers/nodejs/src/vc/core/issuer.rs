@@ -1,6 +1,6 @@
 use crate::did::JsUniversalDIDResolver;
+use crate::error::IntoNapiError;
 use crate::kms::JsKms;
-use crate::result::IntoNapiError;
 use crate::vc::core::{JsCredential, JsIssuerMetadata};
 use crate::vc::core::{
     JsCredentialOffer, JsCredentialOfferData, JsCredentialRequest, JsCredentialStatusInfo,

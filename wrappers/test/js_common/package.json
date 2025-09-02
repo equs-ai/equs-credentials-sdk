@@ -15,7 +15,6 @@
     "test:nodejs": "jest --config=jest.nodejs.config.json -w=1 --forceExit"
   },
   "packageManager": "yarn@4.6.0",
-  "dependencies": {},
   "devDependencies": {
     "@types/jest": "^29.0.0",
     "@types/jest-environment-puppeteer": "^5.0.0",

@@ -1,12 +1,12 @@
 #![deny(clippy::all)]
 pub mod did;
 pub mod didcomm;
+mod error;
 pub mod http;
 #[cfg(any(test, feature = "in-memory"))]
 pub mod inmem;
 pub mod kms;
 mod nonce;
-mod result;
 pub(crate) mod utils;
 pub mod vault;
 pub mod vc;

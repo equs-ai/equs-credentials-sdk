@@ -1,77 +1,13 @@
 pub mod builder;
 pub mod credential_offer_resolver;
+pub mod error;
 pub mod holder;
 pub mod issuer;
 
-use crate::result::IntoNapiError;
 use crate::vc::oid4vci::builder::TokenValidation;
-use agent_sdk::vc::oid4vci::{
-    CredentialOfferResolverError, ErrorType, InternalError, ProtocolError,
-};
 use napi::Error;
 use napi_derive::napi;
 use time::Duration;
-
-impl IntoNapiError for agent_sdk::vc::oid4vci::Error {
-    fn into_napi_error(self) -> Error {
-        match self {
-            agent_sdk::vc::oid4vci::Error::Internal { source: err, .. } => err.into_napi_error(),
-            agent_sdk::vc::oid4vci::Error::Protocol { source: err, .. } => err.into_napi_error(),
-            _ => Error::from_reason(self.to_string()),
-        }
-    }
-}
-
-impl IntoNapiError for InternalError {
-    fn into_napi_error(self) -> Error {
-        let error_code = match self {
-            Self::CredDefNotFound { .. } => "CredDefNotFound",
-            Self::NoScopeSet { .. } => "NoScopeSet",
-            Self::ClaimsValidation { .. } => "ClaimsValidation",
-            Self::IssuerService { .. } => "IssuerService",
-            Self::HolderService { .. } => "HolderService",
-            Self::UrlParse { .. } => "UrlParse",
-            Self::Parse { .. } => "Parse",
-            Self::Storage { .. } => "Storage",
-            Self::VC { .. } => "VC",
-            Self::Vault { .. } => "Vault",
-            Self::Request { .. } => "Request",
-            Self::Discovery { .. } => "Discovery",
-            Self::HttpClient { .. } => "HttpClient",
-            Self::Metadata { .. } => "Metadata",
-            Self::NonceHandler { .. } => "NonceHandler",
-            Self::TypeConversion { .. } => "TypeConversion",
-            Self::AuthorizationCallback { .. } => "AuthorizationCallback",
-            _ => "InternalError",
-        };
-        Error::from_reason(error_code)
-    }
-}
-
-impl IntoNapiError for ProtocolError {
-    fn into_napi_error(self) -> Error {
-        let error_code = match self.error_type() {
-            ErrorType::InvalidToken => "InvalidToken",
-            ErrorType::InvalidCredentialRequest => "InvalidCredentialRequest",
-            ErrorType::UnsupportedCredentialType => "UnsupportedCredentialType",
-            ErrorType::UnsupportedCredentialFormat => "UnsupportedCredentialFormat",
-            ErrorType::InvalidProof => "InvalidProof",
-            ErrorType::InvalidEncryptionParameters => "InvalidEncryptionParameters",
-        };
-        Error::from_reason(error_code)
-    }
-}
-
-impl IntoNapiError for CredentialOfferResolverError {
-    fn into_napi_error(self) -> Error {
-        let error_code = match self {
-            CredentialOfferResolverError::Resolve { .. } => "Resolve",
-            CredentialOfferResolverError::HttpClient { .. } => "HttpClient",
-            _ => "Unknown",
-        };
-        Error::from_reason(error_code)
-    }
-}
 
 #[napi(js_name = "TokenValidationEnum")]
 pub enum JsTokenValidationEnum {

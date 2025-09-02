@@ -1,7 +1,7 @@
 use crate::did::JsUniversalDIDResolver;
+use crate::error::IntoNapiError;
 use crate::http::ReqwestHttpClient;
 use crate::kms::JsKms;
-use crate::result::IntoNapiError;
 use crate::vault::{JsCredentialEntry, JsCredentialsFindResult, JsVault};
 use crate::vc::core::{JsCredential, JsCredentialMetadata, JsHolderMetadata, JsKeyMetadata};
 use crate::vc::core::{
