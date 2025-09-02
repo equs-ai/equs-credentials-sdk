@@ -1,7 +1,8 @@
 import {
   _PresentationSession,
   AuthorizationRequestWithSession,
-  AuthorizationResponse,
+  InnerAuthorizationResponse,
+  AuthorizationResponseObject,
   AuthResponseOptions,
   Claims,
   InternalOID4VPVerifier,
@@ -9,7 +10,14 @@ import {
   PresentationQuery,
   ResolvedPresentationQuery,
   WalletMetadata,
+  AuthorizationResponseType,
 } from "../../..";
+
+export type AuthorizationResponse = {
+  [T in InnerAuthorizationResponse["type"]]: T extends AuthorizationResponseType.Plain
+    ? { type: AuthorizationResponseType.Plain; object: AuthorizationResponseObject; jwe?: never }
+    : { type: AuthorizationResponseType.Jwe; object?: never; jwe: string };
+}[InnerAuthorizationResponse["type"]];
 
 /**
  *  The `OID4VP` `Verifier` API.

@@ -6,7 +6,6 @@ import fs from "fs/promises";
     let content = await fs.readFile("binary.d.ts", "utf8");
     const exported_types = [
       "ResolvedPresentationQuery",
-      "PresentationDefinition",
       "PresentationSubmission",
       "DIDDocument",
       "DIDVerificationMethod",
@@ -28,6 +27,7 @@ import fs from "fs/promises";
       "UnpackOptions",
       "Service",
       "ResolutionOptionsParameter",
+      "AuthorizationResponse",
     ];
     let import_str = `import { ${exported_types.join(", ")} } from "${TYPES_FILE_PATH}";\n`;
     content = import_str + content;

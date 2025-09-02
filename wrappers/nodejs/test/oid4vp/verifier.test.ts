@@ -67,7 +67,7 @@ describe("OID4VP Verifier: ", () => {
     );
   });
 
-  it("verify Authorization Response", async () => {
+  it("verify Authorization Response with plain auth response mode", async () => {
     const verifier = await buildVerifier("did:key:zDnaefQAPFVQt9sfU63hyqYgPza2pDSXSJrPrCG5paT5eaQJb");
 
     const rpq: ResolvedPresentationQuery = {
