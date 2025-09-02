@@ -80,7 +80,7 @@ impl InternalOID4VPVerifier {
     #[napi(ts_return_type = "Promise<Claims>")]
     pub async fn verify_presentation(
         &self,
-        authorization_response: JsAuthorizationResponse,
+        authorization_response: JsInnerAuthorizationResponse,
         session: JsPresentationSession,
     ) -> Result<JsonObject> {
         self.0
@@ -193,17 +193,17 @@ pub enum JsAuthorizationResponseType {
     Jwe,
 }
 
-#[napi(js_name = "AuthorizationResponse", object)]
-pub struct JsAuthorizationResponse {
+#[napi(js_name = "InnerAuthorizationResponse", object)]
+pub struct JsInnerAuthorizationResponse {
     pub type_: JsAuthorizationResponseType,
     pub object: Option<JsAuthorizationResponseObject>,
     pub jwe: Option<String>,
 }
 
-impl TryFrom<JsAuthorizationResponse> for AuthorizationResponse {
+impl TryFrom<JsInnerAuthorizationResponse> for AuthorizationResponse {
     type Error = Error;
 
-    fn try_from(value: JsAuthorizationResponse) -> std::result::Result<Self, Self::Error> {
+    fn try_from(value: JsInnerAuthorizationResponse) -> std::result::Result<Self, Self::Error> {
         match value.type_ {
             JsAuthorizationResponseType::Plain => {
                 let object = value.object.ok_or(Error::from_reason(
