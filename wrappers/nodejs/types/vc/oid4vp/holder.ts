@@ -45,6 +45,7 @@ export class OID4VPHolder {
       nonce: authRequest.nonce,
       state: authRequest.state,
       ...query,
+      transaction_data: authRequest.transaction_data,
     });
   }
 

@@ -1,6 +1,10 @@
+use crate::vc::oid4vp::HashAlgorithm;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::{DecodeError, Engine};
-use tracing::{Level, instrument};
+use bip32::secp256k1::sha2;
+use bip32::secp256k1::sha2::Digest;
+use tracing::Level;
+use tracing::instrument;
 
 #[instrument(
     level = Level::TRACE,
@@ -17,6 +21,15 @@ pub fn encode(vec: &[u8]) -> String {
 )]
 pub fn decode(payload: &str) -> Result<Vec<u8>, DecodeError> {
     URL_SAFE_NO_PAD.decode(payload)
+}
+
+pub fn get_hash_and_base64(input: String, alg: HashAlgorithm) -> String {
+    let hash = match alg {
+        HashAlgorithm::Sha256 => sha2::Sha256::digest(input.as_bytes()).to_vec(),
+        HashAlgorithm::Sha384 => sha2::Sha384::digest(input.as_bytes()).to_vec(),
+        HashAlgorithm::Sha512 => sha2::Sha512::digest(input.as_bytes()).to_vec(),
+    };
+    URL_SAFE_NO_PAD.encode(hash)
 }
 
 #[cfg(test)]

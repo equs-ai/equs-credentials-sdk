@@ -66,6 +66,7 @@ See [Components](docs/asdk-components.png).
         - Digital Credentials Query Language (DCQL)
         - OID4VP
             - Response Mode "direct_post.jwt"
+            - Transaction Data
 - VC Revocation:
     - Token Status List for SD-JWT
       VC [draft-ietf-oauth-status-list-07](https://datatracker.ietf.org/doc/draft-ietf-oauth-status-list/07/)

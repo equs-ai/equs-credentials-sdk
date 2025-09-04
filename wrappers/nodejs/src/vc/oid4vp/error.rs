@@ -46,6 +46,7 @@ impl From<InternalError> for EncodableError {
             InternalError::DidUrlResolution { .. } => JsInternalError::DidUrlResolution,
             InternalError::JWE { .. } => JsInternalError::JWE,
             InternalError::ClientId { .. } => JsInternalError::ClientId,
+            InternalError::TransactionData { .. } => JsInternalError::TransactionData,
         };
         Self::new(code.to_string(), value.to_string())
     }
@@ -80,6 +81,7 @@ pub enum JsInternalError {
     DidUrlResolution,
     JWE,
     ClientId,
+    TransactionData,
 }
 
 impl From<ProtocolError> for EncodableError {
@@ -104,6 +106,7 @@ impl From<ProtocolError> for EncodableError {
             ErrorType::InvalidDCQLFormat => JsProtocolError::InvalidDCQLFormat,
             ErrorType::ClientIDSchemeNotGiven => JsProtocolError::ClientIDSchemeNotGiven,
             ErrorType::WrongClientIdScheme => JsProtocolError::WrongClientIdScheme,
+            ErrorType::InvalidTransactionData => JsProtocolError::InvalidTransactionData,
         };
         Self::new(code.to_string(), value.to_string())
     }
@@ -125,4 +128,5 @@ pub enum JsProtocolError {
     InvalidDCQLFormat,
     ClientIDSchemeNotGiven,
     WrongClientIdScheme,
+    InvalidTransactionData,
 }

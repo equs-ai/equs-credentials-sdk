@@ -22,7 +22,7 @@ rust-version = "1.89.0"
 common-macros = { path = "./common-macros" }
 
 oid4vci = { git = "ssh://git@git.slock.it/open-source/oid4vci-rs.git", rev = "2d443800" }
-openid4vp = { git = "ssh://git@git.slock.it/open-source/oid4vp-rs.git", rev = "14ccba0b" }
+openid4vp = { git = "ssh://git@git.slock.it/open-source/oid4vp-rs.git", rev = "9a201f7b" }
 sd-jwt-rs = { git = "ssh://git@git.slock.it/open-source/sd-jwt-rust.git", rev = "3725931d" }
 didcomm = { git = "ssh://git@git.slock.it/open-source/didcomm-rust.git", rev = "db41780d" }
 
@@ -75,7 +75,7 @@ p256 = "0.13.2"
 # InMEM dependencies
 # crypto/kms dependencies
 ed25519-dalek = { version = "2.1.1", optional = true }
-bip32 = { version = "0.5.2", optional = true }
+bip32 = "0.5.2"
 askar-crypto = { version = "=0.3.3", optional = true }
 # service
 rand = { version = "0.9.2", optional = true }
@@ -86,7 +86,7 @@ tokio = { version = "1.25.0", features = ["macros"], optional = true }
 
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-didcomm = { git = "ssh://git@git.slock.it/open-source/didcomm-rust.git", rev = "db41780d", features = ["uniffi"] }
+didcomm = { git = "ssh://git@git.slock.it/open-source/didcomm-rust.git" , rev = "db41780d", features = ["uniffi"] }
 reqwest-middleware = { version = "0.4.0", default-features = false }
 reqwest-tracing = { version = "0.5.5", default-features = false }
 
@@ -102,7 +102,7 @@ bip32 = "0.5.2"
 ecdsa = "0.16.9"
 
 [features]
-in-memory = ["dep:rand", "dep:ed25519-dalek", "dep:bip32", "dep:ecdsa", "dep:askar-crypto"]
+in-memory = ["dep:rand", "dep:ed25519-dalek", "dep:ecdsa", "dep:askar-crypto"]
 didcomm-http-trasnport = ["dep:http", "dep:hyper", "dep:tokio"]
 
 [profile.release]

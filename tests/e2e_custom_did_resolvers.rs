@@ -23,9 +23,10 @@ use agent_sdk::vc::oid4vci::{
     IssuerDiscovery, IssuerMetadata,
 };
 use agent_sdk::vc::oid4vp::{
-    AuthResponseOptions, AuthorizationResponse, AuthorizationResponseMetadata,
-    AuthorizationResponseObject, ClientMetadata, IdTokenMetadata, PassAuthRequestObject,
-    PresentationSession, ResponseMode, ResponseType, Verifier, VerifierBuilder,
+    AuthResponseOptions, AuthorizationRequestMetadata, AuthorizationResponse,
+    AuthorizationResponseMetadata, AuthorizationResponseObject, ClientMetadata,
+    CredentialVerificationMetadata, IdTokenMetadata, PassAuthRequestObject, PresentationSession,
+    ResponseMode, ResponseType, Verifier, VerifierBuilder,
 };
 use agent_sdk::vc::oid4vp::{Holder as Oid4vpHolder, ResolvedPresentationQuery};
 use agent_sdk::vc::{
@@ -193,7 +194,7 @@ async fn oid4vp_credentials_presentation_and_verification_with_custom_did_resolv
     //  we need to build a new one (as every Verifier will build it).
     let response_uri: Url = format!("{}/auth", VERIFIER_URL).parse().unwrap();
     let request_uri: Url = format!("{}/request", &VERIFIER_URL).parse().unwrap();
-    let auth_resp_options = AuthResponseOptions {
+    let auth_response_options = AuthResponseOptions {
         type_: ResponseType::VpTokenIdToken,
         mode: ResponseMode::DirectPost,
         submission_uri: response_uri,
@@ -203,10 +204,13 @@ async fn oid4vp_credentials_presentation_and_verification_with_custom_did_resolv
     let (auth_request, session) = verifier
         .create_authorization_request(
             &ResolvedPresentationQuery::PresentationDefinition(test_case.presentation_definition),
-            &auth_resp_options,
-            &PassAuthRequestObject::ByReference {
-                uri: request_uri.clone(),
-                method: None,
+            &AuthorizationRequestMetadata {
+                transaction_data: None,
+                auth_response_options,
+                pass_auth_request_object: PassAuthRequestObject::ByReference {
+                    uri: request_uri.clone(),
+                    method: None,
+                },
             },
             None,
         )
@@ -419,12 +423,14 @@ fn prepare_holder_http_client_for_verifier(
                 presentation_submission,
                 id_token,
                 state,
+                transaction_data_response: None,
             };
 
-            let result = executor::block_on(
-                verifier
-                    .verify_presentation(&AuthorizationResponse::Plain(auth_response), &session),
-            );
+            let result = executor::block_on(verifier.verify_presentation(
+                &AuthorizationResponse::Plain(auth_response),
+                &session,
+                &CredentialVerificationMetadata::default(),
+            ));
             let claims = result.unwrap();
             println!("Presentation Claims: {:?}", claims);
 

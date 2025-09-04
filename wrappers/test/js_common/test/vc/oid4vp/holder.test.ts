@@ -20,7 +20,10 @@ import {
   AUTH_REQUEST,
   AUTH_REQUEST_FAKE,
   AUTH_REQUEST_JWT,
+  AUTH_REQUEST_JWT_WITH_TRANSACTION_DATA,
   AUTH_REQUEST_WITH_DIRECT_POST_JWT,
+  AUTH_REQUEST_WITH_TRANSACTION_DATA,
+  CLIENT_ID_AS_URL_SAFE,
   PRESENTATION_DEFINITION_FAKE,
   PRESENTATION_SUBMISSION,
   STATE,
@@ -76,6 +79,25 @@ describe("OID4VP Holder: ", () => {
     expect(authorizationRequest.getAuthRequest()).toEqual(AUTH_REQUEST);
   });
 
+  it("resolve authorization request with transaction data", async () => {
+    await mockServer
+      .forGet("/request")
+      .thenReply(200, AUTH_REQUEST_JWT_WITH_TRANSACTION_DATA, { "content-type": "application/oauth-authz-req+jwt" });
+
+    const authorizationRequest = await holder.getAuthorizationRequest(
+      `openid4vp://?client_id=${CLIENT_ID_AS_URL_SAFE}&request_uri=http%3A%2F%2Flocalhost%3A9001%2Frequest`,
+    );
+    console.log(authorizationRequest.getAuthRequest());
+    let transactionData = authorizationRequest.getAuthRequest().transaction_data;
+    expect(transactionData).toEqual([
+      {
+        type: "type1",
+        credential_ids: ["Identity-1"],
+        transaction_data_hashes_alg: ["sha-256"],
+      },
+    ]);
+  });
+
   it("check mock nonce handler passed properly", async () => {
     await mockServer.forPost("/request").thenCallback(async (request): Promise<any> => {
       let body = await request.body.getText();
@@ -97,6 +119,20 @@ describe("OID4VP Holder: ", () => {
 
     await vault.storeCredential(credential, metadata);
     const result = await holder.presentCredentialsAuto(new AuthorizationRequest(AUTH_REQUEST), {});
+
+    expect(result).toBeFalsy();
+  });
+
+  it("present credentials auto with transaction data", async () => {
+    await mockServer
+      .forPost("/response")
+      .thenCallback(async (request) => await handleRequestForTransactionData(request));
+
+    await vault.storeCredential(credential, metadata);
+    const result = await holder.presentCredentialsAuto(
+      new AuthorizationRequest(AUTH_REQUEST_WITH_TRANSACTION_DATA),
+      {},
+    );
 
     expect(result).toBeFalsy();
   });
@@ -230,6 +266,14 @@ async function handleRequest(request: CompletedRequest): Promise<{ statusCode: 2
   return { statusCode: 200, body: "" };
 }
 
+async function handleRequestForTransactionData(request: CompletedRequest): Promise<{ statusCode: 200; body: "" }> {
+  const form_data = await request.body.getFormData();
+  const transaction_data_hashes: Array<string> = JSON.parse(form_data.transaction_data_hashes as string);
+  const transaction_data_hashes_alg: string = JSON.parse(form_data.transaction_data_hashes_alg as string);
+  expect(transaction_data_hashes.length).toEqual(1);
+  expect(transaction_data_hashes_alg).toEqual("sha-256");
+  return await handleRequest(request);
+}
 async function handleRequestForDirectPostJwt(request: CompletedRequest): Promise<{ statusCode: 200; body: "" }> {
   const form_data = await request.body.getFormData();
   expect(form_data.response);

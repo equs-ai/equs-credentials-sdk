@@ -9,6 +9,7 @@ use crate::utils::parse_url_arg;
 mod builder;
 pub mod holder;
 
+pub type CoreTransactionDataItem = agent_sdk::vc::oid4vp::TransactionDataItem;
 pub type IdTokenMetadata = agent_sdk::vc::oid4vp::IdTokenMetadata;
 pub type AuthorizationResponseMetadata = agent_sdk::vc::oid4vp::AuthorizationResponseMetadata;
 
@@ -25,6 +26,49 @@ pub struct AuthorizationResponseMetadata {
 }
 
 #[derive(uniffi::Record)]
+pub struct TransactionDataItem {
+    pub type_: String,
+    pub credential_ids: Vec<String>,
+    pub transaction_data_hashes_alg: Option<Vec<String>>,
+}
+
+impl TryFrom<TransactionDataItem> for CoreTransactionDataItem {
+    type Error = Error;
+
+    fn try_from(value: TransactionDataItem) -> Result<Self> {
+        let transaction_data_hashes_alg = if let Some(algs) = value.transaction_data_hashes_alg {
+            let mut items = Vec::new();
+            for alg in algs {
+                items.push(
+                    alg.try_into()
+                        .map_err(|e| Error::OID4VPHolder(format!("{e:?}")))?,
+                );
+            }
+            Some(items)
+        } else {
+            None
+        };
+        Ok(Self {
+            type_: value.type_,
+            credential_ids: value.credential_ids,
+            transaction_data_hashes_alg,
+        })
+    }
+}
+
+impl From<CoreTransactionDataItem> for TransactionDataItem {
+    fn from(value: CoreTransactionDataItem) -> Self {
+        Self {
+            type_: value.type_,
+            credential_ids: value.credential_ids,
+            transaction_data_hashes_alg: value
+                .transaction_data_hashes_alg
+                .map(|algs| algs.iter().map(|v| v.to_string()).collect::<Vec<_>>()),
+        }
+    }
+}
+
+#[derive(uniffi::Record)]
 pub struct AuthorizationRequest {
     pub client_id: String,
     pub client_metadata: JsonValue,
@@ -34,12 +78,22 @@ pub struct AuthorizationRequest {
     pub response_mode: String,
     pub response_uri: String,
     pub state: Option<String>,
+    pub transaction_data: Option<Vec<TransactionDataItem>>,
 }
 
 impl TryFrom<AuthorizationRequest> for ResolvedAuthRequest {
     type Error = Error;
 
     fn try_from(value: AuthorizationRequest) -> Result<Self> {
+        let transaction_data = if let Some(items) = value.transaction_data {
+            let mut td_items = Vec::new();
+            for item in items {
+                td_items.push(item.try_into()?);
+            }
+            Some(td_items)
+        } else {
+            None
+        };
         Ok(ResolvedAuthRequest {
             client_id: value.client_id,
             client_metadata: serde_json::from_value(value.client_metadata)
@@ -51,8 +105,9 @@ impl TryFrom<AuthorizationRequest> for ResolvedAuthRequest {
             response_type: value.response_type.into(),
             response_mode: value.response_mode.into(),
             response_uri: parse_url_arg(&value.response_uri)
-                .map_err(|err| Error::OID4VPHolder(format!("{err:?}")))?,
+                .map_err(|e| Error::OID4VPHolder(e.to_string()))?,
             state: value.state,
+            transaction_data,
         })
     }
 }
@@ -72,6 +127,12 @@ impl TryFrom<ResolvedAuthRequest> for AuthorizationRequest {
             response_mode: value.response_mode.into(),
             response_uri: value.response_uri.to_string(),
             state: value.state,
+            transaction_data: value.transaction_data.map(|items| {
+                items
+                    .iter()
+                    .map(|v| v.to_owned().into())
+                    .collect::<Vec<_>>()
+            }),
         })
     }
 }

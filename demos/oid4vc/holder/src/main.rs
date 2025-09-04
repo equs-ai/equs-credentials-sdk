@@ -19,8 +19,9 @@ use agent_sdk::vc::oid4vci::{
 };
 use agent_sdk::vc::oid4vci::{CredentialOfferResolver, Holder as HolderVci};
 use agent_sdk::vc::oid4vp::{
-    AuthResponseOptions, AuthorizationResponse, AuthorizationResponseMetadata,
-    AuthorizationResponseObject, ClientIdScheme, CredentialsFindResult, CredentialsMapping,
+    AuthResponseOptions, AuthorizationRequestMetadata, AuthorizationResponse,
+    AuthorizationResponseMetadata, AuthorizationResponseObject, ClientIdScheme,
+    CredentialVerificationMetadata, CredentialsFindResult, CredentialsMapping,
     PassAuthRequestObject, ResolvedAuthRequest, ResolvedPresentationQuery, ResponseMode,
     ResponseType,
 };
@@ -228,16 +229,24 @@ async fn same_device_presentation_flow(holder: impl HolderVp, kms: LocalKms) {
     let verifier = verifier(client_id.as_str()).await;
     println!("1.2 Verifier generates authorization request");
 
-    let auth_resp_config = AuthResponseOptions {
+    let auth_response_options = AuthResponseOptions {
         type_: ResponseType::VpToken,
         mode: ResponseMode::DCAPI,
         submission_uri: redirect_uri.to_owned(),
         state: None,
     };
-    let pass_auth_req_object = PassAuthRequestObject::ByValue;
+    let pass_auth_request_object = PassAuthRequestObject::ByValue;
 
     let (request_uri, session) = verifier
-        .create_authorization_request(&cp, &auth_resp_config, &pass_auth_req_object, None)
+        .create_authorization_request(
+            &cp,
+            &AuthorizationRequestMetadata {
+                auth_response_options,
+                transaction_data: None,
+                pass_auth_request_object,
+            },
+            None,
+        )
         .await
         .unwrap();
 
@@ -264,7 +273,11 @@ async fn same_device_presentation_flow(holder: impl HolderVp, kms: LocalKms) {
     let presentation_resp = retrieve_auth_resp_from_uri(url);
 
     let verified_claims = verifier
-        .verify_presentation(&presentation_resp, &session)
+        .verify_presentation(
+            &presentation_resp,
+            &session,
+            &CredentialVerificationMetadata::default(),
+        )
         .await
         .unwrap();
 
@@ -325,6 +338,7 @@ fn retrieve_auth_resp_from_uri(url: Url) -> AuthorizationResponse {
         presentation_submission,
         id_token: None,
         state,
+        transaction_data_response: None,
     })
 }
 

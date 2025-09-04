@@ -1,6 +1,7 @@
 import {PresentationDefinition} from "./presentation-definition";
 import {ClientMetadata} from "./client-metadata";
 import {Dcql} from "./dcql";
+import {TransactionDataItem} from "./transaction-data-item";
 
 
 type InternalRustAuthorizationRequest = {
@@ -12,6 +13,7 @@ type InternalRustAuthorizationRequest = {
     response_mode: string,
     response_uri: string,
     state?: string,
+    transaction_data?: Array<TransactionDataItem> | null | undefined,
 }
 
 type ResolvedPresentationQueryWithPD = {
@@ -59,6 +61,7 @@ export class AuthorizationRequest {
             response_type: this.authRequest.response_type,
             client_metadata: this.authRequest.client_metadata,
             resolved_presentation_query: this.presentationQuery,
+            transaction_data: this.authRequest.transaction_data,
         }
     }
 

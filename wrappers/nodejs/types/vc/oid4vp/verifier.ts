@@ -1,12 +1,12 @@
 import {
   _PresentationSession,
+  AuthorizationRequestMetadata,
   AuthorizationRequestWithSession,
   InnerAuthorizationResponse,
   AuthorizationResponseObject,
-  AuthResponseOptions,
   Claims,
+  CredentialVerificationMetadata,
   InternalOID4VPVerifier,
-  JsPassAuthRequestObject,
   PresentationQuery,
   ResolvedPresentationQuery,
   WalletMetadata,
@@ -33,31 +33,38 @@ export class OID4VPVerifier {
   /**
    *    Creates an `OID4VP` authorization request.
    *    @param {PresentationQuery} presentationQuery - the presentation query specifying the presentation requirements. Either dcql or presentation definition
-   *    @param {AuthResponseOptions} passAuthRequestObject - how to pass an authorization request object to holder, by value or by reference.
-   *    @param {PassAuthRequestObject} authResponseOptions - config about how and where to send authorization response.
+   *    @param {AuthorizationRequestMetadata} authorizationRequestMetadata - Metadata used during the creation of AuthorizationRequest. Contains:
+   *      {AuthResponseOptions} passAuthRequestObject - how to pass an authorization request object to holder, by value or by reference.
+   *      {PassAuthRequestObject} authResponseOptions - config about how and where to send authorization response.
+   *      {Array<TransactionDataItem> | undefined | null } [transactionData] - TransactionData. If given, it will be returned as an array of hashes.
    *    @param {WalletMetadata | null} [walletMetadata] - optional metadata of holder. if it is `null`, default metadata will be used
    *    @returns {AuthorizationRequestWithSession}
    */
   createAuthorizationRequest(
     presentationQuery: PresentationQuery,
-    authResponseOptions: AuthResponseOptions,
-    passAuthRequestObject: JsPassAuthRequestObject,
+    authorizationRequestMetadata: AuthorizationRequestMetadata,
     walletMetadata?: WalletMetadata | undefined | null,
   ): Promise<AuthorizationRequestWithSession> {
     const rpq: ResolvedPresentationQuery = {
       presentation_definition: presentationQuery.presentation_definition,
       dcql_query: presentationQuery.dcql_query,
     };
-    return this.inner.createAuthorizationRequest(rpq, authResponseOptions, passAuthRequestObject, walletMetadata);
+    return this.inner.createAuthorizationRequest(rpq, authorizationRequestMetadata, walletMetadata);
   }
 
   /**
-   *    Verifies the presentation provided by the Holdepsr.
+   *    Verifies the presentation provided by the Holder.
    *    @param {AuthorizationResponse} authorizationResponse - the authorization response containing the VP token and presentation submission.
    *    @param { _PresentationSession} session - a session object containing `Nonce` and {@link resolvedPresentationQuery: ResolvedPresentationQuery}, which are generated when the {@link OID4VPVerifier.createAuthorizationRequest} method is called.
+   *    @param {CredentialVerificationMetadata} verificationMetadata - metadata used during/before the Credential Verification. Contains:
+   *       {Array<TransactionDataItem> | undefined | null } [transactionData] - TransactionData. If given, it will be used to validate the hashes returned in AuthorizationResponse
    *    @returns {Claims} - The verified claims as a JSON object on success.
    */
-  verifyPresentation(authorizationResponse: AuthorizationResponse, session: _PresentationSession): Promise<Claims> {
-    return this.inner.verifyPresentation(authorizationResponse, session);
+  verifyPresentation(
+    authorizationResponse: AuthorizationResponse,
+    session: _PresentationSession,
+    verificationMetadata: CredentialVerificationMetadata,
+  ): Promise<Claims> {
+    return this.inner.verifyPresentation(authorizationResponse, session, verificationMetadata);
   }
 }

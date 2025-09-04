@@ -2,9 +2,10 @@ use crate::error::IntoNapiError;
 use crate::utils::{from_json_object, parse_url_arg, to_json_object};
 use crate::vc::JsonObject;
 use agent_sdk::vc::oid4vp::{
-    AuthResponseOptions, AuthorizationResponse, AuthorizationResponseObject, HttpMethodForAuth,
-    PassAuthRequestObject, PresentationSession as RustPresentationSession, Verifier,
-    WalletMetadata,
+    AuthResponseOptions, AuthorizationRequestMetadata, AuthorizationResponse,
+    AuthorizationResponseObject, CredentialVerificationMetadata, HashAlgorithm, HttpMethodForAuth,
+    PassAuthRequestObject, PresentationSession as RustPresentationSession, TransactionDataHashes,
+    TransactionDataHashesAlg, TransactionDataResponse, Verifier, WalletMetadata,
 };
 use agent_sdk::vc::presentation_exchange::PresentationSubmission;
 use napi::{Error, Result};
@@ -41,8 +42,7 @@ impl InternalOID4VPVerifier {
     pub async fn create_authorization_request(
         &self,
         #[napi(ts_arg_type = "ResolvedPresentationQuery")] resolved_presentation_query: JsonObject,
-        auth_response_options: JsAuthResponseOptions,
-        pass_auth_request_object: &JsPassAuthRequestObject,
+        auth_request_metadata: JsAuthorizationRequestMetadata,
         #[napi(ts_arg_type = "WalletMetadata | undefined | null")] wallet_metadata: Option<
             JsonObject,
         >,
@@ -52,13 +52,11 @@ impl InternalOID4VPVerifier {
         } else {
             None
         };
-
         let (aut_req_obj_uri, session) = self
             .0
             .create_authorization_request(
                 &from_json_object(resolved_presentation_query)?,
-                &auth_response_options.try_into()?,
-                &pass_auth_request_object.0,
+                &auth_request_metadata.try_into()?,
                 wallet_metadata.as_ref(),
             )
             .await
@@ -82,9 +80,14 @@ impl InternalOID4VPVerifier {
         &self,
         authorization_response: JsInnerAuthorizationResponse,
         session: JsPresentationSession,
+        verification_metadata: JsCredentialVerificationMetadata,
     ) -> Result<JsonObject> {
         self.0
-            .verify_presentation(&authorization_response.try_into()?, &session.try_into()?)
+            .verify_presentation(
+                &authorization_response.try_into()?,
+                &session.try_into()?,
+                &verification_metadata.try_into()?,
+            )
             .await
             .map_err(IntoNapiError::into_napi_error)
             .and_then(to_json_object)
@@ -92,6 +95,7 @@ impl InternalOID4VPVerifier {
 }
 
 /// An `OID4VP` response configuration of authorization request object.
+#[derive(Clone)]
 #[napi(js_name = "AuthResponseOptions", object)]
 pub struct JsAuthResponseOptions {
     pub type_: String,
@@ -113,10 +117,118 @@ impl TryFrom<JsAuthResponseOptions> for AuthResponseOptions {
         })
     }
 }
+#[derive(PartialEq)]
+#[napi(js_name = "PassAuthRequestObjectType")]
+pub enum JsPassAuthRequestObjectType {
+    ByValue,
+    ByReference,
+}
 
 #[derive(Clone)]
-#[napi(js_name = "PassAuthRequestObject")]
-pub struct JsPassAuthRequestObject(PassAuthRequestObject);
+#[napi(js_name = "PassAuthRequestObject", object)]
+pub struct JsPassAuthRequestObject {
+    pub type_: JsPassAuthRequestObjectType,
+    pub request_uri: Option<String>,
+    pub method: Option<JsHttpMethodForAuth>,
+}
+
+impl TryFrom<JsPassAuthRequestObject> for PassAuthRequestObject {
+    type Error = Error;
+    fn try_from(value: JsPassAuthRequestObject) -> Result<Self> {
+        if value.type_ == JsPassAuthRequestObjectType::ByValue {
+            Ok(PassAuthRequestObject::ByValue)
+        } else {
+            let uri = value
+                .request_uri
+                .ok_or("Request URI missing")
+                .map_err(Error::from_reason)?;
+            let uri = parse_url_arg(&uri)?;
+            let method = value.method.map(|v| v.to_raw());
+            Ok(PassAuthRequestObject::ByReference { uri, method })
+        }
+    }
+}
+
+#[derive(Clone)]
+#[napi(js_name = "TransactionDataResponse", object)]
+pub struct JsTransactionDataResponse {
+    pub hashes: Vec<String>,
+    pub alg: Option<String>,
+}
+
+impl TryFrom<JsTransactionDataResponse> for TransactionDataResponse {
+    type Error = Error;
+    fn try_from(value: JsTransactionDataResponse) -> Result<Self> {
+        let transaction_data_hashes = TransactionDataHashes(value.hashes);
+        let transaction_data_hashes_alg = match value.alg {
+            None => None,
+            Some(a) => {
+                let hash_alg: HashAlgorithm = a
+                    .try_into()
+                    .map_err(|_| Error::from_reason("Unsupported Hash algorithm".to_string()))?;
+                Some(TransactionDataHashesAlg(hash_alg))
+            }
+        };
+        Ok(Self {
+            transaction_data_hashes,
+            transaction_data_hashes_alg,
+        })
+    }
+}
+
+#[derive(Clone)]
+#[napi(js_name = "AuthorizationRequestMetadata", object)]
+pub struct JsAuthorizationRequestMetadata {
+    pub auth_response_options: JsAuthResponseOptions,
+    pub pass_auth_request_object: JsPassAuthRequestObject,
+    #[napi(ts_type = "Array<TransactionDataItem> | null | undefined")]
+    pub transaction_data: Option<Vec<JsonObject>>,
+}
+
+impl TryFrom<JsAuthorizationRequestMetadata> for AuthorizationRequestMetadata {
+    type Error = Error;
+    fn try_from(value: JsAuthorizationRequestMetadata) -> Result<Self> {
+        let transaction_data = if let Some(items) = value.transaction_data {
+            let mut td = Vec::new();
+            for item in items {
+                td.push(from_json_object(item)?);
+            }
+            Some(td)
+        } else {
+            None
+        };
+        Ok(Self {
+            auth_response_options: value.auth_response_options.try_into()?,
+            pass_auth_request_object: value.pass_auth_request_object.try_into()?,
+            transaction_data,
+        })
+    }
+}
+
+#[derive(Clone)]
+#[napi(js_name = "CredentialVerificationMetadata", object)]
+pub struct JsCredentialVerificationMetadata {
+    #[napi(ts_type = "Array<TransactionDataItem> | null | undefined")]
+    pub transaction_data: Option<Vec<JsonObject>>,
+}
+
+impl TryFrom<JsCredentialVerificationMetadata> for CredentialVerificationMetadata {
+    type Error = Error;
+    fn try_from(value: JsCredentialVerificationMetadata) -> Result<Self> {
+        let td_items = if let Some(td) = value.transaction_data {
+            let mut items = Vec::new();
+            for item in td {
+                items.push(from_json_object(item)?);
+            }
+            Some(items)
+        } else {
+            None
+        };
+        Ok(Self {
+            transaction_data: td_items,
+        })
+    }
+}
 
 /// A session with state managed during the presentation.
 ///
@@ -129,25 +241,6 @@ pub struct JsPresentationSession {
     #[napi(ts_type = "ResolvedPresentationQuery")]
     pub resolved_presentation_query: JsonObject,
     pub authorization_request_jwt: Option<String>,
-}
-
-#[napi]
-impl JsPassAuthRequestObject {
-    #[napi(factory)]
-    pub fn by_value() -> Self {
-        JsPassAuthRequestObject(PassAuthRequestObject::ByValue)
-    }
-
-    #[napi(factory)]
-    pub fn by_reference(uri: String, method: Option<JsHttpMethodForAuth>) -> Result<Self> {
-        let auth_req_obj_uri = parse_url_arg(&uri)?;
-        let pass_by_reference = JsPassAuthRequestObject(PassAuthRequestObject::ByReference {
-            uri: auth_req_obj_uri,
-            method: method.map(|v| v.to_raw()),
-        });
-
-        Ok(pass_by_reference)
-    }
 }
 
 impl TryFrom<RustPresentationSession> for JsPresentationSession {
@@ -234,6 +327,7 @@ pub struct JsAuthorizationResponseObject {
     #[napi(ts_type = "PresentationSubmission")]
     pub presentation_submission: Option<JsonObject>,
     pub state: Option<String>,
+    pub transaction_data_response: Option<JsTransactionDataResponse>,
 }
 
 impl TryFrom<JsAuthorizationResponseObject> for AuthorizationResponseObject {
@@ -244,11 +338,19 @@ impl TryFrom<JsAuthorizationResponseObject> for AuthorizationResponseObject {
             .presentation_submission
             .map(from_json_object)
             .transpose()?;
+        let transaction_data_response = match value.transaction_data_response {
+            None => None,
+            Some(tdr) => {
+                let t = tdr.try_into()?;
+                Some(t)
+            }
+        };
         Ok(Self {
             vp_token: value.vp_token,
             id_token: value.id_token,
             presentation_submission: ps,
             state: value.state,
+            transaction_data_response,
         })
     }
 }

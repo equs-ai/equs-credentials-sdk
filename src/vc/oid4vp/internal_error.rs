@@ -21,7 +21,7 @@ pub enum InternalError {
         location: Location,
         source: anyhow::Error,
     },
-    #[snafu(display("Authorization Response mode unsupported"))]
+    #[snafu(display("Authorization Response mode unsupported: {details}"))]
     AuthorizationResponseUnsupportedMode {
         details: String,
         #[snafu(implicit)]
@@ -148,7 +148,7 @@ pub enum InternalError {
         #[snafu(implicit)]
         location: Location,
     },
-    #[snafu(display("JWE error"))]
+    #[snafu(display("JWE error: {details}"))]
     JWE {
         details: String,
         #[snafu(implicit)]
@@ -158,6 +158,12 @@ pub enum InternalError {
     #[snafu(display("Client ID"))]
     ClientId {
         source: anyhow::Error,
+        #[snafu(implicit)]
+        location: Location,
+    },
+    #[snafu(display("Transaction data error: {details}"))]
+    TransactionData {
+        details: String,
         #[snafu(implicit)]
         location: Location,
     },

@@ -14,8 +14,9 @@ use agent_sdk::did::universal::UniversalResolver;
 use agent_sdk::inmem::nonce::LocalNonceHandler;
 use agent_sdk::vc::dcql::{DCQLCredential, DCQL};
 use agent_sdk::vc::oid4vp::{
-    AuthResponseOptions, AuthorizationResponse, ClientMetadata, PassAuthRequestObject,
-    PresentationSession, ResolvedPresentationQuery, ResponseMode, ResponseType,
+    AuthResponseOptions, AuthorizationRequestMetadata, AuthorizationResponse, ClientMetadata,
+    CredentialVerificationMetadata, HashAlgorithm, PassAuthRequestObject, PresentationSession,
+    ResolvedPresentationQuery, ResponseMode, ResponseType, TransactionDataItem,
 };
 use agent_sdk::vc::presentation_exchange::{
     ClaimFormatMap, ClaimFormatPayload, Constraints, ConstraintsField, InputDescriptor,
@@ -39,6 +40,7 @@ struct AppState {
     verifier: Arc<dyn oid4vp::Verifier>,
     auth_req_obj_storage: InMemStorage<String, Option<String>>,
     presentation_session_storage: InMemStorage<String, PresentationSession>,
+    transaction_data_storage: InMemStorage<String, Vec<TransactionDataItem>>,
 }
 
 #[actix_web::main]
@@ -49,6 +51,7 @@ async fn main() -> std::io::Result<()> {
         verifier: Arc::new(verifier().await),
         auth_req_obj_storage: InMemStorage::new(),
         presentation_session_storage: InMemStorage::new(),
+        transaction_data_storage: InMemStorage::new(),
     });
     HttpServer::new(move || {
         App::new()
@@ -99,24 +102,38 @@ async fn presentation_request_uri(state: web::Data<AppState>) -> HttpResponse {
     let request_uri =
         Url::parse(format!("{}{}", SERVER_URL, AUTH_REQUEST_OBJECT_URL_PATH).as_str()).unwrap();
 
-    let auth_resp_config = AuthResponseOptions {
+    let auth_response_options = AuthResponseOptions {
         type_: ResponseType::VpTokenIdToken,
         mode: ResponseMode::DirectPostJwt,
         submission_uri: response_uri,
         state: None,
     };
 
-    let pass_auth_req_object = PassAuthRequestObject::ByReference {
+    let pass_auth_request_object = PassAuthRequestObject::ByReference {
         uri: request_uri.clone(),
         method: None,
     };
 
+    let transaction_data = default_transaction_data_for_pd();
+    println!("Presentation definition -> Authorization Request -> transaction data: ");
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&transaction_data).unwrap()
+    );
+    state
+        .transaction_data_storage
+        .put("td".to_string(), transaction_data.clone())
+        .await
+        .unwrap();
     let (auth_req, session) = state
         .verifier
         .create_authorization_request(
             &ResolvedPresentationQuery::PresentationDefinition(default_presentation_definition()),
-            &auth_resp_config,
-            &pass_auth_req_object,
+            &AuthorizationRequestMetadata {
+                transaction_data: Some(transaction_data),
+                auth_response_options,
+                pass_auth_request_object,
+            },
             None,
         )
         .await
@@ -147,24 +164,37 @@ async fn dcql_request_uri(state: web::Data<AppState>) -> HttpResponse {
         Url::parse(format!("{}{}", SERVER_URL, AUTH_REQUEST_OBJECT_URL_PATH_DCQL).as_str())
             .unwrap();
 
-    let auth_resp_config = AuthResponseOptions {
+    let auth_response_options = AuthResponseOptions {
         type_: ResponseType::VpTokenIdToken,
         mode: ResponseMode::DirectPostJwt,
         submission_uri: response_uri,
         state: None,
     };
 
-    let pass_auth_req_object = PassAuthRequestObject::ByReference {
+    let pass_auth_request_object = PassAuthRequestObject::ByReference {
         uri: request_uri.clone(),
         method: None,
     };
-
+    let transaction_data = default_transaction_data_for_dcql();
+    println!("Presentation definition -> Authorization Request -> transaction data: ");
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&transaction_data).unwrap()
+    );
+    state
+        .transaction_data_storage
+        .put("td".to_string(), transaction_data.clone())
+        .await
+        .unwrap();
     let (auth_req, session) = state
         .verifier
         .create_authorization_request(
             &ResolvedPresentationQuery::DCQL(default_dcql_query()),
-            &auth_resp_config,
-            &pass_auth_req_object,
+            &AuthorizationRequestMetadata {
+                transaction_data: Some(transaction_data),
+                pass_auth_request_object,
+                auth_response_options,
+            },
             None,
         )
         .await
@@ -210,9 +240,30 @@ async fn presentation_response(
         .await
         .unwrap()
         .unwrap();
+
+    let transaction_data = state
+        .transaction_data_storage
+        .get(&"td".to_string())
+        .await
+        .unwrap()
+        .unwrap();
+
+    // Uncommenting the lines below will cause wrong transaction data hashes error.
+    // let transaction_data = if transaction_data.len() == 2 {
+    //     wrong_transaction_data_for_pd()
+    // } else {
+    //     wrong_transaction_data_for_dcql()
+    // };
+
     let result = state
         .verifier
-        .verify_presentation(&wallet_auth_resp, &session)
+        .verify_presentation(
+            &wallet_auth_resp,
+            &session,
+            &CredentialVerificationMetadata {
+                transaction_data: Some(transaction_data),
+            },
+        )
         .await;
 
     match result {
@@ -477,3 +528,62 @@ const DEFAULT_CLIENT_METADATA: &str = r#"{
   "authorization_encrypted_response_alg": "ECDH-ES",
   "authorization_encrypted_response_enc": "A256GCM"
 }"#;
+
+pub fn default_transaction_data_for_pd() -> Vec<TransactionDataItem> {
+    vec![
+        TransactionDataItem {
+            type_: "type1".to_string(),
+            credential_ids: vec!["Identity-1".to_string()],
+            transaction_data_hashes_alg: Some(vec![HashAlgorithm::Sha256, HashAlgorithm::Sha512]),
+        },
+        TransactionDataItem {
+            type_: "type2".to_string(),
+            credential_ids: vec!["resident-card".to_string()],
+            transaction_data_hashes_alg: None,
+        },
+        // Uncommenting the below TD will cause an error with pd flow as the credential with "non-existing" doesn't exist
+        // TransactionDataItem {
+        //     type_: "type2".to_string(),
+        //     credential_ids: vec!["non-existing".to_string()],
+        //     transaction_data_hashes_alg: Some(vec![HashAlgorithm::Sha256, HashAlgorithm::Sha512]),
+        // },
+    ]
+}
+pub fn wrong_transaction_data_for_pd() -> Vec<TransactionDataItem> {
+    vec![
+        TransactionDataItem {
+            type_: "type-fake".to_string(),
+            credential_ids: vec!["Identity-1".to_string()],
+            transaction_data_hashes_alg: Some(vec![HashAlgorithm::Sha256, HashAlgorithm::Sha512]),
+        },
+        TransactionDataItem {
+            type_: "type-fake".to_string(),
+            credential_ids: vec!["resident-card".to_string()],
+            transaction_data_hashes_alg: None,
+        },
+    ]
+}
+
+pub fn default_transaction_data_for_dcql() -> Vec<TransactionDataItem> {
+    vec![
+        TransactionDataItem {
+            type_: "type1".to_string(),
+            credential_ids: vec!["pid".to_string()],
+            transaction_data_hashes_alg: Some(vec![HashAlgorithm::Sha256, HashAlgorithm::Sha512]),
+        },
+        // Uncommenting the below TD will cause an error with dcql flow as the credential with "non-existing" doesn't exist
+        // TransactionDataItem {
+        //     type_: "type2".to_string(),
+        //     credential_ids: vec!["non-existing".to_string()],
+        //     transaction_data_hashes_alg: Some(vec![HashAlgorithm::Sha256, HashAlgorithm::Sha512]),
+        // },
+    ]
+}
+
+pub fn wrong_transaction_data_for_dcql() -> Vec<TransactionDataItem> {
+    vec![TransactionDataItem {
+        type_: "type-fake".to_string(),
+        credential_ids: vec!["pid".to_string()],
+        transaction_data_hashes_alg: Some(vec![HashAlgorithm::Sha256, HashAlgorithm::Sha512]),
+    }]
+}

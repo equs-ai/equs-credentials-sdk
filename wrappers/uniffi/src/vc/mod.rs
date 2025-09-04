@@ -53,7 +53,7 @@ impl TryFrom<Credential> for CredentialData {
             Credential::LdpVc(payload) => Self {
                 format: VCFormat::LdpVc,
                 payload: serde_json::to_string(&payload)
-                    .map_err(|e| Error::OID4VPHolder(format!("{e:?}")))?,
+                    .map_err(|e| Error::OID4VPHolder(e.to_string()))?,
             },
             Credential::SdJwt(payload) => Self {
                 format: VCFormat::SdJwtVc,

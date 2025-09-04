@@ -9,8 +9,9 @@ use agent_sdk::inmem::vault::InMemVault;
 use agent_sdk::vault::Vault;
 use agent_sdk::vc::VCFormatsAPI;
 use agent_sdk::vc::oid4vp::{
-    AuthResponseOptions, AuthorizationResponse, AuthorizationResponseMetadata, ClientMetadata,
-    IdTokenMetadata, PassAuthRequestObject, ResolvedPresentationQuery, ResponseMode, ResponseType,
+    AuthResponseOptions, AuthorizationRequestMetadata, AuthorizationResponse,
+    AuthorizationResponseMetadata, ClientMetadata, CredentialVerificationMetadata, IdTokenMetadata,
+    PassAuthRequestObject, ResolvedPresentationQuery, ResponseMode, ResponseType,
 };
 use agent_sdk::vc::oid4vp::{AuthorizationResponseObject, Holder};
 use agent_sdk::vc::oid4vp::{HolderBuilder, PresentationSession};
@@ -79,7 +80,7 @@ async fn credentials_presentation_and_verification(#[case] test_case: Oid4VpTest
     //  we need to build a new one (as every Verifier will build it).
     let response_uri: Url = format!("{}/auth", VERIFIER_URL).parse().unwrap();
     let request_uri: Url = format!("{}/request", &VERIFIER_URL).parse().unwrap();
-    let auth_resp_options = AuthResponseOptions {
+    let auth_response_options = AuthResponseOptions {
         type_: ResponseType::VpTokenIdToken,
         mode: ResponseMode::DirectPost,
         submission_uri: response_uri,
@@ -89,10 +90,13 @@ async fn credentials_presentation_and_verification(#[case] test_case: Oid4VpTest
     let (auth_request, session) = verifier
         .create_authorization_request(
             &ResolvedPresentationQuery::PresentationDefinition(test_case.presentation_definition),
-            &auth_resp_options,
-            &PassAuthRequestObject::ByReference {
-                uri: request_uri.clone(),
-                method: Some(HttpMethodForAuth::POST),
+            &AuthorizationRequestMetadata {
+                transaction_data: None,
+                auth_response_options,
+                pass_auth_request_object: PassAuthRequestObject::ByReference {
+                    uri: request_uri.clone(),
+                    method: Some(HttpMethodForAuth::POST),
+                },
             },
             None,
         )
@@ -174,7 +178,7 @@ async fn credentials_presentation_and_verification_with_dcql(#[case] test_case: 
     //  we need to build a new one (as every Verifier will build it).
     let response_uri: Url = format!("{}/auth", VERIFIER_URL).parse().unwrap();
     let request_uri: Url = format!("{}/request", &VERIFIER_URL).parse().unwrap();
-    let auth_resp_options = AuthResponseOptions {
+    let auth_response_options = AuthResponseOptions {
         type_: ResponseType::VpTokenIdToken,
         mode: ResponseMode::DirectPost,
         submission_uri: response_uri,
@@ -184,10 +188,13 @@ async fn credentials_presentation_and_verification_with_dcql(#[case] test_case: 
     let (auth_request, session) = verifier
         .create_authorization_request(
             &ResolvedPresentationQuery::DCQL(test_case.dcql.unwrap()),
-            &auth_resp_options,
-            &PassAuthRequestObject::ByReference {
-                uri: request_uri.clone(),
-                method: None,
+            &AuthorizationRequestMetadata {
+                transaction_data: None,
+                auth_response_options,
+                pass_auth_request_object: PassAuthRequestObject::ByReference {
+                    uri: request_uri.clone(),
+                    method: None,
+                },
             },
             None,
         )
@@ -301,12 +308,14 @@ fn prepare_http_client_for_holder(
                 presentation_submission,
                 id_token,
                 state,
+                transaction_data_response: None,
             };
 
-            let result = executor::block_on(
-                verifier
-                    .verify_presentation(&AuthorizationResponse::Plain(auth_response), &session),
-            );
+            let result = executor::block_on(verifier.verify_presentation(
+                &AuthorizationResponse::Plain(auth_response),
+                &session,
+                &CredentialVerificationMetadata::default(),
+            ));
             let claims = result.unwrap();
             println!(
                 "Presentation Claims: {:?}",

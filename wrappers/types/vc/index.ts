@@ -14,3 +14,4 @@ export * from "./wallet-metadata";
 export * from "./authorization-request";
 export * from "./dcql";
 export * from "./resolved-presentation-query";
+export * from "./transaction-data-item";

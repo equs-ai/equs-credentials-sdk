@@ -174,12 +174,26 @@ pub struct _AuthorizationRequest {
     #[napi(js_name = "response_uri")]
     pub response_uri: String,
     pub state: Option<String>,
+    #[napi(
+        ts_type = "Array<TransactionDataItem> | null | undefined",
+        js_name = "transaction_data"
+    )]
+    pub transaction_data: Option<Vec<JsonObject>>,
 }
 
 impl TryFrom<_AuthorizationRequest> for ResolvedAuthRequest {
     type Error = Error;
 
     fn try_from(value: _AuthorizationRequest) -> Result<Self> {
+        let transaction_data = if let Some(td) = value.transaction_data {
+            let mut items = Vec::new();
+            for item in td {
+                items.push(from_json_object(item)?);
+            }
+            Some(items)
+        } else {
+            None
+        };
         Ok(ResolvedAuthRequest {
             client_id: value.client_id,
             client_metadata: from_json_object(value.client_metadata)?,
@@ -189,6 +203,7 @@ impl TryFrom<_AuthorizationRequest> for ResolvedAuthRequest {
             response_mode: value.response_mode.into(),
             response_uri: parse_url_arg(&value.response_uri)?,
             state: value.state,
+            transaction_data,
         })
     }
 }
@@ -197,6 +212,15 @@ impl TryFrom<ResolvedAuthRequest> for _AuthorizationRequest {
     type Error = Error;
 
     fn try_from(value: ResolvedAuthRequest) -> Result<Self> {
+        let transaction_data = if let Some(td) = value.transaction_data {
+            let mut items = Vec::new();
+            for item in td {
+                items.push(to_json_object(item)?);
+            }
+            Some(items)
+        } else {
+            None
+        };
         Ok(_AuthorizationRequest {
             client_id: value.client_id,
             client_metadata: to_json_object(&value.client_metadata)?,
@@ -206,6 +230,7 @@ impl TryFrom<ResolvedAuthRequest> for _AuthorizationRequest {
             response_mode: value.response_mode.into(),
             response_uri: value.response_uri.to_string(),
             state: value.state,
+            transaction_data,
         })
     }
 }

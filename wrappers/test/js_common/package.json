@@ -30,5 +30,8 @@
     "puppeteer": "^24.3.0",
     "ts-jest": "^29.2.6",
     "typescript": "^5.7.3"
+  },
+  "dependencies": {
+    "agent-sdk": "file:../../nodejs"
   }
 }

@@ -4,9 +4,11 @@ use crate::vault::CredentialEntry;
 use crate::vc::claims::Claims;
 use crate::vc::core::KeyMetadata;
 use crate::vc::oid4vp::internal_error::Oid4VpLibSnafu;
-use crate::vc::oid4vp::{InternalError, ProtocolError};
+use crate::vc::oid4vp::{ErrorType, InternalError, ProtocolError};
 use crate::vc::presentation_exchange::PresentationSubmission;
 use async_trait::async_trait;
+use base64::Engine;
+use base64::prelude::BASE64_URL_SAFE_NO_PAD;
 use common_macros::DebugError;
 use openid4vp::core::error::Error as SpruceErr;
 use serde::{Deserialize, Serialize};
@@ -14,9 +16,17 @@ use snafu::{IntoError, Snafu};
 use std::collections::HashMap;
 use std::fmt::{Debug, Display, Formatter};
 
+pub const VP_TOKEN: &str = "vp_token";
+pub const ID_TOKEN: &str = "id_token";
+pub const STATE: &str = "state";
+pub const PRESENTATION_SUBMISSION: &str = "presentation_submission";
+pub const TRANSACTION_DATA_HASHES: &str = "transaction_data_hashes";
+pub const TRANSACTION_DATA_HASHES_ALG: &str = "transaction_data_hashes_alg";
+
 pub type CredentialMapping = HashMap<String, CredentialEntry>;
 pub type CredentialsMapping = HashMap<String, CredentialsFindResult>;
 
+pub type TransactionDataResponse = openid4vp::core::response::TransactionDataResponse;
 #[derive(Debug, Serialize, Deserialize)]
 pub enum CredentialsFindResult {
     Credentials(Vec<CredentialEntry>),
@@ -61,6 +71,16 @@ pub type ResolvedPresentationQuery =
 pub type Url = url::Url;
 
 pub type HttpMethodForAuth = openid4vp::core::authorization_request::parameters::HttpMethodForAuth;
+
+pub type TransactionDataItem =
+    openid4vp::core::authorization_request::parameters::TransactionDataItem;
+
+pub type HashAlgorithm = openid4vp::core::authorization_request::parameters::HashAlgorithm;
+
+use crate::utils::b64::get_hash_and_base64;
+use crate::vc::oid4vp::Error::Protocol;
+pub use openid4vp::core::response::parameters::TransactionDataHashes;
+pub use openid4vp::core::response::parameters::TransactionDataHashesAlg;
 
 /// Metadata for an ID Token.
 ///
@@ -115,6 +135,14 @@ impl AuthorizationResponseMetadata {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct AuthorizationRequestMetadata {
+    pub auth_response_options: AuthResponseOptions,
+    pub pass_auth_request_object: PassAuthRequestObject,
+    // https://openid.net/specs/openid-4-verifiable-presentations-1_0.html#section-5.1-2.8.1
+    pub transaction_data: Option<Vec<TransactionDataItem>>,
+}
+
 /// A session with state managed during the presentation.
 ///
 /// Contains [Nonce, ResolvedPresentationQuery].
@@ -128,10 +156,14 @@ pub struct PresentationSession {
 /// A resolved `OID4VP` authorization request.
 ///
 /// `client_id` Verifier's identifier.
+/// `client_metadata` - A JSON object containing the Verifier metadata values
 /// `presentation_definition` Rules for the required Verifiable Presentation(s).
 /// `nonce` Unique value to prevent replay attacks.
+/// `response_type` - defines how the Authorization Response constructed.
 /// `response_mode` Method for returning the authorization response.
 /// `response_uri` URI to send the response.
+/// `state` - may be used by a verifier to link requests and responses
+/// `transaction_data` - Array of strings, where each string is a base64url encoded JSON object that contains a typed parameter set with details about the transaction that the Verifier is requesting the End-User to authorize.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ResolvedAuthRequest {
     pub client_id: String,
@@ -143,6 +175,9 @@ pub struct ResolvedAuthRequest {
     pub response_mode: ResponseMode,
     pub response_uri: Url,
     pub state: Option<String>,
+    // https://openid.net/specs/openid-4-verifiable-presentations-1_0.html#section-5.1-2.8.1
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub transaction_data: Option<Vec<TransactionDataItem>>,
 }
 
 /// An `OID4VP` response configuration of authorization request object.
@@ -164,12 +199,21 @@ pub struct AuthorizationResponseObject {
     pub presentation_submission: Option<PresentationSubmission>,
     pub id_token: Option<String>,
     pub state: Option<String>,
+    // https://openid.net/specs/openid-4-verifiable-presentations-1_0.html#appendix-B.3.3.1-2.2.1
+    #[serde(flatten)]
+    pub transaction_data_response: Option<TransactionDataResponse>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub enum AuthorizationResponse {
     Plain(AuthorizationResponseObject),
     Jwe(String),
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Default)]
+pub struct CredentialVerificationMetadata {
+    // https://openid.net/specs/openid-4-verifiable-presentations-1_0.html#section-5.1-2.8.1
+    pub transaction_data: Option<Vec<TransactionDataItem>>,
 }
 
 #[derive(Clone, Debug)]
@@ -350,9 +394,11 @@ pub trait Verifier: WasmNotSend + WasmNotSync {
     ///
     /// # Arguments
     ///
-    /// * `presentation_definition` - the presentation definition specifying the presentation requirements.
-    /// * `pass_auth_request_object` - how to pass an authorization request object to holder, by value or by reference.
-    /// * `auth_response_options` - config about how and where to send authorization response.
+    /// * `resolved_presentation_query` - the presentation definition specifying the presentation requirements.
+    /// * `auth_request_metadata` - the metadata needed to create the AuthorizationRequest. It itself contains:
+    /// `pass_auth_request_object` - how to pass an authorization request object to holder, by value or by reference.
+    /// `auth_response_options` - config about how and where to send authorization response.
+    /// `transaction_data` - transaction data that the holder should return the hashes of.
     /// * `wallet_metadata` - optional metadata of holder. if it is `None`, metadata form `metadata::default_metadata()` will be used
     ///
     /// # Returns
@@ -368,9 +414,8 @@ pub trait Verifier: WasmNotSend + WasmNotSync {
     /// * [InternalError::NonceGeneration] - if an error occurs during generation of nonce
     async fn create_authorization_request(
         &self,
-        presentation_definition: &ResolvedPresentationQuery,
-        auth_response_options: &AuthResponseOptions,
-        pass_auth_request_object: &PassAuthRequestObject,
+        resolved_presentation_query: &ResolvedPresentationQuery,
+        auth_request_metadata: &AuthorizationRequestMetadata,
         wallet_metadata: Option<&WalletMetadata>,
     ) -> Result<(Url, PresentationSession), Error>;
 
@@ -381,6 +426,7 @@ pub trait Verifier: WasmNotSend + WasmNotSync {
     /// * `authorization_response` - the authorization response containing the VP token and presentation submission.
     /// * `session` - a session object containing `Nonce` and `PresentationDefinition`,
     ///  which are generated when the `create_authorization_request` method is called.
+    /// * `verification_metadata` - metadata that contains transaction data used to verify transaction data hashes returned by holder.
     /// # Returns
     ///
     /// * The verified claims as a JSON object on success.
@@ -394,6 +440,7 @@ pub trait Verifier: WasmNotSend + WasmNotSync {
         &self,
         authorization_response: &AuthorizationResponse,
         session: &PresentationSession,
+        verification_metadata: &CredentialVerificationMetadata,
     ) -> Result<Claims, Error>;
 }
 
@@ -408,4 +455,19 @@ impl From<SpruceErr> for Error {
             },
         }
     }
+}
+
+pub fn get_transaction_data_hash(
+    value: &TransactionDataItem,
+    hash_alg: HashAlgorithm,
+) -> Result<String, Error> {
+    let json_str = serde_json::to_string(value).map_err(|e| {
+        let err_msg = format!("Wrong format of transaction data item: {}", e);
+        Protocol {
+            source: ProtocolError::new(ErrorType::InvalidTransactionData, Some(err_msg), None),
+        }
+    })?;
+    let encoded_json_str = BASE64_URL_SAFE_NO_PAD.encode(&json_str);
+    let encoded_expected_hash = get_hash_and_base64(encoded_json_str, hash_alg);
+    Ok(encoded_expected_hash)
 }
