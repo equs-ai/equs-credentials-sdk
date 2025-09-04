@@ -6,7 +6,8 @@ use crate::utils::http::MimeType;
 use crate::vault::CredentialEntry;
 use crate::vc::core::PresentationInput;
 use crate::vc::dcql::DCQL;
-use crate::vc::oid4vp::Error::Internal;
+use crate::vc::oid4vp::Error::{Internal, Protocol};
+use crate::vc::oid4vp::api::TransactionDataItem;
 use crate::vc::oid4vp::internal_error::{
     AuthorizationResponseSnafu, AuthorizationResponseUnsupportedModeSnafu, CredentialNotFoundSnafu,
     DCQLSnafu, HttpClientSnafu, IdTokenGenerationSnafu, IdTokenMetadataNotFoundSnafu,
@@ -14,10 +15,13 @@ use crate::vc::oid4vp::internal_error::{
 };
 use crate::vc::oid4vp::jwe_encryptor::JweEncryptor;
 use crate::vc::oid4vp::metadata::default_wallet_metadata;
+use crate::vc::oid4vp::protocol_error::ErrorType;
 use crate::vc::oid4vp::signer::Signer;
 use crate::vc::oid4vp::{
     AuthorizationResponseMetadata, CredentialMapping, CredentialsFindResult, CredentialsMapping,
-    ProtocolError, ResolvedAuthRequest, ResolvedPresentationQuery, ResponseMode,
+    ID_TOKEN, PRESENTATION_SUBMISSION, ProtocolError, ResolvedAuthRequest,
+    ResolvedPresentationQuery, ResponseMode, STATE, TRANSACTION_DATA_HASHES,
+    TRANSACTION_DATA_HASHES_ALG, VP_TOKEN, get_transaction_data_hash,
 };
 use crate::vc::presentation_exchange::PresentationDefinition;
 use crate::vc::{RequestedPresentation, dcql, oid4vp as api, presentation_exchange};
@@ -25,19 +29,25 @@ use crate::{utils, vc};
 use async_trait::async_trait;
 use futures::future;
 use oauth2::http::{Request, Response};
-use openid4vp::core::authorization_request::parameters::{ResponseType, WalletNonce};
+use openid4vp::core::authorization_request::parameters::{
+    HashAlgorithm, ResponseType, WalletNonce,
+};
 use openid4vp::core::authorization_request::verification::{RequestVerifier, did};
 use openid4vp::core::authorization_request::{AuthorizationRequest, AuthorizationRequestObject};
 use openid4vp::core::metadata::WalletMetadata;
 use openid4vp::core::presentation_submission::PresentationSubmission;
 use openid4vp::core::response::AuthorizationResponse::Jwt;
-use openid4vp::core::response::parameters::{IdToken, VpToken};
+use openid4vp::core::response::parameters::{
+    IdToken, TransactionDataHashes, TransactionDataHashesAlg, VpToken,
+};
 use openid4vp::core::response::{
-    AuthorizationResponse, JwtAuthorizationResponse, UnencodedAuthorizationResponse,
+    AuthorizationResponse, JwtAuthorizationResponse, TransactionDataResponse,
+    UnencodedAuthorizationResponse,
 };
 use openid4vp::core::util::http::AsyncHttpClient;
 use openid4vp::wallet::{IdTokenParams, Wallet};
-use serde_json::{Map, Value, json};
+use serde::Serialize;
+use serde_json::{Map, Value};
 use snafu::ResultExt;
 use ssi::dids::DIDURLBuf;
 use std::collections::HashMap;
@@ -155,28 +165,52 @@ where
             }
         };
 
+        let transaction_data_response =
+            Self::prepare_transaction_data_hashes(auth_request.transaction_data.to_owned())?;
+
         match auth_request.response_mode.clone() {
             ResponseMode::DirectPost | ResponseMode::DCAPI => Ok(AuthorizationResponse::Unencoded(
                 UnencodedAuthorizationResponse {
                     vp_token: vp_token.clone(),
-                    presentation_submission: ps.clone(),
+                    presentation_submission: ps.to_owned(),
                     id_token: id_token.clone(),
-                    state: auth_request.state.clone(),
+                    state: auth_request.state.to_owned(),
+                    transaction_data_response,
                 },
             )),
             ResponseMode::DirectPostJwt | ResponseMode::DCAPIJwt => {
                 let metadata = auth_request.client_metadata.clone();
                 let encryptor = JweEncryptor::new(metadata);
                 let mut body = Map::new();
-                body.insert("vp_token".to_string(), json!(vp_token));
+
+                body.insert(VP_TOKEN.to_string(), Self::convert_to_serde_json(vp_token)?);
                 if let Some(id_token) = id_token {
-                    body.insert("id_token".to_string(), json!(id_token));
+                    body.insert(ID_TOKEN.to_string(), Self::convert_to_serde_json(id_token)?);
                 }
                 if let Some(state) = auth_request.state.clone() {
-                    body.insert("state".to_string(), json!(state));
+                    body.insert(STATE.to_string(), Self::convert_to_serde_json(state)?);
                 }
                 if let Some(ps) = ps {
-                    body.insert("presentation_submission".to_string(), json!(ps));
+                    body.insert(
+                        PRESENTATION_SUBMISSION.to_string(),
+                        Self::convert_to_serde_json(ps)?,
+                    );
+                }
+                if let Some(transaction_data_response) = transaction_data_response {
+                    body.insert(
+                        TRANSACTION_DATA_HASHES.to_string(),
+                        Self::convert_to_serde_json(
+                            transaction_data_response.transaction_data_hashes,
+                        )?,
+                    );
+                    if let Some(transaction_data_hashes_alg) =
+                        transaction_data_response.transaction_data_hashes_alg
+                    {
+                        body.insert(
+                            TRANSACTION_DATA_HASHES_ALG.to_string(),
+                            Self::convert_to_serde_json(transaction_data_hashes_alg)?,
+                        );
+                    }
                 }
                 let jwt = encryptor.encrypt(Value::Object(body)).await?;
                 Ok(Jwt(JwtAuthorizationResponse { response: jwt }))
@@ -190,6 +224,44 @@ where
                 }
                 .build(),
             }),
+        }
+    }
+
+    fn convert_to_serde_json<T: Serialize>(value: T) -> Result<Value> {
+        serde_json::to_value(value).map_err(|e| Internal {
+            source: ParseSnafu {
+                details: format!("Error while serialization: {}", e),
+            }
+            .build(),
+        })
+    }
+    fn prepare_transaction_data_hashes(
+        transaction_data: Option<Vec<TransactionDataItem>>,
+    ) -> Result<Option<TransactionDataResponse>> {
+        if let Some(transaction_data) = transaction_data {
+            // NOTE: getting the hash algorithm is chosen customary as the first item's first algorithm or default of sha256. The specification is ambiguous about how to choose
+            // https://openid.net/specs/openid-4-verifiable-presentations-1_0.html#appendix-B.3.3.1-1
+
+            let hash_alg = if let Some(item) = transaction_data.first()
+                && let Some(algs) = item.transaction_data_hashes_alg.to_owned()
+                && let Some(alg) = algs.first()
+            {
+                alg.to_owned()
+            } else {
+                HashAlgorithm::Sha256
+            };
+            let mut hashes = Vec::new();
+            for item in &transaction_data {
+                let encoded = get_transaction_data_hash(item, hash_alg.to_owned())?;
+                hashes.push(encoded);
+            }
+
+            Ok(Some(TransactionDataResponse {
+                transaction_data_hashes: TransactionDataHashes(hashes),
+                transaction_data_hashes_alg: Some(TransactionDataHashesAlg(hash_alg.to_owned())),
+            }))
+        } else {
+            Ok(None)
         }
     }
 
@@ -540,6 +612,44 @@ where
         }
         Ok(presentations)
     }
+
+    fn validate_transaction_data(
+        &self,
+        resolved_presentation_query: &ResolvedPresentationQuery,
+        transaction_data: &Vec<TransactionDataItem>,
+    ) -> vc::oid4vp::verifier::Result<()> {
+        //TODO for future drafts(>29): validate for type. The draft doesnt provide how. https://openid.net/specs/openid-4-verifiable-presentations-1_0-29.html#section-8.5-15
+        let rpq_ids: Vec<String> = match resolved_presentation_query {
+            ResolvedPresentationQuery::DCQL(dcql) => dcql
+                .credentials()
+                .iter()
+                .map(|i| i.id().as_str().to_string())
+                .collect(),
+            ResolvedPresentationQuery::PresentationDefinition(pd) => pd
+                .input_descriptors()
+                .iter()
+                .map(|i| i.id.clone())
+                .collect(),
+        };
+        for item in transaction_data {
+            for cred_id in &item.credential_ids {
+                if !rpq_ids.contains(cred_id) {
+                    let msg = format!(
+                        "Wrong transaction data: cred_id={} don't exist in the presentation query",
+                        cred_id
+                    );
+                    return Err(Protocol {
+                        source: ProtocolError::new(
+                            ErrorType::InvalidTransactionData,
+                            Some(msg),
+                            None,
+                        ),
+                    });
+                }
+            }
+        }
+        Ok(())
+    }
 }
 
 #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
@@ -595,7 +705,9 @@ where
             }
             Err(e) => return Err(e),
         };
-
+        if let Some(td) = aro.get_transaction_data_items()? {
+            self.validate_transaction_data(&rpq, &td)?;
+        }
         Ok(ResolvedAuthRequest {
             client_id: aro.client_id().get_full_id(),
             client_metadata: aro.client_metadata().to_owned(),
@@ -605,6 +717,7 @@ where
             response_mode: aro.response_mode().to_owned(),
             response_uri: aro.return_uri().to_owned(),
             state: aro.state(),
+            transaction_data: aro.get_transaction_data_items()?,
         })
     }
 
@@ -865,6 +978,7 @@ mod tests {
     use crate::vc::claims::{Claim, Claims};
     use crate::vc::core::{KeyMetadata, ProofOfPossessionMetadata};
     use crate::vc::oid4vp::protocol_error::ErrorType;
+    use crate::vc::oid4vp::tests::fixtures::multi_presentation::transaction_data_items;
     use crate::vc::oid4vp::tests::fixtures::single_presentation::sd_jwt::{
         AUTH_REQUEST, AUTH_REQUEST_JWT, AUTH_REQUEST_WITH_NON_URL_SCHEME,
         AUTH_REQUEST_WITH_REDIRECT_URI, AUTH_REQUEST_WITH_STATE_JWT,
@@ -1021,6 +1135,24 @@ mod tests {
     )]
     #[tokio::test]
     async fn present_credential_auto_success(#[case] test_case: PresentationTestCase) {
+        let mut http_client = MockHttpClient::new();
+        test_case.mock_http_auth_response_endpoint(&mut http_client, None);
+
+        let kms = LocalKms::new();
+        let vault = test_case.prepare_vault(&kms).await;
+        let holder = holder_service(http_client, kms, vault).await;
+
+        // Send auth response
+        holder
+            .present_credentials_auto(&test_case.request, &test_case.response_metadata)
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn check_credential_presentation_with_transaction_data() {
+        let mut test_case = single_presentation::sd_jwt::presentation_test_case();
+        test_case.request.transaction_data = Some(transaction_data_items());
         let mut http_client = MockHttpClient::new();
         test_case.mock_http_auth_response_endpoint(&mut http_client, None);
 

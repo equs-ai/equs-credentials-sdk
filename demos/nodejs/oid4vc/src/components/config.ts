@@ -4,8 +4,8 @@ import {
   JwkAlgorithm,
   OID4VCIIssuerMetadata,
   PresentationQuery,
+  TransactionDataItem,
 } from "@equstng/agent-sdk";
-
 export class Config {
   readonly servers = {
     issuer: {
@@ -147,3 +147,16 @@ export class Config {
 }
 
 export const config = new Config();
+
+export const transactionData: Array<TransactionDataItem> = [
+  {
+    type: "type1",
+    credential_ids: ["Identity-1"],
+    transaction_data_hashes_alg: ["sha-256", "sha-512"],
+  },
+  {
+    type: "type2",
+    credential_ids: ["Identity-2"],
+    transaction_data_hashes_alg: ["sha-512"],
+  },
+];

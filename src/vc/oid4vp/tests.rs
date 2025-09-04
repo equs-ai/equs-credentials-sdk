@@ -168,6 +168,7 @@ pub mod fixtures {
                     presentation_submission: presentation_submission(),
                     response_metadata: Default::default(),
                     expected_credential_data: vec![credential_1()],
+                    transaction_data: None,
                 }
             }
 
@@ -200,6 +201,7 @@ pub mod fixtures {
                     presentation_submission,
                     response_metadata: Default::default(),
                     expected_credential_data: vec![credential_3()],
+                    transaction_data: None,
                 }
             }
 
@@ -238,6 +240,7 @@ pub mod fixtures {
                     expected_credential_data: vec![credential_1()],
                     presentation_submission,
                     response_metadata: Default::default(),
+                    transaction_data: None,
                 }
             }
 
@@ -290,6 +293,7 @@ pub mod fixtures {
                     expected_credential_data: vec![credential_4()],
                     presentation_submission,
                     response_metadata: Default::default(),
+                    transaction_data: None,
                 }
             }
 
@@ -338,6 +342,7 @@ pub mod fixtures {
                     expected_credential_data: vec![credential_1()],
                     presentation_submission,
                     response_metadata: Default::default(),
+                    transaction_data: None,
                 }
             }
 
@@ -387,6 +392,7 @@ pub mod fixtures {
                     expected_credential_data: vec![credential_3()],
                     presentation_submission,
                     response_metadata: Default::default(),
+                    transaction_data: None,
                 }
             }
             pub fn presentation_test_case_with_constraints_with_patterns() -> PresentationTestCase {
@@ -489,6 +495,7 @@ pub mod fixtures {
                     expected_credential_data: vec![cred],
                     presentation_submission,
                     response_metadata: Default::default(),
+                    transaction_data: None,
                 }
             }
             pub fn presentation_test_case_with_constraints_with_invalid_value_for_pattern()
@@ -554,6 +561,7 @@ pub mod fixtures {
                     expected_credential_data: vec![cred],
                     presentation_submission,
                     response_metadata: Default::default(),
+                    transaction_data: None,
                 }
             }
             pub fn presentation_test_case_with_constraints_with_invalid_value_for_const()
@@ -611,6 +619,7 @@ pub mod fixtures {
                     expected_credential_data: vec![cred],
                     presentation_submission,
                     response_metadata: Default::default(),
+                    transaction_data: None,
                 }
             }
             pub fn presentation_test_case_with_constraints_with_absent_required_claim()
@@ -664,6 +673,7 @@ pub mod fixtures {
                     expected_credential_data: vec![cred],
                     presentation_submission,
                     response_metadata: Default::default(),
+                    transaction_data: None,
                 }
             }
         }
@@ -671,6 +681,7 @@ pub mod fixtures {
             use crate::nonce::Nonce;
             use crate::vc::claims::Claims;
             use crate::vc::oid4vp::tests::fixtures::NONCE;
+            use crate::vc::oid4vp::tests::fixtures::multi_presentation::transaction_data;
             use crate::vc::oid4vp::tests::utils::{PresentationTestCase, VerificationTestCase};
             use crate::vc::oid4vp::{
                 ClientMetadata, PresentationSession, ResolvedAuthRequest, ResolvedPresentationQuery,
@@ -1284,6 +1295,7 @@ pub mod fixtures {
                     presentation_submission: presentation_submission(),
                     response_metadata: Default::default(),
                     expected_credential_data: vec![credential_1()],
+                    transaction_data: Some(transaction_data()),
                 }
             }
 
@@ -1295,6 +1307,7 @@ pub mod fixtures {
                     presentation_submission: presentation_submission(),
                     response_metadata: Default::default(),
                     expected_credential_data: vec![credential_1()],
+                    transaction_data: None,
                 }
             }
 
@@ -1327,6 +1340,7 @@ pub mod fixtures {
                     presentation_submission,
                     response_metadata: Default::default(),
                     expected_credential_data: vec![credential_2()],
+                    transaction_data: None,
                 }
             }
 
@@ -1367,6 +1381,7 @@ pub mod fixtures {
                     expected_credential_data: vec![credential_4()],
                     presentation_submission,
                     response_metadata: Default::default(),
+                    transaction_data: None,
                 }
             }
 
@@ -1417,6 +1432,7 @@ pub mod fixtures {
                     expected_credential_data: vec![credential_3()],
                     presentation_submission,
                     response_metadata: Default::default(),
+                    transaction_data: None,
                 }
             }
 
@@ -1459,6 +1475,7 @@ pub mod fixtures {
                     expected_credential_data: vec![credential_2()],
                     presentation_submission,
                     response_metadata: Default::default(),
+                    transaction_data: None,
                 }
             }
 
@@ -1509,6 +1526,7 @@ pub mod fixtures {
                     expected_credential_data: vec![credential_2()],
                     presentation_submission,
                     response_metadata: Default::default(),
+                    transaction_data: None,
                 }
             }
             pub fn presentation_test_case_with_constraints_with_patterns() -> PresentationTestCase {
@@ -1603,6 +1621,7 @@ pub mod fixtures {
                     expected_credential_data: vec![cred],
                     presentation_submission,
                     response_metadata: Default::default(),
+                    transaction_data: None,
                 }
             }
             pub fn presentation_test_case_with_constraints_with_invalid_value_for_pattern()
@@ -1661,6 +1680,7 @@ pub mod fixtures {
                     expected_credential_data: vec![cred],
                     presentation_submission,
                     response_metadata: Default::default(),
+                    transaction_data: None,
                 }
             }
             pub fn presentation_test_case_with_constraints_with_invalid_value_for_const()
@@ -1715,6 +1735,7 @@ pub mod fixtures {
                     expected_credential_data: vec![cred],
                     presentation_submission,
                     response_metadata: Default::default(),
+                    transaction_data: None,
                 }
             }
             pub fn presentation_test_case_with_constraints_with_absent_required_claim()
@@ -1765,6 +1786,7 @@ pub mod fixtures {
                     expected_credential_data: vec![cred],
                     presentation_submission,
                     response_metadata: Default::default(),
+                    transaction_data: None,
                 }
             }
 
@@ -1776,6 +1798,7 @@ pub mod fixtures {
                     presentation_submission: presentation_submission(),
                     response_metadata: Default::default(),
                     expected_credential_data: vec![credential_1()],
+                    transaction_data: None,
                 }
             }
 
@@ -1796,17 +1819,26 @@ pub mod fixtures {
     pub mod multi_presentation {
         use crate::nonce::Nonce;
         use crate::vc::claims::Claims;
+        use crate::vc::oid4vp::api::TransactionDataItem;
         use crate::vc::oid4vp::tests::fixtures::NONCE;
         use crate::vc::oid4vp::tests::utils::{PresentationTestCase, VerificationTestCase};
         use crate::vc::oid4vp::{
             AuthResponseOptions, PresentationSession, ResolvedAuthRequest,
-            ResolvedPresentationQuery, ResponseMode, ResponseType,
+            ResolvedPresentationQuery, ResponseMode, ResponseType, TransactionDataResponse,
         };
         use crate::vc::presentation_exchange::{
             PresentationDefinition, PresentationSubmission, SubmissionRequirement,
             SubmissionRequirementBase, SubmissionRequirementObject, SubmissionRequirementPick,
         };
+        use base64::Engine;
+        use base64::prelude::BASE64_URL_SAFE_NO_PAD;
+        use bip32::secp256k1::sha2;
+        use bip32::secp256k1::sha2::Digest;
+        use openid4vp::core::authorization_request::parameters::{HashAlgorithm, TransactionData};
         use openid4vp::core::credential_format::ClaimFormatDesignation;
+        use openid4vp::core::response::parameters::{
+            TransactionDataHashes, TransactionDataHashesAlg,
+        };
         use serde_json::json;
         use url::Url;
 
@@ -2169,6 +2201,7 @@ pub mod fixtures {
                 presentation_submission: presentation_submission(),
                 response_metadata: Default::default(),
                 expected_credential_data: credential_data(),
+                transaction_data: None,
             }
         }
 
@@ -2303,6 +2336,7 @@ pub mod fixtures {
                 credential_data,
                 presentation_submission,
                 response_metadata: Default::default(),
+                transaction_data: None,
             }
         }
 
@@ -2314,6 +2348,7 @@ pub mod fixtures {
                 presentation_submission: presentation_submission(),
                 response_metadata: Default::default(),
                 expected_credential_data: credential_data(),
+                transaction_data: None,
             }
         }
 
@@ -2334,6 +2369,50 @@ pub mod fixtures {
                 mode: ResponseMode::DirectPost,
                 submission_uri,
                 state,
+            }
+        }
+
+        pub fn transaction_data_items() -> Vec<TransactionDataItem> {
+            vec![
+                TransactionDataItem {
+                    type_: "some_type".to_string(),
+                    credential_ids: Vec::from(["1".to_string(), "2".to_string()]),
+                    transaction_data_hashes_alg: Some(vec![
+                        HashAlgorithm::Sha256,
+                        HashAlgorithm::Sha512,
+                    ]),
+                },
+                TransactionDataItem {
+                    type_: "some_type2".to_string(),
+                    credential_ids: Vec::from(["11".to_string(), "22".to_string()]),
+                    transaction_data_hashes_alg: None,
+                },
+            ]
+        }
+
+        pub fn transaction_data() -> TransactionData {
+            TransactionData(
+                transaction_data_items()
+                    .iter()
+                    .map(|i| i.to_owned().into_base64url_encoded().unwrap())
+                    .collect(),
+            )
+        }
+        pub fn transaction_data_response() -> TransactionDataResponse {
+            let transaction_data = transaction_data_items();
+            let hash_alg = HashAlgorithm::Sha256;
+            // json_str -> base64 -> hash -> base64
+            let encoded1 = BASE64_URL_SAFE_NO_PAD
+                .encode(serde_json::to_string(transaction_data.first().unwrap()).unwrap());
+            let encoded2 = BASE64_URL_SAFE_NO_PAD
+                .encode(serde_json::to_string(transaction_data.get(1).unwrap()).unwrap());
+            let hash1 = sha2::Sha256::digest(encoded1.as_bytes());
+            let hash2 = sha2::Sha256::digest(encoded2.as_bytes());
+            let encoded1 = BASE64_URL_SAFE_NO_PAD.encode(hash1);
+            let encoded2 = BASE64_URL_SAFE_NO_PAD.encode(hash2);
+            TransactionDataResponse {
+                transaction_data_hashes: TransactionDataHashes(vec![encoded1, encoded2]),
+                transaction_data_hashes_alg: Some(TransactionDataHashesAlg(HashAlgorithm::Sha256)),
             }
         }
     }
@@ -2367,13 +2446,16 @@ pub mod utils {
     use crate::vc::oid4vp::holder::HolderService;
     use crate::vc::oid4vp::jwe_utils::WrapperForES256Handle;
     use crate::vc::oid4vp::signer::Signer;
+    use crate::vc::oid4vp::tests::fixtures::multi_presentation::{
+        transaction_data_items, transaction_data_response,
+    };
     use crate::vc::oid4vp::tests::fixtures::single_presentation::sd_jwt::client_metadata_no_keys;
     use crate::vc::oid4vp::tests::fixtures::{CREDENTIAL_ID, VERIFIER_URL};
     use crate::vc::oid4vp::verifier::VerifierService;
     use crate::vc::oid4vp::{
         AuthorizationResponseMetadata, AuthorizationResponseObject, ClientMetadata,
         CredentialMapping, Holder, PresentationSession, ResolvedAuthRequest, ResponseType,
-        Verifier,
+        TransactionDataResponse, Verifier,
     };
     use crate::vc::presentation_exchange::PresentationSubmission;
     use crate::vc::{
@@ -2381,14 +2463,21 @@ pub mod utils {
         presentation_exchange,
     };
     use async_trait::async_trait;
+    use base64::Engine;
+    use base64::prelude::BASE64_URL_SAFE_NO_PAD;
+    use bip32::secp256k1::sha2;
+    use bip32::secp256k1::sha2::Digest;
     use iref::UriBuf;
     use oauth2::http::{Method, Request, Response, StatusCode};
     use one_crypto::jwe::PrivateKeyAgreementHandle;
     use one_crypto::jwe::decrypt_jwe_payload;
+    use openid4vp::core::authorization_request::parameters::{HashAlgorithm, TransactionData};
     use openid4vp::core::authorization_request::verification::RequestVerifier;
     use openid4vp::core::metadata::parameters::SubjectSyntaxTypesSupported;
     use openid4vp::core::response::PostRedirection;
-    use openid4vp::core::response::parameters::IdToken;
+    use openid4vp::core::response::parameters::{
+        IdToken, TransactionDataHashes, TransactionDataHashesAlg,
+    };
     use openid4vp::core::util::http::AsyncHttpClient;
     use openid4vp::wallet::{IdTokenParams, Wallet};
     use sd_jwt_rs::SDJWTSerializationFormat;
@@ -2408,6 +2497,7 @@ pub mod utils {
         pub presentation_submission: PresentationSubmission,
         pub response_metadata: AuthorizationResponseMetadata,
         pub expected_credential_data: Vec<Claims>,
+        pub transaction_data: Option<TransactionData>,
     }
 
     struct MockAuthResponseHelperParams {
@@ -2419,6 +2509,7 @@ pub mod utils {
         response_type: ResponseType,
         request: String,
         expected_state: Option<String>,
+        transaction_data: Option<TransactionData>,
     }
 
     impl PresentationTestCase {
@@ -2434,6 +2525,7 @@ pub mod utils {
             let response_type = self.request.response_type.clone();
             let state = self.request.state.clone();
             let credential_format = self.credential_format.clone();
+            let transaction_data = self.transaction_data.clone();
 
             mock_http_req_async_predicate(
                 http_client,
@@ -2449,6 +2541,7 @@ pub mod utils {
                         response_type: response_type.clone(),
                         request,
                         expected_state: state.clone(),
+                        transaction_data: transaction_data.clone(),
                     })
                 },
                 PostRedirection {
@@ -2469,12 +2562,14 @@ pub mod utils {
                 response_type,
                 request,
                 expected_state,
+                transaction_data,
             }: MockAuthResponseHelperParams,
         ) -> bool {
             let form: HashMap<String, String> =
                 serde_urlencoded::from_bytes(request.as_bytes()).unwrap();
             let claims;
             let mut presentation_submission: PresentationSubmission;
+            let transaction_data_response: Option<TransactionDataResponse>;
             if form.contains_key::<String>(&String::from("response")) {
                 let response = form.get::<String>(&String::from("response")).unwrap();
                 let jwk = r#"{
@@ -2495,6 +2590,19 @@ pub mod utils {
                     claim_set.get("presentation_submission").unwrap().clone(),
                 )
                 .unwrap();
+                let transaction_data_hashes = claim_set
+                    .get("transaction_data_hashes")
+                    .cloned()
+                    .and_then(|v| serde_json::from_value(v).ok());
+                let transaction_data_hashes_alg = claim_set
+                    .get("transaction_data_hashes_alg")
+                    .cloned()
+                    .and_then(|v| serde_json::from_value(v).ok());
+                transaction_data_response =
+                    transaction_data_hashes.map(|tdh| TransactionDataResponse {
+                        transaction_data_hashes: tdh,
+                        transaction_data_hashes_alg,
+                    });
                 let claim_set = claim_set
                     .into_iter()
                     .map(|(k, v)| (k.to_owned().to_string(), v.to_owned().to_string()))
@@ -2504,7 +2612,38 @@ pub mod utils {
                 claims = Self::extract_claims(&form);
                 presentation_submission =
                     serde_json::from_str(&form["presentation_submission"]).unwrap();
+
+                let transaction_data_hashes = form
+                    .get("transaction_data_hashes")
+                    .cloned()
+                    .and_then(|v| serde_json::from_str(v.as_str()).ok());
+                let transaction_data_hashes_alg = form
+                    .get("transaction_data_hashes_alg")
+                    .cloned()
+                    .and_then(|v| serde_json::from_str(v.as_str()).ok());
+                transaction_data_response =
+                    transaction_data_hashes.map(|tdh| TransactionDataResponse {
+                        transaction_data_hashes: tdh,
+                        transaction_data_hashes_alg,
+                    });
             }
+
+            if let Some(tdr) = transaction_data_response {
+                let transaction_data = transaction_data.unwrap();
+                let hash1 = sha2::Sha256::digest(transaction_data.0.first().unwrap().as_bytes());
+                let hash2 = sha2::Sha256::digest(transaction_data.0.get(1).unwrap().as_bytes());
+                let encoded1 = BASE64_URL_SAFE_NO_PAD.encode(hash1);
+                let encoded2 = BASE64_URL_SAFE_NO_PAD.encode(hash2);
+                assert_eq!(
+                    tdr.transaction_data_hashes.0.first().unwrap().as_str(),
+                    encoded1.as_str()
+                );
+                assert_eq!(
+                    tdr.transaction_data_hashes.0.get(1).unwrap().as_str(),
+                    encoded2.as_str()
+                );
+            }
+
             for index in 0..claims.len() {
                 validate_claims(
                     &credential_format,
@@ -2741,7 +2880,7 @@ pub mod utils {
     }
 
     impl VerificationTestCase {
-        pub async fn vp_token(&self, nonce: &Nonce, verifier_id: &str) -> serde_json::Value {
+        pub async fn vp_token(&self, nonce: &Nonce, verifier_id: &str) -> Value {
             let kms = LocalKms::new();
             let (_, holder_key_handle) = kms
                 .create_and_handle(KeyType::P256, CreateOptions::default())
@@ -2769,7 +2908,7 @@ pub mod utils {
             }
         }
 
-        pub async fn auth_response(
+        pub async fn auth_response_with_transaction_data_response(
             &self,
             nonce: &Nonce,
             verifier_id: &str,
@@ -2779,6 +2918,74 @@ pub mod utils {
                 presentation_submission: Some(self.presentation_submission.clone()),
                 id_token: None,
                 state: None,
+                transaction_data_response: Some(transaction_data_response()),
+            }
+        }
+
+        pub async fn auth_response_without_transaction_data_response(
+            &self,
+            nonce: &Nonce,
+            verifier_id: &str,
+        ) -> AuthorizationResponseObject {
+            AuthorizationResponseObject {
+                vp_token: self.vp_token(nonce, verifier_id).await,
+                presentation_submission: Some(self.presentation_submission.clone()),
+                id_token: None,
+                state: None,
+                transaction_data_response: None,
+            }
+        }
+
+        pub async fn auth_response_with_wrong_transaction_data_response(
+            &self,
+            nonce: &Nonce,
+            verifier_id: &str,
+        ) -> AuthorizationResponseObject {
+            let mut transaction_data_response = transaction_data_response();
+            transaction_data_response.transaction_data_hashes = TransactionDataHashes(vec![
+                transaction_data_response
+                    .transaction_data_hashes
+                    .0
+                    .first()
+                    .unwrap()
+                    .clone(),
+                "wrong_hash".to_string(),
+            ]);
+            AuthorizationResponseObject {
+                vp_token: self.vp_token(nonce, verifier_id).await,
+                presentation_submission: Some(self.presentation_submission.clone()),
+                id_token: None,
+                state: None,
+                transaction_data_response: Some(transaction_data_response),
+            }
+        }
+
+        pub async fn auth_response_with_wrong_transaction_data(
+            &self,
+            nonce: &Nonce,
+            verifier_id: &str,
+        ) -> AuthorizationResponseObject {
+            let transaction_data = transaction_data_items();
+            let hash_alg = HashAlgorithm::Sha256;
+            // json_str -> base64 -> hash -> base64
+            let encoded1 = BASE64_URL_SAFE_NO_PAD
+                .encode(serde_json::to_string(transaction_data.first().unwrap()).unwrap());
+            let encoded2 = BASE64_URL_SAFE_NO_PAD
+                .encode(serde_json::to_string(transaction_data.get(1).unwrap()).unwrap());
+            let hash1 = sha2::Sha256::digest(encoded1.as_bytes());
+            let hash2 = sha2::Sha256::digest(encoded2.as_bytes());
+            let encoded1 = BASE64_URL_SAFE_NO_PAD.encode(hash1);
+            let encoded2 = BASE64_URL_SAFE_NO_PAD.encode(hash2);
+
+            AuthorizationResponseObject {
+                vp_token: self.vp_token(nonce, verifier_id).await,
+                presentation_submission: Some(self.presentation_submission.clone()),
+                id_token: None,
+                state: None,
+                transaction_data_response: Some(TransactionDataResponse {
+                    transaction_data_hashes: TransactionDataHashes(vec![encoded1, encoded2]),
+                    transaction_data_hashes_alg: Some(TransactionDataHashesAlg(hash_alg)),
+                }),
             }
         }
 
@@ -2788,7 +2995,9 @@ pub mod utils {
             verifier_id: &str,
             id_token_params: IdTokenParams,
         ) -> AuthorizationResponseObject {
-            let mut auth_resp = self.auth_response(nonce, verifier_id).await;
+            let mut auth_resp = self
+                .auth_response_with_transaction_data_response(nonce, verifier_id)
+                .await;
             auth_resp.id_token = Some(generate_did_based_id_token(id_token_params).await);
 
             auth_resp

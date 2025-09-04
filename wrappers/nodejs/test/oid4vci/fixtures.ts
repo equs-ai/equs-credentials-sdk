@@ -86,23 +86,23 @@ export const CRED_DEF_METADATA: OID4VCICredentialMetadata = {
   format: CredentialFormats.VCSDJWT,
   credential_signing_alg_values_supported: [JwkAlgorithm.ES256],
   vct: "SD_JWT_cred",
-    claims: [
-      {
-        path: ["given_name"],
-        display: [{ name: "Name" }],
-        mandatory: true,
-      },
-      {
-        path: ["family_name"],
-        display: [{ name: "Surname" }],
-        mandatory: true,
-      },
-      {
-        path: ["dob"],
-        display: [{ name: "Date of birth" }],
-        mandatory: true,
-      },
-    ],
+  claims: [
+    {
+      path: ["given_name"],
+      display: [{ name: "Name" }],
+      mandatory: true,
+    },
+    {
+      path: ["family_name"],
+      display: [{ name: "Surname" }],
+      mandatory: true,
+    },
+    {
+      path: ["dob"],
+      display: [{ name: "Date of birth" }],
+      mandatory: true,
+    },
+  ],
 };
 
 export const PROOF_JWT =

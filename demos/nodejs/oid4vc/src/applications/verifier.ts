@@ -1,13 +1,16 @@
 import {
+  AuthorizationRequestMetadata,
   AuthorizationResponse,
   AuthorizationResponseObject,
   AuthorizationResponseType,
   AuthResponseOptions,
+  CredentialVerificationMetadata,
   enableLogs,
   InMemKms,
   LocalNonceHandler,
   OID4VPVerifierBuilder,
   PassAuthRequestObject,
+  PassAuthRequestObjectType,
   ReqwestHttpClient,
   TracingLogFormat,
   TracingLogLevel,
@@ -15,7 +18,7 @@ import {
 import * as express from "express";
 import { urlencoded } from "express";
 import { json } from "body-parser";
-import { config } from "../components/config";
+import { config, transactionData } from "../components/config";
 import { createDidAndKeyMetadata } from "../components/utils";
 import * as cors from "cors";
 
@@ -62,11 +65,20 @@ async function main(): Promise<void> {
         state,
       };
 
+      let passAuthRequestObject: PassAuthRequestObject = {
+        type: PassAuthRequestObjectType.ByReference,
+        requestUri: requestUri,
+      };
+      let authorizationRequestMetadata: AuthorizationRequestMetadata = {
+        authResponseOptions: authResponseOptions,
+        passAuthRequestObject: passAuthRequestObject,
+        transactionData,
+      };
+
       const { authorizationRequestUri, session } =
         await appState.verifier.createAuthorizationRequest(
           config.resolvedPresentationQuery,
-          authResponseOptions,
-          PassAuthRequestObject.byReference(requestUri),
+          authorizationRequestMetadata,
           null,
         );
 
@@ -113,11 +125,19 @@ async function main(): Promise<void> {
         throw new Error(
           "presentation_submission does not exist in request body!",
         );
+      const transactionDataHashes = req.body.transaction_data_hashes;
+      const transactionDataHashesAlg = req.body.transaction_data_hashes_alg;
+      if (!transactionDataHashes || !transactionDataHashesAlg)
+        throw new Error("Transaction Data Response doesnt exist in the body");
 
       const authorizationResponseObject: AuthorizationResponseObject = {
         vpToken: JSON.parse(vpToken),
         presentationSubmission: JSON.parse(presentationSubmission),
         state: req.body.state,
+        transactionDataResponse: {
+          hashes: JSON.parse(transactionDataHashes),
+          alg: JSON.parse(transactionDataHashesAlg),
+        },
       };
 
       const authorizationResponse: AuthorizationResponse = {
@@ -125,10 +145,14 @@ async function main(): Promise<void> {
         object: authorizationResponseObject,
       };
 
+      let credentialVerificationMetadata: CredentialVerificationMetadata = {
+        transactionData,
+      };
       const session = appState.presentationSessionStorage.get(SESSION_ID);
       const verifiedClaims = await appState.verifier.verifyPresentation(
         authorizationResponse,
         session,
+        credentialVerificationMetadata,
       );
       console.log(`Verifier claims: `, verifiedClaims);
 

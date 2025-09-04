@@ -27,6 +27,7 @@ import fs from "fs/promises";
       "UnpackOptions",
       "Service",
       "ResolutionOptionsParameter",
+      "TransactionDataItem",
       "AuthorizationResponse",
     ];
     let import_str = `import { ${exported_types.join(", ")} } from "${TYPES_FILE_PATH}";\n`;

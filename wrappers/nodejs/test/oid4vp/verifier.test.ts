@@ -1,18 +1,23 @@
 import {
   _PresentationSession,
+  AuthorizationRequestMetadata,
   AuthorizationResponse,
   AuthorizationResponseObject,
   AuthorizationResponseType,
   AuthResponseOptions,
+  CredentialVerificationMetadata,
   InMemKms,
   LocalNonceHandler,
   OID4VPVerifierBuilder,
-  PassAuthRequestObject,
+  PassAuthRequestObjectType,
   ReqwestHttpClient,
   ResolvedPresentationQuery,
+  TransactionDataResponse,
 } from "../../";
 import { CLAIMS, PRESENTATION_DEFINITION, PRESENTATION_QUERY, PRESENTATION_SUBMISSION, STATE, VP } from "./fixtures";
 import { createDidAndKeyMetadata } from "../utils";
+import { util as jose } from "node-jose";
+import { TransactionDataItem } from "../../";
 
 describe("OID4VP Verifier: ", () => {
   it("create Authorization Request by Value", async () => {
@@ -25,10 +30,15 @@ describe("OID4VP Verifier: ", () => {
       state: STATE,
     };
 
+    const authorizationRequestMetadata: AuthorizationRequestMetadata = {
+      authResponseOptions: authResponseOptions,
+      passAuthRequestObject: {
+        type: PassAuthRequestObjectType.ByValue,
+      },
+    };
     const authReqByValue = await verifier.createAuthorizationRequest(
       PRESENTATION_QUERY,
-      authResponseOptions,
-      PassAuthRequestObject.byValue(),
+      authorizationRequestMetadata,
       null,
     );
 
@@ -53,10 +63,16 @@ describe("OID4VP Verifier: ", () => {
       state: STATE,
     };
 
+    const authorizationRequestMetadata: AuthorizationRequestMetadata = {
+      authResponseOptions: authResponseOptions,
+      passAuthRequestObject: {
+        type: PassAuthRequestObjectType.ByReference,
+        requestUri: "http://localhost:9001/request",
+      },
+    };
     const authReqByReference = await verifier.createAuthorizationRequest(
       PRESENTATION_QUERY,
-      authResponseOptions,
-      PassAuthRequestObject.byReference("http://localhost:9001/request"),
+      authorizationRequestMetadata,
       null,
     );
 
@@ -67,7 +83,46 @@ describe("OID4VP Verifier: ", () => {
     );
   });
 
-  it("verify Authorization Response with plain auth response mode", async () => {
+  it("create Authorization Request with TransactionData", async () => {
+    const verifier = await buildVerifier();
+
+    const authResponseOptions: AuthResponseOptions = {
+      mode: "direct_post",
+      type: "vp_token",
+      submissionUri: "http://localhost:9001/response",
+      state: STATE,
+    };
+
+    const transactionData: Array<TransactionDataItem> = [
+      {
+        type: "some_type",
+        credential_ids: ["1", "2"],
+        transaction_data_hashes_alg: ["sha-256"],
+      },
+    ];
+
+    const authorizationRequestMetadata: AuthorizationRequestMetadata = {
+      authResponseOptions: authResponseOptions,
+      passAuthRequestObject: {
+        type: PassAuthRequestObjectType.ByReference,
+        requestUri: "http://localhost:9001/request",
+      },
+      transactionData,
+    };
+
+    const authReqByReference = await verifier.createAuthorizationRequest(
+      PRESENTATION_QUERY,
+      authorizationRequestMetadata,
+      null,
+    );
+    const transactionDataAsBase64 =
+      "eyJ0eXBlIjoic29tZV90eXBlIiwiY3JlZGVudGlhbF9pZHMiOlsiMSIsIjIiXSwidHJhbnNhY3Rpb25fZGF0YV9oYXNoZXNfYWxnIjpbInNoYS0yNTYiXX0";
+    const jwt = authReqByReference.authorizationRequestJwt.split(".")[1];
+    expect(jose.base64url.decode(jwt).toString()).toContain(transactionDataAsBase64);
+    expect(jose.base64url.decode(jwt).toString()).toContain("transaction_data");
+  });
+
+  it("verify Authorization Response", async () => {
     const verifier = await buildVerifier("did:key:zDnaefQAPFVQt9sfU63hyqYgPza2pDSXSJrPrCG5paT5eaQJb");
 
     const rpq: ResolvedPresentationQuery = {
@@ -90,7 +145,53 @@ describe("OID4VP Verifier: ", () => {
       type: AuthorizationResponseType.Plain,
       object: auth_response_object,
     };
-    const claims = await verifier.verifyPresentation(auth_response, session);
+
+    const verificationMetadata: CredentialVerificationMetadata = {};
+    const claims = await verifier.verifyPresentation(auth_response, session, verificationMetadata);
+
+    expect(claims).toEqual(CLAIMS);
+  });
+
+  it("verify Authorization Response with transaction data", async () => {
+    const verifier = await buildVerifier("did:key:zDnaefQAPFVQt9sfU63hyqYgPza2pDSXSJrPrCG5paT5eaQJb");
+
+    const rpq: ResolvedPresentationQuery = {
+      presentation_definition: PRESENTATION_QUERY.presentation_definition,
+      dcql_query: PRESENTATION_QUERY.dcql_query,
+    };
+    const session: _PresentationSession = {
+      nonce: "n0NcE",
+      resolvedPresentationQuery: rpq,
+      authorizationRequestJwt: "",
+    };
+    const transactionData: Array<TransactionDataItem> = [
+      {
+        type: "some_type",
+        credential_ids: ["1", "2"],
+        transaction_data_hashes_alg: ["sha-256"],
+      },
+    ];
+
+    const transactionDataResponse: TransactionDataResponse = {
+      hashes: ["dqpRRxJ7C1_lJuO62E3LbZ5Mgfjm4LaIMfYWutUs_14"],
+    };
+
+    const auth_response_object: AuthorizationResponseObject = {
+      vpToken: VP,
+      presentationSubmission: PRESENTATION_SUBMISSION,
+      state: STATE,
+      transactionDataResponse: transactionDataResponse,
+    };
+
+    const auth_response: AuthorizationResponse = {
+      type: AuthorizationResponseType.Plain,
+      object: auth_response_object,
+    };
+
+    const verificationMetadata: CredentialVerificationMetadata = {
+      transactionData,
+    };
+    const claims = await verifier.verifyPresentation(auth_response, session, verificationMetadata);
 
     expect(claims).toEqual(CLAIMS);
   });
