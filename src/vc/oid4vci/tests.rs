@@ -354,9 +354,8 @@ pub mod fixtures {
             serde_json::from_value(json!(
                 {
                     "credential_configuration_id":"SD_JWT_cred_sample",
-                    "proof":{
-                        "proof_type":"jwt",
-                        "jwt": SAMPLE_PROOF_JWT,
+                    "proofs": {
+                        "jwt": [ SAMPLE_PROOF_JWT ],
                     },
                 }
             ))
@@ -367,7 +366,7 @@ pub mod fixtures {
             serde_json::from_value(json!(
                 {
                     "credential_configuration_id":"SD_JWT_cred_sample",
-                    "proofs":{
+                    "proofs": {
                         "jwt": [SAMPLE_PROOF_JWT, SAMPLE_PROOF_JWT, SAMPLE_PROOF_JWT],
                     },
                 }
@@ -379,7 +378,7 @@ pub mod fixtures {
             serde_json::from_value(json!(
                 {
                     "credential_configuration_id":"SD_JWT_cred_sample",
-                    "proofs":{
+                    "proofs": {
                         "jwt": [],
                     },
                 }
@@ -391,9 +390,8 @@ pub mod fixtures {
             serde_json::from_value(json!(
                 {
                     "credential_identifier":"CivilEngineeringDegree-2023",
-                    "proof":{
-                        "proof_type":"jwt",
-                        "jwt": SAMPLE_PROOF_JWT,
+                    "proofs": {
+                        "jwt": [ SAMPLE_PROOF_JWT ],
                     },
                 }
             ))

@@ -68,10 +68,16 @@ impl From<ProtocolError> for EncodableError {
         let code = match value.error_type() {
             ErrorType::InvalidToken => JsProtocolError::InvalidToken,
             ErrorType::InvalidCredentialRequest => JsProtocolError::InvalidCredentialRequest,
-            ErrorType::UnsupportedCredentialType => JsProtocolError::UnsupportedCredentialType,
-            ErrorType::UnsupportedCredentialFormat => JsProtocolError::UnsupportedCredentialFormat,
+            ErrorType::UnknownCredentialConfiguration => {
+                JsProtocolError::UnknownCredentialConfiguration
+            }
+            ErrorType::UnknownCredentialIdentifier => JsProtocolError::UnknownCredentialIdentifier,
             ErrorType::InvalidProof => JsProtocolError::InvalidProof,
             ErrorType::InvalidEncryptionParameters => JsProtocolError::InvalidEncryptionParameters,
+            ErrorType::InvalidNonce => JsProtocolError::InvalidNonce,
+            ErrorType::CredentialRequestDenied => JsProtocolError::CredentialRequestDenied,
+            ErrorType::InvalidRequest => JsProtocolError::InvalidRequest,
+            ErrorType::InsufficientScope => JsProtocolError::InsufficientScope,
         };
         Self::new(code.to_string(), value.to_string())
     }
@@ -82,10 +88,14 @@ impl From<ProtocolError> for EncodableError {
 pub enum JsProtocolError {
     InvalidToken,
     InvalidCredentialRequest,
-    UnsupportedCredentialType,
-    UnsupportedCredentialFormat,
+    UnknownCredentialConfiguration,
+    UnknownCredentialIdentifier,
     InvalidProof,
     InvalidEncryptionParameters,
+    InvalidNonce,
+    CredentialRequestDenied,
+    InvalidRequest,
+    InsufficientScope,
 }
 
 impl From<CredentialOfferResolverError> for EncodableError {

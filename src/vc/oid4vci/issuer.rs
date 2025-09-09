@@ -22,7 +22,7 @@ use oid4vci::core::profiles::claims::ClaimPathPointer;
 use oid4vci::core::profiles::{
     CoreProfilesCredentialConfiguration, CoreProfilesCredentialResponseType,
 };
-use oid4vci::credential::{ErrorType, Response, ResponseEnum};
+use oid4vci::credential::{ErrorType, Proofs, Response, ResponseEnum};
 use oid4vci::credential_offer::{CredentialOfferGrants, CredentialOfferParameters};
 use oid4vci::metadata::credential_issuer::BatchCredentialIssuance;
 use oid4vci::proof_of_possession::{Proof as SpruceProof, ProofOfPossession};
@@ -175,8 +175,8 @@ where
         self.validate_token(token).await?;
         info!("access token is validated");
 
-        let proof = if let Some(proof) = cred_request.proof() {
-            proof
+        let proofs = if let Some(proofs) = cred_request.proofs() {
+            proofs
         } else {
             ProtocolSnafu::new(ErrorType::InvalidProof, INVALID_PROOF_ERR_DESC.to_string())
                 .fail()?
@@ -197,19 +197,9 @@ where
         }
         self.validate_claim_names(claims, &cred_def)?;
 
-        let credentials = match proof {
-            oid4vci::credential::Proof::One(proof) => {
-                let credential = self
-                    .single_issuance(claims, status_info.as_ref(), proof, cred_def_id.as_str())
-                    .await?;
-
-                Vec::from([credential.try_into()?])
-            }
-            oid4vci::credential::Proof::Many(proofs) => {
-                self.batch_issuance(claims, status_info, cred_def_id, proofs)
-                    .await?
-            }
-        };
+        let credentials = self
+            .batch_issuance(claims, status_info, cred_def_id, proofs)
+            .await?;
 
         let resp = Response::new(ResponseEnum::Immediate { credentials });
 
@@ -278,8 +268,8 @@ where
             ensure!(
                 supported.contains(&CredentialConfigurationId::new(id.to_string())),
                 ProtocolSnafu::new(
-                    ErrorType::UnsupportedCredentialType,
-                    format!("Unsupported Credential definition ID: {id}")
+                    ErrorType::UnknownCredentialIdentifier,
+                    format!("Unknown credential identifier: {id}")
                 )
             );
         }
@@ -408,9 +398,9 @@ where
                 json_claims
             }
             _ => ProtocolSnafu::new(
-                ErrorType::UnsupportedCredentialFormat,
+                ErrorType::UnknownCredentialConfiguration,
                 format!(
-                    "Unsupported credential format: {}",
+                    "Unknown credential configuration: {}",
                     cred_metadata.profile_specific_fields().format()
                 ),
             )
@@ -523,25 +513,22 @@ where
         claims: &Claims,
         status_info: Option<CredentialStatusInfo>,
         cred_def_id: String,
-        proofs: &oid4vci::credential::ProofMany,
+        proofs: &Proofs,
     ) -> Result<Vec<CoreProfilesCredentialResponseType>> {
         ensure!(
             proofs.len() > 0,
             ProtocolSnafu::new(
                 ErrorType::InvalidCredentialRequest,
-                "Batch credential issuance without proof of possessions is not supported"
-                    .to_string(),
+                "At least one proof of possession must be provided".to_string(),
             )
         );
 
-        let Some(&BatchCredentialIssuance { batch_size }) =
+        let batch_size = if let Some(&BatchCredentialIssuance { batch_size }) =
             self.issuer_metadata.batch_credential_issuance()
-        else {
-            ProtocolSnafu::new(
-                ErrorType::InvalidCredentialRequest,
-                "Batch Credential issuance is not supported".to_string(),
-            )
-            .fail()?
+        {
+            batch_size
+        } else {
+            1
         };
 
         ensure!(
@@ -549,8 +536,7 @@ where
             ProtocolSnafu::new(
                 ErrorType::InvalidCredentialRequest,
                 format!(
-                    "Batch Credential issuance with batch size equal to {} is not supported. Please provide proof of possessions with size less or equal to {}",
-                    proofs.len(),
+                    "At most {} proof of possession(s) are supported",
                     batch_size
                 ),
             )
@@ -558,14 +544,14 @@ where
 
         let mut credentials: Vec<CoreProfilesCredentialResponseType> = vec![];
         match proofs {
-            oid4vci::credential::ProofMany::LdpVp(ldp_vps) => {
-                for ldp_vp in ldp_vps {
+            Proofs::DiVp(di_vps) => {
+                for di_vp in di_vps {
                     let credential = self
                         .single_issuance(
                             claims,
                             status_info.as_ref(),
-                            &oid4vci::proof_of_possession::Proof::LdpVp {
-                                ldp_vp: ldp_vp.to_owned(),
+                            &oid4vci::proof_of_possession::Proof::DiVp {
+                                di_vp: di_vp.to_owned(),
                             },
                             cred_def_id.as_str(),
                         )
@@ -574,7 +560,7 @@ where
                     credentials.push(credential.try_into()?);
                 }
             }
-            oid4vci::credential::ProofMany::Jwt(jwts) => {
+            Proofs::Jwt(jwts) => {
                 for jwt in jwts {
                     let credential = self
                         .single_issuance(
@@ -603,9 +589,9 @@ impl From<&SpruceProof> for AsdkProof {
                 format: "jwt".to_string(),
                 proof: jwt.to_string(),
             },
-            SpruceProof::LdpVp { ldp_vp } => AsdkProof {
-                format: "ldp_vp".to_string(),
-                proof: ldp_vp.to_string(),
+            SpruceProof::DiVp { di_vp } => AsdkProof {
+                format: "di_vp".to_string(),
+                proof: di_vp.to_string(),
             },
         }
     }
@@ -832,7 +818,7 @@ mod tests {
     }
 
     #[tokio::test]
-    #[should_panic(expected = "Batch Credential issuance is not supported")]
+    #[should_panic(expected = "At most 1 proof of possession(s) are supported")]
     async fn batch_credential_issuance_not_supported() {
         let mut issuer_metadata = SampleIssuerMetadata::with_sdjwtvc_conf();
         issuer_metadata = issuer_metadata.set_batch_credential_issuance(None);
@@ -859,9 +845,7 @@ mod tests {
     }
 
     #[tokio::test]
-    #[should_panic(
-        expected = "Batch credential issuance without proof of possessions is not supported"
-    )]
+    #[should_panic(expected = "At least one proof of possession must be provided")]
     async fn batch_credential_issuance_fails_when_proofs_are_missed() {
         let issuer = issuer_service_with_metadata(
             None,
@@ -885,9 +869,7 @@ mod tests {
     }
 
     #[tokio::test]
-    #[should_panic(
-        expected = "Batch Credential issuance with batch size equal to 3 is not supported"
-    )]
+    #[should_panic(expected = "At most 2 proof of possession(s) are supported")]
     async fn batch_credential_issuance_fails_batch_size_limit_exceeded() {
         let mut issuer_metadata = SampleIssuerMetadata::with_sdjwtvc_conf();
         issuer_metadata = issuer_metadata
@@ -1235,7 +1217,7 @@ mod tests {
     }
 
     #[tokio::test]
-    #[should_panic(expected = "Unsupported Credential definition ID: fake_cred_def_id")]
+    #[should_panic(expected = "Unknown credential identifier: fake_cred_def_id")]
     async fn create_credential_offer_fails_on_not_matching_cred_def_ids() {
         let issuer_service = issuer_service(None, None, None::<LocalNonceHandler>).await;
         let grants = create_empty_credential_offer_grants();
@@ -1482,9 +1464,8 @@ mod tests {
         serde_json::from_value(json!(
             {
                 "credential_configuration_id":cred_conf_id,
-                "proof":{
-                    "proof_type":"jwt",
-                    "jwt":SAMPLE_PROOF_JWT
+                "proofs":{
+                    "jwt": [ SAMPLE_PROOF_JWT ]
                 },
                 "credential_response_encryption":null
             }
@@ -1496,9 +1477,8 @@ mod tests {
         serde_json::from_value(json!(
             {
                 "credential_configuration_id":CRED_DEF_ID,
-                "proof":{
-                    "proof_type":"jwt",
-                    "jwt":""
+                "proofs": {
+                    "jwt": [""]
                 },
                 "credential_response_encryption":null
             }
@@ -1511,9 +1491,8 @@ mod tests {
             {
                 "format":"dc+sd-jwt",
                 "vct":"SD_JWT_cred",
-                "proof":{
-                    "proof_type":"cwt",
-                    "cwt":SAMPLE_PROOF_JWT
+                "proofs":{
+                    "cwt": [ SAMPLE_PROOF_JWT ]
                 },
                 "credential_response_encryption":null
             }

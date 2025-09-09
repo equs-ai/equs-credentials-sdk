@@ -3,15 +3,14 @@ import { JwkAlgorithm } from "./common";
 /**
  * Represents proof formats supported for credential requests
  *
- * @property {string} proof_type REQUIRED. The type of proof being presented.
- * @property {string} jwt JWT-based proof with compact serialization. Required when proof_type is "jwt".
- * @property {string} cwt CBOR Web Token proof. Required when proof_type is "cwt".
+ * @property {string} jwt JWT-based proof with compact serialization.
+ * @property {string} cwt CBOR Web Token proof.
  */
 export type CredentialRequestProof =
 /** JWT-based proof format with a compact serialization */
-  { proof_type: "jwt"; jwt: string } |
+  { jwt: [string] } |
   /** CBOR Web Token proof format */
-  { proof_type: "cwt"; cwt: string };
+  { cwt: [string] };
 
 /**
  * JSON Web Key (JWK) as defined in {@link https://datatracker.ietf.org/doc/html/rfc7517|RFC 7517}

@@ -128,7 +128,7 @@ pub fn supported_proofs(
                 .map(|key_proof_type_supported| {
                     let fmt: pop::Format = match key_proof_type_supported.to_owned().key {
                         KeyProofType::Jwt => pop::Format::Jwt,
-                        KeyProofType::LdpVp => pop::Format::Ldp,
+                        KeyProofType::DiVp => pop::Format::DiVp,
                     };
                     let algs = key_proof_type_supported
                         .proof_signing_alg_values_supported
@@ -233,7 +233,7 @@ impl From<&KeyProofType> for pop::Format {
     fn from(value: &KeyProofType) -> Self {
         match value {
             KeyProofType::Jwt => pop::Format::Jwt,
-            KeyProofType::LdpVp => pop::Format::Ldp,
+            KeyProofType::DiVp => pop::Format::DiVp,
         }
     }
 }

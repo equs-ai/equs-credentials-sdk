@@ -6,8 +6,8 @@ pub type Result<T> = std::result::Result<T, Error>;
 pub enum OID4VCIProtocolErrorType {
     InvalidToken,
     InvalidCredentialRequest,
-    UnsupportedCredentialType,
-    UnsupportedCredentialFormat,
+    UnknownCredentialConfiguration,
+    UnknownCredentialIdentifier,
     InvalidProof,
     InvalidEncryptionParameters,
 }
