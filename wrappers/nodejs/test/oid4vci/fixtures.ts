@@ -110,17 +110,15 @@ export const PROOF_JWT =
 
 export const CredRequest1: OID4VCICredentialRequest = {
   credential_configuration_id: CredDefId1,
-  proof: {
-    proof_type: "jwt",
-    jwt: PROOF_JWT,
+  proofs: {
+    jwt: [PROOF_JWT],
   },
   credential_response_encryption: null,
 };
 export const CredRequest2: OID4VCICredentialRequest = {
   credential_configuration_id: CredDefId2,
-  proof: {
-    proof_type: "jwt",
-    jwt: PROOF_JWT,
+  proofs: {
+    jwt: [PROOF_JWT],
   },
   credential_response_encryption: null,
 };

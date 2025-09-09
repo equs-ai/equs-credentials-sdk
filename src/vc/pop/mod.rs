@@ -21,14 +21,14 @@ pub mod jwt_pop;
 #[non_exhaustive]
 pub enum Format {
     Jwt,
-    Ldp,
+    DiVp,
 }
 
 impl From<&Format> for &'static str {
     fn from(value: &Format) -> Self {
         match value {
             Format::Jwt => "jwt",
-            Format::Ldp => "ldp",
+            Format::DiVp => "di_vp",
         }
     }
 }
@@ -39,7 +39,7 @@ impl FromStr for Format {
     fn from_str(s: &str) -> Result<Format> {
         match s {
             "jwt" => Ok(Format::Jwt),
-            "ldp" => Ok(Format::Ldp),
+            "ldp" => Ok(Format::DiVp),
             _ => FormatNotSupportedSnafu { format: s }.fail(),
         }
     }

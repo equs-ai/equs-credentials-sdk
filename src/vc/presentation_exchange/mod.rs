@@ -241,7 +241,7 @@ pub(crate) fn resolve_presentation_response(
                     serde_json::from_value(presentation_json.clone()).map_err(|err| {
                         ParseSnafu {
                             details: format!(
-                                "Could not deserialize 'ldp_vp' presentation from json: {err}"
+                                "Could not deserialize 'ldp_vc' presentation from json: {err}"
                             ),
                         }
                         .build()

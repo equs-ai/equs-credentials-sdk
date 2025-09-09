@@ -169,7 +169,7 @@ pub trait Issuer: WasmNotSend + WasmNotSync {
     ///
     /// * [Error::Protocol] - expected protocol-specific error.
     ///     * [ErrorType::InvalidCredentialRequest]
-    ///     * [ErrorType::UnsupportedCredentialType]
+    ///     * [ErrorType::UnknownCredentialConfiguration]
     /// * [InternalError::Parse] - fails to parse the payload.
     /// * [InternalError::UrlParse] - fails to parse `Url`.
     fn create_credential_offer(
@@ -204,8 +204,8 @@ pub trait Issuer: WasmNotSend + WasmNotSync {
     ///     * [ErrorType::InvalidCredentialRequest]
     ///     * [ErrorType::InvalidProof]
     ///     * [ErrorType::InvalidToken]
-    ///     * [ErrorType::UnsupportedCredentialType]
-    ///     * [ErrorType::UnsupportedCredentialFormat]
+    ///     * [ErrorType::UnknownCredentialConfiguration]
+    ///     * [ErrorType::UnknownCredentialIdentifier]
     /// * [InternalError::VC] - `vc::core` error during `Credential` signing or `Proof` validation.
     async fn issue_credential(
         &self,
@@ -314,7 +314,7 @@ pub trait Holder: WasmNotSend + WasmNotSync {
     /// # Errors
     ///
     /// * [Error::Protocol] - expected protocol-specific error.
-    ///     * [ErrorType::UnsupportedCredentialType]
+    ///     * [ErrorType::UnknownCredentialConfiguration]
     /// * [InternalError::Request] - fails to make a call to the `Issuer`.
     /// * [InternalError::AuthorizationCallback] - fails to retrieve an authorization or a transaction code
     /// * [InternalError::Discovery] - fails to retrieve authorization server metadata
@@ -351,8 +351,8 @@ pub trait Holder: WasmNotSend + WasmNotSync {
     ///
     /// * [Error::Protocol] - expected protocol-specific error.
     ///     * [ErrorType::InvalidCredentialRequest]
-    ///     * [ErrorType::UnsupportedCredentialType]
-    ///     * [ErrorType::UnsupportedCredentialFormat]
+    ///     * [ErrorType::UnknownCredentialConfiguration]
+    ///     * [ErrorType::UnknownCredentialIdentifier]
     /// * [InternalError::Parse] - fails to parse the payload.
     /// * [InternalError::Request] - fails to make a call to the `Issuer`.
     /// * [InternalError::VC] - `vc::core` error during `Proof` generation or credential signature verification.

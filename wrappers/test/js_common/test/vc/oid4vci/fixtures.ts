@@ -140,9 +140,8 @@ export class Utils {
   get credRequest(): OID4VCICredentialRequest {
     return {
       vct: "SD_JWT_cred",
-      proof: {
-        proof_type: "jwt",
-        jwt: this.proofJWT,
+      proofs: {
+        jwt: [this.proofJWT],
       },
       credential_response_encryption: null,
     };

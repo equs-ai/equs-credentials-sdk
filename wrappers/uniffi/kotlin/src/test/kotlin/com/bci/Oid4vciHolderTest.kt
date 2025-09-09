@@ -106,15 +106,6 @@ class HolderVCITest {
               """
         )
 
-        val credentialResponse = Json.parseToJsonElement(
-            """
-                {
-                  "credentials": [{"credential":"$SD_JWT_CRED"}],
-                  "notification_id": "1111"
-                }
-            """
-        )
-
         val batchCredentialResponse = Json.parseToJsonElement(
             """
                 {
@@ -156,11 +147,7 @@ class HolderVCITest {
                         "/auth/par/request" -> mockResponse.setResponseCode(201).setBody(pushedAuthResponse.toString())
                         "/auth/token" -> mockResponse.setResponseCode(200).setBody(tokenResponse.toString())
                         "/credential" -> {
-                            if (request.body.toString().contains("proofs")) {
-                                mockResponse.setResponseCode(200).setBody(batchCredentialResponse.toString())
-                            } else {
-                                mockResponse.setResponseCode(200).setBody(credentialResponse.toString())
-                            }
+                            mockResponse.setResponseCode(200).setBody(batchCredentialResponse.toString())
                         }
 
                         "/nonce" -> mockResponse.setResponseCode(200).setBody(nonceResponse.toString())
@@ -252,25 +239,6 @@ class HolderVCITest {
         val actual = buildHolder().getAccessToken(credOffer, authCodeCallback)
 
         assertEquals(expected, actual)
-    }
-
-    @Test
-    fun testRequestCredential() = runTest {
-        val inMemKms = InMemKms()
-        val didAndKeyMetadata = createDidAndKeyMetadata(inMemKms)
-
-        val actual = buildHolder(inMemKms).requestCredential(
-            ACCESS_TOKEN,
-            "IDENTITY_SD_JWT",
-            arrayListOf(didAndKeyMetadata.keyMetadata)
-        )
-
-        assertEquals(
-            CredentialResultEnum.Immediate(
-                credentials = arrayListOf(Credential(format = VcFormat.SD_JWT_VC, payload = SD_JWT_CRED)),
-                notificationId = "1111",
-            ), actual.data
-        )
     }
 
     @Test

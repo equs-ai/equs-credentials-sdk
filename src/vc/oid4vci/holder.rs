@@ -25,7 +25,7 @@ use oauth2::{
 use oid4vci::core::authorization::AuthorizationDetailsObject;
 use oid4vci::core::client::Client;
 use oid4vci::core::profiles::CoreProfilesCredentialResponseType;
-use oid4vci::credential::{CredentialId, ErrorType, ResponseEnum};
+use oid4vci::credential::{CredentialId, ErrorType, Proofs, ResponseEnum};
 use oid4vci::metadata::MetadataDiscovery;
 use oid4vci::metadata::credential_issuer::BatchCredentialIssuance;
 use oid4vci::proof_of_possession::{Proof as SpruceProof, Proof};
@@ -322,9 +322,9 @@ where
                 })
                 .ok_or_else(|| {
                     ProtocolSnafu::new(
-                        ErrorType::UnsupportedCredentialType,
+                        ErrorType::UnknownCredentialIdentifier,
                         format!(
-                            "Unsupported credential definition IDs: {}",
+                            "Unknown credential identifier: {}",
                             offer_params
                                 .credential_configuration_ids
                                 .iter()
@@ -343,9 +343,9 @@ where
 
         HolderServiceSnafu {
             details:
-                "credential offer authorization code or pre-authorized grants are not provided",
+            "credential offer authorization code or pre-authorized grants are not provided",
         }
-        .fail()?
+            .fail()?
     }
 
     #[instrument(level = Level::TRACE, skip(self), err(), ret())]
@@ -372,7 +372,7 @@ where
         let nonce = self.request_nonce().await?;
         trace!(resolved_nonce = ?nonce);
 
-        let proof = self.resolve_proof(keys_metadata, offer, nonce).await?;
+        let proofs = self.resolve_proofs(keys_metadata, offer, nonce).await?;
 
         let credential_request = self
             .client
@@ -380,7 +380,7 @@ where
                 token.to_owned(),
                 CredentialId::CredentialConfigurationId(cred_def.id().to_owned()),
             )
-            .set_proof(proof);
+            .set_proofs(proofs);
 
         let resp = credential_request
             .request_async(&self.http_closure())
@@ -541,8 +541,8 @@ where
             .find(|config| config.id() == &CredentialConfigurationId::new(cred_def_id.to_owned()))
             .ok_or_else(|| {
                 ProtocolSnafu::new(
-                    ErrorType::UnsupportedCredentialType,
-                    format!("Unsupported credential definition ID: {cred_def_id}"),
+                    ErrorType::UnknownCredentialIdentifier,
+                    format!("Unknown credential identifier: {cred_def_id}"),
                 )
                 .build()
             })?;
@@ -553,12 +553,12 @@ where
     }
 
     #[instrument(level = Level::TRACE, skip(self), err(), ret())]
-    async fn resolve_proof(
+    async fn resolve_proofs(
         &self,
         keys_metadata: &[KeyMetadata],
         offer: &CredentialOffer,
         nonce: Option<Nonce>,
-    ) -> Result<Option<oid4vci::credential::Proof>> {
+    ) -> Result<Option<Proofs>> {
         let mut proofs: Vec<SpruceProof> = vec![];
         for key_metadata in keys_metadata {
             let req = self
@@ -572,7 +572,8 @@ where
 
         let proof = match proofs.as_slice() {
             [] => None,
-            [proof] => Some(oid4vci::credential::Proof::One(proof.clone())),
+            [Proof::Jwt { jwt: proof_value }] => Some(Proofs::Jwt(vec![proof_value.clone()])),
+            [Proof::DiVp { di_vp: proof_value }] => Some(Proofs::DiVp(vec![proof_value.clone()])),
             _ => Some(self.resolve_proofs_for_batch_issuance(proofs)?),
         };
 
@@ -580,10 +581,7 @@ where
     }
 
     #[instrument(level = Level::TRACE, skip(self), err(), ret())]
-    fn resolve_proofs_for_batch_issuance(
-        &self,
-        proofs: Vec<SpruceProof>,
-    ) -> Result<oid4vci::credential::Proof> {
+    fn resolve_proofs_for_batch_issuance(&self, proofs: Vec<SpruceProof>) -> Result<Proofs> {
         match self.issuer_metadata.batch_credential_issuance() {
             None => {
                 ProtocolSnafu::new(
@@ -602,18 +600,16 @@ where
                     .into_iter()
                     .filter_map(|proof| match proof {
                         Proof::Jwt { jwt } => Some(jwt),
-                        Proof::LdpVp { .. } => ProtocolSnafu::new(
+                        Proof::DiVp { .. } => ProtocolSnafu::new(
                             ErrorType::InvalidProof,
-                            "Unsupported proof type: ldp_vp".to_string(),
+                            "Unsupported proof type: di_vp".to_string(),
                         )
                             .fail()
                             .ok(),
                     })
                     .collect();
 
-                Ok(oid4vci::credential::Proof::Many(
-                    oid4vci::credential::ProofMany::Jwt(jwt_proofs),
-                ))
+                Ok(Proofs::Jwt(jwt_proofs))
             }
         }
     }
@@ -688,8 +684,8 @@ impl TryInto<Credential> for &CoreProfilesCredentialResponseType {
                 serde_json::from_value(credential.to_owned()).context(ParseSnafu)?,
             ),
             _ => ProtocolSnafu::new(
-                ErrorType::UnsupportedCredentialFormat,
-                format!("Unsupported credential format: {}", self.format()),
+                ErrorType::UnknownCredentialConfiguration,
+                format!("Unknown credential configuration: {}", self.format()),
             )
             .fail()?,
         };
@@ -802,7 +798,7 @@ mod tests {
         json!(sample_authorization_metadata()),
         "grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Apre-authorized_code&pre-authorized_code=pre_auth_code&tx_code=pre_auth_code&client_id=fake_client_id"
     )]
-    #[should_panic(expected = "Unsupported credential definition IDs: invalid_scope")]
+    #[should_panic(expected = "Unknown credential identifier: invalid_scope")]
     #[case::fals_when_offer_with_auth_code_grant_contains_invalid_scope(
         sample_offer_with_auth_code_grant(Some("invalid_scope")),
         "auth_code",
@@ -1139,7 +1135,7 @@ mod tests {
     }
 
     #[tokio::test]
-    #[should_panic(expected = "Unsupported credential definition ID")]
+    #[should_panic(expected = "Unknown credential identifier")]
     async fn holder_fails_processing_incorrect_cred_def_id() {
         let kms = LocalKms::new();
         let (_, key_metadata) = create_did_and_key_metadata(&kms).await;

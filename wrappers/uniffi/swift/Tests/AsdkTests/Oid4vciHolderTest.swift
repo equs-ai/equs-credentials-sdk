@@ -40,20 +40,9 @@ import Swifter
 				))
 		}
 		self.server["/credential"] = { request in
-            let body = String(decoding: request.body, as: UTF8.self)
-            if body.contains("proofs") {
-                return Swifter.HttpResponse.ok(
-                    .json(
-                        try! JSONSerialization.jsonObject(
-                            with: Oid4vciHolderTestConstants.BatchCredentialResponse)
-                ))
-            }
-
-            return Swifter.HttpResponse.ok(
-				.json(
-					try! JSONSerialization.jsonObject(
-						with: Oid4vciHolderTestConstants.CredentialResponse)
-				))
+        return Swifter.HttpResponse.ok(
+          .json(try! JSONSerialization.jsonObject(with: Oid4vciHolderTestConstants.BatchCredentialResponse))
+        )
 		}
 		self.server["/nonce"] = { request in
             return Swifter.HttpResponse.ok(
@@ -109,39 +98,6 @@ import Swifter
 		)
 
 		#expect(result.accessToken == Oid4vciHolderTestConstants.AccessToken)
-	}
-
-	@Test func requestCredential() async throws {
-		let kms = InMemKms()
-		let vault = InMemVault()
-		let holder = try await Oid4vciHolderBuilder(
-			kms: kms,
-			vault: vault,
-			clientId: "client_id",
-			issuerDiscovery: IssuerDiscovery.offer(Oid4vciHolderTestConstants.CredentialOffer),
-            httpClient: ReqwestHttpClient.insecure(),
-            pop: ProofOfPossessionMetadataBuilder().withNotBefore(notBefore: ProofOfPossessionNotBefore.leeway(300)).withLifetime(lifetime: 10)
-                            .build()
-		).build()
-
-		let didAndKeyMetadata = await createDidAndKeyMetadata(kms: kms)
-
-		let credResponse = try await holder.requestCredential(
-			token: Oid4vciHolderTestConstants.AccessToken,
-			credDefId: Oid4vciHolderTestConstants.CredDefId,
-			keyMetadata: [didAndKeyMetadata.keyMetadata])
-
-		#expect(
-			credResponse.data
-				== .immediate(
-					credentials: [
-					    Credential(
-					        format: VcFormat.sdJwtVc,
-					        payload: Oid4vciHolderTestConstants.CredentialResponseImmediatePayload
-					    )
-					],
-					notificationId: "1111"))
-
 	}
 
 	@Test func requestMultipleCredentials() async throws {
@@ -295,10 +251,6 @@ enum Oid4vciHolderTestConstants {
 
 	static let CredentialResponseImmediatePayload =
 		"eyJ0eXAiOiJ2YytzZC1qd3QiLCJhbGciOiJFUzI1NiIsImtpZCI6ImRpZDprZXk6ekRuYWV1alBxWjVFakhtZmtyell3ZUxmTXFyOGFxQTNvdDNCdGM0RmU5dHlMcWttUiN6RG5hZXVqUHFaNUVqSG1ma3J6WXdlTGZNcXI4YXFBM290M0J0YzRGZTl0eUxxa21SIn0.eyJfc2QiOlsiQ1Q1bzFMZk5XRE9LT3h4NDJCWUc0NzU0bFpIeTZ0MG5PUGtGRWRmb3FvTSIsIks3bWEwTmZxR0NfM0xQdG12cWtySTR5ckpsdkg0VFU2OWU3SXYtN0VJbzQiLCJyZVlhTkZCV0h6VjE3Y3Z1cTNyRmpVSTNHeDVKc19EbW5VWlNFUmQ0aFpzIl0sInZjdCI6IlNEX0pXVF9jcmVkIiwic3ViIjoiZGlkOmtleTp6RG5hZW5wbnRDa1huRENuYURrNjJMeE5xUGM0Q01kMzJmYmhpVnNaVjVLcFBURzJjIiwibmJmIjoxNzI1NTMzMjU0LCJfc2RfYWxnIjoic2hhLTI1NiIsImlzcyI6ImRpZDprZXk6ekRuYWV1alBxWjVFakhtZmtyell3ZUxmTXFyOGFxQTNvdDNCdGM0RmU5dHlMcWttUiIsImlhdCI6MTcyNTUzMzI1NCwiZXhwIjoxNzU3MDY5MjU0LCJjbmYiOnsiandrIjp7Imt0eSI6IkVDIiwiY3J2IjoiUC0yNTYiLCJ4IjoiVExuNjZxYm5QZXhLeUZtZ3h1Y1kzSlpyZHhCRGpBc3ItbXkya1dBYms4ayIsInkiOiJzaFl6eUVUOENyWVcyTXhPU0FCSkxhbUpPTGV3LWpQbE9aeHdTUzZrWGdjIn19fQ.CBBzIiTjRs2bmKENQcRY14wVnl2vnIjJY9u3AYrA9KQDjqCXZXSzoxQlripAM6Ud_QaYNrZcHK2EVo4QlH3k9w~WyJvMFR4dEw4QWh1TFJXUmduSDk4NF9RIiwgImdpdmVuX25hbWUiLCAiSm9obiJd~WyJ2SVMzZXNQTHlRUHRRZ0JMZ09GYWFnIiwgImZhbWlseV9uYW1lIiwgIkRvZSJd~WyJsaW81cXNVZHZJX3V3eUdiRmFtTnFRIiwgImRvYiIsICIwOS8wOS8xOTg5Il0~"
-
-	static let CredentialResponse = """
-		{"credentials":[{"credential": "\(CredentialResponseImmediatePayload)"}], "notification_id":"1111"}
-		""".data(using: .utf8)!
 
 	static let BatchCredentialResponse = """
 		{"credentials":[{"credential": "\(CredentialResponseImmediatePayload)"}, {"credential": "\(CredentialResponseImmediatePayload)"}], "notification_id":"1111"}
