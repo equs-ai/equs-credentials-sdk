@@ -29,7 +29,7 @@ export class OID4VPHolder {
   async getAuthorizationRequest(requestUri: string): Promise<AuthorizationRequest> {
     const authRequest = await this.inner.getAuthorizationRequest(requestUri);
 
-    const query: PresentationQuery = Object.hasOwn(authRequest, "dcql_query")
+    const query: PresentationQuery = authRequest.resolved_presentation_query.dcql_query
       ? {
           dcql_query: authRequest.resolved_presentation_query.dcql_query,
         }
