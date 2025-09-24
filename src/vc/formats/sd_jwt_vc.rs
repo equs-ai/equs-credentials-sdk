@@ -21,12 +21,11 @@ use crate::crypto::{Key, Signer};
 use crate::did::universal::UniversalResolver;
 use crate::did::{DIDResolver, DIDURL};
 use crate::http::HttpClient;
-use crate::nonce::Nonce;
 use crate::utils;
 use crate::utils::b64;
 use crate::utils::serde::Helpers;
 use crate::utils::serde::get_time_based_claim;
-use crate::vc::core::{PresentationInput, PresentationRestriction};
+use crate::vc::core::{HolderBinder, PresentationInput, PresentationRestriction};
 use crate::vc::formats::vc::SD_JWT_VC;
 use crate::vc::formats::{
     API, ClaimsSnafu, CredentialCreationSnafu, DIDSnafu, HasClaims, HasCredential, IsExpired,
@@ -142,12 +141,11 @@ pub struct VCMetadata {
     pub credential_status: Option<CredentialStatus>,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct VPMetadata {
     // TODO: should we change it to Claims?
     pub disclosures: Map<String, Value>,
-    pub nonce: Nonce,
-    pub verifier_id: String,
+    pub holder_binder: Option<HolderBinder>,
 }
 
 impl HasClaims<Claims> for Credential {
@@ -519,13 +517,17 @@ impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata, Claims> for S
                 .build()
             })?;
 
-        holder
-            .create_presentation(
-                metadata.disclosures,
-                Some(metadata.nonce.secret().to_owned()),
-                Some(metadata.verifier_id),
+        let (nonce, aud, sgn_wrapper) = if let Some(hb) = metadata.holder_binder {
+            (
+                Some(hb.nonce.secret().to_owned()),
+                Some(hb.verifier_id),
                 Some(sgn_wrapper),
             )
+        } else {
+            (None, None, None)
+        };
+        holder
+            .create_presentation(metadata.disclosures, nonce, aud, sgn_wrapper)
             .await
             .map_err(|err| {
                 PresentationSnafu {
@@ -550,19 +552,23 @@ impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata, Claims> for S
     #[instrument(level = Level::TRACE, skip(did_resolver), err(), ret())]
     async fn verify_vp(
         presentation: &Presentation,
-        nonce: &Nonce,
-        verifier_id: &str,
+        holder_binder: Option<HolderBinder>,
         _opts: VerifyOptions,
         did_resolver: UniversalResolver,
     ) -> Result<Claims> {
         let key_resolver = DidKeyResolver::new(did_resolver);
         let mut verifier = SDJWTVerifier::new(Box::new(key_resolver));
 
+        let (nonce, aud) = if let Some(hb) = holder_binder {
+            (Some(hb.nonce.secret().to_string()), Some(hb.verifier_id))
+        } else {
+            (None, None)
+        };
         let claims_json = verifier
             .verify_presentation(
                 presentation.to_owned(),
-                Some(verifier_id.to_string()),
-                Some(nonce.secret().to_string()),
+                aud,
+                nonce,
                 SDJWTSerializationFormat::Compact,
             )
             .await
@@ -590,6 +596,7 @@ mod tests {
     use crate::utils::serde::Helpers;
     use crate::utils::test_utils::{create_did_url_and_key_handle, failed_signer_key, no_jwk_key};
     use crate::vc::claims::Claim;
+    use crate::vc::core::HolderBinder;
     use crate::vc::formats::sd_jwt_vc::{
         Claims, Credential, EXP_CLAIM, IAT_CLAIM, ISS_CLAIM, NBF_CLAIM, SUB_CLAIM, SdJwtAPI,
         VCMetadata, VCT_CLAIM, VPMetadata,
@@ -677,8 +684,10 @@ mod tests {
 
         let disclosed = SdJwtAPI::verify_vp(
             &vp,
-            &nonce,
-            "verifier-id",
+            Some(HolderBinder {
+                nonce,
+                verifier_id: "verifier-id".to_string(),
+            }),
             VerifyOptions::default(),
             UniversalResolver::default(),
         )
@@ -788,8 +797,10 @@ mod tests {
 
         let disclosed = SdJwtAPI::verify_vp(
             &vp,
-            &nonce,
-            "verifier-id",
+            Some(HolderBinder {
+                nonce,
+                verifier_id: "verifier-id".to_string(),
+            }),
             VerifyOptions::default(),
             UniversalResolver::default(),
         )
@@ -894,8 +905,10 @@ mod tests {
                 .as_object()
                 .unwrap()
                 .to_owned(),
-                nonce: nonce.to_owned(),
-                verifier_id: verifier_id.to_string(),
+                holder_binder: Some(HolderBinder {
+                    nonce: nonce.to_owned(),
+                    verifier_id: verifier_id.to_string(),
+                }),
             },
             UniversalResolver::default(),
         )
@@ -904,8 +917,10 @@ mod tests {
 
         let disclosed = SdJwtAPI::verify_vp(
             &vp,
-            nonce,
-            verifier_id,
+            Some(HolderBinder {
+                nonce: nonce.to_owned(),
+                verifier_id: verifier_id.to_owned(),
+            }),
             VerifyOptions::default(),
             UniversalResolver::default(),
         )
@@ -1019,8 +1034,10 @@ mod tests {
                 .as_object()
                 .unwrap()
                 .to_owned(),
-                nonce: random_nonce().await,
-                verifier_id: "verifier-id".to_string(),
+                holder_binder: Some(HolderBinder {
+                    nonce: random_nonce().await,
+                    verifier_id: "verifier-id".to_string(),
+                }),
             },
             UniversalResolver::default(),
         )
@@ -1033,8 +1050,10 @@ mod tests {
     async fn sd_jwt_verify_vp_fails_on_invalid_vp() {
         let res = SdJwtAPI::verify_vp(
             &"not-a-valid-vp".to_string(),
-            &random_nonce().await,
-            "verifier-id",
+            Some(HolderBinder {
+                nonce: random_nonce().await,
+                verifier_id: "verifier-id".to_string(),
+            }),
             VerifyOptions::default(),
             UniversalResolver::default(),
         )
@@ -1067,8 +1086,10 @@ mod tests {
         // But Verifier should deny it
         let res = SdJwtAPI::verify_vp(
             &vp,
-            &nonce,
-            "verifier-id",
+            Some(HolderBinder {
+                nonce,
+                verifier_id: "verifier-id".to_string(),
+            }),
             VerifyOptions::default(),
             UniversalResolver::default(),
         )
@@ -1176,16 +1197,20 @@ mod tests {
             .as_object()
             .unwrap()
             .to_owned(),
-            nonce,
-            verifier_id,
+            holder_binder: Some(HolderBinder {
+                nonce: nonce.to_owned(),
+                verifier_id,
+            }),
         }
     }
 
     fn sample_vp_metadata_with_empty_disclosures(nonce: Nonce, verifier_id: String) -> VPMetadata {
         VPMetadata {
             disclosures: serde_json::Map::new(),
-            nonce,
-            verifier_id,
+            holder_binder: Some(HolderBinder {
+                nonce: nonce.to_owned(),
+                verifier_id,
+            }),
         }
     }
 }

@@ -5,7 +5,8 @@ use crate::vc::JsonObject;
 use crate::vc::core::JsKeyMetadata;
 use agent_sdk::vault::CredentialEntry;
 use agent_sdk::vc::oid4vp::{
-    AuthorizationResponseMetadata, CredentialMapping, CredentialsMapping, ResolvedAuthRequest,
+    AuthorizationResponseMetadata, ClientId, CredentialMapping, CredentialsMapping,
+    ResolvedAuthRequest,
 };
 use agent_sdk::vc::oid4vp::{Holder, IdTokenMetadata};
 use napi::{Error, Result};
@@ -194,8 +195,14 @@ impl TryFrom<_AuthorizationRequest> for ResolvedAuthRequest {
         } else {
             None
         };
+        let client_id = ClientId::new(value.client_id).map_err(|e| {
+            Error::from_reason(format!(
+                "Error while converting into client id: {} It should have format: <scheme>:<id>.",
+                e
+            ))
+        })?;
         Ok(ResolvedAuthRequest {
-            client_id: value.client_id,
+            client_id,
             client_metadata: from_json_object(value.client_metadata)?,
             resolved_presentation_query: from_json_object(value.resolved_presentation_query)?,
             nonce: serde_json::from_value(serde_json::Value::String(value.nonce))?,
@@ -222,7 +229,7 @@ impl TryFrom<ResolvedAuthRequest> for _AuthorizationRequest {
             None
         };
         Ok(_AuthorizationRequest {
-            client_id: value.client_id,
+            client_id: value.client_id.get_full_id(),
             client_metadata: to_json_object(&value.client_metadata)?,
             resolved_presentation_query: to_json_object(&value.resolved_presentation_query)?,
             nonce: value.nonce.secret().to_string(),

@@ -155,8 +155,8 @@ pub enum InternalError {
         location: Location,
     },
 
-    #[snafu(display("Client ID"))]
-    ClientId {
+    #[snafu(display("Client Error"))]
+    Client {
         source: anyhow::Error,
         #[snafu(implicit)]
         location: Location,

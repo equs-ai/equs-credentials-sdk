@@ -1,18 +1,18 @@
 use crate::vc::oid4vp::ClientMetadata;
 use openid4vp::core::metadata::WalletMetadata;
-use openid4vp::core::metadata::parameters::verifier::VpFormats;
+use openid4vp::core::metadata::parameters::VpFormatsSupported;
 use openid4vp::core::object::UntypedObject;
 use tracing::{Level, instrument};
 
 type Level_ = Level;
 
+//These metadata below are used in production. Change carefully.
+// https://openid.net/specs/openid-4-verifiable-presentations-1_0-29.html#name-metadata-4
 const DEFAULT_CLIENT_METADATA: &str = r#"{
-    "vp_formats": {
+    "vp_formats_supported": {
         "dc+sd-jwt": {
-            "alg": [
-                "EdDSA",
-                "ES256"
-            ]
+            "sd-jwt_alg_values": ["EdDSA", "ES256"],
+            "kb-jwt_alg_values": ["EdDSA", "ES256"]
         }
     }
 }"#;
@@ -32,10 +32,10 @@ pub fn default_client_metadata() -> ClientMetadata {
     level = Level::TRACE,
     ret(),
 )]
-pub fn default_vp_formats() -> VpFormats {
+pub fn default_vp_formats() -> VpFormatsSupported {
     default_client_metadata()
         .0
-        .get::<VpFormats>()
+        .get::<VpFormatsSupported>()
         .unwrap()
         .unwrap()
 }
@@ -62,8 +62,8 @@ const DEFAULT_WALLET_METADATA: &str = r#"{
            ]
         }
     },
-    "client_id_schemes_supported": [
-        "did",
+    "client_id_prefixes_supported": [
+        "decentralized_identifier",
         "redirect_uri"
     ],
     "request_object_signing_alg_values_supported": [

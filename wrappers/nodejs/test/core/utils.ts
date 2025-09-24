@@ -9,7 +9,7 @@ import {
   InMemVault,
   IssuerMetadata,
   PresentationInput,
-  PresentationRestrictionValueType,
+  PresentationRestrictionValue,
   StatusIssuerMetadata,
   StatusListFormatFmt,
   VCFormat,
@@ -46,10 +46,7 @@ export class Utils {
       restrictions: [
         {
           fields: ["$.vct"],
-          value: {
-            type: PresentationRestrictionValueType.String,
-            value: "https://credentials.example.com/identity_credential",
-          },
+          value: PresentationRestrictionValue.withString("https://credentials.example.com/identity_credential"),
           optional: false,
         },
         {

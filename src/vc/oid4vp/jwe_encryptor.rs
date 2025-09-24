@@ -12,7 +12,7 @@ use one_core::provider::key_algorithm::model::GeneratedKey;
 use one_core::provider::key_algorithm::provider::KeyAlgorithmProviderImpl;
 use one_core::provider::key_algorithm::provider::{KeyAlgorithmProvider, ParsedKey};
 use one_crypto::jwe::{EncryptionAlgorithm, Header, RemoteJwk, build_jwe};
-use openid4vp::core::metadata::parameters::verifier::AuthorizationEncryptedResponseEnc;
+use openid4vp::core::metadata::parameters::verifier::EncryptedResponseEncValuesSupported;
 use secrecy::SecretSlice;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -270,19 +270,19 @@ impl JweEncryptor {
                 }
                 .build(),
             })?;
-        let encryption_alg = self
+        let encs = self
             .metadata
-            .authorization_encrypted_response_enc()
-            .transpose()
-            .ok()
-            .flatten()
-            //TODO/NOTE Default is specified as A128GCM in the specification(https://openid.net/specs/openid-4-verifiable-presentations-1_0.html#name-new-parameters)
-            // but one-core doesnt support that. So we defaulted to A128CBC-HS256
-            .unwrap_or(AuthorizationEncryptedResponseEnc(
-                "A128CBC-HS256".to_string(),
-            ))
-            .0;
-        let encryption_alg = self.convert_to_enc_alg(encryption_alg)?;
+            .encrypted_response_enc_values_supported()
+            .map_err(|e| Internal {
+                source: JWESnafu {
+                    details: format!(
+                        "Error while getting enc values supported from ClientMetadata: {}",
+                        e
+                    ),
+                }
+                .build(),
+            })?;
+        let encryption_alg = self.select_enc(encs);
 
         Ok(JwkConfig {
             jwk: jwk.clone(),
@@ -309,19 +309,23 @@ impl JweEncryptor {
         Ok(claim.to_owned())
     }
 
-    pub fn convert_to_enc_alg(
+    pub fn select_enc(
         &self,
-        enc: String,
-    ) -> Result<EncryptionAlgorithm, crate::vc::oid4vp::holder::Error> {
-        match enc.as_str() {
-            "A256GCM" => Ok(EncryptionAlgorithm::A256GCM),
-            "A128CBC-HS256" => Ok(EncryptionAlgorithm::A128CBCHS256),
-            _ => Err(Internal {
-                source: JWESnafu {
-                    details: format!("The encryption algorithm {} is not supported", enc),
-                }
-                .build(),
-            }),
+        encs: Option<EncryptedResponseEncValuesSupported>,
+    ) -> EncryptionAlgorithm {
+        //TODO Default is specified as `A128GCM` in the specification(https://openid.net/specs/openid-4-verifiable-presentations-1_0.html#name-new-parameters)
+        // due to limits of dependencies Agent-SDK uses `A128CBC-HS256` as default value
+        if let Some(encs) = encs {
+            for enc in encs.0 {
+                match enc.as_str() {
+                    "A256GCM" => return EncryptionAlgorithm::A256GCM,
+                    "A128CBC-HS256" => return EncryptionAlgorithm::A128CBCHS256,
+                    _ => {}
+                };
+            }
+            EncryptionAlgorithm::A128CBCHS256
+        } else {
+            EncryptionAlgorithm::A128CBCHS256
         }
     }
 }
@@ -332,7 +336,7 @@ mod tests {
     use crate::vc::oid4vp::tests::utils::wrap_p256_private_key;
     use crate::vc::oid4vp::{ClientMetadata, ResolvedAuthRequest};
     use one_crypto::jwe::decrypt_jwe_payload;
-    use serde_json::{from_value, json};
+    use serde_json::{from_str, json};
 
     #[tokio::test]
     async fn test_encoding() {
@@ -365,10 +369,11 @@ mod tests {
     }
 
     fn get_metadata() -> ClientMetadata {
-        let result: ResolvedAuthRequest = from_value(json!(
-           {
+        let result: ResolvedAuthRequest = from_str(
+            r#"
+            {
               "response_uri": "https://some-link.com",
-              "client_id": "some_id",
+              "client_id": "decentralized_identifier:did:key:zDnaeveTW9mmpzfLKHgmoYox1te7kxhdoboadQf5hM2rtiZjh",
               "response_type": "vp_token",
               "response_mode": "dc_api.jwt",
               "nonce": "xyz123ltcaccescbwc777",
@@ -406,22 +411,23 @@ mod tests {
               "client_metadata": {
                 "jwks": {
                   "keys": [
-                   {
+                    {
                       "kid": "ecdsa-kid",
                       "kty": "EC",
                       "crv": "P-256",
                       "x": "SSnPfyVhQgcU9Aaynqgi6QGhrq7K7WFEC0mAvpHG4TM",
-                       "y": "rYQ5mLQLTs95WLBKKA8R5IjMTXjX13iZnzazsVectRY",
+                      "y": "rYQ5mLQLTs95WLBKKA8R5IjMTXjX13iZnzazsVectRY",
                       "alg": "ES256"
                     }
                   ]
                 },
                 "encrypted_response_enc_values_supported": [
-                  "A256GCM",
+                  "A256GCM"
                 ]
               }
-           }
-        ))
+            }
+           "#,
+        )
         .unwrap();
 
         result.client_metadata

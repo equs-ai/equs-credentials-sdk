@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use openid4vp::core::authorization_request::parameters::{
-    ClientId, HashAlgorithm, IdTokenType, Nonce as NonceSpruce, Scope, State, TransactionData,
+    HashAlgorithm, IdTokenType, Nonce as NonceSpruce, Scope, State, TransactionData,
 };
 use openid4vp::core::metadata::WalletMetadata;
 use openid4vp::verifier::by_reference::ByReference;
@@ -20,10 +20,10 @@ use crate::nonce::{Nonce, NonceHandler};
 use crate::utils::wasm::{WasmNotSend, WasmNotSync};
 use crate::vc;
 use crate::vc::claims::{Claim, Claims};
-use crate::vc::core::KeyMetadata;
+use crate::vc::core::{HolderBinder, KeyMetadata};
 use crate::vc::oid4vp::Error::{Internal, Protocol};
 use crate::vc::oid4vp::internal_error::{
-    AuthorizationResponseDecryptionSnafu, ClaimsSnafu, ClientIdSnafu, DCQLSnafu,
+    AuthorizationResponseDecryptionSnafu, ClaimsSnafu, ClientSnafu, DCQLSnafu,
     DidUrlResolutionSnafu, IdTokenValidationSnafu, JsonSnafu, KMSSnafu, NonceGenerationSnafu,
     Oid4VpLibSnafu, ParseSnafu, PresentationExchangeSnafu, VCSnafu,
 };
@@ -53,8 +53,9 @@ use std::ops::Deref;
 pub type Error = api::Error;
 pub type Result<T> = core::result::Result<T, Error>;
 
-pub type DIDClient<S> = openid4vp::verifier::client::DIDClient<S>;
-pub type X509SanClient = openid4vp::verifier::client::X509SanClient;
+pub type DecentralizedIdentifierClient<S> =
+    openid4vp::verifier::client::DecentralizedIdentifierClient<S>;
+pub type X509Client = openid4vp::verifier::client::X509Client;
 pub type RedirectUriClient = openid4vp::verifier::client::RedirectUriClient;
 const VP_TOKEN: &str = "vp_token";
 const ID_TOKEN: &str = "id_token";
@@ -486,9 +487,8 @@ where
     ) -> Result<(Url, Option<String>)> {
         match &auth_request_metadata.auth_response_options.mode {
             ResponseMode::DCAPIJwt | ResponseMode::DCAPI => {
-                let client = RedirectUriClient::new(
-                    ClientId::new(self.metadata.client_id.to_owned()).context(ClientIdSnafu)?,
-                );
+                let client = RedirectUriClient::new(self.metadata.client_id.to_owned())
+                    .context(ClientSnafu)?;
                 let verifier_builder = openid4vp::verifier::Verifier::builder().with_client(client);
                 self.build_authorization_request_helper(
                     resolved_presentation_query,
@@ -507,7 +507,7 @@ where
                     .await
                     .context(KMSSnafu)?;
 
-                let did_client = DIDClient::new(
+                let did_client = DecentralizedIdentifierClient::new(
                     self.metadata.key_metadata.did_url.clone(),
                     Signer::new(verifier_key)?,
                     &self.public_jwk_resolver,
@@ -672,10 +672,20 @@ where
         };
 
         for requested_presentation in requested_presentations {
+            let holder_binder =
+                if let Some(false) = requested_presentation.require_cryptographic_holder_binding {
+                    None
+                } else {
+                    Some(HolderBinder {
+                        nonce: nonce.to_owned(),
+                        verifier_id: self.metadata.client_id.to_owned(),
+                    })
+                };
+
             let claims = self
                 .verifier
                 .verify_presentation(
-                    nonce,
+                    holder_binder,
                     &requested_presentation.presentation,
                     &self.http_client,
                 )
@@ -755,6 +765,7 @@ mod tests {
     use crate::nonce::Nonce;
     use crate::vc::ClaimFormatDesignation;
     use crate::vc::claims::Claims;
+    use crate::vc::dcql::DCQLCredential;
     use crate::vc::oid4vp::jwe_encryptor::JweEncryptor;
     use crate::vc::oid4vp::tests::fixtures::multi_presentation::{
         auth_response_options, submission_requirements, transaction_data_items,
@@ -774,7 +785,9 @@ mod tests {
     use openid4vp::core::authorization_request::{
         AuthorizationRequest, AuthorizationRequestObject,
     };
+    use openid4vp::core::dcql::{DCQL, DcqlClaim, DcqlCredential, DcqlMeta, ID, PathValue};
     use openid4vp::core::object::UntypedObject;
+    use openid4vp::utils::NonEmptyVec;
     use openid4vp::wallet::IdTokenParams;
     use rstest::*;
     use serde_json::{Map, json};
@@ -810,7 +823,8 @@ mod tests {
 
         let hash_query: HashMap<String, String> = uri.query_pairs().into_owned().collect();
 
-        assert_eq!(hash_query.get("client_id").unwrap(), &did);
+        let client_id = format!("decentralized_identifier:{}", did);
+        assert_eq!(hash_query.get("client_id").unwrap(), &client_id);
         assert_eq!(hash_query.get("request_uri").unwrap(), request_uri.as_str());
         assert_eq!(
             hash_query.get("request_uri_method").unwrap(),
@@ -874,7 +888,7 @@ mod tests {
 
         assert!(matches!(
             result.err().unwrap(),
-            Error::Internal {
+            Internal {
                 source: InternalError::Oid4VpLib { .. }
             }
         ));
@@ -962,7 +976,7 @@ mod tests {
             )
             .unwrap()
         );
-        assert_eq!(request.client_id().get_id().to_owned(), did);
+        assert_eq!(request.client_id().get_id(), did);
         assert_eq!(request.return_uri(), &response_uri);
     }
 
@@ -1057,7 +1071,7 @@ mod tests {
             )
             .unwrap()
         );
-        assert_eq!(request.client_id().get_id().to_owned(), did);
+        assert_eq!(request.client_id().get_id(), did);
         assert_eq!(request.return_uri(), &response_uri);
         assert_eq!(
             request.get::<Scope>().unwrap().unwrap(),
@@ -1087,6 +1101,41 @@ mod tests {
         let (request, _) = verifier
             .create_authorization_request(
                 &ResolvedPresentationQuery::PresentationDefinition(presentation_definition),
+                &AuthorizationRequestMetadata {
+                    transaction_data: None,
+                    auth_response_options,
+                    pass_auth_request_object: PassAuthRequestObject::ByReference {
+                        uri: request_uri,
+                        method: None,
+                    },
+                },
+                None,
+            )
+            .await
+            .unwrap();
+    }
+
+    #[rstest]
+    #[should_panic(expected = "Credential IDs must be unique in the dcql query")]
+    #[case(get_multiple_credentials_with_same_id())]
+    #[should_panic(expected = "Claim set cannot be given if Claims is empty")]
+    #[case(get_credential_with_claim_set_but_no_claims())]
+    #[should_panic(expected = "Claim id cannot be empty if Claim set is given")]
+    #[case(get_credential_with_claim_set_but_no_claim_ids())]
+    #[should_panic(expected = " Claim IDs must be unique in the Credential query")]
+    #[case(get_credential_with_claims_with_non_unique_claim_ids())]
+    #[tokio::test]
+    async fn test_request_validation(#[case] credentials: NonEmptyVec<DcqlCredential>) {
+        let request_uri = build_url(VERIFIER_URL, "request");
+
+        let (verifier, did) = verifier_service().await;
+
+        let auth_response_options = auth_response_options(build_url(VERIFIER_URL, "auth"), None);
+
+        let dcql = DCQL::new(credentials);
+        verifier
+            .create_authorization_request(
+                &ResolvedPresentationQuery::DCQL(dcql),
                 &AuthorizationRequestMetadata {
                     transaction_data: None,
                     auth_response_options,
@@ -1552,5 +1601,71 @@ mod tests {
             ResolvedPresentationQuery::PresentationDefinition(pd);
 
         test_case
+    }
+    fn get_credential_for_sd_jwt_without_meta() -> NonEmptyVec<DcqlCredential> {
+        NonEmptyVec::new(DCQLCredential::new(
+            ID::new("some_id".to_string()).unwrap(),
+            ClaimFormatDesignation::SdJwtVc,
+            DcqlMeta::new(),
+        ))
+    }
+    fn get_credential_for_ldp_vc_without_meta() -> NonEmptyVec<DcqlCredential> {
+        NonEmptyVec::new(DCQLCredential::new(
+            ID::new("some_id".to_string()).unwrap(),
+            ClaimFormatDesignation::LdpVc,
+            DcqlMeta::new(),
+        ))
+    }
+
+    fn get_multiple_credentials_with_same_id() -> NonEmptyVec<DcqlCredential> {
+        let mut vec = get_credential_for_sd_jwt_without_meta();
+        for item in get_credential_for_ldp_vc_without_meta() {
+            vec.push(item);
+        }
+        vec
+    }
+
+    fn get_credential_with_claim_set_but_no_claims() -> NonEmptyVec<DcqlCredential> {
+        NonEmptyVec::new(
+            DCQLCredential::new(
+                ID::new("some_id".to_string()).unwrap(),
+                ClaimFormatDesignation::SdJwtVc,
+                DcqlMeta::new().set_vct_values(NonEmptyVec::new("some_vct_value".to_string())),
+            )
+            .add_claim_set(NonEmptyVec::new("some_claim_id".to_string())),
+        )
+    }
+
+    fn get_credential_with_claim_set_but_no_claim_ids() -> NonEmptyVec<DcqlCredential> {
+        NonEmptyVec::new(
+            DCQLCredential::new(
+                ID::new("some_id".to_string()).unwrap(),
+                ClaimFormatDesignation::SdJwtVc,
+                DcqlMeta::new().set_vct_values(NonEmptyVec::new("some_vct_value".to_string())),
+            )
+            .set_claims(NonEmptyVec::new(DcqlClaim::new(NonEmptyVec::new(
+                PathValue::Null,
+            ))))
+            .add_claim_set(NonEmptyVec::new("some_claim_id".to_string())),
+        )
+    }
+
+    fn get_credential_with_claims_with_non_unique_claim_ids() -> NonEmptyVec<DcqlCredential> {
+        NonEmptyVec::new(
+            DCQLCredential::new(
+                ID::new("some_id".to_string()).unwrap(),
+                ClaimFormatDesignation::SdJwtVc,
+                DcqlMeta::new().set_vct_values(NonEmptyVec::new("some_vct_value".to_string())),
+            )
+            .add_claim(
+                DcqlClaim::new(NonEmptyVec::new(PathValue::Null))
+                    .set_id(ID::new("some_id".to_string()).unwrap()),
+            )
+            .add_claim(
+                DcqlClaim::new(NonEmptyVec::new(PathValue::Null))
+                    .set_id(ID::new("some_id".to_string()).unwrap()),
+            )
+            .add_claim_set(NonEmptyVec::new("some_claim_id".to_string())),
+        )
     }
 }

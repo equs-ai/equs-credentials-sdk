@@ -1,4 +1,4 @@
-use agent_sdk::vc::oid4vp::ResolvedAuthRequest;
+use agent_sdk::vc::oid4vp::{ClientId, ResolvedAuthRequest};
 use std::collections::HashMap;
 
 use crate::common::Result;
@@ -94,8 +94,15 @@ impl TryFrom<AuthorizationRequest> for ResolvedAuthRequest {
         } else {
             None
         };
+
+        let client_id = ClientId::new(value.client_id).map_err(|e| {
+            Error::OID4VPHolder(format!(
+                "Error while converting into client id: {} It should have format: <scheme>:<id>.",
+                e
+            ))
+        })?;
         Ok(ResolvedAuthRequest {
-            client_id: value.client_id,
+            client_id,
             client_metadata: serde_json::from_value(value.client_metadata)
                 .map_err(|e| Error::OID4VPHolder(format!("{e:?}")))?,
             resolved_presentation_query: serde_json::from_value(value.presentation_definition)
@@ -117,7 +124,7 @@ impl TryFrom<ResolvedAuthRequest> for AuthorizationRequest {
 
     fn try_from(value: ResolvedAuthRequest) -> Result<Self> {
         Ok(AuthorizationRequest {
-            client_id: value.client_id,
+            client_id: value.client_id.get_full_id(),
             client_metadata: serde_json::to_value(&value.client_metadata)
                 .map_err(|e| Error::OID4VPHolder(format!("{e:?}")))?,
             presentation_definition: serde_json::to_value(&value.resolved_presentation_query)

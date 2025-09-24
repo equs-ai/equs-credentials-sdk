@@ -6,12 +6,13 @@ import {
   createStatusIssuer,
   createVerifier,
   CredentialEntry,
+  HolderBinder,
   HttpClient,
   HttpRequest,
   HttpResponse,
   KeyType,
   OID4VCIStatusIssuerBuilder,
-  PresentationRestrictionValueType,
+  PresentationRestrictionValue,
   ReqwestHttpClient,
   resolveMetadata,
   VcCoreHolder,
@@ -230,10 +231,7 @@ describe("VC::Core", () => {
         restrictions: [
           {
             fields: ["$.vct"],
-            value: {
-              type: PresentationRestrictionValueType.String,
-              value: temp_store_map,
-            },
+            value: PresentationRestrictionValue.withString(temp_store_map),
             optional: false,
           },
           {
@@ -247,7 +245,11 @@ describe("VC::Core", () => {
 
     it("create presentation auto", async () => {
       await requestAndStoreCredential(holder, issuer, utils);
-      const result = await holder.createPresentationAuto(utils.nonce, utils.verifierId, utils.presentationInput);
+      const holder_binder: HolderBinder = {
+        nonce: utils.nonce,
+        verifierId: utils.verifierId,
+      };
+      const result = await holder.createPresentationAuto(holder_binder, utils.presentationInput);
       const decoded = jwtDecode<typeof utils.claims>(result.payload);
 
       expect(decoded).toMatchObject({ address: "221B Baker Street", date: "09/09/1989" });
@@ -256,10 +258,12 @@ describe("VC::Core", () => {
     it("create presentation", async () => {
       await requestAndStoreCredential(holder, issuer, utils);
       const credentialEntry = await holder.findVcsForPresentation(utils.presentationInput);
-
+      const holder_binder: HolderBinder = {
+        nonce: utils.nonce,
+        verifierId: utils.verifierId,
+      };
       const result = await holder.createPresentation(
-        utils.nonce,
-        utils.verifierId,
+        holder_binder,
         utils.presentationInput,
         credentialEntry.data[0] as CredentialEntry,
       );
@@ -278,9 +282,13 @@ describe("VC::Core", () => {
     it("verify presentation and VC status", async () => {
       await requestAndStoreCredential(holder, issuer, utils);
 
-      const presentation = await holder.createPresentationAuto(utils.nonce, utils.verifierId, utils.presentationInput);
+      const holder_binder: HolderBinder = {
+        nonce: utils.nonce,
+        verifierId: utils.verifierId,
+      };
+      const presentation = await holder.createPresentationAuto(holder_binder, utils.presentationInput);
 
-      const result = await verifier.verifyPresentation(utils.nonce, presentation, ReqwestHttpClient.insecure());
+      const result = await verifier.verifyPresentation(holder_binder, presentation, ReqwestHttpClient.insecure());
 
       expect(result).toMatchObject({
         address: "221B Baker Street",

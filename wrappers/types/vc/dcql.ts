@@ -3,9 +3,7 @@
  */
 export interface DcqlClaim {
     id?: string,
-    path?: Array<string | number | null>,
-    namespace?: string,
-    claim_name?: string,
+    path: Array<string | number | null>,
     values?: Array<string | number | boolean>,
 }
 
@@ -15,7 +13,8 @@ export interface DcqlClaim {
 export interface DcqlCredential {
     id: string,
     format: string,
-    meta?: any,
+    meta: any,
+    require_cryptographic_holder_binding?: boolean | null,
     claims?: Array<DcqlClaim>,
     claim_sets?: Array<Array<string>>,
 }
@@ -26,9 +25,8 @@ export interface DcqlCredential {
  * Either pair is fine. Note that the ["1","2"] above is a set of ids(not indexes).
  */
 export interface DcqlCredentialSet {
-    options?: Array<Array<string>>,
+    options: Array<Array<string>>,
     required?: boolean,
-    purpose?: string
 }
 
 /**

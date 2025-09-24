@@ -1,9 +1,8 @@
 use crate::crypto::{Alg, Key, Signer, SigningOptions};
 use crate::did::universal::UniversalResolver;
 use crate::did::{DIDResolver, DIDURL};
-use crate::nonce::Nonce;
 use crate::vc::claims::{Claim, Claims};
-use crate::vc::core::PresentationInput;
+use crate::vc::core::{HolderBinder, PresentationInput};
 use crate::vc::formats::{
     API, ClaimsSnafu, CredentialCreationSnafu, CryptoSuiteCreationSnafu, DIDSnafu,
     GetDateTimeClaim, HasClaims, HasCredential, IriBufParsingSnafu, IriRefParsingSnafu, IsExpired,
@@ -115,13 +114,12 @@ pub struct VPMetadata {
     pub contexts: Context,
     pub type_: OneOrMany<String>,
     pub disclosures: Vec<JsonPointerBuf>,
-    pub nonce: Nonce,
-    pub verifier_id: String,
+    pub holder_binder: Option<HolderBinder>,
 }
 
 impl VPMetadata {
     #[instrument(level = Level::TRACE, ret())]
-    pub fn new(vc: &VC, nonce: Nonce, verifier_id: String) -> Result<Self> {
+    pub fn new(vc: &VC, holder_binder: Option<HolderBinder>) -> Result<Self> {
         let is_v2 = vc.json_ld_context().iter().any(|c| {
             c.as_slice()
                 .contains(&IriRef(CREDENTIALS_V2_CONTEXT_IRI.to_owned().into()))
@@ -144,8 +142,7 @@ impl VPMetadata {
             contexts: Context::One(IriRef(context)),
             type_: types,
             disclosures: vec![],
-            nonce,
-            verifier_id,
+            holder_binder,
         })
     }
 
@@ -155,8 +152,7 @@ impl VPMetadata {
     pub fn from_presentation_input(
         vc: &VC,
         presentation_input: &PresentationInput,
-        nonce: Nonce,
-        verifier_id: String,
+        holder_binder: Option<HolderBinder>,
     ) -> Result<Self> {
         let disclosures = if JsonLdAPI::is_bbs_plus_signed(vc) {
             JsonLdAPI::resolve_disclosures_for_bbs_plus_signed_vc(presentation_input)?
@@ -164,7 +160,7 @@ impl VPMetadata {
             vec![]
         };
 
-        let mut metadata = Self::new(vc, nonce, verifier_id)?;
+        let mut metadata = Self::new(vc, holder_binder)?;
         metadata.set_disclosures(disclosures);
 
         Ok(metadata)
@@ -687,6 +683,7 @@ impl API<Claims, VC, VP, VCMetadata, VPMetadata, ()> for JsonLdAPI {
             .to_owned();
 
         if Self::is_bbs_plus_signed(credential) {
+            //TODO how to enable/disable holder binding for bbs plus signed ldp vc presentation?
             return Self::create_vp_for_bbs_plus_signed_vc(
                 credential.to_owned(),
                 metadata,
@@ -748,7 +745,14 @@ impl API<Claims, VC, VP, VCMetadata, VPMetadata, ()> for JsonLdAPI {
             ReferenceOrOwned::Reference(verification_method_id.clone()),
             AnyInputSuiteOptions::new(),
         );
-        params.nonce = Some(metadata.nonce.secret().to_owned());
+        let (nonce, aud) = if let Some(hb) = metadata.holder_binder {
+            (Some(hb.nonce.secret().to_string()), Some(hb.verifier_id))
+        } else {
+            (None, None)
+        };
+        params.nonce = nonce.to_owned();
+        params.challenge = nonce;
+        params.domains = aud.map(|a| vec![a]).unwrap_or(vec![]);
 
         suite
             .sign(vp, did_resolver.clone(), &signer, params)
@@ -791,11 +795,11 @@ impl API<Claims, VC, VP, VCMetadata, VPMetadata, ()> for JsonLdAPI {
         Ok(())
     }
 
-    #[instrument(level = Level::TRACE, skip(nonce, did_resolver), err(), ret())]
+    #[instrument(level = Level::TRACE, skip(holder_binder, did_resolver), err(), ret())]
     async fn verify_vp(
         presentation: &VP,
-        nonce: &Nonce,
-        verifier_id: &str,
+        //TODO. Add verification with holder binder
+        holder_binder: Option<HolderBinder>,
         opts: VerifyOptions,
         did_resolver: UniversalResolver,
     ) -> Result<()> {
@@ -1324,7 +1328,14 @@ mod tests {
         let presentation = JsonLdAPI::create_vp(
             &vc,
             hld_kh,
-            VPMetadata::new(&vc, nonce.to_owned(), "verifier_id".to_string()).unwrap(),
+            VPMetadata::new(
+                &vc,
+                Some(HolderBinder {
+                    nonce: nonce.to_owned(),
+                    verifier_id: "verifier_id".to_string(),
+                }),
+            )
+            .unwrap(),
             UniversalResolver::default(),
         )
         .await
@@ -1332,8 +1343,10 @@ mod tests {
 
         JsonLdAPI::verify_vp(
             &presentation,
-            &nonce,
-            "verifier_id",
+            Some(HolderBinder {
+                nonce,
+                verifier_id: "verifier_id".to_string(),
+            }),
             VerifyOptions::default(),
             UniversalResolver::default(),
         )
@@ -1414,7 +1427,14 @@ mod tests {
         let presentation = JsonLdAPI::create_vp(
             &vc,
             hld_kh,
-            VPMetadata::new(&vc, nonce.to_owned(), "verifier_id".to_string()).unwrap(),
+            VPMetadata::new(
+                &vc,
+                Some(HolderBinder {
+                    nonce: nonce.to_owned(),
+                    verifier_id: "verifier_id".to_string(),
+                }),
+            )
+            .unwrap(),
             UniversalResolver::default(),
         )
         .await
@@ -1422,8 +1442,10 @@ mod tests {
 
         JsonLdAPI::verify_vp(
             &presentation,
-            &nonce,
-            "verifier_id",
+            Some(HolderBinder {
+                nonce,
+                verifier_id: "verifier_id".to_string(),
+            }),
             VerifyOptions::default(),
             UniversalResolver::default(),
         )
@@ -1479,7 +1501,7 @@ mod tests {
                 "VerifiableCredential".to_string(),
                 "AlumniCredential".to_string(),
             ],
-            time::Duration::days(5 * 365),
+            Duration::days(5 * 365),
         )
         .unwrap();
 
@@ -1504,8 +1526,14 @@ mod tests {
         .unwrap();
 
         let nonce = LocalNonceHandler::default().generate().await.unwrap();
-        let mut vp_metadata =
-            VPMetadata::new(&vc_base, nonce.clone(), "verifier_id".to_string()).unwrap();
+        let mut vp_metadata = VPMetadata::new(
+            &vc_base,
+            Some(HolderBinder {
+                nonce: nonce.to_owned(),
+                verifier_id: "verifier_id".to_string(),
+            }),
+        )
+        .unwrap();
         vp_metadata.disclosures = vec![
             "/type".parse().unwrap(),
             "/issuer".parse().unwrap(),
@@ -1517,8 +1545,10 @@ mod tests {
 
         JsonLdAPI::verify_vp(
             &vp,
-            &nonce,
-            "verifier_id",
+            Some(HolderBinder {
+                nonce,
+                verifier_id: "verifier_id".to_string(),
+            }),
             VerifyOptions::default(),
             UniversalResolver::default(),
         )
@@ -1601,7 +1631,14 @@ mod tests {
         let result = JsonLdAPI::create_vp(
             &vc,
             failed_signer_key(hld_kh),
-            VPMetadata::new(&vc, nonce, "verifier_id".to_string()).unwrap(),
+            VPMetadata::new(
+                &vc,
+                Some(HolderBinder {
+                    nonce,
+                    verifier_id: "verifier_id".to_string(),
+                }),
+            )
+            .unwrap(),
             UniversalResolver::default(),
         )
         .await;
@@ -1640,14 +1677,21 @@ mod tests {
         let result = JsonLdAPI::create_vp(
             &vc,
             no_jwk_key(),
-            VPMetadata::new(&vc, nonce, "verifier_id".to_string()).unwrap(),
+            VPMetadata::new(
+                &vc,
+                Some(HolderBinder {
+                    nonce,
+                    verifier_id: "verifier_id".to_string(),
+                }),
+            )
+            .unwrap(),
             UniversalResolver::default(),
         )
         .await;
 
         assert!(matches!(
             result.err().unwrap(),
-            crate::vc::formats::Error::KeyTypeNotSupported { .. }
+            Error::KeyTypeNotSupported { .. }
         ));
     }
 

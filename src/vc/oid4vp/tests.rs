@@ -3,7 +3,7 @@ pub mod fixtures {
     pub const NONCE: &str = "n0NcE";
     pub const CLIENT_ID: &str = "wallet-dev";
     pub const STATE: &str = "1d8b0d93-86e8-4135-87d4-524bb0500bf3";
-    pub const REQUEST_URI: &str = "openid4vp://?client_id=did%3Akey%3AzDnaehgaHKAP7LAA3Kwa4FjXjJ1G3BcaHqr5gfRySJcGDgBtV&request_uri=http%3A%2F%2F127.0.0.1%3A55796%2Frequest";
+    pub const REQUEST_URI: &str = "openid4vp://?client_id=decentralized_identifier%3Adid%3Akey%3AzDnaebMD6CqPmJL8WxF6YffAAbbK935aaKbyVEyuGQtukXk6f&request_uri=http%3A%2F%2F127.0.0.1%3A55796%2Frequest";
     pub const CREDENTIAL_ID: &str = "abcde";
 
     pub mod single_presentation {
@@ -35,7 +35,7 @@ pub mod fixtures {
 
             pub const AUTH_REQUEST: &str = r#"
                 {
-                  "client_id": "did:key:zDnaehgaHKAP7LAA3Kwa4FjXjJ1G3BcaHqr5gfRySJcGDgBtV",
+                  "client_id": "decentralized_identifier:did:key:zDnaehgaHKAP7LAA3Kwa4FjXjJ1G3BcaHqr5gfRySJcGDgBtV",
                   "state": null,
                   "presentation_definition": {
                     "id": "327ad171-c80a-485b-b098-50d7ad278ef6",
@@ -85,12 +85,10 @@ pub mod fixtures {
                   "response_type": "vp_token",
                   "response_uri": "http://127.0.0.1:55796/auth",
                   "client_metadata": {
-                    "vp_formats": {
+                    "vp_formats_supported": {
                         "dc+sd-jwt": {
-                            "alg": [
-                                "EdDSA",
-                                "ES256"
-                            ]
+                            "sd-jwt_alg_values": ["EdDSA", "ES256"],
+                            "kb-jwt_alg_values": ["EdDSA", "ES256"]
                         }
                     }
                   }
@@ -746,73 +744,92 @@ pub mod fixtures {
             ]
         }"#;
 
-            pub const AUTH_REQUEST_JWT: &str = "eyJhbGciOiJFUzI1NiIsImtpZCI6ImRpZDprZXk6ekRuYWVoZ2FIS0FQN0xBQTNLd2E0RmpYakoxRzNCY2FIcXI1Z2ZSeVNKY0dEZ0J0ViN6RG5hZWhnYUhLQVA3TEFBM0t3YTRGalhqSjFHM0JjYUhxcjVnZlJ5U0pjR0RnQnRWIiwidHlwIjoiSldUIn0.eyJyZXNwb25zZV90eXBlIjoidnBfdG9rZW4iLCJyZXNwb25zZV9tb2RlIjoiZGlyZWN0X3Bvc3QiLCJub25jZSI6IjNEYUx3ZGk4OXFEZ3BscFN3QXNwWDZ3V3ptNnBMa3phTjNYdWstYXI1elkiLCJjbGllbnRfbWV0YWRhdGEiOnsidnBfZm9ybWF0cyI6eyJkYytzZC1qd3QiOnsiYWxnIjpbIkVkRFNBIiwiRVMyNTYiXX19fSwiY2xpZW50X2lkIjoiZGlkOmtleTp6RG5hZWhnYUhLQVA3TEFBM0t3YTRGalhqSjFHM0JjYUhxcjVnZlJ5U0pjR0RnQnRWIiwiY2xpZW50X2lkX3NjaGVtZSI6ImRpZCIsInByZXNlbnRhdGlvbl9kZWZpbml0aW9uIjp7ImlkIjoiMzI3YWQxNzEtYzgwYS00ODViLWIwOTgtNTBkN2FkMjc4ZWY2IiwiaW5wdXRfZGVzY3JpcHRvcnMiOlt7ImlkIjoiSWRlbnRpdHktMSIsImNvbnN0cmFpbnRzIjp7ImZpZWxkcyI6W3sicGF0aCI6WyIkLm5hbWUiXSwib3B0aW9uYWwiOnRydWUsInByZWRpY2F0ZSI6bnVsbCwiaW50ZW50X3RvX3JldGFpbiI6ZmFsc2V9LHsicGF0aCI6WyIkLnZjdCJdLCJmaWx0ZXIiOnsidHlwZSI6InN0cmluZyIsImNvbnN0IjoiaHR0cHM6Ly9jcmVkZW50aWFscy5leGFtcGxlLmNvbS9pZGVudGl0eV9jcmVkZW50aWFsIn0sInByZWRpY2F0ZSI6bnVsbCwiaW50ZW50X3RvX3JldGFpbiI6ZmFsc2V9XX0sIm5hbWUiOiJJZGVudGl0eSBWQyIsInB1cnBvc2UiOiJXZSB3YW50IGFuIGlkZW50aXR5IiwiZm9ybWF0Ijp7ImRjK3NkLWp3dCI6eyJzZC1qd3RfYWxnX3ZhbHVlcyI6WyJFUzI1NiIsIkVkRFNBIl0sImtiLWp3dF9hbGdfdmFsdWVzIjpbIkVTMjU2IiwiRWREU0EiXX19fV0sIm5hbWUiOiJFeGFtcGxlIHdpdGggc2VsZWN0aXZlIGRpc2Nsb3N1cmUifSwicmVzcG9uc2VfdXJpIjoiaHR0cDovLzEyNy4wLjAuMTo1NTc5Ni9hdXRoIn0.PHtlxQ3XoC-ohUfRlm7EHe700WI4qZnmrTFBnS0ohq7Q0rNZtMiNMPKamp3hk-E88HzppGbvppn_Z7zEh3fjmA";
-            pub const AUTH_REQUEST_WITH_STATE_JWT: &str = "eyJhbGciOiJFUzI1NiIsImtpZCI6ImRpZDprZXk6ekRuYWV4b3lwUGVKSHo1eGZkc2hWOU5xc1dUM0JVbUh2RFVEZThWeFdmNkxuMjNVaCN6RG5hZXhveXBQZUpIejV4ZmRzaFY5TnFzV1QzQlVtSHZEVURlOFZ4V2Y2TG4yM1VoIiwidHlwIjoiSldUIn0.eyJyZXNwb25zZV90eXBlIjoidnBfdG9rZW4iLCJzdGF0ZSI6IjFkOGIwZDkzLTg2ZTgtNDEzNS04N2Q0LTUyNGJiMDUwMGJmMyIsInJlc3BvbnNlX21vZGUiOiJkaXJlY3RfcG9zdCIsIm5vbmNlIjoiTm9ELTBmdGYxcWFUS0NNWjloWmVJdV9HZEhjdUZhM0hvUTgxLXBXZklQWSIsImNsaWVudF9tZXRhZGF0YSI6eyJzdWJqZWN0X3N5bnRheF90eXBlc19zdXBwb3J0ZWQiOlsiZGlkOmtleSJdfSwiY2xpZW50X2lkIjoiZGlkOmtleTp6RG5hZXhveXBQZUpIejV4ZmRzaFY5TnFzV1QzQlVtSHZEVURlOFZ4V2Y2TG4yM1VoIiwiY2xpZW50X2lkX3NjaGVtZSI6ImRpZCIsInByZXNlbnRhdGlvbl9kZWZpbml0aW9uIjp7ImlkIjoiMzI3YWQxNzEtYzgwYS00ODViLWIwOTgtNTBkN2FkMjc4ZWY2IiwiaW5wdXRfZGVzY3JpcHRvcnMiOlt7ImlkIjoiSWRlbnRpdHktMSIsImNvbnN0cmFpbnRzIjp7ImZpZWxkcyI6W3sicGF0aCI6WyIkLnZjdCJdLCJmaWx0ZXIiOnsidHlwZSI6InN0cmluZyIsImNvbnN0IjoiaHR0cHM6Ly9jcmVkZW50aWFscy5leGFtcGxlLmNvbS9pZGVudGl0eV9jcmVkZW50aWFsIn0sInByZWRpY2F0ZSI6bnVsbCwiaW50ZW50X3RvX3JldGFpbiI6ZmFsc2V9LHsicGF0aCI6WyIkLm5hbWUiXSwicHJlZGljYXRlIjpudWxsLCJpbnRlbnRfdG9fcmV0YWluIjpmYWxzZX1dfSwibmFtZSI6IklkZW50aXR5IFZDIiwicHVycG9zZSI6IldlIHdhbnQgYW4gaWRlbnRpdHkiLCJmb3JtYXQiOnsidmMrc2Qtand0Ijp7InNkLWp3dF9hbGdfdmFsdWVzIjpbIkVTMjU2IiwiRWREU0EiXSwia2Itand0X2FsZ192YWx1ZXMiOlsiRVMyNTYiLCJFZERTQSJdfX19XX0sInJlc3BvbnNlX3VyaSI6Imh0dHA6Ly8xMjcuMC4wLjE6NTU3OTYvYXV0aCJ9.j7OamoDYuCdMsTZ_dar7_KrZx7fufanTFWPB5LQk86UeAZ9yI_QHsGsmb1j9HkAnkVpgerShVJ3dO3HuxD-tPA";
+            pub const AUTH_REQUEST_JWT: &str = "eyJhbGciOiJFUzI1NiIsImtpZCI6ImRpZDprZXk6ekRuYWViTUQ2Q3FQbUpMOFd4RjZZZmZBQWJiSzkzNWFhS2J5VkV5dUdRdHVrWGs2ZiN6RG5hZWJNRDZDcVBtSkw4V3hGNllmZkFBYmJLOTM1YWFLYnlWRXl1R1F0dWtYazZmIiwidHlwIjoiYXBwbGljYXRpb24vb2F1dGgtYXV0aHotcmVxK2p3dCJ9.eyJyZXNwb25zZV90eXBlIjoidnBfdG9rZW4iLCJzdGF0ZSI6IjFkOGIwZDkzLTg2ZTgtNDEzNS04N2Q0LTUyNGJiMDUwMGJmMyIsInJlc3BvbnNlX21vZGUiOiJkaXJlY3RfcG9zdCIsIm5vbmNlIjoiMlQwbjJxZ2RYNlh5RXotVWdDSEZNSDZmUmw5LXM0SURXcmtubmtHVzBWMCIsImNsaWVudF9tZXRhZGF0YSI6eyJ2cF9mb3JtYXRzX3N1cHBvcnRlZCI6eyJkYytzZC1qd3QiOnsic2Qtand0X2FsZ192YWx1ZXMiOlsiRWREU0EiLCJFUzI1NiJdLCJrYi1qd3RfYWxnX3ZhbHVlcyI6WyJFZERTQSIsIkVTMjU2Il19fSwiandrcyI6eyJrZXlzIjpbeyJ1c2UiOiJlbmMiLCJhbGciOiJFUzI1NiIsImtpZCI6IlJTZE5GZG5HSG06UDI1NjoiLCJrdHkiOiJFQyIsImNydiI6IlAtMjU2IiwieCI6IkxiLTNrcG9tZS1nbHZTQXJaV0RPUlVva3JseWw5VFZ2M2h6bVV1QmdUWE0iLCJ5IjoidjFGZ2NPVHhNMTd0OWZ3dVFSeEo3S1JFcERYSEZTejRrZzJVQ2VDbVhidyJ9XX0sImVuY3J5cHRlZF9yZXNwb25zZV9lbmNfdmFsdWVzX3N1cHBvcnRlZCI6WyJBMTI4R0NNIiwiQTEyOENCQy1IUzI1NiJdLCJzdWJqZWN0X3N5bnRheF90eXBlc19zdXBwb3J0ZWQiOlsiZGlkOmtleSJdfSwiY2xpZW50X2lkIjoiZGVjZW50cmFsaXplZF9pZGVudGlmaWVyOmRpZDprZXk6ekRuYWViTUQ2Q3FQbUpMOFd4RjZZZmZBQWJiSzkzNWFhS2J5VkV5dUdRdHVrWGs2ZiIsInByZXNlbnRhdGlvbl9kZWZpbml0aW9uIjp7ImlkIjoiMzI3YWQxNzEtYzgwYS00ODViLWIwOTgtNTBkN2FkMjc4ZWY2IiwiaW5wdXRfZGVzY3JpcHRvcnMiOlt7ImlkIjoiSWRlbnRpdHktMSIsImNvbnN0cmFpbnRzIjp7ImZpZWxkcyI6W3sicGF0aCI6WyIkLnZjdCJdLCJmaWx0ZXIiOnsidHlwZSI6InN0cmluZyIsImNvbnN0IjoiaHR0cHM6Ly9jcmVkZW50aWFscy5leGFtcGxlLmNvbS9pZGVudGl0eV9jcmVkZW50aWFsIn0sInByZWRpY2F0ZSI6bnVsbCwiaW50ZW50X3RvX3JldGFpbiI6ZmFsc2V9LHsicGF0aCI6WyIkLm5hbWUiXSwib3B0aW9uYWwiOnRydWUsInByZWRpY2F0ZSI6bnVsbCwiaW50ZW50X3RvX3JldGFpbiI6ZmFsc2V9XX0sIm5hbWUiOiJJZGVudGl0eSBWQyIsInB1cnBvc2UiOiJXZSB3YW50IGFuIGlkZW50aXR5IiwiZm9ybWF0Ijp7ImRjK3NkLWp3dCI6eyJzZC1qd3RfYWxnX3ZhbHVlcyI6WyJFUzI1NiIsIkVkRFNBIl0sImtiLWp3dF9hbGdfdmFsdWVzIjpbIkVTMjU2IiwiRWREU0EiXX19fV19LCJyZXNwb25zZV91cmkiOiJodHRwOi8vMTI3LjAuMC4xOjU1Nzk2L2F1dGgifQ.vx7zZECHmm-hJ6Gnt0FAQf4aCCrYpbyoIQHJOUcTOw6cESozijzV8Y2VKmoEHefiEM6RWYYs7IZcF4hLZ2fdyw";
             pub const AUTH_REQUEST: &str = r#"
-                {
-                  "client_id": "did:key:zDnaehgaHKAP7LAA3Kwa4FjXjJ1G3BcaHqr5gfRySJcGDgBtV",
-                  "state": null,
-                  "presentation_definition": {
-                    "id": "327ad171-c80a-485b-b098-50d7ad278ef6",
-                    "input_descriptors": [
-                      {
-                        "id": "Identity-1",
-                        "constraints": {
-                          "fields": [
-                            {
-                              "path": [
-                                "$.name"
-                              ],
-                              "predicate": null,
-                              "optional": true,
-                              "intent_to_retain": false
-                            },
-                            {
-                              "path": [
-                                "$.vct"
-                              ],
-                              "predicate": null,
-                              "filter": {
-                                "type": "string",
-                                "const": "https://credentials.example.com/identity_credential"
-                              },
-                              "intent_to_retain": false
-                            }
-                          ]
+            {
+              "response_type": "vp_token",
+              "state": "1d8b0d93-86e8-4135-87d4-524bb0500bf3",
+              "response_mode": "direct_post",
+              "nonce": "2T0n2qgdX6XyEz-UgCHFMH6fRl9-s4IDWrknnkGW0V0",
+              "client_metadata": {
+                "vp_formats_supported": {
+                  "dc+sd-jwt": {
+                    "sd-jwt_alg_values": ["EdDSA", "ES256"],
+                    "kb-jwt_alg_values": ["EdDSA", "ES256"]
+                  }
+                },
+                "jwks": {
+                  "keys": [
+                    {
+                      "use": "enc",
+                      "alg": "ES256",
+                      "kid": "RSdNFdnGHm:P256:",
+                      "kty": "EC",
+                      "crv": "P-256",
+                      "x": "Lb-3kpome-glvSArZWDORUokrlyl9TVv3hzmUuBgTXM",
+                      "y": "v1FgcOTxM17t9fwuQRxJ7KREpDXHFSz4kg2UCeCmXbw"
+                    }
+                  ]
+                },
+                "encrypted_response_enc_values_supported": [
+                  "A128GCM",
+                  "A128CBC-HS256"
+                ],
+                "subject_syntax_types_supported": [
+                  "did:key"
+                ]
+              },
+              "client_id": "decentralized_identifier:did:key:zDnaebMD6CqPmJL8WxF6YffAAbbK935aaKbyVEyuGQtukXk6f",
+              "presentation_definition": {
+                "id": "327ad171-c80a-485b-b098-50d7ad278ef6",
+                "input_descriptors": [
+                  {
+                    "id": "Identity-1",
+                    "constraints": {
+                      "fields": [
+                        {
+                          "path": [
+                            "$.vct"
+                          ],
+                          "filter": {
+                            "type": "string",
+                            "const": "https://credentials.example.com/identity_credential"
+                          },
+                          "predicate": null,
+                          "intent_to_retain": false
                         },
-                        "name": "Identity VC",
-                        "purpose": "We want an identity",
-                        "format": {
-                          "dc+sd-jwt": {
-                            "sd-jwt_alg_values": [
-                              "ES256",
-                              "EdDSA"
-                            ],
-                            "kb-jwt_alg_values": [
-                              "ES256",
-                              "EdDSA"
-                            ]
-                          }
+                        {
+                          "path": [
+                            "$.name"
+                          ],
+                          "optional": true,
+                          "predicate": null,
+                          "intent_to_retain": false
                         }
+                      ]
+                    },
+                    "name": "Identity VC",
+                    "purpose": "We want an identity",
+                    "format": {
+                      "dc+sd-jwt": {
+                        "sd-jwt_alg_values": [
+                          "ES256",
+                          "EdDSA"
+                        ],
+                        "kb-jwt_alg_values": [
+                          "ES256",
+                          "EdDSA"
+                        ]
                       }
-                    ],
-                    "name": "Example with selective disclosure"
-                  },
-                  "nonce": "3DaLwdi89qDgplpSwAspX6wWzm6pLkzaN3Xuk-ar5zY",
-                  "response_mode": "direct_post",
-                  "response_type": "vp_token",
-                  "response_uri": "http://127.0.0.1:55796/auth",
-                  "client_metadata": {
-                    "vp_formats": {
-                        "dc+sd-jwt": {
-                            "alg": ["EdDSA", "ES256"]
-                        }
                     }
                   }
-                }"#;
+                ]
+              },
+              "response_uri": "http://127.0.0.1:55796/auth"
+            }"#;
             pub const AUTH_REQUEST_WITH_WRONG_CLIENT_ID: &str = r#"
                 {
-                  "client_id": "did:key:1",
+                  "client_id": "decentralized_identifier:did:key:1",
                   "state": null,
                   "presentation_definition": {
                     "id": "327ad171-c80a-485b-b098-50d7ad278ef6",
@@ -865,17 +882,18 @@ pub mod fixtures {
                   "response_type": "vp_token",
                   "response_uri": "http://127.0.0.1:55796/auth",
                   "client_metadata": {
-                    "vp_formats": {
+                    "vp_formats_supported": {
                         "dc+sd-jwt": {
-                            "alg": ["EdDSA", "ES256"]
+                            "sd-jwt_alg_values": ["EdDSA", "ES256"],
+                            "kb-jwt_alg_values": ["EdDSA", "ES256"]
                         }
                     }
                   }
                 }"#;
 
-            pub const AUTH_REQUEST_WITH_UNSUPPORTED_CLIENT_ID_SCHEME: &str = r#"
+            pub const AUTH_REQUEST_WITH_UNSUPPORTED_CLIENT_ID_PREFIX: &str = r#"
                 {
-                  "client_id": "web-origin:some-link",
+                  "client_id": "origin:some-link",
                   "state": null,
                   "presentation_definition": {
                     "id": "327ad171-c80a-485b-b098-50d7ad278ef6",
@@ -928,9 +946,10 @@ pub mod fixtures {
                   "response_type": "vp_token",
                   "response_uri": "http://127.0.0.1:55796/auth",
                   "client_metadata": {
-                    "vp_formats": {
-                        "dc+sd-jwt": {
-                            "alg": ["EdDSA", "ES256"]
+                    "vp_formats_supported": {
+                       "dc+sd-jwt": {
+                            "sd-jwt_alg_values": ["EdDSA", "ES256"],
+                            "kb-jwt_alg_values": ["EdDSA", "ES256"]
                         }
                     }
                   }
@@ -938,7 +957,7 @@ pub mod fixtures {
 
             pub const AUTH_REQUEST_WITH_DIRECT_POST_JWT_RESPONSE: &str = r#"
                 {
-                  "client_id": "did:key:zDnaehgaHKAP7LAA3Kwa4FjXjJ1G3BcaHqr5gfRySJcGDgBtV",
+                  "client_id": "decentralized_identifier:did:key:zDnaehgaHKAP7LAA3Kwa4FjXjJ1G3BcaHqr5gfRySJcGDgBtV",
                   "state": null,
                   "presentation_definition": {
                     "id": "327ad171-c80a-485b-b098-50d7ad278ef6",
@@ -991,9 +1010,10 @@ pub mod fixtures {
                   "response_type": "vp_token",
                   "response_uri": "http://127.0.0.1:55796/auth",
                   "client_metadata": {
-                    "vp_formats": {
+                    "vp_formats_supported": {
                         "dc+sd-jwt": {
-                            "alg": ["EdDSA", "ES256"]
+                            "sd-jwt_alg_values": ["EdDSA", "ES256"],
+                            "kb-jwt_alg_values": ["EdDSA", "ES256"]
                         }
                     },
                     "jwks": {
@@ -1008,7 +1028,7 @@ pub mod fixtures {
                     "encrypted_response_enc_values_supported": ["A128GCM", "A128CBC-HS256"]
                   }
                 }"#;
-            pub const AUTH_REQUEST_WITH_NON_URL_SCHEME: &str = r#"
+            pub const AUTH_REQUEST_WITH_NON_URL_CLIENT_ID_PREFIX: &str = r#"
                 {
                   "client_id": "redirect_uri:non-link-id",
                   "state": null,
@@ -1063,9 +1083,10 @@ pub mod fixtures {
                   "response_type": "vp_token",
                   "response_uri": "http://127.0.0.1:55796/auth",
                   "client_metadata": {
-                    "vp_formats": {
+                    "vp_formats_supported": {
                         "dc+sd-jwt": {
-                            "alg": ["EdDSA", "ES256"]
+                            "sd-jwt_alg_values": ["EdDSA", "ES256"],
+                            "kb-jwt_alg_values": ["EdDSA", "ES256"]
                         }
                     }
                   }
@@ -1126,16 +1147,17 @@ pub mod fixtures {
                   "response_type": "vp_token",
                   "response_uri": "http://127.0.0.1:55796/auth",
                   "client_metadata": {
-                    "vp_formats": {
+                    "vp_formats_supported": {
                         "dc+sd-jwt": {
-                            "alg": ["EdDSA", "ES256"]
+                            "sd-jwt_alg_values": ["EdDSA", "ES256"],
+                            "kb-jwt_alg_values": ["EdDSA", "ES256"]
                         }
                     }
                   }
                 }"#;
             pub const AUTH_REQUEST_WITH_STATE: &str = r#"
                 {
-                  "client_id": "did:key:zDnaex9UKhcwNpfrPva1HLj6DECNHhHkmuY6xszv1KGWksvfL",
+                  "client_id": "decentralized_identifier:did:key:zDnaex9UKhcwNpfrPva1HLj6DECNHhHkmuY6xszv1KGWksvfL",
                   "state": "1d8b0d93-86e8-4135-87d4-524bb0500bf3",
                   "presentation_definition": {
                     "id": "327ad171-c80a-485b-b098-50d7ad278ef6",
@@ -1188,9 +1210,10 @@ pub mod fixtures {
                   "response_type": "vp_token",
                   "response_uri": "http://127.0.0.1:55796/auth",
                 "client_metadata": {
-                "vp_formats": {
+                "vp_formats_supported": {
                     "dc+sd-jwt": {
-                        "alg": ["EdDSA", "ES256"]
+                        "sd-jwt_alg_values": ["EdDSA", "ES256"],
+                        "kb-jwt_alg_values": ["EdDSA", "ES256"]
                     }
                 }
               }}
@@ -1198,9 +1221,10 @@ pub mod fixtures {
 
             pub const CLIENT_METADATA_NO_KEYS: &str = r#"
                 {
-                    "vp_formats": {
+                    "vp_formats_supported": {
                         "dc+sd-jwt": {
-                            "alg": ["EdDSA", "ES256"]
+                            "sd-jwt_alg_values": ["EdDSA", "ES256"],
+                            "kb-jwt_alg_values": ["EdDSA", "ES256"]
                         }
                     },
                     "jwks": {
@@ -1940,7 +1964,7 @@ pub mod fixtures {
 
         const AUTH_REQUEST: &str = r#"
         {
-           "client_id":"did:key:zDnaeagvW2eDWc2yVw7B98ovcJ8jddn7T9Mh3y5Vikys6y4kX",
+           "client_id":"decentralized_identifier:did:key:zDnaeagvW2eDWc2yVw7B98ovcJ8jddn7T9Mh3y5Vikys6y4kX",
            "state": null,
            "presentation_definition": {
                "id":"327ad171-c80a-485b-b098-50d7ad278ef6",
@@ -2025,9 +2049,10 @@ pub mod fixtures {
            "response_type": "vp_token",
            "response_uri":"http://127.0.0.1:55796/auth",
            "client_metadata": {
-                "vp_formats": {
+                "vp_formats_supported": {
                     "dc+sd-jwt": {
-                        "alg": ["EdDSA", "ES256"]
+                        "sd-jwt_alg_values": ["EdDSA", "ES256"],
+                        "kb-jwt_alg_values": ["EdDSA", "ES256"]
                     }
                 }
            }
@@ -2035,7 +2060,7 @@ pub mod fixtures {
 
         const AUTH_REQUEST_WITH_STATE: &str = r#"
         {
-           "client_id":"did:key:zDnaeagvW2eDWc2yVw7B98ovcJ8jddn7T9Mh3y5Vikys6y4kX",
+           "client_id":"decentralized_identifier:did:key:zDnaeagvW2eDWc2yVw7B98ovcJ8jddn7T9Mh3y5Vikys6y4kX",
            "state": "1d8b0d93-86e8-4135-87d4-524bb0500bf3",
            "presentation_definition": {
                "id":"327ad171-c80a-485b-b098-50d7ad278ef6",
@@ -2120,9 +2145,10 @@ pub mod fixtures {
            "response_type": "vp_token",
            "response_uri":"http://127.0.0.1:55796/auth",
            "client_metadata": {
-                "vp_formats": {
+                "vp_formats_supported": {
                     "dc+sd-jwt": {
-                        "alg": ["EdDSA", "ES256"]
+                        "sd-jwt_alg_values": ["EdDSA", "ES256"],
+                        "kb-jwt_alg_values": ["EdDSA", "ES256"]
                     }
                 }
            }
@@ -2234,7 +2260,7 @@ pub mod fixtures {
             let credential_data: Vec<Claims> = vec![cred1.clone(), cred2, cred3.clone()];
             let auth_request_str = r#"
             {
-               "client_id":"did:key:zDnaeagvW2eDWc2yVw7B98ovcJ8jddn7T9Mh3y5Vikys6y4kX",
+               "client_id":"decentralized_identifier:did:key:zDnaeagvW2eDWc2yVw7B98ovcJ8jddn7T9Mh3y5Vikys6y4kX",
                "state": null,
                "presentation_definition": {
                    "id":"327ad171-c80a-485b-b098-50d7ad278ef6",
@@ -2301,9 +2327,10 @@ pub mod fixtures {
                "response_type": "vp_token",
                "response_uri":"http://127.0.0.1:55796/auth",
                "client_metadata": {
-                    "vp_formats": {
+                    "vp_formats_supported": {
                         "dc+sd-jwt": {
-                            "alg": ["EdDSA", "ES256"]
+                            "sd-jwt_alg_values": ["EdDSA", "ES256"],
+                            "kb-jwt_alg_values": ["EdDSA", "ES256"]
                         }
                     }
               }
@@ -2438,7 +2465,7 @@ pub mod utils {
     use crate::vc;
     use crate::vc::claims::Claims;
     use crate::vc::core::api::PresentationRestrictionValue;
-    use crate::vc::core::{KeyMetadata, ProofOfPossessionMetadata};
+    use crate::vc::core::{HolderBinder, KeyMetadata, ProofOfPossessionMetadata};
     use crate::vc::formats::json_ld_vc::JsonLdAPI;
     use crate::vc::formats::sd_jwt_vc::{SdJwtAPI, VPMetadata};
     use crate::vc::formats::{json_ld_vc, sd_jwt_vc};
@@ -2453,7 +2480,7 @@ pub mod utils {
     use crate::vc::oid4vp::tests::fixtures::{CREDENTIAL_ID, VERIFIER_URL};
     use crate::vc::oid4vp::verifier::VerifierService;
     use crate::vc::oid4vp::{
-        AuthorizationResponseMetadata, AuthorizationResponseObject, ClientMetadata,
+        AuthorizationResponseMetadata, AuthorizationResponseObject, ClientId, ClientMetadata,
         CredentialMapping, Holder, PresentationSession, ResolvedAuthRequest, ResponseType,
         TransactionDataResponse, Verifier,
     };
@@ -2520,7 +2547,7 @@ pub mod utils {
         ) {
             let expected_credential_data = self.expected_credential_data.clone();
             let expected_presentation_submission = self.presentation_submission.clone();
-            let client_id = self.request.client_id.to_owned();
+            let client_id = self.request.client_id.get_full_id();
             let nonce = self.request.nonce.clone();
             let response_type = self.request.response_type.clone();
             let state = self.request.state.clone();
@@ -2670,7 +2697,10 @@ pub mod utils {
                 let id_token = id_token.parsed_body();
 
                 assert_eq!(id_token.nonce, nonce.secret());
-                assert_eq!(id_token.audience, client_id)
+                assert_eq!(
+                    id_token.audience,
+                    ClientId::new(client_id).unwrap().get_id()
+                )
             }
 
             let state = form.get("state");
@@ -2840,7 +2870,7 @@ pub mod utils {
         pub fn build_auth_request(format: &str, constraints: &str) -> ResolvedAuthRequest {
             let auth_request_str = format!(
                 r#"{{
-                  "client_id": "did:key:zDnaehgaHKAP7LAA3Kwa4FjXjJ1G3BcaHqr5gfRySJcGDgBtV",
+                  "client_id": "decentralized_identifier:did:key:zDnaehgaHKAP7LAA3Kwa4FjXjJ1G3BcaHqr5gfRySJcGDgBtV",
                   "state": null,
                   "presentation_definition": {{
                     "id": "327ad171-c80a-485b-b098-50d7ad278ef6",
@@ -2859,9 +2889,10 @@ pub mod utils {
                   "response_type": "vp_token",
                   "response_uri": "http://127.0.0.1:55796/auth",
                 "client_metadata": {{
-                "vp_formats": {{
+                "vp_formats_supported": {{
                     "dc+sd-jwt": {{
-                        "alg": ["EdDSA", "ES256"]
+                        "sd-jwt_alg_values": ["EdDSA", "ES256"],
+                        "kb-jwt_alg_values": ["EdDSA", "ES256"]
                     }}
                 }}
               }}
@@ -3097,7 +3128,7 @@ pub mod utils {
             Some(client_metadata),
         );
 
-        (verifier, did)
+        (verifier, did.clone())
     }
 
     pub async fn verifier_service() -> (TestVerifierService, String) {
@@ -3264,8 +3295,10 @@ pub mod utils {
             holder_key_handle.clone(),
             VPMetadata {
                 disclosures: disclosures.as_object().unwrap().to_owned(),
-                nonce: nonce.to_owned(),
-                verifier_id: verifier_id.to_string(),
+                holder_binder: Some(HolderBinder {
+                    nonce: nonce.to_owned(),
+                    verifier_id: verifier_id.to_string(),
+                }),
             },
             UniversalResolver::default(),
         )

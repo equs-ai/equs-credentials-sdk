@@ -5,7 +5,7 @@ use std::fmt::Debug;
 use crate::crypto;
 use crate::did::universal::UniversalResolver;
 use crate::http::HttpClient;
-use crate::nonce::Nonce;
+use crate::vc::core::HolderBinder;
 use async_trait::async_trait;
 use common_macros::DebugError;
 use snafu::{Location, Snafu};
@@ -224,8 +224,7 @@ where
 
     async fn verify_vp(
         presentation: &P,
-        nonce: &Nonce,
-        verifier_id: &str,
+        holder_binder: Option<HolderBinder>,
         opts: VerifyOptions,
         did_resolver: UniversalResolver,
     ) -> Result<VR>;

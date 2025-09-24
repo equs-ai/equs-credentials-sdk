@@ -7,17 +7,33 @@ import {
 } from "agent-sdk";
 
 export const AUTH_REQUEST_JWT =
-  "eyJhbGciOiJFUzI1NiIsImtpZCI6ImRpZDprZXk6ekRuYWVlVEc4OHdwUGhNenVEUnZMUlRUeU5NeUppcDVlNlRMbXNqeXZQaVNZVUZrNyN6RG5hZWVURzg4d3BQaE16dURSdkxSVFR5Tk15SmlwNWU2VExtc2p5dlBpU1lVRms3IiwidHlwIjoiYXBwbGljYXRpb24vb2F1dGgtYXV0aHotcmVxK2p3dCJ9.eyJyZXNwb25zZV90eXBlIjoidnBfdG9rZW4iLCJzdGF0ZSI6ImVlYTdiNDhlLTE4NjYtNDFiNC1iZWFlLTAzYjk1ZDQxNjcwYyIsInJlc3BvbnNlX21vZGUiOiJkaXJlY3RfcG9zdCIsIm5vbmNlIjoiWXp0QU5nbFJkbVA0Q2h4c3JjUzhVY0dZb1BXd2tnaVVJbWtCclFtZ1drVSIsImNsaWVudF9tZXRhZGF0YSI6eyJ2cF9mb3JtYXRzIjp7ImRjK3NkLWp3dCI6eyJhbGciOlsiRWREU0EiLCJFUzI1NiJdfX19LCJjbGllbnRfaWQiOiJkaWQ6a2V5OnpEbmFlZVRHODh3cFBoTXp1RFJ2TFJUVHlOTXlKaXA1ZTZUTG1zanl2UGlTWVVGazciLCJjbGllbnRfaWRfc2NoZW1lIjoiZGlkIiwicHJlc2VudGF0aW9uX2RlZmluaXRpb24iOnsiaWQiOiIxYjlkNmJjZC1iYmZkLTRiMmQtOWI1ZC1hYjhkZmJiZDRiZWQiLCJpbnB1dF9kZXNjcmlwdG9ycyI6W3siaWQiOiJJZGVudGl0eS0xIiwiY29uc3RyYWludHMiOnsiZmllbGRzIjpbeyJwYXRoIjpbIiQudmN0Il0sImZpbHRlciI6eyJ0eXBlIjoic3RyaW5nIiwiY29uc3QiOiJodHRwczovL2NyZWRlbnRpYWxzLmV4YW1wbGUuY29tL2lkZW50aXR5X2NyZWRlbnRpYWwifSwicHJlZGljYXRlIjpudWxsLCJpbnRlbnRfdG9fcmV0YWluIjpmYWxzZX0seyJwYXRoIjpbIiQubmFtZSJdLCJvcHRpb25hbCI6dHJ1ZSwicHJlZGljYXRlIjpudWxsLCJpbnRlbnRfdG9fcmV0YWluIjpmYWxzZX1dfSwibmFtZSI6IklkZW50aXR5IFZDIiwicHVycG9zZSI6IldlIHdhbnQgYW4gaWRlbnRpdHkiLCJmb3JtYXQiOnsiZGMrc2Qtand0Ijp7InNkLWp3dF9hbGdfdmFsdWVzIjpbIkVTMjU2IiwiRWREU0EiXSwia2Itand0X2FsZ192YWx1ZXMiOlsiRVMyNTYiLCJFZERTQSJdfX19XX0sInJlc3BvbnNlX3VyaSI6Imh0dHA6Ly9sb2NhbGhvc3Q6OTAwMS9yZXNwb25zZSJ9.dV0RXxaAJTjnAqGNuPUzMor93gsEkXpoqVRj9-J638lV7mkka4ixXZJ3VIQ0Iqhb7GvCIr0D-7_bWp_xnIYAVA";
-export const AUTH_REQUEST_JWT_WITH_TRANSACTION_DATA =
-  "eyJhbGciOiJFUzI1NiIsImtpZCI6ImRpZDprZXk6ekRuYWVYSGd3b1dpUkpNNkxWVlNndTdrTkpLc1MzTDRyc1ZoVEJQUlNTajllZzVWWiN6RG5hZVhIZ3dvV2lSSk02TFZWU2d1N2tOSktzUzNMNHJzVmhUQlBSU1NqOWVnNVZaIiwidHlwIjoiYXBwbGljYXRpb24vb2F1dGgtYXV0aHotcmVxK2p3dCJ9.eyJyZXNwb25zZV90eXBlIjoidnBfdG9rZW4gaWRfdG9rZW4iLCJzY29wZSI6Im9wZW5pZCIsImlkX3Rva2VuX3R5cGUiOiJzdWJqZWN0X3NpZ25lZF9pZF90b2tlbiIsInRyYW5zYWN0aW9uX2RhdGEiOlsiZXlKMGVYQmxJam9pZEhsd1pURWlMQ0pqY21Wa1pXNTBhV0ZzWDJsa2N5STZXeUpKWkdWdWRHbDBlUzB4SWwwc0luUnlZVzV6WVdOMGFXOXVYMlJoZEdGZmFHRnphR1Z6WDJGc1p5STZXeUp6YUdFdE1qVTJJbDE5Il0sInJlc3BvbnNlX21vZGUiOiJkaXJlY3RfcG9zdC5qd3QiLCJub25jZSI6IkNOZXhCWnFQcGxmRF9QV2pnWTZFT2ZpWGpJLWF1TWNCODA5SVZBUVpSUjQiLCJjbGllbnRfbWV0YWRhdGEiOnsidnBfZm9ybWF0cyI6eyJkYytzZC1qd3QiOnsiYWxnIjpbIkVkRFNBIiwiRVMyNTYiXX0sImxkcF92YyI6eyJwcm9vZl90eXBlIjpbIkVkMjU1MTlTaWduYXR1cmUyMDE4IiwiRWNkc2FTZWNwMjU2azFTaWduYXR1cmUyMDE5Il19fSwic3ViamVjdF9zeW50YXhfdHlwZXNfc3VwcG9ydGVkIjpbImRpZDprZXkiXSwiandrcyI6eyJrZXlzIjpbeyJ1c2UiOiJlbmMiLCJhbGciOiJFUzI1NiIsImtpZCI6ImtEQlhjOU5Ubnk6UDI1NjoiLCJrdHkiOiJFQyIsImNydiI6IlAtMjU2IiwieCI6ImVvWDdheXliZkZtSldpcjNoNzJYVi1LVy1BRk9oY3gyUjlfUVA2UjBCZEkiLCJ5IjoiSUtDSUo3MGoyQjEzNGU4aEZYM0ZhMGQxeWllQTNXMmZHck9JNmlpbHpFbyJ9XX0sImVuY3J5cHRlZF9yZXNwb25zZV9lbmNfdmFsdWVzX3N1cHBvcnRlZCI6WyJBMjU2R0NNIl0sImF1dGhvcml6YXRpb25fZW5jcnlwdGVkX3Jlc3BvbnNlX2FsZyI6IkVDREgtRVMiLCJhdXRob3JpemF0aW9uX2VuY3J5cHRlZF9yZXNwb25zZV9lbmMiOiJBMjU2R0NNIn0sImNsaWVudF9pZCI6ImRpZDprZXk6ekRuYWVYSGd3b1dpUkpNNkxWVlNndTdrTkpLc1MzTDRyc1ZoVEJQUlNTajllZzVWWiIsInByZXNlbnRhdGlvbl9kZWZpbml0aW9uIjp7ImlkIjoiZjY0ZWRjOTktMmI3OS00NWNlLWFkMzYtNWUzNDZlYmZjNmVjIiwiaW5wdXRfZGVzY3JpcHRvcnMiOlt7ImlkIjoiSWRlbnRpdHktMSIsImNvbnN0cmFpbnRzIjp7ImZpZWxkcyI6W3sicGF0aCI6WyIkLnZjdCJdLCJmaWx0ZXIiOnsidHlwZSI6InN0cmluZyIsImNvbnN0IjoiaHR0cHM6Ly9jcmVkZW50aWFscy5leGFtcGxlLmNvbS9pZGVudGl0eV9jcmVkZW50aWFsXzEifSwicHJlZGljYXRlIjpudWxsLCJpbnRlbnRfdG9fcmV0YWluIjpmYWxzZX0seyJwYXRoIjpbIiQuZW1haWwud29yayJdLCJwcmVkaWNhdGUiOm51bGwsImludGVudF90b19yZXRhaW4iOmZhbHNlfSx7InBhdGgiOlsiJC51c2VybmFtZSJdLCJvcHRpb25hbCI6dHJ1ZSwicHJlZGljYXRlIjpudWxsLCJpbnRlbnRfdG9fcmV0YWluIjpmYWxzZX0seyJwYXRoIjpbIiQuY291bnRyeSJdLCJmaWx0ZXIiOnsidHlwZSI6InN0cmluZyIsImNvbnN0IjoiVVMifSwicHJlZGljYXRlIjpudWxsLCJpbnRlbnRfdG9fcmV0YWluIjpmYWxzZX0seyJwYXRoIjpbIiQuYWdlX292ZXJfMTgiXSwiZmlsdGVyIjp7InR5cGUiOiJib29sZWFuIiwiY29uc3QiOnRydWV9LCJwcmVkaWNhdGUiOm51bGwsImludGVudF90b19yZXRhaW4iOmZhbHNlfV19LCJuYW1lIjoiSWRlbnRpdHkgVkMiLCJwdXJwb3NlIjoiV2Ugd2FudCBhbiBpZGVudGl0eSIsImZvcm1hdCI6eyJkYytzZC1qd3QiOnsic2Qtand0X2FsZ192YWx1ZXMiOlsiRVMyNTYiLCJFZERTQSJdLCJrYi1qd3RfYWxnX3ZhbHVlcyI6WyJFUzI1NiIsIkVkRFNBIl19fX0seyJpZCI6InJlc2lkZW50LWNhcmQiLCJjb25zdHJhaW50cyI6eyJmaWVsZHMiOlt7InBhdGgiOlsiJC50eXBlIl0sImZpbHRlciI6eyJ0eXBlIjoiYXJyYXkiLCJjb250YWlucyI6eyJjb25zdCI6IlBlcm1hbmVudFJlc2lkZW50Q2FyZCJ9fSwicHJlZGljYXRlIjpudWxsLCJpbnRlbnRfdG9fcmV0YWluIjpmYWxzZX1dfSwibmFtZSI6IklkZW50aXR5IFZDIiwicHVycG9zZSI6IldlIHdhbnQgYSByZXNpZGVudCBjYXJkIiwiZm9ybWF0Ijp7ImxkcF92YyI6eyJwcm9vZl90eXBlIjpbIkVkMjU1MTlTaWduYXR1cmUyMDE4IiwiRWNkc2FTZWNwMjU2azFTaWduYXR1cmUyMDE5Il19fX0seyJpZCI6ImFsdW1uaS1jYXJkIiwiY29uc3RyYWludHMiOnsiZmllbGRzIjpbeyJwYXRoIjpbIiQudHlwZSJdLCJmaWx0ZXIiOnsidHlwZSI6ImFycmF5IiwiY29udGFpbnMiOnsiY29uc3QiOiJBbHVtbmlDcmVkZW50aWFsIn19LCJwcmVkaWNhdGUiOm51bGwsImludGVudF90b19yZXRhaW4iOmZhbHNlfV19LCJuYW1lIjoiVW5pdmVyc2l0eSBWQyIsInB1cnBvc2UiOiJXZSB3YW50IGEgZGlwbG9tYSIsImZvcm1hdCI6eyJsZHBfdmMiOnsicHJvb2ZfdHlwZSI6WyJFY2RzYVJkZmMyMDE5IiwiRWREc2FSZGZjMjAyMiJdfX19XSwibmFtZSI6IkV4YW1wbGUgd2l0aCBzZWxlY3RpdmUgZGlzY2xvc3VyZSJ9LCJyZXNwb25zZV91cmkiOiJodHRwOi8vbG9jYWxob3N0OjgwOTgvcHJlc2VudCJ9.Zce8XVbP9Zf1tYIXupYDHiL50a7udE0U734Nwu4iTCjZL-Wz5ZMWIj6jIJS4plfDC2VlsoiIpa1hMHzWWKNU9A";
-export const STATE = "eea7b48e-1866-41b4-beae-03b95d41670c";
-export const CLIENT_ID_AS_URL_SAFE = "did%3Akey%3AzDnaeXHgwoWiRJM6LVVSgu7kNJKsS3L4rsVhTBPRSSj9eg5VZ";
+  "eyJhbGciOiJFUzI1NiIsImtpZCI6ImRpZDprZXk6ekRuYWVyMWQzSHBkZzZSSDdLUmhXWFJ0enBpakVtOEd0YVZRbjdCdFN3N0RpVzcyRSN6RG5hZXIxZDNIcGRnNlJIN0tSaFdYUnR6cGlqRW04R3RhVlFuN0J0U3c3RGlXNzJFIiwidHlwIjoiYXBwbGljYXRpb24vb2F1dGgtYXV0aHotcmVxK2p3dCJ9.eyJyZXNwb25zZV90eXBlIjoidnBfdG9rZW4iLCJzdGF0ZSI6IjFkOGIwZDkzLTg2ZTgtNDEzNS04N2Q0LTUyNGJiMDUwMGJmMyIsInRyYW5zYWN0aW9uX2RhdGEiOlsiZXlKMGVYQmxJam9pYzI5dFpWOTBlWEJsSWl3aVkzSmxaR1Z1ZEdsaGJGOXBaSE1pT2xzaVNXUmxiblJwZEhrdE1TSmRMQ0owY21GdWMyRmpkR2x2Ymw5a1lYUmhYMmhoYzJobGMxOWhiR2NpT2xzaWMyaGhMVEkxTmlJc0luTm9ZUzAxTVRJaVhYMCJdLCJyZXNwb25zZV9tb2RlIjoiZGlyZWN0X3Bvc3QiLCJub25jZSI6IkVBOXp6VV9rUWZnR1VGMk1pd3JZdUZnTWdQcFhVRnpxc1B4cy16RWRvREkiLCJjbGllbnRfbWV0YWRhdGEiOnsidnBfZm9ybWF0c19zdXBwb3J0ZWQiOnsiZGMrc2Qtand0Ijp7InNkLWp3dF9hbGdfdmFsdWVzIjpbIkVkRFNBIiwiRVMyNTYiXSwia2Itand0X2FsZ192YWx1ZXMiOlsiRWREU0EiLCJFUzI1NiJdfX0sImp3a3MiOnsia2V5cyI6W3sidXNlIjoiZW5jIiwiYWxnIjoiRVMyNTYiLCJraWQiOiIxQ0tUN1NtaG9oOlAyNTY6Iiwia3R5IjoiRUMiLCJjcnYiOiJQLTI1NiIsIngiOiJZUE5aOEc1ZDRTTzhuR1g1QWZIOEgxeW9nODFBZ181czd5emZkNVN2MUt3IiwieSI6Ijg0T0dGWEdxTUF0cVpBUTlDNkJUN0VWMDJiVUFtNk9IbDVkN1kzMGdPazAifV19LCJlbmNyeXB0ZWRfcmVzcG9uc2VfZW5jX3ZhbHVlc19zdXBwb3J0ZWQiOlsiQTEyOEdDTSIsIkExMjhDQkMtSFMyNTYiXSwic3ViamVjdF9zeW50YXhfdHlwZXNfc3VwcG9ydGVkIjpbImRpZDprZXkiXX0sImNsaWVudF9pZCI6ImRlY2VudHJhbGl6ZWRfaWRlbnRpZmllcjpkaWQ6a2V5OnpEbmFlcjFkM0hwZGc2Ukg3S1JoV1hSdHpwaWpFbThHdGFWUW43QnRTdzdEaVc3MkUiLCJwcmVzZW50YXRpb25fZGVmaW5pdGlvbiI6eyJpZCI6ImY2NGVkYzk5LTJiNzktNDVjZS1hZDM2LTVlMzQ2ZWJmYzZlYyIsImlucHV0X2Rlc2NyaXB0b3JzIjpbeyJpZCI6IklkZW50aXR5LTEiLCJjb25zdHJhaW50cyI6eyJmaWVsZHMiOlt7InBhdGgiOlsiJC52Y3QiXSwiZmlsdGVyIjp7InR5cGUiOiJzdHJpbmciLCJjb25zdCI6Imh0dHBzOi8vY3JlZGVudGlhbHMuZXhhbXBsZS5jb20vaWRlbnRpdHlfY3JlZGVudGlhbCJ9LCJwcmVkaWNhdGUiOm51bGwsImludGVudF90b19yZXRhaW4iOmZhbHNlfSx7InBhdGgiOlsiJC5uYW1lIl0sIm9wdGlvbmFsIjp0cnVlLCJwcmVkaWNhdGUiOm51bGwsImludGVudF90b19yZXRhaW4iOmZhbHNlfV19LCJuYW1lIjoiSWRlbnRpdHkgVkMiLCJwdXJwb3NlIjoiV2Ugd2FudCBhbiBpZGVudGl0eSIsImZvcm1hdCI6eyJkYytzZC1qd3QiOnsic2Qtand0X2FsZ192YWx1ZXMiOlsiRVMyNTYiLCJFZERTQSJdLCJrYi1qd3RfYWxnX3ZhbHVlcyI6WyJFUzI1NiIsIkVkRFNBIl19fX1dLCJuYW1lIjoiRXhhbXBsZSB3aXRoIHNlbGVjdGl2ZSBkaXNjbG9zdXJlIn0sInJlc3BvbnNlX3VyaSI6Imh0dHA6Ly9sb2NhbGhvc3Q6OTAwMS9yZXNwb25zZSJ9.DPsKN_vh20a9rLFeRzLvEFim-TqRGH0G9GAAd9ezV7yWUsZcBjOyVp6nk0pTPTN4uD-jWp2xsKv1fmwU3ke1QA";
+export const STATE = "1d8b0d93-86e8-4135-87d4-524bb0500bf3";
 
 export const PRESENTATION_DEFINITION: PresentationDefinition = {
-  id: "1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed",
+  id: "f64edc99-2b79-45ce-ad36-5e346ebfc6ec",
   input_descriptors: [
     {
       id: "Identity-1",
+      constraints: {
+        fields: [
+          {
+            path: ["$.vct"],
+            filter: {
+              type: "string",
+              const: "https://credentials.example.com/identity_credential",
+            },
+            predicate: null,
+            intent_to_retain: false,
+          },
+          {
+            path: ["$.name"],
+            optional: true,
+            predicate: null,
+            intent_to_retain: false,
+          },
+        ],
+      },
       name: "Identity VC",
       purpose: "We want an identity",
       format: {
@@ -26,27 +42,9 @@ export const PRESENTATION_DEFINITION: PresentationDefinition = {
           "kb-jwt_alg_values": ["ES256", "EdDSA"],
         },
       },
-      constraints: {
-        fields: [
-          {
-            path: ["$.vct"],
-            predicate: null,
-            filter: {
-              type: "string",
-              const: "https://credentials.example.com/identity_credential",
-            },
-            intent_to_retain: false,
-          },
-          {
-            path: ["$.name"],
-            intent_to_retain: false,
-            predicate: null,
-            optional: true,
-          },
-        ],
-      },
     },
   ],
+  name: "Example with selective disclosure",
 };
 export const PRESENTATION_DEFINITION_FAKE: PresentationDefinition = {
   id: "1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed",
@@ -85,31 +83,43 @@ export const PRESENTATION_DEFINITION_FAKE: PresentationDefinition = {
 };
 
 export const AUTH_REQUEST: CommonAuthorizationRequest = {
-  client_id: "did:key:zDnaeeTG88wpPhMzuDRvLRTTyNMyJip5e6TLmsjyvPiSYUFk7",
+  client_id: "decentralized_identifier:did:key:zDnaer1d3Hpdg6RH7KRhWXRtzpijEm8GtaVQn7BtSw7DiW72E",
   client_metadata: {
-    vp_formats: {
+    vp_formats_supported: {
       "dc+sd-jwt": {
-        alg: ["EdDSA", "ES256"],
+        "sd-jwt_alg_values": ["EdDSA", "ES256"],
+        "kb-jwt_alg_values": ["EdDSA", "ES256"],
       },
     },
+    jwks: {
+      keys: [
+        {
+          use: "enc",
+          alg: "ES256",
+          kid: "1CKT7Smhoh:P256:",
+          kty: "EC",
+          crv: "P-256",
+          x: "YPNZ8G5d4SO8nGX5AfH8H1yog81Ag_5s7yzfd5Sv1Kw",
+          y: "84OGFXGqMAtqZAQ9C6BT7EV02bUAm6OHl5d7Y30gOk0",
+        },
+      ],
+    },
+    encrypted_response_enc_values_supported: ["A128GCM", "A128CBC-HS256"],
+    subject_syntax_types_supported: ["did:key"],
   },
-  presentation_definition: PRESENTATION_DEFINITION,
   response_uri: "http://localhost:9001/response",
   response_mode: "direct_post",
   response_type: "vp_token",
-  nonce: "YztANglRdmP4ChxsrcS8UcGYoPWwkgiUImkBrQmgWkU",
+  nonce: "EA9zzU_kQfgGUF2MiwrYuFgMgPpXUFzqsPxs-zEdoDI",
   state: STATE,
-};
-
-export const AUTH_REQUEST_WITH_TRANSACTION_DATA: CommonAuthorizationRequest = {
+  presentation_definition: PRESENTATION_DEFINITION,
   transaction_data: [
     {
-      type: "type1",
-      credential_ids: ["Fake-identity"],
-      transaction_data_hashes_alg: ["sha-256"],
+      type: "some_type",
+      credential_ids: ["Identity-1"],
+      transaction_data_hashes_alg: ["sha-256", "sha-512"],
     },
   ],
-  ...AUTH_REQUEST,
 };
 
 export const AUTH_REQUEST_WITH_DIRECT_POST_JWT: CommonAuthorizationRequest = {
@@ -139,7 +149,7 @@ export const AUTH_REQUEST_FAKE: CommonAuthorizationRequest = {
 
 export const PRESENTATION_SUBMISSION: PresentationSubmission = {
   id: "e18f2155-1235-43e9-8f0c-1f18cf72911a",
-  definition_id: "1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed",
+  definition_id: "f64edc99-2b79-45ce-ad36-5e346ebfc6ec",
   descriptor_map: [{ id: "Identity-1", format: CredentialFormats.VCSDJWT, path: "$", path_nested: null }],
 };
 

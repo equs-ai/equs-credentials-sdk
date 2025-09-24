@@ -9,7 +9,7 @@ is [here](https://openid.net/certification/conformance-testing-for-openid-for-ve
 
 - Test Plan -> OpenID for Verifiable Presentations ID3(plus draft 24): Test a wallet (...)
 - Credential Format -> sd_jwt_vc
-- Client Id Scheme -> redirect_uri
+- Client Id Prefix -> redirect_uri
 - Request Method -> request_uri_unsigned (only unsigned for redirect_uri)
 - Response Mode -> direct_post
 
@@ -22,7 +22,7 @@ That is only interaction in this test.
 
 - Test Plan -> OpenID for Verifiable Presentations ID3(plus draft 24): Test a wallet (...)
 - Credential Format -> sd_jwt_vc
-- Client Id Scheme -> did
+- Client Id Prefix -> did
 - Request Method -> request_uri_signed (only signed for did)
 - Response Mode -> direct_post
 - Client_id -> It should be a proper did key and the same as jwks key 'kid'.
