@@ -99,34 +99,33 @@ pub fn sample_dcql_query_ldp_vc() -> DCQL {
     let desc: DCQLCredential = serde_json::from_value(json!(
                   {
                       "id": "residentCard",
-                  "format": "ldp_vc",
-                  // "claims": [
-                  //   {"path": ["type"]},
-                  // ]
+                      "format": "ldp_vc",
+                      "meta": {},
                   }
     ))
     .unwrap();
 
-    DCQL::new(vec![desc])
+    DCQL::new(vec![desc].try_into().unwrap())
 }
 
 pub fn sample_dcql_query_sdjwt() -> DCQL {
     let desc: DCQLCredential = serde_json::from_value(json!(
         {
-          "id": "identity",
-          "format": "dc+sd-jwt",
-          "claims": [
-            {
-              "path": [
-                "name"
-              ]
-            }
-          ]
+            "id": "identity",
+            "format": "dc+sd-jwt",
+            "meta": {},
+            "claims": [
+                {
+                    "path": [
+                        "name"
+                    ]
+                }
+            ]
         }
     ))
     .unwrap();
 
-    DCQL::new(vec![desc])
+    DCQL::new(vec![desc].try_into().unwrap())
 }
 
 fn sample_sdjwt_identity_credential() -> (Oid4VpTestCredential, InputDescriptor) {
@@ -359,14 +358,15 @@ pub fn sample_dcql_query_for_multiple_sdjwt() -> DCQL {
     let desc1: DCQLCredential = serde_json::from_value(json!(
                   {
                       "id": "identity",
-                  "format": "dc+sd-jwt",
-                  "claims": [
-                    {"path": ["name"]},
-                    {
-                        "path": ["vct"],
-                        "values": ["https://credentials.example.com/identity_credential"]
-                    },
-                  ]
+                      "format": "dc+sd-jwt",
+                      "meta": {},
+                      "claims": [
+                        {"path": ["name"]},
+                        {
+                            "path": ["vct"],
+                            "values": ["https://credentials.example.com/identity_credential"]
+                        },
+                      ]
                   }
     ))
     .unwrap();
@@ -374,6 +374,7 @@ pub fn sample_dcql_query_for_multiple_sdjwt() -> DCQL {
       {
           "id": "Degree1",
           "format": "dc+sd-jwt",
+          "meta": {},
           "claims": [
             {
               "path": [
@@ -393,7 +394,7 @@ pub fn sample_dcql_query_for_multiple_sdjwt() -> DCQL {
     ))
     .unwrap();
 
-    DCQL::new(vec![desc1, desc2])
+    DCQL::new(vec![desc1, desc2].try_into().unwrap())
 }
 
 #[derive(Default)]

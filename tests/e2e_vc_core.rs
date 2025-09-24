@@ -13,12 +13,12 @@ use agent_sdk::kms::Kms;
 use agent_sdk::nonce::NonceHandler;
 use agent_sdk::reqwest::builder::ReqwestClientBuilder;
 use agent_sdk::vc::VCStatusesData;
-use agent_sdk::vc::core::VerifierService;
 use agent_sdk::vc::core::status_issuer::StatusIssuerService;
 use agent_sdk::vc::core::{
     CredentialDefinition, CredentialDefinitionData, Holder, HolderMetadata, Issuer, IssuerMetadata,
     PopFormat, StatusIssuer, StatusIssuerMetadata, StatusListDefinition, Verifier,
 };
+use agent_sdk::vc::core::{HolderBinder, VerifierService};
 use agent_sdk::vc::core::{HolderService, KeyMetadata};
 use agent_sdk::vc::core::{IssuerService, ProofOfPossessionMetadata};
 use agent_sdk::vc::metadata::{CredentialMetadataProcessor, DefaultMetadataProcessor};
@@ -117,7 +117,13 @@ async fn sd_jwt_credential_issuance_and_presentation_verification() {
     let nonce = LocalNonceHandler::default().generate().await.unwrap();
 
     let vp_res = holder
-        .create_presentation_auto(&nonce, VERIFIER_ID, &input_descriptor.try_into().unwrap())
+        .create_presentation_auto(
+            Some(HolderBinder {
+                nonce: nonce.to_owned(),
+                verifier_id: VERIFIER_ID.to_string(),
+            }),
+            &input_descriptor.try_into().unwrap(),
+        )
         .await;
 
     let vp = vp_res.unwrap();
@@ -125,7 +131,10 @@ async fn sd_jwt_credential_issuance_and_presentation_verification() {
 
     let ver_res = verifier
         .verify_presentation(
-            &nonce,
+            Some(HolderBinder {
+                nonce,
+                verifier_id: VERIFIER_ID.to_string(),
+            }),
             &vp,
             &ReqwestClientBuilder::new().insecure().build().unwrap(),
         )
@@ -228,7 +237,13 @@ async fn bbs_plus_credential_issuance_and_presentation_verification() {
     let nonce = LocalNonceHandler::default().generate().await.unwrap();
 
     let vp_res = holder
-        .create_presentation_auto(&nonce, VERIFIER_ID, &input_descriptor.try_into().unwrap())
+        .create_presentation_auto(
+            Some(HolderBinder {
+                nonce: nonce.to_owned(),
+                verifier_id: VERIFIER_ID.to_string(),
+            }),
+            &input_descriptor.try_into().unwrap(),
+        )
         .await;
 
     let vp = vp_res.unwrap();
@@ -239,7 +254,10 @@ async fn bbs_plus_credential_issuance_and_presentation_verification() {
 
     let ver_res = verifier
         .verify_presentation(
-            &nonce,
+            Some(HolderBinder {
+                nonce,
+                verifier_id: VERIFIER_ID.to_string(),
+            }),
             &vp,
             &ReqwestClientBuilder::new().insecure().build().unwrap(),
         )
@@ -347,7 +365,13 @@ async fn credential_issuance_and_status_verification() {
     let nonce = LocalNonceHandler::default().generate().await.unwrap();
 
     let vp_res = holder
-        .create_presentation_auto(&nonce, VERIFIER_ID, &input_descriptor.try_into().unwrap())
+        .create_presentation_auto(
+            Some(HolderBinder {
+                nonce: nonce.to_owned(),
+                verifier_id: VERIFIER_ID.to_string(),
+            }),
+            &input_descriptor.try_into().unwrap(),
+        )
         .await;
 
     let vp = vp_res.unwrap();
@@ -355,7 +379,10 @@ async fn credential_issuance_and_status_verification() {
 
     let ver_res = verifier
         .verify_presentation(
-            &nonce,
+            Some(HolderBinder {
+                nonce,
+                verifier_id: VERIFIER_ID.to_string(),
+            }),
             &vp,
             &ReqwestClientBuilder::new().insecure().build().unwrap(),
         )

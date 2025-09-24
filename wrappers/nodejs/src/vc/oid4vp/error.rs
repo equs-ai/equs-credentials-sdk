@@ -45,7 +45,7 @@ impl From<InternalError> for EncodableError {
             InternalError::Claims { .. } => JsInternalError::Claims,
             InternalError::DidUrlResolution { .. } => JsInternalError::DidUrlResolution,
             InternalError::JWE { .. } => JsInternalError::JWE,
-            InternalError::ClientId { .. } => JsInternalError::ClientId,
+            InternalError::Client { .. } => JsInternalError::Client,
             InternalError::TransactionData { .. } => JsInternalError::TransactionData,
         };
         Self::new(code.to_string(), value.to_string())
@@ -80,7 +80,7 @@ pub enum JsInternalError {
     Claims,
     DidUrlResolution,
     JWE,
-    ClientId,
+    Client,
     TransactionData,
 }
 
@@ -104,8 +104,8 @@ impl From<ProtocolError> for EncodableError {
             ErrorType::InvalidRequestUriMethod => JsProtocolError::InvalidRequestUriMethod,
             ErrorType::WalletUnavailable => JsProtocolError::WalletUnavailable,
             ErrorType::InvalidDCQLFormat => JsProtocolError::InvalidDCQLFormat,
-            ErrorType::ClientIDSchemeNotGiven => JsProtocolError::ClientIDSchemeNotGiven,
-            ErrorType::WrongClientIdScheme => JsProtocolError::WrongClientIdScheme,
+            ErrorType::ClientIDPrefixNotGiven => JsProtocolError::ClientIDPrefixNotGiven,
+            ErrorType::WrongClientIdPrefix => JsProtocolError::WrongClientIdPrefix,
             ErrorType::InvalidTransactionData => JsProtocolError::InvalidTransactionData,
         };
         Self::new(code.to_string(), value.to_string())
@@ -126,7 +126,7 @@ pub enum JsProtocolError {
     InvalidRequestUriMethod,
     WalletUnavailable,
     InvalidDCQLFormat,
-    ClientIDSchemeNotGiven,
-    WrongClientIdScheme,
+    ClientIDPrefixNotGiven,
+    WrongClientIdPrefix,
     InvalidTransactionData,
 }

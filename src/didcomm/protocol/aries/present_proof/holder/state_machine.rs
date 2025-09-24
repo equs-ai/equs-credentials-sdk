@@ -103,11 +103,7 @@ where
                         .context(PresentationDefinitionParseSnafu)?;
                     let vp = self
                         .holder_service
-                        .create_presentation_auto(
-                            &Default::default(),
-                            Default::default(),
-                            &presentation_input[0],
-                        )
+                        .create_presentation_auto(None, &presentation_input[0])
                         .await
                         .context(CreatePresentationSnafu)?;
 

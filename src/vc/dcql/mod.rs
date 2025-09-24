@@ -16,9 +16,12 @@ use snafu::{Location, ResultExt, Snafu};
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::str::FromStr;
+use std::vec;
 
 pub type DCQL = openid4vp::core::dcql::DCQL;
-pub type DCQLCredential = openid4vp::core::dcql::DcqlCredential;
+pub type DCQLCredential = DcqlCredential;
+
+pub type NonEmptyVec<T> = openid4vp::utils::NonEmptyVec<T>;
 
 #[derive(Snafu, DebugError)]
 #[snafu(visibility(pub(super)))]
@@ -37,76 +40,89 @@ pub enum Error {
 }
 pub type Result<T> = core::result::Result<T, Error>;
 
-pub fn split_to_inputs_for_dcql(dcql_credentials: &Vec<DcqlCredential>) -> Vec<PresentationInput> {
-    let mut inputs: Vec<PresentationInput> = vec![];
-
-    for credential in dcql_credentials {
-        inputs.push(PresentationInput {
-            id: credential.id().as_str().to_string(),
-            format: Some(credential.format().to_string()),
-            restrictions: get_restrictions_for_dcql_credential(credential),
-        });
-    }
-
-    inputs
+pub fn split_to_inputs_for_dcql(dcql_credentials: &[DcqlCredential]) -> Vec<PresentationInput> {
+    dcql_credentials
+        .iter()
+        .map(|dc| PresentationInput {
+            id: dc.id().as_str().to_string(),
+            format: Some(dc.format().to_string()),
+            restrictions: get_restrictions_for_dcql_credential(dc),
+        })
+        .collect()
 }
 
 fn get_restrictions_for_dcql_credential(
     credential: &DCQLCredential,
 ) -> Vec<PresentationRestriction> {
-    let mut restrictions: Vec<PresentationRestriction> = vec![];
-
-    if let Some(claims) = credential.claims().as_mut() {
-        claims.iter().for_each(|claim| {
-            let fields = if let Some(path) = claim.path() {
-                vec![json::json_path_as_string(path)]
-            } else {
-                vec![]
-            };
-            let value = match claim.values() {
-                None => None,
-                Some(values) => get_restriction_value_from_dcql_claim_values(values),
-            };
-            let presentation_restriction = PresentationRestriction {
-                fields,
-                value,
-                optional: true,
-            };
-            restrictions.push(presentation_restriction);
-        })
-    }
+    let mut restrictions = credential.claims().map_or(vec![], |claims| {
+        claims
+            .iter()
+            .map(|claim| {
+                let fields = vec![json::json_path_as_string(&claim.path().to_vec())];
+                let value = claim
+                    .values()
+                    .and_then(|v| get_restriction_value_from_dcql_claim_values(v));
+                PresentationRestriction {
+                    fields,
+                    value,
+                    optional: true,
+                }
+            })
+            .collect()
+    });
     let type_restriction = get_restriction_for_type(credential);
-    if let Some(restriction) = type_restriction {
-        restrictions.push(restriction);
+    if let Some(type_restriction) = type_restriction {
+        restrictions.push(type_restriction);
     }
     restrictions
 }
 
 fn get_restriction_for_type(credential: &DCQLCredential) -> Option<PresentationRestriction> {
     match credential.format() {
-        ClaimFormatDesignation::SdJwtVc => credential
-            .meta()
-            .and_then(|meta| meta.get_vct_values())
-            .map(|vct_values| {
-                let values = vct_values
-                    .iter()
-                    .map(|val| ValueType::String(val.to_string()))
-                    .collect::<Vec<_>>();
-                let fields = vec![json::json_path_as_string(&vec![PathValue::String(
-                    "vct".to_string(),
-                )])];
+        ClaimFormatDesignation::SdJwtVc => credential.meta().vct_values().map(|vct_values| {
+            let values = vct_values
+                .iter()
+                .map(|val| ValueType::String(val.to_string()))
+                .collect::<Vec<_>>();
+            let fields = vec![json::json_path_as_string(&vec![PathValue::String(
+                "vct".to_string(),
+            )])];
 
-                PresentationRestriction {
-                    fields,
-                    value: get_restriction_value_from_dcql_claim_values(&values),
-                    optional: true,
-                }
-            }),
-        //TODO in draft 22 only SdJwtVc is supported. LDPVC is to be supported in later drafts
+            PresentationRestriction {
+                fields,
+                value: get_restriction_value_from_dcql_claim_values(&values),
+                optional: false,
+            }
+        }),
+        ClaimFormatDesignation::LdpVc => credential.meta().type_values().map(|type_values| {
+            let values = type_values
+                .iter()
+                .map(|vals| {
+                    vals.iter()
+                        .map(|v| {
+                            let parts = v.splitn(2, '#').collect::<Vec<_>>();
+                            if parts.len() < 2 {
+                                v.to_string()
+                            } else {
+                                parts[1].to_string()
+                            }
+                        })
+                        .collect::<Vec<_>>()
+                })
+                .collect::<Vec<_>>();
+
+            let fields = vec![json::json_path_as_string(&vec![PathValue::String(
+                "type".to_string(),
+            )])];
+            PresentationRestriction {
+                fields,
+                value: Some(PresentationRestrictionValue::ArrayOfValues(values)),
+                optional: true,
+            }
+        }),
         _ => None,
     }
 }
-
 fn get_restriction_value_from_dcql_claim_values(
     values: &[ValueType],
 ) -> Option<PresentationRestrictionValue> {
@@ -140,7 +156,14 @@ pub fn filter_claims_using_claim_sets(
     let Some(claims) = dcql_credential.claims() else {
         return credential_entries;
     };
-    let claim_set_with_path = get_claim_set_with_path_instead_of_id(claims, claim_sets);
+    let claim_set_with_path = get_claim_set_with_path_instead_of_id(
+        claims,
+        claim_sets
+            .iter()
+            .map(|v| v.to_vec())
+            .collect::<Vec<_>>()
+            .as_slice(),
+    );
     let mut result: Vec<CredentialEntry> = Vec::new();
     for credential_entry in credential_entries.clone() {
         for set in claim_set_with_path.clone() {
@@ -161,10 +184,7 @@ fn get_claim_set_with_path_instead_of_id(
     claims.iter().for_each(|c| {
         if let Some(id) = c.id() {
             let id = id.as_str();
-            let path = match c.path() {
-                Some(path) => json::json_path_as_string(path),
-                _ => "".to_string(),
-            };
+            let path = json::json_path_as_string(&c.path().to_vec());
             claim_id_to_path_map.insert(id.to_string(), path);
         }
     });
@@ -271,7 +291,7 @@ pub(crate) fn prepare_vp_token_response_for_dcql(
 }
 
 pub(crate) fn resolve_presentation_response(
-    presentations: serde_json::Value,
+    presentations: Value,
     dcql: &DCQL,
 ) -> Result<Vec<RequestedPresentation>> {
     let mut result: Vec<RequestedPresentation> = vec![];
@@ -348,6 +368,8 @@ pub(crate) fn resolve_presentation_response(
         result.push(RequestedPresentation {
             id: credential_query.id().as_str().to_owned(),
             presentation,
+            require_cryptographic_holder_binding: credential_query
+                .require_cryptographic_holder_binding(),
         })
     }
     Ok(result)
@@ -408,7 +430,7 @@ pub fn validate_credential_for_dcql(
         let Some(values) = dcql_claim.values() else {
             continue;
         };
-        let field = json::json_path_as_string(dcql_claim.path().unwrap_or(&vec![]));
+        let field = json::json_path_as_string(&dcql_claim.path().to_vec());
         let Ok(json_path_field) = jsonpath_rust::JsonPath::from_str(field.as_str()) else {
             continue;
         };
@@ -490,18 +512,19 @@ mod tests {
         let cred_entries = get_credential_entries().await;
         let dcql_credential: DCQLCredential = serde_json::from_value(json!(
                 {
-                  "id": "pid2",
-                  "format": "dc+sd-jwt",
-                  "claims": [
-                    {"id": "b", "path": ["postal_code"], "values": ["90210", "90211"]},
-                    {"id": "d", "path": ["region", 0, "street"]},
-                    {"id": "e", "path": ["date_of_birth", null, "day"]}
-                  ],
-                  "claim_sets": [
-                    ["b", "d"],
-                    ["d", "e"],
-                    ["e", "b"],
-                  ]
+                    "id": "pid2",
+                    "format": "dc+sd-jwt",
+                    "meta": {},
+                    "claims": [
+                        {"id": "b", "path": ["postal_code"], "values": ["90210", "90211"]},
+                        {"id": "d", "path": ["region", 0, "street"]},
+                        {"id": "e", "path": ["date_of_birth", null, "day"]}
+                    ],
+                    "claim_sets": [
+                        ["b", "d"],
+                        ["d", "e"],
+                        ["e", "b"],
+                    ]
                 }
         ))
         .unwrap();
@@ -518,13 +541,14 @@ mod tests {
 
         let dcql_credential_without_claim_sets: DCQLCredential = serde_json::from_value(json!(
                 {
-                  "id": "pid2",
-                  "format": "dc+sd-jwt",
-                  "claims": [
-                    {"id": "b", "path": ["postal_code"], "values": ["90210", "90211"]},
-                    {"id": "d", "path": ["region", 0, "street"]},
-                    {"id": "e", "path": ["date_of_birth", null, "day"]}
-                  ]
+                    "id": "pid2",
+                    "format": "dc+sd-jwt",
+                    "meta": {},
+                    "claims": [
+                        {"id": "b", "path": ["postal_code"], "values": ["90210", "90211"]},
+                        {"id": "d", "path": ["region", 0, "street"]},
+                        {"id": "e", "path": ["date_of_birth", null, "day"]}
+                    ]
                 }
         ))
         .unwrap();
@@ -536,8 +560,9 @@ mod tests {
 
         let dcql_credential_without_claims: DCQLCredential = serde_json::from_value(json!(
                 {
-                  "id": "pid2",
-                  "format": "dc+sd-jwt"
+                    "id": "pid2",
+                    "format": "dc+sd-jwt",
+                    "meta": {}
                 }
         ))
         .unwrap();
@@ -554,26 +579,32 @@ mod tests {
                     {
                         "id": "1",
                         "format": "dc+sd-jwt",
+                        "meta": {}
                     },
                     {
                         "id": "2",
                         "format": "dc+sd-jwt",
+                        "meta": {}
                     },
                     {
                         "id": "3",
                         "format": "dc+sd-jwt",
+                        "meta": {}
                     },
                     {
                         "id": "4",
                         "format": "dc+sd-jwt",
+                        "meta": {}
                     },
                     {
                         "id": "5",
                         "format": "dc+sd-jwt",
+                        "meta": {}
                     },
                     {
                         "id": "6",
                         "format": "dc+sd-jwt",
+                        "meta": {}
                     },
             ]
         ))
@@ -600,9 +631,9 @@ mod tests {
         ))
         .unwrap();
 
-        let mut dcql = DCQL::new(credentials.clone());
+        let mut dcql = DCQL::new(credentials.clone().try_into().unwrap());
         for set in credential_sets {
-            dcql = dcql.add_credential_sets(set.clone());
+            dcql = dcql.add_credential_set(set.clone());
         }
 
         let result = filter_creds_with_cred_sets(map.clone(), dcql).unwrap();
@@ -621,9 +652,9 @@ mod tests {
                 ]
         ))
         .unwrap();
-        let mut dcql = DCQL::new(credentials);
+        let mut dcql = DCQL::new(credentials.try_into().unwrap());
         for set in credential_sets_required {
-            dcql = dcql.add_credential_sets(set.clone());
+            dcql = dcql.add_credential_set(set.clone());
         }
         let result = filter_creds_with_cred_sets(map, dcql);
         assert!(result.is_err());
@@ -642,10 +673,11 @@ mod tests {
             {
                 "id": "id",
                 "format": format_str,
+                "meta": {}
             }
         ))
         .unwrap();
-        let dcql = DCQL::new(vec![credential]);
+        let dcql = DCQL::new(vec![credential].try_into().unwrap());
         let actual = resolve_presentation_response(presentation.clone(), &dcql).unwrap();
         assert_eq!(
             serde_json::to_value(&actual[0].presentation).unwrap(),
@@ -662,10 +694,11 @@ mod tests {
             {
                 "id": "not_correct_id",
                 "format": format_str,
+                "meta": {}
             }
         ))
         .unwrap();
-        let dcql = DCQL::new(vec![credential]);
+        let dcql = DCQL::new(vec![credential].try_into().unwrap());
         let actual = resolve_presentation_response(presentation.clone(), &dcql).unwrap();
     }
 
@@ -678,10 +711,13 @@ mod tests {
             {
                 "id": "not_correct_id",
                 "format": wrong_format_str,
+                "meta": {
+                    "vct_values": ["some_vct".to_string()]
+                }
             }
         ))
         .unwrap();
-        let dcql = DCQL::new(vec![credential]);
+        let dcql = DCQL::new(vec![credential].try_into().unwrap());
         let actual = resolve_presentation_response(presentation.clone(), &dcql).unwrap();
     }
 
@@ -728,6 +764,9 @@ mod tests {
                       {
                           "id": "pid",
                           "format": "dc+sd-jwt",
+                          "meta": {
+                            "vct_values": ["vct1", "vct2"],
+                          },
                           "claims": [
                           {"path": ["username"]},
                           {"path": ["birthDate"]},
@@ -755,6 +794,13 @@ mod tests {
                     value: None,
                     optional: true,
                 },
+                PresentationRestriction {
+                    fields: vec!["$.vct".to_string()],
+                    value: Some(PresentationRestrictionValue::Pattern(
+                        "^(vct1|vct2)$".to_string(),
+                    )),
+                    optional: false,
+                },
             ],
         };
         (vec![credential], vec![pres_input])
@@ -776,21 +822,23 @@ mod tests {
                   ]
                 },
                 {
-                  "id": "pid2",
-                  "format": "dc+sd-jwt",
-                  "claims": [
-                    {"id": "b", "path": ["postal_code"], "values": ["90210", "90211"]},
-                    {"id": "d", "path": ["region", 0, "street"]},
-                    {"id": "e", "path": ["date_of_birth", null, "day"]}
-                  ],
-                  "claim_sets": [
-                    ["a", "c", "d", "e"],
-                    ["a", "b", "e"]
-                  ]
+                    "id": "pid2",
+                    "format": "dc+sd-jwt",
+                    "meta": {},
+                    "claims": [
+                        {"id": "b", "path": ["postal_code"], "values": ["90210", "90211"]},
+                        {"id": "d", "path": ["region", 0, "street"]},
+                        {"id": "e", "path": ["date_of_birth", null, "day"]}
+                    ],
+                    "claim_sets": [
+                        ["a", "c", "d", "e"],
+                        ["a", "b", "e"]
+                    ]
                 },
                 {
                     "id": "pid3",
                     "format": "dc+sd-jwt",
+                    "meta": {}
                 }
             ]
         ))
@@ -820,7 +868,7 @@ mod tests {
                     value: Some(PresentationRestrictionValue::Const(
                         "https://credentials.example.com/identity_credential".to_string(),
                     )),
-                    optional: true,
+                    optional: false,
                 },
             ],
         };

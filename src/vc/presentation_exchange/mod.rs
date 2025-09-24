@@ -258,6 +258,7 @@ pub(crate) fn resolve_presentation_response(
         result.push(RequestedPresentation {
             id: input_descriptor.id.to_owned(),
             presentation,
+            require_cryptographic_holder_binding: None,
         })
     }
 
@@ -654,7 +655,6 @@ fn validate_restriction(
     claims: &Claims,
 ) -> crate::vault::Result<Option<FindVCsFailReason>> {
     let mut claims_values: Vec<Value> = vec![];
-
     for field in &presentation_restriction.fields {
         let json_path_field =
             jsonpath_rust::JsonPath::from_str(field).context(CannotCreateJSONPathSnafu)?;
@@ -682,15 +682,23 @@ fn validate_restriction(
     }
 
     if let Some(pr_value) = &presentation_restriction.value {
-        for claim in claims_values {
-            let is_valid = pr_value.validate_claim(claim.to_string()).map_err(|e| {
-                ClaimsValidationSnafu {
-                    details: e.to_string(),
-                }
-                .build()
-            })?;
-            if is_valid {
+        if let PresentationRestrictionValue::ArrayOfValues(array) = pr_value {
+            if pr_value.validate_claims_for_existence_as_sets(claims_values, array) {
                 return Ok(None);
+            }
+        } else {
+            for claim in claims_values {
+                let is_valid = pr_value
+                    .validate_claim_for_string_or_pattern(claim)
+                    .map_err(|e| {
+                        ClaimsValidationSnafu {
+                            details: e.to_string(),
+                        }
+                        .build()
+                    })?;
+                if is_valid {
+                    return Ok(None);
+                }
             }
         }
         Ok(Some(FindVCsFailReason::new(
@@ -1104,6 +1112,7 @@ mod tests {
         RequestedPresentation {
             id: id.to_string(),
             presentation: Presentation::SdJwtVp(presentation.to_string()),
+            require_cryptographic_holder_binding: None,
         }
     }
 

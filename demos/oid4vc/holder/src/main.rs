@@ -11,7 +11,7 @@ use agent_sdk::kms::Kms;
 use agent_sdk::reqwest::builder::ReqwestClientBuilder;
 use agent_sdk::vc::HasClaims;
 use agent_sdk::vc::core::{KeyMetadata, ProofOfPossessionMetadata, ProofOfPossessionNotBefore};
-use agent_sdk::vc::dcql::{DCQL, DCQLCredential};
+use agent_sdk::vc::dcql::{DCQL, DCQLCredential, NonEmptyVec};
 use agent_sdk::vc::metadata::{CredentialMetadataProcessor, DefaultMetadataProcessor};
 use agent_sdk::vc::oid4vci::{
     AuthzFlow, CredentialOfferParams, CredentialResponseResolved, CredentialResult,
@@ -20,10 +20,9 @@ use agent_sdk::vc::oid4vci::{
 use agent_sdk::vc::oid4vci::{CredentialOfferResolver, Holder as HolderVci};
 use agent_sdk::vc::oid4vp::{
     AuthResponseOptions, AuthorizationRequestMetadata, AuthorizationResponse,
-    AuthorizationResponseMetadata, AuthorizationResponseObject, ClientIdScheme,
-    CredentialVerificationMetadata, CredentialsFindResult, CredentialsMapping,
-    PassAuthRequestObject, ResolvedAuthRequest, ResolvedPresentationQuery, ResponseMode,
-    ResponseType,
+    AuthorizationResponseMetadata, AuthorizationResponseObject, CredentialVerificationMetadata,
+    CredentialsFindResult, CredentialsMapping, PassAuthRequestObject, ResolvedAuthRequest,
+    ResolvedPresentationQuery, ResponseMode, ResponseType,
 };
 use agent_sdk::vc::oid4vp::{CredentialMapping, Holder as HolderVp};
 use agent_sdk::vc::oid4vp::{IdTokenMetadata, Verifier};
@@ -225,8 +224,7 @@ async fn same_device_presentation_flow(holder: impl HolderVp, kms: LocalKms) {
         }
     };
     let redirect_uri = Url::parse("http://verifier.example.com/cb").unwrap();
-    let client_id = format!("{}:{}", ClientIdScheme::RedirectUri, redirect_uri.as_str());
-    let verifier = verifier(client_id.as_str()).await;
+    let verifier = verifier(redirect_uri.as_str()).await;
     println!("1.2 Verifier generates authorization request");
 
     let auth_response_options = AuthResponseOptions {
@@ -645,6 +643,7 @@ pub fn default_dcql_query() -> DCQL {
         {
             "id": "pid",
             "format": "dc+sd-jwt",
+            "meta": {},
             "claims": [
                 {
                     "id": "1",
@@ -668,7 +667,7 @@ pub fn default_dcql_query() -> DCQL {
     ))
     .unwrap();
 
-    DCQL::new(vec![desc])
+    DCQL::new(NonEmptyVec::new(desc))
 }
 
 const INPUT_DESCRIPTOR_FOR_CRED_DEF_1: &str = r#"{

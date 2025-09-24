@@ -72,6 +72,7 @@ pub type JsonPath = serde_json_path::JsonPath;
 pub(crate) struct RequestedPresentation {
     pub id: String,
     pub presentation: Presentation,
+    pub require_cryptographic_holder_binding: Option<bool>,
 }
 
 /// Verifiable Credential (`VC`)

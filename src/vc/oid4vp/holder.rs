@@ -4,7 +4,7 @@ use crate::kms::{KeyHandle, Kms};
 use crate::nonce::{Nonce, NonceHandler};
 use crate::utils::http::MimeType;
 use crate::vault::CredentialEntry;
-use crate::vc::core::PresentationInput;
+use crate::vc::core::{HolderBinder, PresentationInput};
 use crate::vc::dcql::DCQL;
 use crate::vc::oid4vp::Error::{Internal, Protocol};
 use crate::vc::oid4vp::api::TransactionDataItem;
@@ -289,7 +289,7 @@ where
             .build()
         })?;
         let params = IdTokenParams {
-            audience: auth_request.client_id.to_owned(),
+            audience: auth_request.client_id.get_id(),
             nonce: auth_request.nonce.secret().to_owned().into(),
             lifetime: metadata.lifetime,
             other: None,
@@ -310,22 +310,18 @@ where
         &self,
         credential: &CredentialEntry,
         presentation_input: &PresentationInput,
-        auth_request: &ResolvedAuthRequest,
+        holder_binder: Option<HolderBinder>,
     ) -> Result<RequestedPresentation> {
         let presentation = self
             .holder
-            .create_presentation(
-                &auth_request.nonce,
-                auth_request.client_id.as_str(),
-                presentation_input,
-                credential,
-            )
+            .create_presentation(holder_binder.to_owned(), presentation_input, credential)
             .await
             .context(VCSnafu)?;
 
         Ok(RequestedPresentation {
             id: presentation_input.id.to_owned(),
             presentation,
+            require_cryptographic_holder_binding: Some(holder_binder.is_some()),
         })
     }
 
@@ -414,10 +410,47 @@ where
                 )
                 .await?;
 
-            return Err(Error::Protocol { source });
+            return Err(Protocol { source });
         };
 
-        self.create_presentation_by_input(cred, presentation_input, auth_request)
+        let holder_binder = if let ResolvedPresentationQuery::DCQL(dcql) =
+            auth_request.resolved_presentation_query.to_owned()
+        {
+            let cred_query = dcql
+                .credentials()
+                .iter()
+                .find(|&c| c.id().as_str() == presentation_input.id);
+            if let Some(query) = cred_query {
+                if let Some(false) = query.require_cryptographic_holder_binding() {
+                    None
+                } else {
+                    Some(HolderBinder {
+                        nonce: auth_request.nonce.to_owned(),
+                        verifier_id: auth_request.client_id.get_id(),
+                    })
+                }
+            } else {
+                let err = ProtocolError::access_denied(
+                    "matching credentials are not found",
+                    auth_request.state.clone(),
+                );
+                let source = self
+                    .handle_auth_error_resp(
+                        &auth_request.response_uri,
+                        &auth_request.response_mode,
+                        err,
+                    )
+                    .await?;
+
+                return Err(Protocol { source });
+            }
+        } else {
+            Some(HolderBinder {
+                nonce: auth_request.nonce.to_owned(),
+                verifier_id: auth_request.client_id.get_id(),
+            })
+        };
+        self.create_presentation_by_input(cred, presentation_input, holder_binder)
             .await
     }
 
@@ -514,8 +547,12 @@ where
                 if let CredentialsFindResult::Credentials(credentials) = creds
                     && let Some(cred_entry) = credentials.first()
                 {
+                    let holder_binder = Some(HolderBinder {
+                        nonce: auth_request.nonce.to_owned(),
+                        verifier_id: auth_request.client_id.get_id(),
+                    });
                     return self
-                        .create_presentation_by_input(cred_entry, presentation_input, auth_request)
+                        .create_presentation_by_input(cred_entry, presentation_input, holder_binder)
                         .await;
                 }
 
@@ -532,7 +569,7 @@ where
                     )
                     .await?;
 
-                Err(Error::Protocol { source: err })
+                Err(Protocol { source: err })
             }))
             .await?;
         Ok(presentations)
@@ -545,7 +582,8 @@ where
         dcql: DCQL,
     ) -> Result<Vec<RequestedPresentation>> {
         let presentations: Vec<RequestedPresentation>;
-        let presentation_inputs = dcql::split_to_inputs_for_dcql(dcql.credentials());
+        let presentation_inputs =
+            dcql::split_to_inputs_for_dcql(dcql.credentials().to_vec().as_ref());
         let mut id_to_pres_input: HashMap<String, PresentationInput> = HashMap::new();
         dcql.credentials().iter().for_each(|cred| {
             if let Some(pi) = presentation_inputs
@@ -586,7 +624,7 @@ where
                 )
                 .await?;
 
-            Err(Error::Protocol { source: err })
+            Err(Protocol { source: err })
         }))
         .await?;
         let id_to_cred: HashMap<_, _> = pairs.into_iter().collect();
@@ -603,7 +641,19 @@ where
                         CredentialNotFoundSnafu.fail()?;
                     }
                     let cred = id_to_cred[credential.id().as_str()].clone();
-                    self.create_presentation_by_input(&cred, &pi, auth_request)
+
+                    let holder_binder = if credential
+                        .require_cryptographic_holder_binding()
+                        .unwrap_or(true)
+                    {
+                        Some(HolderBinder {
+                            nonce: auth_request.nonce.to_owned(),
+                            verifier_id: auth_request.client_id.get_id(),
+                        })
+                    } else {
+                        None
+                    };
+                    self.create_presentation_by_input(&cred, &pi, holder_binder)
                         .await
                 }))
                 .await?
@@ -670,7 +720,7 @@ where
 
         let aro = match aro_result {
             Ok(aro) => aro,
-            Err(Error::Protocol { source }) => {
+            Err(Protocol { source }) => {
                 let (response_uri, response_mode) = self
                     .resolve_auth_resp_endpoint_and_mode(request_uri)
                     .await?;
@@ -682,7 +732,7 @@ where
                     .handle_auth_error_resp(&response_uri, &response_mode, source)
                     .await?;
 
-                return Err(Error::Protocol { source });
+                return Err(Protocol { source });
             }
             Err(e) => return Err(e),
         };
@@ -693,7 +743,7 @@ where
             .map_err(Error::from)
         {
             Ok(p) => p,
-            Err(Error::Protocol { source }) => {
+            Err(Protocol { source }) => {
                 info!(
                     "presentation definition resolution is failed, handling an authorization error response..."
                 );
@@ -701,7 +751,7 @@ where
                     .handle_auth_error_resp(aro.return_uri(), aro.response_mode(), source)
                     .await?;
 
-                return Err(Error::Protocol { source });
+                return Err(Protocol { source });
             }
             Err(e) => return Err(e),
         };
@@ -709,7 +759,7 @@ where
             self.validate_transaction_data(&rpq, &td)?;
         }
         Ok(ResolvedAuthRequest {
-            client_id: aro.client_id().get_full_id(),
+            client_id: aro.client_id().to_owned(),
             client_metadata: aro.client_metadata().to_owned(),
             resolved_presentation_query: rpq,
             nonce: Nonce::from_secret(aro.nonce().as_str().to_owned()),
@@ -770,7 +820,7 @@ where
                     .context(PresentationExchangeSnafu)?
             }
             ResolvedPresentationQuery::DCQL(dcql) => {
-                dcql::split_to_inputs_for_dcql(dcql.credentials())
+                dcql::split_to_inputs_for_dcql(dcql.credentials().to_vec().as_ref())
             }
         };
         for pres_input in presentation_inputs.iter() {
@@ -803,7 +853,7 @@ where
                 .context(PresentationExchangeSnafu)?
             }
             ResolvedPresentationQuery::DCQL(dcql) => {
-                dcql::split_to_inputs_for_dcql(dcql.credentials())
+                dcql::split_to_inputs_for_dcql(dcql.credentials().to_vec().as_ref())
             }
         };
         let presentations: Vec<RequestedPresentation> =
@@ -905,7 +955,7 @@ where
     KMS: Kms<KH>,
 {
     #[instrument(level = Level::TRACE, skip(self), err(), ret())]
-    async fn did(
+    async fn decentralized_identifier(
         &self,
         decoded_request: &AuthorizationRequestObject,
         request_jwt: String,
@@ -928,12 +978,12 @@ where
     ) -> anyhow::Result<(), openid4vp::core::error::Error> {
         let supported = self
             .metadata()
-            .is_client_id_schema_supported(decoded_request.client_id().get_scheme());
+            .is_client_id_prefix_supported(decoded_request.client_id().get_prefix());
         if !supported {
             return Err(openid4vp::core::error::Error::protocol_invalid_req(
                 format!(
-                    "The scheme '{}' is not supported",
-                    decoded_request.client_id().get_scheme()
+                    "The prefix '{}' is not supported",
+                    decoded_request.client_id().get_prefix()
                 )
                 .as_str(),
                 decoded_request.state(),
@@ -980,9 +1030,9 @@ mod tests {
     use crate::vc::oid4vp::protocol_error::ErrorType;
     use crate::vc::oid4vp::tests::fixtures::multi_presentation::transaction_data_items;
     use crate::vc::oid4vp::tests::fixtures::single_presentation::sd_jwt::{
-        AUTH_REQUEST, AUTH_REQUEST_JWT, AUTH_REQUEST_WITH_NON_URL_SCHEME,
-        AUTH_REQUEST_WITH_REDIRECT_URI, AUTH_REQUEST_WITH_STATE_JWT,
-        AUTH_REQUEST_WITH_UNSUPPORTED_CLIENT_ID_SCHEME, AUTH_REQUEST_WITH_WRONG_CLIENT_ID,
+        AUTH_REQUEST, AUTH_REQUEST_JWT, AUTH_REQUEST_WITH_NON_URL_CLIENT_ID_PREFIX,
+        AUTH_REQUEST_WITH_REDIRECT_URI, AUTH_REQUEST_WITH_UNSUPPORTED_CLIENT_ID_PREFIX,
+        AUTH_REQUEST_WITH_WRONG_CLIENT_ID,
     };
     use crate::vc::oid4vp::tests::fixtures::{
         REQUEST_URI, STATE, VERIFIER_URL, multi_presentation, single_presentation,
@@ -1006,7 +1056,7 @@ mod tests {
     use rstest::rstest;
     use sd_jwt_rs::SDJWTSerializationFormat;
     use sd_jwt_rs::utils::decode_sd_jwt;
-    use serde_json::json;
+    use serde_json::{Value, json};
     use std::collections::HashMap;
     use std::sync::Arc;
     use url::Url;
@@ -1029,10 +1079,7 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(
-            serde_json::to_value(&request_obj).unwrap(),
-            AUTH_REQUEST.parse::<serde_json::Value>().unwrap()
-        );
+        assert_eq!(request_obj, serde_json::from_str(AUTH_REQUEST).unwrap());
     }
 
     #[tokio::test]
@@ -1041,14 +1088,14 @@ mod tests {
             request_verifier(MockHttpClient::new(), LocalKms::new(), InMemVault::new()).await;
         let aro: AuthorizationRequestObject = serde_json::from_str(AUTH_REQUEST).unwrap();
         request_verifier
-            .did(&aro, AUTH_REQUEST_JWT.to_string())
+            .decentralized_identifier(&aro, AUTH_REQUEST_JWT.to_string())
             .await
             .unwrap();
     }
 
     #[tokio::test]
     #[should_panic(
-        expected = "DIDs from 'kid' (did:key:zDnaehgaHKAP7LAA3Kwa4FjXjJ1G3BcaHqr5gfRySJcGDgBtV) and 'client_id' (did:key:1) do not match"
+        expected = "DIDs from 'kid' (did:key:zDnaebMD6CqPmJL8WxF6YffAAbbK935aaKbyVEyuGQtukXk6f) and 'client_id' (decentralized_identifier:did:key:1) do not match"
     )]
     async fn request_verifier_verifies_for_did_unsuccessfully() {
         let request_verifier =
@@ -1056,21 +1103,21 @@ mod tests {
         let aro: AuthorizationRequestObject =
             serde_json::from_str(AUTH_REQUEST_WITH_WRONG_CLIENT_ID).unwrap();
         request_verifier
-            .did(&aro, AUTH_REQUEST_JWT.to_string())
+            .decentralized_identifier(&aro, AUTH_REQUEST_JWT.to_string())
             .await
             .unwrap();
     }
 
     #[rstest]
-    #[should_panic(expected = "The scheme 'web-origin' is not supported")]
+    #[should_panic(expected = "The prefix 'origin' is not supported")]
     #[case(
-        AUTH_REQUEST_WITH_UNSUPPORTED_CLIENT_ID_SCHEME,
+        AUTH_REQUEST_WITH_UNSUPPORTED_CLIENT_ID_PREFIX,
         "https://localhost:8080"
     )]
     #[should_panic(
         expected = "could not parse 'client_id' = non-link-id as uri, in 'redirect_uri' response method it must be uri"
     )]
-    #[case(AUTH_REQUEST_WITH_NON_URL_SCHEME, "https://localhost:8080")]
+    #[case(AUTH_REQUEST_WITH_NON_URL_CLIENT_ID_PREFIX, "https://localhost:8080")]
     #[should_panic(
         expected = "in 'redirect_uri' response mode 'client_id' = https://localhost:8080 must be equal to 'redirect_uri' = https://wronglink:8080/"
     )]
@@ -1108,11 +1155,11 @@ mod tests {
             &mut http_client,
             Method::GET,
             build_url(VERIFIER_URL, "request"),
-            AUTH_REQUEST_WITH_STATE_JWT,
+            AUTH_REQUEST_JWT,
             1.into(),
         );
         let holder = holder_service(http_client, LocalKms::new(), InMemVault::new()).await;
-        pub const REQUEST_URI: &str = "openid4vp://?client_id=did%3Akey%3AzDnaexoypPeJHz5xfdshV9NqsWT3BUmHvDUDe8VxWf6Ln23Uh&request_uri=http%3A%2F%2F127.0.0.1%3A55796%2Frequest";
+        pub const REQUEST_URI: &str = "openid4vp://?client_id=decentralized_identifier%3Adid%3Akey%3AzDnaebMD6CqPmJL8WxF6YffAAbbK935aaKbyVEyuGQtukXk6f&request_uri=http%3A%2F%2F127.0.0.1%3A55796%2Frequest";
 
         let request_obj = holder
             .get_authorization_request(&REQUEST_URI.parse().unwrap())
@@ -1339,7 +1386,7 @@ mod tests {
             Err(Error::Protocol { source }) => {
                 assert_eq!(
                     source.redirect_uri().unwrap().to_string(),
-                    "http://127.0.0.1:55796/auth#error=vp_formats_not_supported&error_description=vp+format+%3D+%27jwt_vc_json%27+with+%7B%22alg_values_supported%22%3A%5B%22RS256%22%5D%7D+algorithms+is+not+supported"
+                    "http://127.0.0.1:55796/auth#error=vp_formats_not_supported&error_description=vp+format+%3D+%27jwt_vc_json%27+with+%7B%22alg_values_supported%22%3A%5B%22RS256%22%5D%7D+algorithms+is+not+supported&state=1d8b0d93-86e8-4135-87d4-524bb0500bf3",
                 );
             }
             _ => panic!("Expected protocol error, got {:?}", result),
@@ -1947,7 +1994,7 @@ mod tests {
 
                 assert_eq!(
                     body,
-                    "error=access_denied&error_description=consent+to+share+the+presentation+is+not+given"
+                    "error=access_denied&error_description=consent+to+share+the+presentation+is+not+given&state=1d8b0d93-86e8-4135-87d4-524bb0500bf3"
                 );
 
                 Ok(HttpResponse::default())
@@ -1967,16 +2014,16 @@ mod tests {
     async fn decline_authorization_request_returns_url_in_same_device_flow() {
         let holder =
             holder_service(MockHttpClient::new(), LocalKms::new(), InMemVault::new()).await;
-        let mut auth_req: serde_json::Map<String, serde_json::Value> =
+        let mut auth_req: serde_json::Map<String, Value> =
             serde_json::from_str(AUTH_REQUEST).unwrap();
         auth_req.insert(
             "response_mode".to_string(),
-            serde_json::Value::String("fragment".to_string()),
+            Value::String("fragment".to_string()),
         );
 
         let redirect_url = holder
             .decline_authorization_request(
-                &serde_json::from_value(serde_json::Value::Object(auth_req)).unwrap(),
+                &serde_json::from_str(&serde_json::to_string(&auth_req).unwrap()).unwrap(),
             )
             .await
             .unwrap()
@@ -1984,7 +2031,7 @@ mod tests {
 
         assert_eq!(
             redirect_url.fragment().unwrap(),
-            "error=access_denied&error_description=consent+to+share+the+presentation+is+not+given"
+            "error=access_denied&error_description=consent+to+share+the+presentation+is+not+given&state=1d8b0d93-86e8-4135-87d4-524bb0500bf3"
         );
     }
 

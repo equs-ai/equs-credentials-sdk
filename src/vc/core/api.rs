@@ -18,6 +18,7 @@ use async_trait::async_trait;
 use common_macros::DebugError;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use snafu::{Location, ResultExt, Snafu};
 use std::collections::HashMap;
 use std::fmt::Debug;
@@ -296,7 +297,7 @@ pub enum Error {
 
     #[snafu(display("Claims error"))]
     Claims {
-        source: crate::vc::claims::Error,
+        source: vc::claims::Error,
         #[snafu(implicit)]
         location: Location,
     },
@@ -525,8 +526,7 @@ pub trait Holder: WasmNotSend + WasmNotSync {
     ///
     /// # Arguments
     ///
-    /// * `nonce` - a nonce form `Verifier` to be used to generate `VP`.
-    /// * `verifier_id` - an ID of the `Verifier`.
+    /// * `holder_binding` - whether to bind holder in the credential or not. It can be NotRequired or Required with nonce and verifier_id
     /// * `presentation_input` - an input with data related to requested `VC`s.
     ///
     /// # Returns
@@ -542,8 +542,7 @@ pub trait Holder: WasmNotSend + WasmNotSync {
     /// * [Error::Vault] - error with [Vault](crate::vault::Vault).
     async fn create_presentation_auto(
         &self,
-        nonce: &Nonce,
-        verifier_id: &str,
+        holder_binder: Option<HolderBinder>,
         presentation_input: &PresentationInput,
     ) -> Result<Presentation>;
 
@@ -570,8 +569,7 @@ pub trait Holder: WasmNotSend + WasmNotSync {
     ///
     /// # Arguments
     ///
-    /// * `nonce` - a nonce from `Verifier` to be used to generate `VP`.
-    /// * `verifier_id` - an ID of the `Verifier`.
+    /// * `holder_binder` - whether to bind holder in the credential or not. It should have nonce and verifier_id if given
     /// * `presentation_input` - an input with the data defining the requested `VC`s.
     /// * `credential` - an actual `CredentialEntry` for the `Presentation`.
     ///
@@ -587,8 +585,7 @@ pub trait Holder: WasmNotSend + WasmNotSync {
     /// * [Error::Vault] - error with [Vault](crate::vault::Vault).
     async fn create_presentation(
         &self,
-        nonce: &Nonce,
-        verifier_id: &str,
+        holder_binder: Option<HolderBinder>,
         presentation_input: &PresentationInput,
         credential: &CredentialEntry,
     ) -> Result<Presentation>;
@@ -608,7 +605,7 @@ pub trait Verifier: WasmNotSend + WasmNotSync {
     ///
     /// # Arguments
     ///
-    /// * `nonce` - a nonce used to generate `Presentation`.
+    /// * `holder_binder` - if given: a nonce and verifier_id used to generate `Presentation` with binding the holder.
     /// * `presentation` - a `Presentation` to verify.
     ///
     /// # Returns
@@ -618,10 +615,10 @@ pub trait Verifier: WasmNotSend + WasmNotSync {
     /// # Errors
     ///
     /// * [Error::FormatNotSupported] - VP format is not supported by the `Holder`.
-    /// * [Error::VC] - internal error [VCFormatError](crate::vc::VCFormatError).
+    /// * [Error::VC] - internal error [VCFormatError](vc::VCFormatError).
     async fn verify_presentation(
         &self,
-        nonce: &Nonce,
+        holder_binder: Option<HolderBinder>,
         presentation: &Presentation,
         http_client: &dyn HttpClient,
     ) -> Result<Claims>;
@@ -647,35 +644,84 @@ pub trait Verifier: WasmNotSend + WasmNotSync {
     ) -> Result<Option<VCStatus>>;
 }
 
+type SetOfValues = Vec<String>;
+
 #[derive(Debug, PartialEq, Clone)]
 pub enum PresentationRestrictionValue {
     Const(String),
     Pattern(String),
+    //special case for type_values: Check if at least one of inner array(all of its strings) exist
+    ArrayOfValues(Vec<SetOfValues>),
 }
 
 impl PresentationRestrictionValue {
-    pub fn validate_claim(&self, value: String) -> Result<bool> {
-        let claim = value.trim_matches('\"').trim();
+    pub fn validate_claim_for_string_or_pattern(&self, value: Value) -> Result<bool> {
+        let binding = value.to_string();
+        let claim = binding.trim_matches('\"').trim();
 
         let result = match &self {
             PresentationRestrictionValue::Pattern(pattern) => Regex::new(pattern)
                 .context(CannotCreateRegexSnafu)?
                 .is_match(claim),
             PresentationRestrictionValue::Const(string) => claim.cmp(string).is_eq(),
+            PresentationRestrictionValue::ArrayOfValues(type_value_sets) => {
+                unreachable!()
+            }
         };
         Ok(result)
     }
 
+    pub fn validate_claims_for_existence_as_sets(
+        &self,
+        values: Vec<Value>,
+        type_value_sets: &Vec<SetOfValues>,
+    ) -> bool {
+        let mut val_strs = vec![];
+        for val in values {
+            if let Value::String(val_str) = val {
+                val_strs.push(val_str.to_owned());
+            }
+        }
+        for type_value_set in type_value_sets {
+            if self.all_exist(type_value_set, &val_strs) {
+                return true;
+            }
+        }
+        false
+    }
+
+    fn all_exist(&self, type_value_set: &SetOfValues, vals: &[String]) -> bool {
+        for type_value in type_value_set {
+            if !vals.contains(type_value) {
+                return false;
+            }
+        }
+        true
+    }
     pub fn get_type(&self) -> String {
         match &self {
             PresentationRestrictionValue::Const(_) => "const".to_string(),
             PresentationRestrictionValue::Pattern(_) => "pattern".to_string(),
+            PresentationRestrictionValue::ArrayOfValues(_) => {
+                "array_of_array_of_strings".to_string()
+            }
         }
     }
     pub fn get_value(&self) -> String {
         match &self {
             PresentationRestrictionValue::Const(value) => value.to_owned(),
             PresentationRestrictionValue::Pattern(value) => value.to_owned(),
+            PresentationRestrictionValue::ArrayOfValues(values) => values
+                .iter()
+                .map(|val| val.join(", "))
+                .collect::<Vec<String>>()
+                .join("; "),
         }
     }
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct HolderBinder {
+    pub nonce: Nonce,
+    pub verifier_id: String,
 }

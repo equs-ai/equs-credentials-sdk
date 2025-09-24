@@ -12,8 +12,9 @@ use agent_sdk::crypto::Alg;
 use agent_sdk::vc::core::{
     CredentialDefinition, CredentialOffer, CredentialOfferContent, CredentialOfferData,
     CredentialRequest, CredentialRequestData, CredentialStatusInfo, DEFAULT_POP_LIFETIME_MINUTES,
-    Display, HolderMetadata, IssuerMetadata, IssuerMetadataData, KeyMetadata, PresentationInput,
-    PresentationRestriction, Proof, ProofOfPossessionMetadata, ProofOfPossessionNotBefore,
+    Display, HolderBinder, HolderMetadata, IssuerMetadata, IssuerMetadataData, KeyMetadata,
+    PresentationInput, PresentationRestriction, Proof, ProofOfPossessionMetadata,
+    ProofOfPossessionNotBefore,
 };
 use agent_sdk::vc::core::{CredentialDefinitionData, PresentationRestrictionValue};
 use chrono::{DateTime, Utc};
@@ -25,6 +26,7 @@ use agent_sdk::vc::status_formats::status_list_token_jwt;
 use agent_sdk::vc::{StatusList, VCStatusesData};
 
 use crate::vc::status_formats::JsStatusListFormat;
+use agent_sdk::nonce::Nonce;
 use agent_sdk::vc::{Credential, CredentialMetadata, HasVCFormat, Presentation, VCFormat};
 use napi::Error;
 use napi_derive::napi;
@@ -949,37 +951,61 @@ impl TryFrom<CredentialOffer> for JsCredentialOffer {
 pub enum JsPresentationRestrictionValueType {
     String,
     Pattern,
+    Array,
 }
 
-#[napi(js_name = "PresentationRestrictionValue", object)]
+#[napi(js_name = "InternalPresentationRestrictionValue", object)]
 pub struct JsPresentationRestrictionValue {
     pub type_: JsPresentationRestrictionValueType,
-    pub value: String,
+    pub string: Option<String>,
+    pub array: Option<Vec<Vec<String>>>,
 }
 
-impl From<JsPresentationRestrictionValue> for PresentationRestrictionValue {
-    fn from(value: JsPresentationRestrictionValue) -> Self {
+impl TryFrom<JsPresentationRestrictionValue> for PresentationRestrictionValue {
+    type Error = Error;
+    fn try_from(value: JsPresentationRestrictionValue) -> Result<Self, Error> {
         match value.type_ {
             JsPresentationRestrictionValueType::String => {
-                PresentationRestrictionValue::Const(value.value)
+                let string = value.string.ok_or(Error::from_reason(
+                    "Could not parse PresentationRestrictionValue into string",
+                ))?;
+                Ok(PresentationRestrictionValue::Const(string))
             }
             JsPresentationRestrictionValueType::Pattern => {
-                PresentationRestrictionValue::Pattern(value.value)
+                let string = value.string.ok_or(Error::from_reason(
+                    "Could not parse PresentationRestrictionValue into string",
+                ))?;
+                Ok(PresentationRestrictionValue::Pattern(string))
+            }
+            JsPresentationRestrictionValueType::Array => {
+                let array = value.array.ok_or(Error::from_reason(
+                    "Could not parse PresentationRestrictionValue into Vec<Vec<String>> ",
+                ))?;
+                Ok(PresentationRestrictionValue::ArrayOfValues(array))
             }
         }
     }
 }
-impl From<PresentationRestrictionValue> for JsPresentationRestrictionValue {
-    fn from(value: PresentationRestrictionValue) -> Self {
+
+impl TryFrom<PresentationRestrictionValue> for JsPresentationRestrictionValue {
+    type Error = Error;
+    fn try_from(value: PresentationRestrictionValue) -> Result<Self, Error> {
         match value {
-            PresentationRestrictionValue::Const(value) => Self {
+            PresentationRestrictionValue::Const(s) => Ok(JsPresentationRestrictionValue {
                 type_: JsPresentationRestrictionValueType::String,
-                value,
-            },
-            PresentationRestrictionValue::Pattern(value) => Self {
+                string: Some(s),
+                array: None,
+            }),
+            PresentationRestrictionValue::Pattern(s) => Ok(JsPresentationRestrictionValue {
                 type_: JsPresentationRestrictionValueType::Pattern,
-                value,
-            },
+                string: Some(s),
+                array: None,
+            }),
+            PresentationRestrictionValue::ArrayOfValues(a) => Ok(JsPresentationRestrictionValue {
+                type_: JsPresentationRestrictionValueType::Array,
+                array: Some(a),
+                string: None,
+            }),
         }
     }
 }
@@ -996,23 +1022,25 @@ pub struct JsPresentationRestriction {
     pub optional: bool,
 }
 
-impl From<JsPresentationRestriction> for PresentationRestriction {
-    fn from(value: JsPresentationRestriction) -> Self {
-        Self {
+impl TryFrom<JsPresentationRestriction> for PresentationRestriction {
+    type Error = Error;
+    fn try_from(value: JsPresentationRestriction) -> Result<Self, Error> {
+        Ok(Self {
             fields: value.fields,
-            value: value.value.map(|v| v.into()),
+            value: value.value.map(|v| v.try_into()).transpose()?,
             optional: value.optional,
-        }
+        })
     }
 }
 
-impl From<PresentationRestriction> for JsPresentationRestriction {
-    fn from(value: PresentationRestriction) -> Self {
-        Self {
+impl TryFrom<PresentationRestriction> for JsPresentationRestriction {
+    type Error = Error;
+    fn try_from(value: PresentationRestriction) -> Result<Self, Error> {
+        Ok(Self {
             fields: value.fields,
-            value: value.value.map(|v| v.into()),
+            value: value.value.map(|v| v.try_into()).transpose()?,
             optional: value.optional,
-        }
+        })
     }
 }
 
@@ -1034,10 +1062,14 @@ impl TryFrom<JsPresentationInput> for PresentationInput {
     type Error = Error;
 
     fn try_from(value: JsPresentationInput) -> Result<Self, Error> {
+        let mut restrictions = vec![];
+        for restriction in value.restrictions {
+            restrictions.push(restriction.try_into()?);
+        }
         Ok(Self {
             id: value.id,
             format: value.format,
-            restrictions: value.restrictions.into_iter().map(|v| v.into()).collect(),
+            restrictions,
         })
     }
 }
@@ -1046,10 +1078,14 @@ impl TryFrom<PresentationInput> for JsPresentationInput {
     type Error = Error;
 
     fn try_from(value: PresentationInput) -> Result<Self, Error> {
+        let mut restrictions = vec![];
+        for restriction in value.restrictions {
+            restrictions.push(restriction.try_into()?);
+        }
         Ok(Self {
             id: value.id,
             format: value.format,
-            restrictions: value.restrictions.into_iter().map(|v| v.into()).collect(),
+            restrictions,
         })
     }
 }
@@ -1447,6 +1483,28 @@ impl TryFrom<ProofOfPossessionNotBefore> for JsProofOfPossessionNotBefore {
                 leeway: Some(leeway.whole_seconds()),
             },
         })
+    }
+}
+#[napi(js_name = "HolderBinder", object)]
+pub struct JsHolderBinder {
+    pub nonce: String,
+    pub verifier_id: String,
+}
+impl From<JsHolderBinder> for HolderBinder {
+    fn from(value: JsHolderBinder) -> Self {
+        HolderBinder {
+            nonce: Nonce::from_secret(value.nonce),
+            verifier_id: value.verifier_id,
+        }
+    }
+}
+
+impl From<HolderBinder> for JsHolderBinder {
+    fn from(value: HolderBinder) -> Self {
+        JsHolderBinder {
+            nonce: value.nonce.secret().to_string(),
+            verifier_id: value.verifier_id,
+        }
     }
 }
 

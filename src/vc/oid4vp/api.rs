@@ -64,7 +64,8 @@ pub type ClientMetadata = openid4vp::core::authorization_request::parameters::Cl
 pub type WalletMetadata = openid4vp::core::metadata::WalletMetadata;
 pub type ResponseType = openid4vp::core::authorization_request::parameters::ResponseType;
 pub type ResponseMode = openid4vp::core::authorization_request::parameters::ResponseMode;
-pub type ClientIdScheme = openid4vp::core::authorization_request::parameters::ClientIdScheme;
+pub type ClientIdPrefix = openid4vp::core::authorization_request::parameters::ClientIdPrefix;
+pub type ClientId = openid4vp::core::authorization_request::parameters::ClientId;
 
 pub type ResolvedPresentationQuery =
     openid4vp::core::authorization_request::ResolvedPresentationQuery;
@@ -155,7 +156,7 @@ pub struct PresentationSession {
 
 /// A resolved `OID4VP` authorization request.
 ///
-/// `client_id` Verifier's identifier.
+/// `client_id` Verifier's identifier. `client_id` has format of `client_id_prefix`:`client_id`.
 /// `client_metadata` - A JSON object containing the Verifier metadata values
 /// `presentation_definition` Rules for the required Verifiable Presentation(s).
 /// `nonce` Unique value to prevent replay attacks.
@@ -164,9 +165,9 @@ pub struct PresentationSession {
 /// `response_uri` URI to send the response.
 /// `state` - may be used by a verifier to link requests and responses
 /// `transaction_data` - Array of strings, where each string is a base64url encoded JSON object that contains a typed parameter set with details about the transaction that the Verifier is requesting the End-User to authorize.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ResolvedAuthRequest {
-    pub client_id: String,
+    pub client_id: ClientId,
     pub client_metadata: ClientMetadata,
     #[serde(flatten)]
     pub resolved_presentation_query: ResolvedPresentationQuery,

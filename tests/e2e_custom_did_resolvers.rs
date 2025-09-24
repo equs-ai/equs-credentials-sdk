@@ -640,6 +640,7 @@ async fn build_verifier_with_test_did_resolver() -> impl Verifier {
 
     let (did, key_metadata, _) =
         create_did_keymetadata_keyhandle_with_custom_did_resolver(&kms).await;
+
     VerifierBuilder::new(kms, nonce_gen, key_metadata, did)
         .with_client_metadata(default_verifier_metadata())
         .with_did_resolver(TestDIDResolver::new(CUSTOM_METHOD_NAME.to_string()))
@@ -656,12 +657,10 @@ pub fn default_verifier_metadata() -> ClientMetadata {
 }
 
 const DEFAULT_CLIENT_METADATA: &str = r#"{
-    "vp_formats": {
+    "vp_formats_supported": {
         "dc+sd-jwt": {
-            "alg": [
-                "EdDSA",
-                "ES256"
-            ]
+            "sd-jwt_alg_values": ["EdDSA", "ES256"],
+            "kb-jwt_alg_values": ["EdDSA", "ES256"]
         },
         "ldp_vc": {
           "proof_type": [

@@ -431,19 +431,15 @@ pub async fn generate_did_key_and_vm(kms: &LocalKms) -> (KeyMetadata, KeyHandle)
 }
 
 fn default_verifier_metadata() -> ClientMetadata {
-    ClientMetadata::try_from(
-        serde_json::from_str::<serde_json::Value>(DEFAULT_CLIENT_METADATA).unwrap(),
-    )
-    .unwrap()
+    ClientMetadata::try_from(serde_json::from_str::<Value>(DEFAULT_CLIENT_METADATA).unwrap())
+        .unwrap()
 }
 
 const DEFAULT_CLIENT_METADATA: &str = r#"{
-    "vp_formats": {
+    "vp_formats_supported": {
         "dc+sd-jwt": {
-            "alg": [
-                "EdDSA",
-                "ES256"
-            ]
+            "sd-jwt_alg_values": ["EdDSA", "ES256"],
+            "kb-jwt_alg_values": ["EdDSA", "ES256"]
         },
         "ldp_vc": {
           "proof_type": [

@@ -19,27 +19,31 @@ val presentationDefinitionJsonFake = Json.parseToJsonElement(
     """{"presentation_definition": {"id":"1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed","input_descriptors":[{"id":"Identity-1","constraints":{"fields":[{"path":["$.vct"],"filter":{"type":"string","const":"https://credentials.example.com/identity_credential_1"},"predicate":null,"intent_to_retain":false},{"path":["$.name"],"optional":true,"predicate":null,"intent_to_retain":false}]},"name":"Identity VC","purpose":"We want an identity","format":{"dc+sd-jwt":{"sd-jwt_alg_values":["ES256","EdDSA"],"kb-jwt_alg_values":["ES256","EdDSA"]}}}]}}"""
 ).toString()
 
-val clientMetadata = Json.parseToJsonElement("""{"vp_formats":{"dc+sd-jwt":{"alg":["EdDSA","ES256"]}}}""").toString()
-val clientMetadataWithDirectPostJwt = Json.parseToJsonElement("""{"vp_formats":{"dc+sd-jwt":{"alg":["EdDSA","ES256"]}},"jwks":{"keys":[{"kid":"ecdsa-kid","kty":"EC","crv":"P-256","x":"SSnPfyVhQgcU9Aaynqgi6QGhrq7K7WFEC0mAvpHG4TM","y":"rYQ5mLQLTs95WLBKKA8R5IjMTXjX13iZnzazsVectRY","alg":"ES256"}]}}""").toString()
-const val CLIENT_ID = "wallet-dev"
+val clientMetadata = Json.parseToJsonElement("""{"vp_formats_supported":{"dc+sd-jwt":{"sd-jwt_alg_values":["EdDSA","ES256"],"kb-jwt_alg_values":["EdDSA","ES256"]}},"jwks":{"keys":[{"use":"enc","alg":"ES256","kid":"5QsdgXUGuH:P256:","kty":"EC","crv":"P-256","x":"Cb_uJhiPN7H9KXdQN4PQN0uWC6LmEwIz4j03wX1rBAw","y":"yEZ8-uX5hGhCuN9NrIz4ShNH0T1y4fQts5siiCH0Q7w"}]},"encrypted_response_enc_values_supported":["A128GCM","A128CBC-HS256"],"subject_syntax_types_supported":["did:key"]}""").toString()
+val clientMetadataWithDirectPostJwt = Json.parseToJsonElement("""{"vp_formats_supported":{"dc+sd-jwt":{"alg":["EdDSA","ES256"]}},"jwks":{"keys":[{"kid":"FxPNoKrsrw:P256:","kty":"EC","crv":"P-256","x":"M0zxcPWnayCVSiSlxLE-p9IP6bJbkCPbghap2Q-GKFY","y":"bYjdxpD5aJnMd1hnrBV8FxbJbXpcEUgogy2c265owHA","alg":"ES256"}]}}""").toString()
+const val CLIENT_ID = "did:key:zDnaekPT1E2PbmXnD7ZHu4My3jCykZUyCVv9FSN5dR6jQrGDo"
 const val REQUEST_URI =
-    "openid4vp://?client_id=did%3Akey%3AzDnaeeTG88wpPhMzuDRvLRTTyNMyJip5e6TLmsjyvPiSYUFk7&request_uri=http%3A%2F%2Flocalhost%3A9001"
-const val REQUEST_URI_FOR_TRANSACTION_DATA =
-    "openid4vp://?client_id=did%3Akey%3AzDnaeXHgwoWiRJM6LVVSgu7kNJKsS3L4rsVhTBPRSSj9eg5VZ&request_uri=http%3A%2F%2Flocalhost%3A9005"
+    "openid4vp://?client_id=decentralized_identifier%3Adid%3Akey%3AzDnaeQpNYQD6h18VnagyA1Xbey9hFKA1j5cyhqPHGfaq9txmN&request_uri=http%3A%2F%2Flocalhost%3A9001"
+ const val REQUEST_URI_FOR_TRANSACTION_DATA =
+     "openid4vp://?client_id=decentralized_identifier%3Adid%3Akey%3AzDnaeQpNYQD6h18VnagyA1Xbey9hFKA1j5cyhqPHGfaq9txmN&request_uri=http%3A%2F%2Flocalhost%3A9005"
 val authRequest = AuthorizationRequest(
-    clientId = "did:key:zDnaeeTG88wpPhMzuDRvLRTTyNMyJip5e6TLmsjyvPiSYUFk7",
+    clientId = "decentralized_identifier:did:key:zDnaeQpNYQD6h18VnagyA1Xbey9hFKA1j5cyhqPHGfaq9txmN",
     clientMetadata = clientMetadata,
     presentationDefinition = presentationDefinitionJson,
     responseType = "vp_token",
     responseMode = "direct_post",
     responseUri = "http://localhost:9001/response",
-    nonce = "YztANglRdmP4ChxsrcS8UcGYoPWwkgiUImkBrQmgWkU",
-    state = "eea7b48e-1866-41b4-beae-03b95d41670c",
-    transactionData = null,
+    nonce = "F3vbCyXV4Bkj-RConeiG1iKdA5XuaEHHaycOICINu2M",
+    state = "1d8b0d93-86e8-4135-87d4-524bb0500bf3",
+    transactionData = listOf(TransactionDataItem(
+                                  type = "type1",
+                                  credentialIds = listOf("Identity-1"),
+                                  transactionDataHashesAlg = listOf("sha-256")
+                              ))
 )
 
 val authRequestWithDirectPostJwt = AuthorizationRequest(
-    clientId = "did:key:zDnaeeTG88wpPhMzuDRvLRTTyNMyJip5e6TLmsjyvPiSYUFk7",
+    clientId = "decentralized_identifier:did:key:zDnaeeTG88wpPhMzuDRvLRTTyNMyJip5e6TLmsjyvPiSYUFk7",
     clientMetadata = clientMetadataWithDirectPostJwt,
     presentationDefinition = presentationDefinitionJson,
     responseType = "vp_token",
@@ -50,7 +54,7 @@ val authRequestWithDirectPostJwt = AuthorizationRequest(
     transactionData = null,
 )
 val authRequestFake = AuthorizationRequest(
-    clientId = "did:key:zDnaeeTG88wpPhMzuDRvLRTTyNMyJip5e6TLmsjyvPiSYUFk7",
+    clientId = "decentralized_identifier:did:key:zDnaeeTG88wpPhMzuDRvLRTTyNMyJip5e6TLmsjyvPiSYUFk7",
     clientMetadata = clientMetadata,
     presentationDefinition = presentationDefinitionJsonFake,
     responseType = "vp_token",
@@ -61,10 +65,7 @@ val authRequestFake = AuthorizationRequest(
     transactionData = null,
 )
 const val AUTH_REQUEST_JWT =
-    "eyJhbGciOiJFUzI1NiIsImtpZCI6ImRpZDprZXk6ekRuYWVlVEc4OHdwUGhNenVEUnZMUlRUeU5NeUppcDVlNlRMbXNqeXZQaVNZVUZrNyN6RG5hZWVURzg4d3BQaE16dURSdkxSVFR5Tk15SmlwNWU2VExtc2p5dlBpU1lVRms3IiwidHlwIjoiYXBwbGljYXRpb24vb2F1dGgtYXV0aHotcmVxK2p3dCJ9.eyJyZXNwb25zZV90eXBlIjoidnBfdG9rZW4iLCJzdGF0ZSI6ImVlYTdiNDhlLTE4NjYtNDFiNC1iZWFlLTAzYjk1ZDQxNjcwYyIsInJlc3BvbnNlX21vZGUiOiJkaXJlY3RfcG9zdCIsIm5vbmNlIjoiWXp0QU5nbFJkbVA0Q2h4c3JjUzhVY0dZb1BXd2tnaVVJbWtCclFtZ1drVSIsImNsaWVudF9tZXRhZGF0YSI6eyJ2cF9mb3JtYXRzIjp7ImRjK3NkLWp3dCI6eyJhbGciOlsiRWREU0EiLCJFUzI1NiJdfX19LCJjbGllbnRfaWQiOiJkaWQ6a2V5OnpEbmFlZVRHODh3cFBoTXp1RFJ2TFJUVHlOTXlKaXA1ZTZUTG1zanl2UGlTWVVGazciLCJjbGllbnRfaWRfc2NoZW1lIjoiZGlkIiwicHJlc2VudGF0aW9uX2RlZmluaXRpb24iOnsiaWQiOiIxYjlkNmJjZC1iYmZkLTRiMmQtOWI1ZC1hYjhkZmJiZDRiZWQiLCJpbnB1dF9kZXNjcmlwdG9ycyI6W3siaWQiOiJJZGVudGl0eS0xIiwiY29uc3RyYWludHMiOnsiZmllbGRzIjpbeyJwYXRoIjpbIiQudmN0Il0sImZpbHRlciI6eyJ0eXBlIjoic3RyaW5nIiwiY29uc3QiOiJodHRwczovL2NyZWRlbnRpYWxzLmV4YW1wbGUuY29tL2lkZW50aXR5X2NyZWRlbnRpYWwifSwicHJlZGljYXRlIjpudWxsLCJpbnRlbnRfdG9fcmV0YWluIjpmYWxzZX0seyJwYXRoIjpbIiQubmFtZSJdLCJvcHRpb25hbCI6dHJ1ZSwicHJlZGljYXRlIjpudWxsLCJpbnRlbnRfdG9fcmV0YWluIjpmYWxzZX1dfSwibmFtZSI6IklkZW50aXR5IFZDIiwicHVycG9zZSI6IldlIHdhbnQgYW4gaWRlbnRpdHkiLCJmb3JtYXQiOnsiZGMrc2Qtand0Ijp7InNkLWp3dF9hbGdfdmFsdWVzIjpbIkVTMjU2IiwiRWREU0EiXSwia2Itand0X2FsZ192YWx1ZXMiOlsiRVMyNTYiLCJFZERTQSJdfX19XX0sInJlc3BvbnNlX3VyaSI6Imh0dHA6Ly9sb2NhbGhvc3Q6OTAwMS9yZXNwb25zZSJ9.dV0RXxaAJTjnAqGNuPUzMor93gsEkXpoqVRj9-J638lV7mkka4ixXZJ3VIQ0Iqhb7GvCIr0D-7_bWp_xnIYAVA"
-
-const val AUTH_REQUEST_JWT_WITH_TRANSACTION_DATA =
-    "eyJhbGciOiJFUzI1NiIsImtpZCI6ImRpZDprZXk6ekRuYWVYSGd3b1dpUkpNNkxWVlNndTdrTkpLc1MzTDRyc1ZoVEJQUlNTajllZzVWWiN6RG5hZVhIZ3dvV2lSSk02TFZWU2d1N2tOSktzUzNMNHJzVmhUQlBSU1NqOWVnNVZaIiwidHlwIjoiYXBwbGljYXRpb24vb2F1dGgtYXV0aHotcmVxK2p3dCJ9.eyJyZXNwb25zZV90eXBlIjoidnBfdG9rZW4gaWRfdG9rZW4iLCJzY29wZSI6Im9wZW5pZCIsImlkX3Rva2VuX3R5cGUiOiJzdWJqZWN0X3NpZ25lZF9pZF90b2tlbiIsInRyYW5zYWN0aW9uX2RhdGEiOlsiZXlKMGVYQmxJam9pZEhsd1pURWlMQ0pqY21Wa1pXNTBhV0ZzWDJsa2N5STZXeUpKWkdWdWRHbDBlUzB4SWwwc0luUnlZVzV6WVdOMGFXOXVYMlJoZEdGZmFHRnphR1Z6WDJGc1p5STZXeUp6YUdFdE1qVTJJbDE5Il0sInJlc3BvbnNlX21vZGUiOiJkaXJlY3RfcG9zdC5qd3QiLCJub25jZSI6IkNOZXhCWnFQcGxmRF9QV2pnWTZFT2ZpWGpJLWF1TWNCODA5SVZBUVpSUjQiLCJjbGllbnRfbWV0YWRhdGEiOnsidnBfZm9ybWF0cyI6eyJkYytzZC1qd3QiOnsiYWxnIjpbIkVkRFNBIiwiRVMyNTYiXX0sImxkcF92YyI6eyJwcm9vZl90eXBlIjpbIkVkMjU1MTlTaWduYXR1cmUyMDE4IiwiRWNkc2FTZWNwMjU2azFTaWduYXR1cmUyMDE5Il19fSwic3ViamVjdF9zeW50YXhfdHlwZXNfc3VwcG9ydGVkIjpbImRpZDprZXkiXSwiandrcyI6eyJrZXlzIjpbeyJ1c2UiOiJlbmMiLCJhbGciOiJFUzI1NiIsImtpZCI6ImtEQlhjOU5Ubnk6UDI1NjoiLCJrdHkiOiJFQyIsImNydiI6IlAtMjU2IiwieCI6ImVvWDdheXliZkZtSldpcjNoNzJYVi1LVy1BRk9oY3gyUjlfUVA2UjBCZEkiLCJ5IjoiSUtDSUo3MGoyQjEzNGU4aEZYM0ZhMGQxeWllQTNXMmZHck9JNmlpbHpFbyJ9XX0sImVuY3J5cHRlZF9yZXNwb25zZV9lbmNfdmFsdWVzX3N1cHBvcnRlZCI6WyJBMjU2R0NNIl0sImF1dGhvcml6YXRpb25fZW5jcnlwdGVkX3Jlc3BvbnNlX2FsZyI6IkVDREgtRVMiLCJhdXRob3JpemF0aW9uX2VuY3J5cHRlZF9yZXNwb25zZV9lbmMiOiJBMjU2R0NNIn0sImNsaWVudF9pZCI6ImRpZDprZXk6ekRuYWVYSGd3b1dpUkpNNkxWVlNndTdrTkpLc1MzTDRyc1ZoVEJQUlNTajllZzVWWiIsInByZXNlbnRhdGlvbl9kZWZpbml0aW9uIjp7ImlkIjoiZjY0ZWRjOTktMmI3OS00NWNlLWFkMzYtNWUzNDZlYmZjNmVjIiwiaW5wdXRfZGVzY3JpcHRvcnMiOlt7ImlkIjoiSWRlbnRpdHktMSIsImNvbnN0cmFpbnRzIjp7ImZpZWxkcyI6W3sicGF0aCI6WyIkLnZjdCJdLCJmaWx0ZXIiOnsidHlwZSI6InN0cmluZyIsImNvbnN0IjoiaHR0cHM6Ly9jcmVkZW50aWFscy5leGFtcGxlLmNvbS9pZGVudGl0eV9jcmVkZW50aWFsXzEifSwicHJlZGljYXRlIjpudWxsLCJpbnRlbnRfdG9fcmV0YWluIjpmYWxzZX0seyJwYXRoIjpbIiQuZW1haWwud29yayJdLCJwcmVkaWNhdGUiOm51bGwsImludGVudF90b19yZXRhaW4iOmZhbHNlfSx7InBhdGgiOlsiJC51c2VybmFtZSJdLCJvcHRpb25hbCI6dHJ1ZSwicHJlZGljYXRlIjpudWxsLCJpbnRlbnRfdG9fcmV0YWluIjpmYWxzZX0seyJwYXRoIjpbIiQuY291bnRyeSJdLCJmaWx0ZXIiOnsidHlwZSI6InN0cmluZyIsImNvbnN0IjoiVVMifSwicHJlZGljYXRlIjpudWxsLCJpbnRlbnRfdG9fcmV0YWluIjpmYWxzZX0seyJwYXRoIjpbIiQuYWdlX292ZXJfMTgiXSwiZmlsdGVyIjp7InR5cGUiOiJib29sZWFuIiwiY29uc3QiOnRydWV9LCJwcmVkaWNhdGUiOm51bGwsImludGVudF90b19yZXRhaW4iOmZhbHNlfV19LCJuYW1lIjoiSWRlbnRpdHkgVkMiLCJwdXJwb3NlIjoiV2Ugd2FudCBhbiBpZGVudGl0eSIsImZvcm1hdCI6eyJkYytzZC1qd3QiOnsic2Qtand0X2FsZ192YWx1ZXMiOlsiRVMyNTYiLCJFZERTQSJdLCJrYi1qd3RfYWxnX3ZhbHVlcyI6WyJFUzI1NiIsIkVkRFNBIl19fX0seyJpZCI6InJlc2lkZW50LWNhcmQiLCJjb25zdHJhaW50cyI6eyJmaWVsZHMiOlt7InBhdGgiOlsiJC50eXBlIl0sImZpbHRlciI6eyJ0eXBlIjoiYXJyYXkiLCJjb250YWlucyI6eyJjb25zdCI6IlBlcm1hbmVudFJlc2lkZW50Q2FyZCJ9fSwicHJlZGljYXRlIjpudWxsLCJpbnRlbnRfdG9fcmV0YWluIjpmYWxzZX1dfSwibmFtZSI6IklkZW50aXR5IFZDIiwicHVycG9zZSI6IldlIHdhbnQgYSByZXNpZGVudCBjYXJkIiwiZm9ybWF0Ijp7ImxkcF92YyI6eyJwcm9vZl90eXBlIjpbIkVkMjU1MTlTaWduYXR1cmUyMDE4IiwiRWNkc2FTZWNwMjU2azFTaWduYXR1cmUyMDE5Il19fX0seyJpZCI6ImFsdW1uaS1jYXJkIiwiY29uc3RyYWludHMiOnsiZmllbGRzIjpbeyJwYXRoIjpbIiQudHlwZSJdLCJmaWx0ZXIiOnsidHlwZSI6ImFycmF5IiwiY29udGFpbnMiOnsiY29uc3QiOiJBbHVtbmlDcmVkZW50aWFsIn19LCJwcmVkaWNhdGUiOm51bGwsImludGVudF90b19yZXRhaW4iOmZhbHNlfV19LCJuYW1lIjoiVW5pdmVyc2l0eSBWQyIsInB1cnBvc2UiOiJXZSB3YW50IGEgZGlwbG9tYSIsImZvcm1hdCI6eyJsZHBfdmMiOnsicHJvb2ZfdHlwZSI6WyJFY2RzYVJkZmMyMDE5IiwiRWREc2FSZGZjMjAyMiJdfX19XSwibmFtZSI6IkV4YW1wbGUgd2l0aCBzZWxlY3RpdmUgZGlzY2xvc3VyZSJ9LCJyZXNwb25zZV91cmkiOiJodHRwOi8vbG9jYWxob3N0OjgwOTgvcHJlc2VudCJ9.Zce8XVbP9Zf1tYIXupYDHiL50a7udE0U734Nwu4iTCjZL-Wz5ZMWIj6jIJS4plfDC2VlsoiIpa1hMHzWWKNU9A"
+    "eyJhbGciOiJFUzI1NiIsImtpZCI6ImRpZDprZXk6ekRuYWVRcE5ZUUQ2aDE4Vm5hZ3lBMVhiZXk5aEZLQTFqNWN5aHFQSEdmYXE5dHhtTiN6RG5hZVFwTllRRDZoMThWbmFneUExWGJleTloRktBMWo1Y3locVBIR2ZhcTl0eG1OIiwidHlwIjoiYXBwbGljYXRpb24vb2F1dGgtYXV0aHotcmVxK2p3dCJ9.eyJyZXNwb25zZV90eXBlIjoidnBfdG9rZW4iLCJzdGF0ZSI6IjFkOGIwZDkzLTg2ZTgtNDEzNS04N2Q0LTUyNGJiMDUwMGJmMyIsInRyYW5zYWN0aW9uX2RhdGEiOlsiZXlKMGVYQmxJam9pZEhsd1pURWlMQ0pqY21Wa1pXNTBhV0ZzWDJsa2N5STZXeUpKWkdWdWRHbDBlUzB4SWwwc0luUnlZVzV6WVdOMGFXOXVYMlJoZEdGZmFHRnphR1Z6WDJGc1p5STZXeUp6YUdFdE1qVTJJbDE5Il0sInJlc3BvbnNlX21vZGUiOiJkaXJlY3RfcG9zdCIsIm5vbmNlIjoiRjN2YkN5WFY0QmtqLVJDb25laUcxaUtkQTVYdWFFSEhheWNPSUNJTnUyTSIsImNsaWVudF9tZXRhZGF0YSI6eyJ2cF9mb3JtYXRzX3N1cHBvcnRlZCI6eyJkYytzZC1qd3QiOnsic2Qtand0X2FsZ192YWx1ZXMiOlsiRWREU0EiLCJFUzI1NiJdLCJrYi1qd3RfYWxnX3ZhbHVlcyI6WyJFZERTQSIsIkVTMjU2Il19fSwiandrcyI6eyJrZXlzIjpbeyJ1c2UiOiJlbmMiLCJhbGciOiJFUzI1NiIsImtpZCI6IjVRc2RnWFVHdUg6UDI1NjoiLCJrdHkiOiJFQyIsImNydiI6IlAtMjU2IiwieCI6IkNiX3VKaGlQTjdIOUtYZFFONFBRTjB1V0M2TG1Fd0l6NGowM3dYMXJCQXciLCJ5IjoieUVaOC11WDVoR2hDdU45TnJJejRTaE5IMFQxeTRmUXRzNXNpaUNIMFE3dyJ9XX0sImVuY3J5cHRlZF9yZXNwb25zZV9lbmNfdmFsdWVzX3N1cHBvcnRlZCI6WyJBMTI4R0NNIiwiQTEyOENCQy1IUzI1NiJdLCJzdWJqZWN0X3N5bnRheF90eXBlc19zdXBwb3J0ZWQiOlsiZGlkOmtleSJdfSwiY2xpZW50X2lkIjoiZGVjZW50cmFsaXplZF9pZGVudGlmaWVyOmRpZDprZXk6ekRuYWVRcE5ZUUQ2aDE4Vm5hZ3lBMVhiZXk5aEZLQTFqNWN5aHFQSEdmYXE5dHhtTiIsInByZXNlbnRhdGlvbl9kZWZpbml0aW9uIjp7ImlkIjoiMWI5ZDZiY2QtYmJmZC00YjJkLTliNWQtYWI4ZGZiYmQ0YmVkIiwiaW5wdXRfZGVzY3JpcHRvcnMiOlt7ImlkIjoiSWRlbnRpdHktMSIsImNvbnN0cmFpbnRzIjp7ImZpZWxkcyI6W3sicGF0aCI6WyIkLnZjdCJdLCJmaWx0ZXIiOnsidHlwZSI6InN0cmluZyIsImNvbnN0IjoiaHR0cHM6Ly9jcmVkZW50aWFscy5leGFtcGxlLmNvbS9pZGVudGl0eV9jcmVkZW50aWFsIn0sInByZWRpY2F0ZSI6bnVsbCwiaW50ZW50X3RvX3JldGFpbiI6ZmFsc2V9LHsicGF0aCI6WyIkLm5hbWUiXSwib3B0aW9uYWwiOnRydWUsInByZWRpY2F0ZSI6bnVsbCwiaW50ZW50X3RvX3JldGFpbiI6ZmFsc2V9XX0sIm5hbWUiOiJJZGVudGl0eSBWQyIsInB1cnBvc2UiOiJXZSB3YW50IGFuIGlkZW50aXR5IiwiZm9ybWF0Ijp7ImRjK3NkLWp3dCI6eyJzZC1qd3RfYWxnX3ZhbHVlcyI6WyJFUzI1NiIsIkVkRFNBIl0sImtiLWp3dF9hbGdfdmFsdWVzIjpbIkVTMjU2IiwiRWREU0EiXX19fV19LCJyZXNwb25zZV91cmkiOiJodHRwOi8vbG9jYWxob3N0OjkwMDEvcmVzcG9uc2UifQ.27WD-THq-vBdZZNb20WY3VYDRbbws0PTcp6LZM_GFh8Bhpp7tVPZnhu2m362D9E_fWtIwbLQiHzdigP27D9VyA"
 const val VC =
     "eyJ0eXAiOiJ2YytzZC1qd3QiLCJhbGciOiJFUzI1NiIsImtpZCI6ImRpZDprZXk6ekRuYWV4ZWgzVDFDemlXV1NFZVdweXVUa1hxaVQ1aWtpQ3c1aVpRUkJ2NEhYdWV4NiN6RG5hZXhlaDNUMUN6aVdXU0VlV3B5dVRrWHFpVDVpa2lDdzVpWlFSQnY0SFh1ZXg2In0.eyJfc2QiOlsiZkp1Ri1FNUMzTnhleU5UTnNMbm1DX1pnM2FNYkVwTGF1QV9aWVFnU1B3VSJdLCJ2Y3QiOiJodHRwczovL2NyZWRlbnRpYWxzLmV4YW1wbGUuY29tL2lkZW50aXR5X2NyZWRlbnRpYWwiLCJzdWIiOiJkaWQ6a2V5OnpEbmFlajlRYWRnZFpudTh1RFhaWGQ0NTQ1ZGZKQUV2bVY2bm43eGFZVXF6Y3JQdk0iLCJuYmYiOjE3Mjg4ODI2MTEsIl9zZF9hbGciOiJzaGEtMjU2IiwiaXNzIjoiZGlkOmtleTp6RG5hZXhlaDNUMUN6aVdXU0VlV3B5dVRrWHFpVDVpa2lDdzVpWlFSQnY0SFh1ZXg2IiwiaWF0IjoxNzI4ODgyNjExLCJleHAiOjE3NjA0MTg2MTEsImNuZiI6eyJqd2siOnsia3R5IjoiRUMiLCJjcnYiOiJQLTI1NiIsIngiOiJGaEFNdi1UWGcyZ1NlOGpqZkhVcWdkTzdfMjZlSG9tWVNweUxxQk05WlNZIiwieSI6IkFNelNtSXRoMHZCUTFmZjI4RlF6c1paSS1XckxZdXFxSFI4TF9HbHZrWXMifX19.usBLTsyl9fgJWPjJvbyJlpaDmfXZNRuxJCt9voME2VAAb0GhncwakNACMUdAqS9fMU5e9Y9p-KUsuOOXXVAlmg~WyI4elFmQkItS3FZSHVKcW5wVER2c1VRIiwgIm5hbWUiLCAiSm9obiJd~"
 
@@ -114,7 +115,7 @@ class HolderVPTest {
         mockServer.enqueue(
             MockResponse()
                 .setResponseCode(200)
-                .setBody(AUTH_REQUEST_JWT_WITH_TRANSACTION_DATA)
+                .setBody(AUTH_REQUEST_JWT)
                 .setHeader("content-type", "application/oauth-authz-req+jwt")
         )
 
@@ -153,7 +154,7 @@ class HolderVPTest {
                 .setBody(AUTH_REQUEST_JWT)
                 .setHeader("content-type", "application/oauth-authz-req+jwt")
         )
-        holder.getAuthorizationRequest("openid4vp://?client_id=did:key:zDnaeeTG88wpPhMzuDRvLRTTyNMyJip5e6TLmsjyvPiSYUFk7&request_uri_method=post&request_uri=http://localhost:9002/request")
+        holder.getAuthorizationRequest("openid4vp://?client_id=decentralized_identifier:did:key:zDnaeQpNYQD6h18VnagyA1Xbey9hFKA1j5cyhqPHGfaq9txmN&request_uri_method=post&request_uri=http://localhost:9002/request")
         val request = mockServer.takeRequest()
         val body = request.body.readUtf8();
         assert(request.method.equals("POST"))
@@ -316,7 +317,7 @@ class HolderVPTest {
         }
         val request = String(mockServer.takeRequest(3, TimeUnit.SECONDS)!!.body.readByteArray())
         assertEquals(
-            "error=access_denied&error_description=consent+to+share+the+presentation+is+not+given&state=eea7b48e-1866-41b4-beae-03b95d41670c",
+            "error=access_denied&error_description=consent+to+share+the+presentation+is+not+given&state=1d8b0d93-86e8-4135-87d4-524bb0500bf3",
             request
         )
     }

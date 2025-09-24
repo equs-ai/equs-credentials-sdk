@@ -12,7 +12,7 @@ use agent_sdk::vc::core::KeyMetadata;
 use agent_sdk::crypto::{Key, SSIAlg, JWK};
 use agent_sdk::did::universal::UniversalResolver;
 use agent_sdk::inmem::nonce::LocalNonceHandler;
-use agent_sdk::vc::dcql::{DCQLCredential, DCQL};
+use agent_sdk::vc::dcql::{DCQLCredential, NonEmptyVec, DCQL};
 use agent_sdk::vc::oid4vp::{
     AuthResponseOptions, AuthorizationRequestMetadata, AuthorizationResponse, ClientMetadata,
     CredentialVerificationMetadata, HashAlgorithm, PassAuthRequestObject, PresentationSession,
@@ -416,6 +416,7 @@ pub fn default_dcql_query() -> DCQL {
         {
             "id": "pid",
             "format": "dc+sd-jwt",
+            "meta": {},
             "claims": [
                 {
                     "id": "1",
@@ -439,7 +440,7 @@ pub fn default_dcql_query() -> DCQL {
     ))
     .unwrap();
 
-    DCQL::new(vec![desc])
+    DCQL::new(NonEmptyVec::new(desc))
 }
 
 const INPUT_DESCRIPTOR_FOR_JSON_LD_V1_CRED_DEF: &str = r#"{
@@ -502,13 +503,11 @@ fn default_verifier_metadata() -> ClientMetadata {
 }
 
 const DEFAULT_CLIENT_METADATA: &str = r#"{
-  "vp_formats": {
+  "vp_formats_supported": {
     "dc+sd-jwt": {
-      "alg": [
-        "EdDSA",
-        "ES256"
-      ]
-    },
+            "sd-jwt_alg_values": ["EdDSA", "ES256"],
+            "kb-jwt_alg_values": ["EdDSA", "ES256"]
+        },
     "ldp_vc": {
       "proof_type": [
         "Ed25519Signature2018",
@@ -524,9 +523,7 @@ const DEFAULT_CLIENT_METADATA: &str = r#"{
   },
   "encrypted_response_enc_values_supported": [
     "A256GCM"
-  ],
-  "authorization_encrypted_response_alg": "ECDH-ES",
-  "authorization_encrypted_response_enc": "A256GCM"
+  ]
 }"#;
 
 pub fn default_transaction_data_for_pd() -> Vec<TransactionDataItem> {

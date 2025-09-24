@@ -14,8 +14,8 @@ use crate::nonce::Nonce;
 use crate::vault::CredentialEntry;
 use crate::vc::core::api::ClaimsDidNotPassFilteringSnafu;
 use crate::vc::core::{
-    CredentialOffer, CredentialRequest, CredentialRequestData, Holder, HolderMetadata, KeyMetadata,
-    PresentationInput, Proof,
+    CredentialOffer, CredentialRequest, CredentialRequestData, Holder, HolderBinder,
+    HolderMetadata, KeyMetadata, PresentationInput, Proof,
 };
 use crate::vc::core::{
     CredentialOfferContent, FormatNotSupportedSnafu, InvalidDIDUrlSnafu, KMSSnafu,
@@ -163,8 +163,7 @@ where
     #[instrument(level = Level::TRACE, skip(self), err(), ret())]
     async fn create_presentation_auto(
         &self,
-        nonce: &Nonce,
-        verifier_id: &str,
+        holder_binder: Option<HolderBinder>,
         presentation_input: &PresentationInput,
     ) -> Result<Presentation> {
         let credentials = self.find_vcs_for_presentation(presentation_input).await?;
@@ -173,7 +172,7 @@ where
             && let Some(credential) = credentials.first()
         {
             return self
-                .create_presentation(nonce, verifier_id, presentation_input, credential)
+                .create_presentation(holder_binder, presentation_input, credential)
                 .await;
         }
 
@@ -267,8 +266,7 @@ where
     #[instrument(level = Level::TRACE, skip(self), err(), ret())]
     async fn create_presentation(
         &self,
-        nonce: &Nonce,
-        verifier_id: &str,
+        holder_binder: Option<HolderBinder>,
         presentation_input: &PresentationInput,
         cred_entry: &CredentialEntry,
     ) -> Result<Presentation> {
@@ -284,8 +282,7 @@ where
                     key,
                     VPMetadata {
                         disclosures,
-                        nonce: nonce.clone(),
-                        verifier_id: verifier_id.to_string(),
+                        holder_binder,
                     },
                     self.did_resolver.clone(),
                 )
@@ -298,8 +295,7 @@ where
                 let metadata = json_ld_vc::VPMetadata::from_presentation_input(
                     vc,
                     presentation_input,
-                    nonce.to_owned(),
-                    verifier_id.to_string(),
+                    holder_binder,
                 )
                 .context(VCSnafu)?;
                 let vp = JsonLdAPI::create_vp(vc, key, metadata, self.did_resolver.clone())
@@ -410,14 +406,15 @@ mod tests {
     };
     use crate::vc::core::tests::utils::{CredTestCase, random_nonce};
     use crate::vc::core::{
-        CredentialDefinitionData, Error, Holder, HolderMetadata, HolderService, KeyMetadata,
-        ProofOfPossessionMetadata, StatusIssuer, StatusIssuerMetadata, StatusListDefinition,
+        CredentialDefinitionData, Error, Holder, HolderBinder, HolderMetadata, HolderService,
+        KeyMetadata, ProofOfPossessionMetadata, StatusIssuer, StatusIssuerMetadata,
+        StatusListDefinition,
     };
     use crate::vc::oid4vp::{CredentialsFindResult, FindVCsFailReason};
     use crate::vc::presentation_exchange::StatusSize;
     use crate::vc::status_formats::StatusListFormat;
     use crate::vc::status_formats::status_list_token_jwt::{VCStatus, VCStatuses};
-    use crate::vc::{CredentialMetadata, HasVCFormat, VCStatusesData};
+    use crate::vc::{CredentialMetadata, HasVCFormat, Presentation, VCStatusesData};
     use crate::{kms, vc};
     use rstest::rstest;
     use serde_json::json;
@@ -1044,11 +1041,42 @@ mod tests {
 
         let presentation = holder
             .create_presentation(
-                &nonce,
-                VERIFIER_ID,
+                Some(HolderBinder {
+                    nonce: nonce.to_owned(),
+                    verifier_id: VERIFIER_ID.to_string(),
+                }),
                 &case.create_presentation_input(),
                 &entry,
             )
+            .await
+            .unwrap();
+
+        if let Presentation::LdpVp(vp) = presentation.to_owned() {
+            let proof = vp.proofs.iter().find(|v| !v.domains.is_empty()).unwrap();
+            assert!(proof.domains.contains(&VERIFIER_ID.to_string()));
+            assert!(proof.challenge.to_owned().unwrap().as_str() == nonce.secret());
+        }
+        case.assert_presentation(&presentation, &entry.credential)
+            .await;
+    }
+
+    #[rstest]
+    #[case::sd_jwt(CredTestCase::sd_jwt())]
+    #[case::ldp_vc(CredTestCase::ldp_vc())]
+    #[tokio::test]
+    async fn holder_creates_presentation_correctly_without_holder_binding(
+        #[case] case: CredTestCase,
+    ) {
+        let case = CredTestCase::ldp_vc();
+        let kms = LocalKms::new();
+        let vault = InMemVault::new();
+
+        let (entry, _) = case.generate_vc(&kms, None).await;
+
+        let holder = holder_service(kms, vault.clone());
+
+        let presentation = holder
+            .create_presentation(None, &case.create_presentation_input(), &entry)
             .await
             .unwrap();
 
@@ -1072,8 +1100,10 @@ mod tests {
 
         let res = holder
             .create_presentation(
-                &nonce,
-                VERIFIER_ID,
+                Some(HolderBinder {
+                    nonce: nonce.to_owned(),
+                    verifier_id: VERIFIER_ID.to_string(),
+                }),
                 &case.create_presentation_input(),
                 &CredentialEntry {
                     kid: "invalid".to_string(),
@@ -1100,8 +1130,10 @@ mod tests {
 
         let res = holder
             .create_presentation(
-                &nonce,
-                VERIFIER_ID,
+                Some(HolderBinder {
+                    nonce: nonce.to_owned(),
+                    verifier_id: VERIFIER_ID.to_string(),
+                }),
                 &case.create_presentation_input(),
                 &CredentialEntry {
                     credential: case.invalid_cred(),
@@ -1133,7 +1165,13 @@ mod tests {
         let nonce = random_nonce().await;
 
         let presentation = holder
-            .create_presentation_auto(&nonce, VERIFIER_ID, &case.create_presentation_input())
+            .create_presentation_auto(
+                Some(HolderBinder {
+                    nonce: nonce.to_owned(),
+                    verifier_id: VERIFIER_ID.to_string(),
+                }),
+                &case.create_presentation_input(),
+            )
             .await
             .unwrap();
 
@@ -1163,7 +1201,13 @@ mod tests {
         let nonce = random_nonce().await;
 
         let res = holder
-            .create_presentation_auto(&nonce, VERIFIER_ID, &case.create_presentation_input())
+            .create_presentation_auto(
+                Some(HolderBinder {
+                    nonce: nonce.to_owned(),
+                    verifier_id: VERIFIER_ID.to_string(),
+                }),
+                &case.create_presentation_input(),
+            )
             .await;
 
         assert!(matches!(res.err(), Some(Error::Vault { .. })));

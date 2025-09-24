@@ -161,7 +161,7 @@ impl PresentationRequestSentState {
 
         let result = verifier_service
             .verify_presentation(
-                &Default::default(),
+                None,
                 &presentation,
                 &ReqwestClientBuilder::new().insecure().build().unwrap(),
             )

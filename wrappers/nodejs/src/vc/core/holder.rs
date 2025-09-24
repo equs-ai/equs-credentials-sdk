@@ -3,6 +3,7 @@ use crate::error::IntoNapiError;
 use crate::http::ReqwestHttpClient;
 use crate::kms::JsKms;
 use crate::vault::{JsCredentialEntry, JsCredentialsFindResult, JsVault};
+use crate::vc::core::JsHolderBinder;
 use crate::vc::core::{JsCredential, JsCredentialMetadata, JsHolderMetadata, JsKeyMetadata};
 use crate::vc::core::{
     JsCredentialOffer, JsCredentialRequest, JsPresentation, JsPresentationInput,
@@ -10,7 +11,6 @@ use crate::vc::core::{
 use agent_sdk::vc::core::{Holder, HolderService as CoreHolderService};
 use napi::Error;
 use napi_derive::napi;
-use serde_json::Value;
 use std::sync::Arc;
 
 /// An async low-level protocol-agnostic `Holder` API.
@@ -92,8 +92,7 @@ impl VCCoreHolder {
     ///
     /// `Holder` will automatically select first {@link Credential} that matched the {@link PresentationInput}.
     ///
-    /// @param {string} `nonce` - a nonce form {@link Verifier} to be used to generate `VP`.
-    /// @param {string} `verifierId` - an ID of the {@link Verifier}.
+    /// @param {holder_binder} - if given: bind holder in the credential. It contains nonce and verifier_id
     /// @param {PresentationInput} `presentationInput` - an input with data related to requested `VC`s.
     ///
     /// @returns {Presentation}
@@ -102,14 +101,12 @@ impl VCCoreHolder {
     #[napi]
     pub async fn create_presentation_auto(
         &self,
-        nonce: String,
-        verifier_id: String,
+        holder_binder: Option<JsHolderBinder>,
         presentation_input: JsPresentationInput,
     ) -> Result<JsPresentation, Error> {
         self.0
             .create_presentation_auto(
-                &serde_json::from_value(Value::String(nonce))?,
-                &verifier_id,
+                holder_binder.map(Into::into),
                 &presentation_input.try_into()?,
             )
             .await
@@ -138,8 +135,7 @@ impl VCCoreHolder {
 
     /// Create a Verifiable Presentation.
     ///
-    /// @param {string} `nonce` - a nonce from {@link Verifier} to be used to generate `VP`.
-    /// @param {string} `verifierId` - an ID of the {@link Verifier}.
+    /// @param {holder_binder} - if given: bind holder in the credential. It contains nonce and verifier_id
     /// @param {PresentationInput} `presentationInput` - an input with the data defining the requested `VC`s.
     /// @param {CredentialEntry} `credential` - an actual {@link CredentialEntry} for the {@link Presentation}.
     ///
@@ -147,15 +143,13 @@ impl VCCoreHolder {
     #[napi]
     pub async fn create_presentation(
         &self,
-        nonce: String,
-        verifier_id: String,
+        holder_binder: Option<JsHolderBinder>,
         presentation_input: JsPresentationInput,
         credential: JsCredentialEntry,
     ) -> Result<JsPresentation, Error> {
         self.0
             .create_presentation(
-                &serde_json::from_value(Value::String(nonce))?,
-                &verifier_id,
+                holder_binder.map(Into::into),
                 &presentation_input.try_into()?,
                 &credential.try_into()?,
             )

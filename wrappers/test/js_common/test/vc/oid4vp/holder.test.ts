@@ -20,10 +20,7 @@ import {
   AUTH_REQUEST,
   AUTH_REQUEST_FAKE,
   AUTH_REQUEST_JWT,
-  AUTH_REQUEST_JWT_WITH_TRANSACTION_DATA,
   AUTH_REQUEST_WITH_DIRECT_POST_JWT,
-  AUTH_REQUEST_WITH_TRANSACTION_DATA,
-  CLIENT_ID_AS_URL_SAFE,
   PRESENTATION_DEFINITION_FAKE,
   PRESENTATION_SUBMISSION,
   STATE,
@@ -48,7 +45,12 @@ describe("OID4VP Holder: ", () => {
     mockServer.reset();
     kms = new InMemKms();
     vault = new InMemVault();
-    holder = await new OID4VPHolderBuilder(kms, vault, "client_id", ReqwestHttpClient.insecure())
+    holder = await new OID4VPHolderBuilder(
+      kms,
+      vault,
+      "did:key:zDnaeynayJkibriPJdYBgYTe6eE6cLqHU4jox1gg44fYGYgSs",
+      ReqwestHttpClient.insecure(),
+    )
       .withNonceHandler(new MockNonceHandler("some_nonce"))
       .build();
 
@@ -74,7 +76,7 @@ describe("OID4VP Holder: ", () => {
       .thenReply(200, AUTH_REQUEST_JWT, { "content-type": "application/oauth-authz-req+jwt" });
 
     const authorizationRequest = await holder.getAuthorizationRequest(
-      "openid4vp://?client_id=did%3Akey%3AzDnaeeTG88wpPhMzuDRvLRTTyNMyJip5e6TLmsjyvPiSYUFk7&request_uri=http%3A%2F%2Flocalhost%3A9001%2Frequest",
+      "openid4vp://?client_id=decentralized_identifier%3Adid%3Akey%3AzDnaer1d3Hpdg6RH7KRhWXRtzpijEm8GtaVQn7BtSw7DiW72E&request_uri=http%3A%2F%2Flocalhost%3A9001%2Frequest",
     );
     expect(authorizationRequest.getAuthRequest()).toEqual(AUTH_REQUEST);
   });
@@ -82,18 +84,17 @@ describe("OID4VP Holder: ", () => {
   it("resolve authorization request with transaction data", async () => {
     await mockServer
       .forGet("/request")
-      .thenReply(200, AUTH_REQUEST_JWT_WITH_TRANSACTION_DATA, { "content-type": "application/oauth-authz-req+jwt" });
+      .thenReply(200, AUTH_REQUEST_JWT, { "content-type": "application/oauth-authz-req+jwt" });
 
     const authorizationRequest = await holder.getAuthorizationRequest(
-      `openid4vp://?client_id=${CLIENT_ID_AS_URL_SAFE}&request_uri=http%3A%2F%2Flocalhost%3A9001%2Frequest`,
+      "openid4vp://?client_id=decentralized_identifier%3Adid%3Akey%3AzDnaer1d3Hpdg6RH7KRhWXRtzpijEm8GtaVQn7BtSw7DiW72E&request_uri=http%3A%2F%2Flocalhost%3A9001%2Frequest",
     );
-    console.log(authorizationRequest.getAuthRequest());
     let transactionData = authorizationRequest.getAuthRequest().transaction_data;
     expect(transactionData).toEqual([
       {
-        type: "type1",
+        type: "some_type",
         credential_ids: ["Identity-1"],
-        transaction_data_hashes_alg: ["sha-256"],
+        transaction_data_hashes_alg: ["sha-256", "sha-512"],
       },
     ]);
   });
@@ -110,7 +111,7 @@ describe("OID4VP Holder: ", () => {
     });
 
     await holder.getAuthorizationRequest(
-      "openid4vp://?client_id=did:key:zDnaeeTG88wpPhMzuDRvLRTTyNMyJip5e6TLmsjyvPiSYUFk7&request_uri_method=post&request_uri=http://localhost:9001/request",
+      "openid4vp://?client_id=decentralized_identifier%3Adid%3Akey%3AzDnaer1d3Hpdg6RH7KRhWXRtzpijEm8GtaVQn7BtSw7DiW72E&request_uri_method=post&request_uri=http%3A%2F%2Flocalhost%3A9001%2Frequest",
     );
   });
 
@@ -129,10 +130,7 @@ describe("OID4VP Holder: ", () => {
       .thenCallback(async (request) => await handleRequestForTransactionData(request));
 
     await vault.storeCredential(credential, metadata);
-    const result = await holder.presentCredentialsAuto(
-      new AuthorizationRequest(AUTH_REQUEST_WITH_TRANSACTION_DATA),
-      {},
-    );
+    const result = await holder.presentCredentialsAuto(new AuthorizationRequest(AUTH_REQUEST), {});
 
     expect(result).toBeFalsy();
   });
@@ -246,7 +244,7 @@ describe("OID4VP Holder: ", () => {
     expect(response).toEqual({
       error: "access_denied",
       error_description: "consent to share the presentation is not given",
-      state: "eea7b48e-1866-41b4-beae-03b95d41670c",
+      state: STATE,
     });
   });
 });

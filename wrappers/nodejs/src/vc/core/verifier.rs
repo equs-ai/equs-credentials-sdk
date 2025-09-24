@@ -3,12 +3,12 @@ use crate::error::IntoNapiError;
 use crate::http::{JsHttpClient, ReqwestHttpClient};
 use crate::utils::to_json_object;
 use crate::vc::JsonObject;
+use crate::vc::core::JsHolderBinder;
 use crate::vc::core::JsPresentation;
 use crate::vc::core::JsVCStatus;
 use agent_sdk::vc::core::{Verifier, VerifierService as CoreVerifierService};
 use napi::Error;
 use napi_derive::napi;
-use serde_json::Value;
 
 /// An async low-level protocol-agnostic {@link Verifier} API.
 ///
@@ -23,7 +23,7 @@ pub struct VCCoreVerifier(pub(crate) Box<dyn Verifier>);
 impl VCCoreVerifier {
     /// Verify a {@link Presentation}.
     ///
-    /// @param {string} nonce - a nonce used to generate {@link Presentation}.
+    /// @param {holder_binder} - if given used to bind holder in the credential. It contains nonce and verifier_id
     /// @param {Presentation} presentation - a {@link Presentation} to verify.
     /// @param {ReqwestHttpClient} httpClient - an {@link ReqwestHttpClient} http client
     ///
@@ -31,13 +31,13 @@ impl VCCoreVerifier {
     #[napi(ts_return_type = "Promise<Claims>")]
     pub async fn verify_presentation(
         &self,
-        nonce: String,
+        holder_binder: Option<JsHolderBinder>,
         presentation: JsPresentation,
         http_client: &ReqwestHttpClient,
     ) -> Result<JsonObject, Error> {
         self.0
             .verify_presentation(
-                &serde_json::from_value(Value::String(nonce))?,
+                holder_binder.map(Into::into),
                 &presentation.try_into()?,
                 &http_client.inner(),
             )

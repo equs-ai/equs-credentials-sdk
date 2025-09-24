@@ -58,7 +58,7 @@ See [Components](docs/asdk-components.png).
     - WACI Issue Credential Protocol
       3.0 [specification](https://github.com/decentralized-identity/waci-didcomm/blob/main/issue_credential/README.md)
 - VC Exchange Protocols: Presentation
-    - OID4VP [draft 24](https://openid.net/specs/openid-4-verifiable-presentations-1_0-24.html)
+    - OID4VP [draft 29](https://openid.net/specs/openid-4-verifiable-presentations-1_0-29.html)
         - DIF.PresentationExchange query language to request the presentations
         - Cross Device Flow
         - Same Device Flow
@@ -67,6 +67,7 @@ See [Components](docs/asdk-components.png).
         - OID4VP
             - Response Mode "direct_post.jwt"
             - Transaction Data
+            - Holder Binding
     - WACI Present Proof Protocol
       3.0 [specification](https://github.com/decentralized-identity/waci-didcomm/blob/main/present_proof/present-proof-v3.md)
 - VC Revocation:

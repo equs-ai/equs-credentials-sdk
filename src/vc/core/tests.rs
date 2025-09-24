@@ -121,7 +121,7 @@ pub mod utils {
     use crate::vc::core::tests::fixtures::*;
     use crate::vc::core::{
         CredentialDefinitionData, CredentialRequest, CredentialRequestData, CredentialStatusInfo,
-        PresentationInput, PresentationRestriction, Proof,
+        HolderBinder, PresentationInput, PresentationRestriction, Proof,
     };
     use crate::vc::dcql::DCQLCredential;
     use crate::vc::formats::json_ld_vc::JsonLdAPI;
@@ -436,7 +436,9 @@ pub mod utils {
                     restrictions: vec![
                         PresentationRestriction {
                             fields: vec!["$.type[*]".to_string()],
-                            value: Some(PresentationRestrictionValue::Const(self.type_.to_owned())),
+                            value: Some(PresentationRestrictionValue::ArrayOfValues(vec![vec![
+                                self.type_.to_owned(),
+                            ]])),
                             optional: false,
                         },
                         PresentationRestriction {
@@ -545,6 +547,7 @@ pub mod utils {
                         {
                             "id": "some_id",
                             "format": "ldp_vc",
+                            "meta": {},
                             "claims": [
                                 {
                                     "path": ["will", "pass", "whilst","giveName", "type", null]
@@ -696,7 +699,7 @@ pub mod utils {
             &self,
             kms: &LocalKms,
             entry: &CredentialEntry,
-            nonce: &Nonce,
+            nonce: Option<Nonce>,
         ) -> Presentation {
             let kh = kms.get(&entry.kid).await.unwrap();
 
@@ -768,16 +771,19 @@ pub mod utils {
         async fn sd_jwt_vp(
             vc: &sd_jwt_vc::Credential,
             kh: impl KeyHandle,
-            nonce: &Nonce,
+            nonce: Option<Nonce>,
             disclosures: &[String],
         ) -> sd_jwt_vc::Presentation {
+            let holder_binder = nonce.map(|n| HolderBinder {
+                nonce: n.to_owned(),
+                verifier_id: VERIFIER_ID.to_string(),
+            });
             let vp_meta = sd_jwt_vc::VPMetadata {
                 disclosures: disclosures
                     .iter()
                     .map(|d| (d.to_owned().replace("$.", ""), json!(true)))
                     .collect(),
-                nonce: nonce.to_owned(),
-                verifier_id: VERIFIER_ID.to_string(),
+                holder_binder,
             };
 
             SdJwtAPI::create_vp(vc, kh, vp_meta, UniversalResolver::default())
@@ -818,10 +824,13 @@ pub mod utils {
         async fn json_ld_vp(
             vc: &json_ld_vc::VC,
             kh: impl KeyHandle,
-            nonce: &Nonce,
+            nonce: Option<Nonce>,
         ) -> json_ld_vc::VP {
-            let vp_meta =
-                json_ld_vc::VPMetadata::new(vc, nonce.to_owned(), VERIFIER_ID.to_string()).unwrap();
+            let holder_binder = nonce.map(|n| HolderBinder {
+                nonce: n,
+                verifier_id: VERIFIER_ID.to_string(),
+            });
+            let vp_meta = json_ld_vc::VPMetadata::new(vc, holder_binder).unwrap();
 
             JsonLdAPI::create_vp(vc, kh, vp_meta, UniversalResolver::default())
                 .await

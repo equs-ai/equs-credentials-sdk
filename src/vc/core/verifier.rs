@@ -1,13 +1,12 @@
 use crate::did::universal::UniversalResolver;
 use crate::http::HttpClient;
-use crate::nonce::Nonce;
 use crate::vc::claims::Claims;
 use crate::vc::core::Result;
 use crate::vc::core::api::{
     CredentialExpiredSnafu, ExpirationCheckSnafu, ParseSnafu, VCNotValidSnafu,
 };
 use crate::vc::core::{
-    ClaimsSnafu, CredentialStatusNotSupportedSnafu, FormatNotSupportedSnafu, VCSnafu,
+    ClaimsSnafu, CredentialStatusNotSupportedSnafu, FormatNotSupportedSnafu, HolderBinder, VCSnafu,
     VCStatusSnafu, Verifier,
 };
 use crate::vc::formats::json_ld_vc::JsonLdAPI;
@@ -34,7 +33,7 @@ impl Verifier for VerifierService {
     #[instrument(level = Level::TRACE, skip(self, http_client), err(), ret())]
     async fn verify_presentation(
         &self,
-        nonce: &Nonce, // same as in create_presentation
+        holder_binder: Option<HolderBinder>,
         presentation: &Presentation,
         http_client: &dyn HttpClient,
     ) -> Result<Claims> {
@@ -42,8 +41,7 @@ impl Verifier for VerifierService {
             Presentation::SdJwtVp(vp) => {
                 let claims = SdJwtAPI::verify_vp(
                     vp,
-                    nonce,
-                    &self.verifier_id,
+                    holder_binder,
                     VerifyOptions {
                         selective_claims: Default::default(),
                     },
@@ -80,8 +78,7 @@ impl Verifier for VerifierService {
             Presentation::LdpVp(vp) => {
                 JsonLdAPI::verify_vp(
                     vp,
-                    nonce,
-                    &self.verifier_id,
+                    holder_binder,
                     VerifyOptions {
                         selective_claims: Default::default(),
                     },
@@ -169,8 +166,8 @@ mod tests {
     use crate::vc::core::tests::fixtures::VERIFIER_ID;
     use crate::vc::core::tests::utils::{CredTestCase, random_nonce};
     use crate::vc::core::{
-        Error, KeyMetadata, StatusIssuer, StatusIssuerMetadata, StatusListDefinition, Verifier,
-        VerifierService,
+        Error, HolderBinder, KeyMetadata, StatusIssuer, StatusIssuerMetadata, StatusListDefinition,
+        Verifier, VerifierService,
     };
     use crate::vc::presentation_exchange::StatusSize;
     use crate::vc::status_formats::StatusListFormat;
@@ -190,13 +187,65 @@ mod tests {
         let nonce = random_nonce().await;
 
         let (vc, _) = case.generate_vc(&kms, None).await;
-        let vp = case.generate_vp(&kms, &vc, &nonce).await;
+        let vp = case.generate_vp(&kms, &vc, Some(nonce.clone())).await;
 
         let verifier = verifier_service();
 
         let claims = verifier
             .verify_presentation(
-                &nonce,
+                Some(HolderBinder {
+                    nonce,
+                    verifier_id: VERIFIER_ID.to_string(),
+                }),
+                &vp,
+                &ReqwestClientBuilder::new().insecure().build().unwrap(),
+            )
+            .await
+            .unwrap();
+
+        case.assert_verified_claims(&claims).await;
+    }
+
+    #[tokio::test]
+    async fn verifier_verifies_credential_correctly_without_holder_binding_for_sd_jwt() {
+        let case = CredTestCase::sd_jwt();
+        let kms = LocalKms::new();
+
+        let (vc, _) = case.generate_vc(&kms, None).await;
+        let vp = case.generate_vp(&kms, &vc, None).await;
+
+        let verifier = verifier_service();
+
+        let claims = verifier
+            .verify_presentation(
+                None,
+                &vp,
+                &ReqwestClientBuilder::new().insecure().build().unwrap(),
+            )
+            .await
+            .unwrap();
+
+        case.assert_verified_claims(&claims).await;
+    }
+
+    #[should_panic(expected = "Verification error: invalid input: InvalidToken")]
+    #[tokio::test]
+    async fn verifier_verifies_credential_and_panics_without_holder_binding_for_sd_jwt() {
+        let case = CredTestCase::sd_jwt();
+        let kms = LocalKms::new();
+
+        let nonce = random_nonce().await;
+        let (vc, _) = case.generate_vc(&kms, None).await;
+        let vp = case.generate_vp(&kms, &vc, None).await;
+
+        let verifier = verifier_service();
+
+        let claims = verifier
+            .verify_presentation(
+                Some(HolderBinder {
+                    nonce,
+                    verifier_id: VERIFIER_ID.to_string(),
+                }),
                 &vp,
                 &ReqwestClientBuilder::new().insecure().build().unwrap(),
             )
@@ -225,13 +274,16 @@ mod tests {
         let (vc, _) = case
             .generate_vc(&kms, expire.then_some(Default::default()))
             .await;
-        let vp = case.generate_vp(&kms, &vc, &nonce).await;
+        let vp = case.generate_vp(&kms, &vc, Some(nonce.to_owned())).await;
 
         let verifier = verifier_service();
 
         let claims = verifier
             .verify_presentation(
-                &nonce,
+                Some(HolderBinder {
+                    nonce,
+                    verifier_id: VERIFIER_ID.to_string(),
+                }),
                 &vp,
                 &ReqwestClientBuilder::new().insecure().build().unwrap(),
             )
@@ -285,13 +337,16 @@ mod tests {
         let (vc, _) = case
             .generate_vc(&kms, revoke.then_some(Default::default()))
             .await;
-        let vp = case.generate_vp(&kms, &vc, &nonce).await;
+        let vp = case.generate_vp(&kms, &vc, Some(nonce.to_owned())).await;
 
         let verifier = verifier_service();
 
         let claims = verifier
             .verify_presentation(
-                &nonce,
+                Some(HolderBinder {
+                    nonce,
+                    verifier_id: VERIFIER_ID.to_string(),
+                }),
                 &vp,
                 &ReqwestClientBuilder::new().insecure().build().unwrap(),
             )
@@ -311,13 +366,16 @@ mod tests {
         let nonce2 = random_nonce().await;
 
         let (vc, _) = case.generate_vc(&kms, None).await;
-        let vp = case.generate_vp(&kms, &vc, &nonce1).await;
+        let vp = case.generate_vp(&kms, &vc, Some(nonce1)).await;
 
         let verifier = verifier_service();
 
         let res = verifier
             .verify_presentation(
-                &nonce2,
+                Some(HolderBinder {
+                    nonce: nonce2,
+                    verifier_id: VERIFIER_ID.to_string(),
+                }),
                 &vp,
                 &ReqwestClientBuilder::new().insecure().build().unwrap(),
             )

@@ -14,7 +14,16 @@ import {
   ResolvedPresentationQuery,
   TransactionDataResponse,
 } from "../../";
-import { CLAIMS, PRESENTATION_DEFINITION, PRESENTATION_QUERY, PRESENTATION_SUBMISSION, STATE, VP } from "./fixtures";
+import {
+  CLAIMS,
+  DCQL,
+  PRESENTATION_DEFINITION,
+  PRESENTATION_QUERY,
+  PRESENTATION_QUERY_FOR_DCQL,
+  PRESENTATION_SUBMISSION,
+  STATE,
+  VP,
+} from "./fixtures";
 import { createDidAndKeyMetadata } from "../utils";
 import { util as jose } from "node-jose";
 import { TransactionDataItem } from "../../";
@@ -50,6 +59,37 @@ describe("OID4VP Verifier: ", () => {
     expect(authReqByValue.session.resolvedPresentationQuery.presentation_definition).toMatchObject(
       PRESENTATION_DEFINITION,
     );
+    expect(expected_state).toEqual(STATE);
+  });
+
+  it("create Authorization Request by Value with DCQL", async () => {
+    const verifier = await buildVerifier();
+
+    const authResponseOptions: AuthResponseOptions = {
+      mode: "direct_post",
+      type: "vp_token",
+      submissionUri: "http://localhost:9001/response",
+      state: STATE,
+    };
+
+    const authorizationRequestMetadata: AuthorizationRequestMetadata = {
+      authResponseOptions: authResponseOptions,
+      passAuthRequestObject: {
+        type: PassAuthRequestObjectType.ByValue,
+      },
+    };
+    const authReqByValue = await verifier.createAuthorizationRequest(
+      PRESENTATION_QUERY_FOR_DCQL,
+      authorizationRequestMetadata,
+      null,
+    );
+
+    const decodedPayload = atob(authReqByValue.authorizationRequestJwt.split(".")[1]);
+    const expected_state = JSON.parse(decodedPayload)["state"];
+
+    expect(authReqByValue.authorizationRequestUri).toContain("request=eyJh");
+    expect(authReqByValue.session.nonce?.length).toBeTruthy();
+    expect(authReqByValue.session.resolvedPresentationQuery.dcql_query).toMatchObject(DCQL);
     expect(expected_state).toEqual(STATE);
   });
 
