@@ -1,7 +1,6 @@
+use crate::didcomm::protocol::aries::problem_report::message::ProblemReport;
 use serde::{Deserialize, Serialize};
 use tracing::{error, info};
-
-use crate::didcomm::protocol::aries::problem_report::message::ProblemReport;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum Status {

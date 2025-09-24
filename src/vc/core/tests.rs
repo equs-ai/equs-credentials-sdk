@@ -129,7 +129,14 @@ pub mod utils {
     use crate::vc::formats::{HasCredential, VerifyOptions, json_ld_vc, sd_jwt_vc};
     use crate::vc::pop::jwt_pop::JwtProofOfPossession;
     use crate::vc::pop::{GenerateOptions, ProofOfPossession};
-    use crate::vc::{ClaimFormat, Credential, Presentation, VCFormat, VCFormatsAPI, pop};
+    use crate::vc::presentation_exchange::{
+        ClaimFormatMap, ClaimFormatPayload, Constraints, ConstraintsField, InputDescriptor,
+        PresentationDefinition,
+    };
+    use crate::vc::{
+        ClaimFormat, ClaimFormatDesignation, Credential, JsonPath, Presentation, VCFormat,
+        VCFormatsAPI, pop,
+    };
     use iref::IriRefBuf;
     use oid4vci::proof_of_possession::{ProofOfPossessionBody, ProofOfPossessionController};
     use serde_json::json;
@@ -357,6 +364,41 @@ pub mod utils {
             });
 
             cred_req
+        }
+
+        pub fn create_presentation_definition(&self) -> PresentationDefinition {
+            let type_filter = json!({
+                "type": "string",
+                "const": CRED_TYPE.to_string()
+            });
+            let type_constraint = ConstraintsField::new(JsonPath::parse("$.type[*]").unwrap())
+                .set_filter(&type_filter)
+                .unwrap()
+                .set_optional(false);
+
+            let name_constraint =
+                ConstraintsField::new(JsonPath::parse("$.credentialSubject.givenName").unwrap())
+                    .add_path(JsonPath::parse("$.credentialSubject.familyName").unwrap())
+                    .set_optional(true);
+
+            let constraints = Constraints::new()
+                .add_constraint(type_constraint)
+                .add_constraint(name_constraint);
+            let mut format = ClaimFormatMap::new();
+            format.insert(
+                ClaimFormatDesignation::LdpVc,
+                ClaimFormatPayload::Json(json!({
+                   "proof_type": [
+                    "Ed25519Signature2018",
+                    "EcdsaSecp256k1Signature2019"
+                   ]
+                })),
+            );
+            let input_descriptor = InputDescriptor::new("Identity".to_string(), constraints)
+                .set_name("Identity".to_string())
+                .set_purpose("Some purpose".to_string())
+                .set_format(format);
+            PresentationDefinition::new(Uuid::new_v4().to_string(), input_descriptor)
         }
 
         pub fn create_presentation_input(&self) -> PresentationInput {

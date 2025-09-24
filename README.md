@@ -48,7 +48,7 @@ See [Components](docs/asdk-components.png).
     - W3C VC JSON-LD V1 (ECDSA,
       EdDSA) - [Verifiable Credentials Data Model v1.1](https://www.w3.org/TR/2022/REC-vc-data-model-20220303/)
     - W3C VC JSON-LD V2 (ECDSA, EdDSA, BBS+ 2023)
-      - [Verifiable Credentials Data Model v2.0](https://www.w3.org/TR/vc-data-model-2.0/)
+        - [Verifiable Credentials Data Model v2.0](https://www.w3.org/TR/vc-data-model-2.0/)
 - VC Exchange Protocols: Issuance
     - OID4VCI [draft 15](https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0-15.html)
         - Authorization Code Flow using scope Parameter to Request Issuance of a Credential
@@ -67,6 +67,8 @@ See [Components](docs/asdk-components.png).
         - OID4VP
             - Response Mode "direct_post.jwt"
             - Transaction Data
+    - WACI Present Proof Protocol
+      3.0 [specification](https://github.com/decentralized-identity/waci-didcomm/blob/main/present_proof/present-proof-v3.md)
 - VC Revocation:
     - Token Status List for SD-JWT
       VC [draft-ietf-oauth-status-list-07](https://datatracker.ietf.org/doc/draft-ietf-oauth-status-list/07/)
@@ -89,7 +91,6 @@ See [Components](docs/asdk-components.png).
     - OID4VCI
         - Authorization Code Flow Using Authorization Details Parameter
         - Deferred Issuance
-    - WACI Present Proof Protocol 3.0
     - Aries AIPv2
 - DID methods
     - did:ethr
@@ -101,7 +102,7 @@ See [Components](docs/asdk-components.png).
 
 Pre-requisites:
 
-- rustc version >=1.87
+- rustc version >=1.89
 
 ```
 cargo build --all-features

@@ -1,5 +1,3 @@
-use serde::{Deserialize, Serialize};
-
 use crate::didcomm::core::message_id::MessageId;
 use crate::didcomm::core::message_type::{MessageType, MessageTypePrefix};
 use crate::didcomm::protocol::aries::issuance::{CREDENTIAL_PREVIEW, Result};
@@ -7,6 +5,7 @@ use crate::didcomm::protocol::aries::issuance::{
     InvalidCredentialValueTypeSnafu, PROTOCOL_NAME, PROTOCOL_VERSION,
 };
 use crate::utils::http::MimeType;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 pub struct CredentialPreviewData {

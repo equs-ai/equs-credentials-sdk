@@ -22,6 +22,7 @@ use snafu::ResultExt;
 use std::convert::TryFrom;
 use tracing::{Level, info, instrument};
 
+#[derive(Clone)]
 pub struct VerifierService {
     verifier_id: String,
     did_resolver: UniversalResolver,

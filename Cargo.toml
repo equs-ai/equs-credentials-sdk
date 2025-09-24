@@ -83,10 +83,11 @@ ecdsa = { version = "0.16.9", optional = true }
 hyper = { version = "0.14.32", features = ["full"], optional = true }
 http = { version = "0.2", optional = true }
 tokio = { version = "1.25.0", features = ["macros"], optional = true }
+libc = "0.2.172"
 
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-didcomm = { git = "ssh://git@git.slock.it/open-source/didcomm-rust.git" , rev = "db41780d", features = ["uniffi"] }
+didcomm = { git = "ssh://git@git.slock.it/open-source/didcomm-rust.git", rev = "db41780d", features = ["uniffi"] }
 reqwest-middleware = { version = "0.4.0", default-features = false }
 reqwest-tracing = { version = "0.5.5", default-features = false }
 
@@ -103,7 +104,7 @@ ecdsa = "0.16.9"
 
 [features]
 in-memory = ["dep:rand", "dep:ed25519-dalek", "dep:ecdsa", "dep:askar-crypto"]
-didcomm-http-trasnport = ["dep:http", "dep:hyper", "dep:tokio"]
+didcomm-http-transport = ["dep:http", "dep:hyper", "dep:tokio"]
 
 [profile.release]
 opt-level = "z"
