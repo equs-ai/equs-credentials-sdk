@@ -3,7 +3,7 @@ use lazy_static::lazy_static;
 use regex::{Match, Regex};
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de};
 use snafu::Snafu;
-use std::fmt::Display;
+use std::fmt::{Display, Formatter};
 use strum_macros::EnumIter;
 use tracing::{Level, debug, instrument};
 
@@ -106,7 +106,7 @@ pub fn parse_message_type(message_type: &str) -> Result<(String, String, String,
 }
 
 impl Display for MessageType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let str = format!(
             "{}/{}/{}/{}",
             self.prefix, self.family, self.version, self.type_
@@ -133,7 +133,7 @@ impl From<String> for MessageTypePrefix {
 }
 
 impl Display for MessageTypePrefix {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let str = match self {
             MessageTypePrefix::DID => "did:sov:BzCbsNYhMrjHiqZDTUASHg;spec".to_string(),
             MessageTypePrefix::Endpoint => "https://didcomm.org".to_string(),

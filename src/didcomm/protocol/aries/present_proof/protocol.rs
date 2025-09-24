@@ -3,48 +3,48 @@ use async_trait::async_trait;
 use crate::didcomm::connection::ConnectionService;
 use crate::didcomm::core::protocol::Protocol;
 use crate::didcomm::core::protocol::message_handler::MessageHandler;
-use crate::didcomm::protocol::aries::issuance::holder::IssuanceHolder;
-use crate::didcomm::protocol::aries::issuance::holder::states::IssuanceHolderState;
-use crate::didcomm::protocol::aries::issuance::issuer::Issuer;
-use crate::didcomm::protocol::aries::issuance::issuer::states::IssuerState;
-use crate::didcomm::protocol::aries::issuance::{PROTOCOL_NAME, PROTOCOL_VERSION};
+use crate::didcomm::protocol::aries::present_proof::holder::PresentationHolder;
+use crate::didcomm::protocol::aries::present_proof::holder::states::PresentationHolderState;
+use crate::didcomm::protocol::aries::present_proof::verifier::Verifier;
+use crate::didcomm::protocol::aries::present_proof::verifier::states::VerifierState;
+use crate::didcomm::protocol::aries::present_proof::{PROTOCOL_NAME, PROTOCOL_VERSION};
 use crate::kms::{KeyHandle, Kms};
 use crate::storage::Storage;
 use crate::vault::Vault;
 
-pub struct IssuanceProtocol {
+pub struct PresentationProtocol {
     handlers: Vec<Box<dyn MessageHandler>>,
 }
 
-impl IssuanceProtocol {
-    pub fn new_with_issuer<KMS, KH, C, S>(issuer: Issuer<KMS, KH, C, S>) -> Self
+impl PresentationProtocol {
+    pub fn new_with_verifier<KMS, KH, C, S>(verifier: Verifier<KMS, KH, C, S>) -> Self
     where
         KMS: Kms<KH> + Clone + 'static,
         KH: KeyHandle + 'static,
         C: ConnectionService + Clone + 'static,
-        S: Storage<String, IssuerState> + Clone + 'static,
+        S: Storage<String, VerifierState> + Clone + 'static,
     {
-        IssuanceProtocol {
-            handlers: vec![Box::new(issuer)],
+        PresentationProtocol {
+            handlers: vec![Box::new(verifier)],
         }
     }
 
-    pub fn new_with_holder<KMS, KH, S, C, V>(holder: IssuanceHolder<KMS, KH, S, C, V>) -> Self
+    pub fn new_with_holder<KMS, KH, S, C, V>(holder: PresentationHolder<KMS, KH, S, C, V>) -> Self
     where
         KMS: Kms<KH> + Clone + 'static,
         KH: KeyHandle + 'static,
-        S: Storage<String, IssuanceHolderState> + Clone + 'static,
+        S: Storage<String, PresentationHolderState> + Clone + 'static,
         C: ConnectionService + Clone + 'static,
         V: Vault + Clone + 'static,
     {
-        IssuanceProtocol {
+        PresentationProtocol {
             handlers: vec![Box::new(holder)],
         }
     }
 }
 
 #[async_trait]
-impl Protocol for IssuanceProtocol {
+impl Protocol for PresentationProtocol {
     fn protocol_name(&self) -> &'static str {
         PROTOCOL_NAME
     }

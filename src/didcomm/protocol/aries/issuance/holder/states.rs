@@ -8,7 +8,7 @@ use crate::didcomm::protocol::aries::issuance::message::credential_offer::Creden
 use crate::didcomm::protocol::aries::problem_report::message::{ProblemReport, Reason};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub enum HolderState {
+pub enum IssuanceHolderState {
     OfferReceived(OfferReceivedState),
     RequestSent(RequestSentState),
     Finished(FinishedHolderState),

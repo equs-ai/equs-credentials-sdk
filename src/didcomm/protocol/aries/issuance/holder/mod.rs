@@ -16,7 +16,9 @@ use crate::didcomm::core::message_type::parse_message_type;
 use crate::didcomm::core::protocol;
 use crate::didcomm::core::protocol::message_handler::MessageHandler;
 use crate::didcomm::protocol::aries::issuance::holder::holder_fsm::HolderSM;
-use crate::didcomm::protocol::aries::issuance::holder::states::{HolderState, OfferReceivedState};
+use crate::didcomm::protocol::aries::issuance::holder::states::{
+    IssuanceHolderState, OfferReceivedState,
+};
 use crate::didcomm::protocol::aries::issuance::message::credential::Credential;
 use crate::didcomm::protocol::aries::issuance::message::credential_offer::CredentialOffer;
 use crate::didcomm::protocol::aries::issuance::protocol::IssuanceProtocol;
@@ -91,11 +93,11 @@ impl TryFrom<Message> for HolderMessages {
 }
 
 #[derive(Clone)]
-pub struct Holder<KMS, KH, S, C, V>
+pub struct IssuanceHolder<KMS, KH, S, C, V>
 where
     KMS: kms::Kms<KH> + Clone + 'static,
     KH: kms::KeyHandle + 'static,
-    S: Storage<String, HolderState> + Clone + 'static,
+    S: Storage<String, IssuanceHolderState> + Clone + 'static,
     C: ConnectionService + Clone + 'static,
     V: vault::Vault + Clone + 'static,
 {
@@ -104,16 +106,16 @@ where
     source_id: String,
     storage: S,
     vault: V,
-    event_emitter: EventEmitter<String, HolderState>,
+    event_emitter: EventEmitter<String, IssuanceHolderState>,
     oob: OutOfBandV2Protocol<KMS, KH, C>,
     connection_key_type: KeyType,
 }
 
-impl<KMS, KH, S, C, V> Holder<KMS, KH, S, C, V>
+impl<KMS, KH, S, C, V> IssuanceHolder<KMS, KH, S, C, V>
 where
     KMS: kms::Kms<KH> + Clone + 'static,
     KH: kms::KeyHandle + 'static,
-    S: Storage<String, HolderState> + Clone + 'static,
+    S: Storage<String, IssuanceHolderState> + Clone + 'static,
     C: ConnectionService + Clone + 'static,
     V: vault::Vault + Clone + 'static,
 {
@@ -124,7 +126,7 @@ where
         storage: S,
         vault: V,
         connection_key_type: KeyType,
-    ) -> Result<Holder<KMS, KH, S, C, V>> {
+    ) -> Result<IssuanceHolder<KMS, KH, S, C, V>> {
         debug!("Creating credential Holder state object");
 
         let oob = OutOfBandV2Protocol::new(agent);
@@ -155,12 +157,12 @@ where
         storage
             .put(
                 offer_id.to_owned(),
-                HolderState::OfferReceived(OfferReceivedState::new(offer, connection.id)),
+                IssuanceHolderState::OfferReceived(OfferReceivedState::new(offer, connection.id)),
             )
             .await
             .context(StorageSnafu)?;
 
-        let holder = Holder {
+        let holder = IssuanceHolder {
             agent: agent.clone(),
             key_metadata,
             source_id: offer_id,
@@ -203,7 +205,7 @@ where
             .await
     }
 
-    pub async fn get_state(&self) -> Result<HolderState> {
+    pub async fn get_state(&self) -> Result<IssuanceHolderState> {
         self.storage
             .get(&self.source_id)
             .await
@@ -258,7 +260,7 @@ where
         Ok(())
     }
 
-    pub async fn observe_state(&self) -> (Subscription, EventObservable<HolderState>) {
+    pub async fn observe_state(&self) -> (Subscription, EventObservable<IssuanceHolderState>) {
         self.event_emitter
             .clone()
             .observe(self.source_id.to_owned())
@@ -309,11 +311,11 @@ where
 }
 
 #[async_trait]
-impl<KMS, KH, S, C, V> MessageHandler for Holder<KMS, KH, S, C, V>
+impl<KMS, KH, S, C, V> MessageHandler for IssuanceHolder<KMS, KH, S, C, V>
 where
     KMS: kms::Kms<KH> + Clone,
     KH: kms::KeyHandle,
-    S: Storage<String, HolderState> + Clone,
+    S: Storage<String, IssuanceHolderState> + Clone,
     C: ConnectionService + Clone,
     V: vault::Vault + Clone,
 {

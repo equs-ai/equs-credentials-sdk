@@ -3,6 +3,7 @@ pub mod in_mem;
 #[cfg(test)]
 pub mod test_utils;
 
+use crate::did::DID;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use common_macros::DebugError;
@@ -11,8 +12,6 @@ use serde::{Deserialize, Serialize};
 use snafu::{Location, Snafu};
 use std::collections::HashMap;
 use std::fmt;
-
-use crate::did::DID;
 
 #[derive(Snafu, DebugError)]
 #[non_exhaustive]

@@ -17,8 +17,8 @@ use agent_sdk::vc::oid4vci::{
     CredentialResult, IssuerDiscovery, IssuerMetadata,
 };
 use agent_sdk::vc::oid4vci::{Holder, Issuer};
-use rand::distributions::Alphanumeric;
-use rand::{thread_rng, Rng};
+use rand::distr::Alphanumeric;
+use rand::{rng, Rng};
 use serde_json::json;
 use std::env;
 
@@ -78,7 +78,7 @@ async fn issue_endpoint(
         .token()
         .to_owned();
 
-    let rand_string: String = thread_rng()
+    let rand_string: String = rng()
         .sample_iter(&Alphanumeric)
         .take(30)
         .map(char::from)

@@ -12,24 +12,29 @@ impl Thread {
     pub fn new() -> Thread {
         Thread::default()
     }
+
     pub fn from_parent(parent: &Thread) -> Thread {
         Thread {
             pthid: parent.thid.clone(),
             ..Default::default()
         }
     }
+
     pub fn set_thid(mut self, thid: String) -> Thread {
         self.thid = Some(thid);
         self
     }
+
     pub fn set_pthid(mut self, pthid: String) -> Thread {
         self.pthid = Some(pthid);
         self
     }
+
     pub fn set_opt_pthid(mut self, pthid: Option<String>) -> Thread {
         self.pthid = pthid;
         self
     }
+
     pub fn is_reply(&self, id: &str) -> bool {
         self.thid.as_deref().unwrap_or_default() == id
     }

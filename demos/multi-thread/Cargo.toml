@@ -11,6 +11,6 @@ serde_json = "1.0"
 tracing-subscriber = "0.3.18"
 tokio = { version = "1.40.0", features = ["macros", "rt-multi-thread"] }
 futures = "0.3.30"
-rand = "0.8.5"
+rand = "0.9.1"
 
 agent-sdk = { path = "../..", features = ["in-memory"] }

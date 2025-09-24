@@ -1,4 +1,4 @@
-#[cfg(feature = "didcomm-http-trasnport")]
+#[cfg(feature = "didcomm-http-transport")]
 pub mod http;
 #[cfg(test)]
 pub mod mock;

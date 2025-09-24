@@ -10,7 +10,7 @@ use crate::didcomm::protocol::aries::common::message::thread::Thread;
 use crate::didcomm::protocol::aries::empty::message::Empty;
 use crate::didcomm::protocol::aries::issuance::holder::HolderMessages;
 use crate::didcomm::protocol::aries::issuance::holder::states::{
-    FinishedHolderState, HolderState, OfferReceivedState, RequestSentState,
+    FinishedHolderState, IssuanceHolderState, OfferReceivedState, RequestSentState,
 };
 use crate::didcomm::protocol::aries::issuance::message::credential::Credential;
 use crate::didcomm::protocol::aries::issuance::message::credential_offer::CredentialOffer;
@@ -37,7 +37,7 @@ where
     C: ConnectionService + Clone,
     V: vault::Vault + Clone,
 {
-    state: HolderState,
+    state: IssuanceHolderState,
     key_metadata: KeyMetadata,
     agent: Agent<KMS, KH, C>,
     vault: V,
@@ -51,7 +51,7 @@ where
     V: vault::Vault + Clone,
 {
     pub fn step(
-        state: HolderState,
+        state: IssuanceHolderState,
         key_metadata: KeyMetadata,
         agent: Agent<KMS, KH, C>,
         vault: V,
@@ -64,7 +64,7 @@ where
         }
     }
 
-    pub fn state(&self) -> &HolderState {
+    pub fn state(&self) -> &IssuanceHolderState {
         &self.state
     }
 
@@ -77,7 +77,7 @@ where
             vault,
         } = self;
         let state = match state {
-            HolderState::OfferReceived(state_data) => match cim {
+            IssuanceHolderState::OfferReceived(state_data) => match cim {
                 HolderMessages::CredentialRequestSend => {
                     let did_url = DIDURLBuf::from_str(&key_metadata.did_url)
                         .context(DidUrlResolutionSnafu)?;
@@ -92,10 +92,10 @@ where
                     warn!(
                         "Credential Issuance can only start on holder side with Credential Offer"
                     );
-                    HolderState::OfferReceived(state_data)
+                    IssuanceHolderState::OfferReceived(state_data)
                 }
             },
-            HolderState::RequestSent(state_data) => match cim {
+            IssuanceHolderState::RequestSent(state_data) => match cim {
                 HolderMessages::Credential(credential) => {
                     state_data
                         .handle_received_credential(credential, &vault, &agent, &key_metadata)
@@ -107,7 +107,7 @@ where
                         .clone()
                         .ok_or_else(|| MessageIsOutOfThreadSnafu.build())?;
 
-                    HolderState::Finished(
+                    IssuanceHolderState::Finished(
                         (state_data, problem_report.clone(), thread, Reason::Fail).into(),
                     )
                 }
@@ -118,12 +118,12 @@ where
                     warn!(
                         "In this state Credential Issuance can accept only Credential and Problem Report"
                     );
-                    HolderState::RequestSent(state_data)
+                    IssuanceHolderState::RequestSent(state_data)
                 }
             },
-            HolderState::Finished(state_data) => {
+            IssuanceHolderState::Finished(state_data) => {
                 warn!("Exchange is finished, no agent can be sent or received");
-                HolderState::Finished(state_data)
+                IssuanceHolderState::Finished(state_data)
             }
         };
 
@@ -132,19 +132,19 @@ where
     }
 
     pub fn is_terminal_state(&self) -> bool {
-        matches!(self.state, HolderState::Finished(_))
+        matches!(self.state, IssuanceHolderState::Finished(_))
     }
 
     pub fn get_credential_offer(&self) -> Result<CredentialOffer> {
         match self.state {
-            HolderState::OfferReceived(ref state) => Ok(state.offer.clone()),
-            HolderState::RequestSent(ref state) => state.offer.clone().ok_or(
+            IssuanceHolderState::OfferReceived(ref state) => Ok(state.offer.clone()),
+            IssuanceHolderState::RequestSent(ref state) => state.offer.clone().ok_or(
                 InvalidStateSnafu {
                     details: "Invalid  Holder object state: `offer` not found",
                 }
                 .build(),
             ),
-            HolderState::Finished(ref state) => state.offer.clone().ok_or(
+            IssuanceHolderState::Finished(ref state) => state.offer.clone().ok_or(
                 InvalidStateSnafu {
                     details: "Invalid Holder object state: `offer` not found",
                 }
@@ -155,7 +155,7 @@ where
 
     pub fn get_credential(&self) -> Result<(String, Credential)> {
         match self.state {
-            HolderState::Finished(ref state) => {
+            IssuanceHolderState::Finished(ref state) => {
                 let cred_id = state.cred_id.clone().ok_or(
                     InvalidStateSnafu {
                         details: "Invalid Holder object state: `cred_id` not found",
@@ -184,7 +184,7 @@ where
         trace!("Holder::delete_credential >>>");
 
         match self.state {
-            HolderState::Finished(ref state) => {
+            IssuanceHolderState::Finished(ref state) => {
                 let cred_id = state.cred_id.as_deref().ok_or(
                     InvalidStateSnafu {
                         details: "Invalid Holder object state: `cred_id` not found",
@@ -205,8 +205,8 @@ where
 
     pub fn problem_report(&self) -> Option<&ProblemReport> {
         match self.state {
-            HolderState::OfferReceived(_) | HolderState::RequestSent(_) => None,
-            HolderState::Finished(ref status) => match &status.status {
+            IssuanceHolderState::OfferReceived(_) | IssuanceHolderState::RequestSent(_) => None,
+            IssuanceHolderState::Finished(ref status) => match &status.status {
                 Status::Success | Status::Undefined => None,
                 Status::Rejected(problem_report) => problem_report.as_ref(),
                 Status::Failed(problem_report) => Some(problem_report),
@@ -216,9 +216,9 @@ where
 
     pub fn get_connection_id(&self) -> Option<&str> {
         match &self.state {
-            HolderState::Finished(_) => None,
-            HolderState::RequestSent(state) => Some(&state.connection_id),
-            HolderState::OfferReceived(state) => Some(&state.connection_id),
+            IssuanceHolderState::Finished(_) => None,
+            IssuanceHolderState::RequestSent(state) => Some(&state.connection_id),
+            IssuanceHolderState::OfferReceived(state) => Some(&state.connection_id),
         }
     }
 }
@@ -230,7 +230,7 @@ impl RequestSentState {
         vault: &impl vault::Vault,
         agent: &Agent<KMS, KH, C>,
         key_metadata: &KeyMetadata,
-    ) -> Result<HolderState>
+    ) -> Result<IssuanceHolderState>
     where
         KMS: Kms<KH> + Clone,
         KH: KeyHandle,
@@ -259,7 +259,7 @@ impl RequestSentState {
                         .await
                         .context(AgentSnafu)?;
                 }
-                Ok(HolderState::Finished(
+                Ok(IssuanceHolderState::Finished(
                     (self, cred_id, credential, thread).into(),
                 ))
             }
@@ -287,7 +287,7 @@ impl RequestSentState {
         self,
         comment: Option<String>,
         agent: &Agent<KMS, KH, C>,
-    ) -> Result<HolderState>
+    ) -> Result<IssuanceHolderState>
     where
         KMS: Kms<KH> + Clone,
         KH: KeyHandle,
@@ -316,7 +316,7 @@ impl RequestSentState {
             .await
             .context(AgentSnafu)?;
 
-        Ok(HolderState::Finished(
+        Ok(IssuanceHolderState::Finished(
             (self, problem_report, thread, Reason::Reject).into(),
         ))
     }
@@ -355,7 +355,7 @@ impl OfferReceivedState {
         self,
         holder_did: &str,
         agent: &Agent<KMS, KH, C>,
-    ) -> Result<HolderState>
+    ) -> Result<IssuanceHolderState>
     where
         KMS: Kms<KH> + Clone,
         KH: KeyHandle,
@@ -381,7 +381,7 @@ impl OfferReceivedState {
                     .await
                     .context(AgentSnafu)?;
 
-                Ok(HolderState::RequestSent(
+                Ok(IssuanceHolderState::RequestSent(
                     (self, connection_id, thread).into(),
                 ))
             }
@@ -409,7 +409,7 @@ impl OfferReceivedState {
         self,
         comment: Option<String>,
         agent: &Agent<KMS, KH, C>,
-    ) -> Result<HolderState>
+    ) -> Result<IssuanceHolderState>
     where
         KMS: Kms<KH> + Clone,
         KH: KeyHandle,
@@ -431,7 +431,7 @@ impl OfferReceivedState {
             .await
             .context(AgentSnafu)?;
 
-        Ok(HolderState::Finished(
+        Ok(IssuanceHolderState::Finished(
             (self, problem_report, thread, Reason::Reject).into(),
         ))
     }
