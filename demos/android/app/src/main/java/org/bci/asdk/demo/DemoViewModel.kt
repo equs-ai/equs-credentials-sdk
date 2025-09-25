@@ -12,10 +12,15 @@ import com.bci.asdk.IdTokenMetadata
 import com.bci.asdk.InMemKms
 import com.bci.asdk.InMemVault
 import com.bci.asdk.IssuerDiscoveryEnum
+import com.bci.asdk.NonceHandler
+import com.bci.asdk.NonceHandlerImpl
 import com.bci.asdk.Oid4vciHolder
 import com.bci.asdk.Oid4vciHolderBuilder
 import com.bci.asdk.Oid4vpHolder
 import com.bci.asdk.Oid4vpHolderBuilder
+import com.bci.asdk.ProofOfPossessionMetadataBuilder
+import com.bci.asdk.ProofOfPossessionNotBefore
+import com.bci.asdk.ReqwestHttpClient
 import com.bci.asdk.createDidAndKeyMetadata
 import com.bci.asdk.resolveMetadata
 import kotlinx.coroutines.CompletableDeferred
@@ -27,7 +32,7 @@ const val CLIENT_ID = "wallet-dev"
 const val SCOPE = "SD_JWT_cred_scope"
 const val SD_JWT_CRED_DEF = "SD_JWT_cred_1"
 const val ISSUER_URL = "http://localhost:8088"
-const val VP_REQUEST_URI = "http://localhost:8098/request_uri"
+const val VP_REQUEST_URI = "http://localhost:8098/request_uri/dcql"
 
 class DemoViewModel : ViewModel() {
     private lateinit var holderVc: Oid4vciHolder
@@ -53,7 +58,7 @@ class DemoViewModel : ViewModel() {
 
     init {
         viewModelScope.launch {
-            val(holderVc_, holderVp_, didAndKeyMetadata_) = initialize()
+            val (holderVc_, holderVp_, didAndKeyMetadata_) = initialize()
             holderVc = holderVc_
             holderVp = holderVp_
             didAndKeyMetadata = didAndKeyMetadata_
@@ -119,8 +124,23 @@ class DemoViewModel : ViewModel() {
     private suspend fun initialize(): Triple<Oid4vciHolder, Oid4vpHolder, DidAndKeyMetadata> {
         val kms = InMemKms()
         val vault = InMemVault()
-        val holderVp = Oid4vpHolderBuilder(kms, vault, CLIENT_ID).build()
-        val holderVci = Oid4vciHolderBuilder(kms, vault, CLIENT_ID, IssuerDiscoveryEnum.Url(ISSUER_URL)).build()
+        val holderVp = Oid4vpHolderBuilder(
+            kms, vault, CLIENT_ID,
+            httpClient = ReqwestHttpClient.insecure(),
+            nonceHandler = null
+        ).build()
+        val holderVci = Oid4vciHolderBuilder(
+            kms,
+            vault,
+            CLIENT_ID,
+            IssuerDiscoveryEnum.Url(ISSUER_URL),
+            ReqwestHttpClient.insecure(),
+            ProofOfPossessionMetadataBuilder()
+                .withNotBefore(ProofOfPossessionNotBefore.Leeway(300))
+                .withLifetime(300)
+                .build()
+        )
+            .build()
         val didAndKeyMetadata = createDidAndKeyMetadata(kms)
 
         return Triple(holderVci, holderVp, didAndKeyMetadata)
