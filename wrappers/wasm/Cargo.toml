@@ -15,7 +15,7 @@ crate-type = ["cdylib", "rlib"]
 agent-sdk = { path = "../..", features = ["in-memory"] }
 
 async-trait = '0.1.85'
-wasm-bindgen-futures = '0.4.50'
+wasm-bindgen-futures = '=0.4.50'
 js-sys = '0.3'
 serde_json = '1.0'
 serde = { version = "1.0.217", features = ["derive"] }
