@@ -366,31 +366,41 @@ where
 
         // TODO: split it into two parts: required/optional claims
         let supported_claims = match cred_metadata.profile_specific_fields() {
-            CoreProfilesCredentialConfiguration::VcSdJwt(metadata) => {
-                debug!(resolved_credential_metadata = ?metadata);
+            CoreProfilesCredentialConfiguration::VcSdJwt(credential_configuration) => {
+                debug!(resolved_credential_metadata = ?credential_configuration);
                 let well_known = &[VCT_CLAIM, NBF_CLAIM, IAT_CLAIM, EXP_CLAIM];
-                let mut json_claims =
-                    Vec::with_capacity(metadata.claims().len() + well_known.len());
+                let claims_count = credential_configuration
+                    .credential_metadata()
+                    .map_or(0, |meta| meta.claims().len());
+                let capacity = claims_count + well_known.len();
+                let mut json_claims = Vec::with_capacity(capacity);
 
-                for claim in metadata.claims() {
-                    if let Some(ClaimPathPointer::ElementKey(key)) = claim.path().0.first() {
-                        json_claims.push(key.as_str());
+                if let Some(credential_metadata) = credential_configuration.credential_metadata() {
+                    for claim in credential_metadata.claims() {
+                        if let Some(ClaimPathPointer::ElementKey(key)) = claim.path().0.first() {
+                            json_claims.push(key.as_str());
+                        }
                     }
                 }
                 json_claims.extend_from_slice(well_known);
 
                 json_claims
             }
-            CoreProfilesCredentialConfiguration::LdpVc(metadata) => {
-                debug!(resolved_credential_metadata = ?metadata);
+            CoreProfilesCredentialConfiguration::LdpVc(credential_configuration) => {
+                debug!(resolved_credential_metadata = ?credential_configuration);
                 let well_known = &["type"];
-                let mut json_claims =
-                    Vec::with_capacity(metadata.claims().len() + well_known.len());
+                let claims_count = credential_configuration
+                    .credential_metadata()
+                    .map_or(0, |meta| meta.claims().len());
+                let capacity = claims_count + well_known.len();
+                let mut json_claims = Vec::with_capacity(capacity);
 
-                for claim in metadata.claims() {
-                    // The second pointer is taken since "credentialSubject" goes first.
-                    if let Some(ClaimPathPointer::ElementKey(key)) = claim.path().0.get(1) {
-                        json_claims.push(key.as_str());
+                if let Some(credential_metadata) = credential_configuration.credential_metadata() {
+                    for claim in credential_metadata.claims() {
+                        // The second pointer is taken since "credentialSubject" goes first.
+                        if let Some(ClaimPathPointer::ElementKey(key)) = claim.path().0.get(1) {
+                            json_claims.push(key.as_str());
+                        }
                     }
                 }
                 json_claims.extend_from_slice(well_known);
@@ -1518,9 +1528,11 @@ mod tests {
                 "credential_endpoint": ISSUER_URL.to_owned()+"/credential",
                 "credential_configurations_supported": {
                     CRED_DEF_ID: {
-                    "format": "dc+sd-jwt",
-                    "vct": "SD_JWT_cred",
-                    "claims": [],
+                        "format": "dc+sd-jwt",
+                        "vct": "SD_JWT_cred",
+                        "credential_metadata": {
+                            "claims": [],
+                        },
                     },
                 },
             }
@@ -1536,11 +1548,13 @@ mod tests {
                 "credential_endpoint": ISSUER_URL.to_owned()+"/credential",
                 "credential_configurations_supported": {
                     CRED_DEF_ID: {
-                    "format": "dc+sd-jwt",
-                    "vct": "SD_JWT_cred",
-                    "scope": "fake_scope",
-                    "claims": [],
-                    },
+                        "format": "dc+sd-jwt",
+                        "vct": "SD_JWT_cred",
+                        "scope": "fake_scope",
+                        "credential_metadata": {
+                            "claims": [],
+                        },
+                    }
                 },
             }
         ))

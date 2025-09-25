@@ -234,7 +234,7 @@ enum Oid4vciHolderTestConstants {
 		"""
 
 	static let IssuerMetadata = """
-		{"credential_issuer":"http://localhost:9000","authorization_servers":["http://localhost:9000/auth"],"credential_endpoint":"http://localhost:9000/credential","nonce_endpoint":"http://localhost:9000/nonce","batch_credential_issuance":{"batch_size":2},"credential_configurations_supported":{"\(CredDefId)":{"scope":"SD_JWT_cred","cryptographic_binding_methods_supported":["jwk"],"proof_types_supported":{"jwt":{"proof_signing_alg_values_supported":["ES256"]}},"format":"dc+sd-jwt","credential_signing_alg_values_supported":["ES256"],"claims":[{"path":["dob"],"mandatory":true,"display":[{"name":"Date of birth"}]},{"path":["given_name"],"mandatory":true,"display":[{"name":"Name"}]},{"path":["family_name"],"mandatory":true,"display":[{"name":"Surname"}]}],"vct":"SD_JWT_cred"}}}
+		{"credential_issuer":"http://localhost:9000","authorization_servers":["http://localhost:9000/auth"],"credential_endpoint":"http://localhost:9000/credential","nonce_endpoint":"http://localhost:9000/nonce","batch_credential_issuance":{"batch_size":2},"credential_configurations_supported":{"\(CredDefId)":{"scope":"SD_JWT_cred","cryptographic_binding_methods_supported":["jwk"],"proof_types_supported":{"jwt":{"proof_signing_alg_values_supported":["ES256"]}},"format":"dc+sd-jwt","credential_signing_alg_values_supported":["ES256"],"credential_metadata":{"claims":[{"path":["dob"],"mandatory":true,"display":[{"name":"Date of birth"}]},{"path":["given_name"],"mandatory":true,"display":[{"name":"Name"}]},{"path":["family_name"],"mandatory":true,"display":[{"name":"Surname"}]}]},"vct":"SD_JWT_cred"}}}
 		"""
 
 	static let AuthServerMetadata = """

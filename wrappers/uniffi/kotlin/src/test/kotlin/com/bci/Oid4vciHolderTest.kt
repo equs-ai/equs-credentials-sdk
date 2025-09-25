@@ -27,44 +27,46 @@ class HolderVCITest {
         val issuerMetadata = Json.parseToJsonElement(
             """
                 {
-                  "credential_issuer": "$ISSUER_ENDPOINT",
-                  "authorization_servers": ["$ISSUER_ENDPOINT/auth"],
-                  "credential_endpoint": "$ISSUER_ENDPOINT/credential",
-                  "nonce_endpoint": "$ISSUER_ENDPOINT/nonce",
-                  "batch_credential_issuance": {
-                    "batch_size": 2
-                  },
-                  "credential_configurations_supported": {
-                    "IDENTITY_SD_JWT": {
-                      "format": "dc+sd-jwt",
-                      "scope": "$SCOPE",
-                      "cryptographic_binding_methods_supported": ["jwk"],
-                      "credential_signing_alg_values_supported": ["ES256"],
-                      "proof_types_supported": {
-                        "jwt": {
-                          "proof_signing_alg_values_supported":  ["ES256"]
+                    "credential_issuer": "$ISSUER_ENDPOINT",
+                    "authorization_servers": ["$ISSUER_ENDPOINT/auth"],
+                    "credential_endpoint": "$ISSUER_ENDPOINT/credential",
+                    "nonce_endpoint": "$ISSUER_ENDPOINT/nonce",
+                    "batch_credential_issuance": {
+                        "batch_size": 2
+                    },
+                    "credential_configurations_supported": {
+                        "IDENTITY_SD_JWT": {
+                            "format": "dc+sd-jwt",
+                            "scope": "$SCOPE",
+                            "cryptographic_binding_methods_supported": ["jwk"],
+                            "credential_signing_alg_values_supported": ["ES256"],
+                            "proof_types_supported": {
+                                "jwt": {
+                                    "proof_signing_alg_values_supported":  ["ES256"]
+                                }
+                            },
+                            "vct": "SD_JWT_cred",
+                            "credential_metadata": {
+                                "claims": [
+                                    {
+                                        "path": ["given_name"],
+                                        "display": [{ "name": "Name" }],
+                                        "mandatory": true
+                                    },
+                                    {
+                                        "path": ["family_name"],
+                                        "display": [{ "name": "Surname" }],
+                                        "mandatory": true
+                                    },
+                                    {
+                                        "path": ["dob"],
+                                        "display": [{ "name": "Date of birth" }],
+                                        "mandatory": true
+                                    }
+                                ]
+                            }
                         }
-                      },
-                      "vct": "SD_JWT_cred",
-                      "claims": [
-                        {
-                          "path": ["given_name"],
-                          "display": [{ "name": "Name" }],
-                          "mandatory": true
-                        },
-                        {
-                          "path": ["family_name"],
-                          "display": [{ "name": "Surname" }],
-                          "mandatory": true
-                        },
-                        {
-                          "path": ["dob"],
-                          "display": [{ "name": "Date of birth" }],
-                          "mandatory": true
-                        }
-                      ]
                     }
-                  }
                 }
             """
         )
@@ -72,16 +74,16 @@ class HolderVCITest {
         val authServerMetadata = Json.parseToJsonElement(
             """
                 {
-                  "issuer": "$ISSUER_ENDPOINT/auth",
-                  "authorization_endpoint": "$ISSUER_ENDPOINT/auth",
-                  "token_endpoint": "$ISSUER_ENDPOINT/auth/token",
-                  "introspection_endpoint": "$ISSUER_ENDPOINT/auth/introspection",
-                  "jwks_uri": "$ISSUER_ENDPOINT/auth/jwks",
-                  "grant_types_supported": ["authorization_code"],
-                  "response_types_supported": ["code", "token"],
-                  "subject_types_supported": ["public"],
-                  "id_token_signing_alg_values_supported": ["ES256"],
-                  "pushed_authorization_request_endpoint": "$ISSUER_ENDPOINT/auth/par/request"
+                    "issuer": "$ISSUER_ENDPOINT/auth",
+                    "authorization_endpoint": "$ISSUER_ENDPOINT/auth",
+                    "token_endpoint": "$ISSUER_ENDPOINT/auth/token",
+                    "introspection_endpoint": "$ISSUER_ENDPOINT/auth/introspection",
+                    "jwks_uri": "$ISSUER_ENDPOINT/auth/jwks",
+                    "grant_types_supported": ["authorization_code"],
+                    "response_types_supported": ["code", "token"],
+                    "subject_types_supported": ["public"],
+                    "id_token_signing_alg_values_supported": ["ES256"],
+                    "pushed_authorization_request_endpoint": "$ISSUER_ENDPOINT/auth/par/request"
                 }
             """
         )
@@ -89,8 +91,8 @@ class HolderVCITest {
         val pushedAuthResponse = Json.parseToJsonElement(
             """
                 {
-                  "request_uri": "urn:ietf:params:oauth:request_uri:code",
-                  "expires_in": 86400
+                    "request_uri": "urn:ietf:params:oauth:request_uri:code",
+                    "expires_in": 86400
                 }
                """
         )
@@ -98,19 +100,19 @@ class HolderVCITest {
         val tokenResponse = Json.parseToJsonElement(
             """
                 {
-                  "access_token": "$ACCESS_TOKEN", 
-                  "token_type": "bearer",
-                  "scope": "SD_JWT_cred",
-                  "expires_in": 86400
+                    "access_token": "$ACCESS_TOKEN",
+                    "token_type": "bearer",
+                    "scope": "SD_JWT_cred",
+                    "expires_in": 86400
                 }
-              """
+                """
         )
 
         val batchCredentialResponse = Json.parseToJsonElement(
             """
                 {
-                  "credentials": [{"credential":"$SD_JWT_CRED"}, {"credential":"$SD_JWT_CRED"}],
-                  "notification_id": "1111"
+                    "credentials": [{"credential":"$SD_JWT_CRED"}, {"credential":"$SD_JWT_CRED"}],
+                    "notification_id": "1111"
                 }
             """
         )
@@ -118,7 +120,7 @@ class HolderVCITest {
         val nonceResponse = Json.parseToJsonElement(
             """
                 {
-                  "c_nonce": "0GtZieAoAL_3Zafyn6TgCA"
+                    "c_nonce": "0GtZieAoAL_3Zafyn6TgCA"
                 }
             """
         )
@@ -214,16 +216,16 @@ class HolderVCITest {
         val credOffer = Json.parseToJsonElement(
             """
                 {
-                  "credential_issuer": "$ISSUER_ENDPOINT",
-                  "credential_configuration_ids": ["SD_JWT_cred"],
-                  "grants": {
-                    "urn:ietf:params:oauth:grant-type:pre-authorized_code": {
-                      "pre-authorized_code": "code",
-                      "tx_code": null,
-                      "interval": null,
-                      "authorization_server": "$ISSUER_ENDPOINT/auth"
+                    "credential_issuer": "$ISSUER_ENDPOINT",
+                    "credential_configuration_ids": ["SD_JWT_cred"],
+                    "grants": {
+                        "urn:ietf:params:oauth:grant-type:pre-authorized_code": {
+                            "pre-authorized_code": "code",
+                            "tx_code": null,
+                            "interval": null,
+                            "authorization_server": "$ISSUER_ENDPOINT/auth"
+                        }
                     }
-                  }
                 }
             """
         ).toString()

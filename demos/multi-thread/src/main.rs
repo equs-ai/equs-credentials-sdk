@@ -216,26 +216,28 @@ async fn create_did_and_key_metadata(kms: &LocalKms) -> (DID, KeyMetadata) {
 fn sample_issuer_metadata(iss_url: &str) -> IssuerMetadata {
     let metadata = serde_json::from_value(json!(
         {
-          "credential_issuer": iss_url,
-          "authorization_servers": ["https://example.com"],
-          "credential_endpoint": iss_url.to_owned()+"/credential",
-          "credential_configurations_supported": {
-            "SD_JWT_cred": {
-              "format": "dc+sd-jwt",
-              "scope": "SD_JWT_cred",
-              "vct": "https://credentials.example.com/identity_credential",
-              "claims": [
-                { "path": ["id"] },
-                { "path": ["given_name"] },
-                { "path": ["family_name"] },
-              ],
-               "credential_signing_alg_values_supported": [
-                "ES256",
-                "ES256K",
-                "EdDSA"
-              ],
+            "credential_issuer": iss_url,
+            "authorization_servers": ["https://example.com"],
+            "credential_endpoint": iss_url.to_owned()+"/credential",
+            "credential_configurations_supported": {
+                "SD_JWT_cred": {
+                    "format": "dc+sd-jwt",
+                    "scope": "SD_JWT_cred",
+                    "vct": "https://credentials.example.com/identity_credential",
+                    "credential_metadata": {
+                        "claims": [
+                            { "path": ["id"] },
+                            { "path": ["given_name"] },
+                            { "path": ["family_name"] },
+                        ],
+                    },
+                    "credential_signing_alg_values_supported": [
+                        "ES256",
+                        "ES256K",
+                        "EdDSA"
+                    ],
+                }
             }
-          }
         }
     ));
 
