@@ -145,12 +145,16 @@ pub fn supported_proofs(
 
 #[instrument(level = Level::TRACE, ret())]
 fn sd_jwt_protocol_data(
-    metadata: &oid4vci::core::profiles::vc_sd_jwt::CredentialConfiguration,
+    credential_configuration: &oid4vci::core::profiles::vc_sd_jwt::CredentialConfiguration,
     cred_lifetime: Duration,
 ) -> CredentialDefinitionData {
+    let claim_json_paths = credential_configuration
+        .credential_metadata()
+        .map(|meta| map_to_json_paths(meta.claims()))
+        .unwrap_or_default();
     CredentialDefinitionData::SdJwt {
-        vct: metadata.vct().to_owned(),
-        disclosures: map_to_json_paths(metadata.claims()),
+        vct: credential_configuration.vct().to_owned(),
+        disclosures: claim_json_paths,
         lifetime: cred_lifetime,
     }
 }
@@ -442,9 +446,11 @@ mod tests {
                 }
             },
             "vct": "SD_JWT_cred",
-            "claims": [
-                { "path": ["given_name"] }
-            ]
+            "credential_metadata": {
+                "claims": [
+                    { "path": ["given_name"] }
+                ]
+            },
         }));
 
         cred_def.unwrap()

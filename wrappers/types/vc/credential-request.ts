@@ -6,11 +6,11 @@ import { JwkAlgorithm } from "./common";
  * @property {string} jwt JWT-based proof with compact serialization.
  * @property {string} cwt CBOR Web Token proof.
  */
-export type CredentialRequestProof =
+export type CredentialRequestProofs =
 /** JWT-based proof format with a compact serialization */
-  { jwt: [string] } |
+  { jwt: string[] } |
   /** CBOR Web Token proof format */
-  { cwt: [string] };
+  { cwt: string[] };
 
 /**
  * JSON Web Key (JWK) as defined in {@link https://datatracker.ietf.org/doc/html/rfc7517|RFC 7517}
@@ -71,7 +71,7 @@ export type SDJWTRequest = {
  * Parameters for a credential request in the OpenID4VCI protocol
  *
  * @property {string} [credential_identifier] Identifier for the credential being requested.
- * @property {CredentialRequestProof} [proof] Proof of possession used to authenticate the Wallet.
+ * @property {CredentialRequestProofs} [proofs] Proof of possession list used to authenticate the Wallet.
  * @property {CredentialResponseEncryption} [credential_response_encryption] Configuration
  * for encrypting the credential response.
  *
@@ -79,7 +79,7 @@ export type SDJWTRequest = {
  */
 export interface OID4VCICredentialRequest {
   credential_identifier?: string;
-  proof?: CredentialRequestProof;
+  proofs?: CredentialRequestProofs;
   credential_response_encryption?: CredentialResponseEncryption;
 
   [key: string]: SDJWTRequest | unknown;

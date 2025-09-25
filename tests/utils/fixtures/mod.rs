@@ -49,89 +49,95 @@ pub fn sample_issuer_url() -> Url {
 pub fn sample_issuer_metadata() -> IssuerMetadata {
     let metadata = serde_json::from_value(json!(
         {
-          "credential_issuer": ISSUER_URL,
-          "authorization_servers": [AUTHZ_URL],
-          "credential_endpoint": ISSUER_URL.to_owned()+"/credential",
-          "nonce_endpoint": ISSUER_URL.to_owned()+"/nonce",
-          "credential_configurations_supported": {
-            "SD_JWT_cred_1": {
-              "format": "dc+sd-jwt",
-              "scope": SCOPE.to_owned(),
-              "cryptographic_binding_methods_supported": [
-                "jwk"
-              ],
-              "credential_signing_alg_values_supported": [
-                "ES256"
-              ],
-              "proof_types_supported": {
-                "jwt": {
-                  "proof_signing_alg_values_supported": [
-                    "ES256"
-                  ]
+            "credential_issuer": ISSUER_URL,
+            "authorization_servers": [AUTHZ_URL],
+            "credential_endpoint": ISSUER_URL.to_owned()+"/credential",
+            "nonce_endpoint": ISSUER_URL.to_owned()+"/nonce",
+            "credential_configurations_supported": {
+                "SD_JWT_cred_1": {
+                    "format": "dc+sd-jwt",
+                    "scope": SCOPE.to_owned(),
+                    "cryptographic_binding_methods_supported": [
+                        "jwk"
+                    ],
+                    "credential_signing_alg_values_supported": [
+                        "ES256"
+                    ],
+                    "proof_types_supported": {
+                        "jwt": {
+                            "proof_signing_alg_values_supported": [
+                                "ES256"
+                            ]
+                        }
+                    },
+                    "vct": "SD_JWT_cred_1",
+                    "credential_metadata": {
+                        "claims": [
+                            { "path": ["given_name"] },
+                            { "path": ["family_name"] },
+                            { "path": ["dob"] },
+                        ]
+                    },
+                },
+                "SD_JWT_cred_2": {
+                    "format": "dc+sd-jwt",
+                    "scope": SCOPE.to_owned(),
+                    "cryptographic_binding_methods_supported": [
+                        "jwk"
+                    ],
+                    "credential_signing_alg_values_supported": [
+                        "ES256"
+                    ],
+                    "proof_types_supported": {
+                        "jwt": {
+                            "proof_signing_alg_values_supported": [
+                                "ES256"
+                            ]
+                        }
+                    },
+                    "vct": "SD_JWT_cred_2",
+                    "credential_metadata": {
+                        "claims": [
+                            { "path": ["given_name"] },
+                            { "path": ["family_name"] },
+                            { "path": ["dob"] },
+                        ]
+                    }
+                },
+                "LDPVC_cred_1": {
+                    "scope": SCOPE.to_owned(),
+                    "cryptographic_binding_methods_supported": [
+                        "jwk"
+                    ],
+                    "format": "ldp_vc",
+                    "credential_signing_alg_values_supported": [
+                        "Ed25519Signature2018",
+                        "EcdsaSecp256k1Signature2019"
+                    ],
+                    "credential_definition": {
+                        "@context": [
+                            "https://www.w3.org/2018/credentials/v1",
+                            "https://w3id.org/citizenship/v1"
+                        ],
+                        "type": [
+                            "VerifiableCredential",
+                            "PermanentResidentCard"
+                        ],
+                    },
+                    "credential_metadata": {
+                        "claims": [
+                            { "path": ["credentialSubject", "givenName"] },
+                            { "path": ["credentialSubject", "residentSince"] },
+                            { "path": ["credentialSubject", "birthDate"] },
+                            { "path": ["credentialSubject", "birthCountry"] },
+                            { "path": ["credentialSubject", "familyName"] },
+                            { "path": ["credentialSubject", "gender"] },
+                            { "path": ["credentialSubject", "commuterClassification"] },
+                            { "path": ["credentialSubject", "gpa"] },
+                        ]
+                    }
                 }
-              },
-              "vct": "SD_JWT_cred_1",
-              "claims": [
-                { "path": ["given_name"] },
-                { "path": ["family_name"] },
-                { "path": ["dob"] },
-              ]
-            },
-            "SD_JWT_cred_2": {
-              "format": "dc+sd-jwt",
-              "scope": SCOPE.to_owned(),
-              "cryptographic_binding_methods_supported": [
-                "jwk"
-              ],
-              "credential_signing_alg_values_supported": [
-                "ES256"
-              ],
-              "proof_types_supported": {
-                "jwt": {
-                  "proof_signing_alg_values_supported": [
-                    "ES256"
-                  ]
-                }
-              },
-              "vct": "SD_JWT_cred_2",
-              "claims": [
-                { "path": ["given_name"] },
-                { "path": ["family_name"] },
-                { "path": ["dob"] },
-              ]
-            },
-            "LDPVC_cred_1": {
-              "scope": SCOPE.to_owned(),
-              "cryptographic_binding_methods_supported": [
-                "jwk"
-              ],
-              "format": "ldp_vc",
-              "credential_signing_alg_values_supported": [
-                "Ed25519Signature2018",
-                "EcdsaSecp256k1Signature2019"
-              ],
-              "credential_definition": {
-                "@context": [
-                  "https://www.w3.org/2018/credentials/v1",
-                  "https://w3id.org/citizenship/v1"
-                ],
-                "type": [
-                  "VerifiableCredential",
-                  "PermanentResidentCard"
-                ],
-              },
-              "claims": [
-                { "path": ["credentialSubject", "givenName"] },
-                { "path": ["credentialSubject", "residentSince"] },
-                { "path": ["credentialSubject", "birthDate"] },
-                { "path": ["credentialSubject", "birthCountry"] },
-                { "path": ["credentialSubject", "familyName"] },
-                { "path": ["credentialSubject", "gender"] },
-                { "path": ["credentialSubject", "commuterClassification"] },
-                { "path": ["credentialSubject", "gpa"] },
-              ]
             }
-          }
         }
     ));
 

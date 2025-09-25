@@ -59,7 +59,6 @@ pub type Result<T> = core::result::Result<T, Error>;
 
 /// Supported formats for status list tokens
 #[derive(Debug, Display, PartialEq, Clone, Serialize, Deserialize)]
-// #[non_exhaustive]
 pub enum StatusListFormat {
     StatusListTokenJwt(status_list_token_jwt::SLMetadata),
     StatusListTokenCwt,

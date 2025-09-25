@@ -606,48 +606,50 @@ fn sample_issuer_metadata(iss_url: &str, authz_url: &str) -> IssuerMetadata {
     #[allow(unused_mut)]
     let mut metadata: IssuerMetadata = serde_json::from_value(json!(
         {
-          "credential_issuer": iss_url,
-          "credential_endpoint": iss_url.to_owned() + "/credential",
-          "nonce_endpoint": iss_url.to_owned() + "/nonce",
-          "batch_credential_issuance": {
-            "batch_size": 2
-          },
-          "credential_configurations_supported": {
-            SD_JWT_CRED_DEF: {
-              "format": "dc+sd-jwt",
-              "scope": "SD_JWT_cred_scope",
-              "cryptographic_binding_methods_supported": [
-                "jwk"
-              ],
-              "credential_signing_alg_values_supported": [
-                "ES256",
-                "ES256K",
-                "EdDSA"
-              ],
-              "proof_types_supported": {
-                "jwt": {
-                  "proof_signing_alg_values_supported": [
-                    "ES256"
-                  ]
+            "credential_issuer": iss_url,
+            "credential_endpoint": iss_url.to_owned() + "/credential",
+            "nonce_endpoint": iss_url.to_owned() + "/nonce",
+            "batch_credential_issuance": {
+                "batch_size": 2
+            },
+            "credential_configurations_supported": {
+                SD_JWT_CRED_DEF: {
+                    "format": "dc+sd-jwt",
+                    "scope": "SD_JWT_cred_scope",
+                    "cryptographic_binding_methods_supported": [
+                        "jwk"
+                    ],
+                "credential_signing_alg_values_supported": [
+                    "ES256",
+                    "ES256K",
+                    "EdDSA"
+                ],
+                "proof_types_supported": {
+                    "jwt": {
+                        "proof_signing_alg_values_supported": [
+                            "ES256"
+                        ]
+                    }
+                },
+                "vct": "https://credentials.example.com/identity_credential_1",
+                "credential_metadata": {
+                    "claims": [
+                        { "path": ["given_name"] },
+                        { "path": ["family_name"] },
+                        { "path": ["age"] },
+                        { "path": ["age_over_18"] },
+                        { "path": ["street"] },
+                        { "path": ["email", "personal"] },
+                        { "path": ["email", "work"] },
+                        { "path": ["username"] },
+                        { "path": ["postal_code", "codes"] },
+                        { "path": ["locality"] },
+                        { "path": ["region"] },
+                        { "path": ["birthdate"] },
+                        { "path": ["gender"] },
+                        { "path": ["country"] },
+                    ]
                 }
-              },
-              "vct": "https://credentials.example.com/identity_credential_1",
-              "claims": [
-               { "path": ["given_name"] },
-               { "path": ["family_name"] },
-               { "path": ["age"] },
-               { "path": ["age_over_18"] },
-               { "path": ["street"] },
-               { "path": ["email", "personal"] },
-               { "path": ["email", "work"] },
-               { "path": ["username"] },
-               { "path": ["postal_code", "codes"] },
-               { "path": ["locality"] },
-               { "path": ["region"] },
-               { "path": ["birthdate"] },
-               { "path": ["gender"] },
-               { "path": ["country"] },
-              ]
             },
             JSON_LD_V1_CRED_DEF: {
                 "format": "ldp_vc",
@@ -677,31 +679,33 @@ fn sample_issuer_metadata(iss_url: &str, authz_url: &str) -> IssuerMetadata {
                         "PermanentResidentCard"
                     ]
                 },
-                "claims": [
-                    { "path": ["credentialSubject", "givenName"] },
-                    { "path": ["credentialSubject", "familyName"] },
-                    { "path": ["credentialSubject", "gender"] },
-                    { "path": ["credentialSubject", "birthDate"] },
-                    { "path": ["credentialSubject", "birthCountry"] },
-                    { "path": ["credentialSubject", "commuterClassification"] },
-                    { "path": ["credentialSubject", "residentSince"] },
-                    { "path": ["credentialSubject", "gpa"] }
-                ],
-                "display": [
-                    {
-                        "name": "University Credential",
-                        "locale": "en-US",
-                        "logo": {
-                            "uri": "https://exampleuniversity.com/public/logo.png",
-                            "alt_text": "a square logo of a university"
-                        },
-                        "background_color": "#12107c",
-                        "background_image": {
-                            "uri": "https://university.example.edu/public/background-image.png"
-                        },
-                        "text_color": "#FFFFFF"
-                    }
-                ]
+                "credential_metadata": {
+                    "claims": [
+                        { "path": ["credentialSubject", "givenName"] },
+                        { "path": ["credentialSubject", "familyName"] },
+                        { "path": ["credentialSubject", "gender"] },
+                        { "path": ["credentialSubject", "birthDate"] },
+                        { "path": ["credentialSubject", "birthCountry"] },
+                        { "path": ["credentialSubject", "commuterClassification"] },
+                        { "path": ["credentialSubject", "residentSince"] },
+                        { "path": ["credentialSubject", "gpa"] }
+                    ],
+                    "display": [
+                        {
+                            "name": "University Credential",
+                            "locale": "en-US",
+                            "logo": {
+                                "uri": "https://exampleuniversity.com/public/logo.png",
+                                "alt_text": "a square logo of a university"
+                            },
+                            "background_color": "#12107c",
+                            "background_image": {
+                                "uri": "https://university.example.edu/public/background-image.png"
+                            },
+                            "text_color": "#FFFFFF"
+                        }
+                    ]
+                },
             },
             JSON_LD_V2_CRED_DEF: {
                 "format": "ldp_vc",
@@ -731,25 +735,27 @@ fn sample_issuer_metadata(iss_url: &str, authz_url: &str) -> IssuerMetadata {
                         "AlumniCredential"
                     ]
                 },
-                "claims": [
-                    { "path": ["credentialSubject", "id"] },
-                    { "path": ["credentialSubject", "alumniOf"] }
-                ],
-                "display": [
-                    {
-                        "name": "University Credential",
-                        "locale": "en-US",
-                        "logo": {
-                            "uri": "https://exampleuniversity.com/public/logo.png",
-                            "alt_text": "a square logo of a university"
-                        },
-                        "background_color": "#12107c",
-                        "background_image": {
-                            "uri": "https://university.example.edu/public/background-image.png"
-                        },
-                        "text_color": "#FFFFFF"
-                    }
-                ]
+                "credential_metadata": {
+                    "claims": [
+                        { "path": ["credentialSubject", "id"] },
+                        { "path": ["credentialSubject", "alumniOf"] }
+                    ],
+                    "display": [
+                        {
+                            "name": "University Credential",
+                            "locale": "en-US",
+                            "logo": {
+                                "uri": "https://exampleuniversity.com/public/logo.png",
+                                "alt_text": "a square logo of a university"
+                            },
+                            "background_color": "#12107c",
+                            "background_image": {
+                                "uri": "https://university.example.edu/public/background-image.png"
+                            },
+                            "text_color": "#FFFFFF"
+                        }
+                    ],
+                },
             }
           }
         }

@@ -136,11 +136,13 @@ pub mod fixtures {
                                 },
                             },
                             "vct": "SD_JWT_cred",
-                            "claims": [
-                                { "path": ["given_name"] },
-                                { "path": ["family_name"] },
-                                { "path": ["dob"] },
-                            ],
+                            "credential_metadata": {
+                                "claims": [
+                                    { "path": ["given_name"] },
+                                    { "path": ["family_name"] },
+                                    { "path": ["dob"] },
+                                ],
+                            },
                         },
                     },
                 }
@@ -195,23 +197,8 @@ pub mod fixtures {
                 "nonce_endpoint": ISSUER_URL.to_owned()+"/nonce",
                 "credential_configurations_supported": {
                     "LdpVc": {
-                    "format": "ldp_vc",
-                    "scope": "SD_JWT_cred",
-                    "@context": [
-                        "https://www.w3.org/ns/credentials/v2",
-                        "https://www.w3.org/ns/credentials/examples/v2"
-                    ],
-                    "type": [
-                        "VerifiableCredential",
-                    ],
-                    "cryptographic_binding_methods_supported": [
-                        "jwk"
-                    ],
-                    "credential_signing_alg_values_supported": [
-                        "EcdsaRdfc2019",
-                        "EdDsaRdfc2022"
-                    ],
-                    "credential_definition": {
+                        "format": "ldp_vc",
+                        "scope": "SD_JWT_cred",
                         "@context": [
                             "https://www.w3.org/ns/credentials/v2",
                             "https://www.w3.org/ns/credentials/examples/v2"
@@ -219,29 +206,46 @@ pub mod fixtures {
                         "type": [
                             "VerifiableCredential",
                         ],
-                    },
-                    "claims": [
-                        { "path": ["credentialSubject", "vct"] },
-                        { "path": ["credentialSubject", "given_name"] },
-                        { "path": ["credentialSubject", "family_name"] },
-                        { "path": ["credentialSubject", "dob"] },
-                    ],
-                    "display": [
-                        {
-                            "name": "University Credential",
-                            "locale": "en-US",
-                            "logo": {
-                                "uri": "https://exampleuniversity.com/public/logo.png",
-                                "alt_text": "a square logo of a university"
-                            },
-                            "background_color": "#12107c",
-                            "background_image": {
-                                "uri": "https://university.example.edu/public/background-image.png"
-                            },
-                            "text_color": "#FFFFFF"
+                        "cryptographic_binding_methods_supported": [
+                            "jwk"
+                        ],
+                        "credential_signing_alg_values_supported": [
+                            "EcdsaRdfc2019",
+                            "EdDsaRdfc2022"
+                        ],
+                        "credential_definition": {
+                            "@context": [
+                                "https://www.w3.org/ns/credentials/v2",
+                                "https://www.w3.org/ns/credentials/examples/v2"
+                            ],
+                            "type": [
+                                "VerifiableCredential",
+                            ],
+                        },
+                        "credential_metadata": {
+                            "claims": [
+                                { "path": ["credentialSubject", "vct"] },
+                                { "path": ["credentialSubject", "given_name"] },
+                                { "path": ["credentialSubject", "family_name"] },
+                                { "path": ["credentialSubject", "dob"] },
+                            ],
+                            "display": [
+                                {
+                                    "name": "University Credential",
+                                    "locale": "en-US",
+                                    "logo": {
+                                        "uri": "https://exampleuniversity.com/public/logo.png",
+                                        "alt_text": "a square logo of a university"
+                                    },
+                                    "background_color": "#12107c",
+                                    "background_image": {
+                                        "uri": "https://university.example.edu/public/background-image.png"
+                                    },
+                                    "text_color": "#FFFFFF"
+                                }
+                            ]
                         }
-                    ]
-            }
+                    }
                 },
             }))
             .unwrap()
@@ -327,11 +331,13 @@ pub mod fixtures {
                 }
             },
             "vct": "SD_JWT_cred",
-            "claims": [
-                { "path": ["given_name"] },
-                { "path": ["family_name"] },
-                { "path": ["dob"] },
-            ]
+            "credential_metadata": {
+                "claims": [
+                    { "path": ["given_name"] },
+                    { "path": ["family_name"] },
+                    { "path": ["dob"] },
+                ]
+            }
         }));
 
         cred_def.unwrap()
