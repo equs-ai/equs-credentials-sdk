@@ -9,5 +9,5 @@ enum Constants {
     static let scope = "SD_JWT_cred_scope"
     static let sdJwtCredDefId = "SD_JWT_cred_1"
     static let issuerUrl = "http://localhost:8088"
-    static let vpRequestUri = "http://localhost:8098/request_uri"
+    static let vpRequestUri = "http://localhost:8098/request_uri/dcql"
 }
