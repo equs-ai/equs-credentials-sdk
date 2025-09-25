@@ -108,13 +108,30 @@ ar = "llvm-ar"
   rustup target add aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android
 ```
 
-### 6. Run `android-aar` target of Makefile:
+### 6. Build Android Archive (`.aar`)
+
+Depending on your need, you should build **dev** or **release** android archives.
+Release build lacks some features that are not expected to be used in production code.
+
+#### 6.1. Build dev Android Archive
+
+Run `android-aar-dev` Makefile target:
 
 ```bash
   make android-aar
 ```
 
-On success, `aar` file must be outputted in `./kotlin/android/build/outputs/aar/android-release.aar`
+On success, `aar`  is saved to `./kotlin/android/build/outputs/aar/android-release.aar`
+
+#### 6.2. Build release Android Archive
+
+Run `android-aar` Makefile target:
+
+```bash
+  make android-aar-dev
+```
+
+On success, `aar` is saved to `./kotlin/android/build/outputs/aar/android-release.aar`
 
 # iOS
 
