@@ -5,7 +5,7 @@ DEV_ENV="development"
 MAKEFILE_JOB="ios-generate-xcframework"
 XCFRAMEWORK_LOCATION="swift/ios/release"
 
-VERSION="0.11.1"
+VERSION="1.0.0"
 REGISTRY_URL_IOS="${REGISTRY_URL_IOS:?REGISTRY_URL_IOS is required}"
 
 ENVIRONMENT="${ENVIRONMENT:-}"
