@@ -642,17 +642,15 @@ where
                     }
                     let cred = id_to_cred[credential.id().as_str()].clone();
 
-                    let holder_binder = if credential
-                        .require_cryptographic_holder_binding()
-                        .unwrap_or(true)
-                    {
-                        Some(HolderBinder {
-                            nonce: auth_request.nonce.to_owned(),
-                            verifier_id: auth_request.client_id.get_id(),
-                        })
-                    } else {
-                        None
-                    };
+                    let holder_binder =
+                        if let Some(false) = credential.require_cryptographic_holder_binding() {
+                            None
+                        } else {
+                            Some(HolderBinder {
+                                nonce: auth_request.nonce.to_owned(),
+                                verifier_id: auth_request.client_id.get_id(),
+                            })
+                        };
                     self.create_presentation_by_input(&cred, &pi, holder_binder)
                         .await
                 }))
