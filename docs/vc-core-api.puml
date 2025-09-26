@@ -37,20 +37,20 @@ V -> H: <out-of-band>: send `PresentationDefinition`
 
 alt Auto-select credentials
 autonumber 5.2.1
-H -> H: <b>create_presentation_auto</b>(nonce, verifier_id, presentation_input)
+H -> H: <b>create_presentation_auto</b>(holder_binder, presentation_input)
 
 else User selects/approves credentials for the presentation
 autonumber 5.2.1
 H -> H: <b>find_vcs_for_presentation</b>(presentation_input)
 H --> H: <out-of-band>: Select/Approve selection
-H -> H: <b>create_presentation</b>(nonce, verifier_id, presentation_input, credential)
+H -> H: <b>create_presentation</b>(holder_binder, presentation_input, credential)
 end
 autonumber 5.3
 H -> V: <out-of-band>: send `Presentation`
 ...
 
 autonumber 6.1
-V -> V: <b>verify_presentation</b>(nonce, presentation, http_client)
+V -> V: <b>verify_presentation</b>(holder_binder, presentation, http_client)
 group sd_jwt
 V -> V: <b>obtain_credential_status</b>(presentation, http_client)
 end
