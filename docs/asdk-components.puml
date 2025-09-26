@@ -25,7 +25,7 @@ package "ASDK" as ASDK {
 
         package "VC Exchange" {
             [OID4VC] as VCOID #Green
-            [WACI/Aries] as Aries #Orange
+            [WACI/Aries] as Aries #Green
         }
 
     }

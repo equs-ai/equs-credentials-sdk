@@ -18,7 +18,7 @@ package "ASDK" as ASDK {
     package "Public API" as API #LightGray {
          package "VC Exchange" as VC1 {
             [OID4VC] as VCOID #Green
-            [Aries/WACI] as AriesWACI #Orange
+            [Aries/WACI] as AriesWACI #Green
          }
          [DIDComm Protocols] as DIDCommP #Green
 
@@ -49,7 +49,7 @@ VaultApp --|> Vault
 KMSApp --|> KMS
 AppL --> API
 
-note right of ASDK: Green - already implemented;\nOrange - later versions
+'note right of ASDK: Green - already implemented;\nOrange - later versions
 
 
 @enduml

@@ -119,7 +119,7 @@ mod tests {
         let (hld_subscription, hls_observable) = holder.observe_state().await;
 
         println!("4. Holder sends credential request");
-        holder.send_request().await.unwrap();
+        holder.send_credential_request().await.unwrap();
 
         let holder_state = hls_observable.next().await.unwrap();
         assert!(matches!(holder_state, IssuanceHolderState::RequestSent(_)));

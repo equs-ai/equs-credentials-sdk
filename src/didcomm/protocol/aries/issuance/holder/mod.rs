@@ -188,8 +188,8 @@ where
         Ok(holder)
     }
 
-    pub async fn send_request(&mut self) -> Result<()> {
-        trace!("Holder::send_request >>>");
+    pub async fn send_credential_request(&mut self) -> Result<()> {
+        trace!("Holder::send_credential_request >>>");
         debug!("Holder {}: Sending credential request", self.source_id);
         self.step(HolderMessages::CredentialRequestSend).await
     }

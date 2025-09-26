@@ -1,0 +1,71 @@
+@startuml
+'https://plantuml.com/sequence-diagram
+
+autonumber
+
+actor Holder as H
+participant Issuer as I
+participant Verifier as V
+
+autonumber 0
+I -> I: create <b>create_offer</b>(credential_info)
+
+...
+
+autonumber 1.1
+I -> I: <b>create_invitation</b>(thread_id, invitation_config)
+I --> I: <internally> include cred offer into invitation
+I --> H: <out-of-band>: render invitation as URL / QR Code
+
+...
+
+autonumber 2.1
+H -> H: <b>accept_invitation</b>(invitation_url)
+H --> H: <internally> <b>parse_credential_offer</b>(invitation)
+H -> H: <b>send_credential_request</b>()
+H --> I: <out-of-band>: send `CredentialRequest`
+
+...
+
+autonumber 3.1
+I -> I: <b>send_credential</b>(thread_id)
+I -> I: <internally>: create_credential()
+I --> H: <out-of-band>: send `Credential`
+
+autonumber 4
+H -> H: <b>store_credential</b>(credential)
+
+...
+
+autonumber 5.1
+V -> V: <b>create_presentation_request</b>(proof_request)
+
+autonumber 5.2
+V -> V: <b>create_invitation</b>(thread_id, invitation_config)
+V -> V: <internally> include presentation request into invitation
+V --> H: <out-of-band>: render invitation as URL / QR Code
+
+autonumber 6.1
+H -> H: <b>accept_invitation</b>(invitation_url)
+H -> H: <internally> <b>parse_presentation_request</b>(invitation)
+
+
+alt Set any presentation
+autonumber 6.1.1
+H -> H: <b>set_presentation</b>(presentation)
+
+else Handle filtering by holder for Presentation Request
+autonumber 6.2.1
+H -> H: <b>prepare_presentation</b>()
+H -> H: <internally>: <b>create_presentation_auto</b>(holder_binder, presentation_input)
+end
+autonumber 6.3
+H -> H: <b>send_presentation</b>()
+H --> V: <out-of-band>: send `Presentation`
+...
+
+autonumber 7.1
+V -> V: <out-of-band>: <b>verify_presentation</b>(holder_binder, presentation, http_client)
+
+
+@enduml

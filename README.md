@@ -30,6 +30,7 @@ Other diagrams:
 - [VC OID4VC API Auth Code: Full Flow](docs/vc-oid4vc-api-auth-code-full.png)
 - [VC OID4VC API Auth Code: Already Authorized](docs/vc-oid4vc-api-auth-code-already-authorized.png)
 - [VC Core API](docs/vc-core-api.png)
+- [VC Aries Over DIDComm](docs/vc-aries-over-didcomm.png)
 
 ## API and Components
 
@@ -50,7 +51,7 @@ See [Components](docs/asdk-components.png).
     - W3C VC JSON-LD V2 (ECDSA, EdDSA, BBS+ 2023)
         - [Verifiable Credentials Data Model v2.0](https://www.w3.org/TR/vc-data-model-2.0/)
 - VC Exchange Protocols: Issuance
-    - OID4VCI [draft 15](https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0-15.html)
+    - OID4VCI [version 1.0](https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0.html)
         - Authorization Code Flow using scope Parameter to Request Issuance of a Credential
         - Preauthorized Code Flow using scope Parameter to Request Issuance of a Credential
         - Batch issuance
@@ -58,7 +59,7 @@ See [Components](docs/asdk-components.png).
     - WACI Issue Credential Protocol
       3.0 [specification](https://github.com/decentralized-identity/waci-didcomm/blob/main/issue_credential/README.md)
 - VC Exchange Protocols: Presentation
-    - OID4VP [draft 29](https://openid.net/specs/openid-4-verifiable-presentations-1_0-29.html)
+    - OID4VP [version 1.0](https://openid.net/specs/openid-4-verifiable-presentations-1_0.html)
         - DIF.PresentationExchange query language to request the presentations
         - Cross Device Flow
         - Same Device Flow
