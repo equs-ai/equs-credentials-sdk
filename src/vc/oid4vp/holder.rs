@@ -28,12 +28,14 @@ use crate::vc::{RequestedPresentation, dcql, oid4vp as api, presentation_exchang
 use crate::{utils, vc};
 use async_trait::async_trait;
 use futures::future;
+use futures::future::join_all;
 use oauth2::http::{Request, Response};
 use openid4vp::core::authorization_request::parameters::{
     HashAlgorithm, ResponseType, WalletNonce,
 };
 use openid4vp::core::authorization_request::verification::{RequestVerifier, did};
 use openid4vp::core::authorization_request::{AuthorizationRequest, AuthorizationRequestObject};
+use openid4vp::core::dcql::DcqlCredential;
 use openid4vp::core::metadata::WalletMetadata;
 use openid4vp::core::presentation_submission::PresentationSubmission;
 use openid4vp::core::response::AuthorizationResponse::Jwt;
@@ -581,86 +583,111 @@ where
         auth_request: &ResolvedAuthRequest,
         dcql: DCQL,
     ) -> Result<Vec<RequestedPresentation>> {
-        let presentations: Vec<RequestedPresentation>;
         let presentation_inputs =
             dcql::split_to_inputs_for_dcql(dcql.credentials().to_vec().as_ref());
-        let mut id_to_pres_input: HashMap<String, PresentationInput> = HashMap::new();
-        dcql.credentials().iter().for_each(|cred| {
-            if let Some(pi) = presentation_inputs
-                .iter()
-                .find(|&p| p.id == *cred.id().as_str())
-            {
-                id_to_pres_input.insert(cred.id().as_str().to_owned(), pi.clone());
-            }
-        });
+        let id_to_pres_input = self.get_id_to_pres_input_map(&dcql, &presentation_inputs);
 
-        let pairs = future::try_join_all(dcql.credentials().iter().map(|credential| async {
-            if !id_to_pres_input.contains_key(credential.id().as_str()) {
-                CredentialNotFoundSnafu.fail()?;
-            }
-            let pi = id_to_pres_input[credential.id().as_str()].clone();
-            let creds = self
-                .holder
-                .find_vcs_for_presentation(&pi)
-                .await
-                .context(VCSnafu)?;
+        let id_to_cred_entry = self.get_id_to_cred_entry(&dcql, &id_to_pres_input).await;
 
-            if let CredentialsFindResult::Credentials(credentials) = creds
-                && let Some(cred_entry) = credentials.first()
-            {
-                return Ok((credential.id().as_str(), cred_entry.clone()));
-            }
-
-            let err = ProtocolError::access_denied(
-                "matching credentials are not found",
-                auth_request.state.clone(),
-            );
-
-            let err = self
-                .handle_auth_error_resp(
-                    &auth_request.response_uri,
-                    &auth_request.response_mode,
-                    err,
-                )
-                .await?;
-
-            Err(Protocol { source: err })
-        }))
-        .await?;
-        let id_to_cred: HashMap<_, _> = pairs.into_iter().collect();
-        let to_be_returned_credentials =
-            dcql::filter_creds_with_cred_sets(id_to_cred.clone(), dcql.to_owned());
-        if let Ok(to_be_returned_credentials) = to_be_returned_credentials {
-            presentations =
-                future::try_join_all(to_be_returned_credentials.iter().map(|credential| async {
-                    if !id_to_pres_input.contains_key(credential.id().as_str()) {
-                        CredentialNotFoundSnafu.fail()?;
-                    }
-                    let pi = id_to_pres_input[credential.id().as_str()].clone();
-                    if !id_to_cred.contains_key(credential.id().as_str()) {
-                        CredentialNotFoundSnafu.fail()?;
-                    }
-                    let cred = id_to_cred[credential.id().as_str()].clone();
-
-                    let holder_binder =
-                        if let Some(false) = credential.require_cryptographic_holder_binding() {
-                            None
-                        } else {
-                            Some(HolderBinder {
-                                nonce: auth_request.nonce.to_owned(),
-                                verifier_id: auth_request.client_id.get_id(),
-                            })
-                        };
-                    self.create_presentation_by_input(&cred, &pi, holder_binder)
-                        .await
-                }))
-                .await?
+        let presentations = if let Ok(to_be_returned_credentials) =
+            dcql::filter_creds_with_cred_sets(&id_to_cred_entry, &dcql)
+        {
+            let binder = HolderBinder {
+                nonce: auth_request.nonce.to_owned(),
+                verifier_id: auth_request.client_id.get_id(),
+            };
+            self.get_presentations(
+                to_be_returned_credentials,
+                id_to_pres_input,
+                id_to_cred_entry,
+                binder,
+            )
+            .await?
         } else {
-            presentations = vec![];
-        }
+            vec![]
+        };
         Ok(presentations)
     }
 
+    async fn get_id_to_cred_entry(
+        &self,
+        dcql: &DCQL,
+        id_to_pres_input: &HashMap<String, PresentationInput>,
+    ) -> HashMap<String, CredentialEntry> {
+        let find_vcs_tasks = dcql
+            .credentials()
+            .iter()
+            .map(|dcql_cred| {
+                self.get_id_to_vc_pair_for_dcql_cred(dcql_cred.to_owned(), id_to_pres_input)
+            })
+            .collect::<Vec<_>>();
+
+        join_all(find_vcs_tasks)
+            .await
+            .into_iter()
+            .flatten()
+            .collect::<HashMap<_, _>>()
+    }
+    async fn get_presentations(
+        &self,
+        dcql_creds: Vec<DcqlCredential>,
+        id_to_pres_input: HashMap<String, PresentationInput>,
+        id_to_cred: HashMap<String, CredentialEntry>,
+        binder: HolderBinder,
+    ) -> Result<Vec<RequestedPresentation>> {
+        future::try_join_all(dcql_creds.iter().map(|credential| async {
+            let id = credential.id().as_str();
+            if let Some(pi) = id_to_pres_input.get(id)
+                && let Some(cred) = id_to_cred.get(id)
+            {
+                let holder_binder =
+                    if let Some(false) = credential.require_cryptographic_holder_binding() {
+                        None
+                    } else {
+                        Some(binder.to_owned())
+                    };
+                self.create_presentation_by_input(cred, pi, holder_binder)
+                    .await
+            } else {
+                CredentialNotFoundSnafu.fail()?
+            }
+        }))
+        .await
+    }
+
+    async fn get_id_to_vc_pair_for_dcql_cred(
+        &self,
+        cred_query: DcqlCredential,
+        id_to_pres_input: &HashMap<String, PresentationInput>,
+    ) -> Option<(String, CredentialEntry)> {
+        if let Some(pi) = id_to_pres_input.get(&cred_query.id().as_str().to_string())
+            && let Ok(CredentialsFindResult::Credentials(ver_creds)) =
+                self.holder.find_vcs_for_presentation(pi).await
+        {
+            let filtered_ver_creds = dcql::filter_claims_using_claim_sets(&cred_query, ver_creds);
+            filtered_ver_creds
+                .first()
+                .map(|cred| (cred_query.id().as_str().to_string(), cred.to_owned()))
+        } else {
+            None
+        }
+    }
+
+    fn get_id_to_pres_input_map(
+        &self,
+        dcql: &DCQL,
+        presentation_inputs: &[PresentationInput],
+    ) -> HashMap<String, PresentationInput> {
+        dcql.credentials()
+            .iter()
+            .filter_map(|cred| {
+                presentation_inputs
+                    .iter()
+                    .find(|p| p.id.as_str() == cred.id().as_str())
+                    .map(|p| (cred.id().as_str().to_owned(), p.to_owned()))
+            })
+            .collect()
+    }
     fn validate_transaction_data(
         &self,
         resolved_presentation_query: &ResolvedPresentationQuery,
@@ -812,23 +839,41 @@ where
         auth_request: &ResolvedAuthRequest,
     ) -> Result<CredentialsMapping> {
         let mut creds_map = CredentialsMapping::new();
-        let presentation_inputs = match auth_request.clone().resolved_presentation_query {
+        match auth_request.clone().resolved_presentation_query {
             ResolvedPresentationQuery::PresentationDefinition(pd) => {
-                presentation_exchange::split_to_inputs_for_pd(&pd, None)
-                    .context(PresentationExchangeSnafu)?
+                let presentation_inputs = presentation_exchange::split_to_inputs_for_pd(&pd, None)
+                    .context(PresentationExchangeSnafu)?;
+                for pres_input in presentation_inputs.iter() {
+                    let creds = self
+                        .holder
+                        .find_vcs_for_presentation(pres_input)
+                        .await
+                        .context(VCSnafu)?;
+                    creds_map.insert(pres_input.id.to_owned(), creds);
+                }
             }
             ResolvedPresentationQuery::DCQL(dcql) => {
-                dcql::split_to_inputs_for_dcql(dcql.credentials().to_vec().as_ref())
+                let presentation_inputs =
+                    dcql::split_to_inputs_for_dcql(dcql.credentials().to_vec().as_ref());
+                let id_to_pres_input = self.get_id_to_pres_input_map(&dcql, &presentation_inputs);
+                let id_to_cred_entry = self.get_id_to_cred_entry(&dcql, &id_to_pres_input).await;
+
+                if let Ok(to_be_returned_credentials) =
+                    dcql::filter_creds_with_cred_sets(&id_to_cred_entry, &dcql)
+                {
+                    for dcql_cred in to_be_returned_credentials {
+                        let id = dcql_cred.id().as_str().to_string();
+                        let found_creds = id_to_cred_entry.get(&id);
+                        if let Some(cred) = found_creds {
+                            creds_map.insert(
+                                id,
+                                CredentialsFindResult::Credentials(vec![cred.to_owned()]),
+                            );
+                        }
+                    }
+                }
             }
         };
-        for pres_input in presentation_inputs.iter() {
-            let creds = self
-                .holder
-                .find_vcs_for_presentation(pres_input)
-                .await
-                .context(VCSnafu)?;
-            creds_map.insert(pres_input.id.to_owned(), creds);
-        }
 
         Ok(creds_map)
     }
@@ -1779,6 +1824,131 @@ mod tests {
                 validate_claims(&case.credential_format, claim, &expected_claims)
             }
         }
+    }
+
+    #[rstest]
+    #[case::json_ld::dcql_test_case_with_type_only(
+        single_presentation::json_ld::dcql_test_case_with_type_only()
+    )]
+    #[case::json_ld::dcql_test_case_without_claim_sets(
+        single_presentation::json_ld::dcql_test_case_without_claim_sets()
+    )]
+    #[case::json_ld::dcql_test_case_with_claim_sets(
+        single_presentation::json_ld::dcql_test_case_with_claim_sets()
+    )]
+    #[case::json_ld::dcql_test_case_with_multiple_credentials(
+        single_presentation::json_ld::dcql_test_case_with_multiple_credentials()
+    )]
+    #[case::sd_jwt::presentation_test_case_for_dcql_with_vct_only(
+        single_presentation::sd_jwt::presentation_test_case_for_dcql_with_vct_only()
+    )]
+    #[case::sd_jwt::presentation_test_case_for_dcql_without_claim_sets_multiple_result(
+        single_presentation::sd_jwt::presentation_test_case_for_dcql_without_claim_sets_multiple_result()
+    )]
+    #[case::sd_jwt::presentation_test_case_for_dcql_without_claim_sets_unique_result(
+        single_presentation::sd_jwt::presentation_test_case_for_dcql_without_claim_sets_unique_result()
+    )]
+    #[should_panic(expected = "Credentials not found")]
+    #[case::sd_jwt::presentation_test_case_for_dcql_without_claim_sets_empty_result(
+        single_presentation::sd_jwt::presentation_test_case_for_dcql_without_claim_sets_empty_result()
+    )]
+    #[case::sd_jwt::presentation_test_case_for_dcql_with_claim_sets(
+        single_presentation::sd_jwt::presentation_test_case_for_dcql_with_claim_sets()
+    )]
+    #[case::sd_jwt::presentation_test_case_for_dcql_with_multiple_credentials(
+        single_presentation::sd_jwt::presentation_test_case_for_dcql_with_multiple_credentials()
+    )]
+    #[case::sd_jwt::presentation_test_case_for_dcql_with_credential_sets(
+        single_presentation::sd_jwt::presentation_test_case_for_dcql_with_credential_sets()
+    )]
+    #[should_panic(expected = "Credentials not found")]
+    #[case::sd_jwt::presentation_test_case_for_dcql_with_claim_values_empty_result(
+        single_presentation::sd_jwt::presentation_test_case_for_dcql_with_claim_values_empty_result(
+        )
+    )]
+    #[case::sd_jwt::presentation_test_case_for_dcql_with_claim_values_some_result(
+        single_presentation::sd_jwt::presentation_test_case_for_dcql_with_claim_values_some_result(
+        )
+    )]
+    #[should_panic(expected = "Credentials not found")]
+    #[case::sd_jwt::presentation_test_case_for_empty_result(
+        single_presentation::sd_jwt::presentation_test_case_for_empty_result()
+    )]
+    #[should_panic(expected = "Credentials not found")]
+    #[case::sd_jwt::presentation_test_case_for_empty_result2(
+        single_presentation::sd_jwt::presentation_test_case_for_empty_result2()
+    )]
+    #[tokio::test]
+    async fn find_credentials_with_dcql_success(#[case] case: PresentationTestCase) {
+        let kms = LocalKms::new();
+        let vault = case.prepare_vault(&kms).await;
+        let holder = holder_service(MockHttpClient::new(), kms, vault).await;
+
+        let credential_mapping = holder
+            .find_vcs_for_presentation(&case.request)
+            .await
+            .unwrap();
+        println!("{:?}", credential_mapping);
+        let retrieved_credentials: Vec<Credential> = credential_mapping
+            .values()
+            .map(|credential| match credential {
+                CredentialsFindResult::Credentials(creds) => {
+                    creds.first().unwrap().credential.clone()
+                }
+                CredentialsFindResult::Reasons(_) => {
+                    panic!("Unsuccessful retrieval of credentials is not expected");
+                }
+            })
+            .collect();
+
+        let retrieved_credentials_claims: Vec<Claims> = retrieved_credentials
+            .iter()
+            .filter_map(|credential| match credential {
+                Credential::SdJwt(sd_jwt_vc) => {
+                    decode_sd_jwt(sd_jwt_vc.to_owned(), SDJWTSerializationFormat::Compact).ok()
+                }
+                Credential::LdpVc(json_ld_vc) => {
+                    serde_json::to_value(json_ld_vc.clone().claims).ok()
+                }
+                _ => None,
+            })
+            .map(|c| c.try_into().unwrap())
+            .collect();
+
+        assert!(
+            !retrieved_credentials_claims.is_empty(),
+            "Credentials not found"
+        );
+
+        let expected_cred_data = &case.expected_credential_data;
+
+        for expected_claims in expected_cred_data.clone() {
+            let claims = retrieved_credentials_claims
+                .iter()
+                .find(|retrieved_claims| match &case.credential_format {
+                    ClaimFormatDesignation::SdJwtVc => {
+                        let expected_type = expected_claims["vct"].as_str().unwrap();
+                        if let Some(Claim::String(vct)) = retrieved_claims.get("vct") {
+                            return expected_type == vct;
+                        }
+                        true
+                    }
+                    ClaimFormatDesignation::LdpVc => {
+                        let expected_type = expected_claims["type"].as_vec().unwrap();
+                        if let Some(Claim::Array(type_)) = &retrieved_claims.get("type") {
+                            return expected_type == type_;
+                        }
+                        true
+                    }
+                    _ => true,
+                });
+
+            if let Some(claim) = claims {
+                validate_claims(&case.credential_format, claim, &expected_claims)
+            }
+        }
+
+        println!("{:?}", credential_mapping);
     }
 
     #[rstest]

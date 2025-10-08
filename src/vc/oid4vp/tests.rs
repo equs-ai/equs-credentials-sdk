@@ -393,6 +393,7 @@ pub mod fixtures {
                     transaction_data: None,
                 }
             }
+
             pub fn presentation_test_case_with_constraints_with_patterns() -> PresentationTestCase {
                 let cred: Claims = json!({
                     "type": vec![
@@ -674,7 +675,211 @@ pub mod fixtures {
                     transaction_data: None,
                 }
             }
+
+            pub fn dcql_test_case_with_type_only() -> PresentationTestCase {
+                let credential_data: Vec<Claims> = vec![
+                    credential_1(),
+                    credential_2(),
+                    credential_3(),
+                    credential_4(),
+                ];
+                let dcql = r#"
+                            {
+                                "credentials": [
+                                    {
+                                        "id": "pid",
+                                        "format": "ldp_vc",
+                                        "meta": {
+                                            "type_values": [
+                                              [
+                                                  "https://www.w3.org/2018/credentials#VerifiableCredential",
+                                                  "https://example.org/examples#AlumniCredential",
+                                                  "https://example.org/examples#BachelorDegree"
+                                              ],
+                                              [
+                                                  "https://www.w3.org/2018/credentials#VerifiableCredential",
+                                                  "https://example.org/examples#UniversityDegreeCredential"
+                                              ],
+                                              [
+                                                  "IdentityCredential"
+                                              ]
+                                            ]
+                                        }
+                                    }
+                                ]
+                            }
+                "#;
+                let auth_request = PresentationTestCase::build_auth_request_for_dcql(dcql);
+                let presentation_submission =
+                    serde_json::from_str(PRESENTATION_SUBMISSION).unwrap();
+
+                PresentationTestCase {
+                    credential_format: ClaimFormatDesignation::LdpVc,
+                    request: auth_request,
+                    credential_data,
+                    expected_credential_data: vec![credential_3()],
+                    presentation_submission,
+                    response_metadata: Default::default(),
+                    transaction_data: None,
+                }
+            }
+
+            pub fn dcql_test_case_with_claim_sets() -> PresentationTestCase {
+                let credential_data: Vec<Claims> = vec![
+                    credential_1(),
+                    credential_2(),
+                    credential_3(),
+                    credential_4(),
+                ];
+
+                let dcql = r#"
+                            {
+                                "credentials": [
+                                    {
+                                        "id": "pid",
+                                        "format": "ldp_vc",
+                                        "meta": {},
+                                        "claims": [
+                                            {
+                                                "id": "1",
+                                                "path": ["credentialSubject", "name"]
+                                            },
+                                            {
+                                                "id": "2",
+                                                "path": ["credentialSubject", "degree"]
+                                            },
+                                            {
+                                                "id": "3",
+                                                "path": ["credentialSubject", "college"]
+                                            }
+                                        ],
+                                        "claim_sets": [["1", "2"], ["3", "4"]]
+                                    }
+                                ]
+                            }
+                "#;
+                let auth_request = PresentationTestCase::build_auth_request_for_dcql(dcql);
+                let presentation_submission =
+                    serde_json::from_str(PRESENTATION_SUBMISSION).unwrap();
+
+                PresentationTestCase {
+                    credential_format: ClaimFormatDesignation::LdpVc,
+                    request: auth_request,
+                    credential_data,
+                    expected_credential_data: vec![credential_3()],
+                    presentation_submission,
+                    response_metadata: Default::default(),
+                    transaction_data: None,
+                }
+            }
+
+            pub fn dcql_test_case_without_claim_sets() -> PresentationTestCase {
+                let credential_data: Vec<Claims> = vec![
+                    credential_1(),
+                    credential_2(),
+                    credential_3(),
+                    credential_4(),
+                ];
+
+                let dcql = r#"
+                            {
+                                "credentials": [
+                                    {
+                                        "id": "pid",
+                                        "format": "ldp_vc",
+                                        "meta": {},
+                                        "claims": [
+                                            {
+                                                "id": "1",
+                                                "path": ["credentialSubject", "name"]
+                                            },
+                                            {
+                                                "id": "2",
+                                                "path": ["credentialSubject", "degree"]
+                                            },
+                                            {
+                                                "id": "3",
+                                                "path": ["credentialSubject", "college"]
+                                            }
+                                        ]
+                                    }
+                                ]
+                            }
+                "#;
+                let auth_request = PresentationTestCase::build_auth_request_for_dcql(dcql);
+                let presentation_submission =
+                    serde_json::from_str(PRESENTATION_SUBMISSION).unwrap();
+
+                PresentationTestCase {
+                    credential_format: ClaimFormatDesignation::LdpVc,
+                    request: auth_request,
+                    credential_data,
+                    expected_credential_data: vec![credential_3()],
+                    presentation_submission,
+                    response_metadata: Default::default(),
+                    transaction_data: None,
+                }
+            }
+
+            pub fn dcql_test_case_with_multiple_credentials() -> PresentationTestCase {
+                let credential_data: Vec<Claims> = vec![
+                    credential_1(),
+                    credential_2(),
+                    credential_3(),
+                    credential_4(),
+                ];
+
+                let dcql = r#"
+                            {
+                                "credentials": [
+                                    {
+                                        "id": "pid",
+                                        "format": "ldp_vc",
+                                        "meta": {},
+                                        "claims": [
+                                            {
+                                                "path": ["credentialSubject", "name", "givenName"]
+                                            },
+                                            {
+                                                "path": ["credentialSubject", "name", "familyName"]
+                                            }
+                                        ]
+                                    },
+                                    {
+                                        "id": "pid2",
+                                        "format": "ldp_vc",
+                                        "meta": {},
+                                        "claims": [
+                                            {
+                                                "path": ["credentialSubject", "name"]
+                                            },
+                                            {
+                                                "path": ["credentialSubject", "degree"]
+                                            },
+                                            {
+                                                "path": ["credentialSubject", "college"]
+                                            }
+                                        ]
+                                    }
+                                ]
+                            }
+                "#;
+                let auth_request = PresentationTestCase::build_auth_request_for_dcql(dcql);
+                let presentation_submission =
+                    serde_json::from_str(PRESENTATION_SUBMISSION).unwrap();
+
+                PresentationTestCase {
+                    credential_format: ClaimFormatDesignation::LdpVc,
+                    request: auth_request,
+                    credential_data,
+                    expected_credential_data: vec![credential_1(), credential_3()],
+                    presentation_submission,
+                    response_metadata: Default::default(),
+                    transaction_data: None,
+                }
+            }
         }
+
         pub mod sd_jwt {
             use crate::nonce::Nonce;
             use crate::vc::claims::Claims;
@@ -1837,6 +2042,590 @@ pub mod fixtures {
             pub fn client_metadata_no_keys() -> ClientMetadata {
                 serde_json::from_str(CLIENT_METADATA_NO_KEYS).unwrap()
             }
+            pub fn presentation_test_case_for_dcql_with_vct_only() -> PresentationTestCase {
+                let cred1: Claims = json!({
+                    "vct": "https://credentials.example.com/employee_credential",
+                    "name": "John",
+                    "email": "john@example.com",
+                    "age": 35,
+                    "position": "lead engineer",
+                })
+                .try_into()
+                .unwrap();
+                let cred2: Claims = json!({
+                    "vct": "some_vct",
+                    "id": "John",
+                    "username": "john@example.com",
+                    "age": 35,
+                    "occupation": "lead engineer",
+                })
+                .try_into()
+                .unwrap();
+                let credential_data: Vec<Claims> = vec![cred1.clone(), cred2.clone()];
+                let dcql = r#"
+                            {
+                                "credentials": [
+                                    {
+                                        "id": "pid",
+                                        "format": "dc+sd-jwt",
+                                        "meta": {
+                                            "vct_values": ["some_vct"]
+                                        }
+                                    }
+                                ]
+                            }
+                "#;
+                let auth_request = PresentationTestCase::build_auth_request_for_dcql(dcql);
+                let presentation_submission =
+                    serde_json::from_str(PRESENTATION_SUBMISSION).unwrap();
+
+                PresentationTestCase {
+                    credential_format: ClaimFormatDesignation::SdJwtVc,
+                    request: auth_request,
+                    credential_data,
+                    expected_credential_data: vec![cred2],
+                    presentation_submission,
+                    response_metadata: Default::default(),
+                    transaction_data: None,
+                }
+            }
+
+            pub fn presentation_test_case_for_dcql_without_claim_sets_multiple_result()
+            -> PresentationTestCase {
+                let credential_data: Vec<Claims> = vec![
+                    credential_1(),
+                    credential_2(),
+                    credential_3(),
+                    credential_4(),
+                ];
+                let dcql = r#"
+                            {
+                                "credentials": [
+                                    {
+                                        "id": "pid",
+                                        "format": "dc+sd-jwt",
+                                        "meta": {},
+                                        "claims": [
+                                            {
+                                                "path": ["name"]
+                                            }
+                                        ]
+                                    }
+                                ]
+                            }
+                "#;
+                let auth_request = PresentationTestCase::build_auth_request_for_dcql(dcql);
+                let presentation_submission =
+                    serde_json::from_str(PRESENTATION_SUBMISSION).unwrap();
+
+                PresentationTestCase {
+                    credential_format: ClaimFormatDesignation::SdJwtVc,
+                    request: auth_request,
+                    credential_data: credential_data.clone(),
+                    expected_credential_data: credential_data,
+                    presentation_submission,
+                    response_metadata: Default::default(),
+                    transaction_data: None,
+                }
+            }
+
+            pub fn presentation_test_case_for_dcql_without_claim_sets_unique_result()
+            -> PresentationTestCase {
+                let credential_data: Vec<Claims> = vec![
+                    credential_1(),
+                    credential_2(),
+                    credential_3(),
+                    credential_4(),
+                ];
+                let dcql = r#"
+                            {
+                                "credentials": [
+                                    {
+                                        "id": "pid",
+                                        "format": "dc+sd-jwt",
+                                        "meta": {
+                                            "vct_values": ["https://credentials.example.com/employee_credential", "not-existing-vct"]
+                                        },
+                                        "claims": [
+                                            {
+                                                "path": ["name"]
+                                            }
+                                        ]
+                                    }
+                                ]
+                            }
+                "#;
+                let auth_request = PresentationTestCase::build_auth_request_for_dcql(dcql);
+                let presentation_submission =
+                    serde_json::from_str(PRESENTATION_SUBMISSION).unwrap();
+
+                PresentationTestCase {
+                    credential_format: ClaimFormatDesignation::SdJwtVc,
+                    request: auth_request,
+                    credential_data,
+                    expected_credential_data: vec![credential_4()],
+                    presentation_submission,
+                    response_metadata: Default::default(),
+                    transaction_data: None,
+                }
+            }
+
+            pub fn presentation_test_case_for_dcql_without_claim_sets_empty_result()
+            -> PresentationTestCase {
+                let credential_data: Vec<Claims> = vec![
+                    credential_1(),
+                    credential_2(),
+                    credential_3(),
+                    credential_4(),
+                ];
+                let dcql = r#"
+                            {
+                                "credentials": [
+                                    {
+                                        "id": "pid",
+                                        "format": "dc+sd-jwt",
+                                        "meta": {
+                                            "vct_values": ["https://credentials.example.com/employee_credential", "not-existing-vct"]
+                                        },
+                                        "claims": [
+                                            {
+                                                "path": ["name"]
+                                            },
+                                            {
+                                                "path": ["email", "work"]
+                                            }
+                                        ]
+                                    }
+                                ]
+                            }
+                "#;
+                let auth_request = PresentationTestCase::build_auth_request_for_dcql(dcql);
+                let presentation_submission =
+                    serde_json::from_str(PRESENTATION_SUBMISSION).unwrap();
+
+                PresentationTestCase {
+                    credential_format: ClaimFormatDesignation::SdJwtVc,
+                    request: auth_request,
+                    credential_data,
+                    expected_credential_data: vec![],
+                    presentation_submission,
+                    response_metadata: Default::default(),
+                    transaction_data: None,
+                }
+            }
+
+            pub fn presentation_test_case_for_dcql_with_claim_sets() -> PresentationTestCase {
+                let credential_data: Vec<Claims> = vec![
+                    credential_1(),
+                    credential_2(),
+                    credential_3(),
+                    credential_4(),
+                ];
+                let dcql = r#"
+                            {
+                                "credentials": [
+                                    {
+                                        "id": "pid",
+                                        "format": "dc+sd-jwt",
+                                        "meta": {},
+                                        "claims": [
+                                            {
+                                                "id": "first",
+                                                "path": ["name"]
+                                            },
+                                            {
+                                                "id": "second",
+                                                "path": ["email", "work"]
+                                            },
+                                            {
+                                                "id": "third",
+                                                "path": ["email", "university"]
+                                            },
+                                            {
+                                                "id": "fourth",
+                                                "path": ["email", "personal"]
+                                            }
+                                        ],
+                                       "claim_sets": [["first", "second"], ["third", "fourth"]]
+                                    }
+                                ]
+                            }
+                "#;
+                let auth_request = PresentationTestCase::build_auth_request_for_dcql(dcql);
+                let presentation_submission =
+                    serde_json::from_str(PRESENTATION_SUBMISSION).unwrap();
+
+                PresentationTestCase {
+                    credential_format: ClaimFormatDesignation::SdJwtVc,
+                    request: auth_request,
+                    credential_data,
+                    expected_credential_data: vec![credential_2()],
+                    presentation_submission,
+                    response_metadata: Default::default(),
+                    transaction_data: None,
+                }
+            }
+
+            pub fn presentation_test_case_for_dcql_with_multiple_credentials()
+            -> PresentationTestCase {
+                let credential_data: Vec<Claims> = vec![
+                    credential_1(),
+                    credential_2(),
+                    credential_3(),
+                    credential_4(),
+                ];
+                let dcql = r#"
+                            {
+                                "credentials": [
+                                    {
+                                        "id": "pid",
+                                        "format": "dc+sd-jwt",
+                                        "meta": {},
+                                        "claims": [
+                                            {
+                                                "id": "first",
+                                                "path": ["name"]
+                                            },
+                                            {
+                                                "id": "second",
+                                                "path": ["email", "work"]
+                                            },
+                                            {
+                                                "id": "third",
+                                                "path": ["email", "university"]
+                                            },
+                                            {
+                                                "id": "fourth",
+                                                "path": ["email", "personal"]
+                                            }
+                                        ],
+                                       "claim_sets": [["first", "second"], ["third", "fourth"]]
+                                    },
+                                    {
+                                        "id": "pid2",
+                                        "format": "dc+sd-jwt",
+                                        "meta": {
+                                            "vct_values": ["https://credentials.example.com/employee_credential"]
+                                        },
+                                        "claims": [
+                                            {
+                                                "id": "first",
+                                                "path": ["name"]
+                                            },
+                                            {
+                                                "id": "second",
+                                                "path": ["email"]
+                                            }
+                                        ]
+                                    }
+                                ]
+                            }
+                "#;
+                let auth_request = PresentationTestCase::build_auth_request_for_dcql(dcql);
+                let presentation_submission =
+                    serde_json::from_str(PRESENTATION_SUBMISSION).unwrap();
+
+                PresentationTestCase {
+                    credential_format: ClaimFormatDesignation::SdJwtVc,
+                    request: auth_request,
+                    credential_data,
+                    expected_credential_data: vec![credential_2(), credential_4()],
+                    presentation_submission,
+                    response_metadata: Default::default(),
+                    transaction_data: None,
+                }
+            }
+
+            pub fn presentation_test_case_for_dcql_with_credential_sets() -> PresentationTestCase {
+                let credential_data: Vec<Claims> = vec![
+                    credential_1(),
+                    credential_2(),
+                    credential_3(),
+                    credential_4(),
+                ];
+                let dcql = r#"
+                            {
+                                "credentials": [
+                                    {
+                                        "id": "pid",
+                                        "format": "dc+sd-jwt",
+                                        "meta": {},
+                                        "claims": [
+                                            {
+                                                "id": "first",
+                                                "path": ["name"]
+                                            },
+                                            {
+                                                "id": "second",
+                                                "path": ["email", "work"]
+                                            },
+                                            {
+                                                "id": "third",
+                                                "path": ["email", "university"]
+                                            },
+                                            {
+                                                "id": "fourth",
+                                                "path": ["email", "personal"]
+                                            }
+                                        ],
+                                       "claim_sets": [["first", "second"], ["third", "fourth"]]
+                                    },
+                                    {
+                                        "id": "pid2",
+                                        "format": "dc+sd-jwt",
+                                        "meta": {
+                                            "vct_values": ["https://credentials.example.com/employee_credential"]
+                                        },
+                                        "claims": [
+                                            {
+                                                "id": "first",
+                                                "path": ["name"]
+                                            },
+                                            {
+                                                "id": "second",
+                                                "path": ["email", "work"]
+                                            }
+                                        ]
+                                    },
+                                    {
+                                        "id": "pid3",
+                                        "format": "dc+sd-jwt",
+                                        "meta": {
+                                            "vct_values": ["https://credentials.example.com/employee_credential"]
+                                        },
+                                        "claims": [
+                                            {
+                                                "id": "first",
+                                                "path": ["name"]
+                                            },
+                                            {
+                                                "id": "second",
+                                                "path": ["email"]
+                                            }
+                                        ]
+                                    }
+                                ],
+                                "credential_sets": [
+                                    {
+                                        "options": [["pid", "pid3"], ["pid2", "pid3"]],
+                                        "required": true
+                                    }
+                                ]
+                            }
+                "#;
+                let auth_request = PresentationTestCase::build_auth_request_for_dcql(dcql);
+                let presentation_submission =
+                    serde_json::from_str(PRESENTATION_SUBMISSION).unwrap();
+
+                PresentationTestCase {
+                    credential_format: ClaimFormatDesignation::SdJwtVc,
+                    request: auth_request,
+                    credential_data,
+                    expected_credential_data: vec![credential_2(), credential_4()],
+                    presentation_submission,
+                    response_metadata: Default::default(),
+                    transaction_data: None,
+                }
+            }
+            pub fn presentation_test_case_for_dcql_with_claim_values_empty_result()
+            -> PresentationTestCase {
+                let credential_data: Vec<Claims> = vec![
+                    credential_1(),
+                    credential_2(),
+                    credential_3(),
+                    credential_4(),
+                ];
+                let dcql = r#"
+                            {
+                                "credentials": [
+                                    {
+                                        "id": "pid",
+                                        "format": "dc+sd-jwt",
+                                        "meta": {},
+                                        "claims": [
+                                            {
+                                                "id": "first",
+                                                "path": ["name"],
+                                                "values": ["John"]
+                                            },
+                                            {
+                                                "id": "second",
+                                                "path": ["email", "personal"],
+                                                "values": ["non-fitting-email"]
+                                            }
+                                        ]
+                                    }
+                                ]
+                            }
+                "#;
+                let auth_request = PresentationTestCase::build_auth_request_for_dcql(dcql);
+                let presentation_submission =
+                    serde_json::from_str(PRESENTATION_SUBMISSION).unwrap();
+
+                PresentationTestCase {
+                    credential_format: ClaimFormatDesignation::SdJwtVc,
+                    request: auth_request,
+                    credential_data,
+                    expected_credential_data: vec![],
+                    presentation_submission,
+                    response_metadata: Default::default(),
+                    transaction_data: None,
+                }
+            }
+
+            pub fn presentation_test_case_for_dcql_with_claim_values_some_result()
+            -> PresentationTestCase {
+                let credential_data: Vec<Claims> = vec![
+                    credential_1(),
+                    credential_2(),
+                    credential_3(),
+                    credential_4(),
+                ];
+                let dcql = r#"
+                            {
+                                "credentials": [
+                                    {
+                                        "id": "pid",
+                                        "format": "dc+sd-jwt",
+                                        "meta": {},
+                                        "claims": [
+                                            {
+                                                "id": "first",
+                                                "path": ["name"],
+                                                "values": ["Mike", "some-name"]
+                                            },
+                                            {
+                                                "id": "second",
+                                                "path": ["email", "personal"],
+                                                "values": ["personal@mike.com", "non-used-email"]
+                                            }
+                                        ]
+                                    }
+                                ]
+                            }
+                "#;
+                let auth_request = PresentationTestCase::build_auth_request_for_dcql(dcql);
+                let presentation_submission =
+                    serde_json::from_str(PRESENTATION_SUBMISSION).unwrap();
+
+                PresentationTestCase {
+                    credential_format: ClaimFormatDesignation::SdJwtVc,
+                    request: auth_request,
+                    credential_data,
+                    expected_credential_data: vec![credential_2()],
+                    presentation_submission,
+                    response_metadata: Default::default(),
+                    transaction_data: None,
+                }
+            }
+
+            pub fn presentation_test_case_for_empty_result() -> PresentationTestCase {
+                let cred1: Claims = json!({
+                    "vct": "https://credentials.example.com/employee_credential",
+                    "name": "John",
+                })
+                .try_into()
+                .unwrap();
+                let cred2: Claims = json!({
+                    "vct": "some_vct",
+                    "id": "John",
+                    "email": "some_email@email.com",
+                })
+                .try_into()
+                .unwrap();
+                let credential_data: Vec<Claims> = vec![cred1.clone(), cred2.clone()];
+                let dcql = r#"
+                            {
+                                "credentials": [
+                                    {
+                                        "id": "pid",
+                                        "format": "dc+sd-jwt",
+                                        "meta": {},
+                                        "claims": [
+                                            {
+                                              "id": "DmPO9iQ0efi4DiWNv5DPTHLI7wHc4BFM0HuA2XMupVYZ",
+                                              "path": [
+                                                "name"
+                                              ]
+                                            },
+                                            {
+                                              "id": "v6G66WUx4WxX6sJJocKIsX1m3DGNJxoaAY8WjYDPJ7wZ",
+                                              "path": [
+                                                "email"
+                                              ]
+                                            }
+                                          ]
+                                    }
+                                ]
+                            }
+                "#;
+                let auth_request = PresentationTestCase::build_auth_request_for_dcql(dcql);
+                let presentation_submission =
+                    serde_json::from_str(PRESENTATION_SUBMISSION).unwrap();
+
+                PresentationTestCase {
+                    credential_format: ClaimFormatDesignation::SdJwtVc,
+                    request: auth_request,
+                    credential_data,
+                    expected_credential_data: vec![],
+                    presentation_submission,
+                    response_metadata: Default::default(),
+                    transaction_data: None,
+                }
+            }
+
+            pub fn presentation_test_case_for_empty_result2() -> PresentationTestCase {
+                let cred1: Claims = json!({
+                    "vct": "https://credentials.example.com/employee_credential",
+                    "address": {
+                        "city": "some-city",
+                        "street": "some-street",
+                    }
+                })
+                .try_into()
+                .unwrap();
+                let credential_data: Vec<Claims> = vec![cred1.clone()];
+                let dcql = r#"
+                            {
+                                "credentials": [
+                                    {
+                                        "id": "pid",
+                                        "format": "dc+sd-jwt",
+                                        "meta": {},
+                                        "claims": [
+                                            {
+                                              "id": "DmPO9iQ0efi4DiWNv5DPTHLI7wHc4BFM0HuA2XMupVYZ",
+                                              "path": [
+                                                "address",
+                                                "city"
+                                              ]
+                                            },
+                                            {
+                                              "id": "v6G66WUx4WxX6sJJocKIsX1m3DGNJxoaAY8WjYDPJ7wZ",
+                                              "path": [
+                                                "address",
+                                                "zip"
+                                              ]
+                                            }
+                                          ]
+                                    }
+                                ]
+                            }
+                "#;
+                let auth_request = PresentationTestCase::build_auth_request_for_dcql(dcql);
+                let presentation_submission =
+                    serde_json::from_str(PRESENTATION_SUBMISSION).unwrap();
+
+                PresentationTestCase {
+                    credential_format: ClaimFormatDesignation::SdJwtVc,
+                    request: auth_request,
+                    credential_data,
+                    expected_credential_data: vec![],
+                    presentation_submission,
+                    response_metadata: Default::default(),
+                    transaction_data: None,
+                }
+            }
         }
     }
 
@@ -2884,6 +3673,30 @@ pub mod utils {
                       }}
                     ]
                   }},
+                  "nonce": "nonce",
+                  "response_mode": "direct_post",
+                  "response_type": "vp_token",
+                  "response_uri": "http://127.0.0.1:55796/auth",
+                "client_metadata": {{
+                "vp_formats_supported": {{
+                    "dc+sd-jwt": {{
+                        "sd-jwt_alg_values": ["EdDSA", "ES256"],
+                        "kb-jwt_alg_values": ["EdDSA", "ES256"]
+                    }}
+                }}
+              }}
+            }}"#
+            );
+
+            serde_json::from_str(&auth_request_str).unwrap()
+        }
+
+        pub fn build_auth_request_for_dcql(dcql: &str) -> ResolvedAuthRequest {
+            let auth_request_str = format!(
+                r#"{{
+                  "client_id": "decentralized_identifier:did:key:zDnaehgaHKAP7LAA3Kwa4FjXjJ1G3BcaHqr5gfRySJcGDgBtV",
+                  "state": null,
+                  "dcql_query": {dcql},
                   "nonce": "nonce",
                   "response_mode": "direct_post",
                   "response_type": "vp_token",
