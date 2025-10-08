@@ -14,7 +14,7 @@ use openid4vp::core::dcql::{DcqlClaim, DcqlCredential, DcqlCredentialSet, PathVa
 use serde_json::{Map, Value, json};
 use snafu::{Location, ResultExt, Snafu};
 use std::cmp::Ordering;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::str::FromStr;
 use std::vec;
 
@@ -54,6 +54,7 @@ pub fn split_to_inputs_for_dcql(dcql_credentials: &[DcqlCredential]) -> Vec<Pres
 fn get_restrictions_for_dcql_credential(
     credential: &DCQLCredential,
 ) -> Vec<PresentationRestriction> {
+    let optional = credential.claim_sets().is_some();
     let mut restrictions = credential.claims().map_or(vec![], |claims| {
         claims
             .iter()
@@ -65,7 +66,7 @@ fn get_restrictions_for_dcql_credential(
                 PresentationRestriction {
                     fields,
                     value,
-                    optional: true,
+                    optional,
                 }
             })
             .collect()
@@ -111,13 +112,14 @@ fn get_restriction_for_type(credential: &DCQLCredential) -> Option<PresentationR
                 })
                 .collect::<Vec<_>>();
 
-            let fields = vec![json::json_path_as_string(&vec![PathValue::String(
-                "type".to_string(),
-            )])];
+            let fields = vec![json::json_path_as_string(&vec![
+                PathValue::String("type".to_string()),
+                PathValue::Null,
+            ])];
             PresentationRestriction {
                 fields,
                 value: Some(PresentationRestrictionValue::ArrayOfValues(values)),
-                optional: true,
+                optional: false,
             }
         }),
         _ => None,
@@ -165,9 +167,9 @@ pub fn filter_claims_using_claim_sets(
             .as_slice(),
     );
     let mut result: Vec<CredentialEntry> = Vec::new();
-    for credential_entry in credential_entries.clone() {
+    for credential_entry in credential_entries {
         for set in claim_set_with_path.clone() {
-            if check_cred_contains_all_paths(credential_entry.clone(), set).is_ok() {
+            if check_cred_contains_all_paths(credential_entry.to_owned(), set).is_ok() {
                 result.push(credential_entry);
                 break;
             }
@@ -188,14 +190,15 @@ fn get_claim_set_with_path_instead_of_id(
             claim_id_to_path_map.insert(id.to_string(), path);
         }
     });
+
     claim_sets
         .iter()
-        .map(|cs| {
-            cs.iter()
-                .map(|id| claim_id_to_path_map[id].clone())
+        .map(|set| {
+            set.iter()
+                .filter_map(|id| claim_id_to_path_map.get(id).cloned())
                 .collect()
         })
-        .collect::<Vec<Vec<String>>>()
+        .collect()
 }
 
 fn check_cred_contains_all_paths(
@@ -220,21 +223,33 @@ fn check_cred_contains_all_paths(
     Ok(())
 }
 pub fn filter_creds_with_cred_sets(
-    map: HashMap<&str, CredentialEntry>,
-    dcql: DCQL,
+    id_to_ver_cred: &HashMap<String, CredentialEntry>,
+    dcql: &DCQL,
 ) -> Result<Vec<DCQLCredential>> {
-    let cred_ids: Vec<&str> = map.keys().cloned().collect();
+    let mut to_be_returned_cred_ids = HashSet::new();
+
     if let Some(credential_sets) = dcql.credential_sets() {
         for set in credential_sets {
-            check_if_set_required_and_all_creds_exist(set, &map)?
+            check_if_set_required_and_all_creds_exist(set, id_to_ver_cred)?;
+            for option in set.options() {
+                to_be_returned_cred_ids.extend(option.to_owned());
+            }
+        }
+    } else {
+        for dcql_credential in dcql.credentials() {
+            if !id_to_ver_cred.contains_key(dcql_credential.id().as_str()) {
+                NotFoundSnafu.fail()?
+            }
+            to_be_returned_cred_ids.insert(dcql_credential.id().as_str().to_string());
         }
     }
+
     let mut res = Vec::new();
-    for key in cred_ids {
+    for id in to_be_returned_cred_ids {
         let cred = dcql
             .credentials()
             .iter()
-            .find(|&c| c.id().as_str().cmp(key) == Ordering::Equal);
+            .find(|&c| c.id().as_str().cmp(&id) == Ordering::Equal);
         if let Some(c) = cred {
             res.push(c.to_owned());
         }
@@ -244,22 +259,20 @@ pub fn filter_creds_with_cred_sets(
 
 fn check_if_set_required_and_all_creds_exist(
     set: &DcqlCredentialSet,
-    map: &HashMap<&str, CredentialEntry>,
+    id_to_cred: &HashMap<String, CredentialEntry>,
 ) -> Result<()> {
-    let mut required = true;
+    let required = set.required().unwrap_or(&true).to_owned();
     let mut exists_any = false;
-    if let Some(&r) = set.required() {
-        required = r;
-    }
-    for item in set.options() {
+    for option in set.options() {
         let mut exists_all = true;
-        for id in item {
-            if !map.contains_key(id.as_str()) {
+        for id in option {
+            if !id_to_cred.contains_key(id) {
                 exists_all = false;
             }
         }
         if exists_all {
             exists_any = true;
+            break;
         }
     }
     if required && !exists_any {
@@ -636,7 +649,7 @@ mod tests {
             dcql = dcql.add_credential_set(set.clone());
         }
 
-        let result = filter_creds_with_cred_sets(map.clone(), dcql).unwrap();
+        let result = filter_creds_with_cred_sets(&map, &dcql).unwrap();
         assert_eq!(result.len(), 5);
 
         let credential_sets_required: Vec<DcqlCredentialSet> = serde_json::from_value(json!(
@@ -656,7 +669,7 @@ mod tests {
         for set in credential_sets_required {
             dcql = dcql.add_credential_set(set.clone());
         }
-        let result = filter_creds_with_cred_sets(map, dcql);
+        let result = filter_creds_with_cred_sets(&map, &dcql);
         assert!(result.is_err());
     }
 
@@ -782,17 +795,17 @@ mod tests {
                 PresentationRestriction {
                     fields: vec!["$.username".to_string()],
                     value: None,
-                    optional: true,
+                    optional: false,
                 },
                 PresentationRestriction {
                     fields: vec!["$.birthDate".to_string()],
                     value: None,
-                    optional: true,
+                    optional: false,
                 },
                 PresentationRestriction {
                     fields: vec!["$.email.work".to_string()],
                     value: None,
-                    optional: true,
+                    optional: false,
                 },
                 PresentationRestriction {
                     fields: vec!["$.vct".to_string()],
@@ -851,17 +864,17 @@ mod tests {
                 PresentationRestriction {
                     fields: vec!["$.given_name".to_string()],
                     value: None,
-                    optional: true,
+                    optional: false,
                 },
                 PresentationRestriction {
                     fields: vec!["$.family_name".to_string()],
                     value: None,
-                    optional: true,
+                    optional: false,
                 },
                 PresentationRestriction {
                     fields: vec!["$.address.street_address".to_string()],
                     value: None,
-                    optional: true,
+                    optional: false,
                 },
                 PresentationRestriction {
                     fields: vec!["$.vct".to_string()],
@@ -906,12 +919,12 @@ mod tests {
         (credentials, vec![first_pi, second_pi, third_pi])
     }
 
-    async fn get_id_to_cred_map<'a>() -> HashMap<&'a str, CredentialEntry> {
+    async fn get_id_to_cred_map() -> HashMap<String, CredentialEntry> {
         let ids = ["1", "2", "3", "4", "5"];
         let cred_entries: Vec<CredentialEntry> = get_credential_entries().await;
         let mut map = HashMap::new();
         for (index, &id) in ids.iter().enumerate() {
-            map.insert(id, cred_entries[index].clone());
+            map.insert(id.to_string(), cred_entries[index].clone());
         }
         map
     }
