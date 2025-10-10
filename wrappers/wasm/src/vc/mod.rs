@@ -26,6 +26,9 @@ extern "C" {
 
     #[wasm_bindgen(typescript_type = "CredentialsFindResult")]
     pub type JsCredentialsFindResult;
+
+    #[wasm_bindgen(typescript_type = "CredentialExtraVerification")]
+    pub type CredentialExtraVerification;
 }
 
 #[derive(Debug, Serialize, Deserialize)]

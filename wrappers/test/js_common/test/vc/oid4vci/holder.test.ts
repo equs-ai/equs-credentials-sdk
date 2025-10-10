@@ -1,12 +1,15 @@
 import { getLocal } from "mockttp";
 import {
+  CredentialExtraVerification,
   DIDKey,
   InMemKms,
   InMemVault,
   IssuerDiscovery,
   KeyMetadata,
   KeyType,
-  OID4VCIHolderBuilder, ProofOfPossessionMetadataBuilder, ProofOfPossessionNotBefore,
+  OID4VCIHolderBuilder,
+  ProofOfPossessionMetadataBuilder,
+  ProofOfPossessionNotBefore,
   ReqwestHttpClient,
   resolveMetadata,
   UniversalDIDResolver,
@@ -143,6 +146,23 @@ describe("OID4VCI Holder: ", () => {
     });
   });
 
+  it("verifies Issued Credential extra", async () => {
+    const vault = new InMemVault();
+    const kms = new InMemKms();
+    const vciHolder = await buildHolder(utils, kms, vault);
+
+    const credential = {
+      format: VCFormat.SdJwtVc,
+      payload: utils.sdJWTCreds,
+    };
+
+    try {
+      await vciHolder.verifyCredentialExtra(credential);
+    } catch (e) {
+      console.log(e);
+    }
+  });
+
   it("store Credential", async () => {
     const vault = new InMemVault();
     const kms = new InMemKms();
@@ -184,6 +204,7 @@ async function buildHolder(utils: Utils, kms = new InMemKms(), vault = new InMem
         .withNotBefore(ProofOfPossessionNotBefore.leeway(10))
         .build(),
     )
+    .withCredentialExtraVerification([CredentialExtraVerification.CredentialIssuerIdentifier])
     .build();
 }
 

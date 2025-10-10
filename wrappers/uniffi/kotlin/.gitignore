@@ -43,3 +43,5 @@ bin/
 
 ### Generated Code ###
 **/asdk.kt
+
+local.properties

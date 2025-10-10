@@ -108,9 +108,12 @@ import Swifter
 			vault: vault,
 			clientId: "client_id",
 			issuerDiscovery: IssuerDiscovery.offer(Oid4vciHolderTestConstants.CredentialOffer),
-            httpClient: ReqwestHttpClient.insecure(),
-            pop: ProofOfPossessionMetadataBuilder().withNotBefore(notBefore: ProofOfPossessionNotBefore.leeway(300)).withLifetime(lifetime: 10)
-                            .build()
+      httpClient: ReqwestHttpClient.insecure(),
+      pop: ProofOfPossessionMetadataBuilder()
+        .withNotBefore(notBefore: ProofOfPossessionNotBefore.leeway(300))
+        .withLifetime(lifetime: 10)
+        .build(),
+      credentialExtraVerification: nil
 		).build()
 
 		let didAndKeyMetadata1 = await createDidAndKeyMetadata(kms: kms)
@@ -138,6 +141,31 @@ import Swifter
 
 	}
 
+	@Test func verifyCredentialExtra() async throws {
+		let vault = InMemVault();
+		let kms = InMemKms();
+		let holder = try await Oid4vciHolderBuilder(
+			kms: kms,
+			vault: vault,
+			clientId: "client_id",
+			issuerDiscovery: IssuerDiscovery.offer(Oid4vciHolderTestConstants.CredentialOffer),
+      httpClient: ReqwestHttpClient.insecure(),
+      pop: ProofOfPossessionMetadataBuilder()
+        .withNotBefore(notBefore: ProofOfPossessionNotBefore.leeway(300))
+        .withLifetime(lifetime: 10)
+        .build(),
+      credentialExtraVerification: [CredentialExtraVerification.credentialIssuerIdentifier]
+		).build()
+
+    let credential = Credential(
+      format: VcFormat.sdJwtVc,
+      payload: Oid4vciHolderTestConstants.SdJwtCredentialDidWebIss);
+
+    try await holder.verifyCredentialExtra(
+      credential: credential
+    )
+	}
+
 	@Test func storeCredential() async throws {
 		let vault = InMemVault();
 		let kms = InMemKms();
@@ -147,8 +175,11 @@ import Swifter
 			clientId: "client_id",
 			issuerDiscovery: IssuerDiscovery.offer(Oid4vciHolderTestConstants.CredentialOffer),
             httpClient: ReqwestHttpClient.insecure(),
-            pop: ProofOfPossessionMetadataBuilder().withNotBefore(notBefore: ProofOfPossessionNotBefore.leeway(300)).withLifetime(lifetime: 10)
-                                 .build()
+      pop: ProofOfPossessionMetadataBuilder()
+        .withNotBefore(notBefore: ProofOfPossessionNotBefore.leeway(300))
+        .withLifetime(lifetime: 10)
+        .build(),
+      credentialExtraVerification: nil
 		).build()
 
 		let credential = Credential(
@@ -175,9 +206,12 @@ import Swifter
 		return try! await Oid4vciHolderBuilder(
 			kms: InMemKms(), vault: InMemVault(), clientId: "client_id",
 			issuerDiscovery: IssuerDiscovery.offer(Oid4vciHolderTestConstants.CredentialOffer),
-            httpClient: ReqwestHttpClient.insecure(),
-            pop: ProofOfPossessionMetadataBuilder().withNotBefore(notBefore: ProofOfPossessionNotBefore.leeway(300)).withLifetime(lifetime: 10)
-                                 .build()
+      httpClient: ReqwestHttpClient.insecure(),
+      pop: ProofOfPossessionMetadataBuilder()
+        .withNotBefore(notBefore: ProofOfPossessionNotBefore.leeway(300))
+        .withLifetime(lifetime: 10)
+        .build(),
+      credentialExtraVerification: nil
 		).build()
 	}
 }
@@ -259,4 +293,7 @@ enum Oid4vciHolderTestConstants {
 	static let NonceResponse = """
 		{"c_nonce":"0GtZieAoAL_3Zafyn6TgCA"}
 		""".data(using: .utf8)!
+
+	static let SdJwtCredentialDidWebIss =
+		"eyJ0eXAiOiJkYytzZC1qd3QiLCJhbGciOiJFUzI1NiJ9.eyJpc3MiOiJkaWQ6d2ViOmxvY2FsaG9zdCUzQTkwMDAiLCJpYXQiOjE3NTk3NTk4NDYsImV4cCI6MjA3NTI3ODIyNCwidmN0IjoiU0RfSldUX2NyZWQiLCJjbmYiOnsiandrIjp7Imt0eSI6IkVDIiwiY3J2IjoiUC0yNTYiLCJ4IjoiVExuNjZxYm5QZXhLeUZtZ3h1Y1kzSlpyZHhCRGpBc3ItbXkya1dBYms4ayIsInkiOiJzaFl6eUVUOENyWVcyTXhPU0FCSkxhbUpPTGV3LWpQbE9aeHdTUzZrWGdjIn19LCJfc2QiOlsiWDJFRFRQekhDaFVZaVM4THBvb1g3VXltM0hlZm5hLVh5SlU5bDg3UFZZYyIsImh1RlhRSlNlMDl4bGIzNXZtSEJBa3BfQW9sUlZQLXB5ek9hdTFZQWlsRTgiLCJyVWlMbzZ6OXliZ05rTTRIRHlKX2Z6ajRaRnNsYWo2YXdUeUpkTWZTbURnIl0sIl9zZF9hbGciOiJzaGEtMjU2In0.z_t8Xi_fyXgikwZPegwKkw6E7xVqSM7LwsjCGw2WoEnktmFsjwBUOHgx1PYwTue71Ryb0LJZtEjpSIqu79pjNw~WyJlYzM4MmY5MGY4ZDBmMjNjIiwiZ2l2ZW5fbmFtZSIsIkpvaG4iXQ~WyJkMzJhMDhhZTE5MjAwYjUyIiwiZmFtaWx5X25hbWUiLCJEb2UiXQ~WyJjNWFmNjdiZGY4OWQxNGVhIiwiZG9iIiwiMDkvMDkvMTk4OSJd~"
 }

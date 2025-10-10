@@ -6,7 +6,7 @@ use crate::utils::{from_json_object, parse_url_arg};
 use crate::vault::JsVault;
 use crate::vc::JsonObject;
 use crate::vc::core::{JsKeyMetadata, JsProofOfPossessionMetadata};
-use crate::vc::oid4vci::holder::OID4VCIHolder;
+use crate::vc::oid4vci::holder::{JsCredentialExtraVerification, OID4VCIHolder};
 use crate::vc::oid4vci::issuer::OID4VCIIssuer;
 use crate::vc::oid4vci::{JsDuration, JsTokenValidation};
 use agent_sdk::vc::core::KeyMetadata;
@@ -77,6 +77,7 @@ pub async fn _build_vci_holder(
     redirect_url: Option<String>,
     http_client: &ReqwestHttpClient,
     pop: Option<JsProofOfPossessionMetadata>,
+    credential_extra_verification: Option<Vec<JsCredentialExtraVerification>>,
     did_resolver: Option<JsDIDResolver>,
 ) -> Result<OID4VCIHolder> {
     let mut builder = HolderBuilder::new(
@@ -97,6 +98,11 @@ pub async fn _build_vci_holder(
 
     if let Some(did_resolver) = did_resolver {
         builder = builder.with_did_resolver(did_resolver).unwrap();
+    }
+
+    if let Some(options) = credential_extra_verification {
+        let options = options.into_iter().map(Into::into).collect();
+        builder = builder.with_credential_extra_verification(options);
     }
 
     let holder = builder

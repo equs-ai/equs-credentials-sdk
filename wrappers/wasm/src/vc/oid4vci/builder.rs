@@ -3,6 +3,7 @@ use crate::http::ReqwestHttpClient;
 use crate::kms::{JsKeyHandle, JsKms, Kms};
 use crate::utils;
 use crate::vault::{JsVault, Vault};
+use crate::vc::oid4vci::holder::CredentialExtraVerification;
 use crate::vc::oid4vci::holder::OID4VCIHolder;
 use crate::vc::oid4vci::{OID4VCICredentialOffer, OID4VCIIssuerMetadata};
 use agent_sdk::vc::oid4vci::HolderBuilder;
@@ -120,6 +121,15 @@ impl OID4VCIHolderBuilder {
     #[wasm_bindgen(js_name = withPop)]
     pub fn with_pop(self, pop: ProofOfPossessionMetadata) -> Self {
         OID4VCIHolderBuilder(self.0.with_pop(pop.0))
+    }
+
+    #[wasm_bindgen(js_name = withCredentialExtraVerification)]
+    pub fn with_credential_extra_validation(
+        self,
+        options: Vec<CredentialExtraVerification>,
+    ) -> Self {
+        let options: Vec<_> = options.into_iter().map(Into::into).collect();
+        OID4VCIHolderBuilder(self.0.with_credential_extra_verification(options))
     }
 
     /// Builds a `Holder`.

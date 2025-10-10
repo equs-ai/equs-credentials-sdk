@@ -1,13 +1,12 @@
+use crate::common::{Error, JsonValue, Result};
+use crate::vc::oid4vci::{CredentialResponse, TokenResponse};
+use crate::vc::{Credential, CredentialMetadata};
 use async_trait::async_trait;
 use std::future::Future;
 use std::io;
 use std::pin::Pin;
 use std::sync::Arc;
 use url::Url;
-
-use crate::common::{Error, JsonValue, Result};
-use crate::vc::oid4vci::{CredentialResponse, TokenResponse};
-use crate::vc::{Credential, CredentialMetadata};
 
 #[uniffi::export(with_foreign)]
 #[async_trait]
@@ -187,6 +186,25 @@ impl OID4VCIHolder {
             .map_err(|err| Error::OID4VCIInternal(format!("{:?}", err)))
     }
 
+    /// Perform extra verification of the passed `Credential`.
+    ///
+    /// # Arguments
+    ///
+    /// * `credential` - a `Credential` to verify.
+    ///
+    /// # Returns
+    ///
+    /// Empty unit.
+    pub async fn verify_credential_extra(
+        &self,
+        credential: &agent_sdk::vc::Credential,
+    ) -> Result<()> {
+        self.0
+            .verify_credential_extra(credential)
+            .await
+            .map_err(|err| Error::OID4VCIInternal(format!("{:?}", err)))
+    }
+
     /// Store a `Credential`.
     ///
     /// This method will store the `credential` into the `Vault` under the hood.
@@ -244,6 +262,11 @@ trait _HolderWrapperTrait: Send + Sync {
         key_metadata: &[agent_sdk::vc::core::KeyMetadata],
     ) -> agent_sdk::vc::oid4vci::Result<agent_sdk::vc::oid4vci::CredentialResponseResolved>;
 
+    async fn verify_credential_extra(
+        &self,
+        credential: &agent_sdk::vc::Credential,
+    ) -> agent_sdk::vc::oid4vci::Result<()>;
+
     async fn store_credential(
         &self,
         credential: &agent_sdk::vc::Credential,
@@ -284,6 +307,13 @@ impl<H: agent_sdk::vc::oid4vci::Holder> _HolderWrapperTrait for _HolderWrapper<H
         self.0
             .request_credential(token, cred_def_id, key_metadata)
             .await
+    }
+
+    async fn verify_credential_extra(
+        &self,
+        credential: &agent_sdk::vc::Credential,
+    ) -> agent_sdk::vc::oid4vci::Result<()> {
+        self.0.verify_credential_extra(credential).await
     }
 
     async fn store_credential(

@@ -27,7 +27,7 @@ export interface CredentialImmediate {
 }
 
 /**
- * An OID4VP credential response
+ * An OID4VCI credential response
  *
  * @property {CredentialDeferred|CredentialImmediate} data - The credential response data,
  * which may be either a {@link CredentialDeferred} or a {@link CredentialImmediate}.

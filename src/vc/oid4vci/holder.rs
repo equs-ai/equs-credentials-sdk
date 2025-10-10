@@ -1,18 +1,25 @@
+use crate::did::DIDURLBuf;
+use crate::did::didweb::DIDWeb;
 use crate::http::HttpClient;
 use crate::nonce::Nonce;
 use crate::utils::wasm::WasmNotSend;
 use crate::vc;
-use crate::vc::core::{CredentialOffer, CredentialOfferContent, KeyMetadata, Proof as AsdkProof};
+use crate::vc::core::{
+    CredentialOffer, CredentialOfferContent, InvalidDIDUrlSnafu, KeyMetadata, Proof as AsdkProof,
+};
+use crate::vc::formats::json_ld_vc::JsonLdAPI;
+use crate::vc::formats::sd_jwt_vc::SdJwtAPI;
 use crate::vc::oid4vci::AuthzFlow::Authorize;
+use crate::vc::oid4vci::credential_issuer_identifier::CredentialIssuerIdentifier;
 use crate::vc::oid4vci::internal_error::{
     AuthorizationCallbackSnafu, DiscoverySnafu, HolderServiceSnafu, MetadataSnafu, ParseSnafu,
     TypeConversionSnafu, UrlParseSnafu, VCSnafu,
 };
 use crate::vc::oid4vci::protocol_error::ProtocolSnafu;
 use crate::vc::oid4vci::{
-    AuthorizationMetadata, AuthzFlow, CredDefMetadata, CredentialOfferParams, CredentialResponse,
-    CredentialResponseResolved, CredentialResult, IssuerMetadata, PreAuthorizedCode, TxCode,
-    metadata,
+    AuthorizationMetadata, AuthzFlow, CredDefMetadata, CredentialExtraVerification,
+    CredentialOfferParams, CredentialResponse, CredentialResponseResolved, CredentialResult,
+    IssuerMetadata, PreAuthorizedCode, TxCode, metadata,
 };
 use crate::vc::{Credential, CredentialMetadata};
 use crate::vc::{HasVCFormat, oid4vci as api};
@@ -57,6 +64,7 @@ where
     client_id: String,
     issuer_metadata: IssuerMetadata,
     client: Client,
+    credential_extra_verification: Vec<CredentialExtraVerification>,
 }
 
 impl<HL, HC> HolderService<HL, HC>
@@ -71,6 +79,7 @@ where
         issuer_url: String,
         client_id: String,
         redirect_url: String, // urn:ietf:wg:oauth:2.0:oob
+        credential_extra_verification: Option<Vec<CredentialExtraVerification>>,
     ) -> Result<Self> {
         info!("oid4vci-holder service initialization is started");
 
@@ -80,6 +89,7 @@ where
             issuer_url,
             client_id,
             redirect_url,
+            credential_extra_verification,
         )
         .await;
 
@@ -95,6 +105,7 @@ where
         offer: &CredentialOfferParams,
         client_id: String,
         redirect_url: String,
+        credential_extra_verification: Option<Vec<CredentialExtraVerification>>,
     ) -> Result<Self> {
         info!("oid4vci-holder service initialization is started");
 
@@ -106,6 +117,7 @@ where
             iss_url.to_string(),
             client_id,
             redirect_url,
+            credential_extra_verification,
         )
         .await;
 
@@ -121,6 +133,7 @@ where
         issuer_url: String,
         client_id: String,
         redirect_url: String, // urn:ietf:wg:oauth:2.0:oob
+        credential_extra_verification: Option<Vec<CredentialExtraVerification>>,
     ) -> Result<Self> {
         let client = http_client.clone();
         let http_closure = move |req| {
@@ -153,6 +166,7 @@ where
             authz_metadata,
             client_id,
             redirect_url,
+            credential_extra_verification,
         )
     }
 
@@ -164,6 +178,7 @@ where
         authz_metadata: AuthorizationMetadata,
         client_id: String,
         redirect_url: String,
+        credential_extra_verification: Option<Vec<CredentialExtraVerification>>,
     ) -> Result<Self> {
         let holder_service = Self::new(
             holder,
@@ -172,6 +187,7 @@ where
             authz_metadata,
             client_id,
             redirect_url,
+            credential_extra_verification,
         );
         info!("oid4vci-holder service is initialized");
 
@@ -186,6 +202,7 @@ where
         authz_metadata: AuthorizationMetadata,
         client_id: String,
         redirect_url: String,
+        credential_extra_verification: Option<Vec<CredentialExtraVerification>>,
     ) -> Result<Self> {
         let client = Client::from_issuer_metadata(
             ClientId::new(client_id.clone()),
@@ -202,6 +219,7 @@ where
             client_id,
             issuer_metadata,
             client,
+            credential_extra_verification: credential_extra_verification.unwrap_or_default(),
         })
     }
 
@@ -233,6 +251,116 @@ where
         })?;
 
         Ok(token)
+    }
+
+    #[instrument(level = Level::TRACE, skip(self), err(), ret())]
+    async fn verify_credential_issuer_identifier(&self, credential: &Credential) -> Result<()> {
+        let credential_issuer = match credential {
+            Credential::SdJwt(credential) => SdJwtAPI::extract_issuer_identifier(credential),
+            Credential::LdpVc(credential) => JsonLdAPI::extract_issuer_identifier(credential),
+            format => Err(vc::formats::FormatNotSupportedSnafu {
+                format: format.format().to_string(),
+            }
+            .build()),
+        }
+        .context(vc::core::VCSnafu)
+        .context(VCSnafu)?;
+
+        let credential_issuer = if let Some(credential_issuer) = credential_issuer {
+            credential_issuer
+        } else {
+            Err(vc::core::VCNotValidSnafu {
+                details: "Credential does not contain issuer identifier".to_owned(),
+            }
+            .build())
+            .context(VCSnafu)?
+        };
+        match credential_issuer {
+            CredentialIssuerIdentifier::OID4VCI(url) => {
+                self.verify_credential_issuer_url_matches_identifier(&url)
+            }
+            CredentialIssuerIdentifier::DID(did_url) => {
+                self.verify_credential_issuer_did_matches_identifier(&did_url)
+            }
+            CredentialIssuerIdentifier::Other(id) => {
+                self.verify_credential_issuer_other_matches_identifier(&id)
+            }
+        }
+    }
+
+    fn verify_credential_issuer_url_matches_identifier(
+        &self,
+        credential_issuer_url: &IssuerUrl,
+    ) -> Result<()> {
+        let credential_issuer_identifier = self.issuer_metadata.credential_issuer();
+        if credential_issuer_identifier.eq(credential_issuer_url) {
+            Ok(())
+        } else {
+            Err(vc::core::VCNotValidSnafu {
+                details: format!(
+                    "Credential issuer url {} does not match Credential Issuer Identifier {}",
+                    credential_issuer_url.url(),
+                    credential_issuer_identifier.url()
+                )
+                .to_owned(),
+            }
+            .build())
+            .context(VCSnafu)?
+        }
+    }
+
+    fn verify_credential_issuer_did_matches_identifier(
+        &self,
+        credential_issuer_did: &DIDURLBuf,
+    ) -> Result<()> {
+        let credential_issuer_identifier = self.issuer_metadata.credential_issuer();
+
+        let metadata_did = DIDWeb::generate_did_from_url(credential_issuer_identifier.as_str())
+            .map_err(|e| // Practically unreachable
+                InvalidDIDUrlSnafu {
+                    input: credential_issuer_identifier.to_string(),
+                }
+                    .build())
+            .context(VCSnafu)?;
+
+        if credential_issuer_did.did().to_string().eq(&metadata_did) {
+            Ok(())
+        } else {
+            Err(vc::core::VCNotValidSnafu {
+                details: format!(
+                    "Credential issuer did {} does not match Credential Issuer Identifier {}",
+                    credential_issuer_did, metadata_did,
+                )
+                .to_owned(),
+            }
+            .build())
+            .context(VCSnafu)?
+        }
+    }
+
+    fn verify_credential_issuer_other_matches_identifier(
+        &self,
+        credential_issuer: &String,
+    ) -> Result<()> {
+        if self
+            .issuer_metadata
+            .credential_issuer()
+            .to_string()
+            .eq(credential_issuer)
+        {
+            Ok(())
+        } else {
+            Err(vc::core::VCNotValidSnafu {
+                details: format!(
+                    "Credential contains issuer identifier {}, \
+                        which association with OID4VCI Credential Issuer Identifier {} can not be verified",
+                    credential_issuer,
+                    self.issuer_metadata.credential_issuer().url()
+                )
+                    .to_owned(),
+            }
+                .build()).context(VCSnafu)?
+        }
     }
 }
 
@@ -403,6 +531,18 @@ where
         info!("requesting a credential flow is succeeded");
 
         Ok(CredentialResponseResolved { data: cred_result })
+    }
+
+    #[instrument(level = Level::TRACE, skip(self), err(), ret())]
+    async fn verify_credential_extra(&self, credential: &Credential) -> Result<()> {
+        for option in &self.credential_extra_verification {
+            match option {
+                CredentialExtraVerification::CredentialIssuerIdentifier => {
+                    self.verify_credential_issuer_identifier(credential).await?
+                }
+            }
+        }
+        Ok(())
     }
 
     #[instrument(level = Level::TRACE, skip(self), err(), ret())]
@@ -725,6 +865,7 @@ mod tests {
     use crate::vault::{MockVault, Vault};
     use crate::vc::VCFormat;
     use crate::vc::core::ProofOfPossessionMetadata;
+    use crate::vc::formats::json_ld_vc::VC;
     use crate::vc::oid4vci::tests::fixtures::{
         ACCESS_TOKEN, AUTH_URL, CRED_DEF_ID, ISSUER_URL, NOTIFICATION_ID, REQ_URI_CODE, SCOPE,
         SD_JWT_CREDS, SampleIssuerMetadata, fake_access_token, sample_access_token,
@@ -1319,6 +1460,97 @@ mod tests {
             .unwrap();
     }
 
+    //noinspection HttpUrlsUsage
+    #[rstest]
+    #[case::ldpvc(ISSUER_URL, Credential::LdpVc(ldp_vc_credential()))]
+    #[case::sdjwt_iss_oid4vci(ISSUER_URL, Credential::SdJwt(SD_JWT_CREDENTIAL_ISS_OID4VCI.to_owned()))]
+    #[case::sdjwt_iss_did(ISSUER_URL, Credential::SdJwt(SD_JWT_CREDENTIAL_ISS_DID.to_owned()))]
+    #[should_panic(
+        expected = "Credential contains issuer identifier notadid:web:issuer-backend.com"
+    )]
+    #[case::sdjwt_iss_other_invalid(ISSUER_URL, Credential::SdJwt(SD_JWT_CREDENTIAL_ISS_OTHER_INVALID.to_owned()))]
+    #[case::sdjwt_iss_other_valid("http://issuer-backend.com", Credential::SdJwt(SD_JWT_CREDENTIAL_ISS_OTHER_VALID.to_owned()))]
+    #[should_panic(expected = "Credential does not contain issuer identifier")]
+    #[case::sdjwt_iss_none(ISSUER_URL, Credential::SdJwt(SD_JWT_CREDENTIAL_ISS_NONE.to_owned()))]
+    #[should_panic(expected = "Unsupported format: jwt_vc_json")]
+    #[case::unsupported_format_jwt_vc_json(ISSUER_URL, Credential::JwtVcJson("MOCK_CREDENTIAL".to_owned()))]
+    #[should_panic(expected = "Unsupported format: jwt_vc_json-ld")]
+    #[case::unsupported_format_jwt_vc_json_ld(
+        ISSUER_URL,
+        Credential::JwtVcJsonLd("MOCK_CREDENTIAL".to_owned())
+    )]
+    #[tokio::test]
+    async fn verify_credential_issuer_identifier(
+        #[case] credential_issuer_identifier: &str,
+        #[case] credential: Credential,
+    ) {
+        let mut issuer_metadata = SampleIssuerMetadata::with_sdjwtvc_conf();
+        issuer_metadata = issuer_metadata.set_credential_issuer(
+            IssuerUrl::new(credential_issuer_identifier.to_string()).unwrap(),
+        );
+
+        let holder_service = holder_service_from_issuer_metadata(
+            MockHttpClient::new(),
+            InMemVault::new(),
+            LocalKms::new(),
+            issuer_metadata,
+        )
+        .await;
+        holder_service
+            .verify_credential_issuer_identifier(&credential)
+            .await
+            .unwrap();
+    }
+
+    // Payload: { "iss": "https://issuer-backend.com", "id": "1234" }
+    const SD_JWT_CREDENTIAL_ISS_OID4VCI: &str = "eyJ0eXAiOiJzZCtqd3QiLCJhbGciOiJFUzI1NiJ9\
+    .eyJpc3MiOiJodHRwczovL2lzc3Vlci1iYWNrZW5kLmNvbSIsImlkIjoiMTIzNCIsIl9zZF9hbGciOiJTSEEtMjU2In0\
+    .-ZfBXDOJhhpA448q5oxGUl7VcxZAYFg9C0gYTbAweDKBxsB2KNrBIh9UK3hAJsSizBRdA0wKnu_Tn5ZLyW-Ouw~";
+
+    // Payload: { "iss": "did:web:issuer-backend.com/ignored-path", "id": "1234" }
+    const SD_JWT_CREDENTIAL_ISS_DID: &str = "eyJ0eXAiOiJzZCtqd3QiLCJhbGciOiJFUzI1NiJ9\
+    .eyJpc3MiOiJkaWQ6d2ViOmlzc3Vlci1iYWNrZW5kLmNvbS9pZ25vcmVkLXBhdGgiLCJpZCI6IjEyMzQiLCJfc2RfYWxnIjoiU0hBLTI1NiJ9\
+    .3peUWSXL3NZL6Ye2c7apa_czw4SCwUMpVk0ryxK4F_xr_SwS14AIz9SqrN3o1ZGC5goT1vVDmEczI9kMmHCCmA~";
+
+    // Payload: { "iss": "notadid:web:issuer-backend.com", "id": "1234" }
+    const SD_JWT_CREDENTIAL_ISS_OTHER_INVALID: &str = "eyJ0eXAiOiJzZCtqd3QiLCJhbGciOiJFUzI1NiJ9\
+    .eyJpc3MiOiJub3RhZGlkOndlYjppc3N1ZXItYmFja2VuZC5jb20iLCJpZCI6IjEyMzQiLCJfc2RfYWxnIjoiU0hBLTI1NiJ9\
+    .GcD3futV-qHM0WsTPxxVk_DCyAOlcjUAGXbikeSM7AkWgyk7QDVqS5Z_FUpQ0tdrzaG8lAzlNJMrUAf4FKkk9A~";
+
+    // Payload: { "iss": "http://issuer-backend.com", "id": "1234" }
+    // Note that Credential Issuer Identifier is URL with https protocol.
+    const SD_JWT_CREDENTIAL_ISS_OTHER_VALID: &str = "eyJ0eXAiOiJzZCtqd3QiLCJhbGciOiJFUzI1NiJ9\
+    .eyJpc3MiOiJodHRwOi8vaXNzdWVyLWJhY2tlbmQuY29tIiwiaWQiOiIxMjM0In0\
+    .8n5Y2hzrT3nKuqtJ6ofppryjOAHVCKvvcEAv3NUrsPEIEFNTQe0lShRdcJqIeJjaJEu9FF4kmYru9QXfgB5-ug~";
+
+    // Payload: { "id": "1234" }
+    const SD_JWT_CREDENTIAL_ISS_NONE: &str = "eyJ0eXAiOiJzZCtqd3QiLCJhbGciOiJFUzI1NiJ9\
+    .eyJpZCI6IjEyMzQiLCJfc2RfYWxnIjoiU0hBLTI1NiJ9\
+    .J1Lu6onzdyVbPM2QQg9mFUShMCI-4VPBe4rSss0O8g3H0Bc9klzB1eVdHjbEKxkB79Vt3fjg83UM-Ya4tXySzg~";
+
+    fn ldp_vc_credential() -> VC {
+        serde_json::from_str(
+            r#"{
+            "@context": [
+                "https://www.w3.org/ns/credentials/v2",
+                "https://www.w3.org/ns/credentials/examples/v2"
+            ],
+            "id": "http://university.example/credentials/3732",
+            "type": ["VerifiableCredential", "ExampleDegreeCredential"],
+            "issuer": "https://issuer-backend.com",
+            "validFrom": "2010-01-01T19:23:24Z",
+            "credentialSubject": {
+                "id": "did:example:ebfeb1f712ebc6f1c276e12ec21",
+                "degree": {
+                    "type": "ExampleBachelorDegree",
+                    "name": "Bachelor of Science and Arts"
+                }
+            }
+        }"#,
+        )
+        .unwrap()
+    }
+
     async fn holder_service_from_issuer_metadata(
         http_client: impl HttpClient + 'static,
         vault: impl Vault,
@@ -1346,10 +1578,14 @@ mod tests {
         HolderService::from_metadata(
             inner,
             http_client,
+            // CredentialVerification::default(),
             issuer_metadata,
             sample_authorization_metadata(),
             client_id.to_owned(),
             "urn:ietf:wg:oauth:2.0:oob".to_string(),
+            Some(vec![
+                CredentialExtraVerification::CredentialIssuerIdentifier,
+            ]),
         )
         .unwrap()
     }

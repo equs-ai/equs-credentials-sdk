@@ -1,6 +1,7 @@
 import {
   AuthorizationRequest,
   CredentialDeferred,
+  CredentialExtraVerification,
   CredentialImmediate,
   CredentialResponse,
   enableLogs,
@@ -57,6 +58,9 @@ async function main(): Promise<void> {
         .withNotBefore(ProofOfPossessionNotBefore.leeway(10))
         .build(),
     )
+    .withCredentialExtraVerification([
+      CredentialExtraVerification.CredentialIssuerIdentifier,
+    ])
     .build();
 
   const oid4VpHolder = await new OID4VPHolderBuilder(
@@ -163,6 +167,7 @@ async function requestAndStoreCredential(
   const credential = credentialImmediate.credentials.pop()!;
   const credentialMetadata = await resolveMetadata(credential, keyMetadata);
 
+  await holder.verifyCredentialExtra(credential);
   await holder.storeCredential(credential, credentialMetadata);
   return credentialResponse;
 }

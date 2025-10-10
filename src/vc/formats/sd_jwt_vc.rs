@@ -54,6 +54,7 @@ const ALWAYS_REVEALED_CLAIMS: [&str; 6] = [
 pub type SdJwtRsError = sd_jwt_rs::error::Error;
 
 pub use crate::vc::claims::Claims;
+use crate::vc::oid4vci::credential_issuer_identifier::CredentialIssuerIdentifier;
 use crate::vc::status_formats::API as StatusFormatAPI;
 use crate::vc::status_formats::status_list_token_jwt::{StatusListJwt, VCStatus};
 
@@ -386,6 +387,28 @@ impl SdJwtAPI {
 
         field_map
     }
+
+    #[instrument(level = Level::TRACE, ret())]
+    pub(crate) fn extract_issuer_identifier(
+        credential: &Credential,
+    ) -> Result<Option<CredentialIssuerIdentifier>> {
+        let jwt = Self::strip_disclosures(credential)?;
+        let (_, payload) = ssi::claims::jws::decode_unverified(jwt).context(JWSSnafu)?;
+        let claims: Claims = serde_json::from_slice(&payload).map_err(|err| {
+            ParsingSnafu {
+                details: err.to_string(),
+            }
+            .build()
+        })?;
+
+        let issuer = if let Some(Claim::String(issuer)) = claims.get(ISS_CLAIM) {
+            Some(CredentialIssuerIdentifier::from(issuer))
+        } else {
+            None
+        };
+
+        Ok(issuer)
+    }
 }
 
 impl GetDateTimeClaim<Claims, OffsetDateTime> for SdJwtAPI {
@@ -588,7 +611,7 @@ mod tests {
     use crate::crypto::Key;
     use crate::did::didkey::DIDKey;
     use crate::did::universal::UniversalResolver;
-    use crate::did::{DIDResolver, DIDURL};
+    use crate::did::{DIDResolver, DIDURL, DIDURLBuf};
     use crate::inmem::kms::LocalKms;
     use crate::inmem::nonce::LocalNonceHandler;
     use crate::kms::{CreateOptions, KeyHandle, KeyType, Kms};
@@ -602,9 +625,12 @@ mod tests {
         VCMetadata, VCT_CLAIM, VPMetadata,
     };
     use crate::vc::formats::{API, Error, HasClaims, HasCredential, IsExpired, VerifyOptions};
+    use crate::vc::oid4vci::credential_issuer_identifier::CredentialIssuerIdentifier;
+    use oid4vci::types::IssuerUrl;
     use rstest::rstest;
     use serde_json::json;
     use std::ops::Add;
+    use std::str::FromStr;
     use time::OffsetDateTime;
 
     #[rstest]
@@ -1213,4 +1239,56 @@ mod tests {
             }),
         }
     }
+
+    #[rstest]
+    #[case::url(
+        EXAMPLE_SD_JWT_ISSUER_OID4VCI,
+        Some(CredentialIssuerIdentifier::OID4VCI(
+            IssuerUrl::new("https://example.com/oid4vci-issuer".to_owned()).unwrap())),
+    )]
+    #[case::did(
+        EXAMPLE_SD_JWT_ISSUER_DID,
+        Some(CredentialIssuerIdentifier::DID(
+            DIDURLBuf::from_str("did:example:123").unwrap())),
+    )]
+    #[case::other(
+        EXAMPLE_SD_JWT_ISSUER_OTHER,
+        Some(CredentialIssuerIdentifier::Other("notadid:example:123".to_owned())),
+    )]
+    #[case::no_iss(EXAMPLE_SD_JWT_ISSUER_NONE, None)]
+    fn extract_issuer_identifier(
+        #[case] credential: &str,
+        #[case] expected: Option<CredentialIssuerIdentifier>,
+    ) {
+        let actual = SdJwtAPI::extract_issuer_identifier(&credential.to_owned()).unwrap();
+        assert_eq!(expected, actual);
+    }
+
+    const EXAMPLE_SD_JWT_ISSUER_OID4VCI: &str = "eyJ0eXAiOiJzZCtqd3QiLCJhbGciOiJFUzI1NiJ9\
+    .eyJpZCI6IjEyMzQiLCJpc3MiOiJodHRwczovL2V4YW1wbGUuY29tL29pZDR2Y2ktaXNzdWVyIiwiX3NkIjpbIkR4ZjFVYU1zREFNaF9qY3Q4QnUzSndGYW1VaW11NTVjeW5YNGp2dzdrSk0iLCJHMFVVREhLY3FhTG1zaHNrSzMzS3RJSktuRmtFcFA4RmxMb09WMl9xZTFnIiwiZXpUU0xKMTc2Ry1lYURGUXFiOXJic2hWWjRuSm45LTU5aVh1azJFVHNhYyJdLCJfc2RfYWxnIjoiU0hBLTI1NiJ9\
+    .m99jWkWFhSGXY8e0Ml6PF_oFHKYsIKIzQP88lkacDyWSTnmDBGT5m7IkxdZ0Y6djeUuqvmYUfFExNnt4CTp3Bw\
+    ~WyJiODM2YWE1NDE0ZGNmNjgzIiwiZmlyc3RuYW1lIiwiSm9obiJd\
+    ~WyJkMTllYjIxZjA3M2Y4Y2JjIiwibGFzdG5hbWUiLCJEb2UiXQ\
+    ~WyI0MTc4N2U1NGNmZGNkNWE3Iiwic3NuIiwiMTIzLTQ1LTY3ODkiXQ~";
+
+    const EXAMPLE_SD_JWT_ISSUER_DID: &str = "eyJ0eXAiOiJzZCtqd3QiLCJhbGciOiJFUzI1NiJ9\
+    .eyJpZCI6IjEyMzQiLCJpc3MiOiJkaWQ6ZXhhbXBsZToxMjMiLCJfc2QiOlsiRnQyNU1fQ3BTX0tCWldoYTJVbm9IeWZrMDVTM2pDOC01Q0tlbm9qQV9GVSIsIlV1MGhDM0VndmRXY3VQem5ONXlVbndfQUYtTkxpeW1hcXY0RXZKeW5ZTnciLCJzWTNDZWlzWkRJMGRkbFJyZndsZHd1ZjUyQ2xGMjUzQTlWZUowWUJ5UGlBIl0sIl9zZF9hbGciOiJTSEEtMjU2In0\
+    .ztkiOiV1KJKkQb8T2lhDo-A9kTaXWT7o-jbUlWmxH7f7q-3bDzhKWawpjyk7ylZehWgUIiyRkxneLdPFxVKJOA\
+    ~WyJmZmVmZmY0ZDI1NDdlYjY4IiwiZmlyc3RuYW1lIiwiSm9obiJd\
+    ~WyI3OWU2ZjJhODZkOTZhZmZkIiwibGFzdG5hbWUiLCJEb2UiXQ\
+    ~WyIzMzY3MDdmOGMzM2IyOGYyIiwic3NuIiwiMTIzLTQ1LTY3ODkiXQ~";
+
+    const EXAMPLE_SD_JWT_ISSUER_OTHER: &str = "eyJ0eXAiOiJzZCtqd3QiLCJhbGciOiJFUzI1NiJ9\
+    .eyJpZCI6IjEyMzQiLCJpc3MiOiJub3RhZGlkOmV4YW1wbGU6MTIzIiwiX3NkIjpbIkRYRUZDZmdpZk5HUDZyTHlCSXVXbnpTdFptSVhEeGdKQ1BxV0NKbkZ5MmciLCJPWmc3dlFTbTNBSDdrVUlTeTd2aG11LWh6MFdWb2NHQVo0WlJLU2pyeGFjIiwiaHRnZk1Wb2Qza0F4NVhHX1JWZFlBMVdoNlRUR0xYaHhkSnBMWTNqdGRrOCJdLCJfc2RfYWxnIjoiU0hBLTI1NiJ9\
+    .RLjK49RzHGR6jW1pM0hqMK_JUvlELUOfhnIpCXbDjzID9lxTPL629uJn3dHbv7oiuWlyy-669Ozp_5qt3xCh0w\
+    ~WyJmNzMxNDI5NWU1N2IwN2M3IiwiZmlyc3RuYW1lIiwiSm9obiJd\
+    ~WyI1ZTY2NzNjN2YyZGJkNDRjIiwibGFzdG5hbWUiLCJEb2UiXQ\
+    ~WyI2NDg4ZjJmNDA5ODBjOTIzIiwic3NuIiwiMTIzLTQ1LTY3ODkiXQ~";
+
+    const EXAMPLE_SD_JWT_ISSUER_NONE: &str = "eyJ0eXAiOiJzZCtqd3QiLCJhbGciOiJFUzI1NiJ9\
+    .eyJpZCI6IjEyMzQiLCJfc2QiOlsiLWpUTDVPeGFrdHRGSzIyWUF4cTZMVXdvWmZCTFllb3JEQkxnVXVZN0JwayIsImNocWNFN0xUeC13TjVtUUlkaHB5aUFLcVhZcUJHVHhmWnVDMjFzOGJmdEEiLCJrM2twMjFvTUc2RXJnRzAzZTdTakc0OGhkWXBDcDJTM2MyQ3VWVmdIVWZvIl0sIl9zZF9hbGciOiJTSEEtMjU2In0\
+    .wutZuchFO2sh0jQ6ACdf0gg7R4mAXvSrNNScKwkrQZYO0lFPlO9GEiBOXMVKoxLyat1bycUDXezgM-ENVBCB0A\
+    ~WyJlZGUzYjU4OTFjYmJkYTRiIiwiZmlyc3RuYW1lIiwiSm9obiJd\
+    ~WyJhZTEzMDRjNWFmZGVkOTZhIiwibGFzdG5hbWUiLCJEb2UiXQ\
+    ~WyJlYmZiNDhiM2VjZWM1ZDM4Iiwic3NuIiwiMTIzLTQ1LTY3ODkiXQ~";
 }

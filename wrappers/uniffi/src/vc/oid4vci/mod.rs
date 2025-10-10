@@ -4,6 +4,7 @@ use agent_sdk::vc::core::{
     DEFAULT_POP_LIFETIME_MINUTES, ProofOfPossessionMetadata,
     ProofOfPossessionNotBefore as ASDKPoPNotBefore,
 };
+use agent_sdk::vc::oid4vci::CredentialExtraVerification as ASDKCredentialExtraVerification;
 use oauth2::helpers::{deserialize_space_delimited_vec, serialize_space_delimited_vec};
 use serde::{Deserialize, Serialize};
 use time::{Duration, OffsetDateTime};
@@ -78,7 +79,6 @@ custom_type!(TokenResponse, TokenResponseData, {
 });
 
 #[derive(uniffi::Enum)]
-
 pub enum ProofOfPossessionNotBefore {
     /// Sets nbf the same as iat.
     AsIssuedAt,
@@ -165,3 +165,18 @@ impl ProofOfPossessionMetadataBuilder {
         }
     }
 }
+
+#[derive(uniffi::Enum)]
+pub enum CredentialExtraVerification {
+    CredentialIssuerIdentifier,
+}
+
+custom_type!(ASDKCredentialExtraVerification, CredentialExtraVerification, {
+        remote,
+    lower: |cev| match cev {
+        ASDKCredentialExtraVerification::CredentialIssuerIdentifier => CredentialExtraVerification::CredentialIssuerIdentifier
+    },
+    try_lift: |cev| match cev {
+        CredentialExtraVerification::CredentialIssuerIdentifier => Ok(ASDKCredentialExtraVerification::CredentialIssuerIdentifier)
+    },
+});

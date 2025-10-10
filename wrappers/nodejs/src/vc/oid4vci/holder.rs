@@ -4,8 +4,8 @@ use crate::vc::JsonObject;
 use crate::vc::core::{JsCredential, JsCredentialMetadata, JsKeyMetadata};
 use agent_sdk::vc::core::KeyMetadata;
 use agent_sdk::vc::oid4vci::{
-    AccessToken, AuthzFlow, CredentialOfferParams, CredentialResponseResolved, CredentialResult,
-    Holder, IssuerMetadata, TokenResponse,
+    AccessToken, AuthzFlow, CredentialExtraVerification, CredentialOfferParams,
+    CredentialResponseResolved, CredentialResult, Holder, IssuerMetadata, TokenResponse,
 };
 use agent_sdk::vc::{Credential, CredentialMetadata, oid4vci};
 use async_trait::async_trait;
@@ -40,6 +40,7 @@ pub type AuthorizationCallback = Box<
 /// @property authzCodeFlowWithScope - {@link OID4VCIHolder.authzCodeFlowWithScope}
 /// @property getAccessToken - {@link OID4VCIHolder.getAccessToken}
 /// @property requestCredential - {@link OID4VCIHolder.requestCredential}
+/// @property verifyCredentialExtra - {@link OID4VCIHolder.verifyCredentialExtra}
 /// @property storeCredential - {@link OID4VCIHolder.storeCredential}
 #[napi]
 pub struct OID4VCIHolder(Box<dyn _HolderWrapperTrait>);
@@ -198,6 +199,18 @@ impl OID4VCIHolder {
             .and_then(TryInto::try_into)
     }
 
+    /// Perform {@link Credential} extra verification.
+    ///
+    /// @param {Credential} credential - a credential to verify.
+    /// @param {CredentialExtraVerification} options - verification options.
+    #[napi]
+    pub async fn verify_credential_extra(&self, credential: JsCredential) -> napi::Result<()> {
+        self.0
+            .verify_credential_extra(&credential.try_into()?)
+            .await
+            .map_err(IntoNapiError::into_napi_error)
+    }
+
     /// Store a {@link Credential}.
     ///
     /// This method will store the `credential` into the {@link Vault} under the hood.
@@ -265,6 +278,21 @@ impl TryFrom<CredentialResponseResolved> for CredentialResponse {
     }
 }
 
+#[napi(js_name=CredentialExtraVerification)]
+pub enum JsCredentialExtraVerification {
+    CredentialIssuerIdentifier,
+}
+
+impl From<JsCredentialExtraVerification> for CredentialExtraVerification {
+    fn from(value: JsCredentialExtraVerification) -> Self {
+        match value {
+            JsCredentialExtraVerification::CredentialIssuerIdentifier => {
+                Self::CredentialIssuerIdentifier
+            }
+        }
+    }
+}
+
 #[async_trait]
 trait _HolderWrapperTrait: Send + Sync {
     fn get_issuer_metadata(&self) -> IssuerMetadata;
@@ -281,6 +309,8 @@ trait _HolderWrapperTrait: Send + Sync {
         cred_def_id: &str,
         key_metadata: &[KeyMetadata],
     ) -> oid4vci::Result<CredentialResponseResolved>;
+
+    async fn verify_credential_extra(&self, credential: &Credential) -> oid4vci::Result<()>;
 
     async fn store_credential(
         &self,
@@ -322,6 +352,10 @@ impl<H: Holder> _HolderWrapperTrait for _HolderWrapper<H> {
         self.0
             .request_credential(token, cred_def_id, key_metadata)
             .await
+    }
+
+    async fn verify_credential_extra(&self, credential: &Credential) -> oid4vci::Result<()> {
+        self.0.verify_credential_extra(credential).await
     }
 
     async fn store_credential(

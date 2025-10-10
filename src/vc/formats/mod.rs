@@ -186,6 +186,7 @@ pub type Result<T> = core::result::Result<T, Error>;
 
 #[derive(Debug, Default)]
 pub struct VerifyOptions {
+    // TODO seems to be jwt_vc_json-specific and should be removed from generic code.
     pub selective_claims: Option<Vec<String>>,
 }
 

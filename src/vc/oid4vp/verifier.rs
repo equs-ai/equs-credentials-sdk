@@ -1378,10 +1378,6 @@ mod tests {
 
         let wrong_kid = "wrong-kid";
         let wrong_kid_metadata = generate_client_metadata(&LocalKms::new()).await;
-        println!(
-            "KEKS: {}",
-            serde_json::to_string_pretty(&wrong_kid_metadata).unwrap()
-        );
         let encryptor = JweEncryptor::new(wrong_kid_metadata);
         let jwt = encryptor
             .encrypt(serde_json::to_value("{\"WRONG\":\"PAYLOAD\"}").unwrap())

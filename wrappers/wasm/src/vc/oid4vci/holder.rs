@@ -6,8 +6,8 @@ use crate::vc::oid4vci::{
 use crate::vc::{Credential, CredentialMetadata, JsCredential};
 use agent_sdk::vc;
 use agent_sdk::vc::oid4vci::{
-    AccessToken, AuthzFlow, CredentialOfferParams, CredentialResponseResolved, Holder,
-    IssuerMetadata,
+    AccessToken, AuthzFlow, CredentialExtraVerification as ASDKCredentialExtraVerification,
+    CredentialOfferParams, CredentialResponseResolved, Holder, IssuerMetadata,
 };
 use async_trait::async_trait;
 use js_sys::{Function, Promise};
@@ -272,6 +272,29 @@ impl OID4VCIHolder {
             .and_then(TryInto::try_into)
     }
 
+    /// Performs extra verification of the passed `Credential`.
+    ///
+    /// # Arguments
+    ///
+    /// * `credential` - a `Credential` to verify.
+    /// * `options` - an array of verification options.
+    ///
+    /// # Returns
+    ///
+    /// Nothing on success.
+    ///
+    /// # Errors
+    ///
+    /// * Returns an internal error.
+    #[wasm_bindgen(js_name = verifyCredentialExtra)]
+    pub async fn verify_credential_extra(&self, credential: Credential) -> Result<(), JsError> {
+        let credential = utils::convert_to_rust_object(credential)?;
+        self.0
+            .verify_credential_extra(&credential)
+            .await
+            .map_err(|err| JsError::new(&format!("{:?}", err)))
+    }
+
     /// Store a `Credential`.
     ///
     /// This method will store the `credential` into the `Vault` under the hood.
@@ -328,6 +351,9 @@ trait _HolderWrapperTrait {
         credential_metadata: &vc::CredentialMetadata,
     ) -> vc::oid4vci::Result<String>;
 
+    async fn verify_credential_extra(&self, credential: &vc::Credential)
+    -> vc::oid4vci::Result<()>;
+
     async fn get_access_token(
         &self,
         offer_params: &CredentialOfferParams,
@@ -364,6 +390,13 @@ impl<H: Holder> _HolderWrapperTrait for _HolderWrapper<H> {
             .await
     }
 
+    async fn verify_credential_extra(
+        &self,
+        credential: &vc::Credential,
+    ) -> vc::oid4vci::Result<()> {
+        self.0.verify_credential_extra(credential).await
+    }
+
     async fn store_credential(
         &self,
         credential: &vc::Credential,
@@ -382,5 +415,29 @@ impl<H: Holder> _HolderWrapperTrait for _HolderWrapper<H> {
         self.0
             .get_access_token(offer_params, authorization_callback)
             .await
+    }
+}
+
+#[wasm_bindgen]
+pub enum CredentialExtraVerification {
+    /// Verify Issuer Identifier specified in Credential
+    /// matches [Credential Issuer Identifier](https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0.html#credential-issuer-identifier).
+    ///
+    /// Notes:
+    /// * verifies association, rather than cryptographic binding;
+    /// * association can be direct (URL match) or indirect (`did:web` that resolves to the same domain as Credential Issuer Identifier).
+    ///
+    /// See [OID4VCI specification reference](https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0.html#name-relationship-between-the-cr)
+    /// for details.
+    CredentialIssuerIdentifier,
+}
+
+impl From<CredentialExtraVerification> for ASDKCredentialExtraVerification {
+    fn from(value: CredentialExtraVerification) -> Self {
+        match value {
+            CredentialExtraVerification::CredentialIssuerIdentifier => {
+                Self::CredentialIssuerIdentifier
+            }
+        }
     }
 }
