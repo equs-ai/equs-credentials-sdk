@@ -6,7 +6,7 @@ import {
   removeContainer,
 } from "../components/utils.ts";
 import init, {
-  CredentialDeferred,
+  CredentialDeferred, CredentialExtraVerification,
   CredentialImmediate,
   CredentialResponse,
   InMemKms,
@@ -32,7 +32,9 @@ export async function start(): Promise<void> {
     config.clientId,
     issuerDiscovery,
     ReqwestHttpClient.insecure(),
-  ).build();
+  )
+    .withCredentialExtraVerification([CredentialExtraVerification.CredentialIssuerIdentifier])
+    .build();
 
   const oid4VpHolder = await new OID4VPHolderBuilder(kms, vault, config.clientId, ReqwestHttpClient.insecure()).build();
 

@@ -244,7 +244,7 @@ pub struct Display;
 ///
 /// Used by all `Issuer`, `Holder` and `Verifier` APIs.
 #[derive(Snafu, DebugError)]
-#[snafu(visibility(pub(super)))]
+#[snafu(visibility(pub(crate)))]
 pub enum Error {
     #[snafu(display("Credential definition not found for ID: {id}"))]
     CredDefNotFound { id: String },

@@ -7,11 +7,11 @@ use crate::vc::core::DEFAULT_POP_LIFETIME_MINUTES;
 use crate::vc::core::KeyMetadata;
 use crate::vc::core::{DEFAULT_CRED_LIFETIME_DAYS, ProofOfPossessionMetadata};
 use crate::vc::oid4vci as api;
-use crate::vc::oid4vci::CredentialOfferParams;
 use crate::vc::oid4vci::holder::HolderService;
 use crate::vc::oid4vci::issuer::{IssuerService, TokenValidation};
 use crate::vc::oid4vci::metadata::convert_metadata;
 use crate::vc::oid4vci::token_validation::{ByJwks, Introspect};
+use crate::vc::oid4vci::{CredentialExtraVerification, CredentialOfferParams};
 use crate::vc::pop::ProofOfPossessionNotBefore;
 use crate::{kms, vault, vc};
 use async_trait::async_trait;
@@ -69,6 +69,7 @@ where
     cred_conf_ids_with_key_metadata: HashMap<String, KeyMetadata>,
     default_cred_lifetime: Duration,
     cred_lifetime_per_cred_conf_id: HashMap<CredentialConfigurationId, Duration>,
+    credential_extra_verification: Vec<CredentialExtraVerification>,
 
     // services
     kms: KMS,
@@ -128,6 +129,7 @@ where
             cred_lifetime_per_cred_conf_id: HashMap::new(),
             cred_conf_ids_with_key_metadata: Default::default(),
             did_resolver: UniversalResolver::default(),
+            credential_extra_verification: Default::default(),
             _marker: Default::default(),
         }
     }
@@ -166,6 +168,7 @@ where
             nonce_handler: self.nonce_handler,
             cred_conf_ids_with_key_metadata: Default::default(),
             did_resolver: self.did_resolver,
+            credential_extra_verification: Default::default(),
             _marker: Default::default(),
         }
     }
@@ -226,6 +229,7 @@ where
             cred_lifetime_per_cred_conf_id: self.cred_lifetime_per_cred_conf_id,
             cred_conf_ids_with_key_metadata: Default::default(),
             did_resolver: self.did_resolver,
+            credential_extra_verification: Default::default(),
             _marker: Default::default(),
         }
     }
@@ -427,6 +431,8 @@ where
     client_id: String,
     redirect_url: String,
 
+    credential_extra_verification: Option<Vec<CredentialExtraVerification>>,
+
     // services
     kms: KMS,
     vault: V,
@@ -484,6 +490,7 @@ where
             redirect_url: "urn:ietf:wg:oauth:2.0:oob".to_string(),
             pop: ProofOfPossessionMetadataBuilder::new().build(),
             did_resolver: UniversalResolver::default(),
+            credential_extra_verification: Default::default(),
             _marker: Default::default(),
         }
     }
@@ -557,6 +564,23 @@ where
         Ok(self)
     }
 
+    /// Sets issued credential extra verification options.
+    ///
+    /// # Arguments
+    ///
+    /// * `options` - list of credential extra verification options.
+    #[instrument(
+        level = Level::TRACE,
+        skip(self),
+    )]
+    pub fn with_credential_extra_verification(
+        mut self,
+        options: Vec<CredentialExtraVerification>,
+    ) -> Self {
+        self.credential_extra_verification = Some(options);
+        self
+    }
+
     /// Builds a `Holder`.
     ///
     /// # Returns
@@ -591,6 +615,7 @@ where
                     &offer,
                     self.client_id,
                     self.redirect_url,
+                    self.credential_extra_verification,
                 )
                 .await
             }
@@ -607,6 +632,7 @@ where
                     authz_meta,
                     self.client_id,
                     self.redirect_url,
+                    self.credential_extra_verification,
                 )
             }
             IssuerDiscovery::Url(url) => {
@@ -618,6 +644,7 @@ where
                     url,
                     self.client_id,
                     self.redirect_url,
+                    self.credential_extra_verification,
                 )
                 .await
             }
@@ -827,6 +854,9 @@ mod tests {
             http_client,
         )
         .with_redirect_url(AUTH_REDIRECT_URL.to_string())
+        .with_credential_extra_verification(vec![
+            CredentialExtraVerification::CredentialIssuerIdentifier,
+        ])
         .build()
         .await
         .unwrap();

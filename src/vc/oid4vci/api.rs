@@ -363,6 +363,24 @@ pub trait Holder: WasmNotSend + WasmNotSync {
         keys_metadata: &[KeyMetadata],
     ) -> Result<CredentialResponseResolved>;
 
+    /// Perform extra verification of the passed `Credential`.
+    ///
+    /// # Arguments
+    ///
+    /// * `credential` - a `Credential` to save;
+    /// * `options` - a `CredentialExtraVerification` slice.
+    ///
+    /// # Returns
+    ///
+    /// Empty unit.
+    ///
+    /// # Errors
+    ///
+    /// [InternalError::VC] - credential verification error:
+    ///   * [crate::vc::core::Error::VC] - credential handling error (parsing, claims extraction, etc.);
+    ///   * [crate::vc::core::Error::VCNotValid] - credential validation error.
+    async fn verify_credential_extra(&self, credential: &Credential) -> Result<()>;
+
     /// Store a `Credential`.
     ///
     /// This method will store the `credential` into the `Vault` under the hood.
@@ -407,4 +425,19 @@ impl From<RequestError<HttpError>> for Error {
             },
         }
     }
+}
+
+/// Configures `Holder` performed credential extra verification.
+#[derive(Debug, PartialEq, Clone)]
+pub enum CredentialExtraVerification {
+    /// Verify Issuer Identifier specified in Credential
+    /// matches [Credential Issuer Identifier](https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0.html#credential-issuer-identifier).
+    ///
+    /// Notes:
+    /// * verifies association, rather than cryptographic binding;
+    /// * association can be direct (URL match) or indirect (`did:web` that resolves to the same domain as Credential Issuer Identifier).
+    ///
+    /// See [OID4VCI specification reference](https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0.html#name-relationship-between-the-cr)
+    /// for details.
+    CredentialIssuerIdentifier,
 }

@@ -2,8 +2,8 @@ use agent_sdk::http::HttpClient;
 use agent_sdk::inmem::kms::LocalKms;
 use agent_sdk::inmem::vault::InMemVault;
 use agent_sdk::vc::oid4vci::{
-    CredentialOfferParams, Holder, HolderBuilder, Issuer, IssuerBuilder, IssuerDiscovery,
-    IssuerMetadata,
+    CredentialExtraVerification, CredentialOfferParams, Holder, HolderBuilder, Issuer,
+    IssuerBuilder, IssuerDiscovery, IssuerMetadata,
 };
 
 use crate::utils::http::HttpClientEmulator;
@@ -31,6 +31,9 @@ pub async fn build_holder(
         IssuerDiscovery::Offer(credential_offer),
         http_client,
     )
+    .with_credential_extra_verification(vec![
+        CredentialExtraVerification::CredentialIssuerIdentifier,
+    ])
     .build()
     .await
     .unwrap()

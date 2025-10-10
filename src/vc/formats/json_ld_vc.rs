@@ -11,6 +11,7 @@ use crate::vc::formats::{
     ParsingSnafu, PresentationSnafu, Result, SigningSnafu, SpruceSigningSnafu, VerifyOptions,
     VerifyingSnafu,
 };
+use crate::vc::oid4vci::credential_issuer_identifier::CredentialIssuerIdentifier;
 use async_trait::async_trait;
 use chrono::FixedOffset;
 use serde::Deserialize;
@@ -221,6 +222,7 @@ impl HasCredential<VC> for VP {
 
 #[derive(Default, Debug)]
 pub struct JsonLdAPI;
+
 struct JsonLdSigner<S: Signer + Key> {
     signer: Arc<S>,
 }
@@ -549,7 +551,7 @@ impl JsonLdAPI {
                     details: "Unsupported key alg = 'ES256K' to create Data integrity proof with 'secp256k1` signature",
                 }
                     .fail()?
-            },
+            }
             Alg::ES256 => (AnySuite::EcdsaRdfc2019, Default::default()),
             Alg::EdDSA => (AnySuite::EdDsaRdfc2022, Default::default()),
             Alg::BBS => {
@@ -589,8 +591,26 @@ impl JsonLdAPI {
         selection.selective_pointers = selective_pointers;
         Ok(selection)
     }
+
     fn is_bbs_plus_signed(vc: &VC) -> bool {
         vc.proofs.iter().any(|s| s.type_ == AnySuite::Bbs2023)
+    }
+
+    #[instrument(level = Level::TRACE, ret())]
+    pub(crate) fn extract_issuer_identifier(
+        credential: &VC,
+    ) -> Result<Option<CredentialIssuerIdentifier>> {
+        let issuer_claim = match &credential.claims {
+            Credential::V1(claims) => &claims.issuer,
+            Credential::V2(claims) => &claims.issuer,
+        };
+        let issuer_id = match issuer_claim {
+            IdOr::Id(id) => id,
+            IdOr::NotId(obj) => &obj.id,
+        };
+        Ok(Some(CredentialIssuerIdentifier::from(
+            issuer_id.to_string(),
+        )))
     }
 }
 
@@ -916,6 +936,7 @@ impl<S: Signer + Key> ssi::verification_methods::Signer<AnyMethod> for JsonLdSig
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::did::DIDURLBuf;
     use crate::inmem::kms::LocalKms;
     use crate::inmem::nonce::LocalNonceHandler;
     use crate::kms::KeyType;
@@ -924,6 +945,7 @@ mod tests {
     use crate::utils::test_utils::{failed_signer_key, no_jwk_key};
     use crate::vc::claims::Claim;
     use crate::vc::formats::Error;
+    use crate::vc::oid4vci::IssuerUrl;
     use rstest::rstest;
     use serde_json::{Value, json};
 
@@ -1712,5 +1734,84 @@ mod tests {
         })
         .try_into()
         .unwrap()
+    }
+
+    #[rstest]
+    #[case::url(
+        example_credential("https://university.example/issuers/14"),
+        CredentialIssuerIdentifier::OID4VCI(IssuerUrl::new("https://university.example/issuers/14".to_string()).unwrap()),
+    )]
+    #[case::url_in_obj(
+        example_credential_issuer_obj("https://university.example/issuers/14"),
+        CredentialIssuerIdentifier::OID4VCI(IssuerUrl::new("https://university.example/issuers/14".to_string()).unwrap()),
+    )]
+    #[case::did(
+        example_credential("did:example:123"),
+        CredentialIssuerIdentifier::DID(DIDURLBuf::from_str("did:example:123").unwrap()),
+    )]
+    #[case::did_in_obj(
+        example_credential_issuer_obj("did:example:123"),
+        CredentialIssuerIdentifier::DID(DIDURLBuf::from_str("did:example:123").unwrap()),
+    )]
+    #[case::other(
+        example_credential("notadid:example:123"),
+        CredentialIssuerIdentifier::Other("notadid:example:123".to_string()),
+    )]
+    #[case::other_in_obj(
+        example_credential_issuer_obj("notadid:example:123"),
+        CredentialIssuerIdentifier::Other("notadid:example:123".to_string()),
+    )]
+    fn extract_issuer_identifier(
+        #[case] credential: VC,
+        #[case] expected: CredentialIssuerIdentifier,
+    ) {
+        let actual = JsonLdAPI::extract_issuer_identifier(&credential).unwrap();
+        assert_eq!(actual, Some(expected));
+    }
+
+    fn example_credential(issuer: &str) -> VC {
+        let cred_str = r#"{
+            "@context": [
+                "https://www.w3.org/ns/credentials/v2",
+                "https://www.w3.org/ns/credentials/examples/v2"
+            ],
+            "id": "http://university.example/credentials/3732",
+            "type": ["VerifiableCredential", "ExampleDegreeCredential"],
+            "issuer": "ISSUER",
+            "validFrom": "2010-01-01T19:23:24Z",
+            "credentialSubject": {
+                "id": "did:example:ebfeb1f712ebc6f1c276e12ec21",
+                "degree": {
+                    "type": "ExampleBachelorDegree",
+                    "name": "Bachelor of Science and Arts"
+                }
+            }
+        }"#
+        .replace("ISSUER", issuer);
+        serde_json::from_str(cred_str.as_str()).unwrap()
+    }
+
+    fn example_credential_issuer_obj(issuer: &str) -> VC {
+        let cred_str = r#"{
+            "@context": [
+                "https://www.w3.org/ns/credentials/v2",
+                "https://www.w3.org/ns/credentials/examples/v2"
+            ],
+            "id": "http://university.example/credentials/3732",
+            "type": ["VerifiableCredential", "ExampleDegreeCredential"],
+            "issuer": {
+                "id": "ISSUER"
+            },
+            "validFrom": "2010-01-01T19:23:24Z",
+            "credentialSubject": {
+                "id": "did:example:ebfeb1f712ebc6f1c276e12ec21",
+                "degree": {
+                    "type": "ExampleBachelorDegree",
+                    "name": "Bachelor of Science and Arts"
+                }
+            }
+        }"#
+        .replace("ISSUER", issuer);
+        serde_json::from_str(cred_str.as_str()).unwrap()
     }
 }

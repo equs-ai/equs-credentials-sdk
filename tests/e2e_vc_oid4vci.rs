@@ -5,7 +5,7 @@ mod utils;
 use agent_sdk::http::HttpClient;
 use agent_sdk::inmem::kms::LocalKms;
 use agent_sdk::vc::oid4vci;
-use agent_sdk::vc::oid4vci::{CredentialOfferGrants, Holder, Issuer};
+use agent_sdk::vc::oid4vci::{CredentialOfferGrants, CredentialResult, Holder, Issuer};
 use futures::executor;
 use oauth2::http::Method;
 use oauth2::http::StatusCode;
@@ -29,7 +29,7 @@ use utils::helpers::oid4vci::{build_holder, build_issuer, setup_http_static_hand
 #[case::token_validation_enabled(true)]
 #[case::token_validation_disabled(false)]
 #[tokio::test]
-async fn autorized_code_flow_using_scopes(#[case] validate_token: bool) {
+async fn authorized_code_flow_using_scopes(#[case] validate_token: bool) {
     // Setting up mocks and fixtures
     let issuer_metadata = sample_issuer_metadata();
 
@@ -98,7 +98,19 @@ async fn autorized_code_flow_using_scopes(#[case] validate_token: bool) {
 
     println!("Credential 1: {:?}", response.data);
 
-    // 6.2 Holder requests LDPVC_cred_1 credentials with the same token
+    // 6.2 Holder performs extra credential validation
+    if let CredentialResult::Credential { credentials, .. } = response.data {
+        for credential in credentials {
+            let _ = holder.verify_credential_extra(&credential).await;
+            // Extra verification fails because issuer uses did:key.
+            // Note that we can not use did:web here
+            //   because resolver used internally does not support HTTP client substitution.
+        }
+    } else {
+        panic!("Expected immediate credential issuance");
+    }
+
+    // 6.3 Holder requests LDPVC_cred_1 credentials with the same token
     let (_, key_metadata, _) = create_did_keymetadata_keyhandle(&kms).await;
     let response = holder
         .request_credential(

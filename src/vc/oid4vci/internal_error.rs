@@ -64,7 +64,7 @@ pub enum InternalError {
         location: Location,
         source: storage::Error,
     },
-    #[snafu(display("VC error"))]
+    #[snafu(display("VC error: {source}"))]
     VC {
         #[snafu(implicit)]
         location: Location,

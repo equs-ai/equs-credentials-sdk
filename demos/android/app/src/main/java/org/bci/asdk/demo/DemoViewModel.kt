@@ -138,7 +138,8 @@ class DemoViewModel : ViewModel() {
             ProofOfPossessionMetadataBuilder()
                 .withNotBefore(ProofOfPossessionNotBefore.Leeway(300))
                 .withLifetime(300)
-                .build()
+                .build(),
+            null
         )
             .build()
         val didAndKeyMetadata = createDidAndKeyMetadata(kms)

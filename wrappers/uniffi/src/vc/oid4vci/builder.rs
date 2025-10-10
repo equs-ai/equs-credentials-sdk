@@ -5,6 +5,7 @@ use crate::vault::{Vault, WrappedVault};
 use crate::vc::oid4vci::ProofOfPossessionMetadata;
 use crate::vc::oid4vci::holder::OID4VCIHolder;
 use agent_sdk::vc::core::ProofOfPossessionMetadata as ASDKPoPMetadata;
+use agent_sdk::vc::oid4vci::CredentialExtraVerification;
 use std::sync::Arc;
 use uniffi::custom_type;
 
@@ -57,7 +58,7 @@ custom_type!(IssuerDiscovery, IssuerDiscoveryEnum, {
     },
 });
 
-#[derive(uniffi::Object)]
+#[derive(uniffi::Object, Clone)]
 struct OID4VCIHolderBuilder {
     kms: WrappedKms,
     vault: WrappedVault,
@@ -65,6 +66,7 @@ struct OID4VCIHolderBuilder {
     issuer_discovery: IssuerDiscovery,
     http_client: WrappedHttpClient,
     pop: ASDKPoPMetadata,
+    credential_extra_verification: Option<Vec<CredentialExtraVerification>>,
 }
 
 #[uniffi::export(async_runtime = "tokio")]
@@ -77,6 +79,7 @@ impl OID4VCIHolderBuilder {
         issuer_discovery: IssuerDiscovery,
         http_client: Arc<dyn HttpClient>,
         pop: ProofOfPossessionMetadata,
+        credential_extra_verification: Option<Vec<CredentialExtraVerification>>,
     ) -> OID4VCIHolderBuilder {
         OID4VCIHolderBuilder {
             kms: WrappedKms::new(kms),
@@ -85,11 +88,12 @@ impl OID4VCIHolderBuilder {
             issuer_discovery,
             http_client: WrappedHttpClient::new(http_client),
             pop,
+            credential_extra_verification,
         }
     }
 
     pub async fn build(&self) -> Result<OID4VCIHolder> {
-        let holder_builder = agent_sdk::vc::oid4vci::HolderBuilder::new(
+        let mut holder_builder = agent_sdk::vc::oid4vci::HolderBuilder::new(
             self.kms.to_owned(),
             self.vault.to_owned(),
             self.client_id.to_owned(),
@@ -97,6 +101,10 @@ impl OID4VCIHolderBuilder {
             self.http_client.to_owned(),
         )
         .with_pop(self.pop.to_owned());
+
+        if let Some(options) = self.credential_extra_verification.to_owned() {
+            holder_builder = holder_builder.with_credential_extra_verification(options);
+        }
 
         let holder = holder_builder
             .build()

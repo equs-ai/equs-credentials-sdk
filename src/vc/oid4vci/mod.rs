@@ -10,6 +10,7 @@ mod builder;
 mod internal_error;
 mod protocol_error;
 
+pub(crate) mod credential_issuer_identifier;
 mod credential_offer_resolver;
 #[cfg(test)]
 pub(crate) mod tests;

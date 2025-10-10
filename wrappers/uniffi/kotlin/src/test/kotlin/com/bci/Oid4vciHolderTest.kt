@@ -23,6 +23,8 @@ class HolderVCITest {
         const val ISSUER_ENDPOINT = "http://localhost:9081"
         const val SD_JWT_CRED =
             "eyJ0eXAiOiJ2YytzZC1qd3QiLCJhbGciOiJFUzI1NiIsImtpZCI6ImRpZDprZXk6ekRuYWV1alBxWjVFakhtZmtyell3ZUxmTXFyOGFxQTNvdDNCdGM0RmU5dHlMcWttUiN6RG5hZXVqUHFaNUVqSG1ma3J6WXdlTGZNcXI4YXFBM290M0J0YzRGZTl0eUxxa21SIn0.eyJfc2QiOlsiQ1Q1bzFMZk5XRE9LT3h4NDJCWUc0NzU0bFpIeTZ0MG5PUGtGRWRmb3FvTSIsIks3bWEwTmZxR0NfM0xQdG12cWtySTR5ckpsdkg0VFU2OWU3SXYtN0VJbzQiLCJyZVlhTkZCV0h6VjE3Y3Z1cTNyRmpVSTNHeDVKc19EbW5VWlNFUmQ0aFpzIl0sInZjdCI6IlNEX0pXVF9jcmVkIiwic3ViIjoiZGlkOmtleTp6RG5hZW5wbnRDa1huRENuYURrNjJMeE5xUGM0Q01kMzJmYmhpVnNaVjVLcFBURzJjIiwibmJmIjoxNzI1NTMzMjU0LCJfc2RfYWxnIjoic2hhLTI1NiIsImlzcyI6ImRpZDprZXk6ekRuYWV1alBxWjVFakhtZmtyell3ZUxmTXFyOGFxQTNvdDNCdGM0RmU5dHlMcWttUiIsImlhdCI6MTcyNTUzMzI1NCwiZXhwIjoxNzU3MDY5MjU0LCJjbmYiOnsiandrIjp7Imt0eSI6IkVDIiwiY3J2IjoiUC0yNTYiLCJ4IjoiVExuNjZxYm5QZXhLeUZtZ3h1Y1kzSlpyZHhCRGpBc3ItbXkya1dBYms4ayIsInkiOiJzaFl6eUVUOENyWVcyTXhPU0FCSkxhbUpPTGV3LWpQbE9aeHdTUzZrWGdjIn19fQ.CBBzIiTjRs2bmKENQcRY14wVnl2vnIjJY9u3AYrA9KQDjqCXZXSzoxQlripAM6Ud_QaYNrZcHK2EVo4QlH3k9w~WyJvMFR4dEw4QWh1TFJXUmduSDk4NF9RIiwgImdpdmVuX25hbWUiLCAiSm9obiJd~WyJ2SVMzZXNQTHlRUHRRZ0JMZ09GYWFnIiwgImZhbWlseV9uYW1lIiwgIkRvZSJd~WyJsaW81cXNVZHZJX3V3eUdiRmFtTnFRIiwgImRvYiIsICIwOS8wOS8xOTg5Il0~"
+        const val SD_JWT_CRED_DID_WEB_ISS =
+            "eyJ0eXAiOiJkYytzZC1qd3QiLCJhbGciOiJFUzI1NiJ9.eyJpc3MiOiJkaWQ6d2ViOmxvY2FsaG9zdCUzQTkwODEiLCJpYXQiOjE3NTk3NTk4NDYsImV4cCI6MjA3NTI3ODIyNCwidmN0IjoiU0RfSldUX2NyZWQiLCJzdWIiOiJkaWQ6a2V5OnpEbmFlbnBudENrWG5EQ25hRGs2Mkx4TnFQYzRDTWQzMmZiaGlWc1pWNUtwUFRHMmMiLCJjbmYiOnsiandrIjp7Imt0eSI6IkVDIiwiY3J2IjoiUC0yNTYiLCJ4IjoiVExuNjZxYm5QZXhLeUZtZ3h1Y1kzSlpyZHhCRGpBc3ItbXkya1dBYms4ayIsInkiOiJzaFl6eUVUOENyWVcyTXhPU0FCSkxhbUpPTGV3LWpQbE9aeHdTUzZrWGdjIn19LCJfc2QiOlsiOGp0WjZXOTRzZ1RMVGN5Q0VqUDUxVnFCOWtqQ1ZtaTEwX0ZRUW9TYlVlVSIsIkFpbUlmd0JJRUN1OEJzWkdCd1RheDQ1MU9pMlFDemd3YUZQa2ZvNmowY1kiLCJYNEdKbmFxbXVOMFY5QzZrWWtRSUZjLThCRXFrY0IzX3l5bjk3c013RlVjIl0sIl9zZF9hbGciOiJzaGEtMjU2In0.8zRC9-8ZEoXRk3Edsh2QOwFSaAcnOAALJfwqLOs06EnEt625_T1K1-a7ZFB4-yqyGuGcZDmGl-UgaII9ROOwUQ~WyJiZTdlZjk3ZDFhZTNjOGM0IiwiZ2l2ZW5fbmFtZSIsIkpvaG4iXQ~WyJhYWQxMWQ1NTRlMDAzZWU1IiwiZmFtaWx5X25hbWUiLCJEb2UiXQ~WyI1OTQzYTlmZWViNTAwMTEyIiwiZG9iIiwiMDkvMDkvMTk4OSJd~"
 
         val issuerMetadata = Json.parseToJsonElement(
             """
@@ -146,13 +148,20 @@ class HolderVCITest {
                         "/auth/.well-known/openid-configuration" -> mockResponse.setResponseCode(200)
                             .setBody(authServerMetadata.toString())
 
-                        "/auth/par/request" -> mockResponse.setResponseCode(201).setBody(pushedAuthResponse.toString())
-                        "/auth/token" -> mockResponse.setResponseCode(200).setBody(tokenResponse.toString())
+                        "/auth/par/request" -> mockResponse.setResponseCode(201)
+                            .setBody(pushedAuthResponse.toString())
+
+                        "/auth/token" -> mockResponse.setResponseCode(200)
+                            .setBody(tokenResponse.toString())
+
                         "/credential" -> {
-                            mockResponse.setResponseCode(200).setBody(batchCredentialResponse.toString())
+                            mockResponse.setResponseCode(200)
+                                .setBody(batchCredentialResponse.toString())
                         }
 
-                        "/nonce" -> mockResponse.setResponseCode(200).setBody(nonceResponse.toString())
+                        "/nonce" -> mockResponse.setResponseCode(200)
+                            .setBody(nonceResponse.toString())
+
                         else -> mockResponse.setResponseCode(404)
                     }
                 }
@@ -267,6 +276,17 @@ class HolderVCITest {
     }
 
     @Test
+    fun verifyCredentialExtra() = runTest {
+        val inMemKms = InMemKms()
+        val inMemVault = InMemVault()
+        val holder = buildHolder(inMemKms, inMemVault)
+
+        val credential = Credential(format = VcFormat.SD_JWT_VC, payload = SD_JWT_CRED_DID_WEB_ISS)
+
+        holder.verifyCredentialExtra(credential)
+    }
+
+    @Test
     fun storeCredential() = runTest {
         val inMemKms = InMemKms()
         val inMemVault = InMemVault()
@@ -292,8 +312,10 @@ class HolderVCITest {
             "client_id",
             IssuerDiscoveryEnum.Url(ISSUER_ENDPOINT),
             ReqwestHttpClient.insecure(),
-            ProofOfPossessionMetadataBuilder().withNotBefore(ProofOfPossessionNotBefore.Leeway(300)).withLifetime(10)
-                .build()
-
+            ProofOfPossessionMetadataBuilder()
+                .withNotBefore(ProofOfPossessionNotBefore.Leeway(300))
+                .withLifetime(300)
+                .build(),
+            arrayListOf(CredentialExtraVerification.CREDENTIAL_ISSUER_IDENTIFIER)
         ).build()
 }

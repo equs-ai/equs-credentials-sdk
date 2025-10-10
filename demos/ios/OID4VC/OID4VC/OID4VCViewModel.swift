@@ -159,6 +159,7 @@ enum ValueState<T> {
             issuerDiscovery: IssuerDiscovery.url(Constants.issuerUrl),
             httpClient: ReqwestHttpClient.insecure(),
             pop: ProofOfPossessionMetadata(lifetime: 3600, notBefore: nil)
+            credentialExtraVerification: nil
         ).build()
     }
 

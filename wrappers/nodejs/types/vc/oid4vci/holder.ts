@@ -2,6 +2,7 @@ import {
   buildVciHolder,
   contextEnsuredKms,
   contextEnsuredVault,
+  CredentialExtraVerification,
   JsIssuerDiscovery,
   Kms,
   OID4VCIHolder,
@@ -13,6 +14,7 @@ import {
 export class OID4VCIHolderBuilder {
   private redirectUrl?: string;
   private pop: ProofOfPossessionMetadata;
+  private credentialExtraVerification?: Array<CredentialExtraVerification>;
 
   constructor(
     private readonly kms: Kms,
@@ -32,6 +34,11 @@ export class OID4VCIHolderBuilder {
     return this;
   }
 
+  withCredentialExtraVerification(options: Array<CredentialExtraVerification>): this {
+    this.credentialExtraVerification = options;
+    return this;
+  }
+
   async build(): Promise<OID4VCIHolder> {
     return await buildVciHolder(
       contextEnsuredKms(this.kms),
@@ -41,6 +48,7 @@ export class OID4VCIHolderBuilder {
       this.redirectUrl,
       this.httpClient,
       this.pop,
+      this.credentialExtraVerification
     );
   }
 }

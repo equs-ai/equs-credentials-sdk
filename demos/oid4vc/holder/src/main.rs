@@ -14,8 +14,8 @@ use agent_sdk::vc::core::{KeyMetadata, ProofOfPossessionMetadata, ProofOfPossess
 use agent_sdk::vc::dcql::{DCQL, DCQLCredential, NonEmptyVec};
 use agent_sdk::vc::metadata::{CredentialMetadataProcessor, DefaultMetadataProcessor};
 use agent_sdk::vc::oid4vci::{
-    AuthzFlow, CredentialOfferParams, CredentialResponseResolved, CredentialResult,
-    IssuerDiscovery, TokenResponse,
+    AuthzFlow, CredentialExtraVerification, CredentialOfferParams, CredentialResponseResolved,
+    CredentialResult, IssuerDiscovery, TokenResponse,
 };
 use agent_sdk::vc::oid4vci::{CredentialOfferResolver, Holder as HolderVci};
 use agent_sdk::vc::oid4vp::{
@@ -92,7 +92,7 @@ async fn run_issuance_flow(
     let key_metadata_1 = create_key_metadata(&kms).await;
     let key_metadata_2 = create_key_metadata(&kms).await;
 
-    let _ = request_credential(
+    let credential_response = request_credential(
         &holder,
         CRED_DEF_ID_1,
         token_resp.access_token(),
@@ -100,26 +100,42 @@ async fn run_issuance_flow(
     )
     .await;
 
+    validate_credential_response_extra(&holder, &credential_response).await;
+
     let key_metadata = create_key_metadata(&kms).await;
 
-    let _ = request_credential(
+    let credential_response = request_credential(
         &holder,
         JSON_LD_V1_CRED_DEF_ID,
         token_resp.access_token(),
         &[key_metadata],
     )
     .await;
+    validate_credential_response_extra(&holder, &credential_response).await;
 
     let key_metadata = create_key_metadata(&kms).await;
-    let _ = request_credential(
+    let credential_response = request_credential(
         &holder,
         JSON_LD_V2_CRED_DEF_ID,
         token_resp.access_token(),
         &[key_metadata],
     )
     .await;
+    validate_credential_response_extra(&holder, &credential_response).await;
 
     println!("Issuance done");
+}
+
+async fn validate_credential_response_extra(
+    holder: &impl HolderVci,
+    response: &CredentialResponseResolved,
+) {
+    if let CredentialResult::Credential { credentials, .. } = &response.data {
+        for credential in credentials {
+            let verification = holder.verify_credential_extra(credential).await;
+            println!("Credential extra verification result: {:?}", verification);
+        }
+    }
 }
 
 async fn run_authz_flow(
@@ -543,6 +559,9 @@ async fn oid4vci_holder(
         lifetime: Duration::minutes(5),
         not_before: Some(ProofOfPossessionNotBefore::Leeway(Duration::seconds(10))),
     })
+    .with_credential_extra_verification(vec![
+        CredentialExtraVerification::CredentialIssuerIdentifier,
+    ])
     .build()
     .await
     .unwrap();

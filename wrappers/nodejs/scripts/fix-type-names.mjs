@@ -49,6 +49,7 @@ const replacements = [
   { from: "JsProofOfPossessionMetadata", to: "ProofOfPossessionMetadata" },
   { from: "JsProofOfPossessionNotBefore", to: "InnerProofOfPossessionNotBefore" },
   { from: "JsProofOfPossessionNotBeforeStrategy", to: "InnerProofOfPossessionNotBeforeStrategy" },
+  { from: "JsCredentialExtraVerification", to: "CredentialExtraVerification" },
   { from: "JsonObject", to: "Record<string, any>" },
 ];
 
