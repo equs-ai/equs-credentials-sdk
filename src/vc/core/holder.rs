@@ -207,7 +207,7 @@ where
 
         let mut reasons: HashSet<Vec<FindVCsFailReason>> = HashSet::new();
         let mut credentials_result = vec![];
-
+        let mut cached_status_list = HashMap::new();
         for entry in credentials {
             if let Ok(true) | Err(_) = entry.credential.is_expired() {
                 continue;
@@ -215,7 +215,11 @@ where
 
             if let Ok(false) | Err(_) = entry
                 .credential
-                .is_valid(self.http_client.deref(), self.did_resolver.to_owned())
+                .is_valid(
+                    self.http_client.deref(),
+                    self.did_resolver.to_owned(),
+                    Some(&mut cached_status_list),
+                )
                 .await
             {
                 continue;

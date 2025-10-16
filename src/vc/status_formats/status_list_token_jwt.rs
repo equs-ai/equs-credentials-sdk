@@ -179,10 +179,12 @@ impl API<VCStatus, VCStatuses, StatusList, SLMetadata> for StatusListJwt {
             })
     }
 
+    #[instrument(level = Level::TRACE, skip(vc_claims, http_client, did_resolver), err(), ret())]
     async fn get_vc_status(
         vc_claims: &Claims,
         http_client: &dyn HttpClient,
         did_resolver: UniversalResolver,
+        mut cached_urls_per_status_jwts: Option<&mut HashMap<String, String>>,
     ) -> Result<Option<VCStatus>> {
         let Some(status_claim) = vc_claims.get(STATUS_CLAIM) else {
             return Ok(None);
@@ -191,19 +193,36 @@ impl API<VCStatus, VCStatuses, StatusList, SLMetadata> for StatusListJwt {
         let status_value = Value::try_from(status_claim.clone()).context(ClaimsSnafu)?;
         let status: Status = serde_json::from_value(status_value).context(ParseSnafu)?;
 
-        let bit_string = StatusListJwt::fetch_bitstring_status_list(
-            http_client,
+        let status_list_jwt = match cached_urls_per_status_jwts
+            .as_ref()
+            .and_then(|m| m.get(status.status_list.uri.as_str()).cloned())
+        {
+            Some(bitstring) => bitstring,
+            _ => {
+                StatusListJwt::fetch_bitstring_status_list_jwt(
+                    http_client,
+                    status.status_list.uri.as_str(),
+                )
+                .await?
+            }
+        };
+
+        let status_list = StatusListJwt::extract_bitstring_status_list(
             status.status_list.uri.as_str(),
             did_resolver,
+            status_list_jwt.clone(),
         )
         .await?;
-
-        let cred_status = bit_string.get(status.status_list.idx).ok_or_else(|| {
+        let cred_status = status_list.get(status.status_list.idx).ok_or_else(|| {
             VCStatusSnafu {
                 details: format!("failed to get index {}", status.status_list.idx),
             }
             .build()
         })?;
+
+        cached_urls_per_status_jwts
+            .as_mut()
+            .map(|m| m.insert(status.status_list.uri.as_str().to_string(), status_list_jwt));
 
         Ok(Some(cred_status.into()))
     }
@@ -268,12 +287,11 @@ impl StatusListJwt {
         headers
     }
 
-    #[instrument(level = Level::TRACE, skip(http_client, did_resolver), err(), ret())]
-    async fn fetch_bitstring_status_list(
+    #[instrument(level = Level::TRACE, skip(http_client), err(), ret())]
+    async fn fetch_bitstring_status_list_jwt(
         http_client: &dyn HttpClient,
         url: &str,
-        did_resolver: UniversalResolver,
-    ) -> Result<BitString> {
+    ) -> Result<String> {
         let http_req = http::request::Builder::new()
             .uri(url)
             .method(Method::GET)
@@ -285,14 +303,12 @@ impl StatusListJwt {
                 }
                 .build()
             })?;
-
         let status_list_sdjwt_vc = http_client.async_call(http_req).await.map_err(|err| {
             StatusListFetchingSnafu {
                 details: err.to_string(),
             }
             .build()
         })?;
-
         let status_list_sdjwt_vc =
             String::from_utf8(status_list_sdjwt_vc.body().clone()).map_err(|err| {
                 StatusListFetchingSnafu {
@@ -301,6 +317,15 @@ impl StatusListJwt {
                 .build()
             })?;
 
+        Ok(status_list_sdjwt_vc)
+    }
+
+    #[instrument(level = Level::TRACE, skip(did_resolver), err(), ret())]
+    async fn extract_bitstring_status_list(
+        url: &str,
+        did_resolver: UniversalResolver,
+        status_list_sdjwt_vc: String,
+    ) -> Result<BitString> {
         SdJwtAPI::verify_vc(
             &status_list_sdjwt_vc,
             VerifyOptions {
@@ -391,6 +416,7 @@ mod tests {
     use oauth2::http::Method;
     use rstest::rstest;
     use serde_json::json;
+    use std::collections::HashMap;
     use std::str::FromStr;
     use url::Url;
 
@@ -467,11 +493,66 @@ mod tests {
         .unwrap();
 
         let vc_status =
-            StatusListJwt::get_vc_status(&claims, &http_client, UniversalResolver::default())
+            StatusListJwt::get_vc_status(&claims, &http_client, UniversalResolver::default(), None)
                 .await
                 .unwrap();
 
         assert_eq!(vc_status, Some(expected_status));
+    }
+
+    #[tokio::test]
+    async fn vc_status_is_validated_correctly_when_cached_status_list_jwt_is_used() {
+        let mut http_client = MockHttpClient::new();
+        let url = "http://example.com/status_list";
+
+        mock_http_fn_with_plain_text_resp(
+            &mut http_client,
+            Method::GET,
+            Url::from_str(url).unwrap(),
+            status_list_token_jwt_with_revoked_idx_1(),
+            1.into(),
+        );
+
+        let claims = json!({
+            "status": {
+                "status_list": {
+                    "idx": 1,
+                    "uri": url
+                }
+            }
+        })
+        .try_into()
+        .unwrap();
+
+        let mut cached_jwts = HashMap::new();
+        let vc_status = StatusListJwt::get_vc_status(
+            &claims,
+            &http_client,
+            UniversalResolver::default(),
+            Some(&mut cached_jwts),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(vc_status, Some(VCStatus::Invalid));
+        assert_eq!(cached_jwts.len(), 1);
+        assert_eq!(
+            cached_jwts.get(url).unwrap(),
+            status_list_token_jwt_with_revoked_idx_1()
+        );
+
+        // Second call with same URL should use cached status list JWT
+        http_client = MockHttpClient::new();
+        let vc_status = StatusListJwt::get_vc_status(
+            &claims,
+            &http_client,
+            UniversalResolver::default(),
+            Some(&mut cached_jwts),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(vc_status, Some(VCStatus::Invalid));
     }
 
     fn status_list_token_jwt_with_revoked_idx_1() -> &'static str {

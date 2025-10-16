@@ -1,7 +1,5 @@
 //! VC formats
 
-use std::fmt::Debug;
-
 use crate::crypto;
 use crate::did::universal::UniversalResolver;
 use crate::http::HttpClient;
@@ -11,6 +9,8 @@ use common_macros::DebugError;
 use snafu::{Location, Snafu};
 use ssi::claims::SignatureError;
 use ssi::dids::DIDURL;
+use std::collections::HashMap;
+use std::fmt::Debug;
 
 pub mod json_ld_vc;
 pub mod sd_jwt_vc;
@@ -247,6 +247,7 @@ pub trait IsValid<C> {
         claims: &C,
         http_client: &dyn HttpClient,
         did_resolver: UniversalResolver,
+        cache: Option<&mut HashMap<String, String>>,
     ) -> Result<bool>;
 }
 
