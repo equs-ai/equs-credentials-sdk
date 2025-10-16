@@ -85,6 +85,8 @@ http = { version = "0.2", optional = true }
 tokio = { version = "1.25.0", features = ["macros"], optional = true }
 libc = "0.2.172"
 
+# Transitive dependecies versioning
+generic-array = "=0.14.7"# Pinned to solve deprecation warnings from transitive deps trying to update to 0.14.9
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 didcomm = { git = "ssh://git@git.slock.it/open-source/didcomm-rust.git", rev = "db41780d", features = ["uniffi"] }

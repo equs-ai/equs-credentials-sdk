@@ -429,15 +429,21 @@ impl IsValid<Claims> for SdJwtAPI {
         claims: &Claims,
         http_client: &dyn HttpClient,
         did_resolver: UniversalResolver,
+        cached_urls_per_status_jwts: Option<&mut HashMap<String, String>>,
     ) -> Result<bool> {
-        let status = StatusListJwt::get_vc_status(claims, http_client, did_resolver)
-            .await
-            .map_err(|e| {
-                StatusCheckSnafu {
-                    details: e.to_string(),
-                }
-                .build()
-            })?;
+        let status = StatusListJwt::get_vc_status(
+            claims,
+            http_client,
+            did_resolver,
+            cached_urls_per_status_jwts,
+        )
+        .await
+        .map_err(|e| {
+            StatusCheckSnafu {
+                details: e.to_string(),
+            }
+            .build()
+        })?;
 
         Ok(status.is_none_or(|s| s == VCStatus::Valid))
     }

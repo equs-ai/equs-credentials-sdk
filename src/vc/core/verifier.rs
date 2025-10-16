@@ -137,14 +137,15 @@ impl VerifierService {
     ) -> Result<Option<VCStatus>> {
         let claims = presentation.parse_claims().context(VCSnafu)?;
 
-        let status = StatusListJwt::get_vc_status(&claims, http_client, self.did_resolver.clone())
-            .await
-            .map_err(|e| {
-                VCStatusSnafu {
-                    details: e.to_string(),
-                }
-                .build()
-            })?;
+        let status =
+            StatusListJwt::get_vc_status(&claims, http_client, self.did_resolver.clone(), None)
+                .await
+                .map_err(|e| {
+                    VCStatusSnafu {
+                        details: e.to_string(),
+                    }
+                    .build()
+                })?;
 
         match status {
             Some(vc_status) => Ok(Some(VCStatus::StatusListToken(vc_status))),

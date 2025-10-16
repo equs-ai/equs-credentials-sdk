@@ -16,6 +16,7 @@ use crate::vc::status_formats::status_list_token_jwt;
 use common_macros::DebugError;
 use serde::{Deserialize, Serialize};
 use snafu::{Location, ResultExt, Snafu};
+use std::collections::HashMap;
 
 pub(crate) mod formats;
 mod pop;
@@ -111,11 +112,12 @@ impl Credential {
         &self,
         http_client: &dyn HttpClient,
         did_resolver: UniversalResolver,
+        cached_status_list_jwts: Option<&mut HashMap<String, String>>,
     ) -> Result<bool> {
         match self {
             Credential::SdJwt(credential) => {
                 let claims = credential.parse_claims().context(ParseClaimsSnafu)?;
-                SdJwtAPI::is_valid(&claims, http_client, did_resolver)
+                SdJwtAPI::is_valid(&claims, http_client, did_resolver, cached_status_list_jwts)
                     .await
                     .context(StatusValidationSnafu)
             }

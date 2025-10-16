@@ -163,7 +163,7 @@ describe("OID4VP Verifier: ", () => {
   });
 
   it("verify Authorization Response", async () => {
-    const verifier = await buildVerifier("did:key:zDnaefQAPFVQt9sfU63hyqYgPza2pDSXSJrPrCG5paT5eaQJb");
+    const verifier = await buildVerifier("did:key:zDnaekKgXHnezLxn9UBZPEUfDhU3cM3zga2vouoCDogzFUh4J");
 
     const rpq: ResolvedPresentationQuery = {
       presentation_definition: PRESENTATION_QUERY.presentation_definition,
@@ -193,7 +193,7 @@ describe("OID4VP Verifier: ", () => {
   });
 
   it("verify Authorization Response with transaction data", async () => {
-    const verifier = await buildVerifier("did:key:zDnaefQAPFVQt9sfU63hyqYgPza2pDSXSJrPrCG5paT5eaQJb");
+    const verifier = await buildVerifier("did:key:zDnaekKgXHnezLxn9UBZPEUfDhU3cM3zga2vouoCDogzFUh4J");
 
     const rpq: ResolvedPresentationQuery = {
       presentation_definition: PRESENTATION_QUERY.presentation_definition,

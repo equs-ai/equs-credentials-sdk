@@ -9,6 +9,7 @@ use common_macros::DebugError;
 use serde::{Deserialize, Serialize};
 use snafu::{Location, Snafu};
 use ssi::dids::DIDURL;
+use std::collections::HashMap;
 use strum_macros::Display;
 
 pub mod status_list_token_jwt;
@@ -75,9 +76,30 @@ pub trait API<CS, ST, SL, MD> {
     where
         S: Signer;
 
+    /// Retrieves the status of a Verifiable Credential (VC) with caching support.
+    ///
+    /// # Arguments
+    ///
+    /// * `vc_claims` - Reference to the claims of the Verifiable Credential
+    /// * `http_client` - HTTP client implementation for making network requests
+    /// * `did_resolver` - Universal resolver for DID resolution
+    /// * `cached_urls_per_status_jwts` - Optional mutable reference to a HashMap for caching status JWT URLs
+    ///
+    /// # Returns
+    ///
+    /// A credential status on success.
+    ///
+    /// # Errors
+    ///
+    /// * [Error::StatusListFetching] - When the status list cannot be fetched from the remote location
+    /// * [Error::Claims] - When there are issues processing the credential claims
+    /// * [Error::Parse] - When the retrieved status list cannot be parsed
+    /// * [Error::VCStatus] - When the credential status cannot be determined
+    /// * [Error::MalformedStatusList] - When the retrieved status list has an invalid format
     async fn get_vc_status(
         vc_claims: &Claims,
         http_client: &dyn HttpClient,
         did_resolver: UniversalResolver,
+        cached_urls_per_status_jwts: Option<&mut HashMap<String, String>>,
     ) -> Result<Option<CS>>;
 }
