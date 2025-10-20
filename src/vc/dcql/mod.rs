@@ -223,7 +223,7 @@ fn check_cred_contains_all_paths(
     Ok(())
 }
 pub fn filter_creds_with_cred_sets(
-    id_to_ver_cred: &HashMap<String, CredentialEntry>,
+    id_to_ver_cred: &HashMap<String, Vec<CredentialEntry>>,
     dcql: &DCQL,
 ) -> Result<Vec<DCQLCredential>> {
     let mut to_be_returned_cred_ids = HashSet::new();
@@ -259,7 +259,7 @@ pub fn filter_creds_with_cred_sets(
 
 fn check_if_set_required_and_all_creds_exist(
     set: &DcqlCredentialSet,
-    id_to_cred: &HashMap<String, CredentialEntry>,
+    id_to_cred: &HashMap<String, Vec<CredentialEntry>>,
 ) -> Result<()> {
     let required = set.required().unwrap_or(&true).to_owned();
     let mut exists_any = false;
@@ -919,12 +919,12 @@ mod tests {
         (credentials, vec![first_pi, second_pi, third_pi])
     }
 
-    async fn get_id_to_cred_map() -> HashMap<String, CredentialEntry> {
+    async fn get_id_to_cred_map() -> HashMap<String, Vec<CredentialEntry>> {
         let ids = ["1", "2", "3", "4", "5"];
         let cred_entries: Vec<CredentialEntry> = get_credential_entries().await;
         let mut map = HashMap::new();
         for (index, &id) in ids.iter().enumerate() {
-            map.insert(id.to_string(), cred_entries[index].clone());
+            map.insert(id.to_string(), vec![cred_entries[index].clone()]);
         }
         map
     }
