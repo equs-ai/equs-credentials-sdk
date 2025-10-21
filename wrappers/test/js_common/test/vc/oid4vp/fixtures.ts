@@ -46,7 +46,7 @@ export const PRESENTATION_DEFINITION: PresentationDefinition = {
   ],
   name: "Example with selective disclosure",
 };
-export const PRESENTATION_DEFINITION_FAKE: PresentationDefinition = {
+export const PRESENTATION_DEFINITION_WITH_FAKE_VCT: PresentationDefinition = {
   id: "1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed",
   input_descriptors: [
     {
@@ -75,6 +75,47 @@ export const PRESENTATION_DEFINITION_FAKE: PresentationDefinition = {
             intent_to_retain: false,
             predicate: null,
             optional: true,
+          },
+        ],
+      },
+    },
+  ],
+};
+export const PRESENTATION_DEFINITION_WITH_FAKE_CONSTRAINTS: PresentationDefinition = {
+  id: "1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed",
+  input_descriptors: [
+    {
+      id: "Identity-1",
+      name: "Identity VC",
+      purpose: "We want an identity",
+      format: {
+        "dc+sd-jwt": {
+          "sd-jwt_alg_values": ["ES256", "EdDSA"],
+          "kb-jwt_alg_values": ["ES256", "EdDSA"],
+        },
+      },
+      constraints: {
+        fields: [
+          {
+            path: ["$.vct"],
+            predicate: null,
+            filter: {
+              type: "string",
+              const: "https://credentials.example.com/identity_credential",
+            },
+            intent_to_retain: false,
+          },
+          {
+            path: ["$.first_name"],
+            intent_to_retain: false,
+            predicate: null,
+            optional: false,
+          },
+          {
+            path: ["$.surname", "$.last_name"],
+            intent_to_retain: false,
+            predicate: null,
+            optional: false,
           },
         ],
       },
@@ -142,9 +183,13 @@ export const AUTH_REQUEST_WITH_DIRECT_POST_JWT: CommonAuthorizationRequest = {
   response_mode: "direct_post.jwt",
 };
 
-export const AUTH_REQUEST_FAKE: CommonAuthorizationRequest = {
+export const AUTH_REQUEST_WITH_FAKE_VCT: CommonAuthorizationRequest = {
   ...AUTH_REQUEST,
-  presentation_definition: PRESENTATION_DEFINITION_FAKE,
+  presentation_definition: PRESENTATION_DEFINITION_WITH_FAKE_VCT,
+};
+export const AUTH_REQUEST_WITH_FAKE_CONSTRAINTS: CommonAuthorizationRequest = {
+  ...AUTH_REQUEST,
+  presentation_definition: PRESENTATION_DEFINITION_WITH_FAKE_CONSTRAINTS,
 };
 
 export const PRESENTATION_SUBMISSION: PresentationSubmission = {

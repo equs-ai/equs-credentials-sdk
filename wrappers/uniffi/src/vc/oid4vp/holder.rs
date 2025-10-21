@@ -100,11 +100,11 @@ impl OID4VPHolder {
                         },
                     );
                 }
-                agent_sdk::vc::oid4vp::CredentialsFindResult::Reasons(reasons) => {
+                agent_sdk::vc::oid4vp::CredentialsFindResult::Reason(reasons) => {
                     result.insert(
                         key,
                         CredentialsFindResult {
-                            data: CredentialsSearchResult::Reasons(reasons),
+                            data: CredentialsSearchResult::Reason(reasons),
                         },
                     );
                 }

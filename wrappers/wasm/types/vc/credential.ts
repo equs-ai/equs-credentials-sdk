@@ -35,10 +35,15 @@ export interface CredentialEntry {
   id: string;
 }
 
+export enum FindVCsFailReasonType {
+  Paths = "Paths",
+  TypeMismatch = "TypeMismatch",
+  CredentialsNotFound = "CredentialsNotFound",
+}
+
 export interface FindVCsFailReason {
-  paths: Array<string>;
-  type: string;
-  value: string;
+  type: FindVCsFailReasonType;
+  paths?: Array<string> | null;
 }
 
 /**

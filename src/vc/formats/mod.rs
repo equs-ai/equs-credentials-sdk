@@ -3,7 +3,7 @@
 use crate::crypto;
 use crate::did::universal::UniversalResolver;
 use crate::http::HttpClient;
-use crate::vc::core::HolderBinder;
+use crate::vc::core::{HolderBinder, PresentationRestrictionValue};
 use async_trait::async_trait;
 use common_macros::DebugError;
 use snafu::{Location, Snafu};
@@ -233,6 +233,7 @@ where
 
 pub trait HasClaims<CL> {
     fn parse_claims(&self) -> Result<CL>;
+    fn has_type(&self, type_: PresentationRestrictionValue) -> Result<bool>;
 }
 
 pub trait HasCredential<C> {

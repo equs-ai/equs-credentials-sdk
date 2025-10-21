@@ -8,7 +8,7 @@ use crate::vault::{
 use crate::vc::claims::Claims;
 use crate::vc::core::api::PresentationRestrictionValue;
 use crate::vc::core::{PresentationInput, PresentationRestriction};
-use crate::vc::oid4vp::FindVCsFailReason;
+use crate::vc::oid4vp::ClaimPath;
 use crate::vc::{
     ClaimFormatDesignation, Credential, HasClaims, HasVCFormat, JsonPath, Presentation,
     RequestedPresentation, formats,
@@ -21,7 +21,7 @@ use snafu::{Location, ResultExt, Snafu};
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::str::FromStr;
-use tracing::{Level, instrument};
+use tracing::{Level, instrument, warn};
 use uuid::Uuid;
 
 // IDE removes Level from imports due to absence of usage. This way it is used now
@@ -622,24 +622,83 @@ fn build_restrictions(
     }
 }
 
+pub fn is_valid_vc_type(
+    credential: &Credential,
+    presentation_input: &PresentationInput,
+) -> crate::vault::Result<bool> {
+    match credential {
+        Credential::SdJwt(cred) => {
+            let vct = presentation_input
+                .restrictions
+                .iter()
+                .find(|pr| pr.fields.contains(&"$.vct".to_string()));
+            if let Some(vct) = vct
+                && let Some(value) = &vct.value
+            {
+                let has_type = cred
+                    .has_type(value.to_owned())
+                    .context(ClaimsParsingSnafu)?;
+                if !has_type {
+                    return Ok(false);
+                }
+            }
+        }
+        Credential::LdpVc(cred) => {
+            let pr_types = presentation_input
+                .restrictions
+                .iter()
+                .find(|pr| pr.fields.contains(&"$.type[*]".to_string())); // todo check how much it suits all cases
+
+            if let Some(pr) = pr_types
+                && let Some(value) = &pr.value
+                && let PresentationRestrictionValue::ArrayOfValues(values) = value
+            {
+                let mut claims_values: Vec<Value> = vec![];
+                for field in &pr.fields {
+                    let json_path_field = jsonpath_rust::JsonPath::from_str(field)
+                        .context(CannotCreateJSONPathSnafu)?;
+                    let claims_data = json!(cred.claims);
+                    let claims = &json_path_field.find_slice(&claims_data);
+                    claims_values.extend(
+                        claims
+                            .iter()
+                            .map(|c| c.to_owned().to_data())
+                            .filter(|v| !v.is_null())
+                            .collect::<Vec<Value>>(),
+                    )
+                }
+                let has_type = value.validate_claims_for_existence_as_sets(claims_values, values);
+
+                if !has_type {
+                    return Ok(false);
+                }
+            }
+        }
+        _ => {
+            warn!("Other types of credential are not supported");
+        }
+    }
+    Ok(true)
+}
+
 pub fn validate_credential(
     credential: &Credential,
     presentation_input: &PresentationInput,
-) -> crate::vault::Result<Option<Vec<FindVCsFailReason>>> {
+) -> crate::vault::Result<Option<Vec<ClaimPath>>> {
     let claims = credential.parse_claims().context(ClaimsParsingSnafu)?;
 
     if let Some(format) = &presentation_input.format
         && credential.format().to_string().cmp(format).is_ne()
     {
-        UnsupportedCredentialFormatSnafu { format }.fail()?
+        UnsupportedCredentialFormatSnafu { format }.fail()? //todo refactor to not throw error
     }
 
-    let mut reasons_of_failure: Vec<FindVCsFailReason> = vec![];
+    let mut reasons_of_failure: Vec<ClaimPath> = vec![];
 
     for pr in &presentation_input.restrictions {
         let reason_of_failure_inner = validate_restriction(pr, &claims)?;
-        if let Some(reason) = reason_of_failure_inner {
-            reasons_of_failure.push(reason);
+        if let Some(reasons) = reason_of_failure_inner {
+            reasons_of_failure.push(reasons);
         }
     }
 
@@ -653,7 +712,7 @@ pub fn validate_credential(
 fn validate_restriction(
     presentation_restriction: &PresentationRestriction,
     claims: &Claims,
-) -> crate::vault::Result<Option<FindVCsFailReason>> {
+) -> crate::vault::Result<Option<ClaimPath>> {
     let mut claims_values: Vec<Value> = vec![];
     for field in &presentation_restriction.fields {
         let json_path_field =
@@ -673,11 +732,7 @@ fn validate_restriction(
         return if presentation_restriction.optional {
             Ok(None)
         } else {
-            Ok(Some(FindVCsFailReason::new(
-                presentation_restriction.fields.to_owned(),
-                Some("optional".to_string()),
-                Some(presentation_restriction.optional.to_string()),
-            )))
+            Ok(Some(presentation_restriction.fields.to_owned()))
         };
     }
 
@@ -701,11 +756,7 @@ fn validate_restriction(
                 }
             }
         }
-        Ok(Some(FindVCsFailReason::new(
-            presentation_restriction.fields.to_owned(),
-            Some(pr_value.get_type()),
-            Some(pr_value.get_value()),
-        )))
+        Ok(Some(presentation_restriction.fields.to_owned()))
     } else {
         Ok(None)
     }

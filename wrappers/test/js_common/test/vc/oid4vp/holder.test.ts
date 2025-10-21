@@ -5,6 +5,7 @@ import {
   CredentialEntry,
   CredentialMetadata,
   DIDKey,
+  FindVCsFailReason,
   InMemKms,
   InMemVault,
   KeyMetadata,
@@ -18,15 +19,15 @@ import {
 } from "agent-sdk";
 import {
   AUTH_REQUEST,
-  AUTH_REQUEST_FAKE,
+  AUTH_REQUEST_WITH_FAKE_VCT,
   AUTH_REQUEST_JWT,
   AUTH_REQUEST_WITH_DIRECT_POST_JWT,
-  PRESENTATION_DEFINITION_FAKE,
   PRESENTATION_SUBMISSION,
   STATE,
   VC,
   VC_TYPE,
   VC_WITH_STATUS,
+  AUTH_REQUEST_WITH_FAKE_CONSTRAINTS,
 } from "./fixtures";
 import { MockNonceHandler } from "./mockNonceHandler";
 
@@ -180,17 +181,30 @@ describe("OID4VP Holder: ", () => {
   it("findVcsForPresentation returns reasons for failed filtering", async () => {
     await vault.storeCredential(credential, metadata);
 
-    const credentialsMapping = await holder.findVcsForPresentation(new AuthorizationRequest(AUTH_REQUEST_FAKE));
+    const credentialsMapping = await holder.findVcsForPresentation(
+      new AuthorizationRequest(AUTH_REQUEST_WITH_FAKE_CONSTRAINTS),
+    );
 
     for (const key in credentialsMapping) {
       expect(key).toBe("Identity-1");
-      expect(credentialsMapping[key].data).toHaveLength(1);
-      expect(credentialsMapping[key].data[0]).toHaveLength(1);
-      expect(credentialsMapping[key].data[0][0]).toMatchObject({
-        paths: ["$.vct"],
-        type: "const",
-        value: "https://credentials.example.com/identity_credential_1",
+      expect(credentialsMapping[key].data).toMatchObject({
+        type: "Paths",
+        paths: [["$.first_name"], ["$.surname", "$.last_name"]],
       });
+    }
+  });
+
+  it("findVcsForPresentation returns types not matched", async () => {
+    await vault.storeCredential(credential, metadata);
+
+    const credentialsMapping = await holder.findVcsForPresentation(
+      new AuthorizationRequest(AUTH_REQUEST_WITH_FAKE_VCT),
+    );
+
+    for (const key in credentialsMapping) {
+      expect(key).toBe("Identity-1");
+      expect((credentialsMapping[key].data as FindVCsFailReason).type).toStrictEqual("TypesNotMatched");
+      expect((credentialsMapping[key].data as FindVCsFailReason).paths).toBeFalsy();
     }
   });
 
@@ -207,26 +221,14 @@ describe("OID4VP Holder: ", () => {
 
     await vault.storeCredential(credential, metadata);
 
-    const credentialsMapping = await holder.findVcsForPresentation(new AuthorizationRequest(AUTH_REQUEST_FAKE));
+    const credentialsMapping = await holder.findVcsForPresentation(
+      new AuthorizationRequest(AUTH_REQUEST_WITH_FAKE_VCT),
+    );
 
     for (const key in credentialsMapping) {
       expect(key).toBe("Identity-1");
-      expect(credentialsMapping[key].data).toHaveLength(PRESENTATION_DEFINITION_FAKE.input_descriptors.length);
-      expect(credentialsMapping[key].data[0]).toHaveLength(
-        PRESENTATION_DEFINITION_FAKE.input_descriptors[0].constraints.fields.length,
-      );
-      expect(credentialsMapping[key].data[0]).toMatchObject([
-        {
-          paths: ["$.vct"],
-          type: "const",
-          value: "https://credentials.example.com/identity_credential_1",
-        },
-        {
-          paths: ["$.name"],
-          type: null,
-          value: null,
-        },
-      ]);
+      expect((credentialsMapping[key].data as FindVCsFailReason).type).toStrictEqual("CredentialsNotFound");
+      expect((credentialsMapping[key].data as FindVCsFailReason).paths).toBeFalsy();
     }
   });
 

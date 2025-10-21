@@ -5,7 +5,7 @@ use crate::utils::wasm::{WasmNotSend, WasmNotSync};
 use crate::vault::{CredentialEntry, Error as VaultError};
 use crate::vc::VCStatus;
 use crate::vc::VCStatusesData;
-use crate::vc::claims::Claims;
+use crate::vc::claims::{Claim, Claims};
 use crate::vc::core::DEFAULT_POP_LIFETIME_MINUTES;
 use crate::vc::oid4vp::CredentialsFindResult;
 use crate::vc::status_formats::StatusListFormat;
@@ -707,15 +707,18 @@ impl PresentationRestrictionValue {
             }
         }
     }
-    pub fn get_value(&self) -> String {
+    pub fn get_value(&self) -> Claim {
         match &self {
-            PresentationRestrictionValue::Const(value) => value.to_owned(),
-            PresentationRestrictionValue::Pattern(value) => value.to_owned(),
-            PresentationRestrictionValue::ArrayOfValues(values) => values
-                .iter()
-                .map(|val| val.join(", "))
-                .collect::<Vec<String>>()
-                .join("; "),
+            PresentationRestrictionValue::Const(value) => Claim::String(value.to_owned()),
+            PresentationRestrictionValue::Pattern(value) => Claim::String(value.to_owned()),
+            PresentationRestrictionValue::ArrayOfValues(values) => Claim::Array(
+                values
+                    .iter()
+                    .map(|set| {
+                        Claim::Array(set.iter().map(|v| Claim::String(v.to_owned())).collect())
+                    })
+                    .collect(),
+            ),
         }
     }
 }

@@ -14,7 +14,7 @@ use openid4vp::core::error::Error as SpruceErr;
 use serde::{Deserialize, Serialize};
 use snafu::{IntoError, Snafu};
 use std::collections::HashMap;
-use std::fmt::{Debug, Display, Formatter};
+use std::fmt::Debug;
 
 pub const VP_TOKEN: &str = "vp_token";
 pub const ID_TOKEN: &str = "id_token";
@@ -30,34 +30,16 @@ pub type TransactionDataResponse = openid4vp::core::response::TransactionDataRes
 #[derive(Debug, Serialize, Deserialize)]
 pub enum CredentialsFindResult {
     Credentials(Vec<CredentialEntry>),
-    Reasons(Vec<Vec<FindVCsFailReason>>),
+    Reason(FindVCsFailReason),
 }
 
-#[derive(Debug, PartialEq, Serialize, Deserialize, Eq, Hash)]
-pub struct FindVCsFailReason {
-    pub paths: Vec<String>,
-    pub type_: Option<String>,
-    pub value: Option<String>,
-}
+pub type ClaimPath = Vec<String>;
 
-impl FindVCsFailReason {
-    pub fn new(paths: Vec<String>, type_: Option<String>, value: Option<String>) -> Self {
-        Self {
-            paths,
-            type_,
-            value,
-        }
-    }
-}
-
-impl Display for FindVCsFailReason {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "paths: {:?}, type: {:#?}, value: {:#?}",
-            self.paths, self.type_, self.value
-        )
-    }
+#[derive(Debug, Serialize, Deserialize, Eq, Hash, PartialEq)]
+pub enum FindVCsFailReason {
+    Paths(Vec<ClaimPath>),
+    TypesNotMatched,
+    CredentialsNotFound,
 }
 
 pub type ClientMetadata = openid4vp::core::authorization_request::parameters::ClientMetadata;
