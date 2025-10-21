@@ -15,17 +15,24 @@ import kotlin.test.assertNull
 val presentationDefinitionJson = Json.parseToJsonElement(
     """{"presentation_definition": {"id":"1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed","input_descriptors":[{"id":"Identity-1","constraints":{"fields":[{"path":["$.vct"],"filter":{"type":"string","const":"https://credentials.example.com/identity_credential"},"predicate":null,"intent_to_retain":false},{"path":["$.name"],"optional":true,"predicate":null,"intent_to_retain":false}]},"name":"Identity VC","purpose":"We want an identity","format":{"dc+sd-jwt":{"sd-jwt_alg_values":["ES256","EdDSA"],"kb-jwt_alg_values":["ES256","EdDSA"]}}}]}}"""
 ).toString()
-val presentationDefinitionJsonFake = Json.parseToJsonElement(
+val presentationDefinitionJsonWithFakeVct = Json.parseToJsonElement(
     """{"presentation_definition": {"id":"1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed","input_descriptors":[{"id":"Identity-1","constraints":{"fields":[{"path":["$.vct"],"filter":{"type":"string","const":"https://credentials.example.com/identity_credential_1"},"predicate":null,"intent_to_retain":false},{"path":["$.name"],"optional":true,"predicate":null,"intent_to_retain":false}]},"name":"Identity VC","purpose":"We want an identity","format":{"dc+sd-jwt":{"sd-jwt_alg_values":["ES256","EdDSA"],"kb-jwt_alg_values":["ES256","EdDSA"]}}}]}}"""
 ).toString()
+val presentationDefinitionJsonWithFakeConstraints = Json.parseToJsonElement(
+    """{"presentation_definition": {"id":"1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed","input_descriptors":[{"id":"Identity-1","constraints":{"fields":[{"path":["$.vct"],"filter":{"type":"string","const":"https://credentials.example.com/identity_credential"},"predicate":null,"intent_to_retain":false},{"path":["$.first_name"],"optional":false,"predicate":null,"intent_to_retain":false},{"path":["$.last_name", "$.surname"],"optional":false,"predicate":null,"intent_to_retain":false}]},"name":"Identity VC","purpose":"We want an identity","format":{"dc+sd-jwt":{"sd-jwt_alg_values":["ES256","EdDSA"],"kb-jwt_alg_values":["ES256","EdDSA"]}}}]}}"""
+).toString()
 
-val clientMetadata = Json.parseToJsonElement("""{"vp_formats_supported":{"dc+sd-jwt":{"sd-jwt_alg_values":["EdDSA","ES256"],"kb-jwt_alg_values":["EdDSA","ES256"]}},"jwks":{"keys":[{"use":"enc","alg":"ES256","kid":"5QsdgXUGuH:P256:","kty":"EC","crv":"P-256","x":"Cb_uJhiPN7H9KXdQN4PQN0uWC6LmEwIz4j03wX1rBAw","y":"yEZ8-uX5hGhCuN9NrIz4ShNH0T1y4fQts5siiCH0Q7w"}]},"encrypted_response_enc_values_supported":["A128GCM","A128CBC-HS256"],"subject_syntax_types_supported":["did:key"]}""").toString()
-val clientMetadataWithDirectPostJwt = Json.parseToJsonElement("""{"vp_formats_supported":{"dc+sd-jwt":{"alg":["EdDSA","ES256"]}},"jwks":{"keys":[{"kid":"FxPNoKrsrw:P256:","kty":"EC","crv":"P-256","x":"M0zxcPWnayCVSiSlxLE-p9IP6bJbkCPbghap2Q-GKFY","y":"bYjdxpD5aJnMd1hnrBV8FxbJbXpcEUgogy2c265owHA","alg":"ES256"}]}}""").toString()
+val clientMetadata =
+    Json.parseToJsonElement("""{"vp_formats_supported":{"dc+sd-jwt":{"sd-jwt_alg_values":["EdDSA","ES256"],"kb-jwt_alg_values":["EdDSA","ES256"]}},"jwks":{"keys":[{"use":"enc","alg":"ES256","kid":"5QsdgXUGuH:P256:","kty":"EC","crv":"P-256","x":"Cb_uJhiPN7H9KXdQN4PQN0uWC6LmEwIz4j03wX1rBAw","y":"yEZ8-uX5hGhCuN9NrIz4ShNH0T1y4fQts5siiCH0Q7w"}]},"encrypted_response_enc_values_supported":["A128GCM","A128CBC-HS256"],"subject_syntax_types_supported":["did:key"]}""")
+        .toString()
+val clientMetadataWithDirectPostJwt =
+    Json.parseToJsonElement("""{"vp_formats_supported":{"dc+sd-jwt":{"alg":["EdDSA","ES256"]}},"jwks":{"keys":[{"kid":"FxPNoKrsrw:P256:","kty":"EC","crv":"P-256","x":"M0zxcPWnayCVSiSlxLE-p9IP6bJbkCPbghap2Q-GKFY","y":"bYjdxpD5aJnMd1hnrBV8FxbJbXpcEUgogy2c265owHA","alg":"ES256"}]}}""")
+        .toString()
 const val CLIENT_ID = "did:key:zDnaekPT1E2PbmXnD7ZHu4My3jCykZUyCVv9FSN5dR6jQrGDo"
 const val REQUEST_URI =
     "openid4vp://?client_id=decentralized_identifier%3Adid%3Akey%3AzDnaeQpNYQD6h18VnagyA1Xbey9hFKA1j5cyhqPHGfaq9txmN&request_uri=http%3A%2F%2Flocalhost%3A9001"
- const val REQUEST_URI_FOR_TRANSACTION_DATA =
-     "openid4vp://?client_id=decentralized_identifier%3Adid%3Akey%3AzDnaeQpNYQD6h18VnagyA1Xbey9hFKA1j5cyhqPHGfaq9txmN&request_uri=http%3A%2F%2Flocalhost%3A9005"
+const val REQUEST_URI_FOR_TRANSACTION_DATA =
+    "openid4vp://?client_id=decentralized_identifier%3Adid%3Akey%3AzDnaeQpNYQD6h18VnagyA1Xbey9hFKA1j5cyhqPHGfaq9txmN&request_uri=http%3A%2F%2Flocalhost%3A9005"
 val authRequest = AuthorizationRequest(
     clientId = "decentralized_identifier:did:key:zDnaeQpNYQD6h18VnagyA1Xbey9hFKA1j5cyhqPHGfaq9txmN",
     clientMetadata = clientMetadata,
@@ -35,11 +42,13 @@ val authRequest = AuthorizationRequest(
     responseUri = "http://localhost:9001/response",
     nonce = "F3vbCyXV4Bkj-RConeiG1iKdA5XuaEHHaycOICINu2M",
     state = "1d8b0d93-86e8-4135-87d4-524bb0500bf3",
-    transactionData = listOf(TransactionDataItem(
-                                  type = "type1",
-                                  credentialIds = listOf("Identity-1"),
-                                  transactionDataHashesAlg = listOf("sha-256")
-                              ))
+    transactionData = listOf(
+        TransactionDataItem(
+            type = "type1",
+            credentialIds = listOf("Identity-1"),
+            transactionDataHashesAlg = listOf("sha-256")
+        )
+    )
 )
 
 val authRequestWithDirectPostJwt = AuthorizationRequest(
@@ -53,10 +62,21 @@ val authRequestWithDirectPostJwt = AuthorizationRequest(
     state = "eea7b48e-1866-41b4-beae-03b95d41670c",
     transactionData = null,
 )
-val authRequestFake = AuthorizationRequest(
+val authRequestWithFakeVct = AuthorizationRequest(
     clientId = "decentralized_identifier:did:key:zDnaeeTG88wpPhMzuDRvLRTTyNMyJip5e6TLmsjyvPiSYUFk7",
     clientMetadata = clientMetadata,
-    presentationDefinition = presentationDefinitionJsonFake,
+    presentationDefinition = presentationDefinitionJsonWithFakeVct,
+    responseType = "vp_token",
+    responseMode = "direct_post",
+    responseUri = "http://localhost:9001/response",
+    nonce = "YztANglRdmP4ChxsrcS8UcGYoPWwkgiUImkBrQmgWkU",
+    state = "eea7b48e-1866-41b4-beae-03b95d41670c",
+    transactionData = null,
+)
+val authRequestWithFakeConstraints = AuthorizationRequest(
+    clientId = "decentralized_identifier:did:key:zDnaeeTG88wpPhMzuDRvLRTTyNMyJip5e6TLmsjyvPiSYUFk7",
+    clientMetadata = clientMetadata,
+    presentationDefinition = presentationDefinitionJsonWithFakeConstraints,
     responseType = "vp_token",
     responseMode = "direct_post",
     responseUri = "http://localhost:9001/response",
@@ -93,8 +113,10 @@ class HolderVPTest {
                 val credential = Credential(format = VcFormat.SD_JWT_VC, payload = VC)
                 val metadata = resolveMetadata(credential, didAndKeyMetadata.keyMetadata)
 
-                holder = Oid4vpHolderBuilder(inMemKms, inMemVault, CLIENT_ID, ReqwestHttpClient.insecure(),
-                    MockNonceHandler("some_nonce")).build()
+                holder = Oid4vpHolderBuilder(
+                    inMemKms, inMemVault, CLIENT_ID, ReqwestHttpClient.insecure(),
+                    MockNonceHandler("some_nonce")
+                ).build()
 
                 inMemVault.storeCredential(credential, metadata)
             }
@@ -121,15 +143,18 @@ class HolderVPTest {
 
         val authorizationRequest = holder.getAuthorizationRequest(REQUEST_URI_FOR_TRANSACTION_DATA)
 
-        val transactionData = listOf(TransactionDataItem(
-            type = "type1",
-            credentialIds = listOf("Identity-1"),
-            transactionDataHashesAlg = listOf("sha-256")
-        ))
+        val transactionData = listOf(
+            TransactionDataItem(
+                type = "type1",
+                credentialIds = listOf("Identity-1"),
+                transactionDataHashesAlg = listOf("sha-256")
+            )
+        )
         assert(transactionData == authorizationRequest.transactionData)
         mockServer.shutdown()
 
     }
+
     @Test
     fun testGetAuthorizationRequest() = runTest {
         mockServer.enqueue(
@@ -156,7 +181,7 @@ class HolderVPTest {
         )
         holder.getAuthorizationRequest("openid4vp://?client_id=decentralized_identifier:did:key:zDnaeQpNYQD6h18VnagyA1Xbey9hFKA1j5cyhqPHGfaq9txmN&request_uri_method=post&request_uri=http://localhost:9002/request")
         val request = mockServer.takeRequest()
-        val body = request.body.readUtf8();
+        val body = request.body.readUtf8()
         assert(request.method.equals("POST"))
         assert(body.contains("some_nonce"))
         mockServer.shutdown()
@@ -211,15 +236,14 @@ class HolderVPTest {
 
         val credentialsMapping = holder.findVcsForPresentation(authRequest)
         val credentials = credentialsMapping.map { (key, findVCsResult) ->
-            val data = findVCsResult.data
-            when (data) {
+            when (val data = findVCsResult.data) {
                 is CredentialsSearchResult.Credentials -> {
                     val credential = data.v1.firstOrNull()
                         ?: throw IllegalStateException("No credentials found for key: $key")
                     key to credential
                 }
 
-                is CredentialsSearchResult.Reasons -> {
+                is CredentialsSearchResult.Reason -> {
                     throw IllegalStateException("Find vcs for presentation returned reasons of failure: $data")
                 }
             }
@@ -243,15 +267,14 @@ class HolderVPTest {
 
         val credentialsMapping = holder.findVcsForPresentation(authRequest)
         credentialsMapping.map { (key, findVCsResult) ->
-            val data = findVCsResult.data
-            when (data) {
+            when (val data = findVCsResult.data) {
                 is CredentialsSearchResult.Credentials -> {
                     val credential = data.v1.firstOrNull()
                         ?: throw IllegalStateException("No credentials found for key: $key")
                     key to credential
                 }
 
-                is CredentialsSearchResult.Reasons -> {
+                is CredentialsSearchResult.Reason -> {
                     throw IllegalStateException("Find vcs for presentation returned reasons of failure: $data")
                 }
             }
@@ -268,32 +291,98 @@ class HolderVPTest {
                 .setHeader("content-type", "text/plain")
         )
 
-        val credentialsMapping = holder.findVcsForPresentation(authRequestFake)
+        val credentialsMapping = holder.findVcsForPresentation(authRequestWithFakeConstraints)
 
         credentialsMapping.map { (key, findVCsResult) ->
-            val data = findVCsResult.data
-            when (data) {
+            when (val data = findVCsResult.data) {
                 is CredentialsSearchResult.Credentials -> {
                     throw IllegalStateException("Find vcs for presentation returned credentials instead of reasons of failure: $key -> $data")
                 }
 
-                is CredentialsSearchResult.Reasons -> {
-                    if (data.v1.size != 1) {
-                        throw IllegalStateException("Expected exactly 1 reason group for key: $key, but got ${data.v1.size}")
-                    }
+                is CredentialsSearchResult.Reason -> {
+                    when (data.v1) {
+                        is FindVCsFailReason.Paths -> {
+                            assert(data.v1.v1 == listOf(listOf("$.first_name"), listOf("$.last_name", "$.surname")))
+                        }
 
-                    val reasonGroup = data.v1[0]
-                    if (reasonGroup.size != 1) {
-                        throw IllegalStateException("Expected exactly 1 reason in the group for key: $key, but got ${reasonGroup.size}")
-                    }
+                        else -> {
+                            throw IllegalStateException("Find vcs for presentation returned wrong reason: $data")
 
-                    val reason = reasonGroup[0]
-                    if (reason.paths != listOf("$.vct") || reason.type != "const") {
-                        throw IllegalStateException(
-                            "Unexpected reason for key: $key\n" +
-                            "Expected paths = [\"$.vct\"], type = \"const\"\n" +
-                            "But got: paths = ${reason.paths}, type = ${reason.type}"
-                        )
+                        }
+                    }
+                }
+
+            }
+        }
+    }
+
+    @Test
+    fun findVcsForPresentationReturnsReasonTypesNotMatched() = runTest {
+        mockServer.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setBody("")
+                .setHeader("content-type", "text/plain")
+        )
+
+        val credentialsMapping = holder.findVcsForPresentation(authRequestWithFakeVct)
+
+        credentialsMapping.map { (key, findVCsResult) ->
+            when (val data = findVCsResult.data) {
+                is CredentialsSearchResult.Credentials -> {
+                    throw IllegalStateException("Find vcs for presentation returned credentials instead of reasons of failure: $key -> $data")
+                }
+
+                is CredentialsSearchResult.Reason -> {
+                    when (data.v1) {
+                        is FindVCsFailReason.TypesNotMatched -> {
+                        }
+
+                        else -> {
+                            throw IllegalStateException("Find vcs for presentation should return TypesNotMatched but returned wrong reason: $data")
+
+                        }
+                    }
+                }
+
+            }
+        }
+    }
+
+    @Test
+    fun findVcsForPresentationReturnsReasonCredentialsNotFoundDueToExpiredStatus() = runTest {
+        val inMemKms = InMemKms()
+        val inMemVault = InMemVault()
+
+        val holder = Oid4vpHolderBuilder(
+            inMemKms, inMemVault, CLIENT_ID, ReqwestHttpClient.insecure(),
+            MockNonceHandler("some_nonce")
+        ).build()
+
+        mockServer.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setBody("")
+                .setHeader("content-type", "text/plain")
+        )
+
+        val credentialsMapping = holder.findVcsForPresentation(authRequestWithFakeVct)
+
+        credentialsMapping.map { (key, findVCsResult) ->
+            when (val data = findVCsResult.data) {
+                is CredentialsSearchResult.Credentials -> {
+                    throw IllegalStateException("Find vcs for presentation returned credentials instead of reasons of failure: $key -> $data")
+                }
+
+                is CredentialsSearchResult.Reason -> {
+                    when (data.v1) {
+                        is FindVCsFailReason.CredentialsNotFound -> {
+                        }
+
+                        else -> {
+                            throw IllegalStateException("Find vcs for presentation should return CredentialsNotFound but returned wrong reason: $data")
+
+                        }
                     }
                 }
 

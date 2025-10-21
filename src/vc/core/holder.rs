@@ -29,7 +29,7 @@ use crate::vc::formats::{API, VerifyOptions};
 use crate::vc::oid4vp::{CredentialsFindResult, FindVCsFailReason};
 use crate::vc::pop::ProofOfPossession;
 use crate::vc::pop::jwt_pop::JwtProofOfPossession;
-use crate::vc::presentation_exchange::validate_credential;
+use crate::vc::presentation_exchange::{is_valid_vc_type, validate_credential};
 use crate::vc::{Credential, CredentialMetadata, HasVCFormat, Presentation, pop};
 use crate::{kms, vault};
 
@@ -205,7 +205,7 @@ where
             self.vault.get_credentials(None).await.context(VaultSnafu)?
         };
 
-        let mut reasons: HashSet<Vec<FindVCsFailReason>> = HashSet::new();
+        let mut reasons: HashSet<FindVCsFailReason> = HashSet::new();
         let mut credentials_result = vec![];
         let mut cached_status_list = HashMap::new();
         for entry in credentials {
@@ -225,6 +225,19 @@ where
                 continue;
             }
 
+            let is_valid_vc_type = is_valid_vc_type(&entry.credential, presentation_input)
+                .map_err(|e| {
+                    ClaimsDidNotPassFilteringSnafu {
+                        details: e.to_string(),
+                    }
+                    .build()
+                })?;
+
+            if !is_valid_vc_type {
+                reasons.insert(FindVCsFailReason::TypesNotMatched);
+                continue;
+            }
+
             let result =
                 validate_credential(&entry.credential, presentation_input).map_err(|e| {
                     ClaimsDidNotPassFilteringSnafu {
@@ -233,7 +246,7 @@ where
                     .build()
                 })?;
             if let Some(inner_reasons) = result {
-                reasons.insert(inner_reasons);
+                reasons.insert(FindVCsFailReason::Paths(inner_reasons));
             } else {
                 credentials_result.push(entry);
             }
@@ -244,28 +257,33 @@ where
         }
 
         if reasons.is_empty() {
-            let reasons = presentation_input
-                .restrictions
-                .iter()
-                .map(|pr| {
-                    FindVCsFailReason::new(
-                        pr.fields.to_owned(),
-                        pr.value.to_owned().map(|v| v.get_type()),
-                        pr.value.to_owned().map(|v| v.get_value()),
-                    )
-                })
-                .collect();
-
-            return Ok(CredentialsFindResult::Reasons(vec![reasons]));
+            return Ok(CredentialsFindResult::Reason(
+                FindVCsFailReason::CredentialsNotFound,
+            ));
         }
 
-        let mut result = reasons
+        let mut claim_paths = reasons
             .into_iter()
-            .map(|set| set.into_iter().collect())
-            .collect::<Vec<Vec<FindVCsFailReason>>>();
-        result.sort_by_key(|a| a.len());
+            .filter_map(|reason| {
+                if let FindVCsFailReason::Paths(paths) = reason {
+                    Some(paths)
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>();
 
-        Ok(CredentialsFindResult::Reasons(result))
+        if claim_paths.is_empty() {
+            return Ok(CredentialsFindResult::Reason(
+                FindVCsFailReason::TypesNotMatched,
+            ));
+        }
+
+        claim_paths.sort_by_key(|a| a.len());
+
+        Ok(CredentialsFindResult::Reason(FindVCsFailReason::Paths(
+            claim_paths[0].to_owned(),
+        )))
     }
     #[instrument(level = Level::TRACE, skip(self), err(), ret())]
     async fn create_presentation(
@@ -683,14 +701,11 @@ mod tests {
 
         let creds = holder.find_vcs_for_presentation(&input).await.unwrap();
 
-        let CredentialsFindResult::Reasons(reasons) = creds else {
+        let CredentialsFindResult::Reason(FindVCsFailReason::TypesNotMatched) = creds else {
             panic!(
-                "Wrong return type from holder.find_vcs_for_presentation. Should be empty credentials, thus - reasons of not passing filtering"
+                "Wrong return type from holder.find_vcs_for_presentation. Should be mismatched credentials",
             )
         };
-
-        assert_eq!(reasons.len(), 1);
-        assert_eq!(reasons[0].len(), 1);
     }
 
     #[rstest]
@@ -755,23 +770,17 @@ mod tests {
                 }
                 assert_eq!(credentials.len(), 1);
             }
-            CredentialsFindResult::Reasons(reasons) => {
-                if revoke {
-                    assert_eq!(reasons.len(), 1);
-                    assert_eq!(reasons[0].len(), input.restrictions.len());
-
-                    for restriction in input.restrictions {
-                        assert!(reasons[0].contains(&FindVCsFailReason::new(
-                            restriction.to_owned().fields,
-                            restriction.to_owned().value.map(|v| v.get_type()),
-                            restriction.to_owned().value.map(|v| v.get_value()),
-                        )));
-                    }
-                } else {
+            CredentialsFindResult::Reason(FindVCsFailReason::CredentialsNotFound) => {
+                if !revoke {
                     panic!(
                         "Wrong return type from holder.find_vcs_for_presentation. Should be non empty credentials"
                     )
                 }
+            }
+            _ => {
+                panic!(
+                    "Wrong return type from holder.find_vcs_for_presentation. Should be reason with 'No valid credentials found'",
+                )
             }
         }
     }
@@ -813,33 +822,46 @@ mod tests {
                 }
                 assert_eq!(credentials.len(), 1);
             }
-            CredentialsFindResult::Reasons(reasons) => {
-                if expire {
-                    assert_eq!(reasons.len(), 1);
-                    assert_eq!(reasons[0].len(), input.restrictions.len());
-
-                    for restriction in input.restrictions {
-                        assert!(reasons[0].contains(&FindVCsFailReason::new(
-                            restriction.to_owned().fields,
-                            restriction.to_owned().value.map(|v| v.get_type()),
-                            restriction.to_owned().value.map(|v| v.get_value()),
-                        )));
-                    }
-                } else {
+            CredentialsFindResult::Reason(FindVCsFailReason::CredentialsNotFound) => {
+                if !expire {
                     panic!(
                         "Wrong return type from holder.find_vcs_for_presentation. Should be non empty credentials"
                     )
                 }
             }
+            _ => {
+                panic!(
+                    "Wrong return type from holder.find_vcs_for_presentation. Should be reason with 'No valid credentials found'"
+                )
+            }
         }
     }
 
     #[tokio::test]
-    async fn holder_find_vcs_for_presentation_returns_reasons() {
-        let case_1 = CredTestCase::sd_jwt();
+    async fn holder_find_vcs_for_presentation_returns_paths() {
+        let case_1 = CredTestCase {
+            protocol_data: Some(CredentialDefinitionData::SdJwt {
+                vct: "https://issuer.net/cred_schema".to_owned(),
+                disclosures: vec!["$.givenName".to_owned(), "$.familyName".to_owned()],
+                lifetime: Duration::days(5 * 365),
+            }),
+            claims: json!({
+                "givenNameFake": "John",
+                "familyNameFake": "Doe",
+                "birthDate": "1978-7-17",
+                "children": {
+                    "givenName": "John",
+                    "familyName": "Wick",
+                    "birthDate": "1999-7-10",
+                }
+            })
+            .try_into()
+            .unwrap(),
+            ..CredTestCase::sd_jwt()
+        };
         let case_2 = CredTestCase {
             protocol_data: Some(CredentialDefinitionData::SdJwt {
-                vct: "https://issuer.net/cred_schema_1".to_owned(),
+                vct: "https://issuer.net/cred_schema".to_owned(),
                 disclosures: vec!["$.givenName".to_owned(), "$.familyName".to_owned()],
                 lifetime: Duration::days(5 * 365),
             }),
@@ -855,6 +877,56 @@ mod tests {
             })
             .try_into()
             .unwrap(),
+            ..CredTestCase::sd_jwt()
+        };
+        let kms = LocalKms::new();
+        let vault = InMemVault::new();
+
+        let (entry1, did_url1) = case_1.generate_vc(&kms, None).await;
+        let (entry2, did_url2) = case_2.generate_vc(&kms, None).await;
+
+        let ids = vault
+            .store_entries(vec![
+                (&entry1, did_url1.as_str()),
+                (&entry2, did_url2.as_str()),
+            ])
+            .await
+            .unwrap();
+
+        let holder = holder_service(kms, vault);
+
+        let case_for_input = CredTestCase {
+            type_: "https://issuer.net/cred_schema_2".to_string(),
+            ..case_1.clone()
+        };
+
+        let input = case_for_input.create_presentation_input_with_fake_constraints();
+
+        let creds = holder.find_vcs_for_presentation(&input).await.unwrap();
+
+        let CredentialsFindResult::Reason(FindVCsFailReason::Paths(claim_paths)) = creds else {
+            panic!(
+                "Wrong return type from holder.find_vcs_for_presentation. Should reasons of not passing filtering",
+            )
+        };
+
+        assert_eq!(claim_paths.len(), 1);
+        assert_eq!(claim_paths.first().unwrap().len(), 2);
+        assert_eq!(
+            claim_paths.first().unwrap(),
+            &vec!["$.birthDate", "$.children.birthDate"]
+        );
+    }
+
+    #[tokio::test]
+    async fn holder_find_vcs_for_presentation_returns_types_not_matched() {
+        let case_1 = CredTestCase::sd_jwt();
+        let case_2 = CredTestCase {
+            protocol_data: Some(CredentialDefinitionData::SdJwt {
+                vct: "https://issuer.net/cred_schema_1".to_owned(),
+                disclosures: vec!["$.givenName".to_owned(), "$.familyName".to_owned()],
+                lifetime: Duration::days(5 * 365),
+            }),
             ..case_1.clone()
         };
         let kms = LocalKms::new();
@@ -882,28 +954,13 @@ mod tests {
 
         let creds = holder.find_vcs_for_presentation(&input).await.unwrap();
 
-        let CredentialsFindResult::Reasons(reasons) = creds else {
+        let CredentialsFindResult::Reason(FindVCsFailReason::TypesNotMatched) = creds else {
             panic!(
                 "Wrong return type from holder.find_vcs_for_presentation. Should reasons of not passing filtering",
             )
         };
-
-        assert_eq!(reasons.len(), 2);
-        assert_eq!(reasons[0].len(), 1);
-        assert_eq!(reasons[1].len(), 2);
-
-        let input = case_1.create_presentation_input_with_wrong_vct();
-
-        let creds = holder.find_vcs_for_presentation(&input).await.unwrap();
-
-        let CredentialsFindResult::Reasons(reasons) = creds else {
-            panic!(
-                "Wrong return type from holder.find_vcs_for_presentation. Should reasons of not passing filtering",
-            )
-        };
-
-        assert_eq!(reasons.len(), 2);
     }
+
     #[tokio::test]
     async fn holder_find_credential_returns_reason_when_no_creds_found_in_vault() {
         let case = CredTestCase::sd_jwt();
@@ -919,90 +976,11 @@ mod tests {
 
         let creds = holder.find_vcs_for_presentation(&input).await.unwrap();
 
-        let CredentialsFindResult::Reasons(reasons) = creds else {
+        let CredentialsFindResult::Reason(FindVCsFailReason::CredentialsNotFound) = creds else {
             panic!(
-                "Wrong return type from holder.find_vcs_for_presentation. Should reasons of not passing filtering",
+                "Wrong return type from holder.find_vcs_for_presentation. Should reasons with CredentialNotFound",
             )
         };
-
-        assert_eq!(reasons.len(), 1);
-        assert_eq!(reasons.first().unwrap().len(), 3);
-    }
-    #[tokio::test]
-    async fn holder_find_vcs_for_presentation_removes_duplicates() {
-        let case_1 = CredTestCase::sd_jwt();
-        let case_2 = CredTestCase {
-            protocol_data: Some(CredentialDefinitionData::SdJwt {
-                vct: "https://issuer.net/cred_schema_1".to_owned(),
-                disclosures: vec!["$.givenName".to_owned(), "$.familyName".to_owned()],
-                lifetime: Duration::days(5 * 365),
-            }),
-            claims: json!({
-                "givenName": "John",
-                "familyName": "Doe",
-                "birthDate": "1978-7-17",
-                "children": {
-                    "givenName": "John",
-                    "familyName": "Wick",
-                    "birthDate": "1999-7-10",
-                }
-            })
-            .try_into()
-            .unwrap(),
-            ..case_1.clone()
-        };
-        let kms = LocalKms::new();
-        let vault = InMemVault::new();
-
-        let (entry1, did_url1) = case_1.generate_vc(&kms, None).await;
-        let (entry2, did_url2) = case_2.generate_vc(&kms, None).await;
-
-        let ids = vault
-            .store_entries(vec![
-                (&entry1, did_url1.as_str()),
-                (&entry2, did_url2.as_str()),
-                (&entry1, did_url1.as_str()),
-                (&entry2, did_url2.as_str()),
-                (&entry1, did_url1.as_str()),
-                (&entry2, did_url2.as_str()),
-                (&entry1, did_url1.as_str()),
-                (&entry2, did_url2.as_str()),
-            ])
-            .await
-            .unwrap();
-
-        let holder = holder_service(kms, vault);
-
-        let case_for_input = CredTestCase {
-            type_: "https://issuer.net/cred_schema_2".to_string(),
-            ..case_1.clone()
-        };
-
-        let input = case_for_input.create_presentation_input();
-
-        let creds = holder.find_vcs_for_presentation(&input).await.unwrap();
-
-        let CredentialsFindResult::Reasons(reasons) = creds else {
-            panic!(
-                "Wrong return type from holder.find_vcs_for_presentation. Should reasons of not passing filtering",
-            )
-        };
-
-        assert_eq!(reasons.len(), 2);
-        assert_eq!(reasons[0].len(), 1);
-        assert_eq!(reasons[1].len(), 2);
-
-        let input = case_1.create_presentation_input_with_wrong_vct();
-
-        let creds = holder.find_vcs_for_presentation(&input).await.unwrap();
-
-        let CredentialsFindResult::Reasons(reasons) = creds else {
-            panic!(
-                "Wrong return type from holder.find_vcs_for_presentation. Should reasons of not passing filtering",
-            )
-        };
-
-        assert_eq!(reasons.len(), 2);
     }
 
     #[rstest]

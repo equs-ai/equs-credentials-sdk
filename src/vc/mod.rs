@@ -32,6 +32,7 @@ pub mod oid4vp;
 
 use crate::did::universal::UniversalResolver;
 use crate::http::HttpClient;
+use crate::vc::core::PresentationRestrictionValue;
 use crate::vc::formats::json_ld_vc::JsonLdAPI;
 use crate::vc::formats::sd_jwt_vc::SdJwtAPI;
 pub use formats::HasClaims;
@@ -222,6 +223,16 @@ impl HasClaims<Claims> for Credential {
         match &self {
             Credential::SdJwt(vc) => vc.parse_claims(),
             Credential::LdpVc(vc) => vc.parse_claims(),
+            _ => FormatNotSupportedSnafu {
+                format: self.format().to_string(),
+            }
+            .fail(),
+        }
+    }
+    fn has_type(&self, type_: PresentationRestrictionValue) -> formats::Result<bool> {
+        match &self {
+            Credential::SdJwt(vc) => vc.has_type(type_),
+            Credential::LdpVc(vc) => vc.has_type(type_),
             _ => FormatNotSupportedSnafu {
                 format: self.format().to_string(),
             }

@@ -2,7 +2,7 @@ use crate::crypto::{Alg, Key, Signer, SigningOptions};
 use crate::did::universal::UniversalResolver;
 use crate::did::{DIDResolver, DIDURL};
 use crate::vc::claims::{Claim, Claims};
-use crate::vc::core::{HolderBinder, PresentationInput};
+use crate::vc::core::{HolderBinder, PresentationInput, PresentationRestrictionValue};
 use crate::vc::formats::{
     API, ClaimsSnafu, CredentialCreationSnafu, CryptoSuiteCreationSnafu, DIDSnafu,
     GetDateTimeClaim, HasClaims, HasCredential, IriBufParsingSnafu, IriRefParsingSnafu, IsExpired,
@@ -183,6 +183,31 @@ impl HasClaims<Claims> for VC {
             .context(ClaimsSnafu)?;
 
         Ok(claims)
+    }
+
+    #[instrument(level = Level::TRACE, ret)]
+    fn has_type(&self, type_: PresentationRestrictionValue) -> Result<bool> {
+        let claims = self.parse_claims()?;
+
+        let mut has_type = false;
+        if let Some(Claim::Array(claims)) = claims.get("$.type") {
+            for claim in claims {
+                let value = serde_json::to_value(claim).context(JsonSnafu)?;
+                let result = type_
+                    .validate_claim_for_string_or_pattern(value)
+                    .map_err(|e| {
+                        ParsingSnafu {
+                            details: e.to_string(),
+                        }
+                        .build()
+                    })?;
+                if result {
+                    has_type = true;
+                    break;
+                }
+            }
+        }
+        Ok(has_type)
     }
 }
 

@@ -25,11 +25,13 @@ use crate::utils;
 use crate::utils::b64;
 use crate::utils::serde::Helpers;
 use crate::utils::serde::get_time_based_claim;
-use crate::vc::core::{HolderBinder, PresentationInput, PresentationRestriction};
+use crate::vc::core::{
+    HolderBinder, PresentationInput, PresentationRestriction, PresentationRestrictionValue,
+};
 use crate::vc::formats::vc::SD_JWT_VC;
 use crate::vc::formats::{
     API, ClaimsSnafu, CredentialCreationSnafu, DIDSnafu, HasClaims, HasCredential, IsExpired,
-    IsValid, JWSSnafu, KeyTypeNotSupportedSnafu, ParsingSnafu, PresentationSnafu,
+    IsValid, JWSSnafu, JsonSnafu, KeyTypeNotSupportedSnafu, ParsingSnafu, PresentationSnafu,
     ProofValidationSnafu, SigningSnafu, StatusCheckSnafu, VerifyOptions, VerifyingSnafu,
 };
 use crate::vc::formats::{GetDateTimeClaim, Result};
@@ -166,6 +168,26 @@ impl HasClaims<Claims> for Credential {
 
         let claims = value.try_into().context(ClaimsSnafu)?;
         Ok(claims)
+    }
+
+    #[instrument(level = Level::TRACE, skip_all, err(), ret())]
+    fn has_type(&self, type_: PresentationRestrictionValue) -> Result<bool> {
+        let claims = self.parse_claims()?;
+
+        if let Some(Claim::String(vct)) = claims.get("vct") {
+            let vct_value = serde_json::to_value(vct).context(JsonSnafu)?;
+            let result = type_
+                .validate_claim_for_string_or_pattern(vct_value)
+                .map_err(|e| {
+                    ParsingSnafu {
+                        details: e.to_string(),
+                    }
+                    .build()
+                })?;
+            Ok(result)
+        } else {
+            Ok(false)
+        }
     }
 }
 

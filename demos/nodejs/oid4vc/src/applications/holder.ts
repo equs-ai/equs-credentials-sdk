@@ -167,7 +167,11 @@ async function requestAndStoreCredential(
   const credential = credentialImmediate.credentials.pop()!;
   const credentialMetadata = await resolveMetadata(credential, keyMetadata);
 
-  await holder.verifyCredentialExtra(credential);
+  try {
+    await holder.verifyCredentialExtra(credential);
+  } catch (e) {
+    console.error(e);
+  }
   await holder.storeCredential(credential, credentialMetadata);
   return credentialResponse;
 }

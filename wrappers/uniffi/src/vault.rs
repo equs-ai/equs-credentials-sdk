@@ -18,17 +18,17 @@ pub struct CredentialEntry {
     pub id: String,
 }
 
-#[uniffi::remote(Record)]
-pub struct FindVCsFailReason {
-    paths: Vec<String>,
-    type_: Option<String>,
-    value: Option<String>,
+#[uniffi::remote(Enum)]
+pub enum FindVCsFailReason {
+    Paths(Vec<Vec<String>>),
+    TypesNotMatched,
+    CredentialsNotFound,
 }
 
 #[derive(uniffi::Enum)]
 pub enum CredentialsSearchResult {
     Credentials(Vec<CredentialEntry>),
-    Reasons(Vec<Vec<FindVCsFailReason>>),
+    Reason(FindVCsFailReason),
 }
 
 #[derive(uniffi::Record)]

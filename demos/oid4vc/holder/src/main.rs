@@ -486,8 +486,8 @@ fn collect_selected_cred_entries(
 
                 selected.insert(id.to_owned(), cred_entry.to_owned());
             }
-            CredentialsFindResult::Reasons(reasons) => {
-                panic!("Unexpected cred type reasons: {reasons:?}");
+            CredentialsFindResult::Reason(reason) => {
+                panic!("Unexpected cred type reasons: {reason:?}");
             }
         }
     }
@@ -512,8 +512,8 @@ fn get_claims_from_cred_entries(creds: &CredentialsFindResult) -> Vec<String> {
             }
             claims
         }
-        CredentialsFindResult::Reasons(reasons) => {
-            panic!("Expected credentials, found reasons: {:#?}", reasons)
+        CredentialsFindResult::Reason(reason) => {
+            panic!("Expected credentials, found reason: {:#?}", reason)
         }
     }
 }

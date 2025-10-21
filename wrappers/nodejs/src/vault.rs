@@ -11,7 +11,7 @@ use napi::Either;
 use napi::bindgen_prelude::Promise;
 use napi::threadsafe_function::{ErrorStrategy, ThreadsafeFunction};
 use napi_derive::napi;
-use serde_json::Value;
+use serde::{Deserialize, Serialize};
 
 /// An interface for stored {@link Credential} in {@link Vault} with some extra information.
 ///
@@ -49,33 +49,51 @@ impl TryFrom<JsCredentialEntry> for CredentialEntry {
     }
 }
 
-/// An interface for stored {@link Credential} in {@link Vault} with some extra information.
+#[napi(string_enum, js_name = "FindVCsFailReasonType")]
+#[derive(Serialize, Deserialize)]
+pub enum JsFindVCsFailReasonType {
+    Paths,
+    TypesNotMatched,
+    CredentialsNotFound,
+}
+
+/// Reasons why credentials did not pass filtering.
 ///
 /// @property {Array<string>} paths - of field to search for
-/// @property {string} type - type of field
-/// @property {string} value - value of field to be checked for with type
 #[napi(js_name = "FindVCsFailReason", object)]
+#[derive(Serialize, Deserialize)]
 pub struct JsFindVCsFailReason {
-    pub paths: Vec<String>,
-    pub type_: Option<Value>,
-    pub value: Option<Value>,
+    pub type_: JsFindVCsFailReasonType,
+    #[napi(ts_type = "Array<Array<string>> | null")]
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub paths: Option<Vec<Vec<String>>>,
 }
 
 impl TryFrom<FindVCsFailReason> for JsFindVCsFailReason {
     type Error = napi::Error;
 
     fn try_from(value: FindVCsFailReason) -> napi::Result<Self> {
-        Ok(JsFindVCsFailReason {
-            paths: value.paths,
-            type_: value.type_.map(Value::String).or_else(|| Some(Value::Null)),
-            value: value.value.map(Value::String).or_else(|| Some(Value::Null)),
-        })
+        let result = match value {
+            FindVCsFailReason::CredentialsNotFound => JsFindVCsFailReason {
+                type_: JsFindVCsFailReasonType::CredentialsNotFound,
+                paths: None,
+            },
+            FindVCsFailReason::TypesNotMatched => JsFindVCsFailReason {
+                type_: JsFindVCsFailReasonType::TypesNotMatched,
+                paths: None,
+            },
+            FindVCsFailReason::Paths(claim_paths) => JsFindVCsFailReason {
+                type_: JsFindVCsFailReasonType::Paths,
+                paths: Some(claim_paths),
+            },
+        };
+        Ok(result)
     }
 }
 
 #[napi(object, js_name = "CredentialsFindResult")]
 pub struct JsCredentialsFindResult {
-    pub data: Either<Vec<JsCredentialEntry>, Vec<Vec<JsFindVCsFailReason>>>,
+    pub data: Either<Vec<JsCredentialEntry>, JsFindVCsFailReason>,
 }
 
 impl TryFrom<CredentialsFindResult> for JsCredentialsFindResult {
@@ -89,17 +107,7 @@ impl TryFrom<CredentialsFindResult> for JsCredentialsFindResult {
                 }
                 Either::A(result)
             }
-            CredentialsFindResult::Reasons(reasons) => {
-                let mut result: Vec<Vec<JsFindVCsFailReason>> = vec![];
-                for reason in reasons {
-                    let mut inner_result: Vec<JsFindVCsFailReason> = vec![];
-                    for inner_reason in reason {
-                        inner_result.push(inner_reason.try_into()?);
-                    }
-                    result.push(inner_result);
-                }
-                Either::B(result)
-            }
+            CredentialsFindResult::Reason(reason) => Either::B(reason.try_into()?),
         };
 
         Ok(Self { data })

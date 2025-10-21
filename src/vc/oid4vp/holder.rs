@@ -1791,17 +1791,14 @@ mod tests {
                 let result = credential_mapping.get(&descriptor.id).unwrap();
                 match result {
                     CredentialsFindResult::Credentials(creds) => creds,
-                    CredentialsFindResult::Reasons(reasons) => {
-                        let reasons_str = reasons
-                            .iter()
-                            .flatten()
-                            .map(ToString::to_string)
-                            .collect::<Vec<_>>()
-                            .join(";\n");
+                    CredentialsFindResult::Reason(FindVCsFailReason::Paths(claim_paths)) => {
                         panic!(
-                            "Unexpected VcForPresentationResult type: reasons: {}",
-                            reasons_str
+                            "Unexpected VcForPresentationResult type: reasons: {:#?}",
+                            claim_paths
                         );
+                    }
+                    _ => {
+                        panic!("Unexpected VcForPresentationResult type: another type of reasons");
                     }
                 }
             })
@@ -1910,7 +1907,7 @@ mod tests {
                 CredentialsFindResult::Credentials(creds) => {
                     creds.first().unwrap().credential.clone()
                 }
-                CredentialsFindResult::Reasons(_) => {
+                CredentialsFindResult::Reason(_) => {
                     panic!("Unsuccessful retrieval of credentials is not expected");
                 }
             })
@@ -2013,9 +2010,12 @@ mod tests {
                         creds
                     )
                 }
-                CredentialsFindResult::Reasons(reasons) => {
-                    assert_eq!(reasons.len(), 1);
-                    assert_eq!(reasons.first().unwrap().len(), 1);
+                CredentialsFindResult::Reason(FindVCsFailReason::Paths(claim_paths)) => {
+                    assert_eq!(claim_paths.len(), 1);
+                    assert_eq!(claim_paths.first().unwrap().len(), 1);
+                }
+                _ => {
+                    panic!("Unexpected VcForPresentationResult type: another reason expected");
                 }
             }
         }
@@ -2061,8 +2061,11 @@ mod tests {
                         creds
                     )
                 }
-                CredentialsFindResult::Reasons(reasons) => {
-                    assert!(!reasons.is_empty());
+                CredentialsFindResult::Reason(FindVCsFailReason::Paths(claim_paths)) => {
+                    assert!(!claim_paths.is_empty());
+                }
+                _ => {
+                    panic!("Unexpected VcForPresentationResult type: another reason expected");
                 }
             }
         }
@@ -2096,17 +2099,9 @@ mod tests {
                         creds
                     )
                 }
-                CredentialsFindResult::Reasons(reasons) => {
-                    assert_eq!(reasons.len(), 1);
-                    assert_eq!(reasons[0].len(), 1);
-                    assert_eq!(
-                        reasons[0][0],
-                        FindVCsFailReason::new(
-                            vec!["$.vct".to_string()],
-                            Some("const".to_string()),
-                            Some("https://credentials.example.com/identity_credential".to_string())
-                        )
-                    );
+                CredentialsFindResult::Reason(FindVCsFailReason::TypesNotMatched) => {}
+                _ => {
+                    panic!("Unexpected VcForPresentationResult type: another reason expected");
                 }
             }
         }

@@ -111,29 +111,46 @@ impl TryFrom<JsCredentialEntry> for agent_sdk::vault::CredentialEntry {
         })
     }
 }
+
+#[derive(Debug, Serialize, Deserialize)]
+pub enum JsFindVCsFailReasonType {
+    Paths,
+    TypesNotMatched,
+    CredentialsNotFound,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct JsFindVCsFailReason {
-    pub paths: Vec<String>,
     #[serde(rename = "type")]
-    pub type_: Option<String>,
-    pub value: Option<String>,
+    pub type_: JsFindVCsFailReasonType,
+    pub paths: Option<Vec<Vec<String>>>,
 }
 
 impl TryFrom<FindVCsFailReason> for JsFindVCsFailReason {
     type Error = JsError;
 
     fn try_from(value: FindVCsFailReason) -> Result<Self, JsError> {
-        Ok(JsFindVCsFailReason {
-            paths: value.paths,
-            type_: value.type_,
-            value: value.value,
-        })
+        let result = match value {
+            FindVCsFailReason::CredentialsNotFound => JsFindVCsFailReason {
+                type_: JsFindVCsFailReasonType::CredentialsNotFound,
+                paths: None,
+            },
+            FindVCsFailReason::TypesNotMatched => JsFindVCsFailReason {
+                type_: JsFindVCsFailReasonType::TypesNotMatched,
+                paths: None,
+            },
+            FindVCsFailReason::Paths(claim_paths) => JsFindVCsFailReason {
+                type_: JsFindVCsFailReasonType::Paths,
+                paths: Some(claim_paths),
+            },
+        };
+        Ok(result)
     }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CredentialsFindResult {
-    data: Vec<Value>,
+    data: Value,
 }
 
 impl TryFrom<ASDKCredentialsSearchResult> for CredentialsFindResult {
@@ -145,21 +162,13 @@ impl TryFrom<ASDKCredentialsSearchResult> for CredentialsFindResult {
                 let mut result = vec![];
                 for cred in creds {
                     let item: JsCredentialEntry = cred.try_into()?;
-                    result.push(serde_json::to_value(item)?);
+                    result.push(item);
                 }
-                result
+                serde_json::to_value(result)?
             }
-            ASDKCredentialsSearchResult::Reasons(reasons) => {
-                let mut result = vec![];
-                for reason in reasons {
-                    let mut inner_result = vec![];
-                    for inner_reason in reason {
-                        let item: JsFindVCsFailReason = inner_reason.try_into()?;
-                        inner_result.push(serde_json::to_value(item)?);
-                    }
-                    result.push(serde_json::to_value(inner_result)?);
-                }
-                result
+            ASDKCredentialsSearchResult::Reason(reason) => {
+                let js_reason: JsFindVCsFailReason = reason.try_into()?;
+                serde_json::to_value(js_reason)?
             }
         };
 
