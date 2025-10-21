@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use oauth2::basic::BasicRequestTokenError;
 use oid4vci::core::profiles::CoreProfilesCredentialResponse;
 use oid4vci::credential::{RequestError, Response};
 use serde::{Deserialize, Serialize};
@@ -12,7 +13,8 @@ use crate::utils::wasm::{WasmNotSend, WasmNotSync};
 use crate::vc::claims::Claims;
 use crate::vc::core::KeyMetadata;
 use crate::vc::core::api::CredentialStatusInfo;
-use crate::vc::oid4vci::internal_error::RequestSnafu;
+use crate::vc::oid4vci::internal_error::{RequestSnafu, TokenRequestSnafu};
+use crate::vc::oid4vci::protocol_error::ErrorType;
 use crate::vc::oid4vci::{InternalError, ProtocolError, metadata};
 use crate::vc::{Credential, CredentialMetadata};
 
@@ -38,7 +40,6 @@ pub type NonceResponse = oid4vci::nonce::Response;
 pub type TxCode = oid4vci::types::TxCode;
 pub type AuthorizationCodeGrant = oid4vci::credential_offer::AuthorizationCodeGrant;
 pub type AccessToken = oauth2::AccessToken;
-pub type ErrorType = oid4vci::credential::ErrorType;
 
 /// A result of the Credential issuance handled by `Holder`
 ///
@@ -168,8 +169,7 @@ pub trait Issuer: WasmNotSend + WasmNotSync {
     /// # Errors
     ///
     /// * [Error::Protocol] - expected protocol-specific error.
-    ///     * [ErrorType::InvalidCredentialRequest]
-    ///     * [ErrorType::UnknownCredentialConfiguration]
+    ///     * [crate::vc::oid4vci::ProtocolErrorCredentialOfferEndpoint]
     /// * [InternalError::Parse] - fails to parse the payload.
     /// * [InternalError::UrlParse] - fails to parse `Url`.
     fn create_credential_offer(
@@ -201,11 +201,7 @@ pub trait Issuer: WasmNotSend + WasmNotSync {
     /// # Errors
     ///
     /// * [Error::Protocol] - expected protocol-specific error.
-    ///     * [ErrorType::InvalidCredentialRequest]
-    ///     * [ErrorType::InvalidProof]
-    ///     * [ErrorType::InvalidToken]
-    ///     * [ErrorType::UnknownCredentialConfiguration]
-    ///     * [ErrorType::UnknownCredentialIdentifier]
+    ///     * [crate::vc::oid4vci::ProtocolErrorCredentialEndpoint]
     /// * [InternalError::VC] - `vc::core` error during `Credential` signing or `Proof` validation.
     async fn issue_credential(
         &self,
@@ -266,7 +262,7 @@ pub trait Holder: WasmNotSend + WasmNotSync {
     /// # Errors
     ///
     /// * [Error::Protocol] - expected protocol-specific error.
-    ///     * [ErrorType::InvalidCredentialRequest]
+    ///     * [crate::vc::oid4vci::ProtocolErrorTokenEndpoint]
     /// * [InternalError::Request] - fails to make a call to the `Issuer`.
     /// * [InternalError::AuthorizationCallback] - fails to retrieve authorization code
     async fn authz_code_flow_with_scope<AC, F, E>(
@@ -314,7 +310,7 @@ pub trait Holder: WasmNotSend + WasmNotSync {
     /// # Errors
     ///
     /// * [Error::Protocol] - expected protocol-specific error.
-    ///     * [ErrorType::UnknownCredentialConfiguration]
+    ///     * [crate::vc::oid4vci::ProtocolErrorTokenEndpoint]
     /// * [InternalError::Request] - fails to make a call to the `Issuer`.
     /// * [InternalError::AuthorizationCallback] - fails to retrieve an authorization or a transaction code
     /// * [InternalError::Discovery] - fails to retrieve authorization server metadata
@@ -350,9 +346,7 @@ pub trait Holder: WasmNotSend + WasmNotSync {
     /// # Errors
     ///
     /// * [Error::Protocol] - expected protocol-specific error.
-    ///     * [ErrorType::InvalidCredentialRequest]
-    ///     * [ErrorType::UnknownCredentialConfiguration]
-    ///     * [ErrorType::UnknownCredentialIdentifier]
+    ///     * [crate::vc::oid4vci::ProtocolErrorCredentialEndpoint]
     /// * [InternalError::Parse] - fails to parse the payload.
     /// * [InternalError::Request] - fails to make a call to the `Issuer`.
     /// * [InternalError::VC] - `vc::core` error during `Proof` generation or credential signature verification.
@@ -422,6 +416,26 @@ impl From<RequestError<HttpError>> for Error {
             }
             _ => Self::Internal {
                 source: RequestSnafu.into_error(value),
+            },
+        }
+    }
+}
+
+impl From<BasicRequestTokenError<HttpError>> for Error {
+    #[instrument(
+        level = Level::TRACE,
+        ret(),
+    )]
+    fn from(value: BasicRequestTokenError<HttpError>) -> Self {
+        match &value {
+            BasicRequestTokenError::ServerResponse(resp) => Self::Protocol {
+                source: ProtocolError::new(
+                    ErrorType::TokenEndpoint(resp.error().to_owned()),
+                    resp.error_description().cloned(),
+                ),
+            },
+            _ => Self::Internal {
+                source: TokenRequestSnafu.into_error(value),
             },
         }
     }

@@ -2,6 +2,7 @@ use crate::http::HttpError;
 use crate::vc::oid4vci::metadata;
 use crate::{nonce, storage, vault, vc};
 use common_macros::DebugError;
+use oauth2::basic::BasicRequestTokenError;
 use oid4vci::credential::RequestError;
 use snafu::{Location, Snafu};
 use std::fmt::Debug;
@@ -116,6 +117,19 @@ pub enum InternalError {
     },
     #[snafu(display("authorization callback error: {details}"))]
     AuthorizationCallback {
+        #[snafu(implicit)]
+        location: Location,
+        details: String,
+    },
+    #[snafu(display("Token request error"))]
+    TokenRequest {
+        #[snafu(implicit)]
+        location: Location,
+        source: BasicRequestTokenError<HttpError>,
+    },
+
+    #[snafu(display("Authorization request error: {details}"))]
+    AuthorizationRequest {
         #[snafu(implicit)]
         location: Location,
         details: String,

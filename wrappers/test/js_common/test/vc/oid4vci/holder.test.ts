@@ -77,6 +77,31 @@ describe("OID4VCI Holder: ", () => {
     expect(token_response).toEqual(utils.accessTokenResponse);
   });
 
+  it("get access token returns token endpoint errors", async () => {
+    await mockServer.forPost("/auth/token").thenJson(400, {
+      error: "invalid_client",
+      error_description: "Unknown client_id: client_id",
+    });
+
+    const vciHolder = await buildHolder(utils);
+
+    try {
+      await vciHolder.getAccessToken(utils.credOfferWithPreAuthGrant, async (authorization_flow) => {
+        expect(authorization_flow.type).toEqual("preauthorized");
+        return "code";
+      });
+    } catch (e) {
+      if (process.env.npm_lifecycle_event === "test:nodejs") {
+        const err: { code: string; message: string } = JSON.parse(e.message);
+
+        expect(err.code).toEqual("TokenEndpointInvalidClient");
+        expect(err.message).toEqual('Protocol error: type "invalid_client": Unknown client_id: client_id');
+      } else {
+        expect(e.message).toEqual('Protocol error: type "invalid_client": Unknown client_id: client_id');
+      }
+    }
+  });
+
   it("get access token by using resolved credential offer with authorization code grant", async () => {
     await mockServer.forPost("/auth/par/request").thenJson(201, utils.codeResponse);
     await mockServer.forPost("/auth/token").thenJson(200, utils.accessTokenResponse);
