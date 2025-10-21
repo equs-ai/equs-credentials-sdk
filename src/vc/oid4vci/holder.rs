@@ -12,10 +12,10 @@ use crate::vc::formats::sd_jwt_vc::SdJwtAPI;
 use crate::vc::oid4vci::AuthzFlow::Authorize;
 use crate::vc::oid4vci::credential_issuer_identifier::CredentialIssuerIdentifier;
 use crate::vc::oid4vci::internal_error::{
-    AuthorizationCallbackSnafu, DiscoverySnafu, HolderServiceSnafu, MetadataSnafu, ParseSnafu,
-    TypeConversionSnafu, UrlParseSnafu, VCSnafu,
+    AuthorizationCallbackSnafu, AuthorizationRequestSnafu, DiscoverySnafu, HolderServiceSnafu,
+    MetadataSnafu, ParseSnafu, TypeConversionSnafu, UrlParseSnafu, VCSnafu,
 };
-use crate::vc::oid4vci::protocol_error::ProtocolSnafu;
+use crate::vc::oid4vci::protocol_error::{CredentialEndpointError, ProtocolSnafu};
 use crate::vc::oid4vci::{
     AuthorizationMetadata, AuthzFlow, CredDefMetadata, CredentialExtraVerification,
     CredentialOfferParams, CredentialResponse, CredentialResponseResolved, CredentialResult,
@@ -32,7 +32,7 @@ use oauth2::{
 use oid4vci::core::authorization::AuthorizationDetailsObject;
 use oid4vci::core::client::Client;
 use oid4vci::core::profiles::CoreProfilesCredentialResponseType;
-use oid4vci::credential::{CredentialId, ErrorType, Proofs, ResponseEnum};
+use oid4vci::credential::{CredentialId, Proofs, ResponseEnum};
 use oid4vci::metadata::MetadataDiscovery;
 use oid4vci::metadata::credential_issuer::BatchCredentialIssuance;
 use oid4vci::proof_of_possession::{Proof as SpruceProof, Proof};
@@ -243,12 +243,10 @@ where
 
             req = req.set_token_url(auth_serv_metadata.token_endpoint().clone())
         }
-        let token = req.request_async(&self.http_closure()).await.map_err(|e| {
-            HolderServiceSnafu {
-                details: format!("Could not exchange preauthorized code to token: {e}"),
-            }
-            .build()
-        })?;
+        let token = req
+            .request_async(&self.http_closure())
+            .await
+            .map_err(Error::from)?;
 
         Ok(token)
     }
@@ -449,18 +447,17 @@ where
                         .unwrap_or(None)
                 })
                 .ok_or_else(|| {
-                    ProtocolSnafu::new(
-                        ErrorType::UnknownCredentialIdentifier,
-                        format!(
-                            "Unknown credential identifier: {}",
+                    AuthorizationRequestSnafu {
+                        details: format!(
+                            "Could not resolve \"scope\" value: Unknown credential identifier(s): {}",
                             offer_params
                                 .credential_configuration_ids
                                 .iter()
                                 .map(|c| c.to_string())
                                 .collect::<Vec<String>>()
                                 .join(", ")
-                        ),
-                    )
+                        )
+                    }
                     .build()
                 })?;
 
@@ -512,7 +509,8 @@ where
 
         let resp = credential_request
             .request_async(&self.http_closure())
-            .await?;
+            .await
+            .map_err(Error::from)?;
 
         let cred_result: CredentialResult = (&resp).try_into()?;
 
@@ -590,7 +588,10 @@ where
             .client
             .pushed_authorization_request(|| in_csrf.clone())
             .map_err(|e| {
-                ProtocolSnafu::new(ErrorType::InvalidCredentialRequest, e.to_string()).build()
+                AuthorizationRequestSnafu {
+                    details: format!("Could not create a pushed authorization request: {e}"),
+                }
+                .build()
             })?
             .set_pkce_challenge(pkce_challenge);
 
@@ -608,10 +609,9 @@ where
 
         ensure!(
             in_csrf.secret() == out_csrf.secret(),
-            ProtocolSnafu::new(
-                ErrorType::InvalidCredentialRequest,
-                "CSRF failure".to_string()
-            ),
+            AuthorizationRequestSnafu {
+                details: "CSRF failure".to_string()
+            },
         );
 
         info!("authentication is started");
@@ -633,9 +633,7 @@ where
         let token = token_req
             .request_async(&self.http_closure())
             .await
-            .map_err(|e| {
-                ProtocolSnafu::new(ErrorType::InvalidCredentialRequest, e.to_string()).build()
-            })?;
+            .map_err(Error::from)?;
 
         info!("authorization is succeeded");
 
@@ -680,8 +678,8 @@ where
             .iter()
             .find(|config| config.id() == &CredentialConfigurationId::new(cred_def_id.to_owned()))
             .ok_or_else(|| {
-                ProtocolSnafu::new(
-                    ErrorType::UnknownCredentialIdentifier,
+                ProtocolSnafu::credential_endpoint(
+                    CredentialEndpointError::UnknownCredentialIdentifier,
                     format!("Unknown credential identifier: {cred_def_id}"),
                 )
                 .build()
@@ -724,14 +722,14 @@ where
     fn resolve_proofs_for_batch_issuance(&self, proofs: Vec<SpruceProof>) -> Result<Proofs> {
         match self.issuer_metadata.batch_credential_issuance() {
             None => {
-                ProtocolSnafu::new(
-                    ErrorType::InvalidCredentialRequest,
+                ProtocolSnafu::credential_endpoint(
+                    CredentialEndpointError::InvalidCredentialRequest,
                     "Batch credential issuance is not supported by the issuer. Please provide a single key metadata".to_string(),
                 ).fail()?
             }
             Some(&BatchCredentialIssuance { batch_size }) if (batch_size as usize) < proofs.len() => {
-                ProtocolSnafu::new(
-                    ErrorType::InvalidCredentialRequest,
+                ProtocolSnafu::credential_endpoint(
+                    CredentialEndpointError::InvalidCredentialRequest,
                     format!("Batch credential issuance limit exceeded. Please provide keys metadata size less or equal to {batch_size}"),
                 ).fail()?
             }
@@ -740,8 +738,8 @@ where
                     .into_iter()
                     .filter_map(|proof| match proof {
                         Proof::Jwt { jwt } => Some(jwt),
-                        Proof::DiVp { .. } => ProtocolSnafu::new(
-                            ErrorType::InvalidProof,
+                        Proof::DiVp { .. } => ProtocolSnafu::credential_endpoint(
+                            CredentialEndpointError::InvalidProof,
                             "Unsupported proof type: di_vp".to_string(),
                         )
                             .fail()
@@ -823,8 +821,8 @@ impl TryInto<Credential> for &CoreProfilesCredentialResponseType {
             CoreProfilesCredentialResponseType::LdpVc { credential } => Credential::LdpVc(
                 serde_json::from_value(credential.to_owned()).context(ParseSnafu)?,
             ),
-            _ => ProtocolSnafu::new(
-                ErrorType::UnknownCredentialConfiguration,
+            _ => ProtocolSnafu::credential_endpoint(
+                CredentialEndpointError::UnknownCredentialConfiguration,
                 format!("Unknown credential configuration: {}", self.format()),
             )
             .fail()?,
@@ -842,8 +840,8 @@ impl TryInto<SpruceProof> for AsdkProof {
             "jwt" => SpruceProof::Jwt {
                 jwt: self.proof.to_owned(),
             },
-            _ => ProtocolSnafu::new(
-                ErrorType::InvalidProof,
+            _ => ProtocolSnafu::credential_endpoint(
+                CredentialEndpointError::InvalidProof,
                 format!("Unsupported proof type: {}", self.format),
             )
             .fail()?,
@@ -866,6 +864,7 @@ mod tests {
     use crate::vc::VCFormat;
     use crate::vc::core::ProofOfPossessionMetadata;
     use crate::vc::formats::json_ld_vc::VC;
+    use crate::vc::oid4vci::protocol_error::TokenEndpointError;
     use crate::vc::oid4vci::tests::fixtures::{
         ACCESS_TOKEN, AUTH_URL, CRED_DEF_ID, ISSUER_URL, NOTIFICATION_ID, REQ_URI_CODE, SCOPE,
         SD_JWT_CREDS, SampleIssuerMetadata, fake_access_token, sample_access_token,
@@ -873,7 +872,7 @@ mod tests {
         sample_credential_definition, sample_offer_with_auth_code_grant,
         sample_offer_with_pre_auth_code_grant,
     };
-    use crate::vc::oid4vci::{CredentialRequest, CredentialResult, Holder};
+    use crate::vc::oid4vci::{CredentialRequest, CredentialResult, Holder, protocol_error};
     use oauth2::http::{Method, StatusCode};
     use rstest::rstest;
     use serde_json::json;
@@ -939,7 +938,9 @@ mod tests {
         json!(sample_authorization_metadata()),
         "grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Apre-authorized_code&pre-authorized_code=pre_auth_code&tx_code=pre_auth_code&client_id=fake_client_id"
     )]
-    #[should_panic(expected = "Unknown credential identifier: invalid_scope")]
+    #[should_panic(
+        expected = "Could not resolve \"scope\" value: Unknown credential identifier(s): invalid_scope"
+    )]
     #[case::fals_when_offer_with_auth_code_grant_contains_invalid_scope(
         sample_offer_with_auth_code_grant(Some("invalid_scope")),
         "auth_code",
@@ -1021,6 +1022,69 @@ mod tests {
         assert_eq!(
             serde_json::to_value(&token_response).unwrap(),
             sample_access_token_response()
+        );
+    }
+
+    #[rstest]
+    #[case::invalid_request(TokenEndpointError::InvalidRequest, "Invalid request")]
+    #[case::invalid_client(TokenEndpointError::InvalidClient, "Invalid client")]
+    #[case::invalid_grant(TokenEndpointError::InvalidGrant, "Invalid grant")]
+    #[case::unauthorized_client(TokenEndpointError::UnauthorizedClient, "Unauthorized client")]
+    #[case::unsupported_grant_type(
+        TokenEndpointError::UnsupportedGrantType,
+        "Unsupported grant type"
+    )]
+    #[case::invalid_scope(TokenEndpointError::InvalidScope, "Invalid scope")]
+    #[tokio::test]
+    async fn holder_get_access_token_returns_protocol_errors_when_auth_server_returns_errors(
+        #[case] error_type: TokenEndpointError,
+        #[case] error_description: &str,
+    ) {
+        let mut http_client = MockHttpClient::new();
+
+        mock_http_once(
+            &mut http_client,
+            Method::GET,
+            auth_srv_metadata_request_endpoint(),
+            sample_authorization_metadata(),
+            StatusCode::OK,
+        );
+
+        mock_http_once(
+            &mut http_client,
+            Method::POST,
+            access_token_endpoint(),
+            json!({
+               "error": error_type,
+               "error_description": error_description,
+            }),
+            StatusCode::BAD_REQUEST,
+        );
+
+        let holder_service = holder_service_from_issuer_metadata(
+            http_client,
+            InMemVault::new(),
+            LocalKms::new(),
+            SampleIssuerMetadata::with_sdjwtvc_conf(),
+        )
+        .await;
+
+        let offer = sample_offer_with_pre_auth_code_grant("pre_auth_code");
+        let result = holder_service
+            .get_access_token(&offer, |_| async {
+                Ok::<String, io::Error>("pre_auth_code".to_string())
+            })
+            .await;
+
+        assert!(result.is_err());
+
+        let Error::Protocol { source: err } = result.unwrap_err() else {
+            panic!("Expected Protocol");
+        };
+
+        assert_eq!(
+            err.error_type().to_owned(),
+            protocol_error::ErrorType::TokenEndpoint(error_type)
         );
     }
 
@@ -1427,7 +1491,7 @@ mod tests {
             Method::POST,
             credential_endpoint(),
             json!({
-               "error": ErrorType::InvalidToken,
+               "error": CredentialEndpointError::InvalidToken,
                "error_description": "Could not parse the access token",
             }),
             StatusCode::BAD_REQUEST,

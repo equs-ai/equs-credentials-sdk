@@ -22,6 +22,10 @@ pub use builder::IssuerDiscovery;
 pub use credential_offer_resolver::CredentialOfferResolver;
 pub use credential_offer_resolver::Error as CredentialOfferResolverError;
 pub use internal_error::InternalError;
+pub use protocol_error::CredentialEndpointError as ProtocolErrorCredentialEndpoint;
+pub use protocol_error::CredentialOfferEndpointError as ProtocolErrorCredentialOfferEndpoint;
+pub use protocol_error::ErrorType as ProtocolErrorType;
 pub use protocol_error::ProtocolError;
+pub use protocol_error::TokenEndpointError as ProtocolErrorTokenEndpoint;
 
 pub use api::*;

@@ -1465,7 +1465,7 @@ pub mod fixtures {
             pub fn credential_1() -> Claims {
                 json!({
                     "vct":"https://credentials.example.com/identity_credential",
-                    "name": "Mark",
+                    "name": "John",
                 })
                 .try_into()
                 .unwrap()
@@ -4086,7 +4086,7 @@ pub mod utils {
             (&holder_did_url, holder_key_handle.clone()),
             VCMetadata {
                 vct: vct.to_owned(),
-                lifetime: time::Duration::days(365),
+                lifetime: time::Duration::days(3650),
                 disclosures,
                 credential_status: None,
             },

@@ -9,7 +9,9 @@ use crate::vc::oid4vci::internal_error::{
     ClaimsValidationSnafu, IssuerServiceSnafu, NoScopeSetSnafu, NonceHandlerSnafu, ParseSnafu,
     TypeConversionSnafu, UrlParseSnafu, VCSnafu,
 };
-use crate::vc::oid4vci::protocol_error::ProtocolSnafu;
+use crate::vc::oid4vci::protocol_error::{
+    CredentialEndpointError, CredentialOfferEndpointError, ProtocolSnafu,
+};
 use crate::vc::oid4vci::token_validation::{ByJwks, Introspect};
 use crate::vc::oid4vci::{
     CredDefMetadata, CredentialOfferParams, CredentialRequest, CredentialResponse, IssuerMetadata,
@@ -178,8 +180,11 @@ where
         let proofs = if let Some(proofs) = cred_request.proofs() {
             proofs
         } else {
-            ProtocolSnafu::new(ErrorType::InvalidProof, INVALID_PROOF_ERR_DESC.to_string())
-                .fail()?
+            ProtocolSnafu::credential_endpoint(
+                ErrorType::InvalidProof,
+                INVALID_PROOF_ERR_DESC.to_string(),
+            )
+            .fail()?
         };
 
         let (cred_def_id, cred_def) = self.resolve_cred_def(cred_request)?;
@@ -222,7 +227,7 @@ where
         let oid4vci::credential::CredentialId::CredentialConfigurationId(cred_conf_id) =
             &req.credential_id
         else {
-            ProtocolSnafu::new(
+            ProtocolSnafu::credential_endpoint(
                 ErrorType::InvalidCredentialRequest,
                 "Credential request by providing 'credential_identifier' field is not supported"
                     .to_string(),
@@ -235,7 +240,7 @@ where
             .iter()
             .find(|cc| cc.id() == cred_conf_id)
             .ok_or_else(|| {
-                ProtocolSnafu::new(
+                ProtocolSnafu::credential_endpoint(
                     ErrorType::InvalidCredentialRequest,
                     format!("Credential configuration with 'credential_configuration_id' = {} is not found in the supported credential configurations metadata", **cred_conf_id),
                 ).build()
@@ -248,8 +253,8 @@ where
     fn validate_cred_def_ids(&self, cred_def_ids: &Vec<&str>) -> Result<()> {
         ensure!(
             !cred_def_ids.is_empty(),
-            ProtocolSnafu::new(
-                ErrorType::InvalidCredentialRequest,
+            ProtocolSnafu::credential_offer_endpoint(
+                CredentialOfferEndpointError::InvalidRequest,
                 "Missed credential configuration ids".to_string()
             )
         );
@@ -267,8 +272,8 @@ where
         for id in cred_def_ids {
             ensure!(
                 supported.contains(&CredentialConfigurationId::new(id.to_string())),
-                ProtocolSnafu::new(
-                    ErrorType::UnknownCredentialIdentifier,
+                ProtocolSnafu::credential_offer_endpoint(
+                    CredentialOfferEndpointError::UnknownCredentialIdentifier,
                     format!("Unknown credential identifier: {id}")
                 )
             );
@@ -286,15 +291,18 @@ where
             .await
             .map_err(|err| {
                 debug!("Failed to parse body of unverified proof of possession: {err}");
-                ProtocolSnafu::new(ErrorType::InvalidProof, INVALID_PROOF_ERR_DESC.to_string())
-                    .build()
+                ProtocolSnafu::credential_endpoint(
+                    ErrorType::InvalidProof,
+                    INVALID_PROOF_ERR_DESC.to_string(),
+                )
+                .build()
             })?;
 
         let (nonce, nonce_handler) = match (pop_body.nonce, self.nonce_handler.as_ref()) {
             (Some(nonce), Some(handler)) => {
                 (Nonce::from_secret(nonce.secret().to_string()), handler)
             }
-            (None, Some(_)) => ProtocolSnafu::new(
+            (None, Some(_)) => ProtocolSnafu::credential_endpoint(
                 ErrorType::InvalidProof,
                 format!("Nonce is not provided. {INVALID_PROOF_ERR_DESC}"),
             )
@@ -307,7 +315,7 @@ where
         match nonce_handler.validate(&nonce).await {
             Ok(false) => {
                 debug!("Nonce is invalid: nonce = {}", nonce.secret());
-                ProtocolSnafu::new(
+                ProtocolSnafu::credential_endpoint(
                     ErrorType::InvalidProof,
                     format!("Nonce is invalid. {INVALID_PROOF_ERR_DESC}"),
                 )
@@ -331,7 +339,7 @@ where
 
         let token: Map<String, Value> = decode_unverified(token).map_err(|err| {
             error!("Could not parse the access token: {err}");
-            ProtocolSnafu::new(
+            ProtocolSnafu::credential_endpoint(
                 ErrorType::InvalidToken,
                 "Could not parse the access token".to_string(),
             )
@@ -341,7 +349,7 @@ where
         if let Some(Value::String(scopes)) = token.get("scope") {
             ensure!(
                 scopes.split(' ').any(|s| s == scope),
-                ProtocolSnafu::new(
+                ProtocolSnafu::credential_endpoint(
                     ErrorType::InvalidToken,
                     format!(
                         "Access token should have scope=\"{scope}\" for issuing \"{cred_def_id}\""
@@ -351,7 +359,7 @@ where
             return Ok(());
         }
 
-        ProtocolSnafu::new(
+        ProtocolSnafu::credential_endpoint(
             ErrorType::InvalidToken,
             "Access token does not have \"scope\" field".to_string(),
         )
@@ -407,7 +415,7 @@ where
 
                 json_claims
             }
-            _ => ProtocolSnafu::new(
+            _ => ProtocolSnafu::credential_endpoint(
                 ErrorType::UnknownCredentialConfiguration,
                 format!(
                     "Unknown credential configuration: {}",
@@ -434,14 +442,14 @@ where
     pub async fn validate_token(&self, token: &str) -> Result<()> {
         match &self.token_validation {
             Some(TokenValidation::Introspect(svc)) => svc.validate(token).await.map_err(|_| {
-                ProtocolSnafu::new(
+                ProtocolSnafu::credential_endpoint(
                     ErrorType::InvalidToken,
                     "Could not validate the token".to_string(),
                 )
                 .build()
             })?,
             Some(TokenValidation::ByJwks(svc)) => svc.validate(token).await.map_err(|_| {
-                ProtocolSnafu::new(
+                ProtocolSnafu::credential_endpoint(
                     ErrorType::InvalidToken,
                     "Could not validate the token".to_string(),
                 )
@@ -457,13 +465,16 @@ where
     fn resolve_pop_protocol_error(
         &self,
         proof_err: pop::Error,
-    ) -> ProtocolSnafu<vc::oid4vci::ErrorType, Option<String>> {
+    ) -> ProtocolSnafu<vc::oid4vci::protocol_error::ErrorType, Option<String>> {
         match proof_err {
-            pop::Error::Verification { source, .. } => ProtocolSnafu::new(
-                ErrorType::InvalidProof,
+            pop::Error::Verification { source, .. } => ProtocolSnafu::credential_endpoint(
+                CredentialEndpointError::InvalidProof,
                 format!("{}. {INVALID_PROOF_ERR_DESC}", source),
             ),
-            _ => ProtocolSnafu::new(ErrorType::InvalidProof, INVALID_PROOF_ERR_DESC.to_string()),
+            _ => ProtocolSnafu::credential_endpoint(
+                CredentialEndpointError::InvalidProof,
+                INVALID_PROOF_ERR_DESC.to_string(),
+            ),
         }
     }
 
@@ -507,7 +518,7 @@ where
                 self.resolve_pop_protocol_error(source).fail()?
             }
             Err(vc::core::Error::ProofFormatNotSupported { format }) =>
-                ProtocolSnafu::new(
+                ProtocolSnafu::credential_endpoint(
                     ErrorType::InvalidProof,
                     format!("proof of possession with '{format}' format is not supported. {INVALID_PROOF_ERR_DESC}"),
                 )
@@ -527,7 +538,7 @@ where
     ) -> Result<Vec<CoreProfilesCredentialResponseType>> {
         ensure!(
             proofs.len() > 0,
-            ProtocolSnafu::new(
+            ProtocolSnafu::credential_endpoint(
                 ErrorType::InvalidCredentialRequest,
                 "At least one proof of possession must be provided".to_string(),
             )
@@ -543,7 +554,7 @@ where
 
         ensure!(
             batch_size as usize >= proofs.len(),
-            ProtocolSnafu::new(
+            ProtocolSnafu::credential_endpoint(
                 ErrorType::InvalidCredentialRequest,
                 format!(
                     "At most {} proof of possession(s) are supported",
@@ -671,7 +682,7 @@ mod tests {
         SampleIssuerMetadata, TOKEN_INTROSPECT_URL, sample_claims, sample_credential_definition,
         sample_credential_offer,
     };
-    use crate::vc::oid4vci::{AuthorizationCodeGrant, token_validation};
+    use crate::vc::oid4vci::{AuthorizationCodeGrant, protocol_error, token_validation};
     use crate::vc::{Credential, HasClaims, VCFormat};
     use api::Issuer;
     use oauth2::http::{Method, StatusCode};
@@ -1053,7 +1064,7 @@ mod tests {
 
         assert!(matches!(
             iss_result.err().unwrap(),
-            Protocol { source } if *source.error_type() == ErrorType::InvalidProof
+            Protocol { source } if *source.error_type() == protocol_error::ErrorType::CredentialEndpoint(CredentialEndpointError::InvalidProof)
         ));
     }
 
@@ -1148,7 +1159,7 @@ mod tests {
 
         assert!(matches!(
             iss_result.err().unwrap(),
-            Protocol { source } if *source.error_type() == ErrorType::InvalidToken
+            Protocol { source } if *source.error_type() == protocol_error::ErrorType::CredentialEndpoint(CredentialEndpointError::InvalidToken)
         ));
     }
 
@@ -1310,7 +1321,7 @@ mod tests {
 
     #[tokio::test]
     #[should_panic(
-        expected = "Access token should have scope=\\\"fake_scope\\\" for issuing \\\"SD_JWT_cred_sample\\\""
+        expected = "Access token should have scope=\"fake_scope\" for issuing \"SD_JWT_cred_sample\""
     )]
     async fn issue_credential_fails_on_incorrect_scope() {
         let credential_request = SampleCredentialRequest::with_cred_configuration_id();
@@ -1332,7 +1343,7 @@ mod tests {
     }
 
     #[tokio::test]
-    #[should_panic(expected = "Access token does not have \\\"scope\\\" field")]
+    #[should_panic(expected = "Access token does not have \"scope\" field")]
     async fn issue_credential_fails_on_absent_token_scope() {
         let credential_request = SampleCredentialRequest::with_cred_configuration_id();
         let claims = Claims::new();
