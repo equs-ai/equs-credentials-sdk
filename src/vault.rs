@@ -27,6 +27,12 @@ pub enum Error {
         #[snafu(implicit)]
         location: Location,
     },
+    #[snafu(display("Credential fetching error: {details}"))]
+    Fetching {
+        details: String,
+        #[snafu(implicit)]
+        location: Location,
+    },
     #[snafu(display("Credential deleting error: {details}"))]
     Deleting {
         details: String,

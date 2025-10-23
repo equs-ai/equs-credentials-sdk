@@ -1,4 +1,6 @@
+use aries_askar::entry::{Entry, TagFilter};
 use aries_askar::storage::KdfMethod;
+use aries_askar::storage::backend::OrderBy;
 use aries_askar::{Error, PassKey, Session, Store, StoreKeyMethod};
 use serde::Deserialize;
 use tracing::{Level, instrument};
@@ -33,6 +35,17 @@ pub enum KeyMethod {
     DeriveKey,
     RawKey,
     Unprotected,
+}
+
+pub type AskarStorageScan<'a> = aries_askar::entry::Scan<'a, Entry>;
+
+#[derive(Debug)]
+pub struct AskarStorageScanParams {
+    pub limit: Option<i64>,
+    pub offset: Option<i64>,
+    pub tag_filter: Option<TagFilter>,
+    pub order_by: Option<OrderBy>,
+    pub sort_by_desc: Option<bool>,
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -71,6 +84,24 @@ impl AskarStorage {
         .await?;
 
         Ok(AskarStorage { store, profile })
+    }
+
+    /// Create a new scan instance against the store
+    ///
+    /// The result will keep an open connection to the backend until it is consumed
+    #[instrument(level = Level::TRACE, err(), ret())]
+    pub async fn scan<'a>(&self, params: AskarStorageScanParams) -> Result<AskarStorageScan<'a>> {
+        self.store
+            .scan(
+                Some(self.profile.clone()),
+                None,
+                params.tag_filter,
+                params.offset,
+                params.limit,
+                params.order_by,
+                params.sort_by_desc.unwrap_or_default(),
+            )
+            .await
     }
 
     /// Remove a store instance using a database URL

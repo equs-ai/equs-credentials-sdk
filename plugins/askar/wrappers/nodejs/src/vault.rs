@@ -1,7 +1,8 @@
 use crate::kms::Alg;
 use crate::AskarStorage;
 use askar::vault::{
-    Credential, CredentialEntry, CredentialMetadata, HasVCFormat, VCFormat, Vault, VaultPagination,
+    AskarVaultCursorParamsOrderBy, Credential, CredentialEntry, CredentialMetadata, HasVCFormat,
+    VCFormat, Vault, VaultPagination,
 };
 use napi::{Error, Result};
 use napi_derive::napi;
@@ -149,6 +150,53 @@ impl AskarVault {
 
         Ok(())
     }
+
+    /// Creates a cursor for efficiently scanning through credentials in the vault.
+    ///
+    /// The cursor allows iterating through large sets of credentials in batches,
+    /// providing memory-efficient access to the data. Each batch is fetched only when
+    /// needed using the `fetch_next()` method.
+    ///
+    /// @param {AskarVaultCursorParams} params - Parameters for cursor configuration:
+    /// * `batch_size`: Number of entries to fetch in each batch. If not provided the default value is 32
+    /// * `fields`: Array of fields to filter credentials
+    /// * `limit`: Optional maximum number of entries to return in total
+    /// * `offset`: Optional number of entries to skip before starting
+    /// * `order_by`: Optional parameter to specify ordering (e.g., by ID)
+    /// * `sort_by`: Optional parameter to specify a sort direction (Ascending/Descending)
+    ///
+    /// @returns {AskarVaultCursor} Cursor object that can be used to iterate through credentials
+    /// using `fetch_next()` method which returns batches of credentials until exhausted
+    #[allow(private_interfaces)]
+    #[napi]
+    pub async fn create_cursor(&self, params: AskarVaultCursorParams) -> Result<AskarVaultCursor> {
+        let cursor = self
+            .0
+            .create_cursor(params.into())
+            .await
+            .map_err(|e| Error::from_reason(e.to_string()))?;
+
+        Ok(AskarVaultCursor(cursor))
+    }
+
+    /// Counts all credentials in the vault, optionally filtered by category
+    ///
+    /// @param {string} category - Optional category to filter credentials by
+    ///
+    /// @returns {number} Total number of credentials matching the criteria
+    /// * Returns total count of all credentials if no category specified
+    /// * Returns count of credentials matching the category if specified
+    #[allow(private_interfaces)]
+    #[napi]
+    pub async fn count_all(&self, category: Option<String>) -> Result<u32> {
+        let count = self
+            .0
+            .count_all(category)
+            .await
+            .map_err(|e| Error::from_reason(e.to_string()))?;
+
+        Ok(count as u32)
+    }
 }
 
 #[napi]
@@ -292,6 +340,98 @@ impl From<VaultPagination> for InnerVaultPagination {
         Self {
             page: value.page as u32,
             batch_size: value.batch_size as u32,
+        }
+    }
+}
+
+#[napi(object)]
+struct AskarVaultCursorParams {
+    pub fields: Vec<String>,
+    pub batch_size: Option<u32>,
+    pub limit: Option<u32>,
+    pub offset: Option<u32>,
+    pub order_by: Option<AskarVaultCursorOrderBy>,
+    pub sort_by: Option<AskarVaultCursorSortBy>,
+}
+
+#[napi]
+#[derive(Debug, Serialize, Deserialize)]
+pub enum AskarVaultCursorOrderBy {
+    Id,
+}
+
+#[napi]
+#[derive(Debug, Serialize, Deserialize)]
+pub enum AskarVaultCursorSortBy {
+    Ascending,
+    Descending,
+}
+
+#[napi]
+pub struct AskarVaultCursor(askar::vault::AskarVaultCursor<'static>);
+
+#[napi]
+impl AskarVaultCursor {
+    /// Fetches the next batch of credentials based on cursor configuration
+    ///
+    /// Returns credentials in batches according to the batch_size specified when creating the cursor.
+    /// Each call returns the next batch until all matching credentials have been returned.
+    ///
+    /// # Note
+    /// Aries Askar library has a 32-element restriction for single batch fetch.
+    /// The inner implementation makes extra inner fetch calls to fill the batch size when it is greater than 32.
+    /// And remaining entries will be persistent in runtime and will be used for future calls of this method.
+    ///
+    /// @returns {Array<CredentialEntry> | null}
+    /// * An array of {@link CredentialEntry} containing up to batch_size credentials
+    /// * `null` if no more credentials match the cursor criteria
+    /// * Throws error if fetching fails
+    #[allow(private_interfaces)]
+    #[napi(ts_return_type = "Promise<Array<CredentialEntry> | null>")]
+    pub async unsafe fn fetch_next(&mut self) -> Result<Option<Vec<InnerCredentialEntry>>> {
+        let credentials = self
+            .0
+            .fetch_next()
+            .await
+            .map_err(|e| Error::from_reason(e.to_string()))?;
+
+        let Some(credentials) = credentials else {
+            return Ok(None);
+        };
+
+        let mut result = Vec::with_capacity(credentials.len());
+        for credential in credentials {
+            result.push(credential.try_into()?);
+        }
+
+        Ok(Some(result))
+    }
+}
+
+impl From<AskarVaultCursorParams> for askar::vault::AskarVaultCursorParams {
+    fn from(value: AskarVaultCursorParams) -> Self {
+        askar::vault::AskarVaultCursorParams {
+            fields: value.fields,
+            batch_size: value.batch_size.map(Into::into),
+            limit: value.limit.map(Into::into),
+            offset: value.offset.map(Into::into),
+            order_by: value.order_by.map(|o| o.into()),
+            sort_by_desc: value.sort_by.map(|sort_by| match sort_by {
+                AskarVaultCursorSortBy::Ascending => {
+                    askar::vault::AskarVaultCursorParamsSortBy::Ascending
+                }
+                AskarVaultCursorSortBy::Descending => {
+                    askar::vault::AskarVaultCursorParamsSortBy::Descending
+                }
+            }),
+        }
+    }
+}
+
+impl From<AskarVaultCursorOrderBy> for AskarVaultCursorParamsOrderBy {
+    fn from(value: AskarVaultCursorOrderBy) -> Self {
+        match value {
+            AskarVaultCursorOrderBy::Id => AskarVaultCursorParamsOrderBy::Id,
         }
     }
 }
