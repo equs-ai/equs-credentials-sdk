@@ -5,11 +5,11 @@ use snafu::ensure;
 use tracing::{Level, instrument};
 use uuid::Uuid;
 
-use crate::AskarStorage;
+use crate::{AskarStorage, AskarStorageScan, AskarStorageScanParams};
 use agent_sdk::crypto::Alg;
 use agent_sdk::vault::{
-    DeletingSnafu, EmptyFieldsSnafu, Error, FormatNotSupportedSnafu, ResolvingSnafu, StoringSnafu,
-    VCSnafu,
+    DeletingSnafu, EmptyFieldsSnafu, Error, FetchingSnafu, FormatNotSupportedSnafu, ResolvingSnafu,
+    StoringSnafu, VCSnafu,
 };
 use agent_sdk::vc::{JWT_VC_JSON, JWT_VC_JSON_LD, LDP_VC, SD_JWT_VC};
 
@@ -21,6 +21,24 @@ pub const TAG_FORMAT: &str = "format";
 pub const TAG_KID: &str = "kid";
 pub const TAG_ALG: &str = "alg";
 
+#[derive(Debug)]
+pub struct AskarVaultCursorParams {
+    pub fields: Vec<String>,
+    pub batch_size: Option<i64>,
+    pub limit: Option<i64>,
+    pub offset: Option<i64>,
+    pub order_by: Option<AskarVaultCursorParamsOrderBy>,
+    pub sort_by_desc: Option<AskarVaultCursorParamsSortBy>,
+}
+
+pub type AskarVaultCursorParamsOrderBy = OrderBy;
+
+#[derive(Debug)]
+pub enum AskarVaultCursorParamsSortBy {
+    Ascending,
+    Descending,
+}
+
 #[derive(Clone, Debug)]
 pub struct AskarVault(AskarStorage);
 
@@ -31,6 +49,32 @@ impl AskarVault {
     )]
     pub fn new(storage: AskarStorage) -> Self {
         AskarVault(storage)
+    }
+
+    #[instrument(
+        level = Level::TRACE,
+        skip(self, params),
+        err(),
+    )]
+    pub async fn create_cursor<'a>(
+        &self,
+        params: AskarVaultCursorParams,
+    ) -> Result<AskarVaultCursor<'a>, aries_askar::Error> {
+        let batch_size = params.batch_size.map(|b| b as usize);
+        let storage_scan = self.0.scan(params.into()).await?;
+
+        Ok(AskarVaultCursor::new(storage_scan, batch_size))
+    }
+
+    #[instrument(
+        level = Level::TRACE,
+        skip(self),
+        err(),
+        ret(),
+    )]
+    pub async fn count_all(&self, category: Option<String>) -> Result<i64, aries_askar::Error> {
+        let mut seesion = self.0.session().await?;
+        seesion.count(category.as_deref(), None).await
     }
 
     #[instrument(
@@ -413,6 +457,132 @@ impl From<AskarVaultId> for String {
     }
 }
 
+pub struct AskarVaultCursor<'a> {
+    inner: AskarStorageScan<'a>,
+    batch_size: usize,
+    last_remained_entries: Option<Vec<Entry>>,
+}
+
+const DEFAULT_BATCH_SIZE: usize = 32;
+
+impl<'a> AskarVaultCursor<'a> {
+    pub fn new(storage_scan: AskarStorageScan<'a>, batch_size: Option<usize>) -> Self {
+        Self {
+            inner: storage_scan,
+            batch_size: batch_size.unwrap_or(DEFAULT_BATCH_SIZE),
+            last_remained_entries: None,
+        }
+    }
+
+    /// Fetches the next batch of credentials from the vault storage cursor.
+    ///
+    /// This method implements batched retrieval of credentials by making the following steps:
+    /// 1. Pre-allocates vector capacity to match batch size
+    /// 2. Processes any remaining entries from previous fetch first
+    /// 3. Fetches new entries from vault until batch size is reached
+    /// 4. Stores any excess entries for the next fetch operation
+    ///
+    /// # Returns
+    /// An array of [CredentialEntry] on success.
+    /// In case if there are no credential entries [None] should be returned.
+    ///
+    /// # Errors
+    ///
+    /// * [Error::VC] - fails to fetch VCs from vault.
+    /// * [Error::Resolving] - fails to resolve vault entry.
+    #[instrument(
+        level = Level::TRACE,
+        skip(self),
+        err(),
+        ret(),
+    )]
+    pub async fn fetch_next(&mut self) -> Result<Option<Vec<CredentialEntry>>, Error> {
+        if self.batch_size == 0 {
+            return Ok(None);
+        }
+
+        let mut credentials = self.process_remained_entries()?;
+
+        if credentials.len() == self.batch_size {
+            return Ok(Some(credentials));
+        }
+
+        self.fetch_entries_until_batch_size(&mut credentials)
+            .await?;
+
+        if credentials.is_empty() {
+            return Ok(None);
+        }
+
+        Ok(Some(credentials))
+    }
+
+    fn process_remained_entries(&mut self) -> Result<Vec<CredentialEntry>, Error> {
+        let mut credentials = Vec::with_capacity(self.batch_size);
+
+        if let Some(mut remained_entries) = self.last_remained_entries.take() {
+            if remained_entries.len() > self.batch_size {
+                let remained = remained_entries.split_off(self.batch_size);
+                self.last_remained_entries = Some(remained);
+            }
+
+            for entry in remained_entries {
+                credentials.push(entry_to_credential(entry)?);
+            }
+        }
+
+        Ok(credentials)
+    }
+
+    async fn fetch_entries_until_batch_size(
+        &mut self,
+        credentials: &mut Vec<CredentialEntry>,
+    ) -> Result<(), Error> {
+        while credentials.len() < self.batch_size {
+            let entries = self.inner.fetch_next().await.map_err(|err| {
+                FetchingSnafu {
+                    details: format!("Failed to fetch credentials: {err}"),
+                }
+                .build()
+            })?;
+
+            let Some(mut entries) = entries else {
+                return Ok(());
+            };
+
+            let remained_space = self.batch_size - credentials.len();
+            if remained_space == 0 {
+                return Ok(());
+            }
+
+            if entries.len() > remained_space {
+                let remained_entries = entries.split_off(remained_space);
+                self.last_remained_entries = Some(remained_entries);
+            }
+
+            for entry in entries {
+                credentials.push(entry_to_credential(entry)?);
+            }
+        }
+        Ok(())
+    }
+}
+
+impl From<AskarVaultCursorParams> for AskarStorageScanParams {
+    fn from(value: AskarVaultCursorParams) -> Self {
+        AskarStorageScanParams {
+            limit: value.limit,
+            offset: value.offset,
+            tag_filter: map_credential_fields_to_tags(value.fields),
+            order_by: value.order_by,
+            sort_by_desc: value.sort_by_desc.map(|s| match s {
+                AskarVaultCursorParamsSortBy::Ascending => false,
+                AskarVaultCursorParamsSortBy::Descending => true,
+            }),
+        }
+    }
+}
+
 #[instrument(level = Level::TRACE, ret())]
 fn map_credential_fields_to_tags(fields: Vec<String>) -> Option<TagFilter> {
     // TODO we use exist but it requires Vec<String>. A bit of confusable. Search for better solution
@@ -481,13 +651,16 @@ fn entry_to_credential(entry: Entry) -> Result<CredentialEntry, Error> {
 
 #[cfg(test)]
 mod tests {
-    use crate::vault::AskarVault;
+    use crate::vault::{
+        AskarVault, AskarVaultCursorParams, AskarVaultCursorParamsOrderBy,
+        AskarVaultCursorParamsSortBy,
+    };
     use crate::{AskarStorage, AskarStorageConfig, KeyMethod};
     use agent_sdk::vault::{CredentialEntry, Vault, VaultPagination};
     use agent_sdk::vc::{Credential, CredentialMetadata, VCFormat};
     use rstest::rstest;
 
-    const CRED_SD_JWT: &str = "token";
+    const CRED_SD_JWT: &str = "eyJ0eXAiOiJ2YytzZC1qd3QiLCJhbGciOiJFUzI1NiIsImtpZCI6ImRpZDprZXk6ekRuYWV1alBxWjVFakhtZmtyell3ZUxmTXFyOGFxQTNvdDNCdGM0RmU5dHlMcWttUiN6RG5hZXVqUHFaNUVqSG1ma3J6WXdlTGZNcXI4YXFBM290M0J0YzRGZTl0eUxxa21SIn0.eyJfc2QiOlsiQ1Q1bzFMZk5XRE9LT3h4NDJCWUc0NzU0bFpIeTZ0MG5PUGtGRWRmb3FvTSIsIks3bWEwTmZxR0NfM0xQdG12cWtySTR5ckpsdkg0VFU2OWU3SXYtN0VJbzQiLCJyZVlhTkZCV0h6VjE3Y3Z1cTNyRmpVSTNHeDVKc19EbW5VWlNFUmQ0aFpzIl0sInZjdCI6IlNEX0pXVF9jcmVkIiwic3ViIjoiZGlkOmtleTp6RG5hZW5wbnRDa1huRENuYURrNjJMeE5xUGM0Q01kMzJmYmhpVnNaVjVLcFBURzJjIiwibmJmIjoxNzI1NTMzMjU0LCJfc2RfYWxnIjoic2hhLTI1NiIsImlzcyI6ImRpZDprZXk6ekRuYWV1alBxWjVFakhtZmtyell3ZUxmTXFyOGFxQTNvdDNCdGM0RmU5dHlMcWttUiIsImlhdCI6MTcyNTUzMzI1NCwiZXhwIjoxNzU3MDY5MjU0LCJjbmYiOnsiandrIjp7Imt0eSI6IkVDIiwiY3J2IjoiUC0yNTYiLCJ4IjoiVExuNjZxYm5QZXhLeUZtZ3h1Y1kzSlpyZHhCRGpBc3ItbXkya1dBYms4ayIsInkiOiJzaFl6eUVUOENyWVcyTXhPU0FCSkxhbUpPTGV3LWpQbE9aeHdTUzZrWGdjIn19fQ.CBBzIiTjRs2bmKENQcRY14wVnl2vnIjJY9u3AYrA9KQDjqCXZXSzoxQlripAM6Ud_QaYNrZcHK2EVo4QlH3k9w~WyJvMFR4dEw4QWh1TFJXUmduSDk4NF9RIiwgImdpdmVuX25hbWUiLCAiSm9obiJd~WyJ2SVMzZXNQTHlRUHRRZ0JMZ09GYWFnIiwgImZhbWlseV9uYW1lIiwgIkRvZSJd~WyJsaW81cXNVZHZJX3V3eUdiRmFtTnFRIiwgImRvYiIsICIwOS8wOS8xOTg5Il0~";
     const CRED_LDP_VC: &str = r###"{
             "@context": "https://www.w3.org/2018/credentials/v1",
             "id": "http://example.org/credentials/3731",
@@ -547,6 +720,7 @@ mod tests {
 
         assert_eq!(credentials.len(), 10);
     }
+
     #[rstest]
     #[case(10, 0, 5, 5)]
     #[case(10, 0, 10, 10)]
@@ -638,8 +812,131 @@ mod tests {
         assert_eq!(credentials.len(), result_amount);
     }
 
+    #[rstest]
+    #[case::two_feth_calls_with_last_one_is_less_than_batch_size(Some(65), Some(33), vec![33, 32])]
+    #[case::first_also_the_last_fetch(Some(50), Some(50), vec![50])]
+    #[case::multiple_fetches(Some(100), Some(20), vec![20, 20, 20, 20, 20])]
+    #[case::without_predefined_limit(None, Some(32), vec![32, 32, 32, 4])]
+    #[case::without_predefined_limit_and_non_default_batch_size(None, Some(64), vec![64, 36])]
+    #[case::without_default_batch_size(None, None, vec![32, 32, 32, 4])]
+    #[case::with_limit_greater_than_total(Some(101), Some(33), vec![33, 33, 33, 1])]
+    #[case::with_limit_less_than_batch_size(Some(32), Some(33), vec![32])]
+    #[tokio::test]
+    async fn fetch_next_by_cursor_works_correctly(
+        #[case] limit: Option<i64>,
+        #[case] batch_size: Option<i64>,
+        #[case] expected_batches: Vec<usize>,
+    ) {
+        let vault = create_test_vault().await;
+
+        store_batch_of_credentials(&vault, 100).await;
+        let mut cursor = vault
+            .create_cursor(AskarVaultCursorParams {
+                fields: vec!["$.vct".to_string()],
+                batch_size,
+                limit,
+                offset: None,
+                order_by: Some(AskarVaultCursorParamsOrderBy::Id),
+                sort_by_desc: None,
+            })
+            .await
+            .unwrap();
+
+        for expected_size in expected_batches {
+            let batch = cursor.fetch_next().await.unwrap().unwrap();
+            assert_eq!(batch.len(), expected_size);
+        }
+        assert!(cursor.fetch_next().await.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn fetch_next_by_cursor_with_offset_works() {
+        let vault = create_test_vault().await;
+
+        store_batch_of_credentials(&vault, 10).await;
+
+        let mut cursor = vault
+            .create_cursor(AskarVaultCursorParams {
+                fields: vec!["$.vct".to_string()],
+                batch_size: Some(5),
+                limit: None,
+                offset: Some(5),
+                order_by: Some(AskarVaultCursorParamsOrderBy::Id),
+                sort_by_desc: None,
+            })
+            .await
+            .unwrap();
+
+        let batch = cursor.fetch_next().await.unwrap().unwrap();
+        assert_eq!(batch.len(), 5);
+        assert!(cursor.fetch_next().await.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn fetch_next_by_cursor_with_sort_desc_works() {
+        let vault = create_test_vault().await;
+
+        store_batch_of_credentials(&vault, 5).await;
+
+        let mut cursor = vault
+            .create_cursor(AskarVaultCursorParams {
+                fields: vec!["$.vct".to_string()],
+                batch_size: Some(5),
+                limit: None,
+                offset: None,
+                order_by: Some(AskarVaultCursorParamsOrderBy::Id),
+                sort_by_desc: Some(AskarVaultCursorParamsSortBy::Descending),
+            })
+            .await
+            .unwrap();
+
+        let batch = cursor.fetch_next().await.unwrap().unwrap();
+        assert_eq!(batch.len(), 5);
+        assert_eq!(batch[0].kid, "4");
+        assert_eq!(batch[4].kid, "0");
+    }
+
+    #[tokio::test]
+    async fn fetch_next_by_cursor_returns_none_for_empty_vault() {
+        let vault = create_test_vault().await;
+        let mut cursor = vault
+            .create_cursor(AskarVaultCursorParams {
+                fields: vec![],
+                batch_size: Some(5),
+                limit: None,
+                offset: None,
+                order_by: Some(AskarVaultCursorParamsOrderBy::Id),
+                sort_by_desc: None,
+            })
+            .await
+            .unwrap();
+
+        assert!(cursor.fetch_next().await.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn fetch_next_by_cursor_filtering_works() {
+        let vault = create_test_vault().await;
+
+        store_batch_of_credentials(&vault, 5).await;
+
+        let mut cursor = vault
+            .create_cursor(AskarVaultCursorParams {
+                fields: vec!["$.custom_claim".to_string()],
+                batch_size: Some(5),
+                limit: None,
+                offset: None,
+                order_by: Some(AskarVaultCursorParamsOrderBy::Id),
+                sort_by_desc: None,
+            })
+            .await
+            .unwrap();
+
+        assert!(cursor.fetch_next().await.unwrap().is_none());
+    }
+
     fn get_credential_sd_jwt() -> Credential {
-        Credential::SdJwt("token".to_string())
+        Credential::SdJwt(CRED_SD_JWT.to_string())
     }
     fn get_empty_credential_metadata_sd_jwt(kid: String) -> CredentialMetadata {
         CredentialMetadata {
@@ -781,6 +1078,18 @@ mod tests {
             credential: Credential::LdpVc(serde_json::from_str(CRED_LDP_VC).unwrap()),
             kid: "1234".into(),
             id,
+        }
+    }
+
+    async fn store_batch_of_credentials(vault: &AskarVault, amount: usize) {
+        for i in 0..amount {
+            vault
+                .store_credential(
+                    get_credential_sd_jwt().clone(),
+                    &get_credential_metadata_sd_jwt_with_fields(i.to_string()),
+                )
+                .await
+                .unwrap();
         }
     }
 }
