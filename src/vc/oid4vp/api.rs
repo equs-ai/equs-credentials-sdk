@@ -23,7 +23,7 @@ pub const PRESENTATION_SUBMISSION: &str = "presentation_submission";
 pub const TRANSACTION_DATA_HASHES: &str = "transaction_data_hashes";
 pub const TRANSACTION_DATA_HASHES_ALG: &str = "transaction_data_hashes_alg";
 
-pub type CredentialMapping = HashMap<String, CredentialEntry>;
+pub type CredentialMapping = HashMap<String, Vec<CredentialEntry>>;
 pub type CredentialsMapping = HashMap<String, CredentialsFindResult>;
 
 pub type TransactionDataResponse = openid4vp::core::response::TransactionDataResponse;

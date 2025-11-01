@@ -30,7 +30,7 @@ export type CredentialsFindResult = { data: CredentialEntry[] | FindVCsFailReaso
 /**
  * A mapping an input descriptor ID to a single credential entry.
  */
-export type CredentialMapping = Record<string, CredentialEntry>;
+export type CredentialMapping = Record<string, Array<CredentialEntry>>;
 /**
  * A mapping an input descriptor ID to an array of credential entries.
  */

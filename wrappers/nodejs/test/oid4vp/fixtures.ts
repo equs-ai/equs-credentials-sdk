@@ -162,22 +162,24 @@ export const VP =
 
 export const CLAIMS: Claims = {
   vp_token: {
-    "Identity-1": {
-      vct: "https://credentials.example.com/identity_credential",
-      sub: "did:key:zDnaejmEZhSU4xCA8SYscz1X3Z6zBrEGArGmq6Li6HPLpp85Y",
-      nbf: 1760604589,
-      iss: "did:key:zDnaenW6bzvviJkDcVvbiWdyhDEUVWCncckboMJ4cM52WfbAW",
-      iat: 1760604589,
-      exp: 2075964589,
-      cnf: {
-        jwk: {
-          kty: "EC",
-          crv: "P-256",
-          x: "Hz2iN59HbhR0ZcHzbhf7PySD1RzYQkIrfCevQE5SX6s",
-          y: "YAH8o2_N6Pg4XHi3K94SoAVLaIu-goeQo2WU5QIyBDU",
+    "Identity-1": [
+      {
+        vct: "https://credentials.example.com/identity_credential",
+        sub: "did:key:zDnaejmEZhSU4xCA8SYscz1X3Z6zBrEGArGmq6Li6HPLpp85Y",
+        nbf: 1760604589,
+        iss: "did:key:zDnaenW6bzvviJkDcVvbiWdyhDEUVWCncckboMJ4cM52WfbAW",
+        iat: 1760604589,
+        exp: 2075964589,
+        cnf: {
+          jwk: {
+            kty: "EC",
+            crv: "P-256",
+            x: "Hz2iN59HbhR0ZcHzbhf7PySD1RzYQkIrfCevQE5SX6s",
+            y: "YAH8o2_N6Pg4XHi3K94SoAVLaIu-goeQo2WU5QIyBDU",
+          },
         },
+        name: "Mark",
       },
-      name: "Mark",
-    },
+    ],
   },
 };

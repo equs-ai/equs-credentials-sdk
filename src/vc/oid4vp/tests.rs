@@ -3635,11 +3635,11 @@ pub mod utils {
 
                         result.insert(
                             input.id,
-                            CredentialEntry {
+                            vec![CredentialEntry {
                                 credential: Credential::SdJwt(vc),
                                 kid: kid.to_string(),
                                 id: CREDENTIAL_ID.to_string(),
-                            },
+                            }],
                         );
                     }
                     ClaimFormatDesignation::LdpVc => {
@@ -3659,11 +3659,11 @@ pub mod utils {
 
                         result.insert(
                             input.id,
-                            CredentialEntry {
+                            vec![CredentialEntry {
                                 credential: Credential::LdpVc(vc),
                                 kid: kid.to_string(),
                                 id: CREDENTIAL_ID.to_string(),
-                            },
+                            }],
                         );
                     }
                     _ => {}

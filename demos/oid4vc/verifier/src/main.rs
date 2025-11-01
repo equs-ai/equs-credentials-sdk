@@ -435,6 +435,7 @@ pub fn default_dcql_query() -> DCQL {
                     "path": ["country"]
                 },
             ],
+            "multiple": true,
             "claim_sets": [["1"], ["2"], ["3"], ["4"]]
         }
     ))

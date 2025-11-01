@@ -238,9 +238,7 @@ class HolderVPTest {
         val credentials = credentialsMapping.map { (key, findVCsResult) ->
             when (val data = findVCsResult.data) {
                 is CredentialsSearchResult.Credentials -> {
-                    val credential = data.v1.firstOrNull()
-                        ?: throw IllegalStateException("No credentials found for key: $key")
-                    key to credential
+                    key to data.v1
                 }
 
                 is CredentialsSearchResult.Reason -> {

@@ -89,7 +89,7 @@ export class OID4VPHolder {
    */
   async presentCredentials(
     authRequest: AuthorizationRequest,
-    credentialMapping: Record<string, CredentialEntry>,
+    credentialMapping: Record<string, Array<CredentialEntry>>,
     authResponseMetadata: AuthorizationResponseMetadata,
   ): Promise<string | null> {
     return await this.inner.presentCredentials(authRequest.toRustObject(), credentialMapping, authResponseMetadata);

@@ -484,7 +484,10 @@ fn collect_selected_cred_entries(
                     )
                     .expect("selected credential is not found");
 
-                selected.insert(id.to_owned(), cred_entry.to_owned());
+                selected
+                    .entry(id.to_owned())
+                    .and_modify(|v| v.push(cred_entry.clone()))
+                    .or_insert(vec![cred_entry.clone()]);
             }
             CredentialsFindResult::Reason(reason) => {
                 panic!("Unexpected cred type reasons: {reason:?}");

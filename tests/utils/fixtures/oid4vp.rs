@@ -265,18 +265,22 @@ pub fn single_jsonld_presentation_case() -> Oid4VpTestCase {
         descriptor,
     );
 
-    let validate: Box<ValidateClaimsFunc> = Box::new(|claims| {
+    let validate: Box<ValidateClaimsFunc> = Box::new(|vp_response| {
+        let presentations = extract_vp_claims(vp_response, "residentCard");
+
+        assert_eq!(presentations.len(), 1);
+        let presentation = &presentations[0];
         assert_eq!(
-            &claims["vp_token"]["residentCard"]["verifiableCredential"]["credentialSubject"]["givenName"],
-            &Claim::String("John".to_string())
+            presentation["verifiableCredential"]["credentialSubject"]["givenName"],
+            Claim::String("John".to_string())
         );
         assert_eq!(
-            &claims["vp_token"]["residentCard"]["verifiableCredential"]["credentialSubject"]["familyName"],
-            &Claim::String("Doe".to_string())
+            presentation["verifiableCredential"]["credentialSubject"]["familyName"],
+            Claim::String("Doe".to_string())
         );
         assert_eq!(
-            &claims["vp_token"]["residentCard"]["verifiableCredential"]["credentialSubject"]["birthDate"],
-            &Claim::String("09/09/1989".to_string())
+            presentation["verifiableCredential"]["credentialSubject"]["birthDate"],
+            Claim::String("09/09/1989".to_string())
         );
     });
 
@@ -297,15 +301,16 @@ pub fn single_sdjwt_presentation_case() -> Oid4VpTestCase {
         descriptor,
     );
 
-    let validate: Box<ValidateClaimsFunc> = Box::new(|claims| {
+    let validate: Box<ValidateClaimsFunc> = Box::new(|vp_response| {
+        let presentations = extract_vp_claims(vp_response, "identity");
+        assert_eq!(presentations.len(), 1);
+        let presentation = &presentations[0];
+
         assert_eq!(
-            &claims["vp_token"]["identity"]["vct"],
+            &presentation["vct"],
             &Claim::String("https://credentials.example.com/identity_credential".to_string())
         );
-        assert_eq!(
-            &claims["vp_token"]["identity"]["name"],
-            &Claim::String("John".to_string())
-        );
+        assert_eq!(&presentation["name"], &Claim::String("John".to_string()));
     });
 
     Oid4VpTestCase {
@@ -316,10 +321,9 @@ pub fn single_sdjwt_presentation_case() -> Oid4VpTestCase {
     }
 }
 
-pub fn multiple_sdjwt_presentation_case() -> Oid4VpTestCase {
+pub fn presentation_exchange_multiple_sdjwt_presentation_case() -> Oid4VpTestCase {
     let (cred_identity, descriptor_identity) = sample_sdjwt_identity_credential();
     let (cred_degree, descriptor_degree) = sample_sdjwt_degree_credential();
-    let dcql = sample_dcql_query_for_multiple_sdjwt();
 
     let presentation_definition = PresentationDefinition::new(
         "1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed".to_string(),
@@ -327,27 +331,96 @@ pub fn multiple_sdjwt_presentation_case() -> Oid4VpTestCase {
     )
     .add_input_descriptor(descriptor_degree);
 
-    let validate: Box<ValidateClaimsFunc> = Box::new(|claims| {
+    let validate: Box<ValidateClaimsFunc> = Box::new(|vp_response| {
+        let mut presentations = extract_vp_claims(vp_response.clone(), "identity");
+        assert_eq!(presentations.len(), 1);
         assert_eq!(
-            &claims["vp_token"]["identity"]["vct"],
+            &presentations[0]["vct"],
             &Claim::String("https://credentials.example.com/identity_credential".to_string())
         );
         assert_eq!(
-            &claims["vp_token"]["identity"]["name"],
+            &presentations[0]["name"],
             &Claim::String("John".to_string())
         );
+
+        presentations = extract_vp_claims(vp_response, "Degree1");
+        assert_eq!(presentations.len(), 1);
         assert_eq!(
-            &claims["vp_token"]["Degree1"]["vct"],
+            &presentations[0]["vct"],
             &Claim::String("https://credentials.example.com/degree_credential".to_string())
         );
         assert_eq!(
-            &claims["vp_token"]["Degree1"]["degree"]["type"],
+            &presentations[0]["degree"]["type"],
             &Claim::String("BachelorDegree".to_string())
         );
     });
 
     Oid4VpTestCase {
         credentials: vec![cred_identity, cred_degree],
+        presentation_definition,
+        validate,
+        dcql: None,
+    }
+}
+
+pub fn dcql_multiple_sdjwt_presentation_case() -> Oid4VpTestCase {
+    let (cred_identity_1, descriptor_identity_1) = sample_sdjwt_identity_credential();
+    let (cred_identity_2, descriptor_identity_2) = sample_sdjwt_identity_credential();
+    let (cred_degree, descriptor_degree) = sample_sdjwt_degree_credential();
+    let dcql = sample_dcql_query_for_multiple_sdjwt();
+
+    let presentation_definition = PresentationDefinition::new(
+        "1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed".to_string(),
+        descriptor_degree,
+    )
+    .add_input_descriptor(descriptor_identity_1)
+    .add_input_descriptor(descriptor_identity_2);
+
+    let validate: Box<ValidateClaimsFunc> = Box::new(|vp_response| {
+        // Check the first claims with 'multiple' set to true
+        let mut presentations = extract_vp_claims(vp_response.clone(), "identity_1");
+        assert_eq!(presentations.len(), 2);
+        assert_eq!(
+            &presentations[0]["vct"],
+            &Claim::String("https://credentials.example.com/identity_credential".to_string())
+        );
+        assert_eq!(
+            &presentations[0]["name"],
+            &Claim::String("John".to_string())
+        );
+
+        assert_eq!(
+            &presentations[1]["vct"],
+            &Claim::String("https://credentials.example.com/identity_credential".to_string())
+        );
+        assert_eq!(
+            &presentations[1]["surname"],
+            &Claim::String("Doe".to_string())
+        );
+
+        // Check the second claims with 'multiple' set to false
+        presentations = extract_vp_claims(vp_response.clone(), "identity_2");
+        assert_eq!(presentations.len(), 1);
+        assert_eq!(
+            &presentations[0]["name"],
+            &Claim::String("John".to_string())
+        );
+
+        // Check the third claims without 'multiple'
+        presentations = extract_vp_claims(vp_response, "Degree1");
+        assert_eq!(presentations.len(), 1);
+        assert_eq!(
+            &presentations[0]["vct"],
+            &Claim::String("https://credentials.example.com/degree_credential".to_string())
+        );
+        assert_eq!(
+            &presentations[0]["degree"]["type"],
+            &Claim::String("BachelorDegree".to_string())
+        );
+    });
+
+    Oid4VpTestCase {
+        credentials: vec![cred_identity_1, cred_identity_2, cred_degree],
         presentation_definition,
         validate,
         dcql: Some(dcql),
@@ -357,20 +430,35 @@ pub fn multiple_sdjwt_presentation_case() -> Oid4VpTestCase {
 pub fn sample_dcql_query_for_multiple_sdjwt() -> DCQL {
     let desc1: DCQLCredential = serde_json::from_value(json!(
                   {
-                      "id": "identity",
+                      "id": "identity_1",
                       "format": "dc+sd-jwt",
                       "meta": {},
                       "claims": [
                         {"path": ["name"]},
+                        {"path": ["surname"]},
                         {
                             "path": ["vct"],
                             "values": ["https://credentials.example.com/identity_credential"]
                         },
-                      ]
+                      ],
+                      "multiple": true
                   }
     ))
     .unwrap();
     let desc2: DCQLCredential = serde_json::from_value(json!(
+                  {
+                      "id": "identity_2",
+                      "format": "dc+sd-jwt",
+                      "meta": {},
+                      "claims": [
+                        {"path": ["name"]},
+                      ],
+                      "multiple": false
+                  }
+    ))
+    .unwrap();
+
+    let desc3: DCQLCredential = serde_json::from_value(json!(
       {
           "id": "Degree1",
           "format": "dc+sd-jwt",
@@ -394,7 +482,23 @@ pub fn sample_dcql_query_for_multiple_sdjwt() -> DCQL {
     ))
     .unwrap();
 
-    DCQL::new(vec![desc1, desc2].try_into().unwrap())
+    DCQL::new(vec![desc1, desc2, desc3].try_into().unwrap())
+}
+
+fn extract_vp_claims(vp_response: Claims, vp_name: &str) -> Vec<Claims> {
+    let Claim::Array(ref presentations) = vp_response["vp_token"][vp_name] else {
+        panic!("Expected array of claims");
+    };
+    let mut claims: Vec<Claims> = vec![];
+    for presentation in presentations {
+        let Claim::Object(claim) = presentation else {
+            panic!("Expected object of claims");
+        };
+
+        claims.push(Claims::from_map(claim.clone()))
+    }
+
+    claims
 }
 
 #[derive(Default)]

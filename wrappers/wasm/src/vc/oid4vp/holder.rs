@@ -1,16 +1,16 @@
-use agent_sdk::vc::oid4vp::{CredentialsMapping as ASDKCredentialsMapping, Holder};
-use js_sys::{Object, Reflect};
-use std::collections::HashMap;
-use url::Url;
-use wasm_bindgen::prelude::wasm_bindgen;
-use wasm_bindgen::{JsCast, JsError, JsValue};
-
 use crate::utils;
 use crate::utils::convert_to_opaque_object;
 use crate::vc::oid4vp::{
     AuthorizationRequest, AuthorizationResponseMetadata, CredentialMapping, CredentialsMapping,
 };
 use crate::vc::{CredentialsFindResult, JsCredentialEntry};
+use agent_sdk::vault::CredentialEntry;
+use agent_sdk::vc::oid4vp::{CredentialsMapping as ASDKCredentialsMapping, Holder};
+use js_sys::{Object, Reflect};
+use std::collections::HashMap;
+use url::Url;
+use wasm_bindgen::prelude::wasm_bindgen;
+use wasm_bindgen::{JsCast, JsError, JsValue};
 
 /// The `OID4VP` `Holder` API.
 ///
@@ -211,16 +211,20 @@ pub fn convert_to_js_credentials_mapping(
 }
 
 fn convert_from_js_credential_mapping(
-    input: HashMap<String, JsCredentialEntry>,
-) -> Result<HashMap<String, agent_sdk::vault::CredentialEntry>, JsError> {
-    input
-        .into_iter()
-        .map(|(key, val)| {
-            let converted_val: Result<agent_sdk::vault::CredentialEntry, JsError> = val.try_into();
+    input: HashMap<String, Vec<JsCredentialEntry>>,
+) -> Result<HashMap<String, Vec<CredentialEntry>>, JsError> {
+    let mut result = HashMap::new();
+    for (key, value) in input {
+        result.insert(
+            key,
+            value
+                .into_iter()
+                .map(|ce| ce.try_into())
+                .collect::<Result<Vec<CredentialEntry>, JsError>>()?,
+        );
+    }
 
-            converted_val.map(|v| (key, v))
-        })
-        .collect()
+    Ok(result)
 }
 
 pub fn convert_hash_map_of_credentials_to_js_object(

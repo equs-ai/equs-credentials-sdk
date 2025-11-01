@@ -118,7 +118,7 @@ impl InnerOID4VPHolder {
     pub async fn present_credentials(
         &self,
         auth_request: _AuthorizationRequest,
-        credential_mapping: HashMap<String, JsCredentialEntry>,
+        credential_mapping: HashMap<String, Vec<JsCredentialEntry>>,
         auth_response_metadata: JsAuthorizationResponseMetadata,
     ) -> Result<Option<String>> {
         let result = self
@@ -288,13 +288,18 @@ fn convert_to_js_credentials_mapping(
 }
 
 fn convert_from_js_credential_mapping(
-    input: HashMap<String, JsCredentialEntry>,
+    input: HashMap<String, Vec<JsCredentialEntry>>,
 ) -> Result<CredentialMapping> {
-    input
-        .into_iter()
-        .map(|(key, val)| {
-            let converted_val: Result<CredentialEntry> = val.try_into();
-            converted_val.map(|v| (key, v))
-        })
-        .collect()
+    let mut result = HashMap::new();
+    for (key, value) in input {
+        result.insert(
+            key,
+            value
+                .into_iter()
+                .map(|ce| ce.try_into())
+                .collect::<Result<Vec<CredentialEntry>>>()?,
+        );
+    }
+
+    Ok(result)
 }
