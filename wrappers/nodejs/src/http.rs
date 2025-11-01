@@ -183,6 +183,7 @@ impl ReqwestHttpClient {
             .map(ReqwestHttpClient)
             .map_err(|e| Error::from_reason(e.to_string()))
     }
+
     #[napi]
     pub async fn async_call(&self, request: JsHttpRequest) -> Result<JsHttpResponse> {
         self.0
@@ -191,6 +192,7 @@ impl ReqwestHttpClient {
             .map_err(|e| Error::from_reason(e.to_string()))?
             .try_into()
     }
+
     pub fn inner(&self) -> ReqwestClient {
         self.0.clone()
     }

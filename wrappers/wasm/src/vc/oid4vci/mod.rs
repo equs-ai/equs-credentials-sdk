@@ -8,6 +8,7 @@ use wasm_bindgen::{JsCast, JsError};
 mod builder;
 mod credential_offer_resolver;
 mod holder;
+mod metadata;
 
 #[wasm_bindgen]
 extern "C" {

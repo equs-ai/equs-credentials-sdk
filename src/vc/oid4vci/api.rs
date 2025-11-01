@@ -40,6 +40,7 @@ pub type NonceResponse = oid4vci::nonce::Response;
 pub type TxCode = oid4vci::types::TxCode;
 pub type AuthorizationCodeGrant = oid4vci::credential_offer::AuthorizationCodeGrant;
 pub type AccessToken = oauth2::AccessToken;
+pub type MetadataDiscovery = metadata::MetadataDiscovery;
 
 /// A result of the Credential issuance handled by `Holder`
 ///

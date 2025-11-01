@@ -21,6 +21,7 @@ class HolderVCITest {
         const val ACCESS_TOKEN =
             "eyJhbGciOiJSUzI1NiIsInR5cCIgOiAiSldUIiwia2lkIiA6ICJQY2xZUDZ2UmsxTHBLRGZqU08yRGEzNXJtR1JmaTkzNjJDcFJFeUpmOHAwIn0.eyJleHAiOjE3MjQzOTg0OTQsImlhdCI6MTcyNDM5ODE5NCwiYXV0aF90aW1lIjoxNzI0Mzk4MTgyLCJqdGkiOiIwYjRmZTM5MC00OTIxLTQwNDItYjdlMS1iMDNiM2QxOTYyMjkiLCJpc3MiOiJodHRwOi8vbG9jYWxob3N0OjgwODAvaWRwL3JlYWxtcy9waWQtaXNzdWVyLXJlYWxtIiwic3ViIjoiNjBiOGJhNWYtYzczZi00OTc2LWIwZGEtNDhkMGU1MzMzNWRlIiwidHlwIjoiQmVhcmVyIiwiYXpwIjoid2FsbGV0LWRldiIsInNpZCI6ImYxNWIzZTExLWZmMjgtNDRkZi04ZmNmLWE3N2QyNDcxNGEyMyIsImFsbG93ZWQtb3JpZ2lucyI6WyIvKiJdLCJzY29wZSI6IlNEX0pXVF9jcmVkIn0.pLGGmOApXnQCY6CwuFzxFXEN36aDJ-iE0TM_esYJ_qtijhUtWq5zI9lD-iGzhTSdwZ7Y51eUKtqmJXHixzBo847vmMeGla4Ko6JTY-4vVAIQ1Hk1xzl25ALuZNwxGbljlysjzBgCxeAjZo3fE0HTI5y6NItptIU8aY3ykoIX9xE81ZkexbVrR495cEX7UIgUgCZyhj8lXUMWFrNFBhELnzzFGdX01Dq3B-KflY9ACVaw-_U9bT6EzDI0-0Cyx2K658EU9VpDjBSR6URT5I9quvx1qoYMFPv7zhjW3sUASIVwThe4CvWCCR8Kf8rsnEQ2qnchn0f6gn9thxi51FGkvA"
         const val ISSUER_ENDPOINT = "http://localhost:9081"
+        const val AUTH_SERVER_ENDPOINT = "$ISSUER_ENDPOINT/auth"
         const val SD_JWT_CRED =
             "eyJ0eXAiOiJ2YytzZC1qd3QiLCJhbGciOiJFUzI1NiIsImtpZCI6ImRpZDprZXk6ekRuYWV1alBxWjVFakhtZmtyell3ZUxmTXFyOGFxQTNvdDNCdGM0RmU5dHlMcWttUiN6RG5hZXVqUHFaNUVqSG1ma3J6WXdlTGZNcXI4YXFBM290M0J0YzRGZTl0eUxxa21SIn0.eyJfc2QiOlsiQ1Q1bzFMZk5XRE9LT3h4NDJCWUc0NzU0bFpIeTZ0MG5PUGtGRWRmb3FvTSIsIks3bWEwTmZxR0NfM0xQdG12cWtySTR5ckpsdkg0VFU2OWU3SXYtN0VJbzQiLCJyZVlhTkZCV0h6VjE3Y3Z1cTNyRmpVSTNHeDVKc19EbW5VWlNFUmQ0aFpzIl0sInZjdCI6IlNEX0pXVF9jcmVkIiwic3ViIjoiZGlkOmtleTp6RG5hZW5wbnRDa1huRENuYURrNjJMeE5xUGM0Q01kMzJmYmhpVnNaVjVLcFBURzJjIiwibmJmIjoxNzI1NTMzMjU0LCJfc2RfYWxnIjoic2hhLTI1NiIsImlzcyI6ImRpZDprZXk6ekRuYWV1alBxWjVFakhtZmtyell3ZUxmTXFyOGFxQTNvdDNCdGM0RmU5dHlMcWttUiIsImlhdCI6MTcyNTUzMzI1NCwiZXhwIjoxNzU3MDY5MjU0LCJjbmYiOnsiandrIjp7Imt0eSI6IkVDIiwiY3J2IjoiUC0yNTYiLCJ4IjoiVExuNjZxYm5QZXhLeUZtZ3h1Y1kzSlpyZHhCRGpBc3ItbXkya1dBYms4ayIsInkiOiJzaFl6eUVUOENyWVcyTXhPU0FCSkxhbUpPTGV3LWpQbE9aeHdTUzZrWGdjIn19fQ.CBBzIiTjRs2bmKENQcRY14wVnl2vnIjJY9u3AYrA9KQDjqCXZXSzoxQlripAM6Ud_QaYNrZcHK2EVo4QlH3k9w~WyJvMFR4dEw4QWh1TFJXUmduSDk4NF9RIiwgImdpdmVuX25hbWUiLCAiSm9obiJd~WyJ2SVMzZXNQTHlRUHRRZ0JMZ09GYWFnIiwgImZhbWlseV9uYW1lIiwgIkRvZSJd~WyJsaW81cXNVZHZJX3V3eUdiRmFtTnFRIiwgImRvYiIsICIwOS8wOS8xOTg5Il0~"
         const val SD_JWT_CRED_DID_WEB_ISS =
@@ -30,7 +31,7 @@ class HolderVCITest {
             """
                 {
                     "credential_issuer": "$ISSUER_ENDPOINT",
-                    "authorization_servers": ["$ISSUER_ENDPOINT/auth"],
+                    "authorization_servers": ["$AUTH_SERVER_ENDPOINT"],
                     "credential_endpoint": "$ISSUER_ENDPOINT/credential",
                     "nonce_endpoint": "$ISSUER_ENDPOINT/nonce",
                     "batch_credential_issuance": {
@@ -76,16 +77,26 @@ class HolderVCITest {
         val authServerMetadata = Json.parseToJsonElement(
             """
                 {
-                    "issuer": "$ISSUER_ENDPOINT/auth",
-                    "authorization_endpoint": "$ISSUER_ENDPOINT/auth",
-                    "token_endpoint": "$ISSUER_ENDPOINT/auth/token",
-                    "introspection_endpoint": "$ISSUER_ENDPOINT/auth/introspection",
-                    "jwks_uri": "$ISSUER_ENDPOINT/auth/jwks",
+                    "issuer": "$AUTH_SERVER_ENDPOINT",
+                    "authorization_endpoint": "$AUTH_SERVER_ENDPOINT",
+                    "token_endpoint": "$AUTH_SERVER_ENDPOINT/token",
+                    "introspection_endpoint": "$AUTH_SERVER_ENDPOINT/introspection",
+                    "jwks_uri": "$AUTH_SERVER_ENDPOINT/jwks",
                     "grant_types_supported": ["authorization_code"],
                     "response_types_supported": ["code", "token"],
                     "subject_types_supported": ["public"],
                     "id_token_signing_alg_values_supported": ["ES256"],
-                    "pushed_authorization_request_endpoint": "$ISSUER_ENDPOINT/auth/par/request"
+                    "pushed_authorization_request_endpoint": "$AUTH_SERVER_ENDPOINT/par/request",
+                    "code_challenge_methods_supported": null,
+                    "pre-authorized_grant_anonymous_access_supported": false,
+                    "registration_endpoint": null,
+                    "require_pushed_authorization_requests": false,
+                    "response_modes_supported": [
+                        "query",
+                        "fragment"
+                    ],
+                    "revocation_endpoint": null,
+                    "scopes_supported": null
                 }
             """
         )

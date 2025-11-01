@@ -13,6 +13,7 @@ use uniffi::custom_type;
 mod builder;
 mod credential_offer_resolver;
 pub mod holder;
+mod metadata;
 
 pub type CredentialResult = agent_sdk::vc::oid4vci::CredentialResult;
 pub type CredentialResponse = agent_sdk::vc::oid4vci::CredentialResponseResolved;
