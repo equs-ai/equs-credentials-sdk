@@ -4,7 +4,7 @@ mod utils;
 
 use crate::utils::fixtures::oid4vp::{
     Oid4VpTestCase, Oid4VpTestCredentialFormat, STATE, VERIFIER_URL, ValidateClaimsFunc,
-    multiple_sdjwt_presentation_case, single_jsonld_presentation_case,
+    presentation_exchange_multiple_sdjwt_presentation_case, single_jsonld_presentation_case,
     single_sdjwt_presentation_case,
 };
 use agent_sdk::did::universal::UniversalResolver;
@@ -159,7 +159,7 @@ async fn authorized_code_flow_using_custom_did_resolver(#[case] validate_token: 
 #[rstest]
 #[case::single_jsonld_presentation(single_jsonld_presentation_case())]
 #[case::single_sdjwt_presentation(single_sdjwt_presentation_case())]
-#[case::multiple_sdjwt_presentation(multiple_sdjwt_presentation_case())]
+#[case::multiple_sdjwt_presentation(presentation_exchange_multiple_sdjwt_presentation_case())]
 #[tokio::test]
 async fn oid4vp_credentials_presentation_and_verification_with_custom_did_resolver(
     #[case] test_case: Oid4VpTestCase,
@@ -432,7 +432,10 @@ fn prepare_holder_http_client_for_verifier(
                 &CredentialVerificationMetadata::default(),
             ));
             let claims = result.unwrap();
-            println!("Presentation Claims: {:?}", claims);
+            println!(
+                "Presentation Claims: {}",
+                serde_json::to_string_pretty(&claims).unwrap()
+            );
 
             validate_claims_func(claims);
 

@@ -144,9 +144,11 @@ where
     ) -> Result<AuthorizationResponse> {
         let (vp_token, ps) = match auth_request.resolved_presentation_query.clone() {
             ResolvedPresentationQuery::DCQL(dcql) => {
-                let vp_token_json =
-                    dcql::prepare_vp_token_response_for_dcql(requested_presentations)
-                        .context(DCQLSnafu)?;
+                let vp_token_json = dcql::prepare_vp_token_response_for_dcql(
+                    requested_presentations,
+                    dcql.credentials(),
+                )
+                .context(DCQLSnafu)?;
                 let vp_token =
                     VpToken::try_from(vp_token_json).context(AuthorizationResponseSnafu)?;
                 (vp_token, None)
@@ -393,67 +395,96 @@ where
     }
 
     #[instrument(level = Level::TRACE, skip(self), err(), ret())]
-    async fn create_presentation_from_creds_map(
+    async fn create_presentations_from_creds_map(
         &self,
         cred_map: &CredentialMapping,
-        presentation_input: &PresentationInput,
+        presentation_inputs: &Vec<PresentationInput>,
         auth_request: &ResolvedAuthRequest,
-    ) -> Result<RequestedPresentation> {
-        let Some(cred) = cred_map.get(&presentation_input.id) else {
-            let err = ProtocolError::access_denied(
-                "matching credentials are not found",
-                auth_request.state.clone(),
-            );
-            let source = self
-                .handle_auth_error_resp(
-                    &auth_request.response_uri,
-                    &auth_request.response_mode,
-                    err,
-                )
-                .await?;
+    ) -> Result<Vec<RequestedPresentation>> {
+        let mut presentations = vec![];
 
-            return Err(Protocol { source });
-        };
-
-        let holder_binder = if let ResolvedPresentationQuery::DCQL(dcql) =
-            auth_request.resolved_presentation_query.to_owned()
-        {
-            let cred_query = dcql
-                .credentials()
-                .iter()
-                .find(|&c| c.id().as_str() == presentation_input.id);
-            if let Some(query) = cred_query {
-                if let Some(false) = query.require_cryptographic_holder_binding() {
-                    None
-                } else {
-                    Some(HolderBinder {
-                        nonce: auth_request.nonce.to_owned(),
-                        verifier_id: auth_request.client_id.get_id(),
-                    })
-                }
-            } else {
-                let err = ProtocolError::access_denied(
-                    "matching credentials are not found",
-                    auth_request.state.clone(),
-                );
-                let source = self
-                    .handle_auth_error_resp(
-                        &auth_request.response_uri,
-                        &auth_request.response_mode,
-                        err,
-                    )
+        for presentation_input in presentation_inputs {
+            let Some(credentials) = cred_map
+                .get(&presentation_input.id)
+                .filter(|creds| !creds.is_empty())
+            else {
+                let err = self
+                    .send_matching_credentials_not_found_error(auth_request)
                     .await?;
 
-                return Err(Protocol { source });
+                return Err(Protocol { source: err });
+            };
+
+            let holder_binder = self
+                .resolve_holder_binder(presentation_input, auth_request)
+                .await?;
+
+            for cred in credentials {
+                let presentation = self
+                    .create_presentation_by_input(cred, presentation_input, holder_binder.clone())
+                    .await?;
+                presentations.push(presentation);
             }
-        } else {
-            Some(HolderBinder {
+        }
+
+        Ok(presentations)
+    }
+
+    #[instrument(level = Level::TRACE, skip(self), err(), ret())]
+    async fn resolve_holder_binder(
+        &self,
+        presentation_input: &PresentationInput,
+        auth_request: &ResolvedAuthRequest,
+    ) -> Result<Option<HolderBinder>> {
+        let ResolvedPresentationQuery::DCQL(dcql) = &auth_request.resolved_presentation_query
+        else {
+            let holder_binder = HolderBinder {
                 nonce: auth_request.nonce.to_owned(),
                 verifier_id: auth_request.client_id.get_id(),
-            })
+            };
+            return Ok(Some(holder_binder));
         };
-        self.create_presentation_by_input(cred, presentation_input, holder_binder)
-            .await
+
+        let Some(cred_query) = dcql
+            .credentials()
+            .iter()
+            .find(|&c| c.id().as_str() == presentation_input.id)
+        else {
+            let err = self
+                .send_matching_credentials_not_found_error(auth_request)
+                .await?;
+
+            return Err(Protocol { source: err });
+        };
+
+        if cred_query
+            .require_cryptographic_holder_binding()
+            .unwrap_or(true)
+        {
+            let holder_binder = HolderBinder {
+                nonce: auth_request.nonce.to_owned(),
+                verifier_id: auth_request.client_id.get_id(),
+            };
+            Ok(Some(holder_binder))
+        } else {
+            Ok(None)
+        }
+    }
+
+    #[instrument(level = Level::TRACE, skip(self), err(), ret())]
+    async fn send_matching_credentials_not_found_error(
+        &self,
+        auth_request: &ResolvedAuthRequest,
+    ) -> Result<ProtocolError> {
+        let err = ProtocolError::access_denied(
+            "matching credentials are not found",
+            auth_request.state.clone(),
+        );
+        let source = self
+            .handle_auth_error_resp(&auth_request.response_uri, &auth_request.response_mode, err)
+            .await?;
+
+        Ok(source)
     }
 
     #[instrument(level = Level::TRACE, skip(self), err(), ret())]
@@ -558,17 +589,8 @@ where
                         .await;
                 }
 
-                let err = ProtocolError::access_denied(
-                    "matching credentials are not found",
-                    auth_request.state.clone(),
-                );
-
                 let err = self
-                    .handle_auth_error_resp(
-                        &auth_request.response_uri,
-                        &auth_request.response_mode,
-                        err,
-                    )
+                    .send_matching_credentials_not_found_error(auth_request)
                     .await?;
 
                 Err(Protocol { source: err })
@@ -929,11 +951,8 @@ where
                 dcql::split_to_inputs_for_dcql(dcql.credentials().to_vec().as_ref())
             }
         };
-        let presentations: Vec<RequestedPresentation> =
-            future::try_join_all(presentation_inputs.iter().map(|presentation_input| async {
-                self.create_presentation_from_creds_map(cred_map, presentation_input, auth_request)
-                    .await
-            }))
+        let presentations = self
+            .create_presentations_from_creds_map(cred_map, &presentation_inputs, auth_request)
             .await?;
 
         let redirect_url = self

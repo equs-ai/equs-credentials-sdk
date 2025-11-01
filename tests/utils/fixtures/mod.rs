@@ -1,10 +1,12 @@
 pub(crate) mod oid4vp;
 
-use serde_json::json;
-use url::Url;
-
+use agent_sdk::vault::CredentialEntry;
 use agent_sdk::vc::claims::Claims;
 use agent_sdk::vc::oid4vci::{AuthorizationMetadata, IssuerMetadata};
+use agent_sdk::vc::oid4vp::{CredentialsFindResult, Holder, ResolvedAuthRequest};
+use serde_json::json;
+use std::collections::HashMap;
+use url::Url;
 
 pub const AUTHZ_URL: &str = "https://authz-backend.com";
 pub const ISSUER_URL: &str = "https://issuer-backend.com";
@@ -197,4 +199,23 @@ pub fn sample_claims_jsonld() -> Claims {
         }
     ))
     .unwrap()
+}
+
+pub async fn find_vcs_to_present(
+    holder: &dyn Holder,
+    request_object: &ResolvedAuthRequest,
+) -> HashMap<String, Vec<CredentialEntry>> {
+    let found_creds = holder
+        .find_vcs_for_presentation(request_object)
+        .await
+        .unwrap();
+    let mut creds = HashMap::new();
+    for (key, value) in found_creds {
+        let CredentialsFindResult::Credentials(credentials) = value else {
+            panic!("Expected credentials, got failure reason: {:?}", value);
+        };
+        creds.insert(key, credentials);
+    }
+
+    creds
 }

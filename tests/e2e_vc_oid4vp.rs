@@ -33,9 +33,11 @@ use utils::fixtures::oid4vp::{MockNonceHandler, Oid4VpTestCredentialFormat};
 use utils::helpers::create_did_keymetadata_keyhandle;
 use utils::http::HttpClientEmulator;
 
+use crate::utils::fixtures::find_vcs_to_present;
 use crate::utils::fixtures::oid4vp::{
-    Oid4VpTestCase, STATE, VERIFIER_URL, ValidateClaimsFunc, multiple_sdjwt_presentation_case,
-    single_jsonld_presentation_case, single_sdjwt_presentation_case,
+    Oid4VpTestCase, STATE, VERIFIER_URL, ValidateClaimsFunc, dcql_multiple_sdjwt_presentation_case,
+    presentation_exchange_multiple_sdjwt_presentation_case, single_jsonld_presentation_case,
+    single_sdjwt_presentation_case,
 };
 use agent_sdk::did::DIDURL;
 use agent_sdk::did::universal::UniversalResolver;
@@ -48,7 +50,7 @@ use agent_sdk::vc::metadata::{CredentialMetadataProcessor, DefaultMetadataProces
 #[rstest]
 #[case::single_jsonld_presentation(single_jsonld_presentation_case())]
 #[case::single_sdjwt_presentation(single_sdjwt_presentation_case())]
-#[case::multiple_sdjwt_presentation(multiple_sdjwt_presentation_case())]
+#[case::multiple_sdjwt_presentation(presentation_exchange_multiple_sdjwt_presentation_case())]
 #[tokio::test]
 async fn credentials_presentation_and_verification(#[case] test_case: Oid4VpTestCase) {
     println!("7. Store Credential");
@@ -127,7 +129,7 @@ async fn credentials_presentation_and_verification(#[case] test_case: Oid4VpTest
         serde_json::from_str::<serde_json::Value>(DEFAULT_CLIENT_METADATA).unwrap()
     );
 
-    println!("9. Present Credential Auto");
+    println!("9. Present Credentials");
 
     let auth_resp_metadata = AuthorizationResponseMetadata {
         claims_to_exclude: None,
@@ -137,8 +139,9 @@ async fn credentials_presentation_and_verification(#[case] test_case: Oid4VpTest
         }),
     };
 
+    let creds_mapping = find_vcs_to_present(&holder, &request_object).await;
     holder
-        .present_credentials_auto(&request_object, &auth_resp_metadata)
+        .present_credentials(&request_object, &creds_mapping, &auth_resp_metadata)
         .await
         .unwrap();
 }
@@ -146,7 +149,7 @@ async fn credentials_presentation_and_verification(#[case] test_case: Oid4VpTest
 #[rstest]
 #[case::single_jsonld_presentation(single_jsonld_presentation_case())]
 #[case::single_sdjwt_presentation(single_sdjwt_presentation_case())]
-#[case::multiple_sdjwt_presentation(multiple_sdjwt_presentation_case())]
+#[case::multiple_sdjwt_presentation(dcql_multiple_sdjwt_presentation_case())]
 #[tokio::test]
 async fn credentials_presentation_and_verification_with_dcql(#[case] test_case: Oid4VpTestCase) {
     println!("7. Store Credential");
@@ -219,13 +222,16 @@ async fn credentials_presentation_and_verification_with_dcql(#[case] test_case: 
         .await
         .unwrap();
 
-    println!("{:?}", &request_object);
+    println!(
+        "{}",
+        &serde_json::to_string_pretty(&request_object).unwrap()
+    );
     assert_eq!(
         serde_json::to_value(&request_object.client_metadata).unwrap(),
         serde_json::from_str::<serde_json::Value>(DEFAULT_CLIENT_METADATA).unwrap()
     );
 
-    println!("9. Present Credential Auto");
+    println!("9. Present Credentials");
 
     let auth_resp_metadata = AuthorizationResponseMetadata {
         claims_to_exclude: None,
@@ -235,8 +241,9 @@ async fn credentials_presentation_and_verification_with_dcql(#[case] test_case: 
         }),
     };
 
+    let creds_mapping = find_vcs_to_present(&holder, &request_object).await;
     holder
-        .present_credentials_auto(&request_object, &auth_resp_metadata)
+        .present_credentials(&request_object, &creds_mapping, &auth_resp_metadata)
         .await
         .unwrap();
 }
@@ -281,7 +288,7 @@ fn prepare_http_client_for_holder(
             let vp_token_str = form.get("vp_token").unwrap().as_str();
             let vp_token = match is_dcql {
                 true => {
-                    let vp_token: HashMap<String, Value> =
+                    let vp_token: HashMap<String, Vec<Value>> =
                         serde_json::from_str(vp_token_str).unwrap();
                     serde_json::to_value(vp_token).unwrap()
                 }
@@ -289,7 +296,7 @@ fn prepare_http_client_for_holder(
                     .unwrap_or(serde_json::to_value(vp_token_str).unwrap()),
             };
             println!(
-                "vp_token: {:?}",
+                "vp_token: {}",
                 serde_json::to_string_pretty(&vp_token).unwrap()
             );
             let presentation_submission = match is_dcql {
@@ -318,8 +325,8 @@ fn prepare_http_client_for_holder(
             ));
             let claims = result.unwrap();
             println!(
-                "Presentation Claims: {:?}",
-                serde_json::to_string_pretty(&claims)
+                "Presentation Claims: {}",
+                serde_json::to_string_pretty(&claims).unwrap()
             );
 
             validate_claims_func(claims);

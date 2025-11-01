@@ -138,19 +138,12 @@ import Testing
 			let credentials = try await holder.findVcsForPresentation(
 				authRequest: Oid4vpHolderTestConstants.authRequest)
 
-			var credentialMapping: [String: CredentialEntry] = [:]
+			var credentialMapping: [String: Array<CredentialEntry>] = [:]
 
 			for (key, result) in credentials {
 				switch result.data {
 				case .credentials(let credentials):
-					guard let first = credentials.first else {
-						throw NSError(
-							domain: "ExtractError", code: 1,
-							userInfo: [
-								NSLocalizedDescriptionKey: "No credentials found for key: \(key)"
-							])
-					}
-					credentialMapping[key] = first
+					credentialMapping[key] = credentials
 
 				case .reason(let reason):
 					throw NSError(

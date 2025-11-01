@@ -11,7 +11,7 @@ use crate::vc::{ClaimFormatDesignation, HasClaims, Presentation, RequestedPresen
 use crate::vc::{Credential, HasVCFormat, JsonPath};
 use common_macros::DebugError;
 use openid4vp::core::dcql::{DcqlClaim, DcqlCredential, DcqlCredentialSet, PathValue, ValueType};
-use serde_json::{Map, Value, json};
+use serde_json::{Value, json};
 use snafu::{Location, ResultExt, Snafu};
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
@@ -283,22 +283,40 @@ fn check_if_set_required_and_all_creds_exist(
 
 pub(crate) fn prepare_vp_token_response_for_dcql(
     requested_presentations: &[RequestedPresentation],
+    dcql_credentials: &NonEmptyVec<DCQLCredential>,
 ) -> Result<Value> {
-    let mut presentations: Map<String, Value> = Map::new();
+    let cred_id_to_multiple: HashMap<&str, bool> = HashMap::from_iter(
+        dcql_credentials
+            .iter()
+            .map(|c| (c.id().as_str(), c.multiple().unwrap_or_default())),
+    );
+    let mut presentations: HashMap<String, Vec<Value>> = HashMap::new();
 
     for presentation in requested_presentations.iter() {
-        presentations.insert(
-            presentation.id.clone(),
+        let json_presentation =
             serde_json::to_value(presentation.presentation.clone()).map_err(|err| {
                 ParseSnafu {
                     details: format!("Presentation parse error: {err}"),
                 }
                 .build()
-            })?,
-        );
+            })?;
+
+        presentations
+            .entry(presentation.id.clone())
+            .and_modify(|json_presentations| {
+                if let Some(true) = cred_id_to_multiple.get(presentation.id.as_str()) {
+                    json_presentations.push(json_presentation.clone());
+                }
+            })
+            .or_insert(vec![json_presentation]);
     }
 
-    let presentations = Value::Object(presentations);
+    let presentations = serde_json::to_value(presentations).map_err(|err| {
+        ParseSnafu {
+            details: format!("Could not serialize presentations to json: {err}"),
+        }
+        .build()
+    })?;
 
     Ok(presentations)
 }
@@ -309,60 +327,42 @@ pub(crate) fn resolve_presentation_response(
 ) -> Result<Vec<RequestedPresentation>> {
     let mut result: Vec<RequestedPresentation> = vec![];
     for credential_query in dcql.credentials() {
-        let presentation = match credential_query.format() {
+        let path = JsonPath::parse(
+            json::json_path_as_string(&vec![PathValue::String(
+                credential_query.id().as_str().to_owned(),
+            )])
+            .as_str(),
+        )
+        .map_err(|e| {
+            ParseSnafu {
+                details: "Could not parse json path",
+            }
+            .build()
+        })?;
+
+        let extracted_presentations = get_presentations_by_path(
+            &presentations,
+            credential_query.id().as_str().to_owned(),
+            &path,
+        )?;
+
+        let mut presentation_results = Vec::new();
+        match credential_query.format() {
             ClaimFormatDesignation::SdJwtVc => {
-                let path = JsonPath::parse(
-                    json::json_path_as_string(&vec![PathValue::String(
-                        credential_query.id().as_str().to_owned(),
-                    )])
-                    .as_str(),
-                )
-                .map_err(|e| {
-                    ParseSnafu {
-                        details: "Could not parse json path",
-                    }
-                    .build()
-                })?;
-                let prs_json = extract_json_presentation(
-                    &presentations,
-                    credential_query.id().as_str().to_owned(),
-                    &path,
-                )?;
-
-                let sd_jwt = prs_json.as_str().ok_or(
-                    ParseSnafu {
-                        details: "Incorrect presentation format: expected SD-JWT string"
-                            .to_string(),
-                    }
-                    .build(),
-                )?;
-
-                Presentation::SdJwtVp(sd_jwt.to_string())
+                for sd_jwt_json in extracted_presentations {
+                    let sd_jwt = sd_jwt_json.as_str().ok_or(
+                        ParseSnafu {
+                            details: "Incorrect presentation format: expected SD-JWT string"
+                                .to_string(),
+                        }
+                        .build(),
+                    )?;
+                    presentation_results.push(Presentation::SdJwtVp(sd_jwt.to_string()))
+                }
             }
             ClaimFormatDesignation::LdpVc => {
-                let unwrapped_json = extract_json_presentation(
-                    &presentations,
-                    credential_query.id().as_str().to_string(),
-                    &JsonPath::parse(format!("$.{}", credential_query.id().as_str()).as_str())
-                        .map_err(|err| {
-                            ParseSnafu {
-                                details: format!(
-                                    "Could not deserialize 'ldp_vc' presentation from json: {err}"
-                                ),
-                            }
-                            .build()
-                        })?,
-                )
-                .map_err(|err| {
-                    ParseSnafu {
-                        details: format!(
-                            "Could not deserialize 'ldp_vc' presentation from json: {err}"
-                        ),
-                    }
-                    .build()
-                })?;
-                let presentation =
-                    serde_json::from_value(unwrapped_json.clone()).map_err(|err| {
+                for ldp_vc_json in extracted_presentations {
+                    let ldp_vc = serde_json::from_value(ldp_vc_json.clone()).map_err(|err| {
                         ParseSnafu {
                             details: format!(
                                 "Could not deserialize 'ldp_vc' presentation from json: {err}"
@@ -371,29 +371,34 @@ pub(crate) fn resolve_presentation_response(
                         .build()
                     })?;
 
-                Presentation::LdpVp(presentation)
+                    presentation_results.push(Presentation::LdpVp(ldp_vc))
+                }
             }
             _ => FormatNotSupportedSnafu {
                 format: String::from(credential_query.format().to_owned()),
             }
             .fail()?,
         };
-        result.push(RequestedPresentation {
-            id: credential_query.id().as_str().to_owned(),
-            presentation,
-            require_cryptographic_holder_binding: credential_query
-                .require_cryptographic_holder_binding(),
-        })
+
+        for presentation in presentation_results {
+            result.push(RequestedPresentation {
+                id: credential_query.id().as_str().to_owned(),
+                presentation,
+                require_cryptographic_holder_binding: credential_query
+                    .require_cryptographic_holder_binding(),
+            })
+        }
     }
     Ok(result)
 }
 
-fn extract_json_presentation<'a>(
+fn get_presentations_by_path<'a>(
     presentations: &'a Value,
     credential_id: String,
     path: &JsonPath,
-) -> Result<&'a Value> {
-    path.query(presentations)
+) -> Result<&'a Vec<Value>> {
+    let root = path
+        .query(presentations)
         .at_most_one()
         .map_err(|e| {
             ParseSnafu {
@@ -415,7 +420,14 @@ fn extract_json_presentation<'a>(
                 ),
             }
             .build(),
-        )
+        )?;
+
+    root.as_array().ok_or(
+        ParseSnafu {
+            details: "Could not parse presentations as array of json".to_string(),
+        }
+        .build(),
+    )
 }
 
 pub fn validate_credential_for_dcql(
@@ -715,14 +727,14 @@ mod tests {
         let actual = resolve_presentation_response(presentation.clone(), &dcql).unwrap();
     }
 
-    #[rstest]
+    #[test]
     #[should_panic(expected = "Unsupported format")]
     fn resolve_presentation_response_returns_error_with_wrong_format() {
         let (presentation, _) = sample_sdjwt_presentation_for_dcql();
         let wrong_format_str = ClaimFormatDesignation::Jwt.to_string();
         let credential: DCQLCredential = serde_json::from_value(json!(
             {
-                "id": "not_correct_id",
+                "id": "id",
                 "format": wrong_format_str,
                 "meta": {
                     "vct_values": ["some_vct".to_string()]
@@ -747,7 +759,7 @@ mod tests {
 
     fn sample_sdjwt_presentation_for_dcql() -> (Value, Value) {
         let presentation_for_dcql = json!(
-        {"id":"eyJ0eXAiOiJkYytzZC1qd3QiLCJhbGciOiJFUzI1NiIsImtpZCI6ImRpZDprZXk6ekRuYWVwbmhBQXI5Tk51TnJ6M1pydU5ibTY0NGk5aW9VYW1xSHBZQXBTNldSUVNlTiN6RG5hZXBuaEFBcjlOTnVOcnozWnJ1TmJtNjQ0aTlpb1VhbXFIcFlBcFM2V1JRU2VOIn0.eyJfc2QiOlsiTWdsdFNpQUczcUpCTWMyUXU0UnVDUk1RSl9PNzdBZTI5ak9MY0NtRFNLUSIsImhfRkFmTEdCeVVyWHo5dkRNRHN1QnZzd2k3UDBRdlRhT0dyTW5XbTlDbEkiLCJsUzJVaWhBeU1ieEZ1cUJrS1ZhTmJDbmE1UjA5U1dQcGpVOFc4eDliakNnIl0sImlhdCI6MTc0NzI2ODYxMywiZGF0ZSI6IjA5LzA5LzE5ODkiLCJ2Y3QiOiJodHRwczovL2NyZWRlbnRpYWxzLmV4YW1wbGUuY29tL2lkZW50aXR5X2NyZWRlbnRpYWwiLCJzdWIiOiJkaWQ6a2V5OnpEbmFlc2tNWUozUmNrdkUxeXJ4cE1mTmtXTkxBdnptVXhFQjJKb3o3ZlF4OHRMQXUiLCJfc2RfYWxnIjoic2hhLTI1NiIsImlzcyI6ImRpZDprZXk6ekRuYWVwbmhBQXI5Tk51TnJ6M1pydU5ibTY0NGk5aW9VYW1xSHBZQXBTNldSUVNlTiIsImV4cCI6MTc3ODgwNDYxMywibmJmIjoxNzQ3MjY4NjEzLCJjbmYiOnsiandrIjp7Imt0eSI6IkVDIiwiY3J2IjoiUC0yNTYiLCJ4IjoibGVGdmtuNFlKNGtUdE45MUVQZmU4ZlRuN1hQWm5kMUtQV0Yxd193cDhYSSIsInkiOiJUZ0lwNjlfV3oxODFCYlZMcHg5cE16SW5fQ0JWeGhMbXRvcUFueE90ZDIwIn19fQ.P4e1UwBcxKMFSPq3xm9fFLUn8gJI6LdUQVUD1eIQLZLakMja7af-blESspA2RYS0vJ3NrNqUgft3RZ2v5dKlEw~WyJIc3RSS2JWR3JmVkViMk5lYTBwT0JRIiwgIm5hbWUiLCAiSm9obiJd~eyJ0eXAiOiJrYitqd3QiLCJhbGciOiJFUzI1NiJ9.eyJzZF9oYXNoIjoiT2dtazBIUlJPR1N5bDZaOWd1dTdydTFYOHR5VnZ1R0tsTXpkNkwwNUVubyIsIm5vbmNlIjoiN2dMaFFpdC1vY2FvMVNQejFKbWhyYm1GenNCelluak54ZVVnUHFWaWpzbyIsImlhdCI6MTc0NzI2ODYxMywiYXVkIjoiZGlkOmtleTp6RG5hZWdFYjRScWppR3ZHZ0xpWXFqYm05ckFjZzZ4ZmJHUG5MOXBrZnhma0F1M3ZrIn0.eauedo3Oz9aluDNN_xweJtDjXRjwyfKxqAmZjBARBWEvy6J09HhrrBHmS7Yr7LGG9FE27OXziV90ovnUv3M9sw"}
+        {"id":["eyJ0eXAiOiJkYytzZC1qd3QiLCJhbGciOiJFUzI1NiIsImtpZCI6ImRpZDprZXk6ekRuYWVwbmhBQXI5Tk51TnJ6M1pydU5ibTY0NGk5aW9VYW1xSHBZQXBTNldSUVNlTiN6RG5hZXBuaEFBcjlOTnVOcnozWnJ1TmJtNjQ0aTlpb1VhbXFIcFlBcFM2V1JRU2VOIn0.eyJfc2QiOlsiTWdsdFNpQUczcUpCTWMyUXU0UnVDUk1RSl9PNzdBZTI5ak9MY0NtRFNLUSIsImhfRkFmTEdCeVVyWHo5dkRNRHN1QnZzd2k3UDBRdlRhT0dyTW5XbTlDbEkiLCJsUzJVaWhBeU1ieEZ1cUJrS1ZhTmJDbmE1UjA5U1dQcGpVOFc4eDliakNnIl0sImlhdCI6MTc0NzI2ODYxMywiZGF0ZSI6IjA5LzA5LzE5ODkiLCJ2Y3QiOiJodHRwczovL2NyZWRlbnRpYWxzLmV4YW1wbGUuY29tL2lkZW50aXR5X2NyZWRlbnRpYWwiLCJzdWIiOiJkaWQ6a2V5OnpEbmFlc2tNWUozUmNrdkUxeXJ4cE1mTmtXTkxBdnptVXhFQjJKb3o3ZlF4OHRMQXUiLCJfc2RfYWxnIjoic2hhLTI1NiIsImlzcyI6ImRpZDprZXk6ekRuYWVwbmhBQXI5Tk51TnJ6M1pydU5ibTY0NGk5aW9VYW1xSHBZQXBTNldSUVNlTiIsImV4cCI6MTc3ODgwNDYxMywibmJmIjoxNzQ3MjY4NjEzLCJjbmYiOnsiandrIjp7Imt0eSI6IkVDIiwiY3J2IjoiUC0yNTYiLCJ4IjoibGVGdmtuNFlKNGtUdE45MUVQZmU4ZlRuN1hQWm5kMUtQV0Yxd193cDhYSSIsInkiOiJUZ0lwNjlfV3oxODFCYlZMcHg5cE16SW5fQ0JWeGhMbXRvcUFueE90ZDIwIn19fQ.P4e1UwBcxKMFSPq3xm9fFLUn8gJI6LdUQVUD1eIQLZLakMja7af-blESspA2RYS0vJ3NrNqUgft3RZ2v5dKlEw~WyJIc3RSS2JWR3JmVkViMk5lYTBwT0JRIiwgIm5hbWUiLCAiSm9obiJd~eyJ0eXAiOiJrYitqd3QiLCJhbGciOiJFUzI1NiJ9.eyJzZF9oYXNoIjoiT2dtazBIUlJPR1N5bDZaOWd1dTdydTFYOHR5VnZ1R0tsTXpkNkwwNUVubyIsIm5vbmNlIjoiN2dMaFFpdC1vY2FvMVNQejFKbWhyYm1GenNCelluak54ZVVnUHFWaWpzbyIsImlhdCI6MTc0NzI2ODYxMywiYXVkIjoiZGlkOmtleTp6RG5hZWdFYjRScWppR3ZHZ0xpWXFqYm05ckFjZzZ4ZmJHUG5MOXBrZnhma0F1M3ZrIn0.eauedo3Oz9aluDNN_xweJtDjXRjwyfKxqAmZjBARBWEvy6J09HhrrBHmS7Yr7LGG9FE27OXziV90ovnUv3M9sw"]}
         );
         let presentation_result = sample_sdjwt_presentation();
         (presentation_for_dcql, presentation_result)
@@ -760,7 +772,7 @@ mod tests {
 
     fn sample_ldp_vc_presentation_for_dcql() -> (Value, Value) {
         let presentation_for_dcql = serde_json::to_value(json!(
-            {"id":{"@context":["https://www.w3.org/2018/credentials/v1"],"type":["VerifiablePresentation"],"holder":"did:key:zDnaeW2x7yezzYRvcjJbsiDfc73rCVEK69Hgo9gf6KKBvm3QZ","verifiableCredential":{"@context":["https://www.w3.org/2018/credentials/v1","https://w3id.org/citizenship/v1"],"type":["VerifiableCredential","PermanentResident"],"credentialSubject":{"givenName":"John","type":["PermanentResident","Person"],"birthDate":"09/09/1989","familyName":"Doe","id":"did:key:zDnaeW2x7yezzYRvcjJbsiDfc73rCVEK69Hgo9gf6KKBvm3QZ"},"issuer":"did:key:zDnaeryTefzWK446XPbJwNkLyXiLhPcEnkfxYVyRbS8Vk6U8r","issuanceDate":"2025-05-15T06:22:50.399115247Z","expirationDate":"2030-05-14T06:22:50.399115247Z","proof":{"type":"EcdsaSecp256r1Signature2019","created":"2025-05-15T06:22:50.399Z","verificationMethod":"did:key:zDnaeryTefzWK446XPbJwNkLyXiLhPcEnkfxYVyRbS8Vk6U8r#zDnaeryTefzWK446XPbJwNkLyXiLhPcEnkfxYVyRbS8Vk6U8r","proofPurpose":"assertionMethod","jws":"eyJhbGciOiJFUzI1NiIsImNyaXQiOlsiYjY0Il0sImI2NCI6ZmFsc2V9..2WBzR1pbcRqzt2YJ-B9Kts663M_8jtNi8inUTOPloPpNqMufiNY83MLE-dx_m4g6OXddXgrsJIziOHCAiH3bXA"}},"proof":{"type":"EcdsaSecp256r1Signature2019","created":"2025-05-15T06:22:50.421Z","verificationMethod":"did:key:zDnaeW2x7yezzYRvcjJbsiDfc73rCVEK69Hgo9gf6KKBvm3QZ#zDnaeW2x7yezzYRvcjJbsiDfc73rCVEK69Hgo9gf6KKBvm3QZ","proofPurpose":"assertionMethod","nonce":"7CbUWaXwH5z14AYNj8FZjvfRZvHIf5o8fi-3XshrlwU","jws":"eyJhbGciOiJFUzI1NiIsImNyaXQiOlsiYjY0Il0sImI2NCI6ZmFsc2V9..rPb9wUX15ByHLEGjcl5oYpH0EzOkGGYHrBm22OERyqvTBD-akjAHO-HUB7W6gcd_fAhbmnCL8A0L36RVir5LXg"}}}
+            {"id":[{"@context":["https://www.w3.org/2018/credentials/v1"],"type":["VerifiablePresentation"],"holder":"did:key:zDnaeW2x7yezzYRvcjJbsiDfc73rCVEK69Hgo9gf6KKBvm3QZ","verifiableCredential":{"@context":["https://www.w3.org/2018/credentials/v1","https://w3id.org/citizenship/v1"],"type":["VerifiableCredential","PermanentResident"],"credentialSubject":{"givenName":"John","type":["PermanentResident","Person"],"birthDate":"09/09/1989","familyName":"Doe","id":"did:key:zDnaeW2x7yezzYRvcjJbsiDfc73rCVEK69Hgo9gf6KKBvm3QZ"},"issuer":"did:key:zDnaeryTefzWK446XPbJwNkLyXiLhPcEnkfxYVyRbS8Vk6U8r","issuanceDate":"2025-05-15T06:22:50.399115247Z","expirationDate":"2030-05-14T06:22:50.399115247Z","proof":{"type":"EcdsaSecp256r1Signature2019","created":"2025-05-15T06:22:50.399Z","verificationMethod":"did:key:zDnaeryTefzWK446XPbJwNkLyXiLhPcEnkfxYVyRbS8Vk6U8r#zDnaeryTefzWK446XPbJwNkLyXiLhPcEnkfxYVyRbS8Vk6U8r","proofPurpose":"assertionMethod","jws":"eyJhbGciOiJFUzI1NiIsImNyaXQiOlsiYjY0Il0sImI2NCI6ZmFsc2V9..2WBzR1pbcRqzt2YJ-B9Kts663M_8jtNi8inUTOPloPpNqMufiNY83MLE-dx_m4g6OXddXgrsJIziOHCAiH3bXA"}},"proof":{"type":"EcdsaSecp256r1Signature2019","created":"2025-05-15T06:22:50.421Z","verificationMethod":"did:key:zDnaeW2x7yezzYRvcjJbsiDfc73rCVEK69Hgo9gf6KKBvm3QZ#zDnaeW2x7yezzYRvcjJbsiDfc73rCVEK69Hgo9gf6KKBvm3QZ","proofPurpose":"assertionMethod","nonce":"7CbUWaXwH5z14AYNj8FZjvfRZvHIf5o8fi-3XshrlwU","jws":"eyJhbGciOiJFUzI1NiIsImNyaXQiOlsiYjY0Il0sImI2NCI6ZmFsc2V9..rPb9wUX15ByHLEGjcl5oYpH0EzOkGGYHrBm22OERyqvTBD-akjAHO-HUB7W6gcd_fAhbmnCL8A0L36RVir5LXg"}}]}
         )).unwrap();
         let presentation_result = sample_ldp_vc_presentation();
         (presentation_for_dcql, presentation_result)

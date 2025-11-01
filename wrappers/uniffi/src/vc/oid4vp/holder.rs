@@ -126,7 +126,7 @@ impl OID4VPHolder {
     pub async fn present_credentials(
         &self,
         auth_request: AuthorizationRequest,
-        credential_mapping: HashMap<String, CredentialEntry>,
+        credential_mapping: HashMap<String, Vec<CredentialEntry>>,
         auth_response_metadata: AuthorizationResponseMetadata,
     ) -> Result<Option<String>> {
         let result = self

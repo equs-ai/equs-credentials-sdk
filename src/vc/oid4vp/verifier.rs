@@ -643,7 +643,7 @@ where
         nonce: &Nonce,
         authorization_response: &AuthorizationResponseObject,
     ) -> Result<Claim> {
-        let mut result: HashMap<String, Claim> = HashMap::new();
+        let mut result: HashMap<String, Vec<Claim>> = HashMap::new();
         let mut ids = vec![]; // we need it to preserve order of items in the array
 
         let requested_presentations = match resolved_presentation_query {
@@ -693,24 +693,24 @@ where
                 .context(VCSnafu)?;
 
             ids.push(requested_presentation.id.clone());
-            result.insert(requested_presentation.id, claims.into());
+            result
+                .entry(requested_presentation.id)
+                .and_modify(|arr| {
+                    arr.push(claims.clone().into());
+                })
+                .or_insert(vec![claims.into()]);
         }
 
         match authorization_response.vp_token {
             Json::Array(_) => {
-                let mut arr = vec![];
+                let mut claims: Vec<Value> = vec![];
                 for id in ids.into_iter() {
-                    arr.push(
-                        result
-                            .get(&id)
-                            .unwrap()
-                            .clone()
-                            .try_into()
-                            .context(ClaimsSnafu)?,
-                    );
+                    for c in result.get(&id).unwrap() {
+                        claims.push(c.clone().try_into().context(ClaimsSnafu)?);
+                    }
                 }
 
-                let claims = Json::Array(arr);
+                let claims = Json::Array(claims);
                 match resolved_presentation_query {
                     ResolvedPresentationQuery::PresentationDefinition(pd) => {
                         validate_against_presentation_definition(
@@ -729,7 +729,7 @@ where
                 }
             }
             _ => {
-                if let Some(claim) = result.values().find(|_| true) {
+                if let Some(claim) = result.values().find(|_| true).and_then(|c| c.first()) {
                     // TODO: figure out how to secure erase sensitive data
                     // after Claim -> Value convertation
 
@@ -753,6 +753,7 @@ where
             }
         };
 
+        let result = HashMap::from_iter(result.into_iter().map(|(k, v)| (k, Claim::Array(v))));
         Ok(Claim::Object(result))
     }
 }
@@ -1469,21 +1470,21 @@ mod tests {
 
             let cred_claims = verified_claims[VP_TOKEN][cred_id].clone();
 
-            let cred_claims = match &cred_claims {
-                Claim::Object(map) => {
-                    let mut claims = Claims::new();
-                    map.iter()
-                        .for_each(|(k, v)| claims.insert(k.to_owned(), v.to_owned()));
-                    claims
+            match cred_claims {
+                Claim::Array(ref presentations) => {
+                    for presentation in presentations {
+                        match presentation {
+                            Claim::Object(p) => validate_claims(
+                                &ClaimFormatDesignation::SdJwtVc,
+                                &Claims::from_map(p.to_owned()),
+                                &credential_data,
+                            ),
+                            _ => panic!("Unexpected claim type"),
+                        }
+                    }
                 }
-                _ => panic!("cred_claims is not an object"),
+                _ => panic!("cred_claims is not an array"),
             };
-
-            validate_claims(
-                &ClaimFormatDesignation::SdJwtVc,
-                &cred_claims,
-                &credential_data,
-            );
         }
     }
 
