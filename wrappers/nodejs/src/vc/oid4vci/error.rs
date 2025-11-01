@@ -155,7 +155,7 @@ pub enum JsProtocolError {
     CredentialEndpointInvalidRequest,
     CredentialEndpointInsufficientScope,
 
-    // Credential Endpoint Errors
+    // Credential Offer Endpoint Errors
     CredentialOfferEndpointInvalidRequest,
     CredentialOfferEndpointUnknownCredentialIdentifier,
 

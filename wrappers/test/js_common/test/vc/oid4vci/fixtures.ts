@@ -21,18 +21,20 @@ export class Utils {
 
   readonly issuerEndpoint: string;
   readonly issuerEndpointPort: number;
+  readonly authServerEndpoint: string;
 
   constructor(params: { issuerUrlPort: number }) {
     this.issuerEndpointPort = params.issuerUrlPort;
     this.issuerEndpoint = `http://localhost:${this.issuerEndpointPort}`;
+    this.authServerEndpoint = `${this.issuerEndpoint}/auth`;
   }
 
   get tokenEndpoint(): string {
-    return `${this.issuerEndpoint}/auth/token`;
+    return `${this.authServerEndpoint}/token`;
   }
 
   get pushedAuthRequestEndpoint(): string {
-    return `${this.issuerEndpoint}/auth/par/request`;
+    return `${this.authServerEndpoint}/par/request`;
   }
 
   get credDefId(): string {
@@ -50,7 +52,7 @@ export class Utils {
   get issuerMetadata(): OID4VCIIssuerMetadata {
     return {
       credential_issuer: this.issuerEndpoint,
-      authorization_servers: [`${this.issuerEndpoint}/auth`],
+      authorization_servers: [this.authServerEndpoint],
       credential_endpoint: `${this.issuerEndpoint}/credential`,
       nonce_endpoint: `${this.issuerEndpoint}/nonce`,
       batch_credential_issuance: {
@@ -94,11 +96,11 @@ export class Utils {
 
   get authServerMetadata() {
     return {
-      issuer: `${this.issuerEndpoint}/auth`,
-      authorization_endpoint: `${this.issuerEndpoint}/auth`,
+      issuer: this.authServerEndpoint,
+      authorization_endpoint: this.authServerEndpoint,
       token_endpoint: this.tokenEndpoint,
-      introspection_endpoint: `${this.issuerEndpoint}/auth/introspection`,
-      jwks_uri: `${this.issuerEndpoint}/auth/jwks`,
+      introspection_endpoint: `${this.authServerEndpoint}/introspection`,
+      jwks_uri: `${this.authServerEndpoint}/jwks`,
       grant_types_supported: ["authorization_code"],
       response_types_supported: ["code", "token"],
       subject_types_supported: ["public"],

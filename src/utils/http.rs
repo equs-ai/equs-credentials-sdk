@@ -60,6 +60,7 @@ pub(crate) fn generate_post_req(
 #[cfg(test)]
 pub mod test {
     use crate::http::{MockHttpClient, Result};
+    use crate::utils::http::MIME_TYPE_JSON;
     use futures::executor;
     use oauth2::http::header::CONTENT_TYPE;
     use oauth2::http::{HeaderValue, Method, StatusCode};
@@ -97,6 +98,8 @@ pub mod test {
             .times(times)
             .returning(move |_| {
                 let mut resp = HttpResponse::new(serde_json::to_vec(&body).unwrap());
+                resp.headers_mut()
+                    .insert(CONTENT_TYPE, HeaderValue::from_static(MIME_TYPE_JSON));
                 *resp.status_mut() = status;
 
                 Ok(resp)

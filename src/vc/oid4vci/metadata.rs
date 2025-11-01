@@ -1,5 +1,8 @@
 use crate::crypto::{Alg, AlgNotSupportedSnafu};
+use crate::http::HttpClient;
 use crate::vc::core::{CredentialDefinition, CredentialDefinitionData, KeyMetadata};
+use crate::vc::oid4vci::internal_error::{DiscoverySnafu, HttpClientSnafu, UrlParseSnafu};
+use crate::vc::oid4vci::{InternalError, IssuerUrl};
 use crate::vc::{HasVCFormat, VCFormat, pop};
 use crate::{crypto, vc};
 use common_macros::DebugError;
@@ -8,6 +11,10 @@ use oid4vci::core::profiles::{
     CoreProfilesCredentialConfiguration, CoreProfilesCredentialResponseType,
 };
 use oid4vci::metadata::credential_issuer::CredentialConfiguration;
+use oid4vci::metadata::{
+    MetadataDiscovery as Oid4vciMetadataDiscovery, discovery_request, discovery_response,
+    discovery_url,
+};
 use oid4vci::proof_of_possession::KeyProofType;
 use oid4vci::types::CredentialConfigurationId;
 use snafu::{Location, ResultExt, Snafu};
@@ -266,15 +273,45 @@ impl HasVCFormat for CoreProfilesCredentialConfiguration {
     }
 }
 
+pub struct MetadataDiscovery;
+
+impl MetadataDiscovery {
+    pub async fn discover_metadata<HC, T>(
+        http_client: &HC,
+        server_url: &String,
+    ) -> core::result::Result<T, InternalError>
+    where
+        T: Oid4vciMetadataDiscovery,
+        HC: HttpClient,
+    {
+        let server_url = IssuerUrl::new(server_url.to_owned()).context(UrlParseSnafu)?;
+        let discovery_url = discovery_url::<T>(&server_url).context(DiscoverySnafu)?;
+
+        let discovery_request = discovery_request(&discovery_url).context(DiscoverySnafu)?;
+
+        let http_response = http_client
+            .async_call(discovery_request)
+            .await
+            .context(HttpClientSnafu)?;
+
+        discovery_response(&server_url, &discovery_url, http_response).context(DiscoverySnafu)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::http::{MockHttpClient, StatusCode};
     use crate::inmem::kms::LocalKms;
+    use crate::utils::http::test::mock_http_once;
     use crate::utils::test_utils::create_did_and_key_metadata;
     use crate::vc::oid4vci::CredDefMetadata;
     use crate::vc::oid4vci::tests::fixtures::{AUTH_URL, CRED_DEF_ID, ISSUER_URL};
     use crate::vc::pop::Format;
+    use oauth2::http::Method;
+    use rstest::rstest;
     use serde_json::json;
+    use url::Url;
 
     #[tokio::test]
     async fn converting_issuer_metadata_works() {
@@ -403,6 +440,36 @@ mod tests {
 
             assert_eq!(converted, expected)
         };
+    }
+
+    #[rstest]
+    #[case::positive(
+        format!("{}:{}", ISSUER_URL, IssuerMetadata::METADATA_URL_SUFFIX),
+        Some(sample_issuer_metadata()))]
+    #[case::incorrect_url("not_an_url", None)]
+    #[should_panic(expected = "Url parse error")]
+    #[tokio::test]
+    async fn discover_issuer_metadata(
+        #[case] issuer_url: String,
+        #[case] expected: Option<IssuerMetadata>,
+    ) {
+        let mut http_client = MockHttpClient::new();
+
+        let correct_issuer_url = format!("{}/{}", ISSUER_URL, IssuerMetadata::METADATA_URL_SUFFIX);
+        mock_http_once(
+            &mut http_client,
+            Method::GET,
+            Url::parse(correct_issuer_url.as_str()).unwrap(),
+            sample_issuer_metadata(),
+            StatusCode::OK,
+        );
+
+        let actual: IssuerMetadata =
+            MetadataDiscovery::discover_metadata(&http_client, &issuer_url)
+                .await
+                .unwrap();
+
+        assert_eq!(expected, Some(actual));
     }
 
     fn sample_issuer_metadata() -> IssuerMetadata {

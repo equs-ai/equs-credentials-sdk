@@ -12,9 +12,10 @@ use crate::vc::formats::sd_jwt_vc::SdJwtAPI;
 use crate::vc::oid4vci::AuthzFlow::Authorize;
 use crate::vc::oid4vci::credential_issuer_identifier::CredentialIssuerIdentifier;
 use crate::vc::oid4vci::internal_error::{
-    AuthorizationCallbackSnafu, AuthorizationRequestSnafu, DiscoverySnafu, HolderServiceSnafu,
-    MetadataSnafu, ParseSnafu, TypeConversionSnafu, UrlParseSnafu, VCSnafu,
+    AuthorizationCallbackSnafu, AuthorizationRequestSnafu, HolderServiceSnafu, MetadataSnafu,
+    ParseSnafu, TypeConversionSnafu, UrlParseSnafu, VCSnafu,
 };
+use crate::vc::oid4vci::metadata::MetadataDiscovery;
 use crate::vc::oid4vci::protocol_error::{CredentialEndpointError, ProtocolSnafu};
 use crate::vc::oid4vci::{
     AuthorizationMetadata, AuthzFlow, CredDefMetadata, CredentialExtraVerification,
@@ -33,7 +34,6 @@ use oid4vci::core::authorization::AuthorizationDetailsObject;
 use oid4vci::core::client::Client;
 use oid4vci::core::profiles::CoreProfilesCredentialResponseType;
 use oid4vci::credential::{CredentialId, Proofs, ResponseEnum};
-use oid4vci::metadata::MetadataDiscovery;
 use oid4vci::metadata::credential_issuer::BatchCredentialIssuance;
 use oid4vci::proof_of_possession::{Proof as SpruceProof, Proof};
 use oid4vci::token;
@@ -135,28 +135,21 @@ where
         redirect_url: String, // urn:ietf:wg:oauth:2.0:oob
         credential_extra_verification: Option<Vec<CredentialExtraVerification>>,
     ) -> Result<Self> {
-        let client = http_client.clone();
-        let http_closure = move |req| {
-            let client = client.clone();
-            Box::pin(async move { client.async_call(req).await })
-        };
-
-        let issuer_url = IssuerUrl::new(issuer_url.clone()).context(UrlParseSnafu)?;
-        let issuer_metadata = IssuerMetadata::discover_async(&issuer_url, &http_closure)
-            .await
-            .context(DiscoverySnafu)?;
+        let issuer_metadata: IssuerMetadata =
+            MetadataDiscovery::discover_metadata(http_client.as_ref(), &issuer_url).await?;
         debug!(resolved_issuer_metadata = ?issuer_metadata);
 
         let auth_srv_url = issuer_metadata
             .authorization_servers()
             .and_then(|vec| vec.iter().next());
 
-        let authz_metadata = AuthorizationMetadata::discover_async(
-            auth_srv_url.unwrap_or(&issuer_url),
-            &http_closure,
+        let authz_metadata: AuthorizationMetadata = MetadataDiscovery::discover_metadata(
+            http_client.as_ref(),
+            &auth_srv_url
+                .map(|url| url.to_string())
+                .unwrap_or(issuer_url),
         )
-        .await
-        .context(DiscoverySnafu)?;
+        .await?;
         debug!(resolved_authorization_server_metadata = ?authz_metadata);
 
         Self::new(
@@ -236,10 +229,8 @@ where
             .set_tx_code(&transaction_code);
 
         if let Some(issuer_url) = issuer_url {
-            let auth_serv_metadata =
-                AuthorizationMetadata::discover_async(issuer_url, &self.http_closure())
-                    .await
-                    .context(DiscoverySnafu)?;
+            let auth_serv_metadata: AuthorizationMetadata =
+                MetadataDiscovery::discover_metadata(self.http_client.as_ref(), issuer_url).await?;
 
             req = req.set_token_url(auth_serv_metadata.token_endpoint().clone())
         }
@@ -458,7 +449,7 @@ where
                                 .join(", ")
                         )
                     }
-                    .build()
+                        .build()
                 })?;
 
             return self
@@ -1527,17 +1518,21 @@ mod tests {
     //noinspection HttpUrlsUsage
     #[rstest]
     #[case::ldpvc(ISSUER_URL, Credential::LdpVc(ldp_vc_credential()))]
-    #[case::sdjwt_iss_oid4vci(ISSUER_URL, Credential::SdJwt(SD_JWT_CREDENTIAL_ISS_OID4VCI.to_owned()))]
+    #[case::sdjwt_iss_oid4vci(ISSUER_URL, Credential::SdJwt(SD_JWT_CREDENTIAL_ISS_OID4VCI.to_owned()
+    ))]
     #[case::sdjwt_iss_did(ISSUER_URL, Credential::SdJwt(SD_JWT_CREDENTIAL_ISS_DID.to_owned()))]
     #[should_panic(
         expected = "Credential contains issuer identifier notadid:web:issuer-backend.com"
     )]
-    #[case::sdjwt_iss_other_invalid(ISSUER_URL, Credential::SdJwt(SD_JWT_CREDENTIAL_ISS_OTHER_INVALID.to_owned()))]
-    #[case::sdjwt_iss_other_valid("http://issuer-backend.com", Credential::SdJwt(SD_JWT_CREDENTIAL_ISS_OTHER_VALID.to_owned()))]
+    #[case::sdjwt_iss_other_invalid(ISSUER_URL, Credential::SdJwt(SD_JWT_CREDENTIAL_ISS_OTHER_INVALID.to_owned()
+    ))]
+    #[case::sdjwt_iss_other_valid("http://issuer-backend.com", Credential::SdJwt(SD_JWT_CREDENTIAL_ISS_OTHER_VALID.to_owned()
+    ))]
     #[should_panic(expected = "Credential does not contain issuer identifier")]
     #[case::sdjwt_iss_none(ISSUER_URL, Credential::SdJwt(SD_JWT_CREDENTIAL_ISS_NONE.to_owned()))]
     #[should_panic(expected = "Unsupported format: jwt_vc_json")]
-    #[case::unsupported_format_jwt_vc_json(ISSUER_URL, Credential::JwtVcJson("MOCK_CREDENTIAL".to_owned()))]
+    #[case::unsupported_format_jwt_vc_json(ISSUER_URL, Credential::JwtVcJson("MOCK_CREDENTIAL".to_owned()
+    ))]
     #[should_panic(expected = "Unsupported format: jwt_vc_json-ld")]
     #[case::unsupported_format_jwt_vc_json_ld(
         ISSUER_URL,

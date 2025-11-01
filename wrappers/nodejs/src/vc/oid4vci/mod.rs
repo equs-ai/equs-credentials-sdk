@@ -3,6 +3,7 @@ pub mod credential_offer_resolver;
 pub mod error;
 pub mod holder;
 pub mod issuer;
+pub mod metadata;
 
 use crate::vc::oid4vci::builder::TokenValidation;
 use napi::Error;
