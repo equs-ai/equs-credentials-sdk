@@ -21,6 +21,7 @@ use crate::utils::wasm::{WasmNotSend, WasmNotSync};
 use crate::vc;
 use crate::vc::claims::{Claim, Claims};
 use crate::vc::core::{HolderBinder, KeyMetadata};
+use crate::vc::dcql::validate_credentials;
 use crate::vc::oid4vp::Error::{Internal, Protocol};
 use crate::vc::oid4vp::internal_error::{
     AuthorizationResponseDecryptionSnafu, ClaimsSnafu, ClientSnafu, DCQLSnafu,
@@ -701,18 +702,35 @@ where
                 .or_insert(vec![claims.into()]);
         }
 
-        match authorization_response.vp_token {
-            Json::Array(_) => {
-                let mut claims: Vec<Value> = vec![];
-                for id in ids.into_iter() {
-                    for c in result.get(&id).unwrap() {
-                        claims.push(c.clone().try_into().context(ClaimsSnafu)?);
-                    }
-                }
+        Self::validate_against_requested_claims(
+            resolved_presentation_query,
+            authorization_response,
+            &result,
+            ids,
+        )?;
 
-                let claims = Json::Array(claims);
-                match resolved_presentation_query {
-                    ResolvedPresentationQuery::PresentationDefinition(pd) => {
+        let result = HashMap::from_iter(result.into_iter().map(|(k, v)| (k, Claim::Array(v))));
+        Ok(Claim::Object(result))
+    }
+
+    fn validate_against_requested_claims(
+        resolved_presentation_query: &ResolvedPresentationQuery,
+        authorization_response: &AuthorizationResponseObject,
+        credentials: &HashMap<String, Vec<Claim>>,
+        ids: Vec<String>,
+    ) -> Result<()> {
+        match resolved_presentation_query {
+            ResolvedPresentationQuery::PresentationDefinition(pd) => {
+                match authorization_response.vp_token {
+                    Json::Array(_) => {
+                        let mut claims: Vec<Value> = vec![];
+                        for id in ids.into_iter() {
+                            for c in credentials.get(&id).unwrap() {
+                                claims.push(c.clone().try_into().context(ClaimsSnafu)?);
+                            }
+                        }
+
+                        let claims = Json::Array(claims);
                         validate_against_presentation_definition(
                             &claims,
                             pd,
@@ -723,18 +741,10 @@ where
                         )
                         .context(PresentationExchangeSnafu)?;
                     }
-                    ResolvedPresentationQuery::DCQL(dcql) => {
-                        //TODO maybe validate
-                    }
-                }
-            }
-            _ => {
-                if let Some(claim) = result.values().find(|_| true).and_then(|c| c.first()) {
-                    // TODO: figure out how to secure erase sensitive data
-                    // after Claim -> Value convertation
-
-                    match resolved_presentation_query {
-                        ResolvedPresentationQuery::PresentationDefinition(pd) => {
+                    _ => {
+                        if let Some(claim) = credentials.values().next().and_then(|c| c.first()) {
+                            // TODO: figure out how to secure erase sensitive data
+                            // after Claim -> Value convertation
                             validate_against_presentation_definition(
                                 &claim.clone().try_into().context(ClaimsSnafu)?,
                                 pd,
@@ -745,16 +755,14 @@ where
                             )
                             .context(PresentationExchangeSnafu)?;
                         }
-                        ResolvedPresentationQuery::DCQL(dcql) => {
-                            //TODO maybe validate
-                        }
                     }
                 }
             }
+            ResolvedPresentationQuery::DCQL(dcql) => {
+                validate_credentials(dcql, credentials).context(DCQLSnafu)?
+            }
         };
-
-        let result = HashMap::from_iter(result.into_iter().map(|(k, v)| (k, Claim::Array(v))));
-        Ok(Claim::Object(result))
+        Ok(())
     }
 }
 

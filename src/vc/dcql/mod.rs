@@ -6,6 +6,7 @@ use crate::vault::{
     CannotCreateJSONPathSnafu, ClaimsParsingSnafu, CredentialEntry,
     UnsupportedCredentialFormatSnafu,
 };
+use crate::vc::claims::Claim;
 use crate::vc::core::{PresentationInput, PresentationRestriction, PresentationRestrictionValue};
 use crate::vc::{ClaimFormatDesignation, HasClaims, Presentation, RequestedPresentation};
 use crate::vc::{Credential, HasVCFormat, JsonPath};
@@ -15,12 +16,13 @@ use serde_json::{Value, json};
 use snafu::{Location, ResultExt, Snafu};
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
+use std::ops::Deref;
 use std::str::FromStr;
 use std::vec;
 
 pub type DCQL = openid4vp::core::dcql::DCQL;
 pub type DCQLCredential = DcqlCredential;
-
+pub type DCQLCredentialID = openid4vp::core::dcql::ID;
 pub type NonEmptyVec<T> = openid4vp::utils::NonEmptyVec<T>;
 
 #[derive(Snafu, DebugError)]
@@ -37,6 +39,27 @@ pub enum Error {
     FormatNotSupported { format: String },
     #[snafu(display("Not Found"))]
     NotFound,
+    #[snafu(display("Credential query validation error, query id = {query_id}: {details}"))]
+    CredentialQueryValidation {
+        query_id: String,
+        details: String,
+        #[snafu(implicit)]
+        location: Location,
+    },
+    #[snafu(display("Credential claim sets validation error, claim set = {}: {details}", claim_set.join(", ")))]
+    CredentialClaimSetValidation {
+        claim_set: Vec<String>,
+        details: String,
+        #[snafu(implicit)]
+        location: Location,
+    },
+    #[snafu(display("Credential sets validation error, credential set-option = {}: {details}", set_option.join(", ")))]
+    CredentialSetsValidation {
+        set_option: Vec<String>,
+        details: String,
+        #[snafu(implicit)]
+        location: Location,
+    },
 }
 pub type Result<T> = core::result::Result<T, Error>;
 
@@ -492,6 +515,303 @@ pub fn validate_credential_for_dcql(
     Ok(())
 }
 
+pub fn validate_credentials(dcql: &DCQL, credentials: &HashMap<String, Vec<Claim>>) -> Result<()> {
+    if let Some(credential_sets) = dcql.credential_sets() {
+        for set in credential_sets {
+            validate_against_credential_set(credentials, dcql, set)?
+        }
+
+        return Ok(());
+    }
+
+    for query in dcql.credentials() {
+        let creds = credentials.get(query.id().as_str()).ok_or_else(|| {
+            CredentialQueryValidationSnafu {
+                query_id: query.id().as_str().to_string(),
+                details: format!(
+                    "Credential(s) for credential-query with id = {} not found",
+                    query.id().as_str()
+                ),
+            }
+            .build()
+        })?;
+
+        validate_against_credential_query(creds, query)?;
+    }
+
+    Ok(())
+}
+
+fn validate_against_credential_set(
+    credentials: &HashMap<String, Vec<Claim>>,
+    dcql: &DCQL,
+    set: &DcqlCredentialSet,
+) -> Result<()> {
+    if !set.required().unwrap_or(&true) {
+        return Ok(());
+    }
+
+    let mut result = Ok(());
+    for option in set.options() {
+        result = validate_against_credential_set_option(credentials, dcql, option);
+        if result.is_ok() {
+            return Ok(());
+        }
+    }
+
+    result
+}
+
+fn validate_against_credential_set_option(
+    credentials: &HashMap<String, Vec<Claim>>,
+    dcql: &DCQL,
+    option: &NonEmptyVec<String>,
+) -> Result<()> {
+    for id in option {
+        let Some(creds) = credentials.get(id.as_str()) else {
+            CredentialSetsValidationSnafu {
+                set_option: option.clone().to_vec(),
+                details: format!("Credential(s) for credential-query with id = {id} not found"),
+            }
+            .fail()?
+        };
+        let Some(query) = dcql.credentials().iter().find(|q| q.id().as_str() == id) else {
+            CredentialSetsValidationSnafu {
+                set_option: option.clone().to_vec(),
+                details: format!(
+                    "Credential-query with id = {id} not found in dcql credential queries"
+                ),
+            }
+            .fail()?
+        };
+
+        let cred_query_result = validate_against_credential_query(creds, query);
+        if let Err(err) = cred_query_result {
+            CredentialSetsValidationSnafu {
+                set_option: option.clone().to_vec(),
+                details: err.to_string(),
+            }
+            .fail()?
+        }
+    }
+
+    Ok(())
+}
+
+fn validate_against_credential_query(
+    credentials: &Vec<Claim>,
+    query: &DcqlCredential,
+) -> Result<()> {
+    validate_against_credential_types(credentials, query)?;
+
+    let Some(query_claims) = query.claims() else {
+        return Ok(());
+    };
+
+    if let Some(claim_sets) = query.claim_sets() {
+        validate_against_claims_set(query.id(), credentials, claim_sets, query_claims)?;
+
+        return Ok(());
+    }
+
+    for claim_query in query_claims {
+        validate_claim_path(query.id(), credentials, claim_query)?;
+    }
+
+    Ok(())
+}
+
+fn validate_against_claims_set(
+    query_id: &DCQLCredentialID,
+    credentials: &Vec<Claim>,
+    claims_sets: &NonEmptyVec<NonEmptyVec<String>>,
+    query_claims: &NonEmptyVec<DcqlClaim>,
+) -> Result<()> {
+    let mut claim_set_result = Ok(());
+
+    for claim_set in claims_sets {
+        let claims_in_set: Vec<&DcqlClaim> = claim_set
+            .iter()
+            .filter_map(|claim_query| {
+                query_claims.iter().find(|c| {
+                    c.id()
+                        .map(|id| id.as_str().eq(claim_query))
+                        .unwrap_or_default()
+                })
+            })
+            .collect();
+
+        claim_set_result = validate_claim_set(query_id, credentials, &claims_in_set);
+        if claim_set_result.is_ok() {
+            return Ok(());
+        }
+    }
+
+    if let Err(err) = claim_set_result {
+        claim_set_result = Err(CredentialClaimSetValidationSnafu {
+            claim_set: claims_sets.last().unwrap().to_vec(),
+            details: err.to_string(),
+        }
+        .build());
+    }
+
+    claim_set_result
+}
+
+fn validate_claim_set(
+    query_id: &DCQLCredentialID,
+    credentials: &Vec<Claim>,
+    claims_in_set: &[&DcqlClaim],
+) -> Result<()> {
+    for claim_query in claims_in_set {
+        validate_claim_path(query_id, credentials, claim_query)?;
+    }
+    Ok(())
+}
+
+fn validate_claim_path(
+    query_id: &DCQLCredentialID,
+    credentials: &Vec<Claim>,
+    claim_query: &DcqlClaim,
+) -> Result<()> {
+    let field = json::json_path_as_string(&claim_query.path().to_vec());
+    let json_path_field = jsonpath_rust::JsonPath::from_str(field.as_str()).map_err(|e| {
+        CredentialQueryValidationSnafu {
+            query_id: query_id.as_str().to_string(),
+            details: format!("Could not parse claim path as json path: {e}"),
+        }
+        .build()
+    })?;
+
+    for credential in credentials {
+        let json_cred = json!(credential);
+        let claims = json_path_field.find_slice_ptr(&json_cred);
+
+        let claim_value = claims
+            .first()
+            .ok_or_else(|| {
+                CredentialQueryValidationSnafu {
+                    query_id: query_id.as_str().to_string(),
+                    details: format!("Could not find any claim for required claim path = {field}"),
+                }
+                .build()
+            })?
+            .deref();
+
+        if let Some(values) = claim_query.values() {
+            let are_values_equal = values.iter().any(|v| match (v, claim_value) {
+                (ValueType::String(v), Value::String(s)) => v.eq(s),
+                (ValueType::Boolean(v), Value::Bool(b)) => v.eq(b),
+                (ValueType::Integer(v), Value::Number(n)) => {
+                    n.as_u64().map(|n| v.eq(&n)).unwrap_or(false)
+                }
+                // Values are not supported for other claim types than String, Boolean and Integer
+                _ => false,
+            });
+
+            if !are_values_equal {
+                CredentialQueryValidationSnafu {
+                    query_id: query_id.as_str().to_string(),
+                    details: format!("Claim value does not match required values of claim path = {}, required values = {}, actual value = {}",
+                                     field,
+                                     serde_json::to_string_pretty(&values).unwrap_or_default(),
+                                     serde_json::to_string_pretty(&claim_value).unwrap_or_default()),
+                }.fail()?
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn validate_against_credential_types(
+    credentials: &Vec<Claim>,
+    query: &DCQLCredential,
+) -> Result<()> {
+    match query.format() {
+        ClaimFormatDesignation::SdJwtVc => {
+            let mut actual_vcts = vec![];
+            for credential in credentials {
+                let vct = credential
+                    .get("vct")
+                    .and_then(|vct| vct.as_str().map(|vct_str| vct_str.to_string()))
+                    .ok_or_else(|| {
+                        CredentialQueryValidationSnafu {
+                            query_id: query.id().as_str().to_string(),
+                            details: "Could not parse \"vct\" value from SD-JWT credential"
+                                .to_string(),
+                        }
+                        .build()
+                    })?;
+                actual_vcts.push(vct);
+            }
+
+            let contains_vcts = query
+                .meta()
+                .vct_values()
+                .map(|required_vcts| actual_vcts.iter().all(|vct| required_vcts.contains(vct)))
+                .unwrap_or(true);
+
+            if !contains_vcts {
+                CredentialQueryValidationSnafu {
+                    query_id: query.id().as_str().to_string(),
+                    details: "Credential(s) does not contain required \"vct_values\"".to_string(),
+                }
+                .fail()?
+            }
+        }
+
+        ClaimFormatDesignation::LdpVc => {
+            for credential in credentials {
+                let cred_types =
+                    credential
+                        .get("type")
+                        .and_then(|t| t.as_vec())
+                        .ok_or_else(|| {
+                            CredentialQueryValidationSnafu {
+                                query_id: query.id().as_str().to_string(),
+                                details:
+                                    "Could not parse \"type\" value from json-ld-vc credential"
+                                        .to_string(),
+                            }
+                            .build()
+                        })?;
+
+                if let Some(type_values) = query.meta().type_values() {
+                    let cred_type_strings: Vec<String> = cred_types
+                        .iter()
+                        .filter_map(|t| t.as_str().map(|s| s.to_string()))
+                        .collect();
+
+                    let has_required_types = type_values.iter().any(|required_types| {
+                        required_types.iter().all(|rt| {
+                            cred_type_strings
+                                .contains(&rt.split('#').next_back().unwrap_or(rt).to_string())
+                        })
+                    });
+
+                    if !has_required_types {
+                        CredentialQueryValidationSnafu {
+                            query_id: query.id().as_str().to_string(),
+                            details: "Credential(s) does not contain required \"type_values\""
+                                .to_string(),
+                        }
+                        .fail()?
+                    }
+                }
+            }
+        }
+
+        _ => CredentialQueryValidationSnafu {
+            query_id: query.id().as_str().to_string(),
+            details: format!("Unsupported credential format {}", query.format()),
+        }
+        .fail()?,
+    }
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use crate::crypto::Key;
@@ -508,6 +828,7 @@ mod tests {
     use crate::vc::dcql::{
         DCQL, DCQLCredential, filter_claims_using_claim_sets, filter_creds_with_cred_sets,
         resolve_presentation_response, split_to_inputs_for_dcql, validate_credential_for_dcql,
+        validate_credentials,
     };
     use crate::vc::formats::json_ld_vc::JsonLdAPI;
     use crate::vc::formats::sd_jwt_vc::{EXP_CLAIM, IAT_CLAIM, NBF_CLAIM, SdJwtAPI};
@@ -710,7 +1031,7 @@ mod tests {
         )
     }
 
-    #[rstest]
+    #[test]
     #[should_panic(expected = "Requested presentation \"not_correct_id\" not found by path")]
     fn resolve_presentation_response_returns_error_with_wrong_path() {
         let (presentation, _) = sample_sdjwt_presentation_for_dcql();
@@ -755,6 +1076,502 @@ mod tests {
         let dcql_credential: DCQLCredential = cred_test_case.create_dcql_credential();
 
         validate_credential_for_dcql(&credential.credential, &dcql_credential).unwrap()
+    }
+
+    #[rstest]
+    #[case::validate_claims_success(dcql_with_claims())]
+    #[case::validate_multi_claim_sets(dcql_with_claim_sets())]
+    #[case::validate_ldp_vc_types(dcql_and_ldp_vc_credential())]
+    #[case::validate_credential_sets(dcql_with_credential_sets())]
+    #[tokio::test]
+    async fn validate_claims_success(#[case] test_case: (DCQL, HashMap<String, Vec<Claim>>)) {
+        let (dcql, credentials) = test_case;
+        assert!(validate_credentials(&dcql, &credentials).is_ok());
+    }
+
+    #[rstest]
+    #[should_panic(expected = "Credential(s) for credential-query with id = pid not found")]
+    #[case::credentials_not_found(dcql_and_credential_with_mismatched_query_id())]
+    #[should_panic(
+        expected = "Claim value does not match required values of claim path = $.postal_code"
+    )]
+    #[case::mismatched_claim_values(dcql_and_credential_with_mismatched_values())]
+    #[should_panic(expected = "Could not find any claim for required claim path = $.missing_field")]
+    #[case::missing_required_claim(dcq_and_credential_with_missing_claims())]
+    #[should_panic(expected = "Could not parse claim path as json path")]
+    #[case::invalid_claim_path(dcql_with_invalid_path())]
+    #[should_panic(expected = "Could not parse \"vct\" value from SD-JWT credential")]
+    #[case::credential_without_type(dcql_and_credential_without_type())]
+    #[should_panic(expected = "Credential(s) does not contain required \"vct_values\"")]
+    #[case::mismatched_credential_type(dcql_and_credential_type_mismatch())]
+    #[should_panic(expected = "Credential query validation error, query id = pid2")]
+    #[case::not_enough_credential_for_claims_set(dcql_and_credential_with_mismatched_claim_sets())]
+    #[should_panic(
+        expected = "Credential sets validation error, credential set-option = another_credential: Credential(s) for credential-query with id = another_credential not found"
+    )]
+    #[case::credential_sets_mismatch(dcql_with_credential_sets_mismatch())]
+    #[tokio::test]
+    async fn validate_claims_failure(#[case] test_case: (DCQL, HashMap<String, Vec<Claim>>)) {
+        let (dcql, credentials) = test_case;
+        validate_credentials(&dcql, &credentials).unwrap();
+    }
+
+    fn dcql_with_claims() -> (DCQL, HashMap<String, Vec<Claim>>) {
+        let dcql_credential: DCQLCredential = serde_json::from_value(json!(
+                {
+                    "id": "pid2",
+                    "format": "dc+sd-jwt",
+                    "meta": {
+                        "vct_values": ["https://credentials.example.com/identity_credential"]
+                    },
+                    "claims": [
+                        {"id": "b", "path": ["postal_code"], "values": ["90210", "90211"]},
+                        {"id": "d", "path": ["region", 0, "street"]},
+                        {"id": "e", "path": ["date_of_birth", null, "day"]}
+                    ]
+                }
+        ))
+        .unwrap();
+
+        let dcql = DCQL::new(vec![dcql_credential].try_into().unwrap());
+        let mut credentials = HashMap::new();
+        let claims: Vec<Claim> = serde_json::from_value(json!(
+            [
+                {
+                    "postal_code": "90210",
+                    "vct": "https://credentials.example.com/identity_credential",
+                    "region": [
+                        {
+                            "street": "1"
+                        }
+                    ],
+                    "date_of_birth": [
+                        {
+                            "day": 1
+                        }
+                    ]
+                }
+            ]
+        ))
+        .unwrap();
+        credentials.insert("pid2".to_string(), claims);
+        (dcql, credentials)
+    }
+
+    fn dcql_with_claim_sets() -> (DCQL, HashMap<String, Vec<Claim>>) {
+        let dcql_credential: DCQLCredential = serde_json::from_value(json!(
+                {
+                    "id": "pid2",
+                    "format": "dc+sd-jwt",
+                    "meta": {
+                        "vct_values": ["https://credentials.example.com/identity_credential"]
+                    },
+                    "claims": [
+                        {"id": "b", "path": ["postal_code"], "values": ["90210", "90211"]},
+                        {"id": "d", "path": ["region", 0, "street"]},
+                        {"id": "e", "path": ["date_of_birth", null, "day"], "values": [2]}
+                    ],
+                    "claim_sets": [
+                        ["b", "d"],
+                        ["d", "e"]
+                    ]
+                }
+        ))
+        .unwrap();
+
+        let dcql = DCQL::new(vec![dcql_credential].try_into().unwrap());
+        let mut credentials = HashMap::new();
+        let claims: Vec<Claim> = serde_json::from_value(json!(
+            [
+                {
+                    "postal_code": "90210",
+                    "vct": "https://credentials.example.com/identity_credential",
+                    "region": [
+                        {
+                            "street": "1"
+                        }
+                    ],
+                    "date_of_birth": [
+                        {
+                            "day": 1
+                        }
+                    ]
+                }
+            ]
+        ))
+        .unwrap();
+        credentials.insert("pid2".to_string(), claims);
+        (dcql, credentials)
+    }
+
+    fn dcql_and_credential_with_mismatched_claim_sets() -> (DCQL, HashMap<String, Vec<Claim>>) {
+        let dcql_credential: DCQLCredential = serde_json::from_value(json!(
+                {
+                    "id": "pid2",
+                    "format": "dc+sd-jwt",
+                    "meta": {
+                        "vct_values": ["https://credentials.example.com/identity_credential"]
+                    },
+                    "claims": [
+                        {"id": "b", "path": ["postal_code"], "values": ["90210", "90211"]},
+                        {"id": "d", "path": ["region", 0, "street"]},
+                        {"id": "e", "path": ["date_of_birth", null, "day"], "values": [2]}
+                    ],
+                    "claim_sets": [
+                        ["b", "d"],
+                        ["d", "e"]
+                    ]
+                }
+        ))
+        .unwrap();
+
+        let dcql = DCQL::new(vec![dcql_credential].try_into().unwrap());
+        let mut credentials = HashMap::new();
+        let claims: Vec<Claim> = serde_json::from_value(json!(
+            [
+                {
+                    "vct": "https://credentials.example.com/identity_credential",
+                    "postal_code": "77777",
+                    "region": [
+                        {
+                            "street": "1"
+                        }
+                    ],
+                }
+            ]
+        ))
+        .unwrap();
+        credentials.insert("pid2".to_string(), claims);
+        (dcql, credentials)
+    }
+
+    fn dcql_and_ldp_vc_credential() -> (DCQL, HashMap<String, Vec<Claim>>) {
+        let dcql_credential: DCQLCredential = serde_json::from_value(json!(
+                {
+                    "id": "pid2",
+                    "format": "ldp_vc",
+                    "meta": {
+                        "type_values": [["VerifiableCredential", "PermanentResident"]]
+                    },
+                    "claims": [
+                        {"path": ["credentialSubject", "givenName"]}
+                    ]
+                }
+        ))
+        .unwrap();
+
+        let dcql = DCQL::new(vec![dcql_credential].try_into().unwrap());
+        let mut credentials = HashMap::new();
+        let claims: Vec<Claim> = serde_json::from_value(json!(
+            [
+                {
+                    "type": ["VerifiableCredential", "PermanentResident"],
+                    "credentialSubject": {
+                        "givenName": "John"
+                    }
+                }
+            ]
+        ))
+        .unwrap();
+        credentials.insert("pid2".to_string(), claims);
+        (dcql, credentials)
+    }
+
+    fn dcql_and_credential_with_mismatched_query_id() -> (DCQL, HashMap<String, Vec<Claim>>) {
+        let dcql_credential: DCQLCredential = serde_json::from_value(json!(
+                {
+                    "id": "pid",
+                    "format": "dc+sd-jwt",
+                    "meta": {
+                        "vct_values": ["https://credentials.example.com/identity_credential"]
+                    },
+                    "claims": [
+                        {"path": ["postal_code"], "values": ["90210"]}
+                    ]
+                }
+        ))
+        .unwrap();
+
+        let dcql = DCQL::new(vec![dcql_credential].try_into().unwrap());
+        let mut credentials = HashMap::new();
+        let claims: Vec<Claim> = serde_json::from_value(json!(
+            [
+                {
+                    "vct": "https://credentials.example.com/identity_credential",
+                    "postal_code": "90211"
+                }
+            ]
+        ))
+        .unwrap();
+        credentials.insert("pid2".to_string(), claims);
+        (dcql, credentials)
+    }
+
+    fn dcql_and_credential_with_mismatched_values() -> (DCQL, HashMap<String, Vec<Claim>>) {
+        let dcql_credential: DCQLCredential = serde_json::from_value(json!(
+                {
+                    "id": "pid2",
+                    "format": "dc+sd-jwt",
+                    "meta": {
+                        "vct_values": ["https://credentials.example.com/identity_credential"]
+                    },
+                    "claims": [
+                        {"path": ["postal_code"], "values": ["90210"]}
+                    ]
+                }
+        ))
+        .unwrap();
+
+        let dcql = DCQL::new(vec![dcql_credential].try_into().unwrap());
+        let mut credentials = HashMap::new();
+        let claims: Vec<Claim> = serde_json::from_value(json!(
+            [
+                {
+                    "vct": "https://credentials.example.com/identity_credential",
+                    "postal_code": "90211"
+                }
+            ]
+        ))
+        .unwrap();
+        credentials.insert("pid2".to_string(), claims);
+        (dcql, credentials)
+    }
+
+    fn dcq_and_credential_with_missing_claims() -> (DCQL, HashMap<String, Vec<Claim>>) {
+        let dcql_credential: DCQLCredential = serde_json::from_value(json!(
+                {
+                    "id": "pid2",
+                    "format": "dc+sd-jwt",
+                    "meta": {
+                        "vct_values": ["https://credentials.example.com/identity_credential"]
+                    },
+                    "claims": [
+                        {"path": ["missing_field"]}
+                    ]
+                }
+        ))
+        .unwrap();
+
+        let dcql = DCQL::new(vec![dcql_credential].try_into().unwrap());
+        let mut credentials = HashMap::new();
+        let claims: Vec<Claim> = serde_json::from_value(json!(
+            [
+                {
+                    "vct": "https://credentials.example.com/identity_credential",
+                    "some_field": "value"
+                }
+            ]
+        ))
+        .unwrap();
+        credentials.insert("pid2".to_string(), claims);
+        (dcql, credentials)
+    }
+
+    fn dcql_with_invalid_path() -> (DCQL, HashMap<String, Vec<Claim>>) {
+        let dcql_credential: DCQLCredential = serde_json::from_value(json!(
+                {
+                    "id": "pid2",
+                    "format": "dc+sd-jwt",
+                    "meta": {
+                        "vct_values": ["https://credentials.example.com/identity_credential"]
+                    },
+                    "claims": [
+                        {"path": ["field", "invalid[path"]}
+                    ]
+                }
+        ))
+        .unwrap();
+
+        let dcql = DCQL::new(vec![dcql_credential].try_into().unwrap());
+        let mut credentials = HashMap::new();
+        let claims: Vec<Claim> = serde_json::from_value(json!(
+            [
+                {
+                   "vct": "https://credentials.example.com/identity_credential",
+                    "field": {
+                        "value": "test"
+                    }
+                }
+            ]
+        ))
+        .unwrap();
+        credentials.insert("pid2".to_string(), claims);
+        (dcql, credentials)
+    }
+
+    fn dcql_and_credential_without_type() -> (DCQL, HashMap<String, Vec<Claim>>) {
+        let dcql_credential: DCQLCredential = serde_json::from_value(json!(
+                {
+                    "id": "pid2",
+                    "format": "dc+sd-jwt",
+                    "meta": {
+                        "vct_values": ["https://credentials.example.com/identity_credential"]
+                    },
+                }
+        ))
+        .unwrap();
+
+        let dcql = DCQL::new(vec![dcql_credential].try_into().unwrap());
+        let mut credentials = HashMap::new();
+        let claims: Vec<Claim> = serde_json::from_value(json!(
+            [
+                {
+                    "some_field": "value"
+                }
+            ]
+        ))
+        .unwrap();
+        credentials.insert("pid2".to_string(), claims);
+        (dcql, credentials)
+    }
+
+    fn dcql_and_credential_type_mismatch() -> (DCQL, HashMap<String, Vec<Claim>>) {
+        let dcql_credential: DCQLCredential = serde_json::from_value(json!(
+                {
+                    "id": "pid2",
+                    "format": "dc+sd-jwt",
+                    "meta": {
+                        "vct_values": ["https://credentials.example.com/new_identity_credential"]
+                    },
+                }
+        ))
+        .unwrap();
+
+        let dcql = DCQL::new(vec![dcql_credential].try_into().unwrap());
+        let mut credentials = HashMap::new();
+        let claims: Vec<Claim> = serde_json::from_value(json!(
+            [
+                {
+                    "vct": "https://credentials.example.com/identity_credential"
+                }
+            ]
+        ))
+        .unwrap();
+        credentials.insert("pid2".to_string(), claims);
+        (dcql, credentials)
+    }
+
+    fn dcql_with_credential_sets() -> (DCQL, HashMap<String, Vec<Claim>>) {
+        let dcql_credential1: DCQLCredential = serde_json::from_value(json!(
+                {
+                    "id": "pid1",
+                    "format": "dc+sd-jwt",
+                    "meta": {
+                        "vct_values": ["https://credentials.example.com/identity_credential"]
+                    },
+                    "claims": [
+                        {"path": ["postal_code"], "values": ["90210"]}
+                    ]
+                }
+        ))
+        .unwrap();
+
+        let dcql_credential2: DCQLCredential = serde_json::from_value(json!(
+                {
+                    "id": "pid2",
+                    "format": "dc+sd-jwt",
+                    "meta": {
+                        "vct_values": ["https://credentials.example.com/identity_credential"]
+                    },
+                    "claims": [
+                        {"path": ["family_name"], "values": ["Doe"]}
+                    ]
+                }
+        ))
+        .unwrap();
+
+        let dcql_credential3: DCQLCredential = serde_json::from_value(json!(
+                {
+                    "id": "pid3",
+                    "format": "dc+sd-jwt",
+                    "meta": {
+                        "vct_values": ["https://credentials.example.com/identity_credential"]
+                    },
+                    "claims": [
+                        {"path": ["age"], "values": [18]}
+                    ]
+                }
+        ))
+        .unwrap();
+
+        let credential_set = serde_json::from_value::<DcqlCredentialSet>(json!(
+            {
+                "purpose": "Identification",
+                "options": [
+                    ["pid1", "pid3"],
+                    ["pid2", "pid3"]
+                ]
+            }
+        ))
+        .unwrap();
+
+        let optional_set = serde_json::from_value::<DcqlCredentialSet>(json!(
+            {
+              "required": false,
+              "options": [
+                [ "nice_to_have_credential" ]
+              ]
+            }
+        ))
+        .unwrap();
+
+        let mut dcql = DCQL::new(
+            vec![dcql_credential1, dcql_credential2, dcql_credential3]
+                .try_into()
+                .unwrap(),
+        );
+        dcql = dcql
+            .add_credential_set(credential_set)
+            .add_credential_set(optional_set);
+
+        let mut credentials = HashMap::new();
+        let claims1: Vec<Claim> = serde_json::from_value(json!(
+            [
+                {
+                    "vct": "https://credentials.example.com/identity_credential",
+                    "postal_code": "7777"
+                }
+            ]
+        ))
+        .unwrap();
+        let claims2: Vec<Claim> = serde_json::from_value(json!(
+            [
+                {
+                    "vct": "https://credentials.example.com/identity_credential",
+                    "family_name": "Doe"
+                }
+            ]
+        ))
+        .unwrap();
+        let claims3: Vec<Claim> = serde_json::from_value(json!(
+            [
+                {
+                    "vct": "https://credentials.example.com/identity_credential",
+                    "age": 18
+                }
+            ]
+        ))
+        .unwrap();
+
+        credentials.insert("pid1".to_string(), claims1);
+        credentials.insert("pid2".to_string(), claims2);
+        credentials.insert("pid3".to_string(), claims3);
+        (dcql, credentials)
+    }
+
+    fn dcql_with_credential_sets_mismatch() -> (DCQL, HashMap<String, Vec<Claim>>) {
+        let (mut dcql, claims) = dcql_with_credential_sets();
+        let new_set = serde_json::from_value::<DcqlCredentialSet>(json!(
+            {
+              "options": [
+                [ "another_credential" ]
+              ]
+            }
+        ))
+        .unwrap();
+        dcql = dcql.add_credential_set(new_set);
+
+        (dcql, claims)
     }
 
     fn sample_sdjwt_presentation_for_dcql() -> (Value, Value) {
