@@ -375,7 +375,7 @@ mod tests {
               "response_uri": "https://some-link.com",
               "client_id": "decentralized_identifier:did:key:zDnaeveTW9mmpzfLKHgmoYox1te7kxhdoboadQf5hM2rtiZjh",
               "response_type": "vp_token",
-              "response_mode": "dc_api.jwt",
+              "response_mode": "fragment.jwt",
               "nonce": "xyz123ltcaccescbwc777",
               "dcql_query": {
                 "credentials": [

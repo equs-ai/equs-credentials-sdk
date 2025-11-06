@@ -487,7 +487,7 @@ where
         auth_request_metadata: &AuthorizationRequestMetadata,
     ) -> Result<(Url, Option<String>)> {
         match &auth_request_metadata.auth_response_options.mode {
-            ResponseMode::DCAPIJwt | ResponseMode::DCAPI => {
+            ResponseMode::FragmentJwt | ResponseMode::Fragment => {
                 let client = RedirectUriClient::new(self.metadata.client_id.to_owned())
                     .context(ClientSnafu)?;
                 let verifier_builder = openid4vp::verifier::Verifier::builder().with_client(client);
@@ -545,9 +545,10 @@ where
             auth_request_metadata.pass_auth_request_object.to_owned(),
             &auth_request_metadata.auth_response_options.mode,
         ) {
-            (PassAuthRequestObject::ByValue, ResponseMode::DCAPIJwt | ResponseMode::DCAPI) => {
-                RequestType::Plain
-            }
+            (
+                PassAuthRequestObject::ByValue,
+                ResponseMode::FragmentJwt | ResponseMode::Fragment,
+            ) => RequestType::Plain,
             (
                 PassAuthRequestObject::ByValue,
                 ResponseMode::DirectPost | ResponseMode::DirectPostJwt,
