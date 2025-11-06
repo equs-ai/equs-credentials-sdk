@@ -173,16 +173,16 @@ where
             Self::prepare_transaction_data_hashes(auth_request.transaction_data.to_owned())?;
 
         match auth_request.response_mode.clone() {
-            ResponseMode::DirectPost | ResponseMode::DCAPI => Ok(AuthorizationResponse::Unencoded(
-                UnencodedAuthorizationResponse {
+            ResponseMode::DirectPost | ResponseMode::Fragment => Ok(
+                AuthorizationResponse::Unencoded(UnencodedAuthorizationResponse {
                     vp_token: vp_token.clone(),
                     presentation_submission: ps.to_owned(),
                     id_token: id_token.clone(),
                     state: auth_request.state.to_owned(),
                     transaction_data_response,
-                },
-            )),
-            ResponseMode::DirectPostJwt | ResponseMode::DCAPIJwt => {
+                }),
+            ),
+            ResponseMode::DirectPostJwt | ResponseMode::FragmentJwt => {
                 let metadata = auth_request.client_metadata.clone();
                 let encryptor = JweEncryptor::new(metadata);
                 let mut body = Map::new();
@@ -1462,7 +1462,7 @@ mod tests {
     #[tokio::test]
     async fn same_device_flow_present_credential_auto_failure_case_returns_redirect_uri_in_error() {
         let mut test_case = request_unsupported_credential_format_case();
-        test_case.request.response_mode = ResponseMode::DCAPI;
+        test_case.request.response_mode = ResponseMode::Fragment;
 
         let kms = LocalKms::new();
         let vault = test_case.prepare_vault(&kms).await;
