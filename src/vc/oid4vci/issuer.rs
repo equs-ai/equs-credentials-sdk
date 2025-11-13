@@ -33,6 +33,7 @@ use serde_json::{Map, Value};
 use snafu::{ResultExt, ensure};
 use ssi::claims::JwsBuf;
 use ssi::claims::jwt::decode_unverified;
+use std::collections::HashMap;
 use std::str::FromStr;
 use time::Duration;
 use tracing::{Level, debug, error, info, instrument, trace, warn};
@@ -143,14 +144,15 @@ where
 
         self.validate_cred_def_ids(&cred_def_ids)?;
 
-        let cred_offer_params = CredentialOfferParameters {
-            credential_issuer: self.issuer_metadata.credential_issuer().clone(),
-            credential_configuration_ids: cred_def_ids
+        let cred_offer_params = CredentialOfferParameters::new(
+            self.issuer_metadata.credential_issuer().clone(),
+            cred_def_ids
                 .iter()
                 .map(|c| CredentialConfigurationId::new(c.to_string()))
                 .collect(),
-            grants: Some(grants.to_owned()),
-        };
+            Some(grants.to_owned()),
+            HashMap::default(),
+        );
 
         let cred_offer = serde_json::to_string(&cred_offer_params).context(ParseSnafu)?;
 

@@ -11,6 +11,7 @@ pub mod fixtures {
     use oauth2::AccessToken;
     use oid4vci::types::{CredentialConfigurationId, IssuerUrl};
     use serde_json::{Value, json};
+    use std::collections::HashMap;
 
     pub const ISSUER_URL: &str = "https://issuer-backend.com";
     pub const AUTH_URL: &str = "https://authz-backend.com";
@@ -303,10 +304,7 @@ pub mod fixtures {
                     CRED_DEF_ID
                 ],
                 "grants": {
-                    "authorization_code": {
-                        "issuer_state":null,
-                        "authorization_server":null
-                    }
+                    "authorization_code": {}
                 }
             }
         )
@@ -483,23 +481,25 @@ pub mod fixtures {
         let auth_code_grant = AuthorizationCodeGrant::new(None, None)
             .set_authorization_server(Some(IssuerUrl::new(AUTH_URL.to_string()).unwrap()));
 
-        CredentialOfferParams {
-            credential_issuer: IssuerUrl::new(ISSUER_URL.to_string()).unwrap(),
-            credential_configuration_ids: vec![CredentialConfigurationId::new(
+        CredentialOfferParams::new(
+            IssuerUrl::new(ISSUER_URL.to_string()).unwrap(),
+            vec![CredentialConfigurationId::new(
                 cred_def_id.unwrap_or(CRED_DEF_ID).to_string(),
             )],
-            grants: Some(CredentialOfferGrants::new(Some(auth_code_grant), None)),
-        }
+            Some(CredentialOfferGrants::new(Some(auth_code_grant), None)),
+            HashMap::default(),
+        )
     }
 
     pub fn sample_offer_with_pre_auth_code_grant(code: &str) -> CredentialOfferParams {
         let pre_auth_grant = PreAuthorizedCodeGrant::new(PreAuthorizedCode::new(code.to_string()))
             .set_authorization_server(Some(IssuerUrl::new(AUTH_URL.to_string()).unwrap()));
 
-        CredentialOfferParams {
-            credential_issuer: IssuerUrl::new(ISSUER_URL.to_string()).unwrap(),
-            credential_configuration_ids: vec![],
-            grants: Some(CredentialOfferGrants::new(None, Some(pre_auth_grant))),
-        }
+        CredentialOfferParams::new(
+            IssuerUrl::new(ISSUER_URL.to_string()).unwrap(),
+            vec![],
+            Some(CredentialOfferGrants::new(None, Some(pre_auth_grant))),
+            HashMap::default(),
+        )
     }
 }

@@ -863,11 +863,12 @@ mod tests {
     }
 
     fn issuer_discovery_from_offer() -> IssuerDiscovery {
-        let credential_offer = CredentialOfferParameters {
-            credential_issuer: IssuerUrl::new(ISSUER_URL.to_string()).unwrap(),
-            credential_configuration_ids: vec![CredentialConfigurationId::new(SCOPE.to_string())],
-            grants: None,
-        };
+        let credential_offer = CredentialOfferParameters::new(
+            IssuerUrl::new(ISSUER_URL.to_string()).unwrap(),
+            vec![CredentialConfigurationId::new(SCOPE.to_string())],
+            None,
+            HashMap::default(),
+        );
 
         IssuerDiscovery::Offer(credential_offer)
     }

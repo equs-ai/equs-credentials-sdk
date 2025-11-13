@@ -190,10 +190,10 @@ mod tests {
             )
             .await
             .unwrap();
-        let grant = resolved_offer.grants.unwrap();
+        let grant = resolved_offer.grants().unwrap();
         match flow {
             "auth_code" => {
-                let grant = grant.authorization_code.unwrap();
+                let grant = grant.authorization_code().unwrap();
                 assert_eq!(
                     grant.issuer_state(),
                     Some(&IssuerState::new("state".to_string())),
@@ -204,7 +204,7 @@ mod tests {
                 )
             }
             _ => {
-                let grant = grant.pre_authorized_code.unwrap();
+                let grant = grant.pre_authorized_code().unwrap();
 
                 assert_eq!(
                     grant.pre_authorized_code(),
@@ -218,12 +218,12 @@ mod tests {
         }
 
         assert_eq!(
-            resolved_offer.credential_issuer.to_string(),
+            resolved_offer.credential_issuer().to_string(),
             "http://localhost:8088".to_string()
         );
         assert_eq!(
-            resolved_offer.credential_configuration_ids,
-            vec![
+            resolved_offer.credential_configuration_ids(),
+            &vec![
                 CredentialConfigurationId::new("SD_JWT_cred_1".to_string()),
                 CredentialConfigurationId::new("JSON_LDP_cred_2".to_string())
             ]

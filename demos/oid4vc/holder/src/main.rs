@@ -584,7 +584,7 @@ async fn get_issuer_discovery_mode() -> (IssuerDiscovery, Option<CredentialOffer
         IssuerDiscoveryMode::CredentialOffer => {
             let offer_params = resolve_offer().await;
             (
-                IssuerDiscovery::Url(offer_params.credential_issuer.to_string()),
+                IssuerDiscovery::Url(offer_params.credential_issuer().to_string()),
                 Some(offer_params),
             )
         }

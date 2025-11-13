@@ -49,7 +49,7 @@ import Swifter
 
 		let resolvedOffer = try? await resolver?.resolve(
 			offerUri:
-				"openid-credential-offer://?credential_offer={%22credential_issuer%22:%22http://localhost:9002%22,%22credential_configuration_ids%22:[%22IDENTITY_SD_JWT%22],%22grants%22:{%22urn:ietf:params:oauth:grant-type:pre-authorized_code%22:{%22pre-authorized_code%22:%22code%22,%22tx_code%22:null,%22interval%22:null,%22authorization_server%22:%22http://localhost:9002/auth%22}}}"
+				"openid-credential-offer://?credential_offer={%22credential_issuer%22:%22http://localhost:9002%22,%22credential_configuration_ids%22:[%22IDENTITY_SD_JWT%22],%22grants%22:{%22urn:ietf:params:oauth:grant-type:pre-authorized_code%22:{%22pre-authorized_code%22:%22code%22,%22authorization_server%22:%22http://localhost:9002/auth%22}},%22extra_field%22:%22extra_value%22}"
 		)
 
 		compareJsonValues(
@@ -63,5 +63,5 @@ enum CredentialOfferResolverTestConstants {
 		"{\"issuer\":\"http://localhost:9002/auth\",\"authorization_endpoint\":\"http://localhost:9002/auth\",\"token_endpoint\":\"http://localhost:9002/auth/token\",\"introspection_endpoint\":\"http://localhost:9002/auth/introspection\",\"jwks_uri\":\"http://localhost:9002/auth/jwks\",\"grant_types_supported\":[\"authorization_code\"],\"response_types_supported\":[\"code\",\"token\"],\"subject_types_supported\":[\"public\"],\"id_token_signing_alg_values_supported\":[\"ES256\"],\"pushed_authorization_request_endpoint\":\"http://localhost:9002/auth/par/request\"}"
 
 	static let CredOfferWithPreAuthGrant =
-		"{\"credential_issuer\":\"http://localhost:9002\",\"credential_configuration_ids\":[\"IDENTITY_SD_JWT\"],\"grants\":{\"urn:ietf:params:oauth:grant-type:pre-authorized_code\":{\"pre-authorized_code\":\"code\",\"tx_code\":null,\"interval\":null,\"authorization_server\":\"http://localhost:9002/auth\"}}}"
+		"{\"credential_issuer\":\"http://localhost:9002\",\"credential_configuration_ids\":[\"IDENTITY_SD_JWT\"],\"grants\":{\"urn:ietf:params:oauth:grant-type:pre-authorized_code\":{\"pre-authorized_code\":\"code\",\"authorization_server\":\"http://localhost:9002/auth\"}},\"extra_field\":\"extra_value\"}"
 }

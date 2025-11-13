@@ -137,8 +137,6 @@ export const CRED_REQUEST_FOR_BATCH_ISSUANCE: OID4VCICredentialRequest = {
 
 export const GRANTS: CredentialOfferGrants = {
   authorization_code: {
-    issuer_state: null,
-    authorization_server: null,
   },
 };
 
