@@ -235,11 +235,10 @@ export class Utils {
       grants: {
         "urn:ietf:params:oauth:grant-type:pre-authorized_code": {
           "pre-authorized_code": "code",
-          tx_code: null,
-          interval: null,
           authorization_server: `${this.issuerEndpoint}/auth`,
         },
       },
+      additional_field: "additional_value",
     };
   }
 

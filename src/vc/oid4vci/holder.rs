@@ -109,7 +109,7 @@ where
     ) -> Result<Self> {
         info!("oid4vci-holder service initialization is started");
 
-        let iss_url = offer.credential_issuer.clone();
+        let iss_url = offer.credential_issuer().to_owned();
 
         let holder_service = Self::from_iss_url_with_configs(
             holder,
@@ -402,7 +402,7 @@ where
         F: Future<Output = std::result::Result<String, E>> + WasmNotSend,
         E: std::error::Error + 'static,
     {
-        let grants = offer_params.grants.as_ref().ok_or_else(|| {
+        let grants = offer_params.grants().ok_or_else(|| {
             HolderServiceSnafu {
                 details: "credential offer grants is not provided",
             }
@@ -430,7 +430,7 @@ where
 
         if let Some(authorization) = &grants.authorization_code {
             let scope = offer_params
-                .credential_configuration_ids
+                .credential_configuration_ids()
                 .iter()
                 .find_map(|cc| {
                     self.resolve_cred_def(cc)
@@ -442,7 +442,7 @@ where
                         details: format!(
                             "Could not resolve \"scope\" value: Unknown credential identifier(s): {}",
                             offer_params
-                                .credential_configuration_ids
+                                .credential_configuration_ids()
                                 .iter()
                                 .map(|c| c.to_string())
                                 .collect::<Vec<String>>()

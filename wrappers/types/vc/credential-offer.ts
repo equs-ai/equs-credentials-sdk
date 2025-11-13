@@ -1,4 +1,4 @@
-import { CredentialOfferGrants } from "./credential-offer-grants";
+import {CredentialOfferGrants} from "./credential-offer-grants";
 
 /**
  * JSON-encoded Credential Offer object parameters
@@ -11,10 +11,14 @@ import { CredentialOfferGrants } from "./credential-offer-grants";
  * @property {CredentialOfferGrants} [grants] Object indicating to the Wallet the Grant Types
  * the Credential Issuer's Authorization Server is prepared to process for this Credential Offer.
  *
- * @see {@link https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0.html#section-4.1.1|OpenID for Verifiable Credential Issuance}
+ * Additional Credential Offer parameters, that are not covered by OID4VCI specification, can be retrieved by their key.
+ *
+ * @see {@link https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0.html#name-credential-offer-parameters|OpenID for Verifiable Credential Issuance}
  */
 export interface OID4VCICredentialOffer {
   credential_issuer: string;
   credential_configuration_ids: Array<string>;
   grants?: CredentialOfferGrants;
+
+  [additional_field: string]: any;
 }
