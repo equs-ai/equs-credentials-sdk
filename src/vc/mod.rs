@@ -36,6 +36,7 @@ use crate::vc::core::PresentationRestrictionValue;
 use crate::vc::formats::json_ld_vc::JsonLdAPI;
 use crate::vc::formats::sd_jwt_vc::SdJwtAPI;
 pub use formats::HasClaims;
+pub use status_formats::status_list_token_jwt::VCStatus as TslVcStatus;
 
 /// `Credential` Error.
 ///

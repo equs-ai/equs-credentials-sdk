@@ -61,7 +61,7 @@ pub type StatusList = String;
 /// - `0x00` "VALID": The status of the Token is valid, correct or legal.
 /// - `0x01` "INVALID": The status of the Token is revoked, annulled, taken back, recalled or cancelled. This state is irreversible.
 /// - `0x02` "SUSPENDED": The status of the Token is temporarily invalid, hanging, debarred from privilege. This state is reversible.
-#[derive(Debug, Display, PartialEq)]
+#[derive(Debug, Clone, Copy, Display, PartialEq)]
 pub enum VCStatus {
     Valid,
     Invalid,
@@ -414,26 +414,44 @@ mod tests {
     use crate::vc::presentation_exchange::StatusSize;
     use crate::vc::status_formats::API;
     use oauth2::http::Method;
-    use rstest::rstest;
+    use rstest::*;
     use serde_json::json;
     use std::collections::HashMap;
     use std::str::FromStr;
     use url::Url;
 
+    fn single_bit_statuses() -> VCStatuses {
+        let mut statuses = VCStatuses::new();
+        statuses.set(1, VCStatus::Invalid);
+        statuses
+    }
+
+    fn two_bit_statuses() -> VCStatuses {
+        let mut statuses = VCStatuses::new();
+        statuses.set(1, VCStatus::Valid);
+        statuses.set(2, VCStatus::Invalid);
+        statuses.set(3, VCStatus::Suspended);
+        statuses.set(4, VCStatus::AppSpecific(3));
+        statuses
+    }
+
+    #[rstest]
+    #[case::bit_size_1(1u8, single_bit_statuses(), json!({"lst": "eNpjYmBgAAAADAAD", "bits": 1}))]
+    #[case::bit_size_2(2u8, two_bit_statuses(), json!({"lst": "eNqbwMwABgAEnQCU", "bits": 2}))]
     #[tokio::test]
-    async fn status_list_is_created_correctly() {
+    async fn status_list_is_created_correctly(
+        #[case] status_bit_size: u8,
+        #[case] statuses: VCStatuses,
+        #[case] expected_payload: serde_json::Value,
+    ) {
         let (iss_did, key_handle) =
             create_did_url_and_key_handle(&LocalKms::new(), KeyType::P256).await;
 
         let metadata = SLMetadata {
             statuses_nr: 32,
             status_list_url: Url::from_str("http://example.com/status_list").unwrap(),
-            status_size: StatusSize::try_from(1u8).unwrap(),
+            status_size: StatusSize::try_from(status_bit_size).unwrap(),
         };
-
-        let mut statuses = VCStatuses::new();
-        let vc_index: usize = 1;
-        statuses.set(vc_index, VCStatus::Invalid);
 
         let status_list_jwt =
             StatusListJwt::create_status_list(statuses, (&iss_did, key_handle), &metadata)
@@ -457,18 +475,20 @@ mod tests {
             &json!("http://example.com/status_list")
         );
         assert!(payload.get("iat").is_some());
-        assert_eq!(
-            payload.get("status_list").unwrap(),
-            &serde_json::json!({"lst": "eNpjYmBgAAAADAAD", "bits": 1}),
-        );
+        assert_eq!(payload.get("status_list").unwrap(), &expected_payload,);
     }
 
     #[rstest]
-    #[case(1, VCStatus::Invalid)]
-    #[case(2, VCStatus::Valid)]
+    #[case::one_bit_valid(1, status_list_jwt_token_1bit(), VCStatus::Valid)]
+    #[case::one_bit_invalid(2, status_list_jwt_token_1bit(), VCStatus::Invalid)]
+    #[case::two_bit_valid(1, status_list_jwt_token_2bit(), VCStatus::Valid)]
+    #[case::two_bit_invalid(2, status_list_jwt_token_2bit(), VCStatus::Invalid)]
+    #[case::two_bit_suspended(3, status_list_jwt_token_2bit(), VCStatus::Suspended)]
+    #[case::two_bit_app_specific(4, status_list_jwt_token_2bit(), VCStatus::AppSpecific(3))]
     #[tokio::test]
     async fn vc_status_is_validated_correctly(
         #[case] vc_index: usize,
+        #[case] status_list_token: &str,
         #[case] expected_status: VCStatus,
     ) {
         let mut http_client = MockHttpClient::new();
@@ -477,7 +497,7 @@ mod tests {
             &mut http_client,
             Method::GET,
             Url::from_str("http://example.com/status_list").unwrap(),
-            status_list_token_jwt_with_revoked_idx_1(),
+            status_list_jwt_token_2bit(),
             1.into(),
         );
 
@@ -509,7 +529,7 @@ mod tests {
             &mut http_client,
             Method::GET,
             Url::from_str(url).unwrap(),
-            status_list_token_jwt_with_revoked_idx_1(),
+            status_list_jwt_token_1bit(),
             1.into(),
         );
 
@@ -536,10 +556,7 @@ mod tests {
 
         assert_eq!(vc_status, Some(VCStatus::Invalid));
         assert_eq!(cached_jwts.len(), 1);
-        assert_eq!(
-            cached_jwts.get(url).unwrap(),
-            status_list_token_jwt_with_revoked_idx_1()
-        );
+        assert_eq!(cached_jwts.get(url).unwrap(), status_list_jwt_token_1bit());
 
         // Second call with same URL should use cached status list JWT
         http_client = MockHttpClient::new();
@@ -555,7 +572,13 @@ mod tests {
         assert_eq!(vc_status, Some(VCStatus::Invalid));
     }
 
-    fn status_list_token_jwt_with_revoked_idx_1() -> &'static str {
+    /// Status list token that contains the following status list:
+    /// token idx - status:
+    /// 1 - Valid
+    /// 2 - Invalid
+    ///
+    /// Status bit size - 1
+    fn status_list_jwt_token_1bit() -> &'static str {
         "eyJ0eXAiOiJzdGF0dXNsaXN0K2p3dCIsImFsZyI6IkVTMjU2Iiwia2lkIjoiZG\
          lkOmtleTp6RG5hZWRlaHVUUVdzNWhaZHFKTVJzZGRpa2RBUnl4OGZhYzI4UjRN\
          UFVRRTIybnhaI3pEbmFlZGVodVRRV3M1aFpkcUpNUnNkZGlrZEFSeXg4ZmFjMj\
@@ -564,5 +587,23 @@ mod tests {
          0cDovL2V4YW1wbGUuY29tL3N0YXR1c19saXN0IiwiX3NkX2FsZyI6InNoYS0yN\
          TYifQ.HlkzOlNu8fNpLgHxfX0Ra7J1AqxxPwlyiskhMFaSfbVymoWRvHNuadT1\
          PFr92AogZsMI5wHJkIBrBIOVdlfr3g~"
+    }
+
+    /// Status list token that contains the following status list:
+    /// token idx - status:
+    /// 1 - Valid
+    /// 2 - Invalid
+    /// 3 - Suspended
+    /// 4 - AppSpecific (value - 3)
+    ///
+    /// Status bit size - 2
+    fn status_list_jwt_token_2bit() -> &'static str {
+        "eyJ0eXAiOiJzdGF0dXNsaXN0K2p3dCIsImFsZyI6IkVTMjU2Iiwia2lkIjoiZGlkOmtleTp6R\
+        G5hZWFoVE5nRVozN0ZESlRQcFhUWDJRUFBWb21nc2k4QVMzMjFjMjRNMlVvNWQ2I3pEbmFlYWh\
+        UTmdFWjM3RkRKVFBwWFRYMlFQUFZvbWdzaThBUzMyMWMyNE0yVW81ZDYifQ.eyJzdWIiOiJodH\
+        RwOi8vZXhhbXBsZS5jb20vc3RhdHVzX2xpc3QiLCJpYXQiOjE3NjMwMjQ0MTYsInN0YXR1c19s\
+        aXN0Ijp7ImxzdCI6ImVOcWJ3TXdBQmdBRW5RQ1UiLCJiaXRzIjoyfSwiX3NkX2FsZyI6InNoYS\
+        0yNTYifQ.uxeAWNaz0sP2PHrp3xndbrmNQTrHiGycOwsiGX4f1nsYGcLZhYmsTP5ixcdxWvTq3\
+        9blTkiRt1wXnCESlxqboQ~"
     }
 }

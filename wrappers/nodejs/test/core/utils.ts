@@ -100,7 +100,7 @@ export class Utils {
             payload: {
               statuses_nr: 32,
               status_list_url: "http://localhost:9001/status_list",
-              status_size: 1,
+              status_size: 2,
             },
           },
           keyMetadata: await this.getKeyMetadata(),
@@ -133,5 +133,12 @@ export class Utils {
       ],
       protocolData: undefined,
     };
+  }
+
+  async truncateVault(): Promise<void> {
+    let creds = await this.vault.getCredentials();
+    for (const cred of creds) {
+      await this.vault.deleteCredential(cred.id);
+    }
   }
 }

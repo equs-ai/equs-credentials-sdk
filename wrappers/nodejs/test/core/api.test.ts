@@ -34,18 +34,7 @@ describe("VC::Core", () => {
   const utils = new Utils();
   let statusIssuer: VcCoreStatusIssuer;
   let issuer: VcCoreIssuer;
-  const holder = createHolder(
-    utils.kms,
-    utils.vault,
-    {
-      clientId: "wallet-dev",
-      pop: {
-        lifetime: 300,
-      },
-    },
-    new _UniversalDIDResolver(),
-    ReqwestHttpClient.insecure(),
-  );
+  let holder: VcCoreHolder;
 
   beforeAll(async () => {
     await mockServer.start(port);
@@ -54,6 +43,18 @@ describe("VC::Core", () => {
   beforeEach(async () => {
     statusIssuer = createStatusIssuer(utils.kms, await utils.getStatusIssuerMetadata());
     issuer = createIssuer(utils.kms, await utils.getIssuerMetadata(), new _UniversalDIDResolver());
+    holder = createHolder(
+      utils.kms,
+      utils.vault,
+      {
+        clientId: "wallet-dev",
+        pop: {
+          lifetime: 300,
+        },
+      },
+      new _UniversalDIDResolver(),
+      ReqwestHttpClient.insecure(),
+    );
 
     const statusList = await statusIssuer.issueStatusList("test_status_list", {
       format: VCStatusesDataFormat.StatusListToken,
@@ -74,7 +75,10 @@ describe("VC::Core", () => {
         format: VCStatusesDataFormat.StatusListToken,
         payload: {
           statuses: {
-            "2": 1, // 'INVALID' (1) status for the VC with index 2
+            "1": 0, // 'VALID' (0) status for the VC with index 1
+            "2": 1, // 'INVALID' (1)
+            "3": 2, // 'SUSPENDED' (2)
+            "4": 3, // 'APPSPECIFIC' (3)
           },
         },
       });
@@ -83,7 +87,7 @@ describe("VC::Core", () => {
 
       expect(decoded).toMatchObject({
         sub: "http://localhost:9001/status_list",
-        status_list: { lst: "eNpjYWBgAAAAFAAF", bits: 1 },
+        status_list: { lst: "eNqbwMwABgAEnQCU", bits: 2 },
       });
       expect(decoded.iat).toBeDefined();
     });
@@ -279,8 +283,14 @@ describe("VC::Core", () => {
       verifier = createVerifier(utils.verifierId, new _UniversalDIDResolver());
     });
 
-    it("verify presentation and VC status", async () => {
-      await requestAndStoreCredential(holder, issuer, utils);
+    it.each([
+      [1, "VALID", null],
+      [2, "INVALID", null],
+      [3, "SUSPENDED", null],
+      [4, "APPSPECIFIC", 3],
+    ])("verify presentation and VC status", async (statusListIdx: number, status: string, value?: number) => {
+      await utils.truncateVault();
+      await requestAndStoreCredential(holder, issuer, utils, statusListIdx);
 
       const holder_binder: HolderBinder = {
         nonce: utils.nonce,
@@ -299,10 +309,13 @@ describe("VC::Core", () => {
 
       const client: HttpClient = {
         asyncCall: async (_: HttpRequest): Promise<HttpResponse> => {
-          // status list is generated with all indexes with status value 'VALID'
-          // except the value for index 2 which is 'INVALID'
+          // Status list is generated with the following statuses (token index - status):
+          // 1 - VALID
+          // 2 - INVALID
+          // 3 - SUSPENDED
+          // 4 - APPSPECIFIC (value - 3)
           const status_list_jwt =
-            "eyJ0eXAiOiJzdGF0dXNsaXN0K2p3dCIsImFsZyI6IkVTMjU2Iiwia2lkIjoiZGlkOmtleTp6RG5hZVVoM1I5Z3U0MUFzekJhOVVEckFTdTV4WnRGWk44UHV5Y3dYbThZQmJiTFdRI3pEbmFlVWgzUjlndTQxQXN6QmE5VURyQVN1NXhadEZaTjhQdXljd1htOFlCYmJMV1EifQ.eyJpYXQiOjE3NTMwNTIyMTMsInN1YiI6Imh0dHA6Ly9sb2NhbGhvc3Q6OTAwMS9zdGF0dXNfbGlzdCIsInN0YXR1c19saXN0Ijp7ImxzdCI6ImVOcGpZR0JnQUFBQUJBQUIiLCJiaXRzIjoxfSwiX3NkX2FsZyI6InNoYS0yNTYifQ.lVgb-pNxOyf1TBC-oqP0e2UFddohlnK4Y_JKTcbZXjAxWJxcSaSqHvWR_DYIglZilhzUgpeJ0_2UGkUIpZ8xQA~";
+            "eyJ0eXAiOiJzdGF0dXNsaXN0K2p3dCIsImFsZyI6IkVTMjU2Iiwia2lkIjoiZGlkOmtleTp6RG5hZVp4QmJlVFdBYlhOcXlHZER4dDJXRTZjbzNteHU0VllEOHlieXlkdjhkQnh4I3pEbmFlWnhCYmVUV0FiWE5xeUdkRHh0MldFNmNvM214dTRWWUQ4eWJ5eWR2OGRCeHgifQ.eyJzdGF0dXNfbGlzdCI6eyJsc3QiOiJlTnFid013QUJnQUVuUUNVIiwiYml0cyI6Mn0sInN1YiI6Imh0dHA6Ly9sb2NhbGhvc3Q6OTAwMS9zdGF0dXNfbGlzdCIsImlhdCI6MTc2MzAyNTYyMywiX3NkX2FsZyI6InNoYS0yNTYifQ.lCOpC_53MXw4mShUwGtLbxh3Ha-qFNiRohPTZWo2XyCkBVSWn2daxEjSXM048p2DN8LAo61fcgAA69BGvcf5WQ~";
 
           return {
             statusCode: 200,
@@ -313,16 +326,27 @@ describe("VC::Core", () => {
       };
 
       const vc_status = await verifier.obtainCredentialStatus(presentation, client);
-      expect(vc_status).toMatchObject({ payload: { status: "VALID" } });
+      if (value) {
+        expect(vc_status).toMatchObject({ payload: { status, value } });
+      } else {
+        expect(vc_status).toMatchObject({ payload: { status } });
+      }
     });
   });
 });
 
-async function requestAndStoreCredential(holder: VcCoreHolder, issuer: VcCoreIssuer, utils: Utils): Promise<void> {
+async function requestAndStoreCredential(
+  holder: VcCoreHolder,
+  issuer: VcCoreIssuer,
+  utils: Utils,
+  statusListIdx: number = 1,
+): Promise<void> {
   const keyMetadata = await utils.getKeyMetadata();
   const offer = issuer.offerCredential(utils.scope);
   const credentialRequest = await holder.requestCredential(offer, utils.nonce, keyMetadata);
-  const credential = await issuer.issueCredential(credentialRequest, utils.claims, utils.nonce, utils.credStatusInfo);
+  let statusInfo = utils.credStatusInfo;
+  statusInfo.payload.idx = statusListIdx;
+  const credential = await issuer.issueCredential(credentialRequest, utils.claims, utils.nonce, statusInfo);
   const metadata = await resolveMetadata(credential, keyMetadata);
   await holder.storeCredential(credential, metadata);
 }

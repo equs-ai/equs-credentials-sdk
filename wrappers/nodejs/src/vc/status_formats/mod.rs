@@ -1,8 +1,11 @@
 use crate::utils::{from_json_object, to_json_object};
 use crate::vc::JsonObject;
+use agent_sdk::vc::TslVcStatus as AsdkTslVcStatus;
 use agent_sdk::vc::status_formats::StatusListFormat;
+use agent_sdk::vc::status_formats::status_list_token_jwt::VCStatus;
 use napi::Error;
 use napi_derive::napi;
+use strum_macros::Display;
 
 #[napi(js_name = "StatusListFormatFmt")]
 pub enum JsStatusListFormatFmt {
@@ -45,5 +48,25 @@ impl TryFrom<JsStatusListFormat> for StatusListFormat {
             JsStatusListFormatFmt::StatusListTokenCwt => StatusListFormat::StatusListTokenCwt,
         };
         Ok(result)
+    }
+}
+
+#[napi(string_enum)]
+#[derive(Display)]
+pub enum TslVcStatusType {
+    VALID,
+    INVALID,
+    SUSPENDED,
+    APPSPECIFIC,
+}
+
+impl From<AsdkTslVcStatus> for TslVcStatusType {
+    fn from(value: AsdkTslVcStatus) -> Self {
+        match value {
+            VCStatus::Valid => Self::VALID,
+            VCStatus::Invalid => Self::INVALID,
+            VCStatus::Suspended => Self::SUSPENDED,
+            VCStatus::AppSpecific(_) => Self::APPSPECIFIC,
+        }
     }
 }
