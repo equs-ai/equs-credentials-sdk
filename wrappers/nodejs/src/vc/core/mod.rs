@@ -25,7 +25,7 @@ use agent_sdk::vc::core::StatusListDefinition;
 use agent_sdk::vc::status_formats::status_list_token_jwt;
 use agent_sdk::vc::{StatusList, VCStatusesData};
 
-use crate::vc::status_formats::JsStatusListFormat;
+use crate::vc::status_formats::{JsStatusListFormat, TslVcStatusType};
 use agent_sdk::nonce::Nonce;
 use agent_sdk::vc::{Credential, CredentialMetadata, HasVCFormat, Presentation, VCFormat};
 use napi::Error;
@@ -693,11 +693,17 @@ pub enum JsVCStatusFormat {
     StatusListToken,
 }
 
-// TODO: consider moving it from `vc::core` to `vc`
 #[napi(js_name = "VCStatus", object)]
 pub struct JsVCStatus {
     pub format: JsVCStatusFormat,
+    #[napi(ts_type = "VcTslStatusPayload | any")]
     pub payload: JsonObject,
+}
+
+#[napi(object, js_name = "VcTslStatusPayload")]
+pub struct JsVcTslStatusPayload {
+    pub status: TslVcStatusType,
+    pub value: Option<u8>,
 }
 
 impl TryFrom<VCStatus> for JsVCStatus {
@@ -706,18 +712,21 @@ impl TryFrom<VCStatus> for JsVCStatus {
     fn try_from(value: VCStatus) -> Result<Self, Error> {
         match value {
             VCStatus::StatusListToken(status) => {
-                let status_payload = match status {
-                    status_list_token_jwt::VCStatus::Valid => json!({"status": "VALID"}),
-                    status_list_token_jwt::VCStatus::Invalid => json!({"status": "INVALID"}),
-                    status_list_token_jwt::VCStatus::Suspended => json!({"status": "SUSPENDED"}),
+                let payload_status = TslVcStatusType::from(status).to_string();
+                let payload = match status {
+                    status_list_token_jwt::VCStatus::Valid
+                    | status_list_token_jwt::VCStatus::Invalid
+                    | status_list_token_jwt::VCStatus::Suspended => {
+                        json!({"status": payload_status})
+                    }
                     status_list_token_jwt::VCStatus::AppSpecific(val) => {
-                        json!({"status": "APPSPECIFIC", "value": val})
+                        json!({"status": payload_status, "value": val})
                     }
                 };
 
                 Ok(JsVCStatus {
                     format: JsVCStatusFormat::StatusListToken,
-                    payload: to_json_object(status_payload)?,
+                    payload: to_json_object(payload)?,
                 })
             }
         }
