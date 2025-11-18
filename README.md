@@ -152,6 +152,12 @@ cargo doc --no-deps
 - [Android demo](demos/android/README.md)
 - [IOS demo](demos/ios/OID4VC/README.md)
 
+### [E2E tests](tests/e2e)
+
+- [BBS+](tests/e2e/vc_core.rs)
+- [DIDComm Protocol Engine](tests/e2e/protocol_engine.rs) (Tic Tac Toe game)
+- [WACI/Aries V3](tests/e2e/waci_aries.rs)
+
 ## How to Use ASDK in Applications
 
 ### OID4VC

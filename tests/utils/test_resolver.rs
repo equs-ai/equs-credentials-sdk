@@ -8,7 +8,6 @@ pub use ssi::dids::{DID as SpruceDID, DIDKey as SpruceDIDKey, DIDResolver as Spr
 
 pub struct TestDIDResolver {
     method_name: String,
-    did_key: DIDKey,
 }
 
 #[async_trait]
@@ -49,16 +48,9 @@ impl DIDResolver for TestDIDResolver {
 
 impl TestDIDResolver {
     pub fn new(method_name: String) -> TestDIDResolver {
-        TestDIDResolver {
-            method_name,
-            did_key: DIDKey {},
-        }
+        TestDIDResolver { method_name }
     }
 
-    pub fn get_key_method_len(&self) -> usize {
-        //len of "did:<method>:"
-        3 + 1 + self.method_name.len() + 1
-    }
     pub fn generate<K>(&self, key: K) -> DID
     where
         K: crypto::Key,
