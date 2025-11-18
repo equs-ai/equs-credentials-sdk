@@ -1,13 +1,9 @@
-#![allow(dead_code)]
-
-mod utils;
-
-use agent_sdk::crypto;
+use crate::utils::fixtures::oid4vp::MockNonceHandler;
+use crate::utils::fixtures::oid4vp::{NONCE, create_vc, generate_did_key_and_vm};
 use agent_sdk::http::HttpClient;
 use agent_sdk::inmem::kms::LocalKms;
 use agent_sdk::inmem::vault::InMemVault;
 use agent_sdk::vault::Vault;
-use agent_sdk::vc::VCFormatsAPI;
 use agent_sdk::vc::oid4vp::{
     AuthResponseOptions, AuthorizationRequestMetadata, AuthorizationResponse,
     AuthorizationResponseMetadata, ClientMetadata, CredentialVerificationMetadata, IdTokenMetadata,
@@ -16,8 +12,6 @@ use agent_sdk::vc::oid4vp::{
 use agent_sdk::vc::oid4vp::{AuthorizationResponseObject, Holder};
 use agent_sdk::vc::oid4vp::{HolderBuilder, PresentationSession};
 use agent_sdk::vc::oid4vp::{Verifier, VerifierBuilder};
-use agent_sdk::vc::{Credential, CredentialMetadata};
-use agent_sdk::vc::{VCFormatsJsonLdAPI, VCFormatsSdJwtAPI};
 use futures::executor;
 use oauth2::HttpResponse;
 use oauth2::http::header::CONTENT_TYPE;
@@ -27,11 +21,9 @@ use rstest::rstest;
 use serde_json::Value;
 use std::collections::HashMap;
 use url::Url;
-use utils::fixtures::oid4vp::NONCE;
-use utils::fixtures::oid4vp::{MockNonceHandler, Oid4VpTestCredentialFormat};
 
-use utils::helpers::create_did_keymetadata_keyhandle;
-use utils::http::HttpClientEmulator;
+use crate::utils::helpers::create_did_keymetadata_keyhandle;
+use crate::utils::http::HttpClientEmulator;
 
 use crate::utils::fixtures::find_vcs_to_present;
 use crate::utils::fixtures::oid4vp::{
@@ -39,13 +31,7 @@ use crate::utils::fixtures::oid4vp::{
     presentation_exchange_multiple_sdjwt_presentation_case, single_jsonld_presentation_case,
     single_sdjwt_presentation_case,
 };
-use agent_sdk::did::DIDURL;
-use agent_sdk::did::universal::UniversalResolver;
-use agent_sdk::inmem::kms::KeyHandle;
 use agent_sdk::inmem::nonce::LocalNonceHandler;
-use agent_sdk::vc::claims::Claims;
-use agent_sdk::vc::core::KeyMetadata;
-use agent_sdk::vc::metadata::{CredentialMetadataProcessor, DefaultMetadataProcessor};
 
 #[rstest]
 #[case::single_jsonld_presentation(single_jsonld_presentation_case())]
@@ -361,80 +347,6 @@ async fn build_holder(
         .build()
         .await
         .unwrap()
-}
-
-async fn create_vc(
-    format: Oid4VpTestCredentialFormat,
-    holder_did_url: &str,
-    holder_kid: String,
-    holder_kh: impl crypto::Key,
-    claims: Claims,
-) -> (Credential, CredentialMetadata) {
-    println!("claims: {:?}", claims);
-
-    // Generate Issuer DID and Key
-    let kms = LocalKms::new();
-    let (did, key_metadata, kh) = create_did_keymetadata_keyhandle(&kms).await;
-    println!("Issuer DID: {}", did);
-
-    match format {
-        Oid4VpTestCredentialFormat::SdJwt(metadata) => {
-            let vc = VCFormatsSdJwtAPI::create_vc(
-                claims.clone(),
-                (DIDURL::new(&key_metadata.did_url).unwrap(), kh),
-                (DIDURL::new(holder_did_url).unwrap(), holder_kh),
-                metadata,
-                UniversalResolver::default(),
-            )
-            .await
-            .unwrap();
-
-            println!("Credential: {}", vc);
-
-            let credential = Credential::SdJwt(vc);
-            let metadata = DefaultMetadataProcessor::resolve_metadata(
-                &credential,
-                KeyMetadata {
-                    did_url: holder_did_url.to_string(),
-                    kid: holder_kid,
-                },
-            )
-            .unwrap();
-
-            (credential, metadata)
-        }
-        Oid4VpTestCredentialFormat::LdpVc(metadata) => {
-            let vc = VCFormatsJsonLdAPI::create_vc(
-                claims,
-                (DIDURL::new(&key_metadata.did_url).unwrap(), kh),
-                (DIDURL::new(holder_did_url).unwrap(), holder_kh),
-                *metadata,
-                UniversalResolver::default(),
-            )
-            .await
-            .unwrap();
-
-            println!("Credential: {}", serde_json::to_string_pretty(&vc).unwrap());
-
-            let credential = Credential::LdpVc(vc);
-            let metadata = DefaultMetadataProcessor::resolve_metadata(
-                &credential,
-                KeyMetadata {
-                    did_url: holder_did_url.to_string(),
-                    kid: holder_kid,
-                },
-            )
-            .unwrap();
-
-            (credential, metadata)
-        }
-    }
-}
-
-pub async fn generate_did_key_and_vm(kms: &LocalKms) -> (KeyMetadata, KeyHandle) {
-    let (_, key_md, key_handle) = create_did_keymetadata_keyhandle(kms).await;
-
-    (key_md, key_handle)
 }
 
 fn default_verifier_metadata() -> ClientMetadata {

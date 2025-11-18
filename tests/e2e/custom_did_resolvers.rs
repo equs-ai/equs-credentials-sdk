@@ -1,12 +1,15 @@
-#![allow(dead_code)]
-
-mod utils;
-
 use crate::utils::fixtures::oid4vp::{
     Oid4VpTestCase, Oid4VpTestCredentialFormat, STATE, VERIFIER_URL, ValidateClaimsFunc,
     presentation_exchange_multiple_sdjwt_presentation_case, single_jsonld_presentation_case,
     single_sdjwt_presentation_case,
 };
+use crate::utils::fixtures::{
+    ACCESS_TOKEN, AUTHZ_URL, SCOPE, sample_authz_url, sample_claims_jsonld, sample_claims_sdjwt,
+    sample_issuer_metadata, sample_issuer_url,
+};
+use crate::utils::helpers::oid4vci::setup_http_static_handlers;
+use crate::utils::http::HttpClientEmulator;
+use crate::utils::test_resolver::TestDIDResolver;
 use agent_sdk::did::universal::UniversalResolver;
 use agent_sdk::did::{DID, DIDBuf, DIDResolver, DIDURL};
 use agent_sdk::http::HttpClient;
@@ -45,13 +48,6 @@ use std::collections::HashMap;
 use std::str::FromStr;
 use std::{io, str};
 use url::Url;
-use utils::fixtures::{
-    ACCESS_TOKEN, AUTHZ_URL, SCOPE, sample_authz_url, sample_claims_jsonld, sample_claims_sdjwt,
-    sample_issuer_metadata, sample_issuer_url,
-};
-use utils::helpers::oid4vci::setup_http_static_handlers;
-use utils::http::HttpClientEmulator;
-use utils::test_resolver::TestDIDResolver;
 use uuid::Uuid;
 
 // tests simple oid4vc flow with test resolver

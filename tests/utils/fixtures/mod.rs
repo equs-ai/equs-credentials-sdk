@@ -38,8 +38,6 @@ pub const ACCESS_TOKEN: &str = "eyJhbGciOiJSUzI1NiIsInR5cCIgOiAiSldUIiwia2lkIiA6
 pub const SCOPE: &str = "SD_JWT_cred";
 pub const VERIFIER_ID: &str = "ver-id";
 pub const VC_TYPE: &str = "https://credentials.example.com/identity_credential";
-pub const NONCE_EXPIRES_IN: i64 = 86440;
-
 pub fn sample_authz_url() -> Url {
     Url::parse(AUTHZ_URL).unwrap()
 }

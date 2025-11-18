@@ -1,7 +1,4 @@
-#![allow(dead_code)]
-
-mod utils;
-
+use crate::utils::http::HttpClientEmulator;
 use agent_sdk::http::HttpClient;
 use agent_sdk::inmem::kms::LocalKms;
 use agent_sdk::vc::oid4vci;
@@ -14,16 +11,15 @@ use oid4vci::AuthorizationCodeGrant;
 use rstest::rstest;
 use serde_json::json;
 use std::{io, str};
-use utils::http::HttpClientEmulator;
 use uuid::Uuid;
 
-use utils::fixtures::{
+use crate::utils::fixtures::{
     ACCESS_TOKEN, AUTHZ_URL, SCOPE, sample_authz_url, sample_claims_jsonld, sample_claims_sdjwt,
     sample_issuer_metadata, sample_issuer_url,
 };
 
 use crate::utils::helpers::create_did_keymetadata_keyhandle;
-use utils::helpers::oid4vci::{build_holder, build_issuer, setup_http_static_handlers};
+use crate::utils::helpers::oid4vci::{build_holder, build_issuer, setup_http_static_handlers};
 
 #[rstest]
 #[case::token_validation_enabled(true)]

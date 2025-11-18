@@ -1,9 +1,18 @@
-use agent_sdk::nonce;
+use crate::utils::helpers::create_did_keymetadata_keyhandle;
+use agent_sdk::did::DIDURL;
+use agent_sdk::did::universal::UniversalResolver;
+use agent_sdk::inmem::kms::{KeyHandle, LocalKms};
 use agent_sdk::nonce::{Nonce, NonceHandler};
 use agent_sdk::vc::claims::{Claim, Claims};
+use agent_sdk::vc::core::KeyMetadata;
 use agent_sdk::vc::dcql::{DCQL, DCQLCredential};
+use agent_sdk::vc::metadata::{CredentialMetadataProcessor, DefaultMetadataProcessor};
 use agent_sdk::vc::presentation_exchange::PresentationDefinition;
-use agent_sdk::vc::{JsonLdAPIVCMetadata, VCMetadata};
+use agent_sdk::vc::{
+    Credential, CredentialMetadata, JsonLdAPIVCMetadata, VCFormatsAPI, VCFormatsJsonLdAPI,
+    VCFormatsSdJwtAPI, VCMetadata,
+};
+use agent_sdk::{crypto, nonce};
 use async_trait::async_trait;
 use openid4vp::core::input_descriptor::InputDescriptor;
 use serde_json::json;
@@ -17,9 +26,9 @@ pub enum Oid4VpTestCredentialFormat {
     SdJwt(VCMetadata),
     LdpVc(Box<JsonLdAPIVCMetadata>),
 }
+
 pub struct Oid4VpTestCredential {
     pub format: Oid4VpTestCredentialFormat,
-    pub vc_type: &'static str,
     pub claims: Claims,
 }
 
@@ -51,7 +60,6 @@ fn sample_jsonld_resident_card_credential() -> (Oid4VpTestCredential, InputDescr
 
     let credential = Oid4VpTestCredential {
         format,
-        vc_type: "PermanentResident",
         claims: json!({
             "type": ["PermanentResident", "Person"],
             "givenName": "John",
@@ -142,7 +150,6 @@ fn sample_sdjwt_identity_credential() -> (Oid4VpTestCredential, InputDescriptor)
 
     let credential = Oid4VpTestCredential {
         format,
-        vc_type: "https://credentials.example.com/identity_credential",
         claims: json!({
             "name": "John",
             "surname": "Doe",
@@ -205,7 +212,6 @@ fn sample_sdjwt_degree_credential() -> (Oid4VpTestCredential, InputDescriptor) {
 
     let credential = Oid4VpTestCredential {
         format,
-        vc_type: "https://credentials.example.com/degree_credential",
         claims: json!({
             "name": "John",
             "surname": "Doe",
@@ -513,4 +519,78 @@ impl NonceHandler for MockNonceHandler {
     async fn validate(&self, _nonce: &Nonce) -> nonce::Result<bool> {
         Ok(true)
     }
+}
+
+pub(crate) async fn create_vc(
+    format: Oid4VpTestCredentialFormat,
+    holder_did_url: &str,
+    holder_kid: String,
+    holder_kh: impl crypto::Key,
+    claims: Claims,
+) -> (Credential, CredentialMetadata) {
+    println!("claims: {:?}", claims);
+
+    // Generate Issuer DID and Key
+    let kms = LocalKms::new();
+    let (did, key_metadata, kh) = create_did_keymetadata_keyhandle(&kms).await;
+    println!("Issuer DID: {}", did);
+
+    match format {
+        Oid4VpTestCredentialFormat::SdJwt(metadata) => {
+            let vc = VCFormatsSdJwtAPI::create_vc(
+                claims.clone(),
+                (DIDURL::new(&key_metadata.did_url).unwrap(), kh),
+                (DIDURL::new(holder_did_url).unwrap(), holder_kh),
+                metadata,
+                UniversalResolver::default(),
+            )
+            .await
+            .unwrap();
+
+            println!("Credential: {}", vc);
+
+            let credential = Credential::SdJwt(vc);
+            let metadata = DefaultMetadataProcessor::resolve_metadata(
+                &credential,
+                KeyMetadata {
+                    did_url: holder_did_url.to_string(),
+                    kid: holder_kid,
+                },
+            )
+            .unwrap();
+
+            (credential, metadata)
+        }
+        Oid4VpTestCredentialFormat::LdpVc(metadata) => {
+            let vc = VCFormatsJsonLdAPI::create_vc(
+                claims,
+                (DIDURL::new(&key_metadata.did_url).unwrap(), kh),
+                (DIDURL::new(holder_did_url).unwrap(), holder_kh),
+                *metadata,
+                UniversalResolver::default(),
+            )
+            .await
+            .unwrap();
+
+            println!("Credential: {}", serde_json::to_string_pretty(&vc).unwrap());
+
+            let credential = Credential::LdpVc(vc);
+            let metadata = DefaultMetadataProcessor::resolve_metadata(
+                &credential,
+                KeyMetadata {
+                    did_url: holder_did_url.to_string(),
+                    kid: holder_kid,
+                },
+            )
+            .unwrap();
+
+            (credential, metadata)
+        }
+    }
+}
+
+pub(crate) async fn generate_did_key_and_vm(kms: &LocalKms) -> (KeyMetadata, KeyHandle) {
+    let (_, key_md, key_handle) = create_did_keymetadata_keyhandle(kms).await;
+
+    (key_md, key_handle)
 }

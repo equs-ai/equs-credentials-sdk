@@ -1,7 +1,5 @@
-#![allow(dead_code)]
-
-mod utils;
-
+use crate::utils::fixtures::{SCOPE, VC_TYPE, VERIFIER_ID, sample_claims_sdjwt};
+use crate::utils::helpers::create_did_keymetadata_keyhandle;
 use agent_sdk::crypto::Alg;
 use agent_sdk::did::didkey::DIDKey;
 use agent_sdk::did::universal::UniversalResolver;
@@ -34,8 +32,6 @@ use std::str::FromStr;
 use std::sync::Arc;
 use time::Duration;
 use url::Url;
-use utils::fixtures::{SCOPE, VC_TYPE, VERIFIER_ID, sample_claims_sdjwt};
-use utils::helpers::create_did_keymetadata_keyhandle;
 
 const STATUS_LIST_PATH: &str = "/status_list";
 const CLAIM_EXP_DAYS: i64 = 1024;
@@ -574,7 +570,7 @@ async fn issue_status_list_with_revoked_indexes(
         .await
         .unwrap();
 
-    let crate::vc::StatusList::StatusListTokenJwt(status_list) = status_list;
+    let vc::StatusList::StatusListTokenJwt(status_list) = status_list;
 
     status_list
 }
