@@ -8,7 +8,7 @@ use crate::vc::JsonObject;
 use crate::vc::core::{JsKeyMetadata, JsProofOfPossessionMetadata};
 use crate::vc::oid4vci::holder::{JsCredentialExtraVerification, OID4VCIHolder};
 use crate::vc::oid4vci::issuer::OID4VCIIssuer;
-use crate::vc::oid4vci::{JsDuration, JsTokenValidation};
+use crate::vc::oid4vci::{JsCredentialLifetime, JsDuration, JsTokenValidation};
 use agent_sdk::vc::core::KeyMetadata;
 use agent_sdk::vc::oid4vci::{HolderBuilder, IssuerBuilder, IssuerDiscovery, IssuerMetadata};
 use napi::{Error, Result};
@@ -122,8 +122,8 @@ pub async fn _build_vci_issuer(
     token_validation: Option<JsTokenValidation>,
     clock_skew: Option<JsDuration>,
     dedicated_keys: HashMap<String, JsKeyMetadata>,
-    cred_lifetime: Option<JsDuration>,
-    cred_lifetime_per_cred_conf_id: HashMap<String, JsDuration>,
+    cred_lifetime: Option<&JsCredentialLifetime>,
+    cred_lifetime_per_cred_conf_id: HashMap<String, &JsCredentialLifetime>,
     did_resolver: Option<JsDIDResolver>,
     http_client: Option<&ReqwestHttpClient>,
 ) -> Result<OID4VCIIssuer> {
@@ -138,11 +138,11 @@ pub async fn _build_vci_issuer(
     let mut builder = IssuerBuilder::new(kms, issuer_metadata, key_metadata);
 
     if let Some(cred_lifetime) = cred_lifetime {
-        builder = builder.with_default_cred_lifetime(cred_lifetime.try_into()?);
+        builder = builder.with_default_credential_lifetime(cred_lifetime.0.to_owned());
     }
 
     for (cred_conf_id, lifetime) in cred_lifetime_per_cred_conf_id {
-        builder = builder.with_credential_lifetime(cred_conf_id, lifetime.try_into()?);
+        builder = builder.with_credential_lifetime(cred_conf_id, lifetime.0.to_owned());
     }
 
     if let Some(did_resolver) = did_resolver {

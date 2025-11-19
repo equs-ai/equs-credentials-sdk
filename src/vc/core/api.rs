@@ -130,13 +130,13 @@ pub enum CredentialDefinitionData {
     SdJwt {
         vct: String,
         disclosures: Vec<String>,
-        lifetime: Duration,
+        lifetime: Option<Duration>,
     },
     Ldp {
         contexts: Vec<String>,
         vc_types: Vec<String>,
         credential_id: Option<String>,
-        lifetime: Duration,
+        lifetime: Option<Duration>,
     },
 }
 

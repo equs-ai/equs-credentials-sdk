@@ -1900,7 +1900,7 @@ mod tests {
     fn sample_vc_metadata_with_empty_disclosures() -> VCMetadata {
         VCMetadata {
             vct: "https://issuer.net/cred_schema".to_owned(),
-            lifetime: time::Duration::days(365),
+            lifetime: Some(time::Duration::days(365)),
             disclosures: vec![],
             credential_status: None,
         }
@@ -1913,7 +1913,7 @@ mod tests {
                 IriRefBuf::from_str("https://w3id.org/citizenship/v1").unwrap(),
             ],
             vec!["PermanentResidentCard".to_string()],
-            time::Duration::days(5 * 365),
+            Some(time::Duration::days(5 * 365)),
         )
         .unwrap()
     }

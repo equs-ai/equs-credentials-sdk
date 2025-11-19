@@ -421,7 +421,7 @@ async fn build_issuer_with_sd_jwt_credential_profile() -> impl Issuer {
             protocol_data: Some(CredentialDefinitionData::SdJwt {
                 vct: VC_TYPE.to_string(),
                 disclosures: vec!["$.given_name".to_owned(), "$.family_name".to_owned()],
-                lifetime: Duration::days(CLAIM_EXP_DAYS),
+                lifetime: Some(Duration::days(CLAIM_EXP_DAYS)),
             }),
             key_metadata,
         }],
@@ -474,7 +474,7 @@ async fn build_issuer_with_bbs_plus_credential_profile() -> impl Issuer {
                     "AlumniCredential".to_string(),
                 ],
                 credential_id: Some("urn:uuid:7a6cafb9-11c3-41a8-98d8-8b5a45c2548f".to_string()),
-                lifetime: Duration::days(5 * 365),
+                lifetime: Some(Duration::days(5 * 365)),
             }),
             key_metadata,
         }],

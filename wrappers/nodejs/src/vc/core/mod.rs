@@ -30,6 +30,7 @@ use agent_sdk::nonce::Nonce;
 use agent_sdk::vc::{Credential, CredentialMetadata, HasVCFormat, Presentation, VCFormat};
 use napi::Error;
 use napi_derive::napi;
+use serde::Serialize;
 use serde_json::{json, to_string};
 use time::Duration;
 use time::error::ComponentRange;
@@ -379,6 +380,24 @@ pub struct JsCredentialDefinitionData {
     pub payload: JsonObject,
 }
 
+#[derive(Serialize)]
+struct JsSdJwtCredentialDefinitionDataPayload {
+    vct: String,
+    disclosures: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    lifetime: Option<i128>,
+}
+
+#[derive(Serialize)]
+struct JsLdpCredentialDefinitionDataPayload {
+    contexts: Vec<String>,
+    vc_types: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    credential_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    lifetime: Option<i128>,
+}
+
 impl TryFrom<CredentialDefinitionData> for JsCredentialDefinitionData {
     type Error = Error;
     fn try_from(value: CredentialDefinitionData) -> Result<Self, Error> {
@@ -389,9 +408,11 @@ impl TryFrom<CredentialDefinitionData> for JsCredentialDefinitionData {
                 lifetime,
             } => JsCredentialDefinitionData {
                 format: JsCredentialDefinitionDataFormat::SdJwt,
-                payload: to_json_object(
-                    json!({ "vct": vct, "disclosures": disclosures, "lifetime": lifetime.whole_milliseconds() }),
-                )?,
+                payload: to_json_object(JsSdJwtCredentialDefinitionDataPayload {
+                    vct,
+                    disclosures,
+                    lifetime: lifetime.map(Duration::whole_milliseconds),
+                })?,
             },
             CredentialDefinitionData::Ldp {
                 contexts,
@@ -400,9 +421,12 @@ impl TryFrom<CredentialDefinitionData> for JsCredentialDefinitionData {
                 lifetime,
             } => JsCredentialDefinitionData {
                 format: JsCredentialDefinitionDataFormat::Ldp,
-                payload: to_json_object(
-                    json!({"contexts": contexts, "vc_types": vc_types, "credential_id": credential_id.unwrap_or("".to_string()), "lifetime": lifetime.whole_milliseconds() }),
-                )?,
+                payload: to_json_object(JsLdpCredentialDefinitionDataPayload {
+                    contexts,
+                    vc_types,
+                    credential_id,
+                    lifetime: lifetime.map(Duration::whole_milliseconds),
+                })?,
             },
             _ => {
                 return Err(Error::from_reason(
@@ -413,6 +437,7 @@ impl TryFrom<CredentialDefinitionData> for JsCredentialDefinitionData {
         Ok(result)
     }
 }
+
 impl TryFrom<JsCredentialDefinitionData> for CredentialDefinitionData {
     type Error = Error;
     fn try_from(value: JsCredentialDefinitionData) -> Result<Self, Error> {
@@ -441,13 +466,14 @@ impl TryFrom<JsCredentialDefinitionData> for CredentialDefinitionData {
                             .to_string()
                     })
                     .collect();
-                let lifetime: i64 = value
-                    .payload
-                    .get("lifetime")
-                    .ok_or_else(|| napi::Error::from_reason("'lifetime' must be in payload"))?
-                    .as_i64()
-                    .ok_or_else(|| napi::Error::from_reason("'lifetime' must be a i64"))?;
-                let lifetime = Duration::milliseconds(lifetime);
+                let lifetime = if let Some(lifetime_value) = value.payload.get("lifetime") {
+                    let lifetime_millis = lifetime_value
+                        .as_i64()
+                        .ok_or_else(|| napi::Error::from_reason("'lifetime' must be a i64"))?;
+                    Some(Duration::milliseconds(lifetime_millis))
+                } else {
+                    None
+                };
 
                 CredentialDefinitionData::SdJwt {
                     vct,
@@ -472,13 +498,14 @@ impl TryFrom<JsCredentialDefinitionData> for CredentialDefinitionData {
                             .to_string()
                     })
                     .collect();
-                let lifetime: i64 = value
-                    .payload
-                    .get("lifetime")
-                    .ok_or_else(|| napi::Error::from_reason("'lifetime' must be in payload"))?
-                    .as_i64()
-                    .ok_or_else(|| napi::Error::from_reason("'lifetime' must be a i64"))?;
-                let lifetime = Duration::milliseconds(lifetime);
+                let lifetime = if let Some(lifetime_value) = value.payload.get("lifetime") {
+                    let lifetime_millis = lifetime_value
+                        .as_i64()
+                        .ok_or_else(|| napi::Error::from_reason("'lifetime' must be a i64"))?;
+                    Some(Duration::milliseconds(lifetime_millis))
+                } else {
+                    None
+                };
 
                 let vc_types: Vec<String> = value
                     .payload

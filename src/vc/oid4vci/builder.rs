@@ -3,15 +3,15 @@ use crate::http::{HttpClient, HttpError, HttpSnafu};
 use crate::nonce::{Nonce, NonceHandler};
 use crate::reqwest::ReqwestClient;
 use crate::reqwest::builder::ReqwestClientBuilder;
-use crate::vc::core::DEFAULT_POP_LIFETIME_MINUTES;
 use crate::vc::core::KeyMetadata;
-use crate::vc::core::{DEFAULT_CRED_LIFETIME_DAYS, ProofOfPossessionMetadata};
+use crate::vc::core::ProofOfPossessionMetadata;
+use crate::vc::core::{DEFAULT_CRED_LIFETIME_DAYS, DEFAULT_POP_LIFETIME_MINUTES};
 use crate::vc::oid4vci as api;
 use crate::vc::oid4vci::holder::HolderService;
 use crate::vc::oid4vci::issuer::{IssuerService, TokenValidation};
 use crate::vc::oid4vci::metadata::convert_metadata;
 use crate::vc::oid4vci::token_validation::{ByJwks, Introspect};
-use crate::vc::oid4vci::{CredentialExtraVerification, CredentialOfferParams};
+use crate::vc::oid4vci::{CredentialExtraVerification, CredentialLifetime, CredentialOfferParams};
 use crate::vc::pop::ProofOfPossessionNotBefore;
 use crate::{kms, vault, vc};
 use async_trait::async_trait;
@@ -67,8 +67,8 @@ where
     token_params: Option<TokenParams>,
     clock_skew: Option<time::Duration>,
     cred_conf_ids_with_key_metadata: HashMap<String, KeyMetadata>,
-    default_cred_lifetime: Duration,
-    cred_lifetime_per_cred_conf_id: HashMap<CredentialConfigurationId, Duration>,
+    default_cred_lifetime: CredentialLifetime,
+    cred_lifetime_per_cred_conf_id: HashMap<CredentialConfigurationId, CredentialLifetime>,
     credential_extra_verification: Vec<CredentialExtraVerification>,
 
     // services
@@ -125,7 +125,9 @@ where
             nonce_handler: None,
             token_params: None,
             clock_skew: None,
-            default_cred_lifetime: Duration::days(DEFAULT_CRED_LIFETIME_DAYS),
+            default_cred_lifetime: CredentialLifetime::Finite(Duration::days(
+                DEFAULT_CRED_LIFETIME_DAYS,
+            )),
             cred_lifetime_per_cred_conf_id: HashMap::new(),
             cred_conf_ids_with_key_metadata: Default::default(),
             did_resolver: UniversalResolver::default(),
@@ -278,28 +280,27 @@ where
         self
     }
 
-    /// Sets the creds lifetime.
+    /// Sets a credential default lifetime.
     ///
     /// # Arguments
     ///
-    /// * `duration` - The duration to set for cred lifetime.
-    ///   or other time units supported by `time::Duration`.
+    /// * `lifetime` - a lifetime to set for credential issuance by default.
     ///
     #[instrument(
         level = Level::TRACE,
         skip(self)
     )]
-    pub fn with_default_cred_lifetime(mut self, duration: Duration) -> Self {
-        self.default_cred_lifetime = duration;
+    pub fn with_default_credential_lifetime(mut self, lifetime: CredentialLifetime) -> Self {
+        self.default_cred_lifetime = lifetime;
         self
     }
 
-    /// Sets the credential lifetime for given credential configuration id.
+    /// Sets a credential lifetime for a given credential configuration id.
     ///
     /// # Arguments
     ///
-    /// * `duration` - The duration to set for cred lifetime.
-    ///   or other time units supported by `time::Duration`.
+    /// * `credential_configuration_id` - a credential configuration id to change issued credentials lifetime;
+    /// * `lifetime` - a lifetime to set for credential issuance with the fi.
     ///
     #[instrument(
         level = Level::TRACE,
@@ -308,11 +309,11 @@ where
     pub fn with_credential_lifetime(
         mut self,
         credential_configuration_id: String,
-        duration: Duration,
+        lifetime: CredentialLifetime,
     ) -> Self {
         self.cred_lifetime_per_cred_conf_id.insert(
             CredentialConfigurationId::new(credential_configuration_id),
-            duration,
+            lifetime,
         );
 
         self
@@ -789,8 +790,10 @@ mod tests {
             .unwrap()
             .id()
             .to_string();
-        let builder = IssuerBuilder::new(kms, metadata, key_metadata)
-            .with_credential_lifetime(cred_configuration_id, Duration::days(365));
+        let builder = IssuerBuilder::new(kms, metadata, key_metadata).with_credential_lifetime(
+            cred_configuration_id,
+            CredentialLifetime::Finite(Duration::days(365)),
+        );
         let result = builder.build().await;
 
         result.unwrap();

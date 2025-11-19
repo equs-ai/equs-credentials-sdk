@@ -13,7 +13,7 @@ use crate::vc::formats::{
 };
 use crate::vc::oid4vci::credential_issuer_identifier::CredentialIssuerIdentifier;
 use async_trait::async_trait;
-use chrono::FixedOffset;
+use chrono::Utc;
 use serde::Deserialize;
 use serde::de::{DeserializeOwned, IntoDeserializer};
 use snafu::{ResultExt, ensure};
@@ -60,14 +60,18 @@ pub type Iri = iref::Iri;
 pub struct VCMetadata {
     pub contexts: Context,
     pub type_: OneOrMany<String>,
-    pub lifetime: Duration,
+    pub lifetime: Option<Duration>,
     pub credential_id: Option<UriBuf>,
     pub mandatory_claims: Option<Vec<JsonPointerBuf>>,
 }
 
 impl VCMetadata {
     #[instrument(level = Level::TRACE, ret())]
-    pub fn new(contexts: Vec<IriRefBuf>, types: Vec<String>, lifetime: Duration) -> Result<Self> {
+    pub fn new(
+        contexts: Vec<IriRefBuf>,
+        types: Vec<String>,
+        lifetime: Option<Duration>,
+    ) -> Result<Self> {
         let mut contexts = contexts;
         let mut types = types;
 
@@ -265,7 +269,6 @@ impl JsonLdAPI {
         }
 
         let now = chrono::Local::now().to_utc();
-        let lifetime = FixedOffset::from_str(&metadata.lifetime.to_string()).ok();
 
         let issuer = IdOr::Id(UriBuf::from_str(iss_did).map_err(|e| {
             ParsingSnafu {
@@ -283,15 +286,8 @@ impl JsonLdAPI {
             let (context, types) =
                 Self::resolve_context_and_types(&metadata.contexts, &metadata.type_)?;
 
-            let exp_date =
-                JsonLdAPI::get_date_time_claim("validUntil", &claims).unwrap_or_else(|| {
-                    let lifetime_as_i64: i64 = metadata
-                        .lifetime
-                        .whole_nanoseconds()
-                        .try_into()
-                        .unwrap_or(i64::MAX);
-                    (now + chrono::Duration::nanoseconds(lifetime_as_i64)).into()
-                });
+            let exp_date = JsonLdAPI::get_date_time_claim("validUntil", &claims)
+                .or(Self::calculate_expiration_date(now, metadata.lifetime));
 
             AnySpecializedJsonCredential::V2(
                 ssi::claims::vc::v2::syntax::SpecializedJsonCredential {
@@ -301,7 +297,7 @@ impl JsonLdAPI {
                     credential_subjects: ssi::claims::vc::syntax::NonEmptyVec::new(claims),
                     id: metadata.credential_id.to_owned(),
                     valid_from: Some(now.into()),
-                    valid_until: Some(exp_date.date_time.and_utc().into()),
+                    valid_until: exp_date.map(|exp| exp.date_time.and_utc().into()),
                     credential_status: vec![],
                     terms_of_use: vec![],
                     evidence: vec![],
@@ -314,14 +310,7 @@ impl JsonLdAPI {
             let (context, types) =
                 Self::resolve_context_and_types(&metadata.contexts, &metadata.type_)?;
             let exp_date = JsonLdAPI::get_date_time_claim("expirationDate", &claims)
-                .unwrap_or_else(|| {
-                    let lifetime_as_i64: i64 = metadata
-                        .lifetime
-                        .whole_nanoseconds()
-                        .try_into()
-                        .unwrap_or(i64::MAX);
-                    (now + chrono::Duration::nanoseconds(lifetime_as_i64)).into()
-                });
+                .or(Self::calculate_expiration_date(now, metadata.lifetime));
 
             AnySpecializedJsonCredential::V1(
                 ssi::claims::vc::v1::syntax::SpecializedJsonCredential {
@@ -331,7 +320,7 @@ impl JsonLdAPI {
                     credential_subjects: ssi::claims::vc::syntax::NonEmptyVec::new(claims),
                     id: metadata.credential_id.to_owned(),
                     issuance_date: Some(now.into()),
-                    expiration_date: Some(exp_date),
+                    expiration_date: exp_date,
                     credential_status: vec![],
                     terms_of_use: vec![],
                     evidence: vec![],
@@ -343,6 +332,15 @@ impl JsonLdAPI {
         };
 
         Ok(vc)
+    }
+
+    fn calculate_expiration_date(
+        now: chrono::DateTime<Utc>,
+        lifetime: Option<Duration>,
+    ) -> Option<DateTime> {
+        lifetime
+            .map(|lifetime| lifetime.whole_nanoseconds().try_into().unwrap_or(i64::MAX))
+            .map(|lifetime| (now + chrono::Duration::nanoseconds(lifetime)).into())
     }
 
     pub async fn sign_credential<S>(
@@ -992,7 +990,7 @@ mod tests {
                 IriRefBuf::from_str("https://w3id.org/citizenship/v1").unwrap(),
             ],
             vec!["PermanentResidentCard".to_string()],
-            time::Duration::days(5 * 365),
+            Some(Duration::days(5 * 365)),
         )
         .unwrap();
 
@@ -1073,7 +1071,7 @@ mod tests {
                 "VerifiableCredential".to_string(),
                 "AlumniCredential".to_string(),
             ],
-            time::Duration::days(5 * 365),
+            Some(Duration::days(5 * 365)),
         )
         .unwrap();
 
@@ -1149,7 +1147,7 @@ mod tests {
                 "VerifiableCredential".to_string(),
                 "AlumniCredential".to_string(),
             ],
-            time::Duration::days(5 * 365),
+            Some(time::Duration::days(5 * 365)),
         )
         .unwrap();
 
@@ -1244,7 +1242,7 @@ mod tests {
                 IriRefBuf::from_str("https://w3id.org/citizenship/v1").unwrap(),
             ],
             vec!["PermanentResidentCard".to_string()],
-            time::Duration::days(5 * 365),
+            Some(Duration::days(5 * 365)),
         )
         .unwrap();
 
@@ -1274,7 +1272,7 @@ mod tests {
                 IriRefBuf::from_str("https://w3id.org/citizenship/v1").unwrap(),
             ],
             vec!["PermanentResidentCard".to_string()],
-            time::Duration::days(5 * 365),
+            Some(Duration::days(5 * 365)),
         )
         .unwrap();
 
@@ -1305,7 +1303,7 @@ mod tests {
                 IriRefBuf::from_str("https://w3id.org/citizenship/v1").unwrap(),
             ],
             vec!["PermanentResidentCard".to_string()],
-            time::Duration::days(5 * 365),
+            Some(Duration::days(5 * 365)),
         )
         .unwrap();
 
@@ -1356,7 +1354,7 @@ mod tests {
                 IriRefBuf::from_str("https://w3id.org/citizenship/v1").unwrap(),
             ],
             vec!["PermanentResidentCard".to_string()],
-            time::Duration::days(5 * 365),
+            Some(Duration::days(5 * 365)),
         )
         .unwrap();
 
@@ -1451,7 +1449,7 @@ mod tests {
                 "VerifiableCredential".to_string(),
                 "AlumniCredential".to_string(),
             ],
-            time::Duration::days(5 * 365),
+            Some(Duration::days(5 * 365)),
         )
         .unwrap();
 
@@ -1548,7 +1546,7 @@ mod tests {
                 "VerifiableCredential".to_string(),
                 "AlumniCredential".to_string(),
             ],
-            Duration::days(5 * 365),
+            Some(Duration::days(5 * 365)),
         )
         .unwrap();
 
@@ -1659,7 +1657,7 @@ mod tests {
                 IriRefBuf::from_str("https://w3id.org/citizenship/v1").unwrap(),
             ],
             vec!["PermanentResidentCard".to_string()],
-            time::Duration::days(5 * 365),
+            Some(Duration::days(5 * 365)),
         )
         .unwrap();
 
@@ -1705,7 +1703,7 @@ mod tests {
                 IriRefBuf::from_str("https://w3id.org/citizenship/v1").unwrap(),
             ],
             vec!["PermanentResidentCard".to_string()],
-            time::Duration::days(5 * 365),
+            Some(Duration::days(5 * 365)),
         )
         .unwrap();
 
