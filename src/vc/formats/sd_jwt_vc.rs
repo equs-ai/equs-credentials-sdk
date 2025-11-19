@@ -139,7 +139,7 @@ pub struct CredentialStatus {
 #[derive(Debug, Default)]
 pub struct VCMetadata {
     pub vct: String,
-    pub lifetime: time::Duration,
+    pub lifetime: Option<time::Duration>,
     pub disclosures: Vec<String>,
     pub credential_status: Option<CredentialStatus>,
 }
@@ -222,9 +222,12 @@ impl SdJwtAPI {
         claims.put_dt(IAT_CLAIM, iat);
         claims.put_dt(NBF_CLAIM, nbf);
 
-        let exp = Self::get_date_time_claim(EXP_CLAIM, &claims)
-            .unwrap_or_else(|| time::OffsetDateTime::now_utc() + metadata.lifetime);
-        claims.put_dt(EXP_CLAIM, exp);
+        let exp = Self::get_date_time_claim(EXP_CLAIM, &claims).or(metadata
+            .lifetime
+            .map(|lifetime| OffsetDateTime::now_utc() + lifetime));
+        if let Some(exp) = exp {
+            claims.put_dt(EXP_CLAIM, exp);
+        }
 
         claims
     }
@@ -657,7 +660,7 @@ mod tests {
     use oid4vci::types::IssuerUrl;
     use rstest::rstest;
     use serde_json::json;
-    use std::ops::Add;
+    use std::ops::{Add, Sub};
     use std::str::FromStr;
     use time::OffsetDateTime;
 
@@ -757,29 +760,62 @@ mod tests {
     }
 
     #[rstest]
+    #[case(sample_claims(), sample_vc_metadata(), false)]
+    #[case(sample_claims(), sample_vc_metadata_without_lifetime(), false)]
+    #[case(claims_with_manual_exp(), sample_vc_metadata(), false)]
+    #[case(claims_with_manual_exp(), sample_vc_metadata_without_lifetime(), false)]
+    #[should_panic(expected = "ExpiredSignature")]
+    #[case(claims_with_expired_date(), sample_vc_metadata(), true)]
+    #[should_panic(expected = "ExpiredSignature")]
+    #[case(
+        claims_with_expired_date(),
+        sample_vc_metadata_without_lifetime(),
+        true
+    )]
     #[tokio::test]
-    async fn sd_jwt_fails_with_expiration() {
+    async fn expiration(
+        #[case] claims: Claims,
+        #[case] metadata: VCMetadata,
+        #[case] expired: bool,
+    ) {
         let kms = LocalKms::new();
         let (hld_did_url, hld_kh) = create_did_url_and_key_handle(&kms, KeyType::P256).await;
         let (iss_did_url, iss_kh) = create_did_url_and_key_handle(&kms, KeyType::P256).await;
-
-        let mut claims = sample_claims();
-        let exp = OffsetDateTime::now_utc()
-            .add(-time::Duration::days(365))
-            .unix_timestamp();
-        claims.insert(EXP_CLAIM.to_string(), Claim::Int(exp));
 
         let vc = SdJwtAPI::create_vc(
             claims,
             (&iss_did_url, iss_kh),
             (&hld_did_url, hld_kh.clone()),
-            sample_vc_metadata(),
+            metadata,
             UniversalResolver::default(),
         )
         .await
         .unwrap();
 
-        assert!(SdJwtAPI::is_expired(&vc.parse_claims().unwrap()).unwrap());
+        assert_eq!(
+            expired,
+            SdJwtAPI::is_expired(&vc.parse_claims().unwrap()).unwrap()
+        );
+
+        let nonce = random_nonce().await;
+        let verifier_id = "verifier-id".to_string();
+        let presentation = SdJwtAPI::create_vp(
+            &vc,
+            hld_kh,
+            sample_vp_metadata(nonce.clone(), verifier_id.clone()),
+            UniversalResolver::default(),
+        )
+        .await
+        .unwrap();
+
+        let res = SdJwtAPI::verify_vp(
+            &presentation,
+            Some(HolderBinder { nonce, verifier_id }),
+            VerifyOptions::default(),
+            UniversalResolver::default(),
+        )
+        .await
+        .unwrap();
     }
 
     #[tokio::test]
@@ -1225,10 +1261,37 @@ mod tests {
         .unwrap()
     }
 
+    fn claims_with_manual_exp() -> Claims {
+        let mut claims = sample_claims();
+        let exp = OffsetDateTime::now_utc()
+            .add(time::Duration::days(10 * 365))
+            .unix_timestamp();
+        claims.insert(EXP_CLAIM.to_string(), Claim::Int(exp));
+        claims
+    }
+
+    fn claims_with_expired_date() -> Claims {
+        let mut claims = sample_claims();
+        let exp = OffsetDateTime::now_utc()
+            .sub(time::Duration::days(10 * 365))
+            .unix_timestamp();
+        claims.insert(EXP_CLAIM.to_string(), Claim::Int(exp));
+        claims
+    }
+
     fn sample_vc_metadata() -> VCMetadata {
         VCMetadata {
             vct: "https://issuer.net/cred_schema".to_owned(),
-            lifetime: time::Duration::days(365),
+            lifetime: Some(time::Duration::days(365)),
+            disclosures: vec!["$.name".to_owned(), "$.surname".to_owned()],
+            credential_status: None,
+        }
+    }
+
+    fn sample_vc_metadata_without_lifetime() -> VCMetadata {
+        VCMetadata {
+            vct: "https://issuer.net/cred_schema".to_owned(),
+            lifetime: None,
             disclosures: vec!["$.name".to_owned(), "$.surname".to_owned()],
             credential_status: None,
         }
@@ -1237,7 +1300,7 @@ mod tests {
     fn sample_vc_metadata_with_empty_disclosures() -> VCMetadata {
         VCMetadata {
             vct: "https://issuer.net/cred_schema".to_owned(),
-            lifetime: time::Duration::days(365),
+            lifetime: Some(time::Duration::days(365)),
             disclosures: vec![],
             credential_status: None,
         }

@@ -53,7 +53,7 @@ fn sample_jsonld_resident_card_credential() -> (Oid4VpTestCredential, InputDescr
                 "VerifiableCredential".to_string(),
                 "PermanentResident".to_string(),
             ],
-            time::Duration::days(5 * 365),
+            Some(time::Duration::days(5 * 365)),
         )
         .unwrap(),
     ));
@@ -139,7 +139,7 @@ pub fn sample_dcql_query_sdjwt() -> DCQL {
 fn sample_sdjwt_identity_credential() -> (Oid4VpTestCredential, InputDescriptor) {
     let format = Oid4VpTestCredentialFormat::SdJwt(VCMetadata {
         vct: "https://credentials.example.com/identity_credential".to_owned(),
-        lifetime: time::Duration::days(365),
+        lifetime: Some(time::Duration::days(365)),
         disclosures: vec![
             "$.name".to_owned(),
             "$.surname".to_owned(),
@@ -201,7 +201,7 @@ fn sample_sdjwt_identity_credential() -> (Oid4VpTestCredential, InputDescriptor)
 fn sample_sdjwt_degree_credential() -> (Oid4VpTestCredential, InputDescriptor) {
     let format = Oid4VpTestCredentialFormat::SdJwt(VCMetadata {
         vct: "https://credentials.example.com/degree_credential".to_owned(),
-        lifetime: time::Duration::days(365),
+        lifetime: Some(time::Duration::days(365)),
         disclosures: vec![
             "$.name".to_owned(),
             "$.surname".to_owned(),

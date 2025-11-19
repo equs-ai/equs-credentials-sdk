@@ -6,6 +6,7 @@ pub mod issuer;
 pub mod metadata;
 
 use crate::vc::oid4vci::builder::TokenValidation;
+use agent_sdk::vc::oid4vci::CredentialLifetime;
 use napi::Error;
 use napi_derive::napi;
 use time::Duration;
@@ -77,5 +78,35 @@ impl TryFrom<JsDuration> for Duration {
 
     fn try_from(js_duration: JsDuration) -> Result<Self, Error> {
         Ok(Duration::new(js_duration.seconds, js_duration.nanoseconds))
+    }
+}
+
+#[napi(js_name = "CredentialLifetime")]
+pub struct JsCredentialLifetime(CredentialLifetime);
+
+#[napi]
+impl JsCredentialLifetime {
+    #[napi(factory)]
+    pub fn infinite() -> Self {
+        Self(CredentialLifetime::Infinite)
+    }
+
+    #[napi(factory)]
+    pub fn finite(lifetime: i64) -> Result<Self, napi::Error> {
+        if lifetime > 0 {
+            Ok(Self(CredentialLifetime::Finite(Duration::seconds(
+                lifetime,
+            ))))
+        } else {
+            Err(napi::Error::from_reason(
+                "Credential lifetime must be a positive number",
+            ))
+        }
+    }
+}
+
+impl From<JsCredentialLifetime> for CredentialLifetime {
+    fn from(value: JsCredentialLifetime) -> Self {
+        value.0
     }
 }

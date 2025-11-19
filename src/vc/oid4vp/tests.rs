@@ -3346,6 +3346,7 @@ pub mod utils {
     use std::collections::HashMap;
     use std::str::FromStr;
     use std::sync::Arc;
+    use time::Duration;
     use url::Url;
 
     pub struct PresentationTestCase {
@@ -4084,7 +4085,7 @@ pub mod utils {
             (&holder_did_url, holder_key_handle.clone()),
             VCMetadata {
                 vct: vct.to_owned(),
-                lifetime: time::Duration::days(3650),
+                lifetime: Some(Duration::days(3650)),
                 disclosures,
                 credential_status: None,
             },
@@ -4118,7 +4119,7 @@ pub mod utils {
                 .iter()
                 .map(|claim| claim.as_str().unwrap().to_string())
                 .collect(),
-            time::Duration::days(5 * 365),
+            Some(Duration::days(5 * 365)),
         )
         .unwrap();
         vc_metadata.mandatory_claims = Some(vec!["/type".parse().unwrap()]);

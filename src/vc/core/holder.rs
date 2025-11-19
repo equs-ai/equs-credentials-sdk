@@ -843,7 +843,7 @@ mod tests {
             protocol_data: Some(CredentialDefinitionData::SdJwt {
                 vct: "https://issuer.net/cred_schema".to_owned(),
                 disclosures: vec!["$.givenName".to_owned(), "$.familyName".to_owned()],
-                lifetime: Duration::days(5 * 365),
+                lifetime: Some(Duration::days(5 * 365)),
             }),
             claims: json!({
                 "givenNameFake": "John",
@@ -863,7 +863,7 @@ mod tests {
             protocol_data: Some(CredentialDefinitionData::SdJwt {
                 vct: "https://issuer.net/cred_schema".to_owned(),
                 disclosures: vec!["$.givenName".to_owned(), "$.familyName".to_owned()],
-                lifetime: Duration::days(5 * 365),
+                lifetime: Some(Duration::days(5 * 365)),
             }),
             claims: json!({
                 "givenName": "John",
@@ -925,7 +925,7 @@ mod tests {
             protocol_data: Some(CredentialDefinitionData::SdJwt {
                 vct: "https://issuer.net/cred_schema_1".to_owned(),
                 disclosures: vec!["$.givenName".to_owned(), "$.familyName".to_owned()],
-                lifetime: Duration::days(5 * 365),
+                lifetime: Some(Duration::days(5 * 365)),
             }),
             ..case_1.clone()
         };

@@ -144,7 +144,8 @@ impl CredentialInfo {
         let iss_did_url = DIDURLBuf::from_string(key_metadata.did_url.to_owned())
             .context(DidUrlResolutionSnafu)?;
 
-        let metadata = VCMetadata::new(result, types, time::Duration::days(duration)).unwrap();
+        let metadata =
+            VCMetadata::new(result, types, Some(time::Duration::days(duration))).unwrap();
 
         let data =
             JsonLdAPI::create_credential(&metadata, iss_did_url.did().as_str(), None, claims)

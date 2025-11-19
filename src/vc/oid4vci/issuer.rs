@@ -684,7 +684,9 @@ mod tests {
         SampleIssuerMetadata, TOKEN_INTROSPECT_URL, sample_claims, sample_credential_definition,
         sample_credential_offer,
     };
-    use crate::vc::oid4vci::{AuthorizationCodeGrant, protocol_error, token_validation};
+    use crate::vc::oid4vci::{
+        AuthorizationCodeGrant, CredentialLifetime, protocol_error, token_validation,
+    };
     use crate::vc::{Credential, HasClaims, VCFormat};
     use api::Issuer;
     use oauth2::http::{Method, StatusCode};
@@ -766,7 +768,7 @@ mod tests {
             None,
             Some(MockNonceHandler::default()),
             SampleIssuerMetadata::with_sdjwtvc_conf(),
-            Some(Duration::days(CUSTOM_CRED_LIFETIME)),
+            CredentialLifetime::Finite(Duration::days(CUSTOM_CRED_LIFETIME)),
             None,
         )
         .await;
@@ -811,7 +813,7 @@ mod tests {
             None,
             Some(MockNonceHandler::default()),
             SampleIssuerMetadata::with_sdjwtvc_conf(),
-            Some(Duration::days(CUSTOM_CRED_LIFETIME)),
+            CredentialLifetime::Finite(Duration::days(CUSTOM_CRED_LIFETIME)),
             None,
         )
         .await;
@@ -851,7 +853,7 @@ mod tests {
             None,
             Some(MockNonceHandler::default()),
             issuer_metadata,
-            Some(Duration::days(CUSTOM_CRED_LIFETIME)),
+            CredentialLifetime::Finite(Duration::days(CUSTOM_CRED_LIFETIME)),
             None,
         )
         .await;
@@ -875,7 +877,7 @@ mod tests {
             None,
             Some(MockNonceHandler::default()),
             SampleIssuerMetadata::with_sdjwtvc_conf(),
-            Some(Duration::days(CUSTOM_CRED_LIFETIME)),
+            CredentialLifetime::Finite(Duration::days(CUSTOM_CRED_LIFETIME)),
             None,
         )
         .await;
@@ -903,7 +905,7 @@ mod tests {
             None,
             Some(MockNonceHandler::default()),
             issuer_metadata,
-            Some(Duration::days(CUSTOM_CRED_LIFETIME)),
+            CredentialLifetime::Finite(Duration::days(CUSTOM_CRED_LIFETIME)),
             None,
         )
         .await;
@@ -926,7 +928,7 @@ mod tests {
             None,
             Some(MockNonceHandler::default()),
             SampleIssuerMetadata::with_custom_issuer_metadata_for_ldp_vc(),
-            Some(Duration::days(CUSTOM_CRED_LIFETIME)),
+            CredentialLifetime::Finite(Duration::days(CUSTOM_CRED_LIFETIME)),
             None,
         )
         .await;
@@ -978,10 +980,10 @@ mod tests {
             None,
             Some(MockNonceHandler::default()),
             SampleIssuerMetadata::with_sdjwtvc_conf(),
-            Some(Duration::days(CUSTOM_CRED_LIFETIME)),
+            CredentialLifetime::Finite(Duration::days(CUSTOM_CRED_LIFETIME)),
             Some(HashMap::from([(
                 CredentialConfigurationId::new(CRED_DEF_ID.to_string()),
-                duration,
+                CredentialLifetime::Finite(duration),
             )])),
         )
         .await;
@@ -1298,7 +1300,7 @@ mod tests {
             None,
             None::<LocalNonceHandler>,
             sample_issuer_metadata_without_scope(),
-            None,
+            CredentialLifetime::default(),
             None,
         )
         .await;
@@ -1334,7 +1336,7 @@ mod tests {
             None,
             Some(MockNonceHandler::default()),
             sample_issuer_metadata_with_incorrect_scope(),
-            None,
+            CredentialLifetime::default(),
             None,
         )
         .await;
@@ -1438,7 +1440,7 @@ mod tests {
             token_validation,
             nonce_handler,
             SampleIssuerMetadata::with_sdjwtvc_conf(),
-            None,
+            CredentialLifetime::default(),
             None,
         )
         .await
@@ -1449,8 +1451,10 @@ mod tests {
         token_validation: Option<TokenValidation<MockHttpClient>>,
         nonce_handler: Option<NH>,
         issuer_metadata: IssuerMetadata,
-        cred_lifetime: Option<Duration>,
-        cred_lifetime_per_cred_conf_id: Option<HashMap<CredentialConfigurationId, Duration>>,
+        cred_lifetime: CredentialLifetime,
+        cred_lifetime_per_cred_conf_id: Option<
+            HashMap<CredentialConfigurationId, CredentialLifetime>,
+        >,
     ) -> IssuerService<impl vc::core::Issuer, impl HttpClient, impl NonceHandler> {
         let kms = LocalKms::new();
         let introspect = Introspect::new(
@@ -1464,7 +1468,7 @@ mod tests {
             &issuer_metadata,
             &Default::default(),
             &key_metadata,
-            cred_lifetime.unwrap_or(Duration::days(5 * 365)),
+            cred_lifetime,
             cred_lifetime_per_cred_conf_id.unwrap_or_default(),
         )
         .unwrap();

@@ -6,13 +6,14 @@ use serde::{Deserialize, Serialize};
 use snafu::{IntoError, Snafu};
 use std::fmt::Debug;
 use std::future::Future;
+use time::Duration;
 use tracing::{Level, instrument};
 
 use crate::http::HttpError;
 use crate::utils::wasm::{WasmNotSend, WasmNotSync};
 use crate::vc::claims::Claims;
-use crate::vc::core::KeyMetadata;
 use crate::vc::core::api::CredentialStatusInfo;
+use crate::vc::core::{DEFAULT_CRED_LIFETIME_DAYS, KeyMetadata};
 use crate::vc::oid4vci::internal_error::{RequestSnafu, TokenRequestSnafu};
 use crate::vc::oid4vci::protocol_error::ErrorType;
 use crate::vc::oid4vci::{InternalError, ProtocolError, metadata};
@@ -455,4 +456,41 @@ pub enum CredentialExtraVerification {
     /// See [OID4VCI specification reference](https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0.html#name-relationship-between-the-cr)
     /// for details.
     CredentialIssuerIdentifier,
+}
+
+#[derive(Debug, PartialEq, Clone, Copy)]
+pub enum CredentialLifetime {
+    Infinite,
+    Finite(time::Duration),
+}
+
+impl Default for CredentialLifetime {
+    fn default() -> Self {
+        CredentialLifetime::Finite(time::Duration::days(DEFAULT_CRED_LIFETIME_DAYS))
+    }
+}
+
+impl From<Option<time::Duration>> for CredentialLifetime {
+    fn from(value: Option<Duration>) -> Self {
+        if let Some(duration) = value {
+            Self::Finite(duration)
+        } else {
+            Self::Infinite
+        }
+    }
+}
+
+impl From<time::Duration> for CredentialLifetime {
+    fn from(value: Duration) -> Self {
+        Self::Finite(value)
+    }
+}
+
+impl From<CredentialLifetime> for Option<time::Duration> {
+    fn from(value: CredentialLifetime) -> Self {
+        match value {
+            CredentialLifetime::Infinite => None,
+            CredentialLifetime::Finite(lifetime) => Some(lifetime),
+        }
+    }
 }

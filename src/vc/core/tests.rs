@@ -170,7 +170,7 @@ pub mod utils {
                 protocol_data: Some(CredentialDefinitionData::SdJwt {
                     vct: VCT.to_owned(),
                     disclosures: vec!["$.givenName".to_owned(), "$.familyName".to_owned()],
-                    lifetime: Duration::days(5 * 365),
+                    lifetime: Some(Duration::days(5 * 365)),
                 }),
                 claim_format: ClaimFormat::SdJwtVc {
                     jwt_alg_values: vec!["ES256".to_string()],
@@ -203,7 +203,7 @@ pub mod utils {
                     ],
                     vc_types: vec![CRED_TYPE.to_owned()],
                     credential_id: None,
-                    lifetime: Duration::days(5 * 365),
+                    lifetime: Some(Duration::hours(1)),
                 }),
                 claim_format: ClaimFormat::LdpVc {
                     proof_type: vec!["EcdsaSecp256r1Signature2019".to_string()],
@@ -717,7 +717,7 @@ pub mod utils {
                         vct,
                         disclosures,
                         &self.status_list,
-                        lifetime.unwrap_or(Duration::hours(1)),
+                        lifetime,
                     )
                     .await;
 
@@ -736,7 +736,7 @@ pub mod utils {
                         contexts,
                         vc_types,
                         &self.status_list,
-                        lifetime.unwrap_or(Duration::hours(1)),
+                        lifetime,
                     )
                     .await;
 
@@ -799,7 +799,7 @@ pub mod utils {
             vct: &str,
             disclosures: &Vec<String>,
             status: &Option<CredentialStatusInfo>,
-            lifetime: Duration,
+            lifetime: Option<Duration>,
         ) -> sd_jwt_vc::Credential {
             let vc_meta = sd_jwt_vc::VCMetadata {
                 vct: vct.to_string(),
@@ -858,7 +858,7 @@ pub mod utils {
             contexts: &[String],
             vc_types: &[String],
             status: &Option<CredentialStatusInfo>,
-            lifetime: Duration,
+            lifetime: Option<Duration>,
         ) -> json_ld_vc::VC {
             let vc_meta = json_ld_vc::VCMetadata::new(
                 contexts

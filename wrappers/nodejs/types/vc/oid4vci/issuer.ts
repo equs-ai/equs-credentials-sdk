@@ -2,6 +2,7 @@ import {
   buildVciIssuer,
   contextEnsuredKms,
   contextEnsuredNonceHandler,
+  CredentialLifetime,
   Duration,
   KeyMetadata,
   Kms,
@@ -21,8 +22,8 @@ export class OID4VCIIssuerBuilder {
   private tokenValidation?: TokenValidation;
   private clockSkew?: Duration;
   private dedicatedKeys: Map<string, KeyMetadata>;
-  private credentialLifetimes: Map<string, Duration>;
-  private defaultCredentialLifetime?: Duration;
+  private credentialLifetimes: Map<string, CredentialLifetime>;
+  private defaultCredentialLifetime?: CredentialLifetime;
   private httpClient: ReqwestHttpClient;
 
   constructor(kms: Kms, issuerMetadata: OID4VCIIssuerMetadata, keyMetadata: KeyMetadata) {
@@ -62,13 +63,13 @@ export class OID4VCIIssuerBuilder {
     return this;
   }
 
-  withCredentialLifetime(credentialConfigurationId: string, seconds: number): this {
-    this.credentialLifetimes.set(credentialConfigurationId, { seconds, nanoseconds: 0 });
+  withCredentialLifetime(credentialConfigurationId: string, lifetime: CredentialLifetime): this {
+    this.credentialLifetimes.set(credentialConfigurationId, lifetime);
     return this;
   }
 
-  withDefaultCredentialLifetime(duration: number): this {
-    this.defaultCredentialLifetime = { seconds: duration, nanoseconds: 0 };
+  withDefaultCredentialLifetime(lifetime: CredentialLifetime): this {
+    this.defaultCredentialLifetime = lifetime;
     return this;
   }
 

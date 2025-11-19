@@ -1,4 +1,4 @@
-import { HttpRequest, HttpResponse, InMemKms, OID4VCIIssuer, OID4VCIIssuerBuilder } from "../../";
+import { CredentialLifetime, HttpRequest, HttpResponse, InMemKms, OID4VCIIssuer, OID4VCIIssuerBuilder } from "../../";
 import {
   ACCESS_TOKEN,
   CLAIMS,
@@ -27,9 +27,9 @@ describe("OID4VCI Issuer: ", () => {
 
     issuer = await new OID4VCIIssuerBuilder(kms, ISSUER_METADATA, keyMetadata)
       .withNonceHandler(mockNonceHandler)
-      .withDefaultCredentialLifetime(3600 * 24)
-      .withCredentialLifetime(CredDefId1, 3600 * 24 * 365)
-      .withCredentialLifetime(CredDefId2, 3600 * 24 * 365 * 5)
+      .withDefaultCredentialLifetime(CredentialLifetime.infinite())
+      .withCredentialLifetime(CredDefId1, CredentialLifetime.finite(3600 * 24 * 365))
+      // CredDefId2 lifetime must fallback to default (infinite).
       .build();
   });
 
@@ -52,8 +52,8 @@ describe("OID4VCI Issuer: ", () => {
 
     issuer = await new OID4VCIIssuerBuilder(kms, ISSUER_METADATA, keyMetadata)
       .withNonceHandler(mockNonceHandler)
-      .withDefaultCredentialLifetime(3600 * 24)
-      .withCredentialLifetime(CredDefId1, 3600)
+      .withDefaultCredentialLifetime(CredentialLifetime.finite(3600 * 24 * 365))
+      .withCredentialLifetime(CredDefId1, CredentialLifetime.finite(3600))
       .withHttpClient(httpClient)
       .tokenValidationJwks("https://google.com")
       .build();
@@ -109,7 +109,7 @@ describe("OID4VCI Issuer: ", () => {
     const credential2 = jwtDecode(result2.value.credentials[0].credential);
 
     expect(credential1.exp * 1000 - Date.now()).toBeGreaterThan(364 * 24 * 60 * 60 * 1000);
-    expect(credential2.exp * 1000 - Date.now()).toBeGreaterThan(5 * 364 * 24 * 60 * 60 * 1000);
+    expect(credential2.exp).toBeUndefined();
   });
 
   it("issue multiple Credential - Batch issuance", async () => {

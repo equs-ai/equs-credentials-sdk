@@ -2,7 +2,7 @@ use crate::crypto::{Alg, AlgNotSupportedSnafu};
 use crate::http::HttpClient;
 use crate::vc::core::{CredentialDefinition, CredentialDefinitionData, KeyMetadata};
 use crate::vc::oid4vci::internal_error::{DiscoverySnafu, HttpClientSnafu, UrlParseSnafu};
-use crate::vc::oid4vci::{InternalError, IssuerUrl};
+use crate::vc::oid4vci::{CredentialLifetime, InternalError, IssuerUrl};
 use crate::vc::{HasVCFormat, VCFormat, pop};
 use crate::{crypto, vc};
 use common_macros::DebugError;
@@ -50,8 +50,8 @@ pub fn convert_metadata(
     issuer_metadata: &IssuerMetadata,
     cred_def_ids_with_key_metadata: &HashMap<String, KeyMetadata>,
     default_key_metadata: &KeyMetadata,
-    default_cred_lifetime: Duration,
-    cred_lifetime_per_cred_conf_id: HashMap<CredentialConfigurationId, Duration>,
+    default_cred_lifetime: CredentialLifetime,
+    cred_lifetime_per_cred_conf_id: HashMap<CredentialConfigurationId, CredentialLifetime>,
 ) -> Result<vc::core::IssuerMetadata> {
     let cred_defs = issuer_metadata
         .credential_configurations_supported()
@@ -87,14 +87,14 @@ pub fn cred_definition(
     id: &str,
     credential_metadata: &CredentialMetadata,
     key_metadata: &KeyMetadata,
-    cred_lifetime: Duration,
+    cred_lifetime: CredentialLifetime,
 ) -> Result<CredentialDefinition> {
     let protocol_data = match credential_metadata.profile_specific_fields() {
         CoreProfilesCredentialConfiguration::VcSdJwt(metadata) => {
-            Some(sd_jwt_protocol_data(metadata, cred_lifetime))
+            Some(sd_jwt_protocol_data(metadata, cred_lifetime.into()))
         }
         CoreProfilesCredentialConfiguration::LdpVc(metadata) => {
-            Some(json_ld_protocol_data(metadata, cred_lifetime))
+            Some(json_ld_protocol_data(metadata, cred_lifetime.into()))
         }
         _ => None,
     };
@@ -153,7 +153,7 @@ pub fn supported_proofs(
 #[instrument(level = Level::TRACE, ret())]
 fn sd_jwt_protocol_data(
     credential_configuration: &oid4vci::core::profiles::vc_sd_jwt::CredentialConfiguration,
-    cred_lifetime: Duration,
+    cred_lifetime: Option<Duration>,
 ) -> CredentialDefinitionData {
     let claim_json_paths = credential_configuration
         .credential_metadata()
@@ -187,7 +187,7 @@ fn map_to_json_paths(claims: &Vec<CredentialConfigurationClaim>) -> Vec<String> 
 #[instrument(level = Level::TRACE, ret())]
 fn json_ld_protocol_data(
     metadata: &oid4vci::core::profiles::ldp_vc::CredentialConfiguration,
-    cred_lifetime: Duration,
+    cred_lifetime: Option<Duration>,
 ) -> CredentialDefinitionData {
     let contexts = metadata
         .credential_definition()
@@ -326,7 +326,7 @@ mod tests {
                 CRED_DEF_ID,
                 &cred_def_metadata,
                 &cred_def_key_metadata,
-                Duration::days(5 * 365),
+                CredentialLifetime::Finite(Duration::days(5 * 365)),
             )
             .unwrap(),
         ];
@@ -341,7 +341,7 @@ mod tests {
             &metadata,
             &HashMap::from([(CRED_DEF_ID.to_owned(), cred_def_key_metadata)]),
             &default_key_metadata,
-            Duration::days(5 * 365),
+            CredentialLifetime::Finite(Duration::days(5 * 365)),
             Default::default(),
         )
         .unwrap();
@@ -367,9 +367,10 @@ mod tests {
         };
 
         expected.protocol_data = match cred_def_metadata.profile_specific_fields() {
-            CoreProfilesCredentialConfiguration::VcSdJwt(metadata) => {
-                Some(sd_jwt_protocol_data(metadata, Duration::days(5 * 365)))
-            }
+            CoreProfilesCredentialConfiguration::VcSdJwt(metadata) => Some(sd_jwt_protocol_data(
+                metadata,
+                Some(Duration::days(5 * 365)),
+            )),
             _ => None,
         };
 
@@ -377,7 +378,7 @@ mod tests {
             CRED_DEF_ID,
             &cred_def_metadata,
             &key_metadata,
-            Duration::days(5 * 365),
+            CredentialLifetime::Finite(Duration::days(5 * 365)),
         )
         .unwrap();
 
@@ -405,7 +406,7 @@ mod tests {
             CRED_DEF_ID,
             &cred_def_metadata,
             &key_metadata,
-            Duration::days(5 * 365),
+            CredentialLifetime::Finite(Duration::days(5 * 365)),
         )
         .unwrap();
         assert_eq!(result, expected)
@@ -430,13 +431,13 @@ mod tests {
         let expected = CredentialDefinitionData::SdJwt {
             vct: "SD_JWT_cred".to_string(),
             disclosures: vec!["$.given_name".to_owned()],
-            lifetime: Duration::days(5 * 365),
+            lifetime: Some(Duration::days(5 * 365)),
         };
 
         if let CoreProfilesCredentialConfiguration::VcSdJwt(metadata) =
             cred_def_metadata.profile_specific_fields()
         {
-            let converted = sd_jwt_protocol_data(metadata, Duration::days(5 * 365));
+            let converted = sd_jwt_protocol_data(metadata, Some(Duration::days(5 * 365)));
 
             assert_eq!(converted, expected)
         };
