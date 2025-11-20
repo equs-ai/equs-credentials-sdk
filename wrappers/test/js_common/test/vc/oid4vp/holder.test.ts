@@ -12,6 +12,7 @@ import {
   KeyType,
   OID4VPHolder,
   OID4VPHolderBuilder,
+  PresentationResultType,
   PresentationSubmission,
   ReqwestHttpClient,
   UniversalDIDResolver,
@@ -122,7 +123,7 @@ describe("OID4VP Holder: ", () => {
     await vault.storeCredential(credential, metadata);
     const result = await holder.presentCredentialsAuto(new AuthorizationRequest(AUTH_REQUEST), {});
 
-    expect(result).toBeFalsy();
+    expect(result.type).toEqual(PresentationResultType.Presented);
   });
 
   it("present credentials auto with transaction data", async () => {
@@ -133,7 +134,7 @@ describe("OID4VP Holder: ", () => {
     await vault.storeCredential(credential, metadata);
     const result = await holder.presentCredentialsAuto(new AuthorizationRequest(AUTH_REQUEST), {});
 
-    expect(result).toBeFalsy();
+    expect(result.type).toEqual(PresentationResultType.Presented);
   });
 
   it("present credentials auto with direct post jwt", async () => {
@@ -142,7 +143,7 @@ describe("OID4VP Holder: ", () => {
     await vault.storeCredential(credential, metadata);
     const result = await holder.presentCredentialsAuto(new AuthorizationRequest(AUTH_REQUEST_WITH_DIRECT_POST_JWT), {});
 
-    expect(result).toBeFalsy();
+    expect(result.type).toEqual(PresentationResultType.Presented);
   });
 
   it("present Credentials Auto with excluded claims", async () => {

@@ -71,7 +71,7 @@ async fn credentials_presentation_and_verification(#[case] test_case: Oid4VpTest
     let auth_response_options = AuthResponseOptions {
         type_: ResponseType::VpTokenIdToken,
         mode: ResponseMode::DirectPost,
-        submission_uri: response_uri,
+        submission_uri: Some(response_uri),
         state: Some(STATE.to_string()),
     };
 
@@ -85,6 +85,7 @@ async fn credentials_presentation_and_verification(#[case] test_case: Oid4VpTest
                     uri: request_uri.clone(),
                     method: Some(HttpMethodForAuth::POST),
                 },
+                expected_origins: None,
             },
             None,
         )
@@ -170,7 +171,7 @@ async fn credentials_presentation_and_verification_with_dcql(#[case] test_case: 
     let auth_response_options = AuthResponseOptions {
         type_: ResponseType::VpTokenIdToken,
         mode: ResponseMode::DirectPost,
-        submission_uri: response_uri,
+        submission_uri: Some(response_uri),
         state: Some(STATE.to_string()),
     };
 
@@ -184,6 +185,7 @@ async fn credentials_presentation_and_verification_with_dcql(#[case] test_case: 
                     uri: request_uri.clone(),
                     method: None,
                 },
+                expected_origins: None,
             },
             None,
         )

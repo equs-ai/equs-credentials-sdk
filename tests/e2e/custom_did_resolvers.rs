@@ -193,7 +193,7 @@ async fn oid4vp_credentials_presentation_and_verification_with_custom_did_resolv
     let auth_response_options = AuthResponseOptions {
         type_: ResponseType::VpTokenIdToken,
         mode: ResponseMode::DirectPost,
-        submission_uri: response_uri,
+        submission_uri: Some(response_uri),
         state: Some(STATE.to_string()),
     };
 
@@ -207,6 +207,7 @@ async fn oid4vp_credentials_presentation_and_verification_with_custom_did_resolv
                     uri: request_uri.clone(),
                     method: None,
                 },
+                expected_origins: None,
             },
             None,
         )

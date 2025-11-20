@@ -3225,7 +3225,7 @@ pub mod fixtures {
             AuthResponseOptions {
                 type_: ResponseType::VpToken,
                 mode: ResponseMode::DirectPost,
-                submission_uri,
+                submission_uri: Some(submission_uri),
                 state,
             }
         }
@@ -3744,18 +3744,42 @@ pub mod utils {
                   "response_mode": "direct_post",
                   "response_type": "vp_token",
                   "response_uri": "http://127.0.0.1:55796/auth",
-                "client_metadata": {{
-                "vp_formats_supported": {{
-                    "dc+sd-jwt": {{
-                        "sd-jwt_alg_values": ["EdDSA", "ES256"],
-                        "kb-jwt_alg_values": ["EdDSA", "ES256"]
+                  "client_metadata": {{
+                    "vp_formats_supported": {{
+                        "dc+sd-jwt": {{
+                            "sd-jwt_alg_values": ["EdDSA", "ES256"],
+                            "kb-jwt_alg_values": ["EdDSA", "ES256"]
+                        }}
+                    }},
+                    "jwks": {{
+                        "keys": [
+                            {{
+                              "kty":"EC",
+                              "kid":"ac",
+                              "use":"enc",
+                              "crv":"P-256",
+                              "alg":"ES256",
+                              "x": "SSnPfyVhQgcU9Aaynqgi6QGhrq7K7WFEC0mAvpHG4TM",
+                              "y": "rYQ5mLQLTs95WLBKKA8R5IjMTXjX13iZnzazsVectRY"
+                            }}
+                        ]
                     }}
-                }}
-              }}
-            }}"#
+                  }}
+                }}"#
             );
 
             serde_json::from_str(&auth_request_str).unwrap()
+        }
+
+        pub fn get_private_enc_key(&self) -> String {
+            r#"{
+                 "kty": "EC",
+                 "crv": "P-256",
+                 "x": "SSnPfyVhQgcU9Aaynqgi6QGhrq7K7WFEC0mAvpHG4TM",
+                 "y": "rYQ5mLQLTs95WLBKKA8R5IjMTXjX13iZnzazsVectRY",
+                 "d": "rs9veoNnfQCH7kfsAis_nAHtpcEghiAzKry8R-de0eA"
+            }"#
+            .to_string()
         }
     }
 

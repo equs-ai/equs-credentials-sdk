@@ -59,6 +59,7 @@ pub type TransactionDataItem =
     openid4vp::core::authorization_request::parameters::TransactionDataItem;
 
 pub type HashAlgorithm = openid4vp::core::authorization_request::parameters::HashAlgorithm;
+pub type ExpectedOrigins = openid4vp::core::authorization_request::parameters::ExpectedOrigins;
 
 use crate::utils::b64::get_hash_and_base64;
 use crate::vc::oid4vp::Error::Protocol;
@@ -124,6 +125,7 @@ pub struct AuthorizationRequestMetadata {
     pub pass_auth_request_object: PassAuthRequestObject,
     // https://openid.net/specs/openid-4-verifiable-presentations-1_0.html#section-5.1-2.8.1
     pub transaction_data: Option<Vec<TransactionDataItem>>,
+    pub expected_origins: Option<ExpectedOrigins>,
 }
 
 /// A session with state managed during the presentation.
@@ -134,6 +136,22 @@ pub struct PresentationSession {
     pub nonce: Nonce,
     pub resolved_presentation_query: ResolvedPresentationQuery,
     pub auth_request_jwt: Option<String>,
+}
+
+/// Result of the presenting credentials.
+///
+/// # Variants
+///
+/// * [PresentationResult::AuthorizationResponse] - [AuthorizationResponse] when Digital Credentials API response mode is used (`response_mode: dc_api` or `response_mode: dc_api.jwt`)
+/// * [PresentationResult::RedirectUri] - Redirect URI, which is got, either:
+///     * Can be returned from Verifier for Authorization Response.
+///     * In the case of Same Device Flow, Authorization Response is embedded into the redirect URI as a fragment.
+/// * [PresentationResult::Presented] - Presentation is successfully presented to the Verifier
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub enum PresentationResult {
+    AuthorizationResponse(AuthorizationResponse),
+    RedirectUri(Url),
+    Presented,
 }
 
 /// A resolved `OID4VP` authorization request.
@@ -156,7 +174,7 @@ pub struct ResolvedAuthRequest {
     pub nonce: Nonce,
     pub response_type: ResponseType,
     pub response_mode: ResponseMode,
-    pub response_uri: Url,
+    pub response_uri: Option<Url>,
     pub state: Option<String>,
     // https://openid.net/specs/openid-4-verifiable-presentations-1_0.html#section-5.1-2.8.1
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -168,7 +186,7 @@ pub struct ResolvedAuthRequest {
 pub struct AuthResponseOptions {
     pub type_: ResponseType,
     pub mode: ResponseMode,
-    pub submission_uri: Url,
+    pub submission_uri: Option<Url>,
     pub state: Option<String>,
 }
 
@@ -188,6 +206,7 @@ pub struct AuthorizationResponseObject {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(untagged)]
 pub enum AuthorizationResponse {
     Plain(AuthorizationResponseObject),
     Jwe(String),
@@ -272,7 +291,12 @@ pub trait Holder: WasmNotSend + WasmNotSync {
     ///
     /// # Returns
     ///
-    /// A redirect URL if the presentation is successful, or `None` on success without redirection.
+    /// * [PresentationResult] - The result of presenting credentials, which can be either:
+    ///   * [PresentationResult::AuthorizationResponse] - [AuthorizationResponse] when Digital Credentials API response mode is used (`response_mode: dc_api` or `response_mode: dc_api.jwt`)
+    ///   * [PresentationResult::RedirectUri] - Redirect URI, which is got, either:
+    ///     * Can be returned from Verifier for Authorization Response.
+    ///     * In the case of Same Device Flow, Authorization Response is embedded into the redirect URI as a fragment.
+    ///   * [PresentationResult::Presented] - Presentation is successfully presented to the Verifier
     ///
     /// # Errors
     ///
@@ -286,7 +310,7 @@ pub trait Holder: WasmNotSend + WasmNotSync {
         &self,
         auth_request: &ResolvedAuthRequest,
         metadata: &AuthorizationResponseMetadata,
-    ) -> Result<Option<Url>, Error>;
+    ) -> Result<PresentationResult, Error>;
 
     /// Finds verifiable credentials required for the presentation based on the authorization request.
     ///
@@ -321,7 +345,12 @@ pub trait Holder: WasmNotSend + WasmNotSync {
     ///
     /// # Returns
     ///
-    /// A redirect URL if the presentation is successful, or `None` on success without redirection.
+    /// * [PresentationResult] - The result of presenting credentials, which can be either:
+    ///   * [PresentationResult::AuthorizationResponse] - [AuthorizationResponse] when Digital Credentials API response mode is used (`response_mode: dc_api` or `response_mode: dc_api.jwt`)
+    ///   * [PresentationResult::RedirectUri] - Redirect URI, which is got, either:
+    ///     * Can be returned from Verifier for Authorization Response.
+    ///     * In the case of Same Device Flow, Authorization Response is embedded into the redirect URI as a fragment.
+    ///   * [PresentationResult::Presented] - Presentation is successfully presented to the Verifier
     ///
     /// # Errors
     ///
@@ -336,7 +365,7 @@ pub trait Holder: WasmNotSend + WasmNotSync {
         auth_request: &ResolvedAuthRequest,
         credential_mapping: &CredentialMapping,
         metadata: &AuthorizationResponseMetadata,
-    ) -> Result<Option<Url>, Error>;
+    ) -> Result<PresentationResult, Error>;
 
     /// Decline the authorization request by sending authorization error response to the `response_uri` endpoint.
     ///
@@ -382,6 +411,7 @@ pub trait Verifier: WasmNotSend + WasmNotSync {
     /// `pass_auth_request_object` - how to pass an authorization request object to holder, by value or by reference.
     /// `auth_response_options` - config about how and where to send authorization response.
     /// `transaction_data` - transaction data that the holder should return the hashes of.
+    /// `expected_origins` - a list of expected origins when generating a signed AuthorizationRequest for dc_api or dc_api.jwt response mode.
     /// * `wallet_metadata` - optional metadata of holder. if it is `None`, metadata form `metadata::default_metadata()` will be used
     ///
     /// # Returns

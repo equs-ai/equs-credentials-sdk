@@ -3,6 +3,7 @@ use crate::utils::{from_json_object, parse_url_arg, to_json_object};
 use crate::vault::{JsCredentialEntry, JsCredentialsFindResult};
 use crate::vc::JsonObject;
 use crate::vc::core::JsKeyMetadata;
+use crate::vc::oid4vp::JsPresentationResult;
 use agent_sdk::vault::CredentialEntry;
 use agent_sdk::vc::oid4vp::{
     AuthorizationResponseMetadata, ClientId, CredentialMapping, CredentialsMapping,
@@ -13,7 +14,6 @@ use napi::{Error, Result};
 use napi_derive::napi;
 use std::collections::HashMap;
 use time::ext::NumericalDuration;
-use url::Url;
 
 /// The `OID4VP` `Holder` API.
 /// This is an inner holder api used by the main wrapper in Node.js implementation
@@ -63,15 +63,18 @@ impl InnerOID4VPHolder {
     /// @param {AuthorizationRequest} authRequest - the resolved authorization request containing the presentation requirements.
     /// @param {AuthorizationResponseMetadata} authResponseMetadata - the metadata for the authorization response.
     ///
-    /// @returns {string | null}
-    /// * A redirect URL if the presentation is successful
-    /// * `null` on success without redirection.
-    #[napi]
+    /// @returns {PresentationResult}
+    ///
+    /// * {AuthorizationResponse} - When Digital Credentials API response mode is used (`response_mode: dc_api` or `response_mode: dc_api.jwt`)
+    /// * An optional redirect URI which is got either:
+    ///     * Optionally can be returned from Verifier after submitting Authorization Response.
+    ///     * In the case of Same Device Flow, Authorization Response is embedded into the redirect URI as a fragment.
+    #[napi(ts_return_type = "Promise<PresentationResult>")]
     pub async fn present_credentials_auto(
         &self,
         auth_request: _AuthorizationRequest,
         auth_response_metadata: JsAuthorizationResponseMetadata,
-    ) -> Result<Option<String>> {
+    ) -> Result<JsPresentationResult> {
         let result = self
             .0
             .present_credentials_auto(
@@ -81,7 +84,7 @@ impl InnerOID4VPHolder {
             .await
             .map_err(IntoNapiError::into_napi_error)?;
 
-        Ok(result.map(|url: Url| url.to_string()))
+        result.try_into()
     }
 
     /// Finds verifiable credentials required for the presentation based on the authorization request.
@@ -111,16 +114,19 @@ impl InnerOID4VPHolder {
     /// @param {Record<string, CredentialEntry>} credentialMapping - the map of credentials required for the presentation.
     /// @param {AuthorizationResponseMetadata} authResponseMetadata -the authorization response metadata.
     ///
-    /// @returns {string | null}
-    /// * A redirect URL if the presentation is successful
-    /// * `null` on success without redirection.
-    #[napi]
+    /// @returns {PresentationResult}
+    ///
+    /// * {AuthorizationResponse} - When Digital Credentials API response mode is used (`response_mode: dc_api` or `response_mode: dc_api.jwt`)
+    /// * An optional redirect URI which is got either:
+    ///     * Optionally can be returned from Verifier after submitting Authorization Response.
+    ///     * In the case of Same Device Flow, Authorization Response is embedded into the redirect URI as a fragment.
+    #[napi(ts_return_type = "Promise<PresentationResult>")]
     pub async fn present_credentials(
         &self,
         auth_request: _AuthorizationRequest,
         credential_mapping: HashMap<String, Vec<JsCredentialEntry>>,
         auth_response_metadata: JsAuthorizationResponseMetadata,
-    ) -> Result<Option<String>> {
+    ) -> Result<JsPresentationResult> {
         let result = self
             .0
             .present_credentials(
@@ -131,7 +137,7 @@ impl InnerOID4VPHolder {
             .await
             .map_err(IntoNapiError::into_napi_error)?;
 
-        Ok(result.map(|url: Url| url.to_string()))
+        result.try_into()
     }
 
     /// Decline the authorization request by sending authorization error response to the `response_uri` endpoint.
@@ -173,7 +179,7 @@ pub struct _AuthorizationRequest {
     #[napi(js_name = "response_mode")]
     pub response_mode: String,
     #[napi(js_name = "response_uri")]
-    pub response_uri: String,
+    pub response_uri: Option<String>,
     pub state: Option<String>,
     #[napi(
         ts_type = "Array<TransactionDataItem> | null | undefined",
@@ -208,7 +214,10 @@ impl TryFrom<_AuthorizationRequest> for ResolvedAuthRequest {
             nonce: serde_json::from_value(serde_json::Value::String(value.nonce))?,
             response_type: value.response_type.into(),
             response_mode: value.response_mode.into(),
-            response_uri: parse_url_arg(&value.response_uri)?,
+            response_uri: value
+                .response_uri
+                .map(|uri| parse_url_arg(&uri))
+                .transpose()?,
             state: value.state,
             transaction_data,
         })
@@ -235,7 +244,7 @@ impl TryFrom<ResolvedAuthRequest> for _AuthorizationRequest {
             nonce: value.nonce.secret().to_string(),
             response_type: value.response_type.into(),
             response_mode: value.response_mode.into(),
-            response_uri: value.response_uri.to_string(),
+            response_uri: value.response_uri.map(|uri| uri.to_string()),
             state: value.state,
             transaction_data,
         })

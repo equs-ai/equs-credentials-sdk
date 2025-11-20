@@ -27,6 +27,9 @@ extern "C" {
     #[wasm_bindgen(typescript_type = "AuthorizationRequest")]
     pub type AuthorizationRequest;
 
+    #[wasm_bindgen(typescript_type = "PresentationResult")]
+    pub type PresentationResult;
+
     #[wasm_bindgen(method)]
     fn getAuthRequest(this: &AuthorizationRequest) -> RustAuthorizationRequest;
 

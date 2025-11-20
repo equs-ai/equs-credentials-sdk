@@ -15,11 +15,11 @@ use std::fmt::Debug;
 #[derive(Snafu, DebugError)]
 #[snafu(visibility(pub(super)))]
 pub enum InternalError {
-    #[snafu(display("Authorization Response error"))]
+    #[snafu(display("Authorization Response error: {details}"))]
     AuthorizationResponse {
+        details: String,
         #[snafu(implicit)]
         location: Location,
-        source: anyhow::Error,
     },
     #[snafu(display("Authorization Response mode unsupported: {details}"))]
     AuthorizationResponseUnsupportedMode {

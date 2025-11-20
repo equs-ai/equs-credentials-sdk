@@ -10,6 +10,7 @@ import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
 import java.util.concurrent.TimeUnit
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 
 val presentationDefinitionJson = Json.parseToJsonElement(
@@ -196,11 +197,10 @@ class HolderVPTest {
                 .setHeader("content-type", "text/plain")
         )
 
-        val redirectUri = holder.presentCredentialsAuto(
+        val presented = holder.presentCredentialsAuto(
             authRequest,
             AuthorizationResponseMetadata(claimsToExclude = null, idTokenMetadata = null)
-        )
-        assertNull(redirectUri)
+        ) as PresentationResult.Presented
     }
 
     @Test
@@ -215,13 +215,13 @@ class HolderVPTest {
                 .setBody("")
                 .setHeader("content-type", "text/plain")
         )
-        val redirectUri = holder.presentCredentialsAuto(
+        val presented = holder.presentCredentialsAuto(
             authRequestWithDirectPostJwt,
             AuthorizationResponseMetadata(claimsToExclude = null, idTokenMetadata = null)
-        )
+        ) as PresentationResult.Presented
         val request = customMockServer.takeRequest()
         assert(request.body.readUtf8().startsWith("response=ey"))
-        assertNull(redirectUri)
+
         customMockServer.shutdown()
     }
 
@@ -235,7 +235,59 @@ class HolderVPTest {
         )
 
         val credentialsMapping = holder.findVcsForPresentation(authRequest)
-        val credentials = credentialsMapping.map { (key, findVCsResult) ->
+        val credentials = credResultsToCredMapping(credentialsMapping)
+
+        holder.presentCredentials(
+            authRequest,
+            credentials,
+            AuthorizationResponseMetadata(claimsToExclude = null, idTokenMetadata = null)
+        )
+    }
+
+
+    @Test
+    fun testPresentCredentialsWhenDcApiResponseIsUsed() = runTest {
+        val authorizationRequest = authRequest
+        authorizationRequest.responseMode = "dc_api"
+        authorizationRequest.responseUri = null
+
+        val credentialsMapping = holder.findVcsForPresentation(authRequest)
+        val credentials = credResultsToCredMapping(credentialsMapping)
+
+        val result = holder.presentCredentials(
+            authRequest,
+            credentials,
+            AuthorizationResponseMetadata(claimsToExclude = null, idTokenMetadata = null)
+        ) as PresentationResult.AuthResponse
+
+        val authResponse = result.v1 as AuthorizationResponse.Plain
+
+        assertNotNull(authResponse.v1.vpToken)
+    }
+
+
+    @Test
+    fun testPresentCredentialsWhenDcApiJwtResponseIsUsed() = runTest {
+        val authorizationRequest = authRequest
+        authorizationRequest.responseMode = "dc_api.jwt"
+        authorizationRequest.responseUri = null
+
+        val credentialsMapping = holder.findVcsForPresentation(authRequest)
+        val credentials = credResultsToCredMapping(credentialsMapping)
+
+        val result = holder.presentCredentials(
+            authRequest,
+            credentials,
+            AuthorizationResponseMetadata(claimsToExclude = null, idTokenMetadata = null)
+        ) as PresentationResult.AuthResponse
+
+        val authResponse = result.v1 as AuthorizationResponse.Jwe
+
+        assert(authResponse.v1.startsWith("ey"))
+    }
+
+    private fun credResultsToCredMapping(credentialsMapping: Map<String, CredentialsFindResult>): Map<String, List<CredentialEntry>> =
+        credentialsMapping.map { (key, findVCsResult) ->
             when (val data = findVCsResult.data) {
                 is CredentialsSearchResult.Credentials -> {
                     key to data.v1
@@ -246,13 +298,6 @@ class HolderVPTest {
                 }
             }
         }.toMap()
-
-        holder.presentCredentials(
-            authRequest,
-            credentials,
-            AuthorizationResponseMetadata(claimsToExclude = null, idTokenMetadata = null)
-        )
-    }
 
     @Test
     fun findVcsForPresentationReturnsCredentials() = runTest {

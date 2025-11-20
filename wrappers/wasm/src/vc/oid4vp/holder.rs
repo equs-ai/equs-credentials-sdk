@@ -2,13 +2,14 @@ use crate::utils;
 use crate::utils::convert_to_opaque_object;
 use crate::vc::oid4vp::{
     AuthorizationRequest, AuthorizationResponseMetadata, CredentialMapping, CredentialsMapping,
+    PresentationResult,
 };
 use crate::vc::{CredentialsFindResult, JsCredentialEntry};
 use agent_sdk::vault::CredentialEntry;
 use agent_sdk::vc::oid4vp::{CredentialsMapping as ASDKCredentialsMapping, Holder};
 use js_sys::{Object, Reflect};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use url::Url;
 use wasm_bindgen::prelude::wasm_bindgen;
 use wasm_bindgen::{JsCast, JsError, JsValue};
 
@@ -75,7 +76,10 @@ impl OID4VPHolder {
     ///
     /// # Returns
     ///
-    /// A redirect URL if the presentation is successful, or `None` on success without redirection.
+    /// * `AuthorizationResponse` - When Digital Credentials API response mode is used (`response_mode: dc_api` or `response_mode: dc_api.jwt`)
+    /// * An optional redirect URI which is got either:
+    ///     * Optionally can be returned from Verifier after submitting Authorization Response.
+    ///     * In the case of Same Device Flow, Authorization Response is embedded into the redirect URI as a fragment.
     ///
     /// # Errors
     ///
@@ -85,20 +89,21 @@ impl OID4VPHolder {
         &self,
         auth_request: AuthorizationRequest,
         metadata: Option<AuthorizationResponseMetadata>,
-    ) -> Result<Option<String>, JsError> {
+    ) -> Result<PresentationResult, JsError> {
         let auth_request = utils::convert_to_rust_object(auth_request.getAuthRequest())?;
         let metadata = metadata
             .map(utils::convert_to_rust_object)
             .transpose()?
             .unwrap_or_else(|| agent_sdk::vc::oid4vp::AuthorizationResponseMetadata::default());
 
-        let result = self
+        let js_presentation: JsPresentationResult = self
             .0
             .present_credentials_auto(&auth_request, &metadata)
             .await
-            .map_err(|err| JsError::new(&format!("{:?}", err)))?;
+            .map_err(|err| JsError::new(&format!("{:?}", err)))?
+            .try_into()?;
 
-        Ok(result.map(|url: Url| url.to_string()))
+        utils::convert_to_opaque_object_unchecked(js_presentation)
     }
 
     /// Finds verifiable credentials required for the presentation based on the authorization request.
@@ -145,7 +150,10 @@ impl OID4VPHolder {
     ///
     /// # Returns
     ///
-    /// A redirect URL if the presentation is successful, or `None` on success without redirection.
+    /// * `AuthorizationResponse` - When Digital Credentials API response mode is used (`response_mode: dc_api` or `response_mode: dc_api.jwt`)
+    /// * An optional redirect URI which is got either:
+    ///     * Optionally can be returned from Verifier after submitting Authorization Response.
+    ///     * In the case of Same Device Flow, Authorization Response is embedded into the redirect URI as a fragment.
     ///
     /// # Errors
     ///
@@ -156,7 +164,7 @@ impl OID4VPHolder {
         auth_request: AuthorizationRequest,
         credential_mapping: CredentialMapping,
         metadata: Option<AuthorizationResponseMetadata>,
-    ) -> Result<Option<String>, JsError> {
+    ) -> Result<PresentationResult, JsError> {
         let auth_request = utils::convert_to_rust_object(auth_request.getAuthRequest())?;
         let credential_mapping = utils::convert_to_rust_object(credential_mapping)
             .map_err(|err| JsError::new(&format!("{:?}", err)))
@@ -166,13 +174,14 @@ impl OID4VPHolder {
             .transpose()?
             .unwrap_or_else(|| agent_sdk::vc::oid4vp::AuthorizationResponseMetadata::default());
 
-        let result = self
+        let js_presentation: JsPresentationResult = self
             .0
             .present_credentials(&auth_request, &credential_mapping, &metadata)
             .await
-            .map_err(|err| JsError::new(&format!("{:?}", err)))?;
+            .map_err(|err| JsError::new(&format!("{:?}", err)))?
+            .try_into()?;
 
-        Ok(result.map(|url: Url| url.to_string()))
+        utils::convert_to_opaque_object_unchecked(js_presentation)
     }
 
     /// Decline the authorization request by sending authorization error response to the `response_uri` endpoint.
@@ -195,6 +204,45 @@ impl OID4VPHolder {
             .map_err(|err| JsError::new(&format!("{:?}", err)))?;
 
         Ok(redirect_url.map(|url| url.to_string()))
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct JsPresentationResult {
+    #[serde(rename = "type")]
+    pub type_: PresentationResultType,
+    pub value: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+enum PresentationResultType {
+    AuthorizationResponse,
+    RedirectUri,
+    Presented,
+}
+
+impl TryFrom<agent_sdk::vc::oid4vp::PresentationResult> for JsPresentationResult {
+    type Error = JsError;
+
+    fn try_from(value: agent_sdk::vc::oid4vp::PresentationResult) -> Result<Self, JsError> {
+        let result = match value {
+            agent_sdk::vc::oid4vp::PresentationResult::AuthorizationResponse(auth_resp) => {
+                JsPresentationResult {
+                    type_: PresentationResultType::AuthorizationResponse,
+                    value: Some(serde_json::to_value(&auth_resp)?),
+                }
+            }
+            agent_sdk::vc::oid4vp::PresentationResult::RedirectUri(uri) => JsPresentationResult {
+                type_: PresentationResultType::RedirectUri,
+                value: Some(serde_json::to_value(&uri)?),
+            },
+            agent_sdk::vc::oid4vp::PresentationResult::Presented => JsPresentationResult {
+                type_: PresentationResultType::Presented,
+                value: None,
+            },
+        };
+
+        Ok(result)
     }
 }
 

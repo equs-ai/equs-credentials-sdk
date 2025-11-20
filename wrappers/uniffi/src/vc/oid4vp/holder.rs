@@ -1,10 +1,10 @@
-use agent_sdk::vc::oid4vp::{Holder, ResolvedAuthRequest, Url};
+use agent_sdk::vc::oid4vp::{Holder, ResolvedAuthRequest};
 use std::collections::HashMap;
 
 use crate::common::{Error, Result};
 use crate::utils::parse_url_arg;
 use crate::vault::{CredentialEntry, CredentialsFindResult, CredentialsSearchResult};
-use crate::vc::oid4vp::{AuthorizationRequest, AuthorizationResponseMetadata};
+use crate::vc::oid4vp::{AuthorizationRequest, AuthorizationResponseMetadata, PresentationResult};
 
 /// The `OID4VP` `Holder` API.
 ///
@@ -54,21 +54,24 @@ impl OID4VPHolder {
     /// @param {AuthorizationRequest} authRequest - the resolved authorization request containing the presentation requirements.
     /// @param {AuthorizationResponseMetadata} authResponseMetadata - the metadata for the authorization response.
     ///
-    /// @returns {string | null}
-    /// * A redirect URL if the presentation is successful
-    /// * `null` on success without redirection.
+    /// @returns {PresentationResult} - The result of presenting credentials, which can be either:
+    ///   * {PresentationResult::DcApi} - {AuthorizationResponse} when Digital Credentials API response mode is used (`response_mode: dc_api` or `response_mode: dc_api.jwt`)
+    ///   * {PresentationResult::RedirectUri} - Redirect URI, which is got either:
+    ///     * Optionally can be returned from Verifier after submitting Authorization Response.
+    ///     * In the case of Same Device Flow, Authorization Response is embedded into the redirect URI as a fragment.
+    ///   * {PresentationResult::Presented} - Presentation is successfully presented to the Verifier.
     pub async fn present_credentials_auto(
         &self,
         auth_request: AuthorizationRequest,
         auth_response_metadata: AuthorizationResponseMetadata,
-    ) -> Result<Option<String>> {
+    ) -> Result<PresentationResult> {
         let result = self
             .0
             .present_credentials_auto(&auth_request.try_into()?, &auth_response_metadata)
             .await
             .map_err(|err| Error::OID4VPHolder(format!("{:?}", err)))?;
 
-        Ok(result.map(|url: Url| url.to_string()))
+        Ok(result.into())
     }
 
     /// Finds verifiable credentials required for the presentation based on the authorization request.
@@ -120,15 +123,18 @@ impl OID4VPHolder {
     /// @param {Record<string, CredentialEntry>} credentialMapping - the map of credentials required for the presentation.
     /// @param {AuthorizationResponseMetadata} authResponseMetadata -the authorization response metadata.
     ///
-    /// @returns {string | null}
-    /// * A redirect URL if the presentation is successful
-    /// * `null` on success without redirection.
+    /// @returns {PresentationResult} - The result of presenting credentials, which can be either:
+    ///   * {PresentationResult::DcApi} - {AuthorizationResponse} when Digital Credentials API response mode is used (`response_mode: dc_api` or `response_mode: dc_api.jwt`)
+    ///   * {PresentationResult::RedirectUri} - Redirect URI, which is got either:
+    ///     * Optionally can be returned from Verifier after submitting Authorization Response.
+    ///     * In the case of Same Device Flow, Authorization Response is embedded into the redirect URI as a fragment.
+    ///   * {PresentationResult::Presented} - Presentation is successfully presented to the Verifier.
     pub async fn present_credentials(
         &self,
         auth_request: AuthorizationRequest,
         credential_mapping: HashMap<String, Vec<CredentialEntry>>,
         auth_response_metadata: AuthorizationResponseMetadata,
-    ) -> Result<Option<String>> {
+    ) -> Result<PresentationResult> {
         let result = self
             .0
             .present_credentials(
@@ -139,7 +145,7 @@ impl OID4VPHolder {
             .await
             .map_err(|err| Error::OID4VPHolder(format!("{:?}", err)))?;
 
-        Ok(result.map(|url: Url| url.to_string()))
+        Ok(result.into())
     }
 
     /// Decline the authorization request by sending authorization error response to the `response_uri` endpoint.

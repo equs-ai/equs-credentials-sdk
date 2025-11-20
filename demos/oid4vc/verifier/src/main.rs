@@ -105,7 +105,7 @@ async fn presentation_request_uri(state: web::Data<AppState>) -> HttpResponse {
     let auth_response_options = AuthResponseOptions {
         type_: ResponseType::VpTokenIdToken,
         mode: ResponseMode::DirectPostJwt,
-        submission_uri: response_uri,
+        submission_uri: Some(response_uri),
         state: None,
     };
 
@@ -133,6 +133,7 @@ async fn presentation_request_uri(state: web::Data<AppState>) -> HttpResponse {
                 transaction_data: Some(transaction_data),
                 auth_response_options,
                 pass_auth_request_object,
+                expected_origins: None,
             },
             None,
         )
@@ -167,7 +168,7 @@ async fn dcql_request_uri(state: web::Data<AppState>) -> HttpResponse {
     let auth_response_options = AuthResponseOptions {
         type_: ResponseType::VpTokenIdToken,
         mode: ResponseMode::DirectPostJwt,
-        submission_uri: response_uri,
+        submission_uri: Some(response_uri),
         state: None,
     };
 
@@ -194,6 +195,7 @@ async fn dcql_request_uri(state: web::Data<AppState>) -> HttpResponse {
                 transaction_data: Some(transaction_data),
                 pass_auth_request_object,
                 auth_response_options,
+                expected_origins: None,
             },
             None,
         )
