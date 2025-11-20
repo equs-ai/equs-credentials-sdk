@@ -5,6 +5,7 @@ import {
   CredentialsFindResult,
   InnerOID4VPHolder,
   PresentationQuery,
+  PresentationResult,
 } from "../../..";
 
 /**
@@ -56,14 +57,16 @@ export class OID4VPHolder {
    *   {@link OID4VPHolder.presentCredentials} to manually present them.
    *   @param {AuthorizationRequest} authRequest - the resolved authorization request containing the presentation requirements.
    *   @param {AuthorizationResponseMetadata} authResponseMetadata - the metadata for the authorization response.
-   *   @returns {string | null}
-   *   * A redirect URL if the presentation is successful
-   *   * `null` on success without redirection.
+   *   @returns {PresentationResult}
+   *    - {AuthorizationResponse} - When Digital Credentials API response mode is used (`response_mode: dc_api` or `response_mode: dc_api.jwt`)
+   *    - An optional redirect URI which is got either:
+   *      - Optionally can be returned from Verifier after submitting Authorization Response.
+   *      - In the case of Same Device Flow, Authorization Response is embedded into the redirect URI as a fragment.
    */
   async presentCredentialsAuto(
     authRequest: AuthorizationRequest,
     authResponseMetadata: AuthorizationResponseMetadata,
-  ): Promise<string | null> {
+  ): Promise<PresentationResult> {
     return await this.inner.presentCredentialsAuto(authRequest.toRustObject(), authResponseMetadata);
   }
 
@@ -83,15 +86,17 @@ export class OID4VPHolder {
    * @param {AuthorizationRequest} authRequest - the resolved authorization request.
    * @param {Record<string, CredentialEntry>} credentialMapping - the map of credentials required for the presentation.
    * @param {AuthorizationResponseMetadata} authResponseMetadata -the authorization response metadata.
-   * @returns {string | null}
-   * A redirect URL if the presentation is successful
-   * `null` on success without redirection.
+   * @returns {PresentationResult}
+   *  - {AuthorizationResponse} - When Digital Credentials API response mode is used (`response_mode: dc_api` or `response_mode: dc_api.jwt`)
+   *  - An optional redirect URI which is got either:
+   *    - Optionally can be returned from Verifier after submitting Authorization Response.
+   *    - In the case of Same Device Flow, Authorization Response is embedded into the redirect URI as a fragment.
    */
   async presentCredentials(
     authRequest: AuthorizationRequest,
     credentialMapping: Record<string, Array<CredentialEntry>>,
     authResponseMetadata: AuthorizationResponseMetadata,
-  ): Promise<string | null> {
+  ): Promise<PresentationResult> {
     return await this.inner.presentCredentials(authRequest.toRustObject(), credentialMapping, authResponseMetadata);
   }
 

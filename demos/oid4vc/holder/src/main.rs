@@ -21,8 +21,8 @@ use agent_sdk::vc::oid4vci::{CredentialOfferResolver, Holder as HolderVci};
 use agent_sdk::vc::oid4vp::{
     AuthResponseOptions, AuthorizationRequestMetadata, AuthorizationResponse,
     AuthorizationResponseMetadata, AuthorizationResponseObject, CredentialVerificationMetadata,
-    CredentialsFindResult, CredentialsMapping, PassAuthRequestObject, ResolvedAuthRequest,
-    ResolvedPresentationQuery, ResponseMode, ResponseType,
+    CredentialsFindResult, CredentialsMapping, PassAuthRequestObject, PresentationResult,
+    ResolvedAuthRequest, ResolvedPresentationQuery, ResponseMode, ResponseType,
 };
 use agent_sdk::vc::oid4vp::{CredentialMapping, Holder as HolderVp};
 use agent_sdk::vc::oid4vp::{IdTokenMetadata, Verifier};
@@ -246,7 +246,7 @@ async fn same_device_presentation_flow(holder: impl HolderVp, kms: LocalKms) {
     let auth_response_options = AuthResponseOptions {
         type_: ResponseType::VpToken,
         mode: ResponseMode::Fragment,
-        submission_uri: redirect_uri.to_owned(),
+        submission_uri: Some(redirect_uri.to_owned()),
         state: None,
     };
     let pass_auth_request_object = PassAuthRequestObject::ByValue;
@@ -258,6 +258,7 @@ async fn same_device_presentation_flow(holder: impl HolderVp, kms: LocalKms) {
                 auth_response_options,
                 transaction_data: None,
                 pass_auth_request_object,
+                expected_origins: None,
             },
             None,
         )
@@ -423,7 +424,13 @@ async fn present_credential(
     };
 
     let redirect_url = match presentation_result {
-        Ok(redirect_url) => redirect_url,
+        Ok(result) => match result {
+            PresentationResult::RedirectUri(url) => Some(url),
+            PresentationResult::Presented => None,
+            PresentationResult::AuthorizationResponse(_) => {
+                panic!("Unexpected presentation result: AuthorizationResponse");
+            }
+        },
         Err(oid4vp::Error::Protocol { source }) => source.redirect_uri().cloned(),
         Err(e) => {
             panic!("Internal error while presenting credentials, {e}");

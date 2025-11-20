@@ -93,6 +93,46 @@ describe("OID4VP Verifier: ", () => {
     expect(expected_state).toEqual(STATE);
   });
 
+  it("create signed Authorization Request by Value with DCQL and dc_api/dc_api.jwt response mode", async () => {
+    const verifier = await buildVerifier();
+    const response_modes = ["dc_api", "dc_api.jwt"];
+
+    for (const responseMode of response_modes) {
+      const authResponseOptions: AuthResponseOptions = {
+        mode: responseMode,
+        type: "vp_token",
+        state: STATE,
+      };
+      const expectedOrigins = ["https://example.verifier.org"];
+      const authorizationRequestMetadata: AuthorizationRequestMetadata = {
+        authResponseOptions: authResponseOptions,
+        passAuthRequestObject: {
+          type: PassAuthRequestObjectType.ByValue,
+        },
+        expectedOrigins: expectedOrigins,
+      };
+
+      const authReqByValue = await verifier.createAuthorizationRequest(
+        PRESENTATION_QUERY_FOR_DCQL,
+        authorizationRequestMetadata,
+        null,
+      );
+
+      expect(authReqByValue.authorizationRequestUri).toContain("request=eyJh");
+      expect(authReqByValue.session.nonce?.length).toBeTruthy();
+      expect(authReqByValue.session.resolvedPresentationQuery.dcql_query).toMatchObject(DCQL);
+
+      const decodedPayload = atob(authReqByValue.authorizationRequestJwt.split(".")[1]);
+      const authReqJson = JSON.parse(decodedPayload);
+
+      expect(authReqJson["state"]).toEqual(STATE);
+      expect(authReqJson["response_mode"]).toEqual(responseMode);
+      expect(authReqJson["expected_origins"]).toEqual(expectedOrigins);
+      expect(authReqJson["response_uri"]).toBeFalsy();
+      expect(authReqJson["redirect_uri"]).toBeFalsy();
+    }
+  });
+
   it("create Authorization Request by Reference", async () => {
     const verifier = await buildVerifier();
 

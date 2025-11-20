@@ -29,6 +29,7 @@ const replacements = [
   { from: "JsHolderBinder", to: "HolderBinder" },
   { from: "JsKeyHandle", to: "KeyHandle" },
   { from: "JsPresentation", to: "Presentation" },
+  { from: "JsPresentationResult", to: "PresentationResult" },
   { from: "JsPresentationInput", to: "PresentationInput" },
   { from: "JsPresentationRestrictionValue", to: "InternalPresentationRestrictionValue" },
   { from: "JsCredentialStatusInfo", to: "CredentialStatusInfo" },

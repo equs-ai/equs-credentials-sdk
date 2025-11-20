@@ -18,10 +18,11 @@ use crate::vc::oid4vp::metadata::default_wallet_metadata;
 use crate::vc::oid4vp::protocol_error::ErrorType;
 use crate::vc::oid4vp::signer::Signer;
 use crate::vc::oid4vp::{
-    AuthorizationResponseMetadata, CredentialMapping, CredentialsFindResult, CredentialsMapping,
-    ID_TOKEN, PRESENTATION_SUBMISSION, ProtocolError, ResolvedAuthRequest,
-    ResolvedPresentationQuery, ResponseMode, STATE, TRANSACTION_DATA_HASHES,
-    TRANSACTION_DATA_HASHES_ALG, VP_TOKEN, get_transaction_data_hash,
+    AuthorizationResponseMetadata, AuthorizationResponseObject, CredentialMapping,
+    CredentialsFindResult, CredentialsMapping, ID_TOKEN, PRESENTATION_SUBMISSION,
+    PresentationResult, ProtocolError, ResolvedAuthRequest, ResolvedPresentationQuery,
+    ResponseMode, STATE, TRANSACTION_DATA_HASHES, TRANSACTION_DATA_HASHES_ALG, VP_TOKEN,
+    get_transaction_data_hash,
 };
 use crate::vc::presentation_exchange::PresentationDefinition;
 use crate::vc::{RequestedPresentation, dcql, oid4vp as api, presentation_exchange};
@@ -109,38 +110,50 @@ where
     }
 
     #[instrument(level = Level::TRACE, skip(self), err(), ret())]
-    async fn submit_presentation(
+    async fn process_auth_response(
         &self,
         presentations: Vec<RequestedPresentation>,
         auth_request: &ResolvedAuthRequest,
         auth_response_metadata: &AuthorizationResponseMetadata,
-    ) -> Result<Option<Url>> {
-        let id_token = match auth_request.response_type {
-            ResponseType::VpTokenIdToken => Some(
-                self.generate_id_token(auth_request, auth_response_metadata)
-                    .await?,
-            ),
-            _ => None,
-        };
-
-        let auth_resp = Self::create_auth_response(&presentations, id_token, auth_request).await?;
-
-        let redirect_url = self
-            .submit_response(
-                &auth_request.response_uri,
-                &auth_request.response_mode,
-                auth_resp,
-            )
+    ) -> Result<PresentationResult> {
+        let auth_resp = self
+            .create_auth_response(&presentations, auth_request, auth_response_metadata)
             .await?;
 
-        Ok(redirect_url)
+        if auth_request.response_mode == ResponseMode::DcApi
+            || auth_request.response_mode == ResponseMode::DcApiJwt
+        {
+            return Ok(PresentationResult::AuthorizationResponse(auth_resp.into()));
+        }
+        let response_uri = auth_request.response_uri.as_ref().ok_or_else(|| {
+            AuthorizationResponseSnafu {
+                details: format!(
+                    "response uri is missed, but its required for {} response mode",
+                    auth_request.response_mode
+                ),
+            }
+            .build()
+        })?;
+
+        let redirect_url = self
+            .submit_response(response_uri, &auth_request.response_mode, auth_resp)
+            .await?;
+
+        let result = if let Some(redirect_url) = redirect_url {
+            PresentationResult::RedirectUri(redirect_url)
+        } else {
+            PresentationResult::Presented
+        };
+
+        Ok(result)
     }
 
-    #[instrument(level = Level::TRACE, err(), ret())]
+    #[instrument(level = Level::TRACE, skip(self), err(), ret())]
     async fn create_auth_response(
+        &self,
         requested_presentations: &[RequestedPresentation],
-        id_token: Option<IdToken>,
         auth_request: &ResolvedAuthRequest,
+        auth_response_metadata: &AuthorizationResponseMetadata,
     ) -> Result<AuthorizationResponse> {
         let (vp_token, ps) = match auth_request.resolved_presentation_query.clone() {
             ResolvedPresentationQuery::DCQL(dcql) => {
@@ -149,8 +162,12 @@ where
                     dcql.credentials(),
                 )
                 .context(DCQLSnafu)?;
-                let vp_token =
-                    VpToken::try_from(vp_token_json).context(AuthorizationResponseSnafu)?;
+                let vp_token = VpToken::try_from(vp_token_json).map_err(|e| {
+                    AuthorizationResponseSnafu {
+                        details: e.to_string(),
+                    }
+                    .build()
+                })?;
                 (vp_token, None)
             }
             ResolvedPresentationQuery::PresentationDefinition(pd) => {
@@ -159,12 +176,20 @@ where
                     &pd,
                 )
                 .context(PresentationExchangeSnafu)?;
-                let vp_token =
-                    VpToken::try_from(pr.presentations).context(AuthorizationResponseSnafu)?;
+                let vp_token = VpToken::try_from(pr.presentations).map_err(|e| {
+                    AuthorizationResponseSnafu {
+                        details: e.to_string(),
+                    }
+                    .build()
+                })?;
                 let ps_json =
                     serde_json::to_value(pr.presentation_submission).context(JsonSnafu)?;
-                let ps = PresentationSubmission::try_from(ps_json)
-                    .context(AuthorizationResponseSnafu)?;
+                let ps = PresentationSubmission::try_from(ps_json).map_err(|e| {
+                    AuthorizationResponseSnafu {
+                        details: e.to_string(),
+                    }
+                    .build()
+                })?;
                 (vp_token, Some(ps))
             }
         };
@@ -172,8 +197,16 @@ where
         let transaction_data_response =
             Self::prepare_transaction_data_hashes(auth_request.transaction_data.to_owned())?;
 
+        let id_token = match auth_request.response_type {
+            ResponseType::VpTokenIdToken => Some(
+                self.generate_id_token(auth_request, auth_response_metadata)
+                    .await?,
+            ),
+            _ => None,
+        };
+
         match auth_request.response_mode.clone() {
-            ResponseMode::DirectPost | ResponseMode::Fragment => Ok(
+            ResponseMode::DirectPost | ResponseMode::Fragment | ResponseMode::DcApi => Ok(
                 AuthorizationResponse::Unencoded(UnencodedAuthorizationResponse {
                     vp_token: vp_token.clone(),
                     presentation_submission: ps.to_owned(),
@@ -182,7 +215,7 @@ where
                     transaction_data_response,
                 }),
             ),
-            ResponseMode::DirectPostJwt | ResponseMode::FragmentJwt => {
+            ResponseMode::DirectPostJwt | ResponseMode::FragmentJwt | ResponseMode::DcApiJwt => {
                 let metadata = auth_request.client_metadata.clone();
                 let encryptor = JweEncryptor::new(metadata);
                 let mut body = Map::new();
@@ -333,13 +366,13 @@ where
     async fn resolve_auth_resp_endpoint_and_mode(
         &self,
         request_uri: &Url,
-    ) -> Result<(Url, ResponseMode)> {
+    ) -> Result<(Option<Url>, ResponseMode)> {
         let auth_req =
             AuthorizationRequest::from_url(request_uri, &self.metadata.authorization_endpoint().0)?;
 
         let (url, mode) = match auth_req {
             AuthorizationRequest::Plain(aro) => {
-                (aro.return_uri().to_owned(), aro.response_mode().to_owned())
+                (aro.return_uri().cloned(), aro.response_mode().to_owned())
             }
             AuthorizationRequest::Signed(signed_req) => {
                 signed_req.resolve_response_uri_and_mode(self).await?
@@ -352,13 +385,27 @@ where
     #[instrument(level = Level::TRACE, skip(self), err(), ret())]
     async fn handle_auth_error_resp(
         &self,
-        response_uri: &Url,
+        response_uri: Option<&Url>,
         response_mode: &ResponseMode,
         mut error: ProtocolError,
     ) -> Result<ProtocolError> {
+        if response_mode == &ResponseMode::DcApi || response_mode == &ResponseMode::DcApiJwt {
+            return Ok(error);
+        }
+
         let encoded = serde_urlencoded::to_string(&error).map_err(|e| {
-            ParseSnafu {
+            AuthorizationResponseSnafu {
                 details: format!("could not serialize protocol error into form-urlencoded: {e}"),
+            }
+            .build()
+        })?;
+
+        let response_uri = response_uri.ok_or_else(|| {
+            AuthorizationResponseSnafu {
+                details: format!(
+                    "response uri is missed, but its required for {} response mode",
+                    response_mode
+                ),
             }
             .build()
         })?;
@@ -481,7 +528,11 @@ where
             auth_request.state.clone(),
         );
         let source = self
-            .handle_auth_error_resp(&auth_request.response_uri, &auth_request.response_mode, err)
+            .handle_auth_error_resp(
+                auth_request.response_uri.as_ref(),
+                &auth_request.response_mode,
+                err,
+            )
             .await?;
 
         Ok(source)
@@ -513,7 +564,7 @@ where
 
                         let err = self
                             .handle_auth_error_resp(
-                                &auth_request.response_uri,
+                                auth_request.response_uri.as_ref(),
                                 &auth_request.response_mode,
                                 body,
                             )
@@ -544,7 +595,7 @@ where
                         );
                         let err = self
                             .handle_auth_error_resp(
-                                &auth_request.response_uri,
+                                auth_request.response_uri.as_ref(),
                                 &auth_request.response_mode,
                                 body,
                             )
@@ -782,7 +833,7 @@ where
                     "authorization request validation is failed, handling an authorization error response..."
                 );
                 let source = self
-                    .handle_auth_error_resp(&response_uri, &response_mode, source)
+                    .handle_auth_error_resp(response_uri.as_ref(), &response_mode, source)
                     .await?;
 
                 return Err(Protocol { source });
@@ -818,7 +869,7 @@ where
             nonce: Nonce::from_secret(aro.nonce().as_str().to_owned()),
             response_type: aro.response_type().to_owned(),
             response_mode: aro.response_mode().to_owned(),
-            response_uri: aro.return_uri().to_owned(),
+            response_uri: aro.return_uri().cloned(),
             state: aro.state(),
             transaction_data: aro.get_transaction_data_items()?,
         })
@@ -829,7 +880,7 @@ where
         &self,
         auth_request: &ResolvedAuthRequest,
         auth_response_metadata: &AuthorizationResponseMetadata,
-    ) -> Result<Option<Url>> {
+    ) -> Result<PresentationResult> {
         info!("presenting verifiable presentation is started");
 
         self.validate_against_supported_vp_formats(auth_request)
@@ -852,13 +903,13 @@ where
             }
         };
 
-        let redirect_url = self
-            .submit_presentation(presentations, auth_request, auth_response_metadata)
+        let result = self
+            .process_auth_response(presentations, auth_request, auth_response_metadata)
             .await?;
 
         info!("verifiable presentations are successfully presented");
 
-        Ok(redirect_url)
+        Ok(result)
     }
 
     #[instrument(level = Level::TRACE, skip(self), err(), ret())]
@@ -936,7 +987,7 @@ where
         auth_request: &ResolvedAuthRequest,
         cred_map: &CredentialMapping,
         auth_response_metadata: &AuthorizationResponseMetadata,
-    ) -> Result<Option<Url>> {
+    ) -> Result<PresentationResult> {
         info!("presenting verifiable presentations is started");
 
         let presentation_inputs = match auth_request.clone().resolved_presentation_query {
@@ -955,13 +1006,13 @@ where
             .create_presentations_from_creds_map(cred_map, &presentation_inputs, auth_request)
             .await?;
 
-        let redirect_url = self
-            .submit_presentation(presentations, auth_request, auth_response_metadata)
+        let result = self
+            .process_auth_response(presentations, auth_request, auth_response_metadata)
             .await?;
 
         info!("verifiable presentations are successfully presented");
 
-        Ok(redirect_url)
+        Ok(result)
     }
 
     #[instrument(level = Level::TRACE, skip(self), err(), ret())]
@@ -977,7 +1028,11 @@ where
             auth_request.state.clone(),
         );
         let err = self
-            .handle_auth_error_resp(&auth_request.response_uri, &auth_request.response_mode, err)
+            .handle_auth_error_resp(
+                auth_request.response_uri.as_ref(),
+                &auth_request.response_mode,
+                err,
+            )
             .await?;
 
         Ok(err.redirect_uri().cloned())
@@ -1103,6 +1158,23 @@ where
     }
 }
 
+impl From<AuthorizationResponse> for api::AuthorizationResponse {
+    fn from(value: AuthorizationResponse) -> Self {
+        match value {
+            AuthorizationResponse::Unencoded(resp) => {
+                api::AuthorizationResponse::Plain(AuthorizationResponseObject {
+                    vp_token: resp.vp_token.into(),
+                    presentation_submission: resp.presentation_submission,
+                    id_token: resp.id_token.map(|id_token| id_token.jwt()),
+                    state: resp.state,
+                    transaction_data_response: resp.transaction_data_response,
+                })
+            }
+            AuthorizationResponse::Jwt(jwe) => api::AuthorizationResponse::Jwe(jwe.response),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::did::universal::UniversalResolver;
@@ -1131,16 +1203,19 @@ mod tests {
     };
     use crate::vc::oid4vp::tests::utils::{
         PresentationTestCase, build_url, holder_service, request_verifier, validate_claims,
+        wrap_p256_private_key,
     };
     use crate::vc::oid4vp::{
-        AuthorizationResponseMetadata, CredentialsFindResult, Error, FindVCsFailReason, Holder,
-        IdTokenMetadata, InternalError, ProtocolError, ResolvedPresentationQuery, ResponseType,
+        AuthorizationResponse, AuthorizationResponseMetadata, AuthorizationResponseObject,
+        CredentialsFindResult, Error, FindVCsFailReason, Holder, IdTokenMetadata, InternalError,
+        PresentationResult, ProtocolError, ResolvedPresentationQuery, ResponseType,
     };
     use crate::vc::presentation_exchange::ClaimFormatMap;
     use crate::vc::{ClaimFormatDesignation, Credential};
     use oauth2::HttpResponse;
     use oauth2::http::Method;
     use oauth2::reqwest::StatusCode;
+    use one_crypto::jwe::decrypt_jwe_payload;
     use openid4vp::core::authorization_request::AuthorizationRequestObject;
     use openid4vp::core::authorization_request::parameters::ResponseMode;
     use openid4vp::core::authorization_request::verification::RequestVerifier;
@@ -1321,6 +1396,72 @@ mod tests {
             .present_credentials_auto(&test_case.request, &test_case.response_metadata)
             .await
             .unwrap();
+    }
+
+    #[rstest]
+    #[case::plain_dc_api_mode(ResponseMode::DcApi)]
+    #[case::encrypted_dc_api_jwt_mode(ResponseMode::DcApiJwt)]
+    #[tokio::test]
+    async fn present_credential_auto_with_dc_api_success(#[case] response_mode: ResponseMode) {
+        let mut test_case =
+            single_presentation::sd_jwt::presentation_test_case_for_dcql_with_claim_sets();
+        test_case.request.response_mode = response_mode.clone();
+        test_case.request.response_uri = None;
+
+        let kms = LocalKms::new();
+        let vault = test_case.prepare_vault(&kms).await;
+        let holder = holder_service(MockHttpClient::new(), kms, vault).await;
+
+        let creds = holder
+            .find_vcs_for_presentation(&test_case.request)
+            .await
+            .unwrap();
+
+        let mut cred_mapping = HashMap::new();
+        for (id, cred_result) in creds {
+            let CredentialsFindResult::Credentials(cred_entries) = cred_result else {
+                panic!("Expected credentials");
+            };
+            cred_mapping.insert(id, cred_entries);
+        }
+
+        let result = holder
+            .present_credentials(
+                &test_case.request,
+                &cred_mapping,
+                &AuthorizationResponseMetadata::default(),
+            )
+            .await
+            .unwrap();
+
+        match result {
+            PresentationResult::AuthorizationResponse(auth_response) => {
+                let vp_token = match auth_response {
+                    AuthorizationResponse::Plain(plain_resp) => {
+                        assert_eq!(response_mode, ResponseMode::DcApi);
+                        plain_resp.vp_token
+                    }
+                    AuthorizationResponse::Jwe(jwe) => {
+                        assert_eq!(response_mode, ResponseMode::DcApiJwt);
+                        let jwk = test_case.get_private_enc_key();
+                        let kh = wrap_p256_private_key(&jwk);
+                        let payload = decrypt_jwe_payload(&jwe, &kh).await.unwrap();
+                        let resp: AuthorizationResponseObject =
+                            serde_json::from_slice(payload.as_slice()).unwrap();
+
+                        resp.vp_token
+                    }
+                };
+
+                let Value::Array(presentation) = vp_token.get("pid").unwrap() else {
+                    panic!("Presentation is not an array");
+                };
+                assert_eq!(presentation.len(), 1);
+            }
+            _ => {
+                panic!("Expected DcApi presentation result, got {:?}", result);
+            }
+        }
     }
 
     #[tokio::test]

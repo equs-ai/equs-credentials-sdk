@@ -541,47 +541,32 @@ where
         >,
         auth_request_metadata: &AuthorizationRequestMetadata,
     ) -> Result<(Url, Option<String>)> {
-        let auth_req_type = match (
-            auth_request_metadata.pass_auth_request_object.to_owned(),
-            &auth_request_metadata.auth_response_options.mode,
-        ) {
-            (
-                PassAuthRequestObject::ByValue,
-                ResponseMode::FragmentJwt | ResponseMode::Fragment,
-            ) => RequestType::Plain,
-            (
-                PassAuthRequestObject::ByValue,
-                ResponseMode::DirectPost | ResponseMode::DirectPostJwt,
-            ) => RequestType::SignedJwt(ByReference::False),
-            (
-                PassAuthRequestObject::ByReference { uri, method },
-                ResponseMode::DirectPost | ResponseMode::DirectPostJwt,
-            ) => RequestType::SignedJwt(ByReference::True(RequestReference {
-                request_uri: uri,
-                request_uri_method: method,
-            })),
-            (_, mode) => {
-                return Err(Protocol {
-                    source: ProtocolError::invalid_request(
-                        &format!(
-                            "passing authorization request object by value or url is not supported in '{mode}' response mode"
-                        ),
-                        auth_request_metadata.auth_response_options.state.clone(),
-                    ),
-                });
+        let auth_req_type = match auth_request_metadata.pass_auth_request_object.to_owned() {
+            PassAuthRequestObject::ByValue => {
+                let response_mode = &auth_request_metadata.auth_response_options.mode;
+                if response_mode == &ResponseMode::FragmentJwt
+                    || response_mode == &ResponseMode::Fragment
+                {
+                    RequestType::Plain
+                } else {
+                    RequestType::SignedJwt(ByReference::False)
+                }
+            }
+            PassAuthRequestObject::ByReference { uri, method } => {
+                RequestType::SignedJwt(ByReference::True(RequestReference {
+                    request_uri: uri,
+                    request_uri_method: method,
+                }))
             }
         };
+        let verifier_builder =
+            if let Some(uri) = &auth_request_metadata.auth_response_options.submission_uri {
+                verifier_builder.with_submission_endpoint(uri.to_owned())
+            } else {
+                verifier_builder
+            };
 
-        let verifier = verifier_builder
-            .with_submission_endpoint(
-                auth_request_metadata
-                    .auth_response_options
-                    .submission_uri
-                    .to_owned(),
-            )
-            .build()
-            .await
-            .context(Oid4VpLibSnafu)?;
+        let verifier = verifier_builder.build().await.context(Oid4VpLibSnafu)?;
 
         let request_builder = verifier.build_authorization_request();
 
@@ -595,16 +580,6 @@ where
             _ => request_builder.with_request_parameter(
                 auth_request_metadata.auth_response_options.type_.to_owned(),
             ),
-        };
-
-        let pass_req_obj = match auth_request_metadata.pass_auth_request_object.to_owned() {
-            PassAuthRequestObject::ByValue => ByReference::False,
-            PassAuthRequestObject::ByReference { uri, method } => {
-                ByReference::True(RequestReference {
-                    request_uri: uri,
-                    request_uri_method: method,
-                })
-            }
         };
 
         let mut request_builder = match &auth_request_metadata.auth_response_options.state {
@@ -627,6 +602,11 @@ where
             }
             request_builder = request_builder.with_request_parameter(TransactionData(td_items));
         }
+
+        request_builder = match &auth_request_metadata.expected_origins {
+            Some(origins) => request_builder.with_request_parameter(origins.to_owned()),
+            _ => request_builder,
+        };
 
         let (auth_request_url, auth_req_jwt) = request_builder
             .with_request_parameter(auth_request_metadata.auth_response_options.mode.to_owned())
@@ -787,7 +767,7 @@ mod tests {
         verifier_service, verifier_service_with_invalid_kid, verifier_service_with_signer_error,
     };
     use crate::vc::oid4vp::verifier::VP_TOKEN;
-    use crate::vc::oid4vp::{HttpMethodForAuth, InternalError};
+    use crate::vc::oid4vp::{ExpectedOrigins, HttpMethodForAuth, InternalError};
     use crate::vc::oid4vp::{PassAuthRequestObject, PresentationSession, ResponseType, Verifier};
     use crate::vc::presentation_exchange::PresentationDefinition;
     use base64::Engine;
@@ -825,6 +805,7 @@ mod tests {
                         uri: request_uri.clone(),
                         method: Some(HttpMethodForAuth::POST),
                     },
+                    expected_origins: None,
                 },
                 None,
             )
@@ -839,6 +820,50 @@ mod tests {
         assert_eq!(
             hash_query.get("request_uri_method").unwrap(),
             request_uri_method
+        );
+    }
+
+    #[rstest]
+    #[case::plain_dc_api_response_mode(ResponseMode::DcApi)]
+    #[case::encrypted_dc_api_jwt_response_mode(ResponseMode::DcApiJwt)]
+    #[tokio::test]
+    async fn generate_signed_auth_request_with_dc_api_response_mode_success(
+        #[case] response_mode: ResponseMode,
+    ) {
+        let request_uri = build_url(VERIFIER_URL, "request");
+
+        let (verifier, did) = verifier_service().await;
+        let mut auth_response_options =
+            auth_response_options(build_url(VERIFIER_URL, "auth"), None);
+        auth_response_options.mode = response_mode;
+
+        let expected_origins = vec![Url::parse("https://example.verifier.org").unwrap().origin()];
+
+        let (url, session) = verifier
+            .create_authorization_request(
+                &ResolvedPresentationQuery::DCQL(DCQL::new(sample_dcql())),
+                &AuthorizationRequestMetadata {
+                    transaction_data: None,
+                    auth_response_options,
+                    pass_auth_request_object: PassAuthRequestObject::ByValue,
+                    expected_origins: Some(ExpectedOrigins::new(
+                        expected_origins.clone().try_into().unwrap(),
+                    )),
+                },
+                None,
+            )
+            .await
+            .unwrap();
+
+        let request: AuthorizationRequestObject =
+            decode_unverified::<UntypedObject>(session.auth_request_jwt.unwrap().as_str())
+                .unwrap()
+                .try_into()
+                .unwrap();
+
+        assert_eq!(
+            request.expected_origins().unwrap().origins().to_vec(),
+            expected_origins
         );
     }
 
@@ -860,6 +885,7 @@ mod tests {
                         uri: request_uri,
                         method: None,
                     },
+                    expected_origins: None,
                 },
                 None,
             )
@@ -891,6 +917,7 @@ mod tests {
                         uri: request_uri,
                         method: None,
                     },
+                    expected_origins: None,
                 },
                 None,
             )
@@ -922,6 +949,7 @@ mod tests {
                     transaction_data: Some(transaction_data.to_owned()),
                     auth_response_options,
                     pass_auth_request_object: PassAuthRequestObject::ByValue,
+                    expected_origins: None,
                 },
                 None,
             )
@@ -987,7 +1015,7 @@ mod tests {
             .unwrap()
         );
         assert_eq!(request.client_id().get_id(), did);
-        assert_eq!(request.return_uri(), &response_uri);
+        assert_eq!(request.return_uri(), Some(&response_uri));
     }
 
     #[tokio::test]
@@ -1007,6 +1035,7 @@ mod tests {
                     transaction_data: None,
                     auth_response_options,
                     pass_auth_request_object: PassAuthRequestObject::ByValue,
+                    expected_origins: None,
                 },
                 None,
             )
@@ -1045,6 +1074,7 @@ mod tests {
                     transaction_data: None,
                     auth_response_options,
                     pass_auth_request_object: PassAuthRequestObject::ByValue,
+                    expected_origins: None,
                 },
                 None,
             )
@@ -1082,7 +1112,7 @@ mod tests {
             .unwrap()
         );
         assert_eq!(request.client_id().get_id(), did);
-        assert_eq!(request.return_uri(), &response_uri);
+        assert_eq!(request.return_uri(), Some(&response_uri));
         assert_eq!(
             request.get::<Scope>().unwrap().unwrap(),
             Scope("openid".to_string())
@@ -1118,6 +1148,7 @@ mod tests {
                         uri: request_uri,
                         method: None,
                     },
+                    expected_origins: None,
                 },
                 None,
             )
@@ -1153,6 +1184,7 @@ mod tests {
                         uri: request_uri,
                         method: None,
                     },
+                    expected_origins: None,
                 },
                 None,
             )
@@ -1673,5 +1705,13 @@ mod tests {
             )
             .add_claim_set(NonEmptyVec::new("some_claim_id".to_string())),
         )
+    }
+
+    fn sample_dcql() -> NonEmptyVec<DcqlCredential> {
+        NonEmptyVec::new(DCQLCredential::new(
+            ID::new("some_id".to_string()).unwrap(),
+            ClaimFormatDesignation::SdJwtVc,
+            DcqlMeta::new().set_vct_values(NonEmptyVec::new("some_vct_value".to_string())),
+        ))
     }
 }

@@ -1,13 +1,13 @@
 use crate::error::IntoNapiError;
 use crate::utils::{from_json_object, parse_url_arg, to_json_object};
 use crate::vc::JsonObject;
+use crate::vc::oid4vp::JsInnerAuthorizationResponse;
+use agent_sdk::vc::dcql::NonEmptyVec;
 use agent_sdk::vc::oid4vp::{
-    AuthResponseOptions, AuthorizationRequestMetadata, AuthorizationResponse,
-    AuthorizationResponseObject, CredentialVerificationMetadata, HashAlgorithm, HttpMethodForAuth,
-    PassAuthRequestObject, PresentationSession as RustPresentationSession, TransactionDataHashes,
-    TransactionDataHashesAlg, TransactionDataResponse, Verifier, WalletMetadata,
+    AuthResponseOptions, AuthorizationRequestMetadata, CredentialVerificationMetadata,
+    ExpectedOrigins, HttpMethodForAuth, PassAuthRequestObject,
+    PresentationSession as RustPresentationSession, Verifier, WalletMetadata,
 };
-use agent_sdk::vc::presentation_exchange::PresentationSubmission;
 use napi::{Error, Result};
 use napi_derive::napi;
 use url::Url;
@@ -100,7 +100,7 @@ impl InternalOID4VPVerifier {
 pub struct JsAuthResponseOptions {
     pub type_: String,
     pub mode: String,
-    pub submission_uri: String,
+    pub submission_uri: Option<String>,
     pub state: Option<String>,
 }
 
@@ -111,8 +111,10 @@ impl TryFrom<JsAuthResponseOptions> for AuthResponseOptions {
         Ok(Self {
             type_: value.type_.into(),
             mode: value.mode.into(),
-            submission_uri: Url::parse(&value.submission_uri)
-                .map_err(|e| Error::from_reason(e.to_string()))?,
+            submission_uri: value
+                .submission_uri
+                .map(|uri| Url::parse(&uri).map_err(|e| Error::from_reason(e.to_string())))
+                .transpose()?,
             state: value.state,
         })
     }
@@ -150,39 +152,13 @@ impl TryFrom<JsPassAuthRequestObject> for PassAuthRequestObject {
 }
 
 #[derive(Clone)]
-#[napi(js_name = "TransactionDataResponse", object)]
-pub struct JsTransactionDataResponse {
-    pub hashes: Vec<String>,
-    pub alg: Option<String>,
-}
-
-impl TryFrom<JsTransactionDataResponse> for TransactionDataResponse {
-    type Error = Error;
-    fn try_from(value: JsTransactionDataResponse) -> Result<Self> {
-        let transaction_data_hashes = TransactionDataHashes(value.hashes);
-        let transaction_data_hashes_alg = match value.alg {
-            None => None,
-            Some(a) => {
-                let hash_alg: HashAlgorithm = a
-                    .try_into()
-                    .map_err(|_| Error::from_reason("Unsupported Hash algorithm".to_string()))?;
-                Some(TransactionDataHashesAlg(hash_alg))
-            }
-        };
-        Ok(Self {
-            transaction_data_hashes,
-            transaction_data_hashes_alg,
-        })
-    }
-}
-
-#[derive(Clone)]
 #[napi(js_name = "AuthorizationRequestMetadata", object)]
 pub struct JsAuthorizationRequestMetadata {
     pub auth_response_options: JsAuthResponseOptions,
     pub pass_auth_request_object: JsPassAuthRequestObject,
     #[napi(ts_type = "Array<TransactionDataItem> | null | undefined")]
     pub transaction_data: Option<Vec<JsonObject>>,
+    pub expected_origins: Option<Vec<String>>,
 }
 
 impl TryFrom<JsAuthorizationRequestMetadata> for AuthorizationRequestMetadata {
@@ -197,10 +173,26 @@ impl TryFrom<JsAuthorizationRequestMetadata> for AuthorizationRequestMetadata {
         } else {
             None
         };
+
+        let expected_origins = if let Some(origins) = value.expected_origins {
+            let mut origin_urls = Vec::new();
+            for origin in origins {
+                origin_urls.push(
+                    Url::parse(&origin)
+                        .map(|u| u.origin())
+                        .map_err(|e| Error::from_reason(e.to_string()))?,
+                );
+            }
+            NonEmptyVec::maybe_new(origin_urls).map(ExpectedOrigins::new)
+        } else {
+            None
+        };
+
         Ok(Self {
             auth_response_options: value.auth_response_options.try_into()?,
             pass_auth_request_object: value.pass_auth_request_object.try_into()?,
             transaction_data,
+            expected_origins,
         })
     }
 }
@@ -272,87 +264,6 @@ pub struct AuthorizationRequestWithSession {
     pub authorization_request_uri: String,
     pub authorization_request_jwt: Option<String>,
     pub session: JsPresentationSession,
-}
-
-/// An OID4VP authorization response.
-/// It can be either plain object as below or the Jwe response string of the fields below
-/// @property {any} vpToken - VP Token containing the Verifiable Presentation(s).
-/// @property {string | null} [idToken] - The OpenID Connect ID token used in the SIOP flow.
-/// @property {PresentationSubmission} presentationSubmission - Details of the submitted presentation.
-/// @property {string | null} [state] - The state may be used by a verifier to link requests and responses.
-#[napi(js_name = "AuthorizationResponseType")]
-pub enum JsAuthorizationResponseType {
-    Plain,
-    Jwe,
-}
-
-#[napi(js_name = "InnerAuthorizationResponse", object)]
-pub struct JsInnerAuthorizationResponse {
-    pub type_: JsAuthorizationResponseType,
-    pub object: Option<JsAuthorizationResponseObject>,
-    pub jwe: Option<String>,
-}
-
-impl TryFrom<JsInnerAuthorizationResponse> for AuthorizationResponse {
-    type Error = Error;
-
-    fn try_from(value: JsInnerAuthorizationResponse) -> std::result::Result<Self, Self::Error> {
-        match value.type_ {
-            JsAuthorizationResponseType::Plain => {
-                let object = value.object.ok_or(Error::from_reason(
-                    "AuthorizationResponseObject was expected but none",
-                ))?;
-                Ok(AuthorizationResponse::Plain(object.try_into()?))
-            }
-            JsAuthorizationResponseType::Jwe => {
-                let jwe = value.jwe.ok_or(Error::from_reason(
-                    "AuthorizationResponse Jwe was expected but none",
-                ))?;
-                Ok(AuthorizationResponse::Jwe(jwe))
-            }
-        }
-    }
-}
-
-/// An OID4VP authorization response object.
-///
-/// @property {any} vpToken - VP Token containing the Verifiable Presentation(s).
-/// @property {string | null} [idToken] - The OpenID Connect ID token used in the SIOP flow.
-/// @property {PresentationSubmission} presentationSubmission - Details of the submitted presentation.
-/// @property {string | null} [state] - The state may be used by a verifier to link requests and responses.
-#[napi(js_name = "AuthorizationResponseObject", object)]
-pub struct JsAuthorizationResponseObject {
-    pub vp_token: serde_json::Value,
-    pub id_token: Option<String>,
-    #[napi(ts_type = "PresentationSubmission")]
-    pub presentation_submission: Option<JsonObject>,
-    pub state: Option<String>,
-    pub transaction_data_response: Option<JsTransactionDataResponse>,
-}
-
-impl TryFrom<JsAuthorizationResponseObject> for AuthorizationResponseObject {
-    type Error = Error;
-
-    fn try_from(value: JsAuthorizationResponseObject) -> Result<Self> {
-        let ps: Option<PresentationSubmission> = value
-            .presentation_submission
-            .map(from_json_object)
-            .transpose()?;
-        let transaction_data_response = match value.transaction_data_response {
-            None => None,
-            Some(tdr) => {
-                let t = tdr.try_into()?;
-                Some(t)
-            }
-        };
-        Ok(Self {
-            vp_token: value.vp_token,
-            id_token: value.id_token,
-            presentation_submission: ps,
-            state: value.state,
-            transaction_data_response,
-        })
-    }
 }
 
 #[napi(js_name = "HttpMethodForAuth")]

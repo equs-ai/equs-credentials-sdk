@@ -1,17 +1,45 @@
-use agent_sdk::vc::oid4vp::{ClientId, ResolvedAuthRequest};
-use std::collections::HashMap;
-
 use crate::common::Result;
 use crate::common::{Duration, Error, JsonValue};
 use crate::crypto::KeyMetadata;
 use crate::utils::parse_url_arg;
-
+use agent_sdk::vc::oid4vp::{
+    AuthorizationResponse as AsdkAuthorizationResponse,
+    AuthorizationResponseObject as AsdkAuthorizationResponseObject,
+    PresentationResult as AsdkPresentationResult,
+};
+use agent_sdk::vc::oid4vp::{ClientId, ResolvedAuthRequest};
+use std::collections::HashMap;
 mod builder;
 pub mod holder;
 
 pub type CoreTransactionDataItem = agent_sdk::vc::oid4vp::TransactionDataItem;
 pub type IdTokenMetadata = agent_sdk::vc::oid4vp::IdTokenMetadata;
 pub type AuthorizationResponseMetadata = agent_sdk::vc::oid4vp::AuthorizationResponseMetadata;
+
+#[derive(uniffi::Enum)]
+#[allow(clippy::large_enum_variant)]
+pub enum AuthorizationResponse {
+    Plain(AuthorizationResponseObject),
+    Jwe(String),
+}
+
+#[derive(uniffi::Record)]
+pub struct AuthorizationResponseObject {
+    pub vp_token: JsonValue,
+    pub presentation_submission: Option<JsonValue>,
+    pub id_token: Option<String>,
+    pub state: Option<String>,
+    pub transaction_data_hashes: Option<Vec<String>>,
+    pub transaction_data_hashes_alg: Option<String>,
+}
+
+#[derive(uniffi::Enum)]
+#[allow(clippy::large_enum_variant)]
+pub enum PresentationResult {
+    AuthResponse(AuthorizationResponse),
+    RedirectUri(String),
+    Presented,
+}
 
 #[uniffi::remote(Record)]
 pub struct IdTokenMetadata {
@@ -76,7 +104,7 @@ pub struct AuthorizationRequest {
     pub nonce: String,
     pub response_type: String,
     pub response_mode: String,
-    pub response_uri: String,
+    pub response_uri: Option<String>,
     pub state: Option<String>,
     pub transaction_data: Option<Vec<TransactionDataItem>>,
 }
@@ -111,8 +139,10 @@ impl TryFrom<AuthorizationRequest> for ResolvedAuthRequest {
                 .map_err(|e| Error::OID4VPHolder(format!("{e:?}")))?,
             response_type: value.response_type.into(),
             response_mode: value.response_mode.into(),
-            response_uri: parse_url_arg(&value.response_uri)
-                .map_err(|e| Error::OID4VPHolder(e.to_string()))?,
+            response_uri: value
+                .response_uri
+                .map(|uri| parse_url_arg(&uri).map_err(|e| Error::OID4VPHolder(e.to_string())))
+                .transpose()?,
             state: value.state,
             transaction_data,
         })
@@ -132,7 +162,7 @@ impl TryFrom<ResolvedAuthRequest> for AuthorizationRequest {
             nonce: value.nonce.secret().to_string(),
             response_type: value.response_type.into(),
             response_mode: value.response_mode.into(),
-            response_uri: value.response_uri.to_string(),
+            response_uri: value.response_uri.map(|uri| uri.to_string()),
             state: value.state,
             transaction_data: value.transaction_data.map(|items| {
                 items
@@ -141,5 +171,50 @@ impl TryFrom<ResolvedAuthRequest> for AuthorizationRequest {
                     .collect::<Vec<_>>()
             }),
         })
+    }
+}
+
+impl From<AsdkPresentationResult> for PresentationResult {
+    fn from(value: AsdkPresentationResult) -> Self {
+        match value {
+            AsdkPresentationResult::AuthorizationResponse(auth_response) => match auth_response {
+                AsdkAuthorizationResponse::Plain(auth_response) => {
+                    PresentationResult::AuthResponse(AuthorizationResponse::Plain(
+                        auth_response.into(),
+                    ))
+                }
+                AsdkAuthorizationResponse::Jwe(jwe) => {
+                    PresentationResult::AuthResponse(AuthorizationResponse::Jwe(jwe))
+                }
+            },
+            AsdkPresentationResult::RedirectUri(uri) => {
+                PresentationResult::RedirectUri(uri.to_string())
+            }
+            AsdkPresentationResult::Presented => PresentationResult::Presented,
+        }
+    }
+}
+
+impl From<AsdkAuthorizationResponseObject> for AuthorizationResponseObject {
+    fn from(value: AsdkAuthorizationResponseObject) -> Self {
+        let (transaction_data_hashes, transaction_data_hashes_alg) = value
+            .transaction_data_response
+            .map(|t| {
+                (
+                    Some(t.transaction_data_hashes.0),
+                    t.transaction_data_hashes_alg
+                        .map(|v| JsonValue::from(v).to_string()),
+                )
+            })
+            .unwrap_or((None, None));
+
+        AuthorizationResponseObject {
+            vp_token: value.vp_token,
+            presentation_submission: value.presentation_submission.map(|v| v.into()),
+            id_token: value.id_token,
+            state: value.state,
+            transaction_data_hashes,
+            transaction_data_hashes_alg,
+        }
     }
 }
