@@ -67,6 +67,7 @@ See [Components](docs/asdk-components.png).
         - Digital Credentials Query Language (DCQL)
         - OID4VP
             - Response Mode "direct_post.jwt"
+            - Response Mode "dc_api"
             - Transaction Data
             - Holder Binding
     - WACI Present Proof Protocol
