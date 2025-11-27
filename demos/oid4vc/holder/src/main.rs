@@ -31,20 +31,18 @@ use agent_sdk::vc::{Credential, oid4vci, oid4vp};
 use oauth2::{AccessToken, TokenResponse as _TokenResponse};
 use reqwest::Url;
 use serde_json::json;
+use shared::vp::PresentationQueryType;
 use std::collections::HashMap;
 use std::io;
 use time::Duration;
-use uuid::Uuid;
-
 #[cfg(not(feature = "noninteractive"))]
 use user_input::cli::*;
+use uuid::Uuid;
 
 #[cfg(feature = "noninteractive")]
 use user_input::auto::*;
 
-use crate::user_input::{
-    CredentialSelectionMode, IssuerDiscoveryMode, PresentationFlow, ResolvedPresentationQueryType,
-};
+use crate::user_input::{CredentialSelectionMode, IssuerDiscoveryMode, PresentationFlow};
 
 const CRED_DEF_ID_1: &str = "SD_JWT_cred_1";
 const JSON_LD_V1_CRED_DEF_ID: &str = "JSON_LDP_cred_2";
@@ -230,11 +228,11 @@ async fn cross_device_presentation_flow(holder: impl HolderVp, kms: LocalKms) {
 async fn same_device_presentation_flow(holder: impl HolderVp, kms: LocalKms) {
     let query_type = ask_presentation_flow_query_type().await;
     let cp = match query_type {
-        ResolvedPresentationQueryType::Dcql => {
+        PresentationQueryType::DCQL => {
             println!("Using DCQL flow ...");
             ResolvedPresentationQuery::DCQL(default_dcql_query())
         }
-        ResolvedPresentationQueryType::PresentationDefinition => {
+        PresentationQueryType::PresentationDefinition => {
             println!("Using PresentationDefinition flow ...");
             ResolvedPresentationQuery::PresentationDefinition(default_presentation_definition())
         }

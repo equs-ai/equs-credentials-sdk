@@ -44,23 +44,68 @@ echo "Verifier started (PID: $verifier_pid)"
 
 # Run demos
 
-presentation_flow_types=(
-  "SAME_DEVICE"
-  "CROSS_DEVICE"
-)
+# Same device flow
 
 presentation_query_types=(
   "DCQL"
   "DEFINITION"
 )
 
-for presentation_flow in "${presentation_flow_types[@]}"
+presentation_response_types=(
+  "VP_TOKEN_ID_TOKEN"
+  "VP_TOKEN"
+)
+
+presentation_response_modes=(
+  "FRAGMENT"
+  "FRAGMENT_JWT"
+)
+
+for presentation_query_type in "${presentation_query_types[@]}"
 do
-  for presentation_query in "${presentation_query_types[@]}"
+  for presentation_response_type in "${presentation_response_types[@]}"
   do
-    PRESENTATION_FLOW="$presentation_flow" \
-    PRESENTATION_QUERY="$presentation_query" \
-    cargo run --manifest-path ./holder/Cargo.toml -F noninteractive \
-      || { echo "Holder failed!"; exit 1; }
+    for presentation_response_mode in "${presentation_response_modes[@]}"
+    do
+      echo Running flow: "SAME_DEVICE"\; \
+        presentation query: "${presentation_query_type}"\; \
+        presentation response type: "${presentation_response_type}"\; \
+        presentation response mode: "${presentation_response_mode}"
+
+      PRESENTATION_FLOW="SAME_DEVICE" \
+      PRESENTATION_QUERY="$presentation_query_type" \
+      PRESENTATION_RESPONSE_TYPE="$presentation_response_type" \
+      PRESENTATION_RESPONSE_MODE="$presentation_response_mode" \
+      cargo run --manifest-path ./holder/Cargo.toml -F noninteractive \
+        || { echo "Holder failed!"; exit 1; }
+    done
+  done
+done
+
+# Cross device flow
+
+presentation_response_modes=(
+  "DIRECT_POST"
+  "DIRECT_POST_JWT"
+)
+
+for presentation_query_type in "${presentation_query_types[@]}"
+do
+  for presentation_response_type in "${presentation_response_types[@]}"
+  do
+    for presentation_response_mode in "${presentation_response_modes[@]}"
+    do
+      echo Running flow: "CROSS_DEVICE"\; \
+        presentation query: "${presentation_query_type}"\; \
+        presentation response type: "${presentation_response_type}"\; \
+        presentation response mode: "${presentation_response_mode}"
+
+      PRESENTATION_FLOW="CROSS_DEVICE" \
+      PRESENTATION_QUERY="$presentation_query_type" \
+      PRESENTATION_RESPONSE_TYPE="$presentation_response_type" \
+      PRESENTATION_RESPONSE_MODE="$presentation_response_mode" \
+      cargo run --manifest-path ./holder/Cargo.toml -F noninteractive \
+        || { echo "Holder failed!"; exit 1; }
+    done
   done
 done

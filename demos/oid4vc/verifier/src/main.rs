@@ -14,9 +14,10 @@ use agent_sdk::did::universal::UniversalResolver;
 use agent_sdk::inmem::nonce::LocalNonceHandler;
 use agent_sdk::vc::dcql::{DCQLCredential, NonEmptyVec, DCQL};
 use agent_sdk::vc::oid4vp::{
-    AuthResponseOptions, AuthorizationRequestMetadata, AuthorizationResponse, ClientMetadata,
-    CredentialVerificationMetadata, HashAlgorithm, PassAuthRequestObject, PresentationSession,
-    ResolvedPresentationQuery, ResponseMode, ResponseType, TransactionDataItem,
+    AuthResponseOptions, AuthorizationRequestMetadata, AuthorizationResponse,
+    AuthorizationResponseObject, ClientMetadata, CredentialVerificationMetadata, HashAlgorithm,
+    PassAuthRequestObject, PresentationSession, ResolvedPresentationQuery, TransactionDataItem,
+    TransactionDataResponse,
 };
 use agent_sdk::vc::presentation_exchange::{
     ClaimFormatMap, ClaimFormatPayload, Constraints, ConstraintsField, InputDescriptor,
@@ -25,17 +26,24 @@ use agent_sdk::vc::presentation_exchange::{
 use agent_sdk::vc::{oid4vp, ClaimFormatDesignation, JsonPath};
 use reqwest::Url;
 use serde_json::{json, Value};
+use shared::vp::{AuthRequestQuery, PresentationQueryType};
 use std::collections::HashMap;
+use std::env;
+use std::env::VarError;
+use std::fs::File;
 use std::str::FromStr;
 use std::sync::Arc;
 use uuid::Uuid;
 
 const SERVER_URL: &str = "http://localhost:8098";
 const AUTH_REQUEST_URL_PATH: &str = "/request_uri";
-const AUTH_REQUEST_URL_PATH_FOR_DCQL: &str = "/request_uri/dcql";
 const AUTH_REQUEST_OBJECT_URL_PATH: &str = "/request";
 const AUTH_REQUEST_OBJECT_URL_PATH_DCQL: &str = "/request/dcql";
 const AUTH_RESPONSE_URL_PATH: &str = "/present";
+
+const TRANSACTION_DATA_DCQL_PATH_ENV_VAR: &str = "TRANSACTION_DATA_DCQL_PATH";
+const TRANSACTION_DATA_PD_PATH_ENV_VAR: &str = "TRANSACTION_DATA_PD_PATH";
+
 struct AppState {
     verifier: Arc<dyn oid4vp::Verifier>,
     auth_req_obj_storage: InMemStorage<String, Option<String>>,
@@ -55,14 +63,7 @@ async fn main() -> std::io::Result<()> {
     });
     HttpServer::new(move || {
         App::new()
-            .route(
-                AUTH_REQUEST_URL_PATH,
-                web::get().to(presentation_request_uri),
-            )
-            .route(
-                AUTH_REQUEST_URL_PATH_FOR_DCQL,
-                web::get().to(dcql_request_uri),
-            )
+            .route(AUTH_REQUEST_URL_PATH, web::get().to(request_uri))
             .route(
                 AUTH_REQUEST_OBJECT_URL_PATH,
                 web::get().to(presentation_request_object),
@@ -82,6 +83,88 @@ async fn main() -> std::io::Result<()> {
     .await
 }
 
+async fn request_uri(
+    state: web::Data<AppState>,
+    query: web::Query<AuthRequestQuery>,
+) -> HttpResponse {
+    let response_uri =
+        Url::parse(format!("{}{}", SERVER_URL, AUTH_RESPONSE_URL_PATH).as_str()).unwrap();
+    let request_uri =
+        Url::parse(format!("{}{}", SERVER_URL, AUTH_REQUEST_OBJECT_URL_PATH).as_str()).unwrap();
+
+    let auth_response_options = AuthResponseOptions {
+        type_: query.response_type.clone(),
+        mode: query.response_mode.clone(),
+        submission_uri: Some(response_uri),
+        state: None,
+    };
+    let pass_auth_request_object = PassAuthRequestObject::ByReference {
+        uri: request_uri.clone(),
+        method: None,
+    };
+    let transaction_data = match query.query_type {
+        PresentationQueryType::DCQL => {
+            get_provided_transaction_data(TRANSACTION_DATA_DCQL_PATH_ENV_VAR)
+                .unwrap_or(default_transaction_data_for_dcql())
+        }
+        PresentationQueryType::PresentationDefinition => {
+            get_provided_transaction_data(TRANSACTION_DATA_PD_PATH_ENV_VAR)
+                .unwrap_or(default_transaction_data_for_pd())
+        }
+    };
+
+    println!(
+        "Transaction data:\n{}",
+        serde_json::to_string_pretty(&transaction_data).unwrap()
+    );
+
+    state
+        .transaction_data_storage
+        .put("td".to_string(), transaction_data.clone())
+        .await
+        .unwrap();
+
+    let request_query = match query.query_type {
+        PresentationQueryType::DCQL => ResolvedPresentationQuery::DCQL(default_dcql_query()),
+        PresentationQueryType::PresentationDefinition => {
+            ResolvedPresentationQuery::PresentationDefinition(default_presentation_definition())
+        }
+    };
+
+    let (auth_req, session) = state
+        .verifier
+        .create_authorization_request(
+            &request_query,
+            &AuthorizationRequestMetadata {
+                transaction_data: Some(transaction_data),
+                pass_auth_request_object,
+                auth_response_options,
+                expected_origins: None,
+            },
+            None,
+        )
+        .await
+        .unwrap();
+
+    state
+        .auth_req_obj_storage
+        .put(request_uri.to_string(), session.auth_request_jwt.to_owned())
+        .await
+        .unwrap();
+
+    state
+        .presentation_session_storage
+        .put("session".to_string(), session.clone())
+        .await
+        .unwrap();
+
+    println!("Chosen presentation flow is: {}", query.query_type);
+
+    HttpResponse::Ok()
+        .content_type("text/plain")
+        .body(auth_req.to_string())
+}
+
 async fn presentation_request_object(req: HttpRequest, state: web::Data<AppState>) -> HttpResponse {
     let auth_req_object = state
         .auth_req_obj_storage
@@ -96,130 +179,6 @@ async fn presentation_request_object(req: HttpRequest, state: web::Data<AppState
         .body(auth_req_object)
 }
 
-async fn presentation_request_uri(state: web::Data<AppState>) -> HttpResponse {
-    let response_uri =
-        Url::parse(format!("{}{}", SERVER_URL, AUTH_RESPONSE_URL_PATH).as_str()).unwrap();
-    let request_uri =
-        Url::parse(format!("{}{}", SERVER_URL, AUTH_REQUEST_OBJECT_URL_PATH).as_str()).unwrap();
-
-    let auth_response_options = AuthResponseOptions {
-        type_: ResponseType::VpTokenIdToken,
-        mode: ResponseMode::DirectPostJwt,
-        submission_uri: Some(response_uri),
-        state: None,
-    };
-
-    let pass_auth_request_object = PassAuthRequestObject::ByReference {
-        uri: request_uri.clone(),
-        method: None,
-    };
-
-    let transaction_data = default_transaction_data_for_pd();
-    println!("Presentation definition -> Authorization Request -> transaction data: ");
-    println!(
-        "{}",
-        serde_json::to_string_pretty(&transaction_data).unwrap()
-    );
-    state
-        .transaction_data_storage
-        .put("td".to_string(), transaction_data.clone())
-        .await
-        .unwrap();
-    let (auth_req, session) = state
-        .verifier
-        .create_authorization_request(
-            &ResolvedPresentationQuery::PresentationDefinition(default_presentation_definition()),
-            &AuthorizationRequestMetadata {
-                transaction_data: Some(transaction_data),
-                auth_response_options,
-                pass_auth_request_object,
-                expected_origins: None,
-            },
-            None,
-        )
-        .await
-        .unwrap();
-
-    state
-        .auth_req_obj_storage
-        .put(request_uri.to_string(), session.auth_request_jwt.to_owned())
-        .await
-        .unwrap();
-
-    state
-        .presentation_session_storage
-        .put("session".to_string(), session.clone())
-        .await
-        .unwrap();
-
-    println!("Chosen presentation flow is: PresentationDefinition");
-    HttpResponse::Ok()
-        .content_type("text/plain")
-        .body(auth_req.to_string())
-}
-
-async fn dcql_request_uri(state: web::Data<AppState>) -> HttpResponse {
-    let response_uri =
-        Url::parse(format!("{}{}", SERVER_URL, AUTH_RESPONSE_URL_PATH).as_str()).unwrap();
-    let request_uri =
-        Url::parse(format!("{}{}", SERVER_URL, AUTH_REQUEST_OBJECT_URL_PATH_DCQL).as_str())
-            .unwrap();
-
-    let auth_response_options = AuthResponseOptions {
-        type_: ResponseType::VpTokenIdToken,
-        mode: ResponseMode::DirectPostJwt,
-        submission_uri: Some(response_uri),
-        state: None,
-    };
-
-    let pass_auth_request_object = PassAuthRequestObject::ByReference {
-        uri: request_uri.clone(),
-        method: None,
-    };
-    let transaction_data = default_transaction_data_for_dcql();
-    println!("Presentation definition -> Authorization Request -> transaction data: ");
-    println!(
-        "{}",
-        serde_json::to_string_pretty(&transaction_data).unwrap()
-    );
-    state
-        .transaction_data_storage
-        .put("td".to_string(), transaction_data.clone())
-        .await
-        .unwrap();
-    let (auth_req, session) = state
-        .verifier
-        .create_authorization_request(
-            &ResolvedPresentationQuery::DCQL(default_dcql_query()),
-            &AuthorizationRequestMetadata {
-                transaction_data: Some(transaction_data),
-                pass_auth_request_object,
-                auth_response_options,
-                expected_origins: None,
-            },
-            None,
-        )
-        .await
-        .unwrap();
-
-    state
-        .auth_req_obj_storage
-        .put(request_uri.to_string(), session.auth_request_jwt.to_owned())
-        .await
-        .unwrap();
-
-    state
-        .presentation_session_storage
-        .put("session".to_string(), session.clone())
-        .await
-        .unwrap();
-
-    println!("Chosen presentation flow is: DCQL");
-
-    HttpResponse::Ok()
-        .content_type("text/plain")
-        .body(auth_req.to_string())
-}
 async fn presentation_response(
     state: web::Data<AppState>,
     req: web::Form<HashMap<String, String>>,
@@ -233,8 +192,26 @@ async fn presentation_response(
 
         return HttpResponse::Ok().finish();
     }
-
-    let wallet_auth_resp = AuthorizationResponse::Jwe(req.get("response").unwrap().to_owned());
+    let wallet_auth_resp = if let Some(response) = req.get("response") {
+        AuthorizationResponse::Jwe(response.to_owned())
+    } else {
+        AuthorizationResponse::Plain(AuthorizationResponseObject {
+            vp_token: serde_json::from_str(req.get("vp_token").unwrap()).unwrap(),
+            presentation_submission: req
+                .get("presentation_submission")
+                .map(|ps| serde_json::from_str(ps.as_str()).unwrap()),
+            id_token: req.get("id_token").map(ToOwned::to_owned),
+            state: req.get("state").map(ToOwned::to_owned),
+            transaction_data_response: req.get("transaction_data_hashes").map(|hashes| {
+                TransactionDataResponse {
+                    transaction_data_hashes: serde_json::from_str(hashes).unwrap(),
+                    transaction_data_hashes_alg: req
+                        .get("transaction_data_hashes_alg")
+                        .map(|hash_algs| serde_json::from_str(hash_algs).unwrap()),
+                }
+            }),
+        })
+    };
 
     let session = state
         .presentation_session_storage
@@ -562,6 +539,24 @@ pub fn wrong_transaction_data_for_pd() -> Vec<TransactionDataItem> {
             transaction_data_hashes_alg: None,
         },
     ]
+}
+
+pub fn get_provided_transaction_data(env_var: &str) -> Option<Vec<TransactionDataItem>> {
+    match env::var(env_var) {
+        Ok(value) => {
+            let file = File::open(value.clone())
+                .unwrap_or_else(|err| panic!("Failed to open file: {}", err));
+            serde_json::from_reader(file)
+                .unwrap_or_else(|err| panic!("Failed to read transactional data from file {}", err))
+        }
+        Err(err) => match err {
+            VarError::NotPresent => None,
+            VarError::NotUnicode(_) => {
+                eprintln!("Environment variable {} contains bad symbols.", env_var);
+                None
+            }
+        },
+    }
 }
 
 pub fn default_transaction_data_for_dcql() -> Vec<TransactionDataItem> {

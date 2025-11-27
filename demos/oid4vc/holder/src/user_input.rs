@@ -1,3 +1,6 @@
+use agent_sdk::vc::oid4vp::Url;
+use shared::vp::AuthRequestQuery;
+
 pub enum IssuerDiscoveryMode {
     #[allow(dead_code)] // not used when "noninteractive" feature is on
     Url,
@@ -15,19 +18,22 @@ pub enum CredentialSelectionMode {
     ManualSelection,
 }
 
-pub enum ResolvedPresentationQueryType {
-    Dcql,
-    PresentationDefinition,
+fn map_to_verifier_request_uri_url(query: AuthRequestQuery) -> Url {
+    let query = serde_urlencoded::to_string(query).unwrap();
+    let mut verifier_url = String::from("http://localhost:8098/request_uri?");
+    verifier_url += query.as_str();
+    Url::parse(verifier_url.as_str()).unwrap()
 }
 
 #[cfg(not(feature = "noninteractive"))]
 pub mod cli {
     use crate::user_input::{
         CredentialSelectionMode, IssuerDiscoveryMode, PresentationFlow,
-        ResolvedPresentationQueryType,
+        map_to_verifier_request_uri_url,
     };
     use agent_sdk::vc::oid4vci::AuthzFlow;
-    use agent_sdk::vc::oid4vp::Url;
+    use agent_sdk::vc::oid4vp::{ResponseMode, ResponseType, Url};
+    use shared::vp::{AuthRequestQuery, PresentationQueryType};
     use std::collections::HashMap;
     use std::io;
 
@@ -120,31 +126,64 @@ pub mod cli {
     }
 
     pub async fn ask_presentation_flow_request_uri() -> Url {
-        println!(
-            "Please enter the presentation flow request URI type from the following. Note that last opened request uri overrides session thus will be used by verification"
-        );
-        println!(
-            "- If you  want to use DCQL flow, go to http://localhost:8098/request_uri/dcql and enter request URI from there"
-        );
-        println!(
-            "- If you want to use PresentationDefinition flow, go to http://localhost:8098/request_uri and enter request URI from there"
-        );
-        println!("Enter the request URI here:");
+        let auth_request = map_to_verifier_request_uri_url(ask_presentation_auth_request().await);
+        println!("Open verifier request_uri URL: {}", auth_request);
+        println!("Then enter the request URI here:");
         let input = input_from_console("Failed to get the flow request URI");
         input
             .parse()
             .expect(format!("Incorrect URI: {input}").as_str())
     }
 
-    pub async fn ask_presentation_flow_query_type() -> ResolvedPresentationQueryType {
+    pub async fn ask_presentation_auth_request() -> AuthRequestQuery {
+        let query_type = ask_presentation_flow_query_type().await;
+        let response_type = ask_presentation_flow_response_type();
+        let response_mode = ask_presentation_flow_response_mode();
+
+        AuthRequestQuery {
+            response_type,
+            response_mode,
+            query_type,
+        }
+    }
+
+    pub async fn ask_presentation_flow_query_type() -> PresentationQueryType {
+        println!("Please enter 1 or 2 to select a query type:\n1. DCQL\n2. PresentationDefinition");
+        loop {
+            let input = input_from_console("Failed to get presentation flow");
+            match input.as_str() {
+                "1" => return PresentationQueryType::DCQL,
+                "2" => return PresentationQueryType::PresentationDefinition,
+                _ => println!("Invalid input, please retry"),
+            };
+        }
+    }
+
+    fn ask_presentation_flow_response_type() -> ResponseType {
         println!(
-            "Please enter the flow type:\n1. Use DCQL flow\n2. Use PresentationDefinition flow"
+            "Please enter 1 or 2 to select a response type:\n1. vp_token\n2. vp_token id_token"
         );
         loop {
             let input = input_from_console("Failed to get presentation flow");
             match input.as_str() {
-                "1" => return ResolvedPresentationQueryType::Dcql,
-                "2" => return ResolvedPresentationQueryType::PresentationDefinition,
+                "1" => return ResponseType::VpToken,
+                "2" => return ResponseType::VpTokenIdToken,
+                _ => println!("Invalid input, please retry"),
+            };
+        }
+    }
+
+    fn ask_presentation_flow_response_mode() -> ResponseMode {
+        println!(
+            "Please enter number 1-4 to select a response mode:\n1. direct_post\n2. direct_post.jwt\n3. fragment\n4. fragment.jwt"
+        );
+        loop {
+            let input = input_from_console("Failed to get presentation flow");
+            match input.as_str() {
+                "1" => return ResponseMode::DirectPost,
+                "2" => return ResponseMode::DirectPostJwt,
+                "3" => return ResponseMode::Fragment,
+                "4" => return ResponseMode::FragmentJwt,
                 _ => println!("Invalid input, please retry"),
             };
         }
@@ -230,10 +269,11 @@ pub mod auto {
     use crate::user_input::auto::CredentialOfferType::{Authorization, PreAuthorized};
     use crate::user_input::{
         CredentialSelectionMode, IssuerDiscoveryMode, PresentationFlow,
-        ResolvedPresentationQueryType,
+        map_to_verifier_request_uri_url,
     };
     use agent_sdk::vc::oid4vci::AuthzFlow;
-    use agent_sdk::vc::oid4vp::Url;
+    use agent_sdk::vc::oid4vp::{ResponseMode, ResponseType, Url};
+    use shared::vp::{AuthRequestQuery, PresentationQueryType};
     use std::collections::HashMap;
     use std::io;
 
@@ -319,44 +359,69 @@ pub mod auto {
         PresentationFlow::from_env()
     }
 
-    impl ResolvedPresentationQueryType {
-        pub fn from_env() -> ResolvedPresentationQueryType {
-            match std::env::var("PRESENTATION_QUERY")
-                .unwrap_or("DCQL".to_owned())
-                .to_uppercase()
-                .as_str()
-            {
-                "DCQL" => ResolvedPresentationQueryType::Dcql,
-                "DEFINITION" => ResolvedPresentationQueryType::PresentationDefinition,
-                _ => panic!("PRESENTATION_QUERY env var must be either DCQL or DEFINITION"),
-            }
+    pub async fn ask_presentation_auth_request() -> AuthRequestQuery {
+        let query_type = ask_presentation_flow_query_type().await;
+        let response_type = presentation_flow_response_type_from_env();
+        let response_mode = presentation_flow_response_mode_from_env();
+
+        AuthRequestQuery {
+            response_type,
+            response_mode,
+            query_type,
+        }
+    }
+
+    pub async fn ask_presentation_flow_query_type() -> PresentationQueryType {
+        match std::env::var("PRESENTATION_QUERY")
+            .unwrap_or("DCQL".to_owned())
+            .to_uppercase()
+            .as_str()
+        {
+            "DCQL" => PresentationQueryType::DCQL,
+            "DEFINITION" => PresentationQueryType::PresentationDefinition,
+            _ => panic!("PRESENTATION_QUERY env var must be either DCQL or DEFINITION"),
+        }
+    }
+
+    fn presentation_flow_response_type_from_env() -> ResponseType {
+        match std::env::var("PRESENTATION_RESPONSE_TYPE")
+            .unwrap_or("VP_TOKEN_ID_TOKEN".to_owned())
+            .to_uppercase()
+            .as_str()
+        {
+            "VP_TOKEN_ID_TOKEN" => ResponseType::VpTokenIdToken,
+            "VP_TOKEN" => ResponseType::VpToken,
+            _ => panic!(
+                "PRESENTATION_RESPONSE_TYPE env var must be either VP_TOKEN_ID_TOKEN or VP_TOKEN"
+            ),
+        }
+    }
+
+    fn presentation_flow_response_mode_from_env() -> ResponseMode {
+        match std::env::var("PRESENTATION_RESPONSE_MODE")
+            .unwrap_or("DIRECT_POST_JWT".to_owned())
+            .to_uppercase()
+            .as_str()
+        {
+            "DIRECT_POST" => ResponseMode::DirectPost,
+            "DIRECT_POST_JWT" => ResponseMode::DirectPostJwt,
+            "FRAGMENT" => ResponseMode::Fragment,
+            "FRAGMENT_JWT" => ResponseMode::FragmentJwt,
+            _ => panic!(
+                "PRESENTATION_RESPONSE_MODE env var must be one of DIRECT_POST, DIRECT_POST_JWT, FRAGMENT, FRAGMENT_JWT"
+            ),
         }
     }
 
     pub async fn ask_presentation_flow_request_uri() -> Url {
-        let url = match ResolvedPresentationQueryType::from_env() {
-            ResolvedPresentationQueryType::Dcql => {
-                reqwest::get("http://localhost:8098/request_uri/dcql")
-                    .await
-                    .expect("Couldn't get presentation flow")
-                    .text()
-                    .await
-                    .expect("Couldn't parse presentation flow URI")
-            }
-            ResolvedPresentationQueryType::PresentationDefinition => {
-                reqwest::get("http://localhost:8098/request_uri")
-                    .await
-                    .expect("Couldn't get presentation flow")
-                    .text()
-                    .await
-                    .expect("Couldn't parse presentation flow URI")
-            }
-        };
+        let verifier_url = map_to_verifier_request_uri_url(ask_presentation_auth_request().await);
+        let url = reqwest::get(verifier_url)
+            .await
+            .expect("Couldn't access verifier")
+            .text()
+            .await
+            .expect("Couldn't parse presentation flow URI");
         Url::parse(&url).expect("Couldn't parse presentation flow URI")
-    }
-
-    pub async fn ask_presentation_flow_query_type() -> ResolvedPresentationQueryType {
-        ResolvedPresentationQueryType::from_env()
     }
 
     pub async fn ask_presentation_credential_selection_mode() -> CredentialSelectionMode {
