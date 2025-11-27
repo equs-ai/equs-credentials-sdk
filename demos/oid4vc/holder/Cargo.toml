@@ -8,6 +8,9 @@ rust-version = "1.87"
 noninteractive = []
 
 [dependencies]
+agent-sdk = { path = "../../..", features = ["in-memory"] }
+shared = { path = "../shared" }
+
 tokio = { version = "1.25.0", features = ["rt", "rt-multi-thread", "macros"] }
 oauth2 = "5.0.0-rc.1"
 serde_json = "1.0.117"
@@ -16,5 +19,3 @@ time = { version = "0.3.29", features = ["serde"] }
 uuid = { version = "1.10.0", features = ["v4"] }
 serde_urlencoded = "0.7.1"
 tracing-subscriber = "0.3.18"
-
-agent-sdk = { path = "../../..", features = ["in-memory"] }

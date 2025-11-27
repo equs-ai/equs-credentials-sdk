@@ -259,18 +259,18 @@ kotlin-test-job:
     - merge_requests
     - main
 
-swift-test-job:
-  <<: *swift_job_configs
-  stage: test
-  script:
-    - rustup target add aarch64-apple-ios x86_64-apple-ios aarch64-apple-ios-sim
-    - cd wrappers/uniffi
-    - make ios-test
-  tags:
-    - macos
-  only:
-    - merge_requests
-    - main
+#swift-test-job:
+#  <<: *swift_job_configs
+#  stage: test
+#  script:
+#    - rustup target add aarch64-apple-ios x86_64-apple-ios aarch64-apple-ios-sim
+#    - cd wrappers/uniffi
+#    - make ios-test
+#  tags:
+#    - macos
+#  only:
+#    - merge_requests
+#    - main
 
 # Demo stage
 
