@@ -216,6 +216,8 @@ pub enum AuthorizationResponse {
 pub struct CredentialVerificationMetadata {
     // https://openid.net/specs/openid-4-verifiable-presentations-1_0.html#section-5.1-2.8.1
     pub transaction_data: Option<Vec<TransactionDataItem>>,
+    // In the case of DC API response mode, the following field is used as audience to verify the signature of the VP Token.
+    pub audience: Option<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -439,7 +441,9 @@ pub trait Verifier: WasmNotSend + WasmNotSync {
     /// * `authorization_response` - the authorization response containing the VP token and presentation submission.
     /// * `session` - a session object containing `Nonce` and `PresentationDefinition`,
     ///  which are generated when the `create_authorization_request` method is called.
-    /// * `verification_metadata` - metadata that contains transaction data used to verify transaction data hashes returned by holder.
+    /// * `verification_metadata` - metadata that contains:
+    ///     - `transaction_data` - transaction data that the holder should return the hashes of.
+    ///     - `audience` - In the case of DC API response mode, audience is Origin of the Verifier to be used while validating the signature of the VP Token.
     /// # Returns
     ///
     /// * The verified claims as a JSON object on success.

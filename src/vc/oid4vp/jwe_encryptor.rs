@@ -4,7 +4,7 @@ use crate::vc::oid4vp::{ClientMetadata, Error};
 use one_core::config::core_config::KeyAlgorithmType::{
     Ecdsa as EcdsaKeyAlgorithm, Eddsa as EddsaKeyAlgorithm,
 };
-use one_core::model::key::{PublicKeyJwk, PublicKeyJwkEllipticData};
+use one_core::model::key::{JwkUse, PublicKeyJwk, PublicKeyJwkEllipticData};
 use one_core::provider::key_algorithm::KeyAlgorithm;
 use one_core::provider::key_algorithm::ecdsa::Ecdsa;
 use one_core::provider::key_algorithm::eddsa::Eddsa;
@@ -91,11 +91,13 @@ impl JweEncryptor {
             //TODO support more key types and algs
         ];
 
-        let key_algorithm_provider: KeyAlgorithmProviderImpl =
-            KeyAlgorithmProviderImpl::new(HashMap::from_iter(vec![
+        let key_algorithm_provider: KeyAlgorithmProviderImpl = KeyAlgorithmProviderImpl::new(
+            HashMap::from_iter(vec![
                 (EddsaKeyAlgorithm, Arc::new(Eddsa) as Arc<dyn KeyAlgorithm>),
                 (EcdsaKeyAlgorithm, Arc::new(Ecdsa) as Arc<dyn KeyAlgorithm>),
-            ]));
+            ]),
+            Default::default(),
+        );
         Self {
             metadata,
             supported_keys,
@@ -125,14 +127,16 @@ impl JweEncryptor {
     fn public_key_jwk(&self, config: &JwkConfig) -> Result<PublicKeyJwk, Error> {
         match config.alg {
             Algorithm::Eddsa => Ok(PublicKeyJwk::Okp(PublicKeyJwkEllipticData {
-                r#use: Some("enc".to_string()),
+                alg: Some("EdDSA".to_string()),
+                r#use: Some(JwkUse::Encryption),
                 kid: Some(config.kid.clone()),
                 crv: self.get_default_claim("crv", &config.jwk)?,
                 x: self.get_default_claim("x", &config.jwk)?,
                 y: self.get_default_claim("y", &config.jwk).ok(),
             })),
             Algorithm::Es256 => Ok(PublicKeyJwk::Ec(PublicKeyJwkEllipticData {
-                r#use: Some("enc".to_string()),
+                alg: Some("ES256".to_string()),
+                r#use: Some(JwkUse::Encryption),
                 kid: Some(config.kid.clone()),
                 crv: self.get_default_claim("crv", &config.jwk)?,
                 x: self.get_default_claim("x", &config.jwk)?,
@@ -186,7 +190,6 @@ impl JweEncryptor {
                 }
                 .build(),
             })?;
-
         let local_private_key: GeneratedKey = algorithm.generate_key().map_err(|e| Internal {
             source: JWESnafu {
                 details: format!("Unsupported key algorithm: {}", e),
@@ -205,6 +208,8 @@ impl JweEncryptor {
             }
             .build(),
         })?;
+
+        let remote_jwk = public_jwk_to_remote_jwk(&public_key_jwk)?;
         let shared_secret = key_agreement
             .private()
             .ok_or(Internal {
@@ -213,7 +218,7 @@ impl JweEncryptor {
                 }
                 .build(),
             })?
-            .shared_secret(&public_key_jwk)
+            .shared_secret(&remote_jwk)
             .await
             .map_err(|e| Internal {
                 source: JWESnafu {
@@ -221,8 +226,10 @@ impl JweEncryptor {
                 }
                 .build(),
             })?;
-        Ok((shared_secret, local_public_key))
+
+        Ok((shared_secret, public_jwk_to_remote_jwk(&local_public_key)?))
     }
+
     pub async fn encrypt(&self, body: Value) -> Result<String, Error> {
         let jwk_config = self.select_jwk()?;
         let (shared_secret, remote_jwk) =
@@ -328,6 +335,29 @@ impl JweEncryptor {
             EncryptionAlgorithm::A128CBCHS256
         }
     }
+}
+
+pub fn public_jwk_to_remote_jwk(key: &PublicKeyJwk) -> Result<RemoteJwk, Error> {
+    let remote_key = match key {
+        PublicKeyJwk::Okp(data) => RemoteJwk {
+            kty: "OKP".to_string(),
+            crv: data.crv.clone(),
+            x: data.x.clone(),
+            y: data.y.clone(),
+        },
+        PublicKeyJwk::Ec(data) => RemoteJwk {
+            kty: "EC".to_string(),
+            crv: data.crv.clone(),
+            x: data.x.clone(),
+            y: data.y.clone(),
+        },
+        _ => JWESnafu {
+            details: "Unsupported key type".to_string(),
+        }
+        .fail()?,
+    };
+
+    Ok(remote_key)
 }
 
 #[cfg(test)]

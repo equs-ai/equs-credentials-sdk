@@ -73,6 +73,9 @@ impl InternalOID4VPVerifier {
     ///
     /// @param {AuthorizationResponse} authorizationResponse - the authorization response containing the VP token and presentation submission.
     /// @param {_PresentationSession} session - a session object containing `Nonce` and {@link ResolvedPresentationQuery}, which are generated when the {@link OID4VPVerifier.createAuthorizationRequest} method is called.
+    /// @param {CredentialVerificationMetadata} verificationMetadata - metadata about:
+    ///     - transaction_data - The transaction data hashes to verify.
+    ///     - audience - In the case of DC API response mode, audience is Origin of the Verifier to be used while validating the signature of the VP Token.
     ///
     /// @returns {Claims} - The verified claims as a JSON object on success.
     #[napi(ts_return_type = "Promise<Claims>")]
@@ -202,6 +205,7 @@ impl TryFrom<JsAuthorizationRequestMetadata> for AuthorizationRequestMetadata {
 pub struct JsCredentialVerificationMetadata {
     #[napi(ts_type = "Array<TransactionDataItem> | null | undefined")]
     pub transaction_data: Option<Vec<JsonObject>>,
+    pub audience: Option<String>,
 }
 
 impl TryFrom<JsCredentialVerificationMetadata> for CredentialVerificationMetadata {
@@ -218,6 +222,7 @@ impl TryFrom<JsCredentialVerificationMetadata> for CredentialVerificationMetadat
         };
         Ok(Self {
             transaction_data: td_items,
+            audience: value.audience,
         })
     }
 }

@@ -13,6 +13,9 @@ use std::collections::HashMap;
 use std::fmt::Debug;
 
 pub mod json_ld_vc;
+
+#[cfg(not(target_arch = "wasm32"))]
+pub mod mso_mdoc;
 pub mod sd_jwt_vc;
 pub mod vc;
 pub mod vp;
@@ -177,6 +180,13 @@ pub enum Error {
     #[snafu(display("Could not parse disclosures"))]
     JsonPointerParsing {
         source: ssi::json_pointer::InvalidJsonPointer,
+        #[snafu(implicit)]
+        location: Location,
+    },
+
+    #[snafu(display("Unimplemented: {details}"))]
+    Unimplemented {
+        details: String,
         #[snafu(implicit)]
         location: Location,
     },

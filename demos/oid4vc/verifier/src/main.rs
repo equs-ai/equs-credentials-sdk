@@ -241,6 +241,7 @@ async fn presentation_response(
             &session,
             &CredentialVerificationMetadata {
                 transaction_data: Some(transaction_data),
+                audience: None,
             },
         )
         .await;

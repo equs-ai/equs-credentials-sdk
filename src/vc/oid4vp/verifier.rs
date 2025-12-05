@@ -191,6 +191,7 @@ where
                 &session.resolved_presentation_query,
                 &session.nonce,
                 &authorization_response,
+                verification_metadata.audience.as_deref(),
             )
             .await?;
 
@@ -624,6 +625,7 @@ where
         resolved_presentation_query: &ResolvedPresentationQuery,
         nonce: &Nonce,
         authorization_response: &AuthorizationResponseObject,
+        audience: Option<&str>,
     ) -> Result<Claim> {
         let mut result: HashMap<String, Vec<Claim>> = HashMap::new();
         let mut ids = vec![]; // we need it to preserve order of items in the array
@@ -660,7 +662,7 @@ where
                 } else {
                     Some(HolderBinder {
                         nonce: nonce.to_owned(),
-                        verifier_id: self.metadata.client_id.to_owned(),
+                        verifier_id: audience.unwrap_or(&self.metadata.client_id).to_owned(),
                     })
                 };
 
@@ -756,6 +758,7 @@ mod tests {
     use crate::vc::ClaimFormatDesignation;
     use crate::vc::claims::Claims;
     use crate::vc::dcql::DCQLCredential;
+    use crate::vc::formats::mso_mdoc::tests::SAMPLE_MSO_MDOC_VP;
     use crate::vc::oid4vp::jwe_encryptor::JweEncryptor;
     use crate::vc::oid4vp::tests::fixtures::multi_presentation::{
         auth_response_options, submission_requirements, transaction_data_items,
@@ -1215,6 +1218,7 @@ mod tests {
                 &test_case.session,
                 &CredentialVerificationMetadata {
                     transaction_data: Some(transaction_data_items()),
+                    audience: None,
                 },
             )
             .await
@@ -1243,10 +1247,52 @@ mod tests {
                 &test_case.session,
                 &CredentialVerificationMetadata {
                     transaction_data: Some(transaction_data_items()),
+                    audience: None,
                 },
             )
             .await
             .unwrap();
+    }
+
+    #[tokio::test]
+    async fn verifier_validating_mso_mdoc_vp_works_correctly() {
+        let (verifier, _) = verifier_service().await;
+        let session = PresentationSession {
+            nonce: Nonce::from_secret("LFlqUm26sHqEgTaBQMuHPkrEuHyKYvXowI7Ge3LPV4o".to_string()),
+            resolved_presentation_query: ResolvedPresentationQuery::DCQL(
+                sample_dcql_query_for_mso_mdoc_vp_request(),
+            ),
+            auth_request_jwt: Default::default(),
+        };
+        let mut vp_token = HashMap::new();
+        vp_token.insert(
+            "mDL",
+            Value::Array(vec![Value::String(SAMPLE_MSO_MDOC_VP.to_string())]),
+        );
+
+        let response = AuthorizationResponseObject {
+            vp_token: serde_json::to_value(vp_token).unwrap(),
+            presentation_submission: None,
+            id_token: None,
+            state: None,
+            transaction_data_response: None,
+        };
+
+        let verified_claims = verifier
+            .verify_presentation(
+                &AuthorizationResponse::Plain(response),
+                &session,
+                &CredentialVerificationMetadata {
+                    transaction_data: None,
+                    audience: Some("https://digital-credentials.dev".to_string()),
+                },
+            )
+            .await
+            .unwrap();
+
+        let claims = &verified_claims["vp_token"]["mDL"].as_vec().unwrap()[0]["org.iso.18013.5.1"];
+        assert_eq!(claims["family_name"].as_str(), Some("Smith"));
+        assert_eq!(claims["given_name"].as_str(), Some("Jon"));
     }
 
     #[tokio::test]
@@ -1269,6 +1315,7 @@ mod tests {
                 &test_case.session,
                 &CredentialVerificationMetadata {
                     transaction_data: Some(transaction_data_items()),
+                    audience: None,
                 },
             )
             .await
@@ -1713,5 +1760,26 @@ mod tests {
             ClaimFormatDesignation::SdJwtVc,
             DcqlMeta::new().set_vct_values(NonEmptyVec::new("some_vct_value".to_string())),
         ))
+    }
+
+    pub fn sample_dcql_query_for_mso_mdoc_vp_request() -> DCQL {
+        let desc: DCQLCredential = serde_json::from_value(json!(
+            {
+                "id": "mDL",
+                "format": "mso_mdoc",
+                "meta": {
+                    "doctype_value": "org.iso.18013.5.1.mDL"
+                },
+                "claims": [
+                    {
+                        "path": ["org.iso.18013.5.1", "given_name"],
+                        "path": ["org.iso.18013.5.1", "family_name"],
+                    },
+                ],
+            }
+        ))
+        .unwrap();
+
+        DCQL::new(NonEmptyVec::new(desc))
     }
 }
