@@ -190,6 +190,9 @@ pub enum Presentation {
     LdpVp(formats::json_ld_vc::VP),
     // SD-JWT
     SdJwtVp(String),
+
+    // mso_mdoc
+    MsoMdoc(String),
 }
 
 impl HasVPFormat for Presentation {
@@ -198,6 +201,7 @@ impl HasVPFormat for Presentation {
             Presentation::JwtVp(_) => VPFormat::JwtVp,
             Presentation::LdpVp(_) => VPFormat::LdpVp,
             Presentation::SdJwtVp(_) => VPFormat::SdJwtVp,
+            Presentation::MsoMdoc(_) => VPFormat::MsoMdoc,
         }
     }
 }

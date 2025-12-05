@@ -21,21 +21,18 @@ rust-version = "1.89.0"
 
 [dependencies]
 common-macros = { path = "./common-macros" }
-
+# Internally maintained forked dependencies
 oid4vci = { git = "ssh://git@git.slock.it/open-source/oid4vci-rs.git", rev = "1f2cb566" }
-openid4vp = { git = "ssh://git@git.slock.it/open-source/oid4vp-rs.git", rev = "e3030182" }
+openid4vp = { git = "ssh://git@git.slock.it/open-source/oid4vp-rs.git", rev = "825b1d03" }
 sd-jwt-rs = { git = "ssh://git@git.slock.it/open-source/sd-jwt-rust.git", rev = "15602993" }
 didcomm = { git = "ssh://git@git.slock.it/open-source/didcomm-rust.git", rev = "db41780d" }
-
 did_peer = { git = "ssh://git@git.slock.it/open-source/aries-vcx.git", rev = "fc818ef5" }
 did_resolver = { git = "ssh://git@git.slock.it/open-source/aries-vcx.git", rev = "fc818ef5" }
 did_parser_nom = { git = "ssh://git@git.slock.it/open-source/aries-vcx.git", rev = "fc818ef5" }
+one-crypto = { git = "ssh://git@git.slock.it/open-source/one-core.git", rev = "69de4ad0"}
 
-one-crypto = { git = "https://github.com/procivis/one-core", package = "one-crypto", rev = "edee569" }
-one-core = { path = "dependencies/one-core" }
 secrecy = "0.10.3"
 ed25519-compact = "2.1.1"
-
 oauth2 = "5.0.0-rc.1"
 serde_json = "1.0.120"
 ssi = { version = "=0.10.1", features = ["bbs"] }
@@ -51,7 +48,6 @@ async-trait = "0.1.85"
 strum_macros = "0.26.4"
 strum = { version = "0.26.3", features = ["derive"] }
 reqwest = { version = "=0.12.12", features = ["rustls-tls"] }
-
 uuid = { version = "1.10.0", features = ["v4"] }
 url = "=2.5.4"
 anyhow = "1.0.86"
@@ -93,6 +89,7 @@ generic-array = "=0.14.7"# Pinned to solve deprecation warnings from transitive 
 didcomm = { git = "ssh://git@git.slock.it/open-source/didcomm-rust.git", rev = "db41780d", features = ["uniffi"] }
 reqwest-middleware = { version = "0.4.0", default-features = false }
 reqwest-tracing = { version = "0.5.5", default-features = false }
+one-core = { git = "ssh://git@git.slock.it/open-source/one-core.git", rev = "69de4ad0"}
 
 [dev-dependencies]
 mockall = "0.13.0"

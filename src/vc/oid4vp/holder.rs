@@ -13,7 +13,6 @@ use crate::vc::oid4vp::internal_error::{
     DCQLSnafu, HttpClientSnafu, IdTokenGenerationSnafu, IdTokenMetadataNotFoundSnafu,
     IdTokenParseSnafu, JsonSnafu, KMSSnafu, ParseSnafu, PresentationExchangeSnafu, VCSnafu,
 };
-use crate::vc::oid4vp::jwe_encryptor::JweEncryptor;
 use crate::vc::oid4vp::metadata::default_wallet_metadata;
 use crate::vc::oid4vp::protocol_error::ErrorType;
 use crate::vc::oid4vp::signer::Signer;
@@ -217,7 +216,6 @@ where
             ),
             ResponseMode::DirectPostJwt | ResponseMode::FragmentJwt | ResponseMode::DcApiJwt => {
                 let metadata = auth_request.client_metadata.clone();
-                let encryptor = JweEncryptor::new(metadata);
                 let mut body = Map::new();
 
                 body.insert(VP_TOKEN.to_string(), Self::convert_to_serde_json(vp_token)?);
@@ -249,8 +247,22 @@ where
                         );
                     }
                 }
-                let jwt = encryptor.encrypt(Value::Object(body)).await?;
-                Ok(Jwt(JwtAuthorizationResponse { response: jwt }))
+                #[cfg(not(target_arch = "wasm32"))]
+                {
+                    use crate::vc::oid4vp::jwe_encryptor::JweEncryptor;
+
+                    let encryptor = JweEncryptor::new(metadata);
+                    let jwt = encryptor.encrypt(Value::Object(body)).await?;
+
+                    Ok(Jwt(JwtAuthorizationResponse { response: jwt }))
+                }
+                #[cfg(target_arch = "wasm32")]
+                {
+                    AuthorizationResponseUnsupportedModeSnafu {
+                        details: "Encrypted response mode is not supported in this wasm build",
+                    }
+                    .fail()?
+                }
             }
             ResponseMode::Unsupported(mode) => Err(Internal {
                 source: AuthorizationResponseUnsupportedModeSnafu {

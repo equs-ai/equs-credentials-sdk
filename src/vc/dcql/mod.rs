@@ -383,6 +383,21 @@ pub(crate) fn resolve_presentation_response(
                     presentation_results.push(Presentation::SdJwtVp(sd_jwt.to_string()))
                 }
             }
+
+            ClaimFormatDesignation::MsoMDoc => {
+                for presentation in extracted_presentations {
+                    let cbor_base64_encoded = presentation.as_str().ok_or(
+                        ParseSnafu {
+                            details: "Incorrect 'mso_mdoc' presentation format: expected base64 url encoded device response"
+                                .to_string(),
+                        }
+                        .build(),
+                    )?;
+
+                    presentation_results
+                        .push(Presentation::MsoMdoc(cbor_base64_encoded.to_string()))
+                }
+            }
             ClaimFormatDesignation::LdpVc => {
                 for ldp_vc_json in extracted_presentations {
                     let ldp_vc = serde_json::from_value(ldp_vc_json.clone()).map_err(|err| {
@@ -674,14 +689,21 @@ fn validate_claim_path(
     credentials: &Vec<Claim>,
     claim_query: &DcqlClaim,
 ) -> Result<()> {
-    let field = json::json_path_as_string(&claim_query.path().to_vec());
-    let json_path_field = jsonpath_rust::JsonPath::from_str(field.as_str()).map_err(|e| {
-        CredentialQueryValidationSnafu {
-            query_id: query_id.as_str().to_string(),
-            details: format!("Could not parse claim path as json path: {e}"),
+    let mut json_paths: Vec<jsonpath_rust::JsonPath<Value>> = vec![jsonpath_rust::JsonPath::Root];
+
+    for path in claim_query.path() {
+        match path {
+            PathValue::String(s) => {
+                json_paths.push(jsonpath_rust::JsonPath::Field(s.to_string()));
+            }
+            PathValue::Usize(n) => json_paths.push(jsonpath_rust::JsonPath::Index(
+                jsonpath_rust::parser::JsonPathIndex::Single(json!(n)),
+            )),
+            PathValue::Null => json_paths.push(jsonpath_rust::JsonPath::Wildcard),
         }
-        .build()
-    })?;
+    }
+
+    let json_path_field = jsonpath_rust::JsonPath::Chain(json_paths);
 
     for credential in credentials {
         let json_cred = json!(credential);
@@ -692,7 +714,10 @@ fn validate_claim_path(
             .ok_or_else(|| {
                 CredentialQueryValidationSnafu {
                     query_id: query_id.as_str().to_string(),
-                    details: format!("Could not find any claim for required claim path = {field}"),
+                    details: format!(
+                        "Could not find any claim for required claim path = {}",
+                        json_path_field
+                    ),
                 }
                 .build()
             })?
@@ -713,7 +738,7 @@ fn validate_claim_path(
                 CredentialQueryValidationSnafu {
                     query_id: query_id.as_str().to_string(),
                     details: format!("Claim value does not match required values of claim path = {}, required values = {}, actual value = {}",
-                                     field,
+                                     json_path_field,
                                      serde_json::to_string_pretty(&values).unwrap_or_default(),
                                      serde_json::to_string_pretty(&claim_value).unwrap_or_default()),
                 }.fail()?
@@ -801,7 +826,30 @@ fn validate_against_credential_types(
                 }
             }
         }
+        ClaimFormatDesignation::MsoMDoc => {
+            for credential in credentials {
+                let doctype = credential
+                    .get("doctype")
+                    .and_then(|vct| vct.as_str().map(|vct_str| vct_str.to_string()))
+                    .ok_or_else(|| {
+                        CredentialQueryValidationSnafu {
+                            query_id: query.id().as_str().to_string(),
+                            details: "Could not parse \"doctype\" value from mso_mdoc credential"
+                                .to_string(),
+                        }
+                        .build()
+                    })?;
 
+                if query.meta().doctype_value().is_some_and(|m| m != &doctype) {
+                    CredentialQueryValidationSnafu {
+                        query_id: query.id().as_str().to_string(),
+                        details: "Credential(s) does not contain required \"doctype_value\""
+                            .to_string(),
+                    }
+                    .fail()?
+                }
+            }
+        }
         _ => CredentialQueryValidationSnafu {
             query_id: query.id().as_str().to_string(),
             details: format!("Unsupported credential format {}", query.format()),
@@ -1093,12 +1141,16 @@ mod tests {
     #[should_panic(expected = "Credential(s) for credential-query with id = pid not found")]
     #[case::credentials_not_found(dcql_and_credential_with_mismatched_query_id())]
     #[should_panic(
-        expected = "Claim value does not match required values of claim path = $.postal_code"
+        expected = "Claim value does not match required values of claim path = $.'postal_code'"
     )]
     #[case::mismatched_claim_values(dcql_and_credential_with_mismatched_values())]
-    #[should_panic(expected = "Could not find any claim for required claim path = $.missing_field")]
+    #[should_panic(
+        expected = "Could not find any claim for required claim path = $.'missing_field'"
+    )]
     #[case::missing_required_claim(dcq_and_credential_with_missing_claims())]
-    #[should_panic(expected = "Could not parse claim path as json path")]
+    #[should_panic(
+        expected = "Could not find any claim for required claim path = $.'field'.'invalid[path'"
+    )]
     #[case::invalid_claim_path(dcql_with_invalid_path())]
     #[should_panic(expected = "Could not parse \"vct\" value from SD-JWT credential")]
     #[case::credential_without_type(dcql_and_credential_without_type())]

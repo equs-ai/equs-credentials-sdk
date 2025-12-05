@@ -98,6 +98,21 @@ impl Verifier for VerifierService {
 
                 claims
             }
+            #[cfg(not(target_arch = "wasm32"))]
+            Presentation::MsoMdoc(vp) => {
+                use crate::vc::formats::mso_mdoc::MsoMdocAPI;
+
+                MsoMdocAPI::verify_vp(
+                    &vp.to_owned().into(),
+                    holder_binder,
+                    VerifyOptions {
+                        selective_claims: Default::default(),
+                    },
+                    self.did_resolver.clone(),
+                )
+                .await
+                .context(VCSnafu)?
+            }
             _ => FormatNotSupportedSnafu {
                 format: presentation.format().to_string(),
             }

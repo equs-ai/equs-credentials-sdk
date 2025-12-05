@@ -8,7 +8,7 @@ pub const JWT_VC_JSON: &str = "jwt_vc_json";
 pub const JWT_VC_JSON_LD: &str = "jwt_vc_json-ld";
 pub const LDP_VC: &str = "ldp_vc";
 pub const SD_JWT_VC: &str = "dc+sd-jwt";
-pub const MSO_MDOC: &str = "MsoMdoc";
+pub const MSO_MDOC: &str = "mso_mdoc";
 
 /// Basic enum for supported `VC` formats.
 #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
