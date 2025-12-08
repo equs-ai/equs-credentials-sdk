@@ -1,6 +1,6 @@
 use crate::common::Result;
 pub(crate) use agent_sdk::vault::{
-    CredentialEntry, Vault as ASDKVault, VaultFetchOptions as ASDKVaultPagination,
+    CredentialEntry, Vault as ASDKVault, VaultFetchOptions as ASDKVaultFetchOptions,
 };
 use agent_sdk::vc;
 use agent_sdk::vc::{Credential, CredentialMetadata};
@@ -37,21 +37,21 @@ pub struct CredentialsFindResult {
 }
 
 #[derive(uniffi::Record)]
-pub struct VaultPagination {
+pub struct VaultFetchOptions {
     pub offset: Option<u32>,
     pub limit: Option<u32>,
 }
 
-impl From<VaultPagination> for ASDKVaultPagination {
-    fn from(value: VaultPagination) -> Self {
+impl From<VaultFetchOptions> for ASDKVaultFetchOptions {
+    fn from(value: VaultFetchOptions) -> Self {
         Self {
             offset: value.offset.map(|v| v as usize),
             limit: value.limit.map(|v| v as usize),
         }
     }
 }
-impl From<ASDKVaultPagination> for VaultPagination {
-    fn from(value: ASDKVaultPagination) -> Self {
+impl From<ASDKVaultFetchOptions> for VaultFetchOptions {
+    fn from(value: ASDKVaultFetchOptions) -> Self {
         Self {
             offset: value.offset.map(|v| v as u32),
             limit: value.limit.map(|v| v as u32),
@@ -71,12 +71,12 @@ pub trait Vault: Send + Sync + Debug {
     async fn get_credential(&self, id: String) -> Result<Option<CredentialEntry>>;
     async fn get_credentials(
         &self,
-        pagination: Option<VaultPagination>,
+        options: Option<VaultFetchOptions>,
     ) -> Result<Vec<CredentialEntry>>;
     async fn find_credentials(
         &self,
         fields: Vec<String>,
-        pagination: Option<VaultPagination>,
+        options: Option<VaultFetchOptions>,
     ) -> Result<Vec<CredentialEntry>>;
 }
 
@@ -128,11 +128,11 @@ impl ASDKVault for WrappedVault {
 
     async fn get_credentials(
         &self,
-        pagination: Option<ASDKVaultPagination>,
+        options: Option<ASDKVaultFetchOptions>,
     ) -> ASDKResult<Vec<CredentialEntry>> {
-        let pagination = pagination.map(Into::into);
+        let options = options.map(Into::into);
 
-        self.0.get_credentials(pagination).await.map_err(|e| {
+        self.0.get_credentials(options).await.map_err(|e| {
             DeletingSnafu {
                 details: e.to_string(),
             }
@@ -143,19 +143,16 @@ impl ASDKVault for WrappedVault {
     async fn find_credentials(
         &self,
         fields: Vec<String>,
-        pagination: Option<ASDKVaultPagination>,
+        options: Option<ASDKVaultFetchOptions>,
     ) -> ASDKResult<Vec<CredentialEntry>> {
-        let pagination = pagination.map(Into::into);
+        let options = options.map(Into::into);
 
-        self.0
-            .find_credentials(fields, pagination)
-            .await
-            .map_err(|e| {
-                DeletingSnafu {
-                    details: e.to_string(),
-                }
-                .build()
-            })
+        self.0.find_credentials(fields, options).await.map_err(|e| {
+            DeletingSnafu {
+                details: e.to_string(),
+            }
+            .build()
+        })
     }
 }
 

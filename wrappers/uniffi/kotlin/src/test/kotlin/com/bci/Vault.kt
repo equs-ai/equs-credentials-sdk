@@ -3,7 +3,7 @@ package com.bci
 import com.bci.asdk.Credential
 import com.bci.asdk.CredentialEntry
 import com.bci.asdk.CredentialMetadata
-import com.bci.asdk.VaultPagination
+import com.bci.asdk.VaultFetchOptions
 import com.bci.asdk.VcFormat
 import com.bci.asdk.setJniLibPath
 import com.bci.asdk.wrapVaultForTests
@@ -128,13 +128,13 @@ class MockVault(
         return this.credentialEntries[0]
     }
 
-    override suspend fun getCredentials(pagination: VaultPagination?): List<CredentialEntry> {
+    override suspend fun getCredentials(pagination: VaultFetchOptions?): List<CredentialEntry> {
         return this.credentialEntries
     }
 
     override suspend fun findCredentials(
         fields: List<String>,
-        pagination: VaultPagination?
+        pagination: VaultFetchOptions?
     ): List<CredentialEntry> {
         assertEquals(this.criteria, fields)
 
