@@ -4,7 +4,7 @@ plugins {
     id("maven-publish")
 }
 
-val baseVersion = "1.3.0"
+val baseVersion = "1.4.0"
 val environment = project.findProperty("env")?.toString()
 
 group = "equstng"
