@@ -1,9 +1,9 @@
-use crate::crypto::{Key, Signer};
+use crate::crypto::{JWK, Key, Signer};
 use crate::did::universal::UniversalResolver;
 use crate::vc::HasClaims;
 use crate::vc::claims::{Claim, Claims};
 use crate::vc::core::{HolderBinder, PresentationRestrictionValue};
-use crate::vc::formats::{API, HasCredential, UnimplementedSnafu, VerifyOptions};
+use crate::vc::formats::{API, HasCredential, JsonSnafu, UnimplementedSnafu, VerifyOptions};
 use crate::vc::formats::{PresentationSnafu, Result};
 use async_trait::async_trait;
 use one_core::config::core_config::VerificationProtocolType;
@@ -18,6 +18,9 @@ use one_core::provider::presentation_formatter::model::{
 use one_core::provider::presentation_formatter::{
     PresentationFormatter, mso_mdoc::MsoMdocPresentationFormatter,
 };
+use one_core::service::key::dto::PublicKeyJwkDTO;
+use serde::{Deserialize, Serialize};
+use snafu::ResultExt;
 use ssi::dids::DIDURL;
 use std::sync::Arc;
 use time::OffsetDateTime;
@@ -29,13 +32,10 @@ pub(crate) const DOCTYPE_CLAIM: &str = "doctype";
 #[derive(Debug)]
 pub struct Credential(String);
 
-#[derive(Debug)]
-pub struct Presentation(String);
-
-impl From<String> for Presentation {
-    fn from(value: String) -> Self {
-        Self(value)
-    }
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Presentation {
+    pub value: String,
+    pub enc_pub_key: Option<JWK>,
 }
 
 pub struct VCMetadata {}
@@ -98,21 +98,29 @@ impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata, Claims> for M
     ) -> Result<Claims> {
         let presentation_formatter = MsoMdocPresentationFormatter::default();
 
+        let verifier_key = if let Some(jwk) = presentation.enc_pub_key.as_ref() {
+            let key: PublicKeyJwkDTO =
+                serde_json::from_value(serde_json::to_value(jwk).context(JsonSnafu)?)
+                    .context(JsonSnafu)?;
+            Some(key.into())
+        } else {
+            None
+        };
         let ctx = ExtractPresentationCtx {
             verification_protocol_type: VerificationProtocolType::OpenId4VpFinal1_0,
             nonce: holder_binder.clone().map(|b| b.nonce.secret().to_string()),
             client_id: holder_binder.map(|b| b.verifier_id.to_string()),
+            verifier_key,
             format_nonce: None,
             issuance_date: None,
             expiration_date: None,
             mdoc_session_transcript: None,
             response_uri: None,
-            verifier_key: None,
         };
 
         let extracted_vps: ExtractedPresentation = presentation_formatter
             .extract_presentation(
-                presentation.0.as_str(),
+                presentation.value.as_str(),
                 Box::new(KeyVerification {
                     did_method_provider: Arc::new(DidMethodProviderImpl::default()),
                     key_algorithm_provider: presentation_formatter.key_algorithm_provider.clone(),
@@ -236,7 +244,10 @@ pub mod tests {
     #[tokio::test]
     async fn verify_vp_works_correctly() {
         let verified_claims = MsoMdocAPI::verify_vp(
-            &Presentation(SAMPLE_MSO_MDOC_VP.to_string()),
+            &Presentation {
+                value: SAMPLE_MSO_MDOC_VP.to_string(),
+                enc_pub_key: None,
+            },
             Some(HolderBinder {
                 nonce: Nonce::from_secret(
                     "LFlqUm26sHqEgTaBQMuHPkrEuHyKYvXowI7Ge3LPV4o".to_string(),

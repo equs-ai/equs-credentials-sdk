@@ -11,7 +11,7 @@ use crate::vc::core::{
 };
 use crate::vc::formats::json_ld_vc::JsonLdAPI;
 use crate::vc::formats::sd_jwt_vc::SdJwtAPI;
-use crate::vc::formats::{API, HasCredential, IsExpired, VerifyOptions};
+use crate::vc::formats::{API, HasCredential, IsExpired};
 use crate::vc::status_formats::status_list_token_jwt::StatusListJwt;
 use crate::vc::status_formats::{API as VCStatusFormatsAPI, status_list_token_jwt};
 use crate::vc::{HasClaims, Presentation};
@@ -42,9 +42,7 @@ impl Verifier for VerifierService {
                 let claims = SdJwtAPI::verify_vp(
                     vp,
                     holder_binder,
-                    VerifyOptions {
-                        selective_claims: Default::default(),
-                    },
+                    Default::default(),
                     self.did_resolver.clone(),
                 )
                 .await
@@ -79,9 +77,7 @@ impl Verifier for VerifierService {
                 JsonLdAPI::verify_vp(
                     vp,
                     holder_binder,
-                    VerifyOptions {
-                        selective_claims: Default::default(),
-                    },
+                    Default::default(),
                     self.did_resolver.clone(),
                 )
                 .await
@@ -103,11 +99,9 @@ impl Verifier for VerifierService {
                 use crate::vc::formats::mso_mdoc::MsoMdocAPI;
 
                 MsoMdocAPI::verify_vp(
-                    &vp.to_owned().into(),
+                    vp,
                     holder_binder,
-                    VerifyOptions {
-                        selective_claims: Default::default(),
-                    },
+                    Default::default(),
                     self.did_resolver.clone(),
                 )
                 .await

@@ -22,10 +22,10 @@ use crate::vc::core::{
     ProofFormatRequiredSnafu, ProofSnafu, RequestedCredentialNotFoundSnafu, Result, VCSnafu,
     VaultSnafu,
 };
+use crate::vc::formats::API;
 use crate::vc::formats::json_ld_vc;
 use crate::vc::formats::json_ld_vc::JsonLdAPI;
 use crate::vc::formats::sd_jwt_vc::{SdJwtAPI, VPMetadata};
-use crate::vc::formats::{API, VerifyOptions};
 use crate::vc::oid4vp::{CredentialsFindResult, FindVCsFailReason};
 use crate::vc::pop::ProofOfPossession;
 use crate::vc::pop::jwt_pop::JwtProofOfPossession;
@@ -135,24 +135,16 @@ where
         trace!(?credential);
 
         match credential {
-            Credential::SdJwt(cred) => SdJwtAPI::verify_vc(
-                cred,
-                VerifyOptions {
-                    selective_claims: Default::default(),
-                },
-                self.did_resolver.clone(),
-            )
-            .await
-            .context(VCSnafu),
-            Credential::LdpVc(cred) => JsonLdAPI::verify_vc(
-                cred,
-                VerifyOptions {
-                    selective_claims: Default::default(),
-                },
-                self.did_resolver.clone(),
-            )
-            .await
-            .context(VCSnafu),
+            Credential::SdJwt(cred) => {
+                SdJwtAPI::verify_vc(cred, Default::default(), self.did_resolver.clone())
+                    .await
+                    .context(VCSnafu)
+            }
+            Credential::LdpVc(cred) => {
+                JsonLdAPI::verify_vc(cred, Default::default(), self.did_resolver.clone())
+                    .await
+                    .context(VCSnafu)
+            }
             _ => FormatNotSupportedSnafu {
                 format: credential.format().to_string(),
             }

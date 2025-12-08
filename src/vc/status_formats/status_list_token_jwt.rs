@@ -25,7 +25,6 @@ use crate::http::HttpClient;
 use crate::utils::serde::get_time_based_claim;
 use crate::vc::HasClaims;
 use crate::vc::formats::API as VCFormatsAPI;
-use crate::vc::formats::VerifyOptions;
 use crate::vc::formats::sd_jwt_vc::SdJwtAPI;
 use crate::vc::presentation_exchange::StatusSize;
 use crate::vc::status_formats::API;
@@ -326,20 +325,14 @@ impl StatusListJwt {
         did_resolver: UniversalResolver,
         status_list_sdjwt_vc: String,
     ) -> Result<BitString> {
-        SdJwtAPI::verify_vc(
-            &status_list_sdjwt_vc,
-            VerifyOptions {
-                selective_claims: None,
-            },
-            did_resolver,
-        ) // TODO: consider using sd_jwt API directly
-        .await
-        .map_err(|err| {
-            VCStatusSnafu {
-                details: err.to_string(),
-            }
-            .build()
-        })?;
+        SdJwtAPI::verify_vc(&status_list_sdjwt_vc, Default::default(), did_resolver) // TODO: consider using sd_jwt API directly
+            .await
+            .map_err(|err| {
+                VCStatusSnafu {
+                    details: err.to_string(),
+                }
+                .build()
+            })?;
 
         let claims = status_list_sdjwt_vc.parse_claims().map_err(|err| {
             StatusListFetchingSnafu {
