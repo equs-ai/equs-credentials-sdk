@@ -3,7 +3,7 @@ use crate::inmem::storage::InMemStorage;
 use crate::storage::Storage;
 use crate::vault::{
     CredentialEntry, DeletingSnafu, EmptyFieldsSnafu, Error, ResolvingSnafu, StoringSnafu, Vault,
-    VaultPagination,
+    VaultFetchOptions,
 };
 use crate::vc::{Credential, CredentialMetadata};
 use async_trait::async_trait;
@@ -163,7 +163,7 @@ impl Vault for InMemVault {
     )]
     async fn get_credentials(
         &self,
-        pagination: Option<VaultPagination>,
+        pagination: Option<VaultFetchOptions>,
     ) -> Result<Vec<CredentialEntry>, Error> {
         let mut elements = self.storage.get_all().await.map_err(|err| {
             ResolvingSnafu {
@@ -173,10 +173,11 @@ impl Vault for InMemVault {
         })?;
 
         if let Some(pagination) = pagination {
+            let elements_amount = elements.len();
             elements = elements
                 .into_iter()
-                .skip(pagination.skip_amount())
-                .take(pagination.batch_size)
+                .skip(pagination.offset.unwrap_or(0))
+                .take(pagination.limit.unwrap_or(elements_amount))
                 .collect::<Vec<CredentialEntry>>();
         }
 
@@ -186,7 +187,7 @@ impl Vault for InMemVault {
     async fn find_credentials(
         &self,
         fields: Vec<String>,
-        pagination: Option<VaultPagination>,
+        pagination: Option<VaultFetchOptions>,
     ) -> Result<Vec<CredentialEntry>, Error> {
         if fields.is_empty() {
             EmptyFieldsSnafu.fail()?
@@ -196,11 +197,12 @@ impl Vault for InMemVault {
         let creds = future::try_join_all(ids.iter().map(|id| self.get_credential(id))).await?;
 
         let result = if let Some(pagination) = pagination {
+            let credentials_amount = creds.len();
             creds
                 .into_iter()
                 .flatten()
-                .skip(pagination.skip_amount())
-                .take(pagination.batch_size)
+                .skip(pagination.offset.unwrap_or(0))
+                .take(pagination.limit.unwrap_or(credentials_amount))
                 .collect::<Vec<CredentialEntry>>()
         } else {
             creds.into_iter().flatten().collect()
@@ -214,7 +216,7 @@ impl Vault for InMemVault {
 mod tests {
     use crate::inmem::vault::InMemVault;
     use crate::vault::test_util::test_vault;
-    use crate::vault::{Vault, VaultPagination};
+    use crate::vault::{Vault, VaultFetchOptions};
     use crate::vc::{Credential, CredentialMetadata, VCFormat};
     use rstest::rstest;
 
@@ -247,17 +249,13 @@ mod tests {
     #[case(10, 11)]
     #[case(3, 3)]
     #[tokio::test]
-    async fn get_credentials_with_pagination_succeed(
-        #[case] page: usize,
-        #[case] batch_size: usize,
-    ) {
+    async fn get_credentials_with_pagination_succeed(#[case] offset: usize, #[case] limit: usize) {
         let amount_to_store: usize = 10;
 
-        let amount_to_skip = page * batch_size;
-        let remaining_amount = amount_to_store.saturating_sub(amount_to_skip);
+        let remaining_amount = amount_to_store.saturating_sub(offset);
 
-        let amount_to_get_from_vault = if remaining_amount > batch_size {
-            batch_size
+        let amount_to_get_from_vault = if remaining_amount > limit {
+            limit
         } else {
             remaining_amount
         };
@@ -274,7 +272,10 @@ mod tests {
                 .unwrap();
         }
         let credentials = vault
-            .get_credentials(Some(VaultPagination::new(page, batch_size)))
+            .get_credentials(Some(VaultFetchOptions {
+                offset: Some(offset),
+                limit: Some(limit),
+            }))
             .await
             .unwrap();
 
@@ -305,13 +306,13 @@ mod tests {
     #[rstest]
     #[case(vec!["$.vct".to_string()], 0, 5, 5)]
     #[case(vec!["$.fake".to_string()], 0, 5, 0)]
-    #[case(vec!["$.vct".to_string()], 3, 3, 1)]
-    #[case(vec!["$.vct".to_string()], 5, 3, 0)]
+    #[case(vec!["$.vct".to_string()], 3, 3, 3)]
+    #[case(vec!["$.vct".to_string()], 7, 5, 3)]
     #[tokio::test]
     async fn find_credentials_with_pagination_succeeds(
         #[case] fields: Vec<String>,
-        #[case] page: usize,
-        #[case] batch_size: usize,
+        #[case] offset: usize,
+        #[case] limit: usize,
         #[case] result_amount: usize,
     ) {
         let vault = InMemVault::new();
@@ -326,7 +327,13 @@ mod tests {
                 .unwrap();
         }
         let credentials = vault
-            .find_credentials(fields, Some(VaultPagination::new(page, batch_size)))
+            .find_credentials(
+                fields,
+                Some(VaultFetchOptions {
+                    offset: Some(offset),
+                    limit: Some(limit),
+                }),
+            )
             .await
             .unwrap();
 

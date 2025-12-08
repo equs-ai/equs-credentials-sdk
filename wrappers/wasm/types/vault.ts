@@ -5,12 +5,12 @@ import { Credential, CredentialEntry, CredentialMetadata } from "./vc";
  *
  * An interface to control pagination of data get from {@link Vault}
 
- * @property {number} page - No. of page.
- * @property {number} batchSize - Amount of data to get in one batch.
+ * @property {number} offset - amount of items to skip.
+ * @property {number} limit - Amount of items to get.
  */
 export type VaultPagination = {
-  page: number;
-  batchSize: number;
+  offset?: number;
+  limit?: number;
 };
 
 /**

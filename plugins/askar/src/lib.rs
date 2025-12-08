@@ -46,6 +46,7 @@ pub struct AskarStorageScanParams {
     pub tag_filter: Option<TagFilter>,
     pub order_by: Option<OrderBy>,
     pub sort_by_desc: Option<bool>,
+    pub profile: Option<String>,
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -93,7 +94,7 @@ impl AskarStorage {
     pub async fn scan<'a>(&self, params: AskarStorageScanParams) -> Result<AskarStorageScan<'a>> {
         self.store
             .scan(
-                Some(self.profile.clone()),
+                Some(params.profile.unwrap_or(self.profile.clone())),
                 None,
                 params.tag_filter,
                 params.offset,
@@ -146,15 +147,19 @@ impl AskarStorage {
 
     /// Create a new session against the store
     #[instrument(level = Level::TRACE, err(), ret())]
-    pub(crate) async fn session(&self) -> Result<Session> {
-        self.store.session(Some(self.profile.clone())).await
+    pub(crate) async fn session(&self, profile: Option<String>) -> Result<Session> {
+        self.store
+            .session(Some(profile.unwrap_or(self.profile.clone())))
+            .await
     }
 
     /// Create a new transaction session against the store
     #[allow(dead_code)] // todo fix
     #[instrument(level = Level::TRACE, err(), ret())]
-    pub(crate) async fn transaction(&self) -> Result<Session> {
-        self.store.transaction(Some(self.profile.clone())).await
+    pub(crate) async fn transaction(&self, profile: Option<String>) -> Result<Session> {
+        self.store
+            .transaction(Some(profile.unwrap_or(self.profile.clone())))
+            .await
     }
 }
 

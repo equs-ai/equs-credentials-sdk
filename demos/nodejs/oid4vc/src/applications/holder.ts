@@ -38,9 +38,12 @@ async function main(): Promise<void> {
     profile: "test",
   } satisfies AskarStorageConfig;
 
+  const profile = "test_profile";
+
   const storage = await AskarStorage.create(storageConfig, false);
-  const kms = new AskarKms(storage);
-  const vault = new AskarVault(storage);
+  await storage.createProfile(profile);
+  const kms = new AskarKms(storage, profile);
+  const vault = new AskarVault(storage, profile);
 
   const issuerDiscovery = IssuerDiscovery.fromUrl(config.issuerServerUrl);
 

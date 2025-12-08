@@ -138,7 +138,7 @@ impl agent_sdk::vault::Vault for JsVault {
 
     async fn get_credentials(
         &self,
-        pagination: Option<agent_sdk::vault::VaultPagination>,
+        pagination: Option<agent_sdk::vault::VaultFetchOptions>,
     ) -> agent_sdk::vault::Result<Vec<agent_sdk::vault::CredentialEntry>> {
         let pagination = if let Some(pagination) = pagination {
             let pagination: VaultPagination =
@@ -169,7 +169,7 @@ impl agent_sdk::vault::Vault for JsVault {
     async fn find_credentials(
         &self,
         fields: Vec<String>,
-        pagination: Option<agent_sdk::vault::VaultPagination>,
+        pagination: Option<agent_sdk::vault::VaultFetchOptions>,
     ) -> agent_sdk::vault::Result<Vec<agent_sdk::vault::CredentialEntry>> {
         let pagination = if let Some(pagination) = pagination {
             let pagination: VaultPagination =
@@ -265,7 +265,7 @@ pub mod test_utils {
             pagination: Option<VaultPagination>,
         ) -> Vec<CredentialEntry> {
             let pagination = if let Some(pagination) = pagination {
-                let pagination: agent_sdk::vault::VaultPagination =
+                let pagination: agent_sdk::vault::VaultFetchOptions =
                     utils::convert_to_rust_object(pagination)
                         .map_err(|_| {
                             PaginationParsingSnafu {
@@ -301,7 +301,7 @@ pub mod test_utils {
             pagination: Option<VaultPagination>,
         ) -> Vec<CredentialEntry> {
             let pagination = if let Some(pagination) = pagination {
-                let pagination: agent_sdk::vault::VaultPagination =
+                let pagination: agent_sdk::vault::VaultFetchOptions =
                     utils::convert_to_rust_object(pagination)
                         .map_err(|_| {
                             PaginationParsingSnafu {

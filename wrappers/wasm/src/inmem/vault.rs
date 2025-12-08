@@ -59,7 +59,7 @@ impl InMemVault {
         pagination: Option<VaultPagination>,
     ) -> Result<Vec<CredentialEntry>, JsError> {
         let pagination = if let Some(pagination) = pagination {
-            let pagination: agent_sdk::vault::VaultPagination =
+            let pagination: agent_sdk::vault::VaultFetchOptions =
                 utils::convert_to_rust_object(pagination)?;
             Some(pagination)
         } else {
@@ -92,7 +92,7 @@ impl InMemVault {
         pagination: Option<VaultPagination>,
     ) -> Result<Vec<CredentialEntry>, JsError> {
         let pagination = if let Some(pagination) = pagination {
-            let pagination: agent_sdk::vault::VaultPagination =
+            let pagination: agent_sdk::vault::VaultFetchOptions =
                 utils::convert_to_rust_object(pagination)?;
             Some(pagination)
         } else {

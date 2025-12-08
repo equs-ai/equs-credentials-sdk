@@ -1,6 +1,6 @@
 use crate::common::Result;
 pub(crate) use agent_sdk::vault::{
-    CredentialEntry, Vault as ASDKVault, VaultPagination as ASDKVaultPagination,
+    CredentialEntry, Vault as ASDKVault, VaultFetchOptions as ASDKVaultPagination,
 };
 use agent_sdk::vc;
 use agent_sdk::vc::{Credential, CredentialMetadata};
@@ -38,23 +38,23 @@ pub struct CredentialsFindResult {
 
 #[derive(uniffi::Record)]
 pub struct VaultPagination {
-    pub page: u32,
-    pub batch_size: u32,
+    pub offset: Option<u32>,
+    pub limit: Option<u32>,
 }
 
 impl From<VaultPagination> for ASDKVaultPagination {
     fn from(value: VaultPagination) -> Self {
         Self {
-            page: value.page as usize,
-            batch_size: value.batch_size as usize,
+            offset: value.offset.map(|v| v as usize),
+            limit: value.limit.map(|v| v as usize),
         }
     }
 }
 impl From<ASDKVaultPagination> for VaultPagination {
     fn from(value: ASDKVaultPagination) -> Self {
         Self {
-            page: value.page as u32,
-            batch_size: value.batch_size as u32,
+            offset: value.offset.map(|v| v as u32),
+            limit: value.limit.map(|v| v as u32),
         }
     }
 }

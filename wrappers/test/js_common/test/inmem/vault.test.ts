@@ -63,7 +63,7 @@ describe("InMemVault: ", () => {
     for (let i = 0; i < 10; i++) {
       await vault.storeCredential(sdJwt, sdJwtMetadata);
     }
-    const credentials = await vault.getCredentials({ page: 3, batchSize: 3 });
-    expect(credentials.length).toEqual(1);
+    const credentials = await vault.getCredentials({ offset: 8, limit: 4 });
+    expect(credentials.length).toEqual(2);
   });
 });
