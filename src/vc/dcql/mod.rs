@@ -8,7 +8,8 @@ use crate::vault::{
 };
 use crate::vc::claims::Claim;
 use crate::vc::core::{PresentationInput, PresentationRestriction, PresentationRestrictionValue};
-use crate::vc::{ClaimFormatDesignation, HasClaims, Presentation, RequestedPresentation};
+use crate::vc::oid4vp::verifier::PresentationVerificationOptions;
+use crate::vc::{ClaimFormatDesignation, HasClaims, Presentation, RequestedPresentation, formats};
 use crate::vc::{Credential, HasVCFormat, JsonPath};
 use common_macros::DebugError;
 use openid4vp::core::dcql::{DcqlClaim, DcqlCredential, DcqlCredentialSet, PathValue, ValueType};
@@ -347,6 +348,7 @@ pub(crate) fn prepare_vp_token_response_for_dcql(
 pub(crate) fn resolve_presentation_response(
     presentations: Value,
     dcql: &DCQL,
+    presentation_verification_opts: &PresentationVerificationOptions,
 ) -> Result<Vec<RequestedPresentation>> {
     let mut result: Vec<RequestedPresentation> = vec![];
     for credential_query in dcql.credentials() {
@@ -384,6 +386,7 @@ pub(crate) fn resolve_presentation_response(
                 }
             }
 
+            #[cfg(not(target_arch = "wasm32"))]
             ClaimFormatDesignation::MsoMDoc => {
                 for presentation in extracted_presentations {
                     let cbor_base64_encoded = presentation.as_str().ok_or(
@@ -394,8 +397,12 @@ pub(crate) fn resolve_presentation_response(
                         .build(),
                     )?;
 
-                    presentation_results
-                        .push(Presentation::MsoMdoc(cbor_base64_encoded.to_string()))
+                    presentation_results.push(Presentation::MsoMdoc(
+                        formats::mso_mdoc::Presentation {
+                            value: cbor_base64_encoded.to_string(),
+                            enc_pub_key: presentation_verification_opts.enc_pub_key.clone(),
+                        },
+                    ))
                 }
             }
             ClaimFormatDesignation::LdpVc => {
@@ -1072,7 +1079,9 @@ mod tests {
         ))
         .unwrap();
         let dcql = DCQL::new(vec![credential].try_into().unwrap());
-        let actual = resolve_presentation_response(presentation.clone(), &dcql).unwrap();
+        let actual =
+            resolve_presentation_response(presentation.clone(), &dcql, &Default::default())
+                .unwrap();
         assert_eq!(
             serde_json::to_value(&actual[0].presentation).unwrap(),
             expected,
@@ -1093,7 +1102,9 @@ mod tests {
         ))
         .unwrap();
         let dcql = DCQL::new(vec![credential].try_into().unwrap());
-        let actual = resolve_presentation_response(presentation.clone(), &dcql).unwrap();
+        let actual =
+            resolve_presentation_response(presentation.clone(), &dcql, &Default::default())
+                .unwrap();
     }
 
     #[test]
@@ -1112,7 +1123,9 @@ mod tests {
         ))
         .unwrap();
         let dcql = DCQL::new(vec![credential].try_into().unwrap());
-        let actual = resolve_presentation_response(presentation.clone(), &dcql).unwrap();
+        let actual =
+            resolve_presentation_response(presentation.clone(), &dcql, &Default::default())
+                .unwrap();
     }
 
     #[rstest]

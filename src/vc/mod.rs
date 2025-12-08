@@ -192,7 +192,8 @@ pub enum Presentation {
     SdJwtVp(String),
 
     // mso_mdoc
-    MsoMdoc(String),
+    #[cfg(not(target_arch = "wasm32"))]
+    MsoMdoc(formats::mso_mdoc::Presentation),
 }
 
 impl HasVPFormat for Presentation {
@@ -201,7 +202,8 @@ impl HasVPFormat for Presentation {
             Presentation::JwtVp(_) => VPFormat::JwtVp,
             Presentation::LdpVp(_) => VPFormat::LdpVp,
             Presentation::SdJwtVp(_) => VPFormat::SdJwtVp,
-            Presentation::MsoMdoc(_) => VPFormat::MsoMdoc,
+            #[cfg(not(target_arch = "wasm32"))]
+            Presentation::MsoMdoc { .. } => VPFormat::MsoMdoc,
         }
     }
 }

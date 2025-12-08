@@ -12,6 +12,7 @@ use std::marker::PhantomData;
 use tracing::{Level, info, instrument};
 use url::Url;
 
+use crate::crypto::JWK;
 use crate::did::JWKResolver;
 use crate::did::universal::UniversalResolver;
 use crate::http::HttpClient;
@@ -66,6 +67,12 @@ pub struct VerifierMetadata {
     pub client_id: String,
     pub key_metadata: KeyMetadata,
     pub client_metadata: ClientMetadata,
+}
+
+#[derive(Debug, Default, Clone)]
+pub(crate) struct PresentationVerificationOptions {
+    pub enc_pub_key: Option<JWK>,
+    pub audience: Option<String>,
 }
 
 pub struct VerifierService<VF, KH, KMS, NG, HC>
@@ -179,19 +186,21 @@ where
         session: &PresentationSession,
         verification_metadata: &CredentialVerificationMetadata,
     ) -> Result<Claims> {
-        let authorization_response = self
+        let (authorization_response, mut verification_opts) = self
             .resolve_authorization_response(authorization_response)
             .await?;
         self.validate_transaction_data(
             verification_metadata.transaction_data.as_ref(),
             authorization_response.transaction_data_response.as_ref(),
         )?;
+
+        verification_opts.audience = verification_metadata.audience.clone();
         let vp_token_claims = self
             .do_verify_presentation(
                 &session.resolved_presentation_query,
                 &session.nonce,
                 &authorization_response,
-                verification_metadata.audience.as_deref(),
+                verification_opts,
             )
             .await?;
 
@@ -226,9 +235,11 @@ where
     async fn resolve_authorization_response(
         &self,
         response: &AuthorizationResponse,
-    ) -> Result<AuthorizationResponseObject> {
+    ) -> Result<(AuthorizationResponseObject, PresentationVerificationOptions)> {
         match response {
-            AuthorizationResponse::Plain(auth_response) => Ok(auth_response.to_owned()),
+            AuthorizationResponse::Plain(auth_response) => {
+                Ok((auth_response.to_owned(), Default::default()))
+            }
             AuthorizationResponse::Jwe(jwe_response) => {
                 let header = extract_jwe_header(jwe_response).map_err(|e| Internal {
                     source: AuthorizationResponseDecryptionSnafu {
@@ -245,6 +256,7 @@ where
                     }
                     .build(),
                 })?;
+                let enc_pub_key = kh.jwk();
                 let alg = kh.alg();
                 let private_key = add_public_private_keys(kh, alg)?;
                 let private_key_handle = get_private_key_handler(private_key, alg)?;
@@ -308,13 +320,19 @@ where
                         transaction_data_hashes_alg,
                     });
 
-                Ok(AuthorizationResponseObject {
-                    vp_token,
-                    presentation_submission,
-                    id_token,
-                    state,
-                    transaction_data_response,
-                })
+                Ok((
+                    AuthorizationResponseObject {
+                        vp_token,
+                        presentation_submission,
+                        id_token,
+                        state,
+                        transaction_data_response,
+                    },
+                    PresentationVerificationOptions {
+                        enc_pub_key,
+                        audience: None,
+                    },
+                ))
             }
         }
     }
@@ -625,16 +643,17 @@ where
         resolved_presentation_query: &ResolvedPresentationQuery,
         nonce: &Nonce,
         authorization_response: &AuthorizationResponseObject,
-        audience: Option<&str>,
+        presentation_verification_opts: PresentationVerificationOptions,
     ) -> Result<Claim> {
         let mut result: HashMap<String, Vec<Claim>> = HashMap::new();
         let mut ids = vec![]; // we need it to preserve order of items in the array
-
         let requested_presentations = match resolved_presentation_query {
-            ResolvedPresentationQuery::DCQL(dcql) => {
-                dcql::resolve_presentation_response(authorization_response.vp_token.clone(), dcql)
-                    .context(DCQLSnafu)?
-            }
+            ResolvedPresentationQuery::DCQL(dcql) => dcql::resolve_presentation_response(
+                authorization_response.vp_token.clone(),
+                dcql,
+                &presentation_verification_opts,
+            )
+            .context(DCQLSnafu)?,
             ResolvedPresentationQuery::PresentationDefinition(pd) => {
                 let ps = authorization_response
                     .presentation_submission
@@ -662,7 +681,11 @@ where
                 } else {
                     Some(HolderBinder {
                         nonce: nonce.to_owned(),
-                        verifier_id: audience.unwrap_or(&self.metadata.client_id).to_owned(),
+                        verifier_id: presentation_verification_opts
+                            .audience
+                            .as_deref()
+                            .unwrap_or(&self.metadata.client_id)
+                            .to_owned(),
                     })
                 };
 
