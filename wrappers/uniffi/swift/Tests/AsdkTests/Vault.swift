@@ -31,40 +31,40 @@ import Swifter
 
         #expect(credentialEntries.first == credential)
     }
-    
+
     @Test func getAbsentCredential() async throws {
         let vault = self.mockVault()
         let credential = try await vault.getCredential(id: "cred:56789")
 
         #expect(nil == credential)
     }
-    
+
     @Test func getCredentials() async throws {
         let vault = self.mockVault()
-        let credentials = try await vault.getCredentials(pagination: nil)
+        let credentials = try await vault.getCredentials(options: nil)
 
         #expect(self.credentialEntries == credentials)
     }
-    
+
     @Test func findCredentials() async throws {
         let vault = self.mockVault()
-        let credentials = try await vault.findCredentials(fields: self.criteria, pagination: nil)
+        let credentials = try await vault.findCredentials(fields: self.criteria, options: nil)
 
         #expect(self.credentialEntries == credentials)
     }
-    
+
     @Test func storeCredential() async throws {
         let vault = self.mockVault()
         let storedCredentialId = try await vault.storeCredential(credential: self.credentialEntries.first!.credential, metadata: self.metadata)
 
         #expect(self.credentialId == storedCredentialId)
     }
-    
+
     @Test func deleteCredential() async throws {
         let vault = self.mockVault()
         try await vault.deleteCredential(id: self.credentialId)
     }
-    
+
     private func mockVault() -> Asdk.Vault {
         return wrapVaultForTests(vault: MockVault(
             credentialId: self.credentialId,
@@ -78,12 +78,12 @@ import Swifter
 
 
 final class MockVault : Asdk.Vault {
-    
+
     private let credentialId: String
     private let criteria: Array<String>
     private let credentialEntries: Array<CredentialEntry>
     private let metadata: CredentialMetadata
-    
+
     init(
         credentialId: String,
         criteria: Array<String>,
@@ -95,17 +95,17 @@ final class MockVault : Asdk.Vault {
         self.credentialEntries = credentialEntries
         self.metadata = metadata
     }
-    
+
     func storeCredential(credential: Asdk.Credential, metadata: Asdk.CredentialMetadata) async throws -> String {
         #expect(self.credentialEntries.first?.credential == credential)
         #expect(self.metadata == metadata)
         return self.credentialId
     }
-    
+
     func deleteCredential(id: String) async throws {
         #expect(self.credentialId == id)
     }
-    
+
     func getCredential(id: String) async throws -> Asdk.CredentialEntry? {
         if (id != self.credentialId || self.credentialEntries.isEmpty) {
             return nil
@@ -113,16 +113,16 @@ final class MockVault : Asdk.Vault {
 
         return self.credentialEntries.first
     }
-    
-    func getCredentials(pagination: Asdk.VaultPagination?) async throws -> [Asdk.CredentialEntry] {
+
+    func getCredentials(options: Asdk.VaultFetchOptions?) async throws -> [Asdk.CredentialEntry] {
         return self.credentialEntries
     }
-    
-    func findCredentials(fields: [String], pagination: Asdk.VaultPagination?) async throws -> [Asdk.CredentialEntry] {
+
+    func findCredentials(fields: [String], options: Asdk.VaultFetchOptions?) async throws -> [Asdk.CredentialEntry] {
         #expect(self.criteria == fields)
 
         return self.credentialEntries
     }
-    
-    
+
+
 }

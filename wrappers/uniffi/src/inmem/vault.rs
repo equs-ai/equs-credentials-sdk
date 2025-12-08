@@ -3,7 +3,7 @@ use agent_sdk::vc::{Credential, CredentialMetadata};
 use async_trait::async_trait;
 
 use crate::common::{Error, Result};
-use crate::vault::{CredentialEntry, Vault, VaultPagination};
+use crate::vault::{CredentialEntry, Vault, VaultFetchOptions};
 
 #[derive(uniffi::Object, Debug)]
 pub struct InMemVault(agent_sdk::inmem::vault::InMemVault);
@@ -38,12 +38,12 @@ impl Vault for InMemVault {
 
     async fn get_credentials(
         &self,
-        pagination: Option<VaultPagination>,
+        options: Option<VaultFetchOptions>,
     ) -> Result<Vec<CredentialEntry>> {
-        let pagination = pagination.map(Into::into);
+        let options = options.map(Into::into);
 
         self.0
-            .get_credentials(pagination)
+            .get_credentials(options)
             .await
             .map_err(|err| Error::Vault(format!("{:?}", err)))
     }
@@ -51,12 +51,12 @@ impl Vault for InMemVault {
     async fn find_credentials(
         &self,
         fields: Vec<String>,
-        pagination: Option<VaultPagination>,
+        options: Option<VaultFetchOptions>,
     ) -> Result<Vec<CredentialEntry>> {
-        let pagination = pagination.map(Into::into);
+        let options = options.map(Into::into);
 
         self.0
-            .find_credentials(fields, pagination)
+            .find_credentials(fields, options)
             .await
             .map_err(|err| Error::Vault(format!("{:?}", err)))
     }
