@@ -1,8 +1,9 @@
 use crate::kms::Alg;
 use crate::AskarStorage;
+use askar::vault::map_credential_fields_to_tags;
 use askar::vault::{
-    AskarVaultCursorParamsOrderBy, Credential, CredentialEntry, CredentialMetadata, HasVCFormat,
-    VCFormat, Vault, VaultPagination,
+    AskarVaultParamsSortBy, Credential, CredentialEntry, CredentialMetadata, HasVCFormat, VCFormat,
+    Vault, VaultFetchOptions,
 };
 use napi::{Error, Result};
 use napi_derive::napi;
@@ -29,9 +30,8 @@ pub struct AskarVault(askar::vault::AskarVault);
 #[napi]
 impl AskarVault {
     #[napi(constructor)]
-    pub fn new(storage: &AskarStorage) -> Self {
-        let storage = storage.clone();
-        let vault = askar::vault::AskarVault::new(storage.0.clone());
+    pub fn new(storage: &AskarStorage, profile: String) -> Self {
+        let vault = askar::vault::AskarVault::new(&storage.0.clone(), profile);
 
         AskarVault(vault)
     }
@@ -97,6 +97,26 @@ impl AskarVault {
             .collect()
     }
 
+    #[allow(private_interfaces)]
+    #[napi(ts_return_type = "Promise<Array<CredentialEntry>>")]
+    pub async fn get_with_options(
+        &self,
+        fields: Vec<String>,
+        options: AskarVaultFetchOptions,
+    ) -> Result<Vec<InnerCredentialEntry>> {
+        let filter_tags = map_credential_fields_to_tags(fields);
+        let credentials = self
+            .0
+            .get_with_options(filter_tags, options.into())
+            .await
+            .map_err(|e| Error::from_reason(e.to_string()))?;
+
+        credentials
+            .into_iter()
+            .map(|entry| entry.try_into())
+            .collect()
+    }
+
     /// Delete a {@link CredentialEntry} with {@link Credential} from {@link Vault}
     ///
     /// @param {string} id -  `ID` of the stored {@link CredentialEntry}
@@ -136,49 +156,6 @@ impl AskarVault {
             .collect()
     }
 
-    /// Closes the connection to the {@link Vault}
-    ///
-    /// @returns {void}
-    #[allow(clippy::missing_safety_doc)]
-    #[napi]
-    pub async unsafe fn close_vault(&mut self) -> Result<()> {
-        self.0
-            .to_owned()
-            .close_vault()
-            .await
-            .map_err(|e| Error::from_reason(e.to_string()))?;
-
-        Ok(())
-    }
-
-    /// Creates a cursor for efficiently scanning through credentials in the vault.
-    ///
-    /// The cursor allows iterating through large sets of credentials in batches,
-    /// providing memory-efficient access to the data. Each batch is fetched only when
-    /// needed using the `fetch_next()` method.
-    ///
-    /// @param {AskarVaultCursorParams} params - Parameters for cursor configuration:
-    /// * `batch_size`: Number of entries to fetch in each batch. If not provided the default value is 32
-    /// * `fields`: Array of fields to filter credentials
-    /// * `limit`: Optional maximum number of entries to return in total
-    /// * `offset`: Optional number of entries to skip before starting
-    /// * `order_by`: Optional parameter to specify ordering (e.g., by ID)
-    /// * `sort_by`: Optional parameter to specify a sort direction (Ascending/Descending)
-    ///
-    /// @returns {AskarVaultCursor} Cursor object that can be used to iterate through credentials
-    /// using `fetch_next()` method which returns batches of credentials until exhausted
-    #[allow(private_interfaces)]
-    #[napi]
-    pub async fn create_cursor(&self, params: AskarVaultCursorParams) -> Result<AskarVaultCursor> {
-        let cursor = self
-            .0
-            .create_cursor(params.into())
-            .await
-            .map_err(|e| Error::from_reason(e.to_string()))?;
-
-        Ok(AskarVaultCursor(cursor))
-    }
-
     /// Counts all credentials in the vault, optionally filtered by category
     ///
     /// @param {string} category - Optional category to filter credentials by
@@ -186,7 +163,6 @@ impl AskarVault {
     /// @returns {number} Total number of credentials matching the criteria
     /// * Returns total count of all credentials if no category specified
     /// * Returns count of credentials matching the category if specified
-    #[allow(private_interfaces)]
     #[napi]
     pub async fn count_all(&self, category: Option<String>) -> Result<u32> {
         let count = self
@@ -320,118 +296,82 @@ impl TryFrom<CredentialEntry> for InnerCredentialEntry {
     }
 }
 
-/// An interface for pagination in Vault. `page` * `batchSize` - number of elements to skip and then takes `batchSize` number of elements
+/// An interface for pagination in Vault
 ///
-/// @property {page} page - page index
-/// @property {batchSize} batchSize - size of batch to get
+/// @property {offset} offset - amount of items to skip
+/// @property {limit} limit - maximum amount of items to get
 #[napi(object)]
 struct InnerVaultPagination {
-    pub page: u32,
-    pub batch_size: u32,
+    pub offset: Option<u32>,
+    pub limit: Option<u32>,
 }
 
-impl From<InnerVaultPagination> for VaultPagination {
+impl From<InnerVaultPagination> for VaultFetchOptions {
     fn from(value: InnerVaultPagination) -> Self {
-        Self::new(value.page as usize, value.batch_size as usize)
+        Self {
+            offset: value.offset.map(|value| value as usize),
+            limit: value.limit.map(|value| value as usize),
+        }
     }
 }
-impl From<VaultPagination> for InnerVaultPagination {
-    fn from(value: VaultPagination) -> Self {
+impl From<VaultFetchOptions> for InnerVaultPagination {
+    fn from(value: VaultFetchOptions) -> Self {
         Self {
-            page: value.page as u32,
-            batch_size: value.batch_size as u32,
+            offset: value.offset.map(|value| value as u32),
+            limit: value.limit.map(|value| value as u32),
         }
     }
 }
 
 #[napi(object)]
-struct AskarVaultCursorParams {
-    pub fields: Vec<String>,
-    pub batch_size: Option<u32>,
+struct AskarVaultFetchOptions {
     pub limit: Option<u32>,
     pub offset: Option<u32>,
-    pub order_by: Option<AskarVaultCursorOrderBy>,
-    pub sort_by: Option<AskarVaultCursorSortBy>,
+    pub sort_by: Option<AskarVaultSortBy>,
+    pub sort_order: Option<AskarVaultParamsSortOrder>,
+}
+
+impl From<AskarVaultFetchOptions> for askar::vault::AskarVaultFetchOptions {
+    fn from(value: AskarVaultFetchOptions) -> Self {
+        Self {
+            offset: value.offset.map(|v| v as i64),
+            limit: value.limit.map(|v| v as i64),
+            sort_by: value.sort_by.map(From::from),
+            sort_order: value.sort_order.map(From::from),
+        }
+    }
 }
 
 #[napi]
 #[derive(Debug, Serialize, Deserialize)]
-pub enum AskarVaultCursorOrderBy {
+pub enum AskarVaultSortBy {
     Id,
 }
 
+impl From<AskarVaultSortBy> for AskarVaultParamsSortBy {
+    fn from(value: AskarVaultSortBy) -> Self {
+        match value {
+            AskarVaultSortBy::Id => AskarVaultParamsSortBy::Id,
+        }
+    }
+}
+
 #[napi]
 #[derive(Debug, Serialize, Deserialize)]
-pub enum AskarVaultCursorSortBy {
+pub enum AskarVaultParamsSortOrder {
     Ascending,
     Descending,
 }
 
-#[napi]
-pub struct AskarVaultCursor(askar::vault::AskarVaultCursor<'static>);
-
-#[napi]
-impl AskarVaultCursor {
-    /// Fetches the next batch of credentials based on cursor configuration
-    ///
-    /// Returns credentials in batches according to the batch_size specified when creating the cursor.
-    /// Each call returns the next batch until all matching credentials have been returned.
-    ///
-    /// # Note
-    /// Aries Askar library has a 32-element restriction for single batch fetch.
-    /// The inner implementation makes extra inner fetch calls to fill the batch size when it is greater than 32.
-    /// And remaining entries will be persistent in runtime and will be used for future calls of this method.
-    ///
-    /// @returns {Array<CredentialEntry> | null}
-    /// * An array of {@link CredentialEntry} containing up to batch_size credentials
-    /// * `null` if no more credentials match the cursor criteria
-    /// * Throws error if fetching fails
-    #[allow(private_interfaces)]
-    #[napi(ts_return_type = "Promise<Array<CredentialEntry> | null>")]
-    pub async unsafe fn fetch_next(&mut self) -> Result<Option<Vec<InnerCredentialEntry>>> {
-        let credentials = self
-            .0
-            .fetch_next()
-            .await
-            .map_err(|e| Error::from_reason(e.to_string()))?;
-
-        let Some(credentials) = credentials else {
-            return Ok(None);
-        };
-
-        let mut result = Vec::with_capacity(credentials.len());
-        for credential in credentials {
-            result.push(credential.try_into()?);
-        }
-
-        Ok(Some(result))
-    }
-}
-
-impl From<AskarVaultCursorParams> for askar::vault::AskarVaultCursorParams {
-    fn from(value: AskarVaultCursorParams) -> Self {
-        askar::vault::AskarVaultCursorParams {
-            fields: value.fields,
-            batch_size: value.batch_size.map(Into::into),
-            limit: value.limit.map(Into::into),
-            offset: value.offset.map(Into::into),
-            order_by: value.order_by.map(|o| o.into()),
-            sort_by_desc: value.sort_by.map(|sort_by| match sort_by {
-                AskarVaultCursorSortBy::Ascending => {
-                    askar::vault::AskarVaultCursorParamsSortBy::Ascending
-                }
-                AskarVaultCursorSortBy::Descending => {
-                    askar::vault::AskarVaultCursorParamsSortBy::Descending
-                }
-            }),
-        }
-    }
-}
-
-impl From<AskarVaultCursorOrderBy> for AskarVaultCursorParamsOrderBy {
-    fn from(value: AskarVaultCursorOrderBy) -> Self {
+impl From<AskarVaultParamsSortOrder> for askar::vault::AskarVaultParamsSortOrder {
+    fn from(value: AskarVaultParamsSortOrder) -> Self {
         match value {
-            AskarVaultCursorOrderBy::Id => AskarVaultCursorParamsOrderBy::Id,
+            AskarVaultParamsSortOrder::Ascending => {
+                askar::vault::AskarVaultParamsSortOrder::Ascending
+            }
+            AskarVaultParamsSortOrder::Descending => {
+                askar::vault::AskarVaultParamsSortOrder::Descending
+            }
         }
     }
 }

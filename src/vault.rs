@@ -69,6 +69,12 @@ pub enum Error {
 
     #[snafu(display("Error during claims validation: {details}"))]
     ClaimsValidation { details: String },
+
+    #[snafu(display("Error during getting session: {details}"))]
+    Session { details: String },
+
+    #[snafu(display("Error during conversion to credential entry: {details}"))]
+    ConversionToEntry { details: String },
 }
 
 /// `Result` alias for Vault-specific [Error].
@@ -84,20 +90,9 @@ pub struct CredentialEntry {
 
 /// A struct for pagination in Vault
 #[derive(Debug, Serialize, Deserialize)]
-pub struct VaultPagination {
-    pub page: usize,
-    #[serde(rename = "batchSize")]
-    pub batch_size: usize,
-}
-
-impl VaultPagination {
-    pub fn new(page: usize, batch_size: usize) -> Self {
-        Self { page, batch_size }
-    }
-
-    pub fn skip_amount(&self) -> usize {
-        self.page * self.batch_size
-    }
+pub struct VaultFetchOptions {
+    pub offset: Option<usize>,
+    pub limit: Option<usize>,
 }
 
 /// An async `Vault` interface for managing Verifiable Credentials.
@@ -166,7 +161,7 @@ pub trait Vault: WasmNotSend + WasmNotSync {
     ///
     /// # Arguments
     ///
-    /// * `pagination` -  an optional [VaultPagination] field for results' pagination.
+    /// * `pagination` -  an optional [VaultFetchOptions] field for results' pagination.
     ///
     /// # Returns
     ///
@@ -178,7 +173,7 @@ pub trait Vault: WasmNotSend + WasmNotSync {
     /// * [Error::Resolving] - fails to resolve the values.
     async fn get_credentials(
         &self,
-        pagination: Option<VaultPagination>,
+        pagination: Option<VaultFetchOptions>,
     ) -> Result<Vec<CredentialEntry>>;
 
     /// Find the matching `CredentialEntry`s in `Vault`
@@ -186,7 +181,7 @@ pub trait Vault: WasmNotSend + WasmNotSync {
     /// # Arguments
     ///
     /// * `fields` -  a vec of fields to search for credentials.
-    /// * `pagination` -  an optional [VaultPagination] field for results' pagination.
+    /// * `pagination` -  an optional [VaultFetchOptions] field for results' pagination.
     ///
     /// # Returns
     ///
@@ -201,7 +196,7 @@ pub trait Vault: WasmNotSend + WasmNotSync {
     async fn find_credentials(
         &self,
         fields: Vec<String>,
-        pagination: Option<VaultPagination>,
+        pagination: Option<VaultFetchOptions>,
     ) -> Result<Vec<CredentialEntry>>;
 }
 

@@ -16,9 +16,8 @@ pub struct AskarKms(askar::kms::AskarKms);
 #[napi]
 impl AskarKms {
     #[napi(constructor)]
-    pub fn new(storage: &AskarStorage) -> Self {
-        let storage = storage.clone();
-        let kms = askar::kms::AskarKms::new(storage.0.clone());
+    pub fn new(storage: &AskarStorage, profile: String) -> Self {
+        let kms = askar::kms::AskarKms::new(&storage.0.clone(), profile);
 
         AskarKms(kms)
     }
@@ -62,21 +61,6 @@ impl AskarKms {
             .await
             .map(AskarKeyHandle::new)
             .map_err(|e| Error::from_reason(e.to_string()))
-    }
-
-    /// Closes current kms connection
-    ///
-    /// @returns {Promise<void>}
-    #[allow(clippy::missing_safety_doc)]
-    #[napi]
-    pub async unsafe fn close_kms(&mut self) -> Result<()> {
-        self.0
-            .to_owned()
-            .close_kms()
-            .await
-            .map_err(|e| Error::from_reason(e.to_string()))?;
-
-        Ok(())
     }
 }
 

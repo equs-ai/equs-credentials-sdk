@@ -1,11 +1,6 @@
-import {
-  AskarStorage,
-  AskarVault,
-  AskarVaultCursorOrderBy,
-  AskarVaultCursorSortBy,
-  KeyMethod,
-} from "../index";
+import { AskarStorage, AskarVault, KeyMethod } from "../index";
 import { Alg, VCFormat } from "@equstng/agent-sdk";
+import * as assert from "node:assert";
 
 const CREDENTIAL_DATA = {
   credential: {
@@ -33,9 +28,10 @@ describe("Askar Vault: ", () => {
   const dbUrl = "sqlite://:memory:";
   let vault: AskarVault;
   let credId: string;
+  let storage: AskarStorage;
 
-  beforeAll(async () => {
-    const storage = await AskarStorage.create(
+  beforeEach(async () => {
+    storage = await AskarStorage.create(
       {
         dbUrl: "sqlite://:memory:",
         keyMethod: KeyMethod.DeriveKey,
@@ -44,14 +40,15 @@ describe("Askar Vault: ", () => {
       },
       false,
     );
-    vault = new AskarVault(storage);
+    await storage.createProfile("test_profile");
+    vault = new AskarVault(storage, "test_profile");
 
     const data = CREDENTIAL_DATA;
     credId = await vault.storeCredential(data.credential, data.metadata);
   }, 10000);
 
-  afterAll(async () => {
-    await vault.closeVault();
+  afterEach(async () => {
+    await storage.close();
     await AskarStorage.remove(dbUrl);
   });
 
@@ -65,7 +62,8 @@ describe("Askar Vault: ", () => {
       },
       false,
     );
-    const vault2 = new AskarVault(storage2);
+    await storage2.createProfile("test_profile");
+    const vault2 = new AskarVault(storage2, "test_profile");
 
     const data = CREDENTIAL_DATA;
     let credId2 = await vault2.storeCredential(data.credential, data.metadata);
@@ -84,6 +82,71 @@ describe("Askar Vault: ", () => {
       id: credId,
     });
   }, 20000);
+
+  test("multiple vaults with singleton storage", async () => {
+    const storage = await AskarStorage.create(
+      {
+        dbUrl: dbUrl,
+        keyMethod: KeyMethod.DeriveKey,
+        passKey: "test_key_2",
+        profile: "test",
+      },
+      false,
+    );
+
+    const profile1 = "test_profile_1";
+    const profile2 = "test_profile_2";
+    const profile3 = "test_profile_3";
+    const profile4 = "test_profile_4";
+
+    await storage.createProfile(profile1);
+    await storage.createProfile(profile2);
+    await storage.createProfile(profile3);
+    await storage.createProfile(profile4);
+    const vault1 = new AskarVault(storage, profile1);
+    const vault2 = new AskarVault(storage, profile2);
+    const vault3 = new AskarVault(storage, profile3);
+    const vault4 = new AskarVault(storage, profile4);
+
+    const data = CREDENTIAL_DATA;
+    let credId1 = await vault1.storeCredential(data.credential, data.metadata);
+    let credId2 = await vault2.storeCredential(data.credential, data.metadata);
+    let credId3 = await vault3.storeCredential(data.credential, data.metadata);
+    let credId4 = await vault4.storeCredential(data.credential, data.metadata);
+
+    const entry1 = await vault1.getCredential(credId1);
+    const entry2 = await vault2.getCredential(credId2);
+    const entry3 = await vault3.getCredential(credId3);
+    const entry4 = await vault4.getCredential(credId4);
+
+    await storage.removeProfile(profile1);
+    await storage.removeProfile(profile2);
+
+    await vault1.getCredential(credId1).catch((e) => {
+      expect(e.message).toMatch(
+        "Credential resolving error: Profile not found",
+      );
+    });
+    await vault2.getCredential(credId2).catch((e) => {
+      expect(e.message).toMatch(
+        "Credential resolving error: Profile not found",
+      );
+    });
+    await vault3.getCredential(credId3).then((entry) => {
+      expect(entry).toEqual({
+        credential: data.credential,
+        kid: data.metadata.kid,
+        id: credId3,
+      });
+    });
+    await vault4.getCredential(credId4).then((entry) => {
+      expect(entry).toEqual({
+        credential: data.credential,
+        kid: data.metadata.kid,
+        id: credId4,
+      });
+    });
+  });
 
   test("get Credential", async () => {
     const data = CREDENTIAL_DATA;
@@ -108,6 +171,30 @@ describe("Askar Vault: ", () => {
     });
   });
 
+  test("get with options", async () => {
+    const data = CREDENTIAL_DATA;
+
+    const credIds = [];
+
+    for (let i = 0; i < 10; i++) {
+      const credId = await vault.storeCredential(
+        data.credential,
+        data.metadata,
+      );
+      credIds.push(credId);
+    }
+
+    let entry = await vault.getWithOptions([], { offset: 8, limit: 4 });
+
+    expect(entry.length).toEqual(3);
+    expect(entry[0]).toEqual({
+      credential: data.credential,
+      kid: data.metadata.kid,
+      id: expect.stringContaining("dc+sd-jwt:"),
+    });
+    return;
+  });
+
   test("find Credentials", async () => {
     const data = CREDENTIAL_DATA;
     let entry = await vault.findCredentials(data.metadata.fields);
@@ -127,105 +214,24 @@ describe("Askar Vault: ", () => {
     let credentialEntry = await vault.getCredential(credId);
     expect(credentialEntry).toBeNull();
   });
-});
-
-
-
-describe("Askar Vault Cursor: ", () => {
-  const dbUrl = "sqlite://:memory:";
-  let vault: AskarVault;
-  let credId: string;
-
-  beforeAll(async () => {
-    const storage = await AskarStorage.create(
-      {
-        dbUrl: "sqlite://:memory:",
-        keyMethod: KeyMethod.DeriveKey,
-        passKey: "test_key",
-        profile: "test",
-      },
-      false,
-    );
-    vault = new AskarVault(storage);
-  }, 10000);
-
-  afterAll(async () => {
-    await vault.closeVault();
-    await AskarStorage.remove(dbUrl);
-  });
-
-  test("cursor should fetch credentials in batches", async () => {
-    const data = CREDENTIAL_DATA;
-    const numCredentials = 67;
-
-    // Store multiple credentials
-    for (let i = 1; i <= numCredentials; i++) {
-      const id = await vault.storeCredential(data.credential, data.metadata);
-    }
-
-    const cursor = await vault.createCursor({
-      batchSize: 33,
-      fields: data.metadata.fields,
-      orderBy: AskarVaultCursorOrderBy.Id,
-      sortBy: AskarVaultCursorSortBy.Ascending,
-    });
-
-    const firstBatch = await cursor.fetchNext();
-    expect(firstBatch.length).toBe(33);
-
-    const secondBatch = await cursor.fetchNext();
-    expect(secondBatch.length).toBe(33);
-
-    const lastBatch = await cursor.fetchNext();
-    expect(lastBatch.length).toBe(1);
-
-    const nilBatch = await cursor.fetchNext();
-
-    expect(nilBatch).toBeNull();
-  });
-});
-
-
-describe("Askar Vault count all: ", () => {
-  const dbUrl = "sqlite://:memory:";
-  let vault: AskarVault;
-  let credId: string;
-
-  beforeAll(async () => {
-    const storage = await AskarStorage.create(
-      {
-        dbUrl: "sqlite://:memory:",
-        keyMethod: KeyMethod.DeriveKey,
-        passKey: "test_key",
-        profile: "test",
-      },
-      false,
-    );
-    vault = new AskarVault(storage);
-  }, 10000);
-
-  afterAll(async () => {
-    await vault.closeVault();
-    await AskarStorage.remove(dbUrl);
-  });
 
   test("counting all credential works ", async () => {
     const data = CREDENTIAL_DATA;
     const numCredentials = 10;
     const credIds = [];
 
-    for (let i = 1; i <= numCredentials; i++) {
+    for (let i = 1; i < numCredentials; i++) {
       data.metadata.kid = i.toString();
       const id = await vault.storeCredential(data.credential, data.metadata);
       credIds.push(id);
     }
 
-    let expected = await vault.countAll('dc+sd-jwt');
+    let expected = await vault.countAll("dc+sd-jwt");
     expect(expected).toEqual(numCredentials);
 
     const deletedCredentials = 5;
     for (let i = 1; i <= deletedCredentials; i++) {
-        await vault.deleteCredential(credIds[i]);
+      await vault.deleteCredential(credIds[i]);
     }
 
     expected = await vault.countAll();

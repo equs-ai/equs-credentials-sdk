@@ -2,7 +2,7 @@ use crate::vc::core::{JsCredential, JsCredentialMetadata};
 use agent_sdk::vault;
 use agent_sdk::vault::{
     CredentialEntry, DeletingSnafu, EmptyFieldsSnafu, ResolvingSnafu, StoringSnafu, Vault,
-    VaultPagination,
+    VaultFetchOptions,
 };
 use agent_sdk::vc::oid4vp::{CredentialsFindResult, FindVCsFailReason};
 use agent_sdk::vc::{Credential, CredentialMetadata};
@@ -114,26 +114,29 @@ impl TryFrom<CredentialsFindResult> for JsCredentialsFindResult {
     }
 }
 
-/// An interface for pagination in Vault. `page` * `batchSize` - number of elements to skip and then takes `batchSize` number of elements
+/// An interface for pagination in Vault
 ///
-/// @property {page} page - page index
-/// @property {batchSize} batchSize - size of batch to get
+/// @property {offset} offset - amount of items to skip
+/// @property {limit} limit - maximum amount of items to get
 #[napi(js_name = "VaultPagination", object)]
 pub struct JsVaultPagination {
-    pub page: u32,
-    pub batch_size: u32,
+    pub offset: Option<u32>,
+    pub limit: Option<u32>,
 }
 
-impl From<JsVaultPagination> for VaultPagination {
+impl From<JsVaultPagination> for VaultFetchOptions {
     fn from(value: JsVaultPagination) -> Self {
-        Self::new(value.page as usize, value.batch_size as usize)
+        Self {
+            offset: value.offset.map(|value| value as usize),
+            limit: value.limit.map(|value| value as usize),
+        }
     }
 }
-impl From<VaultPagination> for JsVaultPagination {
-    fn from(value: VaultPagination) -> Self {
+impl From<VaultFetchOptions> for JsVaultPagination {
+    fn from(value: VaultFetchOptions) -> Self {
         Self {
-            page: value.page as u32,
-            batch_size: value.batch_size as u32,
+            offset: value.offset.map(|value| value as u32),
+            limit: value.limit.map(|value| value as u32),
         }
     }
 }
@@ -274,7 +277,7 @@ impl Vault for JsVault {
 
     async fn get_credentials(
         &self,
-        pagination: Option<VaultPagination>,
+        pagination: Option<VaultFetchOptions>,
     ) -> vault::Result<Vec<CredentialEntry>> {
         let promise: Promise<Vec<JsCredentialEntry>> = self
             .get_credentials
@@ -301,7 +304,7 @@ impl Vault for JsVault {
     async fn find_credentials(
         &self,
         fields: Vec<String>,
-        pagination: Option<VaultPagination>,
+        pagination: Option<VaultFetchOptions>,
     ) -> vault::Result<Vec<CredentialEntry>> {
         if fields.is_empty() {
             EmptyFieldsSnafu.fail()?

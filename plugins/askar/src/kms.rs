@@ -1,3 +1,4 @@
+use aries_askar::Session;
 use aries_askar::crypto::alg::EcCurves;
 use aries_askar::crypto::generic_array::ArrayLength;
 use aries_askar::entry::{EntryTag, TagFilter};
@@ -21,7 +22,6 @@ use snafu::{ResultExt, ensure};
 use std::sync::Arc;
 use tracing::{Level, instrument};
 
-use crate::AskarStorage;
 use agent_sdk::crypto::{
     AlgNotSupportedSnafu, Error as CryptoError, JWK, KeyNotSupportedSnafu, SigningSnafu,
     VerificationSnafu,
@@ -31,6 +31,7 @@ use agent_sdk::kms::{
     NotFoundSnafu, ResolvingSnafu,
 };
 
+use crate::AskarStorage;
 pub use agent_sdk::crypto::{Alg, Key, Signer, SigningKey, Verifier, VerifyingKey};
 pub use agent_sdk::kms::{KeyType, Kms};
 
@@ -153,23 +154,27 @@ const KID_LENGTH: usize = 16;
 const PUBLIC_KEY_TAG_NAME: &str = "public_key";
 
 #[derive(Clone, Debug)]
-pub struct AskarKms(AskarStorage);
+pub struct AskarKms {
+    storage: AskarStorage,
+    profile: String,
+}
+
+impl AskarKms {
+    async fn session(&self) -> Result<Session, aries_askar::Error> {
+        self.storage.session(Some(self.profile.clone())).await
+    }
+}
 
 impl AskarKms {
     #[instrument(
         level = Level::TRACE,
         skip_all
     )]
-    pub fn new(storage: AskarStorage) -> Self {
-        AskarKms(storage)
-    }
-
-    #[instrument(
-        level = Level::TRACE,
-        ret(),
-    )]
-    pub async fn close_kms(self) -> Result<(), aries_askar::Error> {
-        self.0.close().await
+    pub fn new(storage: &AskarStorage, profile: String) -> Self {
+        AskarKms {
+            storage: storage.to_owned(),
+            profile,
+        }
     }
 
     #[instrument(
@@ -184,7 +189,7 @@ impl AskarKms {
         key: &LocalKey,
         tags: Option<&[EntryTag]>,
     ) -> Result<(), aries_askar::Error> {
-        let mut session = self.0.session().await?;
+        let mut session = self.session().await?;
         session
             .insert_key(key_id, key, None, None, tags, None)
             .await?;
@@ -200,7 +205,7 @@ impl AskarKms {
         ret(),
     )]
     async fn get_key(&self, key_id: &str) -> Result<Option<LocalKey>, aries_askar::Error> {
-        let mut session = self.0.session().await?;
+        let mut session = self.session().await?;
 
         session
             .fetch_key(key_id, false)
@@ -213,13 +218,13 @@ impl AskarKms {
         &self,
         public_key: &[u8],
     ) -> Result<Option<LocalKey>, aries_askar::Error> {
-        let mut session = self.0.session().await?;
+        let mut session = self.session().await?;
 
         let public_key_filter =
             TagFilter::is_eq(PUBLIC_KEY_TAG_NAME, Self::public_key_to_id(public_key));
 
         session
-            .fetch_all_keys(None, None, Some(public_key_filter), None, false)
+            .fetch_all_keys(None, None, Some(public_key_filter), None, None, false)
             .await?
             .first()
             .map(|key_entry| key_entry.load_local_key())
@@ -447,11 +452,13 @@ mod tests {
         )
         .await
         .unwrap();
-        let kms = AskarKms::new(storage);
+
+        let profile = "test_profile".to_string();
+
+        storage.create_profile(profile.clone()).await.unwrap();
+        let kms = AskarKms::new(&storage, profile);
 
         test_kms(&kms).await;
-
-        kms.close_kms().await.unwrap();
     }
 
     pub async fn test_kms<KH: KeyHandle, KMS: Kms<KH>>(kms: &KMS) {

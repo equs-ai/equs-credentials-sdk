@@ -3,9 +3,10 @@ import { Alg, KeyType } from "@equstng/agent-sdk";
 
 describe("Askar KMS: ", () => {
   let kms: AskarKms;
+  let storage: AskarStorage;
 
   beforeAll(async () => {
-    const storage = await AskarStorage.create(
+    storage = await AskarStorage.create(
       {
         dbUrl: "sqlite://:memory:",
         keyMethod: KeyMethod.DeriveKey,
@@ -14,11 +15,12 @@ describe("Askar KMS: ", () => {
       },
       false,
     );
-    kms = new AskarKms(storage);
+    await storage.createProfile("test_profile");
+    kms = new AskarKms(storage, "test_profile");
   }, 10000);
 
   afterAll(async () => {
-    await kms.closeKms();
+    await storage.close();
   });
 
   test("generate and get Key", async () => {
