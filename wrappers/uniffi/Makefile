@@ -203,4 +203,4 @@ ios-test: ios-generate-xcframework-dev
 	@echo "Run tests"
 	rm -rf swift/asdk.xcframework
 	cp -R swift/ios/debug/asdk.xcframework swift/asdk.xcframework
-	cd swift && xcodebuild test -scheme asdk -destination "name=iPhone 16"
+	cd swift && xcodebuild test -scheme asdk -destination "name=iPhone 16,OS=18.0"

@@ -10,10 +10,14 @@ let package = Package(
 		// Products define the executables and libraries a package produces, making them visible to other packages.
 		.library(
 			name: "Asdk",
-			targets: ["Asdk"])
+			targets: ["Asdk"]
+		)
 	],
 	dependencies: [
-		.package(url: "https://github.com/httpswift/swifter.git", .upToNextMajor(from: "1.5.0"))
+		.package(
+			url: "https://github.com/httpswift/swifter.git",
+			.upToNextMajor(from: "1.5.0")
+		)
 	],
 	targets: [
 		// Targets are the basic building blocks of a package, defining a module or a test suite.
@@ -21,7 +25,12 @@ let package = Package(
 		.target(
 			name: "Asdk",
 			dependencies: ["AsdkFFI"],
-			path: "Sources/Asdk"),
+			path: "Sources/Asdk",
+			linkerSettings: [
+				.linkedLibrary("z"),
+				.linkedLibrary("iconv")
+			]
+		),
 
 		.testTarget(
 			name: "AsdkTests",
@@ -34,6 +43,7 @@ let package = Package(
 
 		.binaryTarget(
 			name: "AsdkFFI",
-			path: "asdk.xcframework"),
+			path: "asdk.xcframework"
+		),
 	]
 )
