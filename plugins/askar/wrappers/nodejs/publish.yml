@@ -2,12 +2,7 @@ variables:
   REGISTRY_URL_NPM: https://${CI_SERVER_HOST}/api/v4/projects/${CI_PROJECT_ID}/packages/npm/
 
 .cargo_local_deps_script: &cargo_local_deps_script
-  - |
-    if [[ "$OSTYPE" == "darwin"* ]]; then
-    sed -i '' "s|ssh://git@git.slock.it/|https://gitlab-ci-token:${CI_JOB_TOKEN}@git.slock.it/|" Cargo.toml
-    else
-    sed -i "s|ssh://git@git.slock.it/|https://gitlab-ci-token:${CI_JOB_TOKEN}@git.slock.it/|" Cargo.toml
-    fi
+  - git config --global url."https://gitlab-ci-token:${CI_JOB_TOKEN}@git.slock.it/".insteadOf "ssh://git@git.slock.it/"
 
 .nodejs_askar_storage_job_configs: &nodejs_askar_storage_job_configs
   image: node:${NODE_VERSION}
