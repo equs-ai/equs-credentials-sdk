@@ -13,28 +13,29 @@ pub const ISSUER_URL: &str = "https://issuer-backend.com";
 
 // header:
 // {
-//     "alg": "RS256",
-//     "typ": "JWT",
-//     "kid": "PclYP6vRk1LpKDfjSO2Da35rmGRfi9362CpREyJf8p0"
+//   "alg": "RS256",
+//   "typ": "JWT",
+//   "kid": "PclYP6vRk1LpKDfjSO2Da35rmGRfi9362CpREyJf8p0"
 // }
 //
 // payload:
 // {
-//     "exp": 1724398494,
-//     "iat": 1724398194,
-//     "auth_time": 1724398182,
-//     "jti": "0b4fe390-4921-4042-b7e1-b03b3d196229",
-//     "iss": "http://localhost:8080/idp/realms/pid-issuer-realm",
-//     "sub": "60b8ba5f-c73f-4976-b0da-48d0e53335de",
-//     "typ": "Bearer",
-//     "azp": "wallet-dev",
-//     "sid": "f15b3e11-ff28-44df-8fcf-a77d24714a23",
-//     "allowed-origins": [
-//       "/*"
-//     ],
-//     "scope": "SD_JWT_cred"
+//   "exp": 1759734659,
+//   "iat": 1759734359,
+//   "auth_time": 1759734105,
+//   "jti": "onrtac:415f60df-5dc3-d219-06ad-2cf0618e6225",
+//   "iss": "http://localhost:8080/realms/pid-issuer-realm",
+//   "sub": "60b8ba5f-c73f-4976-b0da-48d0e53335de",
+//   "typ": "Bearer",
+//   "azp": "wallet-dev",
+//   "sid": "e1de0faa-efd6-f290-22df-5f2caa56981a",
+//   "allowed-origins": [
+//     "/*",
+//     "http://localhost:3000"
+//   ],
+//   "scope": "SD_JWT_cred"
 // }
-pub const ACCESS_TOKEN: &str = "eyJhbGciOiJSUzI1NiIsInR5cCIgOiAiSldUIiwia2lkIiA6ICJQY2xZUDZ2UmsxTHBLRGZqU08yRGEzNXJtR1JmaTkzNjJDcFJFeUpmOHAwIn0.eyJleHAiOjE3MjQzOTg0OTQsImlhdCI6MTcyNDM5ODE5NCwiYXV0aF90aW1lIjoxNzI0Mzk4MTgyLCJqdGkiOiIwYjRmZTM5MC00OTIxLTQwNDItYjdlMS1iMDNiM2QxOTYyMjkiLCJpc3MiOiJodHRwOi8vbG9jYWxob3N0OjgwODAvaWRwL3JlYWxtcy9waWQtaXNzdWVyLXJlYWxtIiwic3ViIjoiNjBiOGJhNWYtYzczZi00OTc2LWIwZGEtNDhkMGU1MzMzNWRlIiwidHlwIjoiQmVhcmVyIiwiYXpwIjoid2FsbGV0LWRldiIsInNpZCI6ImYxNWIzZTExLWZmMjgtNDRkZi04ZmNmLWE3N2QyNDcxNGEyMyIsImFsbG93ZWQtb3JpZ2lucyI6WyIvKiJdLCJzY29wZSI6IlNEX0pXVF9jcmVkIn0.pLGGmOApXnQCY6CwuFzxFXEN36aDJ-iE0TM_esYJ_qtijhUtWq5zI9lD-iGzhTSdwZ7Y51eUKtqmJXHixzBo847vmMeGla4Ko6JTY-4vVAIQ1Hk1xzl25ALuZNwxGbljlysjzBgCxeAjZo3fE0HTI5y6NItptIU8aY3ykoIX9xE81ZkexbVrR495cEX7UIgUgCZyhj8lXUMWFrNFBhELnzzFGdX01Dq3B-KflY9ACVaw-_U9bT6EzDI0-0Cyx2K658EU9VpDjBSR6URT5I9quvx1qoYMFPv7zhjW3sUASIVwThe4CvWCCR8Kf8rsnEQ2qnchn0f6gn9thxi51FGkvA";
+pub const ACCESS_TOKEN: &str = "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6IlBjbFlQNnZSazFMcEtEZmpTTzJEYTM1cm1HUmZpOTM2MkNwUkV5SmY4cDAifQ.eyJleHAiOjE3NTk3MzQ2NTksImlhdCI6MTc1OTczNDM1OSwiYXV0aF90aW1lIjoxNzU5NzM0MTA1LCJqdGkiOiJvbnJ0YWM6NDE1ZjYwZGYtNWRjMy1kMjE5LTA2YWQtMmNmMDYxOGU2MjI1IiwiaXNzIjoiaHR0cDovL2xvY2FsaG9zdDo4MDgwL3JlYWxtcy9waWQtaXNzdWVyLXJlYWxtIiwic3ViIjoiNjBiOGJhNWYtYzczZi00OTc2LWIwZGEtNDhkMGU1MzMzNWRlIiwidHlwIjoiQmVhcmVyIiwiYXpwIjoid2FsbGV0LWRldiIsInNpZCI6ImUxZGUwZmFhLWVmZDYtZjI5MC0yMmRmLTVmMmNhYTU2OTgxYSIsImFsbG93ZWQtb3JpZ2lucyI6WyIvKiIsImh0dHA6Ly9sb2NhbGhvc3Q6MzAwMCJdLCJzY29wZSI6IlNEX0pXVF9jcmVkIn0.Vzd-czyWV8NamelfLXFAGe5KlzNsI9BQyHD3jwMiW5n5skG3yAbXHohXJIDD5OFe2RdQVXspuqwA8Fdxd3wMVpgW8vPPjFrBD7zQWMLUstiZKniVJroSFAo8A1u9Lq9pb648gF4DxZWTiQAy-1mNOW8QVEcN6XBEHTkZ0YaMPO-lyXkeQOuY5J1Z9s7y8_4HBE0FjnJuFRraO8S8l1ixoCAObtzMfARld3rBPM_EVTYxfrT1_TCXcylKuqRoJGjE8fnCSJYworG0AP7LO0hPcKrvlG5oiW8Zr_V0yBp4OKdOtwukgJ0R0gmxzCf0bOQHl_mdRm0QTxYslNYIrfh_yw";
 pub const SCOPE: &str = "SD_JWT_cred";
 pub const VERIFIER_ID: &str = "ver-id";
 pub const VC_TYPE: &str = "https://credentials.example.com/identity_credential";

@@ -1672,7 +1672,7 @@ mod tests {
     fn auth_srv_metadata_request_endpoint() -> Url {
         Url::parse(AUTH_URL)
             .unwrap()
-            .join("/.well-known/openid-configuration")
+            .join("/.well-known/oauth-authorization-server")
             .unwrap()
     }
 }

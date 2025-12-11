@@ -10,7 +10,7 @@ describe("OID4VCI Credential Offer resolver: ", () => {
     const mockServer = getLocal();
     await mockServer.start(port);
 
-    await mockServer.forGet("/auth/.well-known/openid-configuration").thenJson(200, utils.authServerMetadata);
+    await mockServer.forGet("/.well-known/oauth-authorization-server/auth").thenJson(200, utils.authServerMetadata);
     await mockServer.forGet("/credential_offer").thenJson(200, utils.credOfferWithPreAuthGrant);
 
     const resolver = OID4VCICredentialOfferResolver.withHttpClient(ReqwestHttpClient.insecure());

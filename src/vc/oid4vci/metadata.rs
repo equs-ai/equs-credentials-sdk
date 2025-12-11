@@ -444,11 +444,9 @@ mod tests {
     }
 
     #[rstest]
-    #[case::positive(
-        format!("{}:{}", ISSUER_URL, IssuerMetadata::METADATA_URL_SUFFIX),
-        Some(sample_issuer_metadata()))]
-    #[case::incorrect_url("not_an_url", None)]
+    #[case::positive(ISSUER_URL.to_string(), Some(sample_issuer_metadata()))]
     #[should_panic(expected = "Url parse error")]
+    #[case::incorrect_url("not_an_url", None)]
     #[tokio::test]
     async fn discover_issuer_metadata(
         #[case] issuer_url: String,
@@ -456,7 +454,7 @@ mod tests {
     ) {
         let mut http_client = MockHttpClient::new();
 
-        let correct_issuer_url = format!("{}/{}", ISSUER_URL, IssuerMetadata::METADATA_URL_SUFFIX);
+        let correct_issuer_url = format!("{}{}", ISSUER_URL, IssuerMetadata::METADATA_URL_PREFIX);
         mock_http_once(
             &mut http_client,
             Method::GET,

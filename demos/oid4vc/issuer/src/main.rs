@@ -42,7 +42,7 @@ use std::sync::Mutex;
 use std::time::Duration;
 
 const ISSUER_SERVER_URL: &str = "http://localhost:8088";
-const AUTH_SRV_URL: &str = "http://localhost:8080/idp/realms/pid-issuer-realm";
+const AUTH_SRV_URL: &str = "http://localhost:8080/realms/pid-issuer-realm";
 const CRED_OFFER_SCHEME: &str = "openid-credential-offer://";
 
 const CREDENTIAL_URL_PATH: &str = "/credential";
@@ -56,7 +56,7 @@ const CREATE_CREDENTIAL_OFFER_URI_WITH_AUTH_CODE_GRANT_PATH: &str =
 const CREATE_CREDENTIAL_OFFER_URI_WITH_PRE_AUTH_CODE_GRANT_PATH: &str =
     "/create_credential_offer_uri_pre_auth_code_grant";
 const DID_DOC_URL_PATH: &str = "/.well-known/did.json";
-const AUTH_METADATA_ENDPOINT_PATH: &str = "/.well-known/openid-configuration";
+const AUTH_METADATA_ENDPOINT_PATH: &str = "/.well-known/oauth-authorization-server";
 const TOKEN_ENDPOINT_PATH: &str = "/token";
 const TOKEN_INTROSPECT_PATH: &str = "/introspection";
 const DUMMY_ACCESS_TOKEN: &str = "eyJhbGciOiJSUzI1NiIsInR5cCIgOiAiSldUIiwia2lkIiA6ICJQY2xZUDZ2UmsxTHBLRGZqU08yRGEzNXJtR1JmaTkzNjJDcFJFeUpmOHAwIn0.eyJleHAiOjE3MzY5NDI0MTQsImlhdCI6MTczNjk0MjExNCwiYXV0aF90aW1lIjoxNzM2OTQyMTEyLCJqdGkiOiI0MzEwNjlkMS01ZjIzLTQ5MjAtYjA1Zi01NWI2NjM1MDQxODYiLCJpc3MiOiJodHRwOi8vbG9jYWxob3N0OjgwODAvaWRwL3JlYWxtcy9waWQtaXNzdWVyLXJlYWxtIiwic3ViIjoiNjBiOGJhNWYtYzczZi00OTc2LWIwZGEtNDhkMGU1MzMzNWRlIiwidHlwIjoiQmVhcmVyIiwiYXpwIjoid2FsbGV0LWRldiIsInNpZCI6IjQwZTYyNDY3LTUzZmMtNGQyOS05ZGZmLTJlN2Y4NDRjM2UzMiIsImFsbG93ZWQtb3JpZ2lucyI6WyIvKiJdLCJzY29wZSI6IlNEX0pXVF9jcmVkX3Njb3BlIn0.g4Ll7wiGq9VrxwAcGeARHB1mziDYMQBSmKHl_KGyBZccUvMGlH7ZPIegW_FLFJg4ZSz3IyId2xchuXP8LaSAghgLf9HmKA4XWlVhvx4wP90aj9bj2fdD9UUuSwQIeRlkZe7DTNookyClsqKJ2uIBzvaLoID2_4_RAvqmNi_grIe-ruus4thyp5NsQdEoudErok5DQiM_N2Wz5zg2MRrECjZL4kX-CrEiSaGaikTR-Lxc9UpvLr8mmmEwz7O4BOCDukyslzCZylmC32lttMYzU2Cno_XsIOvXtfGzwNjzZ-ohF9ThnpHvl7EexoZeDaPP2oYSDJOdrh33BB879DGuHw";
@@ -382,7 +382,7 @@ async fn get_user_attributes(cred_def: &CredDefMetadata) -> Result<Claims, Error
         let (realm_name, user_name, keycloak_url) = (
             "pid-issuer-realm".to_owned(),
             "tneal".to_owned(),
-            "http://localhost:8080/idp",
+            "http://localhost:8080",
         );
 
         let client = reqwest::Client::builder()
@@ -491,7 +491,6 @@ async fn issuer() -> (impl oid4vci::Issuer, DIDDoc) {
         )
         .with_clock_skew(time::Duration::minutes(1))
         .token_validation_introspect(
-            // Url::parse("http://localhost:8080/idp/realms/pid-issuer-realm/protocol/openid-connect/token/introspect").unwrap(),
             Url::parse(&format!("{ISSUER_SERVER_URL}{TOKEN_INTROSPECT_PATH}")).unwrap(),
             Some(format!(
                 "Basic {}",

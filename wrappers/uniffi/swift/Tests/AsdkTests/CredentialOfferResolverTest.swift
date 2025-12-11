@@ -9,7 +9,7 @@ import Swifter
 	init() async throws {
 		self.server = HttpServer()
 
-		self.server["/auth/.well-known/openid-configuration"] = { request in
+		self.server["/.well-known/oauth-authorization-server/auth"] = { request in
 			return HttpResponse.ok(
 				.json(
 					try! JSONSerialization.jsonObject(

@@ -84,6 +84,7 @@ async fn run_issuance_flow(
     println!("Authorization is started");
 
     let token_resp = run_authz_flow(&holder, offer).await;
+    println!("Authorization done");
     println!("Issuance started");
 
     // In the real service these should be generated beforehand/taken from configuration/persistence

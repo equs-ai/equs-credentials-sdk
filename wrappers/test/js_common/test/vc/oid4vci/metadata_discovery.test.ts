@@ -17,7 +17,7 @@ describe("Issuer metadata discovery: ", () => {
   beforeEach(async () => {
     mockServer.reset();
     await mockServer.forGet("/.well-known/openid-credential-issuer").thenJson(200, utils.issuerMetadata);
-    await mockServer.forGet("/auth/.well-known/openid-configuration").thenJson(200, utils.authServerMetadata);
+    await mockServer.forGet("/.well-known/oauth-authorization-server/auth").thenJson(200, utils.authServerMetadata);
   });
 
   afterAll(async () => {

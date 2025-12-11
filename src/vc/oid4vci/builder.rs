@@ -733,7 +733,7 @@ mod tests {
     pub const ISSUER_OIDC_URL: &str =
         "https://issuer-backend.com/.well-known/openid-credential-issuer";
     pub const AUTH_SERVER_OIDC_URL: &str =
-        "https://authz-backend.com/.well-known/openid-configuration";
+        "https://authz-backend.com/.well-known/oauth-authorization-server";
 
     #[tokio::test]
     async fn building_issuer_works() {
