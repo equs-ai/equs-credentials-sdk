@@ -22,7 +22,7 @@ rust-version = "1.89.0"
 [dependencies]
 common-macros = { path = "./common-macros" }
 # Internally maintained forked dependencies
-oid4vci = { git = "ssh://git@git.slock.it/open-source/oid4vci-rs.git", rev = "1f2cb566" }
+oid4vci = { git = "ssh://git@git.slock.it/open-source/oid4vci-rs.git", rev = "f7a4420a" }
 openid4vp = { git = "ssh://git@git.slock.it/open-source/oid4vp-rs.git", rev = "825b1d03" }
 sd-jwt-rs = { git = "ssh://git@git.slock.it/open-source/sd-jwt-rust.git", rev = "15602993" }
 didcomm = { git = "ssh://git@git.slock.it/open-source/didcomm-rust.git", rev = "db41780d" }

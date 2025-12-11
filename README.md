@@ -199,8 +199,10 @@ cargo doc --no-deps
 3. Create Issuer Metadata
 4. Create Credential Offer (optional for auth code flow but required for pre-authorized code flow)
 5. Implement the following endpoints. Each endpoint should call the corresponding ASDK Issuer API method.
-    - GET /.well-known/openid-credential-issuer HTTP/1.1: `get_issuer_metadata`
-    - POST /credential HTTP/1.1: `issue_credential`
+    - GET /.well-known/openid-credential-issuer HTTP/1.1: `get_issuer_metadata`]:
+        - note that it must be a prefix to any path component your implementation serves API at (
+          See [Section 3.1 of RFC8414](https://datatracker.ietf.org/doc/html/rfc8414#section-3.1)).
+    - POST /credential HTTP/1.1: `issue_credential`.
 6. Integrate Authorization Server
     - Authorization Code Flow - Keycloak can be used as Authorization Server
         - Either issue a new access token with the required scope (

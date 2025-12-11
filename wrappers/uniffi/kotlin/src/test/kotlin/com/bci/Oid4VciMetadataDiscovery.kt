@@ -34,7 +34,7 @@ class Oid4VciMetadataDiscovery {
                         "/.well-known/openid-credential-issuer" -> mockResponse.setResponseCode(200)
                             .setBody(HolderVCITest.issuerMetadata.toString())
 
-                        "/auth/.well-known/openid-configuration" -> mockResponse.setResponseCode(200)
+                        "/.well-known/oauth-authorization-server/auth" -> mockResponse.setResponseCode(200)
                             .setBody(HolderVCITest.authServerMetadata.toString())
 
                         else -> mockResponse.setResponseCode(404)

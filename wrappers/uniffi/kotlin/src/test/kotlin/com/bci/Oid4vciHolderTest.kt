@@ -156,7 +156,7 @@ class HolderVCITest {
                         "/.well-known/openid-credential-issuer" -> mockResponse.setResponseCode(200)
                             .setBody(issuerMetadata.toString())
 
-                        "/auth/.well-known/openid-configuration" -> mockResponse.setResponseCode(200)
+                        "/.well-known/oauth-authorization-server/auth" -> mockResponse.setResponseCode(200)
                             .setBody(authServerMetadata.toString())
 
                         "/auth/par/request" -> mockResponse.setResponseCode(201)

@@ -73,7 +73,7 @@ pub fn setup_http_static_handlers(http_client_emulator: &mut HttpClientEmulator)
 
     http_client_emulator.add_handler(
         sample_authz_url()
-            .join("/.well-known/openid-configuration")
+            .join("/.well-known/oauth-authorization-server")
             .unwrap(),
         Box::new(|_| {
             let authz_url_str = "https://authz-backend.com";

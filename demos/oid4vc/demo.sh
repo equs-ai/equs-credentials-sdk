@@ -109,3 +109,5 @@ do
     done
   done
 done
+
+echo "Demo finished"

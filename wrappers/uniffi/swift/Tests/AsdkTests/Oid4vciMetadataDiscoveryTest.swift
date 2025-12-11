@@ -16,7 +16,7 @@ import Swifter
                     try! JSONSerialization.jsonObject(
                         with: Oid4vciMetadataDiscoveryTestConstants.IssuerMetadata.data(using: .utf8)!)))
         }
-        self.server["/auth/.well-known/openid-configuration"] = {
+        self.server["/.well-known/oauth-authorization-server/auth"] = {
             request in
             return Swifter.HttpResponse.ok(
                 .json(

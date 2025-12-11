@@ -33,7 +33,7 @@ export class Config {
 
   readonly issuerMetadata: OID4VCIIssuerMetadata = {
     credential_issuer: this.issuerServerUrl,
-    authorization_servers: [`${this.keycloakUrl}/idp/realms/pid-issuer-realm`],
+    authorization_servers: [`${this.keycloakUrl}/realms/pid-issuer-realm`],
     credential_endpoint: `${this.issuerServerUrl}/credential`,
     nonce_endpoint: `${this.issuerServerUrl}/nonce`,
     credential_configurations_supported: {
