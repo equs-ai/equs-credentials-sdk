@@ -241,6 +241,7 @@ async fn oid4vp_credentials_presentation_and_verification_with_custom_did_resolv
 
     let auth_resp_metadata = AuthorizationResponseMetadata {
         claims_to_exclude: None,
+        dc_api_origin: None,
         id_token_metadata: Some(IdTokenMetadata {
             key_metadata: holder_key_metadata,
             lifetime: time::Duration::minutes(5),

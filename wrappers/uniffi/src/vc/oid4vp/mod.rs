@@ -51,6 +51,7 @@ pub struct IdTokenMetadata {
 pub struct AuthorizationResponseMetadata {
     pub claims_to_exclude: Option<HashMap<String, Vec<String>>>,
     pub id_token_metadata: Option<IdTokenMetadata>,
+    pub dc_api_origin: Option<String>,
 }
 
 #[derive(uniffi::Record)]
@@ -107,6 +108,7 @@ pub struct AuthorizationRequest {
     pub response_uri: Option<String>,
     pub state: Option<String>,
     pub transaction_data: Option<Vec<TransactionDataItem>>,
+    pub expected_origins: Option<Vec<String>>,
 }
 
 impl TryFrom<AuthorizationRequest> for ResolvedAuthRequest {
@@ -145,6 +147,7 @@ impl TryFrom<AuthorizationRequest> for ResolvedAuthRequest {
                 .transpose()?,
             state: value.state,
             transaction_data,
+            expected_origins: value.expected_origins,
         })
     }
 }
@@ -170,6 +173,7 @@ impl TryFrom<ResolvedAuthRequest> for AuthorizationRequest {
                     .map(|v| v.to_owned().into())
                     .collect::<Vec<_>>()
             }),
+            expected_origins: value.expected_origins,
         })
     }
 }

@@ -14,6 +14,7 @@ import { PresentationSubmission } from "../../";
 export interface AuthorizationResponseMetadata {
   claimsToExclude?: Record<string, Array<string>>;
   idTokenMetadata?: IdTokenMetadata;
+  dcApiOrigin?: string;
 }
 
 /**

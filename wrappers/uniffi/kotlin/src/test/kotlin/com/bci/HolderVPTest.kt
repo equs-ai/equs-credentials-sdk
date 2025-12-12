@@ -8,6 +8,7 @@ import okhttp3.mockwebserver.MockWebServer
 import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.assertThrows
 import java.util.concurrent.TimeUnit
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -49,7 +50,8 @@ val authRequest = AuthorizationRequest(
             credentialIds = listOf("Identity-1"),
             transactionDataHashesAlg = listOf("sha-256")
         )
-    )
+    ),
+    expectedOrigins = null,
 )
 
 val authRequestWithDirectPostJwt = AuthorizationRequest(
@@ -62,6 +64,7 @@ val authRequestWithDirectPostJwt = AuthorizationRequest(
     nonce = "YztANglRdmP4ChxsrcS8UcGYoPWwkgiUImkBrQmgWkU",
     state = "eea7b48e-1866-41b4-beae-03b95d41670c",
     transactionData = null,
+    expectedOrigins = null,
 )
 val authRequestWithFakeVct = AuthorizationRequest(
     clientId = "decentralized_identifier:did:key:zDnaeeTG88wpPhMzuDRvLRTTyNMyJip5e6TLmsjyvPiSYUFk7",
@@ -73,6 +76,7 @@ val authRequestWithFakeVct = AuthorizationRequest(
     nonce = "YztANglRdmP4ChxsrcS8UcGYoPWwkgiUImkBrQmgWkU",
     state = "eea7b48e-1866-41b4-beae-03b95d41670c",
     transactionData = null,
+    expectedOrigins = null,
 )
 val authRequestWithFakeConstraints = AuthorizationRequest(
     clientId = "decentralized_identifier:did:key:zDnaeeTG88wpPhMzuDRvLRTTyNMyJip5e6TLmsjyvPiSYUFk7",
@@ -84,6 +88,7 @@ val authRequestWithFakeConstraints = AuthorizationRequest(
     nonce = "YztANglRdmP4ChxsrcS8UcGYoPWwkgiUImkBrQmgWkU",
     state = "eea7b48e-1866-41b4-beae-03b95d41670c",
     transactionData = null,
+    expectedOrigins = null,
 )
 const val AUTH_REQUEST_JWT =
     "eyJhbGciOiJFUzI1NiIsImtpZCI6ImRpZDprZXk6ekRuYWVRcE5ZUUQ2aDE4Vm5hZ3lBMVhiZXk5aEZLQTFqNWN5aHFQSEdmYXE5dHhtTiN6RG5hZVFwTllRRDZoMThWbmFneUExWGJleTloRktBMWo1Y3locVBIR2ZhcTl0eG1OIiwidHlwIjoiYXBwbGljYXRpb24vb2F1dGgtYXV0aHotcmVxK2p3dCJ9.eyJyZXNwb25zZV90eXBlIjoidnBfdG9rZW4iLCJzdGF0ZSI6IjFkOGIwZDkzLTg2ZTgtNDEzNS04N2Q0LTUyNGJiMDUwMGJmMyIsInRyYW5zYWN0aW9uX2RhdGEiOlsiZXlKMGVYQmxJam9pZEhsd1pURWlMQ0pqY21Wa1pXNTBhV0ZzWDJsa2N5STZXeUpKWkdWdWRHbDBlUzB4SWwwc0luUnlZVzV6WVdOMGFXOXVYMlJoZEdGZmFHRnphR1Z6WDJGc1p5STZXeUp6YUdFdE1qVTJJbDE5Il0sInJlc3BvbnNlX21vZGUiOiJkaXJlY3RfcG9zdCIsIm5vbmNlIjoiRjN2YkN5WFY0QmtqLVJDb25laUcxaUtkQTVYdWFFSEhheWNPSUNJTnUyTSIsImNsaWVudF9tZXRhZGF0YSI6eyJ2cF9mb3JtYXRzX3N1cHBvcnRlZCI6eyJkYytzZC1qd3QiOnsic2Qtand0X2FsZ192YWx1ZXMiOlsiRWREU0EiLCJFUzI1NiJdLCJrYi1qd3RfYWxnX3ZhbHVlcyI6WyJFZERTQSIsIkVTMjU2Il19fSwiandrcyI6eyJrZXlzIjpbeyJ1c2UiOiJlbmMiLCJhbGciOiJFUzI1NiIsImtpZCI6IjVRc2RnWFVHdUg6UDI1NjoiLCJrdHkiOiJFQyIsImNydiI6IlAtMjU2IiwieCI6IkNiX3VKaGlQTjdIOUtYZFFONFBRTjB1V0M2TG1Fd0l6NGowM3dYMXJCQXciLCJ5IjoieUVaOC11WDVoR2hDdU45TnJJejRTaE5IMFQxeTRmUXRzNXNpaUNIMFE3dyJ9XX0sImVuY3J5cHRlZF9yZXNwb25zZV9lbmNfdmFsdWVzX3N1cHBvcnRlZCI6WyJBMTI4R0NNIiwiQTEyOENCQy1IUzI1NiJdLCJzdWJqZWN0X3N5bnRheF90eXBlc19zdXBwb3J0ZWQiOlsiZGlkOmtleSJdfSwiY2xpZW50X2lkIjoiZGVjZW50cmFsaXplZF9pZGVudGlmaWVyOmRpZDprZXk6ekRuYWVRcE5ZUUQ2aDE4Vm5hZ3lBMVhiZXk5aEZLQTFqNWN5aHFQSEdmYXE5dHhtTiIsInByZXNlbnRhdGlvbl9kZWZpbml0aW9uIjp7ImlkIjoiMWI5ZDZiY2QtYmJmZC00YjJkLTliNWQtYWI4ZGZiYmQ0YmVkIiwiaW5wdXRfZGVzY3JpcHRvcnMiOlt7ImlkIjoiSWRlbnRpdHktMSIsImNvbnN0cmFpbnRzIjp7ImZpZWxkcyI6W3sicGF0aCI6WyIkLnZjdCJdLCJmaWx0ZXIiOnsidHlwZSI6InN0cmluZyIsImNvbnN0IjoiaHR0cHM6Ly9jcmVkZW50aWFscy5leGFtcGxlLmNvbS9pZGVudGl0eV9jcmVkZW50aWFsIn0sInByZWRpY2F0ZSI6bnVsbCwiaW50ZW50X3RvX3JldGFpbiI6ZmFsc2V9LHsicGF0aCI6WyIkLm5hbWUiXSwib3B0aW9uYWwiOnRydWUsInByZWRpY2F0ZSI6bnVsbCwiaW50ZW50X3RvX3JldGFpbiI6ZmFsc2V9XX0sIm5hbWUiOiJJZGVudGl0eSBWQyIsInB1cnBvc2UiOiJXZSB3YW50IGFuIGlkZW50aXR5IiwiZm9ybWF0Ijp7ImRjK3NkLWp3dCI6eyJzZC1qd3RfYWxnX3ZhbHVlcyI6WyJFUzI1NiIsIkVkRFNBIl0sImtiLWp3dF9hbGdfdmFsdWVzIjpbIkVTMjU2IiwiRWREU0EiXX19fV19LCJyZXNwb25zZV91cmkiOiJodHRwOi8vbG9jYWxob3N0OjkwMDEvcmVzcG9uc2UifQ.27WD-THq-vBdZZNb20WY3VYDRbbws0PTcp6LZM_GFh8Bhpp7tVPZnhu2m362D9E_fWtIwbLQiHzdigP27D9VyA"
@@ -199,7 +204,7 @@ class HolderVPTest {
 
         val presented = holder.presentCredentialsAuto(
             authRequest,
-            AuthorizationResponseMetadata(claimsToExclude = null, idTokenMetadata = null)
+            AuthorizationResponseMetadata(claimsToExclude = null, idTokenMetadata = null, dcApiOrigin = null)
         ) as PresentationResult.Presented
     }
 
@@ -217,7 +222,7 @@ class HolderVPTest {
         )
         val presented = holder.presentCredentialsAuto(
             authRequestWithDirectPostJwt,
-            AuthorizationResponseMetadata(claimsToExclude = null, idTokenMetadata = null)
+            AuthorizationResponseMetadata(claimsToExclude = null, idTokenMetadata = null, dcApiOrigin = null)
         ) as PresentationResult.Presented
         val request = customMockServer.takeRequest()
         assert(request.body.readUtf8().startsWith("response=ey"))
@@ -236,28 +241,26 @@ class HolderVPTest {
 
         val credentialsMapping = holder.findVcsForPresentation(authRequest)
         val credentials = credResultsToCredMapping(credentialsMapping)
-
+        println("----${authRequest.responseMode}")
         holder.presentCredentials(
             authRequest,
             credentials,
-            AuthorizationResponseMetadata(claimsToExclude = null, idTokenMetadata = null)
+            AuthorizationResponseMetadata(claimsToExclude = null, idTokenMetadata = null, dcApiOrigin = null)
         )
     }
 
 
     @Test
     fun testPresentCredentialsWhenDcApiResponseIsUsed() = runTest {
-        val authorizationRequest = authRequest
-        authorizationRequest.responseMode = "dc_api"
-        authorizationRequest.responseUri = null
+        val authorizationRequest = authRequest.copy(responseMode = "dc_api", responseUri = null)
 
         val credentialsMapping = holder.findVcsForPresentation(authRequest)
         val credentials = credResultsToCredMapping(credentialsMapping)
 
         val result = holder.presentCredentials(
-            authRequest,
+            authorizationRequest,
             credentials,
-            AuthorizationResponseMetadata(claimsToExclude = null, idTokenMetadata = null)
+            AuthorizationResponseMetadata(claimsToExclude = null, idTokenMetadata = null, dcApiOrigin = "https://example.verifier.org")
         ) as PresentationResult.AuthResponse
 
         val authResponse = result.v1 as AuthorizationResponse.Plain
@@ -268,22 +271,40 @@ class HolderVPTest {
 
     @Test
     fun testPresentCredentialsWhenDcApiJwtResponseIsUsed() = runTest {
-        val authorizationRequest = authRequest
-        authorizationRequest.responseMode = "dc_api.jwt"
-        authorizationRequest.responseUri = null
+        val origin = "https://example.verifier.org";
+        val authorizationRequest = authRequest.copy(responseMode = "dc_api.jwt", responseUri = null, expectedOrigins = listOf(origin))
 
         val credentialsMapping = holder.findVcsForPresentation(authRequest)
         val credentials = credResultsToCredMapping(credentialsMapping)
 
         val result = holder.presentCredentials(
-            authRequest,
+            authorizationRequest,
             credentials,
-            AuthorizationResponseMetadata(claimsToExclude = null, idTokenMetadata = null)
+            AuthorizationResponseMetadata(claimsToExclude = null, idTokenMetadata = null, dcApiOrigin = origin)
         ) as PresentationResult.AuthResponse
 
         val authResponse = result.v1 as AuthorizationResponse.Jwe
 
         assert(authResponse.v1.startsWith("ey"))
+    }
+
+    @Test
+    fun testPresentCredentialsForDcApiResponseModeFailsWhenOriginIsNotProvided() = runTest {
+        val authorizationRequest = authRequest.copy(responseMode = "dc_api", responseUri = null)
+
+        val credentialsMapping = holder.findVcsForPresentation(authRequest)
+        val credentials = credResultsToCredMapping(credentialsMapping)
+
+        try {
+            holder.presentCredentials(
+                authorizationRequest,
+                credentials,
+                AuthorizationResponseMetadata(claimsToExclude = null, idTokenMetadata = null, dcApiOrigin = null)
+            )
+            throw Exception("Unexpected result. Should throw Exception.Oid4vpHolder exception")
+        } catch (e: Exception.Oid4vpHolder) {
+            assert(e.message.contains("origin value of authorization response metadata is missed. Its required for dc_api/dc_api.jwt response mode"))
+        }
     }
 
     private fun credResultsToCredMapping(credentialsMapping: Map<String, CredentialsFindResult>): Map<String, List<CredentialEntry>> =
