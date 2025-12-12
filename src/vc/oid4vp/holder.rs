@@ -459,6 +459,7 @@ where
         cred_map: &CredentialMapping,
         presentation_inputs: &Vec<PresentationInput>,
         auth_request: &ResolvedAuthRequest,
+        auth_response_metadata: &AuthorizationResponseMetadata,
     ) -> Result<Vec<RequestedPresentation>> {
         let mut presentations = vec![];
 
@@ -475,7 +476,7 @@ where
             };
 
             let holder_binder = self
-                .resolve_holder_binder(presentation_input, auth_request)
+                .resolve_holder_binder(presentation_input, auth_request, auth_response_metadata)
                 .await?;
 
             for cred in credentials {
@@ -494,13 +495,12 @@ where
         &self,
         presentation_input: &PresentationInput,
         auth_request: &ResolvedAuthRequest,
+        auth_response_metadata: &AuthorizationResponseMetadata,
     ) -> Result<Option<HolderBinder>> {
         let ResolvedPresentationQuery::DCQL(dcql) = &auth_request.resolved_presentation_query
         else {
-            let holder_binder = HolderBinder {
-                nonce: auth_request.nonce.to_owned(),
-                verifier_id: auth_request.client_id.get_id(),
-            };
+            let holder_binder = Self::create_holder_binder(auth_request, auth_response_metadata)?;
+
             return Ok(Some(holder_binder));
         };
 
@@ -520,10 +520,8 @@ where
             .require_cryptographic_holder_binding()
             .unwrap_or(true)
         {
-            let holder_binder = HolderBinder {
-                nonce: auth_request.nonce.to_owned(),
-                verifier_id: auth_request.client_id.get_id(),
-            };
+            let holder_binder = Self::create_holder_binder(auth_request, auth_response_metadata)?;
+
             Ok(Some(holder_binder))
         } else {
             Ok(None)
@@ -627,11 +625,13 @@ where
         &self,
         auth_request: &ResolvedAuthRequest,
         pd: PresentationDefinition,
-        claims_to_exclude: Option<&HashMap<String, Vec<String>>>,
+        auth_response_metadata: &AuthorizationResponseMetadata,
     ) -> Result<Vec<RequestedPresentation>> {
-        let presentation_inputs =
-            presentation_exchange::split_to_inputs_for_pd(&pd, claims_to_exclude)
-                .context(PresentationExchangeSnafu)?;
+        let presentation_inputs = presentation_exchange::split_to_inputs_for_pd(
+            &pd,
+            auth_response_metadata.claims_to_exclude.as_ref(),
+        )
+        .context(PresentationExchangeSnafu)?;
         let presentations =
             future::try_join_all(presentation_inputs.iter().map(|presentation_input| async {
                 let creds = self
@@ -643,12 +643,14 @@ where
                 if let CredentialsFindResult::Credentials(credentials) = creds
                     && let Some(cred_entry) = credentials.first()
                 {
-                    let holder_binder = Some(HolderBinder {
-                        nonce: auth_request.nonce.to_owned(),
-                        verifier_id: auth_request.client_id.get_id(),
-                    });
+                    let holder_binder =
+                        Self::create_holder_binder(auth_request, auth_response_metadata)?;
                     return self
-                        .create_presentation_by_input(cred_entry, presentation_input, holder_binder)
+                        .create_presentation_by_input(
+                            cred_entry,
+                            presentation_input,
+                            Some(holder_binder),
+                        )
                         .await;
                 }
 
@@ -667,6 +669,7 @@ where
         &self,
         auth_request: &ResolvedAuthRequest,
         dcql: DCQL,
+        auth_response_metadata: &AuthorizationResponseMetadata,
     ) -> Result<Vec<RequestedPresentation>> {
         let presentation_inputs =
             dcql::split_to_inputs_for_dcql(dcql.credentials().to_vec().as_ref());
@@ -677,21 +680,53 @@ where
         let presentations = if let Ok(to_be_returned_credentials) =
             dcql::filter_creds_with_cred_sets(&id_to_cred_entry, &dcql)
         {
-            let binder = HolderBinder {
-                nonce: auth_request.nonce.to_owned(),
-                verifier_id: auth_request.client_id.get_id(),
-            };
             self.get_presentations(
                 to_be_returned_credentials,
                 id_to_pres_input,
                 id_to_cred_entry,
-                binder,
+                Self::create_holder_binder(auth_request, auth_response_metadata)?,
             )
             .await?
         } else {
             vec![]
         };
         Ok(presentations)
+    }
+
+    fn create_holder_binder(
+        auth_request: &ResolvedAuthRequest,
+        auth_response_metadata: &AuthorizationResponseMetadata,
+    ) -> Result<HolderBinder> {
+        let nonce = auth_request.nonce.to_owned();
+        let verifier_id = match auth_request.response_mode {
+            ResponseMode::DcApi | ResponseMode::DcApiJwt => {
+                let origin = auth_response_metadata.dc_api_origin.clone().ok_or_else(|| {
+                    AuthorizationResponseSnafu {
+                        details: "origin value of authorization response metadata is missed. Its required for dc_api/dc_api.jwt response mode"
+                            .to_owned(),
+                    }
+                    .build()
+                })?;
+
+                if auth_request
+                    .expected_origins
+                    .as_ref()
+                    .is_some_and(|expected| !expected.contains(&origin))
+                {
+                    let err = ProtocolError::invalid_request(
+                        "Origin values mismatch",
+                        auth_request.state.clone(),
+                    );
+
+                    return Err(Error::Protocol { source: err });
+                }
+
+                origin
+            }
+            _ => auth_request.client_id.get_id(),
+        };
+
+        Ok(HolderBinder { nonce, verifier_id })
     }
 
     async fn get_id_to_cred_entry(
@@ -884,6 +919,12 @@ where
             response_uri: aro.return_uri().cloned(),
             state: aro.state(),
             transaction_data: aro.get_transaction_data_items()?,
+            expected_origins: aro.expected_origins().map(|o| {
+                o.origins()
+                    .iter()
+                    .map(|v| v.unicode_serialization())
+                    .collect::<Vec<String>>()
+            }),
         })
     }
 
@@ -901,16 +942,12 @@ where
         let presentations = match auth_request.clone().resolved_presentation_query {
             ResolvedPresentationQuery::PresentationDefinition(pd) => {
                 info!("presentation exchange flow is used");
-                self.present_credentials_auto_with_pd(
-                    auth_request,
-                    pd,
-                    auth_response_metadata.claims_to_exclude.as_ref(),
-                )
-                .await?
+                self.present_credentials_auto_with_pd(auth_request, pd, auth_response_metadata)
+                    .await?
             }
             ResolvedPresentationQuery::DCQL(dcql) => {
                 info!("dcql flow is used");
-                self.present_credentials_auto_with_dcql(auth_request, dcql)
+                self.present_credentials_auto_with_dcql(auth_request, dcql, auth_response_metadata)
                     .await?
             }
         };
@@ -1015,7 +1052,12 @@ where
             }
         };
         let presentations = self
-            .create_presentations_from_creds_map(cred_map, &presentation_inputs, auth_request)
+            .create_presentations_from_creds_map(
+                cred_map,
+                &presentation_inputs,
+                auth_request,
+                auth_response_metadata,
+            )
             .await?;
 
         let result = self
@@ -1203,6 +1245,7 @@ mod tests {
     use crate::vc;
     use crate::vc::claims::{Claim, Claims};
     use crate::vc::core::{KeyMetadata, ProofOfPossessionMetadata};
+    use crate::vc::formats::sd_jwt_vc::DidKeyResolver;
     use crate::vc::oid4vp::protocol_error::ErrorType;
     use crate::vc::oid4vp::tests::fixtures::multi_presentation::transaction_data_items;
     use crate::vc::oid4vp::tests::fixtures::single_presentation::sd_jwt::{
@@ -1233,8 +1276,8 @@ mod tests {
     use openid4vp::core::authorization_request::verification::RequestVerifier;
     use openid4vp::core::response::PostRedirection;
     use rstest::rstest;
-    use sd_jwt_rs::SDJWTSerializationFormat;
     use sd_jwt_rs::utils::decode_sd_jwt;
+    use sd_jwt_rs::{SDJWTSerializationFormat, SDJWTVerifier};
     use serde_json::{Value, json};
     use std::collections::HashMap;
     use std::sync::Arc;
@@ -1415,10 +1458,12 @@ mod tests {
     #[case::encrypted_dc_api_jwt_mode(ResponseMode::DcApiJwt)]
     #[tokio::test]
     async fn present_credential_auto_with_dc_api_success(#[case] response_mode: ResponseMode) {
+        let origin = "https://example.verifier.org".to_string();
         let mut test_case =
             single_presentation::sd_jwt::presentation_test_case_for_dcql_with_claim_sets();
         test_case.request.response_mode = response_mode.clone();
         test_case.request.response_uri = None;
+        test_case.request.expected_origins = Some(vec![origin.clone()]);
 
         let kms = LocalKms::new();
         let vault = test_case.prepare_vault(&kms).await;
@@ -1441,7 +1486,11 @@ mod tests {
             .present_credentials(
                 &test_case.request,
                 &cred_mapping,
-                &AuthorizationResponseMetadata::default(),
+                &AuthorizationResponseMetadata {
+                    claims_to_exclude: None,
+                    id_token_metadata: None,
+                    dc_api_origin: Some(origin.clone()),
+                },
             )
             .await
             .unwrap();
@@ -1469,11 +1518,61 @@ mod tests {
                     panic!("Presentation is not an array");
                 };
                 assert_eq!(presentation.len(), 1);
+
+                let key_resolver = DidKeyResolver::new(UniversalResolver::default());
+                let mut verifier = SDJWTVerifier::new(Box::new(key_resolver));
+                let vp = presentation.first().unwrap().as_str().unwrap().to_string();
+                verifier
+                    .verify_presentation(
+                        vp,
+                        Some(origin),
+                        Some(test_case.request.nonce.secret().to_string()),
+                        SDJWTSerializationFormat::Compact,
+                    )
+                    .await
+                    .unwrap();
             }
             _ => {
                 panic!("Expected DcApi presentation result, got {:?}", result);
             }
         }
+    }
+
+    #[should_panic(
+        expected = "origin value of authorization response metadata is missed. Its required for dc_api/dc_api.jwt response mode"
+    )]
+    #[tokio::test]
+    async fn present_credential_with_dc_api_fails_when_dc_api_origin_is_not_provided() {
+        let mut test_case =
+            single_presentation::sd_jwt::presentation_test_case_for_dcql_with_claim_sets();
+        test_case.request.response_mode = ResponseMode::DcApi;
+        test_case.request.response_uri = None;
+
+        let kms = LocalKms::new();
+        let vault = test_case.prepare_vault(&kms).await;
+        let holder = holder_service(MockHttpClient::new(), kms, vault).await;
+
+        let creds = holder
+            .find_vcs_for_presentation(&test_case.request)
+            .await
+            .unwrap();
+
+        let mut cred_mapping = HashMap::new();
+        for (id, cred_result) in creds {
+            let CredentialsFindResult::Credentials(cred_entries) = cred_result else {
+                panic!("Expected credentials");
+            };
+            cred_mapping.insert(id, cred_entries);
+        }
+
+        holder
+            .present_credentials(
+                &test_case.request,
+                &cred_mapping,
+                &AuthorizationResponseMetadata::default(),
+            )
+            .await
+            .unwrap();
     }
 
     #[tokio::test]

@@ -80,7 +80,8 @@ describe("OID4VP Holder: ", () => {
     const authorizationRequest = await holder.getAuthorizationRequest(
       "openid4vp://?client_id=decentralized_identifier%3Adid%3Akey%3AzDnaer1d3Hpdg6RH7KRhWXRtzpijEm8GtaVQn7BtSw7DiW72E&request_uri=http%3A%2F%2Flocalhost%3A9001%2Frequest",
     );
-    expect(authorizationRequest.getAuthRequest()).toEqual(AUTH_REQUEST);
+
+    expect(authorizationRequest.getAuthRequest()).toMatchObject(AUTH_REQUEST);
   });
 
   it("resolve authorization request with transaction data", async () => {

@@ -93,7 +93,7 @@ import Testing
 			let _ = try await holder.presentCredentialsAuto(
 				authRequest: Oid4vpHolderTestConstants.authRequest,
 				authResponseMetadata: AuthorizationResponseMetadata(
-					claimsToExclude: nil, idTokenMetadata: nil)
+					claimsToExclude: nil, idTokenMetadata: nil, dcApiOrigin: nil)
 			)
 		}
 	}
@@ -115,7 +115,7 @@ import Testing
 			let _ = try await holder.presentCredentialsAuto(
 				authRequest: Oid4vpHolderTestConstants.authRequestWithDirectPostJwt,
 				authResponseMetadata: AuthorizationResponseMetadata(
-					claimsToExclude: nil, idTokenMetadata: nil)
+					claimsToExclude: nil, idTokenMetadata: nil, dcApiOrigin: nil)
 			)
 		}
 	}
@@ -159,7 +159,7 @@ import Testing
 				authRequest: Oid4vpHolderTestConstants.authRequest,
 				credentialMapping: credentialMapping,
 				authResponseMetadata: AuthorizationResponseMetadata(
-					claimsToExclude: nil, idTokenMetadata: nil)
+					claimsToExclude: nil, idTokenMetadata: nil, dcApiOrigin: nil)
 			)
 		}
 	}
@@ -558,7 +558,8 @@ static let presentationDefinitionWithFakeConstraints = """
 		responseMode: "direct_post",
 		responseUri: "http://localhost:9001/response",
 		state: "1d8b0d93-86e8-4135-87d4-524bb0500bf3",
-		transactionData: nil
+		transactionData: nil,
+		expectedOrigins: nil
 	)
 	static let authRequestWithDirectPostJwt = AuthorizationRequest(
 		clientId: "decentralized_identifier:did:key:zDnaeQpNYQD6h18VnagyA1Xbey9hFKA1j5cyhqPHGfaq9txmN",
@@ -569,7 +570,8 @@ static let presentationDefinitionWithFakeConstraints = """
 		responseMode: "direct_post.jwt",
 		responseUri: "http://localhost:9001/response",
 		state: "1d8b0d93-86e8-4135-87d4-524bb0500bf3",
-		transactionData: nil
+		transactionData: nil,
+		expectedOrigins: nil
 	)
 
     static let authRequestWithFakeVct = AuthorizationRequest(
@@ -581,7 +583,8 @@ static let presentationDefinitionWithFakeConstraints = """
         responseMode: "direct_post",
         responseUri: "http://localhost:9001/response",
         state: "1d8b0d93-86e8-4135-87d4-524bb0500bf3",
-        transactionData: nil
+        transactionData: nil,
+        expectedOrigins: nil
     )
 
 	static let authRequestWithFakeConstraints = AuthorizationRequest(
@@ -593,7 +596,8 @@ static let presentationDefinitionWithFakeConstraints = """
 		responseMode: "direct_post",
 		responseUri: "http://localhost:9001/response",
 		state: "1d8b0d93-86e8-4135-87d4-524bb0500bf3",
-		transactionData: nil
+		transactionData: nil,
+		expectedOrigins: nil
 	)
 
 	static let authRequestJwt =

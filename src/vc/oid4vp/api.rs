@@ -83,6 +83,7 @@ pub struct IdTokenMetadata {
 ///
 /// - `claims_to_exclude` - map of claims divided by input descriptors that need to be excluded.
 /// - `id_token_metadata`: metadata containing the signing key and lifetime for the SIOP ID token
+/// - `dc_api_origin`: origin of the Digital Credentials API. To be used as audience of the authorization response.
 ///
 /// Exclude works for optional claims only. Excluding non-optional claims will throw a
 ///     [crate::vc::presentation_exchange::Error::InvalidClaimsToExclude]
@@ -96,6 +97,7 @@ pub struct IdTokenMetadata {
 pub struct AuthorizationResponseMetadata {
     pub claims_to_exclude: Option<HashMap<String, Vec<String>>>,
     pub id_token_metadata: Option<IdTokenMetadata>,
+    pub dc_api_origin: Option<String>,
 }
 
 impl AuthorizationResponseMetadata {
@@ -103,6 +105,7 @@ impl AuthorizationResponseMetadata {
         Self {
             claims_to_exclude: Some(claims),
             id_token_metadata: None,
+            dc_api_origin: None,
         }
     }
 
@@ -179,6 +182,7 @@ pub struct ResolvedAuthRequest {
     // https://openid.net/specs/openid-4-verifiable-presentations-1_0.html#section-5.1-2.8.1
     #[serde(skip_serializing_if = "Option::is_none")]
     pub transaction_data: Option<Vec<TransactionDataItem>>,
+    pub expected_origins: Option<Vec<String>>,
 }
 
 /// An `OID4VP` response configuration of authorization request object.

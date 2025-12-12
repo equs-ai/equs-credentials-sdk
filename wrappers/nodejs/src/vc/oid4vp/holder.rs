@@ -186,6 +186,11 @@ pub struct _AuthorizationRequest {
         js_name = "transaction_data"
     )]
     pub transaction_data: Option<Vec<JsonObject>>,
+    #[napi(
+        ts_type = "Array<string> | null | undefined",
+        js_name = "expected_origins"
+    )]
+    pub expected_origins: Option<Vec<String>>,
 }
 
 impl TryFrom<_AuthorizationRequest> for ResolvedAuthRequest {
@@ -220,6 +225,7 @@ impl TryFrom<_AuthorizationRequest> for ResolvedAuthRequest {
                 .transpose()?,
             state: value.state,
             transaction_data,
+            expected_origins: value.expected_origins,
         })
     }
 }
@@ -247,6 +253,7 @@ impl TryFrom<ResolvedAuthRequest> for _AuthorizationRequest {
             response_uri: value.response_uri.map(|uri| uri.to_string()),
             state: value.state,
             transaction_data,
+            expected_origins: value.expected_origins,
         })
     }
 }
@@ -255,11 +262,13 @@ impl TryFrom<ResolvedAuthRequest> for _AuthorizationRequest {
 ///
 /// @property {Record<string, Array<string>> | null} [claimsToExclude] - map of claims divided by input descriptors that need to be excluded.
 /// @property {IdTokenMetadata | null} [idTokenMetadata] - metadata containing the signing key and lifetime for the SIOP ID token
+/// @property {string | null} [dc_api_origin] - origin of the Digital Credentials API.
 ///
 #[napi(object, js_name = "AuthorizationResponseMetadata")]
 pub struct JsAuthorizationResponseMetadata {
     pub claims_to_exclude: Option<HashMap<String, Vec<String>>>,
     pub id_token_metadata: Option<JsIdTokenMetadata>,
+    pub dc_api_origin: Option<String>,
 }
 
 #[napi(object, js_name = "IdTokenMetadata")]
@@ -280,6 +289,7 @@ impl TryFrom<JsAuthorizationResponseMetadata> for AuthorizationResponseMetadata 
                 key_metadata: idt.key_metadata.into(),
                 lifetime: idt.lifetime.seconds(),
             }),
+            dc_api_origin: value.dc_api_origin,
         })
     }
 }

@@ -119,11 +119,12 @@ async fn credentials_presentation_and_verification(#[case] test_case: Oid4VpTest
     println!("9. Present Credentials");
 
     let auth_resp_metadata = AuthorizationResponseMetadata {
-        claims_to_exclude: None,
         id_token_metadata: Some(IdTokenMetadata {
             key_metadata: holder_key_metadata,
             lifetime: time::Duration::minutes(5),
         }),
+        claims_to_exclude: None,
+        dc_api_origin: None,
     };
 
     let creds_mapping = find_vcs_to_present(&holder, &request_object).await;
@@ -222,11 +223,12 @@ async fn credentials_presentation_and_verification_with_dcql(#[case] test_case: 
     println!("9. Present Credentials");
 
     let auth_resp_metadata = AuthorizationResponseMetadata {
-        claims_to_exclude: None,
         id_token_metadata: Some(IdTokenMetadata {
             key_metadata: holder_key_metadata,
             lifetime: time::Duration::minutes(5),
         }),
+        claims_to_exclude: None,
+        dc_api_origin: None,
     };
 
     let creds_mapping = find_vcs_to_present(&holder, &request_object).await;
