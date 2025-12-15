@@ -11,20 +11,28 @@ use crate::vc::core::{
 };
 use crate::vc::formats::json_ld_vc::JsonLdAPI;
 use crate::vc::formats::sd_jwt_vc::SdJwtAPI;
-use crate::vc::formats::{API, HasCredential, IsExpired};
+use crate::vc::formats::{API, HasCredential, IsExpired, VerifyOptions};
 use crate::vc::status_formats::status_list_token_jwt::StatusListJwt;
 use crate::vc::status_formats::{API as VCStatusFormatsAPI, status_list_token_jwt};
 use crate::vc::{HasClaims, Presentation};
 use crate::vc::{HasVPFormat, VCStatus};
 use async_trait::async_trait;
 use snafu::ResultExt;
+use std::collections::HashSet;
 use std::convert::TryFrom;
 use tracing::{Level, info, instrument};
+
+#[derive(Debug, Default, Clone)]
+pub struct VerificationParams {
+    // Subject Key Identifiers (SKI) of the trusted x509 certificates used to verify the signature of the credential.
+    pub trusted_certs_skids: Option<HashSet<String>>,
+}
 
 #[derive(Clone)]
 pub struct VerifierService {
     verifier_id: String,
     did_resolver: UniversalResolver,
+    verification_params: VerificationParams,
 }
 
 #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
@@ -101,7 +109,10 @@ impl Verifier for VerifierService {
                 MsoMdocAPI::verify_vp(
                     vp,
                     holder_binder,
-                    Default::default(),
+                    VerifyOptions {
+                        trusted_certs_skids: self.verification_params.trusted_certs_skids.clone(),
+                        selective_claims: None,
+                    },
                     self.did_resolver.clone(),
                 )
                 .await
@@ -135,7 +146,14 @@ impl VerifierService {
         Self {
             verifier_id: verifier_id.to_owned(),
             did_resolver,
+            verification_params: Default::default(),
         }
+    }
+
+    #[instrument(level = Level::TRACE, skip(self))]
+    pub fn with_verification_params(mut self, opts: VerificationParams) -> Self {
+        self.verification_params = opts;
+        self
     }
 
     #[instrument(level = Level::TRACE, skip(self, http_client), err(), ret())]

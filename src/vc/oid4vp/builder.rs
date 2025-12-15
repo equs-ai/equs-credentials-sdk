@@ -10,7 +10,9 @@ use crate::vc::oid4vp::holder::HolderService;
 use crate::vc::oid4vp::verifier::VerifierService;
 use crate::{kms, vault, vc};
 use common_macros::DebugError;
+use snafu::ensure;
 use snafu::{Location, Snafu};
+use std::collections::HashSet;
 use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -48,6 +50,7 @@ where
     did_resolver: UniversalResolver,
     http_client: Result<HC, HttpError>,
 
+    trusted_certs_skids: Option<HashSet<String>>,
     _marker: PhantomData<KH>,
 }
 
@@ -91,6 +94,7 @@ where
             http_client,
             did_resolver: UniversalResolver::default(),
             client_metadata: None,
+            trusted_certs_skids: None,
             _marker: Default::default(),
         }
     }
@@ -172,9 +176,100 @@ where
             did_resolver: self.did_resolver,
             nonce_generator: self.nonce_generator,
             _marker: Default::default(),
+            trusted_certs_skids: self.trusted_certs_skids,
         }
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
+    #[instrument(
+        level = Level::TRACE,
+        skip_all,
+    )]
+    pub fn add_trusted_root_certificate(mut self, pem_bytes: &[u8]) -> Result<Self, Error> {
+        let (_, pem) = x509_parser::pem::parse_x509_pem(pem_bytes).map_err(|e| {
+            BuildSnafu {
+                details: format!("Cannot parse certificate from pem bytes: {}", e),
+            }
+            .build()
+        })?;
+
+        let cert = pem.parse_x509().map_err(|e| {
+            {
+                BuildSnafu {
+                    details: format!("Cannot parse certificate: {}", e),
+                }
+            }
+            .build()
+        })?;
+
+        ensure!(
+            cert.is_ca(),
+            BuildSnafu {
+                details: "Certificate is not CA".to_string(),
+            }
+        );
+
+        cert.verify_signature(None).map_err(|e| {
+            BuildSnafu {
+                details: format!("Cannot verify certificate signature: {}", e),
+            }
+            .build()
+        })?;
+
+        let key_usage = cert
+            .key_usage()
+            .map_err(|e| {
+                BuildSnafu {
+                    details: format!("Cannot extract key usage from certificate: {}", e),
+                }
+                .build()
+            })?
+            .ok_or_else(|| {
+                BuildSnafu {
+                    details: "Certificate does not contain key usage extension".to_string(),
+                }
+                .build()
+            })?;
+
+        ensure!(
+            cert.validity.is_valid(),
+            BuildSnafu {
+                details: "Certificate is not valid at the current time.".to_string(),
+            }
+        );
+
+        ensure!(
+            key_usage.value.key_cert_sign() && key_usage.value.crl_sign(),
+            BuildSnafu {
+                details:
+                    "Certificate does not have 'Key Cert Sign' and 'CRL Sign' keyCertSign bits set"
+                        .to_string(),
+            }
+        );
+
+        let skid = one_core::mapper::x509_subject_key_identifier(&cert)
+            .map_err(|e| {
+                BuildSnafu {
+                    details: format!(
+                        "Cannot extract subject key identifier from certificate: {}",
+                        e
+                    ),
+                }
+                .build()
+            })?
+            .ok_or_else(|| {
+                BuildSnafu {
+                    details: "Certificate does not contain subject key identifier".to_string(),
+                }
+                .build()
+            })?;
+
+        let mut trusted_certs_skids = self.trusted_certs_skids.unwrap_or_default();
+        trusted_certs_skids.insert(skid);
+        self.trusted_certs_skids = Some(trusted_certs_skids);
+
+        Ok(self)
+    }
     /// Builds the `Verifier` API instance based on the current configuration of the builder.
     ///
     /// # Returns
@@ -197,7 +292,10 @@ where
             .build()
         })?;
 
-        let inner = vc::core::VerifierService::new(&self.client_id, self.did_resolver.clone());
+        let mut inner = vc::core::VerifierService::new(&self.client_id, self.did_resolver.clone());
+        inner = inner.with_verification_params(vc::core::VerificationParams {
+            trusted_certs_skids: self.trusted_certs_skids,
+        });
 
         let verifier = VerifierService::new(
             inner,
@@ -506,6 +604,31 @@ mod tests {
         let (did, key_metadata) = create_did_and_key_metadata(&kms).await;
 
         let verifier = VerifierBuilder::new(kms, nonce_gen, key_metadata, did.clone())
+            .build()
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn build_verifier_with_trusted_certs() {
+        let pem = "-----BEGIN CERTIFICATE-----
+MIIBZzCCAQ6gAwIBAgIUGaB+RAZje4MNjJqrAlNx1ByAiL8wCgYIKoZIzj0EAwIw
+EjEQMA4GA1UEAwwHQ0EgQ2VydDAeFw0yNTEyMTUxMDU2MzBaFw0zNTEyMTMxMDU2
+MzBaMBIxEDAOBgNVBAMMB0NBIENlcnQwWTATBgcqhkjOPQIBBggqhkjOPQMBBwNC
+AASVMf5Ykf8dzr46duTAZN3X2iFC1sp1pL15V3u/KDsmPjR21VnK1uv6kDvEziF7
+VyIFbvb40t/+c5eB3jg1cMq4o0IwQDAPBgNVHRMBAf8EBTADAQH/MA4GA1UdDwEB
+/wQEAwIBhjAdBgNVHQ4EFgQULHoOFFycXvdnCIlsyQiI5izPKkMwCgYIKoZIzj0E
+AwIDRwAwRAIgF+H7wT7a95WbiE+DDlZrQ7U3RlCUOMCFqudFRz+K6I4CIAT35kig
+4Q1ALvtXiWKDOjZIVxlw5eKQiq0dsd+bXKZE
+-----END CERTIFICATE-----";
+
+        let kms = LocalKms::new();
+        let nonce_gen = LocalNonceHandler::default();
+        let (did, key_metadata) = create_did_and_key_metadata(&kms).await;
+
+        let verifier = VerifierBuilder::new(kms, nonce_gen, key_metadata, did.clone())
+            .add_trusted_root_certificate(pem.as_bytes())
+            .unwrap()
             .build()
             .await
             .unwrap();

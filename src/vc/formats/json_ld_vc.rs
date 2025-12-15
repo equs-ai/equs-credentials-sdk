@@ -1176,6 +1176,7 @@ mod tests {
                 "/credentialSubject/id".parse().unwrap(),
                 "/credentialSubject/alumniOf".parse().unwrap(),
             ]),
+            ..Default::default()
         };
         JsonLdAPI::verify_vc(&vc_base, ver_opts, UniversalResolver::default())
             .await

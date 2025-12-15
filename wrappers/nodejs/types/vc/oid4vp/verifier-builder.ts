@@ -3,6 +3,7 @@ import {
   ClientMetadata,
   contextEnsuredKms,
   contextEnsuredNonceHandler,
+  DIDResolver,
   KeyMetadata,
   Kms,
   NonceHandler,
@@ -17,6 +18,8 @@ export class OID4VPVerifierBuilder {
   private readonly clientId: string;
   private clientMetadata?: ClientMetadata;
   private httpClient?: ReqwestHttpClient;
+  private didResolver?: DIDResolver;
+  private trustedRootCertificates?: Array<Uint8Array>;
 
   constructor(kms: Kms, NonceHandler: NonceHandler, keyMetadata: KeyMetadata, clientId: string) {
     this.kms = kms;
@@ -35,6 +38,20 @@ export class OID4VPVerifierBuilder {
     return this;
   }
 
+  withDidResolver(didResolver: DIDResolver): this {
+    this.didResolver = didResolver;
+    return this;
+  }
+
+  addTrustedRootCertificate(pemBytes: Uint8Array): this {
+    if (!this.trustedRootCertificates) {
+      this.trustedRootCertificates = [];
+    }
+
+    this.trustedRootCertificates.push(pemBytes);
+    return this;
+  }
+
   async build(): Promise<OID4VPVerifier> {
     const inner = await buildVpVerifier(
       contextEnsuredKms(this.kms),
@@ -43,6 +60,8 @@ export class OID4VPVerifierBuilder {
       this.clientId,
       this.clientMetadata,
       this.httpClient,
+      this.didResolver,
+      this.trustedRootCertificates,
     );
     return new OID4VPVerifier(inner);
   }
