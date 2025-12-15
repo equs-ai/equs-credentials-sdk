@@ -110,6 +110,7 @@ impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata, Claims> for M
             verification_protocol_type: VerificationProtocolType::OpenId4VpFinal1_0,
             nonce: holder_binder.clone().map(|b| b.nonce.secret().to_string()),
             client_id: holder_binder.map(|b| b.verifier_id.to_string()),
+            trusted_certs_skids: opts.trusted_certs_skids,
             verifier_key,
             format_nonce: None,
             issuance_date: None,
@@ -239,6 +240,7 @@ pub mod tests {
     use crate::vc::formats::API;
     use crate::vc::formats::VerifyOptions;
     use crate::vc::formats::mso_mdoc::{MsoMdocAPI, Presentation};
+    use std::collections::HashSet;
 
     pub const SAMPLE_MSO_MDOC_VP: &str = "o2d2ZXJzaW9uYzEuMGlkb2N1bWVudHOBo2dkb2NUeXBldW9yZy5pc28uMTgwMTMuNS4xLm1ETGxpc3N1ZXJTaWduZWSiam5hbWVTcGFjZXOhcW9yZy5pc28uMTgwMTMuNS4xgtgYWFSkaGRpZ2VzdElEAGZyYW5kb21Q7lVYU32ol-5va1L4AWunv3FlbGVtZW50SWRlbnRpZmllcmtmYW1pbHlfbmFtZWxlbGVtZW50VmFsdWVlU21pdGjYGFhRpGhkaWdlc3RJRAFmcmFuZG9tUPz9gTn3yJkJ7I6BpBE6cJ5xZWxlbWVudElkZW50aWZpZXJqZ2l2ZW5fbmFtZWxlbGVtZW50VmFsdWVjSm9uamlzc3VlckF1dGiEQ6EBJqEYIVkCxDCCAsAwggJnoAMCAQICFB5_GzKtTzTv5LDMB7ew4zOnCxhNMAoGCCqGSM49BAMCMHkxCzAJBgNVBAYTAlVTMRMwEQYDVQQIDApDYWxpZm9ybmlhMRYwFAYDVQQHDA1Nb3VudGFpbiBWaWV3MRwwGgYDVQQKDBNEaWdpdGFsIENyZWRlbnRpYWxzMR8wHQYDVQQDDBZkaWdpdGFsY3JlZGVudGlhbHMuZGV2MB4XDTI1MDIxOTIzMzAxOFoXDTI2MDIxOTIzMzAxOFoweTELMAkGA1UEBhMCVVMxEzARBgNVBAgMCkNhbGlmb3JuaWExFjAUBgNVBAcMDU1vdW50YWluIFZpZXcxHDAaBgNVBAoME0RpZ2l0YWwgQ3JlZGVudGlhbHMxHzAdBgNVBAMMFmRpZ2l0YWxjcmVkZW50aWFscy5kZXYwWTATBgcqhkjOPQIBBggqhkjOPQMBBwNCAATreTYr4tfzl8NQBH2D4eNiLONVazYPamjHWLsN3Gr4bAmvml1dDZk5dhLDWieRlpjKAA_IpMABbM2ISHjYBeNpo4HMMIHJMB8GA1UdIwQYMBaAFKJP9InZfEbobqOG2UdIzsy-3M_1MB0GA1UdDgQWBBTf_mpaEunAYsS8mKcl0tlw93pgKDA0BgNVHR8ELTArMCmgJ6AlhiNodHRwczovL2RpZ2l0YWwtY3JlZGVudGlhbHMuZGV2L2NybDAqBgNVHRIEIzAhhh9odHRwczovL2RpZ2l0YWwtY3JlZGVudGlhbHMuZGV2MA4GA1UdDwEB_wQEAwIHgDAVBgNVHSUBAf8ECzAJBgcogYxdBQECMAoGCCqGSM49BAMCA0cAMEQCIGHFy_V8weN78uCxM9ofIDEEXXCbWiEUDnpoMJvLB0LnAiBwr6LhxJv7p4wVzAnlGe0Ef8pqYxshyE8NufwfR_ULAlkDpNgYWQOfpmd2ZXJzaW9uYzEuMG9kaWdlc3RBbGdvcml0aG1nU0hBLTI1Nmdkb2NUeXBldW9yZy5pc28uMTgwMTMuNS4xLm1ETGx2YWx1ZURpZ2VzdHOhcW9yZy5pc28uMTgwMTMuNS4xsQBYILdEs7_XA0rH0oVmG4e_1-Q9OSQoVWPf4WxAb3bargetAVggxvkuQ7ziHlnVON81jim4j4vpUoTgRORvU9eCQ-zz9WQCWCDuGoKUm0v7jW76Jm1Vn94SMSUyIVjmLX1ElSki5g4grANYIAnY_0LLgT_pZBWWgJn_7SDetRH4BNesidk8sUgBMObLBFggjqk0iKzv_rb9MuntCGncrmcffojw4HWLBbXMZlyjLvYFWCAItAs1Sxa4P48BX7QyEM5Z419Elb0OWyFJZLyVpyzUvwZYIJmOmZFzaQhA_nKLF5L5mxtkLr15A2S8k_tXyX4_zJ8hB1ggOZRkJD-1UBF5FmUBO_N6QkVkPZwLsW9EOhUsguygv-sIWCAjN0yxgouVkGuaPMkMGDTLCqu44-ONPT5O-4rSHbPeMQlYIO3mzAJ437LcOtk_JJhUMY9gBUn-dxTlkKUdho25W9QEClggGF_FH_u3eTNstsq_Wxo7aUrNfCKG75sJu1rQFcGmO5ILWCBkgjc9Dzc_PHk3yHpTqllj7XqBRij_6OYmU_8vkOI6hgxYIJKdydleP5DesrXsrb7qouaOIAhqy1Gf0rQI8qaCQgclDVggtUWG3sibdrwgt1YnbRnh4mvo9MFTjXDqBMWu9Et51-4OWCDQBtrDMPMB1Yejrtm6Pvq60eK7X6gQVByyfB8KzSXp1A9YIH-HNSZICcE4jXRd3R0h2M4QVLRdmtRuqsYi3QMQbvrxEFggfsAfLJE7d3ZlU4GHebWB5HxaZoerHxQwnqjeMAziVY9tZGV2aWNlS2V5SW5mb6FpZGV2aWNlS2V5pAECIAEhWCBOeV4BXAO8q-MQP9OHz0N3ndZpF14FssUxNSAHslh5-CJYIPEGkN2tVGwEqGue87-TRoRGdi6ExCuRW9wD5YVGMDAsbHZhbGlkaXR5SW5mb6Nmc2lnbmVkwHgbMjAyNS0xMS0wNVQxMToyMzo1Ni40NDY4ODhaaXZhbGlkRnJvbcB4GzIwMjUtMTEtMDVUMTE6MjM6NTYuNDQ3MDQ4Wmp2YWxpZFVudGlswHgbMjAzNS0xMC0yNFQxMToyMzo1Ni40NDcwNDhaWEC_wgicTZValZ50GYfCkLkEjqSsCCJ5cArXSefssDjyx54Ak8LMjfQoDvrRN_ecSmZKEtwDOOSSXXSaeyvc0Q8NbGRldmljZVNpZ25lZKJqbmFtZVNwYWNlc9gYQaBqZGV2aWNlQXV0aKFvZGV2aWNlU2lnbmF0dXJlhEOhASag9lhAUwIrCKEYJQdnyaqbtOrTj5TO1bv3IF7UuwvLFD9-v3jKt0GDs_c6uE_n5gFy_qNYoKsPGG4SXq_YwbwXQX2u3WZzdGF0dXMA";
     #[tokio::test]
@@ -254,7 +256,12 @@ pub mod tests {
                 ),
                 verifier_id: "https://digital-credentials.dev".to_string(),
             }),
-            VerifyOptions::default(),
+            VerifyOptions {
+                trusted_certs_skids: Some(HashSet::from([
+                    "a2:4f:f4:89:d9:7c:46:e8:6e:a3:86:d9:47:48:ce:cc:be:dc:cf:f5".to_string(),
+                ])),
+                selective_claims: None,
+            },
             UniversalResolver::default(),
         )
         .await

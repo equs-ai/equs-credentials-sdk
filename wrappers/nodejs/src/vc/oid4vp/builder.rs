@@ -10,10 +10,12 @@ use crate::vc::oid4vp::holder::InnerOID4VPHolder;
 use crate::vc::oid4vp::verifier::InternalOID4VPVerifier;
 use agent_sdk::vc::core::KeyMetadata;
 use agent_sdk::vc::oid4vp::ClientMetadata;
+use napi::bindgen_prelude::Uint8Array;
 use napi::{Error, Result, Status};
 use napi_derive::napi;
 
 #[napi]
+#[allow(clippy::too_many_arguments)]
 pub async fn _build_vp_verifier(
     kms: JsKms,
     nonce_generator: JsNonceHandler,
@@ -22,6 +24,7 @@ pub async fn _build_vp_verifier(
     #[napi(ts_arg_type = "ClientMetadata | null | undefined")] client_metadata: Option<JsonObject>,
     http_client: Option<&ReqwestHttpClient>,
     did_resolver: Option<JsDIDResolver>,
+    trusted_root_certificates: Option<Vec<Uint8Array>>,
 ) -> Result<InternalOID4VPVerifier> {
     let key_metadata: KeyMetadata = key_metadata.into();
     let mut builder =
@@ -41,6 +44,14 @@ pub async fn _build_vp_verifier(
 
     if let Some(http_client) = http_client {
         builder = builder.with_http_client(http_client.inner())
+    }
+
+    if let Some(trusted_root_certificates) = trusted_root_certificates {
+        for cert in trusted_root_certificates {
+            builder = builder
+                .add_trusted_root_certificate(&cert)
+                .map_err(|err| Error::new(Status::InvalidArg, err))?;
+        }
     }
 
     let verifier = builder

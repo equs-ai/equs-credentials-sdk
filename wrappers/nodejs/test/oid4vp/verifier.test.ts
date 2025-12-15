@@ -21,6 +21,7 @@ import {
   PRESENTATION_QUERY,
   PRESENTATION_QUERY_FOR_DCQL,
   PRESENTATION_SUBMISSION,
+  SAMPLE_ROOT_X509_PEM,
   STATE,
   VP,
 } from "./fixtures";
@@ -274,6 +275,23 @@ describe("OID4VP Verifier: ", () => {
     const claims = await verifier.verifyPresentation(auth_response, session, verificationMetadata);
 
     expect(claims).toEqual(CLAIMS);
+  });
+
+  it("build verifier with trusted root certificate", async () => {
+    const kms = new InMemKms();
+    const nonceGenerator = new LocalNonceHandler();
+    const { keyMetadata } = await createDidAndKeyMetadata(kms);
+    const encoder = new TextEncoder();
+
+    await new OID4VPVerifierBuilder(
+      kms,
+      nonceGenerator,
+      keyMetadata,
+      'did:key:zDnaeagvW2eDWc2yVw7B98ovcJ8jddn7T9Mh3y5Vikys6y4kX"',
+    )
+      .withHttpClient(ReqwestHttpClient.insecure())
+      .addTrustedRootCertificate(encoder.encode(SAMPLE_ROOT_X509_PEM))
+      .build();
   });
 });
 
