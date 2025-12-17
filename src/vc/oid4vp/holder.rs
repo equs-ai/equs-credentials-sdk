@@ -338,7 +338,7 @@ where
             .build()
         })?;
         let params = IdTokenParams {
-            audience: auth_request.client_id.get_id(),
+            audience: auth_request.client_id.get_full_id(),
             nonce: auth_request.nonce.secret().to_owned().into(),
             lifetime: metadata.lifetime,
             other: None,
@@ -723,7 +723,7 @@ where
 
                 origin
             }
-            _ => auth_request.client_id.get_id(),
+            _ => auth_request.client_id.get_full_id(),
         };
 
         Ok(HolderBinder { nonce, verifier_id })

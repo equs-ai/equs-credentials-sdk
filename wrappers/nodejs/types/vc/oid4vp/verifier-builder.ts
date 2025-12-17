@@ -1,5 +1,6 @@
 import {
   buildVpVerifier,
+  ClientId,
   ClientMetadata,
   contextEnsuredKms,
   contextEnsuredNonceHandler,
@@ -15,13 +16,13 @@ export class OID4VPVerifierBuilder {
   private readonly kms: Kms;
   private readonly nonceHandler: NonceHandler;
   private readonly keyMetadata: KeyMetadata;
-  private readonly clientId: string;
+  private readonly clientId: ClientId;
   private clientMetadata?: ClientMetadata;
   private httpClient?: ReqwestHttpClient;
   private didResolver?: DIDResolver;
   private trustedRootCertificates?: Array<Uint8Array>;
 
-  constructor(kms: Kms, NonceHandler: NonceHandler, keyMetadata: KeyMetadata, clientId: string) {
+  constructor(kms: Kms, NonceHandler: NonceHandler, keyMetadata: KeyMetadata, clientId: ClientId) {
     this.kms = kms;
     this.nonceHandler = NonceHandler;
     this.keyMetadata = keyMetadata;

@@ -27,7 +27,7 @@ use agent_sdk::vc::oid4vci::{
 };
 use agent_sdk::vc::oid4vp::{
     AuthResponseOptions, AuthorizationRequestMetadata, AuthorizationResponse,
-    AuthorizationResponseMetadata, AuthorizationResponseObject, ClientMetadata,
+    AuthorizationResponseMetadata, AuthorizationResponseObject, ClientId, ClientMetadata,
     CredentialVerificationMetadata, IdTokenMetadata, PassAuthRequestObject, PresentationSession,
     ResponseMode, ResponseType, Verifier, VerifierBuilder,
 };
@@ -642,13 +642,18 @@ async fn build_verifier_with_test_did_resolver() -> impl Verifier {
     let (did, key_metadata, _) =
         create_did_keymetadata_keyhandle_with_custom_did_resolver(&kms).await;
 
-    VerifierBuilder::new(kms, nonce_gen, key_metadata, did)
-        .with_client_metadata(default_verifier_metadata())
-        .with_did_resolver(TestDIDResolver::new(CUSTOM_METHOD_NAME.to_string()))
-        .unwrap()
-        .build()
-        .await
-        .unwrap()
+    VerifierBuilder::new(
+        kms,
+        nonce_gen,
+        key_metadata,
+        ClientId::from_did(&did).unwrap(),
+    )
+    .with_client_metadata(default_verifier_metadata())
+    .with_did_resolver(TestDIDResolver::new(CUSTOM_METHOD_NAME.to_string()))
+    .unwrap()
+    .build()
+    .await
+    .unwrap()
 }
 pub fn default_verifier_metadata() -> ClientMetadata {
     ClientMetadata::try_from(

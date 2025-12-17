@@ -1,11 +1,12 @@
 use crate::utils::from_json_object;
 use crate::vc::JsonObject;
+use agent_sdk::vc::oid4vp;
 use agent_sdk::vc::oid4vp::{
     AuthorizationResponse, AuthorizationResponseObject, HashAlgorithm, PresentationResult,
     TransactionDataHashes, TransactionDataHashesAlg, TransactionDataResponse,
 };
 use agent_sdk::vc::presentation_exchange::PresentationSubmission;
-use napi::Error;
+use napi::{Error, Status};
 use napi_derive::napi;
 
 pub mod builder;
@@ -154,5 +155,52 @@ impl TryFrom<PresentationResult> for JsPresentationResult {
         };
 
         Ok(result)
+    }
+}
+
+/// A client identifier used in OpenID4VP protocol.
+/// This class provides methods to create client IDs from strings and DIDs.
+#[napi]
+pub struct ClientId(oid4vp::ClientId);
+
+#[napi]
+impl ClientId {
+    /// Creates a new ClientId instance from a string.
+    ///
+    /// @param {string} clientId - The client identifier string.
+    /// @returns {ClientId} A client identifier used in OpenID4VP protocol.
+    /// @throws {Error} If the client_id is invalid.
+    #[napi(constructor)]
+    pub fn new(client_id: String) -> napi::Result<Self> {
+        oid4vp::ClientId::new(client_id)
+            .map_err(|err| Error::new(Status::InvalidArg, err))
+            .map(ClientId)
+    }
+
+    /// Creates a ClientId instance from a DID.
+    ///
+    /// @param {string} did - The DID of the client.
+    /// @returns {ClientId} A new ClientId instance created from the DID used in OpenID4VP protocol.
+    /// @throws {Error} If the DID is invalid or cannot be processed.
+    #[napi]
+    pub fn from_did(did: String) -> napi::Result<Self> {
+        oid4vp::ClientId::from_did(did.as_str())
+            .map_err(|err| Error::new(Status::InvalidArg, err))
+            .map(ClientId)
+    }
+
+    /// Creates a ClientId instance from a redirect URI.
+    ///
+    /// @param {string} redirectUri - The redirect URI to create the client ID from.
+    /// @returns {ClientId} A new ClientId instance created from the redirect URI used in OpenID4VP protocol.
+    /// @throws {Error} If the redirect URI is invalid or cannot be processed.
+    #[napi]
+    pub fn from_redirect_uri(redirect_uri: String) -> napi::Result<Self> {
+        let uri =
+            url::Url::parse(&redirect_uri).map_err(|err| Error::new(Status::InvalidArg, err))?;
+
+        oid4vp::ClientId::from_redirect_uri(&uri)
+            .map_err(|err| Error::new(Status::InvalidArg, err))
+            .map(ClientId)
     }
 }

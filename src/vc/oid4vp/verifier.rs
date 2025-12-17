@@ -34,7 +34,7 @@ use crate::vc::oid4vp::metadata::{default_client_metadata, default_wallet_metada
 use crate::vc::oid4vp::protocol_error::ErrorType;
 use crate::vc::oid4vp::signer::Signer;
 use crate::vc::oid4vp::{
-    AuthorizationRequestMetadata, AuthorizationResponse, AuthorizationResponseObject,
+    AuthorizationRequestMetadata, AuthorizationResponse, AuthorizationResponseObject, ClientId,
     ClientMetadata, CredentialVerificationMetadata, PRESENTATION_SUBMISSION, PassAuthRequestObject,
     PresentationSession, ProtocolError, ResolvedPresentationQuery, ResponseMode, ResponseType,
     STATE, TRANSACTION_DATA_HASHES, TRANSACTION_DATA_HASHES_ALG, TransactionDataItem,
@@ -64,7 +64,7 @@ const ID_TOKEN: &str = "id_token";
 
 #[derive(Debug, Clone)]
 pub struct VerifierMetadata {
-    pub client_id: String,
+    pub client_id: ClientId,
     pub key_metadata: KeyMetadata,
     pub client_metadata: ClientMetadata,
 }
@@ -110,7 +110,7 @@ where
         kms: KMS,
         nonce_generator: NG,
         http_client: HC,
-        client_id: String,
+        client_id: ClientId,
         key_metadata: KeyMetadata,
         did_resolver: UniversalResolver,
         client_metadata: Option<ClientMetadata>,
@@ -373,7 +373,7 @@ where
         })?;
 
         ensure!(
-            id_token.audience == self.metadata.client_id,
+            id_token.audience == self.metadata.client_id.to_string(),
             IdTokenValidationSnafu {
                 details: &format!(
                     "id token audience value mismatch, expected {}, got {}",
@@ -507,7 +507,7 @@ where
     ) -> Result<(Url, Option<String>)> {
         match &auth_request_metadata.auth_response_options.mode {
             ResponseMode::FragmentJwt | ResponseMode::Fragment => {
-                let client = RedirectUriClient::new(self.metadata.client_id.to_owned())
+                let client = RedirectUriClient::new(self.metadata.client_id.get_id())
                     .context(ClientSnafu)?;
                 let verifier_builder = openid4vp::verifier::Verifier::builder().with_client(client);
                 self.build_authorization_request_helper(
@@ -684,7 +684,7 @@ where
                         verifier_id: presentation_verification_opts
                             .audience
                             .as_deref()
-                            .unwrap_or(&self.metadata.client_id)
+                            .unwrap_or(&self.metadata.client_id.get_full_id())
                             .to_owned(),
                     })
                 };
@@ -817,7 +817,7 @@ mod tests {
         let request_uri = build_url(VERIFIER_URL, "request");
         let request_uri_method = "post";
 
-        let (verifier, did) = verifier_service().await;
+        let (verifier, client_id) = verifier_service().await;
 
         let auth_response_options = auth_response_options(build_url(VERIFIER_URL, "auth"), None);
 
@@ -840,7 +840,6 @@ mod tests {
 
         let hash_query: HashMap<String, String> = uri.query_pairs().into_owned().collect();
 
-        let client_id = format!("decentralized_identifier:{}", did);
         assert_eq!(hash_query.get("client_id").unwrap(), &client_id);
         assert_eq!(hash_query.get("request_uri").unwrap(), request_uri.as_str());
         assert_eq!(
@@ -962,7 +961,7 @@ mod tests {
         let presentation_definition = single_presentation::sd_jwt::presentation_definition();
         let response_uri: Url = build_url(VERIFIER_URL, "auth");
 
-        let (verifier, did) = verifier_service().await;
+        let (verifier, client_id) = verifier_service().await;
 
         let auth_response_options = auth_response_options(response_uri.clone(), None);
 
@@ -1040,7 +1039,7 @@ mod tests {
             )
             .unwrap()
         );
-        assert_eq!(request.client_id().get_id(), did);
+        assert_eq!(request.client_id().to_string(), client_id);
         assert_eq!(request.return_uri(), Some(&response_uri));
     }
 
@@ -1088,7 +1087,7 @@ mod tests {
         let presentation_definition = single_presentation::sd_jwt::presentation_definition();
         let response_uri: Url = build_url(VERIFIER_URL, "auth");
 
-        let (verifier, did) = verifier_service().await;
+        let (verifier, client_id) = verifier_service().await;
 
         let mut auth_response_options = auth_response_options(response_uri.clone(), None);
         auth_response_options.type_ = ResponseType::VpTokenIdToken;
@@ -1137,7 +1136,7 @@ mod tests {
             )
             .unwrap()
         );
-        assert_eq!(request.client_id().get_id(), did);
+        assert_eq!(request.client_id().to_string(), client_id);
         assert_eq!(request.return_uri(), Some(&response_uri));
         assert_eq!(
             request.get::<Scope>().unwrap().unwrap(),
