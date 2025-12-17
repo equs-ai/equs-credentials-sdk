@@ -3363,7 +3363,7 @@ pub mod utils {
         credential_format: ClaimFormatDesignation,
         expected_credential_data: Vec<Claims>,
         expected_presentation_submission: PresentationSubmission,
-        client_id: String,
+        client_id: ClientId,
         nonce: Nonce,
         response_type: ResponseType,
         request: String,
@@ -3379,7 +3379,7 @@ pub mod utils {
         ) {
             let expected_credential_data = self.expected_credential_data.clone();
             let expected_presentation_submission = self.presentation_submission.clone();
-            let client_id = self.request.client_id.get_full_id();
+            let client_id = self.request.client_id.clone();
             let nonce = self.request.nonce.clone();
             let response_type = self.request.response_type.clone();
             let state = self.request.state.clone();
@@ -3529,10 +3529,7 @@ pub mod utils {
                 let id_token = id_token.parsed_body();
 
                 assert_eq!(id_token.nonce, nonce.secret());
-                assert_eq!(
-                    id_token.audience,
-                    ClientId::new(client_id).unwrap().get_id()
-                )
+                assert_eq!(id_token.audience, client_id.get_full_id())
             }
 
             let state = form.get("state");
@@ -3996,19 +3993,19 @@ pub mod utils {
 
         let inner = vc::core::VerifierService::new(&did, UniversalResolver::default());
         let client_metadata = generate_client_metadata(&kms).await;
-
+        let client_id = ClientId::from_did(&did).unwrap();
         let verifier = VerifierService::new(
             inner,
             kms,
             nonce_gen,
             MockHttpClient::new(),
-            did.clone(),
+            client_id.clone(),
             key_metadata,
             UniversalResolver::default(),
             Some(client_metadata),
         );
 
-        (verifier, did.clone())
+        (verifier, client_id.get_full_id())
     }
 
     pub async fn verifier_service() -> (TestVerifierService, String) {
@@ -4071,7 +4068,7 @@ pub mod utils {
             kms_mock,
             LocalNonceHandler::default(),
             MockHttpClient::new(),
-            did.clone(),
+            ClientId::from_did(&did).unwrap(),
             key_metadata,
             UniversalResolver::default(),
             None,

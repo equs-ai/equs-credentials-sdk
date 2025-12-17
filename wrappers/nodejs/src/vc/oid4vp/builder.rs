@@ -6,6 +6,7 @@ use crate::utils::from_json_object;
 use crate::vault::JsVault;
 use crate::vc::JsonObject;
 use crate::vc::core::{JsKeyMetadata, JsProofOfPossessionMetadata};
+use crate::vc::oid4vp::ClientId;
 use crate::vc::oid4vp::holder::InnerOID4VPHolder;
 use crate::vc::oid4vp::verifier::InternalOID4VPVerifier;
 use agent_sdk::vc::core::KeyMetadata;
@@ -20,15 +21,19 @@ pub async fn _build_vp_verifier(
     kms: JsKms,
     nonce_generator: JsNonceHandler,
     key_metadata: JsKeyMetadata,
-    client_id: String,
+    client_id: &ClientId,
     #[napi(ts_arg_type = "ClientMetadata | null | undefined")] client_metadata: Option<JsonObject>,
     http_client: Option<&ReqwestHttpClient>,
     did_resolver: Option<JsDIDResolver>,
     trusted_root_certificates: Option<Vec<Uint8Array>>,
 ) -> Result<InternalOID4VPVerifier> {
     let key_metadata: KeyMetadata = key_metadata.into();
-    let mut builder =
-        agent_sdk::vc::oid4vp::VerifierBuilder::new(kms, nonce_generator, key_metadata, client_id);
+    let mut builder = agent_sdk::vc::oid4vp::VerifierBuilder::new(
+        kms,
+        nonce_generator,
+        key_metadata,
+        client_id.0.clone(),
+    );
 
     if let Some(client_metadata) = &client_metadata {
         builder = builder.with_client_metadata(

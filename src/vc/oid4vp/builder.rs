@@ -6,6 +6,7 @@ use crate::reqwest::builder::ReqwestClientBuilder;
 use crate::vc::core::KeyMetadata;
 use crate::vc::core::{DEFAULT_POP_LIFETIME_MINUTES, ProofOfPossessionMetadata};
 use crate::vc::oid4vp as api;
+use crate::vc::oid4vp::ClientId;
 use crate::vc::oid4vp::holder::HolderService;
 use crate::vc::oid4vp::verifier::VerifierService;
 use crate::{kms, vault, vc};
@@ -40,7 +41,7 @@ where
     HC: HttpClient,
 {
     // data
-    client_id: String,
+    client_id: ClientId,
     key_metadata: KeyMetadata,
     client_metadata: Option<api::ClientMetadata>,
 
@@ -76,7 +77,7 @@ where
         kms: KMS,
         nonce_generator: NG,
         key_metadata: KeyMetadata,
-        client_id: String,
+        client_id: ClientId,
     ) -> Self {
         let http_client = ReqwestClientBuilder::new().build().map_err(|e| {
             HttpSnafu {
@@ -180,6 +181,14 @@ where
         }
     }
 
+    /// Add a trusted root x.509 certificate.
+    /// The certificate must be:
+    ///  * CA certificate and must have 'Key Cert Sign' and 'CRL Sign' bits set in the key usage extension
+    ///  * Valid at the current time
+    ///
+    /// # Arguments
+    ///
+    /// * `pem_bytes` - a PEM-encoded certificate.
     #[cfg(not(target_arch = "wasm32"))]
     #[instrument(
         level = Level::TRACE,
@@ -292,7 +301,10 @@ where
             .build()
         })?;
 
-        let mut inner = vc::core::VerifierService::new(&self.client_id, self.did_resolver.clone());
+        let mut inner = vc::core::VerifierService::new(
+            &self.client_id.get_full_id(),
+            self.did_resolver.clone(),
+        );
         inner = inner.with_verification_params(vc::core::VerificationParams {
             trusted_certs_skids: self.trusted_certs_skids,
         });
@@ -559,7 +571,7 @@ mod tests {
     use crate::utils::test_utils::create_did_and_key_metadata;
     use crate::vc::oid4vp::metadata::{default_client_metadata, default_wallet_metadata};
     use crate::vc::oid4vp::tests::fixtures::CLIENT_ID;
-    use crate::vc::oid4vp::{HolderBuilder, VerifierBuilder};
+    use crate::vc::oid4vp::{ClientId, HolderBuilder, VerifierBuilder};
 
     #[tokio::test]
     async fn build_holder() {
@@ -590,11 +602,16 @@ mod tests {
         let nonce_gen = LocalNonceHandler::default();
         let (did, key_metadata) = create_did_and_key_metadata(&kms).await;
 
-        let verifier = VerifierBuilder::new(kms, nonce_gen, key_metadata, did.clone())
-            .with_client_metadata(default_client_metadata())
-            .build()
-            .await
-            .unwrap();
+        let verifier = VerifierBuilder::new(
+            kms,
+            nonce_gen,
+            key_metadata,
+            ClientId::from_did(&did).unwrap(),
+        )
+        .with_client_metadata(default_client_metadata())
+        .build()
+        .await
+        .unwrap();
     }
 
     #[tokio::test]
@@ -603,10 +620,15 @@ mod tests {
         let nonce_gen = LocalNonceHandler::default();
         let (did, key_metadata) = create_did_and_key_metadata(&kms).await;
 
-        let verifier = VerifierBuilder::new(kms, nonce_gen, key_metadata, did.clone())
-            .build()
-            .await
-            .unwrap();
+        let verifier = VerifierBuilder::new(
+            kms,
+            nonce_gen,
+            key_metadata,
+            ClientId::from_did(&did).unwrap(),
+        )
+        .build()
+        .await
+        .unwrap();
     }
 
     #[tokio::test]
@@ -626,11 +648,16 @@ AwIDRwAwRAIgF+H7wT7a95WbiE+DDlZrQ7U3RlCUOMCFqudFRz+K6I4CIAT35kig
         let nonce_gen = LocalNonceHandler::default();
         let (did, key_metadata) = create_did_and_key_metadata(&kms).await;
 
-        let verifier = VerifierBuilder::new(kms, nonce_gen, key_metadata, did.clone())
-            .add_trusted_root_certificate(pem.as_bytes())
-            .unwrap()
-            .build()
-            .await
-            .unwrap();
+        let verifier = VerifierBuilder::new(
+            kms,
+            nonce_gen,
+            key_metadata,
+            ClientId::from_did(&did).unwrap(),
+        )
+        .add_trusted_root_certificate(pem.as_bytes())
+        .unwrap()
+        .build()
+        .await
+        .unwrap();
     }
 }

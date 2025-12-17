@@ -6,8 +6,8 @@ use agent_sdk::inmem::vault::InMemVault;
 use agent_sdk::vault::Vault;
 use agent_sdk::vc::oid4vp::{
     AuthResponseOptions, AuthorizationRequestMetadata, AuthorizationResponse,
-    AuthorizationResponseMetadata, ClientMetadata, CredentialVerificationMetadata, IdTokenMetadata,
-    PassAuthRequestObject, ResolvedPresentationQuery, ResponseMode, ResponseType,
+    AuthorizationResponseMetadata, ClientId, ClientMetadata, CredentialVerificationMetadata,
+    IdTokenMetadata, PassAuthRequestObject, ResolvedPresentationQuery, ResponseMode, ResponseType,
 };
 use agent_sdk::vc::oid4vp::{AuthorizationResponseObject, Holder};
 use agent_sdk::vc::oid4vp::{HolderBuilder, PresentationSession};
@@ -334,11 +334,16 @@ async fn build_verifier() -> impl Verifier {
 
     let (did, key_metadata, _) = create_did_keymetadata_keyhandle(&kms).await;
 
-    VerifierBuilder::new(kms, nonce_gen, key_metadata, did)
-        .with_client_metadata(default_verifier_metadata())
-        .build()
-        .await
-        .unwrap()
+    VerifierBuilder::new(
+        kms,
+        nonce_gen,
+        key_metadata,
+        ClientId::from_did(&did).unwrap(),
+    )
+    .with_client_metadata(default_verifier_metadata())
+    .build()
+    .await
+    .unwrap()
 }
 
 async fn build_holder(

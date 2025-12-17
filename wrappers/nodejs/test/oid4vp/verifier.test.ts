@@ -5,6 +5,7 @@ import {
   AuthorizationResponseObject,
   AuthorizationResponseType,
   AuthResponseOptions,
+  ClientId,
   CredentialVerificationMetadata,
   InMemKms,
   LocalNonceHandler,
@@ -204,14 +205,14 @@ describe("OID4VP Verifier: ", () => {
   });
 
   it("verify Authorization Response", async () => {
-    const verifier = await buildVerifier("did:key:zDnaekKgXHnezLxn9UBZPEUfDhU3cM3zga2vouoCDogzFUh4J");
+    const verifier = await buildVerifier("did:key:zDnaehdgostuLiVRhFWfn4d6fr76dQx7DxSJnTzBD3jv832DP");
 
     const rpq: ResolvedPresentationQuery = {
       presentation_definition: PRESENTATION_QUERY.presentation_definition,
       dcql_query: PRESENTATION_QUERY.dcql_query,
     };
     const session: _PresentationSession = {
-      nonce: "n0NcE",
+      nonce: "n-07kSJUQNwlPISE3jc8QxEia2MHTqewM3WyVx-4XlM",
       resolvedPresentationQuery: rpq,
       authorizationRequestJwt: "",
     };
@@ -234,14 +235,14 @@ describe("OID4VP Verifier: ", () => {
   });
 
   it("verify Authorization Response with transaction data", async () => {
-    const verifier = await buildVerifier("did:key:zDnaekKgXHnezLxn9UBZPEUfDhU3cM3zga2vouoCDogzFUh4J");
+    const verifier = await buildVerifier("did:key:zDnaehdgostuLiVRhFWfn4d6fr76dQx7DxSJnTzBD3jv832DP");
 
     const rpq: ResolvedPresentationQuery = {
       presentation_definition: PRESENTATION_QUERY.presentation_definition,
       dcql_query: PRESENTATION_QUERY.dcql_query,
     };
     const session: _PresentationSession = {
-      nonce: "n0NcE",
+      nonce: "n-07kSJUQNwlPISE3jc8QxEia2MHTqewM3WyVx-4XlM",
       resolvedPresentationQuery: rpq,
       authorizationRequestJwt: "",
     };
@@ -287,7 +288,7 @@ describe("OID4VP Verifier: ", () => {
       kms,
       nonceGenerator,
       keyMetadata,
-      'did:key:zDnaeagvW2eDWc2yVw7B98ovcJ8jddn7T9Mh3y5Vikys6y4kX"',
+      ClientId.fromDid("did:key:zDnaeagvW2eDWc2yVw7B98ovcJ8jddn7T9Mh3y5Vikys6y4kX"),
     )
       .withHttpClient(ReqwestHttpClient.insecure())
       .addTrustedRootCertificate(encoder.encode(SAMPLE_ROOT_X509_PEM))
@@ -300,7 +301,7 @@ async function buildVerifier(clientId = "did:key:zDnaeagvW2eDWc2yVw7B98ovcJ8jddn
   const nonceGenerator = new LocalNonceHandler();
   const { keyMetadata } = await createDidAndKeyMetadata(kms);
 
-  return await new OID4VPVerifierBuilder(kms, nonceGenerator, keyMetadata, clientId)
+  return await new OID4VPVerifierBuilder(kms, nonceGenerator, keyMetadata, ClientId.fromDid(clientId))
     .withHttpClient(ReqwestHttpClient.insecure())
     .build();
 }

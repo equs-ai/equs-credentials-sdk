@@ -20,9 +20,10 @@ use agent_sdk::vc::oid4vci::{
 use agent_sdk::vc::oid4vci::{CredentialOfferResolver, Holder as HolderVci};
 use agent_sdk::vc::oid4vp::{
     AuthResponseOptions, AuthorizationRequestMetadata, AuthorizationResponse,
-    AuthorizationResponseMetadata, AuthorizationResponseObject, CredentialVerificationMetadata,
-    CredentialsFindResult, CredentialsMapping, PassAuthRequestObject, PresentationResult,
-    ResolvedAuthRequest, ResolvedPresentationQuery, ResponseMode, ResponseType,
+    AuthorizationResponseMetadata, AuthorizationResponseObject, ClientId,
+    CredentialVerificationMetadata, CredentialsFindResult, CredentialsMapping,
+    PassAuthRequestObject, PresentationResult, ResolvedAuthRequest, ResolvedPresentationQuery,
+    ResponseMode, ResponseType,
 };
 use agent_sdk::vc::oid4vp::{CredentialMapping, Holder as HolderVp};
 use agent_sdk::vc::oid4vp::{IdTokenMetadata, Verifier};
@@ -239,7 +240,7 @@ async fn same_device_presentation_flow(holder: impl HolderVp, kms: LocalKms) {
         }
     };
     let redirect_uri = Url::parse("http://verifier.example.com/cb").unwrap();
-    let verifier = verifier(redirect_uri.as_str()).await;
+    let verifier = verifier(ClientId::from_redirect_uri(&redirect_uri).unwrap()).await;
     println!("1.2 Verifier generates authorization request");
 
     let auth_response_options = AuthResponseOptions {
@@ -356,18 +357,17 @@ fn retrieve_auth_resp_from_uri(url: Url) -> AuthorizationResponse {
     })
 }
 
-async fn verifier(client_id: &str) -> impl Verifier {
+async fn verifier(client_id: ClientId) -> impl Verifier {
     println!("1.1 Initializing verifier...");
     let kms = LocalKms::new();
     let nonce_gen = LocalNonceHandler::default();
     let key_metadata = create_key_metadata(&kms).await;
 
-    let verifier =
-        oid4vp::VerifierBuilder::new(kms, nonce_gen, key_metadata, client_id.to_string())
-            .with_http_client(ReqwestClientBuilder::new().insecure().build().unwrap())
-            .build()
-            .await
-            .unwrap();
+    let verifier = oid4vp::VerifierBuilder::new(kms, nonce_gen, key_metadata, client_id)
+        .with_http_client(ReqwestClientBuilder::new().insecure().build().unwrap())
+        .build()
+        .await
+        .unwrap();
 
     println!("Done");
     verifier

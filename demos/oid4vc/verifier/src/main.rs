@@ -15,9 +15,9 @@ use agent_sdk::inmem::nonce::LocalNonceHandler;
 use agent_sdk::vc::dcql::{DCQLCredential, NonEmptyVec, DCQL};
 use agent_sdk::vc::oid4vp::{
     AuthResponseOptions, AuthorizationRequestMetadata, AuthorizationResponse,
-    AuthorizationResponseObject, ClientMetadata, CredentialVerificationMetadata, HashAlgorithm,
-    PassAuthRequestObject, PresentationSession, ResolvedPresentationQuery, TransactionDataItem,
-    TransactionDataResponse,
+    AuthorizationResponseObject, ClientId, ClientMetadata, CredentialVerificationMetadata,
+    HashAlgorithm, PassAuthRequestObject, PresentationSession, ResolvedPresentationQuery,
+    TransactionDataItem, TransactionDataResponse,
 };
 use agent_sdk::vc::presentation_exchange::{
     ClaimFormatMap, ClaimFormatPayload, Constraints, ConstraintsField, InputDescriptor,
@@ -294,12 +294,17 @@ async fn verifier() -> impl oid4vp::Verifier {
     // In the real service these should be generated beforehand/taken from configuration/persistence
     let (did, key_metadata) = create_did_and_key_metadata(&kms).await;
 
-    let verifier = oid4vp::VerifierBuilder::new(kms, nonce_gen, key_metadata, did)
-        .with_client_metadata(metadata)
-        .with_http_client(ReqwestClientBuilder::new().insecure().build().unwrap())
-        .build()
-        .await
-        .unwrap();
+    let verifier = oid4vp::VerifierBuilder::new(
+        kms,
+        nonce_gen,
+        key_metadata,
+        ClientId::from_did(&did).unwrap(),
+    )
+    .with_client_metadata(metadata)
+    .with_http_client(ReqwestClientBuilder::new().insecure().build().unwrap())
+    .build()
+    .await
+    .unwrap();
 
     println!("Done");
     verifier
