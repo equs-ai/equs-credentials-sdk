@@ -30,7 +30,7 @@ pub struct JwkConfig {
 }
 pub struct JweEncryptor {
     metadata: ClientMetadata,
-    supported_keys: Vec<Algorithm>,
+    supported_algs: Vec<Algorithm>,
     key_algorithm_provider: KeyAlgorithmProviderImpl,
 }
 
@@ -85,10 +85,10 @@ impl Display for Algorithm {
 
 impl JweEncryptor {
     pub fn new(metadata: ClientMetadata) -> JweEncryptor {
-        let supported_keys = vec![
-            Algorithm::Eddsa,
-            Algorithm::Es256,
-            //TODO support more key types and algs
+        let supported_algs = vec![
+            Algorithm::EcdhEs,
+            Algorithm::Es256, // FIXME: Remove this after proper support of Encryption in ASDK
+                              //TODO support more key types and algs
         ];
 
         let key_algorithm_provider: KeyAlgorithmProviderImpl = KeyAlgorithmProviderImpl::new(
@@ -100,21 +100,18 @@ impl JweEncryptor {
         );
         Self {
             metadata,
-            supported_keys,
+            supported_algs,
             key_algorithm_provider,
         }
-    }
-
-    fn get_supported_key_types(&self) -> &Vec<Algorithm> {
-        &self.supported_keys
     }
 
     fn get_key_algorithm_provider(&self) -> &KeyAlgorithmProviderImpl {
         &self.key_algorithm_provider
     }
+
     fn supported_keys_contains_alg(&self, jwk: &Map<String, Value>) -> bool {
         if let Some(Value::String(alg)) = jwk.get("alg") {
-            self.get_supported_key_types()
+            self.supported_algs
                 .iter()
                 .map(|item| item.to_string())
                 .collect::<Vec<_>>()
@@ -136,6 +133,14 @@ impl JweEncryptor {
             })),
             Algorithm::Es256 => Ok(PublicKeyJwk::Ec(PublicKeyJwkEllipticData {
                 alg: Some("ES256".to_string()),
+                r#use: Some(JwkUse::Encryption),
+                kid: Some(config.kid.clone()),
+                crv: self.get_default_claim("crv", &config.jwk)?,
+                x: self.get_default_claim("x", &config.jwk)?,
+                y: self.get_default_claim("y", &config.jwk).ok(),
+            })),
+            Algorithm::EcdhEs => Ok(PublicKeyJwk::Ec(PublicKeyJwkEllipticData {
+                alg: Some("ECDH-ES".to_string()),
                 r#use: Some(JwkUse::Encryption),
                 kid: Some(config.kid.clone()),
                 crv: self.get_default_claim("crv", &config.jwk)?,
@@ -447,7 +452,7 @@ mod tests {
                       "crv": "P-256",
                       "x": "SSnPfyVhQgcU9Aaynqgi6QGhrq7K7WFEC0mAvpHG4TM",
                       "y": "rYQ5mLQLTs95WLBKKA8R5IjMTXjX13iZnzazsVectRY",
-                      "alg": "ES256"
+                      "alg": "ECDH-ES"
                     }
                   ]
                 },

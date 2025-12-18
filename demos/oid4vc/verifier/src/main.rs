@@ -9,7 +9,7 @@ use agent_sdk::reqwest::builder::ReqwestClientBuilder;
 use agent_sdk::storage::Storage;
 use agent_sdk::vc::core::KeyMetadata;
 
-use agent_sdk::crypto::{Key, SSIAlg, JWK};
+use agent_sdk::crypto::{Key, JWK};
 use agent_sdk::did::universal::UniversalResolver;
 use agent_sdk::inmem::nonce::LocalNonceHandler;
 use agent_sdk::vc::dcql::{DCQLCredential, NonEmptyVec, DCQL};
@@ -278,13 +278,13 @@ async fn verifier() -> impl oid4vp::Verifier {
     let jwk = JWK {
         key_id: Some(key),
         public_key_use: Some("enc".to_string()),
-        algorithm: Some(SSIAlg::ES256),
         ..jwk
     };
     let jwk = serde_json::to_value(&jwk).unwrap();
-    let Value::Object(jwk) = jwk else {
+    let Value::Object(mut jwk) = jwk else {
         panic!("The jwk is not an object");
     };
+    jwk.insert("alg".to_string(), Value::String("ECDH-ES".to_string()));
     let mut metadata = default_verifier_metadata();
     let mut jwks = metadata.jwks().unwrap().unwrap();
     jwks.keys.push(jwk.clone());
