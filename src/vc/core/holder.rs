@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use snafu::ResultExt;
 use ssi::dids::DIDURLBuf;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::ops::Deref;
 use std::sync::Arc;
@@ -29,7 +29,7 @@ use crate::vc::formats::sd_jwt_vc::{SdJwtAPI, VPMetadata};
 use crate::vc::oid4vp::{CredentialsFindResult, FindVCsFailReason};
 use crate::vc::pop::ProofOfPossession;
 use crate::vc::pop::jwt_pop::JwtProofOfPossession;
-use crate::vc::presentation_exchange::{is_valid_vc_type, validate_credential};
+use crate::vc::presentation_exchange::{is_type_requested, is_valid_vc_type, validate_credential};
 use crate::vc::{Credential, CredentialMetadata, HasVCFormat, Presentation, pop};
 use crate::{kms, vault};
 
@@ -197,23 +197,14 @@ where
             self.vault.get_credentials(None).await.context(VaultSnafu)?
         };
 
-        let mut reasons: HashSet<FindVCsFailReason> = HashSet::new();
+        let mut reasons_result: HashMap<String, FindVCsFailReason> = HashMap::new();
         let mut credentials_result = vec![];
         let mut cached_status_list = HashMap::new();
-        for entry in credentials {
-            if let Ok(true) | Err(_) = entry.credential.is_expired() {
-                continue;
-            }
 
-            if let Ok(false) | Err(_) = entry
-                .credential
-                .is_valid(
-                    self.http_client.deref(),
-                    self.did_resolver.to_owned(),
-                    Some(&mut cached_status_list),
-                )
-                .await
-            {
+        let is_type_requested = is_type_requested(presentation_input);
+
+        for entry in &credentials {
+            if let Ok(true) | Err(_) = entry.credential.is_expired() {
                 continue;
             }
 
@@ -226,7 +217,7 @@ where
                 })?;
 
             if !is_valid_vc_type {
-                reasons.insert(FindVCsFailReason::TypesNotMatched);
+                reasons_result.insert(entry.id.to_owned(), FindVCsFailReason::TypesNotMatched);
                 continue;
             }
 
@@ -238,14 +229,43 @@ where
                     .build()
                 })?;
             if let Some(inner_reasons) = result {
-                reasons.insert(FindVCsFailReason::Paths(inner_reasons));
-            } else {
-                credentials_result.push(entry);
+                reasons_result.insert(entry.id.to_owned(), FindVCsFailReason::Paths(inner_reasons));
+            } else if let Ok(true) = entry
+                .credential
+                .is_valid(
+                    self.http_client.deref(),
+                    self.did_resolver.to_owned(),
+                    Some(&mut cached_status_list),
+                )
+                .await
+            {
+                credentials_result.push(entry.to_owned());
             }
         }
 
         if !credentials_result.is_empty() {
             return Ok(CredentialsFindResult::Credentials(credentials_result));
+        }
+
+        let mut reasons = vec![];
+
+        for (entry_id, reason) in reasons_result {
+            if is_type_requested {
+                if let Some(entry) = credentials.iter().find(|e| e.id == entry_id)
+                    && let Ok(true) = entry
+                        .credential
+                        .is_valid(
+                            self.http_client.deref(),
+                            self.did_resolver.to_owned(),
+                            Some(&mut cached_status_list),
+                        )
+                        .await
+                {
+                    reasons.push(reason);
+                }
+            } else {
+                reasons.push(reason);
+            }
         }
 
         if reasons.is_empty() {
@@ -695,7 +715,7 @@ mod tests {
 
         let CredentialsFindResult::Reason(FindVCsFailReason::TypesNotMatched) = creds else {
             panic!(
-                "Wrong return type from holder.find_vcs_for_presentation. Should be mismatched credentials",
+                "Wrong return type from holder.find_vcs_for_presentation. Should be mismatched credentials"
             )
         };
     }
