@@ -9,3 +9,7 @@ pub mod serde;
 #[cfg(test)]
 pub(crate) mod test_utils;
 pub mod wasm;
+
+pub fn contains_any<T: PartialEq>(large: &[T], small: &[T]) -> bool {
+    small.iter().any(|item| large.contains(item))
+}

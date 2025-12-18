@@ -1,5 +1,6 @@
 //! DIF Presentation Exchange related methods.
 
+use crate::utils::contains_any;
 use crate::utils::logs::sanitize_log_msg;
 use crate::vault::{
     CannotCreateJSONPathSnafu, ClaimsParsingSnafu, ClaimsValidationSnafu,
@@ -679,6 +680,17 @@ pub fn is_valid_vc_type(
         }
     }
     Ok(true)
+}
+
+pub fn is_type_requested(presentation_input: &PresentationInput) -> bool {
+    let type_claims = vec!["$.vct".to_string(), "$.type[*]".to_string()];
+
+    for pr in presentation_input.restrictions.iter() {
+        if contains_any(&type_claims, &pr.fields) {
+            return true;
+        }
+    }
+    false
 }
 
 pub fn validate_credential(
