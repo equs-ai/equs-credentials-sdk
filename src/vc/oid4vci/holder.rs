@@ -25,6 +25,7 @@ use crate::vc::oid4vci::{
 use crate::vc::{Credential, CredentialMetadata};
 use crate::vc::{HasVCFormat, oid4vci as api};
 use async_trait::async_trait;
+use futures::future;
 use oauth2::url::Url;
 use oauth2::{
     AccessToken, AuthorizationCode, ClientId, CsrfToken, HttpRequest, HttpResponse,
@@ -508,12 +509,13 @@ where
         if let CredentialResult::Credential { credentials, .. } = &cred_result {
             info!("credential(s) is received");
 
-            for credential in credentials {
+            future::try_join_all(credentials.iter().map(|credential| async {
                 self.holder
                     .verify_credential(credential)
                     .await
-                    .context(VCSnafu)?;
-            }
+                    .context(VCSnafu)
+            }))
+            .await?;
             info!("credential(s) is verified");
         }
 

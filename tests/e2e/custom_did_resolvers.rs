@@ -520,7 +520,7 @@ async fn build_holder_with_test_did_resolver(
 }
 
 async fn build_holder_for_oid4vp_with_test_did_resolver(
-    http_client: impl HttpClient,
+    http_client: impl HttpClient + 'static,
     kms: LocalKms,
     vault: InMemVault,
 ) -> impl Oid4vpHolder {

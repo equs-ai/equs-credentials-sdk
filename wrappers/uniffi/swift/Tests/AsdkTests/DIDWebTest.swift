@@ -18,7 +18,7 @@ import Swifter
 				VerificationRelationshipType.authentication,
 			])
 
-		let didWeb = DidWeb()
+		let didWeb = try DidWeb(httpClient: ReqwestHttpClient.insecure())
 
 		let didDocument = try didWeb.generateDidDocument(did: did, keys: [verificationMethodKey])
 

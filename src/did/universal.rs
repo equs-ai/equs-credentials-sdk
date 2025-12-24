@@ -1,9 +1,11 @@
 //! Universal DID Resolver.
 
 use crate::did::didpeer::DIDPeer;
+use crate::did::didweb::DIDWeb;
 use crate::did::{
     MethodAlreadyExistsSnafu, ProofValidationError, ResolutionError, ResolutionOutput,
 };
+use crate::http::HttpClient;
 use crate::utils::wasm::{WasmNotSend, WasmNotSync};
 use async_trait::async_trait;
 use iref::Iri;
@@ -64,6 +66,20 @@ pub struct UniversalResolver {
     dids: HashMap<String, Arc<dyn DIDResolver>>,
 }
 impl UniversalResolver {
+    /// Creates a new UniversalResolver. Created resolver supports `did:key`, `did:peer` and `did:web` methods.
+    ///
+    /// # Arguments
+    ///
+    /// * `http_client` - A Http client that implements [HttpClient] trait.
+    pub fn new(http_client: Arc<impl HttpClient + 'static>) -> Self {
+        let mut resolver = Self::default();
+        resolver
+            .dids
+            .insert("web".to_string(), Arc::new(DIDWeb::new(http_client)));
+
+        resolver
+    }
+
     /// Adds a new DID resolver.
     ///
     /// Using this method, a new resolver can be added to extend support for additional DID methods.

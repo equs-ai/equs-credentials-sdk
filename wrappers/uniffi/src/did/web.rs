@@ -1,4 +1,5 @@
 use crate::did::VerificationMethodKey;
+use crate::http::{HttpClient, WrappedHttpClient};
 use agent_sdk::did::VerificationMethodKey as ASDKVerificationMethodKey;
 use agent_sdk::did::didweb::DIDWeb as ASDKDIDWeb;
 use std::sync::Arc;
@@ -24,8 +25,9 @@ pub struct DIDWeb(ASDKDIDWeb);
 #[uniffi::export]
 impl DIDWeb {
     #[uniffi::constructor]
-    pub fn new() -> Self {
-        Self(ASDKDIDWeb {})
+    pub fn new(http_client: Arc<dyn HttpClient>) -> Self {
+        let wrapped_client = Arc::new(WrappedHttpClient::new(http_client));
+        Self(ASDKDIDWeb::new(wrapped_client))
     }
     pub fn generate_did_from_url(&self, url: String) -> Result<String> {
         ASDKDIDWeb::generate_did_from_url(&url).map_err(|e| DIDWebError::Generate(e.to_string()))

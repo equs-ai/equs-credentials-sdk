@@ -353,7 +353,7 @@ where
     KH: kms::KeyHandle,
     KMS: kms::Kms<KH> + Clone,
     V: vault::Vault,
-    HC: HttpClient,
+    HC: HttpClient + 'static,
 {
     /// Creates a new instance of `HolderBuilder` with default configurations.
     ///
@@ -373,12 +373,15 @@ where
     pub fn new(kms: KMS, vault: V, client_id: String, http_client: HC) -> Self {
         info!("oid4vp-holder builder is initialized");
 
+        let http_client = Arc::new(http_client);
+        let did_resolver = UniversalResolver::new(http_client.clone());
+
         Self {
             client_id,
             kms,
             vault,
-            http_client: Arc::new(http_client),
-            did_resolver: UniversalResolver::default(),
+            http_client,
+            did_resolver,
             wallet_metadata: None,
             pop: ProofOfPossessionMetadata {
                 lifetime: Duration::minutes(DEFAULT_POP_LIFETIME_MINUTES),
@@ -395,7 +398,7 @@ where
     KH: kms::KeyHandle,
     KMS: kms::Kms<KH> + Clone,
     V: vault::Vault,
-    HC: HttpClient,
+    HC: HttpClient + 'static,
 {
     /// Sets custom wallet metadata for the holder.
     ///
@@ -448,8 +451,7 @@ where
         mut self,
         did_resolver: impl DIDResolver + 'static,
     ) -> Result<Self, Error> {
-        let mut universal_resolver = UniversalResolver::default();
-        universal_resolver
+        self.did_resolver
             .add_resolver(did_resolver)
             .map_err(|err| {
                 BuildSnafu {
@@ -457,7 +459,7 @@ where
                 }
                 .build()
             })?;
-        self.did_resolver = universal_resolver;
+
         Ok(self)
     }
 
