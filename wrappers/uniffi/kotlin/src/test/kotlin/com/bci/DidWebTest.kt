@@ -31,7 +31,7 @@ class DidWebTest {
             listOf(VerificationRelationshipType.KEY_AGREEMENT, VerificationRelationshipType.AUTHENTICATION)
         )
 
-        val didWeb = DidWeb()
+        val didWeb = DidWeb(ReqwestHttpClient.insecure())
 
         val documentString = didWeb.generateDidDocument(did, listOf(verificationMethodKey))
         val document = Json.parseToJsonElement(documentString).jsonObject

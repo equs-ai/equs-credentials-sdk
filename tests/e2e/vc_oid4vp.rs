@@ -347,7 +347,7 @@ async fn build_verifier() -> impl Verifier {
 }
 
 async fn build_holder(
-    http_client: impl HttpClient,
+    http_client: impl HttpClient + 'static,
     kms: LocalKms,
     vault: InMemVault,
 ) -> impl Holder {

@@ -190,6 +190,8 @@ impl ReqwestClientBuilder {
                 Client::builder()
                     .https_only(false)
                     .danger_accept_invalid_certs(true)
+                    .use_rustls_tls()
+                    .tcp_keepalive(core::time::Duration::from_secs(60))
                     .build()
                     .map_err(|err| {
                         HttpSnafu {
@@ -201,6 +203,7 @@ impl ReqwestClientBuilder {
                 let mut builder = Client::builder()
                     .https_only(true)
                     .use_rustls_tls()
+                    .tcp_keepalive(core::time::Duration::from_secs(60))
                     .min_tls_version(reqwest::tls::Version::TLS_1_2)
                     .redirect(Policy::none());
 

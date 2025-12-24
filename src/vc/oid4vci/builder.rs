@@ -339,8 +339,7 @@ where
         mut self,
         did_resolver: impl DIDResolver + 'static,
     ) -> Result<Self, Error> {
-        let mut universal_resolver = UniversalResolver::default();
-        universal_resolver
+        self.did_resolver
             .add_resolver(did_resolver)
             .map_err(|err| {
                 BuildSnafu {
@@ -348,7 +347,7 @@ where
                 }
                 .build()
             })?;
-        self.did_resolver = universal_resolver;
+
         Ok(self)
     }
 
@@ -449,7 +448,7 @@ where
     KH: kms::KeyHandle,
     KMS: kms::Kms<KH>,
     V: vault::Vault,
-    HC: HttpClient,
+    HC: HttpClient + 'static,
 {
     /// Returns a new `Builder` initialized with defaults.
     ///
@@ -482,15 +481,18 @@ where
     ) -> Self {
         info!("oid4vci-holder builder is initialized");
 
+        let http_client = Arc::new(http_client);
+        let did_resolver = UniversalResolver::new(http_client.clone());
+
         Self {
             client_id,
             kms,
             vault,
-            http_client: Arc::new(http_client),
+            http_client,
             iss_discovery,
+            did_resolver,
             redirect_url: "urn:ietf:wg:oauth:2.0:oob".to_string(),
             pop: ProofOfPossessionMetadataBuilder::new().build(),
-            did_resolver: UniversalResolver::default(),
             credential_extra_verification: Default::default(),
             _marker: Default::default(),
         }
@@ -552,8 +554,7 @@ where
         mut self,
         did_resolver: impl DIDResolver + 'static,
     ) -> Result<Self, Error> {
-        let mut universal_resolver = UniversalResolver::default();
-        universal_resolver
+        self.did_resolver
             .add_resolver(did_resolver)
             .map_err(|err| {
                 BuildSnafu {
@@ -561,7 +562,7 @@ where
                 }
                 .build()
             })?;
-        self.did_resolver = universal_resolver;
+
         Ok(self)
     }
 

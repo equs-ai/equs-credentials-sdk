@@ -1,25 +1,35 @@
 //! did:web method.
 
 use crate::crypto::JWK;
+use crate::did::universal::DIDResolver;
 use crate::did::{
     DID, DIDDoc, DidBufCreationSnafu, DidDocGenerationSnafu, DidGenerationSnafu,
     DidUrlBufCreationSnafu, InvalidDidFormatSnafu, IriRefCreationSnafu, KeyNotSupportedSnafu,
-    ParseSnafu, Result, VerificationMethodKey, VerificationRelationshipType,
+    ParseSnafu, ResolutionOutput, Result, VerificationMethodKey, VerificationRelationshipType,
 };
+use crate::http::HttpClient;
+use crate::utils::http::MIME_TYPE_JSON;
+use async_trait::async_trait;
+use iref::uri::AuthorityBuf;
+use oauth2::http::{Method, Request, Uri, header};
 use regex::Regex;
 use serde_json::Value;
 use snafu::ResultExt;
 use ssi::dids::document::DIDVerificationMethod;
+use ssi::dids::document::representation::MediaType;
 use ssi::dids::document::representation::json_ld::DIDContext;
 use ssi::dids::document::verification_method::ValueOrReference;
+use ssi::dids::resolution::{Error, Options, Output};
 use ssi::dids::ssi_json_ld::syntax::ContextEntry;
-use ssi::dids::{DIDBuf, DIDURLBuf, DIDURLReferenceBuf, Document};
+use ssi::dids::{DIDBuf, DIDMethod, DIDURLBuf, DIDURLReferenceBuf, Document};
 use ssi::json_ld::IriRefBuf;
 use ssi::jwk::Params;
 use ssi::security::MultibaseBuf;
 use ssi::security::multibase::Base;
 use std::collections::{BTreeMap, HashSet};
+use std::net::Ipv4Addr;
 use std::str::FromStr;
+use std::sync::Arc;
 use tracing::{Level, instrument};
 use url::Url;
 
@@ -44,9 +54,21 @@ const DID_WEB_PATTERN: &str =
 /// Resolver for the `did:web` method.
 ///
 /// Supports generation of `did:web`.
-pub struct DIDWeb {}
+pub struct DIDWeb {
+    http_client: Arc<dyn HttpClient>,
+}
 
 impl DIDWeb {
+    /// Creates a new instance of `did:web` resolver
+    ///
+    /// # Parameters
+    /// - `http_client`: Http client that implements the `HttpClient` trait.
+    ///
+    /// # Returns
+    /// An instance of the struct with the provided `http_client` set.
+    pub fn new(http_client: Arc<dyn HttpClient>) -> Self {
+        Self { http_client }
+    }
     /// Generate a `did:web` from a URL.
     ///
     /// # Arguments
@@ -321,17 +343,113 @@ fn validate_didweb(did: &str) -> Result<()> {
     Ok(())
 }
 
+impl DIDMethod for DIDWeb {
+    const DID_METHOD_NAME: &'static str = "web";
+}
+
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
+impl DIDResolver for DIDWeb {
+    #[instrument(level = Level::TRACE, skip(self), ret())]
+    async fn resolve_representation<'a>(
+        &'a self,
+        did: &'a ssi::dids::DID,
+        _: Options,
+    ) -> std::result::Result<ResolutionOutput, Error> {
+        let url = did_web_to_uri(did.method_specific_id())?;
+        let request = Request::head(url)
+            .header(header::ACCEPT, MIME_TYPE_JSON)
+            .method(Method::GET)
+            .body(vec![])
+            .map_err(|err| Error::Internal(format!("Could not build http request: {}", err)))?;
+
+        let resp = self.http_client.async_call(request).await.map_err(|err| {
+            Error::Internal(format!(
+                "Could not fetch did document of = {}: {}",
+                did, err
+            ))
+        })?;
+
+        let did_doc = serde_json::from_slice(resp.body())
+            .map_err(|e| Error::Internal(format!("Could not parse did document: {}", e)))?;
+
+        Ok(Output::from_content(
+            did_doc,
+            Some(MediaType::Json.to_string()),
+        ))
+    }
+
+    fn method_name(&self) -> String {
+        Self::DID_METHOD_NAME.to_string()
+    }
+}
+
+fn did_web_to_uri(id: &str) -> std::result::Result<Uri, Error> {
+    let mut parts = id.split(':').peekable();
+
+    // Extract the authority, with an optional port colon percent-encoded.
+    let encoded_authority = parts
+        .next()
+        .ok_or_else(|| Error::InvalidMethodSpecificId(id.to_owned()))?;
+
+    // Decode authority.
+    let authority: AuthorityBuf = match encoded_authority.rsplit_once("%3A") {
+        Some((host, port)) => AuthorityBuf::new(format!("{host}:{port}").into_bytes())
+            .map_err(|_| Error::InvalidMethodSpecificId(id.to_owned()))?,
+        None => encoded_authority
+            .parse()
+            .map_err(|_| Error::InvalidMethodSpecificId(id.to_owned()))?,
+    };
+
+    // Resolve what scheme to use.
+    let host = authority.host().as_str();
+    let scheme = if host == "localhost" {
+        "http"
+    } else {
+        match Ipv4Addr::from_str(host) {
+            Ok(ip) if ip.is_private() || ip.is_loopback() => "http",
+            Ok(_) => return Err(Error::InvalidMethodSpecificId(id.to_owned())),
+            _ => "https",
+        }
+    };
+
+    let path = match parts.peek() {
+        Some(_) => parts.collect::<Vec<&str>>().join("/"),
+        None => ".well-known".to_string(),
+    };
+
+    let url = format!("{scheme}://{authority}/{path}/did.json");
+
+    Uri::from_str(&url).map_err(|e| Error::Internal(e.to_string()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::crypto::Key;
     use crate::did::Error;
+    use crate::http::MockHttpClient;
     use crate::kms;
     use crate::kms::KeyType;
     use crate::kms::Kms;
+    use crate::utils::http::test::mock_http_once;
     use crate::utils::test_utils::no_jwk_key;
+    use http::StatusCode;
     use rstest::rstest;
     use serde_json::json;
+    use ssi::dids::did;
+
+    const DID_JSON: &str = r#"{
+      "@context": "https://www.w3.org/ns/did/v1",
+      "id": "did:web:test.example.com",
+      "verificationMethod": [{
+         "id": "did:web:test.example.com#key0",
+         "type": "Ed25519VerificationKey2018",
+         "controller": "did:web:test.example.com",
+         "publicKeyBase58": "2sXRz2VfrpySNEL6xmXJWQg6iY94qwNp1qrJJFBuPWmH"
+      }],
+      "assertionMethod": ["did:web:test.example.com#key0"]
+    }"#;
 
     #[tokio::test]
     async fn did_without_port_and_path_is_generated_correctly() {
@@ -495,5 +613,29 @@ mod tests {
             result.err().unwrap(),
             Error::DidDocGeneration { .. }
         ));
+    }
+
+    #[tokio::test]
+    async fn did_doc_resolving_works() {
+        let mut http_client = MockHttpClient::new();
+
+        mock_http_once(
+            &mut http_client,
+            Method::GET,
+            Url::parse("https://test.example.com/.well-known/did.json").unwrap(),
+            serde_json::from_str::<Value>(DID_JSON).unwrap(),
+            StatusCode::OK,
+        );
+
+        let resolver = DIDWeb::new(Arc::new(http_client));
+
+        let did_doc_expected = Document::from_bytes(MediaType::Json, DID_JSON.as_bytes()).unwrap();
+        let did_doc = resolver
+            .resolve_representation(did!("did:web:test.example.com"), Options::default())
+            .await
+            .unwrap()
+            .document;
+
+        assert_eq!(did_doc.document(), did_doc_expected.document());
     }
 }
