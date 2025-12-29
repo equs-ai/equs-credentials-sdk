@@ -6,6 +6,9 @@ class WrappedKms {
     this.create = this.create.bind(this);
     this.get = this.get.bind(this);
     this.getByPublicKey = this.getByPublicKey.bind(this);
+    if (kms.decrypt) {
+      this.decrypt = this.decrypt.bind(this);
+    }
   }
 
   async create(kt: KeyType): Promise<string> {
@@ -20,6 +23,14 @@ class WrappedKms {
   async getByPublicKey(pk: Uint8Array): Promise<KeyHandle> {
     const keyHandle = await this.kms.getByPublicKey(pk);
     return new WrappedKeyHandle(keyHandle);
+  }
+
+  async decrypt(jwe: string): null | Promise<Record<string, any>> {
+    if (this.kms.decrypt) {
+      return this.kms.decrypt(jwe);
+    } else {
+      return null;
+    }
   }
 }
 

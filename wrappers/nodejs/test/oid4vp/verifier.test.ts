@@ -8,14 +8,19 @@ import {
   ClientId,
   CredentialVerificationMetadata,
   InMemKms,
+  KeyHandle,
+  KeyType,
+  Kms,
   LocalNonceHandler,
   OID4VPVerifierBuilder,
   PassAuthRequestObjectType,
   ReqwestHttpClient,
   ResolvedPresentationQuery,
+  TransactionDataItem,
   TransactionDataResponse,
 } from "../../";
 import {
+  AUTH_RESPONSE_JWE,
   CLAIMS,
   DCQL,
   PRESENTATION_DEFINITION,
@@ -28,7 +33,6 @@ import {
 } from "./fixtures";
 import { createDidAndKeyMetadata } from "../utils";
 import { util as jose } from "node-jose";
-import { TransactionDataItem } from "../../";
 
 describe("OID4VP Verifier: ", () => {
   it("create Authorization Request by Value", async () => {
@@ -293,6 +297,76 @@ describe("OID4VP Verifier: ", () => {
       .withHttpClient(ReqwestHttpClient.insecure())
       .addTrustedRootCertificate(encoder.encode(SAMPLE_ROOT_X509_PEM))
       .build();
+  });
+
+  it("builds verifier with custom KMS that supports JWE decryption and uses it", async () => {
+    const innerKms = new InMemKms();
+    const kms = new (class JweKms implements Kms {
+      decryptCalledWith: string;
+      create(kt: KeyType): Promise<string> {
+        return innerKms.create(kt);
+      }
+      async get(kid: string): Promise<KeyHandle> {
+        if (kid == "ecdsa-kid") { // this kid is used in AUTH_RESPONSE_JWT fixture
+          const kid_1 = await innerKms.create(KeyType.P256);
+          return await innerKms.get(kid_1);
+        }
+        return await innerKms.get(kid);
+      }
+      getByPublicKey(pk: Uint8Array): Promise<KeyHandle> {
+        return innerKms.getByPublicKey(pk);
+      }
+      // tested decrypt method
+      async decrypt(jwe: string): Promise<Record<string, any>> {
+        this.decryptCalledWith = jwe;
+        return { nothing: "here" };
+      }
+    })();
+
+    const nonceGenerator = new LocalNonceHandler();
+    const { keyMetadata } = await createDidAndKeyMetadata(kms);
+
+    let verifier = await new OID4VPVerifierBuilder(
+      kms,
+      nonceGenerator,
+      keyMetadata,
+      ClientId.fromDid("did:key:zDnaeagvW2eDWc2yVw7B98ovcJ8jddn7T9Mh3y5Vikys6y4kX"),
+    )
+      .withHttpClient(ReqwestHttpClient.insecure())
+      .build();
+
+    const auth_response: AuthorizationResponse = {
+      type: AuthorizationResponseType.Jwe,
+      jwe: AUTH_RESPONSE_JWE,
+    };
+    const rpq: ResolvedPresentationQuery = {
+      presentation_definition: PRESENTATION_QUERY.presentation_definition,
+      dcql_query: PRESENTATION_QUERY.dcql_query,
+    };
+    const session: _PresentationSession = {
+      nonce: "n-07kSJUQNwlPISE3jc8QxEia2MHTqewM3WyVx-4XlM",
+      resolvedPresentationQuery: rpq,
+      authorizationRequestJwt: "",
+    };
+    const transactionData: Array<TransactionDataItem> = [
+      {
+        type: "some_type",
+        credential_ids: ["1", "2"],
+        transaction_data_hashes_alg: ["sha-256"],
+      },
+    ];
+    const verificationMetadata: CredentialVerificationMetadata = {
+      transactionData,
+    };
+
+    try {
+      await verifier.verifyPresentation(auth_response, session, verificationMetadata);
+    } catch (e) {
+      console.log(e);
+      // ignored
+    }
+
+    expect(kms.decryptCalledWith).toEqual(auth_response.jwe);
   });
 });
 

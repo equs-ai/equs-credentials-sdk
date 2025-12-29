@@ -158,15 +158,14 @@ describe("OID4VP Holder: ", () => {
     expect(result.type).toEqual(PresentationResultType.Presented);
   });
 
-  // TODO: enable this test after fixing the direct post jwt issue
-  // it("present credentials auto with direct post jwt", async () => {
-  //   await mockServer.forPost("/response").thenCallback(async (request) => await handleRequestForDirectPostJwt(request));
-  //
-  //   await vault.storeCredential(credential, metadata);
-  //   const result = await holder.presentCredentialsAuto(new AuthorizationRequest(AUTH_REQUEST_WITH_DIRECT_POST_JWT), {});
-  //
-  //   expect(result.type).toEqual(PresentationResultType.Presented);
-  // });
+  it("present credentials auto with direct post jwt", async () => {
+    await mockServer.forPost("/response").thenCallback(async (request) => await handleRequestForDirectPostJwt(request));
+
+    await vault.storeCredential(credential, metadata);
+    const result = await holder.presentCredentialsAuto(new AuthorizationRequest(AUTH_REQUEST_WITH_DIRECT_POST_JWT), {});
+
+    expect(result.type).toEqual(PresentationResultType.Presented);
+  });
 
   it("present Credentials Auto with excluded claims", async () => {
     let token: string;

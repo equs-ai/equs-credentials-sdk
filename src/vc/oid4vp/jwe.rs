@@ -1,21 +1,29 @@
+use crate::kms::{KeyHandle, Kms};
 use crate::vc::oid4vp::Error::Internal;
 use crate::vc::oid4vp::internal_error::JWESnafu;
+use crate::vc::oid4vp::jwe_utils::{add_public_private_keys, get_private_key_handler};
 use crate::vc::oid4vp::{ClientMetadata, Error};
-use one_core::config::core_config::KeyAlgorithmType::{
+use crate::{crypto, kms};
+use async_trait::async_trait;
+use one_core_asdk::config::core_config::KeyAlgorithmType::{
     Ecdsa as EcdsaKeyAlgorithm, Eddsa as EddsaKeyAlgorithm,
 };
-use one_core::model::key::{JwkUse, PublicKeyJwk, PublicKeyJwkEllipticData};
-use one_core::provider::key_algorithm::KeyAlgorithm;
-use one_core::provider::key_algorithm::ecdsa::Ecdsa;
-use one_core::provider::key_algorithm::eddsa::Eddsa;
-use one_core::provider::key_algorithm::model::GeneratedKey;
-use one_core::provider::key_algorithm::provider::KeyAlgorithmProviderImpl;
-use one_core::provider::key_algorithm::provider::{KeyAlgorithmProvider, ParsedKey};
-use one_crypto::jwe::{EncryptionAlgorithm, Header, RemoteJwk, build_jwe};
+use one_core_asdk::encryption::EncryptionError;
+use one_core_asdk::jwe::{
+    EncryptionAlgorithm, Header, RemoteJwk, build_jwe, decrypt_jwe_payload, extract_jwe_header,
+};
+use one_core_asdk::model::key::{JwkUse, PublicKeyJwk, PublicKeyJwkEllipticData};
+use one_core_asdk::provider::key_algorithm::KeyAlgorithm;
+use one_core_asdk::provider::key_algorithm::ecdsa::Ecdsa;
+use one_core_asdk::provider::key_algorithm::eddsa::Eddsa;
+use one_core_asdk::provider::key_algorithm::model::GeneratedKey;
+use one_core_asdk::provider::key_algorithm::provider::KeyAlgorithmProviderImpl;
+use one_core_asdk::provider::key_algorithm::provider::{KeyAlgorithmProvider, ParsedKey};
 use openid4vp::core::metadata::parameters::verifier::EncryptedResponseEncValuesSupported;
 use secrecy::SecretSlice;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
+use snafu::{Location, ResultExt, Snafu};
 use std::collections::HashMap;
 use std::fmt::Display;
 use std::sync::Arc;
@@ -28,6 +36,7 @@ pub struct JwkConfig {
     pub kid: String,
     pub alg: Algorithm,
 }
+
 pub struct JweEncryptor {
     metadata: ClientMetadata,
     supported_algs: Vec<Algorithm>,
@@ -155,6 +164,7 @@ impl JweEncryptor {
             }),
         }
     }
+
     pub async fn get_shared_secret_and_public_key(
         &self,
         input_jwk: &JwkConfig,
@@ -365,17 +375,89 @@ pub fn public_jwk_to_remote_jwk(key: &PublicKeyJwk) -> Result<RemoteJwk, Error> 
     Ok(remote_key)
 }
 
+#[derive(Debug, Snafu)]
+#[snafu(visibility(pub))]
+pub enum JweDecryptError {
+    #[snafu(display("{source}"))]
+    Kms {
+        source: kms::Error,
+        #[snafu(implicit)]
+        location: Location,
+    },
+    #[snafu(display("{source}"))]
+    Encryption {
+        source: EncryptionError,
+        #[snafu(implicit)]
+        location: Location,
+    },
+    #[snafu(display("{source}"))]
+    Crypto {
+        source: crypto::Error,
+        #[snafu(implicit)]
+        location: Location,
+    },
+    #[snafu(display("{source}"))]
+    Parsing {
+        source: serde_json::Error,
+        #[snafu(implicit)]
+        location: Location,
+    },
+}
+
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
+pub trait JweDecrypt<KH: KeyHandle> {
+    async fn decrypt(&self, jwe: &str) -> Result<Value, JweDecryptError>;
+}
+
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
+pub trait AsdkJweDecrypt<KH>
+where
+    KH: KeyHandle,
+{
+}
+
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
+impl<KH, KMS> JweDecrypt<KH> for KMS
+where
+    KH: KeyHandle,
+    KMS: Kms<KH> + AsdkJweDecrypt<KH>,
+{
+    async fn decrypt(&self, jwe: &str) -> Result<Value, JweDecryptError> {
+        decrypt_jwe(self, jwe).await
+    }
+}
+
+pub async fn decrypt_jwe<KH: KeyHandle, KMS: Kms<KH>>(
+    kms: &KMS,
+    jwe: &str,
+) -> Result<Value, JweDecryptError> {
+    let header = extract_jwe_header(jwe).context(EncryptionSnafu)?;
+    let kh = kms.get(&header.key_id).await.context(KmsSnafu {})?;
+    let enc_pub_key = kh.jwk();
+    let alg = kh.alg();
+    let private_key = add_public_private_keys(kh, alg).context(CryptoSnafu {})?;
+    let private_key_handle = get_private_key_handler(private_key, alg).context(CryptoSnafu {})?;
+
+    let decoded = decrypt_jwe_payload(jwe, private_key_handle.as_ref())
+        .await
+        .context(EncryptionSnafu {})?;
+
+    serde_json::from_slice(decoded.as_slice()).context(ParsingSnafu {})
+}
+
 #[cfg(test)]
 mod tests {
-    use crate::vc::oid4vp::jwe_encryptor::JweEncryptor;
+    use crate::vc::oid4vp::jwe::JweEncryptor;
     use crate::vc::oid4vp::tests::utils::wrap_p256_private_key;
-    use crate::vc::oid4vp::{ClientMetadata, ResolvedAuthRequest};
-    use one_crypto::jwe::decrypt_jwe_payload;
-    use serde_json::{from_str, json};
+    use one_core_asdk::jwe::decrypt_jwe_payload;
+    use serde_json::{Value, json};
 
     #[tokio::test]
     async fn test_encoding() {
-        let metadata = get_metadata();
+        let metadata = super::test_utils::get_metadata(pregenerated_pub_jwk());
         let encoder = JweEncryptor::new(metadata);
         let body = json!({
             "some_key": "some_value",
@@ -403,68 +485,69 @@ mod tests {
         assert_eq!(res, body.to_string().as_bytes().to_vec());
     }
 
-    fn get_metadata() -> ClientMetadata {
-        let result: ResolvedAuthRequest = from_str(
-            r#"
-            {
-              "response_uri": "https://some-link.com",
-              "client_id": "decentralized_identifier:did:key:zDnaeveTW9mmpzfLKHgmoYox1te7kxhdoboadQf5hM2rtiZjh",
-              "response_type": "vp_token",
-              "response_mode": "fragment.jwt",
-              "nonce": "xyz123ltcaccescbwc777",
-              "dcql_query": {
-                "credentials": [
-                  {
-                    "id": "my_credential",
-                    "format": "dc+sd-jwt",
-                    "meta": {
-                      "vct_values": [
-                        "https://credentials.example.com/identity_credential"
-                      ]
-                    },
-                    "claims": [
-                      {
-                        "path": [
-                          "last_name"
-                        ]
-                      },
-                      {
-                        "path": [
-                          "first_name"
-                        ]
-                      },
-                      {
-                        "path": [
-                          "address",
-                          "postal_code"
-                        ]
-                      }
-                    ]
-                  }
-                ]
-              },
-              "client_metadata": {
-                "jwks": {
-                  "keys": [
-                    {
-                      "kid": "ecdsa-kid",
-                      "kty": "EC",
-                      "crv": "P-256",
-                      "x": "SSnPfyVhQgcU9Aaynqgi6QGhrq7K7WFEC0mAvpHG4TM",
-                      "y": "rYQ5mLQLTs95WLBKKA8R5IjMTXjX13iZnzazsVectRY",
-                      "alg": "ECDH-ES"
-                    }
-                  ]
-                },
-                "encrypted_response_enc_values_supported": [
-                  "A256GCM"
-                ]
-              }
-            }
-           "#,
-        )
+    fn pregenerated_pub_jwk() -> serde_json::Map<String, Value> {
+        if let Value::Object(map) = json!({
+          "kid": "ecdsa-kid",
+          "kty": "EC",
+          "crv": "P-256",
+          "x": "SSnPfyVhQgcU9Aaynqgi6QGhrq7K7WFEC0mAvpHG4TM",
+          "y": "rYQ5mLQLTs95WLBKKA8R5IjMTXjX13iZnzazsVectRY",
+          "alg": "ECDH-ES"
+        }) {
+            map
+        } else {
+            unreachable!()
+        }
+    }
+}
+
+#[cfg(any(test, feature = "test-utils"))]
+pub mod test_utils {
+    use crate::kms::{CreateOptions, KeyHandle, KeyType, Kms};
+    use crate::vc::oid4vp::ClientMetadata;
+    use crate::vc::oid4vp::jwe::{JweDecrypt, JweEncryptor};
+    use serde_json::{Value, json};
+
+    pub async fn test_kms_encrypt_decrypt<KH: KeyHandle>(kms: impl Kms<KH> + JweDecrypt<KH>) {
+        let kid = kms
+            .create(KeyType::P256, CreateOptions::default())
+            .await
+            .unwrap();
+        let kh = kms.get(&kid).await.unwrap();
+        let mut pub_jwk = kh.jwk().unwrap().to_public();
+        pub_jwk.key_id = Some(kid);
+        let pub_jwk = if let Value::Object(mut map) = serde_json::to_value(&pub_jwk).unwrap() {
+            map.insert("alg".to_string(), Value::String("ECDH-ES".to_string()));
+            map
+        } else {
+            unreachable!("");
+        };
+        let given_payload = json!({"key": "value"});
+
+        let metadata = get_metadata(pub_jwk);
+        let encryptor = JweEncryptor::new(metadata);
+        let jwe = encryptor.encrypt(given_payload.clone()).await.unwrap();
+
+        let decrypted_payload = kms.decrypt(&jwe).await.unwrap();
+        assert_eq!(decrypted_payload, given_payload);
+    }
+
+    pub(crate) fn get_metadata(jwk: serde_json::Map<String, Value>) -> ClientMetadata {
+        let mut metadata = serde_json::from_value::<ClientMetadata>(json!({
+          "jwks": {
+            "keys": [
+            ]
+          },
+          "encrypted_response_enc_values_supported": [
+            "A256GCM"
+          ]
+        }))
         .unwrap();
 
-        result.client_metadata
+        let mut jws = metadata.jwks().unwrap().unwrap();
+        jws.keys.push(jwk);
+        metadata.0.insert(jws);
+
+        metadata
     }
 }

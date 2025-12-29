@@ -193,6 +193,7 @@ async fn presentation_response(
         return HttpResponse::Ok().finish();
     }
     let wallet_auth_resp = if let Some(response) = req.get("response") {
+        println!("Received Encrypted Authorization Response: {}", response);
         AuthorizationResponse::Jwe(response.to_owned())
     } else {
         AuthorizationResponse::Plain(AuthorizationResponseObject {

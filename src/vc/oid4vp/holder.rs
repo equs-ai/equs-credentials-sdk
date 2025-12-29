@@ -14,6 +14,7 @@ use crate::vc::oid4vp::internal_error::{
     IdTokenParseSnafu, JsonSnafu, KMSSnafu, ParseSnafu, PresentationExchangeSnafu, VCSnafu,
     VCStatusSnafu,
 };
+use crate::vc::oid4vp::jwe::JweEncryptor;
 use crate::vc::oid4vp::metadata::default_wallet_metadata;
 use crate::vc::oid4vp::protocol_error::ErrorType;
 use crate::vc::oid4vp::signer::Signer;
@@ -250,22 +251,10 @@ where
                         );
                     }
                 }
-                #[cfg(not(target_arch = "wasm32"))]
-                {
-                    use crate::vc::oid4vp::jwe_encryptor::JweEncryptor;
+                let encryptor = JweEncryptor::new(metadata);
+                let jwt = encryptor.encrypt(Value::Object(body)).await?;
 
-                    let encryptor = JweEncryptor::new(metadata);
-                    let jwt = encryptor.encrypt(Value::Object(body)).await?;
-
-                    Ok(Jwt(JwtAuthorizationResponse { response: jwt }))
-                }
-                #[cfg(target_arch = "wasm32")]
-                {
-                    AuthorizationResponseUnsupportedModeSnafu {
-                        details: "Encrypted response mode is not supported in this wasm build",
-                    }
-                    .fail()?
-                }
+                Ok(Jwt(JwtAuthorizationResponse { response: jwt }))
             }
             ResponseMode::Unsupported(mode) => Err(Internal {
                 source: AuthorizationResponseUnsupportedModeSnafu {
@@ -1285,7 +1274,7 @@ mod tests {
     use oauth2::HttpResponse;
     use oauth2::http::Method;
     use oauth2::reqwest::StatusCode;
-    use one_crypto::jwe::decrypt_jwe_payload;
+    use one_core_asdk::jwe::decrypt_jwe_payload;
     use openid4vp::core::authorization_request::AuthorizationRequestObject;
     use openid4vp::core::authorization_request::parameters::ResponseMode;
     use openid4vp::core::authorization_request::verification::RequestVerifier;

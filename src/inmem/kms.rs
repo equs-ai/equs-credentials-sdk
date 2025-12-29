@@ -31,6 +31,7 @@ use crate::kms::{
 };
 use crate::kms::{Error, NotFoundSnafu, ResolvingSnafu};
 use crate::storage::Storage;
+use crate::vc::oid4vp::jwe::AsdkJweDecrypt;
 use crate::{crypto, kms};
 
 #[derive(Clone, Display)]
@@ -590,6 +591,8 @@ impl DerivativeKms<ECDHESParams> for LocalKms {
     }
 }
 
+impl AsdkJweDecrypt<KeyHandle> for LocalKms {}
+
 #[cfg(test)]
 mod tests {
     use crate::crypto;
@@ -597,6 +600,7 @@ mod tests {
     use crate::inmem::kms::LocalKms;
     use crate::kms::test_util::test_kms;
     use crate::kms::{BIP32Params, CreateOptions, DerivativeKms, Error, KeyType, Kms};
+    use crate::vc::oid4vp::jwe;
     use bip32::Mnemonic;
     use bip32::secp256k1::elliptic_curve::rand_core::OsRng;
 
@@ -677,5 +681,11 @@ mod tests {
                 ..
             })
         ));
+    }
+
+    #[tokio::test]
+    async fn jwe_encrypt_decrypt() {
+        let kms = LocalKms::new();
+        jwe::test_utils::test_kms_encrypt_decrypt(kms).await;
     }
 }

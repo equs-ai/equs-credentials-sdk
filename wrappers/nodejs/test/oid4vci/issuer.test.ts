@@ -33,7 +33,6 @@ describe("OID4VCI Issuer: ", () => {
       .build();
   });
 
-  // todo enable when custom http client providing will work
   test.skip("Custom http client", async () => {
     const kms = new InMemKms();
     const mockNonceHandler = new MockNonceHandler(NONCE);

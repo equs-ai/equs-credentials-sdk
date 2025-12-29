@@ -7,12 +7,16 @@ use agent_sdk::kms::{
     BIP32Params, CreateOptions, ECDH1PUParams, ECDHESParams, KeyHandle, KeyID, KeyPair, KeyType,
     Kms,
 };
+use agent_sdk::vc::oid4vp::jwe;
+use agent_sdk::vc::oid4vp::jwe::{JweDecrypt, JweDecryptError, decrypt_jwe};
 use agent_sdk::{crypto, kms};
 use async_trait::async_trait;
 use napi::bindgen_prelude::{Promise, Uint8Array};
 use napi::threadsafe_function::{ErrorStrategy, ThreadsafeFunction};
 use napi::{Either, Error};
 use napi_derive::napi;
+use serde_json::Value;
+use snafu::ResultExt;
 
 #[napi(js_name = "KeyType")]
 pub enum JsKeyType {
@@ -303,6 +307,7 @@ impl KeyHandle for JsKeyHandle {}
 /// @property {(kt: KeyType) => Promise<string>} create - Create and store a key in {@link Kms}.
 /// @property {(kid: string) => Promise<KeyHandle>} get - Returns {@link KeyHandle} for the provided `KID`
 /// @property {(pk: Array<number>) => Promise<KeyHandle>} getByPublicKey - Returns {@link KeyHandle} for the provided `Public Key`
+/// @property {(jwe: string) => Promise<Record<string, any>>} decrypt - Decrypts provided `JWE` token and returns a decrypted `payload`
 ///
 #[derive(Clone)]
 #[napi(js_name = "Kms", object, object_to_js = false)]
@@ -313,6 +318,8 @@ pub struct JsKms {
     pub get: ThreadsafeFunction<String, ErrorStrategy::Fatal>,
     #[napi(ts_type = "(pk: Uint8Array) => Promise<KeyHandle>")]
     pub get_by_public_key: ThreadsafeFunction<Uint8Array, ErrorStrategy::Fatal>,
+    #[napi(ts_type = "(jwe: string) => Promise<Record<string, any>>")]
+    pub decrypt: Option<ThreadsafeFunction<String, ErrorStrategy::Fatal>>,
 }
 
 #[async_trait]
@@ -375,6 +382,27 @@ impl Kms<JsKeyHandle> for JsKms {
             }
             .build()
         })
+    }
+}
+
+#[async_trait]
+impl JweDecrypt<JsKeyHandle> for JsKms {
+    async fn decrypt(&self, jwe: &str) -> Result<Value, JweDecryptError> {
+        if let Some(decrypt) = self.decrypt.as_ref() {
+            decrypt
+                .call_async(jwe.to_string())
+                .await
+                .map_err(|err| {
+                    crypto::MalformedSnafu {
+                        details: format!("Failed to decrypt JWE token. Napi status: {}", err),
+                    }
+                    .build()
+                })
+                .context(kms::CryptoSnafu)
+                .context(jwe::KmsSnafu)
+        } else {
+            decrypt_jwe(self, jwe).await
+        }
     }
 }
 

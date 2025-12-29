@@ -8,8 +8,7 @@ pub(crate) mod verifier;
 mod builder;
 mod internal_error;
 
-#[cfg(not(target_arch = "wasm32"))]
-mod jwe_encryptor;
+pub mod jwe;
 mod jwe_utils;
 mod metadata;
 mod protocol_error;

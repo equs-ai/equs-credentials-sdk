@@ -1,5 +1,6 @@
 use crate::did::universal::{DIDResolver, UniversalResolver};
 use crate::http::{HttpClient, HttpError, HttpSnafu};
+use crate::kms::Kms;
 use crate::nonce::NonceHandler;
 use crate::reqwest::ReqwestClient;
 use crate::reqwest::builder::ReqwestClientBuilder;
@@ -8,6 +9,7 @@ use crate::vc::core::{DEFAULT_POP_LIFETIME_MINUTES, ProofOfPossessionMetadata};
 use crate::vc::oid4vp as api;
 use crate::vc::oid4vp::ClientId;
 use crate::vc::oid4vp::holder::HolderService;
+use crate::vc::oid4vp::jwe::JweDecrypt;
 use crate::vc::oid4vp::verifier::VerifierService;
 use crate::{kms, vault, vc};
 use common_macros::DebugError;
@@ -36,7 +38,7 @@ pub enum Error {
 pub struct VerifierBuilder<KH, KMS, NG, HC>
 where
     KH: kms::KeyHandle,
-    KMS: kms::Kms<KH>,
+    KMS: Kms<KH> + JweDecrypt<KH>,
     NG: NonceHandler,
     HC: HttpClient,
 {
@@ -58,7 +60,7 @@ where
 impl<KH, KMS, NG> VerifierBuilder<KH, KMS, NG, ReqwestClient>
 where
     KH: kms::KeyHandle,
-    KMS: kms::Kms<KH>,
+    KMS: Kms<KH> + JweDecrypt<KH>,
     NG: NonceHandler,
 {
     /// Creates a new instance of `VerifierBuilder` with default configurations.
@@ -104,7 +106,7 @@ where
 impl<KH, KMS, NG, HC> VerifierBuilder<KH, KMS, NG, HC>
 where
     KH: kms::KeyHandle,
-    KMS: kms::Kms<KH>,
+    KMS: Kms<KH> + JweDecrypt<KH>,
     NG: NonceHandler,
     HC: HttpClient,
 {
@@ -279,6 +281,7 @@ where
 
         Ok(self)
     }
+
     /// Builds the `Verifier` API instance based on the current configuration of the builder.
     ///
     /// # Returns

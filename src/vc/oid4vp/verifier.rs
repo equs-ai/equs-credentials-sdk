@@ -29,7 +29,7 @@ use crate::vc::oid4vp::internal_error::{
     DidUrlResolutionSnafu, IdTokenValidationSnafu, JsonSnafu, KMSSnafu, NonceGenerationSnafu,
     Oid4VpLibSnafu, ParseSnafu, PresentationExchangeSnafu, VCSnafu,
 };
-use crate::vc::oid4vp::jwe_utils::{add_public_private_keys, get_private_key_handler};
+use crate::vc::oid4vp::jwe::JweDecrypt;
 use crate::vc::oid4vp::metadata::{default_client_metadata, default_wallet_metadata};
 use crate::vc::oid4vp::protocol_error::ErrorType;
 use crate::vc::oid4vp::signer::Signer;
@@ -45,7 +45,7 @@ use crate::vc::presentation_exchange::{
     PresentationResponse, validate_against_presentation_definition,
 };
 use crate::vc::{dcql, oid4vp as api};
-use one_crypto::jwe::{decrypt_jwe_payload, extract_jwe_header};
+use one_core_asdk::jwe::extract_jwe_header;
 use openid4vp::core::authorization_request::RequestReference;
 use openid4vp::core::response::parameters::{IdTokenBody as IdToken, TransactionDataHashesAlg};
 use ssi::dids::DIDURLBuf;
@@ -79,7 +79,7 @@ pub struct VerifierService<VF, KH, KMS, NG, HC>
 where
     VF: vc::core::Verifier,
     KH: KeyHandle,
-    KMS: Kms<KH>,
+    KMS: Kms<KH> + JweDecrypt<KH>,
     NG: NonceHandler,
     HC: HttpClient,
 {
@@ -96,7 +96,7 @@ impl<VF, KH, KMS, NG, HC> VerifierService<VF, KH, KMS, NG, HC>
 where
     VF: vc::core::Verifier,
     KH: KeyHandle,
-    KMS: Kms<KH>,
+    KMS: Kms<KH> + JweDecrypt<KH>,
     NG: NonceHandler,
     HC: HttpClient,
 {
@@ -141,7 +141,7 @@ impl<VF, KH, KMS, NG, HC> api::Verifier for VerifierService<VF, KH, KMS, NG, HC>
 where
     VF: vc::core::Verifier,
     KH: KeyHandle,
-    KMS: Kms<KH>,
+    KMS: Kms<KH> + JweDecrypt<KH>,
     NG: NonceHandler,
     HC: HttpClient,
 {
@@ -227,7 +227,7 @@ impl<VF, KH, KMS, NG, HC> VerifierService<VF, KH, KMS, NG, HC>
 where
     VF: vc::core::Verifier,
     KH: KeyHandle,
-    KMS: Kms<KH>,
+    KMS: Kms<KH> + JweDecrypt<KH>,
     NG: NonceHandler,
     HC: HttpClient,
 {
@@ -257,31 +257,15 @@ where
                     .build(),
                 })?;
                 let enc_pub_key = kh.jwk();
-                let alg = kh.alg();
-                let private_key = add_public_private_keys(kh, alg)?;
-                let private_key_handle = get_private_key_handler(private_key, alg)?;
-
-                let decoded = decrypt_jwe_payload(jwe_response, private_key_handle.as_ref())
-                    .await
-                    .map_err(|e| Internal {
-                        source: AuthorizationResponseDecryptionSnafu {
-                            details: format!(
-                                "Error from one-core while decrypting the jwe response: {}",
-                                e
-                            ),
-                        }
-                        .build(),
-                    })?;
-                let claim_set: Value =
-                    serde_json::from_slice(decoded.as_slice()).map_err(|e| Internal {
-                        source: AuthorizationResponseDecryptionSnafu {
-                            details: format!(
-                                "Error while parsing the decrypted jwe payload: {}",
-                                e
-                            ),
-                        }
-                        .build(),
-                    })?;
+                let claim_set = self.kms.decrypt(jwe_response).await.map_err(|e| Internal {
+                    source: AuthorizationResponseDecryptionSnafu {
+                        details: format!(
+                            "Failed to decrypt Encrypted Authorization Response: {}",
+                            e
+                        ),
+                    }
+                    .build(),
+                })?;
                 let Value::Object(claim_set) = claim_set else {
                     return Err(Internal {
                         source: AuthorizationResponseDecryptionSnafu {
@@ -782,7 +766,7 @@ mod tests {
     use crate::vc::claims::Claims;
     use crate::vc::dcql::DCQLCredential;
     use crate::vc::formats::mso_mdoc::tests::SAMPLE_MSO_MDOC_VP;
-    use crate::vc::oid4vp::jwe_encryptor::JweEncryptor;
+    use crate::vc::oid4vp::jwe::JweEncryptor;
     use crate::vc::oid4vp::tests::fixtures::multi_presentation::{
         auth_response_options, submission_requirements, transaction_data_items,
     };
