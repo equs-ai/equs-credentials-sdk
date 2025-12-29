@@ -1,11 +1,13 @@
 import {
   AuthorizationRequest,
   AuthorizationResponseMetadata,
+  Credential,
   CredentialEntry,
   CredentialsFindResult,
   InnerOID4VPHolder,
   PresentationQuery,
   PresentationResult,
+  VCStatus,
 } from "../../..";
 
 /**
@@ -108,5 +110,16 @@ export class OID4VPHolder {
    */
   async declineAuthorizationRequest(authRequest: AuthorizationRequest): Promise<string | null> {
     return await this.inner.declineAuthorizationRequest(authRequest.toRustObject());
+  }
+
+  /**
+   * Gets the status of Credential.
+   *
+   * @param {Credential} credential - a credential containing the status claim.
+   *
+   * @returns {VCStatus | null} - Optional a credential status on success
+   */
+  async getCredentialStatus(credential: Credential): Promise<VCStatus | null> {
+    return await this.inner.getCredentialStatus(credential);
   }
 }

@@ -14,8 +14,8 @@ use crate::nonce::Nonce;
 use crate::vault::CredentialEntry;
 use crate::vc::core::api::ClaimsDidNotPassFilteringSnafu;
 use crate::vc::core::{
-    CredentialOffer, CredentialRequest, CredentialRequestData, Holder, HolderBinder,
-    HolderMetadata, KeyMetadata, PresentationInput, Proof,
+    CredentialOffer, CredentialRequest, CredentialRequestData, CredentialStatusNotSupportedSnafu,
+    Holder, HolderBinder, HolderMetadata, KeyMetadata, PresentationInput, Proof, VCStatusSnafu,
 };
 use crate::vc::core::{
     CredentialOfferContent, FormatNotSupportedSnafu, InvalidDIDUrlSnafu, KMSSnafu,
@@ -30,7 +30,11 @@ use crate::vc::oid4vp::{CredentialsFindResult, FindVCsFailReason};
 use crate::vc::pop::ProofOfPossession;
 use crate::vc::pop::jwt_pop::JwtProofOfPossession;
 use crate::vc::presentation_exchange::{is_type_requested, is_valid_vc_type, validate_credential};
-use crate::vc::{Credential, CredentialMetadata, HasVCFormat, Presentation, pop};
+use crate::vc::status_formats::API as StatusFormatsAPI;
+use crate::vc::status_formats::status_list_token_jwt::StatusListJwt;
+use crate::vc::{
+    Credential, CredentialMetadata, HasClaims, HasVCFormat, Presentation, VCStatus, pop,
+};
 use crate::{kms, vault};
 
 #[derive(Clone)]
@@ -346,7 +350,31 @@ where
 
         Ok(presentation)
     }
+
+    async fn get_credential_status(&self, credential: &Credential) -> Result<Option<VCStatus>> {
+        match credential {
+            Credential::SdJwt(sd_jwt) => {
+                let claims = credential.parse_claims().context(VCSnafu)?;
+                StatusListJwt::get_vc_status(
+                    &claims,
+                    &*self.http_client,
+                    self.did_resolver.clone(),
+                    None,
+                )
+                .await
+                .map_err(|e| {
+                    VCStatusSnafu {
+                        details: e.to_string(),
+                    }
+                    .build()
+                })
+                .map(|s| s.map(VCStatus::StatusListToken))
+            }
+            _ => CredentialStatusNotSupportedSnafu.fail(),
+        }
+    }
 }
+
 impl<KH, KMS, V, HC> HolderService<KH, KMS, V, HC>
 where
     KMS: kms::Kms<KH>,

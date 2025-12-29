@@ -30,6 +30,9 @@ extern "C" {
     #[wasm_bindgen(typescript_type = "PresentationResult")]
     pub type PresentationResult;
 
+    #[wasm_bindgen(typescript_type = "VCStatus")]
+    pub type VCStatus;
+
     #[wasm_bindgen(method)]
     fn getAuthRequest(this: &AuthorizationRequest) -> RustAuthorizationRequest;
 

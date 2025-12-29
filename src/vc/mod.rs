@@ -137,7 +137,7 @@ pub enum VCStatusesData {
 }
 
 /// Enum to provide an abstraction over the underlying VC status representation.
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum VCStatus {
     StatusListToken(status_list_token_jwt::VCStatus),
     // BitstringStatusList,
