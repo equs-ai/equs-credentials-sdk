@@ -2,7 +2,7 @@ use crate::error::IntoNapiError;
 use crate::utils::{from_json_object, parse_url_arg, to_json_object};
 use crate::vault::{JsCredentialEntry, JsCredentialsFindResult};
 use crate::vc::JsonObject;
-use crate::vc::core::JsKeyMetadata;
+use crate::vc::core::{JsCredential, JsKeyMetadata, JsVCStatus};
 use crate::vc::oid4vp::JsPresentationResult;
 use agent_sdk::vault::CredentialEntry;
 use agent_sdk::vc::oid4vp::{
@@ -159,6 +159,27 @@ impl InnerOID4VPHolder {
             .map_err(IntoNapiError::into_napi_error)?;
 
         Ok(redirect_url.map(|url| url.to_string()))
+    }
+
+    /// Gets the status of Credential.
+    ///
+    /// @param {Credential} credential - a credential containing the status claim.
+    ///
+    /// Credential status on success
+    ///
+    /// @returns {VCStatus | null} - An optional credential status on success
+    #[napi]
+    pub async fn get_credential_status(
+        &self,
+        credential: JsCredential,
+    ) -> Result<Option<JsVCStatus>> {
+        let status = self
+            .0
+            .get_credential_status(&credential.try_into()?)
+            .await
+            .map_err(IntoNapiError::into_napi_error)?;
+
+        status.map(TryInto::try_into).transpose()
     }
 }
 

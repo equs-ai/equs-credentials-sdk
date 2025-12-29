@@ -12,6 +12,7 @@ use crate::vc::oid4vp::internal_error::{
     AuthorizationResponseSnafu, AuthorizationResponseUnsupportedModeSnafu, CredentialNotFoundSnafu,
     DCQLSnafu, HttpClientSnafu, IdTokenGenerationSnafu, IdTokenMetadataNotFoundSnafu,
     IdTokenParseSnafu, JsonSnafu, KMSSnafu, ParseSnafu, PresentationExchangeSnafu, VCSnafu,
+    VCStatusSnafu,
 };
 use crate::vc::oid4vp::metadata::default_wallet_metadata;
 use crate::vc::oid4vp::protocol_error::ErrorType;
@@ -24,7 +25,9 @@ use crate::vc::oid4vp::{
     get_transaction_data_hash,
 };
 use crate::vc::presentation_exchange::PresentationDefinition;
-use crate::vc::{RequestedPresentation, dcql, oid4vp as api, presentation_exchange};
+use crate::vc::{
+    Credential, RequestedPresentation, VCStatus, dcql, oid4vp as api, presentation_exchange,
+};
 use crate::{utils, vc};
 use async_trait::async_trait;
 use futures::future;
@@ -1091,6 +1094,16 @@ where
 
         Ok(err.redirect_uri().cloned())
     }
+
+    async fn get_credential_status(&self, credential: &Credential) -> Result<Option<VCStatus>> {
+        let status = self
+            .holder
+            .get_credential_status(credential)
+            .await
+            .context(VCStatusSnafu)?;
+
+        Ok(status)
+    }
 }
 
 #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
@@ -1254,7 +1267,8 @@ mod tests {
         AUTH_REQUEST_WITH_WRONG_CLIENT_ID,
     };
     use crate::vc::oid4vp::tests::fixtures::{
-        REQUEST_URI, STATE, VERIFIER_URL, multi_presentation, single_presentation,
+        REQUEST_URI, SAMPLE_CREDENTIAL_STATUS_LIST, SAMPLE_SD_JWT_WITH_STATUS, STATE, VERIFIER_URL,
+        multi_presentation, single_presentation,
     };
     use crate::vc::oid4vp::tests::utils::{
         PresentationTestCase, build_url, holder_service, request_verifier, validate_claims,
@@ -1266,7 +1280,8 @@ mod tests {
         PresentationResult, ProtocolError, ResolvedPresentationQuery, ResponseType,
     };
     use crate::vc::presentation_exchange::ClaimFormatMap;
-    use crate::vc::{ClaimFormatDesignation, Credential};
+    use crate::vc::status_formats::status_list_token_jwt;
+    use crate::vc::{ClaimFormatDesignation, Credential, VCStatus};
     use oauth2::HttpResponse;
     use oauth2::http::Method;
     use oauth2::reqwest::StatusCode;
@@ -2529,6 +2544,32 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn get_credential_status_works() {
+        let test_case = requested_credential_not_exist_case();
+        let kms = LocalKms::new();
+        let vault = test_case.prepare_vault(&kms).await;
+
+        let mut http_client = MockHttpClient::new();
+        mock_http_fn_with_plain_text_resp(
+            &mut http_client,
+            Method::GET,
+            Url::parse("http://localhost:9001/status_list").unwrap(),
+            SAMPLE_CREDENTIAL_STATUS_LIST,
+            1.into(),
+        );
+        let holder = holder_service(http_client, kms, vault).await;
+
+        let status = holder
+            .get_credential_status(&Credential::SdJwt(SAMPLE_SD_JWT_WITH_STATUS.to_string()))
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            status,
+            VCStatus::StatusListToken(status_list_token_jwt::VCStatus::Valid)
+        )
+    }
     fn siop_case(key_metadata: KeyMetadata) -> PresentationTestCase {
         let mut test_case = single_presentation::sd_jwt::presentation_test_case();
         test_case.request.response_type = ResponseType::VpTokenIdToken;

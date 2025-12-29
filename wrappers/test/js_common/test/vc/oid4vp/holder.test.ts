@@ -14,9 +14,11 @@ import {
   OID4VPHolderBuilder,
   PresentationResultType,
   PresentationSubmission,
-  ReqwestHttpClient,
+  ReqwestHttpClient, TslVcStatusType,
   UniversalDIDResolver,
   VCFormat,
+  VCStatus,
+  VCStatusFormat,
 } from "agent-sdk";
 import {
   AUTH_REQUEST,
@@ -29,6 +31,7 @@ import {
   VC_TYPE,
   VC_WITH_STATUS,
   AUTH_REQUEST_WITH_FAKE_CONSTRAINTS,
+  STATUS_LIST_JWT,
 } from "./fixtures";
 import { MockNonceHandler } from "./mockNonceHandler";
 
@@ -84,6 +87,24 @@ describe("OID4VP Holder: ", () => {
     expect(authorizationRequest.getAuthRequest()).toMatchObject(AUTH_REQUEST);
   });
 
+  it("get credential status", async () => {
+    const credential = {
+      format: VCFormat.SdJwtVc,
+      payload: VC_WITH_STATUS,
+    };
+    await mockServer
+      .forGet("/status_list")
+      .thenReply(200, STATUS_LIST_JWT, { "content-type": "application/statuslist+jwt" });
+
+    const status: VCStatus = await holder.getCredentialStatus(credential);
+    expect(status).toEqual({
+      format: VCStatusFormat.StatusListToken,
+      payload: {
+        status: TslVcStatusType.VALID,
+      },
+    });
+  });
+
   it("resolve authorization request with transaction data", async () => {
     await mockServer
       .forGet("/request")
@@ -134,7 +155,6 @@ describe("OID4VP Holder: ", () => {
 
     await vault.storeCredential(credential, metadata);
     const result = await holder.presentCredentialsAuto(new AuthorizationRequest(AUTH_REQUEST), {});
-
     expect(result.type).toEqual(PresentationResultType.Presented);
   });
 

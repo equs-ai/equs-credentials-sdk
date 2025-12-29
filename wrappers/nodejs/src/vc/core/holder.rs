@@ -3,11 +3,11 @@ use crate::error::IntoNapiError;
 use crate::http::ReqwestHttpClient;
 use crate::kms::JsKms;
 use crate::vault::{JsCredentialEntry, JsCredentialsFindResult, JsVault};
-use crate::vc::core::JsHolderBinder;
 use crate::vc::core::{JsCredential, JsCredentialMetadata, JsHolderMetadata, JsKeyMetadata};
 use crate::vc::core::{
     JsCredentialOffer, JsCredentialRequest, JsPresentation, JsPresentationInput,
 };
+use crate::vc::core::{JsHolderBinder, JsVCStatus};
 use agent_sdk::vc::core::{Holder, HolderService as CoreHolderService};
 use napi::Error;
 use napi_derive::napi;
@@ -156,6 +156,25 @@ impl VCCoreHolder {
             .await
             .map_err(IntoNapiError::into_napi_error)
             .and_then(|v| v.try_into())
+    }
+
+    /// Gets the status for Credential.
+    ///
+    /// @param {Credential} credential - a {@link Credential} containing the status claim.
+    ///
+    /// @returns {VCStatus} VC Status on success
+    #[napi]
+    pub async fn get_credential_status(
+        &self,
+        credential: JsCredential,
+    ) -> Result<Option<JsVCStatus>, Error> {
+        let status = self
+            .0
+            .get_credential_status(&credential.try_into()?)
+            .await
+            .map_err(IntoNapiError::into_napi_error)?;
+
+        status.map(TryInto::try_into).transpose()
     }
 }
 

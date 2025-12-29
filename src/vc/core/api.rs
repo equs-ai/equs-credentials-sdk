@@ -589,6 +589,22 @@ pub trait Holder: WasmNotSend + WasmNotSync {
         presentation_input: &PresentationInput,
         credential: &CredentialEntry,
     ) -> Result<Presentation>;
+
+    /// Gets the status of Credential.
+    ///
+    /// # Arguments
+    ///
+    /// * `credential` - a [Credential] containing the status claim.
+    ///
+    /// # Returns
+    ///
+    /// [VCStatus] on success
+    ///
+    /// # Errors
+    ///
+    /// * [Error::CredentialStatusNotSupported] - Getting VC status is not supported for the given VC format.
+    /// * [Error::VCStatus] - Error getting VC status.
+    async fn get_credential_status(&self, credential: &Credential) -> Result<Option<VCStatus>>;
 }
 
 /// An async low-level protocol-agnostic `Verifier` API.

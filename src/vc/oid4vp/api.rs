@@ -6,6 +6,7 @@ use crate::vc::core::KeyMetadata;
 use crate::vc::oid4vp::internal_error::Oid4VpLibSnafu;
 use crate::vc::oid4vp::{ErrorType, InternalError, ProtocolError};
 use crate::vc::presentation_exchange::PresentationSubmission;
+use crate::vc::{Credential, VCStatus};
 use async_trait::async_trait;
 use base64::Engine;
 use base64::prelude::BASE64_URL_SAFE_NO_PAD;
@@ -389,6 +390,24 @@ pub trait Holder: WasmNotSend + WasmNotSync {
         &self,
         auth_request: &ResolvedAuthRequest,
     ) -> Result<Option<Url>, Error>;
+
+    /// Gets the status of Credential.
+    ///
+    /// # Arguments
+    ///
+    /// * `credential` - a `Credential` containing the status claim.
+    ///
+    /// # Returns
+    ///
+    /// [VCStatus] on success
+    ///
+    /// # Errors
+    ///
+    /// * [InternalError::VCStatus] - if there is an error during getting VC status.
+    async fn get_credential_status(
+        &self,
+        credential: &Credential,
+    ) -> Result<Option<VCStatus>, Error>;
 }
 
 /// The `OID4VP` `Verifier` API.

@@ -2,13 +2,15 @@ use crate::utils;
 use crate::utils::convert_to_opaque_object;
 use crate::vc::oid4vp::{
     AuthorizationRequest, AuthorizationResponseMetadata, CredentialMapping, CredentialsMapping,
-    PresentationResult,
+    PresentationResult, VCStatus,
 };
-use crate::vc::{CredentialsFindResult, JsCredentialEntry};
+use crate::vc::{Credential, CredentialsFindResult, JsCredential, JsCredentialEntry};
 use agent_sdk::vault::CredentialEntry;
 use agent_sdk::vc::oid4vp::{CredentialsMapping as ASDKCredentialsMapping, Holder};
+use agent_sdk::vc::status_formats::status_list_token_jwt;
 use js_sys::{Object, Reflect};
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use std::collections::HashMap;
 use wasm_bindgen::prelude::wasm_bindgen;
 use wasm_bindgen::{JsCast, JsError, JsValue};
@@ -205,6 +207,45 @@ impl OID4VPHolder {
 
         Ok(redirect_url.map(|url| url.to_string()))
     }
+
+    /// Gets the status VC.
+    ///
+    /// # Arguments
+    ///
+    /// * `credential` - a credential containing the status claim.
+    ///
+    /// # Returns
+    ///
+    /// Credential status on success
+    ///
+    /// # Errors
+    ///
+    /// Returns an internal error
+    /// * If there is an issue with parsing the credential.
+    /// * If an error occurs during getting credential status.
+    #[wasm_bindgen(js_name = getCredentialStatus)]
+    pub async fn get_credential_status(
+        &self,
+        credential: Credential,
+    ) -> Result<Option<VCStatus>, JsError> {
+        let js_credential: JsCredential = utils::convert_to_rust_object(credential)?;
+        let credential = js_credential.try_into()?;
+
+        let status = self
+            .0
+            .get_credential_status(&credential)
+            .await
+            .map(|status| status.map(JsVCStatus::try_from))
+            .map_err(|err| JsError::new(&format!("{:?}", err)))?
+            .transpose()?;
+
+        status
+            .map(|s| {
+                utils::convert_to_opaque_object_unchecked(s)
+                    .map_err(|err| JsError::new(&format!("{:?}", err)))
+            })
+            .transpose()
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -243,6 +284,77 @@ impl TryFrom<agent_sdk::vc::oid4vp::PresentationResult> for JsPresentationResult
         };
 
         Ok(result)
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum JsVCStatusFormat {
+    StatusListToken,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct JsVCStatus {
+    pub format: JsVCStatusFormat,
+    pub payload: serde_json::Value,
+}
+
+pub struct JsVcTslStatusPayload {
+    pub status: TslVcStatusType,
+    pub value: Option<u8>,
+}
+
+impl TryFrom<agent_sdk::vc::VCStatus> for JsVCStatus {
+    type Error = JsError;
+
+    fn try_from(value: agent_sdk::vc::VCStatus) -> Result<Self, Self::Error> {
+        match value {
+            agent_sdk::vc::VCStatus::StatusListToken(status) => {
+                let payload_status = TslVcStatusType::from(status).to_string();
+                let payload = match status {
+                    status_list_token_jwt::VCStatus::Valid
+                    | status_list_token_jwt::VCStatus::Invalid
+                    | status_list_token_jwt::VCStatus::Suspended => {
+                        json!({"status": payload_status})
+                    }
+                    status_list_token_jwt::VCStatus::AppSpecific(val) => {
+                        json!({"status": payload_status, "value": val})
+                    }
+                };
+
+                Ok(JsVCStatus {
+                    format: JsVCStatusFormat::StatusListToken,
+                    payload: serde_json::to_value(payload)?,
+                })
+            }
+        }
+    }
+}
+
+pub enum TslVcStatusType {
+    VALID,
+    INVALID,
+    SUSPENDED,
+    APPSPECIFIC,
+}
+
+impl TslVcStatusType {
+    pub fn to_string(&self) -> String {
+        match self {
+            TslVcStatusType::VALID => "VALID".to_string(),
+            TslVcStatusType::INVALID => "INVALID".to_string(),
+            TslVcStatusType::SUSPENDED => "SUSPENDED".to_string(),
+            TslVcStatusType::APPSPECIFIC => "APPSPECIFIC".to_string(),
+        }
+    }
+}
+impl From<agent_sdk::vc::TslVcStatus> for TslVcStatusType {
+    fn from(value: agent_sdk::vc::TslVcStatus) -> Self {
+        match value {
+            agent_sdk::vc::TslVcStatus::Valid => Self::VALID,
+            agent_sdk::vc::TslVcStatus::Invalid => Self::INVALID,
+            agent_sdk::vc::TslVcStatus::Suspended => Self::SUSPENDED,
+            agent_sdk::vc::TslVcStatus::AppSpecific(_) => Self::APPSPECIFIC,
+        }
     }
 }
 
