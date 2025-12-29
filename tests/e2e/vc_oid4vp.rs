@@ -1,5 +1,10 @@
-use crate::utils::fixtures::oid4vp::MockNonceHandler;
+use crate::utils::fixtures::oid4vp::{
+    MockNonceHandler, SAMPLE_IACA_CERT_1, SAMPLE_IACA_CERT_2, SAMPLE_MDL_VP_TOKEN,
+    sample_dcql_query_for_mso_mdoc_vp_request,
+};
 use crate::utils::fixtures::oid4vp::{NONCE, create_vc, generate_did_key_and_vm};
+use crate::utils::helpers::create_did_keymetadata_keyhandle;
+use crate::utils::http::HttpClientEmulator;
 use agent_sdk::http::HttpClient;
 use agent_sdk::inmem::kms::LocalKms;
 use agent_sdk::inmem::vault::InMemVault;
@@ -18,12 +23,9 @@ use oauth2::http::header::CONTENT_TYPE;
 use oauth2::http::{HeaderValue, Method};
 use openid4vp::core::authorization_request::parameters::HttpMethodForAuth;
 use rstest::rstest;
-use serde_json::Value;
+use serde_json::{Value, json};
 use std::collections::HashMap;
 use url::Url;
-
-use crate::utils::helpers::create_did_keymetadata_keyhandle;
-use crate::utils::http::HttpClientEmulator;
 
 use crate::utils::fixtures::find_vcs_to_present;
 use crate::utils::fixtures::oid4vp::{
@@ -32,6 +34,7 @@ use crate::utils::fixtures::oid4vp::{
     single_sdjwt_presentation_case,
 };
 use agent_sdk::inmem::nonce::LocalNonceHandler;
+use agent_sdk::nonce::Nonce;
 
 #[rstest]
 #[case::single_jsonld_presentation(single_jsonld_presentation_case())]
@@ -236,6 +239,64 @@ async fn credentials_presentation_and_verification_with_dcql(#[case] test_case: 
         .present_credentials(&request_object, &creds_mapping, &auth_resp_metadata)
         .await
         .unwrap();
+}
+
+#[rstest]
+#[case::ds_cert_of_vp_was_signed_by_trusted_cert(SAMPLE_IACA_CERT_1)]
+#[should_panic(expected = "Root CA certificate of a chain is not trusted")]
+#[case::ds_cert_of_vp_was_signed_by_untrusted_cert(SAMPLE_IACA_CERT_2)]
+#[tokio::test]
+async fn presentation_verification_flow_with_mdl(#[case] cert: &str) {
+    let kms = LocalKms::new();
+    let nonce_gen = LocalNonceHandler::default();
+
+    let (did, key_metadata, _) = create_did_keymetadata_keyhandle(&kms).await;
+
+    let verifier = VerifierBuilder::new(
+        kms,
+        nonce_gen,
+        key_metadata,
+        ClientId::from_did(&did).unwrap(),
+    )
+    .with_client_metadata(default_verifier_metadata())
+    .add_trusted_root_certificate(cert.as_bytes())
+    .unwrap()
+    .build()
+    .await
+    .unwrap();
+
+    let session = PresentationSession {
+        nonce: Nonce::from_secret("BQlBqrJEK9Mv7VuBwB3oax3t1-tA84QMrt9hBF75Hu4".to_string()),
+        resolved_presentation_query: ResolvedPresentationQuery::DCQL(
+            sample_dcql_query_for_mso_mdoc_vp_request(),
+        ),
+        auth_request_jwt: Default::default(),
+    };
+
+    let auth_response = serde_json::from_value(json!(
+        {
+            "vp_token": {
+                "mDL": [SAMPLE_MDL_VP_TOKEN]
+            }
+        }
+    ))
+    .unwrap();
+
+    let verified_claims = verifier
+        .verify_presentation(
+            &auth_response,
+            &session,
+            &CredentialVerificationMetadata {
+                transaction_data: None,
+                audience: Some("https://local.dev.dsr.gaminghub.bc-labs.dev:5173".to_string()),
+            },
+        )
+        .await
+        .unwrap();
+
+    let claims = &verified_claims["vp_token"]["mDL"].as_vec().unwrap()[0]["org.iso.18013.5.1"];
+    assert_eq!(claims["family_name"].as_str(), Some("Mustermann"));
+    assert_eq!(claims["given_name"].as_str(), Some("Erika"));
 }
 
 fn prepare_http_client_for_holder(
