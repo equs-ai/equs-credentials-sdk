@@ -5,8 +5,12 @@ use crate::did::{DID, DIDResolver};
 use crate::inmem::kms::LocalKms;
 use crate::kms::{KeyHandle, KeyID, KeyType, Kms};
 use crate::vc::core::KeyMetadata;
+use crate::vc::oid4vp::jwe::{JweDecrypt, JweDecryptError};
 use crate::{crypto, kms};
 use async_trait::async_trait;
+use kms::CreateOptions;
+use mockall::mock;
+use serde_json::Value;
 use ssi::dids::DIDURLBuf;
 use ssi::jwk::JWK;
 
@@ -119,54 +123,72 @@ pub fn no_jwk_key() -> impl KeyHandle {
     MockKey {}
 }
 
-pub fn failed_signer_key(key: impl Key + 'static) -> impl KeyHandle {
-    struct MockKey {
-        key: Box<dyn Key>,
+pub struct MockKey {
+    key: Box<dyn Key>,
+}
+
+impl Key for MockKey {
+    fn pub_key(&self) -> crypto::Result<Vec<u8>> {
+        self.key.pub_key()
     }
 
-    impl Key for MockKey {
-        fn pub_key(&self) -> crypto::Result<Vec<u8>> {
-            self.key.pub_key()
-        }
+    fn jwk(&self) -> Option<JWK> {
+        self.key.jwk()
+    }
+}
 
-        fn jwk(&self) -> Option<JWK> {
-            self.key.jwk()
-        }
+#[async_trait]
+impl Signer for MockKey {
+    fn alg(&self) -> Alg {
+        Alg::ES256
     }
 
-    #[async_trait]
-    impl Signer for MockKey {
-        fn alg(&self) -> Alg {
-            Alg::ES256
-        }
+    async fn sign(&self, payload: &[u8]) -> crypto::Result<Vec<u8>> {
+        Err(crypto::Error::KeyNotSupported {
+            type_: "mock".to_string(),
+        })
+    }
+}
 
-        async fn sign(&self, payload: &[u8]) -> crypto::Result<Vec<u8>> {
-            Err(crypto::Error::KeyNotSupported {
-                type_: "mock".to_string(),
-            })
-        }
+#[async_trait]
+impl Verifier for MockKey {
+    async fn verify(&self, data: &[u8], signature: &[u8]) -> crypto::Result<()> {
+        unimplemented!()
+    }
+}
+
+impl Clone for MockKey {
+    fn clone(&self) -> Self {
+        unimplemented!()
     }
 
-    #[async_trait]
-    impl Verifier for MockKey {
-        async fn verify(&self, data: &[u8], signature: &[u8]) -> crypto::Result<()> {
-            unimplemented!()
-        }
+    fn clone_from(&mut self, source: &Self) {
+        unimplemented!()
     }
+}
 
-    impl Clone for MockKey {
-        fn clone(&self) -> Self {
-            unimplemented!()
-        }
+impl SigningKey for MockKey {}
+impl VerifyingKey for MockKey {}
+impl KeyHandle for MockKey {}
 
-        fn clone_from(&mut self, source: &Self) {
-            unimplemented!()
-        }
-    }
-
-    impl SigningKey for MockKey {}
-    impl VerifyingKey for MockKey {}
-    impl KeyHandle for MockKey {}
-
+pub fn failed_signer_key(key: impl Key + 'static) -> MockKey {
     MockKey { key: Box::new(key) }
+}
+
+mock! {
+    pub JweKms{}
+
+    #[async_trait]
+    impl JweDecrypt<MockKey> for JweKms {
+        async fn decrypt(&self, jwe: &str) -> Result<Value, JweDecryptError>;
+    }
+
+    #[async_trait]
+    impl Kms<MockKey> for JweKms {
+        async fn create(&self, kt: KeyType, opts: CreateOptions) -> Result<KeyID, kms::Error>;
+
+        async fn get(&self, kid: &KeyID) -> Result<MockKey, kms::Error>;
+
+        async fn get_by_public_key(&self, public_key: &[u8]) -> Result<MockKey, kms::Error>;
+    }
 }

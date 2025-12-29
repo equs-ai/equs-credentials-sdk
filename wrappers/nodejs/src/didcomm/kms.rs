@@ -5,6 +5,7 @@ use agent_sdk::kms::{
     CreateOptions, CreationSnafu, DerivationSnafu, DerivativeKms, ECDH1PUParams, ECDHESParams,
     KeyID, KeyType, Kms, ResolvingSnafu,
 };
+use agent_sdk::vc::oid4vp::jwe::AsdkJweDecrypt;
 use async_trait::async_trait;
 use napi::bindgen_prelude::{Promise, Uint8Array};
 use napi::threadsafe_function::{ErrorStrategy, ThreadsafeFunction};
@@ -146,3 +147,5 @@ impl DerivativeKms<ECDHESParams> for DIDCommKms {
         })
     }
 }
+
+impl AsdkJweDecrypt<JsKeyHandle> for DIDCommKms {}

@@ -3287,13 +3287,12 @@ pub mod utils {
     use crate::inmem::kms::{KeyHandle, LocalKms};
     use crate::inmem::nonce::LocalNonceHandler;
     use crate::inmem::vault::InMemVault;
-    use crate::kms::MockKms;
     use crate::kms::{CreateOptions, KeyID, KeyType, Kms};
     use crate::nonce::Nonce;
     use crate::utils::http::test::mock_http_req_async_predicate;
     use crate::utils::test_utils;
-    use crate::utils::test_utils::create_did_and_key_metadata;
     use crate::utils::test_utils::failed_signer_key;
+    use crate::utils::test_utils::{MockJweKms, create_did_and_key_metadata};
     use crate::vault::{CredentialEntry, Vault};
     use crate::vc;
     use crate::vc::claims::Claims;
@@ -3329,8 +3328,8 @@ pub mod utils {
     use bip32::secp256k1::sha2::Digest;
     use iref::UriBuf;
     use oauth2::http::{Method, Request, Response, StatusCode};
-    use one_crypto::jwe::PrivateKeyAgreementHandle;
-    use one_crypto::jwe::decrypt_jwe_payload;
+    use one_core_asdk::jwe::PrivateKeyAgreementHandle;
+    use one_core_asdk::jwe::decrypt_jwe_payload;
     use openid4vp::core::authorization_request::parameters::{HashAlgorithm, TransactionData};
     use openid4vp::core::authorization_request::verification::RequestVerifier;
     use openid4vp::core::metadata::parameters::SubjectSyntaxTypesSupported;
@@ -4014,16 +4013,7 @@ pub mod utils {
         create_verifier_service(false).await
     }
 
-    pub async fn verifier_service_with_invalid_kid() -> (
-        VerifierService<
-            vc::core::VerifierService,
-            KeyHandle,
-            LocalKms,
-            LocalNonceHandler,
-            MockHttpClient,
-        >,
-        String,
-    ) {
+    pub async fn verifier_service_with_invalid_kid() -> (TestVerifierService, String) {
         create_verifier_service(true).await
     }
 
@@ -4060,7 +4050,7 @@ pub mod utils {
         let (did, key_metadata) = create_did_and_key_metadata(&kms).await;
         let key_handle = kms.get(&key_metadata.kid).await.unwrap();
 
-        let mut kms_mock = MockKms::new();
+        let mut kms_mock = MockJweKms::new();
         kms_mock
             .expect_get()
             .returning(move |_| Ok(failed_signer_key(key_handle.clone())));

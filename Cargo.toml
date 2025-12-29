@@ -29,7 +29,7 @@ didcomm = { git = "ssh://git@git.slock.it/open-source/didcomm-rust.git", rev = "
 did_peer = { git = "ssh://git@git.slock.it/open-source/aries-vcx.git", rev = "fc818ef5" }
 did_resolver = { git = "ssh://git@git.slock.it/open-source/aries-vcx.git", rev = "fc818ef5" }
 did_parser_nom = { git = "ssh://git@git.slock.it/open-source/aries-vcx.git", rev = "fc818ef5" }
-one-crypto = { git = "ssh://git@git.slock.it/open-source/one-core.git", rev = "dfc25b38"}
+one-core-asdk = { git = "ssh://git@git.slock.it/open-source/one-core.git", rev = "afdd6d27"}
 
 secrecy = "0.10.3"
 ed25519-compact = "2.1.1"
@@ -85,12 +85,15 @@ libc = "0.2.172"
 # Transitive dependecies versioning
 generic-array = "=0.14.7"# Pinned to solve deprecation warnings from transitive deps trying to update to 0.14.9
 
+#[target.'cfg(target_arch = "wasm32")'.dependencies]
+## remember to update one-core version for not-wasm targets
+
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 didcomm = { git = "ssh://git@git.slock.it/open-source/didcomm-rust.git", rev = "db41780d", features = ["uniffi"] }
 reqwest-middleware = { version = "0.4.0", default-features = false }
 reqwest-tracing = { version = "0.5.5", default-features = false }
-one-core = { git = "ssh://git@git.slock.it/open-source/one-core.git", rev = "dfc25b38"}
-x509-parser = { version = "0.17.0", features = ["verify"]}
+one-core = { git = "ssh://git@git.slock.it/open-source/one-core.git", rev = "afdd6d27" }
+x509-parser = { version = "0.17.0", features = ["verify"] }
 
 [dev-dependencies]
 mockall = "0.13.0"
@@ -106,6 +109,7 @@ ecdsa = "0.16.9"
 [features]
 in-memory = ["dep:rand", "dep:ed25519-dalek", "dep:ecdsa", "dep:askar-crypto"]
 didcomm-http-transport = ["dep:http", "dep:hyper", "dep:tokio"]
+test-utils = []
 
 [profile.release]
 opt-level = "z"

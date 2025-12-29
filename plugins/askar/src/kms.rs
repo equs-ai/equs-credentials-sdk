@@ -34,6 +34,7 @@ use agent_sdk::kms::{
 use crate::AskarStorage;
 pub use agent_sdk::crypto::{Alg, Key, Signer, SigningKey, Verifier, VerifyingKey};
 pub use agent_sdk::kms::{KeyType, Kms};
+use agent_sdk::vc::oid4vp::jwe::AsdkJweDecrypt;
 
 #[derive(Debug, Clone)]
 pub struct AskarKeyHandle(Arc<LocalKey>, Alg);
@@ -81,6 +82,18 @@ impl Key for AskarKeyHandle {
     fn jwk(&self) -> Option<JWK> {
         let jwk = self.0.to_jwk_public(None).ok()?;
         serde_json::from_str::<JWK>(&jwk).ok()
+    }
+
+    #[instrument(
+        level = Level::TRACE,
+        skip_all,
+        ret(),
+    )]
+    fn private_key(&self) -> Result<Vec<u8>, CryptoError> {
+        self.0
+            .to_secret_bytes()
+            .map_err(|_| KeyNotSupportedSnafu { type_: "private" }.build())
+            .map(|secret_bytes| secret_bytes.to_vec())
     }
 }
 
@@ -431,33 +444,20 @@ fn key_type_to_key_alg(key_type: KeyType) -> Result<KeyAlg, CryptoError> {
     }
 }
 
+impl AsdkJweDecrypt<AskarKeyHandle> for AskarKms {}
+
 #[cfg(test)]
 mod tests {
     use crate::kms::AskarKms;
     use crate::{AskarStorage, AskarStorageConfig, KeyMethod};
     use agent_sdk::kms;
     use agent_sdk::kms::{KeyHandle, Kms};
+    use agent_sdk::vc::oid4vp::jwe::test_utils;
 
     // TODO: consider splitting this test into several small unit tests
     #[tokio::test]
     async fn test_askar_kms() {
-        let storage = AskarStorage::create(
-            &AskarStorageConfig {
-                db_url: "sqlite://:memory:".to_owned(),
-                key_method: KeyMethod::DeriveKey,
-                pass_key: "1234".to_string(),
-                profile: "test".to_string(),
-            },
-            false,
-        )
-        .await
-        .unwrap();
-
-        let profile = "test_profile".to_string();
-
-        storage.create_profile(profile.clone()).await.unwrap();
-        let kms = AskarKms::new(&storage, profile);
-
+        let kms = askar_kms().await;
         test_kms(&kms).await;
     }
 
@@ -494,5 +494,30 @@ mod tests {
             let jwk = kh.jwk().unwrap();
             println!("JWK: {}", serde_json::to_string_pretty(&jwk).unwrap())
         }
+    }
+
+    #[tokio::test]
+    async fn jwe_encrypt_decrypt() {
+        let kms = askar_kms().await;
+        test_utils::test_kms_encrypt_decrypt(kms).await;
+    }
+
+    async fn askar_kms() -> AskarKms {
+        let storage = AskarStorage::create(
+            &AskarStorageConfig {
+                db_url: "sqlite://:memory:".to_owned(),
+                key_method: KeyMethod::DeriveKey,
+                pass_key: "1234".to_string(),
+                profile: "test".to_string(),
+            },
+            false,
+        )
+        .await
+        .unwrap();
+
+        let profile = "test_profile".to_string();
+
+        storage.create_profile(profile.clone()).await.unwrap();
+        AskarKms::new(&storage, profile)
     }
 }
