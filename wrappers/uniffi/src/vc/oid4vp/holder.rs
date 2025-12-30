@@ -1,10 +1,11 @@
-use agent_sdk::vc::oid4vp::{Holder, ResolvedAuthRequest};
-use std::collections::HashMap;
-
 use crate::common::{Error, Result};
 use crate::utils::parse_url_arg;
 use crate::vault::{CredentialEntry, CredentialsFindResult, CredentialsSearchResult};
+use crate::vc::VCStatus;
 use crate::vc::oid4vp::{AuthorizationRequest, AuthorizationResponseMetadata, PresentationResult};
+use agent_sdk::vc::Credential;
+use agent_sdk::vc::oid4vp::{Holder, ResolvedAuthRequest};
+use std::collections::HashMap;
 
 /// The `OID4VP` `Holder` API.
 ///
@@ -165,5 +166,22 @@ impl OID4VPHolder {
             .map_err(|err| Error::OID4VPHolder(err.to_string()))?;
 
         Ok(redirect_url.map(|url| url.to_string()))
+    }
+
+    /// Gets the status of Credential.
+    ///
+    /// @param {Credential} credential - a credential containing the status claim.
+    ///
+    /// Credential status on success
+    ///
+    /// @returns {VCStatus | null} - An optional credential status on success
+    pub async fn get_credential_status(&self, credential: &Credential) -> Result<Option<VCStatus>> {
+        let status = self
+            .0
+            .get_credential_status(credential)
+            .await
+            .map_err(|err| Error::OID4VPHolder(err.to_string()))?;
+
+        Ok(status)
     }
 }
