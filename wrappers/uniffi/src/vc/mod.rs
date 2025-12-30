@@ -1,8 +1,7 @@
+use crate::common::{Error, Result};
 use agent_sdk::vc::HasVCFormat;
 use uniffi::custom_type;
 use uniffi::deps::anyhow;
-
-use crate::common::{Error, Result};
 
 pub mod oid4vci;
 pub mod oid4vp;
@@ -11,6 +10,8 @@ pub type Alg = agent_sdk::crypto::Alg;
 pub type VCFormat = agent_sdk::vc::VCFormat;
 pub type Credential = agent_sdk::vc::Credential;
 pub type CredentialMetadata = agent_sdk::vc::CredentialMetadata;
+pub type VCStatus = agent_sdk::vc::VCStatus;
+pub type TslVcStatus = agent_sdk::vc::TslVcStatus;
 
 #[uniffi::remote(Enum)]
 #[non_exhaustive]
@@ -113,4 +114,19 @@ pub struct CredentialMetadata {
     pub kid: String,
     pub alg: Option<Alg>,
     pub fields: Vec<String>,
+}
+
+#[uniffi::remote(Enum)]
+#[non_exhaustive]
+pub enum TslVcStatus {
+    Valid,
+    Invalid,
+    Suspended,
+    AppSpecific(u8),
+}
+
+#[uniffi::remote(Enum)]
+#[non_exhaustive]
+pub enum VCStatus {
+    StatusListToken(TslVcStatus),
 }

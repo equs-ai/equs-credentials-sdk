@@ -1,12 +1,15 @@
 import com.bci.MockNonceHandler
 import com.bci.asdk.*
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.yield
 import kotlinx.serialization.json.Json
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.BeforeAll
+import org.junit.jupiter.api.Order
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import java.util.concurrent.TimeUnit
@@ -94,6 +97,10 @@ const val AUTH_REQUEST_JWT =
     "eyJhbGciOiJFUzI1NiIsImtpZCI6ImRpZDprZXk6ekRuYWVRcE5ZUUQ2aDE4Vm5hZ3lBMVhiZXk5aEZLQTFqNWN5aHFQSEdmYXE5dHhtTiN6RG5hZVFwTllRRDZoMThWbmFneUExWGJleTloRktBMWo1Y3locVBIR2ZhcTl0eG1OIiwidHlwIjoiYXBwbGljYXRpb24vb2F1dGgtYXV0aHotcmVxK2p3dCJ9.eyJyZXNwb25zZV90eXBlIjoidnBfdG9rZW4iLCJzdGF0ZSI6IjFkOGIwZDkzLTg2ZTgtNDEzNS04N2Q0LTUyNGJiMDUwMGJmMyIsInRyYW5zYWN0aW9uX2RhdGEiOlsiZXlKMGVYQmxJam9pZEhsd1pURWlMQ0pqY21Wa1pXNTBhV0ZzWDJsa2N5STZXeUpKWkdWdWRHbDBlUzB4SWwwc0luUnlZVzV6WVdOMGFXOXVYMlJoZEdGZmFHRnphR1Z6WDJGc1p5STZXeUp6YUdFdE1qVTJJbDE5Il0sInJlc3BvbnNlX21vZGUiOiJkaXJlY3RfcG9zdCIsIm5vbmNlIjoiRjN2YkN5WFY0QmtqLVJDb25laUcxaUtkQTVYdWFFSEhheWNPSUNJTnUyTSIsImNsaWVudF9tZXRhZGF0YSI6eyJ2cF9mb3JtYXRzX3N1cHBvcnRlZCI6eyJkYytzZC1qd3QiOnsic2Qtand0X2FsZ192YWx1ZXMiOlsiRWREU0EiLCJFUzI1NiJdLCJrYi1qd3RfYWxnX3ZhbHVlcyI6WyJFZERTQSIsIkVTMjU2Il19fSwiandrcyI6eyJrZXlzIjpbeyJ1c2UiOiJlbmMiLCJhbGciOiJFUzI1NiIsImtpZCI6IjVRc2RnWFVHdUg6UDI1NjoiLCJrdHkiOiJFQyIsImNydiI6IlAtMjU2IiwieCI6IkNiX3VKaGlQTjdIOUtYZFFONFBRTjB1V0M2TG1Fd0l6NGowM3dYMXJCQXciLCJ5IjoieUVaOC11WDVoR2hDdU45TnJJejRTaE5IMFQxeTRmUXRzNXNpaUNIMFE3dyJ9XX0sImVuY3J5cHRlZF9yZXNwb25zZV9lbmNfdmFsdWVzX3N1cHBvcnRlZCI6WyJBMTI4R0NNIiwiQTEyOENCQy1IUzI1NiJdLCJzdWJqZWN0X3N5bnRheF90eXBlc19zdXBwb3J0ZWQiOlsiZGlkOmtleSJdfSwiY2xpZW50X2lkIjoiZGVjZW50cmFsaXplZF9pZGVudGlmaWVyOmRpZDprZXk6ekRuYWVRcE5ZUUQ2aDE4Vm5hZ3lBMVhiZXk5aEZLQTFqNWN5aHFQSEdmYXE5dHhtTiIsInByZXNlbnRhdGlvbl9kZWZpbml0aW9uIjp7ImlkIjoiMWI5ZDZiY2QtYmJmZC00YjJkLTliNWQtYWI4ZGZiYmQ0YmVkIiwiaW5wdXRfZGVzY3JpcHRvcnMiOlt7ImlkIjoiSWRlbnRpdHktMSIsImNvbnN0cmFpbnRzIjp7ImZpZWxkcyI6W3sicGF0aCI6WyIkLnZjdCJdLCJmaWx0ZXIiOnsidHlwZSI6InN0cmluZyIsImNvbnN0IjoiaHR0cHM6Ly9jcmVkZW50aWFscy5leGFtcGxlLmNvbS9pZGVudGl0eV9jcmVkZW50aWFsIn0sInByZWRpY2F0ZSI6bnVsbCwiaW50ZW50X3RvX3JldGFpbiI6ZmFsc2V9LHsicGF0aCI6WyIkLm5hbWUiXSwib3B0aW9uYWwiOnRydWUsInByZWRpY2F0ZSI6bnVsbCwiaW50ZW50X3RvX3JldGFpbiI6ZmFsc2V9XX0sIm5hbWUiOiJJZGVudGl0eSBWQyIsInB1cnBvc2UiOiJXZSB3YW50IGFuIGlkZW50aXR5IiwiZm9ybWF0Ijp7ImRjK3NkLWp3dCI6eyJzZC1qd3RfYWxnX3ZhbHVlcyI6WyJFUzI1NiIsIkVkRFNBIl0sImtiLWp3dF9hbGdfdmFsdWVzIjpbIkVTMjU2IiwiRWREU0EiXX19fV19LCJyZXNwb25zZV91cmkiOiJodHRwOi8vbG9jYWxob3N0OjkwMDEvcmVzcG9uc2UifQ.27WD-THq-vBdZZNb20WY3VYDRbbws0PTcp6LZM_GFh8Bhpp7tVPZnhu2m362D9E_fWtIwbLQiHzdigP27D9VyA"
 const val VC =
     "eyJ0eXAiOiJkYytzZC1qd3QiLCJhbGciOiJFUzI1NiIsImtpZCI6ImRpZDprZXk6ekRuYWVkNnN6c044VDhBWEhxQ044ZXFVOW9mWFpLQ1FDZUhzN2hqdmhVOHdiTmd4OSN6RG5hZWQ2c3pzTjhUOEFYSHFDTjhlcVU5b2ZYWktDUUNlSHM3aGp2aFU4d2JOZ3g5In0.eyJfc2QiOlsiZkZnbndmQ2k4TjZ0dUlYZWtCUU5BWC05eFA0RURkcVhTaXlpMV9NSWdJayJdLCJzdWIiOiJkaWQ6a2V5OnpEbmFlWjFNdUtkeFlzejRVTTY5Y0p6NmNFSkpWbzlhUzRHS1RrR3Z6MWE0ZjlGaXUiLCJ2Y3QiOiJodHRwczovL2NyZWRlbnRpYWxzLmV4YW1wbGUuY29tL2lkZW50aXR5X2NyZWRlbnRpYWwiLCJpYXQiOjE3NjA2MDYwNzUsIl9zZF9hbGciOiJzaGEtMjU2IiwiaXNzIjoiZGlkOmtleTp6RG5hZWQ2c3pzTjhUOEFYSHFDTjhlcVU5b2ZYWktDUUNlSHM3aGp2aFU4d2JOZ3g5IiwiZXhwIjoyMDc1OTY2MDc1LCJuYmYiOjE3NjA2MDYwNzUsImNuZiI6eyJqd2siOnsia3R5IjoiRUMiLCJjcnYiOiJQLTI1NiIsIngiOiJmMnVCbkhIZ1BIZmRHQmtUV3h5SnZETnVJWWhWUkw1eGVzLTBoTXBkWVRZIiwieSI6Ilp2eE1aNDJ0dzVMcDlDV0FUbllWT3Q4bkxhNzJRdEtjUFRENWphay1ZNncifX19.mwwICXVTPrH38BesqXZs3U-Zvc2SvAEo1YLFrukGkK1dRiyavku-ppBOeUPU_E4KKQQhMT2nDVUd_-GR5eN9OA~WyJTa25JV3VLMV9WVlhTQjJFb1l1UlJ3IiwgIm5hbWUiLCAiSm9obiJd~"
+const val STATUS_LIST =
+    "eyJ0eXAiOiJzdGF0dXNsaXN0K2p3dCIsImFsZyI6IkVTMjU2Iiwia2lkIjoiZGlkOmtleTp6RG5hZVp4QmJlVFdBYlhOcXlHZER4dDJXRTZjbzNteHU0VllEOHlieXlkdjhkQnh4I3pEbmFlWnhCYmVUV0FiWE5xeUdkRHh0MldFNmNvM214dTRWWUQ4eWJ5eWR2OGRCeHgifQ.eyJzdGF0dXNfbGlzdCI6eyJsc3QiOiJlTnFid013QUJnQUVuUUNVIiwiYml0cyI6Mn0sInN1YiI6Imh0dHA6Ly9sb2NhbGhvc3Q6OTAwMS9zdGF0dXNfbGlzdCIsImlhdCI6MTc2MzAyNTYyMywiX3NkX2FsZyI6InNoYS0yNTYifQ.lCOpC_53MXw4mShUwGtLbxh3Ha-qFNiRohPTZWo2XyCkBVSWn2daxEjSXM048p2DN8LAo61fcgAA69BGvcf5WQ~"
+const val VC_WITH_STATUS =
+    "eyJ0eXAiOiJkYytzZC1qd3QiLCJhbGciOiJFUzI1NiIsImtpZCI6ImRpZDprZXk6ekRuYWVmYUdTd1RmWmsyVXVRV1JqRFQ1Z3J0TEw2RWE1Z3hGcjVBN1hyMzZIUXdtQiN6RG5hZWZhR1N3VGZaazJVdVFXUmpEVDVncnRMTDZFYTVneEZyNUE3WHIzNkhRd21CIn0.eyJfc2QiOlsiTGtNQ3hnT3dKZXVWa2xFUVIxYUl1TDVUSXllRkZiSUhEYXNjZk9EOGlHWSIsInc5WHpEVG5YMFRNOVFFX0NjYUVSaUtpbVV3VkFkWEwxRzZIdU1wZHdkclkiXSwiYWRkcmVzcyI6IjIyMUIgQmFrZXIgU3RyZWV0IiwiaWF0IjoxNzUzMDU0NDQ4LCJkYXRlIjoiMDkvMDkvMTk4OSIsInN1YiI6ImRpZDprZXk6ekRuYWVoVzJXWERnaHBNMTZYRzN5Z2Vja2FSTWJpamJjWG9tZnQ0ZzI2cnlpUlZXUiIsInZjdCI6Imh0dHBzOi8vY3JlZGVudGlhbHMuZXhhbXBsZS5jb20vaWRlbnRpdHlfY3JlZGVudGlhbCIsInN0YXR1cyI6eyJzdGF0dXNfbGlzdCI6eyJ1cmkiOiJodHRwOi8vbG9jYWxob3N0OjkwMDEvc3RhdHVzX2xpc3QiLCJpZHgiOjF9fSwiX3NkX2FsZyI6InNoYS0yNTYiLCJpc3MiOiJkaWQ6a2V5OnpEbmFlZmFHU3dUZlprMlV1UVdSakRUNWdydExMNkVhNWd4RnI1QTdYcjM2SFF3bUIiLCJleHAiOjE3NTMwNTUwNDgsIm5iZiI6MTc1MzA1NDQ0OCwiY25mIjp7Imp3ayI6eyJrdHkiOiJFQyIsImNydiI6IlAtMjU2IiwieCI6Il9hRHExTWE2SFNOUUZrR0F0ZnBpNlR3UnVuMUhlVnpCWWo2R29DcEhmcW8iLCJ5IjoiSTY0VnRmaTNlbzktQTM0TmNNMFJ4cHRsbzhiOGd1RUV3dnd2S2w1YUZlWSJ9fX0.jruSbbpygwgyWcJ2DO0myKlGimKW0n_dsYc5l-hksJqIWZF2Wy5Sf01nZlkUop-_JkN3x9Ct1kCOHes8-Ozdxg~WyJ1eExOVGVtV1FrYzFWTzZMZ3NBcmxRIiwgIm5hbWUiLCAiSm9obiJd~WyIyQ0J1ZENXSTVFSW1haGd6ZGNVMVZ3IiwgInN1cm5hbWUiLCAiRG9lIl0~"
 
 //Note: The webserver sends the auth requests as queue object and whichever test thread is first gets the top of the queue.
 // This works when all the tests need the same request but for other tests that need different request, we created another server in a different port.
@@ -241,7 +248,7 @@ class HolderVPTest {
 
         val credentialsMapping = holder.findVcsForPresentation(authRequest)
         val credentials = credResultsToCredMapping(credentialsMapping)
-        println("----${authRequest.responseMode}")
+
         holder.presentCredentials(
             authRequest,
             credentials,
@@ -322,13 +329,6 @@ class HolderVPTest {
 
     @Test
     fun findVcsForPresentationReturnsCredentials() = runTest {
-        mockServer.enqueue(
-            MockResponse()
-                .setResponseCode(200)
-                .setBody("")
-                .setHeader("content-type", "text/plain")
-        )
-
         val credentialsMapping = holder.findVcsForPresentation(authRequest)
         credentialsMapping.map { (key, findVCsResult) ->
             when (val data = findVCsResult.data) {
@@ -348,12 +348,6 @@ class HolderVPTest {
 
     @Test
     fun findVcsForPresentationReturnsReasonsOfFailure() = runTest {
-        mockServer.enqueue(
-            MockResponse()
-                .setResponseCode(200)
-                .setBody("")
-                .setHeader("content-type", "text/plain")
-        )
 
         val credentialsMapping = holder.findVcsForPresentation(authRequestWithFakeConstraints)
 
@@ -382,13 +376,6 @@ class HolderVPTest {
 
     @Test
     fun findVcsForPresentationReturnsReasonTypesNotMatched() = runTest {
-        mockServer.enqueue(
-            MockResponse()
-                .setResponseCode(200)
-                .setBody("")
-                .setHeader("content-type", "text/plain")
-        )
-
         val credentialsMapping = holder.findVcsForPresentation(authRequestWithFakeVct)
 
         credentialsMapping.map { (key, findVCsResult) ->
@@ -422,13 +409,6 @@ class HolderVPTest {
             inMemKms, inMemVault, CLIENT_ID, ReqwestHttpClient.insecure(),
             MockNonceHandler("some_nonce")
         ).build()
-
-        mockServer.enqueue(
-            MockResponse()
-                .setResponseCode(200)
-                .setBody("")
-                .setHeader("content-type", "text/plain")
-        )
 
         val credentialsMapping = holder.findVcsForPresentation(authRequestWithFakeVct)
 
@@ -473,5 +453,20 @@ class HolderVPTest {
             "error=access_denied&error_description=consent+to+share+the+presentation+is+not+given&state=1d8b0d93-86e8-4135-87d4-524bb0500bf3",
             request
         )
+    }
+
+    @Test
+    fun testGettingCredentialStatus() = runTest {
+        mockServer.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setBody(STATUS_LIST)
+                .setHeader("content-type", "application/statuslist+jwt")
+        )
+
+        val credential = Credential(format = VcFormat.SD_JWT_VC, payload = VC_WITH_STATUS)
+        val status = holder.getCredentialStatus(credential)!! as VcStatus.StatusListToken
+
+        assertEquals(status.v1, TslVcStatus.Valid)
     }
 }
