@@ -9,7 +9,7 @@ use serde_json::{Value as Json, Value};
 use snafu::{ResultExt, ensure};
 use std::fmt::Debug;
 use std::marker::PhantomData;
-use tracing::{Level, info, instrument};
+use tracing::{Level, debug, info, instrument, trace};
 use url::Url;
 
 use crate::crypto::JWK;
@@ -257,6 +257,10 @@ where
                     .build(),
                 })?;
                 let enc_pub_key = kh.jwk();
+                trace!(
+                    "JWE Authorization Response encryption public info: {:?}",
+                    enc_pub_key
+                );
                 let claim_set = self.kms.decrypt(jwe_response).await.map_err(|e| Internal {
                     source: AuthorizationResponseDecryptionSnafu {
                         details: format!(
@@ -274,6 +278,7 @@ where
                         .build(),
                     });
                 };
+                debug!("Decrypted JWE Authorization Response");
                 let vp_token = claim_set
                     .get(VP_TOKEN)
                     .ok_or(Internal {
@@ -303,7 +308,7 @@ where
                         transaction_data_hashes: tdh,
                         transaction_data_hashes_alg,
                     });
-
+                debug!("Converted decrypted JWE body to Authorization Response properties");
                 Ok((
                     AuthorizationResponseObject {
                         vp_token,

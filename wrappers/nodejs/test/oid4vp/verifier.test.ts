@@ -1,5 +1,6 @@
 import {
   _PresentationSession,
+  AsdkError,
   AuthorizationRequestMetadata,
   AuthorizationResponse,
   AuthorizationResponseObject,
@@ -18,6 +19,7 @@ import {
   ResolvedPresentationQuery,
   TransactionDataItem,
   TransactionDataResponse,
+  VpProtocolError,
 } from "../../";
 import {
   AUTH_RESPONSE_JWE,
@@ -307,7 +309,8 @@ describe("OID4VP Verifier: ", () => {
         return innerKms.create(kt);
       }
       async get(kid: string): Promise<KeyHandle> {
-        if (kid == "ecdsa-kid") { // this kid is used in AUTH_RESPONSE_JWT fixture
+        if (kid == "ecdsa-kid") {
+          // this kid is used in AUTH_RESPONSE_JWT fixture
           const kid_1 = await innerKms.create(KeyType.P256);
           return await innerKms.get(kid_1);
         }
@@ -319,7 +322,7 @@ describe("OID4VP Verifier: ", () => {
       // tested decrypt method
       async decrypt(jwe: string): Promise<Record<string, any>> {
         this.decryptCalledWith = jwe;
-        return { nothing: "here" };
+        return { vp_token: "fake token" };
       }
     })();
 
@@ -362,8 +365,9 @@ describe("OID4VP Verifier: ", () => {
     try {
       await verifier.verifyPresentation(auth_response, session, verificationMetadata);
     } catch (e) {
-      console.log(e);
-      // ignored
+      let asdk_err: AsdkError = JSON.parse(e.message);
+      // Expect that ASDK received Authorization Response with vp_token parameter but fails to get transactional data
+      expect(asdk_err.code).toEqual(VpProtocolError.InvalidTransactionData);
     }
 
     expect(kms.decryptCalledWith).toEqual(auth_response.jwe);

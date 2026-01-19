@@ -8,7 +8,7 @@ use agent_sdk::kms::{
     Kms,
 };
 use agent_sdk::vc::oid4vp::jwe;
-use agent_sdk::vc::oid4vp::jwe::{JweDecrypt, JweDecryptError, decrypt_jwe};
+use agent_sdk::vc::oid4vp::jwe::{JweDecrypt, JweDecryptError, decrypt_jwe as asdk_decrypt_jwe};
 use agent_sdk::{crypto, kms};
 use async_trait::async_trait;
 use napi::bindgen_prelude::{Promise, Uint8Array};
@@ -388,9 +388,8 @@ impl Kms<JsKeyHandle> for JsKms {
 #[async_trait]
 impl JweDecrypt<JsKeyHandle> for JsKms {
     async fn decrypt(&self, jwe: &str) -> Result<Value, JweDecryptError> {
-        if let Some(decrypt) = self.decrypt.as_ref() {
-            decrypt
-                .call_async(jwe.to_string())
+        if let Some(decrypt_js_func) = self.decrypt.as_ref() {
+            js_decrypt_jwe(decrypt_js_func, jwe)
                 .await
                 .map_err(|err| {
                     crypto::MalformedSnafu {
@@ -401,9 +400,19 @@ impl JweDecrypt<JsKeyHandle> for JsKms {
                 .context(kms::CryptoSnafu)
                 .context(jwe::KmsSnafu)
         } else {
-            decrypt_jwe(self, jwe).await
+            asdk_decrypt_jwe(self, jwe).await
         }
     }
+}
+
+async fn js_decrypt_jwe(
+    decrypt: &ThreadsafeFunction<String, ErrorStrategy::Fatal>,
+    jwe: &str,
+) -> napi::Result<Value> {
+    decrypt
+        .call_async::<Promise<Value>>(jwe.to_string())
+        .await?
+        .await
 }
 
 #[napi]
