@@ -6,6 +6,7 @@ import {
   CredentialMetadata,
   DIDKey,
   FindVCsFailReason,
+  FindVCsFailReasonType,
   InMemKms,
   InMemVault,
   KeyMetadata,
@@ -14,7 +15,8 @@ import {
   OID4VPHolderBuilder,
   PresentationResultType,
   PresentationSubmission,
-  ReqwestHttpClient, TslVcStatusType,
+  ReqwestHttpClient,
+  TslVcStatusType,
   UniversalDIDResolver,
   VCFormat,
   VCStatus,
@@ -224,9 +226,13 @@ describe("OID4VP Holder: ", () => {
     );
 
     for (const key in credentialsMapping) {
+      const data = credentialsMapping[key].data;
+      if (isCredentialEntries(data)) {
+        throw new Error("FindVCsFailReason expected but got CredentialEntry[]");
+      }
       expect(key).toBe("Identity-1");
-      expect((credentialsMapping[key].data as FindVCsFailReason).type).toStrictEqual("TypesNotMatched");
-      expect((credentialsMapping[key].data as FindVCsFailReason).paths).toBeFalsy();
+      expect(data.type).toStrictEqual(FindVCsFailReasonType.TypesNotMatched);
+      expect(data.paths).toBeFalsy();
     }
   });
 
@@ -318,4 +324,8 @@ async function createKeyMetadata(kms: InMemKms): Promise<KeyMetadata> {
     didUrl: vm.id,
     kid: keyId,
   };
+}
+
+function isCredentialEntries(data: CredentialEntry[] | FindVCsFailReason): data is CredentialEntry[] {
+  return Array.isArray(data);
 }
