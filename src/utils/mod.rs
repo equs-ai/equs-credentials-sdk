@@ -9,6 +9,8 @@ pub mod serde;
 #[cfg(test)]
 pub(crate) mod test_utils;
 pub mod wasm;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod x509_truststore;
 
 pub fn contains_any<T: PartialEq>(large: &[T], small: &[T]) -> bool {
     small.iter().any(|item| large.contains(item))

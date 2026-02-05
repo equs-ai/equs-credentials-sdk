@@ -29,7 +29,7 @@ didcomm = { git = "ssh://git@git.slock.it/open-source/didcomm-rust.git", rev = "
 did_peer = { git = "ssh://git@git.slock.it/open-source/aries-vcx.git", rev = "fc818ef5" }
 did_resolver = { git = "ssh://git@git.slock.it/open-source/aries-vcx.git", rev = "fc818ef5" }
 did_parser_nom = { git = "ssh://git@git.slock.it/open-source/aries-vcx.git", rev = "fc818ef5" }
-one-core-asdk = { git = "ssh://git@git.slock.it/open-source/one-core.git", rev = "7f991f05"}
+one-core-asdk = { git = "ssh://git@git.slock.it/open-source/one-core.git", rev = "672751ea"}
 
 secrecy = "0.10.3"
 ed25519-compact = "2.1.1"
@@ -92,7 +92,7 @@ generic-array = "=0.14.7"# Pinned to solve deprecation warnings from transitive 
 didcomm = { git = "ssh://git@git.slock.it/open-source/didcomm-rust.git", rev = "db41780d", features = ["uniffi"] }
 reqwest-middleware = { version = "0.4.0", default-features = false }
 reqwest-tracing = { version = "0.5.5", default-features = false }
-one-core = { git = "ssh://git@git.slock.it/open-source/one-core.git", rev = "7f991f05" }
+one-core = { git = "ssh://git@git.slock.it/open-source/one-core.git", rev = "672751ea" }
 x509-parser = { version = "0.17.0", features = ["verify"] }
 
 [dev-dependencies]

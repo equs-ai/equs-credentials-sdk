@@ -1,6 +1,8 @@
 use crate::vc::claims::Claim;
 use async_trait::async_trait;
 use jsonwebtoken::{DecodingKey, Header};
+#[cfg(not(target_arch = "wasm32"))]
+use one_core::proto::certificate_validator::CertificateValidatorImpl;
 use sd_jwt_rs::resolver::KeyResolver;
 use sd_jwt_rs::utils::decode_sd_jwt;
 use sd_jwt_rs::{
@@ -25,6 +27,8 @@ use crate::utils;
 use crate::utils::b64;
 use crate::utils::serde::Helpers;
 use crate::utils::serde::get_time_based_claim;
+#[cfg(not(target_arch = "wasm32"))]
+use crate::utils::x509_truststore::Truststore;
 use crate::vc::core::{
     HolderBinder, PresentationInput, PresentationRestriction, PresentationRestrictionValue,
 };
@@ -126,6 +130,44 @@ impl KeyResolver for DidKeyResolver<UniversalResolver> {
             .ok_or_else(|| SdJwtRsError::Unspecified(format!("Unsupported key: {:?}", jwk)))?;
 
         DecodingKey::from_jwk(&jwk).map_err(|e| SdJwtRsError::DeserializationError(e.to_string()))
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+struct DelegatingKeyResolver {
+    did_key_resolver: DidKeyResolver<UniversalResolver>,
+    x5c_key_resolver: Truststore<CertificateValidatorImpl>,
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+impl DelegatingKeyResolver {
+    pub fn new(
+        did_key_resolver: DidKeyResolver<UniversalResolver>,
+        x5c_key_resolver: Truststore<CertificateValidatorImpl>,
+    ) -> Self {
+        Self {
+            did_key_resolver,
+            x5c_key_resolver,
+        }
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+#[async_trait]
+impl KeyResolver for DelegatingKeyResolver {
+    async fn resolve(&self, iss: &str, header: &Header) -> sd_jwt_rs::error::Result<DecodingKey> {
+        let credential_issuer_identifier = CredentialIssuerIdentifier::from(iss);
+        match credential_issuer_identifier {
+            CredentialIssuerIdentifier::OID4VCI(url) => {
+                self.x5c_key_resolver.resolve(&url, header).await
+            }
+            CredentialIssuerIdentifier::DID(did) => {
+                self.did_key_resolver.resolve(&did, header).await
+            }
+            CredentialIssuerIdentifier::Other(iss) => Err(SdJwtRsError::Unspecified(format!(
+                "Unsupported issuer identifier: {iss}"
+            ))),
+        }
     }
 }
 
@@ -607,10 +649,25 @@ impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata, Claims> for S
     async fn verify_vp(
         presentation: &Presentation,
         holder_binder: Option<HolderBinder>,
-        _opts: VerifyOptions,
+        opts: VerifyOptions,
         did_resolver: UniversalResolver,
     ) -> Result<Claims> {
-        let key_resolver = DidKeyResolver::new(did_resolver);
+        let key_resolver;
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            key_resolver = DelegatingKeyResolver::new(
+                DidKeyResolver::new(did_resolver),
+                Truststore::new(
+                    CertificateValidatorImpl::default(),
+                    opts.trusted_certs_skids.unwrap_or_default(),
+                ),
+            );
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            key_resolver = DidKeyResolver::new(did_resolver);
+        }
+
         let mut verifier = SDJWTVerifier::new(Box::new(key_resolver));
 
         let (nonce, aud) = if let Some(hb) = holder_binder {

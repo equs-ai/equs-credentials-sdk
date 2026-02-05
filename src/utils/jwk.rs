@@ -1,5 +1,7 @@
 use crate::crypto::{AlgNotSupportedSnafu, KeyNotSupportedSnafu};
 use crate::{crypto, kms};
+#[cfg(not(target_arch = "wasm32"))]
+use one_core::model::key::PublicKeyJwk;
 use ssi::JWK;
 use ssi::crypto::{ed25519, k256, p256};
 use ssi::jwk::{Params, serialize_p256, serialize_secp256k1};
@@ -152,6 +154,19 @@ pub fn from_jsonwebtoken_jwk_opt(
     jsonwebtoken_jwk: Option<jsonwebtoken::jwk::Jwk>,
 ) -> Option<ssi::jwk::JWK> {
     jsonwebtoken_jwk.and_then(|j| from_jsonwebtoken_jwk(&j))
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+#[instrument(
+    level = Level::TRACE,
+    ret(),
+)]
+pub fn from_one_core_public_key_jwk_jsonwebtoken_jwk(
+    one_core_jwt: PublicKeyJwk,
+) -> Option<jsonwebtoken::jwk::Jwk> {
+    let json = serde_json::to_value(one_core_jwt).ok()?;
+
+    serde_json::from_value(json).ok()
 }
 
 #[cfg(test)]
