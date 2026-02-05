@@ -50,7 +50,10 @@ impl Verifier for VerifierService {
                 let claims = SdJwtAPI::verify_vp(
                     vp,
                     holder_binder,
-                    Default::default(),
+                    VerifyOptions {
+                        trusted_certs_skids: self.verification_params.trusted_certs_skids.clone(),
+                        selective_claims: None,
+                    },
                     self.did_resolver.clone(),
                 )
                 .await

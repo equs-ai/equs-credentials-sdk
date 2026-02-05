@@ -258,7 +258,7 @@ where
             }
         );
 
-        let skid = one_core::mapper::x509_subject_key_identifier(&cert)
+        let skid = one_core::mapper::x509::subject_key_identifier(&cert)
             .map_err(|e| {
                 BuildSnafu {
                     details: format!(
