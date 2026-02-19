@@ -1269,7 +1269,7 @@ mod tests {
     async fn verifier_validating_mso_mdoc_vp_works_correctly() {
         let (verifier, _) = verifier_service().await;
         let session = PresentationSession {
-            nonce: Nonce::from_secret("BQlBqrJEK9Mv7VuBwB3oax3t1-tA84QMrt9hBF75Hu4".to_string()),
+            nonce: Nonce::from_secret("4Y1DVuoVHfjotxmX55AQv36Tr5sdcvaBLXia6bj2hUM".to_string()),
             resolved_presentation_query: ResolvedPresentationQuery::DCQL(
                 sample_dcql_query_for_mso_mdoc_vp_request(),
             ),
@@ -1295,15 +1295,15 @@ mod tests {
                 &session,
                 &CredentialVerificationMetadata {
                     transaction_data: None,
-                    audience: Some("file://".to_string()),
+                    audience: Some("https://embedui.ssi.dev.dsr.gaminghub.bc-labs.dev".to_string()),
                 },
             )
             .await
             .unwrap();
 
         let claims = &verified_claims["vp_token"]["mDL"].as_vec().unwrap()[0]["org.iso.18013.5.1"];
-        assert_eq!(claims["family_name"].as_str(), Some("Foggbottom"));
-        assert_eq!(claims["given_name"].as_str(), Some("Phileas"));
+        assert_eq!(claims["family_name"].as_str(), Some("Mustermann"));
+        assert_eq!(claims["given_name"].as_str(), Some("Erika"));
     }
 
     #[tokio::test]
