@@ -29,12 +29,10 @@
     "postinstall": "npm i --ignore-scripts"
   },
   "packageManager": "yarn@4.6.0",
-  "dependencies": {
+  "devDependencies": {
     "@napi-rs/cli": "^2.18.4",
     "oauth4webapi": "^3.1.4",
-    "@equstng/agent-sdk": "../../../../wrappers/nodejs"
-  },
-  "devDependencies": {
+    "@equstng/agent-sdk": "../../../../wrappers/nodejs",
     "jwt-decode": "^4.0.0",
     "@types/base-64": "^1.0.2",
     "@types/jest": "^29.5.13",
