@@ -931,7 +931,7 @@ mod tests {
         .unwrap();
 
         let actual = filter_claims_using_claim_sets(&dcql_credential, cred_entries.clone());
-        let expected = vec![
+        let expected = [
             cred_entries[0].clone(),
             cred_entries[1].clone(),
             cred_entries[2].clone(),

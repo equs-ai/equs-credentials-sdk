@@ -11,18 +11,19 @@ members = [
     "wrappers/wasm",
     "wrappers/uniffi",
     "common-macros",
+    "deps/core2",
 ]
 
 [package]
 name = "agent-sdk"
 version = "1.7.1"
 edition = "2024"
-rust-version = "1.89.0"
+rust-version = "1.95.0"
 
 [dependencies]
 common-macros = { path = "./common-macros" }
 # Internally maintained forked dependencies
-oid4vci = { git = "ssh://git@git.slock.it/open-source/oid4vci-rs.git", rev = "f7a4420a" }
+oid4vci = { git = "ssh://git@git.slock.it/open-source/oid4vci-rs.git", rev = "e72b2203" }
 openid4vp = { git = "ssh://git@git.slock.it/open-source/oid4vp-rs.git", rev = "ee35b128" }
 sd-jwt-rs = { git = "ssh://git@git.slock.it/open-source/sd-jwt-rust.git", rev = "15602993" }
 didcomm = { git = "ssh://git@git.slock.it/open-source/didcomm-rust.git", rev = "db41780d" }
@@ -36,8 +37,8 @@ ed25519-compact = "2.1.1"
 oauth2 = "5.0.0-rc.1"
 serde_json = "1.0.120"
 ssi = { version = "=0.10.1", features = ["bbs"] }
-time = { version = "=0.3.37", features = ["serde", "wasm-bindgen"] }
-serde = { version = "=1.0.219", features = ["derive"] }
+time = { version = "0.3.47", features = ["serde", "wasm-bindgen"] }
+serde = { version = "1.0.220", features = ["derive"] }
 serde_urlencoded = "0.7.1"
 serde_json_path = "0.7.1"
 iref = "3.2.2"
@@ -84,6 +85,9 @@ libc = "0.2.172"
 
 # Transitive dependecies versioning
 generic-array = "=0.14.7"# Pinned to solve deprecation warnings from transitive deps trying to update to 0.14.9
+
+[patch.crates-io]
+core2 = { path = "deps/core2"}
 
 #[target.'cfg(target_arch = "wasm32")'.dependencies]
 ## remember to update one-core version for not-wasm targets

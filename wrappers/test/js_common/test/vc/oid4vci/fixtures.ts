@@ -54,6 +54,8 @@ export class Utils {
       credential_issuer: this.issuerEndpoint,
       authorization_servers: [this.authServerEndpoint],
       credential_endpoint: `${this.issuerEndpoint}/credential`,
+      deferred_credential_endpoint: `${this.issuerEndpoint}/deferred_credential`,
+      notification_endpoint: `${this.issuerEndpoint}/notification`,
       nonce_endpoint: `${this.issuerEndpoint}/nonce`,
       batch_credential_issuance: {
         batch_size: 2
@@ -204,6 +206,13 @@ export class Utils {
       ],
       notification_id: "1111",
     };
+  }
+
+  get deferredCredResponse() {
+    return {
+      transaction_id: "8xLOxBtZp8",
+      interval: 300,
+    }
   }
 
   get batchCredResponse() {

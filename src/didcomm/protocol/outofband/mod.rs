@@ -224,7 +224,7 @@ where
                 .into_iter()
                 .collect(),
             }],
-            &vec![service],
+            &[service],
         )
         .context(DIDSnafu)?;
         Ok(my_did)

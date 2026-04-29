@@ -51,6 +51,8 @@ const replacements = [
   { from: "JsProofOfPossessionNotBefore", to: "InnerProofOfPossessionNotBefore" },
   { from: "JsProofOfPossessionNotBeforeStrategy", to: "InnerProofOfPossessionNotBeforeStrategy" },
   { from: "JsCredentialExtraVerification", to: "CredentialExtraVerification" },
+  { from: "JsNotification", to: "CredentialNotification" },
+  { from: "JsNotificationEvent", to: "CredentialNotificationEvent" },
   { from: "JsonObject", to: "Record<string, any>" },
 ];
 

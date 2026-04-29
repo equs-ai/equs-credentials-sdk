@@ -110,8 +110,8 @@ pub mod fixtures {
 
     pub struct SampleIssuerMetadata {}
     impl SampleIssuerMetadata {
-        pub fn with_sdjwtvc_conf() -> IssuerMetadata {
-            let metadata = serde_json::from_value(json!(
+        fn with_sdjwtvc_conf_json() -> serde_json::Value {
+            json!(
                 {
                     "credential_issuer": ISSUER_URL,
                     "authorization_servers": [AUTH_URL],
@@ -120,6 +120,8 @@ pub mod fixtures {
                     "batch_credential_issuance": {
                         "batch_size": 3
                     },
+                    "deferred_credential_endpoint": ISSUER_URL.to_owned()+"/deferred_credential",
+                    "notification_endpoint": ISSUER_URL.to_owned()+"/notification",
                     "credential_configurations_supported": {
                         CRED_DEF_ID: {
                             "format": "dc+sd-jwt",
@@ -148,9 +150,30 @@ pub mod fixtures {
                         },
                     },
                 }
-            ));
+            )
+        }
 
+        pub fn with_sdjwtvc_conf() -> IssuerMetadata {
+            let metadata = serde_json::from_value(SampleIssuerMetadata::with_sdjwtvc_conf_json());
             metadata.unwrap()
+        }
+
+        pub fn with_sdjwtvc_no_deferred_endpoint_conf() -> IssuerMetadata {
+            let mut metadata = SampleIssuerMetadata::with_sdjwtvc_conf_json();
+            metadata
+                .as_object_mut()
+                .unwrap()
+                .remove("deferred_credential_endpoint");
+            serde_json::from_value::<IssuerMetadata>(metadata).unwrap()
+        }
+
+        pub fn with_sdjwtvc_no_notification_endpoint_conf() -> IssuerMetadata {
+            let mut metadata = SampleIssuerMetadata::with_sdjwtvc_conf_json();
+            metadata
+                .as_object_mut()
+                .unwrap()
+                .remove("notification_endpoint");
+            serde_json::from_value::<IssuerMetadata>(metadata).unwrap()
         }
 
         pub fn with_jwtvc_conf() -> IssuerMetadata {

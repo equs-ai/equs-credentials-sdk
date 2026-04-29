@@ -6,7 +6,7 @@ pub mod issuer;
 pub mod metadata;
 
 use crate::vc::oid4vci::builder::TokenValidation;
-use agent_sdk::vc::oid4vci::CredentialLifetime;
+use agent_sdk::vc::oid4vci::{CredentialLifetime, Notification, NotificationEvent};
 use napi::Error;
 use napi_derive::napi;
 use time::Duration;
@@ -108,5 +108,41 @@ impl JsCredentialLifetime {
 impl From<JsCredentialLifetime> for CredentialLifetime {
     fn from(value: JsCredentialLifetime) -> Self {
         value.0
+    }
+}
+
+#[napi(js_name = "CredentialNotification", object)]
+pub struct JsNotification {
+    #[napi(js_name = "notification_id")]
+    pub notification_id: String,
+    pub event: JsNotificationEvent,
+    #[napi(js_name = "event_description")]
+    pub event_description: Option<String>,
+}
+
+#[napi(js_name = "CredentialNotificationEvent")]
+pub enum JsNotificationEvent {
+    CredentialAccepted,
+    CredentialFailure,
+    CredentialDeleted,
+}
+
+impl From<JsNotification> for Notification {
+    fn from(value: JsNotification) -> Self {
+        Self::new(
+            value.notification_id,
+            value.event.into(),
+            value.event_description,
+        )
+    }
+}
+
+impl From<JsNotificationEvent> for NotificationEvent {
+    fn from(value: JsNotificationEvent) -> Self {
+        match value {
+            JsNotificationEvent::CredentialAccepted => Self::CredentialAccepted,
+            JsNotificationEvent::CredentialFailure => Self::CredentialFailure,
+            JsNotificationEvent::CredentialDeleted => Self::CredentialDeleted,
+        }
     }
 }

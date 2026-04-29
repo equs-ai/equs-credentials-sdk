@@ -13,7 +13,7 @@ use crate::vc::oid4vci::AuthzFlow::Authorize;
 use crate::vc::oid4vci::credential_issuer_identifier::CredentialIssuerIdentifier;
 use crate::vc::oid4vci::internal_error::{
     AuthorizationCallbackSnafu, AuthorizationRequestSnafu, HolderServiceSnafu, MetadataSnafu,
-    ParseSnafu, TypeConversionSnafu, UrlParseSnafu, VCSnafu,
+    ParseSnafu, UrlParseSnafu, VCSnafu,
 };
 use crate::vc::oid4vci::metadata::MetadataDiscovery;
 use crate::vc::oid4vci::protocol_error::{CredentialEndpointError, ProtocolSnafu};
@@ -34,7 +34,7 @@ use oauth2::{
 use oid4vci::core::authorization::AuthorizationDetailsObject;
 use oid4vci::core::client::Client;
 use oid4vci::core::profiles::CoreProfilesCredentialResponseType;
-use oid4vci::credential::{CredentialId, Proofs, ResponseEnum};
+use oid4vci::credential::{CredentialId, Proofs, RequestBuilder, ResponseEnum};
 use oid4vci::metadata::credential_issuer::BatchCredentialIssuance;
 use oid4vci::proof_of_possession::{Proof as SpruceProof, Proof};
 use oid4vci::token;
@@ -499,29 +499,36 @@ where
             )
             .set_proofs(proofs);
 
-        let resp = credential_request
-            .request_async(&self.http_closure())
-            .await
-            .map_err(Error::from)?;
-
-        let cred_result: CredentialResult = (&resp).try_into()?;
-
-        if let CredentialResult::Credential { credentials, .. } = &cred_result {
-            info!("credential(s) is received");
-
-            future::try_join_all(credentials.iter().map(|credential| async {
-                self.holder
-                    .verify_credential(credential)
-                    .await
-                    .context(VCSnafu)
-            }))
-            .await?;
-            info!("credential(s) is verified");
-        }
+        let result = self.request_credential_inner(credential_request).await;
 
         info!("requesting a credential flow is succeeded");
 
-        Ok(CredentialResponseResolved { data: cred_result })
+        result
+    }
+
+    #[instrument(level = Level::TRACE, skip(self), err(), ret())]
+    async fn request_deferred_credential(
+        &self,
+        token: &AccessToken,
+        transaction_id: &str,
+    ) -> api::Result<CredentialResponseResolved> {
+        info!("requesting a deferred credential");
+
+        let request = self
+            .client
+            .request_deferred_credential(token.to_owned(), transaction_id.to_string())
+            .map_err(|e| {
+                HolderServiceSnafu {
+                    details: e.to_string(),
+                }
+                .build()
+            })?;
+
+        let result = self.request_credential_inner(request).await;
+
+        info!("requested deferred credential");
+
+        result
     }
 
     #[instrument(level = Level::TRACE, skip(self), err(), ret())]
@@ -553,6 +560,34 @@ where
         info!("credential is stored");
 
         Ok(id)
+    }
+
+    #[instrument(level = Level::TRACE, skip(self), err(), ret())]
+    async fn send_notification(
+        &self,
+        token: &AccessToken,
+        notification: api::Notification,
+    ) -> api::Result<()> {
+        info!("sending notification");
+
+        let request = self
+            .client
+            .send_notification(token.to_owned(), notification)
+            .map_err(|e| {
+                HolderServiceSnafu {
+                    details: e.to_string(),
+                }
+                .build()
+            })?;
+
+        request
+            .request_async(&self.http_closure())
+            .await
+            .map_err(Error::from)?;
+
+        info!("sent notification");
+
+        Ok(())
     }
 }
 
@@ -633,13 +668,31 @@ where
         Ok(token)
     }
 
-    #[instrument(level = Level::TRACE, skip(self), err(), ret())]
-    async fn deferred(
+    async fn request_credential_inner<T: serde::Serialize>(
         &self,
-        token: AccessToken,
-        transaction_id: String,
-    ) -> Result<CredentialResult> {
-        unimplemented!()
+        credential_request: RequestBuilder<T>,
+    ) -> Result<CredentialResponseResolved> {
+        let resp = credential_request
+            .request_async(&self.http_closure())
+            .await
+            .map_err(Error::from)?;
+
+        let cred_result: CredentialResult = (&resp).try_into()?;
+
+        if let CredentialResult::Credential { credentials, .. } = &cred_result {
+            info!("credential(s) is received");
+
+            future::try_join_all(credentials.iter().map(|credential| async {
+                self.holder
+                    .verify_credential(credential)
+                    .await
+                    .context(VCSnafu)
+            }))
+            .await?;
+            info!("credential(s) is verified");
+        }
+
+        Ok(CredentialResponseResolved { data: cred_result })
     }
 
     #[instrument(level = Level::TRACE, skip(self), err(), ret())]
@@ -787,14 +840,12 @@ impl TryInto<CredentialResult> for &CredentialResponse {
                     notification_id: self.notification_id().map(|v| v.to_owned()),
                 }
             }
-            ResponseEnum::Deferred { transaction_id } => CredentialResult::Deferred {
-                transaction_id: transaction_id.clone().ok_or(
-                    TypeConversionSnafu {
-                        details: "Deferred credential response must contain transaction ID"
-                            .to_string(),
-                    }
-                    .build(),
-                )?,
+            ResponseEnum::Deferred {
+                transaction_id,
+                interval,
+            } => CredentialResult::Deferred {
+                transaction_id: transaction_id.to_owned(),
+                interval: interval.to_owned(),
             },
         };
 
@@ -865,8 +916,13 @@ mod tests {
         sample_credential_definition, sample_offer_with_auth_code_grant,
         sample_offer_with_pre_auth_code_grant,
     };
-    use crate::vc::oid4vci::{CredentialRequest, CredentialResult, Holder, protocol_error};
+    use crate::vc::oid4vci::{
+        CredentialRequest, CredentialResult, Holder, Notification, protocol_error,
+    };
     use oauth2::http::{Method, StatusCode};
+    use oid4vci::core::profiles::CoreProfilesCredentialResponse;
+    use oid4vci::credential::Response;
+    use oid4vci::notification::NotificationRequestEvent;
     use rstest::rstest;
     use serde_json::json;
     use std::io;
@@ -1232,6 +1288,102 @@ mod tests {
         }
     }
 
+    #[rstest]
+    #[case::positive_deferred(
+        SampleIssuerMetadata::with_sdjwtvc_conf(),
+        json![
+        {
+            "transaction_id": "8xLOxBtZp8".to_string(),
+            "interval": 300,
+        }],
+    )]
+    #[case::positive_credential(
+        SampleIssuerMetadata::with_sdjwtvc_conf(),
+        json![
+        {
+            "credentials": [{"credential": SD_JWT_CREDS.to_string()}],
+            "notification_id": Some("notification_id".to_string()),
+        }],
+    )]
+    #[should_panic(expected = "Deferred credential issuance is not supported by this issuer")]
+    #[case::deferred_issance_not_supported_by_issuer(
+        SampleIssuerMetadata::with_sdjwtvc_no_deferred_endpoint_conf(),
+        json![
+        {
+            "transaction_id": "8xLOxBtZp8".to_string(),
+            "interval": 300,
+        }],
+    )]
+    #[tokio::test]
+    async fn holder_handles_deferred_credential_flow(
+        #[case] issuer_metadata: IssuerMetadata,
+        #[case] expected_response: serde_json::Value,
+    ) {
+        let oid4vci_response =
+            serde_json::from_value::<Response<CoreProfilesCredentialResponse>>(expected_response)
+                .unwrap();
+        let expected_response: CredentialResult = (&oid4vci_response).try_into().unwrap();
+        let mut http_client = MockHttpClient::new();
+        mock_http_once(
+            &mut http_client,
+            Method::POST,
+            deferred_credential_endpoint(),
+            oid4vci_response,
+            StatusCode::OK,
+        );
+        let kms = LocalKms::new();
+        let (_, key_metadata) = create_did_and_key_metadata(&kms).await;
+        let holder = holder_service_from_issuer_metadata(
+            http_client,
+            InMemVault::new(),
+            kms,
+            issuer_metadata,
+        )
+        .await;
+
+        let response = holder
+            .request_deferred_credential(&sample_access_token(), "transaction_id")
+            .await
+            .unwrap()
+            .data;
+
+        match expected_response {
+            CredentialResult::Deferred {
+                transaction_id: expected_transaction_id,
+                interval: expected_interval,
+            } => match response {
+                CredentialResult::Deferred {
+                    transaction_id: actual_transaction_id,
+                    interval: actual_interval,
+                } => {
+                    assert_eq!(expected_transaction_id, actual_transaction_id);
+                    assert_eq!(expected_interval, actual_interval);
+                }
+                actual => {
+                    panic!(
+                        "actual response is not a deferred credential response: {:?}",
+                        actual
+                    );
+                }
+            },
+            CredentialResult::Credential {
+                credentials: expected_credentials,
+                notification_id: expected_notification_id,
+            } => match response {
+                CredentialResult::Credential {
+                    credentials: actual_credentials,
+                    notification_id: actual_notification_id,
+                } => {
+                    assert_eq!(expected_credentials.len(), actual_credentials.len());
+                    assert_eq!(expected_notification_id, actual_notification_id);
+                }
+                actual => {
+                    panic!("actual response is not a credential response: {:?}", actual);
+                }
+            },
+        }
+    }
+
     #[tokio::test]
     async fn holder_requests_multiple_credentials_correctly() {
         let mut http_client = MockHttpClient::new();
@@ -1563,6 +1715,44 @@ mod tests {
             .unwrap();
     }
 
+    #[rstest]
+    #[case::positive(SampleIssuerMetadata::with_sdjwtvc_conf())]
+    #[should_panic(expected = "Notification are not supported by this issuer")]
+    #[case::notifications_unsupported(
+        SampleIssuerMetadata::with_sdjwtvc_no_notification_endpoint_conf()
+    )]
+    #[tokio::test]
+    async fn send_notification(#[case] issuer_metadata: IssuerMetadata) {
+        let mut http_client = MockHttpClient::new();
+        mock_http_once(
+            &mut http_client,
+            Method::POST,
+            notification_endpoint(),
+            (),
+            StatusCode::OK,
+        );
+        let kms = LocalKms::new();
+        let (_, key_metadata) = create_did_and_key_metadata(&kms).await;
+        let holder = holder_service_from_issuer_metadata(
+            http_client,
+            InMemVault::new(),
+            kms,
+            issuer_metadata,
+        )
+        .await;
+
+        let notification = Notification::new(
+            "notification_id".to_string(),
+            NotificationRequestEvent::CredentialAccepted,
+            Some("Issued credential has been accepted".to_string()),
+        );
+
+        holder
+            .send_notification(&sample_access_token(), notification)
+            .await
+            .unwrap()
+    }
+
     // Payload: { "iss": "https://issuer-backend.com", "id": "1234" }
     const SD_JWT_CREDENTIAL_ISS_OID4VCI: &str = "eyJ0eXAiOiJzZCtqd3QiLCJhbGciOiJFUzI1NiJ9\
     .eyJpc3MiOiJodHRwczovL2lzc3Vlci1iYWNrZW5kLmNvbSIsImlkIjoiMTIzNCIsIl9zZF9hbGciOiJTSEEtMjU2In0\
@@ -1665,12 +1855,29 @@ mod tests {
     fn access_token_endpoint() -> Url {
         Url::parse(AUTH_URL).unwrap().join("/token").unwrap()
     }
+
     fn credential_endpoint() -> Url {
         Url::parse(ISSUER_URL).unwrap().join("/credential").unwrap()
     }
+
+    fn notification_endpoint() -> Url {
+        Url::parse(ISSUER_URL)
+            .unwrap()
+            .join("/notification")
+            .unwrap()
+    }
+
+    fn deferred_credential_endpoint() -> Url {
+        Url::parse(ISSUER_URL)
+            .unwrap()
+            .join("/deferred_credential")
+            .unwrap()
+    }
+
     fn nonce_endpoint() -> Url {
         Url::parse(ISSUER_URL).unwrap().join("/nonce").unwrap()
     }
+
     fn auth_srv_metadata_request_endpoint() -> Url {
         Url::parse(AUTH_URL)
             .unwrap()

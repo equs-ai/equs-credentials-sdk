@@ -44,6 +44,17 @@ import Swifter
           .json(try! JSONSerialization.jsonObject(with: Oid4vciHolderTestConstants.BatchCredentialResponse))
         )
 		}
+		self.server["/deferred_credential"] = { request in
+        return Swifter.HttpResponse.ok(
+          .json(try! JSONSerialization.jsonObject(with: Oid4vciHolderTestConstants.DeferredCredentialResponse))
+        )
+		}
+		self.server["/notification"] = { request in
+            return Swifter.HttpResponse.ok(
+                .text("")
+            )
+		}
+        
 		self.server["/nonce"] = { request in
             return Swifter.HttpResponse.ok(
 				.json(
@@ -139,6 +150,61 @@ import Swifter
 					],
 					notificationId: "1111"))
 
+	}
+
+	@Test func requestDeferredCredentials() async throws {
+		let kms = InMemKms()
+		let vault = InMemVault()
+		let holder = try await Oid4vciHolderBuilder(
+			kms: kms,
+			vault: vault,
+			clientId: "client_id",
+			issuerDiscovery: IssuerDiscovery.offer(Oid4vciHolderTestConstants.CredentialOffer),
+            httpClient: ReqwestHttpClient.insecure(),
+            pop: ProofOfPossessionMetadataBuilder()
+              .withNotBefore(notBefore: ProofOfPossessionNotBefore.leeway(300))
+              .withLifetime(lifetime: 10)
+              .build(),
+            credentialExtraVerification: nil
+        ).build()
+
+		let credResponse = try await holder.requestDeferredCredential(
+			token: Oid4vciHolderTestConstants.AccessToken,
+			transactionId: "transaction_id",
+	    )
+
+		#expect(
+			credResponse.data == CredentialResult.deferred(
+				transactionId: "8xLOxBtZp8",
+				interval: 300
+			)
+		)
+	}
+
+	@Test func sendNotification() async throws {
+		let kms = InMemKms()
+		let vault = InMemVault()
+		let holder = try await Oid4vciHolderBuilder(
+			kms: kms,
+			vault: vault,
+			clientId: "client_id",
+			issuerDiscovery: IssuerDiscovery.offer(Oid4vciHolderTestConstants.CredentialOffer),
+            httpClient: ReqwestHttpClient.insecure(),
+            pop: ProofOfPossessionMetadataBuilder()
+              .withNotBefore(notBefore: ProofOfPossessionNotBefore.leeway(300))
+              .withLifetime(lifetime: 10)
+              .build(),
+            credentialExtraVerification: nil
+        ).build()
+
+        try await holder.sendNotification(
+			token: Oid4vciHolderTestConstants.AccessToken,
+            notification: Notification(
+			    notificationId: "3fwe98js",
+			    event: NotificationEvent.credentialAccepted,
+			    eventDescription: "Issued credential has been accepted"
+			)
+	    )
 	}
 
 	@Test func verifyCredentialExtra() async throws {
@@ -268,7 +334,7 @@ enum Oid4vciHolderTestConstants {
 		"""
 
 	static let IssuerMetadata = """
-		{"credential_issuer":"http://localhost:9000","authorization_servers":["http://localhost:9000/auth"],"credential_endpoint":"http://localhost:9000/credential","nonce_endpoint":"http://localhost:9000/nonce","batch_credential_issuance":{"batch_size":2},"credential_configurations_supported":{"\(CredDefId)":{"scope":"SD_JWT_cred","cryptographic_binding_methods_supported":["jwk"],"proof_types_supported":{"jwt":{"proof_signing_alg_values_supported":["ES256"]}},"format":"dc+sd-jwt","credential_signing_alg_values_supported":["ES256"],"credential_metadata":{"claims":[{"path":["dob"],"mandatory":true,"display":[{"name":"Date of birth"}]},{"path":["given_name"],"mandatory":true,"display":[{"name":"Name"}]},{"path":["family_name"],"mandatory":true,"display":[{"name":"Surname"}]}]},"vct":"SD_JWT_cred"}}}
+		{"credential_issuer":"http://localhost:9000","authorization_servers":["http://localhost:9000/auth"],"credential_endpoint":"http://localhost:9000/credential","deferred_credential_endpoint":"http://localhost:9000/deferred_credential","notification_endpoint":"http://localhost:9000/notification","nonce_endpoint":"http://localhost:9000/nonce","batch_credential_issuance":{"batch_size":2},"credential_configurations_supported":{"\(CredDefId)":{"scope":"SD_JWT_cred","cryptographic_binding_methods_supported":["jwk"],"proof_types_supported":{"jwt":{"proof_signing_alg_values_supported":["ES256"]}},"format":"dc+sd-jwt","credential_signing_alg_values_supported":["ES256"],"credential_metadata":{"claims":[{"path":["dob"],"mandatory":true,"display":[{"name":"Date of birth"}]},{"path":["given_name"],"mandatory":true,"display":[{"name":"Name"}]},{"path":["family_name"],"mandatory":true,"display":[{"name":"Surname"}]}]},"vct":"SD_JWT_cred"}}}
 		"""
 
 	static let AuthServerMetadata = """
@@ -289,6 +355,10 @@ enum Oid4vciHolderTestConstants {
 	static let BatchCredentialResponse = """
 		{"credentials":[{"credential": "\(CredentialResponseImmediatePayload)"}, {"credential": "\(CredentialResponseImmediatePayload)"}], "notification_id":"1111"}
 		""".data(using: .utf8)!
+
+	static let DeferredCredentialResponse = """
+	    {"transaction_id": "8xLOxBtZp8", "interval": 300}
+	    """.data(using: .utf8)!
 
 	static let NonceResponse = """
 		{"c_nonce":"0GtZieAoAL_3Zafyn6TgCA"}

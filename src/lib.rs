@@ -8,6 +8,7 @@
 #![allow(clippy::upper_case_acronyms)]
 #![allow(clippy::assigning_clones)]
 // #![forbid(unsafe_code)]
+#![recursion_limit = "256"]
 
 //! # Agent SDK (ASDK)
 //!

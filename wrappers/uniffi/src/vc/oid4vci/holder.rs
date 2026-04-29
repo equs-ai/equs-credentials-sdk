@@ -1,6 +1,8 @@
 use crate::common::{Error, JsonValue, Result};
 use crate::vc::oid4vci::{CredentialResponse, TokenResponse};
 use crate::vc::{Credential, CredentialMetadata};
+use agent_sdk::vc::oid4vci::Notification as AsdkNotification;
+use agent_sdk::vc::oid4vci::NotificationEvent as AsdkNotificationEvent;
 use async_trait::async_trait;
 use std::future::Future;
 use std::io;
@@ -186,6 +188,36 @@ impl OID4VCIHolder {
             .map_err(|err| Error::OID4VCIInternal(format!("{:?}", err)))
     }
 
+    /// Request a `Credential` which issuance is deferred.
+    ///
+    /// Calls Deferred Credential Endpoint of the Issuer.
+    ///
+    /// # Arguments
+    ///
+    /// * `token` - an access token.
+    /// * `transaction_id` - transaction id returned from the last
+    ///   credential or deferred credential request.
+    /// # Returns
+    ///
+    /// A `CredentialResponseResolved` (Immediate or Deferred) on success.
+    ///
+    /// # Errors
+    ///
+    /// * Returns an internal or protocol-specific error.
+    pub async fn request_deferred_credential(
+        &self,
+        token: String,
+        transaction_id: String,
+    ) -> Result<CredentialResponse> {
+        let token = serde_json::from_value(serde_json::Value::String(token))
+            .map_err(|err| Error::OID4VCIInternal(err.to_string()))?;
+
+        self.0
+            .request_deferred_credential(&token, &transaction_id)
+            .await
+            .map_err(|err| Error::OID4VCIInternal(format!("{:?}", err)))
+    }
+
     /// Perform extra verification of the passed `Credential`.
     ///
     /// # Arguments
@@ -231,6 +263,22 @@ impl OID4VCIHolder {
             .await
             .map_err(|err| Error::OID4VCIInternal(format!("{:?}", err)))
     }
+
+    /// Send notification to the Issuer.
+    ///
+    /// # Arguments
+    ///
+    /// * `token` - an Access Token.
+    /// * `notification` - the notification details.
+    pub async fn send_notification(&self, token: String, notification: Notification) -> Result<()> {
+        let token = serde_json::from_value(serde_json::Value::String(token))
+            .map_err(|err| Error::OID4VCIInternal(err.to_string()))?;
+
+        self.0
+            .send_notification(&token, notification.into())
+            .await
+            .map_err(|err| Error::OID4VCIInternal(format!("{:?}", err)))
+    }
 }
 
 pub type AuthorizationCodeCallback = Box<
@@ -262,6 +310,12 @@ trait _HolderWrapperTrait: Send + Sync {
         key_metadata: &[agent_sdk::vc::core::KeyMetadata],
     ) -> agent_sdk::vc::oid4vci::Result<agent_sdk::vc::oid4vci::CredentialResponseResolved>;
 
+    async fn request_deferred_credential(
+        &self,
+        token: &agent_sdk::vc::oid4vci::AccessToken,
+        transaction_id: &str,
+    ) -> agent_sdk::vc::oid4vci::Result<agent_sdk::vc::oid4vci::CredentialResponseResolved>;
+
     async fn verify_credential_extra(
         &self,
         credential: &agent_sdk::vc::Credential,
@@ -278,6 +332,12 @@ trait _HolderWrapperTrait: Send + Sync {
         offer_params: &agent_sdk::vc::oid4vci::CredentialOfferParams,
         authorization_callback: AuthorizationCallback,
     ) -> agent_sdk::vc::oid4vci::Result<agent_sdk::vc::oid4vci::TokenResponse>;
+
+    async fn send_notification(
+        &self,
+        token: &agent_sdk::vc::oid4vci::AccessToken,
+        notification: AsdkNotification,
+    ) -> agent_sdk::vc::oid4vci::Result<()>;
 }
 
 pub struct _HolderWrapper<H: agent_sdk::vc::oid4vci::Holder>(H);
@@ -309,6 +369,16 @@ impl<H: agent_sdk::vc::oid4vci::Holder> _HolderWrapperTrait for _HolderWrapper<H
             .await
     }
 
+    async fn request_deferred_credential(
+        &self,
+        token: &agent_sdk::vc::oid4vci::AccessToken,
+        transaction_id: &str,
+    ) -> agent_sdk::vc::oid4vci::Result<agent_sdk::vc::oid4vci::CredentialResponseResolved> {
+        self.0
+            .request_deferred_credential(token, transaction_id)
+            .await
+    }
+
     async fn verify_credential_extra(
         &self,
         credential: &agent_sdk::vc::Credential,
@@ -334,5 +404,45 @@ impl<H: agent_sdk::vc::oid4vci::Holder> _HolderWrapperTrait for _HolderWrapper<H
         self.0
             .get_access_token(offer_params, authorization_callback)
             .await
+    }
+
+    async fn send_notification(
+        &self,
+        token: &agent_sdk::vc::oid4vci::AccessToken,
+        notification: AsdkNotification,
+    ) -> agent_sdk::vc::oid4vci::Result<()> {
+        self.0.send_notification(token, notification).await
+    }
+}
+
+#[derive(uniffi::Record, Clone, Debug)]
+pub struct Notification {
+    pub notification_id: String,
+    pub event: NotificationEvent,
+    pub event_description: Option<String>,
+}
+impl From<Notification> for AsdkNotification {
+    fn from(value: Notification) -> Self {
+        Self::new(
+            value.notification_id,
+            value.event.into(),
+            value.event_description.clone(),
+        )
+    }
+}
+#[derive(uniffi::Enum, Clone, Debug)]
+pub enum NotificationEvent {
+    CredentialAccepted,
+    CredentialFailure,
+    CredentialDeleted,
+}
+
+impl From<NotificationEvent> for AsdkNotificationEvent {
+    fn from(value: NotificationEvent) -> Self {
+        match value {
+            NotificationEvent::CredentialAccepted => Self::CredentialAccepted,
+            NotificationEvent::CredentialFailure => Self::CredentialFailure,
+            NotificationEvent::CredentialDeleted => Self::CredentialDeleted,
+        }
     }
 }

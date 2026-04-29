@@ -8,6 +8,7 @@ use crate::didcomm::connection::{
 use crate::inmem::kms::{KeyHandle, LocalKms};
 use crate::kms::{KeyType, Kms};
 use serde_json::json;
+use std::slice;
 
 pub async fn create_test_connection(
     agent: &Agent<LocalKms, KeyHandle, InMemConnectionService>,
@@ -50,7 +51,7 @@ pub async fn create_test_connection(
             .into_iter()
             .collect(),
         }],
-        &vec![service.clone()],
+        slice::from_ref(&service),
     )
     .unwrap();
 
@@ -65,7 +66,7 @@ pub async fn create_test_connection(
             .into_iter()
             .collect(),
         }],
-        &vec![service],
+        &[service],
     )
     .unwrap();
 

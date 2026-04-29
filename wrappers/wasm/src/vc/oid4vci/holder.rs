@@ -5,9 +5,11 @@ use crate::vc::oid4vci::{
 };
 use crate::vc::{Credential, CredentialMetadata, JsCredential};
 use agent_sdk::vc;
+use agent_sdk::vc::oid4vci;
 use agent_sdk::vc::oid4vci::{
     AccessToken, AuthzFlow, CredentialExtraVerification as ASDKCredentialExtraVerification,
     CredentialOfferParams, CredentialResponseResolved, Holder, IssuerMetadata,
+    Notification as ASDKNotification,
 };
 use async_trait::async_trait;
 use js_sys::{Function, Promise};
@@ -36,6 +38,9 @@ extern "C" {
 
     #[wasm_bindgen(method, js_name = "call")]
     pub fn call(this: &AuthCallback, authorization_flow: &JsValue) -> Promise;
+
+    #[wasm_bindgen(typescript_type = "CredentialNotification")]
+    pub type Notification;
 }
 
 impl AuthCodeCallback {
@@ -272,6 +277,40 @@ impl OID4VCIHolder {
             .and_then(TryInto::try_into)
     }
 
+    /// Request a `Credential`, which issuance has been deferred, for the provided `transaction_id`.
+    ///
+    /// Makes a call to an Issue Credential endpoint under the hood.
+    ///
+    /// If a `Credential` is returned, verifies it against the signature by resolving the issuer's DID.
+    ///
+    /// # Arguments
+    ///
+    /// * `token` - an access token.
+    /// * `transaction_id` - a transaction id returned by the Issuer in response to
+    ///     the previous credential or deferred credential request.
+    ///
+    /// # Returns
+    ///
+    /// A `CredentialResponseResolved` (Immediate or Deferred) on success.
+    ///
+    /// # Errors
+    ///
+    /// * Returns an internal or protocol-specific error
+    #[wasm_bindgen(js_name = requestDeferredCredential)]
+    pub async fn request_deferred_credential(
+        &self,
+        token: String,
+        transaction_id: String,
+    ) -> Result<CredentialResponse, JsError> {
+        let token = serde_json::from_value(serde_json::Value::String(token))?;
+
+        self.0
+            .request_deferred_credential(&token, &transaction_id)
+            .await
+            .map_err(|err| JsError::new(&format!("{:?}", err)))
+            .and_then(TryInto::try_into)
+    }
+
     /// Performs extra verification of the passed `Credential`.
     ///
     /// # Arguments
@@ -326,6 +365,27 @@ impl OID4VCIHolder {
             .await
             .map_err(|err| JsError::new(&format!("{:?}", err)))
     }
+
+    /// Send notification to the Issuer.
+    ///
+    /// # Arguments
+    ///
+    /// @param {string} token - an access token.
+    /// @param {Notification} notification - notification details.
+    #[wasm_bindgen(js_name = sendNotification)]
+    pub async fn send_notification(
+        &self,
+        token: String,
+        notification: Notification,
+    ) -> Result<(), JsError> {
+        let token = serde_json::from_value(serde_json::Value::String(token))?;
+        let notification = utils::convert_to_rust_object(notification)?;
+
+        self.0
+            .send_notification(&token, notification)
+            .await
+            .map_err(|err| JsError::new(&format!("{:?}", err)))
+    }
 }
 
 #[async_trait(?Send)]
@@ -345,6 +405,12 @@ trait _HolderWrapperTrait {
         key_metadata: &[vc::core::KeyMetadata],
     ) -> vc::oid4vci::Result<CredentialResponseResolved>;
 
+    async fn request_deferred_credential(
+        &self,
+        token: &AccessToken,
+        transaction_id: &str,
+    ) -> vc::oid4vci::Result<CredentialResponseResolved>;
+
     async fn store_credential(
         &self,
         credential: &vc::Credential,
@@ -359,6 +425,12 @@ trait _HolderWrapperTrait {
         offer_params: &CredentialOfferParams,
         authorization_callback: AuthorizationCallback,
     ) -> vc::oid4vci::Result<vc::oid4vci::TokenResponse>;
+
+    async fn send_notification(
+        &self,
+        token: &AccessToken,
+        notification: ASDKNotification,
+    ) -> oid4vci::Result<()>;
 }
 
 pub struct _HolderWrapper<H: Holder>(pub(crate) H);
@@ -390,6 +462,16 @@ impl<H: Holder> _HolderWrapperTrait for _HolderWrapper<H> {
             .await
     }
 
+    async fn request_deferred_credential(
+        &self,
+        token: &AccessToken,
+        transaction_id: &str,
+    ) -> vc::oid4vci::Result<CredentialResponseResolved> {
+        self.0
+            .request_deferred_credential(token, transaction_id)
+            .await
+    }
+
     async fn verify_credential_extra(
         &self,
         credential: &vc::Credential,
@@ -415,6 +497,14 @@ impl<H: Holder> _HolderWrapperTrait for _HolderWrapper<H> {
         self.0
             .get_access_token(offer_params, authorization_callback)
             .await
+    }
+
+    async fn send_notification(
+        &self,
+        token: &AccessToken,
+        notification: ASDKNotification,
+    ) -> oid4vci::Result<()> {
+        self.0.send_notification(token, notification).await
     }
 }
 
