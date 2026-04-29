@@ -2,6 +2,7 @@ use async_trait::async_trait;
 use oauth2::basic::BasicRequestTokenError;
 use oid4vci::core::profiles::CoreProfilesCredentialResponse;
 use oid4vci::credential::{RequestError, Response};
+use oid4vci::notification::{NotificationRequest, NotificationRequestEvent};
 use serde::{Deserialize, Serialize};
 use snafu::{IntoError, Snafu};
 use std::fmt::Debug;
@@ -42,16 +43,19 @@ pub type TxCode = oid4vci::types::TxCode;
 pub type AuthorizationCodeGrant = oid4vci::credential_offer::AuthorizationCodeGrant;
 pub type AccessToken = oauth2::AccessToken;
 pub type MetadataDiscovery = metadata::MetadataDiscovery;
+pub type Notification = NotificationRequest;
+pub type NotificationEvent = NotificationRequestEvent;
 
 /// A result of the Credential issuance handled by `Holder`
 ///
 /// Enum value `Credential` contains issued [Credential]s.
 ///
-/// *NOTE*: `deferred` flow and `notifications` currently are not supported.
+/// *NOTE*: `notifications` currently are not supported.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum CredentialResult {
     Deferred {
         transaction_id: String,
+        interval: u32,
     },
     Credential {
         credentials: Vec<Credential>,
@@ -359,6 +363,35 @@ pub trait Holder: WasmNotSend + WasmNotSync {
         keys_metadata: &[KeyMetadata],
     ) -> Result<CredentialResponseResolved>;
 
+    /// Request a `Credential`, which issuance has been deferred, for the provided `transaction_id`.
+    ///
+    /// Makes a call to an Issue Credential endpoint under the hood.
+    ///
+    /// If a `Credential` is returned, verifies it against the signature by resolving the issuer's DID.
+    /// # Arguments
+    ///
+    /// * `token` - an access token.
+    /// * `transaction_id` - a transaction id returned by the Issuer in response to
+    ///     the previous credential or deferred credential request.
+    ///
+    /// # Returns
+    ///
+    /// A `CredentialResponseResolved` (Immediate or Deferred) on success.
+    /// Optionally includes `NonceData` for the next requests.
+    ///
+    /// # Errors
+    ///
+    /// * [Error::Protocol] - expected protocol-specific error.
+    ///     * [crate::vc::oid4vci::ProtocolErrorCredentialEndpoint]
+    /// * [InternalError::Parse] - fails to parse the payload.
+    /// * [InternalError::Request] - fails to make a call to the `Issuer`.
+    /// * [InternalError::VC] - `vc::core` error during `Proof` generation or credential signature verification.
+    async fn request_deferred_credential(
+        &self,
+        token: &oauth2::AccessToken,
+        transaction_id: &str,
+    ) -> Result<CredentialResponseResolved>;
+
     /// Perform extra verification of the passed `Credential`.
     ///
     /// # Arguments
@@ -398,6 +431,22 @@ pub trait Holder: WasmNotSend + WasmNotSync {
         credential: &Credential,
         credential_metadata: &CredentialMetadata,
     ) -> Result<String>;
+
+    /// Send notification to the Issuer.
+    ///
+    /// # Arguments
+    ///
+    /// * `token` - an Access Token.
+    /// * `notification` - the notification details.
+    ///
+    /// # Returns
+    ///
+    /// Empty unit.
+    async fn send_notification(
+        &self,
+        token: &oauth2::AccessToken,
+        notification: Notification,
+    ) -> Result<()>;
 }
 
 impl From<RequestError<HttpError>> for Error {

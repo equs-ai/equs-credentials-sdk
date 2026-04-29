@@ -33,6 +33,8 @@ class HolderVCITest {
                     "credential_issuer": "$ISSUER_ENDPOINT",
                     "authorization_servers": ["$AUTH_SERVER_ENDPOINT"],
                     "credential_endpoint": "$ISSUER_ENDPOINT/credential",
+                    "deferred_credential_endpoint": "$ISSUER_ENDPOINT/deferred_credential",
+                    "notification_endpoint": "$ISSUER_ENDPOINT/notification",
                     "nonce_endpoint": "$ISSUER_ENDPOINT/nonce",
                     "batch_credential_issuance": {
                         "batch_size": 2
@@ -130,6 +132,15 @@ class HolderVCITest {
             """
         )
 
+        val deferredCredentialResponse = Json.parseToJsonElement(
+            """
+                {
+                    "transaction_id": "8xLOxBtZp8",
+                    "interval": 300
+                }
+            """
+        )
+
         val nonceResponse = Json.parseToJsonElement(
             """
                 {
@@ -165,9 +176,16 @@ class HolderVCITest {
                         "/auth/token" -> mockResponse.setResponseCode(200)
                             .setBody(tokenResponse.toString())
 
-                        "/credential" -> {
+                        "/credential" ->
                             mockResponse.setResponseCode(200)
                                 .setBody(batchCredentialResponse.toString())
+
+                        "/deferred_credential" ->
+                            mockResponse.setResponseCode(202)
+                                .setBody(deferredCredentialResponse.toString())
+
+                        "/notification" -> {
+                            mockResponse.setResponseCode(204)
                         }
 
                         "/nonce" -> mockResponse.setResponseCode(200)
@@ -283,6 +301,37 @@ class HolderVCITest {
                 ),
                 notificationId = "1111",
             ), actual.data
+        )
+    }
+
+    @Test
+    fun testRequestDeferredCredentials() = runTest {
+        val inMemKms = InMemKms()
+
+        val actual = buildHolder(inMemKms).requestDeferredCredential(
+            ACCESS_TOKEN,
+            "transaction_id",
+        )
+
+        assertEquals(
+            CredentialResultEnum.Deferred(
+                transactionId = "8xLOxBtZp8",
+                interval = 300u,
+            ), actual.data
+        )
+    }
+
+    @Test
+    fun testNotification() = runTest {
+        val inMemKms = InMemKms()
+
+        buildHolder(inMemKms).sendNotification(
+            ACCESS_TOKEN,
+            Notification(
+                notificationId = "3fwe98js",
+                event = NotificationEvent.CREDENTIAL_ACCEPTED,
+                eventDescription = "Issued credential has been accepted"
+            )
         )
     }
 

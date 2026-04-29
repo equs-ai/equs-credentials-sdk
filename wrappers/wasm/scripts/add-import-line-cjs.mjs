@@ -32,6 +32,7 @@ import fs from "fs/promises";
       "CredentialMapping",
       "CredentialsMapping",
       "CredentialMetadata",
+      "CredentialNotification",
       "DIDResolver",
       "KeyHandle",
       "KeyMetadata",

@@ -1,6 +1,7 @@
 import { getLocal } from "mockttp";
 import {
   CredentialExtraVerification,
+  CredentialNotificationEvent,
   DIDKey,
   InMemKms,
   InMemVault,
@@ -140,6 +141,17 @@ describe("OID4VCI Holder: ", () => {
     });
   });
 
+  it("request Deferred Credential", async () => {
+    await mockServer.forPost("/deferred_credential").thenJson(202, utils.deferredCredResponse);
+
+    const kms = new InMemKms();
+    const vciHolder = await buildHolder(utils, kms);
+
+    const deferred_cred_response = await vciHolder.requestDeferredCredential(utils.accessToken, "transaction-id");
+
+    expect(deferred_cred_response).toMatchObject({ data: utils.deferredCredResponse });
+  });
+
   it("request multiple Credentials - Batch issuance", async () => {
     await mockServer.forPost("/credential").thenJson(200, utils.batchCredResponse);
     await mockServer.forPost("/nonce").thenJson(201, utils.nonceResponse);
@@ -212,6 +224,19 @@ describe("OID4VCI Holder: ", () => {
     const credentialEntries = await vault.findCredentials(criteria);
 
     expect(credentialEntries).toEqual([{ credential, kid: keyMetadata.kid, id: credentialEntries[0].id }]);
+  });
+
+  it("send notification", async () => {
+    await mockServer.forPost("/notification").thenReply(200);
+
+    const kms = new InMemKms();
+    const vciHolder = await buildHolder(utils, kms);
+
+    await vciHolder.sendNotification(utils.accessToken, {
+      notification_id: "notification_id",
+      event: CredentialNotificationEvent.CredentialAccepted,
+      event_description: "Issued credential has been accepted",
+    });
   });
 });
 

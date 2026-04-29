@@ -2,10 +2,12 @@ use crate::error::IntoNapiError;
 use crate::utils::{from_json_object, to_json_object};
 use crate::vc::JsonObject;
 use crate::vc::core::{JsCredential, JsCredentialMetadata, JsKeyMetadata};
+use crate::vc::oid4vci::JsNotification;
 use agent_sdk::vc::core::KeyMetadata;
 use agent_sdk::vc::oid4vci::{
     AccessToken, AuthzFlow, CredentialExtraVerification, CredentialOfferParams,
-    CredentialResponseResolved, CredentialResult, Holder, IssuerMetadata, TokenResponse,
+    CredentialResponseResolved, CredentialResult, Holder, IssuerMetadata, Notification,
+    TokenResponse,
 };
 use agent_sdk::vc::{Credential, CredentialMetadata, oid4vci};
 use async_trait::async_trait;
@@ -199,6 +201,21 @@ impl OID4VCIHolder {
             .and_then(TryInto::try_into)
     }
 
+    #[napi]
+    pub async fn request_deferred_credential(
+        &self,
+        token: String,
+        transaction_id: String,
+    ) -> napi::Result<CredentialResponse> {
+        let token = serde_json::from_value(serde_json::Value::String(token))?;
+
+        self.0
+            .request_deferred_credential(&token, &transaction_id)
+            .await
+            .map_err(IntoNapiError::into_napi_error)
+            .and_then(TryInto::try_into)
+    }
+
     /// Perform {@link Credential} extra verification.
     ///
     /// @param {Credential} credential - a credential to verify.
@@ -230,12 +247,34 @@ impl OID4VCIHolder {
             .await
             .map_err(IntoNapiError::into_napi_error)
     }
+
+    /// Send notification to the Issuer.
+    ///
+    /// # Arguments
+    ///
+    /// @param {string} token - an access token.
+    /// @param {Notification} notification - notification details.
+    #[napi]
+    pub async fn send_notification(
+        &self,
+        token: String,
+        notification: JsNotification,
+    ) -> napi::Result<()> {
+        let token = serde_json::from_value(serde_json::Value::String(token))?;
+
+        self.0
+            .send_notification(&token, notification.into())
+            .await
+            .map_err(IntoNapiError::into_napi_error)
+    }
 }
 
 #[napi(object)]
 pub struct CredentialDeferred {
     #[napi(js_name = "transaction_id")]
     pub transaction_id: String,
+    #[napi(js_name = "interval")]
+    pub interval: u32,
 }
 
 #[napi(object)]
@@ -255,9 +294,13 @@ impl TryFrom<CredentialResponseResolved> for CredentialResponse {
 
     fn try_from(value: CredentialResponseResolved) -> napi::Result<Self> {
         let data = match value.data {
-            CredentialResult::Deferred { transaction_id } => {
-                Either::A(CredentialDeferred { transaction_id })
-            }
+            CredentialResult::Deferred {
+                transaction_id,
+                interval,
+            } => Either::A(CredentialDeferred {
+                transaction_id,
+                interval,
+            }),
             CredentialResult::Credential {
                 credentials,
                 notification_id,
@@ -310,6 +353,12 @@ trait _HolderWrapperTrait: Send + Sync {
         key_metadata: &[KeyMetadata],
     ) -> oid4vci::Result<CredentialResponseResolved>;
 
+    async fn request_deferred_credential(
+        &self,
+        token: &AccessToken,
+        transaction_id: &str,
+    ) -> oid4vci::Result<CredentialResponseResolved>;
+
     async fn verify_credential_extra(&self, credential: &Credential) -> oid4vci::Result<()>;
 
     async fn store_credential(
@@ -323,6 +372,12 @@ trait _HolderWrapperTrait: Send + Sync {
         offer_params: &CredentialOfferParams,
         authorization_callback: AuthorizationCallback,
     ) -> oid4vci::Result<TokenResponse>;
+
+    async fn send_notification(
+        &self,
+        token: &AccessToken,
+        notification: Notification,
+    ) -> oid4vci::Result<()>;
 }
 
 pub struct _HolderWrapper<H: Holder>(pub(crate) H);
@@ -354,6 +409,16 @@ impl<H: Holder> _HolderWrapperTrait for _HolderWrapper<H> {
             .await
     }
 
+    async fn request_deferred_credential(
+        &self,
+        token: &AccessToken,
+        transaction_id: &str,
+    ) -> oid4vci::Result<CredentialResponseResolved> {
+        self.0
+            .request_deferred_credential(token, transaction_id)
+            .await
+    }
+
     async fn verify_credential_extra(&self, credential: &Credential) -> oid4vci::Result<()> {
         self.0.verify_credential_extra(credential).await
     }
@@ -376,5 +441,13 @@ impl<H: Holder> _HolderWrapperTrait for _HolderWrapper<H> {
         self.0
             .get_access_token(offer_params, authorization_callback)
             .await
+    }
+
+    async fn send_notification(
+        &self,
+        token: &AccessToken,
+        notification: Notification,
+    ) -> oid4vci::Result<()> {
+        self.0.send_notification(token, notification).await
     }
 }

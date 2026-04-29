@@ -6,9 +6,12 @@ import { Credential } from "./credential";
  * Used when the credential issuance process is asynchronous and the credential is not immediately available.
  *
  * @property {string} transaction_id - Can be used to poll or reference the transaction status for a later retrieval.
+ * @property {number} interval - minimum amount of time in seconds that the Wallet SHOULD wait
+ *    after receiving the response before sending a new request to the Deferred Credential Endpoint.
  */
 export interface CredentialDeferred {
   transaction_id: string;
+  interval: number;
 }
 
 /**
@@ -34,4 +37,23 @@ export interface CredentialImmediate {
  */
 export interface CredentialResponse {
   data: CredentialDeferred | CredentialImmediate;
+}
+
+/**
+ * Credential notification.
+ *
+ * @property {string} notification_id - notification identifier.
+ * @property {CredentialNotificationEvent} event - notification event.
+ * @property {string} event_description - notification event description.
+ */
+export interface CredentialNotification {
+  notification_id: string;
+  event: CredentialNotificationEvent;
+  event_description?: string;
+}
+
+export const enum CredentialNotificationEvent {
+  CredentialAccepted = "credential_accepted",
+  CredentialFailure = "credential_failure",
+  CredentialDeleted = "credential_deleted",
 }

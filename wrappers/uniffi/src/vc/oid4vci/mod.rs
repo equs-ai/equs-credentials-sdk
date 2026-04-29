@@ -23,6 +23,7 @@ pub type TokenResponse = agent_sdk::vc::oid4vci::TokenResponse;
 pub enum CredentialResultEnum {
     Deferred {
         transaction_id: String,
+        interval: u32,
     },
     Immediate {
         credentials: Vec<Credential>,
@@ -33,14 +34,14 @@ pub enum CredentialResultEnum {
 custom_type!(CredentialResult, CredentialResultEnum, {
     remote,
     lower: |credential_result| match credential_result {
-        CredentialResult::Deferred { transaction_id } =>
-            CredentialResultEnum::Deferred { transaction_id },
+        CredentialResult::Deferred { transaction_id, interval } =>
+            CredentialResultEnum::Deferred { transaction_id, interval },
         CredentialResult::Credential { credentials, notification_id } =>
             CredentialResultEnum::Immediate { credentials, notification_id },
     },
     try_lift: |credential_result| match credential_result {
-        CredentialResultEnum::Deferred { transaction_id } =>
-            Ok(CredentialResult::Deferred { transaction_id }),
+        CredentialResultEnum::Deferred { transaction_id, interval } =>
+            Ok(CredentialResult::Deferred { transaction_id, interval }),
         CredentialResultEnum::Immediate { credentials, notification_id } =>
             Ok(CredentialResult::Credential { credentials, notification_id }),
     },

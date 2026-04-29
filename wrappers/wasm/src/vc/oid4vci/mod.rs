@@ -30,10 +30,14 @@ impl TryFrom<CredentialResponseResolved> for CredentialResponse {
 
     fn try_from(value: CredentialResponseResolved) -> Result<Self, Self::Error> {
         let json_value = match value.data {
-            CredentialResult::Deferred { transaction_id } => {
+            CredentialResult::Deferred {
+                transaction_id,
+                interval,
+            } => {
                 json!({
                     "data": {
                         "transaction_id": transaction_id,
+                        "interval": interval
                     }
                 })
             }
