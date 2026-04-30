@@ -50,12 +50,16 @@ See [Components](docs/asdk-components.png).
       EdDSA) - [Verifiable Credentials Data Model v1.1](https://www.w3.org/TR/2022/REC-vc-data-model-20220303/)
     - W3C VC JSON-LD V2 (ECDSA, EdDSA, BBS+ 2023)
         - [Verifiable Credentials Data Model v2.0](https://www.w3.org/TR/vc-data-model-2.0/)
+    - mDL [ISO-18013 7](https://www.iso.org/standard/82772.html)
+      - Verification only
 - VC Exchange Protocols: Issuance
     - OID4VCI [version 1.0](https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0.html)
         - Authorization Code Flow using scope Parameter to Request Issuance of a Credential
         - Preauthorized Code Flow using scope Parameter to Request Issuance of a Credential
         - Batch issuance
             - **NOTE**: The generation and validation of the access token is delegated to the application side.
+        - Deferred Issuance
+        - Notification
     - WACI Issue Credential Protocol
       3.0 [specification](https://github.com/decentralized-identity/waci-didcomm/blob/main/issue_credential/README.md)
 - VC Exchange Protocols: Presentation
@@ -81,23 +85,20 @@ See [Components](docs/asdk-components.png).
     - did:key [specification](https://w3c-ccg.github.io/did-key-spec/)
     - did:web [specification](https://w3c-ccg.github.io/did-method-web/)
     - did:peer [specification](https://identity.foundation/peer-did-method-spec/index.html)
+    - did:ethr [specification](https://github.com/decentralized-identity/ethr-did-resolver/blob/master/doc/did-method-spec.md)
+    - did:webvh [specification](https://identity.foundation/didwebvh/v1.0/)
 - DIDComm V2 [specification](https://identity.foundation/didcomm-messaging/spec/)
     - Protocols Engine over DIDComm V2
 
 #### Planned
 
 - VC Formats:
-    - mDL
     - W3C JWT
     - AnonCreds
 - VC Exchange Protocols:
     - OID4VCI
         - Authorization Code Flow Using Authorization Details Parameter
-        - Deferred Issuance
     - Aries AIPv2
-- DID methods
-    - did:ethr
-    - did:webvh
 - VC Revocation
     - Bitstring Status List for W3C VC
 
