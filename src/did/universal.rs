@@ -26,7 +26,7 @@ use tracing::{Level, instrument};
 
 type Level_ = Level;
 
-const EXISTING_DID_METHODS: [&str; 7] = ["ethr", "ion", "jwk", "key", "pkh", "tz", "web"];
+const EXISTING_DID_METHODS: [&str; 6] = ["ion", "jwk", "key", "pkh", "tz", "web"];
 
 #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 #[cfg_attr(not(target_arch = "wasm32"), async_trait)]
@@ -73,9 +73,10 @@ impl UniversalResolver {
     /// * `http_client` - A Http client that implements [HttpClient] trait.
     pub fn new(http_client: Arc<impl HttpClient + 'static>) -> Self {
         let mut resolver = Self::default();
-        resolver
-            .dids
-            .insert("web".to_string(), Arc::new(DIDWeb::new(http_client)));
+        resolver.dids.insert(
+            "web".to_string(),
+            Arc::new(DIDWeb::new(http_client.clone())),
+        );
 
         resolver
     }
@@ -185,16 +186,20 @@ impl JWKResolver for UniversalResolver {
 
 #[cfg(test)]
 mod tests {
+    use crate::did::didethr::client::DIDEthr;
+    use crate::did::didethr::registry::{EthrDidEventTopics, EthrDidRegistry};
     use crate::did::didkey::DIDKey;
     use crate::did::universal::{DIDResolver, UniversalResolver};
     use crate::did::{DID, DIDResolver as SpruceResolver, DocumentMetadata, ResolutionOutput};
     use crate::inmem::kms::LocalKms;
     use crate::kms;
     use crate::kms::{CreateOptions, Kms};
+    use crate::reqwest::builder::ReqwestClientBuilder;
     use async_trait::async_trait;
     use rstest::rstest;
     use serde_json::json;
     use ssi::dids::resolution::{Error, Metadata, Options, Output};
+    use std::sync::Arc;
 
     #[tokio::test]
     async fn universal_resolver_supports_didkey() {
@@ -269,6 +274,34 @@ mod tests {
             .unwrap();
 
         assert!(vm.id.to_string().starts_with(&did));
+    }
+    #[tokio::test]
+    async fn universal_resolver_supports_didethr() {
+        let did = "did:ethr:sepolia:0xb543920fEBe4cf02CA031Ce6a77e2ea5Ad69bDd8";
+        let http_client = ReqwestClientBuilder::new().insecure().build().unwrap();
+        let mut did_resolver = UniversalResolver::new(Arc::new(http_client.clone()));
+        let topics = EthrDidEventTopics::new(
+            "0x38a5a6e68f30ed1ab45860a4afb34bcb2fc00f22ca462d249b8a8d40cda6f7a3".to_string(),
+            "0x5a5084339536bcab65f20799fcc58724588145ca054bd2be626174b27ba156f7".to_string(),
+            "0x18ab6b2ae3d64306c00ce663125f2bd680e441a098de1635bd7ad8b0d44965e4".to_string(),
+        );
+        let ethr_did_registry = EthrDidRegistry::new(
+            "https://ethereum-sepolia-rpc.publicnode.com".to_string(),
+            11155111,
+            "0x03d5003bf0e79C5F5223588F347ebA39AfbC3818".to_string(),
+            Arc::new(http_client),
+            "f96d0f9f".to_string(),
+            topics,
+        );
+
+        let mut ethr_did_resolver = DIDEthr::new(vec![]);
+        ethr_did_resolver.add_registry(ethr_did_registry).unwrap();
+        did_resolver.add_resolver(ethr_did_resolver).unwrap();
+        let result = did_resolver
+            .resolve(ssi::dids::DID::new(&did).unwrap())
+            .await
+            .unwrap();
+        println!("{:#?}", result);
     }
 
     #[tokio::test]
