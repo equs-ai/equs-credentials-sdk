@@ -11,6 +11,7 @@ use tracing::Level;
 
 type Level_ = Level;
 
+pub mod didethr;
 pub mod didkey;
 pub mod didpeer;
 pub mod didweb;
