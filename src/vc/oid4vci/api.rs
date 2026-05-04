@@ -49,8 +49,6 @@ pub type NotificationEvent = NotificationRequestEvent;
 /// A result of the Credential issuance handled by `Holder`
 ///
 /// Enum value `Credential` contains issued [Credential]s.
-///
-/// *NOTE*: `notifications` currently are not supported.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum CredentialResult {
     Deferred {

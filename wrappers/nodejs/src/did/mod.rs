@@ -1,7 +1,9 @@
 mod key;
 mod peer;
 mod web;
+mod webvh;
 
+use crate::http::ReqwestHttpClient;
 use crate::kms::JsKeyHandle;
 use crate::utils::{from_json_object, to_json_object};
 use crate::vc::JsonObject;
@@ -16,6 +18,7 @@ use napi::threadsafe_function::{ErrorStrategy, ThreadsafeFunction};
 use napi::{Error, Result};
 use napi_derive::napi;
 use std::str::FromStr;
+use std::sync::Arc;
 
 #[napi(js_name = "VerificationRelationshipType")]
 pub enum JsVerificationRelationshipType {
@@ -60,6 +63,14 @@ impl JsUniversalDIDResolver {
             inner: UniversalResolver::default(),
         }
     }
+
+    #[napi(factory, ts_return_type = "_UniversalDIDResolver")]
+    pub fn with_http_client(http_client: &ReqwestHttpClient) -> Self {
+        Self {
+            inner: UniversalResolver::new(Arc::new(http_client.inner())),
+        }
+    }
+
     #[napi(ts_return_type = "Promise<DIDVerificationMethod>")]
     pub async fn resolve_verification_method(&self, did: String) -> Result<JsonObject> {
         self.inner

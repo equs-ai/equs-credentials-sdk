@@ -1,11 +1,11 @@
 use crate::crypto;
 use crate::crypto::{Alg, IncorrectKeySnafu};
 use crate::kms::KeyHandle;
-use one_core_asdk::encryption::EncryptionError;
-use one_core_asdk::jwe::PrivateKeyAgreementHandle;
-use one_core_asdk::jwe::RemoteJwk;
-use one_core_asdk::signer::ecdsa::ECDSASigner;
-use one_core_asdk::signer::eddsa::EDDSASigner;
+use one_core_asdk::one_crypto::encryption::EncryptionError;
+use one_core_asdk::one_crypto::jwe::PrivateKeyAgreementHandle;
+use one_core_asdk::one_crypto::signer::ecdsa::ECDSASigner;
+use one_core_asdk::one_crypto::signer::eddsa::EDDSASigner;
+use one_core_asdk::standardized_types::jwk::PublicJwk;
 use p256::SecretKey;
 use secrecy::SecretSlice;
 
@@ -17,7 +17,7 @@ pub struct WrapperForEdDSAHandle {
 impl PrivateKeyAgreementHandle for WrapperForEdDSAHandle {
     async fn shared_secret(
         &self,
-        remote_jwk: &RemoteJwk,
+        remote_jwk: &PublicJwk,
     ) -> Result<SecretSlice<u8>, EncryptionError> {
         EDDSASigner::shared_secret_x25519(&self.key.to_vec().into(), remote_jwk)
     }
@@ -32,7 +32,7 @@ pub struct WrapperForES256Handle {
 impl PrivateKeyAgreementHandle for WrapperForES256Handle {
     async fn shared_secret(
         &self,
-        remote_jwk: &RemoteJwk,
+        remote_jwk: &PublicJwk,
     ) -> Result<SecretSlice<u8>, EncryptionError> {
         ECDSASigner::shared_secret_p256(&self.key.to_bytes().to_vec().into(), remote_jwk)
     }

@@ -1274,7 +1274,7 @@ mod tests {
     use oauth2::HttpResponse;
     use oauth2::http::Method;
     use oauth2::reqwest::StatusCode;
-    use one_core_asdk::jwe::decrypt_jwe_payload;
+    use one_core_asdk::one_crypto::jwe::decrypt_jwe_payload;
     use openid4vp::core::authorization_request::AuthorizationRequestObject;
     use openid4vp::core::authorization_request::parameters::ResponseMode;
     use openid4vp::core::authorization_request::verification::RequestVerifier;
