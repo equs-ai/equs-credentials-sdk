@@ -1,6 +1,7 @@
+#![type_length_limit = "20000"]
+#![recursion_limit = "256"]
 #![allow(dead_code)]
 #![allow(unused_variables)]
-// Below rule has bug: https://github.com/rust-lang/rust-clippy/issues/12281
 #![allow(clippy::blocks_in_conditions)]
 #![allow(clippy::new_without_default)]
 #![allow(clippy::result_large_err)]
@@ -8,7 +9,6 @@
 #![allow(clippy::upper_case_acronyms)]
 #![allow(clippy::assigning_clones)]
 // #![forbid(unsafe_code)]
-#![recursion_limit = "256"]
 
 //! # Agent SDK (ASDK)
 //!

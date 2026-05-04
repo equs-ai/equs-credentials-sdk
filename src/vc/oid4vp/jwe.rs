@@ -8,17 +8,17 @@ use async_trait::async_trait;
 use one_core_asdk::config::core_config::KeyAlgorithmType::{
     Ecdsa as EcdsaKeyAlgorithm, Eddsa as EddsaKeyAlgorithm,
 };
-use one_core_asdk::encryption::EncryptionError;
-use one_core_asdk::jwe::{
-    EncryptionAlgorithm, Header, RemoteJwk, build_jwe, decrypt_jwe_payload, extract_jwe_header,
-};
-use one_core_asdk::model::key::{JwkUse, PublicKeyJwk, PublicKeyJwkEllipticData};
+use one_core_asdk::one_crypto::encryption::EncryptionError;
+use one_core_asdk::one_crypto::jwe::{Header, build_jwe, decrypt_jwe_payload, extract_jwe_header};
 use one_core_asdk::provider::key_algorithm::KeyAlgorithm;
 use one_core_asdk::provider::key_algorithm::ecdsa::Ecdsa;
 use one_core_asdk::provider::key_algorithm::eddsa::Eddsa;
 use one_core_asdk::provider::key_algorithm::model::GeneratedKey;
+use one_core_asdk::provider::key_algorithm::provider::KeyAlgorithmProvider;
 use one_core_asdk::provider::key_algorithm::provider::KeyAlgorithmProviderImpl;
-use one_core_asdk::provider::key_algorithm::provider::{KeyAlgorithmProvider, ParsedKey};
+use one_core_asdk::provider::key_algorithm::provider::ParsedKey;
+use one_core_asdk::standardized_types::jwa::EncryptionAlgorithm;
+use one_core_asdk::standardized_types::jwk::{JwkUse, PublicJwk, PublicJwkEc};
 use openid4vp::core::metadata::parameters::verifier::EncryptedResponseEncValuesSupported;
 use secrecy::SecretSlice;
 use serde::{Deserialize, Serialize};
@@ -130,9 +130,9 @@ impl JweEncryptor {
         }
     }
 
-    fn public_key_jwk(&self, config: &JwkConfig) -> Result<PublicKeyJwk, Error> {
+    fn public_key_jwk(&self, config: &JwkConfig) -> Result<PublicJwk, Error> {
         match config.alg {
-            Algorithm::Eddsa => Ok(PublicKeyJwk::Okp(PublicKeyJwkEllipticData {
+            Algorithm::Eddsa => Ok(PublicJwk::Okp(PublicJwkEc {
                 alg: Some("EdDSA".to_string()),
                 r#use: Some(JwkUse::Encryption),
                 kid: Some(config.kid.clone()),
@@ -140,7 +140,7 @@ impl JweEncryptor {
                 x: self.get_default_claim("x", &config.jwk)?,
                 y: self.get_default_claim("y", &config.jwk).ok(),
             })),
-            Algorithm::Es256 => Ok(PublicKeyJwk::Ec(PublicKeyJwkEllipticData {
+            Algorithm::Es256 => Ok(PublicJwk::Ec(PublicJwkEc {
                 alg: Some("ES256".to_string()),
                 r#use: Some(JwkUse::Encryption),
                 kid: Some(config.kid.clone()),
@@ -148,7 +148,7 @@ impl JweEncryptor {
                 x: self.get_default_claim("x", &config.jwk)?,
                 y: self.get_default_claim("y", &config.jwk).ok(),
             })),
-            Algorithm::EcdhEs => Ok(PublicKeyJwk::Ec(PublicKeyJwkEllipticData {
+            Algorithm::EcdhEs => Ok(PublicJwk::Ec(PublicJwkEc {
                 alg: Some("ECDH-ES".to_string()),
                 r#use: Some(JwkUse::Encryption),
                 kid: Some(config.kid.clone()),
@@ -168,7 +168,7 @@ impl JweEncryptor {
     pub async fn get_shared_secret_and_public_key(
         &self,
         input_jwk: &JwkConfig,
-    ) -> Result<(SecretSlice<u8>, RemoteJwk), Error> {
+    ) -> Result<(SecretSlice<u8>, PublicJwk), Error> {
         let remote_jwk = self.public_key_jwk(input_jwk)?;
         let parsed_key: ParsedKey = self
             .get_key_algorithm_provider()
@@ -224,7 +224,7 @@ impl JweEncryptor {
             .build(),
         })?;
 
-        let remote_jwk = public_jwk_to_remote_jwk(&public_key_jwk)?;
+        let remote_jwk = public_key_jwk;
         let shared_secret = key_agreement
             .private()
             .ok_or(Internal {
@@ -242,7 +242,7 @@ impl JweEncryptor {
                 .build(),
             })?;
 
-        Ok((shared_secret, public_jwk_to_remote_jwk(&local_public_key)?))
+        Ok((shared_secret, local_public_key))
     }
 
     pub async fn encrypt(&self, body: Value) -> Result<String, Error> {
@@ -251,9 +251,8 @@ impl JweEncryptor {
             self.get_shared_secret_and_public_key(&jwk_config).await?;
         let header = Header {
             key_id: jwk_config.kid.clone(),
-            //TODO one-core puts nonce here. Why?
-            agreement_partyuinfo: "some_nonce".to_string(),
-            agreement_partyvinfo: "some_nonce".to_string(),
+            agreement_partyuinfo: None,
+            agreement_partyvinfo: None,
         };
 
         build_jwe(
@@ -352,29 +351,6 @@ impl JweEncryptor {
     }
 }
 
-pub fn public_jwk_to_remote_jwk(key: &PublicKeyJwk) -> Result<RemoteJwk, Error> {
-    let remote_key = match key {
-        PublicKeyJwk::Okp(data) => RemoteJwk {
-            kty: "OKP".to_string(),
-            crv: data.crv.clone(),
-            x: data.x.clone(),
-            y: data.y.clone(),
-        },
-        PublicKeyJwk::Ec(data) => RemoteJwk {
-            kty: "EC".to_string(),
-            crv: data.crv.clone(),
-            x: data.x.clone(),
-            y: data.y.clone(),
-        },
-        _ => JWESnafu {
-            details: "Unsupported key type".to_string(),
-        }
-        .fail()?,
-    };
-
-    Ok(remote_key)
-}
-
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub))]
 pub enum JweDecryptError {
@@ -452,7 +428,7 @@ pub async fn decrypt_jwe<KH: KeyHandle, KMS: Kms<KH>>(
 mod tests {
     use crate::vc::oid4vp::jwe::JweEncryptor;
     use crate::vc::oid4vp::tests::utils::wrap_p256_private_key;
-    use one_core_asdk::jwe::decrypt_jwe_payload;
+    use one_core_asdk::one_crypto::jwe::decrypt_jwe_payload;
     use serde_json::{Value, json};
 
     #[tokio::test]

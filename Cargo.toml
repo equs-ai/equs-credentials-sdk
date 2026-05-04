@@ -30,7 +30,7 @@ didcomm = { git = "ssh://git@git.slock.it/open-source/didcomm-rust.git", rev = "
 did_peer = { git = "ssh://git@git.slock.it/open-source/aries-vcx.git", rev = "fc818ef5" }
 did_resolver = { git = "ssh://git@git.slock.it/open-source/aries-vcx.git", rev = "fc818ef5" }
 did_parser_nom = { git = "ssh://git@git.slock.it/open-source/aries-vcx.git", rev = "fc818ef5" }
-one-core-asdk = { git = "ssh://git@git.slock.it/open-source/one-core.git", rev = "672751ea"}
+one-core-asdk = { git = "ssh://git@git.slock.it/open-source/one-core-new.git", rev = "092a2de1"}
 
 secrecy = "0.10.3"
 ed25519-compact = "2.1.1"
@@ -87,6 +87,7 @@ libc = "0.2.172"
 generic-array = "=0.14.7"
 hex = "0.4.3"
 log = "0.4.28"# Pinned to solve deprecation warnings from transitive deps trying to update to 0.14.9
+crc = "=3.3.0" # lzma-rust2 requires crc<=3.3 but falls back to 2.x unless 3.3.x is pinned
 
 [patch.crates-io]
 core2 = { path = "deps/core2"}
@@ -98,8 +99,9 @@ core2 = { path = "deps/core2"}
 didcomm = { git = "ssh://git@git.slock.it/open-source/didcomm-rust.git", rev = "db41780d", features = ["uniffi"] }
 reqwest-middleware = { version = "0.4.0", default-features = false }
 reqwest-tracing = { version = "0.5.5", default-features = false }
-one-core = { git = "ssh://git@git.slock.it/open-source/one-core.git", rev = "672751ea" }
-x509-parser = { version = "0.17.0", features = ["verify"] }
+one-core = { git = "ssh://git@git.slock.it/open-source/one-core-new.git", rev = "092a2de1" }
+shared-types = { git = "ssh://git@git.slock.it/open-source/one-core-new.git", rev = "092a2de1" }
+x509-parser = { version = "0.18", features = ["verify"] }
 
 [dev-dependencies]
 mockall = "0.13.0"

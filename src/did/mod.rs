@@ -16,6 +16,8 @@ pub mod didkey;
 pub mod didpeer;
 pub mod didweb;
 pub mod universal;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod webvh;
 
 /// Enumerates errors expected during `Proof Validation` operations.
 pub use ssi::claims::ProofValidationError;

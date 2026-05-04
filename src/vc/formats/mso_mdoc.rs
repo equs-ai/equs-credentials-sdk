@@ -6,19 +6,23 @@ use crate::vc::core::{HolderBinder, PresentationRestrictionValue};
 use crate::vc::formats::{API, HasCredential, JsonSnafu, UnimplementedSnafu, VerifyOptions};
 use crate::vc::formats::{PresentationSnafu, Result};
 use async_trait::async_trait;
-use one_core::config::core_config::VerificationProtocolType;
+use one_core::config::core_config::{KeyAlgorithmType, VerificationProtocolType};
 use one_core::model::did::KeyRole;
+use one_core::proto::certificate_validator::{CertificateValidator, CertificateValidatorImpl};
 use one_core::proto::key_verification::KeyVerification;
 use one_core::provider::credential_formatter::mdoc_formatter::MdocFormatter;
 use one_core::provider::credential_formatter::model::{CredentialClaimValue, DetailCredential};
 use one_core::provider::did_method::provider::DidMethodProviderImpl;
+use one_core::provider::key_algorithm::{
+    KeyAlgorithm, ecdsa::Ecdsa, eddsa::Eddsa, provider::KeyAlgorithmProviderImpl,
+};
 use one_core::provider::presentation_formatter::model::{
     ExtractPresentationCtx, ExtractedPresentation,
 };
 use one_core::provider::presentation_formatter::{
     PresentationFormatter, mso_mdoc::MsoMdocPresentationFormatter,
 };
-use one_core::service::key::dto::PublicKeyJwkDTO;
+use one_core_asdk::standardized_types::jwk::PublicJwk;
 use serde::{Deserialize, Serialize};
 use snafu::ResultExt;
 use ssi::dids::DIDURL;
@@ -96,13 +100,31 @@ impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata, Claims> for M
         opts: VerifyOptions,
         did_resolver: UniversalResolver,
     ) -> Result<Claims> {
-        let presentation_formatter = MsoMdocPresentationFormatter::default();
+        let certificate_validator: Arc<dyn CertificateValidator> =
+            Arc::new(CertificateValidatorImpl::default());
+
+        let key_algorithm_provider = Arc::new(KeyAlgorithmProviderImpl::new(
+            std::collections::HashMap::from_iter([
+                (
+                    KeyAlgorithmType::Eddsa,
+                    Arc::new(Eddsa) as Arc<dyn KeyAlgorithm>,
+                ),
+                (
+                    KeyAlgorithmType::Ecdsa,
+                    Arc::new(Ecdsa) as Arc<dyn KeyAlgorithm>,
+                ),
+            ]),
+            Default::default(),
+        ));
+
+        let presentation_formatter =
+            MsoMdocPresentationFormatter::new(certificate_validator.clone(), None);
 
         let verifier_key = if let Some(jwk) = presentation.enc_pub_key.as_ref() {
-            let key: PublicKeyJwkDTO =
+            let key: PublicJwk =
                 serde_json::from_value(serde_json::to_value(jwk).context(JsonSnafu)?)
                     .context(JsonSnafu)?;
-            Some(key.into())
+            Some(key)
         } else {
             None
         };
@@ -124,8 +146,8 @@ impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata, Claims> for M
                 presentation.value.as_str(),
                 Box::new(KeyVerification {
                     did_method_provider: Arc::new(DidMethodProviderImpl::default()),
-                    key_algorithm_provider: presentation_formatter.key_algorithm_provider.clone(),
-                    certificate_validator: presentation_formatter.certificate_validator.clone(),
+                    key_algorithm_provider: key_algorithm_provider.clone(),
+                    certificate_validator: certificate_validator.clone(),
                     key_role: KeyRole::Authentication,
                 }),
                 ctx,
@@ -147,18 +169,15 @@ impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata, Claims> for M
             .build()
         })?;
 
-        let verified_claims = MdocFormatter::extract_credentials(
-            presentation_formatter.certificate_validator.as_ref(),
-            credential,
-            false,
-        )
-        .await
-        .map_err(|e| {
-            PresentationSnafu {
-                details: format!("Failed to extract credential claims: {}", e),
-            }
-            .build()
-        })?;
+        let verified_claims =
+            MdocFormatter::extract_credentials(certificate_validator.as_ref(), credential, false)
+                .await
+                .map_err(|e| {
+                    PresentationSnafu {
+                        details: format!("Failed to extract credential claims: {}", e),
+                    }
+                    .build()
+                })?;
 
         if Some(OffsetDateTime::now_utc()) < verified_claims.valid_from {
             PresentationSnafu {
@@ -235,15 +254,17 @@ impl From<CredentialClaimValue> for Claim {
 pub mod tests {
     use crate::did::universal::UniversalResolver;
     use crate::nonce::Nonce;
+    use crate::vc::VCFormatsAPI;
     use crate::vc::claims::Claim;
     use crate::vc::core::HolderBinder;
-    use crate::vc::formats::API;
     use crate::vc::formats::VerifyOptions;
     use crate::vc::formats::mso_mdoc::{MsoMdocAPI, Presentation};
     use std::collections::HashSet;
 
-    // Token may expire as it is fetched from dc_api flow. In order to update it - run dc_api flow and get vp_token. Update nonce & verifier_id if necessary
-    pub const SAMPLE_MSO_MDOC_VP: &str = "o2d2ZXJzaW9uYzEuMGZzdGF0dXMAaWRvY3VtZW50c4GjZ2RvY1R5cGV1b3JnLmlzby4xODAxMy41LjEubURMbGlzc3VlclNpZ25lZKJqaXNzdWVyQXV0aIRDoQEmoRghWQKPMIICizCCAhGgAwIBAgIQdSXMRkzvVguNEhs9KA1vDjAKBggqhkjOPQQDAzAuMR8wHQYDVQQDDBZPV0YgTXVsdGlwYXogVEVTVCBJQUNBMQswCQYDVQQGDAJVUzAeFw0yNjAyMDUxMjQ3MjBaFw0yNzA1MDYxMjQ3MjBaMCwxHTAbBgNVBAMMFE9XRiBNdWx0aXBheiBURVNUIERTMQswCQYDVQQGDAJVUzBZMBMGByqGSM49AgEGCCqGSM49AwEHA0IABHWNNQt_kg_zsin68YqP0z4EGAQRbhU2NdiYKKW8pjH_GyF0OOifH2AgP6SULLZtXDulq-uv7v9Z2FwgfapfFB2jggERMIIBDTAfBgNVHSMEGDAWgBSrZRvgVsKQU_Hdf2zkh75o3mDJ9TAOBgNVHQ8BAf8EBAMCB4AwFQYDVR0lAQH_BAswCQYHKIGMXQUBAjBMBgNVHRIERTBDhkFodHRwczovL2dpdGh1Yi5jb20vb3BlbndhbGxldC1mb3VuZGF0aW9uLWxhYnMvaWRlbnRpdHktY3JlZGVudGlhbDBWBgNVHR8ETzBNMEugSaBHhkVodHRwczovL2dpdGh1Yi5jb20vb3BlbndhbGxldC1mb3VuZGF0aW9uLWxhYnMvaWRlbnRpdHktY3JlZGVudGlhbC9jcmwwHQYDVR0OBBYEFKuHFJaps43ZnActfaein_jVqxPhMAoGCCqGSM49BAMDA2gAMGUCMEuVZSqmsI5W8k6XIB6CETdgBSiwjq0__mo7Wphgxt-UVWRwBRYxEeNPM_dqJuR4ywIxAPyWQkrO9goskd0XaUvwSObnyJeWwppnSLBOHyCoC6gAdh5ViICv9vUVsqeDsACJk1kIZ9gYWQhipmd2ZXJzaW9uYzEuMG9kaWdlc3RBbGdvcml0aG1nU0hBLTI1Nmdkb2NUeXBldW9yZy5pc28uMTgwMTMuNS4xLm1ETGx2YWx1ZURpZ2VzdHOicW9yZy5pc28uMTgwMTMuNS4xuCgUWCCndP3NamT49U3cGmsxJQ-NVCBxydDURB51OZuVm34S7RgpWCAaUdOcOQsTGwBJrgQoGiam0g_Zp5ZoX27MNboZ57hKWBghWCCoG-2Z_mDrsCX52Ms_3yRESbqd8J120EftSkBqVIb2RBgnWCBYFMe9vC_ugkCujms5ubBm6VmfKxMimjhP6Cp4FrXHORguWCBHaEkCJWN4tREF-hLdVaiUQSr5Cj6zzcbCAUHZz0DvghgrWCAMsRYKgzPIJkvjNxXfRW_ZwDwsdLXzrOS7Tg6CPjQPyBggWCAFKb8ejmFIbfWuUMXP3f6wTuFAEUfghglZpVa4M9go4xdYIAcK7C83RgMazrX68NoAJ4rAe5U9mwPMvsJRq3JuDDqSEVgg3NIZ3MQ4nd5Nzxt93Qdv2I4km4TI_2hwIOPa99AcsD4YHFgg41UP6wetB6YemaE8c_kW8cp77EPitTZ1UwmfU-AKTFwYKlgggDhVPCAisgGk_1be5hqi6cLNDiNNytntznDgg-Ha-mcYHlggX84FzhQn0EvpcXkYhZWa85hvpLMyRTOcUlmxvtm19hgYI1ggwWHshldHm9akCUk2W_l6KhkdSiZ6Y61Yg0Ff9D_29G4YGFgg7GuwPq7id2lep4tcYsbmP-lglcKgk71eGB0gxzpQ2-0YLVggfdrPatcmHlqmed1IJ2W1ho-PDR0LbneaiWHUPUwsXnIYJFggLuLvnkjWCalnZ_IM715LS-xB5ylVr7hboLXxDDkDSaIVWCByagiFQ6r1ccm2M5p2NWPpu8TOnSmpQOiD3RNDh0Zi7ghYIAFlwnxCdeiFtkVEaOMIjU58vZ2pxe22IjUdBQ06nnyBGB9YIGSfJHkDa8kRmzvY7zq_-ac19XZW-dlQlrMp9jLOcltDC1ggDqKSHjEETVuPETz4N1un4rQBsXk2bMsb3nb75p1AFooYKFggFHD3OSnhitwvSYlDTwO6tXJxqcJgnOMxnPDS2TfMq-cGWCAm720FBrWmk39xwibSAN34nIVL71cl1hmSI6XxrxsF9BgxWCC3Jr7IZWpb_uBERg3erPo6hRItXCwIcOA35EmCs4ZFNg5YIOEqC8Q9OYlGB7ZaZYv-SL1xhA9zWDmJlVReK8El5h2GBFggxaJK83Cmpt7Joe3bvrO-9L7agkz7vvfaNI7Tf_wC6AMFWCCMiaHgYmAFZPqsuRGCbsZlV5kWfm4VjuBcMaWFP0Y0QwNYIFnRUBCbrSpWsUR4GrSGcg6a2fIOApqsdeiS1qrLwtDzEFggca6jpWtxL7Nk_aqC5FD4idz8B6u132bD-BkOXRZhZ70NWCB_V1FQdd8YD5whzSWC5h2ChfoHgimKYndL2LW6W0qk8xgsWCAh7O1bn82PX163iXMhTxNkLheWZxAd_mVr-YYiNxdHJBgvWCDKBeW-Z9ERoi2C_-IE_s3gp2r8eedjQ0yHbKDzMp3s1RgbWCASS7d07pleLb_AjUVrU-eKZWt1cmr4U9LuAVDHmxMSSBgyWCCyPuyoPknR3DZYGAUMPH6WxwMRrvaS5Ogy_uSIu8j-8ABYIJCAWgWdk_RASMyfHbIcrA2s577LFhtkUIKSLU6o-RjLD1ggx5N9P6jyoOYCnCk5D2vjFpPsjH1vXHS6OzKHernkclEYHVggJ-iMnXwxRMruVrt26RwL5djUBBZ_JIc6rq3JjOiNWRQYIlggmFLJU9IunecFbPyRG-kSTzzVVDjQHIlI0kVYdC4mWVsJWCC1-ZXLjnqUzvF9zDBpMFIxxauuBKuk3Dx2TmomRxTXWAFYIN6Af8z8LenEMvzGZd-OQP0nzSKLlj8P6aTAo8Gs9jzyClggAP8vf2JLef1Z1Fw94tnCaN-w2zcQ24WNOm7eE7mdocR3b3JnLmlzby4xODAxMy41LjEuYWFtdmGrDFggQnd6Fi-OjVNxu91ndqcoleC4I4nDLSUm_gdvk22wq1YYGlggicTUcYItAORawAGOjpgEZ7nWBAG5BPyOZ72DoIFJN3wCWCD6LgLb5yzvcXaifFQEFhM_vSB9DtldmOcs9_FcjJEUuhgwWCDbPGIWTKgf6P0oRWYsvpnSovQpilcTrlNsNw2Xy8veKhNYIPoj_18Rlp_RhQ4qvnWxRaYO4lX1hIzkkDDp6kb8nRjJGCZYIKZXxKwBhulE3m2VL-3SMi23i8IN50QgAbc2nh9xvdxdElggqDBqKmofeyRQISlti8bfid23aWO_bgeLWpRmePAzg-MHWCDfBf4T0tgJ_zvhKsW2QNwtvoDcAJSkNvhCVJUm0EmTrBgZWCDV-UQUTl1GEabX1kHs6MjivEG8h71gXpfNhdo3lQ38hRZYIIoREVou9EU8XXOP174OMq8OX9PhosjdXbNyeirBUo_RGCVYIHH-54_J9d2mzUOszD4oxoJZito94OIeH29tOiZE147-bWRldmljZUtleUluZm-haWRldmljZUtleaQBAiABIVggh2piuvI1kF8yP58fW5SyR54sCJuASH5Pwvv_Ui8NzeoiWCDYDEOC5Jr6PvNdxi8747E4XbNemDQF40nfhWsXjNzfQWx2YWxpZGl0eUluZm-jZnNpZ25lZMB0MjAyNi0wMi0wNlQxMTo0NzoyMFppdmFsaWRGcm9twHQyMDI2LTAyLTA2VDExOjQ3OjIwWmp2YWxpZFVudGlswHQyMDI3LTAyLTA2VDEyOjQ3OjIwWlhAPtm4oFRHAjBPdoqXy_CG3m6x_BS2EdAtBoY5-a3iNMpJilt7uMHd2qMDGQ-fQ8cntUngxAQZdmTt9tA3KOR2vWpuYW1lU3BhY2VzoXFvcmcuaXNvLjE4MDEzLjUuMYLYGFhUpGhkaWdlc3RJRBgpZnJhbmRvbVDS0sD2d_Seod35eiNNpdZbcWVsZW1lbnRJZGVudGlmaWVyamdpdmVuX25hbWVsZWxlbWVudFZhbHVlZUVyaWth2BhYWaRoZGlnZXN0SUQUZnJhbmRvbVBn1X031j5CAXqfnYhnKMgucWVsZW1lbnRJZGVudGlmaWVya2ZhbWlseV9uYW1lbGVsZW1lbnRWYWx1ZWpNdXN0ZXJtYW5ubGRldmljZVNpZ25lZKJqZGV2aWNlQXV0aKFvZGV2aWNlU2lnbmF0dXJlhEOhASag9lhAyl6oHsc01u-eSsCJkTv8aDmSeTdf8lonxc4RUvdbUwLbFZgaOTydtLjTf5JnFDX35IqQmZkJqzZsKVeWat7NMmpuYW1lU3BhY2Vz2BhBoA";
+    // Generated by one-core/src/provider/credential_formatter/mdoc_formatter/test.rs::generate_asdk_sample_mso_mdoc_vp
+    // Certificates have no CRL distribution points and are valid for 10 years.
+    // To regenerate: run `cargo test -p one-core --features mock generate_asdk_sample_mso_mdoc_vp -- --ignored --nocapture` in one-core-new
+    pub const SAMPLE_MSO_MDOC_VP: &str = "o2d2ZXJzaW9uYzEuMGlkb2N1bWVudHOBo2dkb2NUeXBldW9yZy5pc28uMTgwMTMuNS4xLm1ETGxpc3N1ZXJTaWduZWSiam5hbWVTcGFjZXOhcW9yZy5pc28uMTgwMTMuNS4xgtgYWGqkaGRpZ2VzdElEAGZyYW5kb21YIBfOJf-OpYyXbNcjdEF89NwOUunqJtRcUvly7KAcO222cWVsZW1lbnRJZGVudGlmaWVya2ZhbWlseV9uYW1lbGVsZW1lbnRWYWx1ZWpNdXN0ZXJtYW5u2BhYZKRoZGlnZXN0SUQBZnJhbmRvbVggdOQTLNgV0Fh1YTqN_0J6MQR1YkX8dKaVxoyALkm396FxZWxlbWVudElkZW50aWZpZXJqZ2l2ZW5fbmFtZWxlbGVtZW50VmFsdWVlRXJpa2FqaXNzdWVyQXV0aIRDoQEmoRghWQF5MIIBdTCCARugAwIBAgIUN1PepVczuWv7XDOcU4b_rxcf4GQwCgYIKoZIzj0EAwIwITESMBAGA1UEAwwJVGVzdCBJQUNBMQswCQYDVQQGDAJVUzAeFw0yNjA0MjMxMDMyNTNaFw0zNjA0MjExMDMyNTNaMB8xEDAOBgNVBAMMB1Rlc3QgRFMxCzAJBgNVBAYMAlVTMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEGKfQaBLofzWxQTeV3CrA1_x6NyxFTJriIO_WdQREf2-iXCdFth_MXNq-7v241ZoCgxT2QOkGbw2vVybjAU5c-KMzMDEwHwYDVR0jBBgwFoAUXiFrVYFqnFwKeOdU4cqUC3I-oZQwDgYDVR0PAQH_BAQDAgeAMAoGCCqGSM49BAMCA0gAMEUCIQCBEQMeGpYogwy4Ek_9RtTpjCeTn_eKGXuvpZPKf8HnpgIgINGEFcgvSef7RixzMN5FENTaD2XUjPeSSjtzGugLZDZZAaTYGFkBn6ZndmVyc2lvbmMxLjBvZGlnZXN0QWxnb3JpdGhtZ1NIQS0yNTZsdmFsdWVEaWdlc3RzoXFvcmcuaXNvLjE4MDEzLjUuMaIAWCA19M1pyGzyjkPgmOfeEgSid-gJz_jPCXWgsYgmUFIt8wFYIH6BF4UjAllSbioUOlKuduzEFKl2qVsP8zGL_-W1N0grbWRldmljZUtleUluZm-haWRldmljZUtleaQBAiABIVggxfFsXOz18R9L6UC3WfL-fJDAGjMeeJQVjq2VfHQpCbMiWCDmxXqovtWffMxD7vCUIso6nnSmnCHhwI5pLTZjq_jpe2dkb2NUeXBldW9yZy5pc28uMTgwMTMuNS4xLm1ETGx2YWxpZGl0eUluZm-kZnNpZ25lZMB0MjAyNi0wNC0yNFQxMDozMjo1M1ppdmFsaWRGcm9twHQyMDI2LTA0LTI0VDEwOjMyOjUzWmp2YWxpZFVudGlswHQyMDM2LTA0LTIxVDEwOjMyOjUzWm5leHBlY3RlZFVwZGF0ZcB0MjAyNy0wNC0yNFQxMDozMjo1M1pYQGlLVx7esZatXu10V0UCmuurz9aOoBrC3lzQRzQuhBSKBYNCtboVKCQxMm2g1yh6UUBhk643nLl29KfS-y663_1sZGV2aWNlU2lnbmVkompuYW1lU3BhY2Vz2BhBoGpkZXZpY2VBdXRooW9kZXZpY2VTaWduYXR1cmWEQ6EBJqD2WEAmnROSuZQDvxrnuQEF-MPmlcY8bfR_yGSgTbToApNiZE__YmerxB6o3A317T02iIZt315hBQsHjXv3q7pcAQubZnN0YXR1cwA";
     #[tokio::test]
     async fn verify_vp_works_correctly() {
         let verified_claims = MsoMdocAPI::verify_vp(
@@ -259,7 +280,7 @@ pub mod tests {
             }),
             VerifyOptions {
                 trusted_certs_skids: Some(HashSet::from([
-                    "AB:65:1B:E0:56:C2:90:53:F1:DD:7F:6C:E4:87:BE:68:DE:60:C9:F5".to_lowercase(),
+                    "5e:21:6b:55:81:6a:9c:5c:0a:78:e7:54:e1:ca:94:0b:72:3e:a1:94".to_string(),
                 ])),
                 selective_claims: None,
             },
