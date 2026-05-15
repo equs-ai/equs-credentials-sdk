@@ -11,7 +11,6 @@ members = [
     "wrappers/wasm",
     "wrappers/uniffi",
     "common-macros",
-    "deps/core2",
 ]
 
 [package]
@@ -23,8 +22,8 @@ rust-version = "1.95.0"
 [dependencies]
 common-macros = { path = "./common-macros" }
 # Internally maintained forked dependencies
-oid4vci = { git = "ssh://git@git.slock.it/open-source/oid4vci-rs.git", rev = "e72b2203" }
-openid4vp = { git = "ssh://git@git.slock.it/open-source/oid4vp-rs.git", rev = "ee35b128" }
+oid4vci = { git = "ssh://git@git.slock.it/open-source/oid4vci-rs.git", rev = "f5c38f92" }
+openid4vp = { git = "ssh://git@git.slock.it/open-source/oid4vp-rs.git", rev = "e2a6ad82" }
 sd-jwt-rs = { git = "ssh://git@git.slock.it/open-source/sd-jwt-rust.git", rev = "15602993" }
 didcomm = { git = "ssh://git@git.slock.it/open-source/didcomm-rust.git", rev = "db41780d" }
 did_peer = { git = "ssh://git@git.slock.it/open-source/aries-vcx.git", rev = "fc818ef5" }
@@ -36,7 +35,7 @@ secrecy = "0.10.3"
 ed25519-compact = "2.1.1"
 oauth2 = "5.0.0-rc.1"
 serde_json = "1.0.120"
-ssi = { version = "=0.10.1", features = ["bbs"] }
+ssi = { version = "=0.16.0", features = ["bbs"] }
 time = { version = "0.3.47", features = ["serde", "wasm-bindgen"] }
 serde = { version = "1.0.220", features = ["derive"] }
 serde_urlencoded = "0.7.1"
@@ -88,9 +87,7 @@ generic-array = "=0.14.7"
 hex = "0.4.3"
 log = "0.4.28"# Pinned to solve deprecation warnings from transitive deps trying to update to 0.14.9
 crc = "=3.3.0" # lzma-rust2 requires crc<=3.3 but falls back to 2.x unless 3.3.x is pinned
-
-[patch.crates-io]
-core2 = { path = "deps/core2"}
+ml-dsa = "=0.1.0-rc.9" # one-crypto (one-core-new@092a2de1) uses the pre-rc.11 KeyGen API; rc.11 removed it
 
 #[target.'cfg(target_arch = "wasm32")'.dependencies]
 ## remember to update one-core version for not-wasm targets
