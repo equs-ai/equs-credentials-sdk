@@ -293,11 +293,14 @@ impl JsonLdAPI {
                 ssi::claims::vc::v2::syntax::SpecializedJsonCredential {
                     context,
                     types,
+                    name: None,
+                    description: None,
                     issuer,
                     credential_subjects: ssi::claims::vc::syntax::NonEmptyVec::new(claims),
                     id: metadata.credential_id.to_owned(),
-                    valid_from: Some(now.into()),
-                    valid_until: exp_date.map(|exp| exp.date_time.and_utc().into()),
+                    valid_from: Some(DateTimeStamp::from(now).into()),
+                    valid_until: exp_date
+                        .map(|exp| DateTimeStamp::from(exp.date_time.and_utc()).into()),
                     credential_status: vec![],
                     terms_of_use: vec![],
                     evidence: vec![],
@@ -319,8 +322,8 @@ impl JsonLdAPI {
                     issuer,
                     credential_subjects: ssi::claims::vc::syntax::NonEmptyVec::new(claims),
                     id: metadata.credential_id.to_owned(),
-                    issuance_date: Some(now.into()),
-                    expiration_date: exp_date,
+                    issuance_date: Some(DateTime::from(now).into()),
+                    expiration_date: exp_date.map(Into::into),
                     credential_status: vec![],
                     terms_of_use: vec![],
                     evidence: vec![],
@@ -651,10 +654,12 @@ impl IsExpired<VC> for JsonLdAPI {
         Ok(match &credential.claims {
             Credential::V1(cred) => cred
                 .expiration_date
-                .is_some_and(|exp_time| DateTime::now() > exp_time),
+                .as_ref()
+                .is_some_and(|exp_time| exp_time < &DateTime::now()),
             Credential::V2(cred) => cred
                 .valid_until
-                .is_some_and(|exp_time| DateTimeStamp::now() > exp_time),
+                .as_ref()
+                .is_some_and(|exp_time| exp_time < &DateTimeStamp::now()),
         })
     }
 }
