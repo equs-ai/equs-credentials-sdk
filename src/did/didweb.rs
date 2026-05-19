@@ -616,6 +616,47 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn did_doc_generates_all_five_verification_relationships() {
+        let did = "did:web:test.example.com";
+        let kms = crate::inmem::kms::LocalKms::new();
+        let (_, kh) = kms
+            .create_and_handle(KeyType::Ed25519, kms::CreateOptions::default())
+            .await
+            .unwrap();
+        let key: &dyn Key = &kh;
+
+        let keys = vec![VerificationMethodKey {
+            key,
+            verification_relationships: HashSet::from_iter([
+                VerificationRelationshipType::Authentication,
+                VerificationRelationshipType::Assertion,
+                VerificationRelationshipType::KeyAgreement,
+                VerificationRelationshipType::CapabilityInvocation,
+                VerificationRelationshipType::CapabilityDelegation,
+            ]),
+        }];
+
+        let did_doc = DIDWeb::generate_did_document(did, &keys).unwrap();
+        let value = serde_json::to_value(&did_doc).unwrap();
+
+        // Each relationship should reference the single verification method id.
+        let vm_id = "did:web:test.example.com#key-0";
+        for rel in [
+            "authentication",
+            "assertionMethod",
+            "keyAgreement",
+            "capabilityInvocation",
+            "capabilityDelegation",
+        ] {
+            let arr = value[rel]
+                .as_array()
+                .unwrap_or_else(|| panic!("expected array for relationship {rel}, got {value:?}"));
+            assert_eq!(arr.len(), 1, "expected one reference under {rel}");
+            assert_eq!(arr[0].as_str().unwrap(), vm_id);
+        }
+    }
+
+    #[tokio::test]
     async fn did_doc_resolving_works() {
         let mut http_client = MockHttpClient::new();
 

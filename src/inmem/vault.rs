@@ -365,4 +365,124 @@ mod tests {
             ],
         }
     }
+
+    #[tokio::test]
+    async fn new_returns_empty_vault() {
+        let v = InMemVault::new();
+
+        assert!(v.get_credentials(None).await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn store_credential_returns_5_char_storage_id() {
+        let v = InMemVault::new();
+
+        let id = v
+            .store_credential(
+                get_credential_sd_jwt(),
+                &get_empty_credential_metadata_sd_jwt(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(id.len(), 5);
+    }
+
+    #[tokio::test]
+    async fn store_credential_generates_unique_storage_id_per_call() {
+        let v = InMemVault::new();
+        let meta = get_empty_credential_metadata_sd_jwt();
+
+        let id1 = v
+            .store_credential(get_credential_sd_jwt(), &meta)
+            .await
+            .unwrap();
+        let id2 = v
+            .store_credential(get_credential_sd_jwt(), &meta)
+            .await
+            .unwrap();
+
+        assert_ne!(id1, id2);
+    }
+
+    #[tokio::test]
+    async fn store_credential_indexes_each_metadata_field() {
+        let v = InMemVault::new();
+
+        let id = v
+            .store_credential(
+                get_credential_sd_jwt(),
+                &get_credential_metadata_sd_jwt_with_fields(),
+            )
+            .await
+            .unwrap();
+
+        // Each indexed field should independently resolve back to this entry.
+        for field in ["$.vct", "$.name", "$.email.work"] {
+            let found = v
+                .find_credentials(vec![field.to_string()], None)
+                .await
+                .unwrap();
+            assert_eq!(found.len(), 1, "lookup by {field} should return one entry");
+            assert_eq!(found[0].id, id);
+        }
+    }
+
+    #[tokio::test]
+    async fn delete_credential_removes_existing_entry() {
+        let v = InMemVault::new();
+        let id = v
+            .store_credential(
+                get_credential_sd_jwt(),
+                &get_empty_credential_metadata_sd_jwt(),
+            )
+            .await
+            .unwrap();
+
+        v.delete_credential(&id).await.unwrap();
+
+        assert!(v.get_credential(&id).await.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn delete_credential_is_noop_for_missing_id() {
+        let v = InMemVault::new();
+
+        v.delete_credential("nonexistent").await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn get_credential_returns_some_for_stored_id() {
+        let v = InMemVault::new();
+        let id = v
+            .store_credential(
+                get_credential_sd_jwt(),
+                &get_empty_credential_metadata_sd_jwt(),
+            )
+            .await
+            .unwrap();
+
+        let entry = v
+            .get_credential(&id)
+            .await
+            .unwrap()
+            .expect("entry should exist");
+
+        assert_eq!(entry.id, id);
+    }
+
+    #[tokio::test]
+    async fn get_credential_returns_none_for_unknown_id() {
+        let v = InMemVault::new();
+
+        assert!(v.get_credential("unknown").await.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    #[should_panic(expected = "Empty fields provided")]
+    async fn find_credentials_with_empty_fields_returns_error() {
+        let v = InMemVault::new();
+
+        v.find_credentials(vec![], None).await.unwrap();
+    }
 }

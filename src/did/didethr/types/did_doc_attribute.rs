@@ -277,3 +277,259 @@ impl TryFrom<DidAttributeChanged> for DidDocAttribute {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::did::didethr::types::Address;
+    use crate::did::didethr::types::Block;
+    use rstest::rstest;
+
+    fn attr(name: &str, value: Vec<u8>) -> DidAttributeChanged {
+        DidAttributeChanged {
+            identity: Address::from("0x1111111111111111111111111111111111111111"),
+            name: name.to_string(),
+            value,
+            valid_to: 0,
+            previous_change: Block::from(0),
+        }
+    }
+
+    #[rstest]
+    #[case::veri_key("veriKey", PublicKeyPurpose::VeriKey)]
+    #[case::sig_auth("sigAuth", PublicKeyPurpose::SigAuth)]
+    #[case::enc("enc", PublicKeyPurpose::Enc)]
+    fn public_key_purpose_try_from_str_accepts_known_variants(
+        #[case] input: &str,
+        #[case] expected: PublicKeyPurpose,
+    ) {
+        assert_eq!(PublicKeyPurpose::try_from(input).unwrap(), expected);
+    }
+
+    #[test]
+    #[should_panic(expected = "Unexpected public key purpose")]
+    fn public_key_purpose_try_from_str_rejects_unknown_variant() {
+        PublicKeyPurpose::try_from("unknown").unwrap();
+    }
+
+    #[rstest]
+    #[case::veri_key("veriKey", DelegateType::VeriKey)]
+    #[case::sig_auth("sigAuth", DelegateType::SigAuth)]
+    fn delegate_type_try_from_str_accepts_known_variants(
+        #[case] input: &str,
+        #[case] expected: DelegateType,
+    ) {
+        assert_eq!(DelegateType::try_from(input).unwrap(), expected);
+    }
+
+    #[test]
+    #[should_panic(expected = "Unexpected public key delegate type")]
+    fn delegate_type_try_from_str_rejects_unknown_variant() {
+        DelegateType::try_from("enc").unwrap();
+    }
+
+    #[test]
+    fn delegate_type_try_from_bytes32_decodes_padded_utf8_label() {
+        // bytes32 form: "veriKey" + zero-padding to 32 bytes.
+        let mut bytes = [0u8; 32];
+        bytes[..b"veriKey".len()].copy_from_slice(b"veriKey");
+
+        assert_eq!(
+            DelegateType::try_from(&bytes[..]).unwrap(),
+            DelegateType::VeriKey
+        );
+    }
+
+    #[test]
+    fn delegate_type_try_from_bytes32_decodes_sig_auth() {
+        let mut bytes = [0u8; 32];
+        bytes[..b"sigAuth".len()].copy_from_slice(b"sigAuth");
+
+        assert_eq!(
+            DelegateType::try_from(&bytes[..]).unwrap(),
+            DelegateType::SigAuth
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "Unexpected public key delegate type")]
+    fn delegate_type_try_from_bytes32_rejects_unknown_label() {
+        let mut bytes = [0u8; 32];
+        bytes[..b"bogus".len()].copy_from_slice(b"bogus");
+
+        DelegateType::try_from(&bytes[..]).unwrap();
+    }
+
+    #[rstest]
+    #[case::secp256k1(PublicKeyType::EcdsaSecp256k1VerificationKey2020, "Secp256k1")]
+    #[case::ed25519(PublicKeyType::Ed25519VerificationKey2020, "Ed25519")]
+    #[case::x25519(PublicKeyType::X25519KeyAgreementKey2020, "X25519")]
+    fn public_key_type_to_name_returns_short_label(
+        #[case] kt: PublicKeyType,
+        #[case] expected: &str,
+    ) {
+        assert_eq!(kt.to_name(), expected);
+    }
+
+    #[rstest]
+    #[case::secp256k1("Secp256k1", PublicKeyType::EcdsaSecp256k1VerificationKey2020)]
+    #[case::ed25519("Ed25519", PublicKeyType::Ed25519VerificationKey2020)]
+    #[case::x25519("X25519", PublicKeyType::X25519KeyAgreementKey2020)]
+    fn public_key_type_from_name_parses_known_labels(
+        #[case] label: &str,
+        #[case] expected: PublicKeyType,
+    ) {
+        assert_eq!(PublicKeyType::from_name(label).unwrap(), expected);
+    }
+
+    #[test]
+    #[should_panic(expected = "Unexpected public key type")]
+    fn public_key_type_from_name_rejects_unknown_label() {
+        PublicKeyType::from_name("BLS12381").unwrap();
+    }
+
+    #[rstest]
+    #[case::secp256k1(
+        PublicKeyType::EcdsaSecp256k1VerificationKey2020,
+        VerificationKeyType::EcdsaSecp256k1VerificationKey2020
+    )]
+    #[case::ed25519(
+        PublicKeyType::Ed25519VerificationKey2020,
+        VerificationKeyType::Ed25519VerificationKey2020
+    )]
+    #[case::x25519(
+        PublicKeyType::X25519KeyAgreementKey2020,
+        VerificationKeyType::X25519KeyAgreementKey2020
+    )]
+    fn from_public_key_type_for_verification_key_type_maps_each_variant(
+        #[case] input: PublicKeyType,
+        #[case] expected: VerificationKeyType,
+    ) {
+        assert_eq!(VerificationKeyType::from(input), expected);
+    }
+
+    #[test]
+    fn did_doc_attribute_from_pub_hex_event_yields_hex_encoded_public_key() {
+        let event = attr(
+            "did/pub/Secp256k1/veriKey/hex",
+            vec![0xDE, 0xAD, 0xBE, 0xEF],
+        );
+
+        let attribute = DidDocAttribute::try_from(event).unwrap();
+
+        match attribute {
+            DidDocAttribute::PublicKey(pk) => {
+                assert_eq!(pk.purpose, PublicKeyPurpose::VeriKey);
+                assert_eq!(pk.type_, PublicKeyType::EcdsaSecp256k1VerificationKey2020);
+                assert_eq!(pk.public_key_hex.as_deref(), Some("deadbeef"));
+                assert!(pk.public_key_base58.is_none());
+                assert!(pk.public_key_base64.is_none());
+            }
+            other => panic!("expected PublicKey, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn did_doc_attribute_from_pub_base58_event_yields_base58_encoded_public_key() {
+        let event = attr("did/pub/Ed25519/sigAuth/base58", vec![0x01, 0x02, 0x03]);
+
+        let attribute = DidDocAttribute::try_from(event).unwrap();
+
+        match attribute {
+            DidDocAttribute::PublicKey(pk) => {
+                assert_eq!(pk.purpose, PublicKeyPurpose::SigAuth);
+                assert_eq!(pk.type_, PublicKeyType::Ed25519VerificationKey2020);
+                assert_eq!(pk.public_key_base58.as_deref(), Some("Ldp"));
+                assert!(pk.public_key_hex.is_none());
+            }
+            other => panic!("expected PublicKey, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn did_doc_attribute_from_pub_base64_event_yields_url_safe_no_pad_base64() {
+        let event = attr("did/pub/X25519/enc/base64", vec![0xAA, 0xBB, 0xCC]);
+
+        let attribute = DidDocAttribute::try_from(event).unwrap();
+
+        match attribute {
+            DidDocAttribute::PublicKey(pk) => {
+                assert_eq!(pk.purpose, PublicKeyPurpose::Enc);
+                assert_eq!(pk.type_, PublicKeyType::X25519KeyAgreementKey2020);
+                // URL-safe-no-pad base64 of [0xAA, 0xBB, 0xCC] is "qrvM".
+                assert_eq!(pk.public_key_base64.as_deref(), Some("qrvM"));
+            }
+            other => panic!("expected PublicKey, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn did_doc_attribute_from_svc_event_with_plain_endpoint_yields_service() {
+        let event = attr("did/svc/LinkedDomains", b"https://example.com".to_vec());
+
+        let attribute = DidDocAttribute::try_from(event).unwrap();
+
+        match attribute {
+            DidDocAttribute::Service(svc) => {
+                assert_eq!(svc.type_, "LinkedDomains");
+                assert_eq!(svc.service_endpoint, "https://example.com");
+            }
+            other => panic!("expected Service, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn did_doc_attribute_from_svc_event_with_json_endpoint_reserialises_value() {
+        let event = attr("did/svc/Custom", br#"{"uri":"https://x.test"}"#.to_vec());
+
+        let attribute = DidDocAttribute::try_from(event).unwrap();
+
+        match attribute {
+            DidDocAttribute::Service(svc) => {
+                assert_eq!(svc.type_, "Custom");
+                // JSON gets parsed and re-serialised; both forms are canonical
+                // and identical here.
+                assert_eq!(svc.service_endpoint, r#"{"uri":"https://x.test"}"#);
+            }
+            other => panic!("expected Service, got {other:?}"),
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "`encoding` not found")]
+    fn did_doc_attribute_try_from_rejects_pub_event_missing_encoding_segment() {
+        let event = attr("did/pub/Secp256k1/veriKey", vec![1, 2, 3]);
+
+        DidDocAttribute::try_from(event).unwrap();
+    }
+
+    #[test]
+    #[should_panic(expected = "`encoding` not found")]
+    fn did_doc_attribute_try_from_rejects_pub_event_with_unknown_encoding() {
+        let event = attr("did/pub/Secp256k1/veriKey/multibase", vec![1, 2, 3]);
+
+        DidDocAttribute::try_from(event).unwrap();
+    }
+
+    #[test]
+    #[should_panic(expected = "Unknown kind")]
+    fn did_doc_attribute_try_from_rejects_unknown_kind_segment() {
+        let event = attr("did/other/Secp256k1/veriKey/hex", vec![1, 2, 3]);
+
+        DidDocAttribute::try_from(event).unwrap();
+    }
+
+    #[test]
+    #[should_panic(expected = "Unable to get DidDocAttribute from event")]
+    fn did_doc_attribute_try_from_didevents_rejects_non_attribute_variants() {
+        use crate::did::didethr::types::did_events::{DidEvents, DidOwnerChanged};
+
+        let event = DidEvents::OwnerChanged(DidOwnerChanged {
+            identity: Address::from("0x0000000000000000000000000000000000000001"),
+            owner: Address::from("0x0000000000000000000000000000000000000002"),
+            previous_change: Block::from(0),
+        });
+
+        DidDocAttribute::try_from(event).unwrap();
+    }
+}

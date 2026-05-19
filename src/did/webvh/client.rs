@@ -471,4 +471,18 @@ mod tests {
             .add_resolver(DIDWebVh::new(StubHttpClient::ok(b"")))
             .unwrap();
     }
+
+    #[tokio::test]
+    #[should_panic(expected = "missing domain segment")]
+    async fn didwebvh_resolution_fails_on_did_with_unparseable_method_specific_id() {
+        // The one-core resolver rejects a did:webvh whose method-specific id is
+        // not in `scid:domain` form before any HTTP I/O is performed.
+        let resolver = DIDWebVh::new(StubHttpClient::ok(b""));
+        let did = ssi::dids::DID::new("did:webvh:short").unwrap();
+
+        resolver
+            .resolve_representation(did, Options::default())
+            .await
+            .unwrap();
+    }
 }

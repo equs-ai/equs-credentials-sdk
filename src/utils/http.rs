@@ -189,6 +189,70 @@ pub mod test {
         );
     }
 
+    #[rstest::rstest]
+    #[case::form_urlencoded(
+        crate::utils::http::MimeType::AppFormUrlEnc,
+        crate::utils::http::MIME_TYPE_FORM_URLENCODED
+    )]
+    #[case::json(
+        crate::utils::http::MimeType::AppJson,
+        crate::utils::http::MIME_TYPE_JSON
+    )]
+    #[case::text_plain(
+        crate::utils::http::MimeType::TextPlain,
+        crate::utils::http::MIME_TYPE_TEXT_PLAIN
+    )]
+    fn mime_type_as_str_returns_canonical_mime(
+        #[case] mime: crate::utils::http::MimeType,
+        #[case] expected: &str,
+    ) {
+        assert_eq!(mime.as_str(), expected);
+    }
+
+    #[test]
+    fn generate_post_req_sets_method_uri_and_headers() {
+        use crate::utils::http::{
+            MIME_TYPE_FORM_URLENCODED, MIME_TYPE_JSON, MimeType, generate_post_req,
+        };
+        use oauth2::http::header::{ACCEPT, CONTENT_TYPE};
+
+        let url = Url::parse("https://example.com/token").unwrap();
+        let req = generate_post_req(
+            &url,
+            MimeType::AppFormUrlEnc,
+            MimeType::AppJson,
+            b"grant_type=authorization_code".to_vec(),
+        )
+        .unwrap();
+
+        assert_eq!(req.method(), Method::POST);
+        assert_eq!(req.uri().to_string(), "https://example.com/token");
+        assert_eq!(
+            req.headers().get(CONTENT_TYPE).unwrap(),
+            MIME_TYPE_FORM_URLENCODED
+        );
+        assert_eq!(req.headers().get(ACCEPT).unwrap(), MIME_TYPE_JSON);
+        assert_eq!(req.body(), b"grant_type=authorization_code");
+    }
+
+    #[test]
+    fn generate_post_req_propagates_distinct_content_type_and_accept() {
+        use crate::utils::http::{
+            MIME_TYPE_FORM_URLENCODED, MIME_TYPE_JSON, MimeType, generate_post_req,
+        };
+        use oauth2::http::header::{ACCEPT, CONTENT_TYPE};
+
+        let url = Url::parse("https://issuer.example.org/credential").unwrap();
+        let req =
+            generate_post_req(&url, MimeType::AppJson, MimeType::AppFormUrlEnc, vec![]).unwrap();
+
+        assert_eq!(req.headers().get(CONTENT_TYPE).unwrap(), MIME_TYPE_JSON);
+        assert_eq!(
+            req.headers().get(ACCEPT).unwrap(),
+            MIME_TYPE_FORM_URLENCODED
+        );
+    }
+
     pub fn mock_http_fn_with_plain_text_resp(
         mock: &mut MockHttpClient,
         method: Method,

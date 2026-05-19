@@ -82,3 +82,89 @@ impl ProtocolSnafu<ErrorType, Option<String>> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn protocol_error_new_stores_all_fields() {
+        let e = ProtocolError::new(
+            ErrorType::CredentialOfferEndpoint(CredentialOfferEndpointError::InvalidRequest),
+            Some("bad request".to_string()),
+        );
+        assert!(matches!(
+            e.error_type(),
+            ErrorType::CredentialOfferEndpoint(CredentialOfferEndpointError::InvalidRequest)
+        ));
+        assert_eq!(e.error_description(), Some(&"bad request".to_string()));
+    }
+
+    #[test]
+    fn protocol_error_new_without_description() {
+        let e = ProtocolError::new(
+            ErrorType::CredentialOfferEndpoint(
+                CredentialOfferEndpointError::UnknownCredentialIdentifier,
+            ),
+            None,
+        );
+        assert_eq!(e.error_description(), None);
+    }
+
+    #[test]
+    fn protocol_error_display_contains_type_and_description() {
+        let e = ProtocolError::new(
+            ErrorType::CredentialOfferEndpoint(CredentialOfferEndpointError::InvalidRequest),
+            Some("missing field".to_string()),
+        );
+        let s = format!("{e}");
+        assert!(s.contains("Protocol error"));
+        assert!(s.contains("missing field"));
+    }
+
+    #[test]
+    fn credential_offer_endpoint_snafu_convenience_constructor() {
+        let result: Result<(), ProtocolError> = ProtocolSnafu::credential_offer_endpoint(
+            CredentialOfferEndpointError::UnknownCredentialIdentifier,
+            "no such credential".to_string(),
+        )
+        .fail();
+        let e = result.unwrap_err();
+        assert!(matches!(
+            e.error_type(),
+            ErrorType::CredentialOfferEndpoint(
+                CredentialOfferEndpointError::UnknownCredentialIdentifier
+            )
+        ));
+        assert_eq!(
+            e.error_description(),
+            Some(&"no such credential".to_string())
+        );
+    }
+
+    #[test]
+    fn credential_endpoint_snafu_convenience_constructor() {
+        let result: Result<(), ProtocolError> = ProtocolSnafu::credential_endpoint(
+            CredentialEndpointError::InvalidProof,
+            "bad proof".to_string(),
+        )
+        .fail();
+        let e = result.unwrap_err();
+        assert!(matches!(
+            e.error_type(),
+            ErrorType::CredentialEndpoint(CredentialEndpointError::InvalidProof)
+        ));
+    }
+
+    #[test]
+    fn credential_offer_endpoint_error_serde_roundtrip() {
+        for case in [
+            CredentialOfferEndpointError::InvalidRequest,
+            CredentialOfferEndpointError::UnknownCredentialIdentifier,
+        ] {
+            let json = serde_json::to_value(&case).unwrap();
+            let back: CredentialOfferEndpointError = serde_json::from_value(json).unwrap();
+            assert_eq!(back, case);
+        }
+    }
+}

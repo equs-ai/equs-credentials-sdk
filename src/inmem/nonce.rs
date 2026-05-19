@@ -53,3 +53,56 @@ impl NonceHandler for LocalNonceHandler {
         Ok(is_valid)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn default_constructs_handler_with_empty_storage() {
+        let h = LocalNonceHandler::default();
+
+        // A handler with empty storage cannot validate any nonce.
+        let n = Nonce::from_secret("anything".to_string());
+        assert!(!h.validate(&n).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn generate_returns_distinct_nonces_on_each_call() {
+        let h = LocalNonceHandler::default();
+
+        let a = h.generate().await.unwrap();
+        let b = h.generate().await.unwrap();
+
+        assert_ne!(a.secret(), b.secret());
+    }
+
+    #[tokio::test]
+    async fn generate_persists_nonce_so_subsequent_validate_returns_true() {
+        let h = LocalNonceHandler::default();
+
+        let n = h.generate().await.unwrap();
+
+        assert!(h.validate(&n).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn validate_returns_false_for_nonce_never_generated_by_this_handler() {
+        let h = LocalNonceHandler::default();
+
+        let foreign = Nonce::from_secret("never-generated".to_string());
+
+        assert!(!h.validate(&foreign).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn validate_remains_true_on_repeated_calls_for_same_nonce() {
+        // The current implementation is a presence check — it does not
+        // consume the nonce, so validate is idempotent.
+        let h = LocalNonceHandler::default();
+        let n = h.generate().await.unwrap();
+
+        assert!(h.validate(&n).await.unwrap());
+        assert!(h.validate(&n).await.unwrap());
+    }
+}

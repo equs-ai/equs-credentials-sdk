@@ -586,4 +586,53 @@ mod tests {
         e3bZQQSQuFQzLQDQ6RLSM6AW3JLaZ6EZ1HZd5d1GVurqkFyBjn5RFZpvJat\
         xPjekSTxVBGuywNMWZo3giqBZU7rH9XiTDRqvQj7PEog1qWHD4nt5gnY"
     }
+
+    #[tokio::test]
+    #[should_panic(expected = "at least one key must be provided")]
+    async fn did_peer_4_generating_rejects_empty_keys_array() {
+        DIDPeer::generate_did_peer4(&[], &[]).unwrap();
+    }
+
+    #[tokio::test]
+    async fn did_peer_4_generating_embeds_multiple_services() {
+        let kms = crate::inmem::kms::LocalKms::new();
+        let (_, key) = kms
+            .create_and_handle(KeyType::Ed25519, kms::CreateOptions::default())
+            .await
+            .unwrap();
+        let keys = vec![VerificationMethodKey {
+            key: &key,
+            verification_relationships: vec![VerificationRelationshipType::Authentication]
+                .into_iter()
+                .collect(),
+        }];
+
+        let service_a: Service = serde_json::from_value(serde_json::json!({
+            "id": "did:example:123#svc-a",
+            "type": "LinkedDomains",
+            "serviceEndpoint": "https://a.example",
+        }))
+        .unwrap();
+        let service_b: Service = serde_json::from_value(serde_json::json!({
+            "id": "did:example:123#svc-b",
+            "type": "LinkedDomains",
+            "serviceEndpoint": "https://b.example",
+        }))
+        .unwrap();
+
+        let did = DIDPeer::generate_did_peer4(&keys, &[service_a, service_b]).unwrap();
+
+        let did_peer = did_parser_nom::Did::parse(did).unwrap();
+        let DidResolutionOutput { did_document, .. } = PeerDidResolver::new()
+            .resolve(
+                &did_peer,
+                &PeerDidResolutionOptions {
+                    encoding: Some(PublicKeyEncoding::Base58),
+                },
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(did_document.service().len(), 2);
+    }
 }

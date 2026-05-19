@@ -158,3 +158,180 @@ impl ContentTypeValidator {
             .and_then(|c| Mime::from_str(c).ok())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn accept_header(value: &'static str) -> HeaderMap {
+        let mut h = HeaderMap::new();
+        h.insert(ACCEPT, HeaderValue::from_static(value));
+        h
+    }
+
+    fn content_type_header(value: &'static str) -> HeaderMap {
+        let mut h = HeaderMap::new();
+        h.insert(CONTENT_TYPE, HeaderValue::from_static(value));
+        h
+    }
+
+    #[test]
+    fn resolve_request_content_type_returns_accept_header_when_supported() {
+        let v = ContentTypeValidator;
+        let headers = accept_header(MIME_TYPE_JSON);
+
+        let resolved = v.resolve_request_content_type(&headers).unwrap();
+
+        assert_eq!(resolved, HeaderValue::from_static(MIME_TYPE_JSON));
+    }
+
+    #[test]
+    #[should_panic(expected = "HTTP request content-type to accept is not declared")]
+    fn resolve_request_content_type_errors_when_accept_header_is_missing() {
+        let v = ContentTypeValidator;
+
+        v.resolve_request_content_type(&HeaderMap::new()).unwrap();
+    }
+
+    #[test]
+    #[should_panic(expected = "is not allowed")]
+    fn resolve_request_content_type_errors_for_unsupported_mime() {
+        let v = ContentTypeValidator;
+        let headers = accept_header("application/xml");
+
+        v.resolve_request_content_type(&headers).unwrap();
+    }
+
+    #[tokio::test]
+    async fn validate_response_content_type_skips_validation_for_empty_body() {
+        let v = ContentTypeValidator;
+        // No headers provided — empty body short-circuits before lookup.
+        v.validate_response_content_type(
+            &HeaderValue::from_static(MIME_TYPE_JSON),
+            &HeaderMap::new(),
+            &[],
+        )
+        .await
+        .unwrap();
+    }
+
+    #[tokio::test]
+    #[should_panic(expected = "Content-type is missed")]
+    async fn validate_response_content_type_errors_when_content_type_missing_for_non_empty_body() {
+        let v = ContentTypeValidator;
+
+        v.validate_response_content_type(
+            &HeaderValue::from_static(MIME_TYPE_JSON),
+            &HeaderMap::new(),
+            b"non-empty",
+        )
+        .await
+        .unwrap();
+    }
+
+    #[tokio::test]
+    #[should_panic(expected = "is not allowed")]
+    async fn validate_response_content_type_errors_for_unsupported_mime() {
+        let v = ContentTypeValidator;
+        let headers = content_type_header("application/xml");
+
+        v.validate_response_content_type(
+            &HeaderValue::from_static(MIME_TYPE_JSON),
+            &headers,
+            b"<note/>",
+        )
+        .await
+        .unwrap();
+    }
+
+    #[tokio::test]
+    async fn validate_response_content_type_accepts_valid_json_body_with_json_header() {
+        let v = ContentTypeValidator;
+        let headers = content_type_header(MIME_TYPE_JSON);
+
+        v.validate_response_content_type(
+            &HeaderValue::from_static(MIME_TYPE_JSON),
+            &headers,
+            br#"{"hello":"world"}"#,
+        )
+        .await
+        .unwrap();
+    }
+
+    #[tokio::test]
+    #[should_panic(expected = "Response body is not a json")]
+    async fn validate_response_content_type_rejects_non_json_body_with_json_header() {
+        let v = ContentTypeValidator;
+        let headers = content_type_header(MIME_TYPE_JSON);
+
+        v.validate_response_content_type(
+            &HeaderValue::from_static(MIME_TYPE_JSON),
+            &headers,
+            b"<html><body>nope</body></html>",
+        )
+        .await
+        .unwrap();
+    }
+
+    #[tokio::test]
+    async fn validate_response_content_type_accepts_valid_form_urlencoded_body() {
+        let v = ContentTypeValidator;
+        let headers = content_type_header(MIME_TYPE_FORM_URLENCODED);
+
+        v.validate_response_content_type(
+            &HeaderValue::from_static(MIME_TYPE_FORM_URLENCODED),
+            &headers,
+            b"a=1&b=2",
+        )
+        .await
+        .unwrap();
+    }
+
+    #[tokio::test]
+    #[should_panic(expected = "Content-type is mismatched")]
+    async fn validate_response_content_type_rejects_mime_essence_mismatch() {
+        let v = ContentTypeValidator;
+        let headers = content_type_header(MIME_TYPE_TEXT_PLAIN);
+
+        v.validate_response_content_type(
+            &HeaderValue::from_static(MIME_TYPE_JSON),
+            &headers,
+            b"hello",
+        )
+        .await
+        .unwrap();
+    }
+
+    #[tokio::test]
+    async fn validate_response_content_type_accepts_matching_essence_with_extra_charset_param() {
+        let v = ContentTypeValidator;
+        let headers = content_type_header("text/plain; charset=utf-8");
+
+        // Accept is bare `text/plain`; response has an extra charset param.
+        // Since Accept declares no params, the param-equality check is vacuous
+        // and only the essence has to match.
+        v.validate_response_content_type(
+            &HeaderValue::from_static(MIME_TYPE_TEXT_PLAIN),
+            &headers,
+            b"Hello",
+        )
+        .await
+        .unwrap();
+    }
+
+    #[tokio::test]
+    #[should_panic(expected = "Content-type is mismatched")]
+    async fn validate_response_content_type_rejects_when_accept_demands_param_response_omits_it() {
+        let v = ContentTypeValidator;
+        let headers = content_type_header(MIME_TYPE_JSON);
+
+        // Accept declares charset=utf-8 but response has no charset param.
+        v.validate_response_content_type(
+            &HeaderValue::from_static("application/json; charset=utf-8"),
+            &headers,
+            br#"{}"#,
+        )
+        .await
+        .unwrap();
+    }
+}

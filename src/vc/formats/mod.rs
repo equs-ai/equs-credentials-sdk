@@ -194,6 +194,65 @@ pub enum Error {
 
 pub type Result<T> = core::result::Result<T, Error>;
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn format_not_supported_display_includes_format() {
+        let e = FormatNotSupportedSnafu {
+            format: "custom_fmt".to_string(),
+        }
+        .build();
+        assert!(format!("{e}").contains("Unsupported format: custom_fmt"));
+    }
+
+    #[test]
+    fn key_type_not_supported_display_includes_type() {
+        let e = KeyTypeNotSupportedSnafu {
+            type_: "MyKeyType".to_string(),
+        }
+        .build();
+        assert!(format!("{e}").contains("Unsupported key type: MyKeyType"));
+    }
+
+    #[test]
+    fn credential_creation_display_includes_details() {
+        let e = CredentialCreationSnafu {
+            details: "issuer key missing".to_string(),
+        }
+        .build();
+        assert!(format!("{e}").contains("Credential creation error: issuer key missing"));
+    }
+
+    #[test]
+    fn verifying_display_includes_details() {
+        let e = VerifyingSnafu {
+            details: "signature invalid".to_string(),
+        }
+        .build();
+        assert!(format!("{e}").contains("Verification error: signature invalid"));
+    }
+
+    #[test]
+    fn parsing_display_includes_details() {
+        let e = ParsingSnafu {
+            details: "unexpected token".to_string(),
+        }
+        .build();
+        assert!(format!("{e}").contains("Parsing error: unexpected token"));
+    }
+
+    #[test]
+    fn unimplemented_display_includes_details() {
+        let e = UnimplementedSnafu {
+            details: "mso_mdoc on wasm".to_string(),
+        }
+        .build();
+        assert!(format!("{e}").contains("Unimplemented: mso_mdoc on wasm"));
+    }
+}
+
 #[derive(Debug, Default)]
 pub struct VerifyOptions {
     // TODO seems to be jwt_vc_json-specific and should be removed from generic code.

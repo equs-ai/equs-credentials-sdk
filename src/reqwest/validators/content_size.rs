@@ -5,8 +5,8 @@ use tracing::{Level, instrument};
 /// `ContentLimiter` struct represents limitations of request/response body size.
 #[derive(Clone, Debug)]
 pub struct ContentSizeLimiter {
-    req_size_limit: Option<usize>,
-    resp_size_limit: Option<usize>,
+    pub(crate) req_size_limit: Option<usize>,
+    pub(crate) resp_size_limit: Option<usize>,
 }
 
 impl ContentSizeLimiter {
@@ -137,5 +137,81 @@ impl ContentSizeLimiter {
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rstest::rstest;
+
+    #[test]
+    fn unlimited_initializes_both_limits_to_none() {
+        let l = ContentSizeLimiter::unlimited();
+
+        assert_eq!(l.req_size_limit, None);
+        assert_eq!(l.resp_size_limit, None);
+    }
+
+    #[test]
+    fn with_response_size_limit_sets_resp_only() {
+        let l = ContentSizeLimiter::unlimited().with_response_size_limit(1024);
+
+        assert_eq!(l.resp_size_limit, Some(1024));
+        assert_eq!(l.req_size_limit, None);
+    }
+
+    #[test]
+    fn with_request_size_limit_sets_req_only() {
+        let l = ContentSizeLimiter::unlimited().with_request_size_limit(2048);
+
+        assert_eq!(l.req_size_limit, Some(2048));
+        assert_eq!(l.resp_size_limit, None);
+    }
+
+    #[test]
+    fn chained_builder_calls_set_both_limits() {
+        let l = ContentSizeLimiter::unlimited()
+            .with_request_size_limit(100)
+            .with_response_size_limit(200);
+
+        assert_eq!(l.req_size_limit, Some(100));
+        assert_eq!(l.resp_size_limit, Some(200));
+    }
+
+    #[test]
+    fn with_response_size_limit_preserves_previously_set_request_limit() {
+        let l = ContentSizeLimiter::unlimited()
+            .with_request_size_limit(50)
+            .with_response_size_limit(500);
+
+        assert_eq!(l.req_size_limit, Some(50));
+        assert_eq!(l.resp_size_limit, Some(500));
+    }
+
+    #[rstest]
+    #[case::unlimited_under(ContentSizeLimiter::unlimited(), 5_000, false)]
+    #[case::unlimited_huge(ContentSizeLimiter::unlimited(), usize::MAX, false)]
+    #[case::under_limit(
+        ContentSizeLimiter::unlimited().with_request_size_limit(1024),
+        512,
+        false,
+    )]
+    #[case::at_boundary(
+        ContentSizeLimiter::unlimited().with_request_size_limit(1024),
+        1024,
+        false,
+    )]
+    #[case::over_limit(
+        ContentSizeLimiter::unlimited().with_request_size_limit(1024),
+        2048,
+        true,
+    )]
+    fn is_req_body_out_of_limit_evaluates_threshold(
+        #[case] limiter: ContentSizeLimiter,
+        #[case] body_size: usize,
+        #[case] expected: bool,
+    ) {
+        assert_eq!(limiter.is_req_body_out_of_limit(body_size), expected);
     }
 }

@@ -216,9 +216,14 @@ pub fn json_path_as_string(paths: &Vec<PathValue>) -> String {
 
 #[cfg(test)]
 mod test {
-    use serde_json::json;
+    use openid4vp::core::dcql::PathValue;
+    use rstest::rstest;
+    use serde_json::{Value, json};
 
-    use crate::utils::json::{claims_to_json_path, find_json_element};
+    use crate::utils::json::{
+        claims_to_json_path, find_json_element, json_path_as_string, path_to_json_pointer,
+        paths_to_json,
+    };
 
     #[test]
     fn test_find_json_element_root() {
@@ -366,5 +371,54 @@ mod test {
         assert!(claims.contains(&("$.email.work".to_string(), "null".to_string())));
         assert!(claims.contains(&("$.email.verified".to_string(), "true".to_string())));
         assert!(claims.contains(&("$.age".to_string(), "28".to_string())));
+    }
+
+    #[test]
+    fn paths_to_json_builds_flat_object() {
+        let result = paths_to_json(vec![
+            ("$.name", Value::String("John".to_string())),
+            ("$.age", json!(30)),
+        ])
+        .unwrap();
+
+        assert_eq!(result["name"], Value::String("John".to_string()));
+        assert_eq!(result["age"], json!(30));
+    }
+
+    #[test]
+    fn paths_to_json_builds_nested_object() {
+        let result = paths_to_json(vec![
+            ("$.address.city", Value::String("NYC".to_string())),
+            ("$.address.zip", Value::String("10001".to_string())),
+        ])
+        .unwrap();
+
+        assert_eq!(result["address"]["city"], Value::String("NYC".to_string()));
+        assert_eq!(result["address"]["zip"], Value::String("10001".to_string()));
+    }
+
+    #[rstest]
+    #[case::simple_dotted("$.a.b", "/a/b")]
+    #[case::with_array_index("$.items[0].name", "/items/0/name")]
+    // `[` becomes `/`, `]` and `*` are stripped, trailing `/` is trimmed.
+    #[case::wildcard_star_stripped("$.items[*]", "/items")]
+    fn path_to_json_pointer_converts_paths(#[case] input: &str, #[case] expected: &str) {
+        let p = path_to_json_pointer(input).unwrap();
+
+        assert_eq!(p.as_str(), expected);
+    }
+
+    #[rstest]
+    #[case::string_segment(vec![PathValue::String("a".to_string())], "$.a")]
+    #[case::usize_segment(vec![PathValue::Usize(3)], "$[3]")]
+    #[case::null_as_wildcard(
+        vec![PathValue::String("items".to_string()), PathValue::Null],
+        "$.items[*]",
+    )]
+    fn json_path_as_string_renders_path_values(
+        #[case] paths: Vec<PathValue>,
+        #[case] expected: &str,
+    ) {
+        assert_eq!(json_path_as_string(&paths), expected);
     }
 }

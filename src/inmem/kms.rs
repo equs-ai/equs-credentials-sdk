@@ -603,6 +603,7 @@ mod tests {
     use crate::vc::oid4vp::jwe;
     use bip32::Mnemonic;
     use bip32::secp256k1::elliptic_curve::rand_core::OsRng;
+    use rstest::rstest;
 
     #[tokio::test]
     async fn e2e() {
@@ -687,5 +688,198 @@ mod tests {
     async fn jwe_encrypt_decrypt() {
         let kms = LocalKms::new();
         jwe::test_utils::test_kms_encrypt_decrypt(kms).await;
+    }
+
+    #[tokio::test]
+    #[should_panic(expected = "Key not found")]
+    async fn get_rejects_unknown_kid() {
+        let kms = LocalKms::new();
+
+        kms.get(&"missing:Ed25519:".to_string()).await.unwrap();
+    }
+
+    #[tokio::test]
+    #[should_panic(expected = "Key not found")]
+    async fn get_rejects_kid_with_malformed_format() {
+        let kms = LocalKms::new();
+
+        kms.get(&"not-a-kid".to_string()).await.unwrap();
+    }
+
+    #[tokio::test]
+    #[should_panic(expected = "Key not found")]
+    async fn get_by_public_key_rejects_unknown_key() {
+        let kms = LocalKms::new();
+
+        kms.get_by_public_key(&[1u8, 2, 3]).await.unwrap();
+    }
+
+    #[rstest]
+    #[case::ed25519(KeyType::Ed25519)]
+    #[case::p256(KeyType::P256)]
+    #[case::k256(KeyType::K256)]
+    #[case::bls12381(KeyType::Bls12381)]
+    #[tokio::test]
+    async fn create_returns_kid_with_type_segment_and_no_derivation(#[case] kt: KeyType) {
+        let kms = LocalKms::new();
+
+        let kid = kms
+            .create(kt.clone(), CreateOptions::default())
+            .await
+            .unwrap();
+
+        let parts: Vec<&str> = kid.split(':').collect();
+        assert_eq!(
+            parts.len(),
+            3,
+            "kid should be id:keytype:derivation, got {kid}"
+        );
+        assert_eq!(parts[1], kt.to_string());
+        assert_eq!(parts[2], "", "no derivation expected for direct create");
+    }
+
+    #[rstest]
+    #[case::ed25519(KeyType::Ed25519, crypto::Alg::EdDSA)]
+    #[case::p256(KeyType::P256, crypto::Alg::ES256)]
+    #[case::k256(KeyType::K256, crypto::Alg::ES256K)]
+    #[case::bls12381(KeyType::Bls12381, crypto::Alg::BBS)]
+    #[tokio::test]
+    async fn key_handle_alg_dispatches_per_key_type(
+        #[case] kt: KeyType,
+        #[case] expected: crypto::Alg,
+    ) {
+        let kms = LocalKms::new();
+        let kid = kms.create(kt, CreateOptions::default()).await.unwrap();
+        let kh = kms.get(&kid).await.unwrap();
+
+        assert_eq!(kh.alg(), expected);
+    }
+
+    #[rstest]
+    #[case::p256(KeyType::P256)]
+    #[case::k256(KeyType::K256)]
+    #[tokio::test]
+    async fn get_by_public_key_resolves_via_compressed_encoding_for_ec_curves(#[case] kt: KeyType) {
+        use crate::crypto::Key;
+        use crate::inmem::crypto::k256::K256;
+        use crate::inmem::crypto::p256::P256;
+
+        let kms = LocalKms::new();
+        let kid = kms
+            .create(kt.clone(), CreateOptions::default())
+            .await
+            .unwrap();
+        let kh = kms.get(&kid).await.unwrap();
+        let uncompressed = kh.pub_key().unwrap();
+
+        // The KMS indexes both compressed and uncompressed encodings for EC
+        // curves — lookup via the compressed encoding should still succeed.
+        let compressed = match kt {
+            KeyType::P256 => P256::re_encode_public_key(&uncompressed, true).unwrap(),
+            KeyType::K256 => K256::re_encode_public_key(&uncompressed, true).unwrap(),
+            _ => unreachable!(),
+        };
+
+        let resolved = kms.get_by_public_key(&compressed).await.unwrap();
+        assert_eq!(resolved.pub_key().unwrap(), uncompressed);
+    }
+
+    #[rstest]
+    #[case::ed25519(KeyType::Ed25519, 32)]
+    #[case::p256(KeyType::P256, 32)]
+    #[tokio::test]
+    async fn key_handle_private_key_returns_secret_bytes_for_supported_types(
+        #[case] kt: KeyType,
+        #[case] expected_len: usize,
+    ) {
+        use crate::crypto::Key;
+
+        let kms = LocalKms::new();
+        let kid = kms.create(kt, CreateOptions::default()).await.unwrap();
+        let kh = kms.get(&kid).await.unwrap();
+
+        assert_eq!(kh.private_key().unwrap().len(), expected_len);
+    }
+
+    #[tokio::test]
+    #[should_panic(expected = "Unsupported key type")]
+    async fn key_handle_private_key_errors_for_k256() {
+        use crate::crypto::Key;
+
+        let kms = LocalKms::new();
+        let kid = kms
+            .create(KeyType::K256, CreateOptions::default())
+            .await
+            .unwrap();
+        let kh = kms.get(&kid).await.unwrap();
+
+        kh.private_key().unwrap();
+    }
+
+    #[tokio::test]
+    #[should_panic(expected = "Unsupported algorithm: EdDSA")]
+    async fn key_handle_sign_multi_errors_for_non_bls_key_types() {
+        let kms = LocalKms::new();
+        let kid = kms
+            .create(KeyType::Ed25519, CreateOptions::default())
+            .await
+            .unwrap();
+        let kh = kms.get(&kid).await.unwrap();
+
+        kh.sign_multi(&[b"msg".to_vec()], None).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn key_handle_sign_multi_dispatches_to_bls12381() {
+        let kms = LocalKms::new();
+        let kid = kms
+            .create(KeyType::Bls12381, CreateOptions::default())
+            .await
+            .unwrap();
+        let kh = kms.get(&kid).await.unwrap();
+
+        let payloads = vec![b"a".to_vec(), b"b".to_vec()];
+
+        // Bls12381 is the only KeyHandle variant whose sign_multi succeeds —
+        // a non-empty signature confirms the dispatch reached the BBS+ impl
+        // (other variants hit the default trait body and return Err).
+        let sig = kh.sign_multi(&payloads, None).await.unwrap();
+
+        assert!(!sig.is_empty());
+    }
+
+    #[tokio::test]
+    #[should_panic(expected = "Unsupported algorithm: Ed25519")]
+    async fn ecdhes_derive_rejects_unsupported_key_type() {
+        use crate::crypto::Key;
+        use crate::kms::{ECDHESParams, KeyPair};
+
+        let kms = LocalKms::new();
+        let kid = kms
+            .create(KeyType::Ed25519, CreateOptions::default())
+            .await
+            .unwrap();
+        let kh = kms.get(&kid).await.unwrap();
+        let pub_key = kh.pub_key().unwrap();
+
+        let params = ECDHESParams {
+            // ECDHES is implemented only for P256 / K256; Ed25519 triggers
+            // the unsupported-algorithm branch.
+            key_type: KeyType::Ed25519,
+            ephem_key: KeyPair {
+                private_key: None,
+                public_key: pub_key.clone(),
+            },
+            recip_key: KeyPair {
+                private_key: None,
+                public_key: pub_key,
+            },
+            alg: b"A256KW".to_vec(),
+            apu: vec![],
+            apv: vec![],
+            receive: false,
+        };
+
+        DerivativeKms::derive(&kms, params).await.unwrap();
     }
 }

@@ -96,3 +96,18 @@ fn sanitize_response(response: &mut Response, body: Vec<u8>) -> Response {
 
     resp.into()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // The `handle` method is exercised end-to-end through the mockito-based
+    // integration tests in `reqwest/mod.rs`. The unit-isolated check here
+    // verifies only that constructing the middleware does not require any
+    // network or mock and that the wrapped components survive the move.
+    #[test]
+    fn new_constructs_middleware_with_provided_validators() {
+        let limiter = ContentSizeLimiter::unlimited().with_response_size_limit(2048);
+        let _ = ValidatorMiddleware::new(limiter, ContentTypeValidator);
+    }
+}

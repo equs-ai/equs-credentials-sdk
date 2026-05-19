@@ -109,6 +109,62 @@ pub enum Error {
 pub type Result<T> = core::result::Result<T, Error>;
 pub type ProofOfPossessionNotBefore = proof_of_possession::ProofOfPossessionNotBefore;
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::str::FromStr;
+
+    #[test]
+    fn format_from_str_jwt() {
+        assert_eq!(Format::from_str("jwt").unwrap(), Format::Jwt);
+    }
+
+    #[test]
+    fn format_from_str_ldp_maps_to_di_vp() {
+        assert_eq!(Format::from_str("ldp").unwrap(), Format::DiVp);
+    }
+
+    #[test]
+    #[should_panic(expected = "Unsupported proof format: unknown")]
+    fn format_from_str_rejects_unknown() {
+        Format::from_str("unknown").unwrap();
+    }
+
+    #[test]
+    fn format_jwt_display_is_jwt() {
+        assert_eq!(Format::Jwt.to_string(), "jwt");
+    }
+
+    #[test]
+    fn format_di_vp_display_is_di_vp() {
+        assert_eq!(Format::DiVp.to_string(), "di_vp");
+    }
+
+    #[test]
+    fn format_not_supported_display_includes_format() {
+        let e = FormatNotSupportedSnafu {
+            format: "my_format".to_string(),
+        }
+        .build();
+        assert!(format!("{e}").contains("Unsupported proof format: my_format"));
+    }
+
+    #[test]
+    fn key_type_not_supported_display_includes_type() {
+        let e = KeyTypeNotSupportedSnafu {
+            type_: "RSA".to_string(),
+        }
+        .build();
+        assert!(format!("{e}").contains("Unsupported key type: RSA"));
+    }
+
+    #[test]
+    fn verification_method_not_found_display() {
+        let e = VerificationMethodNotFoundSnafu.build();
+        assert!(format!("{e}").contains("Verification method not found"));
+    }
+}
+
 #[derive(Debug, PartialEq, Clone, Default)]
 pub struct GenerateOptions {
     pub audience: String,

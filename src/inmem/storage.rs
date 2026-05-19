@@ -86,3 +86,126 @@ where
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn new_returns_empty_storage() {
+        let s: InMemStorage<String, String> = InMemStorage::new();
+
+        assert!(s.get_all().await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn put_inserts_new_key_value_pair() {
+        let s: InMemStorage<String, String> = InMemStorage::new();
+
+        s.put("k".to_string(), "v".to_string()).await.unwrap();
+
+        assert_eq!(
+            s.get(&"k".to_string()).await.unwrap(),
+            Some("v".to_string())
+        );
+    }
+
+    #[tokio::test]
+    async fn put_overwrites_existing_value_at_same_key() {
+        let s: InMemStorage<String, String> = InMemStorage::new();
+
+        s.put("k".to_string(), "v1".to_string()).await.unwrap();
+        s.put("k".to_string(), "v2".to_string()).await.unwrap();
+
+        assert_eq!(
+            s.get(&"k".to_string()).await.unwrap(),
+            Some("v2".to_string())
+        );
+    }
+
+    #[tokio::test]
+    async fn get_returns_none_for_missing_key() {
+        let s: InMemStorage<String, String> = InMemStorage::new();
+
+        assert_eq!(s.get(&"missing".to_string()).await.unwrap(), None);
+    }
+
+    #[tokio::test]
+    async fn get_all_returns_all_inserted_values() {
+        let s: InMemStorage<String, u32> = InMemStorage::new();
+
+        s.put("a".to_string(), 1).await.unwrap();
+        s.put("b".to_string(), 2).await.unwrap();
+        s.put("c".to_string(), 3).await.unwrap();
+
+        let mut all = s.get_all().await.unwrap();
+        all.sort();
+        assert_eq!(all, vec![1, 2, 3]);
+    }
+
+    #[tokio::test]
+    async fn delete_removes_existing_entry() {
+        let s: InMemStorage<String, String> = InMemStorage::new();
+        s.put("k".to_string(), "v".to_string()).await.unwrap();
+
+        s.delete(&"k".to_string()).await.unwrap();
+
+        assert_eq!(s.get(&"k".to_string()).await.unwrap(), None);
+    }
+
+    #[tokio::test]
+    async fn delete_is_noop_for_missing_key() {
+        let s: InMemStorage<String, String> = InMemStorage::new();
+
+        // Should not panic or error.
+        s.delete(&"missing".to_string()).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn transaction_put_inserts_into_underlying_storage() {
+        let s: InMemStorage<String, String> = InMemStorage::new();
+
+        let mut txn = s.begin_transaction().await;
+        txn.put("k".to_string(), "v".to_string()).unwrap();
+        drop(txn);
+
+        assert_eq!(
+            s.get(&"k".to_string()).await.unwrap(),
+            Some("v".to_string())
+        );
+    }
+
+    #[tokio::test]
+    async fn transaction_get_reflects_writes_made_in_the_same_transaction() {
+        let s: InMemStorage<String, String> = InMemStorage::new();
+
+        let mut txn = s.begin_transaction().await;
+        txn.put("k".to_string(), "v".to_string()).unwrap();
+
+        assert_eq!(txn.get(&"k".to_string()).unwrap(), Some("v".to_string()));
+    }
+
+    #[tokio::test]
+    async fn transaction_delete_removes_entry_within_transaction() {
+        let s: InMemStorage<String, String> = InMemStorage::new();
+        s.put("k".to_string(), "v".to_string()).await.unwrap();
+
+        let mut txn = s.begin_transaction().await;
+        txn.delete(&"k".to_string()).unwrap();
+
+        assert_eq!(txn.get(&"k".to_string()).unwrap(), None);
+    }
+
+    #[tokio::test]
+    async fn transaction_get_all_returns_every_value() {
+        let s: InMemStorage<String, u32> = InMemStorage::new();
+        s.put("a".to_string(), 1).await.unwrap();
+        s.put("b".to_string(), 2).await.unwrap();
+
+        let txn = s.begin_transaction().await;
+        let mut all = txn.get_all().unwrap();
+        all.sort();
+
+        assert_eq!(all, vec![1, 2]);
+    }
+}

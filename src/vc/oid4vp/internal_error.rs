@@ -168,3 +168,77 @@ pub enum InternalError {
         location: Location,
     },
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn authorization_response_display_includes_details() {
+        let e = AuthorizationResponseSnafu {
+            details: "malformed vp_token".to_string(),
+        }
+        .build();
+        assert!(format!("{e}").contains("Authorization Response error: malformed vp_token"));
+    }
+
+    #[test]
+    fn credential_not_found_display() {
+        let e = CredentialNotFoundSnafu.build();
+        assert!(format!("{e}").contains("Credential not found"));
+    }
+
+    #[test]
+    fn format_not_supported_display_includes_format() {
+        let e = FormatNotSupportedSnafu {
+            format: "vc+mdoc".to_string(),
+        }
+        .build();
+        assert!(format!("{e}").contains("Unsupported format: vc+mdoc"));
+    }
+
+    #[test]
+    fn vc_not_valid_display_includes_details() {
+        let e = VCNotValidSnafu {
+            details: "expired credential".to_string(),
+        }
+        .build();
+        assert!(format!("{e}").contains("VC is not valid: expired credential"));
+    }
+
+    #[test]
+    fn jwe_display_includes_details() {
+        let e = JWESnafu {
+            details: "decryption failed".to_string(),
+        }
+        .build();
+        assert!(format!("{e}").contains("JWE error: decryption failed"));
+    }
+
+    #[test]
+    fn id_token_metadata_not_found_display() {
+        let e = IdTokenMetadataNotFoundSnafu.build();
+        assert!(
+            format!("{e}")
+                .contains("Please provide the metadata required to generate the ID token")
+        );
+    }
+
+    #[test]
+    fn id_token_validation_display_includes_details() {
+        let e = IdTokenValidationSnafu {
+            details: "nonce mismatch".to_string(),
+        }
+        .build();
+        assert!(format!("{e}").contains("ID token validation error: nonce mismatch"));
+    }
+
+    #[test]
+    fn transaction_data_display_includes_details() {
+        let e = TransactionDataSnafu {
+            details: "hash mismatch".to_string(),
+        }
+        .build();
+        assert!(format!("{e}").contains("Transaction data error: hash mismatch"));
+    }
+}

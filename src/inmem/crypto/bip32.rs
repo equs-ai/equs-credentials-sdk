@@ -76,3 +76,67 @@ impl Bip32 {
             .map(|k| k.to_bytes().to_vec())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::crypto::Key;
+
+    // BIP32 (RFC + bip32 crate) accepts only 16-, 32-, or 64-byte seeds.
+    fn valid_seed() -> Vec<u8> {
+        (0u8..32).collect()
+    }
+
+    #[test]
+    fn from_seed_stores_seed_bytes_verbatim() {
+        let seed = valid_seed();
+        let bip32 = Bip32::from_seed(&seed);
+
+        assert_eq!(bip32.seed, seed);
+    }
+
+    #[test]
+    fn suite_returns_k256_with_32_byte_private_key_for_valid_seed() {
+        let bip32 = Bip32::from_seed(&valid_seed());
+
+        let suite = bip32.suite().unwrap();
+
+        assert_eq!(suite.private_key().unwrap().len(), 32);
+    }
+
+    #[test]
+    #[should_panic(expected = "Key generation error")]
+    fn suite_rejects_seed_with_invalid_length() {
+        // bip32 only accepts seed lengths of 16, 32, or 64 bytes; 4 fails.
+        let bip32 = Bip32::from_seed(&[1u8; 4]);
+
+        bip32.suite().unwrap();
+    }
+
+    #[tokio::test]
+    async fn derive_returns_32_byte_private_key_for_valid_path() {
+        let bip32 = Bip32::from_seed(&valid_seed());
+
+        let bytes = bip32.derive("m/0'/0").await.unwrap();
+
+        assert_eq!(bytes.len(), 32);
+    }
+
+    #[tokio::test]
+    async fn derive_produces_different_keys_for_different_paths() {
+        let bip32 = Bip32::from_seed(&valid_seed());
+
+        let a = bip32.derive("m/0'/0").await.unwrap();
+        let b = bip32.derive("m/0'/1").await.unwrap();
+
+        assert_ne!(a, b);
+    }
+
+    #[tokio::test]
+    #[should_panic(expected = "Derivation error")]
+    async fn derive_rejects_malformed_path() {
+        let bip32 = Bip32::from_seed(&valid_seed());
+
+        bip32.derive("not a valid path").await.unwrap();
+    }
+}

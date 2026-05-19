@@ -118,3 +118,102 @@ impl crypto::Verifier for Ed25519 {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::crypto::{Key, Signer, Suite, Verifier};
+    use rstest::rstest;
+
+    fn fresh() -> Ed25519 {
+        Ed25519::from_secret(Ed25519::generate()).unwrap()
+    }
+
+    #[test]
+    fn generate_returns_32_byte_secret() {
+        assert_eq!(Ed25519::generate().len(), 32);
+    }
+
+    #[test]
+    fn generate_returns_distinct_secrets_on_each_call() {
+        assert_ne!(Ed25519::generate(), Ed25519::generate());
+    }
+
+    #[test]
+    fn from_secret_roundtrips_valid_32_byte_input() {
+        let bytes = Ed25519::generate();
+        let suite = Ed25519::from_secret(bytes.clone()).unwrap();
+
+        assert_eq!(suite.private_key().unwrap(), bytes);
+    }
+
+    #[rstest]
+    #[case::empty(vec![])]
+    #[case::too_short(vec![0u8; 16])]
+    #[case::too_long(vec![0u8; 64])]
+    #[should_panic(expected = "Invalid secret key bytes")]
+    fn from_secret_rejects_wrong_length(#[case] bytes: Vec<u8>) {
+        Ed25519::from_secret(bytes).unwrap();
+    }
+
+    #[test]
+    fn pub_key_returns_32_byte_compressed_point() {
+        let suite = fresh();
+
+        assert_eq!(suite.pub_key().unwrap().len(), 32);
+    }
+
+    #[test]
+    fn pub_key_is_deterministic_for_same_secret() {
+        let secret = Ed25519::generate();
+        let a = Ed25519::from_secret(secret.clone()).unwrap();
+        let b = Ed25519::from_secret(secret).unwrap();
+
+        assert_eq!(a.pub_key().unwrap(), b.pub_key().unwrap());
+    }
+
+    #[test]
+    fn jwk_returns_some_ed25519_for_valid_key() {
+        let suite = fresh();
+        let jwk = suite.jwk().unwrap();
+
+        assert_eq!(
+            crate::utils::jwk::get_key_type(&jwk),
+            Some(crate::kms::KeyType::Ed25519)
+        );
+    }
+
+    #[test]
+    fn private_key_returns_original_secret_bytes() {
+        let bytes = Ed25519::generate();
+        let suite = Ed25519::from_secret(bytes.clone()).unwrap();
+
+        assert_eq!(suite.private_key().unwrap(), bytes);
+    }
+
+    #[tokio::test]
+    async fn sign_then_verify_succeeds_on_same_payload() {
+        let suite = fresh();
+        let msg = b"the quick brown fox";
+
+        let sig = suite.sign(msg).await.unwrap();
+        suite.verify(msg, &sig).await.unwrap();
+    }
+
+    #[tokio::test]
+    #[should_panic(expected = "Verification error")]
+    async fn verify_rejects_tampered_payload() {
+        let suite = fresh();
+        let sig = suite.sign(b"original").await.unwrap();
+
+        suite.verify(b"tampered", &sig).await.unwrap();
+    }
+
+    #[tokio::test]
+    #[should_panic(expected = "Verification error")]
+    async fn verify_rejects_malformed_signature_bytes() {
+        let suite = fresh();
+
+        suite.verify(b"data", &[0u8; 8]).await.unwrap();
+    }
+}

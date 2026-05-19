@@ -247,3 +247,72 @@ impl HasClaims<Claims> for Credential {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn credential_format_jwt_vc_json() {
+        assert_eq!(
+            Credential::JwtVcJson("token".to_string()).format(),
+            VCFormat::JwtVcJson
+        );
+    }
+
+    #[test]
+    fn credential_format_jwt_vc_json_ld() {
+        assert_eq!(
+            Credential::JwtVcJsonLd("token".to_string()).format(),
+            VCFormat::JwtVcJsonLD
+        );
+    }
+
+    #[test]
+    fn credential_format_sd_jwt() {
+        assert_eq!(
+            Credential::SdJwt("token".to_string()).format(),
+            VCFormat::SdJwtVc
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "Unsupported format: jwt_vc_json")]
+    fn parse_claims_rejects_jwt_vc_json() {
+        Credential::JwtVcJson("token".to_string())
+            .parse_claims()
+            .unwrap();
+    }
+
+    #[test]
+    #[should_panic(expected = "Unsupported format: jwt_vc_json")]
+    fn has_type_rejects_jwt_vc_json() {
+        Credential::JwtVcJson("token".to_string())
+            .has_type(PresentationRestrictionValue::Const("T".to_string()))
+            .unwrap();
+    }
+
+    #[test]
+    fn presentation_format_jwt_vp() {
+        assert_eq!(
+            Presentation::JwtVp("vp".to_string()).format(),
+            VPFormat::JwtVp
+        );
+    }
+
+    #[test]
+    fn presentation_format_sd_jwt_vp() {
+        assert_eq!(
+            Presentation::SdJwtVp("vp".to_string()).format(),
+            VPFormat::SdJwtVp
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "Unsupported format: jwt_vp")]
+    fn get_credential_rejects_jwt_vp() {
+        Presentation::JwtVp("vp".to_string())
+            .get_credential()
+            .unwrap();
+    }
+}
