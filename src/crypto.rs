@@ -313,3 +313,120 @@ impl TryFrom<&jwk::Algorithm> for Alg {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use async_trait::async_trait;
+    use rstest::rstest;
+    use ssi::jwk;
+    use std::str::FromStr;
+
+    #[rstest]
+    #[case("ES256", Alg::ES256)]
+    #[case("EdDSA", Alg::EdDSA)]
+    #[case("ES256K", Alg::ES256K)]
+    fn alg_from_str_parses_supported(#[case] input: &str, #[case] expected: Alg) {
+        assert_eq!(Alg::from_str(input).unwrap(), expected);
+    }
+
+    #[test]
+    #[should_panic(expected = "Unsupported algorithm: RS256")]
+    fn alg_from_str_rejects_unknown_algorithm() {
+        Alg::from_str("RS256").unwrap();
+    }
+
+    #[rstest]
+    #[case(jwk::Algorithm::ES256, Alg::ES256)]
+    #[case(jwk::Algorithm::ES256K, Alg::ES256K)]
+    #[case(jwk::Algorithm::EdDSA, Alg::EdDSA)]
+    fn alg_try_from_jwk_algorithm_parses_supported(
+        #[case] input: jwk::Algorithm,
+        #[case] expected: Alg,
+    ) {
+        assert_eq!(Alg::try_from(&input).unwrap(), expected);
+    }
+
+    #[test]
+    #[should_panic(expected = "Unsupported algorithm")]
+    fn alg_try_from_jwk_algorithm_rejects_unsupported() {
+        Alg::try_from(&jwk::Algorithm::None).unwrap();
+    }
+
+    struct DummyKey {
+        pub_bytes: Vec<u8>,
+        jwk_value: Option<JWK>,
+    }
+
+    impl Key for DummyKey {
+        fn pub_key(&self) -> Result<Vec<u8>> {
+            Ok(self.pub_bytes.clone())
+        }
+
+        fn jwk(&self) -> Option<JWK> {
+            self.jwk_value.clone()
+        }
+    }
+
+    #[test]
+    fn box_dyn_key_pub_key_delegates_to_inner() {
+        let inner = DummyKey {
+            pub_bytes: vec![1, 2, 3, 4, 5],
+            jwk_value: None,
+        };
+        let boxed: Box<dyn Key> = Box::new(inner);
+
+        assert_eq!(boxed.pub_key().unwrap(), vec![1, 2, 3, 4, 5]);
+    }
+
+    #[test]
+    fn box_dyn_key_jwk_delegates_to_inner() {
+        let jwk = jwk::JWK::generate_ed25519().unwrap();
+        let inner = DummyKey {
+            pub_bytes: vec![],
+            jwk_value: Some(jwk.clone()),
+        };
+        let boxed: Box<dyn Key> = Box::new(inner);
+
+        let returned = boxed.jwk().expect("jwk should be Some");
+        assert!(returned.equals_public(&jwk));
+    }
+
+    struct OnlySigner;
+
+    #[async_trait]
+    impl Signer for OnlySigner {
+        fn alg(&self) -> Alg {
+            Alg::ES256
+        }
+
+        async fn sign(&self, _payload: &[u8]) -> Result<Vec<u8>> {
+            Ok(vec![])
+        }
+    }
+
+    #[tokio::test]
+    #[should_panic(expected = "Unsupported algorithm: ES256")]
+    async fn signer_sign_multi_default_returns_alg_not_supported() {
+        let signer = OnlySigner;
+
+        signer.sign_multi(&[vec![1]], None).await.unwrap();
+    }
+
+    struct OnlyVerifier;
+
+    #[async_trait]
+    impl Verifier for OnlyVerifier {
+        async fn verify(&self, _data: &[u8], _signature: &[u8]) -> Result<()> {
+            Ok(())
+        }
+    }
+
+    #[tokio::test]
+    #[should_panic(expected = "Multi-signature is not supported")]
+    async fn verifier_verify_multi_default_returns_verification_error() {
+        let verifier = OnlyVerifier;
+
+        verifier.verify_multi(&[vec![1]], &[2], None).await.unwrap();
+    }
+}

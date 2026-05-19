@@ -20,6 +20,7 @@
       "Bash(ssh:*)",
       "Bash(scp:*)",
       "Bash(rsync:*)",
+      "Bash(rm -rf /*)",
       "Bash(rm -rf:*)",
       "Bash(rm -f:*)",
       "Bash(sudo:*)",

@@ -255,6 +255,78 @@ pub trait DerivativeKms<DP>: Send + Sync {
 }
 
 #[cfg(test)]
+mod tests {
+    use crate::inmem::kms::LocalKms;
+    use crate::kms::{CreateOptions, KeyType, Kms};
+
+    #[tokio::test]
+    async fn create_and_handle_returns_consistent_kid_and_handle() {
+        let kms = LocalKms::new();
+
+        let (kid, handle) = kms
+            .create_and_handle(KeyType::Ed25519, CreateOptions::default())
+            .await
+            .unwrap();
+
+        assert!(!kid.is_empty());
+
+        // The handle returned should round-trip back to the same key id
+        // when looked up via the public key.
+        let pub_key = crate::crypto::Key::pub_key(&handle).unwrap();
+        let resolved = kms.get_by_public_key(&pub_key).await.unwrap();
+        assert_eq!(
+            crate::crypto::Key::pub_key(&resolved).unwrap(),
+            pub_key,
+            "handle returned by create_and_handle must reference the same key"
+        );
+    }
+
+    // Exercises the default body of `Kms::create_and_handle`: when `create`
+    // succeeds but `get` fails, the error from `get` must propagate untouched.
+    // Mockall auto-mocks `create_and_handle` itself, so we can't use `MockKms`
+    // here — we need a real impl whose default body actually runs.
+    #[tokio::test]
+    #[should_panic(expected = "Key not found for ID: kid-fixture")]
+    async fn create_and_handle_propagates_get_error_after_successful_create() {
+        use crate::kms::Error;
+        use crate::utils::test_utils::MockKey;
+        use async_trait::async_trait;
+
+        struct FailingGetKms;
+
+        #[async_trait]
+        impl Kms<MockKey> for FailingGetKms {
+            async fn create(
+                &self,
+                _kt: KeyType,
+                _opts: CreateOptions,
+            ) -> crate::kms::Result<crate::kms::KeyID> {
+                Ok("kid-fixture".to_string())
+            }
+
+            async fn get(&self, _kid: &crate::kms::KeyID) -> crate::kms::Result<MockKey> {
+                Err(Error::NotFound {
+                    id: "kid-fixture".to_string(),
+                })
+            }
+
+            async fn get_by_public_key(&self, _public_key: &[u8]) -> crate::kms::Result<MockKey> {
+                unimplemented!()
+            }
+        }
+
+        let kms = FailingGetKms;
+
+        // The default body of `create_and_handle` calls `create` (Ok) then
+        // `get` (Err); the `?` operator propagates the error and the `.unwrap()`
+        // below panics with the error's Display message.
+        kms.create_and_handle(KeyType::Ed25519, CreateOptions::default())
+            .await
+            .unwrap();
+    }
+}
+
+#[cfg(test)]
 pub mod test_util {
     use crate::kms;
     use crate::kms::{KeyHandle, KeyType, Kms};

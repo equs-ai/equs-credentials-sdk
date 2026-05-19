@@ -135,3 +135,71 @@ pub enum InternalError {
         details: String,
     },
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cred_def_not_found_display_includes_id() {
+        let e = CredDefNotFoundSnafu {
+            id: "cred-123".to_string(),
+        }
+        .build();
+        assert!(format!("{e}").contains("Credential definition not found for ID: cred-123"));
+    }
+
+    #[test]
+    fn no_scope_set_display_includes_id() {
+        let e = NoScopeSetSnafu {
+            id: "def-456".to_string(),
+        }
+        .build();
+        assert!(format!("{e}").contains("No scope set for Credential definition ID: def-456"));
+    }
+
+    #[test]
+    fn claims_validation_display_includes_details() {
+        let e = ClaimsValidationSnafu {
+            details: "missing claim".to_string(),
+        }
+        .build();
+        assert!(format!("{e}").contains("Claims validation error: missing claim"));
+    }
+
+    #[test]
+    fn issuer_service_display_includes_details() {
+        let e = IssuerServiceSnafu {
+            details: "issuer unreachable".to_string(),
+        }
+        .build();
+        assert!(format!("{e}").contains("Issuer service error: issuer unreachable"));
+    }
+
+    #[test]
+    fn type_conversion_display_includes_details() {
+        let e = TypeConversionSnafu {
+            details: "expected string got number".to_string(),
+        }
+        .build();
+        assert!(format!("{e}").contains("Type conversion error: expected string got number"));
+    }
+
+    #[test]
+    fn authorization_callback_display_includes_details() {
+        let e = AuthorizationCallbackSnafu {
+            details: "callback failed".to_string(),
+        }
+        .build();
+        assert!(format!("{e}").contains("authorization callback error: callback failed"));
+    }
+
+    #[test]
+    fn authorization_request_display_includes_details() {
+        let e = AuthorizationRequestSnafu {
+            details: "invalid redirect_uri".to_string(),
+        }
+        .build();
+        assert!(format!("{e}").contains("Authorization request error: invalid redirect_uri"));
+    }
+}

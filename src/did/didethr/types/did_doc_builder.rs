@@ -517,3 +517,218 @@ impl DidDocumentBuilder {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const DID: &str = "did:ethr:0x1111111111111111111111111111111111111111";
+
+    fn add_secp256k1_vm(builder: &mut DidDocumentBuilder, key: &str) {
+        builder.add_verification_method(
+            key,
+            &format!("{DID}#{key}"),
+            &VerificationKeyType::EcdsaSecp256k1VerificationKey2019,
+            None,
+            None,
+            Some("deadbeef"),
+            None,
+            None,
+            None,
+        );
+    }
+
+    #[test]
+    fn new_returns_empty_builder() {
+        let b = DidDocumentBuilder::new();
+
+        assert_eq!(b.id, "");
+        assert!(b.verification_method.is_empty());
+        assert!(b.authentication.is_empty());
+        assert_eq!(b.key_index, 0);
+        assert_eq!(b.service_index, 0);
+        assert!(!b.deactivated);
+    }
+
+    #[test]
+    fn base_for_did_populates_id_controller_method_and_relationships() {
+        let b = DidDocumentBuilder::base_for_did(DID, 1).unwrap();
+
+        assert_eq!(b.id, DID);
+        assert_eq!(b.verification_method.len(), 1);
+        let vm = &b.verification_method[0];
+        assert_eq!(vm.key, "controller");
+        assert_eq!(vm.id, format!("{DID}#controller"));
+        assert_eq!(
+            vm.type_,
+            VerificationKeyType::EcdsaSecp256k1RecoveryMethod2020
+        );
+        assert_eq!(
+            vm.blockchain_account_id.as_deref(),
+            Some("eip155:1:0x1111111111111111111111111111111111111111"),
+        );
+        assert_eq!(b.authentication.len(), 1);
+        assert_eq!(b.assertion_method.len(), 1);
+    }
+
+    #[test]
+    fn add_verification_method_stores_provided_encoding() {
+        let mut b = DidDocumentBuilder::new();
+        b.set_id(DID);
+
+        b.add_verification_method(
+            "k1",
+            &format!("{DID}#k1"),
+            &VerificationKeyType::Ed25519VerificationKey2018,
+            None,
+            None,
+            Some("deadbeef"),
+            None,
+            None,
+            None,
+        );
+
+        assert_eq!(b.verification_method.len(), 1);
+        let vm = &b.verification_method[0];
+        assert_eq!(vm.public_key_hex.as_deref(), Some("deadbeef"));
+        assert_eq!(vm.controller, DID);
+    }
+
+    #[test]
+    fn add_delegate_key_increments_index_and_assigns_unique_id() {
+        let mut b = DidDocumentBuilder::new();
+        b.set_id(DID);
+
+        b.add_delegate_key(
+            "k1",
+            &VerificationKeyType::EcdsaSecp256k1VerificationKey2019,
+            None,
+            None,
+            Some("aa"),
+            None,
+            None,
+            None,
+        );
+        b.add_delegate_key(
+            "k2",
+            &VerificationKeyType::EcdsaSecp256k1VerificationKey2019,
+            None,
+            None,
+            Some("bb"),
+            None,
+            None,
+            None,
+        );
+
+        assert_eq!(b.key_index, 2);
+        assert_eq!(b.verification_method[0].id, format!("{DID}#delegate-1"));
+        assert_eq!(b.verification_method[1].id, format!("{DID}#delegate-2"));
+    }
+
+    #[test]
+    fn remove_delegate_key_removes_matching_method_and_is_noop_when_missing() {
+        let mut b = DidDocumentBuilder::new();
+        b.set_id(DID);
+        add_secp256k1_vm(&mut b, "k1");
+        add_secp256k1_vm(&mut b, "k2");
+
+        b.remove_delegate_key("k1").unwrap();
+        assert_eq!(b.verification_method.len(), 1);
+        assert_eq!(b.verification_method[0].key, "k2");
+
+        // Removing a key that doesn't exist must succeed silently.
+        b.remove_delegate_key("nonexistent").unwrap();
+        assert_eq!(b.verification_method.len(), 1);
+    }
+
+    #[test]
+    fn add_service_auto_increments_index_when_id_omitted() {
+        let mut b = DidDocumentBuilder::new();
+        b.set_id(DID);
+
+        b.add_service("s1", None, "LinkedDomains", "https://a.test");
+        b.add_service("s2", Some("custom-id"), "LinkedDomains", "https://b.test");
+
+        assert_eq!(b.service.len(), 2);
+        assert_eq!(b.service[0].id, format!("{DID}#service-1"));
+        // Caller-provided id wins over auto-generated one, but service_index
+        // still increments to keep generated ids deterministic.
+        assert_eq!(b.service[1].id, "custom-id");
+        assert_eq!(b.service_index, 2);
+    }
+
+    #[test]
+    fn remove_service_removes_matching_entry_and_is_noop_when_missing() {
+        let mut b = DidDocumentBuilder::new();
+        b.set_id(DID);
+        b.add_service("s1", None, "LinkedDomains", "https://a.test");
+        b.add_service("s2", None, "LinkedDomains", "https://b.test");
+
+        b.remove_service("s1").unwrap();
+        assert_eq!(b.service.len(), 1);
+        assert_eq!(b.service[0].key, "s2");
+
+        b.remove_service("nonexistent").unwrap();
+        assert_eq!(b.service.len(), 1);
+    }
+
+    #[test]
+    fn set_also_known_as_and_deactivate_setters_update_internal_state() {
+        let mut b = DidDocumentBuilder::new();
+
+        b.set_also_known_as(vec!["did:example:alias".to_string()]);
+        b.deactivate();
+
+        assert_eq!(
+            b.also_known_as.as_deref(),
+            Some(&["did:example:alias".to_string()][..])
+        );
+        assert!(b.deactivated());
+    }
+
+    #[test]
+    fn build_emits_document_with_all_five_verification_relationships() {
+        let mut b = DidDocumentBuilder::new();
+        b.set_id(DID);
+        add_secp256k1_vm(&mut b, "k1");
+
+        b.add_authentication_reference("k1").unwrap();
+        b.add_assertion_method_reference("k1").unwrap();
+        b.add_key_agreement_reference("k1").unwrap();
+        b.add_capability_invocation_reference("k1").unwrap();
+        b.add_capability_delegation_reference("k1").unwrap();
+
+        let doc = b.build().unwrap();
+
+        let rels = &doc.verification_relationships;
+        assert_eq!(rels.authentication.len(), 1);
+        assert_eq!(rels.assertion_method.len(), 1);
+        assert_eq!(rels.key_agreement.len(), 1);
+        assert_eq!(rels.capability_invocation.len(), 1);
+        assert_eq!(rels.capability_delegation.len(), 1);
+        assert_eq!(doc.verification_method.len(), 1);
+    }
+
+    #[test]
+    fn build_includes_controller_alsoknownas_and_jsonld_context() {
+        let mut b = DidDocumentBuilder::new();
+        b.set_id(DID);
+        b.set_controller("did:ethr:0x2222222222222222222222222222222222222222");
+        b.set_also_known_as(vec!["https://example.com/identity".to_string()]);
+
+        let doc = b.build().unwrap();
+
+        assert!(doc.controller.is_some());
+        assert_eq!(doc.also_known_as.len(), 1);
+        assert!(doc.property_set.contains_key("@context"));
+    }
+
+    #[test]
+    #[should_panic(expected = "Verification method not found")]
+    fn add_authentication_reference_errors_when_key_unknown() {
+        let mut b = DidDocumentBuilder::new();
+        b.set_id(DID);
+
+        b.add_authentication_reference("missing").unwrap();
+    }
+}

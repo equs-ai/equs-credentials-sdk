@@ -57,3 +57,83 @@ impl IndexStorage {
         ids
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn new_returns_empty_index_storage() {
+        let s = IndexStorage::new();
+
+        assert!(
+            s.get_ids_for_indexes(vec!["any".to_string()])
+                .await
+                .is_empty()
+        );
+    }
+
+    #[tokio::test]
+    async fn put_index_stores_first_storage_id_for_new_index() {
+        let s = IndexStorage::new();
+
+        s.put_index("field1".to_string(), "id1").await;
+
+        assert_eq!(
+            s.get_ids_for_indexes(vec!["field1".to_string()]).await,
+            HashSet::from(["id1".to_string()])
+        );
+    }
+
+    #[tokio::test]
+    async fn put_index_appends_additional_storage_ids_for_same_index() {
+        let s = IndexStorage::new();
+
+        s.put_index("field1".to_string(), "id1").await;
+        s.put_index("field1".to_string(), "id2").await;
+
+        assert_eq!(
+            s.get_ids_for_indexes(vec!["field1".to_string()]).await,
+            HashSet::from(["id1".to_string(), "id2".to_string()])
+        );
+    }
+
+    #[tokio::test]
+    async fn get_ids_for_indexes_returns_empty_for_unknown_index() {
+        let s = IndexStorage::new();
+        s.put_index("field1".to_string(), "id1").await;
+
+        assert!(
+            s.get_ids_for_indexes(vec!["missing".to_string()])
+                .await
+                .is_empty()
+        );
+    }
+
+    #[tokio::test]
+    async fn get_ids_for_indexes_returns_union_across_multiple_indexes() {
+        let s = IndexStorage::new();
+        s.put_index("field1".to_string(), "id1").await;
+        s.put_index("field2".to_string(), "id2").await;
+        // id1 appears in two indexes — the union deduplicates it.
+        s.put_index("field3".to_string(), "id1").await;
+
+        let ids = s
+            .get_ids_for_indexes(vec![
+                "field1".to_string(),
+                "field2".to_string(),
+                "field3".to_string(),
+            ])
+            .await;
+
+        assert_eq!(ids, HashSet::from(["id1".to_string(), "id2".to_string()]));
+    }
+
+    #[tokio::test]
+    async fn get_ids_for_indexes_with_empty_query_returns_empty() {
+        let s = IndexStorage::new();
+        s.put_index("field1".to_string(), "id1").await;
+
+        assert!(s.get_ids_for_indexes(vec![]).await.is_empty());
+    }
+}

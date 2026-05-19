@@ -233,3 +233,90 @@ impl ReqwestClientBuilder {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn new_initializes_defaults() {
+        let b = ReqwestClientBuilder::new();
+
+        // The default limiter is `unlimited()` — both req/resp size limits None.
+        assert_eq!(b.content_size_limiter.req_size_limit, None);
+        assert_eq!(b.content_size_limiter.resp_size_limit, None);
+        assert!(!b.insecure);
+        #[cfg(not(target_arch = "wasm32"))]
+        assert!(b.trusted_root_certs.is_empty());
+    }
+
+    #[test]
+    fn with_response_content_size_limit_propagates_to_inner_limiter() {
+        let b = ReqwestClientBuilder::new().with_response_content_size_limit(4096);
+
+        assert_eq!(b.content_size_limiter.resp_size_limit, Some(4096));
+        assert_eq!(b.content_size_limiter.req_size_limit, None);
+    }
+
+    #[test]
+    fn with_request_content_size_limit_propagates_to_inner_limiter() {
+        let b = ReqwestClientBuilder::new().with_request_content_size_limit(8192);
+
+        assert_eq!(b.content_size_limiter.req_size_limit, Some(8192));
+        assert_eq!(b.content_size_limiter.resp_size_limit, None);
+    }
+
+    #[test]
+    fn insecure_flag_is_set_on_builder() {
+        let b = ReqwestClientBuilder::new().insecure();
+
+        assert!(b.insecure);
+    }
+
+    #[test]
+    fn chained_setters_compose_state() {
+        let b = ReqwestClientBuilder::new()
+            .insecure()
+            .with_request_content_size_limit(100)
+            .with_response_content_size_limit(200);
+
+        assert!(b.insecure);
+        assert_eq!(b.content_size_limiter.req_size_limit, Some(100));
+        assert_eq!(b.content_size_limiter.resp_size_limit, Some(200));
+    }
+
+    #[test]
+    fn build_succeeds_with_default_https_only_config() {
+        // No insecure, no limits — the rustls/HTTPS-only branch must build cleanly.
+        ReqwestClientBuilder::new().build().unwrap();
+    }
+
+    #[test]
+    fn build_succeeds_with_insecure_branch() {
+        ReqwestClientBuilder::new().insecure().build().unwrap();
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn add_trusted_root_certificate_appends_to_internal_vec() {
+        // A self-signed cert generated for testing only — PEM body validates
+        // shape; we just need a parseable Certificate.
+        const PEM: &str = "-----BEGIN CERTIFICATE-----\n\
+MIIBhTCCASugAwIBAgIQIRi6zePL6mKjOipn+dNuaTAKBggqhkjOPQQDAjASMRAw\n\
+DgYDVQQKEwdBY21lIENvMB4XDTE3MTAyMDE5NDMwNloXDTE4MTAyMDE5NDMwNlow\n\
+EjEQMA4GA1UEChMHQWNtZSBDbzBZMBMGByqGSM49AgEGCCqGSM49AwEHA0IABD0d\n\
+7VNhbWvZLWPuj/RtHFjvtJBEwOkhbN/BnnE8rnZR8+sbwnc/KhCk3FhnpHZnQz7B\n\
+5aETbbIgmuvewdjvSBSjYzBhMA4GA1UdDwEB/wQEAwICpDATBgNVHSUEDDAKBggr\n\
+BgEFBQcDATAPBgNVHRMBAf8EBTADAQH/MCkGA1UdEQQiMCCCDmxvY2FsaG9zdDo1\n\
+NDUzgg4xMjcuMC4wLjE6NTQ1MzAKBggqhkjOPQQDAgNIADBFAiEA2zpJEPQyz6/l\n\
+Wf86aX6PepsntZv2GYlA5UpabfT2EZICICpJ5h/iI+i341gBmLiAFQOyTDT+/wQc\n\
+6MF9+Yw1Yy0t\n\
+-----END CERTIFICATE-----";
+
+        let cert = Certificate::from_pem(PEM.as_bytes()).unwrap();
+
+        let b = ReqwestClientBuilder::new().add_trusted_root_certificate(cert);
+
+        assert_eq!(b.trusted_root_certs.len(), 1);
+    }
+}

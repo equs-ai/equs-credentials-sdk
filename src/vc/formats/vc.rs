@@ -58,3 +58,50 @@ impl Display for VCFormat {
         write!(f, "{}", str)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rstest::rstest;
+    use std::str::FromStr;
+
+    #[rstest]
+    #[case::jwt_vc_json(JWT_VC_JSON, VCFormat::JwtVcJson)]
+    #[case::jwt_vc_json_ld(JWT_VC_JSON_LD, VCFormat::JwtVcJsonLD)]
+    #[case::ldp_vc(LDP_VC, VCFormat::LdpVc)]
+    #[case::sd_jwt_vc(SD_JWT_VC, VCFormat::SdJwtVc)]
+    #[case::mso_mdoc(MSO_MDOC, VCFormat::MsoMdoc)]
+    fn vc_format_from_str_parses_known_strings(#[case] s: &str, #[case] expected: VCFormat) {
+        assert_eq!(VCFormat::from_str(s).unwrap(), expected);
+    }
+
+    #[test]
+    #[should_panic(expected = "Unsupported format: unknown")]
+    fn vc_format_from_str_rejects_unknown() {
+        VCFormat::from_str("unknown").unwrap();
+    }
+
+    #[rstest]
+    #[case::jwt_vc_json(VCFormat::JwtVcJson, JWT_VC_JSON)]
+    #[case::jwt_vc_json_ld(VCFormat::JwtVcJsonLD, JWT_VC_JSON_LD)]
+    #[case::ldp_vc(VCFormat::LdpVc, LDP_VC)]
+    #[case::sd_jwt_vc(VCFormat::SdJwtVc, SD_JWT_VC)]
+    #[case::mso_mdoc(VCFormat::MsoMdoc, MSO_MDOC)]
+    fn vc_format_display_matches_string_constant(#[case] fmt: VCFormat, #[case] expected: &str) {
+        assert_eq!(fmt.to_string(), expected);
+    }
+
+    #[rstest]
+    #[case::jwt_vc_json(VCFormat::JwtVcJson, JWT_VC_JSON)]
+    #[case::jwt_vc_json_ld(VCFormat::JwtVcJsonLD, JWT_VC_JSON_LD)]
+    #[case::ldp_vc(VCFormat::LdpVc, LDP_VC)]
+    #[case::sd_jwt_vc(VCFormat::SdJwtVc, SD_JWT_VC)]
+    #[case::mso_mdoc(VCFormat::MsoMdoc, MSO_MDOC)]
+    fn vc_format_from_ref_yields_static_str_constant(
+        #[case] fmt: VCFormat,
+        #[case] expected: &'static str,
+    ) {
+        let s: &'static str = (&fmt).into();
+        assert_eq!(s, expected);
+    }
+}

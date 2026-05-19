@@ -58,6 +58,56 @@ pub enum Error {
 /// `Result` alias for `Status List` API [Error].
 pub type Result<T> = core::result::Result<T, Error>;
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn status_list_fetching_display_includes_details() {
+        let e = StatusListFetchingSnafu {
+            details: "timeout".to_string(),
+        }
+        .build();
+        assert!(format!("{e}").contains("Could not fetch status list: timeout"));
+    }
+
+    #[test]
+    fn status_list_creating_display_includes_details() {
+        let e = StatusListCreatingSnafu {
+            details: "encoding failed".to_string(),
+        }
+        .build();
+        assert!(format!("{e}").contains("Status list creating failed: encoding failed"));
+    }
+
+    #[test]
+    fn malformed_status_list_display_includes_details() {
+        let e = MalformedStatusListSnafu {
+            details: "unexpected length".to_string(),
+        }
+        .build();
+        assert!(format!("{e}").contains("Malformed status list: unexpected length"));
+    }
+
+    #[test]
+    fn vc_status_display_includes_details() {
+        let e = VCStatusSnafu {
+            details: "index out of range".to_string(),
+        }
+        .build();
+        assert!(format!("{e}").contains("Could not get VC status: index out of range"));
+    }
+
+    #[test]
+    fn signing_display_includes_details() {
+        let e = SigningSnafu {
+            details: "key not found".to_string(),
+        }
+        .build();
+        assert!(format!("{e}").contains("Signing error: key not found"));
+    }
+}
+
 /// Supported formats for status list tokens
 #[derive(Debug, Display, PartialEq, Clone, Serialize, Deserialize)]
 pub enum StatusListFormat {

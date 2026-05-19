@@ -407,3 +407,143 @@ impl DIDEthr {
         )))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::did::didethr::registry::{EthrDidEventTopics, EthrDidRegistry};
+    use crate::http::MockHttpClient;
+    use rstest::rstest;
+    use std::sync::Arc;
+
+    fn topics() -> EthrDidEventTopics {
+        EthrDidEventTopics::new(
+            "0x38a5a6e68f30ed1ab45860a4afb34bcb2fc00f22ca462d249b8a8d40cda6f7a3".to_string(),
+            "0x5a5084339536bcab65f20799fcc58724588145ca054bd2be626174b27ba156f7".to_string(),
+            "0x18ab6b2ae3d64306c00ce663125f2bd680e441a098de1635bd7ad8b0d44965e4".to_string(),
+        )
+    }
+
+    fn make_registry(chain_id: u64) -> EthrDidRegistry {
+        EthrDidRegistry::new(
+            "https://rpc.test/".to_string(),
+            chain_id,
+            "0x0000000000000000000000000000000000000000".to_string(),
+            Arc::new(MockHttpClient::new()),
+            "f96d0f9f".to_string(),
+            topics(),
+        )
+    }
+
+    #[test]
+    fn new_empty_registries_rejects_every_lookup() {
+        let r = DIDEthr::new(vec![]);
+
+        assert!(
+            r.get_registry_by_did("did:ethr:0xabc").is_err(),
+            "lookup against empty resolver must fail",
+        );
+    }
+
+    #[test]
+    fn add_registry_accepts_first_registry_for_a_chain() {
+        let mut r = DIDEthr::new(vec![]);
+
+        r.add_registry(make_registry(1)).unwrap();
+
+        let registry = r
+            .get_registry_by_did("did:ethr:0xb543920fEBe4cf02CA031Ce6a77e2ea5Ad69bDd8")
+            .unwrap();
+        assert_eq!(registry.chain_id(), 1);
+    }
+
+    #[test]
+    #[should_panic(expected = "Registry for chain")]
+    fn add_registry_rejects_duplicate_chain_id() {
+        let mut r = DIDEthr::new(vec![]);
+        r.add_registry(make_registry(1)).unwrap();
+
+        r.add_registry(make_registry(1)).unwrap();
+    }
+
+    #[test]
+    fn get_registry_by_did_defaults_to_mainnet_for_three_part_did() {
+        let mut r = DIDEthr::new(vec![]);
+        r.add_registry(make_registry(1)).unwrap();
+        r.add_registry(make_registry(137)).unwrap();
+
+        let registry = r
+            .get_registry_by_did("did:ethr:0xb543920fEBe4cf02CA031Ce6a77e2ea5Ad69bDd8")
+            .unwrap();
+
+        assert_eq!(registry.chain_id(), 1);
+    }
+
+    #[test]
+    fn get_registry_by_did_parses_hex_chain_id_segment() {
+        // 0x89 == 137 (Polygon mainnet).
+        let mut r = DIDEthr::new(vec![]);
+        r.add_registry(make_registry(137)).unwrap();
+
+        let registry = r
+            .get_registry_by_did("did:ethr:0x89:0xb543920fEBe4cf02CA031Ce6a77e2ea5Ad69bDd8")
+            .unwrap();
+
+        assert_eq!(registry.chain_id(), 137);
+    }
+
+    #[rstest]
+    #[case::mainnet("mainnet", 1)]
+    #[case::polygon("polygon", 137)]
+    #[case::matic("matic", 137)]
+    #[case::arbitrum("arbitrum", 42161)]
+    #[case::optimism("optimism", 10)]
+    #[case::gnosis("gnosis", 100)]
+    #[case::sepolia("sepolia", 11155111)]
+    #[case::holesky("holesky", 17000)]
+    fn get_registry_by_did_resolves_named_alias_to_chain_id(
+        #[case] alias: &str,
+        #[case] chain_id: u64,
+    ) {
+        let mut r = DIDEthr::new(vec![]);
+        r.add_registry(make_registry(chain_id)).unwrap();
+
+        let did = format!("did:ethr:{alias}:0xb543920fEBe4cf02CA031Ce6a77e2ea5Ad69bDd8");
+        let registry = r.get_registry_by_did(&did).unwrap();
+
+        assert_eq!(registry.chain_id(), chain_id);
+    }
+
+    #[test]
+    #[should_panic(expected = "Chain not found")]
+    fn get_registry_by_did_rejects_unknown_named_alias() {
+        let mut r = DIDEthr::new(vec![]);
+        r.add_registry(make_registry(1)).unwrap();
+
+        r.get_registry_by_did("did:ethr:unknownchain:0xb543920fEBe4cf02CA031Ce6a77e2ea5Ad69bDd8")
+            .unwrap();
+    }
+
+    #[test]
+    #[should_panic(expected = "Ethr registry not found")]
+    fn get_registry_by_did_errors_when_no_registry_matches() {
+        let mut r = DIDEthr::new(vec![]);
+        r.add_registry(make_registry(1)).unwrap();
+
+        // Hex chain id 0x89 (= 137) has no registered registry.
+        r.get_registry_by_did("did:ethr:0x89:0xb543920fEBe4cf02CA031Ce6a77e2ea5Ad69bDd8")
+            .unwrap();
+    }
+
+    #[rstest]
+    #[case::two_parts("did:ethr")]
+    #[case::wrong_method("did:foo:1:0xabc")]
+    #[case::missing_did_prefix("ethr:0xabc")]
+    #[case::five_parts("did:ethr:mainnet:extra:0xabc")]
+    #[should_panic(expected = "InvalidMethodSpecificId")]
+    fn get_registry_by_did_rejects_malformed_did_strings(#[case] did: &str) {
+        let r = DIDEthr::new(vec![]);
+
+        r.get_registry_by_did(did).unwrap();
+    }
+}

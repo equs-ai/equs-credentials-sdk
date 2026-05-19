@@ -91,3 +91,64 @@ impl ProtocolSnafu<ErrorType, Option<String>, Option<String>, Option<Url>> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn protocol_error_new_stores_all_fields() {
+        let e = ProtocolError::new(
+            ErrorType::AccessDenied,
+            Some("denied".to_string()),
+            Some("abc".to_string()),
+        );
+        assert!(matches!(e.error_type(), ErrorType::AccessDenied));
+        assert_eq!(e.description(), &Some("denied".to_string()));
+        assert_eq!(e.state(), &Some("abc".to_string()));
+        assert!(e.redirect_uri().is_none());
+    }
+
+    #[test]
+    fn access_denied_sets_error_type_and_description() {
+        let e = ProtocolError::access_denied("user rejected", Some("s1".to_string()));
+        assert!(matches!(e.error_type(), ErrorType::AccessDenied));
+        assert_eq!(e.description(), &Some("user rejected".to_string()));
+        assert_eq!(e.state(), &Some("s1".to_string()));
+    }
+
+    #[test]
+    fn invalid_request_sets_error_type_and_description() {
+        let e = ProtocolError::invalid_request("missing nonce", None);
+        assert!(matches!(e.error_type(), ErrorType::InvalidRequest));
+        assert_eq!(e.description(), &Some("missing nonce".to_string()));
+        assert_eq!(e.state(), &None);
+    }
+
+    #[test]
+    fn redirect_uri_getter_and_setter() {
+        let mut e = ProtocolError::access_denied("msg", None);
+        assert!(e.redirect_uri().is_none());
+
+        let url: Url = "https://example.com/cb".parse().unwrap();
+        e.set_redirect_uri(Some(url.clone()));
+        assert_eq!(e.redirect_uri(), Some(&url));
+
+        e.set_redirect_uri(None);
+        assert!(e.redirect_uri().is_none());
+    }
+
+    #[test]
+    fn protocol_error_display_contains_error_type() {
+        let e = ProtocolError::access_denied("forbidden", None);
+        let s = format!("{e}");
+        assert!(s.contains("Protocol error"));
+    }
+
+    #[test]
+    fn protocol_error_display_without_description() {
+        let e = ProtocolError::new(ErrorType::InvalidRequest, None, None);
+        let s = format!("{e}");
+        assert!(s.contains("Protocol error"));
+    }
+}

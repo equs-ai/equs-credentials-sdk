@@ -92,6 +92,7 @@ pub trait NonceHandler: WasmNotSend + WasmNotSync {
 #[cfg(test)]
 mod tests {
     use super::Nonce;
+    use crate::utils::b64;
     use zeroize::ZeroizeOnDrop;
 
     #[tokio::test]
@@ -106,4 +107,36 @@ mod tests {
     // The idea behind this function is to prevent accidental removal
     // the ZeroizeOnDrop implementation that is important for security.
     fn assert_zeroize_on_drop_is_implemented(x: impl ZeroizeOnDrop) {}
+
+    #[test]
+    fn new_encodes_input_bytes_as_url_safe_base64() {
+        let data: [u8; 8] = [0xDE, 0xAD, 0xBE, 0xEF, 0x01, 0x02, 0x03, 0x04];
+        let expected = b64::encode(&data);
+
+        let nonce = Nonce::new(data);
+
+        assert_eq!(nonce.secret(), expected.as_str());
+        assert!(!nonce.secret().is_empty());
+    }
+
+    #[test]
+    fn new_with_empty_array_produces_empty_secret() {
+        let nonce = Nonce::new::<0>([]);
+
+        assert_eq!(nonce.secret(), "");
+    }
+
+    #[test]
+    fn from_secret_wraps_string_verbatim() {
+        let nonce = Nonce::from_secret("raw-secret-123".to_string());
+
+        assert_eq!(nonce.secret(), "raw-secret-123");
+    }
+
+    #[test]
+    fn secret_returns_inner_string() {
+        let nonce = Nonce::from_secret(String::new());
+
+        assert_eq!(nonce.secret(), "");
+    }
 }

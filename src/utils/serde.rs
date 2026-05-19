@@ -86,9 +86,15 @@ pub fn get_time_based_claim(claims: &Claims, key: &str) -> Option<time::OffsetDa
 
 #[cfg(test)]
 mod tests {
-    use crate::utils::serde::Helpers;
+    use crate::utils::serde::{
+        Helpers, accumulate_claim_names, duration_to_int, get_time_based_claim, int_to_duration,
+        int_to_offset_date_time,
+    };
     use crate::vc::claims::{Claim, Claims};
-    use time::OffsetDateTime;
+    use rstest::rstest;
+    use serde::{Deserialize, Serialize};
+    use serde_json::{Value, json};
+    use time::{Duration, OffsetDateTime};
 
     #[test]
     fn put_str_works_correctly() {
@@ -106,5 +112,113 @@ mod tests {
         claims.put_dt("key", dt);
 
         assert_eq!(&claims["key"], &Claim::Int(now));
+    }
+
+    #[derive(Debug, Serialize, Deserialize, PartialEq)]
+    struct DurationWrapper {
+        #[serde(
+            deserialize_with = "int_to_duration",
+            serialize_with = "duration_to_int"
+        )]
+        d: Option<Duration>,
+    }
+
+    #[derive(Debug, Deserialize)]
+    struct OdtWrapper {
+        #[serde(deserialize_with = "int_to_offset_date_time")]
+        t: OffsetDateTime,
+    }
+
+    #[rstest]
+    #[case::positive(3600)]
+    #[case::zero(0)]
+    fn int_to_duration_parses_seconds(#[case] seconds: i64) {
+        let wrapper: DurationWrapper = serde_json::from_value(json!({ "d": seconds })).unwrap();
+
+        assert_eq!(wrapper.d, Some(Duration::seconds(seconds)));
+    }
+
+    #[test]
+    fn int_to_offset_date_time_parses_valid_unix_timestamp() {
+        let ts: i64 = 1_700_000_000;
+        let wrapper: OdtWrapper = serde_json::from_value(json!({ "t": ts })).unwrap();
+
+        assert_eq!(wrapper.t.unix_timestamp(), ts);
+    }
+
+    #[test]
+    #[should_panic(expected = "timestamp was not in range")]
+    fn int_to_offset_date_time_rejects_out_of_range_timestamp() {
+        // Far outside the valid OffsetDateTime range; the custom deserializer
+        // surfaces the inner time error message via serde::de::Error::custom.
+        let _wrapper: OdtWrapper = serde_json::from_value(json!({ "t": i64::MAX })).unwrap();
+    }
+
+    #[rstest]
+    #[case::some(DurationWrapper { d: Some(Duration::seconds(120)) }, json!({ "d": 120 }))]
+    #[case::none(DurationWrapper { d: None }, json!({ "d": null }))]
+    fn duration_to_int_serializes_option_duration(
+        #[case] input: DurationWrapper,
+        #[case] expected: Value,
+    ) {
+        let v = serde_json::to_value(&input).unwrap();
+
+        assert_eq!(v, expected);
+    }
+
+    #[rstest]
+    #[case::nested_object(
+        String::new(),
+        json!({ "a": { "b": 1 }, "c": 2 }),
+        vec!["a.b", "a", "c"],
+    )]
+    #[case::array_with_indices(
+        String::new(),
+        json!({ "items": ["x", "y"] }),
+        vec!["items[0]", "items[1]", "items"],
+    )]
+    fn accumulate_claim_names_collects_expected_paths(
+        #[case] parent_key: String,
+        #[case] input: Value,
+        #[case] expected_substrings: Vec<&str>,
+    ) {
+        let mut keys = Vec::new();
+
+        accumulate_claim_names(&input, parent_key, &mut keys);
+
+        for expected in expected_substrings {
+            assert!(
+                keys.iter().any(|k| k == expected),
+                "missing expected key '{expected}' in {keys:?}",
+            );
+        }
+    }
+
+    #[test]
+    fn accumulate_claim_names_pushes_parent_key_for_scalar() {
+        let scalar: Value = json!("just-a-string");
+        let mut keys = Vec::new();
+
+        accumulate_claim_names(&scalar, "leaf".to_string(), &mut keys);
+
+        assert_eq!(keys, vec!["leaf".to_string()]);
+    }
+
+    #[test]
+    fn get_time_based_claim_returns_some_for_int_claim() {
+        let mut claims = Claims::new();
+        let ts: i64 = 1_700_000_000;
+        claims.insert("exp".to_string(), Claim::Int(ts));
+
+        let dt = get_time_based_claim(&claims, "exp").unwrap();
+
+        assert_eq!(dt.unix_timestamp(), ts);
+    }
+
+    #[test]
+    fn get_time_based_claim_returns_none_for_missing_key() {
+        let claims = Claims::new();
+
+        assert!(get_time_based_claim(&claims, "exp").is_none());
     }
 }
