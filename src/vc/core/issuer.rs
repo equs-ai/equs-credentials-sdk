@@ -3,19 +3,18 @@ use crate::nonce::Nonce;
 use crate::vc::claims::Claims;
 use crate::vc::core::api::{ContextParsingSnafu, InvalidDIDUrlSnafu};
 use crate::vc::core::{
-    AlgNotSupportedSnafu, CredDefNotFoundSnafu, CredentialOfferContent,
+    AlgNotSupportedSnafu, CredDefNotFoundSnafu, CredentialOfferContent, CredentialSigner,
     CredentialStatusProtocolNotSupportedSnafu, FormatNotSupportedSnafu,
-    InconsistentProtocolDataSnafu, KMSSnafu, ProofFormatNotSupportedSnafu, ProofSnafu, Result,
-    VCSnafu,
+    InconsistentProtocolDataSnafu, Issuer, KMSSnafu, PrepareCredential,
+    ProofFormatNotSupportedSnafu, ProofSnafu, Result, SignCredential, UnsignedCredential, VCSnafu,
 };
 use crate::vc::core::{
     CredentialDefinition, CredentialDefinitionData, CredentialOffer, CredentialOfferData,
-    CredentialRequest, Issuer, IssuerMetadata,
+    CredentialRequest, IssuerMetadata,
 };
 
 use crate::vc::core::api::CredentialStatusInfo;
 
-use crate::vc::formats::API;
 use crate::vc::formats::json_ld_vc;
 use crate::vc::formats::json_ld_vc::JsonLdAPI;
 use crate::vc::formats::sd_jwt_vc;
@@ -29,7 +28,6 @@ use async_trait::async_trait;
 use iref::{IriRefBuf, UriBuf};
 use snafu::{ResultExt, ensure};
 use ssi::dids::DIDURLBuf;
-use std::marker::PhantomData;
 use std::str::FromStr;
 use tracing::{Level, debug, info, instrument, trace};
 
@@ -38,10 +36,106 @@ where
     KH: kms::KeyHandle,
     KMS: kms::Kms<KH>,
 {
-    kms: KMS,
     metadata: IssuerMetadata,
-    did_resolver: UniversalResolver,
-    _marker: PhantomData<KH>,
+    signer: CredentialSigner<KH, KMS>,
+}
+
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
+impl<KH, KMS> PrepareCredential for IssuerService<KH, KMS>
+where
+    KH: kms::KeyHandle,
+    KMS: kms::Kms<KH>,
+{
+    #[instrument(level = Level::TRACE, skip_all, err(), ret())]
+    async fn prepare_credential(
+        &self,
+        credential_request: &CredentialRequest,
+        claims: &Claims,
+        nonce: Option<Nonce>,
+        status_info: Option<CredentialStatusInfo>,
+    ) -> Result<UnsignedCredential> {
+        trace!(?credential_request, ?claims, ?nonce);
+
+        let cred_def = self.resolve_cred_def_by_request(credential_request)?;
+
+        let (pop_fmt, proof) = Self::resolve_proof(cred_def, credential_request)?;
+
+        let (hld_did, hld_key) = match pop_fmt {
+            pop::Format::Jwt => {
+                let verification_opts =
+                    self.resolve_pop_verification_options(credential_request, nonce);
+                JwtProofOfPossession::verify(proof, verification_opts, self.did_resolver())
+            }
+            .await
+            .context(ProofSnafu)?,
+            _ => {
+                return ProofFormatNotSupportedSnafu {
+                    format: pop_fmt.to_string(),
+                }
+                .fail();
+            }
+        };
+        debug!(resolved_holder_did = ?hld_did);
+
+        let vc_fmt = &cred_def.format;
+        let (iss_did, _iss_key) = self.resolve_key_metadata(cred_def).await?;
+        let issuer_key_id = cred_def.key_metadata.kid.clone();
+
+        let unsigned = match vc_fmt {
+            VCFormat::SdJwtVc => {
+                trace!(claims_to_issue = ?claims);
+
+                let metadata =
+                    self.sd_jwt_vc_metadata(claims, cred_def.protocol_data.clone(), status_info)?;
+                let unsigned = SdJwtAPI::prepare_credential(
+                    claims.clone(),
+                    &iss_did,
+                    &hld_did,
+                    &hld_key,
+                    &metadata,
+                    issuer_key_id,
+                )
+                .context(VCSnafu)?;
+                UnsignedCredential::SdJwt(unsigned)
+            }
+            VCFormat::LdpVc => {
+                trace!(claims_to_issue = ?claims);
+
+                let metadata =
+                    self.json_ld_vc_metadata(cred_def.protocol_data.clone(), status_info)?;
+                let unsigned = JsonLdAPI::prepare_credential(
+                    &metadata,
+                    &iss_did,
+                    Some(hld_did.did().as_str()),
+                    claims.clone(),
+                    issuer_key_id,
+                )
+                .context(VCSnafu)?;
+                UnsignedCredential::Ldp(unsigned)
+            }
+            _ => {
+                return FormatNotSupportedSnafu {
+                    format: vc_fmt.to_string(),
+                }
+                .fail();
+            }
+        };
+
+        Ok(unsigned)
+    }
+}
+
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
+impl<KH, KMS> SignCredential for IssuerService<KH, KMS>
+where
+    KH: kms::KeyHandle,
+    KMS: kms::Kms<KH>,
+{
+    async fn sign_credential(&self, unsigned_credential: UnsignedCredential) -> Result<Credential> {
+        self.signer.sign_credential(unsigned_credential).await
+    }
 }
 
 #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
@@ -72,7 +166,6 @@ where
         Ok(credential_offer)
     }
 
-    #[instrument(level = Level::TRACE, skip_all, err(), ret())]
     async fn issue_credential(
         &self,
         credential_request: &CredentialRequest,
@@ -80,79 +173,10 @@ where
         nonce: Option<Nonce>,
         status_info: Option<CredentialStatusInfo>,
     ) -> Result<Credential> {
-        trace!(?credential_request, ?claims, ?nonce);
-
-        let cred_def = self.resolve_cred_def_by_request(credential_request)?;
-
-        let (pop_fmt, proof) = Self::resolve_proof(cred_def, credential_request)?;
-
-        let (hld_did, hld_key) = match pop_fmt {
-            pop::Format::Jwt => {
-                let verification_opts =
-                    self.resolve_pop_verification_options(credential_request, nonce);
-                JwtProofOfPossession::verify(proof, verification_opts, &self.did_resolver)
-            }
-            .await
-            .context(ProofSnafu)?,
-            _ => {
-                return ProofFormatNotSupportedSnafu {
-                    format: pop_fmt.to_string(),
-                }
-                .fail();
-            }
-        };
-        debug!(resolved_holder_did = ?hld_did);
-
-        let vc_fmt = &cred_def.format;
-
-        let (iss_did, iss_key) = self.resolve_key_metadata(cred_def).await?;
-        let alg = &iss_key.alg();
-        debug!(signing_alg = ?alg);
-
-        let vc = match vc_fmt {
-            VCFormat::SdJwtVc => {
-                trace!(claims_to_issue = ?claims);
-
-                let metadata =
-                    self.sd_jwt_vc_metadata(claims, cred_def.protocol_data.clone(), status_info)?;
-                let cred = SdJwtAPI::create_vc(
-                    claims.clone(),
-                    (&iss_did, iss_key),
-                    (&hld_did, hld_key),
-                    metadata,
-                    self.did_resolver.clone(),
-                )
-                .await
-                .context(VCSnafu)?;
-
-                Credential::SdJwt(cred)
-            }
-            VCFormat::LdpVc => {
-                trace!(claims_to_issue = ?claims);
-
-                let metadata =
-                    self.json_ld_vc_metadata(cred_def.protocol_data.clone(), status_info)?;
-                let cred = JsonLdAPI::create_vc(
-                    claims.clone(),
-                    (&iss_did, iss_key),
-                    (&hld_did, hld_key),
-                    metadata,
-                    self.did_resolver.clone(),
-                )
-                .await
-                .context(VCSnafu)?;
-
-                Credential::LdpVc(cred)
-            }
-            _ => {
-                return FormatNotSupportedSnafu {
-                    format: vc_fmt.to_string(),
-                }
-                .fail();
-            }
-        };
-
-        Ok(vc)
+        let unsigned = self
+            .prepare_credential(credential_request, claims, nonce, status_info)
+            .await?;
+        self.sign_credential(unsigned).await
     }
 }
 
@@ -164,11 +188,17 @@ where
     #[instrument(level = Level::TRACE, skip(kms, resolver))]
     pub fn new(kms: KMS, metadata: IssuerMetadata, resolver: UniversalResolver) -> Self {
         Self {
-            kms,
             metadata,
-            did_resolver: resolver,
-            _marker: Default::default(),
+            signer: CredentialSigner::new(kms, resolver),
         }
+    }
+
+    fn kms(&self) -> &KMS {
+        &self.signer.kms
+    }
+
+    fn did_resolver(&self) -> &UniversalResolver {
+        &self.signer.did_resolver
     }
 
     #[instrument(level = Level::TRACE, skip(self), err(), ret())]
@@ -351,7 +381,7 @@ where
         })?;
 
         info!("access to the key {}", key_meta.kid);
-        let kh = self.kms.get(&key_meta.kid).await.context(KMSSnafu)?;
+        let kh = self.kms().get(&key_meta.kid).await.context(KMSSnafu)?;
 
         // Check signing algs only if they were set explicitly
         if let Some(algs) = &cred_def.supported_signing_algs {

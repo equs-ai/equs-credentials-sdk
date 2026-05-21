@@ -17,6 +17,12 @@ use crate::utils;
 #[wasm_bindgen]
 pub struct UniversalDIDResolver(UniversalResolver);
 
+impl UniversalDIDResolver {
+    pub(crate) fn inner(&self) -> UniversalResolver {
+        self.0.clone()
+    }
+}
+
 #[wasm_bindgen]
 impl UniversalDIDResolver {
     /// Creates a new Universal `DID` resolver.

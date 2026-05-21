@@ -2,7 +2,9 @@ use crate::crypto::{Alg, Key, Signer, SigningOptions};
 use crate::did::universal::UniversalResolver;
 use crate::did::{DIDResolver, DIDURL};
 use crate::vc::claims::{Claim, Claims};
-use crate::vc::core::{HolderBinder, PresentationInput, PresentationRestrictionValue};
+use crate::vc::core::{
+    HolderBinder, PresentationInput, PresentationRestrictionValue, UnsignedLdpCredential,
+};
 use crate::vc::formats::{
     API, ClaimsSnafu, CredentialCreationSnafu, CryptoSuiteCreationSnafu, DIDSnafu,
     GetDateTimeClaim, HasClaims, HasCredential, IriBufParsingSnafu, IriRefParsingSnafu, IsExpired,
@@ -258,19 +260,21 @@ struct JsonLdSigner<S: Signer + Key> {
 
 impl JsonLdAPI {
     #[instrument(level = Level::TRACE, ret())]
-    pub fn create_credential(
+    pub fn prepare_credential(
         metadata: &VCMetadata,
-        iss_did: &str,
+        iss_did_url: &DIDURL,
         holder_did: Option<&str>,
         mut claims: Claims,
-    ) -> Result<Credential> {
+        issuer_key_id: String,
+    ) -> Result<UnsignedLdpCredential> {
         if let Some(did) = holder_did {
             claims.insert("id".to_string(), Claim::String(did.to_string()));
         }
 
         let now = chrono::Local::now().to_utc();
 
-        let issuer = IdOr::Id(UriBuf::from_str(iss_did).map_err(|e| {
+        let iss_did = iss_did_url.did();
+        let issuer = IdOr::Id(UriBuf::from_str(iss_did.as_str()).map_err(|e| {
             ParsingSnafu {
                 details: format!("Could not parse issuer did as uri buf {e}"),
             }
@@ -334,7 +338,12 @@ impl JsonLdAPI {
             )
         };
 
-        Ok(vc)
+        Ok(UnsignedLdpCredential {
+            unsigned_vc: vc,
+            issuer_did_url: iss_did_url.to_string(),
+            issuer_key_id,
+            mandatory_claims: metadata.mandatory_claims.clone(),
+        })
     }
 
     fn calculate_expiration_date(
@@ -681,17 +690,23 @@ impl API<Claims, VC, VP, VCMetadata, VPMetadata, ()> for JsonLdAPI {
     {
         trace!(issuer_did_url = ?{issuer_data.0}, holder_did_url = ?{holder_data.0});
 
-        let iss_did = issuer_data.0.did();
         let holder_did = holder_data.0.did();
 
-        let vc = JsonLdAPI::create_credential(
+        let unsigned = JsonLdAPI::prepare_credential(
             &metadata,
-            iss_did.as_str(),
+            issuer_data.0,
             Some(holder_did.as_str()),
             claims,
+            String::new(),
         )?;
 
-        JsonLdAPI::sign_credential(vc, issuer_data, metadata.mandatory_claims, did_resolver).await
+        JsonLdAPI::sign_credential(
+            unsigned.unsigned_vc,
+            issuer_data,
+            unsigned.mandatory_claims,
+            did_resolver,
+        )
+        .await
     }
 
     #[instrument(level = Level::TRACE, skip(holder_signer, did_resolver), err(), ret())]

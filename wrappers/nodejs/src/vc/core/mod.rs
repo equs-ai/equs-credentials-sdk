@@ -1,6 +1,7 @@
 mod error;
 mod holder;
 mod issuer;
+mod signer;
 mod status_issuer;
 mod verifier;
 

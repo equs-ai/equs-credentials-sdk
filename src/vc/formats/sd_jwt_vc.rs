@@ -30,7 +30,8 @@ use crate::utils::serde::get_time_based_claim;
 #[cfg(not(target_arch = "wasm32"))]
 use crate::utils::x509_truststore::Truststore;
 use crate::vc::core::{
-    HolderBinder, PresentationInput, PresentationRestriction, PresentationRestrictionValue,
+    DisclosureStrategy, HolderBinder, PresentationInput, PresentationRestriction,
+    PresentationRestrictionValue, UnsignedSdJwtCredential,
 };
 use crate::vc::formats::vc::SD_JWT_VC;
 use crate::vc::formats::{
@@ -311,6 +312,121 @@ impl SdJwtAPI {
         headers
     }
 
+    /// Filter `metadata.disclosures` against [ALWAYS_REVEALED_CLAIMS] and collapse an
+    /// empty result to [DisclosureStrategy::AllLevels].
+    #[instrument(level = Level::TRACE, ret())]
+    pub(crate) fn resolve_disclosure_strategy(metadata: &VCMetadata) -> DisclosureStrategy {
+        let filtered: Vec<String> = metadata
+            .disclosures
+            .iter()
+            .filter(|d| {
+                if let Some(claim) = d.strip_prefix("$.") {
+                    return !ALWAYS_REVEALED_CLAIMS.contains(&claim);
+                }
+                true
+            })
+            .cloned()
+            .collect();
+
+        if filtered.is_empty() {
+            DisclosureStrategy::AllLevels
+        } else {
+            DisclosureStrategy::Custom(filtered)
+        }
+    }
+
+    #[instrument(level = Level::TRACE, skip(hld_key), err(), ret())]
+    pub(crate) fn prepare_credential<K: Key>(
+        claims: Claims,
+        iss_did_url: &DIDURL,
+        hld_did_url: &DIDURL,
+        hld_key: &K,
+        metadata: &VCMetadata,
+        issuer_key_id: String,
+    ) -> Result<UnsignedSdJwtCredential> {
+        let claims = Self::prepare_claims(claims, iss_did_url, hld_did_url, metadata);
+        let claims = Self::set_cred_status_info(claims, metadata);
+        let extra_headers = Self::extra_headers(iss_did_url);
+
+        let holder_key = hld_key.jwk().ok_or_else(|| {
+            KeyTypeNotSupportedSnafu {
+                type_: "JWK incompatible",
+            }
+            .build()
+        })?;
+
+        let claims_value: Value = claims.try_into().context(ClaimsSnafu)?;
+        let claims_map = match claims_value {
+            Value::Object(m) => m,
+            _ => {
+                return ParsingSnafu {
+                    details: "prepared SD-JWT claims must serialize to a JSON object",
+                }
+                .fail();
+            }
+        };
+
+        Ok(UnsignedSdJwtCredential {
+            claims: claims_map,
+            disclosure_strategy: Self::resolve_disclosure_strategy(metadata),
+            holder_key,
+            extra_headers,
+            issuer_key_id,
+        })
+    }
+
+    #[instrument(level = Level::TRACE, skip(unsigned, signer), err(), ret())]
+    pub(crate) async fn sign_credential<S: Signer>(
+        unsigned: UnsignedSdJwtCredential,
+        signer: S,
+    ) -> Result<Credential> {
+        let UnsignedSdJwtCredential {
+            claims,
+            disclosure_strategy,
+            holder_key,
+            extra_headers,
+            issuer_key_id: _,
+        } = unsigned;
+
+        let jwk = utils::jwk::from_spruce_jwk(&holder_key).ok_or_else(|| {
+            KeyTypeNotSupportedSnafu {
+                type_: "JWK incompatible",
+            }
+            .build()
+        })?;
+
+        let disclosure_paths: Vec<String> = match disclosure_strategy {
+            DisclosureStrategy::AllLevels => Vec::new(),
+            DisclosureStrategy::Custom(paths) => paths,
+        };
+        let disclosure_refs: Vec<&str> = disclosure_paths.iter().map(String::as_str).collect();
+        let sd_strategy = if disclosure_refs.is_empty() {
+            ClaimsForSelectiveDisclosureStrategy::AllLevels
+        } else {
+            ClaimsForSelectiveDisclosureStrategy::Custom(disclosure_refs)
+        };
+
+        let sgn_wrapper = SignerWrapper { signer };
+        let mut issuer = SDJWTIssuer::new(sgn_wrapper);
+
+        issuer
+            .issue_sd_jwt(
+                Value::Object(claims),
+                sd_strategy,
+                Some(jwk),
+                false,
+                SDJWTSerializationFormat::Compact,
+                Some(extra_headers),
+            )
+            .await
+            .map_err(|err| {
+                SigningSnafu {
+                    details: err.to_string(),
+                }
+                .build()
+            })
+    }
+
     #[instrument(level = Level::TRACE, err(), ret())]
     pub fn strip_disclosures(vc: &Credential) -> Result<&str> {
         let mut parts = vc.split('~');
@@ -536,59 +652,15 @@ impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata, Claims> for S
         let (iss_did_url, signer) = issuer_data;
         let (hld_did_url, hld_key) = holder_data;
 
-        let sgn_wrapper = SignerWrapper { signer };
-
-        let claims = SdJwtAPI::prepare_claims(claims, iss_did_url, hld_did_url, &metadata);
-        let claims = SdJwtAPI::set_cred_status_info(claims, &metadata);
-        let headers = SdJwtAPI::extra_headers(iss_did_url);
-        trace!(resolved_headers = ?headers);
-
-        let jwk = utils::jwk::from_spruce_jwk_opt(hld_key.jwk()).ok_or_else(|| {
-            KeyTypeNotSupportedSnafu {
-                type_: "JWK incompatible",
-            }
-            .build()
-        })?;
-        trace!(resolved_holder_jwk = ?jwk);
-
-        let disclosures: Vec<&str> = metadata
-            .disclosures
-            .iter()
-            .map(|d| d.as_str())
-            .filter(|d| {
-                if let Some(claim) = d.strip_prefix("$.") {
-                    return !ALWAYS_REVEALED_CLAIMS.contains(&claim);
-                }
-                true
-            })
-            .collect();
-        trace!(resolved_disclosures = ?disclosures);
-
-        let sd_strategy = if !disclosures.is_empty() {
-            ClaimsForSelectiveDisclosureStrategy::Custom(disclosures)
-        } else {
-            ClaimsForSelectiveDisclosureStrategy::AllLevels
-        };
-
-        let mut issuer = SDJWTIssuer::new(sgn_wrapper);
-        let claims = claims.try_into().context(ClaimsSnafu)?;
-
-        issuer
-            .issue_sd_jwt(
-                claims,
-                sd_strategy,
-                Some(jwk),
-                false,
-                SDJWTSerializationFormat::Compact,
-                Some(headers),
-            )
-            .await
-            .map_err(|err| {
-                SigningSnafu {
-                    details: err.to_string(),
-                }
-                .build()
-            })
+        let unsigned = Self::prepare_credential(
+            claims,
+            iss_did_url,
+            hld_did_url,
+            &hld_key,
+            &metadata,
+            String::new(),
+        )?;
+        Self::sign_credential(unsigned, signer).await
     }
 
     #[instrument(level = Level::TRACE, skip(holder_signer, _did_resolver), err(), ret())]

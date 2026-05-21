@@ -7,7 +7,7 @@ use wasm_bindgen::prelude::wasm_bindgen;
 
 mod key;
 pub mod resolver;
-mod universal_resolver;
+pub(crate) mod universal_resolver;
 mod web;
 
 #[wasm_bindgen]

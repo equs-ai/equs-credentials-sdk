@@ -15,6 +15,12 @@ use std::sync::Arc;
 #[derive(uniffi::Object)]
 pub struct UniversalDIDResolver(UniversalResolver);
 
+impl UniversalDIDResolver {
+    pub(crate) fn inner(&self) -> UniversalResolver {
+        self.0.clone()
+    }
+}
+
 #[uniffi::export]
 impl UniversalDIDResolver {
     /// Creates a new Universal `DID` resolver.

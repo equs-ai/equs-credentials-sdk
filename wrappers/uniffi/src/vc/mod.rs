@@ -3,6 +3,7 @@ use agent_sdk::vc::HasVCFormat;
 use uniffi::custom_type;
 use uniffi::deps::anyhow;
 
+pub mod core_api;
 pub mod oid4vci;
 pub mod oid4vp;
 
