@@ -1,15 +1,26 @@
 use crate::did::JsUniversalDIDResolver;
 use crate::error::IntoNapiError;
 use crate::kms::JsKms;
+use crate::utils::to_json_object;
+use crate::vc::JsonObject;
 use crate::vc::core::{JsCredential, JsIssuerMetadata};
 use crate::vc::core::{
     JsCredentialOffer, JsCredentialOfferData, JsCredentialRequest, JsCredentialStatusInfo,
 };
 use agent_sdk::vc::claims::Error as ClaimsError;
-use agent_sdk::vc::core::{Issuer, IssuerMetadata, IssuerService as CoreIssuerService};
+use agent_sdk::vc::core::{
+    Issuer, IssuerMetadata, IssuerService as CoreIssuerService, PrepareCredential,
+};
 use napi::Error;
 use napi_derive::napi;
 use serde_json::Value;
+
+/// Trait-object combiner used by [`VCCoreIssuer`] so the boxed service exposes
+/// both the high-level [`Issuer`] API and the [`PrepareCredential`] step of
+/// the prepare/sign split. Any concrete service that implements both — e.g.
+/// `IssuerService` — automatically satisfies it via the blanket impl below.
+pub(crate) trait IssuerWithPrepare: Issuer + PrepareCredential {}
+impl<T> IssuerWithPrepare for T where T: Issuer + PrepareCredential + ?Sized {}
 
 /// An async low-level protocol-agnostic `Issuer` API.
 ///
@@ -17,9 +28,10 @@ use serde_json::Value;
 ///
 /// @property offerCredential - {@link VCCoreIssuer.offerCredential}
 /// @property issueCredential - {@link VCCoreIssuer.issueCredential}
+/// @property prepareCredential - {@link VCCoreIssuer.prepareCredential}
 ///
 #[napi]
-pub struct VCCoreIssuer(pub(crate) Box<dyn Issuer>);
+pub struct VCCoreIssuer(pub(crate) Box<dyn IssuerWithPrepare>);
 
 #[napi]
 impl VCCoreIssuer {
@@ -80,6 +92,48 @@ impl VCCoreIssuer {
             .await
             .map_err(IntoNapiError::into_napi_error)
             .and_then(|v| v.try_into())
+    }
+
+    /// First step of the two-step issuance flow: validate the {@link CredentialRequest},
+    /// resolve issuer/holder metadata, and produce an {@link UnsignedCredential} ready for
+    /// signing.
+    ///
+    /// The returned value is the externally-tagged JSON shape of the SDK's
+    /// `UnsignedCredential` enum — `{ "SdJwt": { ... } }` or `{ "Ldp": { ... } }` —
+    /// and can be passed directly to {@link VCCoreCredentialSigner.signCredential}.
+    ///
+    /// @param {CredentialRequest} credentialRequest - a {@link CredentialRequest} used for {@link Credential} generation.
+    /// @param {Claims} claims - claims to include into the {@link Credential}.
+    /// @param {string} [nonce] - a nonce to validate the {@link Proof} included in the {@link CredentialRequest}.
+    /// @param {CredentialStatusInfo} [statusInfo] - credential status info
+    ///
+    /// @returns {UnsignedCredential} - the prepared, unsigned credential on success.
+    #[napi(ts_return_type = "Promise<UnsignedCredential>")]
+    pub async fn prepare_credential(
+        &self,
+        credential_request: JsCredentialRequest,
+        #[napi(ts_arg_type = "Claims")] claims: Value,
+        nonce: Option<String>,
+        status_info: Option<JsCredentialStatusInfo>,
+    ) -> Result<JsonObject, Error> {
+        let claims = claims
+            .try_into()
+            .map_err(|e: ClaimsError| Error::from_reason(e.to_string()))?;
+
+        let status_info = status_info.map(|s| s.try_into()).transpose()?;
+
+        let unsigned = self
+            .0
+            .prepare_credential(
+                &credential_request.into(),
+                &claims,
+                nonce.map(agent_sdk::nonce::Nonce::from_secret),
+                status_info,
+            )
+            .await
+            .map_err(IntoNapiError::into_napi_error)?;
+
+        to_json_object(unsigned)
     }
 }
 

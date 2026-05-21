@@ -15,3 +15,4 @@ export * from "./authorization-request";
 export * from "./dcql";
 export * from "./resolved-presentation-query";
 export * from "./transaction-data-item";
+export * from "./unsigned-credential";

@@ -30,6 +30,7 @@ import fs from "fs/promises";
       "TransactionDataItem",
       "AuthorizationResponse",
       "PresentationResult",
+      "UnsignedCredential",
     ];
     let import_str = `import { ${exported_types.join(", ")} } from "${TYPES_FILE_PATH}";\n`;
     content = import_str + content;

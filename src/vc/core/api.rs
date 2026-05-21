@@ -354,6 +354,56 @@ pub enum Error {
 /// `Result` alias for vc:core API [Error].
 pub type Result<T> = core::result::Result<T, Error>;
 
+/// First step of two-step VC issuance: validate the request, resolve issuer/holder
+/// metadata, and build an [crate::vc::core::UnsignedCredential] ready for signing.
+///
+/// The caller may inspect the unsigned credential before passing it to a
+/// [SignCredential] implementation.
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
+pub trait PrepareCredential: WasmNotSend + WasmNotSync {
+    /// Validate the credential request, resolve issuer/holder metadata, and build the
+    /// unsigned credential representation.
+    ///
+    /// # Errors
+    ///
+    /// Same error variants as [Issuer::issue_credential] for the validation/resolution
+    /// portion of the flow.
+    async fn prepare_credential(
+        &self,
+        credential_request: &CredentialRequest,
+        claims: &Claims,
+        nonce: Option<Nonce>,
+        status_info: Option<CredentialStatusInfo>,
+    ) -> Result<crate::vc::core::UnsignedCredential>;
+}
+
+/// Second step of two-step VC issuance: sign an [crate::vc::core::UnsignedCredential]
+/// and return a finished [Credential].
+///
+/// The implementation is responsible for both the cryptographic operation and any
+/// format-specific assembly (SD-JWT disclosures, LDP proof object).
+///
+/// The trait is intentionally monolithic: a single method accepts the
+/// `UnsignedCredential` enum and dispatches internally. Implementations specialised to
+/// one format MUST return [Error::FormatNotSupported] for the other variant.
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
+pub trait SignCredential: WasmNotSend + WasmNotSync {
+    /// Sign the unsigned credential.
+    ///
+    /// # Errors
+    ///
+    /// * [Error::FormatNotSupported] - the implementation does not support the
+    ///   credential's format.
+    /// * [Error::KMS] - the implementation could not locate the requested key.
+    /// * [Error::VC] - format-specific signing error.
+    async fn sign_credential(
+        &self,
+        unsigned_credential: crate::vc::core::UnsignedCredential,
+    ) -> Result<Credential>;
+}
+
 /// An async low-level protocol-agnostic `Issuer` API.
 ///
 /// Provides the methods for creating a `CredentialOffer` and issuing a `Credential`.

@@ -3,7 +3,9 @@
 pub(crate) mod api;
 mod holder;
 mod issuer;
+mod signer;
 pub mod status_issuer;
+mod unsigned;
 mod verifier;
 
 #[cfg(test)]
@@ -12,6 +14,10 @@ pub(crate) mod tests;
 pub use super::pop::Format as PopFormat;
 pub use holder::HolderService;
 pub use issuer::IssuerService;
+pub use signer::CredentialSigner;
+pub use unsigned::{
+    DisclosureStrategy, UnsignedCredential, UnsignedLdpCredential, UnsignedSdJwtCredential,
+};
 pub use verifier::{VerificationParams, VerifierService};
 
 pub use api::*;

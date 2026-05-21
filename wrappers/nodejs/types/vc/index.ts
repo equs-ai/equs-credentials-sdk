@@ -1,4 +1,5 @@
 export * from "./core/presentation-restriction-value";
+export * from "./core/signer";
 export * from "./oid4vci/holder";
 export * from "./oid4vci/pop";
 export * from "./oid4vci/issuer";

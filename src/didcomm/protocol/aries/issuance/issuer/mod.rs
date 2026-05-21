@@ -29,6 +29,7 @@ use crate::didcomm::protocol::aries::issuance::protocol::IssuanceProtocol;
 use crate::didcomm::protocol::aries::issuance::{
     AgentSnafu, ConnectionSnafu, DidUrlResolutionSnafu, InvalidAttributesStructureSnafu,
     InvalidStateSnafu, OOBSnafu, PROPOSE_CREDENTIAL, REQUEST_CREDENTIAL, Result, StorageSnafu,
+    VCSnafu,
 };
 use crate::didcomm::protocol::aries::problem_report::PROBLEM_REPORT;
 use crate::didcomm::protocol::aries::problem_report::message::ProblemReport;
@@ -144,12 +145,18 @@ impl CredentialInfo {
         let iss_did_url = DIDURLBuf::from_string(key_metadata.did_url.to_owned())
             .context(DidUrlResolutionSnafu)?;
 
-        let metadata =
-            VCMetadata::new(result, types, Some(time::Duration::days(duration))).unwrap();
+        let metadata = VCMetadata::new(result, types, Some(time::Duration::days(duration)))
+            .context(VCSnafu)?;
 
-        let data =
-            JsonLdAPI::create_credential(&metadata, iss_did_url.did().as_str(), None, claims)
-                .unwrap();
+        let data = JsonLdAPI::prepare_credential(
+            &metadata,
+            &iss_did_url,
+            None,
+            claims,
+            key_metadata.kid.clone(),
+        )
+        .context(VCSnafu)?
+        .unsigned_vc;
 
         Ok(Self {
             data,

@@ -1,7 +1,7 @@
 import { _UniversalDIDResolver, DIDResolution, DIDResolver, DIDVerificationMethod, ReqwestHttpClient } from "../..";
 
 export class UniversalDIDResolver implements _UniversalDIDResolver {
-  private readonly inner: _UniversalDIDResolver;
+  readonly inner: _UniversalDIDResolver;
 
   constructor(params?: { inner?: _UniversalDIDResolver }) {
     this.inner = params?.inner ?? new _UniversalDIDResolver();

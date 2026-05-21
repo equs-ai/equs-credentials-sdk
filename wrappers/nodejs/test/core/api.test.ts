@@ -15,10 +15,13 @@ import {
   PresentationRestrictionValue,
   ReqwestHttpClient,
   resolveMetadata,
+  UniversalDIDResolver,
   VcCoreHolder,
   VcCoreIssuer,
   VcCoreStatusIssuer,
   VcCoreVerifier,
+  VCCoreCredentialSigner,
+  VCFormat,
   VCStatusesDataFormat,
 } from "../../";
 import { jwtDecode } from "jwt-decode";
@@ -164,6 +167,61 @@ describe("VC::Core", () => {
             claims: {},
           },
         },
+      });
+    });
+
+    it("prepare credential returns externally-tagged UnsignedCredential", async () => {
+      const credentialRequest = await holder.requestCredential(
+        await utils.getCredentialOffer(),
+        utils.nonce,
+        await utils.getKeyMetadata(),
+      );
+
+      const unsigned = await issuer.prepareCredential(
+        credentialRequest,
+        utils.claims,
+        utils.nonce,
+        utils.credStatusInfo,
+      );
+
+      // Externally-tagged wire format — the SD-JWT path produces `{ SdJwt: ... }`.
+      if (!("SdJwt" in unsigned)) {
+        throw new Error(`expected SdJwt variant, got ${JSON.stringify(unsigned)}`);
+      }
+      const sdJwt = unsigned.SdJwt;
+      expect(sdJwt).toMatchObject({
+        claims: expect.objectContaining({ date: "09/09/1989", address: "221B Baker Street" }),
+        issuer_key_id: expect.any(String),
+      });
+      expect(sdJwt.holder_key).toBeDefined();
+    });
+
+    it("prepare then sign produces a valid SD-JWT credential", async () => {
+      const credentialRequest = await holder.requestCredential(
+        await utils.getCredentialOffer(),
+        utils.nonce,
+        await utils.getKeyMetadata(),
+      );
+
+      const unsigned = await issuer.prepareCredential(
+        credentialRequest,
+        utils.claims,
+        utils.nonce,
+        utils.credStatusInfo,
+      );
+
+      const signer = new VCCoreCredentialSigner(utils.kms, new UniversalDIDResolver());
+      const credential = await signer.signCredential(unsigned);
+
+      expect(credential.format).toEqual(VCFormat.SdJwtVc);
+      // Compact SD-JWT serialisation: 3 base64url-segments joined by '.' followed by
+      // disclosures appended with '~' separators.
+      expect(credential.payload).toMatch(/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+~/);
+
+      const decoded = jwtDecode<typeof utils.claims>(credential.payload);
+      expect(decoded).toMatchObject({ date: "09/09/1989", address: "221B Baker Street" });
+      expect(decoded).toMatchObject({
+        status: { status_list: { idx: 1, uri: "http://localhost:9001/status_list" } },
       });
     });
   });

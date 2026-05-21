@@ -7,6 +7,7 @@ use serde_json::Value;
 use wasm_bindgen::JsError;
 use wasm_bindgen::prelude::wasm_bindgen;
 
+mod core_api;
 mod oid4vci;
 mod oid4vp;
 
