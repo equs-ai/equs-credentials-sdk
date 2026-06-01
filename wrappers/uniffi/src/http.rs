@@ -176,7 +176,7 @@ impl ReqwestHttpClient {
         agent_sdk::reqwest::builder::ReqwestClientBuilder::new()
             .build()
             .map(Self)
-            .map_err(|e| Error::Kms(e.to_string()))
+            .map_err(|e| Error::Core(e.to_string()))
     }
     #[uniffi::constructor]
     pub fn insecure() -> Result<Self> {
@@ -184,7 +184,7 @@ impl ReqwestHttpClient {
             .insecure()
             .build()
             .map(Self)
-            .map_err(|e| Error::Kms(e.to_string()))
+            .map_err(|e| Error::Core(e.to_string()))
     }
 }
 
@@ -206,7 +206,8 @@ impl HttpClient for ReqwestHttpClient {
     }
 }
 
-#[uniffi::export()]
+#[cfg(debug_assertions)]
+#[uniffi::export(async_runtime = "tokio")]
 async fn for_http_request_test(
     client: Arc<dyn HttpClient>,
     request: HttpRequest,

@@ -1,20 +1,13 @@
 import {
-  _UniversalDIDResolver,
   Alg,
-  createHolder,
-  createIssuer,
-  createStatusIssuer,
-  createVerifier,
   CredentialEntry,
   HolderBinder,
-  HttpClient,
-  HttpRequest,
-  HttpResponse,
   KeyType,
   OID4VCIStatusIssuerBuilder,
   PresentationRestrictionValue,
   ReqwestHttpClient,
   resolveMetadata,
+  StatusListFmt,
   UniversalDIDResolver,
   VcCoreHolder,
   VcCoreIssuer,
@@ -22,10 +15,9 @@ import {
   VcCoreVerifier,
   VCCoreCredentialSigner,
   VCFormat,
-  VCStatusesDataFormat,
-} from "../../";
+} from "agent-sdk";
 import { jwtDecode } from "jwt-decode";
-import { Utils } from "./utils";
+import { Utils } from "./fixtures";
 import { MockKeyHandle } from "./mockKeyHandle";
 import { MockKms } from "./mockKms";
 import { getLocal } from "mockttp";
@@ -43,10 +35,14 @@ describe("VC::Core", () => {
     await mockServer.start(port);
   });
 
+  afterAll(async () => {
+    await mockServer.stop();
+  });
+
   beforeEach(async () => {
-    statusIssuer = createStatusIssuer(utils.kms, await utils.getStatusIssuerMetadata());
-    issuer = createIssuer(utils.kms, await utils.getIssuerMetadata(), new _UniversalDIDResolver());
-    holder = createHolder(
+    statusIssuer = new VcCoreStatusIssuer(utils.kms, await utils.getStatusIssuerMetadata());
+    issuer = new VcCoreIssuer(utils.kms, await utils.getIssuerMetadata(), new UniversalDIDResolver());
+    holder = new VcCoreHolder(
       utils.kms,
       utils.vault,
       {
@@ -55,36 +51,31 @@ describe("VC::Core", () => {
           lifetime: 300,
         },
       },
-      new _UniversalDIDResolver(),
+      new UniversalDIDResolver(),
       ReqwestHttpClient.insecure(),
     );
 
-    const statusList = await statusIssuer.issueStatusList("test_status_list", {
-      format: VCStatusesDataFormat.StatusListToken,
-      payload: {
-        statuses: {
-          "1": 0, // 'Valid' (0) status for the VC with index 1
-        },
-      },
-    });
+    const statusList = await statusIssuer.issueStatusList("test_status_list", await utils.getVCStatusesData());
     await mockServer
       .forGet("/status_list")
       .thenReply(200, statusList.payload.jwt, { "content-type": "application/statuslist+jwt" });
   });
 
+  afterEach(async () => {
+    await mockServer.reset();
+  });
+
   describe("StatusIssuer", () => {
     it("issue status list", async () => {
-      const result = await statusIssuer.issueStatusList("test_status_list", {
-        format: VCStatusesDataFormat.StatusListToken,
-        payload: {
-          statuses: {
-            "1": 0, // 'VALID' (0) status for the VC with index 1
-            "2": 1, // 'INVALID' (1)
-            "3": 2, // 'SUSPENDED' (2)
-            "4": 3, // 'APPSPECIFIC' (3)
-          },
-        },
-      });
+      const result = await statusIssuer.issueStatusList(
+        "test_status_list",
+        await utils.getVCStatusesData({
+          "1": 0,
+          "2": 1,
+          "3": 2,
+          "4": 3,
+        }),
+      );
 
       const decoded = jwtDecode(result.payload.jwt);
 
@@ -111,22 +102,18 @@ describe("VC::Core", () => {
         y: "4qWecmcxVAXxyCBYuzxSpVRG7ETk9mO3RjUzsFUtDCg",
       });
 
-      let kms = new MockKms(
+      const kms = new MockKms(
         KeyType.P256,
         "some_string",
         new MockKeyHandle(Alg.ES256, payload, signature, publicKey, jwk),
       );
-      let metadata = await utils.getStatusIssuerMetadata();
-      let statusIssuerFromBuilder = new OID4VCIStatusIssuerBuilder(kms, metadata).build();
-      const result = await statusIssuerFromBuilder.issueStatusList("test_status_list", {
-        format: VCStatusesDataFormat.StatusListToken,
-        payload: {
-          statuses: {
-            "2": 1, // 'INVALID' (1) status for the VC with index 2
-          },
-        },
-      });
-      expect(result).toMatchObject({ format: 0, payload: { jwt: expect.any(String) } });
+      const metadata = await utils.getStatusIssuerMetadata();
+      const statusIssuerFromBuilder = new OID4VCIStatusIssuerBuilder(kms, metadata).build();
+      const result = await statusIssuerFromBuilder.issueStatusList(
+        "test_status_list",
+        await utils.getVCStatusesData({ "2": 1 }),
+      );
+      expect(result).toMatchObject({ format: StatusListFmt.StatusListTokenJwt, payload: { jwt: expect.any(String) } });
     });
   });
 
@@ -228,22 +215,16 @@ describe("VC::Core", () => {
 
   describe("Holder", () => {
     it("request credential", async () => {
-      const result = await holder.requestCredential(
-        await utils.getCredentialOffer(),
-        utils.nonce,
-        await utils.getKeyMetadata(),
-      );
+      const offer = issuer.offerCredential(utils.scope, undefined);
+      const result = await holder.requestCredential(offer, utils.nonce, await utils.getKeyMetadata());
 
       expect(result.proof.proof).toBeDefined();
     });
 
     it("store credential", async () => {
       const keyMetadata = await utils.getKeyMetadata();
-      const credentialRequest = await holder.requestCredential(
-        await utils.getCredentialOffer(),
-        utils.nonce,
-        keyMetadata,
-      );
+      const offer = issuer.offerCredential(utils.scope, undefined);
+      const credentialRequest = await holder.requestCredential(offer, utils.nonce, keyMetadata);
       const credential = await issuer.issueCredential(
         credentialRequest,
         utils.claims,
@@ -257,7 +238,7 @@ describe("VC::Core", () => {
 
     it("verify credential", async () => {
       const credentialRequest = await holder.requestCredential(
-        await utils.getCredentialOffer(),
+        issuer.offerCredential(utils.scope, undefined),
         utils.nonce,
         await utils.getKeyMetadata(),
       );
@@ -275,7 +256,7 @@ describe("VC::Core", () => {
       const keyMetadata = await utils.getKeyMetadata();
       const temp_store_map = "https://credentials.example.com/identity_credential";
       const credentialRequest = await holder.requestCredential(
-        await utils.getCredentialOffer(),
+        issuer.offerCredential(utils.scope, undefined),
         utils.nonce,
         keyMetadata,
       );
@@ -307,11 +288,11 @@ describe("VC::Core", () => {
 
     it("create presentation auto", async () => {
       await requestAndStoreCredential(holder, issuer, utils);
-      const holder_binder: HolderBinder = {
+      const holderBinder: HolderBinder = {
         nonce: utils.nonce,
         verifierId: utils.verifierId,
       };
-      const result = await holder.createPresentationAuto(holder_binder, utils.presentationInput);
+      const result = await holder.createPresentationAuto(holderBinder, utils.presentationInput);
       const decoded = jwtDecode<typeof utils.claims>(result.payload);
 
       expect(decoded).toMatchObject({ address: "221B Baker Street", date: "09/09/1989" });
@@ -320,12 +301,12 @@ describe("VC::Core", () => {
     it("create presentation", async () => {
       await requestAndStoreCredential(holder, issuer, utils);
       const credentialEntry = await holder.findVcsForPresentation(utils.presentationInput);
-      const holder_binder: HolderBinder = {
+      const holderBinder: HolderBinder = {
         nonce: utils.nonce,
         verifierId: utils.verifierId,
       };
       const result = await holder.createPresentation(
-        holder_binder,
+        holderBinder,
         utils.presentationInput,
         credentialEntry.data[0] as CredentialEntry,
       );
@@ -338,7 +319,7 @@ describe("VC::Core", () => {
   describe("Verifier", () => {
     let verifier: VcCoreVerifier;
     beforeEach(async () => {
-      verifier = createVerifier(utils.verifierId, new _UniversalDIDResolver());
+      verifier = new VcCoreVerifier(utils.verifierId, new UniversalDIDResolver());
     });
 
     it.each([
@@ -350,13 +331,13 @@ describe("VC::Core", () => {
       await utils.truncateVault();
       await requestAndStoreCredential(holder, issuer, utils, statusListIdx);
 
-      const holder_binder: HolderBinder = {
+      const holderBinder: HolderBinder = {
         nonce: utils.nonce,
         verifierId: utils.verifierId,
       };
-      const presentation = await holder.createPresentationAuto(holder_binder, utils.presentationInput);
+      const presentation = await holder.createPresentationAuto(holderBinder, utils.presentationInput);
 
-      const result = await verifier.verifyPresentation(holder_binder, presentation, ReqwestHttpClient.insecure());
+      const result = await verifier.verifyPresentation(holderBinder, presentation, ReqwestHttpClient.insecure());
 
       expect(result).toMatchObject({
         address: "221B Baker Street",
@@ -365,25 +346,20 @@ describe("VC::Core", () => {
         surname: "Doe",
       });
 
-      const client: HttpClient = {
-        asyncCall: async (_: HttpRequest): Promise<HttpResponse> => {
-          // Status list is generated with the following statuses (token index - status):
-          // 1 - VALID
-          // 2 - INVALID
-          // 3 - SUSPENDED
-          // 4 - APPSPECIFIC (value - 3)
-          const status_list_jwt =
-            "eyJ0eXAiOiJzdGF0dXNsaXN0K2p3dCIsImFsZyI6IkVTMjU2Iiwia2lkIjoiZGlkOmtleTp6RG5hZVp4QmJlVFdBYlhOcXlHZER4dDJXRTZjbzNteHU0VllEOHlieXlkdjhkQnh4I3pEbmFlWnhCYmVUV0FiWE5xeUdkRHh0MldFNmNvM214dTRWWUQ4eWJ5eWR2OGRCeHgifQ.eyJzdGF0dXNfbGlzdCI6eyJsc3QiOiJlTnFid013QUJnQUVuUUNVIiwiYml0cyI6Mn0sInN1YiI6Imh0dHA6Ly9sb2NhbGhvc3Q6OTAwMS9zdGF0dXNfbGlzdCIsImlhdCI6MTc2MzAyNTYyMywiX3NkX2FsZyI6InNoYS0yNTYifQ.lCOpC_53MXw4mShUwGtLbxh3Ha-qFNiRohPTZWo2XyCkBVSWn2daxEjSXM048p2DN8LAo61fcgAA69BGvcf5WQ~";
+      // Re-register the mock server with the specific status for this index.
+      // Status bit values: idx 1→0(VALID), 2→1(INVALID), 3→2(SUSPENDED), 4→3(APPSPECIFIC).
+      // beforeEach registers an all-VALID list so createPresentationAuto can find the credential;
+      // here we swap it out to the real expected status before obtainCredentialStatus runs.
+      await mockServer.reset();
+      const specificStatusList = await statusIssuer.issueStatusList(
+        "test_status_list",
+        await utils.getVCStatusesData({ [statusListIdx.toString()]: statusListIdx - 1 }),
+      );
+      await mockServer
+        .forGet("/status_list")
+        .thenReply(200, specificStatusList.payload.jwt, { "content-type": "application/statuslist+jwt" });
 
-          return {
-            statusCode: 200,
-            body: status_list_jwt,
-            headers: { "content-type": "application/statuslist+jwt" },
-          };
-        },
-      };
-
-      const vc_status = await verifier.obtainCredentialStatus(presentation, client);
+      const vc_status = await verifier.obtainCredentialStatus(presentation, ReqwestHttpClient.insecure());
       if (value) {
         expect(vc_status).toMatchObject({ payload: { status, value } });
       } else {
@@ -400,10 +376,9 @@ async function requestAndStoreCredential(
   statusListIdx: number = 1,
 ): Promise<void> {
   const keyMetadata = await utils.getKeyMetadata();
-  const offer = issuer.offerCredential(utils.scope);
+  const offer = issuer.offerCredential(utils.scope, undefined);
   const credentialRequest = await holder.requestCredential(offer, utils.nonce, keyMetadata);
-  let statusInfo = utils.credStatusInfo;
-  statusInfo.payload.idx = statusListIdx;
+  const statusInfo = { ...utils.credStatusInfo, payload: { ...utils.credStatusInfo.payload, idx: statusListIdx } };
   const credential = await issuer.issueCredential(credentialRequest, utils.claims, utils.nonce, statusInfo);
   const metadata = await resolveMetadata(credential, keyMetadata);
   await holder.storeCredential(credential, metadata);

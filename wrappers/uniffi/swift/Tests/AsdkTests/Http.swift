@@ -4,23 +4,27 @@ import Swifter
 @testable import Asdk
 
 @Suite(.serialized) class HttpTests {
-
 	let server: HttpServer
+	let port: in_port_t
 
 	init() async throws {
 		self.server = HttpServer()
-		try server.start(9003)
+		// Bind to port 0 so the OS picks a guaranteed-free port; avoids collisions
+		// with whatever else (CI runner, prior job, etc.) might hold a fixed port.
+		// forceIPv4 keeps reqwest's 127.0.0.1 connect path reachable under the iOS Simulator.
+		try server.start(0, forceIPv4: true)
+		self.port = in_port_t(try server.port())
 	}
 
-	deinit {
-		server.stop()
-	}
+	// No deinit { server.stop() }: Swifter 1.5.0's HttpServer.stop() can race with its
+	// background accept loop and crash xctest. With rotating ports, the previous test's
+	// server stays alive on its unused port until process exit; harmless.
 
 	@Test func asyncCall() async throws {
 		let client = MockHttpClient()
 
 		let request = Asdk.HttpRequest(
-			url: "http://localhost:9003/get",
+			url: "http://localhost:\(port)/get",
 			method: Asdk.HttpMethod.get,
 			headers: ["accept": "application/json"],
 			body: "{\"message\": \"are you ok?\"}"
@@ -40,7 +44,7 @@ import Swifter
 
 		let client = try ReqwestHttpClient.insecure()
 		let request = Asdk.HttpRequest(
-			url: "http://localhost:9003/get",
+			url: "http://localhost:\(port)/get",
 			method: Asdk.HttpMethod.get,
 			headers: ["accept": "application/json"],
 			body: nil
@@ -53,7 +57,7 @@ import Swifter
 	@Test func reqwestInsecureAsyncCallShouldThrowErrorOnSecureUrl() async throws {
 		let client = try ReqwestHttpClient()
 		let request = Asdk.HttpRequest(
-			url: "http://localhost:9003/get",
+			url: "http://localhost:\(port)/get",
 			method: Asdk.HttpMethod.get,
 			headers: ["accept": "application/json"],
 			body: nil

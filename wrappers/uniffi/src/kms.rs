@@ -73,6 +73,7 @@ impl ASDKKms<WrappedKeyHandle> for WrappedKms {
     }
 }
 
+#[cfg(debug_assertions)]
 #[uniffi::export]
 fn wrap_kms_for_tests(kms: Arc<dyn Kms>) -> Arc<dyn Kms> {
     WrappedKms::new(kms).inner()

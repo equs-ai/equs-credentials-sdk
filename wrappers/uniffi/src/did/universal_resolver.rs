@@ -16,8 +16,8 @@ use std::sync::Arc;
 pub struct UniversalDIDResolver(UniversalResolver);
 
 impl UniversalDIDResolver {
-    pub(crate) fn inner(&self) -> UniversalResolver {
-        self.0.clone()
+    pub(crate) fn inner(&self) -> &UniversalResolver {
+        &self.0
     }
 }
 

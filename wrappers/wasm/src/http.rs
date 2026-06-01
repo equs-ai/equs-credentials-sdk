@@ -1,4 +1,4 @@
-use agent_sdk::http::HttpClient as ASDKHttpClient;
+use agent_sdk::http::HttpClient;
 use agent_sdk::reqwest::ReqwestClient;
 use js_sys::{Object, Promise, Reflect};
 use oauth2::http::{HeaderMap, HeaderName, HeaderValue, Method, Uri};
@@ -22,6 +22,7 @@ extern "C" {
 
     #[wasm_bindgen(method, getter)]
     pub fn body(this: &JsHttpRequest) -> Option<String>;
+
 }
 
 /// An enum of HTTP methods available for making requests.

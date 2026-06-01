@@ -4,18 +4,22 @@ import Testing
 @testable import Asdk
 
 @Suite(.serialized) class Oid4vpHolderTests {
+	// This suite can't rotate ports (signed-JWT fixtures embed http://localhost:9001).
+	// Use a process-wide singleton so init() doesn't re-bind 9001 per test, and skip
+	// stop() because Swifter 1.5.0's HttpServer.stop() can crash xctest under concurrency.
+	static let server: HttpServer = {
+		let s = HttpServer()
+		// forceIPv4: Swifter's default is IPv6-only, which can leave reqwest's
+		// 127.0.0.1 connect path unable to reach the listener under the iOS Simulator.
+		try! s.start(9001, forceIPv4: true)
+		return s
+	}()
 	let server: HttpServer
 	let holder: Oid4vpHolder
 
 	init() async throws {
-		self.server = HttpServer()
-		try server.start(9001)
-
+		self.server = Oid4vpHolderTests.server
 		self.holder = try await Oid4vpHolderTests.setupHolder()
-	}
-
-	deinit {
-		server.stop()
 	}
 
 	@Test func getAuthorizationRequest() async throws {

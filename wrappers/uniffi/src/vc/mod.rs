@@ -1,9 +1,10 @@
 use crate::common::{Error, Result};
 use agent_sdk::vc::HasVCFormat;
+use tracing;
 use uniffi::custom_type;
 use uniffi::deps::anyhow;
 
-pub mod core_api;
+pub mod core;
 pub mod oid4vci;
 pub mod oid4vp;
 
@@ -104,7 +105,17 @@ impl TryFrom<CredentialData> for Credential {
 
 custom_type!(Credential, CredentialData, {
     remote,
-    lower: |credential| credential.try_into().expect("unable serialize Credential"),
+    lower: |credential| {
+        credential.try_into().unwrap_or_else(|e: Error| {
+            // Only reachable when the SDK adds a new #[non_exhaustive] Credential variant
+            // that this wrapper hasn't been updated for. Log rather than panic across FFI.
+            tracing::error!("Credential::lower: unsupported variant, returning poison sentinel: {e}");
+            CredentialData {
+                format: VCFormat::MsoMdoc,
+                payload: String::new(),
+            }
+        })
+    },
     try_lift: |credential_data| credential_data.try_into().map_err(anyhow::Error::msg),
 });
 

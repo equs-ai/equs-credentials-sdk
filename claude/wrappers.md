@@ -20,12 +20,14 @@ Exposes the ASDK Rust library to three foreign language targets via thin FFI/bin
 | UniFFI — DID | `wrappers/uniffi/src/did/` | [context](../wrappers/uniffi/src/did/CLAUDE.md) |
 | UniFFI — In-memory | `wrappers/uniffi/src/inmem/` | [context](../wrappers/uniffi/src/inmem/CLAUDE.md) |
 | UniFFI — VC | `wrappers/uniffi/src/vc/` | [context](../wrappers/uniffi/src/vc/CLAUDE.md) |
+| UniFFI — VC Core | `wrappers/uniffi/src/vc/core/` | [context](../wrappers/uniffi/src/vc/core/CLAUDE.md) |
 | UniFFI — OID4VCI | `wrappers/uniffi/src/vc/oid4vci/` | [context](../wrappers/uniffi/src/vc/oid4vci/CLAUDE.md) |
 | UniFFI — OID4VP | `wrappers/uniffi/src/vc/oid4vp/` | [context](../wrappers/uniffi/src/vc/oid4vp/CLAUDE.md) |
 | WASM wrapper root | `wrappers/wasm/src/` | [context](../wrappers/wasm/src/CLAUDE.md) |
 | WASM — DID | `wrappers/wasm/src/did/` | [context](../wrappers/wasm/src/did/CLAUDE.md) |
 | WASM — In-memory | `wrappers/wasm/src/inmem/` | [context](../wrappers/wasm/src/inmem/CLAUDE.md) |
 | WASM — VC | `wrappers/wasm/src/vc/` | [context](../wrappers/wasm/src/vc/CLAUDE.md) |
+| WASM — VC Core | `wrappers/wasm/src/vc/core/` | [context](../wrappers/wasm/src/vc/core/CLAUDE.md) |
 | WASM — OID4VCI | `wrappers/wasm/src/vc/oid4vci/` | [context](../wrappers/wasm/src/vc/oid4vci/CLAUDE.md) |
 | WASM — OID4VP | `wrappers/wasm/src/vc/oid4vp/` | [context](../wrappers/wasm/src/vc/oid4vp/CLAUDE.md) |
 | Askar plugin — Node.js | `plugins/askar/wrappers/nodejs/src/` | [context](../plugins/askar/wrappers/nodejs/src/CLAUDE.md) |

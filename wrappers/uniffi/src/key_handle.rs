@@ -18,6 +18,9 @@ pub trait KeyHandle: Send + Sync {
     async fn verify(&self, data: Vec<u8>, signature: Vec<u8>) -> Result<()>;
 }
 
+// Must be `uniffi::Record` (not Object) so Kotlin/Swift Kms implementations can
+// construct it directly when returning from `Kms::get()`. An Object would be
+// opaque and un-constructable on the foreign side.
 #[derive(Clone, uniffi::Record)]
 pub struct WrappedKeyHandle {
     inner: Arc<dyn KeyHandle>,
@@ -110,6 +113,7 @@ impl Verifier for WrappedKeyHandle {
 
 impl ASDKKeyHandle for WrappedKeyHandle {}
 
+#[cfg(debug_assertions)]
 #[uniffi::export]
 fn wrap_key_handle_for_tests(key_handle: Arc<dyn KeyHandle>) -> Arc<dyn KeyHandle> {
     WrappedKeyHandle::new(key_handle).inner()

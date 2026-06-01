@@ -5,7 +5,6 @@ use crate::vc::{Credential, JsCredential};
 use agent_sdk::vc::core::{
     CredentialSigner as CoreCredentialSigner, SignCredential, UnsignedCredential,
 };
-use std::sync::Arc;
 use wasm_bindgen::JsError;
 use wasm_bindgen::prelude::wasm_bindgen;
 
@@ -14,16 +13,16 @@ use wasm_bindgen::prelude::wasm_bindgen;
 /// Carries only what the signing step needs — a {@link Kms} for key access and a
 /// DID resolver for LDP proof assembly. Use when the prepare/sign split is
 /// driven from application code and a full issuer service is not desired.
-#[wasm_bindgen]
-pub struct VCCoreCredentialSigner(Arc<dyn SignCredential>);
+#[wasm_bindgen(js_name = "VCCoreCredentialSigner")]
+pub struct VcCoreCredentialSigner(Box<dyn SignCredential>);
 
-#[wasm_bindgen]
-impl VCCoreCredentialSigner {
+#[wasm_bindgen(js_class = "VCCoreCredentialSigner")]
+impl VcCoreCredentialSigner {
     /// Create a new credential signer.
     #[wasm_bindgen(constructor)]
     pub fn new(kms: Kms, did_resolver: &UniversalDIDResolver) -> Self {
         let signer = CoreCredentialSigner::new(JsKms::new(kms), did_resolver.inner());
-        Self(Arc::new(signer))
+        Self(Box::new(signer))
     }
 
     /// Sign an unsigned credential and return the finished {@link Credential}.
@@ -32,13 +31,16 @@ impl VCCoreCredentialSigner {
     /// `UnsignedCredential` enum — `{ "SdJwt": { ... } }` or
     /// `{ "Ldp": { ... } }`.
     #[wasm_bindgen(js_name = signCredential)]
-    pub async fn sign_credential(&self, unsigned: js_sys::Object) -> Result<Credential, JsError> {
+    pub async fn sign_credential(
+        &self,
+        unsigned: super::WasmUnsignedCredential,
+    ) -> Result<Credential, JsError> {
         let unsigned: UnsignedCredential = convert_to_rust_object(unsigned)?;
         let credential = self
             .0
             .sign_credential(unsigned)
             .await
-            .map_err(|e| JsError::new(&format!("{e}")))?;
+            .map_err(|e| JsError::new(&e.to_string()))?;
         let js_credential: JsCredential = credential.try_into()?;
         convert_to_opaque_object_unchecked(js_credential)
     }

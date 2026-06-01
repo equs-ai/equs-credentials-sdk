@@ -33,7 +33,21 @@ pub enum CredentialsSearchResult {
 
 #[derive(uniffi::Record)]
 pub struct CredentialsFindResult {
-    pub(crate) data: CredentialsSearchResult,
+    pub data: CredentialsSearchResult,
+}
+
+impl From<agent_sdk::vc::oid4vp::CredentialsFindResult> for CredentialsFindResult {
+    fn from(value: agent_sdk::vc::oid4vp::CredentialsFindResult) -> Self {
+        let data = match value {
+            agent_sdk::vc::oid4vp::CredentialsFindResult::Credentials(c) => {
+                CredentialsSearchResult::Credentials(c)
+            }
+            agent_sdk::vc::oid4vp::CredentialsFindResult::Reason(r) => {
+                CredentialsSearchResult::Reason(r)
+            }
+        };
+        CredentialsFindResult { data }
+    }
 }
 
 #[derive(uniffi::Record)]
@@ -156,6 +170,7 @@ impl ASDKVault for WrappedVault {
     }
 }
 
+#[cfg(debug_assertions)]
 #[uniffi::export]
 fn wrap_vault_for_tests(vault: Arc<dyn Vault>) -> Arc<dyn Vault> {
     WrappedVault::new(vault).inner()

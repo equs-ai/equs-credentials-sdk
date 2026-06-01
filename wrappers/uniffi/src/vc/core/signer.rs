@@ -22,7 +22,7 @@ impl VCCoreCredentialSigner {
     #[uniffi::constructor]
     pub fn new(kms: Arc<dyn Kms>, did_resolver: Arc<UniversalDIDResolver>) -> Self {
         let signer: CoreCredentialSigner<WrappedKeyHandle, WrappedKms> =
-            CoreCredentialSigner::new(WrappedKms::new(kms), did_resolver.inner());
+            CoreCredentialSigner::new(WrappedKms::new(kms), did_resolver.inner().clone());
         Self(Box::new(signer))
     }
 
@@ -33,7 +33,7 @@ impl VCCoreCredentialSigner {
     /// `{ "Ldp": { ... } }`.
     pub async fn sign_credential(&self, unsigned_credential: JsonValue) -> Result<Credential> {
         let unsigned: UnsignedCredential = serde_json::from_value(unsigned_credential)
-            .map_err(|err| Error::OID4VCIInternal(format!("invalid UnsignedCredential: {err}")))?;
+            .map_err(|err| Error::Parse(format!("invalid UnsignedCredential: {err}")))?;
         self.0
             .sign_credential(unsigned)
             .await

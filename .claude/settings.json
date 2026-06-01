@@ -10,7 +10,9 @@
       "Bash(ls:*)",
       "Bash(cat:*)",
       "Bash(find:*)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(npx:*)",
+      "Bash(npm:*)"
     ],
     "deny": [
       "Bash(curl:*)",
@@ -40,8 +42,6 @@
       "Bash(git merge:*)",
       "Bash(git rebase:*)",
       "Bash(git checkout:*)",
-      "Bash(npx:*)",
-      "Bash(npm:*)",
       "Bash(docker:*)",
       "Bash(rm:*)",
       "Bash(mv:*)",

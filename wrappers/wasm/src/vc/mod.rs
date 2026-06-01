@@ -3,11 +3,10 @@ use agent_sdk::vc::oid4vp::{
     CredentialsFindResult as ASDKCredentialsSearchResult, FindVCsFailReason,
 };
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use wasm_bindgen::JsError;
 use wasm_bindgen::prelude::wasm_bindgen;
 
-mod core_api;
+pub mod core;
 mod oid4vci;
 mod oid4vp;
 
@@ -30,6 +29,9 @@ extern "C" {
 
     #[wasm_bindgen(typescript_type = "CredentialExtraVerification")]
     pub type CredentialExtraVerification;
+
+    #[wasm_bindgen(typescript_type = "CredentialOffer")]
+    pub type CredentialOffer;
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -150,8 +152,15 @@ impl TryFrom<FindVCsFailReason> for JsFindVCsFailReason {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+#[serde(untagged)]
+enum CredentialsFindResultData {
+    Credentials(Vec<JsCredentialEntry>),
+    Reason(JsFindVCsFailReason),
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 pub struct CredentialsFindResult {
-    data: Value,
+    data: CredentialsFindResultData,
 }
 
 impl TryFrom<ASDKCredentialsSearchResult> for CredentialsFindResult {
@@ -160,16 +169,14 @@ impl TryFrom<ASDKCredentialsSearchResult> for CredentialsFindResult {
     fn try_from(value: ASDKCredentialsSearchResult) -> Result<Self, Self::Error> {
         let data = match value {
             ASDKCredentialsSearchResult::Credentials(creds) => {
-                let mut result = vec![];
-                for cred in creds {
-                    let item: JsCredentialEntry = cred.try_into()?;
-                    result.push(item);
-                }
-                serde_json::to_value(result)?
+                let result = creds
+                    .into_iter()
+                    .map(JsCredentialEntry::try_from)
+                    .collect::<Result<Vec<_>, _>>()?;
+                CredentialsFindResultData::Credentials(result)
             }
             ASDKCredentialsSearchResult::Reason(reason) => {
-                let js_reason: JsFindVCsFailReason = reason.try_into()?;
-                serde_json::to_value(js_reason)?
+                CredentialsFindResultData::Reason(reason.try_into()?)
             }
         };
 
