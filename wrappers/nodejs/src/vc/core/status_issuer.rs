@@ -48,19 +48,3 @@ impl VCCoreStatusIssuer {
             .and_then(|v| v.try_into())
     }
 }
-
-// TODO(next-release): remove `create_status_issuer` — superseded by `new VcCoreStatusIssuer(...)`.
-/// @deprecated Use `new VcCoreStatusIssuer(kms, metadata)` instead.
-/// This factory will be removed in the next release.
-#[allow(unused)]
-#[napi]
-pub fn create_status_issuer(
-    kms: JsKms,
-    metadata: JsStatusIssuerMetadata,
-) -> Result<VCCoreStatusIssuer, Error> {
-    tracing::warn!(
-        "`createStatusIssuer` is deprecated and will be removed in the next release. \
-         Use `new VcCoreStatusIssuer(kms, metadata)` instead."
-    );
-    VCCoreStatusIssuer::new(kms, metadata)
-}

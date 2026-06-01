@@ -57,6 +57,5 @@
     - Next Plans: Outline the immediate goals or enhancements planned for the next release.
 4. Announce release.
     - Inform DSR ASDK integration teams in Mattermost
-    - Inform HTEC ASDK integration teams in MC Teams
 5. Update [SBOM](https://blockchains-inc.atlassian.net/wiki/spaces/IC/pages/198902029/SBOM) for dependencies if there
    are any
