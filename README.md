@@ -197,14 +197,23 @@ cargo doc --no-deps
     - Node.js
         - [Issuer API](wrappers/nodejs/binary.d.ts) (available after [build](wrappers/nodejs/package.json))
         - [Issuer Builder](wrappers/nodejs/types/vc/oid4vci/issuer.ts)
-3. Create Issuer Metadata
-4. Create Credential Offer (optional for auth code flow but required for pre-authorized code flow)
-5. Implement the following endpoints. Each endpoint should call the corresponding ASDK Issuer API method.
+3. (Optional) Use delegated issuance — split `issue_credential` into two steps:
+   `prepare_credential` validates the request and builds an `UnsignedCredential` ready for
+   inspection; `sign_credential` consumes it and returns the finished `Credential`. Use this
+   when you need to inspect or transform the credential before signing, or when signing is
+   delegated to a remote service.
+    - Rust
+        - `PrepareCredential` / `SignCredential` traits: [Core API](src/vc/core/api.rs)
+        - Stand-alone signer (no issuer metadata): [CredentialSigner](src/vc/core/signer.rs)
+    - Available for all wrappers via VC Core modules
+4. Create Issuer Metadata
+5. Create Credential Offer (optional for auth code flow but required for pre-authorized code flow)
+6. Implement the following endpoints. Each endpoint should call the corresponding ASDK Issuer API method.
     - GET /.well-known/openid-credential-issuer HTTP/1.1: `get_issuer_metadata`]:
         - note that it must be a prefix to any path component your implementation serves API at (
           See [Section 3.1 of RFC8414](https://datatracker.ietf.org/doc/html/rfc8414#section-3.1)).
     - POST /credential HTTP/1.1: `issue_credential`.
-6. Integrate Authorization Server
+7. Integrate Authorization Server
     - Authorization Code Flow - Keycloak can be used as Authorization Server
         - Either issue a new access token with the required scope (
           see [VC OID4VC API Auth Code: Full Flow](docs/vc-oid4vc-api-auth-code-full.png)),
