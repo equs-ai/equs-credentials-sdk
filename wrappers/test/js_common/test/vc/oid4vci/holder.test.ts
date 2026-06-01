@@ -92,13 +92,13 @@ describe("OID4VCI Holder: ", () => {
         return "code";
       });
     } catch (e) {
-      if (process.env.npm_lifecycle_event === "test:nodejs") {
-        const err: { code: string; message: string } = JSON.parse(e.message);
-
+      const errorMsg: string = (e as Error).message;
+      try {
+        const err: { code: string; message: string } = JSON.parse(errorMsg);
         expect(err.code).toEqual("TokenEndpointInvalidClient");
         expect(err.message).toEqual('Protocol error: type "invalid_client": Unknown client_id: client_id');
-      } else {
-        expect(e.message).toEqual('Protocol error: type "invalid_client": Unknown client_id: client_id');
+      } catch {
+        expect(errorMsg).toEqual('Protocol error: type "invalid_client": Unknown client_id: client_id');
       }
     }
   });

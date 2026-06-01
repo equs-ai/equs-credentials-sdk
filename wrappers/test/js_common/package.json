@@ -33,6 +33,7 @@
     "typescript": "^5.7.3"
   },
   "dependencies": {
-    "agent-sdk": "file:../../wasm/pkg"
+    "agent-sdk": "file:../../wasm/pkg",
+    "jwt-decode": "^4.0.0"
   }
 }

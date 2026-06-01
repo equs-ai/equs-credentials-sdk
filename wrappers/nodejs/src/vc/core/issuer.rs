@@ -30,11 +30,27 @@ impl<T> IssuerWithPrepare for T where T: Issuer + PrepareCredential + ?Sized {}
 /// @property issueCredential - {@link VCCoreIssuer.issueCredential}
 /// @property prepareCredential - {@link VCCoreIssuer.prepareCredential}
 ///
-#[napi]
+#[napi(js_name = "_VcCoreIssuer")]
 pub struct VCCoreIssuer(pub(crate) Box<dyn IssuerWithPrepare>);
 
 #[napi]
 impl VCCoreIssuer {
+    /// Build a new `VCCoreIssuer`.
+    ///
+    /// @param {Kms} kms - the key-management service backing credential signing.
+    /// @param {IssuerMetadata} metadata - issuer configuration (DID, formats, etc.).
+    /// @param {_UniversalDIDResolver} didResolver - DID resolver used during issuance.
+    #[napi(constructor)]
+    pub fn new(
+        kms: JsKms,
+        metadata: JsIssuerMetadata,
+        did_resolver: &JsUniversalDIDResolver,
+    ) -> Result<Self, Error> {
+        let metadata: IssuerMetadata = metadata.try_into()?;
+        let issuer_service = CoreIssuerService::new(kms, metadata, did_resolver.into());
+        Ok(Self(Box::new(issuer_service)))
+    }
+
     /// Create a {@link CredentialOffer} based on some {@link CredentialDefinition}.
     ///
     ///
@@ -137,6 +153,9 @@ impl VCCoreIssuer {
     }
 }
 
+// TODO(next-release): remove `create_issuer` — superseded by `new VcCoreIssuer(...)`.
+/// @deprecated Use `new VcCoreIssuer(kms, metadata, didResolver)` instead.
+/// This factory will be removed in the next release.
 #[allow(unused)]
 #[napi]
 pub fn create_issuer(
@@ -144,7 +163,9 @@ pub fn create_issuer(
     metadata: JsIssuerMetadata,
     did_resolver: &JsUniversalDIDResolver,
 ) -> Result<VCCoreIssuer, Error> {
-    let metadata: IssuerMetadata = metadata.try_into()?;
-    let issuer_service = CoreIssuerService::new(kms, metadata, did_resolver.into());
-    Ok(VCCoreIssuer(Box::new(issuer_service)))
+    tracing::warn!(
+        "`createIssuer` is deprecated and will be removed in the next release. \
+         Use `new VcCoreIssuer(kms, metadata, didResolver)` instead."
+    );
+    VCCoreIssuer::new(kms, metadata, did_resolver)
 }

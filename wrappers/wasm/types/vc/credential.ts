@@ -43,7 +43,7 @@ export enum FindVCsFailReasonType {
 
 export interface FindVCsFailReason {
   type: FindVCsFailReasonType;
-  paths?: Array<string> | null;
+  paths?: Array<Array<string>> | null;
 }
 
 /**

@@ -28,6 +28,7 @@ import fs from "fs/promises";
       "AuthorizationResponseMetadata",
       "Credential",
       "CredentialEntry",
+      "CredentialOffer",
       "CredentialResponse",
       "CredentialMapping",
       "CredentialsMapping",

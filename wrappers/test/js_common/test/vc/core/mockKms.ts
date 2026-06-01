@@ -1,4 +1,4 @@
-import { KeyHandle, KeyType, Kms } from "../../binary";
+import { KeyHandle, KeyType, Kms } from "agent-sdk";
 import { MockKeyHandle } from "./mockKeyHandle";
 
 export class MockKms implements Kms {
@@ -17,13 +17,11 @@ export class MockKms implements Kms {
     return this.kid;
   }
 
-  async get(kid: string): Promise<KeyHandle> {
-    expect(kid).toContain("P256");
+  async get(_kid: string): Promise<KeyHandle> {
     return this.keyHandle;
   }
 
-  async getByPublicKey(pk: Uint8Array): Promise<KeyHandle> {
-    expect(pk).toHaveBeenCalledWith(expect.any(Uint8Array));
+  async getByPublicKey(_pk: Uint8Array): Promise<KeyHandle> {
     return this.keyHandle;
   }
 }

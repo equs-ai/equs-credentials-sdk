@@ -3,11 +3,12 @@ use crate::http::ReqwestHttpClient;
 use crate::kms::{JsKeyHandle, JsKms, Kms};
 use crate::utils;
 use crate::vault::{JsVault, Vault};
+use crate::vc::core::types::WasmProofOfPossessionNotBefore;
 use crate::vc::oid4vci::holder::CredentialExtraVerification;
 use crate::vc::oid4vci::holder::OID4VCIHolder;
 use crate::vc::oid4vci::{OID4VCICredentialOffer, OID4VCIIssuerMetadata};
+use agent_sdk::Duration;
 use agent_sdk::vc::oid4vci::HolderBuilder;
-use agent_sdk::{Duration, OffsetDateTime};
 use wasm_bindgen::prelude::wasm_bindgen;
 use wasm_bindgen::{JsError, JsValue};
 
@@ -149,6 +150,12 @@ impl OID4VCIHolderBuilder {
 }
 
 #[wasm_bindgen]
+extern "C" {
+    #[wasm_bindgen(typescript_type = "InnerProofOfPossessionNotBefore")]
+    pub type JsInnerProofOfPossessionNotBefore;
+}
+
+#[wasm_bindgen]
 pub struct ProofOfPossessionMetadata(agent_sdk::vc::core::ProofOfPossessionMetadata);
 
 #[wasm_bindgen]
@@ -176,66 +183,19 @@ impl ProofOfPossessionMetadataBuilder {
     ///
     /// # Arguments
     ///
-    /// * `not_before` - PoP token valid not before generation strategy.
+    /// * `not_before` - PoP token valid not before generation strategy (plain JS object).
     #[wasm_bindgen(js_name = withNotBefore)]
-    pub fn with_not_before(mut self, not_before: ProofOfPossessionNotBefore) -> Self {
-        self.0.not_before = Some(not_before.0);
-        ProofOfPossessionMetadataBuilder(self.0)
+    pub fn with_not_before(
+        mut self,
+        not_before: JsInnerProofOfPossessionNotBefore,
+    ) -> Result<ProofOfPossessionMetadataBuilder, JsError> {
+        let wasm_nb: WasmProofOfPossessionNotBefore = utils::convert_to_rust_object(not_before)?;
+        self.0.not_before = Some(wasm_nb.try_into()?);
+        Ok(ProofOfPossessionMetadataBuilder(self.0))
     }
 
     #[wasm_bindgen]
     pub fn build(self) -> ProofOfPossessionMetadata {
         ProofOfPossessionMetadata(self.0)
-    }
-}
-
-#[wasm_bindgen]
-pub struct ProofOfPossessionNotBefore(agent_sdk::vc::core::ProofOfPossessionNotBefore);
-
-#[wasm_bindgen]
-impl ProofOfPossessionNotBefore {
-    /// Set Proof of Possession token "valid not before" matching "issued at" time.
-    #[wasm_bindgen(js_name = asIssuedAt)]
-    pub fn issued_at() -> Self {
-        Self(agent_sdk::vc::core::ProofOfPossessionNotBefore::AsIssuedAt)
-    }
-
-    /// Set Proof of Possession token "valid not before" as a given moment in time.
-    ///
-    /// # Arguments
-    ///
-    /// * `time` - a moment in time.
-    #[wasm_bindgen]
-    pub fn fixed(time: js_sys::Date) -> Result<Self, JsError> {
-        Ok(Self(
-            agent_sdk::vc::core::ProofOfPossessionNotBefore::Fixed(
-                OffsetDateTime::from_unix_timestamp(time.get_utc_seconds() as i64)
-                    .map_err(|e| JsError::new(&format!("{:?}", e)))?,
-            ),
-        ))
-    }
-
-    /// Set Proof of Possession token "valid not before" with a given delay from "issued at" time.
-    ///
-    /// # Arguments
-    ///
-    /// * `duration_secs` - delay in seconds.
-    #[wasm_bindgen]
-    pub fn delay(duration_secs: js_sys::Number) -> Self {
-        Self(agent_sdk::vc::core::ProofOfPossessionNotBefore::Delay(
-            Duration::seconds(duration_secs.value_of() as i64),
-        ))
-    }
-
-    /// Set Proof of Possession token "valid not before" with a given leeway from "issued at" time.
-    ///
-    /// # Arguments
-    ///
-    /// * `leeway_secs` - leeway in seconds.
-    #[wasm_bindgen]
-    pub fn leeway(duration_secs: js_sys::Number) -> Self {
-        Self(agent_sdk::vc::core::ProofOfPossessionNotBefore::Leeway(
-            Duration::seconds(duration_secs.value_of() as i64),
-        ))
     }
 }

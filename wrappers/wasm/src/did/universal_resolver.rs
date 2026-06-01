@@ -15,7 +15,7 @@ use crate::utils;
 /// `did:peer`
 /// `did:web`
 #[wasm_bindgen]
-pub struct UniversalDIDResolver(UniversalResolver);
+pub struct UniversalDIDResolver(pub(crate) UniversalResolver);
 
 impl UniversalDIDResolver {
     pub(crate) fn inner(&self) -> UniversalResolver {

@@ -120,7 +120,7 @@ pub struct JsNotification {
     pub event_description: Option<String>,
 }
 
-#[napi(js_name = "CredentialNotificationEvent")]
+#[napi(string_enum = "snake_case", js_name = "CredentialNotificationEvent")]
 pub enum JsNotificationEvent {
     CredentialAccepted,
     CredentialFailure,

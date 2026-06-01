@@ -716,7 +716,7 @@ impl TryFrom<JsStatusList> for StatusList {
     }
 }
 
-#[napi(js_name = "VCStatusFormat")]
+#[napi(js_name = "VCStatusFormat", string_enum)]
 pub enum JsVCStatusFormat {
     StatusListToken,
 }

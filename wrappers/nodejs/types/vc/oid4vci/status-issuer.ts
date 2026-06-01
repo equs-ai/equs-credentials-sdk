@@ -1,4 +1,4 @@
-import { createStatusIssuer, Kms, StatusIssuerMetadata, VcCoreStatusIssuer } from "../../../";
+import { Kms, StatusIssuerMetadata, VcCoreStatusIssuer } from "../../../";
 import { contextEnsuredKms } from "../../utils";
 
 /**
@@ -14,6 +14,6 @@ export class OID4VCIStatusIssuerBuilder {
   }
 
   build(): VcCoreStatusIssuer {
-    return createStatusIssuer(contextEnsuredKms(this.kms), this.statusIssuerMetadata);
+    return new VcCoreStatusIssuer(contextEnsuredKms(this.kms), this.statusIssuerMetadata);
   }
 }

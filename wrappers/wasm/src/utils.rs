@@ -25,11 +25,10 @@ pub async fn resolve_metadata(
     let credential = js_credential.try_into()?;
     let metadata = convert_to_rust_object(metadata)?;
 
-    let result = DefaultMetadataProcessor::resolve_metadata(&credential, metadata)
-        .map_err(|err| JsError::new(&format!("{:?}", err)))?;
-    let credential_metadata: agent_sdk::vc::CredentialMetadata = result
-        .try_into()
-        .map_err(|err| JsError::new(&format!("{:?}", err)))?;
+    let result =
+        DefaultMetadataProcessor::resolve_metadata(&credential, metadata).map_err(js_err)?;
+    let credential_metadata: agent_sdk::vc::CredentialMetadata =
+        result.try_into().map_err(js_err)?;
 
     convert_to_opaque_object_unchecked(credential_metadata)
 }
@@ -38,9 +37,7 @@ pub async fn resolve_metadata(
 pub async fn parse_claims(credential: Credential) -> Result<Claims, JsError> {
     let js_credential: JsCredential = convert_to_rust_object(credential)?;
     let credential: agent_sdk::vc::Credential = js_credential.try_into()?;
-    let claims = credential
-        .parse_claims()
-        .map_err(|err| JsError::new(&format!("{:?}", err)))?;
+    let claims = credential.parse_claims().map_err(js_err)?;
 
     convert_to_opaque_object_unchecked(claims)
 }
@@ -93,4 +90,8 @@ pub fn convert_to_opaque_object_unchecked<T: Serialize, R: JsCast>(value: T) -> 
         .serialize(&Serializer::json_compatible())
         .map(|value| value.unchecked_into())
         .map_err(JsError::from)
+}
+
+pub(crate) fn js_err<E: std::fmt::Display>(e: E) -> JsError {
+    JsError::new(&e.to_string())
 }

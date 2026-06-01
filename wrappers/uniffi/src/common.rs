@@ -20,6 +20,7 @@ pub enum Error {
         error: OID4VCIProtocolErrorType,
         error_description: Option<String>,
     },
+    Core(String),
     DIDResolution {
         details: String,
     },
@@ -32,6 +33,12 @@ pub enum Error {
     HttpResponseParsing(String),
     HttpMethodParsing(String),
     Parse(String),
+}
+
+impl From<agent_sdk::vc::core::Error> for Error {
+    fn from(err: agent_sdk::vc::core::Error) -> Self {
+        Error::Core(err.to_string())
+    }
 }
 
 impl std::fmt::Display for Error {
@@ -47,11 +54,12 @@ impl std::fmt::Display for Error {
             } => {
                 write!(
                     f,
-                    "OID4VCI Internal error: {:?} {}",
+                    "OID4VCI Protocol error: {:?} {}",
                     error,
                     error_description.as_deref().unwrap_or("")
                 )
             }
+            Error::Core(s) => write!(f, "VC core error: {s}"),
             Error::DIDResolver(s) => write!(f, "DID Resolver error: {s}"),
             Error::Vault(s) => write!(f, "Vault error: {s}"),
             Error::Kms(s) => write!(f, "Kms error: {s}"),
@@ -75,6 +83,14 @@ uniffi::custom_type!(JsonValue, String, {
     try_lift: |val: String| -> JsonValue {
         Ok(serde_json::from_str(&val)?)
     }
+});
+
+pub type Url = url::Url;
+
+uniffi::custom_type!(Url, String, {
+    remote,
+    lower: |url: &Url| url.to_string(),
+    try_lift: |s: String| Ok(Url::parse(&s)?),
 });
 
 pub type Duration = time::Duration;

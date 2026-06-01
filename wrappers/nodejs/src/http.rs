@@ -12,7 +12,7 @@ use napi::{Error, Result};
 use napi_derive::napi;
 use serde_json::{Map, Value};
 
-#[napi(js_name = "HttpMethod")]
+#[napi(js_name = "HttpMethod", string_enum)]
 pub enum JsHttpMethod {
     GET,
     POST,

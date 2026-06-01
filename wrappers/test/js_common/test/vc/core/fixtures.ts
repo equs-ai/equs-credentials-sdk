@@ -1,27 +1,29 @@
 import {
   Alg,
-  contextEnsuredKms,
-  contextEnsuredVault,
   CredentialDefinitionFormat,
-  CredentialOfferContentFormat,
   CredentialStatusInfoFormat,
+  DIDKey,
   InMemKms,
   InMemVault,
   IssuerMetadata,
+  KeyType,
   PresentationInput,
   PresentationRestrictionValue,
   StatusIssuerMetadata,
   StatusListFormatFmt,
+  UniversalDIDResolver,
+  VcCoreIssuer,
   VCFormat,
-} from "../../";
-import { createDidAndKeyMetadata } from "../utils";
+  VCStatusesDataFormat,
+  type KeyMetadata,
+} from "agent-sdk";
 
 export class Utils {
   readonly nonce = "KB50VOm9I-kPLT9mAACV8g";
   readonly verifierId = "Verifier-id";
   readonly scope = "SD_JWT_cred_sample";
-  readonly kms = contextEnsuredKms(new InMemKms());
-  readonly vault = contextEnsuredVault(new InMemVault());
+  readonly kms = new InMemKms();
+  readonly vault = new InMemVault();
   readonly credStatusInfo = {
     format: CredentialStatusInfoFormat.TokenStatusList,
     payload: {
@@ -57,36 +59,15 @@ export class Utils {
     };
   }
 
-  async getKeyMetadata() {
-    return (await createDidAndKeyMetadata(this.kms)).keyMetadata;
-  }
-
-  async getCredentialOffer() {
-    const keyMetadata = await this.getKeyMetadata();
-    return {
-      content: {
-        format: CredentialOfferContentFormat.CredDef,
-        payload: {
-          cred_def_id: "",
-          format: "SdJwtVc",
-          claims: {},
-          supported_proofs: undefined,
-          supported_signing_algs: undefined,
-          display: undefined,
-          protocol_data: undefined,
-          key_metadata: {
-            didUrl: keyMetadata.didUrl,
-            kid: keyMetadata.kid,
-          },
-        },
-      },
-      credDefId: this.scope,
-      credOfferId: undefined,
-      issuerId: "https://issuer-backend.com",
-      params: {},
-      protocolData: undefined,
-      url: "http://localhost:35001",
-    };
+  async getKeyMetadata(): Promise<KeyMetadata> {
+    const kms = this.kms;
+    const keyId = await kms.create(KeyType.P256);
+    const keyHandle = await kms.get(keyId);
+    const didKey = new DIDKey();
+    const did = didKey.generate(keyHandle);
+    const resolver = new UniversalDIDResolver();
+    const vm = await resolver.resolveVerificationMethod(did);
+    return { didUrl: vm.id, kid: keyId };
   }
 
   async getStatusIssuerMetadata(): Promise<StatusIssuerMetadata> {
@@ -135,8 +116,20 @@ export class Utils {
     };
   }
 
+  async getVCStatusesData(statuses: Record<string, number> = { "1": 0 }) {
+    return {
+      format: VCStatusesDataFormat.StatusListToken,
+      payload: { statuses },
+    };
+  }
+
+  async getCredentialOffer() {
+    const issuer = new VcCoreIssuer(this.kms, await this.getIssuerMetadata(), new UniversalDIDResolver());
+    return issuer.offerCredential(this.scope, undefined);
+  }
+
   async truncateVault(): Promise<void> {
-    let creds = await this.vault.getCredentials();
+    const creds = await this.vault.getCredentials();
     for (const cred of creds) {
       await this.vault.deleteCredential(cred.id);
     }

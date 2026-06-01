@@ -16,11 +16,21 @@ use napi_derive::napi;
 ///
 /// @property verifyPresentation - {@link VCCoreVerifier.verifyPresentation}
 /// @property obtainCredentialStatus - {@link VCCoreVerifier.obtainCredentialStatus}
-#[napi]
+#[napi(js_name = "_VcCoreVerifier")]
 pub struct VCCoreVerifier(pub(crate) Box<dyn Verifier>);
 
 #[napi]
 impl VCCoreVerifier {
+    /// Build a new `VCCoreVerifier`.
+    ///
+    /// @param {string} verifierId - identifier for this verifier (used as `aud`).
+    /// @param {_UniversalDIDResolver} didResolver - DID resolver used during verification.
+    #[napi(constructor)]
+    pub fn new(verifier_id: String, did_resolver: &JsUniversalDIDResolver) -> Self {
+        let verifier_service = CoreVerifierService::new(&verifier_id, did_resolver.into());
+        Self(Box::new(verifier_service))
+    }
+
     /// Verify a {@link Presentation}.
     ///
     /// @param {holder_binder} - if given used to bind holder in the credential. It contains nonce and verifier_id
@@ -68,12 +78,18 @@ impl VCCoreVerifier {
     }
 }
 
+// TODO(next-release): remove `create_verifier` — superseded by `new VcCoreVerifier(...)`.
+/// @deprecated Use `new VcCoreVerifier(verifierId, didResolver)` instead.
+/// This factory will be removed in the next release.
 #[allow(unused)]
 #[napi]
 pub fn create_verifier(
     verifier_id: String,
     did_resolver: &JsUniversalDIDResolver,
 ) -> VCCoreVerifier {
-    let verifier_service = CoreVerifierService::new(&verifier_id, did_resolver.into());
-    VCCoreVerifier(Box::new(verifier_service))
+    tracing::warn!(
+        "`createVerifier` is deprecated and will be removed in the next release. \
+         Use `new VcCoreVerifier(verifierId, didResolver)` instead."
+    );
+    VCCoreVerifier::new(verifier_id, did_resolver)
 }

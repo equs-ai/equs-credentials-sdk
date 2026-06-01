@@ -120,6 +120,10 @@ impl VCStatuses {
     pub fn set(&mut self, index: usize, status: VCStatus) {
         self.statuses.insert(index, status.into());
     }
+
+    pub fn statuses(&self) -> &HashMap<usize, u8> {
+        &self.statuses
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]

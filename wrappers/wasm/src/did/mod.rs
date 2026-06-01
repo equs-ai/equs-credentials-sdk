@@ -10,6 +10,8 @@ pub mod resolver;
 pub(crate) mod universal_resolver;
 mod web;
 
+pub(crate) use universal_resolver::UniversalDIDResolver;
+
 #[wasm_bindgen]
 extern "C" {
     #[wasm_bindgen(typescript_type = "VerificationRelationshipType")]

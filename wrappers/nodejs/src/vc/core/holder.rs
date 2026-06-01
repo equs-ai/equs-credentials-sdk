@@ -23,11 +23,37 @@ use std::sync::Arc;
 /// @property createPresentationAuto - {@link VCCoreHolder.createPresentationAuto}
 /// @property findVcsForPresentation - {@link VCCoreHolder.findVcsForPresentation}
 /// @property createPresentation - {@link VCCoreHolder.createPresentation}
-#[napi]
+#[napi(js_name = "_VcCoreHolder")]
 pub struct VCCoreHolder(pub(crate) Box<dyn Holder>);
 
 #[napi]
 impl VCCoreHolder {
+    /// Build a new `VCCoreHolder`.
+    ///
+    /// @param {Kms} kms - the key-management service used for signing operations.
+    /// @param {Vault} vault - vault for storing and retrieving credentials.
+    /// @param {HolderMetadata} metadata - holder configuration (DID, formats).
+    /// @param {_UniversalDIDResolver} didResolver - DID resolver used during issuance and presentation.
+    /// @param {ReqwestHttpClient} httpClient - HTTP client for status-list lookups.
+    #[napi(constructor)]
+    pub fn new(
+        kms: JsKms,
+        vault: JsVault,
+        metadata: JsHolderMetadata,
+        did_resolver: &JsUniversalDIDResolver,
+        http_client: &ReqwestHttpClient,
+    ) -> Result<Self, Error> {
+        let metadata = metadata.try_into()?;
+        let holder_service = CoreHolderService::new(
+            kms,
+            vault,
+            metadata,
+            did_resolver.into(),
+            Arc::new(http_client.inner()),
+        );
+        Ok(Self(Box::new(holder_service)))
+    }
+
     /// Prepare a {@link CredentialRequest}.
     ///
     /// @param {CredentialOffer} credentialOffer - a {@link CredentialOffer} with definition of which {@link Credential} to request.
@@ -178,6 +204,9 @@ impl VCCoreHolder {
     }
 }
 
+// TODO(next-release): remove `create_holder` — superseded by `new VcCoreHolder(...)`.
+/// @deprecated Use `new VcCoreHolder(kms, vault, metadata, didResolver, httpClient)` instead.
+/// This factory will be removed in the next release.
 #[allow(unused)]
 #[napi]
 pub fn create_holder(
@@ -187,13 +216,9 @@ pub fn create_holder(
     did_resolver: &JsUniversalDIDResolver,
     http_client: &ReqwestHttpClient,
 ) -> Result<VCCoreHolder, napi::Error> {
-    let metadata = metadata.try_into()?;
-    let holder_service = CoreHolderService::new(
-        kms,
-        vault,
-        metadata,
-        did_resolver.into(),
-        Arc::new(http_client.inner()),
+    tracing::warn!(
+        "`createHolder` is deprecated and will be removed in the next release. \
+         Use `new VcCoreHolder(kms, vault, metadata, didResolver, httpClient)` instead."
     );
-    Ok(VCCoreHolder(Box::new(holder_service)))
+    VCCoreHolder::new(kms, vault, metadata, did_resolver, http_client)
 }
