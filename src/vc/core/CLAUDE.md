@@ -20,7 +20,7 @@ Defines the abstract SSI actor traits (`Issuer`, `Holder`, `Verifier`, `StatusIs
 ## Key types / traits
 - `Issuer` — high-level: `offer_credential`, `issue_credential`. Implemented directly on `IssuerService` (not as a blanket impl over the sub-traits, so coherence is preserved for downstream impls).
 - `PrepareCredential` / `SignCredential` — sub-traits for the two-step issuance flow. `prepare_credential` returns an `UnsignedCredential`; `sign_credential` consumes it.
-- `Holder` — `accept_credential`, `find_credentials`, `create_presentation`.
+- `Holder` — `accept_credential`, `find_credentials`, `create_presentation`, `create_delegated_credential` (gated `delegate-sd-jwt`).
 - `Verifier` — `verify_presentation`.
 - `StatusIssuer` — `issue_status_list`.
 - `UnsignedCredential` — format-tagged union produced by `PrepareCredential` and consumed by `SignCredential`; externally-tagged JSON serialization is the cross-wrapper wire contract.

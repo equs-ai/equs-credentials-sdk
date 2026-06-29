@@ -6254,7 +6254,7 @@ checksum = "c08d65885ee38876c4f86fa503fb49d7b507c2b62552df7c70b2fce627e06381"
 [[package]]
 name = "openid4vp"
 version = "0.1.0"
-source = "git+ssh://git@git.slock.it/open-source/oid4vp-rs.git?rev=e2a6ad82#e2a6ad828b9669b0a333a801822730efbfa8c609"
+source = "git+ssh://git@git.slock.it/open-source/oid4vp-rs.git?rev=26e6f529#26e6f529c7f4769080fb9534e0d729cee6efb19e"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -8104,7 +8104,7 @@ dependencies = [
 [[package]]
 name = "sd-jwt-rs"
 version = "0.8.0"
-source = "git+ssh://git@git.slock.it/open-source/sd-jwt-rust.git?rev=15602993#15602993db3f4f595352ac9bcb1a5b4aa0860141"
+source = "git+ssh://git@git.slock.it/open-source/sd-jwt-rust.git?rev=4ab436d1#4ab436d1b84502cd7e46fe346bbb7891afc702e8"
 dependencies = [
  "async-trait",
  "base64 0.21.7",

@@ -25,6 +25,13 @@ import {
   AUTH_RESPONSE_JWE,
   CLAIMS,
   DCQL,
+  DSD_JWT_GRANT_CRED_ID,
+  DSD_JWT_GRANT_CREDENTIAL,
+  DSD_JWT_GRANT_NONCE,
+  DSD_JWT_GRANT_RPQ,
+  DSD_JWT_GRANT_TD_HASHES,
+  DSD_JWT_GRANT_TRANSACTION_DATA,
+  DSD_JWT_GRANT_VP_TOKEN,
   PRESENTATION_DEFINITION,
   PRESENTATION_QUERY,
   PRESENTATION_QUERY_FOR_DCQL,
@@ -282,6 +289,43 @@ describe("OID4VP Verifier: ", () => {
     const claims = await verifier.verifyPresentation(auth_response, session, verificationMetadata);
 
     expect(claims).toEqual(CLAIMS);
+  });
+
+  it("verify and extract a dSD-JWT delegation grant", async () => {
+    const verifier = await buildVerifier();
+
+    const rpq = DSD_JWT_GRANT_RPQ as unknown as ResolvedPresentationQuery;
+    const session: _PresentationSession = {
+      nonce: DSD_JWT_GRANT_NONCE,
+      resolvedPresentationQuery: rpq,
+      authorizationRequestJwt: "",
+    };
+
+    const auth_response_object: AuthorizationResponseObject = {
+      vpToken: DSD_JWT_GRANT_VP_TOKEN,
+      transactionDataResponse: { hashes: DSD_JWT_GRANT_TD_HASHES },
+    };
+    const auth_response: AuthorizationResponse = {
+      type: AuthorizationResponseType.Plain,
+      object: auth_response_object,
+    };
+
+    const verificationMetadata: CredentialVerificationMetadata = {
+      transactionData: DSD_JWT_GRANT_TRANSACTION_DATA as unknown as TransactionDataItem[],
+    };
+
+    const verified = await verifier.verifyAndExtractPresentation(auth_response, session, verificationMetadata);
+
+    // Verified claims layer the delegate payload (`scope`) over the issuer claims (`iss`).
+    const cred = (verified.claims.vp_token as Record<string, Array<Record<string, unknown>>>)[DSD_JWT_GRANT_CRED_ID][0];
+    expect(cred.scope).toEqual("limited");
+    expect(cred.iss).toBeDefined();
+
+    // The raw dSD-JWT grant is returned so the Delegate Holder can store it.
+    const presentations = verified.presentations[DSD_JWT_GRANT_CRED_ID];
+    expect(presentations).toHaveLength(1);
+    expect(presentations[0]).toEqual(DSD_JWT_GRANT_CREDENTIAL);
+    expect(presentations[0] as string).toMatch(/~$/);
   });
 
   it("build verifier with trusted root certificate", async () => {

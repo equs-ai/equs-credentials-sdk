@@ -81,6 +81,7 @@ impl TryFrom<TransactionDataItem> for CoreTransactionDataItem {
             type_: value.type_,
             credential_ids: value.credential_ids,
             transaction_data_hashes_alg,
+            content: None,
         })
     }
 }

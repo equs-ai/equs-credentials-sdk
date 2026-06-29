@@ -11,6 +11,11 @@ use async_trait::async_trait;
 use base64::Engine;
 use base64::prelude::BASE64_URL_SAFE_NO_PAD;
 use common_macros::DebugError;
+#[cfg(feature = "delegate-sd-jwt")]
+use openid4vp::core::authorization_request::parameters::DelegateSdJwtTransactionDataFormat;
+use openid4vp::core::authorization_request::parameters::{
+    DelegateSdJwtTransactionData, TransactionDataItemTypeContent,
+};
 use openid4vp::core::error::Error as SpruceErr;
 use serde::{Deserialize, Serialize};
 use snafu::{IntoError, Snafu};
@@ -63,9 +68,19 @@ pub type HashAlgorithm = openid4vp::core::authorization_request::parameters::Has
 pub type ExpectedOrigins = openid4vp::core::authorization_request::parameters::ExpectedOrigins;
 
 use crate::utils::b64::get_hash_and_base64;
+#[cfg(feature = "delegate-sd-jwt")]
+use crate::vc::oid4vp::Error::Internal;
 use crate::vc::oid4vp::Error::Protocol;
+#[cfg(feature = "delegate-sd-jwt")]
+use crate::vc::oid4vp::delegate::TRANSACTION_TYPE_DELEGATE;
+#[cfg(feature = "delegate-sd-jwt")]
+use crate::vc::oid4vp::internal_error::NonceGenerationSnafu;
 pub use openid4vp::core::response::parameters::TransactionDataHashes;
 pub use openid4vp::core::response::parameters::TransactionDataHashesAlg;
+#[cfg(feature = "delegate-sd-jwt")]
+use serde_json::json;
+#[cfg(feature = "delegate-sd-jwt")]
+use snafu::ResultExt;
 
 /// Metadata for an ID Token.
 ///
@@ -482,6 +497,27 @@ pub trait Verifier: WasmNotSend + WasmNotSync {
         session: &PresentationSession,
         verification_metadata: &CredentialVerificationMetadata,
     ) -> Result<Claims, Error>;
+
+    /// Verify a presentation response and return both
+    ///     - the verified claims;
+    ///     - the raw presentations, keyed by credential id, for a later processing.
+    ///
+    /// Runs the same verification as [`Verifier::verify_presentation`].
+    ///
+    /// # Returns
+    ///
+    /// * The verified claims as a JSON object.
+    /// * Credential presentations mapped by credential id from Authorization Request.
+    ///
+    /// # Errors
+    ///
+    /// * [ProtocolError] / [InternalError] - same conditions as [`Verifier::verify_presentation`].
+    async fn verify_and_extract_presentation(
+        &self,
+        authorization_response: &AuthorizationResponse,
+        session: &PresentationSession,
+        verification_metadata: &CredentialVerificationMetadata,
+    ) -> Result<(Claims, HashMap<String, Vec<crate::vc::Presentation>>), Error>;
 }
 
 impl From<SpruceErr> for Error {
@@ -495,6 +531,138 @@ impl From<SpruceErr> for Error {
             },
         }
     }
+}
+
+/// Returns the delegate payload of a `delegate` transaction-data item, if it is one.
+pub fn as_delegate(item: &TransactionDataItem) -> Option<&DelegateSdJwtTransactionData> {
+    match &item.content {
+        Some(TransactionDataItemTypeContent::DelegateSdJwt(d)) => Some(d),
+        _ => None,
+    }
+}
+
+/// Inputs for requesting delegation of a credential to *this* party (the Delegate Holder).
+#[cfg(feature = "delegate-sd-jwt")]
+#[derive(Debug, Clone)]
+pub struct DelegationRequest {
+    /// Which credential id(s) in the request this delegation targets (maps to `credential_ids`).
+    pub credential_ids: Vec<String>,
+    /// dSD-JWT (terminal/no further binding) or dSD-JWT+KB (delegate adds its own KB-JWT —
+    /// requires `delegate_cnf`).
+    pub format: crate::vc::oid4vp::delegate::DelegateSdJwtTransactionDataFormat,
+    /// Delegate Holder's confirmation key, or `None` for a terminal grant. When set it is carried
+    /// inside the delegate payload as `cnf: { jwk }`. Required when `format = HolderBinding`.
+    pub delegate_cnf: Option<ssi::jwk::JWK>,
+    /// Claims to carry in the delegate payload (besides `cnf`).
+    pub payload_claims: serde_json::Map<String, serde_json::Value>,
+    /// v1 UNSUPPORTED — property-level disclosure inside the delegate payload is not available
+    /// because `sd_jwt_rs` forbids `_sd` in delegate payloads. Must be empty in v1.
+    pub disclosable_claims: Vec<String>,
+}
+
+/// Builds a `delegate` Transaction Data for Authorization Request.
+///
+/// Assembles the Array Disclosure `base64url([salt, { cnf?, ...payload_claims }])`
+/// (See `delegate_payload_disclosure` in dSD-JWT draft 00 section 7.1)
+/// and wraps it in a [`TransactionDataItem`].
+///
+/// # Errors
+///
+/// * Returns [`Error::Protocol`] (`InvalidTransactionData`) if:
+///   - `req.disclosable_claims` is non-empty (unsupported in v1).
+///   - `req.format` is `HolderBinding` but `req.delegate_cnf` is `None`.
+///   - Serialisation of the JWK or the disclosure array fails.
+///   - Nonce generation fails.
+#[cfg(feature = "delegate-sd-jwt")]
+pub async fn delegate_transaction_data_item(
+    req: &DelegationRequest,
+    nonce_handler: &dyn crate::nonce::NonceHandler,
+) -> Result<TransactionDataItem, Error> {
+    if !req.disclosable_claims.is_empty() {
+        return Err(Protocol {
+            source: ProtocolError::new(
+                ErrorType::InvalidTransactionData,
+                Some("property-level delegate-payload disclosure is not supported".to_string()),
+                None,
+            ),
+        });
+    }
+
+    if req.payload_claims.contains_key("cnf") {
+        return Err(Protocol {
+            source: ProtocolError::new(
+                ErrorType::InvalidTransactionData,
+                Some("cnf must be supplied via delegate_cnf".to_string()),
+                None,
+            ),
+        });
+    }
+
+    if req.payload_claims.contains_key("_sd") {
+        return Err(Protocol {
+            source: ProtocolError::new(
+                ErrorType::InvalidTransactionData,
+                Some(
+                    "delegate payload must not contain _sd (selective disclosure within the delegate payload is unsupported)".to_string(),
+                ),
+                None,
+            ),
+        });
+    }
+
+    if req.format == DelegateSdJwtTransactionDataFormat::HolderBinding && req.delegate_cnf.is_none()
+    {
+        return Err(Protocol {
+            source: ProtocolError::new(
+                ErrorType::InvalidTransactionData,
+                Some("delegate_cnf is required when format is HolderBinding".to_string()),
+                None,
+            ),
+        });
+    }
+
+    let mut payload = req.payload_claims.clone();
+    if let Some(jwk) = &req.delegate_cnf {
+        let jwk_value = serde_json::to_value(jwk).map_err(|_| Protocol {
+            source: ProtocolError::new(
+                ErrorType::InvalidTransactionData,
+                Some("failed to serialise delegate_cnf".to_string()),
+                None,
+            ),
+        })?;
+        payload.insert("cnf".to_string(), json!({ "jwk": jwk_value }));
+    }
+
+    let salt = nonce_handler
+        .generate()
+        .await
+        .context(NonceGenerationSnafu)
+        .map_err(|e| Internal { source: e })?
+        .secret()
+        .to_owned();
+
+    let disclosure_bytes = serde_json::to_vec(&json!([salt, serde_json::Value::Object(payload)]))
+        .map_err(|_| Protocol {
+        source: ProtocolError::new(
+            ErrorType::InvalidTransactionData,
+            Some("failed to serialise disclosure array".to_string()),
+            None,
+        ),
+    })?;
+    let disclosure = BASE64_URL_SAFE_NO_PAD.encode(&disclosure_bytes);
+
+    Ok(TransactionDataItem {
+        type_: TRANSACTION_TYPE_DELEGATE.to_string(),
+        credential_ids: req.credential_ids.clone(),
+        transaction_data_hashes_alg: None,
+        content: Some(TransactionDataItemTypeContent::DelegateSdJwt(
+            DelegateSdJwtTransactionData {
+                format: req.format.clone(),
+                delegate_payload_disclosure: disclosure,
+                delegate_disclosures: None,
+            },
+        )),
+    })
 }
 
 pub fn get_transaction_data_hash(

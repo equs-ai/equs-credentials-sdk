@@ -11,6 +11,7 @@ import {
   ResolvedPresentationQuery,
   WalletMetadata,
   AuthorizationResponseType,
+  ClaimsPresentations,
 } from "../../..";
 
 export type AuthorizationResponse = {
@@ -67,5 +68,28 @@ export class OID4VPVerifier {
     verificationMetadata: CredentialVerificationMetadata,
   ): Promise<Claims> {
     return this.inner.verifyPresentation(authorizationResponse, session, verificationMetadata);
+  }
+
+  /**
+   * Verifies the presentation **and** returns the raw presentations alongside the claims.
+   *
+   * Runs the same verification as {@link OID4VPVerifier.verifyPresentation} (transaction-data
+   * hashes, per-presentation holder binding / proof of possession), and additionally returns
+   * the raw presentation(s) per credential id. A Delegate Holder uses this to **store** a
+   * returned dSD-JWT delegation grant: the grant's KB-SD-JWT is Holder-signed (proof of
+   * possession), and its `aud`/`nonce` are verified, so it is accepted through this normal path.
+   *
+   * @param {AuthorizationResponse} authorizationResponse - the authorization response containing the VP token and presentation submission.
+   * @param {_PresentationSession} session - a session object containing `Nonce` and {@link ResolvedPresentationQuery}.
+   * @param {CredentialVerificationMetadata} verificationMetadata - transaction-data and audience metadata.
+   *
+   * @returns {ClaimsPresentations} - the verified claims plus the raw presentations keyed by credential id.
+   */
+  verifyAndExtractPresentation(
+    authorizationResponse: AuthorizationResponse,
+    session: _PresentationSession,
+    verificationMetadata: CredentialVerificationMetadata,
+  ): Promise<ClaimsPresentations> {
+    return this.inner.verifyAndExtractPresentation(authorizationResponse, session, verificationMetadata);
   }
 }

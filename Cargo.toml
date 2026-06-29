@@ -23,8 +23,8 @@ rust-version = "1.95.0"
 common-macros = { path = "./common-macros" }
 # Internally maintained forked dependencies
 oid4vci = { git = "ssh://git@git.slock.it/open-source/oid4vci-rs.git", rev = "f5c38f92" }
-openid4vp = { git = "ssh://git@git.slock.it/open-source/oid4vp-rs.git", rev = "e2a6ad82" }
-sd-jwt-rs = { git = "ssh://git@git.slock.it/open-source/sd-jwt-rust.git", rev = "15602993" }
+openid4vp = { git = "ssh://git@git.slock.it/open-source/oid4vp-rs.git", rev = "26e6f529" }
+sd-jwt-rs = { git = "ssh://git@git.slock.it/open-source/sd-jwt-rust.git", rev = "4ab436d1" }
 didcomm = { git = "ssh://git@git.slock.it/open-source/didcomm-rust.git", rev = "db41780d" }
 did_peer = { git = "ssh://git@git.slock.it/open-source/aries-vcx.git", rev = "fc818ef5" }
 did_resolver = { git = "ssh://git@git.slock.it/open-source/aries-vcx.git", rev = "fc818ef5" }
@@ -115,6 +115,7 @@ ecdsa = "0.16.9"
 in-memory = ["dep:rand", "dep:ed25519-dalek", "dep:ecdsa", "dep:askar-crypto"]
 didcomm-http-transport = ["dep:http", "dep:hyper", "dep:tokio"]
 test-utils = []
+delegate-sd-jwt = []
 
 [profile.release]
 opt-level = "z"

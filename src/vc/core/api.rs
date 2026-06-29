@@ -640,6 +640,31 @@ pub trait Holder: WasmNotSend + WasmNotSync {
         credential: &CredentialEntry,
     ) -> Result<Presentation>;
 
+    /// Produce a delegated credential (dSD-JWT) from a selected SD-JWT credential entry,
+    /// appending one delegation link via the format layer. Mirrors `create_presentation`
+    /// but emits a stored-credential dSD-JWT rather than a verifiable presentation.
+    ///
+    /// # Arguments
+    ///
+    /// * `cred_entry` - a `CredentialEntry` whose `credential` must be an SD-JWT.
+    /// * `params` - delegation hop parameters (delegate payload, claims to disclose, binding mode).
+    ///
+    /// # Returns
+    ///
+    /// A compact dSD-JWT string ending with `~` (a grant, not a KB-JWT presentation) on success.
+    ///
+    /// # Errors
+    ///
+    /// * [Error::FormatNotSupported] - the credential is not an SD-JWT (delegation is only supported for SD-JWT).
+    /// * [Error::VC] - internal format-layer error.
+    /// * [Error::KMS] - error with [Kms](crate::kms::Kms).
+    #[cfg(feature = "delegate-sd-jwt")]
+    async fn create_delegated_credential(
+        &self,
+        cred_entry: &CredentialEntry,
+        params: vc::formats::DelegationParams,
+    ) -> Result<vc::formats::sd_jwt_vc::Credential>;
+
     /// Gets the status of Credential.
     ///
     /// # Arguments

@@ -79,6 +79,14 @@ impl ProtocolError {
     pub fn invalid_request(message: &str, state: Option<String>) -> ProtocolError {
         ProtocolError::new(ErrorType::InvalidRequest, Some(message.to_owned()), state)
     }
+
+    pub fn transaction_data(message: &str, state: Option<String>) -> ProtocolError {
+        ProtocolError::new(
+            ErrorType::InvalidTransactionData,
+            Some(message.to_owned()),
+            state,
+        )
+    }
 }
 
 impl ProtocolSnafu<ErrorType, Option<String>, Option<String>, Option<Url>> {

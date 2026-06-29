@@ -23,7 +23,7 @@ use crate::vc::oid4vp::{
     CredentialsFindResult, CredentialsMapping, ID_TOKEN, PRESENTATION_SUBMISSION,
     PresentationResult, ProtocolError, ResolvedAuthRequest, ResolvedPresentationQuery,
     ResponseMode, STATE, TRANSACTION_DATA_HASHES, TRANSACTION_DATA_HASHES_ALG, VP_TOKEN,
-    get_transaction_data_hash,
+    as_delegate, get_transaction_data_hash,
 };
 use crate::vc::presentation_exchange::PresentationDefinition;
 use crate::vc::{
@@ -31,9 +31,15 @@ use crate::vc::{
 };
 use crate::{utils, vc};
 use async_trait::async_trait;
+#[cfg(feature = "delegate-sd-jwt")]
+use base64::{Engine as _, prelude::BASE64_URL_SAFE_NO_PAD};
 use futures::future;
 use futures::future::join_all;
 use oauth2::http::{Request, Response};
+#[cfg(feature = "delegate-sd-jwt")]
+use openid4vp::core::authorization_request::parameters::{
+    DelegateSdJwtTransactionData, DelegateSdJwtTransactionDataFormat,
+};
 use openid4vp::core::authorization_request::parameters::{
     HashAlgorithm, ResponseType, WalletNonce,
 };
@@ -346,13 +352,155 @@ where
         Ok(id_token)
     }
 
-    #[instrument(level = Level::TRACE, skip(self), err(), ret())]
+    /// Resolve the `DelegationParams` for a delegated presentation input: decode and
+    /// validate every `delegate` item targeting `input_id` (each is one alternative).
+    #[cfg(feature = "delegate-sd-jwt")]
+    fn resolve_delegation_params(
+        transaction_data: &Option<Vec<TransactionDataItem>>,
+        input: &PresentationInput,
+        state: &Option<String>,
+    ) -> Result<Option<vc::formats::DelegationParams>> {
+        let items: Vec<&DelegateSdJwtTransactionData> = transaction_data
+            .as_deref()
+            .unwrap_or(&[])
+            .iter()
+            .filter(|item| item.credential_ids.contains(&input.id))
+            .filter_map(as_delegate)
+            .collect();
+
+        if items.is_empty() {
+            return Ok(None);
+        }
+
+        let delegate_payloads = Self::resolve_delegate_payloads(state, &items)
+            .map_err(|err| Error::Protocol { source: err })?;
+
+        let claims_to_disclose = Some(
+            vc::formats::sd_jwt_vc::SdJwtAPI::resolve_disclosures(input)
+                .context(vc::core::VCSnafu)
+                .context(VCSnafu)?,
+        );
+
+        Ok(Some(crate::vc::formats::DelegationParams {
+            delegate_payloads,
+            claims_to_disclose,
+            drop_disclosures: None,
+            binding: sd_jwt_rs::ChainBindingMode::IssuerJwtHash,
+            aud: None,
+            nonce: None,
+        }))
+    }
+
+    #[cfg(feature = "delegate-sd-jwt")]
+    fn resolve_delegate_payloads(
+        state: &Option<String>,
+        items: &Vec<&DelegateSdJwtTransactionData>,
+    ) -> std::result::Result<Vec<Value>, ProtocolError> {
+        let mut delegate_payloads: Vec<serde_json::Value> = Vec::with_capacity(items.len());
+        for item in items {
+            // POC: nested delegate_disclosures are unsupported (the crate forbids `_sd` in delegate payloads).
+            if item
+                .delegate_disclosures
+                .as_ref()
+                .is_some_and(|v| !v.is_empty())
+            {
+                return Err(ProtocolError::transaction_data(
+                    "nested delegate_disclosures unsupported in v1",
+                    state.to_owned(),
+                ));
+            }
+
+            // delegate_payload_disclosure = base64url(JSON([salt, payloadObject])).
+            let decoded = BASE64_URL_SAFE_NO_PAD
+                .decode(&item.delegate_payload_disclosure)
+                .map_err(|_| {
+                    ProtocolError::transaction_data(
+                        "malformed delegate_payload_disclosure: invalid base64url",
+                        state.to_owned(),
+                    )
+                })?;
+            let payload_disclosure: Value = serde_json::from_slice(&decoded).map_err(|_| {
+                ProtocolError::transaction_data(
+                    "malformed delegate_payload_disclosure: not valid JSON",
+                    state.to_owned(),
+                )
+            })?;
+            let payload = payload_disclosure
+                .as_array()
+                .filter(|a| a.len() == 2)
+                .ok_or_else(|| {
+                    ProtocolError::transaction_data(
+                        "malformed delegate_payload_disclosure: expected 2-element array",
+                        state.to_owned(),
+                    )
+                })?;
+            let payload = payload[1].clone();
+            if !payload.is_object() {
+                return Err(ProtocolError::transaction_data(
+                    "malformed delegate_payload_disclosure: payload is not a JSON object",
+                    state.to_owned(),
+                ));
+            }
+            if payload.get("_sd").is_some() {
+                return Err(ProtocolError::transaction_data(
+                    "malformed delegate_payload_disclosure: _sd is forbidden in delegate payloads",
+                    state.to_owned(),
+                ));
+            }
+            delegate_payloads.push(payload);
+        }
+
+        // dSD-JWT+KB requires a cnf in every alternative (so the Delegate Holder can
+        // later sign a trailing KB-JWT). The all-or-none cnf rule across alternatives
+        // is enforced by sd_jwt_rs::delegate.
+        let any_require_holder_kb = items
+            .iter()
+            .any(|item| item.format == DelegateSdJwtTransactionDataFormat::HolderBinding);
+        if any_require_holder_kb && delegate_payloads.iter().any(|p| p.get("cnf").is_none()) {
+            return Err(ProtocolError::transaction_data(
+                "format dSD-JWT+KB requires cnf in every delegate payload",
+                state.to_owned(),
+            ));
+        }
+        Ok(delegate_payloads)
+    }
+
+    #[cfg_attr(not(feature = "delegate-sd-jwt"), allow(unused_variables))]
+    #[instrument(level = Level::TRACE, skip(self, transaction_data), err(), ret())]
     async fn create_presentation_by_input(
         &self,
         credential: &CredentialEntry,
         presentation_input: &PresentationInput,
         holder_binder: Option<HolderBinder>,
+        transaction_data: &Option<Vec<TransactionDataItem>>,
+        state: &Option<String>,
     ) -> Result<RequestedPresentation> {
+        // A `delegate` transaction-data item turns this credential's presentation into
+        // a dSD-JWT delegation grant: a holder-bound dSD-JWT carrying the delegate
+        // payload(s), produced via the core delegated-presentation path. The request
+        // `aud`/`nonce` (from the HolderBinder) are written into the delegate payload —
+        // for a plain dSD-JWT the final KB-SD-JWT link is the key binding to the
+        // requesting Delegate Holder.
+        #[cfg(feature = "delegate-sd-jwt")]
+        if let Some(mut delegation_params) =
+            Self::resolve_delegation_params(transaction_data, presentation_input, state)?
+        {
+            if let Some(hb) = &holder_binder {
+                delegation_params.aud = Some(hb.verifier_id.clone());
+                delegation_params.nonce = Some(hb.nonce.secret().to_owned());
+            }
+            let dsd_jwt = self
+                .holder
+                .create_delegated_credential(credential, delegation_params)
+                .await
+                .context(VCSnafu)?;
+            return Ok(RequestedPresentation {
+                id: presentation_input.id.to_owned(),
+                presentation: crate::vc::Presentation::SdJwtVp(dsd_jwt),
+                require_cryptographic_holder_binding: Some(holder_binder.is_some()),
+            });
+        }
+
         let presentation = self
             .holder
             .create_presentation(holder_binder.to_owned(), presentation_input, credential)
@@ -473,7 +621,13 @@ where
 
             for cred in credentials {
                 let presentation = self
-                    .create_presentation_by_input(cred, presentation_input, holder_binder.clone())
+                    .create_presentation_by_input(
+                        cred,
+                        presentation_input,
+                        holder_binder.clone(),
+                        &auth_request.transaction_data,
+                        &auth_request.state,
+                    )
                     .await?;
                 presentations.push(presentation);
             }
@@ -642,6 +796,8 @@ where
                             cred_entry,
                             presentation_input,
                             Some(holder_binder),
+                            &auth_request.transaction_data,
+                            &auth_request.state,
                         )
                         .await;
                 }
@@ -677,6 +833,8 @@ where
                 id_to_pres_input,
                 id_to_cred_entry,
                 Self::create_holder_binder(auth_request, auth_response_metadata)?,
+                &auth_request.transaction_data,
+                &auth_request.state,
             )
             .await?
         } else {
@@ -697,7 +855,7 @@ where
                         details: "origin value of authorization response metadata is missed. Its required for dc_api/dc_api.jwt response mode"
                             .to_owned(),
                     }
-                    .build()
+                        .build()
                 })?;
 
                 if auth_request
@@ -745,7 +903,9 @@ where
         dcql_creds: Vec<DcqlCredential>,
         id_to_pres_input: HashMap<String, PresentationInput>,
         id_to_cred: HashMap<String, Vec<CredentialEntry>>,
-        binder: HolderBinder,
+        holder_binder: HolderBinder,
+        transaction_data: &Option<Vec<TransactionDataItem>>,
+        state: &Option<String>,
     ) -> Result<Vec<RequestedPresentation>> {
         future::try_join_all(dcql_creds.iter().map(|credential| async {
             let id = credential.id().as_str();
@@ -754,12 +914,12 @@ where
                 && let Some(cred) = creds.first()
             {
                 let holder_binder =
-                    if let Some(false) = credential.require_cryptographic_holder_binding() {
+                    if credential.require_cryptographic_holder_binding() == Some(false) {
                         None
                     } else {
-                        Some(binder.to_owned())
+                        Some(holder_binder.clone())
                     };
-                self.create_presentation_by_input(cred, pi, holder_binder)
+                self.create_presentation_by_input(cred, pi, holder_binder, transaction_data, state)
                     .await
             } else {
                 CredentialNotFoundSnafu.fail()?
@@ -806,7 +966,8 @@ where
             })
             .collect()
     }
-    fn validate_transaction_data(
+
+    pub(crate) fn validate_transaction_data(
         &self,
         resolved_presentation_query: &ResolvedPresentationQuery,
         transaction_data: &Vec<TransactionDataItem>,
@@ -840,9 +1001,66 @@ where
                     });
                 }
             }
+
+            if as_delegate(item).is_some() {
+                #[cfg(feature = "delegate-sd-jwt")]
+                validate_transaction_data_delegate(resolved_presentation_query, item)?;
+
+                #[cfg(not(feature = "delegate-sd-jwt"))]
+                return Err(Protocol {
+                    source: ProtocolError::new(
+                        ErrorType::InvalidTransactionData,
+                        Some("delegate transaction type is not supported".to_string()),
+                        None,
+                    ),
+                });
+            }
         }
         Ok(())
     }
+}
+
+/// A `delegate` transaction-data item may target
+///  - dc+sd-jwt credentials;
+///  - credentials without format restrictions.
+fn validate_transaction_data_delegate(
+    resolved_presentation_query: &ResolvedPresentationQuery,
+    transaction_data_item: &TransactionDataItem,
+) -> vc::oid4vp::verifier::Result<()> {
+    for cred_id in &transaction_data_item.credential_ids {
+        let td_refers_sd_jwt = match resolved_presentation_query {
+            ResolvedPresentationQuery::DCQL(dcql) => dcql
+                .credentials()
+                .iter()
+                .find(|c| c.id().as_str() == cred_id.as_str())
+                .map(|c| String::from(c.format().to_owned()) == crate::vc::formats::vc::SD_JWT_VC),
+            ResolvedPresentationQuery::PresentationDefinition(pd) => pd
+                .input_descriptors()
+                .iter()
+                .find(|d| d.id == *cred_id)
+                .map(|d| {
+                    d.format.is_empty()
+                        || d.format.keys().any(|k| {
+                            String::from(k.to_owned()) == crate::vc::formats::vc::SD_JWT_VC
+                        })
+                }),
+        };
+        // If refered credential type is not specified (td_refers_sd_jwt == None) transaction data validation passes.
+        // An error will be thrown from core Holder if the found credential type is not dc+sd-jwt.
+        if Some(false) == td_refers_sd_jwt {
+            return Err(Protocol {
+                source: ProtocolError::new(
+                    ErrorType::InvalidTransactionData,
+                    Some(format!(
+                        "Wrong transaction data: delegate item targets cred_id={} which is not a dc+sd-jwt credential",
+                        cred_id
+                    )),
+                    None,
+                ),
+            });
+        }
+    }
+    Ok(())
 }
 
 #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
@@ -2145,10 +2363,12 @@ mod tests {
         single_presentation::sd_jwt::presentation_test_case_for_dcql_with_vct_only()
     )]
     #[case::sd_jwt::presentation_test_case_for_dcql_without_claim_sets_multiple_result(
-        single_presentation::sd_jwt::presentation_test_case_for_dcql_without_claim_sets_multiple_result()
+        single_presentation::sd_jwt::presentation_test_case_for_dcql_without_claim_sets_multiple_result(
+        )
     )]
     #[case::sd_jwt::presentation_test_case_for_dcql_without_claim_sets_unique_result(
-        single_presentation::sd_jwt::presentation_test_case_for_dcql_without_claim_sets_unique_result()
+        single_presentation::sd_jwt::presentation_test_case_for_dcql_without_claim_sets_unique_result(
+        )
     )]
     #[case::sd_jwt::presentation_test_case_for_dcql_with_claim_sets(
         single_presentation::sd_jwt::presentation_test_case_for_dcql_with_claim_sets()
@@ -2164,7 +2384,8 @@ mod tests {
         )
     )]
     #[case::sd_jwt::presentation_test_case_for_dcql_without_claim_sets_empty_result(
-        single_presentation::sd_jwt::presentation_test_case_for_dcql_without_claim_sets_non_empty_result()
+        single_presentation::sd_jwt::presentation_test_case_for_dcql_without_claim_sets_non_empty_result(
+        )
     )]
     #[tokio::test]
     async fn find_credentials_with_dcql_success(#[case] case: PresentationTestCase) {
@@ -2239,23 +2460,29 @@ mod tests {
     #[rstest]
     // sd_jwt
     #[case::sd_jwt::sd_jwt_presentation_test_case_with_constraints_with_invalid_value_for_pattern(
-        single_presentation::sd_jwt::presentation_test_case_with_constraints_with_invalid_value_for_pattern()
+        single_presentation::sd_jwt::presentation_test_case_with_constraints_with_invalid_value_for_pattern(
+        )
     )]
     #[case::sd_jwt::sd_jwt_presentation_test_case_with_constraints_with_invalid_value_for_const(
-        single_presentation::sd_jwt::presentation_test_case_with_constraints_with_invalid_value_for_const()
+        single_presentation::sd_jwt::presentation_test_case_with_constraints_with_invalid_value_for_const(
+        )
     )]
     #[case::sd_jwt::sd_jwt_presentation_test_case_with_constraints_with_absent_required_claim(
-        single_presentation::sd_jwt::presentation_test_case_with_constraints_with_absent_required_claim()
+        single_presentation::sd_jwt::presentation_test_case_with_constraints_with_absent_required_claim(
+        )
     )]
     // json_ld
     #[case::json_ld::json_ld_presentation_test_case_with_constraints_with_invalid_value_for_pattern_json_ld(
-        single_presentation::json_ld::presentation_test_case_with_constraints_with_invalid_value_for_pattern()
+        single_presentation::json_ld::presentation_test_case_with_constraints_with_invalid_value_for_pattern(
+        )
     )]
     #[case::json_ld::json_ld_presentation_test_case_with_constraints_with_invalid_value_for_constjson_ld(
-        single_presentation::json_ld::presentation_test_case_with_constraints_with_invalid_value_for_const()
+        single_presentation::json_ld::presentation_test_case_with_constraints_with_invalid_value_for_const(
+        )
     )]
     #[case::json_ld::json_ld_presentation_test_case_with_constraints_with_absent_required_claimjson_ld(
-        single_presentation::json_ld::presentation_test_case_with_constraints_with_absent_required_claim()
+        single_presentation::json_ld::presentation_test_case_with_constraints_with_absent_required_claim(
+        )
     )]
     #[tokio::test]
     async fn find_credentials_fails_with_constraints(#[case] case: PresentationTestCase) {
@@ -2298,7 +2525,8 @@ mod tests {
 
     #[rstest]
     #[case::sd_jwt::presentation_test_case_for_dcql_without_claim_sets_empty_result(
-        single_presentation::sd_jwt::presentation_test_case_for_dcql_without_claim_sets_empty_result()
+        single_presentation::sd_jwt::presentation_test_case_for_dcql_without_claim_sets_empty_result(
+        )
     )]
     #[case::sd_jwt::presentation_test_case_for_dcql_with_claim_values_empty_result(
         single_presentation::sd_jwt::presentation_test_case_for_dcql_with_claim_values_empty_result(
