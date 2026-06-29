@@ -12,6 +12,7 @@ Houses all Verifiable Credential format implementations (SD-JWT, W3C JSON-LD, IS
 | vp.rs | `VPFormat` enum and `HasVPFormat` trait (SdJwtVp, JwtVp, LdpVp, MsoMdoc). |
 | json_ld_vc.rs | W3C JSON-LD VC implementation: `JsonLdAPI`, `VC`, `VP`, `VCMetadata` using `ssi` data-integrity suites. |
 | sd_jwt_vc.rs | SD-JWT VC implementation: `SdJwtAPI`, `VCMetadata`, `SignerWrapper`, selective disclosure via `sd_jwt_rs`. |
+| dsd_jwt.rs | Delegate SD-JWT (dSD-JWT/dSD-JWT+KB) format primitives — gated `delegate-sd-jwt`. |
 | mso_mdoc.rs | ISO 18013-5 mDoc implementation: `MsoMdocAPI`, `Presentation` (CBOR base64url + optional encryption key). |
 
 ## Key types / traits

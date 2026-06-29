@@ -23,6 +23,8 @@ use crate::vc::core::{
     VaultSnafu,
 };
 use crate::vc::formats::API;
+#[cfg(feature = "delegate-sd-jwt")]
+use crate::vc::formats::dsd_jwt::DsdJwtAPI;
 use crate::vc::formats::json_ld_vc;
 use crate::vc::formats::json_ld_vc::JsonLdAPI;
 use crate::vc::formats::sd_jwt_vc::{SdJwtAPI, VPMetadata};
@@ -349,6 +351,27 @@ where
         };
 
         Ok(presentation)
+    }
+
+    #[cfg(feature = "delegate-sd-jwt")]
+    #[instrument(level = Level::TRACE, skip(self), err(), ret())]
+    async fn create_delegated_credential(
+        &self,
+        cred_entry: &CredentialEntry,
+        params: crate::vc::formats::DelegationParams,
+    ) -> Result<crate::vc::formats::sd_jwt_vc::Credential> {
+        info!("access to the key {}", cred_entry.kid);
+        let key = self.kms.get(&cred_entry.kid).await.context(KMSSnafu)?;
+
+        match &cred_entry.credential {
+            Credential::SdJwt(vc) => DsdJwtAPI::create_delegated_credential(vc, key, params)
+                .await
+                .context(VCSnafu),
+            _ => FormatNotSupportedSnafu {
+                format: cred_entry.credential.format().to_string(),
+            }
+            .fail(),
+        }
     }
 
     async fn get_credential_status(&self, credential: &Credential) -> Result<Option<VCStatus>> {
@@ -1319,5 +1342,104 @@ mod tests {
             },
             kh,
         )
+    }
+
+    #[cfg(feature = "delegate-sd-jwt")]
+    mod dsd_jwt {
+        use super::*;
+        use crate::did::universal::UniversalResolver;
+        use crate::vc::formats::DelegationParams;
+        use crate::vc::formats::dsd_jwt::DsdJwtAPI;
+        use sd_jwt_rs::ChainBindingMode;
+
+        /// Same as `holder_service` but uses a mock HTTP client instead of a real reqwest one.
+        /// Use this in tests that never invoke the HTTP layer, to avoid the
+        /// `system-configuration` panic that `ReqwestClientBuilder` triggers under sandboxed macOS.
+        fn holder_service_with_mock_http(kms: LocalKms, vault: impl Vault) -> impl Holder {
+            HolderService::new(
+                kms,
+                vault,
+                HolderMetadata {
+                    client_id: "wallet-dev".to_string(),
+                    pop: ProofOfPossessionMetadata {
+                        lifetime: Duration::minutes(5),
+                        not_before: None,
+                    },
+                },
+                UniversalResolver::default(),
+                Arc::new(crate::http::MockHttpClient::new()),
+            )
+        }
+
+        /// Holder produces a terminal dSD-JWT grant from a holder-bound SD-JWT entry.
+        /// The result must end with `~` and verify cleanly with exactly 1 delegate payload.
+        #[tokio::test]
+        async fn holder_creates_delegated_presentation_for_sd_jwt() {
+            let kms = LocalKms::new();
+            let vault = InMemVault::new();
+
+            let case = CredTestCase::sd_jwt();
+            // Use a concrete lifetime so that the SD-JWT carries an `exp` claim, which
+            // `verify_dsd_jwt` requires. `None` would omit `exp` and cause verification to fail.
+            let (entry, _) = case.generate_vc(&kms, Some(Duration::days(365))).await;
+
+            let holder = holder_service_with_mock_http(kms, vault);
+
+            let result = holder
+                .create_delegated_credential(
+                    &entry,
+                    DelegationParams {
+                        delegate_payloads: vec![json!({"scope": "x"})],
+                        claims_to_disclose: None,
+                        drop_disclosures: None,
+                        binding: ChainBindingMode::IssuerJwtHash,
+                        ..Default::default()
+                    },
+                )
+                .await
+                .expect("create_delegated_presentation must succeed for SD-JWT entry");
+
+            assert!(
+                result.ends_with('~'),
+                "dSD-JWT grant must end with '~', got: {result}"
+            );
+
+            let view = DsdJwtAPI::verify_dsd_jwt(&result, UniversalResolver::default())
+                .await
+                .expect("verify_dsd_jwt must succeed on the produced grant");
+
+            assert_eq!(
+                view.delegate_payloads.len(),
+                1,
+                "expected exactly 1 delegate payload"
+            );
+        }
+
+        /// A non-SD-JWT CredentialEntry (LdpVc) must return FormatNotSupported.
+        #[should_panic(expected = "Unsupported format")]
+        #[tokio::test]
+        async fn holder_create_delegated_presentation_fails_for_non_sd_jwt() {
+            let kms = LocalKms::new();
+            let vault = InMemVault::new();
+
+            let case = CredTestCase::ldp_vc();
+            let (entry, _) = case.generate_vc(&kms, None).await;
+
+            let holder = holder_service_with_mock_http(kms, vault);
+
+            let result = holder
+                .create_delegated_credential(
+                    &entry,
+                    DelegationParams {
+                        delegate_payloads: vec![serde_json::json!({"scope": "x"})],
+                        claims_to_disclose: None,
+                        drop_disclosures: None,
+                        binding: ChainBindingMode::IssuerJwtHash,
+                        ..Default::default()
+                    },
+                )
+                .await
+                .unwrap();
+        }
     }
 }

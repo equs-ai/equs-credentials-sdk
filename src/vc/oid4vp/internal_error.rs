@@ -116,7 +116,7 @@ pub enum InternalError {
         location: Location,
         source: presentation_exchange::Error,
     },
-    #[snafu(display("DCQL error"))]
+    #[snafu(display("DCQL error: {source}"))]
     DCQL {
         #[snafu(implicit)]
         location: Location,

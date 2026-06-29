@@ -186,6 +186,19 @@ where
         session: &PresentationSession,
         verification_metadata: &CredentialVerificationMetadata,
     ) -> Result<Claims> {
+        Ok(self
+            .verify_and_extract_presentation(authorization_response, session, verification_metadata)
+            .await?
+            .0)
+    }
+
+    #[instrument(level = Level::TRACE, skip(self), err(), ret())]
+    async fn verify_and_extract_presentation(
+        &self,
+        authorization_response: &AuthorizationResponse,
+        session: &PresentationSession,
+        verification_metadata: &CredentialVerificationMetadata,
+    ) -> Result<(Claims, HashMap<String, Vec<crate::vc::Presentation>>)> {
         let (authorization_response, mut verification_opts) = self
             .resolve_authorization_response(authorization_response)
             .await?;
@@ -195,7 +208,7 @@ where
         )?;
 
         verification_opts.audience = verification_metadata.audience.clone();
-        let vp_token_claims = self
+        let (vp_token_claims, presentations) = self
             .do_verify_presentation(
                 &session.resolved_presentation_query,
                 &session.nonce,
@@ -219,7 +232,7 @@ where
 
         info!("presentation is verified");
 
-        Ok(claims)
+        Ok((claims, presentations))
     }
 }
 
@@ -633,8 +646,9 @@ where
         nonce: &Nonce,
         authorization_response: &AuthorizationResponseObject,
         presentation_verification_opts: PresentationVerificationOptions,
-    ) -> Result<Claim> {
+    ) -> Result<(Claim, HashMap<String, Vec<crate::vc::Presentation>>)> {
         let mut result: HashMap<String, Vec<Claim>> = HashMap::new();
+        let mut presentations: HashMap<String, Vec<crate::vc::Presentation>> = HashMap::new();
         let mut ids = vec![]; // we need it to preserve order of items in the array
         let requested_presentations = match resolved_presentation_query {
             ResolvedPresentationQuery::DCQL(dcql) => dcql::resolve_presentation_response(
@@ -688,13 +702,18 @@ where
                 .await
                 .context(VCSnafu)?;
 
-            ids.push(requested_presentation.id.clone());
+            let id = requested_presentation.id;
+            ids.push(id.clone());
             result
-                .entry(requested_presentation.id)
+                .entry(id.clone())
                 .and_modify(|arr| {
                     arr.push(claims.clone().into());
                 })
                 .or_insert(vec![claims.into()]);
+            presentations
+                .entry(id)
+                .or_default()
+                .push(requested_presentation.presentation);
         }
 
         Self::validate_against_requested_claims(
@@ -705,7 +724,7 @@ where
         )?;
 
         let result = HashMap::from_iter(result.into_iter().map(|(k, v)| (k, Claim::Array(v))));
-        Ok(Claim::Object(result))
+        Ok((Claim::Object(result), presentations))
     }
 
     fn validate_against_requested_claims(

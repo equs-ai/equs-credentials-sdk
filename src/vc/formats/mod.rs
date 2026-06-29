@@ -20,6 +20,11 @@ pub mod sd_jwt_vc;
 pub mod vc;
 pub mod vp;
 
+#[cfg(feature = "delegate-sd-jwt")]
+pub mod dsd_jwt;
+#[cfg(feature = "delegate-sd-jwt")]
+pub use dsd_jwt::DelegationParams;
+
 /// `VC` format internal error.
 ///
 /// Defines errors for all supported low-level VC operations.

@@ -10,6 +10,7 @@ use agent_sdk::vc::oid4vp::{
 };
 use napi::{Error, Result};
 use napi_derive::napi;
+use std::collections::HashMap;
 use url::Url;
 
 /// The `OID4VP` `Verifier` API.
@@ -95,6 +96,65 @@ impl InternalOID4VPVerifier {
             .map_err(IntoNapiError::into_napi_error)
             .and_then(to_json_object)
     }
+
+    /// Verifies the presentation **and** returns the raw presentations alongside the claims.
+    ///
+    /// Runs the same verification as {@link OID4VPVerifier.verifyPresentation} (transaction-data
+    /// hashes, per-presentation holder binding / proof of possession), and additionally returns
+    /// the raw presentation(s) per credential id. A Delegate Holder uses this to **store** a
+    /// returned dSD-JWT delegation grant: the grant's KB-SD-JWT is Holder-signed (proof of
+    /// possession), and its `aud`/`nonce` are verified, so it is accepted through this normal path.
+    ///
+    /// @param {AuthorizationResponse} authorizationResponse - the authorization response containing the VP token and presentation submission.
+    /// @param {_PresentationSession} session - a session object containing `Nonce` and {@link ResolvedPresentationQuery}.
+    /// @param {CredentialVerificationMetadata} verificationMetadata - transaction-data and audience metadata.
+    ///
+    /// @returns {ClaimsPresentations} - the verified claims plus the raw presentations keyed by credential id.
+    #[napi(ts_return_type = "Promise<ClaimsPresentations>")]
+    pub async fn verify_and_extract_presentation(
+        &self,
+        authorization_response: JsInnerAuthorizationResponse,
+        session: JsPresentationSession,
+        verification_metadata: JsCredentialVerificationMetadata,
+    ) -> Result<JsClaimsPresentations> {
+        let (claims, presentations) = self
+            .0
+            .verify_and_extract_presentation(
+                &authorization_response.try_into()?,
+                &session.try_into()?,
+                &verification_metadata.try_into()?,
+            )
+            .await
+            .map_err(IntoNapiError::into_napi_error)?;
+
+        let claims = to_json_object(claims)?;
+        let mut mapped_presentations = HashMap::with_capacity(presentations.len());
+        for (id, preses) in presentations {
+            let mut values = Vec::with_capacity(preses.len());
+            for presentation in preses {
+                values.push(serde_json::to_value(presentation).map_err(|e| {
+                    Error::from_reason(format!("could not serialize presentation: {e}"))
+                })?);
+            }
+            mapped_presentations.insert(id, values);
+        }
+
+        Ok(JsClaimsPresentations {
+            claims,
+            presentations: mapped_presentations,
+        })
+    }
+}
+
+/// The result of {@link OID4VPVerifier.verifyAndExtractPresentation}: the verified claims plus
+/// the raw presentations, keyed by credential id, so the caller can process them (e.g. store a
+/// returned dSD-JWT grant). For an SD-JWT-family presentation each value is the compact string.
+#[napi(object, js_name = "ClaimsPresentations")]
+pub struct JsClaimsPresentations {
+    #[napi(ts_type = "Claims")]
+    pub claims: JsonObject,
+    #[napi(ts_type = "Record<string, Array<unknown>>")]
+    pub presentations: HashMap<String, Vec<serde_json::Value>>,
 }
 
 /// An `OID4VP` response configuration of authorization request object.

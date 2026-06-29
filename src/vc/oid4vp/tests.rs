@@ -3241,11 +3241,13 @@ pub mod fixtures {
                         HashAlgorithm::Sha256,
                         HashAlgorithm::Sha512,
                     ]),
+                    content: None,
                 },
                 TransactionDataItem {
                     type_: "some_type2".to_string(),
                     credential_ids: Vec::from(["11".to_string(), "22".to_string()]),
                     transaction_data_hashes_alg: None,
+                    content: None,
                 },
             ]
         }
@@ -3274,6 +3276,37 @@ pub mod fixtures {
                 transaction_data_hashes: TransactionDataHashes(vec![encoded1, encoded2]),
                 transaction_data_hashes_alg: Some(TransactionDataHashesAlg(HashAlgorithm::Sha256)),
             }
+        }
+    }
+
+    pub mod delegate {
+        use crate::vc::oid4vp::ResolvedAuthRequest;
+        use crate::vc::oid4vp::api::TransactionDataItem;
+        use openid4vp::core::authorization_request::parameters::{
+            DelegateSdJwtTransactionData, DelegateSdJwtTransactionDataFormat,
+            TransactionDataItemTypeContent,
+        };
+
+        pub fn sample_delegate_item() -> TransactionDataItem {
+            TransactionDataItem {
+                type_: "delegate".to_string(),
+                credential_ids: vec!["cred-1".into()],
+                transaction_data_hashes_alg: None,
+                content: Some(TransactionDataItemTypeContent::DelegateSdJwt(
+                    DelegateSdJwtTransactionData {
+                        format: DelegateSdJwtTransactionDataFormat::Open,
+                        delegate_payload_disclosure:
+                            "WyJ4X2laOGlUeVMwQUpLSzAyM2JFdWN3IiwgImFkZHJlc3MiLCB7fV0".to_string(),
+                        delegate_disclosures: None,
+                    },
+                )),
+            }
+        }
+
+        pub fn auth_request_with_delegate_item() -> ResolvedAuthRequest {
+            let mut req = super::single_presentation::sd_jwt::auth_request();
+            req.transaction_data = Some(vec![sample_delegate_item()]);
+            req
         }
     }
 }
@@ -3643,16 +3676,16 @@ pub mod utils {
                     }
                     ClaimFormatDesignation::LdpVc => {
                         let claims = self.credential_data
-                        .iter()
-                        .find(|claim| {
-                            let type_ = claim["type"].as_vec().unwrap();
-                            let types: Vec<&str> =
-                                type_.iter().map(|ty| ty.as_str().unwrap()).collect();
-                            input.restrictions.iter().any(|restriction| {
-                                matches!(restriction.value.as_ref(), Some(PresentationRestrictionValue::Const(value)) if types.contains(&value.as_str()))
+                            .iter()
+                            .find(|claim| {
+                                let type_ = claim["type"].as_vec().unwrap();
+                                let types: Vec<&str> =
+                                    type_.iter().map(|ty| ty.as_str().unwrap()).collect();
+                                input.restrictions.iter().any(|restriction| {
+                                    matches!(restriction.value.as_ref(), Some(PresentationRestrictionValue::Const(value)) if types.contains(&value.as_str()))
+                                })
                             })
-                        })
-                        .unwrap();
+                            .unwrap();
 
                         let (vc, _) = create_json_ld_vc(claims, &key_handle).await;
 
@@ -4262,5 +4295,998 @@ pub mod utils {
     pub fn wrap_p256_private_key(jwk: &str) -> impl PrivateKeyAgreementHandle {
         let key = p256::SecretKey::from_jwk_str(jwk).unwrap();
         WrapperForES256Handle { key }
+    }
+}
+
+#[cfg(test)]
+mod delegate_tests {
+    use super::fixtures;
+    use crate::vc::oid4vp::api::as_delegate;
+
+    #[test]
+    fn as_delegate_discriminates_items() {
+        let delegate_item = fixtures::delegate::sample_delegate_item();
+        let ordinary_item = fixtures::multi_presentation::transaction_data_items()[0].clone();
+        assert!(as_delegate(&delegate_item).is_some());
+        assert!(as_delegate(&ordinary_item).is_none());
+    }
+}
+
+#[cfg(all(test, feature = "delegate-sd-jwt"))]
+mod grant_delegation_tests {
+    use super::utils;
+    use crate::did::didkey::DIDKey;
+    use crate::did::universal::UniversalResolver;
+    use crate::http::MockHttpClient;
+    use crate::inmem::kms::{KeyHandle, LocalKms};
+    use crate::inmem::vault::InMemVault;
+    use crate::kms::{CreateOptions, KeyType, Kms};
+    use crate::utils::test_utils;
+    use crate::vault::CredentialEntry;
+    use crate::vc::Credential;
+    use crate::vc::formats::API;
+    use crate::vc::formats::sd_jwt_vc::{SdJwtAPI, VCMetadata as SdJwtVCMetadata};
+    use crate::vc::oid4vp::Holder;
+    use crate::vc::oid4vp::api::{
+        AuthorizationResponseMetadata, CredentialMapping, TransactionDataItem,
+    };
+    use crate::vc::oid4vp::delegate::DelegateSdJwtTransactionDataFormat;
+    use crate::vc::oid4vp::tests::fixtures::multi_presentation::transaction_data_items;
+    use base64::Engine;
+    use base64::prelude::BASE64_URL_SAFE_NO_PAD;
+    use openid4vp::core::authorization_request::parameters::{
+        DelegateSdJwtTransactionData, TransactionDataItemTypeContent,
+    };
+    use serde_json::json;
+    use ssi::dids::DIDURLBuf;
+    use std::str::FromStr;
+    use time::Duration;
+
+    pub const DELEGATE_CRED_ID: &str = "delegatecred1";
+
+    pub fn make_delegate_disclosure(payload: serde_json::Value) -> String {
+        let arr = json!(["salt", payload]);
+        BASE64_URL_SAFE_NO_PAD.encode(arr.to_string().as_bytes())
+    }
+
+    /// Build a DCQL auth_request using `dc_api` response mode with a single credential query
+    /// whose id == `DELEGATE_CRED_ID`, and one delegate transaction_data item.
+    pub fn dcql_dc_api_auth_request_with_delegate(
+        disclosure: String,
+        format: DelegateSdJwtTransactionDataFormat,
+    ) -> crate::vc::oid4vp::ResolvedAuthRequest {
+        dcql_dc_api_auth_request_with_delegate_for_cred_format(disclosure, format, "dc+sd-jwt")
+    }
+
+    pub fn dcql_dc_api_auth_request_with_delegate_for_cred_format(
+        disclosure: String,
+        format: DelegateSdJwtTransactionDataFormat,
+        cred_format: &str,
+    ) -> crate::vc::oid4vp::ResolvedAuthRequest {
+        let auth_request = json!(
+              {
+                  "client_id": "decentralized_identifier:did:key:zDnaehgaHKAP7LAA3Kwa4FjXjJ1G3BcaHqr5gfRySJcGDgBtV",
+                  "state": null,
+                  "dcql_query": {
+                        "credentials": [
+                              {
+                                    "id": DELEGATE_CRED_ID,
+                                    "format": cred_format,
+                                    "meta": { "vct_values": ["https://credentials.example.com/identity_credential"] },
+                                    "require_cryptographic_holder_binding": false
+                              }
+                        ]
+                    },
+                  "nonce": "test-nonce-for-grant-delegation",
+                  "response_mode": "dc_api",
+                  "response_type": "vp_token",
+                  "client_metadata": {
+                        "vp_formats_supported": {
+                              "dc+sd-jwt": {
+                                "sd-jwt_alg_values": ["EdDSA", "ES256"],
+                                "kb-jwt_alg_values": ["EdDSA", "ES256"]
+                              }
+                        }
+                  }
+              }
+        );
+        let mut auth_request: crate::vc::oid4vp::ResolvedAuthRequest =
+            serde_json::from_value(auth_request).unwrap();
+        auth_request.transaction_data = Some(vec![TransactionDataItem {
+            type_: "delegate".to_string(),
+            credential_ids: vec![DELEGATE_CRED_ID.to_string()],
+            transaction_data_hashes_alg: None,
+            content: Some(TransactionDataItemTypeContent::DelegateSdJwt(
+                DelegateSdJwtTransactionData {
+                    format,
+                    delegate_payload_disclosure: disclosure,
+                    delegate_disclosures: None,
+                },
+            )),
+        }]);
+        auth_request
+    }
+
+    pub async fn create_sd_jwt_credential_entry(kms: &LocalKms) -> (CredentialEntry, KeyHandle) {
+        let (holder_kid, holder_key_handle) = kms
+            .create_and_handle(KeyType::P256, CreateOptions::default())
+            .await
+            .unwrap();
+
+        let issuer_kms = LocalKms::new();
+        let (issuer_did_url, issuer_key_handle) =
+            test_utils::create_did_url_and_key_handle(&issuer_kms, KeyType::P256).await;
+
+        let holder_did = DIDKey::generate(holder_key_handle.clone()).unwrap();
+        let holder_did_url = DIDURLBuf::from_str(&holder_did).unwrap();
+
+        let mut claims_map = serde_json::Map::new();
+        claims_map.insert(
+            "vct".to_string(),
+            json!("https://credentials.example.com/identity_credential"),
+        );
+        claims_map.insert("sub".to_string(), json!(holder_did));
+        claims_map.insert("name".to_string(), json!("Alice"));
+        let claims: crate::vc::claims::Claims =
+            serde_json::Value::Object(claims_map).try_into().unwrap();
+
+        let vc = SdJwtAPI::create_vc(
+            claims,
+            (&issuer_did_url, issuer_key_handle),
+            (&holder_did_url, holder_key_handle.clone()),
+            SdJwtVCMetadata {
+                vct: "https://credentials.example.com/identity_credential".to_string(),
+                lifetime: Some(Duration::days(3650)),
+                disclosures: vec!["$.name".to_string()],
+                credential_status: None,
+            },
+            UniversalResolver::default(),
+        )
+        .await
+        .unwrap();
+
+        let cred = Credential::SdJwt(vc);
+        let entry = CredentialEntry {
+            credential: cred,
+            kid: holder_kid.to_string(),
+            id: DELEGATE_CRED_ID.to_string(),
+        };
+
+        (entry, holder_key_handle)
+    }
+
+    #[tokio::test]
+    async fn delegate_request_produces_dsd_jwt_in_vp_token() {
+        let kms = LocalKms::new();
+        let vault = InMemVault::new();
+        let (cred_entry, _) = create_sd_jwt_credential_entry(&kms).await;
+        let http_client = MockHttpClient::new();
+        let holder = utils::holder_service(http_client, kms, vault).await;
+
+        let disclosure = make_delegate_disclosure(json!({"scope": "purchase"}));
+        let auth_request = dcql_dc_api_auth_request_with_delegate(
+            disclosure,
+            DelegateSdJwtTransactionDataFormat::Open,
+        );
+        let mut cred_map = CredentialMapping::new();
+        cred_map.insert(DELEGATE_CRED_ID.to_string(), vec![cred_entry]);
+
+        let result = holder
+            .present_credentials(
+                &auth_request,
+                &cred_map,
+                &AuthorizationResponseMetadata::default(),
+            )
+            .await
+            .expect("present_credentials must produce the delegation grant");
+
+        let crate::vc::oid4vp::PresentationResult::AuthorizationResponse(
+            crate::vc::oid4vp::AuthorizationResponse::Plain(resp_obj),
+        ) = result
+        else {
+            panic!("expected a plain AuthorizationResponse");
+        };
+        let cred_arr = resp_obj
+            .vp_token
+            .get(DELEGATE_CRED_ID)
+            .and_then(|v| v.as_array())
+            .expect("vp_token must have an array entry for the credential id");
+        assert_eq!(cred_arr.len(), 1, "must have exactly one dSD-JWT");
+        assert!(
+            cred_arr[0].as_str().expect("dSD-JWT string").ends_with('~'),
+            "plain dSD-JWT must end with '~'"
+        );
+    }
+
+    #[tokio::test]
+    async fn present_credentials_supports_mixed_transaction_data() {
+        let kms = LocalKms::new();
+        let vault = InMemVault::new();
+        let (cred_entry, _) = create_sd_jwt_credential_entry(&kms).await;
+        let http_client = MockHttpClient::new();
+        let holder = utils::holder_service(http_client, kms, vault).await;
+
+        let disclosure = make_delegate_disclosure(json!({"scope": "purchase"}));
+        let mut auth_request = dcql_dc_api_auth_request_with_delegate(
+            disclosure,
+            DelegateSdJwtTransactionDataFormat::Open,
+        );
+        let ordinary_item = transaction_data_items()[0].clone();
+        assert!(crate::vc::oid4vp::api::as_delegate(&ordinary_item).is_none());
+        auth_request
+            .transaction_data
+            .as_mut()
+            .unwrap()
+            .push(ordinary_item);
+
+        let mut cred_map = CredentialMapping::new();
+        cred_map.insert(DELEGATE_CRED_ID.to_string(), vec![cred_entry]);
+
+        let result = holder
+            .present_credentials(
+                &auth_request,
+                &cred_map,
+                &AuthorizationResponseMetadata::default(),
+            )
+            .await
+            .expect("mixed delegate + ordinary transaction_data must be supported");
+
+        let crate::vc::oid4vp::PresentationResult::AuthorizationResponse(
+            crate::vc::oid4vp::AuthorizationResponse::Plain(resp_obj),
+        ) = result
+        else {
+            panic!("expected a plain AuthorizationResponse");
+        };
+        let cred_arr = resp_obj
+            .vp_token
+            .get(DELEGATE_CRED_ID)
+            .and_then(|v| v.as_array())
+            .expect("vp_token entry for the delegated credential");
+        assert!(cred_arr[0].as_str().expect("dSD-JWT").ends_with('~'));
+    }
+
+    #[tokio::test]
+    #[should_panic(expected = "invalid_transaction_data")]
+    async fn delegate_target_non_sdjwt_format_rejected() {
+        let kms = LocalKms::new();
+        let vault = InMemVault::new();
+        let http_client = std::sync::Arc::new(MockHttpClient::new());
+
+        let inner = crate::vc::core::HolderService::new(
+            kms.clone(),
+            vault,
+            crate::vc::core::HolderMetadata {
+                client_id: "client_id".to_string(),
+                pop: crate::vc::core::ProofOfPossessionMetadata {
+                    lifetime: Duration::minutes(5),
+                    not_before: None,
+                },
+            },
+            UniversalResolver::default(),
+            http_client.clone(),
+        );
+        let holder = crate::vc::oid4vp::holder::HolderService::new(
+            inner,
+            http_client,
+            kms,
+            UniversalResolver::default(),
+            None,
+            None,
+        );
+
+        let disclosure = make_delegate_disclosure(json!({"scope": "purchase"}));
+        let auth_request = dcql_dc_api_auth_request_with_delegate_for_cred_format(
+            disclosure,
+            DelegateSdJwtTransactionDataFormat::Open,
+            "jwt_vc_json",
+        );
+
+        holder
+            .validate_transaction_data(
+                &auth_request.resolved_presentation_query,
+                auth_request.transaction_data.as_ref().unwrap(),
+            )
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn delegate_target_sdjwt_format_accepted() {
+        let kms = LocalKms::new();
+        let vault = InMemVault::new();
+        let http_client = std::sync::Arc::new(MockHttpClient::new());
+
+        let inner = crate::vc::core::HolderService::new(
+            kms.clone(),
+            vault,
+            crate::vc::core::HolderMetadata {
+                client_id: "client_id".to_string(),
+                pop: crate::vc::core::ProofOfPossessionMetadata {
+                    lifetime: Duration::minutes(5),
+                    not_before: None,
+                },
+            },
+            UniversalResolver::default(),
+            http_client.clone(),
+        );
+        let holder = crate::vc::oid4vp::holder::HolderService::new(
+            inner,
+            http_client,
+            kms,
+            UniversalResolver::default(),
+            None,
+            None,
+        );
+
+        let disclosure = make_delegate_disclosure(json!({"scope": "purchase"}));
+        let auth_request = dcql_dc_api_auth_request_with_delegate(
+            disclosure,
+            DelegateSdJwtTransactionDataFormat::Open,
+        );
+
+        holder
+            .validate_transaction_data(
+                &auth_request.resolved_presentation_query,
+                auth_request.transaction_data.as_ref().unwrap(),
+            )
+            .expect("delegate item targeting a dc+sd-jwt credential must be accepted");
+    }
+
+    #[should_panic(expected = "format dSD-JWT+KB requires cnf in every delegate payload")]
+    #[tokio::test]
+    async fn dsd_jwt_kb_without_cnf_rejected() {
+        let kms = LocalKms::new();
+        let vault = InMemVault::new();
+        let (cred_entry, _) = create_sd_jwt_credential_entry(&kms).await;
+        let http_client = MockHttpClient::new();
+        let holder = utils::holder_service(http_client, kms, vault).await;
+
+        let disclosure = make_delegate_disclosure(json!({"scope": "purchase"}));
+        let auth_request = dcql_dc_api_auth_request_with_delegate(
+            disclosure,
+            DelegateSdJwtTransactionDataFormat::HolderBinding,
+        );
+        let mut cred_map = CredentialMapping::new();
+        cred_map.insert(DELEGATE_CRED_ID.to_string(), vec![cred_entry]);
+
+        holder
+            .present_credentials(&auth_request, &cred_map, &Default::default())
+            .await
+            .unwrap();
+    }
+}
+
+#[cfg(all(test, feature = "delegate-sd-jwt"))]
+mod delegate_builder_tests {
+    use crate::inmem::nonce::LocalNonceHandler;
+    use crate::vc::oid4vp::api::{DelegationRequest, as_delegate, delegate_transaction_data_item};
+    use crate::vc::oid4vp::delegate::DelegateSdJwtTransactionDataFormat;
+    use base64::Engine;
+    use base64::prelude::BASE64_URL_SAFE_NO_PAD;
+
+    fn open_request(
+        payload_claims: serde_json::Map<String, serde_json::Value>,
+    ) -> DelegationRequest {
+        DelegationRequest {
+            credential_ids: vec!["cred-1".to_string()],
+            format: DelegateSdJwtTransactionDataFormat::Open,
+            delegate_cnf: None,
+            payload_claims,
+            disclosable_claims: vec![],
+        }
+    }
+
+    #[tokio::test]
+    async fn delegate_transaction_data_item_builds_array_disclosure() {
+        let mut claims = serde_json::Map::new();
+        claims.insert("scope".to_string(), serde_json::json!("purchase"));
+
+        let req = open_request(claims);
+        let nonce_handler = LocalNonceHandler::default();
+
+        let item = delegate_transaction_data_item(&req, &nonce_handler)
+            .await
+            .expect("builder must succeed");
+
+        assert_eq!(item.type_, "delegate");
+        assert_eq!(item.credential_ids, vec!["cred-1".to_string()]);
+
+        let d = as_delegate(&item).expect("must be a delegate item");
+        assert!(d.delegate_disclosures.is_none());
+
+        // Decode disclosure: base64url([salt, payload])
+        let decoded = BASE64_URL_SAFE_NO_PAD
+            .decode(&d.delegate_payload_disclosure)
+            .expect("must be valid base64url");
+        let arr: serde_json::Value = serde_json::from_slice(&decoded).expect("must be valid JSON");
+        let arr = arr.as_array().expect("must be a JSON array");
+
+        assert!(arr[0].is_string(), "arr[0] (salt) must be a string");
+        assert_eq!(
+            arr[1]["scope"],
+            serde_json::json!("purchase"),
+            "payload must contain scope=purchase"
+        );
+    }
+
+    #[tokio::test]
+    async fn delegate_item_carries_cnf_when_set() {
+        let jwk: ssi::jwk::JWK = serde_json::from_value(serde_json::json!({
+            "kty": "OKP",
+            "crv": "Ed25519",
+            "x": "11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo"
+        }))
+        .expect("valid Ed25519 JWK");
+
+        let mut claims = serde_json::Map::new();
+        claims.insert("scope".to_string(), serde_json::json!("read"));
+
+        let req = DelegationRequest {
+            credential_ids: vec!["cred-1".to_string()],
+            format: DelegateSdJwtTransactionDataFormat::Open,
+            delegate_cnf: Some(jwk),
+            payload_claims: claims,
+            disclosable_claims: vec![],
+        };
+
+        let nonce_handler = LocalNonceHandler::default();
+        let item = delegate_transaction_data_item(&req, &nonce_handler)
+            .await
+            .expect("builder must succeed");
+
+        let d = as_delegate(&item).expect("must be a delegate item");
+
+        let decoded = BASE64_URL_SAFE_NO_PAD
+            .decode(&d.delegate_payload_disclosure)
+            .expect("must be valid base64url");
+        let arr: serde_json::Value = serde_json::from_slice(&decoded).unwrap();
+        let arr = arr.as_array().unwrap();
+
+        let cnf = &arr[1]["cnf"];
+        assert!(cnf.is_object(), "payload must contain cnf object");
+        assert!(cnf["jwk"].is_object(), "cnf must contain jwk field");
+    }
+
+    #[should_panic(expected = "delegate_cnf is required when format is HolderBinding")]
+    #[tokio::test]
+    async fn delegate_dsd_jwt_kb_requires_cnf() {
+        let req = DelegationRequest {
+            credential_ids: vec!["cred-1".to_string()],
+            format: DelegateSdJwtTransactionDataFormat::HolderBinding,
+            delegate_cnf: None,
+            payload_claims: serde_json::Map::new(),
+            disclosable_claims: vec![],
+        };
+
+        let nonce_handler = LocalNonceHandler::default();
+        delegate_transaction_data_item(&req, &nonce_handler)
+            .await
+            .unwrap();
+    }
+
+    #[should_panic(expected = "property-level delegate-payload disclosure is not supported")]
+    #[tokio::test]
+    async fn delegate_disclosable_claims_unsupported_v1() {
+        let req = DelegationRequest {
+            credential_ids: vec!["cred-1".to_string()],
+            format: DelegateSdJwtTransactionDataFormat::Open,
+            delegate_cnf: None,
+            payload_claims: serde_json::Map::new(),
+            disclosable_claims: vec!["$.scope".to_string()],
+        };
+
+        let nonce_handler = LocalNonceHandler::default();
+        delegate_transaction_data_item(&req, &nonce_handler)
+            .await
+            .unwrap();
+    }
+
+    #[should_panic(expected = "cnf must be supplied via delegate_cnf")]
+    #[tokio::test]
+    async fn delegate_rejects_cnf_in_payload_claims() {
+        let mut claims = serde_json::Map::new();
+        claims.insert("cnf".to_string(), serde_json::json!({"jwk": {}}));
+
+        let req = DelegationRequest {
+            credential_ids: vec!["cred-1".to_string()],
+            format: DelegateSdJwtTransactionDataFormat::Open,
+            delegate_cnf: None,
+            payload_claims: claims,
+            disclosable_claims: vec![],
+        };
+
+        let nonce_handler = LocalNonceHandler::default();
+        delegate_transaction_data_item(&req, &nonce_handler)
+            .await
+            .unwrap();
+    }
+
+    #[should_panic(expected = "selective disclosure within the delegate payload is unsupported")]
+    #[tokio::test]
+    async fn delegate_rejects_sd_in_payload_claims() {
+        let mut claims = serde_json::Map::new();
+        claims.insert("_sd".to_string(), serde_json::json!(["hash1", "hash2"]));
+
+        let req = DelegationRequest {
+            credential_ids: vec!["cred-1".to_string()],
+            format: DelegateSdJwtTransactionDataFormat::Open,
+            delegate_cnf: None,
+            payload_claims: claims,
+            disclosable_claims: vec![],
+        };
+
+        let nonce_handler = LocalNonceHandler::default();
+        delegate_transaction_data_item(&req, &nonce_handler)
+            .await
+            .unwrap();
+    }
+}
+
+#[cfg(all(test, feature = "delegate-sd-jwt"))]
+mod delegation_e2e_tests {
+    use super::grant_delegation_tests::{
+        DELEGATE_CRED_ID, create_sd_jwt_credential_entry, dcql_dc_api_auth_request_with_delegate,
+        make_delegate_disclosure,
+    };
+    use super::utils;
+    use crate::crypto::Key;
+    use crate::http::MockHttpClient;
+    use crate::inmem::kms::LocalKms;
+    use crate::inmem::vault::InMemVault;
+    use crate::kms::{CreateOptions, KeyType, Kms};
+    use crate::nonce::Nonce;
+    use crate::vault::CredentialEntry;
+    use crate::vc::Credential;
+    use crate::vc::oid4vp::api::{
+        AuthorizationResponseMetadata, CredentialMapping, CredentialVerificationMetadata,
+        PresentationSession, ResolvedPresentationQuery,
+    };
+    use crate::vc::oid4vp::delegate::DelegateSdJwtTransactionDataFormat;
+    use crate::vc::oid4vp::{AuthorizationResponse, Holder, PresentationResult, Verifier};
+    use openid4vp::core::credential_format::ClaimFormatDesignation;
+    use openid4vp::core::dcql::{DCQL, DcqlCredential, DcqlMeta, ID};
+    use openid4vp::utils::NonEmptyVec;
+    use serde_json::json;
+
+    fn build_delegate_dcql(credential_id: &str, vct: &str) -> DCQL {
+        let meta = DcqlMeta::new().set_vct_values(NonEmptyVec::new(vct.to_string()));
+        let cred = DcqlCredential::new(
+            ID::new(credential_id.to_string()).unwrap(),
+            ClaimFormatDesignation::SdJwtVc,
+            meta,
+        );
+        DCQL::new(NonEmptyVec::new(cred))
+    }
+
+    /// Full end-to-end round-trip:
+    ///
+    /// 1. Issuer issues an SD-JWT to Original Holder.
+    /// 2. Original Holder grants delegation to Delegate Holder (dSD-JWT with `cnf`).
+    /// 3. Delegate Holder creates `CredentialEntry { Credential::SdJwt(dsd_jwt), kid }`.
+    /// 4. Delegate Holder calls `present_credentials` with a DCQL auth_request that
+    ///    carries the Verifier's `client_id` and nonce → gets `AuthorizationResponse::Plain`.
+    /// 5. Verifier calls `verify_presentation` with the matching `PresentationSession`.
+    /// 6. Assert that the verified `Claims` include both the delegate-payload claim
+    ///    `scope` and the issuer claim `iss`.
+    #[tokio::test]
+    async fn delegation_end_to_end_grant_present_verify() {
+        let orig_holder_kms = LocalKms::new();
+        let orig_holder_vault = InMemVault::new();
+        let (orig_cred_entry, _) = create_sd_jwt_credential_entry(&orig_holder_kms).await;
+
+        let delegate_kms = LocalKms::new();
+        let delegate_kid = delegate_kms
+            .create(KeyType::P256, CreateOptions::default())
+            .await
+            .unwrap();
+        let delegate_kh = delegate_kms.get(&delegate_kid).await.unwrap();
+        let delegate_pub_jwk: ssi::jwk::JWK = delegate_kh.jwk().expect("delegate must have JWK");
+        let delegate_jwk_value = serde_json::to_value(&delegate_pub_jwk).unwrap();
+
+        let payload = json!({
+            "scope": "delegated-purchase",
+            "cnf": { "jwk": delegate_jwk_value }
+        });
+        let disclosure = make_delegate_disclosure(payload);
+        let grant_auth_request = dcql_dc_api_auth_request_with_delegate(
+            disclosure,
+            DelegateSdJwtTransactionDataFormat::HolderBinding,
+        );
+
+        let orig_http_client = MockHttpClient::new();
+        let orig_holder =
+            utils::holder_service(orig_http_client, orig_holder_kms, orig_holder_vault).await;
+
+        let mut cred_map = CredentialMapping::new();
+        cred_map.insert(DELEGATE_CRED_ID.to_string(), vec![orig_cred_entry.clone()]);
+
+        let grant_result = orig_holder
+            .present_credentials(
+                &grant_auth_request,
+                &cred_map,
+                &AuthorizationResponseMetadata::default(),
+            )
+            .await
+            .expect("present_credentials must succeed");
+
+        let PresentationResult::AuthorizationResponse(AuthorizationResponse::Plain(grant_resp_obj)) =
+            grant_result
+        else {
+            panic!("expected Plain AuthorizationResponse from present_credentials");
+        };
+
+        let dsd_jwt_str = grant_resp_obj
+            .vp_token
+            .get(DELEGATE_CRED_ID)
+            .and_then(|v| v.as_array())
+            .and_then(|arr| arr.first())
+            .and_then(|v| v.as_str())
+            .expect("vp_token must contain dSD-JWT string")
+            .to_string();
+
+        assert!(
+            dsd_jwt_str.ends_with('~'),
+            "grant dSD-JWT must end with '~' (no trailing KB-JWT): {dsd_jwt_str}"
+        );
+
+        // Get the verifier's client_id so we can align the auth_request nonce and client_id.
+        let (verifier, verifier_client_id) = utils::verifier_service().await;
+
+        let e2e_nonce = "e2e-delegation-nonce-2026";
+
+        let dcql = build_delegate_dcql(
+            DELEGATE_CRED_ID,
+            "https://credentials.example.com/identity_credential",
+        );
+        let resolved_pq = ResolvedPresentationQuery::DCQL(dcql);
+
+        let delegate_cred_entry = CredentialEntry {
+            credential: Credential::SdJwt(dsd_jwt_str),
+            kid: delegate_kid.to_string(),
+            id: DELEGATE_CRED_ID.to_string(),
+        };
+
+        let delegate_auth_request_str = format!(
+            r#"{{
+              "client_id": "decentralized_identifier:{verifier_client_id}",
+              "state": null,
+              "dcql_query": {{
+                "credentials": [{{
+                  "id": "{DELEGATE_CRED_ID}",
+                  "format": "dc+sd-jwt",
+                  "meta": {{ "vct_values": ["https://credentials.example.com/identity_credential"] }}
+                }}]
+              }},
+              "nonce": "{e2e_nonce}",
+              "response_mode": "dc_api",
+              "response_type": "vp_token",
+              "client_metadata": {{
+                "vp_formats_supported": {{
+                  "dc+sd-jwt": {{
+                    "sd-jwt_alg_values": ["EdDSA", "ES256"],
+                    "kb-jwt_alg_values": ["EdDSA", "ES256"]
+                  }}
+                }}
+              }}
+            }}"#
+        );
+        let delegate_auth_request: crate::vc::oid4vp::ResolvedAuthRequest =
+            serde_json::from_str(&delegate_auth_request_str).unwrap();
+
+        // dc_api mode requires an origin for the KB-JWT audience; this origin is
+        // also passed to verify_presentation as `audience` so the check aligns.
+        let dc_api_origin = "https://verifier.example.org";
+
+        let delegate_vault = InMemVault::new();
+        let delegate_http_client = MockHttpClient::new();
+        let delegate_holder =
+            utils::holder_service(delegate_http_client, delegate_kms, delegate_vault).await;
+
+        let mut delegate_cred_map = CredentialMapping::new();
+        delegate_cred_map.insert(DELEGATE_CRED_ID.to_string(), vec![delegate_cred_entry]);
+
+        let present_result = delegate_holder
+            .present_credentials(
+                &delegate_auth_request,
+                &delegate_cred_map,
+                &AuthorizationResponseMetadata {
+                    dc_api_origin: Some(dc_api_origin.to_string()),
+                    ..Default::default()
+                },
+            )
+            .await
+            .expect("Delegate Holder present_credentials must succeed");
+
+        let PresentationResult::AuthorizationResponse(auth_resp) = present_result else {
+            panic!("expected AuthorizationResponse from present_credentials (dc_api mode)");
+        };
+
+        let session = PresentationSession {
+            nonce: Nonce::from_secret(e2e_nonce.to_string()),
+            resolved_presentation_query: resolved_pq,
+            auth_request_jwt: None,
+        };
+
+        let claims = verifier
+            .verify_presentation(
+                &auth_resp,
+                &session,
+                &CredentialVerificationMetadata {
+                    transaction_data: None,
+                    // For dc_api, the audience is the origin the holder used.
+                    audience: Some(dc_api_origin.to_string()),
+                },
+            )
+            .await
+            .expect("Verifier::verify_presentation must succeed for delegated credential");
+
+        let vp_token = &claims["vp_token"];
+        let cred_claims = &vp_token[DELEGATE_CRED_ID];
+        let first_cred = &cred_claims.as_vec().expect("must be array")[0];
+
+        assert!(
+            first_cred.get("scope").is_some(),
+            "delegate payload claim 'scope' must be in verified claims, got: {first_cred:?}"
+        );
+
+        assert!(
+            first_cred.get("iss").is_some(),
+            "issuer claim 'iss' must be present in verified claims, got: {first_cred:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn delegation_verify_with_wrong_nonce_fails() {
+        let orig_holder_kms = LocalKms::new();
+        let orig_holder_vault = InMemVault::new();
+        let (orig_cred_entry, _) = create_sd_jwt_credential_entry(&orig_holder_kms).await;
+
+        let delegate_kms = LocalKms::new();
+        let delegate_kid = delegate_kms
+            .create(KeyType::P256, CreateOptions::default())
+            .await
+            .unwrap();
+        let delegate_kh = delegate_kms.get(&delegate_kid).await.unwrap();
+        let delegate_pub_jwk: ssi::jwk::JWK = delegate_kh.jwk().expect("delegate must have JWK");
+        let delegate_jwk_value = serde_json::to_value(&delegate_pub_jwk).unwrap();
+
+        let payload = json!({
+            "scope": "limited",
+            "cnf": { "jwk": delegate_jwk_value }
+        });
+        let disclosure = make_delegate_disclosure(payload);
+        let grant_auth_request = dcql_dc_api_auth_request_with_delegate(
+            disclosure,
+            DelegateSdJwtTransactionDataFormat::HolderBinding,
+        );
+
+        let orig_http_client = MockHttpClient::new();
+        let orig_holder =
+            utils::holder_service(orig_http_client, orig_holder_kms, orig_holder_vault).await;
+
+        let mut cred_map = CredentialMapping::new();
+        cred_map.insert(DELEGATE_CRED_ID.to_string(), vec![orig_cred_entry]);
+
+        let grant_result = orig_holder
+            .present_credentials(
+                &grant_auth_request,
+                &cred_map,
+                &AuthorizationResponseMetadata::default(),
+            )
+            .await
+            .expect("present_credentials must succeed");
+
+        let PresentationResult::AuthorizationResponse(AuthorizationResponse::Plain(grant_resp)) =
+            grant_result
+        else {
+            panic!("expected Plain grant response");
+        };
+
+        let dsd_jwt_str = grant_resp
+            .vp_token
+            .get(DELEGATE_CRED_ID)
+            .and_then(|v| v.as_array())
+            .and_then(|arr| arr.first())
+            .and_then(|v| v.as_str())
+            .unwrap()
+            .to_string();
+
+        let (verifier, verifier_client_id) = utils::verifier_service().await;
+        let correct_nonce = "correct-nonce-xyz";
+
+        let delegate_auth_request_str = format!(
+            r#"{{
+              "client_id": "decentralized_identifier:{verifier_client_id}",
+              "state": null,
+              "dcql_query": {{
+                "credentials": [{{
+                  "id": "{DELEGATE_CRED_ID}",
+                  "format": "dc+sd-jwt",
+                  "meta": {{ "vct_values": ["https://credentials.example.com/identity_credential"] }}
+                }}]
+              }},
+              "nonce": "{correct_nonce}",
+              "response_mode": "dc_api",
+              "response_type": "vp_token",
+              "client_metadata": {{
+                "vp_formats_supported": {{
+                  "dc+sd-jwt": {{
+                    "sd-jwt_alg_values": ["EdDSA", "ES256"],
+                    "kb-jwt_alg_values": ["EdDSA", "ES256"]
+                  }}
+                }}
+              }}
+            }}"#
+        );
+        let delegate_auth_request: crate::vc::oid4vp::ResolvedAuthRequest =
+            serde_json::from_str(&delegate_auth_request_str).unwrap();
+
+        let delegate_vault = InMemVault::new();
+        let delegate_http_client = MockHttpClient::new();
+        let delegate_holder =
+            utils::holder_service(delegate_http_client, delegate_kms, delegate_vault).await;
+
+        let delegate_cred_entry = CredentialEntry {
+            credential: Credential::SdJwt(dsd_jwt_str),
+            kid: delegate_kid.to_string(),
+            id: DELEGATE_CRED_ID.to_string(),
+        };
+        let mut delegate_cred_map = CredentialMapping::new();
+        delegate_cred_map.insert(DELEGATE_CRED_ID.to_string(), vec![delegate_cred_entry]);
+
+        // dc_api requires an origin (used as the KB-JWT audience).
+        let dc_api_origin = "https://verifier.example.org";
+        let present_result = delegate_holder
+            .present_credentials(
+                &delegate_auth_request,
+                &delegate_cred_map,
+                &AuthorizationResponseMetadata {
+                    dc_api_origin: Some(dc_api_origin.to_string()),
+                    ..Default::default()
+                },
+            )
+            .await
+            .expect("present_credentials must succeed");
+
+        let PresentationResult::AuthorizationResponse(auth_resp) = present_result else {
+            panic!("expected AuthorizationResponse");
+        };
+
+        let wrong_nonce = "wrong-nonce-does-not-match";
+        let dcql = build_delegate_dcql(
+            DELEGATE_CRED_ID,
+            "https://credentials.example.com/identity_credential",
+        );
+        let session = PresentationSession {
+            nonce: Nonce::from_secret(wrong_nonce.to_string()),
+            resolved_presentation_query: ResolvedPresentationQuery::DCQL(dcql),
+            auth_request_jwt: None,
+        };
+
+        let err = verifier
+            .verify_presentation(
+                &auth_resp,
+                &session,
+                &CredentialVerificationMetadata {
+                    transaction_data: None,
+                    audience: Some(dc_api_origin.to_string()),
+                },
+            )
+            .await
+            .expect_err("verify_presentation must fail when nonce does not match");
+
+        let err_str = format!("{err:?}");
+        assert!(
+            err_str.to_lowercase().contains("nonce")
+                || err_str.to_lowercase().contains("invalid")
+                || err_str.to_lowercase().contains("error"),
+            "expected a nonce-related error, got: {err_str}"
+        );
+    }
+}
+
+#[cfg(all(test, feature = "delegate-sd-jwt"))]
+mod verify_and_extract_tests {
+    use super::grant_delegation_tests::{
+        DELEGATE_CRED_ID, create_sd_jwt_credential_entry, dcql_dc_api_auth_request_with_delegate,
+        make_delegate_disclosure,
+    };
+    use super::utils;
+    use crate::crypto::Key;
+    use crate::http::MockHttpClient;
+    use crate::inmem::kms::LocalKms;
+    use crate::inmem::vault::InMemVault;
+    use crate::kms::{CreateOptions, KeyType, Kms};
+    use crate::vc::Presentation;
+    use crate::vc::oid4vp::api::{
+        AuthorizationResponseMetadata, CredentialMapping, CredentialVerificationMetadata,
+        PresentationSession,
+    };
+    use crate::vc::oid4vp::delegate::DelegateSdJwtTransactionDataFormat;
+    use crate::vc::oid4vp::{AuthorizationResponse, Holder, PresentationResult, Verifier};
+    use serde_json::json;
+
+    async fn produce_grant() -> (
+        AuthorizationResponse,
+        crate::vc::oid4vp::ResolvedAuthRequest,
+    ) {
+        let kms = LocalKms::new();
+        let vault = InMemVault::new();
+        let (cred_entry, _) = create_sd_jwt_credential_entry(&kms).await;
+
+        let delegate_kms = LocalKms::new();
+        let delegate_kid = delegate_kms
+            .create(KeyType::P256, CreateOptions::default())
+            .await
+            .unwrap();
+        let delegate_pub_jwk: ssi::jwk::JWK = delegate_kms
+            .get(&delegate_kid)
+            .await
+            .unwrap()
+            .jwk()
+            .unwrap();
+        let payload = json!({
+            "scope": "limited",
+            "cnf": { "jwk": serde_json::to_value(&delegate_pub_jwk).unwrap() }
+        });
+        let disclosure = make_delegate_disclosure(payload);
+        let auth_request = dcql_dc_api_auth_request_with_delegate(
+            disclosure,
+            DelegateSdJwtTransactionDataFormat::HolderBinding,
+        );
+
+        let mut cred_map = CredentialMapping::new();
+        cred_map.insert(DELEGATE_CRED_ID.to_string(), vec![cred_entry]);
+
+        let holder = utils::holder_service(MockHttpClient::new(), kms, vault).await;
+        let result = holder
+            .present_credentials(
+                &auth_request,
+                &cred_map,
+                &AuthorizationResponseMetadata::default(),
+            )
+            .await
+            .expect("grant production must succeed");
+        let PresentationResult::AuthorizationResponse(resp) = result else {
+            panic!("expected AuthorizationResponse");
+        };
+        (resp, auth_request)
+    }
+
+    #[tokio::test]
+    async fn verify_and_extract_returns_grant_for_storage() {
+        let (resp, auth_request) = produce_grant().await;
+        let (verifier, _) = utils::verifier_service().await;
+
+        let session = PresentationSession {
+            nonce: auth_request.nonce.clone(),
+            resolved_presentation_query: auth_request.resolved_presentation_query.clone(),
+            auth_request_jwt: None,
+        };
+        let (verified_claims, verified_presentations) = verifier
+            .verify_and_extract_presentation(
+                &resp,
+                &session,
+                &CredentialVerificationMetadata {
+                    transaction_data: auth_request.transaction_data.clone(),
+                    audience: None,
+                },
+            )
+            .await
+            .expect("verify_and_extract must succeed for the grant");
+
+        let presentations = verified_presentations
+            .get(DELEGATE_CRED_ID)
+            .expect("a presentation for the delegated credential id");
+        let Presentation::SdJwtVp(dsd_jwt) = &presentations[0] else {
+            panic!("expected an SD-JWT-family presentation");
+        };
+        assert!(dsd_jwt.ends_with('~'), "grant is a plain dSD-JWT");
+
+        let vp_token = &verified_claims["vp_token"];
+        let first_cred = &vp_token[DELEGATE_CRED_ID].as_vec().expect("array")[0];
+        assert!(
+            first_cred.get("scope").is_some(),
+            "delegate payload claim 'scope' must be in the verified claims, got: {first_cred:?}"
+        );
     }
 }

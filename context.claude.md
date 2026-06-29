@@ -61,6 +61,7 @@ agent-sdk/
 | Non-wasm only | `src/didcomm/`, `src/did/didethr/`, `src/did/webvh/`, UniFFI wrapper |
 | Feature-gated (`in-memory`) | `src/inmem/` |
 | Feature-gated (`didcomm-http-transport`) | `src/didcomm/transport/http/` |
+| Feature-gated (`delegate-sd-jwt`, experimental) | `src/vc/formats/dsd_jwt.rs`, `src/vc/oid4vp/delegate.rs`, per-credential delegation in `present_credentials(_auto)` + `Verifier::verify_and_extract_presentation` + core `create_delegated_presentation` |
 | `ZeroizeOnDrop` on sensitive types | `Nonce`, `Credential`, `Claims` |
 | All HTTP must go through `HttpClient` | Entire SDK |
 | No raw key material — only `KeyHandle` | All KMS consumers |

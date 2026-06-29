@@ -31,3 +31,5 @@ napi-build = "2.1.3"
 
 [features]
 in-memory = ["agent-sdk/in-memory"]
+# EXPERIMENTAL: Delegate SD-JWT (draft-gco-oauth-delegate-sd-jwt) §7.1.
+delegate-sd-jwt = ["agent-sdk/delegate-sd-jwt"]
