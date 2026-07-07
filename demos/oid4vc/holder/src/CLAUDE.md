@@ -21,3 +21,8 @@ Runnable demo binary implementing the Holder role in a full OID4VCI + OID4VP flo
 
 ## Constraints
 - Demo / development use only; connects to a locally running issuer and verifier.
+- The `delegate-sd-jwt` Cargo feature (`-F delegate-sd-jwt`) makes the issuance flow
+  additionally request the `voucher_cred` (for the dSD-JWT delegation demo), gated at
+  compile time via `#[cfg(feature = "delegate-sd-jwt")]`. The presentation flow is
+  unchanged: a `delegate` transaction-data item in the auth request is handled by the
+  standard OID4VP present path.

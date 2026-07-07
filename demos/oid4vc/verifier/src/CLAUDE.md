@@ -21,3 +21,11 @@ Runnable demo binary implementing the Verifier role in a full OID4VP flow. Expos
 
 ## Constraints
 - Demo / development use only; connects to a locally running holder.
+- The `delegate-sd-jwt` Cargo feature switches `/request_uri` to the dSD-JWT delegation
+  demo (selected at compile time via `cfg!(feature = "delegate-sd-jwt")`): it requests a
+  voucher (`shared::voucher::voucher_dcql`) bound to a freshly generated `purchase_id`, with
+  no transaction data, over `direct_post`. An empty transaction-data set is conveyed as
+  `None` to verification (an empty `Some(..)` would expect hashes that are never sent).
+  This feature forwards to `agent-sdk/delegate-sd-jwt` (→ `sd-jwt-rs/delegate`): the Merchant
+  must verify the delegation chain, and `sd-jwt-rs` gates chain-aware verification behind that
+  feature, so a local-only toggle would leave the Merchant unable to verify the dSD-JWT+KB.

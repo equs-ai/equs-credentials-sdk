@@ -17,7 +17,7 @@ use agent_sdk::vc::oid4vp::{
     AuthResponseOptions, AuthorizationRequestMetadata, AuthorizationResponse,
     AuthorizationResponseObject, ClientId, ClientMetadata, CredentialVerificationMetadata,
     HashAlgorithm, PassAuthRequestObject, PresentationSession, ResolvedPresentationQuery,
-    TransactionDataItem, TransactionDataResponse,
+    ResponseMode, TransactionDataItem, TransactionDataResponse,
 };
 use agent_sdk::vc::presentation_exchange::{
     ClaimFormatMap, ClaimFormatPayload, Constraints, ConstraintsField, InputDescriptor,
@@ -26,6 +26,7 @@ use agent_sdk::vc::presentation_exchange::{
 use agent_sdk::vc::{oid4vp, ClaimFormatDesignation, JsonPath};
 use reqwest::Url;
 use serde_json::{json, Value};
+use shared::voucher::{generate_purchase_id, voucher_dcql};
 use shared::vp::{AuthRequestQuery, PresentationQueryType};
 use std::collections::HashMap;
 use std::env;
@@ -92,9 +93,18 @@ async fn request_uri(
     let request_uri =
         Url::parse(format!("{}{}", SERVER_URL, AUTH_REQUEST_OBJECT_URL_PATH).as_str()).unwrap();
 
+    // dSD-JWT delegation demo: when the `delegate-sd-jwt` feature is enabled the Merchant
+    // requests a voucher bound to a freshly generated purchase_id (no delegate transaction
+    // data), over direct_post so the Agent wallet can post a plain (unencrypted) response.
+    let voucher_demo = cfg!(feature = "delegate-sd-jwt");
+
     let auth_response_options = AuthResponseOptions {
         type_: query.response_type.clone(),
-        mode: query.response_mode.clone(),
+        mode: if voucher_demo {
+            ResponseMode::DirectPost
+        } else {
+            query.response_mode.clone()
+        },
         submission_uri: Some(response_uri),
         state: None,
     };
@@ -102,15 +112,32 @@ async fn request_uri(
         uri: request_uri.clone(),
         method: None,
     };
-    let transaction_data = match query.query_type {
-        PresentationQueryType::DCQL => {
-            get_provided_transaction_data(TRANSACTION_DATA_DCQL_PATH_ENV_VAR)
-                .unwrap_or(default_transaction_data_for_dcql())
-        }
-        PresentationQueryType::PresentationDefinition => {
-            get_provided_transaction_data(TRANSACTION_DATA_PD_PATH_ENV_VAR)
-                .unwrap_or(default_transaction_data_for_pd())
-        }
+
+    let (request_query, transaction_data) = if voucher_demo {
+        let purchase_id = generate_purchase_id();
+        println!("Voucher demo: requesting voucher bound to purchase_id = {purchase_id}");
+        (
+            ResolvedPresentationQuery::DCQL(voucher_dcql(&purchase_id)),
+            Vec::new(),
+        )
+    } else {
+        let td = match query.query_type {
+            PresentationQueryType::DCQL => {
+                get_provided_transaction_data(TRANSACTION_DATA_DCQL_PATH_ENV_VAR)
+                    .unwrap_or(default_transaction_data_for_dcql())
+            }
+            PresentationQueryType::PresentationDefinition => {
+                get_provided_transaction_data(TRANSACTION_DATA_PD_PATH_ENV_VAR)
+                    .unwrap_or(default_transaction_data_for_pd())
+            }
+        };
+        let rq = match query.query_type {
+            PresentationQueryType::DCQL => ResolvedPresentationQuery::DCQL(default_dcql_query()),
+            PresentationQueryType::PresentationDefinition => {
+                ResolvedPresentationQuery::PresentationDefinition(default_presentation_definition())
+            }
+        };
+        (rq, td)
     };
 
     println!(
@@ -124,11 +151,12 @@ async fn request_uri(
         .await
         .unwrap();
 
-    let request_query = match query.query_type {
-        PresentationQueryType::DCQL => ResolvedPresentationQuery::DCQL(default_dcql_query()),
-        PresentationQueryType::PresentationDefinition => {
-            ResolvedPresentationQuery::PresentationDefinition(default_presentation_definition())
-        }
+    // An empty transaction-data set must be conveyed as `None` (an empty `Some(..)`
+    // would make verification expect transaction-data hashes that are never sent).
+    let request_transaction_data = if transaction_data.is_empty() {
+        None
+    } else {
+        Some(transaction_data)
     };
 
     let (auth_req, session) = state
@@ -136,7 +164,7 @@ async fn request_uri(
         .create_authorization_request(
             &request_query,
             &AuthorizationRequestMetadata {
-                transaction_data: Some(transaction_data),
+                transaction_data: request_transaction_data,
                 pass_auth_request_object,
                 auth_response_options,
                 expected_origins: None,
@@ -196,7 +224,7 @@ async fn presentation_response(
         println!("Received Encrypted Authorization Response: {}", response);
         AuthorizationResponse::Jwe(response.to_owned())
     } else {
-        AuthorizationResponse::Plain(AuthorizationResponseObject {
+        let response_object = AuthorizationResponseObject {
             vp_token: serde_json::from_str(req.get("vp_token").unwrap()).unwrap(),
             presentation_submission: req
                 .get("presentation_submission")
@@ -211,7 +239,12 @@ async fn presentation_response(
                         .map(|hash_algs| serde_json::from_str(hash_algs).unwrap()),
                 }
             }),
-        })
+        };
+        println!(
+            "Received Plain Authorization Response: {:?}",
+            response_object
+        );
+        AuthorizationResponse::Plain(response_object)
     };
 
     let session = state
@@ -228,6 +261,14 @@ async fn presentation_response(
         .unwrap()
         .unwrap();
 
+    // An empty set means "no transaction data" (e.g. the voucher demo) — pass `None`,
+    // otherwise verification would expect transaction-data hashes that were never sent.
+    let transaction_data = if transaction_data.is_empty() {
+        None
+    } else {
+        Some(transaction_data)
+    };
+
     // Uncommenting the lines below will cause wrong transaction data hashes error.
     // let transaction_data = if transaction_data.len() == 2 {
     //     wrong_transaction_data_for_pd()
@@ -241,7 +282,7 @@ async fn presentation_response(
             &wallet_auth_resp,
             &session,
             &CredentialVerificationMetadata {
-                transaction_data: Some(transaction_data),
+                transaction_data,
                 audience: None,
             },
         )

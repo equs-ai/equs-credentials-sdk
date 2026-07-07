@@ -4,6 +4,9 @@ use jsonwebtoken::{DecodingKey, Header};
 #[cfg(not(target_arch = "wasm32"))]
 use one_core::proto::certificate_validator::CertificateValidatorImpl;
 use sd_jwt_rs::resolver::KeyResolver;
+#[cfg(feature = "delegate-sd-jwt")]
+use sd_jwt_rs::utils::decode_dsd_jwt;
+#[cfg(not(feature = "delegate-sd-jwt"))]
 use sd_jwt_rs::utils::decode_sd_jwt;
 use sd_jwt_rs::{
     ClaimsForSelectiveDisclosureStrategy, SDJWTHolder, SDJWTIssuer, SDJWTSerializationFormat,
@@ -194,16 +197,64 @@ pub struct VPMetadata {
     pub holder_binder: Option<HolderBinder>,
 }
 
+/// Decode an SD-JWT credential's claims to a JSON `Value`, resolving disclosures.
+/// **Does not** perform credential validation.
+///
+/// Without the `delegate-sd-jwt` feature this resolves only the issuer SD-JWT's claims.
+#[cfg(not(feature = "delegate-sd-jwt"))]
+fn decode_credential_claims(compact: &str) -> Result<Value> {
+    decode_sd_jwt(compact.to_string(), SDJWTSerializationFormat::Compact).map_err(|err| {
+        ParsingSnafu {
+            details: err.to_string(),
+        }
+        .build()
+    })
+}
+
+/// Decode a (possibly delegated) SD-JWT credential's claims to a JSON `Value`.
+/// **Does not** perform credential validation.
+///
+/// For a plain SD-JWT this returns the issuer claims. For a dSD-JWT it additionally layers
+/// each chain link's `delegate_payload` on top of the issuer claims, in chain order, so
+/// delegate-injected claims become visible to credential discovery /
+/// DCQL value-matching.
+#[cfg(feature = "delegate-sd-jwt")]
+fn decode_credential_claims(compact: &str) -> Result<Value> {
+    let components = decode_dsd_jwt(compact.to_string(), SDJWTSerializationFormat::Compact)
+        .map_err(|err| {
+            ParsingSnafu {
+                details: err.to_string(),
+            }
+            .build()
+        })?;
+
+    let mut components = components.into_iter();
+    let mut base = components
+        .next()
+        .unwrap_or_else(|| Value::Object(Map::new()));
+    let base_obj = base.as_object_mut().ok_or_else(|| {
+        ParsingSnafu {
+            details: "issuer SD-JWT claims are not a JSON object".to_string(),
+        }
+        .build()
+    })?;
+
+    for payload in components {
+        // Layer single-object delegate payloads; skip multi-alternative arrays.
+        if let Value::Object(obj) = payload {
+            for (key, value) in obj {
+                base_obj.insert(key, value);
+            }
+        }
+    }
+
+    Ok(base)
+}
+
 impl HasClaims<Claims> for Credential {
     #[instrument(level = Level::TRACE, skip_all, err(), ret())]
     fn parse_claims(&self) -> Result<Claims> {
-        let mut value = decode_sd_jwt(self.to_string(), SDJWTSerializationFormat::Compact)
-            .map_err(|err| {
-                ParsingSnafu {
-                    details: err.to_string(),
-                }
-                .build()
-            })?;
+        let mut value = decode_credential_claims(&self.to_string())?;
 
         if let Some(obj) = value.as_object_mut() {
             obj.remove(CNF_CLAIM);

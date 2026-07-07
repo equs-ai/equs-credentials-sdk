@@ -147,7 +147,7 @@ async fn issue_credential(
     };
 
     // Depending on the concrete `CredDef` requested Claims would be different
-    let claims = get_user_attributes(&cred_def).await?;
+    let claims = get_credential_claims(&cred_def).await?;
 
     let resp = state
         .issuer
@@ -188,7 +188,12 @@ async fn credential_offer_with_auth_code_grant(state: web::Data<AppState>) -> Ht
     let (credential_offer, url) = state
         .issuer
         .create_credential_offer(
-            vec![SD_JWT_CRED_DEF, JSON_LD_V1_CRED_DEF, JSON_LD_V2_CRED_DEF],
+            vec![
+                SD_JWT_CRED_DEF,
+                JSON_LD_V1_CRED_DEF,
+                JSON_LD_V2_CRED_DEF,
+                VOUCHER_CRED_DEF,
+            ],
             &CredentialOfferGrants {
                 authorization_code: Some(pre_auth_grant),
                 pre_authorized_code: None,
@@ -209,7 +214,12 @@ async fn credential_offer_with_pre_auth_code_grant(state: web::Data<AppState>) -
     let (credential_offer, url) = state
         .issuer
         .create_credential_offer(
-            vec![SD_JWT_CRED_DEF, JSON_LD_V1_CRED_DEF, JSON_LD_V2_CRED_DEF],
+            vec![
+                SD_JWT_CRED_DEF,
+                JSON_LD_V1_CRED_DEF,
+                JSON_LD_V2_CRED_DEF,
+                VOUCHER_CRED_DEF,
+            ],
             &CredentialOfferGrants {
                 authorization_code: None,
                 pre_authorized_code: Some(pre_auth_grant),
@@ -316,7 +326,7 @@ async fn revoke_vc(state: web::Data<AppState>) -> HttpResponse {
     HttpResponse::Ok().body("OK")
 }
 
-async fn get_user_attributes(cred_def: &CredDefMetadata) -> Result<Claims, Error> {
+async fn get_credential_claims(cred_def: &CredDefMetadata) -> Result<Claims, Error> {
     let vc_type = match cred_def.profile_specific_fields() {
         CredDefMetadataProfile::VcSdJwt(m) => m.vct(),
         CredDefMetadataProfile::LdpVc(m) => &m.credential_definition().r#type()[1],
@@ -324,6 +334,17 @@ async fn get_user_attributes(cred_def: &CredDefMetadata) -> Result<Claims, Error
     };
 
     match vc_type.as_str() {
+        // dSD-JWT delegation demo: the Bank-issued voucher carries fixed claims.
+        // `purchase_id` is intentionally absent — it is injected later by the delegate.
+        VOUCHER_VCT => {
+            return Ok(json!({
+                "voucher_id": "V-0001",
+                "amount": 100,
+                "currency": "USD",
+            })
+            .try_into()
+            .unwrap());
+        }
         "PermanentResidentCard" => {
             return Ok(json!({
                 "type": ["PermanentResident", "Person"],
@@ -599,6 +620,9 @@ async fn create_did_and_key_metadata(kms: &LocalKms) -> (DID, KeyMetadata, DIDDo
 const SD_JWT_CRED_DEF: &str = "SD_JWT_cred_1";
 const JSON_LD_V1_CRED_DEF: &str = "JSON_LDP_cred_2";
 const JSON_LD_V2_CRED_DEF: &str = "JSON_LDP_cred_3";
+/// dSD-JWT delegation demo: the Bank-issued voucher credential.
+const VOUCHER_CRED_DEF: &str = "voucher_cred";
+const VOUCHER_VCT: &str = "https://bank.example/voucher";
 
 #[allow(unused_variables)]
 fn sample_issuer_metadata(iss_url: &str, authz_url: &str) -> IssuerMetadata {
@@ -755,6 +779,35 @@ fn sample_issuer_metadata(iss_url: &str, authz_url: &str) -> IssuerMetadata {
                         }
                     ],
                 },
+            },
+            VOUCHER_CRED_DEF: {
+                "format": "dc+sd-jwt",
+                // Reuse the demo's existing scope so the pre-authorized access token
+                // (scoped `SD_JWT_cred_scope`) authorizes the voucher too.
+                "scope": "SD_JWT_cred_scope",
+                "cryptographic_binding_methods_supported": [
+                    "jwk"
+                ],
+                "credential_signing_alg_values_supported": [
+                    "ES256",
+                    "ES256K",
+                    "EdDSA"
+                ],
+                "proof_types_supported": {
+                    "jwt": {
+                        "proof_signing_alg_values_supported": [
+                            "ES256"
+                        ]
+                    }
+                },
+                "vct": VOUCHER_VCT,
+                "credential_metadata": {
+                    "claims": [
+                        { "path": ["voucher_id"] },
+                        { "path": ["amount"] },
+                        { "path": ["currency"] }
+                    ]
+                }
             }
           }
         }

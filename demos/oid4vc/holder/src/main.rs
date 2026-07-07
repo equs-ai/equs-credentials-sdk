@@ -48,6 +48,8 @@ use crate::user_input::{CredentialSelectionMode, IssuerDiscoveryMode, Presentati
 const CRED_DEF_ID_1: &str = "SD_JWT_cred_1";
 const JSON_LD_V1_CRED_DEF_ID: &str = "JSON_LDP_cred_2";
 const JSON_LD_V2_CRED_DEF_ID: &str = "JSON_LDP_cred_3";
+#[cfg(feature = "delegate-sd-jwt")]
+const VOUCHER_CRED_DEF_ID: &str = "voucher_cred";
 
 const SCOPE: &str = "SD_JWT_cred_scope";
 
@@ -122,6 +124,20 @@ async fn run_issuance_flow(
     )
     .await;
     validate_credential_response_extra(&holder, &credential_response).await;
+
+    // dSD-JWT delegation demo: additionally obtain the Bank voucher.
+    #[cfg(feature = "delegate-sd-jwt")]
+    {
+        let key_metadata = create_key_metadata(&kms).await;
+        let credential_response = request_credential(
+            &holder,
+            VOUCHER_CRED_DEF_ID,
+            token_resp.access_token(),
+            &[key_metadata],
+        )
+        .await;
+        validate_credential_response_extra(&holder, &credential_response).await;
+    }
 
     println!("Issuance done");
 }
