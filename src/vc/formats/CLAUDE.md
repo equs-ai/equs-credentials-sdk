@@ -17,7 +17,12 @@ Houses all Verifiable Credential format implementations (SD-JWT, W3C JSON-LD, IS
 
 ## Key types / traits
 - `API<CL, C, P, CM, PM, VR>` — async trait: `create_vc`, `create_vp`, `verify_vc`, `verify_vp`.
-- `HasClaims<CL>` — `parse_claims()` and `has_type()`.
+- `HasClaims<CL>` — `parse_claims()` and `has_type()`. For SD-JWT, `parse_claims` is
+  **feature-gated**: without `delegate-sd-jwt` it resolves only the issuer SD-JWT's claims
+  (`decode_sd_jwt`); with `delegate-sd-jwt` it uses `decode_dsd_jwt` and layers each dSD-JWT
+  chain link's `delegate_payload` onto the issuer claims (chain order), so delegate-injected
+  claims (e.g. `purchase_id`) are visible to discovery/DCQL value-matching. Unverified either
+  way (selection/indexing only; the Verifier re-verifies the chain at presentation).
 - `HasCredential<C>` — `get_credential()` from a VP.
 - `VCFormat` / `VPFormat` — format identification enums.
 

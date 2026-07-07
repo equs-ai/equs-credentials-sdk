@@ -7,4 +7,6 @@ edition = "2024"
 agent-sdk = { path = "../../.."}
 
 serde = { version = "1.0.219", features = ["derive"] }
+serde_json = "1.0"
 strum_macros = "0.26.4"
+uuid = { version = "1.10.0", features = ["v4"] }

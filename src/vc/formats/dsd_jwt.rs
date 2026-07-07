@@ -453,6 +453,113 @@ mod tests {
         );
     }
 
+    /// Purchase-bound delegation: the delegate payload injects `purchase_id`
+    /// (a claim absent from the issued voucher). After the Delegate Holder presents
+    /// with its own KB-JWT, the Verifier sees `purchase_id` in the chain-aware claims.
+    #[tokio::test]
+    async fn delegate_payload_injects_purchase_id() {
+        use crate::vc::claims::Claim;
+
+        let (vc, hld_kh) = issue_sd_jwt().await;
+
+        let kms = LocalKms::new();
+        let (_, delegate_kh) = create_did_url_and_key_handle(&kms, KeyType::P256).await;
+        let delegate_jwk: ssi::jwk::JWK = delegate_kh.jwk().expect("delegate JWK");
+        let delegate_jwk_value = serde_json::to_value(&delegate_jwk).unwrap();
+
+        let dsd_jwt = DsdJwtAPI::create_delegated_credential(
+            &vc,
+            hld_kh,
+            DelegationParams {
+                delegate_payloads: vec![json!({
+                    "purchase_id": "P-123",
+                    "cnf": { "jwk": delegate_jwk_value },
+                })],
+                claims_to_disclose: Some(Map::new()),
+                drop_disclosures: None,
+                binding: ChainBindingMode::SdHash,
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("delegation with purchase_id should succeed");
+
+        let nonce = Nonce::from_secret("merchant-nonce".to_string());
+        let verifier_id = "merchant.example".to_string();
+
+        let presentation = SdJwtAPI::create_vp(
+            &dsd_jwt,
+            delegate_kh,
+            VPMetadata {
+                disclosures: Map::new(),
+                holder_binder: Some(HolderBinder {
+                    nonce: nonce.clone(),
+                    verifier_id: verifier_id.clone(),
+                }),
+            },
+            UniversalResolver::default(),
+        )
+        .await
+        .expect("delegate presents with KB-JWT");
+
+        let verified = SdJwtAPI::verify_vp(
+            &presentation,
+            Some(HolderBinder { nonce, verifier_id }),
+            VerifyOptions::default(),
+            UniversalResolver::default(),
+        )
+        .await
+        .expect("verifier validates chain + KB-JWT");
+
+        assert_eq!(
+            verified.get("purchase_id"),
+            Some(&Claim::String("P-123".to_string())),
+            "purchase_id injected by the delegate payload must appear in verified claims"
+        );
+    }
+
+    /// Under `delegate-sd-jwt`, `HasClaims::parse_claims` on a stored dSD-JWT grant must layer
+    /// the delegate payload on top of the issuer claims — so a delegate-injected claim (here
+    /// `purchase_id`, absent from the issued credential) is visible to credential discovery /
+    /// DCQL value-matching, while original issuer claims remain present.
+    #[tokio::test]
+    async fn parse_claims_surfaces_delegate_payload_claim() {
+        use crate::vc::Credential as VcCredential;
+        use crate::vc::claims::Claim;
+        use crate::vc::formats::HasClaims;
+
+        let (vc, hld_kh) = issue_sd_jwt().await;
+
+        let dsd = DsdJwtAPI::create_delegated_credential(
+            &vc,
+            hld_kh,
+            DelegationParams {
+                delegate_payloads: vec![json!({ "purchase_id": "P-xyz" })],
+                claims_to_disclose: Some(Map::new()),
+                drop_disclosures: None,
+                binding: ChainBindingMode::SdHash,
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("create_delegated_credential should succeed");
+
+        let claims = VcCredential::SdJwt(dsd)
+            .parse_claims()
+            .expect("parse_claims should decode the dSD-JWT grant");
+
+        assert_eq!(
+            claims.get("purchase_id"),
+            Some(&Claim::String("P-xyz".to_string())),
+            "delegate-payload claim must be layered into parse_claims output"
+        );
+        // Original issuer claims must still be present.
+        assert!(
+            claims.get("iss").is_some(),
+            "issuer claim 'iss' must remain present after layering"
+        );
+    }
+
     /// Holder binding: when `aud`/`nonce` are set, `create_delegated_credential` writes
     /// them into the delegate payload (a plain dSD-JWT's final KB-SD-JWT link is the key
     /// binding). The Verifier checks these against its expected audience/nonce; here we

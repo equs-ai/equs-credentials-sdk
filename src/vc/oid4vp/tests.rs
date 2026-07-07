@@ -4834,14 +4834,14 @@ mod delegation_e2e_tests {
     use crate::inmem::vault::InMemVault;
     use crate::kms::{CreateOptions, KeyType, Kms};
     use crate::nonce::Nonce;
-    use crate::vault::CredentialEntry;
-    use crate::vc::Credential;
+    use crate::vault::{CredentialEntry, Vault};
     use crate::vc::oid4vp::api::{
         AuthorizationResponseMetadata, CredentialMapping, CredentialVerificationMetadata,
         PresentationSession, ResolvedPresentationQuery,
     };
     use crate::vc::oid4vp::delegate::DelegateSdJwtTransactionDataFormat;
     use crate::vc::oid4vp::{AuthorizationResponse, Holder, PresentationResult, Verifier};
+    use crate::vc::{Credential, CredentialMetadata, VCFormat};
     use openid4vp::core::credential_format::ClaimFormatDesignation;
     use openid4vp::core::dcql::{DCQL, DcqlCredential, DcqlMeta, ID};
     use openid4vp::utils::NonEmptyVec;
@@ -4861,9 +4861,11 @@ mod delegation_e2e_tests {
     ///
     /// 1. Issuer issues an SD-JWT to Original Holder.
     /// 2. Original Holder grants delegation to Delegate Holder (dSD-JWT with `cnf`).
-    /// 3. Delegate Holder creates `CredentialEntry { Credential::SdJwt(dsd_jwt), kid }`.
-    /// 4. Delegate Holder calls `present_credentials` with a DCQL auth_request that
-    ///    carries the Verifier's `client_id` and nonce → gets `AuthorizationResponse::Plain`.
+    /// 3. Delegate Holder stores the grant `Credential::SdJwt(dsd_jwt)` in its vault,
+    ///    bound to its `cnf`/KB `kid` (mirrors the Agent demo).
+    /// 4. Delegate Holder calls `present_credentials_auto` with a DCQL auth_request that
+    ///    carries the Verifier's `client_id` and nonce → the wallet discovers the grant in
+    ///    the vault by the DCQL's `$.vct` field and presents it with its own KB-JWT.
     /// 5. Verifier calls `verify_presentation` with the matching `PresentationSession`.
     /// 6. Assert that the verified `Claims` include both the delegate-payload claim
     ///    `scope` and the issuer claim `iss`.
@@ -4939,12 +4941,6 @@ mod delegation_e2e_tests {
         );
         let resolved_pq = ResolvedPresentationQuery::DCQL(dcql);
 
-        let delegate_cred_entry = CredentialEntry {
-            credential: Credential::SdJwt(dsd_jwt_str),
-            kid: delegate_kid.to_string(),
-            id: DELEGATE_CRED_ID.to_string(),
-        };
-
         let delegate_auth_request_str = format!(
             r#"{{
               "client_id": "decentralized_identifier:{verifier_client_id}",
@@ -4972,29 +4968,35 @@ mod delegation_e2e_tests {
         let delegate_auth_request: crate::vc::oid4vp::ResolvedAuthRequest =
             serde_json::from_str(&delegate_auth_request_str).unwrap();
 
-        // dc_api mode requires an origin for the KB-JWT audience; this origin is
-        // also passed to verify_presentation as `audience` so the check aligns.
         let dc_api_origin = "https://verifier.example.org";
 
         let delegate_vault = InMemVault::new();
+        let grant_metadata = CredentialMetadata {
+            type_: "https://credentials.example.com/identity_credential".to_string(),
+            format: VCFormat::SdJwtVc,
+            kid: delegate_kid.to_string(),
+            alg: None,
+            fields: vec!["$.vct".to_string()],
+        };
+        delegate_vault
+            .store_credential(Credential::SdJwt(dsd_jwt_str), &grant_metadata)
+            .await
+            .expect("storing the delegation grant in the Delegate Holder vault must succeed");
+
         let delegate_http_client = MockHttpClient::new();
         let delegate_holder =
             utils::holder_service(delegate_http_client, delegate_kms, delegate_vault).await;
 
-        let mut delegate_cred_map = CredentialMapping::new();
-        delegate_cred_map.insert(DELEGATE_CRED_ID.to_string(), vec![delegate_cred_entry]);
-
         let present_result = delegate_holder
-            .present_credentials(
+            .present_credentials_auto(
                 &delegate_auth_request,
-                &delegate_cred_map,
                 &AuthorizationResponseMetadata {
                     dc_api_origin: Some(dc_api_origin.to_string()),
                     ..Default::default()
                 },
             )
             .await
-            .expect("Delegate Holder present_credentials must succeed");
+            .expect("Delegate Holder present_credentials_auto must succeed");
 
         let PresentationResult::AuthorizationResponse(auth_resp) = present_result else {
             panic!("expected AuthorizationResponse from present_credentials (dc_api mode)");
@@ -5031,6 +5033,176 @@ mod delegation_e2e_tests {
         assert!(
             first_cred.get("iss").is_some(),
             "issuer claim 'iss' must be present in verified claims, got: {first_cred:?}"
+        );
+    }
+
+    /// Regression: `present_credentials_auto` must discover a stored delegation grant when the
+    /// Verifier's DCQL **value-matches a delegate-payload claim** (as the Merchant's voucher
+    /// query value-matches `purchase_id`). Before the delegate-aware `parse_claims`, auto
+    /// discovery saw only issuer claims, matched nothing, and posted an empty `vp_token`.
+    #[tokio::test]
+    async fn delegation_auto_discovery_value_matches_delegate_payload_claim() {
+        let orig_holder_kms = LocalKms::new();
+        let orig_holder_vault = InMemVault::new();
+        let (orig_cred_entry, _) = create_sd_jwt_credential_entry(&orig_holder_kms).await;
+
+        let delegate_kms = LocalKms::new();
+        let delegate_kid = delegate_kms
+            .create(KeyType::P256, CreateOptions::default())
+            .await
+            .unwrap();
+        let delegate_kh = delegate_kms.get(&delegate_kid).await.unwrap();
+        let delegate_pub_jwk: ssi::jwk::JWK = delegate_kh.jwk().expect("delegate must have JWK");
+        let delegate_jwk_value = serde_json::to_value(&delegate_pub_jwk).unwrap();
+
+        // Delegate payload injects `scope` (absent from the issued credential), mirroring the
+        // demo's `purchase_id`.
+        let payload = json!({
+            "scope": "delegated-purchase",
+            "cnf": { "jwk": delegate_jwk_value }
+        });
+        let disclosure = make_delegate_disclosure(payload);
+        let grant_auth_request = dcql_dc_api_auth_request_with_delegate(
+            disclosure,
+            DelegateSdJwtTransactionDataFormat::HolderBinding,
+        );
+
+        let orig_http_client = MockHttpClient::new();
+        let orig_holder =
+            utils::holder_service(orig_http_client, orig_holder_kms, orig_holder_vault).await;
+
+        let mut cred_map = CredentialMapping::new();
+        cred_map.insert(DELEGATE_CRED_ID.to_string(), vec![orig_cred_entry.clone()]);
+
+        let grant_result = orig_holder
+            .present_credentials(
+                &grant_auth_request,
+                &cred_map,
+                &AuthorizationResponseMetadata::default(),
+            )
+            .await
+            .expect("present_credentials must succeed");
+        let PresentationResult::AuthorizationResponse(AuthorizationResponse::Plain(grant_resp_obj)) =
+            grant_result
+        else {
+            panic!("expected Plain AuthorizationResponse from present_credentials");
+        };
+        let dsd_jwt_str = grant_resp_obj
+            .vp_token
+            .get(DELEGATE_CRED_ID)
+            .and_then(|v| v.as_array())
+            .and_then(|arr| arr.first())
+            .and_then(|v| v.as_str())
+            .expect("vp_token must contain dSD-JWT string")
+            .to_string();
+
+        let (verifier, verifier_client_id) = utils::verifier_service().await;
+        let e2e_nonce = "value-match-nonce";
+        // DCQL value-matches the delegate-payload claim `scope`, with a claim_set (as the
+        // Merchant's voucher DCQL value-matches `purchase_id`).
+        let delegate_auth_request_str = format!(
+            r#"{{
+              "client_id": "decentralized_identifier:{verifier_client_id}",
+              "state": null,
+              "dcql_query": {{
+                "credentials": [{{
+                  "id": "{DELEGATE_CRED_ID}",
+                  "format": "dc+sd-jwt",
+                  "meta": {{ "vct_values": ["https://credentials.example.com/identity_credential"] }},
+                  "claims": [{{ "id": "sc", "path": ["scope"], "values": ["delegated-purchase"] }}],
+                  "claim_sets": [["sc"]]
+                }}]
+              }},
+              "nonce": "{e2e_nonce}",
+              "response_mode": "dc_api",
+              "response_type": "vp_token",
+              "client_metadata": {{
+                "vp_formats_supported": {{
+                  "dc+sd-jwt": {{
+                    "sd-jwt_alg_values": ["EdDSA", "ES256"],
+                    "kb-jwt_alg_values": ["EdDSA", "ES256"]
+                  }}
+                }}
+              }}
+            }}"#
+        );
+        let delegate_auth_request: crate::vc::oid4vp::ResolvedAuthRequest =
+            serde_json::from_str(&delegate_auth_request_str).unwrap();
+
+        let dc_api_origin = "https://verifier.example.org";
+
+        let delegate_vault = InMemVault::new();
+        let grant_metadata = CredentialMetadata {
+            type_: "https://credentials.example.com/identity_credential".to_string(),
+            format: VCFormat::SdJwtVc,
+            kid: delegate_kid.to_string(),
+            alg: None,
+            fields: vec!["$.vct".to_string(), "$.scope".to_string()],
+        };
+        delegate_vault
+            .store_credential(Credential::SdJwt(dsd_jwt_str), &grant_metadata)
+            .await
+            .expect("storing the delegation grant must succeed");
+
+        let delegate_http_client = MockHttpClient::new();
+        let delegate_holder =
+            utils::holder_service(delegate_http_client, delegate_kms, delegate_vault).await;
+
+        let present_result = delegate_holder
+            .present_credentials_auto(
+                &delegate_auth_request,
+                &AuthorizationResponseMetadata {
+                    dc_api_origin: Some(dc_api_origin.to_string()),
+                    ..Default::default()
+                },
+            )
+            .await
+            .expect("present_credentials_auto must succeed");
+
+        let PresentationResult::AuthorizationResponse(auth_resp) = present_result else {
+            panic!("expected AuthorizationResponse from present_credentials_auto (dc_api mode)");
+        };
+
+        // The core regression assertion: auto-discovery matched the value-constrained
+        // delegate-payload claim and placed the grant under its credential id.
+        if let AuthorizationResponse::Plain(obj) = &auth_resp {
+            assert!(
+                obj.vp_token.get(DELEGATE_CRED_ID).is_some(),
+                "auto-discovery must place the grant under '{DELEGATE_CRED_ID}', got: {:?}",
+                obj.vp_token
+            );
+        }
+
+        let session = PresentationSession {
+            nonce: Nonce::from_secret(e2e_nonce.to_string()),
+            resolved_presentation_query: ResolvedPresentationQuery::DCQL(build_delegate_dcql(
+                DELEGATE_CRED_ID,
+                "https://credentials.example.com/identity_credential",
+            )),
+            auth_request_jwt: None,
+        };
+
+        let claims = verifier
+            .verify_presentation(
+                &auth_resp,
+                &session,
+                &CredentialVerificationMetadata {
+                    transaction_data: None,
+                    audience: Some(dc_api_origin.to_string()),
+                },
+            )
+            .await
+            .expect("Verifier must verify the auto-discovered delegated grant");
+
+        let first_cred = &claims["vp_token"][DELEGATE_CRED_ID]
+            .as_vec()
+            .expect("must be array")[0];
+        assert_eq!(
+            first_cred.get("scope"),
+            Some(&crate::vc::claims::Claim::String(
+                "delegated-purchase".to_string()
+            )),
+            "verified claims must include the value-matched delegate-payload claim"
         );
     }
 

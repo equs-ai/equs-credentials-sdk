@@ -4,6 +4,7 @@ members = [
     "demos/oid4vc/issuer",
     "demos/oid4vc/verifier",
     "demos/oid4vc/holder",
+    "demos/oid4vc/agent",
     "demos/multi-thread",
     "plugins/askar",
     "plugins/askar/wrappers/nodejs",
@@ -24,7 +25,7 @@ common-macros = { path = "./common-macros" }
 # Internally maintained forked dependencies
 oid4vci = { git = "ssh://git@git.slock.it/open-source/oid4vci-rs.git", rev = "f5c38f92" }
 openid4vp = { git = "ssh://git@git.slock.it/open-source/oid4vp-rs.git", rev = "26e6f529" }
-sd-jwt-rs = { git = "ssh://git@git.slock.it/open-source/sd-jwt-rust.git", rev = "4ab436d1" }
+sd-jwt-rs = { git = "ssh://git@git.slock.it/open-source/sd-jwt-rust.git", rev = "ecfc9ac" }
 didcomm = { git = "ssh://git@git.slock.it/open-source/didcomm-rust.git", rev = "db41780d" }
 did_peer = { git = "ssh://git@git.slock.it/open-source/aries-vcx.git", rev = "fc818ef5" }
 did_resolver = { git = "ssh://git@git.slock.it/open-source/aries-vcx.git", rev = "fc818ef5" }
@@ -88,6 +89,7 @@ hex = "0.4.3"
 log = "0.4.28"# Pinned to solve deprecation warnings from transitive deps trying to update to 0.14.9
 crc = "=3.3.0" # lzma-rust2 requires crc<=3.3 but falls back to 2.x unless 3.3.x is pinned
 ml-dsa = "=0.1.0-rc.9" # one-crypto (one-core-new@092a2de1) uses the pre-rc.11 KeyGen API; rc.11 removed it
+getrandom = "=0.4.2"
 
 #[target.'cfg(target_arch = "wasm32")'.dependencies]
 ## remember to update one-core version for not-wasm targets
@@ -115,7 +117,7 @@ ecdsa = "0.16.9"
 in-memory = ["dep:rand", "dep:ed25519-dalek", "dep:ecdsa", "dep:askar-crypto"]
 didcomm-http-transport = ["dep:http", "dep:hyper", "dep:tokio"]
 test-utils = []
-delegate-sd-jwt = []
+delegate-sd-jwt = ["sd-jwt-rs/delegate"]
 
 [profile.release]
 opt-level = "z"

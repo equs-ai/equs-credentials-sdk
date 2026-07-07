@@ -7,7 +7,7 @@ Runnable demo binary implementing the Issuer role in a full OID4VCI flow. Expose
 
 | File | Role |
 |------|------|
-| `main.rs` | Entry point: wires `LocalKms`, actix `AppState` with `Issuer`; registers handlers for `/.well-known/openid-credential-issuer`, `/token`, `/credential`, and `/credential-offer`; issues SD-JWT credentials |
+| `main.rs` | Entry point: wires `LocalKms`, actix `AppState` with `Issuer`; registers handlers for `/.well-known/openid-credential-issuer`, `/token`, `/credential`, and `/credential-offer`; issues SD-JWT credentials. Credential configs: `SD_JWT_cred_1`, `JSON_LDP_cred_2`, `JSON_LDP_cred_3`, and `voucher_cred` (vct `https://bank.example/voucher`, claims `voucher_id`/`amount`/`currency`) used by the dSD-JWT delegation demo. |
 
 ## Key types / traits
 - Uses `vc::oid4vci::Issuer` from `agent_sdk`.
