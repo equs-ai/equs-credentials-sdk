@@ -77,19 +77,3 @@ impl VCCoreVerifier {
         result.map(TryInto::try_into).transpose()
     }
 }
-
-// TODO(next-release): remove `create_verifier` — superseded by `new VcCoreVerifier(...)`.
-/// @deprecated Use `new VcCoreVerifier(verifierId, didResolver)` instead.
-/// This factory will be removed in the next release.
-#[allow(unused)]
-#[napi]
-pub fn create_verifier(
-    verifier_id: String,
-    did_resolver: &JsUniversalDIDResolver,
-) -> VCCoreVerifier {
-    tracing::warn!(
-        "`createVerifier` is deprecated and will be removed in the next release. \
-         Use `new VcCoreVerifier(verifierId, didResolver)` instead."
-    );
-    VCCoreVerifier::new(verifier_id, did_resolver)
-}
