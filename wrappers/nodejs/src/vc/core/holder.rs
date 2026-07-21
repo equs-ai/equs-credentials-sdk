@@ -203,22 +203,3 @@ impl VCCoreHolder {
         status.map(TryInto::try_into).transpose()
     }
 }
-
-// TODO(next-release): remove `create_holder` — superseded by `new VcCoreHolder(...)`.
-/// @deprecated Use `new VcCoreHolder(kms, vault, metadata, didResolver, httpClient)` instead.
-/// This factory will be removed in the next release.
-#[allow(unused)]
-#[napi]
-pub fn create_holder(
-    kms: JsKms,
-    vault: JsVault,
-    metadata: JsHolderMetadata,
-    did_resolver: &JsUniversalDIDResolver,
-    http_client: &ReqwestHttpClient,
-) -> Result<VCCoreHolder, napi::Error> {
-    tracing::warn!(
-        "`createHolder` is deprecated and will be removed in the next release. \
-         Use `new VcCoreHolder(kms, vault, metadata, didResolver, httpClient)` instead."
-    );
-    VCCoreHolder::new(kms, vault, metadata, did_resolver, http_client)
-}

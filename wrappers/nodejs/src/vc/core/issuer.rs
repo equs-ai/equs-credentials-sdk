@@ -152,20 +152,3 @@ impl VCCoreIssuer {
         to_json_object(unsigned)
     }
 }
-
-// TODO(next-release): remove `create_issuer` — superseded by `new VcCoreIssuer(...)`.
-/// @deprecated Use `new VcCoreIssuer(kms, metadata, didResolver)` instead.
-/// This factory will be removed in the next release.
-#[allow(unused)]
-#[napi]
-pub fn create_issuer(
-    kms: JsKms,
-    metadata: JsIssuerMetadata,
-    did_resolver: &JsUniversalDIDResolver,
-) -> Result<VCCoreIssuer, Error> {
-    tracing::warn!(
-        "`createIssuer` is deprecated and will be removed in the next release. \
-         Use `new VcCoreIssuer(kms, metadata, didResolver)` instead."
-    );
-    VCCoreIssuer::new(kms, metadata, did_resolver)
-}
