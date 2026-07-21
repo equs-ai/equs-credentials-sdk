@@ -1,5 +1,6 @@
 use crate::did::universal::{DIDResolver, UniversalResolver};
 use crate::http::{HttpClient, HttpError, HttpSnafu};
+use crate::jwe::JweDecrypt;
 use crate::kms::Kms;
 use crate::nonce::NonceHandler;
 use crate::reqwest::ReqwestClient;
@@ -9,7 +10,6 @@ use crate::vc::core::{DEFAULT_POP_LIFETIME_MINUTES, ProofOfPossessionMetadata};
 use crate::vc::oid4vp as api;
 use crate::vc::oid4vp::ClientId;
 use crate::vc::oid4vp::holder::HolderService;
-use crate::vc::oid4vp::jwe::JweDecrypt;
 use crate::vc::oid4vp::verifier::VerifierService;
 use crate::{kms, vault, vc};
 use common_macros::DebugError;

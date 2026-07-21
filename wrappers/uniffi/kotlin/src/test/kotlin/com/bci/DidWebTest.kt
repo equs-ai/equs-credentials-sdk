@@ -40,8 +40,11 @@ class DidWebTest {
 
 
         assertEquals("did:web:test.example.com", document["id"]?.jsonPrimitive?.content)
+        // The key is used for keyAgreement, so it is published as JsonWebKey2020 /
+        // publicKeyJwk (rather than multibase) with the JWK `kid` pinned to the
+        // verification method id, so a JWE encryptor can address the exact key.
         assertEquals(
-            listOf("https://www.w3.org/ns/did/v1", "https://w3id.org/security#EcdsaSecp256r1VerificationKey2019"),
+            listOf("https://www.w3.org/ns/did/v1", "https://w3id.org/security#JsonWebKey2020"),
             document["@context"]?.jsonArray?.map { it.jsonPrimitive.content }
         )
         assertEquals(
@@ -50,8 +53,14 @@ class DidWebTest {
 
         assertEquals("did:web:test.example.com", vmm?.get("controller")?.jsonPrimitive?.content)
         assertEquals("did:web:test.example.com#key-0", vmm?.get("id")?.jsonPrimitive?.content)
-        assertEquals("EcdsaSecp256r1VerificationKey2019", vmm?.get("type")?.jsonPrimitive?.content)
-        assertEquals(true, vmm?.get("publicKeyMultibase")?.jsonPrimitive?.isString)
+        assertEquals("JsonWebKey2020", vmm?.get("type")?.jsonPrimitive?.content)
+
+        val jwk = vmm?.get("publicKeyJwk")?.jsonObject
+        assertEquals("EC", jwk?.get("kty")?.jsonPrimitive?.content)
+        assertEquals("P-256", jwk?.get("crv")?.jsonPrimitive?.content)
+        assertEquals("did:web:test.example.com#key-0", jwk?.get("kid")?.jsonPrimitive?.content)
+        assertEquals(true, jwk?.get("x")?.jsonPrimitive?.isString)
+        assertEquals(true, jwk?.get("y")?.jsonPrimitive?.isString)
 
     }
 }

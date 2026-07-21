@@ -2,17 +2,26 @@ import { DIDWeb, InMemKms, KeyType, VerificationMethodKey, VerificationRelations
 
 describe("did:web: ", () => {
   const did = "did:web:test.example.com";
+  // The key is used for keyAgreement, so it is published as JsonWebKey2020 /
+  // publicKeyJwk (rather than multibase) with the JWK `kid` pinned to the
+  // verification method id, so a JWE encryptor can address the exact key.
   const expectedDidDoc = {
-    "@context": ["https://www.w3.org/ns/did/v1", "https://w3id.org/security#EcdsaSecp256r1VerificationKey2019"],
+    "@context": ["https://www.w3.org/ns/did/v1", "https://w3id.org/security#JsonWebKey2020"],
     id: did,
     authentication: ["did:web:test.example.com#key-0"],
     keyAgreement: ["did:web:test.example.com#key-0"],
     verificationMethod: [
       {
         id: "did:web:test.example.com#key-0",
-        type: "EcdsaSecp256r1VerificationKey2019",
+        type: "JsonWebKey2020",
         controller: did,
-        publicKeyMultibase: "temp_string",
+        publicKeyJwk: {
+          kty: "EC",
+          crv: "P-256",
+          kid: "did:web:test.example.com#key-0",
+          x: "temp_string",
+          y: "temp_string",
+        },
       },
     ],
   };
@@ -39,9 +48,10 @@ describe("did:web: ", () => {
     ]);
 
     const did_doc = didWeb.generateDidDocument(did, [verificationMethodKey]);
-    expectedDidDoc.verificationMethod[0].publicKeyMultibase = did_doc.verificationMethod[0][
-      "publicKeyMultibase"
-    ] as string;
+    // x/y are randomly generated per key; copy them from the actual document.
+    const actualJwk = did_doc.verificationMethod[0]["publicKeyJwk"] as { x: string; y: string };
+    expectedDidDoc.verificationMethod[0].publicKeyJwk.x = actualJwk.x;
+    expectedDidDoc.verificationMethod[0].publicKeyJwk.y = actualJwk.y;
 
     expect(did_doc).toEqual(expectedDidDoc);
   });
@@ -68,9 +78,10 @@ describe("did:web: ", () => {
     );
 
     const did_doc = didWeb.generateDidDocument(did, [verificationMethodKey]);
-    expectedDidDoc.verificationMethod[0].publicKeyMultibase = did_doc.verificationMethod[0][
-      "publicKeyMultibase"
-    ] as string;
+    // x/y are randomly generated per key; copy them from the actual document.
+    const actualJwk = did_doc.verificationMethod[0]["publicKeyJwk"] as { x: string; y: string };
+    expectedDidDoc.verificationMethod[0].publicKeyJwk.x = actualJwk.x;
+    expectedDidDoc.verificationMethod[0].publicKeyJwk.y = actualJwk.y;
 
     expect(did_doc).toEqual(expectedDidDoc);
   });

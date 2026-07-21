@@ -3,12 +3,11 @@ use agent_sdk::crypto::{Alg, JWK, Key, Signer, SigningKey, Verifier, VerifyingKe
 use agent_sdk::did::didkey::DIDKey;
 use agent_sdk::did::universal::UniversalResolver;
 use agent_sdk::did::{DIDBuf, DIDResolver};
+use agent_sdk::jwe::{self, JweDecrypt, JweDecryptError};
 use agent_sdk::kms::{
     BIP32Params, CreateOptions, ECDH1PUParams, ECDHESParams, KeyHandle, KeyID, KeyPair, KeyType,
     Kms,
 };
-use agent_sdk::vc::oid4vp::jwe;
-use agent_sdk::vc::oid4vp::jwe::{JweDecrypt, JweDecryptError, decrypt_jwe as asdk_decrypt_jwe};
 use agent_sdk::{crypto, kms};
 use async_trait::async_trait;
 use napi::bindgen_prelude::{Promise, Uint8Array};
@@ -388,20 +387,28 @@ impl Kms<JsKeyHandle> for JsKms {
 #[async_trait]
 impl JweDecrypt<JsKeyHandle> for JsKms {
     async fn decrypt(&self, jwe: &str) -> Result<Value, JweDecryptError> {
-        if let Some(decrypt_js_func) = self.decrypt.as_ref() {
-            js_decrypt_jwe(decrypt_js_func, jwe)
-                .await
-                .map_err(|err| {
-                    crypto::MalformedSnafu {
-                        details: format!("Failed to decrypt JWE token. Napi status: {}", err),
-                    }
-                    .build()
-                })
-                .context(kms::CryptoSnafu)
-                .context(jwe::KmsSnafu)
-        } else {
-            asdk_decrypt_jwe(self, jwe).await
-        }
+        // A callback-based KMS holds its keys in JS and cannot derive the shared
+        // secret in Rust, so decryption must be delegated to the JS `decrypt`
+        // callback. Without one there is no way to decrypt.
+        let Some(decrypt_js_func) = self.decrypt.as_ref() else {
+            return Err(crypto::MalformedSnafu {
+                details: "JsKms was constructed without a `decrypt` callback; JWE decryption is unavailable".to_string(),
+            }
+            .build())
+            .context(kms::CryptoSnafu)
+            .context(jwe::KmsSnafu);
+        };
+
+        js_decrypt_jwe(decrypt_js_func, jwe)
+            .await
+            .map_err(|err| {
+                crypto::MalformedSnafu {
+                    details: format!("Failed to decrypt JWE token. Napi status: {}", err),
+                }
+                .build()
+            })
+            .context(kms::CryptoSnafu)
+            .context(jwe::KmsSnafu)
     }
 }
 

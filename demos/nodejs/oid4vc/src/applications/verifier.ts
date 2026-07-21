@@ -4,6 +4,7 @@ import {
   AuthorizationResponseObject,
   AuthorizationResponseType,
   AuthResponseOptions,
+  ClientId,
   CredentialVerificationMetadata,
   enableLogs,
   InMemKms,
@@ -36,7 +37,7 @@ async function main(): Promise<void> {
     kms,
     nonceHandler,
     keyMetadata,
-    did,
+    ClientId.fromDid(did),
   )
     .withHttpClient(ReqwestHttpClient.insecure())
     .build();

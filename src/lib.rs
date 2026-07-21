@@ -20,6 +20,7 @@
 // external
 pub mod crypto;
 pub mod http;
+pub mod jwe;
 pub mod kms;
 pub mod storage;
 pub mod vault;

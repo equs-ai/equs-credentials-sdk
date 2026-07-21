@@ -22,9 +22,11 @@ use snafu::{ResultExt, ensure};
 use std::sync::Arc;
 use tracing::{Level, instrument};
 
+use aries_askar::crypto::kdf::KeyExchange;
+
 use agent_sdk::crypto::{
-    AlgNotSupportedSnafu, Error as CryptoError, JWK, KeyNotSupportedSnafu, SigningSnafu,
-    VerificationSnafu,
+    AlgNotSupportedSnafu, Error as CryptoError, IncorrectKeySnafu, JWK, KeyNotSupportedSnafu,
+    SigningSnafu, VerificationSnafu,
 };
 use agent_sdk::kms::{
     CreateOptions, CreationSnafu, CryptoSnafu, Error as KmsError, Error, KeyHandle, KeyID,
@@ -33,8 +35,7 @@ use agent_sdk::kms::{
 
 use crate::AskarStorage;
 pub use agent_sdk::crypto::{Alg, Key, Signer, SigningKey, Verifier, VerifyingKey};
-pub use agent_sdk::kms::{KeyType, Kms};
-use agent_sdk::vc::oid4vp::jwe::AsdkJweDecrypt;
+pub use agent_sdk::kms::{JweDecryptBytes, KeyAgreement, KeyType, Kms};
 
 #[derive(Debug, Clone)]
 pub struct AskarKeyHandle(Arc<LocalKey>, Alg);
@@ -444,7 +445,54 @@ fn key_type_to_key_alg(key_type: KeyType) -> Result<KeyAlg, CryptoError> {
     }
 }
 
-impl AsdkJweDecrypt<AskarKeyHandle> for AskarKms {}
+#[async_trait]
+impl KeyAgreement for AskarKeyHandle {
+    #[instrument(
+        level = Level::TRACE,
+        skip(self),
+        err(),
+    )]
+    async fn shared_secret(&self, remote_jwk: &str) -> Result<Vec<u8>, CryptoError> {
+        // The remote (ephemeral) public key travels in the JWE header.
+        let ephem = LocalKey::from_jwk(remote_jwk).map_err(|e| {
+            IncorrectKeySnafu {
+                details: format!("Failed to parse remote JWK: {e}"),
+            }
+            .build()
+        })?;
+
+        let secret = match self.alg() {
+            Alg::ES256 => self.0.key_exchange_bytes(&ephem).map_err(|e| {
+                IncorrectKeySnafu {
+                    details: format!("Key agreement failed: {e}"),
+                }
+                .build()
+            })?,
+            Alg::EdDSA => {
+                let x25519 = self.0.convert_key(KeyAlg::X25519).map_err(|e| {
+                    IncorrectKeySnafu {
+                        details: format!("Failed to convert key to X25519: {e}"),
+                    }
+                    .build()
+                })?;
+                x25519.key_exchange_bytes(&ephem).map_err(|e| {
+                    IncorrectKeySnafu {
+                        details: format!("Key agreement failed: {e}"),
+                    }
+                    .build()
+                })?
+            }
+            other => {
+                return AlgNotSupportedSnafu {
+                    alg: other.to_string(),
+                }
+                .fail();
+            }
+        };
+
+        Ok(secret.to_vec())
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -500,6 +548,80 @@ mod tests {
     async fn jwe_encrypt_decrypt() {
         let kms = askar_kms().await;
         test_utils::test_kms_encrypt_decrypt(kms).await;
+    }
+
+    #[tokio::test]
+    async fn shared_secret_is_symmetric_for_p256() {
+        use agent_sdk::crypto::Key;
+        use agent_sdk::kms::KeyAgreement;
+
+        let kms = askar_kms().await;
+        let alice = kms
+            .create(kms::KeyType::P256, kms::CreateOptions::default())
+            .await
+            .unwrap();
+        let bob = kms
+            .create(kms::KeyType::P256, kms::CreateOptions::default())
+            .await
+            .unwrap();
+        let alice_kh = kms.get(&alice).await.unwrap();
+        let bob_kh = kms.get(&bob).await.unwrap();
+
+        let alice_jwk = serde_json::to_string(&alice_kh.jwk().unwrap()).unwrap();
+        let bob_jwk = serde_json::to_string(&bob_kh.jwk().unwrap()).unwrap();
+
+        // ECDH is symmetric: Alice·Bob_pub == Bob·Alice_pub. The private keys
+        // never leave the vault — only the derived secret is returned.
+        let ab = alice_kh.shared_secret(&bob_jwk).await.unwrap();
+        let ba = bob_kh.shared_secret(&alice_jwk).await.unwrap();
+
+        assert_eq!(ab, ba);
+        assert_eq!(
+            ab.len(),
+            32,
+            "P-256 shared secret is the 32-byte x-coordinate"
+        );
+    }
+
+    #[tokio::test]
+    async fn shared_secret_rejects_unsupported_key_type() {
+        use agent_sdk::crypto::{Error as CryptoError, Key};
+        use agent_sdk::kms::KeyAgreement;
+
+        let kms = askar_kms().await;
+        // K256 (ES256K) is a signing curve without ECDH-ES support here.
+        let signer = kms
+            .create(kms::KeyType::K256, kms::CreateOptions::default())
+            .await
+            .unwrap();
+        let signer_kh = kms.get(&signer).await.unwrap();
+
+        // A well-formed remote key so parsing succeeds and we reach the alg check.
+        let peer = kms
+            .create(kms::KeyType::P256, kms::CreateOptions::default())
+            .await
+            .unwrap();
+        let peer_jwk =
+            serde_json::to_string(&kms.get(&peer).await.unwrap().jwk().unwrap()).unwrap();
+
+        let err = signer_kh.shared_secret(&peer_jwk).await.unwrap_err();
+        assert!(matches!(err, CryptoError::AlgNotSupported { .. }));
+    }
+
+    #[tokio::test]
+    async fn shared_secret_rejects_malformed_remote_jwk() {
+        use agent_sdk::crypto::Error as CryptoError;
+        use agent_sdk::kms::KeyAgreement;
+
+        let kms = askar_kms().await;
+        let kid = kms
+            .create(kms::KeyType::P256, kms::CreateOptions::default())
+            .await
+            .unwrap();
+        let kh = kms.get(&kid).await.unwrap();
+
+        let err = kh.shared_secret("not-a-valid-jwk").await.unwrap_err();
+        assert!(matches!(err, CryptoError::IncorrectKey { .. }));
     }
 
     async fn askar_kms() -> AskarKms {

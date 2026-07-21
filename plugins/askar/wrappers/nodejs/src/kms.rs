@@ -1,5 +1,5 @@
 use crate::AskarStorage;
-use askar::kms::{Key, Kms, Signer, Verifier};
+use askar::kms::{JweDecryptBytes, Key, Kms, Signer, Verifier};
 use napi::bindgen_prelude::{FromNapiValue, ToNapiValue, Uint8Array};
 use napi::{sys, Error, Result, Status};
 use napi_derive::napi;
@@ -9,6 +9,7 @@ use napi_derive::napi;
 /// @method {(kt: KeyType) => Promise<string>} create - Create and store a key in {@link Kms}.
 /// @method {(kid: string) => Promise<KeyHandle>} get - Returns {@link KeyHandle} for the provided `KID`
 /// @method {(pk: Uint8Array) => Promise<KeyHandle>} getByPublicKey - Returns {@link KeyHandle} for the provided `Public Key`
+/// @method {(jwe: string) => Promise<Buffer>} decryptToBuffer - Decrypts a compact JWE token and returns raw plaintext bytes.
 ///
 #[napi]
 pub struct AskarKms(askar::kms::AskarKms);
@@ -60,6 +61,22 @@ impl AskarKms {
             .get_by_public_key(&public_key)
             .await
             .map(AskarKeyHandle::new)
+            .map_err(|e| Error::from_reason(e.to_string()))
+    }
+
+    /// Decrypts a compact JWE token using the private key stored in Askar KMS.
+    ///
+    /// The `kid` in the JWE protected header must match a key stored in this KMS instance.
+    ///
+    /// @param {string} jwe - A compact serialisation JWE token.
+    ///
+    /// @returns {Promise<Buffer>} - Raw plaintext bytes on success.
+    #[napi]
+    pub async fn decrypt_to_buffer(&self, jwe: String) -> Result<Uint8Array> {
+        self.0
+            .decrypt_bytes(&jwe)
+            .await
+            .map(|bytes| Uint8Array::from(bytes.as_slice()))
             .map_err(|e| Error::from_reason(e.to_string()))
     }
 }
