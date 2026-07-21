@@ -10,6 +10,7 @@ Root of the ASDK Rust library. Defines the core trait interfaces (crypto, HTTP, 
 | `lib.rs` | Crate root; feature-gates modules and controls public re-exports |
 | `crypto.rs` | `SigningKey`, `VerifyingKey`, `Key` traits; `KeyType` enum; `JWK` type alias; crypto `Error` |
 | `http.rs` | `HttpClient` trait (`async_call`) — the single HTTP abstraction used throughout the SDK; `#[automock]` for tests |
+| `jwe.rs` | `JweDecrypt`/`JweDecryptBytes` KMS-backed JWE decryption via `KeyAgreement`; impl machinery is native-only (see Constraints) |
 | `kms.rs` | `Kms<KH>` and `DerivativeKms` traits; `KeyHandle` supertrait; `KeyMetadata`; `KeyType` enum; `#[automock]` |
 | `nonce.rs` | `NonceHandler` trait; `Nonce` newtype (zeroize-on-drop) |
 | `storage.rs` | `Storage<K, V>` trait — generic async key-value store with transaction support |
@@ -36,5 +37,6 @@ Root of the ASDK Rust library. Defines the core trait interfaces (crypto, HTTP, 
 
 ## Constraints
 - `didcomm` module is non-wasm only (`#[cfg(not(target_arch = "wasm32"))]`).
+- `jwe` module: only the `JweDecrypt` trait declaration is cross-target; the blanket impls, `decrypt_jwe*` functions, and the `PrivateKeyAgreementHandle` bridge are non-wasm only. one_core's `PrivateKeyAgreementHandle` requires `Send` futures, which the `?Send` wasm `KeyAgreement` cannot satisfy; wasm never drives JWE decryption.
 - `inmem` module is gated by `#[cfg(any(test, feature = "in-memory"))]`.
 - `reqwest` sub-module for wasm targets uses a wasm-compatible HTTP backend.

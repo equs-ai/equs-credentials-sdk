@@ -1,15 +1,10 @@
-use crate::kms::{KeyHandle, Kms};
 use crate::vc::oid4vp::Error::Internal;
 use crate::vc::oid4vp::internal_error::JWESnafu;
-use crate::vc::oid4vp::jwe_utils::{add_public_private_keys, get_private_key_handler};
 use crate::vc::oid4vp::{ClientMetadata, Error};
-use crate::{crypto, kms};
-use async_trait::async_trait;
 use one_core_asdk::config::core_config::KeyAlgorithmType::{
     Ecdsa as EcdsaKeyAlgorithm, Eddsa as EddsaKeyAlgorithm,
 };
-use one_core_asdk::one_crypto::encryption::EncryptionError;
-use one_core_asdk::one_crypto::jwe::{Header, build_jwe, decrypt_jwe_payload, extract_jwe_header};
+use one_core_asdk::one_crypto::jwe::{Header, build_jwe};
 use one_core_asdk::provider::key_algorithm::KeyAlgorithm;
 use one_core_asdk::provider::key_algorithm::ecdsa::Ecdsa;
 use one_core_asdk::provider::key_algorithm::eddsa::Eddsa;
@@ -23,7 +18,6 @@ use openid4vp::core::metadata::parameters::verifier::EncryptedResponseEncValuesS
 use secrecy::SecretSlice;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
-use snafu::{Location, ResultExt, Snafu};
 use std::collections::HashMap;
 use std::fmt::Display;
 use std::sync::Arc;
@@ -351,79 +345,6 @@ impl JweEncryptor {
     }
 }
 
-#[derive(Debug, Snafu)]
-#[snafu(visibility(pub))]
-pub enum JweDecryptError {
-    #[snafu(display("{source}"))]
-    Kms {
-        source: kms::Error,
-        #[snafu(implicit)]
-        location: Location,
-    },
-    #[snafu(display("{source}"))]
-    Encryption {
-        source: EncryptionError,
-        #[snafu(implicit)]
-        location: Location,
-    },
-    #[snafu(display("{source}"))]
-    Crypto {
-        source: crypto::Error,
-        #[snafu(implicit)]
-        location: Location,
-    },
-    #[snafu(display("{source}"))]
-    Parsing {
-        source: serde_json::Error,
-        #[snafu(implicit)]
-        location: Location,
-    },
-}
-
-#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
-#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
-pub trait JweDecrypt<KH: KeyHandle> {
-    async fn decrypt(&self, jwe: &str) -> Result<Value, JweDecryptError>;
-}
-
-#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
-#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
-pub trait AsdkJweDecrypt<KH>
-where
-    KH: KeyHandle,
-{
-}
-
-#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
-#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
-impl<KH, KMS> JweDecrypt<KH> for KMS
-where
-    KH: KeyHandle,
-    KMS: Kms<KH> + AsdkJweDecrypt<KH>,
-{
-    async fn decrypt(&self, jwe: &str) -> Result<Value, JweDecryptError> {
-        decrypt_jwe(self, jwe).await
-    }
-}
-
-pub async fn decrypt_jwe<KH: KeyHandle, KMS: Kms<KH>>(
-    kms: &KMS,
-    jwe: &str,
-) -> Result<Value, JweDecryptError> {
-    let header = extract_jwe_header(jwe).context(EncryptionSnafu)?;
-    let kh = kms.get(&header.key_id).await.context(KmsSnafu {})?;
-    let enc_pub_key = kh.jwk();
-    let alg = kh.alg();
-    let private_key = add_public_private_keys(kh, alg).context(CryptoSnafu {})?;
-    let private_key_handle = get_private_key_handler(private_key, alg).context(CryptoSnafu {})?;
-
-    let decoded = decrypt_jwe_payload(jwe, private_key_handle.as_ref())
-        .await
-        .context(EncryptionSnafu {})?;
-
-    serde_json::from_slice(decoded.as_slice()).context(ParsingSnafu {})
-}
-
 #[cfg(test)]
 mod tests {
     use crate::vc::oid4vp::jwe::JweEncryptor;
@@ -479,9 +400,10 @@ mod tests {
 
 #[cfg(any(test, feature = "test-utils"))]
 pub mod test_utils {
+    use crate::jwe::JweDecrypt;
     use crate::kms::{CreateOptions, KeyHandle, KeyType, Kms};
     use crate::vc::oid4vp::ClientMetadata;
-    use crate::vc::oid4vp::jwe::{JweDecrypt, JweEncryptor};
+    use crate::vc::oid4vp::jwe::JweEncryptor;
     use serde_json::{Value, json};
 
     pub async fn test_kms_encrypt_decrypt<KH: KeyHandle>(kms: impl Kms<KH> + JweDecrypt<KH>) {

@@ -282,7 +282,7 @@ pub enum Error {
         location: Location,
         source: KmsError,
     },
-    #[snafu(display("Proof error"))]
+    #[snafu(display("Vault error"))]
     Vault {
         #[snafu(implicit)]
         location: Location,

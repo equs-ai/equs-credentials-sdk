@@ -44,14 +44,11 @@ pub fn find_json_element<'a>(json: &'a Json, json_path: &str) -> Option<&'a Json
                 current = current.get(key_part)?;
             }
 
-            if let Some(index_str) = array_part.strip_suffix(']') {
-                if let Ok(index) = index_str.parse::<usize>() {
-                    current = current.get(index)?;
-                } else {
-                    current = current.get(index_str.replace('\'', ""))?;
-                }
+            let index_str = array_part.strip_suffix(']')?;
+            if let Ok(index) = index_str.parse::<usize>() {
+                current = current.get(index)?;
             } else {
-                return None;
+                current = current.get(index_str.replace('\'', ""))?;
             }
         } else {
             // Handle simple keys

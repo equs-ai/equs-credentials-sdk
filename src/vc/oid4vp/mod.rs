@@ -11,7 +11,6 @@ mod builder;
 mod internal_error;
 
 pub mod jwe;
-mod jwe_utils;
 mod metadata;
 mod protocol_error;
 #[cfg(test)]

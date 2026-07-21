@@ -70,7 +70,7 @@ async fn credentials_presentation_and_verification(#[case] test_case: Oid4VpTest
     // TODO: We should not use a test constant for Presentation Definition here,
     //  we need to build a new one (as every Verifier will build it).
     let response_uri: Url = format!("{}/auth", VERIFIER_URL).parse().unwrap();
-    let request_uri: Url = format!("{}/request", &VERIFIER_URL).parse().unwrap();
+    let request_uri: Url = format!("{}/request", VERIFIER_URL).parse().unwrap();
     let auth_response_options = AuthResponseOptions {
         type_: ResponseType::VpTokenIdToken,
         mode: ResponseMode::DirectPost,
@@ -113,7 +113,7 @@ async fn credentials_presentation_and_verification(#[case] test_case: Oid4VpTest
         .await
         .unwrap();
 
-    println!("{:?}", &request_object);
+    println!("{:?}", request_object);
     assert_eq!(
         serde_json::to_value(&request_object.client_metadata).unwrap(),
         serde_json::from_str::<serde_json::Value>(DEFAULT_CLIENT_METADATA).unwrap()
@@ -171,7 +171,7 @@ async fn credentials_presentation_and_verification_with_dcql(#[case] test_case: 
     // TODO: We should not use a test constant for Presentation Definition here,
     //  we need to build a new one (as every Verifier will build it).
     let response_uri: Url = format!("{}/auth", VERIFIER_URL).parse().unwrap();
-    let request_uri: Url = format!("{}/request", &VERIFIER_URL).parse().unwrap();
+    let request_uri: Url = format!("{}/request", VERIFIER_URL).parse().unwrap();
     let auth_response_options = AuthResponseOptions {
         type_: ResponseType::VpTokenIdToken,
         mode: ResponseMode::DirectPost,
@@ -214,10 +214,7 @@ async fn credentials_presentation_and_verification_with_dcql(#[case] test_case: 
         .await
         .unwrap();
 
-    println!(
-        "{}",
-        &serde_json::to_string_pretty(&request_object).unwrap()
-    );
+    println!("{}", serde_json::to_string_pretty(&request_object).unwrap());
     assert_eq!(
         serde_json::to_value(&request_object.client_metadata).unwrap(),
         serde_json::from_str::<serde_json::Value>(DEFAULT_CLIENT_METADATA).unwrap()

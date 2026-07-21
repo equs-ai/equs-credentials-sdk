@@ -227,6 +227,46 @@ pub struct ECDHESParams {
     pub receive: bool,
 }
 
+/// Capability trait for raw-bytes JWE decryption.
+///
+/// Implemented automatically for any [`Kms`] whose [`KeyHandle`] implements
+/// [`KeyAgreement`] (see [`crate::jwe`]).
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
+pub trait JweDecryptBytes<KH: KeyHandle> {
+    async fn decrypt_bytes(
+        &self,
+        jwe: &str,
+    ) -> core::result::Result<Vec<u8>, crate::jwe::JweDecryptError>;
+}
+
+/// Diffie-Hellman key-agreement capability for a [`KeyHandle`].
+///
+/// A handle that can perform ECDH derives the **raw shared secret** internally,
+/// without exposing its private key material. This is the capability JWE
+/// decryption is built on (see [`crate::jwe`]): the KMS performs the exchange
+/// against the stored key, mirroring a remote KMS's `DeriveSharedSecret`
+/// operation (e.g. AWS KMS), which never exports the key.
+///
+/// Implementing it opts a [`Kms`] into the blanket [`crate::jwe::JweDecrypt`]
+/// and [`JweDecryptBytes`] impls.
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
+pub trait KeyAgreement {
+    /// Perform an ECDH key exchange between this key and the remote public key,
+    /// returning the raw shared-secret bytes.
+    ///
+    /// # Arguments
+    ///
+    /// * `remote_jwk` - the remote (ephemeral) public key as a JWK JSON string.
+    ///
+    /// # Errors
+    ///
+    /// * [crypto::Error] - the key type does not support agreement, or the
+    ///   remote key could not be parsed.
+    async fn shared_secret(&self, remote_jwk: &str) -> crypto::Result<Vec<u8>>;
+}
+
 /// An async `DerivativeKms` is an extension for `Kms` to support key derivation.
 ///
 /// Could be implemented by any adapter to be used with `ASDK`.

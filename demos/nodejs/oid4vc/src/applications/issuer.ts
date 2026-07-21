@@ -1,4 +1,5 @@
 import {
+  CredentialLifetime,
   enableLogs,
   InMemKms,
   IssuanceResultType,
@@ -25,7 +26,7 @@ async function main(): Promise<void> {
     config.issuerMetadata,
     keyMetadata,
   )
-    .withCredentialLifetime("SD_JWT_cred_1", 3600 * 24 * 365)
+    .withCredentialLifetime("SD_JWT_cred_1", CredentialLifetime.finite(3600 * 24 * 365))
     .withNonceHandler(nonceHandler)
     .build();
 

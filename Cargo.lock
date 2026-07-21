@@ -8120,7 +8120,7 @@ dependencies = [
 [[package]]
 name = "sd-jwt-rs"
 version = "0.8.0"
-source = "git+ssh://git@git.slock.it/open-source/sd-jwt-rust.git?rev=3e52045#3e520456755cbe2d3d3053d4634dc69ab6e27dcc"
+source = "git+ssh://git@git.slock.it/open-source/sd-jwt-rust.git?rev=ecfc9ac#ecfc9ac3e285c1457baabdfc2a4c7eb0c97f69a0"
 dependencies = [
  "async-trait",
  "base64 0.21.7",

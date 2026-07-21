@@ -32,7 +32,7 @@ async function main(): Promise<void> {
   await enableLogs(TracingLogFormat.Full, TracingLogLevel.Info);
 
   const storageConfig = {
-    dbUrl: "sqlite://:memory:",
+    dbUrl: "sqlite:///tmp/asdk_demo_holder.db",
     keyMethod: KeyMethod.DeriveKey,
     passKey: "test_key",
     profile: "test",
@@ -41,7 +41,11 @@ async function main(): Promise<void> {
   const profile = "test_profile";
 
   const storage = await AskarStorage.create(storageConfig, false);
-  await storage.createProfile(profile);
+  try {
+    await storage.createProfile(profile);
+  } catch (e: unknown) {
+    if (!(e instanceof Error && e.message.includes("Duplicate profile"))) throw e;
+  }
   const kms = new AskarKms(storage, profile);
   const vault = new AskarVault(storage, profile);
 

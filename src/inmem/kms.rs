@@ -17,6 +17,7 @@ use std::sync::Arc;
 use strum_macros::Display;
 use tracing::{Level, instrument};
 
+use crate::crypto::IncorrectKeySnafu;
 use crate::crypto::{AlgNotSupportedSnafu, DerivationNotSupportedSnafu, SigningOptions, Suite};
 use crate::inmem::crypto::bip32::Bip32;
 use crate::inmem::crypto::bls12381::Bls12381;
@@ -31,8 +32,11 @@ use crate::kms::{
 };
 use crate::kms::{Error, NotFoundSnafu, ResolvingSnafu};
 use crate::storage::Storage;
-use crate::vc::oid4vp::jwe::AsdkJweDecrypt;
 use crate::{crypto, kms};
+use one_core_asdk::one_crypto::signer::ecdsa::ECDSASigner;
+use one_core_asdk::one_crypto::signer::eddsa::EDDSASigner;
+use one_core_asdk::standardized_types::jwk::PublicJwk;
+use secrecy::{ExposeSecret, SecretSlice};
 
 #[derive(Clone, Display)]
 pub enum KeyHandle {
@@ -591,7 +595,49 @@ impl DerivativeKms<ECDHESParams> for LocalKms {
     }
 }
 
-impl AsdkJweDecrypt<KeyHandle> for LocalKms {}
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
+impl kms::KeyAgreement for KeyHandle {
+    #[instrument(level = Level::TRACE, skip(self), err())]
+    async fn shared_secret(&self, remote_jwk: &str) -> crypto::Result<Vec<u8>> {
+        let jwk: PublicJwk = serde_json::from_str(remote_jwk).map_err(|e| {
+            IncorrectKeySnafu {
+                details: format!("Failed to parse remote JWK: {e}"),
+            }
+            .build()
+        })?;
+
+        // Software vault: the handle derives the shared secret from its own key
+        // material and returns only the shared secret.
+        let secret = match crypto::Signer::alg(self) {
+            crypto::Alg::ES256 => {
+                let private_key = crypto::Key::private_key(self)?;
+                ECDSASigner::shared_secret_p256(&SecretSlice::from(private_key), &jwk)
+            }
+            crypto::Alg::EdDSA => {
+                // shared_secret_x25519 expects the 64-byte Ed25519 secret key
+                // (seed followed by public key).
+                let mut private_key = crypto::Key::private_key(self)?;
+                private_key.extend(crypto::Key::pub_key(self)?);
+                EDDSASigner::shared_secret_x25519(&SecretSlice::from(private_key), &jwk)
+            }
+            other => {
+                return AlgNotSupportedSnafu {
+                    alg: other.to_string(),
+                }
+                .fail();
+            }
+        }
+        .map_err(|e| {
+            IncorrectKeySnafu {
+                details: format!("Key agreement failed: {e}"),
+            }
+            .build()
+        })?;
+
+        Ok(secret.expose_secret().to_vec())
+    }
+}
 
 #[cfg(test)]
 mod tests {

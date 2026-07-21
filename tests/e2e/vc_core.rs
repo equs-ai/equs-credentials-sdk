@@ -76,7 +76,7 @@ async fn sd_jwt_credential_issuance_and_presentation_verification() {
         .await
         .unwrap();
 
-    println!("Credential {:?}", &vc);
+    println!("Credential {:?}", vc);
 
     let vc_meta = DefaultMetadataProcessor::resolve_metadata(&vc, key_metadata).unwrap();
     let _ = holder.store_credential(&vc, &vc_meta).await.unwrap();
@@ -321,7 +321,7 @@ async fn credential_issuance_and_status_verification() {
         .await
         .unwrap();
 
-    println!("Credential {:?}", &vc);
+    println!("Credential {:?}", vc);
 
     let vc_meta = DefaultMetadataProcessor::resolve_metadata(&vc, key_metadata).unwrap();
     let _ = holder.store_credential(&vc, &vc_meta).await.unwrap();

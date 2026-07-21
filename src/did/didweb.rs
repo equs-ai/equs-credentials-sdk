@@ -43,6 +43,8 @@ const ECDSASECP256K1_VM_TYPE_IRI: &str =
 const ECDSASECP256R1_VM_TYPE: &str = "EcdsaSecp256r1VerificationKey2019";
 const ECDSASECP256R1_VM_TYPE_IRI: &str =
     "https://w3id.org/security#EcdsaSecp256r1VerificationKey2019";
+const JSONWEBKEY2020_VM_TYPE: &str = "JsonWebKey2020";
+const JSONWEBKEY2020_VM_TYPE_IRI: &str = "https://w3id.org/security#JsonWebKey2020";
 
 // ([a-z0-9][a-z0-9\-]*)      first part of domain name
 // (\.[a-z0-9][a-z0-9\-]*)*   any number of domain name parts
@@ -151,9 +153,18 @@ impl DIDWeb {
         let mut document = Document::new(DIDBuf::from_str(did).context(DidBufCreationSnafu)?);
         let mut vm_type_iris = HashSet::new();
         for (index, key) in keys.iter().enumerate() {
-            let jwk = Self::validate_jwk_key(key)?;
+            let mut jwk = Self::validate_jwk_key(key)?;
+            let is_key_agreement = key
+                .verification_relationships
+                .contains(&VerificationRelationshipType::KeyAgreement);
+            if is_key_agreement {
+                // keyAgreement keys are consumed as JWKs (ECDH-ES); pin the JWK
+                // `kid` to the verification method id so an encryptor can address
+                // the exact key it wraps the CEK to.
+                jwk.key_id = Some(format!("{}#key-{}", did, index));
+            }
             let (vm_type, vm_type_iri, (public_key_name, public_key_value)) =
-                Self::extract_verification_method_params(&jwk)?;
+                Self::extract_verification_method_params(&jwk, is_key_agreement)?;
             vm_type_iris.insert(vm_type_iri);
 
             Self::add_verification_method(
@@ -253,7 +264,10 @@ impl DIDWeb {
     }
 
     #[instrument(level = Level::TRACE, err(), ret())]
-    fn extract_verification_method_params(jwk: &JWK) -> Result<(&str, IriRefBuf, (String, Value))> {
+    fn extract_verification_method_params(
+        jwk: &JWK,
+        is_key_agreement: bool,
+    ) -> Result<(&str, IriRefBuf, (String, Value))> {
         let result = match jwk.params {
             Params::OKP(ref params) => match &params.curve[..] {
                 "Ed25519" => {
@@ -283,6 +297,20 @@ impl DIDWeb {
                             serde_json::to_value(jwk).context(ParseSnafu)?,
                         ),
                     ),
+                    "secp256r1" | "P-256" if is_key_agreement => {
+                        // keyAgreement P-256 keys are used for ECDH-ES key wrapping
+                        // and must be resolvable as a JWK, so publish them as
+                        // JsonWebKey2020/publicKeyJwk rather than multibase.
+                        (
+                            JSONWEBKEY2020_VM_TYPE,
+                            IriRefBuf::new(JSONWEBKEY2020_VM_TYPE_IRI.to_string())
+                                .context(IriRefCreationSnafu)?,
+                            (
+                                "publicKeyJwk".to_string(),
+                                serde_json::to_value(jwk).context(ParseSnafu)?,
+                            ),
+                        )
+                    }
                     "secp256r1" | "P-256" => {
                         let key = MultibaseBuf::encode(
                             Base::Base58Btc,
@@ -493,7 +521,7 @@ mod tests {
     #[tokio::test]
     async fn did_doc_is_generated_correctly() {
         let did = "did:web:test.example.com";
-        let expected_did_doc_without_context = |random1: &str, random2: &str| -> Value {
+        let expected_did_doc_without_context = |key_agreement_jwk: Value, random2: &str| -> Value {
             json!({
                 "id": did,
                 "keyAgreement": [
@@ -503,9 +531,9 @@ mod tests {
                 "verificationMethod": [
                      {
                         "id": "did:web:test.example.com#key-0",
-                        "type": ECDSASECP256R1_VM_TYPE,
+                        "type": JSONWEBKEY2020_VM_TYPE,
                         "controller": did,
-                        "publicKeyMultibase": random1,
+                        "publicKeyJwk": key_agreement_jwk,
                     },
                     {
                         "id": "did:web:test.example.com#key-1",
@@ -544,15 +572,14 @@ mod tests {
         ];
         let did_doc = DIDWeb::generate_did_document(did, &keys).unwrap();
         let mut actual_did_doc_value = serde_json::to_value(&did_doc).unwrap();
-        let public_key_multibase =
-            actual_did_doc_value["verificationMethod"][0]["publicKeyMultibase"]
-                .as_str()
-                .unwrap();
+        let key_agreement_jwk =
+            actual_did_doc_value["verificationMethod"][0]["publicKeyJwk"].clone();
         let public_key_base58 = actual_did_doc_value["verificationMethod"][1]["publicKeyBase58"]
             .as_str()
-            .unwrap();
+            .unwrap()
+            .to_string();
         let expected_did_doc_value =
-            expected_did_doc_without_context(public_key_multibase, public_key_base58);
+            expected_did_doc_without_context(key_agreement_jwk, &public_key_base58);
 
         let binding = actual_did_doc_value
             .as_object_mut()
@@ -564,7 +591,7 @@ mod tests {
             actual_context.contains(&serde_json::to_value("https://www.w3.org/ns/did/v1").unwrap())
         );
         assert!(
-            actual_context.contains(&serde_json::to_value(ECDSASECP256R1_VM_TYPE_IRI).unwrap())
+            actual_context.contains(&serde_json::to_value(JSONWEBKEY2020_VM_TYPE_IRI).unwrap())
         );
         assert!(actual_context.contains(&serde_json::to_value(ED25519_VM_TYPE_IRI).unwrap()));
         assert_eq!(actual_did_doc_value, expected_did_doc_value);

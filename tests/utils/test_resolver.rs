@@ -17,7 +17,7 @@ impl DIDResolver for TestDIDResolver {
         did: &'a SpruceDID,
         _: Options,
     ) -> Result<ResolutionOutput, ResolutionError> {
-        let t = format!("did:key:{}", &did.method_specific_id());
+        let t = format!("did:key:{}", did.method_specific_id());
         let Output {
             document,
             metadata,

@@ -106,7 +106,7 @@ See [Components](docs/asdk-components.png).
 
 Pre-requisites:
 
-- rustc version >=1.95
+- rustc version >=1.97
 
 ```
 cargo build --all-features

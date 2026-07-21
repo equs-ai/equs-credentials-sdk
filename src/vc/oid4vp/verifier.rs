@@ -16,6 +16,7 @@ use crate::crypto::JWK;
 use crate::did::JWKResolver;
 use crate::did::universal::UniversalResolver;
 use crate::http::HttpClient;
+use crate::jwe::JweDecrypt;
 use crate::kms::{KeyHandle, Kms};
 use crate::nonce::{Nonce, NonceHandler};
 use crate::utils::wasm::{WasmNotSend, WasmNotSync};
@@ -29,7 +30,6 @@ use crate::vc::oid4vp::internal_error::{
     DidUrlResolutionSnafu, IdTokenValidationSnafu, JsonSnafu, KMSSnafu, NonceGenerationSnafu,
     Oid4VpLibSnafu, ParseSnafu, PresentationExchangeSnafu, VCSnafu,
 };
-use crate::vc::oid4vp::jwe::JweDecrypt;
 use crate::vc::oid4vp::metadata::{default_client_metadata, default_wallet_metadata};
 use crate::vc::oid4vp::protocol_error::ErrorType;
 use crate::vc::oid4vp::signer::Signer;

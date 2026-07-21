@@ -3320,6 +3320,7 @@ pub mod utils {
     use crate::inmem::kms::{KeyHandle, LocalKms};
     use crate::inmem::nonce::LocalNonceHandler;
     use crate::inmem::vault::InMemVault;
+    use crate::jwe::WrapperForES256Handle;
     use crate::kms::{CreateOptions, KeyID, KeyType, Kms};
     use crate::nonce::Nonce;
     use crate::utils::http::test::mock_http_req_async_predicate;
@@ -3336,7 +3337,6 @@ pub mod utils {
     use crate::vc::formats::{json_ld_vc, sd_jwt_vc};
     use crate::vc::metadata::{CredentialMetadataProcessor, DefaultMetadataProcessor};
     use crate::vc::oid4vp::holder::HolderService;
-    use crate::vc::oid4vp::jwe_utils::WrapperForES256Handle;
     use crate::vc::oid4vp::signer::Signer;
     use crate::vc::oid4vp::tests::fixtures::multi_presentation::{
         transaction_data_items, transaction_data_response,
