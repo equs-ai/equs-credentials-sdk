@@ -66,15 +66,18 @@ impl AskarKms {
 
     /// Decrypts a compact JWE token using the private key stored in Askar KMS.
     ///
-    /// The `kid` in the JWE protected header must match a key stored in this KMS instance.
+    /// The recipient key is resolved by the supplied `kid` rather than the one
+    /// embedded in the JWE protected header, so callers can pass the raw key id
+    /// after decoding any application-level prefix.
     ///
     /// @param {string} jwe - A compact serialisation JWE token.
+    /// @param {string} kid - The `KeyId` of the recipient key stored in this KMS instance.
     ///
     /// @returns {Promise<Buffer>} - Raw plaintext bytes on success.
     #[napi]
-    pub async fn decrypt_to_buffer(&self, jwe: String) -> Result<Uint8Array> {
+    pub async fn decrypt_to_buffer(&self, jwe: String, kid: String) -> Result<Uint8Array> {
         self.0
-            .decrypt_bytes(&jwe)
+            .decrypt_bytes(&jwe, &kid)
             .await
             .map(|bytes| Uint8Array::from(bytes.as_slice()))
             .map_err(|e| Error::from_reason(e.to_string()))

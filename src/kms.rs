@@ -237,6 +237,7 @@ pub trait JweDecryptBytes<KH: KeyHandle> {
     async fn decrypt_bytes(
         &self,
         jwe: &str,
+        kid: &str,
     ) -> core::result::Result<Vec<u8>, crate::jwe::JweDecryptError>;
 }
 

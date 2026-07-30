@@ -386,7 +386,10 @@ impl Kms<JsKeyHandle> for JsKms {
 
 #[async_trait]
 impl JweDecrypt<JsKeyHandle> for JsKms {
-    async fn decrypt(&self, jwe: &str) -> Result<Value, JweDecryptError> {
+    // `_kid` is unused: a callback-based KMS resolves the recipient key inside
+    // its JS `decrypt` callback (from the JWE header), not by an explicit kid on
+    // the Rust side. The parameter exists only to satisfy the trait.
+    async fn decrypt(&self, jwe: &str, _kid: &str) -> Result<Value, JweDecryptError> {
         // A callback-based KMS holds its keys in JS and cannot derive the shared
         // secret in Rust, so decryption must be delegated to the JS `decrypt`
         // callback. Without one there is no way to decrypt.
