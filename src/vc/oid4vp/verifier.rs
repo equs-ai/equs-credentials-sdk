@@ -274,15 +274,19 @@ where
                     "JWE Authorization Response encryption public info: {:?}",
                     enc_pub_key
                 );
-                let claim_set = self.kms.decrypt(jwe_response).await.map_err(|e| Internal {
-                    source: AuthorizationResponseDecryptionSnafu {
-                        details: format!(
-                            "Failed to decrypt Encrypted Authorization Response: {}",
-                            e
-                        ),
-                    }
-                    .build(),
-                })?;
+                let claim_set = self
+                    .kms
+                    .decrypt(jwe_response, &header.key_id)
+                    .await
+                    .map_err(|e| Internal {
+                        source: AuthorizationResponseDecryptionSnafu {
+                            details: format!(
+                                "Failed to decrypt Encrypted Authorization Response: {}",
+                                e
+                            ),
+                        }
+                        .build(),
+                    })?;
                 let Value::Object(claim_set) = claim_set else {
                     return Err(Internal {
                         source: AuthorizationResponseDecryptionSnafu {

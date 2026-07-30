@@ -39,9 +39,7 @@ use snafu::{Location, Snafu};
 #[cfg(not(target_arch = "wasm32"))]
 use crate::kms::{JweDecryptBytes, KeyAgreement, Kms};
 #[cfg(not(target_arch = "wasm32"))]
-use one_core_asdk::one_crypto::jwe::{
-    PrivateKeyAgreementHandle, decrypt_jwe_payload, extract_jwe_header,
-};
+use one_core_asdk::one_crypto::jwe::{PrivateKeyAgreementHandle, decrypt_jwe_payload};
 #[cfg(not(target_arch = "wasm32"))]
 use one_core_asdk::one_crypto::signer::ecdsa::ECDSASigner;
 #[cfg(not(target_arch = "wasm32"))]
@@ -88,22 +86,22 @@ pub enum JweDecryptError {
 #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 #[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 pub trait JweDecrypt<KH: KeyHandle> {
-    async fn decrypt(&self, jwe: &str) -> Result<Value, JweDecryptError>;
+    async fn decrypt(&self, jwe: &str, kid: &str) -> Result<Value, JweDecryptError>;
 }
 
 #[cfg(not(target_arch = "wasm32"))]
 #[async_trait]
 impl<KH: KeyHandle + KeyAgreement + Send + Sync, KMS: Kms<KH>> JweDecrypt<KH> for KMS {
-    async fn decrypt(&self, jwe: &str) -> Result<Value, JweDecryptError> {
-        decrypt_jwe(self, jwe).await
+    async fn decrypt(&self, jwe: &str, kid: &str) -> Result<Value, JweDecryptError> {
+        decrypt_jwe(self, jwe, kid).await
     }
 }
 
 #[cfg(not(target_arch = "wasm32"))]
 #[async_trait]
 impl<KH: KeyHandle + KeyAgreement + Send + Sync, KMS: Kms<KH>> JweDecryptBytes<KH> for KMS {
-    async fn decrypt_bytes(&self, jwe: &str) -> Result<Vec<u8>, JweDecryptError> {
-        decrypt_jwe_bytes(self, jwe).await
+    async fn decrypt_bytes(&self, jwe: &str, kid: &str) -> Result<Vec<u8>, JweDecryptError> {
+        decrypt_jwe_bytes(self, jwe, kid).await
     }
 }
 
@@ -111,8 +109,9 @@ impl<KH: KeyHandle + KeyAgreement + Send + Sync, KMS: Kms<KH>> JweDecryptBytes<K
 pub async fn decrypt_jwe<KH: KeyHandle + KeyAgreement + Send + Sync, KMS: Kms<KH>>(
     kms: &KMS,
     jwe: &str,
+    kid: &str,
 ) -> Result<Value, JweDecryptError> {
-    let decoded = decrypt_jwe_bytes(kms, jwe).await?;
+    let decoded = decrypt_jwe_bytes(kms, jwe, kid).await?;
     serde_json::from_slice(decoded.as_slice()).context(ParsingSnafu {})
 }
 
@@ -120,9 +119,9 @@ pub async fn decrypt_jwe<KH: KeyHandle + KeyAgreement + Send + Sync, KMS: Kms<KH
 pub async fn decrypt_jwe_bytes<KH: KeyHandle + KeyAgreement + Send + Sync, KMS: Kms<KH>>(
     kms: &KMS,
     jwe: &str,
+    kid: &str,
 ) -> Result<Vec<u8>, JweDecryptError> {
-    let header = extract_jwe_header(jwe).context(EncryptionSnafu)?;
-    let kh = kms.get(&header.key_id).await.context(KmsSnafu {})?;
+    let kh = kms.get(&kid.to_string()).await.context(KmsSnafu {})?;
 
     // The KMS derives the shared secret against the stored key; the private key
     // never leaves it. one_core then runs the Concat-KDF and AEAD.

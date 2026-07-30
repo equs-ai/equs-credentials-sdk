@@ -16,7 +16,7 @@ members = [
 
 [package]
 name = "agent-sdk"
-version = "1.10.0"
+version = "1.10.1"
 edition = "2024"
 rust-version = "1.97.0"
 
@@ -30,7 +30,7 @@ didcomm = { git = "ssh://git@git.slock.it/open-source/didcomm-rust.git", rev = "
 did_peer = { git = "ssh://git@git.slock.it/open-source/aries-vcx.git", rev = "fc818ef5" }
 did_resolver = { git = "ssh://git@git.slock.it/open-source/aries-vcx.git", rev = "fc818ef5" }
 did_parser_nom = { git = "ssh://git@git.slock.it/open-source/aries-vcx.git", rev = "fc818ef5" }
-one-core-asdk = { git = "ssh://git@git.slock.it/open-source/one-core-new.git", rev = "092a2de1"}
+one-core-asdk = { git = "ssh://git@git.slock.it/open-source/one-core-new.git", rev = "5f387065"}
 
 secrecy = "0.10.3"
 ed25519-compact = "2.1.1"
@@ -98,8 +98,8 @@ getrandom = "=0.4.2"
 didcomm = { git = "ssh://git@git.slock.it/open-source/didcomm-rust.git", rev = "db41780d", features = ["uniffi"] }
 reqwest-middleware = { version = "0.4.0", default-features = false }
 reqwest-tracing = { version = "0.5.5", default-features = false }
-one-core = { git = "ssh://git@git.slock.it/open-source/one-core-new.git", rev = "092a2de1" }
-shared-types = { git = "ssh://git@git.slock.it/open-source/one-core-new.git", rev = "092a2de1" }
+one-core = { git = "ssh://git@git.slock.it/open-source/one-core-new.git", rev = "5f387065" }
+shared-types = { git = "ssh://git@git.slock.it/open-source/one-core-new.git", rev = "5f387065" }
 x509-parser = { version = "0.18", features = ["verify"] }
 
 [dev-dependencies]

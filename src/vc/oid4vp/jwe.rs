@@ -413,7 +413,7 @@ pub mod test_utils {
             .unwrap();
         let kh = kms.get(&kid).await.unwrap();
         let mut pub_jwk = kh.jwk().unwrap().to_public();
-        pub_jwk.key_id = Some(kid);
+        pub_jwk.key_id = Some(kid.clone());
         let pub_jwk = if let Value::Object(mut map) = serde_json::to_value(&pub_jwk).unwrap() {
             map.insert("alg".to_string(), Value::String("ECDH-ES".to_string()));
             map
@@ -426,7 +426,7 @@ pub mod test_utils {
         let encryptor = JweEncryptor::new(metadata);
         let jwe = encryptor.encrypt(given_payload.clone()).await.unwrap();
 
-        let decrypted_payload = kms.decrypt(&jwe).await.unwrap();
+        let decrypted_payload = kms.decrypt(&jwe, &kid).await.unwrap();
         assert_eq!(decrypted_payload, given_payload);
     }
 

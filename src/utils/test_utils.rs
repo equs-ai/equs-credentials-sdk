@@ -180,7 +180,7 @@ mock! {
 
     #[async_trait]
     impl JweDecrypt<MockKey> for JweKms {
-        async fn decrypt(&self, jwe: &str) -> Result<Value, JweDecryptError>;
+        async fn decrypt(&self, jwe: &str, kid: &str) -> Result<Value, JweDecryptError>;
     }
 
     #[async_trait]
