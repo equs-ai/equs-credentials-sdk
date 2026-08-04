@@ -18,20 +18,39 @@ variables:
   RUST_VERSION: "1.97.0"
   NODE_VERSION: "20.18.0"
   VERSION_REGEX: /^[0-9]+\.[0-9]+\.[0-9]+$/
+  RUSTC_WRAPPER: "sccache"
+  SCCACHE_DIR: "${CI_PROJECT_DIR}/.sccache"
+  SCCACHE_CACHE_SIZE: "2G"
+  CARGO_INCREMENTAL: "0"
+  npm_config_cache: "${CI_PROJECT_DIR}/.npm"
 
 
-# Shared configurations
+.ci_cache: &ci_cache
+  - key: sccache
+    paths:
+      - .sccache
+  - key: npm
+    paths:
+      - .npm
 
 .cargo_local_deps_script: &cargo_local_deps_script
   - git config --global url."https://gitlab-ci-token:${CI_JOB_TOKEN}@git.slock.it/".insteadOf "ssh://git@git.slock.it/"
+  - curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
+  - RUSTC_WRAPPER="" cargo binstall -y sccache
+  - |
+    binstall_or_build() {
+      cargo binstall -y "$1" && eval "$2" >/dev/null 2>&1 || { echo "prebuilt for $1 unusable — building from source"; cargo install --force "$1"; }
+    }
 
 .rust_job_configs: &rust_job_configs
   image: rust:${RUST_VERSION}-bookworm
+  cache: *ci_cache
   before_script:
     - *cargo_local_deps_script
 
 
 .swift_job_configs: &swift_job_configs
+  cache: *ci_cache
   before_script:
     - curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain ${RUST_VERSION}
     - source "$HOME/.cargo/env"
@@ -39,6 +58,7 @@ variables:
 
 .nodejs_job_configs: &nodejs_job_configs
   image: node:${NODE_VERSION}
+  cache: *ci_cache
   before_script:
     - curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain ${RUST_VERSION}
     - source "$HOME/.cargo/env"
@@ -64,7 +84,7 @@ dependency_scanning:
   <<: *rust_job_configs
   stage: scan
   script:
-    - cargo install gitlab-cargo-audit
+    - binstall_or_build gitlab-cargo-audit "gitlab-cargo-audit --version"
     - gitlab-cargo-audit --output-path gl-dependency-scanning-report.json
   artifacts:
     when: always
@@ -97,13 +117,21 @@ nodejs-wrapper-build-job:
     - main
 wasm-wrapper-build-job:
   image: cimg/node:${NODE_VERSION}-browsers
+  cache: *ci_cache
+  variables:
+    # cimg images run as a non-root user, but GitLab creates the cached .sccache dir
+    # as root, so sccache/cc-rs cannot write to it. Disable sccache here (npm cache
+    # still applies); sccache stays enabled on the root-user rust/node images.
+    RUSTC_WRAPPER: ""
   before_script:
     - curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain ${RUST_VERSION}
     - source "$HOME/.cargo/env"
     - *cargo_local_deps_script
     - sudo apt-get update
     - sudo apt-get install -y clang
-    - curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+    - for i in 1 2 3; do curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh && break || { echo "wasm-pack install failed (attempt $i), retrying"; sleep 15; }; done
+    # GitLab restores the cached .npm/.sccache dirs root-owned; make them writable for this non-root image.
+    - sudo chown -R "$(id -u):$(id -g)" "$npm_config_cache" "$SCCACHE_DIR" 2>/dev/null || true
   stage: build
   script:
     - cd wrappers/wasm
@@ -126,13 +154,17 @@ nodejs-demo-build-job:
 
 wasm-demo-build-job:
   image: cimg/node:${NODE_VERSION}-browsers
+  cache: *ci_cache
+  variables:
+    RUSTC_WRAPPER: ""
   before_script:
     - curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain ${RUST_VERSION}
     - source "$HOME/.cargo/env"
     - *cargo_local_deps_script
     - sudo apt-get update
     - sudo apt-get install -y clang
-    - curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+    - for i in 1 2 3; do curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh && break || { echo "wasm-pack install failed (attempt $i), retrying"; sleep 15; }; done
+    - sudo chown -R "$(id -u):$(id -g)" "$npm_config_cache" "$SCCACHE_DIR" 2>/dev/null || true
   stage: build
   script:
     - cd demos/wasm/oid4vc
@@ -179,7 +211,7 @@ test-with-coverage-job:
   <<: *rust_job_configs
   stage: test
   script:
-    - cargo install cargo-tarpaulin
+    - binstall_or_build cargo-tarpaulin "cargo tarpaulin --version"
     - cargo tarpaulin --skip-clean --timeout 180 --all-features --exclude-files "src/didcomm/*" --exclude-files "demos/*" --exclude-files "dependencies/one-core/*" --exclude-files "wrappers/*" --fail-under 70 -o Html
   coverage: '/^\d+.\d+% coverage/'
   artifacts:
@@ -220,13 +252,17 @@ askar-plugin-nodejs-test-job:
 
 wasm-test-job:
   image: cimg/node:${NODE_VERSION}-browsers
+  cache: *ci_cache
+  variables:
+    RUSTC_WRAPPER: ""
   before_script:
     - curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain ${RUST_VERSION}
     - source "$HOME/.cargo/env"
     - *cargo_local_deps_script
     - sudo apt-get update
     - sudo apt-get install -y clang
-    - curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+    - for i in 1 2 3; do curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh && break || { echo "wasm-pack install failed (attempt $i), retrying"; sleep 15; }; done
+    - sudo chown -R "$(id -u):$(id -g)" "$npm_config_cache" "$SCCACHE_DIR" 2>/dev/null || true
   stage: test
   script:
     - cd wrappers/wasm
@@ -286,8 +322,8 @@ release_artifacts_job:
   <<: *rust_job_configs
   stage: release
   script:
-    - cargo install cargo-sbom
-    - cargo install cargo-audit
+    - binstall_or_build cargo-sbom "cargo sbom --version"
+    - binstall_or_build cargo-audit "cargo audit --version"
     - cargo sbom &>  SBOM.auto.out
     - cargo audit &> AUDIT.auto.out || true
     - cargo doc --no-deps
