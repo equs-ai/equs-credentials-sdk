@@ -11,7 +11,17 @@ import Testing
 		let s = HttpServer()
 		// forceIPv4: Swifter's default is IPv6-only, which can leave reqwest's
 		// 127.0.0.1 connect path unable to reach the listener under the iOS Simulator.
-		try! s.start(9001, forceIPv4: true)
+		// Retry: on the persistent CI runner 9001 may still be held from a prior run
+		// (this suite deliberately never calls stop()), so wait for it to free up.
+		for attempt in 1...15 {
+			do {
+				try s.start(9001, forceIPv4: true)
+				break
+			} catch {
+				if attempt == 15 { fatalError("Failed to bind port 9001 after 15 attempts: \(error)") }
+				Thread.sleep(forTimeInterval: 1)
+			}
+		}
 		return s
 	}()
 	let server: HttpServer
