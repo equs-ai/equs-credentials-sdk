@@ -27,6 +27,13 @@ mkdir -p $OUTPUT_DIR
 
 export RUST_LOG=debug
 
+# Pre-build the demo binaries up front so the (potentially slow, cache-cold)
+# compile happens here rather than inside the timed start-up waits below, where
+# it can exceed the `timeout 10m` window and be reported as a start timeout.
+cargo build --manifest-path ./issuer/Cargo.toml -F ci_demo || { echo "Issuer build failed!"; exit 1; }
+cargo build --manifest-path ./verifier/Cargo.toml || { echo "Verifier build failed!"; exit 1; }
+cargo build --manifest-path ./holder/Cargo.toml -F noninteractive || { echo "Holder build failed!"; exit 1; }
+
 cargo run --manifest-path ./issuer/Cargo.toml -F ci_demo > "$OUTPUT_DIR/issuer.log" 2>&1 &
 issuer_pid=$!
 timeout 10m bash -c \

@@ -228,7 +228,17 @@ import Swifter
 		extraServer["/.well-known/oauth-authorization-server/auth"] = { _ in
 			.ok(.json(try! JSONSerialization.jsonObject(with: extraAuthServerMetadata)))
 		}
-		try extraServer.start(fixedPort, forceIPv4: true)
+		// Retry: on the persistent CI runner 9000 may still be held from a prior run
+		// (no stop() below), so wait for it to free up before giving up.
+		for attempt in 1...15 {
+			do {
+				try extraServer.start(fixedPort, forceIPv4: true)
+				break
+			} catch {
+				if attempt == 15 { fatalError("Failed to bind port \(fixedPort) after 15 attempts: \(error)") }
+				Thread.sleep(forTimeInterval: 1)
+			}
+		}
 		// No stop(): Swifter 1.5.0's HttpServer.stop() can crash xctest under concurrency.
 		// Server stays bound on 9000 for the rest of this test process; only this test
 		// uses 9000, so no collision.
@@ -294,16 +304,29 @@ import Swifter
 	}
 
 	private func buildHolder() async -> Oid4vciHolder {
-		return try! await Oid4vciHolderBuilder(
-			kms: InMemKms(), vault: InMemVault(), clientId: "client_id",
-			issuerDiscovery: IssuerDiscovery.offer(Oid4vciHolderTestConstants.credentialOffer(port: port)),
-      httpClient: ReqwestHttpClient.insecure(),
-      pop: ProofOfPossessionMetadataBuilder()
-        .withNotBefore(notBefore: ProofOfPossessionNotBefore.leeway(300))
-        .withLifetime(lifetime: 10)
-        .build(),
-      credentialExtraVerification: nil
-		).build()
+		// .build() performs an HTTP metadata fetch against the local Swifter server.
+		// On the CI simulator that send occasionally fails transiently ("error sending
+		// request"); with a bare try! that single blip becomes a fatalError that aborts
+		// the whole test binary and marks unrelated in-flight tests as failed. Retry a
+		// few times so a transient network hiccup self-heals instead of crashing the suite.
+		for attempt in 1...5 {
+			do {
+				return try await Oid4vciHolderBuilder(
+					kms: InMemKms(), vault: InMemVault(), clientId: "client_id",
+					issuerDiscovery: IssuerDiscovery.offer(Oid4vciHolderTestConstants.credentialOffer(port: port)),
+          httpClient: ReqwestHttpClient.insecure(),
+          pop: ProofOfPossessionMetadataBuilder()
+            .withNotBefore(notBefore: ProofOfPossessionNotBefore.leeway(300))
+            .withLifetime(lifetime: 10)
+            .build(),
+          credentialExtraVerification: nil
+				).build()
+			} catch {
+				if attempt == 5 { fatalError("Failed to build Oid4vciHolder after 5 attempts: \(error)") }
+				try? await Task.sleep(nanoseconds: 200 * NSEC_PER_MSEC)
+			}
+		}
+		fatalError("unreachable")
 	}
 }
 

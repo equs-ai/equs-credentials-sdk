@@ -1,24 +1,25 @@
 #!/bin/bash
+set -euo pipefail
 
-BINARY_NAME="agent-sdk-askar-storage.${ALIAS}.node"
-VERSION=$(npm pkg get version | tr -d '"')
-
-if [ -z "$NPM_TOKEN" ]; then
+if [ -z "${NPM_TOKEN:-}" ]; then
   echo "No NPM_TOKEN"
   exit 1
 fi
 
-if [ -z "$TARGET" ]; then
+if [ -z "${TARGET:-}" ]; then
   echo "No TARGET"
   exit 1
 fi
 
-if [ -z "$ALIAS" ]; then
+if [ -z "${ALIAS:-}" ]; then
   echo "No ALIAS"
   exit 1
 fi
 
-if [ "$ENVIRONMENT" == "development" ]; then
+BINARY_NAME="agent-sdk-askar-storage.${ALIAS}.node"
+VERSION=$(npm pkg get version | tr -d '"')
+
+if [ "${ENVIRONMENT:-}" == "development" ]; then
   TAG="dev"
   BUILD_FLAGS="--features=in-memory"
   npm version ${VERSION}-dev
@@ -40,7 +41,7 @@ cd "npm/${ALIAS}"
 NPM_TOKEN=${NPM_TOKEN} npm publish --registry=${REGISTRY_URL_NPM} --tag ${TAG}
 
 
-if [ "$ENVIRONMENT" == "development" ]; then
+if [ "${ENVIRONMENT:-}" == "development" ]; then
   cd ../../
   npm version $VERSION
 fi

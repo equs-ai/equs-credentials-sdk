@@ -1,13 +1,14 @@
 #!/bin/bash
+set -euo pipefail
 
-VERSION=$(npm pkg get version | tr -d '"')
-
-if [ -z "$NPM_TOKEN" ]; then
+if [ -z "${NPM_TOKEN:-}" ]; then
   echo "No NPM_TOKEN"
   exit 1
 fi
 
-if [ "$ENVIRONMENT" == "development" ]; then
+VERSION=$(npm pkg get version | tr -d '"')
+
+if [ "${ENVIRONMENT:-}" == "development" ]; then
   TAG="dev"
   BUILD_SCRIPT="build:debug"
   npm version ${VERSION}-dev
@@ -22,6 +23,6 @@ npx npm run $BUILD_SCRIPT
 npx napi prepublish --skip-gh-release
 NPM_TOKEN=${NPM_TOKEN} npm publish --registry=${REGISTRY_URL_NPM} --tag ${TAG}
 
-if [ "$ENVIRONMENT" == "development" ]; then
+if [ "${ENVIRONMENT:-}" == "development" ]; then
   npm version $VERSION
 fi

@@ -34,6 +34,19 @@ variables:
       - .npm
 
 .cargo_local_deps_script: &cargo_local_deps_script
+  # Auth for the private one-core-new git dependency via the CI job token.
+  # Persistent shell runners (e.g. the macOS swift runner) keep a single global
+  # ~/.gitconfig across jobs, so `git config --global ... insteadOf` accumulates one
+  # rewrite per run, each pinned to that run's now-expired CI_JOB_TOKEN. With
+  # net.git-fetch-with-cli the git CLI then reuses a stale token and the HTTPS fetch
+  # fails with "HTTP Basic: Access denied". Drop any prior git.slock.it rewrites first
+  # so only the fresh token below is used. No-op on ephemeral container runners.
+  - |
+    git config --global --get-regexp '^url\..*\.insteadof$' 2>/dev/null | while read -r key value; do
+      case "$value" in
+        *git.slock.it*) git config --global --remove-section "${key%.insteadof}" 2>/dev/null || true ;;
+      esac
+    done || true
   - git config --global url."https://gitlab-ci-token:${CI_JOB_TOKEN}@git.slock.it/".insteadOf "ssh://git@git.slock.it/"
   - curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
   - RUSTC_WRAPPER="" cargo binstall -y sccache
