@@ -19,9 +19,11 @@ variables:
     - swift --version
     - cargo --version
     - *cargo_local_deps_script
+
 .ios_to_registry_template: &ios_to_registry_template
   <<: *ios_job_configs
   stage: release
+  timeout: 1h
   rules:
     - if: $CI_COMMIT_TAG && $CI_COMMIT_TAG =~ $VERSION_REGEX
     - when: never
@@ -32,6 +34,7 @@ publish_ios_wrapper:
     - cd wrappers/uniffi
     - chmod +x ./scripts/build_and_publish_ios.sh
     - ./scripts/build_and_publish_ios.sh
+
 publish_ios_wrapper_dev:
   <<: *ios_to_registry_template
   script:
@@ -64,6 +67,7 @@ publish_ios_wrapper_dev:
 
     - export PATH="$ANDROID_HOME/ndk/$NDK_VERSION/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH"
     - *cargo_local_deps_script
+
 .android_to_registry_template: &android_to_registry_template
   <<: *android_job_configs
   stage: release
