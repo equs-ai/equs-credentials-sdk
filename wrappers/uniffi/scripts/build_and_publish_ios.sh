@@ -26,7 +26,7 @@ swift package compute-checksum $ZIP_NAME > checksum.txt
 echo "Uploading package $PACKAGE_NAME version $VERSION to $REGISTRY_URL_IOS..."
 
 RESPONSE=$(mktemp)
-STATUS=$(curl --silent --show-error --output "$RESPONSE" --write-out "%{http_code}" \
+STATUS=$(curl --silent --show-error --http1.1 --output "$RESPONSE" --write-out "%{http_code}" \
   --header "JOB-TOKEN: $CI_JOB_TOKEN" \
   --upload-file "$ZIP_NAME" \
   "${REGISTRY_URL_IOS}/${PACKAGE_NAME}/${VERSION}/${ZIP_NAME}")
