@@ -24,7 +24,7 @@ rust-version = "1.97.0"
 common-macros = { path = "./common-macros" }
 # Internally maintained forked dependencies
 oid4vci = { git = "ssh://git@git.slock.it/open-source/oid4vci-rs.git", rev = "f5c38f92" }
-openid4vp = { git = "ssh://git@git.slock.it/open-source/oid4vp-rs.git", rev = "26e6f529" }
+openid4vp = { git = "ssh://git@git.slock.it/open-source/oid4vp-rs.git", rev = "56e6ea37" }
 sd-jwt-rs = { git = "ssh://git@git.slock.it/open-source/sd-jwt-rust.git", rev = "ecfc9ac" }
 didcomm = { git = "ssh://git@git.slock.it/open-source/didcomm-rust.git", rev = "db41780d" }
 did_peer = { git = "ssh://git@git.slock.it/open-source/aries-vcx.git", rev = "fc818ef5" }

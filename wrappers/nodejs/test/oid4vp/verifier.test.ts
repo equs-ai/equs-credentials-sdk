@@ -6,8 +6,11 @@ import {
   AuthorizationResponseObject,
   AuthorizationResponseType,
   AuthResponseOptions,
+  buildDelegateTransactionData,
   ClientId,
+  contextEnsuredNonceHandler,
   CredentialVerificationMetadata,
+  DelegationRequest,
   InMemKms,
   KeyHandle,
   KeyType,
@@ -25,6 +28,7 @@ import {
   AUTH_RESPONSE_JWE,
   CLAIMS,
   DCQL,
+  DELEGATE_JWK,
   DSD_JWT_GRANT_CRED_ID,
   DSD_JWT_GRANT_CREDENTIAL,
   DSD_JWT_GRANT_NONCE,
@@ -211,7 +215,7 @@ describe("OID4VP Verifier: ", () => {
       null,
     );
     const transactionDataAsBase64 =
-      "eyJ0eXBlIjoic29tZV90eXBlIiwiY3JlZGVudGlhbF9pZHMiOlsiMSIsIjIiXSwidHJhbnNhY3Rpb25fZGF0YV9oYXNoZXNfYWxnIjpbInNoYS0yNTYiXX0";
+      "eyJjcmVkZW50aWFsX2lkcyI6WyIxIiwiMiJdLCJ0cmFuc2FjdGlvbl9kYXRhX2hhc2hlc19hbGciOlsic2hhLTI1NiJdLCJ0eXBlIjoic29tZV90eXBlIn0";
     const jwt = authReqByReference.authorizationRequestJwt.split(".")[1];
     expect(jose.base64url.decode(jwt).toString()).toContain(transactionDataAsBase64);
     expect(jose.base64url.decode(jwt).toString()).toContain("transaction_data");
@@ -268,7 +272,7 @@ describe("OID4VP Verifier: ", () => {
     ];
 
     const transactionDataResponse: TransactionDataResponse = {
-      hashes: ["dqpRRxJ7C1_lJuO62E3LbZ5Mgfjm4LaIMfYWutUs_14"],
+      hashes: ["1lG1y0zepp3P6CCIWp2aE0JxF83WikkwEqngDVqRJPs"],
     };
 
     const auth_response_object: AuthorizationResponseObject = {
@@ -291,6 +295,98 @@ describe("OID4VP Verifier: ", () => {
     expect(claims).toEqual(CLAIMS);
   });
 
+  it("create Authorization Request with TransactionData of type delegate", async () => {
+    const verifier = await buildVerifier();
+
+    const authResponseOptions: AuthResponseOptions = {
+      mode: "direct_post",
+      type: "vp_token",
+      submissionUri: "http://localhost:9001/response",
+      state: STATE,
+    };
+
+    const delegateItem = await buildDelegateTransactionData(
+      DelegationRequest.holderBinding([DSD_JWT_GRANT_CRED_ID], DELEGATE_JWK, { purchase_id: "p-42" }),
+      contextEnsuredNonceHandler(new LocalNonceHandler()),
+    );
+
+    expect(delegateItem.type).toEqual("delegate");
+    expect(delegateItem.credential_ids).toEqual([DSD_JWT_GRANT_CRED_ID]);
+    expect(delegateItem).not.toHaveProperty("content");
+    expect(delegateItem.format).toEqual("dSD-JWT+KB");
+
+    const authorizationRequestMetadata: AuthorizationRequestMetadata = {
+      authResponseOptions: authResponseOptions,
+      passAuthRequestObject: {
+        type: PassAuthRequestObjectType.ByValue,
+      },
+      transactionData: [delegateItem],
+    };
+
+    const authReqByValue = await verifier.createAuthorizationRequest(
+      PRESENTATION_QUERY,
+      authorizationRequestMetadata,
+      null,
+    );
+
+    const jwt = authReqByValue.authorizationRequestJwt.split(".")[1];
+    const decodedPayload = jose.base64url.decode(jwt).toString();
+    expect(decodedPayload).toContain("transaction_data");
+
+    const decodedItem = jose.base64url.decode(JSON.parse(decodedPayload).transaction_data[0]).toString();
+    expect(decodedItem).toContain("delegate");
+    expect(decodedItem).toContain(DSD_JWT_GRANT_CRED_ID);
+  });
+
+  it("delegate transaction data disclosure carries a fresh salt and the delegate payload", async () => {
+    const nonceHandler = contextEnsuredNonceHandler(new LocalNonceHandler());
+
+    const item = await buildDelegateTransactionData(
+      DelegationRequest.holderBinding([DSD_JWT_GRANT_CRED_ID], DELEGATE_JWK, { purchase_id: "p-42" }),
+      nonceHandler,
+    );
+
+    const [salt, payload] = decodeDelegatePayloadDisclosure(item);
+    expect(salt.length).toBeGreaterThan(0);
+    expect(payload.purchase_id).toEqual("p-42");
+    expect(payload.cnf).toEqual({ jwk: DELEGATE_JWK });
+
+    const other = await buildDelegateTransactionData(
+      DelegationRequest.open([DSD_JWT_GRANT_CRED_ID]),
+      nonceHandler,
+    );
+    const [otherSalt] = decodeDelegatePayloadDisclosure(other);
+    expect(otherSalt).not.toEqual(salt);
+  });
+
+  it("builds a terminal delegate item and rejects invalid delegation requests", async () => {
+    const nonceHandler = contextEnsuredNonceHandler(new LocalNonceHandler());
+
+    const terminal = await buildDelegateTransactionData(DelegationRequest.open([DSD_JWT_GRANT_CRED_ID]), nonceHandler);
+    expect(terminal.format).toEqual("dSD-JWT");
+    const [, terminalPayload] = decodeDelegatePayloadDisclosure(terminal);
+    expect(terminalPayload.cnf).toBeUndefined();
+
+    // `DelegationRequest.holderBinding`/`.open` can't be called without the arguments their
+    // format requires, so the TypeScript compiler already refuses a malformed request. `as
+    // any` simulates an untyped JS caller (or a bypassed type-check) hand-writing the wire
+    // shape directly, to assert the native side still rejects it at runtime.
+    await expect(
+      buildDelegateTransactionData({ credentialIds: ["c1"], format: "dSD-JWT+KB" } as any, nonceHandler),
+    ).rejects.toThrow();
+
+    await expect(
+      buildDelegateTransactionData(
+        DelegationRequest.open(["c1"], { cnf: { jwk: DELEGATE_JWK } }),
+        nonceHandler,
+      ),
+    ).rejects.toThrow();
+
+    await expect(
+      buildDelegateTransactionData({ credentialIds: ["c1"], format: "dSD-JWT+KB " } as any, nonceHandler),
+    ).rejects.toThrow();
+  });
+
   it("verify and extract a dSD-JWT delegation grant", async () => {
     const verifier = await buildVerifier();
 
@@ -311,7 +407,7 @@ describe("OID4VP Verifier: ", () => {
     };
 
     const verificationMetadata: CredentialVerificationMetadata = {
-      transactionData: DSD_JWT_GRANT_TRANSACTION_DATA as unknown as TransactionDataItem[],
+      transactionData: DSD_JWT_GRANT_TRANSACTION_DATA,
     };
 
     const verified = await verifier.verifyAndExtractPresentation(auth_response, session, verificationMetadata);
@@ -426,4 +522,9 @@ async function buildVerifier(clientId = "did:key:zDnaeagvW2eDWc2yVw7B98ovcJ8jddn
   return await new OID4VPVerifierBuilder(kms, nonceGenerator, keyMetadata, ClientId.fromDid(clientId))
     .withHttpClient(ReqwestHttpClient.insecure())
     .build();
+}
+
+function decodeDelegatePayloadDisclosure(item: TransactionDataItem): [string, Record<string, any>] {
+  const decoded = jose.base64url.decode((item as any).delegate_payload_disclosure).toString();
+  return JSON.parse(decoded);
 }

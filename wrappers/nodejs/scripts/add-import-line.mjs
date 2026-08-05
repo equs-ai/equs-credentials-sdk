@@ -28,6 +28,7 @@ import fs from "fs/promises";
       "Service",
       "ResolutionOptionsParameter",
       "TransactionDataItem",
+      "DelegationRequest",
       "AuthorizationResponse",
       "PresentationResult",
       "UnsignedCredential",

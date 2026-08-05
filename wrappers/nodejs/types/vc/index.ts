@@ -7,6 +7,7 @@ export * from "./core/verifier";
 export * from "./oid4vci/holder";
 export * from "./oid4vci/pop";
 export * from "./oid4vci/issuer";
+export * from "./oid4vp/delegation-request";
 export * from "./oid4vp/holder";
 export * from "./oid4vp/verifier-builder";
 export { AuthorizationResponse } from "./oid4vp/verifier";

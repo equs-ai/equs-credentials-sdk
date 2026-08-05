@@ -2691,7 +2691,9 @@ pub mod fixtures {
         use base64::prelude::BASE64_URL_SAFE_NO_PAD;
         use bip32::secp256k1::sha2;
         use bip32::secp256k1::sha2::Digest;
-        use openid4vp::core::authorization_request::parameters::{HashAlgorithm, TransactionData};
+        use openid4vp::core::authorization_request::parameters::{
+            HashAlgorithm, TransactionData, TransactionDataItemTypeContent,
+        };
         use openid4vp::core::credential_format::ClaimFormatDesignation;
         use openid4vp::core::response::parameters::{
             TransactionDataHashes, TransactionDataHashesAlg,
@@ -3235,19 +3237,23 @@ pub mod fixtures {
         pub fn transaction_data_items() -> Vec<TransactionDataItem> {
             vec![
                 TransactionDataItem {
-                    type_: "some_type".to_string(),
                     credential_ids: Vec::from(["1".to_string(), "2".to_string()]),
                     transaction_data_hashes_alg: Some(vec![
                         HashAlgorithm::Sha256,
                         HashAlgorithm::Sha512,
                     ]),
-                    content: None,
+                    content: TransactionDataItemTypeContent::Unknown {
+                        type_: "some_type".to_string(),
+                        data: serde_json::Map::new(),
+                    },
                 },
                 TransactionDataItem {
-                    type_: "some_type2".to_string(),
                     credential_ids: Vec::from(["11".to_string(), "22".to_string()]),
                     transaction_data_hashes_alg: None,
-                    content: None,
+                    content: TransactionDataItemTypeContent::Unknown {
+                        type_: "some_type2".to_string(),
+                        data: serde_json::Map::new(),
+                    },
                 },
             ]
         }
@@ -3289,17 +3295,16 @@ pub mod fixtures {
 
         pub fn sample_delegate_item() -> TransactionDataItem {
             TransactionDataItem {
-                type_: "delegate".to_string(),
                 credential_ids: vec!["cred-1".into()],
                 transaction_data_hashes_alg: None,
-                content: Some(TransactionDataItemTypeContent::DelegateSdJwt(
+                content: TransactionDataItemTypeContent::DelegateSdJwt(
                     DelegateSdJwtTransactionData {
                         format: DelegateSdJwtTransactionDataFormat::Open,
                         delegate_payload_disclosure:
                             "WyJ4X2laOGlUeVMwQUpLSzAyM2JFdWN3IiwgImFkZHJlc3MiLCB7fV0".to_string(),
                         delegate_disclosures: None,
                     },
-                )),
+                ),
             }
         }
 
@@ -4393,16 +4398,13 @@ mod grant_delegation_tests {
         let mut auth_request: crate::vc::oid4vp::ResolvedAuthRequest =
             serde_json::from_value(auth_request).unwrap();
         auth_request.transaction_data = Some(vec![TransactionDataItem {
-            type_: "delegate".to_string(),
             credential_ids: vec![DELEGATE_CRED_ID.to_string()],
             transaction_data_hashes_alg: None,
-            content: Some(TransactionDataItemTypeContent::DelegateSdJwt(
-                DelegateSdJwtTransactionData {
-                    format,
-                    delegate_payload_disclosure: disclosure,
-                    delegate_disclosures: None,
-                },
-            )),
+            content: TransactionDataItemTypeContent::DelegateSdJwt(DelegateSdJwtTransactionData {
+                format,
+                delegate_payload_disclosure: disclosure,
+                delegate_disclosures: None,
+            }),
         }]);
         auth_request
     }
@@ -4650,172 +4652,6 @@ mod grant_delegation_tests {
 
         holder
             .present_credentials(&auth_request, &cred_map, &Default::default())
-            .await
-            .unwrap();
-    }
-}
-
-#[cfg(all(test, feature = "delegate-sd-jwt"))]
-mod delegate_builder_tests {
-    use crate::inmem::nonce::LocalNonceHandler;
-    use crate::vc::oid4vp::api::{DelegationRequest, as_delegate, delegate_transaction_data_item};
-    use crate::vc::oid4vp::delegate::DelegateSdJwtTransactionDataFormat;
-    use base64::Engine;
-    use base64::prelude::BASE64_URL_SAFE_NO_PAD;
-
-    fn open_request(
-        payload_claims: serde_json::Map<String, serde_json::Value>,
-    ) -> DelegationRequest {
-        DelegationRequest {
-            credential_ids: vec!["cred-1".to_string()],
-            format: DelegateSdJwtTransactionDataFormat::Open,
-            delegate_cnf: None,
-            payload_claims,
-            disclosable_claims: vec![],
-        }
-    }
-
-    #[tokio::test]
-    async fn delegate_transaction_data_item_builds_array_disclosure() {
-        let mut claims = serde_json::Map::new();
-        claims.insert("scope".to_string(), serde_json::json!("purchase"));
-
-        let req = open_request(claims);
-        let nonce_handler = LocalNonceHandler::default();
-
-        let item = delegate_transaction_data_item(&req, &nonce_handler)
-            .await
-            .expect("builder must succeed");
-
-        assert_eq!(item.type_, "delegate");
-        assert_eq!(item.credential_ids, vec!["cred-1".to_string()]);
-
-        let d = as_delegate(&item).expect("must be a delegate item");
-        assert!(d.delegate_disclosures.is_none());
-
-        // Decode disclosure: base64url([salt, payload])
-        let decoded = BASE64_URL_SAFE_NO_PAD
-            .decode(&d.delegate_payload_disclosure)
-            .expect("must be valid base64url");
-        let arr: serde_json::Value = serde_json::from_slice(&decoded).expect("must be valid JSON");
-        let arr = arr.as_array().expect("must be a JSON array");
-
-        assert!(arr[0].is_string(), "arr[0] (salt) must be a string");
-        assert_eq!(
-            arr[1]["scope"],
-            serde_json::json!("purchase"),
-            "payload must contain scope=purchase"
-        );
-    }
-
-    #[tokio::test]
-    async fn delegate_item_carries_cnf_when_set() {
-        let jwk: ssi::jwk::JWK = serde_json::from_value(serde_json::json!({
-            "kty": "OKP",
-            "crv": "Ed25519",
-            "x": "11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo"
-        }))
-        .expect("valid Ed25519 JWK");
-
-        let mut claims = serde_json::Map::new();
-        claims.insert("scope".to_string(), serde_json::json!("read"));
-
-        let req = DelegationRequest {
-            credential_ids: vec!["cred-1".to_string()],
-            format: DelegateSdJwtTransactionDataFormat::Open,
-            delegate_cnf: Some(jwk),
-            payload_claims: claims,
-            disclosable_claims: vec![],
-        };
-
-        let nonce_handler = LocalNonceHandler::default();
-        let item = delegate_transaction_data_item(&req, &nonce_handler)
-            .await
-            .expect("builder must succeed");
-
-        let d = as_delegate(&item).expect("must be a delegate item");
-
-        let decoded = BASE64_URL_SAFE_NO_PAD
-            .decode(&d.delegate_payload_disclosure)
-            .expect("must be valid base64url");
-        let arr: serde_json::Value = serde_json::from_slice(&decoded).unwrap();
-        let arr = arr.as_array().unwrap();
-
-        let cnf = &arr[1]["cnf"];
-        assert!(cnf.is_object(), "payload must contain cnf object");
-        assert!(cnf["jwk"].is_object(), "cnf must contain jwk field");
-    }
-
-    #[should_panic(expected = "delegate_cnf is required when format is HolderBinding")]
-    #[tokio::test]
-    async fn delegate_dsd_jwt_kb_requires_cnf() {
-        let req = DelegationRequest {
-            credential_ids: vec!["cred-1".to_string()],
-            format: DelegateSdJwtTransactionDataFormat::HolderBinding,
-            delegate_cnf: None,
-            payload_claims: serde_json::Map::new(),
-            disclosable_claims: vec![],
-        };
-
-        let nonce_handler = LocalNonceHandler::default();
-        delegate_transaction_data_item(&req, &nonce_handler)
-            .await
-            .unwrap();
-    }
-
-    #[should_panic(expected = "property-level delegate-payload disclosure is not supported")]
-    #[tokio::test]
-    async fn delegate_disclosable_claims_unsupported_v1() {
-        let req = DelegationRequest {
-            credential_ids: vec!["cred-1".to_string()],
-            format: DelegateSdJwtTransactionDataFormat::Open,
-            delegate_cnf: None,
-            payload_claims: serde_json::Map::new(),
-            disclosable_claims: vec!["$.scope".to_string()],
-        };
-
-        let nonce_handler = LocalNonceHandler::default();
-        delegate_transaction_data_item(&req, &nonce_handler)
-            .await
-            .unwrap();
-    }
-
-    #[should_panic(expected = "cnf must be supplied via delegate_cnf")]
-    #[tokio::test]
-    async fn delegate_rejects_cnf_in_payload_claims() {
-        let mut claims = serde_json::Map::new();
-        claims.insert("cnf".to_string(), serde_json::json!({"jwk": {}}));
-
-        let req = DelegationRequest {
-            credential_ids: vec!["cred-1".to_string()],
-            format: DelegateSdJwtTransactionDataFormat::Open,
-            delegate_cnf: None,
-            payload_claims: claims,
-            disclosable_claims: vec![],
-        };
-
-        let nonce_handler = LocalNonceHandler::default();
-        delegate_transaction_data_item(&req, &nonce_handler)
-            .await
-            .unwrap();
-    }
-
-    #[should_panic(expected = "selective disclosure within the delegate payload is unsupported")]
-    #[tokio::test]
-    async fn delegate_rejects_sd_in_payload_claims() {
-        let mut claims = serde_json::Map::new();
-        claims.insert("_sd".to_string(), serde_json::json!(["hash1", "hash2"]));
-
-        let req = DelegationRequest {
-            credential_ids: vec!["cred-1".to_string()],
-            format: DelegateSdJwtTransactionDataFormat::Open,
-            delegate_cnf: None,
-            payload_claims: claims,
-            disclosable_claims: vec![],
-        };
-
-        let nonce_handler = LocalNonceHandler::default();
-        delegate_transaction_data_item(&req, &nonce_handler)
             .await
             .unwrap();
     }

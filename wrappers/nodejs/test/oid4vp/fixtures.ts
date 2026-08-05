@@ -6,6 +6,7 @@ import {
   CommonAuthorizationRequest,
   PresentationQuery,
   Dcql,
+  TransactionDataItem,
 } from "../../";
 export const AUTH_REQUEST_JWT =
   "eyJhbGciOiJFUzI1NiIsImtpZCI6ImRpZDprZXk6ekRuYWVlVEc4OHdwUGhNenVEUnZMUlRUeU5NeUppcDVlNlRMbXNqeXZQaVNZVUZrNyN6RG5hZWVURzg4d3BQaE16dURSdkxSVFR5Tk15SmlwNWU2VExtc2p5dlBpU1lVRms3IiwidHlwIjoiYXBwbGljYXRpb24vb2F1dGgtYXV0aHotcmVxK2p3dCJ9.eyJyZXNwb25zZV90eXBlIjoidnBfdG9rZW4iLCJzdGF0ZSI6ImVlYTdiNDhlLTE4NjYtNDFiNC1iZWFlLTAzYjk1ZDQxNjcwYyIsInJlc3BvbnNlX21vZGUiOiJkaXJlY3RfcG9zdCIsIm5vbmNlIjoiWXp0QU5nbFJkbVA0Q2h4c3JjUzhVY0dZb1BXd2tnaVVJbWtCclFtZ1drVSIsImNsaWVudF9tZXRhZGF0YSI6eyJ2cF9mb3JtYXRzIjp7ImRjK3NkLWp3dCI6eyJhbGciOlsiRWREU0EiLCJFUzI1NiJdfX19LCJjbGllbnRfaWQiOiJkaWQ6a2V5OnpEbmFlZVRHODh3cFBoTXp1RFJ2TFJUVHlOTXlKaXA1ZTZUTG1zanl2UGlTWVVGazciLCJjbGllbnRfaWRfc2NoZW1lIjoiZGlkIiwicHJlc2VudGF0aW9uX2RlZmluaXRpb24iOnsiaWQiOiIxYjlkNmJjZC1iYmZkLTRiMmQtOWI1ZC1hYjhkZmJiZDRiZWQiLCJpbnB1dF9kZXNjcmlwdG9ycyI6W3siaWQiOiJJZGVudGl0eS0xIiwiY29uc3RyYWludHMiOnsiZmllbGRzIjpbeyJwYXRoIjpbIiQudmN0Il0sImZpbHRlciI6eyJ0eXBlIjoic3RyaW5nIiwiY29uc3QiOiJodHRwczovL2NyZWRlbnRpYWxzLmV4YW1wbGUuY29tL2lkZW50aXR5X2NyZWRlbnRpYWwifSwicHJlZGljYXRlIjpudWxsLCJpbnRlbnRfdG9fcmV0YWluIjpmYWxzZX0seyJwYXRoIjpbIiQubmFtZSJdLCJvcHRpb25hbCI6dHJ1ZSwicHJlZGljYXRlIjpudWxsLCJpbnRlbnRfdG9fcmV0YWluIjpmYWxzZX1dfSwibmFtZSI6IklkZW50aXR5IFZDIiwicHVycG9zZSI6IldlIHdhbnQgYW4gaWRlbnRpdHkiLCJmb3JtYXQiOnsiZGMrc2Qtand0Ijp7InNkLWp3dF9hbGdfdmFsdWVzIjpbIkVTMjU2IiwiRWREU0EiXSwia2Itand0X2FsZ192YWx1ZXMiOlsiRVMyNTYiLCJFZERTQSJdfX19XX0sInJlc3BvbnNlX3VyaSI6Imh0dHA6Ly9sb2NhbGhvc3Q6OTAwMS9yZXNwb25zZSJ9.dV0RXxaAJTjnAqGNuPUzMor93gsEkXpoqVRj9-J638lV7mkka4ixXZJ3VIQ0Iqhb7GvCIr0D-7_bWp_xnIYAVA";
@@ -198,14 +199,7 @@ AwIDRwAwRAIgF+H7wT7a95WbiE+DDlZrQ7U3RlCUOMCFqudFRz+K6I4CIAT35kig
 4Q1ALvtXiWKDOjZIVxlw5eKQiq0dsd+bXKZE
 -----END CERTIFICATE-----`;
 
-// ─── Delegate SD-JWT (§7.1) grant fixture ──────────────────────────────────────
-// A self-contained dSD-JWT delegation grant produced by the SDK (Rust) helper
-// `vc::oid4vp::tests::verify_and_extract_tests::print_dsd_jwt_grant_fixture`
-// (run with `--ignored --nocapture`). The grant's issuer is a `did:key` (resolvable
-// offline), and the request used `require_cryptographic_holder_binding: false`, so the
-// Verifier needs no audience/nonce — it verifies the Holder's proof of possession
-// (the signed KB-SD-JWT link) and the transaction-data hashes. Regenerate via that
-// helper if the wire format changes.
+
 export const DSD_JWT_GRANT_CRED_ID = "delegatecred1";
 
 export const DSD_JWT_GRANT_VP_TOKEN = {
@@ -214,7 +208,7 @@ export const DSD_JWT_GRANT_VP_TOKEN = {
   ],
 };
 
-export const DSD_JWT_GRANT_TD_HASHES = ["IU56WYgzUA7N1PGEoG87X6lzp5yAcmegkkiIF96YeTE"];
+export const DSD_JWT_GRANT_TD_HASHES = ["z4WeSJmB_VwOQpkPzIQTRmfMf7JbDa-dtfloSxknc8w"];
 
 export const DSD_JWT_GRANT_NONCE = "test-nonce-for-grant-delegation";
 
@@ -231,20 +225,21 @@ export const DSD_JWT_GRANT_RPQ = {
   },
 };
 
-// The delegate transaction-data item, with its `content` preserved so the verifier's
-// transaction-data-hash check matches the grant. Untyped so the embedded `content`
-// (not part of the public TransactionDataItem type) survives the FFI round-trip.
-export const DSD_JWT_GRANT_TRANSACTION_DATA: Array<Record<string, unknown>> = [
+export const DELEGATE_JWK = {
+  kty: "EC",
+  crv: "P-256",
+  x: "QYZpjqUO8AenfZ1IZpYVJIYRIwiPo3_JaRJ5DgpK7NY",
+  y: "58JyJCUUnd1C9AmnrcqNrIcTFwzzCzSb-qHVeAjijDE",
+};
+
+export const DSD_JWT_GRANT_TRANSACTION_DATA: Array<TransactionDataItem> = [
   {
     type: "delegate",
     credential_ids: ["delegatecred1"],
     transaction_data_hashes_alg: null,
-    content: {
-      type: "delegate",
-      format: "dSD-JWT+KB",
-      delegate_payload_disclosure:
-        "WyJ0ZXN0LXNhbHQtZm9yLWRlbGVnYXRpb24iLHsic2NvcGUiOiJsaW1pdGVkIiwiY25mIjp7Imp3ayI6eyJrdHkiOiJFQyIsImNydiI6IlAtMjU2IiwieCI6IlFZWnBqcVVPOEFlbmZaMUlacFlWSklZUkl3aVBvM19KYVJKNURncEs3TlkiLCJ5IjoiNThKeUpDVVVuZDFDOUFtbnJjcU5ySWNURnd6ekN6U2ItcUhWZUFqaWpERSJ9fX1d",
-    },
+    format: "dSD-JWT+KB",
+    delegate_payload_disclosure:
+      "WyJ0ZXN0LXNhbHQtZm9yLWRlbGVnYXRpb24iLHsic2NvcGUiOiJsaW1pdGVkIiwiY25mIjp7Imp3ayI6eyJrdHkiOiJFQyIsImNydiI6IlAtMjU2IiwieCI6IlFZWnBqcVVPOEFlbmZaMUlacFlWSklZUkl3aVBvM19KYVJKNURncEs3TlkiLCJ5IjoiNThKeUpDVVVuZDFDOUFtbnJjcU5ySWNURnd6ekN6U2ItcUhWZUFqaWpERSJ9fX1d",
   },
 ];
 

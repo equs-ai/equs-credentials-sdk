@@ -10,6 +10,7 @@ use napi::{Error, Status};
 use napi_derive::napi;
 
 pub mod builder;
+pub mod delegate;
 pub mod error;
 pub mod holder;
 pub mod verifier;
