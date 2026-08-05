@@ -17,7 +17,7 @@ use agent_sdk::vc::oid4vp::{
     AuthResponseOptions, AuthorizationRequestMetadata, AuthorizationResponse,
     AuthorizationResponseObject, ClientId, ClientMetadata, CredentialVerificationMetadata,
     HashAlgorithm, PassAuthRequestObject, PresentationSession, ResolvedPresentationQuery,
-    ResponseMode, TransactionDataItem, TransactionDataResponse,
+    ResponseMode, TransactionDataItem, TransactionDataItemTypeContent, TransactionDataResponse,
 };
 use agent_sdk::vc::presentation_exchange::{
     ClaimFormatMap, ClaimFormatPayload, Constraints, ConstraintsField, InputDescriptor,
@@ -557,16 +557,20 @@ const DEFAULT_CLIENT_METADATA: &str = r#"{
 pub fn default_transaction_data_for_pd() -> Vec<TransactionDataItem> {
     vec![
         TransactionDataItem {
-            type_: "type1".to_string(),
             credential_ids: vec!["Identity-1".to_string()],
             transaction_data_hashes_alg: Some(vec![HashAlgorithm::Sha256, HashAlgorithm::Sha512]),
-            content: None,
+            content: TransactionDataItemTypeContent::Unknown {
+                type_: "type1".to_string(),
+                data: Default::default(),
+            },
         },
         TransactionDataItem {
-            type_: "type2".to_string(),
             credential_ids: vec!["resident-card".to_string()],
             transaction_data_hashes_alg: None,
-            content: None,
+            content: TransactionDataItemTypeContent::Unknown {
+                type_: "type2".to_string(),
+                data: Default::default(),
+            },
         },
         // Uncommenting the below TD will cause an error with pd flow as the credential with "non-existing" doesn't exist
         // TransactionDataItem {
@@ -579,16 +583,20 @@ pub fn default_transaction_data_for_pd() -> Vec<TransactionDataItem> {
 pub fn wrong_transaction_data_for_pd() -> Vec<TransactionDataItem> {
     vec![
         TransactionDataItem {
-            type_: "type-fake".to_string(),
             credential_ids: vec!["Identity-1".to_string()],
             transaction_data_hashes_alg: Some(vec![HashAlgorithm::Sha256, HashAlgorithm::Sha512]),
-            content: None,
+            content: TransactionDataItemTypeContent::Unknown {
+                type_: "type-fake".to_string(),
+                data: Default::default(),
+            },
         },
         TransactionDataItem {
-            type_: "type-fake".to_string(),
             credential_ids: vec!["resident-card".to_string()],
             transaction_data_hashes_alg: None,
-            content: None,
+            content: TransactionDataItemTypeContent::Unknown {
+                type_: "type-fake".to_string(),
+                data: Default::default(),
+            },
         },
     ]
 }
@@ -614,10 +622,12 @@ pub fn get_provided_transaction_data(env_var: &str) -> Option<Vec<TransactionDat
 pub fn default_transaction_data_for_dcql() -> Vec<TransactionDataItem> {
     vec![
         TransactionDataItem {
-            type_: "type1".to_string(),
             credential_ids: vec!["pid".to_string()],
             transaction_data_hashes_alg: Some(vec![HashAlgorithm::Sha256, HashAlgorithm::Sha512]),
-            content: None,
+            content: TransactionDataItemTypeContent::Unknown {
+                type_: "type1".to_string(),
+                data: Default::default(),
+            },
         },
         // Uncommenting the below TD will cause an error with dcql flow as the credential with "non-existing" doesn't exist
         // TransactionDataItem {
@@ -630,9 +640,11 @@ pub fn default_transaction_data_for_dcql() -> Vec<TransactionDataItem> {
 
 pub fn wrong_transaction_data_for_dcql() -> Vec<TransactionDataItem> {
     vec![TransactionDataItem {
-        type_: "type-fake".to_string(),
         credential_ids: vec!["pid".to_string()],
         transaction_data_hashes_alg: Some(vec![HashAlgorithm::Sha256, HashAlgorithm::Sha512]),
-        content: None,
+        content: TransactionDataItemTypeContent::Unknown {
+            type_: "type-fake".to_string(),
+            data: Default::default(),
+        },
     }]
 }

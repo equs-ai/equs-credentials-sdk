@@ -13,6 +13,7 @@ mod builder;
 pub mod holder;
 
 pub type CoreTransactionDataItem = agent_sdk::vc::oid4vp::TransactionDataItem;
+pub type CoreTransactionDataItemTypeContent = agent_sdk::vc::oid4vp::TransactionDataItemTypeContent;
 pub type IdTokenMetadata = agent_sdk::vc::oid4vp::IdTokenMetadata;
 pub type AuthorizationResponseMetadata = agent_sdk::vc::oid4vp::AuthorizationResponseMetadata;
 
@@ -78,18 +79,21 @@ impl TryFrom<TransactionDataItem> for CoreTransactionDataItem {
             None
         };
         Ok(Self {
-            type_: value.type_,
             credential_ids: value.credential_ids,
             transaction_data_hashes_alg,
-            content: None,
+            content: CoreTransactionDataItemTypeContent::Unknown {
+                type_: value.type_,
+                data: Default::default(),
+            },
         })
     }
 }
 
 impl From<CoreTransactionDataItem> for TransactionDataItem {
     fn from(value: CoreTransactionDataItem) -> Self {
+        let type_ = value.type_().to_owned();
         Self {
-            type_: value.type_,
+            type_,
             credential_ids: value.credential_ids,
             transaction_data_hashes_alg: value
                 .transaction_data_hashes_alg

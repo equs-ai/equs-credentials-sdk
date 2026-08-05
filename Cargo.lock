@@ -6280,7 +6280,7 @@ checksum = "c08d65885ee38876c4f86fa503fb49d7b507c2b62552df7c70b2fce627e06381"
 [[package]]
 name = "openid4vp"
 version = "0.1.0"
-source = "git+ssh://git@git.slock.it/open-source/oid4vp-rs.git?rev=26e6f529#26e6f529c7f4769080fb9534e0d729cee6efb19e"
+source = "git+ssh://git@git.slock.it/open-source/oid4vp-rs.git?rev=56e6ea37#56e6ea3794a95aeac374905da169bc7bcce2e654"
 dependencies = [
  "anyhow",
  "async-trait",

@@ -37,10 +37,9 @@ use agent_sdk::vc::dcql::{DCQL, DCQLCredential, NonEmptyVec};
 use agent_sdk::vc::oid4vp::{
     self, AuthResponseOptions, AuthorizationRequestMetadata, AuthorizationResponse,
     AuthorizationResponseMetadata, AuthorizationResponseObject, ClientId, ClientMetadata,
-    CredentialVerificationMetadata, DelegateSdJwtTransactionDataFormat, DelegationRequest, Holder,
-    PassAuthRequestObject, PresentationResult, PresentationSession, ResolvedPresentationQuery,
-    ResponseMode, ResponseType, TransactionDataItem, TransactionDataResponse,
-    delegate_transaction_data_item,
+    CredentialVerificationMetadata, DelegationRequest, Holder, PassAuthRequestObject,
+    PresentationResult, PresentationSession, ResolvedPresentationQuery, ResponseMode, ResponseType,
+    TransactionDataItem, TransactionDataResponse, delegate_transaction_data_item,
 };
 use agent_sdk::vc::{Credential, CredentialMetadata, Presentation, VCFormat};
 use reqwest::Url;
@@ -168,13 +167,12 @@ async fn create_authorization_request(state: &AppState) -> String {
     let mut payload_claims = serde_json::Map::new();
     payload_claims.insert("purchase_id".to_string(), json!(purchase_id));
 
-    let delegation_request = DelegationRequest {
-        credential_ids: vec![VOUCHER_DCQL_ID.to_string()],
-        format: DelegateSdJwtTransactionDataFormat::HolderBinding,
-        delegate_cnf: Some(state.agent_jwk.clone()),
+    let delegation_request = DelegationRequest::holder_binding(
+        vec![VOUCHER_DCQL_ID.to_string()],
+        state.agent_jwk.clone(),
         payload_claims,
-        disclosable_claims: vec![],
-    };
+    )
+    .unwrap();
 
     let nonce_handler = LocalNonceHandler::default();
     let delegate_item = delegate_transaction_data_item(&delegation_request, &nonce_handler)
