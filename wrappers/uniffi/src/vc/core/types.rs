@@ -252,6 +252,7 @@ pub struct HolderBinder {
     /// the Rust field keeps `Nonce` to preserve zeroize-on-drop.
     pub nonce: crate::crypto::Nonce,
     pub verifier_id: String,
+    pub response_uri: Option<String>,
 }
 
 #[uniffi::remote(Enum)]

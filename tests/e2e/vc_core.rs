@@ -117,6 +117,7 @@ async fn sd_jwt_credential_issuance_and_presentation_verification() {
             Some(HolderBinder {
                 nonce: nonce.to_owned(),
                 verifier_id: VERIFIER_ID.to_string(),
+                response_uri: None,
             }),
             &input_descriptor.try_into().unwrap(),
         )
@@ -130,6 +131,7 @@ async fn sd_jwt_credential_issuance_and_presentation_verification() {
             Some(HolderBinder {
                 nonce,
                 verifier_id: VERIFIER_ID.to_string(),
+                response_uri: None,
             }),
             &vp,
             &ReqwestClientBuilder::new().insecure().build().unwrap(),
@@ -237,6 +239,7 @@ async fn bbs_plus_credential_issuance_and_presentation_verification() {
             Some(HolderBinder {
                 nonce: nonce.to_owned(),
                 verifier_id: VERIFIER_ID.to_string(),
+                response_uri: None,
             }),
             &input_descriptor.try_into().unwrap(),
         )
@@ -253,6 +256,7 @@ async fn bbs_plus_credential_issuance_and_presentation_verification() {
             Some(HolderBinder {
                 nonce,
                 verifier_id: VERIFIER_ID.to_string(),
+                response_uri: None,
             }),
             &vp,
             &ReqwestClientBuilder::new().insecure().build().unwrap(),
@@ -365,6 +369,7 @@ async fn credential_issuance_and_status_verification() {
             Some(HolderBinder {
                 nonce: nonce.to_owned(),
                 verifier_id: VERIFIER_ID.to_string(),
+                response_uri: None,
             }),
             &input_descriptor.try_into().unwrap(),
         )
@@ -378,6 +383,7 @@ async fn credential_issuance_and_status_verification() {
             Some(HolderBinder {
                 nonce,
                 verifier_id: VERIFIER_ID.to_string(),
+                response_uri: None,
             }),
             &vp,
             &ReqwestClientBuilder::new().insecure().build().unwrap(),

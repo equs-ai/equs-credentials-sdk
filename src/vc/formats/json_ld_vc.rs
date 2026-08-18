@@ -1399,6 +1399,7 @@ mod tests {
                 Some(HolderBinder {
                     nonce: nonce.to_owned(),
                     verifier_id: "verifier_id".to_string(),
+                    response_uri: None,
                 }),
             )
             .unwrap(),
@@ -1412,6 +1413,7 @@ mod tests {
             Some(HolderBinder {
                 nonce,
                 verifier_id: "verifier_id".to_string(),
+                response_uri: None,
             }),
             VerifyOptions::default(),
             UniversalResolver::default(),
@@ -1498,6 +1500,7 @@ mod tests {
                 Some(HolderBinder {
                     nonce: nonce.to_owned(),
                     verifier_id: "verifier_id".to_string(),
+                    response_uri: None,
                 }),
             )
             .unwrap(),
@@ -1511,6 +1514,7 @@ mod tests {
             Some(HolderBinder {
                 nonce,
                 verifier_id: "verifier_id".to_string(),
+                response_uri: None,
             }),
             VerifyOptions::default(),
             UniversalResolver::default(),
@@ -1597,6 +1601,7 @@ mod tests {
             Some(HolderBinder {
                 nonce: nonce.to_owned(),
                 verifier_id: "verifier_id".to_string(),
+                response_uri: None,
             }),
         )
         .unwrap();
@@ -1614,6 +1619,7 @@ mod tests {
             Some(HolderBinder {
                 nonce,
                 verifier_id: "verifier_id".to_string(),
+                response_uri: None,
             }),
             VerifyOptions::default(),
             UniversalResolver::default(),
@@ -1702,6 +1708,7 @@ mod tests {
                 Some(HolderBinder {
                     nonce,
                     verifier_id: "verifier_id".to_string(),
+                    response_uri: None,
                 }),
             )
             .unwrap(),
@@ -1748,6 +1755,7 @@ mod tests {
                 Some(HolderBinder {
                     nonce,
                     verifier_id: "verifier_id".to_string(),
+                    response_uri: None,
                 }),
             )
             .unwrap(),

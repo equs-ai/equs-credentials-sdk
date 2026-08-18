@@ -89,6 +89,8 @@ async fn credentials_presentation_and_verification(#[case] test_case: Oid4VpTest
                     method: Some(HttpMethodForAuth::POST),
                 },
                 expected_origins: None,
+                client_metadata: None,
+                verifier_info: None,
             },
             None,
         )
@@ -190,6 +192,8 @@ async fn credentials_presentation_and_verification_with_dcql(#[case] test_case: 
                     method: None,
                 },
                 expected_origins: None,
+                client_metadata: None,
+                verifier_info: None,
             },
             None,
         )

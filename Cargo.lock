@@ -342,6 +342,7 @@ dependencies = [
  "openidconnect",
  "p256",
  "rand 0.9.4",
+ "rcgen",
  "regex",
  "reqwest 0.12.12",
  "reqwest-middleware",
@@ -364,6 +365,7 @@ dependencies = [
  "tracing",
  "url",
  "uuid 1.23.1",
+ "x509-cert 0.2.5",
  "x509-parser",
  "zeroize",
  "zkryptium",
@@ -6280,7 +6282,7 @@ checksum = "c08d65885ee38876c4f86fa503fb49d7b507c2b62552df7c70b2fce627e06381"
 [[package]]
 name = "openid4vp"
 version = "0.1.0"
-source = "git+ssh://git@git.slock.it/open-source/oid4vp-rs.git?rev=56e6ea37#56e6ea3794a95aeac374905da169bc7bcce2e654"
+source = "git+ssh://git@git.slock.it/open-source/oid4vp-rs.git?rev=2db3c3d2#2db3c3d26e19cb73c4f66d0289be8870adf59c33"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -7321,6 +7323,7 @@ checksum = "10b99e0098aa4082912d4c649628623db6aba77335e4f4569ff5083a6448b32e"
 dependencies = [
  "aws-lc-rs",
  "pem",
+ "ring",
  "rustls-pki-types",
  "time",
  "x509-parser",

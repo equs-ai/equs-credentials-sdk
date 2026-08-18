@@ -210,6 +210,7 @@ class VcCoreTest {
             HolderBinder(
                 nonce = VcCoreFixtures.NONCE,
                 verifierId = VcCoreFixtures.VERIFIER_ID,
+                responseUri = null,
             )
         val presentation =
             holder.createPresentationAuto(binder, VcCoreFixtures.presentationInput())
@@ -268,6 +269,7 @@ class VcCoreTest {
             HolderBinder(
                 nonce = VcCoreFixtures.NONCE,
                 verifierId = VcCoreFixtures.VERIFIER_ID,
+                responseUri = null,
             )
         val presentation =
             holder.createPresentationAuto(binder, VcCoreFixtures.presentationInput())

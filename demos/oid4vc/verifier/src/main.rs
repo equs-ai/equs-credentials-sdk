@@ -168,6 +168,8 @@ async fn request_uri(
                 pass_auth_request_object,
                 auth_response_options,
                 expected_origins: None,
+                client_metadata: None,
+                verifier_info: None,
             },
             None,
         )

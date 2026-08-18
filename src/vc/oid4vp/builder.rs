@@ -10,6 +10,7 @@ use crate::vc::core::{DEFAULT_POP_LIFETIME_MINUTES, ProofOfPossessionMetadata};
 use crate::vc::oid4vp as api;
 use crate::vc::oid4vp::ClientId;
 use crate::vc::oid4vp::holder::HolderService;
+use crate::vc::oid4vp::metadata::ensure_supported_vp_formats;
 use crate::vc::oid4vp::verifier::VerifierService;
 use crate::{kms, vault, vc};
 use common_macros::DebugError;
@@ -54,6 +55,7 @@ where
     http_client: Result<HC, HttpError>,
 
     trusted_certs_skids: Option<HashSet<String>>,
+    x5c_chain: Option<Vec<u8>>,
     _marker: PhantomData<KH>,
 }
 
@@ -98,6 +100,7 @@ where
             did_resolver: UniversalResolver::default(),
             client_metadata: None,
             trusted_certs_skids: None,
+            x5c_chain: None,
             _marker: Default::default(),
         }
     }
@@ -105,7 +108,7 @@ where
 
 impl<KH, KMS, NG, HC> VerifierBuilder<KH, KMS, NG, HC>
 where
-    KH: kms::KeyHandle,
+    KH: kms::KeyHandle + 'static,
     KMS: Kms<KH> + JweDecrypt<KH>,
     NG: NonceHandler,
     HC: HttpClient,
@@ -180,6 +183,7 @@ where
             nonce_generator: self.nonce_generator,
             _marker: Default::default(),
             trusted_certs_skids: self.trusted_certs_skids,
+            x5c_chain: self.x5c_chain,
         }
     }
 
@@ -282,6 +286,53 @@ where
         Ok(self)
     }
 
+    /// Sets the X.509 certificate chain emitted in the `x5c` header of the
+    /// signed Authorization Request Object.
+    ///
+    /// Required when the Verifier's `client_id` has an X.509 prefix; unused with
+    /// any other prefix. The leaf certificate must derive the configured
+    /// `client_id` — its Subject Alternative Name for `x509_san_dns:<dns-name>`,
+    /// its hash for `x509_hash:<hash>` — and must certify the signing key
+    /// referenced by `key_metadata`, since the Wallet checks the request
+    /// signature against it. Both are enforced when the request is built.
+    ///
+    /// # Arguments
+    ///
+    /// * `pem_bytes` - a PEM-encoded, leaf-first X.509 certificate chain.
+    ///
+    /// # Errors
+    ///
+    /// [Error::Build] - if the certificate chain cannot be parsed or is empty.
+    #[instrument(
+        level = Level::TRACE,
+        skip_all,
+    )]
+    pub fn with_x509_certificate_chain(mut self, pem_bytes: &[u8]) -> Result<Self, Error> {
+        // Parse-and-discard: catches a malformed chain at build time rather than
+        // leaving it to surface from `create_authorization_request`.
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            use crate::vc::oid4vp::verifier::Certificate;
+
+            let chain = Certificate::load_pem_chain(pem_bytes).map_err(|e| {
+                BuildSnafu {
+                    details: format!("Cannot parse certificate chain: {e}"),
+                }
+                .build()
+            })?;
+
+            ensure!(
+                !chain.is_empty(),
+                BuildSnafu {
+                    details: "Certificate chain is empty".to_string(),
+                }
+            );
+        }
+
+        self.x5c_chain = Some(pem_bytes.to_vec());
+        Ok(self)
+    }
+
     /// Builds the `Verifier` API instance based on the current configuration of the builder.
     ///
     /// # Returns
@@ -304,6 +355,18 @@ where
             .build()
         })?;
 
+        if let Some(client_metadata) = &self.client_metadata {
+            ensure_supported_vp_formats(client_metadata).map_err(|unsupported| {
+                BuildSnafu {
+                    details: format!(
+                        "client_metadata advertises vp_formats_supported this SDK cannot verify: \
+                         {unsupported}"
+                    ),
+                }
+                .build()
+            })?;
+        }
+
         let mut inner = vc::core::VerifierService::new(
             &self.client_id.get_full_id(),
             self.did_resolver.clone(),
@@ -322,6 +385,11 @@ where
             self.did_resolver,
             self.client_metadata,
         );
+
+        let verifier = match self.x5c_chain {
+            Some(chain) => verifier.with_x509_certificate_chain(chain),
+            None => verifier,
+        };
 
         info!("oid4vp-verifier service is initialized");
 

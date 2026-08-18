@@ -328,20 +328,19 @@ impl JweEncryptor {
         &self,
         encs: Option<EncryptedResponseEncValuesSupported>,
     ) -> EncryptionAlgorithm {
-        //TODO Default is specified as `A128GCM` in the specification(https://openid.net/specs/openid-4-verifiable-presentations-1_0.html#name-new-parameters)
-        // due to limits of dependencies Agent-SDK uses `A128CBC-HS256` as default value
-        if let Some(encs) = encs {
-            for enc in encs.0 {
-                match enc.as_str() {
-                    "A256GCM" => return EncryptionAlgorithm::A256GCM,
-                    "A128CBC-HS256" => return EncryptionAlgorithm::A128CBCHS256,
-                    _ => {}
-                };
-            }
-            EncryptionAlgorithm::A128CBCHS256
-        } else {
-            EncryptionAlgorithm::A128CBCHS256
-        }
+        let Some(encs) = encs else {
+            return EncryptionAlgorithm::A128GCM;
+        };
+
+        encs.0
+            .iter()
+            .find_map(|enc| match enc.as_str() {
+                "A128GCM" => Some(EncryptionAlgorithm::A128GCM),
+                "A256GCM" => Some(EncryptionAlgorithm::A256GCM),
+                "A128CBC-HS256" => Some(EncryptionAlgorithm::A128CBCHS256),
+                _ => None,
+            })
+            .unwrap_or(EncryptionAlgorithm::A128GCM)
     }
 }
 

@@ -1532,6 +1532,7 @@ impl From<JsHolderBinder> for HolderBinder {
         HolderBinder {
             nonce: Nonce::from_secret(value.nonce),
             verifier_id: value.verifier_id,
+            response_uri: None,
         }
     }
 }

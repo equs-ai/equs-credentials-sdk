@@ -876,7 +876,21 @@ where
             _ => auth_request.client_id.get_full_id(),
         };
 
-        Ok(HolderBinder { nonce, verifier_id })
+        // For the OpenID4VP-over-HTTP flow the ISO mdoc SessionTranscript binds to `response_uri`;
+        // the DC-API flow binds to the origin instead, so it carries none.
+        let response_uri = match auth_request.response_mode {
+            ResponseMode::DcApi | ResponseMode::DcApiJwt => None,
+            _ => auth_request
+                .response_uri
+                .as_ref()
+                .map(|uri| uri.to_string()),
+        };
+
+        Ok(HolderBinder {
+            nonce,
+            verifier_id,
+            response_uri,
+        })
     }
 
     async fn get_id_to_cred_entry(

@@ -24,7 +24,7 @@ rust-version = "1.97.0"
 common-macros = { path = "./common-macros" }
 # Internally maintained forked dependencies
 oid4vci = { git = "ssh://git@git.slock.it/open-source/oid4vci-rs.git", rev = "f5c38f92" }
-openid4vp = { git = "ssh://git@git.slock.it/open-source/oid4vp-rs.git", rev = "56e6ea37" }
+openid4vp = { git = "ssh://git@git.slock.it/open-source/oid4vp-rs.git", rev = "2db3c3d2" }
 sd-jwt-rs = { git = "ssh://git@git.slock.it/open-source/sd-jwt-rust.git", rev = "ecfc9ac" }
 didcomm = { git = "ssh://git@git.slock.it/open-source/didcomm-rust.git", rev = "db41780d" }
 did_peer = { git = "ssh://git@git.slock.it/open-source/aries-vcx.git", rev = "fc818ef5" }
@@ -101,6 +101,7 @@ reqwest-tracing = { version = "0.5.5", default-features = false }
 one-core = { git = "ssh://git@git.slock.it/open-source/one-core-new.git", rev = "5f387065" }
 shared-types = { git = "ssh://git@git.slock.it/open-source/one-core-new.git", rev = "5f387065" }
 x509-parser = { version = "0.18", features = ["verify"] }
+x509-cert = { version = "0.2", features = ["pem"] }
 
 [dev-dependencies]
 mockall = "0.13.0"
@@ -108,6 +109,7 @@ mockall = "0.13.0"
 mockito = "=1.5.0"
 httpmock = "0.8.0-alpha.1"
 rstest = "0.22.0"
+rcgen = "0.14"
 # InMEM dependencies
 ed25519-dalek = "2.1.1"
 bip32 = "0.5.2"

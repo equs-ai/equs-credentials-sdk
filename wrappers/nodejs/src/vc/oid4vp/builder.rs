@@ -26,6 +26,7 @@ pub async fn _build_vp_verifier(
     http_client: Option<&ReqwestHttpClient>,
     did_resolver: Option<JsDIDResolver>,
     trusted_root_certificates: Option<Vec<Uint8Array>>,
+    x509_certificate_chain: Option<Uint8Array>,
 ) -> Result<InternalOID4VPVerifier> {
     let key_metadata: KeyMetadata = key_metadata.into();
     let mut builder = agent_sdk::vc::oid4vp::VerifierBuilder::new(
@@ -57,6 +58,12 @@ pub async fn _build_vp_verifier(
                 .add_trusted_root_certificate(&cert)
                 .map_err(|err| Error::new(Status::InvalidArg, err))?;
         }
+    }
+
+    if let Some(x509_certificate_chain) = x509_certificate_chain {
+        builder = builder
+            .with_x509_certificate_chain(&x509_certificate_chain)
+            .map_err(|err| Error::new(Status::InvalidArg, err))?;
     }
 
     let verifier = builder

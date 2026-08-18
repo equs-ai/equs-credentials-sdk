@@ -128,6 +128,7 @@ impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata, Claims> for M
         } else {
             None
         };
+        let response_uri = holder_binder.as_ref().and_then(|b| b.response_uri.clone());
         let ctx = ExtractPresentationCtx {
             verification_protocol_type: VerificationProtocolType::OpenId4VpFinal1_0,
             nonce: holder_binder.clone().map(|b| b.nonce.secret().to_string()),
@@ -138,7 +139,7 @@ impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata, Claims> for M
             issuance_date: None,
             expiration_date: None,
             mdoc_session_transcript: None,
-            response_uri: None,
+            response_uri,
         };
 
         let extracted_vps: ExtractedPresentation = presentation_formatter
@@ -277,6 +278,7 @@ pub mod tests {
                     "4Y1DVuoVHfjotxmX55AQv36Tr5sdcvaBLXia6bj2hUM".to_string(),
                 ),
                 verifier_id: "https://embedui.ssi.dev.dsr.gaminghub.bc-labs.dev".to_string(),
+                response_uri: None,
             }),
             VerifyOptions {
                 trusted_certs_skids: Some(HashSet::from([

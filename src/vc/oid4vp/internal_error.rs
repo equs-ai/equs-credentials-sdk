@@ -69,6 +69,12 @@ pub enum InternalError {
         location: Location,
         source: anyhow::Error,
     },
+    #[snafu(display("x509 based client-id scheme error: {details}"))]
+    X509 {
+        details: String,
+        #[snafu(implicit)]
+        location: Location,
+    },
     #[snafu(display("JWS error"))]
     JWS {
         source: ssi::claims::jws::Error,
