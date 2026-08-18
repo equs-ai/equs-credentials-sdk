@@ -4,11 +4,12 @@ use crate::vc::JsonObject;
 use crate::vc::oid4vp::JsInnerAuthorizationResponse;
 use agent_sdk::vc::dcql::NonEmptyVec;
 use agent_sdk::vc::oid4vp::{
-    AuthResponseOptions, AuthorizationRequestMetadata, CredentialVerificationMetadata,
-    ExpectedOrigins, HttpMethodForAuth, PassAuthRequestObject,
-    PresentationSession as RustPresentationSession, Verifier, WalletMetadata,
+    AuthResponseOptions, AuthorizationRequestMetadata, ClientMetadata,
+    CredentialVerificationMetadata, ExpectedOrigins, HttpMethodForAuth, PassAuthRequestObject,
+    PresentationSession as RustPresentationSession, Verifier, VerifierInfo, VerifierInfoEntry,
+    WalletMetadata,
 };
-use napi::{Error, Result};
+use napi::{Error, Result, Status};
 use napi_derive::napi;
 use std::collections::HashMap;
 use url::Url;
@@ -222,6 +223,10 @@ pub struct JsAuthorizationRequestMetadata {
     #[napi(ts_type = "Array<TransactionDataItem> | null | undefined")]
     pub transaction_data: Option<Vec<JsonObject>>,
     pub expected_origins: Option<Vec<String>>,
+    #[napi(ts_type = "ClientMetadata | null | undefined")]
+    pub client_metadata: Option<JsonObject>,
+    #[napi(ts_type = "Array<VerifierInfoEntry> | null | undefined")]
+    pub verifier_info: Option<Vec<JsonObject>>,
 }
 
 impl TryFrom<JsAuthorizationRequestMetadata> for AuthorizationRequestMetadata {
@@ -251,11 +256,34 @@ impl TryFrom<JsAuthorizationRequestMetadata> for AuthorizationRequestMetadata {
             None
         };
 
+        let client_metadata = match value.client_metadata {
+            Some(metadata) => Some(
+                ClientMetadata::try_from(from_json_object::<serde_json::Value>(metadata)?)
+                    .map_err(|err| Error::new(Status::InvalidArg, err))?,
+            ),
+            None => None,
+        };
+
+        // Drop an empty list: `verifier_info: []` would claim attestations.
+        let verifier_info = value
+            .verifier_info
+            .map(|entries| {
+                entries
+                    .into_iter()
+                    .map(from_json_object::<VerifierInfoEntry>)
+                    .collect::<Result<Vec<_>>>()
+            })
+            .transpose()?
+            .and_then(NonEmptyVec::maybe_new)
+            .map(VerifierInfo::from);
+
         Ok(Self {
             auth_response_options: value.auth_response_options.try_into()?,
             pass_auth_request_object: value.pass_auth_request_object.try_into()?,
             transaction_data,
             expected_origins,
+            client_metadata,
+            verifier_info,
         })
     }
 }

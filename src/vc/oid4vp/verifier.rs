@@ -27,18 +27,21 @@ use crate::vc::dcql::validate_credentials;
 use crate::vc::oid4vp::Error::{Internal, Protocol};
 use crate::vc::oid4vp::internal_error::{
     AuthorizationResponseDecryptionSnafu, ClaimsSnafu, ClientSnafu, DCQLSnafu,
-    DidUrlResolutionSnafu, IdTokenValidationSnafu, JsonSnafu, KMSSnafu, NonceGenerationSnafu,
-    Oid4VpLibSnafu, ParseSnafu, PresentationExchangeSnafu, VCSnafu,
+    DidUrlResolutionSnafu, FormatNotSupportedSnafu, IdTokenValidationSnafu, JsonSnafu, KMSSnafu,
+    NonceGenerationSnafu, Oid4VpLibSnafu, ParseSnafu, PresentationExchangeSnafu, VCSnafu,
+    X509Snafu,
 };
-use crate::vc::oid4vp::metadata::{default_client_metadata, default_wallet_metadata};
+use crate::vc::oid4vp::metadata::{
+    default_client_metadata, default_wallet_metadata, ensure_supported_vp_formats,
+};
 use crate::vc::oid4vp::protocol_error::ErrorType;
 use crate::vc::oid4vp::signer::Signer;
 use crate::vc::oid4vp::{
     AuthorizationRequestMetadata, AuthorizationResponse, AuthorizationResponseObject, ClientId,
-    ClientMetadata, CredentialVerificationMetadata, PRESENTATION_SUBMISSION, PassAuthRequestObject,
-    PresentationSession, ProtocolError, ResolvedPresentationQuery, ResponseMode, ResponseType,
-    STATE, TRANSACTION_DATA_HASHES, TRANSACTION_DATA_HASHES_ALG, TransactionDataItem,
-    TransactionDataResponse, get_transaction_data_hash,
+    ClientIdPrefix, ClientMetadata, CredentialVerificationMetadata, PRESENTATION_SUBMISSION,
+    PassAuthRequestObject, PresentationSession, ProtocolError, ResolvedPresentationQuery,
+    ResponseMode, ResponseType, STATE, TRANSACTION_DATA_HASHES, TRANSACTION_DATA_HASHES_ALG,
+    TransactionDataItem, TransactionDataResponse, get_transaction_data_hash,
 };
 use crate::vc::presentation_exchange;
 use crate::vc::presentation_exchange::{
@@ -46,8 +49,10 @@ use crate::vc::presentation_exchange::{
 };
 use crate::vc::{dcql, oid4vp as api};
 use one_core_asdk::one_crypto::jwe::extract_jwe_header;
-use openid4vp::core::authorization_request::RequestReference;
+use openid4vp::core::authorization_request::{AuthorizationRequestObject, RequestReference};
+use openid4vp::core::object::UntypedObject;
 use openid4vp::core::response::parameters::{IdTokenBody as IdToken, TransactionDataHashesAlg};
+use ssi::claims::jwt::decode_unverified;
 use ssi::dids::DIDURLBuf;
 use std::collections::HashMap;
 use std::ops::Deref;
@@ -57,8 +62,12 @@ pub type Result<T> = core::result::Result<T, Error>;
 
 pub type DecentralizedIdentifierClient<S> =
     openid4vp::verifier::client::DecentralizedIdentifierClient<S>;
-pub type X509Client = openid4vp::verifier::client::X509Client;
 pub type RedirectUriClient = openid4vp::verifier::client::RedirectUriClient;
+
+pub use crate::vc::oid4vp::x509::X509Variant;
+#[cfg(not(target_arch = "wasm32"))]
+pub use crate::vc::oid4vp::x509::{Certificate, X509Client};
+
 const VP_TOKEN: &str = "vp_token";
 const ID_TOKEN: &str = "id_token";
 
@@ -67,12 +76,14 @@ pub struct VerifierMetadata {
     pub client_id: ClientId,
     pub key_metadata: KeyMetadata,
     pub client_metadata: ClientMetadata,
+    pub x5c_chain: Option<Vec<u8>>,
 }
 
 #[derive(Debug, Default, Clone)]
 pub(crate) struct PresentationVerificationOptions {
     pub enc_pub_key: Option<JWK>,
     pub audience: Option<String>,
+    pub response_uri: Option<String>,
 }
 
 pub struct VerifierService<VF, KH, KMS, NG, HC>
@@ -119,6 +130,7 @@ where
             client_id,
             key_metadata,
             client_metadata: client_metadata.unwrap_or(default_client_metadata()),
+            x5c_chain: None,
         };
 
         info!("oid4vp-verifier service is initialized");
@@ -133,6 +145,18 @@ where
             _marker: Default::default(),
         }
     }
+
+    /// Sets the PEM-encoded, leaf-first X.509 certificate chain carried in the
+    /// `x5c` header of the signed Authorization Request Object.
+    ///
+    /// Used when the Verifier's `client_id` has an X.509 prefix. The leaf must
+    /// derive that `client_id` — its SAN DNS name for `x509_san_dns`, its hash
+    /// for `x509_hash` — and must certify the Verifier's signing key. Both are
+    /// checked when the request is built, where the PEM is parsed.
+    pub fn with_x509_certificate_chain(mut self, pem_bytes: Vec<u8>) -> Self {
+        self.metadata.x5c_chain = Some(pem_bytes);
+        self
+    }
 }
 
 #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
@@ -140,7 +164,7 @@ where
 impl<VF, KH, KMS, NG, HC> api::Verifier for VerifierService<VF, KH, KMS, NG, HC>
 where
     VF: vc::core::Verifier,
-    KH: KeyHandle,
+    KH: KeyHandle + 'static,
     KMS: Kms<KH> + JweDecrypt<KH>,
     NG: NonceHandler,
     HC: HttpClient,
@@ -208,6 +232,12 @@ where
         )?;
 
         verification_opts.audience = verification_metadata.audience.clone();
+        let response_uri = session
+            .auth_request_jwt
+            .as_deref()
+            .and_then(Self::response_uri_from_request_object);
+        verification_opts.response_uri = response_uri;
+
         let (vp_token_claims, presentations) = self
             .do_verify_presentation(
                 &session.resolved_presentation_query,
@@ -239,7 +269,7 @@ where
 impl<VF, KH, KMS, NG, HC> VerifierService<VF, KH, KMS, NG, HC>
 where
     VF: vc::core::Verifier,
-    KH: KeyHandle,
+    KH: KeyHandle + 'static,
     KMS: Kms<KH> + JweDecrypt<KH>,
     NG: NonceHandler,
     HC: HttpClient,
@@ -337,6 +367,7 @@ where
                     PresentationVerificationOptions {
                         enc_pub_key,
                         audience: None,
+                        response_uri: None,
                     },
                 ))
             }
@@ -525,34 +556,185 @@ where
                 )
                 .await
             }
-            _ => {
-                info!("access to the key {}", self.metadata.key_metadata.kid);
-                let verifier_key = self
-                    .kms
-                    .get(&self.metadata.key_metadata.kid)
+            // The request object is signed, so the Verifier's client-id prefix
+            // selects who signs it and how it is authenticated.
+            _ => match self.metadata.client_id.get_prefix() {
+                ClientIdPrefix::X509SanDns => {
+                    self.build_x509_request(
+                        X509Variant::SanDns,
+                        resolved_presentation_query,
+                        nonce,
+                        wallet_metadata,
+                        auth_request_metadata,
+                    )
                     .await
-                    .context(KMSSnafu)?;
-
-                let did_client = DecentralizedIdentifierClient::new(
-                    self.metadata.key_metadata.did_url.clone(),
-                    Signer::new(verifier_key)?,
-                    &self.public_jwk_resolver,
-                )
-                .await
-                .context(Oid4VpLibSnafu)?;
-
-                let verifier_builder =
-                    openid4vp::verifier::Verifier::builder().with_client(did_client);
-                self.build_authorization_request_helper(
-                    resolved_presentation_query,
-                    nonce,
-                    wallet_metadata,
-                    verifier_builder,
-                    auth_request_metadata,
-                )
-                .await
-            }
+                }
+                ClientIdPrefix::X509Hash => {
+                    self.build_x509_request(
+                        X509Variant::Hash,
+                        resolved_presentation_query,
+                        nonce,
+                        wallet_metadata,
+                        auth_request_metadata,
+                    )
+                    .await
+                }
+                _ => {
+                    self.build_did_request(
+                        resolved_presentation_query,
+                        nonce,
+                        wallet_metadata,
+                        auth_request_metadata,
+                    )
+                    .await
+                }
+            },
         }
+    }
+
+    /// Builds an Authorization Request Object signed with the Verifier's DID
+    /// key, authenticated by the `did_url` from its key metadata.
+    async fn build_did_request(
+        &self,
+        resolved_presentation_query: &ResolvedPresentationQuery,
+        nonce: Nonce,
+        wallet_metadata: &WalletMetadata,
+        auth_request_metadata: &AuthorizationRequestMetadata,
+    ) -> Result<(Url, Option<String>)> {
+        info!("access to the key {}", self.metadata.key_metadata.kid);
+        let verifier_key = self
+            .kms
+            .get(&self.metadata.key_metadata.kid)
+            .await
+            .context(KMSSnafu)?;
+
+        let did_client = DecentralizedIdentifierClient::new(
+            self.metadata.key_metadata.did_url.clone(),
+            Signer::new(verifier_key)?,
+            &self.public_jwk_resolver,
+        )
+        .await
+        .context(Oid4VpLibSnafu)?;
+
+        let verifier_builder = openid4vp::verifier::Verifier::builder().with_client(did_client);
+        self.build_authorization_request_helper(
+            resolved_presentation_query,
+            nonce,
+            wallet_metadata,
+            verifier_builder,
+            auth_request_metadata,
+        )
+        .await
+    }
+
+    /// Builds an Authorization Request Object for an X.509 `client_id`: signed
+    /// with the Verifier's key, with the configured certificate chain in the JWT
+    /// `x5c` header. `variant` selects how the `client_id` is derived from the
+    /// leaf — its SAN DNS name (`x509_san_dns`) or its hash (`x509_hash`).
+    ///
+    /// Requires a chain set via [`VerifierService::with_x509_certificate_chain`]
+    /// that derives the configured `client_id` and whose leaf public key is the
+    /// Verifier's signing key.
+    #[cfg(not(target_arch = "wasm32"))]
+    async fn build_x509_request(
+        &self,
+        variant: X509Variant,
+        resolved_presentation_query: &ResolvedPresentationQuery,
+        nonce: Nonce,
+        wallet_metadata: &WalletMetadata,
+        auth_request_metadata: &AuthorizationRequestMetadata,
+    ) -> Result<(Url, Option<String>)> {
+        use openid4vp::verifier::client::Client as _;
+
+        let pem = self.metadata.x5c_chain.as_deref().ok_or_else(|| {
+            X509Snafu {
+                details: format!(
+                    "no certificate chain configured for client_id {}",
+                    self.metadata.client_id
+                ),
+            }
+            .build()
+        })?;
+
+        let x5c = Certificate::load_pem_chain(pem).map_err(|e| {
+            X509Snafu {
+                details: format!("cannot parse the configured certificate chain: {e}"),
+            }
+            .build()
+        })?;
+
+        // `X509Client::client_id` reads the leaf directly.
+        ensure!(
+            !x5c.is_empty(),
+            X509Snafu {
+                details: format!(
+                    "empty certificate chain configured for client_id {}",
+                    self.metadata.client_id
+                ),
+            }
+        );
+
+        info!("access to the key {}", self.metadata.key_metadata.kid);
+        let verifier_key = self
+            .kms
+            .get(&self.metadata.key_metadata.kid)
+            .await
+            .context(KMSSnafu)?;
+
+        // The Wallet checks the request signature against the leaf certificate's
+        // public key, so a leaf that does not belong to the signing key produces
+        // requests every Wallet rejects. Catch it here instead.
+        vc::oid4vp::x509::ensure_leaf_matches_signing_key(&x5c[0], &verifier_key)?;
+
+        let signer: std::sync::Arc<
+            dyn openid4vp::signer::Signer<Error = anyhow::Error> + Send + Sync,
+        > = std::sync::Arc::new(Signer::new(verifier_key)?);
+
+        let x509_client = X509Client::new(x5c, signer, variant).context(Oid4VpLibSnafu)?;
+
+        // The emitted `client_id` is derived from the leaf certificate, so a
+        // mismatch would silently send a different identifier than configured.
+        ensure!(
+            x509_client.id() == &self.metadata.client_id,
+            X509Snafu {
+                details: format!(
+                    "certificate chain does not match the configured client_id: expected {}, got {}",
+                    self.metadata.client_id,
+                    x509_client.id()
+                ),
+            }
+        );
+
+        let verifier_builder = openid4vp::verifier::Verifier::builder().with_client(x509_client);
+        self.build_authorization_request_helper(
+            resolved_presentation_query,
+            nonce,
+            wallet_metadata,
+            verifier_builder,
+            auth_request_metadata,
+        )
+        .await
+    }
+
+    /// wasm32 counterpart of [`Self::build_x509_request`]: an X.509 `client_id`
+    /// cannot be served on this target.
+    #[cfg(target_arch = "wasm32")]
+    async fn build_x509_request(
+        &self,
+        variant: X509Variant,
+        _resolved_presentation_query: &ResolvedPresentationQuery,
+        _nonce: Nonce,
+        _wallet_metadata: &WalletMetadata,
+        _auth_request_metadata: &AuthorizationRequestMetadata,
+    ) -> Result<(Url, Option<String>)> {
+        Err(X509Snafu {
+            details: format!(
+                "the {} client-id prefix is not supported on wasm32",
+                variant.to_prefix()
+            ),
+        }
+        .build()
+        .into())
     }
 
     #[instrument(level = Level::TRACE, skip(self), err(), ret())]
@@ -633,10 +815,25 @@ where
             _ => request_builder,
         };
 
+        if let Some(verifier_info) = &auth_request_metadata.verifier_info {
+            request_builder = request_builder.with_request_parameter(verifier_info.to_owned());
+        }
+
+        let client_metadata = match &auth_request_metadata.client_metadata {
+            Some(client_metadata) => {
+                ensure_supported_vp_formats(client_metadata).map_err(|format| Internal {
+                    source: FormatNotSupportedSnafu { format }.build(),
+                })?;
+
+                client_metadata.clone()
+            }
+            None => self.metadata.client_metadata.clone(),
+        };
+
         let (auth_request_url, auth_req_jwt) = request_builder
             .with_request_parameter(auth_request_metadata.auth_response_options.mode.to_owned())
             .with_request_parameter(NonceSpruce::from(nonce.secret()))
-            .with_request_parameter(self.metadata.client_metadata.clone())
+            .with_request_parameter(client_metadata)
             .build(wallet_metadata, auth_req_type)
             .await?;
 
@@ -693,6 +890,7 @@ where
                             .as_deref()
                             .unwrap_or(&self.metadata.client_id.get_full_id())
                             .to_owned(),
+                        response_uri: presentation_verification_opts.response_uri.clone(),
                     })
                 };
 
@@ -782,6 +980,16 @@ where
         };
         Ok(())
     }
+
+    fn response_uri_from_request_object(request_object_jwt: &str) -> Option<String> {
+        let request: AuthorizationRequestObject =
+            decode_unverified::<UntypedObject>(request_object_jwt)
+                .ok()?
+                .try_into()
+                .ok()?;
+
+        request.return_uri().map(|u| u.to_string())
+    }
 }
 
 #[cfg(test)]
@@ -801,15 +1009,19 @@ mod tests {
     use crate::vc::oid4vp::tests::fixtures::{NONCE, multi_presentation, single_presentation};
     use crate::vc::oid4vp::tests::fixtures::{STATE, VERIFIER_URL};
     use crate::vc::oid4vp::tests::utils::{
-        VerificationTestCase, build_url, generate_client_metadata, validate_claims,
-        verifier_service, verifier_service_with_invalid_kid, verifier_service_with_signer_error,
+        TestVerifierService, VerificationTestCase, build_url, generate_client_metadata,
+        self_signed_certificate_pem, unrelated_signing_key, validate_claims, verifier_service,
+        verifier_service_with_derived_client_id, verifier_service_with_invalid_kid,
+        verifier_service_with_signer_error,
     };
     use crate::vc::oid4vp::verifier::VP_TOKEN;
     use crate::vc::oid4vp::{ExpectedOrigins, HttpMethodForAuth, InternalError};
     use crate::vc::oid4vp::{PassAuthRequestObject, PresentationSession, ResponseType, Verifier};
+    use crate::vc::oid4vp::{VerifierInfo, VerifierInfoEntry};
     use crate::vc::presentation_exchange::PresentationDefinition;
     use base64::Engine;
     use base64::prelude::BASE64_URL_SAFE_NO_PAD;
+    use openid4vp::core::authorization_request::parameters::VerifierInfoData;
     use openid4vp::core::authorization_request::{
         AuthorizationRequest, AuthorizationRequestObject,
     };
@@ -844,6 +1056,8 @@ mod tests {
                         method: Some(HttpMethodForAuth::POST),
                     },
                     expected_origins: None,
+                    client_metadata: None,
+                    verifier_info: None,
                 },
                 None,
             )
@@ -858,6 +1072,174 @@ mod tests {
             hash_query.get("request_uri_method").unwrap(),
             request_uri_method
         );
+    }
+
+    const X509_SAN_DNS_NAME: &str = "verifier.example";
+    const X509_SAN_DNS_CLIENT_ID: &str = "x509_san_dns:verifier.example";
+
+    fn x509_client_id(chain: &[Certificate], variant: X509Variant) -> ClientId {
+        vc::oid4vp::x509::client_id_from_x509_chain(chain, variant).unwrap()
+    }
+
+    /// Wallet metadata that advertises no `x509_*` client-id prefix at all.
+    fn wallet_metadata_without_x509() -> WalletMetadata {
+        const JSON: &str = r#"{
+            "issuer": "https://self-issued.me/v2",
+            "authorization_endpoint": "openid4vp://",
+            "response_types_supported": ["vp_token", "vp_token id_token"],
+            "vp_formats_supported": {
+                "dc+sd-jwt": {
+                    "sd-jwt_alg_values": ["EdDSA", "ES256"],
+                    "kb-jwt_alg_values": ["EdDSA", "ES256"]
+                }
+            },
+            "client_id_prefixes_supported": [
+                "decentralized_identifier",
+                "redirect_uri"
+            ],
+            "request_object_signing_alg_values_supported": ["EdDSA", "ES256"],
+            "subject_syntax_types_supported": ["did:key"],
+            "id_token_types_supported": ["subject_signed_id_token"]
+        }"#;
+
+        WalletMetadata::try_from(serde_json::from_str::<UntypedObject>(JSON).unwrap()).unwrap()
+    }
+
+    async fn x509_verifier(variant: X509Variant) -> (TestVerifierService, ClientId) {
+        let mut derived = None;
+
+        let (verifier, _key) = verifier_service_with_derived_client_id(|key| {
+            let pem = self_signed_certificate_pem(key, X509_SAN_DNS_NAME);
+            let chain = Certificate::load_pem_chain(pem.as_bytes()).unwrap();
+            let client_id = x509_client_id(&chain, variant);
+            derived = Some((pem, client_id.clone()));
+
+            client_id
+        })
+        .await;
+
+        let (pem, client_id) = derived.unwrap();
+
+        (
+            verifier.with_x509_certificate_chain(pem.into_bytes()),
+            client_id,
+        )
+    }
+
+    async fn create_x509_request(
+        verifier: &TestVerifierService,
+        wallet_metadata: Option<&WalletMetadata>,
+    ) -> Result<(Url, PresentationSession)> {
+        verifier
+            .create_authorization_request(
+                &single_presentation::sd_jwt::presentation_definition(),
+                &AuthorizationRequestMetadata {
+                    auth_response_options: auth_response_options(
+                        build_url(VERIFIER_URL, "auth"),
+                        None,
+                    ),
+                    transaction_data: None,
+                    pass_auth_request_object: PassAuthRequestObject::ByValue,
+                    expected_origins: None,
+                    client_metadata: None,
+                    verifier_info: None,
+                },
+                wallet_metadata,
+            )
+            .await
+    }
+
+    #[rstest]
+    #[case::san_dns(X509Variant::SanDns)]
+    #[case::hash(X509Variant::Hash)]
+    #[tokio::test]
+    async fn generate_x509_auth_request_success(#[case] variant: X509Variant) {
+        let (verifier, client_id) = x509_verifier(variant).await;
+
+        // `None` falls back to the SDK default wallet metadata, which is the
+        // normal case for cross-device OID4VP — it must advertise the x509
+        // prefixes, or an x509 `client_id` would be unusable there.
+        let (_url, session) = create_x509_request(&verifier, None).await.unwrap();
+
+        let jwt = session
+            .auth_request_jwt
+            .expect("an x509 request must be a signed JWT");
+
+        // The request JWT header must carry the certificate chain in `x5c`.
+        let header_b64 = jwt.split('.').next().unwrap();
+        let header: serde_json::Value =
+            serde_json::from_slice(&BASE64_URL_SAFE_NO_PAD.decode(header_b64).unwrap()).unwrap();
+        let x5c = header
+            .get("x5c")
+            .and_then(|v| v.as_array())
+            .expect("request JWT header must contain an x5c array");
+        assert!(!x5c.is_empty(), "x5c chain must not be empty");
+
+        // The client_id must be the one derived from the leaf certificate.
+        let payload_b64 = jwt.split('.').nth(1).unwrap();
+        let payload: serde_json::Value =
+            serde_json::from_slice(&BASE64_URL_SAFE_NO_PAD.decode(payload_b64).unwrap()).unwrap();
+        assert_eq!(
+            payload.get("client_id").and_then(|v| v.as_str()),
+            Some(client_id.get_full_id().as_str())
+        );
+
+        if variant == X509Variant::SanDns {
+            assert_eq!(client_id.get_full_id(), X509_SAN_DNS_CLIENT_ID);
+        }
+    }
+
+    #[tokio::test]
+    async fn generate_x509_auth_request_fails_when_wallet_does_not_advertise_prefix() {
+        let (verifier, _) = x509_verifier(X509Variant::SanDns).await;
+
+        let result = create_x509_request(&verifier, Some(&wallet_metadata_without_x509())).await;
+
+        assert!(
+            result.is_err(),
+            "expected rejection when the wallet does not advertise x509_san_dns"
+        );
+    }
+
+    #[rstest]
+    // The leaf certificate's SAN DNS name is `verifier.example`.
+    #[case::client_id_mismatch(true, true)]
+    #[case::no_certificate_chain(false, false)]
+    // A chain deriving the right client_id, but certifying somebody else's key.
+    #[case::certificate_does_not_certify_signing_key(true, false)]
+    #[tokio::test]
+    async fn generate_x509_auth_request_fails_on_certificate_mismatch(
+        #[case] with_chain: bool,
+        #[case] client_id_mismatch: bool,
+    ) {
+        let foreign_key = unrelated_signing_key().await;
+
+        let (verifier, _) = verifier_service_with_derived_client_id(|_| {
+            ClientId::new(if client_id_mismatch && with_chain {
+                "x509_san_dns:other.example".to_string()
+            } else {
+                X509_SAN_DNS_CLIENT_ID.to_string()
+            })
+            .unwrap()
+        })
+        .await;
+
+        let verifier = if with_chain {
+            // Minted from `foreign_key`, so it never certifies the verifier's key.
+            let pem = self_signed_certificate_pem(&foreign_key, X509_SAN_DNS_NAME);
+            verifier.with_x509_certificate_chain(pem.into_bytes())
+        } else {
+            verifier
+        };
+
+        let result = create_x509_request(&verifier, None).await;
+
+        assert!(matches!(
+            result,
+            Err(Error::Internal {
+                source: InternalError::X509 { .. }
+            })
+        ));
     }
 
     #[rstest]
@@ -886,6 +1268,8 @@ mod tests {
                     expected_origins: Some(ExpectedOrigins::new(
                         expected_origins.clone().try_into().unwrap(),
                     )),
+                    client_metadata: None,
+                    verifier_info: None,
                 },
                 None,
             )
@@ -902,6 +1286,50 @@ mod tests {
             request.expected_origins().unwrap().origins().to_vec(),
             expected_origins
         );
+    }
+
+    #[tokio::test]
+    async fn generate_signed_auth_request_carries_verifier_info() {
+        let request_uri = build_url(VERIFIER_URL, "request");
+        let (verifier, _did) = verifier_service().await;
+        let auth_response_options = auth_response_options(build_url(VERIFIER_URL, "auth"), None);
+
+        let rprc = "eyJhbGciOiJFUzI1NiJ9.eyJpc3MiOiJyZWdpc3RyYXIifQ.c2ln";
+        let entries = NonEmptyVec::new(VerifierInfoEntry {
+            format: "urn:etsi:119472-2:rc".to_string(),
+            data: VerifierInfoData::String(rprc.to_string()),
+            credential_ids: None,
+        });
+
+        let (_url, session) = verifier
+            .create_authorization_request(
+                &ResolvedPresentationQuery::DCQL(DCQL::new(sample_dcql())),
+                &AuthorizationRequestMetadata {
+                    transaction_data: None,
+                    auth_response_options,
+                    pass_auth_request_object: PassAuthRequestObject::ByReference {
+                        uri: request_uri,
+                        method: Some(HttpMethodForAuth::POST),
+                    },
+                    expected_origins: None,
+                    client_metadata: None,
+                    verifier_info: Some(entries.into()),
+                },
+                None,
+            )
+            .await
+            .unwrap();
+
+        let request =
+            decode_unverified::<UntypedObject>(session.auth_request_jwt.unwrap().as_str()).unwrap();
+        let claim = request
+            .get::<VerifierInfo>()
+            .expect("verifier_info is absent from the request object")
+            .unwrap();
+
+        assert_eq!(claim.0.len(), 1);
+        assert_eq!(claim.0[0].format, "urn:etsi:119472-2:rc");
+        assert_eq!(claim.0[0].data, VerifierInfoData::String(rprc.to_string()));
     }
 
     #[tokio::test]
@@ -923,6 +1351,8 @@ mod tests {
                         method: None,
                     },
                     expected_origins: None,
+                    client_metadata: None,
+                    verifier_info: None,
                 },
                 None,
             )
@@ -955,6 +1385,8 @@ mod tests {
                         method: None,
                     },
                     expected_origins: None,
+                    client_metadata: None,
+                    verifier_info: None,
                 },
                 None,
             )
@@ -987,6 +1419,8 @@ mod tests {
                     auth_response_options,
                     pass_auth_request_object: PassAuthRequestObject::ByValue,
                     expected_origins: None,
+                    client_metadata: None,
+                    verifier_info: None,
                 },
                 None,
             )
@@ -1073,6 +1507,8 @@ mod tests {
                     auth_response_options,
                     pass_auth_request_object: PassAuthRequestObject::ByValue,
                     expected_origins: None,
+                    client_metadata: None,
+                    verifier_info: None,
                 },
                 None,
             )
@@ -1112,6 +1548,8 @@ mod tests {
                     auth_response_options,
                     pass_auth_request_object: PassAuthRequestObject::ByValue,
                     expected_origins: None,
+                    client_metadata: None,
+                    verifier_info: None,
                 },
                 None,
             )
@@ -1186,6 +1624,8 @@ mod tests {
                         method: None,
                     },
                     expected_origins: None,
+                    client_metadata: None,
+                    verifier_info: None,
                 },
                 None,
             )
@@ -1222,6 +1662,8 @@ mod tests {
                         method: None,
                     },
                     expected_origins: None,
+                    client_metadata: None,
+                    verifier_info: None,
                 },
                 None,
             )

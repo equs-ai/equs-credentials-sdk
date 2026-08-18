@@ -261,7 +261,7 @@ class VcCoreTests {
         }
         #expect(!entries.isEmpty)
 
-        let binder = HolderBinder(nonce: VcCoreFixtures.nonce, verifierId: VcCoreFixtures.verifierId)
+        let binder = HolderBinder(nonce: VcCoreFixtures.nonce, verifierId: VcCoreFixtures.verifierId, responseUri: nil)
         let presentation = try await holder.createPresentationAuto(
             holderBinder: binder,
             presentationInput: VcCoreFixtures.presentationInput()
@@ -314,7 +314,7 @@ class VcCoreTests {
         let metadata = try await resolveMetadata(credential: credential, metadata: keyMetadata)
         _ = try await holder.storeCredential(credential: credential, metadata: metadata)
 
-        let binder = HolderBinder(nonce: VcCoreFixtures.nonce, verifierId: VcCoreFixtures.verifierId)
+        let binder = HolderBinder(nonce: VcCoreFixtures.nonce, verifierId: VcCoreFixtures.verifierId, responseUri: nil)
         let presentation = try await holder.createPresentationAuto(
             holderBinder: binder,
             presentationInput: VcCoreFixtures.presentationInput()

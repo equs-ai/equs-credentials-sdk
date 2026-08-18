@@ -208,6 +208,8 @@ async fn oid4vp_credentials_presentation_and_verification_with_custom_did_resolv
                     method: None,
                 },
                 expected_origins: None,
+                client_metadata: None,
+                verifier_info: None,
             },
             None,
         )

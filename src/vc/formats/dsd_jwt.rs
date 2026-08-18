@@ -420,6 +420,7 @@ mod tests {
                 holder_binder: Some(HolderBinder {
                     nonce: nonce.clone(),
                     verifier_id: verifier_id.clone(),
+                    response_uri: None,
                 }),
             },
             UniversalResolver::default(),
@@ -430,7 +431,11 @@ mod tests {
         // Step 4: Verifier verifies the full chain + KB-JWT.
         let verified_claims = SdJwtAPI::verify_vp(
             &presentation,
-            Some(HolderBinder { nonce, verifier_id }),
+            Some(HolderBinder {
+                nonce,
+                verifier_id,
+                response_uri: None,
+            }),
             VerifyOptions::default(),
             UniversalResolver::default(),
         )
@@ -495,6 +500,7 @@ mod tests {
                 holder_binder: Some(HolderBinder {
                     nonce: nonce.clone(),
                     verifier_id: verifier_id.clone(),
+                    response_uri: None,
                 }),
             },
             UniversalResolver::default(),
@@ -504,7 +510,11 @@ mod tests {
 
         let verified = SdJwtAPI::verify_vp(
             &presentation,
-            Some(HolderBinder { nonce, verifier_id }),
+            Some(HolderBinder {
+                nonce,
+                verifier_id,
+                response_uri: None,
+            }),
             VerifyOptions::default(),
             UniversalResolver::default(),
         )

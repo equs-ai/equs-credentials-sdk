@@ -837,6 +837,7 @@ pub mod utils {
             let holder_binder = nonce.map(|n| HolderBinder {
                 nonce: n.to_owned(),
                 verifier_id: VERIFIER_ID.to_string(),
+                response_uri: None,
             });
             let vp_meta = sd_jwt_vc::VPMetadata {
                 disclosures: disclosures
@@ -889,6 +890,7 @@ pub mod utils {
             let holder_binder = nonce.map(|n| HolderBinder {
                 nonce: n,
                 verifier_id: VERIFIER_ID.to_string(),
+                response_uri: None,
             });
             let vp_meta = json_ld_vc::VPMetadata::new(vc, holder_binder).unwrap();
 

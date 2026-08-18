@@ -1089,6 +1089,7 @@ mod tests {
                 Some(HolderBinder {
                     nonce: nonce.to_owned(),
                     verifier_id: VERIFIER_ID.to_string(),
+                    response_uri: None,
                 }),
                 &case.create_presentation_input(),
                 &entry,
@@ -1148,6 +1149,7 @@ mod tests {
                 Some(HolderBinder {
                     nonce: nonce.to_owned(),
                     verifier_id: VERIFIER_ID.to_string(),
+                    response_uri: None,
                 }),
                 &case.create_presentation_input(),
                 &CredentialEntry {
@@ -1178,6 +1180,7 @@ mod tests {
                 Some(HolderBinder {
                     nonce: nonce.to_owned(),
                     verifier_id: VERIFIER_ID.to_string(),
+                    response_uri: None,
                 }),
                 &case.create_presentation_input(),
                 &CredentialEntry {
@@ -1214,6 +1217,7 @@ mod tests {
                 Some(HolderBinder {
                     nonce: nonce.to_owned(),
                     verifier_id: VERIFIER_ID.to_string(),
+                    response_uri: None,
                 }),
                 &case.create_presentation_input(),
             )
@@ -1250,6 +1254,7 @@ mod tests {
                 Some(HolderBinder {
                     nonce: nonce.to_owned(),
                     verifier_id: VERIFIER_ID.to_string(),
+                    response_uri: None,
                 }),
                 &case.create_presentation_input(),
             )

@@ -4011,7 +4011,7 @@ pub mod utils {
         )
     }
 
-    type TestVerifierService = VerifierService<
+    pub type TestVerifierService = VerifierService<
         vc::core::VerifierService,
         KeyHandle,
         LocalKms,
@@ -4019,7 +4019,10 @@ pub mod utils {
         MockHttpClient,
     >;
 
-    async fn create_verifier_service(invalid_key_id: bool) -> (TestVerifierService, String) {
+    async fn create_verifier_service(
+        invalid_key_id: bool,
+        client_id: Option<ClientId>,
+    ) -> (TestVerifierService, String) {
         let kms = LocalKms::new();
         let nonce_gen = LocalNonceHandler::default();
         let (did, key_metadata) = create_did_and_key_metadata(&kms).await;
@@ -4032,7 +4035,7 @@ pub mod utils {
 
         let inner = vc::core::VerifierService::new(&did, UniversalResolver::default());
         let client_metadata = generate_client_metadata(&kms).await;
-        let client_id = ClientId::from_did(&did).unwrap();
+        let client_id = client_id.unwrap_or_else(|| ClientId::from_did(&did).unwrap());
         let verifier = VerifierService::new(
             inner,
             kms,
@@ -4048,11 +4051,62 @@ pub mod utils {
     }
 
     pub async fn verifier_service() -> (TestVerifierService, String) {
-        create_verifier_service(false).await
+        create_verifier_service(false, None).await
+    }
+
+    pub async fn verifier_service_with_derived_client_id<F>(
+        derive_client_id: F,
+    ) -> (TestVerifierService, KeyHandle)
+    where
+        F: FnOnce(&KeyHandle) -> ClientId,
+    {
+        let kms = LocalKms::new();
+        let nonce_gen = LocalNonceHandler::default();
+        let (did, key_metadata) = create_did_and_key_metadata(&kms).await;
+        let signing_key = kms.get(&key_metadata.kid).await.unwrap();
+
+        let inner = vc::core::VerifierService::new(&did, UniversalResolver::default());
+        let client_metadata = generate_client_metadata(&kms).await;
+        let verifier = VerifierService::new(
+            inner,
+            kms,
+            nonce_gen,
+            MockHttpClient::new(),
+            derive_client_id(&signing_key),
+            key_metadata,
+            UniversalResolver::default(),
+            Some(client_metadata),
+        );
+
+        (verifier, signing_key)
+    }
+
+    pub async fn unrelated_signing_key() -> KeyHandle {
+        let kms = LocalKms::new();
+        let (_, key_metadata) = create_did_and_key_metadata(&kms).await;
+
+        kms.get(&key_metadata.kid).await.unwrap()
+    }
+
+    pub fn self_signed_certificate_pem(key: &KeyHandle, dns_name: &str) -> String {
+        use crate::crypto::Key as _;
+        use ssi::crypto::p256;
+        use ssi::crypto::p256::pkcs8::{EncodePrivateKey, LineEnding};
+
+        let private_key = key.private_key().unwrap();
+        let secret = p256::SecretKey::from_slice(&private_key).unwrap();
+        let pkcs8 = secret.to_pkcs8_pem(LineEnding::LF).unwrap();
+
+        let key_pair =
+            rcgen::KeyPair::from_pkcs8_pem_and_sign_algo(&pkcs8, &rcgen::PKCS_ECDSA_P256_SHA256)
+                .unwrap();
+        let params = rcgen::CertificateParams::new(vec![dns_name.to_string()]).unwrap();
+
+        params.self_signed(&key_pair).unwrap().pem()
     }
 
     pub async fn verifier_service_with_invalid_kid() -> (TestVerifierService, String) {
-        create_verifier_service(true).await
+        create_verifier_service(true, None).await
     }
 
     pub async fn generate_client_metadata(kms: &LocalKms) -> ClientMetadata {
@@ -4205,6 +4259,7 @@ pub mod utils {
                 holder_binder: Some(HolderBinder {
                     nonce: nonce.to_owned(),
                     verifier_id: verifier_id.to_string(),
+                    response_uri: None,
                 }),
             },
             UniversalResolver::default(),

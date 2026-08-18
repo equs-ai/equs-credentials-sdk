@@ -47,6 +47,7 @@ impl From<InternalError> for EncodableError {
             InternalError::JWE { .. } => JsInternalError::JWE,
             InternalError::Client { .. } => JsInternalError::Client,
             InternalError::TransactionData { .. } => JsInternalError::TransactionData,
+            InternalError::X509 { .. } => JsInternalError::X509,
         };
         Self::new(code.to_string(), value.to_string())
     }
@@ -82,6 +83,7 @@ pub enum JsInternalError {
     JWE,
     Client,
     TransactionData,
+    X509,
 }
 
 impl From<ProtocolError> for EncodableError {

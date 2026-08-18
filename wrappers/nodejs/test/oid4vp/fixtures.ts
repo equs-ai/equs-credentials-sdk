@@ -199,6 +199,47 @@ AwIDRwAwRAIgF+H7wT7a95WbiE+DDlZrQ7U3RlCUOMCFqudFRz+K6I4CIAT35kig
 4Q1ALvtXiWKDOjZIVxlw5eKQiq0dsd+bXKZE
 -----END CERTIFICATE-----`;
 
+// ─── x509_san_dns client id fixtures ───────────────────────────────────────────
+
+export const X509_SAN_DNS_NAME = "verifier.example";
+export const X509_SAN_DNS_CLIENT_ID = `x509_san_dns:${X509_SAN_DNS_NAME}`;
+export const X509_SAN_DNS_PRIVATE_KEY_PEM = `-----BEGIN PRIVATE KEY-----
+MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgbfrG61HG6rk1EkHI
+eNEpPvJF/hXHIUNHQIz5Vz2v/5mhRANCAAQfGeYeCA4RI9xmfml8yuB289vgYdpl
+BUPDtlkRVX5n8ec6c150wgvBJD5etexGbiSrJtlZ5VKI2IuCo3eMlCgp
+-----END PRIVATE KEY-----`;
+
+/**
+ * Self-signed P-256 certificate with `subjectAltName = DNS:verifier.example`,
+ * certifying {@link X509_SAN_DNS_PRIVATE_KEY_PEM}.
+ */
+export const X509_SAN_DNS_CERT_PEM = `-----BEGIN CERTIFICATE-----
+MIIBpTCCAUugAwIBAgIUZ0sUbVcHoWEWaz9DcIw3HNDv4mwwCgYIKoZIzj0EAwIw
+GzEZMBcGA1UEAwwQdmVyaWZpZXIuZXhhbXBsZTAeFw0yNjA3MjUxMzE3NTJaFw0z
+NjA3MjIxMzE3NTJaMBsxGTAXBgNVBAMMEHZlcmlmaWVyLmV4YW1wbGUwWTATBgcq
+hkjOPQIBBggqhkjOPQMBBwNCAAQfGeYeCA4RI9xmfml8yuB289vgYdplBUPDtlkR
+VX5n8ec6c150wgvBJD5etexGbiSrJtlZ5VKI2IuCo3eMlCgpo20wazAdBgNVHQ4E
+FgQU9uFMq/NqtsYpwU5bdoAAMmCgYGQwHwYDVR0jBBgwFoAU9uFMq/NqtsYpwU5b
+doAAMmCgYGQwGwYDVR0RBBQwEoIQdmVyaWZpZXIuZXhhbXBsZTAMBgNVHRMBAf8E
+AjAAMAoGCCqGSM49BAMCA0gAMEUCIQDm4xtRVAZeLVpXtBF+JmZA6G1EgT3hJoLM
+olfQxZzr/AIgN0aICEuoH4qkiU5n6zsYrRUGSjxg74hGubPQcUI901Y=
+-----END CERTIFICATE-----`;
+
+export const WALLET_METADATA_WITHOUT_X509 = {
+  issuer: "https://self-issued.me/v2",
+  authorization_endpoint: "openid4vp://",
+  response_types_supported: ["vp_token", "vp_token id_token"],
+  vp_formats_supported: {
+    "dc+sd-jwt": {
+      "sd-jwt_alg_values": ["EdDSA", "ES256"],
+      "kb-jwt_alg_values": ["EdDSA", "ES256"],
+    },
+  },
+  client_id_prefixes_supported: ["decentralized_identifier", "redirect_uri"],
+  request_object_signing_alg_values_supported: ["EdDSA", "ES256"],
+  subject_syntax_types_supported: ["did:key"],
+  id_token_types_supported: ["subject_signed_id_token"],
+};
 
 export const DSD_JWT_GRANT_CRED_ID = "delegatecred1";
 

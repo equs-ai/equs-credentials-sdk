@@ -1035,6 +1035,7 @@ impl TryFrom<WasmHolderMetadata> for HolderMetadata {
 pub struct WasmHolderBinder {
     pub nonce: String,
     pub verifier_id: String,
+    pub response_uri: Option<String>,
 }
 
 impl From<WasmHolderBinder> for HolderBinder {
@@ -1042,6 +1043,7 @@ impl From<WasmHolderBinder> for HolderBinder {
         HolderBinder {
             nonce: Nonce::from_secret(v.nonce),
             verifier_id: v.verifier_id,
+            response_uri: v.response_uri,
         }
     }
 }
@@ -1051,6 +1053,7 @@ impl From<HolderBinder> for WasmHolderBinder {
         WasmHolderBinder {
             nonce: v.nonce.secret().to_string(),
             verifier_id: v.verifier_id,
+            response_uri: v.response_uri,
         }
     }
 }

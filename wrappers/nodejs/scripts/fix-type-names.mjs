@@ -53,6 +53,7 @@ const replacements = [
   { from: "JsCredentialExtraVerification", to: "CredentialExtraVerification" },
   { from: "JsNotification", to: "CredentialNotification" },
   { from: "JsNotificationEvent", to: "CredentialNotificationEvent" },
+  { from: "JsX509Variant", to: "X509Variant" },
   { from: "JsonObject", to: "Record<string, any>" },
 ];
 

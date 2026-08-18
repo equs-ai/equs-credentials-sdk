@@ -65,6 +65,8 @@ pub type TransactionDataItem =
 
 pub type HashAlgorithm = openid4vp::core::authorization_request::parameters::HashAlgorithm;
 pub type ExpectedOrigins = openid4vp::core::authorization_request::parameters::ExpectedOrigins;
+pub type VerifierInfo = openid4vp::core::authorization_request::parameters::VerifierInfo;
+pub type VerifierInfoEntry = openid4vp::core::authorization_request::parameters::VerifierInfoEntry;
 
 use crate::utils::b64::get_hash_and_base64;
 use crate::vc::oid4vp::Error::Protocol;
@@ -134,6 +136,8 @@ pub struct AuthorizationRequestMetadata {
     // https://openid.net/specs/openid-4-verifiable-presentations-1_0.html#section-5.1-2.8.1
     pub transaction_data: Option<Vec<TransactionDataItem>>,
     pub expected_origins: Option<ExpectedOrigins>,
+    pub client_metadata: Option<ClientMetadata>,
+    pub verifier_info: Option<VerifierInfo>,
 }
 
 /// A session with state managed during the presentation.

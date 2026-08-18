@@ -6,6 +6,7 @@ use agent_sdk::vc::oid4vp::{
     TransactionDataHashes, TransactionDataHashesAlg, TransactionDataResponse,
 };
 use agent_sdk::vc::presentation_exchange::PresentationSubmission;
+use napi::bindgen_prelude::Uint8Array;
 use napi::{Error, Status};
 use napi_derive::napi;
 
@@ -160,7 +161,9 @@ impl TryFrom<PresentationResult> for JsPresentationResult {
 }
 
 /// A client identifier used in OpenID4VP protocol.
-/// This class provides methods to create client IDs from strings and DIDs.
+///
+/// Construct one from a string, a DID, a redirect URI, a DNS name, or an X.509
+/// certificate chain;
 #[napi]
 pub struct ClientId(oid4vp::ClientId);
 
@@ -176,6 +179,40 @@ impl ClientId {
         oid4vp::ClientId::new(client_id)
             .map_err(|err| Error::new(Status::InvalidArg, err))
             .map(ClientId)
+    }
+
+    /// The full identifier, `<prefix>:<id>` — the exact value the verifier puts
+    /// in the `client_id` of the authorization request.
+    ///
+    /// This is the value to persist, log, and return in a DTO. Because an
+    /// `x509_hash` identifier is a hash of the leaf certificate, rotating that
+    /// certificate changes this string: compare it against the stored one to
+    /// detect that the relying party's identity has moved.
+    ///
+    /// @returns {string} The full client identifier.
+    #[napi(getter)]
+    pub fn full_id(&self) -> String {
+        self.0.get_full_id()
+    }
+
+    /// The client id prefix on its own, e.g. `x509_hash`, `x509_san_dns`,
+    /// `decentralized_identifier`, `redirect_uri`, or `pre-registered` for a
+    /// string that carried no prefix.
+    ///
+    /// @returns {string} The client id prefix.
+    #[napi(getter)]
+    pub fn prefix(&self) -> String {
+        self.0.get_prefix().to_string()
+    }
+
+    /// The identifier without its prefix — the DNS name for `x509_san_dns`, the
+    /// leaf certificate hash for `x509_hash`, the DID for
+    /// `decentralized_identifier`, and so on.
+    ///
+    /// @returns {string} The client identifier without its prefix.
+    #[napi(getter)]
+    pub fn id(&self) -> String {
+        self.0.get_id()
     }
 
     /// Creates a ClientId instance from a DID.
@@ -203,5 +240,70 @@ impl ClientId {
         oid4vp::ClientId::from_redirect_uri(&uri)
             .map_err(|err| Error::new(Status::InvalidArg, err))
             .map(ClientId)
+    }
+
+    /// Creates a ClientId instance from a DNS name, using the `x509_san_dns`
+    /// prefix.
+    ///
+    /// The verifier's certificate chain must have `dnsName` as the Subject
+    /// Alternative Name of its leaf, otherwise creating an authorization request
+    /// fails. Use {@link ClientId.fromX509CertificateChain} to derive the value
+    /// from the chain itself instead of restating it here.
+    ///
+    /// @param {string} dnsName - The DNS name of the verifier, e.g. `verifier.example`.
+    /// @returns {ClientId} A new `x509_san_dns` ClientId instance.
+    /// @throws {Error} If the resulting client id is invalid.
+    #[napi]
+    pub fn from_x509_san_dns(dns_name: String) -> napi::Result<Self> {
+        let prefix = oid4vp::ClientIdPrefix::X509SanDns.to_string();
+        let id = format!("{prefix}:{dns_name}");
+
+        oid4vp::ClientId::new(id)
+            .map_err(|err| Error::new(Status::InvalidArg, err))
+            .map(ClientId)
+    }
+
+    /// Derives a ClientId from the verifier's X.509 certificate chain — the
+    /// leaf's Subject Alternative Name for `x509_san_dns`, the leaf's hash for
+    /// `x509_hash`.
+    ///
+    /// An `x509_hash` client id cannot be written by hand, and request
+    /// generation rejects any client id the chain does not derive, so pass the
+    /// same PEM here and to `OID4VPVerifierBuilder.withX509CertificateChain`.
+    ///
+    /// @param {Uint8Array} pemBytes - a PEM-encoded, leaf-first certificate chain.
+    /// @param {X509Variant} variant - which prefix to derive.
+    /// @returns {ClientId} A new X.509 ClientId instance.
+    /// @throws {Error} If the chain cannot be parsed, is empty, or yields no client id for `variant`.
+    #[napi]
+    pub fn from_x509_certificate_chain(
+        pem_bytes: Uint8Array,
+        variant: JsX509Variant,
+    ) -> napi::Result<Self> {
+        let chain = oid4vp::Certificate::load_pem_chain(&pem_bytes)
+            .map_err(|err| Error::new(Status::InvalidArg, err))?;
+
+        oid4vp::client_id_from_x509_chain(&chain, variant.into())
+            .map_err(|err| Error::new(Status::InvalidArg, err))
+            .map(ClientId)
+    }
+}
+
+/// Selects how an X.509 client id is derived from the verifier's leaf
+/// certificate.
+#[napi(js_name = "X509Variant", string_enum)]
+pub enum JsX509Variant {
+    /// `x509_san_dns:<leaf Subject Alternative Name>`.
+    SanDns,
+    /// `x509_hash:<hash of the leaf certificate>`.
+    Hash,
+}
+
+impl From<JsX509Variant> for oid4vp::X509Variant {
+    fn from(value: JsX509Variant) -> Self {
+        match value {
+            JsX509Variant::SanDns => oid4vp::X509Variant::SanDns,
+            JsX509Variant::Hash => oid4vp::X509Variant::Hash,
+        }
     }
 }

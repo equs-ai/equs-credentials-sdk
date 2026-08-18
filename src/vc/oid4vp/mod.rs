@@ -6,6 +6,7 @@ pub(crate) mod delegate;
 pub(crate) mod holder;
 pub(super) mod signer;
 pub(crate) mod verifier;
+pub(crate) mod x509;
 
 mod builder;
 mod internal_error;
@@ -22,6 +23,12 @@ pub use builder::VerifierBuilder;
 pub use internal_error::InternalError;
 pub use protocol_error::ErrorType;
 pub use protocol_error::ProtocolError;
+
+#[cfg(not(target_arch = "wasm32"))]
+pub use x509::{
+    Certificate, X509Client, X509Variant, client_id_from_x509_chain,
+    ensure_leaf_matches_signing_key,
+};
 
 pub use api::*;
 

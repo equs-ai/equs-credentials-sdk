@@ -275,6 +275,8 @@ async fn same_device_presentation_flow(holder: impl HolderVp, kms: LocalKms) {
                 transaction_data: None,
                 pass_auth_request_object,
                 expected_origins: None,
+                client_metadata: None,
+                verifier_info: None,
             },
             None,
         )

@@ -924,6 +924,7 @@ mod tests {
             Some(HolderBinder {
                 nonce,
                 verifier_id: "verifier-id".to_string(),
+                response_uri: None,
             }),
             VerifyOptions::default(),
             UniversalResolver::default(),
@@ -990,7 +991,11 @@ mod tests {
 
         let res = SdJwtAPI::verify_vp(
             &presentation,
-            Some(HolderBinder { nonce, verifier_id }),
+            Some(HolderBinder {
+                nonce,
+                verifier_id,
+                response_uri: None,
+            }),
             VerifyOptions::default(),
             UniversalResolver::default(),
         )
@@ -1070,6 +1075,7 @@ mod tests {
             Some(HolderBinder {
                 nonce,
                 verifier_id: "verifier-id".to_string(),
+                response_uri: None,
             }),
             VerifyOptions::default(),
             UniversalResolver::default(),
@@ -1178,6 +1184,7 @@ mod tests {
                 holder_binder: Some(HolderBinder {
                     nonce: nonce.to_owned(),
                     verifier_id: verifier_id.to_string(),
+                    response_uri: None,
                 }),
             },
             UniversalResolver::default(),
@@ -1190,6 +1197,7 @@ mod tests {
             Some(HolderBinder {
                 nonce: nonce.to_owned(),
                 verifier_id: verifier_id.to_owned(),
+                response_uri: None,
             }),
             VerifyOptions::default(),
             UniversalResolver::default(),
@@ -1307,6 +1315,7 @@ mod tests {
                 holder_binder: Some(HolderBinder {
                     nonce: random_nonce().await,
                     verifier_id: "verifier-id".to_string(),
+                    response_uri: None,
                 }),
             },
             UniversalResolver::default(),
@@ -1323,6 +1332,7 @@ mod tests {
             Some(HolderBinder {
                 nonce: random_nonce().await,
                 verifier_id: "verifier-id".to_string(),
+                response_uri: None,
             }),
             VerifyOptions::default(),
             UniversalResolver::default(),
@@ -1359,6 +1369,7 @@ mod tests {
             Some(HolderBinder {
                 nonce,
                 verifier_id: "verifier-id".to_string(),
+                response_uri: None,
             }),
             VerifyOptions::default(),
             UniversalResolver::default(),
@@ -1497,6 +1508,7 @@ mod tests {
             holder_binder: Some(HolderBinder {
                 nonce: nonce.to_owned(),
                 verifier_id,
+                response_uri: None,
             }),
         }
     }
@@ -1507,6 +1519,7 @@ mod tests {
             holder_binder: Some(HolderBinder {
                 nonce: nonce.to_owned(),
                 verifier_id,
+                response_uri: None,
             }),
         }
     }

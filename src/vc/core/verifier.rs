@@ -227,6 +227,7 @@ mod tests {
                 Some(HolderBinder {
                     nonce,
                     verifier_id: VERIFIER_ID.to_string(),
+                    response_uri: None,
                 }),
                 &vp,
                 &ReqwestClientBuilder::new().insecure().build().unwrap(),
@@ -276,6 +277,7 @@ mod tests {
                 Some(HolderBinder {
                     nonce,
                     verifier_id: VERIFIER_ID.to_string(),
+                    response_uri: None,
                 }),
                 &vp,
                 &ReqwestClientBuilder::new().insecure().build().unwrap(),
@@ -314,6 +316,7 @@ mod tests {
                 Some(HolderBinder {
                     nonce,
                     verifier_id: VERIFIER_ID.to_string(),
+                    response_uri: None,
                 }),
                 &vp,
                 &ReqwestClientBuilder::new().insecure().build().unwrap(),
@@ -377,6 +380,7 @@ mod tests {
                 Some(HolderBinder {
                     nonce,
                     verifier_id: VERIFIER_ID.to_string(),
+                    response_uri: None,
                 }),
                 &vp,
                 &ReqwestClientBuilder::new().insecure().build().unwrap(),
@@ -406,6 +410,7 @@ mod tests {
                 Some(HolderBinder {
                     nonce: nonce2,
                     verifier_id: VERIFIER_ID.to_string(),
+                    response_uri: None,
                 }),
                 &vp,
                 &ReqwestClientBuilder::new().insecure().build().unwrap(),

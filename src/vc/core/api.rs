@@ -818,4 +818,5 @@ impl PresentationRestrictionValue {
 pub struct HolderBinder {
     pub nonce: Nonce,
     pub verifier_id: String,
+    pub response_uri: Option<String>,
 }

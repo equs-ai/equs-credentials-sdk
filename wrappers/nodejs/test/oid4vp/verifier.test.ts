@@ -1,5 +1,6 @@
 import {
   _PresentationSession,
+  Alg,
   AsdkError,
   AuthorizationRequestMetadata,
   AuthorizationResponse,
@@ -20,9 +21,11 @@ import {
   PassAuthRequestObjectType,
   ReqwestHttpClient,
   ResolvedPresentationQuery,
+  X509Variant,
   TransactionDataItem,
   TransactionDataResponse,
   VpProtocolError,
+  WalletMetadata,
 } from "../../";
 import {
   AUTH_RESPONSE_JWE,
@@ -43,9 +46,15 @@ import {
   SAMPLE_ROOT_X509_PEM,
   STATE,
   VP,
+  WALLET_METADATA_WITHOUT_X509,
+  X509_SAN_DNS_CERT_PEM,
+  X509_SAN_DNS_CLIENT_ID,
+  X509_SAN_DNS_NAME,
+  X509_SAN_DNS_PRIVATE_KEY_PEM,
 } from "./fixtures";
 import { createDidAndKeyMetadata } from "../utils";
 import { util as jose } from "node-jose";
+import * as crypto from "node:crypto";
 
 describe("OID4VP Verifier: ", () => {
   it("create Authorization Request by Value", async () => {
@@ -441,6 +450,194 @@ describe("OID4VP Verifier: ", () => {
       .build();
   });
 
+  it("create Authorization Request with the x509_san_dns client id", async () => {
+    const verifier = await buildX509Verifier();
+
+    const authorizationRequestMetadata: AuthorizationRequestMetadata = {
+      authResponseOptions: {
+        mode: "direct_post",
+        type: "vp_token",
+        submissionUri: "http://localhost:9001/response",
+        state: STATE,
+      },
+      passAuthRequestObject: {
+        type: PassAuthRequestObjectType.ByValue,
+      },
+    };
+
+    // No wallet metadata — the cross-device case. The SDK default has to
+    // advertise the x509 prefixes for this to be accepted.
+    const authRequest = await verifier.createAuthorizationRequest(PRESENTATION_QUERY, authorizationRequestMetadata);
+
+    // The certificate chain is carried in the request JWT `x5c` header, and the
+    // client id is the leaf certificate's SAN DNS name.
+    const [header, payload] = authRequest.authorizationRequestJwt
+      .split(".")
+      .slice(0, 2)
+      .map((part) => JSON.parse(atob(part)));
+
+    expect(header.x5c).toHaveLength(1);
+    expect(payload.client_id).toEqual(X509_SAN_DNS_CLIENT_ID);
+  });
+
+  it("create Authorization Request with the x509_hash client id", async () => {
+    // An x509_hash client id can only be derived from the leaf certificate.
+    const clientId = ClientId.fromX509CertificateChain(x509CertificateChain(), X509Variant.Hash);
+    const verifier = await buildX509Verifier(clientId);
+
+    const authorizationRequestMetadata: AuthorizationRequestMetadata = {
+      authResponseOptions: {
+        mode: "direct_post",
+        type: "vp_token",
+        submissionUri: "http://localhost:9001/response",
+        state: STATE,
+      },
+      passAuthRequestObject: {
+        type: PassAuthRequestObjectType.ByValue,
+      },
+    };
+
+    const authRequest = await verifier.createAuthorizationRequest(PRESENTATION_QUERY, authorizationRequestMetadata);
+
+    const [header, payload] = authRequest.authorizationRequestJwt
+      .split(".")
+      .slice(0, 2)
+      .map((part) => JSON.parse(atob(part)));
+
+    expect(header.x5c).toHaveLength(1);
+    // Reaching here at all proves the derived client id equals the one the
+    // verifier computes from the same chain — it rejects any other.
+    expect(payload.client_id).toMatch(/^x509_hash:.+/);
+  });
+
+  it("derives an x509_san_dns client id from the certificate chain", async () => {
+    const clientId = ClientId.fromX509CertificateChain(x509CertificateChain(), X509Variant.SanDns);
+    const verifier = await buildX509Verifier(clientId);
+
+    const authRequest = await verifier.createAuthorizationRequest(PRESENTATION_QUERY, {
+      authResponseOptions: {
+        mode: "direct_post",
+        type: "vp_token",
+        submissionUri: "http://localhost:9001/response",
+        state: STATE,
+      },
+      passAuthRequestObject: {
+        type: PassAuthRequestObjectType.ByValue,
+      },
+    });
+
+    const payload = JSON.parse(atob(authRequest.authorizationRequestJwt.split(".")[1]));
+
+    // Same value as fromX509SanDns("verifier.example"), read off the leaf's SAN.
+    expect(payload.client_id).toEqual(X509_SAN_DNS_CLIENT_ID);
+  });
+
+  it("rejects a certificate chain that cannot be parsed", () => {
+    expect(() => ClientId.fromX509CertificateChain(new TextEncoder().encode("not a pem"), X509Variant.Hash)).toThrow();
+  });
+
+  it("reads a client id back as the value it represents", () => {
+    const sanDns = ClientId.fromX509SanDns(X509_SAN_DNS_NAME);
+
+    expect(sanDns.fullId).toEqual(X509_SAN_DNS_CLIENT_ID);
+    expect(sanDns.prefix).toEqual("x509_san_dns");
+    expect(sanDns.id).toEqual(X509_SAN_DNS_NAME);
+
+    // Every constructor round-trips through the string form.
+    expect(new ClientId(sanDns.fullId).fullId).toEqual(sanDns.fullId);
+
+    const did = ClientId.fromDid("did:key:zDnaeagvW2eDWc2yVw7B98ovcJ8jddn7T9Mh3y5Vikys6y4kX");
+    expect(did.prefix).toEqual("decentralized_identifier");
+    expect(did.id).toEqual("did:key:zDnaeagvW2eDWc2yVw7B98ovcJ8jddn7T9Mh3y5Vikys6y4kX");
+
+    // A bare string is pre-registered, and reads back carrying that prefix.
+    const preRegistered = new ClientId("acme-verifier");
+    expect(preRegistered.prefix).toEqual("pre-registered");
+    expect(preRegistered.id).toEqual("acme-verifier");
+    expect(preRegistered.fullId).toEqual("pre-registered:acme-verifier");
+  });
+
+  it("surfaces an x509_hash identity change when the certificate rotates", () => {
+    const before = ClientId.fromX509CertificateChain(x509CertificateChain(), X509Variant.Hash);
+    const rotated = ClientId.fromX509CertificateChain(new TextEncoder().encode(SAMPLE_ROOT_X509_PEM), X509Variant.Hash);
+
+    // Same chain, same identity — so a stored value can be compared directly.
+    expect(ClientId.fromX509CertificateChain(x509CertificateChain(), X509Variant.Hash).fullId).toEqual(before.fullId);
+
+    // A different leaf is a different relying party under x509_hash.
+    expect(rotated.fullId).not.toEqual(before.fullId);
+    expect(before.prefix).toEqual("x509_hash");
+    expect(rotated.prefix).toEqual("x509_hash");
+  });
+
+  it("rejects an x509_san_dns client id whose SAN DNS name does not match the certificate", async () => {
+    const verifier = await buildX509Verifier(ClientId.fromX509SanDns("other.example"));
+
+    const authorizationRequestMetadata: AuthorizationRequestMetadata = {
+      authResponseOptions: {
+        mode: "direct_post",
+        type: "vp_token",
+        submissionUri: "http://localhost:9001/response",
+        state: STATE,
+      },
+      passAuthRequestObject: {
+        type: PassAuthRequestObjectType.ByValue,
+      },
+    };
+
+    await expect(verifier.createAuthorizationRequest(PRESENTATION_QUERY, authorizationRequestMetadata)).rejects.toThrow(
+      /does not match the configured client_id/,
+    );
+  });
+
+  it("rejects a certificate that does not certify the verifier's signing key", async () => {
+    // A different key, so the fixed certificate no longer certifies it.
+    const foreignKey = crypto
+      .generateKeyPairSync("ec", { namedCurve: "prime256v1" })
+      .privateKey.export({ format: "pem", type: "pkcs8" }) as string;
+    const verifier = await buildX509Verifier(undefined, staticKeyKms(foreignKey));
+
+    const authorizationRequestMetadata: AuthorizationRequestMetadata = {
+      authResponseOptions: {
+        mode: "direct_post",
+        type: "vp_token",
+        submissionUri: "http://localhost:9001/response",
+        state: STATE,
+      },
+      passAuthRequestObject: {
+        type: PassAuthRequestObjectType.ByValue,
+      },
+    };
+
+    await expect(verifier.createAuthorizationRequest(PRESENTATION_QUERY, authorizationRequestMetadata)).rejects.toThrow(
+      /does not certify the verifier signing key/,
+    );
+  });
+
+  it("rejects an x509_san_dns client id when the wallet does not advertise the prefix", async () => {
+    const verifier = await buildX509Verifier();
+
+    const authorizationRequestMetadata: AuthorizationRequestMetadata = {
+      authResponseOptions: {
+        mode: "direct_post",
+        type: "vp_token",
+        submissionUri: "http://localhost:9001/response",
+        state: STATE,
+      },
+      passAuthRequestObject: {
+        type: PassAuthRequestObjectType.ByValue,
+      },
+    };
+
+    await expect(
+      verifier.createAuthorizationRequest(
+        PRESENTATION_QUERY,
+        authorizationRequestMetadata,
+        WALLET_METADATA_WITHOUT_X509 as WalletMetadata,
+      ),
+    ).rejects.toThrow();
+  });
+
   it("builds verifier with custom KMS that supports JWE decryption and uses it", async () => {
     const innerKms = new InMemKms();
     const kms = new (class JweKms implements Kms {
@@ -527,4 +724,55 @@ async function buildVerifier(clientId = "did:key:zDnaeagvW2eDWc2yVw7B98ovcJ8jddn
 function decodeDelegatePayloadDisclosure(item: TransactionDataItem): [string, Record<string, any>] {
   const decoded = jose.base64url.decode((item as any).delegate_payload_disclosure).toString();
   return JSON.parse(decoded);
+}
+
+/**
+ * A KMS holding exactly one key: the one {@link X509_SAN_DNS_CERT_PEM}
+ * certifies. `InMemKms` generates a fresh key per run, which no fixed
+ * certificate could ever match.
+ */
+function staticKeyKms(privateKeyPem = X509_SAN_DNS_PRIVATE_KEY_PEM): Kms {
+  const privateKey = crypto.createPrivateKey(privateKeyPem);
+  const publicKey = crypto.createPublicKey(privateKeyPem);
+  const jwk = publicKey.export({ format: "jwk" });
+
+  const keyHandle: KeyHandle = {
+    alg: Alg.ES256,
+    jwk: JSON.stringify(jwk),
+    // Uncompressed SEC1 point, as the SDK expects for P-256.
+    pubKey: Array.from(
+      Buffer.concat([Buffer.from([0x04]), Buffer.from(jwk.x!, "base64url"), Buffer.from(jwk.y!, "base64url")]),
+    ),
+    // JWS signatures are raw r||s, not the DER encoding node defaults to.
+    sign: async (payload) => crypto.sign(null, payload, { key: privateKey, dsaEncoding: "ieee-p1363" }),
+    verify: async (data, signature) => {
+      const ok = crypto.verify(null, data, { key: publicKey, dsaEncoding: "ieee-p1363" }, signature);
+      if (!ok) {
+        throw new Error("invalid signature");
+      }
+    },
+  };
+
+  return {
+    create: async () => "x509-verifier-key",
+    get: async () => keyHandle,
+    getByPublicKey: async () => keyHandle,
+  };
+}
+
+function x509CertificateChain(): Uint8Array {
+  return new TextEncoder().encode(X509_SAN_DNS_CERT_PEM);
+}
+
+async function buildX509Verifier(
+  clientId: ClientId = ClientId.fromX509SanDns(X509_SAN_DNS_NAME),
+  kms: Kms = staticKeyKms(),
+) {
+  const nonceGenerator = new LocalNonceHandler();
+  const { keyMetadata } = await createDidAndKeyMetadata(kms);
+
+  return await new OID4VPVerifierBuilder(kms, nonceGenerator, keyMetadata, clientId)
+    .withHttpClient(ReqwestHttpClient.insecure())
+    .withX509CertificateChain(x509CertificateChain())
+    .build();
 }
