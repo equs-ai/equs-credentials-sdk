@@ -1,6 +1,6 @@
 use crate::did::universal::{DIDResolver, UniversalResolver};
 use crate::http::{HttpClient, HttpError, HttpSnafu};
-use crate::nonce::{Nonce, NonceHandler};
+use crate::nonce::NonceHandler;
 use crate::reqwest::ReqwestClient;
 use crate::reqwest::builder::ReqwestClientBuilder;
 use crate::vc::core::KeyMetadata;
@@ -14,7 +14,6 @@ use crate::vc::oid4vci::token_validation::{ByJwks, Introspect};
 use crate::vc::oid4vci::{CredentialExtraVerification, CredentialLifetime, CredentialOfferParams};
 use crate::vc::pop::ProofOfPossessionNotBefore;
 use crate::{kms, vault, vc};
-use async_trait::async_trait;
 use common_macros::DebugError;
 use oid4vci::types::CredentialConfigurationId;
 use openidconnect::JsonWebKeySetUrl;
@@ -54,12 +53,11 @@ pub enum IssuerDiscovery {
 }
 
 /// A builder for instantiating `oid4vci` `Issuer`.
-pub struct IssuerBuilder<KH, KMS, HC, NH>
+pub struct IssuerBuilder<KH, KMS, HC>
 where
     KH: kms::KeyHandle,
     KMS: kms::Kms<KH>,
     HC: HttpClient,
-    NH: NonceHandler,
 {
     // data
     issuer_metadata: api::IssuerMetadata,
@@ -74,13 +72,13 @@ where
     // services
     kms: KMS,
     http_client: Result<HC, HttpError>,
-    nonce_handler: Option<NH>,
+    nonce_handler: Option<Box<dyn NonceHandler>>,
     did_resolver: UniversalResolver,
 
     _marker: PhantomData<KH>,
 }
 
-impl<KH, KMS> IssuerBuilder<KH, KMS, ReqwestClient, InternalNonceHandler>
+impl<KH, KMS> IssuerBuilder<KH, KMS, ReqwestClient>
 where
     KH: kms::KeyHandle,
     KMS: kms::Kms<KH>,
@@ -137,12 +135,11 @@ where
     }
 }
 
-impl<KH, KMS, HC, NH> IssuerBuilder<KH, KMS, HC, NH>
+impl<KH, KMS, HC> IssuerBuilder<KH, KMS, HC>
 where
     KH: kms::KeyHandle,
     KMS: kms::Kms<KH>,
     HC: HttpClient + 'static,
-    NH: NonceHandler,
 {
     /// Use a specific `HttpClient`.
     ///
@@ -156,7 +153,7 @@ where
     pub fn with_http_client<HC_: HttpClient + 'static>(
         self,
         http_client: HC_,
-    ) -> IssuerBuilder<KH, KMS, HC_, NH> {
+    ) -> IssuerBuilder<KH, KMS, HC_> {
         IssuerBuilder {
             http_client: Ok(http_client),
             // copied
@@ -168,9 +165,9 @@ where
             default_cred_lifetime: self.default_cred_lifetime,
             cred_lifetime_per_cred_conf_id: self.cred_lifetime_per_cred_conf_id,
             nonce_handler: self.nonce_handler,
-            cred_conf_ids_with_key_metadata: Default::default(),
+            cred_conf_ids_with_key_metadata: self.cred_conf_ids_with_key_metadata,
             did_resolver: self.did_resolver,
-            credential_extra_verification: Default::default(),
+            credential_extra_verification: self.credential_extra_verification,
             _marker: Default::default(),
         }
     }
@@ -214,26 +211,9 @@ where
         level = Level::TRACE,
         skip(self, nonce_handler),
     )]
-    pub fn with_nonce_handler<NH_: NonceHandler>(
-        self,
-        nonce_handler: NH_,
-    ) -> IssuerBuilder<KH, KMS, HC, NH_> {
-        IssuerBuilder {
-            nonce_handler: Some(nonce_handler),
-            // copied
-            http_client: self.http_client,
-            issuer_metadata: self.issuer_metadata,
-            key_metadata: self.key_metadata,
-            token_params: self.token_params,
-            clock_skew: self.clock_skew,
-            kms: self.kms,
-            default_cred_lifetime: self.default_cred_lifetime,
-            cred_lifetime_per_cred_conf_id: self.cred_lifetime_per_cred_conf_id,
-            cred_conf_ids_with_key_metadata: Default::default(),
-            did_resolver: self.did_resolver,
-            credential_extra_verification: Default::default(),
-            _marker: Default::default(),
-        }
+    pub fn with_nonce_handler(mut self, nonce_handler: Box<dyn NonceHandler>) -> Self {
+        self.nonce_handler = Some(nonce_handler);
+        self
     }
 
     /// Sets a `KeyMetadata` to be used for signing operations of the credential
@@ -664,12 +644,6 @@ where
     }
 }
 
-/// DON'T USE: The following struct is only used to work around a compilation problem related
-/// to type inference when using the IssuerBuilder::new() function
-pub struct InternalNonceHandler {
-    _private: (),
-}
-
 pub struct ProofOfPossessionMetadataBuilder {
     lifetime: Duration,
     not_before: Option<ProofOfPossessionNotBefore>,
@@ -701,18 +675,6 @@ impl ProofOfPossessionMetadataBuilder {
     }
 }
 
-#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
-#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
-impl NonceHandler for InternalNonceHandler {
-    async fn generate(&self) -> crate::nonce::Result<Nonce> {
-        unimplemented!()
-    }
-
-    async fn validate(&self, nonce: &Nonce) -> crate::nonce::Result<bool> {
-        unimplemented!()
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -724,7 +686,8 @@ mod tests {
     use crate::utils::test_utils::create_did_and_key_metadata;
     use crate::vc::oid4vci::IssuerUrl;
     use crate::vc::oid4vci::tests::fixtures::{
-        AUTH_REDIRECT_URL, ISSUER_URL, SCOPE, SampleIssuerMetadata, sample_authorization_metadata,
+        AUTH_REDIRECT_URL, CRED_DEF_ID, ISSUER_URL, SCOPE, SampleIssuerMetadata,
+        sample_authorization_metadata,
     };
     use oauth2::http::{Method, StatusCode};
     use oid4vci::credential_offer::CredentialOfferParameters;
@@ -745,7 +708,7 @@ mod tests {
 
         let builder =
             IssuerBuilder::new(kms, SampleIssuerMetadata::with_sdjwtvc_conf(), key_metadata)
-                .with_nonce_handler(nonce_gen)
+                .with_nonce_handler(Box::new(nonce_gen))
                 .token_validation_jwks(Url::parse("http://issuer.org/certs").unwrap())
                 .with_clock_skew(time::Duration::minutes(1))
                 .with_http_client(http_client);
@@ -753,6 +716,25 @@ mod tests {
         let result = builder.build().await;
 
         result.unwrap();
+    }
+
+    #[tokio::test]
+    async fn with_http_client_preserves_dedicated_key_metadata() {
+        let kms = LocalKms::new();
+        let (_, key_metadata) = create_did_and_key_metadata(&kms).await;
+        let dedicated = key_metadata.clone();
+
+        let builder =
+            IssuerBuilder::new(kms, SampleIssuerMetadata::with_sdjwtvc_conf(), key_metadata)
+                .with_dedicated_key_metadata(CRED_DEF_ID, &dedicated)
+                .with_http_client(MockHttpClient::new());
+
+        // with_http_client rebuilds the struct to change the HC type parameter; it must carry the
+        // already-configured state over rather than resetting it to defaults.
+        assert_eq!(
+            builder.cred_conf_ids_with_key_metadata.get(CRED_DEF_ID),
+            Some(&dedicated)
+        );
     }
 
     #[tokio::test]

@@ -1,5 +1,5 @@
 use crate::inmem::storage::InMemStorage;
-use crate::nonce::{GenerateSnafu, Nonce, NonceHandler, Result, ValidateSnafu};
+use crate::nonce::{GenerateSnafu, InvalidateSnafu, Nonce, NonceHandler, Result, ValidateSnafu};
 use crate::storage::Storage;
 use async_trait::async_trait;
 
@@ -52,6 +52,22 @@ impl NonceHandler for LocalNonceHandler {
 
         Ok(is_valid)
     }
+
+    async fn invalidate(&self, nonces: &[Nonce]) -> Result<()> {
+        for nonce in nonces {
+            self.storage
+                .delete(&nonce.secret().to_string())
+                .await
+                .map_err(|e| {
+                    InvalidateSnafu {
+                        details: e.to_string(),
+                    }
+                    .build()
+                })?;
+        }
+
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -93,6 +109,38 @@ mod tests {
         let foreign = Nonce::from_secret("never-generated".to_string());
 
         assert!(!h.validate(&foreign).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn invalidate_consumes_every_nonce_it_is_given() {
+        let h = LocalNonceHandler::default();
+        let first = h.generate().await.unwrap();
+        let second = h.generate().await.unwrap();
+
+        h.invalidate(&[first.clone(), second.clone()])
+            .await
+            .unwrap();
+
+        assert!(!h.validate(&first).await.unwrap());
+        assert!(!h.validate(&second).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn invalidate_is_a_noop_for_an_empty_list() {
+        let h = LocalNonceHandler::default();
+        let n = h.generate().await.unwrap();
+
+        h.invalidate(&[]).await.unwrap();
+
+        assert!(h.validate(&n).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn invalidate_ignores_a_nonce_it_never_generated() {
+        let h = LocalNonceHandler::default();
+        let foreign = Nonce::from_secret("never-generated".to_string());
+
+        assert!(h.invalidate(&[foreign]).await.is_ok());
     }
 
     #[tokio::test]

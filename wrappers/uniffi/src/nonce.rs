@@ -53,4 +53,9 @@ impl ASDKNonceHandler for WrappedNonceHandler {
                 .build()
             })
     }
+
+    async fn invalidate(&self, _nonces: &[Nonce]) -> agent_sdk::nonce::Result<()> {
+        // These bindings expose the holder and verifier, not the issuer service that spends nonces.
+        Ok(())
+    }
 }

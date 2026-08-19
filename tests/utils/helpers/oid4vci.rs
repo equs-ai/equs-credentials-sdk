@@ -49,7 +49,7 @@ pub async fn build_issuer(
     let (_, key_metadata, _) = create_did_keymetadata_keyhandle(&kms).await;
 
     let mut builder = IssuerBuilder::new(kms, metadata, key_metadata)
-        .with_nonce_handler(nonce_gen)
+        .with_nonce_handler(Box::new(nonce_gen))
         .with_http_client(http_client);
 
     if let Some(ep) = introspect_ep {

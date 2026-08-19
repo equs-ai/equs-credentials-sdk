@@ -9,7 +9,7 @@ Implements the OpenID for Verifiable Credential Issuance (OID4VCI) protocol laye
 |------|------|
 | `mod.rs` | Module root: declares sub-modules, re-exports public types including `HolderBuilder`, `IssuerBuilder`, `IssuerDiscovery`, `CredentialOfferResolver`, `ProtocolError`, `InternalError`, and all `api::*` types. |
 | `api.rs` | Public trait definitions (`Issuer`, `Holder`) and all shared data types: `IssuerMetadata`, `CredentialOffer*`, `TokenRequest/Response`, `CredentialRequest/Response`, `CredentialResult`, `AuthzFlow`, `CredentialLifetime`, `CredentialExtraVerification`, `Error`, `Result`. |
-| `issuer.rs` | `IssuerService<IS, HC, NH>` — concrete `Issuer` implementation: validates access tokens, resolves credential definitions, validates scope and claim names, handles batch issuance and nonce lifecycle. |
+| `issuer.rs` | `IssuerService<IS, HC>` — concrete `Issuer` implementation: validates access tokens, resolves credential definitions, validates scope and claim names, handles batch issuance and nonce lifecycle. |
 | `holder.rs` | `HolderService<HL, HC>` — concrete `Holder` implementation: discovers issuer metadata, executes auth-code / pre-auth-code flows, requests and defers credentials, verifies issued credentials. |
 | `builder.rs` | `IssuerBuilder` and `HolderBuilder` — fluent builders for constructing `Issuer` and `Holder` instances; `IssuerDiscovery` enum (by URL, offer, or direct metadata); `ProofOfPossessionMetadataBuilder`. |
 | `metadata.rs` | `IssuerMetadata` / `CredentialMetadata` type aliases (wrapping `oid4vci` crate types); `convert_metadata` — maps public `IssuerMetadata` to the internal `vc::core::IssuerMetadata` used by `IssuerService`. |
@@ -35,5 +35,7 @@ Implements the OpenID for Verifiable Credential Issuance (OID4VCI) protocol laye
 - Used by: `crate::vc::mod` (re-exports), wrapper targets (Node.js, WASM, UniFFI)
 
 ## Constraints
+- Nonce spending is scoped to a credential request, not to a key proof: `issue_each` validates every key proof's nonce before it issues anything (`resolve_and_validate_nonce` only checks, never consumes), so a batch doomed by a stale nonce costs no signing operations, while `batch_issuance` collects the nonces it validated and calls `NonceHandler::invalidate` once at the end — including when issuance failed, so a rejected request leaves no reusable nonce behind. A batch may therefore sign every proof over one `c_nonce` or use a fresh one per proof, both of which OID4VCI permits.
+- `Nonce` derives `Debug` over its raw secret, so any `#[instrument]` on a function taking or returning a nonce must `skip` it — otherwise the secret lands in TRACE spans, defeating the `ZeroizeOnDrop` treatment the type gets everywhere else.
 - Trait objects use `#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]` so the module compiles on both native and WASM targets.
 - `HolderBuilder::new` uses an `Arc<HC>` so the same HTTP client can be shared with the internal `UniversalResolver`.

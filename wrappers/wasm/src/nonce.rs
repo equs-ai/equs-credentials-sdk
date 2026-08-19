@@ -1,7 +1,7 @@
 use crate::utils;
-use agent_sdk::nonce::{GenerateSnafu, Nonce, ValidateSnafu};
+use agent_sdk::nonce::{GenerateSnafu, InvalidateSnafu, Nonce, ValidateSnafu};
 use async_trait::async_trait;
-use js_sys::{Boolean, JsString};
+use js_sys::{Array, Boolean, JsString};
 use wasm_bindgen::JsValue;
 use wasm_bindgen::prelude::wasm_bindgen;
 
@@ -15,6 +15,9 @@ extern "C" {
 
     #[wasm_bindgen(structural, method, catch, js_name = validate)]
     pub async fn validate(this: &NonceHandler, nonce: JsString) -> Result<Boolean, JsValue>;
+
+    #[wasm_bindgen(structural, method, catch, js_name = invalidate)]
+    pub async fn invalidate(this: &NonceHandler, nonces: Array) -> Result<JsValue, JsValue>;
 }
 
 pub(crate) struct JsNonceHandler(NonceHandler);
@@ -44,5 +47,22 @@ impl agent_sdk::nonce::NonceHandler for JsNonceHandler {
             ValidateSnafu { details: msg }.build()
         })?;
         Ok(validated.value_of())
+    }
+
+    async fn invalidate(&self, nonces: &[Nonce]) -> agent_sdk::nonce::Result<()> {
+        let js_nonces: Array = nonces
+            .iter()
+            .map(|nonce| JsValue::from_str(nonce.secret()))
+            .collect();
+
+        self.0.invalidate(js_nonces).await.map_err(|e| {
+            let msg = format!(
+                "Failed to invalidate nonces: {}",
+                utils::js_value_to_string(e)
+            );
+            InvalidateSnafu { details: msg }.build()
+        })?;
+
+        Ok(())
     }
 }

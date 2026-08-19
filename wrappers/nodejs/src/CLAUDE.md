@@ -12,7 +12,7 @@ Root Rust source crate for the ASDK Node.js wrapper. Uses NAPI-RS (`#[napi]` mac
 | `http.rs` | `JsHttpClient` (callback-based `HttpClient` impl using ThreadsafeFunction) and `ReqwestHttpClient` (concrete reqwest-backed client exposed as a NAPI class). Includes HTTP method/request/response type conversions. |
 | `kms.rs` | `JsKms` (callback-based `Kms` impl), `JsKeyHandle` (callback-based key handle satisfying `Key`/`Signer`/`Verifier`), key type and parameter types (`JsKeyType`, `JsECDHESParams`, `JsECDH1PUParams`, `JsBIP32Params`). Also `create_key_metadata` helper. |
 | `vault.rs` | `JsVault` (callback-based `Vault` impl), `JsCredentialEntry`, `JsVaultPagination`, `JsCredentialsFindResult`, `JsFindVCsFailReason`. |
-| `nonce.rs` | `JsNonceHandler` (callback-based `NonceHandler` impl for generate and validate). |
+| `nonce.rs` | `JsNonceHandler` (callback-based `NonceHandler` impl for generate, validate and invalidate). |
 | `utils.rs` | `from_json_object`/`to_json_object` serde helpers, `parse_url_arg`, `resolve_metadata`, `parse_claims`, `enable_logs` (tracing setup), `TracingLogFormat`/`TracingLogLevel` enums. |
 | `did/` | DID method utilities and universal resolver — see [did/CLAUDE.md](did/CLAUDE.md) |
 | `didcomm/` | DIDComm V2 envelope service — see [didcomm/CLAUDE.md](didcomm/CLAUDE.md) |
@@ -25,7 +25,7 @@ Root Rust source crate for the ASDK Node.js wrapper. Uses NAPI-RS (`#[napi]` mac
 - `JsVault` — Callback-based `Vault` implementation driven by JS promises.
 - `JsHttpClient` — Callback-based `HttpClient` driven by JS promises.
 - `ReqwestHttpClient` — Concrete reqwest HTTP client exposed directly to Node.js.
-- `JsNonceHandler` — Callback-based nonce generator and validator.
+- `JsNonceHandler` — Callback-based nonce generator, validator and invalidator.
 - `EncodableError` — Structured error serialized as JSON string for all NAPI error payloads.
 
 ## Dependencies

@@ -106,6 +106,10 @@ pub mod fixtures {
         async fn validate(&self, nonce: &Nonce) -> crate::nonce::Result<bool> {
             Ok(true)
         }
+
+        async fn invalidate(&self, nonces: &[Nonce]) -> crate::nonce::Result<()> {
+            Ok(())
+        }
     }
 
     pub struct SampleIssuerMetadata {}

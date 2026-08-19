@@ -33,7 +33,7 @@ use serde_json::{Map, Value};
 use snafu::{ResultExt, ensure};
 use ssi::claims::JwsBuf;
 use ssi::claims::jwt::decode_unverified;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::str::FromStr;
 use time::Duration;
 use tracing::{Level, debug, error, info, instrument, trace, warn};
@@ -54,30 +54,28 @@ pub enum TokenValidation<HC: HttpClient> {
     ByJwks(ByJwks<HC>),
 }
 
-pub struct IssuerService<IS, HC, NH>
+pub struct IssuerService<IS, HC>
 where
     IS: vc::core::Issuer,
     HC: HttpClient,
-    NH: NonceHandler,
 {
     issuer: IS,
-    nonce_handler: Option<NH>,
+    nonce_handler: Option<Box<dyn NonceHandler>>,
     issuer_metadata: IssuerMetadata,
     token_validation: Option<TokenValidation<HC>>,
     clock_skew: Option<Duration>,
 }
 
-impl<IS, HC, NH> IssuerService<IS, HC, NH>
+impl<IS, HC> IssuerService<IS, HC>
 where
     IS: vc::core::Issuer,
     HC: HttpClient,
-    NH: NonceHandler,
 {
     #[instrument(level = Level::TRACE, skip(issuer, nonce_generator, token_validation))]
     pub fn new(
         issuer_metadata: IssuerMetadata,
         issuer: IS,
-        nonce_generator: Option<NH>,
+        nonce_generator: Option<Box<dyn NonceHandler>>,
         token_validation: Option<TokenValidation<HC>>,
         clock_skew: Option<Duration>,
     ) -> Self {
@@ -95,11 +93,10 @@ where
 
 #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 #[cfg_attr(not(target_arch = "wasm32"), async_trait)]
-impl<IS, HC, NH> api::Issuer for IssuerService<IS, HC, NH>
+impl<IS, HC> api::Issuer for IssuerService<IS, HC>
 where
     IS: vc::core::Issuer,
     HC: HttpClient + 'static,
-    NH: NonceHandler,
 {
     #[instrument(level = Level::TRACE, skip_all, ret())]
     fn get_issuer_metadata(&self) -> IssuerMetadata {
@@ -216,11 +213,10 @@ where
     }
 }
 
-impl<IS, HC, NH> IssuerService<IS, HC, NH>
+impl<IS, HC> IssuerService<IS, HC>
 where
     IS: vc::core::Issuer,
     HC: HttpClient,
-    NH: NonceHandler,
 {
     #[instrument(level = Level::TRACE, skip(self), err(), ret())]
     fn resolve_cred_def(&self, req: &CredentialRequest) -> Result<(String, CredDefMetadata)> {
@@ -491,15 +487,15 @@ where
         None
     }
 
-    #[instrument(level = Level::TRACE, skip(self), ret())]
+    #[instrument(level = Level::TRACE, skip(self, nonce), ret())]
     async fn single_issuance(
         &self,
         claims: &Claims,
         status_info: Option<&CredentialStatusInfo>,
         proof: &oid4vci::proof_of_possession::Proof,
         cred_def_id: &str,
+        nonce: Option<Nonce>,
     ) -> Result<Credential> {
-        let nonce = self.resolve_and_validate_nonce(proof).await?;
         let proof = Proof::from(proof);
 
         let cred_req = vc::core::CredentialRequest {
@@ -565,43 +561,105 @@ where
             )
         );
 
-        let mut credentials: Vec<CoreProfilesCredentialResponseType> = vec![];
-        match proofs {
-            Proofs::DiVp(di_vps) => {
-                for di_vp in di_vps {
-                    let credential = self
-                        .single_issuance(
-                            claims,
-                            status_info.as_ref(),
-                            &oid4vci::proof_of_possession::Proof::DiVp {
-                                di_vp: di_vp.to_owned(),
-                            },
-                            cred_def_id.as_str(),
-                        )
-                        .await?;
+        let proofs: Vec<SpruceProof> = match proofs {
+            Proofs::DiVp(di_vps) => di_vps
+                .iter()
+                .map(|di_vp| SpruceProof::DiVp {
+                    di_vp: di_vp.to_owned(),
+                })
+                .collect(),
+            Proofs::Jwt(jwts) => jwts
+                .iter()
+                .map(|jwt| SpruceProof::Jwt {
+                    jwt: jwt.to_owned(),
+                })
+                .collect(),
+        };
 
-                    credentials.push(credential.try_into()?);
-                }
-            }
-            Proofs::Jwt(jwts) => {
-                for jwt in jwts {
-                    let credential = self
-                        .single_issuance(
-                            claims,
-                            status_info.as_ref(),
-                            &oid4vci::proof_of_possession::Proof::Jwt {
-                                jwt: jwt.to_owned(),
-                            },
-                            cred_def_id.as_str(),
-                        )
-                        .await?;
+        let mut spent_nonces: Vec<Nonce> = vec![];
+        let credentials = self
+            .issue_each(
+                claims,
+                status_info.as_ref(),
+                cred_def_id.as_str(),
+                &proofs,
+                &mut spent_nonces,
+            )
+            .await;
 
-                    credentials.push(credential.try_into()?);
-                }
+        self.invalidate_nonces(&spent_nonces).await;
+
+        credentials
+    }
+
+    /// Validates every key proof's `Nonce` first, then issues, rather than interleaving the two.
+    ///
+    /// A batch is all-or-nothing: one bad key proof fails the whole request. Interleaving meant a
+    /// stale `Nonce` on the last proof was only discovered after every earlier proof had already been
+    /// signed, spending a KMS operation apiece on credentials the caller never receives. Validation is
+    /// the cheap check, so it runs to completion before the expensive one starts.
+    ///
+    /// Every `Nonce` that validates is recorded in `spent_nonces` as it validates — including when a
+    /// later proof fails — so a rejected batch leaves no `Nonce` its sender can retry against.
+    #[instrument(level = Level::TRACE, skip(self, spent_nonces), ret())]
+    async fn issue_each(
+        &self,
+        claims: &Claims,
+        status_info: Option<&CredentialStatusInfo>,
+        cred_def_id: &str,
+        proofs: &[SpruceProof],
+        spent_nonces: &mut Vec<Nonce>,
+    ) -> Result<Vec<CoreProfilesCredentialResponseType>> {
+        let mut validated: Vec<(&SpruceProof, Option<Nonce>)> = Vec::with_capacity(proofs.len());
+
+        for proof in proofs {
+            let nonce = self.resolve_and_validate_nonce(proof).await?;
+
+            if let Some(nonce) = &nonce {
+                spent_nonces.push(nonce.clone());
             }
+
+            validated.push((proof, nonce));
+        }
+
+        let mut credentials: Vec<CoreProfilesCredentialResponseType> =
+            Vec::with_capacity(validated.len());
+
+        for (proof, nonce) in validated {
+            let credential = self
+                .single_issuance(claims, status_info, proof, cred_def_id, nonce)
+                .await?;
+
+            credentials.push(credential.try_into()?);
         }
 
         Ok(credentials)
+    }
+
+    /// Hands the spent nonces to the [NonceHandler] once, deduplicated — a batch signed over a single
+    /// `c_nonce` reports that nonce once, not once per key proof.
+    #[instrument(level = Level::TRACE, skip(self, nonces))]
+    async fn invalidate_nonces(&self, nonces: &[Nonce]) {
+        let Some(nonce_handler) = self.nonce_handler.as_ref() else {
+            return;
+        };
+
+        let mut seen: HashSet<&str> = HashSet::new();
+        let distinct: Vec<Nonce> = nonces
+            .iter()
+            .filter(|nonce| seen.insert(nonce.secret()))
+            .cloned()
+            .collect();
+
+        if distinct.is_empty() {
+            return;
+        }
+
+        if let Err(err) = nonce_handler.invalidate(&distinct).await {
+            // The credentials are issued by now; failing the request over a clean-up that did not
+            // happen would be worse than a nonce outliving the request that spent it.
+            warn!("Failed to invalidate spent nonces: {err}");
+        }
     }
 }
 
@@ -699,7 +757,7 @@ mod tests {
     const CUSTOM_CRED_LIFETIME: i64 = 1024;
     #[tokio::test]
     async fn get_issuer_metadata_returns_correct_data() {
-        let issuer = issuer_service(None, None, Some(LocalNonceHandler::default())).await;
+        let issuer = issuer_service(None, None, Some(Box::new(LocalNonceHandler::default()))).await;
 
         let metadata = issuer.get_issuer_metadata();
 
@@ -708,7 +766,7 @@ mod tests {
 
     #[tokio::test]
     async fn create_credential_offer_returns_correct_data() {
-        let issuer = issuer_service(None, None, Some(LocalNonceHandler::default())).await;
+        let issuer = issuer_service(None, None, Some(Box::new(LocalNonceHandler::default()))).await;
 
         let offer = issuer
             .create_credential_offer(
@@ -728,7 +786,7 @@ mod tests {
 
     #[tokio::test]
     async fn issue_credential_succeeds_when_nonce_handler_is_provided() {
-        let issuer = issuer_service(None, None, Some(MockNonceHandler::default())).await;
+        let issuer = issuer_service(None, None, Some(Box::new(MockNonceHandler::default()))).await;
 
         let iss_result = issuer
             .issue_credential(
@@ -747,7 +805,7 @@ mod tests {
         expected = "Nonce is invalid. Credential Issuer requires key proof to be bound to a Credential Issuer provided nonce"
     )]
     async fn issue_credential_fails_when_nonce_handler_is_provided_but_nonce_is_invalid() {
-        let issuer = issuer_service(None, None, Some(LocalNonceHandler::default())).await;
+        let issuer = issuer_service(None, None, Some(Box::new(LocalNonceHandler::default()))).await;
 
         let iss_result = issuer
             .issue_credential(
@@ -766,7 +824,7 @@ mod tests {
         let issuer = issuer_service_with_metadata(
             None,
             None,
-            Some(MockNonceHandler::default()),
+            Some(Box::new(MockNonceHandler::default())),
             SampleIssuerMetadata::with_sdjwtvc_conf(),
             CredentialLifetime::Finite(Duration::days(CUSTOM_CRED_LIFETIME)),
             None,
@@ -811,7 +869,7 @@ mod tests {
         let issuer = issuer_service_with_metadata(
             None,
             None,
-            Some(MockNonceHandler::default()),
+            Some(Box::new(MockNonceHandler::default())),
             SampleIssuerMetadata::with_sdjwtvc_conf(),
             CredentialLifetime::Finite(Duration::days(CUSTOM_CRED_LIFETIME)),
             None,
@@ -851,7 +909,7 @@ mod tests {
         let issuer = issuer_service_with_metadata(
             None,
             None,
-            Some(MockNonceHandler::default()),
+            Some(Box::new(MockNonceHandler::default())),
             issuer_metadata,
             CredentialLifetime::Finite(Duration::days(CUSTOM_CRED_LIFETIME)),
             None,
@@ -875,7 +933,7 @@ mod tests {
         let issuer = issuer_service_with_metadata(
             None,
             None,
-            Some(MockNonceHandler::default()),
+            Some(Box::new(MockNonceHandler::default())),
             SampleIssuerMetadata::with_sdjwtvc_conf(),
             CredentialLifetime::Finite(Duration::days(CUSTOM_CRED_LIFETIME)),
             None,
@@ -903,7 +961,7 @@ mod tests {
         let issuer = issuer_service_with_metadata(
             None,
             None,
-            Some(MockNonceHandler::default()),
+            Some(Box::new(MockNonceHandler::default())),
             issuer_metadata,
             CredentialLifetime::Finite(Duration::days(CUSTOM_CRED_LIFETIME)),
             None,
@@ -926,7 +984,7 @@ mod tests {
         let issuer = issuer_service_with_metadata(
             None,
             None,
-            Some(MockNonceHandler::default()),
+            Some(Box::new(MockNonceHandler::default())),
             SampleIssuerMetadata::with_custom_issuer_metadata_for_ldp_vc(),
             CredentialLifetime::Finite(Duration::days(CUSTOM_CRED_LIFETIME)),
             None,
@@ -978,7 +1036,7 @@ mod tests {
         let issuer = issuer_service_with_metadata(
             None,
             None,
-            Some(MockNonceHandler::default()),
+            Some(Box::new(MockNonceHandler::default())),
             SampleIssuerMetadata::with_sdjwtvc_conf(),
             CredentialLifetime::Finite(Duration::days(CUSTOM_CRED_LIFETIME)),
             Some(HashMap::from([(
@@ -1012,7 +1070,7 @@ mod tests {
 
     #[tokio::test]
     async fn issue_credential_succeeds_when_time_based_claims_are_provided() {
-        let issuer = issuer_service(None, None, Some(MockNonceHandler::default())).await;
+        let issuer = issuer_service(None, None, Some(Box::new(MockNonceHandler::default()))).await;
         let mut claims = sample_claims();
 
         let exp = OffsetDateTime::now_utc()
@@ -1055,7 +1113,7 @@ mod tests {
 
     #[tokio::test]
     async fn issue_credential_fails_with_invalid_proof_error_when_nonce_is_invalid() {
-        let issuer = issuer_service(None, None, Some(LocalNonceHandler::default())).await;
+        let issuer = issuer_service(None, None, Some(Box::new(LocalNonceHandler::default()))).await;
 
         let iss_result = issuer
             .issue_credential(
@@ -1094,7 +1152,7 @@ mod tests {
         let issuer = issuer_service(
             None,
             Some(token_validator),
-            Some(MockNonceHandler::default()),
+            Some(Box::new(MockNonceHandler::default())),
         )
         .await;
 
@@ -1111,7 +1169,7 @@ mod tests {
 
     #[tokio::test]
     async fn generate_nonce_works_when_nonce_handler_is_provided() {
-        let issuer = issuer_service(None, None, Some(MockNonceHandler::default())).await;
+        let issuer = issuer_service(None, None, Some(Box::new(MockNonceHandler::default()))).await;
 
         let nonce_resp = issuer.generate_nonce().await.unwrap();
 
@@ -1121,7 +1179,7 @@ mod tests {
     #[tokio::test]
     #[should_panic(expected = "Could not generate a nonce. Nonce Handler is not provided")]
     async fn generate_nonce_fails_when_nonce_handler_is_not_provided() {
-        let issuer = issuer_service(None, None, None::<MockNonceHandler>).await;
+        let issuer = issuer_service(None, None, None).await;
 
         issuer.generate_nonce().await.unwrap();
     }
@@ -1148,7 +1206,7 @@ mod tests {
         let issuer = issuer_service(
             None,
             Some(token_validator),
-            Some(MockNonceHandler::default()),
+            Some(Box::new(MockNonceHandler::default())),
         )
         .await;
 
@@ -1169,7 +1227,7 @@ mod tests {
 
     #[tokio::test]
     async fn resolve_cred_def_succeeds_with_correct_data() {
-        let issuer_service = issuer_service(None, None, None::<LocalNonceHandler>).await;
+        let issuer_service = issuer_service(None, None, None).await;
 
         let cred_req = SampleCredentialRequest::with_cred_configuration_id();
         let (cred_def_id, cred_def_metadata) = issuer_service.resolve_cred_def(&cred_req).unwrap();
@@ -1182,7 +1240,7 @@ mod tests {
 
     #[tokio::test]
     async fn validate_cred_def_ids_succeeds_with_correct_data() {
-        let issuer_service = issuer_service(None, None, None::<LocalNonceHandler>).await;
+        let issuer_service = issuer_service(None, None, None).await;
 
         let cred_def_ids = vec![CRED_DEF_ID];
         let validate_res = issuer_service.validate_cred_def_ids(&cred_def_ids);
@@ -1192,7 +1250,7 @@ mod tests {
 
     #[tokio::test]
     async fn validate_scope_succeeds_with_correct_data() {
-        let issuer_service = issuer_service(None, None, None::<LocalNonceHandler>).await;
+        let issuer_service = issuer_service(None, None, None).await;
         let scope = Scope::new(SCOPE.to_owned());
 
         let validate_res = issuer_service.validate_scope(ACCESS_TOKEN, CRED_DEF_ID, &scope);
@@ -1202,7 +1260,7 @@ mod tests {
 
     #[tokio::test]
     async fn validate_claim_names_succeeds_with_correct_data() {
-        let issuer_service = issuer_service(None, None, None::<LocalNonceHandler>).await;
+        let issuer_service = issuer_service(None, None, None).await;
 
         let claims = json!({
             "given_name": "Bois",
@@ -1219,7 +1277,8 @@ mod tests {
 
     #[tokio::test]
     async fn get_cred_def_metadata_returns_none_on_unknown_cred_configuration_id() {
-        let issuer_service = issuer_service(None, None, Some(LocalNonceHandler::default())).await;
+        let issuer_service =
+            issuer_service(None, None, Some(Box::new(LocalNonceHandler::default()))).await;
         let cred_req = sample_sdjwtvc_credential_request_with_cred_conf_id("unknown_cred_conf_id");
         let result = issuer_service.get_cred_def_metadata(&cred_req);
         assert_eq!(result, None);
@@ -1227,14 +1286,15 @@ mod tests {
 
     #[tokio::test]
     async fn validate_token_does_nothing_on_token_validation_being_none() {
-        let issuer_service = issuer_service(None, None, Some(LocalNonceHandler::default())).await;
+        let issuer_service =
+            issuer_service(None, None, Some(Box::new(LocalNonceHandler::default()))).await;
         issuer_service.validate_token("").await.unwrap();
     }
 
     #[tokio::test]
     #[should_panic(expected = "Missed credential configuration ids")]
     async fn create_credential_offer_fails_on_empty_cred_def_ids() {
-        let issuer_service = issuer_service(None, None, None::<LocalNonceHandler>).await;
+        let issuer_service = issuer_service(None, None, None).await;
         let grants = create_empty_credential_offer_grants();
         issuer_service
             .create_credential_offer(vec![], &grants)
@@ -1244,7 +1304,7 @@ mod tests {
     #[tokio::test]
     #[should_panic(expected = "Unknown credential identifier: fake_cred_def_id")]
     async fn create_credential_offer_fails_on_not_matching_cred_def_ids() {
-        let issuer_service = issuer_service(None, None, None::<LocalNonceHandler>).await;
+        let issuer_service = issuer_service(None, None, None).await;
         let grants = create_empty_credential_offer_grants();
         issuer_service
             .create_credential_offer(vec![CRED_DEF_ID, "fake_cred_def_id"], &grants)
@@ -1259,7 +1319,8 @@ mod tests {
      {
         let claims = Claims::new();
 
-        let issuer_service = issuer_service(None, None, Some(LocalNonceHandler::default())).await;
+        let issuer_service =
+            issuer_service(None, None, Some(Box::new(LocalNonceHandler::default()))).await;
         issuer_service
             .issue_credential(
                 &SampleCredentialRequest::with_cred_identifier(),
@@ -1280,7 +1341,8 @@ mod tests {
             sample_sdjwtvc_credential_request_with_cred_conf_id("unknown_cred_conf_id");
         let claims = Claims::new();
 
-        let issuer_service = issuer_service(None, None, Some(MockNonceHandler::default())).await;
+        let issuer_service =
+            issuer_service(None, None, Some(Box::new(MockNonceHandler::default()))).await;
         issuer_service
             .issue_credential(&credential_request, "fake_token", &claims, None)
             .await
@@ -1298,7 +1360,7 @@ mod tests {
         let issuer_service = issuer_service_with_metadata(
             None,
             None,
-            None::<LocalNonceHandler>,
+            None,
             sample_issuer_metadata_without_scope(),
             CredentialLifetime::default(),
             None,
@@ -1316,7 +1378,8 @@ mod tests {
         let credential_request = SampleCredentialRequest::with_cred_configuration_id();
         let claims = Claims::new();
 
-        let issuer_service = issuer_service(None, None, Some(MockNonceHandler::default())).await;
+        let issuer_service =
+            issuer_service(None, None, Some(Box::new(MockNonceHandler::default()))).await;
         issuer_service
             .issue_credential(&credential_request, "fake_token", &claims, None)
             .await
@@ -1334,7 +1397,7 @@ mod tests {
         let issuer_service = issuer_service_with_metadata(
             None,
             None,
-            Some(MockNonceHandler::default()),
+            Some(Box::new(MockNonceHandler::default())),
             sample_issuer_metadata_with_incorrect_scope(),
             CredentialLifetime::default(),
             None,
@@ -1352,7 +1415,8 @@ mod tests {
         let credential_request = SampleCredentialRequest::with_cred_configuration_id();
         let claims = Claims::new();
 
-        let issuer_service = issuer_service(None, None, Some(MockNonceHandler::default())).await;
+        let issuer_service =
+            issuer_service(None, None, Some(Box::new(MockNonceHandler::default()))).await;
         issuer_service
             .issue_credential(
                 &credential_request,
@@ -1371,7 +1435,7 @@ mod tests {
             .try_into()
             .unwrap();
 
-        let issuer = issuer_service(None, None, Some(MockNonceHandler::default())).await;
+        let issuer = issuer_service(None, None, Some(Box::new(MockNonceHandler::default()))).await;
         issuer
             .issue_credential(
                 &SampleCredentialRequest::with_cred_configuration_id(),
@@ -1395,7 +1459,7 @@ mod tests {
     ) {
         let claims = Claims::new();
 
-        let issuer = issuer_service(None, None, Some(MockNonceHandler::default())).await;
+        let issuer = issuer_service(None, None, Some(Box::new(MockNonceHandler::default()))).await;
         issuer
             .issue_credential(&credential_request, ACCESS_TOKEN, &claims, None)
             .await
@@ -1424,17 +1488,17 @@ mod tests {
         let issuer = issuer_service(
             None,
             Some(token_validator),
-            Some(MockNonceHandler::default()),
+            Some(Box::new(MockNonceHandler::default())),
         )
         .await;
         issuer.validate_token("").await.unwrap();
     }
 
-    async fn issuer_service<NH: NonceHandler>(
+    async fn issuer_service(
         http_client: Option<MockHttpClient>,
         token_validation: Option<TokenValidation<MockHttpClient>>,
-        nonce_handler: Option<NH>,
-    ) -> IssuerService<impl vc::core::Issuer, impl HttpClient, impl NonceHandler> {
+        nonce_handler: Option<Box<dyn NonceHandler>>,
+    ) -> IssuerService<impl vc::core::Issuer, impl HttpClient> {
         issuer_service_with_metadata(
             http_client,
             token_validation,
@@ -1446,16 +1510,16 @@ mod tests {
         .await
     }
 
-    async fn issuer_service_with_metadata<NH: NonceHandler>(
+    async fn issuer_service_with_metadata(
         http_client: Option<MockHttpClient>,
         token_validation: Option<TokenValidation<MockHttpClient>>,
-        nonce_handler: Option<NH>,
+        nonce_handler: Option<Box<dyn NonceHandler>>,
         issuer_metadata: IssuerMetadata,
         cred_lifetime: CredentialLifetime,
         cred_lifetime_per_cred_conf_id: Option<
             HashMap<CredentialConfigurationId, CredentialLifetime>,
         >,
-    ) -> IssuerService<impl vc::core::Issuer, impl HttpClient, impl NonceHandler> {
+    ) -> IssuerService<impl vc::core::Issuer, impl HttpClient> {
         let kms = LocalKms::new();
         let introspect = Introspect::new(
             http_client.unwrap_or_default(),

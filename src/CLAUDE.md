@@ -28,7 +28,7 @@ Root of the ASDK Rust library. Defines the core trait interfaces (crypto, HTTP, 
 - `DerivativeKms` — extends `Kms` with BIP32, ECDH-1PU, and ECDH-ES derivation.
 - `Storage<K, V>` — async CRUD + transaction; backing store for KMS, connection, and VC state.
 - `Vault` — stores and queries `Credential` objects with JSONPath-style filtering.
-- `NonceHandler` — generates and validates single-use nonces.
+- `NonceHandler` — generates, validates and invalidates nonces.
 - `SigningKey` / `VerifyingKey` / `Key` — crypto primitive traits implemented by key handles in `inmem`.
 
 ## Dependencies
