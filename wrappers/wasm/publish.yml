@@ -2,6 +2,12 @@ variables:
   REGISTRY_URL_NPM: https://${CI_SERVER_HOST}/api/v4/projects/${CI_PROJECT_ID}/packages/npm/
 
 .cargo_local_deps_script: &cargo_local_deps_script
+  - |
+    git config --global --get-regexp '^url\..*\.insteadof$' 2>/dev/null | while read -r key value; do
+      case "$value" in
+        *git.slock.it*) git config --global --remove-section "${key%.insteadof}" 2>/dev/null || true ;;
+      esac
+    done || true
   - git config --global url."https://gitlab-ci-token:${CI_JOB_TOKEN}@git.slock.it/".insteadOf "ssh://git@git.slock.it/"
 
 .wasm_job_configs: &wasm_job_configs
@@ -10,6 +16,7 @@ variables:
     - curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain ${RUST_VERSION}
     - apt-get update && apt-get install -y clang
     - source "$HOME/.cargo/env"
+    - export RUSTC_WRAPPER=""
     - *cargo_local_deps_script
 
 .wasm_to_registry_template: &wasm_to_registry_template
@@ -21,6 +28,9 @@ variables:
 
 publish_wasm_wrapper:
   <<: *wasm_to_registry_template
+  rules:
+    - if: $CI_COMMIT_TAG && $CI_COMMIT_TAG =~ $RELEASE_VERSION_REGEX
+    - when: never
   script:
     - |
       cd wrappers/wasm

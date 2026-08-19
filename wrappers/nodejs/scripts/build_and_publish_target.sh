@@ -22,7 +22,7 @@ VERSION=$(npm pkg get version | tr -d '"')
 if [ "${ENVIRONMENT:-}" == "development" ]; then
   TAG="dev"
   BUILD_FLAGS="--features=in-memory"
-  npm version ${VERSION}-dev
+  npm version ${VERSION}-dev --no-git-tag-version --ignore-scripts
 else
   TAG="latest"
   BUILD_FLAGS="--release"
@@ -43,5 +43,5 @@ NPM_TOKEN=${NPM_TOKEN} npm publish --registry=${REGISTRY_URL_NPM} --tag ${TAG}
 
 if [ "${ENVIRONMENT:-}" == "development" ]; then
   cd ../../
-  npm version $VERSION
+  npm version $VERSION --no-git-tag-version --ignore-scripts
 fi

@@ -11,7 +11,7 @@ VERSION=$(npm pkg get version | tr -d '"')
 if [ "${ENVIRONMENT:-}" == "development" ]; then
   TAG="dev"
   BUILD_SCRIPT="build:debug"
-  npm version ${VERSION}-dev
+  npm version ${VERSION}-dev --no-git-tag-version --ignore-scripts
 else
   TAG="latest"
   BUILD_SCRIPT="build"
@@ -24,5 +24,5 @@ npx napi prepublish --skip-gh-release
 NPM_TOKEN=${NPM_TOKEN} npm publish --registry=${REGISTRY_URL_NPM} --tag ${TAG}
 
 if [ "${ENVIRONMENT:-}" == "development" ]; then
-  npm version $VERSION
+  npm version $VERSION --no-git-tag-version --ignore-scripts
 fi

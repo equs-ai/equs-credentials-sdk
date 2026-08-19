@@ -17,7 +17,12 @@ stages:
 variables:
   RUST_VERSION: "1.97.0"
   NODE_VERSION: "20.18.0"
-  VERSION_REGEX: /^[0-9]+\.[0-9]+\.[0-9]+$/
+  # Any release-shaped tag, including prereleases such as 1.11.0-test-0. Gates
+  # the *_dev publish jobs, which publish under the `dev` tag only.
+  VERSION_REGEX: /^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$/
+  # Final releases only. Gates the production publish jobs, which publish under
+  # the `latest` tag — a prerelease tag must never be able to claim `latest`.
+  RELEASE_VERSION_REGEX: /^[0-9]+\.[0-9]+\.[0-9]+$/
   RUSTC_WRAPPER: "sccache"
   SCCACHE_DIR: "${CI_PROJECT_DIR}/.sccache"
   SCCACHE_CACHE_SIZE: "2G"
