@@ -1,4 +1,12 @@
-import { CredentialLifetime, HttpRequest, HttpResponse, InMemKms, OID4VCIIssuer, OID4VCIIssuerBuilder } from "../../";
+import {
+  CredentialLifetime,
+  HttpRequest,
+  HttpResponse,
+  InMemKms,
+  NonceHandler,
+  OID4VCIIssuer,
+  OID4VCIIssuerBuilder,
+} from "../../";
 import {
   ACCESS_TOKEN,
   CLAIMS,
@@ -12,21 +20,23 @@ import {
   GRANTS,
   ISSUER_METADATA,
   MockNonceHandler,
+  PROOF_JWT,
 } from "./fixtures";
 import { createDidAndKeyMetadata } from "../utils";
 import { jwtDecode } from "jwt-decode";
 
 describe("OID4VCI Issuer: ", () => {
   let issuer: OID4VCIIssuer;
+  let nonceHandler: MockNonceHandler;
   const NONCE = "KB50VOm9I-kPLT9mAACV8g";
 
   beforeEach(async () => {
     const kms = new InMemKms();
-    const mockNonceHandler = new MockNonceHandler(NONCE);
+    nonceHandler = new MockNonceHandler(NONCE);
     const { keyMetadata } = await createDidAndKeyMetadata(kms);
 
     issuer = await new OID4VCIIssuerBuilder(kms, ISSUER_METADATA, keyMetadata)
-      .withNonceHandler(mockNonceHandler)
+      .withNonceHandler(nonceHandler)
       .withDefaultCredentialLifetime(CredentialLifetime.infinite())
       .withCredentialLifetime(CredDefId1, CredentialLifetime.finite(3600 * 24 * 365))
       // CredDefId2 lifetime must fallback to default (infinite).
@@ -116,5 +126,56 @@ describe("OID4VCI Issuer: ", () => {
     expect(result.value.credentials.length).toEqual(2);
     expect(result.value.credentials[0]).toBeTruthy();
     expect(result.value.credentials[1]).toBeTruthy();
+  });
+
+  it("issue multiple Credential - spends the shared nonce once", async () => {
+    await issuer.issueCredential(CRED_REQUEST_FOR_BATCH_ISSUANCE, ACCESS_TOKEN, CLAIMS);
+
+    expect(nonceHandler.invalidated).toEqual([[NONCE]]);
+  });
+
+  it("issue multiple Credential - spends the nonce through a handler that only has prototype methods", async () => {
+    // The shape a DI framework produces: methods live on the prototype, nothing is bound in the
+    // constructor. `invalidate` has to be picked up all the same.
+    const invalidated: Array<Array<string>> = [];
+
+    class PrototypeNonceHandler implements NonceHandler {
+      async generate(): Promise<string> {
+        return NONCE;
+      }
+
+      async validate(nonce: string): Promise<boolean> {
+        return true;
+      }
+
+      async invalidate(nonces: Array<string>): Promise<void> {
+        invalidated.push(nonces);
+      }
+    }
+
+    const kms = new InMemKms();
+    const { keyMetadata } = await createDidAndKeyMetadata(kms);
+    const issuerWithPrototypeHandler = await new OID4VCIIssuerBuilder(kms, ISSUER_METADATA, keyMetadata)
+      .withNonceHandler(new PrototypeNonceHandler())
+      .withDefaultCredentialLifetime(CredentialLifetime.infinite())
+      .build();
+
+    await issuerWithPrototypeHandler.issueCredential(CRED_REQUEST_FOR_BATCH_ISSUANCE, ACCESS_TOKEN, CLAIMS);
+
+    expect(invalidated).toEqual([[NONCE]]);
+  });
+
+  it("issue Credential - spends the nonce of a rejected request", async () => {
+    const request = {
+      ...CRED_REQUEST_FOR_BATCH_ISSUANCE,
+      proofs: { jwt: [PROOF_JWT, "not-a-key-proof"] },
+    };
+
+    const result = await issuer.issueCredential(request, ACCESS_TOKEN, CLAIMS);
+
+    expect(result.value).toMatchObject({ error: "invalid_proof" });
+    // The second key proof is rejected, but the nonce the first one was validated against is spent
+    // all the same — a rejected request must leave no nonce behind to retry with.
+    expect(nonceHandler.invalidated).toEqual([[NONCE]]);
   });
 });

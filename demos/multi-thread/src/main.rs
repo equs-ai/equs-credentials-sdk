@@ -111,7 +111,7 @@ async fn oid4vci_issuer(issuer_metadata: IssuerMetadata) -> impl Issuer {
     let (_, key_metadata) = create_did_and_key_metadata(&kms).await;
 
     oid4vci::IssuerBuilder::new(kms, issuer_metadata, key_metadata)
-        .with_nonce_handler(nonce_handler)
+        .with_nonce_handler(Box::new(nonce_handler))
         .with_http_client(ReqwestClientBuilder::new().insecure().build().unwrap())
         .build()
         .await

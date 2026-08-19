@@ -504,7 +504,7 @@ async fn issuer() -> (impl oid4vci::Issuer, DIDDoc) {
     let issuer_metadata = sample_issuer_metadata(ISSUER_SERVER_URL, AUTH_SRV_URL);
 
     let issuer = oid4vci::IssuerBuilder::new(kms.clone(), issuer_metadata, key_metadata)
-        .with_nonce_handler(nonce_handler)
+        .with_nonce_handler(Box::new(nonce_handler))
         .with_http_client(ReqwestClientBuilder::new().insecure().build().unwrap())
         .with_dedicated_key_metadata(
             JSON_LD_V2_CRED_DEF,

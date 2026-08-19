@@ -174,17 +174,13 @@ pub async fn _build_vci_issuer(
     }
 
     if let Some(nonce_handler) = nonce_handler {
-        let issuer = builder
-            .with_nonce_handler(nonce_handler)
-            .build()
-            .await
-            .map_err(|e| Error::from_reason(format!("{:?}", e)))?;
-        Ok(OID4VCIIssuer(Box::new(issuer)))
-    } else {
-        let issuer = builder
-            .build()
-            .await
-            .map_err(|e| Error::from_reason(format!("{:?}", e)))?;
-        Ok(OID4VCIIssuer(Box::new(issuer)))
+        builder = builder.with_nonce_handler(Box::new(nonce_handler));
     }
+
+    let issuer = builder
+        .build()
+        .await
+        .map_err(|e| Error::from_reason(format!("{:?}", e)))?;
+
+    Ok(OID4VCIIssuer(Box::new(issuer)))
 }

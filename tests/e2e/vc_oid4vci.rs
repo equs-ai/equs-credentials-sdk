@@ -10,6 +10,7 @@ use oauth2::{HttpRequest, HttpResponse, TokenResponse};
 use oid4vci::AuthorizationCodeGrant;
 use rstest::rstest;
 use serde_json::json;
+use std::sync::Arc;
 use std::{io, str};
 use uuid::Uuid;
 
@@ -129,6 +130,27 @@ async fn authorized_code_flow_using_scopes(#[case] validate_token: bool) {
         }
         _ => panic!("unexpected result"),
     }
+
+    // 6.4 Holder requests two SD_JWT_cred_2 credentials in one batch request. Both key proofs are
+    // signed over the single `c_nonce` the holder fetched, so the issuer has to accept that nonce
+    // once per key proof and spend it once for the request.
+    let (_, first_key_metadata, _) = create_did_keymetadata_keyhandle(&kms).await;
+    let (_, second_key_metadata, _) = create_did_keymetadata_keyhandle(&kms).await;
+    let response = holder
+        .request_credential(
+            token_response.access_token(),
+            "SD_JWT_cred_2",
+            &[first_key_metadata, second_key_metadata],
+        )
+        .await
+        .unwrap();
+
+    match response.data {
+        oid4vci::CredentialResult::Credential { credentials, .. } => {
+            assert_eq!(credentials.len(), 2);
+        }
+        _ => panic!("unexpected result"),
+    }
 }
 
 async fn credential_endpoint(issuer: &impl Issuer, req: HttpRequest) -> HttpResponse {
@@ -233,20 +255,25 @@ fn prepare_http_client_for_holder(
         }),
     );
 
-    let nonce_future = executor::block_on(issuer.generate_nonce()).unwrap();
+    // A Nonce Endpoint mints a nonce per call, and the credential endpoint spends the ones its key
+    // proofs carried, so serving a single pre-generated nonce to every request would replay a spent
+    // one.
+    let issuer = Arc::new(issuer);
+    let nonce_issuer = issuer.clone();
+
     http_client.add_handler(
         sample_issuer_url().join("/nonce").unwrap(),
         Box::new(move |_| {
-            Ok(HttpResponse::new(
-                serde_json::to_vec(&nonce_future).unwrap(),
-            ))
+            let nonce = executor::block_on(nonce_issuer.generate_nonce()).unwrap();
+
+            Ok(HttpResponse::new(serde_json::to_vec(&nonce).unwrap()))
         }),
     );
 
     http_client.add_handler(
         sample_issuer_url().join("/credential").unwrap(),
         Box::new(move |req| {
-            let fut = credential_endpoint(&issuer, req);
+            let fut = credential_endpoint(issuer.as_ref(), req);
             let result = executor::block_on(fut); // TODO: get rid of `block_on` here
             Ok(result)
         }),

@@ -1,5 +1,5 @@
 use agent_sdk::nonce;
-use agent_sdk::nonce::{GenerateSnafu, Nonce, NonceHandler, ValidateSnafu};
+use agent_sdk::nonce::{GenerateSnafu, InvalidateSnafu, Nonce, NonceHandler, ValidateSnafu};
 use async_trait::async_trait;
 use napi::bindgen_prelude::Promise;
 use napi::threadsafe_function::{ErrorStrategy, ThreadsafeFunction};
@@ -7,9 +7,14 @@ use napi_derive::napi;
 
 /// An async generic `NonceHandler` interface for generating nonce  .
 ///
-/// Supports `generate` operation.
+/// Supports `generate`, `validate` and `invalidate` operations.
 ///
 /// @property {() => Promise<string>} generate - method to create nonce
+/// @property {(nonce: string) => Promise<boolean>} validate - method to check that a nonce is still
+///   spendable. It is called once per occurrence of a nonce in a request, so a request presenting the
+///   same nonce several times calls it repeatedly with the same value; it must not consume the nonce.
+/// @property {(nonces: string[]) => Promise<void>} invalidate - method to spend the nonces a finished
+///   request carried. It is called once per request, on success and on failure alike.
 ///
 #[derive(Clone)]
 #[napi(js_name = "NonceHandler", object, object_to_js = false)]
@@ -18,6 +23,8 @@ pub struct JsNonceHandler {
     pub generate: ThreadsafeFunction<(), ErrorStrategy::Fatal>,
     #[napi(ts_type = "(nonce: string) => Promise<boolean>")]
     pub validate: ThreadsafeFunction<String, ErrorStrategy::Fatal>,
+    #[napi(ts_type = "(nonces: Array<string>) => Promise<void>")]
+    pub invalidate: ThreadsafeFunction<Vec<String>, ErrorStrategy::Fatal>,
 }
 
 #[async_trait]
@@ -62,6 +69,27 @@ impl NonceHandler for JsNonceHandler {
             .build()
         })
     }
+
+    async fn invalidate(&self, nonces: &[Nonce]) -> nonce::Result<()> {
+        let secrets: Vec<String> = nonces
+            .iter()
+            .map(|nonce| nonce.secret().to_owned())
+            .collect();
+
+        let promise: Promise<()> = self.invalidate.call_async(secrets).await.map_err(|err| {
+            InvalidateSnafu {
+                details: err.to_string(),
+            }
+            .build()
+        })?;
+
+        promise.await.map_err(|err| {
+            InvalidateSnafu {
+                details: err.to_string(),
+            }
+            .build()
+        })
+    }
 }
 
 #[cfg(debug_assertions)]
@@ -91,6 +119,16 @@ pub mod test_utils {
                 .validate(&agent_sdk::nonce::Nonce::from_secret(nonce))
                 .await
                 .unwrap()
+        }
+
+        #[napi]
+        pub async fn invalidate(&self, nonces: Vec<String>) {
+            let nonces: Vec<agent_sdk::nonce::Nonce> = nonces
+                .into_iter()
+                .map(agent_sdk::nonce::Nonce::from_secret)
+                .collect();
+
+            self.0.invalidate(&nonces).await.unwrap()
         }
     }
 }

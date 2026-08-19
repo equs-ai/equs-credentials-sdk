@@ -46,6 +46,7 @@ use rstest::rstest;
 use serde_json::json;
 use std::collections::HashMap;
 use std::str::FromStr;
+use std::sync::Arc;
 use std::{io, str};
 use url::Url;
 use uuid::Uuid;
@@ -358,20 +359,25 @@ fn prepare_http_client_for_holder(
         }),
     );
 
-    let nonce_future = executor::block_on(issuer.generate_nonce()).unwrap();
+    // A Nonce Endpoint mints a nonce per call, and the credential endpoint spends the ones its key
+    // proofs carried, so serving a single pre-generated nonce to every request would replay a spent
+    // one.
+    let issuer = Arc::new(issuer);
+    let nonce_issuer = issuer.clone();
+
     http_client.add_handler(
         sample_issuer_url().join("/nonce").unwrap(),
         Box::new(move |_| {
-            Ok(HttpResponse::new(
-                serde_json::to_vec(&nonce_future).unwrap(),
-            ))
+            let nonce = executor::block_on(nonce_issuer.generate_nonce()).unwrap();
+
+            Ok(HttpResponse::new(serde_json::to_vec(&nonce).unwrap()))
         }),
     );
 
     http_client.add_handler(
         sample_issuer_url().join("/credential").unwrap(),
         Box::new(move |req| {
-            let fut = credential_endpoint(&issuer, req);
+            let fut = credential_endpoint(issuer.as_ref(), req);
             let result = executor::block_on(fut); // TODO: get rid of `block_on` here
             Ok(result)
         }),
@@ -456,7 +462,7 @@ async fn build_issuer_with_test_did_resolver(
     let (_, key_metadata, _) = create_did_keymetadata_keyhandle_with_test_did_resolver(&kms).await;
 
     let mut builder = IssuerBuilder::new(kms, metadata, key_metadata)
-        .with_nonce_handler(nonce_gen)
+        .with_nonce_handler(Box::new(nonce_gen))
         .with_http_client(http_client)
         .with_did_resolver(TestDIDResolver::new(CUSTOM_METHOD_NAME.to_string()))
         .unwrap();

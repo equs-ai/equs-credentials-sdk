@@ -520,6 +520,10 @@ impl NonceHandler for MockNonceHandler {
     async fn validate(&self, _nonce: &Nonce) -> nonce::Result<bool> {
         Ok(true)
     }
+
+    async fn invalidate(&self, _nonces: &[Nonce]) -> nonce::Result<()> {
+        Ok(())
+    }
 }
 
 pub(crate) async fn create_vc(
