@@ -4,11 +4,32 @@ use agent_sdk::nonce::ValidateSnafu;
 use agent_sdk::nonce::{Nonce, NonceHandler as ASDKNonceHandler};
 use async_trait::async_trait;
 use std::sync::Arc;
+
+/// Issues and validates the one-time challenges that bind a proof to a single exchange; its store
+/// of active nonces must be shared by every instance, and nonces are never spent through it.
 #[uniffi::export(with_foreign)]
 #[async_trait]
 pub trait NonceHandler: Send + Sync {
+    /// Issues a fresh nonce and records it as active.
+    ///
+    /// # Returns
+    /// The nonce, drawn from a cryptographically secure random source.
+    ///
+    /// # Errors
+    /// * `Error` - the nonce could not be issued
     async fn generate(&self) -> Result<String>;
 
+    /// Reports whether a nonce is active, without consuming it; the same nonce may be validated
+    /// more than once within a single exchange.
+    ///
+    /// # Arguments
+    /// * `nonce` - the nonce to validate
+    ///
+    /// # Returns
+    /// `true` only for a nonce this handler issued that has not expired.
+    ///
+    /// # Errors
+    /// * `Error` - the nonce store could not be reached
     async fn validate(&self, nonce: String) -> Result<bool>;
 }
 

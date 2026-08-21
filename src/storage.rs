@@ -38,116 +38,100 @@ where
     V: Send + Sync + 'static,
     K: Send + Sync,
 {
+    /// Scoped handle returned by [Storage::begin_transaction].
     type Transaction: Transaction<K, V> + Send + Sync + 'static;
 
-    /// Start a storage transaction
-    async fn begin_transaction(&self) -> Self::Transaction;
-
-    /// Put a key-value into the storage.
-    ///
-    /// # Arguments
-    ///
-    /// * `k` - the key.
-    /// * `v` - the value.
-    ///
-    /// # Errors
-    ///
-    /// * [Error::Modification] - fails to insert the key-value.
-    async fn put(&self, k: K, v: V) -> Result<()>;
-
-    /// Returns a value for the provided key.
-    ///
-    /// # Arguments
-    ///
-    /// * `k` - a key.
+    /// Starts a storage transaction.
     ///
     /// # Returns
+    /// A [Storage::Transaction]; it ends when dropped, with no explicit commit.
+    async fn begin_transaction(&self) -> Self::Transaction;
+
+    /// Puts a key-value into the storage.
     ///
-    /// `Some(value)` on success.
-    /// `None` if no value was found by `key`.
+    /// # Arguments
+    /// * `k` - the key
+    /// * `v` - the value
     ///
     /// # Errors
+    /// * [Error::Modification] - the key-value could not be inserted
+    async fn put(&self, k: K, v: V) -> Result<()>;
+
+    /// Returns the value for the provided key.
     ///
-    /// * [Error::Resolving] - fails to resolve a value.
+    /// # Arguments
+    /// * `k` - the key
+    ///
+    /// # Returns
+    /// `Some(value)`, or `None` if the key is absent.
+    ///
+    /// # Errors
+    /// * [Error::Resolving] - the value could not be resolved
     async fn get(&self, k: &K) -> Result<Option<V>>;
 
     /// Returns all values.
     ///
     /// # Returns
-    ///
-    /// `Vec<V>` on success.
-    /// Empty vector if no keys were found.
+    /// Every stored value; empty if there are none.
     ///
     /// # Errors
-    ///
-    /// * [Error::Resolving] - fails to resolve a value.
+    /// * [Error::Resolving] - the values could not be resolved
     async fn get_all(&self) -> Result<Vec<V>>;
 
-    /// Delete an entry from the `Storage`.
+    /// Deletes an entry from the `Storage`.
     ///
     /// # Arguments
-    ///
-    /// * `k` - a key.
+    /// * `k` - the key
     ///
     /// # Errors
-    ///
-    /// * [Error::Modification] - fails to delete the record.
+    /// * [Error::Modification] - the record could not be deleted
     async fn delete(&self, k: &K) -> Result<()>;
 }
 
+/// Synchronous view of a [Storage] opened by [Storage::begin_transaction]; reads observe its own
+/// writes, and dropping it ends the transaction without rollback.
 pub trait Transaction<K, V>
 where
     V: Send + Sync + 'static,
     K: Send + Sync,
 {
-    /// Put a key-value into the storage.
+    /// Puts a key-value into the storage.
     ///
     /// # Arguments
-    ///
-    /// * `k` - the key.
-    /// * `v` - the value.
+    /// * `key` - the key
+    /// * `value` - the value
     ///
     /// # Errors
-    ///
-    /// * [Error::Modification] - fails to insert the key-value.
+    /// * [Error::Modification] - the key-value could not be inserted
     fn put(&mut self, key: K, value: V) -> Result<()>;
 
-    /// Returns a value for the provided key.
+    /// Returns the value for the provided key.
     ///
     /// # Arguments
-    ///
-    /// * `k` - a key.
+    /// * `k` - the key
     ///
     /// # Returns
-    ///
-    /// `Some(value)` on success.
-    /// `None` if no value was found by `key`.
+    /// `Some(value)`, or `None` if the key is absent.
     ///
     /// # Errors
-    ///
-    /// * [Error::Resolving] - fails to resolve a value.
+    /// * [Error::Resolving] - the value could not be resolved
     fn get(&self, k: &K) -> Result<Option<V>>;
 
     /// Returns all values.
     ///
     /// # Returns
-    ///
-    /// `Vec<V>` on success.
-    /// Empty vector if no keys were found.
+    /// Every stored value; empty if there are none.
     ///
     /// # Errors
-    ///
-    /// * [Error::Resolving] - fails to resolve a value.
+    /// * [Error::Resolving] - the values could not be resolved
     fn get_all(&self) -> Result<Vec<V>>;
 
-    /// Delete an entry from the `Storage`.
+    /// Deletes an entry from the `Storage`.
     ///
     /// # Arguments
-    ///
-    /// * `k` - a key.
+    /// * `k` - the key
     ///
     /// # Errors
-    ///
-    /// * [Error::Modification] - fails to delete the record.
+    /// * [Error::Modification] - the record could not be deleted
     fn delete(&mut self, k: &K) -> Result<()>;
 }

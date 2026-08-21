@@ -4,29 +4,46 @@ use crate::didcomm::core::envelope::Message;
 use crate::didcomm::core::protocol;
 use crate::didcomm::core::protocol::state_machine::StateMachine;
 
+/// Receiver of unpacked messages; the supported types are trailing type segments such as
+/// `offer-credential`, which must not overlap within a protocol.
 #[async_trait]
 pub trait MessageHandler: Sync + Send {
+    /// Get the message types this handler accepts
+    ///
+    /// # Returns
+    /// The trailing message type segments, e.g. `offer-credential`.
     fn supported_message_types(&self) -> &[&str];
 
+    /// Handle an incoming message
+    ///
+    /// # Arguments
+    /// * `msg` - the unpacked [`Message`], of a supported type
+    ///
+    /// # Errors
+    /// * [protocol::Error] - the message could not be processed
     async fn handle(&self, msg: Message) -> protocol::Result<()>;
 }
 
-/// Message Handler with StateMachine capability
+/// Message Handler with StateMachine capability; wrap it in [`StatefulMessageHandlerWrapper`] to
+/// register as a [`MessageHandler`]. New state is persisted only after `on_state_transition` runs.
 #[async_trait]
 pub trait StatefulMessageHandler {
+    /// Get the message types this handler accepts
+    ///
+    /// # Returns
+    /// The trailing message type segments this handler accepts.
     fn supported_message_types(&self) -> &[&str];
 
     /// The protocol state machine.
     type StateMachine: StateMachine;
 
-    /// Handle an incoming message.
+    /// Handle an incoming message
     ///
     /// # Arguments
-    /// * `message` - The message to handle
+    /// * `message` - The [`Message`] to handle
     ///
     /// # Errors
-    ///
-    /// Returns an error if fails to dispatch the incoming message.
+    /// * [protocol::Error] - validation failed, or the event could not be dispatched
     async fn handle(&self, message: Message) -> protocol::Result<()> {
         // Validate incoming DIDComm message
         self.validate_message(&message).await?;
@@ -34,17 +51,13 @@ pub trait StatefulMessageHandler {
         self.trigger_event(message.clone().try_into()?).await
     }
 
-    /// Process a protocol‐specific event through the state machine
+    /// Process a protocol-specific event through the state machine
     ///
     /// # Arguments
-    ///
-    /// * `thid` – A thread ID  
-    /// * `event` – A protocol specific event  
+    /// * `event` - A protocol specific event
     ///
     /// # Errors
-    ///
-    /// Returns an error if the state machine cannot process the event, or if
-    /// handling the resulting state fails.
+    /// * [protocol::Error] - the event could not be processed, or the new state not handled
     async fn trigger_event(
         &self,
         event: <<Self as StatefulMessageHandler>::StateMachine as StateMachine>::Event,
@@ -64,31 +77,37 @@ pub trait StatefulMessageHandler {
         Ok(())
     }
 
-    /// Validate an incoming message.
+    /// Validate an incoming message
     ///
     /// # Arguments
-    ///
-    /// * `message` – a reference to the DIDComm message
+    /// * `message` - the DIDComm [`Message`] to validate
     ///
     /// # Errors
-    ///
-    /// Return an error to reject the message.
+    /// * [protocol::Error] - returned to reject the message
     async fn validate_message(&self, message: &Message) -> protocol::Result<()>;
 
-    async fn send_message(&self, message: Message) -> protocol::Result<()>;
-
-    fn state_machine(&self) -> &Self::StateMachine;
-
-    /// Handle actions triggered by a state change.
+    /// Send a message the state transition produced
     ///
     /// # Arguments
-    ///
-    /// * `new_state` – the state resulting from the transition
-    /// * `message` – the original message that caused the transition
+    /// * `message` - the [`Message`] to send
     ///
     /// # Errors
+    /// * [protocol::Error] - the message could not be sent
+    async fn send_message(&self, message: Message) -> protocol::Result<()>;
+
+    /// Get the state machine this handler drives
     ///
-    /// Returns an error if fails to handle the state.
+    /// # Returns
+    /// The [`StatefulMessageHandler::StateMachine`] this handler drives.
+    fn state_machine(&self) -> &Self::StateMachine;
+
+    /// Handle actions triggered by a state change, before the new state is persisted.
+    ///
+    /// # Arguments
+    /// * `new_state` - the [`StateMachine::State`] resulting from the transition
+    ///
+    /// # Errors
+    /// * [protocol::Error] - leaves the stored state unchanged
     async fn on_state_transition(
         &self,
         new_state: <<Self as StatefulMessageHandler>::StateMachine as StateMachine>::State,

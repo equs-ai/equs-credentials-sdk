@@ -99,59 +99,65 @@ pub struct OutboundMessageResponse {
     pub headers: Vec<(String, String)>,
 }
 
-/// Interface for an inbound transport
+/// Interface for an inbound transport; owns its listening task and passes each received payload
+/// verbatim to [`MessageReceiver::receive_message`] without unpacking it.
 #[async_trait]
 pub trait InboundTransport: Send + Sync {
     /// Get the type of transport
+    ///
+    /// # Returns
+    /// The [TransportType] of this transport.
     fn transport_type(&self) -> TransportType;
 
-    /// Start the transport
+    /// Start the transport and begin listening for incoming messages
     ///
-    /// This method should start the transport and begin listening for
-    /// incoming messages.
     /// # Arguments
-    /// * `message_receiver` - The message receiver to forward incoming messages for further handing
+    /// * `message_receiver` - [`MessageReceiver`] given a packed message, unpacks it, and dispatches it to the appropriate handler
     ///
-    /// # Returns
-    /// * `Ok(())` if the transport was started successfully
-    /// * `Err(Error)` if there was an error starting the transport
+    /// # Errors
+    /// * [`Error::AlreadyRunning`] - the transport is already listening
     async fn start(&self, message_receiver: MessageReceiver) -> Result<()>;
 
-    /// Stop the transport
+    /// Stop the transport and stop listening for incoming messages
     ///
-    /// This method should stop the transport and stop listening for
-    /// incoming messages.
-    ///
-    /// # Returns
-    /// * `Ok(())` if the transport was stopped successfully
-    /// * `Err(Error)` if there was an error stopping the transport
+    /// # Errors
+    /// * [`Error::NotRunning`] - the transport was not listening
     async fn stop(&self) -> Result<()>;
 
     /// Check if the transport is running
     ///
     /// # Returns
-    /// * `true` if the transport is running
-    /// * `false` if the transport is not running
+    /// `true` while listening.
     async fn is_running(&self) -> bool;
 
     /// Get the endpoint where the transport is listening
     ///
     /// # Returns
-    /// * The endpoint where the transport is listening
+    /// The endpoint the transport listens on.
     fn endpoint(&self) -> &str;
 }
 
-/// Interface for an outbound transport
+/// Interface for an outbound transport; transmits the payload unmodified and rejects an endpoint
+/// scheme that fails `supports_scheme` with [`Error::UnsupportedTransport`].
 #[async_trait]
 pub trait OutboundTransport: Send + Sync {
     /// Get the type of transport
+    ///
+    /// # Returns
+    /// The [TransportType] of this transport.
     fn transport_type(&self) -> TransportType;
 
     /// Send a message via this transport
     ///
     /// # Arguments
-    /// * `message` - The message to send
+    /// * `message` - The [`OutboundMessage`] to send
     ///
+    /// # Returns
+    /// The [OutboundMessageResponse] from the endpoint.
+    ///
+    /// # Errors
+    /// * [`Error::UnsupportedTransport`] - the endpoint scheme fails `supports_scheme`
+    /// * [`Error::Network`] - delivery failed
     async fn send_message(&self, message: OutboundMessage) -> Result<OutboundMessageResponse>;
 
     /// Check if this transport supports the given URL scheme
@@ -159,17 +165,19 @@ pub trait OutboundTransport: Send + Sync {
     /// # Arguments
     /// * `url` - The URL to check
     ///
+    /// # Returns
+    /// `true` if this transport handles the URL's scheme.
     fn supports_scheme(&self, url: &Url) -> bool;
 
-    /// Start the transport
+    /// Start the transport, initializing any resources it needs
     ///
-    /// This method should initialize any resources needed by the transport.
-    ///
+    /// # Errors
+    /// * [Error] - the transport could not be started
     async fn start(&self) -> Result<()>;
 
-    /// Stop the transport
+    /// Stop the transport, releasing any resources it used
     ///
-    /// This method should release any resources used by the transport.
-    ///
+    /// # Errors
+    /// * [Error] - the transport could not be stopped
     async fn stop(&self) -> Result<()>;
 }
