@@ -123,9 +123,20 @@ impl TryFrom<HttpResponse> for ASDKHttpResponse {
     }
 }
 
+/// HTTP transport. Must be safe for concurrent use.
 #[uniffi::export(with_foreign)]
 #[async_trait]
 pub trait HttpClient: Send + Sync + Debug {
+    /// Performs the request and returns the response.
+    ///
+    /// # Arguments
+    /// * `request` - the request to send as given, headers included
+    ///
+    /// # Returns
+    /// The `HttpResponse`.
+    ///
+    /// # Errors
+    /// * `Error.HttpAsyncCall` - no response was obtained, such as a connection or TLS failure
     async fn async_call(&self, request: HttpRequest) -> Result<HttpResponse>;
 }
 

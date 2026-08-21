@@ -8,13 +8,53 @@ use agent_sdk::kms::KeyHandle as ASDKKeyHandle;
 use async_trait::async_trait;
 use std::sync::Arc;
 
+/// Signing and verification for a single key; must be safe for concurrent use and describe the same
+/// key for its lifetime.
 #[uniffi::export(with_foreign)]
 #[async_trait]
 pub trait KeyHandle: Send + Sync {
+    /// Returns the raw public key bytes for this key.
+    ///
+    /// # Returns
+    /// The public key in the encoding the key type prescribes.
+    ///
+    /// # Errors
+    /// * `Error.KeyHandle` - the public key could not be read
     fn pub_key(&self) -> Result<Vec<u8>>;
+
+    /// Returns the public key as a serialized JWK.
+    ///
+    /// # Returns
+    /// A JSON object, or `null` if this key has no JWK form; a value that does not parse is
+    /// treated as absent.
     fn jwk(&self) -> Option<String>;
+
+    /// Returns the JWS algorithm this key signs with.
+    ///
+    /// # Returns
+    /// The algorithm that fixes the `alg` header of every proof built from this key.
     fn alg(&self) -> Alg;
+
+    /// Signs the payload with this key.
+    ///
+    /// # Arguments
+    /// * `payload` - the exact bytes to sign, not hashed, prefixed or re-encoded
+    ///
+    /// # Returns
+    /// The raw signature, in the algorithm's fixed-width form, not DER.
+    ///
+    /// # Errors
+    /// * `Error.KeyHandle` - signing failed
     async fn sign(&self, payload: Vec<u8>) -> Result<Vec<u8>>;
+
+    /// Verifies a signature over the given data using this key's public part.
+    ///
+    /// # Arguments
+    /// * `data` - the signed bytes
+    /// * `signature` - the signature to verify
+    ///
+    /// # Errors
+    /// * `Error.KeyHandle` - the signature is invalid, or verification failed
     async fn verify(&self, data: Vec<u8>, signature: Vec<u8>) -> Result<()>;
 }
 

@@ -28,29 +28,33 @@ type Level_ = Level;
 
 const EXISTING_DID_METHODS: [&str; 6] = ["ion", "jwk", "key", "pkh", "tz", "web"];
 
+/// Resolver for a single DID method; register with [UniversalResolver::add_resolver] to add a
+/// custom method
 #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 #[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 pub trait DIDResolver: WasmNotSend + WasmNotSync {
-    /// Resolves a DID representation.
-    ///
-    /// Fetches the DID document representation referenced by the input DID
-    /// using the given options.
-    ///
-    /// See: <https://www.w3.org/TR/did-core/#did-resolution>
+    /// Fetches the DID document representation referenced by the input DID.
+    /// See <https://www.w3.org/TR/did-core/#did-resolution>.
     ///
     /// # Arguments
-    ///
-    /// * `did` - DID string in `[u8]` format
-    /// * `options` - Resolution options
+    /// * `did` - the DID to resolve, always of [`method_name`](DIDResolver::method_name)
+    /// * `options` - resolution [`Options`]
     ///
     /// # Returns
-    /// `ResolutionOutput` with `DIDDoc`.
+    /// A [ResolutionOutput] whose metadata content type is the document's media type.
+    ///
+    /// # Errors
+    /// * [ResolutionError] - resolution, parsing or transport failure
     async fn resolve_representation<'a>(
         &'a self,
         did: &'a DID,
         options: Options,
     ) -> Result<ResolutionOutput, ResolutionError>;
 
+    /// Method name this resolver handles.
+    ///
+    /// # Returns
+    /// The method name without the `did:` prefix or a trailing colon, e.g. `ethr`.
     fn method_name(&self) -> String;
 }
 

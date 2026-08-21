@@ -48,15 +48,33 @@ impl TryFrom<ResolutionOptions> for DIDResolutionOptions {
     }
 }
 
+/// Resolver for a single DID method; pass an implementation to `UniversalDIDResolver` to add a
+/// custom method. Must be safe to call concurrently from any thread.
 #[uniffi::export(with_foreign)]
 #[async_trait]
 pub trait DIDResolver: Send + Sync {
+    /// Fetches the DID document representation referenced by the input DID.
+    /// See <https://www.w3.org/TR/did-core/#did-resolution>.
+    ///
+    /// # Arguments
+    /// * `did` - the DID to resolve, always of `method_name`
+    /// * `options` - resolution options
+    ///
+    /// # Returns
+    /// A `DIDResolution` whose metadata content type is the document's media type.
+    ///
+    /// # Errors
+    /// * `Error.DIDResolution` - resolution, parsing or transport failure
     async fn resolve_representation(
         &self,
         did: String,
         options: DIDResolutionOptions,
     ) -> Result<DIDResolution>;
 
+    /// Method name this resolver handles.
+    ///
+    /// # Returns
+    /// The method name without the `did:` prefix or a trailing colon, e.g. `ethr`.
     fn method_name(&self) -> String;
 }
 

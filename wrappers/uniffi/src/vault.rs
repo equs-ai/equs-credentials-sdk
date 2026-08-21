@@ -73,20 +73,74 @@ impl From<ASDKVaultFetchOptions> for VaultFetchOptions {
     }
 }
 
+/// Credential storage.
 #[uniffi::export(with_foreign)]
 #[async_trait]
 pub trait Vault: Send + Sync + Debug {
+    /// Stores a credential together with its metadata.
+    ///
+    /// # Arguments
+    /// * `credential` - the credential to store
+    /// * `metadata` - persisted alongside it; drives `findCredentials` indexing
+    ///
+    /// # Returns
+    /// The identifier, unique to this vault and stable for the credential's lifetime.
+    ///
+    /// # Errors
+    /// * `Error.Vault` - the credential could not be stored
     async fn store_credential(
         &self,
         credential: Credential,
         metadata: vc::CredentialMetadata,
     ) -> Result<String>;
+
+    /// Deletes a credential and its index entries.
+    ///
+    /// # Arguments
+    /// * `id` - credential identifier; an absent id must succeed
+    ///
+    /// # Errors
+    /// * `Error.Vault` - the credential could not be deleted
     async fn delete_credential(&self, id: String) -> Result<()>;
+
+    /// Returns the entry with the given identifier.
+    ///
+    /// # Arguments
+    /// * `id` - credential identifier
+    ///
+    /// # Returns
+    /// The entry, or `null` if the vault holds no such credential.
+    ///
+    /// # Errors
+    /// * `Error.Vault` - the vault could not be read
     async fn get_credential(&self, id: String) -> Result<Option<CredentialEntry>>;
+
+    /// Returns all stored credential entries.
+    ///
+    /// # Arguments
+    /// * `options` - optional pagination; ordering must be stable across calls
+    ///
+    /// # Returns
+    /// Every stored entry; empty if there are none.
+    ///
+    /// # Errors
+    /// * `Error.Vault` - the vault could not be read
     async fn get_credentials(
         &self,
         options: Option<VaultFetchOptions>,
     ) -> Result<Vec<CredentialEntry>>;
+
+    /// Returns the entries indexed under any of the given claim paths.
+    ///
+    /// # Arguments
+    /// * `fields` - JSONPath claim paths recorded at storage time, e.g. `$.vct`
+    /// * `options` - optional pagination
+    ///
+    /// # Returns
+    /// The matching entries, a union over `fields`; empty if none match.
+    ///
+    /// # Errors
+    /// * `Error.Vault` - the vault could not be read
     async fn find_credentials(
         &self,
         fields: Vec<String>,

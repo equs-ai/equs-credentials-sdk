@@ -16,13 +16,44 @@ pub enum KeyType {
     Bls12381,
 }
 
+/// Key management.
 #[uniffi::export(with_foreign)]
 #[async_trait]
 pub trait Kms: Send + Sync + Debug {
+    /// Generates a key of the given type and persists it.
+    ///
+    /// # Arguments
+    /// * `kt` - the key type to generate
+    ///
+    /// # Returns
+    /// The key identifier, unique within this `Kms` and valid for `get` while the key exists.
+    ///
+    /// # Errors
+    /// * `Error.Kms` - unsupported key type, or the key could not be created
     async fn create(&self, kt: KeyType) -> Result<String>;
 
+    /// Returns the handle for a key identifier.
+    ///
+    /// # Arguments
+    /// * `kid` - an identifier previously returned by `create`
+    ///
+    /// # Returns
+    /// The handle for that key.
+    ///
+    /// # Errors
+    /// * `Error.Kms` - no key exists under `kid`
     async fn get(&self, kid: String) -> Result<WrappedKeyHandle>;
 
+    /// Returns the handle for the key with the given public key.
+    ///
+    /// # Arguments
+    /// * `public_key` - raw public key bytes, as `KeyHandle.pubKey` returns them
+    ///
+    /// # Returns
+    /// The handle for the matching key.
+    ///
+    /// # Errors
+    /// * `Error.Kms` - no key matches
     async fn get_by_public_key(&self, public_key: Vec<u8>) -> Result<WrappedKeyHandle>;
 }
 

@@ -60,60 +60,41 @@ pub enum Error {
 /// `Result` alias for Nonce-specific [Error].
 pub type Result<T> = core::result::Result<T, Error>;
 
-/// An async generic `NonceHandler` interface for generating nonce.
-///
-/// Supports `generate`, `validate` and `invalidate` operations.
-///
+/// Generates, validates and spends nonces; [NonceHandler::generate] must be unpredictable and
+/// unique per call, and expiry and single-use enforcement are the implementation's responsibility.
 #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 #[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 pub trait NonceHandler: WasmNotSend + WasmNotSync {
     /// Generates a `Nonce`.
     ///
-    ///
     /// # Returns
-    ///
-    /// `Nonce` on success.
+    /// A fresh [`Nonce`], recorded as outstanding.
     ///
     /// # Errors
-    ///
-    /// * [Error::Generate] - fails to generate the `Nonce`.
+    /// * [Error::Generate] - the nonce could not be generated
     async fn generate(&self) -> Result<Nonce>;
 
-    /// Validate the existence and expiration of a `Nonce`.
-    ///
-    /// Validation is a check, not a spend: implementations MUST NOT consume the `Nonce` here. A single
-    /// request may present the same `Nonce` more than once, and every occurrence is validated on its
-    /// own, so consuming on validation would reject each occurrence after the first. Spending happens
-    /// in [NonceHandler::invalidate], once the request that carried the `Nonce` is over.
+    /// Validates the existence and expiration of a `Nonce`; a check, not a spend, so implementations
+    /// must not consume it here — a single request may present the same `Nonce` more than once.
     ///
     /// # Arguments
-    ///
-    /// * `nonce` -`Nonce` to validate.
+    /// * `nonce` - the [`Nonce`] to validate
     ///
     /// # Returns
-    ///
-    /// `true` if nonce is active or valid.
+    /// `true` if active; `false` if unknown, expired or already used.
     ///
     /// # Errors
-    ///
-    /// * [Error::Validate] - fails to validate a 'Nonce'.
+    /// * [Error::Validate] - validation itself failed
     async fn validate(&self, nonce: &Nonce) -> Result<bool>;
 
-    /// Invalidate the `Nonce`s that a finished request spent.
-    ///
-    /// Called once per request, after every `Nonce` it presented has been processed, whether the
-    /// request succeeded or failed — a rejected request must not leave behind a `Nonce` its sender can
-    /// keep retrying against. Implementations that enforce single use do it here, and this is the only
-    /// place the SDK gives them to do it.
+    /// Spends the `Nonce`s a finished request carried; called once per request, whether it succeeded
+    /// or failed, and the only place single use is enforced.
     ///
     /// # Arguments
-    ///
-    /// * `nonces` - the distinct `Nonce`s the request spent. May be empty, in which case
-    ///   implementations are expected to do nothing.
+    /// * `nonces` - the distinct [`Nonce`]s the request spent; may be empty
     ///
     /// # Errors
-    ///
-    /// * [Error::Invalidate] - fails to invalidate the `Nonce`s.
+    /// * [Error::Invalidate] - the nonces could not be invalidated
     async fn invalidate(&self, nonces: &[Nonce]) -> Result<()>;
 }
 

@@ -10,9 +10,21 @@ use std::pin::Pin;
 use std::sync::Arc;
 use url::Url;
 
+/// Handler for the authorization code grant's user interaction step; must be safe to call from any
+/// thread.
 #[uniffi::export(with_foreign)]
 #[async_trait]
 pub trait AuthCodeCallback: Send + Sync {
+    /// Directs the user to the authorization URL and returns the resulting code.
+    ///
+    /// # Arguments
+    /// * `url` - the authorization URL to present to the user
+    ///
+    /// # Returns
+    /// The authorization code alone, not the redirect URL.
+    ///
+    /// # Errors
+    /// * `Error` - the user cancelled, or the redirect carried no code
     async fn authenticate(&self, url: String) -> Result<String>;
 }
 
@@ -33,9 +45,21 @@ impl From<agent_sdk::vc::oid4vci::AuthzFlow> for AuthzFlow {
     }
 }
 
+/// Handler covering both grants, used by `OID4VCIHolder.getAccessToken`; must be safe to call from
+/// any thread.
 #[uniffi::export(with_foreign)]
 #[async_trait]
 pub trait AuthCallback: Send + Sync {
+    /// Carries out the user interaction the flow describes and returns the resulting code.
+    ///
+    /// # Arguments
+    /// * `authz_flow` - the grant to carry out
+    ///
+    /// # Returns
+    /// The authorization code for `Authorize`, or the transaction code for `Preauthorized`.
+    ///
+    /// # Errors
+    /// * `Error` - the user cancelled, or no code could be obtained
     async fn authenticate(&self, authz_flow: AuthzFlow) -> Result<String>;
 }
 
@@ -114,7 +138,7 @@ impl OID4VCIHolder {
     ///   supported grant types, and other metadata required for the token request.
     ///
     /// * `authorization_callback` - An asynchronous callback function that handles the user interaction
-    ///   portion of the authorization flow. The callback receives an [AuthzFlow] enum indicating
+    ///   portion of the authorization flow. The callback receives an `AuthzFlow` enum indicating
     ///   whether to obtain an authorization code or transaction code. The callback must return
     ///   the appropriate code as a String.
     ///

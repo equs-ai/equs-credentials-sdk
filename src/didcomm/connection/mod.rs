@@ -30,9 +30,21 @@ pub enum Error {
 
 pub type Result<T> = std::result::Result<T, Error>;
 
+/// Durable store for [`ConnectionRecord`]s keyed by [`ConnectionRecord::id`]; an unknown id gives
+/// [`Error::ConnectionNotFound`].
 #[async_trait]
 pub trait ConnectionService: Send + Sync {
     /// Create a new connection
+    ///
+    /// # Arguments
+    /// * `my_did` - the local [`DID`] for the connection
+    /// * `create_options` - [`CreateOptions`] for the connection
+    ///
+    /// # Returns
+    /// The stored [`ConnectionRecord`], with its allocated id.
+    ///
+    /// # Errors
+    /// * [`Error::Storage`] - the record could not be written
     async fn create_connection(
         &self,
         my_did: &DID,
@@ -40,9 +52,25 @@ pub trait ConnectionService: Send + Sync {
     ) -> Result<ConnectionRecord>;
 
     /// Update a connection
+    ///
+    /// # Arguments
+    /// * `connection` - the [`ConnectionRecord`] to overwrite, matched by its id
+    ///
+    /// # Errors
+    /// * [`Error::Storage`] - the record could not be written
     async fn update_connection(&self, connection: ConnectionRecord) -> Result<()>;
 
     /// Get a connection by ID
+    ///
+    /// # Arguments
+    /// * `id` - connection identifier
+    ///
+    /// # Returns
+    /// The stored [`ConnectionRecord`].
+    ///
+    /// # Errors
+    /// * [`Error::ConnectionNotFound`] - no record under `id`
+    /// * [`Error::Storage`] - the record could not be read
     async fn get_connection(&self, id: &str) -> Result<ConnectionRecord>;
 }
 
