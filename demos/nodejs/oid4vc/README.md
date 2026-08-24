@@ -1,4 +1,4 @@
-# ASDK e2e demo on Node.js
+# Equs SDK e2e demo on Node.js
 This Demo allows to demonstrate the end-to-end flow of the OID4VCI/VP protocol on Node.js.
 
 
@@ -14,7 +14,7 @@ Ensure that the following tools are installed on your machine:
 
 Every package you need is already installed in `package.json`. If you develop further and need another dependencies - contact maintainers.
 
-To install use development environment as ASDK should compile with all the features:
+To install use development environment as Equs SDK should compile with all the features:
 ```shell
 npm i
 ```

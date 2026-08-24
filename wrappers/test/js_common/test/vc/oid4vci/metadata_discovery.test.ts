@@ -3,7 +3,7 @@ import { Utils } from "./fixtures";
 import {
   MetadataDiscovery,
   ReqwestHttpClient,
-} from "agent-sdk";
+} from "equs-sdk";
 
 describe("Issuer metadata discovery: ", () => {
   const mockServer = getLocal();

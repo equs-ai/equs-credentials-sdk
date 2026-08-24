@@ -1,4 +1,4 @@
-import { Claims } from "@equstng/agent-sdk";
+import { Claims } from "@equs/equs-sdk";
 
 export class Config {
   readonly servers = {

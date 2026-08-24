@@ -1,5 +1,5 @@
 use crate::error::{EncodableError, IntoNapiError};
-use agent_sdk::vc::oid4vp::{Error, ErrorType, InternalError, ProtocolError};
+use equs_sdk::vc::oid4vp::{Error, ErrorType, InternalError, ProtocolError};
 use napi_derive::napi;
 use strum_macros::Display;
 

@@ -15,7 +15,7 @@ impl ContentSizeLimiter {
     /// # Examples
     ///
     /// ```
-    /// use agent_sdk::reqwest::validators::content_size::ContentSizeLimiter;
+    /// use equs_sdk::reqwest::validators::content_size::ContentSizeLimiter;
     ///
     /// let limiter = ContentSizeLimiter::unlimited().with_response_size_limit(1024);
     ///
@@ -33,7 +33,7 @@ impl ContentSizeLimiter {
     /// # Examples
     ///
     /// ```
-    /// use agent_sdk::reqwest::validators::content_size::ContentSizeLimiter;
+    /// use equs_sdk::reqwest::validators::content_size::ContentSizeLimiter;
     ///
     /// let limiter = ContentSizeLimiter::unlimited().with_request_size_limit(1024);
     ///
@@ -51,7 +51,7 @@ impl ContentSizeLimiter {
     /// # Examples
     ///
     /// ```
-    /// use agent_sdk::reqwest::validators::content_size::ContentSizeLimiter;
+    /// use equs_sdk::reqwest::validators::content_size::ContentSizeLimiter;
     ///
     /// let unlimited = ContentSizeLimiter::unlimited();
     /// ```

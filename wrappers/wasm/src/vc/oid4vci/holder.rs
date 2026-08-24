@@ -4,14 +4,14 @@ use crate::vc::oid4vci::{
     CredentialResponse, OID4VCICredentialOffer, OID4VCIIssuerMetadata, TokenResponse,
 };
 use crate::vc::{Credential, CredentialMetadata, JsCredential};
-use agent_sdk::vc;
-use agent_sdk::vc::oid4vci;
-use agent_sdk::vc::oid4vci::{
-    AccessToken, AuthzFlow, CredentialExtraVerification as ASDKCredentialExtraVerification,
-    CredentialOfferParams, CredentialResponseResolved, Holder, IssuerMetadata,
-    Notification as ASDKNotification,
-};
 use async_trait::async_trait;
+use equs_sdk::vc;
+use equs_sdk::vc::oid4vci;
+use equs_sdk::vc::oid4vci::{
+    AccessToken, AuthzFlow, CredentialExtraVerification as EqusSdkCredentialExtraVerification,
+    CredentialOfferParams, CredentialResponseResolved, Holder, IssuerMetadata,
+    Notification as EqusSdkNotification,
+};
 use js_sys::{Function, Promise};
 use serde::Serialize;
 use std::future::Future;
@@ -429,7 +429,7 @@ trait _HolderWrapperTrait {
     async fn send_notification(
         &self,
         token: &AccessToken,
-        notification: ASDKNotification,
+        notification: EqusSdkNotification,
     ) -> oid4vci::Result<()>;
 }
 
@@ -502,7 +502,7 @@ impl<H: Holder> _HolderWrapperTrait for _HolderWrapper<H> {
     async fn send_notification(
         &self,
         token: &AccessToken,
-        notification: ASDKNotification,
+        notification: EqusSdkNotification,
     ) -> oid4vci::Result<()> {
         self.0.send_notification(token, notification).await
     }
@@ -522,7 +522,7 @@ pub enum CredentialExtraVerification {
     CredentialIssuerIdentifier,
 }
 
-impl From<CredentialExtraVerification> for ASDKCredentialExtraVerification {
+impl From<CredentialExtraVerification> for EqusSdkCredentialExtraVerification {
     fn from(value: CredentialExtraVerification) -> Self {
         match value {
             CredentialExtraVerification::CredentialIssuerIdentifier => {

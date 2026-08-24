@@ -20,28 +20,28 @@ use std::sync::{Arc, Mutex};
 
 use actix_web::mime::APPLICATION_JSON;
 use actix_web::{App, HttpRequest, HttpResponse, HttpServer, ResponseError, web};
-use agent_sdk::crypto::{JWK, Key};
-use agent_sdk::did::didkey::DIDKey;
-use agent_sdk::did::universal::UniversalResolver;
-use agent_sdk::did::{DID, DIDBuf, DIDResolver};
-use agent_sdk::inmem::kms::LocalKms;
-use agent_sdk::inmem::nonce::LocalNonceHandler;
-use agent_sdk::inmem::storage::InMemStorage;
-use agent_sdk::inmem::vault::InMemVault;
-use agent_sdk::kms::{self, CreateOptions, KeyType, Kms};
-use agent_sdk::reqwest::builder::ReqwestClientBuilder;
-use agent_sdk::storage::Storage;
-use agent_sdk::vault::Vault;
-use agent_sdk::vc::core::KeyMetadata;
-use agent_sdk::vc::dcql::{DCQL, DCQLCredential, NonEmptyVec};
-use agent_sdk::vc::oid4vp::{
+use equs_sdk::crypto::{JWK, Key};
+use equs_sdk::did::didkey::DIDKey;
+use equs_sdk::did::universal::UniversalResolver;
+use equs_sdk::did::{DID, DIDBuf, DIDResolver};
+use equs_sdk::inmem::kms::LocalKms;
+use equs_sdk::inmem::nonce::LocalNonceHandler;
+use equs_sdk::inmem::storage::InMemStorage;
+use equs_sdk::inmem::vault::InMemVault;
+use equs_sdk::kms::{self, CreateOptions, KeyType, Kms};
+use equs_sdk::reqwest::builder::ReqwestClientBuilder;
+use equs_sdk::storage::Storage;
+use equs_sdk::vault::Vault;
+use equs_sdk::vc::core::KeyMetadata;
+use equs_sdk::vc::dcql::{DCQL, DCQLCredential, NonEmptyVec};
+use equs_sdk::vc::oid4vp::{
     self, AuthResponseOptions, AuthorizationRequestMetadata, AuthorizationResponse,
     AuthorizationResponseMetadata, AuthorizationResponseObject, ClientId, ClientMetadata,
     CredentialVerificationMetadata, DelegationRequest, Holder, PassAuthRequestObject,
     PresentationResult, PresentationSession, ResolvedPresentationQuery, ResponseMode, ResponseType,
     TransactionDataItem, TransactionDataResponse, delegate_transaction_data_item,
 };
-use agent_sdk::vc::{Credential, CredentialMetadata, Presentation, VCFormat};
+use equs_sdk::vc::{Credential, CredentialMetadata, Presentation, VCFormat};
 use reqwest::Url;
 use serde_json::{Value, json};
 use shared::voucher::{VOUCHER_DCQL_ID, VOUCHER_VCT, generate_purchase_id, purchase_id_from_dcql};

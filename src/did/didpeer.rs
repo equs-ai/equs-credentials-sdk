@@ -294,7 +294,7 @@ fn convert_did_doc(did_doc: &DidDocument) -> std::result::Result<did::DIDDoc, Er
     // to generate w3c json-ld VC panics while preparing the issuer's proof
     // in a process of VC issuance in case of relative verification method id.
     //
-    // Issuance Result: Err(VC error at: agent-sdk/src/vc/oid4vci/issuer.rs:216:25
+    // Issuance Result: Err(VC error at: equs-sdk/src/vc/oid4vci/issuer.rs:216:25
     //  Cause: VC error
     //  Cause: Credential creation error: Missing verification relationship. Issuer: did:peer:4zQ...
     //           Proof purpose: AssertionMethod. Verification method id: #key-0)

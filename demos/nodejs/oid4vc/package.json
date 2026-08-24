@@ -1,10 +1,10 @@
 {
-  "name": "asdk-demo-nodejs",
+  "name": "equs-sdk-demo-nodejs",
   "version": "0.1.0",
-  "description": "Node.js demo for Agent-SDK",
+  "description": "Node.js demo for Equs SDK",
   "main": "",
   "config": {
-    "nodejs_asdk_wrapper_path": "--prefix=../../../wrappers/nodejs",
+    "nodejs_equs_sdk_wrapper_path": "--prefix=../../../wrappers/nodejs",
     "askar_storage_wrapper_path": "--prefix=../../../plugins/askar/wrappers/nodejs"
   },
   "scripts": {
@@ -12,14 +12,14 @@
     "issuer": "node build/applications/issuer.js",
     "verifier": "node build/applications/verifier.js",
     "holder": "node build/applications/holder.js",
-    "prepare_nodejs_asdk_wrapper": "npm i $npm_package_config_nodejs_asdk_wrapper_path && npm run build:debug $npm_package_config_nodejs_asdk_wrapper_path",
+    "prepare_nodejs_equs_sdk_wrapper": "npm i $npm_package_config_nodejs_equs_sdk_wrapper_path && npm run build:debug $npm_package_config_nodejs_equs_sdk_wrapper_path",
     "prepare_askar_storage_wrapper": "npm i $npm_package_config_askar_storage_wrapper_path && npm run build $npm_package_config_askar_storage_wrapper_path",
-    "preinstall": "npm run prepare_nodejs_asdk_wrapper && npm run prepare_askar_storage_wrapper"
+    "preinstall": "npm run prepare_nodejs_equs_sdk_wrapper && npm run prepare_askar_storage_wrapper"
   },
   "author": "aziz.mukhtorjonov@dsr-corporation.com",
   "dependencies": {
-    "@equstng/agent-sdk": "../../../wrappers/nodejs",
-    "@equstng/agent-sdk-askar-storage": "../../../plugins/askar/wrappers/nodejs",
+    "@equs/equs-sdk": "../../../wrappers/nodejs",
+    "@equs/equs-sdk-askar-storage": "../../../plugins/askar/wrappers/nodejs",
     "body-parser": "^2.0.1",
     "cors": "^2.8.5",
     "express": "^5.0.0"

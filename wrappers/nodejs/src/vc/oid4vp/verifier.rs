@@ -2,8 +2,8 @@ use crate::error::IntoNapiError;
 use crate::utils::{from_json_object, parse_url_arg, to_json_object};
 use crate::vc::JsonObject;
 use crate::vc::oid4vp::JsInnerAuthorizationResponse;
-use agent_sdk::vc::dcql::NonEmptyVec;
-use agent_sdk::vc::oid4vp::{
+use equs_sdk::vc::dcql::NonEmptyVec;
+use equs_sdk::vc::oid4vp::{
     AuthResponseOptions, AuthorizationRequestMetadata, ClientMetadata,
     CredentialVerificationMetadata, ExpectedOrigins, HttpMethodForAuth, PassAuthRequestObject,
     PresentationSession as RustPresentationSession, Verifier, VerifierInfo, VerifierInfoEntry,

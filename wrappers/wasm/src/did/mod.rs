@@ -1,6 +1,6 @@
 use crate::kms::{JsKeyHandle, KeyHandle};
 use crate::utils;
-use agent_sdk::did::ResolutionOutput;
+use equs_sdk::did::ResolutionOutput;
 use std::collections::HashSet;
 use wasm_bindgen::JsError;
 use wasm_bindgen::prelude::wasm_bindgen;
@@ -49,7 +49,7 @@ impl TryFrom<DIDResolution> for ResolutionOutput {
             Some(utils::js_value_to_string(js_content_type))
         };
 
-        let metadata = agent_sdk::did::ResolutionMetadata::from_content_type(content_type);
+        let metadata = equs_sdk::did::ResolutionMetadata::from_content_type(content_type);
 
         let document_metadata =
             utils::get_property(&js_value, "document_metadata").and_then(|value| {
@@ -78,7 +78,7 @@ impl TryFrom<ResolutionOutput> for DIDResolution {
 #[wasm_bindgen]
 pub struct VerificationMethodKey {
     key: JsKeyHandle,
-    verification_relationships: HashSet<agent_sdk::did::VerificationRelationshipType>,
+    verification_relationships: HashSet<equs_sdk::did::VerificationRelationshipType>,
 }
 
 #[wasm_bindgen]

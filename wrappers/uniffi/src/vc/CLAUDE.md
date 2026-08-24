@@ -21,5 +21,5 @@ Top-level VC module for the UniFFI wrapper. Defines shared credential type mappi
 - `VCCoreCredentialSigner` (in `core/api/signer.rs`) — Stand-alone signer wrapping `CredentialSigner<WrappedKeyHandle, WrappedKms>`; takes externally-tagged `UnsignedCredential` JSON as a `String` (via the `JsonValue` custom_type).
 
 ## Dependencies
-- Depends on: `agent_sdk::vc`, `agent_sdk::vc::core` (`CredentialSigner`, `SignCredential`, `UnsignedCredential`), `agent_sdk::crypto::Alg`, `uniffi` custom_type/remote macros, `crate::common::JsonValue`, `crate::key_handle::WrappedKeyHandle`, `crate::kms::{Kms, WrappedKms}`, `crate::did::UniversalDIDResolver`
+- Depends on: `equs_sdk::vc`, `equs_sdk::vc::core` (`CredentialSigner`, `SignCredential`, `UnsignedCredential`), `equs_sdk::crypto::Alg`, `uniffi` custom_type/remote macros, `crate::common::JsonValue`, `crate::key_handle::WrappedKeyHandle`, `crate::kms::{Kms, WrappedKms}`, `crate::did::UniversalDIDResolver`
 - Used by: `crate::vc::oid4vci`, `crate::vc::oid4vp`, `crate::vault` (CredentialEntry uses Credential type)

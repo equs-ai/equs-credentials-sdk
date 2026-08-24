@@ -1,30 +1,30 @@
 use crate::utils::fixtures::{SCOPE, VC_TYPE, VERIFIER_ID, sample_claims_sdjwt};
 use crate::utils::helpers::create_did_keymetadata_keyhandle;
-use agent_sdk::crypto::Alg;
-use agent_sdk::did::didkey::DIDKey;
-use agent_sdk::did::universal::UniversalResolver;
-use agent_sdk::did::{DIDBuf, DIDResolver};
-use agent_sdk::inmem::kms::LocalKms;
-use agent_sdk::inmem::nonce::LocalNonceHandler;
-use agent_sdk::inmem::vault::InMemVault;
-use agent_sdk::kms::Kms;
-use agent_sdk::nonce::NonceHandler;
-use agent_sdk::reqwest::builder::ReqwestClientBuilder;
-use agent_sdk::vc::VCStatusesData;
-use agent_sdk::vc::core::status_issuer::StatusIssuerService;
-use agent_sdk::vc::core::{
+use equs_sdk::crypto::Alg;
+use equs_sdk::did::didkey::DIDKey;
+use equs_sdk::did::universal::UniversalResolver;
+use equs_sdk::did::{DIDBuf, DIDResolver};
+use equs_sdk::inmem::kms::LocalKms;
+use equs_sdk::inmem::nonce::LocalNonceHandler;
+use equs_sdk::inmem::vault::InMemVault;
+use equs_sdk::kms::Kms;
+use equs_sdk::nonce::NonceHandler;
+use equs_sdk::reqwest::builder::ReqwestClientBuilder;
+use equs_sdk::vc::VCStatusesData;
+use equs_sdk::vc::core::status_issuer::StatusIssuerService;
+use equs_sdk::vc::core::{
     CredentialDefinition, CredentialDefinitionData, Holder, HolderMetadata, Issuer, IssuerMetadata,
     PopFormat, StatusIssuer, StatusIssuerMetadata, StatusListDefinition, Verifier,
 };
-use agent_sdk::vc::core::{HolderBinder, VerifierService};
-use agent_sdk::vc::core::{HolderService, KeyMetadata};
-use agent_sdk::vc::core::{IssuerService, ProofOfPossessionMetadata};
-use agent_sdk::vc::metadata::{CredentialMetadataProcessor, DefaultMetadataProcessor};
-use agent_sdk::vc::presentation_exchange::InputDescriptor;
-use agent_sdk::vc::presentation_exchange::StatusSize;
-use agent_sdk::vc::status_formats::StatusListFormat;
-use agent_sdk::vc::status_formats::status_list_token_jwt::{VCStatus, VCStatuses};
-use agent_sdk::{kms, vc};
+use equs_sdk::vc::core::{HolderBinder, VerifierService};
+use equs_sdk::vc::core::{HolderService, KeyMetadata};
+use equs_sdk::vc::core::{IssuerService, ProofOfPossessionMetadata};
+use equs_sdk::vc::metadata::{CredentialMetadataProcessor, DefaultMetadataProcessor};
+use equs_sdk::vc::presentation_exchange::InputDescriptor;
+use equs_sdk::vc::presentation_exchange::StatusSize;
+use equs_sdk::vc::status_formats::StatusListFormat;
+use equs_sdk::vc::status_formats::status_list_token_jwt::{VCStatus, VCStatuses};
+use equs_sdk::{kms, vc};
 use oid4vci::proof_of_possession::ProofOfPossession;
 use serde_json::json;
 use std::collections::HashMap;
@@ -316,7 +316,7 @@ async fn credential_issuance_and_status_verification() {
 
     println!("Claims: {:?}", claims);
 
-    let status_info = agent_sdk::vc::core::CredentialStatusInfo::TokenStatusList {
+    let status_info = equs_sdk::vc::core::CredentialStatusInfo::TokenStatusList {
         idx: 1,
         uri: status_list_url,
     };

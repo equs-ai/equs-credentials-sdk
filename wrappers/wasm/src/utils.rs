@@ -1,7 +1,7 @@
 use crate::crypto::KeyMetadata;
 use crate::vc::{Credential, CredentialMetadata, JsCredential};
-use agent_sdk::vc::HasClaims;
-use agent_sdk::vc::metadata::{CredentialMetadataProcessor, DefaultMetadataProcessor};
+use equs_sdk::vc::HasClaims;
+use equs_sdk::vc::metadata::{CredentialMetadataProcessor, DefaultMetadataProcessor};
 use js_sys::JSON;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
@@ -27,7 +27,7 @@ pub async fn resolve_metadata(
 
     let result =
         DefaultMetadataProcessor::resolve_metadata(&credential, metadata).map_err(js_err)?;
-    let credential_metadata: agent_sdk::vc::CredentialMetadata =
+    let credential_metadata: equs_sdk::vc::CredentialMetadata =
         result.try_into().map_err(js_err)?;
 
     convert_to_opaque_object_unchecked(credential_metadata)
@@ -36,7 +36,7 @@ pub async fn resolve_metadata(
 #[wasm_bindgen(js_name = parseClaims)]
 pub async fn parse_claims(credential: Credential) -> Result<Claims, JsError> {
     let js_credential: JsCredential = convert_to_rust_object(credential)?;
-    let credential: agent_sdk::vc::Credential = js_credential.try_into()?;
+    let credential: equs_sdk::vc::Credential = js_credential.try_into()?;
     let claims = credential.parse_claims().map_err(js_err)?;
 
     convert_to_opaque_object_unchecked(claims)

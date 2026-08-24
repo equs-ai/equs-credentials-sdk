@@ -17,7 +17,7 @@ pub type Result<T> = core::result::Result<T, Error>;
 /// JSON Web Key
 pub type JWK = jwk::JWK;
 
-pub type SSIAlg = jwk::algorithm::Algorithm;
+pub type ProtocolAlg = jwk::algorithm::Algorithm;
 
 /// Enumerates general errors encountered during `Crypto` operations.
 #[derive(Snafu, DebugError)]

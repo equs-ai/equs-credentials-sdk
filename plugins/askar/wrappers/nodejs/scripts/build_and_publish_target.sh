@@ -16,7 +16,7 @@ if [ -z "${ALIAS:-}" ]; then
   exit 1
 fi
 
-BINARY_NAME="agent-sdk-askar-storage.${ALIAS}.node"
+BINARY_NAME="equs-sdk-askar-storage.${ALIAS}.node"
 VERSION=$(npm pkg get version | tr -d '"')
 
 if [ "${ENVIRONMENT:-}" == "development" ]; then

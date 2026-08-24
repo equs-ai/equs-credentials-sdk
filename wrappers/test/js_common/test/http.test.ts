@@ -1,6 +1,4 @@
-// TODO: These tests are accessing an external resource, if the resource is not available it causes tests to failю
-//  https://blockchains-inc.atlassian.net/browse/ASDK-438 task has been created to fix these tests.
-import { HttpMethod, HttpRequest, ReqwestHttpClient } from "agent-sdk";
+import { HttpMethod, HttpRequest, ReqwestHttpClient } from "equs-sdk";
 import { generateCACertificate, getLocal, Mockttp } from "mockttp";
 
 describe("HTTP Client: ", () => {

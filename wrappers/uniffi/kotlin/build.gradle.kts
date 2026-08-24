@@ -6,7 +6,7 @@ repositories {
     mavenCentral()
 }
 
-group = "com.bci.asdk"
+group = "com.equs.sdk"
 version = "1.0-SNAPSHOT"
 
 dependencies {

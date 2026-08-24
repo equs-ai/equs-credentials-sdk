@@ -1,11 +1,11 @@
 use crate::utils::from_json_object;
 use crate::vc::JsonObject;
-use agent_sdk::vc::oid4vp;
-use agent_sdk::vc::oid4vp::{
+use equs_sdk::vc::oid4vp;
+use equs_sdk::vc::oid4vp::{
     AuthorizationResponse, AuthorizationResponseObject, HashAlgorithm, PresentationResult,
     TransactionDataHashes, TransactionDataHashesAlg, TransactionDataResponse,
 };
-use agent_sdk::vc::presentation_exchange::PresentationSubmission;
+use equs_sdk::vc::presentation_exchange::PresentationSubmission;
 use napi::bindgen_prelude::Uint8Array;
 use napi::{Error, Status};
 use napi_derive::napi;

@@ -1,5 +1,5 @@
-use agent_sdk::http::HttpClient;
-use agent_sdk::reqwest::ReqwestClient;
+use equs_sdk::http::HttpClient;
+use equs_sdk::reqwest::ReqwestClient;
 use js_sys::{Object, Promise, Reflect};
 use oauth2::http::{HeaderMap, HeaderName, HeaderValue, Method, Uri};
 use wasm_bindgen::prelude::wasm_bindgen;
@@ -238,7 +238,7 @@ impl ReqwestHttpClient {
     /// Creates a new `HttpClient` instance using the default, secure configuration.
     #[wasm_bindgen(constructor)]
     pub fn new() -> Result<ReqwestHttpClient, JsError> {
-        agent_sdk::reqwest::builder::ReqwestClientBuilder::new()
+        equs_sdk::reqwest::builder::ReqwestClientBuilder::new()
             .build()
             .map(|client| ReqwestHttpClient(client))
             .map_err(JsError::from)
@@ -247,7 +247,7 @@ impl ReqwestHttpClient {
     /// Creates a new `HttpClient` instance with an insecure configuration.
     #[wasm_bindgen]
     pub fn insecure() -> Result<ReqwestHttpClient, JsError> {
-        agent_sdk::reqwest::builder::ReqwestClientBuilder::new()
+        equs_sdk::reqwest::builder::ReqwestClientBuilder::new()
             .insecure()
             .build()
             .map(|client| ReqwestHttpClient(client))

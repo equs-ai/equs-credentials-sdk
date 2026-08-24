@@ -7,12 +7,12 @@ use crate::http::ReqwestHttpClient;
 use crate::kms::JsKeyHandle;
 use crate::utils::{from_json_object, to_json_object};
 use crate::vc::JsonObject;
-use agent_sdk::did::universal::{DIDResolver, UniversalResolver};
-use agent_sdk::did::{
-    DIDBuf, DIDResolver as ASDKDIDResolver, DocumentMetadata, ResolutionError, ResolutionMetadata,
-    ResolutionOptions, ResolutionOutput, SpruceDID,
-};
 use async_trait::async_trait;
+use equs_sdk::did::universal::{DIDResolver, UniversalResolver};
+use equs_sdk::did::{
+    DIDBuf, DIDResolver as EqusSdkDIDResolver, DocumentMetadata, ResolutionError,
+    ResolutionMetadata, ResolutionOptions, ResolutionOutput, SpruceDID,
+};
 use napi::bindgen_prelude::Promise;
 use napi::threadsafe_function::{ErrorStrategy, ThreadsafeFunction};
 use napi::{Error, Result};

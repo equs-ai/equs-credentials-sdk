@@ -1,8 +1,8 @@
 use crate::did::JsVerificationMethodKey;
 use crate::utils::to_json_object;
 use crate::vc::JsonObject;
-use agent_sdk::did::VerificationMethodKey;
-use agent_sdk::did::didweb::DIDWeb;
+use equs_sdk::did::VerificationMethodKey;
+use equs_sdk::did::didweb::DIDWeb;
 use napi::{Error, Result};
 use napi_derive::napi;
 

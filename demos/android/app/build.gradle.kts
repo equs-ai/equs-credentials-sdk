@@ -4,11 +4,11 @@ plugins {
 }
 
 android {
-    namespace = "org.bci.asdk.demo"
+    namespace = "org.equs.sdk.demo"
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "org.bci.asdk.demo"
+        applicationId = "org.equs.sdk.demo"
         minSdk = 24
         targetSdk = 34
         versionCode = 1

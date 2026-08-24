@@ -9,9 +9,9 @@ DerivedData/
 .index-build
 
 ### Generated Code ###
-**/asdk.swift
+**/equssdk.swift
 ios/
-asdk.xcframework
+equssdk.xcframework
 
 ### Swift Package Manager ###
 Packages/

@@ -1,9 +1,9 @@
 pub(crate) mod oid4vp;
 
-use agent_sdk::vault::CredentialEntry;
-use agent_sdk::vc::claims::Claims;
-use agent_sdk::vc::oid4vci::{AuthorizationMetadata, IssuerMetadata};
-use agent_sdk::vc::oid4vp::{CredentialsFindResult, Holder, ResolvedAuthRequest};
+use equs_sdk::vault::CredentialEntry;
+use equs_sdk::vc::claims::Claims;
+use equs_sdk::vc::oid4vci::{AuthorizationMetadata, IssuerMetadata};
+use equs_sdk::vc::oid4vp::{CredentialsFindResult, Holder, ResolvedAuthRequest};
 use serde_json::json;
 use std::collections::HashMap;
 use url::Url;

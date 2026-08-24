@@ -6,7 +6,7 @@ import {
   UnsignedCredential,
   VCCoreCredentialSigner,
   VCFormat,
-} from "agent-sdk";
+} from "equs-sdk";
 
 describe("VCCoreCredentialSigner: ", () => {
   const buildSdJwtUnsigned = async () => {

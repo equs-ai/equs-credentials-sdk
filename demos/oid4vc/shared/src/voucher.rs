@@ -1,7 +1,7 @@
 //! Shared voucher identifiers and the DCQL query used by both the Merchant
 //! (Verifier) and the Agent (Delegate Holder) so they agree on the request shape.
 
-use agent_sdk::vc::dcql::{DCQL, DCQLCredential, NonEmptyVec};
+use equs_sdk::vc::dcql::{DCQL, DCQLCredential, NonEmptyVec};
 use serde_json::json;
 use uuid::Uuid;
 
@@ -21,7 +21,7 @@ pub fn generate_purchase_id() -> String {
 /// claim equals `purchase_id`, also disclosing `amount` and `currency`.
 ///
 /// Field names (`meta.vct_values`, claim `values`, `claim_sets`) match the
-/// `DCQLCredential` shape in `agent_sdk::vc::dcql` (see `src/vc/dcql/mod.rs`).
+/// `DCQLCredential` shape in `equs_sdk::vc::dcql` (see `src/vc/dcql/mod.rs`).
 pub fn voucher_dcql(purchase_id: &str) -> DCQL {
     let desc: DCQLCredential = serde_json::from_value(json!({
         "id": VOUCHER_DCQL_ID,

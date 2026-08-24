@@ -24,7 +24,7 @@ use time::Duration;
 const WEBVH_METHOD_NAME: &str = "webvh";
 const DID_RESOLUTION_FORMAT: &str = "application/did+ld+json";
 
-/// Adapts ASDK's [`HttpClient`] to the one-core [`OneCoreHttpClient`] interface.
+/// Adapts Equs SDK's [`HttpClient`] to the one-core [`OneCoreHttpClient`] interface.
 ///
 /// This is an internal implementation detail; callers interact only with [`HttpClient`].
 #[derive(Clone)]
@@ -77,18 +77,18 @@ impl OneCoreHttpClient for OneCoreHttpClientAdapter {
             .body(body.clone().unwrap_or_default())
             .map_err(|_| OneCoreHttpError::StatusCodeError(StatusCode(0)))?;
 
-        let asdk_response = self
+        let equs_sdk_response = self
             .inner
             .async_call(request)
             .await
             .map_err(|_| OneCoreHttpError::StatusCodeError(StatusCode(0)))?;
 
-        let resp_headers: Headers = asdk_response
+        let resp_headers: Headers = equs_sdk_response
             .headers()
             .iter()
             .filter_map(|(k, v)| Some((k.to_string(), v.to_str().ok()?.to_string())))
             .collect();
-        let resp_body = asdk_response.body().to_vec();
+        let resp_body = equs_sdk_response.body().to_vec();
 
         let req = Request {
             body,
@@ -101,7 +101,7 @@ impl OneCoreHttpClient for OneCoreHttpClientAdapter {
         Response {
             body: resp_body,
             headers: resp_headers,
-            status: StatusCode(asdk_response.status().as_u16()),
+            status: StatusCode(equs_sdk_response.status().as_u16()),
             request: req,
         }
         .error_for_status()
@@ -119,7 +119,7 @@ impl KeyProvider for NoopKeyProvider {
 
 /// Resolver for the `did:webvh` DID method.
 ///
-/// Wraps one-core's `DidWebVh` resolver and exposes it via the ASDK [`DIDResolver`] trait so it
+/// Wraps one-core's `DidWebVh` resolver and exposes it via the Equs SDK [`DIDResolver`] trait so it
 /// can be registered with [`crate::did::universal::UniversalResolver`].
 #[derive(Clone)]
 pub struct DIDWebVh {

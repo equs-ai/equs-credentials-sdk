@@ -1,8 +1,8 @@
 use crate::crypto::{Alg, KeyType};
 use crate::utils;
-use agent_sdk::crypto::{JWK, Key, Signer, SigningKey, SigningSnafu, Verifier, VerifyingKey};
-use agent_sdk::kms::{CreateOptions, CreationSnafu, KeyID, ResolvingSnafu};
 use async_trait::async_trait;
+use equs_sdk::crypto::{JWK, Key, Signer, SigningKey, SigningSnafu, Verifier, VerifyingKey};
+use equs_sdk::kms::{CreateOptions, CreationSnafu, KeyID, ResolvingSnafu};
 use std::ops::Deref;
 use std::rc::Rc;
 use wasm_bindgen::JsValue;
@@ -54,11 +54,11 @@ impl JsKeyHandle {
 impl SigningKey for JsKeyHandle {}
 
 impl Key for JsKeyHandle {
-    fn pub_key(&self) -> agent_sdk::crypto::Result<Vec<u8>> {
+    fn pub_key(&self) -> equs_sdk::crypto::Result<Vec<u8>> {
         self.0
             .pub_key()
             .map(|v| v.to_vec())
-            .ok_or_else(|| agent_sdk::crypto::KeyNotSupportedSnafu { type_: "public" }.build())
+            .ok_or_else(|| equs_sdk::crypto::KeyNotSupportedSnafu { type_: "public" }.build())
     }
 
     fn jwk(&self) -> Option<JWK> {
@@ -71,7 +71,7 @@ impl Key for JsKeyHandle {
 
 #[async_trait(?Send)]
 impl Signer for JsKeyHandle {
-    fn alg(&self) -> agent_sdk::crypto::Alg {
+    fn alg(&self) -> equs_sdk::crypto::Alg {
         let alg = self.0.alg();
 
         // TODO: Maybe we should change the method signature to return a Result
@@ -79,7 +79,7 @@ impl Signer for JsKeyHandle {
         utils::convert_to_rust_object(alg).unwrap()
     }
 
-    async fn sign(&self, payload: &[u8]) -> agent_sdk::crypto::Result<Vec<u8>> {
+    async fn sign(&self, payload: &[u8]) -> equs_sdk::crypto::Result<Vec<u8>> {
         self.0.sign(payload).await.map(|v| v.to_vec()).map_err(|e| {
             SigningSnafu {
                 details: utils::js_value_to_string(e),
@@ -94,7 +94,7 @@ impl VerifyingKey for JsKeyHandle {}
 
 #[async_trait(?Send)]
 impl Verifier for JsKeyHandle {
-    async fn verify(&self, data: &[u8], signature: &[u8]) -> agent_sdk::crypto::Result<()> {
+    async fn verify(&self, data: &[u8], signature: &[u8]) -> equs_sdk::crypto::Result<()> {
         self.0.verify(data, signature).await.map_err(|e| {
             SigningSnafu {
                 details: format!("{:?}", e),
@@ -104,7 +104,7 @@ impl Verifier for JsKeyHandle {
     }
 }
 
-impl agent_sdk::kms::KeyHandle for JsKeyHandle {}
+impl equs_sdk::kms::KeyHandle for JsKeyHandle {}
 
 #[derive(Clone)]
 pub(crate) struct JsKms(Rc<Kms>);
@@ -116,12 +116,12 @@ impl JsKms {
 }
 
 #[async_trait(?Send)]
-impl agent_sdk::kms::Kms<JsKeyHandle> for JsKms {
+impl equs_sdk::kms::Kms<JsKeyHandle> for JsKms {
     async fn create(
         &self,
-        kt: agent_sdk::kms::KeyType,
+        kt: equs_sdk::kms::KeyType,
         _: CreateOptions,
-    ) -> agent_sdk::kms::Result<KeyID> {
+    ) -> equs_sdk::kms::Result<KeyID> {
         let kt = utils::convert_to_opaque_object_unchecked(kt.to_string()).unwrap();
 
         let js_kid = self.0.create(kt).await.map_err(|e| {
@@ -139,7 +139,7 @@ impl agent_sdk::kms::Kms<JsKeyHandle> for JsKms {
         })
     }
 
-    async fn get(&self, kid: &KeyID) -> agent_sdk::kms::Result<JsKeyHandle> {
+    async fn get(&self, kid: &KeyID) -> equs_sdk::kms::Result<JsKeyHandle> {
         let key_handle = self.0.get(kid.deref().into()).await.map_err(|e| {
             ResolvingSnafu {
                 details: utils::js_value_to_string(e),
@@ -150,7 +150,7 @@ impl agent_sdk::kms::Kms<JsKeyHandle> for JsKms {
         Ok(JsKeyHandle::new(key_handle))
     }
 
-    async fn get_by_public_key(&self, public_key: &[u8]) -> agent_sdk::kms::Result<JsKeyHandle> {
+    async fn get_by_public_key(&self, public_key: &[u8]) -> equs_sdk::kms::Result<JsKeyHandle> {
         let key_handle = self.0.get_by_public_key(public_key).await.map_err(|e| {
             ResolvingSnafu {
                 details: utils::js_value_to_string(e),
@@ -167,9 +167,9 @@ pub mod test_utils {
     use crate::crypto::{Alg, KeyType};
     use crate::kms::{JsKeyHandle, JsKms, KeyHandle};
     use crate::utils;
-    use agent_sdk::crypto::{Key, Signer, Verifier};
-    use agent_sdk::kms;
-    use agent_sdk::kms::{CreateOptions, KeyID, Kms};
+    use equs_sdk::crypto::{Key, Signer, Verifier};
+    use equs_sdk::kms;
+    use equs_sdk::kms::{CreateOptions, KeyID, Kms};
     use std::rc::Rc;
     use std::str::FromStr;
     use wasm_bindgen::JsError;

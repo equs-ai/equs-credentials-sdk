@@ -1,21 +1,21 @@
 use crate::kms::{JsBIP32Params, JsECDH1PUParams, JsECDHESParams, JsKeyType};
 use crate::vc::core::JsAlg;
-use agent_sdk::crypto::{Key, Signer, Verifier};
-use agent_sdk::inmem::kms::LocalKms;
-use agent_sdk::kms::{BIP32Params, CreateOptions, DerivativeKms, ECDH1PUParams, ECDHESParams, Kms};
+use equs_sdk::crypto::{Key, Signer, Verifier};
+use equs_sdk::inmem::kms::LocalKms;
+use equs_sdk::kms::{BIP32Params, CreateOptions, DerivativeKms, ECDH1PUParams, ECDHESParams, Kms};
 use napi::bindgen_prelude::Uint8Array;
 use napi::{Error, Result};
 use napi_derive::napi;
 
 #[napi]
 pub struct InMemKeyHandle {
-    inner: agent_sdk::inmem::kms::KeyHandle,
+    inner: equs_sdk::inmem::kms::KeyHandle,
     pub jwk: Option<String>,
 }
 
 #[napi]
 impl InMemKeyHandle {
-    pub fn new(handle: agent_sdk::inmem::kms::KeyHandle) -> Self {
+    pub fn new(handle: equs_sdk::inmem::kms::KeyHandle) -> Self {
         let jwk = handle
             .jwk()
             .and_then(|value| serde_json::to_string(&value).ok());

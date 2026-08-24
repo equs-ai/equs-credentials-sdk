@@ -1,11 +1,11 @@
 use crate::common::Result;
 use crate::vc::Alg;
-use agent_sdk::crypto::{
-    Error as ASDKError, JWK, Key, Result as ASDKResult, Signer, SigningKey, SigningSnafu,
+use async_trait::async_trait;
+use equs_sdk::crypto::{
+    Error as EqusSdkError, JWK, Key, Result as EqusSdkResult, Signer, SigningKey, SigningSnafu,
     VerificationSnafu, Verifier, VerifyingKey,
 };
-use agent_sdk::kms::KeyHandle as ASDKKeyHandle;
-use async_trait::async_trait;
+use equs_sdk::kms::KeyHandle as EqusSdkKeyHandle;
 use std::sync::Arc;
 
 /// Signing and verification for a single key; must be safe for concurrent use and describe the same
@@ -101,11 +101,11 @@ impl KeyHandle for WrappedKeyHandle {
 impl SigningKey for WrappedKeyHandle {}
 
 impl Key for WrappedKeyHandle {
-    fn pub_key(&self) -> ASDKResult<Vec<u8>> {
+    fn pub_key(&self) -> EqusSdkResult<Vec<u8>> {
         Ok(self
             .inner()
             .pub_key()
-            .map_err(|_| ASDKError::KeyNotSupported {
+            .map_err(|_| EqusSdkError::KeyNotSupported {
                 type_: "public".to_string(),
             }))?
     }
@@ -124,7 +124,7 @@ impl Signer for WrappedKeyHandle {
         self.inner().alg()
     }
 
-    async fn sign(&self, payload: &[u8]) -> ASDKResult<Vec<u8>> {
+    async fn sign(&self, payload: &[u8]) -> EqusSdkResult<Vec<u8>> {
         self.inner().sign(payload.to_vec()).await.map_err(|e| {
             SigningSnafu {
                 details: e.to_string(),
@@ -138,7 +138,7 @@ impl VerifyingKey for WrappedKeyHandle {}
 
 #[async_trait]
 impl Verifier for WrappedKeyHandle {
-    async fn verify(&self, data: &[u8], signature: &[u8]) -> ASDKResult<()> {
+    async fn verify(&self, data: &[u8], signature: &[u8]) -> EqusSdkResult<()> {
         self.inner()
             .verify(data.to_vec(), signature.to_vec())
             .await
@@ -151,7 +151,7 @@ impl Verifier for WrappedKeyHandle {
     }
 }
 
-impl ASDKKeyHandle for WrappedKeyHandle {}
+impl EqusSdkKeyHandle for WrappedKeyHandle {}
 
 #[cfg(debug_assertions)]
 #[uniffi::export]

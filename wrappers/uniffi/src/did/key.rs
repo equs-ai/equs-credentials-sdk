@@ -1,5 +1,5 @@
 use crate::key_handle::WrappedKeyHandle;
-use agent_sdk::did::didkey::DIDKey as ASDKDIDKey;
+use equs_sdk::did::didkey::DIDKey as EqusSdkDIDKey;
 
 #[derive(uniffi::Error, Debug)]
 pub enum DIDKeyError {
@@ -17,16 +17,16 @@ impl std::fmt::Display for DIDKeyError {
 type Result<T> = std::result::Result<T, DIDKeyError>;
 
 #[derive(uniffi::Object)]
-pub struct DIDKey(ASDKDIDKey);
+pub struct DIDKey(EqusSdkDIDKey);
 
 #[uniffi::export]
 impl DIDKey {
     #[uniffi::constructor]
     pub fn new() -> Self {
-        Self(ASDKDIDKey {})
+        Self(EqusSdkDIDKey {})
     }
 
     pub fn generate(&self, key: WrappedKeyHandle) -> Result<String> {
-        ASDKDIDKey::generate(key).map_err(|err| DIDKeyError::Generate(err.to_string()))
+        EqusSdkDIDKey::generate(key).map_err(|err| DIDKeyError::Generate(err.to_string()))
     }
 }

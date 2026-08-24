@@ -9,7 +9,7 @@ Exposes DID method utilities and a universal DID resolver to JavaScript/TypeScri
 |------|------|
 | `mod.rs` | Shared DID types: `VerificationMethodKey` wasm_bindgen struct pairing a `JsKeyHandle` with verification relationship types. Declares opaque extern JS types: `DIDResolution`, `DIDVerificationMethod`, `ResolutionOptions`. Provides `TryFrom<DIDResolution> for ResolutionOutput` (and reverse) for converting between JS-side opaque objects and Rust SDK types. |
 | `resolver.rs` | `JsDIDResolver` — wraps an opaque JS `DIDResolver` object and implements the SDK's `DIDResolver` async trait (`?Send`) by forwarding `resolve_representation` calls to the JS side via `wasm_bindgen_futures`. |
-| `universal_resolver.rs` | `UniversalDIDResolver` — wasm_bindgen struct wrapping `agent_sdk::did::UniversalResolver`. Exposes `addResolver`, `resolveVerificationMethod`, and `resolve` as wasm-bound async methods. |
+| `universal_resolver.rs` | `UniversalDIDResolver` — wasm_bindgen struct wrapping `equs_sdk::did::UniversalResolver`. Exposes `addResolver`, `resolveVerificationMethod`, and `resolve` as wasm-bound async methods. |
 | `key.rs` | `DIDKey` — wasm_bindgen struct. Exposes `generate(key: JsKeyHandle) -> Result<String>` for producing a `did:key` DID from a key handle. |
 | `web.rs` | `DIDWeb` — wasm_bindgen struct. Exposes `generateDidFromUrl` and `generateDidDocument` for the `did:web` method. |
 
@@ -20,7 +20,7 @@ Exposes DID method utilities and a universal DID resolver to JavaScript/TypeScri
 - `DIDKey`, `DIDWeb` — WASM classes for DID generation.
 
 ## Dependencies
-- Depends on: `agent_sdk::did` (including `didkey`, `didweb`, `universal`), `crate::kms::JsKeyHandle`, `crate::http`
+- Depends on: `equs_sdk::did` (including `didkey`, `didweb`, `universal`), `crate::kms::JsKeyHandle`, `crate::http`
 - Used by: `crate::vc::oid4vci::builder`, `crate::vc::oid4vp::builder`, WASM consumer TypeScript code
 
 ## Constraints

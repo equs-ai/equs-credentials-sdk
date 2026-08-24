@@ -1,11 +1,11 @@
 use crate::kms::JsKeyHandle;
 use crate::kms::{JsECDH1PUParams, JsECDHESParams, JsKeyType};
-use agent_sdk::kms;
-use agent_sdk::kms::{
+use async_trait::async_trait;
+use equs_sdk::kms;
+use equs_sdk::kms::{
     CreateOptions, CreationSnafu, DerivationSnafu, DerivativeKms, ECDH1PUParams, ECDHESParams,
     KeyID, KeyType, Kms, ResolvingSnafu,
 };
-use async_trait::async_trait;
 use napi::bindgen_prelude::{Promise, Uint8Array};
 use napi::threadsafe_function::{ErrorStrategy, ThreadsafeFunction};
 use napi_derive::napi;

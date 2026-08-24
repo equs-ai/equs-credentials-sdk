@@ -1,8 +1,8 @@
 use crate::utils::js_err;
-use agent_sdk::crypto::Alg;
-use agent_sdk::nonce::Nonce;
-use agent_sdk::vc::core::PopFormat;
-use agent_sdk::vc::core::{
+use equs_sdk::crypto::Alg;
+use equs_sdk::nonce::Nonce;
+use equs_sdk::vc::core::PopFormat;
+use equs_sdk::vc::core::{
     CredentialDefinition, CredentialDefinitionData, CredentialOffer, CredentialOfferContent,
     CredentialOfferData, CredentialRequest, CredentialRequestData, CredentialStatusInfo,
     DEFAULT_POP_LIFETIME_MINUTES, Display, HolderBinder, HolderMetadata, IssuerMetadata,
@@ -11,12 +11,12 @@ use agent_sdk::vc::core::{
     ProofOfPossessionNotBefore as SDKProofOfPossessionNotBefore, StatusIssuerMetadata,
     StatusListDefinition,
 };
-use agent_sdk::vc::status_formats::StatusListFormat;
-use agent_sdk::vc::status_formats::status_list_token_jwt::{
+use equs_sdk::vc::status_formats::StatusListFormat;
+use equs_sdk::vc::status_formats::status_list_token_jwt::{
     SLMetadata, VCStatus as SdkTslVCStatus, VCStatuses as SdkVCStatuses,
 };
-use agent_sdk::vc::{Presentation, StatusList, VCFormat, VCStatus, VCStatusesData};
-use agent_sdk::{Duration, OffsetDateTime};
+use equs_sdk::vc::{Presentation, StatusList, VCFormat, VCStatus, VCStatusesData};
+use equs_sdk::{Duration, OffsetDateTime};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;

@@ -1,5 +1,5 @@
 use crate::kms::JsKeyHandle;
-use agent_sdk::did::didkey::DIDKey;
+use equs_sdk::did::didkey::DIDKey;
 use napi::{Error, Result};
 use napi_derive::napi;
 

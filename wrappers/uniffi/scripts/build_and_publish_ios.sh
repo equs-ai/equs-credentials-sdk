@@ -16,8 +16,8 @@ if [[ "$ENVIRONMENT" == "$DEV_ENV" ]]; then
   XCFRAMEWORK_LOCATION="swift/ios/debug"
 fi
 
-ZIP_NAME="agent-sdk.zip"
-PACKAGE_NAME="agent-sdk-ios"
+ZIP_NAME="equs-sdk.zip"
+PACKAGE_NAME="equs-sdk-ios"
 
 make $MAKEFILE_JOB
 pwd

@@ -1,5 +1,5 @@
-use agent_sdk::did::universal::UniversalResolver;
-use agent_sdk::didcomm::core::envelope::{EnvelopeService, PackEncryptedOptions, UnpackOptions};
+use equs_sdk::did::universal::UniversalResolver;
+use equs_sdk::didcomm::core::envelope::{EnvelopeService, PackEncryptedOptions, UnpackOptions};
 use napi::Error;
 use napi_derive::napi;
 

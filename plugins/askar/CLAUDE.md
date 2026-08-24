@@ -1,7 +1,7 @@
 # askar — Context
 
 ## Purpose
-Hyperledger Askar plugin for ASDK: provides production-grade, encrypted KMS and credential vault
+Hyperledger Askar plugin for Equs SDK: provides production-grade, encrypted KMS and credential vault
 implementations backed by the `aries_askar` library, with a Node.js NAPI-RS wrapper.
 
 ## Files / Sub-areas
@@ -19,7 +19,7 @@ implementations backed by the `aries_askar` library, with a Node.js NAPI-RS wrap
 - Node.js counterparts: `AskarStorage`, `AskarKms`, `AskarKeyHandle`, `AskarVault` (NAPI classes).
 
 ## Dependencies
-- Depends on: `aries_askar`, `agent_sdk` (core SDK crate), `napi`/`napi-derive` (Node.js wrapper only)
+- Depends on: `aries_askar`, `equs_sdk` (core SDK crate), `napi`/`napi-derive` (Node.js wrapper only)
 - Used by: Node.js SDK wrapper (`wrappers/nodejs/`), demo applications (`demos/nodejs/`)
 
 ## Constraints

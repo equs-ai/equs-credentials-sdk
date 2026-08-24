@@ -35,8 +35,8 @@ pub enum Error {
     Parse(String),
 }
 
-impl From<agent_sdk::vc::core::Error> for Error {
-    fn from(err: agent_sdk::vc::core::Error) -> Self {
+impl From<equs_sdk::vc::core::Error> for Error {
+    fn from(err: equs_sdk::vc::core::Error) -> Self {
         Error::Core(err.to_string())
     }
 }

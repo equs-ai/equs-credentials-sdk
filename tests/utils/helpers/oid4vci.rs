@@ -1,7 +1,7 @@
-use agent_sdk::http::HttpClient;
-use agent_sdk::inmem::kms::LocalKms;
-use agent_sdk::inmem::vault::InMemVault;
-use agent_sdk::vc::oid4vci::{
+use equs_sdk::http::HttpClient;
+use equs_sdk::inmem::kms::LocalKms;
+use equs_sdk::inmem::vault::InMemVault;
+use equs_sdk::vc::oid4vci::{
     CredentialExtraVerification, CredentialOfferParams, Holder, HolderBuilder, Issuer,
     IssuerBuilder, IssuerDiscovery, IssuerMetadata,
 };
@@ -14,7 +14,7 @@ use crate::utils::fixtures::{
 };
 
 use super::create_did_keymetadata_keyhandle;
-use agent_sdk::inmem::nonce::LocalNonceHandler;
+use equs_sdk::inmem::nonce::LocalNonceHandler;
 use url::Url;
 
 pub async fn build_holder(

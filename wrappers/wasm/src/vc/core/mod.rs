@@ -20,7 +20,7 @@ pub use verifier::VcCoreVerifier;
 
 pub(super) fn decode_holder_binder(
     v: Option<HolderBinder>,
-) -> Result<Option<agent_sdk::vc::core::HolderBinder>, JsError> {
+) -> Result<Option<equs_sdk::vc::core::HolderBinder>, JsError> {
     v.map(|b| utils::convert_to_rust_object::<_, types::WasmHolderBinder>(b).map(Into::into))
         .transpose()
 }

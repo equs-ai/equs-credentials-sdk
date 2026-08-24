@@ -1,8 +1,8 @@
 use crate::utils::http::HttpClientEmulator;
-use agent_sdk::http::HttpClient;
-use agent_sdk::inmem::kms::LocalKms;
-use agent_sdk::vc::oid4vci;
-use agent_sdk::vc::oid4vci::{CredentialOfferGrants, CredentialResult, Holder, Issuer};
+use equs_sdk::http::HttpClient;
+use equs_sdk::inmem::kms::LocalKms;
+use equs_sdk::vc::oid4vci;
+use equs_sdk::vc::oid4vci::{CredentialOfferGrants, CredentialResult, Holder, Issuer};
 use futures::executor;
 use oauth2::http::Method;
 use oauth2::http::StatusCode;

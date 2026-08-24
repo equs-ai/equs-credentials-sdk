@@ -1,4 +1,4 @@
-//! SSI Core module
+//! Protocol Core module
 
 pub(crate) mod api;
 mod holder;

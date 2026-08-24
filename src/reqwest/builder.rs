@@ -41,8 +41,8 @@ impl ReqwestClientBuilder {
     /// # Examples
     ///
     /// ```
-    /// use agent_sdk::reqwest::builder::ReqwestClientBuilder;
-    /// use agent_sdk::reqwest::validators::content_size::ContentSizeLimiter;
+    /// use equs_sdk::reqwest::builder::ReqwestClientBuilder;
+    /// use equs_sdk::reqwest::validators::content_size::ContentSizeLimiter;
     ///
     /// let client = ReqwestClientBuilder::new()
     ///     .with_response_content_size_limit(102400)
@@ -64,8 +64,8 @@ impl ReqwestClientBuilder {
     /// # Examples
     ///
     /// ```
-    /// use agent_sdk::reqwest::builder::ReqwestClientBuilder;
-    /// use agent_sdk::reqwest::validators::content_size::ContentSizeLimiter;
+    /// use equs_sdk::reqwest::builder::ReqwestClientBuilder;
+    /// use equs_sdk::reqwest::validators::content_size::ContentSizeLimiter;
     ///
     /// let client = ReqwestClientBuilder::new()
     ///     .with_request_content_size_limit(102400)
@@ -91,7 +91,7 @@ impl ReqwestClientBuilder {
     /// # Examples
     ///
     /// ```no_run
-    /// use agent_sdk::reqwest::builder::{ Certificate, ReqwestClientBuilder };
+    /// use equs_sdk::reqwest::builder::{ Certificate, ReqwestClientBuilder };
     ///
     /// let cert = Certificate::from_pem("-----BEGIN CERTIFICATE-----...".as_bytes()).unwrap();
     /// let builder = ReqwestClientBuilder::new()
@@ -114,7 +114,7 @@ impl ReqwestClientBuilder {
     /// # Examples
     ///
     /// ```
-    /// use agent_sdk::reqwest::builder::ReqwestClientBuilder;
+    /// use equs_sdk::reqwest::builder::ReqwestClientBuilder;
     ///
     /// let client = ReqwestClientBuilder::new()
     ///     .insecure()
@@ -145,7 +145,7 @@ impl ReqwestClientBuilder {
     /// # Example
     ///
     /// ```
-    /// use agent_sdk::reqwest::builder::ReqwestClientBuilder;
+    /// use equs_sdk::reqwest::builder::ReqwestClientBuilder;
     ///
     /// let client = ReqwestClientBuilder::new()
     ///     .with_response_content_size_limit(102400) // Sets the limit to response content size

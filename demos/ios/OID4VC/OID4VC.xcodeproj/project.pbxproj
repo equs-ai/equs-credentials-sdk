@@ -7,10 +7,10 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		1E2F06532E4AF89400877B91 /* Asdk in Frameworks */ = {isa = PBXBuildFile; productRef = 1E2F06522E4AF89400877B91 /* Asdk */; };
-		1E2F06692E4AFA6700877B91 /* Asdk in Frameworks */ = {isa = PBXBuildFile; productRef = 1E2F06682E4AFA6700877B91 /* Asdk */; };
-		1E2F066C2E4AFB8500877B91 /* Asdk in Frameworks */ = {isa = PBXBuildFile; productRef = 1E2F066B2E4AFB8500877B91 /* Asdk */; };
-		1E2F066F2E4AFC7500877B91 /* Asdk in Frameworks */ = {isa = PBXBuildFile; productRef = 1E2F066E2E4AFC7500877B91 /* Asdk */; };
+		1E2F06532E4AF89400877B91 /* EqusSdk in Frameworks */ = {isa = PBXBuildFile; productRef = 1E2F06522E4AF89400877B91 /* EqusSdk */; };
+		1E2F06692E4AFA6700877B91 /* EqusSdk in Frameworks */ = {isa = PBXBuildFile; productRef = 1E2F06682E4AFA6700877B91 /* EqusSdk */; };
+		1E2F066C2E4AFB8500877B91 /* EqusSdk in Frameworks */ = {isa = PBXBuildFile; productRef = 1E2F066B2E4AFB8500877B91 /* EqusSdk */; };
+		1E2F066F2E4AFC7500877B91 /* EqusSdk in Frameworks */ = {isa = PBXBuildFile; productRef = 1E2F066E2E4AFC7500877B91 /* EqusSdk */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -30,10 +30,10 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				1E2F066C2E4AFB8500877B91 /* Asdk in Frameworks */,
-				1E2F06532E4AF89400877B91 /* Asdk in Frameworks */,
-				1E2F06692E4AFA6700877B91 /* Asdk in Frameworks */,
-				1E2F066F2E4AFC7500877B91 /* Asdk in Frameworks */,
+				1E2F066C2E4AFB8500877B91 /* EqusSdk in Frameworks */,
+				1E2F06532E4AF89400877B91 /* EqusSdk in Frameworks */,
+				1E2F06692E4AFA6700877B91 /* EqusSdk in Frameworks */,
+				1E2F066F2E4AFC7500877B91 /* EqusSdk in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -76,10 +76,10 @@
 			);
 			name = OID4VC;
 			packageProductDependencies = (
-				1E2F06522E4AF89400877B91 /* Asdk */,
-				1E2F06682E4AFA6700877B91 /* Asdk */,
-				1E2F066B2E4AFB8500877B91 /* Asdk */,
-				1E2F066E2E4AFC7500877B91 /* Asdk */,
+				1E2F06522E4AF89400877B91 /* EqusSdk */,
+				1E2F06682E4AFA6700877B91 /* EqusSdk */,
+				1E2F066B2E4AFB8500877B91 /* EqusSdk */,
+				1E2F066E2E4AFC7500877B91 /* EqusSdk */,
 			);
 			productName = OID4VC;
 			productReference = 6B344CA82D9FD31300943C58 /* OID4VC.app */;
@@ -349,21 +349,21 @@
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
-		1E2F06522E4AF89400877B91 /* Asdk */ = {
+		1E2F06522E4AF89400877B91 /* EqusSdk */ = {
 			isa = XCSwiftPackageProductDependency;
-			productName = Asdk;
+			productName = EqusSdk;
 		};
-		1E2F06682E4AFA6700877B91 /* Asdk */ = {
+		1E2F06682E4AFA6700877B91 /* EqusSdk */ = {
 			isa = XCSwiftPackageProductDependency;
-			productName = Asdk;
+			productName = EqusSdk;
 		};
-		1E2F066B2E4AFB8500877B91 /* Asdk */ = {
+		1E2F066B2E4AFB8500877B91 /* EqusSdk */ = {
 			isa = XCSwiftPackageProductDependency;
-			productName = Asdk;
+			productName = EqusSdk;
 		};
-		1E2F066E2E4AFC7500877B91 /* Asdk */ = {
+		1E2F066E2E4AFC7500877B91 /* EqusSdk */ = {
 			isa = XCSwiftPackageProductDependency;
-			productName = Asdk;
+			productName = EqusSdk;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

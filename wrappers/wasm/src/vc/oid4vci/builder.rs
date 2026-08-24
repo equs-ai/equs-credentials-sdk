@@ -7,21 +7,21 @@ use crate::vc::core::types::WasmProofOfPossessionNotBefore;
 use crate::vc::oid4vci::holder::CredentialExtraVerification;
 use crate::vc::oid4vci::holder::OID4VCIHolder;
 use crate::vc::oid4vci::{OID4VCICredentialOffer, OID4VCIIssuerMetadata};
-use agent_sdk::Duration;
-use agent_sdk::vc::oid4vci::HolderBuilder;
+use equs_sdk::Duration;
+use equs_sdk::vc::oid4vci::HolderBuilder;
 use wasm_bindgen::prelude::wasm_bindgen;
 use wasm_bindgen::{JsError, JsValue};
 
 /// A type containing options of discovery of the `Issuer` for a `Holder`.
 #[wasm_bindgen]
-pub struct IssuerDiscovery(agent_sdk::vc::oid4vci::IssuerDiscovery);
+pub struct IssuerDiscovery(equs_sdk::vc::oid4vci::IssuerDiscovery);
 
 #[wasm_bindgen]
 impl IssuerDiscovery {
     /// Creates an `IssuerDiscovery` instance using an Issuer URL.
     #[wasm_bindgen(js_name = fromUrl)]
     pub fn from_url(url: String) -> Self {
-        IssuerDiscovery(agent_sdk::vc::oid4vci::IssuerDiscovery::Url(url))
+        IssuerDiscovery(equs_sdk::vc::oid4vci::IssuerDiscovery::Url(url))
     }
 
     /// Creates an `IssuerDiscovery` instance from a credential offer.
@@ -30,7 +30,7 @@ impl IssuerDiscovery {
         let credential_offer = utils::convert_to_rust_object(credential_offer)?;
 
         Ok(IssuerDiscovery(
-            agent_sdk::vc::oid4vci::IssuerDiscovery::Offer(credential_offer),
+            equs_sdk::vc::oid4vci::IssuerDiscovery::Offer(credential_offer),
         ))
     }
 
@@ -44,13 +44,13 @@ impl IssuerDiscovery {
         let auth_metadata = utils::convert_to_rust_object(auth_metadata)?;
 
         Ok(IssuerDiscovery(
-            agent_sdk::vc::oid4vci::IssuerDiscovery::Metadata(credential_offer, auth_metadata),
+            equs_sdk::vc::oid4vci::IssuerDiscovery::Metadata(credential_offer, auth_metadata),
         ))
     }
 }
 
 impl IssuerDiscovery {
-    pub fn inner(&self) -> agent_sdk::vc::oid4vci::IssuerDiscovery {
+    pub fn inner(&self) -> equs_sdk::vc::oid4vci::IssuerDiscovery {
         self.0.clone()
     }
 }
@@ -58,7 +58,7 @@ impl IssuerDiscovery {
 /// A builder for instantiating `oid4vci` `Holder`.
 #[wasm_bindgen]
 pub struct OID4VCIHolderBuilder(
-    HolderBuilder<JsKeyHandle, JsKms, JsVault, agent_sdk::reqwest::ReqwestClient>,
+    HolderBuilder<JsKeyHandle, JsKms, JsVault, equs_sdk::reqwest::ReqwestClient>,
 );
 
 #[wasm_bindgen]
@@ -156,16 +156,16 @@ extern "C" {
 }
 
 #[wasm_bindgen]
-pub struct ProofOfPossessionMetadata(agent_sdk::vc::core::ProofOfPossessionMetadata);
+pub struct ProofOfPossessionMetadata(equs_sdk::vc::core::ProofOfPossessionMetadata);
 
 #[wasm_bindgen]
-pub struct ProofOfPossessionMetadataBuilder(agent_sdk::vc::core::ProofOfPossessionMetadata);
+pub struct ProofOfPossessionMetadataBuilder(equs_sdk::vc::core::ProofOfPossessionMetadata);
 
 #[wasm_bindgen]
 impl ProofOfPossessionMetadataBuilder {
     #[wasm_bindgen(constructor)]
     pub fn new() -> Self {
-        ProofOfPossessionMetadataBuilder(agent_sdk::vc::core::ProofOfPossessionMetadata::default())
+        ProofOfPossessionMetadataBuilder(equs_sdk::vc::core::ProofOfPossessionMetadata::default())
     }
 
     /// Specifies Proof of Possession token lifetime.

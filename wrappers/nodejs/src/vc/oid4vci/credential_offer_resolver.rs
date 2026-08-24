@@ -2,7 +2,7 @@ use crate::error::IntoNapiError;
 use crate::http::ReqwestHttpClient;
 use crate::utils::to_json_object;
 use crate::vc::JsonObject;
-use agent_sdk::vc::oid4vci::CredentialOfferResolver;
+use equs_sdk::vc::oid4vci::CredentialOfferResolver;
 use napi::{Error, Result};
 use napi_derive::napi;
 use url::Url;
@@ -11,7 +11,7 @@ use url::Url;
 
 #[napi(js_name = "OID4VCICredentialOfferResolver")]
 pub struct OID4VCICredentialOfferResolver(
-    CredentialOfferResolver<agent_sdk::reqwest::ReqwestClient>,
+    CredentialOfferResolver<equs_sdk::reqwest::ReqwestClient>,
 );
 
 #[napi]

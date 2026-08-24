@@ -1,7 +1,7 @@
 use crate::common::{Error, Result};
 use crate::did::{DIDResolution, DIDResolver, VerificationMethod, WrappedDIDResolver};
-use agent_sdk::did::universal::UniversalResolver;
-use agent_sdk::did::{DIDBuf, DIDResolver as ASDKSpruceDIDResolver};
+use equs_sdk::did::universal::UniversalResolver;
+use equs_sdk::did::{DIDBuf, DIDResolver as EqusSdkSpruceDIDResolver};
 use std::str::FromStr;
 use std::sync::Arc;
 

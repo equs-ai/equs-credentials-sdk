@@ -2,7 +2,7 @@ use super::{JsStatusIssuerMetadata, StatusList, VCStatusesData};
 use crate::kms::{JsKms, Kms};
 use crate::utils;
 use crate::vc::core::types::{WasmStatusIssuerMetadata, WasmStatusList, WasmVCStatusesData};
-use agent_sdk::vc::core::{StatusIssuer, StatusIssuerMetadata, status_issuer::StatusIssuerService};
+use equs_sdk::vc::core::{StatusIssuer, StatusIssuerMetadata, status_issuer::StatusIssuerService};
 use wasm_bindgen::JsError;
 use wasm_bindgen::prelude::wasm_bindgen;
 

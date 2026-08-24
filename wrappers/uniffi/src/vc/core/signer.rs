@@ -3,7 +3,7 @@ use crate::did::universal_resolver::UniversalDIDResolver;
 use crate::key_handle::WrappedKeyHandle;
 use crate::kms::{Kms, WrappedKms};
 use crate::vc::Credential;
-use agent_sdk::vc::core::{
+use equs_sdk::vc::core::{
     CredentialSigner as CoreCredentialSigner, SignCredential, UnsignedCredential,
 };
 use std::sync::Arc;

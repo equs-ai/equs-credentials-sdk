@@ -18,7 +18,7 @@ import init, {
   OID4VPHolderBuilder,
   ReqwestHttpClient,
   resolveMetadata,
-} from "@equstng/agent-sdk";
+} from "@equs/equs-sdk";
 
 export async function start(): Promise<void> {
   await init();

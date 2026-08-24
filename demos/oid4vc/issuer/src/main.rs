@@ -1,14 +1,14 @@
 use actix_web::http::header::Header;
 use actix_web::{App, Error, HttpRequest, HttpResponse, HttpServer, web};
 use actix_web_httpauth::headers::authorization::{Authorization, Bearer};
-use agent_sdk::did::didkey::DIDKey;
-use agent_sdk::did::universal::UniversalResolver;
-use agent_sdk::did::{DID, DIDBuf, DIDResolver, VerificationMethodKey};
-use agent_sdk::inmem::kms::LocalKms;
-use agent_sdk::kms;
-use agent_sdk::kms::Kms;
-use agent_sdk::vc::core::{CredentialStatusInfo, KeyMetadata};
-use agent_sdk::vc::oid4vci::{
+use equs_sdk::did::didkey::DIDKey;
+use equs_sdk::did::universal::UniversalResolver;
+use equs_sdk::did::{DID, DIDBuf, DIDResolver, VerificationMethodKey};
+use equs_sdk::inmem::kms::LocalKms;
+use equs_sdk::kms;
+use equs_sdk::kms::Kms;
+use equs_sdk::vc::core::{CredentialStatusInfo, KeyMetadata};
+use equs_sdk::vc::oid4vci::{
     AuthorizationCodeGrant, AuthorizationMetadata, CredDefMetadata, CredDefMetadataProfile,
     CredentialOfferGrants, CredentialRequest, IssuerMetadata, IssuerUrl, PreAuthorizedCode,
     PreAuthorizedCodeGrant, TokenRequest, TokenResponse,
@@ -20,19 +20,19 @@ use std::str::FromStr;
 
 use actix_web::cookie::time;
 use actix_web::cookie::time::OffsetDateTime;
-use agent_sdk::crypto::Key;
-use agent_sdk::did::DIDDoc;
-use agent_sdk::did::didweb::DIDWeb;
-use agent_sdk::inmem::nonce::LocalNonceHandler;
-use agent_sdk::reqwest::builder::ReqwestClientBuilder;
-use agent_sdk::vc::VCStatusesData;
-use agent_sdk::vc::claims::Claims;
-use agent_sdk::vc::core::status_issuer::StatusIssuerService;
-use agent_sdk::vc::core::{StatusIssuer, StatusIssuerMetadata, StatusListDefinition};
-use agent_sdk::vc::oid4vci;
-use agent_sdk::vc::presentation_exchange::StatusSize;
-use agent_sdk::vc::status_formats::StatusListFormat;
-use agent_sdk::vc::status_formats::status_list_token_jwt::{VCStatus, VCStatuses};
+use equs_sdk::crypto::Key;
+use equs_sdk::did::DIDDoc;
+use equs_sdk::did::didweb::DIDWeb;
+use equs_sdk::inmem::nonce::LocalNonceHandler;
+use equs_sdk::reqwest::builder::ReqwestClientBuilder;
+use equs_sdk::vc::VCStatusesData;
+use equs_sdk::vc::claims::Claims;
+use equs_sdk::vc::core::status_issuer::StatusIssuerService;
+use equs_sdk::vc::core::{StatusIssuer, StatusIssuerMetadata, StatusListDefinition};
+use equs_sdk::vc::oid4vci;
+use equs_sdk::vc::presentation_exchange::StatusSize;
+use equs_sdk::vc::status_formats::StatusListFormat;
+use equs_sdk::vc::status_formats::status_list_token_jwt::{VCStatus, VCStatuses};
 #[allow(unused_imports)]
 use keycloak::{KeycloakAdmin, KeycloakAdminToken};
 use reqwest::Url;
@@ -108,8 +108,8 @@ async fn main() -> std::io::Result<()> {
             .route(DID_DOC_URL_PATH, web::get().to(did_doc))
             // NOTE: The following two endpoints simulate the generation and validation of an access token
             // when a pre-authorized code flow is executed on the holder side
-            // Access token generation is not supported on agent-sdk,
-            // for validation one of the 'agent_sdk::vc::oid4vci::token_validation' implementations is used
+            // Access token generation is not supported on equs-sdk,
+            // for validation one of the 'equs_sdk::vc::oid4vci::token_validation' implementations is used
             .route(TOKEN_ENDPOINT_PATH, web::post().to(generate_token))
             .route(TOKEN_INTROSPECT_PATH, web::post().to(validate_token))
             .route(
@@ -552,7 +552,7 @@ async fn status_issuer() -> impl StatusIssuer {
         supported_status_lists: vec![StatusListDefinition {
             id: "test".to_string(),
             format: StatusListFormat::StatusListTokenJwt(
-                agent_sdk::vc::status_formats::status_list_token_jwt::SLMetadata {
+                equs_sdk::vc::status_formats::status_list_token_jwt::SLMetadata {
                     statuses_nr: 32,
                     status_list_url: Url::from_str("http://localhost:8088/status_list").unwrap(),
                     status_size,
@@ -572,7 +572,7 @@ async fn issue_status_list(issuer: &dyn StatusIssuer, statuses: VCStatuses) -> S
         .await
         .unwrap();
 
-    let agent_sdk::vc::StatusList::StatusListTokenJwt(status_list) = status_list;
+    let equs_sdk::vc::StatusList::StatusListTokenJwt(status_list) = status_list;
 
     status_list
 }

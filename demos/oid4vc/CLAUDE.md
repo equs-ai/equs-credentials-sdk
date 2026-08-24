@@ -18,8 +18,8 @@ separate Actix-web services (issuer, verifier, holder) plus shared library code.
 | README.md | Step-by-step run instructions, verifier environment variables, and the dSD-JWT delegation demo. |
 
 ## Dependencies
-- Depends on: `agent_sdk` (vc::oid4vci, vc::oid4vp), Keycloak (external, for OAuth2)
-- Used by: developers evaluating ASDK OID4VC flows in a native Rust environment
+- Depends on: `equs_sdk` (vc::oid4vci, vc::oid4vp), Keycloak (external, for OAuth2)
+- Used by: developers evaluating Equs SDK OID4VC flows in a native Rust environment
 
 ## Constraints
 - Requires a running Keycloak instance; see `demos/keycloak/README.md` for setup.

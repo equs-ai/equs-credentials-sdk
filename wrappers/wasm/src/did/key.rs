@@ -30,7 +30,7 @@ impl DIDKey {
     ///
     /// * Returns an error if the underlying DID generation process fails.
     pub fn generate(&self, key: KeyHandle) -> Result<String, JsError> {
-        agent_sdk::did::didkey::DIDKey::generate(JsKeyHandle::new(key))
+        equs_sdk::did::didkey::DIDKey::generate(JsKeyHandle::new(key))
             .map(|v| v.to_string())
             .map_err(|err| JsError::new(&format!("{:?}", err)))
     }

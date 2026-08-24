@@ -42,6 +42,6 @@ bin/
 .DS_Store
 
 ### Generated Code ###
-**/asdk.kt
+**/equssdk.kt
 
 local.properties

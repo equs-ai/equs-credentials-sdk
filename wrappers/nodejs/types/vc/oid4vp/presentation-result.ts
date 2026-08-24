@@ -1,9 +1,9 @@
-import { AuthorizationResponse as ASDKAuthResponse } from "../";
+import { AuthorizationResponse as EqusSdkAuthResponse } from "../";
 import { PresentationResultType } from "../../../";
 
 type AuthorizationResponse = {
   type: PresentationResultType.AuthorizationResponse;
-  value: ASDKAuthResponse;
+  value: EqusSdkAuthResponse;
 };
 type RedirectUri = {
   type: PresentationResultType.RedirectUri;

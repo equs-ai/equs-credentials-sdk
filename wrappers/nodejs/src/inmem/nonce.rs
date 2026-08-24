@@ -1,15 +1,15 @@
-use agent_sdk::nonce::NonceHandler;
+use equs_sdk::nonce::NonceHandler;
 use napi::{Error, Result};
 use napi_derive::napi;
 
 #[napi]
-pub struct LocalNonceHandler(agent_sdk::inmem::nonce::LocalNonceHandler);
+pub struct LocalNonceHandler(equs_sdk::inmem::nonce::LocalNonceHandler);
 
 #[napi]
 impl LocalNonceHandler {
     #[napi(constructor)]
     pub fn new() -> Self {
-        let nonce_generator = agent_sdk::inmem::nonce::LocalNonceHandler::default();
+        let nonce_generator = equs_sdk::inmem::nonce::LocalNonceHandler::default();
         LocalNonceHandler(nonce_generator)
     }
     #[napi]
@@ -27,7 +27,7 @@ impl LocalNonceHandler {
     pub async fn validate(&self, nonce: String) -> Result<bool> {
         let validation = self
             .0
-            .validate(&agent_sdk::nonce::Nonce::from_secret(nonce))
+            .validate(&equs_sdk::nonce::Nonce::from_secret(nonce))
             .await
             .map_err(|e| Error::from_reason(e.to_string()))?;
 
@@ -36,9 +36,9 @@ impl LocalNonceHandler {
 
     #[napi]
     pub async fn invalidate(&self, nonces: Vec<String>) -> Result<()> {
-        let nonces: Vec<agent_sdk::nonce::Nonce> = nonces
+        let nonces: Vec<equs_sdk::nonce::Nonce> = nonces
             .into_iter()
-            .map(agent_sdk::nonce::Nonce::from_secret)
+            .map(equs_sdk::nonce::Nonce::from_secret)
             .collect();
 
         self.0
@@ -50,7 +50,7 @@ impl LocalNonceHandler {
 
 impl Default for LocalNonceHandler {
     fn default() -> Self {
-        let nonce_generator = agent_sdk::inmem::nonce::LocalNonceHandler::default();
+        let nonce_generator = equs_sdk::inmem::nonce::LocalNonceHandler::default();
         LocalNonceHandler(nonce_generator)
     }
 }

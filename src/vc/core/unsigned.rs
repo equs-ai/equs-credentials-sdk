@@ -55,7 +55,7 @@ pub struct UnsignedSdJwtCredential {
 /// LDP/JSON-LD variant of an unsigned credential.
 ///
 /// Wraps the unsigned `AnySpecializedJsonCredential` plus the signing context. The
-/// proof object is added by the SSI suite during [crate::vc::core::SignCredential].
+/// proof object is added by the Protocol suite during [crate::vc::core::SignCredential].
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UnsignedLdpCredential {
     /// Unsigned JSON-LD credential. V1 or V2 depending on the context set.

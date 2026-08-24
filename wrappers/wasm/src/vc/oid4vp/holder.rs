@@ -5,9 +5,9 @@ use crate::vc::oid4vp::{
     PresentationResult, VCStatus,
 };
 use crate::vc::{Credential, CredentialsFindResult, JsCredential, JsCredentialEntry};
-use agent_sdk::vault::CredentialEntry;
-use agent_sdk::vc::oid4vp::{CredentialsMapping as ASDKCredentialsMapping, Holder};
-use agent_sdk::vc::status_formats::status_list_token_jwt;
+use equs_sdk::vault::CredentialEntry;
+use equs_sdk::vc::oid4vp::{CredentialsMapping as EqusSdkCredentialsMapping, Holder};
+use equs_sdk::vc::status_formats::status_list_token_jwt;
 use js_sys::{Object, Reflect};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -96,7 +96,7 @@ impl OID4VPHolder {
         let metadata = metadata
             .map(utils::convert_to_rust_object)
             .transpose()?
-            .unwrap_or_else(|| agent_sdk::vc::oid4vp::AuthorizationResponseMetadata::default());
+            .unwrap_or_else(|| equs_sdk::vc::oid4vp::AuthorizationResponseMetadata::default());
 
         let js_presentation: JsPresentationResult = self
             .0
@@ -174,7 +174,7 @@ impl OID4VPHolder {
         let metadata = metadata
             .map(utils::convert_to_rust_object)
             .transpose()?
-            .unwrap_or_else(|| agent_sdk::vc::oid4vp::AuthorizationResponseMetadata::default());
+            .unwrap_or_else(|| equs_sdk::vc::oid4vp::AuthorizationResponseMetadata::default());
 
         let js_presentation: JsPresentationResult = self
             .0
@@ -262,22 +262,22 @@ enum PresentationResultType {
     Presented,
 }
 
-impl TryFrom<agent_sdk::vc::oid4vp::PresentationResult> for JsPresentationResult {
+impl TryFrom<equs_sdk::vc::oid4vp::PresentationResult> for JsPresentationResult {
     type Error = JsError;
 
-    fn try_from(value: agent_sdk::vc::oid4vp::PresentationResult) -> Result<Self, JsError> {
+    fn try_from(value: equs_sdk::vc::oid4vp::PresentationResult) -> Result<Self, JsError> {
         let result = match value {
-            agent_sdk::vc::oid4vp::PresentationResult::AuthorizationResponse(auth_resp) => {
+            equs_sdk::vc::oid4vp::PresentationResult::AuthorizationResponse(auth_resp) => {
                 JsPresentationResult {
                     type_: PresentationResultType::AuthorizationResponse,
                     value: Some(serde_json::to_value(&auth_resp)?),
                 }
             }
-            agent_sdk::vc::oid4vp::PresentationResult::RedirectUri(uri) => JsPresentationResult {
+            equs_sdk::vc::oid4vp::PresentationResult::RedirectUri(uri) => JsPresentationResult {
                 type_: PresentationResultType::RedirectUri,
                 value: Some(serde_json::to_value(&uri)?),
             },
-            agent_sdk::vc::oid4vp::PresentationResult::Presented => JsPresentationResult {
+            equs_sdk::vc::oid4vp::PresentationResult::Presented => JsPresentationResult {
                 type_: PresentationResultType::Presented,
                 value: None,
             },
@@ -303,12 +303,12 @@ pub struct JsVcTslStatusPayload {
     pub value: Option<u8>,
 }
 
-impl TryFrom<agent_sdk::vc::VCStatus> for JsVCStatus {
+impl TryFrom<equs_sdk::vc::VCStatus> for JsVCStatus {
     type Error = JsError;
 
-    fn try_from(value: agent_sdk::vc::VCStatus) -> Result<Self, Self::Error> {
+    fn try_from(value: equs_sdk::vc::VCStatus) -> Result<Self, Self::Error> {
         match value {
-            agent_sdk::vc::VCStatus::StatusListToken(status) => {
+            equs_sdk::vc::VCStatus::StatusListToken(status) => {
                 let payload_status = TslVcStatusType::from(status).to_string();
                 let payload = match status {
                     status_list_token_jwt::VCStatus::Valid
@@ -347,19 +347,19 @@ impl TslVcStatusType {
         }
     }
 }
-impl From<agent_sdk::vc::TslVcStatus> for TslVcStatusType {
-    fn from(value: agent_sdk::vc::TslVcStatus) -> Self {
+impl From<equs_sdk::vc::TslVcStatus> for TslVcStatusType {
+    fn from(value: equs_sdk::vc::TslVcStatus) -> Self {
         match value {
-            agent_sdk::vc::TslVcStatus::Valid => Self::VALID,
-            agent_sdk::vc::TslVcStatus::Invalid => Self::INVALID,
-            agent_sdk::vc::TslVcStatus::Suspended => Self::SUSPENDED,
-            agent_sdk::vc::TslVcStatus::AppSpecific(_) => Self::APPSPECIFIC,
+            equs_sdk::vc::TslVcStatus::Valid => Self::VALID,
+            equs_sdk::vc::TslVcStatus::Invalid => Self::INVALID,
+            equs_sdk::vc::TslVcStatus::Suspended => Self::SUSPENDED,
+            equs_sdk::vc::TslVcStatus::AppSpecific(_) => Self::APPSPECIFIC,
         }
     }
 }
 
 pub fn convert_to_js_credentials_mapping(
-    input: ASDKCredentialsMapping,
+    input: EqusSdkCredentialsMapping,
 ) -> Result<HashMap<String, CredentialsFindResult>, JsError> {
     let mut result: HashMap<String, CredentialsFindResult> = HashMap::new();
 

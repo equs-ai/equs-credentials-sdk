@@ -5,7 +5,7 @@ import {
   KeyType,
   Kms,
   UniversalDIDResolver,
-} from "@equstng/agent-sdk";
+} from "@equs/equs-sdk";
 
 export type DidAndKeyMetadata = {
   did: string;

@@ -1,4 +1,4 @@
-import { NonceHandler } from "agent-sdk";
+import { NonceHandler } from "equs-sdk";
 
 export class MockNonceHandler implements NonceHandler {
   /** The nonces of each `invalidate` call, in call order. */

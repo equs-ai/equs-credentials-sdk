@@ -4,12 +4,12 @@ use crate::kms::{Kms, WrappedKms};
 use crate::vault::{Vault, WrappedVault};
 use crate::vc::oid4vci::ProofOfPossessionMetadata;
 use crate::vc::oid4vci::holder::OID4VCIHolder;
-use agent_sdk::vc::core::ProofOfPossessionMetadata as ASDKPoPMetadata;
-use agent_sdk::vc::oid4vci::CredentialExtraVerification;
+use equs_sdk::vc::core::ProofOfPossessionMetadata as EqusSdkPoPMetadata;
+use equs_sdk::vc::oid4vci::CredentialExtraVerification;
 use std::sync::Arc;
 use uniffi::custom_type;
 
-pub type IssuerDiscovery = agent_sdk::vc::oid4vci::IssuerDiscovery;
+pub type IssuerDiscovery = equs_sdk::vc::oid4vci::IssuerDiscovery;
 
 #[derive(uniffi::Enum)]
 pub enum IssuerDiscoveryEnum {
@@ -65,7 +65,7 @@ struct OID4VCIHolderBuilder {
     client_id: String,
     issuer_discovery: IssuerDiscovery,
     http_client: WrappedHttpClient,
-    pop: ASDKPoPMetadata,
+    pop: EqusSdkPoPMetadata,
     credential_extra_verification: Option<Vec<CredentialExtraVerification>>,
 }
 
@@ -93,7 +93,7 @@ impl OID4VCIHolderBuilder {
     }
 
     pub async fn build(&self) -> Result<OID4VCIHolder> {
-        let mut holder_builder = agent_sdk::vc::oid4vci::HolderBuilder::new(
+        let mut holder_builder = equs_sdk::vc::oid4vci::HolderBuilder::new(
             self.kms.to_owned(),
             self.vault.to_owned(),
             self.client_id.to_owned(),

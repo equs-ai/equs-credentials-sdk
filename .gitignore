@@ -5,3 +5,5 @@
 **/.DS_Store
 
 .vscode/
+# registry config is supplied outside the repo at publish time — never commit an .npmrc
+**/.npmrc

@@ -14,7 +14,7 @@ delegation flow. The Agent is simultaneously an OID4VP **Verifier toward the Hol
 
 ## Key types / traits
 - Uses `vc::oid4vp::Verifier`, `Holder`, `DelegationRequest`, `delegate_transaction_data_item`,
-  `DelegateSdJwtTransactionDataFormat` from `agent_sdk` (feature `delegate-sd-jwt`).
+  `DelegateSdJwtTransactionDataFormat` from `equs_sdk` (feature `delegate-sd-jwt`).
 - Uses `vault::Vault` (`store_credential`) and `vc::{CredentialMetadata, VCFormat}` to persist
   the captured grant into the Agent's wallet vault.
 - Uses `shared::voucher` (`VOUCHER_VCT`, `VOUCHER_DCQL_ID`, `generate_purchase_id`, `purchase_id_from_dcql`).
@@ -27,7 +27,7 @@ delegation flow. The Agent is simultaneously an OID4VP **Verifier toward the Hol
   request/session/transaction-data storages.
 
 ## Dependencies
-- Depends on: `agent_sdk` (oid4vp, dcql, kms, inmem, reqwest, crypto, vc::core; features
+- Depends on: `equs_sdk` (oid4vp, dcql, kms, inmem, reqwest, crypto, vc::core; features
   `in-memory`, `delegate-sd-jwt`), `shared` (sibling lib crate), `actix-web`, `reqwest`.
 - Used by: developers demonstrating the delegated SD-JWT (dSD-JWT) flow end-to-end.
 

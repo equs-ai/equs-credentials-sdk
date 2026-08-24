@@ -6,7 +6,7 @@
 //
 
 import Foundation
-import Asdk
+import EqusSdk
 
 enum ValueState<T> {
     case initial , loading , ready (data: T) , error (String)

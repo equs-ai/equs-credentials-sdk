@@ -20,7 +20,7 @@ Exposes DID method utilities and a universal DID resolver to Node.js via NAPI-RS
 - `JsDIDKey`, `JsDIDPeer`, `JsDIDWeb`, `JsDIDWebVh` — NAPI classes for each supported DID method.
 
 ## Dependencies
-- Depends on: `agent_sdk::did` (including `didkey`, `didpeer`, `didweb`, `webvh`, `universal`), `crate::http::ReqwestHttpClient`, `crate::kms::JsKeyHandle`
+- Depends on: `equs_sdk::did` (including `didkey`, `didpeer`, `didweb`, `webvh`, `universal`), `crate::http::ReqwestHttpClient`, `crate::kms::JsKeyHandle`
 - Used by: `wrappers/nodejs/src/lib.rs` (re-exported module), Node.js consumers of the SDK
 
 ## Constraints

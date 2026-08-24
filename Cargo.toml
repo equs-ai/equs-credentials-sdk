@@ -15,7 +15,7 @@ members = [
 ]
 
 [package]
-name = "agent-sdk"
+name = "equs-sdk"
 version = "1.12.0"
 edition = "2024"
 rust-version = "1.97.0"

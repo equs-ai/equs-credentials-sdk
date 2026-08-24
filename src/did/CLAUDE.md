@@ -1,7 +1,7 @@
 # did — Context
 
 ## Purpose
-Owns all DID method implementations and the universal resolver used throughout ASDK for DID resolution, DID document generation, and verification method lookup.
+Owns all DID method implementations and the universal resolver used throughout Equs SDK for DID resolution, DID document generation, and verification method lookup.
 
 ## Files
 

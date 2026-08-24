@@ -1,7 +1,7 @@
 {
-  "name": "@equstng/agent-sdk-wasm-and-nodejs-compatibility-test",
+  "name": "@equs/equs-sdk-wasm-and-nodejs-compatibility-test",
   "version": "0.7.0",
-  "description": "WASM and Node.js compatibility tests of ASDK wrappers",
+  "description": "WASM and Node.js compatibility tests of Equs SDK wrappers",
   "type": "module",
   "config": {
     "wasm_path": "--prefix=../../wasm",
@@ -9,8 +9,8 @@
   },
   "scripts": {
     "lint": "prettier --write .",
-    "setup:wasm": "npm i $npm_package_config_wasm_path && npm run build:dev:cjs $npm_package_config_wasm_path && npm pkg set dependencies.agent-sdk=file:../../wasm/pkg && npm install",
-    "setup:nodejs": "npm i $npm_package_config_nodejs_path && npm run build:debug $npm_package_config_nodejs_path && npm pkg set dependencies.agent-sdk=file:../../nodejs && npm install",
+    "setup:wasm": "npm i $npm_package_config_wasm_path && npm run build:dev:cjs $npm_package_config_wasm_path && npm pkg set dependencies.equs-sdk=file:../../wasm/pkg && npm install",
+    "setup:nodejs": "npm i $npm_package_config_nodejs_path && npm run build:debug $npm_package_config_nodejs_path && npm pkg set dependencies.equs-sdk=file:../../nodejs && npm install",
     "test:wasm": "jest --config=jest.wasm.config.json -w=1 --forceExit",
     "test:nodejs": "jest --config=jest.nodejs.config.json -w=1 --forceExit"
   },
@@ -33,7 +33,7 @@
     "typescript": "^5.7.3"
   },
   "dependencies": {
-    "agent-sdk": "file:../../nodejs",
+    "equs-sdk": "file:../../nodejs",
     "jwt-decode": "^4.0.0"
   }
 }

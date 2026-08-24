@@ -1,4 +1,4 @@
-import { DIDKey, InMemKms, KeyType } from "agent-sdk";
+import { DIDKey, InMemKms, KeyType } from "equs-sdk";
 
 describe("did:key: ", () => {
   it("generate DID with InMem KeyHandle", async () => {

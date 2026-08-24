@@ -15,7 +15,7 @@ import {
   ReqwestHttpClient,
   TracingLogFormat,
   TracingLogLevel,
-} from "@equstng/agent-sdk";
+} from "@equs/equs-sdk";
 import * as express from "express";
 import { urlencoded } from "express";
 import { json } from "body-parser";

@@ -1,7 +1,7 @@
 {
-  "name": "@equstng/agent-sdk-wasm",
+  "name": "@equs/equs-sdk-wasm",
   "version": "1.12.0",
-  "description": "WASM wrappers of ASDK",
+  "description": "WASM wrappers of Equs SDK",
   "main": "index.js",
   "types": "index.d.ts",
   "type": "module",

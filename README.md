@@ -1,32 +1,32 @@
-# Agent SDK (ASDK)
+# Equs SDK
 
-- [About ASDK](#about-asdk)
+- [About Equs SDK](#about-equs-sdk)
 - [API and Components](#api-and-components)
-- [Supported SSI Standards](#supported-ssi-standards)
+- [Supported Protocol Standards](#supported-protocol-standards)
 - [How To Build and Run](#how-to-build-and-run)
-- [How to Use ASDK in Applications](#how-to-use-asdk-in-applications)
+- [How to Use Equs SDK in Applications](#how-to-use-equs-sdk-in-applications)
 - [Dependencies](#dependencies)
-- [Development Guidelines](docs/guidlines/dev.md)
+- [Development Guidelines](docs/guidelines/dev.md)
 
-## About ASDK
+## About Equs SDK
 
-- ASDK is an SDK (library) providing building blocks for Self-Sovereign Identity (SSI) use cases.
-- ASDK is written in Rust; supported wrappers/builds are available for:
+- Equs SDK is an SDK (library) providing building blocks for identity protocol use cases.
+- Equs SDK is written in Rust; supported wrappers/builds are available for:
     - Node.js (TypeScript)
     - WASM (TypeScript)
     - Kotlin
     - Swift
-- ASDK is not an end-user application, but just an SDK. Applications integrating ASDK will need to implement some
-  interfaces (such as KMS and Vault) or Web endpoints (OID4VC). See [How To Use ASDK](#how-to-use-asdk-in-applications)
+- Equs SDK is not an end-user application, but just an SDK. Applications integrating Equs SDK will need to implement some
+  interfaces (such as KMS and Vault) or Web endpoints (OID4VC). See [How To Use Equs SDK](#how-to-use-equs-sdk-in-applications)
   below.
-- ASDK supports multiple SSI protocols and specifications (see below).
+- Equs SDK supports multiple identity protocols and specifications (see below).
 
-![asdk](docs/asdk.png)
+![equs-sdk](docs/equs-sdk.png)
 
 Other diagrams:
 
 - [API Tiers](docs/api-tiers.png)
-- [Components](docs/asdk-components.png)
+- [Components](docs/equs-sdk-components.png)
 - [VC OID4VC API Auth Code: Full Flow](docs/vc-oid4vc-api-auth-code-full.png)
 - [VC OID4VC API Auth Code: Already Authorized](docs/vc-oid4vc-api-auth-code-already-authorized.png)
 - [VC Core API](docs/vc-core-api.png)
@@ -34,12 +34,12 @@ Other diagrams:
 
 ## API and Components
 
-![asdk-tiers](docs/api-tiers.png)
-![asdk-components](docs/asdk-components.png)
+![equs-sdk-tiers](docs/api-tiers.png)
+![equs-sdk-components](docs/equs-sdk-components.png)
 
-## Supported SSI Standards
+## Supported Protocol Standards
 
-See [Components](docs/asdk-components.png).
+See [Components](docs/equs-sdk-components.png).
 
 #### Implemented
 
@@ -108,14 +108,14 @@ Pre-requisites:
 
 - rustc version >=1.97
 
-```
+```shell
 cargo build --all-features
 cargo test --all-features
 ```
 
 ### Collecting logs on the application side
 
-On the application side, to collect logs from `agent-sdk`, follow the steps below:
+On the application side, to collect logs from `equs-sdk`, follow the steps below:
 
 1. Add `tracing-subscriber` dependency into `Cargo.toml`:
 
@@ -125,10 +125,8 @@ On the application side, to collect logs from `agent-sdk`, follow the steps belo
 
 2. Add the following to your executable to initialize the default subscriber:
 
-```rust
-use tracing_subscriber;
-
-async fn main() {
+```rust,ignore
+fn main() {
     tracing_subscriber::fmt::init();
 }
 ```
@@ -141,7 +139,7 @@ RUST_LOG=TRACE cargo run
 
 ### Generate documentation
 
-```
+```shell
 cargo doc --no-deps
 ```
 
@@ -160,13 +158,13 @@ cargo doc --no-deps
 - [DIDComm Protocol Engine](tests/e2e/protocol_engine.rs) (Tic Tac Toe game)
 - [WACI/Aries V3](tests/e2e/waci_aries.rs)
 
-## How to Use ASDK in Applications
+## How to Use Equs SDK in Applications
 
 ### OID4VC
 
 [An example of integration:](demos/oid4vc/README.md)
 
-![asdk-integration](docs/asdk-apps-integration.png)
+![equs-sdk-integration](docs/equs-sdk-apps-integration.png)
 
 **Holder (Wallet)**
 
@@ -176,11 +174,11 @@ cargo doc --no-deps
     - [VC OID4VC API Auth Code: Full Flow](docs/vc-oid4vc-api-auth-code-full.png)
       or [VC OID4VC API Auth Code: Already Authorized](docs/vc-oid4vc-api-auth-code-already-authorized.png)
     - [VC OID4VC API Pre-Authorized Code Flow](docs/vc-oid4vc-api-pre-auth-code-full.png)
-    - WASM wrappers of ASDK can be found [here](wrappers/wasm/pkg/index.d.ts) (available
+    - WASM wrappers of Equs SDK can be found [here](wrappers/wasm/pkg/index.d.ts) (available
       after [build](wrappers/wasm/README.md))
-    - Kotlin wrappers of ASDK can be found [here](wrappers/uniffi/kotlin/src/main/kotlin/com/bci/asdk/asdk.kt) (
+    - Kotlin wrappers of Equs SDK can be found [here](wrappers/uniffi/kotlin/src/main/kotlin/com/equs/sdk/equssdk.kt) (
       available after [build](wrappers/uniffi/README.md#building))
-    - Swift wrappers of ASDK can be found [here](wrappers/uniffi/swift/Sources/asdk/asdk.swift) (available
+    - Swift wrappers of Equs SDK can be found [here](wrappers/uniffi/swift/Sources/EqusSdk/equssdk.swift) (available
       after [build](wrappers/uniffi/README.md#3-generate-the-xcframework-and-swift-bindings))
 
 **Issuer**
@@ -208,7 +206,7 @@ cargo doc --no-deps
     - Available for all wrappers via VC Core modules
 4. Create Issuer Metadata
 5. Create Credential Offer (optional for auth code flow but required for pre-authorized code flow)
-6. Implement the following endpoints. Each endpoint should call the corresponding ASDK Issuer API method.
+6. Implement the following endpoints. Each endpoint should call the corresponding Equs SDK Issuer API method.
     - GET /.well-known/openid-credential-issuer HTTP/1.1: `get_issuer_metadata`]:
         - note that it must be a prefix to any path component your implementation serves API at (
           See [Section 3.1 of RFC8414](https://datatracker.ietf.org/doc/html/rfc8414#section-3.1)).
@@ -249,18 +247,18 @@ cargo doc --no-deps
     - Node.js
         - [Verifier API](wrappers/nodejs/types/vc/oid4vp/verifier.ts)
         - [Verifier Builder](wrappers/nodejs/types/vc/oid4vp/verifier-builder.ts)
-2. Implement the following endpoints. Each endpoint should call the corresponding ASDK Verifier API method.
-    - POST /<authorization-response-uri> HTTP/1.1: `verify_presentation`
+2. Implement the following endpoints. Each endpoint should call the corresponding Equs SDK Verifier API method.
+    - `POST /<authorization-response-uri> HTTP/1.1`: `verify_presentation`
 
 **Note:**
-ASDK contains an example of KMS and Vault (not part of default build) based
+Equs SDK contains an example of KMS and Vault (not part of default build) based
 on [aries-askar](https://github.com/hyperledger/aries-askar), see [src/askar](plugins/askar). The current
 implementations are not recommended for production (just demo purposes), but production ones can be created based on it.
 
 ## Dependencies
 
-- https://github.com/spruceid/ssi (v0.10.1)
-- https://github.com/openwallet-foundation-labs/sd-jwt-rust
-- https://github.com/hyperledger/aries-askar (Test/Demo purposes, not part of default build)
+- <https://github.com/spruceid/ssi> (v0.10.1)
+- <https://github.com/openwallet-foundation-labs/sd-jwt-rust>
+- <https://github.com/hyperledger/aries-askar> (Test/Demo purposes, not part of default build)
 
 

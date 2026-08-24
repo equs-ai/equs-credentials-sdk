@@ -1,5 +1,5 @@
 use crate::error::EncodableError;
-use agent_sdk::vc::core::Error as CoreError;
+use equs_sdk::vc::core::Error as CoreError;
 use napi_derive::napi;
 use strum_macros::Display;
 

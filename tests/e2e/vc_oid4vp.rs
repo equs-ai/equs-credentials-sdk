@@ -5,18 +5,18 @@ use crate::utils::fixtures::oid4vp::{
 use crate::utils::fixtures::oid4vp::{NONCE, create_vc, generate_did_key_and_vm};
 use crate::utils::helpers::create_did_keymetadata_keyhandle;
 use crate::utils::http::HttpClientEmulator;
-use agent_sdk::http::HttpClient;
-use agent_sdk::inmem::kms::LocalKms;
-use agent_sdk::inmem::vault::InMemVault;
-use agent_sdk::vault::Vault;
-use agent_sdk::vc::oid4vp::{
+use equs_sdk::http::HttpClient;
+use equs_sdk::inmem::kms::LocalKms;
+use equs_sdk::inmem::vault::InMemVault;
+use equs_sdk::vault::Vault;
+use equs_sdk::vc::oid4vp::{
     AuthResponseOptions, AuthorizationRequestMetadata, AuthorizationResponse,
     AuthorizationResponseMetadata, ClientId, ClientMetadata, CredentialVerificationMetadata,
     IdTokenMetadata, PassAuthRequestObject, ResolvedPresentationQuery, ResponseMode, ResponseType,
 };
-use agent_sdk::vc::oid4vp::{AuthorizationResponseObject, Holder};
-use agent_sdk::vc::oid4vp::{HolderBuilder, PresentationSession};
-use agent_sdk::vc::oid4vp::{Verifier, VerifierBuilder};
+use equs_sdk::vc::oid4vp::{AuthorizationResponseObject, Holder};
+use equs_sdk::vc::oid4vp::{HolderBuilder, PresentationSession};
+use equs_sdk::vc::oid4vp::{Verifier, VerifierBuilder};
 use futures::executor;
 use oauth2::HttpResponse;
 use oauth2::http::header::CONTENT_TYPE;
@@ -33,8 +33,8 @@ use crate::utils::fixtures::oid4vp::{
     presentation_exchange_multiple_sdjwt_presentation_case, single_jsonld_presentation_case,
     single_sdjwt_presentation_case,
 };
-use agent_sdk::inmem::nonce::LocalNonceHandler;
-use agent_sdk::nonce::Nonce;
+use equs_sdk::inmem::nonce::LocalNonceHandler;
+use equs_sdk::nonce::Nonce;
 
 #[rstest]
 #[case::single_jsonld_presentation(single_jsonld_presentation_case())]

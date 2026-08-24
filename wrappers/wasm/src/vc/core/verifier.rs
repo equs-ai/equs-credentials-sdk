@@ -4,7 +4,7 @@ use crate::http::ReqwestHttpClient;
 use crate::utils;
 use crate::utils::Claims;
 use crate::vc::core::types::{WasmPresentation, WasmVCStatus};
-use agent_sdk::vc::core::{Verifier, VerifierService as CoreVerifierService};
+use equs_sdk::vc::core::{Verifier, VerifierService as CoreVerifierService};
 use wasm_bindgen::JsError;
 use wasm_bindgen::prelude::wasm_bindgen;
 
@@ -42,17 +42,17 @@ impl VcCoreVerifier {
         let holder_binder = super::decode_holder_binder(holder_binder)?;
 
         let wasm_pres: WasmPresentation = utils::convert_to_rust_object(presentation)?;
-        let asdk_pres = wasm_pres.try_into()?;
+        let equs_sdk_pres = wasm_pres.try_into()?;
 
         let claims = self
             .0
-            .verify_presentation(holder_binder, &asdk_pres, &http_client.inner())
+            .verify_presentation(holder_binder, &equs_sdk_pres, &http_client.inner())
             .await
             .map_err(|e| JsError::new(&e.to_string()))?;
 
         let claims_value: serde_json::Value = claims
             .try_into()
-            .map_err(|e: agent_sdk::vc::claims::Error| JsError::new(&e.to_string()))?;
+            .map_err(|e: equs_sdk::vc::claims::Error| JsError::new(&e.to_string()))?;
         utils::convert_to_opaque_object_unchecked(claims_value)
     }
 
@@ -68,11 +68,11 @@ impl VcCoreVerifier {
         http_client: &ReqwestHttpClient,
     ) -> Result<Option<VCStatus>, JsError> {
         let wasm_pres: WasmPresentation = utils::convert_to_rust_object(presentation)?;
-        let asdk_pres = wasm_pres.try_into()?;
+        let equs_sdk_pres = wasm_pres.try_into()?;
 
         let status = self
             .0
-            .obtain_credential_status(&asdk_pres, &http_client.inner())
+            .obtain_credential_status(&equs_sdk_pres, &http_client.inner())
             .await
             .map_err(|e| JsError::new(&e.to_string()))?;
 

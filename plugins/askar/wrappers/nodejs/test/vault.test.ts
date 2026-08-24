@@ -1,5 +1,5 @@
 import { AskarStorage, AskarVault, KeyMethod } from "../index";
-import { Alg, VCFormat } from "@equstng/agent-sdk";
+import { Alg, VCFormat } from "@equs/equs-sdk";
 import * as assert from "node:assert";
 
 const CREDENTIAL_DATA = {

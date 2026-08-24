@@ -1,7 +1,7 @@
 # multi-thread — Context
 
 ## Purpose
-Demonstrates that the ASDK `Issuer` API is thread-safe and can handle concurrent credential
+Demonstrates that the Equs SDK `Issuer` API is thread-safe and can handle concurrent credential
 requests from multiple holders simultaneously using Actix-web and Tokio.
 
 ## Files / Sub-areas
@@ -13,8 +13,8 @@ requests from multiple holders simultaneously using Actix-web and Tokio.
 | Cargo.toml  | Crate manifest. |
 
 ## Dependencies
-- Depends on: `agent_sdk` (vc::core), `actix-web`, `tokio`, `reqwest`
-- Used by: developers verifying thread-safety of ASDK's issuer under load
+- Depends on: `equs_sdk` (vc::core), `actix-web`, `tokio`, `reqwest`
+- Used by: developers verifying thread-safety of Equs SDK's issuer under load
 
 ## Constraints
 - Authorization, session management, and nonce generation are intentionally stubbed out for simplicity.

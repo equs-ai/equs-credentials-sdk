@@ -1,4 +1,4 @@
-import { Alg, KeyType, KeyHandle, KeyHandleTestHelper, Kms, KmsTestHelper } from "agent-sdk";
+import { Alg, KeyType, KeyHandle, KeyHandleTestHelper, Kms, KmsTestHelper } from "equs-sdk";
 
 describe("KMS: ", () => {
   const publicKey = Array.from(

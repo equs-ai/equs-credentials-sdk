@@ -2,7 +2,7 @@ use crate::error::IntoNapiError;
 use crate::nonce::JsNonceHandler;
 use crate::utils::{from_json_object, to_json_object};
 use crate::vc::JsonObject;
-use agent_sdk::vc::oid4vp::{DelegationRequest, delegate_transaction_data_item};
+use equs_sdk::vc::oid4vp::{DelegationRequest, delegate_transaction_data_item};
 use napi::{Error, Result};
 use napi_derive::napi;
 use serde::Deserialize;

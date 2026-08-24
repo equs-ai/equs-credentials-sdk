@@ -1,7 +1,7 @@
 use crate::common::{Error, JsonValue};
 use crate::http::{HttpClient, WrappedHttpClient};
-use agent_sdk::vc::oid4vci::{
-    AuthorizationMetadata, IssuerMetadata, MetadataDiscovery as AsdkMetadataDiscovery,
+use equs_sdk::vc::oid4vci::{
+    AuthorizationMetadata, IssuerMetadata, MetadataDiscovery as EqusSdkMetadataDiscovery,
 };
 use std::sync::Arc;
 
@@ -25,7 +25,7 @@ impl MetadataDiscovery {
         issuer_url: String,
     ) -> crate::common::Result<JsonValue> {
         let metadata: IssuerMetadata =
-            AsdkMetadataDiscovery::discover_metadata(&self.http_client, &issuer_url)
+            EqusSdkMetadataDiscovery::discover_metadata(&self.http_client, &issuer_url)
                 .await
                 .map_err(|err| Error::OID4VCIInternal(format!("{:?}", err)))?;
 
@@ -38,7 +38,7 @@ impl MetadataDiscovery {
         server_url: String,
     ) -> crate::common::Result<JsonValue> {
         let metadata: AuthorizationMetadata =
-            AsdkMetadataDiscovery::discover_metadata(&self.http_client, &server_url)
+            EqusSdkMetadataDiscovery::discover_metadata(&self.http_client, &server_url)
                 .await
                 .map_err(|err| Error::OID4VCIInternal(format!("{:?}", err)))?;
 

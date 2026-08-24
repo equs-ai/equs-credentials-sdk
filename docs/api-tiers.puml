@@ -8,7 +8,7 @@ package "Applications" as App #LightBlue  {
    [App Logic] as AppL
 }
 
-package "ASDK" as ASDK {
+package "Equs SDK" as EqusSdk {
 
      package "Pluggable" #LightGray {
          [KMS Interface] as KMS #Green
@@ -49,7 +49,7 @@ VaultApp --|> Vault
 KMSApp --|> KMS
 AppL --> API
 
-'note right of ASDK: Green - already implemented;\nOrange - later versions
+'note right of EqusSdk: Green - already implemented;\nOrange - later versions
 
 
 @enduml

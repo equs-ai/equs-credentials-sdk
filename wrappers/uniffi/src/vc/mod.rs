@@ -1,5 +1,5 @@
 use crate::common::{Error, Result};
-use agent_sdk::vc::HasVCFormat;
+use equs_sdk::vc::HasVCFormat;
 use tracing;
 use uniffi::custom_type;
 use uniffi::deps::anyhow;
@@ -8,12 +8,12 @@ pub mod core;
 pub mod oid4vci;
 pub mod oid4vp;
 
-pub type Alg = agent_sdk::crypto::Alg;
-pub type VCFormat = agent_sdk::vc::VCFormat;
-pub type Credential = agent_sdk::vc::Credential;
-pub type CredentialMetadata = agent_sdk::vc::CredentialMetadata;
-pub type VCStatus = agent_sdk::vc::VCStatus;
-pub type TslVcStatus = agent_sdk::vc::TslVcStatus;
+pub type Alg = equs_sdk::crypto::Alg;
+pub type VCFormat = equs_sdk::vc::VCFormat;
+pub type Credential = equs_sdk::vc::Credential;
+pub type CredentialMetadata = equs_sdk::vc::CredentialMetadata;
+pub type VCStatus = equs_sdk::vc::VCStatus;
+pub type TslVcStatus = equs_sdk::vc::TslVcStatus;
 
 #[uniffi::remote(Enum)]
 #[non_exhaustive]
@@ -43,7 +43,7 @@ pub struct CredentialData {
 impl TryFrom<Credential> for CredentialData {
     type Error = Error;
 
-    fn try_from(value: agent_sdk::vc::Credential) -> Result<Self> {
+    fn try_from(value: equs_sdk::vc::Credential) -> Result<Self> {
         let result = match value {
             Credential::JwtVcJson(payload) => Self {
                 format: VCFormat::JwtVcJson,

@@ -4,7 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "config": {
-    "wasm_asdk_wrapper_path": "--prefix=../../../wrappers/wasm",
+    "wasm_equs_sdk_wrapper_path": "--prefix=../../../wrappers/wasm",
     "nodejs_demo_path": "--prefix=../../nodejs/oid4vc"
   },
   "scripts": {
@@ -15,13 +15,13 @@
     "issuer": "npm run issuer $npm_package_config_nodejs_demo_path",
     "verifier": "npm run verifier $npm_package_config_nodejs_demo_path",
     "holder": "npm run dev",
-    "prepare_wasm_asdk_wrapper": "npm i $npm_package_config_wasm_asdk_wrapper_path && npm run build:dev $npm_package_config_wasm_asdk_wrapper_path",
+    "prepare_wasm_equs_sdk_wrapper": "npm i $npm_package_config_wasm_equs_sdk_wrapper_path && npm run build:dev $npm_package_config_wasm_equs_sdk_wrapper_path",
     "prepare_nodejs_demo": "npm i $npm_package_config_nodejs_demo_path && npm run build $npm_package_config_nodejs_demo_path",
-    "preinstall": "npm run prepare_wasm_asdk_wrapper && npm run prepare_nodejs_demo"
+    "preinstall": "npm run prepare_wasm_equs_sdk_wrapper && npm run prepare_nodejs_demo"
   },
   "dependencies": {
-    "@equstng/agent-sdk": "../../../wrappers/wasm/pkg",
-    "@equstng/agent-sdk-wasm": "file:../../../wrappers/wasm/pkg",
+    "@equs/equs-sdk": "../../../wrappers/wasm/pkg",
+    "@equs/equs-sdk-wasm": "file:../../../wrappers/wasm/pkg",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },

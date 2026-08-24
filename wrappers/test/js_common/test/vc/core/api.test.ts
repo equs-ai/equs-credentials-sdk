@@ -15,7 +15,7 @@ import {
   VcCoreVerifier,
   VCCoreCredentialSigner,
   VCFormat,
-} from "agent-sdk";
+} from "equs-sdk";
 import { jwtDecode } from "jwt-decode";
 import { Utils } from "./fixtures";
 import { MockKeyHandle } from "./mockKeyHandle";

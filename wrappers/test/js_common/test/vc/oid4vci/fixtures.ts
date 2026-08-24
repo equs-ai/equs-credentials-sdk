@@ -7,7 +7,7 @@ import {
   OID4VCICredentialOffer,
   OID4VCIIssuerMetadata,
   OID4VCICredentialRequest,
-} from "agent-sdk";
+} from "equs-sdk";
 
 export class Utils {
   readonly proofJWT =

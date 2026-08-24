@@ -1,4 +1,4 @@
-# Agent SDK — Context Index
+# Equs SDK — Context Index
 
 > **Maintenance rule:** Update this file whenever any `claude/*.md` changes.
 > Add a one-line entry if a new `claude/*.md` is added; remove if deleted.
@@ -26,7 +26,7 @@ that file lists every sub-area with a link to the relevant `CLAUDE.md` inside th
 ## Repository layout (quick reference)
 
 ```
-agent-sdk/
+equs-sdk/
 ├── src/                  # Core SDK library
 │   ├── crypto.rs         # Signing/verifying key traits
 │   ├── http.rs           # HttpClient trait

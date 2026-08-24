@@ -8,27 +8,27 @@ mod verifier;
 use crate::utils::{from_json_object, to_json_object};
 
 use crate::vc::JsonObject;
-use agent_sdk::chrono_time_mapping::{TryIntoChrono, TryIntoTime};
-use agent_sdk::crypto::Alg;
-use agent_sdk::vc::core::{
+use chrono::{DateTime, Utc};
+use equs_sdk::chrono_time_mapping::{TryIntoChrono, TryIntoTime};
+use equs_sdk::crypto::Alg;
+use equs_sdk::vc::core::{
     CredentialDefinition, CredentialOffer, CredentialOfferContent, CredentialOfferData,
     CredentialRequest, CredentialRequestData, CredentialStatusInfo, DEFAULT_POP_LIFETIME_MINUTES,
     Display, HolderBinder, HolderMetadata, IssuerMetadata, IssuerMetadataData, KeyMetadata,
     PresentationInput, PresentationRestriction, Proof, ProofOfPossessionMetadata,
     ProofOfPossessionNotBefore,
 };
-use agent_sdk::vc::core::{CredentialDefinitionData, PresentationRestrictionValue};
-use chrono::{DateTime, Utc};
+use equs_sdk::vc::core::{CredentialDefinitionData, PresentationRestrictionValue};
 
-use agent_sdk::vc::VCStatus;
-use agent_sdk::vc::core::StatusIssuerMetadata;
-use agent_sdk::vc::core::StatusListDefinition;
-use agent_sdk::vc::status_formats::status_list_token_jwt;
-use agent_sdk::vc::{StatusList, VCStatusesData};
+use equs_sdk::vc::VCStatus;
+use equs_sdk::vc::core::StatusIssuerMetadata;
+use equs_sdk::vc::core::StatusListDefinition;
+use equs_sdk::vc::status_formats::status_list_token_jwt;
+use equs_sdk::vc::{StatusList, VCStatusesData};
 
 use crate::vc::status_formats::{JsStatusListFormat, TslVcStatusType};
-use agent_sdk::nonce::Nonce;
-use agent_sdk::vc::{Credential, CredentialMetadata, HasVCFormat, Presentation, VCFormat};
+use equs_sdk::nonce::Nonce;
+use equs_sdk::vc::{Credential, CredentialMetadata, HasVCFormat, Presentation, VCFormat};
 use napi::Error;
 use napi_derive::napi;
 use serde::Serialize;

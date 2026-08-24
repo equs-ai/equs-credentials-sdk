@@ -6,7 +6,7 @@ pub mod issuer;
 pub mod metadata;
 
 use crate::vc::oid4vci::builder::TokenValidation;
-use agent_sdk::vc::oid4vci::{CredentialLifetime, Notification, NotificationEvent};
+use equs_sdk::vc::oid4vci::{CredentialLifetime, Notification, NotificationEvent};
 use napi::Error;
 use napi_derive::napi;
 use time::Duration;

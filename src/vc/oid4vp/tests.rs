@@ -3318,7 +3318,7 @@ pub mod fixtures {
 
 pub mod utils {
     use crate::crypto::Key;
-    use crate::crypto::{JWK, SSIAlg};
+    use crate::crypto::{JWK, ProtocolAlg};
     use crate::did::didkey::DIDKey;
     use crate::did::universal::UniversalResolver;
     use crate::http::{HttpClient, MockHttpClient};
@@ -4119,7 +4119,7 @@ pub mod utils {
         let jwk = JWK {
             key_id: Some(key),
             public_key_use: Some("enc".to_string()),
-            algorithm: Some(SSIAlg::ES256),
+            algorithm: Some(ProtocolAlg::ES256),
             ..jwk
         };
         let jwk = serde_json::to_value(&jwk).unwrap();

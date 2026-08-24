@@ -1,7 +1,7 @@
 # utils — Context
 
 ## Purpose
-Shared infrastructure for the ASDK integration test suite: HTTP client emulation, test DID
+Shared infrastructure for the Equs SDK integration test suite: HTTP client emulation, test DID
 resolution, static fixtures, and builder helpers consumed by all e2e test modules.
 
 ## Files / Sub-areas
@@ -15,9 +15,9 @@ resolution, static fixtures, and builder helpers consumed by all e2e test module
 | `helpers/`    | Async builder helpers for creating DIDs, key handles, and protocol participant instances — see [helpers/CLAUDE.md](helpers/CLAUDE.md). |
 
 ## Key types / traits (if applicable)
-- `HttpClientEmulator` — implements `agent_sdk::http::HttpClient` for sync/async test handler dispatch.
-- `TestDIDResolver` — implements `agent_sdk::did::universal::DIDResolver` for any custom method name.
+- `HttpClientEmulator` — implements `equs_sdk::http::HttpClient` for sync/async test handler dispatch.
+- `TestDIDResolver` — implements `equs_sdk::did::universal::DIDResolver` for any custom method name.
 
 ## Dependencies
-- Depends on: `agent_sdk` (http, did, vc, kms, nonce, inmem), `oauth2`, `ssi`, `url`, `serde_json`
+- Depends on: `equs_sdk` (http, did, vc, kms, nonce, inmem), `oauth2`, `ssi`, `url`, `serde_json`
 - Used by: `tests/e2e/` (all modules)

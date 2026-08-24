@@ -5,8 +5,8 @@ use crate::vc::Credential;
 use crate::vc::core::types::{
     CredentialOffer, CredentialOfferData, CredentialRequest, CredentialStatusInfo, IssuerMetadata,
 };
-use agent_sdk::nonce::Nonce;
-use agent_sdk::vc::core::{Issuer, IssuerService, PrepareCredential};
+use equs_sdk::nonce::Nonce;
+use equs_sdk::vc::core::{Issuer, IssuerService, PrepareCredential};
 use std::sync::Arc;
 
 trait IssuerWithPrepare: Issuer + PrepareCredential {}
@@ -54,7 +54,7 @@ impl VCCoreIssuer {
     ) -> Result<Credential> {
         let claims = claims
             .try_into()
-            .map_err(|e: agent_sdk::vc::claims::Error| Error::Core(e.to_string()))?;
+            .map_err(|e: equs_sdk::vc::claims::Error| Error::Core(e.to_string()))?;
         Ok(self
             .0
             .issue_credential(
@@ -75,7 +75,7 @@ impl VCCoreIssuer {
     ) -> Result<JsonValue> {
         let claims = claims
             .try_into()
-            .map_err(|e: agent_sdk::vc::claims::Error| Error::Core(e.to_string()))?;
+            .map_err(|e: equs_sdk::vc::claims::Error| Error::Core(e.to_string()))?;
         let unsigned = self
             .0
             .prepare_credential(

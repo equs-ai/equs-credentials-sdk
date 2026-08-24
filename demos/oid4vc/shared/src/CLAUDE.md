@@ -15,7 +15,7 @@ Shared library used by the `holder`, `issuer`, and `verifier` demo binaries. Pro
 - `PresentationQueryType` — `DCQL | PresentationExchange` (default: `DCQL`).
 
 ## Dependencies
-- Depends on: `agent_sdk::vc::oid4vp::{ResponseMode, ResponseType}`, `serde`, `strum_macros`
+- Depends on: `equs_sdk::vc::oid4vp::{ResponseMode, ResponseType}`, `serde`, `strum_macros`
 - Used by: `demos/oid4vc/holder`, `demos/oid4vc/verifier`
 
 ## Constraints

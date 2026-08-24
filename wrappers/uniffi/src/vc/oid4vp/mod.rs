@@ -2,20 +2,20 @@ use crate::common::Result;
 use crate::common::{Duration, Error, JsonValue};
 use crate::crypto::KeyMetadata;
 use crate::utils::parse_url_arg;
-use agent_sdk::vc::oid4vp::{
-    AuthorizationResponse as AsdkAuthorizationResponse,
-    AuthorizationResponseObject as AsdkAuthorizationResponseObject,
-    PresentationResult as AsdkPresentationResult,
+use equs_sdk::vc::oid4vp::{
+    AuthorizationResponse as EqusSdkAuthorizationResponse,
+    AuthorizationResponseObject as EqusSdkAuthorizationResponseObject,
+    PresentationResult as EqusSdkPresentationResult,
 };
-use agent_sdk::vc::oid4vp::{ClientId, ResolvedAuthRequest};
+use equs_sdk::vc::oid4vp::{ClientId, ResolvedAuthRequest};
 use std::collections::HashMap;
 mod builder;
 pub mod holder;
 
-pub type CoreTransactionDataItem = agent_sdk::vc::oid4vp::TransactionDataItem;
-pub type CoreTransactionDataItemTypeContent = agent_sdk::vc::oid4vp::TransactionDataItemTypeContent;
-pub type IdTokenMetadata = agent_sdk::vc::oid4vp::IdTokenMetadata;
-pub type AuthorizationResponseMetadata = agent_sdk::vc::oid4vp::AuthorizationResponseMetadata;
+pub type CoreTransactionDataItem = equs_sdk::vc::oid4vp::TransactionDataItem;
+pub type CoreTransactionDataItemTypeContent = equs_sdk::vc::oid4vp::TransactionDataItemTypeContent;
+pub type IdTokenMetadata = equs_sdk::vc::oid4vp::IdTokenMetadata;
+pub type AuthorizationResponseMetadata = equs_sdk::vc::oid4vp::AuthorizationResponseMetadata;
 
 #[derive(uniffi::Enum)]
 #[allow(clippy::large_enum_variant)]
@@ -183,29 +183,31 @@ impl TryFrom<ResolvedAuthRequest> for AuthorizationRequest {
     }
 }
 
-impl From<AsdkPresentationResult> for PresentationResult {
-    fn from(value: AsdkPresentationResult) -> Self {
+impl From<EqusSdkPresentationResult> for PresentationResult {
+    fn from(value: EqusSdkPresentationResult) -> Self {
         match value {
-            AsdkPresentationResult::AuthorizationResponse(auth_response) => match auth_response {
-                AsdkAuthorizationResponse::Plain(auth_response) => {
-                    PresentationResult::AuthResponse(AuthorizationResponse::Plain(
-                        auth_response.into(),
-                    ))
+            EqusSdkPresentationResult::AuthorizationResponse(auth_response) => {
+                match auth_response {
+                    EqusSdkAuthorizationResponse::Plain(auth_response) => {
+                        PresentationResult::AuthResponse(AuthorizationResponse::Plain(
+                            auth_response.into(),
+                        ))
+                    }
+                    EqusSdkAuthorizationResponse::Jwe(jwe) => {
+                        PresentationResult::AuthResponse(AuthorizationResponse::Jwe(jwe))
+                    }
                 }
-                AsdkAuthorizationResponse::Jwe(jwe) => {
-                    PresentationResult::AuthResponse(AuthorizationResponse::Jwe(jwe))
-                }
-            },
-            AsdkPresentationResult::RedirectUri(uri) => {
+            }
+            EqusSdkPresentationResult::RedirectUri(uri) => {
                 PresentationResult::RedirectUri(uri.to_string())
             }
-            AsdkPresentationResult::Presented => PresentationResult::Presented,
+            EqusSdkPresentationResult::Presented => PresentationResult::Presented,
         }
     }
 }
 
-impl From<AsdkAuthorizationResponseObject> for AuthorizationResponseObject {
-    fn from(value: AsdkAuthorizationResponseObject) -> Self {
+impl From<EqusSdkAuthorizationResponseObject> for AuthorizationResponseObject {
+    fn from(value: EqusSdkAuthorizationResponseObject) -> Self {
         let (transaction_data_hashes, transaction_data_hashes_alg) = value
             .transaction_data_response
             .map(|t| {

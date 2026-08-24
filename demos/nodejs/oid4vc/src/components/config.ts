@@ -5,7 +5,7 @@ import {
   OID4VCIIssuerMetadata,
   PresentationQuery,
   TransactionDataItem,
-} from "@equstng/agent-sdk";
+} from "@equs/equs-sdk";
 export class Config {
   readonly servers = {
     issuer: {

@@ -1,10 +1,10 @@
 use crate::common::JsonValue;
 use crate::vc::Credential;
-use agent_sdk::vc::core::{
+use equs_sdk::vc::core::{
     DEFAULT_POP_LIFETIME_MINUTES, ProofOfPossessionMetadata,
-    ProofOfPossessionNotBefore as ASDKPoPNotBefore,
+    ProofOfPossessionNotBefore as EqusSdkPoPNotBefore,
 };
-use agent_sdk::vc::oid4vci::CredentialExtraVerification as ASDKCredentialExtraVerification;
+use equs_sdk::vc::oid4vci::CredentialExtraVerification as EqusSdkCredentialExtraVerification;
 use oauth2::helpers::{deserialize_space_delimited_vec, serialize_space_delimited_vec};
 use serde::{Deserialize, Serialize};
 use time::{Duration, OffsetDateTime};
@@ -15,9 +15,9 @@ mod credential_offer_resolver;
 pub mod holder;
 mod metadata;
 
-pub type CredentialResult = agent_sdk::vc::oid4vci::CredentialResult;
-pub type CredentialResponse = agent_sdk::vc::oid4vci::CredentialResponseResolved;
-pub type TokenResponse = agent_sdk::vc::oid4vci::TokenResponse;
+pub type CredentialResult = equs_sdk::vc::oid4vci::CredentialResult;
+pub type CredentialResponse = equs_sdk::vc::oid4vci::CredentialResponseResolved;
+pub type TokenResponse = equs_sdk::vc::oid4vci::TokenResponse;
 
 #[derive(uniffi::Enum)]
 pub enum CredentialResultEnum {
@@ -102,21 +102,21 @@ pub enum ProofOfPossessionNotBefore {
     Leeway(Duration),
 }
 
-custom_type!(ASDKPoPNotBefore, ProofOfPossessionNotBefore, {
+custom_type!(EqusSdkPoPNotBefore, ProofOfPossessionNotBefore, {
         remote,
     lower: |nbf| match nbf {
 
-    ASDKPoPNotBefore::AsIssuedAt => ProofOfPossessionNotBefore::AsIssuedAt,
-        ASDKPoPNotBefore::Fixed(value) => ProofOfPossessionNotBefore::Fixed(value),
-        ASDKPoPNotBefore::Delay(value) => ProofOfPossessionNotBefore::Delay(value),
-        ASDKPoPNotBefore::Leeway(value) => ProofOfPossessionNotBefore::Leeway(value)
+    EqusSdkPoPNotBefore::AsIssuedAt => ProofOfPossessionNotBefore::AsIssuedAt,
+        EqusSdkPoPNotBefore::Fixed(value) => ProofOfPossessionNotBefore::Fixed(value),
+        EqusSdkPoPNotBefore::Delay(value) => ProofOfPossessionNotBefore::Delay(value),
+        EqusSdkPoPNotBefore::Leeway(value) => ProofOfPossessionNotBefore::Leeway(value)
     },
     try_lift: |nbf| match nbf {
 
-    ProofOfPossessionNotBefore::AsIssuedAt => Ok(ASDKPoPNotBefore::AsIssuedAt),
-        ProofOfPossessionNotBefore::Fixed(value) => Ok(ASDKPoPNotBefore::Fixed(value)),
-        ProofOfPossessionNotBefore::Delay(value) => Ok(ASDKPoPNotBefore::Delay(value)),
-        ProofOfPossessionNotBefore::Leeway(value) => Ok(ASDKPoPNotBefore::Leeway(value))
+    ProofOfPossessionNotBefore::AsIssuedAt => Ok(EqusSdkPoPNotBefore::AsIssuedAt),
+        ProofOfPossessionNotBefore::Fixed(value) => Ok(EqusSdkPoPNotBefore::Fixed(value)),
+        ProofOfPossessionNotBefore::Delay(value) => Ok(EqusSdkPoPNotBefore::Delay(value)),
+        ProofOfPossessionNotBefore::Leeway(value) => Ok(EqusSdkPoPNotBefore::Leeway(value))
     },
 });
 
@@ -126,13 +126,13 @@ custom_type!(ASDKPoPNotBefore, ProofOfPossessionNotBefore, {
 #[uniffi::remote(Record)]
 pub struct ProofOfPossessionMetadata {
     lifetime: Duration,
-    not_before: Option<ASDKPoPNotBefore>,
+    not_before: Option<EqusSdkPoPNotBefore>,
 }
 
 #[derive(uniffi::Object)]
 pub struct ProofOfPossessionMetadataBuilder {
     lifetime: Option<Duration>,
-    not_before: Option<ASDKPoPNotBefore>,
+    not_before: Option<EqusSdkPoPNotBefore>,
 }
 
 #[uniffi::export()]
@@ -151,7 +151,7 @@ impl ProofOfPossessionMetadataBuilder {
             not_before: self.not_before,
         }
     }
-    pub fn with_not_before(&self, not_before: ASDKPoPNotBefore) -> Self {
+    pub fn with_not_before(&self, not_before: EqusSdkPoPNotBefore) -> Self {
         Self {
             lifetime: self.lifetime,
             not_before: Some(not_before),
@@ -173,12 +173,12 @@ pub enum CredentialExtraVerification {
     CredentialIssuerIdentifier,
 }
 
-custom_type!(ASDKCredentialExtraVerification, CredentialExtraVerification, {
+custom_type!(EqusSdkCredentialExtraVerification, CredentialExtraVerification, {
         remote,
     lower: |cev| match cev {
-        ASDKCredentialExtraVerification::CredentialIssuerIdentifier => CredentialExtraVerification::CredentialIssuerIdentifier
+        EqusSdkCredentialExtraVerification::CredentialIssuerIdentifier => CredentialExtraVerification::CredentialIssuerIdentifier
     },
     try_lift: |cev| match cev {
-        CredentialExtraVerification::CredentialIssuerIdentifier => Ok(ASDKCredentialExtraVerification::CredentialIssuerIdentifier)
+        CredentialExtraVerification::CredentialIssuerIdentifier => Ok(EqusSdkCredentialExtraVerification::CredentialIssuerIdentifier)
     },
 });

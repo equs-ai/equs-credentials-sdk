@@ -9,8 +9,8 @@ Provides in-memory implementations of KMS, vault, and nonce handler as concrete 
 |------|------|
 | `mod.rs` | Module root; re-exports `kms`, `nonce`, and `vault` submodules. |
 | `kms.rs` | `InMemKms` — NAPI class wrapping `LocalKms`. Exposes `create`, `get`, `get_by_public_key`, `derive_ecdhes`, `derive_ecdh1pu`, and `derive_bip32`. `InMemKeyHandle` — NAPI class wrapping the inmem key handle, exposing `pub_key`, `alg`, `sign`, and `verify`. |
-| `nonce.rs` | `LocalNonceHandler` — NAPI class wrapping `agent_sdk::inmem::nonce::LocalNonceHandler`. Exposes `generate` and `validate` as async NAPI methods. |
-| `vault.rs` | `InMemVault` — NAPI class wrapping `agent_sdk::inmem::vault::InMemVault`. Exposes `store_credential`, `delete_credential`, `get_credential`, `get_credentials`, and `find_credentials`. |
+| `nonce.rs` | `LocalNonceHandler` — NAPI class wrapping `equs_sdk::inmem::nonce::LocalNonceHandler`. Exposes `generate` and `validate` as async NAPI methods. |
+| `vault.rs` | `InMemVault` — NAPI class wrapping `equs_sdk::inmem::vault::InMemVault`. Exposes `store_credential`, `delete_credential`, `get_credential`, `get_credentials`, and `find_credentials`. |
 
 ## Key types / traits
 - `InMemKms` — Concrete `LocalKms`-backed KMS for Node.js; also implements ECDH and BIP32 derivation.
@@ -19,7 +19,7 @@ Provides in-memory implementations of KMS, vault, and nonce handler as concrete 
 - `InMemVault` — In-memory credential store.
 
 ## Dependencies
-- Depends on: `agent_sdk::inmem` (`LocalKms`, `InMemVault`, `LocalNonceHandler`), `crate::vault` (for `JsCredentialEntry`, `JsVaultPagination`), `crate::vc::core` (for `JsCredential`, `JsCredentialMetadata`, `JsAlg`)
+- Depends on: `equs_sdk::inmem` (`LocalKms`, `InMemVault`, `LocalNonceHandler`), `crate::vault` (for `JsCredentialEntry`, `JsVaultPagination`), `crate::vc::core` (for `JsCredential`, `JsCredentialMetadata`, `JsAlg`)
 - Used by: Node.js tests and demos; consumed by `crate::vc::core::holder` and `crate::vc::core::issuer` via the `Kms` and `Vault` traits
 
 ## Constraints

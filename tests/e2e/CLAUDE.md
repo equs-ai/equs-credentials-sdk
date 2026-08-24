@@ -1,7 +1,7 @@
 # e2e — Context
 
 ## Purpose
-End-to-end integration tests validating complete SSI flows through ASDK's public API surface,
+End-to-end integration tests validating complete protocol flows through Equs SDK's public API surface,
 from credential issuance to presentation and verification using in-memory and real HTTP transports.
 
 ## Files / Sub-areas
@@ -21,7 +21,7 @@ from credential issuance to presentation and verification using in-memory and re
 - Uses `IssuerService`, `HolderService`, `VerifierService` (vc::core) and OID4VCI/OID4VP builder patterns.
 
 ## Dependencies
-- Depends on: `agent_sdk`, `tests/utils/` (all sub-modules), `rstest`, `mockito`, `serde_json`, `url`, `time`
+- Depends on: `equs_sdk`, `tests/utils/` (all sub-modules), `rstest`, `mockito`, `serde_json`, `url`, `time`
 - Used by: CI test runner via `cargo test --features in-memory,didcomm-http-transport`
 
 ## Constraints

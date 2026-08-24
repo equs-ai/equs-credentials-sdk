@@ -1,7 +1,7 @@
 use crate::common::Error;
-use agent_sdk::vc::presentation_exchange::StatusSize;
-use agent_sdk::vc::status_formats::StatusListFormat as ASDKStatusListFormat;
-use agent_sdk::vc::status_formats::status_list_token_jwt::SLMetadata as ASDKSLMetadata;
+use equs_sdk::vc::presentation_exchange::StatusSize;
+use equs_sdk::vc::status_formats::StatusListFormat as EqusSdkStatusListFormat;
+use equs_sdk::vc::status_formats::status_list_token_jwt::SLMetadata as EqusSdkSLMetadata;
 use url::Url;
 
 #[derive(uniffi::Record, Clone, Debug, PartialEq)]
@@ -11,10 +11,10 @@ pub struct SLMetadata {
     pub status_size: u8,
 }
 
-impl TryFrom<SLMetadata> for ASDKSLMetadata {
+impl TryFrom<SLMetadata> for EqusSdkSLMetadata {
     type Error = Error;
     fn try_from(v: SLMetadata) -> Result<Self, Error> {
-        Ok(ASDKSLMetadata {
+        Ok(EqusSdkSLMetadata {
             // `url::Url` has no `TryFrom<String>`; parse explicitly.
             status_list_url: Url::parse(&v.status_list_url)
                 .map_err(|e| Error::Core(e.to_string()))?,
@@ -26,9 +26,9 @@ impl TryFrom<SLMetadata> for ASDKSLMetadata {
     }
 }
 
-impl TryFrom<ASDKSLMetadata> for SLMetadata {
+impl TryFrom<EqusSdkSLMetadata> for SLMetadata {
     type Error = Error;
-    fn try_from(v: ASDKSLMetadata) -> Result<Self, Error> {
+    fn try_from(v: EqusSdkSLMetadata) -> Result<Self, Error> {
         Ok(SLMetadata {
             status_list_url: v.status_list_url.to_string(),
             statuses_nr: v.statuses_nr as u32,
@@ -44,26 +44,26 @@ pub enum StatusListFormat {
     StatusListTokenCwt,
 }
 
-impl TryFrom<StatusListFormat> for ASDKStatusListFormat {
+impl TryFrom<StatusListFormat> for EqusSdkStatusListFormat {
     type Error = Error;
     fn try_from(v: StatusListFormat) -> Result<Self, Error> {
         Ok(match v {
             StatusListFormat::StatusListTokenJwt(m) => {
-                ASDKStatusListFormat::StatusListTokenJwt(m.try_into()?)
+                EqusSdkStatusListFormat::StatusListTokenJwt(m.try_into()?)
             }
-            StatusListFormat::StatusListTokenCwt => ASDKStatusListFormat::StatusListTokenCwt,
+            StatusListFormat::StatusListTokenCwt => EqusSdkStatusListFormat::StatusListTokenCwt,
         })
     }
 }
 
-impl TryFrom<ASDKStatusListFormat> for StatusListFormat {
+impl TryFrom<EqusSdkStatusListFormat> for StatusListFormat {
     type Error = Error;
-    fn try_from(v: ASDKStatusListFormat) -> Result<Self, Error> {
+    fn try_from(v: EqusSdkStatusListFormat) -> Result<Self, Error> {
         Ok(match v {
-            ASDKStatusListFormat::StatusListTokenJwt(m) => {
+            EqusSdkStatusListFormat::StatusListTokenJwt(m) => {
                 StatusListFormat::StatusListTokenJwt(m.try_into()?)
             }
-            ASDKStatusListFormat::StatusListTokenCwt => StatusListFormat::StatusListTokenCwt,
+            EqusSdkStatusListFormat::StatusListTokenCwt => StatusListFormat::StatusListTokenCwt,
         })
     }
 }

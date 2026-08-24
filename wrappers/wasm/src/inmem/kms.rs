@@ -1,9 +1,9 @@
 use crate::crypto::{Alg, KeyType};
 use crate::utils;
-use agent_sdk::crypto::{Key, Signer, Verifier};
-use agent_sdk::inmem::kms::{KeyHandle, LocalKms};
-use agent_sdk::kms;
-use agent_sdk::kms::{CreateOptions, KeyID, Kms};
+use equs_sdk::crypto::{Key, Signer, Verifier};
+use equs_sdk::inmem::kms::{KeyHandle, LocalKms};
+use equs_sdk::kms;
+use equs_sdk::kms::{CreateOptions, KeyID, Kms};
 use std::str::FromStr;
 use wasm_bindgen::JsError;
 use wasm_bindgen::prelude::wasm_bindgen;

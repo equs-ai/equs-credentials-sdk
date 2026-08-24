@@ -1,6 +1,6 @@
 use crate::http::{HttpClient, WrappedHttpClient};
-use agent_sdk::vc::oid4vci::CredentialOfferResolver as ASDKCredentialOfferResolver;
-use agent_sdk::vc::oid4vp::Url;
+use equs_sdk::vc::oid4vci::CredentialOfferResolver as EqusSdkCredentialOfferResolver;
+use equs_sdk::vc::oid4vp::Url;
 use std::sync::Arc;
 
 type Result<T> = std::result::Result<T, CredentialOfferResolverError>;
@@ -24,14 +24,14 @@ impl std::fmt::Display for CredentialOfferResolverError {
 }
 
 #[derive(uniffi::Object)]
-pub struct CredentialOfferResolver(ASDKCredentialOfferResolver<WrappedHttpClient>);
+pub struct CredentialOfferResolver(EqusSdkCredentialOfferResolver<WrappedHttpClient>);
 
 #[uniffi::export(async_runtime = "tokio")]
 impl CredentialOfferResolver {
     #[uniffi::constructor]
     pub fn new(http_client: Arc<dyn HttpClient>) -> Result<CredentialOfferResolver> {
         let resolver =
-            ASDKCredentialOfferResolver::with_http_client(WrappedHttpClient::new(http_client));
+            EqusSdkCredentialOfferResolver::with_http_client(WrappedHttpClient::new(http_client));
         Ok(CredentialOfferResolver(resolver))
     }
 

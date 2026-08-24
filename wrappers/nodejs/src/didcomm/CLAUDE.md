@@ -17,7 +17,7 @@ Exposes the DIDComm V2 envelope service to Node.js via NAPI-RS. Provides NAPI ty
 - `PackEncryptedResult`, `PackSignedResult`, `UnpackResult` — NAPI result objects returned from the service methods.
 
 ## Dependencies
-- Depends on: `agent_sdk::didcomm::core::envelope` (`EnvelopeService`, `PackEncryptedOptions`, `UnpackOptions`), `agent_sdk::kms`, `crate::kms::JsKeyHandle`
+- Depends on: `equs_sdk::didcomm::core::envelope` (`EnvelopeService`, `PackEncryptedOptions`, `UnpackOptions`), `equs_sdk::kms`, `crate::kms::JsKeyHandle`
 - Used by: Node.js consumers of the SDK that implement DIDComm messaging
 
 ## Constraints

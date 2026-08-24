@@ -10,7 +10,7 @@ use crate::vc::core::types::{
     WasmCredentialOffer, WasmCredentialRequest, WasmCredentialStatusInfo, WasmIssuerMetadata,
 };
 use crate::vc::{Credential, CredentialOffer, JsCredential};
-use agent_sdk::vc::core::{
+use equs_sdk::vc::core::{
     Issuer, IssuerMetadata, IssuerService as CoreIssuerService, PrepareCredential,
 };
 use wasm_bindgen::JsError;
@@ -22,24 +22,24 @@ fn decode_issue_params(
     status_info: Option<CredentialStatusInfo>,
 ) -> Result<
     (
-        agent_sdk::vc::core::CredentialRequest,
-        agent_sdk::vc::claims::Claims,
-        Option<agent_sdk::vc::core::CredentialStatusInfo>,
+        equs_sdk::vc::core::CredentialRequest,
+        equs_sdk::vc::claims::Claims,
+        Option<equs_sdk::vc::core::CredentialStatusInfo>,
     ),
     JsError,
 > {
-    let asdk_request =
+    let equs_sdk_request =
         utils::convert_to_rust_object::<_, WasmCredentialRequest>(credential_request)?.into();
     let claims_value: serde_json::Value = utils::convert_to_rust_object(claims)?;
-    let asdk_claims = agent_sdk::vc::claims::Claims::try_from(claims_value)
+    let equs_sdk_claims = equs_sdk::vc::claims::Claims::try_from(claims_value)
         .map_err(|e| JsError::new(&e.to_string()))?;
-    let asdk_status_info = status_info
+    let equs_sdk_status_info = status_info
         .map(|v| {
             utils::convert_to_rust_object::<_, WasmCredentialStatusInfo>(v)
                 .and_then(|w| w.try_into())
         })
         .transpose()?;
-    Ok((asdk_request, asdk_claims, asdk_status_info))
+    Ok((equs_sdk_request, equs_sdk_claims, equs_sdk_status_info))
 }
 
 /// Combines [`Issuer`] and [`PrepareCredential`] into a single object-safe trait.
@@ -83,7 +83,7 @@ impl VcCoreIssuer {
         cred_def_id: String,
         protocol_data: Option<CredentialOfferData>,
     ) -> Result<CredentialOffer, JsError> {
-        let protocol_data = protocol_data.map(|_| agent_sdk::vc::core::CredentialOfferData {});
+        let protocol_data = protocol_data.map(|_| equs_sdk::vc::core::CredentialOfferData {});
 
         let offer = self
             .0
@@ -109,16 +109,16 @@ impl VcCoreIssuer {
         nonce: Option<String>,
         status_info: Option<CredentialStatusInfo>,
     ) -> Result<Credential, JsError> {
-        let (asdk_request, asdk_claims, asdk_status_info) =
+        let (equs_sdk_request, equs_sdk_claims, equs_sdk_status_info) =
             decode_issue_params(credential_request, claims, status_info)?;
 
         let credential = self
             .0
             .issue_credential(
-                &asdk_request,
-                &asdk_claims,
-                nonce.map(agent_sdk::nonce::Nonce::from_secret),
-                asdk_status_info,
+                &equs_sdk_request,
+                &equs_sdk_claims,
+                nonce.map(equs_sdk::nonce::Nonce::from_secret),
+                equs_sdk_status_info,
             )
             .await
             .map_err(|e| JsError::new(&e.to_string()))?;
@@ -147,16 +147,16 @@ impl VcCoreIssuer {
         nonce: Option<String>,
         status_info: Option<CredentialStatusInfo>,
     ) -> Result<WasmUnsignedCredential, JsError> {
-        let (asdk_request, asdk_claims, asdk_status_info) =
+        let (equs_sdk_request, equs_sdk_claims, equs_sdk_status_info) =
             decode_issue_params(credential_request, claims, status_info)?;
 
         let unsigned = self
             .0
             .prepare_credential(
-                &asdk_request,
-                &asdk_claims,
-                nonce.map(agent_sdk::nonce::Nonce::from_secret),
-                asdk_status_info,
+                &equs_sdk_request,
+                &equs_sdk_claims,
+                nonce.map(equs_sdk::nonce::Nonce::from_secret),
+                equs_sdk_status_info,
             )
             .await
             .map_err(|e| JsError::new(&e.to_string()))?;

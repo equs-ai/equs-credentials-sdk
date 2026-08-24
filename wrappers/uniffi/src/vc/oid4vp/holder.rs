@@ -3,8 +3,8 @@ use crate::utils::parse_url_arg;
 use crate::vault::{CredentialEntry, CredentialsFindResult, CredentialsSearchResult};
 use crate::vc::VCStatus;
 use crate::vc::oid4vp::{AuthorizationRequest, AuthorizationResponseMetadata, PresentationResult};
-use agent_sdk::vc::Credential;
-use agent_sdk::vc::oid4vp::{Holder, ResolvedAuthRequest};
+use equs_sdk::vc::Credential;
+use equs_sdk::vc::oid4vp::{Holder, ResolvedAuthRequest};
 use std::collections::HashMap;
 
 /// The `OID4VP` `Holder` API.
@@ -96,7 +96,7 @@ impl OID4VPHolder {
 
         for (key, value) in vcs_for_presentation {
             match value {
-                agent_sdk::vc::oid4vp::CredentialsFindResult::Credentials(creds) => {
+                equs_sdk::vc::oid4vp::CredentialsFindResult::Credentials(creds) => {
                     result.insert(
                         key,
                         CredentialsFindResult {
@@ -104,7 +104,7 @@ impl OID4VPHolder {
                         },
                     );
                 }
-                agent_sdk::vc::oid4vp::CredentialsFindResult::Reason(reasons) => {
+                equs_sdk::vc::oid4vp::CredentialsFindResult::Reason(reasons) => {
                     result.insert(
                         key,
                         CredentialsFindResult {

@@ -15,7 +15,7 @@ import {
   resolveMetadata,
   UniversalDIDResolver,
   VCFormat,
-} from "agent-sdk";
+} from "equs-sdk";
 import { Utils } from "./fixtures";
 
 describe("OID4VCI Holder: ", () => {

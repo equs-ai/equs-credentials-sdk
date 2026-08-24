@@ -16,7 +16,7 @@ if [ -z "${ALIAS:-}" ]; then
   exit 1
 fi
 
-BINARY_NAME="agent-sdk.${ALIAS}.node"
+BINARY_NAME="equs-sdk.${ALIAS}.node"
 VERSION=$(npm pkg get version | tr -d '"')
 
 if [ "${ENVIRONMENT:-}" == "development" ]; then

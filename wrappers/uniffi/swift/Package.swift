@@ -4,13 +4,13 @@
 import PackageDescription
 
 let package = Package(
-	name: "asdk",
+	name: "equs-sdk",
 	platforms: [.iOS(.v15)],
 	products: [
 		// Products define the executables and libraries a package produces, making them visible to other packages.
 		.library(
-			name: "Asdk",
-			targets: ["Asdk"]
+			name: "EqusSdk",
+			targets: ["EqusSdk"]
 		)
 	],
 	dependencies: [
@@ -23,9 +23,9 @@ let package = Package(
 		// Targets are the basic building blocks of a package, defining a module or a test suite.
 		// Targets can depend on other targets in this package and products from dependencies.
 		.target(
-			name: "Asdk",
-			dependencies: ["AsdkFFI"],
-			path: "Sources/Asdk",
+			name: "EqusSdk",
+			dependencies: ["EqusSdkFFI"],
+			path: "Sources/EqusSdk",
 			linkerSettings: [
 				.linkedLibrary("z"),
 				.linkedLibrary("iconv")
@@ -33,17 +33,17 @@ let package = Package(
 		),
 
 		.testTarget(
-			name: "AsdkTests",
+			name: "EqusSdkTests",
 			dependencies: [
-				"Asdk",
+				"EqusSdk",
 				.product(name: "Swifter", package: "swifter"),
 			],
-			path: "Tests/AsdkTests"
+			path: "Tests/EqusSdkTests"
 		),
 
 		.binaryTarget(
-			name: "AsdkFFI",
-			path: "asdk.xcframework"
+			name: "EqusSdkFFI",
+			path: "equssdk.xcframework"
 		),
 	]
 )

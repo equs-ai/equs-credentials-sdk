@@ -1,9 +1,9 @@
 use crate::common::Result;
 use crate::key_handle::WrappedKeyHandle;
-use agent_sdk::kms::{CreateOptions, CreationSnafu, GetSnafu, KeyID};
-use agent_sdk::kms::{Error as ASDKError, Result as ASDKResult};
-pub(crate) use agent_sdk::kms::{KeyType, Kms as ASDKKms};
 use async_trait::async_trait;
+use equs_sdk::kms::{CreateOptions, CreationSnafu, GetSnafu, KeyID};
+use equs_sdk::kms::{Error as EqusSdkError, Result as EqusSdkResult};
+pub(crate) use equs_sdk::kms::{KeyType, Kms as EqusSdkKms};
 use std::fmt::Debug;
 use std::sync::Arc;
 
@@ -72,8 +72,8 @@ impl WrappedKms {
 }
 
 #[async_trait]
-impl ASDKKms<WrappedKeyHandle> for WrappedKms {
-    async fn create(&self, kt: KeyType, _: CreateOptions) -> ASDKResult<String> {
+impl EqusSdkKms<WrappedKeyHandle> for WrappedKms {
+    async fn create(&self, kt: KeyType, _: CreateOptions) -> EqusSdkResult<String> {
         self.inner().create(kt).await.map_err(|e| {
             CreationSnafu {
                 details: e.to_string(),
@@ -82,7 +82,7 @@ impl ASDKKms<WrappedKeyHandle> for WrappedKms {
         })
     }
 
-    async fn get(&self, kid: &KeyID) -> ASDKResult<WrappedKeyHandle> {
+    async fn get(&self, kid: &KeyID) -> EqusSdkResult<WrappedKeyHandle> {
         let kh = self.inner().get(kid.to_owned()).await.map_err(|e| {
             GetSnafu {
                 details: e.to_string(),
@@ -92,12 +92,12 @@ impl ASDKKms<WrappedKeyHandle> for WrappedKms {
         Ok(kh)
     }
 
-    async fn get_by_public_key(&self, public_key: &[u8]) -> ASDKResult<WrappedKeyHandle> {
+    async fn get_by_public_key(&self, public_key: &[u8]) -> EqusSdkResult<WrappedKeyHandle> {
         let kh = self
             .inner()
             .get_by_public_key(public_key.to_owned())
             .await
-            .map_err(|e| ASDKError::Get {
+            .map_err(|e| EqusSdkError::Get {
                 details: e.to_string(),
             })?;
         Ok(kh)

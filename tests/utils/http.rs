@@ -1,5 +1,5 @@
-use agent_sdk::http::{HttpClient, Result};
 use async_trait::async_trait;
+use equs_sdk::http::{HttpClient, Result};
 use oauth2::http::StatusCode;
 use oauth2::{HttpRequest, HttpResponse};
 use std::collections::HashMap;

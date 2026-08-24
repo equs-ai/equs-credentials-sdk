@@ -1,15 +1,15 @@
 use crate::common::Result;
-pub(crate) use agent_sdk::vault::{
-    CredentialEntry, Vault as ASDKVault, VaultFetchOptions as ASDKVaultFetchOptions,
-};
-use agent_sdk::vc;
-use agent_sdk::vc::{Credential, CredentialMetadata};
 use async_trait::async_trait;
+pub(crate) use equs_sdk::vault::{
+    CredentialEntry, Vault as EqusSdkVault, VaultFetchOptions as EqusSdkVaultFetchOptions,
+};
+use equs_sdk::vc;
+use equs_sdk::vc::{Credential, CredentialMetadata};
 use std::fmt::Debug;
 use std::sync::Arc;
 
-use agent_sdk::vault::{DeletingSnafu, Error as ASDKError, Result as ASDKResult};
-use agent_sdk::vc::oid4vp::FindVCsFailReason;
+use equs_sdk::vault::{DeletingSnafu, Error as EqusSdkError, Result as EqusSdkResult};
+use equs_sdk::vc::oid4vp::FindVCsFailReason;
 
 #[uniffi::remote(Record)]
 pub struct CredentialEntry {
@@ -36,13 +36,13 @@ pub struct CredentialsFindResult {
     pub data: CredentialsSearchResult,
 }
 
-impl From<agent_sdk::vc::oid4vp::CredentialsFindResult> for CredentialsFindResult {
-    fn from(value: agent_sdk::vc::oid4vp::CredentialsFindResult) -> Self {
+impl From<equs_sdk::vc::oid4vp::CredentialsFindResult> for CredentialsFindResult {
+    fn from(value: equs_sdk::vc::oid4vp::CredentialsFindResult) -> Self {
         let data = match value {
-            agent_sdk::vc::oid4vp::CredentialsFindResult::Credentials(c) => {
+            equs_sdk::vc::oid4vp::CredentialsFindResult::Credentials(c) => {
                 CredentialsSearchResult::Credentials(c)
             }
-            agent_sdk::vc::oid4vp::CredentialsFindResult::Reason(r) => {
+            equs_sdk::vc::oid4vp::CredentialsFindResult::Reason(r) => {
                 CredentialsSearchResult::Reason(r)
             }
         };
@@ -56,7 +56,7 @@ pub struct VaultFetchOptions {
     pub limit: Option<u32>,
 }
 
-impl From<VaultFetchOptions> for ASDKVaultFetchOptions {
+impl From<VaultFetchOptions> for EqusSdkVaultFetchOptions {
     fn from(value: VaultFetchOptions) -> Self {
         Self {
             offset: value.offset.map(|v| v as usize),
@@ -64,8 +64,8 @@ impl From<VaultFetchOptions> for ASDKVaultFetchOptions {
         }
     }
 }
-impl From<ASDKVaultFetchOptions> for VaultFetchOptions {
-    fn from(value: ASDKVaultFetchOptions) -> Self {
+impl From<EqusSdkVaultFetchOptions> for VaultFetchOptions {
+    fn from(value: EqusSdkVaultFetchOptions) -> Self {
         Self {
             offset: value.offset.map(|v| v as u32),
             limit: value.limit.map(|v| v as u32),
@@ -161,22 +161,22 @@ impl WrappedVault {
 }
 
 #[async_trait]
-impl ASDKVault for WrappedVault {
+impl EqusSdkVault for WrappedVault {
     async fn store_credential(
         &self,
         credential: Credential,
         metadata: &CredentialMetadata,
-    ) -> ASDKResult<String> {
+    ) -> EqusSdkResult<String> {
         self.0
             .store_credential(credential, metadata.to_owned())
             .await
-            .map_err(|e| ASDKError::Storing {
+            .map_err(|e| EqusSdkError::Storing {
                 details: e.to_string(),
                 location: Default::default(),
             })
     }
 
-    async fn delete_credential(&self, id: &str) -> ASDKResult<()> {
+    async fn delete_credential(&self, id: &str) -> EqusSdkResult<()> {
         self.0.delete_credential(id.to_string()).await.map_err(|e| {
             DeletingSnafu {
                 details: e.to_string(),
@@ -185,7 +185,7 @@ impl ASDKVault for WrappedVault {
         })
     }
 
-    async fn get_credential(&self, id: &str) -> ASDKResult<Option<CredentialEntry>> {
+    async fn get_credential(&self, id: &str) -> EqusSdkResult<Option<CredentialEntry>> {
         self.0.get_credential(id.to_string()).await.map_err(|e| {
             DeletingSnafu {
                 details: e.to_string(),
@@ -196,8 +196,8 @@ impl ASDKVault for WrappedVault {
 
     async fn get_credentials(
         &self,
-        options: Option<ASDKVaultFetchOptions>,
-    ) -> ASDKResult<Vec<CredentialEntry>> {
+        options: Option<EqusSdkVaultFetchOptions>,
+    ) -> EqusSdkResult<Vec<CredentialEntry>> {
         let options = options.map(Into::into);
 
         self.0.get_credentials(options).await.map_err(|e| {
@@ -211,8 +211,8 @@ impl ASDKVault for WrappedVault {
     async fn find_credentials(
         &self,
         fields: Vec<String>,
-        options: Option<ASDKVaultFetchOptions>,
-    ) -> ASDKResult<Vec<CredentialEntry>> {
+        options: Option<EqusSdkVaultFetchOptions>,
+    ) -> EqusSdkResult<Vec<CredentialEntry>> {
         let options = options.map(Into::into);
 
         self.0.find_credentials(fields, options).await.map_err(|e| {
