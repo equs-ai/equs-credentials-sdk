@@ -3,9 +3,9 @@ use crate::common::{Error, Result};
 use crate::inmem::keyhandle::InMemKeyHandle;
 use crate::key_handle::WrappedKeyHandle;
 use crate::kms::Kms;
-use agent_sdk::inmem::kms::LocalKms;
-use agent_sdk::kms::{CreateOptions, Kms as ASDKKms};
 use async_trait::async_trait;
+use equs_sdk::inmem::kms::LocalKms;
+use equs_sdk::kms::{CreateOptions, Kms as EqusSdkKms};
 use std::sync::Arc;
 
 #[derive(uniffi::Object, Debug)]

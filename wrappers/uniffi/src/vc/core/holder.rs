@@ -7,10 +7,10 @@ use crate::vc::core::types::{
     CredentialOffer, CredentialRequest, HolderBinder, HolderMetadata, PresentationInput,
 };
 use crate::vc::{Credential, CredentialMetadata, VCStatus};
-use agent_sdk::nonce::Nonce;
-use agent_sdk::vault::CredentialEntry;
-use agent_sdk::vc::Presentation;
-use agent_sdk::vc::core::{Holder, HolderService, KeyMetadata};
+use equs_sdk::nonce::Nonce;
+use equs_sdk::vault::CredentialEntry;
+use equs_sdk::vc::Presentation;
+use equs_sdk::vc::core::{Holder, HolderService, KeyMetadata};
 use std::sync::Arc;
 
 #[derive(uniffi::Object)]

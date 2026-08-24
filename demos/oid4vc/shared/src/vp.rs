@@ -1,4 +1,4 @@
-use agent_sdk::vc::oid4vp::{ResponseMode, ResponseType};
+use equs_sdk::vc::oid4vp::{ResponseMode, ResponseType};
 use serde::{Deserialize, Serialize};
 use strum_macros::Display;
 

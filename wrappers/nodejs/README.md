@@ -1,4 +1,4 @@
-# ASDK wrappers for Node.js
+# Equs SDK wrappers for Node.js
 
 ## Prerequisites
 
@@ -8,23 +8,23 @@ Ensure that the following tools are installed on your machine:
 - [npm](https://www.npmjs.com/) (version >= v11.8.0+)
 - [cargo](https://doc.rust-lang.org/cargo/getting-started/installation.html) (version >= 12.0.0)
 
-[Documentation](#package) for Agent-SDK <b style="color:lightblue">integrators</b>
+[Documentation](#package) for Equs SDK <b style="color:lightblue">integrators</b>
 
-[Documentation](#development) for Agent-SDK <b style="color:green">developers</b>
+[Documentation](#development) for Equs SDK <b style="color:green">developers</b>
 
 # Package
 
 ## Installation
 
-There are package of ASDK (agent-sdk) and its sub dependencies containing binaries for different platform. (
-agent-sdk-os-arch)
+There are package of Equs SDK (equs-sdk) and its sub dependencies containing binaries for different platform. (
+equs-sdk-os-arch)
 
 1. You need to make sure you can connect to [packages storage](https://git.slock.it/equstng/).
-2. Update global npm configs (Yes, this is necessary because ASDK does not see where to download binary packages)
+2. Update global npm configs (Yes, this is necessary because Equs SDK does not see where to download binary packages)
     1. Get your personal token from [gitlab](https://docs.gitlab.com/ee/user/profile/personal_access_tokens.html)
     2. Add next configs to your ~/.npmrc
        ```text
-       @equstng:registry=https://git.slock.it/api/v4/projects/1387/packages/npm/
+       @equs:registry=https://git.slock.it/api/v4/projects/1387/packages/npm/
        //git.slock.it/api/v4/projects/1387/packages/npm/:_authToken="${PERSONAL_ACCESS_TOKEN}"
        ```
        or you can run next scripts with your tokens
@@ -34,41 +34,53 @@ agent-sdk-os-arch)
        ```shell
        npm config set //git.slock.it/api/v4/projects/1387/packages/npm/:_authToken ${PERSONAL_ACCESS_TOKEN}
        ```
-3. Install ASDK. Do not ignore postinstall script for ASDK (Simply do not use --ignore-scripts)
+3. Install Equs SDK. Do not ignore postinstall script for Equs SDK (Simply do not use --ignore-scripts)
    ```shell
-   npm i @equstng/agent-sdk
+   npm i @equs/equs-sdk
    ```
    For development - use tag `dev`
    ```shell
-   npm i @equstng/agent-sdk@dev
+   npm i @equs/equs-sdk@dev
    ```
    Or exact version with -dev postfix
    ```shell
-   npm i @equstng/agent-sdk@0.5.0-dev
+   npm i @equs/equs-sdk@0.5.0-dev
    ```
 
 # Development
 
 ## Installation
 
-Follow these steps to install Node.js wrapped ASDK as dependency to your Node.js project:
+Follow these steps to install Node.js wrapped Equs SDK as dependency to your Node.js project:
 
 1. **Add dependency to your package.json**:
 
    ```shell
-   npm install agent-sdk@git+ssh://git@git.slock.it/equstng/agent-sdk/agent-sdk
+   npm install equs-sdk@git+ssh://git@git.slock.it/equstng/equs-sdk/equs-sdk
    ```
 
    ```shell
-   yarn add agent-sdk@git+ssh://git@git.slock.it/equstng/agent-sdk/agent-sdk
+   yarn add equs-sdk@git+ssh://git@git.slock.it/equstng/equs-sdk/equs-sdk
    ```
 
-   You can specify package alias instead of `agent-sdk`
+   You can specify package alias instead of `equs-sdk`
 
 2. **Default postinstall**:
    Package contains default post install scripts that builds wrappers and make it possible for you to import them and
    use.
    You only need installed npm & cargo for it to run successfully.
+
+## Building & testing locally
+
+Build the native binding, then run the test suite:
+
+```shell
+npm run build:debug   # required for tests — enables the `in-memory` feature
+npm test
+```
+
+`npm run build` produces the release binary (profile `release-strip`) without the `in-memory`
+feature, so the tests will fail against it. Test files live in `test/`.
 
 ## Usage
 
@@ -77,7 +89,7 @@ After installation you can import package in both es modules & commonjs syntax.
 ## Publishing
 
 Publishing is made with flow of building binaries to targets & publishing each binary in its npm package & publishing
-`agent-sdk` package that depends on those binaries
+`equs-sdk` package that depends on those binaries
 
 ### CI/CD
 

@@ -20,7 +20,7 @@ Exposes the OID4VP (OpenID for Verifiable Presentations) protocol layer to JavaS
 - `VCStatus` — opaque JS type carrying the resolved credential status.
 
 ## Dependencies
-- Depends on: `agent_sdk::vc::oid4vp`, `crate::did::resolver`, `crate::http::ReqwestHttpClient`, `crate::kms`, `crate::nonce`, `crate::vault`, `crate::vc` (credential/find-result types)
+- Depends on: `equs_sdk::vc::oid4vp`, `crate::did::resolver`, `crate::http::ReqwestHttpClient`, `crate::kms`, `crate::nonce`, `crate::vault`, `crate::vc` (credential/find-result types)
 - Used by: WASM browser consumer TypeScript code
 
 ## Constraints

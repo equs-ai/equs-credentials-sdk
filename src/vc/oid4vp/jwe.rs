@@ -58,7 +58,7 @@ impl TryFrom<String> for Algorithm {
             "ECDH-ES+A192KW" => Ok(Algorithm::EcdhEsA192kw),
             "RSA1_5" => Ok(Algorithm::Rsa1_5),
             "RSA-OAEP" => Ok(Algorithm::RsaOaep),
-            //ES256 is part of ECDSA. It is ECDSA using P256. ASDK supports it
+            //ES256 is part of ECDSA. It is ECDSA using P256. Equs SDK supports it
             "ES256" => Ok(Algorithm::Es256),
             "EdDSA" => Ok(Algorithm::Eddsa),
             _ => Err(Internal {
@@ -90,7 +90,7 @@ impl JweEncryptor {
     pub fn new(metadata: ClientMetadata) -> JweEncryptor {
         let supported_algs = vec![
             Algorithm::EcdhEs,
-            Algorithm::Es256, // FIXME: Remove this after proper support of Encryption in ASDK
+            Algorithm::Es256, // FIXME: Remove this after proper support of Encryption in Equs SDK
                               //TODO support more key types and algs
         ];
 

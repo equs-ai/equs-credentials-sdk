@@ -3,8 +3,8 @@ use crate::did::universal_resolver::UniversalDIDResolver;
 use crate::http::{HttpClient, WrappedHttpClient};
 use crate::vc::VCStatus;
 use crate::vc::core::types::HolderBinder;
-use agent_sdk::vc::Presentation;
-use agent_sdk::vc::core::{Verifier, VerifierService};
+use equs_sdk::vc::Presentation;
+use equs_sdk::vc::core::{Verifier, VerifierService};
 use std::sync::Arc;
 
 #[derive(uniffi::Object)]

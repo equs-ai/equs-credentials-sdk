@@ -1,23 +1,24 @@
 use crate::common::{Error, Result, Url};
 use crate::vc::core::status_formats::StatusListFormat;
 use crate::vc::{Alg, VCFormat};
-use agent_sdk::vc::Presentation as ASDKPresentation;
-pub use agent_sdk::vc::StatusList;
-use agent_sdk::vc::VCStatusesData as ASDKVCStatusesData;
-use agent_sdk::vc::core::{
-    CredentialDefinition as ASDKCredentialDefinition, CredentialOffer as ASDKCredentialOffer,
-    CredentialOfferContent as ASDKCredentialOfferContent, IssuerMetadata as ASDKIssuerMetadata,
-    KeyMetadata as ASDKKeyMetadata, ProofOfPossessionMetadata as ASDKPoPMetadata,
-    StatusIssuerMetadata as ASDKStatusIssuerMetadata,
-    StatusListDefinition as ASDKStatusListDefinition,
+use equs_sdk::vc::Presentation as EqusSdkPresentation;
+pub use equs_sdk::vc::StatusList;
+use equs_sdk::vc::VCStatusesData as EqusSdkVCStatusesData;
+use equs_sdk::vc::core::{
+    CredentialDefinition as EqusSdkCredentialDefinition, CredentialOffer as EqusSdkCredentialOffer,
+    CredentialOfferContent as EqusSdkCredentialOfferContent,
+    IssuerMetadata as EqusSdkIssuerMetadata, KeyMetadata as EqusSdkKeyMetadata,
+    ProofOfPossessionMetadata as EqusSdkPoPMetadata,
+    StatusIssuerMetadata as EqusSdkStatusIssuerMetadata,
+    StatusListDefinition as EqusSdkStatusListDefinition,
 };
-pub use agent_sdk::vc::core::{
+pub use equs_sdk::vc::core::{
     CredentialDefinitionData, CredentialOfferData, CredentialRequest, CredentialRequestData,
     CredentialStatusInfo, Display, HolderBinder, HolderMetadata, IssuerMetadataData, PopFormat,
     PresentationInput, PresentationRestriction, PresentationRestrictionValue, Proof,
 };
-use agent_sdk::vc::status_formats::status_list_token_jwt::{
-    VCStatus as SltVcStatus, VCStatuses as ASDKVcStatuses,
+use equs_sdk::vc::status_formats::status_list_token_jwt::{
+    VCStatus as SltVcStatus, VCStatuses as EqusSdkVcStatuses,
 };
 use std::collections::HashMap;
 use time::Duration;
@@ -100,7 +101,7 @@ pub struct CredentialDefinition {
     pub supported_signing_algs: Option<Vec<Alg>>,
     pub display: Option<Display>,
     pub protocol_data: Option<CredentialDefinitionData>,
-    pub key_metadata: ASDKKeyMetadata,
+    pub key_metadata: EqusSdkKeyMetadata,
 }
 
 fn supported_proofs_to_sdk(entries: Vec<SupportedProofEntry>) -> HashMap<PopFormat, Vec<Alg>> {
@@ -113,9 +114,9 @@ fn supported_proofs_from_sdk(map: HashMap<PopFormat, Vec<Alg>>) -> Vec<Supported
         .collect()
 }
 
-impl From<CredentialDefinition> for ASDKCredentialDefinition {
+impl From<CredentialDefinition> for EqusSdkCredentialDefinition {
     fn from(v: CredentialDefinition) -> Self {
-        ASDKCredentialDefinition {
+        EqusSdkCredentialDefinition {
             cred_def_id: v.cred_def_id,
             format: v.format,
             claims: v.claims,
@@ -128,8 +129,8 @@ impl From<CredentialDefinition> for ASDKCredentialDefinition {
     }
 }
 
-impl From<ASDKCredentialDefinition> for CredentialDefinition {
-    fn from(v: ASDKCredentialDefinition) -> Self {
+impl From<EqusSdkCredentialDefinition> for CredentialDefinition {
+    fn from(v: EqusSdkCredentialDefinition) -> Self {
         CredentialDefinition {
             cred_def_id: v.cred_def_id,
             format: v.format,
@@ -150,9 +151,9 @@ pub struct IssuerMetadata {
     pub protocol_data: Option<IssuerMetadataData>,
 }
 
-impl From<IssuerMetadata> for ASDKIssuerMetadata {
+impl From<IssuerMetadata> for EqusSdkIssuerMetadata {
     fn from(v: IssuerMetadata) -> Self {
-        ASDKIssuerMetadata {
+        EqusSdkIssuerMetadata {
             issuer_id: v.issuer_id,
             cred_defs: v.cred_defs.into_iter().map(Into::into).collect(),
             protocol_data: v.protocol_data,
@@ -160,8 +161,8 @@ impl From<IssuerMetadata> for ASDKIssuerMetadata {
     }
 }
 
-impl From<ASDKIssuerMetadata> for IssuerMetadata {
-    fn from(v: ASDKIssuerMetadata) -> Self {
+impl From<EqusSdkIssuerMetadata> for IssuerMetadata {
+    fn from(v: EqusSdkIssuerMetadata) -> Self {
         IssuerMetadata {
             issuer_id: v.issuer_id,
             cred_defs: v.cred_defs.into_iter().map(Into::into).collect(),
@@ -177,22 +178,26 @@ pub enum CredentialOfferContent {
     SupportedProofs(Option<Vec<SupportedProofEntry>>),
 }
 
-impl From<CredentialOfferContent> for ASDKCredentialOfferContent {
+impl From<CredentialOfferContent> for EqusSdkCredentialOfferContent {
     fn from(v: CredentialOfferContent) -> Self {
         match v {
-            CredentialOfferContent::CredDef(cd) => ASDKCredentialOfferContent::CredDef(cd.into()),
+            CredentialOfferContent::CredDef(cd) => {
+                EqusSdkCredentialOfferContent::CredDef(cd.into())
+            }
             CredentialOfferContent::SupportedProofs(entries) => {
-                ASDKCredentialOfferContent::SupportedProofs(entries.map(supported_proofs_to_sdk))
+                EqusSdkCredentialOfferContent::SupportedProofs(entries.map(supported_proofs_to_sdk))
             }
         }
     }
 }
 
-impl From<ASDKCredentialOfferContent> for CredentialOfferContent {
-    fn from(v: ASDKCredentialOfferContent) -> Self {
+impl From<EqusSdkCredentialOfferContent> for CredentialOfferContent {
+    fn from(v: EqusSdkCredentialOfferContent) -> Self {
         match v {
-            ASDKCredentialOfferContent::CredDef(cd) => CredentialOfferContent::CredDef(cd.into()),
-            ASDKCredentialOfferContent::SupportedProofs(map) => {
+            EqusSdkCredentialOfferContent::CredDef(cd) => {
+                CredentialOfferContent::CredDef(cd.into())
+            }
+            EqusSdkCredentialOfferContent::SupportedProofs(map) => {
                 CredentialOfferContent::SupportedProofs(map.map(supported_proofs_from_sdk))
             }
         }
@@ -208,9 +213,9 @@ pub struct CredentialOffer {
     pub protocol_data: Option<CredentialOfferData>,
 }
 
-impl From<CredentialOffer> for ASDKCredentialOffer {
+impl From<CredentialOffer> for EqusSdkCredentialOffer {
     fn from(v: CredentialOffer) -> Self {
-        ASDKCredentialOffer {
+        EqusSdkCredentialOffer {
             cred_offer_id: v.cred_offer_id,
             issuer_id: v.issuer_id,
             cred_def_id: v.cred_def_id,
@@ -220,8 +225,8 @@ impl From<CredentialOffer> for ASDKCredentialOffer {
     }
 }
 
-impl From<ASDKCredentialOffer> for CredentialOffer {
-    fn from(v: ASDKCredentialOffer) -> Self {
+impl From<EqusSdkCredentialOffer> for CredentialOffer {
+    fn from(v: EqusSdkCredentialOffer) -> Self {
         CredentialOffer {
             cred_offer_id: v.cred_offer_id,
             issuer_id: v.issuer_id,
@@ -243,7 +248,7 @@ pub struct CredentialRequest {
 #[uniffi::remote(Record)]
 pub struct HolderMetadata {
     pub client_id: String,
-    pub pop: ASDKPoPMetadata,
+    pub pop: EqusSdkPoPMetadata,
 }
 
 #[uniffi::remote(Record)]
@@ -285,27 +290,27 @@ pub enum VCStatusesData {
     BitstringStatusList,
 }
 
-impl TryFrom<VCStatusesData> for ASDKVCStatusesData {
+impl TryFrom<VCStatusesData> for EqusSdkVCStatusesData {
     type Error = Error;
     fn try_from(v: VCStatusesData) -> Result<Self> {
         Ok(match v {
             VCStatusesData::StatusListToken(entries) => {
-                let mut vc_statuses = ASDKVcStatuses::new();
+                let mut vc_statuses = EqusSdkVcStatuses::new();
                 for e in entries {
                     vc_statuses.set(e.index as usize, SltVcStatus::from(e.status));
                 }
-                ASDKVCStatusesData::StatusListToken(vc_statuses)
+                EqusSdkVCStatusesData::StatusListToken(vc_statuses)
             }
-            VCStatusesData::BitstringStatusList => ASDKVCStatusesData::BitstringStatusList,
+            VCStatusesData::BitstringStatusList => EqusSdkVCStatusesData::BitstringStatusList,
         })
     }
 }
 
-impl TryFrom<ASDKVCStatusesData> for VCStatusesData {
+impl TryFrom<EqusSdkVCStatusesData> for VCStatusesData {
     type Error = Error;
-    fn try_from(v: ASDKVCStatusesData) -> Result<Self> {
+    fn try_from(v: EqusSdkVCStatusesData) -> Result<Self> {
         Ok(match v {
-            ASDKVCStatusesData::StatusListToken(s) => {
+            EqusSdkVCStatusesData::StatusListToken(s) => {
                 let entries = s
                     .statuses()
                     .iter()
@@ -316,7 +321,7 @@ impl TryFrom<ASDKVCStatusesData> for VCStatusesData {
                     .collect();
                 VCStatusesData::StatusListToken(entries)
             }
-            ASDKVCStatusesData::BitstringStatusList => VCStatusesData::BitstringStatusList,
+            EqusSdkVCStatusesData::BitstringStatusList => VCStatusesData::BitstringStatusList,
             _ => {
                 return Err(Error::Core(
                     "Unsupported VCStatusesData variant".to_string(),
@@ -335,22 +340,22 @@ pub enum StatusList {
 pub struct StatusListDefinition {
     pub id: String,
     pub format: StatusListFormat,
-    pub key_metadata: ASDKKeyMetadata,
+    pub key_metadata: EqusSdkKeyMetadata,
 }
 
-impl TryFrom<StatusListDefinition> for ASDKStatusListDefinition {
+impl TryFrom<StatusListDefinition> for EqusSdkStatusListDefinition {
     type Error = Error;
     fn try_from(v: StatusListDefinition) -> Result<Self> {
-        Ok(ASDKStatusListDefinition {
+        Ok(EqusSdkStatusListDefinition {
             id: v.id,
             format: v.format.try_into()?,
             key_metadata: v.key_metadata,
         })
     }
 }
-impl TryFrom<ASDKStatusListDefinition> for StatusListDefinition {
+impl TryFrom<EqusSdkStatusListDefinition> for StatusListDefinition {
     type Error = Error;
-    fn try_from(v: ASDKStatusListDefinition) -> Result<Self> {
+    fn try_from(v: EqusSdkStatusListDefinition) -> Result<Self> {
         Ok(StatusListDefinition {
             id: v.id,
             format: v.format.try_into()?,
@@ -365,10 +370,10 @@ pub struct StatusIssuerMetadata {
     pub supported_status_lists: Vec<StatusListDefinition>,
 }
 
-impl TryFrom<StatusIssuerMetadata> for ASDKStatusIssuerMetadata {
+impl TryFrom<StatusIssuerMetadata> for EqusSdkStatusIssuerMetadata {
     type Error = Error;
     fn try_from(v: StatusIssuerMetadata) -> Result<Self> {
-        Ok(ASDKStatusIssuerMetadata {
+        Ok(EqusSdkStatusIssuerMetadata {
             issuer_id: v.issuer_id,
             supported_status_lists: v
                 .supported_status_lists
@@ -378,9 +383,9 @@ impl TryFrom<StatusIssuerMetadata> for ASDKStatusIssuerMetadata {
         })
     }
 }
-impl TryFrom<ASDKStatusIssuerMetadata> for StatusIssuerMetadata {
+impl TryFrom<EqusSdkStatusIssuerMetadata> for StatusIssuerMetadata {
     type Error = Error;
-    fn try_from(v: ASDKStatusIssuerMetadata) -> Result<Self> {
+    fn try_from(v: EqusSdkStatusIssuerMetadata) -> Result<Self> {
         Ok(StatusIssuerMetadata {
             issuer_id: v.issuer_id,
             supported_status_lists: v
@@ -394,7 +399,7 @@ impl TryFrom<ASDKStatusIssuerMetadata> for StatusIssuerMetadata {
 
 /// `JwtVp`/`LdpVp` carry JSON-serialized SDK payloads; `SdJwtVp` carries the
 /// SD-JWT compact string verbatim; `MsoMdocVp` carries a JSON-serialized
-/// `mso_mdoc::Presentation`. Bridged to `ASDKPresentation` via the
+/// `mso_mdoc::Presentation`. Bridged to `EqusSdkPresentation` via the
 /// `custom_type!` declaration below.
 #[derive(uniffi::Enum, Clone, Debug)]
 pub enum Presentation {
@@ -404,18 +409,18 @@ pub enum Presentation {
     MsoMdocVp(String),
 }
 
-impl TryFrom<ASDKPresentation> for Presentation {
+impl TryFrom<EqusSdkPresentation> for Presentation {
     type Error = Error;
-    fn try_from(value: ASDKPresentation) -> Result<Self> {
+    fn try_from(value: EqusSdkPresentation) -> Result<Self> {
         Ok(match value {
-            ASDKPresentation::JwtVp(v) => Presentation::JwtVp(
+            EqusSdkPresentation::JwtVp(v) => Presentation::JwtVp(
                 serde_json::to_string(&v).map_err(|e| Error::Core(e.to_string()))?,
             ),
-            ASDKPresentation::LdpVp(v) => Presentation::LdpVp(
+            EqusSdkPresentation::LdpVp(v) => Presentation::LdpVp(
                 serde_json::to_string(&v).map_err(|e| Error::Core(e.to_string()))?,
             ),
-            ASDKPresentation::SdJwtVp(v) => Presentation::SdJwtVp(v),
-            ASDKPresentation::MsoMdoc(v) => Presentation::MsoMdocVp(
+            EqusSdkPresentation::SdJwtVp(v) => Presentation::SdJwtVp(v),
+            EqusSdkPresentation::MsoMdoc(v) => Presentation::MsoMdocVp(
                 serde_json::to_string(&v).map_err(|e| Error::Core(e.to_string()))?,
             ),
             _ => {
@@ -425,25 +430,25 @@ impl TryFrom<ASDKPresentation> for Presentation {
     }
 }
 
-impl TryFrom<Presentation> for ASDKPresentation {
+impl TryFrom<Presentation> for EqusSdkPresentation {
     type Error = Error;
     fn try_from(value: Presentation) -> Result<Self> {
         Ok(match value {
-            Presentation::JwtVp(payload) => ASDKPresentation::JwtVp(
+            Presentation::JwtVp(payload) => EqusSdkPresentation::JwtVp(
                 serde_json::from_str(&payload).map_err(|e| Error::Core(e.to_string()))?,
             ),
-            Presentation::LdpVp(payload) => ASDKPresentation::LdpVp(
+            Presentation::LdpVp(payload) => EqusSdkPresentation::LdpVp(
                 serde_json::from_str(&payload).map_err(|e| Error::Core(e.to_string()))?,
             ),
-            Presentation::SdJwtVp(payload) => ASDKPresentation::SdJwtVp(payload),
-            Presentation::MsoMdocVp(payload) => ASDKPresentation::MsoMdoc(
+            Presentation::SdJwtVp(payload) => EqusSdkPresentation::SdJwtVp(payload),
+            Presentation::MsoMdocVp(payload) => EqusSdkPresentation::MsoMdoc(
                 serde_json::from_str(&payload).map_err(|e| Error::Core(e.to_string()))?,
             ),
         })
     }
 }
 
-custom_type!(ASDKPresentation, Presentation, {
+custom_type!(EqusSdkPresentation, Presentation, {
     remote,
     lower: |p| {
         p.try_into().unwrap_or_else(|e: Error| {

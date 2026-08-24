@@ -1,4 +1,4 @@
-import { InMemKms, Alg, KeyType } from "agent-sdk";
+import { InMemKms, Alg, KeyType } from "equs-sdk";
 
 describe("InMemKMS: ", () => {
   it("Sign and Verify", async () => {

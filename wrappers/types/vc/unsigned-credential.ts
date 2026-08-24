@@ -37,7 +37,7 @@ export interface UnsignedSdJwtCredential {
  * LDP/JSON-LD variant of an unsigned credential, ready for signing.
  *
  * @property {Record<string, any>} unsigned_vc Unsigned JSON-LD credential
- *   (`AnySpecializedJsonCredential<Claims>` round-tripped through SSI's serde impls).
+ *   (`AnySpecializedJsonCredential<Claims>` round-tripped through Protocol's serde impls).
  * @property {string} issuer_did_url Issuer DID URL used as the verification method
  *   id in the proof options.
  * @property {string} issuer_key_id Routing hint identifying which issuer key the

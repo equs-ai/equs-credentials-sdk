@@ -26,6 +26,6 @@ To build and run the Android demo app on the emulator, make the following steps
     ```
 2. Run the demo application
   ```bash
-  ./gradlew installDebug && adb shell monkey -p org.bci.asdk.demo -c android.intent.category.LAUNCHER 1
+  ./gradlew installDebug && adb shell monkey -p org.equs.sdk.demo -c android.intent.category.LAUNCHER 1
   ```
 

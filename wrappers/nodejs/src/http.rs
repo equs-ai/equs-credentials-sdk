@@ -1,11 +1,11 @@
 use crate::vc::JsonObject;
-use agent_sdk::http;
-use agent_sdk::http::{
+use async_trait::async_trait;
+use equs_sdk::http;
+use equs_sdk::http::{
     HeaderMap, HeaderName, HeaderValue, HttpClient, HttpMethod, HttpRequest, HttpResponse,
     HttpSnafu, StatusCode, Uri,
 };
-use agent_sdk::reqwest::ReqwestClient;
-use async_trait::async_trait;
+use equs_sdk::reqwest::ReqwestClient;
 use napi::bindgen_prelude::Promise;
 use napi::threadsafe_function::{ErrorStrategy, ThreadsafeFunction};
 use napi::{Error, Result};
@@ -178,7 +178,7 @@ pub struct ReqwestHttpClient(ReqwestClient);
 impl ReqwestHttpClient {
     #[napi(constructor)]
     pub fn new() -> Result<Self> {
-        agent_sdk::reqwest::builder::ReqwestClientBuilder::new()
+        equs_sdk::reqwest::builder::ReqwestClientBuilder::new()
             .build()
             .map(ReqwestHttpClient)
             .map_err(|e| Error::from_reason(e.to_string()))
@@ -199,7 +199,7 @@ impl ReqwestHttpClient {
 
     #[napi(factory)]
     pub fn insecure() -> Result<ReqwestHttpClient> {
-        agent_sdk::reqwest::builder::ReqwestClientBuilder::new()
+        equs_sdk::reqwest::builder::ReqwestClientBuilder::new()
             .insecure()
             .build()
             .map(ReqwestHttpClient)

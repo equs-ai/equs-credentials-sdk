@@ -1,8 +1,8 @@
-use agent_sdk::crypto;
-use agent_sdk::did::didkey::DIDKey;
-use agent_sdk::did::universal::DIDResolver;
-use agent_sdk::did::{DID, ResolutionError, ResolutionOutput};
 use async_trait::async_trait;
+use equs_sdk::crypto;
+use equs_sdk::did::didkey::DIDKey;
+use equs_sdk::did::universal::DIDResolver;
+use equs_sdk::did::{DID, ResolutionError, ResolutionOutput};
 use ssi::dids::resolution::{Options, Output};
 pub use ssi::dids::{DID as SpruceDID, DIDKey as SpruceDIDKey, DIDResolver as SpruceDIDResolver};
 

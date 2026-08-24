@@ -4,16 +4,16 @@ use crate::crypto::KeyMetadata;
 use crate::inmem::kms::InMemKms;
 use crate::vc::{Credential, CredentialMetadata};
 #[cfg(debug_assertions)]
-use agent_sdk::did::didkey::DIDKey;
+use equs_sdk::did::didkey::DIDKey;
 #[cfg(debug_assertions)]
-use agent_sdk::did::universal::UniversalResolver;
+use equs_sdk::did::universal::UniversalResolver;
 #[cfg(debug_assertions)]
-use agent_sdk::did::{DIDBuf, DIDResolver};
+use equs_sdk::did::{DIDBuf, DIDResolver};
 #[cfg(debug_assertions)]
-use agent_sdk::kms::{CreateOptions, KeyType, Kms};
-use agent_sdk::vc::HasClaims;
-use agent_sdk::vc::metadata::{CredentialMetadataProcessor, DefaultMetadataProcessor};
-use agent_sdk::vc::oid4vp::Url;
+use equs_sdk::kms::{CreateOptions, KeyType, Kms};
+use equs_sdk::vc::HasClaims;
+use equs_sdk::vc::metadata::{CredentialMetadataProcessor, DefaultMetadataProcessor};
+use equs_sdk::vc::oid4vp::Url;
 use serde_json::Value;
 use std::collections::HashMap;
 #[cfg(debug_assertions)]

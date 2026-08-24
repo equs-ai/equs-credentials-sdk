@@ -1,5 +1,5 @@
-pub type KeyMetadata = agent_sdk::vc::core::KeyMetadata;
-pub type Nonce = agent_sdk::nonce::Nonce;
+pub type KeyMetadata = equs_sdk::vc::core::KeyMetadata;
+pub type Nonce = equs_sdk::nonce::Nonce;
 
 uniffi::custom_type!(Nonce, String, {
     remote,

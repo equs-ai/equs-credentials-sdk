@@ -1,9 +1,9 @@
 use crate::http::ReqwestHttpClient;
 use crate::utils;
 use crate::vc::oid4vci::OID4VCIIssuerMetadata;
-use agent_sdk::reqwest::ReqwestClient;
-use agent_sdk::vc::oid4vci::{
-    AuthorizationMetadata, IssuerMetadata, MetadataDiscovery as AsdkMetadataDiscovery,
+use equs_sdk::reqwest::ReqwestClient;
+use equs_sdk::vc::oid4vci::{
+    AuthorizationMetadata, IssuerMetadata, MetadataDiscovery as EqusSdkMetadataDiscovery,
 };
 use wasm_bindgen::prelude::wasm_bindgen;
 use wasm_bindgen::{JsError, JsValue};
@@ -28,7 +28,7 @@ impl MetadataDiscovery {
         issuer_url: String,
     ) -> Result<OID4VCIIssuerMetadata, JsError> {
         let metadata: IssuerMetadata =
-            AsdkMetadataDiscovery::discover_metadata(&self.http_client, &issuer_url)
+            EqusSdkMetadataDiscovery::discover_metadata(&self.http_client, &issuer_url)
                 .await
                 .map_err(|e| JsError::new(e.to_string().as_str()))?;
 
@@ -41,7 +41,7 @@ impl MetadataDiscovery {
         auth_server_url: String,
     ) -> Result<JsValue, JsError> {
         let metadata: AuthorizationMetadata =
-            AsdkMetadataDiscovery::discover_metadata(&self.http_client, &auth_server_url)
+            EqusSdkMetadataDiscovery::discover_metadata(&self.http_client, &auth_server_url)
                 .await
                 .map_err(|e| JsError::new(e.to_string().as_str()))?;
 

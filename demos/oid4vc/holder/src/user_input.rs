@@ -1,4 +1,4 @@
-use agent_sdk::vc::oid4vp::Url;
+use equs_sdk::vc::oid4vp::Url;
 use shared::vp::AuthRequestQuery;
 
 pub enum IssuerDiscoveryMode {
@@ -31,8 +31,8 @@ pub mod cli {
         CredentialSelectionMode, IssuerDiscoveryMode, PresentationFlow,
         map_to_verifier_request_uri_url,
     };
-    use agent_sdk::vc::oid4vci::AuthzFlow;
-    use agent_sdk::vc::oid4vp::{ResponseMode, ResponseType, Url};
+    use equs_sdk::vc::oid4vci::AuthzFlow;
+    use equs_sdk::vc::oid4vp::{ResponseMode, ResponseType, Url};
     use shared::vp::{AuthRequestQuery, PresentationQueryType};
     use std::collections::HashMap;
     use std::io;
@@ -91,7 +91,7 @@ pub mod cli {
                     }
                     _ => {
                         // When "oid4vc/issuer" web service is used as the Issuer, we just mock dummy transaction code.
-                        // agent-sdk does not handle the generation and validation of transaction code
+                        // equs-sdk does not handle the generation and validation of transaction code
                         "tx_code".to_string()
                     }
                 }
@@ -271,8 +271,8 @@ pub mod auto {
         CredentialSelectionMode, IssuerDiscoveryMode, PresentationFlow,
         map_to_verifier_request_uri_url,
     };
-    use agent_sdk::vc::oid4vci::AuthzFlow;
-    use agent_sdk::vc::oid4vp::{ResponseMode, ResponseType, Url};
+    use equs_sdk::vc::oid4vci::AuthzFlow;
+    use equs_sdk::vc::oid4vp::{ResponseMode, ResponseType, Url};
     use shared::vp::{AuthRequestQuery, PresentationQueryType};
     use std::collections::HashMap;
     use std::io;

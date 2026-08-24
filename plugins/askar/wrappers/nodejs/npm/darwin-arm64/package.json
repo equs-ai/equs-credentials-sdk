@@ -1,5 +1,5 @@
 {
-  "name": "@equstng/agent-sdk-askar-storage-darwin-arm64",
+  "name": "@equs/equs-sdk-askar-storage-darwin-arm64",
   "version": "0.0.0",
   "os": [
     "darwin"
@@ -7,9 +7,9 @@
   "cpu": [
     "arm64"
   ],
-  "main": "agent-sdk-askar-storage.darwin-arm64.node",
+  "main": "equs-sdk-askar-storage.darwin-arm64.node",
   "files": [
-    "agent-sdk-askar-storage.darwin-arm64.node"
+    "equs-sdk-askar-storage.darwin-arm64.node"
   ],
   "license": "MIT",
   "engines": {

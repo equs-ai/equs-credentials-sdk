@@ -1,4 +1,4 @@
-import { Alg, KeyHandle } from "agent-sdk";
+import { Alg, KeyHandle } from "equs-sdk";
 
 export class MockKeyHandle implements KeyHandle {
   readonly pubKey: KeyHandle["pubKey"];

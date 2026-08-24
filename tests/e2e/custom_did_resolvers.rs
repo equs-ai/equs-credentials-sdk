@@ -10,32 +10,32 @@ use crate::utils::fixtures::{
 use crate::utils::helpers::oid4vci::setup_http_static_handlers;
 use crate::utils::http::HttpClientEmulator;
 use crate::utils::test_resolver::TestDIDResolver;
-use agent_sdk::did::universal::UniversalResolver;
-use agent_sdk::did::{DID, DIDBuf, DIDResolver, DIDURL};
-use agent_sdk::http::HttpClient;
-use agent_sdk::inmem::kms::{KeyHandle, LocalKms};
-use agent_sdk::inmem::nonce::LocalNonceHandler;
-use agent_sdk::inmem::vault::InMemVault;
-use agent_sdk::kms::Kms;
-use agent_sdk::vault::Vault;
-use agent_sdk::vc::claims::Claims;
-use agent_sdk::vc::core::KeyMetadata;
-use agent_sdk::vc::metadata::{CredentialMetadataProcessor, DefaultMetadataProcessor};
-use agent_sdk::vc::oid4vci::{
+use equs_sdk::did::universal::UniversalResolver;
+use equs_sdk::did::{DID, DIDBuf, DIDResolver, DIDURL};
+use equs_sdk::http::HttpClient;
+use equs_sdk::inmem::kms::{KeyHandle, LocalKms};
+use equs_sdk::inmem::nonce::LocalNonceHandler;
+use equs_sdk::inmem::vault::InMemVault;
+use equs_sdk::kms::Kms;
+use equs_sdk::vault::Vault;
+use equs_sdk::vc::claims::Claims;
+use equs_sdk::vc::core::KeyMetadata;
+use equs_sdk::vc::metadata::{CredentialMetadataProcessor, DefaultMetadataProcessor};
+use equs_sdk::vc::oid4vci::{
     CredentialOfferGrants, CredentialOfferParams, Holder, HolderBuilder, Issuer, IssuerBuilder,
     IssuerDiscovery, IssuerMetadata,
 };
-use agent_sdk::vc::oid4vp::{
+use equs_sdk::vc::oid4vp::{
     AuthResponseOptions, AuthorizationRequestMetadata, AuthorizationResponse,
     AuthorizationResponseMetadata, AuthorizationResponseObject, ClientId, ClientMetadata,
     CredentialVerificationMetadata, IdTokenMetadata, PassAuthRequestObject, PresentationSession,
     ResponseMode, ResponseType, Verifier, VerifierBuilder,
 };
-use agent_sdk::vc::oid4vp::{Holder as Oid4vpHolder, ResolvedPresentationQuery};
-use agent_sdk::vc::{
+use equs_sdk::vc::oid4vp::{Holder as Oid4vpHolder, ResolvedPresentationQuery};
+use equs_sdk::vc::{
     Credential, CredentialMetadata, VCFormatsAPI, VCFormatsJsonLdAPI, VCFormatsSdJwtAPI, oid4vci,
 };
-use agent_sdk::{crypto, kms};
+use equs_sdk::{crypto, kms};
 use futures::executor;
 use oauth2::http::StatusCode;
 use oauth2::http::header::CONTENT_TYPE;
@@ -532,7 +532,7 @@ async fn build_holder_for_oid4vp_with_test_did_resolver(
     kms: LocalKms,
     vault: InMemVault,
 ) -> impl Oid4vpHolder {
-    agent_sdk::vc::oid4vp::HolderBuilder::new(kms, vault, "wallet-dev".to_string(), http_client)
+    equs_sdk::vc::oid4vp::HolderBuilder::new(kms, vault, "wallet-dev".to_string(), http_client)
         .with_did_resolver(TestDIDResolver::new(CUSTOM_METHOD_NAME.to_string()))
         .unwrap()
         .build()

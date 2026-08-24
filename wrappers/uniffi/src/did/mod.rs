@@ -1,19 +1,19 @@
 use crate::common::{Error, Result};
 use crate::key_handle::WrappedKeyHandle;
-use agent_sdk::did::universal::DIDResolver as ASDKDIDResolver;
-use agent_sdk::did::{
+use async_trait::async_trait;
+use equs_sdk::did::universal::DIDResolver as EqusSdkDIDResolver;
+use equs_sdk::did::{
     DIDBuf, DIDURLBuf, ResolutionError, ResolutionOptions, ResolutionOptionsMediaType,
     ResolutionOutput, SpruceDID, VerificationMethodMap, VerificationRelationshipType,
 };
-use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use std::str::FromStr;
 use std::sync::Arc;
 
-pub type DIDDocMetadata = agent_sdk::did::DocumentMetadata;
-pub type DIDMetadata = agent_sdk::did::ResolutionMetadata;
+pub type DIDDocMetadata = equs_sdk::did::DocumentMetadata;
+pub type DIDMetadata = equs_sdk::did::ResolutionMetadata;
 
 pub mod key;
 pub mod universal_resolver;
@@ -89,7 +89,7 @@ impl WrappedDIDResolver {
 }
 
 #[async_trait]
-impl ASDKDIDResolver for WrappedDIDResolver {
+impl EqusSdkDIDResolver for WrappedDIDResolver {
     async fn resolve_representation<'a>(
         &'a self,
         did: &'a SpruceDID,

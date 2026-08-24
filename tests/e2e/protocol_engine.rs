@@ -1,15 +1,15 @@
-use agent_sdk::did::universal::UniversalResolver;
-use agent_sdk::didcomm::agent::{Agent, AgentConfig};
-use agent_sdk::didcomm::connection::in_mem::InMemConnectionService;
-use agent_sdk::didcomm::protocol::outofband::{InvitationConfig, OutOfBandV2Protocol};
-use agent_sdk::didcomm::protocol::tictactoe::fsm::state::TicTacToeState;
-use agent_sdk::didcomm::protocol::tictactoe::message::{Mark, Move};
-use agent_sdk::didcomm::protocol::tictactoe::protocol::TicTacToeProtocol;
-use agent_sdk::didcomm::transport::http::HttpTransport;
-use agent_sdk::inmem::kms::{KeyHandle, LocalKms};
-use agent_sdk::inmem::storage::InMemStorage;
-use agent_sdk::kms::KeyType;
-use agent_sdk::reqwest::builder::ReqwestClientBuilder;
+use equs_sdk::did::universal::UniversalResolver;
+use equs_sdk::didcomm::agent::{Agent, AgentConfig};
+use equs_sdk::didcomm::connection::in_mem::InMemConnectionService;
+use equs_sdk::didcomm::protocol::outofband::{InvitationConfig, OutOfBandV2Protocol};
+use equs_sdk::didcomm::protocol::tictactoe::fsm::state::TicTacToeState;
+use equs_sdk::didcomm::protocol::tictactoe::message::{Mark, Move};
+use equs_sdk::didcomm::protocol::tictactoe::protocol::TicTacToeProtocol;
+use equs_sdk::didcomm::transport::http::HttpTransport;
+use equs_sdk::inmem::kms::{KeyHandle, LocalKms};
+use equs_sdk::inmem::storage::InMemStorage;
+use equs_sdk::kms::KeyType;
+use equs_sdk::reqwest::builder::ReqwestClientBuilder;
 use url::Url;
 use uuid::Uuid;
 

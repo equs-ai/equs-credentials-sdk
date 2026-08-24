@@ -196,7 +196,7 @@ doc-build-job:
   <<: *rust_job_configs
   stage: build
   script:
-    - RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --workspace --all-features --exclude nodejs --exclude wasm --exclude asdk_uniffi
+    - RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --workspace --all-features --exclude nodejs --exclude wasm --exclude equs_sdk_uniffi
   only:
     - merge_requests
     - main
@@ -248,7 +248,7 @@ nodejs-test-job:
     - npm run build:debug
     - npm run test
     - cd ../test/js_common
-    - npm pkg set dependencies.agent-sdk=file:../../nodejs
+    - npm pkg set dependencies.equs-sdk=file:../../nodejs
     - npm i
     - npm run test:nodejs
   only:
@@ -289,7 +289,7 @@ wasm-test-job:
     #    Enable when tests are added
     #    - npm run test
     - cd ../test/js_common
-    - npm pkg set dependencies.agent-sdk=file:../../wasm/pkg
+    - npm pkg set dependencies.equs-sdk=file:../../wasm/pkg
     - npm i
     - npm run test:wasm
   only:
@@ -345,7 +345,7 @@ release_artifacts_job:
     - cargo sbom &>  SBOM.auto.out
     - cargo audit &> AUDIT.auto.out || true
     - cargo doc --no-deps
-    - tar -cvz -f API.auto.tar.gz target/doc/agent_sdk/
+    - tar -cvz -f API.auto.tar.gz target/doc/equs_sdk/
   artifacts:
     paths:
       - SBOM.auto.out

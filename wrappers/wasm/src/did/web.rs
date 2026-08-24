@@ -32,7 +32,7 @@ impl DIDWeb {
     /// * Returns an error if the underlying DID generation process fails.
     #[wasm_bindgen(js_name = generateDidFromUrl)]
     pub fn generate_did_from_url(&self, url: String) -> Result<String, JsError> {
-        agent_sdk::did::didweb::DIDWeb::generate_did_from_url(&url)
+        equs_sdk::did::didweb::DIDWeb::generate_did_from_url(&url)
             .map(|v| v.to_string())
             .map_err(|err| JsError::new(&format!("{:?}", err)))
     }
@@ -60,7 +60,7 @@ impl DIDWeb {
     ) -> Result<DIDDocument, JsError> {
         let keys = keys
             .iter()
-            .map(|vm_key| agent_sdk::did::VerificationMethodKey {
+            .map(|vm_key| equs_sdk::did::VerificationMethodKey {
                 key: &vm_key.key,
                 verification_relationships: vm_key
                     .verification_relationships
@@ -70,7 +70,7 @@ impl DIDWeb {
             })
             .collect::<Vec<_>>();
 
-        agent_sdk::did::didweb::DIDWeb::generate_did_document(&did, &keys)
+        equs_sdk::did::didweb::DIDWeb::generate_did_document(&did, &keys)
             .map_err(|err| JsError::new(&format!("{:?}", err)))
             .and_then(convert_to_opaque_object_unchecked)
     }

@@ -8,7 +8,7 @@ use crate::vc::core::{
     JsCredentialOffer, JsCredentialRequest, JsPresentation, JsPresentationInput,
 };
 use crate::vc::core::{JsHolderBinder, JsVCStatus};
-use agent_sdk::vc::core::{Holder, HolderService as CoreHolderService};
+use equs_sdk::vc::core::{Holder, HolderService as CoreHolderService};
 use napi::Error;
 use napi_derive::napi;
 use std::sync::Arc;
@@ -71,7 +71,7 @@ impl VCCoreHolder {
         self.0
             .request_credential(
                 &credential_offer.try_into()?,
-                nonce.map(agent_sdk::nonce::Nonce::from_secret),
+                nonce.map(equs_sdk::nonce::Nonce::from_secret),
                 &key_metadata.into(),
             )
             .await

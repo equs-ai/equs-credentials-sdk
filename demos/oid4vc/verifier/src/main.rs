@@ -1,29 +1,29 @@
 use actix_web::{web, App, HttpRequest, HttpResponse, HttpServer};
-use agent_sdk::did::didkey::DIDKey;
-use agent_sdk::did::{DIDBuf, DIDResolver, DID};
-use agent_sdk::inmem::kms::LocalKms;
-use agent_sdk::inmem::storage::InMemStorage;
-use agent_sdk::kms;
-use agent_sdk::kms::{CreateOptions, KeyType, Kms};
-use agent_sdk::reqwest::builder::ReqwestClientBuilder;
-use agent_sdk::storage::Storage;
-use agent_sdk::vc::core::KeyMetadata;
+use equs_sdk::did::didkey::DIDKey;
+use equs_sdk::did::{DIDBuf, DIDResolver, DID};
+use equs_sdk::inmem::kms::LocalKms;
+use equs_sdk::inmem::storage::InMemStorage;
+use equs_sdk::kms;
+use equs_sdk::kms::{CreateOptions, KeyType, Kms};
+use equs_sdk::reqwest::builder::ReqwestClientBuilder;
+use equs_sdk::storage::Storage;
+use equs_sdk::vc::core::KeyMetadata;
 
-use agent_sdk::crypto::{Key, JWK};
-use agent_sdk::did::universal::UniversalResolver;
-use agent_sdk::inmem::nonce::LocalNonceHandler;
-use agent_sdk::vc::dcql::{DCQLCredential, NonEmptyVec, DCQL};
-use agent_sdk::vc::oid4vp::{
+use equs_sdk::crypto::{Key, JWK};
+use equs_sdk::did::universal::UniversalResolver;
+use equs_sdk::inmem::nonce::LocalNonceHandler;
+use equs_sdk::vc::dcql::{DCQLCredential, NonEmptyVec, DCQL};
+use equs_sdk::vc::oid4vp::{
     AuthResponseOptions, AuthorizationRequestMetadata, AuthorizationResponse,
     AuthorizationResponseObject, ClientId, ClientMetadata, CredentialVerificationMetadata,
     HashAlgorithm, PassAuthRequestObject, PresentationSession, ResolvedPresentationQuery,
     ResponseMode, TransactionDataItem, TransactionDataItemTypeContent, TransactionDataResponse,
 };
-use agent_sdk::vc::presentation_exchange::{
+use equs_sdk::vc::presentation_exchange::{
     ClaimFormatMap, ClaimFormatPayload, Constraints, ConstraintsField, InputDescriptor,
     PresentationDefinition,
 };
-use agent_sdk::vc::{oid4vp, ClaimFormatDesignation, JsonPath};
+use equs_sdk::vc::{oid4vp, ClaimFormatDesignation, JsonPath};
 use reqwest::Url;
 use serde_json::{json, Value};
 use shared::voucher::{generate_purchase_id, voucher_dcql};

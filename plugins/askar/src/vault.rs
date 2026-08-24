@@ -7,15 +7,15 @@ use tracing::{Level, instrument};
 use uuid::Uuid;
 
 use crate::AskarStorage;
-use agent_sdk::crypto::Alg;
-use agent_sdk::vault::{
+use equs_sdk::crypto::Alg;
+use equs_sdk::vault::{
     ConversionToEntrySnafu, DeletingSnafu, EmptyFieldsSnafu, Error, FetchingSnafu,
     FormatNotSupportedSnafu, ResolvingSnafu, SessionSnafu, StoringSnafu, VCSnafu,
 };
-use agent_sdk::vc::{JWT_VC_JSON, JWT_VC_JSON_LD, LDP_VC, SD_JWT_VC};
+use equs_sdk::vc::{JWT_VC_JSON, JWT_VC_JSON_LD, LDP_VC, SD_JWT_VC};
 
-pub use agent_sdk::vault::{CredentialEntry, Vault, VaultFetchOptions};
-pub use agent_sdk::vc::{Credential, CredentialMetadata, HasVCFormat, VCFormat};
+pub use equs_sdk::vault::{CredentialEntry, Vault, VaultFetchOptions};
+pub use equs_sdk::vc::{Credential, CredentialMetadata, HasVCFormat, VCFormat};
 
 pub const TAG_TYPE: &str = "type_";
 pub const TAG_FORMAT: &str = "format";
@@ -433,7 +433,7 @@ impl AskarVaultId {
 }
 
 impl TryFrom<&str> for AskarVaultId {
-    type Error = agent_sdk::vault::Error;
+    type Error = equs_sdk::vault::Error;
 
     #[instrument(
         level = Level::TRACE,
@@ -539,8 +539,8 @@ mod tests {
         AskarVault, AskarVaultFetchOptions, AskarVaultParamsSortBy, AskarVaultParamsSortOrder,
     };
     use crate::{AskarStorage, AskarStorageConfig, KeyMethod};
-    use agent_sdk::vault::{CredentialEntry, Vault, VaultFetchOptions};
-    use agent_sdk::vc::{Credential, CredentialMetadata, VCFormat};
+    use equs_sdk::vault::{CredentialEntry, Vault, VaultFetchOptions};
+    use equs_sdk::vc::{Credential, CredentialMetadata, VCFormat};
     use rstest::rstest;
 
     const CRED_SD_JWT: &str = "eyJ0eXAiOiJ2YytzZC1qd3QiLCJhbGciOiJFUzI1NiIsImtpZCI6ImRpZDprZXk6ekRuYWV1alBxWjVFakhtZmtyell3ZUxmTXFyOGFxQTNvdDNCdGM0RmU5dHlMcWttUiN6RG5hZXVqUHFaNUVqSG1ma3J6WXdlTGZNcXI4YXFBM290M0J0YzRGZTl0eUxxa21SIn0.eyJfc2QiOlsiQ1Q1bzFMZk5XRE9LT3h4NDJCWUc0NzU0bFpIeTZ0MG5PUGtGRWRmb3FvTSIsIks3bWEwTmZxR0NfM0xQdG12cWtySTR5ckpsdkg0VFU2OWU3SXYtN0VJbzQiLCJyZVlhTkZCV0h6VjE3Y3Z1cTNyRmpVSTNHeDVKc19EbW5VWlNFUmQ0aFpzIl0sInZjdCI6IlNEX0pXVF9jcmVkIiwic3ViIjoiZGlkOmtleTp6RG5hZW5wbnRDa1huRENuYURrNjJMeE5xUGM0Q01kMzJmYmhpVnNaVjVLcFBURzJjIiwibmJmIjoxNzI1NTMzMjU0LCJfc2RfYWxnIjoic2hhLTI1NiIsImlzcyI6ImRpZDprZXk6ekRuYWV1alBxWjVFakhtZmtyell3ZUxmTXFyOGFxQTNvdDNCdGM0RmU5dHlMcWttUiIsImlhdCI6MTcyNTUzMzI1NCwiZXhwIjoxNzU3MDY5MjU0LCJjbmYiOnsiandrIjp7Imt0eSI6IkVDIiwiY3J2IjoiUC0yNTYiLCJ4IjoiVExuNjZxYm5QZXhLeUZtZ3h1Y1kzSlpyZHhCRGpBc3ItbXkya1dBYms4ayIsInkiOiJzaFl6eUVUOENyWVcyTXhPU0FCSkxhbUpPTGV3LWpQbE9aeHdTUzZrWGdjIn19fQ.CBBzIiTjRs2bmKENQcRY14wVnl2vnIjJY9u3AYrA9KQDjqCXZXSzoxQlripAM6Ud_QaYNrZcHK2EVo4QlH3k9w~WyJvMFR4dEw4QWh1TFJXUmduSDk4NF9RIiwgImdpdmVuX25hbWUiLCAiSm9obiJd~WyJ2SVMzZXNQTHlRUHRRZ0JMZ09GYWFnIiwgImZhbWlseV9uYW1lIiwgIkRvZSJd~WyJsaW81cXNVZHZJX3V3eUdiRmFtTnFRIiwgImRvYiIsICIwOS8wOS8xOTg5Il0~";

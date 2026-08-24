@@ -9,8 +9,8 @@ use crate::vc::core::{JsKeyMetadata, JsProofOfPossessionMetadata};
 use crate::vc::oid4vp::ClientId;
 use crate::vc::oid4vp::holder::InnerOID4VPHolder;
 use crate::vc::oid4vp::verifier::InternalOID4VPVerifier;
-use agent_sdk::vc::core::KeyMetadata;
-use agent_sdk::vc::oid4vp::ClientMetadata;
+use equs_sdk::vc::core::KeyMetadata;
+use equs_sdk::vc::oid4vp::ClientMetadata;
 use napi::bindgen_prelude::Uint8Array;
 use napi::{Error, Result, Status};
 use napi_derive::napi;
@@ -29,7 +29,7 @@ pub async fn _build_vp_verifier(
     x509_certificate_chain: Option<Uint8Array>,
 ) -> Result<InternalOID4VPVerifier> {
     let key_metadata: KeyMetadata = key_metadata.into();
-    let mut builder = agent_sdk::vc::oid4vp::VerifierBuilder::new(
+    let mut builder = equs_sdk::vc::oid4vp::VerifierBuilder::new(
         kms,
         nonce_generator,
         key_metadata,
@@ -87,7 +87,7 @@ pub async fn _build_vp_holder(
     nonce_handler: Option<JsNonceHandler>,
 ) -> Result<InnerOID4VPHolder> {
     let mut builder =
-        agent_sdk::vc::oid4vp::HolderBuilder::new(kms, vault, client_id, http_client.inner());
+        equs_sdk::vc::oid4vp::HolderBuilder::new(kms, vault, client_id, http_client.inner());
 
     if let Some(wallet_metadata) = &wallet_metadata {
         builder = builder.with_wallet_metadata(serde_json::from_value(from_json_object(

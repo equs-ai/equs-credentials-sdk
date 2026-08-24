@@ -187,7 +187,7 @@ Make sure you refresh your profile
 
 ## Testing
 
-The Swift tests are located in the `swift` directory, which is a Swift Package with tests under `Tests/AsdkTest/`.
+The Swift tests are located in the `swift` directory, which is a Swift Package with tests under `Tests/EqusSdkTests/`.
 
 **Run Swift tests:**
 

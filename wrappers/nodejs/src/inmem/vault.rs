@@ -1,18 +1,18 @@
 use crate::vault::{JsCredentialEntry, JsVaultPagination};
 use crate::vc::core::{JsCredential, JsCredentialMetadata};
-use agent_sdk::vault::Vault;
+use equs_sdk::vault::Vault;
 use napi::Result;
 use napi_derive::napi;
 
 #[derive(Clone)]
 #[napi]
-pub struct InMemVault(agent_sdk::inmem::vault::InMemVault);
+pub struct InMemVault(equs_sdk::inmem::vault::InMemVault);
 
 #[napi]
 impl InMemVault {
     #[napi(constructor)]
     pub fn new() -> Self {
-        let vault = agent_sdk::inmem::vault::InMemVault::new();
+        let vault = equs_sdk::inmem::vault::InMemVault::new();
         InMemVault(vault)
     }
 
@@ -85,7 +85,7 @@ impl InMemVault {
 
 impl Default for InMemVault {
     fn default() -> Self {
-        let vault = agent_sdk::inmem::vault::InMemVault::new();
+        let vault = equs_sdk::inmem::vault::InMemVault::new();
         InMemVault(vault)
     }
 }

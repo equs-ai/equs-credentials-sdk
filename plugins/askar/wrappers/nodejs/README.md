@@ -8,20 +8,20 @@ Ensure that the following tools are installed on your machine:
 - [npm](https://www.npmjs.com/) (version >= v11.8.0+)
 - [cargo](https://doc.rust-lang.org/cargo/getting-started/installation.html) (version >= 12.0.0)
 
-[Documentation](#package) for **Agent-SDK Askar Storage** <b style="color:lightblue">integrators</b>
+[Documentation](#package) for **Equs SDK Askar Storage** <b style="color:lightblue">integrators</b>
 
-[Documentation](#development) for Agent-SDK Askar Storage <b style="color:green">developers</b>
+[Documentation](#development) for Equs SDK Askar Storage <b style="color:green">developers</b>
 
 # Package
 
 ## Installation
 
-There are package of ASDK Askar Storage (agent-sdk-askar-storage) and its sub dependencies containing binaries for
+There are package of Equs SDK Askar Storage (equs-sdk-askar-storage) and its sub dependencies containing binaries for
 different platform. (
-agent-sdk-askar-storage-os-arch)
+equs-sdk-askar-storage-os-arch)
 
 1. You need to make sure you can connect to [packages storage](https://git.slock.it/equstng/).
-2. Update global npm configs (Yes, this is necessary because ASDK does not see where to download binary packages)
+2. Update global npm configs (Yes, this is necessary because Equs SDK does not see where to download binary packages)
     1. Get your personal token from [gitlab](https://docs.gitlab.com/ee/user/profile/personal_access_tokens.html)
     2. Add next configs to your ~/.npmrc
        ```text
@@ -37,7 +37,7 @@ agent-sdk-askar-storage-os-arch)
        ```
 3. Install Askar Storage. Do not ignore postinstall script for Askar Storage (Simply do not use --ignore-scripts)
    ```shell
-   npm i @equstng/agent-sdk-askar-storage
+   npm i @equs/equs-sdk-askar-storage
    ```
 
 # Development
@@ -49,11 +49,11 @@ Follow these steps to install Node.js wrapped Askar Storage as dependency to you
 1. **Add dependency to your package.json**:
 
    ```shell
-   npm install agent-sdk@git+ssh://git@git.slock.it/equstng/agent-sdk/agent-sdk
+   npm install equs-sdk@git+ssh://git@git.slock.it/equstng/equs-sdk/equs-sdk
    ```
 
    ```shell
-   yarn add agent-sdk@git+ssh://git@git.slock.it/equstng/agent-sdk/agent-sdk
+   yarn add equs-sdk@git+ssh://git@git.slock.it/equstng/equs-sdk/equs-sdk
    ```
 
 2. **Default postinstall**:
@@ -68,7 +68,7 @@ After installation you can import package in both es modules & commonjs syntax.
 ## Publishing
 
 Publishing is made with flow of building binaries to targets & publishing each binary in its npm package & publishing
-`agent-sdk-askar-storage` package that depends on those binaries
+`equs-sdk-askar-storage` package that depends on those binaries
 
 ### CI/CD
 

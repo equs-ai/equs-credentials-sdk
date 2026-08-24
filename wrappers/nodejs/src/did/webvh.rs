@@ -1,9 +1,9 @@
 use crate::http::ReqwestHttpClient;
 use crate::utils::to_json_object;
 use crate::vc::JsonObject;
-use agent_sdk::did::universal::DIDResolver as ASDKDIDResolver;
-use agent_sdk::did::webvh::client::DIDWebVh;
-use agent_sdk::did::{ResolutionOptions, SpruceDID};
+use equs_sdk::did::universal::DIDResolver as EqusSdkDIDResolver;
+use equs_sdk::did::webvh::client::DIDWebVh;
+use equs_sdk::did::{ResolutionOptions, SpruceDID};
 use napi::{Error, Result};
 use napi_derive::napi;
 use std::sync::Arc;

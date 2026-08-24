@@ -3,7 +3,7 @@ use crate::nonce::{Nonce, NonceHandler};
 use crate::vc;
 use crate::vc::claims::Claims;
 use crate::vc::core::api::CredentialStatusInfo;
-use crate::vc::core::{CredentialRequestData, Proof as AsdkProof, Proof};
+use crate::vc::core::{CredentialRequestData, Proof as EqusSdkProof, Proof};
 use crate::vc::formats::sd_jwt_vc::{EXP_CLAIM, IAT_CLAIM, NBF_CLAIM, VCT_CLAIM};
 use crate::vc::oid4vci::internal_error::{
     ClaimsValidationSnafu, IssuerServiceSnafu, NoScopeSetSnafu, NonceHandlerSnafu, ParseSnafu,
@@ -663,14 +663,14 @@ where
     }
 }
 
-impl From<&SpruceProof> for AsdkProof {
-    fn from(value: &SpruceProof) -> AsdkProof {
+impl From<&SpruceProof> for EqusSdkProof {
+    fn from(value: &SpruceProof) -> EqusSdkProof {
         match value {
-            SpruceProof::Jwt { jwt } => AsdkProof {
+            SpruceProof::Jwt { jwt } => EqusSdkProof {
                 format: "jwt".to_string(),
                 proof: jwt.to_string(),
             },
-            SpruceProof::DiVp { di_vp } => AsdkProof {
+            SpruceProof::DiVp { di_vp } => EqusSdkProof {
                 format: "di_vp".to_string(),
                 proof: di_vp.to_string(),
             },

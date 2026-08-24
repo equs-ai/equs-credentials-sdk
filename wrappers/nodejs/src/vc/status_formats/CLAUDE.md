@@ -14,5 +14,5 @@ Provides NAPI-RS bindings for credential status list format types used in the VC
 - `TslVcStatusType` — NAPI string enum mapping to `status_list_token_jwt::VCStatus` variants.
 
 ## Dependencies
-- Depends on: `agent_sdk::vc::status_formats` (`StatusListFormat`, `status_list_token_jwt::VCStatus`), `agent_sdk::vc::TslVcStatus`
+- Depends on: `equs_sdk::vc::status_formats` (`StatusListFormat`, `status_list_token_jwt::VCStatus`), `equs_sdk::vc::TslVcStatus`
 - Used by: `crate::vc::core` (for `JsStatusListDefinition`, `JsVCStatus`)

@@ -1,6 +1,6 @@
 use crate::error::IntoNapiError;
-use agent_sdk::vc::oid4vci;
-use agent_sdk::vc::oid4vci::Issuer;
+use equs_sdk::vc::oid4vci;
+use equs_sdk::vc::oid4vci::Issuer;
 use napi::Result;
 use napi_derive::napi;
 

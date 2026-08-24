@@ -6,14 +6,14 @@ use crate::utils;
 use crate::vault::{JsVault, Vault};
 use crate::vc::oid4vp::WalletMetadata;
 use crate::vc::oid4vp::holder::OID4VPHolder;
-use agent_sdk::vc::oid4vp::HolderBuilder;
+use equs_sdk::vc::oid4vp::HolderBuilder;
 use wasm_bindgen::JsError;
 use wasm_bindgen::prelude::wasm_bindgen;
 
 /// A builder for creating an `OID4VP` `Holder` API instance.
 #[wasm_bindgen]
 pub struct OID4VPHolderBuilder(
-    HolderBuilder<JsKeyHandle, JsKms, JsVault, agent_sdk::reqwest::ReqwestClient>,
+    HolderBuilder<JsKeyHandle, JsKms, JsVault, equs_sdk::reqwest::ReqwestClient>,
 );
 
 #[wasm_bindgen]

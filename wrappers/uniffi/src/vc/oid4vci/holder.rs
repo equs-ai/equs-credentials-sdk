@@ -1,9 +1,9 @@
 use crate::common::{Error, JsonValue, Result};
 use crate::vc::oid4vci::{CredentialResponse, TokenResponse};
 use crate::vc::{Credential, CredentialMetadata};
-use agent_sdk::vc::oid4vci::Notification as AsdkNotification;
-use agent_sdk::vc::oid4vci::NotificationEvent as AsdkNotificationEvent;
 use async_trait::async_trait;
+use equs_sdk::vc::oid4vci::Notification as EqusSdkNotification;
+use equs_sdk::vc::oid4vci::NotificationEvent as EqusSdkNotificationEvent;
 use std::future::Future;
 use std::io;
 use std::pin::Pin;
@@ -34,13 +34,13 @@ pub enum AuthzFlow {
     Preauthorized,
 }
 
-impl From<agent_sdk::vc::oid4vci::AuthzFlow> for AuthzFlow {
-    fn from(flow: agent_sdk::vc::oid4vci::AuthzFlow) -> Self {
+impl From<equs_sdk::vc::oid4vci::AuthzFlow> for AuthzFlow {
+    fn from(flow: equs_sdk::vc::oid4vci::AuthzFlow) -> Self {
         match flow {
-            agent_sdk::vc::oid4vci::AuthzFlow::Authorize(url) => {
+            equs_sdk::vc::oid4vci::AuthzFlow::Authorize(url) => {
                 AuthzFlow::Authorize(url.to_string())
             }
-            agent_sdk::vc::oid4vci::AuthzFlow::Preauthorized => AuthzFlow::Preauthorized,
+            equs_sdk::vc::oid4vci::AuthzFlow::Preauthorized => AuthzFlow::Preauthorized,
         }
     }
 }
@@ -67,7 +67,7 @@ pub trait AuthCallback: Send + Sync {
 pub struct OID4VCIHolder(Box<dyn _HolderWrapperTrait>);
 
 impl OID4VCIHolder {
-    pub fn new(holder: impl agent_sdk::vc::oid4vci::Holder + 'static) -> Self {
+    pub fn new(holder: impl equs_sdk::vc::oid4vci::Holder + 'static) -> Self {
         OID4VCIHolder(Box::new(_HolderWrapper(holder)))
     }
 }
@@ -164,7 +164,7 @@ impl OID4VCIHolder {
         self.0
             .get_access_token(
                 &offer_params,
-                Box::new(move |authz_flow: agent_sdk::vc::oid4vci::AuthzFlow| {
+                Box::new(move |authz_flow: equs_sdk::vc::oid4vci::AuthzFlow| {
                     Box::pin(async move {
                         authorization_callback
                             .authenticate(authz_flow.into())
@@ -201,7 +201,7 @@ impl OID4VCIHolder {
         &self,
         token: String,
         cred_def_id: String,
-        key_metadata: Vec<agent_sdk::vc::core::KeyMetadata>,
+        key_metadata: Vec<equs_sdk::vc::core::KeyMetadata>,
     ) -> Result<CredentialResponse> {
         let token = serde_json::from_value(serde_json::Value::String(token))
             .map_err(|err| Error::OID4VCIInternal(err.to_string()))?;
@@ -253,7 +253,7 @@ impl OID4VCIHolder {
     /// Empty unit.
     pub async fn verify_credential_extra(
         &self,
-        credential: &agent_sdk::vc::Credential,
+        credential: &equs_sdk::vc::Credential,
     ) -> Result<()> {
         self.0
             .verify_credential_extra(credential)
@@ -311,7 +311,7 @@ pub type AuthorizationCodeCallback = Box<
 >;
 pub type AuthorizationCallback = Box<
     dyn FnOnce(
-            agent_sdk::vc::oid4vci::AuthzFlow,
+            equs_sdk::vc::oid4vci::AuthzFlow,
         )
             -> Pin<Box<dyn Future<Output = std::result::Result<String, io::Error>> + Send>>
         + Send,
@@ -319,56 +319,56 @@ pub type AuthorizationCallback = Box<
 
 #[async_trait]
 trait _HolderWrapperTrait: Send + Sync {
-    fn get_issuer_metadata(&self) -> agent_sdk::vc::oid4vci::IssuerMetadata;
+    fn get_issuer_metadata(&self) -> equs_sdk::vc::oid4vci::IssuerMetadata;
 
     async fn authz_code_flow_with_scope(
         &self,
         scope: String,
         authorization_callback: AuthorizationCodeCallback,
-    ) -> agent_sdk::vc::oid4vci::Result<agent_sdk::vc::oid4vci::TokenResponse>;
+    ) -> equs_sdk::vc::oid4vci::Result<equs_sdk::vc::oid4vci::TokenResponse>;
 
     async fn request_credential(
         &self,
-        token: &agent_sdk::vc::oid4vci::AccessToken,
+        token: &equs_sdk::vc::oid4vci::AccessToken,
         cred_def_id: &str,
-        key_metadata: &[agent_sdk::vc::core::KeyMetadata],
-    ) -> agent_sdk::vc::oid4vci::Result<agent_sdk::vc::oid4vci::CredentialResponseResolved>;
+        key_metadata: &[equs_sdk::vc::core::KeyMetadata],
+    ) -> equs_sdk::vc::oid4vci::Result<equs_sdk::vc::oid4vci::CredentialResponseResolved>;
 
     async fn request_deferred_credential(
         &self,
-        token: &agent_sdk::vc::oid4vci::AccessToken,
+        token: &equs_sdk::vc::oid4vci::AccessToken,
         transaction_id: &str,
-    ) -> agent_sdk::vc::oid4vci::Result<agent_sdk::vc::oid4vci::CredentialResponseResolved>;
+    ) -> equs_sdk::vc::oid4vci::Result<equs_sdk::vc::oid4vci::CredentialResponseResolved>;
 
     async fn verify_credential_extra(
         &self,
-        credential: &agent_sdk::vc::Credential,
-    ) -> agent_sdk::vc::oid4vci::Result<()>;
+        credential: &equs_sdk::vc::Credential,
+    ) -> equs_sdk::vc::oid4vci::Result<()>;
 
     async fn store_credential(
         &self,
-        credential: &agent_sdk::vc::Credential,
-        credential_metadata: &agent_sdk::vc::CredentialMetadata,
-    ) -> agent_sdk::vc::oid4vci::Result<String>;
+        credential: &equs_sdk::vc::Credential,
+        credential_metadata: &equs_sdk::vc::CredentialMetadata,
+    ) -> equs_sdk::vc::oid4vci::Result<String>;
 
     async fn get_access_token(
         &self,
-        offer_params: &agent_sdk::vc::oid4vci::CredentialOfferParams,
+        offer_params: &equs_sdk::vc::oid4vci::CredentialOfferParams,
         authorization_callback: AuthorizationCallback,
-    ) -> agent_sdk::vc::oid4vci::Result<agent_sdk::vc::oid4vci::TokenResponse>;
+    ) -> equs_sdk::vc::oid4vci::Result<equs_sdk::vc::oid4vci::TokenResponse>;
 
     async fn send_notification(
         &self,
-        token: &agent_sdk::vc::oid4vci::AccessToken,
-        notification: AsdkNotification,
-    ) -> agent_sdk::vc::oid4vci::Result<()>;
+        token: &equs_sdk::vc::oid4vci::AccessToken,
+        notification: EqusSdkNotification,
+    ) -> equs_sdk::vc::oid4vci::Result<()>;
 }
 
-pub struct _HolderWrapper<H: agent_sdk::vc::oid4vci::Holder>(H);
+pub struct _HolderWrapper<H: equs_sdk::vc::oid4vci::Holder>(H);
 
 #[async_trait]
-impl<H: agent_sdk::vc::oid4vci::Holder> _HolderWrapperTrait for _HolderWrapper<H> {
-    fn get_issuer_metadata(&self) -> agent_sdk::vc::oid4vci::IssuerMetadata {
+impl<H: equs_sdk::vc::oid4vci::Holder> _HolderWrapperTrait for _HolderWrapper<H> {
+    fn get_issuer_metadata(&self) -> equs_sdk::vc::oid4vci::IssuerMetadata {
         self.0.get_issuer_metadata()
     }
 
@@ -376,7 +376,7 @@ impl<H: agent_sdk::vc::oid4vci::Holder> _HolderWrapperTrait for _HolderWrapper<H
         &self,
         scope: String,
         authorization_callback: AuthorizationCodeCallback,
-    ) -> agent_sdk::vc::oid4vci::Result<agent_sdk::vc::oid4vci::TokenResponse> {
+    ) -> equs_sdk::vc::oid4vci::Result<equs_sdk::vc::oid4vci::TokenResponse> {
         self.0
             .authz_code_flow_with_scope(scope, authorization_callback)
             .await
@@ -384,10 +384,10 @@ impl<H: agent_sdk::vc::oid4vci::Holder> _HolderWrapperTrait for _HolderWrapper<H
 
     async fn request_credential(
         &self,
-        token: &agent_sdk::vc::oid4vci::AccessToken,
+        token: &equs_sdk::vc::oid4vci::AccessToken,
         cred_def_id: &str,
-        key_metadata: &[agent_sdk::vc::core::KeyMetadata],
-    ) -> agent_sdk::vc::oid4vci::Result<agent_sdk::vc::oid4vci::CredentialResponseResolved> {
+        key_metadata: &[equs_sdk::vc::core::KeyMetadata],
+    ) -> equs_sdk::vc::oid4vci::Result<equs_sdk::vc::oid4vci::CredentialResponseResolved> {
         self.0
             .request_credential(token, cred_def_id, key_metadata)
             .await
@@ -395,9 +395,9 @@ impl<H: agent_sdk::vc::oid4vci::Holder> _HolderWrapperTrait for _HolderWrapper<H
 
     async fn request_deferred_credential(
         &self,
-        token: &agent_sdk::vc::oid4vci::AccessToken,
+        token: &equs_sdk::vc::oid4vci::AccessToken,
         transaction_id: &str,
-    ) -> agent_sdk::vc::oid4vci::Result<agent_sdk::vc::oid4vci::CredentialResponseResolved> {
+    ) -> equs_sdk::vc::oid4vci::Result<equs_sdk::vc::oid4vci::CredentialResponseResolved> {
         self.0
             .request_deferred_credential(token, transaction_id)
             .await
@@ -405,16 +405,16 @@ impl<H: agent_sdk::vc::oid4vci::Holder> _HolderWrapperTrait for _HolderWrapper<H
 
     async fn verify_credential_extra(
         &self,
-        credential: &agent_sdk::vc::Credential,
-    ) -> agent_sdk::vc::oid4vci::Result<()> {
+        credential: &equs_sdk::vc::Credential,
+    ) -> equs_sdk::vc::oid4vci::Result<()> {
         self.0.verify_credential_extra(credential).await
     }
 
     async fn store_credential(
         &self,
-        credential: &agent_sdk::vc::Credential,
-        credential_metadata: &agent_sdk::vc::CredentialMetadata,
-    ) -> agent_sdk::vc::oid4vci::Result<String> {
+        credential: &equs_sdk::vc::Credential,
+        credential_metadata: &equs_sdk::vc::CredentialMetadata,
+    ) -> equs_sdk::vc::oid4vci::Result<String> {
         self.0
             .store_credential(credential, credential_metadata)
             .await
@@ -422,9 +422,9 @@ impl<H: agent_sdk::vc::oid4vci::Holder> _HolderWrapperTrait for _HolderWrapper<H
 
     async fn get_access_token(
         &self,
-        offer_params: &agent_sdk::vc::oid4vci::CredentialOfferParams,
+        offer_params: &equs_sdk::vc::oid4vci::CredentialOfferParams,
         authorization_callback: AuthorizationCallback,
-    ) -> agent_sdk::vc::oid4vci::Result<agent_sdk::vc::oid4vci::TokenResponse> {
+    ) -> equs_sdk::vc::oid4vci::Result<equs_sdk::vc::oid4vci::TokenResponse> {
         self.0
             .get_access_token(offer_params, authorization_callback)
             .await
@@ -432,9 +432,9 @@ impl<H: agent_sdk::vc::oid4vci::Holder> _HolderWrapperTrait for _HolderWrapper<H
 
     async fn send_notification(
         &self,
-        token: &agent_sdk::vc::oid4vci::AccessToken,
-        notification: AsdkNotification,
-    ) -> agent_sdk::vc::oid4vci::Result<()> {
+        token: &equs_sdk::vc::oid4vci::AccessToken,
+        notification: EqusSdkNotification,
+    ) -> equs_sdk::vc::oid4vci::Result<()> {
         self.0.send_notification(token, notification).await
     }
 }
@@ -445,7 +445,7 @@ pub struct Notification {
     pub event: NotificationEvent,
     pub event_description: Option<String>,
 }
-impl From<Notification> for AsdkNotification {
+impl From<Notification> for EqusSdkNotification {
     fn from(value: Notification) -> Self {
         Self::new(
             value.notification_id,
@@ -461,7 +461,7 @@ pub enum NotificationEvent {
     CredentialDeleted,
 }
 
-impl From<NotificationEvent> for AsdkNotificationEvent {
+impl From<NotificationEvent> for EqusSdkNotificationEvent {
     fn from(value: NotificationEvent) -> Self {
         match value {
             NotificationEvent::CredentialAccepted => Self::CredentialAccepted,

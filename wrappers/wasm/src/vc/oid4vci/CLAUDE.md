@@ -22,7 +22,7 @@ Exposes the OID4VCI (OpenID for Verifiable Credential Issuance) protocol layer t
 - `ProofOfPossessionMetadataBuilder` / `ProofOfPossessionNotBefore` — WASM builder types for PoP JWT generation parameters.
 
 ## Dependencies
-- Depends on: `agent_sdk::vc::oid4vci`, `agent_sdk::vc::core::ProofOfPossessionMetadata`, `crate::did::resolver`, `crate::http::ReqwestHttpClient`, `crate::kms`, `crate::vault`, `crate::vc` (credential types)
+- Depends on: `equs_sdk::vc::oid4vci`, `equs_sdk::vc::core::ProofOfPossessionMetadata`, `crate::did::resolver`, `crate::http::ReqwestHttpClient`, `crate::kms`, `crate::vault`, `crate::vc` (credential types)
 - Used by: WASM browser consumer TypeScript code
 
 ## Constraints

@@ -21,7 +21,7 @@ import {
   VCFormat,
   VCStatus,
   VCStatusFormat,
-} from "agent-sdk";
+} from "equs-sdk";
 import {
   AUTH_REQUEST,
   AUTH_REQUEST_WITH_FAKE_VCT,

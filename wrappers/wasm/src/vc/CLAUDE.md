@@ -20,5 +20,5 @@ Top-level VC module for the WASM wrapper. Declares shared credential type mappin
 - `VCCoreCredentialSigner` (in `core/signer.rs`) — Stand-alone signer wrapping `CredentialSigner<JsKeyHandle, JsKms>`; accepts the externally-tagged `UnsignedCredential` JS object and returns the opaque `Credential`.
 
 ## Dependencies
-- Depends on: `agent_sdk::vc`, `agent_sdk::vc::core` (`CredentialSigner`, `SignCredential`, `UnsignedCredential`), `agent_sdk::vault`, `serde_json`, `wasm_bindgen`, `serde_wasm_bindgen`, `crate::kms::{JsKms, Kms}`, `crate::did::universal_resolver::UniversalDIDResolver`, `crate::utils::{convert_to_rust_object, convert_to_opaque_object_unchecked}`
+- Depends on: `equs_sdk::vc`, `equs_sdk::vc::core` (`CredentialSigner`, `SignCredential`, `UnsignedCredential`), `equs_sdk::vault`, `serde_json`, `wasm_bindgen`, `serde_wasm_bindgen`, `crate::kms::{JsKms, Kms}`, `crate::did::universal_resolver::UniversalDIDResolver`, `crate::utils::{convert_to_rust_object, convert_to_opaque_object_unchecked}`
 - Used by: `crate::vc::oid4vci`, `crate::vc::oid4vp`, `crate::vault` (vault bridge uses `JsCredentialEntry`)

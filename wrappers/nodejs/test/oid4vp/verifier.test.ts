@@ -1,7 +1,7 @@
 import {
   _PresentationSession,
+  EqusSdkError,
   Alg,
-  AsdkError,
   AuthorizationRequestMetadata,
   AuthorizationResponse,
   AuthorizationResponseObject,
@@ -702,9 +702,9 @@ describe("OID4VP Verifier: ", () => {
     try {
       await verifier.verifyPresentation(auth_response, session, verificationMetadata);
     } catch (e) {
-      let asdk_err: AsdkError = JSON.parse(e.message);
-      // Expect that ASDK received Authorization Response with vp_token parameter but fails to get transactional data
-      expect(asdk_err.code).toEqual(VpProtocolError.InvalidTransactionData);
+      let equs_sdk_err: EqusSdkError = JSON.parse(e.message);
+      // Expect that Equs SDK received Authorization Response with vp_token parameter but fails to get transactional data
+      expect(equs_sdk_err.code).toEqual(VpProtocolError.InvalidTransactionData);
     }
 
     expect(kms.decryptCalledWith).toEqual(auth_response.jwe);

@@ -1,5 +1,5 @@
 use crate::vc::JsCredential;
-use agent_sdk::vc::oid4vci::{CredentialResponseResolved, CredentialResult};
+use equs_sdk::vc::oid4vci::{CredentialResponseResolved, CredentialResult};
 use js_sys::JSON;
 use serde_json::json;
 use wasm_bindgen::prelude::wasm_bindgen;

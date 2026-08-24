@@ -1,22 +1,22 @@
 use actix_web::http::header::Header;
 use actix_web::{web, App, Error, HttpRequest, HttpResponse, HttpServer};
 use actix_web_httpauth::headers::authorization::{Authorization, Bearer};
-use agent_sdk::did::didkey::DIDKey;
-use agent_sdk::did::universal::UniversalResolver;
-use agent_sdk::did::{DIDBuf, DIDResolver, DID};
-use agent_sdk::inmem::kms::LocalKms;
-use agent_sdk::inmem::nonce::LocalNonceHandler;
-use agent_sdk::inmem::vault::InMemVault;
-use agent_sdk::kms;
-use agent_sdk::kms::Kms;
-use agent_sdk::reqwest::builder::ReqwestClientBuilder;
-use agent_sdk::vc::core::KeyMetadata;
-use agent_sdk::vc::oid4vci;
-use agent_sdk::vc::oid4vci::{
+use equs_sdk::did::didkey::DIDKey;
+use equs_sdk::did::universal::UniversalResolver;
+use equs_sdk::did::{DIDBuf, DIDResolver, DID};
+use equs_sdk::inmem::kms::LocalKms;
+use equs_sdk::inmem::nonce::LocalNonceHandler;
+use equs_sdk::inmem::vault::InMemVault;
+use equs_sdk::kms;
+use equs_sdk::kms::Kms;
+use equs_sdk::reqwest::builder::ReqwestClientBuilder;
+use equs_sdk::vc::core::KeyMetadata;
+use equs_sdk::vc::oid4vci;
+use equs_sdk::vc::oid4vci::{
     AccessToken, AuthorizationMetadata, CredentialRequest, CredentialResponseResolved,
     CredentialResult, IssuerDiscovery, IssuerMetadata,
 };
-use agent_sdk::vc::oid4vci::{Holder, Issuer};
+use equs_sdk::vc::oid4vci::{Holder, Issuer};
 use rand::distr::Alphanumeric;
 use rand::{rng, Rng};
 use serde_json::json;

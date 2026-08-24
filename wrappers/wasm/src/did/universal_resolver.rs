@@ -1,5 +1,5 @@
-use agent_sdk::did::universal::UniversalResolver;
-use agent_sdk::did::{DIDBuf, DIDResolver};
+use equs_sdk::did::universal::UniversalResolver;
+use equs_sdk::did::{DIDBuf, DIDResolver};
 use std::str::FromStr;
 use wasm_bindgen::prelude::*;
 

@@ -11,7 +11,7 @@ import {
   VcCoreHolder,
   VcCoreIssuer,
   VCFormat,
-} from "agent-sdk";
+} from "equs-sdk";
 import { jwtDecode } from "jwt-decode";
 
 const NONCE = "pop_nbf_test_nonce";

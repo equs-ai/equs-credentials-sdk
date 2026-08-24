@@ -4,7 +4,7 @@ use crate::kms::JsKms;
 use crate::utils::from_json_object;
 use crate::vc::JsonObject;
 use crate::vc::core::JsCredential;
-use agent_sdk::vc::core::{
+use equs_sdk::vc::core::{
     CredentialSigner as CoreCredentialSigner, SignCredential, UnsignedCredential,
 };
 use napi::Error;

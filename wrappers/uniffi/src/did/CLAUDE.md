@@ -8,8 +8,8 @@ Exposes DID method utilities and a universal DID resolver to Kotlin and Swift vi
 | File | Role |
 |------|------|
 | `mod.rs` | Defines all shared DID types: `DIDResolutionOptions`, `VerificationMethodKey`, `VerificationMethod`, `DIDResolution`, `DIDDocMetadata`, `DIDMetadata`, `VerificationRelationshipType` (re-exported via `#[uniffi::remote]`), and the `DIDResolver` foreign trait + `WrappedDIDResolver` adapter that bridges it to the SDK's internal `DIDResolver` trait. |
-| `key.rs` | `DIDKey` — UniFFI object wrapping `ASDKDIDKey`. Exposes `generate(key: WrappedKeyHandle) -> Result<String>`. |
-| `web.rs` | `DIDWeb` — UniFFI object wrapping `ASDKDIDWeb`. Exposes `generate_did_from_url` and `generate_did_document`. Takes an `Arc<dyn HttpClient>` at construction. |
+| `key.rs` | `DIDKey` — UniFFI object wrapping `EqusSdkDIDKey`. Exposes `generate(key: WrappedKeyHandle) -> Result<String>`. |
+| `web.rs` | `DIDWeb` — UniFFI object wrapping `EqusSdkDIDWeb`. Exposes `generate_did_from_url` and `generate_did_document`. Takes an `Arc<dyn HttpClient>` at construction. |
 | `universal_resolver.rs` | `UniversalDIDResolver` — UniFFI object wrapping `UniversalResolver`. Constructor accepts an optional list of `Arc<dyn DIDResolver>` for custom method support. Exposes `resolve_verification_method` and `resolve`. |
 
 ## Key types / traits
@@ -20,5 +20,5 @@ Exposes DID method utilities and a universal DID resolver to Kotlin and Swift vi
 - `VerificationMethodKey` — UniFFI object pairing a `WrappedKeyHandle` with a set of verification relationship types.
 
 ## Dependencies
-- Depends on: `agent_sdk::did` (including `didkey`, `didweb`, `universal`), `crate::key_handle::WrappedKeyHandle`, `crate::http::HttpClient`
+- Depends on: `equs_sdk::did` (including `didkey`, `didweb`, `universal`), `crate::key_handle::WrappedKeyHandle`, `crate::http::HttpClient`
 - Used by: `crate::vc::oid4vci::builder`, `crate::vc::oid4vp::builder`, Kotlin/Swift consumer code

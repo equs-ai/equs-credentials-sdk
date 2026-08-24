@@ -24,18 +24,18 @@ use tracing::{Level, instrument};
 
 use aries_askar::crypto::kdf::KeyExchange;
 
-use agent_sdk::crypto::{
+use equs_sdk::crypto::{
     AlgNotSupportedSnafu, Error as CryptoError, IncorrectKeySnafu, JWK, KeyNotSupportedSnafu,
     SigningSnafu, VerificationSnafu,
 };
-use agent_sdk::kms::{
+use equs_sdk::kms::{
     CreateOptions, CreationSnafu, CryptoSnafu, Error as KmsError, Error, KeyHandle, KeyID,
     NotFoundSnafu, ResolvingSnafu,
 };
 
 use crate::AskarStorage;
-pub use agent_sdk::crypto::{Alg, Key, Signer, SigningKey, Verifier, VerifyingKey};
-pub use agent_sdk::kms::{JweDecryptBytes, KeyAgreement, KeyType, Kms};
+pub use equs_sdk::crypto::{Alg, Key, Signer, SigningKey, Verifier, VerifyingKey};
+pub use equs_sdk::kms::{JweDecryptBytes, KeyAgreement, KeyType, Kms};
 
 #[derive(Debug, Clone)]
 pub struct AskarKeyHandle(Arc<LocalKey>, Alg);
@@ -498,9 +498,9 @@ impl KeyAgreement for AskarKeyHandle {
 mod tests {
     use crate::kms::AskarKms;
     use crate::{AskarStorage, AskarStorageConfig, KeyMethod};
-    use agent_sdk::kms;
-    use agent_sdk::kms::{KeyHandle, Kms};
-    use agent_sdk::vc::oid4vp::jwe::test_utils;
+    use equs_sdk::kms;
+    use equs_sdk::kms::{KeyHandle, Kms};
+    use equs_sdk::vc::oid4vp::jwe::test_utils;
 
     // TODO: consider splitting this test into several small unit tests
     #[tokio::test]
@@ -552,8 +552,8 @@ mod tests {
 
     #[tokio::test]
     async fn shared_secret_is_symmetric_for_p256() {
-        use agent_sdk::crypto::Key;
-        use agent_sdk::kms::KeyAgreement;
+        use equs_sdk::crypto::Key;
+        use equs_sdk::kms::KeyAgreement;
 
         let kms = askar_kms().await;
         let alice = kms
@@ -585,8 +585,8 @@ mod tests {
 
     #[tokio::test]
     async fn shared_secret_rejects_unsupported_key_type() {
-        use agent_sdk::crypto::{Error as CryptoError, Key};
-        use agent_sdk::kms::KeyAgreement;
+        use equs_sdk::crypto::{Error as CryptoError, Key};
+        use equs_sdk::kms::KeyAgreement;
 
         let kms = askar_kms().await;
         // K256 (ES256K) is a signing curve without ECDH-ES support here.
@@ -610,8 +610,8 @@ mod tests {
 
     #[tokio::test]
     async fn shared_secret_rejects_malformed_remote_jwk() {
-        use agent_sdk::crypto::Error as CryptoError;
-        use agent_sdk::kms::KeyAgreement;
+        use equs_sdk::crypto::Error as CryptoError;
+        use equs_sdk::kms::KeyAgreement;
 
         let kms = askar_kms().await;
         let kid = kms

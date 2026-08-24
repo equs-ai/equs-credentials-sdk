@@ -284,7 +284,7 @@ name = "agent"
 version = "0.1.0"
 dependencies = [
  "actix-web",
- "agent-sdk",
+ "equs-sdk",
  "reqwest 0.12.12",
  "serde_json",
  "serde_urlencoded",
@@ -292,83 +292,6 @@ dependencies = [
  "snafu 0.9.1",
  "tracing-subscriber",
  "uuid 1.23.1",
-]
-
-[[package]]
-name = "agent-sdk"
-version = "1.12.0"
-dependencies = [
- "anyhow",
- "askar-crypto 0.3.3",
- "async-channel",
- "async-lock",
- "async-trait",
- "base64 0.22.1",
- "bip32",
- "bs58 0.5.1",
- "chrono",
- "common-macros",
- "crc",
- "did_parser_nom",
- "did_peer",
- "did_resolver",
- "didcomm",
- "ecdsa",
- "ed25519-compact",
- "ed25519-dalek",
- "flate2",
- "futures",
- "generic-array 0.14.7",
- "getrandom 0.4.2",
- "hex",
- "http 1.3.1",
- "httpmock",
- "hyper 0.14.32",
- "iref",
- "jsonpath-rust",
- "jsonwebtoken",
- "lazy_static",
- "libc",
- "log",
- "mime",
- "ml-dsa",
- "mockall",
- "mockito",
- "oauth2",
- "oid4vci",
- "one-core",
- "one-core-asdk",
- "openid4vp",
- "openidconnect",
- "p256",
- "rand 0.9.4",
- "rcgen",
- "regex",
- "reqwest 0.12.12",
- "reqwest-middleware",
- "reqwest-tracing",
- "rstest 0.22.0",
- "sd-jwt-rs",
- "secrecy",
- "serde",
- "serde_json",
- "serde_json_path",
- "serde_urlencoded",
- "shared-types",
- "snafu 0.8.9",
- "ssi",
- "ssi-status 0.3.1",
- "strum 0.26.3",
- "strum_macros 0.26.4",
- "time",
- "tokio",
- "tracing",
- "url",
- "uuid 1.23.1",
- "x509-cert 0.2.5",
- "x509-parser",
- "zeroize",
- "zkryptium",
 ]
 
 [[package]]
@@ -558,21 +481,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "23b62fc65de8e4e7f52534fb52b0f3ed04746ae267519eef2a83941e8085068b"
 
 [[package]]
-name = "asdk_uniffi"
-version = "0.1.0"
-dependencies = [
- "agent-sdk",
- "async-trait",
- "oauth2",
- "serde",
- "serde_json",
- "time",
- "tracing",
- "uniffi",
- "url",
-]
-
-[[package]]
 name = "askama"
 version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -618,12 +526,12 @@ dependencies = [
 name = "askar"
 version = "0.1.0"
 dependencies = [
- "agent-sdk",
  "aries-askar",
  "async-trait",
  "base64 0.22.1",
  "bip32",
  "ecdsa",
+ "equs-sdk",
  "p256",
  "rand 0.9.4",
  "rstest 0.26.1",
@@ -3233,6 +3141,98 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "877a4ace8713b0bcf2a4e7eec82529c029f1d0619886d18145fea96c3ffe5c0f"
 
 [[package]]
+name = "equs-sdk"
+version = "1.12.0"
+dependencies = [
+ "anyhow",
+ "askar-crypto 0.3.3",
+ "async-channel",
+ "async-lock",
+ "async-trait",
+ "base64 0.22.1",
+ "bip32",
+ "bs58 0.5.1",
+ "chrono",
+ "common-macros",
+ "crc",
+ "did_parser_nom",
+ "did_peer",
+ "did_resolver",
+ "didcomm",
+ "ecdsa",
+ "ed25519-compact",
+ "ed25519-dalek",
+ "flate2",
+ "futures",
+ "generic-array 0.14.7",
+ "getrandom 0.4.2",
+ "hex",
+ "http 1.3.1",
+ "httpmock",
+ "hyper 0.14.32",
+ "iref",
+ "jsonpath-rust",
+ "jsonwebtoken",
+ "lazy_static",
+ "libc",
+ "log",
+ "mime",
+ "ml-dsa",
+ "mockall",
+ "mockito",
+ "oauth2",
+ "oid4vci",
+ "one-core",
+ "one-core-asdk",
+ "openid4vp",
+ "openidconnect",
+ "p256",
+ "rand 0.9.4",
+ "rcgen",
+ "regex",
+ "reqwest 0.12.12",
+ "reqwest-middleware",
+ "reqwest-tracing",
+ "rstest 0.22.0",
+ "sd-jwt-rs",
+ "secrecy",
+ "serde",
+ "serde_json",
+ "serde_json_path",
+ "serde_urlencoded",
+ "shared-types",
+ "snafu 0.8.9",
+ "ssi",
+ "ssi-status 0.3.1",
+ "strum 0.26.3",
+ "strum_macros 0.26.4",
+ "time",
+ "tokio",
+ "tracing",
+ "url",
+ "uuid 1.23.1",
+ "x509-cert 0.2.5",
+ "x509-parser",
+ "zeroize",
+ "zkryptium",
+]
+
+[[package]]
+name = "equs_sdk_uniffi"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "equs-sdk",
+ "oauth2",
+ "serde",
+ "serde_json",
+ "time",
+ "tracing",
+ "uniffi",
+ "url",
+]
+
+[[package]]
 name = "errno"
 version = "0.3.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4084,7 +4084,7 @@ dependencies = [
 name = "holder"
 version = "0.1.0"
 dependencies = [
- "agent-sdk",
+ "equs-sdk",
  "oauth2",
  "reqwest 0.11.27",
  "serde_json",
@@ -4713,7 +4713,7 @@ version = "0.1.0"
 dependencies = [
  "actix-web",
  "actix-web-httpauth",
- "agent-sdk",
+ "equs-sdk",
  "keycloak",
  "reqwest 0.12.12",
  "serde",
@@ -5688,7 +5688,7 @@ version = "0.1.0"
 dependencies = [
  "actix-web",
  "actix-web-httpauth",
- "agent-sdk",
+ "equs-sdk",
  "futures",
  "rand 0.9.4",
  "serde",
@@ -5825,10 +5825,10 @@ dependencies = [
 name = "nodejs"
 version = "0.0.0"
 dependencies = [
- "agent-sdk",
  "async-trait",
  "chrono",
  "either",
+ "equs-sdk",
  "log",
  "napi",
  "napi-build",
@@ -8685,7 +8685,7 @@ dependencies = [
 name = "shared"
 version = "0.1.0"
 dependencies = [
- "agent-sdk",
+ "equs-sdk",
  "serde",
  "serde_json",
  "strum_macros 0.26.4",
@@ -11534,7 +11534,7 @@ name = "verifier"
 version = "0.1.0"
 dependencies = [
  "actix-web",
- "agent-sdk",
+ "equs-sdk",
  "reqwest 0.12.12",
  "serde_json",
  "shared",
@@ -11607,9 +11607,9 @@ checksum = "b8dad83b4f25e74f184f64c43b150b91efe7647395b42289f38e50566d82855b"
 name = "wasm"
 version = "0.1.0"
 dependencies = [
- "agent-sdk",
  "async-trait",
  "console_error_panic_hook",
+ "equs-sdk",
  "getrandom 0.4.2",
  "instant",
  "js-sys",

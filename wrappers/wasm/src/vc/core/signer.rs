@@ -2,7 +2,7 @@ use crate::did::universal_resolver::UniversalDIDResolver;
 use crate::kms::{JsKms, Kms};
 use crate::utils::{convert_to_opaque_object_unchecked, convert_to_rust_object};
 use crate::vc::{Credential, JsCredential};
-use agent_sdk::vc::core::{
+use equs_sdk::vc::core::{
     CredentialSigner as CoreCredentialSigner, SignCredential, UnsignedCredential,
 };
 use wasm_bindgen::JsError;

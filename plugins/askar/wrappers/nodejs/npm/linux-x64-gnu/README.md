@@ -1,3 +1,3 @@
-# `@equstng/agent-sdk-askar-storage-linux-x64-gnu`
+# `@equs/equs-sdk-askar-storage-linux-x64-gnu`
 
-This is the **x86_64-unknown-linux-gnu** binary for `@equstng/agent-sdk-askar-storage`
+This is the **x86_64-unknown-linux-gnu** binary for `@equs/equs-sdk-askar-storage`

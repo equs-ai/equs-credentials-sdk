@@ -24,7 +24,7 @@ Provides wasm-bindgen bindings for the protocol-agnostic VC core layer, includin
 - `IssuerWithPrepare` (private) — Combines `Issuer + PrepareCredential` into a single object-safe trait, enabling `prepareCredential` on the boxed issuer service.
 
 ## Dependencies
-- Depends on: `agent_sdk::vc::core` (including `PrepareCredential`, `SignCredential`, `UnsignedCredential`), `agent_sdk::vc` (credential/presentation types), `crate::kms::JsKms`, `crate::vault::JsVault`, `crate::did::UniversalDIDResolver`, `crate::http::JsHttpClient`, `crate::vc` (shared JS credential types)
+- Depends on: `equs_sdk::vc::core` (including `PrepareCredential`, `SignCredential`, `UnsignedCredential`), `equs_sdk::vc` (credential/presentation types), `crate::kms::JsKms`, `crate::vault::JsVault`, `crate::did::UniversalDIDResolver`, `crate::http::JsHttpClient`, `crate::vc` (shared JS credential types)
 - Used by: `crate::vc::mod` (re-exported via `pub mod core`)
 
 ## Constraints

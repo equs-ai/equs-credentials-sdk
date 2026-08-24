@@ -3,18 +3,18 @@ use crate::vc::{
     Credential, CredentialEntry, CredentialMetadata, JsCredential, JsCredentialEntry,
     VaultPagination,
 };
-use agent_sdk::vault::Vault;
+use equs_sdk::vault::Vault;
 use wasm_bindgen::JsError;
 use wasm_bindgen::prelude::wasm_bindgen;
 
 #[wasm_bindgen]
-pub struct InMemVault(agent_sdk::inmem::vault::InMemVault);
+pub struct InMemVault(equs_sdk::inmem::vault::InMemVault);
 
 #[wasm_bindgen]
 impl InMemVault {
     #[wasm_bindgen(constructor)]
     pub fn new() -> Self {
-        InMemVault(agent_sdk::inmem::vault::InMemVault::new())
+        InMemVault(equs_sdk::inmem::vault::InMemVault::new())
     }
 
     #[wasm_bindgen(js_name = storeCredential)]
@@ -59,7 +59,7 @@ impl InMemVault {
         pagination: Option<VaultPagination>,
     ) -> Result<Vec<CredentialEntry>, JsError> {
         let pagination = if let Some(pagination) = pagination {
-            let pagination: agent_sdk::vault::VaultFetchOptions =
+            let pagination: equs_sdk::vault::VaultFetchOptions =
                 utils::convert_to_rust_object(pagination)?;
             Some(pagination)
         } else {
@@ -92,7 +92,7 @@ impl InMemVault {
         pagination: Option<VaultPagination>,
     ) -> Result<Vec<CredentialEntry>, JsError> {
         let pagination = if let Some(pagination) = pagination {
-            let pagination: agent_sdk::vault::VaultFetchOptions =
+            let pagination: equs_sdk::vault::VaultFetchOptions =
                 utils::convert_to_rust_object(pagination)?;
             Some(pagination)
         } else {
@@ -120,7 +120,7 @@ impl InMemVault {
 }
 
 impl InMemVault {
-    pub fn inner(&self) -> agent_sdk::inmem::vault::InMemVault {
+    pub fn inner(&self) -> equs_sdk::inmem::vault::InMemVault {
         self.0.clone()
     }
 }

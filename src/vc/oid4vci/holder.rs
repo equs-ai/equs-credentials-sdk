@@ -5,7 +5,7 @@ use crate::nonce::Nonce;
 use crate::utils::wasm::WasmNotSend;
 use crate::vc;
 use crate::vc::core::{
-    CredentialOffer, CredentialOfferContent, InvalidDIDUrlSnafu, KeyMetadata, Proof as AsdkProof,
+    CredentialOffer, CredentialOfferContent, InvalidDIDUrlSnafu, KeyMetadata, Proof as EqusSdkProof,
 };
 use crate::vc::formats::json_ld_vc::JsonLdAPI;
 use crate::vc::formats::sd_jwt_vc::SdJwtAPI;
@@ -875,7 +875,7 @@ impl TryInto<Credential> for &CoreProfilesCredentialResponseType {
     }
 }
 
-impl TryInto<SpruceProof> for AsdkProof {
+impl TryInto<SpruceProof> for EqusSdkProof {
     type Error = Error;
 
     #[instrument(level = Level::TRACE, skip_all, err(), ret())]

@@ -1,7 +1,7 @@
 # askar/src — Context
 
 ## Purpose
-Core Rust library implementing Hyperledger Askar-backed KMS and vault for ASDK, providing
+Core Rust library implementing Hyperledger Askar-backed KMS and vault for Equs SDK, providing
 durable, encrypted key and credential storage as an alternative to the in-memory implementations.
 
 ## Files / Sub-areas
@@ -14,13 +14,13 @@ durable, encrypted key and credential storage as an alternative to the in-memory
 
 ## Key types / traits (if applicable)
 - `AskarStorage` — central storage handle; shared by both `AskarKms` and `AskarVault`.
-- `AskarKms: Kms<AskarKeyHandle>` — implements `agent_sdk::kms::Kms`.
-- `AskarKeyHandle: Key + Signer + Verifier + KeyHandle + KeyAgreement` — implements `agent_sdk::crypto` traits.
-- `AskarVault: Vault` — implements `agent_sdk::vault::Vault`.
+- `AskarKms: Kms<AskarKeyHandle>` — implements `equs_sdk::kms::Kms`.
+- `AskarKeyHandle: Key + Signer + Verifier + KeyHandle + KeyAgreement` — implements `equs_sdk::crypto` traits.
+- `AskarVault: Vault` — implements `equs_sdk::vault::Vault`.
 - `AskarVaultFetchOptions` — Askar-native pagination/sort parameters extending `VaultFetchOptions`.
 
 ## Dependencies
-- Depends on: `aries_askar`, `agent_sdk` (crypto, kms, vault, vc), `snafu`, `tracing`, `zeroize`, `base64`, `sha2`, `bip32`, `ecdsa`, `rand`, `uuid`, `async_trait`
+- Depends on: `aries_askar`, `equs_sdk` (crypto, kms, vault, vc), `snafu`, `tracing`, `zeroize`, `base64`, `sha2`, `bip32`, `ecdsa`, `rand`, `uuid`, `async_trait`
 - Used by: `plugins/askar/wrappers/nodejs/src/`, and optionally by host applications needing persistent storage
 
 ## Constraints

@@ -1,6 +1,6 @@
-use agent_sdk::nonce;
-use agent_sdk::nonce::{GenerateSnafu, InvalidateSnafu, Nonce, NonceHandler, ValidateSnafu};
 use async_trait::async_trait;
+use equs_sdk::nonce;
+use equs_sdk::nonce::{GenerateSnafu, InvalidateSnafu, Nonce, NonceHandler, ValidateSnafu};
 use napi::bindgen_prelude::Promise;
 use napi::threadsafe_function::{ErrorStrategy, ThreadsafeFunction};
 use napi_derive::napi;
@@ -95,7 +95,7 @@ impl NonceHandler for JsNonceHandler {
 #[cfg(debug_assertions)]
 pub mod test_utils {
     use super::JsNonceHandler;
-    use agent_sdk::nonce::NonceHandler;
+    use equs_sdk::nonce::NonceHandler;
     use napi_derive::napi;
 
     #[napi]
@@ -116,16 +116,16 @@ pub mod test_utils {
         #[napi]
         pub async fn validate(&self, nonce: String) -> bool {
             self.0
-                .validate(&agent_sdk::nonce::Nonce::from_secret(nonce))
+                .validate(&equs_sdk::nonce::Nonce::from_secret(nonce))
                 .await
                 .unwrap()
         }
 
         #[napi]
         pub async fn invalidate(&self, nonces: Vec<String>) {
-            let nonces: Vec<agent_sdk::nonce::Nonce> = nonces
+            let nonces: Vec<equs_sdk::nonce::Nonce> = nonces
                 .into_iter()
-                .map(agent_sdk::nonce::Nonce::from_secret)
+                .map(equs_sdk::nonce::Nonce::from_secret)
                 .collect();
 
             self.0.invalidate(&nonces).await.unwrap()

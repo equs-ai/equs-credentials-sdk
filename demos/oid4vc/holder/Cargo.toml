@@ -6,10 +6,10 @@ rust-version = "1.87"
 
 [features]
 noninteractive = []
-delegate-sd-jwt = ["agent-sdk/delegate-sd-jwt"]
+delegate-sd-jwt = ["equs-sdk/delegate-sd-jwt"]
 
 [dependencies]
-agent-sdk = { path = "../../..", features = ["in-memory"] }
+equs-sdk = { path = "../../..", features = ["in-memory"] }
 shared = { path = "../shared" }
 
 tokio = { version = "1.25.0", features = ["rt", "rt-multi-thread", "macros"] }

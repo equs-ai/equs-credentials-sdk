@@ -1,4 +1,4 @@
-# ASDK wrappers tests for Node.js & WASM
+# Equs SDK wrappers tests for Node.js & WASM
 
 ## Prerequisites
 

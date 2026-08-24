@@ -1,8 +1,8 @@
 use crate::did::{JsVerificationMethodKey, JsVerificationRelationshipType};
 use crate::utils::from_json_object;
 use crate::vc::JsonObject;
-use agent_sdk::did::didpeer::{DIDPeer, DidPeerService};
-use agent_sdk::did::{VerificationMethodKey, VerificationRelationshipType};
+use equs_sdk::did::didpeer::{DIDPeer, DidPeerService};
+use equs_sdk::did::{VerificationMethodKey, VerificationRelationshipType};
 use napi::Error;
 use napi_derive::napi;
 

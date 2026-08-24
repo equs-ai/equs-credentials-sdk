@@ -1,7 +1,7 @@
 # Tests — Summary
 
 ## What this domain does
-Contains the end-to-end (E2E) test suite and shared test utilities for ASDK. E2E tests exercise full protocol flows (OID4VCI, OID4VP, DID resolution, DIDComm) against the real in-memory implementations, covering scenarios that unit tests within individual modules cannot.
+Contains the end-to-end (E2E) test suite and shared test utilities for Equs SDK. E2E tests exercise full protocol flows (OID4VCI, OID4VP, DID resolution, DIDComm) against the real in-memory implementations, covering scenarios that unit tests within individual modules cannot.
 
 ## Sub-areas
 

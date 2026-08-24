@@ -7,8 +7,8 @@ use crate::vc::core::{JsCredential, JsIssuerMetadata};
 use crate::vc::core::{
     JsCredentialOffer, JsCredentialOfferData, JsCredentialRequest, JsCredentialStatusInfo,
 };
-use agent_sdk::vc::claims::Error as ClaimsError;
-use agent_sdk::vc::core::{
+use equs_sdk::vc::claims::Error as ClaimsError;
+use equs_sdk::vc::core::{
     Issuer, IssuerMetadata, IssuerService as CoreIssuerService, PrepareCredential,
 };
 use napi::Error;
@@ -102,7 +102,7 @@ impl VCCoreIssuer {
             .issue_credential(
                 &credential_request.into(),
                 &claims,
-                nonce.map(agent_sdk::nonce::Nonce::from_secret),
+                nonce.map(equs_sdk::nonce::Nonce::from_secret),
                 status_info,
             )
             .await
@@ -143,7 +143,7 @@ impl VCCoreIssuer {
             .prepare_credential(
                 &credential_request.into(),
                 &claims,
-                nonce.map(agent_sdk::nonce::Nonce::from_secret),
+                nonce.map(equs_sdk::nonce::Nonce::from_secret),
                 status_info,
             )
             .await

@@ -1,11 +1,12 @@
 use crate::common::{Error, Result};
-use agent_sdk::http::{
-    HeaderMap, HeaderName, HeaderValue, HttpClient as ASDKHttpClient, HttpMethod as ASDKHttpMethod,
-    HttpRequest as ASDKHttpRequest, HttpResponse as ASDKHttpResponse, StatusCode, Uri,
-};
-use agent_sdk::http::{HttpSnafu, Result as ASDKResult};
-use agent_sdk::reqwest::ReqwestClient;
 use async_trait::async_trait;
+use equs_sdk::http::{
+    HeaderMap, HeaderName, HeaderValue, HttpClient as EqusSdkHttpClient,
+    HttpMethod as EqusSdkHttpMethod, HttpRequest as EqusSdkHttpRequest,
+    HttpResponse as EqusSdkHttpResponse, StatusCode, Uri,
+};
+use equs_sdk::http::{HttpSnafu, Result as EqusSdkResult};
+use equs_sdk::reqwest::ReqwestClient;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::sync::Arc;
@@ -23,35 +24,35 @@ pub enum HttpMethod {
     TRACE,
 }
 
-impl From<HttpMethod> for ASDKHttpMethod {
+impl From<HttpMethod> for EqusSdkHttpMethod {
     fn from(value: HttpMethod) -> Self {
         match value {
-            HttpMethod::GET => ASDKHttpMethod::GET,
-            HttpMethod::POST => ASDKHttpMethod::POST,
-            HttpMethod::PUT => ASDKHttpMethod::PUT,
-            HttpMethod::DELETE => ASDKHttpMethod::DELETE,
-            HttpMethod::HEAD => ASDKHttpMethod::HEAD,
-            HttpMethod::OPTIONS => ASDKHttpMethod::OPTIONS,
-            HttpMethod::CONNECT => ASDKHttpMethod::CONNECT,
-            HttpMethod::PATCH => ASDKHttpMethod::PATCH,
-            HttpMethod::TRACE => ASDKHttpMethod::TRACE,
+            HttpMethod::GET => EqusSdkHttpMethod::GET,
+            HttpMethod::POST => EqusSdkHttpMethod::POST,
+            HttpMethod::PUT => EqusSdkHttpMethod::PUT,
+            HttpMethod::DELETE => EqusSdkHttpMethod::DELETE,
+            HttpMethod::HEAD => EqusSdkHttpMethod::HEAD,
+            HttpMethod::OPTIONS => EqusSdkHttpMethod::OPTIONS,
+            HttpMethod::CONNECT => EqusSdkHttpMethod::CONNECT,
+            HttpMethod::PATCH => EqusSdkHttpMethod::PATCH,
+            HttpMethod::TRACE => EqusSdkHttpMethod::TRACE,
         }
     }
 }
-impl TryFrom<ASDKHttpMethod> for HttpMethod {
+impl TryFrom<EqusSdkHttpMethod> for HttpMethod {
     type Error = Error;
 
-    fn try_from(value: ASDKHttpMethod) -> Result<Self> {
+    fn try_from(value: EqusSdkHttpMethod) -> Result<Self> {
         match value {
-            ASDKHttpMethod::GET => Ok(HttpMethod::GET),
-            ASDKHttpMethod::POST => Ok(HttpMethod::POST),
-            ASDKHttpMethod::PUT => Ok(HttpMethod::PUT),
-            ASDKHttpMethod::DELETE => Ok(HttpMethod::DELETE),
-            ASDKHttpMethod::HEAD => Ok(HttpMethod::HEAD),
-            ASDKHttpMethod::OPTIONS => Ok(HttpMethod::OPTIONS),
-            ASDKHttpMethod::CONNECT => Ok(HttpMethod::CONNECT),
-            ASDKHttpMethod::PATCH => Ok(HttpMethod::PATCH),
-            ASDKHttpMethod::TRACE => Ok(HttpMethod::TRACE),
+            EqusSdkHttpMethod::GET => Ok(HttpMethod::GET),
+            EqusSdkHttpMethod::POST => Ok(HttpMethod::POST),
+            EqusSdkHttpMethod::PUT => Ok(HttpMethod::PUT),
+            EqusSdkHttpMethod::DELETE => Ok(HttpMethod::DELETE),
+            EqusSdkHttpMethod::HEAD => Ok(HttpMethod::HEAD),
+            EqusSdkHttpMethod::OPTIONS => Ok(HttpMethod::OPTIONS),
+            EqusSdkHttpMethod::CONNECT => Ok(HttpMethod::CONNECT),
+            EqusSdkHttpMethod::PATCH => Ok(HttpMethod::PATCH),
+            EqusSdkHttpMethod::TRACE => Ok(HttpMethod::TRACE),
             _ => Err(Error::HttpMethodParsing("Invalid HTTP Method".to_string())),
         }
     }
@@ -65,10 +66,10 @@ pub struct HttpRequest {
     pub body: Option<String>,
 }
 
-impl TryFrom<HttpRequest> for ASDKHttpRequest {
+impl TryFrom<HttpRequest> for EqusSdkHttpRequest {
     type Error = Error;
     fn try_from(value: HttpRequest) -> Result<Self> {
-        let mut req = ASDKHttpRequest::new(convert_option_string_to_vec_u8(value.body));
+        let mut req = EqusSdkHttpRequest::new(convert_option_string_to_vec_u8(value.body));
 
         *req.uri_mut() = value
             .url
@@ -81,9 +82,9 @@ impl TryFrom<HttpRequest> for ASDKHttpRequest {
     }
 }
 
-impl TryFrom<ASDKHttpRequest> for HttpRequest {
+impl TryFrom<EqusSdkHttpRequest> for HttpRequest {
     type Error = Error;
-    fn try_from(value: ASDKHttpRequest) -> Result<Self> {
+    fn try_from(value: EqusSdkHttpRequest) -> Result<Self> {
         let method = value.method().to_owned().try_into()?;
         Ok(Self {
             url: value.uri().to_string(),
@@ -100,9 +101,9 @@ pub struct HttpResponse {
     pub headers: HashMap<String, String>,
     pub body: Option<String>,
 }
-impl TryFrom<ASDKHttpResponse> for HttpResponse {
+impl TryFrom<EqusSdkHttpResponse> for HttpResponse {
     type Error = Error;
-    fn try_from(value: ASDKHttpResponse) -> Result<Self> {
+    fn try_from(value: EqusSdkHttpResponse) -> Result<Self> {
         Ok(Self {
             status_code: value.status().as_u16(),
             headers: parse_header_map_to_map(value.headers())?,
@@ -110,11 +111,11 @@ impl TryFrom<ASDKHttpResponse> for HttpResponse {
         })
     }
 }
-impl TryFrom<HttpResponse> for ASDKHttpResponse {
+impl TryFrom<HttpResponse> for EqusSdkHttpResponse {
     type Error = Error;
     fn try_from(value: HttpResponse) -> Result<Self> {
         let headers = parse_json_to_header_map(value.headers)?;
-        let mut resp = ASDKHttpResponse::new(convert_option_string_to_vec_u8(value.body));
+        let mut resp = EqusSdkHttpResponse::new(convert_option_string_to_vec_u8(value.body));
         *resp.headers_mut() = headers;
         *resp.status_mut() = StatusCode::from_u16(value.status_code)
             .map_err(|e| Error::HttpResponseParsing(e.to_string()))?;
@@ -153,8 +154,8 @@ impl WrappedHttpClient {
 }
 
 #[async_trait]
-impl ASDKHttpClient for WrappedHttpClient {
-    async fn async_call(&self, request: ASDKHttpRequest) -> ASDKResult<ASDKHttpResponse> {
+impl EqusSdkHttpClient for WrappedHttpClient {
+    async fn async_call(&self, request: EqusSdkHttpRequest) -> EqusSdkResult<EqusSdkHttpResponse> {
         let request = request.try_into().map_err(|e: Error| {
             HttpSnafu {
                 details: e.to_string(),
@@ -184,14 +185,14 @@ pub struct ReqwestHttpClient(ReqwestClient);
 impl ReqwestHttpClient {
     #[uniffi::constructor]
     pub fn new() -> Result<Self> {
-        agent_sdk::reqwest::builder::ReqwestClientBuilder::new()
+        equs_sdk::reqwest::builder::ReqwestClientBuilder::new()
             .build()
             .map(Self)
             .map_err(|e| Error::Core(e.to_string()))
     }
     #[uniffi::constructor]
     pub fn insecure() -> Result<Self> {
-        agent_sdk::reqwest::builder::ReqwestClientBuilder::new()
+        equs_sdk::reqwest::builder::ReqwestClientBuilder::new()
             .insecure()
             .build()
             .map(Self)

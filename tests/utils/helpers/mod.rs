@@ -1,12 +1,12 @@
 pub(crate) mod oid4vci;
 
-use agent_sdk::did::didkey::DIDKey;
-use agent_sdk::did::universal::UniversalResolver;
-use agent_sdk::did::{DID, DIDResolver};
-use agent_sdk::inmem::kms::{KeyHandle, LocalKms};
-use agent_sdk::kms;
-use agent_sdk::kms::Kms;
-use agent_sdk::vc::core::KeyMetadata;
+use equs_sdk::did::didkey::DIDKey;
+use equs_sdk::did::universal::UniversalResolver;
+use equs_sdk::did::{DID, DIDResolver};
+use equs_sdk::inmem::kms::{KeyHandle, LocalKms};
+use equs_sdk::kms;
+use equs_sdk::kms::Kms;
+use equs_sdk::vc::core::KeyMetadata;
 use ssi::dids::DIDBuf;
 use std::str::FromStr;
 

@@ -15,7 +15,7 @@ where
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-#[napi(object, js_name = "AsdkError")]
+#[napi(object, js_name = "EqusSdkError")]
 pub struct EncodableError {
     pub code: String,
     pub message: String,

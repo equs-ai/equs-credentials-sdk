@@ -10,12 +10,12 @@ Runnable demo binary that stress-tests the OID4VCI issuance flow under concurren
 | `main.rs` | Entry point: configures `LocalKms`, `InMemVault`, `ReqwestClient`, and `Issuer`; starts the actix server; spawns N concurrent holder tasks that each perform a full OID4VCI pre-authorized-code flow. |
 
 ## Key types / traits
-- Uses `vc::oid4vci::{Issuer, Holder}` directly from `agent_sdk`.
+- Uses `vc::oid4vci::{Issuer, Holder}` directly from `equs_sdk`.
 - `AppState` — shared actix state holding the boxed `Issuer` instance.
 - Default concurrency: 100 runs (`DEFAULT_RUNS`), configurable via CLI args.
 
 ## Dependencies
-- Depends on: `agent_sdk` (oid4vci, kms, inmem, reqwest), `actix-web`, `tokio` (multi_thread, 20 workers), `rand`
+- Depends on: `equs_sdk` (oid4vci, kms, inmem, reqwest), `actix-web`, `tokio` (multi_thread, 20 workers), `rand`
 - Used by: developers testing concurrent issuance performance
 
 ## Constraints

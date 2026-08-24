@@ -17,7 +17,7 @@ import {
   resolveMetadata,
   TracingLogFormat,
   TracingLogLevel,
-} from "@equstng/agent-sdk";
+} from "@equs/equs-sdk";
 import { config } from "../components/config";
 import { createDidAndKeyMetadata, readFromCLI } from "../components/utils";
 import {
@@ -26,13 +26,13 @@ import {
   AskarStorageConfig,
   AskarVault,
   KeyMethod,
-} from "@equstng/agent-sdk-askar-storage";
+} from "@equs/equs-sdk-askar-storage";
 
 async function main(): Promise<void> {
   await enableLogs(TracingLogFormat.Full, TracingLogLevel.Info);
 
   const storageConfig = {
-    dbUrl: "sqlite:///tmp/asdk_demo_holder.db",
+    dbUrl: "sqlite:///tmp/equs_sdk_demo_holder.db",
     keyMethod: KeyMethod.DeriveKey,
     passKey: "test_key",
     profile: "test",

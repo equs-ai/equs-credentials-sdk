@@ -1,15 +1,15 @@
 use crate::vc::core::{JsAlg, JsKeyMetadata};
-use agent_sdk::crypto::{Alg, JWK, Key, Signer, SigningKey, Verifier, VerifyingKey};
-use agent_sdk::did::didkey::DIDKey;
-use agent_sdk::did::universal::UniversalResolver;
-use agent_sdk::did::{DIDBuf, DIDResolver};
-use agent_sdk::jwe::{self, JweDecrypt, JweDecryptError};
-use agent_sdk::kms::{
+use async_trait::async_trait;
+use equs_sdk::crypto::{Alg, JWK, Key, Signer, SigningKey, Verifier, VerifyingKey};
+use equs_sdk::did::didkey::DIDKey;
+use equs_sdk::did::universal::UniversalResolver;
+use equs_sdk::did::{DIDBuf, DIDResolver};
+use equs_sdk::jwe::{self, JweDecrypt, JweDecryptError};
+use equs_sdk::kms::{
     BIP32Params, CreateOptions, ECDH1PUParams, ECDHESParams, KeyHandle, KeyID, KeyPair, KeyType,
     Kms,
 };
-use agent_sdk::{crypto, kms};
-use async_trait::async_trait;
+use equs_sdk::{crypto, kms};
 use napi::bindgen_prelude::{Promise, Uint8Array};
 use napi::threadsafe_function::{ErrorStrategy, ThreadsafeFunction};
 use napi::{Either, Error};
@@ -450,8 +450,8 @@ pub async fn create_key_metadata(kms: JsKms) -> JsKeyMetadata {
 pub mod test_utils {
     use super::{JsKeyHandle, JsKeyType, JsKms};
     use crate::vc::core::JsAlg;
-    use agent_sdk::crypto::{Key, Signer, Verifier};
-    use agent_sdk::kms::Kms;
+    use equs_sdk::crypto::{Key, Signer, Verifier};
+    use equs_sdk::kms::Kms;
     use napi::bindgen_prelude::Uint8Array;
     use napi_derive::napi;
 

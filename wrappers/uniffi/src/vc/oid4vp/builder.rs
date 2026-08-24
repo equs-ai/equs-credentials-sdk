@@ -1,4 +1,4 @@
-use agent_sdk::vc::oid4vp::HolderBuilder;
+use equs_sdk::vc::oid4vp::HolderBuilder;
 use std::sync::Arc;
 
 use crate::common::{Error, Result};

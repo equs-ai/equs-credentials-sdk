@@ -1,19 +1,19 @@
 use crate::utils::helpers::create_did_keymetadata_keyhandle;
-use agent_sdk::did::DIDURL;
-use agent_sdk::did::universal::UniversalResolver;
-use agent_sdk::inmem::kms::{KeyHandle, LocalKms};
-use agent_sdk::nonce::{Nonce, NonceHandler};
-use agent_sdk::vc::claims::{Claim, Claims};
-use agent_sdk::vc::core::KeyMetadata;
-use agent_sdk::vc::dcql::{DCQL, DCQLCredential};
-use agent_sdk::vc::metadata::{CredentialMetadataProcessor, DefaultMetadataProcessor};
-use agent_sdk::vc::presentation_exchange::PresentationDefinition;
-use agent_sdk::vc::{
+use async_trait::async_trait;
+use equs_sdk::did::DIDURL;
+use equs_sdk::did::universal::UniversalResolver;
+use equs_sdk::inmem::kms::{KeyHandle, LocalKms};
+use equs_sdk::nonce::{Nonce, NonceHandler};
+use equs_sdk::vc::claims::{Claim, Claims};
+use equs_sdk::vc::core::KeyMetadata;
+use equs_sdk::vc::dcql::{DCQL, DCQLCredential};
+use equs_sdk::vc::metadata::{CredentialMetadataProcessor, DefaultMetadataProcessor};
+use equs_sdk::vc::presentation_exchange::PresentationDefinition;
+use equs_sdk::vc::{
     Credential, CredentialMetadata, JsonLdAPIVCMetadata, VCFormatsAPI, VCFormatsJsonLdAPI,
     VCFormatsSdJwtAPI, VCMetadata,
 };
-use agent_sdk::{crypto, nonce};
-use async_trait::async_trait;
+use equs_sdk::{crypto, nonce};
 use openid4vp::core::input_descriptor::InputDescriptor;
 use openid4vp::utils::NonEmptyVec;
 use serde_json::json;

@@ -6,7 +6,7 @@ use crate::vc::JsonObject;
 use crate::vc::core::JsHolderBinder;
 use crate::vc::core::JsPresentation;
 use crate::vc::core::JsVCStatus;
-use agent_sdk::vc::core::{Verifier, VerifierService as CoreVerifierService};
+use equs_sdk::vc::core::{Verifier, VerifierService as CoreVerifierService};
 use napi::Error;
 use napi_derive::napi;
 

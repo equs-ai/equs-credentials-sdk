@@ -1,4 +1,4 @@
-import { DIDWeb, InMemKms, KeyType, VerificationMethodKey, VerificationRelationshipType } from "agent-sdk";
+import { DIDWeb, InMemKms, KeyType, VerificationMethodKey, VerificationRelationshipType } from "equs-sdk";
 
 describe("did:web: ", () => {
   const did = "did:web:test.example.com";

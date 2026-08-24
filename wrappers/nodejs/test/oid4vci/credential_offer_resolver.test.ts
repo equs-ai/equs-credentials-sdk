@@ -1,4 +1,4 @@
-import { ReqwestHttpClient, OID4VCICredentialOfferResolver, CredentialOfferResolverError, AsdkError } from "../../";
+import { ReqwestHttpClient, OID4VCICredentialOfferResolver, CredentialOfferResolverError, EqusSdkError } from "../../";
 
 describe("OID4VCI Credential Offer resolver: ", () => {
   it("fail to resolve incorrect protocol offer with json-encoded error", async () => {
@@ -9,7 +9,7 @@ describe("OID4VCI Credential Offer resolver: ", () => {
       );
       fail("Should fail to resolve offer with incorrect protocol");
     } catch (error) {
-      let parsed_error: AsdkError = JSON.parse(error.message);
+      let parsed_error: EqusSdkError = JSON.parse(error.message);
       expect(parsed_error.code).toEqual(CredentialOfferResolverError.Resolve);
       expect(parsed_error.message).toEqual("Offer resolution error");
     }

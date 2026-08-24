@@ -26,5 +26,5 @@ Provides NAPI-RS bindings for the protocol-agnostic VC core layer. All four serv
 - `UnsignedCredential` (TS type, shared from `wrappers/types/vc/unsigned-credential.ts`) — externally-tagged wire shape exchanged between `prepareCredential` and `signCredential`.
 
 ## Dependencies
-- Depends on: `agent_sdk::vc::core` (including `CredentialSigner`, `UnsignedCredential`, and the `PrepareCredential` / `SignCredential` traits), `agent_sdk::vc` (credential/presentation types), `agent_sdk::nonce`, `crate::kms::JsKms`, `crate::vault::JsVault`, `crate::did::JsUniversalDIDResolver`, `crate::http::ReqwestHttpClient`, `crate::vc::status_formats`, `crate::utils::{from_json_object, to_json_object}`
+- Depends on: `equs_sdk::vc::core` (including `CredentialSigner`, `UnsignedCredential`, and the `PrepareCredential` / `SignCredential` traits), `equs_sdk::vc` (credential/presentation types), `equs_sdk::nonce`, `crate::kms::JsKms`, `crate::vault::JsVault`, `crate::did::JsUniversalDIDResolver`, `crate::http::ReqwestHttpClient`, `crate::vc::status_formats`, `crate::utils::{from_json_object, to_json_object}`
 - Used by: `crate::vc::oid4vci`, `crate::vc::oid4vp`, `crate::vc::mod`, `crate::inmem::vault`

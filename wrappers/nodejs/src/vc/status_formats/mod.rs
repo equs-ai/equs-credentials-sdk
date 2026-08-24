@@ -1,8 +1,8 @@
 use crate::utils::{from_json_object, to_json_object};
 use crate::vc::JsonObject;
-use agent_sdk::vc::TslVcStatus as AsdkTslVcStatus;
-use agent_sdk::vc::status_formats::StatusListFormat;
-use agent_sdk::vc::status_formats::status_list_token_jwt::VCStatus;
+use equs_sdk::vc::TslVcStatus as EqusSdkTslVcStatus;
+use equs_sdk::vc::status_formats::StatusListFormat;
+use equs_sdk::vc::status_formats::status_list_token_jwt::VCStatus;
 use napi::Error;
 use napi_derive::napi;
 use strum_macros::Display;
@@ -60,8 +60,8 @@ pub enum TslVcStatusType {
     APPSPECIFIC,
 }
 
-impl From<AsdkTslVcStatus> for TslVcStatusType {
-    fn from(value: AsdkTslVcStatus) -> Self {
+impl From<EqusSdkTslVcStatus> for TslVcStatusType {
+    fn from(value: EqusSdkTslVcStatus) -> Self {
         match value {
             VCStatus::Valid => Self::VALID,
             VCStatus::Invalid => Self::INVALID,

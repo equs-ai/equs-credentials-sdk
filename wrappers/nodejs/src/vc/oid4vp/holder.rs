@@ -4,12 +4,12 @@ use crate::vault::{JsCredentialEntry, JsCredentialsFindResult};
 use crate::vc::JsonObject;
 use crate::vc::core::{JsCredential, JsKeyMetadata, JsVCStatus};
 use crate::vc::oid4vp::JsPresentationResult;
-use agent_sdk::vault::CredentialEntry;
-use agent_sdk::vc::oid4vp::{
+use equs_sdk::vault::CredentialEntry;
+use equs_sdk::vc::oid4vp::{
     AuthorizationResponseMetadata, ClientId, CredentialMapping, CredentialsMapping,
     ResolvedAuthRequest,
 };
-use agent_sdk::vc::oid4vp::{Holder, IdTokenMetadata};
+use equs_sdk::vc::oid4vp::{Holder, IdTokenMetadata};
 use napi::{Error, Result};
 use napi_derive::napi;
 use std::collections::HashMap;

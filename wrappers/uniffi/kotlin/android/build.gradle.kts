@@ -27,7 +27,7 @@ publishing {
 			}
 
 			groupId = group.toString()
-			artifactId = "agent-sdk-android"
+			artifactId = "equs-sdk-android"
 			version = project.version.toString()
 		}
 	}
@@ -54,7 +54,7 @@ publishing {
 
 
 android {
-    namespace = "com.bci.asdk"
+    namespace = "com.equs.sdk"
     compileSdk = 33
 
     defaultConfig {

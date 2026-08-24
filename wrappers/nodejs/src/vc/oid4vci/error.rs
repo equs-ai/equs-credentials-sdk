@@ -1,5 +1,5 @@
 use crate::error::{EncodableError, IntoNapiError};
-use agent_sdk::vc::oid4vci::{
+use equs_sdk::vc::oid4vci::{
     CredentialOfferResolverError, InternalError, ProtocolError, ProtocolErrorCredentialEndpoint,
     ProtocolErrorCredentialOfferEndpoint, ProtocolErrorTokenEndpoint, ProtocolErrorType,
 };
@@ -7,11 +7,11 @@ use napi::Error;
 use napi_derive::napi;
 use strum_macros::Display;
 
-impl IntoNapiError for agent_sdk::vc::oid4vci::Error {
+impl IntoNapiError for equs_sdk::vc::oid4vci::Error {
     fn into_napi_error(self) -> Error {
         match self {
-            agent_sdk::vc::oid4vci::Error::Internal { source: err, .. } => err.into_napi_error(),
-            agent_sdk::vc::oid4vci::Error::Protocol { source: err, .. } => err.into_napi_error(),
+            equs_sdk::vc::oid4vci::Error::Internal { source: err, .. } => err.into_napi_error(),
+            equs_sdk::vc::oid4vci::Error::Protocol { source: err, .. } => err.into_napi_error(),
             _ => Error::from_reason(self.to_string()),
         }
     }

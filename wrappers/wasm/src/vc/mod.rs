@@ -1,6 +1,6 @@
-use agent_sdk::vc::VCFormat;
-use agent_sdk::vc::oid4vp::{
-    CredentialsFindResult as ASDKCredentialsSearchResult, FindVCsFailReason,
+use equs_sdk::vc::VCFormat;
+use equs_sdk::vc::oid4vp::{
+    CredentialsFindResult as EqusSdkCredentialsSearchResult, FindVCsFailReason,
 };
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::JsError;
@@ -40,23 +40,23 @@ pub struct JsCredential {
     payload: String,
 }
 
-impl TryFrom<agent_sdk::vc::Credential> for JsCredential {
+impl TryFrom<equs_sdk::vc::Credential> for JsCredential {
     type Error = JsError;
-    fn try_from(value: agent_sdk::vc::Credential) -> Result<Self, JsError> {
+    fn try_from(value: equs_sdk::vc::Credential) -> Result<Self, JsError> {
         let js_credential = match value {
-            agent_sdk::vc::Credential::SdJwt(payload) => JsCredential {
+            equs_sdk::vc::Credential::SdJwt(payload) => JsCredential {
                 format: VCFormat::SdJwtVc,
                 payload,
             },
-            agent_sdk::vc::Credential::LdpVc(payload) => JsCredential {
+            equs_sdk::vc::Credential::LdpVc(payload) => JsCredential {
                 format: VCFormat::LdpVc,
                 payload: serde_json::to_string(&payload)?,
             },
-            agent_sdk::vc::Credential::JwtVcJson(payload) => JsCredential {
+            equs_sdk::vc::Credential::JwtVcJson(payload) => JsCredential {
                 format: VCFormat::JwtVcJson,
                 payload,
             },
-            agent_sdk::vc::Credential::JwtVcJsonLd(payload) => JsCredential {
+            equs_sdk::vc::Credential::JwtVcJsonLd(payload) => JsCredential {
                 format: VCFormat::JwtVcJsonLD,
                 payload,
             },
@@ -67,17 +67,17 @@ impl TryFrom<agent_sdk::vc::Credential> for JsCredential {
     }
 }
 
-impl TryFrom<JsCredential> for agent_sdk::vc::Credential {
+impl TryFrom<JsCredential> for equs_sdk::vc::Credential {
     type Error = JsError;
 
     fn try_from(value: JsCredential) -> Result<Self, JsError> {
         match value.format {
-            VCFormat::JwtVcJson => Ok(agent_sdk::vc::Credential::JwtVcJson(value.payload)),
-            VCFormat::JwtVcJsonLD => Ok(agent_sdk::vc::Credential::JwtVcJsonLd(value.payload)),
-            VCFormat::LdpVc => Ok(agent_sdk::vc::Credential::LdpVc(serde_json::from_str(
+            VCFormat::JwtVcJson => Ok(equs_sdk::vc::Credential::JwtVcJson(value.payload)),
+            VCFormat::JwtVcJsonLD => Ok(equs_sdk::vc::Credential::JwtVcJsonLd(value.payload)),
+            VCFormat::LdpVc => Ok(equs_sdk::vc::Credential::LdpVc(serde_json::from_str(
                 &value.payload,
             )?)),
-            VCFormat::SdJwtVc => Ok(agent_sdk::vc::Credential::SdJwt(value.payload)),
+            VCFormat::SdJwtVc => Ok(equs_sdk::vc::Credential::SdJwt(value.payload)),
             VCFormat::MsoMdoc => Err(JsError::new("Unsupported VC format: MsoDoc")),
             _ => Err(JsError::new("Unsupported VC format"))?,
         }
@@ -91,10 +91,10 @@ pub struct JsCredentialEntry {
     id: String,
 }
 
-impl TryFrom<agent_sdk::vault::CredentialEntry> for JsCredentialEntry {
+impl TryFrom<equs_sdk::vault::CredentialEntry> for JsCredentialEntry {
     type Error = JsError;
 
-    fn try_from(value: agent_sdk::vault::CredentialEntry) -> Result<Self, JsError> {
+    fn try_from(value: equs_sdk::vault::CredentialEntry) -> Result<Self, JsError> {
         Ok(JsCredentialEntry {
             credential: value.credential.try_into()?,
             kid: value.kid,
@@ -103,11 +103,11 @@ impl TryFrom<agent_sdk::vault::CredentialEntry> for JsCredentialEntry {
     }
 }
 
-impl TryFrom<JsCredentialEntry> for agent_sdk::vault::CredentialEntry {
+impl TryFrom<JsCredentialEntry> for equs_sdk::vault::CredentialEntry {
     type Error = JsError;
 
     fn try_from(value: JsCredentialEntry) -> Result<Self, JsError> {
-        Ok(agent_sdk::vault::CredentialEntry {
+        Ok(equs_sdk::vault::CredentialEntry {
             credential: value.credential.try_into()?,
             kid: value.kid,
             id: value.id,
@@ -163,19 +163,19 @@ pub struct CredentialsFindResult {
     data: CredentialsFindResultData,
 }
 
-impl TryFrom<ASDKCredentialsSearchResult> for CredentialsFindResult {
+impl TryFrom<EqusSdkCredentialsSearchResult> for CredentialsFindResult {
     type Error = JsError;
 
-    fn try_from(value: ASDKCredentialsSearchResult) -> Result<Self, Self::Error> {
+    fn try_from(value: EqusSdkCredentialsSearchResult) -> Result<Self, Self::Error> {
         let data = match value {
-            ASDKCredentialsSearchResult::Credentials(creds) => {
+            EqusSdkCredentialsSearchResult::Credentials(creds) => {
                 let result = creds
                     .into_iter()
                     .map(JsCredentialEntry::try_from)
                     .collect::<Result<Vec<_>, _>>()?;
                 CredentialsFindResultData::Credentials(result)
             }
-            ASDKCredentialsSearchResult::Reason(reason) => {
+            EqusSdkCredentialsSearchResult::Reason(reason) => {
                 CredentialsFindResultData::Reason(reason.try_into()?)
             }
         };

@@ -1,12 +1,12 @@
-use agent_sdk::vault::Vault as ASDKVault;
-use agent_sdk::vc::{Credential, CredentialMetadata};
 use async_trait::async_trait;
+use equs_sdk::vault::Vault as EqusSdkVault;
+use equs_sdk::vc::{Credential, CredentialMetadata};
 
 use crate::common::{Error, Result};
 use crate::vault::{CredentialEntry, Vault, VaultFetchOptions};
 
 #[derive(uniffi::Object, Debug)]
-pub struct InMemVault(agent_sdk::inmem::vault::InMemVault);
+pub struct InMemVault(equs_sdk::inmem::vault::InMemVault);
 
 #[uniffi::export()]
 #[async_trait]
@@ -66,12 +66,12 @@ impl Vault for InMemVault {
 impl InMemVault {
     #[uniffi::constructor]
     fn new() -> Self {
-        InMemVault(agent_sdk::inmem::vault::InMemVault::new())
+        InMemVault(equs_sdk::inmem::vault::InMemVault::new())
     }
 }
 
 impl InMemVault {
-    pub fn inner(&self) -> agent_sdk::inmem::vault::InMemVault {
+    pub fn inner(&self) -> equs_sdk::inmem::vault::InMemVault {
         self.0.clone()
     }
 }

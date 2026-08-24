@@ -1,12 +1,12 @@
 use crate::vc::core::{JsCredential, JsCredentialMetadata};
-use agent_sdk::vault;
-use agent_sdk::vault::{
+use async_trait::async_trait;
+use equs_sdk::vault;
+use equs_sdk::vault::{
     CredentialEntry, DeletingSnafu, EmptyFieldsSnafu, ResolvingSnafu, StoringSnafu, Vault,
     VaultFetchOptions,
 };
-use agent_sdk::vc::oid4vp::{CredentialsFindResult, FindVCsFailReason};
-use agent_sdk::vc::{Credential, CredentialMetadata};
-use async_trait::async_trait;
+use equs_sdk::vc::oid4vp::{CredentialsFindResult, FindVCsFailReason};
+use equs_sdk::vc::{Credential, CredentialMetadata};
 use napi::Either;
 use napi::bindgen_prelude::Promise;
 use napi::threadsafe_function::{ErrorStrategy, ThreadsafeFunction};
@@ -145,7 +145,7 @@ impl From<VaultFetchOptions> for JsVaultPagination {
 ///
 /// An async `Vault` interface for managing Verifiable Credentials.
 ///
-/// Should be implemented by any adapter to be used with `ASDK`.
+/// Should be implemented by any adapter to be used with `Equs SDK`.
 ///
 /// Supports storing, retrieving and finding {@link Credential}
 ///
@@ -336,7 +336,7 @@ impl Vault for JsVault {
 pub mod test_utils {
     use super::{JsCredentialEntry, JsVault, JsVaultPagination};
     use crate::vc::core::{JsCredential, JsCredentialMetadata};
-    use agent_sdk::vault::Vault;
+    use equs_sdk::vault::Vault;
     use napi_derive::napi;
 
     #[napi]

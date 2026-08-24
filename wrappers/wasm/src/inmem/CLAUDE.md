@@ -9,7 +9,7 @@ Provides concrete in-memory implementations of the `Kms` and `Vault` interfaces 
 |------|------|
 | `mod.rs` | Module root; re-exports `kms` and `vault` submodules. |
 | `kms.rs` | `InMemKeyHandle(KeyHandle)` — wasm_bindgen struct wrapping the SDK's in-memory key handle opaque JS type; implements the JS `KeyHandle` interface for use within `InMemKms`. `InMemKms(LocalKms)` — wasm_bindgen struct wrapping `LocalKms`; created via `new()` constructor. A `test-utils` feature gate exports `KeyHandleTestHelper` and `KmsTestHelper` for use in TypeScript tests. |
-| `vault.rs` | `InMemVault` — wasm_bindgen struct wrapping `agent_sdk::inmem::vault::InMemVault`. Exposes `storeCredential`, `deleteCredential`, `getCredential`, `getCredentials`, and `findCredentials` as wasm-bound async methods. |
+| `vault.rs` | `InMemVault` — wasm_bindgen struct wrapping `equs_sdk::inmem::vault::InMemVault`. Exposes `storeCredential`, `deleteCredential`, `getCredential`, `getCredentials`, and `findCredentials` as wasm-bound async methods. |
 
 ## Key types / traits
 - `InMemKms` — Concrete `LocalKms`-backed KMS satisfying the WASM `Kms` JS interface.
@@ -17,7 +17,7 @@ Provides concrete in-memory implementations of the `Kms` and `Vault` interfaces 
 - `InMemVault` — In-memory credential store satisfying the WASM `Vault` JS interface.
 
 ## Dependencies
-- Depends on: `agent_sdk::inmem` (`LocalKms`, `InMemVault`), `crate::kms` (JS opaque `Kms`/`KeyHandle` types), `crate::vc` (for credential/metadata types)
+- Depends on: `equs_sdk::inmem` (`LocalKms`, `InMemVault`), `crate::kms` (JS opaque `Kms`/`KeyHandle` types), `crate::vc` (for credential/metadata types)
 - Used by: WASM browser demos, TypeScript test code, `crate::vc::oid4vci::builder`, `crate::vc::oid4vp::builder`
 
 ## Constraints

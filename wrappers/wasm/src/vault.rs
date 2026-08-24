@@ -1,7 +1,7 @@
 use crate::utils;
 use crate::vc::{Credential, CredentialMetadata, JsCredential, JsCredentialEntry, VaultPagination};
-use agent_sdk::vault::{DeletingSnafu, PaginationParsingSnafu, ResolvingSnafu, StoringSnafu};
 use async_trait::async_trait;
+use equs_sdk::vault::{DeletingSnafu, PaginationParsingSnafu, ResolvingSnafu, StoringSnafu};
 use wasm_bindgen::JsValue;
 use wasm_bindgen::prelude::wasm_bindgen;
 
@@ -46,7 +46,7 @@ impl JsVault {
 
     fn convert_from_js_credential_entry(
         credential_entry: JsValue,
-    ) -> agent_sdk::vault::Result<agent_sdk::vault::CredentialEntry> {
+    ) -> equs_sdk::vault::Result<equs_sdk::vault::CredentialEntry> {
         let js_credential_entry: JsCredentialEntry =
             serde_wasm_bindgen::from_value(credential_entry).map_err(|e| {
                 ResolvingSnafu {
@@ -65,12 +65,12 @@ impl JsVault {
 }
 
 #[async_trait(?Send)]
-impl agent_sdk::vault::Vault for JsVault {
+impl equs_sdk::vault::Vault for JsVault {
     async fn store_credential(
         &self,
-        credential: agent_sdk::vc::Credential,
-        metadata: &agent_sdk::vc::CredentialMetadata,
-    ) -> agent_sdk::vault::Result<String> {
+        credential: equs_sdk::vc::Credential,
+        metadata: &equs_sdk::vc::CredentialMetadata,
+    ) -> equs_sdk::vault::Result<String> {
         let credential = credential
             .try_into()
             .and_then(|credential: JsCredential| {
@@ -109,7 +109,7 @@ impl agent_sdk::vault::Vault for JsVault {
         })
     }
 
-    async fn delete_credential(&self, id: &str) -> agent_sdk::vault::Result<()> {
+    async fn delete_credential(&self, id: &str) -> equs_sdk::vault::Result<()> {
         self.0.delete_credential(id).await.map_err(|e| {
             DeletingSnafu {
                 details: utils::js_value_to_string(e),
@@ -121,7 +121,7 @@ impl agent_sdk::vault::Vault for JsVault {
     async fn get_credential(
         &self,
         id: &str,
-    ) -> agent_sdk::vault::Result<Option<agent_sdk::vault::CredentialEntry>> {
+    ) -> equs_sdk::vault::Result<Option<equs_sdk::vault::CredentialEntry>> {
         let credential_entry = self.0.get_credential(id).await.map_err(|e| {
             ResolvingSnafu {
                 details: utils::js_value_to_string(e),
@@ -138,8 +138,8 @@ impl agent_sdk::vault::Vault for JsVault {
 
     async fn get_credentials(
         &self,
-        pagination: Option<agent_sdk::vault::VaultFetchOptions>,
-    ) -> agent_sdk::vault::Result<Vec<agent_sdk::vault::CredentialEntry>> {
+        pagination: Option<equs_sdk::vault::VaultFetchOptions>,
+    ) -> equs_sdk::vault::Result<Vec<equs_sdk::vault::CredentialEntry>> {
         let pagination = if let Some(pagination) = pagination {
             let pagination: VaultPagination =
                 utils::convert_to_opaque_object(pagination).map_err(|_| {
@@ -169,8 +169,8 @@ impl agent_sdk::vault::Vault for JsVault {
     async fn find_credentials(
         &self,
         fields: Vec<String>,
-        pagination: Option<agent_sdk::vault::VaultFetchOptions>,
-    ) -> agent_sdk::vault::Result<Vec<agent_sdk::vault::CredentialEntry>> {
+        pagination: Option<equs_sdk::vault::VaultFetchOptions>,
+    ) -> equs_sdk::vault::Result<Vec<equs_sdk::vault::CredentialEntry>> {
         let pagination = if let Some(pagination) = pagination {
             let pagination: VaultPagination =
                 utils::convert_to_opaque_object(pagination).map_err(|_| {
@@ -210,7 +210,7 @@ pub mod test_utils {
         Credential, CredentialEntry, CredentialMetadata, JsCredential, JsCredentialEntry,
         VaultPagination,
     };
-    use agent_sdk::vault::{PaginationParsingSnafu, Vault};
+    use equs_sdk::vault::{PaginationParsingSnafu, Vault};
     use wasm_bindgen::prelude::wasm_bindgen;
 
     #[wasm_bindgen]
@@ -265,7 +265,7 @@ pub mod test_utils {
             pagination: Option<VaultPagination>,
         ) -> Vec<CredentialEntry> {
             let pagination = if let Some(pagination) = pagination {
-                let pagination: agent_sdk::vault::VaultFetchOptions =
+                let pagination: equs_sdk::vault::VaultFetchOptions =
                     utils::convert_to_rust_object(pagination)
                         .map_err(|_| {
                             PaginationParsingSnafu {
@@ -301,7 +301,7 @@ pub mod test_utils {
             pagination: Option<VaultPagination>,
         ) -> Vec<CredentialEntry> {
             let pagination = if let Some(pagination) = pagination {
-                let pagination: agent_sdk::vault::VaultFetchOptions =
+                let pagination: equs_sdk::vault::VaultFetchOptions =
                     utils::convert_to_rust_object(pagination)
                         .map_err(|_| {
                             PaginationParsingSnafu {

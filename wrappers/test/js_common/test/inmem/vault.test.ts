@@ -1,4 +1,4 @@
-import { Credential, CredentialEntry, InMemVault, VCFormat } from "agent-sdk";
+import { Credential, CredentialEntry, InMemVault, VCFormat } from "equs-sdk";
 import { VC_TYPE } from "../vc/oid4vp/fixtures";
 
 const SD_JWT_VC =

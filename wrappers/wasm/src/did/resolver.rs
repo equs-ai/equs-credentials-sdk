@@ -1,7 +1,7 @@
 use crate::did::{DIDResolution, ResolutionOptions};
 use crate::utils;
-use agent_sdk::did::{ResolutionError, ResolutionOutput, SpruceDID};
 use async_trait::async_trait;
+use equs_sdk::did::{ResolutionError, ResolutionOutput, SpruceDID};
 use wasm_bindgen::JsValue;
 use wasm_bindgen::prelude::wasm_bindgen;
 
@@ -31,11 +31,11 @@ impl JsDIDResolver {
 }
 
 #[async_trait(?Send)]
-impl agent_sdk::did::universal::DIDResolver for JsDIDResolver {
+impl equs_sdk::did::universal::DIDResolver for JsDIDResolver {
     async fn resolve_representation<'a>(
         &'a self,
         did: &'a SpruceDID,
-        options: agent_sdk::did::ResolutionOptions,
+        options: equs_sdk::did::ResolutionOptions,
     ) -> Result<ResolutionOutput, ResolutionError> {
         let options = utils::convert_to_opaque_object_unchecked(options).map_err(|e| {
             ResolutionError::Internal(format!("Could not convert ResolutionOptions: {:?}", e))

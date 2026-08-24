@@ -1,4 +1,4 @@
-//! SSI standards implementations.
+//! Protocol standards implementations.
 
 use crate::crypto::Alg;
 use crate::vc::claims::Claims;

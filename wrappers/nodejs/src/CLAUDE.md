@@ -1,7 +1,7 @@
 # nodejs/src — Context
 
 ## Purpose
-Root Rust source crate for the ASDK Node.js wrapper. Uses NAPI-RS (`#[napi]` macros) to compile to a native Node.js add-on (`.node` binary). Exposes the full ASDK surface — DID methods, VC issuance and presentation (OID4VCI/OID4VP), DIDComm V2 messaging, KMS, vault, HTTP client, and nonce handling — as TypeScript-typed native classes and functions.
+Root Rust source crate for the Equs SDK Node.js wrapper. Uses NAPI-RS (`#[napi]` macros) to compile to a native Node.js add-on (`.node` binary). Exposes the full Equs SDK surface — DID methods, VC issuance and presentation (OID4VCI/OID4VP), DIDComm V2 messaging, KMS, vault, HTTP client, and nonce handling — as TypeScript-typed native classes and functions.
 
 ## Files / Sub-areas
 
@@ -29,10 +29,10 @@ Root Rust source crate for the ASDK Node.js wrapper. Uses NAPI-RS (`#[napi]` mac
 - `EncodableError` — Structured error serialized as JSON string for all NAPI error payloads.
 
 ## Dependencies
-- Depends on: `agent_sdk` (all modules), `napi`/`napi-derive`, `async-trait`, `serde_json`, `tracing`/`tracing-subscriber`
+- Depends on: `equs_sdk` (all modules), `napi`/`napi-derive`, `async-trait`, `serde_json`, `tracing`/`tracing-subscriber`
 - Used by: Node.js consumers via the compiled `.node` add-on; `demos/nodejs/`
 
 ## Constraints
-- The `inmem` module is gated behind `#[cfg(any(test, feature = "in-memory"))]` in the ASDK core but is always compiled in the Node.js wrapper.
+- The `inmem` module is gated behind `#[cfg(any(test, feature = "in-memory"))]` in the Equs SDK core but is always compiled in the Node.js wrapper.
 - DIDComm is non-wasm only; this wrapper is native and has no wasm constraints.
 - ThreadsafeFunction callbacks require the event loop to remain alive; callers must ensure the Node.js runtime is not shut down while async operations are in flight.

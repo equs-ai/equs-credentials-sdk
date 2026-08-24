@@ -1,9 +1,9 @@
 use crate::common::Result;
 use crate::kms::{Kms, WrappedKms};
 use crate::vc::core::types::{StatusIssuerMetadata, VCStatusesData};
-use agent_sdk::vc::StatusList;
-use agent_sdk::vc::core::StatusIssuer;
-use agent_sdk::vc::core::status_issuer::StatusIssuerService;
+use equs_sdk::vc::StatusList;
+use equs_sdk::vc::core::StatusIssuer;
+use equs_sdk::vc::core::status_issuer::StatusIssuerService;
 use std::sync::Arc;
 
 #[derive(uniffi::Object)]

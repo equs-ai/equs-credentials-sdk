@@ -1,7 +1,7 @@
 # core — Context
 
 ## Purpose
-Defines the abstract SSI actor traits (`Issuer`, `Holder`, `Verifier`, `StatusIssuer`) and their concrete generic service implementations, the prepare/sign split sub-traits (`PrepareCredential`, `SignCredential`) and their shared `UnsignedCredential` wire type, along with all shared metadata and error types.
+Defines the abstract protocol actor traits (`Issuer`, `Holder`, `Verifier`, `StatusIssuer`) and their concrete generic service implementations, the prepare/sign split sub-traits (`PrepareCredential`, `SignCredential`) and their shared `UnsignedCredential` wire type, along with all shared metadata and error types.
 
 ## Files
 

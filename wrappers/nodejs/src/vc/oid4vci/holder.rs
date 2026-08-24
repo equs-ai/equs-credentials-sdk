@@ -3,14 +3,14 @@ use crate::utils::{from_json_object, to_json_object};
 use crate::vc::JsonObject;
 use crate::vc::core::{JsCredential, JsCredentialMetadata, JsKeyMetadata};
 use crate::vc::oid4vci::JsNotification;
-use agent_sdk::vc::core::KeyMetadata;
-use agent_sdk::vc::oid4vci::{
+use async_trait::async_trait;
+use equs_sdk::vc::core::KeyMetadata;
+use equs_sdk::vc::oid4vci::{
     AccessToken, AuthzFlow, CredentialExtraVerification, CredentialOfferParams,
     CredentialResponseResolved, CredentialResult, Holder, IssuerMetadata, Notification,
     TokenResponse,
 };
-use agent_sdk::vc::{Credential, CredentialMetadata, oid4vci};
-use async_trait::async_trait;
+use equs_sdk::vc::{Credential, CredentialMetadata, oid4vci};
 use napi::Either;
 use napi::bindgen_prelude::Promise;
 use napi::threadsafe_function::{ErrorStrategy, ThreadsafeFunction};

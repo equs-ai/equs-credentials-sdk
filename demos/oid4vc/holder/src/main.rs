@@ -1,34 +1,34 @@
 mod user_input;
 
-use agent_sdk::did::didkey::DIDKey;
-use agent_sdk::did::universal::UniversalResolver;
-use agent_sdk::did::{DIDBuf, DIDResolver};
-use agent_sdk::inmem::kms::LocalKms;
-use agent_sdk::inmem::nonce::LocalNonceHandler;
-use agent_sdk::inmem::vault::InMemVault;
-use agent_sdk::kms;
-use agent_sdk::kms::Kms;
-use agent_sdk::reqwest::builder::ReqwestClientBuilder;
-use agent_sdk::vc::HasClaims;
-use agent_sdk::vc::core::{KeyMetadata, ProofOfPossessionMetadata, ProofOfPossessionNotBefore};
-use agent_sdk::vc::dcql::{DCQL, DCQLCredential, NonEmptyVec};
-use agent_sdk::vc::metadata::{CredentialMetadataProcessor, DefaultMetadataProcessor};
-use agent_sdk::vc::oid4vci::{
+use equs_sdk::did::didkey::DIDKey;
+use equs_sdk::did::universal::UniversalResolver;
+use equs_sdk::did::{DIDBuf, DIDResolver};
+use equs_sdk::inmem::kms::LocalKms;
+use equs_sdk::inmem::nonce::LocalNonceHandler;
+use equs_sdk::inmem::vault::InMemVault;
+use equs_sdk::kms;
+use equs_sdk::kms::Kms;
+use equs_sdk::reqwest::builder::ReqwestClientBuilder;
+use equs_sdk::vc::HasClaims;
+use equs_sdk::vc::core::{KeyMetadata, ProofOfPossessionMetadata, ProofOfPossessionNotBefore};
+use equs_sdk::vc::dcql::{DCQL, DCQLCredential, NonEmptyVec};
+use equs_sdk::vc::metadata::{CredentialMetadataProcessor, DefaultMetadataProcessor};
+use equs_sdk::vc::oid4vci::{
     AuthzFlow, CredentialExtraVerification, CredentialOfferParams, CredentialResponseResolved,
     CredentialResult, IssuerDiscovery, TokenResponse,
 };
-use agent_sdk::vc::oid4vci::{CredentialOfferResolver, Holder as HolderVci};
-use agent_sdk::vc::oid4vp::{
+use equs_sdk::vc::oid4vci::{CredentialOfferResolver, Holder as HolderVci};
+use equs_sdk::vc::oid4vp::{
     AuthResponseOptions, AuthorizationRequestMetadata, AuthorizationResponse,
     AuthorizationResponseMetadata, AuthorizationResponseObject, ClientId,
     CredentialVerificationMetadata, CredentialsFindResult, CredentialsMapping,
     PassAuthRequestObject, PresentationResult, ResolvedAuthRequest, ResolvedPresentationQuery,
     ResponseMode, ResponseType,
 };
-use agent_sdk::vc::oid4vp::{CredentialMapping, Holder as HolderVp};
-use agent_sdk::vc::oid4vp::{IdTokenMetadata, Verifier};
-use agent_sdk::vc::presentation_exchange::{PresentationDefinition, PresentationSubmission};
-use agent_sdk::vc::{Credential, oid4vci, oid4vp};
+use equs_sdk::vc::oid4vp::{CredentialMapping, Holder as HolderVp};
+use equs_sdk::vc::oid4vp::{IdTokenMetadata, Verifier};
+use equs_sdk::vc::presentation_exchange::{PresentationDefinition, PresentationSubmission};
+use equs_sdk::vc::{Credential, oid4vci, oid4vp};
 use oauth2::{AccessToken, TokenResponse as _TokenResponse};
 use reqwest::Url;
 use serde_json::json;

@@ -1,7 +1,7 @@
 use crate::http::ReqwestHttpClient;
 use crate::utils::convert_to_opaque_object_unchecked;
 use crate::vc::oid4vci::OID4VCICredentialOffer;
-use agent_sdk::vc::oid4vci::CredentialOfferResolver;
+use equs_sdk::vc::oid4vci::CredentialOfferResolver;
 use url::Url;
 use wasm_bindgen::JsError;
 use wasm_bindgen::prelude::wasm_bindgen;
@@ -11,7 +11,7 @@ use wasm_bindgen::prelude::wasm_bindgen;
 /// Resolves `OID4VCICredentialOffer` instances from a given Credential Offer URI.
 #[wasm_bindgen]
 pub struct OID4VCICredentialOfferResolver(
-    CredentialOfferResolver<agent_sdk::reqwest::ReqwestClient>,
+    CredentialOfferResolver<equs_sdk::reqwest::ReqwestClient>,
 );
 
 #[wasm_bindgen]

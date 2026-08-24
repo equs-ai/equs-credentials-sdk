@@ -17,7 +17,7 @@ configurations, sample claims, access tokens, and reusable OID4VP test-case buil
 - `MockNonceHandler` — always returns a fixed nonce and validates any nonce as true.
 
 ## Dependencies
-- Depends on: `agent_sdk` (vault, vc, did, nonce, crypto), `serde_json`, `url`, `time`, `openid4vp`, `ssi`
+- Depends on: `equs_sdk` (vault, vc, did, nonce, crypto), `serde_json`, `url`, `time`, `openid4vp`, `ssi`
 - Used by: `tests/e2e/vc_oid4vci.rs`, `tests/e2e/vc_oid4vp.rs`, `tests/e2e/waci_aries.rs`, `tests/e2e/custom_did_resolvers.rs`
 
 ## Constraints

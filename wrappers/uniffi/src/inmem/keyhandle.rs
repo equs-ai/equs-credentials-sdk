@@ -1,17 +1,17 @@
 use crate::common::{Error, Result};
 use crate::key_handle::KeyHandle;
 use crate::vc::Alg;
-use agent_sdk::crypto::{Key, Signer, Verifier};
-use agent_sdk::inmem::kms::KeyHandle as ASDKInMemKeyHandle;
 use async_trait::async_trait;
+use equs_sdk::crypto::{Key, Signer, Verifier};
+use equs_sdk::inmem::kms::KeyHandle as EqusSdkInMemKeyHandle;
 
 #[derive(Clone)]
 pub struct InMemKeyHandle {
-    inner: ASDKInMemKeyHandle,
+    inner: EqusSdkInMemKeyHandle,
 }
 
 impl InMemKeyHandle {
-    pub fn new(kh: ASDKInMemKeyHandle) -> Self {
+    pub fn new(kh: EqusSdkInMemKeyHandle) -> Self {
         Self { inner: kh }
     }
     pub fn inner(&self) -> &dyn Key {

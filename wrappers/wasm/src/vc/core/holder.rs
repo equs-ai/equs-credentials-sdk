@@ -11,7 +11,7 @@ use crate::vc::{
     Credential, CredentialEntry, CredentialOffer, JsCredential, JsCredentialEntry,
     JsCredentialsFindResult,
 };
-use agent_sdk::vc::core::{Holder, HolderMetadata, HolderService as CoreHolderService};
+use equs_sdk::vc::core::{Holder, HolderMetadata, HolderService as CoreHolderService};
 use std::sync::Arc;
 use wasm_bindgen::JsError;
 use wasm_bindgen::prelude::wasm_bindgen;
@@ -21,7 +21,7 @@ use wasm_bindgen::prelude::wasm_bindgen;
 use crate::vc::CredentialMetadata as JsCredentialMetadata;
 
 // Alias the extern KeyMetadata (from crypto.rs) — the SDK KeyMetadata is referenced via
-// the full path `agent_sdk::vc::core::KeyMetadata` inside the function bodies.
+// the full path `equs_sdk::vc::core::KeyMetadata` inside the function bodies.
 use crate::crypto::KeyMetadata as JsKeyMetadata;
 
 /// A low-level protocol-agnostic `Holder` API.
@@ -73,16 +73,16 @@ impl VcCoreHolder {
         key_metadata: JsKeyMetadata,
     ) -> Result<super::CredentialRequest, JsError> {
         let wasm_offer: WasmCredentialOffer = utils::convert_to_rust_object(credential_offer)?;
-        let asdk_offer = wasm_offer.try_into()?;
-        let asdk_key_metadata: agent_sdk::vc::core::KeyMetadata =
+        let equs_sdk_offer = wasm_offer.try_into()?;
+        let equs_sdk_key_metadata: equs_sdk::vc::core::KeyMetadata =
             utils::convert_to_rust_object(key_metadata)?;
 
         let request = self
             .0
             .request_credential(
-                &asdk_offer,
-                nonce.map(agent_sdk::nonce::Nonce::from_secret),
-                &asdk_key_metadata,
+                &equs_sdk_offer,
+                nonce.map(equs_sdk::nonce::Nonce::from_secret),
+                &equs_sdk_key_metadata,
             )
             .await
             .map_err(|e| JsError::new(&e.to_string()))?;
@@ -103,12 +103,12 @@ impl VcCoreHolder {
         metadata: JsCredentialMetadata,
     ) -> Result<String, JsError> {
         let js_credential: JsCredential = utils::convert_to_rust_object(credential)?;
-        let aasdk_credential = js_credential.try_into()?;
-        let asdk_metadata: agent_sdk::vc::CredentialMetadata =
+        let equs_sdk_credential = js_credential.try_into()?;
+        let equs_sdk_metadata: equs_sdk::vc::CredentialMetadata =
             utils::convert_to_rust_object(metadata)?;
 
         self.0
-            .store_credential(&aasdk_credential, &asdk_metadata)
+            .store_credential(&equs_sdk_credential, &equs_sdk_metadata)
             .await
             .map_err(|e| JsError::new(&e.to_string()))
     }
@@ -120,10 +120,10 @@ impl VcCoreHolder {
     #[wasm_bindgen(js_name = verifyCredential)]
     pub async fn verify_credential(&self, credential: Credential) -> Result<(), JsError> {
         let js_credential: JsCredential = utils::convert_to_rust_object(credential)?;
-        let aasdk_credential = js_credential.try_into()?;
+        let equs_sdk_credential = js_credential.try_into()?;
 
         self.0
-            .verify_credential(&aasdk_credential)
+            .verify_credential(&equs_sdk_credential)
             .await
             .map_err(|e| JsError::new(&e.to_string()))
     }
@@ -139,15 +139,15 @@ impl VcCoreHolder {
         holder_binder: Option<HolderBinder>,
         presentation_input: PresentationInput,
     ) -> Result<Presentation, JsError> {
-        let asdk_holder_binder = super::decode_holder_binder(holder_binder)?;
+        let equs_sdk_holder_binder = super::decode_holder_binder(holder_binder)?;
 
         let wasm_input: crate::vc::core::types::WasmPresentationInput =
             utils::convert_to_rust_object(presentation_input)?;
-        let asdk_input = wasm_input.try_into()?;
+        let equs_sdk_input = wasm_input.try_into()?;
 
         let presentation = self
             .0
-            .create_presentation_auto(asdk_holder_binder, &asdk_input)
+            .create_presentation_auto(equs_sdk_holder_binder, &equs_sdk_input)
             .await
             .map_err(|e| JsError::new(&e.to_string()))?;
 
@@ -166,11 +166,11 @@ impl VcCoreHolder {
     ) -> Result<JsCredentialsFindResult, JsError> {
         let wasm_input: crate::vc::core::types::WasmPresentationInput =
             utils::convert_to_rust_object(presentation_input)?;
-        let asdk_input = wasm_input.try_into()?;
+        let equs_sdk_input = wasm_input.try_into()?;
 
         let result = self
             .0
-            .find_vcs_for_presentation(&asdk_input)
+            .find_vcs_for_presentation(&equs_sdk_input)
             .await
             .map_err(|e| JsError::new(&e.to_string()))?;
 
@@ -191,18 +191,18 @@ impl VcCoreHolder {
         presentation_input: PresentationInput,
         credential: CredentialEntry,
     ) -> Result<Presentation, JsError> {
-        let asdk_holder_binder = super::decode_holder_binder(holder_binder)?;
+        let equs_sdk_holder_binder = super::decode_holder_binder(holder_binder)?;
 
         let wasm_input: crate::vc::core::types::WasmPresentationInput =
             utils::convert_to_rust_object(presentation_input)?;
-        let asdk_input = wasm_input.try_into()?;
+        let equs_sdk_input = wasm_input.try_into()?;
 
         let js_entry: JsCredentialEntry = utils::convert_to_rust_object(credential)?;
-        let asdk_entry: agent_sdk::vault::CredentialEntry = js_entry.try_into()?;
+        let equs_sdk_entry: equs_sdk::vault::CredentialEntry = js_entry.try_into()?;
 
         let presentation = self
             .0
-            .create_presentation(asdk_holder_binder, &asdk_input, &asdk_entry)
+            .create_presentation(equs_sdk_holder_binder, &equs_sdk_input, &equs_sdk_entry)
             .await
             .map_err(|e| JsError::new(&e.to_string()))?;
 
@@ -220,11 +220,11 @@ impl VcCoreHolder {
         credential: Credential,
     ) -> Result<Option<VCStatus>, JsError> {
         let js_credential: JsCredential = utils::convert_to_rust_object(credential)?;
-        let aasdk_credential = js_credential.try_into()?;
+        let equs_sdk_credential = js_credential.try_into()?;
 
         let status = self
             .0
-            .get_credential_status(&aasdk_credential)
+            .get_credential_status(&equs_sdk_credential)
             .await
             .map_err(|e| JsError::new(&e.to_string()))?;
 

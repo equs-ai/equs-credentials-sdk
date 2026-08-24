@@ -1,4 +1,4 @@
-import { DIDKey, InMemKms, KeyMetadata, KeyType, UniversalDIDResolver } from "@equstng/agent-sdk";
+import { DIDKey, InMemKms, KeyMetadata, KeyType, UniversalDIDResolver } from "@equs/equs-sdk";
 
 export type DidAndKeyMetadata = {
   did: string;

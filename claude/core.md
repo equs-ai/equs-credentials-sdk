@@ -27,7 +27,7 @@ Defines every abstract interface the SDK is built on: cryptographic signing and 
 - `Nonce` and credential types that hold sensitive data implement `ZeroizeOnDrop`.
 - `HttpClient` is `#[automock]`-annotated for test mocking via `mockall`.
 - `one-core-asdk` (all targets) re-exports crypto, key algorithm, and JWE utilities; used on all platforms including wasm.
-- `one-core` (non-wasm only) is the full platform library powering DID method implementations (`did:webvh`, `did:ethr`); its `HttpClient` trait (`get/post/send`) is incompatible with ASDK's (`async_call`) — bridging requires an adapter struct (see `src/did/webvh/client.rs`).
+- `one-core` (non-wasm only) is the full platform library powering DID method implementations (`did:webvh`, `did:ethr`); its `HttpClient` trait (`get/post/send`) is incompatible with Equs SDK's (`async_call`) — bridging requires an adapter struct (see `src/did/webvh/client.rs`).
 
 ## Error handling
 

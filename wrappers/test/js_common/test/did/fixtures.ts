@@ -1,4 +1,4 @@
-import { DIDResolution } from "agent-sdk";
+import { DIDResolution } from "equs-sdk";
 
 export class Fixtures {
   readonly didResolution = {

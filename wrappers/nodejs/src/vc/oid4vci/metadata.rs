@@ -2,9 +2,9 @@ use crate::error::IntoNapiError;
 use crate::http::ReqwestHttpClient;
 use crate::utils::to_json_object;
 use crate::vc::JsonObject;
-use agent_sdk::reqwest::ReqwestClient;
-use agent_sdk::vc::oid4vci::{
-    AuthorizationMetadata, IssuerMetadata, MetadataDiscovery as AsdkMetadataDiscovery,
+use equs_sdk::reqwest::ReqwestClient;
+use equs_sdk::vc::oid4vci::{
+    AuthorizationMetadata, IssuerMetadata, MetadataDiscovery as EqusSdkMetadataDiscovery,
 };
 use napi_derive::napi;
 
@@ -28,7 +28,7 @@ impl MetadataDiscovery {
         issuer_url: String,
     ) -> Result<JsonObject, napi::Error> {
         let metadata: IssuerMetadata =
-            AsdkMetadataDiscovery::discover_metadata(&self.http_client, &issuer_url)
+            EqusSdkMetadataDiscovery::discover_metadata(&self.http_client, &issuer_url)
                 .await
                 .map_err(IntoNapiError::into_napi_error)?;
 
@@ -41,7 +41,7 @@ impl MetadataDiscovery {
         auth_server_url: String,
     ) -> Result<JsonObject, napi::Error> {
         let metadata: AuthorizationMetadata =
-            AsdkMetadataDiscovery::discover_metadata(&self.http_client, &auth_server_url)
+            EqusSdkMetadataDiscovery::discover_metadata(&self.http_client, &auth_server_url)
                 .await
                 .map_err(IntoNapiError::into_napi_error)?;
 

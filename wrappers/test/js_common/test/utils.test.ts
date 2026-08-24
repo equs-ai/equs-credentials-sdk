@@ -1,4 +1,4 @@
-import { Credential, parseClaims, VCFormat } from "agent-sdk";
+import { Credential, parseClaims, VCFormat } from "equs-sdk";
 import { Fixtures } from "./fixtures";
 
 describe("Utils: ", () => {
