@@ -19,6 +19,7 @@ name = "equs-sdk"
 version = "1.12.0"
 edition = "2024"
 rust-version = "1.97.0"
+license = "Apache-2.0"
 
 [dependencies]
 common-macros = { path = "./common-macros" }
