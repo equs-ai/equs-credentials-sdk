@@ -421,10 +421,13 @@ describe("OID4VP Verifier: ", () => {
 
     const verified = await verifier.verifyAndExtractPresentation(auth_response, session, verificationMetadata);
 
-    // Verified claims layer the delegate payload (`scope`) over the issuer claims (`iss`).
+    // A grant's verified claims keep the halves apart: `issued_vc` plus
+    // `delegations` (one array of disclosed alternatives per hop).
     const cred = (verified.claims.vp_token as Record<string, Array<Record<string, unknown>>>)[DSD_JWT_GRANT_CRED_ID][0];
-    expect(cred.scope).toEqual("limited");
-    expect(cred.iss).toBeDefined();
+    expect((cred.issued_vc as Record<string, unknown>).iss).toBeDefined();
+    const delegations = cred.delegations as Array<Array<Record<string, unknown>>>;
+    const lastHop = delegations[delegations.length - 1];
+    expect(lastHop.map((alternative) => alternative.scope)).toContain("limited");
 
     // The raw dSD-JWT grant is returned so the Delegate Holder can store it.
     const presentations = verified.presentations[DSD_JWT_GRANT_CRED_ID];

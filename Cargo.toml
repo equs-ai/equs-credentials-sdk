@@ -26,7 +26,7 @@ common-macros = { path = "./common-macros" }
 # Internally maintained forked dependencies
 oid4vci = { git = "https://github.com/equsai/oid4vci-rs.git", rev = "f5c38f92" }
 openid4vp = { git = "https://github.com/equsai/openid4vp.git", rev = "2db3c3d2" }
-sd-jwt-rs = { git = "https://github.com/equsai/sd-jwt-rust.git", rev = "ecfc9ac" }
+sd-jwt-rs = { git = "https://github.com/equsai/sd-jwt-rust.git", rev = "2b99530" }
 didcomm = { git = "https://github.com/equsai/didcomm-rust.git", rev = "db41780d" }
 did_peer = { git = "https://github.com/equsai/vcx.git", rev = "fc818ef5" }
 did_resolver = { git = "https://github.com/equsai/vcx.git", rev = "fc818ef5" }

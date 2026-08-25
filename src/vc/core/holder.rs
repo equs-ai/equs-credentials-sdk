@@ -1354,7 +1354,7 @@ mod tests {
         use super::*;
         use crate::did::universal::UniversalResolver;
         use crate::vc::formats::DelegationParams;
-        use crate::vc::formats::dsd_jwt::DsdJwtAPI;
+        use crate::vc::formats::dsd_jwt::{DsdJwtAPI, DsdJwtPurpose};
         use sd_jwt_rs::ChainBindingMode;
 
         /// Same as `holder_service` but uses a mock HTTP client instead of a real reqwest one.
@@ -1409,9 +1409,13 @@ mod tests {
                 "dSD-JWT grant must end with '~', got: {result}"
             );
 
-            let view = DsdJwtAPI::verify_dsd_jwt(&result, UniversalResolver::default())
-                .await
-                .expect("verify_dsd_jwt must succeed on the produced grant");
+            let view = DsdJwtAPI::verify_dsd_jwt(
+                &result,
+                UniversalResolver::default(),
+                DsdJwtPurpose::Presentation(None),
+            )
+            .await
+            .expect("verify_dsd_jwt must succeed on the produced grant");
 
             assert_eq!(
                 view.delegate_payloads.len(),

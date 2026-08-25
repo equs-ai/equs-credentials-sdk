@@ -6,6 +6,7 @@ import {
   CredentialOffer,
   CredentialRequest,
   CredentialsFindResult,
+  DelegationParams,
   HolderBinder,
   HolderMetadata,
   KeyMetadata,
@@ -75,5 +76,9 @@ export class VcCoreHolder {
 
   async getCredentialStatus(credential: Credential): Promise<VCStatus | null> {
     return this.inner.getCredentialStatus(credential);
+  }
+
+  async createDelegatedCredential(credentialEntry: CredentialEntry, params: DelegationParams): Promise<string> {
+    return this.inner.createDelegatedCredential(credentialEntry, params);
   }
 }

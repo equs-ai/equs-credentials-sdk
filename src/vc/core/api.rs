@@ -714,6 +714,34 @@ pub trait Verifier: WasmNotSend + WasmNotSync {
         http_client: &dyn HttpClient,
     ) -> Result<Claims>;
 
+    /// Verify a dSD-JWT delegation grant received in response to a `delegate`
+    /// transaction-data request.
+    ///
+    /// # Arguments
+    ///
+    /// * `holder_binder` - if given: the nonce and verifier_id the grant must be bound to.
+    /// * `presentation` - the presented dSD-JWT grant.
+    ///
+    /// # Returns
+    ///
+    /// Verified `Claims`: `issued_vc` (issuer-signed claims) and `delegations`
+    /// (per-hop Delegate Payloads).
+    ///
+    /// # Errors
+    ///
+    /// * [Error::FormatNotSupported] - the presentation is not an SD-JWT-family
+    ///   one, or the implementation does not support delegation grants.
+    /// * [Error::VC] - internal error [VCFormatError](vc::VCFormatError).
+    #[cfg(feature = "delegate-sd-jwt")]
+    async fn verify_delegation(
+        &self,
+        holder_binder: Option<HolderBinder>,
+        presentation: &Presentation,
+        http_client: &dyn HttpClient,
+    ) -> Result<Claims> {
+        unimplemented!();
+    }
+
     /// Obtains the status for presented VC.
     ///
     /// # Arguments

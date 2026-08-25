@@ -30,6 +30,7 @@ import fs from "fs/promises";
       "TransactionDataItem",
       "VerifierInfoEntry",
       "DelegationRequest",
+      "DelegationParams",
       "AuthorizationResponse",
       "PresentationResult",
       "UnsignedCredential",

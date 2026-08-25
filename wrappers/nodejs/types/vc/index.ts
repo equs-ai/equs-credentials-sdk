@@ -1,3 +1,4 @@
+export * from "./core/delegation-params";
 export * from "./core/holder";
 export * from "./core/issuer";
 export * from "./core/presentation-restriction-value";

@@ -2455,7 +2455,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ccc2776f0c61eca1ca32528f85548abd1a4be8fb53d1b21c013e4f18da1e7090"
 dependencies = [
  "data-encoding",
- "syn 2.0.117",
+ "syn 1.0.109",
 ]
 
 [[package]]
@@ -6021,7 +6021,7 @@ version = "5.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "51e219e79014df21a225b1860a479e2dcd7cbd9130f4defd4bd0e191ea31d67d"
 dependencies = [
- "base64 0.21.7",
+ "base64 0.22.1",
  "chrono",
  "getrandom 0.2.17",
  "http 1.3.1",
@@ -8133,7 +8133,7 @@ dependencies = [
 [[package]]
 name = "sd-jwt-rs"
 version = "0.8.0"
-source = "git+https://github.com/equsai/sd-jwt-rust.git?rev=ecfc9ac#ecfc9ac3e285c1457baabdfc2a4c7eb0c97f69a0"
+source = "git+https://github.com/equsai/sd-jwt-rust.git?rev=2b99530#2b9953066f8685ac21b0f90bce8ae3ce61cc5531"
 dependencies = [
  "async-trait",
  "base64 0.21.7",

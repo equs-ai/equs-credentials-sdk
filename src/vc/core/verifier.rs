@@ -1,6 +1,8 @@
 use crate::did::universal::UniversalResolver;
 use crate::http::HttpClient;
 use crate::vc::claims::Claims;
+#[cfg(feature = "delegate-sd-jwt")]
+use crate::vc::claims::{DELEGATIONS_CLAIM, ISSUED_VC_CLAIM};
 use crate::vc::core::Result;
 use crate::vc::core::api::{
     CredentialExpiredSnafu, ExpirationCheckSnafu, ParseSnafu, VCNotValidSnafu,
@@ -9,6 +11,8 @@ use crate::vc::core::{
     ClaimsSnafu, CredentialStatusNotSupportedSnafu, FormatNotSupportedSnafu, HolderBinder, VCSnafu,
     VCStatusSnafu, Verifier,
 };
+#[cfg(feature = "delegate-sd-jwt")]
+use crate::vc::formats::dsd_jwt::{DsdJwtAPI, DsdJwtPurpose};
 use crate::vc::formats::json_ld_vc::JsonLdAPI;
 use crate::vc::formats::sd_jwt_vc::SdJwtAPI;
 use crate::vc::formats::{API, HasCredential, IsExpired, VerifyOptions};
@@ -17,6 +21,8 @@ use crate::vc::status_formats::{API as VCStatusFormatsAPI, status_list_token_jwt
 use crate::vc::{HasClaims, Presentation};
 use crate::vc::{HasVPFormat, VCStatus};
 use async_trait::async_trait;
+#[cfg(feature = "delegate-sd-jwt")]
+use serde_json::Value;
 use snafu::ResultExt;
 use std::collections::HashSet;
 use std::convert::TryFrom;
@@ -59,28 +65,8 @@ impl Verifier for VerifierService {
                 .await
                 .context(VCSnafu)?;
 
-                if SdJwtAPI::is_expired(&claims).context(ExpirationCheckSnafu)? {
-                    CredentialExpiredSnafu.fail()?
-                };
-
-                let vc_status = self
-                    .obtain_credential_status(presentation, http_client)
+                self.check_expiry_and_status(&claims, presentation, http_client)
                     .await?;
-
-                match vc_status {
-                    None => {
-                        info!("Verifiable Credential does not contain the status information");
-                    }
-
-                    Some(VCStatus::StatusListToken(status_list_token_jwt::VCStatus::Valid)) => {
-                        info!("The status of the verifiable credential is valid.");
-                    }
-
-                    Some(VCStatus::StatusListToken(status)) => VCNotValidSnafu {
-                        details: format!("The status of the verifiable credential is '{status}'"),
-                    }
-                    .fail()?,
-                }
 
                 claims
             }
@@ -130,6 +116,46 @@ impl Verifier for VerifierService {
         Ok(cred_claims)
     }
 
+    #[cfg(feature = "delegate-sd-jwt")]
+    #[instrument(level = Level::TRACE, skip(self, http_client), err(), ret())]
+    async fn verify_delegation(
+        &self,
+        holder_binder: Option<HolderBinder>,
+        presentation: &Presentation,
+        http_client: &dyn HttpClient,
+    ) -> Result<Claims> {
+        let Presentation::SdJwtVp(vp) = presentation else {
+            return FormatNotSupportedSnafu {
+                format: presentation.format().to_string(),
+            }
+            .fail();
+        };
+
+        let view = DsdJwtAPI::verify_dsd_jwt(
+            vp,
+            self.did_resolver.clone(),
+            DsdJwtPurpose::Delegation(holder_binder),
+        )
+        .await
+        .context(VCSnafu)?;
+
+        let issued_vc = Claims::try_from(view.verified_claims).context(ClaimsSnafu)?;
+        self.check_expiry_and_status(&issued_vc, presentation, http_client)
+            .await?;
+
+        let delegations = Value::Array(
+            view.delegate_payloads
+                .into_iter()
+                .map(|hop| Value::Array(hop.into_iter().map(Value::Object).collect()))
+                .collect(),
+        );
+        let mut claims = Claims::new();
+        claims.insert(ISSUED_VC_CLAIM.to_string(), issued_vc.into());
+        claims.insert(DELEGATIONS_CLAIM.to_string(), delegations.into());
+
+        Ok(claims)
+    }
+
     #[instrument(level = Level::TRACE, skip(self, http_client), err(), ret())]
     async fn obtain_credential_status(
         &self,
@@ -157,6 +183,38 @@ impl VerifierService {
     pub fn with_verification_params(mut self, opts: VerificationParams) -> Self {
         self.verification_params = opts;
         self
+    }
+
+    #[instrument(level = Level::TRACE, skip(self, http_client), err())]
+    async fn check_expiry_and_status(
+        &self,
+        claims: &Claims,
+        presentation: &Presentation,
+        http_client: &dyn HttpClient,
+    ) -> Result<()> {
+        if SdJwtAPI::is_expired(claims).context(ExpirationCheckSnafu)? {
+            CredentialExpiredSnafu.fail()?
+        };
+
+        match self
+            .obtain_credential_status(presentation, http_client)
+            .await?
+        {
+            None => {
+                info!("Verifiable Credential does not contain the status information");
+            }
+
+            Some(VCStatus::StatusListToken(status_list_token_jwt::VCStatus::Valid)) => {
+                info!("The status of the verifiable credential is valid.");
+            }
+
+            Some(VCStatus::StatusListToken(status)) => VCNotValidSnafu {
+                details: format!("The status of the verifiable credential is '{status}'"),
+            }
+            .fail()?,
+        }
+
+        Ok(())
     }
 
     #[instrument(level = Level::TRACE, skip(self, http_client), err(), ret())]

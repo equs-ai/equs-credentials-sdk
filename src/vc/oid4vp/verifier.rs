@@ -21,10 +21,15 @@ use crate::kms::{KeyHandle, Kms};
 use crate::nonce::{Nonce, NonceHandler};
 use crate::utils::wasm::{WasmNotSend, WasmNotSync};
 use crate::vc;
-use crate::vc::claims::{Claim, Claims};
+use crate::vc::RequestedPresentation;
+use crate::vc::claims::{Claim, Claims, DELEGATIONS_CLAIM, ISSUED_VC_CLAIM};
 use crate::vc::core::{HolderBinder, KeyMetadata};
 use crate::vc::dcql::validate_credentials;
 use crate::vc::oid4vp::Error::{Internal, Protocol};
+#[cfg(feature = "delegate-sd-jwt")]
+use crate::vc::oid4vp::api::as_delegate;
+#[cfg(feature = "delegate-sd-jwt")]
+use crate::vc::oid4vp::delegate::decode_delegate_payload_disclosure;
 use crate::vc::oid4vp::internal_error::{
     AuthorizationResponseDecryptionSnafu, ClaimsSnafu, ClientSnafu, DCQLSnafu,
     DidUrlResolutionSnafu, FormatNotSupportedSnafu, IdTokenValidationSnafu, JsonSnafu, KMSSnafu,
@@ -49,6 +54,8 @@ use crate::vc::presentation_exchange::{
 };
 use crate::vc::{dcql, oid4vp as api};
 use one_core_portable::one_crypto::jwe::extract_jwe_header;
+#[cfg(feature = "delegate-sd-jwt")]
+use openid4vp::core::authorization_request::parameters::DelegateSdJwtTransactionData;
 use openid4vp::core::authorization_request::{AuthorizationRequestObject, RequestReference};
 use openid4vp::core::object::UntypedObject;
 use openid4vp::core::response::parameters::{IdTokenBody as IdToken, TransactionDataHashesAlg};
@@ -244,6 +251,7 @@ where
                 &session.nonce,
                 &authorization_response,
                 verification_opts,
+                verification_metadata.transaction_data.as_ref(),
             )
             .await?;
 
@@ -508,6 +516,146 @@ where
 
         Ok(())
     }
+
+    #[cfg(feature = "delegate-sd-jwt")]
+    async fn verify_presentation_or_delegation(
+        &self,
+        requested_presentation: &RequestedPresentation,
+        holder_binder: Option<HolderBinder>,
+        transaction_data: Option<&Vec<TransactionDataItem>>,
+        state: &Option<String>,
+    ) -> Result<Claims> {
+        let delegate_items = Self::delegate_items_for(transaction_data, &requested_presentation.id);
+
+        if delegate_items.is_empty() {
+            self.verifier
+                .verify_presentation(
+                    holder_binder,
+                    &requested_presentation.presentation,
+                    &self.http_client,
+                )
+                .await
+                .context(VCSnafu)
+                .map_err(From::from)
+        } else {
+            let claims = self
+                .verifier
+                .verify_delegation(
+                    holder_binder.clone(),
+                    &requested_presentation.presentation,
+                    &self.http_client,
+                )
+                .await
+                .context(VCSnafu)?;
+
+            Self::validate_delegate_transaction_data_content(
+                delegate_items,
+                &requested_presentation.id,
+                &claims,
+                holder_binder.as_ref(),
+                state,
+            )?;
+
+            Ok(claims)
+        }
+    }
+
+    #[cfg(feature = "delegate-sd-jwt")]
+    fn delegate_items_for(
+        expected_td: Option<&Vec<TransactionDataItem>>,
+        credential_id: &str,
+    ) -> Vec<DelegateSdJwtTransactionData> {
+        expected_td
+            .into_iter()
+            .flatten()
+            .filter(move |item| item.credential_ids.iter().any(|id| id == credential_id))
+            .filter_map(as_delegate)
+            .map(ToOwned::to_owned)
+            .collect()
+    }
+
+    #[cfg(feature = "delegate-sd-jwt")]
+    fn validate_delegate_transaction_data_content(
+        expected_td: Vec<DelegateSdJwtTransactionData>,
+        credential_id: &str,
+        claims: &Claims,
+        holder_binder: Option<&HolderBinder>,
+        state: &Option<String>,
+    ) -> Result<()> {
+        let last_hop = claims
+            .get(DELEGATIONS_CLAIM)
+            .and_then(Claim::as_vec)
+            .and_then(|hops| hops.last())
+            .and_then(Claim::as_vec)
+            .ok_or_else(|| Protocol {
+                source: ProtocolError::transaction_data(
+                    &format!(
+                        "delegate transaction data targets credential '{credential_id}', but its presentation is not a delegation chain"
+                    ),
+                    state.to_owned(),
+                ),
+            })?;
+
+        let ignored: &[&str] = if holder_binder.is_some() {
+            // aud & nonce are validated in dsd_jwt::verify_dsd_jwt
+            &["aud", "nonce"]
+        } else {
+            &[]
+        };
+
+        let all_requested_are_disclosed = expected_td.iter().all(|item| {
+            decode_delegate_payload_disclosure(item, state)
+                .ok()
+                .is_some_and(|requested| {
+                    let requested = Claim::from(requested);
+                    last_hop
+                        .iter()
+                        .any(|alternative| Self::payloads_match(&requested, alternative, ignored))
+                })
+        });
+
+        if !all_requested_are_disclosed || last_hop.len() != expected_td.len() {
+            return Err(Protocol {
+                source: ProtocolError::transaction_data(
+                    &format!(
+                        "delegate payload(s) disclosed for credential '{credential_id}' do not match what was requested"
+                    ),
+                    state.to_owned(),
+                ),
+            });
+        }
+
+        Ok(())
+    }
+
+    #[cfg(feature = "delegate-sd-jwt")]
+    fn payloads_match(requested: &Claim, disclosed: &Claim, ignored: &[&str]) -> bool {
+        let (Claim::Object(disclosed), Claim::Object(requested)) = (disclosed, requested) else {
+            return false;
+        };
+        let kept = |map: &HashMap<String, Claim>| -> usize {
+            map.keys()
+                .filter(|key| !ignored.contains(&key.as_str()))
+                .count()
+        };
+
+        kept(disclosed) == kept(requested)
+            && requested
+                .iter()
+                .filter(|(key, _)| !ignored.contains(&key.as_str()))
+                .all(|(key, value)| disclosed.get(key) == Some(value))
+    }
+
+    /// When delegation is verified, claims are returns in the following way:
+    /// { "issued_vc": ..., "delegations": [...] }
+    /// For DCQL requested claims validation, issued_vc claims should be unwrapped.
+    fn get_issued_vc_claims(claim: &Claim) -> Claim {
+        match (claim.get(ISSUED_VC_CLAIM), claim.get(DELEGATIONS_CLAIM)) {
+            (Some(issued_vc), Some(_)) => issued_vc.clone(),
+            _ => claim.clone(),
+        }
+    }
+
     async fn resolve_did_and_jwk_from_id_token_header(
         &self,
         header: ssi::claims::jws::Header,
@@ -847,8 +995,10 @@ where
         nonce: &Nonce,
         authorization_response: &AuthorizationResponseObject,
         presentation_verification_opts: PresentationVerificationOptions,
+        transaction_data: Option<&Vec<TransactionDataItem>>,
     ) -> Result<(Claim, HashMap<String, Vec<crate::vc::Presentation>>)> {
         let mut result: HashMap<String, Vec<Claim>> = HashMap::new();
+        let mut validated: HashMap<String, Vec<Claim>> = HashMap::new();
         let mut presentations: HashMap<String, Vec<crate::vc::Presentation>> = HashMap::new();
         let mut ids = vec![]; // we need it to preserve order of items in the array
         let requested_presentations = match resolved_presentation_query {
@@ -894,24 +1044,40 @@ where
                     })
                 };
 
-            let claims = self
-                .verifier
-                .verify_presentation(
-                    holder_binder,
-                    &requested_presentation.presentation,
-                    &self.http_client,
-                )
-                .await
-                .context(VCSnafu)?;
+            let claims: Claims;
+
+            #[cfg(feature = "delegate-sd-jwt")]
+            {
+                claims = self
+                    .verify_presentation_or_delegation(
+                        &requested_presentation,
+                        holder_binder,
+                        transaction_data,
+                        &authorization_response.state,
+                    )
+                    .await?;
+            }
+            #[cfg(not(feature = "delegate-sd-jwt"))]
+            {
+                claims = self
+                    .verifier
+                    .verify_presentation(
+                        holder_binder,
+                        &requested_presentation.presentation,
+                        &self.http_client,
+                    )
+                    .await
+                    .context(crate::vc::oid4vp::internal_error::VCSnafu)?;
+            }
 
             let id = requested_presentation.id;
             ids.push(id.clone());
-            result
+            let claim: Claim = claims.into();
+            validated
                 .entry(id.clone())
-                .and_modify(|arr| {
-                    arr.push(claims.clone().into());
-                })
-                .or_insert(vec![claims.into()]);
+                .or_default()
+                .push(Self::get_issued_vc_claims(&claim));
+            result.entry(id.clone()).or_default().push(claim);
             presentations
                 .entry(id)
                 .or_default()
@@ -921,7 +1087,7 @@ where
         Self::validate_against_requested_claims(
             resolved_presentation_query,
             authorization_response,
-            &result,
+            &validated,
             ids,
         )?;
 

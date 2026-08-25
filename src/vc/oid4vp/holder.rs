@@ -31,8 +31,6 @@ use crate::vc::{
 };
 use crate::{utils, vc};
 use async_trait::async_trait;
-#[cfg(feature = "delegate-sd-jwt")]
-use base64::{Engine as _, prelude::BASE64_URL_SAFE_NO_PAD};
 use futures::future;
 use futures::future::join_all;
 use oauth2::http::{Request, Response};
@@ -410,44 +408,9 @@ where
                 ));
             }
 
-            // delegate_payload_disclosure = base64url(JSON([salt, payloadObject])).
-            let decoded = BASE64_URL_SAFE_NO_PAD
-                .decode(&item.delegate_payload_disclosure)
-                .map_err(|_| {
-                    ProtocolError::transaction_data(
-                        "malformed delegate_payload_disclosure: invalid base64url",
-                        state.to_owned(),
-                    )
-                })?;
-            let payload_disclosure: Value = serde_json::from_slice(&decoded).map_err(|_| {
-                ProtocolError::transaction_data(
-                    "malformed delegate_payload_disclosure: not valid JSON",
-                    state.to_owned(),
-                )
-            })?;
-            let payload = payload_disclosure
-                .as_array()
-                .filter(|a| a.len() == 2)
-                .ok_or_else(|| {
-                    ProtocolError::transaction_data(
-                        "malformed delegate_payload_disclosure: expected 2-element array",
-                        state.to_owned(),
-                    )
-                })?;
-            let payload = payload[1].clone();
-            if !payload.is_object() {
-                return Err(ProtocolError::transaction_data(
-                    "malformed delegate_payload_disclosure: payload is not a JSON object",
-                    state.to_owned(),
-                ));
-            }
-            if payload.get("_sd").is_some() {
-                return Err(ProtocolError::transaction_data(
-                    "malformed delegate_payload_disclosure: _sd is forbidden in delegate payloads",
-                    state.to_owned(),
-                ));
-            }
-            delegate_payloads.push(payload);
+            delegate_payloads.push(vc::oid4vp::delegate::decode_delegate_payload_disclosure(
+                item, state,
+            )?);
         }
 
         // dSD-JWT+KB requires a cnf in every alternative (so the Delegate Holder can
