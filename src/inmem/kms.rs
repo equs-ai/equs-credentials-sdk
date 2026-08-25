@@ -33,9 +33,9 @@ use crate::kms::{
 use crate::kms::{Error, NotFoundSnafu, ResolvingSnafu};
 use crate::storage::Storage;
 use crate::{crypto, kms};
-use one_core_asdk::one_crypto::signer::ecdsa::ECDSASigner;
-use one_core_asdk::one_crypto::signer::eddsa::EDDSASigner;
-use one_core_asdk::standardized_types::jwk::PublicJwk;
+use one_core_portable::one_crypto::signer::ecdsa::ECDSASigner;
+use one_core_portable::one_crypto::signer::eddsa::EDDSASigner;
+use one_core_portable::standardized_types::jwk::PublicJwk;
 use secrecy::{ExposeSecret, SecretSlice};
 
 #[derive(Clone, Display)]

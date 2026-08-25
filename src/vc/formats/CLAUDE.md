@@ -27,7 +27,7 @@ Houses all Verifiable Credential format implementations (SD-JWT, W3C JSON-LD, IS
 - `VCFormat` / `VPFormat` — format identification enums.
 
 ## Dependencies
-- Depends on: `ssi`, `sd_jwt_rs`, `one_core` (mso_mdoc, non-wasm), `one_core_asdk`, `crate::crypto`, `crate::did::universal`, `crate::vc::claims`, `crate::vc::status_formats`
+- Depends on: `ssi`, `sd_jwt_rs`, `one_core` (mso_mdoc, non-wasm), `one_core_portable`, `crate::crypto`, `crate::did::universal`, `crate::vc::claims`, `crate::vc::status_formats`
 - Used by: `crate::vc::core`, `crate::vc::mod` (top-level `Credential` and `Presentation` types)
 
 ## Constraints

@@ -3366,8 +3366,8 @@ pub mod utils {
     use bip32::secp256k1::sha2::Digest;
     use iref::UriBuf;
     use oauth2::http::{Method, Request, Response, StatusCode};
-    use one_core_asdk::one_crypto::jwe::PrivateKeyAgreementHandle;
-    use one_core_asdk::one_crypto::jwe::decrypt_jwe_payload;
+    use one_core_portable::one_crypto::jwe::PrivateKeyAgreementHandle;
+    use one_core_portable::one_crypto::jwe::decrypt_jwe_payload;
     use openid4vp::core::authorization_request::parameters::{HashAlgorithm, TransactionData};
     use openid4vp::core::authorization_request::verification::RequestVerifier;
     use openid4vp::core::metadata::parameters::SubjectSyntaxTypesSupported;

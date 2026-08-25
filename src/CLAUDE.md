@@ -32,7 +32,7 @@ Root of the Equs SDK Rust library. Defines the core trait interfaces (crypto, HT
 - `SigningKey` / `VerifyingKey` / `Key` — crypto primitive traits implemented by key handles in `inmem`.
 
 ## Dependencies
-- Depends on: `one-core-asdk` (re-exported crypto + JWE), `ssi` (DID/JWK types), `async_trait`, `snafu`, `tracing`
+- Depends on: `one-core-portable` (re-exported crypto + JWE), `ssi` (DID/JWK types), `async_trait`, `snafu`, `tracing`
 - One-core (non-wasm only): `one-core` via DID method implementations in `did/`
 
 ## Constraints

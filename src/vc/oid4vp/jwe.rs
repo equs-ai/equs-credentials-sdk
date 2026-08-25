@@ -1,19 +1,19 @@
 use crate::vc::oid4vp::Error::Internal;
 use crate::vc::oid4vp::internal_error::JWESnafu;
 use crate::vc::oid4vp::{ClientMetadata, Error};
-use one_core_asdk::config::core_config::KeyAlgorithmType::{
+use one_core_portable::config::core_config::KeyAlgorithmType::{
     Ecdsa as EcdsaKeyAlgorithm, Eddsa as EddsaKeyAlgorithm,
 };
-use one_core_asdk::one_crypto::jwe::{Header, build_jwe};
-use one_core_asdk::provider::key_algorithm::KeyAlgorithm;
-use one_core_asdk::provider::key_algorithm::ecdsa::Ecdsa;
-use one_core_asdk::provider::key_algorithm::eddsa::Eddsa;
-use one_core_asdk::provider::key_algorithm::model::GeneratedKey;
-use one_core_asdk::provider::key_algorithm::provider::KeyAlgorithmProvider;
-use one_core_asdk::provider::key_algorithm::provider::KeyAlgorithmProviderImpl;
-use one_core_asdk::provider::key_algorithm::provider::ParsedKey;
-use one_core_asdk::standardized_types::jwa::EncryptionAlgorithm;
-use one_core_asdk::standardized_types::jwk::{JwkUse, PublicJwk, PublicJwkEc};
+use one_core_portable::one_crypto::jwe::{Header, build_jwe};
+use one_core_portable::provider::key_algorithm::KeyAlgorithm;
+use one_core_portable::provider::key_algorithm::ecdsa::Ecdsa;
+use one_core_portable::provider::key_algorithm::eddsa::Eddsa;
+use one_core_portable::provider::key_algorithm::model::GeneratedKey;
+use one_core_portable::provider::key_algorithm::provider::KeyAlgorithmProvider;
+use one_core_portable::provider::key_algorithm::provider::KeyAlgorithmProviderImpl;
+use one_core_portable::provider::key_algorithm::provider::ParsedKey;
+use one_core_portable::standardized_types::jwa::EncryptionAlgorithm;
+use one_core_portable::standardized_types::jwk::{JwkUse, PublicJwk, PublicJwkEc};
 use openid4vp::core::metadata::parameters::verifier::EncryptedResponseEncValuesSupported;
 use secrecy::SecretSlice;
 use serde::{Deserialize, Serialize};
@@ -348,7 +348,7 @@ impl JweEncryptor {
 mod tests {
     use crate::vc::oid4vp::jwe::JweEncryptor;
     use crate::vc::oid4vp::tests::utils::wrap_p256_private_key;
-    use one_core_asdk::one_crypto::jwe::decrypt_jwe_payload;
+    use one_core_portable::one_crypto::jwe::decrypt_jwe_payload;
     use serde_json::{Value, json};
 
     #[tokio::test]

@@ -33,7 +33,7 @@ Exposes the Equs SDK Rust library to three foreign language targets via thin FFI
 | Askar plugin — Node.js | `plugins/askar/wrappers/nodejs/src/` | [context](../plugins/askar/wrappers/nodejs/src/CLAUDE.md) |
 
 ## Cross-domain relationships
-- Depends on: all of `src/` (the core SDK), `one-core-asdk`
+- Depends on: all of `src/` (the core SDK), `one-core-portable`
 - Used by: downstream consumers — Node.js applications, Android/iOS apps (via UniFFI), browser/WASM apps
 
 ## Key decisions / constraints
