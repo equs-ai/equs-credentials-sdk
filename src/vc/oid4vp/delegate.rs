@@ -89,6 +89,50 @@ impl DelegationRequest {
     }
 }
 
+#[cfg(feature = "delegate-sd-jwt")]
+pub(crate) fn decode_delegate_payload_disclosure(
+    item: &DelegateSdJwtTransactionData,
+    state: &Option<String>,
+) -> Result<serde_json::Value, ProtocolError> {
+    let decoded = BASE64_URL_SAFE_NO_PAD
+        .decode(&item.delegate_payload_disclosure)
+        .map_err(|_| {
+            ProtocolError::transaction_data(
+                "malformed delegate_payload_disclosure: invalid base64url",
+                state.to_owned(),
+            )
+        })?;
+    let payload_disclosure: serde_json::Value = serde_json::from_slice(&decoded).map_err(|_| {
+        ProtocolError::transaction_data(
+            "malformed delegate_payload_disclosure: not valid JSON",
+            state.to_owned(),
+        )
+    })?;
+    let payload = payload_disclosure
+        .as_array()
+        .filter(|a| a.len() == 2)
+        .ok_or_else(|| {
+            ProtocolError::transaction_data(
+                "malformed delegate_payload_disclosure: expected 2-element array",
+                state.to_owned(),
+            )
+        })?;
+    let payload = payload[1].clone();
+    if !payload.is_object() {
+        return Err(ProtocolError::transaction_data(
+            "malformed delegate_payload_disclosure: payload is not a JSON object",
+            state.to_owned(),
+        ));
+    }
+    if payload.get("_sd").is_some() {
+        return Err(ProtocolError::transaction_data(
+            "malformed delegate_payload_disclosure: _sd is forbidden in delegate payloads",
+            state.to_owned(),
+        ));
+    }
+    Ok(payload)
+}
+
 /// Builds a `delegate` Transaction Data for Authorization Request.
 ///
 /// Assembles the Array Disclosure `base64url([salt, { cnf?, ...payload_claims }])`

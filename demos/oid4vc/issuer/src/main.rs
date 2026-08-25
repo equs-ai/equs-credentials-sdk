@@ -476,7 +476,7 @@ async fn get_credential_claims(cred_def: &CredDefMetadata) -> Result<Claims, Err
                     "nbf".to_string(),
                     serde_json::Value::from(
                         OffsetDateTime::now_utc()
-                            .add(time::Duration::days(1))
+                            .sub(time::Duration::days(1))
                             .unix_timestamp(),
                     ),
                 );

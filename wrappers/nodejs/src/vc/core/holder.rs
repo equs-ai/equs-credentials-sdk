@@ -2,16 +2,68 @@ use crate::did::JsUniversalDIDResolver;
 use crate::error::IntoNapiError;
 use crate::http::ReqwestHttpClient;
 use crate::kms::JsKms;
+use crate::utils::from_json_object;
 use crate::vault::{JsCredentialEntry, JsCredentialsFindResult, JsVault};
+use crate::vc::JsonObject;
 use crate::vc::core::{JsCredential, JsCredentialMetadata, JsHolderMetadata, JsKeyMetadata};
 use crate::vc::core::{
     JsCredentialOffer, JsCredentialRequest, JsPresentation, JsPresentationInput,
 };
 use crate::vc::core::{JsHolderBinder, JsVCStatus};
 use equs_sdk::vc::core::{Holder, HolderService as CoreHolderService};
+use equs_sdk::vc::{ChainBindingMode, DelegationParams};
 use napi::Error;
 use napi_derive::napi;
+use serde::Deserialize;
+use serde_json::Value;
 use std::sync::Arc;
+
+#[derive(Debug, Default, Deserialize)]
+enum JsChainBindingMode {
+    #[default]
+    SdHash,
+    IssuerJwtHash,
+}
+
+impl From<JsChainBindingMode> for ChainBindingMode {
+    fn from(value: JsChainBindingMode) -> Self {
+        match value {
+            JsChainBindingMode::SdHash => ChainBindingMode::SdHash,
+            JsChainBindingMode::IssuerJwtHash => ChainBindingMode::IssuerJwtHash,
+        }
+    }
+}
+
+/// Wire representation of {@link DelegationParams}, deserialized from the raw `JsonObject`
+/// argument of `create_delegated_credential`.
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct JsDelegationParams {
+    delegate_payloads: Vec<Value>,
+    #[serde(default)]
+    claims_to_disclose: Option<JsonObject>,
+    #[serde(default)]
+    drop_disclosures: Option<Vec<String>>,
+    #[serde(default)]
+    binding: JsChainBindingMode,
+    #[serde(default)]
+    aud: Option<String>,
+    #[serde(default)]
+    nonce: Option<String>,
+}
+
+impl From<JsDelegationParams> for DelegationParams {
+    fn from(value: JsDelegationParams) -> Self {
+        DelegationParams {
+            delegate_payloads: value.delegate_payloads,
+            claims_to_disclose: value.claims_to_disclose,
+            drop_disclosures: value.drop_disclosures.map(|v| v.into_iter().collect()),
+            binding: value.binding.into(),
+            aud: value.aud,
+            nonce: value.nonce,
+        }
+    }
+}
 
 /// An async low-level protocol-agnostic `Holder` API.
 ///
@@ -182,6 +234,28 @@ impl VCCoreHolder {
             .await
             .map_err(IntoNapiError::into_napi_error)
             .and_then(|v| v.try_into())
+    }
+
+    /// Create a delegated credential (dSD-JWT) from a selected SD-JWT {@link CredentialEntry},
+    /// appending one delegation link via the format layer.
+    ///
+    /// EXPERIMENTAL: tracks draft-gco-oauth-delegate-sd-jwt.
+    ///
+    /// @param {CredentialEntry} credentialEntry - a {@link CredentialEntry} whose `credential` must be an SD-JWT.
+    /// @param {DelegationParams} params - delegation hop parameters (delegate payload, claims to disclose, binding mode).
+    ///
+    /// @returns {string} - a compact dSD-JWT string ending with `~` (a grant, not a KB-JWT presentation) on success.
+    #[napi]
+    pub async fn create_delegated_credential(
+        &self,
+        credential_entry: JsCredentialEntry,
+        #[napi(ts_arg_type = "DelegationParams")] params: JsonObject,
+    ) -> Result<String, Error> {
+        let params: JsDelegationParams = from_json_object(params)?;
+        self.0
+            .create_delegated_credential(&credential_entry.try_into()?, params.into())
+            .await
+            .map_err(IntoNapiError::into_napi_error)
     }
 
     /// Gets the status for Credential.

@@ -10,6 +10,8 @@ pub use crate::vc::formats::json_ld_vc::{
 pub use crate::vc::formats::sd_jwt_vc::{SdJwtAPI as VCFormatsSdJwtAPI, VCMetadata};
 pub use crate::vc::formats::vc::*;
 pub use crate::vc::formats::vp::*;
+#[cfg(feature = "delegate-sd-jwt")]
+pub use crate::vc::formats::{ChainBindingMode, DelegationParams};
 use crate::vc::formats::{FormatNotSupportedSnafu, HasCredential, IsExpired, IsValid, sd_jwt_vc};
 pub use crate::vc::presentation_exchange::ClaimFormat;
 use crate::vc::status_formats::status_list_token_jwt;

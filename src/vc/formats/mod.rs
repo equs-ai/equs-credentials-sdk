@@ -23,7 +23,7 @@ pub mod vp;
 #[cfg(feature = "delegate-sd-jwt")]
 pub mod dsd_jwt;
 #[cfg(feature = "delegate-sd-jwt")]
-pub use dsd_jwt::DelegationParams;
+pub use dsd_jwt::{ChainBindingMode, DelegationParams};
 
 /// `VC` format internal error.
 ///

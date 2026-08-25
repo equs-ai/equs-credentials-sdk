@@ -21,7 +21,7 @@ Defines the abstract protocol actor traits (`Issuer`, `Holder`, `Verifier`, `Sta
 - `Issuer` — high-level: `offer_credential`, `issue_credential`. Implemented directly on `IssuerService` (not as a blanket impl over the sub-traits, so coherence is preserved for downstream impls).
 - `PrepareCredential` / `SignCredential` — sub-traits for the two-step issuance flow. `prepare_credential` returns an `UnsignedCredential`; `sign_credential` consumes it.
 - `Holder` — `accept_credential`, `find_credentials`, `create_presentation`, `create_delegated_credential` (gated `delegate-sd-jwt`).
-- `Verifier` — `verify_presentation`.
+- `Verifier` — `verify_presentation`, `obtain_credential_status`, and (gated `delegate-sd-jwt`) `verify_delegation`: verifies a dSD-JWT grant like a presentation but tolerates un-narrowed Delegate Payload alternatives, and returns two halves — `issued_vc` (issuer-signed claims) and `delegations` (per-hop alternatives), keyed by `crate::vc::claims::{ISSUED_VC_CLAIM, DELEGATIONS_CLAIM}`. Its `Option<HolderBinder>` reaches `sd_jwt_rs`, which binds every alternative of the final hop. Defaulted on the trait so implementors and wrappers are unaffected; `VerifierService` overrides it and shares `check_expiry_and_status` with `verify_presentation`.
 - `StatusIssuer` — `issue_status_list`.
 - `UnsignedCredential` — format-tagged union produced by `PrepareCredential` and consumed by `SignCredential`; externally-tagged JSON serialization is the cross-wrapper wire contract.
 - `PresentationInput` / `PresentationRestriction` — describe what the verifier requires.

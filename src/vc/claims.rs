@@ -20,6 +20,13 @@ pub enum Error {
     Float,
 }
 
+/// Claim key: a verified dSD-JWT grant's issuer-signed credential claims.
+pub const ISSUED_VC_CLAIM: &str = "issued_vc";
+
+/// Claim key: a verified dSD-JWT grant's Delegate Payloads — one entry per hop
+/// (chain order), each an array of that hop's disclosed alternatives.
+pub const DELEGATIONS_CLAIM: &str = "delegations";
+
 /// Credential Claims
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct Claims {

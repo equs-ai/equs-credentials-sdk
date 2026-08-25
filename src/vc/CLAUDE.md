@@ -26,6 +26,7 @@ The top-level Verifiable Credentials module. It owns the canonical `Credential` 
 - `CredentialMetadata` — transport struct (type, format, kid, alg, fields) shared between OID4VCI and vault storage.
 - `VCStatus` / `VCStatusesData` / `StatusList` — abstraction layer over concrete status-list representations.
 - `VCFormatsAPI` / `VCFormatsJsonLdAPI` / `VCFormatsSdJwtAPI` — re-exported format API types for external consumers.
+- `DelegationParams` (`#[cfg(feature = "delegate-sd-jwt")]`) — re-exported from `formats::dsd_jwt` so external consumers (e.g. wrapper crates) can call `Holder::create_delegated_credential`; the `formats` module itself is `pub(crate)`.
 
 ## Dependencies
 - Depends on: `crate::crypto`, `crate::did::universal`, `crate::http`, `crate::kms`, `crate::vault`, `crate::storage`, `crate::nonce`, `crate::reqwest`, external crates `oid4vci`, `openid4vp`, `ssi`, `sd_jwt_rs`, `one_core_portable`

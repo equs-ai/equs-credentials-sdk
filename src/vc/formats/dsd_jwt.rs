@@ -1,16 +1,17 @@
 //! Delegate SD-JWT (dSD-JWT) format primitives.
 //! EXPERIMENTAL: tracks draft-gco-oauth-delegate-sd-jwt §3-6 via sd_jwt_rs.
-//! Thin wrappers over SDJWTHolder::delegate and SDJWTVerifier::verify_presentation.
 //!
 //! Gated behind the `delegate-sd-jwt` feature.
 use std::collections::HashSet;
 
-use sd_jwt_rs::{ChainBindingMode, SDJWTHolder, SDJWTSerializationFormat, SDJWTVerifier};
+pub use sd_jwt_rs::ChainBindingMode;
+use sd_jwt_rs::{SDJWTHolder, SDJWTSerializationFormat, SDJWTVerifier};
 use serde_json::{Map, Value};
 use tracing::{Level, instrument};
 
 use crate::crypto::Signer;
 use crate::did::universal::UniversalResolver;
+use crate::vc::core::HolderBinder;
 use crate::vc::formats::sd_jwt_vc::{Credential, DidKeyResolver, SignerWrapper};
 use crate::vc::formats::{PresentationSnafu, Result, SigningSnafu, VerifyingSnafu};
 
@@ -34,22 +35,17 @@ pub struct DelegationParams {
     pub nonce: Option<String>,
 }
 
-/// Structural result of a verified dSD-JWT chain.
-///
-/// Returned by [`SdJwtAPI::verify_dsd_jwt`] after a successful call to
-/// [`SDJWTVerifier::verify_presentation`] with `(None, None)` aud/nonce — suitable
-/// for grants (credentials to store), not KB-JWT presentations.
 #[derive(Debug)]
 pub struct DelegationChainView {
-    /// The layered claims returned by `verify_presentation` (issuer claims + all
-    /// delegate payload claims layered on top, in chain order).
     pub verified_claims: Value,
-    /// The disclosed Delegate Payload from each KB-SD-JWT link, in chain order.
-    pub delegate_payloads: Vec<Map<String, Value>>,
-    /// Per-link `cnf` JWKs extracted while walking the chain.  Empty for a
-    /// terminal (no-`cnf`) grant; non-empty when intermediate links carry a
-    /// `cnf` for further re-delegation.
+    pub delegate_payloads: Vec<Vec<Map<String, Value>>>,
     pub chain_cnfs: Vec<jsonwebtoken::jwk::Jwk>,
+}
+
+#[derive(Debug)]
+pub enum DsdJwtPurpose {
+    Delegation(Option<HolderBinder>),
+    Presentation(Option<HolderBinder>),
 }
 
 #[derive(Debug)]
@@ -119,37 +115,54 @@ impl DsdJwtAPI {
             })
     }
 
-    /// Structurally verify a dSD-JWT chain (no nonce / aud / KB-JWT required).
-    ///
-    /// Calls [`SDJWTVerifier::verify_presentation`] with `(None, None)` for aud/nonce,
-    /// which is correct for grant verification: grants carry no trailing KB-JWT.
-    /// Passing `Some(aud)`/`Some(nonce)` to the crate on a plain grant would error.
+    /// Verify a dSD-JWT chain, per `purpose`.
     ///
     /// # Arguments
     /// * `dsd_jwt` — The compact dSD-JWT string to verify.
     /// * `did_resolver` — DID resolver used to fetch the issuer's public key.
+    /// * `purpose` — grant (no narrowing required) or final presentation; see
+    ///   [`DsdJwtPurpose`].
     #[instrument(level = Level::TRACE, skip(did_resolver), err(), ret())]
     pub async fn verify_dsd_jwt(
         dsd_jwt: &Credential,
         did_resolver: UniversalResolver,
+        purpose: DsdJwtPurpose,
     ) -> Result<DelegationChainView> {
-        let key_resolver = DidKeyResolver::new(did_resolver);
-        let mut verifier = SDJWTVerifier::new(Box::new(key_resolver));
+        let mut verifier = SDJWTVerifier::new(Box::new(DidKeyResolver::new(did_resolver)));
+        let (holder_binder, is_grant) = match purpose {
+            DsdJwtPurpose::Delegation(hb) => (hb, true),
+            DsdJwtPurpose::Presentation(hb) => (hb, false),
+        };
+        let (aud, nonce) = holder_binder
+            .map(|hb| (Some(hb.verifier_id), Some(hb.nonce.secret().to_string())))
+            .unwrap_or((None, None));
 
-        let verified_claims = verifier
-            .verify_presentation(
-                dsd_jwt.to_owned(),
-                None,
-                None,
-                SDJWTSerializationFormat::Compact,
-            )
-            .await
-            .map_err(|err| {
-                VerifyingSnafu {
-                    details: err.to_string(),
-                }
-                .build()
-            })?;
+        let verified_claims = if is_grant {
+            verifier
+                .verify_delegation(
+                    dsd_jwt.to_owned(),
+                    aud,
+                    nonce,
+                    SDJWTSerializationFormat::Compact,
+                )
+                .await
+                .map(Value::Object)
+        } else {
+            verifier
+                .verify_presentation(
+                    dsd_jwt.to_owned(),
+                    aud,
+                    nonce,
+                    SDJWTSerializationFormat::Compact,
+                )
+                .await
+        }
+        .map_err(|err| {
+            VerifyingSnafu {
+                details: err.to_string(),
+            }
+            .build()
+        })?;
 
         Ok(DelegationChainView {
             verified_claims,
@@ -177,7 +190,7 @@ mod tests {
 
     use sd_jwt_rs::ChainBindingMode;
 
-    use super::{DelegationParams, DsdJwtAPI};
+    use super::{DelegationParams, DsdJwtAPI, DsdJwtPurpose};
 
     /// Issue a holder-bound SD-JWT using the Equs SDK's own `SdJwtAPI::create_vc` path.
     /// Returns `(sd_jwt_credential, holder_key_handle)` so that tests can immediately
@@ -248,9 +261,13 @@ mod tests {
             "dSD-JWT grant must end with '~', got: {dsd}"
         );
 
-        let view = DsdJwtAPI::verify_dsd_jwt(&dsd, UniversalResolver::default())
-            .await
-            .expect("verify_dsd_jwt should succeed");
+        let view = DsdJwtAPI::verify_dsd_jwt(
+            &dsd,
+            UniversalResolver::default(),
+            DsdJwtPurpose::Presentation(None),
+        )
+        .await
+        .expect("verify_dsd_jwt should succeed");
 
         assert_eq!(
             view.delegate_payloads.len(),
@@ -306,9 +323,13 @@ mod tests {
         .await
         .expect("create_delegated_credential should succeed for a delegatable grant");
 
-        let view = DsdJwtAPI::verify_dsd_jwt(&dsd, UniversalResolver::default())
-            .await
-            .expect("verify_dsd_jwt should succeed");
+        let view = DsdJwtAPI::verify_dsd_jwt(
+            &dsd,
+            UniversalResolver::default(),
+            DsdJwtPurpose::Presentation(None),
+        )
+        .await
+        .expect("verify_dsd_jwt should succeed");
 
         assert_eq!(
             view.chain_cnfs.len(),
@@ -350,9 +371,13 @@ mod tests {
         );
 
         // Must also verify cleanly.
-        let view = DsdJwtAPI::verify_dsd_jwt(&dsd, UniversalResolver::default())
-            .await
-            .expect("verify_dsd_jwt should succeed for IssuerJwtHash binding");
+        let view = DsdJwtAPI::verify_dsd_jwt(
+            &dsd,
+            UniversalResolver::default(),
+            DsdJwtPurpose::Presentation(None),
+        )
+        .await
+        .expect("verify_dsd_jwt should succeed for IssuerJwtHash binding");
 
         assert_eq!(view.delegate_payloads.len(), 1);
         let claims = view.verified_claims.as_object().unwrap();
@@ -596,10 +621,14 @@ mod tests {
 
         // The chain walk verifies the Holder's signature over the KB-SD-JWT link and
         // exposes the disclosed delegate payload — which must now carry aud/nonce.
-        let view = DsdJwtAPI::verify_dsd_jwt(&dsd, UniversalResolver::default())
-            .await
-            .expect("verify_dsd_jwt should succeed");
-        let payload = &view.delegate_payloads[0];
+        let view = DsdJwtAPI::verify_dsd_jwt(
+            &dsd,
+            UniversalResolver::default(),
+            DsdJwtPurpose::Presentation(None),
+        )
+        .await
+        .expect("verify_dsd_jwt should succeed");
+        let payload = &view.delegate_payloads[0][0];
         assert_eq!(
             payload.get("aud").and_then(|v| v.as_str()),
             Some("verifier.example"),
@@ -615,5 +644,117 @@ mod tests {
             Some("purchase"),
             "the requested delegate claims must be preserved alongside aud/nonce"
         );
+    }
+
+    #[tokio::test]
+    async fn delegation_purpose_checks_holder_binding() {
+        let (vc, hld_kh) = issue_sd_jwt().await;
+
+        let dsd = DsdJwtAPI::create_delegated_credential(
+            &vc,
+            hld_kh,
+            DelegationParams {
+                delegate_payloads: vec![json!({ "scope": "checkout" }), json!({ "scope": "pay" })],
+                claims_to_disclose: Some(Map::new()),
+                drop_disclosures: None,
+                binding: ChainBindingMode::SdHash,
+                aud: Some("verifier.example".to_string()),
+                nonce: Some("nonce-abc".to_string()),
+            },
+        )
+        .await
+        .expect("create_delegated_credential should succeed");
+
+        let binder = |nonce: &str, aud: &str| {
+            DsdJwtPurpose::Delegation(Some(HolderBinder {
+                nonce: Nonce::from_secret(nonce.to_string()),
+                verifier_id: aud.to_string(),
+                response_uri: None,
+            }))
+        };
+
+        let correct = DsdJwtAPI::verify_dsd_jwt(
+            &dsd,
+            UniversalResolver::default(),
+            binder("nonce-abc", "verifier.example"),
+        )
+        .await;
+        assert!(
+            correct.is_ok(),
+            "a grant bound to the request must verify: {:?}",
+            correct.err()
+        );
+
+        for (nonce, aud) in [
+            ("wrong-nonce", "verifier.example"),
+            ("nonce-abc", "wrong-verifier.example"),
+        ] {
+            assert!(
+                DsdJwtAPI::verify_dsd_jwt(&dsd, UniversalResolver::default(), binder(nonce, aud))
+                    .await
+                    .is_err(),
+                "grant with nonce={nonce}, aud={aud} must be rejected"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn presentation_purpose_checks_holder_binding() {
+        let (vc, hld_kh) = issue_sd_jwt().await;
+
+        let dsd = DsdJwtAPI::create_delegated_credential(
+            &vc,
+            hld_kh,
+            DelegationParams {
+                delegate_payloads: vec![json!({ "scope": "purchase" })],
+                claims_to_disclose: Some(Map::new()),
+                drop_disclosures: None,
+                binding: ChainBindingMode::SdHash,
+                aud: Some("verifier.example".to_string()),
+                nonce: Some("nonce-abc".to_string()),
+            },
+        )
+        .await
+        .expect("create_delegated_credential should succeed");
+
+        let correct = DsdJwtAPI::verify_dsd_jwt(
+            &dsd,
+            UniversalResolver::default(),
+            DsdJwtPurpose::Presentation(Some(HolderBinder {
+                nonce: Nonce::from_secret("nonce-abc".to_string()),
+                verifier_id: "verifier.example".to_string(),
+                response_uri: None,
+            })),
+        )
+        .await;
+        assert!(
+            correct.is_ok(),
+            "correct nonce/aud must verify: {:?}",
+            correct.err()
+        );
+
+        let wrong_nonce = DsdJwtAPI::verify_dsd_jwt(
+            &dsd,
+            UniversalResolver::default(),
+            DsdJwtPurpose::Presentation(Some(HolderBinder {
+                nonce: Nonce::from_secret("wrong-nonce".to_string()),
+                verifier_id: "verifier.example".to_string(),
+                response_uri: None,
+            })),
+        )
+        .await;
+        assert!(wrong_nonce.is_err(), "wrong nonce must be rejected");
+
+        let wrong_aud = DsdJwtAPI::verify_dsd_jwt(
+            &dsd,
+            UniversalResolver::default(),
+            DsdJwtPurpose::Presentation(Some(HolderBinder {
+                nonce: Nonce::from_secret("nonce-abc".to_string()),
+                verifier_id: "wrong-verifier.example".to_string(),
+                response_uri: None,
+            })),
+        )
+        .await;
+        assert!(wrong_aud.is_err(), "wrong aud must be rejected");
     }
 }
