@@ -80,9 +80,9 @@ Notes:
   during issuance (`-F delegate-sd-jwt` on the Holder) and makes the Merchant request the
   voucher (bound to a generated `purchase_id`) over `direct_post` (`-F delegate-sd-jwt` on
   the verifier, as `delegation-demo.sh` does). Without the feature, the existing demos
-  build and behave unchanged. All three roles enable the feature: it forwards to
-  `equs-sdk/delegate-sd-jwt` → `sd-jwt-rs/delegate`, which is what makes chain delegation
-  (Holder), chain-aware discovery (Agent), and chain-aware verification (Merchant) available.
+  build and behave unchanged. All three roles enable the feature: it forwards to the
+  upstream SD-JWT chain support, which is what makes chain delegation (Holder), chain-aware
+  discovery (Agent), and chain-aware verification (Merchant) available.
 - The Agent crate lives in `agent/`; it builds Auth Request 2, captures the grant, stores it
   in its wallet vault, and presents it to the Merchant via `present_credentials_auto`. Auto
   discovery can value-match the delegate-injected `purchase_id` because, under

@@ -74,7 +74,7 @@ pub enum Error {
         #[snafu(implicit)]
         location: Location,
     },
-    #[error("Key generation error: {details}")]
+    #[snafu(display("Key generation error: {details}"))]
     KeyGeneration {
         details: String,
         #[snafu(implicit)]

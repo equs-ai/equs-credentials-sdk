@@ -1,8 +1,10 @@
 # How to implement protocol based on Protocol Engine
 
-Here’s a steps you can follow to implement your own protocol using the DIDComm Protocol Engine.
+Steps to follow to implement your own protocol using the DIDComm Protocol Engine.
 
-Please familiarize yourself with the Protocol Engine document beforehand.: https://blockchains-inc.atlassian.net/wiki/spaces/IC/pages/359792759/Required+components+to+enable+protocol+flows+over+DIDComm
+The engine itself lives in [`src/didcomm`](../../src/didcomm); the
+[reference implementations](#reference-implementations) at the end of this document are the shortest
+way to see the whole shape of a protocol before writing one.
 
 ## 1. Define protocol specific messages.
 
@@ -177,10 +179,10 @@ agent
 
 ## Reference Implementations
 
-- WACI Issuance Protocol v3: src/didcomm/protocol/aries/issuance
-- TicTacToe Protocol: src/didcomm/protocol/tictactoe
-- Basic Message Protocol v2: src/didcomm/protocol/basic_message
-- Outofband protocol v2: src/didcomm/protocol/outofband
+- WACI Issuance Protocol v3: [`src/didcomm/protocol/aries/issuance`](../../src/didcomm/protocol/aries/issuance)
+- TicTacToe Protocol: [`src/didcomm/protocol/tictactoe`](../../src/didcomm/protocol/tictactoe)
+- Basic Message Protocol v2: [`src/didcomm/protocol/basic_message`](../../src/didcomm/protocol/basic_message)
+- Outofband protocol v2: [`src/didcomm/protocol/outofband`](../../src/didcomm/protocol/outofband)
 
 
 

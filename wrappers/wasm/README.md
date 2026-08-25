@@ -1,3 +1,5 @@
+# Equs SDK wrappers for WASM
+
 ## How to build
 
 Install `wasm-pack` from https://rustwasm.github.io/wasm-pack/installer/ and then

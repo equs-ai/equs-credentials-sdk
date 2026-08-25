@@ -1,12 +1,12 @@
 # Android Demo App
 
-This repository contains a demo Android application for demonstrating OID4VC flows using a Kotlin Package based on UniFFI wrappers.
+A demo Android application showing OID4VC flows through the Kotlin (UniFFI) wrapper.
 
 ## Prerequisites
 
 
-1. Generate the **dev** Android Archive (aar) following the instructions in [`wrappers/uniffi/README.md`](../../wrappers/uniffi/README.md#android)
-2. Copy generated `.aar` file from [`wrappers/kotlin`](../../wrappers/uniffi/kotlin/android/build/outputs/aar) to [`app/libs`](./app/libs):
+1. Generate the **dev** Android Archive (`make android-aar-dev`) following the instructions in [`wrappers/uniffi/README.md`](../../wrappers/uniffi/README.md#android)
+2. Copy the generated `.aar` into [`app/libs`](./app/libs):
     ```shell
    cp ../../wrappers/uniffi/kotlin/android/build/outputs/aar/*.aar ./app/libs/
    ```
