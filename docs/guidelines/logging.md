@@ -100,6 +100,8 @@ tracing = { version = "0.1.40", features = ["attributes", "release_max_level_deb
 
 ## Consuming logs
 
+### Rust
+
 On the application side, to collect logs from `equs-sdk`, follow the steps below:
 
 1. Add `tracing-subscriber` dependency into `Cargo.toml`:
@@ -108,9 +110,7 @@ On the application side, to collect logs from `equs-sdk`, follow the steps below
   ```
 2. Add the following to your executable to initialize the default subscriber:
 ```rust
-use tracing_subscriber;
-
-async fn main() {
+fn main() {
     tracing_subscriber::fmt::init();
 }
 ```
@@ -118,3 +118,22 @@ async fn main() {
 ```shell
 RUST_LOG=TRACE cargo run
 ```
+
+The demo binaries under `demos/` all do this — see `demos/multi-thread/src/main.rs` for the
+plain form, or `demos/oid4vc/holder/src/main.rs` for one that redirects to stderr.
+
+### Node.js
+
+The Node.js wrapper installs the subscriber itself, so none of the above applies. Call
+`enableLogs()` once at startup:
+
+```ts
+import { enableLogs, TracingLogFormat, TracingLogLevel } from '@equs/equs-sdk'
+
+await enableLogs(TracingLogFormat.Pretty, TracingLogLevel.Debug)
+```
+
+Both arguments are optional; the level defaults to `Info` and the format to `Full`. Formats are
+`Full`, `Compact`, `Pretty` and `Json`; levels are `Trace`, `Debug`, `Info`, `Warn` and `Error`.
+
+The WASM and UniFFI wrappers expose no equivalent.

@@ -1,7 +1,7 @@
-# SDK FFI
+# Equs SDK UniFFI wrappers
 
-This crate provides UniFFI integration for exposing SDK functionality to platforms such as Swift, Kotlin, Python, and
-more.
+This crate exposes Equs SDK to UniFFI-supported platforms. Kotlin (Android) and Swift (iOS) are the
+targets built and published here.
 
 ## Building
 
@@ -80,7 +80,7 @@ $ANDROID_NDK_HOME/toolchains/llvm/prebuilt/darwin-arm64/bin/aarch64-linux-androi
 ...
 ```
 
-### 4. Bind linkers to android targets
+### 3. Bind linkers to android targets
 
 Open (or create) your main `$HOME/.cargo/config` file. Add each of the target linkers:
 
@@ -102,57 +102,39 @@ linker = "i686-linux-android24-clang"
 ar = "llvm-ar"
 ```
 
-### 5. Install Rust Android Targets
+### 4. Install Rust Android Targets
 
 ```bash
   rustup target add aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android
 ```
 
-### 6. Build Android Archive (`.aar`)
+### 5. Build Android Archive (`.aar`)
 
 Depending on your need, you should build **dev** or **release** android archives.
 Release build lacks some features that are not expected to be used in production code.
 
-#### 6.1. Build dev Android Archive
-
-Run `android-aar-dev` Makefile target:
-
-```bash
-  make android-aar
-```
-
-On success, `aar`  is saved to `./kotlin/android/build/outputs/aar/android-release.aar`
-
-#### 6.2. Build release Android Archive
-
-Run `android-aar` Makefile target:
+#### 5.1. Build dev Android Archive
 
 ```bash
   make android-aar-dev
 ```
 
-On success, `aar` is saved to `./kotlin/android/build/outputs/aar/android-release.aar`
+#### 5.2. Build release Android Archive
+
+```bash
+  make android-aar
+```
+
+Either target saves the archive to `./kotlin/android/build/outputs/aar/android-release.aar`.
 
 # iOS
 
-h4: #### IOS builds for IOS@17. This can be configured at [config.toml](./.cargo/config.toml)
+iOS builds target iOS 17. Change that in [`.cargo/config.toml`](./.cargo/config.toml).
 
 ### 1. Setup Xcode Command-Line Tools
 
-#### Install XCode
-
-Probably not mandatory. If you are new to install XCode - try to avoid this step. if it is possible to avoid installing
-or if it is necessary - update this documentation
-
-You can install XCode [here](https://developer.apple.com/download/all/) (You will be asked to log in into your
-account)
-For MacOS you can install XCode from AppStore
-
-#### Install XCode Command Line Tools
-
-You can install XCode CLT [here](https://developer.apple.com/download/all/)
-
-Make sure you install compatible versions of XCode & XCode CLT
+Install Xcode from the App Store (or from [developer.apple.com](https://developer.apple.com/download/all/)),
+then the command-line tools:
 
 ```bash
   xcode-select --install

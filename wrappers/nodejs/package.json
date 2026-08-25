@@ -13,7 +13,7 @@
       ]
     }
   },
-  "license": "MIT",
+  "license": "Apache-2.0",
   "ava": {
     "timeout": "3m"
   },

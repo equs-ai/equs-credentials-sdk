@@ -3,6 +3,7 @@ name = "wasm"
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.97.0"
+license = "Apache-2.0"
 
 [features]
 default = ['console_error_panic_hook', 'instant/wasm-bindgen', 'instant/inaccurate']

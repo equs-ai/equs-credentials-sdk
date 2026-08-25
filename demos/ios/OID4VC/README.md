@@ -1,6 +1,6 @@
 # iOS Demo App
 
-This repository contains a demo iOS application for demonstrating OID4VC flows using a Swift Package based on UniFFI wrappers.
+A demo iOS application showing OID4VC flows through the Swift (UniFFI) wrapper.
 
 ## Prerequisites
 

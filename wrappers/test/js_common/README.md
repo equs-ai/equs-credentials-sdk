@@ -4,9 +4,8 @@
 
 Ensure that the following tools are installed on your machine:
 
-- [Node.js](https://nodejs.org/) (version >= v10.16.0+)
-- [npm](https://www.npmjs.com/) (version >= v11.8.0+)
-- [cargo](https://doc.rust-lang.org/cargo/getting-started/installation.html) (version >= 12.0.0)
+- [Node.js](https://nodejs.org/) and [npm](https://www.npmjs.com/) — see `engines` in `package.json`
+- A Rust toolchain — see `rust-version` in [`Cargo.toml`](../../../Cargo.toml)
 
 # Testing
 

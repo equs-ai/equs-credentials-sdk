@@ -1,5 +1,6 @@
 {
   "name": "equs-sdk-demo-nodejs",
+  "private": true,
   "version": "0.1.0",
   "description": "Node.js demo for Equs SDK",
   "main": "",

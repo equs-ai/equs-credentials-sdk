@@ -6,6 +6,7 @@
 - [How To Build and Run](#how-to-build-and-run)
 - [How to Use Equs SDK in Applications](#how-to-use-equs-sdk-in-applications)
 - [Dependencies](#dependencies)
+- [License](#license)
 - [Development Guidelines](docs/guidelines/dev.md)
 
 ## About Equs SDK
@@ -106,42 +107,32 @@ See [Components](docs/equs-sdk-components.png).
 
 Pre-requisites:
 
-- rustc version >=1.97
+- `rustc` >= 1.97 (see `rust-version` in [`Cargo.toml`](Cargo.toml))
 
 ```shell
 cargo build --all-features
 cargo test --all-features
 ```
 
-### Collecting logs on the application side
+### Cargo features
 
-On the application side, to collect logs from `equs-sdk`, follow the steps below:
-
-1. Add `tracing-subscriber` dependency into `Cargo.toml`:
-
-  ```toml
-    tracing-subscriber = "0.3.18"
-  ```
-
-2. Add the following to your executable to initialize the default subscriber:
-
-```rust,ignore
-fn main() {
-    tracing_subscriber::fmt::init();
-}
-```
-
-3. For example, to see `TRACE` level logs, run:
-
-```shell
-RUST_LOG=TRACE cargo run
-```
+| Feature | Enables |
+| --- | --- |
+| `in-memory` | Reference `Kms`, `Vault`, `Storage` and `NonceHandler` implementations in [`src/inmem`](src/inmem) |
+| `didcomm-http-transport` | HTTP transport for DIDComm ([`src/didcomm/transport/http`](src/didcomm/transport/http)) |
+| `delegate-sd-jwt` | Delegated SD-JWT (dSD-JWT) credential chains |
+| `test-utils` | Test helpers that are otherwise only available under `cfg(test)` |
 
 ### Generate documentation
 
 ```shell
 cargo doc --no-deps
 ```
+
+### Collecting logs
+
+Equs SDK logs through the [`tracing`](https://docs.rs/tracing) crate. To collect the logs on the
+application side, see [Consuming logs](docs/guidelines/logging.md#consuming-logs).
 
 ### [Demos](demos/README.md)
 
@@ -150,15 +141,38 @@ cargo doc --no-deps
 - [OID4VC wallet interaction flow on frontend using WASM](demos/wasm/oid4vc/README.md)
 - [Multi-thread support](demos/multi-thread/README.md)
 - [Android demo](demos/android/README.md)
-- [IOS demo](demos/ios/OID4VC/README.md)
+- [iOS demo](demos/ios/OID4VC/README.md)
 
 ### [E2E tests](tests/e2e)
 
-- [BBS+](tests/e2e/vc_core.rs)
+- [VC Core](tests/e2e/vc_core.rs) — SD-JWT, BBS+, status list
+- [OID4VCI](tests/e2e/vc_oid4vci.rs)
+- [OID4VP](tests/e2e/vc_oid4vp.rs)
 - [DIDComm Protocol Engine](tests/e2e/protocol_engine.rs) (Tic Tac Toe game)
 - [WACI/Aries V3](tests/e2e/waci_aries.rs)
+- [Custom DID resolvers](tests/e2e/custom_did_resolvers.rs)
 
 ## How to Use Equs SDK in Applications
+
+### What you have to implement
+
+Equs SDK delegates key material, credential storage and nonce handling to the integrating
+application. Depending on the role you build, implement:
+
+| Trait | Responsibility |
+| --- | --- |
+| [`Kms`](src/kms.rs) | Key generation, signing and verification. Keys never leave your implementation |
+| [`Vault`](src/vault.rs) | Storing and finding Verifiable Credentials (Holder) |
+| [`Storage`](src/storage.rs) | Generic key-value persistence used by the protocol services |
+| [`NonceHandler`](src/nonce.rs) | Issuing nonces. Unpredictability, expiry and single use are yours to enforce |
+
+Outbound HTTP goes through [`HttpClient`](src/http.rs). You do not have to implement it —
+[`ReqwestClient`](src/reqwest/mod.rs) is built in — but you may, to reuse your own HTTP stack.
+
+[`src/inmem`](src/inmem) ships reference `Kms`, `Vault`, `Storage` and `NonceHandler`
+implementations behind the `in-memory` feature. They are the fastest path from clone to a running
+flow. They hold everything in process memory, so keys and credentials do not survive a restart —
+use them for tests and demos, not as a storage layer.
 
 ### OID4VC
 
@@ -207,7 +221,7 @@ cargo doc --no-deps
 4. Create Issuer Metadata
 5. Create Credential Offer (optional for auth code flow but required for pre-authorized code flow)
 6. Implement the following endpoints. Each endpoint should call the corresponding Equs SDK Issuer API method.
-    - GET /.well-known/openid-credential-issuer HTTP/1.1: `get_issuer_metadata`]:
+    - GET /.well-known/openid-credential-issuer HTTP/1.1: `get_issuer_metadata`:
         - note that it must be a prefix to any path component your implementation serves API at (
           See [Section 3.1 of RFC8414](https://datatracker.ietf.org/doc/html/rfc8414#section-3.1)).
     - POST /credential HTTP/1.1: `issue_credential`.
@@ -219,7 +233,7 @@ cargo doc --no-deps
           see [VC OID4VC API Auth Code: Already Authorized](docs/vc-oid4vc-api-auth-code-already-authorized.png))
     - Pre-Authorized Code Flow - There are two main options:
         - Use an existing OAuth server that supports the grant type
-          `urn:ietf:params:oauth:grant-type:pre-authorized_cod`.
+          `urn:ietf:params:oauth:grant-type:pre-authorized_code`.
         - Implement a custom authorization server with following endpoints:
             - `Token Endpoint` that validates the pre-authorized code and optional transaction code and issues an access
               token.
@@ -251,14 +265,18 @@ cargo doc --no-deps
     - `POST /<authorization-response-uri> HTTP/1.1`: `verify_presentation`
 
 **Note:**
-Equs SDK contains an example of KMS and Vault (not part of default build) based
-on [aries-askar](https://github.com/hyperledger/aries-askar), see [src/askar](plugins/askar). The current
-implementations are not recommended for production (just demo purposes), but production ones can be created based on it.
+Equs SDK ships an example KMS and Vault in [plugins/askar](plugins/askar), outside the default build.
 
 ## Dependencies
 
-- <https://github.com/spruceid/ssi> (v0.10.1)
-- <https://github.com/openwallet-foundation-labs/sd-jwt-rust>
-- <https://github.com/hyperledger/aries-askar> (Test/Demo purposes, not part of default build)
+Every dependency and its pinned version is declared in [`Cargo.toml`](Cargo.toml). One thing is
+worth knowing before reading it: several dependencies are **maintained forks** pinned to a revision,
+rather than the public upstreams of the same name. Build against the sources `Cargo.toml` declares,
+not against upstream.
 
+## License
 
+Equs SDK is licensed under the [Apache License 2.0](./LICENSE).
+
+Licence attribution required by third-party dependencies is reproduced in
+[`THIRD-PARTY-NOTICE`](THIRD-PARTY-NOTICE).
