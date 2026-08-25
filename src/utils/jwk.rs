@@ -1,7 +1,7 @@
 use crate::crypto::{AlgNotSupportedSnafu, KeyNotSupportedSnafu};
 use crate::{crypto, kms};
 #[cfg(not(target_arch = "wasm32"))]
-use one_core_asdk::standardized_types::jwk::PublicJwk;
+use one_core_portable::standardized_types::jwk::PublicJwk;
 use ssi::JWK;
 use ssi::crypto::{ed25519, k256, p256};
 use ssi::jwk::{Params, serialize_p256, serialize_secp256k1};

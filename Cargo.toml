@@ -24,14 +24,14 @@ license = "Apache-2.0"
 [dependencies]
 common-macros = { path = "./common-macros" }
 # Internally maintained forked dependencies
-oid4vci = { git = "ssh://git@git.slock.it/open-source/oid4vci-rs.git", rev = "f5c38f92" }
-openid4vp = { git = "ssh://git@git.slock.it/open-source/oid4vp-rs.git", rev = "2db3c3d2" }
-sd-jwt-rs = { git = "ssh://git@git.slock.it/open-source/sd-jwt-rust.git", rev = "ecfc9ac" }
-didcomm = { git = "ssh://git@git.slock.it/open-source/didcomm-rust.git", rev = "db41780d" }
-did_peer = { git = "ssh://git@git.slock.it/open-source/aries-vcx.git", rev = "fc818ef5" }
-did_resolver = { git = "ssh://git@git.slock.it/open-source/aries-vcx.git", rev = "fc818ef5" }
-did_parser_nom = { git = "ssh://git@git.slock.it/open-source/aries-vcx.git", rev = "fc818ef5" }
-one-core-asdk = { git = "ssh://git@git.slock.it/open-source/one-core-new.git", rev = "5f387065"}
+oid4vci = { git = "https://github.com/equsai/oid4vci-rs.git", rev = "f5c38f92" }
+openid4vp = { git = "https://github.com/equsai/openid4vp.git", rev = "2db3c3d2" }
+sd-jwt-rs = { git = "https://github.com/equsai/sd-jwt-rust.git", rev = "ecfc9ac" }
+didcomm = { git = "https://github.com/equsai/didcomm-rust.git", rev = "db41780d" }
+did_peer = { git = "https://github.com/equsai/vcx.git", rev = "fc818ef5" }
+did_resolver = { git = "https://github.com/equsai/vcx.git", rev = "fc818ef5" }
+did_parser_nom = { git = "https://github.com/equsai/vcx.git", rev = "fc818ef5" }
+one-core-portable = { git = "https://github.com/equsai/one-core.git", rev = "a5ded11"}
 
 secrecy = "0.10.3"
 ed25519-compact = "2.1.1"
@@ -96,11 +96,11 @@ getrandom = "=0.4.2"
 ## remember to update one-core version for not-wasm targets
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-didcomm = { git = "ssh://git@git.slock.it/open-source/didcomm-rust.git", rev = "db41780d", features = ["uniffi"] }
+didcomm = { git = "https://github.com/equsai/didcomm-rust.git", rev = "db41780d", features = ["uniffi"] }
 reqwest-middleware = { version = "0.4.0", default-features = false }
 reqwest-tracing = { version = "0.5.5", default-features = false }
-one-core = { git = "ssh://git@git.slock.it/open-source/one-core-new.git", rev = "5f387065" }
-shared-types = { git = "ssh://git@git.slock.it/open-source/one-core-new.git", rev = "5f387065" }
+one-core = { git = "https://github.com/equsai/one-core.git", rev = "a5ded11" }
+shared-types = { git = "https://github.com/equsai/one-core.git", rev = "a5ded11" }
 x509-parser = { version = "0.18", features = ["verify"] }
 x509-cert = { version = "0.2", features = ["pem"] }
 

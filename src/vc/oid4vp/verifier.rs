@@ -48,7 +48,7 @@ use crate::vc::presentation_exchange::{
     PresentationResponse, validate_against_presentation_definition,
 };
 use crate::vc::{dcql, oid4vp as api};
-use one_core_asdk::one_crypto::jwe::extract_jwe_header;
+use one_core_portable::one_crypto::jwe::extract_jwe_header;
 use openid4vp::core::authorization_request::{AuthorizationRequestObject, RequestReference};
 use openid4vp::core::object::UntypedObject;
 use openid4vp::core::response::parameters::{IdTokenBody as IdToken, TransactionDataHashesAlg};

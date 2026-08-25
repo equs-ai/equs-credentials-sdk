@@ -26,7 +26,7 @@
 use crate::crypto;
 use crate::kms::{self, KeyHandle};
 use async_trait::async_trait;
-use one_core_asdk::one_crypto::encryption::EncryptionError;
+use one_core_portable::one_crypto::encryption::EncryptionError;
 use serde_json::Value;
 use snafu::{Location, Snafu};
 
@@ -39,13 +39,13 @@ use snafu::{Location, Snafu};
 #[cfg(not(target_arch = "wasm32"))]
 use crate::kms::{JweDecryptBytes, KeyAgreement, Kms};
 #[cfg(not(target_arch = "wasm32"))]
-use one_core_asdk::one_crypto::jwe::{PrivateKeyAgreementHandle, decrypt_jwe_payload};
+use one_core_portable::one_crypto::jwe::{PrivateKeyAgreementHandle, decrypt_jwe_payload};
 #[cfg(not(target_arch = "wasm32"))]
-use one_core_asdk::one_crypto::signer::ecdsa::ECDSASigner;
+use one_core_portable::one_crypto::signer::ecdsa::ECDSASigner;
 #[cfg(not(target_arch = "wasm32"))]
-use one_core_asdk::one_crypto::signer::eddsa::EDDSASigner;
+use one_core_portable::one_crypto::signer::eddsa::EDDSASigner;
 #[cfg(not(target_arch = "wasm32"))]
-use one_core_asdk::standardized_types::jwk::PublicJwk;
+use one_core_portable::standardized_types::jwk::PublicJwk;
 #[cfg(not(target_arch = "wasm32"))]
 use p256::SecretKey;
 #[cfg(not(target_arch = "wasm32"))]

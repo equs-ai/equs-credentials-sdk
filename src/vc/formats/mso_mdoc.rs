@@ -22,7 +22,7 @@ use one_core::provider::presentation_formatter::model::{
 use one_core::provider::presentation_formatter::{
     PresentationFormatter, mso_mdoc::MsoMdocPresentationFormatter,
 };
-use one_core_asdk::standardized_types::jwk::PublicJwk;
+use one_core_portable::standardized_types::jwk::PublicJwk;
 use serde::{Deserialize, Serialize};
 use snafu::ResultExt;
 use ssi::dids::DIDURL;

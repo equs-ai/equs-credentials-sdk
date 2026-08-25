@@ -17,7 +17,7 @@ Defines every abstract interface the SDK is built on: cryptographic signing and 
 | Reqwest HTTP impl | `src/reqwest/` | [context](../src/reqwest/CLAUDE.md) |
 
 ## Cross-domain relationships
-- Depends on: `one-core-asdk` (re-exported crypto/JWE primitives), `ssi` (JWK types), `async_trait`, `snafu`, `tracing`
+- Depends on: `one-core-portable` (re-exported crypto/JWE primitives), `ssi` (JWK types), `async_trait`, `snafu`, `tracing`
 - Used by: every other domain — `did`, `vc`, `didcomm`, `inmem`, `wrappers`, `plugins`
 
 ## Key decisions / constraints
@@ -26,7 +26,7 @@ Defines every abstract interface the SDK is built on: cryptographic signing and 
 - `Vault` and `Storage` traits use `async_trait` with `WasmNotSend`/`WasmNotSync` bounds so they compile on both native and wasm targets.
 - `Nonce` and credential types that hold sensitive data implement `ZeroizeOnDrop`.
 - `HttpClient` is `#[automock]`-annotated for test mocking via `mockall`.
-- `one-core-asdk` (all targets) re-exports crypto, key algorithm, and JWE utilities; used on all platforms including wasm.
+- `one-core-portable` (all targets) re-exports crypto, key algorithm, and JWE utilities; used on all platforms including wasm.
 - `one-core` (non-wasm only) is the full platform library powering DID method implementations (`did:webvh`, `did:ethr`); its `HttpClient` trait (`get/post/send`) is incompatible with Equs SDK's (`async_call`) — bridging requires an adapter struct (see `src/did/webvh/client.rs`).
 
 ## Error handling

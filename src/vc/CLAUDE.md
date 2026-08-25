@@ -28,7 +28,7 @@ The top-level Verifiable Credentials module. It owns the canonical `Credential` 
 - `VCFormatsAPI` / `VCFormatsJsonLdAPI` / `VCFormatsSdJwtAPI` — re-exported format API types for external consumers.
 
 ## Dependencies
-- Depends on: `crate::crypto`, `crate::did::universal`, `crate::http`, `crate::kms`, `crate::vault`, `crate::storage`, `crate::nonce`, `crate::reqwest`, external crates `oid4vci`, `openid4vp`, `ssi`, `sd_jwt_rs`, `one_core_asdk`
+- Depends on: `crate::crypto`, `crate::did::universal`, `crate::http`, `crate::kms`, `crate::vault`, `crate::storage`, `crate::nonce`, `crate::reqwest`, external crates `oid4vci`, `openid4vp`, `ssi`, `sd_jwt_rs`, `one_core_portable`
 - Used by: `crate::didcomm` (WACI/Aries issuance protocol), wrapper targets (Node.js NAPI-RS, WASM, Kotlin UniFFI, Swift UniFFI)
 
 ## Constraints
