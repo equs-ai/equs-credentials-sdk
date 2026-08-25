@@ -42,8 +42,6 @@ Other diagrams:
 
 See [Components](docs/equs-sdk-components.png).
 
-#### Implemented
-
 - VC Formats:
     - SD-JWT VC (ECDSA,
       EdDSA) - [draft-ietf-oauth-sd-jwt-vc-08](https://datatracker.ietf.org/doc/draft-ietf-oauth-sd-jwt-vc/)
@@ -58,7 +56,7 @@ See [Components](docs/equs-sdk-components.png).
         - Authorization Code Flow using scope Parameter to Request Issuance of a Credential
         - Preauthorized Code Flow using scope Parameter to Request Issuance of a Credential
         - Batch issuance
-            - **NOTE**: The generation and validation of the access token is delegated to the application side.
+            - **NOTE**: Access token generation is delegated to the application — the SDK is not an Authorization Server. Token validation is optional: configure introspection or JWKS while building Issuer, or validate on the application side.
         - Deferred Issuance
         - Notification
     - WACI Issue Credential Protocol
@@ -71,8 +69,12 @@ See [Components](docs/equs-sdk-components.png).
         - SIOPv2 extension [draft 13](https://openid.net/specs/openid-connect-self-issued-v2-1_0.html)
         - Digital Credentials Query Language (DCQL)
         - OID4VP
-            - Response Mode "direct_post.jwt"
-            - Response Mode "dc_api"
+            - All Response Modes defined by the specification
+            - Client Identifier Prefixes:
+                - Supported by Verifier: "decentralized_identifier", "origin", "redirect_uri", "x509_san_dns" and "x509_hash"
+                - Supported by Holder: "decentralized_identifier", "redirect_uri"
+                - **NOTE**: "x509_san_dns" and "x509_hash" are used by the Verifier for generating
+                  signed Authorization Requests. The Holder does not consume such requests.
             - Transaction Data
             - Holder Binding
     - WACI Present Proof Protocol
@@ -90,18 +92,6 @@ See [Components](docs/equs-sdk-components.png).
     - did:webvh [specification](https://identity.foundation/didwebvh/v1.0/)
 - DIDComm V2 [specification](https://identity.foundation/didcomm-messaging/spec/)
     - Protocols Engine over DIDComm V2
-
-#### Planned
-
-- VC Formats:
-    - W3C JWT
-    - AnonCreds
-- VC Exchange Protocols:
-    - OID4VCI
-        - Authorization Code Flow Using Authorization Details Parameter
-    - Aries AIPv2
-- VC Revocation
-    - Bitstring Status List for W3C VC
 
 ## How To Build and Run
 
@@ -173,6 +163,17 @@ Outbound HTTP goes through [`HttpClient`](src/http.rs). You do not have to imple
 implementations behind the `in-memory` feature. They are the fastest path from clone to a running
 flow. They hold everything in process memory, so keys and credentials do not survive a restart —
 use them for tests and demos, not as a storage layer.
+
+### Plugins
+
+[`plugins`](./plugins) holds optional crates that implement the traits above against a concrete
+backend, so you can depend on a ready-made implementation instead of writing your own. Each
+plugin is its own crate with its own dependencies — add the ones you need rather than enabling
+a feature on the SDK.
+
+| Plugin                             | Implements | Backend |
+|------------------------------------| --- | --- |
+| [`plugins/askar`](./plugins/askar) | [`Kms`](src/kms.rs), [`Vault`](src/vault.rs) | Hyperledger Askar — an encrypted store over SQLite or PostgreSQL |
 
 ### OID4VC
 
@@ -264,8 +265,7 @@ use them for tests and demos, not as a storage layer.
 2. Implement the following endpoints. Each endpoint should call the corresponding Equs SDK Verifier API method.
     - `POST /<authorization-response-uri> HTTP/1.1`: `verify_presentation`
 
-**Note:**
-Equs SDK ships an example KMS and Vault in [plugins/askar](plugins/askar), outside the default build.
+Ready-made `Kms` and `Vault` implementations are available — see [Plugins](#plugins).
 
 ## Dependencies
 
