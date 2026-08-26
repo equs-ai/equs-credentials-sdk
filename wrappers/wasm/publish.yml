@@ -1,15 +1,6 @@
 variables:
   REGISTRY_URL_NPM: https://${CI_SERVER_HOST}/api/v4/projects/${CI_PROJECT_ID}/packages/npm/
 
-.cargo_local_deps_script: &cargo_local_deps_script
-  - |
-    git config --global --get-regexp '^url\..*\.insteadof$' 2>/dev/null | while read -r key value; do
-      case "$value" in
-        *git.slock.it*) git config --global --remove-section "${key%.insteadof}" 2>/dev/null || true ;;
-      esac
-    done || true
-  - git config --global url."https://gitlab-ci-token:${CI_JOB_TOKEN}@git.slock.it/".insteadOf "ssh://git@git.slock.it/"
-
 .wasm_job_configs: &wasm_job_configs
   image: node:${NODE_VERSION}
   before_script:
@@ -17,13 +8,11 @@ variables:
     - apt-get update && apt-get install -y clang
     - source "$HOME/.cargo/env"
     - export RUSTC_WRAPPER=""
-    - *cargo_local_deps_script
 
 .wasm_to_registry_template: &wasm_to_registry_template
   <<: *wasm_job_configs
   stage: release
   rules:
-    - if: $CI_COMMIT_TAG && $CI_COMMIT_TAG =~ $VERSION_REGEX
     - when: never
 
 publish_wasm_wrapper:
@@ -38,7 +27,8 @@ publish_wasm_wrapper:
       cargo install wasm-pack
       npm i
       npm run build
-      cp .npmrc pkg/.npmrc
+      printf '%s:_authToken=%s\n' "//${REGISTRY_URL_NPM#*://}" "${CI_JOB_TOKEN}" >> "${HOME}/.npmrc"
+      chmod 600 "${HOME}/.npmrc"
       cp .npmignore pkg/.npmignore
       cd pkg
       NPM_TOKEN=${CI_JOB_TOKEN} npm publish --registry=$REGISTRY_URL_NPM --tag latest
@@ -46,6 +36,9 @@ publish_wasm_wrapper:
 
 publish_wasm_dev_wrapper:
   <<: *wasm_to_registry_template
+  rules:
+    - if: $CI_COMMIT_TAG && $CI_COMMIT_TAG =~ $PRERELEASE_VERSION_REGEX
+    - when: never
   script:
     - |
       cd wrappers/wasm
@@ -53,7 +46,8 @@ publish_wasm_dev_wrapper:
       cargo install wasm-pack
       npm i
       npm run build:dev
-      cp .npmrc pkg/.npmrc
+      printf '%s:_authToken=%s\n' "//${REGISTRY_URL_NPM#*://}" "${CI_JOB_TOKEN}" >> "${HOME}/.npmrc"
+      chmod 600 "${HOME}/.npmrc"
       cp .npmignore pkg/.npmignore
       cd pkg
       NPM_TOKEN=${CI_JOB_TOKEN} npm publish --registry=$REGISTRY_URL_NPM --tag dev

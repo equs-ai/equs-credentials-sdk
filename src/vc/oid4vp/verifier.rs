@@ -1926,7 +1926,7 @@ mod tests {
                 &session,
                 &CredentialVerificationMetadata {
                     transaction_data: None,
-                    audience: Some("https://embedui.ssi.dev.dsr.gaminghub.bc-labs.dev".to_string()),
+                    audience: Some("https://verifier.example.com".to_string()),
                 },
             )
             .await

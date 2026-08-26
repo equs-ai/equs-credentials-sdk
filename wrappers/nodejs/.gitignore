@@ -204,3 +204,5 @@ package-lock.json
 !.eslintrc.js
 !jest.config.puppeteer.js
 !jest-puppeteer.config.js
+
+/npm/

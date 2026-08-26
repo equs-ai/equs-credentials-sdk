@@ -7,17 +7,11 @@ plugins {
 val baseVersion = "1.13.0"
 val environment = project.findProperty("env")?.toString()
 
-group = "equstng"
-version = if (environment == "development") "$baseVersion-dev" else baseVersion
+group = "com.equs.sdk"
+val ciTag: String? = System.getenv("CI_COMMIT_TAG")?.takeIf { it.isNotBlank() }
+version = ciTag ?: if (environment == "development") "$baseVersion-dev" else baseVersion
 
-val ciServerHost = System.getenv("CI_SERVER_HOST")
-val ciProjectId = System.getenv("CI_PROJECT_ID")
-
-val mavenRepoUrl = if (ciServerHost != null && ciProjectId != null) {
-    "https://$ciServerHost/api/v4/projects/$ciProjectId/packages/maven/"
-} else {
-    "https://git.slock.it/api/v4/projects/1387/packages/maven"
-}
+val mavenRepoUrl: String? = System.getenv("REGISTRY_URL_MAVEN")
 
 publishing {
 	publications {
@@ -33,20 +27,14 @@ publishing {
 	}
 
 	repositories {
-		maven {
-			val ciHost = System.getenv("CI_SERVER_HOST")
-			val ciProjectId = System.getenv("CI_PROJECT_ID")
+		if (mavenRepoUrl != null) {
+			maven {
+				url = uri(mavenRepoUrl)
 
-			url = uri(
-				if (ciHost != null && ciProjectId != null)
-					"https://$ciHost/api/v4/projects/$ciProjectId/packages/maven/"
-				else
-					"https://git.slock.it/api/v4/projects/1387/packages/maven"
-			)
-
-			credentials {
-				username = "gitlab-ci-token"
-				password = System.getenv("CI_JOB_TOKEN")
+				credentials {
+					username = "gitlab-ci-token"
+					password = System.getenv("CI_JOB_TOKEN")
+				}
 			}
 		}
 	}

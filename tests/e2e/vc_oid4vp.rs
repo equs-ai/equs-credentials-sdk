@@ -289,7 +289,7 @@ async fn presentation_verification_flow_with_mdl(#[case] cert: &str) {
             &session,
             &CredentialVerificationMetadata {
                 transaction_data: None,
-                audience: Some("https://local.dev.dsr.gaminghub.bc-labs.dev:5173".to_string()),
+                audience: Some("https://verifier.example.com:5173".to_string()),
             },
         )
         .await
