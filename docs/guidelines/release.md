@@ -12,13 +12,14 @@ publish scripts read the version from the manifests, not from the tag name.
    test jobs — so `main` is the last point at which anything is verified.
 2. The demo application runs successfully and passes all flows.
 3. The latest commit on `main` contains every change meant to be in the release.
-4. Every version declaration is bumped to the release version (step 2).
+4. `Cargo.toml` is bumped to the release version (step 2); the wrapper manifests ideally match.
 
 ## 2. Bump the version
 
-The version is not single-sourced. Six files declare it independently, and each publish script reads it
-from its own file — **not** from the tag. A tag that disagrees with the manifests publishes the wrong
-version under the right tag name.
+Published versions come **from the tag**: every publish job sets the artifact version to
+`CI_COMMIT_TAG`, so the tag and the published version cannot disagree. `Cargo.toml` is the exception —
+it is not derived from the tag. The remaining declarations affect only local builds, where
+`CI_COMMIT_TAG` is unset; keeping them in step is hygiene, not a publishing requirement.
 
 | Target | File | Declaration |
 | --- | --- | --- |
@@ -34,6 +35,8 @@ After bumping:
 1. Run `cargo build` so `Cargo.lock` picks up the new workspace version.
 2. Commit `Cargo.toml`, `Cargo.lock` and the five wrapper files together.
 3. Merge to `main` and wait for that pipeline to go green.
+
+Only `Cargo.toml` is load-bearing for a release; the rest can be corrected later without republishing.
 
 ## 3. Write the release notes
 
@@ -63,6 +66,8 @@ Rules for the tag name:
 
 - Exactly `X.Y.Z` — no `v` prefix, no suffix. Only this shape triggers the production publish jobs, which
   move the `latest` npm dist-tag.
+- `X.Y.Z-<suffix>` (e.g. `1.14.0-rc.1`) triggers the **dev** jobs instead — see
+  [Dev builds](#dev-builds). The two shapes are disjoint.
 - Never re-point a tag that has already been released. Re-running a release pipeline over versions that
   already exist in the registry does not fail cleanly: most npm publishes appear to succeed but land as
   orphan `0.0.0-<uuid>` rows, and a few hard-reject. To exercise release CI, use an unused patch version
@@ -82,6 +87,27 @@ Each wrapper has a production job, published under the `latest` tag:
 | `release_artifacts_job` | `SBOM.auto.out`, `AUDIT.auto.out`, `API.auto.tar.gz` (rustdoc) | pipeline artifacts |
 
 The release is done once that stage finishes green.
+
+### Dev builds
+
+Five of the seven production jobs have a `*_dev` counterpart publishing under the `dev` npm
+dist-tag: `publish_nodejs_target_dev`, `publish_nodejs_wrapper_dev`, `publish_wasm_dev_wrapper`,
+`publish_ios_wrapper_dev` and `publish_android_wrapper_dev`. Dev builds are debug builds. The askar
+plugin has no dev job — it declares no cargo features, so a dev build would differ from production
+only in optimisation level.
+
+They run on a prerelease tag — `X.Y.Z-<suffix>`, hyphen mandatory:
+
+```shell
+git tag -a 1.14.0-rc.1 -m "dev build"
+git push origin tag 1.14.0-rc.1
+```
+
+A plain `X.Y.Z` tag creates no dev job. Dev jobs run automatically, and a failure fails the pipeline.
+
+The published dev version **is the tag** (`1.14.0-rc.1`), not `X.Y.Z-dev`, so each prerelease tag
+produces a distinct version and repeat dev builds never collide. Run locally without `CI_COMMIT_TAG`
+and the old `X.Y.Z-dev` naming still applies.
 
 ## Release notes format
 

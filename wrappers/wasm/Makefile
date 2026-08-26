@@ -1,5 +1,5 @@
 PKG_NAME ?= $(shell npm pkg get name | tr -d '"')
-PKG_VERSION ?= $(shell npm pkg get version | tr -d '"')
+PKG_VERSION ?= $(if $(CI_COMMIT_TAG),$(CI_COMMIT_TAG),$(shell npm pkg get version | tr -d '"'))
 PKG_MAIN ?= $(shell npm pkg get main | tr -d '"')
 PKG_TYPES ?= $(shell npm pkg get types | tr -d '"')
 WASM_TARGET ?= web
@@ -14,7 +14,7 @@ endif
 
 ifeq ($(DEV), true)
     BUILD_MODE = --dev
-    PKG_VERSION = $(shell npm pkg get version | tr -d '"')-dev
+    PKG_VERSION = $(if $(CI_COMMIT_TAG),$(CI_COMMIT_TAG),$(shell npm pkg get version | tr -d '"')-dev)
 endif
 
 ifndef PROJECT_DIR

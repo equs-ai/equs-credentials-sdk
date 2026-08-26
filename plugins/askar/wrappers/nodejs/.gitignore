@@ -204,3 +204,5 @@ package-lock.json
 
 # Test db files
 *.db*
+
+/npm/

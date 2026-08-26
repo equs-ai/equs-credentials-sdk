@@ -6,6 +6,11 @@ if [ -z "${NPM_TOKEN:-}" ]; then
   exit 1
 fi
 
+if [ -z "${REGISTRY_URL_NPM:-}" ]; then
+  echo "No REGISTRY_URL_NPM"
+  exit 1
+fi
+
 if [ -z "${TARGET:-}" ]; then
   echo "No TARGET"
   exit 1
@@ -16,32 +21,36 @@ if [ -z "${ALIAS:-}" ]; then
   exit 1
 fi
 
+printf '%s:_authToken=%s\n' "//${REGISTRY_URL_NPM#*://}" "${NPM_TOKEN}" >> "${HOME}/.npmrc"
+chmod 600 "${HOME}/.npmrc"
+
 BINARY_NAME="equs-sdk-askar-storage.${ALIAS}.node"
 VERSION=$(npm pkg get version | tr -d '"')
 
+BUILD_FLAGS="--release"
+
 if [ "${ENVIRONMENT:-}" == "development" ]; then
   TAG="dev"
-  BUILD_FLAGS="--features=in-memory"
-  npm version ${VERSION}-dev
+  PUBLISH_VERSION="${CI_COMMIT_TAG:-${VERSION}-dev}"
 else
   TAG="latest"
-  BUILD_FLAGS="--release"
+  PUBLISH_VERSION="${CI_COMMIT_TAG:-${VERSION}}"
 fi
+
+npm version "${PUBLISH_VERSION}" --no-git-tag-version --ignore-scripts --allow-same-version
 
 npm i --ignore-scripts -D
 
 rustup target add $TARGET
 npx napi build $BUILD_FLAGS --platform --target $TARGET
 
+npx napi create-npm-dir -t .
 mv "$BINARY_NAME" "npm/${ALIAS}/$BINARY_NAME"
-cp .npmrc "npm/${ALIAS}/.npmrc"
 npx napi version
 
 cd "npm/${ALIAS}"
 NPM_TOKEN=${NPM_TOKEN} npm publish --registry=${REGISTRY_URL_NPM} --tag ${TAG}
 
 
-if [ "${ENVIRONMENT:-}" == "development" ]; then
-  cd ../../
-  npm version $VERSION
-fi
+cd ../../
+npm version "${VERSION}" --no-git-tag-version --ignore-scripts --allow-same-version

@@ -11,9 +11,11 @@ REGISTRY_URL_IOS="${REGISTRY_URL_IOS:?REGISTRY_URL_IOS is required}"
 ENVIRONMENT="${ENVIRONMENT:-}"
 
 if [[ "$ENVIRONMENT" == "$DEV_ENV" ]]; then
-  VERSION="${VERSION}-dev"
+  VERSION="${CI_COMMIT_TAG:-${VERSION}-dev}"
   MAKEFILE_JOB="${MAKEFILE_JOB}-dev"
   XCFRAMEWORK_LOCATION="swift/ios/debug"
+else
+  VERSION="${CI_COMMIT_TAG:-${VERSION}}"
 fi
 
 ZIP_NAME="equs-sdk.zip"

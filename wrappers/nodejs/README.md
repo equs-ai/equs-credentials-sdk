@@ -43,8 +43,12 @@ depends on them is published on top. Both steps run from the release pipeline
 The two scripts the pipeline calls, for a manual run:
 
 ```shell
-NPM_TOKEN=<token> TARGET=<target> ALIAS=<alias> ENVIRONMENT=development scripts/build_and_publish_target.sh
-NPM_TOKEN=<token> TARGET=<target> ALIAS=<alias> ENVIRONMENT=development scripts/build_and_publish_wrapper.sh
+REGISTRY_URL_NPM=<registry-url> NPM_TOKEN=<token> TARGET=<target> ALIAS=<alias> ENVIRONMENT=development scripts/build_and_publish_target.sh
+REGISTRY_URL_NPM=<registry-url> NPM_TOKEN=<token> ENVIRONMENT=development scripts/build_and_publish_wrapper.sh
 ```
+
+Both scripts append a registry auth line to `~/.npmrc` derived from `REGISTRY_URL_NPM`, so no
+`.npmrc` is committed. In CI both variables come from the pipeline; `REGISTRY_URL_NPM` is built
+from `$CI_SERVER_HOST` and `$CI_PROJECT_ID`.
 
 The target list is `napi.triples.additional` in [`package.json`](package.json).

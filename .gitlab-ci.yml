@@ -17,12 +17,9 @@ stages:
 variables:
   RUST_VERSION: "1.97.0"
   NODE_VERSION: "20.18.0"
-  # Any release-shaped tag, including prereleases such as 1.11.0-test-0. Gates
-  # the *_dev publish jobs, which publish under the `dev` tag only.
   VERSION_REGEX: /^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$/
-  # Final releases only. Gates the production publish jobs, which publish under
-  # the `latest` tag — a prerelease tag must never be able to claim `latest`.
   RELEASE_VERSION_REGEX: /^[0-9]+\.[0-9]+\.[0-9]+$/
+  PRERELEASE_VERSION_REGEX: /^[0-9]+\.[0-9]+\.[0-9]+-[0-9A-Za-z.-]+$/
   RUSTC_WRAPPER: "sccache"
   SCCACHE_DIR: "${CI_PROJECT_DIR}/.sccache"
   SCCACHE_CACHE_SIZE: "2G"
@@ -38,21 +35,7 @@ variables:
     paths:
       - .npm
 
-.cargo_local_deps_script: &cargo_local_deps_script
-  # Auth for the private one-core-new git dependency via the CI job token.
-  # Persistent shell runners (e.g. the macOS swift runner) keep a single global
-  # ~/.gitconfig across jobs, so `git config --global ... insteadOf` accumulates one
-  # rewrite per run, each pinned to that run's now-expired CI_JOB_TOKEN. With
-  # net.git-fetch-with-cli the git CLI then reuses a stale token and the HTTPS fetch
-  # fails with "HTTP Basic: Access denied". Drop any prior git.slock.it rewrites first
-  # so only the fresh token below is used. No-op on ephemeral container runners.
-  - |
-    git config --global --get-regexp '^url\..*\.insteadof$' 2>/dev/null | while read -r key value; do
-      case "$value" in
-        *git.slock.it*) git config --global --remove-section "${key%.insteadof}" 2>/dev/null || true ;;
-      esac
-    done || true
-  - git config --global url."https://gitlab-ci-token:${CI_JOB_TOKEN}@git.slock.it/".insteadOf "ssh://git@git.slock.it/"
+.rust_tooling_script: &rust_tooling_script
   - curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
   - RUSTC_WRAPPER="" cargo binstall -y sccache
   - |
@@ -64,7 +47,7 @@ variables:
   image: rust:${RUST_VERSION}-bookworm
   cache: *ci_cache
   before_script:
-    - *cargo_local_deps_script
+    - *rust_tooling_script
 
 
 .swift_job_configs: &swift_job_configs
@@ -72,7 +55,7 @@ variables:
   before_script:
     - curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain ${RUST_VERSION}
     - source "$HOME/.cargo/env"
-    - *cargo_local_deps_script
+    - *rust_tooling_script
 
 .nodejs_job_configs: &nodejs_job_configs
   image: node:${NODE_VERSION}
@@ -80,7 +63,7 @@ variables:
   before_script:
     - curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain ${RUST_VERSION}
     - source "$HOME/.cargo/env"
-    - *cargo_local_deps_script
+    - *rust_tooling_script
 
 semgrep-sast:
   stage: scan
@@ -112,7 +95,6 @@ dependency_scanning:
     - merge_requests
     - main
 
-# Build stage
 
 build-job:
   <<: *rust_job_configs
@@ -137,18 +119,14 @@ wasm-wrapper-build-job:
   image: cimg/node:${NODE_VERSION}-browsers
   cache: *ci_cache
   variables:
-    # cimg images run as a non-root user, but GitLab creates the cached .sccache dir
-    # as root, so sccache/cc-rs cannot write to it. Disable sccache here (npm cache
-    # still applies); sccache stays enabled on the root-user rust/node images.
     RUSTC_WRAPPER: ""
   before_script:
     - curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain ${RUST_VERSION}
     - source "$HOME/.cargo/env"
-    - *cargo_local_deps_script
+    - *rust_tooling_script
     - sudo apt-get update
     - sudo apt-get install -y clang
     - for i in 1 2 3; do curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh && break || { echo "wasm-pack install failed (attempt $i), retrying"; sleep 15; }; done
-    # GitLab restores the cached .npm/.sccache dirs root-owned; make them writable for this non-root image.
     - sudo chown -R "$(id -u):$(id -g)" "$npm_config_cache" "$SCCACHE_DIR" 2>/dev/null || true
   stage: build
   script:
@@ -178,7 +156,7 @@ wasm-demo-build-job:
   before_script:
     - curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain ${RUST_VERSION}
     - source "$HOME/.cargo/env"
-    - *cargo_local_deps_script
+    - *rust_tooling_script
     - sudo apt-get update
     - sudo apt-get install -y clang
     - for i in 1 2 3; do curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh && break || { echo "wasm-pack install failed (attempt $i), retrying"; sleep 15; }; done
@@ -201,7 +179,6 @@ doc-build-job:
     - merge_requests
     - main
 
-# Lint stage
 
 check-format-job:
   <<: *rust_job_configs
@@ -223,7 +200,6 @@ lint-job:
     - merge_requests
     - main
 
-# Test stage
 
 test-with-coverage-job:
   <<: *rust_job_configs
@@ -276,7 +252,7 @@ wasm-test-job:
   before_script:
     - curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain ${RUST_VERSION}
     - source "$HOME/.cargo/env"
-    - *cargo_local_deps_script
+    - *rust_tooling_script
     - sudo apt-get update
     - sudo apt-get install -y clang
     - for i in 1 2 3; do curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh && break || { echo "wasm-pack install failed (attempt $i), retrying"; sleep 15; }; done
@@ -286,8 +262,6 @@ wasm-test-job:
     - cd wrappers/wasm
     - npm install
     - npm run build:dev:cjs
-    #    Enable when tests are added
-    #    - npm run test
     - cd ../test/js_common
     - npm pkg set dependencies.equs-sdk=file:../../wasm/pkg
     - npm i
@@ -322,7 +296,6 @@ swift-test-job:
     - merge_requests
     - main
 
-# Demo stage
 
 oid4vc-demo-job:
   <<: *rust_job_configs
@@ -334,7 +307,6 @@ oid4vc-demo-job:
     - merge_requests
     - main
 
-# Release stage
 
 release_artifacts_job:
   <<: *rust_job_configs

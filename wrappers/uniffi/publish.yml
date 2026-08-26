@@ -1,16 +1,8 @@
 variables:
   REGISTRY_URL_IOS: https://${CI_SERVER_HOST}/api/v4/projects/${CI_PROJECT_ID}/packages/generic/
+  REGISTRY_URL_MAVEN: https://${CI_SERVER_HOST}/api/v4/projects/${CI_PROJECT_ID}/packages/maven/
   ANDROID_HOME: ${CI_PROJECT_DIR}/Android
   NDK_VERSION: 29.0.13599879
-
-.cargo_local_deps_script: &cargo_local_deps_script
-  - |
-    git config --global --get-regexp '^url\..*\.insteadof$' 2>/dev/null | while read -r key value; do
-      case "$value" in
-        *git.slock.it*) git config --global --remove-section "${key%.insteadof}" 2>/dev/null || true ;;
-      esac
-    done || true
-  - git config --global url."https://gitlab-ci-token:${CI_JOB_TOKEN}@git.slock.it/".insteadOf "ssh://git@git.slock.it/"
 
 .ios_job_configs: &ios_job_configs
   tags:
@@ -25,7 +17,6 @@ variables:
     - swift --version
     - cargo --version
     - export RUSTC_WRAPPER=""
-    - *cargo_local_deps_script
 
 .ios_to_registry_template: &ios_to_registry_template
   <<: *ios_job_configs
@@ -36,7 +27,6 @@ variables:
   # "Another `brew update` process is already running."
   resource_group: ios_publish
   rules:
-    - if: $CI_COMMIT_TAG && $CI_COMMIT_TAG =~ $VERSION_REGEX
     - when: never
 
 publish_ios_wrapper:
@@ -51,6 +41,9 @@ publish_ios_wrapper:
 
 publish_ios_wrapper_dev:
   <<: *ios_to_registry_template
+  rules:
+    - if: $CI_COMMIT_TAG && $CI_COMMIT_TAG =~ $PRERELEASE_VERSION_REGEX
+    - when: never
   script:
     - cd wrappers/uniffi
     - chmod +x ./scripts/build_and_publish_ios.sh
@@ -60,6 +53,11 @@ publish_ios_wrapper_dev:
 .android_job_configs: &android_job_configs
   image: eclipse-temurin:17-jdk-jammy
   before_script:
+    - |
+      if [ -z "${REGISTRY_URL_MAVEN:-}" ]; then
+        echo "No REGISTRY_URL_MAVEN"
+        exit 1
+      fi
     - apt-get -o Acquire::Retries=3 update && apt-get -o Acquire::Retries=3 install -y curl unzip wget git build-essential pkg-config libssl-dev
     - curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain ${RUST_VERSION}
     - source "$HOME/.cargo/env"
@@ -82,7 +80,6 @@ publish_ios_wrapper_dev:
         "ndk;$NDK_VERSION"
 
     - export PATH="$ANDROID_HOME/ndk/$NDK_VERSION/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH"
-    - *cargo_local_deps_script
 
 .android_to_registry_template: &android_to_registry_template
   <<: *android_job_configs
@@ -92,7 +89,6 @@ publish_ios_wrapper_dev:
   # got the pod evicted (TerminationByKubelet), so serialize them.
   resource_group: android_publish
   rules:
-    - if: $CI_COMMIT_TAG && $CI_COMMIT_TAG =~ $VERSION_REGEX
     - when: never
 
 publish_android_wrapper:
@@ -109,6 +105,9 @@ publish_android_wrapper:
 
 publish_android_wrapper_dev:
   <<: *android_to_registry_template
+  rules:
+    - if: $CI_COMMIT_TAG && $CI_COMMIT_TAG =~ $PRERELEASE_VERSION_REGEX
+    - when: never
   script:
     - |
       cd wrappers/uniffi
