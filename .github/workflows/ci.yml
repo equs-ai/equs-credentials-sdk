@@ -84,3 +84,35 @@ jobs:
       - run: cargo doc --no-deps --workspace --all-features --exclude nodejs --exclude wasm --exclude equs_sdk_uniffi
         env:
           RUSTDOCFLAGS: -D warnings
+
+  nodejs-wrapper-build:
+    name: nodejs-wrapper-build
+    runs-on: ubuntu-latest
+    container: node:20.18.0 # NODE_VERSION
+    needs: [check-format, lint]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-rustup
+        with:
+          rust-version: "1.97.0" # RUST_VERSION
+          cache-key: nodejs-wrapper-build
+      - working-directory: wrappers/nodejs
+        run: |
+          npm i
+          npm run build
+
+  nodejs-demo-build:
+    name: nodejs-demo-build
+    runs-on: ubuntu-latest
+    container: node:20.18.0 # NODE_VERSION
+    needs: [check-format, lint]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-rustup
+        with:
+          rust-version: "1.97.0" # RUST_VERSION
+          cache-key: nodejs-demo-build
+      - working-directory: demos/nodejs/oid4vc
+        run: |
+          npm i
+          npm run build

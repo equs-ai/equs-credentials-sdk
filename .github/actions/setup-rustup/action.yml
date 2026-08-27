@@ -1,0 +1,37 @@
+name: Install Rust toolchain and tooling
+description: >-
+  Mirrors the .nodejs_job_configs (lines 57-63) and .swift_job_configs
+  (lines 50-55) anchors in .gitlab-ci.yml. Both anchors reduce to the same
+  recipe once the container image is factored out to the job: install rustup at
+  a pinned toolchain, then layer on the shared Rust tooling. GitLab's
+  `source "$HOME/.cargo/env"` has no GitHub equivalent — a sourced shell does
+  not survive between steps — so the cargo bin directory goes on $GITHUB_PATH.
+
+inputs:
+  rust-version:
+    description: Toolchain to install, e.g. "1.97.0".
+    required: true
+  cache-key:
+    description: Suffix keeping this job's sccache/npm entries separate.
+    required: true
+  components:
+    description: Space-separated rustup components to add.
+    required: false
+    default: ''
+
+runs:
+  using: composite
+  steps:
+    - name: Install rustup
+      shell: bash
+      run: |
+        set -euo pipefail
+        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+          | sh -s -- -y --default-toolchain '${{ inputs.rust-version }}'
+        echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+
+    - name: Shared Rust tooling
+      uses: ./.github/actions/setup-rust
+      with:
+        cache-key: ${{ inputs.cache-key }}
+        components: ${{ inputs.components }}
