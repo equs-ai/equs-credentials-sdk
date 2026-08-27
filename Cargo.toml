@@ -20,6 +20,17 @@ version = "1.13.0"
 edition = "2024"
 rust-version = "1.97.0"
 license = "Apache-2.0"
+readme = "README.md"
+description = "Rust SDK implementing multiple decentralized identity protocols"
+repository = "https://github.com/equsai/equs-sdk"
+publish = true
+include = [
+    "/src/**/*.rs",
+    "/Cargo.toml",
+    "/README.md",
+    "/LICENSE",
+    "/THIRD-PARTY-NOTICE",
+]
 
 [dependencies]
 common-macros = { path = "./common-macros" }
