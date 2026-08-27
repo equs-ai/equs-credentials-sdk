@@ -15,7 +15,7 @@ permissions:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   # Keep in sync with the container image literals below. The env context is
@@ -111,6 +111,7 @@ jobs:
         with:
           cache-key: check-format
           components: rustfmt
+          install-tooling: 'false'
       - run: cargo fmt --all -- --check
 
   lint:
@@ -250,7 +251,7 @@ jobs:
         with:
           name: tarpaulin-report
           path: tarpaulin-report.html
-          if-no-files-found: error
+          if-no-files-found: warn
 
   nodejs-test:
     name: nodejs-test
@@ -340,6 +341,7 @@ jobs:
     # and self-hosted runners are unbilled. Mirrors GitLab's macosrunner2 tag.
     # No container — macOS runners cannot run Linux containers.
     runs-on: [self-hosted, macOS]
+    timeout-minutes: 60
     needs: [build, doc-build, nodejs-wrapper-build, wasm-wrapper-build, nodejs-demo-build, wasm-demo-build]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

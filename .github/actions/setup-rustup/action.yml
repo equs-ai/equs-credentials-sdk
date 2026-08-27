@@ -1,7 +1,7 @@
 name: Install Rust toolchain and tooling
 description: >-
-  Mirrors the .nodejs_job_configs (lines 57-63) and .swift_job_configs
-  (lines 50-55) anchors in .gitlab-ci.yml. Both anchors reduce to the same
+  Mirrors the .nodejs_job_configs (lines 60-66) and .swift_job_configs
+  (lines 53-58) anchors in .gitlab-ci.yml. Both anchors reduce to the same
   recipe once the container image is factored out to the job: install rustup at
   a pinned toolchain, then layer on the shared Rust tooling. GitLab's
   `source "$HOME/.cargo/env"` has no GitHub equivalent — a sourced shell does

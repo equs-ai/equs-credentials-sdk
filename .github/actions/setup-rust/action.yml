@@ -1,6 +1,6 @@
 name: Setup Rust tooling
 description: >-
-  Mirrors the .rust_job_configs anchor in .gitlab-ci.yml (lines 44-48):
+  Mirrors the .rust_job_configs anchor in .gitlab-ci.yml (lines 46-50):
   restores the sccache and npm caches, installs cargo-binstall plus sccache,
   and optionally adds rustup components. Assumes a Rust toolchain is already
   on PATH — see setup-rustup for images that do not ship one.
@@ -16,6 +16,12 @@ inputs:
     description: Space-separated rustup components to add, e.g. "clippy".
     required: false
     default: ''
+  install-tooling:
+    description: >-
+      Install cargo-binstall and sccache. Set false for jobs that compile
+      nothing (cargo fmt), where the bootstrap is pure overhead.
+    required: false
+    default: 'true'
 
 runs:
   using: composite
@@ -35,16 +41,21 @@ runs:
       with:
         path: .sccache
         key: sccache-${{ inputs.cache-key }}-${{ hashFiles('**/Cargo.lock') }}
-        restore-keys: sccache-${{ inputs.cache-key }}-
+        restore-keys: |
+          sccache-${{ inputs.cache-key }}-
+          sccache-
 
     - name: Restore npm cache
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: .npm
-        key: npm-${{ inputs.cache-key }}-${{ hashFiles('**/package-lock.json') }}
-        restore-keys: npm-${{ inputs.cache-key }}-
+        key: npm-${{ inputs.cache-key }}-${{ hashFiles('**/package.json') }}
+        restore-keys: |
+          npm-${{ inputs.cache-key }}-
+          npm-
 
     - name: Install cargo-binstall and sccache
+      if: inputs.install-tooling == 'true'
       shell: bash
       run: |
         set -euo pipefail

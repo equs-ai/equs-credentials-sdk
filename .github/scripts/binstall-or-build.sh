@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Executable form of the binstall_or_build helper defined inline in the
-# .rust_tooling_script anchor of .gitlab-ci.yml (lines 40-42). GitHub Actions
-# runs each `run:` block in a fresh shell, so a sourced function would not
-# survive between steps.
+# .rust_tooling_script anchor of .gitlab-ci.yml (lines 38-44, the
+# binstall_or_build function body at 42-44). GitHub Actions runs each `run:`
+# block in a fresh shell, so a sourced function would not survive between
+# steps.
 #
 # Usage: binstall-or-build.sh <crate> <verify-command>
 set -euo pipefail
