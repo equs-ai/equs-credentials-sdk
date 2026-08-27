@@ -53,8 +53,10 @@ See [Components](docs/equs-sdk-components.png).
       - Verification only
 - VC Exchange Protocols: Issuance
     - OID4VCI [version 1.0](https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0.html)
-        - Authorization Code Flow using scope Parameter to Request Issuance of a Credential
-        - Preauthorized Code Flow using scope Parameter to Request Issuance of a Credential
+        - Authorization Code Flow using the `scope` Parameter to Request Issuance of a Credential
+        - Pre-Authorized Code Flow, with optional Transaction Code (`tx_code`)
+            - **NOTE**: the credentials to issue come from the offer's `credential_configuration_ids`;
+              `scope` applies to the Authorization Code Flow only.
         - Batch issuance
             - **NOTE**: Access token generation is delegated to the application — the SDK is not an Authorization Server. Token validation is optional: configure introspection or JWKS while building Issuer, or validate on the application side.
         - Deferred Issuance
@@ -69,7 +71,9 @@ See [Components](docs/equs-sdk-components.png).
         - SIOPv2 extension [draft 13](https://openid.net/specs/openid-connect-self-issued-v2-1_0.html)
         - Digital Credentials Query Language (DCQL)
         - OID4VP
-            - All Response Modes defined by the specification
+            - All Response Modes defined by the specification: `direct_post`, `direct_post.jwt`,
+              `dc_api`, `dc_api.jwt`, `fragment` and `fragment.jwt`
+            - Signed Authorization Requests (Request Objects), passed by value or by reference
             - Client Identifier Prefixes:
                 - Supported by Verifier: "decentralized_identifier", "origin", "redirect_uri", "x509_san_dns" and "x509_hash"
                 - Supported by Holder: "decentralized_identifier", "redirect_uri"

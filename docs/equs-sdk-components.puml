@@ -14,13 +14,11 @@ package "Equs SDK" as EqusSdk {
             [SD-JWT VC] as SDJWT #Green
             [W3C VC JSON-LD] as W3C1 #Green
             [W3C VC JSON-LD BBS+] as W3C2  #Green
-            [W3C VC JWT] as W3C3 #Orange
-            [AnonCreds] as W3C4 #Orange
-            SDJWT --|> VCAPI
-            W3C1 --|> VCAPI
-            W3C2 --|> VCAPI
-            W3C3 -|> VCAPI
-            W3C4 -|> VCAPI
+            [mDL (ISO 18013-5 mdoc)] as MDOC #Green
+            VCAPI <|-- SDJWT
+            VCAPI <|-- W3C1
+            VCAPI <|--- W3C2
+            VCAPI <|--- MDOC
         }
 
         package "VC Exchange" {
@@ -36,10 +34,14 @@ package "Equs SDK" as EqusSdk {
         [did:key] as DIDK #Green
         [did:web] as DIDW #Green
         [did:peer] as DIDP #Green
+        [did:ethr] as DIDE #Green
+        [did:webvh] as DIDVH #Green
+        DIDU ----|> DIDI
         DIDK ---|> DIDI
-        DIDW --|> DIDI
-        DIDP --|> DIDI
-        DIDU ---|> DIDI
+        DIDW ---|> DIDI
+        DIDP ---|> DIDI
+        DIDE --|> DIDI
+        DIDVH --|> DIDI
     }
 
     package pluggable {
@@ -53,16 +55,20 @@ package "Equs SDK" as EqusSdk {
         DIDCommP --> DIDComm
     }
 
-    package "Test/Demo Impls" {
+    package "Plugins" {
         [Askar KMS] as AKMS #Green
         [Askar Vault] as AVault #Green
+    }
+
+    package "Test/Demo Impls" {
         [In Memory KMS] as MemKMS  #Green
         [In Memory Vault] as MemVault #Green
-        KMS <|--- AKMS
-        KMS <|-- MemKMS
-        Vault <|-- AVault
-        Vault <|-- MemVault
     }
+
+    KMS <|-- AKMS
+    KMS <|-- MemKMS
+    Vault <|-- AVault
+    Vault <|-- MemVault
 }
 
 VCCore -> VCF
@@ -71,7 +77,7 @@ Aries --> VCCore
 Aries --> DIDComm
 
 
-note top of EqusSdk: Green - already implemented;\nOrange - later versions
+note top of EqusSdk: Current state of the SDK — every component shown is implemented.\n mDL (ISO 18013-5 mdoc) — verification only.\n did:ethr, did:webvh — resolution only; registered via UniversalResolver::add_resolver.
 
 
 @enduml
