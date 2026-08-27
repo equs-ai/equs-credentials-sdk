@@ -1,0 +1,57 @@
+name: CI
+
+# Port of the CI half of .gitlab-ci.yml. The publish/release jobs are
+# deliberately absent — CD is out of scope.
+# Design: docs/superpowers/specs/2026-08-27-github-actions-ci-design.md
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Keep in sync with the container image literals below. The env context is
+  # NOT available to jobs.<id>.container.image, so those cannot interpolate
+  # these values and must repeat them.
+  RUST_VERSION: "1.97.0"
+  NODE_VERSION: "20.18.0"
+  RUSTC_WRAPPER: sccache
+  SCCACHE_CACHE_SIZE: 2G
+  CARGO_INCREMENTAL: "0"
+
+jobs:
+  # --- lint -----------------------------------------------------------------
+  # Hoisted ahead of the build barrier that GitLab imposes: these are cheap and
+  # a formatting slip should not cost a full build cycle to surface.
+
+  check-format:
+    name: check-format
+    runs-on: ubuntu-latest
+    container: rust:1.97.0-bookworm # RUST_VERSION
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-rust
+        with:
+          cache-key: check-format
+          components: rustfmt
+      - run: cargo fmt --all -- --check
+
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    container: rust:1.97.0-bookworm # RUST_VERSION
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-rust
+        with:
+          cache-key: lint
+          components: clippy
+      - run: cargo clippy --workspace --exclude wasm --all-targets --all-features -- -Dwarnings
