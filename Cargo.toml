@@ -126,14 +126,5 @@ delegate-sd-jwt = ["sd-jwt-rs/delegate"]
 opt-level = "z"
 lto = true
 codegen-units = 1
-# Set to true when WASM allows using profiles or throws no error for strip=true (wasm-pack >0.13.1) https://github.com/rustwasm/wasm-pack/pull/1428/files
-strip = "debuginfo"
-incremental = true
-
-[profile.release-strip]
-inherits = "release"
 strip = true
-
-[profile.release-android]
-inherits = "release"
-strip = "none"
+incremental = true

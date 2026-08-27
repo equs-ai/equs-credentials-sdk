@@ -111,14 +111,13 @@ android-build-libs: android-clang-symlinks
 	@echo "Building native libraries for Android..."
 	@for target in $(ANDROID_TARGETS); do \
 		echo "Building for $$target..."; \
-		cargo build --profile release-strip --target $$target;\
+		cargo build --release --target $$target;\
 	done
 
 # Generate UniFFI bindings for Kotlin
 android-generate-bindings: android-build-libs
 	@echo "Generating Kotlin bindings..."
-	cargo build --profile release-android --target aarch64-linux-android
-	cargo run --profile release-android --bin uniffi-bindgen generate --library ../../target/aarch64-linux-android/release-android/libequssdk.so --language kotlin --out-dir kotlin/android/src/main/kotlin
+	cargo run --release --bin uniffi-bindgen generate --library ../../target/aarch64-linux-android/release/libequssdk.so --language kotlin --out-dir kotlin/android/src/main/kotlin
 
 # Copy native libraries to jniLibs directory
 android-copy-libs:
@@ -126,7 +125,7 @@ android-copy-libs:
 	@for target in $(ANDROID_TARGETS); do \
 		abidir=$$(echo "$(TARGET_TO_ABIDIR)" | tr ' ' '\n' | grep "^$$target:" | cut -d: -f2); \
 		mkdir -p ./kotlin/android/src/main/jniLibs/$$abidir; \
-		cp ../../target/$$target/release-strip/libequssdk.so ./kotlin/android/src/main/jniLibs/$$abidir/; \
+		cp ../../target/$$target/release/libequssdk.so ./kotlin/android/src/main/jniLibs/$$abidir/; \
 	done
 
 # Build AAR package using Gradle
@@ -176,12 +175,12 @@ ios-generate-xcframework-dev: ios-generate-ffi-dev ios-create-dev-lib ios-copy-l
 
 ios-build:
 	@echo "Generating binaries for x86_64 and aarch64"
-	cargo build --profile release-strip --target aarch64-apple-ios-sim
-	cargo build --profile release-strip --target aarch64-apple-ios
+	cargo build --release --target aarch64-apple-ios-sim
+	cargo build --release --target aarch64-apple-ios
 
 ios-generate-ffi: ios-build
 	@echo "Generating framework module mapping and FFI bindings"
-	cargo run --profile release-strip --bin uniffi-bindgen-swift -- ../../target/aarch64-apple-ios/release-strip/libequssdk.a ../../target/uniffi-xcframework-release --swift-sources --headers --modulemap --module-name equssdkFFI --modulemap-filename module.modulemap
+	cargo run --release --bin uniffi-bindgen-swift -- ../../target/aarch64-apple-ios/release/libequssdk.a ../../target/uniffi-xcframework-release --swift-sources --headers --modulemap --module-name equssdkFFI --modulemap-filename module.modulemap
 	mkdir -p swift/Sources/EqusSdk
 	mv ../../target/uniffi-xcframework-release/*.swift swift/Sources/EqusSdk/
 
@@ -194,8 +193,8 @@ ios-copy-libs:
 ios-generate-xcframework: ios-generate-ffi ios-copy-libs
 	@echo "Generating XCFramework"
 	xcodebuild -create-xcframework \
-            -library ../../target/aarch64-apple-ios/release-strip/libequssdk.a -headers ../../target/uniffi-xcframework-release \
-            -library ../../target/aarch64-apple-ios-sim/release-strip/libequssdk.a -headers ../../target/uniffi-xcframework-release \
+            -library ../../target/aarch64-apple-ios/release/libequssdk.a -headers ../../target/uniffi-xcframework-release \
+            -library ../../target/aarch64-apple-ios-sim/release/libequssdk.a -headers ../../target/uniffi-xcframework-release \
             -output swift/ios/release/equssdk.xcframework
 
 
