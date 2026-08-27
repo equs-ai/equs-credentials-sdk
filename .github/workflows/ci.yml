@@ -353,3 +353,18 @@ jobs:
         run: xcrun simctl list devices available
       - working-directory: wrappers/uniffi
         run: make ios-test
+
+  # --- demo -----------------------------------------------------------------
+
+  oid4vc-demo:
+    name: oid4vc-demo
+    runs-on: ubuntu-latest
+    container: rust:1.97.0-bookworm # RUST_VERSION
+    needs: [test-with-coverage, nodejs-test, askar-plugin-nodejs-test, wasm-test, kotlin-test, swift-test]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-rust
+        with:
+          cache-key: oid4vc-demo
+      - working-directory: demos/oid4vc
+        run: ./demo.sh
