@@ -6,7 +6,7 @@ repositories {
     mavenCentral()
 }
 
-group = "com.equs.sdk"
+group = "equs"
 version = "1.0-SNAPSHOT"
 
 dependencies {
