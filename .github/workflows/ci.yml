@@ -28,6 +28,75 @@ env:
   CARGO_INCREMENTAL: "0"
 
 jobs:
+  # --- scan -----------------------------------------------------------------
+  # Ungated: neither job produces anything the build consumes, so blocking the
+  # build on them (as GitLab's stage ordering does) buys nothing.
+  #
+  # There is no CodeQL job. Code scanning on a private repository requires a
+  # paid GitHub Code Security licence, so semgrep-sast (.gitlab-ci.yml:68) has
+  # no replacement until the repo goes public. Tracked as W4.4.
+
+  secret-scan:
+    name: secret-scan
+    runs-on: ubuntu-latest
+    env:
+      GITLEAKS_VERSION: 8.30.1
+      GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # gitleaks scans the full commit history
+
+      - name: Install gitleaks
+        run: |
+          set -euo pipefail
+          # The gitleaks CLI is MIT-licensed and needs no key. The gitleaks
+          # *Action* is v2+ EULA-licensed and would require one for an
+          # org-owned repo — that licence covers the wrapper, not the scanner.
+          url="https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          curl --proto '=https' --tlsv1.2 -sSfL -o gitleaks.tar.gz "$url"
+          echo "${GITLEAKS_SHA256}  gitleaks.tar.gz" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/bin"
+          tar -xzf gitleaks.tar.gz -C "$RUNNER_TEMP/bin" gitleaks
+          chmod +x "$RUNNER_TEMP/bin/gitleaks"
+          rm -f gitleaks.tar.gz
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+
+      - name: Scan history for secrets
+        run: gitleaks git --redact --verbose --exit-code 1 .
+
+      - name: Upload gitleaks report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: gitleaks-report
+          path: gitleaks-report.json
+          if-no-files-found: ignore
+
+  dependency-scan:
+    name: dependency-scan
+    runs-on: ubuntu-latest
+    container: rust:1.97.0-bookworm # RUST_VERSION
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-rust
+        with:
+          cache-key: dependency-scan
+
+      - name: Install cargo-audit
+        run: .github/scripts/binstall-or-build.sh cargo-audit "cargo audit --version"
+
+      - name: Audit dependencies
+        run: cargo audit --json > cargo-audit-report.json
+
+      - name: Upload audit report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: cargo-audit-report
+          path: cargo-audit-report.json
+          if-no-files-found: ignore
+
   # --- lint -----------------------------------------------------------------
   # Hoisted ahead of the build barrier that GitLab imposes: these are cheap and
   # a formatting slip should not cost a full build cycle to surface.
