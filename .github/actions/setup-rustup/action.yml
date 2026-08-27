@@ -1,21 +1,15 @@
 name: Install Rust toolchain and tooling
-description: >-
-  Mirrors the .nodejs_job_configs (lines 60-66) and .swift_job_configs
-  (lines 53-58) anchors in .gitlab-ci.yml. Both anchors reduce to the same
-  recipe once the container image is factored out to the job: install rustup at
-  a pinned toolchain, then layer on the shared Rust tooling. GitLab's
-  `source "$HOME/.cargo/env"` has no GitHub equivalent — a sourced shell does
-  not survive between steps — so the cargo bin directory goes on $GITHUB_PATH.
+description: Install rustup at a pinned toolchain, then the shared Rust tooling.
 
 inputs:
   rust-version:
-    description: Toolchain to install, e.g. "1.97.0".
+    description: Toolchain to install.
     required: true
   cache-key:
-    description: Suffix keeping this job's sccache/npm entries separate.
+    description: Cache key suffix, unique per job.
     required: true
   components:
-    description: Space-separated rustup components to add.
+    description: Space-separated rustup components.
     required: false
     default: ''
 

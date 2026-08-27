@@ -1,9 +1,5 @@
 name: CI
 
-# Port of the CI half of .gitlab-ci.yml. The publish/release jobs are
-# deliberately absent — CD is out of scope.
-# Design: docs/superpowers/specs/2026-08-27-github-actions-ci-design.md
-
 on:
   pull_request:
   push:
@@ -18,9 +14,6 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
-  # Keep in sync with the container image literals below. The env context is
-  # NOT available to jobs.<id>.container.image, so those cannot interpolate
-  # these values and must repeat them.
   RUST_VERSION: "1.97.0"
   NODE_VERSION: "20.18.0"
   RUSTC_WRAPPER: sccache
@@ -28,13 +21,6 @@ env:
   CARGO_INCREMENTAL: "0"
 
 jobs:
-  # --- scan -----------------------------------------------------------------
-  # Ungated: neither job produces anything the build consumes, so blocking the
-  # build on them (as GitLab's stage ordering does) buys nothing.
-  #
-  # There is no CodeQL job. Code scanning on a private repository requires a
-  # paid GitHub Code Security licence, so semgrep-sast (.gitlab-ci.yml:68) has
-  # no replacement until the repo goes public. Tracked as W4.4.
 
   secret-scan:
     name: secret-scan
@@ -45,14 +31,11 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: 0 # gitleaks scans the full commit history
+          fetch-depth: 0
 
       - name: Install gitleaks
         run: |
           set -euo pipefail
-          # The gitleaks CLI is MIT-licensed and needs no key. The gitleaks
-          # *Action* is v2+ EULA-licensed and would require one for an
-          # org-owned repo — that licence covers the wrapper, not the scanner.
           url="https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
           curl --proto '=https' --tlsv1.2 -sSfL -o gitleaks.tar.gz "$url"
           echo "${GITLEAKS_SHA256}  gitleaks.tar.gz" | sha256sum -c -
@@ -76,7 +59,7 @@ jobs:
   dependency-scan:
     name: dependency-scan
     runs-on: ubuntu-latest
-    container: rust:1.97.0-bookworm # RUST_VERSION
+    container: rust:1.97.0-bookworm
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-rust
@@ -97,14 +80,10 @@ jobs:
           path: cargo-audit-report.json
           if-no-files-found: ignore
 
-  # --- lint -----------------------------------------------------------------
-  # Hoisted ahead of the build barrier that GitLab imposes: these are cheap and
-  # a formatting slip should not cost a full build cycle to surface.
-
   check-format:
     name: check-format
     runs-on: ubuntu-latest
-    container: rust:1.97.0-bookworm # RUST_VERSION
+    container: rust:1.97.0-bookworm
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-rust
@@ -117,7 +96,7 @@ jobs:
   lint:
     name: lint
     runs-on: ubuntu-latest
-    container: rust:1.97.0-bookworm # RUST_VERSION
+    container: rust:1.97.0-bookworm
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-rust
@@ -126,13 +105,10 @@ jobs:
           components: clippy
       - run: cargo clippy --workspace --exclude wasm --all-targets --all-features -- -Dwarnings
 
-  # --- build ----------------------------------------------------------------
-  # Gated on the lint jobs so a broken build never burns test-stage minutes.
-
   build:
     name: build
     runs-on: ubuntu-latest
-    container: rust:1.97.0-bookworm # RUST_VERSION
+    container: rust:1.97.0-bookworm
     needs: [check-format, lint]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -144,7 +120,7 @@ jobs:
   doc-build:
     name: doc-build
     runs-on: ubuntu-latest
-    container: rust:1.97.0-bookworm # RUST_VERSION
+    container: rust:1.97.0-bookworm
     needs: [check-format, lint]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -158,13 +134,13 @@ jobs:
   nodejs-wrapper-build:
     name: nodejs-wrapper-build
     runs-on: ubuntu-latest
-    container: node:20.18.0 # NODE_VERSION
+    container: node:20.18.0
     needs: [check-format, lint]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-rustup
         with:
-          rust-version: "1.97.0" # RUST_VERSION
+          rust-version: "1.97.0"
           cache-key: nodejs-wrapper-build
       - working-directory: wrappers/nodejs
         run: |
@@ -174,13 +150,13 @@ jobs:
   nodejs-demo-build:
     name: nodejs-demo-build
     runs-on: ubuntu-latest
-    container: node:20.18.0 # NODE_VERSION
+    container: node:20.18.0
     needs: [check-format, lint]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-rustup
         with:
-          rust-version: "1.97.0" # RUST_VERSION
+          rust-version: "1.97.0"
           cache-key: nodejs-demo-build
       - working-directory: demos/nodejs/oid4vc
         run: |
@@ -190,15 +166,15 @@ jobs:
   wasm-wrapper-build:
     name: wasm-wrapper-build
     runs-on: ubuntu-latest
-    container: node:20.18.0 # NODE_VERSION
+    container: node:20.18.0
     needs: [check-format, lint]
     env:
-      RUSTC_WRAPPER: "" # sccache is disabled for wasm builds, as on GitLab
+      RUSTC_WRAPPER: ""
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-wasm
         with:
-          rust-version: "1.97.0" # RUST_VERSION
+          rust-version: "1.97.0"
           cache-key: wasm-wrapper-build
       - working-directory: wrappers/wasm
         run: |
@@ -208,27 +184,25 @@ jobs:
   wasm-demo-build:
     name: wasm-demo-build
     runs-on: ubuntu-latest
-    container: node:20.18.0 # NODE_VERSION
+    container: node:20.18.0
     needs: [check-format, lint]
     env:
-      RUSTC_WRAPPER: "" # sccache is disabled for wasm builds, as on GitLab
+      RUSTC_WRAPPER: ""
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-wasm
         with:
-          rust-version: "1.97.0" # RUST_VERSION
+          rust-version: "1.97.0"
           cache-key: wasm-demo-build
       - working-directory: demos/wasm/oid4vc
         run: |
           npm i
           npm run build
 
-  # --- test -----------------------------------------------------------------
-
   test-with-coverage:
     name: test-with-coverage
     runs-on: ubuntu-latest
-    container: rust:1.97.0-bookworm # RUST_VERSION
+    container: rust:1.97.0-bookworm
     needs: [build, doc-build, nodejs-wrapper-build, wasm-wrapper-build, nodejs-demo-build, wasm-demo-build]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -239,9 +213,6 @@ jobs:
       - name: Install cargo-tarpaulin
         run: bash .github/scripts/binstall-or-build.sh cargo-tarpaulin "cargo tarpaulin --version"
 
-      # GitLab's `coverage:` regex has no GitHub equivalent absent a
-      # third-party service, so it is dropped. --fail-under 70 is the actual
-      # enforcement and is preserved exactly.
       - name: Run tests with coverage
         run: cargo tarpaulin --skip-clean --timeout 180 --all-features --exclude-files "src/didcomm/*" --exclude-files "demos/*" --exclude-files "dependencies/one-core/*" --exclude-files "wrappers/*" --fail-under 70 -o Html
 
@@ -256,13 +227,13 @@ jobs:
   nodejs-test:
     name: nodejs-test
     runs-on: ubuntu-latest
-    container: node:20.18.0 # NODE_VERSION
+    container: node:20.18.0
     needs: [build, doc-build, nodejs-wrapper-build, wasm-wrapper-build, nodejs-demo-build, wasm-demo-build]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-rustup
         with:
-          rust-version: "1.97.0" # RUST_VERSION
+          rust-version: "1.97.0"
           cache-key: nodejs-test
       - name: Build and test the napi wrapper
         run: |
@@ -278,13 +249,13 @@ jobs:
   askar-plugin-nodejs-test:
     name: askar-plugin-nodejs-test
     runs-on: ubuntu-latest
-    container: node:20.18.0 # NODE_VERSION
+    container: node:20.18.0
     needs: [build, doc-build, nodejs-wrapper-build, wasm-wrapper-build, nodejs-demo-build, wasm-demo-build]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-rustup
         with:
-          rust-version: "1.97.0" # RUST_VERSION
+          rust-version: "1.97.0"
           cache-key: askar-plugin-nodejs-test
       - name: Build and test the askar plugin wrapper
         run: |
@@ -297,15 +268,15 @@ jobs:
   wasm-test:
     name: wasm-test
     runs-on: ubuntu-latest
-    container: node:20.18.0 # NODE_VERSION
+    container: node:20.18.0
     needs: [build, doc-build, nodejs-wrapper-build, wasm-wrapper-build, nodejs-demo-build, wasm-demo-build]
     env:
-      RUSTC_WRAPPER: "" # sccache is disabled for wasm builds, as on GitLab
+      RUSTC_WRAPPER: ""
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-wasm
         with:
-          rust-version: "1.97.0" # RUST_VERSION
+          rust-version: "1.97.0"
           cache-key: wasm-test
       - name: Build and test the wasm wrapper
         run: |
@@ -320,7 +291,7 @@ jobs:
   kotlin-test:
     name: kotlin-test
     runs-on: ubuntu-latest
-    container: rust:1.97.0-bookworm # RUST_VERSION
+    container: rust:1.97.0-bookworm
     needs: [build, doc-build, nodejs-wrapper-build, wasm-wrapper-build, nodejs-demo-build, wasm-demo-build]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -337,9 +308,6 @@ jobs:
 
   swift-test:
     name: swift-test
-    # Self-hosted: macOS minutes on GitHub-hosted runners bill at ~10x Linux,
-    # and self-hosted runners are unbilled. Mirrors GitLab's macosrunner2 tag.
-    # No container — macOS runners cannot run Linux containers.
     runs-on: [self-hosted, macOS]
     timeout-minutes: 60
     needs: [build, doc-build, nodejs-wrapper-build, wasm-wrapper-build, nodejs-demo-build, wasm-demo-build]
@@ -347,7 +315,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-rustup
         with:
-          rust-version: "1.97.0" # RUST_VERSION
+          rust-version: "1.97.0"
           cache-key: swift-test
       - name: Add Apple targets
         run: rustup target add aarch64-apple-ios x86_64-apple-ios aarch64-apple-ios-sim
@@ -356,12 +324,10 @@ jobs:
       - working-directory: wrappers/uniffi
         run: make ios-test
 
-  # --- demo -----------------------------------------------------------------
-
   oid4vc-demo:
     name: oid4vc-demo
     runs-on: ubuntu-latest
-    container: rust:1.97.0-bookworm # RUST_VERSION
+    container: rust:1.97.0-bookworm
     needs: [test-with-coverage, nodejs-test, askar-plugin-nodejs-test, wasm-test, kotlin-test, swift-test]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

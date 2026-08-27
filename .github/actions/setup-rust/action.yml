@@ -1,25 +1,16 @@
 name: Setup Rust tooling
-description: >-
-  Mirrors the .rust_job_configs anchor in .gitlab-ci.yml (lines 46-50):
-  restores the sccache and npm caches, installs cargo-binstall plus sccache,
-  and optionally adds rustup components. Assumes a Rust toolchain is already
-  on PATH — see setup-rustup for images that do not ship one.
+description: Restore the sccache and npm caches, install cargo-binstall and sccache.
 
 inputs:
   cache-key:
-    description: >-
-      Suffix keeping this job's sccache/npm entries separate from other jobs'.
-      GitHub cache entries are write-once, so the full key also embeds a
-      lockfile hash; GitLab's static `key: sccache` has no direct equivalent.
+    description: Cache key suffix, unique per job.
     required: true
   components:
-    description: Space-separated rustup components to add, e.g. "clippy".
+    description: Space-separated rustup components.
     required: false
     default: ''
   install-tooling:
-    description: >-
-      Install cargo-binstall and sccache. Set false for jobs that compile
-      nothing (cargo fmt), where the bootstrap is pure overhead.
+    description: Install cargo-binstall and sccache.
     required: false
     default: 'true'
 
@@ -30,8 +21,6 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
-        # $GITHUB_WORKSPACE is correct both on the host and inside a container.
-        # A ${{ github.workspace }} expression is not — it resolves host-side.
         echo "SCCACHE_DIR=$GITHUB_WORKSPACE/.sccache" >> "$GITHUB_ENV"
         echo "npm_config_cache=$GITHUB_WORKSPACE/.npm" >> "$GITHUB_ENV"
         echo "${CARGO_HOME:-$HOME/.cargo}/bin" >> "$GITHUB_PATH"
