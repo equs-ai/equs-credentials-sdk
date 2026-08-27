@@ -55,3 +55,32 @@ jobs:
           cache-key: lint
           components: clippy
       - run: cargo clippy --workspace --exclude wasm --all-targets --all-features -- -Dwarnings
+
+  # --- build ----------------------------------------------------------------
+  # Gated on the lint jobs so a broken build never burns test-stage minutes.
+
+  build:
+    name: build
+    runs-on: ubuntu-latest
+    container: rust:1.97.0-bookworm # RUST_VERSION
+    needs: [check-format, lint]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-rust
+        with:
+          cache-key: build
+      - run: cargo build --all-features --workspace --exclude wasm
+
+  doc-build:
+    name: doc-build
+    runs-on: ubuntu-latest
+    container: rust:1.97.0-bookworm # RUST_VERSION
+    needs: [check-format, lint]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-rust
+        with:
+          cache-key: doc-build
+      - run: cargo doc --no-deps --workspace --all-features --exclude nodejs --exclude wasm --exclude equs_sdk_uniffi
+        env:
+          RUSTDOCFLAGS: -D warnings
