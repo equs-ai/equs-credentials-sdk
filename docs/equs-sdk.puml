@@ -1,57 +1,49 @@
 @startuml
-' NOTE: docs/equs-sdk.png is NOT generated from this file. The committed PNG is the
-' original hand-drawn diagram, with only the "BCI Agency" label patched to "Equs
-' Agency"; its layout is deliberately preserved. This file is a reconstruction of
-' the same content in PlantUML — same actors, packages and relationships, different
-' layout, since PlantUML places nodes itself. Re-rendering it will NOT reproduce the
-' committed image.
+' docs/equs-sdk.png IS generated from this file:
+'   plantuml -tpng docs/equs-sdk.puml
+' It previously was not — the committed PNG was hand-drawn art whose layout was preserved by
+' hand. That original showed a roadmap rather than the implementation (AnonCreds, KERI, ISO
+' 23220-3, W3C VC API, Stronghold, an HSM adapter, did:indy/keri/tdw/ion — none of which exist
+' in the tree), so it was replaced with a render of this source. Layout is PlantUML's; content
+' is what the SDK actually implements.
 'https://plantuml.com/component-diagram
 
 skinparam linetype ortho
-skinparam nodesep 12
+' nodesep 35 (not the default 12) keeps the App->PE edge clear of the SDK package tab.
+skinparam nodesep 35
 skinparam ranksep 24
 
-actor "Application\n(e.g. Equs Agency)" as App
+' Wrapped onto three lines so the caption box stays narrow enough that the edge leaving
+' this actor does not run through the text.
+actor "Application\n(e.g.\nEqus Agency)" as App
 actor "3rd party" as ThirdParty
 database "Persistent data\nto be managed by the app" as Store
 queue "Message Queue" as MQ
 
 package "SDK" as SDK {
 
-    package "VC Impls" as VCImpls {
-        [W3C SD-JWT] as SDJWT
-        [mDL 1803-5] as MDL18035
-        [JWT] as JWT
-        [JSON-LD] as JSONLD
-        [CL AnonCreds] as AnonCreds
-        [KERI ACDC] as ACDC
-        SDJWT -[hidden]right- MDL18035
-        MDL18035 -[hidden]right- JWT
-        JWT -[hidden]right- JSONLD
-        JSONLD -[hidden]right- AnonCreds
-        AnonCreds -[hidden]right- ACDC
+    package "VC Formats" as VCImpls {
+        [SD-JWT VC] as SDJWT
+        [W3C VC\nJSON-LD] as JSONLD
+        [mDL ISO 18013-5\n(verification only)] as MDL18035
+        SDJWT -[hidden]right- JSONLD
+        JSONLD -[hidden]right- MDL18035
     }
 
-    [mDL 23220-3] as MDL232203
-    [DIDComm\nAries] as DIDCommAries
-    [OIDC4VC/VP] as OIDC4VC
-    [W3C VC API] as W3CVCAPI
-    [KERI OOBI/\nIPEX] as KERIOOBI
-
-    MDL232203 -[hidden]down- DIDCommAries
-    DIDCommAries -[hidden]down- OIDC4VC
-    OIDC4VC -[hidden]down- W3CVCAPI
-    W3CVCAPI -[hidden]down- KERIOOBI
+    package "VC Exchange Protocols" as Protocols {
+        [DIDComm\nAries] as DIDCommAries
+        [OID4VCI/\nOID4VP] as OIDC4VC
+        DIDCommAries -[hidden]right- OIDC4VC
+    }
 
     package "Core" as Core {
 
-        package "VC" as VC {
-            [VC\nExchange] as VCExchange
-            [VC Format] as VCFormat
-            [VC\nConverter] as VCConverter
-            VCExchange -[hidden]right- VCFormat
-            VCFormat -[hidden]right- VCConverter
-        }
+        ' These two were grouped in an inner "VC" package. Its title tab sat directly under the
+        ' VCImpls ..|> VCFormat edge, which drew straight through the text, so the grouping box
+        ' was dropped; both components still read as VC-specific and stay adjacent inside Core.
+        [VC\nExchange] as VCExchange
+        [VC Format] as VCFormat
+        VCExchange -[hidden]right- VCFormat
 
         [Credentials\nstorage] as CredStorage
         [KMS] as KMS
@@ -63,46 +55,37 @@ package "SDK" as SDK {
     }
 
     package "DID Resolvers" as DIDResolvers {
-        [did:indy] as DidIndy
-        [did:peer] as DidPeer
-        [did:web] as DidWeb
         [did:key] as DidKey
-        [did:keri] as DidKeri
-        [did:tdw] as DidTdw
-        [did:ion] as DidIon
-        DidIndy -[hidden]right- DidPeer
-        DidPeer -[hidden]right- DidWeb
-        DidWeb -[hidden]right- DidKey
-        DidIndy -[hidden]down- DidKeri
-        DidKeri -[hidden]right- DidTdw
-        DidTdw -[hidden]right- DidIon
+        [did:web] as DidWeb
+        [did:peer] as DidPeer
+        [did:ethr] as DidEthr
+        [did:webvh] as DidWebvh
+        DidKey -[hidden]right- DidWeb
+        DidWeb -[hidden]right- DidPeer
+        DidKey -[hidden]down- DidEthr
+        DidEthr -[hidden]right- DidWebvh
     }
 }
 
-[Aries Askar] as Askar
-[IOTA Stronghold] as Stronghold
-[Default KMS impl] as DefaultKMS
-[HSM Adapter] as HSM
-
-Askar -[hidden]down- Stronghold
-Stronghold -[hidden]down- DefaultKMS
-DefaultKMS -[hidden]down- HSM
+package "Integrator-supplied back-ends" as Backends {
+    [Aries Askar\n(plugin)] as Askar
+    [In-Memory\nKMS / Vault / Storage\n(tests & demos)] as InMem
+    Askar -[hidden]down- InMem
+}
 
 ' application-facing usage
-App -right-> VCExchange : Direct Usage of VC API\nfor OIDC-like flows
-App -right-> PE : Usage of Protocol Engine\nfor DIDComm-like flows
+App -right-> VCExchange : VC API\n(OID4VC flows)
+' <back:white> masks the vertical lines this label would otherwise be printed on top of.
+App -right-> PE : <back:white>Protocol Engine API</back>\n<back:white>(DIDComm flows)</back>
 App -down-> Store
 PE -left-> MQ : outgoing DIDComm
 MQ -up-> ThirdParty
 ThirdParty -up-> App
 
 ' protocol adapters realise the core interfaces
-MDL232203 ..|> VCExchange
 DIDCommAries ..|> VCExchange
 DIDCommAries ..|> PE
 OIDC4VC ..|> VCExchange
-W3CVCAPI ..|> VCExchange
-KERIOOBI ..|> PE
 
 ' credential formats realise VC Format
 VCImpls ..|> VCFormat
@@ -110,15 +93,19 @@ VCImpls ..|> VCFormat
 ' pluggable back-ends supplied by the integrator
 Askar ..|> CredStorage
 Askar ..|> KMS
-Stronghold ..|> KMS
-DefaultKMS ..|> KMS
-HSM ..|> KMS
+InMem ..|> CredStorage
+InMem ..|> KMS
 
 ' resolvers realise DID Core
 DIDResolvers ..|> DIDCore
 
+' Keep the resolver package below Core. Without this, graphviz places it to Core's left, in the
+' same horizontal band as the App->PE and PE->MQ edges, and their labels land on top of the
+' "DID Resolvers" package title.
+DIDCore -[hidden]down- DidKey
+
 ' internal wiring
-VCConverter --> CredStorage
+VCFormat --> CredStorage
 VCFormat --> DIDCore
 PE --> DIDCore
 DIDCore --> KMS
