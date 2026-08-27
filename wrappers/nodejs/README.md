@@ -27,7 +27,7 @@ npm run build:debug   # required for tests — enables the `in-memory` feature
 npm test
 ```
 
-`npm run build` produces the release binary (profile `release-strip`) without the `in-memory`
+`npm run build` produces the release binary without the `in-memory`
 feature, so the tests will fail against it. Test files live in `test/`.
 
 ## Usage
