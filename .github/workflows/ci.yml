@@ -333,3 +333,23 @@ jobs:
           apt-get install -y --no-install-recommends openjdk-17-jdk
       - working-directory: wrappers/uniffi
         run: make kotlin-test
+
+  swift-test:
+    name: swift-test
+    # Self-hosted: macOS minutes on GitHub-hosted runners bill at ~10x Linux,
+    # and self-hosted runners are unbilled. Mirrors GitLab's macosrunner2 tag.
+    # No container — macOS runners cannot run Linux containers.
+    runs-on: [self-hosted, macOS]
+    needs: [build, doc-build, nodejs-wrapper-build, wasm-wrapper-build, nodejs-demo-build, wasm-demo-build]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-rustup
+        with:
+          rust-version: "1.97.0" # RUST_VERSION
+          cache-key: swift-test
+      - name: Add Apple targets
+        run: rustup target add aarch64-apple-ios x86_64-apple-ios aarch64-apple-ios-sim
+      - name: List available simulators
+        run: xcrun simctl list devices available
+      - working-directory: wrappers/uniffi
+        run: make ios-test
