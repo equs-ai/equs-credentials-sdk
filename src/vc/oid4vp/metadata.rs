@@ -179,6 +179,10 @@ fn missing_json_values(requested: &Value, supported: &Value) -> Vec<String> {
         .collect()
 }
 
+/// The Wallet issuer identifier OID4VP 1.0 §5.8 assigns to Static Discovery, and the `aud` of a
+/// signed Request Object addressed to a Wallet whose metadata was not discovered dynamically.
+pub(crate) const SELF_ISSUED_V2: &str = "https://self-issued.me/v2";
+
 const DEFAULT_WALLET_METADATA: &str = r#"{
     "issuer": "https://self-issued.me/v2",
     "authorization_endpoint": "openid4vp://",
