@@ -1,8 +1,9 @@
 use async_trait::async_trait;
 use openid4vp::core::authorization_request::parameters::{
-    HashAlgorithm, IdTokenType, Nonce as NonceSpruce, Scope, State, TransactionData,
+    Audience, HashAlgorithm, IdTokenType, Nonce as NonceSpruce, Scope, State, TransactionData,
 };
 use openid4vp::core::metadata::WalletMetadata;
+use openid4vp::core::metadata::parameters::wallet::Issuer;
 use openid4vp::verifier::by_reference::ByReference;
 use openid4vp::verifier::request_builder::RequestType;
 use serde_json::{Value as Json, Value};
@@ -37,7 +38,7 @@ use crate::vc::oid4vp::internal_error::{
     X509Snafu,
 };
 use crate::vc::oid4vp::metadata::{
-    default_client_metadata, default_wallet_metadata, ensure_supported_vp_formats,
+    SELF_ISSUED_V2, default_client_metadata, default_wallet_metadata, ensure_supported_vp_formats,
 };
 use crate::vc::oid4vp::protocol_error::ErrorType;
 use crate::vc::oid4vp::signer::Signer;
@@ -978,10 +979,22 @@ where
             None => self.metadata.client_metadata.clone(),
         };
 
-        let (auth_request_url, auth_req_jwt) = request_builder
+        let mut request_builder = request_builder
             .with_request_parameter(auth_request_metadata.auth_response_options.mode.to_owned())
             .with_request_parameter(NonceSpruce::from(nonce.secret()))
-            .with_request_parameter(client_metadata)
+            .with_request_parameter(client_metadata);
+
+        // OID4VP 1.0 §5.8 requires `aud` on a signed Request Object.
+        if matches!(auth_req_type, RequestType::SignedJwt(_)) {
+            let audience = match wallet_metadata.get::<Issuer>() {
+                Some(Ok(Issuer(issuer))) => issuer,
+                _ => SELF_ISSUED_V2.to_string(),
+            };
+
+            request_builder = request_builder.with_request_parameter(Audience(audience));
+        }
+
+        let (auth_request_url, auth_req_jwt) = request_builder
             .build(wallet_metadata, auth_req_type)
             .await?;
 
@@ -1187,7 +1200,7 @@ mod tests {
     use crate::vc::presentation_exchange::PresentationDefinition;
     use base64::Engine;
     use base64::prelude::BASE64_URL_SAFE_NO_PAD;
-    use openid4vp::core::authorization_request::parameters::VerifierInfoData;
+    use openid4vp::core::authorization_request::parameters::{Audience, VerifierInfoData};
     use openid4vp::core::authorization_request::{
         AuthorizationRequest, AuthorizationRequestObject,
     };
@@ -2184,6 +2197,63 @@ mod tests {
             .resolve_authorization_response(&AuthorizationResponse::Jwe(jwt.to_owned()))
             .await
             .unwrap();
+    }
+
+    #[tokio::test]
+    async fn signed_auth_request_carries_static_discovery_audience() {
+        let request = signed_request_object(None).await;
+
+        assert_eq!(audience_of(&request), SELF_ISSUED_V2);
+    }
+
+    #[tokio::test]
+    async fn signed_auth_request_carries_discovered_wallet_audience() {
+        let metadata = wallet_metadata_with_issuer("https://wallet.example.org");
+        let request = signed_request_object(Some(&metadata)).await;
+
+        assert_eq!(audience_of(&request), "https://wallet.example.org");
+    }
+
+    fn wallet_metadata_with_issuer(issuer: &str) -> WalletMetadata {
+        let mut metadata = wallet_metadata_without_x509();
+        metadata.insert(Issuer(issuer.to_string()));
+
+        metadata
+    }
+
+    async fn signed_request_object(wallet_metadata: Option<&WalletMetadata>) -> UntypedObject {
+        let request_uri = build_url(VERIFIER_URL, "request");
+        let (verifier, _did) = verifier_service().await;
+        let auth_response_options = auth_response_options(build_url(VERIFIER_URL, "auth"), None);
+
+        let (_url, session) = verifier
+            .create_authorization_request(
+                &ResolvedPresentationQuery::DCQL(DCQL::new(sample_dcql())),
+                &AuthorizationRequestMetadata {
+                    transaction_data: None,
+                    auth_response_options,
+                    pass_auth_request_object: PassAuthRequestObject::ByReference {
+                        uri: request_uri,
+                        method: Some(HttpMethodForAuth::POST),
+                    },
+                    expected_origins: None,
+                    client_metadata: None,
+                    verifier_info: None,
+                },
+                wallet_metadata,
+            )
+            .await
+            .unwrap();
+
+        decode_unverified::<UntypedObject>(session.auth_request_jwt.unwrap().as_str()).unwrap()
+    }
+
+    fn audience_of(request: &UntypedObject) -> String {
+        request
+            .get::<Audience>()
+            .expect("aud is absent from the signed request object")
+            .unwrap()
+            .0
     }
 
     fn validate_vp_token_against_expected_claims(
