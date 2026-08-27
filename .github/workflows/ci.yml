@@ -116,3 +116,39 @@ jobs:
         run: |
           npm i
           npm run build
+
+  wasm-wrapper-build:
+    name: wasm-wrapper-build
+    runs-on: ubuntu-latest
+    container: node:20.18.0 # NODE_VERSION
+    needs: [check-format, lint]
+    env:
+      RUSTC_WRAPPER: "" # sccache is disabled for wasm builds, as on GitLab
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-wasm
+        with:
+          rust-version: "1.97.0" # RUST_VERSION
+          cache-key: wasm-wrapper-build
+      - working-directory: wrappers/wasm
+        run: |
+          npm i
+          npm run build
+
+  wasm-demo-build:
+    name: wasm-demo-build
+    runs-on: ubuntu-latest
+    container: node:20.18.0 # NODE_VERSION
+    needs: [check-format, lint]
+    env:
+      RUSTC_WRAPPER: "" # sccache is disabled for wasm builds, as on GitLab
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-wasm
+        with:
+          rust-version: "1.97.0" # RUST_VERSION
+          cache-key: wasm-demo-build
+      - working-directory: demos/wasm/oid4vc
+        run: |
+          npm i
+          npm run build

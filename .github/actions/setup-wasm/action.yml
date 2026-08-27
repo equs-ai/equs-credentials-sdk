@@ -1,0 +1,49 @@
+name: Setup wasm toolchain
+description: >-
+  Mirrors the inline before_script shared by wasm-wrapper-build-job (line 118),
+  wasm-demo-build-job (line 151) and wasm-test-job (line 247) in
+  .gitlab-ci.yml: clang, a pinned Rust toolchain, the shared Rust tooling, and
+  wasm-pack with retries.
+
+inputs:
+  rust-version:
+    description: Toolchain to install, e.g. "1.97.0".
+    required: true
+  cache-key:
+    description: Suffix keeping this job's sccache/npm entries separate.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Install clang
+      shell: bash
+      run: |
+        set -euo pipefail
+        # No sudo: GitHub container jobs run as root. The GitLab version needed
+        # `sudo apt-get` plus a `sudo chown -R` of the cache dirs purely to work
+        # around the cimg/node image's non-root uid-1001 user. Neither applies
+        # to the plain node:20.18.0 image used here.
+        apt-get update
+        apt-get install -y --no-install-recommends clang
+
+    - name: Rust toolchain and tooling
+      uses: ./.github/actions/setup-rustup
+      with:
+        rust-version: ${{ inputs.rust-version }}
+        cache-key: ${{ inputs.cache-key }}
+
+    - name: Install wasm-pack
+      shell: bash
+      run: |
+        set -euo pipefail
+        for i in 1 2 3; do
+          if curl --proto '=https' --tlsv1.2 -sSf \
+               https://rustwasm.github.io/wasm-pack/installer/init.sh | sh; then
+            exit 0
+          fi
+          echo "wasm-pack install failed (attempt $i), retrying"
+          sleep 15
+        done
+        echo "wasm-pack install failed after 3 attempts" >&2
+        exit 1
