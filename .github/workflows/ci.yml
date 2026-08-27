@@ -84,7 +84,7 @@ jobs:
           cache-key: dependency-scan
 
       - name: Install cargo-audit
-        run: .github/scripts/binstall-or-build.sh cargo-audit "cargo audit --version"
+        run: bash .github/scripts/binstall-or-build.sh cargo-audit "cargo audit --version"
 
       - name: Audit dependencies
         run: cargo audit --json > cargo-audit-report.json
