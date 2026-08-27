@@ -63,7 +63,7 @@ jobs:
           echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
 
       - name: Scan history for secrets
-        run: gitleaks git --redact --verbose --exit-code 1 .
+        run: gitleaks git --redact --verbose --exit-code 1 --report-format json --report-path gitleaks-report.json .
 
       - name: Upload gitleaks report
         if: always()
@@ -71,7 +71,7 @@ jobs:
         with:
           name: gitleaks-report
           path: gitleaks-report.json
-          if-no-files-found: ignore
+          if-no-files-found: warn
 
   dependency-scan:
     name: dependency-scan
