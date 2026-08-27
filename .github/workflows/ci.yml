@@ -221,3 +221,115 @@ jobs:
         run: |
           npm i
           npm run build
+
+  # --- test -----------------------------------------------------------------
+
+  test-with-coverage:
+    name: test-with-coverage
+    runs-on: ubuntu-latest
+    container: rust:1.97.0-bookworm # RUST_VERSION
+    needs: [build, doc-build, nodejs-wrapper-build, wasm-wrapper-build, nodejs-demo-build, wasm-demo-build]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-rust
+        with:
+          cache-key: test-with-coverage
+
+      - name: Install cargo-tarpaulin
+        run: bash .github/scripts/binstall-or-build.sh cargo-tarpaulin "cargo tarpaulin --version"
+
+      # GitLab's `coverage:` regex has no GitHub equivalent absent a
+      # third-party service, so it is dropped. --fail-under 70 is the actual
+      # enforcement and is preserved exactly.
+      - name: Run tests with coverage
+        run: cargo tarpaulin --skip-clean --timeout 180 --all-features --exclude-files "src/didcomm/*" --exclude-files "demos/*" --exclude-files "dependencies/one-core/*" --exclude-files "wrappers/*" --fail-under 70 -o Html
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: tarpaulin-report
+          path: tarpaulin-report.html
+          if-no-files-found: error
+
+  nodejs-test:
+    name: nodejs-test
+    runs-on: ubuntu-latest
+    container: node:20.18.0 # NODE_VERSION
+    needs: [build, doc-build, nodejs-wrapper-build, wasm-wrapper-build, nodejs-demo-build, wasm-demo-build]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-rustup
+        with:
+          rust-version: "1.97.0" # RUST_VERSION
+          cache-key: nodejs-test
+      - name: Build and test the napi wrapper
+        run: |
+          cd wrappers/nodejs
+          npm i
+          npm run build:debug
+          npm run test
+          cd ../test/js_common
+          npm pkg set dependencies.equs-sdk=file:../../nodejs
+          npm i
+          npm run test:nodejs
+
+  askar-plugin-nodejs-test:
+    name: askar-plugin-nodejs-test
+    runs-on: ubuntu-latest
+    container: node:20.18.0 # NODE_VERSION
+    needs: [build, doc-build, nodejs-wrapper-build, wasm-wrapper-build, nodejs-demo-build, wasm-demo-build]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-rustup
+        with:
+          rust-version: "1.97.0" # RUST_VERSION
+          cache-key: askar-plugin-nodejs-test
+      - name: Build and test the askar plugin wrapper
+        run: |
+          npm i --prefix wrappers/nodejs
+          npm run build:debug --prefix wrappers/nodejs
+          npm i --prefix plugins/askar/wrappers/nodejs
+          npm run build --prefix plugins/askar/wrappers/nodejs
+          npm run test --prefix plugins/askar/wrappers/nodejs
+
+  wasm-test:
+    name: wasm-test
+    runs-on: ubuntu-latest
+    container: node:20.18.0 # NODE_VERSION
+    needs: [build, doc-build, nodejs-wrapper-build, wasm-wrapper-build, nodejs-demo-build, wasm-demo-build]
+    env:
+      RUSTC_WRAPPER: "" # sccache is disabled for wasm builds, as on GitLab
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-wasm
+        with:
+          rust-version: "1.97.0" # RUST_VERSION
+          cache-key: wasm-test
+      - name: Build and test the wasm wrapper
+        run: |
+          cd wrappers/wasm
+          npm install
+          npm run build:dev:cjs
+          cd ../test/js_common
+          npm pkg set dependencies.equs-sdk=file:../../wasm/pkg
+          npm i
+          npm run test:wasm
+
+  kotlin-test:
+    name: kotlin-test
+    runs-on: ubuntu-latest
+    container: rust:1.97.0-bookworm # RUST_VERSION
+    needs: [build, doc-build, nodejs-wrapper-build, wasm-wrapper-build, nodejs-demo-build, wasm-demo-build]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-rust
+        with:
+          cache-key: kotlin-test
+      - name: Install JDK 17
+        run: |
+          set -euo pipefail
+          apt-get update
+          apt-get install -y --no-install-recommends openjdk-17-jdk
+      - working-directory: wrappers/uniffi
+        run: make kotlin-test
