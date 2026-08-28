@@ -202,7 +202,9 @@ jobs:
   test-with-coverage:
     name: test-with-coverage
     runs-on: ubuntu-latest
-    container: rust:1.97.0-bookworm
+    container:
+      image: rust:1.97.0-bookworm
+      options: --security-opt seccomp=unconfined --cap-add SYS_PTRACE
     needs: [build, doc-build, nodejs-wrapper-build, wasm-wrapper-build, nodejs-demo-build, wasm-demo-build]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
