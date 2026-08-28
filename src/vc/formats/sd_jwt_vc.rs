@@ -782,7 +782,7 @@ impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata, Claims> for S
                 DidKeyResolver::new(did_resolver),
                 Truststore::new(
                     CertificateValidatorImpl::default(),
-                    opts.trusted_certs_skids.unwrap_or_default(),
+                    opts.trusted_certs.unwrap_or_default(),
                 ),
             );
         }

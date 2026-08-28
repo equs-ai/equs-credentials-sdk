@@ -18,7 +18,7 @@ A grab-bag of general-purpose helper modules shared across all SDK components: e
 | `serde.rs` | `Helpers` trait on `Claims` (`put_str`, `put_dt`); custom serde (de)serializers for `Duration` and `OffsetDateTime`; `accumulate_claim_names`. |
 | `test_utils.rs` | Test-only DID/key-handle factories (`create_did_and_key_metadata`, etc.), stub `MockKey`, and `MockJweKms`. |
 | `wasm.rs` | `WasmNotSend` / `WasmNotSync` marker traits — `Send`/`Sync`-equivalent on native, no-op on wasm32. |
-| `x509_truststore.rs` | `Truststore<T>` — validates X.509 PEM chains against trusted root SKIDs and resolves issuer `DecodingKey` for SD-JWT-VC verification. |
+| `x509_truststore.rs` | `Truststore<T>` — validates X.509 PEM chains up to a trusted anchor whose own PEM it holds (keyed by SKI) and resolves issuer `DecodingKey` for SD-JWT-VC verification. |
 
 ## Key types / traits
 - `MimeType` — enum of allowed MIME types with `as_str()`.
@@ -26,6 +26,8 @@ A grab-bag of general-purpose helper modules shared across all SDK components: e
 - `TryFromChrono` / `TryIntoTime` / `TryFromTime` / `TryIntoChrono` — time-library bridge traits.
 - `WasmNotSend` / `WasmNotSync` — platform-adaptive `Send`/`Sync` markers.
 - `Truststore<T: CertificateValidator>` — X.509 chain validator implementing `sd_jwt_rs::resolver::KeyResolver`.
+  Trust requires a verified signature over the chain's topmost certificate by a held anchor; a chain's own
+  Authority Key Identifier only selects which anchor to try and never grants trust by itself.
 - `sanitize_log_msg` — log injection prevention helper.
 
 ## Dependencies

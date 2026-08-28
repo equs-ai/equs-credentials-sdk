@@ -5,13 +5,13 @@ use common_macros::DebugError;
 use jsonwebtoken::{DecodingKey, Header};
 use one_core::mapper::x509::last_cert_authority_key_identifier_from_pem_chain;
 use one_core::proto::certificate_validator::{
-    CertificateValidationOptions, CertificateValidator, ParsedCertificate,
+    CertSelection, CertificateValidationOptions, CertificateValidator, ParsedCertificate,
 };
 use one_core::provider::key_algorithm::key::KeyHandle;
 use one_core::validator::x509::is_dns_name_matching;
 use sd_jwt_rs::resolver::KeyResolver;
-use snafu::{Location, ResultExt, Snafu};
-use std::collections::HashSet;
+use snafu::{Location, Snafu};
+use std::collections::HashMap;
 use tracing::Level;
 use tracing::instrument;
 use url::Url;
@@ -58,15 +58,24 @@ pub enum TruststoreError {
 
 pub struct Truststore<T: CertificateValidator> {
     cert_validator: T,
-    trusted_root_skids: HashSet<String>,
+    /// PEM of each trusted anchor, keyed by its Subject Key Identifier.
+    trusted_roots: HashMap<String, String>,
+    enforce_issuer_domain: bool,
 }
 
 impl<T: CertificateValidator> Truststore<T> {
-    pub fn new(cert_validator: T, trusted_root_skids: HashSet<String>) -> Self {
+    pub fn new(cert_validator: T, trusted_roots: HashMap<String, String>) -> Self {
         Self {
             cert_validator,
-            trusted_root_skids,
+            trusted_roots,
+            enforce_issuer_domain: false,
         }
+    }
+
+    /// Rejects an Issuer-signed JWT whose `iss` domain is not named in the end-entity certificate.
+    pub fn enforce_issuer_domain(mut self, enabled: bool) -> Self {
+        self.enforce_issuer_domain = enabled;
+        self
     }
 
     #[instrument(level = Level::TRACE, skip(self, pem_chain), err())]
@@ -75,37 +84,58 @@ impl<T: CertificateValidator> Truststore<T> {
         pem_chain: &str,
         expected_domain: &str,
     ) -> Result<ParsedCertificate, TruststoreError> {
-        let leaf_certificate = self
-            .cert_validator
-            .parse_pem_chain(
-                pem_chain,
-                CertificateValidationOptions::signature_and_revocation(None),
-            )
-            .await
-            .map_err(|e| {
-                CertificateChainSnafu {
-                    details: e.to_string(),
-                }
-                .build()
-            })?;
+        let leaf_certificate = self.verify_chain_against_trusted_anchor(pem_chain).await?;
 
-        self.verify_root_ca_is_trusted(pem_chain)?;
-        verify_domain_matches_certificate(expected_domain, &leaf_certificate)?;
+        if let Err(error) = verify_domain_matches_certificate(expected_domain, &leaf_certificate)
+            && self.enforce_issuer_domain
+        {
+            return Err(error);
+        }
 
         Ok(leaf_certificate)
     }
 
-    fn verify_root_ca_is_trusted(&self, pem_chain: &str) -> Result<(), TruststoreError> {
-        let last_cert_akid =
-            last_cert_authority_key_identifier_from_pem_chain(pem_chain).context(OneCoreSnafu)?;
-        if self.trusted_root_skids.contains(&last_cert_akid) {
-            Ok(())
-        } else {
-            Err(UntrustedRootSnafu {
-                skid: last_cert_akid,
+    /// Validates `pem_chain` up to and including a trusted anchor.
+    async fn verify_chain_against_trusted_anchor(
+        &self,
+        pem_chain: &str,
+    ) -> Result<ParsedCertificate, TruststoreError> {
+        let declared_akid = last_cert_authority_key_identifier_from_pem_chain(pem_chain)
+            .ok()
+            .filter(|akid| self.trusted_roots.contains_key(akid));
+
+        let candidates: Vec<(&String, &String)> = match &declared_akid {
+            Some(akid) => self.trusted_roots.get_key_value(akid).into_iter().collect(),
+            None => self.trusted_roots.iter().collect(),
+        };
+
+        let mut last_error: Option<String> = None;
+
+        for (skid, anchor_pem) in candidates {
+            match self
+                .cert_validator
+                .validate_chain_against_ca_chain(
+                    pem_chain,
+                    anchor_pem,
+                    CertificateValidationOptions::signature_and_revocation(None),
+                    CertSelection::Leaf,
+                )
+                .await
+            {
+                Ok(leaf_certificate) => return Ok(leaf_certificate),
+                Err(e) => {
+                    tracing::debug!(%skid, error = %e, "Chain did not validate against this anchor");
+                    last_error = Some(e.to_string());
+                }
             }
-            .build())
         }
+
+        Err(UntrustedRootSnafu {
+            skid: declared_akid.unwrap_or_else(|| {
+                last_error.unwrap_or_else(|| "no trusted anchor validated the chain".to_string())
+            }),
+        }
+        .build())
     }
 }
 
@@ -113,12 +143,6 @@ fn verify_domain_matches_certificate(
     expected_domain: &str,
     cert: &ParsedCertificate,
 ) -> Result<(), TruststoreError> {
-    if let Some(cert_scn) = &cert.subject_common_name
-        && is_dns_name_matching(cert_scn, expected_domain)
-    {
-        return Ok(());
-    }
-
     let san = cert
         .attributes
         .extensions
@@ -142,7 +166,7 @@ fn verify_domain_matches_certificate(
         Ok(())
     } else {
         Err(IssuerValidationSnafu {
-            details: format!("Issuer domain {expected_domain} is not referenced in SCN or SAN"),
+            details: format!("Issuer domain {expected_domain} is not referenced in a SAN entry"),
         }
         .build())
     }
@@ -202,7 +226,7 @@ mod tests {
     };
     use rstest::*;
     use sd_jwt_rs::{SDJWTSerializationFormat, SDJWTVerifier};
-    use std::collections::HashSet;
+    use std::collections::HashMap;
     use x509_parser::prelude::Pem;
 
     #[rstest]
@@ -216,13 +240,14 @@ mod tests {
         GITHUB_CERT_CHAIN,
         "www.github.com"
     )]
-    #[case::positive_self_signed_server_cert(
+    #[should_panic(expected = "Untrusted root CA SKID")]
+    #[case::self_signed_cert_as_its_own_anchor(
         trusted_skids_with_root_ca(OPENID_CONFORMANCE_TEST_CERT),
         OPENID_CONFORMANCE_TEST_CERT,
         "localhost.emobix.co.uk"
     )]
     #[should_panic(expected = "Untrusted root CA SKID")]
-    #[case::empty_truststore(HashSet::new(), GITHUB_CERT_CHAIN, "github.com")]
+    #[case::empty_truststore(HashMap::new(), GITHUB_CERT_CHAIN, "github.com")]
     #[should_panic(expected = "Untrusted root CA SKID")]
     #[case::untrusted_ca(
         trusted_skids_with_root_ca(OPENID_CONFORMANCE_TEST_CERT),
@@ -231,7 +256,7 @@ mod tests {
     )]
     #[tokio::test]
     async fn resolve_issuer_key_and_validate_trust(
-        #[case] trusted_skids: HashSet<String>,
+        #[case] trusted_skids: HashMap<String, String>,
         #[case] cert_chain: &str,
         #[case] expected_domain: &str,
     ) {
@@ -242,19 +267,42 @@ mod tests {
             .unwrap();
     }
 
-    fn trusted_skids_with_root_ca(ca_cert: &str) -> HashSet<String> {
+    fn trusted_skids_with_root_ca(ca_cert: &str) -> HashMap<String, String> {
         let cert = Pem::iter_from_buffer(ca_cert.as_bytes())
             .next()
             .unwrap()
             .unwrap();
 
-        let mut trusted_root_skids = HashSet::new();
-
         let certificate = cert.parse_x509().unwrap();
+        let skid = subject_key_identifier(&certificate).unwrap().unwrap();
 
-        trusted_root_skids.insert(subject_key_identifier(&certificate).unwrap().unwrap());
+        HashMap::from([(skid, ca_cert.to_string())])
+    }
 
-        trusted_root_skids
+    #[tokio::test]
+    async fn rejects_chain_whose_declared_akid_matches_an_anchor_it_was_not_signed_by() {
+        let github_root = Pem::iter_from_buffer(GITHUB_ROOT_CA.as_bytes())
+            .next()
+            .unwrap()
+            .unwrap();
+        let github_skid = subject_key_identifier(&github_root.parse_x509().unwrap())
+            .unwrap()
+            .unwrap();
+
+        // Trusted under the SKI the GitHub chain points at, but holding unrelated CA material.
+        let mismatched_anchor =
+            HashMap::from([(github_skid, OPENID_CONFORMANCE_TEST_CERT.to_string())]);
+
+        let truststore = Truststore::new(CertificateValidatorImpl::default(), mismatched_anchor);
+
+        let result = truststore
+            .verify_chain_trust(GITHUB_CERT_CHAIN, "github.com")
+            .await;
+
+        assert!(
+            result.is_err(),
+            "a chain must not be trusted merely for declaring a trusted anchor's key identifier"
+        );
     }
 
     #[rstest]
@@ -270,18 +318,20 @@ mod tests {
     }
 
     #[rstest]
-    //todo It is positive test but it does not work due to cred exp. Should be updated manually by new created certificate as existing jwt came from conformance tests
-    #[should_panic(expected = "Cannot decode jwt: ExpiredSignature")]
-    #[case::positive(trusted_skids_with_root_ca(OPENID_CONFORMANCE_TEST_CERT), SD_JWT_VC)]
     #[should_panic(expected = "Untrusted root CA SKID")]
-    #[case::negative(HashSet::new(), SD_JWT_VC)]
+    #[case::self_signed_cert_as_its_own_anchor(
+        trusted_skids_with_root_ca(OPENID_CONFORMANCE_TEST_CERT),
+        SD_JWT_VC
+    )]
+    #[should_panic(expected = "Untrusted root CA SKID")]
+    #[case::negative(HashMap::new(), SD_JWT_VC)]
     #[should_panic(expected = "sd-jwt-vc token contains no x5c header")]
     #[case::negative(
         trusted_skids_with_root_ca(OPENID_CONFORMANCE_TEST_CERT),
         SD_JWT_VC_NO_X5C
     )]
     #[tokio::test]
-    async fn resolve(#[case] trusted_skids: HashSet<String>, #[case] sd_jwt: &str) {
+    async fn resolve(#[case] trusted_skids: HashMap<String, String>, #[case] sd_jwt: &str) {
         let truststore = Truststore::new(CertificateValidatorImpl::default(), trusted_skids);
         let mut sd_jwt_verifier = SDJWTVerifier::new(Box::new(truststore));
         sd_jwt_verifier

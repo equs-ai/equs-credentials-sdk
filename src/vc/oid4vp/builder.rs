@@ -16,7 +16,7 @@ use crate::{kms, vault, vc};
 use common_macros::DebugError;
 use snafu::ensure;
 use snafu::{Location, Snafu};
-use std::collections::HashSet;
+use std::collections::HashMap;
 use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -54,7 +54,8 @@ where
     did_resolver: UniversalResolver,
     http_client: Result<HC, HttpError>,
 
-    trusted_certs_skids: Option<HashSet<String>>,
+    /// PEM of each trusted anchor, keyed by its Subject Key Identifier.
+    trusted_certs: Option<HashMap<String, String>>,
     x5c_chain: Option<Vec<u8>>,
     _marker: PhantomData<KH>,
 }
@@ -99,7 +100,7 @@ where
             http_client,
             did_resolver: UniversalResolver::default(),
             client_metadata: None,
-            trusted_certs_skids: None,
+            trusted_certs: None,
             x5c_chain: None,
             _marker: Default::default(),
         }
@@ -182,7 +183,7 @@ where
             did_resolver: self.did_resolver,
             nonce_generator: self.nonce_generator,
             _marker: Default::default(),
-            trusted_certs_skids: self.trusted_certs_skids,
+            trusted_certs: self.trusted_certs,
             x5c_chain: self.x5c_chain,
         }
     }
@@ -279,9 +280,19 @@ where
                 .build()
             })?;
 
-        let mut trusted_certs_skids = self.trusted_certs_skids.unwrap_or_default();
-        trusted_certs_skids.insert(skid);
-        self.trusted_certs_skids = Some(trusted_certs_skids);
+        let pem_string = String::from_utf8(pem_bytes.to_vec()).map_err(|e| {
+            BuildSnafu {
+                details: format!("Certificate pem is not valid UTF-8: {}", e),
+            }
+            .build()
+        })?;
+
+        // The PEM is retained, not just the SKI: verifying the signature over the topmost `x5c`
+        // certificate needs this anchor's public key, and a SKI only allows matching an AKID, which
+        // the presented chain asserts about itself.
+        let mut trusted_certs = self.trusted_certs.unwrap_or_default();
+        trusted_certs.insert(skid, pem_string);
+        self.trusted_certs = Some(trusted_certs);
 
         Ok(self)
     }
@@ -372,7 +383,7 @@ where
             self.did_resolver.clone(),
         );
         inner = inner.with_verification_params(vc::core::VerificationParams {
-            trusted_certs_skids: self.trusted_certs_skids,
+            trusted_certs: self.trusted_certs,
         });
 
         let verifier = VerifierService::new(

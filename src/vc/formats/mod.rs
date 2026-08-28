@@ -9,7 +9,7 @@ use common_macros::DebugError;
 use snafu::{Location, Snafu};
 use ssi::claims::SignatureError;
 use ssi::dids::DIDURL;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::fmt::Debug;
 
 pub mod json_ld_vc;
@@ -262,8 +262,8 @@ mod tests {
 pub struct VerifyOptions {
     // TODO seems to be jwt_vc_json-specific and should be removed from generic code.
     pub selective_claims: Option<Vec<String>>,
-    // Subject Key Identifiers (SKI) of the trusted x509 certificates used to verify the signature of the credential.
-    pub trusted_certs_skids: Option<HashSet<String>>,
+    // PEM of each trusted x509 anchor, keyed by its Subject Key Identifier (SKI).
+    pub trusted_certs: Option<HashMap<String, String>>,
 }
 
 #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
