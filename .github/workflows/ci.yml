@@ -216,7 +216,24 @@ jobs:
         run: bash .github/scripts/binstall-or-build.sh cargo-tarpaulin "cargo tarpaulin --version"
 
       - name: Run tests with coverage
-        run: cargo tarpaulin --skip-clean --timeout 180 --all-features --exclude-files "src/didcomm/*" --exclude-files "demos/*" --exclude-files "dependencies/one-core/*" --exclude-files "wrappers/*" --fail-under 70 -o Html
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo tarpaulin --skip-clean --timeout 180 --all-features --exclude-files "src/didcomm/*" --exclude-files "demos/*" --exclude-files "dependencies/one-core/*" --exclude-files "wrappers/*" --fail-under 70 -o Html 2>&1 | tee tarpaulin.log
+
+      - name: Publish coverage summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "### Coverage"
+            echo
+            if line=$(grep -oE '[0-9.]+% coverage, [0-9/]+ lines covered' tarpaulin.log | tail -1); then
+              echo "**${line}** — gate: 70%"
+            else
+              echo "No coverage figure produced; tarpaulin did not reach the reporting stage."
+            fi
+          } | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Upload coverage report
         if: always()
