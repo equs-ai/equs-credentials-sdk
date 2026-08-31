@@ -19,7 +19,10 @@ belongs in both files.
 alongside the tests. `secret-scan` and `dependency-scan` gate nothing.
 
 Builds hand work forward through the cache rather than repeating it. `build-dev`
-and `build-prod` each save the root `target/` under a key hashing `Cargo.lock`;
+and `build-prod` each save the root `target/` under a key hashing `Cargo.lock`.
+`build-prod` compiles only `-p nodejs`: that package's napi release build is the
+sole consumer of root `target/release`, and the command mirrors what
+`napi build --release` runs so the fingerprints match.
 `askar-rust` saves `plugins/askar/target`, which is where the askar napi wrapper
 compiles. Wrapper jobs restore those and save their own output under a
 `github.sha` key, so a test job restores exactly the artifacts its run built.
@@ -36,8 +39,10 @@ compiles. Wrapper jobs restore those and save their own output under a
 - Every job sets `timeout-minutes: 30`: a hung job otherwise bills six hours.
 - Jobs sharing a `target/` cache pin `CARGO_PROFILE_DEV_DEBUG: "0"`, which
   keeps the cache under the 10 GB repo limit and keeps cargo fingerprints
-  matching across them. `test-with-coverage` is excluded: tarpaulin needs the
-  debug info.
+  matching across them. `test-with-coverage` sets `line-tables-only` instead: tarpaulin
+  maps addresses to lines through DWARF line tables, and a full-debug build
+  overruns the 8.4 GB the runner leaves free — the linker dies on SIGBUS, not
+  ENOSPC.
 - The wrapper release builds run nowhere else — the demos consume `build:debug`
   and `build:dev`, and the napi debug build compiles a different feature set.
 - No CodeQL: it needs a paid licence on a private repo. `gitleaks` covers
