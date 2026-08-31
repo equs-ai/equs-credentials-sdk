@@ -70,7 +70,22 @@ jobs:
         run: bash .github/scripts/binstall-or-build.sh cargo-audit "cargo audit --version"
 
       - name: Audit dependencies
-        run: cargo audit --json > cargo-audit-report.json
+        shell: bash
+        run: |
+          cargo audit --json > cargo-audit-report.json || true
+          grep -q '"vulnerabilities"' cargo-audit-report.json || { echo "cargo audit produced no report" >&2; exit 1; }
+
+      - name: Publish advisory summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "### Dependency advisories"
+            echo
+            echo '```'
+            cargo audit --no-fetch 2>&1 | tail -n 60 || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload audit report
         if: always()

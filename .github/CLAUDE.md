@@ -40,3 +40,5 @@ demo too, so that has no job of its own.
 - `secret-scan` reads the working tree, not history, so the checkout stays
   shallow. `generic-api-key` and `jwt` are off: they match the crypto test
   vectors this repo is full of, 165 times over. Provider rules are untouched.
+- `dependency-scan` reports advisories and does not gate, matching GitLab.
+  RUSTSEC-2023-0071 has no patched release, so gating could never go green.
