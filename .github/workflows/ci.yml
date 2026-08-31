@@ -25,6 +25,7 @@ jobs:
   secret-scan:
     name: secret-scan
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     env:
       GITLEAKS_VERSION: 8.30.1
       GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
@@ -60,6 +61,7 @@ jobs:
     name: dependency-scan
     runs-on: ubuntu-latest
     container: rust:1.97.0-bookworm
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-rust
@@ -80,124 +82,31 @@ jobs:
           path: cargo-audit-report.json
           if-no-files-found: ignore
 
-  check-format:
-    name: check-format
+  lint-and-build:
+    name: lint-and-build
     runs-on: ubuntu-latest
     container: rust:1.97.0-bookworm
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-rust
         with:
-          cache-key: check-format
-          components: rustfmt
-          install-tooling: 'false'
-      - run: cargo fmt --all -- --check
+          cache-key: lint-and-build
+          components: rustfmt clippy
 
-  lint:
-    name: lint
-    runs-on: ubuntu-latest
-    container: rust:1.97.0-bookworm
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: ./.github/actions/setup-rust
-        with:
-          cache-key: lint
-          components: clippy
-      - run: cargo clippy --workspace --exclude wasm --all-targets --all-features -- -Dwarnings
+      - name: Check formatting
+        run: cargo fmt --all -- --check
 
-  build:
-    name: build
-    runs-on: ubuntu-latest
-    container: rust:1.97.0-bookworm
-    needs: [check-format, lint]
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: ./.github/actions/setup-rust
-        with:
-          cache-key: build
-      - run: cargo build --all-features --workspace --exclude wasm
+      - name: Clippy
+        run: cargo clippy --workspace --exclude wasm --all-targets --all-features -- -Dwarnings
 
-  doc-build:
-    name: doc-build
-    runs-on: ubuntu-latest
-    container: rust:1.97.0-bookworm
-    needs: [check-format, lint]
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: ./.github/actions/setup-rust
-        with:
-          cache-key: doc-build
-      - run: cargo doc --no-deps --workspace --all-features --exclude nodejs --exclude wasm --exclude equs_sdk_uniffi
+      - name: Build
+        run: cargo build --all-features --workspace --exclude wasm
+
+      - name: Build docs
+        run: cargo doc --no-deps --workspace --all-features --exclude nodejs --exclude wasm --exclude equs_sdk_uniffi
         env:
           RUSTDOCFLAGS: -D warnings
-
-  nodejs-wrapper-build:
-    name: nodejs-wrapper-build
-    runs-on: ubuntu-latest
-    container: node:20.18.0
-    needs: [check-format, lint]
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: ./.github/actions/setup-rustup
-        with:
-          rust-version: "1.97.0"
-          cache-key: nodejs-wrapper-build
-      - working-directory: wrappers/nodejs
-        run: |
-          npm i
-          npm run build
-
-  nodejs-demo-build:
-    name: nodejs-demo-build
-    runs-on: ubuntu-latest
-    container: node:20.18.0
-    needs: [check-format, lint]
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: ./.github/actions/setup-rustup
-        with:
-          rust-version: "1.97.0"
-          cache-key: nodejs-demo-build
-      - working-directory: demos/nodejs/oid4vc
-        run: |
-          npm i
-          npm run build
-
-  wasm-wrapper-build:
-    name: wasm-wrapper-build
-    runs-on: ubuntu-latest
-    container: node:20.18.0
-    needs: [check-format, lint]
-    env:
-      RUSTC_WRAPPER: ""
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: ./.github/actions/setup-wasm
-        with:
-          rust-version: "1.97.0"
-          cache-key: wasm-wrapper-build
-      - working-directory: wrappers/wasm
-        run: |
-          npm i
-          npm run build
-
-  wasm-demo-build:
-    name: wasm-demo-build
-    runs-on: ubuntu-latest
-    container: node:20.18.0
-    needs: [check-format, lint]
-    env:
-      RUSTC_WRAPPER: ""
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: ./.github/actions/setup-wasm
-        with:
-          rust-version: "1.97.0"
-          cache-key: wasm-demo-build
-      - working-directory: demos/wasm/oid4vc
-        run: |
-          npm i
-          npm run build
 
   test-with-coverage:
     name: test-with-coverage
@@ -205,7 +114,8 @@ jobs:
     container:
       image: rust:1.97.0-bookworm
       options: --security-opt seccomp=unconfined --cap-add SYS_PTRACE
-    needs: [build, doc-build, nodejs-wrapper-build, wasm-wrapper-build, nodejs-demo-build, wasm-demo-build]
+    timeout-minutes: 60
+    needs: [lint-and-build]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-rust
@@ -243,52 +153,47 @@ jobs:
           path: tarpaulin-report.html
           if-no-files-found: warn
 
-  nodejs-test:
-    name: nodejs-test
+  nodejs:
+    name: nodejs
     runs-on: ubuntu-latest
     container: node:20.18.0
-    needs: [build, doc-build, nodejs-wrapper-build, wasm-wrapper-build, nodejs-demo-build, wasm-demo-build]
+    timeout-minutes: 60
+    needs: [lint-and-build]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-rustup
         with:
           rust-version: "1.97.0"
-          cache-key: nodejs-test
-      - name: Build and test the napi wrapper
+          cache-key: nodejs
+
+      - name: Build the napi wrapper
         run: |
-          cd wrappers/nodejs
-          npm i
-          npm run build:debug
-          npm run test
-          cd ../test/js_common
+          npm i --prefix wrappers/nodejs
+          npm run build --prefix wrappers/nodejs
+          npm run build:debug --prefix wrappers/nodejs
+
+      - name: Test the napi wrapper
+        run: npm run test --prefix wrappers/nodejs
+
+      - name: Test nodejs against the shared suite
+        run: |
+          cd wrappers/test/js_common
           npm pkg set dependencies.equs-sdk=file:../../nodejs
           npm i
           npm run test:nodejs
 
-  askar-plugin-nodejs-test:
-    name: askar-plugin-nodejs-test
-    runs-on: ubuntu-latest
-    container: node:20.18.0
-    needs: [build, doc-build, nodejs-wrapper-build, wasm-wrapper-build, nodejs-demo-build, wasm-demo-build]
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: ./.github/actions/setup-rustup
-        with:
-          rust-version: "1.97.0"
-          cache-key: askar-plugin-nodejs-test
       - name: Build and test the askar plugin wrapper
         run: |
-          npm i --prefix wrappers/nodejs
-          npm run build:debug --prefix wrappers/nodejs
           npm i --prefix plugins/askar/wrappers/nodejs
           npm run build --prefix plugins/askar/wrappers/nodejs
           npm run test --prefix plugins/askar/wrappers/nodejs
 
-  wasm-test:
-    name: wasm-test
+  wasm:
+    name: wasm
     runs-on: ubuntu-latest
     container: node:20.18.0
-    needs: [build, doc-build, nodejs-wrapper-build, wasm-wrapper-build, nodejs-demo-build, wasm-demo-build]
+    timeout-minutes: 60
+    needs: [lint-and-build]
     env:
       RUSTC_WRAPPER: ""
     steps:
@@ -296,22 +201,33 @@ jobs:
       - uses: ./.github/actions/setup-wasm
         with:
           rust-version: "1.97.0"
-          cache-key: wasm-test
-      - name: Build and test the wasm wrapper
+          cache-key: wasm
+
+      - name: Build the wasm wrapper
         run: |
-          cd wrappers/wasm
-          npm install
-          npm run build:dev:cjs
-          cd ../test/js_common
+          npm i --prefix wrappers/wasm
+          npm run build --prefix wrappers/wasm
+          npm run build:dev:cjs --prefix wrappers/wasm
+
+      - name: Test wasm against the shared suite
+        run: |
+          cd wrappers/test/js_common
           npm pkg set dependencies.equs-sdk=file:../../wasm/pkg
           npm i
           npm run test:wasm
+
+      - name: Build the wasm and nodejs demos
+        working-directory: demos/wasm/oid4vc
+        run: |
+          npm i
+          npm run build
 
   kotlin-test:
     name: kotlin-test
     runs-on: ubuntu-latest
     container: rust:1.97.0-bookworm
-    needs: [build, doc-build, nodejs-wrapper-build, wasm-wrapper-build, nodejs-demo-build, wasm-demo-build]
+    timeout-minutes: 45
+    needs: [lint-and-build]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-rust
@@ -329,7 +245,7 @@ jobs:
     name: swift-test
     runs-on: [self-hosted, macOS]
     timeout-minutes: 60
-    needs: [build, doc-build, nodejs-wrapper-build, wasm-wrapper-build, nodejs-demo-build, wasm-demo-build]
+    needs: [lint-and-build]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-rustup
@@ -347,7 +263,8 @@ jobs:
     name: oid4vc-demo
     runs-on: ubuntu-latest
     container: rust:1.97.0-bookworm
-    needs: [test-with-coverage, nodejs-test, askar-plugin-nodejs-test, wasm-test, kotlin-test, swift-test]
+    timeout-minutes: 45
+    needs: [test-with-coverage, nodejs, wasm, kotlin-test, swift-test]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-rust

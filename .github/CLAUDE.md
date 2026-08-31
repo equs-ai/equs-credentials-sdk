@@ -6,14 +6,21 @@ belongs in both files.
 
 | Path | Role |
 |------|------|
-| `workflows/ci.yml` | 17 jobs, triggers, gating, workflow-level env. |
+| `workflows/ci.yml` | 9 jobs, triggers, gating, workflow-level env. |
 | `actions/setup-rust/` | Caches, `cargo-binstall`, `sccache`. Assumes Rust on `PATH`. |
 | `actions/setup-rustup/` | Installs the pinned toolchain, then `setup-rust`. |
 | `actions/setup-wasm/` | clang, then `setup-rustup`, then `wasm-pack`. |
 | `scripts/binstall-or-build.sh` | GitLab's `binstall_or_build` helper. Invoked via `bash …`, not executable. |
 
-`check-format` and `lint` gate the six build jobs, which gate the six test jobs,
-which gate `oid4vc-demo`. `secret-scan` and `dependency-scan` gate nothing.
+`lint-and-build` gates the five test jobs, which gate `oid4vc-demo`. `secret-scan`
+and `dependency-scan` gate nothing.
+
+Jobs are merged by toolchain so one checkout pays the setup once and reuses a
+single `target/`: `lint-and-build` runs fmt, clippy, build and doc; `nodejs`
+builds the napi wrapper release and debug, then runs the wrapper, shared-suite
+and askar tests; `wasm` builds the wrapper release and dev, runs the shared
+suite, then builds the demo. The wasm demo's `preinstall` builds the nodejs
+demo too, so that has no job of its own.
 
 ## Constraints
 
@@ -22,7 +29,10 @@ which gate `oid4vc-demo`. `secret-scan` and `dependency-scan` gate nothing.
 - Cache keys embed a content hash — GitHub cache entries are write-once. The
   npm key hashes `package.json`, since no lockfile is tracked.
 - Actions are pinned by commit SHA, never by tag.
-- `swift-test` runs on a self-hosted macOS runner, no container, 60-minute
-  timeout. The wasm jobs run as root and set `RUSTC_WRAPPER: ""`.
+- `swift-test` runs on a self-hosted macOS runner, no container. The `wasm` job
+  runs as root and sets `RUSTC_WRAPPER: ""`.
+- Every job sets `timeout-minutes`: a hung job otherwise bills six hours.
+- The wrapper release builds run nowhere else — the demos consume `build:debug`
+  and `build:dev`, and the napi debug build compiles a different feature set.
 - No CodeQL: it needs a paid licence on a private repo. `gitleaks` covers
   secret detection via its MIT CLI, not the EULA-licensed Action.
