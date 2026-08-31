@@ -6,22 +6,23 @@ belongs in both files.
 
 | Path | Role |
 |------|------|
-| `workflows/ci.yml` | 9 jobs, triggers, gating, workflow-level env. |
+| `workflows/ci.yml` | 19 jobs, triggers, gating, workflow-level env. |
 | `actions/setup-rust/` | Caches, `cargo-binstall`, `sccache`. Assumes Rust on `PATH`. |
 | `actions/setup-rustup/` | Installs the pinned toolchain, then `setup-rust`. |
 | `actions/setup-wasm/` | clang, then `setup-rustup`, then `wasm-pack`. |
 | `gitleaks.toml` | Secret-scan rules: default set minus the two noisy ones. |
 | `scripts/binstall-or-build.sh` | GitLab's `binstall_or_build` helper. Invoked via `bash …`, not executable. |
 
-`lint-and-build` gates the five test jobs, which gate `oid4vc-demo`. `secret-scan`
-and `dependency-scan` gate nothing.
+`lint-and-format` gates `build-dev` and `build-prod`; `build-prod` gates
+`askar-rust`. The four wrapper jobs wait on both builds, `askar-wrapper` on
+`askar-rust` as well. Each test job waits on the wrapper it exercises. Demos run
+alongside the tests. `secret-scan` and `dependency-scan` gate nothing.
 
-Jobs are merged by toolchain so one checkout pays the setup once and reuses a
-single `target/`: `lint-and-build` runs fmt, clippy, build and doc; `nodejs`
-builds the napi wrapper release and debug, then runs the wrapper, shared-suite
-and askar tests; `wasm` builds the wrapper release and dev, runs the shared
-suite, then builds the demo. The wasm demo's `preinstall` builds the nodejs
-demo too, so that has no job of its own.
+Builds hand work forward through the cache rather than repeating it. `build-dev`
+and `build-prod` each save the root `target/` under a key hashing `Cargo.lock`;
+`askar-rust` saves `plugins/askar/target`, which is where the askar napi wrapper
+compiles. Wrapper jobs restore those and save their own output under a
+`github.sha` key, so a test job restores exactly the artifacts its run built.
 
 ## Constraints
 
@@ -30,9 +31,13 @@ demo too, so that has no job of its own.
 - Cache keys embed a content hash — GitHub cache entries are write-once. The
   npm key hashes `package.json`, since no lockfile is tracked.
 - Actions are pinned by commit SHA, never by tag.
-- `swift-test` runs on a self-hosted macOS runner, no container. The `wasm` job
-  runs as root and sets `RUSTC_WRAPPER: ""`.
-- Every job sets `timeout-minutes`: a hung job otherwise bills six hours.
+- `swift-test` runs on a self-hosted macOS runner, no container. The wasm jobs
+  run as root and set `RUSTC_WRAPPER: ""`.
+- Every job sets `timeout-minutes: 30`: a hung job otherwise bills six hours.
+- Jobs sharing a `target/` cache pin `CARGO_PROFILE_DEV_DEBUG: "0"`, which
+  keeps the cache under the 10 GB repo limit and keeps cargo fingerprints
+  matching across them. `test-with-coverage` is excluded: tarpaulin needs the
+  debug info.
 - The wrapper release builds run nowhere else — the demos consume `build:debug`
   and `build:dev`, and the napi debug build compiles a different feature set.
 - No CodeQL: it needs a paid licence on a private repo. `gitleaks` covers

@@ -25,7 +25,7 @@ jobs:
   secret-scan:
     name: secret-scan
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     env:
       GITLEAKS_VERSION: 8.30.1
       GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
@@ -59,7 +59,7 @@ jobs:
     name: dependency-scan
     runs-on: ubuntu-latest
     container: rust:1.97.0-bookworm
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-rust
@@ -95,16 +95,16 @@ jobs:
           path: cargo-audit-report.json
           if-no-files-found: ignore
 
-  lint-and-build:
-    name: lint-and-build
+  lint-and-format:
+    name: lint-and-format
     runs-on: ubuntu-latest
     container: rust:1.97.0-bookworm
-    timeout-minutes: 45
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-rust
         with:
-          cache-key: lint-and-build
+          cache-key: lint-and-format
           components: rustfmt clippy
 
       - name: Check formatting
@@ -113,13 +113,280 @@ jobs:
       - name: Clippy
         run: cargo clippy --workspace --exclude wasm --all-targets --all-features -- -Dwarnings
 
+      - name: Report disk
+        if: always()
+        run: df -h /__w | tail -1
+
+  build-dev:
+    name: build-dev
+    runs-on: ubuntu-latest
+    container: rust:1.97.0-bookworm
+    timeout-minutes: 30
+    needs: [lint-and-format]
+    env:
+      CARGO_PROFILE_DEV_DEBUG: "0"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-rust
+        with:
+          cache-key: build-dev
+
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: target
+          key: target-dev-${{ hashFiles('Cargo.lock') }}
+          restore-keys: target-dev-
+
       - name: Build
         run: cargo build --all-features --workspace --exclude wasm
+
+      - name: Report disk and target size
+        if: always()
+        run: |
+          df -h /__w | tail -1
+          du -sh target 2>/dev/null || true
+
+  build-prod:
+    name: build-prod
+    runs-on: ubuntu-latest
+    container: rust:1.97.0-bookworm
+    timeout-minutes: 30
+    needs: [lint-and-format]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-rust
+        with:
+          cache-key: build-prod
+
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: target
+          key: target-prod-${{ hashFiles('Cargo.lock') }}
+          restore-keys: target-prod-
+
+      - name: Build
+        run: cargo build --release --all-features --workspace --exclude wasm
+
+      - name: Report disk and target size
+        if: always()
+        run: |
+          df -h /__w | tail -1
+          du -sh target 2>/dev/null || true
+
+  askar-rust:
+    name: askar-rust
+    runs-on: ubuntu-latest
+    container: rust:1.97.0-bookworm
+    timeout-minutes: 30
+    needs: [build-prod]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-rust
+        with:
+          cache-key: askar-rust
+
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: plugins/askar/target
+          key: target-askar-${{ hashFiles('Cargo.lock') }}
+          restore-keys: target-askar-
+
+      - name: Build the askar crate
+        env:
+          CARGO_TARGET_DIR: plugins/askar/target
+        run: cargo build --release -p askar
+
+      - name: Report disk and target size
+        if: always()
+        run: |
+          df -h /__w | tail -1
+          du -sh plugins/askar/target 2>/dev/null || true
+
+  doc-build:
+    name: doc-build
+    runs-on: ubuntu-latest
+    container: rust:1.97.0-bookworm
+    timeout-minutes: 30
+    needs: [build-dev]
+    env:
+      CARGO_PROFILE_DEV_DEBUG: "0"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-rust
+        with:
+          cache-key: doc-build
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: target
+          key: target-dev-${{ hashFiles('Cargo.lock') }}
+          restore-keys: target-dev-
 
       - name: Build docs
         run: cargo doc --no-deps --workspace --all-features --exclude nodejs --exclude wasm --exclude equs_sdk_uniffi
         env:
           RUSTDOCFLAGS: -D warnings
+
+  nodejs-wrapper:
+    name: nodejs-wrapper
+    runs-on: ubuntu-latest
+    container: node:20.18.0
+    timeout-minutes: 30
+    needs: [build-dev, build-prod]
+    env:
+      CARGO_PROFILE_DEV_DEBUG: "0"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-rustup
+        with:
+          rust-version: "1.97.0"
+          cache-key: nodejs-wrapper
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: target
+          key: target-prod-${{ hashFiles('Cargo.lock') }}
+          restore-keys: target-prod-
+
+      - name: Build the napi wrapper
+        working-directory: wrappers/nodejs
+        run: |
+          npm i
+          npm run build
+          npm run build:debug
+
+      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            wrappers/nodejs/node_modules
+            wrappers/nodejs/dist
+            wrappers/nodejs/*.node
+            wrappers/nodejs/binary.js
+            wrappers/nodejs/binary.d.ts
+            wrappers/nodejs/index.js
+            wrappers/nodejs/index.d.ts
+          key: wrapper-nodejs-${{ github.sha }}
+
+      - name: Report disk and target size
+        if: always()
+        run: |
+          df -h /__w | tail -1
+          du -sh target 2>/dev/null || true
+
+  wasm-wrapper:
+    name: wasm-wrapper
+    runs-on: ubuntu-latest
+    container: node:20.18.0
+    timeout-minutes: 30
+    needs: [build-dev, build-prod]
+    env:
+      RUSTC_WRAPPER: ""
+      CARGO_PROFILE_DEV_DEBUG: "0"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-wasm
+        with:
+          rust-version: "1.97.0"
+          cache-key: wasm-wrapper
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: target
+          key: target-dev-${{ hashFiles('Cargo.lock') }}
+          restore-keys: target-dev-
+
+      - name: Build the wasm wrapper
+        working-directory: wrappers/wasm
+        run: |
+          npm i
+          npm run build
+          npm run build:dev:cjs
+
+      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            wrappers/wasm/node_modules
+            wrappers/wasm/pkg
+            wrappers/wasm/dist
+          key: wrapper-wasm-${{ github.sha }}
+
+      - name: Report disk and target size
+        if: always()
+        run: |
+          df -h /__w | tail -1
+          du -sh target 2>/dev/null || true
+
+  uniffi-wrapper:
+    name: uniffi-wrapper
+    runs-on: ubuntu-latest
+    container: rust:1.97.0-bookworm
+    timeout-minutes: 30
+    needs: [build-dev, build-prod]
+    env:
+      CARGO_PROFILE_DEV_DEBUG: "0"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-rust
+        with:
+          cache-key: uniffi-wrapper
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: target
+          key: target-dev-${{ hashFiles('Cargo.lock') }}
+          restore-keys: target-dev-
+
+      - name: Build the uniffi library and generate Kotlin bindings
+        working-directory: wrappers/uniffi
+        run: make kotlin-generate_kotlin_debug
+
+      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            target/debug/libequssdk.so
+            wrappers/uniffi/kotlin/src/main/kotlin
+          key: wrapper-uniffi-${{ github.sha }}
+
+      - name: Report disk and target size
+        if: always()
+        run: |
+          df -h /__w | tail -1
+          du -sh target 2>/dev/null || true
+
+  askar-wrapper:
+    name: askar-wrapper
+    runs-on: ubuntu-latest
+    container: node:20.18.0
+    timeout-minutes: 30
+    needs: [build-dev, build-prod, askar-rust]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-rustup
+        with:
+          rust-version: "1.97.0"
+          cache-key: askar-wrapper
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: plugins/askar/target
+          key: target-askar-${{ hashFiles('Cargo.lock') }}
+          restore-keys: target-askar-
+
+      - name: Build the askar plugin wrapper
+        run: |
+          npm i --prefix plugins/askar/wrappers/nodejs
+          npm run build --prefix plugins/askar/wrappers/nodejs
+
+      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            plugins/askar/wrappers/nodejs/node_modules
+            plugins/askar/wrappers/nodejs/build
+            plugins/askar/wrappers/nodejs/*.node
+            plugins/askar/wrappers/nodejs/binary.js
+            plugins/askar/wrappers/nodejs/binary.d.ts
+          key: wrapper-askar-${{ github.sha }}
+
+      - name: Report disk and target size
+        if: always()
+        run: |
+          df -h /__w | tail -1
+          du -sh plugins/askar/target 2>/dev/null || true
 
   test-with-coverage:
     name: test-with-coverage
@@ -127,8 +394,8 @@ jobs:
     container:
       image: rust:1.97.0-bookworm
       options: --security-opt seccomp=unconfined --cap-add SYS_PTRACE
-    timeout-minutes: 60
-    needs: [lint-and-build]
+    timeout-minutes: 30
+    needs: [build-dev]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-rust
@@ -166,99 +433,147 @@ jobs:
           path: tarpaulin-report.html
           if-no-files-found: warn
 
-  nodejs:
-    name: nodejs
+  nodejs-test:
+    name: nodejs-test
     runs-on: ubuntu-latest
     container: node:20.18.0
-    timeout-minutes: 60
-    needs: [lint-and-build]
+    timeout-minutes: 30
+    needs: [nodejs-wrapper]
+    env:
+      CARGO_PROFILE_DEV_DEBUG: "0"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-rustup
         with:
           rust-version: "1.97.0"
-          cache-key: nodejs
-
-      - name: Build the napi wrapper
-        run: |
-          npm i --prefix wrappers/nodejs
-          npm run build --prefix wrappers/nodejs
-          npm run build:debug --prefix wrappers/nodejs
+          cache-key: nodejs-test
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            wrappers/nodejs/node_modules
+            wrappers/nodejs/dist
+            wrappers/nodejs/*.node
+            wrappers/nodejs/binary.js
+            wrappers/nodejs/binary.d.ts
+            wrappers/nodejs/index.js
+            wrappers/nodejs/index.d.ts
+          key: wrapper-nodejs-${{ github.sha }}
 
       - name: Test the napi wrapper
-        run: npm run test --prefix wrappers/nodejs
+        working-directory: wrappers/nodejs
+        run: npm run test
 
       - name: Test nodejs against the shared suite
+        working-directory: wrappers/test/js_common
         run: |
-          cd wrappers/test/js_common
           npm pkg set dependencies.equs-sdk=file:../../nodejs
           npm i
           npm run test:nodejs
 
-      - name: Build and test the askar plugin wrapper
-        run: |
-          npm i --prefix plugins/askar/wrappers/nodejs
-          npm run build --prefix plugins/askar/wrappers/nodejs
-          npm run test --prefix plugins/askar/wrappers/nodejs
-
-  wasm:
-    name: wasm
+  askar-plugin-nodejs-test:
+    name: askar-plugin-nodejs-test
     runs-on: ubuntu-latest
     container: node:20.18.0
-    timeout-minutes: 60
-    needs: [lint-and-build]
+    timeout-minutes: 30
+    needs: [nodejs-wrapper, askar-wrapper]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-rustup
+        with:
+          rust-version: "1.97.0"
+          cache-key: askar-plugin-nodejs-test
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            wrappers/nodejs/node_modules
+            wrappers/nodejs/dist
+            wrappers/nodejs/*.node
+            wrappers/nodejs/binary.js
+            wrappers/nodejs/binary.d.ts
+            wrappers/nodejs/index.js
+            wrappers/nodejs/index.d.ts
+          key: wrapper-nodejs-${{ github.sha }}
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            plugins/askar/wrappers/nodejs/node_modules
+            plugins/askar/wrappers/nodejs/build
+            plugins/askar/wrappers/nodejs/*.node
+            plugins/askar/wrappers/nodejs/binary.js
+            plugins/askar/wrappers/nodejs/binary.d.ts
+          key: wrapper-askar-${{ github.sha }}
+
+      - name: Test the askar plugin wrapper
+        run: npm run test --prefix plugins/askar/wrappers/nodejs
+
+  wasm-test:
+    name: wasm-test
+    runs-on: ubuntu-latest
+    container: node:20.18.0
+    timeout-minutes: 30
+    needs: [wasm-wrapper]
     env:
       RUSTC_WRAPPER: ""
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: ./.github/actions/setup-wasm
+      - uses: ./.github/actions/setup-rustup
         with:
           rust-version: "1.97.0"
-          cache-key: wasm
-
-      - name: Build the wasm wrapper
-        run: |
-          npm i --prefix wrappers/wasm
-          npm run build --prefix wrappers/wasm
-          npm run build:dev:cjs --prefix wrappers/wasm
+          cache-key: wasm-test
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            wrappers/wasm/node_modules
+            wrappers/wasm/pkg
+            wrappers/wasm/dist
+          key: wrapper-wasm-${{ github.sha }}
 
       - name: Test wasm against the shared suite
+        working-directory: wrappers/test/js_common
         run: |
-          cd wrappers/test/js_common
           npm pkg set dependencies.equs-sdk=file:../../wasm/pkg
           npm i
           npm run test:wasm
-
-      - name: Build the wasm and nodejs demos
-        working-directory: demos/wasm/oid4vc
-        run: |
-          npm i
-          npm run build
 
   kotlin-test:
     name: kotlin-test
     runs-on: ubuntu-latest
     container: rust:1.97.0-bookworm
-    timeout-minutes: 45
-    needs: [lint-and-build]
+    timeout-minutes: 30
+    needs: [uniffi-wrapper]
+    env:
+      CARGO_PROFILE_DEV_DEBUG: "0"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-rust
         with:
           cache-key: kotlin-test
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: target
+          key: target-dev-${{ hashFiles('Cargo.lock') }}
+          restore-keys: target-dev-
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            target/debug/libequssdk.so
+            wrappers/uniffi/kotlin/src/main/kotlin
+          key: wrapper-uniffi-${{ github.sha }}
+
       - name: Install JDK 17
         run: |
           set -euo pipefail
           apt-get update
           apt-get install -y --no-install-recommends openjdk-17-jdk
+
       - working-directory: wrappers/uniffi
         run: make kotlin-test
 
   swift-test:
     name: swift-test
     runs-on: [self-hosted, macOS]
-    timeout-minutes: 60
-    needs: [lint-and-build]
+    timeout-minutes: 30
+    needs: [uniffi-wrapper]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-rustup
@@ -272,16 +587,57 @@ jobs:
       - working-directory: wrappers/uniffi
         run: make ios-test
 
+  demo-build:
+    name: demo-build
+    runs-on: ubuntu-latest
+    container: node:20.18.0
+    timeout-minutes: 30
+    needs: [nodejs-wrapper, wasm-wrapper, askar-wrapper]
+    env:
+      RUSTC_WRAPPER: ""
+      CARGO_PROFILE_DEV_DEBUG: "0"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-wasm
+        with:
+          rust-version: "1.97.0"
+          cache-key: demo-build
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: target
+          key: target-dev-${{ hashFiles('Cargo.lock') }}
+          restore-keys: target-dev-
+
+      - name: Build the wasm and nodejs demos
+        working-directory: demos/wasm/oid4vc
+        run: |
+          npm i
+          npm run build
+
+      - name: Report disk and target size
+        if: always()
+        run: |
+          df -h /__w | tail -1
+          du -sh target 2>/dev/null || true
+
   oid4vc-demo:
     name: oid4vc-demo
     runs-on: ubuntu-latest
     container: rust:1.97.0-bookworm
-    timeout-minutes: 45
-    needs: [test-with-coverage, nodejs, wasm, kotlin-test, swift-test]
+    timeout-minutes: 30
+    needs: [build-dev]
+    env:
+      CARGO_PROFILE_DEV_DEBUG: "0"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-rust
         with:
           cache-key: oid4vc-demo
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: target
+          key: target-dev-${{ hashFiles('Cargo.lock') }}
+          restore-keys: target-dev-
+
       - working-directory: demos/oid4vc
         run: ./demo.sh
