@@ -15,7 +15,8 @@ belongs in both files.
 
 `lint-and-format` gates `build-dev` and `build-prod`; `build-prod` gates
 `askar-rust`. The four wrapper jobs wait on both builds, `askar-wrapper` on
-`askar-rust` as well. Each test job waits on the wrapper it exercises. Demos run
+`askar-rust` and on `nodejs-wrapper`, whose napi build generates the
+`@equs/equs-sdk` types the askar wrapper's `tsc` step imports. Each test job waits on the wrapper it exercises. Demos run
 alongside the tests. `secret-scan` and `dependency-scan` gate nothing.
 
 Builds hand work forward through the cache rather than repeating it. `build-dev`
@@ -29,13 +30,24 @@ compiles. Wrapper jobs restore those and save their own output under a
 
 ## Constraints
 
-- Container images are literals: the `env` context is unavailable to
-  `jobs.<id>.container.image`. Literals and env vars change together.
+- Jobs run on bare runners, not containers. A container gets 8.4 GB of the
+  runner's 72 GB, and the ~24 GB of preinstalled toolchains that would free it
+  sit on the host, out of reach from inside. Five jobs died on that before the
+  move; `setup-rustup` now deletes those toolchains on every Linux job. Running
+  outside Docker also drops the `seccomp`/`SYS_PTRACE` options tarpaulin needed
+  purely to get past Docker's own seccomp profile.
+- One toolchain layout everywhere, so `target/` caches transfer between jobs.
+  They did not when `rust:` images (rustc under `/usr/local/rustup`) fed
+  `node:` ones (rustc under `$HOME/.cargo`): fingerprints differed and a job
+  could hit its cache and still rebuild 1597 crates.
 - Cache keys embed a content hash — GitHub cache entries are write-once. The
   npm key hashes `package.json`, since no lockfile is tracked.
+- One sccache entry for the whole workflow, not one per job. Per-job entries
+  reached 8.39 GB of the 10 GB repository ceiling and evicted the `target/`
+  caches, which cost more than they saved.
 - Actions are pinned by commit SHA, never by tag.
-- `swift-test` runs on a self-hosted macOS runner, no container. The wasm jobs
-  run as root and set `RUSTC_WRAPPER: ""`.
+- `swift-test` runs on a self-hosted macOS runner. The wasm jobs set
+  `RUSTC_WRAPPER: ""`.
 - Every job sets `timeout-minutes: 30`: a hung job otherwise bills six hours.
 - Jobs sharing a `target/` cache pin `CARGO_PROFILE_DEV_DEBUG: "0"`, which
   keeps the cache under the 10 GB repo limit and keeps cargo fingerprints
