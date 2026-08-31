@@ -31,8 +31,6 @@ jobs:
       GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
 
       - name: Install gitleaks
         run: |
@@ -46,8 +44,8 @@ jobs:
           rm -f gitleaks.tar.gz
           echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
 
-      - name: Scan history for secrets
-        run: gitleaks git --redact --verbose --exit-code 1 --report-format json --report-path gitleaks-report.json .
+      - name: Scan the working tree for secrets
+        run: gitleaks dir . --config .github/gitleaks.toml --redact --verbose --exit-code 1 --report-format json --report-path gitleaks-report.json
 
       - name: Upload gitleaks report
         if: always()

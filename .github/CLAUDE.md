@@ -10,6 +10,7 @@ belongs in both files.
 | `actions/setup-rust/` | Caches, `cargo-binstall`, `sccache`. Assumes Rust on `PATH`. |
 | `actions/setup-rustup/` | Installs the pinned toolchain, then `setup-rust`. |
 | `actions/setup-wasm/` | clang, then `setup-rustup`, then `wasm-pack`. |
+| `gitleaks.toml` | Secret-scan rules: default set minus the two noisy ones. |
 | `scripts/binstall-or-build.sh` | GitLab's `binstall_or_build` helper. Invoked via `bash …`, not executable. |
 
 `lint-and-build` gates the five test jobs, which gate `oid4vc-demo`. `secret-scan`
@@ -36,3 +37,6 @@ demo too, so that has no job of its own.
   and `build:dev`, and the napi debug build compiles a different feature set.
 - No CodeQL: it needs a paid licence on a private repo. `gitleaks` covers
   secret detection via its MIT CLI, not the EULA-licensed Action.
+- `secret-scan` reads the working tree, not history, so the checkout stays
+  shallow. `generic-api-key` and `jwt` are off: they match the crypto test
+  vectors this repo is full of, 165 times over. Provider rules are untouched.

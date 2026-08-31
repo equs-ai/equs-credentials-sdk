@@ -1,0 +1,7 @@
+[extend]
+useDefault = true
+disabledRules = ["generic-api-key", "jwt"]
+
+[[allowlists]]
+targetRules = ["private-key"]
+paths = ['''wrappers/nodejs/test/oid4vp/fixtures\.ts$''']
