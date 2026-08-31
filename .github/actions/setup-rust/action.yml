@@ -17,6 +17,12 @@ inputs:
 runs:
   using: composite
   steps:
+    - name: Trust the workspace for git
+      shell: bash
+      run: |
+        git config --system --add safe.directory "$GITHUB_WORKSPACE" 2>/dev/null \
+          || git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
     - name: Export cache paths
       shell: bash
       run: |

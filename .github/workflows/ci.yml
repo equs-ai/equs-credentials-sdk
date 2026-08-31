@@ -33,6 +33,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install gitleaks
+        shell: bash
         run: |
           set -euo pipefail
           url="https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
@@ -391,17 +392,25 @@ jobs:
   test-with-coverage:
     name: test-with-coverage
     runs-on: ubuntu-latest
-    container:
-      image: rust:1.97.0-bookworm
-      options: --security-opt seccomp=unconfined --cap-add SYS_PTRACE
     timeout-minutes: 30
     needs: [build-dev]
     env:
       CARGO_PROFILE_DEV_DEBUG: line-tables-only
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: ./.github/actions/setup-rust
+
+      - name: Free runner disk
+        shell: bash
+        run: |
+          set -euo pipefail
+          df -h / | tail -1
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc \
+            /usr/local/share/boost /usr/share/swift /usr/local/.ghcup
+          df -h / | tail -1
+
+      - uses: ./.github/actions/setup-rustup
         with:
+          rust-version: "1.97.0"
           cache-key: test-with-coverage
 
       - name: Install cargo-tarpaulin
@@ -430,7 +439,7 @@ jobs:
       - name: Report disk and target size
         if: always()
         run: |
-          df -h /__w | tail -1
+          df -h / | tail -1
           du -sh target 2>/dev/null || true
 
       - name: Upload coverage report
@@ -569,6 +578,7 @@ jobs:
           key: wrapper-uniffi-${{ github.sha }}
 
       - name: Install JDK 17
+        shell: bash
         run: |
           set -euo pipefail
           apt-get update
