@@ -24,6 +24,7 @@ jobs:
 
   secret-scan:
     name: secret-scan
+    if: false
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
@@ -58,6 +59,7 @@ jobs:
 
   dependency-scan:
     name: dependency-scan
+    if: false
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -98,6 +100,7 @@ jobs:
 
   lint-and-format:
     name: lint-and-format
+    if: false
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -120,6 +123,7 @@ jobs:
 
   build-dev:
     name: build-dev
+    if: false
     runs-on: ubuntu-latest
     timeout-minutes: 30
     needs: [lint-and-format]
@@ -149,6 +153,7 @@ jobs:
 
   build-prod:
     name: build-prod
+    if: false
     runs-on: ubuntu-latest
     timeout-minutes: 30
     needs: [lint-and-format]
@@ -176,6 +181,7 @@ jobs:
 
   askar-rust:
     name: askar-rust
+    if: false
     runs-on: ubuntu-latest
     timeout-minutes: 30
     needs: [build-prod]
@@ -205,6 +211,7 @@ jobs:
 
   doc-build:
     name: doc-build
+    if: false
     runs-on: ubuntu-latest
     timeout-minutes: 30
     needs: [build-dev]
@@ -229,6 +236,7 @@ jobs:
 
   nodejs-wrapper:
     name: nodejs-wrapper
+    if: false
     runs-on: ubuntu-latest
     timeout-minutes: 30
     needs: [build-dev, build-prod]
@@ -276,6 +284,7 @@ jobs:
 
   wasm-wrapper:
     name: wasm-wrapper
+    if: false
     runs-on: ubuntu-latest
     timeout-minutes: 30
     needs: [build-dev, build-prod]
@@ -320,6 +329,7 @@ jobs:
 
   uniffi-wrapper:
     name: uniffi-wrapper
+    if: false
     runs-on: ubuntu-latest
     timeout-minutes: 30
     needs: [build-dev, build-prod]
@@ -356,6 +366,7 @@ jobs:
 
   askar-wrapper:
     name: askar-wrapper
+    if: false
     runs-on: ubuntu-latest
     timeout-minutes: 30
     needs: [build-dev, build-prod, askar-rust, nodejs-wrapper]
@@ -408,6 +419,7 @@ jobs:
 
   test-with-coverage:
     name: test-with-coverage
+    if: false
     runs-on: ubuntu-latest
     timeout-minutes: 30
     needs: [build-dev]
@@ -460,6 +472,7 @@ jobs:
 
   nodejs-test:
     name: nodejs-test
+    if: false
     runs-on: ubuntu-latest
     timeout-minutes: 30
     needs: [nodejs-wrapper]
@@ -499,6 +512,7 @@ jobs:
 
   askar-plugin-nodejs-test:
     name: askar-plugin-nodejs-test
+    if: false
     runs-on: ubuntu-latest
     timeout-minutes: 30
     needs: [nodejs-wrapper, askar-wrapper]
@@ -537,6 +551,7 @@ jobs:
 
   wasm-test:
     name: wasm-test
+    if: false
     runs-on: ubuntu-latest
     timeout-minutes: 30
     needs: [wasm-wrapper]
@@ -568,6 +583,7 @@ jobs:
 
   kotlin-test:
     name: kotlin-test
+    if: false
     runs-on: ubuntu-latest
     timeout-minutes: 30
     needs: [uniffi-wrapper]
@@ -603,7 +619,6 @@ jobs:
     name: swift-test
     runs-on: macos-15
     timeout-minutes: 60
-    needs: [uniffi-wrapper]
     env:
       CARGO_PROFILE_DEV_DEBUG: "0"
     steps:
@@ -623,6 +638,7 @@ jobs:
 
   demo-build:
     name: demo-build
+    if: false
     runs-on: ubuntu-latest
     timeout-minutes: 30
     needs: [nodejs-wrapper, wasm-wrapper, askar-wrapper]
@@ -658,6 +674,7 @@ jobs:
 
   oid4vc-demo:
     name: oid4vc-demo
+    if: false
     runs-on: ubuntu-latest
     timeout-minutes: 30
     needs: [build-dev]

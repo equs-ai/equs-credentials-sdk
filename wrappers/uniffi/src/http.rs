@@ -10,6 +10,27 @@ use equs_sdk::reqwest::ReqwestClient;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::sync::Arc;
+use std::sync::OnceLock;
+
+/// Drives reqwest's I/O. `#[uniffi::export(async_runtime = "tokio")]` wraps every
+/// exported future in `async_compat::Compat`, which reuses a current tokio handle
+/// if one exists and otherwise falls back to a process-wide *single-threaded*
+/// runtime. Everything the SDK sends then funnels through that one thread, and on
+/// a machine with few cores it is starved by concurrent work until requests stall.
+/// Owning a multi-threaded runtime here means `Handle::try_current()` succeeds and
+/// the fallback is never used.
+static HTTP_RUNTIME: OnceLock<tokio::runtime::Runtime> = OnceLock::new();
+
+fn http_runtime() -> &'static tokio::runtime::Runtime {
+    HTTP_RUNTIME.get_or_init(|| {
+        tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(4)
+            .thread_name("equs-sdk-http")
+            .enable_all()
+            .build()
+            .expect("failed to build the equs-sdk HTTP runtime")
+    })
+}
 
 #[derive(uniffi::Enum)]
 pub enum HttpMethod {
@@ -210,9 +231,12 @@ impl ReqwestHttpClient {
 #[async_trait]
 impl HttpClient for ReqwestHttpClient {
     async fn async_call(&self, request: HttpRequest) -> Result<HttpResponse> {
-        self.inner()
-            .async_call(request.try_into()?)
+        let client = self.inner();
+        let request: EqusSdkHttpRequest = request.try_into()?;
+        http_runtime()
+            .spawn(async move { client.async_call(request).await })
             .await
+            .map_err(|e| Error::HttpAsyncCall(e.to_string()))?
             .map_err(|e| Error::HttpAsyncCall(e.to_string()))?
             .try_into()
     }
