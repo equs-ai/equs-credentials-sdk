@@ -620,6 +620,13 @@ jobs:
           xcrun simctl list devices available
       - working-directory: wrappers/uniffi
         run: make ios-test
+      - name: Network diagnostics, uncontended
+        if: always()
+        working-directory: wrappers/uniffi/swift
+        run: |
+          set -euo pipefail
+          id=$(xcrun simctl list devices available | grep -F "iPhone 16 (" | tail -1 | sed -E 's/.*\(([0-9A-Fa-f-]{36})\).*/\1/')
+          xcodebuild test -scheme equs-sdk -destination "platform=iOS Simulator,id=$id" -only-testing:EqusSdkTests/NetDiagnostics
 
   demo-build:
     name: demo-build
