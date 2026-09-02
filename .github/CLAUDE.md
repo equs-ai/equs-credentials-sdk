@@ -56,12 +56,15 @@ compiles. Wrapper jobs restore those and save their own output under a
   means — takes the newest runtime even when it lacks the device, and
   `iPhone 16` is absent from iOS 26.x. `CARGO_PROFILE_DEV_DEBUG: "0"` holds
   the job to 14 GB against ~14 GB per target; runner disk is unmeasured, hence
-  `df -h /`. `TEST_RUNNER_TOKIO_WORKER_THREADS` is the prefix xcodebuild
-  forwards into the simulator, stripped; plain env vars never reach the test
-  process. UniFFI sizes its global tokio runtime to CPU count, and 3 workers
-  is too few for the suite's concurrent async calls — an HTTP request stalls
-  against a listening server. Reproduced locally: 2 and 3 workers fail, 4, 8
-  and 16 pass, so 8 carries margin. The wasm jobs set `RUSTC_WRAPPER: ""`.
+  `df -h /`. The suite itself is red on the runner and green locally: HTTP
+  requests to a listening local test server stall. Ruled out by measuring on
+  the runner — ports, `localhost` resolution (2ms), IPv6 (`::1` refused in
+  0.000s), disk, and tokio worker count, which changes nothing locally over
+  5 trials each at 3 and 8 and made CI worse when raised. What holds is that
+  an isolated `-only-testing` run on the runner completes every request in
+  0.036–0.573s while the full parallel suite stalls, so the variable is
+  concurrency against 3 cores. Unreproduced locally on 16 cores. The wasm
+  jobs set `RUSTC_WRAPPER: ""`.
 - Every job sets `timeout-minutes: 30`, except `swift-test` at 60 for its
   three cold iOS target builds: a hung job otherwise bills six hours.
 - Jobs sharing a `target/` cache pin `CARGO_PROFILE_DEV_DEBUG: "0"`, which
