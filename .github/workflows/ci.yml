@@ -606,6 +606,7 @@ jobs:
     needs: [uniffi-wrapper]
     env:
       CARGO_PROFILE_DEV_DEBUG: "0"
+      TEST_RUNNER_TOKIO_WORKER_THREADS: "8"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-rustup
@@ -620,13 +621,6 @@ jobs:
           xcrun simctl list devices available
       - working-directory: wrappers/uniffi
         run: make ios-test
-      - name: Network diagnostics, uncontended
-        if: always()
-        working-directory: wrappers/uniffi/swift
-        run: |
-          set -euo pipefail
-          id=$(xcrun simctl list devices available | grep -F "iPhone 16 (" | tail -1 | sed -E 's/.*\(([0-9A-Fa-f-]{36})\).*/\1/')
-          xcodebuild test -scheme equs-sdk -destination "platform=iOS Simulator,id=$id" -only-testing:EqusSdkTests/NetDiagnostics
 
   demo-build:
     name: demo-build
