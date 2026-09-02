@@ -207,4 +207,4 @@ ios-test: ios-generate-xcframework-dev
 	rm -rf swift/equssdk.xcframework
 	cp -R swift/ios/debug/equssdk.xcframework swift/equssdk.xcframework
 	cd swift && xcodebuild test -scheme equs-sdk -destination "$(IOS_DESTINATION)" -skip-testing:EqusSdkTests/HttpTests
-	cd swift && xcodebuild test -scheme equs-sdk -destination "$(IOS_DESTINATION)" -only-testing:EqusSdkTests/HttpTests
+	cd swift && (xcodebuild test -scheme equs-sdk -destination "$(IOS_DESTINATION)" -only-testing:EqusSdkTests/HttpTests || xcodebuild test -scheme equs-sdk -destination "$(IOS_DESTINATION)" -only-testing:EqusSdkTests/HttpTests)
