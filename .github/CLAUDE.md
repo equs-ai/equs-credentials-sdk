@@ -55,16 +55,18 @@ compiles. Wrapper jobs restore those and save their own output under a
   `IOS_DESTINATION` selects by UDID because `OS=latest` — what omitting `OS`
   means — takes the newest runtime even when it lacks the device, and
   `iPhone 16` is absent from iOS 26.x. `CARGO_PROFILE_DEV_DEBUG: "0"` holds
-  the job to 14 GB against ~14 GB per target; runner disk is unmeasured, hence
-  `df -h /`. The suite itself is red on the runner and green locally: HTTP
-  requests to a listening local test server stall. Ruled out by measuring on
-  the runner — ports, `localhost` resolution (2ms), IPv6 (`::1` refused in
-  0.000s), disk, and tokio worker count, which changes nothing locally over
-  5 trials each at 3 and 8 and made CI worse when raised. What holds is that
-  an isolated `-only-testing` run on the runner completes every request in
-  0.036–0.573s while the full parallel suite stalls, so the variable is
-  concurrency against 3 cores. Unreproduced locally on 16 cores. The wasm
-  jobs set `RUSTC_WRAPPER: ""`.
+  the job to 14 GB; the runner reports 43 GiB free, so no disk cleanup is
+  warranted. `make ios-test` runs two passes because the one test still using
+  an in-process HTTP server starves when 53 others compete for three cores.
+  Measured through the same client under saturation, that server answers in
+  13–21s while an out-of-process one answers in 0.003s, against the hardcoded
+  30s timeout at `src/reqwest/mod.rs:46`. Nothing is skipped: 53 + 3 = 56, and
+  either pass failing fails the job. Ports, `localhost` resolution (2ms), IPv6
+  (`::1` refused in 0.000s), disk, and tokio worker count were each ruled out
+  by measurement — do not re-litigate them. The client is not at fault, and a
+  successful `connect` proves only that the kernel accepted from the listen
+  backlog, not that the server thread is running. The wasm jobs set
+  `RUSTC_WRAPPER: ""`.
 - Every job sets `timeout-minutes: 30`, except `swift-test` at 60 for its
   three cold iOS target builds: a hung job otherwise bills six hours.
 - Jobs sharing a `target/` cache pin `CARGO_PROFILE_DEV_DEBUG: "0"`, which
