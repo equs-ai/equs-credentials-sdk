@@ -1,46 +1,31 @@
 import Testing
 import Foundation
-import Swifter
 @testable import EqusSdk
 
 @Suite(.serialized) class Oid4vciMetadataDiscoveryTest {
-    let server: HttpServer
+    let http: MockHttpRouter
     let port: in_port_t
 
     init() async throws {
-        self.server = HttpServer()
-        // Bind to port 0 so the OS picks a guaranteed-free port; avoids collisions
-        // with whatever else (CI runner, prior job, etc.) might hold a fixed port.
-        // forceIPv4 keeps reqwest's 127.0.0.1 connect path reachable under the iOS Simulator.
-        try server.start(0, forceIPv4: true)
-        self.port = in_port_t(try server.port())
+        self.http = MockHttpRouter()
+        // No socket is bound; the router matches on path, so the port only has to
+        // make the fixture URLs well-formed.
+        self.port = 9000
 
         let issuerMetadata = Oid4vciMetadataDiscoveryTestConstants.issuerMetadata(port: port)
         let authServerMetadata = Oid4vciMetadataDiscoveryTestConstants.authServerMetadata(port: port)
 
-        self.server["/.well-known/openid-credential-issuer"] = {
-            request in
-            return Swifter.HttpResponse.ok(
-                .json(
-                    try! JSONSerialization.jsonObject(
-                        with: issuerMetadata.data(using: .utf8)!)))
+        self.http["/.well-known/openid-credential-issuer"] = { _ in
+            MockHttpRouter.ok(issuerMetadata)
         }
-        self.server["/.well-known/oauth-authorization-server/auth"] = {
-            request in
-            return Swifter.HttpResponse.ok(
-                .json(
-                    try! JSONSerialization.jsonObject(
-                        with: authServerMetadata)
-                ))
+        self.http["/.well-known/oauth-authorization-server/auth"] = { _ in
+            MockHttpRouter.ok(String(data: authServerMetadata, encoding: .utf8)!)
         }
     }
 
-    // No deinit { server.stop() }: Swifter 1.5.0's HttpServer.stop() can race with its
-    // background accept loop and crash xctest. With rotating ports, the previous test's
-    // server stays alive on its unused port until process exit; harmless.
 
     @Test func discoverIssuerMetadata() async throws {
-        let metadata = try await MetadataDiscovery(httpClient: ReqwestHttpClient.insecure()).discoverIssuerMetadata(issuerUrl: "http://localhost:\(port)")
+        let metadata = try await MetadataDiscovery(httpClient: http).discoverIssuerMetadata(issuerUrl: "http://localhost:\(port)")
 
         compareJsonValues(
             actual: String(data: metadata.data(using: .utf8)!, encoding: .utf8)!,
@@ -48,7 +33,7 @@ import Swifter
     }
 
     @Test func discoverAuthServerMetadata() async throws {
-        let metadata = try await MetadataDiscovery(httpClient: ReqwestHttpClient.insecure()).discoverAuthServerMetadata(serverUrl: "http://localhost:\(port)/auth")
+        let metadata = try await MetadataDiscovery(httpClient: http).discoverAuthServerMetadata(serverUrl: "http://localhost:\(port)/auth")
 
         let actual =
             try! JSONSerialization.jsonObject(with: metadata.data(using: .utf8)!)

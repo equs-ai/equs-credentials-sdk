@@ -21,6 +21,7 @@ Contains the end-to-end (E2E) test suite and shared test utilities for Equs SDK.
 - Run with: `cargo test --features in-memory,didcomm-http-transport`
 - E2E tests use `LocalKms` / `InMemVault` — never mock the KMS.
 - `MockHttpClient` (from `mockall` via `#[automock]` on `HttpClient`) is used for HTTP mocking; `mockito` is being phased out — prefer `MockHttpClient` for new tests.
+- Swift wrapper tests inject `MockHttpRouter` (`wrappers/uniffi/swift/Tests/EqusSdkTests/MockHttpRouter.swift`) as the `HttpClient` instead of binding a Swifter server. It matches on URL path, so fixtures with a port baked into a signed JWT need no socket bound. `HttpTests` keeps two real-socket `ReqwestHttpClient` tests as smoke coverage.
 - Parameterised tests use `rstest` `#[case]` attributes.
 - Unit tests live in the same file as the code under test in a `#[cfg(test)] mod tests` block; test functions come before helper functions within the block.
 - Use `#[should_panic]` for test cases that assert on expected panics.

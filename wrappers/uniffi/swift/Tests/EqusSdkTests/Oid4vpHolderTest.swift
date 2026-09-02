@@ -1,43 +1,19 @@
 import Foundation
-import Swifter
 import Testing
 @testable import EqusSdk
 
 @Suite(.serialized) class Oid4vpHolderTests {
-	// This suite can't rotate ports (signed-JWT fixtures embed http://localhost:9001).
-	// Use a process-wide singleton so init() doesn't re-bind 9001 per test, and skip
-	// stop() because Swifter 1.5.0's HttpServer.stop() can crash xctest under concurrency.
-	static let server: HttpServer = {
-		let s = HttpServer()
-		// forceIPv4: Swifter's default is IPv6-only, which can leave reqwest's
-		// 127.0.0.1 connect path unable to reach the listener under the iOS Simulator.
-		// Retry: on the persistent CI runner 9001 may still be held from a prior run
-		// (this suite deliberately never calls stop()), so wait for it to free up.
-		for attempt in 1...15 {
-			do {
-				try s.start(9001, forceIPv4: true)
-				break
-			} catch {
-				if attempt == 15 { fatalError("Failed to bind port 9001 after 15 attempts: \(error)") }
-				Thread.sleep(forTimeInterval: 1)
-			}
-		}
-		return s
-	}()
-	let server: HttpServer
+	let http: MockHttpRouter
 	let holder: Oid4vpHolder
 
 	init() async throws {
-		self.server = Oid4vpHolderTests.server
-		self.holder = try await Oid4vpHolderTests.setupHolder()
+		self.http = MockHttpRouter()
+		self.holder = try await Oid4vpHolderTests.setupHolder(http: http)
 	}
 
 	@Test func getAuthorizationRequest() async throws {
-		self.server["/auth_request"] = { (request: Swifter.HttpRequest) -> Swifter.HttpResponse in
-			return .ok(
-				.data(
-					Oid4vpHolderTestConstants.authRequestJwt.data(using: .utf8)!,
-					contentType: "application/oauth-authz-req+jwt"))
+		self.http["/auth_request"] = { request in
+			return MockHttpRouter.ok(Oid4vpHolderTestConstants.authRequestJwt, contentType: "application/oauth-authz-req+jwt")
 		}
 
 		let actual: AuthorizationRequest = try await self.holder.getAuthorizationRequest(
@@ -59,11 +35,8 @@ import Testing
 	}
 
 		@Test func getAuthorizationRequestWithTransactionData() async throws {
-    		self.server["/auth_request"] = { (request: Swifter.HttpRequest) -> Swifter.HttpResponse in
-    			return .ok(
-    				.data(
-    					Oid4vpHolderTestConstants.authRequestJwt.data(using: .utf8)!,
-    					contentType: "application/oauth-authz-req+jwt"))
+    		self.http["/auth_request"] = { request in
+    			return MockHttpRouter.ok(Oid4vpHolderTestConstants.authRequestJwt, contentType: "application/oauth-authz-req+jwt")
     		}
 
     		let actual: AuthorizationRequest = try await self.holder.getAuthorizationRequest(
@@ -77,13 +50,10 @@ import Testing
     	}
 
 	@Test func checkCustomNonceHandler() async throws {
-		self.server["/request"] = { (request: Swifter.HttpRequest) -> Swifter.HttpResponse in
-			let body = String(data: Data(request.body), encoding: .utf8) ?? "<invalid body>"
+		self.http["/request"] = { request in
+			let body = request.body ?? "<invalid body>"
 			#expect(body.contains("some_nonce"))
-			return .ok(
-				.data(
-					Oid4vpHolderTestConstants.authRequestJwt.data(using: .utf8)!,
-					contentType: "application/oauth-authz-req+jwt"))
+			return MockHttpRouter.ok(Oid4vpHolderTestConstants.authRequestJwt, contentType: "application/oauth-authz-req+jwt")
 		}
 
 		let actual: AuthorizationRequest = try await self.holder.getAuthorizationRequest(
@@ -92,17 +62,16 @@ import Testing
 
 	@Test func presentCredentialsAuto() async throws {
 		try await confirmation("Auth Response is not received") { confirmResponse in
-			self.server["/response"] = { (request: Swifter.HttpRequest) -> Swifter.HttpResponse in
-				let body = String(bytes: request.body, encoding: String.Encoding.utf8)!
-					.removingPercentEncoding!
+			self.http["/response"] = { request in
+				let body = request.body!.removingPercentEncoding!
 
 				#expect(body.contains(Oid4vpHolderTestConstants.sdJwtPayload))
 
 				confirmResponse()
-				return .ok(.text(""))
+				return MockHttpRouter.ok("", contentType: "text/plain")
 			}
 
-			let holder = try await Oid4vpHolderTests.setupHolder()
+			let holder = try await Oid4vpHolderTests.setupHolder(http: http)
 
 			let _ = try await holder.presentCredentialsAuto(
 				authRequest: Oid4vpHolderTestConstants.authRequest,
@@ -114,17 +83,16 @@ import Testing
 
 	@Test func presentCredentialsAutoWithDirectPostJwt() async throws {
 		try await confirmation("Auth Response is not received") { confirmResponse in
-			self.server["/response"] = { (request: Swifter.HttpRequest) -> Swifter.HttpResponse in
-				let body = String(bytes: request.body, encoding: String.Encoding.utf8)!
-					.removingPercentEncoding!
+			self.http["/response"] = { request in
+				let body = request.body!.removingPercentEncoding!
 
 				#expect(body.contains(Oid4vpHolderTestConstants.responseString))
 
 				confirmResponse()
-				return .ok(.text(""))
+				return MockHttpRouter.ok("", contentType: "text/plain")
 			}
 
-			let holder = try await Oid4vpHolderTests.setupHolder()
+			let holder = try await Oid4vpHolderTests.setupHolder(http: http)
 
 			let _ = try await holder.presentCredentialsAuto(
 				authRequest: Oid4vpHolderTestConstants.authRequestWithDirectPostJwt,
@@ -137,17 +105,16 @@ import Testing
 
 	@Test func presentCredentials() async throws {
 		try await confirmation("Auth Response is not received") { confirmResponse in
-			self.server["/response"] = { (request: Swifter.HttpRequest) -> Swifter.HttpResponse in
-				let body = String(bytes: request.body, encoding: String.Encoding.utf8)!
-					.removingPercentEncoding!
+			self.http["/response"] = { request in
+				let body = request.body!.removingPercentEncoding!
 
 				#expect(body.contains(Oid4vpHolderTestConstants.sdJwtPayload))
 
 				confirmResponse()
-				return .ok(.text(""))
+				return MockHttpRouter.ok("", contentType: "text/plain")
 			}
 
-			let holder = try await Oid4vpHolderTests.setupHolder()
+			let holder = try await Oid4vpHolderTests.setupHolder(http: http)
 
 			let credentials = try await holder.findVcsForPresentation(
 				authRequest: Oid4vpHolderTestConstants.authRequest)
@@ -276,7 +243,7 @@ import Testing
 
 	@Test
 	func findVcsForPresentationReturnsReasonCredentialsNotFound() async throws {
-        let holder = try await Oid4vpHolderTests.setupHolderWithEmptyVault()
+        let holder = try await Oid4vpHolderTests.setupHolderWithEmptyVault(http: http)
 
 		let credentialsMapping = try await holder.findVcsForPresentation(
 			authRequest: Oid4vpHolderTestConstants.authRequestWithFakeVct)
@@ -313,17 +280,17 @@ import Testing
 			"error=access_denied&error_description=consent+to+share+the+presentation+is+not+given&state=1d8b0d93-86e8-4135-87d4-524bb0500bf3"
 
 		try await confirmation("Decline Response is not received") { confirmResponse in
-			self.server["/response"] = { (request: Swifter.HttpRequest) -> Swifter.HttpResponse in
-				let body = String(bytes: request.body, encoding: String.Encoding.utf8)!
+			self.http["/response"] = { request in
+				let body = request.body!
 
 				#expect(body == expectedResponse)
 
 				confirmResponse()
 
-				return .ok(.text(""))
+				return MockHttpRouter.ok("", contentType: "text/plain")
 			}
 
-			let holder = try await Oid4vpHolderTests.setupHolder()
+			let holder = try await Oid4vpHolderTests.setupHolder(http: http)
 
 			let _ = try await holder.declineAuthorizationRequest(
 				authRequest: Oid4vpHolderTestConstants.authRequest)
@@ -331,11 +298,8 @@ import Testing
 	}
 
 	@Test func getCredentialStatus() async throws {
-        self.server["/status_list"] = { (request: Swifter.HttpRequest) -> Swifter.HttpResponse in
-            return .ok(
-                .data(
-                    Oid4vpHolderTestConstants.statusList.data(using: .utf8)!,
-                    contentType: "application/statuslist+jwt"))
+        self.http["/status_list"] = { request in
+            return MockHttpRouter.ok(Oid4vpHolderTestConstants.statusList, contentType: "application/statuslist+jwt")
         }
 
         let credential = Credential(format: VcFormat.sdJwtVc, payload: Oid4vpHolderTestConstants.sdJwtWithStatusPayload)
@@ -344,7 +308,7 @@ import Testing
         #expect(status == .statusListToken(TslVcStatus.valid))
 	}
 
-    private static func setupHolder() async throws -> Oid4vpHolder {
+    private static func setupHolder(http: MockHttpRouter) async throws -> Oid4vpHolder {
         let inMemKms = InMemKms()
         let inMemVault = InMemVault()
         let nonceHandler = MockNonceHandler(nonce: "some_nonce")
@@ -361,21 +325,21 @@ import Testing
 
         let holder = try await Oid4vpHolderBuilder(
             kms: inMemKms, vault: inMemVault, clientId: Oid4vpHolderTestConstants.clientId,
-            httpClient: ReqwestHttpClient.insecure(),
+            httpClient: http,
             nonceHandler: nonceHandler
         ).build()
 
         return holder
     }
 
-	private static func setupHolderWithEmptyVault() async throws -> Oid4vpHolder {
+	private static func setupHolderWithEmptyVault(http: MockHttpRouter) async throws -> Oid4vpHolder {
 		let inMemKms = InMemKms()
 		let inMemVault = InMemVault()
 		let nonceHandler = MockNonceHandler(nonce: "some_nonce")
 
 		let holder = try await Oid4vpHolderBuilder(
 			kms: inMemKms, vault: inMemVault, clientId: Oid4vpHolderTestConstants.clientId,
-			httpClient: ReqwestHttpClient.insecure(),
+			httpClient: http,
 			nonceHandler: nonceHandler
 		).build()
 
