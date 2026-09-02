@@ -46,9 +46,19 @@ compiles. Wrapper jobs restore those and save their own output under a
   reached 8.39 GB of the 10 GB repository ceiling and evicted the `target/`
   caches, which cost more than they saved.
 - Actions are pinned by commit SHA, never by tag.
-- `swift-test` runs on a self-hosted macOS runner. The wasm jobs set
-  `RUSTC_WRAPPER: ""`.
-- Every job sets `timeout-minutes: 30`: a hung job otherwise bills six hours.
+- `swift-test` pins `macos-15`; `macos-latest` now means `macos-26`. macOS
+  bills at 10x here, so it is the only non-Ubuntu job. It builds
+  `x86_64-apple-ios` into the debug fat library but tests arm64 only:
+  `xcodebuild` cannot run an x86_64 simulator on an arm64 host — Xcode 16
+  dropped the `arch=` key, and `ARCHS=x86_64` builds a bundle the arm64
+  simulator refuses to load. That slice needs a `macos-15-intel` runner.
+  `IOS_DESTINATION` selects by UDID because `OS=latest` — what omitting `OS`
+  means — takes the newest runtime even when it lacks the device, and
+  `iPhone 16` is absent from iOS 26.x. `CARGO_PROFILE_DEV_DEBUG: "0"` holds
+  the job to 14 GB against ~14 GB per target; runner disk is unmeasured, hence
+  `df -h /`. The wasm jobs set `RUSTC_WRAPPER: ""`.
+- Every job sets `timeout-minutes: 30`, except `swift-test` at 60 for its
+  three cold iOS target builds: a hung job otherwise bills six hours.
 - Jobs sharing a `target/` cache pin `CARGO_PROFILE_DEV_DEBUG: "0"`, which
   keeps the cache under the 10 GB repo limit and keeps cargo fingerprints
   matching across them. `test-with-coverage` sets `line-tables-only` instead: tarpaulin

@@ -601,9 +601,11 @@ jobs:
 
   swift-test:
     name: swift-test
-    runs-on: [self-hosted, macOS]
-    timeout-minutes: 30
+    runs-on: macos-15
+    timeout-minutes: 60
     needs: [uniffi-wrapper]
+    env:
+      CARGO_PROFILE_DEV_DEBUG: "0"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-rustup
@@ -613,7 +615,9 @@ jobs:
       - name: Add Apple targets
         run: rustup target add aarch64-apple-ios x86_64-apple-ios aarch64-apple-ios-sim
       - name: List available simulators
-        run: xcrun simctl list devices available
+        run: |
+          df -h /
+          xcrun simctl list devices available
       - working-directory: wrappers/uniffi
         run: make ios-test
 
