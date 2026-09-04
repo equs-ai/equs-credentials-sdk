@@ -13,19 +13,60 @@ pub fn derive_debug(input: TokenStream) -> TokenStream {
         for variant in &data_enum.variants {
             let variant_ident = &variant.ident;
 
-            if has_key(&variant.fields, "location") {
-                metadata.extend(quote! {
-                    #name::#variant_ident { location, .. } => {
-                        write!(fmt, " at: {}", location)?;
-                    },
+            let location = has_key(&variant.fields, "location");
+            let source = has_key(&variant.fields, "source");
+
+            let pattern = match (location, source) {
+                (true, true) => quote! { { location, source, .. } },
+                (true, false) => quote! { { location, .. } },
+                (false, true) => quote! { { source, .. } },
+                (false, false) => continue,
+            };
+
+            let mut body = quote! {};
+
+            if location {
+                body.extend(quote! {
+                    write!(fmt, " at: {}", location)?;
                 });
             }
+
+            if source {
+                body.extend(quote! {
+                    write!(fmt, "\n Cause: ")?;
+                    return source.__debug_error_chain(fmt);
+                });
+            }
+
+            metadata.extend(quote! {
+                #name::#variant_ident #pattern => { #body },
+            });
         }
     }
 
     let generated_code = quote! {
-        impl std::fmt::Debug for #name {
-            fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
+        impl #name {
+            #[doc(hidden)]
+            pub fn __debug_error_chain(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
+                trait DisplayChain {
+                    fn __debug_error_chain(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result;
+                }
+
+                impl<T: ?Sized + snafu::AsErrorSource> DisplayChain for T {
+                    fn __debug_error_chain(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
+                        let mut error = self.as_error_source();
+
+                        write!(fmt, "{}", error)?;
+
+                        while let Some(source) = error.source() {
+                            write!(fmt, "\n Cause: {}", source)?;
+                            error = source;
+                        }
+
+                        Ok(())
+                    }
+                }
+
                 write!(fmt, "{}", self)?;
 
                 match self {
@@ -41,6 +82,12 @@ pub fn derive_debug(input: TokenStream) -> TokenStream {
                 }
 
                 Ok(())
+            }
+        }
+
+        impl std::fmt::Debug for #name {
+            fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
+                self.__debug_error_chain(fmt)
             }
         }
     };
