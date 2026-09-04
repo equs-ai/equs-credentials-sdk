@@ -41,11 +41,7 @@ async function main(): Promise<void> {
   const profile = "test_profile";
 
   const storage = await AskarStorage.create(storageConfig, false);
-  try {
-    await storage.createProfile(profile);
-  } catch (e: unknown) {
-    if (!(e instanceof Error && e.message.includes("Duplicate profile"))) throw e;
-  }
+  await storage.ensureProfile(profile);
   const kms = new AskarKms(storage, profile);
   const vault = new AskarVault(storage, profile);
 

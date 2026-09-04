@@ -40,7 +40,7 @@ describe("Askar Vault: ", () => {
       },
       false,
     );
-    await storage.createProfile("test_profile");
+    await storage.ensureProfile("test_profile");
     vault = new AskarVault(storage, "test_profile");
 
     const data = CREDENTIAL_DATA;
@@ -62,7 +62,7 @@ describe("Askar Vault: ", () => {
       },
       false,
     );
-    await storage2.createProfile("test_profile");
+    await storage2.ensureProfile("test_profile");
     const vault2 = new AskarVault(storage2, "test_profile");
 
     const data = CREDENTIAL_DATA;
@@ -99,10 +99,10 @@ describe("Askar Vault: ", () => {
     const profile3 = "test_profile_3";
     const profile4 = "test_profile_4";
 
-    await storage.createProfile(profile1);
-    await storage.createProfile(profile2);
-    await storage.createProfile(profile3);
-    await storage.createProfile(profile4);
+    await storage.ensureProfile(profile1);
+    await storage.ensureProfile(profile2);
+    await storage.ensureProfile(profile3);
+    await storage.ensureProfile(profile4);
     const vault1 = new AskarVault(storage, profile1);
     const vault2 = new AskarVault(storage, profile2);
     const vault3 = new AskarVault(storage, profile3);

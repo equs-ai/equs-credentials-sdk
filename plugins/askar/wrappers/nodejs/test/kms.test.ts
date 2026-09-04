@@ -15,7 +15,7 @@ describe("Askar KMS: ", () => {
       },
       false,
     );
-    await storage.createProfile("test_profile");
+    await storage.ensureProfile("test_profile");
     kms = new AskarKms(storage, "test_profile");
   }, 10000);
 
