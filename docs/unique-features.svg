@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1138" height="262" viewBox="0 0 1138 262" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif">
+<rect x="18" y="18" width="262" height="104" rx="10" fill="#5B4CC4"/>
+<text x="38" y="58" fill="#ffffff" font-size="17" font-weight="600">Agentic: dSD-JWT / AP2</text>
+<text x="38" y="84" fill="#ffffff" fill-opacity="0.85" font-size="13">Delegated SD-JWT chains for</text>
+<text x="38" y="102" fill="#ffffff" fill-opacity="0.85" font-size="13">agent mandates</text>
+<rect x="298" y="18" width="262" height="104" rx="10" fill="#1B6EC2"/>
+<text x="318" y="58" fill="#ffffff" font-size="17" font-weight="600">EUDI / HAIP</text>
+<text x="318" y="84" fill="#ffffff" fill-opacity="0.85" font-size="13">SD-JWT VC, mso_mdoc, X.509</text>
+<text x="318" y="102" fill="#ffffff" fill-opacity="0.85" font-size="13">verifier trust</text>
+<rect x="578" y="18" width="262" height="104" rx="10" fill="#0E8C6A"/>
+<text x="598" y="58" fill="#ffffff" font-size="17" font-weight="600">OID4VC conformance</text>
+<text x="598" y="84" fill="#ffffff" fill-opacity="0.85" font-size="13">Run against the OpenID suite</text>
+<rect x="858" y="18" width="262" height="104" rx="10" fill="#B2591E"/>
+<text x="878" y="58" fill="#ffffff" font-size="17" font-weight="600">Protocol Engine</text>
+<text x="878" y="84" fill="#ffffff" fill-opacity="0.85" font-size="13">Build your own DIDComm v2</text>
+<text x="878" y="102" fill="#ffffff" fill-opacity="0.85" font-size="13">protocols</text>
+<rect x="18" y="140" width="262" height="104" rx="10" fill="#A32E5E"/>
+<text x="38" y="180" fill="#ffffff" font-size="17" font-weight="600">did:ethr resolving</text>
+<text x="38" y="206" fill="#ffffff" fill-opacity="0.85" font-size="13">EVM registry replay to DID doc</text>
+<rect x="298" y="140" width="262" height="104" rx="10" fill="#2E7D8F"/>
+<text x="318" y="180" fill="#ffffff" font-size="17" font-weight="600">did:webvh resolving</text>
+<text x="318" y="206" fill="#ffffff" fill-opacity="0.85" font-size="13">DID Web + Verifiable History</text>
+<rect x="578" y="140" width="262" height="104" rx="10" fill="#8A6D1F"/>
+<text x="598" y="180" fill="#ffffff" font-size="17" font-weight="600">mDL support</text>
+<text x="598" y="206" fill="#ffffff" fill-opacity="0.85" font-size="13">ISO 18013-5 mso_mdoc</text>
+<text x="598" y="224" fill="#ffffff" fill-opacity="0.85" font-size="13">verification</text>
+<rect x="858" y="140" width="262" height="104" rx="10" fill="#4A5568"/>
+<text x="878" y="180" fill="#ffffff" font-size="17" font-weight="600">Rust + 4 wrappers</text>
+<text x="878" y="206" fill="#ffffff" fill-opacity="0.85" font-size="13">Node.js, WASM, Android, iOS</text>
+</svg>
