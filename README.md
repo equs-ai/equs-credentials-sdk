@@ -294,6 +294,8 @@ Ready-made `Kms` and `Vault` implementations are available — see [Plugins](#pl
 - [VC Core API](docs/vc-core-api.png)
 - [VC Aries Over DIDComm](docs/vc-aries-over-didcomm.png)
 - [About dSD-JWT](docs/dsd-jwt.md)
+- [How to implement DIDComm protocol based on Protocol Engine](docs/guidelines/protocol-engine.md)
+- [DIDComm Protocol Endine Architecture](docs/didcomm-protocol-components.md)
 
 
 ## Contributing
