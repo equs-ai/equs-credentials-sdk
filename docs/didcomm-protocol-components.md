@@ -8,7 +8,7 @@ descriptions of the connections between components and their responsibilities.
 ### Agent (Struct)
 
 - Provides centralized access to protocol service API.
-- Exposes methods to access Connection, KMS, Vault, repositories, etc.
+- Exposes the `DIDCommService`, `ConnectionService`, KMS, DID resolver and configuration.
 - Enables dependency injection.
 
 ### AgentConfig (Struct)
@@ -16,11 +16,12 @@ descriptions of the connections between components and their responsibilities.
 - Contains all configuration parameters for the agent.
 - Includes endpoint information and service configurations.
 
-### DIDCommAPI (Struct)
+### DIDCommService (Struct)
 
-- Main entry point for the DIDComm system.
-- Coordinates services and initialization.
-- Handles transport registration.
+- Owns the DIDComm message pipeline: `MessageReceiver`, `MessageSender` and the transports, which
+  it takes on construction.
+- Starts and stops the transports (`initialize`, `shutdown`), tracked by `DIDCommServiceState`.
+- Sends outbound messages through the `MessageSender` (`send_message`).
 
 ## Core Layer
 
@@ -28,24 +29,21 @@ descriptions of the connections between components and their responsibilities.
 
 - Handles incoming messages with async methods.
 - Coordinates with `EnvelopeService` for unpacking.
-- Processes messages through `InboundMessageProcessor`.
 - Routes messages to the `Dispatcher`.
 
 ### MessageSender (Struct)
 
 - Prepares outbound messages with async methods.
 - Coordinates with `EnvelopeService` for packing.
-- Applies outbound processing through `OutboundMessageProcessor`.
-- Selects the appropriate transport for delivery.
+- Sends the packed message over its `OutboundTransport`.
 - Emits events for sent messages.
 
 ### Dispatcher (Trait)
 
 - Routes messages to appropriate handlers using async methods.
 - Manages protocol message flow.
-- Emits dispatch-related events.
 
-### DefaultDispatcher (Struct)
+### DispatcherService (Struct)
 
 - Works with `ProtocolRegistry` to find the protocol that handles a message.
 
@@ -58,9 +56,13 @@ descriptions of the connections between components and their responsibilities.
 - Defines the protocol interface.
 - Creates handlers for protocol-specific messages.
 
-### StatefulProtocol (Trait)
+### MessageHandler (Trait)
 
-- Extends the `Protocol` interface and provides methods for handling state using an FSM.
+- Handles the protocol messages of the types it declares.
+
+### StatefulMessageHandler (Trait)
+
+- A message handler that provides methods for handling state using an FSM.
 
 ### StateMachine (Trait)
 
@@ -86,18 +88,18 @@ descriptions of the connections between components and their responsibilities.
 
 ### HttpTransport (Struct)
 
-- Implements `Transport` for HTTP.
+- Implements `InboundTransport` and `OutboundTransport` for HTTP.
 - Handles HTTP connections using async/await.
 - Manages endpoint configuration.
 
 ## Connection Layer
 
-### ConnectionService (Struct)
+### ConnectionService (Trait)
 
 - Centralizes connection management.
 - Creates and manages connection records.
 - Updates connection states.
-- Gets a connection record by various identifiers.
+- Gets a connection record by id.
 
 ### ConnectionRecord (Struct)
 
@@ -110,30 +112,37 @@ descriptions of the connections between components and their responsibilities.
 
 - Enum representing connection states.
 - Provides type safety for state transitions.
-- Includes variants such as `Invited`, `Requested`, `Responded`, `Complete`.
+- Includes the variants `Initial`, `Invited`, `Accepted`, `Abandoned`, `Completed`.
 
 ## Example: implementing a custom protocol
 
-`CustomProtocol` (Struct) implements either the `Protocol` or the `StatefulProtocol` trait.
+`CustomProtocol` (Struct) implements the `Protocol` trait, with handlers implementing either the
+`MessageHandler` or the `StatefulMessageHandler` trait.
 
 **`Protocol`**
 
-- Implement the `handle` method to handle protocol-specific DIDComm messages.
+- Implement the `protocol_name`, `protocol_version` and `get_message_handlers` methods.
 - Implement protocol-specific methods.
 
-**`StatefulProtocol`**
+**`MessageHandler`**
 
-- Define the states, events and actions using Rust enums.
-- Define the protocol messages.
-- Implement `StateMachine` for state transitions:
-    - Implement the `state` and `process_event` methods.
-- Implement `StatefulProtocol`:
-    - Implement the `validate_message` and `on_state_transition` methods.
-    - Implement protocol-specific methods.
+- Implement the `supported_message_types` and `handle` methods to handle protocol-specific
+  DIDComm messages.
+
+**`StatefulMessageHandler`**
+
+Handles the messages of a protocol that keeps state between them, driving that state through a
+`StateMachine`.
+
+- Define the states and the events as Rust enums.
+- Implement `StateMachine`: `state`, `process_event`, `change_state`.
+- Implement the handler: `supported_message_types`, `validate_message`, `send_message`,
+  `state_machine`, `on_state_transition`.
+- Wrap it in `StatefulMessageHandlerWrapper` to register it as a `MessageHandler`.
 
 ### Protocol state machine
 
-The Tic Tac Toe reference protocol shows the shape of a `StatefulProtocol`. Its states and
+The Tic Tac Toe reference protocol shows the shape of a `StatefulMessageHandler`. Its states and
 transitions ([`fsm/`](../src/didcomm/protocol/tictactoe/fsm)):
 
 ```mermaid
@@ -182,7 +191,7 @@ flowchart TB
 flowchart TB
     subgraph OUT["Outbound path"]
         direction TB
-        P1["Protocol / StatefulProtocol"] --> S1["MessageSender"]
+        P1["Protocol / StatefulMessageHandler"] --> S1["MessageSender"]
         S1 --> E1["EnvelopeService · pack_encrypted"]
         E1 --> O1["OutboundTransport"]
         O1 --> H1["HttpTransport"]
