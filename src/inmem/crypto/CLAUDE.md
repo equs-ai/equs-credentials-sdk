@@ -1,7 +1,7 @@
 # inmem/crypto — Context
 
 ## Purpose
-Provides concrete in-memory implementations of all cryptographic suites supported by Equs SDK, implementing the `Suite`, `Signer`, `Verifier`, and `Key` traits defined in `crate::crypto`.
+Provides concrete in-memory implementations of all cryptographic suites supported by EQUS SDK, implementing the `Suite`, `Signer`, `Verifier`, and `Key` traits defined in `crate::crypto`.
 
 ## Files
 
@@ -20,7 +20,7 @@ Provides concrete in-memory implementations of all cryptographic suites supporte
 - `Ed25519` — EdDSA suite.
 - `Bls12381` — BBS+ suite supporting `sign_multi` / `verify_multi`.
 - `Bip32` — BIP-32 key derivation helper (not itself a `Suite`).
-- `HasAlg` — associates a curve type with its Equs SDK `Alg` value.
+- `HasAlg` — associates a curve type with its EQUS SDK `Alg` value.
 - `HasJWK` — associates a curve type with JWK serialization logic.
 
 ## Dependencies

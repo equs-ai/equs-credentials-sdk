@@ -1,7 +1,7 @@
 # tests — Context
 
 ## Purpose
-Contains the complete integration and end-to-end test suite for Equs SDK, organized into shared
+Contains the complete integration and end-to-end test suite for EQUS SDK, organized into shared
 utilities and scenario-specific e2e test modules covering all major supported protocols.
 
 ## Files / Sub-areas
@@ -10,7 +10,7 @@ utilities and scenario-specific e2e test modules covering all major supported pr
 |----------|------|
 | mod.rs   | Root test crate module; declares `utils` and `e2e` sub-modules. |
 | `utils/` | Shared test infrastructure: HTTP emulator, stub DID resolver, static fixtures, and protocol-participant builder helpers — see [utils/CLAUDE.md](utils/CLAUDE.md). |
-| `e2e/`   | End-to-end tests for all major Equs SDK flows (vc_core, vc_oid4vci, vc_oid4vp, waci_aries, protocol_engine, custom_did_resolvers) — see [e2e/CLAUDE.md](e2e/CLAUDE.md). |
+| `e2e/`   | End-to-end tests for all major EQUS SDK flows (vc_core, vc_oid4vci, vc_oid4vp, waci_aries, protocol_engine, custom_did_resolvers) — see [e2e/CLAUDE.md](e2e/CLAUDE.md). |
 
 ## Key types / traits (if applicable)
 - No public types; this crate is test-only.

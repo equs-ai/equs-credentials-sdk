@@ -21,7 +21,7 @@ Node.js add-on (`askar-nodejs`), consumed by the Node.js wrapper layer.
 
 ## Dependencies
 - Depends on: `askar` (the `plugins/askar/src` crate), `napi`, `napi-derive`, `serde_json`
-- Used by: Node.js consumer code in `demos/nodejs/` and the Equs SDK Node.js wrapper
+- Used by: Node.js consumer code in `demos/nodejs/` and the EQUS SDK Node.js wrapper
 
 ## Constraints
 - Build entry point is `plugins/askar/wrappers/nodejs/build.rs` (NAPI-RS build script).

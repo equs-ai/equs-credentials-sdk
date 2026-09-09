@@ -67,7 +67,7 @@ A context file is stale if a reader skimming it would get a wrong picture of the
 
 ## Architecture
 
-Equs SDK is a Rust library providing identity protocol building blocks, consumed by four wrapper targets: Node.js (NAPI-RS), WASM, Kotlin (UniFFI), and Swift (UniFFI). Consumers must provide their own implementations of `KmsService`, `VaultService`, and OID4VC endpoint handlers. The `inmem/` module ships reference implementations for testing and demos.
+EQUS SDK is a Rust library providing identity protocol building blocks, consumed by four wrapper targets: Node.js (NAPI-RS), WASM, Kotlin (UniFFI), and Swift (UniFFI). Consumers must provide their own implementations of `KmsService`, `VaultService`, and OID4VC endpoint handlers. The `inmem/` module ships reference implementations for testing and demos.
 
 For the full module layout, domain details, and cross-cutting constraints, see [`context.claude.md`](context.claude.md).
 For coding conventions — testing, error handling, logging — see [`claude/tests.md`](claude/tests.md) and [`claude/core.md`](claude/core.md).

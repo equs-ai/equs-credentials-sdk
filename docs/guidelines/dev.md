@@ -18,7 +18,7 @@ These guidelines provide standards for readability, usability and legibility.
 
 ### Use hooks for automated linting & formatting
 
-Equs SDK uses [lefthook](https://lefthook.dev/intro.html) for hooks.
+EQUS SDK uses [lefthook](https://lefthook.dev/intro.html) for hooks.
 
 Ensure you have installed lefthook. See the installation instructions [here](https://lefthook.dev/installation/)
 

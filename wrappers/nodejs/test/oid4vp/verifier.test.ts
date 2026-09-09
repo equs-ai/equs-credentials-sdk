@@ -706,7 +706,7 @@ describe("OID4VP Verifier: ", () => {
       await verifier.verifyPresentation(auth_response, session, verificationMetadata);
     } catch (e) {
       let equs_sdk_err: EqusSdkError = JSON.parse(e.message);
-      // Expect that Equs SDK received Authorization Response with vp_token parameter but fails to get transactional data
+      // Expect that EQUS SDK received Authorization Response with vp_token parameter but fails to get transactional data
       expect(equs_sdk_err.code).toEqual(VpProtocolError.InvalidTransactionData);
     }
 

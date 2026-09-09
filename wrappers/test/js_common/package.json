@@ -1,7 +1,7 @@
 {
   "name": "@equs/equs-sdk-wasm-and-nodejs-compatibility-test",
   "version": "0.7.0",
-  "description": "WASM and Node.js compatibility tests of Equs SDK wrappers",
+  "description": "WASM and Node.js compatibility tests of EQUS SDK wrappers",
   "type": "module",
   "config": {
     "wasm_path": "--prefix=../../wasm",

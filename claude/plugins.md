@@ -1,7 +1,7 @@
 # Plugins — Summary
 
 ## What this domain does
-Provides optional, pluggable extensions to Equs SDK's core storage and key-management interfaces. Currently contains a single plugin: `askar`, which implements `Kms` and `Vault` backed by the Hyperledger Aries Askar secure storage library, enabling hardware-backed key storage and encrypted credential persistence on native targets.
+Provides optional, pluggable extensions to EQUS SDK's core storage and key-management interfaces. Currently contains a single plugin: `askar`, which implements `Kms` and `Vault` backed by the Hyperledger Aries Askar secure storage library, enabling hardware-backed key storage and encrypted credential persistence on native targets.
 
 ## Sub-areas
 
@@ -17,7 +17,7 @@ Provides optional, pluggable extensions to Equs SDK's core storage and key-manag
 - Used by: production applications that require secure key storage beyond the in-memory implementation; exposed through the Node.js wrapper
 
 ## Key decisions / constraints
-- Plugins are separate crates (`plugins/askar/Cargo.toml`) — they are never compiled into the core Equs SDK library; consumers must explicitly depend on them.
+- Plugins are separate crates (`plugins/askar/Cargo.toml`) — they are never compiled into the core EQUS SDK library; consumers must explicitly depend on them.
 - The Askar plugin is **native-only** — it links against native Askar libraries and is not available on wasm targets.
 - The Node.js wrapper for Askar follows the same NAPI-RS pattern as `wrappers/nodejs/`.
 - Profile provisioning is idempotent on both the Rust and Node.js surfaces (`AskarStorage::ensure_profile`, formerly `create_profile`) — an existing profile is success, not a `Duplicate` error.

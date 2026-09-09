@@ -1,4 +1,4 @@
-# Equs SDK — Context Index
+# EQUS SDK — Context Index
 
 > **Maintenance rule:** Update this file whenever any `claude/*.md` changes.
 > Add a one-line entry if a new `claude/*.md` is added; remove if deleted.

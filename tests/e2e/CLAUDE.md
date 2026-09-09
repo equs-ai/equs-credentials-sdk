@@ -1,7 +1,7 @@
 # e2e — Context
 
 ## Purpose
-End-to-end integration tests validating complete protocol flows through Equs SDK's public API surface,
+End-to-end integration tests validating complete protocol flows through EQUS SDK's public API surface,
 from credential issuance to presentation and verification using in-memory and real HTTP transports.
 
 ## Files / Sub-areas

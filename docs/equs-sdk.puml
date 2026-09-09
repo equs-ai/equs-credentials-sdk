@@ -15,7 +15,7 @@ skinparam ranksep 24
 
 ' Wrapped onto three lines so the caption box stays narrow enough that the edge leaving
 ' this actor does not run through the text.
-actor "Application\n(e.g.\nEqus Agency)" as App
+actor "Application\n(e.g.\nEQUS DTK)" as App
 actor "3rd party" as ThirdParty
 database "Persistent data\nto be managed by the app" as Store
 queue "Message Queue" as MQ

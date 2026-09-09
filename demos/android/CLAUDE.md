@@ -2,7 +2,7 @@
 
 ## Purpose
 Android demo application demonstrating OID4VC flows using the Kotlin UniFFI wrapper generated
-from the Equs SDK Rust library, packaged as an Android AAR archive.
+from the EQUS SDK Rust library, packaged as an Android AAR archive.
 
 ## Files / Sub-areas
 
@@ -14,8 +14,8 @@ from the Equs SDK Rust library, packaged as an Android AAR archive.
 | README.md        | Prerequisites, build, and run instructions including ADB port forwarding steps. |
 
 ## Dependencies
-- Depends on: Equs SDK UniFFI Kotlin wrapper (`wrappers/uniffi/` built as `android-release.aar`), `demos/oid4vc/` issuer and verifier services running on host
-- Used by: developers evaluating Equs SDK on Android
+- Depends on: EQUS SDK UniFFI Kotlin wrapper (`wrappers/uniffi/` built as `android-release.aar`), `demos/oid4vc/` issuer and verifier services running on host
+- Used by: developers evaluating EQUS SDK on Android
 
 ## Constraints
 - The `.aar` must be copied to `app/libs/` before building; see README for the exact `cp` command.

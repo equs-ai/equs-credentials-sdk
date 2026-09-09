@@ -8,7 +8,7 @@ package "Applications" as App #LightBlue  {
    [App Logic] as AppL
 }
 
-package "Equs SDK" as EqusSdk {
+package "EQUS SDK" as EqusSdk {
 
      package "Pluggable" #LightGray {
          [KMS Interface] as KMS #Green

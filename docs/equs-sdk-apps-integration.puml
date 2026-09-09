@@ -16,7 +16,7 @@ package "Applications" as App #LightBlue {
     }
 }
 
-package "Equs SDK" as EqusSdk #LightGray {
+package "EQUS SDK" as EqusSdk #LightGray {
 
     package VC {
 
