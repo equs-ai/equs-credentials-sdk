@@ -37,7 +37,7 @@
 <text x="129.5" y="539" fill="#ffffff" fill-opacity="0.86" font-size="11.5" text-anchor="middle">issuance</text>
 <rect x="229.0" y="488" width="179.0" height="74" rx="9" fill="#ffffff" fill-opacity="0.17" stroke="#ffffff" stroke-opacity="0.26"/>
 <text x="318.5" y="519" fill="#ffffff" font-size="14" font-weight="700" text-anchor="middle">OpenID4VP 1.0</text>
-<text x="318.5" y="539" fill="#ffffff" fill-opacity="0.86" font-size="11.5" text-anchor="middle">presentation · DCQL / PE</text>
+<text x="318.5" y="539" fill="#ffffff" fill-opacity="0.86" font-size="11.5" text-anchor="middle">presentation · DCQL</text>
 <rect x="418.0" y="488" width="179.0" height="74" rx="9" fill="#ffffff" fill-opacity="0.17" stroke="#ffffff" stroke-opacity="0.26"/>
 <text x="507.5" y="519" fill="#ffffff" font-size="14" font-weight="700" text-anchor="middle">WACI / Aries v3</text>
 <text x="507.5" y="539" fill="#ffffff" fill-opacity="0.86" font-size="11.5" text-anchor="middle">issue &amp; present proof</text>
