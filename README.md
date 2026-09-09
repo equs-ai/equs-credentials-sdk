@@ -15,7 +15,7 @@
 EQUS SDK is an SDK (library) providing building blocks for identity protocol use cases.
 
 Applications integrating EQUS SDK will need to implement some
-interfaces (such as KMS and Vault) or Web endpoints (OID4VC). See [How To Use Equs SDK](#how-to-use-equs-sdk-in-applications)
+interfaces (such as KMS and Vault) or Web endpoints (OID4VC). See [How To Use EQUS SDK](#how-to-use-equs-sdk-in-applications)
 below.
 
 EQUS SDK is written in Rust with wrappers/builds available for
@@ -23,7 +23,7 @@ Node.js (TypeScript), WASM (TypeScript), Kotlin (Android), Swift (iOS).
 
 EQUS SDK supports multiple identity protocols and specifications
 for verifiable credentials, AI / Agentic use cases, Decentralized Identifiers (DIDs),
-Blockhains and DIDComm protocols.
+Blockchains and DIDComm protocols.
 
 The following use cases can be addressed by EQUS SDK:
 
@@ -35,21 +35,21 @@ Selective disclosure via SD-JWT VC, revocation via Token Status List.
   merchant verifies the delegation chain without the user being online.
 
 
-![Equs SDK stack](docs/equs-sdk-stack.svg)
+![EQUS SDK stack](docs/equs-sdk-stack.svg)
 
 ## Distinctive Features
 
-![Unique features of Equs SDK](docs/unique-features.svg)
+![Unique features of EQUS SDK](docs/unique-features.svg)
 
 | Feature | Notes                                                                                                                                                                   | Code and demos                                                                                                                                                                                                                            |
 | --- |-------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| Agentic delegation: dSD-JWT / AP2 | Delegated SD-JWT chains, each hop bound to the next party's key. A `delegate` item in OID4VP `transaction_data` turns a normal presentation into a delegation grant.    | [Five-party demo](demos/oid4vc/README.md#delegated-sd-jwt-dsd-jwt-demo) · [About dSD-JWT](docs/dsd-jwt.md) · [`dsd_jwt.rs`](src/vc/formats/dsd_jwt.rs) · [`oid4vp/delegate.rs`](src/vc/oid4vp/delegate.rs) · [tests](src/vc/oid4vp/tests.rs) |
+| Agentic delegation: dSD-JWT / AP2 | Experimental. Delegated SD-JWT chains; a bound hop carries the next party's key, a terminal hop closes the chain. A `delegate` item in OID4VP `transaction_data` turns a normal presentation into a delegation grant.    | [Five-party demo](demos/oid4vc/README.md#delegated-sd-jwt-dsd-jwt-demo) · [About dSD-JWT](docs/dsd-jwt.md) · [`dsd_jwt.rs`](src/vc/formats/dsd_jwt.rs) · [`oid4vp/delegate.rs`](src/vc/oid4vp/delegate.rs) · [tests](src/vc/oid4vp/tests.rs) |
 | EUDI / HAIP building blocks | The components those profiles build on: `mso_mdoc` + `dc+sd-jwt`, SD-JWT VC with key binding, `x509_san_dns` / `x509_hash` client identifier prefixes, issuer trust anchors. | [OID4VC demo](demos/oid4vc/README.md) · [`mso_mdoc.rs`](src/vc/formats/mso_mdoc.rs) · [`x509_truststore.rs`](src/utils/x509_truststore.rs)                                                                   |
 | OID4VC conformance tests | Exercised against the OpenID Foundation conformance suite, locally under Docker or remotely       | [conformance-tests.md](docs/guidelines/conformance-tests.md) · [holder.md](docs/guidelines/conformance-tests/holder.md)                                                                                                                   |
 | DIDComm v2 + Protocol Engine | A framework for defining your own DIDComm protocols — your messages, the `Protocol` trait, and stateless or state-machine handlers — not just the ones the SDK ships.   | [protocol-engine.md](docs/guidelines/protocol-engine.md) · [`src/didcomm`](src/didcomm) · [e2e test](tests/e2e/protocol_engine.rs)                                                                                                        |
 | `did:ethr` resolving | Replays EtherDIDRegistry event history on any EVM chain over JSON-RPC to rebuild the DID document. Multi-chain, configurable event topics. Non-wasm.                    | [`src/did/didethr`](src/did/didethr)                                                                                                                                                                                                      |
 | `did:webvh` resolving | Resolves the DID Web + Verifiable History JSONL log.                                                                                                         | [`src/did/webvh`](src/did/webvh) · [Node.js](wrappers/nodejs/src/did/webvh.rs)                                                                                                                                                            |
-| mDL support | ISO/IEC 18013-5 `mso_mdoc` over OID4VP. Trust anchors supplied as root certificates.                                                  | [`mso_mdoc.rs`](src/vc/formats/mso_mdoc.rs) · [`presentation_verification_flow_with_mdl`](tests/e2e/vc_oid4vp.rs)                                                                                                                         |
+| mDL support | Verification only. ISO/IEC 18013-5 `mso_mdoc` over OID4VP. Trust anchors supplied as root certificates.                                                  | [`mso_mdoc.rs`](src/vc/formats/mso_mdoc.rs) · [`presentation_verification_flow_with_mdl`](tests/e2e/vc_oid4vp.rs)                                                                                                                         |
 | Rust core + 4 language wrappers | One Rust implementation, published for Node.js (TypeScript), WASM (TypeScript), Android (Kotlin) and iOS (Swift) — the protocol logic is not reimplemented per platform. | [`wrappers/nodejs`](wrappers/nodejs) · [`wrappers/wasm`](wrappers/wasm) · [`wrappers/uniffi`](wrappers/uniffi) · [Android demo](demos/android/README.md) · [iOS demo](demos/ios/OID4VC/README.md)                                         |
 
 
@@ -89,8 +89,10 @@ See [Components](docs/equs-sdk-components.png).
               `dc_api`, `dc_api.jwt`, `fragment` and `fragment.jwt`
         - Signed Authorization Requests (Request Objects), passed by value or by reference
         - Client Identifier Prefixes:
-                - Supported by Verifier: "decentralized_identifier", "origin", "redirect_uri", "x509_san_dns" and "x509_hash"
-                - Supported by Holder: "decentralized_identifier", "redirect_uri"
+            - Supported by Verifier: "decentralized_identifier", "origin", "redirect_uri", "x509_san_dns" and "x509_hash"
+            - Supported by Holder: "decentralized_identifier", "redirect_uri"
+            - **NOTE**: "x509_san_dns" and "x509_hash" are used by the Verifier for generating
+              signed Authorization Requests. The Holder does not consume such requests.
         - Transaction Data
         - Holder Binding
     - WACI Present Proof Protocol
@@ -137,7 +139,7 @@ cargo doc --no-deps
 
 ### Collecting logs
 
-Equs SDK logs through the [`tracing`](https://docs.rs/tracing) crate. To collect the logs on the
+EQUS SDK logs through the [`tracing`](https://docs.rs/tracing) crate. To collect the logs on the
 application side, see [Consuming logs](docs/guidelines/logging.md#consuming-logs).
 
 ### [Demos](demos/README.md)
@@ -285,7 +287,7 @@ a feature on the SDK.
 
 Ready-made `Kms` and `Vault` implementations are available — see [Plugins](#plugins).
 
-## Other Doc and Diagrams
+## Other Docs and Diagrams
 
 - [API Tiers](docs/api-tiers.png)
 - [Components](docs/equs-sdk-components.png)
@@ -295,7 +297,7 @@ Ready-made `Kms` and `Vault` implementations are available — see [Plugins](#pl
 - [VC Aries Over DIDComm](docs/vc-aries-over-didcomm.png)
 - [About dSD-JWT](docs/dsd-jwt.md)
 - [How to implement DIDComm protocol based on Protocol Engine](docs/guidelines/protocol-engine.md)
-- [DIDComm Protocol Endine Architecture](docs/didcomm-protocol-components.md)
+- [DIDComm Protocol Engine Architecture](docs/didcomm-protocol-components.md)
 
 
 ## Contributing
