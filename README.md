@@ -1,42 +1,58 @@
-# Equs SDK
+# EQUS SDK
 
-- [About Equs SDK](#about-equs-sdk)
-- [API and Components](#api-and-components)
+- [About EQUS SDK](#about-equs-sdk)
+- [Distinctive Features](#distinctive-features)
 - [Supported Protocol Standards](#supported-protocol-standards)
 - [How To Build and Run](#how-to-build-and-run)
-- [How to Use Equs SDK in Applications](#how-to-use-equs-sdk-in-applications)
+- [How to Use EQUS SDK in Applications](#how-to-use-equs-sdk-in-applications)
+- [Contributing](#contributing)
 - [Dependencies](#dependencies)
 - [License](#license)
 - [Development Guidelines](docs/guidelines/dev.md)
 
-## About Equs SDK
+## About EQUS SDK
 
-- Equs SDK is an SDK (library) providing building blocks for identity protocol use cases.
-- Equs SDK is written in Rust; supported wrappers/builds are available for:
-    - Node.js (TypeScript)
-    - WASM (TypeScript)
-    - Kotlin
-    - Swift
-- Equs SDK is not an end-user application, but just an SDK. Applications integrating Equs SDK will need to implement some
-  interfaces (such as KMS and Vault) or Web endpoints (OID4VC). See [How To Use Equs SDK](#how-to-use-equs-sdk-in-applications)
-  below.
-- Equs SDK supports multiple identity protocols and specifications (see below).
+EQUS SDK is an SDK (library) providing building blocks for identity protocol use cases.
 
-![equs-sdk](docs/equs-sdk.png)
+Applications integrating EQUS SDK will need to implement some
+interfaces (such as KMS and Vault) or Web endpoints (OID4VC). See [How To Use EQUS SDK](#how-to-use-equs-sdk-in-applications)
+below.
 
-Other diagrams:
+EQUS SDK is written in Rust with wrappers/builds available for
+Node.js (TypeScript), WASM (TypeScript), Kotlin (Android), Swift (iOS).
 
-- [API Tiers](docs/api-tiers.png)
-- [Components](docs/equs-sdk-components.png)
-- [VC OID4VC API Auth Code: Full Flow](docs/vc-oid4vc-api-auth-code-full.png)
-- [VC OID4VC API Auth Code: Already Authorized](docs/vc-oid4vc-api-auth-code-already-authorized.png)
-- [VC Core API](docs/vc-core-api.png)
-- [VC Aries Over DIDComm](docs/vc-aries-over-didcomm.png)
+EQUS SDK supports multiple identity protocols and specifications
+for verifiable credentials, AI / Agentic use cases, Decentralized Identifiers (DIDs),
+Blockchains and DIDComm protocols.
 
-## API and Components
+The following use cases can be addressed by EQUS SDK:
 
-![equs-sdk-tiers](docs/api-tiers.png)
-![equs-sdk-components](docs/equs-sdk-components.png)
+- **AMLR / KYC** — issue a KYC or PID credential once over OID4VCI, verify it many times.
+  Selective disclosure via SD-JWT VC, revocation via Token Status List.
+- **Age verification** — prove an age threshold without releasing a date of birth, from an
+  SD-JWT VC or an mDL, requested precisely with DCQL.
+- **Agentic commerce (AP2)** — a user delegates a scoped, verifiable mandate to an agent; the
+  merchant verifies the delegation chain without the user being online.
+
+
+![EQUS SDK stack](docs/equs-sdk-stack.svg)
+
+## Distinctive Features
+
+![Unique features of EQUS SDK](docs/unique-features.svg)
+
+| Feature | Notes                                                                                                                                                                   | Code and demos                                                                                                                                                                                                                            |
+| --- |-------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Agentic delegation: dSD-JWT / AP2 | Experimental. Delegated SD-JWT chains; a bound hop carries the next party's key, a terminal hop closes the chain. A `delegate` item in OID4VP `transaction_data` turns a normal presentation into a delegation grant.    | [Five-party demo](demos/oid4vc/README.md#delegated-sd-jwt-dsd-jwt-demo) · [About dSD-JWT](docs/dsd-jwt.md) · [`dsd_jwt.rs`](src/vc/formats/dsd_jwt.rs) · [`oid4vp/delegate.rs`](src/vc/oid4vp/delegate.rs) · [tests](src/vc/oid4vp/tests.rs) |
+| EUDI / HAIP building blocks | The components those profiles build on: `mso_mdoc` + `dc+sd-jwt`, SD-JWT VC with key binding, `x509_san_dns` / `x509_hash` client identifier prefixes, issuer trust anchors. | [OID4VC demo](demos/oid4vc/README.md) · [`mso_mdoc.rs`](src/vc/formats/mso_mdoc.rs) · [`x509_truststore.rs`](src/utils/x509_truststore.rs)                                                                   |
+| OID4VC conformance tests | Exercised against the OpenID Foundation conformance suite, locally under Docker or remotely       | [conformance-tests.md](docs/guidelines/conformance-tests.md) · [holder.md](docs/guidelines/conformance-tests/holder.md)                                                                                                                   |
+| DIDComm v2 + Protocol Engine | A framework for defining your own DIDComm protocols — your messages, the `Protocol` trait, and stateless or state-machine handlers — not just the ones the SDK ships.   | [protocol-engine.md](docs/guidelines/protocol-engine.md) · [`src/didcomm`](src/didcomm) · [e2e test](tests/e2e/protocol_engine.rs)                                                                                                        |
+| `did:ethr` resolving | Replays EtherDIDRegistry event history on any EVM chain over JSON-RPC to rebuild the DID document. Multi-chain, configurable event topics. Non-wasm.                    | [`src/did/didethr`](src/did/didethr)                                                                                                                                                                                                      |
+| `did:webvh` resolving | Resolves the DID Web + Verifiable History JSONL log.                                                                                                         | [`src/did/webvh`](src/did/webvh) · [Node.js](wrappers/nodejs/src/did/webvh.rs)                                                                                                                                                            |
+| mDL support | Verification only. ISO/IEC 18013-5 `mso_mdoc` over OID4VP. Trust anchors supplied as root certificates.                                                  | [`mso_mdoc.rs`](src/vc/formats/mso_mdoc.rs) · [`presentation_verification_flow_with_mdl`](tests/e2e/vc_oid4vp.rs)                                                                                                                         |
+| Rust core + 4 language wrappers | One Rust implementation, published for Node.js (TypeScript), WASM (TypeScript), Android (Kotlin) and iOS (Swift) — the protocol logic is not reimplemented per platform. | [`wrappers/nodejs`](wrappers/nodejs) · [`wrappers/wasm`](wrappers/wasm) · [`wrappers/uniffi`](wrappers/uniffi) · [Android demo](demos/android/README.md) · [iOS demo](demos/ios/OID4VC/README.md)                                         |
+
+
 
 ## Supported Protocol Standards
 
@@ -45,6 +61,7 @@ See [Components](docs/equs-sdk-components.png).
 - VC Formats:
     - SD-JWT VC (ECDSA,
       EdDSA) - [draft-ietf-oauth-sd-jwt-vc-08](https://datatracker.ietf.org/doc/draft-ietf-oauth-sd-jwt-vc/)
+    - dSD-JWT - [draft-gco-oauth-delegate-sd-jwt-00](https://datatracker.ietf.org/doc/draft-gco-oauth-delegate-sd-jwt/)
     - W3C VC JSON-LD V1 (ECDSA,
       EdDSA) - [Verifiable Credentials Data Model v1.1](https://www.w3.org/TR/2022/REC-vc-data-model-20220303/)
     - W3C VC JSON-LD V2 (ECDSA, EdDSA, BBS+ 2023)
@@ -65,22 +82,19 @@ See [Components](docs/equs-sdk-components.png).
       3.0 [specification](https://github.com/decentralized-identity/waci-didcomm/blob/main/issue_credential/README.md)
 - VC Exchange Protocols: Presentation
     - OID4VP [version 1.0](https://openid.net/specs/openid-4-verifiable-presentations-1_0.html)
-        - DIF.PresentationExchange query language to request the presentations
-        - Cross Device Flow
-        - Same Device Flow
+        - DIF.PresentationExchange and Digital Credentials Query Language (DCQL)
+        - Cross Device Flow, Same Device Flow
         - SIOPv2 extension [draft 13](https://openid.net/specs/openid-connect-self-issued-v2-1_0.html)
-        - Digital Credentials Query Language (DCQL)
-        - OID4VP
-            - All Response Modes defined by the specification: `direct_post`, `direct_post.jwt`,
-              `dc_api`, `dc_api.jwt`, `fragment` and `fragment.jwt`
-            - Signed Authorization Requests (Request Objects), passed by value or by reference
-            - Client Identifier Prefixes:
-                - Supported by Verifier: "decentralized_identifier", "origin", "redirect_uri", "x509_san_dns" and "x509_hash"
-                - Supported by Holder: "decentralized_identifier", "redirect_uri"
-                - **NOTE**: "x509_san_dns" and "x509_hash" are used by the Verifier for generating
-                  signed Authorization Requests. The Holder does not consume such requests.
-            - Transaction Data
-            - Holder Binding
+        - All Response Modes defined by the specification: `direct_post`, `direct_post.jwt`,
+          `dc_api`, `dc_api.jwt`, `fragment` and `fragment.jwt`
+        - Signed Authorization Requests (Request Objects), passed by value or by reference
+        - Client Identifier Prefixes:
+            - Supported by Verifier: "decentralized_identifier", "origin", "redirect_uri", "x509_san_dns" and "x509_hash"
+            - Supported by Holder: "decentralized_identifier", "redirect_uri"
+            - **NOTE**: "x509_san_dns" and "x509_hash" are used by the Verifier for generating
+              signed Authorization Requests. The Holder does not consume such requests.
+        - Transaction Data
+        - Holder Binding
     - WACI Present Proof Protocol
       3.0 [specification](https://github.com/decentralized-identity/waci-didcomm/blob/main/present_proof/present-proof-v3.md)
 - VC Revocation:
@@ -125,7 +139,7 @@ cargo doc --no-deps
 
 ### Collecting logs
 
-Equs SDK logs through the [`tracing`](https://docs.rs/tracing) crate. To collect the logs on the
+EQUS SDK logs through the [`tracing`](https://docs.rs/tracing) crate. To collect the logs on the
 application side, see [Consuming logs](docs/guidelines/logging.md#consuming-logs).
 
 ### [Demos](demos/README.md)
@@ -146,11 +160,13 @@ application side, see [Consuming logs](docs/guidelines/logging.md#consuming-logs
 - [WACI/Aries V3](tests/e2e/waci_aries.rs)
 - [Custom DID resolvers](tests/e2e/custom_did_resolvers.rs)
 
-## How to Use Equs SDK in Applications
+## How to Use EQUS SDK in Applications
+
+![equs-sdk-tiers](docs/api-tiers.png)
 
 ### What you have to implement
 
-Equs SDK delegates key material, credential storage and nonce handling to the integrating
+EQUS SDK delegates key material, credential storage and nonce handling to the integrating
 application. Depending on the role you build, implement:
 
 | Trait | Responsibility |
@@ -193,11 +209,11 @@ a feature on the SDK.
     - [VC OID4VC API Auth Code: Full Flow](docs/vc-oid4vc-api-auth-code-full.png)
       or [VC OID4VC API Auth Code: Already Authorized](docs/vc-oid4vc-api-auth-code-already-authorized.png)
     - [VC OID4VC API Pre-Authorized Code Flow](docs/vc-oid4vc-api-pre-auth-code-full.png)
-    - WASM wrappers of Equs SDK can be found [here](wrappers/wasm/pkg/index.d.ts) (available
+    - WASM wrappers of EQUS SDK can be found [here](wrappers/wasm/pkg/index.d.ts) (available
       after [build](wrappers/wasm/README.md))
-    - Kotlin wrappers of Equs SDK can be found [here](wrappers/uniffi/kotlin/src/main/kotlin/com/equs/sdk/equssdk.kt) (
+    - Kotlin wrappers of EQUS SDK can be found [here](wrappers/uniffi/kotlin/src/main/kotlin/com/equs/sdk/equssdk.kt) (
       available after [build](wrappers/uniffi/README.md#building))
-    - Swift wrappers of Equs SDK can be found [here](wrappers/uniffi/swift/Sources/EqusSdk/equssdk.swift) (available
+    - Swift wrappers of EQUS SDK can be found [here](wrappers/uniffi/swift/Sources/EqusSdk/equssdk.swift) (available
       after [build](wrappers/uniffi/README.md#3-generate-the-xcframework-and-swift-bindings))
 
 **Issuer**
@@ -225,7 +241,7 @@ a feature on the SDK.
     - Available for all wrappers via VC Core modules
 4. Create Issuer Metadata
 5. Create Credential Offer (optional for auth code flow but required for pre-authorized code flow)
-6. Implement the following endpoints. Each endpoint should call the corresponding Equs SDK Issuer API method.
+6. Implement the following endpoints. Each endpoint should call the corresponding EQUS SDK Issuer API method.
     - GET /.well-known/openid-credential-issuer HTTP/1.1: `get_issuer_metadata`:
         - note that it must be a prefix to any path component your implementation serves API at (
           See [Section 3.1 of RFC8414](https://datatracker.ietf.org/doc/html/rfc8414#section-3.1)).
@@ -266,10 +282,46 @@ a feature on the SDK.
     - Node.js
         - [Verifier API](wrappers/nodejs/types/vc/oid4vp/verifier.ts)
         - [Verifier Builder](wrappers/nodejs/types/vc/oid4vp/verifier-builder.ts)
-2. Implement the following endpoints. Each endpoint should call the corresponding Equs SDK Verifier API method.
+2. Implement the following endpoints. Each endpoint should call the corresponding EQUS SDK Verifier API method.
     - `POST /<authorization-response-uri> HTTP/1.1`: `verify_presentation`
 
 Ready-made `Kms` and `Vault` implementations are available — see [Plugins](#plugins).
+
+## Other Docs and Diagrams
+
+- [API Tiers](docs/api-tiers.png)
+- [Components](docs/equs-sdk-components.png)
+- [VC OID4VC API Auth Code: Full Flow](docs/vc-oid4vc-api-auth-code-full.png)
+- [VC OID4VC API Auth Code: Already Authorized](docs/vc-oid4vc-api-auth-code-already-authorized.png)
+- [VC Core API](docs/vc-core-api.png)
+- [VC Aries Over DIDComm](docs/vc-aries-over-didcomm.png)
+- [About dSD-JWT](docs/dsd-jwt.md)
+- [How to implement DIDComm protocol based on Protocol Engine](docs/guidelines/protocol-engine.md)
+- [DIDComm Protocol Engine Architecture](docs/didcomm-protocol-components.md)
+
+
+## Contributing
+
+Issues and pull requests are welcome. Please open an issue before writing anything non-trivial, and
+report security problems privately rather than in a public issue.
+
+
+- Keep a pull request to one logical change, and say in the description what changed, why, and how
+  you verified it. Call out breaking changes to the public API or to a wrapper's surface.
+- Add tests — unit tests beside the code, e2e tests in [`tests/e2e`](tests/e2e). See
+  [tests design](docs/guidelines/tests-design.md).
+- Follow the [development guidelines](docs/guidelines/dev.md), in particular
+  [error handling](docs/guidelines/error_handling.md) and
+  [logging](docs/guidelines/logging.md) — never log key material, credential contents or PII.
+- A new public API usually needs matching surface in the [Node.js](wrappers/nodejs),
+  [WASM](wrappers/wasm) and [UniFFI](wrappers/uniffi) wrappers, or a note saying why it is
+  native-only.
+- AI-assisted contributions are fine under [`docs/AI_CONSTITUTION.md`](docs/AI_CONSTITUTION.md); you
+  are still responsible for reviewing and explaining every line you submit.
+- Releases are cut by maintainers ([release guide](docs/guidelines/release.md)) — do not bump
+  versions in a pull request.
+- Contributions are accepted under the [Apache License 2.0](./LICENSE). Update
+  [`THIRD-PARTY-NOTICE`](THIRD-PARTY-NOTICE) if a new dependency needs attribution.
 
 ## Dependencies
 
@@ -280,7 +332,7 @@ not against upstream.
 
 ## License
 
-Equs SDK is licensed under the [Apache License 2.0](./LICENSE).
+EQUS SDK is licensed under the [Apache License 2.0](./LICENSE).
 
 Licence attribution required by third-party dependencies is reproduced in
 [`THIRD-PARTY-NOTICE`](THIRD-PARTY-NOTICE).
