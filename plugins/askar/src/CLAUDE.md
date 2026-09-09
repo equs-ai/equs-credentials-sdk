@@ -10,7 +10,7 @@ durable, encrypted key and credential storage as an alternative to the in-memory
 |----------|------|
 | lib.rs   | `AskarStorage` — wraps `aries_askar::Store` with profile-aware session/transaction management, scan support, provisioning, and profile lifecycle. `ensure_profile` is idempotent: `Duplicate` maps to success, every other error propagates. Also defines `AskarStorageConfig`, `KeyMethod`, and the `AskarStorageScan` / `AskarStorageScanParams` scan API. |
 | kms.rs   | `AskarKms` (implements `Kms<AskarKeyHandle>`) and `AskarKeyHandle` (implements `Key`, `Signer`, `Verifier`, `KeyHandle`, `KeyAgreement`). Supports Ed25519, P-256, and K-256 key types; stores public-key tags (SHA-256) for `get_by_public_key` lookup. Unit tests cover all three key types, JWK export, and JWE encrypt/decrypt. |
-| vault.rs | `AskarVault` (implements `Vault`) stores credentials as Askar entries keyed by format category; supports `store_credential`, `get_credential`, `get_credentials`, `find_credentials` (tag-filter disjunction), `delete_credential`, and `count_all`. Unit tests cover CRUD, field-filter behaviour, pagination, multi-vault profile isolation. |
+| vault.rs | `AskarVault` (implements `Vault`) stores credentials as Askar entries keyed by format category; supports `store_credential`, `get_credential`, `get_credentials`, `find_credentials` (tag-filter disjunction), `delete_credential`, and `count_all`. Unit tests cover CRUD, field-filter behavior, pagination, multi-vault profile isolation. |
 
 ## Key types / traits (if applicable)
 - `AskarStorage` — central storage handle; shared by both `AskarKms` and `AskarVault`.

@@ -21,7 +21,7 @@ Provides concrete in-memory implementations of all cryptographic suites supporte
 - `Bls12381` — BBS+ suite supporting `sign_multi` / `verify_multi`.
 - `Bip32` — BIP-32 key derivation helper (not itself a `Suite`).
 - `HasAlg` — associates a curve type with its Equs SDK `Alg` value.
-- `HasJWK` — associates a curve type with JWK serialisation logic.
+- `HasJWK` — associates a curve type with JWK serialization logic.
 
 ## Dependencies
 - Depends on: `crate::crypto` (traits and error types), `ed25519-dalek`, `ecdsa`, `p256`, `bip32`, `ssi::bbs`, `zkryptium`

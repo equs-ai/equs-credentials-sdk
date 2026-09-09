@@ -8,7 +8,7 @@ actor "Holder" as HH
 participant "Holder App" as H
 participant "Issuer Service" as I
 participant "Verifier Service" as V
-participant "KeyCloak" as A
+participant "Keycloak" as A
 
 autonumber 0.1
 A --> A: Configure with scopes\n(Credential Definition IDs)

@@ -334,5 +334,5 @@ not against upstream.
 
 EQUS SDK is licensed under the [Apache License 2.0](./LICENSE).
 
-Licence attribution required by third-party dependencies is reproduced in
+License attribution required by third-party dependencies is reproduced in
 [`THIRD-PARTY-NOTICE`](THIRD-PARTY-NOTICE).

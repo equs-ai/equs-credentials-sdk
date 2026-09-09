@@ -94,7 +94,7 @@ Five of the seven production jobs have a `*_dev` counterpart publishing under th
 dist-tag: `publish_nodejs_target_dev`, `publish_nodejs_wrapper_dev`, `publish_wasm_dev_wrapper`,
 `publish_ios_wrapper_dev` and `publish_android_wrapper_dev`. Dev builds are debug builds. The askar
 plugin has no dev job — it declares no cargo features, so a dev build would differ from production
-only in optimisation level.
+only in optimization level.
 
 They run on a prerelease tag — `X.Y.Z-<suffix>`, hyphen mandatory:
 

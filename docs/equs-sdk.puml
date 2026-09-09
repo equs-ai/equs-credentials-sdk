@@ -25,9 +25,9 @@ package "SDK" as SDK {
     package "VC Formats" as VCImpls {
         [SD-JWT VC] as SDJWT
         [W3C VC\nJSON-LD] as JSONLD
-        [mDL ISO 18013-5\n(verification only)] as MDL18035
+        [mDL ISO 18013-5\n(verification only)] as MDL18013
         SDJWT -[hidden]right- JSONLD
-        JSONLD -[hidden]right- MDL18035
+        JSONLD -[hidden]right- MDL18013
     }
 
     package "VC Exchange Protocols" as Protocols {

@@ -1,4 +1,4 @@
-# How to implement protocol based on Protocol Engine
+# How to implement a protocol based on the Protocol Engine
 
 Steps to follow to implement your own protocol using the DIDComm Protocol Engine.
 
@@ -6,7 +6,7 @@ The engine itself lives in [`src/didcomm`](../../src/didcomm); the
 [reference implementations](#reference-implementations) at the end of this document are the shortest
 way to see the whole shape of a protocol before writing one.
 
-## 1. Define protocol specific messages.
+## 1. Define protocol-specific messages.
 
 Start by defining the messages your protocol speaks. 
 Usually you’ll model these as Rust enums/structs that can be (de)serialized to/from JSON.
@@ -132,8 +132,8 @@ where
 
 ## 4. Configure Agent
 
-You need to configure the agent and start it, the agent contains all the necessary methods to work with DIDComm v2 protocols. 
-With the help of the agent it is possible to send messages, use KMS and DID resolver, register the protocol.
+You need to configure the agent and start it. The agent contains all the necessary methods to work with DIDComm v2 protocols. 
+With the help of the agent it is possible to send messages, use the KMS and DID resolver, and register the protocol.
 
 ```ignore
 let issuer_agent_config = AgentConfig {
@@ -167,7 +167,7 @@ agent.start();
 
 ## 5. Register your protocol in the ProtocolRegistry
 
-To be able to receive the DIDCom messages for your protocol you must register it with an agent.
+To be able to receive DIDComm messages for your protocol you must register it with an agent.
 
 ```ignore
 let issuance_protocol = IssuanceProtocol::new_with_issuer(issuer.clone());
@@ -182,7 +182,7 @@ agent
 - WACI Issuance Protocol v3: [`src/didcomm/protocol/aries/issuance`](../../src/didcomm/protocol/aries/issuance)
 - TicTacToe Protocol: [`src/didcomm/protocol/tictactoe`](../../src/didcomm/protocol/tictactoe)
 - Basic Message Protocol v2: [`src/didcomm/protocol/basic_message`](../../src/didcomm/protocol/basic_message)
-- Outofband protocol v2: [`src/didcomm/protocol/outofband`](../../src/didcomm/protocol/outofband)
+- Out-of-band protocol v2: [`src/didcomm/protocol/outofband`](../../src/didcomm/protocol/outofband)
 
 
 

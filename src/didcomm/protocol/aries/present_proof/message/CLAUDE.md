@@ -45,7 +45,7 @@ Builder: `Presentation::create()`, `.add_attachment()`, `.set_thread_id()`, `.se
 `impl_didcomm_message_conversion!` for `Message` conversions.
 
 ### `ProofRequest`
-Wraps `PresentationDefinition`. `TryFrom<ProofRequest> for Attachment` serialises as JSON attachment.
+Wraps `PresentationDefinition`. `TryFrom<ProofRequest> for Attachment` serializes as JSON attachment.
 
 ## Dependencies
 - Depends on: `aries::common::{Thread, Status}`, `aries::problem_report::ProblemReport`, `crate::vc::presentation_exchange::PresentationDefinition`, `didcomm::Message`, `crate::didcomm::core::envelope`

@@ -1,9 +1,9 @@
 # SDK Demo - OID4VC Service
 
-This Demo allows to demonstrate the end-to-end flow of the OID4VCI/VP protocol.
+This demo demonstrates the end-to-end flow of the OID4VCI/VP protocols.
 The Web server in the root represents the Issuer and Verifier sides and the holder folder contains the Holder side.
 
-### Setup keycloak by [instructions](../keycloak/README.md)
+### Set up Keycloak using these [instructions](../keycloak/README.md)
 
 ### Steps to run the demo
 
