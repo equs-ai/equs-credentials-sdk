@@ -12,18 +12,16 @@
 
 ## About EQUS SDK
 
-EQUS SDK is an SDK (library) providing building blocks for identity protocol use cases.
+EQUS SDK is a Rust library of building blocks for verifiable credentials and decentralized
+identity — issuing, holding, presenting and verifying credentials for people, organizations and
+the AI agents acting on their behalf. It implements SD-JWT VC and W3C JSON-LD credentials, mDL
+verification, OID4VCI and OID4VP, five DID methods (`did:key`, `did:web`, `did:peer`,
+`did:ethr`, `did:webvh`), DIDComm v2, and experimental dSD-JWT delegation chains for agent
+mandates — with wrappers for Node.js, WASM, Android (Kotlin) and iOS (Swift).
 
 Applications integrating EQUS SDK will need to implement some
 interfaces (such as KMS and Vault) or Web endpoints (OID4VC). See [How To Use EQUS SDK](#how-to-use-equs-sdk-in-applications)
 below.
-
-EQUS SDK is written in Rust with wrappers/builds available for
-Node.js (TypeScript), WASM (TypeScript), Kotlin (Android), Swift (iOS).
-
-EQUS SDK supports multiple identity protocols and specifications
-for verifiable credentials, AI / Agentic use cases, Decentralized Identifiers (DIDs),
-Blockchains and DIDComm protocols.
 
 The following use cases can be addressed by EQUS SDK:
 
