@@ -28,7 +28,7 @@ Blockchains and DIDComm protocols.
 The following use cases can be addressed by EQUS SDK:
 
 - **AMLR / KYC** — issue a KYC or PID credential once over OID4VCI, verify it many times.
-Selective disclosure via SD-JWT VC, revocation via Token Status List.
+  Selective disclosure via SD-JWT VC, revocation via Token Status List.
 - **Age verification** — prove an age threshold without releasing a date of birth, from an
   SD-JWT VC or an mDL, requested precisely with DCQL.
 - **Agentic commerce (AP2)** — a user delegates a scoped, verifiable mandate to an agent; the
@@ -86,7 +86,7 @@ See [Components](docs/equs-sdk-components.png).
         - Cross Device Flow, Same Device Flow
         - SIOPv2 extension [draft 13](https://openid.net/specs/openid-connect-self-issued-v2-1_0.html)
         - All Response Modes defined by the specification: `direct_post`, `direct_post.jwt`,
-              `dc_api`, `dc_api.jwt`, `fragment` and `fragment.jwt`
+          `dc_api`, `dc_api.jwt`, `fragment` and `fragment.jwt`
         - Signed Authorization Requests (Request Objects), passed by value or by reference
         - Client Identifier Prefixes:
             - Supported by Verifier: "decentralized_identifier", "origin", "redirect_uri", "x509_san_dns" and "x509_hash"
