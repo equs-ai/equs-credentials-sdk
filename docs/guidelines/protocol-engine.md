@@ -136,7 +136,7 @@ You need to configure the agent and start it. The agent contains all the necessa
 With the help of the agent it is possible to send messages, use the KMS and DID resolver, and register the protocol.
 
 ```ignore
-let issuer_agent_config = AgentConfig {
+let config = AgentConfig {
     domain: Url::parse("http://government-agent.example.com").unwrap(),
     endpoint: Url::parse("http://127.0.0.1:8010").unwrap(),
     label: "Government Agent".to_string(),

@@ -33,7 +33,7 @@ Verifier accepts the following environment variables:
    see [spec](https://openid.net/specs/openid-4-verifiable-presentations-1_0.html#section-5.1-2.8.1)) for Presentation
    Definition
    authorization request. If not specified
-   or incorrect, default transaction data will be used (see `default_transaction_data_for_dcql()`).
+   or incorrect, default transaction data will be used (see `default_transaction_data_for_pd()`).
 
 ## Delegated SD-JWT (dSD-JWT) demo
 

@@ -15,7 +15,7 @@ Each developer must follow these rules when adding new features to the codebase 
  - To avoid long or unclear function / method names, use `name` property like `#[instrument(name = "Issuer service init")]`
  - To log `return` values of function / method, use the `ret` property like `#[instrument(ret())]`
     * If `return` value implements `Display` trait, use `#[instrument(ret(Display))]`
- - To log `error` events of function / method, use the `ret` property like `#[instrument(err())]`
+ - To log `error` events of function / method, use the `err` property like `#[instrument(err())]`
  - Make sure that error message does not reveal any sensitive information (like access token, nonce, etc.). All errors returned by instrumented functions (with `#[instrument]` annotation) are logged as log entries with `ERROR` level. Make sure that the field `details` does not include any sensitive data.
  - In case of logging any externally obtained data (for example, credential request from a holder to an issuer) use the `utils::logs::sanitize_log_msg()` function to avoid any characters that should not be in logs.
 
@@ -89,8 +89,8 @@ Each developer must follow these rules when adding new features to the codebase 
 
 ### Logging of sensitive data
 
-For debug purposes it's allowed to log sensitive values with `trace` and `debug` levels.
-Release builds will not reveal any logs with level less than `debug` since there is an option
+For debug purposes it's allowed to log sensitive values with the `trace` level.
+Release builds will not reveal `trace` logs since there is an option
 in `Cargo.toml` that [blocks it](https://docs.rs/tracing/latest/tracing/level_filters/index.html):
 
 ```

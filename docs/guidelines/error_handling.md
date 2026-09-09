@@ -87,7 +87,7 @@ pub enum Error {
 For this error type a detailed description should be provided during creation.
 
 ```rust
-fn verify_signature(data: &[byte], signature: &[byte]) -> Result<(), Error> {
+fn verify_signature(data: &[u8], signature: &[u8]) -> Result<(), Error> {
     ensure!(
         valid_signature(data, signature),
         SignatureVerificationSnafu {
@@ -126,7 +126,7 @@ pub enum Error {
 These errors are usually created using the context function along with the appropriate error variant.
 
 ```rust
-fn perform_network_request(url: &str) -> Result<Response, Error> {
+async fn perform_network_request(url: &str) -> Result<Response, Error> {
     reqwest::get(url).await.context(NetworkSnafu)
 }
 ```

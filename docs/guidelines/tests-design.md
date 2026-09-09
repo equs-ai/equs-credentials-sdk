@@ -202,14 +202,15 @@ Example:
 ```
 equs-sdk
 └── tests
-    ├── e2e_vc_core.rs
-    ├── e2e_vc_oid4vci.rs
-    └── ...
+    └── e2e
+        ├── vc_core.rs
+        ├── vc_oid4vci.rs
+        └── ...
 ```
 
-File names follow the template `e2e_<MODULE_NAME>_<SUBMODULE_NAME>.rs` where:
+File names follow the template `<MODULE_NAME>_<SUBMODULE_NAME>.rs` where:
 
-- `e2e` is the prefix to distinguish E2E tests from integration tests (if any)
+- the `e2e` directory is what distinguishes E2E tests from integration tests (if any)
 - `<MODULE_NAME>` is the name of top-level module (for example, `vc`)
 - `<SUBMODULE_NAME>` is the name of an internal submodule (for example, `oid4vci`)
 
@@ -236,12 +237,13 @@ Structure of files looks as shown below:
 
 ```
 equs-sdk
-└── tests                          # directory for e2e tests
+└── tests
     ├── utils                      # `utils` module directory
     │   ├── fixtures               # submodule that contains test fixtures
     │   ├── helpers                # submodule that contains helper functions used in e2e tests
     │   └── mod.rs
-    └── e2e_vc_oid4vci.rs          # e2e test
+    └── e2e                        # directory for e2e tests
+        └── vc_oid4vci.rs          # e2e test
 ```
 
 The `utils` module is used, first of all, to place test fixtures in order to have E2E tests files more
