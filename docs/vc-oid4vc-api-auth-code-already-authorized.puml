@@ -38,7 +38,7 @@ autonumber 3.2
 I -> I: <b>get_issuer_metadata()
 autonumber stop
 I --> H: IssuerMetadata
-destroy H
+deactivate H
 ...
 
 autonumber 4
@@ -57,7 +57,7 @@ autonumber 6.2
 I -> I: <b>issue_credential(...)
 autonumber stop
 I --> H: Credential
-destroy H
+deactivate H
 ...
 
 autonumber 7
@@ -77,7 +77,7 @@ H -> H++: <b>get_authorization_request(authorization_req_uri, ...)
 autonumber stop
 H --> V: GET /<authorization_req_uri> HTTP/1.1
 V --> H: (AuthorizationRequest, <authorization-response-uri>)
-destroy H
+deactivate H
 end
 ...
 
@@ -90,7 +90,7 @@ H --> H: <find credentials>
 H --> V:  POST /<authorization-response-uri> HTTP/1.1
 autonumber 10
 V -> V: <b> verify_presentation(...)
-destroy  H
+deactivate H
 
 else User selects/approves credentials for the presentation
 autonumber 9.1
@@ -103,7 +103,7 @@ autonumber stop
 H --> V:  POST /<authorization-response-uri> HTTP/1.1
 autonumber 10
 V -> V: <b> verify_presentation(...)
-destroy  H
+deactivate H
 end
 
 
