@@ -225,6 +225,8 @@ Holder API bindings per platform:
 
 | Platform | Bindings | Build instructions |
 | --- | --- | --- |
+| Rust | [`oid4vci::Holder`](src/vc/oid4vci/api.rs), [`oid4vp::Holder`](src/vc/oid4vp/api.rs), [`core::Holder`](src/vc/core/api.rs) | None, the API is used directly |
+| Node.js | [`oid4vci/holder.ts`](wrappers/nodejs/types/vc/oid4vci/holder.ts), [`oid4vp/holder.ts`](wrappers/nodejs/types/vc/oid4vp/holder.ts), [`holder-builder.ts`](wrappers/nodejs/types/vc/oid4vp/holder-builder.ts) | [build](wrappers/nodejs/README.md#building-and-testing-locally) |
 | WASM | [`index.d.ts`](wrappers/wasm/pkg/index.d.ts) | [build](wrappers/wasm/README.md) |
 | Kotlin | [`equssdk.kt`](wrappers/uniffi/kotlin/src/main/kotlin/com/equs/sdk/equssdk.kt) | [build](wrappers/uniffi/README.md#building) |
 | Swift | [`equssdk.swift`](wrappers/uniffi/swift/Sources/EqusSdk/equssdk.swift) | [build](wrappers/uniffi/README.md#3-generate-the-xcframework-and-swift-bindings) |
@@ -235,11 +237,10 @@ Holder API bindings per platform:
 | --- | --- |
 | 1 | Implement an application or platform specific `Kms`. |
 | 2 | Instantiate the OID4VC Issuer Service (see API references below). |
-| 3 | Optional: use delegated issuance. `prepare_credential` validates the request and builds an `UnsignedCredential` ready for inspection; `sign_credential` consumes it and returns the finished `Credential`. Use this when you need to inspect or transform the credential before signing, or when signing is delegated to a remote service. |
-| 4 | Create Issuer Metadata. |
-| 5 | Create a Credential Offer. Optional for the Authorization Code Flow, required for the Pre-Authorized Code Flow. |
-| 6 | Implement the issuer endpoints (table below). Each endpoint calls the corresponding EQUS SDK Issuer API method. |
-| 7 | Integrate an Authorization Server (table below). |
+| 3 | Create Issuer Metadata. |
+| 4 | Create a Credential Offer. Optional for the Authorization Code Flow, required for the Pre-Authorized Code Flow. |
+| 5 | Implement the issuer endpoints (table below). Each endpoint calls the corresponding EQUS SDK Issuer API method. |
+| 6 | Integrate an Authorization Server (table below). |
 
 Issuer API references:
 
@@ -247,19 +248,26 @@ Issuer API references:
 | --- | --- | --- |
 | Rust | Issuer API | [`src/vc/oid4vci/api.rs`](src/vc/oid4vci/api.rs) |
 | Rust | Issuer Builder | [`src/vc/oid4vci/builder.rs`](src/vc/oid4vci/builder.rs) |
-| Rust | Issuer Service (not publicly exposed) | [`src/vc/oid4vci/issuer.rs`](src/vc/oid4vci/issuer.rs) |
-| Rust | `PrepareCredential` / `SignCredential` traits (delegated issuance) | [Core API](src/vc/core/api.rs) |
-| Rust | Stand-alone signer, no issuer metadata (delegated issuance) | [`CredentialSigner`](src/vc/core/signer.rs) |
 | Node.js | Issuer API | [`binary.d.ts`](wrappers/nodejs/binary.d.ts) (available after [build](wrappers/nodejs/package.json)) |
 | Node.js | Issuer Builder | [`issuer.ts`](wrappers/nodejs/types/vc/oid4vci/issuer.ts) |
-| All wrappers | Delegated issuance | Available via the VC Core modules |
 
 Issuer endpoints:
 
 | Endpoint | SDK method | Notes |
 | --- | --- | --- |
 | `GET /.well-known/openid-credential-issuer` | `get_issuer_metadata` | Must be a prefix to any path component your implementation serves the API at (see [Section 3.1 of RFC 8414](https://datatracker.ietf.org/doc/html/rfc8414#section-3.1)). |
-| `POST /credential` | `issue_credential` | |
+| `POST /credential` | `issue_credential`, or `prepare_credential` + `sign_credential` for delegated issuance | |
+
+Delegated issuance (optional) splits the `issue_credential` call above into two steps:
+`prepare_credential` validates the request and builds an `UnsignedCredential` ready for
+inspection, and `sign_credential` consumes it and returns the finished `Credential`. Use it when
+you need to inspect or transform the credential before signing, or when signing is delegated to a
+remote service. Available in all wrappers via the VC Core modules.
+
+| Component | Location |
+| --- | --- |
+| `PrepareCredential` / `SignCredential` traits | [`src/vc/core/api.rs`](src/vc/core/api.rs) |
+| Stand-alone signer, no issuer metadata | [`CredentialSigner`](src/vc/core/signer.rs) |
 
 Authorization Server options:
 
@@ -290,7 +298,6 @@ Verifier API references:
 | --- | --- | --- |
 | Rust | Verifier API | [`src/vc/oid4vp/api.rs`](src/vc/oid4vp/api.rs) |
 | Rust | Verifier Builder | [`src/vc/oid4vp/builder.rs`](src/vc/oid4vp/builder.rs) |
-| Rust | Verifier Service (not publicly exposed) | [`src/vc/oid4vp/verifier.rs`](src/vc/oid4vp/verifier.rs) |
 | Node.js | Verifier API | [`verifier.ts`](wrappers/nodejs/types/vc/oid4vp/verifier.ts) |
 | Node.js | Verifier Builder | [`verifier-builder.ts`](wrappers/nodejs/types/vc/oid4vp/verifier-builder.ts) |
 
