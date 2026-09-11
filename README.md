@@ -13,8 +13,13 @@
 
 ## About EQUS SDK
 
-EQUS SDK is a library for issuing, holding, and verifying digital credentials. Credentials can be
-signed with X.509 certificates or Decentralized Identifiers (DIDs).
+EQUS SDK is a library of building blocks for decentralized identity: Decentralized Identifiers
+(DIDs), verifiable credentials, and DIDComm messaging.
+
+Credentials are issued, held, verified, and delegated, signed with either X.509
+certificates or DIDs. DID resolution covers five methods, including EVM chains via `did:ethr`.
+DIDComm v2 carries information securely and privately between parties, and the Protocol Engine
+implements protocols on top of it as state machines.
 
 The core is written in Rust. Wrappers and builds are available for Node.js (TypeScript), WASM
 (TypeScript), Kotlin (Android), and Swift (iOS).
@@ -71,9 +76,15 @@ Two points to keep in mind for OID4VCI:
 
 | Protocol | Specification | Supported capabilities |
 | --- | --- | --- |
-| OID4VP | [version 1.0](https://openid.net/specs/openid-4-verifiable-presentations-1_0.html) | Digital Credentials Query Language (DCQL); cross-device and same-device flows; SIOPv2 extension ([draft 13](https://openid.net/specs/openid-connect-self-issued-v2-1_0.html)); all response modes (`direct_post`, `direct_post.jwt`, `dc_api`, `dc_api.jwt`, `fragment`, `fragment.jwt`); signed Authorization Requests (Request Objects), by value or by reference; Transaction Data; Holder Binding |
-| DIF Presentation Exchange | [version 2.0.0](https://identity.foundation/presentation-exchange/spec/v2.0.0/) | Presentation Definitions and Submissions. Superseded by DCQL in OID4VP 1.0; still supported |
+| OID4VP | [version 1.0](https://openid.net/specs/openid-4-verifiable-presentations-1_0.html) | Cross-device and same-device flows; SIOPv2 extension ([draft 13](https://openid.net/specs/openid-connect-self-issued-v2-1_0.html)); all response modes (`direct_post`, `direct_post.jwt`, `dc_api`, `dc_api.jwt`, `fragment`, `fragment.jwt`); signed Authorization Requests (Request Objects), by value or by reference; Transaction Data; Holder Binding |
 | WACI Present Proof 3.0 | [specification](https://github.com/decentralized-identity/waci-didcomm/blob/main/present_proof/present-proof-v3.md) | Presentation over DIDComm |
+
+OID4VP query formats:
+
+| Format | Specification | Notes |
+| --- | --- | --- |
+| Digital Credentials Query Language (DCQL) | Part of [OID4VP 1.0](https://openid.net/specs/openid-4-verifiable-presentations-1_0.html) | |
+| DIF Presentation Exchange | [version 2.0.0](https://identity.foundation/presentation-exchange/spec/v2.0.0/) | Presentation Definitions and Submissions. Was part of OID4VP, replaced by DCQL in 1.0; still supported |
 
 OID4VP client identifier prefixes:
 
