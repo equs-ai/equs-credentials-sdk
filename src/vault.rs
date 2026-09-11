@@ -97,7 +97,7 @@ pub struct VaultFetchOptions {
 
 /// An async `Vault` interface for managing Verifiable Credentials.
 ///
-/// Should be implemented by any adapter to be used with `Equs SDK`.
+/// Should be implemented by any adapter to be used with `EQUS SDK`.
 ///
 /// Supports storing, retrieving and finding [vc::Credential].
 #[cfg_attr(test, automock)]

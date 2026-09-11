@@ -61,8 +61,8 @@ fn check_algorithm(alg: &str) -> Result<(), Error> {
 
 ## Module general error
 
-Describe a general error and should provide additional context by providing detailed descriptions. Location will be
-added by DebugError macros if it's possible
+Describes a general error and should provide additional context through detailed descriptions. Location will be
+added by the DebugError macro if possible
 
 ```rust
 #[derive(Snafu, DebugError)]
@@ -84,10 +84,10 @@ pub enum Error {
 }
 ```
 
-For this type error a detailed description should be provided during creation.
+For this error type a detailed description should be provided during creation.
 
 ```rust
-fn verify_signature(data: &[byte], signature: &[byte]) -> Result<(), Error> {
+fn verify_signature(data: &[u8], signature: &[u8]) -> Result<(), Error> {
     ensure!(
         valid_signature(data, signature),
         SignatureVerificationSnafu {
@@ -100,8 +100,8 @@ fn verify_signature(data: &[byte], signature: &[byte]) -> Result<(), Error> {
 
 ## External module/crate errors
 
-Describe the underlying module/crate error, and should include the original source error and the location within the
-module where it occurred. Implicit location lets Snafu include location and source let it know what source is.
+Describes the underlying module/crate error, and should include the original source error and the location within the
+module where it occurred. The implicit `location` lets Snafu record where the error occurred, and `source` tells it which error is being wrapped.
 
 ```rust
 #[derive(Snafu, DebugError)]
@@ -126,7 +126,7 @@ pub enum Error {
 These errors are usually created using the context function along with the appropriate error variant.
 
 ```rust
-fn perform_network_request(url: &str) -> Result<Response, Error> {
+async fn perform_network_request(url: &str) -> Result<Response, Error> {
     reqwest::get(url).await.context(NetworkSnafu)
 }
 ```
@@ -166,7 +166,7 @@ enum Error {
 }
 ```
 
-We use `#[derive(Snafu, DebugError)]` to implement `Debug` trait that is responsible for showing a chain of errors in
+We use `#[derive(Snafu, DebugError)]` to implement the `Debug` trait that is responsible for showing a chain of errors in
 the following way:
 
 ```
@@ -176,7 +176,7 @@ VC error at src/vc/oid4vci/holder.rs:751:23
  Cause: Key mismatch
 ```
 
-In cases when error includes:
+In cases when an error includes:
 
 1) `source` then the source error will be shown as a part of `Cause: ` line.
 2) `location` then location of the error will be shown after `at` in addition to display.

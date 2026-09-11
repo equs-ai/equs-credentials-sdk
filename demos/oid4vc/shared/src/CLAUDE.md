@@ -11,7 +11,7 @@ Shared library used by the `holder`, `issuer`, and `verifier` demo binaries. Pro
 | `vp.rs` | VP construction helpers shared across holder and verifier roles |
 
 ## Key types / traits
-- `AuthRequestQuery { response_type, response_mode, query_type }` — deserialised from HTTP query string by actix handlers.
+- `AuthRequestQuery { response_type, response_mode, query_type }` — deserialized from HTTP query string by actix handlers.
 - `PresentationQueryType` — `DCQL | PresentationExchange` (default: `DCQL`).
 
 ## Dependencies

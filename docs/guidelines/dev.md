@@ -18,9 +18,9 @@ These guidelines provide standards for readability, usability and legibility.
 
 ### Use hooks for automated linting & formatting
 
-Equs SDK uses [lefthook](https://lefthook.dev/intro.html) for hooks.
+EQUS SDK uses [lefthook](https://lefthook.dev/intro.html) for hooks.
 
-Ensure you have installed lefthook. Lookup for installation [here](https://lefthook.dev/installation/)
+Ensure you have installed lefthook. See the installation instructions [here](https://lefthook.dev/installation/)
 
 Make sure you install lefthook into git hooks by running
 
@@ -41,7 +41,7 @@ codebase.
    ```bash
    cargo fmt --all
    ```
-- Automatic Formatting in Rust Rover:
+- Automatic Formatting in RustRover:
     1. Go to **File > Settings > Rust > Rustfmt**.
     2. Enable the option: **Use Rustfmt instead of the built-in formatter**.
 

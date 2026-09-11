@@ -5,11 +5,11 @@
 We create two types of tests:
 
 - **Unit tests** for testing a small piece of functionality
-- **E2E tests** for testing all layers of the system interacting to each other
+- **E2E tests** for testing all layers of the system interacting with each other
 
 We don't create dedicated integration tests (at least, for now), instead we implement our unit tests
-testing a piece of code not in full isolation from it's dependencies, but using real code where it makes sense.
-It lets us implement tests easier reusing our `in-mem` components (`LocalKms`/`InMemVault`/etc)
+testing a piece of code not in full isolation from its dependencies, but using real code where it makes sense.
+It lets us implement tests more easily by reusing our `in-mem` components (`LocalKms`/`InMemVault`/etc)
 instead of creating mocks where it is not necessary.
 
 ### Unit tests
@@ -19,7 +19,7 @@ instead of creating mocks where it is not necessary.
 Unit tests should be placed in the same file where the tested code is located.
 
 The `tests` module is created for unit tests. The module must be annotated with `#[cfg(test)]`.
-Each function in the `tests` module that considered to be a unit test must be annotated with `#[tokio::test]`.
+Each function in the `tests` module that is considered a unit test must be annotated with `#[tokio::test]`.
 
 Example:
 
@@ -70,7 +70,7 @@ mod tests {
 ```
 
 All test functions (marked with `#[tokio::test]`) should be located before any helper functions.
-It allows to find and read tests quickly due to placing them together (not mixing them with helper functions).
+It lets you find and read tests quickly because they are placed together, not mixed in with helper functions.
 The structure of unit tests should look so:
 
 ```rust
@@ -108,11 +108,11 @@ mod tests {
 }
 ```
 
-#### Location helper functions and fixtures in the code
+#### Location of helper functions and fixtures in the code
 
 It is often convenient to have some helper functions and/or test fixtures shared between several modules.
 
-There are two possible place where you should place the shared functions depending on whether
+There are two possible places for the shared functions, depending on whether
 the code is crate-level or module-level:
 
 - crate-level code should be located in the `crate::utils::test_utils` module
@@ -122,10 +122,10 @@ Do not use intermediate-level modules (for example, `vc` module) because it may 
 scattering it between multiple places.
 
 For example, there is a shared code used by `Holder`/`Issuer` tests simultaneously.
-Such shared code used by several modules, but not by all modules in the crate, should be placed in
+Such shared code, used by several modules but not by all modules in the crate, should be placed in
 the module where the tested code is located (`oid4vci` module in this case).
 
-At the same time, there are some code that should be shared on the crate-level. For example,
+At the same time, there is some code that should be shared at the crate level. For example,
 function `create_did_and_key_metadata()` is used by several modules, including `oid4vci`/`oid4vp`.
 Such code should be placed in the `crate::utils::test_utils` module.
 
@@ -149,7 +149,7 @@ For example Holder requesting credentials performs multiple actions:
 
 1. generating the credential requests
 2. sending request to an Issuer
-3. parsing a credentil response
+3. parsing a credential response
 4. handling errors if any
 
 Unit of behavior is how the tested system behaves in particular conditions.
@@ -162,10 +162,10 @@ in the method. For example:
 3. Returning valid `Credential` object in case the Issuer provided correct credential response
 4. Returning an Error object in case the Issuer provided malformed response
 
-Note that a single action under the method's hood gives us several units of behaviour we need to test. There are, at
-least, positive and negative cases for almost each actions done by the tested system.
+Note that a single action under the method's hood gives us several units of behavior we need to test. There are, at
+least, positive and negative cases for almost every action done by the tested system.
 
-As a result we need to create multiple tests for the same method to cover all it's `units of behavior` under the hood.
+As a result we need to create multiple tests for the same method to cover all its `units of behavior` under the hood.
 
 #### Unit tests naming
 
@@ -195,25 +195,26 @@ Links:
 
 #### E2E tests location
 
-E2E tests should be placed in the `tests` directory of in the project's root (next to `src`).
+E2E tests should be placed in the `tests` directory in the project's root (next to `src`).
 
 Example:
 
 ```
 equs-sdk
 └── tests
-    ├── e2e_vc_core.rs
-    ├── e2e_vc_oid4vci.rs
-    └── ...
+    └── e2e
+        ├── vc_core.rs
+        ├── vc_oid4vci.rs
+        └── ...
 ```
 
-File names follow the template `e2e_<MODULE_NAME>_<SUBMODULE_NAME>.rs` where:
+File names follow the template `<MODULE_NAME>_<SUBMODULE_NAME>.rs` where:
 
-- `e2e` is the prefix to destinguish E2E tests from integration tests (if any)
+- the `e2e` directory is what distinguishes E2E tests from integration tests (if any)
 - `<MODULE_NAME>` is the name of top-level module (for example, `vc`)
 - `<SUBMODULE_NAME>` is the name of an internal submodule (for example, `oid4vci`)
 
-Each file may include more that one test for the same submodule in case there are several flows
+Each file may include more than one test for the same submodule in case there are several flows
 that should be tested.
 
 #### E2E tests naming convention
@@ -222,8 +223,8 @@ E2E test name should describe the tested flow.
 
 #### Multiple cases for a single test
 
-In case when it makes sense to test some particular flow with several input data it should be done
-with [rstest's](https://crates.io/crates/rstest) `case` feature. It allows to cover different test cases without
+In case when it makes sense to test some particular flow with several sets of input data it should be done
+with [rstest's](https://crates.io/crates/rstest) `case` feature. It lets you cover different test cases without
 code duplication.
 
 #### Fixtures and code shared between several E2E tests
@@ -231,22 +232,23 @@ code duplication.
 In case we need to use some functions/fixtures from more than one e2e test such functions should be placed
 in a separate module in a directory `tests/<SHARED_MODULE_NAME>`.
 
-For now, there is an `utils` module that includes fixtures and helper functions called from several e2e tests.
+For now, there is a `utils` module that includes fixtures and helper functions called from several e2e tests.
 Structure of files looks as shown below:
 
 ```
 equs-sdk
-└── tests                          # directory for e2e tests
+└── tests
     ├── utils                      # `utils` module directory
     │   ├── fixtures               # submodule that contains test fixtures
     │   ├── helpers                # submodule that contains helper functions used in e2e tests
     │   └── mod.rs
-    └── e2e_vc_oid4vci.rs          # e2e test
+    └── e2e                        # directory for e2e tests
+        └── vc_oid4vci.rs          # e2e test
 ```
 
 The `utils` module is used, first of all, to place test fixtures in order to have E2E tests files more
 focused on the code while fixtures for test cases are located in `utils::fixtures` module.
-Another kind of code located in the `utils::helpers` module is helpers functions that are used by several
+Another kind of code located in the `utils::helpers` module is helper functions that are used by several
 E2E crates in order to avoid code duplication.
 
 Example of an E2E test file:
@@ -286,7 +288,7 @@ We compared several code coverage tools for our Rust project:
   using either `Ptrace` or `LLVM` modes. The `Ptrace` mode is only available on Linux with x86_64 architecture.
   Tarpaulin provides fairly reliable line coverage but may sometimes produce minor inaccuracies.
 - **gcov:** Uses LLVM IR to count covered lines, but it is not known for high accuracy in terms of code coverage.
-- **go-kcov:** A wrapper around kcov, which use DWARF debugging information to generate coverage reports. While it
+- **go-kcov:** A wrapper around kcov, which uses DWARF debugging information to generate coverage reports. While it
   can be used with Rust projects, it may not offer the same level of accuracy or ease of setup as other tools.
 - **Source-based coverage (LLVM-based coverage):** This method is considered highly accurate because it instruments
   the code at the LLVM IR level, providing precise coverage data at the source level.

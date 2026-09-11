@@ -1,6 +1,6 @@
-# Equs SDK UniFFI wrappers
+# EQUS SDK UniFFI wrappers
 
-This crate exposes Equs SDK to UniFFI-supported platforms. Kotlin (Android) and Swift (iOS) are the
+This crate exposes EQUS SDK to UniFFI-supported platforms. Kotlin (Android) and Swift (iOS) are the
 targets built and published here.
 
 ## Building

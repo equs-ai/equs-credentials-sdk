@@ -85,7 +85,7 @@ pub trait KeyHandle: crypto::SigningKey + crypto::VerifyingKey + crypto::Key + C
 
 /// An async `Kms` interface for handling the keys and basic crypto operations.
 ///
-/// Should be implemented by any adapter to be used with `Equs SDK`.
+/// Should be implemented by any adapter to be used with `EQUS SDK`.
 ///
 /// Supports key's creation and retrieving the `KeyHandle` with support of basic `Crypto`.
 #[cfg_attr(test, automock)]
@@ -270,7 +270,7 @@ pub trait KeyAgreement {
 
 /// An async `DerivativeKms` is an extension for `Kms` to support key derivation.
 ///
-/// Could be implemented by any adapter to be used with `Equs SDK`.
+/// Could be implemented by any adapter to be used with `EQUS SDK`.
 ///
 /// Adds up master key's creation from a seed and derivation.
 #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]

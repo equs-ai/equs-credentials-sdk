@@ -1,6 +1,6 @@
-# Equs SDK wrappers for Node.js
+# EQUS SDK wrappers for Node.js
 
-Node.js bindings for Equs SDK, built as a native addon with [NAPI-RS](https://napi.rs).
+Node.js bindings for EQUS SDK, built as a native addon with [NAPI-RS](https://napi.rs).
 
 ## Prerequisites
 

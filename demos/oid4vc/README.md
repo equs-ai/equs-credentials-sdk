@@ -1,9 +1,9 @@
 # SDK Demo - OID4VC Service
 
-This Demo allows to demonstrate the end-to-end flow of the OID4VCI/VP protocol.
+This demo demonstrates the end-to-end flow of the OID4VCI/OID4VP protocols.
 The Web server in the root represents the Issuer and Verifier sides and the holder folder contains the Holder side.
 
-### Setup keycloak by [instructions](../keycloak/README.md)
+### Set up Keycloak using these [instructions](../keycloak/README.md)
 
 ### Steps to run the demo
 
@@ -33,7 +33,7 @@ Verifier accepts the following environment variables:
    see [spec](https://openid.net/specs/openid-4-verifiable-presentations-1_0.html#section-5.1-2.8.1)) for Presentation
    Definition
    authorization request. If not specified
-   or incorrect, default transaction data will be used (see `default_transaction_data_for_dcql()`).
+   or incorrect, default transaction data will be used (see `default_transaction_data_for_pd()`).
 
 ## Delegated SD-JWT (dSD-JWT) demo
 

@@ -1,7 +1,7 @@
 # plugins — Context
 
 ## Purpose
-Optional, feature-gated Equs SDK plugins that provide alternative backend implementations
+Optional, feature-gated EQUS SDK plugins that provide alternative backend implementations
 for core SDK traits (KMS, vault), currently encompassing the Hyperledger Askar plugin.
 
 ## Files / Sub-areas
@@ -19,5 +19,5 @@ for core SDK traits (KMS, vault), currently encompassing the Hyperledger Askar p
 - Used by: host applications and demos that need persistent storage beyond in-memory mocks
 
 ## Constraints
-- Plugin crates are standalone Cargo workspaces; they are not compiled as part of the main Equs SDK workspace unless explicitly added to the workspace.
+- Plugin crates are standalone Cargo workspaces; they are not compiled as part of the main EQUS SDK workspace unless explicitly added to the workspace.
 - Non-wasm only (current plugins rely on native OS/database backends).

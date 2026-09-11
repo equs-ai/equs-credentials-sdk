@@ -1,7 +1,7 @@
 # inmem — Context
 
 ## Purpose
-Provides complete in-memory implementations of every Equs SDK persistence and key-management interface, enabling tests and quick-start applications without external dependencies.
+Provides complete in-memory implementations of every EQUS SDK persistence and key-management interface, enabling tests and quick-start applications without external dependencies.
 
 ## Files
 

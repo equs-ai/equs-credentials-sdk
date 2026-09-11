@@ -1,7 +1,7 @@
 # empty — Context
 
 ## Purpose
-Implements the Aries "empty" acknowledgement protocol (v1.0), providing the `Empty` message struct used by issuers and verifiers to confirm successful credential or presentation receipt.
+Implements the Aries "empty" acknowledgment protocol (v1.0), providing the `Empty` message struct used by issuers and verifiers to confirm successful credential or presentation receipt.
 
 ## Files
 
@@ -12,7 +12,7 @@ Implements the Aries "empty" acknowledgement protocol (v1.0), providing the `Emp
 | `protocol.rs` | `EmptyProtocol` — `Protocol` impl that delegates to an injected `MessageHandler` |
 
 ## Key types / traits
-- `Empty` — DIDComm acknowledgement message
+- `Empty` — DIDComm acknowledgment message
 - `EmptyProtocol` — registers an ack handler under the `empty` protocol family
 
 ## Dependencies

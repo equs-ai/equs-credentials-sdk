@@ -1,7 +1,7 @@
 # utils — Context
 
 ## Purpose
-Shared infrastructure for the Equs SDK integration test suite: HTTP client emulation, test DID
+Shared infrastructure for the EQUS SDK integration test suite: HTTP client emulation, test DID
 resolution, static fixtures, and builder helpers consumed by all e2e test modules.
 
 ## Files / Sub-areas
