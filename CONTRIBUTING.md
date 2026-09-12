@@ -1,4 +1,4 @@
-# Contributing to EQUS SDK
+# Contributing to EQUS Credentials SDK
 
 Issues and pull requests are welcome. Open an issue before writing anything non-trivial, and report
 security problems privately rather than in a public issue.

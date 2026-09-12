@@ -1,6 +1,6 @@
-# EQUS SDK UniFFI wrappers
+# EQUS Credentials SDK UniFFI wrappers
 
-This crate exposes EQUS SDK to UniFFI-supported platforms. Kotlin (Android) and Swift (iOS) are the
+This crate exposes EQUS Credentials SDK to UniFFI-supported platforms. Kotlin (Android) and Swift (iOS) are the
 targets built and published here.
 
 ## Building

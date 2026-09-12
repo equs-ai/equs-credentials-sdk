@@ -1,7 +1,7 @@
 # uniffi/src — Context
 
 ## Purpose
-Root of the UniFFI Kotlin/Swift wrapper crate. Calls `uniffi::setup_scaffolding!()` and declares all top-level modules that together expose the EQUS SDK library to Android (Kotlin) and iOS (Swift) consumers. Top-level files handle cross-cutting concerns: a unified `Error` enum, shared primitive custom types (`JsonValue`, `Duration`, `OffsetDateTime`), HTTP client bridging, key-handle and KMS foreign-trait interfaces, nonce handling, vault access, and utility functions. Sub-areas `did/`, `inmem/`, and `vc/` are documented in their own context files.
+Root of the UniFFI Kotlin/Swift wrapper crate. Calls `uniffi::setup_scaffolding!()` and declares all top-level modules that together expose the EQUS Credentials SDK library to Android (Kotlin) and iOS (Swift) consumers. Top-level files handle cross-cutting concerns: a unified `Error` enum, shared primitive custom types (`JsonValue`, `Duration`, `OffsetDateTime`), HTTP client bridging, key-handle and KMS foreign-trait interfaces, nonce handling, vault access, and utility functions. Sub-areas `did/`, `inmem/`, and `vc/` are documented in their own context files.
 
 ## Files / Sub-areas
 

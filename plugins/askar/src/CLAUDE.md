@@ -1,7 +1,7 @@
 # askar/src — Context
 
 ## Purpose
-Core Rust library implementing Hyperledger Askar-backed KMS and vault for EQUS SDK, providing
+Core Rust library implementing Hyperledger Askar-backed KMS and vault for EQUS Credentials SDK, providing
 durable, encrypted key and credential storage as an alternative to the in-memory implementations.
 
 ## Files / Sub-areas

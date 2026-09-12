@@ -145,7 +145,7 @@ impl From<VaultFetchOptions> for JsVaultPagination {
 ///
 /// An async `Vault` interface for managing Verifiable Credentials.
 ///
-/// Should be implemented by any adapter to be used with `EQUS SDK`.
+/// Should be implemented by any adapter.
 ///
 /// Supports storing, retrieving and finding {@link Credential}
 ///

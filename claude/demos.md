@@ -1,7 +1,7 @@
 # Demos — Summary
 
 ## What this domain does
-Self-contained example applications demonstrating how to use EQUS SDK in realistic scenarios. Each demo wires together the SDK's traits with concrete implementations (in-memory KMS, reqwest HTTP) and a real transport layer (actix-web, mobile bindings) to show an end-to-end flow. Demos are not part of the library build — they are separate binaries used for developer onboarding and integration testing.
+Self-contained example applications demonstrating how to use EQUS Credentials SDK in realistic scenarios. Each demo wires together the SDK's traits with concrete implementations (in-memory KMS, reqwest HTTP) and a real transport layer (actix-web, mobile bindings) to show an end-to-end flow. Demos are not part of the library build — they are separate binaries used for developer onboarding and integration testing.
 
 ## Sub-areas
 

@@ -1,7 +1,7 @@
 # Wrappers — Summary
 
 ## What this domain does
-Exposes the EQUS SDK Rust library to three foreign language targets via thin FFI/binding layers. Each wrapper translates EQUS SDK's async Rust types to the idioms of its target ecosystem. No business logic lives here — wrappers only adapt types, handle errors, and re-export the SDK's public API surface.
+Exposes the EQUS Credentials SDK Rust library to three foreign language targets via thin FFI/binding layers. Each wrapper translates the SDK's async Rust types to the idioms of its target ecosystem. No business logic lives here — wrappers only adapt types, handle errors, and re-export the SDK's public API surface.
 
 ## Sub-areas
 

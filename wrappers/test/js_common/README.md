@@ -1,4 +1,4 @@
-# EQUS SDK wrappers tests for Node.js & WASM
+# EQUS Credentials SDK wrappers tests for Node.js & WASM
 
 ## Prerequisites
 

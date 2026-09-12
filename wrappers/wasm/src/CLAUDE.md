@@ -1,7 +1,7 @@
 # wasm/src — Context
 
 ## Purpose
-Root of the wasm-bindgen browser/WASM wrapper crate. Declares all top-level modules that together expose the EQUS SDK library to JavaScript/TypeScript consumers running in a browser or Node.js WASM environment. Top-level files handle cross-cutting concerns: opaque JS crypto types, HTTP client bridging (JS callbacks and `ReqwestHttpClient`), key-handle and KMS JS interface adapters, nonce handling, vault access, and utility functions for JS/Rust value conversion. Sub-areas `did/`, `inmem/`, and `vc/` are documented in their own context files.
+Root of the wasm-bindgen browser/WASM wrapper crate. Declares all top-level modules that together expose the EQUS Credentials SDK library to JavaScript/TypeScript consumers running in a browser or Node.js WASM environment. Top-level files handle cross-cutting concerns: opaque JS crypto types, HTTP client bridging (JS callbacks and `ReqwestHttpClient`), key-handle and KMS JS interface adapters, nonce handling, vault access, and utility functions for JS/Rust value conversion. Sub-areas `did/`, `inmem/`, and `vc/` are documented in their own context files.
 
 ## Files / Sub-areas
 
