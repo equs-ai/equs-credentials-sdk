@@ -13,13 +13,8 @@
 
 ## About EQUS Credentials SDK
 
-EQUS Credentials SDK is a library of building blocks for decentralized identity: Decentralized Identifiers
-(DIDs), verifiable credentials, and DIDComm messaging.
-
-Credentials are issued, held, verified, and delegated, signed with either X.509
-certificates or DIDs. DID resolution covers five methods, including EVM chains via `did:ethr`.
-DIDComm v2 carries information securely and privately between parties, and the Protocol Engine
-implements protocols on top of it as state machines.
+EQUS Credentials SDK is a library for issuing, holding, and verifying digital credentials.
+Credentials can be signed with X.509 certificates or decentralized identifiers.
 
 The core is written in Rust. Wrappers and builds are available for Node.js (TypeScript), WASM
 (TypeScript), Kotlin (Android), and Swift (iOS).
