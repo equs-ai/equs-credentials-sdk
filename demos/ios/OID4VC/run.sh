@@ -6,7 +6,7 @@ CONFIGURATION="Debug"
 SIMULATOR_NAME="iPhone 16"
 DESTINATION="platform=iOS Simulator,name=$SIMULATOR_NAME"
 DERIVED_DATA_PATH="build"
-BUNDLE_ID="com.bci.OID4VC"
+BUNDLE_ID="com.equs.OID4VC"
 
 echo "Building the project..."
 xcrun xcodebuild -scheme "$SCHEME" \
