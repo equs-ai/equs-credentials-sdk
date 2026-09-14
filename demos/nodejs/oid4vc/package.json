@@ -2,7 +2,7 @@
   "name": "equs-sdk-demo-nodejs",
   "private": true,
   "version": "0.1.0",
-  "description": "Node.js demo for EQUS SDK",
+  "description": "Node.js demo for EQUS Credentials SDK",
   "main": "",
   "config": {
     "nodejs_equs_sdk_wrapper_path": "--prefix=../../../wrappers/nodejs",

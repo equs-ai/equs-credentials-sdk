@@ -2,7 +2,7 @@
 'https://plantuml.com/component-diagram
 'left to right direction
 
-package "EQUS SDK" as EqusSdk {
+package "EQUS Credentials SDK" as EqusSdk {
 
     package VC {
 

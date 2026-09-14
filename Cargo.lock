@@ -453,7 +453,7 @@ dependencies = [
 [[package]]
 name = "aries-askar"
 version = "0.4.6"
-source = "git+https://github.com/equsai/askar.git?rev=23361f5b#23361f5b023811d768d3a2793e102708fe494b3e"
+source = "git+https://github.com/equs-ai/askar.git?rev=23361f5b#23361f5b023811d768d3a2793e102708fe494b3e"
 dependencies = [
  "askar-crypto 0.3.7",
  "askar-storage",
@@ -586,7 +586,7 @@ dependencies = [
 [[package]]
 name = "askar-crypto"
 version = "0.3.7"
-source = "git+https://github.com/equsai/askar.git?rev=23361f5b#23361f5b023811d768d3a2793e102708fe494b3e"
+source = "git+https://github.com/equs-ai/askar.git?rev=23361f5b#23361f5b023811d768d3a2793e102708fe494b3e"
 dependencies = [
  "aead",
  "aes",
@@ -637,7 +637,7 @@ dependencies = [
 [[package]]
 name = "askar-storage"
 version = "0.2.4"
-source = "git+https://github.com/equsai/askar.git?rev=23361f5b#23361f5b023811d768d3a2793e102708fe494b3e"
+source = "git+https://github.com/equs-ai/askar.git?rev=23361f5b#23361f5b023811d768d3a2793e102708fe494b3e"
 dependencies = [
  "arc-swap",
  "askar-crypto 0.3.7",
@@ -2461,7 +2461,7 @@ dependencies = [
 [[package]]
 name = "dcql"
 version = "0.1.0"
-source = "git+https://github.com/equsai/one-core.git?rev=a5ded11#a5ded11492c84c2a362aef9bb04ed57cab285b13"
+source = "git+https://github.com/equs-ai/one-core.git?rev=a5ded11#a5ded11492c84c2a362aef9bb04ed57cab285b13"
 dependencies = [
  "bon",
  "serde",
@@ -2742,7 +2742,7 @@ dependencies = [
 [[package]]
 name = "did_doc"
 version = "0.1.0"
-source = "git+https://github.com/equsai/vcx.git?rev=fc818ef5#fc818ef577b2107605a6e577e22ee734d5d97755"
+source = "git+https://github.com/equs-ai/vcx.git?rev=fc818ef5#fc818ef577b2107605a6e577e22ee734d5d97755"
 dependencies = [
  "base64 0.22.1",
  "bs58 0.5.1",
@@ -2765,7 +2765,7 @@ dependencies = [
 [[package]]
 name = "did_key"
 version = "0.1.0"
-source = "git+https://github.com/equsai/vcx.git?rev=fc818ef5#fc818ef577b2107605a6e577e22ee734d5d97755"
+source = "git+https://github.com/equs-ai/vcx.git?rev=fc818ef5#fc818ef577b2107605a6e577e22ee734d5d97755"
 dependencies = [
  "did_parser_nom",
  "public_key",
@@ -2777,7 +2777,7 @@ dependencies = [
 [[package]]
 name = "did_parser_nom"
 version = "0.1.0"
-source = "git+https://github.com/equsai/vcx.git?rev=fc818ef5#fc818ef577b2107605a6e577e22ee734d5d97755"
+source = "git+https://github.com/equs-ai/vcx.git?rev=fc818ef5#fc818ef577b2107605a6e577e22ee734d5d97755"
 dependencies = [
  "log",
  "nom 7.1.3",
@@ -2788,7 +2788,7 @@ dependencies = [
 [[package]]
 name = "did_peer"
 version = "0.1.0"
-source = "git+https://github.com/equsai/vcx.git?rev=fc818ef5#fc818ef577b2107605a6e577e22ee734d5d97755"
+source = "git+https://github.com/equs-ai/vcx.git?rev=fc818ef5#fc818ef577b2107605a6e577e22ee734d5d97755"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -2814,7 +2814,7 @@ dependencies = [
 [[package]]
 name = "did_resolver"
 version = "0.1.0"
-source = "git+https://github.com/equsai/vcx.git?rev=fc818ef5#fc818ef577b2107605a6e577e22ee734d5d97755"
+source = "git+https://github.com/equs-ai/vcx.git?rev=fc818ef5#fc818ef577b2107605a6e577e22ee734d5d97755"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2828,7 +2828,7 @@ dependencies = [
 [[package]]
 name = "didcomm"
 version = "0.4.1"
-source = "git+https://github.com/equsai/didcomm-rust.git?rev=db41780d#db41780ddffb56927bddf969ba5c5febc097d7bc"
+source = "git+https://github.com/equs-ai/didcomm-rust.git?rev=db41780d#db41780ddffb56927bddf969ba5c5febc097d7bc"
 dependencies = [
  "anyhow",
  "askar-crypto 0.3.3",
@@ -2887,7 +2887,7 @@ dependencies = [
 [[package]]
 name = "display_as_json"
 version = "0.1.0"
-source = "git+https://github.com/equsai/vcx.git?rev=fc818ef5#fc818ef577b2107605a6e577e22ee734d5d97755"
+source = "git+https://github.com/equs-ai/vcx.git?rev=fc818ef5#fc818ef577b2107605a6e577e22ee734d5d97755"
 dependencies = [
  "quote",
  "syn 2.0.117",
@@ -6056,7 +6056,7 @@ dependencies = [
 [[package]]
 name = "oid4vci"
 version = "0.1.0"
-source = "git+https://github.com/equsai/oid4vci-rs.git?rev=f5c38f92#f5c38f92d41f4d6973a5bc63d4c6e48138b7d384"
+source = "git+https://github.com/equs-ai/oid4vci-rs.git?rev=f5c38f92#f5c38f92d41f4d6973a5bc63d4c6e48138b7d384"
 dependencies = [
  "anyhow",
  "async-signature",
@@ -6095,7 +6095,7 @@ checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
 [[package]]
 name = "one-core"
 version = "0.1.0"
-source = "git+https://github.com/equsai/one-core.git?rev=a5ded11#a5ded11492c84c2a362aef9bb04ed57cab285b13"
+source = "git+https://github.com/equs-ai/one-core.git?rev=a5ded11#a5ded11492c84c2a362aef9bb04ed57cab285b13"
 dependencies = [
  "aes-gcm",
  "anyhow",
@@ -6177,7 +6177,7 @@ dependencies = [
 [[package]]
 name = "one-core-portable"
 version = "0.1.0"
-source = "git+https://github.com/equsai/one-core.git?rev=a5ded11#a5ded11492c84c2a362aef9bb04ed57cab285b13"
+source = "git+https://github.com/equs-ai/one-core.git?rev=a5ded11#a5ded11492c84c2a362aef9bb04ed57cab285b13"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -6212,7 +6212,7 @@ dependencies = [
 [[package]]
 name = "one-crypto"
 version = "0.1.0"
-source = "git+https://github.com/equsai/one-core.git?rev=a5ded11#a5ded11492c84c2a362aef9bb04ed57cab285b13"
+source = "git+https://github.com/equs-ai/one-core.git?rev=a5ded11#a5ded11492c84c2a362aef9bb04ed57cab285b13"
 dependencies = [
  "aes",
  "aes-gcm",
@@ -6282,7 +6282,7 @@ checksum = "c08d65885ee38876c4f86fa503fb49d7b507c2b62552df7c70b2fce627e06381"
 [[package]]
 name = "openid4vp"
 version = "0.1.0"
-source = "git+https://github.com/equsai/openid4vp.git?rev=2db3c3d2#2db3c3d26e19cb73c4f66d0289be8870adf59c33"
+source = "git+https://github.com/equs-ai/openid4vp.git?rev=2db3c3d2#2db3c3d26e19cb73c4f66d0289be8870adf59c33"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -6987,7 +6987,7 @@ dependencies = [
 [[package]]
 name = "proc-macros"
 version = "0.1.0"
-source = "git+https://github.com/equsai/one-core.git?rev=a5ded11#a5ded11492c84c2a362aef9bb04ed57cab285b13"
+source = "git+https://github.com/equs-ai/one-core.git?rev=a5ded11#a5ded11492c84c2a362aef9bb04ed57cab285b13"
 dependencies = [
  "darling 0.23.0",
  "proc-macro2",
@@ -6999,7 +6999,7 @@ dependencies = [
 [[package]]
 name = "public_key"
 version = "0.1.0"
-source = "git+https://github.com/equsai/vcx.git?rev=fc818ef5#fc818ef577b2107605a6e577e22ee734d5d97755"
+source = "git+https://github.com/equs-ai/vcx.git?rev=fc818ef5#fc818ef577b2107605a6e577e22ee734d5d97755"
 dependencies = [
  "base64 0.22.1",
  "bs58 0.5.1",
@@ -8133,7 +8133,7 @@ dependencies = [
 [[package]]
 name = "sd-jwt-rs"
 version = "0.8.0"
-source = "git+https://github.com/equsai/sd-jwt-rust.git?rev=2b99530#2b9953066f8685ac21b0f90bce8ae3ce61cc5531"
+source = "git+https://github.com/equs-ai/sd-jwt-rust.git?rev=2b99530#2b9953066f8685ac21b0f90bce8ae3ce61cc5531"
 dependencies = [
  "async-trait",
  "base64 0.21.7",
@@ -8695,7 +8695,7 @@ dependencies = [
 [[package]]
 name = "shared-types"
 version = "0.1.0"
-source = "git+https://github.com/equsai/one-core.git?rev=a5ded11#a5ded11492c84c2a362aef9bb04ed57cab285b13"
+source = "git+https://github.com/equs-ai/one-core.git?rev=a5ded11#a5ded11492c84c2a362aef9bb04ed57cab285b13"
 dependencies = [
  "regex",
  "serde",
@@ -10395,7 +10395,7 @@ checksum = "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596"
 [[package]]
 name = "standardized-types"
 version = "0.1.0"
-source = "git+https://github.com/equsai/one-core.git?rev=a5ded11#a5ded11492c84c2a362aef9bb04ed57cab285b13"
+source = "git+https://github.com/equs-ai/one-core.git?rev=a5ded11#a5ded11492c84c2a362aef9bb04ed57cab285b13"
 dependencies = [
  "anyhow",
  "ct-codecs",

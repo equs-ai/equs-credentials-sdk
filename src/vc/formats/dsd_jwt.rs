@@ -192,7 +192,7 @@ mod tests {
 
     use super::{DelegationParams, DsdJwtAPI, DsdJwtPurpose};
 
-    /// Issue a holder-bound SD-JWT using the EQUS SDK's own `SdJwtAPI::create_vc` path.
+    /// Issue a holder-bound SD-JWT using our own `SdJwtAPI::create_vc` path.
     /// Returns `(sd_jwt_credential, holder_key_handle)` so that tests can immediately
     /// call `create_delegated_credential` without additional setup.
     async fn issue_sd_jwt() -> (String, impl crate::kms::KeyHandle + use<>) {
@@ -387,7 +387,7 @@ mod tests {
         );
     }
 
-    /// Full round-trip through EQUS SDK's format layer:
+    /// Full round-trip through the format layer:
     ///
     /// 1. Issue a holder-bound SD-JWT (via `SdJwtAPI::create_vc`).
     /// 2. Holder delegates to a Delegate Holder (embedding the delegate's cnf JWK),

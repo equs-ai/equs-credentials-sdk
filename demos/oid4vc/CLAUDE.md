@@ -19,7 +19,7 @@ separate Actix-web services (issuer, verifier, holder) plus shared library code.
 
 ## Dependencies
 - Depends on: `equs_sdk` (vc::oid4vci, vc::oid4vp), Keycloak (external, for OAuth2)
-- Used by: developers evaluating EQUS SDK OID4VC flows in a native Rust environment
+- Used by: developers evaluating EQUS Credentials SDK OID4VC flows in a native Rust environment
 
 ## Constraints
 - Requires a running Keycloak instance; see `demos/keycloak/README.md` for setup.

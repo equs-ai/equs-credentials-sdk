@@ -1,12 +1,12 @@
 # Overview
 
-`equs-sdk` uses the `tracing` crate to log events for each execution flow of the SDK.
+EQUS Credentials SDK uses the `tracing` crate to log events for each execution flow.
 
-One of the reasons for using the `tracing` crate is that it solves the problem of intermixed logs in `async` libraries like `equs-sdk`.
+One of the reasons for using the `tracing` crate is that it solves the problem of intermixed logs in `async` libraries like this one.
 
 ## Rules
 
-Each developer must follow these rules when adding new features to the codebase of `equs-sdk`
+Each developer must follow these rules when adding new features to the codebase
 
 ### General
 
@@ -47,7 +47,7 @@ Each developer must follow these rules when adding new features to the codebase 
    ```rust
    info!("nonce is saved");
    ```
-- The initialization of `equs-sdk` components:
+- The initialization of SDK components:
    ```rust
    info!("Issuer Service is initialized");
    ```
@@ -102,7 +102,7 @@ tracing = { version = "0.1.40", features = ["attributes", "release_max_level_deb
 
 ### Rust
 
-On the application side, to collect logs from `equs-sdk`, follow the steps below:
+On the application side, to collect logs from the SDK, follow the steps below:
 
 1. Add `tracing-subscriber` dependency into `Cargo.toml`:
   ```toml

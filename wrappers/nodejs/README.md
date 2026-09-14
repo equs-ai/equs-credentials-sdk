@@ -1,6 +1,6 @@
-# EQUS SDK wrappers for Node.js
+# EQUS Credentials SDK wrappers for Node.js
 
-Node.js bindings for EQUS SDK, built as a native addon with [NAPI-RS](https://napi.rs).
+Node.js bindings for EQUS Credentials SDK, built as a native addon with [NAPI-RS](https://napi.rs).
 
 ## Prerequisites
 

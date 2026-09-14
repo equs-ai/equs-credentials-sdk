@@ -24,7 +24,7 @@ use time::Duration;
 const WEBVH_METHOD_NAME: &str = "webvh";
 const DID_RESOLUTION_FORMAT: &str = "application/did+ld+json";
 
-/// Adapts EQUS SDK's [`HttpClient`] to the one-core [`OneCoreHttpClient`] interface.
+/// Adapts [`HttpClient`] to the one-core [`OneCoreHttpClient`] interface.
 ///
 /// This is an internal implementation detail; callers interact only with [`HttpClient`].
 #[derive(Clone)]
@@ -119,7 +119,7 @@ impl KeyProvider for NoopKeyProvider {
 
 /// Resolver for the `did:webvh` DID method.
 ///
-/// Wraps one-core's `DidWebVh` resolver and exposes it via the EQUS SDK [`DIDResolver`] trait so it
+/// Wraps one-core's `DidWebVh` resolver and exposes it via the [`DIDResolver`] trait so it
 /// can be registered with [`crate::did::universal::UniversalResolver`].
 #[derive(Clone)]
 pub struct DIDWebVh {

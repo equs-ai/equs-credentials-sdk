@@ -1,4 +1,4 @@
-# EQUS SDK — Context Index
+# EQUS Credentials SDK — Context Index
 
 > **Maintenance rule:** Update this file whenever any `claude/*.md` changes.
 > Add a one-line entry if a new `claude/*.md` is added; remove if deleted.
@@ -26,7 +26,7 @@ that file lists every sub-area with a link to the relevant `CLAUDE.md` inside th
 ## Repository layout (quick reference)
 
 ```
-equs-sdk/
+equs-credentials-sdk/
 ├── src/                  # Core SDK library
 │   ├── crypto.rs         # Signing/verifying key traits
 │   ├── http.rs           # HttpClient trait

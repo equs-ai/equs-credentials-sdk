@@ -1,7 +1,7 @@
 # multi-thread — Context
 
 ## Purpose
-Demonstrates that the EQUS SDK `Issuer` API is thread-safe and can handle concurrent credential
+Demonstrates that the EQUS Credentials SDK `Issuer` API is thread-safe and can handle concurrent credential
 requests from multiple holders simultaneously using Actix-web and Tokio.
 
 ## Files / Sub-areas
@@ -14,7 +14,7 @@ requests from multiple holders simultaneously using Actix-web and Tokio.
 
 ## Dependencies
 - Depends on: `equs_sdk` (vc::core), `actix-web`, `tokio`, `reqwest`
-- Used by: developers verifying thread-safety of EQUS SDK's issuer under load
+- Used by: developers verifying thread-safety of the SDK's issuer under load
 
 ## Constraints
 - Authorization, session management, and nonce generation are intentionally stubbed out for simplicity.

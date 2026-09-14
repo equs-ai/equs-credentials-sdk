@@ -200,7 +200,7 @@ E2E tests should be placed in the `tests` directory in the project's root (next 
 Example:
 
 ```
-equs-sdk
+equs-credentials-sdk
 └── tests
     └── e2e
         ├── vc_core.rs
@@ -236,7 +236,7 @@ For now, there is a `utils` module that includes fixtures and helper functions c
 Structure of files looks as shown below:
 
 ```
-equs-sdk
+equs-credentials-sdk
 └── tests
     ├── utils                      # `utils` module directory
     │   ├── fixtures               # submodule that contains test fixtures

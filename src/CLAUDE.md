@@ -1,7 +1,7 @@
 # src — Context
 
 ## Purpose
-Root of the EQUS SDK Rust library. Defines the core trait interfaces (crypto, HTTP, KMS, storage, vault, nonce) that the rest of the SDK builds on, and re-exports all functional modules.
+Root of the EQUS Credentials SDK Rust library. Defines the core trait interfaces (crypto, HTTP, KMS, storage, vault, nonce) that the rest of the SDK builds on, and re-exports all functional modules.
 
 ## Files
 

@@ -10,7 +10,7 @@ license = "Apache-2.0"
 serde_json = "1.0.120"
 serde = { version = "1.0.217", features = ["derive"] }
 equs-sdk = { path = "../.." }
-aries-askar = { git = "https://github.com/equsai/askar.git", rev = "23361f5b" }
+aries-askar = { git = "https://github.com/equs-ai/askar.git", rev = "23361f5b" }
 async-trait = "0.1.81"
 ecdsa = "0.16.9"
 bip32 = "0.5.2"

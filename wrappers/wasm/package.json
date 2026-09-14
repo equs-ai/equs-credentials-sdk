@@ -1,7 +1,7 @@
 {
   "name": "@equs/equs-sdk-wasm",
   "version": "1.13.1",
-  "description": "WASM wrappers of EQUS SDK",
+  "description": "WASM wrappers of EQUS Credentials SDK",
   "main": "index.js",
   "types": "index.d.ts",
   "type": "module",

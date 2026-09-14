@@ -1,37 +1,32 @@
-# EQUS SDK
+# EQUS Credentials SDK
 
-- [About EQUS SDK](#about-equs-sdk)
+- [About EQUS Credentials SDK](#about-equs-credentials-sdk)
 - [Distinctive Features](#distinctive-features)
 - [Supported Protocol Standards](#supported-protocol-standards)
 - [How To Build and Run](#how-to-build-and-run)
-- [How to Use EQUS SDK in Applications](#how-to-use-equs-sdk-in-applications)
+- [How to Use EQUS Credentials SDK in Applications](#how-to-use-equs-credentials-sdk-in-applications)
 - [Other Docs and Diagrams](#other-docs-and-diagrams)
 - [Contributing](#contributing)
 - [Dependencies](#dependencies)
 - [License](#license)
 - [Development Guidelines](docs/guidelines/dev.md)
 
-## About EQUS SDK
+## About EQUS Credentials SDK
 
-EQUS SDK is a library of building blocks for decentralized identity: Decentralized Identifiers
-(DIDs), verifiable credentials, and DIDComm messaging.
-
-Credentials are issued, held, verified, and delegated, signed with either X.509
-certificates or DIDs. DID resolution covers five methods, including EVM chains via `did:ethr`.
-DIDComm v2 carries information securely and privately between parties, and the Protocol Engine
-implements protocols on top of it as state machines.
+EQUS Credentials SDK is a library for issuing, holding, and verifying digital credentials.
+Credentials can be signed with X.509 certificates or decentralized identifiers.
 
 The core is written in Rust. Wrappers and builds are available for Node.js (TypeScript), WASM
 (TypeScript), Kotlin (Android), and Swift (iOS).
 
-Applications integrating EQUS SDK implement a small number of interfaces (such as KMS and Vault)
-or web endpoints (OID4VC). See [How to Use EQUS SDK in Applications](#how-to-use-equs-sdk-in-applications).
+Applications integrating the SDK implement a small number of interfaces (such as KMS and Vault)
+or web endpoints (OID4VC). See [How to Use EQUS Credentials SDK in Applications](#how-to-use-equs-credentials-sdk-in-applications).
 
-See [EQUS SDK stack](docs/equs-sdk-stack.svg).
+See [EQUS Credentials SDK stack](docs/equs-sdk-stack.svg).
 
 ## Distinctive Features
 
-![Unique features of EQUS SDK](docs/unique-features.svg)
+![Unique features of EQUS Credentials SDK](docs/unique-features.svg)
 
 | Feature | Notes | Code and demos |
 | --- | --- | --- |
@@ -146,7 +141,7 @@ cargo doc --no-deps
 
 ### Collecting logs
 
-EQUS SDK logs through the [`tracing`](https://docs.rs/tracing) crate. To collect logs on the
+EQUS Credentials SDK logs through the [`tracing`](https://docs.rs/tracing) crate. To collect logs on the
 application side, see [Consuming logs](docs/guidelines/logging.md#consuming-logs).
 
 ### Demos
@@ -175,13 +170,13 @@ Located in [`tests/e2e`](tests/e2e).
 | [WACI/Aries V3](tests/e2e/waci_aries.rs) | Issuance and presentation over DIDComm |
 | [Custom DID resolvers](tests/e2e/custom_did_resolvers.rs) | Resolver extension points |
 
-## How to Use EQUS SDK in Applications
+## How to Use EQUS Credentials SDK in Applications
 
 ![equs-sdk-tiers](docs/api-tiers.png)
 
 ### What you have to implement
 
-EQUS SDK delegates key material, credential storage, and nonce handling to the integrating
+The SDK delegates key material, credential storage, and nonce handling to the integrating
 application. Depending on the role you build, implement:
 
 | Trait | Responsibility |
@@ -251,7 +246,7 @@ Holder API bindings per platform:
 | 2 | Instantiate the OID4VC Issuer Service (see API references below). |
 | 3 | Create Issuer Metadata. |
 | 4 | Create a Credential Offer. Optional for the Authorization Code Flow, required for the Pre-Authorized Code Flow. |
-| 5 | Implement the issuer endpoints (table below). Each endpoint calls the corresponding EQUS SDK Issuer API method. |
+| 5 | Implement the issuer endpoints (table below). Each endpoint calls the corresponding SDK Issuer API method. |
 | 6 | Integrate an Authorization Server (table below). |
 
 Issuer API references:
@@ -302,7 +297,7 @@ Authorization Server options:
 | Step | What to do |
 | --- | --- |
 | 1 | Integrate the OID4VC Verifier Service, following the [Auth Code flow diagram](docs/vc-oid4vc-api-auth-code-full.png). |
-| 2 | Implement the verifier endpoint (table below). Each endpoint calls the corresponding EQUS SDK Verifier API method. |
+| 2 | Implement the verifier endpoint (table below). Each endpoint calls the corresponding SDK Verifier API method. |
 
 Verifier API references:
 
@@ -348,7 +343,7 @@ same name. Build against the sources `Cargo.toml` declares, not against upstream
 
 ## License
 
-EQUS SDK is licensed under the [Apache License 2.0](./LICENSE).
+EQUS Credentials SDK is licensed under the [Apache License 2.0](./LICENSE).
 
 License attribution required by third-party dependencies is reproduced in
 [`THIRD-PARTY-NOTICE`](THIRD-PARTY-NOTICE).
