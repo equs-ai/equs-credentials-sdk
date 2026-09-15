@@ -1,6 +1,6 @@
 package com.equs
 
-import com.equs.sdk.*
+import com.equs.credentials.*
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import okhttp3.mockwebserver.Dispatcher
@@ -11,8 +11,8 @@ import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
-import com.equs.sdk.Kms as EqusSdkKms
-import com.equs.sdk.Vault as EqusSdkVault
+import com.equs.credentials.Kms as EqusSdkKms
+import com.equs.credentials.Vault as EqusSdkVault
 
 
 class HolderVCITest {

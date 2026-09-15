@@ -1,10 +1,10 @@
 {
-  "name": "@equs/equs-sdk-askar-storage",
+  "name": "@equs-ai/equs-credentials-sdk-askar-storage",
   "version": "1.13.1",
   "main": "index.js",
   "types": "index.d.ts",
   "napi": {
-    "name": "equs-sdk-askar-storage",
+    "name": "equs-credentials-sdk-askar-storage",
     "triples": {
       "additional": [
         "aarch64-apple-darwin",
@@ -33,7 +33,7 @@
   "devDependencies": {
     "@napi-rs/cli": "^2.18.4",
     "oauth4webapi": "^3.1.4",
-    "@equs/equs-sdk": "../../../../wrappers/nodejs",
+    "@equs-ai/equs-credentials-sdk": "../../../../wrappers/nodejs",
     "jwt-decode": "^4.0.0",
     "@types/base-64": "^1.0.2",
     "@types/jest": "^29.5.13",

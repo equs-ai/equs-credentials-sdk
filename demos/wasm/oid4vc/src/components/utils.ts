@@ -1,4 +1,4 @@
-import { DIDKey, InMemKms, KeyMetadata, KeyType, UniversalDIDResolver } from "@equs/equs-sdk";
+import { DIDKey, InMemKms, KeyMetadata, KeyType, UniversalDIDResolver } from "@equs-ai/equs-credentials-sdk";
 
 export type DidAndKeyMetadata = {
   did: string;

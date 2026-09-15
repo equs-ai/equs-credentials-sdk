@@ -20,8 +20,8 @@
     "preinstall": "npm run prepare_wasm_equs_sdk_wrapper && npm run prepare_nodejs_demo"
   },
   "dependencies": {
-    "@equs/equs-sdk": "../../../wrappers/wasm/pkg",
-    "@equs/equs-sdk-wasm": "file:../../../wrappers/wasm/pkg",
+    "@equs-ai/equs-credentials-sdk": "../../../wrappers/wasm/pkg",
+    "@equs-ai/equs-credentials-sdk-wasm": "file:../../../wrappers/wasm/pkg",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },

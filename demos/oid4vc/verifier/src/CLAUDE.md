@@ -26,6 +26,6 @@ Runnable demo binary implementing the Verifier role in a full OID4VP flow. Expos
   voucher (`shared::voucher::voucher_dcql`) bound to a freshly generated `purchase_id`, with
   no transaction data, over `direct_post`. An empty transaction-data set is conveyed as
   `None` to verification (an empty `Some(..)` would expect hashes that are never sent).
-  This feature forwards to `equs-sdk/delegate-sd-jwt` (→ `sd-jwt-rs/delegate`): the Merchant
+  This feature forwards to `equs-credentials-sdk/delegate-sd-jwt` (→ `sd-jwt-rs/delegate`): the Merchant
   must verify the delegation chain, and `sd-jwt-rs` gates chain-aware verification behind that
   feature, so a local-only toggle would leave the Merchant unable to verify the dSD-JWT+KB.

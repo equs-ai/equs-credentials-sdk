@@ -1,6 +1,6 @@
 package com.equs
 
-import com.equs.sdk.NonceHandler
+import com.equs.credentials.NonceHandler
 
 class MockNonceHandler(private val nonce: String): NonceHandler {
     override suspend fun generate(): String {

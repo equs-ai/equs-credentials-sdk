@@ -1,5 +1,5 @@
 import { AskarKms, AskarStorage, KeyMethod } from "../index";
-import { Alg, KeyType } from "@equs/equs-sdk";
+import { Alg, KeyType } from "@equs-ai/equs-credentials-sdk";
 
 describe("Askar KMS: ", () => {
   let kms: AskarKms;

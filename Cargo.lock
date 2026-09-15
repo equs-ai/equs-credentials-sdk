@@ -284,7 +284,7 @@ name = "agent"
 version = "0.1.0"
 dependencies = [
  "actix-web",
- "equs-sdk",
+ "equs-credentials-sdk",
  "reqwest 0.12.12",
  "serde_json",
  "serde_urlencoded",
@@ -531,7 +531,7 @@ dependencies = [
  "base64 0.22.1",
  "bip32",
  "ecdsa",
- "equs-sdk",
+ "equs-credentials-sdk",
  "p256",
  "rand 0.9.4",
  "rstest 0.26.1",
@@ -3141,7 +3141,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "877a4ace8713b0bcf2a4e7eec82529c029f1d0619886d18145fea96c3ffe5c0f"
 
 [[package]]
-name = "equs-sdk"
+name = "equs-credentials-sdk"
 version = "1.13.1"
 dependencies = [
  "anyhow",
@@ -3222,7 +3222,7 @@ name = "equs_sdk_uniffi"
 version = "0.1.0"
 dependencies = [
  "async-trait",
- "equs-sdk",
+ "equs-credentials-sdk",
  "oauth2",
  "serde",
  "serde_json",
@@ -4084,7 +4084,7 @@ dependencies = [
 name = "holder"
 version = "0.1.0"
 dependencies = [
- "equs-sdk",
+ "equs-credentials-sdk",
  "oauth2",
  "reqwest 0.11.27",
  "serde_json",
@@ -4713,7 +4713,7 @@ version = "0.1.0"
 dependencies = [
  "actix-web",
  "actix-web-httpauth",
- "equs-sdk",
+ "equs-credentials-sdk",
  "keycloak",
  "reqwest 0.12.12",
  "serde",
@@ -5688,7 +5688,7 @@ version = "0.1.0"
 dependencies = [
  "actix-web",
  "actix-web-httpauth",
- "equs-sdk",
+ "equs-credentials-sdk",
  "futures",
  "rand 0.9.4",
  "serde",
@@ -5828,7 +5828,7 @@ dependencies = [
  "async-trait",
  "chrono",
  "either",
- "equs-sdk",
+ "equs-credentials-sdk",
  "log",
  "napi",
  "napi-build",
@@ -8685,7 +8685,7 @@ dependencies = [
 name = "shared"
 version = "0.1.0"
 dependencies = [
- "equs-sdk",
+ "equs-credentials-sdk",
  "serde",
  "serde_json",
  "strum_macros 0.26.4",
@@ -11534,7 +11534,7 @@ name = "verifier"
 version = "0.1.0"
 dependencies = [
  "actix-web",
- "equs-sdk",
+ "equs-credentials-sdk",
  "reqwest 0.12.12",
  "serde_json",
  "shared",
@@ -11609,7 +11609,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "console_error_panic_hook",
- "equs-sdk",
+ "equs-credentials-sdk",
  "getrandom 0.4.2",
  "instant",
  "js-sys",

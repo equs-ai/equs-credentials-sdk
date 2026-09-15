@@ -1,6 +1,6 @@
 package com.equs
 
-import com.equs.sdk.*
+import com.equs.credentials.*
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import okhttp3.mockwebserver.Dispatcher

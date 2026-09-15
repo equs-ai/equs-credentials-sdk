@@ -14,7 +14,7 @@ Ensure that the following tools are installed on your machine:
 Every package you need is already installed in `package.json`. If you develop further and need another dependencies -
 contact maintainers.
 
-Full installation of built dependencies of the SDK, equs-sdk-nodejs-demo is done at preinstall step so only steps required are:
+Full installation of built dependencies of the SDK, equs-credentials-sdk-nodejs-demo is done at preinstall step so only steps required are:
 
 ```shell
   npm i

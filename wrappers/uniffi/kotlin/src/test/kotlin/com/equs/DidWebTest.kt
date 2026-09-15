@@ -1,6 +1,6 @@
 package com.equs
 
-import com.equs.sdk.*
+import com.equs.credentials.*
 import junit.framework.TestCase.assertEquals
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json

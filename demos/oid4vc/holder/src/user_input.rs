@@ -91,7 +91,7 @@ pub mod cli {
                     }
                     _ => {
                         // When "oid4vc/issuer" web service is used as the Issuer, we just mock dummy transaction code.
-                        // equs-sdk does not handle the generation and validation of transaction code
+                        // equs-credentials-sdk does not handle the generation and validation of transaction code
                         "tx_code".to_string()
                     }
                 }

@@ -15,7 +15,7 @@ members = [
 ]
 
 [package]
-name = "equs-sdk"
+name = "equs-credentials-sdk"
 version = "1.13.1"
 edition = "2024"
 rust-version = "1.97.0"
@@ -31,6 +31,9 @@ include = [
     "/LICENSE",
     "/THIRD-PARTY-NOTICE",
 ]
+
+[lib]
+name = "equs_sdk"
 
 [dependencies]
 common-macros = { path = "./common-macros" }

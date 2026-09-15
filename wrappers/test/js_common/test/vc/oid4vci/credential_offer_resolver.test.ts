@@ -1,6 +1,6 @@
 import { Utils } from "./fixtures";
 import { getLocal } from "mockttp";
-import { ReqwestHttpClient, OID4VCICredentialOfferResolver } from "equs-sdk";
+import { ReqwestHttpClient, OID4VCICredentialOfferResolver } from "equs-credentials-sdk";
 
 describe("OID4VCI Credential Offer resolver: ", () => {
   const port = 9000;

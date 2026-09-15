@@ -224,7 +224,7 @@ nodejs-test-job:
     - npm run build:debug
     - npm run test
     - cd ../test/js_common
-    - npm pkg set dependencies.equs-sdk=file:../../nodejs
+    - npm pkg set dependencies.equs-credentials-sdk=file:../../nodejs
     - npm i
     - npm run test:nodejs
   only:
@@ -263,7 +263,7 @@ wasm-test-job:
     - npm install
     - npm run build:dev:cjs
     - cd ../test/js_common
-    - npm pkg set dependencies.equs-sdk=file:../../wasm/pkg
+    - npm pkg set dependencies.equs-credentials-sdk=file:../../wasm/pkg
     - npm i
     - npm run test:wasm
   only:

@@ -8,10 +8,10 @@ publish = false
 
 [features]
 noninteractive = []
-delegate-sd-jwt = ["equs-sdk/delegate-sd-jwt"]
+delegate-sd-jwt = ["equs-credentials-sdk/delegate-sd-jwt"]
 
 [dependencies]
-equs-sdk = { path = "../../..", features = ["in-memory"] }
+equs-credentials-sdk = { path = "../../..", features = ["in-memory"] }
 shared = { path = "../shared" }
 
 tokio = { version = "1.25.0", features = ["rt", "rt-multi-thread", "macros"] }

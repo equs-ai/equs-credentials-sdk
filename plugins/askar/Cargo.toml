@@ -9,7 +9,7 @@ license = "Apache-2.0"
 [dependencies]
 serde_json = "1.0.120"
 serde = { version = "1.0.217", features = ["derive"] }
-equs-sdk = { path = "../.." }
+equs-credentials-sdk = { path = "../.." }
 aries-askar = { git = "https://github.com/equs-ai/askar.git", rev = "23361f5b" }
 async-trait = "0.1.81"
 ecdsa = "0.16.9"
@@ -26,4 +26,4 @@ rand = "0.9.2"
 
 [dev-dependencies]
 tokio = { version = "1.25.0", features = ["macros"] }
-equs-sdk = { path = "../..", features = ["test-utils"] }
+equs-credentials-sdk = { path = "../..", features = ["test-utils"] }

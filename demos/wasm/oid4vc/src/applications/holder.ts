@@ -18,7 +18,7 @@ import init, {
   OID4VPHolderBuilder,
   ReqwestHttpClient,
   resolveMetadata,
-} from "@equs/equs-sdk";
+} from "@equs-ai/equs-credentials-sdk";
 
 export async function start(): Promise<void> {
   await init();

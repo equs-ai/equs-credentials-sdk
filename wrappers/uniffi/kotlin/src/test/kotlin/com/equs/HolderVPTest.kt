@@ -1,5 +1,5 @@
 import com.equs.MockNonceHandler
-import com.equs.sdk.*
+import com.equs.credentials.*
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest

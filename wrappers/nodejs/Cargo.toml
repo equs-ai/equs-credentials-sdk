@@ -13,7 +13,7 @@ crate-type = ["cdylib"]
 # Default enable napi4 feature, see https://nodejs.org/api/n-api.html#node-api-version-matrix
 napi = { version = "2.16.11", default-features = false, features = ["napi5", "async", "serde-json", "chrono_date"] }
 napi-derive = "2.16.12"
-equs-sdk = { path = "../.." }
+equs-credentials-sdk = { path = "../.." }
 serde = { version = "1.0.204", features = ["derive"] }
 serde_json = "1.0.120"
 url = "2.5.2"
@@ -32,5 +32,5 @@ snafu = "0.8.4"
 napi-build = "2.1.3"
 
 [features]
-default = ["equs-sdk/delegate-sd-jwt"]
-in-memory = ["equs-sdk/in-memory"]
+default = ["equs-credentials-sdk/delegate-sd-jwt"]
+in-memory = ["equs-credentials-sdk/in-memory"]

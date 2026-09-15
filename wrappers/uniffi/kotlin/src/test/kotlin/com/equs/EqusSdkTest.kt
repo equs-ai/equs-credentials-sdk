@@ -1,4 +1,4 @@
-import com.equs.sdk.*
+import com.equs.credentials.*
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test

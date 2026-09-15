@@ -1,9 +1,9 @@
 package com.equs
 
-import com.equs.sdk.Alg
-import com.equs.sdk.KeyHandle as EqusSdkKeyHandle
-import com.equs.sdk.setJniLibPath
-import com.equs.sdk.wrapKeyHandleForTests
+import com.equs.credentials.Alg
+import com.equs.credentials.KeyHandle as EqusSdkKeyHandle
+import com.equs.credentials.setJniLibPath
+import com.equs.credentials.wrapKeyHandleForTests
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.BeforeAll
 import kotlin.test.Test
