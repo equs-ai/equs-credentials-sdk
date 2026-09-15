@@ -13,6 +13,8 @@
 
 ## About EQUS Credentials SDK
 
+![Trust_Triangle](docs/trust_triangle.svg)
+
 EQUS Credentials SDK is a library for issuing, holding, and verifying digital credentials.
 Credentials can be signed with X.509 certificates or decentralized identifiers.
 
@@ -172,7 +174,7 @@ Located in [`tests/e2e`](tests/e2e).
 
 ## How to Use EQUS Credentials SDK in Applications
 
-![equs-sdk-tiers](docs/api-tiers.png)
+![equs-sdk-tiers](docs/components-and-tiers.svg)
 
 ### What you have to implement
 
