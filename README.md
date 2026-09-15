@@ -172,7 +172,7 @@ Located in [`tests/e2e`](tests/e2e).
 
 ## How to Use EQUS Credentials SDK in Applications
 
-![equs-sdk-tiers](docs/api-tiers.png)
+![equs-sdk-tiers](docs/components-and-tiers.svg)
 
 ### What you have to implement
 
