@@ -13,8 +13,8 @@
 
 ## About EQUS Credentials SDK
 
-EQUS Credentials SDK is a library for issuing, holding, and verifying digital credentials.
-Credentials can be signed with X.509 certificates or Decentralized Identifiers (DIDs).
+EQUS Credentials SDK is a library for issuing, holding, presenting and verifying digital credentials - for people, organizations or AI Agents.
+The SDK supports multiple credential formats, including: SD-JWT VC, ISO mDocs, dSD-JWT / AP2, W3C VCDM 1.1 and 2.0, with both X.509 and Decentralized Identifier (DID) signing models.
 
 The core is written in Rust. Wrappers and builds are available for Node.js (TypeScript), WASM
 (TypeScript), Kotlin (Android), and Swift (iOS).
