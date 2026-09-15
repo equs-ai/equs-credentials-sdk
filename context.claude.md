@@ -65,3 +65,14 @@ equs-credentials-sdk/
 | `ZeroizeOnDrop` on sensitive types | `Nonce`, `Credential`, `Claims` |
 | All HTTP must go through `HttpClient` | Entire SDK |
 | No raw key material — only `KeyHandle` | All KMS consumers |
+
+## Published package names
+
+| Target | Package | Source |
+|--------|---------|--------|
+| crates.io | `equs-credentials-sdk` | `Cargo.toml` (lib target stays `equs_sdk`, so imports remain `use equs_sdk::…`) |
+| Node.js | `@equs-ai/equs-credentials-sdk` | `wrappers/nodejs/package.json` (napi binary `equs-credentials-sdk`) |
+| WASM | `@equs-ai/equs-credentials-sdk-wasm` | `wrappers/wasm/package.json` |
+| iOS | `equs-credentials-sdk` | `wrappers/uniffi/swift/Package.swift` (product/module stays `EqusSdk`) |
+| Kotlin | `com.equs.credentials` | `wrappers/uniffi/uniffi.toml` (AAR artifact `equs-credentials-sdk-android`) |
+| Askar plugin (Node.js) | `@equs-ai/equs-credentials-sdk-askar-storage` | `plugins/askar/wrappers/nodejs/package.json` |

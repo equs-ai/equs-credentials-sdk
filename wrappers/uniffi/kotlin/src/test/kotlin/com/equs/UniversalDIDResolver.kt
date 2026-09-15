@@ -1,6 +1,6 @@
 package com.equs
 
-import com.equs.sdk.*
+import com.equs.credentials.*
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.BeforeAll
 import kotlin.test.Test

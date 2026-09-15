@@ -1,4 +1,4 @@
-import { DIDResolution } from "equs-sdk";
+import { DIDResolution } from "equs-credentials-sdk";
 
 export class Fixtures {
   readonly didResolution = {

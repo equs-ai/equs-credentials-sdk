@@ -1,5 +1,5 @@
 {
-  "name": "@equs/equs-sdk-wasm",
+  "name": "@equs-ai/equs-credentials-sdk-wasm",
   "version": "1.13.1",
   "description": "WASM wrappers of EQUS Credentials SDK",
   "main": "index.js",

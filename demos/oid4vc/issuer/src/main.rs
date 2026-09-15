@@ -108,7 +108,7 @@ async fn main() -> std::io::Result<()> {
             .route(DID_DOC_URL_PATH, web::get().to(did_doc))
             // NOTE: The following two endpoints simulate the generation and validation of an access token
             // when a pre-authorized code flow is executed on the holder side
-            // Access token generation is not supported on equs-sdk,
+            // Access token generation is not supported on equs-credentials-sdk,
             // for validation one of the 'equs_sdk::vc::oid4vci::token_validation' implementations is used
             .route(TOKEN_ENDPOINT_PATH, web::post().to(generate_token))
             .route(TOKEN_INTROSPECT_PATH, web::post().to(validate_token))

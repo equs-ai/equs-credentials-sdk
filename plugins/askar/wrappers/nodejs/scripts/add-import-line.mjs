@@ -2,7 +2,7 @@ import fs from "fs/promises";
 
 (async () => {
   try {
-    const TYPES_FILE_PATH = "@equs/equs-sdk";
+    const TYPES_FILE_PATH = "@equs-ai/equs-credentials-sdk";
     let content = await fs.readFile("binary.d.ts", "utf8");
     const exported_types = [
       "Credential",

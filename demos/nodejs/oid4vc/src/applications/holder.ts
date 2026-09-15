@@ -17,7 +17,7 @@ import {
   resolveMetadata,
   TracingLogFormat,
   TracingLogLevel,
-} from "@equs/equs-sdk";
+} from "@equs-ai/equs-credentials-sdk";
 import { config } from "../components/config";
 import { createDidAndKeyMetadata, readFromCLI } from "../components/utils";
 import {
@@ -26,7 +26,7 @@ import {
   AskarStorageConfig,
   AskarVault,
   KeyMethod,
-} from "@equs/equs-sdk-askar-storage";
+} from "@equs-ai/equs-credentials-sdk-askar-storage";
 
 async function main(): Promise<void> {
   await enableLogs(TracingLogFormat.Full, TracingLogLevel.Info);

@@ -6,7 +6,7 @@ import {
   UnsignedCredential,
   VCCoreCredentialSigner,
   VCFormat,
-} from "equs-sdk";
+} from "equs-credentials-sdk";
 
 describe("VCCoreCredentialSigner: ", () => {
   const buildSdJwtUnsigned = async () => {

@@ -1,4 +1,4 @@
-import { Claims } from "@equs/equs-sdk";
+import { Claims } from "@equs-ai/equs-credentials-sdk";
 
 export class Config {
   readonly servers = {

@@ -18,8 +18,8 @@ else
   VERSION="${CI_COMMIT_TAG:-${VERSION}}"
 fi
 
-ZIP_NAME="equs-sdk.zip"
-PACKAGE_NAME="equs-sdk-ios"
+ZIP_NAME="equs-credentials-sdk.zip"
+PACKAGE_NAME="equs-credentials-sdk-ios"
 
 make $MAKEFILE_JOB
 pwd

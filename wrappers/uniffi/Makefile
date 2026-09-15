@@ -202,4 +202,4 @@ ios-test: ios-generate-xcframework-dev
 	@echo "Run tests"
 	rm -rf swift/equssdk.xcframework
 	cp -R swift/ios/debug/equssdk.xcframework swift/equssdk.xcframework
-	cd swift && xcodebuild test -scheme equs-sdk -destination "name=iPhone 16,OS=18.0"
+	cd swift && xcodebuild test -scheme equs-credentials-sdk -destination "name=iPhone 16,OS=18.0"

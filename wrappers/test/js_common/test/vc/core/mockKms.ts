@@ -1,4 +1,4 @@
-import { KeyHandle, KeyType, Kms } from "equs-sdk";
+import { KeyHandle, KeyType, Kms } from "equs-credentials-sdk";
 import { MockKeyHandle } from "./mockKeyHandle";
 
 export class MockKms implements Kms {

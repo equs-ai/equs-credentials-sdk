@@ -21,7 +21,7 @@ publishing {
 			}
 
 			groupId = group.toString()
-			artifactId = "equs-sdk-android"
+			artifactId = "equs-credentials-sdk-android"
 			version = project.version.toString()
 		}
 	}
@@ -42,7 +42,7 @@ publishing {
 
 
 android {
-    namespace = "com.equs.sdk"
+    namespace = "com.equs.credentials"
     compileSdk = 33
 
     defaultConfig {

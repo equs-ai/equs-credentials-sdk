@@ -79,11 +79,11 @@ Each wrapper has a production job, published under the `latest` tag:
 
 | Job | Artifact | Registry |
 | --- | --- | --- |
-| `publish_nodejs_target` / `publish_nodejs_wrapper` | `@equs/equs-sdk` + per-platform binaries (linux-x64-gnu, darwin-arm64, darwin-x64) | npm |
-| `publish_wasm_wrapper` | `@equs/equs-sdk-wasm` | npm |
-| `publish_askar_nodejs_target` / `publish_askar_nodejs_wrapper` | `@equs/equs-sdk-askar-storage` + per-platform binaries | npm |
-| `publish_android_wrapper` | `equs-sdk-android` AAR | Maven |
-| `publish_ios_wrapper` | `equs-sdk-ios` XCFramework zip + checksum | package registry |
+| `publish_nodejs_target` / `publish_nodejs_wrapper` | `@equs-ai/equs-credentials-sdk` + per-platform binaries (linux-x64-gnu, darwin-arm64, darwin-x64) | npm |
+| `publish_wasm_wrapper` | `@equs-ai/equs-credentials-sdk-wasm` | npm |
+| `publish_askar_nodejs_target` / `publish_askar_nodejs_wrapper` | `@equs-ai/equs-credentials-sdk-askar-storage` + per-platform binaries | npm |
+| `publish_android_wrapper` | `equs-credentials-sdk-android` AAR | Maven |
+| `publish_ios_wrapper` | `equs-credentials-sdk-ios` XCFramework zip + checksum | package registry |
 | `release_artifacts_job` | `SBOM.auto.out`, `AUDIT.auto.out`, `API.auto.tar.gz` (rustdoc) | pipeline artifacts |
 
 The release is done once that stage finishes green.

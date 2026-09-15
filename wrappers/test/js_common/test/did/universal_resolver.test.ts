@@ -1,5 +1,5 @@
 import { Fixtures } from "./fixtures";
-import { DIDResolution, DIDResolver, ResolutionOptions, UniversalDIDResolver } from "equs-sdk";
+import { DIDResolution, DIDResolver, ResolutionOptions, UniversalDIDResolver } from "equs-credentials-sdk";
 
 describe("Universal Resolver: ", () => {
   const fixtures = new Fixtures();

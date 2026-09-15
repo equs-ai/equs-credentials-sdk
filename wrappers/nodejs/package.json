@@ -1,10 +1,10 @@
 {
-  "name": "@equs/equs-sdk",
+  "name": "@equs-ai/equs-credentials-sdk",
   "version": "1.13.1",
   "main": "index.js",
   "types": "index.d.ts",
   "napi": {
-    "name": "equs-sdk",
+    "name": "equs-credentials-sdk",
     "triples": {
       "additional": [
         "aarch64-apple-darwin",

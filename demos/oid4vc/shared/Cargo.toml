@@ -6,7 +6,7 @@ license = "Apache-2.0"
 publish = false
 
 [dependencies]
-equs-sdk = { path = "../../.."}
+equs-credentials-sdk = { path = "../../.."}
 
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0"

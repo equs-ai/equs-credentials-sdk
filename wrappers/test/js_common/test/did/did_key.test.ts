@@ -1,4 +1,4 @@
-import { DIDKey, InMemKms, KeyType } from "equs-sdk";
+import { DIDKey, InMemKms, KeyType } from "equs-credentials-sdk";
 
 describe("did:key: ", () => {
   it("generate DID with InMem KeyHandle", async () => {

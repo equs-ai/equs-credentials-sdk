@@ -128,7 +128,7 @@ The Node.js wrapper installs the subscriber itself, so none of the above applies
 `enableLogs()` once at startup:
 
 ```ts
-import { enableLogs, TracingLogFormat, TracingLogLevel } from '@equs/equs-sdk'
+import { enableLogs, TracingLogFormat, TracingLogLevel } from '@equs-ai/equs-credentials-sdk'
 
 await enableLogs(TracingLogFormat.Pretty, TracingLogLevel.Debug)
 ```
