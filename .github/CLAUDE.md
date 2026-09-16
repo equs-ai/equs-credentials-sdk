@@ -28,6 +28,10 @@ sole consumer of root `target/release`, and the command mirrors what
 `askar-rust` saves `plugins/askar/target`, which is where the askar napi wrapper
 compiles. Wrapper jobs restore those and save their own output under a
 `github.sha` key, so a test job restores exactly the artifacts its run built.
+`nodejs-wrapper` restores both roots: `npm run build` is a release build and
+`npm run build:debug` a dev one. `demo-build` also restores
+`plugins/askar/target`, since its preinstall chain rebuilds the askar napi
+crate there with sccache off.
 
 ## Constraints
 
@@ -43,9 +47,11 @@ compiles. Wrapper jobs restore those and save their own output under a
   could hit its cache and still rebuild 1597 crates.
 - Cache keys embed a content hash — GitHub cache entries are write-once. The
   npm key hashes `package.json`, since no lockfile is tracked.
-- One sccache entry for the whole workflow, not one per job. Per-job entries
-  reached 8.39 GB of the 10 GB repository ceiling and evicted the `target/`
-  caches, which cost more than they saved.
+- One sccache entry per runner OS, not one per job. Per-job entries reached
+  8.39 GB of the 10 GB repository ceiling and evicted the `target/` caches,
+  which cost more than they saved. The `runner.os` qualifier keeps `swift-test`
+  on `macos-15` from racing the Linux jobs for one key whose objects neither
+  side can use.
 - Actions are pinned by commit SHA, never by tag.
 - `swift-test` pins `macos-15`; `macos-latest` now means `macos-26`. macOS
   bills at 10x here, so it is the only non-Ubuntu job. It builds
@@ -81,7 +87,14 @@ compiles. Wrapper jobs restore those and save their own output under a
 - No CodeQL. `gitleaks` covers secret detection via its MIT CLI, not the
   EULA-licensed Action.
 - `secret-scan` reads the working tree, not history, so the checkout stays
-  shallow. `generic-api-key` and `jwt` are off: they match the crypto test
-  vectors this repo is full of, 165 times over. Provider rules are untouched.
+  shallow. `generic-api-key` and `jwt` stay enabled but are allowlisted over
+  the paths holding protocol test vectors — the test trees plus the eleven
+  `src/` files that embed them — which is where all 164 of their hits are.
+  Anywhere else they still fire. Provider rules are untouched.
 - `dependency-scan` reports advisories and does not gate, matching GitLab.
-  RUSTSEC-2023-0071 has no patched release, so gating could never go green.
+  RUSTSEC-2023-0071 has no patched release, so gating could never go green. A
+  missing report warns rather than fails: `cargo audit --json` writes nothing
+  when the advisory DB is unreachable, which is not a fault of the PR.
+- `test-with-coverage` gates on `lint-and-format` alone. It restores no
+  `target/` cache — its `line-tables-only` debug profile would invalidate every
+  unit anyway — so waiting on `build-dev` only delayed the longest job.

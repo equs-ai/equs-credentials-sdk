@@ -1,7 +1,30 @@
 [extend]
 useDefault = true
-disabledRules = ["generic-api-key", "jwt"]
 
 [[allowlists]]
 targetRules = ["private-key"]
 paths = ['''wrappers/nodejs/test/oid4vp/fixtures\.ts$''']
+
+[[allowlists]]
+description = "Protocol test vectors, not live credentials"
+targetRules = ["generic-api-key", "jwt"]
+paths = [
+  '''^Cargo\.lock$''',
+  '''^tests/''',
+  '''^demos/''',
+  '''^wrappers/test/''',
+  '''^wrappers/nodejs/test/''',
+  '''^wrappers/uniffi/kotlin/src/test/''',
+  '''^wrappers/uniffi/swift/Tests/''',
+  '''^plugins/askar/src/vault\.rs$''',
+  '''^src/did/didkey\.rs$''',
+  '''^src/did/didpeer\.rs$''',
+  '''^src/did/didethr/types/did_doc_attribute\.rs$''',
+  '''^src/utils/x509_truststore\.rs$''',
+  '''^src/vc/dcql/mod\.rs$''',
+  '''^src/vc/metadata/mod\.rs$''',
+  '''^src/vc/oid4vp/tests\.rs$''',
+  '''^src/vc/oid4vci/tests\.rs$''',
+  '''^src/vc/oid4vci/token_validation\.rs$''',
+  '''^src/vc/presentation_exchange/mod\.rs$''',
+]
