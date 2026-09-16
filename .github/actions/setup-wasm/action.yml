@@ -1,0 +1,43 @@
+name: Setup wasm toolchain
+description: Install clang, the Rust toolchain and tooling, and wasm-pack.
+
+inputs:
+  rust-version:
+    description: Toolchain to install.
+    required: true
+  cache-key:
+    description: Cache key suffix, unique per job.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Install clang
+      shell: bash
+      run: |
+        set -euo pipefail
+        if ! command -v clang >/dev/null 2>&1; then
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends clang
+        fi
+
+    - name: Rust toolchain and tooling
+      uses: ./.github/actions/setup-rustup
+      with:
+        rust-version: ${{ inputs.rust-version }}
+        cache-key: ${{ inputs.cache-key }}
+
+    - name: Install wasm-pack
+      shell: bash
+      run: |
+        set -euo pipefail
+        for i in 1 2 3; do
+          if curl --proto '=https' --tlsv1.2 -sSf \
+               https://rustwasm.github.io/wasm-pack/installer/init.sh | sh; then
+            exit 0
+          fi
+          echo "wasm-pack install failed (attempt $i), retrying"
+          sleep 15
+        done
+        echo "wasm-pack install failed after 3 attempts" >&2
+        exit 1

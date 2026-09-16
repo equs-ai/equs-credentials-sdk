@@ -1,44 +1,31 @@
 import Testing
 import Foundation
-import Swifter
 @testable import EqusSdk
 
 @Suite(.serialized) class CredentialOfferResolverTests {
-	let server: HttpServer
+	let http: MockHttpRouter
 	let port: in_port_t
 
 	init() async throws {
-		self.server = HttpServer()
-		// Bind to port 0 so the OS picks a guaranteed-free port; avoids collisions
-		// with whatever else (CI runner, prior job, etc.) might hold a fixed port.
-		// forceIPv4 keeps reqwest's 127.0.0.1 connect path reachable under the iOS Simulator.
-		try server.start(0, forceIPv4: true)
-		self.port = in_port_t(try server.port())
+		self.http = MockHttpRouter()
+		// No socket is bound; the router matches on path, so the port only has to
+		// make the fixture URLs well-formed.
+		self.port = 9000
 
 		let authServerMetadata = CredentialOfferResolverTestConstants.authServerMetadata(port: port)
 		let credOffer = CredentialOfferResolverTestConstants.credOfferWithPreAuthGrant(port: port)
 
-		self.server["/.well-known/oauth-authorization-server/auth"] = { request in
-			return HttpResponse.ok(
-				.json(
-					try! JSONSerialization.jsonObject(
-						with: authServerMetadata.data(using: .utf8)!)))
+		self.http["/.well-known/oauth-authorization-server/auth"] = { _ in
+			MockHttpRouter.ok(authServerMetadata)
 		}
-		self.server["/credential_offer"] = { request in
-			return HttpResponse.ok(
-				.json(
-					try! JSONSerialization.jsonObject(
-						with: credOffer.data(using: .utf8)!)
-				))
+		self.http["/credential_offer"] = { _ in
+			MockHttpRouter.ok(credOffer)
 		}
 	}
 
-	// No deinit { server.stop() }: Swifter 1.5.0's HttpServer.stop() can race with its
-	// background accept loop and crash xctest. With rotating ports, the previous test's
-	// server stays alive on its unused port until process exit; harmless.
 
 	@Test func resolveOfferByReferenceWithPreAuthorizedCodeGrant() async throws {
-		let resolver = try? CredentialOfferResolver(httpClient: ReqwestHttpClient.insecure())
+		let resolver = try? CredentialOfferResolver(httpClient: http)
 
 		let resolvedOffer = try? await resolver?.resolve(
 			offerUri:
@@ -51,7 +38,7 @@ import Swifter
 	}
 
 	@Test func resolveOfferByValueWithPreAuthorizedCodeGrant() async throws {
-		let resolver = try? CredentialOfferResolver(httpClient: ReqwestHttpClient.insecure())
+		let resolver = try? CredentialOfferResolver(httpClient: http)
 
 		let resolvedOffer = try? await resolver?.resolve(
 			offerUri:

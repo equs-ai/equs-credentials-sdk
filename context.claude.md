@@ -22,11 +22,13 @@ that file lists every sub-area with a link to the relevant `CLAUDE.md` inside th
 | Plugins | Askar secure-storage plugin (KMS + Vault backed by `aries-askar`) | [claude/plugins.md](claude/plugins.md) |
 | Tests | E2E test suite, shared fixtures and helpers | [claude/tests.md](claude/tests.md) |
 | Demos | OID4VC (issuer/holder/verifier), multi-thread, Node.js, WASM, Android, iOS, Keycloak | [claude/demos.md](claude/demos.md) |
+| CI | GitHub Actions CI | [.github/CLAUDE.md](.github/CLAUDE.md) |
 
 ## Repository layout (quick reference)
 
 ```
 equs-credentials-sdk/
+├── .github/              # GitHub Actions CI
 ├── src/                  # Core SDK library
 │   ├── crypto.rs         # Signing/verifying key traits
 │   ├── http.rs           # HttpClient trait

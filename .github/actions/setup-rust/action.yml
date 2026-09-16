@@ -1,0 +1,61 @@
+name: Setup Rust tooling
+description: Restore the sccache and npm caches, install cargo-binstall and sccache.
+
+inputs:
+  cache-key:
+    description: Cache key suffix, unique per job.
+    required: true
+  components:
+    description: Space-separated rustup components.
+    required: false
+    default: ''
+  install-tooling:
+    description: Install cargo-binstall and sccache.
+    required: false
+    default: 'true'
+
+runs:
+  using: composite
+  steps:
+    - name: Trust the workspace for git
+      shell: bash
+      run: |
+        git config --system --add safe.directory "$GITHUB_WORKSPACE" 2>/dev/null \
+          || git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+    - name: Export cache paths
+      shell: bash
+      run: |
+        set -euo pipefail
+        echo "SCCACHE_DIR=$GITHUB_WORKSPACE/.sccache" >> "$GITHUB_ENV"
+        echo "npm_config_cache=$GITHUB_WORKSPACE/.npm" >> "$GITHUB_ENV"
+        echo "${CARGO_HOME:-$HOME/.cargo}/bin" >> "$GITHUB_PATH"
+
+    - name: Restore sccache
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: .sccache
+        key: sccache-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}
+        restore-keys: sccache-${{ runner.os }}-${{ runner.arch }}-
+
+    - name: Restore npm cache
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: .npm
+        key: npm-${{ hashFiles('wrappers/nodejs/package.json', 'wrappers/wasm/package.json', 'wrappers/test/js_common/package.json', 'plugins/askar/wrappers/nodejs/package.json', 'demos/nodejs/oid4vc/package.json', 'demos/wasm/oid4vc/package.json') }}
+        restore-keys: npm-
+
+    - name: Install cargo-binstall and sccache
+      if: inputs.install-tooling == 'true'
+      shell: bash
+      run: |
+        set -euo pipefail
+        curl -L --proto '=https' --tlsv1.2 -sSf \
+          https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh \
+          | bash
+        RUSTC_WRAPPER="" cargo binstall -y sccache
+
+    - name: Add rustup components
+      if: inputs.components != ''
+      shell: bash
+      run: rustup component add ${{ inputs.components }}
