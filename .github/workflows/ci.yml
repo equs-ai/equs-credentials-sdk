@@ -493,7 +493,7 @@ jobs:
       - name: Test nodejs against the shared suite
         working-directory: wrappers/test/js_common
         run: |
-          npm pkg set dependencies.equs-sdk=file:../../nodejs
+          npm pkg set dependencies.equs-credentials-sdk=file:../../nodejs
           npm i
           npm run test:nodejs
 
@@ -562,7 +562,7 @@ jobs:
       - name: Test wasm against the shared suite
         working-directory: wrappers/test/js_common
         run: |
-          npm pkg set dependencies.equs-sdk=file:../../wasm/pkg
+          npm pkg set dependencies.equs-credentials-sdk=file:../../wasm/pkg
           npm i
           npm run test:wasm
 

@@ -16,8 +16,9 @@ belongs in both files.
 `lint-and-format` gates `build-dev` and `build-prod`; `build-prod` gates
 `askar-rust`. The four wrapper jobs wait on both builds, `askar-wrapper` on
 `askar-rust` and on `nodejs-wrapper`, whose napi build generates the
-`@equs/equs-sdk` types the askar wrapper's `tsc` step imports. Each test job waits on the wrapper it exercises. Demos run
-alongside the tests. `secret-scan` and `dependency-scan` gate nothing.
+`@equs-ai/equs-credentials-sdk` types the askar wrapper's `tsc` step imports.
+Each test job waits on the wrapper it exercises. Demos run alongside the tests.
+`secret-scan` and `dependency-scan` gate nothing.
 
 Builds hand work forward through the cache rather than repeating it. `build-dev`
 and `build-prod` each save the root `target/` under a key hashing `Cargo.lock`.
@@ -77,8 +78,8 @@ compiles. Wrapper jobs restore those and save their own output under a
   ENOSPC.
 - The wrapper release builds run nowhere else — the demos consume `build:debug`
   and `build:dev`, and the napi debug build compiles a different feature set.
-- No CodeQL: it needs a paid licence on a private repo. `gitleaks` covers
-  secret detection via its MIT CLI, not the EULA-licensed Action.
+- No CodeQL. `gitleaks` covers secret detection via its MIT CLI, not the
+  EULA-licensed Action.
 - `secret-scan` reads the working tree, not history, so the checkout stays
   shallow. `generic-api-key` and `jwt` are off: they match the crypto test
   vectors this repo is full of, 165 times over. Provider rules are untouched.
