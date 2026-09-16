@@ -35,17 +35,15 @@ runs:
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: .sccache
-        key: sccache-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
-        restore-keys: sccache-${{ runner.os }}-
+        key: sccache-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}
+        restore-keys: sccache-${{ runner.os }}-${{ runner.arch }}-
 
     - name: Restore npm cache
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: .npm
-        key: npm-${{ inputs.cache-key }}-${{ hashFiles('wrappers/nodejs/package.json', 'wrappers/wasm/package.json', 'wrappers/test/js_common/package.json', 'plugins/askar/wrappers/nodejs/package.json', 'demos/nodejs/oid4vc/package.json', 'demos/wasm/oid4vc/package.json') }}
-        restore-keys: |
-          npm-${{ inputs.cache-key }}-
-          npm-
+        key: npm-${{ hashFiles('wrappers/nodejs/package.json', 'wrappers/wasm/package.json', 'wrappers/test/js_common/package.json', 'plugins/askar/wrappers/nodejs/package.json', 'demos/nodejs/oid4vc/package.json', 'demos/wasm/oid4vc/package.json') }}
+        restore-keys: npm-
 
     - name: Install cargo-binstall and sccache
       if: inputs.install-tooling == 'true'

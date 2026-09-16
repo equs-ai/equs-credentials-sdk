@@ -10,7 +10,7 @@ belongs in both files.
 | `actions/setup-rust/` | Caches, `cargo-binstall`, `sccache`. Assumes Rust on `PATH`. |
 | `actions/setup-rustup/` | Installs the pinned toolchain, then `setup-rust`. |
 | `actions/setup-wasm/` | clang, then `setup-rustup`, then `wasm-pack`. |
-| `gitleaks.toml` | Secret-scan rules: default set minus the two noisy ones. |
+| `gitleaks.toml` | Secret-scan config. |
 | `scripts/binstall-or-build.sh` | GitLab's `binstall_or_build` helper. Invoked via `bash …`, not executable. |
 
 `lint-and-format` gates `build-dev` and `build-prod`; `build-prod` gates
@@ -46,12 +46,13 @@ crate there with sccache off.
   `node:` ones (rustc under `$HOME/.cargo`): fingerprints differed and a job
   could hit its cache and still rebuild 1597 crates.
 - Cache keys embed a content hash — GitHub cache entries are write-once. The
-  npm key hashes `package.json`, since no lockfile is tracked.
-- One sccache entry per runner OS, not one per job. Per-job entries reached
-  8.39 GB of the 10 GB repository ceiling and evicted the `target/` caches,
-  which cost more than they saved. The `runner.os` qualifier keeps `swift-test`
-  on `macos-15` from racing the Linux jobs for one key whose objects neither
-  side can use.
+  npm key hashes `package.json`, since no lockfile is tracked, and is shared
+  across jobs: the hash is identical everywhere, so a per-job qualifier bought
+  19 copies of one 120 MB entry against the 10 GB ceiling.
+- One sccache entry per runner OS and arch, not one per job. Per-job entries
+  reached 8.39 GB of the 10 GB repository ceiling and evicted the `target/`
+  caches, which cost more than they saved. The qualifier stops the macOS job
+  sharing a key whose objects Linux cannot reuse.
 - Actions are pinned by commit SHA, never by tag.
 - `swift-test` pins `macos-15`; `macos-latest` now means `macos-26`. macOS
   bills at 10x here, so it is the only non-Ubuntu job. It builds
@@ -81,20 +82,20 @@ crate there with sccache off.
   matching across them. `test-with-coverage` sets `line-tables-only` instead: tarpaulin
   maps addresses to lines through DWARF line tables, and a full-debug build
   overruns the 8.4 GB the runner leaves free — the linker dies on SIGBUS, not
-  ENOSPC.
+  ENOSPC. That profile is why it restores no `target/` cache, and a dedicated
+  one would be a fourth multi-GB family against the ceiling above, so it gates
+  on `lint-and-format` rather than waiting on `build-dev` for nothing.
 - The wrapper release builds run nowhere else — the demos consume `build:debug`
   and `build:dev`, and the napi debug build compiles a different feature set.
 - No CodeQL. `gitleaks` covers secret detection via its MIT CLI, not the
   EULA-licensed Action.
 - `secret-scan` reads the working tree, not history, so the checkout stays
-  shallow. `generic-api-key` and `jwt` stay enabled but are allowlisted over
-  the paths holding protocol test vectors — the test trees plus the eleven
-  `src/` files that embed them — which is where all 164 of their hits are.
-  Anywhere else they still fire. Provider rules are untouched.
+  shallow. `generic-api-key` and `jwt` stay enabled and are allowlisted by
+  value shape, not by path: did:key multibase identifiers, compact JWTs and
+  W3C `…Key20xx` method-type names. Those three shapes are every hit in the
+  tree, and matching on them leaves both rules live in every file, so a new
+  fixture needs no config change. Provider rules are untouched.
 - `dependency-scan` reports advisories and does not gate, matching GitLab.
-  RUSTSEC-2023-0071 has no patched release, so gating could never go green. A
-  missing report warns rather than fails: `cargo audit --json` writes nothing
-  when the advisory DB is unreachable, which is not a fault of the PR.
-- `test-with-coverage` gates on `lint-and-format` alone. It restores no
-  `target/` cache — its `line-tables-only` debug profile would invalidate every
-  unit anyway — so waiting on `build-dev` only delayed the longest job.
+  RUSTSEC-2023-0071 has no patched release, so gating could never go green, and
+  a missing report warns rather than fails — `cargo audit --json` writes
+  nothing when the advisory DB is unreachable.
