@@ -24,7 +24,7 @@ fi
 printf '%s:_authToken=%s\n' "//${REGISTRY_URL_NPM#*://}" "${NPM_TOKEN}" >> "${HOME}/.npmrc"
 chmod 600 "${HOME}/.npmrc"
 
-BINARY_NAME="equs-sdk-askar-storage.${ALIAS}.node"
+BINARY_NAME="equs-credentials-sdk-askar-storage.${ALIAS}.node"
 VERSION=$(npm pkg get version | tr -d '"')
 
 BUILD_FLAGS="--release"

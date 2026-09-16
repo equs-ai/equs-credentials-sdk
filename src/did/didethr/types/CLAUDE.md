@@ -8,15 +8,15 @@ Defines all domain types used by the `did:ethr` resolver: Ethereum addresses, bl
 | File | Role |
 |------|------|
 | `mod.rs` | Module root; re-exports the public surface of all sub-modules under a flat `types::` namespace. |
-| `address.rs` | `Address` — newtype wrapping an Ethereum address string; normalises `0x` prefix; produces EIP-155 blockchain account IDs. |
+| `address.rs` | `Address` — newtype wrapping an Ethereum address string; normalizes `0x` prefix; produces EIP-155 blockchain account IDs. |
 | `block.rs` | `Block` — newtype wrapping a `u64` block number; `BlockDetails` — pairs a block number with its timestamp. |
 | `did_doc_attribute.rs` | `DidDocAttribute`, `PublicKeyAttribute`, `ServiceAttribute` — attribute payloads decoded from `DIDAttributeChanged` events; enums `VerificationKeyType`, `PublicKeyType`, `PublicKeyPurpose`, `DelegateType`. |
-| `did_doc_builder.rs` | `DidDocumentBuilder` — stateful builder that accumulates verification methods, relationship references, and services from event history and serialises them into an `ssi::dids::Document`. |
+| `did_doc_builder.rs` | `DidDocumentBuilder` — stateful builder that accumulates verification methods, relationship references, and services from event history and serializes them into an `ssi::dids::Document`. |
 | `did_events.rs` | `DidEvents` enum and concrete event structs (`DidAttributeChanged`, `DidDelegateChanged`, `DidOwnerChanged`) decoded from Ethereum log data. |
 | `resolution.rs` | Resolution I/O types: `DidRecord`, `DidDocumentWithMeta`, `DidMetadata`, `DidResolutionMetadata`, `DidResolutionOptions`, `DidResolutionError`; also the `DID_RESOLUTION_FORMAT` constant. |
 
 ## Key types / traits
-- `Address` — normalised Ethereum address; converts from raw hex strings or `did:ethr:…` DIDs.
+- `Address` — normalized Ethereum address; converts from raw hex strings or `did:ethr:…` DIDs.
 - `Block` — block-number newtype; `is_none()` signals the zero / "never changed" sentinel.
 - `BlockDetails` — block number + UNIX timestamp returned by `eth_getBlockByNumber`.
 - `DidEvents` — enum over the three EtherDIDRegistry event kinds; carries a `previous_change` pointer for linked-list traversal.

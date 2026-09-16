@@ -1,4 +1,4 @@
-import { NonceHandler } from "equs-sdk";
+import { NonceHandler } from "equs-credentials-sdk";
 
 export class MockNonceHandler implements NonceHandler {
   /** The nonces of each `invalidate` call, in call order. */

@@ -1,13 +1,13 @@
 package com.equs
 
-import com.equs.sdk.DidKey
-import com.equs.sdk.InMemKms
-import com.equs.sdk.KeyType
-import com.equs.sdk.UniversalDidResolver
-import com.equs.sdk.VcCoreCredentialSigner
-import com.equs.sdk.VcFormat
-import com.equs.sdk.createDidAndKeyMetadata
-import com.equs.sdk.setJniLibPath
+import com.equs.credentials.DidKey
+import com.equs.credentials.InMemKms
+import com.equs.credentials.KeyType
+import com.equs.credentials.UniversalDidResolver
+import com.equs.credentials.VcCoreCredentialSigner
+import com.equs.credentials.VcFormat
+import com.equs.credentials.createDidAndKeyMetadata
+import com.equs.credentials.setJniLibPath
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.BeforeAll
 import kotlin.test.Test

@@ -1,4 +1,4 @@
-import { HttpMethod, HttpRequest, ReqwestHttpClient } from "equs-sdk";
+import { HttpMethod, HttpRequest, ReqwestHttpClient } from "equs-credentials-sdk";
 import { generateCACertificate, getLocal, Mockttp } from "mockttp";
 
 describe("HTTP Client: ", () => {

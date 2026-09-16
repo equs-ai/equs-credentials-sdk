@@ -1,4 +1,4 @@
-# Equs SDK e2e demo on Web Assembly
+# EQUS Credentials SDK e2e demo on Web Assembly
 
 This Demo allows to demonstrate the end-to-end flow of the OID4VCI/VP protocol on Web Assembly.
 
@@ -14,7 +14,7 @@ Ensure that the following tools are installed on your machine:
 Every package you need is already installed in `package.json`. If you develop further and need another dependencies -
 contact maintainers.
 
-Full installation of built dependencies of Equs SDK, equs-sdk-nodejs-demo is done at preinstall step so only steps required are:
+Full installation of built dependencies of the SDK, equs-credentials-sdk-nodejs-demo is done at preinstall step so only steps required are:
 
 ```shell
   npm i

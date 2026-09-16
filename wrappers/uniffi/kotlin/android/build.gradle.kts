@@ -4,7 +4,7 @@ plugins {
     id("maven-publish")
 }
 
-val baseVersion = "1.13.0"
+val baseVersion = "1.13.1"
 val environment = project.findProperty("env")?.toString()
 
 group = "equs"
@@ -21,7 +21,7 @@ publishing {
 			}
 
 			groupId = group.toString()
-			artifactId = "equs-sdk-android"
+			artifactId = "equs-credentials-sdk-android"
 			version = project.version.toString()
 		}
 	}
@@ -42,7 +42,7 @@ publishing {
 
 
 android {
-    namespace = "com.equs.sdk"
+    namespace = "com.equs.credentials"
     compileSdk = 33
 
     defaultConfig {

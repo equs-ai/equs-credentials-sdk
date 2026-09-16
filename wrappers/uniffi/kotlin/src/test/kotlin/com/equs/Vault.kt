@@ -1,17 +1,17 @@
 package com.equs
 
-import com.equs.sdk.Credential
-import com.equs.sdk.CredentialEntry
-import com.equs.sdk.CredentialMetadata
-import com.equs.sdk.VaultFetchOptions
-import com.equs.sdk.VcFormat
-import com.equs.sdk.setJniLibPath
-import com.equs.sdk.wrapVaultForTests
+import com.equs.credentials.Credential
+import com.equs.credentials.CredentialEntry
+import com.equs.credentials.CredentialMetadata
+import com.equs.credentials.VaultFetchOptions
+import com.equs.credentials.VcFormat
+import com.equs.credentials.setJniLibPath
+import com.equs.credentials.wrapVaultForTests
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.BeforeAll
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import com.equs.sdk.Vault as EqusSdkVault
+import com.equs.credentials.Vault as EqusSdkVault
 
 class Vault {
     val credentialId = "cred:12345"

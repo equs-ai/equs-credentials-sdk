@@ -1,4 +1,4 @@
-package com.equs.sdk
+package com.equs.credentials
 
 import java.io.File
 

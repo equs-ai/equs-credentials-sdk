@@ -1,4 +1,4 @@
-# Equs SDK wrappers for WASM
+# EQUS Credentials SDK wrappers for WASM
 
 ## How to build
 

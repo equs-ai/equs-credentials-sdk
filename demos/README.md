@@ -1,4 +1,4 @@
-# Equs SDK demos
+# EQUS Credentials SDK demos
 
 Each demo has its own README with instructions for running it.
 

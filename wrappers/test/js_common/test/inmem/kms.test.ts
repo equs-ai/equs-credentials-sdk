@@ -1,4 +1,4 @@
-import { InMemKms, Alg, KeyType } from "equs-sdk";
+import { InMemKms, Alg, KeyType } from "equs-credentials-sdk";
 
 describe("InMemKMS: ", () => {
   it("Sign and Verify", async () => {

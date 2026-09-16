@@ -1,4 +1,4 @@
-import { VCFormat, Credential, CredentialEntry, CredentialMetadata, Vault, VaultTestHelper } from "equs-sdk";
+import { VCFormat, Credential, CredentialEntry, CredentialMetadata, Vault, VaultTestHelper } from "equs-credentials-sdk";
 import { Fixtures } from "./fixtures";
 
 describe("Vault: ", () => {

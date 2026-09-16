@@ -1,14 +1,14 @@
 package com.equs
 
-import com.equs.sdk.Credential
-import com.equs.sdk.CredentialData
-import com.equs.sdk.VcFormat
-import com.equs.sdk.setJniLibPath
+import com.equs.credentials.Credential
+import com.equs.credentials.CredentialData
+import com.equs.credentials.VcFormat
+import com.equs.credentials.setJniLibPath
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.BeforeAll
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import com.equs.sdk.parseClaims as EqusSdkParseClaims
+import com.equs.credentials.parseClaims as EqusSdkParseClaims
 
 
 val SdJwt =

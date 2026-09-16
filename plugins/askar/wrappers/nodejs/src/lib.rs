@@ -15,7 +15,7 @@ use napi_derive::napi;
 /// @method open - {@link AskarStorage.open}
 /// @method remove - {@link AskarStorage.remove}
 /// @method close - {@link AskarStorage.close}
-/// @method create_profile - {@link AskarStorage.create_profile}
+/// @method ensure_profile - {@link AskarStorage.ensure_profile}
 /// @method get_active_profile - {@link AskarStorage.get_active_profile}
 /// @method change_active_profile - {@link AskarStorage.change_active_profile}
 /// @method remove_profile - {@link AskarStorage.remove_profile}
@@ -123,17 +123,18 @@ impl AskarStorage {
         Ok(())
     }
 
-    /// Create a new profile with the given profile name
+    /// Ensure a profile with the given name exists
     ///
-    /// Creates a new namespace within the storage for organizing credentials.
+    /// Creates the namespace within the storage for organizing credentials, or
+    /// returns the existing one if a profile of that name is already present.
     ///
-    /// @param profile - Name for the new profile to create
-    /// @returns The name of the created profile
+    /// @param profile - Name of the profile to ensure
+    /// @returns The name of the profile
     #[napi]
-    pub async fn create_profile(&self, profile: String) -> Result<String> {
+    pub async fn ensure_profile(&self, profile: String) -> Result<String> {
         let profile = self
             .0
-            .create_profile(profile)
+            .ensure_profile(profile)
             .await
             .map_err(|e| Error::from_reason(e.to_string()))?;
 

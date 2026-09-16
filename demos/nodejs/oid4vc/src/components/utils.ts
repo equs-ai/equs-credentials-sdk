@@ -5,7 +5,7 @@ import {
   KeyType,
   Kms,
   UniversalDIDResolver,
-} from "@equs/equs-sdk";
+} from "@equs-ai/equs-credentials-sdk";
 
 export type DidAndKeyMetadata = {
   did: string;

@@ -5,7 +5,7 @@ DEV_ENV="development"
 MAKEFILE_JOB="ios-generate-xcframework"
 XCFRAMEWORK_LOCATION="swift/ios/release"
 
-VERSION="1.13.0"
+VERSION="1.13.1"
 REGISTRY_URL_IOS="${REGISTRY_URL_IOS:?REGISTRY_URL_IOS is required}"
 
 ENVIRONMENT="${ENVIRONMENT:-}"
@@ -18,8 +18,8 @@ else
   VERSION="${CI_COMMIT_TAG:-${VERSION}}"
 fi
 
-ZIP_NAME="equs-sdk.zip"
-PACKAGE_NAME="equs-sdk-ios"
+ZIP_NAME="equs-credentials-sdk.zip"
+PACKAGE_NAME="equs-credentials-sdk-ios"
 
 make $MAKEFILE_JOB
 pwd

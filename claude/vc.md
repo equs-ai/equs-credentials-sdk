@@ -1,7 +1,7 @@
 # VC — Summary
 
 ## What this domain does
-Implements the full Verifiable Credentials stack: credential issuance, presentation, and verification at the core level; the OID4VCI and OID4VP protocol layers for standards-compliant flows; credential format serialisation (SD-JWT, W3C JSON-LD); and supporting subsystems for metadata, status, proof-of-possession, DCQL, and presentation exchange. This is the largest domain in the SDK.
+Implements the full Verifiable Credentials stack: credential issuance, presentation, and verification at the core level; the OID4VCI and OID4VP protocol layers for standards-compliant flows; credential format serialization (SD-JWT, W3C JSON-LD); and supporting subsystems for metadata, status, proof-of-possession, DCQL, and presentation exchange. This is the largest domain in the SDK.
 
 ## Sub-areas
 

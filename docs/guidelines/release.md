@@ -79,11 +79,11 @@ Each wrapper has a production job, published under the `latest` tag:
 
 | Job | Artifact | Registry |
 | --- | --- | --- |
-| `publish_nodejs_target` / `publish_nodejs_wrapper` | `@equs/equs-sdk` + per-platform binaries (linux-x64-gnu, darwin-arm64, darwin-x64) | npm |
-| `publish_wasm_wrapper` | `@equs/equs-sdk-wasm` | npm |
-| `publish_askar_nodejs_target` / `publish_askar_nodejs_wrapper` | `@equs/equs-sdk-askar-storage` + per-platform binaries | npm |
-| `publish_android_wrapper` | `equs-sdk-android` AAR | Maven |
-| `publish_ios_wrapper` | `equs-sdk-ios` XCFramework zip + checksum | package registry |
+| `publish_nodejs_target` / `publish_nodejs_wrapper` | `@equs-ai/equs-credentials-sdk` + per-platform binaries (linux-x64-gnu, darwin-arm64, darwin-x64) | npm |
+| `publish_wasm_wrapper` | `@equs-ai/equs-credentials-sdk-wasm` | npm |
+| `publish_askar_nodejs_target` / `publish_askar_nodejs_wrapper` | `@equs-ai/equs-credentials-sdk-askar-storage` + per-platform binaries | npm |
+| `publish_android_wrapper` | `equs-credentials-sdk-android` AAR | Maven |
+| `publish_ios_wrapper` | `equs-credentials-sdk-ios` XCFramework zip + checksum | package registry |
 | `release_artifacts_job` | `SBOM.auto.out`, `AUDIT.auto.out`, `API.auto.tar.gz` (rustdoc) | pipeline artifacts |
 
 The release is done once that stage finishes green.
@@ -94,7 +94,7 @@ Five of the seven production jobs have a `*_dev` counterpart publishing under th
 dist-tag: `publish_nodejs_target_dev`, `publish_nodejs_wrapper_dev`, `publish_wasm_dev_wrapper`,
 `publish_ios_wrapper_dev` and `publish_android_wrapper_dev`. Dev builds are debug builds. The askar
 plugin has no dev job — it declares no cargo features, so a dev build would differ from production
-only in optimisation level.
+only in optimization level.
 
 They run on a prerelease tag — `X.Y.Z-<suffix>`, hyphen mandatory:
 
