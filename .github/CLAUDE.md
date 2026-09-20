@@ -138,10 +138,19 @@ compiles. Wrapper jobs restore those and save their own output under a
 - `demos/android` is the Kotlin demo; the job is named after the directory.
   It builds the AAR, assembles the app and runs the Kotlin unit tests. The
   instrumented tests need an emulator and are not run.
-- `demo-build` and `nodejs-demo-build` restore the `wrapper-*` caches and use
-  `npm i --ignore-scripts`. Their `preinstall` otherwise rebuilds every wrapper
-  from source, which is the work the jobs they wait on already did. That
-  `preinstall` is their only install-time script, so nothing else is skipped.
+- `nodejs-demo-build` restores the `wrapper-*` caches and uses
+  `npm i --ignore-scripts`, skipping the `preinstall` that would rebuild the
+  wrappers its upstream jobs already built. `demo-build` cannot: `wasm-wrapper`
+  leaves `pkg` holding the cjs/nodejs build from `build:dev:cjs`, since `make`
+  wipes `pkg` on each run, and the wasm demo needs the web/esm one. Reusing it
+  fails as `TS2349: This expression is not callable`. The wasm wrapper is built
+  per consumer, so the demo must build its own.
+- `multi-thread-demo` runs `cargo build` before starting the issuer. `cargo run`
+  compiles inside the port wait and times out, which is why
+  `demos/oid4vc/demo.sh` pre-builds too.
+- `android-demo` puts the NDK's `toolchains/llvm/prebuilt/linux-x86_64/bin` on
+  `PATH`. `ANDROID_NDK_HOME` alone is not enough: the `cc` crate looks up
+  `aarch64-linux-android-clang` by name and `ring` fails to build without it.
 - `ios-demo` reuses the XCFramework from `swift-test` through `wrapper-swift`
   rather than rebuilding it — the demo's xcodeproj points at
   `wrappers/uniffi/swift/ios/debug`, which is what `ios-generate-xcframework-dev`
