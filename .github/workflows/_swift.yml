@@ -29,3 +29,7 @@ jobs:
           xcrun simctl list devices available
       - working-directory: wrappers/uniffi
         run: make ios-test
+
+      - uses: ./.github/actions/cache
+        with:
+          save: wrapper-swift

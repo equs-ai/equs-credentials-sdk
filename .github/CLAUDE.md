@@ -16,7 +16,9 @@ Because jobs run through `workflow_call`, a check is named `<job> / run`, not
 |------|------|
 | `workflows/ci.yml` | Triggers, gating and the 19 job calls. No steps. |
 | `workflows/_job.yml` | The generic containerised job behind 18 of the 19. Owns `container`, checkout, toolchain, node/java/wasm, caches, disk report, Codecov and artifact upload. |
-| `workflows/_swift.yml` | `swift-test`: `macos-15`, the only job that cannot use the container. |
+| `workflows/_swift.yml` | `swift-test`: `macos-15`. Saves `wrapper-swift`. |
+| `workflows/_ios.yml` | `ios-demo`: `macos-15`; restores the XCFramework `swift-test` built. |
+| `workflows/_android.yml` | `android-demo`: bare `ubuntu-latest`, SDK from the runner plus the pinned NDK. |
 | `actions/setup-rustup/` | Reclaims host disk, installs the pinned toolchain, restores the sccache and npm caches, installs `cargo-binstall` and `sccache`. |
 | `actions/cache/` | Named cache presets (`target-*`, `wrapper-*`), selected by the `restore`/`save` string inputs. |
 | `gitleaks.toml` | Secret-scan rules: default set minus the two noisy ones. |
@@ -26,7 +28,10 @@ Jobs run in five declared tiers, marked by `# tier N` and ordered in the file:
 1 the lint gate plus the two scans, which gate nothing; 2 `build-prod`,
 `build-dev` and `doc-build`; 3 the three wrappers, `test-with-coverage`,
 `askar-rust` and `oid4vc-demo`; 4 the tests, `askar-wrapper` and `demo-build`;
-5 `askar-plugin-nodejs-test`. A job names only the specific upstream job it
+5 `askar-plugin-nodejs-test`. Every demo in `demos/` is built: `oid4vc-demo`
+and `multi-thread-demo` in tier 3, and `demo-build` (wasm), `nodejs-demo-build`,
+`android-demo` and `ios-demo` in tier 4. `keycloak` is compose config with
+nothing to build. A job names only the specific upstream job it
 needs, not the whole tier, so the graph stays as parallel as the data allows.
 
 `swift-test` is deliberately exempt: it sits in tier 4 but waits only on
@@ -124,6 +129,20 @@ compiles. Wrapper jobs restore those and save their own output under a
   is the documented exception, passing `line-tables-only`.
 - `build-dev` carries no `needs`, so it starts alongside `lint-and-format` and
   gates nothing. It is the only producer of `target-dev-*`.
+- `android-demo` runs on a bare runner, not the container. The Makefile's
+  `android-clang-symlinks` writes `~/.cargo/config.toml`, which cargo ignores
+  when `CARGO_HOME` points at the image's `/usr/local/cargo`, losing the NDK
+  linker settings. It takes the SDK preinstalled on the runner and adds only
+  `ndk;$NDK_VERSION`, and gets 90 minutes: the equivalent GitLab job has hit
+  the 60-minute cap.
+- `ios-demo` reuses the XCFramework from `swift-test` through `wrapper-swift`
+  rather than rebuilding it — the demo's xcodeproj points at
+  `wrappers/uniffi/swift/ios/debug`, which is what `ios-generate-xcframework-dev`
+  writes and `make ios-test` already produces. It rebuilds only on a cache miss.
+  Nothing equivalent exists for Android: `kotlin-test` builds the host target
+  only, never the four Android targets or the AAR.
+- `multi-thread-demo` greps for `Success`. `start_holders` panics per holder
+  but still exits 0, so a plain `cargo run` would pass with every holder failed.
 - `cargo tarpaulin` takes `--out` once per format: `-o Html -o Lcov`. A comma
   list is rejected as an invalid value.
 - Most `needs` edges carry a cache: the job restores what the upstream job

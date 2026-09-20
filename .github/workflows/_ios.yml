@@ -1,0 +1,45 @@
+name: ios-demo
+
+on:
+  workflow_call:
+
+env:
+  RUST_VERSION: "1.97.0"
+  RUSTC_WRAPPER: sccache
+  SCCACHE_CACHE_SIZE: 1G
+  CARGO_INCREMENTAL: "0"
+
+jobs:
+  run:
+    runs-on: macos-15
+    timeout-minutes: 60
+    env:
+      CARGO_PROFILE_DEV_DEBUG: "0"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-rustup
+        with:
+          rust-version: ${{ env.RUST_VERSION }}
+          cache-key: ios-demo
+
+      - uses: ./.github/actions/cache
+        with:
+          restore: wrapper-swift
+
+      - name: Build the XCFramework if swift-test did not hand one over
+        working-directory: wrappers/uniffi
+        shell: bash
+        run: |
+          if [ -d swift/ios/debug/equssdk.xcframework ]; then
+            echo "reusing the XCFramework from swift-test"
+          else
+            rustup target add aarch64-apple-ios aarch64-apple-ios-sim
+            make ios-generate-xcframework-dev
+          fi
+
+      - name: Build the iOS demo
+        working-directory: demos/ios/OID4VC
+        run: |
+          xcrun xcodebuild -scheme OID4VC -configuration Debug \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build build

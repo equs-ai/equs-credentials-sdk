@@ -161,6 +161,24 @@ jobs:
       restore: target-dev
       run: cd demos/oid4vc && ./demo.sh
 
+
+  multi-thread-demo:
+    needs: [build-dev]
+    uses: ./.github/workflows/_job.yml
+    with:
+      cache-key: multi-thread-demo
+      restore: target-dev
+      run: |
+        cd demos/multi-thread
+        cargo run -- issuer > issuer.log 2>&1 &
+        for i in $(seq 1 60); do
+          (echo > /dev/tcp/127.0.0.1/4000) 2>/dev/null && break
+          [ "$i" = 60 ] && { echo "issuer did not start"; cat issuer.log; exit 1; }
+          sleep 2
+        done
+        RUST_LOG=ERROR cargo run -- holders 20 2>&1 | tee holders.log
+        grep -qx Success holders.log || { echo "holders reported failures"; cat issuer.log; exit 1; }
+
   # tier 4
 
   nodejs-test:
@@ -230,6 +248,26 @@ jobs:
         cd demos/wasm/oid4vc
         npm i
         npm run build
+
+  nodejs-demo-build:
+    needs: [nodejs-wrapper, askar-wrapper]
+    uses: ./.github/workflows/_job.yml
+    with:
+      cache-key: nodejs-demo-build
+      node: true
+      restore: target-dev
+      run: |
+        cd demos/nodejs/oid4vc
+        npm i
+        npm run build
+
+  android-demo:
+    needs: [uniffi-wrapper]
+    uses: ./.github/workflows/_android.yml
+
+  ios-demo:
+    needs: [swift-test]
+    uses: ./.github/workflows/_ios.yml
 
   # tier 5
 

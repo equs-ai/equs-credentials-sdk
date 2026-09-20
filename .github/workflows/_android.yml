@@ -1,0 +1,49 @@
+name: android-demo
+
+on:
+  workflow_call:
+
+env:
+  RUST_VERSION: "1.97.0"
+  NDK_VERSION: "29.0.13599879"
+  CARGO_INCREMENTAL: "0"
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      CARGO_PROFILE_DEV_DEBUG: "0"
+      RUSTC_WRAPPER: ""
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: ./.github/actions/setup-rustup
+        with:
+          rust-version: ${{ env.RUST_VERSION }}
+          cache-key: android-demo
+
+      - name: Install the NDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdk="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$sdk" --licenses >/dev/null 2>&1 || true
+          "$sdk" "ndk;$NDK_VERSION"
+          echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/$NDK_VERSION" >> "$GITHUB_ENV"
+
+      - name: Build the Android AAR
+        working-directory: wrappers/uniffi
+        run: make android-aar-dev
+
+      - name: Build the Android demo
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p demos/android/app/libs
+          cp wrappers/uniffi/kotlin/android/build/outputs/aar/*.aar demos/android/app/libs/
+          cd demos/android
+          ./gradlew --no-daemon assembleDebug

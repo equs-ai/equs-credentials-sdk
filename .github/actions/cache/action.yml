@@ -65,6 +65,12 @@ runs:
           wrappers/uniffi/kotlin/src/main/kotlin
         key: wrapper-uniffi-${{ github.sha }}
 
+    - if: contains(inputs.restore, 'wrapper-swift')
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: wrappers/uniffi/swift/ios/debug
+        key: wrapper-swift-${{ github.sha }}
+
     - if: contains(inputs.restore, 'wrapper-askar')
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
@@ -123,6 +129,12 @@ runs:
           target/debug/libequssdk.so
           wrappers/uniffi/kotlin/src/main/kotlin
         key: wrapper-uniffi-${{ github.sha }}
+
+    - if: contains(inputs.save, 'wrapper-swift')
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: wrappers/uniffi/swift/ios/debug
+        key: wrapper-swift-${{ github.sha }}
 
     - if: contains(inputs.save, 'wrapper-askar')
       uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
