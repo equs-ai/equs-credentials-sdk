@@ -22,15 +22,16 @@ Because jobs run through `workflow_call`, a check is named `<job> / run`, not
 | `gitleaks.toml` | Secret-scan rules: default set minus the two noisy ones. |
 | `scripts/binstall-or-build.sh` | GitLab's `binstall_or_build` helper. Invoked via `bash …`, not executable. |
 
-`lint-and-format` gates everything downstream; `build-prod` gates
-`nodejs-wrapper` and `askar-rust`. A job depends only on what it actually
-restores: `nodejs-wrapper` takes `target-prod`, so it waits on `build-prod`
-alone, while `doc-build`, `wasm-wrapper`, `uniffi-wrapper`, `oid4vc-demo` and
-`test-with-coverage` restore no sibling output and wait only on the lint gate.
-`askar-wrapper` waits on `askar-rust` and on `nodejs-wrapper`, whose napi build
-generates the `@equs-ai/equs-credentials-sdk` types the askar wrapper's `tsc`
-step imports. Each test job waits on the wrapper it exercises. Demos run
-alongside the tests. `secret-scan` and `dependency-scan` gate nothing.
+Jobs run in five declared tiers, marked by `# tier N` and ordered in the file:
+1 the lint gate plus the two scans, which gate nothing; 2 `build-prod`,
+`build-dev` and `doc-build`; 3 the three wrappers, `test-with-coverage`,
+`askar-rust` and `oid4vc-demo`; 4 the tests, `askar-wrapper` and `demo-build`;
+5 `askar-plugin-nodejs-test`. A job names only the specific upstream job it
+needs, not the whole tier, so the graph stays as parallel as the data allows.
+
+`swift-test` is deliberately exempt: it sits in tier 4 but waits only on
+`uniffi-wrapper`. At 29 minutes it is the longest job, and holding it for the
+rest of tier 3 pushed the whole run about 9 minutes later.
 
 Jobs are declared in execution order: scans, lint, `build-prod`, the Rust
 checks, then each wrapper followed by its test, the three askar jobs together,
@@ -125,8 +126,15 @@ compiles. Wrapper jobs restore those and save their own output under a
   gates nothing. It is the only producer of `target-dev-*`.
 - `cargo tarpaulin` takes `--out` once per format: `-o Html -o Lcov`. A comma
   list is rejected as an invalid value.
-- A `needs` edge exists only where the job restores the upstream job's cache.
-  A gate that restores nothing buys serialisation and no warm artifacts.
+- Most `needs` edges carry a cache: the job restores what the upstream job
+  saved. Three are ordering only, and deliberately so — `test-with-coverage`
+  and `swift-test` restore nothing, and `askar-rust` builds into its own
+  `target-askar` rather than anything `build-prod` produced.
+- `test-with-coverage` waits on `build-dev` but cannot reuse `target-dev`:
+  tarpaulin builds with its own instrumentation and `line-tables-only` debug
+  info, so every fingerprint differs from `build-dev`'s `"0"` and cargo
+  rebuilds regardless. Restoring that cache would cost a download and save
+  nothing.
 - `test-with-coverage` writes `Html,Lcov`; the Codecov upload reads `lcov.info`
   and is `fail_ci_if_error: false`, so coverage hosting never gates the merge.
   `--fail-under 70` is the gate. The upload needs the `CODECOV_TOKEN` secret.

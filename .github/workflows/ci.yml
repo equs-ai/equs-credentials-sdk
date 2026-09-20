@@ -15,6 +15,8 @@ concurrency:
 
 jobs:
 
+  # tier 1
+
   secret-scan:
     uses: ./.github/workflows/_job.yml
     with:
@@ -53,6 +55,8 @@ jobs:
         cargo fmt --all -- --check
         cargo clippy --workspace --exclude wasm --all-targets --all-features -- -Dwarnings
 
+  # tier 2
+
   build-prod:
     needs: [lint-and-format]
     uses: ./.github/workflows/_job.yml
@@ -62,8 +66,66 @@ jobs:
       save: target-prod
       run: cargo build --release -p nodejs
 
-  test-with-coverage:
+  build-dev:
     needs: [lint-and-format]
+    uses: ./.github/workflows/_job.yml
+    with:
+      cache-key: build-dev
+      restore: target-dev
+      save: target-dev
+      run: cargo build --all-features --workspace --exclude wasm
+
+  doc-build:
+    needs: [lint-and-format]
+    uses: ./.github/workflows/_job.yml
+    with:
+      cache-key: doc-build
+      restore: target-dev
+      run: RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --workspace --all-features --exclude nodejs --exclude wasm --exclude equs_sdk_uniffi
+
+  # tier 3
+
+  nodejs-wrapper:
+    needs: [build-prod]
+    uses: ./.github/workflows/_job.yml
+    with:
+      cache-key: nodejs-wrapper
+      node: true
+      restore: target-prod
+      save: wrapper-nodejs
+      run: |
+        cd wrappers/nodejs
+        npm i
+        npm run build
+        npm run build:debug
+
+  wasm-wrapper:
+    needs: [build-dev]
+    uses: ./.github/workflows/_job.yml
+    with:
+      cache-key: wasm-wrapper
+      node: true
+      wasm: true
+      sccache: false
+      restore: target-dev
+      save: wrapper-wasm
+      run: |
+        cd wrappers/wasm
+        npm i
+        npm run build
+        npm run build:dev:cjs
+
+  uniffi-wrapper:
+    needs: [build-dev]
+    uses: ./.github/workflows/_job.yml
+    with:
+      cache-key: uniffi-wrapper
+      restore: target-dev
+      save: wrapper-uniffi
+      run: cd wrappers/uniffi && make kotlin-generate_kotlin_debug
+
+  test-with-coverage:
+    needs: [build-dev]
     uses: ./.github/workflows/_job.yml
     secrets: inherit
     with:
@@ -81,27 +143,25 @@ jobs:
         printf '### Coverage\n\n%s\n' "$msg" | tee -a "$GITHUB_STEP_SUMMARY"
         exit ${rc:-0}
 
-  doc-build:
-    needs: [lint-and-format]
-    uses: ./.github/workflows/_job.yml
-    with:
-      cache-key: doc-build
-      restore: target-dev
-      run: RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --workspace --all-features --exclude nodejs --exclude wasm --exclude equs_sdk_uniffi
-
-  nodejs-wrapper:
+  askar-rust:
     needs: [build-prod]
     uses: ./.github/workflows/_job.yml
     with:
-      cache-key: nodejs-wrapper
-      node: true
-      restore: target-prod
-      save: wrapper-nodejs
-      run: |
-        cd wrappers/nodejs
-        npm i
-        npm run build
-        npm run build:debug
+      cache-key: askar-rust
+      restore: target-askar
+      save: target-askar
+      report-path: plugins/askar/target
+      run: CARGO_TARGET_DIR=plugins/askar/target cargo build --release -p askar
+
+  oid4vc-demo:
+    needs: [build-dev]
+    uses: ./.github/workflows/_job.yml
+    with:
+      cache-key: oid4vc-demo
+      restore: target-dev
+      run: cd demos/oid4vc && ./demo.sh
+
+  # tier 4
 
   nodejs-test:
     needs: [nodejs-wrapper]
@@ -117,22 +177,6 @@ jobs:
         npm i
         npm run test:nodejs
 
-  wasm-wrapper:
-    needs: [lint-and-format]
-    uses: ./.github/workflows/_job.yml
-    with:
-      cache-key: wasm-wrapper
-      node: true
-      wasm: true
-      sccache: false
-      restore: target-dev
-      save: wrapper-wasm
-      run: |
-        cd wrappers/wasm
-        npm i
-        npm run build
-        npm run build:dev:cjs
-
   wasm-test:
     needs: [wasm-wrapper]
     uses: ./.github/workflows/_job.yml
@@ -147,15 +191,6 @@ jobs:
         npm i
         npm run test:wasm
 
-  uniffi-wrapper:
-    needs: [lint-and-format]
-    uses: ./.github/workflows/_job.yml
-    with:
-      cache-key: uniffi-wrapper
-      restore: target-dev
-      save: wrapper-uniffi
-      run: cd wrappers/uniffi && make kotlin-generate_kotlin_debug
-
   kotlin-test:
     needs: [uniffi-wrapper]
     uses: ./.github/workflows/_job.yml
@@ -169,16 +204,6 @@ jobs:
     needs: [uniffi-wrapper]
     uses: ./.github/workflows/_swift.yml
 
-  askar-rust:
-    needs: [build-prod]
-    uses: ./.github/workflows/_job.yml
-    with:
-      cache-key: askar-rust
-      restore: target-askar
-      save: target-askar
-      report-path: plugins/askar/target
-      run: CARGO_TARGET_DIR=plugins/askar/target cargo build --release -p askar
-
   askar-wrapper:
     needs: [askar-rust, nodejs-wrapper]
     uses: ./.github/workflows/_job.yml
@@ -191,15 +216,6 @@ jobs:
       run: |
         npm i --prefix plugins/askar/wrappers/nodejs
         npm run build --prefix plugins/askar/wrappers/nodejs
-
-  askar-plugin-nodejs-test:
-    needs: [nodejs-wrapper, askar-wrapper]
-    uses: ./.github/workflows/_job.yml
-    with:
-      cache-key: askar-plugin-nodejs-test
-      node: true
-      restore: wrapper-nodejs wrapper-askar
-      run: npm run test --prefix plugins/askar/wrappers/nodejs
 
   demo-build:
     needs: [nodejs-wrapper, wasm-wrapper, askar-wrapper]
@@ -215,18 +231,13 @@ jobs:
         npm i
         npm run build
 
-  oid4vc-demo:
-    needs: [lint-and-format]
-    uses: ./.github/workflows/_job.yml
-    with:
-      cache-key: oid4vc-demo
-      restore: target-dev
-      run: cd demos/oid4vc && ./demo.sh
+  # tier 5
 
-  build-dev:
+  askar-plugin-nodejs-test:
+    needs: [nodejs-wrapper, askar-wrapper]
     uses: ./.github/workflows/_job.yml
     with:
-      cache-key: build-dev
-      restore: target-dev
-      save: target-dev
-      run: cargo build --all-features --workspace --exclude wasm
+      cache-key: askar-plugin-nodejs-test
+      node: true
+      restore: wrapper-nodejs wrapper-askar
+      run: npm run test --prefix plugins/askar/wrappers/nodejs
