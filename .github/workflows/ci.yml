@@ -69,7 +69,7 @@ jobs:
     uses: ./.github/workflows/_macos.yml
     with:
       cache-key: ios-xcframework
-      targets: aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios
+      targets: aarch64-apple-ios aarch64-apple-ios-sim
       save: wrapper-swift
       run: cd wrappers/uniffi && make ios-generate-xcframework-dev
 
@@ -266,7 +266,7 @@ jobs:
       node: true
       wasm: true
       sccache: false
-      restore: target-dev target-wasm
+      restore: target-dev target-wasm target-askar
       run: |
         cd demos/wasm/oid4vc
         npm i

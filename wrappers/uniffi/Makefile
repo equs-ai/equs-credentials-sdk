@@ -144,16 +144,14 @@ IOS_SIM_ID = ${shell xcrun simctl list devices available | grep -F "${IOS_SIM_NA
 IOS_DESTINATION ?= platform=iOS Simulator,id=$(IOS_SIM_ID)
 
 ios-dev-build:
-	@echo "Generating binaries for x86_64 and aarch64"
-	cargo build --target x86_64-apple-ios
+	@echo "Generating binaries for the arm64 simulator and device"
 	cargo build --target aarch64-apple-ios-sim
 	cargo build --target aarch64-apple-ios
 
 ios-create-dev-lib: ios-dev-build
-	@echo "Creating a debug library for x86_64 and aarch64 simulators"
+	@echo "Creating a debug library for the arm64 simulator"
 	mkdir -p ../../target/ios-simulator-debug/debug
 	lipo -create \
-            ../../target/x86_64-apple-ios/debug/libequssdk.a \
             ../../target/aarch64-apple-ios-sim/debug/libequssdk.a \
             -output ../../target/ios-simulator-debug/debug/libequssdk.a
 

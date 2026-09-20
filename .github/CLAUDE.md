@@ -93,11 +93,11 @@ compiles. Wrapper jobs restore those and save their own output under a
   `jobs.<id>.container.image` cannot read the `env` context, so its tag stays a
   literal and a version bump touches the `env:` block and every `image:` line.
 - `swift-test` pins `macos-15`; `macos-latest` now means `macos-26`. macOS
-  bills at 10x here, so it is the only non-Ubuntu job. It builds
-  `x86_64-apple-ios` into the debug fat library but tests arm64 only:
-  `xcodebuild` cannot run an x86_64 simulator on an arm64 host — Xcode 16
-  dropped the `arch=` key, and `ARCHS=x86_64` builds a bundle the arm64
-  simulator refuses to load. That slice needs a `macos-15-intel` runner.
+  bills at 10x here. The debug path no longer builds `x86_64-apple-ios`: an
+  arm64 host cannot run that simulator slice — Xcode 16 dropped the `arch=`
+  key, and `ARCHS=x86_64` builds a bundle the arm64 simulator refuses to load
+  — so it was compiled and never tested. Testing it needs a `macos-15-intel`
+  runner. The release path never built it.
   `IOS_DESTINATION` selects by UDID because `OS=latest` — what omitting `OS`
   means — takes the newest runtime even when it lacks the device, and
   `iPhone 16` is absent from iOS 26.x. `CARGO_PROFILE_DEV_DEBUG: "0"` holds
@@ -172,6 +172,9 @@ compiles. Wrapper jobs restore those and save their own output under a
   permissions, so it is a step-level flag driven by an input.
 - `android-demo` caches the four Android target directories under
   `target-android`; nothing else in the workflow builds those triples.
+- `demo-build` restores `target-askar` too: its npm `preinstall` builds the
+  askar napi wrapper with `CARGO_TARGET_DIR=../../target`, which resolves to
+  `plugins/askar/target` — the directory `askar-rust` saves.
 - `wasm-wrapper` and `demo-build` share `target-wasm`
   (`target/wasm32-unknown-unknown`). Both disable sccache and `target-dev` only
   holds host artifacts, so without it each recompiled the whole dependency tree
