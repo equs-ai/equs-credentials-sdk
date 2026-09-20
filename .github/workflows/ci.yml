@@ -298,7 +298,7 @@ jobs:
       timeout: 30
       run: |
         cd demos/ios/OID4VC
-        xcrun xcodebuild -scheme OID4VC -configuration Debug \
+        xcrun xcodebuild -scheme OID4VC -configuration Debug ARCHS=arm64 \
           -destination 'generic/platform=iOS Simulator' -derivedDataPath build build
 
   # tier 5

@@ -97,7 +97,11 @@ compiles. Wrapper jobs restore those and save their own output under a
   arm64 host cannot run that simulator slice — Xcode 16 dropped the `arch=`
   key, and `ARCHS=x86_64` builds a bundle the arm64 simulator refuses to load
   — so it was compiled and never tested. Testing it needs a `macos-15-intel`
-  runner. The release path never built it.
+  runner. The release path never built it. `ios-demo` therefore passes
+  `ARCHS=arm64`: `-destination 'generic/platform=iOS Simulator'` builds every
+  simulator arch, and without the pin it fails with `Undefined symbols for
+  architecture x86_64`. `swift-test` needs no pin because `IOS_DESTINATION`
+  names one arm64 simulator.
   `IOS_DESTINATION` selects by UDID because `OS=latest` — what omitting `OS`
   means — takes the newest runtime even when it lacks the device, and
   `iPhone 16` is absent from iOS 26.x. `CARGO_PROFILE_DEV_DEBUG: "0"` holds
