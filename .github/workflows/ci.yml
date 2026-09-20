@@ -243,10 +243,10 @@ jobs:
       node: true
       wasm: true
       sccache: false
-      restore: target-dev
+      restore: target-dev wrapper-wasm wrapper-nodejs wrapper-askar
       run: |
         cd demos/wasm/oid4vc
-        npm i
+        npm i --ignore-scripts
         npm run build
 
   nodejs-demo-build:
@@ -255,10 +255,10 @@ jobs:
     with:
       cache-key: nodejs-demo-build
       node: true
-      restore: target-dev
+      restore: target-dev wrapper-nodejs wrapper-askar
       run: |
         cd demos/nodejs/oid4vc
-        npm i
+        npm i --ignore-scripts
         npm run build
 
   android-demo:

@@ -39,11 +39,11 @@ jobs:
         working-directory: wrappers/uniffi
         run: make android-aar-dev
 
-      - name: Build the Android demo
+      - name: Build and test the Kotlin demo
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p demos/android/app/libs
           cp wrappers/uniffi/kotlin/android/build/outputs/aar/*.aar demos/android/app/libs/
           cd demos/android
-          ./gradlew --no-daemon assembleDebug
+          ./gradlew --no-daemon assembleDebug test

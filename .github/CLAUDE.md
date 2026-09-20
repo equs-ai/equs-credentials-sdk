@@ -135,6 +135,13 @@ compiles. Wrapper jobs restore those and save their own output under a
   linker settings. It takes the SDK preinstalled on the runner and adds only
   `ndk;$NDK_VERSION`, and gets 90 minutes: the equivalent GitLab job has hit
   the 60-minute cap.
+- `demos/android` is the Kotlin demo; the job is named after the directory.
+  It builds the AAR, assembles the app and runs the Kotlin unit tests. The
+  instrumented tests need an emulator and are not run.
+- `demo-build` and `nodejs-demo-build` restore the `wrapper-*` caches and use
+  `npm i --ignore-scripts`. Their `preinstall` otherwise rebuilds every wrapper
+  from source, which is the work the jobs they wait on already did. That
+  `preinstall` is their only install-time script, so nothing else is skipped.
 - `ios-demo` reuses the XCFramework from `swift-test` through `wrapper-swift`
   rather than rebuilding it — the demo's xcodeproj points at
   `wrappers/uniffi/swift/ios/debug`, which is what `ios-generate-xcframework-dev`
