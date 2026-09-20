@@ -172,6 +172,15 @@ compiles. Wrapper jobs restore those and save their own output under a
   permissions, so it is a step-level flag driven by an input.
 - `android-demo` caches the four Android target directories under
   `target-android`; nothing else in the workflow builds those triples.
+- `wasm-wrapper` and `demo-build` share `target-wasm`
+  (`target/wasm32-unknown-unknown`). Both disable sccache and `target-dev` only
+  holds host artifacts, so without it each recompiled the whole dependency tree
+  for wasm: `wasm-wrapper` measured 17 minutes and `demo-build` 14.
+- `_job.yml` installs `cargo-binstall` and `sccache` only when `sccache` is on.
+  `fmt`, `nodejs-test`, `wasm-test`, `nodejs-demo-build` and
+  `askar-plugin-nodejs-test` run no cargo compilation and set `sccache: false`,
+  which skips the download. `wasm-wrapper` and `demo-build` also set it but do
+  compile; they simply do not use the wrapper.
 - `cargo tarpaulin` takes `--out` once per format: `-o Html -o Lcov`. A comma
   list is rejected as an invalid value.
 - Most `needs` edges carry a cache: the job restores what the upstream job

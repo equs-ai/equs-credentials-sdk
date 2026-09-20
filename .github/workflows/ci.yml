@@ -50,6 +50,7 @@ jobs:
     uses: ./.github/workflows/_job.yml
     with:
       cache-key: fmt
+      sccache: false
       components: rustfmt
       run: cargo fmt --all -- --check
 
@@ -122,8 +123,8 @@ jobs:
       node: true
       wasm: true
       sccache: false
-      restore: target-dev
-      save: wrapper-wasm
+      restore: target-dev target-wasm
+      save: wrapper-wasm target-wasm
       run: |
         cd wrappers/wasm
         npm i
@@ -203,6 +204,7 @@ jobs:
     uses: ./.github/workflows/_job.yml
     with:
       cache-key: nodejs-test
+      sccache: false
       node: true
       restore: wrapper-nodejs
       run: |
@@ -217,8 +219,8 @@ jobs:
     uses: ./.github/workflows/_job.yml
     with:
       cache-key: wasm-test
-      node: true
       sccache: false
+      node: true
       restore: wrapper-wasm
       run: |
         cd wrappers/test/js_common
@@ -264,7 +266,7 @@ jobs:
       node: true
       wasm: true
       sccache: false
-      restore: target-dev
+      restore: target-dev target-wasm
       run: |
         cd demos/wasm/oid4vc
         npm i
@@ -275,6 +277,7 @@ jobs:
     uses: ./.github/workflows/_job.yml
     with:
       cache-key: nodejs-demo-build
+      sccache: false
       node: true
       restore: target-dev wrapper-nodejs wrapper-askar
       run: |
@@ -305,6 +308,7 @@ jobs:
     uses: ./.github/workflows/_job.yml
     with:
       cache-key: askar-plugin-nodejs-test
+      sccache: false
       node: true
       restore: wrapper-nodejs wrapper-askar
       run: npm run test --prefix plugins/askar/wrappers/nodejs

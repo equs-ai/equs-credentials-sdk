@@ -60,6 +60,7 @@ jobs:
           rust-version: ${{ env.RUST_VERSION }}
           cache-key: ${{ inputs.cache-key }}
           components: ${{ inputs.components }}
+          tooling: ${{ inputs.sccache }}
 
       - if: inputs.wasm
         shell: bash

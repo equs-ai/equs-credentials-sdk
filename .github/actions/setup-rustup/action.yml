@@ -12,6 +12,10 @@ inputs:
     description: Space-separated rustup components.
     required: false
     default: ''
+  tooling:
+    description: Install cargo-binstall and sccache.
+    required: false
+    default: 'true'
 
 runs:
   using: composite
@@ -57,6 +61,7 @@ runs:
         restore-keys: npm-
 
     - name: Install cargo-binstall and sccache
+      if: inputs.tooling == 'true'
       shell: bash
       run: |
         set -euo pipefail
