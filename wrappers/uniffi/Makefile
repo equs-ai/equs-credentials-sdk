@@ -202,7 +202,9 @@ ios-generate-xcframework: ios-generate-ffi ios-copy-libs
             -output swift/ios/release/equssdk.xcframework
 
 
-ios-test: ios-generate-xcframework-dev
+ios-test: ios-generate-xcframework-dev ios-test-only
+
+ios-test-only:
 	@echo "Run tests"
 	rm -rf swift/equssdk.xcframework
 	cp -R swift/ios/debug/equssdk.xcframework swift/equssdk.xcframework

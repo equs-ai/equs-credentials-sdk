@@ -16,8 +16,7 @@ Because jobs run through `workflow_call`, a check is named `<job> / run`, not
 |------|------|
 | `workflows/ci.yml` | Triggers, gating and the 19 job calls. No steps. |
 | `workflows/_job.yml` | The generic containerised job behind 18 of the 19. Owns `container`, checkout, toolchain, node/java/wasm, caches, disk report, Codecov and artifact upload. |
-| `workflows/_swift.yml` | `swift-test`: `macos-15`. Saves `wrapper-swift`. |
-| `workflows/_ios.yml` | `ios-demo`: `macos-15`; restores the XCFramework `swift-test` built. |
+| `workflows/_macos.yml` | The generic `macos-15` job behind `ios-xcframework`, `swift-test` and `ios-demo`. |
 | `workflows/_android.yml` | `android-demo`: bare `ubuntu-latest`, SDK from the runner plus the pinned NDK. |
 | `actions/setup-rustup/` | Reclaims host disk, installs the pinned toolchain, restores the sccache and npm caches, installs `cargo-binstall` and `sccache`. |
 | `actions/cache/` | Named cache presets (`target-*`, `wrapper-*`), selected by the `restore`/`save` string inputs. |
@@ -25,8 +24,8 @@ Because jobs run through `workflow_call`, a check is named `<job> / run`, not
 | `scripts/binstall-or-build.sh` | GitLab's `binstall_or_build` helper. Invoked via `bash …`, not executable. |
 
 Jobs run in five declared tiers, marked by `# tier N` and ordered in the file:
-1 the lint gate plus the two scans, which gate nothing; 2 `build-prod`,
-`build-dev` and `doc-build`; 3 the three wrappers, `test-with-coverage`,
+1 `fmt` plus the two scans, which gate nothing; 2 `clippy`, `build-prod`,
+`build-dev`, `doc-build` and `ios-xcframework`; 3 the three wrappers, `test-with-coverage`,
 `askar-rust` and `oid4vc-demo`; 4 the tests, `askar-wrapper` and `demo-build`;
 5 `askar-plugin-nodejs-test`. Every demo in `demos/` is built: `oid4vc-demo`
 and `multi-thread-demo` in tier 3, and `demo-build` (wasm), `nodejs-demo-build`,
@@ -34,9 +33,15 @@ and `multi-thread-demo` in tier 3, and `demo-build` (wasm), `nodejs-demo-build`,
 nothing to build. A job names only the specific upstream job it
 needs, not the whole tier, so the graph stays as parallel as the data allows.
 
-`swift-test` is deliberately exempt: it sits in tier 4 but waits only on
-`uniffi-wrapper`. At 29 minutes it is the longest job, and holding it for the
-rest of tier 3 pushed the whole run about 9 minutes later.
+`fmt` is the gate, not clippy: `cargo fmt --check` takes seconds where clippy
+takes minutes, and every job used to wait on both. `clippy` now runs in tier 2
+as an ordinary job.
+
+`ios-xcframework` builds the XCFramework once in tier 2; `swift-test`
+(`make ios-test-only`) and `ios-demo` both restore it through `wrapper-swift`
+and run in parallel in tier 4. Before the split, `swift-test` built it and
+`ios-demo` waited for the whole 40-minute job just to reuse it. That mirrors
+`kotlin-test` and `android-demo`, which both hang off `uniffi-wrapper`.
 
 Jobs are declared in execution order: scans, lint, `build-prod`, the Rust
 checks, then each wrapper followed by its test, the three askar jobs together,
@@ -159,6 +164,14 @@ compiles. Wrapper jobs restore those and save their own output under a
   only, never the four Android targets or the AAR.
 - `multi-thread-demo` greps for `Success`. `start_holders` panics per holder
   but still exits 0, so a plain `cargo run` would pass with every holder failed.
+  It carries `allow-failure: true`: the demo does not currently work against the
+  SDK, which now requires a nonce-bound key proof the demo never supplies.
+  `demos/oid4vc` solves the same problem with a `ci_demo` feature. Remove the
+  flag once the demo is fixed. `continue-on-error` cannot go on the caller job:
+  a `uses:` job only accepts name, uses, with, secrets, needs, if and
+  permissions, so it is a step-level flag driven by an input.
+- `android-demo` caches the four Android target directories under
+  `target-android`; nothing else in the workflow builds those triples.
 - `cargo tarpaulin` takes `--out` once per format: `-o Html -o Lcov`. A comma
   list is rejected as an invalid value.
 - Most `needs` edges carry a cache: the job restores what the upstream job

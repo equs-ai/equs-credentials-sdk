@@ -20,6 +20,7 @@ on:
       timeout: {type: number, default: 30}
       codecov: {type: boolean, default: false}
       toolchain: {type: boolean, default: true}
+      allow-failure: {type: boolean, default: false}
     secrets:
       CODECOV_TOKEN: {required: false}
 
@@ -75,6 +76,7 @@ jobs:
           restore: ${{ inputs.restore }}
 
       - shell: bash
+        continue-on-error: ${{ inputs.allow-failure }}
         run: ${{ inputs.run }}
 
       - if: inputs.save != ''

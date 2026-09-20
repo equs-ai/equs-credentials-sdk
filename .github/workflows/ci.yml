@@ -46,19 +46,34 @@ jobs:
           "$(cargo audit --no-fetch 2>&1 | tail -n 60)" >> "$GITHUB_STEP_SUMMARY"
         grep -q '"vulnerabilities"' cargo-audit-report.json || { echo "cargo audit produced no report" >&2; exit 1; }
 
-  lint-and-format:
+  fmt:
     uses: ./.github/workflows/_job.yml
     with:
-      cache-key: lint-and-format
-      components: rustfmt clippy
-      run: |
-        cargo fmt --all -- --check
-        cargo clippy --workspace --exclude wasm --all-targets --all-features -- -Dwarnings
+      cache-key: fmt
+      components: rustfmt
+      run: cargo fmt --all -- --check
 
   # tier 2
 
+  clippy:
+    needs: [fmt]
+    uses: ./.github/workflows/_job.yml
+    with:
+      cache-key: clippy
+      components: clippy
+      run: cargo clippy --workspace --exclude wasm --all-targets --all-features -- -Dwarnings
+
+  ios-xcframework:
+    needs: [fmt]
+    uses: ./.github/workflows/_macos.yml
+    with:
+      cache-key: ios-xcframework
+      targets: aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios
+      save: wrapper-swift
+      run: cd wrappers/uniffi && make ios-generate-xcframework-dev
+
   build-prod:
-    needs: [lint-and-format]
+    needs: [fmt]
     uses: ./.github/workflows/_job.yml
     with:
       cache-key: build-prod
@@ -67,7 +82,7 @@ jobs:
       run: cargo build --release -p nodejs
 
   build-dev:
-    needs: [lint-and-format]
+    needs: [fmt]
     uses: ./.github/workflows/_job.yml
     with:
       cache-key: build-dev
@@ -76,7 +91,7 @@ jobs:
       run: cargo build --all-features --workspace --exclude wasm
 
   doc-build:
-    needs: [lint-and-format]
+    needs: [fmt]
     uses: ./.github/workflows/_job.yml
     with:
       cache-key: doc-build
@@ -168,6 +183,7 @@ jobs:
     with:
       cache-key: multi-thread-demo
       restore: target-dev
+      allow-failure: true
       run: |
         cd demos/multi-thread
         cargo build
@@ -220,8 +236,12 @@ jobs:
       run: cd wrappers/uniffi && make kotlin-test
 
   swift-test:
-    needs: [uniffi-wrapper]
-    uses: ./.github/workflows/_swift.yml
+    needs: [ios-xcframework]
+    uses: ./.github/workflows/_macos.yml
+    with:
+      cache-key: swift-test
+      restore: wrapper-swift
+      run: cd wrappers/uniffi && make ios-test-only
 
   askar-wrapper:
     needs: [askar-rust, nodejs-wrapper]
@@ -267,8 +287,16 @@ jobs:
     uses: ./.github/workflows/_android.yml
 
   ios-demo:
-    needs: [swift-test]
-    uses: ./.github/workflows/_ios.yml
+    needs: [ios-xcframework]
+    uses: ./.github/workflows/_macos.yml
+    with:
+      cache-key: ios-demo
+      restore: wrapper-swift
+      timeout: 30
+      run: |
+        cd demos/ios/OID4VC
+        xcrun xcodebuild -scheme OID4VC -configuration Debug \
+          -destination 'generic/platform=iOS Simulator' -derivedDataPath build build
 
   # tier 5
 

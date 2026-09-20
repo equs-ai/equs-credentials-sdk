@@ -116,7 +116,7 @@ class DemoViewModel : ViewModel() {
 
             holderVp.presentCredentialsAuto(
                 authRequest,
-                AuthorizationResponseMetadata(null, idTokenMetadata)
+                AuthorizationResponseMetadata(null, idTokenMetadata, null)
             )
         }
     }
