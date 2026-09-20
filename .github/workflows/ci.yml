@@ -75,7 +75,7 @@ jobs:
       artifact-path: tarpaulin-report.html
       run: |
         bash .github/scripts/binstall-or-build.sh cargo-tarpaulin "cargo tarpaulin --version"
-        cargo tarpaulin --skip-clean --timeout 180 --all-features --exclude-files "src/didcomm/*" --exclude-files "demos/*" --exclude-files "dependencies/one-core/*" --exclude-files "wrappers/*" --fail-under 70 -o Html,Lcov 2>&1 | tee tarpaulin.log || rc=$?
+        cargo tarpaulin --skip-clean --timeout 180 --all-features --exclude-files "src/didcomm/*" --exclude-files "demos/*" --exclude-files "dependencies/one-core/*" --exclude-files "wrappers/*" --fail-under 70 -o Html -o Lcov 2>&1 | tee tarpaulin.log || rc=$?
         line=$(grep -oE '[0-9.]+% coverage, [0-9/]+ lines covered' tarpaulin.log | tail -1) || true
         [ -n "$line" ] && msg="**$line** — gate: 70%" || msg="No coverage figure produced; tarpaulin did not reach the reporting stage."
         printf '### Coverage\n\n%s\n' "$msg" | tee -a "$GITHUB_STEP_SUMMARY"
@@ -222,3 +222,11 @@ jobs:
       cache-key: oid4vc-demo
       restore: target-dev
       run: cd demos/oid4vc && ./demo.sh
+
+  build-dev:
+    uses: ./.github/workflows/_job.yml
+    with:
+      cache-key: build-dev
+      restore: target-dev
+      save: target-dev
+      run: cargo build --all-features --workspace --exclude wasm

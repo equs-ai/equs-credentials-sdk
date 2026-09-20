@@ -35,10 +35,6 @@ jobs:
     container:
       image: rust:1.97.0-bookworm
       options: ${{ inputs.options }}
-      volumes:
-        - /usr/local:/host/usr-local
-        - /usr/share:/host/usr-share
-        - /opt:/host/opt
     timeout-minutes: ${{ inputs.timeout }}
     env:
       RUSTC_WRAPPER: ${{ inputs.sccache && 'sccache' || '' }}

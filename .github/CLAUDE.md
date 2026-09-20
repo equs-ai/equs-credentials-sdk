@@ -4,10 +4,8 @@ GitHub Actions port of the CI half of `.gitlab-ci.yml`. CI only — no
 publish/release jobs. `.gitlab-ci.yml` is the running pipeline, so a CI change
 belongs in both files.
 
-Two entry workflows on the same triggers: `ci.yml` is the main flow — release
-builds and every test — and `ci-dev-build.yml` carries the debug workspace
-build alongside it rather than on the main flow's critical path. Neither
-defines jobs directly; both call reusable workflows, so `container`, checkout,
+One workflow, `ci.yml`. It defines no jobs directly: every job calls a
+reusable workflow, so `container`, checkout,
 toolchain and caches are written once. Underscore-prefixed files are
 `workflow_call` targets, never triggered on their own.
 
@@ -16,9 +14,8 @@ Because jobs run through `workflow_call`, a check is named `<job> / run`, not
 
 | Path | Role |
 |------|------|
-| `workflows/ci.yml` | Triggers, gating and the 18 job calls. No steps. |
-| `workflows/ci-dev-build.yml` | `build-dev` alone: the debug workspace build, and the only producer of `target-dev-*`. |
-| `workflows/_job.yml` | The generic containerised job behind 17 of the 18. Owns `container`, checkout, toolchain, node/java/wasm, caches, disk report, Codecov and artifact upload. |
+| `workflows/ci.yml` | Triggers, gating and the 19 job calls. No steps. |
+| `workflows/_job.yml` | The generic containerised job behind 18 of the 19. Owns `container`, checkout, toolchain, node/java/wasm, caches, disk report, Codecov and artifact upload. |
 | `workflows/_swift.yml` | `swift-test`: `macos-15`, the only job that cannot use the container. |
 | `actions/setup-rustup/` | Reclaims host disk, installs the pinned toolchain, restores the sccache and npm caches, installs `cargo-binstall` and `sccache`. |
 | `actions/cache/` | Named cache presets (`target-*`, `wrapper-*`), selected by the `restore`/`save` string inputs. |
@@ -59,19 +56,13 @@ compiles. Wrapper jobs restore those and save their own output under a
 
 - Every Linux job runs in `rust:1.97.0-bookworm`, the image `.gitlab-ci.yml`
   already uses. GitHub hosts no Debian runner, so the image is the only route
-  to one. A first container attempt was reverted after five jobs died for want
-  of disk. The 8.4 GB they ran out of is simply what the runner leaves free on
-  its 72 GB disk — see the same figure under `test-with-coverage` below, which
-  predates any container. A container does not shrink it: the writable layer
-  sits on the host's `/`. What a container does remove is the ability to delete
-  the ~24 GB of preinstalled toolchains, which is why the reclaim is required
-  on any setup, and `container.volumes` is the only way to reach them: it
-  bind-mounts them under `/host`, where `setup-rustup` empties them. That step
-  is gated on Linux, so `swift-test` skips it. The reclaim fails open — with no
-  `/host` the glob does not expand and the job proceeds toward the wall — so do
-  not drop the volumes from a job that calls `setup-rustup`. `secret-scan` is
-  the one Linux job carrying none, since it never calls it and would read
-  nothing.
+  to one. Measured on run 35494422506: the runner reports 145 GB with ~110 GB
+  free at job start, and the heaviest job (`demo-build`) peaked at 49 GB used.
+  An earlier note claimed a container saw only 8.4 GB of a 72 GB disk and that
+  ~24 GB of preinstalled toolchains had to be bind-mounted under `/host` and
+  deleted to fit. Runners have since grown and that no longer holds, so the
+  volumes and the reclaim step are gone. Read the `df` line each job prints
+  before reintroducing either.
 - `test-with-coverage` sets `--security-opt seccomp=unconfined`: tarpaulin
   traces with ptrace, which Docker's default seccomp profile blocks.
 - One image for every Linux job, so `target/` caches transfer between them.
@@ -117,8 +108,9 @@ compiles. Wrapper jobs restore those and save their own output under a
   keeps the cache under the 10 GB repo limit and keeps cargo fingerprints
   matching across them. `test-with-coverage` sets `line-tables-only` instead: tarpaulin
   maps addresses to lines through DWARF line tables, and a full-debug build
-  overruns the 8.4 GB the runner leaves free — the linker dies on SIGBUS, not
-  ENOSPC.
+  overran the disk the runner then left free — the linker died on SIGBUS, not
+  ENOSPC. Headroom is far larger now; the setting is kept because the 10 GB
+  cache ceiling still applies.
 - The wrapper release builds run nowhere else — the demos consume `build:debug`
   and `build:dev`, and the napi debug build compiles a different feature set.
 - No CodeQL. `gitleaks` covers secret detection via its MIT CLI, not the
@@ -129,6 +121,10 @@ compiles. Wrapper jobs restore those and save their own output under a
 - `_job.yml` sets `CARGO_PROFILE_DEV_DEBUG` for every job from one input
   defaulting to `"0"`, rather than repeating it per job. `test-with-coverage`
   is the documented exception, passing `line-tables-only`.
+- `build-dev` carries no `needs`, so it starts alongside `lint-and-format` and
+  gates nothing. It is the only producer of `target-dev-*`.
+- `cargo tarpaulin` takes `--out` once per format: `-o Html -o Lcov`. A comma
+  list is rejected as an invalid value.
 - A `needs` edge exists only where the job restores the upstream job's cache.
   A gate that restores nothing buys serialisation and no warm artifacts.
 - `test-with-coverage` writes `Html,Lcov`; the Codecov upload reads `lcov.info`
