@@ -83,10 +83,18 @@ compiles. Wrapper jobs restore those and save their own output under a
   `actions/setup-node` layered on the Rust image, never as a second image.
 - Cache keys embed a content hash — GitHub cache entries are write-once. The
   npm key hashes `package.json`, since no lockfile is tracked.
-- One sccache entry for the whole workflow, not one per job. Per-job entries
-  reached 8.39 GB of the 10 GB repository ceiling and evicted the `target/`
-  caches, which cost more than they saved. The npm entry is keyed the same way,
-  on content alone, for the same reason.
+- One sccache entry per OS, not one per job. Per-job entries reached 8.39 GB of
+  the 10 GB repository ceiling and evicted the `target/` caches, which cost more
+  than they saved. The key carries `runner.os` because the entry is write-once:
+  a Linux job claimed it first, so `macos-15` restored ~1 GB of Linux objects
+  that no Apple-target compile can ever match, and never saved its own. Two
+  entries stay far under the ceiling. The npm entry is keyed on content alone —
+  it holds portable tarballs.
+- A `target/` cache cannot stand in for sccache here. `android-demo` restored
+  `target-android` on an exact key hit and cargo still rebuilt 2653 crates:
+  `actions/checkout` stamps sources newer than the restored artifacts and cargo
+  compares mtimes. sccache is content-hashed and survives that, which is why
+  `android-demo` uses it rather than a target cache.
 - Actions are pinned by commit SHA, never by tag.
 - The toolchain versions live in the workflow `env:` block and are read through
   `${{ env.RUST_VERSION }}` / `${{ env.NODE_VERSION }}` in step `with:` inputs.

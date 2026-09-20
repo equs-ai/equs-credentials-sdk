@@ -72,16 +72,6 @@ runs:
         key: target-wasm-${{ hashFiles('Cargo.lock') }}
         restore-keys: target-wasm-
 
-    - if: contains(inputs.restore, 'target-android')
-      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-      with:
-        path: |
-          target/aarch64-linux-android
-          target/armv7-linux-androideabi
-          target/i686-linux-android
-          target/x86_64-linux-android
-        key: target-android-${{ hashFiles('Cargo.lock') }}
-        restore-keys: target-android-
 
     - if: contains(inputs.restore, 'wrapper-swift')
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -156,15 +146,6 @@ runs:
         path: target/wasm32-unknown-unknown
         key: target-wasm-${{ hashFiles('Cargo.lock') }}
 
-    - if: contains(inputs.save, 'target-android')
-      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-      with:
-        path: |
-          target/aarch64-linux-android
-          target/armv7-linux-androideabi
-          target/i686-linux-android
-          target/x86_64-linux-android
-        key: target-android-${{ hashFiles('Cargo.lock') }}
 
     - if: contains(inputs.save, 'wrapper-swift')
       uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
