@@ -21,6 +21,7 @@ Because jobs run through `workflow_call`, a check is named `<job> / run`, not
 | `actions/setup-rustup/` | Reclaims host disk, installs the pinned toolchain, restores the sccache and npm caches, installs `cargo-binstall` and `sccache`. |
 | `actions/cache/` | Named cache presets (`target-*`, `wrapper-*`), selected by the `restore`/`save` string inputs. |
 | `gitleaks.toml` | Secret-scan config. |
+| `scripts/install-gitleaks.sh` | Pinned gitleaks download with its SHA256; prints the binary path. |
 | `scripts/coverage-badge.sh` | Writes the coverage SVG to the `badges` branch. Runs only on `main`. |
 | `scripts/binstall-or-build.sh` | GitLab's `binstall_or_build` helper. Invoked via `bash …`, not executable. |
 
