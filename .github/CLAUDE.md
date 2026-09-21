@@ -94,7 +94,12 @@ compiles. Wrapper jobs restore those and save their own output under a
   `target-android` on an exact key hit and cargo still rebuilt 2653 crates:
   `actions/checkout` stamps sources newer than the restored artifacts and cargo
   compares mtimes. sccache is content-hashed and survives that, which is why
-  `android-demo` uses it rather than a target cache.
+  `android-demo` uses it rather than a target cache. That job sets
+  `RUSTC_WRAPPER` itself: unlike `_job.yml`, which derives it from the
+  `sccache` input, and `_macos.yml`, which sets it at workflow level,
+  `_android.yml` has no other source for it. It prints `sccache --show-stats`
+  after the AAR build — the four cross-compiles are the bulk of its runtime and
+  the hit rate is the number worth watching.
 - Actions are pinned by commit SHA, never by tag.
 - The toolchain versions live in the workflow `env:` block and are read through
   `${{ env.RUST_VERSION }}` / `${{ env.NODE_VERSION }}` in step `with:` inputs.

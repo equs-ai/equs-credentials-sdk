@@ -6,6 +6,8 @@ on:
 env:
   RUST_VERSION: "1.97.0"
   NDK_VERSION: "29.0.13599879"
+  RUSTC_WRAPPER: sccache
+  SCCACHE_CACHE_SIZE: 1G
   CARGO_INCREMENTAL: "0"
 
 jobs:
@@ -38,6 +40,10 @@ jobs:
       - name: Build the Android AAR
         working-directory: wrappers/uniffi
         run: make android-aar-dev
+
+      - name: sccache stats
+        if: always()
+        run: sccache --show-stats
 
       - name: Build and test the Kotlin demo
         shell: bash
