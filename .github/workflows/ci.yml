@@ -44,7 +44,7 @@ jobs:
         cargo audit --json > cargo-audit-report.json || true
         printf '### Dependency advisories\n\n```\n%s\n```\n' \
           "$(cargo audit --no-fetch 2>&1 | tail -n 60)" >> "$GITHUB_STEP_SUMMARY"
-        grep -q '"vulnerabilities"' cargo-audit-report.json || echo "::warning::cargo audit produced no report"
+        grep -q '"vulnerabilities"' cargo-audit-report.json || { echo "cargo audit produced no report" >&2; exit 1; }
 
   fmt:
     uses: ./.github/workflows/_job.yml
@@ -143,20 +143,23 @@ jobs:
   test-with-coverage:
     needs: [build-dev]
     uses: ./.github/workflows/_job.yml
-    secrets: inherit
+    permissions:
+      contents: write
     with:
       cache-key: test-with-coverage
       cargo-debug: line-tables-only
       options: --security-opt seccomp=unconfined
-      codecov: true
       artifact: tarpaulin-report
       artifact-path: tarpaulin-report.html
       run: |
         bash .github/scripts/binstall-or-build.sh cargo-tarpaulin "cargo tarpaulin --version"
-        cargo tarpaulin --skip-clean --timeout 180 --all-features --exclude-files "src/didcomm/*" --exclude-files "demos/*" --exclude-files "dependencies/one-core/*" --exclude-files "wrappers/*" --fail-under 70 -o Html -o Lcov 2>&1 | tee tarpaulin.log || rc=$?
+        cargo tarpaulin --skip-clean --timeout 180 --all-features --exclude-files "src/didcomm/*" --exclude-files "demos/*" --exclude-files "dependencies/one-core/*" --exclude-files "wrappers/*" --fail-under 70 -o Html 2>&1 | tee tarpaulin.log || rc=$?
         line=$(grep -oE '[0-9.]+% coverage, [0-9/]+ lines covered' tarpaulin.log | tail -1) || true
         [ -n "$line" ] && msg="**$line** — gate: 70%" || msg="No coverage figure produced; tarpaulin did not reach the reporting stage."
         printf '### Coverage\n\n%s\n' "$msg" | tee -a "$GITHUB_STEP_SUMMARY"
+        if [ -n "$line" ] && [ "$GITHUB_REF" = refs/heads/main ]; then
+          bash .github/scripts/coverage-badge.sh "${line%%%*}"
+        fi
         exit ${rc:-0}
 
   askar-rust:
@@ -184,7 +187,6 @@ jobs:
     with:
       cache-key: multi-thread-demo
       restore: target-dev
-      allow-failure: true
       run: |
         cd demos/multi-thread
         cargo build

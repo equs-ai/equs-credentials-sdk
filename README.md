@@ -1,7 +1,7 @@
 # EQUS Credentials SDK
 
 [![CI](https://github.com/equs-ai/equs-credentials-sdk/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/equs-ai/equs-credentials-sdk/actions/workflows/ci.yml)
-[![codecov](https://codecov.io/gh/equs-ai/equs-credentials-sdk/branch/main/graph/badge.svg)](https://codecov.io/gh/equs-ai/equs-credentials-sdk)
+[![Coverage](https://raw.githubusercontent.com/equs-ai/equs-credentials-sdk/badges/.badges/main/coverage.svg)](https://github.com/equs-ai/equs-credentials-sdk/actions/workflows/ci.yml)
 
 - [About EQUS Credentials SDK](#about-equs-credentials-sdk)
 - [Distinctive Features](#distinctive-features)

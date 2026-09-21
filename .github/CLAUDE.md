@@ -14,13 +14,14 @@ Because jobs run through `workflow_call`, a check is named `<job> / run`, not
 
 | Path | Role |
 |------|------|
-| `workflows/ci.yml` | Triggers, gating and the 19 job calls. No steps. |
-| `workflows/_job.yml` | The generic containerised job behind 18 of the 19. Owns `container`, checkout, toolchain, node/java/wasm, caches, disk report, Codecov and artifact upload. |
+| `workflows/ci.yml` | Triggers, gating and the 25 job calls. No steps. |
+| `workflows/_job.yml` | The generic containerised job behind 21 of the 25. Owns `container`, checkout, toolchain, node/java/wasm, caches, disk report, Codecov and artifact upload. |
 | `workflows/_macos.yml` | The generic `macos-15` job behind `ios-xcframework`, `swift-test` and `ios-demo`. |
 | `workflows/_android.yml` | `android-demo`: bare `ubuntu-latest`, SDK from the runner plus the pinned NDK. |
 | `actions/setup-rustup/` | Reclaims host disk, installs the pinned toolchain, restores the sccache and npm caches, installs `cargo-binstall` and `sccache`. |
 | `actions/cache/` | Named cache presets (`target-*`, `wrapper-*`), selected by the `restore`/`save` string inputs. |
 | `gitleaks.toml` | Secret-scan config. |
+| `scripts/coverage-badge.sh` | Writes the coverage SVG to the `badges` branch. Runs only on `main`. |
 | `scripts/binstall-or-build.sh` | GitLab's `binstall_or_build` helper. Invoked via `bash …`, not executable. |
 
 Jobs run in five declared tiers, marked by `# tier N` and ordered in the file:
@@ -91,16 +92,19 @@ compiles. Wrapper jobs restore those and save their own output under a
   `runner.arch` is in the key for the same reason. Two
   entries stay far under the ceiling. The npm entry is keyed on content alone —
   it holds portable tarballs.
-- A `target/` cache cannot stand in for sccache here. `android-demo` restored
-  `target-android` on an exact key hit and cargo still rebuilt 2653 crates:
-  `actions/checkout` stamps sources newer than the restored artifacts and cargo
-  compares mtimes. sccache is content-hashed and survives that, which is why
-  `android-demo` uses it rather than a target cache. That job sets
-  `RUSTC_WRAPPER` itself: unlike `_job.yml`, which derives it from the
-  `sccache` input, and `_macos.yml`, which sets it at workflow level,
-  `_android.yml` has no other source for it. It prints `sccache --show-stats`
-  after the AAR build — the four cross-compiles are the bulk of its runtime and
-  the hit rate is the number worth watching.
+- Neither cache works for `android-demo`, and both were measured. A `target/`
+  cache cannot help: it restored `target-android` on an exact key hit and cargo
+  still rebuilt 2653 crates, because `actions/checkout` stamps sources newer
+  than the restored artifacts and cargo compares mtimes. sccache is
+  content-hashed and immune to that, but `sccache --show-stats` reported 11154
+  compile requests, 10723 misses and a 0.00% hit rate, and the job went from
+  26 to 30 minutes — the wrapper costs something per invocation and returned
+  nothing. 6697 of those compiles are C/C++ from the NDK, not Rust, so even a
+  working Rust cache addresses barely a third of the work. Measure the Gradle
+  share before trying anything else here; `~/.gradle/caches` is untested.
+  That job sets `RUSTC_WRAPPER` itself: `_job.yml` derives it from the
+  `sccache` input and `_macos.yml` sets it at workflow level, so `_android.yml`
+  has no other source. It prints `sccache --show-stats` after the AAR build.
 - Actions are pinned by commit SHA, never by tag.
 - The toolchain versions live in the workflow `env:` block and are read through
   `${{ env.RUST_VERSION }}` / `${{ env.NODE_VERSION }}` in step `with:` inputs.
@@ -185,12 +189,14 @@ compiles. Wrapper jobs restore those and save their own output under a
   only, never the four Android targets or the AAR.
 - `multi-thread-demo` greps for `Success`. `start_holders` panics per holder
   but still exits 0, so a plain `cargo run` would pass with every holder failed.
-  It carries `allow-failure: true`: the demo does not currently work against the
-  SDK, which now requires a nonce-bound key proof the demo never supplies.
-  `demos/oid4vc` solves the same problem with a `ci_demo` feature. Remove the
-  flag once the demo is fixed. `continue-on-error` cannot go on the caller job:
-  a `uses:` job only accepts name, uses, with, secrets, needs, if and
-  permissions, so it is a step-level flag driven by an input.
+  The demo's issuer was built `.with_nonce_handler(...)`, which makes it reject
+  proofs with no nonce, but the server exposes only `/credential` and no nonce
+  endpoint, so no holder could obtain one. The SDK enforces nonces only when a
+  handler is present, and the README says nonce generation is skipped here, so
+  the handler is gone. `allow-failure` exists on `_job.yml` for cases like this
+  but nothing sets it: `continue-on-error` cannot go on a `uses:` job, which
+  accepts only name, uses, with, secrets, needs, if and permissions, so it is a
+  step-level flag driven by an input.
 - `android-demo` caches the four Android target directories under
   `target-android`; nothing else in the workflow builds those triples.
 - `demo-build` restores `target-askar` too: its npm `preinstall` builds the
@@ -216,9 +222,16 @@ compiles. Wrapper jobs restore those and save their own output under a
   info, so every fingerprint differs from `build-dev`'s `"0"` and cargo
   rebuilds regardless. Restoring that cache would cost a download and save
   nothing.
-- `test-with-coverage` writes `Html,Lcov`; the Codecov upload reads `lcov.info`
-  and is `fail_ci_if_error: false`, so coverage hosting never gates the merge.
-  `--fail-under 70` is the gate. The upload needs the `CODECOV_TOKEN` secret.
+- Coverage uses no external service. `test-with-coverage` writes `Html` as an
+  artifact, prints the figure to the step summary, and on `main` runs
+  `scripts/coverage-badge.sh`, which commits an SVG to the orphan `badges`
+  branch at `.badges/<branch>/coverage.svg`; the README reads it from
+  `raw.githubusercontent.com`. That job is the only one granted
+  `contents: write`. The script is idempotent — an unchanged percentage makes
+  no commit — so the branch does not accumulate noise. `--fail-under 70` is
+  the gate. Codecov was tried and dropped: it needs a token the repo does not
+  have, answered `Token required - not valid tokenless upload`, and put a
+  third party in the way of merging.
 - `dependency-scan` reports advisories and does not gate, matching GitLab.
   RUSTSEC-2023-0071 has no patched release, so gating could never go green, and
   a missing report warns rather than fails — `cargo audit --json` writes

@@ -5,7 +5,6 @@ use equs_sdk::did::didkey::DIDKey;
 use equs_sdk::did::universal::UniversalResolver;
 use equs_sdk::did::{DIDBuf, DIDResolver, DID};
 use equs_sdk::inmem::kms::LocalKms;
-use equs_sdk::inmem::nonce::LocalNonceHandler;
 use equs_sdk::inmem::vault::InMemVault;
 use equs_sdk::kms;
 use equs_sdk::kms::Kms;
@@ -107,11 +106,9 @@ async fn issue_endpoint(
 
 async fn oid4vci_issuer(issuer_metadata: IssuerMetadata) -> impl Issuer {
     let kms = LocalKms::new();
-    let nonce_handler = LocalNonceHandler::default();
     let (_, key_metadata) = create_did_and_key_metadata(&kms).await;
 
     oid4vci::IssuerBuilder::new(kms, issuer_metadata, key_metadata)
-        .with_nonce_handler(Box::new(nonce_handler))
         .with_http_client(ReqwestClientBuilder::new().insecure().build().unwrap())
         .build()
         .await

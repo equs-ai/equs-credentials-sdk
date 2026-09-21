@@ -1,4 +1,4 @@
-name: job
+name: linux job
 
 on:
   workflow_call:
@@ -18,11 +18,8 @@ on:
       artifact-path: {type: string, default: ''}
       options: {type: string, default: ''}
       timeout: {type: number, default: 30}
-      codecov: {type: boolean, default: false}
       toolchain: {type: boolean, default: true}
       allow-failure: {type: boolean, default: false}
-    secrets:
-      CODECOV_TOKEN: {required: false}
 
 env:
   RUST_VERSION: "1.97.0"
@@ -84,14 +81,6 @@ jobs:
         uses: ./.github/actions/cache
         with:
           save: ${{ inputs.save }}
-
-      - if: always() && inputs.codecov
-        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
-        with:
-          files: lcov.info
-          fail_ci_if_error: false
-        env:
-          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
       - if: always()
         shell: bash

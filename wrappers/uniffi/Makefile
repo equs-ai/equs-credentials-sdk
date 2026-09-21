@@ -177,8 +177,17 @@ ios-generate-xcframework-dev: ios-generate-ffi-dev ios-create-dev-lib ios-copy-l
 
 ios-build:
 	@echo "Generating binaries for x86_64 and aarch64"
+	cargo build --release --target x86_64-apple-ios
 	cargo build --release --target aarch64-apple-ios-sim
 	cargo build --release --target aarch64-apple-ios
+
+ios-create-lib: ios-build
+	@echo "Creating a release library for x86_64 and aarch64 simulators"
+	mkdir -p ../../target/ios-simulator-release/release
+	lipo -create \
+            ../../target/x86_64-apple-ios/release/libequssdk.a \
+            ../../target/aarch64-apple-ios-sim/release/libequssdk.a \
+            -output ../../target/ios-simulator-release/release/libequssdk.a
 
 ios-generate-ffi: ios-build
 	@echo "Generating framework module mapping and FFI bindings"
@@ -192,11 +201,11 @@ ios-copy-libs:
 	cp -r swift/Sources swift/ios/release/
 	cp swift/Package.swift swift/ios/release/Package.swift
 
-ios-generate-xcframework: ios-generate-ffi ios-copy-libs
+ios-generate-xcframework: ios-generate-ffi ios-create-lib ios-copy-libs
 	@echo "Generating XCFramework"
 	xcodebuild -create-xcframework \
             -library ../../target/aarch64-apple-ios/release/libequssdk.a -headers ../../target/uniffi-xcframework-release \
-            -library ../../target/aarch64-apple-ios-sim/release/libequssdk.a -headers ../../target/uniffi-xcframework-release \
+            -library ../../target/ios-simulator-release/release/libequssdk.a -headers ../../target/uniffi-xcframework-release \
             -output swift/ios/release/equssdk.xcframework
 
 
