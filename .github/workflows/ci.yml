@@ -150,11 +150,9 @@ jobs:
         bash .github/scripts/binstall-or-build.sh cargo-tarpaulin
         cargo tarpaulin --skip-clean --timeout 180 --all-features --exclude-files "src/didcomm/*" --exclude-files "demos/*" --exclude-files "dependencies/one-core/*" --exclude-files "wrappers/*" --fail-under 70 -o Html 2>&1 | tee tarpaulin.log || rc=$?
         line=$(grep -oE '[0-9.]+% coverage, [0-9/]+ lines covered' tarpaulin.log | tail -1) || true
-        [ -n "$line" ] && msg="**$line** — gate: 70%" || msg="No coverage figure produced; tarpaulin did not reach the reporting stage."
-        printf '### Coverage\n\n%s\n' "$msg" | tee -a "$GITHUB_STEP_SUMMARY"
-        if [ -n "$line" ] && [ "$GITHUB_REF" = refs/heads/main ]; then
-          bash .github/scripts/coverage-badge.sh "${line%%%*}"
-        fi
+        msg="${line:+**$line** — gate: 70%}"
+        printf '### Coverage\n\n%s\n' "${msg:-no coverage figure produced}" | tee -a "$GITHUB_STEP_SUMMARY"
+        [ -n "$line" ] && [ "$GITHUB_REF" = refs/heads/main ] && bash .github/scripts/coverage-badge.sh "${line%%%*}"
         exit ${rc:-0}
 
   askar-rust:
@@ -185,13 +183,9 @@ jobs:
         cd demos/multi-thread
         cargo build
         cargo run -- issuer > issuer.log 2>&1 &
-        for i in $(seq 1 60); do
-          (echo > /dev/tcp/127.0.0.1/4000) 2>/dev/null && break
-          [ "$i" = 60 ] && { echo "issuer did not start"; cat issuer.log; exit 1; }
-          sleep 2
-        done
-        RUST_LOG=ERROR cargo run -- holders 20 2>&1 | tee holders.log
-        grep -qx Success holders.log || { echo "holders reported failures"; cat issuer.log; exit 1; }
+        timeout 120 bash -c 'until (echo >/dev/tcp/127.0.0.1/4000) 2>/dev/null; do sleep 2; done' || { cat issuer.log; exit 1; }
+        RUST_LOG=ERROR cargo run -- holders 20 | tee holders.log
+        grep -qx Success holders.log || { cat issuer.log; exit 1; }
 
   # tier 4
 
