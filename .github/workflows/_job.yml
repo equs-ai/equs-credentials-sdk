@@ -20,6 +20,7 @@ on:
       timeout: {type: number, default: 30}
       toolchain: {type: boolean, default: true}
       allow-failure: {type: boolean, default: false}
+      token: {type: boolean, default: false}
 
 env:
   RUST_VERSION: "1.97.0"
@@ -36,6 +37,7 @@ jobs:
     timeout-minutes: ${{ inputs.timeout }}
     env:
       RUSTC_WRAPPER: ${{ inputs.sccache && 'sccache' || '' }}
+      GITHUB_TOKEN: ${{ inputs.token && github.token || '' }}
       CARGO_PROFILE_DEV_DEBUG: ${{ inputs.cargo-debug }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

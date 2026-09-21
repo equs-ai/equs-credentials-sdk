@@ -142,6 +142,7 @@ jobs:
       contents: write
     with:
       cache-key: test-with-coverage
+      token: true
       cargo-debug: line-tables-only
       options: --security-opt seccomp=unconfined
       artifact: tarpaulin-report
