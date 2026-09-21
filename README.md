@@ -1,5 +1,6 @@
 # EQUS Credentials SDK
 
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](./LICENSE)
 [![CI](https://github.com/equs-ai/equs-credentials-sdk/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/equs-ai/equs-credentials-sdk/actions/workflows/ci.yml)
 [![Coverage](https://raw.githubusercontent.com/equs-ai/equs-credentials-sdk/badges/.badges/main/coverage.svg)](https://github.com/equs-ai/equs-credentials-sdk/actions/workflows/ci.yml)
 
