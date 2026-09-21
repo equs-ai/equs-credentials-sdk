@@ -23,7 +23,7 @@ Because jobs run through `workflow_call`, a check is named `<job> / run`, not
 | `gitleaks.toml` | Secret-scan config. |
 | `scripts/install-gitleaks.sh` | Pinned gitleaks download with its SHA256; prints the binary path. |
 | `scripts/coverage-badge.sh` | Writes the coverage SVG to the `badges` branch. Runs only on `main`. |
-| `scripts/binstall-or-build.sh` | GitLab's `binstall_or_build` helper. Invoked via `bash …`, not executable. |
+| `scripts/binstall-or-build.sh` | Installs a `cargo-X` subcommand, falling back to a source build. Derives the check from the crate name, so it takes one argument where GitLab's `binstall_or_build` takes two. |
 
 Jobs run in five declared tiers, marked by `# tier N` and ordered in the file:
 1 `fmt` plus the two scans, which gate nothing; 2 `clippy`, `build-prod`,

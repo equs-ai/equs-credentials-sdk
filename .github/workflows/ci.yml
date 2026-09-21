@@ -35,7 +35,7 @@ jobs:
       artifact: cargo-audit-report
       artifact-path: cargo-audit-report.json
       run: |
-        bash .github/scripts/binstall-or-build.sh cargo-audit "cargo audit --version"
+        bash .github/scripts/binstall-or-build.sh cargo-audit
         cargo audit --json > cargo-audit-report.json || true
         printf '### Dependency advisories\n\n```\n%s\n```\n' \
           "$(cargo audit --no-fetch 2>&1 | tail -n 60)" >> "$GITHUB_STEP_SUMMARY"
@@ -147,7 +147,7 @@ jobs:
       artifact: tarpaulin-report
       artifact-path: tarpaulin-report.html
       run: |
-        bash .github/scripts/binstall-or-build.sh cargo-tarpaulin "cargo tarpaulin --version"
+        bash .github/scripts/binstall-or-build.sh cargo-tarpaulin
         cargo tarpaulin --skip-clean --timeout 180 --all-features --exclude-files "src/didcomm/*" --exclude-files "demos/*" --exclude-files "dependencies/one-core/*" --exclude-files "wrappers/*" --fail-under 70 -o Html 2>&1 | tee tarpaulin.log || rc=$?
         line=$(grep -oE '[0-9.]+% coverage, [0-9/]+ lines covered' tarpaulin.log | tail -1) || true
         [ -n "$line" ] && msg="**$line** — gate: 70%" || msg="No coverage figure produced; tarpaulin did not reach the reporting stage."
@@ -174,7 +174,6 @@ jobs:
       cache-key: oid4vc-demo
       restore: target-dev
       run: cd demos/oid4vc && ./demo.sh
-
 
   multi-thread-demo:
     needs: [build-dev]
