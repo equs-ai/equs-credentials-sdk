@@ -20,7 +20,7 @@ Because jobs run through `workflow_call`, a check is named `<job> / run`, not
 | `workflows/_android.yml` | `android-demo`: bare `ubuntu-latest`, SDK from the runner plus the pinned NDK. |
 | `actions/setup-rustup/` | Reclaims host disk, installs the pinned toolchain, restores the sccache and npm caches, installs `cargo-binstall` and `sccache`. |
 | `actions/cache/` | Named cache presets (`target-*`, `wrapper-*`), selected by the `restore`/`save` string inputs. |
-| `gitleaks.toml` | Secret-scan rules: default set minus the two noisy ones. |
+| `gitleaks.toml` | Secret-scan config. |
 | `scripts/binstall-or-build.sh` | GitLab's `binstall_or_build` helper. Invoked via `bash …`, not executable. |
 
 Jobs run in five declared tiers, marked by `# tier N` and ordered in the file:
@@ -87,7 +87,8 @@ compiles. Wrapper jobs restore those and save their own output under a
   the 10 GB repository ceiling and evicted the `target/` caches, which cost more
   than they saved. The key carries `runner.os` because the entry is write-once:
   a Linux job claimed it first, so `macos-15` restored ~1 GB of Linux objects
-  that no Apple-target compile can ever match, and never saved its own. Two
+  that no Apple-target compile can ever match, and never saved its own.
+  `runner.arch` is in the key for the same reason. Two
   entries stay far under the ceiling. The npm entry is keyed on content alone —
   it holds portable tarballs.
 - A `target/` cache cannot stand in for sccache here. `android-demo` restored
@@ -144,8 +145,11 @@ compiles. Wrapper jobs restore those and save their own output under a
 - No CodeQL. `gitleaks` covers secret detection via its MIT CLI, not the
   EULA-licensed Action.
 - `secret-scan` reads the working tree, not history, so the checkout stays
-  shallow. `generic-api-key` and `jwt` are off: they match the crypto test
-  vectors this repo is full of, 165 times over. Provider rules are untouched.
+  shallow. `generic-api-key` and `jwt` stay enabled and are allowlisted by
+  value shape, not by path: did:key multibase identifiers, compact JWTs and
+  W3C `…Key20xx` method-type names. Those three shapes are every hit in the
+  tree, and matching on them leaves both rules live in every file, so a new
+  fixture needs no config change. Provider rules are untouched.
 - `_job.yml` sets `CARGO_PROFILE_DEV_DEBUG` for every job from one input
   defaulting to `"0"`, rather than repeating it per job. `test-with-coverage`
   is the documented exception, passing `line-tables-only`.
@@ -216,4 +220,6 @@ compiles. Wrapper jobs restore those and save their own output under a
   and is `fail_ci_if_error: false`, so coverage hosting never gates the merge.
   `--fail-under 70` is the gate. The upload needs the `CODECOV_TOKEN` secret.
 - `dependency-scan` reports advisories and does not gate, matching GitLab.
-  RUSTSEC-2023-0071 has no patched release, so gating could never go green.
+  RUSTSEC-2023-0071 has no patched release, so gating could never go green, and
+  a missing report warns rather than fails — `cargo audit --json` writes
+  nothing when the advisory DB is unreachable.

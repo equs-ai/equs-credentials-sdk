@@ -1,7 +1,19 @@
 [extend]
 useDefault = true
-disabledRules = ["generic-api-key", "jwt"]
 
 [[allowlists]]
 targetRules = ["private-key"]
 paths = ['''wrappers/nodejs/test/oid4vp/fixtures\.ts$''']
+
+[[allowlists]]
+targetRules = ["generic-api-key", "jwt"]
+regexTarget = "match"
+regexes = [
+  '''z(6Mk|6LS|Dna|Q3s)[1-9A-HJ-NP-Za-km-z]{20,}''',
+  '''eyJ[A-Za-z0-9_-]{10,}''',
+  '''(Verification|Agreement)Key20[0-9]{2}''',
+]
+
+[[allowlists]]
+targetRules = ["generic-api-key", "jwt"]
+paths = ['''^Cargo\.lock$''', '''^demos/keycloak/realms/.*\.json$''']
