@@ -73,8 +73,6 @@ jobs:
     uses: ./.github/workflows/_job.yml
     with:
       cache-key: build-prod
-      restore: target-prod
-      save: target-prod
       run: cargo build --release -p nodejs
 
   build-dev:
@@ -82,8 +80,6 @@ jobs:
     uses: ./.github/workflows/_job.yml
     with:
       cache-key: build-dev
-      restore: target-dev
-      save: target-dev
       run: cargo build --all-features --workspace --exclude wasm
 
   doc-build:
@@ -91,7 +87,6 @@ jobs:
     uses: ./.github/workflows/_job.yml
     with:
       cache-key: doc-build
-      restore: target-dev
       run: RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --workspace --all-features --exclude nodejs --exclude wasm --exclude equs_sdk_uniffi
 
   # tier 3
@@ -102,7 +97,6 @@ jobs:
     with:
       cache-key: nodejs-wrapper
       node: true
-      restore: target-prod target-dev
       save: wrapper-nodejs
       run: |
         cd wrappers/nodejs
@@ -118,7 +112,6 @@ jobs:
       node: true
       wasm: true
       sccache: false
-      restore: target-dev
       save: wrapper-wasm
       run: |
         cd wrappers/wasm
@@ -131,7 +124,6 @@ jobs:
     uses: ./.github/workflows/_job.yml
     with:
       cache-key: uniffi-wrapper
-      restore: target-dev
       save: wrapper-uniffi
       run: cd wrappers/uniffi && make kotlin-generate_kotlin_debug
 
@@ -161,8 +153,6 @@ jobs:
     uses: ./.github/workflows/_job.yml
     with:
       cache-key: askar-rust
-      restore: target-askar
-      save: target-askar
       report-path: plugins/askar/target
       run: CARGO_TARGET_DIR=plugins/askar/target cargo build --release -p askar
 
@@ -171,7 +161,6 @@ jobs:
     uses: ./.github/workflows/_job.yml
     with:
       cache-key: oid4vc-demo
-      restore: target-dev
       run: cd demos/oid4vc && ./demo.sh
 
   multi-thread-demo:
@@ -179,7 +168,6 @@ jobs:
     uses: ./.github/workflows/_job.yml
     with:
       cache-key: multi-thread-demo
-      restore: target-dev
       run: |
         cd demos/multi-thread
         cargo build
@@ -225,7 +213,7 @@ jobs:
     with:
       cache-key: kotlin-test
       java: true
-      restore: target-dev wrapper-uniffi
+      restore: wrapper-uniffi
       run: cd wrappers/uniffi && make kotlin-test
 
   swift-test:
@@ -242,7 +230,7 @@ jobs:
     with:
       cache-key: askar-wrapper
       node: true
-      restore: target-askar wrapper-nodejs
+      restore: wrapper-nodejs
       save: wrapper-askar
       report-path: plugins/askar/target
       run: |
@@ -257,7 +245,6 @@ jobs:
       node: true
       wasm: true
       sccache: false
-      restore: target-dev target-askar
       run: |
         cd demos/wasm/oid4vc
         npm i
@@ -270,7 +257,7 @@ jobs:
       cache-key: nodejs-demo-build
       sccache: false
       node: true
-      restore: target-dev wrapper-nodejs wrapper-askar
+      restore: wrapper-nodejs wrapper-askar
       run: |
         cd demos/nodejs/oid4vc
         npm i --ignore-scripts

@@ -14,27 +14,6 @@ inputs:
 runs:
   using: composite
   steps:
-    - if: contains(inputs.restore, 'target-dev')
-      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-      with:
-        path: target
-        key: target-dev-${{ hashFiles('Cargo.lock') }}
-        restore-keys: target-dev-
-
-    - if: contains(inputs.restore, 'target-prod')
-      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-      with:
-        path: target
-        key: target-prod-${{ hashFiles('Cargo.lock') }}
-        restore-keys: target-prod-
-
-    - if: contains(inputs.restore, 'target-askar')
-      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-      with:
-        path: plugins/askar/target
-        key: target-askar-${{ hashFiles('Cargo.lock') }}
-        restore-keys: target-askar-
-
     - if: contains(inputs.restore, 'wrapper-nodejs')
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
@@ -83,24 +62,6 @@ runs:
           plugins/askar/wrappers/nodejs/binary.js
           plugins/askar/wrappers/nodejs/binary.d.ts
         key: wrapper-askar-${{ github.sha }}
-
-    - if: contains(inputs.save, 'target-dev')
-      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-      with:
-        path: target
-        key: target-dev-${{ hashFiles('Cargo.lock') }}
-
-    - if: contains(inputs.save, 'target-prod')
-      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-      with:
-        path: target
-        key: target-prod-${{ hashFiles('Cargo.lock') }}
-
-    - if: contains(inputs.save, 'target-askar')
-      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-      with:
-        path: plugins/askar/target
-        key: target-askar-${{ hashFiles('Cargo.lock') }}
 
     - if: contains(inputs.save, 'wrapper-nodejs')
       uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0

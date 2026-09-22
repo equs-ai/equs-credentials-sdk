@@ -209,11 +209,13 @@ not preserve, and turns a soft cache miss into a hard failure on re-run.
 - `demo-build` restores `target-askar` too: its npm `preinstall` builds the
   askar napi wrapper with `CARGO_TARGET_DIR=../../target`, which resolves to
   `plugins/askar/target` — the directory `askar-rust` saves.
-- There is no wasm target cache. One was tried: 594 MB per ref for a measured
-  minute or less on `wasm-wrapper` (11m populating, 10m warm, against a 10-17m
-  spread without it). Like `target-android` it hits its key and cargo rebuilds
-  anyway, because `actions/checkout` stamps sources newer than the restored
-  artifacts. Do not add it back without measuring.
+- There are no `target/` caches at all. `target-android` was measured hitting
+  its key while cargo rebuilt 2653 crates, and `target-wasm` bought a minute for
+  594 MB a ref; both fail the same way, because `actions/checkout` stamps sources
+  newer than the restored artifacts and cargo compares mtimes. `target-dev`,
+  `target-prod` and `target-askar` were removed on that evidence — 4.25 GB for a
+  benefit none of their measured siblings showed. sccache is content-hashed and
+  is the only compilation cache that works here. Measure before adding another.
 - `cache-cleanup` deletes the five `wrapper-*` entries at the end of every run.
   They are keyed on `github.sha` and can never be hit again, so they are
   intra-run hand-offs that would otherwise sit in the 10 GB budget until LRU
