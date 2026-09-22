@@ -1,0 +1,28 @@
+[package]
+name = "equs-common-macros"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.97.0"
+license = "Apache-2.0"
+readme = "README.md"
+description = "Derive macros used by the EQUS Credentials SDK"
+repository = "https://github.com/equs-ai/equs-credentials-sdk"
+publish = true
+include = [
+    "/src/**/*.rs",
+    "/Cargo.toml",
+    "/README.md",
+    "/LICENSE",
+]
+
+[lib]
+proc-macro = true
+name = "common_macros"
+
+[dependencies]
+syn = "2.0"
+quote = "1.0"
+proc-macro2 = "1.0.88"
+
+[dev-dependencies]
+snafu = "0.8.5"
