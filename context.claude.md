@@ -48,6 +48,7 @@ equs-credentials-sdk/
 │   └── wasm/             # wasm-bindgen → browser/WASM
 ├── plugins/
 │   └── askar/            # Askar secure-storage plugin
+├── equs-common-macros/   # DebugError derive (lib target: common_macros)
 ├── tests/
 │   ├── e2e/              # End-to-end test suite
 │   └── utils/            # Shared test fixtures + helpers
@@ -73,6 +74,7 @@ equs-credentials-sdk/
 | Target | Package | Source |
 |--------|---------|--------|
 | crates.io | `equs-credentials-sdk` | `Cargo.toml` (lib target stays `equs_sdk`, so imports remain `use equs_sdk::…`) |
+| crates.io | `equs-common-macros` | `equs-common-macros/Cargo.toml` (lib target stays `common_macros`, so imports remain `use common_macros::…`). Published by `.github/workflows/publish-common-macros.yml` on a `common-macros-X.Y.Z` tag. |
 | Node.js | `@equs-ai/equs-credentials-sdk` | `wrappers/nodejs/package.json` (napi binary `equs-credentials-sdk`) |
 | WASM | `@equs-ai/equs-credentials-sdk-wasm` | `wrappers/wasm/package.json` |
 | iOS | `equs-credentials-sdk` | `wrappers/uniffi/swift/Package.swift` (product/module stays `EqusSdk`) |

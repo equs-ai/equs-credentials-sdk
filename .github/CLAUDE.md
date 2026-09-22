@@ -1,16 +1,20 @@
 # .github — GitHub Actions CI
 
-GitHub Actions port of the CI half of `.gitlab-ci.yml`. CI only — no
-publish/release jobs. `.gitlab-ci.yml` is the running pipeline, so a CI change
-belongs in both files.
+GitHub Actions port of the CI half of `.gitlab-ci.yml`, plus one release job.
+`.gitlab-ci.yml` is the running pipeline, so a CI change belongs in both files.
+`publish-common-macros.yml` is the exception and has no GitLab counterpart:
+GitLab publishes the npm and UniFFI wrappers to its own registry and never a
+crate.
 
-One workflow, `ci.yml`. It defines no jobs directly: every job calls a
+Two workflows. `ci.yml` defines no jobs directly: every job calls a
 reusable workflow, so `container`, checkout,
 toolchain and caches are written once. Underscore-prefixed files are
 `workflow_call` targets, never triggered on their own.
+`publish-common-macros.yml` calls none of them and writes its own job.
 
-Because jobs run through `workflow_call`, a check is named `<job> / run`, not
-`<job>` — branch-protection rules must use the two-part name.
+Because CI jobs run through `workflow_call`, a check is named `<job> / run`, not
+`<job>` — branch-protection rules must use the two-part name. The publish job
+is the one exception and is named `publish`.
 
 | Path | Role |
 |------|------|
@@ -18,12 +22,14 @@ Because jobs run through `workflow_call`, a check is named `<job> / run`, not
 | `workflows/_job.yml` | The generic containerised job behind 21 of the 25. Owns `container`, checkout, toolchain, node/java/wasm, caches, disk report and artifact upload. |
 | `workflows/_macos.yml` | The generic `macos-15` job behind `ios-xcframework`, `swift-test` and `ios-demo`. |
 | `workflows/_android.yml` | `android-demo`: bare `ubuntu-latest`, SDK from the runner plus the pinned NDK. |
+| `workflows/publish-common-macros.yml` | Publishes `equs-common-macros` to crates.io on a `common-macros-X.Y.Z` tag. The only workflow that defines its own job. |
 | `actions/setup-rustup/` | Reclaims host disk, installs the pinned toolchain, restores the sccache and npm caches, installs `cargo-binstall` and `sccache`. |
 | `actions/cache/` | Named cache presets (`target-*`, `wrapper-*`), selected by the `restore`/`save` string inputs. |
 | `gitleaks.toml` | Secret-scan config. |
 | `scripts/install-gitleaks.sh` | Pinned gitleaks download with its SHA256; prints the binary path. |
 | `scripts/coverage-badge.sh` | Writes the coverage SVG to the `badges` branch. Runs only on `main`. |
 | `scripts/binstall-or-build.sh` | Installs a `cargo-X` subcommand, falling back to a source build. Derives the check from the crate name, so it takes one argument where GitLab's `binstall_or_build` takes two. |
+| `scripts/test-common-macros-publish-guard.sh` | Cases for the tag/version guard in `publish-common-macros.yml`. Run it by hand after editing that guard; no job calls it. |
 
 Jobs run in five declared tiers, marked by `# tier N` and ordered in the file:
 1 `fmt` plus the two scans, which gate nothing; 2 `clippy`, `build-prod`,
@@ -263,3 +269,25 @@ not preserve, and turns a soft cache miss into a hard failure on re-run.
   RUSTSEC-2023-0071 has no patched release, so gating could never go green, and
   a missing report warns rather than fails — `cargo audit --json` writes
   nothing when the advisory DB is unreachable.
+- `publish-common-macros.yml` does not call `_job.yml`. `_job.yml` has no
+  `secrets:` surface, and threading a registry token through the workflow that
+  runs all 25 CI jobs would widen that blast radius for one consumer. It is the
+  only workflow that declares its own `container` and steps.
+- It runs `cargo package` and then `cargo publish --no-verify`, not `cargo
+  publish` alone. `cargo package` already builds and verifies the tarball;
+  letting publish verify again would repeat that build for nothing, and the
+  packaged `.crate` is uploaded as an artifact either way.
+- The tag filter is the glob `common-macros-[0-9]*.[0-9]*.[0-9]*` backed by a
+  regex guard in the job. GitHub tag globs cannot express `X.Y.Z` — the glob
+  admits `common-macros-1.2.3.4` and the guard is what rejects it. The guard
+  also fails the run when the tag disagrees with
+  `equs-common-macros/Cargo.toml`, because a wrong version on crates.io can be
+  yanked but never removed.
+- Two prerequisites live in repo settings, not in the tree: the
+  `CARGO_REGISTRY_TOKEN` secret, and an environment named `crates-io`. A
+  missing environment does not fail the run; a missing secret fails at the
+  guard in the Publish step. The environment is where a required-reviewer rule
+  on an irreversible publish belongs.
+- `equs-common-macros` releases on its own tag, independent of the SDK's bare
+  `X.Y.Z`. The two globs are disjoint, so neither release fires the other's
+  workflow.
