@@ -20,11 +20,9 @@ drop() {
   fi
 }
 
-if [ "${1:-}" != --orphans-only ]; then
-  for w in nodejs wasm uniffi swift askar; do
-    drop "wrapper-$w-${GITHUB_SHA:?}"
-  done
-fi
+for w in nodejs wasm uniffi swift askar; do
+  drop "wrapper-$w-${GITHUB_SHA:?}"
+done
 
 gh cache list --repo "$repo" --limit 100 --json key,createdAt \
   --jq ".[] | select(.key | startswith(\"wrapper-\")) | select(.createdAt < \"$cutoff\") | .key" \

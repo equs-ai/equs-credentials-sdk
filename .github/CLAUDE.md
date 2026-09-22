@@ -228,11 +228,10 @@ not preserve, and turns a soft cache miss into a hard failure on re-run.
   failure breaks "Re-run failed jobs", which re-runs only the failed job and
   leaves its consumer with no wrapper to restore. A failed run therefore leaks
   five entries, and `prune-wrapper-caches.sh` sweeps any `wrapper-*` over three
-  hours old on the next successful run. `cache-prune.yml` runs the same sweep
-  daily with `--orphans-only`, so a long red streak or a string of cancelled
-  runs cannot accumulate entries while no run is succeeding. Scheduled
-  workflows only fire on the default branch, so it starts working once this
-  merges.
+  hours old on the next successful run. Nothing else is needed: GitHub deletes
+  caches unused for seven days and evicts least-recently-used at the ceiling,
+  and these entries are read once inside their own run, so they are the first
+  to go. A scheduled prune was tried and dropped as redundant machinery.
 - `_job.yml` installs `cargo-binstall` and `sccache` only when `sccache` is on.
   `fmt`, `nodejs-test`, `wasm-test`, `nodejs-demo-build` and
   `askar-plugin-nodejs-test` run no cargo compilation and set `sccache: false`,
