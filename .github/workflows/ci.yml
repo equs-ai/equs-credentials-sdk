@@ -118,8 +118,8 @@ jobs:
       node: true
       wasm: true
       sccache: false
-      restore: target-dev target-wasm
-      save: wrapper-wasm target-wasm
+      restore: target-dev
+      save: wrapper-wasm
       run: |
         cd wrappers/wasm
         npm i
@@ -257,7 +257,7 @@ jobs:
       node: true
       wasm: true
       sccache: false
-      restore: target-dev target-wasm target-askar
+      restore: target-dev target-askar
       run: |
         cd demos/wasm/oid4vc
         npm i
@@ -303,3 +303,22 @@ jobs:
       node: true
       restore: wrapper-nodejs wrapper-askar
       run: npm run test --prefix plugins/askar/wrappers/nodejs
+
+  # tier 6
+
+  cache-cleanup:
+    needs: [nodejs-test, wasm-test, kotlin-test, swift-test, ios-demo, askar-plugin-nodejs-test, nodejs-demo-build]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: write
+    steps:
+      - shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for w in nodejs wasm uniffi swift askar; do
+            gh cache delete "wrapper-$w-$GITHUB_SHA" --repo "$GITHUB_REPOSITORY" 2>/dev/null \
+              && echo "deleted wrapper-$w" || echo "wrapper-$w already gone"
+          done

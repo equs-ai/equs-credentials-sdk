@@ -209,10 +209,15 @@ not preserve, and turns a soft cache miss into a hard failure on re-run.
 - `demo-build` restores `target-askar` too: its npm `preinstall` builds the
   askar napi wrapper with `CARGO_TARGET_DIR=../../target`, which resolves to
   `plugins/askar/target` — the directory `askar-rust` saves.
-- `wasm-wrapper` and `demo-build` share `target-wasm`
-  (`target/wasm32-unknown-unknown`). Both disable sccache and `target-dev` only
-  holds host artifacts, so without it each recompiled the whole dependency tree
-  for wasm: `wasm-wrapper` measured 17 minutes and `demo-build` 14.
+- There is no wasm target cache. One was tried: 594 MB per ref for a measured
+  minute or less on `wasm-wrapper` (11m populating, 10m warm, against a 10-17m
+  spread without it). Like `target-android` it hits its key and cargo rebuilds
+  anyway, because `actions/checkout` stamps sources newer than the restored
+  artifacts. Do not add it back without measuring.
+- `cache-cleanup` deletes the five `wrapper-*` entries at the end of every run.
+  They are keyed on `github.sha` and can never be hit again, so they are
+  intra-run hand-offs that would otherwise sit in the 10 GB budget until LRU
+  eviction. It waits on every consumer and runs `if: always()`.
 - `_job.yml` installs `cargo-binstall` and `sccache` only when `sccache` is on.
   `fmt`, `nodejs-test`, `wasm-test`, `nodejs-demo-build` and
   `askar-plugin-nodejs-test` run no cargo compilation and set `sccache: false`,
