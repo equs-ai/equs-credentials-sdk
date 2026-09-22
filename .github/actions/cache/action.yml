@@ -49,13 +49,13 @@ runs:
           wrappers/wasm/dist
         key: wrapper-wasm-${{ github.sha }}
 
-    - if: contains(inputs.restore, 'wrapper-uniffi')
+    - if: contains(inputs.restore, 'wrapper-kotlin')
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: |
           target/debug/libequssdk.so
           wrappers/uniffi/kotlin/src/main/kotlin
-        key: wrapper-uniffi-${{ github.sha }}
+        key: wrapper-kotlin-${{ github.sha }}
 
     - if: contains(inputs.restore, 'wrapper-swift')
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -98,13 +98,13 @@ runs:
           wrappers/wasm/dist
         key: wrapper-wasm-${{ github.sha }}
 
-    - if: contains(inputs.save, 'wrapper-uniffi')
+    - if: contains(inputs.save, 'wrapper-kotlin')
       uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: |
           target/debug/libequssdk.so
           wrappers/uniffi/kotlin/src/main/kotlin
-        key: wrapper-uniffi-${{ github.sha }}
+        key: wrapper-kotlin-${{ github.sha }}
 
     - if: contains(inputs.save, 'wrapper-swift')
       uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0

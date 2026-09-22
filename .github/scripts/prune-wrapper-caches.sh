@@ -20,7 +20,7 @@ drop() {
   fi
 }
 
-for w in nodejs wasm uniffi swift askar; do
+for w in nodejs wasm kotlin swift askar; do
   drop "wrapper-$w-${GITHUB_SHA:?}"
 done
 

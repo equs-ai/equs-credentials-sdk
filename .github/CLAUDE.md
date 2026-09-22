@@ -27,10 +27,10 @@ Because jobs run through `workflow_call`, a check is named `<job> / run`, not
 
 Jobs run in five declared tiers, marked by `# tier N` and ordered in the file:
 1 `fmt` plus the two scans, which gate nothing; 2 `clippy`, `build-prod`,
-`build-dev`, `doc-build` and `ios-xcframework`; 3 the three wrappers, `test-with-coverage`,
-`askar-rust` and `oid4vc-demo`; 4 the tests, `askar-wrapper` and `demo-build`;
+`build-prod-all-features`, `build-dev`, `doc-build` and `ios-xcframework`; 3 the three wrappers, `test-with-coverage`,
+`askar-rust` and `oid4vc-demo`; 4 the tests, `askar-wrapper` and `wasm-demo-build`;
 5 `askar-plugin-nodejs-test`. Every demo in `demos/` is built: `oid4vc-demo`
-and `multi-thread-demo` in tier 3, and `demo-build` (wasm), `nodejs-demo-build`,
+and `multi-thread-demo` in tier 3, and `wasm-demo-build`, `nodejs-demo-build`,
 `android-demo` and `ios-demo` in tier 4. `keycloak` is compose config with
 nothing to build. A job names only the specific upstream job it
 needs, not the whole tier, so the graph stays as parallel as the data allows.
@@ -43,7 +43,7 @@ as an ordinary job.
 (`make ios-test-only`) and `ios-demo` both restore it through `wrapper-swift`
 and run in parallel in tier 4. Before the split, `swift-test` built it and
 `ios-demo` waited for the whole 40-minute job just to reuse it. That mirrors
-`kotlin-test` and `android-demo`, which both hang off `uniffi-wrapper`.
+`kotlin-test` and `android-demo`, which both hang off `kotlin-wrapper`.
 
 Jobs are declared in execution order: scans, lint, `build-prod`, the Rust
 checks, then each wrapper followed by its test, the three askar jobs together,
@@ -76,7 +76,7 @@ not preserve, and turns a soft cache miss into a hard failure on re-run.
 - Every Linux job runs in `rust:1.97.0-bookworm`, the image `.gitlab-ci.yml`
   already uses. GitHub hosts no Debian runner, so the image is the only route
   to one. Measured on run 35494422506: the runner reports 145 GB with ~110 GB
-  free at job start, and the heaviest job (`demo-build`) peaked at 49 GB used.
+  free at job start, and the heaviest job (`wasm-demo-build`) peaked at 49 GB used.
   An earlier note claimed a container saw only 8.4 GB of a 72 GB disk and that
   ~24 GB of preinstalled toolchains had to be bind-mounted under `/host` and
   deleted to fit. Runners have since grown and that no longer holds, so the
@@ -177,7 +177,7 @@ not preserve, and turns a soft cache miss into a hard failure on re-run.
   instrumented tests need an emulator and are not run.
 - `nodejs-demo-build` restores the `wrapper-*` caches and uses
   `npm i --ignore-scripts`, skipping the `preinstall` that would rebuild the
-  wrappers its upstream jobs already built. `demo-build` cannot: `wasm-wrapper`
+  wrappers its upstream jobs already built. `wasm-demo-build` cannot: `wasm-wrapper`
   leaves `pkg` holding the cjs/nodejs build from `build:dev:cjs`, since `make`
   wipes `pkg` on each run, and the wasm demo needs the web/esm one. Reusing it
   fails as `TS2349: This expression is not callable`. The wasm wrapper is built
@@ -207,7 +207,7 @@ not preserve, and turns a soft cache miss into a hard failure on re-run.
   step-level flag driven by an input.
 - `android-demo` caches the four Android target directories under
   `target-android`; nothing else in the workflow builds those triples.
-- `demo-build` restores `target-askar` too: its npm `preinstall` builds the
+- `wasm-demo-build` restores `target-askar` too: its npm `preinstall` builds the
   askar napi wrapper with `CARGO_TARGET_DIR=../../target`, which resolves to
   `plugins/askar/target` — the directory `askar-rust` saves.
 - `target-prod` is the only `target/` cache, and it was kept on measurement:
@@ -236,7 +236,7 @@ not preserve, and turns a soft cache miss into a hard failure on re-run.
 - `_job.yml` installs `cargo-binstall` and `sccache` only when `sccache` is on.
   `fmt`, `nodejs-test`, `wasm-test`, `nodejs-demo-build` and
   `askar-plugin-nodejs-test` run no cargo compilation and set `sccache: false`,
-  which skips the download. `wasm-wrapper` and `demo-build` also set it but do
+  which skips the download. `wasm-wrapper` and `wasm-demo-build` also set it but do
   compile; they simply do not use the wrapper.
 - `cargo tarpaulin` takes `--out` once per format: `-o Html -o Lcov`. A comma
   list is rejected as an invalid value.

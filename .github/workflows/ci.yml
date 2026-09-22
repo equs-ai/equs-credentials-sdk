@@ -75,7 +75,14 @@ jobs:
       cache-key: build-prod
       restore: target-prod
       save: target-prod
-      run: cargo build --release -p nodejs
+      run: cargo build --release -p equs-credentials-sdk
+
+  build-prod-all-features:
+    needs: [fmt]
+    uses: ./.github/workflows/_job.yml
+    with:
+      cache-key: build-prod-all-features
+      run: cargo build --release -p equs-credentials-sdk --all-features
 
   build-dev:
     needs: [fmt]
@@ -122,12 +129,12 @@ jobs:
         npm run build
         npm run build:dev:cjs
 
-  uniffi-wrapper:
+  kotlin-wrapper:
     needs: [build-dev]
     uses: ./.github/workflows/_job.yml
     with:
-      cache-key: uniffi-wrapper
-      save: wrapper-uniffi
+      cache-key: kotlin-wrapper
+      save: wrapper-kotlin
       run: cd wrappers/uniffi && make kotlin-generate_kotlin_debug
 
   test-with-coverage:
@@ -211,12 +218,12 @@ jobs:
         npm run test:wasm
 
   kotlin-test:
-    needs: [uniffi-wrapper]
+    needs: [kotlin-wrapper]
     uses: ./.github/workflows/_job.yml
     with:
       cache-key: kotlin-test
       java: true
-      restore: wrapper-uniffi
+      restore: wrapper-kotlin
       run: cd wrappers/uniffi && make kotlin-test
 
   swift-test:
@@ -240,11 +247,11 @@ jobs:
         npm i --prefix plugins/askar/wrappers/nodejs
         npm run build --prefix plugins/askar/wrappers/nodejs
 
-  demo-build:
+  wasm-demo-build:
     needs: [nodejs-wrapper, wasm-wrapper, askar-wrapper]
     uses: ./.github/workflows/_job.yml
     with:
-      cache-key: demo-build
+      cache-key: wasm-demo-build
       node: true
       wasm: true
       sccache: false
@@ -267,7 +274,7 @@ jobs:
         npm run build
 
   android-demo:
-    needs: [uniffi-wrapper]
+    needs: [kotlin-wrapper]
     uses: ./.github/workflows/_android.yml
 
   ios-demo:
