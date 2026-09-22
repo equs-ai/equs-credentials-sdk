@@ -1,83 +1,52 @@
 import Testing
 import Foundation
-import Swifter
 @testable import EqusSdk
 
 @Suite(.serialized) class Oid4vciHolderTests {
-	let server: HttpServer
+	let http: MockHttpRouter
 	let port: in_port_t
 
 	init() async throws {
-		self.server = HttpServer()
-		// Bind to port 0 so the OS picks a guaranteed-free port; avoids collisions
-		// with whatever else (CI runner, prior job, etc.) might hold a fixed port.
-		try server.start(0, forceIPv4: true)
-		self.port = in_port_t(try server.port())
+		self.http = MockHttpRouter()
+		// No socket is bound; the router matches on path, so the port only has to
+		// make the fixture URLs well-formed.
+		self.port = 9000
 
 		let issuerMetadata = Oid4vciHolderTestConstants.issuerMetadata(port: port)
 		let authServerMetadata = Oid4vciHolderTestConstants.authServerMetadata(port: port)
 
-		self.server["/.well-known/openid-credential-issuer"] = { request in
-            return Swifter.HttpResponse.ok(
-				.json(
-					try! JSONSerialization.jsonObject(
-						with: issuerMetadata.data(using: .utf8)!)))
+		self.http["/.well-known/openid-credential-issuer"] = { _ in
+			MockHttpRouter.ok(issuerMetadata)
 		}
-		self.server["/.well-known/oauth-authorization-server/auth"] = { request in
-            return Swifter.HttpResponse.ok(
-				.json(
-					try! JSONSerialization.jsonObject(
-						with: authServerMetadata)
-				))
+		self.http["/.well-known/oauth-authorization-server/auth"] = { _ in
+			MockHttpRouter.ok(String(data: authServerMetadata, encoding: .utf8)!)
 		}
-		self.server["/auth/par/request"] = { request in
-            return Swifter.HttpResponse.raw(
-				201,
-				"Created",
-				["Content-Type": "application/json"],
-				{ writer in
-					try writer.write([UInt8](Oid4vciHolderTestConstants.CodeResponse))
-				}
-			)
+		self.http["/auth/par/request"] = { _ in
+			EqusSdk.HttpResponse(
+				statusCode: 201,
+				headers: ["content-type": "application/json"],
+				body: String(data: Oid4vciHolderTestConstants.CodeResponse, encoding: .utf8)!)
 		}
-		self.server["/auth/token"] = { request in
-            return Swifter.HttpResponse.ok(
-				.json(
-					try! JSONSerialization.jsonObject(
-						with: Oid4vciHolderTestConstants.AccessTokenResponse)
-				))
+		self.http["/auth/token"] = { _ in
+			MockHttpRouter.ok(String(data: Oid4vciHolderTestConstants.AccessTokenResponse, encoding: .utf8)!)
 		}
-		self.server["/credential"] = { request in
-        return Swifter.HttpResponse.ok(
-          .json(try! JSONSerialization.jsonObject(with: Oid4vciHolderTestConstants.BatchCredentialResponse))
-        )
+		self.http["/credential"] = { _ in
+			MockHttpRouter.ok(String(data: Oid4vciHolderTestConstants.BatchCredentialResponse, encoding: .utf8)!)
 		}
-		self.server["/deferred_credential"] = { request in
-        return Swifter.HttpResponse.ok(
-          .json(try! JSONSerialization.jsonObject(with: Oid4vciHolderTestConstants.DeferredCredentialResponse))
-        )
+		self.http["/deferred_credential"] = { _ in
+			MockHttpRouter.ok(String(data: Oid4vciHolderTestConstants.DeferredCredentialResponse, encoding: .utf8)!)
 		}
-		self.server["/notification"] = { request in
-            return Swifter.HttpResponse.ok(
-                .text("")
-            )
+		self.http["/notification"] = { _ in
+			MockHttpRouter.ok("", contentType: "text/plain")
 		}
-        
-		self.server["/nonce"] = { request in
-            return Swifter.HttpResponse.ok(
-				.json(
-					try! JSONSerialization.jsonObject(
-						with: Oid4vciHolderTestConstants.NonceResponse)
-				))
+		self.http["/nonce"] = { _ in
+			MockHttpRouter.ok(String(data: Oid4vciHolderTestConstants.NonceResponse, encoding: .utf8)!)
 		}
 	}
 
-	// No deinit { server.stop() }: Swifter 1.5.0's HttpServer.stop() can race with its
-	// background accept loop and crash xctest. With rotating ports, the previous test's
-	// server stays alive on its unused port until process exit; harmless.
 
 	@Test func retrieveIssuerMetadata() async throws {
-		let holder = await self.buildHolder()
+		let holder = try await self.buildHolder()
 		let metadata = try holder.getIssuerMetadata().data(using: .utf8)!
 
 		compareJsonValues(
@@ -86,7 +55,7 @@ import Swifter
 	}
 
 	@Test func authorizeUsingAuthCode() async throws {
-		let holder = await self.buildHolder()
+		let holder = try await self.buildHolder()
 
 		let tokenResponse = try await holder.authzCodeFlowWithScope(
 			scope: "SD_JWT_cred", authorizationCodeCallback: AuthorizationCodeCallback(port: port))
@@ -96,7 +65,7 @@ import Swifter
 
 	@Test func getAccessTokenByUsingResolvedCredentialOfferWithPreAuthorizedCodeGrant() async throws
 	{
-		let holder = await self.buildHolder()
+		let holder = try await self.buildHolder()
 
 		let result = try await holder.getAccessToken(
 			offerParams: Oid4vciHolderTestConstants.credentialOfferWithPreAuthGrant(port: port),
@@ -108,7 +77,7 @@ import Swifter
 
 	@Test func getAccessTokenByUsingResolvedCredentialOfferWithAuthorizationCodeGrant() async throws
 	{
-		let holder = await self.buildHolder()
+		let holder = try await self.buildHolder()
 
 		let result = try await holder.getAccessToken(
 			offerParams: Oid4vciHolderTestConstants.credentialOfferWithAuthGrant(port: port),
@@ -126,7 +95,7 @@ import Swifter
 			vault: vault,
 			clientId: "client_id",
 			issuerDiscovery: IssuerDiscovery.offer(Oid4vciHolderTestConstants.credentialOffer(port: port)),
-      httpClient: ReqwestHttpClient.insecure(),
+      httpClient: http,
       pop: ProofOfPossessionMetadataBuilder()
         .withNotBefore(notBefore: ProofOfPossessionNotBefore.leeway(300))
         .withLifetime(lifetime: 10)
@@ -167,7 +136,7 @@ import Swifter
 			vault: vault,
 			clientId: "client_id",
 			issuerDiscovery: IssuerDiscovery.offer(Oid4vciHolderTestConstants.credentialOffer(port: port)),
-            httpClient: ReqwestHttpClient.insecure(),
+            httpClient: http,
             pop: ProofOfPossessionMetadataBuilder()
               .withNotBefore(notBefore: ProofOfPossessionNotBefore.leeway(300))
               .withLifetime(lifetime: 10)
@@ -196,7 +165,7 @@ import Swifter
 			vault: vault,
 			clientId: "client_id",
 			issuerDiscovery: IssuerDiscovery.offer(Oid4vciHolderTestConstants.credentialOffer(port: port)),
-            httpClient: ReqwestHttpClient.insecure(),
+            httpClient: http,
             pop: ProofOfPossessionMetadataBuilder()
               .withNotBefore(notBefore: ProofOfPossessionNotBefore.leeway(300))
               .withLifetime(lifetime: 10)
@@ -216,32 +185,18 @@ import Swifter
 
 	@Test func verifyCredentialExtra() async throws {
 		// SdJwtCredentialDidWebIss is a pre-signed JWT with iss=did:web:localhost%3A9000,
-		// so this test must use port 9000 (and not the suite's rotated port) so the
-		// credentialIssuerIdentifier check matches. Bind a one-off server on 9000.
+		// so this test must present metadata for port 9000 for the
+		// credentialIssuerIdentifier check to match.
 		let fixedPort: in_port_t = 9000
-		let extraServer = HttpServer()
+		let extraHttp = MockHttpRouter()
 		let extraIssuerMetadata = Oid4vciHolderTestConstants.issuerMetadata(port: fixedPort)
 		let extraAuthServerMetadata = Oid4vciHolderTestConstants.authServerMetadata(port: fixedPort)
-		extraServer["/.well-known/openid-credential-issuer"] = { _ in
-			.ok(.json(try! JSONSerialization.jsonObject(with: extraIssuerMetadata.data(using: .utf8)!)))
+		extraHttp["/.well-known/openid-credential-issuer"] = { _ in
+			MockHttpRouter.ok(extraIssuerMetadata)
 		}
-		extraServer["/.well-known/oauth-authorization-server/auth"] = { _ in
-			.ok(.json(try! JSONSerialization.jsonObject(with: extraAuthServerMetadata)))
+		extraHttp["/.well-known/oauth-authorization-server/auth"] = { _ in
+			MockHttpRouter.ok(String(data: extraAuthServerMetadata, encoding: .utf8)!)
 		}
-		// Retry: on the persistent CI runner 9000 may still be held from a prior run
-		// (no stop() below), so wait for it to free up before giving up.
-		for attempt in 1...15 {
-			do {
-				try extraServer.start(fixedPort, forceIPv4: true)
-				break
-			} catch {
-				if attempt == 15 { fatalError("Failed to bind port \(fixedPort) after 15 attempts: \(error)") }
-				Thread.sleep(forTimeInterval: 1)
-			}
-		}
-		// No stop(): Swifter 1.5.0's HttpServer.stop() can crash xctest under concurrency.
-		// Server stays bound on 9000 for the rest of this test process; only this test
-		// uses 9000, so no collision.
 
 		let vault = InMemVault();
 		let kms = InMemKms();
@@ -250,7 +205,7 @@ import Swifter
 			vault: vault,
 			clientId: "client_id",
 			issuerDiscovery: IssuerDiscovery.offer(Oid4vciHolderTestConstants.credentialOffer(port: fixedPort)),
-      httpClient: ReqwestHttpClient.insecure(),
+      httpClient: extraHttp,
       pop: ProofOfPossessionMetadataBuilder()
         .withNotBefore(notBefore: ProofOfPossessionNotBefore.leeway(300))
         .withLifetime(lifetime: 10)
@@ -275,7 +230,7 @@ import Swifter
 			vault: vault,
 			clientId: "client_id",
 			issuerDiscovery: IssuerDiscovery.offer(Oid4vciHolderTestConstants.credentialOffer(port: port)),
-            httpClient: ReqwestHttpClient.insecure(),
+            httpClient: http,
       pop: ProofOfPossessionMetadataBuilder()
         .withNotBefore(notBefore: ProofOfPossessionNotBefore.leeway(300))
         .withLifetime(lifetime: 10)
@@ -303,30 +258,17 @@ import Swifter
 		#expect(credentialEntry.id == id)
 	}
 
-	private func buildHolder() async -> Oid4vciHolder {
-		// .build() performs an HTTP metadata fetch against the local Swifter server.
-		// On the CI simulator that send occasionally fails transiently ("error sending
-		// request"); with a bare try! that single blip becomes a fatalError that aborts
-		// the whole test binary and marks unrelated in-flight tests as failed. Retry a
-		// few times so a transient network hiccup self-heals instead of crashing the suite.
-		for attempt in 1...5 {
-			do {
-				return try await Oid4vciHolderBuilder(
-					kms: InMemKms(), vault: InMemVault(), clientId: "client_id",
-					issuerDiscovery: IssuerDiscovery.offer(Oid4vciHolderTestConstants.credentialOffer(port: port)),
-          httpClient: ReqwestHttpClient.insecure(),
-          pop: ProofOfPossessionMetadataBuilder()
-            .withNotBefore(notBefore: ProofOfPossessionNotBefore.leeway(300))
-            .withLifetime(lifetime: 10)
-            .build(),
-          credentialExtraVerification: nil
-				).build()
-			} catch {
-				if attempt == 5 { fatalError("Failed to build Oid4vciHolder after 5 attempts: \(error)") }
-				try? await Task.sleep(nanoseconds: 200 * NSEC_PER_MSEC)
-			}
-		}
-		fatalError("unreachable")
+	private func buildHolder() async throws -> Oid4vciHolder {
+		try await Oid4vciHolderBuilder(
+			kms: InMemKms(), vault: InMemVault(), clientId: "client_id",
+			issuerDiscovery: IssuerDiscovery.offer(Oid4vciHolderTestConstants.credentialOffer(port: port)),
+			httpClient: http,
+			pop: ProofOfPossessionMetadataBuilder()
+				.withNotBefore(notBefore: ProofOfPossessionNotBefore.leeway(300))
+				.withLifetime(lifetime: 10)
+				.build(),
+			credentialExtraVerification: nil
+		).build()
 	}
 }
 

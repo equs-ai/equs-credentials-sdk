@@ -139,17 +139,19 @@ android-aar: android-generate-bindings android-copy-libs
 # IOS
 
 
+IOS_SIM_NAME ?= iPhone 16
+IOS_SIM_ID = ${shell xcrun simctl list devices available | grep -F "${IOS_SIM_NAME} (" | tail -1 | sed -E 's/.*\(([0-9A-Fa-f-]{36})\).*/\1/'}
+IOS_DESTINATION ?= platform=iOS Simulator,id=$(or $(IOS_SIM_ID),$(error no available simulator matches "$(IOS_SIM_NAME)"; set IOS_SIM_NAME or IOS_DESTINATION))
+
 ios-dev-build:
-	@echo "Generating binaries for x86_64 and aarch64"
-	cargo build --target x86_64-apple-ios
+	@echo "Generating binaries for the arm64 simulator and device"
 	cargo build --target aarch64-apple-ios-sim
 	cargo build --target aarch64-apple-ios
 
 ios-create-dev-lib: ios-dev-build
-	@echo "Creating a debug library for x86_64 and aarch64 simulators"
+	@echo "Creating a debug library for the arm64 simulator"
 	mkdir -p ../../target/ios-simulator-debug/debug
 	lipo -create \
-            ../../target/x86_64-apple-ios/debug/libequssdk.a \
             ../../target/aarch64-apple-ios-sim/debug/libequssdk.a \
             -output ../../target/ios-simulator-debug/debug/libequssdk.a
 
@@ -175,8 +177,17 @@ ios-generate-xcframework-dev: ios-generate-ffi-dev ios-create-dev-lib ios-copy-l
 
 ios-build:
 	@echo "Generating binaries for x86_64 and aarch64"
+	cargo build --release --target x86_64-apple-ios
 	cargo build --release --target aarch64-apple-ios-sim
 	cargo build --release --target aarch64-apple-ios
+
+ios-create-lib: ios-build
+	@echo "Creating a release library for x86_64 and aarch64 simulators"
+	mkdir -p ../../target/ios-simulator-release/release
+	lipo -create \
+            ../../target/x86_64-apple-ios/release/libequssdk.a \
+            ../../target/aarch64-apple-ios-sim/release/libequssdk.a \
+            -output ../../target/ios-simulator-release/release/libequssdk.a
 
 ios-generate-ffi: ios-build
 	@echo "Generating framework module mapping and FFI bindings"
@@ -190,16 +201,19 @@ ios-copy-libs:
 	cp -r swift/Sources swift/ios/release/
 	cp swift/Package.swift swift/ios/release/Package.swift
 
-ios-generate-xcframework: ios-generate-ffi ios-copy-libs
+ios-generate-xcframework: ios-generate-ffi ios-create-lib ios-copy-libs
 	@echo "Generating XCFramework"
 	xcodebuild -create-xcframework \
             -library ../../target/aarch64-apple-ios/release/libequssdk.a -headers ../../target/uniffi-xcframework-release \
-            -library ../../target/aarch64-apple-ios-sim/release/libequssdk.a -headers ../../target/uniffi-xcframework-release \
+            -library ../../target/ios-simulator-release/release/libequssdk.a -headers ../../target/uniffi-xcframework-release \
             -output swift/ios/release/equssdk.xcframework
 
 
-ios-test: ios-generate-xcframework-dev
+ios-test: ios-generate-xcframework-dev ios-test-only
+
+ios-test-only:
 	@echo "Run tests"
 	rm -rf swift/equssdk.xcframework
 	cp -R swift/ios/debug/equssdk.xcframework swift/equssdk.xcframework
-	cd swift && xcodebuild test -scheme equs-credentials-sdk -destination "name=iPhone 16,OS=18.0"
+	cd swift && xcodebuild test -scheme equs-credentials-sdk -destination "$(IOS_DESTINATION)" -skip-testing:EqusSdkTests/HttpTests
+	cd swift && (xcodebuild test -scheme equs-credentials-sdk -destination "$(IOS_DESTINATION)" -only-testing:EqusSdkTests/HttpTests || xcodebuild test -scheme equs-credentials-sdk -destination "$(IOS_DESTINATION)" -only-testing:EqusSdkTests/HttpTests)

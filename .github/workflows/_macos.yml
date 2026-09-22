@@ -1,0 +1,45 @@
+name: macos job
+
+on:
+  workflow_call:
+    inputs:
+      run: {type: string, required: true}
+      cache-key: {type: string, required: true}
+      restore: {type: string, default: ''}
+      save: {type: string, default: ''}
+      targets: {type: string, default: ''}
+      timeout: {type: number, default: 60}
+
+env:
+  RUST_VERSION: "1.97.0"
+  RUSTC_WRAPPER: sccache
+  SCCACHE_CACHE_SIZE: 1G
+  CARGO_INCREMENTAL: "0"
+
+jobs:
+  run:
+    runs-on: macos-15
+    timeout-minutes: ${{ inputs.timeout }}
+    env:
+      CARGO_PROFILE_DEV_DEBUG: "0"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-rustup
+        with:
+          rust-version: ${{ env.RUST_VERSION }}
+          cache-key: ${{ inputs.cache-key }}
+
+      - if: inputs.targets != ''
+        run: rustup target add ${{ inputs.targets }}
+
+      - uses: ./.github/actions/cache
+        with:
+          restore: ${{ inputs.restore }}
+
+      - shell: bash
+        run: ${{ inputs.run }}
+
+      - if: inputs.save != ''
+        uses: ./.github/actions/cache
+        with:
+          save: ${{ inputs.save }}
