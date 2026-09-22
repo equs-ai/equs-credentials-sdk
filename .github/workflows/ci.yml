@@ -298,7 +298,7 @@ jobs:
 
   cache-cleanup:
     needs: [nodejs-test, wasm-test, kotlin-test, swift-test, ios-demo, askar-plugin-nodejs-test, nodejs-demo-build]
-    if: always()
+    if: success()
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:

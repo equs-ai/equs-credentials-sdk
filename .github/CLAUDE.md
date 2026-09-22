@@ -221,10 +221,14 @@ not preserve, and turns a soft cache miss into a hard failure on re-run.
   newer than restored artifacts and cargo compares mtimes, so a `target/` cache
   only survives where the consumer rebuilds with identical flags. Measure before
   adding another; the results differ per job and do not generalise.
-- `cache-cleanup` deletes the five `wrapper-*` entries at the end of every run.
+- `cache-cleanup` deletes the five `wrapper-*` entries after a successful run.
   They are keyed on `github.sha` and can never be hit again, so they are
   intra-run hand-offs that would otherwise sit in the 10 GB budget until LRU
-  eviction. It waits on every consumer and runs `if: always()`.
+  eviction. It runs `if: success()`, not `always()`: deleting them after a
+  failure breaks "Re-run failed jobs", which re-runs only the failed job and
+  leaves its consumer with no wrapper to restore. A failed run therefore leaks
+  five entries, and `prune-wrapper-caches.sh` sweeps any `wrapper-*` over three
+  hours old on the next successful run, so they do not accumulate.
 - `_job.yml` installs `cargo-binstall` and `sccache` only when `sccache` is on.
   `fmt`, `nodejs-test`, `wasm-test`, `nodejs-demo-build` and
   `askar-plugin-nodejs-test` run no cargo compilation and set `sccache: false`,
