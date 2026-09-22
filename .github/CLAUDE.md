@@ -209,13 +209,18 @@ not preserve, and turns a soft cache miss into a hard failure on re-run.
 - `demo-build` restores `target-askar` too: its npm `preinstall` builds the
   askar napi wrapper with `CARGO_TARGET_DIR=../../target`, which resolves to
   `plugins/askar/target` — the directory `askar-rust` saves.
-- There are no `target/` caches at all. `target-android` was measured hitting
-  its key while cargo rebuilt 2653 crates, and `target-wasm` bought a minute for
-  594 MB a ref; both fail the same way, because `actions/checkout` stamps sources
-  newer than the restored artifacts and cargo compares mtimes. `target-dev`,
-  `target-prod` and `target-askar` were removed on that evidence — 4.25 GB for a
-  benefit none of their measured siblings showed. sccache is content-hashed and
-  is the only compilation cache that works here. Measure before adding another.
+- `target-prod` is the only `target/` cache, and it was kept on measurement:
+  removing it put `build-prod` at 11m (from 7-8m) and `nodejs-wrapper` at 15m
+  (from 9-12m), both on the same chain. `build-prod` compiles only `-p nodejs`
+  with the command `napi build --release` runs, so the fingerprints match and
+  the wrapper's release build reuses them.
+- `target-dev`, `target-askar`, `target-wasm` and `target-android` were removed.
+  Each was measured: android hit its key while cargo rebuilt 2653 crates, wasm
+  bought a minute for 594 MB a ref, and dropping dev left `build-dev`,
+  `doc-build` and `kotlin-test` unchanged. `actions/checkout` stamps sources
+  newer than restored artifacts and cargo compares mtimes, so a `target/` cache
+  only survives where the consumer rebuilds with identical flags. Measure before
+  adding another; the results differ per job and do not generalise.
 - `cache-cleanup` deletes the five `wrapper-*` entries at the end of every run.
   They are keyed on `github.sha` and can never be hit again, so they are
   intra-run hand-offs that would otherwise sit in the 10 GB budget until LRU

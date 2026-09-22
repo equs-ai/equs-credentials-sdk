@@ -73,6 +73,8 @@ jobs:
     uses: ./.github/workflows/_job.yml
     with:
       cache-key: build-prod
+      restore: target-prod
+      save: target-prod
       run: cargo build --release -p nodejs
 
   build-dev:
@@ -97,6 +99,7 @@ jobs:
     with:
       cache-key: nodejs-wrapper
       node: true
+      restore: target-prod
       save: wrapper-nodejs
       run: |
         cd wrappers/nodejs
