@@ -65,11 +65,7 @@ jobs:
         shell: bash
         run: |
           command -v clang >/dev/null || { apt-get update && apt-get install -y --no-install-recommends clang; }
-          for i in 1 2 3; do
-            curl --proto '=https' --tlsv1.2 -sSf https://rustwasm.github.io/wasm-pack/installer/init.sh | sh && break
-            [ "$i" = 3 ] && { echo "wasm-pack install failed after 3 attempts" >&2; exit 1; }
-            sleep 15
-          done
+          bash .github/scripts/install-wasm-pack.sh
 
       - uses: ./.github/actions/cache
         with:

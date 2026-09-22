@@ -6,6 +6,7 @@ pct="${1:?percent required}"
 branch="badges"
 rel=".badges/${GITHUB_REF_NAME}/coverage.svg"
 url="https://x-access-token:${GITHUB_TOKEN:?token required}@github.com/${GITHUB_REPOSITORY}"
+work="$RUNNER_TEMP/coverage-badge"
 
 whole="${pct%%.*}"
 if   [ "$whole" -ge 90 ]; then colour="#4c1"
@@ -14,16 +15,16 @@ elif [ "$whole" -ge 60 ]; then colour="#dfb317"
 else                           colour="#e05d44"
 fi
 
-work="$RUNNER_TEMP/coverage-badge"
-rm -rf "$work"
-if ! git clone --depth 1 --branch "$branch" "$url" "$work" 2>/dev/null; then
-  git clone --depth 1 "$url" "$work"
-  git -C "$work" checkout --orphan "$branch"
-  git -C "$work" rm -rqf .
-fi
+publish() {
+  rm -rf "$work"
+  if ! git clone --depth 1 --branch "$branch" "$url" "$work" 2>/dev/null; then
+    git clone --depth 1 "$url" "$work"
+    git -C "$work" checkout --orphan "$branch"
+    git -C "$work" rm -rqf .
+  fi
 
-mkdir -p "$work/$(dirname "$rel")"
-cat > "$work/$rel" <<SVG
+  mkdir -p "$work/$(dirname "$rel")"
+  cat > "$work/$rel" <<SVG
 <svg xmlns="http://www.w3.org/2000/svg" width="114" height="20" role="img" aria-label="coverage: ${pct}%">
   <linearGradient id="s" x2="0" y2="100%"><stop offset="0" stop-color="#bbb" stop-opacity=".1"/><stop offset="1" stop-opacity=".1"/></linearGradient>
   <clipPath id="r"><rect width="114" height="20" rx="3" fill="#fff"/></clipPath>
@@ -41,10 +42,18 @@ cat > "$work/$rel" <<SVG
 </svg>
 SVG
 
-git -C "$work" add "$rel"
-git -C "$work" diff --cached --quiet && { echo "coverage badge unchanged at ${pct}%"; exit 0; }
-git -C "$work" -c user.name="github-actions[bot]" \
-    -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
-    commit -qm "coverage: ${pct}%"
-git -C "$work" push -q origin "$branch"
-echo "coverage badge published at ${pct}%"
+  git -C "$work" add "$rel"
+  git -C "$work" diff --cached --quiet && { echo "coverage badge unchanged at ${pct}%"; return 0; }
+  git -C "$work" -c user.name="github-actions[bot]" \
+      -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+      commit -qm "coverage: ${pct}%"
+  git -C "$work" push -q origin "$branch"
+  echo "coverage badge published at ${pct}%"
+}
+
+for attempt in 1 2 3; do
+  publish && exit 0
+  echo "badge push lost a race (attempt ${attempt}), retrying" >&2
+  sleep 5
+done
+exit 1

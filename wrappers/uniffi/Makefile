@@ -141,7 +141,7 @@ android-aar: android-generate-bindings android-copy-libs
 
 IOS_SIM_NAME ?= iPhone 16
 IOS_SIM_ID = ${shell xcrun simctl list devices available | grep -F "${IOS_SIM_NAME} (" | tail -1 | sed -E 's/.*\(([0-9A-Fa-f-]{36})\).*/\1/'}
-IOS_DESTINATION ?= platform=iOS Simulator,id=$(IOS_SIM_ID)
+IOS_DESTINATION ?= platform=iOS Simulator,id=$(or $(IOS_SIM_ID),$(error no available simulator matches "$(IOS_SIM_NAME)"; set IOS_SIM_NAME or IOS_DESTINATION))
 
 ios-dev-build:
 	@echo "Generating binaries for the arm64 simulator and device"

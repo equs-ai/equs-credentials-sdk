@@ -15,7 +15,7 @@ Because jobs run through `workflow_call`, a check is named `<job> / run`, not
 | Path | Role |
 |------|------|
 | `workflows/ci.yml` | Triggers, gating and the 25 job calls. No steps. |
-| `workflows/_job.yml` | The generic containerised job behind 21 of the 25. Owns `container`, checkout, toolchain, node/java/wasm, caches, disk report, Codecov and artifact upload. |
+| `workflows/_job.yml` | The generic containerised job behind 21 of the 25. Owns `container`, checkout, toolchain, node/java/wasm, caches, disk report and artifact upload. |
 | `workflows/_macos.yml` | The generic `macos-15` job behind `ios-xcframework`, `swift-test` and `ios-demo`. |
 | `workflows/_android.yml` | `android-demo`: bare `ubuntu-latest`, SDK from the runner plus the pinned NDK. |
 | `actions/setup-rustup/` | Reclaims host disk, installs the pinned toolchain, restores the sccache and npm caches, installs `cargo-binstall` and `sccache`. |
@@ -64,6 +64,12 @@ sole consumer of root `target/release`, and the command mirrors what
 `askar-rust` saves `plugins/askar/target`, which is where the askar napi wrapper
 compiles. Wrapper jobs restore those and save their own output under a
 `github.sha` key, so a test job restores exactly the artifacts its run built.
+Those entries can never be hit by a later run and do consume the 10 GB budget,
+but GitHub evicts least-recently-used, so the wrapper entries — read once inside
+their own run — are the first to go and the `target-*`/`sccache` entries the
+last. Moving them to `upload-artifact` was tried and reverted: it needs a manual
+tar to keep `node_modules/.bin`, whose symlinks and executable bits artifacts do
+not preserve, and turns a soft cache miss into a hard failure on re-run.
 
 ## Constraints
 
@@ -158,8 +164,7 @@ compiles. Wrapper jobs restore those and save their own output under a
 - `_job.yml` sets `CARGO_PROFILE_DEV_DEBUG` for every job from one input
   defaulting to `"0"`, rather than repeating it per job. `test-with-coverage`
   is the documented exception, passing `line-tables-only`.
-- `build-dev` carries no `needs`, so it starts alongside `lint-and-format` and
-  gates nothing. It is the only producer of `target-dev-*`.
+- `build-dev` gates nothing; it sits in tier 2 behind `fmt` like the other builds. It is the only producer of `target-dev-*`.
 - `android-demo` runs on a bare runner, not the container. The Makefile's
   `android-clang-symlinks` writes `~/.cargo/config.toml`, which cargo ignores
   when `CARGO_HOME` points at the image's `/usr/local/cargo`, losing the NDK
@@ -182,10 +187,11 @@ compiles. Wrapper jobs restore those and save their own output under a
 - `android-demo` puts the NDK's `toolchains/llvm/prebuilt/linux-x86_64/bin` on
   `PATH`. `ANDROID_NDK_HOME` alone is not enough: the `cc` crate looks up
   `aarch64-linux-android-clang` by name and `ring` fails to build without it.
-- `ios-demo` reuses the XCFramework from `swift-test` through `wrapper-swift`
+- `ios-demo` reuses the XCFramework from `ios-xcframework` through `wrapper-swift`
   rather than rebuilding it — the demo's xcodeproj points at
   `wrappers/uniffi/swift/ios/debug`, which is what `ios-generate-xcframework-dev`
-  writes and `make ios-test` already produces. It rebuilds only on a cache miss.
+  writes. It has no rebuild fallback: the artifact is required, and a missing
+  one fails the job rather than recompiling.
   Nothing equivalent exists for Android: `kotlin-test` builds the host target
   only, never the four Android targets or the AAR.
 - `multi-thread-demo` greps for `Success`. `start_holders` panics per holder
