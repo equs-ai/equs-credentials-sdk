@@ -90,7 +90,8 @@ not preserve, and turns a soft cache miss into a hard failure on re-run.
   could hit its cache and still rebuild 1597 crates. Node arrives via
   `actions/setup-node` layered on the Rust image, never as a second image.
 - Cache keys embed a content hash — GitHub cache entries are write-once. The
-  npm key hashes `package.json`, since no lockfile is tracked.
+  npm key hashes the six tracked `package-lock.json` files, not `package.json`,
+  whose ranges can resolve differently without changing the key.
 - One sccache entry per OS, not one per job. Per-job entries reached 8.39 GB of
   the 10 GB repository ceiling and evicted the `target/` caches, which cost more
   than they saved. The key carries `runner.os` because the entry is write-once:
