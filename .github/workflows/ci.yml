@@ -307,8 +307,4 @@ jobs:
       - shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          for w in nodejs wasm uniffi swift askar; do
-            gh cache delete "wrapper-$w-$GITHUB_SHA" --repo "$GITHUB_REPOSITORY" 2>/dev/null \
-              && echo "deleted wrapper-$w" || echo "wrapper-$w already gone"
-          done
+        run: bash .github/scripts/prune-wrapper-caches.sh
