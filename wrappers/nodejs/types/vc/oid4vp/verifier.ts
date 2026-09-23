@@ -59,7 +59,7 @@ export class OID4VPVerifier {
    *    @param { _PresentationSession} session - a session object containing `Nonce` and {@link resolvedPresentationQuery: ResolvedPresentationQuery}, which are generated when the {@link OID4VPVerifier.createAuthorizationRequest} method is called.
    *    @param {CredentialVerificationMetadata} verificationMetadata - metadata used during/before the Credential Verification:
    *    * {Array<TransactionDataItem> | undefined | null } [transactionData] - TransactionData. If given, it will be used to validate the hashes returned in AuthorizationResponse
-   *    * {string | undefined | null } [audience] - In the case of DC API response mode, audience is Origin of the Verifier to be used while validating the signature of the VP Token.
+   *    * {string | undefined | null } [audience] - In the case of DC API response mode, audience is the bare Origin of the Verifier (e.g. `https://verifier.example.com`); the SDK binds the presentation to it as `origin:<Origin>`.
    *    @returns {Claims} - The verified claims as a JSON object on success.
    */
   verifyPresentation(

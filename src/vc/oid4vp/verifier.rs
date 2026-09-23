@@ -1051,8 +1051,8 @@ where
                         verifier_id: presentation_verification_opts
                             .audience
                             .as_deref()
-                            .unwrap_or(&self.metadata.client_id.get_full_id())
-                            .to_owned(),
+                            .map(HolderBinder::dc_api_audience)
+                            .unwrap_or_else(|| self.metadata.client_id.get_full_id()),
                         response_uri: presentation_verification_opts.response_uri.clone(),
                     })
                 };

@@ -132,7 +132,7 @@ impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata, Claims> for M
         let ctx = ExtractPresentationCtx {
             verification_protocol_type: VerificationProtocolType::OpenId4VpFinal1_0,
             nonce: holder_binder.clone().map(|b| b.nonce.secret().to_string()),
-            client_id: holder_binder.map(|b| b.verifier_id.to_string()),
+            client_id: holder_binder.map(|b| b.origin_or_verifier_id().to_owned()),
             trusted_certs: opts.trusted_certs.filter(|certs| !certs.is_empty()),
             verifier_key,
             format_nonce: None,

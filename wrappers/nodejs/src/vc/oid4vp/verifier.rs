@@ -77,7 +77,7 @@ impl InternalOID4VPVerifier {
     /// @param {_PresentationSession} session - a session object containing `Nonce` and {@link ResolvedPresentationQuery}, which are generated when the {@link OID4VPVerifier.createAuthorizationRequest} method is called.
     /// @param {CredentialVerificationMetadata} verificationMetadata - metadata about:
     ///     - transaction_data - The transaction data hashes to verify.
-    ///     - audience - In the case of DC API response mode, audience is Origin of the Verifier to be used while validating the signature of the VP Token.
+    ///     - audience - In the case of DC API response mode, audience is the bare Origin of the Verifier (e.g. `https://verifier.example.com`); the SDK binds the presentation to it as `origin:<Origin>`.
     ///
     /// @returns {Claims} - The verified claims as a JSON object on success.
     #[napi(ts_return_type = "Promise<Claims>")]
