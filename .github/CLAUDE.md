@@ -18,8 +18,8 @@ is the one exception and is named `publish`.
 
 | Path | Role |
 |------|------|
-| `workflows/ci.yml` | Triggers, gating and the 25 job calls. No steps. |
-| `workflows/_job.yml` | The generic containerised job behind 21 of the 25. Owns `container`, checkout, toolchain, node/java/wasm, caches, disk report and artifact upload. |
+| `workflows/ci.yml` | Triggers, gating and the 27 job calls. No steps. |
+| `workflows/_job.yml` | The generic containerised job behind 23 of the 27. Owns `container`, checkout, toolchain, node/java/wasm, caches, disk report and artifact upload. |
 | `workflows/_macos.yml` | The generic `macos-15` job behind `ios-xcframework`, `swift-test` and `ios-demo`. |
 | `workflows/_android.yml` | `android-demo`: bare `ubuntu-latest`, SDK from the runner plus the pinned NDK. |
 | `workflows/publish-common-macros.yml` | Publishes `equs-common-macros` to crates.io on a `common-macros-X.Y.Z` tag. The only workflow that defines its own job. |
@@ -33,7 +33,8 @@ is the one exception and is named `publish`.
 
 Jobs run in five declared tiers, marked by `# tier N` and ordered in the file:
 1 `fmt` plus the two scans, which gate nothing; 2 `clippy`, `build-prod`,
-`build-prod-all-features`, `build-dev`, `doc-build` and `ios-xcframework`; 3 the three wrappers, `test-with-coverage`,
+`build-prod-all-features`, `build-dev`, `common-macros-test`, `doc-build` and
+`ios-xcframework`; 3 the three wrappers, `test-with-coverage`,
 `askar-rust` and `oid4vc-demo`; 4 the tests, `askar-wrapper` and `wasm-demo-build`;
 5 `askar-plugin-nodejs-test`. Every demo in `demos/` is built: `oid4vc-demo`
 and `multi-thread-demo` in tier 3, and `wasm-demo-build`, `nodejs-demo-build`,
@@ -172,6 +173,13 @@ not preserve, and turns a soft cache miss into a hard failure on re-run.
   defaulting to `"0"`, rather than repeating it per job. `test-with-coverage`
   is the documented exception, passing `line-tables-only`.
 - `build-dev` gates nothing; it sits in tier 2 behind `fmt` like the other builds. It is the only producer of `target-dev-*`.
+- `common-macros-test` is the only job that runs `cargo test`. Coverage aside,
+  `test-with-coverage` is the pipeline's only other test runner, and
+  `cargo tarpaulin` at the workspace root inherits cargo's default package
+  selection — the root package only. That never built
+  `equs-common-macros/tests/debug_error.rs`, so the derive shipped untested.
+  `cargo test -p equs-common-macros` is a couple of seconds on top of the
+  container spin-up, and it has a GitLab counterpart, `common-macros-test-job`.
 - `android-demo` runs on a bare runner, not the container. The Makefile's
   `android-clang-symlinks` writes `~/.cargo/config.toml`, which cargo ignores
   when `CARGO_HOME` points at the image's `/usr/local/cargo`, losing the NDK
@@ -271,7 +279,7 @@ not preserve, and turns a soft cache miss into a hard failure on re-run.
   nothing when the advisory DB is unreachable.
 - `publish-common-macros.yml` does not call `_job.yml`. `_job.yml` has no
   `secrets:` surface, and threading a registry token through the workflow that
-  runs all 25 CI jobs would widen that blast radius for one consumer. It is the
+  runs all 27 CI jobs would widen that blast radius for one consumer. It is the
   only workflow that declares its own `container` and steps.
 - It runs `cargo package` and then `cargo publish --no-verify`, not `cargo
   publish` alone. `cargo package` already builds and verifies the tarball;
