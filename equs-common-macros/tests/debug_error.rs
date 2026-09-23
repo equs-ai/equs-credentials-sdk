@@ -67,3 +67,52 @@ fn nested_errors_report_their_own_location() {
 fn location(line: u32) -> String {
     format!("{}:{}:", file!(), line)
 }
+
+#[derive(Snafu, DebugError)]
+enum SourceOnlyError {
+    #[snafu(display("Source only"))]
+    Wrapped { source: KeyError },
+}
+
+#[derive(Snafu, DebugError)]
+enum PlainError {
+    #[snafu(display("Plain failure"))]
+    Plain,
+}
+
+#[test]
+fn variant_with_a_source_but_no_location_reports_the_chain() {
+    let key_line = line!() + 1;
+    let key: KeyError = KeyMismatchSnafu.build();
+    let wrapped: SourceOnlyError = WrappedSnafu.into_error(key);
+
+    let debug = format!("{wrapped:?}");
+
+    assert!(
+        debug.starts_with("Source only"),
+        "expected the display first in:\n{debug}"
+    );
+    assert!(
+        debug.contains(" Cause: Key mismatch"),
+        "expected the source chain in:\n{debug}"
+    );
+    assert!(
+        debug.contains(&location(key_line)),
+        "expected {} in:\n{debug}",
+        location(key_line)
+    );
+    assert_eq!(
+        debug.matches(" at: ").count(),
+        1,
+        "the wrapper has no location field, so only the source may report one:\n{debug}"
+    );
+}
+
+#[test]
+fn variant_with_neither_location_nor_source_prints_only_the_display() {
+    let plain: PlainError = PlainSnafu.build();
+
+    let debug = format!("{plain:?}");
+
+    assert_eq!(debug, "Plain failure");
+}

@@ -8,7 +8,7 @@ target is `common_macros`, so every consumer writes
 | Path | Role |
 |------|------|
 | `src/lib.rs` | `DebugError` derive. Emits `Debug` for a `snafu` error enum: the display, the `#[snafu(implicit)] location` of each level that has one, then the source chain. |
-| `tests/debug_error.rs` | Location and chain output across three nested error types. Not in the published package. Run by the `common-macros-test` CI job. |
+| `tests/debug_error.rs` | All four variant shapes the derive matches on: location only, location + source, source only, neither. Not in the published package. Run by the `common-macros-test` CI job. |
 
 These tests need their own CI job. The pipeline's only other test runner is
 `cargo tarpaulin` at the workspace root, which inherits cargo's default package
