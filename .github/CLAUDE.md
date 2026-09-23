@@ -22,7 +22,7 @@ is the one exception and is named `publish`.
 | `workflows/_job.yml` | The generic containerised job behind 23 of the 27. Owns `container`, checkout, toolchain, node/java/wasm, caches, disk report and artifact upload. |
 | `workflows/_macos.yml` | The generic `macos-15` job behind `ios-xcframework`, `swift-test` and `ios-demo`. |
 | `workflows/_android.yml` | `android-demo`: bare `ubuntu-latest`, SDK from the runner plus the pinned NDK. |
-| `workflows/publish-common-macros.yml` | Publishes `equs-common-macros` to crates.io on a `common-macros/vX.Y.Z` tag. The only workflow that defines its own job. |
+| `workflows/publish-common-macros.yml` | Publishes `equs-common-macros` to crates.io on a `common-macros/vX.Y.Z` tag, prerelease suffix allowed. The only workflow that defines its own job. |
 | `actions/setup-rustup/` | Reclaims host disk, installs the pinned toolchain, restores the sccache and npm caches, installs `cargo-binstall` and `sccache`. |
 | `actions/cache/` | Named cache presets (`target-*`, `wrapper-*`), selected by the `restore`/`save` string inputs. |
 | `gitleaks.toml` | Secret-scan config. |
@@ -291,6 +291,14 @@ not preserve, and turns a soft cache miss into a hard failure on re-run.
   also fails the run when the tag disagrees with
   `equs-common-macros/Cargo.toml`, because a wrong version on crates.io can be
   yanked but never removed.
+- A prerelease tag is accepted: `common-macros/v0.1.0-rc.1`. The version part
+  matches `.gitlab-ci.yml`'s `VERSION_REGEX`
+  (`[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?`), so the prerelease alphabet is
+  the repo's, not semver's in full. The tag must still equal the manifest
+  exactly, so shipping `v0.1.0-rc.1` means `version = "0.1.0-rc.1"` in
+  `equs-common-macros/Cargo.toml` — a prerelease on crates.io is never picked up
+  by a plain `0.1` requirement, which is the point of cutting one. The trigger
+  glob needed no change: its trailing `*` already absorbs `-rc.1`.
 - Two prerequisites live in repo settings, not in the tree: the
   `CARGO_REGISTRY_TOKEN` secret, and an environment named `crates-io`. A
   missing environment does not fail the run; a missing secret fails at the

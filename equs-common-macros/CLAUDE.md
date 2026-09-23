@@ -19,7 +19,7 @@ selection — the root package only — so nothing here ran until
 `snafu::AsErrorSource` only inside a `quote!` block, which expands at the call
 site and resolves against the caller's `snafu`. Only the tests link it here.
 
-Released independently of the SDK, on a `common-macros/vX.Y.Z` tag — see
+Released independently of the SDK, on a `common-macros/vX.Y.Z` tag, prerelease suffix allowed — see
 `.github/workflows/publish-common-macros.yml`. It must be on crates.io before
 `equs-credentials-sdk` can publish, because a path dependency is rewritten to a
 registry dependency at publish time.
