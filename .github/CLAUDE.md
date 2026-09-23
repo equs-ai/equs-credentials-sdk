@@ -22,7 +22,7 @@ is the one exception and is named `publish`.
 | `workflows/_job.yml` | The generic containerised job behind 23 of the 27. Owns `container`, checkout, toolchain, node/java/wasm, caches, disk report and artifact upload. |
 | `workflows/_macos.yml` | The generic `macos-15` job behind `ios-xcframework`, `swift-test` and `ios-demo`. |
 | `workflows/_android.yml` | `android-demo`: bare `ubuntu-latest`, SDK from the runner plus the pinned NDK. |
-| `workflows/publish-common-macros.yml` | Publishes `equs-common-macros` to crates.io on a `common-macros-X.Y.Z` tag. The only workflow that defines its own job. |
+| `workflows/publish-common-macros.yml` | Publishes `equs-common-macros` to crates.io on a `common-macros/vX.Y.Z` tag. The only workflow that defines its own job. |
 | `actions/setup-rustup/` | Reclaims host disk, installs the pinned toolchain, restores the sccache and npm caches, installs `cargo-binstall` and `sccache`. |
 | `actions/cache/` | Named cache presets (`target-*`, `wrapper-*`), selected by the `restore`/`save` string inputs. |
 | `gitleaks.toml` | Secret-scan config. |
@@ -285,9 +285,9 @@ not preserve, and turns a soft cache miss into a hard failure on re-run.
   publish` alone. `cargo package` already builds and verifies the tarball;
   letting publish verify again would repeat that build for nothing, and the
   packaged `.crate` is uploaded as an artifact either way.
-- The tag filter is the glob `common-macros-[0-9]*.[0-9]*.[0-9]*` backed by a
+- The tag filter is the glob `common-macros/v[0-9]*.[0-9]*.[0-9]*` backed by a
   regex guard in the job. GitHub tag globs cannot express `X.Y.Z` — the glob
-  admits `common-macros-1.2.3.4` and the guard is what rejects it. The guard
+  admits `common-macros/v1.2.3.4` and the guard is what rejects it. The guard
   also fails the run when the tag disagrees with
   `equs-common-macros/Cargo.toml`, because a wrong version on crates.io can be
   yanked but never removed.
@@ -296,6 +296,7 @@ not preserve, and turns a soft cache miss into a hard failure on re-run.
   missing environment does not fail the run; a missing secret fails at the
   guard in the Publish step. The environment is where a required-reviewer rule
   on an irreversible publish belongs.
-- `equs-common-macros` releases on its own tag, independent of the SDK's bare
-  `X.Y.Z`. The two globs are disjoint, so neither release fires the other's
-  workflow.
+- `equs-common-macros` releases on `common-macros/vX.Y.Z`, independent of the
+  SDK's bare `X.Y.Z`. The two globs are disjoint, so neither release fires the
+  other's workflow. This is the only tag namespace in the repo carrying a `v`;
+  the SDK's 59 release tags are bare versions.
