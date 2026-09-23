@@ -239,12 +239,18 @@ where
             authorization_response.transaction_data_response.as_ref(),
         )?;
 
-        verification_opts.audience = verification_metadata.audience.clone();
-        let response_uri = session
+        let request_object = session
             .auth_request_jwt
             .as_deref()
-            .and_then(Self::response_uri_from_request_object);
-        verification_opts.response_uri = response_uri;
+            .and_then(Self::request_object_of);
+        verification_opts.audience = Self::bound_audience(
+            verification_metadata.audience.as_deref(),
+            request_object.as_ref(),
+        );
+        verification_opts.response_uri = request_object
+            .as_ref()
+            .and_then(|request| request.return_uri())
+            .map(|uri| uri.to_string());
 
         let (vp_token_claims, presentations) = self
             .do_verify_presentation(
@@ -1050,8 +1056,7 @@ where
                         nonce: nonce.to_owned(),
                         verifier_id: presentation_verification_opts
                             .audience
-                            .as_deref()
-                            .map(HolderBinder::dc_api_audience)
+                            .clone()
                             .unwrap_or_else(|| self.metadata.client_id.get_full_id()),
                         response_uri: presentation_verification_opts.response_uri.clone(),
                     })
@@ -1160,14 +1165,31 @@ where
         Ok(())
     }
 
-    fn response_uri_from_request_object(request_object_jwt: &str) -> Option<String> {
-        let request: AuthorizationRequestObject =
-            decode_unverified::<UntypedObject>(request_object_jwt)
-                .ok()?
-                .try_into()
-                .ok()?;
+    fn request_object_of(request_object_jwt: &str) -> Option<AuthorizationRequestObject> {
+        decode_unverified::<UntypedObject>(request_object_jwt)
+            .ok()?
+            .try_into()
+            .ok()
+    }
 
-        request.return_uri().map(|u| u.to_string())
+    fn bound_audience(
+        audience: Option<&str>,
+        request_object: Option<&AuthorizationRequestObject>,
+    ) -> Option<String> {
+        let dc_api = request_object.is_some_and(|request| {
+            matches!(
+                request.response_mode(),
+                ResponseMode::DcApi | ResponseMode::DcApiJwt
+            )
+        });
+
+        audience.map(|audience| {
+            if dc_api {
+                HolderBinder::dc_api_audience(audience)
+            } else {
+                audience.to_owned()
+            }
+        })
     }
 }
 
@@ -1419,6 +1441,84 @@ mod tests {
                 source: InternalError::X509 { .. }
             })
         ));
+    }
+
+    async fn request_object_for_mode(response_mode: ResponseMode) -> AuthorizationRequestObject {
+        let (verifier, _) = verifier_service().await;
+        let mut auth_response_options =
+            auth_response_options(build_url(VERIFIER_URL, "auth"), None);
+        auth_response_options.mode = response_mode;
+        let expected_origins = vec![Url::parse("https://example.verifier.org").unwrap().origin()];
+
+        let (_, session) = verifier
+            .create_authorization_request(
+                &ResolvedPresentationQuery::DCQL(DCQL::new(sample_dcql())),
+                &AuthorizationRequestMetadata {
+                    transaction_data: None,
+                    auth_response_options,
+                    pass_auth_request_object: PassAuthRequestObject::ByValue,
+                    expected_origins: Some(ExpectedOrigins::new(
+                        expected_origins.try_into().unwrap(),
+                    )),
+                    client_metadata: None,
+                    verifier_info: None,
+                },
+                None,
+            )
+            .await
+            .unwrap();
+
+        TestVerifierService::request_object_of(&session.auth_request_jwt.unwrap()).unwrap()
+    }
+
+    #[rstest]
+    #[case::plain_dc_api(ResponseMode::DcApi)]
+    #[case::encrypted_dc_api_jwt(ResponseMode::DcApiJwt)]
+    #[tokio::test]
+    async fn bound_audience_prefixes_the_origin_for_a_dc_api_request(
+        #[case] response_mode: ResponseMode,
+    ) {
+        let request = request_object_for_mode(response_mode).await;
+
+        assert_eq!(
+            TestVerifierService::bound_audience(
+                Some("https://verifier.example.org"),
+                Some(&request)
+            ),
+            Some("origin:https://verifier.example.org".to_string())
+        );
+        // A caller that already prefixed is not prefixed twice.
+        assert_eq!(
+            TestVerifierService::bound_audience(
+                Some("origin:https://verifier.example.org"),
+                Some(&request)
+            ),
+            Some("origin:https://verifier.example.org".to_string())
+        );
+    }
+
+    #[rstest]
+    #[case::direct_post(ResponseMode::DirectPost)]
+    #[case::direct_post_jwt(ResponseMode::DirectPostJwt)]
+    #[tokio::test]
+    async fn bound_audience_keeps_the_audience_verbatim_for_a_non_dc_api_request(
+        #[case] response_mode: ResponseMode,
+    ) {
+        let request = request_object_for_mode(response_mode).await;
+
+        assert_eq!(
+            TestVerifierService::bound_audience(Some("x509_hash:abc"), Some(&request)),
+            Some("x509_hash:abc".to_string())
+        );
+    }
+
+    #[test]
+    fn bound_audience_keeps_the_audience_verbatim_without_a_request_object() {
+        assert_eq!(
+            TestVerifierService::bound_audience(Some("https://verifier.example.org"), None),
+            Some("https://verifier.example.org".to_string())
+        );
+        assert_eq!(TestVerifierService::bound_audience(None, None), None);
     }
 
     #[rstest]
