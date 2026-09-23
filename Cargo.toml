@@ -11,7 +11,7 @@ members = [
     "wrappers/nodejs",
     "wrappers/wasm",
     "wrappers/uniffi",
-    "common-macros",
+    "equs-common-macros",
 ]
 
 [package]
@@ -36,7 +36,7 @@ include = [
 name = "equs_sdk"
 
 [dependencies]
-common-macros = { path = "./common-macros" }
+equs-common-macros = { path = "./equs-common-macros", version = "0.1.0" }
 # Internally maintained forked dependencies
 oid4vci = { git = "https://github.com/equs-ai/oid4vci-rs.git", rev = "f5c38f92" }
 openid4vp = { git = "https://github.com/equs-ai/openid4vp.git", rev = "2db3c3d2" }

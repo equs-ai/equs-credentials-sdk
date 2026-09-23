@@ -1794,16 +1794,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "common-macros"
-version = "0.1.0"
-dependencies = [
- "proc-macro2",
- "quote",
- "snafu 0.8.9",
- "syn 2.0.117",
-]
-
-[[package]]
 name = "concat-kdf"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3141,6 +3131,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "877a4ace8713b0bcf2a4e7eec82529c029f1d0619886d18145fea96c3ffe5c0f"
 
 [[package]]
+name = "equs-common-macros"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "snafu 0.8.9",
+ "syn 2.0.117",
+]
+
+[[package]]
 name = "equs-credentials-sdk"
 version = "1.13.1"
 dependencies = [
@@ -3153,7 +3153,6 @@ dependencies = [
  "bip32",
  "bs58 0.5.1",
  "chrono",
- "common-macros",
  "crc",
  "did_parser_nom",
  "did_peer",
@@ -3162,6 +3161,7 @@ dependencies = [
  "ecdsa",
  "ed25519-compact",
  "ed25519-dalek",
+ "equs-common-macros",
  "flate2",
  "futures",
  "generic-array 0.14.7",

@@ -215,6 +215,15 @@ test-with-coverage-job:
     - merge_requests
     - main
 
+common-macros-test-job:
+  <<: *rust_job_configs
+  stage: test
+  script:
+    - cargo test -p equs-common-macros
+  only:
+    - merge_requests
+    - main
+
 nodejs-test-job:
   <<: *nodejs_job_configs
   stage: test

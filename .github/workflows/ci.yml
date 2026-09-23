@@ -91,6 +91,13 @@ jobs:
       cache-key: build-dev
       run: cargo build --all-features --workspace --exclude wasm
 
+  common-macros-test:
+    needs: [fmt]
+    uses: ./.github/workflows/_job.yml
+    with:
+      cache-key: common-macros-test
+      run: cargo test -p equs-common-macros
+
   doc-build:
     needs: [fmt]
     uses: ./.github/workflows/_job.yml
