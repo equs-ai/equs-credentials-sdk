@@ -30,8 +30,7 @@ use tracing::{Level, info, instrument};
 
 #[derive(Debug, Default, Clone)]
 pub struct VerificationParams {
-    // PEM of each trusted x509 anchor used to verify the credential's certificate chain, keyed by
-    // its Subject Key Identifier (SKI).
+    // PEM of each trusted x509 anchor, keyed by its Subject Key Identifier (SKI).
     pub trusted_certs: Option<HashMap<String, String>>,
 }
 

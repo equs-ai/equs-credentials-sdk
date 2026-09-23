@@ -287,9 +287,6 @@ where
             .build()
         })?;
 
-        // The PEM is retained, not just the SKI: verifying the signature over the topmost `x5c`
-        // certificate needs this anchor's public key, and a SKI only allows matching an AKID, which
-        // the presented chain asserts about itself.
         let mut trusted_certs = self.trusted_certs.unwrap_or_default();
         trusted_certs.insert(skid, pem_string);
         self.trusted_certs = Some(trusted_certs);
