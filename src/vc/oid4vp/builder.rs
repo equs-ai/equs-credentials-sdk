@@ -280,12 +280,18 @@ where
                 .build()
             })?;
 
-        let pem_string = String::from_utf8(pem_bytes.to_vec()).map_err(|e| {
-            BuildSnafu {
-                details: format!("Certificate pem is not valid UTF-8: {}", e),
-            }
-            .build()
-        })?;
+        // Store only the validated certificate, not whatever else `pem_bytes` carried.
+        let pem_string = {
+            use x509_cert::der::{Decode, EncodePem, pem::LineEnding};
+            x509_cert::Certificate::from_der(&pem.contents)
+                .and_then(|cert| cert.to_pem(LineEnding::LF))
+                .map_err(|e| {
+                    BuildSnafu {
+                        details: format!("Cannot re-encode certificate as PEM: {}", e),
+                    }
+                    .build()
+                })?
+        };
 
         let mut trusted_certs = self.trusted_certs.unwrap_or_default();
         trusted_certs.insert(skid, pem_string);

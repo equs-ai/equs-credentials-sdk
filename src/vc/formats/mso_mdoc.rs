@@ -133,10 +133,7 @@ impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata, Claims> for M
             verification_protocol_type: VerificationProtocolType::OpenId4VpFinal1_0,
             nonce: holder_binder.clone().map(|b| b.nonce.secret().to_string()),
             client_id: holder_binder.map(|b| b.verifier_id.to_string()),
-            trusted_certs_skids: opts
-                .trusted_certs
-                .as_ref()
-                .map(|certs| certs.keys().cloned().collect()),
+            trusted_certs: opts.trusted_certs.filter(|certs| !certs.is_empty()),
             verifier_key,
             format_nonce: None,
             issuance_date: None,
@@ -266,6 +263,26 @@ pub mod tests {
     use std::collections::HashMap;
 
     pub const SAMPLE_MSO_MDOC_VP: &str = "o2d2ZXJzaW9uYzEuMGlkb2N1bWVudHOBo2dkb2NUeXBldW9yZy5pc28uMTgwMTMuNS4xLm1ETGxpc3N1ZXJTaWduZWSiam5hbWVTcGFjZXOhcW9yZy5pc28uMTgwMTMuNS4xgtgYWGqkaGRpZ2VzdElEAGZyYW5kb21YIBERERERERERERERERERERERERERERERERERERERERERcWVsZW1lbnRJZGVudGlmaWVya2ZhbWlseV9uYW1lbGVsZW1lbnRWYWx1ZWpNdXN0ZXJtYW5u2BhYZKRoZGlnZXN0SUQBZnJhbmRvbVggEhISEhISEhISEhISEhISEhISEhISEhISEhISEhISEhJxZWxlbWVudElkZW50aWZpZXJqZ2l2ZW5fbmFtZWxlbGVtZW50VmFsdWVlRXJpa2FqaXNzdWVyQXV0aIRDoQEmoRghWQF5MIIBdTCCARugAwIBAgIUCPAlVlCcdKtW_NgvnriGAvImXT0wCgYIKoZIzj0EAwIwITESMBAGA1UEAwwJVGVzdCBJQUNBMQswCQYDVQQGDAJVUzAeFw0yNjAxMDEwMDAwMDBaFw00NjAxMDEwMDAwMDBaMB8xEDAOBgNVBAMMB1Rlc3QgRFMxCzAJBgNVBAYMAlVTMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEfirDFSOgmMH7vUzoevRbzHEDHUKqVS2_Wgs6TTPel-EYXYnW5Tdp5Hqxxc9-kR6CXUexKxQdxfDPyIxPlCkm4aMzMDEwHwYDVR0jBBgwFoAUg8JM5sIlqsjvNR337KO_zIQbdMUwDgYDVR0PAQH_BAQDAgeAMAoGCCqGSM49BAMCA0gAMEUCIBoknaCNrvgm0ddRfm9xQYWzx_3WL9Fs-gQfolp5K0NUAiEA2douiRD8Jf33sHgWZdpnMsmRUsAPCOWe4QGb_tVi3-BZAaTYGFkBn6ZndmVyc2lvbmMxLjBvZGlnZXN0QWxnb3JpdGhtZ1NIQS0yNTZsdmFsdWVEaWdlc3RzoXFvcmcuaXNvLjE4MDEzLjUuMaIAWCAd9VB6Eetaki_Ezn9YWmXuDc2wwCLY5aSsTwJK0Vu88QFYIHDj8ldYRGUeM8LNa7OZU0NeOb7ayITJ5yOVaCZCJj_kbWRldmljZUtleUluZm-haWRldmljZUtleaQBAiABIVgg43kS_XmY3GpALvnEPRzn6GMuxJzInxX7r5XAeDah18UiWCCXlKF9EfKCs9NugFg2p8IbMMEMvwc0DucoRZQw3-a0XWdkb2NUeXBldW9yZy5pc28uMTgwMTMuNS4xLm1ETGx2YWxpZGl0eUluZm-kZnNpZ25lZMB0MjAyNi0wMS0wMVQwMDowMDowMFppdmFsaWRGcm9twHQyMDI2LTAxLTAxVDAwOjAwOjAwWmp2YWxpZFVudGlswHQyMDQ2LTAxLTAxVDAwOjAwOjAwWm5leHBlY3RlZFVwZGF0ZcB0MjA0Ni0wMS0wMVQwMDowMDowMFpYQGp32sfVRsBX3crXbFP1EPQ2EkXRe0L_cslmkkbyEMzj8MoNuAd5qVjercViO2oDpPPGFtL1LCVKNUxdYmTgJeZsZGV2aWNlU2lnbmVkompuYW1lU3BhY2Vz2BhBoGpkZXZpY2VBdXRooW9kZXZpY2VTaWduYXR1cmWEQ6EBJqD2WECCN_IWVAGLfKbNDKE8pPHD4Xi_AlUufrKO7r6br-z1WmpGBueaCf57nBVASs4DrBD88hLNRvR6btAlTMZx-WQ2ZnN0YXR1cwA";
+    /// IACA of the e2e mdoc fixture, unrelated to the Document Signer of `SAMPLE_MSO_MDOC_VP`.
+    const UNRELATED_IACA: &str = "-----BEGIN CERTIFICATE-----
+MIIBhjCCASygAwIBAgIUYeDWpW7xP5iPyI2GeeWZAkM0rH4wCgYIKoZIzj0EAwIw
+ITESMBAGA1UEAwwJVGVzdCBJQUNBMQswCQYDVQQGDAJVUzAeFw0yNjAxMDEwMDAw
+MDBaFw00NjAxMDEwMDAwMDBaMCExEjAQBgNVBAMMCVRlc3QgSUFDQTELMAkGA1UE
+BgwCVVMwWTATBgcqhkjOPQIBBggqhkjOPQMBBwNCAATUvw7HNlqR7vybTtnII6mB
+InzVekm+lbnUzEJHMdnWksPBZ3v7d+XL5Hr2vo8RTqUGV1T8N380oTylGae/bwfy
+o0IwQDAOBgNVHQ8BAf8EBAMCAQYwHQYDVR0OBBYEFOg50rQHvvCMKRNtu1h971UW
+6NsdMA8GA1UdEwEB/wQFMAMBAf8wCgYIKoZIzj0EAwIDSAAwRQIgRL+P8RTUsyWn
+m8Fy+Z2zfwQ4xi+NqZvl4EXUYwVuETICIQCjY6xnRO8NaKtIHt06OzTwyWnjV2tE
+vbbU/lxzAYuDvQ==
+-----END CERTIFICATE-----";
+
+    fn unrelated_iaca() -> HashMap<String, String> {
+        HashMap::from([(
+            "e8:39:d2:b4:07:be:f0:8c:29:13:6d:bb:58:7d:ef:55:16:e8:db:1d".to_string(),
+            UNRELATED_IACA.to_string(),
+        )])
+    }
+
     #[tokio::test]
     async fn verify_vp_works_correctly() {
         let verified_claims = MsoMdocAPI::verify_vp(
@@ -281,10 +298,7 @@ pub mod tests {
                 response_uri: None,
             }),
             VerifyOptions {
-                trusted_certs: Some(HashMap::from([(
-                    "83:c2:4c:e6:c2:25:aa:c8:ef:35:1d:f7:ec:a3:bf:cc:84:1b:74:c5".to_string(),
-                    String::new(),
-                )])),
+                trusted_certs: None,
                 selective_claims: None,
             },
             UniversalResolver::default(),
@@ -300,5 +314,30 @@ pub mod tests {
                 .unwrap(),
             &Claim::String("Mustermann".to_string())
         );
+    }
+
+    #[tokio::test]
+    #[should_panic(expected = "Issuer certificate chain is not trusted")]
+    async fn verify_vp_rejects_ds_chain_not_under_held_iaca() {
+        MsoMdocAPI::verify_vp(
+            &Presentation {
+                value: SAMPLE_MSO_MDOC_VP.to_string(),
+                enc_pub_key: None,
+            },
+            Some(HolderBinder {
+                nonce: Nonce::from_secret(
+                    "4Y1DVuoVHfjotxmX55AQv36Tr5sdcvaBLXia6bj2hUM".to_string(),
+                ),
+                verifier_id: "https://verifier.example.com".to_string(),
+                response_uri: None,
+            }),
+            VerifyOptions {
+                trusted_certs: Some(unrelated_iaca()),
+                selective_claims: None,
+            },
+            UniversalResolver::default(),
+        )
+        .await
+        .unwrap();
     }
 }

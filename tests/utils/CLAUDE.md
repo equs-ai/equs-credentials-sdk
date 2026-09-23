@@ -25,5 +25,7 @@ resolution, static fixtures, and builder helpers consumed by all e2e test module
 ## Constraints
 - The mdoc fixtures (`SAMPLE_MSO_MDOC_VP`, `SAMPLE_MDL_VP_TOKEN`) are opaque blobs. The verifier
   `client_id`/`audience` and nonce are hashed into each token's signed ISO 18013-5 session
-  transcript, and `SAMPLE_IACA_CERT_1` belongs to the same certificate chain, so none of them can be
-  changed independently — only by replacing the fixture.
+  transcript, and `SAMPLE_IACA_CERT_1` belongs to the same certificate chain as `SAMPLE_MDL_VP_TOKEN`, so
+  none of them can be changed independently — only by replacing the fixture. `SAMPLE_MSO_MDOC_VP`'s IACA is
+  **not** in the repo: its positive tests run with no IACA configured (chain check skipped), and chain
+  validation against a real IACA is covered with `SAMPLE_MDL_VP_TOKEN`.
