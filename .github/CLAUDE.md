@@ -299,7 +299,11 @@ not preserve, and turns a soft cache miss into a hard failure on re-run.
   by a plain `0.1` requirement, which is the point of cutting one. The trigger
   glob needed no change: its trailing `*` already absorbs `-rc.1`.
 - Two prerequisites live in repo settings, not in the tree: the
-  `CARGO_REGISTRY_TOKEN` secret, and an environment named `crates-io`. A
+  organization secret `EQUS_CREDENTIALS_SDK_CRATES_IO_TOKEN`, and an
+  environment named `crates-io`. It is an org secret, so it does not appear in
+  `gh secret list --repo` — check
+  `gh api repos/:owner/:repo/actions/organization-secrets`. Cargo reads
+  `CARGO_REGISTRY_TOKEN`, so the step maps the secret onto that name. A
   missing environment does not fail the run; a missing secret fails at the
   guard in the Publish step. The environment is where a required-reviewer rule
   on an irreversible publish belongs.
