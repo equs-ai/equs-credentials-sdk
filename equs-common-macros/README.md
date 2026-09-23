@@ -21,7 +21,4 @@ enum VcError {
 }
 ```
 
-The lib target is `common_macros`, not `equs_common_macros`, so imports read
-`use common_macros::DebugError;`.
-
 Licensed under Apache-2.0.
