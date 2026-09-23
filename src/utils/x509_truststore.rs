@@ -3,15 +3,15 @@ use crate::vc::formats::sd_jwt_vc::SdJwtRsError;
 use async_trait::async_trait;
 use common_macros::DebugError;
 use jsonwebtoken::{DecodingKey, Header};
-use one_core::mapper::x509::last_cert_authority_key_identifier_from_pem_chain;
 use one_core::proto::certificate_validator::{
-    CertificateValidationOptions, CertificateValidator, ParsedCertificate,
+    CertificateValidationOptions, CertificateValidator, EnforceKeyUsage, ParsedCertificate,
+    validate_chain_against_trust_anchors,
 };
 use one_core::provider::key_algorithm::key::KeyHandle;
 use one_core::validator::x509::is_dns_name_matching;
 use sd_jwt_rs::resolver::KeyResolver;
-use snafu::{Location, ResultExt, Snafu};
-use std::collections::HashSet;
+use snafu::{Location, Snafu};
+use std::collections::HashMap;
 use tracing::Level;
 use tracing::instrument;
 use url::Url;
@@ -19,14 +19,8 @@ use x509_parser::oid_registry::OID_X509_EXT_SUBJECT_ALT_NAME;
 
 #[derive(DebugError, Snafu)]
 pub enum TruststoreError {
-    #[snafu(display("Untrusted root CA SKID: {skid}"))]
-    UntrustedRoot {
-        skid: String,
-        #[snafu(implicit)]
-        location: Location,
-    },
-    #[snafu(display("Failed to handle certificate chain: {details}"))]
-    CertificateChain {
+    #[snafu(display("Certificate chain is not trusted: {details}"))]
+    UntrustedChain {
         details: String,
         #[snafu(implicit)]
         location: Location,
@@ -48,77 +42,85 @@ pub enum TruststoreError {
         #[snafu(implicit)]
         location: Location,
     },
-    #[snafu(display("One-core error: {source}"))]
-    OneCore {
-        source: anyhow::Error,
-        #[snafu(implicit)]
-        location: Location,
-    },
 }
 
 pub struct Truststore<T: CertificateValidator> {
     cert_validator: T,
-    trusted_root_skids: HashSet<String>,
+    /// PEM of each trusted anchor, keyed by its Subject Key Identifier.
+    trusted_roots: HashMap<String, String>,
+    enforce_issuer_domain: bool,
 }
 
 impl<T: CertificateValidator> Truststore<T> {
-    pub fn new(cert_validator: T, trusted_root_skids: HashSet<String>) -> Self {
+    pub fn new(cert_validator: T, trusted_roots: HashMap<String, String>) -> Self {
         Self {
             cert_validator,
-            trusted_root_skids,
+            trusted_roots,
+            enforce_issuer_domain: false,
         }
     }
 
+    pub fn enforce_issuer_domain(mut self, enabled: bool) -> Self {
+        self.enforce_issuer_domain = enabled;
+        self
+    }
+
+    /// Validates `pem_chain` up to a held anchor and, when issuer-domain binding is enabled, that
+    /// `iss` names a `dNSName` SAN of the leaf. Returns the parsed leaf.
     #[instrument(level = Level::TRACE, skip(self, pem_chain), err())]
     pub async fn verify_chain_trust(
         &self,
         pem_chain: &str,
-        expected_domain: &str,
+        iss: &str,
     ) -> Result<ParsedCertificate, TruststoreError> {
-        let leaf_certificate = self
-            .cert_validator
-            .parse_pem_chain(
-                pem_chain,
-                CertificateValidationOptions::signature_and_revocation(None),
-            )
-            .await
-            .map_err(|e| {
-                CertificateChainSnafu {
-                    details: e.to_string(),
-                }
-                .build()
-            })?;
+        let leaf_certificate = validate_chain_against_trust_anchors(
+            &self.cert_validator,
+            pem_chain,
+            &self.trusted_roots,
+            || {
+                CertificateValidationOptions::signature_and_revocation(Some(vec![
+                    EnforceKeyUsage::DigitalSignature,
+                ]))
+            },
+        )
+        .await
+        .map_err(|e| {
+            UntrustedChainSnafu {
+                details: e.to_string(),
+            }
+            .build()
+        })?;
 
-        self.verify_root_ca_is_trusted(pem_chain)?;
-        verify_domain_matches_certificate(expected_domain, &leaf_certificate)?;
+        if self.enforce_issuer_domain {
+            verify_domain_matches_certificate(&issuer_domain(iss)?, &leaf_certificate)?;
+        } else {
+            tracing::debug!("Issuer domain binding is not enforced; skipping SAN check");
+        }
 
         Ok(leaf_certificate)
     }
+}
 
-    fn verify_root_ca_is_trusted(&self, pem_chain: &str) -> Result<(), TruststoreError> {
-        let last_cert_akid =
-            last_cert_authority_key_identifier_from_pem_chain(pem_chain).context(OneCoreSnafu)?;
-        if self.trusted_root_skids.contains(&last_cert_akid) {
-            Ok(())
-        } else {
-            Err(UntrustedRootSnafu {
-                skid: last_cert_akid,
-            }
-            .build())
+fn issuer_domain(iss: &str) -> Result<String, TruststoreError> {
+    let iss_url = Url::parse(iss).map_err(|e| {
+        IssuerValidationSnafu {
+            details: format!("iss claim is not a URL: {e}"),
         }
-    }
+        .build()
+    })?;
+
+    iss_url.domain().map(str::to_string).ok_or_else(|| {
+        IssuerValidationSnafu {
+            details: "iss URL contains no domain name".to_string(),
+        }
+        .build()
+    })
 }
 
 fn verify_domain_matches_certificate(
     expected_domain: &str,
     cert: &ParsedCertificate,
 ) -> Result<(), TruststoreError> {
-    if let Some(cert_scn) = &cert.subject_common_name
-        && is_dns_name_matching(cert_scn, expected_domain)
-    {
-        return Ok(());
-    }
-
     let san = cert
         .attributes
         .extensions
@@ -142,7 +144,7 @@ fn verify_domain_matches_certificate(
         Ok(())
     } else {
         Err(IssuerValidationSnafu {
-            details: format!("Issuer domain {expected_domain} is not referenced in SCN or SAN"),
+            details: format!("Issuer domain {expected_domain} is not referenced in a SAN entry"),
         }
         .build())
     }
@@ -158,22 +160,15 @@ impl From<TruststoreError> for SdJwtRsError {
 impl<T: CertificateValidator> KeyResolver for Truststore<T> {
     #[instrument(level = Level::TRACE, skip(self, header), err())]
     async fn resolve(&self, iss: &str, header: &Header) -> sd_jwt_rs::error::Result<DecodingKey> {
-        let iss_url = Url::parse(iss).map_err(|e| {
-            SdJwtRsError::Unspecified(format!("sd-jwt-vc token iss claim is not an url: {e}"))
-        })?;
-        let iss_domain = iss_url.domain().ok_or(SdJwtRsError::Unspecified(format!(
-            "sd-jwt-vc token issuer url contains no domain name: {iss_url}"
-        )))?;
-
         let chain = header.x5c.clone().ok_or(SdJwtRsError::Unspecified(
             "sd-jwt-vc token contains no x5c header".to_string(),
         ))?;
         let pem_chain =
             one_core::mapper::x509::x5c_into_pem_chain(chain.as_slice()).map_err(|e| {
-                SdJwtRsError::Unspecified("Failed to parse x5c as PEM chain".to_string())
+                SdJwtRsError::Unspecified(format!("Failed to parse x5c as PEM chain: {e}"))
             })?;
 
-        let token_issuer_cert = self.verify_chain_trust(&pem_chain, iss_domain).await?;
+        let token_issuer_cert = self.verify_chain_trust(&pem_chain, iss).await?;
 
         x509_pub_key_to_decoding_key(token_issuer_cert.public_key)
     }
@@ -196,70 +191,112 @@ fn x509_pub_key_to_decoding_key(kh: KeyHandle) -> Result<DecodingKey, SdJwtRsErr
 #[cfg(test)]
 mod tests {
     use crate::utils::x509_truststore::Truststore;
-    use one_core::mapper::x509::subject_key_identifier;
+    use jsonwebtoken::{Algorithm, Header};
+    use one_core::mapper::x509::{pem_chain_into_x5c, subject_key_identifier};
     use one_core::proto::certificate_validator::{
         CertificateValidationOptions, CertificateValidator, CertificateValidatorImpl,
     };
     use rstest::*;
+    use sd_jwt_rs::resolver::KeyResolver;
     use sd_jwt_rs::{SDJWTSerializationFormat, SDJWTVerifier};
-    use std::collections::HashSet;
+    use std::collections::HashMap;
     use x509_parser::prelude::Pem;
 
+    fn anchors(ca_certs: &[&str]) -> HashMap<String, String> {
+        ca_certs
+            .iter()
+            .map(|ca_cert| (skid_of(ca_cert), ca_cert.to_string()))
+            .collect()
+    }
+
+    fn skid_of(cert_pem: &str) -> String {
+        let pem = Pem::iter_from_buffer(cert_pem.as_bytes())
+            .next()
+            .unwrap()
+            .unwrap();
+        subject_key_identifier(&pem.parse_x509().unwrap())
+            .unwrap()
+            .unwrap()
+    }
+
+    fn truststore(trusted_roots: HashMap<String, String>) -> Truststore<CertificateValidatorImpl> {
+        Truststore::new(CertificateValidatorImpl::default(), trusted_roots)
+    }
+
     #[rstest]
-    #[case::positive_domain_in_scn(
-        trusted_skids_with_root_ca(GITHUB_ROOT_CA),
-        GITHUB_CERT_CHAIN,
-        "github.com"
-    )]
-    #[case::positive_domain_in_san(
-        trusted_skids_with_root_ca(GITHUB_ROOT_CA),
-        GITHUB_CERT_CHAIN,
-        "www.github.com"
-    )]
-    #[case::positive_self_signed_server_cert(
-        trusted_skids_with_root_ca(OPENID_CONFORMANCE_TEST_CERT),
-        OPENID_CONFORMANCE_TEST_CERT,
-        "localhost.emobix.co.uk"
-    )]
-    #[should_panic(expected = "Untrusted root CA SKID")]
-    #[case::empty_truststore(HashSet::new(), GITHUB_CERT_CHAIN, "github.com")]
-    #[should_panic(expected = "Untrusted root CA SKID")]
-    #[case::untrusted_ca(
-        trusted_skids_with_root_ca(OPENID_CONFORMANCE_TEST_CERT),
-        GITHUB_CERT_CHAIN,
-        "github.com"
-    )]
+    #[case::issuer_chain(anchors(&[TEST_ROOT_CA]), TEST_ISSUER_CERT, "https://issuer.example/vc")]
+    #[case::web_pki_chain(anchors(&[GITHUB_ROOT_CA]), GITHUB_CERT_CHAIN, "https://github.com")]
+    #[case::iss_is_not_a_url(anchors(&[TEST_ROOT_CA]), TEST_ISSUER_CERT, "urn:example:issuer")]
     #[tokio::test]
-    async fn resolve_issuer_key_and_validate_trust(
-        #[case] trusted_skids: HashSet<String>,
+    async fn trusts_chain_signed_up_to_held_anchor(
+        #[case] trusted_roots: HashMap<String, String>,
         #[case] cert_chain: &str,
-        #[case] expected_domain: &str,
+        #[case] iss: &str,
     ) {
-        let truststore = Truststore::new(CertificateValidatorImpl::default(), trusted_skids);
-        truststore
-            .verify_chain_trust(cert_chain, expected_domain)
+        truststore(trusted_roots)
+            .verify_chain_trust(cert_chain, iss)
             .await
             .unwrap();
     }
 
-    fn trusted_skids_with_root_ca(ca_cert: &str) -> HashSet<String> {
-        let cert = Pem::iter_from_buffer(ca_cert.as_bytes())
-            .next()
-            .unwrap()
+    #[rstest]
+    #[should_panic(expected = "Leaf certificate must not be self-signed")]
+    #[case::self_signed_leaf_as_its_own_anchor(
+        anchors(&[OPENID_CONFORMANCE_TEST_CERT]),
+        OPENID_CONFORMANCE_TEST_CERT
+    )]
+    #[should_panic(expected = "does not validate against any trusted anchor")]
+    #[case::empty_truststore(HashMap::new(), TEST_ISSUER_CERT)]
+    #[should_panic(expected = "does not validate against any trusted anchor")]
+    #[case::chain_of_another_anchor(anchors(&[GITHUB_ROOT_CA]), TEST_ISSUER_CERT)]
+    #[should_panic(expected = "Certificate chain is not trusted")]
+    #[case::declared_key_id_mapped_to_another_anchor(
+        HashMap::from([(skid_of(TEST_ROOT_CA), GITHUB_ROOT_CA.to_string())]),
+        TEST_ISSUER_CERT
+    )]
+    #[tokio::test]
+    async fn rejects_chain_not_signed_up_to_held_anchor(
+        #[case] trusted_roots: HashMap<String, String>,
+        #[case] cert_chain: &str,
+    ) {
+        truststore(trusted_roots)
+            .verify_chain_trust(cert_chain, "https://issuer.example")
+            .await
             .unwrap();
-
-        let mut trusted_root_skids = HashSet::new();
-
-        let certificate = cert.parse_x509().unwrap();
-
-        trusted_root_skids.insert(subject_key_identifier(&certificate).unwrap().unwrap());
-
-        trusted_root_skids
     }
 
     #[rstest]
-    #[case::scn(GITHUB_CERT_CHAIN, "github.com")]
-    #[case::san(GITHUB_CERT_CHAIN, "www.github.com")]
+    #[case::san_match("https://issuer.example/vc", None)]
+    #[case::san_mismatch(
+        "https://other.example",
+        Some("Issuer domain other.example is not referenced in a SAN entry")
+    )]
+    #[case::iss_without_domain("urn:example:issuer", Some("iss URL contains no domain name"))]
+    #[case::iss_not_a_url("issuer", Some("iss claim is not a URL"))]
+    #[tokio::test]
+    async fn enforced_issuer_domain_must_match_leaf_san(
+        #[case] iss: &str,
+        #[case] expected_error: Option<&str>,
+    ) {
+        let result = truststore(anchors(&[TEST_ROOT_CA]))
+            .enforce_issuer_domain(true)
+            .verify_chain_trust(TEST_ISSUER_CERT, iss)
+            .await;
+
+        match expected_error {
+            None => {
+                result.unwrap();
+            }
+            Some(expected) => {
+                let error = result.unwrap_err().to_string();
+                assert!(error.contains(expected), "unexpected error: {error}");
+            }
+        }
+    }
+
+    #[rstest]
+    #[case::apex(GITHUB_CERT_CHAIN, "github.com")]
+    #[case::www(GITHUB_CERT_CHAIN, "www.github.com")]
     #[tokio::test]
     async fn verify_iss_matches_certificate(#[case] pem_chain: &str, #[case] iss: &str) {
         let cert_validator = CertificateValidatorImpl::default();
@@ -269,21 +306,25 @@ mod tests {
         super::verify_domain_matches_certificate(iss, &issuer_cert.unwrap()).unwrap();
     }
 
-    #[rstest]
-    //todo It is positive test but it does not work due to cred exp. Should be updated manually by new created certificate as existing jwt came from conformance tests
-    #[should_panic(expected = "Cannot decode jwt: ExpiredSignature")]
-    #[case::positive(trusted_skids_with_root_ca(OPENID_CONFORMANCE_TEST_CERT), SD_JWT_VC)]
-    #[should_panic(expected = "Untrusted root CA SKID")]
-    #[case::negative(HashSet::new(), SD_JWT_VC)]
-    #[should_panic(expected = "sd-jwt-vc token contains no x5c header")]
-    #[case::negative(
-        trusted_skids_with_root_ca(OPENID_CONFORMANCE_TEST_CERT),
-        SD_JWT_VC_NO_X5C
-    )]
     #[tokio::test]
-    async fn resolve(#[case] trusted_skids: HashSet<String>, #[case] sd_jwt: &str) {
-        let truststore = Truststore::new(CertificateValidatorImpl::default(), trusted_skids);
-        let mut sd_jwt_verifier = SDJWTVerifier::new(Box::new(truststore));
+    async fn resolves_issuer_key_from_trusted_x5c() {
+        let mut header = Header::new(Algorithm::ES256);
+        header.x5c = Some(pem_chain_into_x5c(TEST_ISSUER_CERT).unwrap());
+
+        truststore(anchors(&[TEST_ROOT_CA]))
+            .resolve("https://issuer.example", &header)
+            .await
+            .unwrap();
+    }
+
+    #[rstest]
+    #[should_panic(expected = "Leaf certificate must not be self-signed")]
+    #[case::self_signed_issuer_cert(anchors(&[OPENID_CONFORMANCE_TEST_CERT]), SD_JWT_VC)]
+    #[should_panic(expected = "sd-jwt-vc token contains no x5c header")]
+    #[case::no_x5c(anchors(&[OPENID_CONFORMANCE_TEST_CERT]), SD_JWT_VC_NO_X5C)]
+    #[tokio::test]
+    async fn resolve(#[case] trusted_roots: HashMap<String, String>, #[case] sd_jwt: &str) {
+        let mut sd_jwt_verifier = SDJWTVerifier::new(Box::new(truststore(trusted_roots)));
         sd_jwt_verifier
             .verify_presentation(
                 sd_jwt.to_string(),
@@ -295,6 +336,32 @@ mod tests {
             .unwrap();
     }
 
+    /// Self-signed CA; issued `TEST_ISSUER_CERT`. Valid until 2046.
+    const TEST_ROOT_CA: &str = "-----BEGIN CERTIFICATE-----
+MIIBwTCCAWegAwIBAgIUWxwFnkWKOBRX/9BDUaurh6Pn8WwwCgYIKoZIzj0EAwIw
+LjEfMB0GA1UEAwwWVGVzdCBTRC1KV1QgVkMgUm9vdCBDQTELMAkGA1UEBhMCVVMw
+HhcNMjYwOTIzMDgyNTMwWhcNNDYwOTE4MDgyNTMwWjAuMR8wHQYDVQQDDBZUZXN0
+IFNELUpXVCBWQyBSb290IENBMQswCQYDVQQGEwJVUzBZMBMGByqGSM49AgEGCCqG
+SM49AwEHA0IABN7T/1mYtFrbISvrZY43cdyvzgmlNx/ubD89upRX2FD8SS2DvQXx
+3gkV3cDmwluiit3f0vW+Ooiuh9oO4PprxbWjYzBhMB8GA1UdIwQYMBaAFI6JJsYa
+EPEoOyEJMpuEqugJ39OZMA8GA1UdEwEB/wQFMAMBAf8wDgYDVR0PAQH/BAQDAgEG
+MB0GA1UdDgQWBBSOiSbGGhDxKDshCTKbhKroCd/TmTAKBggqhkjOPQQDAgNIADBF
+AiBfGAO7kMRy/cpxrkK6uxZ5+w/Z33rVU2+RKprML+vQXgIhAM0b9fgtY1JoQZ8D
+4navNI23qfHsMbLeqBWae0Lt/3h6
+-----END CERTIFICATE-----";
+    /// Leaf issued by `TEST_ROOT_CA`: SAN `DNS:issuer.example`, key usage `digitalSignature`.
+    const TEST_ISSUER_CERT: &str = "-----BEGIN CERTIFICATE-----
+MIIB2TCCAX6gAwIBAgIUBB6zIXz4fM1yXKy5aEt4Lwz6O3MwCgYIKoZIzj0EAwIw
+LjEfMB0GA1UEAwwWVGVzdCBTRC1KV1QgVkMgUm9vdCBDQTELMAkGA1UEBhMCVVMw
+HhcNMjYwOTIzMDgyNTMwWhcNNDYwOTE3MDgyNTMwWjAtMR4wHAYDVQQDDBVUZXN0
+IFNELUpXVCBWQyBJc3N1ZXIxCzAJBgNVBAYTAlVTMFkwEwYHKoZIzj0CAQYIKoZI
+zj0DAQcDQgAEy4RWg4SAqjcqUxkDhE30DobP5nv3yuPwb0cwuu6ZTH0EgAbPEPZl
+BMWl70UqkU7fWrg3d2ccKCJdSoFnPzV0J6N7MHkwDAYDVR0TAQH/BAIwADAOBgNV
+HQ8BAf8EBAMCB4AwGQYDVR0RBBIwEIIOaXNzdWVyLmV4YW1wbGUwHQYDVR0OBBYE
+FNiEzQrF1w31Xf2VmE40+LiaOvMeMB8GA1UdIwQYMBaAFI6JJsYaEPEoOyEJMpuE
+qugJ39OZMAoGCCqGSM49BAMCA0kAMEYCIQCjyZhd33EaM5xBg74Xs/wbmA7kEpNP
+yWVTOGH0aFhhpQIhALuMdY1vn5GsjESEDd4YONR9+blXRyReOAeSBSCLlmuU
+-----END CERTIFICATE-----";
     const OPENID_CONFORMANCE_TEST_CERT: &str = "-----BEGIN CERTIFICATE-----
 MIICHjCCAcOgAwIBAgIUZX9BS5CDOJRW2t1FK1UDMt/QwMEwCgYIKoZIzj0EAwIw
 ITELMAkGA1UEBhMCR0IxEjAQBgNVBAMMCU9JREYgVGVzdDAeFw0yNDExMjUwODM2

@@ -18,7 +18,7 @@ A grab-bag of general-purpose helper modules shared across all SDK components: e
 | `serde.rs` | `Helpers` trait on `Claims` (`put_str`, `put_dt`); custom serde (de)serializers for `Duration` and `OffsetDateTime`; `accumulate_claim_names`. |
 | `test_utils.rs` | Test-only DID/key-handle factories (`create_did_and_key_metadata`, etc.), stub `MockKey`, and `MockJweKms`. |
 | `wasm.rs` | `WasmNotSend` / `WasmNotSync` marker traits — `Send`/`Sync`-equivalent on native, no-op on wasm32. |
-| `x509_truststore.rs` | `Truststore<T>` — validates X.509 PEM chains against trusted root SKIDs and resolves issuer `DecodingKey` for SD-JWT-VC verification. |
+| `x509_truststore.rs` | `Truststore<T>` — validates X.509 PEM chains up to a trusted anchor whose own PEM it holds (keyed by SKI), via one-core's `validate_chain_against_trust_anchors`, and resolves issuer `DecodingKey` for SD-JWT-VC verification. |
 
 ## Key types / traits
 - `MimeType` — enum of allowed MIME types with `as_str()`.
@@ -26,6 +26,12 @@ A grab-bag of general-purpose helper modules shared across all SDK components: e
 - `TryFromChrono` / `TryIntoTime` / `TryFromTime` / `TryIntoChrono` — time-library bridge traits.
 - `WasmNotSend` / `WasmNotSync` — platform-adaptive `Send`/`Sync` markers.
 - `Truststore<T: CertificateValidator>` — X.509 chain validator implementing `sd_jwt_rs::resolver::KeyResolver`.
+  Trust requires a verified signature path from the leaf to a held anchor (RFC 5280 §6); a chain's own
+  Authority Key Identifiers only select which anchor to try and never grant trust by themselves. The leaf must
+  carry `digitalSignature` and must not be self-signed (HAIP 1.0 §6.1.1). `iss` ↔ leaf `dNSName` SAN binding is
+  opt-in (`enforce_issuer_domain`, off by default and not exposed publicly): SD-JWT VC draft-19 §2.5 makes the
+  leaf's subject the Issuer, `iss` optional, and leaves that binding to ecosystem policy — so `iss` is only parsed
+  as a URL when the binding is on. Every rejection is `UntrustedChain { details }` carrying one-core's real cause.
 - `sanitize_log_msg` — log injection prevention helper.
 
 ## Dependencies

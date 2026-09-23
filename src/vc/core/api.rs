@@ -842,9 +842,77 @@ impl PresentationRestrictionValue {
     }
 }
 
+pub const DC_API_AUDIENCE_PREFIX: &str = "origin:";
+
 #[derive(Debug, PartialEq, Clone)]
 pub struct HolderBinder {
     pub nonce: Nonce,
     pub verifier_id: String,
     pub response_uri: Option<String>,
+}
+
+impl HolderBinder {
+    pub fn dc_api_audience(origin: &str) -> String {
+        if origin.starts_with(DC_API_AUDIENCE_PREFIX) {
+            return origin.to_owned();
+        }
+
+        format!("{DC_API_AUDIENCE_PREFIX}{origin}")
+    }
+
+    pub fn origin_or_verifier_id(&self) -> &str {
+        self.verifier_id
+            .strip_prefix(DC_API_AUDIENCE_PREFIX)
+            .unwrap_or(&self.verifier_id)
+    }
+}
+
+#[cfg(test)]
+mod holder_binder_tests {
+    use super::HolderBinder;
+    use crate::nonce::Nonce;
+
+    fn binder(verifier_id: &str) -> HolderBinder {
+        HolderBinder {
+            nonce: Nonce::from_secret("nonce".to_string()),
+            verifier_id: verifier_id.to_string(),
+            response_uri: None,
+        }
+    }
+
+    #[test]
+    fn dc_api_audience_prefixes_a_bare_origin() {
+        assert_eq!(
+            HolderBinder::dc_api_audience("https://verifier.example.com"),
+            "origin:https://verifier.example.com"
+        );
+    }
+
+    #[test]
+    fn dc_api_audience_never_prefixes_twice() {
+        assert_eq!(
+            HolderBinder::dc_api_audience("origin:https://verifier.example.com"),
+            "origin:https://verifier.example.com"
+        );
+    }
+
+    #[test]
+    fn origin_or_verifier_id_strips_the_dc_api_prefix() {
+        let binder = binder("origin:https://verifier.example.com");
+
+        assert_eq!(
+            binder.origin_or_verifier_id(),
+            "https://verifier.example.com"
+        );
+    }
+
+    #[test]
+    fn origin_or_verifier_id_keeps_a_client_identifier() {
+        let binder = binder("x509_san_dns:verifier.example.com");
+
+        assert_eq!(
+            binder.origin_or_verifier_id(),
+            "x509_san_dns:verifier.example.com"
+        );
+    }
 }

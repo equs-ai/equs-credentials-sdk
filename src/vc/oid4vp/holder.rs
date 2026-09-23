@@ -834,7 +834,7 @@ where
                     return Err(Error::Protocol { source: err });
                 }
 
-                origin
+                HolderBinder::dc_api_audience(&origin)
             }
             _ => auth_request.client_id.get_full_id(),
         };
@@ -1724,7 +1724,7 @@ mod tests {
                 verifier
                     .verify_presentation(
                         vp,
-                        Some(origin),
+                        Some(format!("origin:{origin}")),
                         Some(test_case.request.nonce.secret().to_string()),
                         SDJWTSerializationFormat::Compact,
                     )

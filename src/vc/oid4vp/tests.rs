@@ -4921,8 +4921,9 @@ mod delegation_e2e_tests {
                 &session,
                 &CredentialVerificationMetadata {
                     transaction_data: None,
-                    // For dc_api, the audience is the origin the holder used.
-                    audience: Some(dc_api_origin.to_string()),
+                    audience: Some(crate::vc::core::HolderBinder::dc_api_audience(
+                        dc_api_origin,
+                    )),
                 },
             )
             .await
@@ -5095,7 +5096,9 @@ mod delegation_e2e_tests {
                 &session,
                 &CredentialVerificationMetadata {
                     transaction_data: None,
-                    audience: Some(dc_api_origin.to_string()),
+                    audience: Some(crate::vc::core::HolderBinder::dc_api_audience(
+                        dc_api_origin,
+                    )),
                 },
             )
             .await
@@ -5247,7 +5250,9 @@ mod delegation_e2e_tests {
                 &session,
                 &CredentialVerificationMetadata {
                     transaction_data: None,
-                    audience: Some(dc_api_origin.to_string()),
+                    audience: Some(crate::vc::core::HolderBinder::dc_api_audience(
+                        dc_api_origin,
+                    )),
                 },
             )
             .await
@@ -5749,12 +5754,23 @@ mod verify_and_extract_tests {
         let (verifier, _) = utils::verifier_service().await;
         let metadata = CredentialVerificationMetadata {
             transaction_data: auth_request.transaction_data.clone(),
-            audience: Some(dc_api_origin.to_string()),
+            audience: Some(crate::vc::core::HolderBinder::dc_api_audience(
+                dc_api_origin,
+            )),
         };
         verifier
             .verify_and_extract_presentation(&resp, &session_for(&auth_request), &metadata)
             .await
             .expect("a grant bound to this request must verify");
+
+        let bare_origin = CredentialVerificationMetadata {
+            audience: Some(dc_api_origin.to_string()),
+            ..metadata.clone()
+        };
+        verifier
+            .verify_and_extract_presentation(&resp, &session_for(&auth_request), &bare_origin)
+            .await
+            .expect_err("a DC API presentation must not verify against the bare Origin");
 
         // Same grant, a session whose nonce it was never bound to.
         let mut wrong_session = session_for(&auth_request);

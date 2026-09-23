@@ -24,14 +24,14 @@ use async_trait::async_trait;
 #[cfg(feature = "delegate-sd-jwt")]
 use serde_json::Value;
 use snafu::ResultExt;
-use std::collections::HashSet;
+use std::collections::HashMap;
 use std::convert::TryFrom;
 use tracing::{Level, info, instrument};
 
 #[derive(Debug, Default, Clone)]
 pub struct VerificationParams {
-    // Subject Key Identifiers (SKI) of the trusted x509 certificates used to verify the signature of the credential.
-    pub trusted_certs_skids: Option<HashSet<String>>,
+    // PEM of each trusted x509 anchor, keyed by its Subject Key Identifier (SKI).
+    pub trusted_certs: Option<HashMap<String, String>>,
 }
 
 #[derive(Clone)]
@@ -57,7 +57,7 @@ impl Verifier for VerifierService {
                     vp,
                     holder_binder,
                     VerifyOptions {
-                        trusted_certs_skids: self.verification_params.trusted_certs_skids.clone(),
+                        trusted_certs: self.verification_params.trusted_certs.clone(),
                         selective_claims: None,
                     },
                     self.did_resolver.clone(),
@@ -99,7 +99,7 @@ impl Verifier for VerifierService {
                     vp,
                     holder_binder,
                     VerifyOptions {
-                        trusted_certs_skids: self.verification_params.trusted_certs_skids.clone(),
+                        trusted_certs: self.verification_params.trusted_certs.clone(),
                         selective_claims: None,
                     },
                     self.did_resolver.clone(),

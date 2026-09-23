@@ -244,7 +244,7 @@ async fn credentials_presentation_and_verification_with_dcql(#[case] test_case: 
 
 #[rstest]
 #[case::ds_cert_of_vp_was_signed_by_trusted_cert(SAMPLE_IACA_CERT_1)]
-#[should_panic(expected = "Root CA certificate of a chain is not trusted")]
+#[should_panic(expected = "Issuer certificate chain is not trusted")]
 #[case::ds_cert_of_vp_was_signed_by_untrusted_cert(SAMPLE_IACA_CERT_2)]
 #[tokio::test]
 async fn presentation_verification_flow_with_mdl(#[case] cert: &str) {

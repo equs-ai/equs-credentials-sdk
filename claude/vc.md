@@ -22,6 +22,7 @@ Implements the full Verifiable Credentials stack: credential issuance, presentat
 - Used by: `didcomm` (WACI/Aries issuance and present-proof protocols embed VC core), all three wrappers (Node.js, WASM, UniFFI expose OID4VCI + OID4VP), `tests/e2e/`
 
 ## Key decisions / constraints
+- **X.509 issuer trust (2026-09-23, ASI-6961):** SD-JWT VC `x5c` and mdoc `x5chain` are both validated by one-core's `validate_chain_against_trust_anchors` — a signature path from the leaf to a held anchor PEM, never an Authority Key Identifier match alone; a self-signed leaf is rejected (HAIP 1.0 §6.1.1). Reason: the previous check trusted any chain whose topmost certificate *claimed* a trusted root's key identifier. No anchors: SD-JWT VC rejects, mdoc skips the issuer chain check (developer decision). `iss` ↔ SAN binding is opt-in and off, per SD-JWT VC draft-19 §2.5. See `src/utils/CLAUDE.md`.
 - OID4VCI uses a dual-error split: `ProtocolError` (4xx — returned to the client) vs `InternalError` (5xx — server-side fault).
 - OID4VP JWE encryption for `direct_post.jwt` response mode is handled via `one-core-portable`; the optional `JweDecrypt` KMS capability must be present on the verifier's KMS.
 - `mso_mdoc` format support is gated and excluded on wasm targets.
