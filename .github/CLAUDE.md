@@ -29,7 +29,6 @@ is the one exception and is named `publish`.
 | `scripts/install-gitleaks.sh` | Pinned gitleaks download with its SHA256; prints the binary path. |
 | `scripts/coverage-badge.sh` | Writes the coverage SVG to the `badges` branch. Runs only on `main`. |
 | `scripts/binstall-or-build.sh` | Installs a `cargo-X` subcommand, falling back to a source build. Derives the check from the crate name, so it takes one argument where GitLab's `binstall_or_build` takes two. |
-| `scripts/test-common-macros-publish-guard.sh` | Cases for the tag/version guard in `publish-common-macros.yml`. Run it by hand after editing that guard; no job calls it. |
 
 Jobs run in five declared tiers, marked by `# tier N` and ordered in the file:
 1 `fmt` plus the two scans, which gate nothing; 2 `clippy`, `build-prod`,
