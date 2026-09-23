@@ -667,18 +667,46 @@ dependencies = [
 
 [[package]]
 name = "asn1-rs"
+version = "0.5.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7f6fd5ddaf0351dff5b8da21b2fb4ff8e08ddd02857f0bf69c47639106c0fff0"
+dependencies = [
+ "asn1-rs-derive 0.4.0",
+ "asn1-rs-impl 0.1.0",
+ "bitvec 1.0.1",
+ "displaydoc",
+ "nom 7.1.3",
+ "num-traits",
+ "rusticata-macros",
+ "thiserror 1.0.69",
+]
+
+[[package]]
+name = "asn1-rs"
 version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "56624a96882bb8c26d61312ae18cb45868e5a9992ea73c58e45c3101e56a1e60"
 dependencies = [
- "asn1-rs-derive",
- "asn1-rs-impl",
+ "asn1-rs-derive 0.6.0",
+ "asn1-rs-impl 0.2.0",
  "displaydoc",
  "nom 7.1.3",
  "num-traits",
  "rusticata-macros",
  "thiserror 2.0.18",
  "time",
+]
+
+[[package]]
+name = "asn1-rs-derive"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "726535892e8eae7e70657b4c8ea93d26b8553afb1ce617caee529ef96d7dee6c"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 1.0.109",
+ "synstructure 0.12.6",
 ]
 
 [[package]]
@@ -691,6 +719,17 @@ dependencies = [
  "quote",
  "syn 2.0.117",
  "synstructure 0.13.2",
+]
+
+[[package]]
+name = "asn1-rs-impl"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2777730b2039ac0f95f093556e61b6d26cebed5393ca6f152717777cec3a42ed"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 1.0.109",
 ]
 
 [[package]]
@@ -1240,22 +1279,6 @@ dependencies = [
 
 [[package]]
 name = "blstrs"
-version = "0.6.1"
-source = "git+https://github.com/procivis/blstrs.git?rev=a0cb960#a0cb960198e4d6c1a86e6c0eddf8bdb576858cb2"
-dependencies = [
- "blst",
- "byte-slice-cast",
- "digest 0.9.0",
- "ff 0.12.1",
- "group 0.12.1",
- "pairing 0.22.0",
- "rand_core 0.6.4",
- "serde",
- "subtle 2.6.1",
-]
-
-[[package]]
-name = "blstrs"
 version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7a8a8ed6fefbeef4a8c7b460e4110e12c5e22a5b7cf32621aae6ad650c4dcf29"
@@ -1672,11 +1695,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "clap-stdin"
+version = "0.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6843ca418f46b4658e03825cb100092697f6b7f94a122281c408cb39f4562f25"
+dependencies = [
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "clap_builder"
 version = "4.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "714a53001bf66416adb0e2ef5ac857140e7dc3a0c48fb28b2f10762fc4b5069f"
 dependencies = [
+ "anstream",
  "anstyle",
  "clap_lex 1.1.0",
  "strsim 0.11.1",
@@ -1944,20 +1977,6 @@ name = "core-foundation-sys"
 version = "0.8.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "773648b94d0e5d620f64f280777445740e61fe701025087ec8b57f45c791888b"
-
-[[package]]
-name = "cose-rs"
-version = "0.1.0"
-source = "git+https://github.com/spruceid/cose-rs?rev=4104505#4104505ec2c9bddd17d8b173f96ecd027c13ab9d"
-dependencies = [
- "p256",
- "p384",
- "serde",
- "serde_bytes",
- "serde_cbor",
- "signature 2.2.0",
- "thiserror 1.0.69",
-]
 
 [[package]]
 name = "coset"
@@ -2445,19 +2464,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ccc2776f0c61eca1ca32528f85548abd1a4be8fb53d1b21c013e4f18da1e7090"
 dependencies = [
  "data-encoding",
- "syn 1.0.109",
-]
-
-[[package]]
-name = "dcql"
-version = "0.1.0"
-source = "git+https://github.com/equs-ai/one-core.git?rev=1ce94d3a#1ce94d3af7206a53c8b7b13f00aaf7b32590ce70"
-dependencies = [
- "bon",
- "serde",
- "similar-asserts",
- "standardized-types",
- "thiserror 2.0.18",
+ "syn 2.0.117",
 ]
 
 [[package]]
@@ -2479,25 +2486,12 @@ dependencies = [
 
 [[package]]
 name = "der"
-version = "0.6.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f1a467a65c5e759bce6e65eaf91cc29f466cdc57cb65777bd646872a8a1fd4de"
-dependencies = [
- "const-oid 0.9.6",
- "der_derive 0.6.1",
- "flagset",
- "pem-rfc7468 0.6.0",
- "zeroize",
-]
-
-[[package]]
-name = "der"
 version = "0.7.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e7c1832837b905bbfb5101e07cc24c8deddf52f93225eee6ead5f4d63d53ddcb"
 dependencies = [
  "const-oid 0.9.6",
- "der_derive 0.7.3",
+ "der_derive",
  "flagset",
  "pem-rfc7468 0.7.0",
  "zeroize",
@@ -2519,24 +2513,12 @@ version = "10.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "07da5016415d5a3c4dd39b11ed26f915f52fc4e0dc197d87908bc916e51bc1a6"
 dependencies = [
- "asn1-rs",
+ "asn1-rs 0.7.1",
  "displaydoc",
  "nom 7.1.3",
  "num-bigint 0.4.6",
  "num-traits",
  "rusticata-macros",
-]
-
-[[package]]
-name = "der_derive"
-version = "0.6.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8ef71ddb5b3a1f53dee24817c8f70dfa1cb29e804c18d88c228d4bc9c86ee3b9"
-dependencies = [
- "proc-macro-error",
- "proc-macro2",
- "quote",
- "syn 1.0.109",
 ]
 
 [[package]]
@@ -2643,7 +2625,7 @@ dependencies = [
  "multibase 0.8.0",
  "serde_jcs",
  "serde_json",
- "ssi-crypto 0.2.1",
+ "ssi-crypto",
  "ssi-dids-core 0.3.0",
  "ssi-jwk 0.4.0",
  "ssi-verification-methods 0.3.0",
@@ -2686,7 +2668,7 @@ dependencies = [
  "serde",
  "serde_json",
  "ssi-caips 0.3.0",
- "ssi-crypto 0.2.1",
+ "ssi-crypto",
  "ssi-dids-core 0.3.0",
  "ssi-jwk 0.4.0",
  "static-iref",
@@ -2730,111 +2712,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "did_doc"
-version = "0.1.0"
-source = "git+https://github.com/equs-ai/vcx.git?rev=fc818ef5#fc818ef577b2107605a6e577e22ee734d5d97755"
-dependencies = [
- "base64 0.22.1",
- "bs58 0.5.1",
- "did_key",
- "did_parser_nom",
- "display_as_json",
- "hex",
- "log",
- "multibase 0.9.2",
- "pem",
- "public_key",
- "serde",
- "serde_json",
- "thiserror 1.0.69",
- "typed-builder",
- "uniresid",
- "url",
-]
-
-[[package]]
-name = "did_key"
-version = "0.1.0"
-source = "git+https://github.com/equs-ai/vcx.git?rev=fc818ef5#fc818ef577b2107605a6e577e22ee734d5d97755"
-dependencies = [
- "did_parser_nom",
- "public_key",
- "serde",
- "serde_json",
- "thiserror 1.0.69",
-]
-
-[[package]]
-name = "did_parser_nom"
-version = "0.1.0"
-source = "git+https://github.com/equs-ai/vcx.git?rev=fc818ef5#fc818ef577b2107605a6e577e22ee734d5d97755"
-dependencies = [
- "log",
- "nom 7.1.3",
- "percent-encoding",
- "serde",
-]
-
-[[package]]
-name = "did_peer"
-version = "0.1.0"
-source = "git+https://github.com/equs-ai/vcx.git?rev=fc818ef5#fc818ef577b2107605a6e577e22ee734d5d97755"
-dependencies = [
- "async-trait",
- "base64 0.22.1",
- "bs58 0.5.1",
- "did_doc",
- "did_parser_nom",
- "did_resolver",
- "display_as_json",
- "log",
- "multibase 0.9.2",
- "once_cell",
- "public_key",
- "regex",
- "serde",
- "serde_json",
- "sha2 0.10.9",
- "thiserror 1.0.69",
- "typed-builder",
- "unsigned-varint 0.8.0",
- "url",
-]
-
-[[package]]
-name = "did_resolver"
-version = "0.1.0"
-source = "git+https://github.com/equs-ai/vcx.git?rev=fc818ef5#fc818ef577b2107605a6e577e22ee734d5d97755"
-dependencies = [
- "async-trait",
- "chrono",
- "did_doc",
- "did_parser_nom",
- "serde",
- "serde_json",
- "typed-builder",
-]
-
-[[package]]
-name = "didcomm"
-version = "0.4.1"
-source = "git+https://github.com/equs-ai/didcomm-rust.git?rev=db41780d#db41780ddffb56927bddf969ba5c5febc097d7bc"
-dependencies = [
- "anyhow",
- "askar-crypto 0.3.3",
- "async-trait",
- "base64 0.13.1",
- "bs58 0.4.0",
- "serde",
- "serde-enum-str",
- "serde_json",
- "sha2 0.9.9",
- "thiserror 1.0.69",
- "uuid 0.8.2",
- "varint",
-]
-
-[[package]]
 name = "digest"
 version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2872,15 +2749,6 @@ checksum = "4850db49bf08e663084f7fb5c87d202ef91a3907271aff24a94eb97ff039153c"
 dependencies = [
  "block-buffer 0.12.0",
  "crypto-common 0.2.1",
-]
-
-[[package]]
-name = "display_as_json"
-version = "0.1.0"
-source = "git+https://github.com/equs-ai/vcx.git?rev=fc818ef5#fc818ef577b2107605a6e577e22ee734d5d97755"
-dependencies = [
- "quote",
- "syn 2.0.117",
 ]
 
 [[package]]
@@ -3131,6 +2999,23 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "877a4ace8713b0bcf2a4e7eec82529c029f1d0619886d18145fea96c3ffe5c0f"
 
 [[package]]
+name = "equs-blstrs"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ca0a8b6713a444d81d541f9210f1fef106509d93bc0781e2cee0fbc53688a87f"
+dependencies = [
+ "blst",
+ "byte-slice-cast",
+ "digest 0.9.0",
+ "ff 0.12.1",
+ "group 0.12.1",
+ "pairing 0.22.0",
+ "rand_core 0.6.4",
+ "serde",
+ "subtle 2.6.1",
+]
+
+[[package]]
 name = "equs-common-macros"
 version = "0.1.0"
 dependencies = [
@@ -3154,14 +3039,20 @@ dependencies = [
  "bs58 0.5.1",
  "chrono",
  "crc",
- "did_parser_nom",
- "did_peer",
- "did_resolver",
- "didcomm",
  "ecdsa",
  "ed25519-compact",
  "ed25519-dalek",
  "equs-common-macros",
+ "equs-didcomm",
+ "equs-oid4vci",
+ "equs-one-core",
+ "equs-one-core-portable",
+ "equs-one-core-shared-types",
+ "equs-openid4vp",
+ "equs-sd-jwt-rs",
+ "equs-vcx-did-parser-nom",
+ "equs-vcx-did-peer",
+ "equs-vcx-did-resolver",
  "flate2",
  "futures",
  "generic-array 0.14.7",
@@ -3181,10 +3072,6 @@ dependencies = [
  "mockall",
  "mockito",
  "oauth2",
- "oid4vci",
- "one-core",
- "one-core-portable",
- "openid4vp",
  "openidconnect",
  "p256",
  "rand 0.9.4",
@@ -3194,13 +3081,11 @@ dependencies = [
  "reqwest-middleware",
  "reqwest-tracing",
  "rstest 0.22.0",
- "sd-jwt-rs",
  "secrecy",
  "serde",
  "serde_json",
  "serde_json_path",
  "serde_urlencoded",
- "shared-types",
  "snafu 0.8.9",
  "ssi",
  "ssi-status 0.3.1",
@@ -3211,10 +3096,458 @@ dependencies = [
  "tracing",
  "url",
  "uuid 1.23.1",
- "x509-cert 0.2.5",
+ "x509-cert",
  "x509-parser",
  "zeroize",
  "zkryptium",
+]
+
+[[package]]
+name = "equs-didcomm"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c8930f48a3fcfd7c837fbe4337436f20f814f187f1eaeaf6c5f94258d4840d17"
+dependencies = [
+ "anyhow",
+ "askar-crypto 0.3.3",
+ "async-trait",
+ "base64 0.13.1",
+ "bs58 0.4.0",
+ "serde",
+ "serde-enum-str",
+ "serde_json",
+ "sha2 0.9.9",
+ "thiserror 1.0.69",
+ "uuid 0.8.2",
+ "varint",
+]
+
+[[package]]
+name = "equs-oid4vci"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "970b8dc99871bd4ade988aec7e47dcfeb84fd6157da742c71ddb6a96c153d30d"
+dependencies = [
+ "anyhow",
+ "async-signature",
+ "async-trait",
+ "base64 0.21.7",
+ "form_urlencoded",
+ "isomdl",
+ "oauth2",
+ "percent-encoding",
+ "rand 0.8.6",
+ "serde",
+ "serde_json",
+ "serde_path_to_error",
+ "serde_urlencoded",
+ "serde_with 3.14.1",
+ "sha2 0.10.9",
+ "ssi",
+ "thiserror 1.0.69",
+ "time",
+ "tracing",
+ "url",
+]
+
+[[package]]
+name = "equs-one-core"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "65a47ab540c0ab5bcc447d33df8eb1e49df37ea4200ffc264694a947f8fd0574"
+dependencies = [
+ "aes-gcm",
+ "anyhow",
+ "asn1-rs 0.7.1",
+ "async-trait",
+ "bincode",
+ "bit-vec 0.8.0",
+ "bon",
+ "bs58 0.5.1",
+ "ciborium",
+ "convert_case 0.10.0",
+ "coset 0.4.2",
+ "crc",
+ "ct-codecs",
+ "dashmap",
+ "equs-one-core-crypto",
+ "equs-one-core-dcql",
+ "equs-one-core-portable",
+ "equs-one-core-shared-types",
+ "equs-one-core-standardized-types",
+ "figment",
+ "flate2",
+ "futures",
+ "hex",
+ "hex-literal 1.1.0",
+ "hkdf 0.12.4",
+ "human-sort",
+ "indexmap 2.14.0",
+ "indoc",
+ "itertools 0.14.0",
+ "json-ld",
+ "json-syntax",
+ "jsonptr",
+ "maplit",
+ "mime",
+ "mrtd",
+ "multihash",
+ "ndef-rs",
+ "num-traits",
+ "one-dto-mapper",
+ "ouroboros",
+ "pem",
+ "rand 0.8.6",
+ "rcgen",
+ "regex",
+ "reqwest 0.13.3",
+ "rumqttc-next",
+ "rustls 0.23.40",
+ "rustls-pki-types",
+ "rustls-platform-verifier 0.6.2",
+ "secrecy",
+ "serde",
+ "serde_json",
+ "serde_qs",
+ "serde_repr",
+ "serde_urlencoded",
+ "serde_with 3.14.1",
+ "serde_yaml",
+ "sha2 0.10.9",
+ "shadow-rs",
+ "sophia_api",
+ "sophia_c14n",
+ "strum 0.27.2",
+ "tempfile",
+ "thiserror 2.0.18",
+ "time",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "url",
+ "urlencoding",
+ "uuid 1.23.1",
+ "x25519-dalek",
+ "x509-parser",
+ "yasna",
+ "zip",
+]
+
+[[package]]
+name = "equs-one-core-crypto"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f63f89b2447a70d76d04af06fc7c8dfac01abc4ee45356be4d50e210a89e08fe"
+dependencies = [
+ "aes",
+ "aes-gcm",
+ "aes-kw",
+ "async-trait",
+ "blstrs",
+ "cbc",
+ "chacha20poly1305",
+ "cocoon",
+ "concat-kdf",
+ "ct-codecs",
+ "ed25519-compact",
+ "equs-one-core-standardized-types",
+ "equs-pairing-crypto",
+ "hmac 0.12.1",
+ "ml-dsa",
+ "p256",
+ "pbkdf2 0.12.2",
+ "rand 0.10.1",
+ "rand 0.8.6",
+ "rand_chacha 0.10.0",
+ "rand_chacha 0.3.1",
+ "secrecy",
+ "serde",
+ "serde_json",
+ "serde_with 3.14.1",
+ "sha1",
+ "sha2 0.10.9",
+ "strum 0.27.2",
+ "thiserror 2.0.18",
+]
+
+[[package]]
+name = "equs-one-core-dcql"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9b91b175642d96ad6d999a5aff4e0677e9a47c6689717e1be9fa734e27cdfbbf"
+dependencies = [
+ "bon",
+ "equs-one-core-standardized-types",
+ "serde",
+ "similar-asserts",
+ "thiserror 2.0.18",
+]
+
+[[package]]
+name = "equs-one-core-portable"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "85614c49d560af51a68cb45a55603c4a225c23af7b824a51b1fc4f7005adc549"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "bs58 0.5.1",
+ "ciborium",
+ "ct-codecs",
+ "equs-one-core-crypto",
+ "equs-one-core-dcql",
+ "equs-one-core-shared-types",
+ "equs-one-core-standardized-types",
+ "figment",
+ "hex",
+ "hex-literal 1.1.0",
+ "indoc",
+ "itertools 0.13.0",
+ "mime",
+ "one-dto-mapper",
+ "regex",
+ "secrecy",
+ "serde",
+ "serde_json",
+ "serde_with 3.14.1",
+ "serde_yaml",
+ "strum 0.27.2",
+ "thiserror 2.0.18",
+ "time",
+ "tokio",
+ "tracing",
+ "uuid 1.23.1",
+]
+
+[[package]]
+name = "equs-one-core-proc-macros"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5d803386be27e53e69611e8ff56360e9f01633421d4455d6f5ec6055b6d25dd6"
+dependencies = [
+ "darling 0.23.0",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.117",
+ "walkdir",
+]
+
+[[package]]
+name = "equs-one-core-shared-types"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8dce940f470d019bdfe1f2cd7022f633c60d5261de4be5698737211b4b063f8d"
+dependencies = [
+ "regex",
+ "serde",
+ "thiserror 2.0.18",
+ "url",
+ "uuid 1.23.1",
+]
+
+[[package]]
+name = "equs-one-core-standardized-types"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1ac0ac3b192367782e1c970d2f26557f92dbd165ef9aa6a509f05bf80aa97b2d"
+dependencies = [
+ "anyhow",
+ "ct-codecs",
+ "equs-one-core-proc-macros",
+ "secrecy",
+ "serde",
+ "serde_json",
+ "serde_with 3.14.1",
+ "strum 0.27.2",
+ "time",
+ "uuid 1.23.1",
+]
+
+[[package]]
+name = "equs-openid4vp"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "461dd7147df5764fd3df3b93c98ca533d0c9cebfab010f0ba239ccbf024ecbbf"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "base64 0.21.7",
+ "http 1.3.1",
+ "json-syntax",
+ "jsonschema",
+ "p256",
+ "rand 0.8.6",
+ "regex",
+ "reqwest 0.12.12",
+ "rstest 0.25.0",
+ "serde",
+ "serde_json",
+ "serde_json_path",
+ "serde_urlencoded",
+ "ssi",
+ "thiserror 1.0.69",
+ "time",
+ "tokio",
+ "tracing",
+ "url",
+ "uuid 1.23.1",
+ "x509-cert",
+]
+
+[[package]]
+name = "equs-pairing-crypto"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2df17e076e43b0e117f5701f6bc971b80b0eb7dee6e3f068face5d733d251855"
+dependencies = [
+ "digest 0.9.0",
+ "equs-blstrs",
+ "ff 0.12.1",
+ "group 0.12.1",
+ "pairing 0.22.0",
+ "rand 0.8.6",
+ "rand_core 0.6.4",
+ "serde",
+ "sha2 0.9.9",
+ "sha3 0.9.1",
+ "subtle 2.6.1",
+ "zeroize",
+]
+
+[[package]]
+name = "equs-sd-jwt-rs"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "de76055e7c320bebbbe4feb102c47d5bdfc31cbe23f9870ca23cb070df94584f"
+dependencies = [
+ "async-trait",
+ "base64 0.21.7",
+ "hmac 0.12.1",
+ "jsonwebtoken",
+ "log",
+ "rand 0.8.6",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "strum 0.25.0",
+ "thiserror 1.0.69",
+ "time",
+]
+
+[[package]]
+name = "equs-vcx-did-doc"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "58b8bcc3c17d21a1bc5afb36052a2a053fb82c0c737985d87c0015d7650c563f"
+dependencies = [
+ "base64 0.22.1",
+ "bs58 0.5.1",
+ "equs-vcx-did-key",
+ "equs-vcx-did-parser-nom",
+ "equs-vcx-display-as-json",
+ "equs-vcx-public-key",
+ "hex",
+ "log",
+ "multibase 0.9.2",
+ "pem",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "typed-builder",
+ "uniresid",
+ "url",
+]
+
+[[package]]
+name = "equs-vcx-did-key"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "82f3fc2be77122e798a7564d84cb3e50191926425f645146b7df2bd7947f85f9"
+dependencies = [
+ "equs-vcx-did-parser-nom",
+ "equs-vcx-public-key",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+]
+
+[[package]]
+name = "equs-vcx-did-parser-nom"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "787e6e4674e2c7e8def85c439d285eb1976f71c4d16f47f9e5ae4a5ce4dbc569"
+dependencies = [
+ "log",
+ "nom 7.1.3",
+ "percent-encoding",
+ "serde",
+]
+
+[[package]]
+name = "equs-vcx-did-peer"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5c71c7c4cbc3565c3f9ab28a83b12d70cb0c5f6c793e015197192fe102b0bb5c"
+dependencies = [
+ "async-trait",
+ "base64 0.22.1",
+ "bs58 0.5.1",
+ "equs-vcx-did-doc",
+ "equs-vcx-did-parser-nom",
+ "equs-vcx-did-resolver",
+ "equs-vcx-display-as-json",
+ "equs-vcx-public-key",
+ "log",
+ "multibase 0.9.2",
+ "once_cell",
+ "regex",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "thiserror 1.0.69",
+ "typed-builder",
+ "unsigned-varint 0.8.0",
+ "url",
+]
+
+[[package]]
+name = "equs-vcx-did-resolver"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "04fe3b2a54a1bd60713396d37f83c38a9ed87b961b5386f3f96142fbc995910c"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "equs-vcx-did-doc",
+ "equs-vcx-did-parser-nom",
+ "serde",
+ "serde_json",
+ "typed-builder",
+]
+
+[[package]]
+name = "equs-vcx-display-as-json"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6034cb94903b708930aecc31fa502895d2028944930fb3d743b45f1a07f15168"
+dependencies = [
+ "quote",
+ "syn 2.0.117",
+]
+
+[[package]]
+name = "equs-vcx-public-key"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ab514fad4d9bc7957281295fa0aa60e551099679ecd6c07aadd60d4b7e33aa0e"
+dependencies = [
+ "base64 0.22.1",
+ "bs58 0.5.1",
+ "multibase 0.9.2",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "unsigned-varint 0.8.0",
 ]
 
 [[package]]
@@ -4664,17 +4997,26 @@ dependencies = [
 
 [[package]]
 name = "isomdl"
-version = "0.1.0"
-source = "git+https://github.com/spruceid/isomdl?rev=90ce218#90ce2180a7336715ff4682dcab9bb7cfad898740"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "94cf8ca4a1dfe7d603dc11c4db720a5425bbb56758361b06dec0d7012922428f"
 dependencies = [
  "aes",
  "aes-gcm",
  "anyhow",
+ "asn1-rs 0.5.2",
  "async-signature",
  "base64 0.13.1",
- "cose-rs",
+ "ciborium",
+ "clap 4.6.1",
+ "clap-stdin",
+ "const-oid 0.9.6",
+ "coset 0.3.8",
+ "der 0.7.10",
+ "digest 0.10.7",
  "ecdsa",
  "elliptic-curve",
+ "hex",
  "hex-literal 0.3.4",
  "hkdf 0.12.4",
  "hmac 0.12.1",
@@ -4685,22 +5027,27 @@ dependencies = [
  "rand 0.8.6",
  "sec1",
  "serde",
- "serde_cbor",
+ "serde_bytes",
  "serde_json",
+ "sha1",
  "sha2 0.10.9",
  "signature 2.2.0",
- "ssi-jwk 0.1.2",
+ "ssi-jwk 0.2.1",
+ "strum 0.24.1",
+ "strum_macros 0.24.3",
  "thiserror 1.0.69",
  "time",
+ "tracing",
  "uuid 1.23.1",
- "x509-cert 0.1.1",
+ "x509-cert",
  "zeroize",
 ]
 
 [[package]]
 name = "isomdl-macros"
 version = "0.1.0"
-source = "git+https://github.com/spruceid/isomdl?rev=90ce218#90ce2180a7336715ff4682dcab9bb7cfad898740"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c71d1bfc9931d0b9e6272c90f626c84c02dfd55dc13fbf968681e4ba54372bfe"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -6050,34 +6397,7 @@ version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "12f40cff3dde1b6087cc5d5f5d4d65712f34016a03ed60e9c08dcc392736b5b7"
 dependencies = [
- "asn1-rs",
-]
-
-[[package]]
-name = "oid4vci"
-version = "0.1.0"
-source = "git+https://github.com/equs-ai/oid4vci-rs.git?rev=f5c38f92#f5c38f92d41f4d6973a5bc63d4c6e48138b7d384"
-dependencies = [
- "anyhow",
- "async-signature",
- "async-trait",
- "base64 0.21.7",
- "form_urlencoded",
- "isomdl",
- "oauth2",
- "percent-encoding",
- "rand 0.8.6",
- "serde",
- "serde_json",
- "serde_path_to_error",
- "serde_urlencoded",
- "serde_with 3.14.1",
- "sha2 0.10.9",
- "ssi",
- "thiserror 1.0.69",
- "time",
- "tracing",
- "url",
+ "asn1-rs 0.7.1",
 ]
 
 [[package]]
@@ -6091,159 +6411,6 @@ name = "once_cell_polyfill"
 version = "1.70.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
-
-[[package]]
-name = "one-core"
-version = "0.1.0"
-source = "git+https://github.com/equs-ai/one-core.git?rev=1ce94d3a#1ce94d3af7206a53c8b7b13f00aaf7b32590ce70"
-dependencies = [
- "aes-gcm",
- "anyhow",
- "asn1-rs",
- "async-trait",
- "bincode",
- "bit-vec 0.8.0",
- "bon",
- "bs58 0.5.1",
- "ciborium",
- "convert_case 0.10.0",
- "coset 0.4.2",
- "crc",
- "ct-codecs",
- "dashmap",
- "dcql",
- "figment",
- "flate2",
- "futures",
- "hex",
- "hex-literal 1.1.0",
- "hkdf 0.12.4",
- "human-sort",
- "indexmap 2.14.0",
- "indoc",
- "itertools 0.14.0",
- "json-ld",
- "json-syntax",
- "jsonptr",
- "maplit",
- "mime",
- "mrtd",
- "multihash",
- "ndef-rs",
- "num-traits",
- "one-core-portable",
- "one-crypto",
- "one-dto-mapper",
- "ouroboros",
- "pem",
- "rand 0.8.6",
- "rcgen",
- "regex",
- "reqwest 0.13.3",
- "rumqttc-next",
- "rustls 0.23.40",
- "rustls-pki-types",
- "rustls-platform-verifier 0.6.2",
- "secrecy",
- "serde",
- "serde_json",
- "serde_qs",
- "serde_repr",
- "serde_urlencoded",
- "serde_with 3.14.1",
- "serde_yaml",
- "sha2 0.10.9",
- "shadow-rs",
- "shared-types",
- "sophia_api",
- "sophia_c14n",
- "standardized-types",
- "strum 0.27.2",
- "tempfile",
- "thiserror 2.0.18",
- "time",
- "tokio",
- "tokio-util",
- "tracing",
- "url",
- "urlencoding",
- "uuid 1.23.1",
- "x25519-dalek",
- "x509-parser",
- "yasna",
- "zip",
-]
-
-[[package]]
-name = "one-core-portable"
-version = "0.1.0"
-source = "git+https://github.com/equs-ai/one-core.git?rev=1ce94d3a#1ce94d3af7206a53c8b7b13f00aaf7b32590ce70"
-dependencies = [
- "anyhow",
- "async-trait",
- "bs58 0.5.1",
- "ciborium",
- "ct-codecs",
- "dcql",
- "figment",
- "hex",
- "hex-literal 1.1.0",
- "indoc",
- "itertools 0.13.0",
- "mime",
- "one-crypto",
- "one-dto-mapper",
- "regex",
- "secrecy",
- "serde",
- "serde_json",
- "serde_with 3.14.1",
- "serde_yaml",
- "shared-types",
- "standardized-types",
- "strum 0.27.2",
- "thiserror 2.0.18",
- "time",
- "tokio",
- "tracing",
- "uuid 1.23.1",
-]
-
-[[package]]
-name = "one-crypto"
-version = "0.1.0"
-source = "git+https://github.com/equs-ai/one-core.git?rev=1ce94d3a#1ce94d3af7206a53c8b7b13f00aaf7b32590ce70"
-dependencies = [
- "aes",
- "aes-gcm",
- "aes-kw",
- "async-trait",
- "blstrs 0.7.1",
- "cbc",
- "chacha20poly1305",
- "cocoon",
- "concat-kdf",
- "ct-codecs",
- "ed25519-compact",
- "hmac 0.12.1",
- "ml-dsa",
- "p256",
- "pairing_crypto",
- "pbkdf2 0.12.2",
- "rand 0.10.1",
- "rand 0.8.6",
- "rand_chacha 0.10.0",
- "rand_chacha 0.3.1",
- "secrecy",
- "serde",
- "serde_json",
- "serde_with 3.14.1",
- "sha1",
- "sha2 0.10.9",
- "standardized-types",
- "strum 0.27.2",
- "thiserror 2.0.18",
-]
 
 [[package]]
 name = "one-dto-mapper"
@@ -6278,36 +6445,6 @@ name = "opaque-debug"
 version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c08d65885ee38876c4f86fa503fb49d7b507c2b62552df7c70b2fce627e06381"
-
-[[package]]
-name = "openid4vp"
-version = "0.1.0"
-source = "git+https://github.com/equs-ai/openid4vp.git?rev=2db3c3d2#2db3c3d26e19cb73c4f66d0289be8870adf59c33"
-dependencies = [
- "anyhow",
- "async-trait",
- "base64 0.21.7",
- "http 1.3.1",
- "json-syntax",
- "jsonschema",
- "p256",
- "rand 0.8.6",
- "regex",
- "reqwest 0.12.12",
- "rstest 0.25.0",
- "serde",
- "serde_json",
- "serde_json_path",
- "serde_urlencoded",
- "ssi",
- "thiserror 1.0.69",
- "time",
- "tokio",
- "tracing",
- "url",
- "uuid 1.23.1",
- "x509-cert 0.2.5",
-]
 
 [[package]]
 name = "openidconnect"
@@ -6519,25 +6656,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "pairing_crypto"
-version = "0.4.3"
-source = "git+https://github.com/procivis/pairing_crypto?rev=0ec3629#0ec3629ce8ca2cb7c6442fce214235017a8e9b1f"
-dependencies = [
- "blstrs 0.6.1",
- "digest 0.9.0",
- "ff 0.12.1",
- "group 0.12.1",
- "pairing 0.22.0",
- "rand 0.8.6",
- "rand_core 0.6.4",
- "serde",
- "sha2 0.9.9",
- "sha3 0.9.1",
- "subtle 2.6.1",
- "zeroize",
-]
-
-[[package]]
 name = "parking"
 version = "2.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6634,15 +6752,6 @@ name = "pem-rfc7468"
 version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "01de5d978f34aa4b2296576379fcc416034702fd94117c56ffd8a1a767cefb30"
-dependencies = [
- "base64ct",
-]
-
-[[package]]
-name = "pem-rfc7468"
-version = "0.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "24d159833a9105500e0398934e205e0773f0b27529557134ecfc51c27646adac"
 dependencies = [
  "base64ct",
 ]
@@ -6982,32 +7091,6 @@ dependencies = [
  "syn 2.0.117",
  "version_check",
  "yansi",
-]
-
-[[package]]
-name = "proc-macros"
-version = "0.1.0"
-source = "git+https://github.com/equs-ai/one-core.git?rev=1ce94d3a#1ce94d3af7206a53c8b7b13f00aaf7b32590ce70"
-dependencies = [
- "darling 0.23.0",
- "proc-macro2",
- "quote",
- "syn 2.0.117",
- "walkdir",
-]
-
-[[package]]
-name = "public_key"
-version = "0.1.0"
-source = "git+https://github.com/equs-ai/vcx.git?rev=fc818ef5#fc818ef577b2107605a6e577e22ee734d5d97755"
-dependencies = [
- "base64 0.22.1",
- "bs58 0.5.1",
- "multibase 0.9.2",
- "serde",
- "serde_json",
- "thiserror 1.0.69",
- "unsigned-varint 0.8.0",
 ]
 
 [[package]]
@@ -8131,25 +8214,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "sd-jwt-rs"
-version = "0.8.0"
-source = "git+https://github.com/equs-ai/sd-jwt-rust.git?rev=2b99530#2b9953066f8685ac21b0f90bce8ae3ce61cc5531"
-dependencies = [
- "async-trait",
- "base64 0.21.7",
- "hmac 0.12.1",
- "jsonwebtoken",
- "log",
- "rand 0.8.6",
- "serde",
- "serde_json",
- "sha2 0.10.9",
- "strum 0.25.0",
- "thiserror 1.0.69",
- "time",
-]
-
-[[package]]
 name = "sec1"
 version = "0.7.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8693,18 +8757,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "shared-types"
-version = "0.1.0"
-source = "git+https://github.com/equs-ai/one-core.git?rev=1ce94d3a#1ce94d3af7206a53c8b7b13f00aaf7b32590ce70"
-dependencies = [
- "regex",
- "serde",
- "thiserror 2.0.18",
- "url",
- "uuid 1.23.1",
-]
-
-[[package]]
 name = "shlex"
 version = "1.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8977,15 +9029,6 @@ dependencies = [
 
 [[package]]
 name = "spki"
-version = "0.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "67cf02bbac7a337dc36e4f5a693db6c21e7863f45070f7064577eb4367a3212b"
-dependencies = [
- "der 0.6.1",
-]
-
-[[package]]
-name = "spki"
 version = "0.7.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d91ed6c858b01f942cd56b37a94b3e0a1798290327d1236e4d9cf4eaca44d29d"
@@ -9220,7 +9263,7 @@ dependencies = [
  "ssi-caips 0.3.0",
  "ssi-claims",
  "ssi-core 0.3.0",
- "ssi-crypto 0.2.1",
+ "ssi-crypto",
  "ssi-dids",
  "ssi-eip712",
  "ssi-json-ld",
@@ -9245,7 +9288,7 @@ checksum = "74f32a08b751f3f2550c495a319669aaa98b7490c31ba31e6136761584c3b6e3"
 dependencies = [
  "rand 0.8.6",
  "ssi-claims-core 0.2.0",
- "ssi-crypto 0.2.1",
+ "ssi-crypto",
  "zkryptium",
 ]
 
@@ -9295,7 +9338,7 @@ dependencies = [
  "ssi-claims-core 0.2.0",
  "ssi-core 0.3.0",
  "ssi-cose",
- "ssi-crypto 0.2.1",
+ "ssi-crypto",
  "ssi-data-integrity 0.4.0",
  "ssi-dids-core 0.3.0",
  "ssi-eip712",
@@ -9321,7 +9364,7 @@ dependencies = [
  "educe 0.4.23",
  "serde",
  "ssi-core 0.2.3",
- "ssi-crypto 0.2.1",
+ "ssi-crypto",
  "ssi-eip712",
  "ssi-json-ld",
  "thiserror 1.0.69",
@@ -9337,7 +9380,7 @@ dependencies = [
  "educe 0.4.23",
  "serde",
  "ssi-core 0.3.0",
- "ssi-crypto 0.2.1",
+ "ssi-crypto",
  "ssi-eip712",
  "ssi-json-ld",
  "thiserror 2.0.18",
@@ -9383,24 +9426,8 @@ dependencies = [
  "coset 0.3.8",
  "serde",
  "ssi-claims-core 0.2.0",
- "ssi-crypto 0.2.1",
+ "ssi-crypto",
  "thiserror 2.0.18",
-]
-
-[[package]]
-name = "ssi-crypto"
-version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c511fdba8466006f4de1086fee5f38fd220eac5eeaf0270dbfde3e9d538030e7"
-dependencies = [
- "bs58 0.4.0",
- "digest 0.9.0",
- "k256",
- "keccak-hash",
- "ripemd160",
- "sha2 0.10.9",
- "thiserror 1.0.69",
- "zeroize",
 ]
 
 [[package]]
@@ -9449,7 +9476,7 @@ dependencies = [
  "serde_json",
  "ssi-claims-core 0.1.3",
  "ssi-core 0.2.3",
- "ssi-crypto 0.2.1",
+ "ssi-crypto",
  "ssi-data-integrity-core 0.2.1",
  "ssi-data-integrity-suites 0.1.2",
  "ssi-di-sd-primitives 0.2.1",
@@ -9479,7 +9506,7 @@ dependencies = [
  "ssi-bbs",
  "ssi-claims-core 0.2.0",
  "ssi-core 0.3.0",
- "ssi-crypto 0.2.1",
+ "ssi-crypto",
  "ssi-data-integrity-core 0.5.0",
  "ssi-data-integrity-suites 0.4.0",
  "ssi-di-sd-primitives 0.3.0",
@@ -9517,7 +9544,7 @@ dependencies = [
  "serde_json",
  "ssi-claims-core 0.1.3",
  "ssi-core 0.2.3",
- "ssi-crypto 0.2.1",
+ "ssi-crypto",
  "ssi-json-ld",
  "ssi-jwk 0.3.2",
  "ssi-jws 0.3.1",
@@ -9553,7 +9580,7 @@ dependencies = [
  "serde_json",
  "ssi-claims-core 0.2.0",
  "ssi-core 0.3.0",
- "ssi-crypto 0.2.1",
+ "ssi-crypto",
  "ssi-json-ld",
  "ssi-jwk 0.4.0",
  "ssi-jws 0.5.0",
@@ -9596,7 +9623,7 @@ dependencies = [
  "ssi-claims-core 0.1.3",
  "ssi-contexts",
  "ssi-core 0.2.3",
- "ssi-crypto 0.2.1",
+ "ssi-crypto",
  "ssi-data-integrity-core 0.2.1",
  "ssi-di-sd-primitives 0.2.1",
  "ssi-eip712",
@@ -9647,7 +9674,7 @@ dependencies = [
  "ssi-claims-core 0.2.0",
  "ssi-contexts",
  "ssi-core 0.3.0",
- "ssi-crypto 0.2.1",
+ "ssi-crypto",
  "ssi-data-integrity-core 0.5.0",
  "ssi-di-sd-primitives 0.3.0",
  "ssi-eip712",
@@ -9742,7 +9769,7 @@ dependencies = [
  "serde_urlencoded",
  "ssi-claims-core 0.1.3",
  "ssi-core 0.2.3",
- "ssi-crypto 0.2.1",
+ "ssi-crypto",
  "ssi-json-ld",
  "ssi-jwk 0.3.2",
  "ssi-jws 0.3.1",
@@ -9767,7 +9794,7 @@ dependencies = [
  "serde_urlencoded",
  "ssi-claims-core 0.2.0",
  "ssi-core 0.3.0",
- "ssi-crypto 0.2.1",
+ "ssi-crypto",
  "ssi-json-ld",
  "ssi-jwk 0.4.0",
  "ssi-jws 0.5.0",
@@ -9816,15 +9843,17 @@ dependencies = [
 
 [[package]]
 name = "ssi-jwk"
-version = "0.1.2"
+version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b2d7b2b056993e04945eade2b0bbd3049f1bb65cd2fcf661ccb15b615683b384"
+checksum = "9548df4ddf50fe2ce3ad91f8505d1babf0e18cfc28b7b3d0e5d096990764d195"
 dependencies = [
  "base64 0.12.3",
  "ed25519-dalek",
  "getrandom 0.2.17",
+ "json-syntax",
  "k256",
  "lazy_static",
+ "linked-data",
  "multibase 0.9.2",
  "num-bigint 0.4.6",
  "num-derive",
@@ -9833,10 +9862,13 @@ dependencies = [
  "rand 0.8.6",
  "rsa 0.6.1",
  "serde",
+ "serde_jcs",
+ "serde_json",
  "simple_asn1 0.5.4",
- "ssi-crypto 0.1.1",
+ "ssi-claims-core 0.1.3",
+ "ssi-crypto",
+ "ssi-multicodec",
  "thiserror 1.0.69",
- "unsigned-varint 0.7.2",
  "zeroize",
 ]
 
@@ -9859,7 +9891,7 @@ dependencies = [
  "serde_json",
  "simple_asn1 0.5.4",
  "ssi-claims-core 0.1.3",
- "ssi-crypto 0.2.1",
+ "ssi-crypto",
  "ssi-multicodec",
  "thiserror 1.0.69",
  "zeroize",
@@ -9893,7 +9925,7 @@ dependencies = [
  "simple_asn1 0.5.4",
  "ssi-bbs",
  "ssi-claims-core 0.2.0",
- "ssi-crypto 0.2.1",
+ "ssi-crypto",
  "ssi-multicodec",
  "thiserror 1.0.69",
  "zeroize",
@@ -9914,7 +9946,7 @@ dependencies = [
  "serde_json",
  "ssi-claims-core 0.1.3",
  "ssi-core 0.2.3",
- "ssi-crypto 0.2.1",
+ "ssi-crypto",
  "ssi-jwk 0.3.2",
  "thiserror 1.0.69",
 ]
@@ -9942,7 +9974,7 @@ dependencies = [
  "sha3 0.10.9",
  "ssi-claims-core 0.2.0",
  "ssi-core 0.3.0",
- "ssi-crypto 0.2.1",
+ "ssi-crypto",
  "ssi-jwk 0.4.0",
  "thiserror 1.0.69",
 ]
@@ -9965,7 +9997,7 @@ dependencies = [
  "slab",
  "ssi-claims-core 0.1.3",
  "ssi-core 0.2.3",
- "ssi-crypto 0.2.1",
+ "ssi-crypto",
  "ssi-jwk 0.3.2",
  "ssi-jws 0.3.1",
  "thiserror 1.0.69",
@@ -9989,7 +10021,7 @@ dependencies = [
  "slab",
  "ssi-claims-core 0.2.0",
  "ssi-core 0.3.0",
- "ssi-crypto 0.2.1",
+ "ssi-crypto",
  "ssi-jwk 0.4.0",
  "ssi-jws 0.5.0",
  "thiserror 1.0.69",
@@ -10023,7 +10055,7 @@ dependencies = [
  "linked-data",
  "rdf-types",
  "serde",
- "ssi-crypto 0.2.1",
+ "ssi-crypto",
 ]
 
 [[package]]
@@ -10261,7 +10293,7 @@ dependencies = [
  "ssi-caips 0.2.2",
  "ssi-claims-core 0.1.3",
  "ssi-core 0.2.3",
- "ssi-crypto 0.2.1",
+ "ssi-crypto",
  "ssi-jwk 0.3.2",
  "ssi-jws 0.3.1",
  "ssi-multicodec",
@@ -10300,7 +10332,7 @@ dependencies = [
  "ssi-caips 0.3.0",
  "ssi-claims-core 0.2.0",
  "ssi-core 0.3.0",
- "ssi-crypto 0.2.1",
+ "ssi-crypto",
  "ssi-eip712",
  "ssi-jwk 0.4.0",
  "ssi-jws 0.5.0",
@@ -10328,7 +10360,7 @@ dependencies = [
  "serde_json",
  "ssi-claims-core 0.1.3",
  "ssi-core 0.2.3",
- "ssi-crypto 0.2.1",
+ "ssi-crypto",
  "ssi-json-ld",
  "ssi-jwk 0.3.2",
  "ssi-jws 0.3.1",
@@ -10354,7 +10386,7 @@ dependencies = [
  "ssi-bbs",
  "ssi-claims-core 0.2.0",
  "ssi-core 0.3.0",
- "ssi-crypto 0.2.1",
+ "ssi-crypto",
  "ssi-json-ld",
  "ssi-jwk 0.4.0",
  "ssi-jws 0.5.0",
@@ -10391,23 +10423,6 @@ name = "stable_deref_trait"
 version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596"
-
-[[package]]
-name = "standardized-types"
-version = "0.1.0"
-source = "git+https://github.com/equs-ai/one-core.git?rev=1ce94d3a#1ce94d3af7206a53c8b7b13f00aaf7b32590ce70"
-dependencies = [
- "anyhow",
- "ct-codecs",
- "proc-macros",
- "secrecy",
- "serde",
- "serde_json",
- "serde_with 3.14.1",
- "strum 0.27.2",
- "time",
- "uuid 1.23.1",
-]
 
 [[package]]
 name = "static-iref"
@@ -10477,6 +10492,12 @@ checksum = "7da8b5736845d9f2fcb837ea5d9e2628564b3b043a70948a3f0b778838c5fb4f"
 
 [[package]]
 name = "strum"
+version = "0.24.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "063e6045c0e62079840579a7e47a355ae92f60eb74daaf156fb1e84ba164e63f"
+
+[[package]]
+name = "strum"
 version = "0.25.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "290d54ea6f91c969195bdbcd7442c8c2a2ba87da8bf60a7ee86a235d4bc1e125"
@@ -10500,6 +10521,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "af23d6f6c1a224baef9d3f61e287d2761385a5b88fdab4eb4c6f11aeb54c4bcf"
 dependencies = [
  "strum_macros 0.27.2",
+]
+
+[[package]]
+name = "strum_macros"
+version = "0.24.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1e385be0d24f186b4ce2f9982191e7101bb737312ad61c1f2f984f34bcf85d59"
+dependencies = [
+ "heck 0.4.1",
+ "proc-macro2",
+ "quote",
+ "rustversion",
+ "syn 1.0.109",
 ]
 
 [[package]]
@@ -12396,24 +12430,14 @@ dependencies = [
 
 [[package]]
 name = "x509-cert"
-version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "99d224a125dec5adda27d0346b9cae9794830279c4f9c27e4ab0b6c408d54012"
-dependencies = [
- "const-oid 0.9.6",
- "der 0.6.1",
- "flagset",
- "spki 0.6.0",
-]
-
-[[package]]
-name = "x509-cert"
 version = "0.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1301e935010a701ae5f8655edc0ad17c44bad3ac5ce8c39185f75453b720ae94"
 dependencies = [
  "const-oid 0.9.6",
  "der 0.7.10",
+ "sha1",
+ "signature 2.2.0",
  "spki 0.7.3",
  "tls_codec",
 ]
@@ -12424,7 +12448,7 @@ version = "0.18.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d43b0f71ce057da06bc0851b23ee24f3f86190b07203dd8f567d0b706a185202"
 dependencies = [
- "asn1-rs",
+ "asn1-rs 0.7.1",
  "aws-lc-rs",
  "data-encoding",
  "der-parser",

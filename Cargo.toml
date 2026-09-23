@@ -38,14 +38,14 @@ name = "equs_sdk"
 [dependencies]
 equs-common-macros = { path = "./equs-common-macros", version = "0.1.0" }
 # Internally maintained forked dependencies
-oid4vci = { git = "https://github.com/equs-ai/oid4vci-rs.git", rev = "f5c38f92" }
-openid4vp = { git = "https://github.com/equs-ai/openid4vp.git", rev = "2db3c3d2" }
-sd-jwt-rs = { git = "https://github.com/equs-ai/sd-jwt-rust.git", rev = "2b99530" }
-didcomm = { git = "https://github.com/equs-ai/didcomm-rust.git", rev = "db41780d" }
-did_peer = { git = "https://github.com/equs-ai/vcx.git", rev = "fc818ef5" }
-did_resolver = { git = "https://github.com/equs-ai/vcx.git", rev = "fc818ef5" }
-did_parser_nom = { git = "https://github.com/equs-ai/vcx.git", rev = "fc818ef5" }
-one-core-portable = { git = "https://github.com/equs-ai/one-core.git", rev = "1ce94d3a" }
+oid4vci = { package = "equs-oid4vci", version = "0.1.0" }
+openid4vp = { package = "equs-openid4vp", version = "0.1.0" }
+sd-jwt-rs = { package = "equs-sd-jwt-rs", version = "0.1.0" }
+didcomm = { package = "equs-didcomm", version = "0.1.0" }
+did_peer = { package = "equs-vcx-did-peer", version = "0.1.0" }
+did_resolver = { package = "equs-vcx-did-resolver", version = "0.1.0" }
+did_parser_nom = { package = "equs-vcx-did-parser-nom", version = "0.1.0" }
+one-core-portable = { package = "equs-one-core-portable", version = "0.1.0" }
 
 secrecy = "0.10.3"
 ed25519-compact = "2.1.1"
@@ -110,11 +110,11 @@ getrandom = "=0.4.2"
 ## remember to update one-core version for not-wasm targets
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-didcomm = { git = "https://github.com/equs-ai/didcomm-rust.git", rev = "db41780d", features = ["uniffi"] }
+didcomm = { package = "equs-didcomm", version = "0.1.0", features = ["uniffi"] }
 reqwest-middleware = { version = "0.4.0", default-features = false }
 reqwest-tracing = { version = "0.5.5", default-features = false }
-one-core = { git = "https://github.com/equs-ai/one-core.git", rev = "1ce94d3a" }
-shared-types = { git = "https://github.com/equs-ai/one-core.git", rev = "1ce94d3a" }
+one-core = { package = "equs-one-core", version = "0.1.0" }
+shared-types = { package = "equs-one-core-shared-types", version = "0.1.0" }
 x509-parser = { version = "0.18", features = ["verify"] }
 x509-cert = { version = "0.2", features = ["pem"] }
 

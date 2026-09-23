@@ -535,7 +535,7 @@ where
         proofs: &Proofs,
     ) -> Result<Vec<CoreProfilesCredentialResponseType>> {
         ensure!(
-            proofs.len() > 0,
+            !proofs.is_empty(),
             ProtocolSnafu::credential_endpoint(
                 ErrorType::InvalidCredentialRequest,
                 "At least one proof of possession must be provided".to_string(),
