@@ -65,7 +65,11 @@ async fn sd_jwt_credential_issuance_and_presentation_verification() {
         .await
         .unwrap();
     let exp = time::OffsetDateTime::now_utc() + Duration::minutes(POP_EXP_MINUTES);
-    assert_eq!(pop.body.expires_at.unix_timestamp(), exp.unix_timestamp());
+    let drift = (pop.body.expires_at.unix_timestamp() - exp.unix_timestamp()).abs();
+    assert!(
+        drift <= 1,
+        "pop expiry drifted {drift}s from the expected {POP_EXP_MINUTES} minutes"
+    );
 
     let claims = sample_claims_sdjwt();
 

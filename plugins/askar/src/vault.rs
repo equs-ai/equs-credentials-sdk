@@ -595,10 +595,10 @@ mod tests {
         let profile_3 = "test_profile_3".to_string();
         let profile_4 = "test_profile_4".to_string();
 
-        storage.create_profile(profile_1.clone()).await.unwrap();
-        storage.create_profile(profile_2.clone()).await.unwrap();
-        storage.create_profile(profile_3.clone()).await.unwrap();
-        storage.create_profile(profile_4.clone()).await.unwrap();
+        storage.ensure_profile(profile_1.clone()).await.unwrap();
+        storage.ensure_profile(profile_2.clone()).await.unwrap();
+        storage.ensure_profile(profile_3.clone()).await.unwrap();
+        storage.ensure_profile(profile_4.clone()).await.unwrap();
 
         let vault_1 = AskarVault::new(&storage, profile_1.clone());
         let vault_2 = AskarVault::new(&storage, profile_2.clone());
@@ -914,7 +914,7 @@ mod tests {
         let storage = create_test_storage().await;
         let profile = "test_profile".to_string();
 
-        storage.create_profile(profile.clone()).await.unwrap();
+        storage.ensure_profile(profile.clone()).await.unwrap();
         AskarVault::new(&storage, profile)
     }
 

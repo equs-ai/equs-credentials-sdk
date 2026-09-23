@@ -24,7 +24,7 @@ fi
 printf '%s:_authToken=%s\n' "//${REGISTRY_URL_NPM#*://}" "${NPM_TOKEN}" >> "${HOME}/.npmrc"
 chmod 600 "${HOME}/.npmrc"
 
-BINARY_NAME="equs-sdk.${ALIAS}.node"
+BINARY_NAME="equs-credentials-sdk.${ALIAS}.node"
 VERSION=$(npm pkg get version | tr -d '"')
 
 if [ "${ENVIRONMENT:-}" == "development" ]; then

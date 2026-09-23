@@ -1,5 +1,4 @@
 import Foundation
-import Swifter
 import Testing
 
 @testable import EqusSdk
@@ -88,19 +87,17 @@ enum VcCoreFixtures {
 
 @Suite(.serialized)
 class VcCoreTests {
-    let server: HttpServer
+    let http: MockHttpRouter
     let port: in_port_t
     let kms: InMemKms
     let keyMetadata: KeyMetadata
     let statusListJwt: String
 
     init() async throws {
-        self.server = HttpServer()
-        // Bind to port 0 so the OS picks a guaranteed-free port; avoids collisions
-        // with whatever else (CI runner, prior job, etc.) might hold a fixed port.
-        // forceIPv4 keeps reqwest's 127.0.0.1 connect path reachable under the iOS Simulator.
-        try server.start(0, forceIPv4: true)
-        self.port = in_port_t(try server.port())
+        self.http = MockHttpRouter()
+        // No socket is bound; the router matches on path, so the port only has to
+        // make the fixture URLs well-formed.
+        self.port = 9000
         self.kms = InMemKms()
         let kvm = await createDidAndKeyMetadata(kms: kms)
         self.keyMetadata = kvm.keyMetadata
@@ -123,19 +120,10 @@ class VcCoreTests {
         }
 
         let cachedJwt = self.statusListJwt
-        self.server["/status_list"] = { (request: Swifter.HttpRequest) -> Swifter.HttpResponse in
-            return .ok(
-                .data(
-                    cachedJwt.data(using: .utf8)!,
-                    contentType: "application/statuslist+jwt"
-                )
-            )
+        self.http["/status_list"] = { _ in
+            MockHttpRouter.ok(cachedJwt, contentType: "application/statuslist+jwt")
         }
     }
-
-    // No deinit { server.stop() }: Swifter 1.5.0's HttpServer.stop() can race with its
-    // background accept loop and crash xctest. With rotating ports, the previous test's
-    // server stays alive on its unused port until process exit; harmless.
 
 
     @Test func statusIssuerIssuesStatusList() async throws {
@@ -195,7 +183,7 @@ class VcCoreTests {
             vault: vault,
             metadata: VcCoreFixtures.holderMetadata(),
             didResolver: resolver,
-            httpClient: ReqwestHttpClient.insecure()
+            httpClient: http
         )
 
         let offer = try issuer.offerCredential(credDefId: VcCoreFixtures.scope, protocolData: nil)
@@ -232,7 +220,7 @@ class VcCoreTests {
             vault: vault,
             metadata: VcCoreFixtures.holderMetadata(),
             didResolver: resolver,
-            httpClient: ReqwestHttpClient.insecure()
+            httpClient: http
         )
 
         let offer = try issuer.offerCredential(credDefId: VcCoreFixtures.scope, protocolData: nil)
@@ -295,9 +283,9 @@ class VcCoreTests {
             vault: vault,
             metadata: VcCoreFixtures.holderMetadata(),
             didResolver: resolver,
-            httpClient: ReqwestHttpClient.insecure()
+            httpClient: http
         )
-        let verifier = try VcCoreVerifier(verifierId: VcCoreFixtures.verifierId, didResolver: resolver, httpClient: ReqwestHttpClient.insecure())
+        let verifier = try VcCoreVerifier(verifierId: VcCoreFixtures.verifierId, didResolver: resolver, httpClient: http)
 
         let offer = try issuer.offerCredential(credDefId: VcCoreFixtures.scope, protocolData: nil)
         let credentialRequest = try await holder.requestCredential(

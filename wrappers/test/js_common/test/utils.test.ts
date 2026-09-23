@@ -1,4 +1,4 @@
-import { Credential, parseClaims, VCFormat } from "equs-sdk";
+import { Credential, parseClaims, VCFormat } from "equs-credentials-sdk";
 import { Fixtures } from "./fixtures";
 
 describe("Utils: ", () => {

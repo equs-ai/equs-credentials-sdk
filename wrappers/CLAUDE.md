@@ -1,15 +1,15 @@
 # wrappers — Context
 
 ## Purpose
-Contains all language-specific wrapper crates that expose the Equs SDK Rust library to external consumers. Each wrapper targets a different runtime and uses a dedicated FFI framework. The `types/` directory holds shared TypeScript type definitions used by both the `nodejs` and `wasm` wrappers. The `test/` directory holds shared JavaScript/TypeScript test utilities.
+Contains all language-specific wrapper crates that expose the EQUS Credentials SDK Rust library to external consumers. Each wrapper targets a different runtime and uses a dedicated FFI framework. The `types/` directory holds shared TypeScript type definitions used by both the `nodejs` and `wasm` wrappers. The `test/` directory holds shared JavaScript/TypeScript test utilities.
 
 ## Sub-areas
 
 | Dir | Target | Framework | Role |
 |-----|--------|-----------|------|
-| `nodejs/` | Node.js (native addon) | NAPI-RS (`napi`, `napi-derive`) | Compiles to a `.node` native addon. Exposes all Equs SDK capabilities to Node.js via `#[napi]` macros, `ThreadsafeFunction` for async JS callbacks, and `JsonObject` (`serde_json::Map`) as the universal dynamic-JSON interchange type. Includes DIDComm V2 envelope service support. See `nodejs/src/CLAUDE.md`. |
-| `uniffi/` | Kotlin (Android) + Swift (iOS) | UniFFI (`uniffi`, `uniffi-bindgen`) | Compiles to a Rust shared library + generated Kotlin/Swift scaffolding. Exposes Equs SDK via `#[uniffi::export]`, `#[uniffi::remote]`, `uniffi::custom_type!`, and `with_foreign` foreign-trait interfaces. Uses `JsonValue` (serde ↔ String) as the dynamic-JSON bridge type. See `uniffi/src/CLAUDE.md`. |
-| `wasm/` | Browser + Node.js WASM | wasm-bindgen | Compiles to a `.wasm` + glue JS module. Exposes Equs SDK via `#[wasm_bindgen]` structs and opaque `extern "C"` JS types. Fully single-threaded (`?Send`); uses `Rc` not `Arc`. See `wasm/src/CLAUDE.md`. |
+| `nodejs/` | Node.js (native addon) | NAPI-RS (`napi`, `napi-derive`) | Compiles to a `.node` native addon. Exposes all SDK capabilities to Node.js via `#[napi]` macros, `ThreadsafeFunction` for async JS callbacks, and `JsonObject` (`serde_json::Map`) as the universal dynamic-JSON interchange type. Includes DIDComm V2 envelope service support. See `nodejs/src/CLAUDE.md`. |
+| `uniffi/` | Kotlin (Android) + Swift (iOS) | UniFFI (`uniffi`, `uniffi-bindgen`) | Compiles to a Rust shared library + generated Kotlin/Swift scaffolding. Exposes the SDK via `#[uniffi::export]`, `#[uniffi::remote]`, `uniffi::custom_type!`, and `with_foreign` foreign-trait interfaces. Uses `JsonValue` (serde ↔ String) as the dynamic-JSON bridge type. See `uniffi/src/CLAUDE.md`. |
+| `wasm/` | Browser + Node.js WASM | wasm-bindgen | Compiles to a `.wasm` + glue JS module. Exposes the SDK via `#[wasm_bindgen]` structs and opaque `extern "C"` JS types. Fully single-threaded (`?Send`); uses `Rc` not `Arc`. See `wasm/src/CLAUDE.md`. |
 | `types/` | TypeScript (shared) | — | Shared TypeScript type declarations (`.d.ts` / `.ts`) consumed by both `nodejs` and `wasm` wrappers. Organized into `did/`, `didcomm/`, `vc/`, and `js_common/` sub-directories. |
 | `test/` | JavaScript/TypeScript | — | Shared test helpers in `js_common/` for use by both `nodejs` and `wasm` test suites. |
 

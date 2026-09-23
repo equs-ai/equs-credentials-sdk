@@ -17,7 +17,7 @@ import {
   resolveMetadata,
   TracingLogFormat,
   TracingLogLevel,
-} from "@equs/equs-sdk";
+} from "@equs-ai/equs-credentials-sdk";
 import { config } from "../components/config";
 import { createDidAndKeyMetadata, readFromCLI } from "../components/utils";
 import {
@@ -26,7 +26,7 @@ import {
   AskarStorageConfig,
   AskarVault,
   KeyMethod,
-} from "@equs/equs-sdk-askar-storage";
+} from "@equs-ai/equs-credentials-sdk-askar-storage";
 
 async function main(): Promise<void> {
   await enableLogs(TracingLogFormat.Full, TracingLogLevel.Info);
@@ -41,11 +41,7 @@ async function main(): Promise<void> {
   const profile = "test_profile";
 
   const storage = await AskarStorage.create(storageConfig, false);
-  try {
-    await storage.createProfile(profile);
-  } catch (e: unknown) {
-    if (!(e instanceof Error && e.message.includes("Duplicate profile"))) throw e;
-  }
+  await storage.ensureProfile(profile);
   const kms = new AskarKms(storage, profile);
   const vault = new AskarVault(storage, profile);
 

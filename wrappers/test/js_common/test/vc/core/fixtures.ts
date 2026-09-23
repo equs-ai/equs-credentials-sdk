@@ -16,7 +16,7 @@ import {
   VCFormat,
   VCStatusesDataFormat,
   type KeyMetadata,
-} from "equs-sdk";
+} from "equs-credentials-sdk";
 
 export class Utils {
   readonly nonce = "KB50VOm9I-kPLT9mAACV8g";

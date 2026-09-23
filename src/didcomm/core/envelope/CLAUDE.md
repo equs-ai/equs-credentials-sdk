@@ -1,7 +1,7 @@
 # didcomm::core::envelope — Context
 
 ## Purpose
-Wraps the external `didcomm` crate to provide DIDComm V2 message packing and unpacking. Adapts Equs SDK's `UniversalResolver` and `Kms` types to the interfaces expected by the `didcomm` crate.
+Wraps the external `didcomm` crate to provide DIDComm V2 message packing and unpacking. Adapts EQUS Credentials SDK's `UniversalResolver` and `Kms` types to the interfaces expected by the `didcomm` crate.
 
 ## Files
 
@@ -28,7 +28,7 @@ unpack(msg, options) → Result<(Message, UnpackMetadata)>
 `UnpackOptions`, `UnpackMetadata`, `AuthCryptAlg`.
 
 ### `DIDCommKms` (re-exported)
-Supertrait: Equs SDK's `Kms<KH>` combined with `didcomm` crate's `KeyManagementService` adapter. Required by `Agent::new`.
+Supertrait: the SDK's `Kms<KH>` combined with `didcomm` crate's `KeyManagementService` adapter. Required by `Agent::new`.
 
 ## Error type
 Single-variant snafu struct: `Error { source: didcomm::error::Error, location: Location }`.

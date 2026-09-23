@@ -1,7 +1,7 @@
 package com.equs
 
-import com.equs.sdk.*
-import com.equs.sdk.setJniLibPath
+import com.equs.credentials.*
+import com.equs.credentials.setJniLibPath
 import kotlinx.coroutines.test.runTest
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer

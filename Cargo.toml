@@ -15,23 +15,37 @@ members = [
 ]
 
 [package]
-name = "equs-sdk"
-version = "1.13.0"
+name = "equs-credentials-sdk"
+version = "1.13.1"
 edition = "2024"
 rust-version = "1.97.0"
 license = "Apache-2.0"
+readme = "README.md"
+description = "Rust SDK implementing multiple decentralized identity protocols"
+repository = "https://github.com/equs-ai/equs-credentials-sdk"
+publish = true
+include = [
+    "/src/**/*.rs",
+    "/Cargo.toml",
+    "/README.md",
+    "/LICENSE",
+    "/THIRD-PARTY-NOTICE",
+]
+
+[lib]
+name = "equs_sdk"
 
 [dependencies]
 common-macros = { path = "./common-macros" }
 # Internally maintained forked dependencies
-oid4vci = { git = "https://github.com/equsai/oid4vci-rs.git", rev = "f5c38f92" }
-openid4vp = { git = "https://github.com/equsai/openid4vp.git", rev = "2db3c3d2" }
-sd-jwt-rs = { git = "https://github.com/equsai/sd-jwt-rust.git", rev = "2b99530" }
-didcomm = { git = "https://github.com/equsai/didcomm-rust.git", rev = "db41780d" }
-did_peer = { git = "https://github.com/equsai/vcx.git", rev = "fc818ef5" }
-did_resolver = { git = "https://github.com/equsai/vcx.git", rev = "fc818ef5" }
-did_parser_nom = { git = "https://github.com/equsai/vcx.git", rev = "fc818ef5" }
-one-core-portable = { git = "https://github.com/equsai/one-core.git", rev = "a5ded11"}
+oid4vci = { git = "https://github.com/equs-ai/oid4vci-rs.git", rev = "f5c38f92" }
+openid4vp = { git = "https://github.com/equs-ai/openid4vp.git", rev = "2db3c3d2" }
+sd-jwt-rs = { git = "https://github.com/equs-ai/sd-jwt-rust.git", rev = "2b99530" }
+didcomm = { git = "https://github.com/equs-ai/didcomm-rust.git", rev = "db41780d" }
+did_peer = { git = "https://github.com/equs-ai/vcx.git", rev = "fc818ef5" }
+did_resolver = { git = "https://github.com/equs-ai/vcx.git", rev = "fc818ef5" }
+did_parser_nom = { git = "https://github.com/equs-ai/vcx.git", rev = "fc818ef5" }
+one-core-portable = { git = "https://github.com/equs-ai/one-core.git", rev = "a5ded11"}
 
 secrecy = "0.10.3"
 ed25519-compact = "2.1.1"
@@ -96,11 +110,11 @@ getrandom = "=0.4.2"
 ## remember to update one-core version for not-wasm targets
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-didcomm = { git = "https://github.com/equsai/didcomm-rust.git", rev = "db41780d", features = ["uniffi"] }
+didcomm = { git = "https://github.com/equs-ai/didcomm-rust.git", rev = "db41780d", features = ["uniffi"] }
 reqwest-middleware = { version = "0.4.0", default-features = false }
 reqwest-tracing = { version = "0.5.5", default-features = false }
-one-core = { git = "https://github.com/equsai/one-core.git", rev = "a5ded11" }
-shared-types = { git = "https://github.com/equsai/one-core.git", rev = "a5ded11" }
+one-core = { git = "https://github.com/equs-ai/one-core.git", rev = "a5ded11" }
+shared-types = { git = "https://github.com/equs-ai/one-core.git", rev = "a5ded11" }
 x509-parser = { version = "0.18", features = ["verify"] }
 x509-cert = { version = "0.2", features = ["pem"] }
 

@@ -1,4 +1,4 @@
-# Equs SDK — Context Index
+# EQUS Credentials SDK — Context Index
 
 > **Maintenance rule:** Update this file whenever any `claude/*.md` changes.
 > Add a one-line entry if a new `claude/*.md` is added; remove if deleted.
@@ -22,11 +22,13 @@ that file lists every sub-area with a link to the relevant `CLAUDE.md` inside th
 | Plugins | Askar secure-storage plugin (KMS + Vault backed by `aries-askar`) | [claude/plugins.md](claude/plugins.md) |
 | Tests | E2E test suite, shared fixtures and helpers | [claude/tests.md](claude/tests.md) |
 | Demos | OID4VC (issuer/holder/verifier), multi-thread, Node.js, WASM, Android, iOS, Keycloak | [claude/demos.md](claude/demos.md) |
+| CI | GitHub Actions CI | [.github/CLAUDE.md](.github/CLAUDE.md) |
 
 ## Repository layout (quick reference)
 
 ```
-equs-sdk/
+equs-credentials-sdk/
+├── .github/              # GitHub Actions CI
 ├── src/                  # Core SDK library
 │   ├── crypto.rs         # Signing/verifying key traits
 │   ├── http.rs           # HttpClient trait
@@ -65,3 +67,14 @@ equs-sdk/
 | `ZeroizeOnDrop` on sensitive types | `Nonce`, `Credential`, `Claims` |
 | All HTTP must go through `HttpClient` | Entire SDK |
 | No raw key material — only `KeyHandle` | All KMS consumers |
+
+## Published package names
+
+| Target | Package | Source |
+|--------|---------|--------|
+| crates.io | `equs-credentials-sdk` | `Cargo.toml` (lib target stays `equs_sdk`, so imports remain `use equs_sdk::…`) |
+| Node.js | `@equs-ai/equs-credentials-sdk` | `wrappers/nodejs/package.json` (napi binary `equs-credentials-sdk`) |
+| WASM | `@equs-ai/equs-credentials-sdk-wasm` | `wrappers/wasm/package.json` |
+| iOS | `equs-credentials-sdk` | `wrappers/uniffi/swift/Package.swift` (product/module stays `EqusSdk`) |
+| Kotlin | `com.equs.credentials` | `wrappers/uniffi/uniffi.toml` (AAR artifact `equs-credentials-sdk-android`) |
+| Askar plugin (Node.js) | `@equs-ai/equs-credentials-sdk-askar-storage` | `plugins/askar/wrappers/nodejs/package.json` |

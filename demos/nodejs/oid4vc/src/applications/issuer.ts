@@ -7,7 +7,7 @@ import {
   OID4VCIIssuerBuilder,
   TracingLogFormat,
   TracingLogLevel,
-} from "@equs/equs-sdk";
+} from "@equs-ai/equs-credentials-sdk";
 import * as express from "express";
 import { config } from "../components/config";
 import { json } from "body-parser";

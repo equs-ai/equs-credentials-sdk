@@ -5,7 +5,7 @@ import {
   OID4VCIIssuerMetadata,
   PresentationQuery,
   TransactionDataItem,
-} from "@equs/equs-sdk";
+} from "@equs-ai/equs-credentials-sdk";
 export class Config {
   readonly servers = {
     issuer: {

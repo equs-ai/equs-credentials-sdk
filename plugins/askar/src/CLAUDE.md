@@ -1,16 +1,16 @@
 # askar/src — Context
 
 ## Purpose
-Core Rust library implementing Hyperledger Askar-backed KMS and vault for Equs SDK, providing
+Core Rust library implementing Hyperledger Askar-backed KMS and vault for EQUS Credentials SDK, providing
 durable, encrypted key and credential storage as an alternative to the in-memory implementations.
 
 ## Files / Sub-areas
 
 | File/Dir | Role |
 |----------|------|
-| lib.rs   | `AskarStorage` — wraps `aries_askar::Store` with profile-aware session/transaction management, scan support, provisioning, and profile lifecycle. Also defines `AskarStorageConfig`, `KeyMethod`, and the `AskarStorageScan` / `AskarStorageScanParams` scan API. |
+| lib.rs   | `AskarStorage` — wraps `aries_askar::Store` with profile-aware session/transaction management, scan support, provisioning, and profile lifecycle. `ensure_profile` is idempotent: `Duplicate` maps to success, every other error propagates. Also defines `AskarStorageConfig`, `KeyMethod`, and the `AskarStorageScan` / `AskarStorageScanParams` scan API. |
 | kms.rs   | `AskarKms` (implements `Kms<AskarKeyHandle>`) and `AskarKeyHandle` (implements `Key`, `Signer`, `Verifier`, `KeyHandle`, `KeyAgreement`). Supports Ed25519, P-256, and K-256 key types; stores public-key tags (SHA-256) for `get_by_public_key` lookup. Unit tests cover all three key types, JWK export, and JWE encrypt/decrypt. |
-| vault.rs | `AskarVault` (implements `Vault`) stores credentials as Askar entries keyed by format category; supports `store_credential`, `get_credential`, `get_credentials`, `find_credentials` (tag-filter disjunction), `delete_credential`, and `count_all`. Unit tests cover CRUD, field-filter behaviour, pagination, multi-vault profile isolation. |
+| vault.rs | `AskarVault` (implements `Vault`) stores credentials as Askar entries keyed by format category; supports `store_credential`, `get_credential`, `get_credentials`, `find_credentials` (tag-filter disjunction), `delete_credential`, and `count_all`. Unit tests cover CRUD, field-filter behavior, pagination, multi-vault profile isolation. |
 
 ## Key types / traits (if applicable)
 - `AskarStorage` — central storage handle; shared by both `AskarKms` and `AskarVault`.
@@ -26,3 +26,4 @@ durable, encrypted key and credential storage as an alternative to the in-memory
 ## Constraints
 - Non-wasm only (Askar has no WASM support).
 - Tests use `sqlite://:memory:` with `DeriveKey` method; production deployments should use a persistent DB URL and `RawKey` or `DeriveKey`.
+- Askar's key cache holds one profile key per distinct profile name for the lifetime of the store, evicted only by `remove_profile`; profile provisioning must therefore stay idempotent so callers never generate a unique name per attempt.

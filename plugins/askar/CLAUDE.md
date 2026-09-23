@@ -1,7 +1,7 @@
 # askar — Context
 
 ## Purpose
-Hyperledger Askar plugin for Equs SDK: provides production-grade, encrypted KMS and credential vault
+Hyperledger Askar plugin for EQUS Credentials SDK: provides production-grade, encrypted KMS and credential vault
 implementations backed by the `aries_askar` library, with a Node.js NAPI-RS wrapper.
 
 ## Files / Sub-areas

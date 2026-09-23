@@ -1,8 +1,8 @@
 {
-  "name": "equs-sdk-demo-nodejs",
+  "name": "equs-credentials-sdk-demo-nodejs",
   "private": true,
   "version": "0.1.0",
-  "description": "Node.js demo for Equs SDK",
+  "description": "Node.js demo for EQUS Credentials SDK",
   "main": "",
   "config": {
     "nodejs_equs_sdk_wrapper_path": "--prefix=../../../wrappers/nodejs",
@@ -19,8 +19,8 @@
   },
   "author": "aziz.mukhtorjonov@dsr-corporation.com",
   "dependencies": {
-    "@equs/equs-sdk": "../../../wrappers/nodejs",
-    "@equs/equs-sdk-askar-storage": "../../../plugins/askar/wrappers/nodejs",
+    "@equs-ai/equs-credentials-sdk": "../../../wrappers/nodejs",
+    "@equs-ai/equs-credentials-sdk-askar-storage": "../../../plugins/askar/wrappers/nodejs",
     "body-parser": "^2.0.1",
     "cors": "^2.8.5",
     "express": "^5.0.0"

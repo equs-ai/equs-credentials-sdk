@@ -80,7 +80,7 @@ enum ValueState<T> {
     func submitCode() {
         tokenResponse = .loading
 
-        self.authCodeContinuation ?.resume(returning: self.authCode)
+        self.authCodeContinuation?.resume(returning: self.authCode)
         self.authCodeContinuation = nil
     }
 
@@ -135,7 +135,7 @@ enum ValueState<T> {
             let _ = try await self.oid4vpHolder.presentCredentialsAuto(
                 authRequest: authorizationRequest,
                 authResponseMetadata: AuthorizationResponseMetadata(
-                    claimsToExclude: nil, idTokenMetadata: idTokenMetadata))
+                    claimsToExclude: nil, idTokenMetadata: idTokenMetadata, dcApiOrigin: nil))
 
             presentation = .ready(data: ())
         } catch {
@@ -158,7 +158,7 @@ enum ValueState<T> {
             clientId: Constants.clientId,
             issuerDiscovery: IssuerDiscovery.url(Constants.issuerUrl),
             httpClient: ReqwestHttpClient.insecure(),
-            pop: ProofOfPossessionMetadata(lifetime: 3600, notBefore: nil)
+            pop: ProofOfPossessionMetadata(lifetime: 3600, notBefore: nil),
             credentialExtraVerification: nil
         ).build()
     }

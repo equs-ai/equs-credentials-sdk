@@ -10,12 +10,12 @@ addon with [NAPI-RS](https://napi.rs).
 
 ## Installation
 
-The wrapper is published as `@equs/equs-sdk-askar-storage`; the native binary for your platform
-comes from a companion `@equs/equs-sdk-askar-storage-<os>-<arch>` package. Point npm at the registry
+The wrapper is published as `@equs-ai/equs-credentials-sdk-askar-storage`; the native binary for your platform
+comes from a companion `@equs-ai/equs-credentials-sdk-askar-storage-<os>-<arch>` package. Point npm at the registry
 that hosts them, then:
 
 ```shell
-npm i @equs/equs-sdk-askar-storage
+npm i @equs-ai/equs-credentials-sdk-askar-storage
 ```
 
 Do not pass `--ignore-scripts` — the postinstall step is what resolves the platform binary.
@@ -27,7 +27,7 @@ The package can be imported with both ES module and CommonJS syntax.
 ## Publishing
 
 Each platform binary is published as its own npm package, then the
-`@equs/equs-sdk-askar-storage` package that depends on them is published on top. Both steps run from
+`@equs-ai/equs-credentials-sdk-askar-storage` package that depends on them is published on top. Both steps run from
 the release pipeline ([`publish.yml`](publish.yml)) — see
 [Publish a New Release](../../../../docs/guidelines/release.md).
 

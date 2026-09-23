@@ -17,7 +17,7 @@ describe("Askar Storage: ", () => {
     // Check opening
     let storage = await AskarStorage.open(config);
     let profile = "test2";
-    profile = await storage.createProfile(profile);
+    profile = await storage.ensureProfile(profile);
 
     // Check closing
     await storage.close();
@@ -50,7 +50,7 @@ describe("Askar Storage: ", () => {
 
     // Check creation of a new profile
     let profile = "test2";
-    profile = await storage.createProfile(profile);
+    profile = await storage.ensureProfile(profile);
 
     // Check updating active profile
     await storage.changeActiveProfile(profile);

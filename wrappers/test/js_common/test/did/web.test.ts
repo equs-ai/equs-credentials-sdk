@@ -1,4 +1,4 @@
-import { DIDWeb, InMemKms, KeyType, VerificationMethodKey, VerificationRelationshipType } from "equs-sdk";
+import { DIDWeb, InMemKms, KeyType, VerificationMethodKey, VerificationRelationshipType } from "equs-credentials-sdk";
 
 describe("did:web: ", () => {
   const did = "did:web:test.example.com";

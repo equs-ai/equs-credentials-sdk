@@ -1,15 +1,15 @@
 package com.equs
 
-import com.equs.sdk.KeyType
-import com.equs.sdk.WrappedKeyHandle
-import com.equs.sdk.setJniLibPath
-import com.equs.sdk.wrapKmsForTests
+import com.equs.credentials.KeyType
+import com.equs.credentials.WrappedKeyHandle
+import com.equs.credentials.setJniLibPath
+import com.equs.credentials.wrapKmsForTests
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.BeforeAll
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
-import com.equs.sdk.Kms as EqusSdkKms
+import com.equs.credentials.Kms as EqusSdkKms
 
 class Kms {
     companion object {

@@ -639,7 +639,7 @@ mod tests {
 
         let profile = "test_profile".to_string();
 
-        storage.create_profile(profile.clone()).await.unwrap();
+        storage.ensure_profile(profile.clone()).await.unwrap();
         AskarKms::new(&storage, profile)
     }
 }

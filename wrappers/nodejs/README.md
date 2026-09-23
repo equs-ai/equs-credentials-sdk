@@ -1,6 +1,6 @@
-# Equs SDK wrappers for Node.js
+# EQUS Credentials SDK wrappers for Node.js
 
-Node.js bindings for Equs SDK, built as a native addon with [NAPI-RS](https://napi.rs).
+Node.js bindings for EQUS Credentials SDK, built as a native addon with [NAPI-RS](https://napi.rs).
 
 ## Prerequisites
 
@@ -9,11 +9,11 @@ Node.js bindings for Equs SDK, built as a native addon with [NAPI-RS](https://na
 
 ## Installation
 
-The wrapper is published as `@equs/equs-sdk`; the native binary for your platform comes from a
-companion `@equs/equs-sdk-<os>-<arch>` package. Point npm at the registry that hosts them, then:
+The wrapper is published as `@equs-ai/equs-credentials-sdk`; the native binary for your platform comes from a
+companion `@equs-ai/equs-credentials-sdk-<os>-<arch>` package. Point npm at the registry that hosts them, then:
 
 ```shell
-npm i @equs/equs-sdk
+npm i @equs-ai/equs-credentials-sdk
 ```
 
 Do not pass `--ignore-scripts` — the postinstall step is what resolves the platform binary.
@@ -36,7 +36,7 @@ The package can be imported with both ES module and CommonJS syntax.
 
 ## Publishing
 
-Each platform binary is published as its own npm package, then the `@equs/equs-sdk` package that
+Each platform binary is published as its own npm package, then the `@equs-ai/equs-credentials-sdk` package that
 depends on them is published on top. Both steps run from the release pipeline
 ([`publish.yml`](publish.yml)) — see [Publish a New Release](../../docs/guidelines/release.md).
 

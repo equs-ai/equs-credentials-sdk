@@ -1,6 +1,6 @@
 package com.equs
 
-import com.equs.sdk.*
+import com.equs.credentials.*
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 

@@ -1,0 +1,318 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+
+  # tier 1
+
+  secret-scan:
+    uses: ./.github/workflows/_job.yml
+    with:
+      cache-key: secret-scan
+      toolchain: false
+      artifact: gitleaks-report
+      artifact-path: gitleaks-report.json
+      run: |
+        gitleaks=$(bash .github/scripts/install-gitleaks.sh)
+        "$gitleaks" dir . --config .github/gitleaks.toml --redact --verbose --exit-code 1 --report-format json --report-path gitleaks-report.json
+
+  dependency-scan:
+    uses: ./.github/workflows/_job.yml
+    with:
+      cache-key: dependency-scan
+      artifact: cargo-audit-report
+      artifact-path: cargo-audit-report.json
+      run: |
+        bash .github/scripts/binstall-or-build.sh cargo-audit
+        cargo audit --json > cargo-audit-report.json || true
+        printf '### Dependency advisories\n\n```\n%s\n```\n' \
+          "$(cargo audit --no-fetch 2>&1 | tail -n 60)" >> "$GITHUB_STEP_SUMMARY"
+        grep -q '"vulnerabilities"' cargo-audit-report.json || { echo "cargo audit produced no report" >&2; exit 1; }
+
+  fmt:
+    uses: ./.github/workflows/_job.yml
+    with:
+      cache-key: fmt
+      sccache: false
+      components: rustfmt
+      run: cargo fmt --all -- --check
+
+  # tier 2
+
+  clippy:
+    needs: [fmt]
+    uses: ./.github/workflows/_job.yml
+    with:
+      cache-key: clippy
+      components: clippy
+      run: cargo clippy --workspace --exclude wasm --all-targets --all-features -- -Dwarnings
+
+  ios-xcframework:
+    needs: [fmt]
+    uses: ./.github/workflows/_macos.yml
+    with:
+      cache-key: ios-xcframework
+      targets: aarch64-apple-ios aarch64-apple-ios-sim
+      save: wrapper-swift
+      run: cd wrappers/uniffi && make ios-generate-xcframework-dev
+
+  build-prod:
+    needs: [fmt]
+    uses: ./.github/workflows/_job.yml
+    with:
+      cache-key: build-prod
+      restore: target-prod
+      save: target-prod
+      run: cargo build --release -p equs-credentials-sdk
+
+  build-prod-all-features:
+    needs: [fmt]
+    uses: ./.github/workflows/_job.yml
+    with:
+      cache-key: build-prod-all-features
+      run: cargo build --release -p equs-credentials-sdk --all-features
+
+  build-dev:
+    needs: [fmt]
+    uses: ./.github/workflows/_job.yml
+    with:
+      cache-key: build-dev
+      run: cargo build --all-features --workspace --exclude wasm
+
+  doc-build:
+    needs: [fmt]
+    uses: ./.github/workflows/_job.yml
+    with:
+      cache-key: doc-build
+      run: RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --workspace --all-features --exclude nodejs --exclude wasm --exclude equs_sdk_uniffi
+
+  # tier 3
+
+  nodejs-wrapper:
+    needs: [build-prod]
+    uses: ./.github/workflows/_job.yml
+    with:
+      cache-key: nodejs-wrapper
+      node: true
+      restore: target-prod
+      save: wrapper-nodejs
+      run: |
+        cd wrappers/nodejs
+        npm i
+        npm run build
+        npm run build:debug
+
+  wasm-wrapper:
+    needs: [build-dev]
+    uses: ./.github/workflows/_job.yml
+    with:
+      cache-key: wasm-wrapper
+      node: true
+      wasm: true
+      sccache: false
+      save: wrapper-wasm
+      run: |
+        cd wrappers/wasm
+        npm i
+        npm run build
+        npm run build:dev:cjs
+
+  kotlin-wrapper:
+    needs: [build-dev]
+    uses: ./.github/workflows/_job.yml
+    with:
+      cache-key: kotlin-wrapper
+      save: wrapper-kotlin
+      run: cd wrappers/uniffi && make kotlin-generate_kotlin_debug
+
+  test-with-coverage:
+    needs: [build-dev]
+    uses: ./.github/workflows/_job.yml
+    permissions:
+      contents: write
+    with:
+      cache-key: test-with-coverage
+      token: true
+      cargo-debug: line-tables-only
+      options: --security-opt seccomp=unconfined
+      artifact: tarpaulin-report
+      artifact-path: tarpaulin-report.html
+      run: |
+        bash .github/scripts/binstall-or-build.sh cargo-tarpaulin
+        cargo tarpaulin --skip-clean --timeout 180 --all-features --exclude-files "src/didcomm/*" --exclude-files "demos/*" --exclude-files "dependencies/one-core/*" --exclude-files "wrappers/*" --fail-under 70 -o Html 2>&1 | tee tarpaulin.log || rc=$?
+        line=$(grep -oE '[0-9.]+% coverage, [0-9/]+ lines covered' tarpaulin.log | tail -1) || true
+        msg="${line:+**$line** — gate: 70%}"
+        printf '### Coverage\n\n%s\n' "${msg:-no coverage figure produced}" | tee -a "$GITHUB_STEP_SUMMARY"
+        [ -n "$line" ] && [ "$GITHUB_REF" = refs/heads/main ] && bash .github/scripts/coverage-badge.sh "${line%%%*}"
+        exit ${rc:-0}
+
+  askar-rust:
+    needs: [build-prod]
+    uses: ./.github/workflows/_job.yml
+    with:
+      cache-key: askar-rust
+      report-path: plugins/askar/target
+      run: CARGO_TARGET_DIR=plugins/askar/target cargo build --release -p askar
+
+  oid4vc-demo:
+    needs: [build-dev]
+    uses: ./.github/workflows/_job.yml
+    with:
+      cache-key: oid4vc-demo
+      run: cd demos/oid4vc && ./demo.sh
+
+  multi-thread-demo:
+    needs: [build-dev]
+    uses: ./.github/workflows/_job.yml
+    with:
+      cache-key: multi-thread-demo
+      run: |
+        cd demos/multi-thread
+        cargo build
+        cargo run -- issuer > issuer.log 2>&1 &
+        timeout 120 bash -c 'until (echo >/dev/tcp/127.0.0.1/4000) 2>/dev/null; do sleep 2; done' || { cat issuer.log; exit 1; }
+        RUST_LOG=ERROR cargo run -- holders 20 | tee holders.log
+        grep -qx Success holders.log || { cat issuer.log; exit 1; }
+
+  # tier 4
+
+  nodejs-test:
+    needs: [nodejs-wrapper]
+    uses: ./.github/workflows/_job.yml
+    with:
+      cache-key: nodejs-test
+      sccache: false
+      node: true
+      restore: wrapper-nodejs
+      run: |
+        (cd wrappers/nodejs && npm run test)
+        cd wrappers/test/js_common
+        npm pkg set dependencies.equs-credentials-sdk=file:../../nodejs
+        npm i
+        npm run test:nodejs
+
+  wasm-test:
+    needs: [wasm-wrapper]
+    uses: ./.github/workflows/_job.yml
+    with:
+      cache-key: wasm-test
+      sccache: false
+      node: true
+      restore: wrapper-wasm
+      run: |
+        cd wrappers/test/js_common
+        npm pkg set dependencies.equs-credentials-sdk=file:../../wasm/pkg
+        npm i
+        npm run test:wasm
+
+  kotlin-test:
+    needs: [kotlin-wrapper]
+    uses: ./.github/workflows/_job.yml
+    with:
+      cache-key: kotlin-test
+      java: true
+      restore: wrapper-kotlin
+      run: cd wrappers/uniffi && make kotlin-test
+
+  swift-test:
+    needs: [ios-xcframework]
+    uses: ./.github/workflows/_macos.yml
+    with:
+      cache-key: swift-test
+      restore: wrapper-swift
+      run: cd wrappers/uniffi && make ios-test-only
+
+  askar-wrapper:
+    needs: [askar-rust, nodejs-wrapper]
+    uses: ./.github/workflows/_job.yml
+    with:
+      cache-key: askar-wrapper
+      node: true
+      restore: wrapper-nodejs
+      save: wrapper-askar
+      report-path: plugins/askar/target
+      run: |
+        npm i --prefix plugins/askar/wrappers/nodejs
+        npm run build --prefix plugins/askar/wrappers/nodejs
+
+  wasm-demo-build:
+    needs: [nodejs-wrapper, wasm-wrapper, askar-wrapper]
+    uses: ./.github/workflows/_job.yml
+    with:
+      cache-key: wasm-demo-build
+      node: true
+      wasm: true
+      sccache: false
+      run: |
+        cd demos/wasm/oid4vc
+        npm i
+        npm run build
+
+  nodejs-demo-build:
+    needs: [nodejs-wrapper, askar-wrapper]
+    uses: ./.github/workflows/_job.yml
+    with:
+      cache-key: nodejs-demo-build
+      sccache: false
+      node: true
+      restore: wrapper-nodejs wrapper-askar
+      run: |
+        cd demos/nodejs/oid4vc
+        npm i --ignore-scripts
+        npm run build
+
+  android-demo:
+    needs: [kotlin-wrapper]
+    uses: ./.github/workflows/_android.yml
+
+  ios-demo:
+    needs: [ios-xcframework]
+    uses: ./.github/workflows/_macos.yml
+    with:
+      cache-key: ios-demo
+      restore: wrapper-swift
+      timeout: 30
+      run: |
+        cd demos/ios/OID4VC
+        xcrun xcodebuild -scheme OID4VC -configuration Debug ARCHS=arm64 \
+          -destination 'generic/platform=iOS Simulator' -derivedDataPath build build
+
+  # tier 5
+
+  askar-plugin-nodejs-test:
+    needs: [nodejs-wrapper, askar-wrapper]
+    uses: ./.github/workflows/_job.yml
+    with:
+      cache-key: askar-plugin-nodejs-test
+      sccache: false
+      node: true
+      restore: wrapper-nodejs wrapper-askar
+      run: npm run test --prefix plugins/askar/wrappers/nodejs
+
+  # tier 6
+
+  cache-cleanup:
+    needs: [nodejs-test, wasm-test, kotlin-test, swift-test, ios-demo, askar-plugin-nodejs-test, nodejs-demo-build]
+    if: success()
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash .github/scripts/prune-wrapper-caches.sh

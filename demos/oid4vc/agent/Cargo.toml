@@ -6,7 +6,7 @@ license = "Apache-2.0"
 publish = false
 
 [dependencies]
-equs-sdk = { path = "../../..", features = ["in-memory", "delegate-sd-jwt"] }
+equs-credentials-sdk = { path = "../../..", features = ["in-memory", "delegate-sd-jwt"] }
 shared = { path = "../shared" }
 
 actix-web = "4.8.0"

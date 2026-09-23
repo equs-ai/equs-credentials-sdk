@@ -8,12 +8,12 @@ publish = false
 [features]
 # Enables the dSD-JWT delegation demo. The Merchant must verify the delegation chain, and
 # `sd-jwt-rs` gates chain-aware verification behind its `delegate` feature — reached here via
-# `equs-sdk/delegate-sd-jwt` — so this must forward to the SDK feature (a local `[]` toggle
+# `equs-credentials-sdk/delegate-sd-jwt` — so this must forward to the SDK feature (a local `[]` toggle
 # would leave the verifier unable to verify the dSD-JWT+KB grant).
-delegate-sd-jwt = ["equs-sdk/delegate-sd-jwt"]
+delegate-sd-jwt = ["equs-credentials-sdk/delegate-sd-jwt"]
 
 [dependencies]
-equs-sdk = { path = "../../..", features = ["in-memory"]}
+equs-credentials-sdk = { path = "../../..", features = ["in-memory"]}
 shared = { path = "../shared" }
 
 actix-web = "4.8.0"

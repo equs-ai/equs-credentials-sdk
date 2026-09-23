@@ -1,7 +1,7 @@
 # In-memory — Summary
 
 ## What this domain does
-Provides complete in-memory implementations of every Equs SDK persistence and key-management interface. Its purpose is twofold: enable tests to run without external dependencies, and let quick-start applications or CI environments operate without a real KMS or database. Every concrete type here implements a trait defined in the core domain.
+Provides complete in-memory implementations of every EQUS Credentials SDK persistence and key-management interface. Its purpose is twofold: enable tests to run without external dependencies, and let quick-start applications or CI environments operate without a real KMS or database. Every concrete type here implements a trait defined in the core domain.
 
 ## Sub-areas
 

@@ -1,7 +1,7 @@
 # didethr — Context
 
 ## Purpose
-Implements the `did:ethr` DID method resolver for Equs SDK. It reads the EtherDIDRegistry smart contract on any EVM-compatible chain via JSON-RPC, replays the on-chain event history (`DIDOwnerChanged`, `DIDDelegateChanged`, `DIDAttributeChanged`) to reconstruct a W3C DID document, and exposes the result through the `DIDResolver` trait so it can be registered with `UniversalResolver`.
+Implements the `did:ethr` DID method resolver for EQUS Credentials SDK. It reads the EtherDIDRegistry smart contract on any EVM-compatible chain via JSON-RPC, replays the on-chain event history (`DIDOwnerChanged`, `DIDDelegateChanged`, `DIDAttributeChanged`) to reconstruct a W3C DID document, and exposes the result through the `DIDResolver` trait so it can be registered with `UniversalResolver`.
 
 ## Files
 

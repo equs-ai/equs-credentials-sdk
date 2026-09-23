@@ -11,7 +11,8 @@ import Swifter
 		self.server = HttpServer()
 		// Bind to port 0 so the OS picks a guaranteed-free port; avoids collisions
 		// with whatever else (CI runner, prior job, etc.) might hold a fixed port.
-		// forceIPv4 keeps reqwest's 127.0.0.1 connect path reachable under the iOS Simulator.
+		// forceIPv4 keeps reqwest's 127.0.0.1 connect path reachable under the iOS Simulator;
+	// the request URLs use 127.0.0.1 rather than localhost so no ::1 attempt is made.
 		try server.start(0, forceIPv4: true)
 		self.port = in_port_t(try server.port())
 	}
@@ -24,7 +25,7 @@ import Swifter
 		let client = MockHttpClient()
 
 		let request = EqusSdk.HttpRequest(
-			url: "http://localhost:\(port)/get",
+			url: "http://127.0.0.1:\(port)/get",
 			method: EqusSdk.HttpMethod.get,
 			headers: ["accept": "application/json"],
 			body: "{\"message\": \"are you ok?\"}"
@@ -44,7 +45,7 @@ import Swifter
 
 		let client = try ReqwestHttpClient.insecure()
 		let request = EqusSdk.HttpRequest(
-			url: "http://localhost:\(port)/get",
+			url: "http://127.0.0.1:\(port)/get",
 			method: EqusSdk.HttpMethod.get,
 			headers: ["accept": "application/json"],
 			body: nil
@@ -57,7 +58,7 @@ import Swifter
 	@Test func reqwestInsecureAsyncCallShouldThrowErrorOnSecureUrl() async throws {
 		let client = try ReqwestHttpClient()
 		let request = EqusSdk.HttpRequest(
-			url: "http://localhost:\(port)/get",
+			url: "http://127.0.0.1:\(port)/get",
 			method: EqusSdk.HttpMethod.get,
 			headers: ["accept": "application/json"],
 			body: nil

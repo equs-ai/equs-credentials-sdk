@@ -195,7 +195,6 @@ Cargo.lock
 !.yarn/versions
 yarn.lock
 
-package-lock.json
 
 *.node
 
