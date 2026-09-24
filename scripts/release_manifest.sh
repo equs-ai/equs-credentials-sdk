@@ -40,7 +40,7 @@ VERSION=$(crate_version)
 [ "$VERSION" = "$RELEASE_VERSION" ] ||
   echo "warning: ${CRATE} is ${VERSION}, release is ${RELEASE_VERSION}" >&2
 
-artefact() {
+artifact() {
   local crate_file="target/package/${CRATE}-${VERSION}.crate"
 
   if ! cargo package --locked --no-verify -p "$CRATE" "${PACKAGE_FLAGS[@]}" >/dev/null 2>&1 ||
@@ -62,8 +62,8 @@ artefact() {
   printf '    repo: "%s"\n' "$(repo_path)"
   printf '    commit: "%s"\n' "$CI_COMMIT_SHA"
   printf '    tag: "%s"\n' "$CI_COMMIT_TAG"
-  printf '    artefacts:\n'
-  artefact
+  printf '    artifacts:\n'
+  artifact
 } >"$OUT"
 
 echo "wrote ${OUT}" >&2
