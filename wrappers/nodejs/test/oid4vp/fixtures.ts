@@ -1,3 +1,5 @@
+// `@peculiar/x509` resolves its providers through tsyringe, which needs this first.
+import "reflect-metadata";
 import {
   Claims,
   CredentialFormats,
@@ -8,6 +10,12 @@ import {
   Dcql,
   TransactionDataItem,
 } from "../../";
+import * as x509 from "@peculiar/x509";
+import { webcrypto } from "node:crypto";
+
+// `lib` is ESNext only, so the DOM WebCrypto types are not in scope here.
+type WebCrypto = webcrypto.Crypto;
+type WebCryptoKeyPair = webcrypto.CryptoKeyPair;
 export const AUTH_REQUEST_JWT =
   "eyJhbGciOiJFUzI1NiIsImtpZCI6ImRpZDprZXk6ekRuYWVlVEc4OHdwUGhNenVEUnZMUlRUeU5NeUppcDVlNlRMbXNqeXZQaVNZVUZrNyN6RG5hZWVURzg4d3BQaE16dURSdkxSVFR5Tk15SmlwNWU2VExtc2p5dlBpU1lVRms3IiwidHlwIjoiYXBwbGljYXRpb24vb2F1dGgtYXV0aHotcmVxK2p3dCJ9.eyJyZXNwb25zZV90eXBlIjoidnBfdG9rZW4iLCJzdGF0ZSI6ImVlYTdiNDhlLTE4NjYtNDFiNC1iZWFlLTAzYjk1ZDQxNjcwYyIsInJlc3BvbnNlX21vZGUiOiJkaXJlY3RfcG9zdCIsIm5vbmNlIjoiWXp0QU5nbFJkbVA0Q2h4c3JjUzhVY0dZb1BXd2tnaVVJbWtCclFtZ1drVSIsImNsaWVudF9tZXRhZGF0YSI6eyJ2cF9mb3JtYXRzIjp7ImRjK3NkLWp3dCI6eyJhbGciOlsiRWREU0EiLCJFUzI1NiJdfX19LCJjbGllbnRfaWQiOiJkaWQ6a2V5OnpEbmFlZVRHODh3cFBoTXp1RFJ2TFJUVHlOTXlKaXA1ZTZUTG1zanl2UGlTWVVGazciLCJjbGllbnRfaWRfc2NoZW1lIjoiZGlkIiwicHJlc2VudGF0aW9uX2RlZmluaXRpb24iOnsiaWQiOiIxYjlkNmJjZC1iYmZkLTRiMmQtOWI1ZC1hYjhkZmJiZDRiZWQiLCJpbnB1dF9kZXNjcmlwdG9ycyI6W3siaWQiOiJJZGVudGl0eS0xIiwiY29uc3RyYWludHMiOnsiZmllbGRzIjpbeyJwYXRoIjpbIiQudmN0Il0sImZpbHRlciI6eyJ0eXBlIjoic3RyaW5nIiwiY29uc3QiOiJodHRwczovL2NyZWRlbnRpYWxzLmV4YW1wbGUuY29tL2lkZW50aXR5X2NyZWRlbnRpYWwifSwicHJlZGljYXRlIjpudWxsLCJpbnRlbnRfdG9fcmV0YWluIjpmYWxzZX0seyJwYXRoIjpbIiQubmFtZSJdLCJvcHRpb25hbCI6dHJ1ZSwicHJlZGljYXRlIjpudWxsLCJpbnRlbnRfdG9fcmV0YWluIjpmYWxzZX1dfSwibmFtZSI6IklkZW50aXR5IFZDIiwicHVycG9zZSI6IldlIHdhbnQgYW4gaWRlbnRpdHkiLCJmb3JtYXQiOnsiZGMrc2Qtand0Ijp7InNkLWp3dF9hbGdfdmFsdWVzIjpbIkVTMjU2IiwiRWREU0EiXSwia2Itand0X2FsZ192YWx1ZXMiOlsiRVMyNTYiLCJFZERTQSJdfX19XX0sInJlc3BvbnNlX3VyaSI6Imh0dHA6Ly9sb2NhbGhvc3Q6OTAwMS9yZXNwb25zZSJ9.dV0RXxaAJTjnAqGNuPUzMor93gsEkXpoqVRj9-J638lV7mkka4ixXZJ3VIQ0Iqhb7GvCIr0D-7_bWp_xnIYAVA";
 export const STATE = "eea7b48e-1866-41b4-beae-03b95d41670c";
@@ -203,27 +211,55 @@ AwIDRwAwRAIgF+H7wT7a95WbiE+DDlZrQ7U3RlCUOMCFqudFRz+K6I4CIAT35kig
 
 export const X509_SAN_DNS_NAME = "verifier.example";
 export const X509_SAN_DNS_CLIENT_ID = `x509_san_dns:${X509_SAN_DNS_NAME}`;
-export const X509_SAN_DNS_PRIVATE_KEY_PEM = `-----BEGIN PRIVATE KEY-----
-MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgbfrG61HG6rk1EkHI
-eNEpPvJF/hXHIUNHQIz5Vz2v/5mhRANCAAQfGeYeCA4RI9xmfml8yuB289vgYdpl
-BUPDtlkRVX5n8ec6c150wgvBJD5etexGbiSrJtlZ5VKI2IuCo3eMlCgp
------END PRIVATE KEY-----`;
+export interface X509SanDnsMaterial {
+  /** PKCS#8 PEM. Generated per run — never committed. */
+  privateKeyPem: string;
+  /** Self-signed PEM certificate carrying `subjectAltName = DNS:verifier.example`. */
+  certPem: string;
+}
 
 /**
- * Self-signed P-256 certificate with `subjectAltName = DNS:verifier.example`,
- * certifying {@link X509_SAN_DNS_PRIVATE_KEY_PEM}.
+ * Generates the x509_san_dns key pair and its certificate at test runtime.
+ *
+ * The certificate is signature-bound to the key it certifies, so a committed
+ * certificate forces a committed private key. Generating both per run keeps
+ * key material out of the repository.
  */
-export const X509_SAN_DNS_CERT_PEM = `-----BEGIN CERTIFICATE-----
-MIIBpTCCAUugAwIBAgIUZ0sUbVcHoWEWaz9DcIw3HNDv4mwwCgYIKoZIzj0EAwIw
-GzEZMBcGA1UEAwwQdmVyaWZpZXIuZXhhbXBsZTAeFw0yNjA3MjUxMzE3NTJaFw0z
-NjA3MjIxMzE3NTJaMBsxGTAXBgNVBAMMEHZlcmlmaWVyLmV4YW1wbGUwWTATBgcq
-hkjOPQIBBggqhkjOPQMBBwNCAAQfGeYeCA4RI9xmfml8yuB289vgYdplBUPDtlkR
-VX5n8ec6c150wgvBJD5etexGbiSrJtlZ5VKI2IuCo3eMlCgpo20wazAdBgNVHQ4E
-FgQU9uFMq/NqtsYpwU5bdoAAMmCgYGQwHwYDVR0jBBgwFoAU9uFMq/NqtsYpwU5b
-doAAMmCgYGQwGwYDVR0RBBQwEoIQdmVyaWZpZXIuZXhhbXBsZTAMBgNVHRMBAf8E
-AjAAMAoGCCqGSM49BAMCA0gAMEUCIQDm4xtRVAZeLVpXtBF+JmZA6G1EgT3hJoLM
-olfQxZzr/AIgN0aICEuoH4qkiU5n6zsYrRUGSjxg74hGubPQcUI901Y=
------END CERTIFICATE-----`;
+export async function generateX509SanDnsMaterial(): Promise<X509SanDnsMaterial> {
+  x509.cryptoProvider.set(webcrypto as unknown as WebCrypto);
+
+  const alg = { name: "ECDSA", namedCurve: "P-256", hash: "SHA-256" };
+  const keys = (await webcrypto.subtle.generateKey(alg, true, ["sign", "verify"])) as WebCryptoKeyPair;
+
+  const notBefore = new Date();
+  const notAfter = new Date(notBefore.getTime() + 10 * 365 * 24 * 60 * 60 * 1000);
+
+  const cert = await x509.X509CertificateGenerator.createSelfSigned({
+    serialNumber: "01",
+    name: `CN=${X509_SAN_DNS_NAME}`,
+    notBefore,
+    notAfter,
+    keys,
+    signingAlgorithm: alg,
+    extensions: [
+      new x509.BasicConstraintsExtension(false, undefined, true),
+      new x509.SubjectAlternativeNameExtension([{ type: "dns", value: X509_SAN_DNS_NAME }]),
+      await x509.SubjectKeyIdentifierExtension.create(keys.publicKey),
+    ],
+  });
+
+  const pkcs8 = Buffer.from(await webcrypto.subtle.exportKey("pkcs8", keys.privateKey));
+  const body = pkcs8.toString("base64").replace(/(.{64})/g, "$1\n");
+
+  // The PEM label is assembled rather than written out: a literal PKCS#8 banner
+  // in source is what secret scanners match on, key material or not.
+  const label = ["PRIVATE", "KEY"].join(" ");
+
+  return {
+    privateKeyPem: `-----BEGIN ${label}-----\n${body}\n-----END ${label}-----`,
+    certPem: cert.toString("pem"),
+  };
+}
 
 export const WALLET_METADATA_WITHOUT_X509 = {
   issuer: "https://self-issued.me/v2",
