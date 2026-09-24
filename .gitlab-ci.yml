@@ -13,6 +13,7 @@ stages:
   - test
   - demo
   - release
+  - manifest
 
 variables:
   RUST_VERSION: "1.97.0"
@@ -332,6 +333,26 @@ release_artifacts_job:
       - SBOM.auto.out
       - AUDIT.auto.out
       - API.auto.tar.gz
+  rules:
+    - if: $CI_COMMIT_TAG && $CI_COMMIT_TAG =~ $VERSION_REGEX
+      when: always
+    - when: never
+
+
+release_manifest_job:
+  image: rust:${RUST_VERSION}-bookworm
+  stage: manifest
+  dependencies: []
+  variables:
+    RUSTC_WRAPPER: ""
+  before_script:
+    - apt-get update && apt-get install -y jq
+  script:
+    - bash scripts/release_manifest.sh equs-credentials-sdk release-manifest.yaml
+    - cat release-manifest.yaml
+  artifacts:
+    paths:
+      - release-manifest.yaml
   rules:
     - if: $CI_COMMIT_TAG && $CI_COMMIT_TAG =~ $VERSION_REGEX
       when: always

@@ -55,6 +55,22 @@ jobs:
           [ -n "${CARGO_REGISTRY_TOKEN:-}" ] || { echo "org secret EQUS_CREDENTIALS_SDK_CRATES_IO_TOKEN is unset or not visible to this repo" >&2; exit 1; }
           cargo publish --locked --no-verify -p equs-credentials-sdk
 
+      - name: Render manifest
+        shell: bash
+        env:
+          CI_COMMIT_TAG: ${{ github.ref_name }}
+          CI_COMMIT_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          apt-get update && apt-get install -y jq
+          bash scripts/release_manifest.sh equs-credentials-sdk release-manifest.yaml
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-manifest
+          path: release-manifest.yaml
+          if-no-files-found: error
+
       - if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
