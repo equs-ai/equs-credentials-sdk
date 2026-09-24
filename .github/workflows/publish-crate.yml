@@ -55,6 +55,25 @@ jobs:
           [ -n "${CARGO_REGISTRY_TOKEN:-}" ] || { echo "org secret EQUS_CREDENTIALS_SDK_CRATES_IO_TOKEN is unset or not visible to this repo" >&2; exit 1; }
           cargo publish --locked --no-verify -p equs-credentials-sdk
 
+      - name: Render manifest
+        if: always()
+        shell: bash
+        env:
+          CI_COMMIT_TAG: ${{ github.ref_name }}
+          CI_COMMIT_SHA: ${{ github.sha }}
+          RELEASE_VERSION: ${{ env.VERSION }}
+        run: |
+          set -euo pipefail
+          apt-get update && apt-get install -y jq
+          bash scripts/release_manifest.sh equs-credentials-sdk release-manifest.yaml
+
+      - if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-manifest
+          path: release-manifest.yaml
+          if-no-files-found: error
+
       - if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -64,3 +83,26 @@ jobs:
 
       - shell: bash
         run: printf "### Published\n\n\`equs-credentials-sdk %s\` to crates.io\n" "$VERSION" >> "$GITHUB_STEP_SUMMARY"
+
+  manifest:
+    needs: publish
+    if: always()
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    timeout-minutes: 10
+    steps:
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: release-manifest
+
+      - shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1 ||
+            gh release create "$TAG" --repo "$REPO" --title "$TAG" --notes ""
+          gh release upload "$TAG" release-manifest.yaml --repo "$REPO" --clobber

@@ -23,6 +23,7 @@ that file lists every sub-area with a link to the relevant `CLAUDE.md` inside th
 | Tests | E2E test suite, shared fixtures and helpers | [claude/tests.md](claude/tests.md) |
 | Demos | OID4VC (issuer/holder/verifier), multi-thread, Node.js, WASM, Android, iOS, Keycloak | [claude/demos.md](claude/demos.md) |
 | CI/CD | GitHub Actions CI and the crates.io release | [.github/CLAUDE.md](.github/CLAUDE.md) |
+| Release | Release-pipeline scripts, release manifest | [scripts/CLAUDE.md](scripts/CLAUDE.md) |
 
 ## Repository layout (quick reference)
 
@@ -52,6 +53,7 @@ equs-credentials-sdk/
 ├── tests/
 │   ├── e2e/              # End-to-end test suite
 │   └── utils/            # Shared test fixtures + helpers
+├── scripts/              # Release-pipeline scripts
 ├── demos/                # Example applications
 ├── claude/               # Domain summary files (Phase 3)
 └── context.claude.md     # ← you are here
