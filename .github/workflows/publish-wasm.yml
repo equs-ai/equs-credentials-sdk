@@ -25,22 +25,13 @@ jobs:
     timeout-minutes: 5
     outputs:
       version: ${{ steps.resolve.outputs.version }}
-      environment: ${{ steps.resolve.outputs.environment }}
-      dist-tag: ${{ steps.resolve.outputs.dist-tag }}
     steps:
       - id: resolve
         shell: bash
         run: |
           set -euo pipefail
           version="${GITHUB_REF_NAME#wasm/v}"
-          if [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            printf 'environment=production\ndist-tag=latest\n' >> "$GITHUB_OUTPUT"
-          elif [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+-[0-9A-Za-z.-]+$ ]]; then
-            printf 'environment=development\ndist-tag=dev\n' >> "$GITHUB_OUTPUT"
-          else
-            echo "tag '$GITHUB_REF_NAME' is not wasm/vX.Y.Z[-suffix]" >&2
-            exit 1
-          fi
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "tag '$GITHUB_REF_NAME' is not wasm/vX.Y.Z" >&2; exit 1; }
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
   wasm:
@@ -53,8 +44,6 @@ jobs:
     env:
       CI_COMMIT_TAG: ${{ needs.version.outputs.version }}
       NPM_TOKEN: ${{ secrets.EQUS_CREDENTIALS_SDK_NPM_TOKEN }}
-      BUILD_SCRIPT: ${{ needs.version.outputs.environment == 'production' && 'build' || 'build:dev' }}
-      DIST_TAG: ${{ needs.version.outputs.dist-tag }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -81,12 +70,12 @@ jobs:
           set -euo pipefail
           [ -n "${NPM_TOKEN:-}" ] || { echo "org secret EQUS_CREDENTIALS_SDK_NPM_TOKEN is unset or not visible to this repo" >&2; exit 1; }
           npm i
-          npm run "$BUILD_SCRIPT"
+          npm run build
           printf '%s:_authToken=%s\n' "//${REGISTRY_URL_NPM#*://}" "$NPM_TOKEN" >> "$HOME/.npmrc"
           chmod 600 "$HOME/.npmrc"
           cp .npmignore pkg/.npmignore
           cd pkg
-          npm publish --registry="$REGISTRY_URL_NPM" --tag "$DIST_TAG"
+          npm publish --registry="$REGISTRY_URL_NPM" --tag latest
 
   summary:
     needs: [version, wasm]
@@ -96,5 +85,4 @@ jobs:
       - shell: bash
         env:
           VERSION: ${{ needs.version.outputs.version }}
-          DIST_TAG: ${{ needs.version.outputs.dist-tag }}
-        run: printf "### Published to npmjs (\`%s\`)\n\n- \`@equs-ai/equs-credentials-sdk-wasm@%s\`\n" "$DIST_TAG" "$VERSION" >> "$GITHUB_STEP_SUMMARY"
+        run: printf "### Published to npmjs\n\n- \`@equs-ai/equs-credentials-sdk-wasm@%s\`\n" "$VERSION" >> "$GITHUB_STEP_SUMMARY"

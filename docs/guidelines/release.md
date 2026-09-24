@@ -123,9 +123,8 @@ git tag -a wasm/v<version> -F NOTES.md
 git push github-equs tag nodejs/v<version> tag wasm/v<version>
 ```
 
-As on GitLab, the published version is the tag, and a `-<suffix>` (`nodejs/v1.0.1-rc.1`) publishes a debug build under
-the `dev` dist-tag. An npmjs version can never be republished, even after an unpublish, so a bad tag costs
-a version number.
+As on GitLab, the published version is the tag. Only `X.Y.Z` is accepted — no dev builds go to npmjs.
+An npmjs version can never be republished, even after an unpublish, so a bad tag costs a version number.
 
 ## Release notes format
 
