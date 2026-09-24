@@ -3050,6 +3050,7 @@ dependencies = [
  "equs-one-core-shared-types",
  "equs-openid4vp",
  "equs-sd-jwt-rs",
+ "equs-test-fixtures",
  "equs-vcx-did-parser-nom",
  "equs-vcx-did-peer",
  "equs-vcx-did-resolver",
@@ -3432,6 +3433,21 @@ dependencies = [
  "strum 0.25.0",
  "thiserror 1.0.69",
  "time",
+]
+
+[[package]]
+name = "equs-test-fixtures"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "base64 0.22.1",
+ "equs-credentials-sdk",
+ "serde",
+ "serde_json",
+ "snafu 0.8.9",
+ "ssi",
+ "time",
+ "tokio",
 ]
 
 [[package]]

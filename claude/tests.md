@@ -1,7 +1,10 @@
 # Tests — Summary
 
 ## What this domain does
-Contains the end-to-end (E2E) test suite and shared test utilities for EQUS Credentials SDK. E2E tests exercise full protocol flows (OID4VCI, OID4VP, DID resolution, DIDComm) against the real in-memory implementations, covering scenarios that unit tests within individual modules cannot.
+Contains the end-to-end (E2E) test suite and shared test utilities for EQUS Credentials SDK, plus
+the `equs-test-fixtures` workspace member that mints valid JWTs and JWEs on demand. E2E tests
+exercise full protocol flows (OID4VCI, OID4VP, DID resolution, DIDComm) against the real in-memory
+implementations, covering scenarios that unit tests within individual modules cannot.
 
 ## Sub-areas
 
@@ -12,9 +15,12 @@ Contains the end-to-end (E2E) test suite and shared test utilities for EQUS Cred
 | Shared test utilities | `tests/utils/` | [context](../tests/utils/CLAUDE.md) |
 | Test fixtures | `tests/utils/fixtures/` | [context](../tests/utils/fixtures/CLAUDE.md) |
 | Test helpers | `tests/utils/helpers/` | [context](../tests/utils/helpers/CLAUDE.md) |
+| JWT/JWE fixture crate | `test-fixtures/` | [context](../test-fixtures/CLAUDE.md) |
 
 ## Cross-domain relationships
 - Depends on: `crate::inmem` (`LocalKms`, `InMemVault`), all protocol domains (`vc`, `did`, `didcomm`), `mockall` (`MockHttpClient` via `#[automock]` on `HttpClient`)
+- `equs-test-fixtures` path-depends on `equs-credentials-sdk`, which dev-depends back on it — a
+  dev-dependency cycle Cargo permits and `cargo package` strips from the published manifest
 - Used by: CI pipeline; not compiled into any production artifact
 
 ## Key decisions / constraints
@@ -25,3 +31,10 @@ Contains the end-to-end (E2E) test suite and shared test utilities for EQUS Cred
 - Parameterised tests use `rstest` `#[case]` attributes.
 - Unit tests live in the same file as the code under test in a `#[cfg(test)] mod tests` block; test functions come before helper functions within the block.
 - Use `#[should_panic]` for test cases that assert on expected panics.
+- Tokens are built with `equs-test-fixtures`, not committed as strings. A signature-bound fixture
+  cannot be edited without re-signing it — the mdoc blobs in `tests/utils/fixtures/` are the
+  cautionary case.
+- `cargo test --all-features` at the workspace root tests the root package only, so
+  `equs-test-fixtures` runs in its own CI job (`test-fixtures-test`, `test-fixtures-test-job`).
+- SDK types do not unify across the fixture crate's dev-dependency cycle: a `src/` unit test builds
+  a fixture's inputs through `test_fixtures::equs_sdk::…` and carries only the token string back.

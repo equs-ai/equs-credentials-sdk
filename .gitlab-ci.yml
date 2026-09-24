@@ -225,6 +225,15 @@ common-macros-test-job:
     - merge_requests
     - main
 
+test-fixtures-test-job:
+  <<: *rust_job_configs
+  stage: test
+  script:
+    - cargo test --all-features -p equs-test-fixtures
+  only:
+    - merge_requests
+    - main
+
 nodejs-test-job:
   <<: *nodejs_job_configs
   stage: test

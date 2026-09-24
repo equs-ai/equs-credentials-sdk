@@ -98,6 +98,13 @@ jobs:
       cache-key: common-macros-test
       run: cargo test -p equs-common-macros
 
+  test-fixtures-test:
+    needs: [fmt]
+    uses: ./.github/workflows/_job.yml
+    with:
+      cache-key: test-fixtures-test
+      run: cargo test --all-features -p equs-test-fixtures
+
   doc-build:
     needs: [fmt]
     uses: ./.github/workflows/_job.yml
