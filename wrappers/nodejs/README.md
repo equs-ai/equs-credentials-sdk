@@ -16,7 +16,8 @@ companion `@equs-ai/equs-credentials-sdk-<os>-<arch>` package. Point npm at the 
 npm i @equs-ai/equs-credentials-sdk
 ```
 
-Do not pass `--ignore-scripts` — the postinstall step is what resolves the platform binary.
+From the GitLab registry, do not pass `--ignore-scripts` — the postinstall step is what resolves the platform
+binary. The npmjs release carries no postinstall; npm resolves the binary from `optionalDependencies`.
 
 ## Building and testing locally
 
@@ -51,4 +52,8 @@ Both scripts append a registry auth line to `~/.npmrc` derived from `REGISTRY_UR
 `.npmrc` is committed. In CI both variables come from the pipeline; `REGISTRY_URL_NPM` is built
 from `$CI_SERVER_HOST` and `$CI_PROJECT_ID`.
 
-The target list is `napi.triples.additional` in [`package.json`](package.json).
+On GitHub, [`publish-npm.yml`](../../.github/workflows/publish-npm.yml) runs the same two scripts against npmjs
+on an `npm/vX.Y.Z` tag.
+
+The target list is `napi.triples.additional` in [`package.json`](package.json); `defaults` is off, so
+`napi prepublish` lists only those three platforms in `optionalDependencies`.

@@ -2,15 +2,15 @@
 
 GitHub Actions port of the CI half of `.gitlab-ci.yml`, plus one release job.
 `.gitlab-ci.yml` is the running pipeline, so a CI change belongs in both files.
-`publish-crate.yml` and `publish-common-macros.yml` are the exceptions and
-have no GitLab counterpart: GitLab publishes the npm and UniFFI wrappers to its
-own registry and never a crate.
+`publish-crate.yml`, `publish-common-macros.yml` and `publish-npm.yml` are the
+exceptions: GitLab publishes the npm and UniFFI wrappers to its own registry and
+never a crate; `publish-npm.yml` publishes the same npm packages to npmjs.
 
 Two workflows. `ci.yml` defines no jobs directly: every job calls a
 reusable workflow, so `container`, checkout,
 toolchain and caches are written once. Underscore-prefixed files are
-`workflow_call` targets, never triggered on their own. `publish-crate.yml` and
-`publish-common-macros.yml` call none of them and write their own jobs.
+`workflow_call` targets, never triggered on their own. The `publish-*.yml`
+workflows call none of them and write their own jobs.
 
 Because CI jobs run through `workflow_call`, a check is named `<job> / run`, not
 `<job>` — branch-protection rules must use the two-part name. The publish job
@@ -24,6 +24,7 @@ is the one exception and is named `publish`.
 | `workflows/_android.yml` | `android-demo`: bare `ubuntu-latest`, SDK from the runner plus the pinned NDK. |
 | `workflows/publish-crate.yml` | Publishes `equs-credentials-sdk` to crates.io on a `vX.Y.Z` tag. Defines its own job. |
 | `workflows/publish-common-macros.yml` | Publishes `equs-common-macros` to crates.io on a `common-macros/vX.Y.Z` tag, prerelease suffix allowed. Defines its own job. |
+| `workflows/publish-npm.yml` | Publishes the Node.js wrapper, its three platform packages and the WASM wrapper to npmjs on an `npm/vX.Y.Z` tag, prerelease suffix allowed. Defines its own jobs. |
 | `actions/setup-rustup/` | Reclaims host disk, installs the pinned toolchain, restores the sccache and npm caches, installs `cargo-binstall` and `sccache`. |
 | `actions/cache/` | Named cache presets (`target-*`, `wrapper-*`), selected by the `restore`/`save` string inputs. |
 | `gitleaks.toml` | Secret-scan config. |
@@ -347,3 +348,26 @@ not preserve, and turns a soft cache miss into a hard failure on re-run.
   `RELEASE_VERSION_REGEX`, so the crates release on GitHub and the npm and
   UniFFI wrappers release on GitLab without either tag firing the other's
   pipeline. The crate version is therefore independent of the wrappers'.
+- `publish-npm.yml` releases on `npm/vX.Y.Z`, disjoint from the crate's
+  `vX.Y.Z`: the crate workflow rejects prerelease tags, so a shared tag would
+  fail it on every npm dev build. The published version is the tag
+  (the wrapper scripts and the WASM `Makefile` read `CI_COMMIT_TAG`, which the
+  workflow sets from it), as on GitLab; `package.json` versions are not checked.
+  `X.Y.Z` builds release and moves `latest`; `X.Y.Z-<suffix>` builds debug with
+  the `in-memory`/`test-utils` features and moves `dev`.
+- It runs the GitLab scripts unchanged: `build_and_publish_target.sh` per
+  platform (`linux-x64-gnu` in the bookworm container for its glibc,
+  `darwin-arm64`/`darwin-x64` on `macos-15`), then
+  `build_and_publish_wrapper.sh` once every platform package is up, so the
+  wrapper never references a missing binary. `REGISTRY_URL_NPM` points the
+  scripts at npmjs and `npm_config_access=public` makes the scoped packages
+  public. The WASM steps mirror `publish_wasm_wrapper`.
+- The wrapper job deletes `scripts.postinstall` before publishing. On GitLab
+  that hook installs the platform package the registry's metadata omits; npmjs
+  serves `optionalDependencies` correctly, and the hook would run a full
+  `npm i` inside every consumer's `node_modules`.
+- Prerequisites in settings: the organization secret
+  `EQUS_CREDENTIALS_SDK_NPM_TOKEN` (an npm automation token with publish rights
+  on the `@equs-ai` scope) and an environment named `npmjs`. All four
+  publishing jobs use the environment, so a required-reviewer rule prompts
+  twice: once for the platform and WASM jobs, once for the wrapper.

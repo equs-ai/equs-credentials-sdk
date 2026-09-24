@@ -109,6 +109,22 @@ The published dev version **is the tag** (`1.14.0-rc.1`), not `X.Y.Z-dev`, so ea
 produces a distinct version and repeat dev builds never collide. Run locally without `CI_COMMIT_TAG`
 and the old `X.Y.Z-dev` naming still applies.
 
+## npmjs
+
+The Node.js wrapper (with its three platform packages) and the WASM wrapper are also published to
+[npmjs](https://www.npmjs.com/org/equs-ai) by the GitHub workflow
+[`publish-npm.yml`](../../.github/workflows/publish-npm.yml). It runs on its own tag, `npm/vX.Y.Z`, pushed to
+the GitHub remote:
+
+```shell
+git tag -a npm/v<version> -F NOTES.md
+git push github-equs tag npm/v<version>
+```
+
+As on GitLab, the published version is the tag, and `npm/vX.Y.Z-<suffix>` publishes a debug build under
+the `dev` dist-tag. An npmjs version can never be republished, even after an unpublish, so a bad tag costs
+a version number.
+
 ## Release notes format
 
 One line per change:
