@@ -95,10 +95,10 @@ async function main(): Promise<void> {
     }
   });
 
-  app.get("/request", async (req, res) => {
+  app.get("/request", async (_req, res) => {
     try {
-      const fullUrl = req.protocol + "://" + req.get("host") + req.originalUrl;
-      const authReqObject = appState.authReqObjStorage.get(fullUrl);
+      const requestUri = `http://${host}:${port}/request`;
+      const authReqObject = appState.authReqObjStorage.get(requestUri);
       res.contentType("application/oauth-authz-req+jwt").send(authReqObject);
     } catch (e: any) {
       res.status(500).send(e.message);
@@ -112,7 +112,6 @@ async function main(): Promise<void> {
       if (req.body.error) {
         res.status(200).contentType("application/json").send({
           error: `Authorization response error from holder`,
-          request: req.body,
         });
 
         return;
