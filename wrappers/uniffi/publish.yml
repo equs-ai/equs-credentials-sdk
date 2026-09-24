@@ -10,7 +10,7 @@ variables:
   image: rust:${RUST_VERSION}
   before_script:
     - brew update
-    - brew install curl unzip zip git jq openssl pkg-config swift swiftlint
+    - brew install curl unzip zip git jq openssl pkg-config swiftlint
     - curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain ${RUST_VERSION}
     - source "$HOME/.cargo/env"
     - rustup target add aarch64-apple-ios x86_64-apple-ios aarch64-apple-ios-sim
