@@ -196,7 +196,9 @@ With the feature off, the file compiles to nothing.
 
 `cargo tarpaulin` at the workspace root inherits cargo's default package selection — the root package only — so a new workspace member never runs in CI without its own job. This is the same gap `common-macros-test` was added to close, and the job mirrors it. `--all-features` is passed so the `delegate-sd-jwt` suite runs.
 
-- [x] **Step 1: Add both jobs**
+`test-fixtures/*` also joins tarpaulin's `--exclude-files` list, beside `demos/*` and `wrappers/*`. The crate is a workspace path dependency, so tarpaulin counts its lines while running only the root package's tests — which reach three of the nine builders. The rest is covered by `test-fixtures-test`, which tarpaulin never runs, so leaving it in would drag the `--fail-under 70` gate for nothing.
+
+- [x] **Step 1: Add both jobs, and the tarpaulin exclusion**
 
 - [x] **Step 2: Validation test — the workflow is still valid**
 
