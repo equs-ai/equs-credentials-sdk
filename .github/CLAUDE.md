@@ -273,10 +273,36 @@ not preserve, and turns a soft cache miss into a hard failure on re-run.
   the gate. Codecov was tried and dropped: it needs a token the repo does not
   have, answered `Token required - not valid tokenless upload`, and put a
   third party in the way of merging.
-- `dependency-scan` reports advisories and does not gate, matching GitLab.
-  RUSTSEC-2023-0071 has no patched release, so gating could never go green, and
-  a missing report warns rather than fails — `cargo audit --json` writes
-  nothing when the advisory DB is unreachable.
+- `dependency-scan` gates. `cargo audit` exits non-zero on a vulnerability and
+  the job exits with that code, after the step summary is written and the JSON
+  left in place for the artifact. A missing report still warns rather than
+  fails — `cargo audit --json` writes nothing when the advisory DB is
+  unreachable — and that check runs before the gate, so an unreachable DB fails
+  with its own message rather than passing as "no vulnerabilities".
+  `.gitlab-ci.yml`'s `dependency_scanning` gates the same way:
+  `gitlab-cargo-audit` exits 0 whatever it finds, so it stays for the GitLab
+  report and a plain `cargo audit` runs after it to fail the pipeline.
+  `release_artifacts_job` keeps its `|| true` — it renders `AUDIT.auto.out` for
+  a tag build and was never a gate.
+- The gate can only be green because `.cargo/audit.toml` allowlists five
+  advisory IDs, none of them reachable by a lockfile bump. `cargo audit` reads
+  that file from the project root, so local runs and both pipelines share one
+  list. Only `vulnerability` is denied, which is cargo-audit's default; the 29
+  `unmaintained`, `unsound` and `yanked` warnings are reported and do not gate.
+  - RUSTSEC-2023-0071, `rsa` 0.6.1 and 0.9.10 — the Marvin timing attack.
+    `patched = []`: no fix has ever been released, and 0.10.0-rc is affected
+    too. Reached through `ssi-jwk` → `isomdl` → `equs-oid4vci`, and through
+    `openidconnect`. It drops out only when those stop pulling `rsa`.
+  - RUSTSEC-2026-0098, -0099 and -0104, `rustls-webpki` 0.101.7 — patched in
+    0.103, which `rustls` 0.21 cannot take. The chain is `ssi` 0.16 →
+    `reqwest` 0.11 → `hyper-rustls` 0.24 → `rustls` 0.21.
+  - RUSTSEC-2026-0258, `h2` 0.3.27 — patched in 0.4, which `hyper` 0.14 cannot
+    take. Both the SDK's own `hyper` dependency and `reqwest` 0.11 hold it there.
+  Upgrading `ssi` 0.16 and `hyper` 0.14 clears four of the five; nothing clears
+  the `rsa` one. Four of the nine findings the gate first saw were ordinary
+  lockfile bumps and were taken instead of allowlisted: `crossbeam-epoch`
+  0.9.21, `h2` 0.4.19, `quinn-proto` 0.11.18 and `rustls` 0.23.45. `rustls`
+  needed `cargo update --precise`; a plain update stops at 0.23.43.
 - `publish-crate.yml` does not call `_job.yml`. A reusable workflow reaches a
   secret only through a declared `secrets:` input or `secrets: inherit`, and
   adding the registry token to the job that runs 21 of the 25 CI jobs would
