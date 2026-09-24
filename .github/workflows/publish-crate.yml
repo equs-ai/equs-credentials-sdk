@@ -82,3 +82,26 @@ jobs:
 
       - shell: bash
         run: printf "### Published\n\n\`equs-credentials-sdk %s\` to crates.io\n" "$VERSION" >> "$GITHUB_STEP_SUMMARY"
+
+  manifest:
+    needs: publish
+    if: always()
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    timeout-minutes: 10
+    steps:
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: release-manifest
+
+      - shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1 ||
+            gh release create "$TAG" --repo "$REPO" --title "$TAG" --notes ""
+          gh release upload "$TAG" release-manifest.yaml --repo "$REPO" --clobber

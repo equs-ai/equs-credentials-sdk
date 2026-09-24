@@ -16,8 +16,10 @@ releases on its own tag. The SDK's manifest is rendered by
 `.github/workflows/publish-common-macros.yml`.
 
 Both workflows render with `if: always()`, so a failed publish still produces a
-manifest. Every caller keeps it as a build artefact; nothing writes it to the
-tag's release.
+manifest, and a follow-up job uploads it to that tag's release as an asset —
+build artefacts expire after 90 days, release assets do not. The release is
+created if the tag has none, and the notes are never touched. The `manifest`
+stage keeps the file as a build artefact only.
 
 Every field comes from the checkout — no registry calls. `commit` and `tag` come
 from the release build, `repo` from `Cargo.toml`'s `repository` URL (not
