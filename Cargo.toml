@@ -16,7 +16,7 @@ members = [
 
 [package]
 name = "equs-credentials-sdk"
-version = "1.13.1"
+version = "1.0.0"
 edition = "2024"
 rust-version = "1.97.0"
 license = "Apache-2.0"
