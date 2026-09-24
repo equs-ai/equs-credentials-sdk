@@ -120,6 +120,10 @@ mod tests {
     use crate::utils::test_utils::{create_did_url_and_key_handle, failed_signer_key, no_jwk_key};
     use crate::vc::pop::jwt_pop::JwtProofOfPossession;
     use crate::vc::pop::{Error, GenerateOptions, ProofOfPossession, VerifyOptions};
+    use test_fixtures::equs_sdk::inmem::kms::LocalKms as FixtureKms;
+    use test_fixtures::equs_sdk::kms::KeyType as FixtureKeyType;
+    use test_fixtures::keys::FixtureKey;
+    use test_fixtures::pop::ProofOfPossession as FixtureProofOfPossession;
 
     #[rstest]
     #[case::p256(KeyType::P256)]
@@ -248,6 +252,57 @@ mod tests {
         let res = JwtProofOfPossession::verify(
             proof,
             sample_verify_opts(nonce2),
+            &UniversalResolver::default(),
+        )
+        .await;
+
+        assert!(matches!(res.err(), Some(Error::Verification { .. })));
+    }
+
+    #[tokio::test]
+    async fn jwt_pop_fixture_verifies_against_the_sdk() {
+        let kms = FixtureKms::new();
+        let key = FixtureKey::create(&kms, FixtureKeyType::Ed25519)
+            .await
+            .unwrap();
+        let nonce = random_nonce().await;
+
+        let proof = FixtureProofOfPossession::builder(&key)
+            .audience("did:web:issuer.com")
+            .issuer("client-id")
+            .nonce(nonce.secret().to_string())
+            .build()
+            .await
+            .unwrap();
+
+        let (did_url, _) = JwtProofOfPossession::verify(
+            proof,
+            sample_verify_opts(Some(nonce)),
+            &UniversalResolver::default(),
+        )
+        .await
+        .expect("the fixture proof must satisfy the SDK's own verifier");
+
+        assert_eq!(did_url.to_string(), key.did_url.to_string());
+    }
+
+    #[tokio::test]
+    async fn jwt_pop_fixture_with_a_wrong_audience_is_rejected() {
+        let kms = FixtureKms::new();
+        let key = FixtureKey::create_default(&kms).await.unwrap();
+        let nonce = random_nonce().await;
+
+        let proof = FixtureProofOfPossession::builder(&key)
+            .audience("did:web:other-issuer.com")
+            .issuer("client-id")
+            .nonce(nonce.secret().to_string())
+            .build()
+            .await
+            .unwrap();
+
+        let res = JwtProofOfPossession::verify(
+            proof,
+            sample_verify_opts(Some(nonce)),
             &UniversalResolver::default(),
         )
         .await;
