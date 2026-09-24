@@ -4,7 +4,7 @@ plugins {
     id("maven-publish")
 }
 
-val baseVersion = "1.13.1"
+val baseVersion = "1.0.0"
 val environment = project.findProperty("env")?.toString()
 
 group = "equs"

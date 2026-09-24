@@ -1,6 +1,6 @@
 {
   "name": "@equs-ai/equs-credentials-sdk-askar-storage",
-  "version": "1.13.1",
+  "version": "1.0.0",
   "main": "index.js",
   "types": "index.d.ts",
   "napi": {
