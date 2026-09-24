@@ -36,10 +36,11 @@ jobs:
       artifact-path: cargo-audit-report.json
       run: |
         bash .github/scripts/binstall-or-build.sh cargo-audit
-        cargo audit --json > cargo-audit-report.json || true
+        cargo audit --json > cargo-audit-report.json || rc=$?
         printf '### Dependency advisories\n\n```\n%s\n```\n' \
           "$(cargo audit --no-fetch 2>&1 | tail -n 60)" >> "$GITHUB_STEP_SUMMARY"
         grep -q '"vulnerabilities"' cargo-audit-report.json || { echo "cargo audit produced no report" >&2; exit 1; }
+        exit ${rc:-0}
 
   fmt:
     uses: ./.github/workflows/_job.yml

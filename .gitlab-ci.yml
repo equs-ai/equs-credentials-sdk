@@ -87,7 +87,9 @@ dependency_scanning:
   stage: scan
   script:
     - binstall_or_build gitlab-cargo-audit "gitlab-cargo-audit --version"
+    - binstall_or_build cargo-audit "cargo audit --version"
     - gitlab-cargo-audit --output-path gl-dependency-scanning-report.json
+    - cargo audit
   artifacts:
     when: always
     reports:
