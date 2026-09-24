@@ -22,8 +22,8 @@ is the one exception and is named `publish`.
 | `workflows/_job.yml` | The generic containerised job behind 23 of the 27. Owns `container`, checkout, toolchain, node/java/wasm, caches, disk report and artifact upload. |
 | `workflows/_macos.yml` | The generic `macos-15` job behind `ios-xcframework`, `swift-test` and `ios-demo`. |
 | `workflows/_android.yml` | `android-demo`: bare `ubuntu-latest`, SDK from the runner plus the pinned NDK. |
-| `workflows/publish-crate.yml` | Publishes `equs-credentials-sdk` to crates.io on a `vX.Y.Z` tag. Defines its own job. |
-| `workflows/publish-common-macros.yml` | Publishes `equs-common-macros` to crates.io on a `common-macros/vX.Y.Z` tag, prerelease suffix allowed. Defines its own job. |
+| `workflows/publish-crate.yml` | Publishes `equs-credentials-sdk` to crates.io on a `vX.Y.Z` tag, then renders its release manifest and uploads it to the release. Defines its own jobs. |
+| `workflows/publish-common-macros.yml` | Publishes `equs-common-macros` to crates.io on a `common-macros/vX.Y.Z` tag, prerelease suffix allowed, then renders its release manifest and uploads it to the release. Defines its own jobs. |
 | `actions/setup-rustup/` | Reclaims host disk, installs the pinned toolchain, restores the sccache and npm caches, installs `cargo-binstall` and `sccache`. |
 | `actions/cache/` | Named cache presets (`target-*`, `wrapper-*`), selected by the `restore`/`save` string inputs. |
 | `gitleaks.toml` | Secret-scan config. |
