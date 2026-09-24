@@ -1,0 +1,138 @@
+name: Publish WASM wrapper
+
+on:
+  push:
+    tags: ['wasm/v[0-9]*.[0-9]*.[0-9]*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-wasm
+  cancel-in-progress: false
+
+env:
+  RUST_VERSION: "1.97.0"
+  NODE_VERSION: "20.18.0"
+  CARGO_INCREMENTAL: "0"
+  CARGO_TERM_COLOR: always
+  REGISTRY_URL_NPM: https://registry.npmjs.org/
+  npm_config_access: public
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.resolve.outputs.version }}
+    steps:
+      - id: resolve
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#wasm/v}"
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "tag '$GITHUB_REF_NAME' is not wasm/vX.Y.Z" >&2; exit 1; }
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+  wasm:
+    needs: [version]
+    runs-on: ubuntu-latest
+    environment: npmjs
+    container:
+      image: rust:1.97.0-bookworm
+    timeout-minutes: 60
+    env:
+      CI_COMMIT_TAG: ${{ needs.version.outputs.version }}
+      NPM_TOKEN: ${{ secrets.EQUS_CREDENTIALS_SDK_NPM_TOKEN }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - uses: ./.github/actions/setup-rustup
+        with:
+          rust-version: ${{ env.RUST_VERSION }}
+          cache-key: publish-wasm
+          tooling: 'false'
+
+      - name: Install wasm tooling
+        shell: bash
+        run: |
+          command -v clang >/dev/null || { apt-get update && apt-get install -y --no-install-recommends clang; }
+          bash .github/scripts/install-wasm-pack.sh
+
+      - name: Build and publish
+        shell: bash
+        working-directory: wrappers/wasm
+        run: |
+          set -euo pipefail
+          [ -n "${NPM_TOKEN:-}" ] || { echo "org secret EQUS_CREDENTIALS_SDK_NPM_TOKEN is unset or not visible to this repo" >&2; exit 1; }
+          npm i
+          npm run build
+          printf '%s:_authToken=%s\n' "//${REGISTRY_URL_NPM#*://}" "$NPM_TOKEN" >> "$HOME/.npmrc"
+          chmod 600 "$HOME/.npmrc"
+          cp .npmignore pkg/.npmignore
+          cd pkg
+          tarball=$(npm pack --silent)
+          npm publish "$tarball" --registry="$REGISTRY_URL_NPM" --tag latest
+
+      - if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: npm-wasm
+          path: wrappers/wasm/pkg/*.tgz
+          if-no-files-found: warn
+
+  manifest:
+    needs: [version, wasm]
+    if: always() && needs.version.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          pattern: npm-*
+          path: tarballs
+
+      - name: Render manifest
+        shell: bash
+        env:
+          CI_COMMIT_TAG: ${{ github.ref_name }}
+          CI_COMMIT_SHA: ${{ github.sha }}
+          RELEASE_VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          bash scripts/npm_release_manifest.sh @equs-ai/equs-credentials-sdk-wasm release-manifest.yaml tarballs \
+            @equs-ai/equs-credentials-sdk-wasm
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-manifest
+          path: release-manifest.yaml
+          if-no-files-found: error
+
+      - shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1 ||
+            gh release create "$TAG" --repo "$REPO" --title "$TAG" --notes ""
+          gh release upload "$TAG" release-manifest.yaml --repo "$REPO" --clobber
+
+  summary:
+    needs: [version, wasm]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - shell: bash
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+        run: printf "### Published to npmjs\n\n- \`@equs-ai/equs-credentials-sdk-wasm@%s\`\n" "$VERSION" >> "$GITHUB_STEP_SUMMARY"

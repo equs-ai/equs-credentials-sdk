@@ -11,14 +11,11 @@ addon with [NAPI-RS](https://napi.rs).
 ## Installation
 
 The wrapper is published as `@equs-ai/equs-credentials-sdk-askar-storage`; the native binary for your platform
-comes from a companion `@equs-ai/equs-credentials-sdk-askar-storage-<os>-<arch>` package. Point npm at the registry
-that hosts them, then:
+comes from a companion `@equs-ai/equs-credentials-sdk-askar-storage-<os>-<arch>` package. Both are on npmjs:
 
 ```shell
 npm i @equs-ai/equs-credentials-sdk-askar-storage
 ```
-
-Do not pass `--ignore-scripts` — the postinstall step is what resolves the platform binary.
 
 ## Usage
 
@@ -28,18 +25,20 @@ The package can be imported with both ES module and CommonJS syntax.
 
 Each platform binary is published as its own npm package, then the
 `@equs-ai/equs-credentials-sdk-askar-storage` package that depends on them is published on top. Both steps run from
-the release pipeline ([`publish.yml`](publish.yml)) — see
+[`publish-askar.yml`](../../../../.github/workflows/publish-askar.yml) on an `askar/vX.Y.Z` tag — see
 [Publish a New Release](../../../../docs/guidelines/release.md).
 
 The two scripts the pipeline calls, for a manual run:
 
 ```shell
-REGISTRY_URL_NPM=<registry-url> NPM_TOKEN=<token> TARGET=<target> ALIAS=<alias> ENVIRONMENT=development scripts/build_and_publish_target.sh
-REGISTRY_URL_NPM=<registry-url> NPM_TOKEN=<token> ENVIRONMENT=development scripts/build_and_publish_wrapper.sh
+REGISTRY_URL_NPM=<registry-url> NPM_TOKEN=<token> TARGET=<target> ALIAS=<alias> ENVIRONMENT=production scripts/build_and_publish_target.sh
+REGISTRY_URL_NPM=<registry-url> NPM_TOKEN=<token> ENVIRONMENT=production scripts/build_and_publish_wrapper.sh
 ```
 
-Both scripts append a registry auth line to `~/.npmrc` derived from `REGISTRY_URL_NPM`, so no
-`.npmrc` is committed. In CI both variables come from the pipeline; `REGISTRY_URL_NPM` is built
-from `$CI_SERVER_HOST` and `$CI_PROJECT_ID`.
+Both scripts pack the package and publish the resulting `.tgz`, which the release manifest hashes.
+Both append a registry auth line to `~/.npmrc` derived from `REGISTRY_URL_NPM`, so no
+`.npmrc` is committed. In CI, `REGISTRY_URL_NPM` is `https://registry.npmjs.org/` and `NPM_TOKEN` comes
+from the `EQUS_CREDENTIALS_SDK_NPM_TOKEN` org secret.
 
-The target list is `napi.triples.additional` in [`package.json`](package.json).
+The target list is `napi.triples.additional` in [`package.json`](package.json); `defaults` is off, so
+`napi prepublish` lists only those three platforms in `optionalDependencies`.

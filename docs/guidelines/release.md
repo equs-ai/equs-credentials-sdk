@@ -109,6 +109,25 @@ The published dev version **is the tag** (`1.14.0-rc.1`), not `X.Y.Z-dev`, so ea
 produces a distinct version and repeat dev builds never collide. Run locally without `CI_COMMIT_TAG`
 and the old `X.Y.Z-dev` naming still applies.
 
+## npmjs
+
+The Node.js wrapper, the askar plugin (each with its three platform packages) and the WASM wrapper are also published to
+[npmjs](https://www.npmjs.com/org/equs-ai) by the GitHub workflows
+[`publish-nodejs.yml`](../../.github/workflows/publish-nodejs.yml) and
+[`publish-wasm.yml`](../../.github/workflows/publish-wasm.yml) and
+[`publish-askar.yml`](../../.github/workflows/publish-askar.yml). Each runs on its own tag, pushed to the GitHub
+remote:
+
+```shell
+git tag -a nodejs/v<version> -F NOTES.md
+git tag -a wasm/v<version> -F NOTES.md
+git tag -a askar/v<version> -F NOTES.md
+git push github-equs tag nodejs/v<version> tag wasm/v<version> tag askar/v<version>
+```
+
+As on GitLab, the published version is the tag. Only `X.Y.Z` is accepted — no dev builds go to npmjs.
+An npmjs version can never be republished, even after an unpublish, so a bad tag costs a version number.
+
 ## Release notes format
 
 One line per change:

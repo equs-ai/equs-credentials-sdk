@@ -77,8 +77,8 @@ equs-credentials-sdk/
 |--------|---------|--------|
 | crates.io | `equs-credentials-sdk` | `Cargo.toml` (lib target stays `equs_sdk`, so imports remain `use equs_sdk::…`). Published by `.github/workflows/publish-crate.yml` on a `vX.Y.Z` tag. |
 | crates.io | `equs-common-macros` | `equs-common-macros/Cargo.toml` (lib target stays `common_macros`, so imports remain `use common_macros::…`). Published by `.github/workflows/publish-common-macros.yml` on a `common-macros/vX.Y.Z` tag (prerelease suffix allowed). |
-| Node.js | `@equs-ai/equs-credentials-sdk` | `wrappers/nodejs/package.json` (napi binary `equs-credentials-sdk`) |
-| WASM | `@equs-ai/equs-credentials-sdk-wasm` | `wrappers/wasm/package.json` |
+| Node.js | `@equs-ai/equs-credentials-sdk` | `wrappers/nodejs/package.json` (napi binary `equs-credentials-sdk`). Published to npmjs with its three platform packages by `.github/workflows/publish-nodejs.yml` on a `nodejs/vX.Y.Z` tag. |
+| WASM | `@equs-ai/equs-credentials-sdk-wasm` | `wrappers/wasm/package.json`. Published to npmjs by `.github/workflows/publish-wasm.yml` on a `wasm/vX.Y.Z` tag. |
 | iOS | `equs-credentials-sdk` | `wrappers/uniffi/swift/Package.swift` (product/module stays `EqusSdk`) |
 | Kotlin | `com.equs.credentials` | `wrappers/uniffi/uniffi.toml` (AAR artifact `equs-credentials-sdk-android`) |
-| Askar plugin (Node.js) | `@equs-ai/equs-credentials-sdk-askar-storage` | `plugins/askar/wrappers/nodejs/package.json` |
+| Askar plugin (Node.js) | `@equs-ai/equs-credentials-sdk-askar-storage` | `plugins/askar/wrappers/nodejs/package.json`. Published to npmjs with its three platform packages by `.github/workflows/publish-askar.yml` on an `askar/vX.Y.Z` tag. |

@@ -2,15 +2,15 @@
 
 GitHub Actions port of the CI half of `.gitlab-ci.yml`, plus one release job.
 `.gitlab-ci.yml` is the running pipeline, so a CI change belongs in both files.
-`publish-crate.yml` and `publish-common-macros.yml` are the exceptions and
-have no GitLab counterpart: GitLab publishes the npm and UniFFI wrappers to its
-own registry and never a crate.
+The `publish-*.yml` workflows are the exceptions: GitLab publishes the npm and
+UniFFI wrappers to its own registry and never a crate; `publish-nodejs.yml`,
+`publish-wasm.yml` and `publish-askar.yml` publish the same npm packages to npmjs.
 
 Two workflows. `ci.yml` defines no jobs directly: every job calls a
 reusable workflow, so `container`, checkout,
 toolchain and caches are written once. Underscore-prefixed files are
-`workflow_call` targets, never triggered on their own. `publish-crate.yml` and
-`publish-common-macros.yml` call none of them and write their own jobs.
+`workflow_call` targets, never triggered on their own. The `publish-*.yml`
+workflows call none of them and write their own jobs.
 
 Because CI jobs run through `workflow_call`, a check is named `<job> / run`, not
 `<job>` — branch-protection rules must use the two-part name. The publish job
@@ -24,6 +24,9 @@ is the one exception and is named `publish`.
 | `workflows/_android.yml` | `android-demo`: bare `ubuntu-latest`, SDK from the runner plus the pinned NDK. |
 | `workflows/publish-crate.yml` | Publishes `equs-credentials-sdk` to crates.io on a `vX.Y.Z` tag, then renders its release manifest and uploads it to the release. Defines its own jobs. |
 | `workflows/publish-common-macros.yml` | Publishes `equs-common-macros` to crates.io on a `common-macros/vX.Y.Z` tag, prerelease suffix allowed, then renders its release manifest and uploads it to the release. Defines its own jobs. |
+| `workflows/publish-nodejs.yml` | Publishes the Node.js wrapper and its three platform packages to npmjs on a `nodejs/vX.Y.Z` tag, then renders its release manifest and uploads it to the release. Defines its own jobs. |
+| `workflows/publish-askar.yml` | Publishes the askar plugin wrapper and its three platform packages to npmjs on an `askar/vX.Y.Z` tag, then renders its release manifest and uploads it to the release. Defines its own jobs. |
+| `workflows/publish-wasm.yml` | Publishes the WASM wrapper to npmjs on a `wasm/vX.Y.Z` tag, then renders its release manifest and uploads it to the release. Defines its own jobs. |
 | `actions/setup-rustup/` | Reclaims host disk, installs the pinned toolchain, restores the sccache and npm caches, installs `cargo-binstall` and `sccache`. |
 | `actions/cache/` | Named cache presets (`target-*`, `wrapper-*`), selected by the `restore`/`save` string inputs. |
 | `gitleaks.toml` | Secret-scan config. |
@@ -347,3 +350,30 @@ not preserve, and turns a soft cache miss into a hard failure on re-run.
   `RELEASE_VERSION_REGEX`, so the crates release on GitHub and the npm and
   UniFFI wrappers release on GitLab without either tag firing the other's
   pipeline. The crate version is therefore independent of the wrappers'.
+- `publish-nodejs.yml` releases on `nodejs/vX.Y.Z`, `publish-wasm.yml` on
+  `wasm/vX.Y.Z` and `publish-askar.yml` on `askar/vX.Y.Z`, disjoint from each
+  other and from the crate's `vX.Y.Z`, so each package releases on its own. The published version is the tag
+  (the wrapper scripts and the WASM `Makefile` read `CI_COMMIT_TAG`, which the
+  workflow sets from it), as on GitLab; `package.json` versions are not checked.
+  Only `X.Y.Z` is accepted: it builds release and moves `latest`. Prerelease
+  tags fail the version guard; no dev packages ship to npmjs.
+- The Node.js and askar workflows run each wrapper's `build_and_publish_target.sh` per
+  platform (`linux-x64-gnu` in the bookworm container for its glibc,
+  `darwin-arm64`/`darwin-x64` on `macos-15`), then
+  `build_and_publish_wrapper.sh` once every platform package is up, so the
+  wrapper never references a missing binary. `REGISTRY_URL_NPM` points the
+  scripts at npmjs and `npm_config_access=public` makes the scoped packages
+  public. `publish-wasm.yml` mirrors `publish_wasm_wrapper`. The askar wrapper
+  job builds the SDK wrapper first: the plugin's TypeScript imports its types
+  through a local-path devDependency.
+- Every publish packs first and publishes the `.tgz` (`npm pack`, then
+  `npm publish <tarball>`), and uploads it as an `npm-*` artifact. The
+  `manifest` job collects them and runs `scripts/npm_release_manifest.sh`, so
+  each digest is the file npm received. Like the crate workflows it runs after
+  a failed publish too, and attaches `release-manifest.yaml` to the tag's
+  release.
+- Prerequisites in settings: the organization secret
+  `EQUS_CREDENTIALS_SDK_NPM_TOKEN` (an npm automation token with publish rights
+  on the `@equs-ai` scope) and an environment named `npmjs`. Every publishing
+  job uses the environment, so a required-reviewer rule prompts twice for a
+  Node.js release (platforms, then wrapper) and once for WASM.
