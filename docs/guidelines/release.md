@@ -112,16 +112,18 @@ and the old `X.Y.Z-dev` naming still applies.
 ## npmjs
 
 The Node.js wrapper (with its three platform packages) and the WASM wrapper are also published to
-[npmjs](https://www.npmjs.com/org/equs-ai) by the GitHub workflow
-[`publish-npm.yml`](../../.github/workflows/publish-npm.yml). It runs on its own tag, `npm/vX.Y.Z`, pushed to
-the GitHub remote:
+[npmjs](https://www.npmjs.com/org/equs-ai) by the GitHub workflows
+[`publish-nodejs.yml`](../../.github/workflows/publish-nodejs.yml) and
+[`publish-wasm.yml`](../../.github/workflows/publish-wasm.yml). Each runs on its own tag, pushed to the GitHub
+remote:
 
 ```shell
-git tag -a npm/v<version> -F NOTES.md
-git push github-equs tag npm/v<version>
+git tag -a nodejs/v<version> -F NOTES.md
+git tag -a wasm/v<version> -F NOTES.md
+git push github-equs tag nodejs/v<version> tag wasm/v<version>
 ```
 
-As on GitLab, the published version is the tag, and `npm/vX.Y.Z-<suffix>` publishes a debug build under
+As on GitLab, the published version is the tag, and a `-<suffix>` (`nodejs/v1.0.1-rc.1`) publishes a debug build under
 the `dev` dist-tag. An npmjs version can never be republished, even after an unpublish, so a bad tag costs
 a version number.
 

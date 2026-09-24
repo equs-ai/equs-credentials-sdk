@@ -1,0 +1,100 @@
+name: Publish WASM wrapper
+
+on:
+  push:
+    tags: ['wasm/v[0-9]*.[0-9]*.[0-9]*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-wasm
+  cancel-in-progress: false
+
+env:
+  RUST_VERSION: "1.97.0"
+  NODE_VERSION: "20.18.0"
+  CARGO_INCREMENTAL: "0"
+  CARGO_TERM_COLOR: always
+  REGISTRY_URL_NPM: https://registry.npmjs.org/
+  npm_config_access: public
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.resolve.outputs.version }}
+      environment: ${{ steps.resolve.outputs.environment }}
+      dist-tag: ${{ steps.resolve.outputs.dist-tag }}
+    steps:
+      - id: resolve
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#wasm/v}"
+          if [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            printf 'environment=production\ndist-tag=latest\n' >> "$GITHUB_OUTPUT"
+          elif [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+-[0-9A-Za-z.-]+$ ]]; then
+            printf 'environment=development\ndist-tag=dev\n' >> "$GITHUB_OUTPUT"
+          else
+            echo "tag '$GITHUB_REF_NAME' is not wasm/vX.Y.Z[-suffix]" >&2
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+  wasm:
+    needs: [version]
+    runs-on: ubuntu-latest
+    environment: npmjs
+    container:
+      image: rust:1.97.0-bookworm
+    timeout-minutes: 60
+    env:
+      CI_COMMIT_TAG: ${{ needs.version.outputs.version }}
+      NPM_TOKEN: ${{ secrets.EQUS_CREDENTIALS_SDK_NPM_TOKEN }}
+      BUILD_SCRIPT: ${{ needs.version.outputs.environment == 'production' && 'build' || 'build:dev' }}
+      DIST_TAG: ${{ needs.version.outputs.dist-tag }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - uses: ./.github/actions/setup-rustup
+        with:
+          rust-version: ${{ env.RUST_VERSION }}
+          cache-key: publish-wasm
+          tooling: 'false'
+
+      - name: Install wasm tooling
+        shell: bash
+        run: |
+          command -v clang >/dev/null || { apt-get update && apt-get install -y --no-install-recommends clang; }
+          bash .github/scripts/install-wasm-pack.sh
+
+      - name: Build and publish
+        shell: bash
+        working-directory: wrappers/wasm
+        run: |
+          set -euo pipefail
+          [ -n "${NPM_TOKEN:-}" ] || { echo "org secret EQUS_CREDENTIALS_SDK_NPM_TOKEN is unset or not visible to this repo" >&2; exit 1; }
+          npm i
+          npm run "$BUILD_SCRIPT"
+          printf '%s:_authToken=%s\n' "//${REGISTRY_URL_NPM#*://}" "$NPM_TOKEN" >> "$HOME/.npmrc"
+          chmod 600 "$HOME/.npmrc"
+          cp .npmignore pkg/.npmignore
+          cd pkg
+          npm publish --registry="$REGISTRY_URL_NPM" --tag "$DIST_TAG"
+
+  summary:
+    needs: [version, wasm]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - shell: bash
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+          DIST_TAG: ${{ needs.version.outputs.dist-tag }}
+        run: printf "### Published to npmjs (\`%s\`)\n\n- \`@equs-ai/equs-credentials-sdk-wasm@%s\`\n" "$DIST_TAG" "$VERSION" >> "$GITHUB_STEP_SUMMARY"

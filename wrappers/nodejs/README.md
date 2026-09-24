@@ -52,8 +52,8 @@ Both scripts append a registry auth line to `~/.npmrc` derived from `REGISTRY_UR
 `.npmrc` is committed. In CI both variables come from the pipeline; `REGISTRY_URL_NPM` is built
 from `$CI_SERVER_HOST` and `$CI_PROJECT_ID`.
 
-On GitHub, [`publish-npm.yml`](../../.github/workflows/publish-npm.yml) runs the same two scripts against npmjs
-on an `npm/vX.Y.Z` tag.
+On GitHub, [`publish-nodejs.yml`](../../.github/workflows/publish-nodejs.yml) runs the same two scripts against npmjs
+on a `nodejs/vX.Y.Z` tag.
 
 The target list is `napi.triples.additional` in [`package.json`](package.json); `defaults` is off, so
 `napi prepublish` lists only those three platforms in `optionalDependencies`.
