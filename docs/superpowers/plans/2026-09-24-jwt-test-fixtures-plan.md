@@ -6,7 +6,7 @@
 
 **Architecture:** One builder type per kind, each `Kind::builder(..) → … → .build().await`. Required arguments are that kind's required inputs, so a missing one is a compile error rather than a runtime failure; everything else defaults and is overridable. Signing always goes through a `FixtureKey` — a `LocalKms` key handle plus the `did:key` derived from it — so no builder touches raw key material and a regression in the signing stack fails these fixtures rather than hiding behind a pre-baked string. Where the SDK exposes a public constructor for a kind, the builder calls it; where the kind is built inside a private module, the claim set is assembled here and signed through the same handle.
 
-**Tech Stack:** Cargo workspace member (`equs-test-fixtures`, lib target `test_fixtures`, `publish = false`), `equs-credentials-sdk` with `in-memory`, `base64`, `serde_json`, `ssi`, `snafu`; `tokio` for the suite.
+**Tech Stack:** Cargo workspace member (`equs-test-fixtures`, lib target `test_fixtures`, `publish = false`), `equs-credentials-sdk` with `in-memory`, `base64`, `serde_json`, `async-trait`, `snafu`; `tokio` for the suite.
 
 **Spec:** [`docs/superpowers/specs/2026-09-24-jwt-test-fixtures-design.md`](../specs/2026-09-24-jwt-test-fixtures-design.md), approved. It lives on branch `docs/jwt-fixtures-spec` and is not on `main`.
 
@@ -17,7 +17,7 @@
 - `publish = false` on the crate, and the SDK's dev-dependency on it carries no `version` key, so `cargo package` strips it and the crates.io release path merged in #13 is untouched. Task 1 proves this before any builder is written.
 - Every builder signs through `equs_sdk::crypto::Signer`, backed by `equs_sdk::inmem::kms::LocalKms`. No builder takes, holds or emits raw key material.
 - Positive fixtures only. Negative and malformed-token generation stays in the error-path tests that already own it.
-- No new external package enters the dependency graph. `base64`, `ssi`, `serde_json`, `snafu`, `async-trait`, `time` and `tokio` are all already resolved in `Cargo.lock` for the SDK (AI_CONSTITUTION §5.6).
+- No new external package enters the dependency graph. `base64`, `serde_json`, `snafu`, `async-trait` and `tokio` are all already resolved in `Cargo.lock` for the SDK (AI_CONSTITUTION §5.6).
 - No explanatory comment blocks in CI config — rationale lives in `.github/CLAUDE.md` and `test-fixtures/CLAUDE.md`, not in the YAML.
 - A CI change belongs in both `.gitlab-ci.yml` and `.github/workflows/ci.yml` (`.github/CLAUDE.md`).
 - The toolchain is a rustup *directory* override on the main checkout and does not follow into a worktree: prefix commands with `RUSTUP_TOOLCHAIN=1.97`.

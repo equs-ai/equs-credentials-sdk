@@ -41,8 +41,8 @@ and `tests/utils/fixtures/` mdoc blobs already show what that costs.
   for serving a status list token back to the status verifier.
 
 ## Dependencies
-- Depends on: `equs-credentials-sdk` (path, `in-memory`), `base64`, `serde`, `serde_json`, `ssi`,
-  `time`, `async-trait`, `snafu`; `tokio` (dev).
+- Depends on: `equs-credentials-sdk` (path, `in-memory`), `base64`, `serde_json`, `async-trait`,
+  `snafu`; `tokio` (dev).
 - Used by: `equs-credentials-sdk` `[dev-dependencies]` — a dev-dependency cycle, which Cargo permits
   and which `cargo package` strips from the published manifest.
 
