@@ -15,6 +15,10 @@ releases on its own tag. The SDK's manifest is rendered by
 `manifest` stage; the macro crate's by
 `.github/workflows/publish-common-macros.yml`.
 
+Both workflows render with `if: always()`, so a failed publish still produces a
+manifest. Every caller keeps it as a build artefact; nothing writes it to the
+tag's release.
+
 Every field comes from the checkout — no registry calls. `commit` and `tag` come
 from the release build, `repo` from `Cargo.toml`'s `repository` URL (not
 `CI_PROJECT_PATH`, whose namespace differs from the GitHub path the crate
