@@ -184,6 +184,10 @@ not preserve, and turns a soft cache miss into a hard failure on re-run.
   passes `--all-features` so the `delegate-sd-jwt` suite runs; the root
   package's own unit tests cover the fixture crate from the other direction,
   through the dev-dependency cycle, and run under `test-with-coverage`.
+  `test-fixtures/*` is excluded from tarpaulin: it is a workspace path
+  dependency, so tarpaulin counts its lines, and only the part the root
+  package's unit tests reach would ever be covered there — the rest is covered
+  by `test-fixtures-test`, which tarpaulin never runs.
 - `android-demo` runs on a bare runner, not the container. The Makefile's
   `android-clang-symlinks` writes `~/.cargo/config.toml`, which cargo ignores
   when `CARGO_HOME` points at the image's `/usr/local/cargo`, losing the NDK
