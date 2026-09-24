@@ -47,16 +47,23 @@ import {
   STATE,
   VP,
   WALLET_METADATA_WITHOUT_X509,
-  X509_SAN_DNS_CERT_PEM,
   X509_SAN_DNS_CLIENT_ID,
   X509_SAN_DNS_NAME,
-  X509_SAN_DNS_PRIVATE_KEY_PEM,
+  generateX509SanDnsMaterial,
+  X509SanDnsMaterial,
 } from "./fixtures";
 import { createDidAndKeyMetadata } from "../utils";
 import { util as jose } from "node-jose";
 import * as crypto from "node:crypto";
 
+// Generated per run: the x509_san_dns certificate is signature-bound to its
+// key, so neither can be a committed fixture.
+let x509Material: X509SanDnsMaterial;
+
 describe("OID4VP Verifier: ", () => {
+  beforeAll(async () => {
+    x509Material = await generateX509SanDnsMaterial();
+  });
   it("create Authorization Request by Value", async () => {
     const verifier = await buildVerifier();
 
@@ -360,10 +367,7 @@ describe("OID4VP Verifier: ", () => {
     expect(payload.purchase_id).toEqual("p-42");
     expect(payload.cnf).toEqual({ jwk: DELEGATE_JWK });
 
-    const other = await buildDelegateTransactionData(
-      DelegationRequest.open([DSD_JWT_GRANT_CRED_ID]),
-      nonceHandler,
-    );
+    const other = await buildDelegateTransactionData(DelegationRequest.open([DSD_JWT_GRANT_CRED_ID]), nonceHandler);
     const [otherSalt] = decodeDelegatePayloadDisclosure(other);
     expect(otherSalt).not.toEqual(salt);
   });
@@ -385,10 +389,7 @@ describe("OID4VP Verifier: ", () => {
     ).rejects.toThrow();
 
     await expect(
-      buildDelegateTransactionData(
-        DelegationRequest.open(["c1"], { cnf: { jwk: DELEGATE_JWK } }),
-        nonceHandler,
-      ),
+      buildDelegateTransactionData(DelegationRequest.open(["c1"], { cnf: { jwk: DELEGATE_JWK } }), nonceHandler),
     ).rejects.toThrow();
 
     await expect(
@@ -730,11 +731,11 @@ function decodeDelegatePayloadDisclosure(item: TransactionDataItem): [string, Re
 }
 
 /**
- * A KMS holding exactly one key: the one {@link X509_SAN_DNS_CERT_PEM}
- * certifies. `InMemKms` generates a fresh key per run, which no fixed
- * certificate could ever match.
+ * A KMS holding exactly one key: the one the generated certificate
+ * certifies. `InMemKms` generates its own key per run, which the
+ * certificate would not match.
  */
-function staticKeyKms(privateKeyPem = X509_SAN_DNS_PRIVATE_KEY_PEM): Kms {
+function staticKeyKms(privateKeyPem = x509Material.privateKeyPem): Kms {
   const privateKey = crypto.createPrivateKey(privateKeyPem);
   const publicKey = crypto.createPublicKey(privateKeyPem);
   const jwk = publicKey.export({ format: "jwk" });
@@ -764,7 +765,7 @@ function staticKeyKms(privateKeyPem = X509_SAN_DNS_PRIVATE_KEY_PEM): Kms {
 }
 
 function x509CertificateChain(): Uint8Array {
-  return new TextEncoder().encode(X509_SAN_DNS_CERT_PEM);
+  return new TextEncoder().encode(x509Material.certPem);
 }
 
 async function buildX509Verifier(
