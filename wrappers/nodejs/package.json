@@ -32,8 +32,7 @@
     "test": "jest -w=1 --forceExit",
     "lint": "prettier --write .",
     "universal": "napi universal",
-    "version": "napi version",
-    "postinstall": "npm i --ignore-scripts"
+    "version": "napi version"
   },
   "packageManager": "yarn@4.6.0",
   "dependencies": {

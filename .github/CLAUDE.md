@@ -24,8 +24,8 @@ is the one exception and is named `publish`.
 | `workflows/_android.yml` | `android-demo`: bare `ubuntu-latest`, SDK from the runner plus the pinned NDK. |
 | `workflows/publish-crate.yml` | Publishes `equs-credentials-sdk` to crates.io on a `vX.Y.Z` tag, then renders its release manifest and uploads it to the release. Defines its own jobs. |
 | `workflows/publish-common-macros.yml` | Publishes `equs-common-macros` to crates.io on a `common-macros/vX.Y.Z` tag, prerelease suffix allowed, then renders its release manifest and uploads it to the release. Defines its own jobs. |
-| `workflows/publish-nodejs.yml` | Publishes the Node.js wrapper and its three platform packages to npmjs on a `nodejs/vX.Y.Z` tag. Defines its own jobs. |
-| `workflows/publish-wasm.yml` | Publishes the WASM wrapper to npmjs on a `wasm/vX.Y.Z` tag. Defines its own jobs. |
+| `workflows/publish-nodejs.yml` | Publishes the Node.js wrapper and its three platform packages to npmjs on a `nodejs/vX.Y.Z` tag, then renders its release manifest and uploads it to the release. Defines its own jobs. |
+| `workflows/publish-wasm.yml` | Publishes the WASM wrapper to npmjs on a `wasm/vX.Y.Z` tag, then renders its release manifest and uploads it to the release. Defines its own jobs. |
 | `actions/setup-rustup/` | Reclaims host disk, installs the pinned toolchain, restores the sccache and npm caches, installs `cargo-binstall` and `sccache`. |
 | `actions/cache/` | Named cache presets (`target-*`, `wrapper-*`), selected by the `restore`/`save` string inputs. |
 | `gitleaks.toml` | Secret-scan config. |
@@ -363,10 +363,12 @@ not preserve, and turns a soft cache miss into a hard failure on re-run.
   wrapper never references a missing binary. `REGISTRY_URL_NPM` points the
   scripts at npmjs and `npm_config_access=public` makes the scoped packages
   public. `publish-wasm.yml` mirrors `publish_wasm_wrapper`.
-- The wrapper job deletes `scripts.postinstall` before publishing. On GitLab
-  that hook installs the platform package the registry's metadata omits; npmjs
-  serves `optionalDependencies` correctly, and the hook would run a full
-  `npm i` inside every consumer's `node_modules`.
+- Every publish packs first and publishes the `.tgz` (`npm pack`, then
+  `npm publish <tarball>`), and uploads it as an `npm-*` artifact. The
+  `manifest` job collects them and runs `scripts/npm_release_manifest.sh`, so
+  each digest is the file npm received. Like the crate workflows it runs after
+  a failed publish too, and attaches `release-manifest.yaml` to the tag's
+  release.
 - Prerequisites in settings: the organization secret
   `EQUS_CREDENTIALS_SDK_NPM_TOKEN` (an npm automation token with publish rights
   on the `@equs-ai` scope) and an environment named `npmjs`. Every publishing

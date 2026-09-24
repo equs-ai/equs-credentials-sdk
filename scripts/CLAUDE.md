@@ -6,6 +6,7 @@ Scripts called by the release pipelines. GitHub Actions has its own set under
 | File | Purpose |
 |------|---------|
 | `release_manifest.sh` | Renders `release-manifest.yaml` for one crate's release. |
+| `npm_release_manifest.sh` | Renders `release-manifest.yaml` for one npm release. |
 
 ## release_manifest.sh
 
@@ -42,3 +43,17 @@ rebuilds the crate; it does not change the tarball.
   `equs-common-macros` has to keep its `version` field.
 - `RELEASE_MANIFEST_PACKAGE_FLAGS` appends flags to `cargo package`, e.g.
   `--allow-dirty --offline` for a local run outside CI.
+
+## npm_release_manifest.sh
+
+`npm_release_manifest.sh <component> <output> <tarball-dir> <package>...` —
+same schema as `release_manifest.sh`, one entry per package. Called by the
+`manifest` job of `.github/workflows/publish-nodejs.yml` (the wrapper and its
+three platform packages) and `publish-wasm.yml`.
+
+The digest is the sha256 of the tarball the publish job packed and passed to
+`npm publish`, found in `<tarball-dir>` by npm's file name
+(`equs-ai-<name>-<version>.tgz`). The version is read from the tarball's
+`package.json`. A missing tarball is emitted with `digest: null` and a warning.
+`RELEASE_VERSION` sets `release:` — the tags are `nodejs/vX.Y.Z` and
+`wasm/vX.Y.Z`, so the workflows pass the bare version.

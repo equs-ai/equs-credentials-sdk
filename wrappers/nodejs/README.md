@@ -46,7 +46,8 @@ REGISTRY_URL_NPM=<registry-url> NPM_TOKEN=<token> TARGET=<target> ALIAS=<alias> 
 REGISTRY_URL_NPM=<registry-url> NPM_TOKEN=<token> ENVIRONMENT=production scripts/build_and_publish_wrapper.sh
 ```
 
-Both scripts append a registry auth line to `~/.npmrc` derived from `REGISTRY_URL_NPM`, so no
+Both scripts pack the package and publish the resulting `.tgz`, which the release manifest hashes.
+Both append a registry auth line to `~/.npmrc` derived from `REGISTRY_URL_NPM`, so no
 `.npmrc` is committed. In CI, `REGISTRY_URL_NPM` is `https://registry.npmjs.org/` and `NPM_TOKEN` comes
 from the `EQUS_CREDENTIALS_SDK_NPM_TOKEN` org secret.
 
