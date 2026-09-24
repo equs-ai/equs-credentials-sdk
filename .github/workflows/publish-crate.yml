@@ -61,6 +61,7 @@ jobs:
         env:
           CI_COMMIT_TAG: ${{ github.ref_name }}
           CI_COMMIT_SHA: ${{ github.sha }}
+          RELEASE_VERSION: ${{ env.VERSION }}
         run: |
           set -euo pipefail
           apt-get update && apt-get install -y jq
