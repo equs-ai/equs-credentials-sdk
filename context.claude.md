@@ -22,7 +22,7 @@ that file lists every sub-area with a link to the relevant `CLAUDE.md` inside th
 | Plugins | Askar secure-storage plugin (KMS + Vault backed by `aries-askar`) | [claude/plugins.md](claude/plugins.md) |
 | Tests | E2E test suite, shared fixtures and helpers | [claude/tests.md](claude/tests.md) |
 | Demos | OID4VC (issuer/holder/verifier), multi-thread, Node.js, WASM, Android, iOS, Keycloak | [claude/demos.md](claude/demos.md) |
-| CI | GitHub Actions CI | [.github/CLAUDE.md](.github/CLAUDE.md) |
+| CI/CD | GitHub Actions CI and the crates.io release | [.github/CLAUDE.md](.github/CLAUDE.md) |
 
 ## Repository layout (quick reference)
 
@@ -73,7 +73,7 @@ equs-credentials-sdk/
 
 | Target | Package | Source |
 |--------|---------|--------|
-| crates.io | `equs-credentials-sdk` | `Cargo.toml` (lib target stays `equs_sdk`, so imports remain `use equs_sdk::…`) |
+| crates.io | `equs-credentials-sdk` | `Cargo.toml` (lib target stays `equs_sdk`, so imports remain `use equs_sdk::…`). Published by `.github/workflows/publish-crate.yml` on a `vX.Y.Z` tag. |
 | crates.io | `equs-common-macros` | `equs-common-macros/Cargo.toml` (lib target stays `common_macros`, so imports remain `use common_macros::…`). Published by `.github/workflows/publish-common-macros.yml` on a `common-macros/vX.Y.Z` tag (prerelease suffix allowed). |
 | Node.js | `@equs-ai/equs-credentials-sdk` | `wrappers/nodejs/package.json` (napi binary `equs-credentials-sdk`) |
 | WASM | `@equs-ai/equs-credentials-sdk-wasm` | `wrappers/wasm/package.json` |
