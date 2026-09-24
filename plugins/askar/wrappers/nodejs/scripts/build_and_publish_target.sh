@@ -49,7 +49,8 @@ mv "$BINARY_NAME" "npm/${ALIAS}/$BINARY_NAME"
 npx napi version
 
 cd "npm/${ALIAS}"
-NPM_TOKEN=${NPM_TOKEN} npm publish --registry=${REGISTRY_URL_NPM} --tag ${TAG}
+TARBALL=$(npm pack --silent)
+NPM_TOKEN=${NPM_TOKEN} npm publish "${TARBALL}" --registry=${REGISTRY_URL_NPM} --tag ${TAG}
 
 
 cd ../../

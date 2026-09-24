@@ -6,6 +6,7 @@
   "napi": {
     "name": "equs-credentials-sdk-askar-storage",
     "triples": {
+      "defaults": false,
       "additional": [
         "aarch64-apple-darwin",
         "x86_64-apple-darwin",
@@ -26,8 +27,7 @@
     "artifacts": "napi artifacts",
     "test": "jest -w=1",
     "universal": "napi universal",
-    "version": "napi version",
-    "postinstall": "npm i --ignore-scripts"
+    "version": "napi version"
   },
   "packageManager": "yarn@4.6.0",
   "devDependencies": {

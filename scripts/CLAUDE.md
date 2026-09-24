@@ -48,8 +48,8 @@ rebuilds the crate; it does not change the tarball.
 
 `npm_release_manifest.sh <component> <output> <tarball-dir> <package>...` —
 same schema as `release_manifest.sh`, one entry per package. Called by the
-`manifest` job of `.github/workflows/publish-nodejs.yml` (the wrapper and its
-three platform packages) and `publish-wasm.yml`.
+`manifest` job of `.github/workflows/publish-nodejs.yml` and `publish-askar.yml`
+(each wrapper and its three platform packages) and `publish-wasm.yml`.
 
 The digest is the sha256 of the tarball the publish job packed and passed to
 `npm publish`, found in `<tarball-dir>` by npm's file name

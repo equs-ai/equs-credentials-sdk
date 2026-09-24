@@ -3,8 +3,8 @@
 GitHub Actions port of the CI half of `.gitlab-ci.yml`, plus one release job.
 `.gitlab-ci.yml` is the running pipeline, so a CI change belongs in both files.
 The `publish-*.yml` workflows are the exceptions: GitLab publishes the npm and
-UniFFI wrappers to its own registry and never a crate; `publish-nodejs.yml` and
-`publish-wasm.yml` publish the same npm packages to npmjs.
+UniFFI wrappers to its own registry and never a crate; `publish-nodejs.yml`,
+`publish-wasm.yml` and `publish-askar.yml` publish the same npm packages to npmjs.
 
 Two workflows. `ci.yml` defines no jobs directly: every job calls a
 reusable workflow, so `container`, checkout,
@@ -25,6 +25,7 @@ is the one exception and is named `publish`.
 | `workflows/publish-crate.yml` | Publishes `equs-credentials-sdk` to crates.io on a `vX.Y.Z` tag, then renders its release manifest and uploads it to the release. Defines its own jobs. |
 | `workflows/publish-common-macros.yml` | Publishes `equs-common-macros` to crates.io on a `common-macros/vX.Y.Z` tag, prerelease suffix allowed, then renders its release manifest and uploads it to the release. Defines its own jobs. |
 | `workflows/publish-nodejs.yml` | Publishes the Node.js wrapper and its three platform packages to npmjs on a `nodejs/vX.Y.Z` tag, then renders its release manifest and uploads it to the release. Defines its own jobs. |
+| `workflows/publish-askar.yml` | Publishes the askar plugin wrapper and its three platform packages to npmjs on an `askar/vX.Y.Z` tag, then renders its release manifest and uploads it to the release. Defines its own jobs. |
 | `workflows/publish-wasm.yml` | Publishes the WASM wrapper to npmjs on a `wasm/vX.Y.Z` tag, then renders its release manifest and uploads it to the release. Defines its own jobs. |
 | `actions/setup-rustup/` | Reclaims host disk, installs the pinned toolchain, restores the sccache and npm caches, installs `cargo-binstall` and `sccache`. |
 | `actions/cache/` | Named cache presets (`target-*`, `wrapper-*`), selected by the `restore`/`save` string inputs. |
@@ -349,20 +350,22 @@ not preserve, and turns a soft cache miss into a hard failure on re-run.
   `RELEASE_VERSION_REGEX`, so the crates release on GitHub and the npm and
   UniFFI wrappers release on GitLab without either tag firing the other's
   pipeline. The crate version is therefore independent of the wrappers'.
-- `publish-nodejs.yml` releases on `nodejs/vX.Y.Z` and `publish-wasm.yml` on
-  `wasm/vX.Y.Z`, disjoint from each other and from the crate's `vX.Y.Z`, so
-  each package releases on its own. The published version is the tag
+- `publish-nodejs.yml` releases on `nodejs/vX.Y.Z`, `publish-wasm.yml` on
+  `wasm/vX.Y.Z` and `publish-askar.yml` on `askar/vX.Y.Z`, disjoint from each
+  other and from the crate's `vX.Y.Z`, so each package releases on its own. The published version is the tag
   (the wrapper scripts and the WASM `Makefile` read `CI_COMMIT_TAG`, which the
   workflow sets from it), as on GitLab; `package.json` versions are not checked.
   Only `X.Y.Z` is accepted: it builds release and moves `latest`. Prerelease
   tags fail the version guard; no dev packages ship to npmjs.
-- It runs the GitLab scripts unchanged: `build_and_publish_target.sh` per
+- The Node.js and askar workflows run each wrapper's `build_and_publish_target.sh` per
   platform (`linux-x64-gnu` in the bookworm container for its glibc,
   `darwin-arm64`/`darwin-x64` on `macos-15`), then
   `build_and_publish_wrapper.sh` once every platform package is up, so the
   wrapper never references a missing binary. `REGISTRY_URL_NPM` points the
   scripts at npmjs and `npm_config_access=public` makes the scoped packages
-  public. `publish-wasm.yml` mirrors `publish_wasm_wrapper`.
+  public. `publish-wasm.yml` mirrors `publish_wasm_wrapper`. The askar wrapper
+  job builds the SDK wrapper first: the plugin's TypeScript imports its types
+  through a local-path devDependency.
 - Every publish packs first and publishes the `.tgz` (`npm pack`, then
   `npm publish <tarball>`), and uploads it as an `npm-*` artifact. The
   `manifest` job collects them and runs `scripts/npm_release_manifest.sh`, so
