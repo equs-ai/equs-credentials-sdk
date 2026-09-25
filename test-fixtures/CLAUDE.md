@@ -39,7 +39,7 @@ those suites run and never committed (`.gitignore`: `fixtures.generated.json`).
 | `src/jwe.rs` | `Jwe` — encrypted response, via `vc::oid4vp::jwe::JweEncryptor` |
 | `tests/round_trip.rs` | Round-trip + failure case for every kind whose verifier is public |
 | `tests/delegation.rs` | The same for `dsd_jwt`; gated on `delegate-sd-jwt` |
-| `tests/bundle.rs` | Every contract key is present in `bundle::build()`'s output and no token in it is already expired; gated on `delegate-sd-jwt` for the same reason as `tests/delegation.rs` |
+| `tests/bundle.rs` | Every contract key is present; no token anywhere in the bundle (recursing into `vp` and `dsdJwtGrantVpToken`) is already expired; `vcWithStatus`/`vcRevoked` resolve Valid/revoked against their paired status lists via the SDK's own status verifier. Gated on `delegate-sd-jwt` for the same reason as `tests/delegation.rs` |
 | `tests/util/mod.rs` | Unverified header/payload decoding for claim assertions |
 
 ## Key types / traits

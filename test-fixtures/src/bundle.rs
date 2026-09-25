@@ -26,6 +26,14 @@
 //! | `sdJwtCreds` | string — issuer-signed SD-JWT VC, OID4VCI credential-response shape |
 //! | `authResponseJwe` | string — compact JWE encrypting an OID4VP authorization response |
 //! | `dsdJwtGrantVpToken` | object `{ "fixture-credential": [grant] }` — a delegated SD-JWT grant wrapped as a `vp_token` |
+//! | `revokedStatusListJwt` | string — Token Status List JWT with index 0 marked [`VCStatus::Invalid`] |
+//! | `vcRevoked` | string — an SD-JWT VC whose `status` claim points at `revokedStatusListJwt`'s index 0 |
+//!
+//! `statusListJwt`/`vcWithStatus` and `revokedStatusListJwt`/`vcRevoked` are two independently
+//! coherent pairs at two different URLs: the first reads Valid, the second reads revoked. Neither
+//! list marks any index the other pair's credential points at, so serving both from the same
+//! [`crate::http::StaticHttpClient`] in a wrapper test never lets one pair's index collide with the
+//! other's.
 //!
 //! # `delegate-sd-jwt`
 //!
@@ -52,6 +60,13 @@ use crate::pop::ProofOfPossession;
 use crate::request_object::RequestObject;
 use crate::sd_jwt_vc::SdJwtVc;
 use crate::status_list::{DEFAULT_STATUS_LIST_URL, StatusListToken};
+use equs_sdk::vc::status_formats::status_list_token_jwt::VCStatus;
+
+/// The URL `revokedStatusListJwt` is published at and `vcRevoked`'s `status`
+/// claim points into — distinct from [`DEFAULT_STATUS_LIST_URL`] so the two
+/// pairs never collide when both are served from the same
+/// [`crate::http::StaticHttpClient`] in a test.
+const REVOKED_STATUS_LIST_URL: &str = "https://issuer.example/status-list-revoked";
 
 /// The wrapper fixture bundle: a flat map of fixture name to value.
 ///
@@ -139,6 +154,22 @@ pub async fn build() -> Result<Bundle> {
         .build()
         .await?;
     bundle.insert("vcWithStatus", Value::from(vc_with_status));
+
+    let revoked_status_list_jwt = StatusListToken::builder(&issuer)
+        .url(REVOKED_STATUS_LIST_URL)
+        .status(0, VCStatus::Invalid)
+        .build()
+        .await?;
+    bundle.insert("revokedStatusListJwt", Value::from(revoked_status_list_jwt));
+
+    let vc_revoked = SdJwtVc::builder(&issuer, &holder)
+        .claim(
+            "status",
+            json!({ "status_list": { "idx": 0, "uri": REVOKED_STATUS_LIST_URL } }),
+        )
+        .build()
+        .await?;
+    bundle.insert("vcRevoked", Value::from(vc_revoked));
 
     let access_token = AccessToken::builder(&issuer).build().await?;
     bundle.insert("accessToken", Value::from(access_token));
