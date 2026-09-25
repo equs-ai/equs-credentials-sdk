@@ -43,6 +43,13 @@ implementations, covering scenarios that unit tests within individual modules ca
   `demos/oid4vc/issuer/src/main.rs` each keep one accepted exception (expired localhost Keycloak
   token `validate_scope` reads via `decode_unverified`); wrapper suites (TS/Kotlin/Swift, including
   `plugins/askar/wrappers/nodejs`) still hold their committed tokens pending Phase B.
+- Phase B bridge: `equs-test-fixtures` ships a `fixture_gen` binary
+  (`test-fixtures/src/bin/fixture_gen.rs`, driven by `test-fixtures/src/bundle.rs`) that mints every
+  fixture the non-Rust wrapper suites need — `authRequestJwt`, `vc`, `vp`, `statusListJwt`,
+  `vcWithStatus`, `accessToken`, `proofJwt`, `sdJwtCreds`, `authResponseJwe`,
+  `dsdJwtGrantVpToken` — and writes them to a gitignored JSON file (`fixtures.generated.json`).
+  `dsdJwtGrantVpToken` needs `--features delegate-sd-jwt`; `bundle::build()` fails loudly rather than
+  silently omitting it. Wrapper suites themselves are not migrated yet — that is the rest of Phase B.
 - `cargo test --all-features` at the workspace root tests the root package only, so
   `equs-test-fixtures` runs in its own CI job (`test-fixtures-test`, `test-fixtures-test-job`).
 - SDK types do not unify across the fixture crate's dev-dependency cycle: a `src/` unit test builds

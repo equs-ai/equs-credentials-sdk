@@ -3445,6 +3445,7 @@ dependencies = [
  "base64 0.22.1",
  "equs-credentials-sdk",
  "rcgen",
+ "serde",
  "serde_json",
  "snafu 0.8.9",
  "tokio",

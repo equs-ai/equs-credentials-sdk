@@ -10,11 +10,17 @@ rebuild the signing scaffolding, and so that `tests/` can reach fixtures that `s
 No committed static token strings: a signature-bound fixture cannot be edited without re-signing it,
 and `tests/utils/fixtures/` mdoc blobs already show what that costs.
 
+Phase B extends this past Rust: `src/bundle.rs` and `bin/fixture_gen.rs` mint every fixture the
+TypeScript, Kotlin and Swift wrapper suites need and write them to one JSON file, generated before
+those suites run and never committed (`.gitignore`: `fixtures.generated.json`).
+
 ## Files
 
 | File | Role |
 |------|------|
 | `src/lib.rs` | Crate root; module declarations, `Error`/`Result` re-exports, and the `equs_sdk` re-export the SDK's own unit tests go through |
+| `src/bundle.rs` | `Bundle` — a flat, serialisable map of fixture name to value — and `build()`, which mints one `LocalKms` plus issuer/holder/verifier keys and drives every builder a wrapper suite needs. `dsdJwtGrantVpToken` needs `delegate-sd-jwt`; `build()` fails loudly (`Error::Sdk`) rather than omitting it when the feature is off |
+| `src/bin/fixture_gen.rs` | `fixture_gen --out <path>` binary; writes `bundle::build()`'s output as pretty JSON |
 | `src/error.rs` | `Error` / `Result` — `Kms`, `Did`, `Signing`, `Json`, `Sdk` variants |
 | `src/keys.rs` | `FixtureKey` — a `LocalKms` key handle plus its `did:key`, DID URL and `KeyMetadata`; covers all four `KeyType`s |
 | `src/claims.rs` | Shared claim defaults (`DEFAULT_AUDIENCE`, `DEFAULT_NONCE`, …) and `now()` / `from_now()` |
@@ -33,6 +39,7 @@ and `tests/utils/fixtures/` mdoc blobs already show what that costs.
 | `src/jwe.rs` | `Jwe` — encrypted response, via `vc::oid4vp::jwe::JweEncryptor` |
 | `tests/round_trip.rs` | Round-trip + failure case for every kind whose verifier is public |
 | `tests/delegation.rs` | The same for `dsd_jwt`; gated on `delegate-sd-jwt` |
+| `tests/bundle.rs` | Every contract key is present in `bundle::build()`'s output and no token in it is already expired; gated on `delegate-sd-jwt` for the same reason as `tests/delegation.rs` |
 | `tests/util/mod.rs` | Unverified header/payload decoding for claim assertions |
 
 ## Key types / traits
@@ -43,8 +50,9 @@ and `tests/utils/fixtures/` mdoc blobs already show what that costs.
   for serving a status list token back to the status verifier.
 
 ## Dependencies
-- Depends on: `equs-credentials-sdk` (path, `in-memory`), `base64`, `serde_json`, `async-trait`,
-  `snafu`, `rcgen` (`X509Chain`'s self-signed certificates); `tokio` (dev).
+- Depends on: `equs-credentials-sdk` (path, `in-memory`), `base64`, `serde` (`derive`, for `Bundle`),
+  `serde_json`, `async-trait`, `snafu`, `rcgen` (`X509Chain`'s self-signed certificates), `tokio`
+  (`macros`, `rt` — a normal dependency, not dev-only, since `bin/fixture_gen.rs` needs it too).
 - Used by: `equs-credentials-sdk` `[dev-dependencies]` — a dev-dependency cycle, which Cargo permits
   and which `cargo package` strips from the published manifest. Also a normal `[dev-dependencies]`
   entry of `tests/` (the E2E integration crate, which links the SDK once and needs no
@@ -52,6 +60,10 @@ and `tests/utils/fixtures/` mdoc blobs already show what that costs.
   ships nowhere).
 
 ## Constraints
+- `cargo run -p equs-test-fixtures --all-features --bin fixture_gen -- --out fixtures.generated.json`
+  writes the wrapper fixture bundle. Needs `--features delegate-sd-jwt` (or `--all-features`) for
+  `dsdJwtGrantVpToken`; without it `bundle::build()` returns `Err`. The output path is gitignored
+  and Tasks 10/11 (the wrapper suites) own where they point the generator, not this crate.
 - Run with `cargo test --all-features -p equs-test-fixtures`. `cargo test --all-features` at the
   workspace root tests the root package only and never builds this crate; CI has its own job
   (`test-fixtures-test`, `test-fixtures-test-job`).
