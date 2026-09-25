@@ -1505,6 +1505,7 @@ mod tests {
     use std::collections::HashMap;
     use std::sync::Arc;
     use test_fixtures::equs_sdk::inmem::kms::LocalKms as FixtureKms;
+    use test_fixtures::equs_sdk::vc::status_formats::status_list_token_jwt::VCStatus as FixtureVCStatus;
     use test_fixtures::jws::sign_compact;
     use test_fixtures::keys::FixtureKey;
     use test_fixtures::request_object::RequestObject as FixtureRequestObject;
@@ -1679,10 +1680,11 @@ mod tests {
     }
 
     #[tokio::test]
-    // The DID embedded in the panic message is the freshly generated signer's
-    // own, unknown ahead of time, so only the general shape is checked here —
-    // the same substring the fixture-built equivalent below checks.
-    #[should_panic(expected = "do not match")]
+    // The `kid`-derived DID half of the panic message is the freshly
+    // generated signer's own, unknown ahead of time, so only the
+    // `client_id` half — pinned by the still-static
+    // `AUTH_REQUEST_WITH_WRONG_CLIENT_ID` fixture — is checked here.
+    #[should_panic(expected = "and 'client_id' (decentralized_identifier:did:key:1) do not match")]
     async fn request_verifier_verifies_for_did_unsuccessfully() {
         let request_verifier =
             request_verifier(MockHttpClient::new(), LocalKms::new(), InMemVault::new()).await;
@@ -2949,7 +2951,11 @@ mod tests {
         let vault = test_case.prepare_vault(&kms).await;
 
         // The status list and the credential are a matched pair: the
-        // credential's `status` claim indexes into this exact list.
+        // credential's `status` claim indexes into this exact list. idx 0 is
+        // deliberately marked `Invalid` (idx 1 stays the default `Valid`) so
+        // the two indices are actually distinguishable — a credential
+        // pointed at the wrong index must read differently, not just happen
+        // to still pass.
         let fixture_kms = FixtureKms::new();
         let issuer = FixtureKey::create_default(&fixture_kms).await.unwrap();
         let holder_key = FixtureKey::create_default(&fixture_kms).await.unwrap();
@@ -2957,14 +2963,23 @@ mod tests {
 
         let status_list_token = FixtureStatusListToken::builder(&issuer)
             .url(status_list_url)
+            .status(0, FixtureVCStatus::Invalid)
             .build()
             .await
             .unwrap();
 
-        let credential = FixtureSdJwtVc::builder(&issuer, &holder_key)
+        let valid_credential = FixtureSdJwtVc::builder(&issuer, &holder_key)
             .claim(
                 "status",
                 json!({ "status_list": { "uri": status_list_url, "idx": 1 } }),
+            )
+            .build()
+            .await
+            .unwrap();
+        let invalid_credential = FixtureSdJwtVc::builder(&issuer, &holder_key)
+            .claim(
+                "status",
+                json!({ "status_list": { "uri": status_list_url, "idx": 0 } }),
             )
             .build()
             .await
@@ -2976,19 +2991,29 @@ mod tests {
             Method::GET,
             Url::parse(status_list_url).unwrap(),
             move |_req| Ok(HttpResponse::new(status_list_token.clone().into_bytes())),
-            1.into(),
+            2.into(),
         );
         let holder = holder_service(http_client, kms, vault).await;
 
-        let status = holder
-            .get_credential_status(&Credential::SdJwt(credential))
+        let valid_status = holder
+            .get_credential_status(&Credential::SdJwt(valid_credential))
             .await
             .unwrap()
             .unwrap();
         assert_eq!(
-            status,
+            valid_status,
             VCStatus::StatusListToken(status_list_token_jwt::VCStatus::Valid)
-        )
+        );
+
+        let invalid_status = holder
+            .get_credential_status(&Credential::SdJwt(invalid_credential))
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            invalid_status,
+            VCStatus::StatusListToken(status_list_token_jwt::VCStatus::Invalid)
+        );
     }
     fn siop_case(key_metadata: KeyMetadata) -> PresentationTestCase {
         let mut test_case = single_presentation::sd_jwt::presentation_test_case();
