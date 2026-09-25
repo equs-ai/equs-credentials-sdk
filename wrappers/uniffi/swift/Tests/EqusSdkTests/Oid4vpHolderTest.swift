@@ -75,9 +75,12 @@ import Testing
 				// compact credential string is therefore no longer a literal substring of the
 				// presented body. Its JWS part (everything before the disclosures) is unchanged,
 				// and the specifically requested `name` disclosure is still present; check those
-				// instead of the whole string.
+				// instead of the whole string. Also assert `surname` is NOT disclosed: selective
+				// disclosure not being selective is exactly the bug class this test guards, and
+				// with a two-claim fixture that bug is now representable.
 				#expect(body.contains(Fixtures.jwsPrefix(Oid4vpHolderTestConstants.sdJwtPayload)))
 				#expect(body.contains(Fixtures.disclosure(Oid4vpHolderTestConstants.sdJwtPayload, forClaim: "name")!))
+				#expect(!body.contains(Fixtures.disclosure(Oid4vpHolderTestConstants.sdJwtPayload, forClaim: "surname")!))
 
 				confirmResponse()
 				return MockHttpRouter.ok("", contentType: "text/plain")
@@ -127,9 +130,12 @@ import Testing
 				// compact credential string is therefore no longer a literal substring of the
 				// presented body. Its JWS part (everything before the disclosures) is unchanged,
 				// and the specifically requested `name` disclosure is still present; check those
-				// instead of the whole string.
+				// instead of the whole string. Also assert `surname` is NOT disclosed: selective
+				// disclosure not being selective is exactly the bug class this test guards, and
+				// with a two-claim fixture that bug is now representable.
 				#expect(body.contains(Fixtures.jwsPrefix(Oid4vpHolderTestConstants.sdJwtPayload)))
 				#expect(body.contains(Fixtures.disclosure(Oid4vpHolderTestConstants.sdJwtPayload, forClaim: "name")!))
+				#expect(!body.contains(Fixtures.disclosure(Oid4vpHolderTestConstants.sdJwtPayload, forClaim: "surname")!))
 
 				confirmResponse()
 				return MockHttpRouter.ok("", contentType: "text/plain")
