@@ -22,6 +22,7 @@ use crate::kms::{KeyHandle, Kms};
 use crate::nonce::{Nonce, NonceHandler};
 use crate::utils::wasm::{WasmNotSend, WasmNotSync};
 use crate::vc;
+#[cfg(feature = "delegate-sd-jwt")]
 use crate::vc::RequestedPresentation;
 use crate::vc::claims::{Claim, Claims, DELEGATIONS_CLAIM, ISSUED_VC_CLAIM};
 use crate::vc::core::{HolderBinder, KeyMetadata};
@@ -31,11 +32,12 @@ use crate::vc::oid4vp::Error::{Internal, Protocol};
 use crate::vc::oid4vp::api::as_delegate;
 #[cfg(feature = "delegate-sd-jwt")]
 use crate::vc::oid4vp::delegate::decode_delegate_payload_disclosure;
+#[cfg(feature = "delegate-sd-jwt")]
+use crate::vc::oid4vp::internal_error::VCSnafu;
 use crate::vc::oid4vp::internal_error::{
     AuthorizationResponseDecryptionSnafu, ClaimsSnafu, ClientSnafu, DCQLSnafu,
     DidUrlResolutionSnafu, FormatNotSupportedSnafu, IdTokenValidationSnafu, JsonSnafu, KMSSnafu,
-    NonceGenerationSnafu, Oid4VpLibSnafu, ParseSnafu, PresentationExchangeSnafu, VCSnafu,
-    X509Snafu,
+    NonceGenerationSnafu, Oid4VpLibSnafu, ParseSnafu, PresentationExchangeSnafu, X509Snafu,
 };
 use crate::vc::oid4vp::metadata::{
     SELF_ISSUED_V2, default_client_metadata, default_wallet_metadata, ensure_supported_vp_formats,
