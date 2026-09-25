@@ -287,12 +287,7 @@ mod tests {
     #[tokio::test]
     async fn by_jwks_validate_succeeds_with_correct_token() {
         let (token, key) = access_token(false).await;
-        // `jwks_for` returns the bare public JWK with no `kid`; `ByJwks` looks
-        // the signing key up by the `kid` the token's header carries (the
-        // signer's DID URL, per `test_fixtures::jws::sign_compact`), so it has
-        // to be added here to make the two line up.
-        let mut jwks = AccessTokenFixture::jwks_for(&key).expect("jwks");
-        jwks["keys"][0]["kid"] = json!(key.did_url.to_string());
+        let jwks = AccessTokenFixture::jwks_for(&key).expect("jwks");
         let http_client = create_mock_http_client(JWKS_URL, jwks, Method::GET, StatusCode::OK);
 
         let validator = ByJwks::new(

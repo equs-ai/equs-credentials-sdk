@@ -109,13 +109,19 @@ impl<'a> AccessToken<'a> {
 
     /// The JWKS document a token validator fetches to verify `key`'s signature.
     ///
+    /// The returned JWK's `kid` is set to `key.did_url` — the same value
+    /// [`crate::jws::sign_compact`] writes into every token's header — so a
+    /// `kid`-based lookup (e.g. the SDK's `ByJwks`) resolves it.
+    ///
     /// # Errors
     ///
     /// * [`Error::Signing`] — the handle exposed no public JWK.
+    /// * [`Error::Json`] — the JWK could not be serialised.
     pub fn jwks_for(key: &FixtureKey) -> Result<Value> {
-        let jwk = key.handle.jwk().ok_or_else(|| Error::Signing {
+        let mut jwk = key.handle.jwk().ok_or_else(|| Error::Signing {
             details: "key handle exposed no public JWK".to_string(),
         })?;
+        jwk.key_id = Some(key.did_url.to_string());
         let jwk = serde_json::to_value(jwk).map_err(|e| Error::Json {
             details: e.to_string(),
         })?;

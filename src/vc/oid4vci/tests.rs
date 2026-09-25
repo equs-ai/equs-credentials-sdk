@@ -442,28 +442,6 @@ pub mod fixtures {
         .unwrap()
     }
 
-    pub fn sample_jwks() -> Value {
-        let jwks = json!({
-          "keys": [
-            {
-              "kid": "PclYP6vRk1LpKDfjSO2Da35rmGRfi9362CpREyJf8p0",
-              "kty": "RSA",
-              "alg": "RS256",
-              "use": "sig",
-              "n": "qIMTnddR8yxBzXe1ue1Fx7kfjgY9jzsWm5ge7UWv5GWlFEoKjtDrGmPhtSwFTden3DiM4XiIBZ-5AbX_8fdnGxNUON1_GFBnLQv6q0eea9NRM8gtu_avM4nlVzErpdW1LKVm7C3JjjfdlivBEu6XcUZA4bUKNPaj6nwuqQsKstrcuPG32WapVszLDksfSowEVUIc9p__U0aasrfz6jM83jTwq_phHgEwZKxzfw-i055X0Q-JdIs01I27JkiNp0KG5Va-KU9GJBhcTw3QgpifmRc7_9WzmiiSbkxqsTZQwnQbxyShQJYZc0TdBudd7C3mRhDUNh-gdflCk06vCb5sbw",
-              "e": "AQAB",
-              "x5c": [
-                "MIICrzCCAZcCBgGK8WCVpzANBgkqhkiG9w0BAQsFADAbMRkwFwYDVQQDDBBwaWQtaXNzdWVyLXJlYWxtMB4XDTIzMTAwMjE3MTA1M1oXDTMzMTAwMjE3MTIzM1owGzEZMBcGA1UEAwwQcGlkLWlzc3Vlci1yZWFsbTCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAKiDE53XUfMsQc13tbntRce5H44GPY87FpuYHu1Fr+RlpRRKCo7Q6xpj4bUsBU3Xp9w4jOF4iAWfuQG1//H3ZxsTVDjdfxhQZy0L+qtHnmvTUTPILbv2rzOJ5VcxK6XVtSylZuwtyY433ZYrwRLul3FGQOG1CjT2o+p8LqkLCrLa3Ljxt9lmqVbMyw5LH0qMBFVCHPaf/1NGmrK38+ozPN408Kv6YR4BMGSsc38PotOeV9EPiXSLNNSNuyZIjadChuVWvilPRiQYXE8N0IKYn5kXO//Vs5ookm5MarE2UMJ0G8ckoUCWGXNE3QbnXewt5kYQ1DYfoHX5QpNOrwm+bG8CAwEAATANBgkqhkiG9w0BAQsFAAOCAQEAg+H8Z/vQXxZ+kZZXupIOdZZCR3LuyLiZcselF2ldXaH44SUXBM2LbVvElLScg/DFak9Bp6+3fIrky56E9je/i8TpEtq0ey9sdncjAD070BmMHis7MIT5PdQkaESpCwJmN4HkVNrVFbsdiklnKIoSWmJ7IdARTPlYP3bDo6ts+0wxqc6dmFzePppVn+eMXr0HO4Il8ycctCaDr+iY4yvvi+OoOozm7yPBMzjFhYpLSV6Nisy5KABS3XTKJRmKelnC8jrqPl3lDWLXQx24PpIzxSRcRb6yPkClJWe7qFzckec7Zv5M7IRwLyxb0aWtK8m1xBlKXLNEWp+KXtrYGYHi0g=="
-              ],
-              "x5t": "f_nYDF5_zLbbZm1BxSroBsxCywU",
-              "x5t#S256": "cxRALdyDtXe6fbJ16gv7GHqnd2G4zoOsUmKU1SJYA3c"
-            }
-          ]
-        });
-
-        jwks
-    }
-
     pub fn sample_introspect_response() -> Value {
         let resp = json!({
             "exp":1726846647,
