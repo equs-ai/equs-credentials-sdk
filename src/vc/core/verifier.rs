@@ -16,8 +16,8 @@ use crate::vc::formats::dsd_jwt::{DsdJwtAPI, DsdJwtPurpose};
 use crate::vc::formats::json_ld_vc::JsonLdAPI;
 use crate::vc::formats::sd_jwt_vc::SdJwtAPI;
 use crate::vc::formats::{API, HasCredential, IsExpired, VerifyOptions};
+use crate::vc::status_formats::status_list_token_jwt;
 use crate::vc::status_formats::status_list_token_jwt::StatusListJwt;
-use crate::vc::status_formats::{API as VCStatusFormatsAPI, status_list_token_jwt};
 use crate::vc::{HasClaims, Presentation};
 use crate::vc::{HasVPFormat, VCStatus};
 use async_trait::async_trait;
@@ -225,15 +225,20 @@ impl VerifierService {
     ) -> Result<Option<VCStatus>> {
         let claims = presentation.parse_claims().context(VCSnafu)?;
 
-        let status =
-            StatusListJwt::get_vc_status(&claims, http_client, self.did_resolver.clone(), None)
-                .await
-                .map_err(|e| {
-                    VCStatusSnafu {
-                        details: e.to_string(),
-                    }
-                    .build()
-                })?;
+        let status = StatusListJwt::get_vc_status_with_trusted_certs(
+            &claims,
+            http_client,
+            self.did_resolver.clone(),
+            None,
+            self.verification_params.trusted_certs.as_ref(),
+        )
+        .await
+        .map_err(|e| {
+            VCStatusSnafu {
+                details: e.to_string(),
+            }
+            .build()
+        })?;
 
         match status {
             Some(vc_status) => Ok(Some(VCStatus::StatusListToken(vc_status))),

@@ -8,10 +8,10 @@ Provides the abstract `API` trait and concrete implementations for token-based V
 | File | Role |
 |------|------|
 | mod.rs | `API` trait (create status list, get VC status), `StatusListFormat` enum, shared `Error` type. |
-| status_list_token_jwt.rs | `StatusListJwt` — creates compressed bit-string status-list JWTs, fetches and decodes them to return `VCStatus`. |
+| status_list_token_jwt.rs | `StatusListJwt` — creates compressed bit-string status-list JWTs, fetches and decodes them to return `VCStatus`. Accepts a plain JWT or this SDK's SD-JWT without disclosures; requires `typ: statuslist+jwt`; verifies the signature via `SdJwtAPI::verify_vc`, trusting `x5c` chains only for `get_vc_status_with_trusted_certs`. |
 
 ## Key types / traits
-- `API<CS, ST, SL, MD>` — generic async trait for status list creation and VC status retrieval.
+- `API<CS, ST, SL, MD>` — generic async trait for status list creation and VC status retrieval. `get_vc_status` trusts no X.509 anchors; `StatusListJwt::get_vc_status_with_trusted_certs` is the same call with trusted anchors (used by `core::VerifierService`).
 - `StatusListFormat` — `StatusListTokenJwt(SLMetadata)` or `StatusListTokenCwt`.
 - `VCStatus` — `Valid | Invalid | Suspended | AppSpecific(u8)`.
 - `VCStatuses` — `HashMap<usize, u8>` status index map used when creating a status list.

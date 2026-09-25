@@ -499,9 +499,27 @@ impl SdJwtAPI {
         Ok(())
     }
 
-    #[instrument(level = Level::TRACE, skip(did_resolver), err(), ret())]
-    async fn get_jwk_from_jwt(jwt: &str, did_resolver: UniversalResolver) -> Result<Cow<'_, JWK>> {
+    /// Resolves the key that signed `jwt`: a DID URL `kid`, else an `x5c` chain that validates up
+    /// to one of `trusted_certs`, else a `kid` or `iss` DID.
+    #[instrument(level = Level::TRACE, skip(did_resolver, trusted_certs), err(), ret())]
+    async fn get_jwk_from_jwt<'a>(
+        jwt: &'a str,
+        did_resolver: UniversalResolver,
+        trusted_certs: Option<&HashMap<String, String>>,
+    ) -> Result<Cow<'a, JWK>> {
         let (header, payload) = ssi::claims::jws::decode_unverified(jwt).context(JWSSnafu)?;
+
+        #[cfg(not(target_arch = "wasm32"))]
+        if !header
+            .key_id
+            .as_deref()
+            .is_some_and(|kid| DIDURL::new(kid).is_ok())
+            && let Some(x5c) = header.x509_certificate_chain.as_deref()
+        {
+            return Self::get_jwk_from_x5c(x5c, &payload, trusted_certs)
+                .await
+                .map(Cow::Owned);
+        }
 
         let vm = match header.key_id {
             Some(did_url) => did_resolver
@@ -523,7 +541,7 @@ impl SdJwtAPI {
 
                 let iss_value = claims.get(ISS_CLAIM).ok_or(
                     VerifyingSnafu {
-                        details: "could not retrieve \"iss\" field from sd-jwt header",
+                        details: "JWT has no DID URL `kid`, `x5c` certificate chain or `iss` claim to resolve its signing key",
                     }
                     .build(),
                 )?;
@@ -564,6 +582,56 @@ impl SdJwtAPI {
         };
 
         Ok(Cow::Owned(vm.deref().clone()))
+    }
+
+    /// Resolves the key of the leaf of `x5c` once the chain validates up to one of `trusted_certs`.
+    #[cfg(not(target_arch = "wasm32"))]
+    #[instrument(level = Level::TRACE, skip_all, err())]
+    async fn get_jwk_from_x5c(
+        x5c: &[String],
+        payload: &[u8],
+        trusted_certs: Option<&HashMap<String, String>>,
+    ) -> Result<JWK> {
+        let pem_chain = one_core::mapper::x509::x5c_into_pem_chain(x5c).map_err(|e| {
+            VerifyingSnafu {
+                details: format!("could not parse x5c as a PEM chain: {e}"),
+            }
+            .build()
+        })?;
+        // Optional; the truststore checks it against the leaf only when issuer-domain binding is on.
+        let iss = serde_json::from_slice::<Value>(payload)
+            .ok()
+            .and_then(|claims| claims.get(ISS_CLAIM)?.as_str().map(str::to_owned))
+            .unwrap_or_default();
+
+        let leaf = Truststore::new(
+            CertificateValidatorImpl::default(),
+            trusted_certs.cloned().unwrap_or_default(),
+        )
+        .verify_chain_trust(&pem_chain, &iss)
+        .await
+        .map_err(|e| {
+            VerifyingSnafu {
+                details: e.to_string(),
+            }
+            .build()
+        })?;
+
+        let jwk = leaf.public_key.public_key_as_jwk().map_err(|e| {
+            VerifyingSnafu {
+                details: format!("could not read the leaf certificate's public key: {e}"),
+            }
+            .build()
+        })?;
+
+        utils::jwk::from_one_core_public_key_jwk_jsonwebtoken_jwk(jwk)
+            .and_then(|jwk| utils::jwk::from_jsonwebtoken_jwk(&jwk))
+            .ok_or_else(|| {
+                VerifyingSnafu {
+                    details: "could not convert the leaf certificate's public key to a JWK",
+                }
+                .build()
+            })
     }
 
     #[instrument(level = Level::TRACE, ret())]
@@ -763,7 +831,8 @@ impl API<Claims, Credential, Presentation, VCMetadata, VPMetadata, Claims> for S
         did_resolver: UniversalResolver,
     ) -> Result<()> {
         let plain_jwt = Self::strip_disclosures(credential)?;
-        let jwk = Self::get_jwk_from_jwt(plain_jwt, did_resolver).await?;
+        let jwk =
+            Self::get_jwk_from_jwt(plain_jwt, did_resolver, opts.trusted_certs.as_ref()).await?;
 
         Self::verify_signature(credential, &jwk)
     }

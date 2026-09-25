@@ -23,8 +23,8 @@ use tracing::{Level, instrument, trace};
 use crate::did::universal::UniversalResolver;
 use crate::http::HttpClient;
 use crate::utils::serde::get_time_based_claim;
-use crate::vc::HasClaims;
 use crate::vc::formats::API as VCFormatsAPI;
+use crate::vc::formats::VerifyOptions;
 use crate::vc::formats::sd_jwt_vc::SdJwtAPI;
 use crate::vc::presentation_exchange::StatusSize;
 use crate::vc::status_formats::API;
@@ -187,7 +187,34 @@ impl API<VCStatus, VCStatuses, StatusList, SLMetadata> for StatusListJwt {
         vc_claims: &Claims,
         http_client: &dyn HttpClient,
         did_resolver: UniversalResolver,
+        cached_urls_per_status_jwts: Option<&mut HashMap<String, String>>,
+    ) -> Result<Option<VCStatus>> {
+        StatusListJwt::get_vc_status_with_trusted_certs(
+            vc_claims,
+            http_client,
+            did_resolver,
+            cached_urls_per_status_jwts,
+            None,
+        )
+        .await
+    }
+}
+
+impl StatusListJwt {
+    /// [API::get_vc_status], additionally trusting a status list token signed by an `x5c` chain
+    /// that validates up to one of `trusted_certs`.
+    #[instrument(
+        level = Level::TRACE,
+        skip(vc_claims, http_client, did_resolver, trusted_certs),
+        err(),
+        ret()
+    )]
+    pub async fn get_vc_status_with_trusted_certs(
+        vc_claims: &Claims,
+        http_client: &dyn HttpClient,
+        did_resolver: UniversalResolver,
         mut cached_urls_per_status_jwts: Option<&mut HashMap<String, String>>,
+        trusted_certs: Option<&HashMap<String, String>>,
     ) -> Result<Option<VCStatus>> {
         let Some(status_claim) = vc_claims.get(STATUS_CLAIM) else {
             return Ok(None);
@@ -214,6 +241,7 @@ impl API<VCStatus, VCStatuses, StatusList, SLMetadata> for StatusListJwt {
             status.status_list.uri.as_str(),
             did_resolver,
             status_list_jwt.clone(),
+            trusted_certs,
         )
         .await?;
         let cred_status = status_list.get(status.status_list.idx).ok_or_else(|| {
@@ -229,9 +257,7 @@ impl API<VCStatus, VCStatuses, StatusList, SLMetadata> for StatusListJwt {
 
         Ok(Some(cred_status.into()))
     }
-}
 
-impl StatusListJwt {
     #[instrument(level = Level::TRACE, err())]
     fn create_json_status_list(
         statuses: &VCStatuses,
@@ -323,13 +349,20 @@ impl StatusListJwt {
         Ok(status_list_sdjwt_vc)
     }
 
-    #[instrument(level = Level::TRACE, skip(did_resolver), err(), ret())]
+    #[instrument(level = Level::TRACE, skip(did_resolver, trusted_certs), err(), ret())]
     async fn extract_bitstring_status_list(
         url: &str,
         did_resolver: UniversalResolver,
         status_list_sdjwt_vc: String,
+        trusted_certs: Option<&HashMap<String, String>>,
     ) -> Result<BitString> {
-        SdJwtAPI::verify_vc(&status_list_sdjwt_vc, Default::default(), did_resolver) // TODO: consider using sd_jwt API directly
+        let claims = StatusListJwt::decode_status_list_token(&status_list_sdjwt_vc)?;
+
+        let opts = VerifyOptions {
+            trusted_certs: trusted_certs.cloned(),
+            ..Default::default()
+        };
+        SdJwtAPI::verify_vc(&status_list_sdjwt_vc, opts, did_resolver) // TODO: consider using sd_jwt API directly
             .await
             .map_err(|err| {
                 VCStatusSnafu {
@@ -337,13 +370,6 @@ impl StatusListJwt {
                 }
                 .build()
             })?;
-
-        let claims = status_list_sdjwt_vc.parse_claims().map_err(|err| {
-            StatusListFetchingSnafu {
-                details: err.to_string(),
-            }
-            .build()
-        })?;
 
         let Some(sub) = claims.get(SUB_CLAIM) else {
             return MalformedStatusListSnafu {
@@ -396,6 +422,28 @@ impl StatusListJwt {
         })?;
 
         Ok(bit_string)
+    }
+
+    /// Decodes the claims of a status list token without verifying it.
+    #[instrument(level = Level::TRACE, skip(status_list_token), err())]
+    fn decode_status_list_token(status_list_token: &str) -> Result<Claims> {
+        let jwt = status_list_token.split('~').next().unwrap_or_default();
+        let (header, payload) = ssi::claims::jws::decode_unverified(jwt).map_err(|err| {
+            MalformedStatusListSnafu {
+                details: err.to_string(),
+            }
+            .build()
+        })?;
+
+        if header.type_.as_deref() != Some(STATUS_LIST_TYPE) {
+            return MalformedStatusListSnafu {
+                details: format!("expected `typ` {STATUS_LIST_TYPE}, got {:?}", header.type_),
+            }
+            .fail();
+        }
+
+        let claims: Value = serde_json::from_slice(&payload).context(ParseSnafu)?;
+        claims.try_into().context(ClaimsSnafu)
     }
 }
 
@@ -568,6 +616,189 @@ mod tests {
 
         assert_eq!(vc_status, Some(VCStatus::Invalid));
     }
+
+    const X5C_STATUS_LIST_URL: &str = "https://status.example/status_list";
+
+    async fn x5c_status_of(
+        token: &'static str,
+        idx: usize,
+        trusted_certs: Option<HashMap<String, String>>,
+    ) -> crate::vc::status_formats::Result<Option<VCStatus>> {
+        let mut http_client = MockHttpClient::new();
+        mock_http_fn_with_plain_text_resp(
+            &mut http_client,
+            Method::GET,
+            Url::from_str(X5C_STATUS_LIST_URL).unwrap(),
+            token,
+            1.into(),
+        );
+        let claims =
+            json!({ "status": { "status_list": { "idx": idx, "uri": X5C_STATUS_LIST_URL } } })
+                .try_into()
+                .unwrap();
+
+        StatusListJwt::get_vc_status_with_trusted_certs(
+            &claims,
+            &http_client,
+            UniversalResolver::default(),
+            None,
+            trusted_certs.as_ref(),
+        )
+        .await
+    }
+
+    #[rstest]
+    #[case::invalid(2, VCStatus::Invalid)]
+    #[case::suspended(3, VCStatus::Suspended)]
+    #[tokio::test]
+    async fn x5c_signed_status_list_is_verified_against_a_trusted_anchor(
+        #[case] idx: usize,
+        #[case] expected_status: VCStatus,
+    ) {
+        let token = x5c_signed_status_list("statuslist+jwt", true);
+
+        let vc_status = x5c_status_of(token, idx, Some(anchors(&[STATUS_LIST_ROOT_CA])))
+            .await
+            .unwrap();
+
+        assert_eq!(vc_status, Some(expected_status));
+    }
+
+    #[rstest]
+    #[case::no_trusted_anchors(None)]
+    #[case::unrelated_anchor(Some(anchors(&[UNRELATED_ROOT_CA])))]
+    #[tokio::test]
+    async fn x5c_signed_status_list_is_rejected_without_its_anchor(
+        #[case] trusted_certs: Option<HashMap<String, String>>,
+    ) {
+        let token = x5c_signed_status_list("statuslist+jwt", true);
+
+        let error = x5c_status_of(token, 2, trusted_certs)
+            .await
+            .unwrap_err()
+            .to_string();
+
+        assert!(
+            error.contains("Certificate chain is not trusted"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[tokio::test]
+    async fn status_list_with_unexpected_typ_is_rejected() {
+        let token = x5c_signed_status_list("JWT", true);
+
+        let error = x5c_status_of(token, 2, Some(anchors(&[STATUS_LIST_ROOT_CA])))
+            .await
+            .unwrap_err()
+            .to_string();
+
+        assert!(
+            error.contains("Malformed status list"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[tokio::test]
+    async fn status_list_without_a_key_source_is_rejected() {
+        let token = x5c_signed_status_list("statuslist+jwt", false);
+
+        let error = x5c_status_of(token, 2, Some(anchors(&[STATUS_LIST_ROOT_CA])))
+            .await
+            .unwrap_err()
+            .to_string();
+
+        assert!(
+            error.contains("no DID URL `kid`, `x5c` certificate chain or `iss` claim"),
+            "unexpected error: {error}"
+        );
+    }
+
+    fn x5c_signed_status_list(typ: &str, with_x5c: bool) -> &'static str {
+        let mut header = jsonwebtoken::Header::new(jsonwebtoken::Algorithm::ES256);
+        header.typ = Some(typ.to_string());
+        if with_x5c {
+            header.x5c =
+                Some(one_core::mapper::x509::pem_chain_into_x5c(STATUS_LIST_SIGNER_CERT).unwrap());
+        }
+        let claims = json!({
+            "sub": X5C_STATUS_LIST_URL,
+            "iat": 1790000000,
+            "status_list": { "bits": 2, "lst": "eNqbwMwABgAEnQCU" }
+        });
+        let key =
+            jsonwebtoken::EncodingKey::from_ec_pem(STATUS_LIST_SIGNER_KEY.as_bytes()).unwrap();
+
+        Box::leak(
+            jsonwebtoken::encode(&header, &claims, &key)
+                .unwrap()
+                .into_boxed_str(),
+        )
+    }
+
+    /// Trusted anchors keyed by Subject Key Identifier, as the verifier holds them.
+    fn anchors(ca_certs: &[&str]) -> HashMap<String, String> {
+        ca_certs
+            .iter()
+            .map(|ca_cert| {
+                let pem = x509_parser::prelude::Pem::iter_from_buffer(ca_cert.as_bytes())
+                    .next()
+                    .unwrap()
+                    .unwrap();
+                let skid =
+                    one_core::mapper::x509::subject_key_identifier(&pem.parse_x509().unwrap())
+                        .unwrap()
+                        .unwrap();
+                (skid, ca_cert.to_string())
+            })
+            .collect()
+    }
+
+    /// Self-signed test CA; issued [STATUS_LIST_SIGNER_CERT]. Valid until 2046.
+    const STATUS_LIST_ROOT_CA: &str = "-----BEGIN CERTIFICATE-----
+MIIBpDCCAUqgAwIBAgIUCkemKWp/mEZWOriUweY1x6kqPnIwCgYIKoZIzj0EAwIw
+MDEhMB8GA1UEAwwYVGVzdCBTdGF0dXMgTGlzdCBSb290IENBMQswCQYDVQQGEwJV
+UzAeFw0yNjA5MjUxMzI4MTFaFw00NjA5MjAxMzI4MTFaMDAxITAfBgNVBAMMGFRl
+c3QgU3RhdHVzIExpc3QgUm9vdCBDQTELMAkGA1UEBhMCVVMwWTATBgcqhkjOPQIB
+BggqhkjOPQMBBwNCAATh1JjKx3hq3ZIjK6G6pBeHiwdiyXiYu+ZmufaCF4sa+/qu
+Qa13rjydhWVf21XAn8ojKupFyHumcgn/9ViYI6joo0IwQDAPBgNVHRMBAf8EBTAD
+AQH/MA4GA1UdDwEB/wQEAwIBBjAdBgNVHQ4EFgQUzipg2dTWTUqNtW0A6EsQFt7b
+CswwCgYIKoZIzj0EAwIDSAAwRQIhALEaQwSxB5oUvfqlvZsUf9uqWyByr5BfTkqS
+daRDuYTCAiBxntj1WL8RYNzD2KDI6DCepwhUE/H+dilH7LO3hM6xUA==
+-----END CERTIFICATE-----";
+    /// Leaf issued by [STATUS_LIST_ROOT_CA]: SAN `DNS:status.example`, key usage
+    /// `digitalSignature`. Valid until 2046.
+    const STATUS_LIST_SIGNER_CERT: &str = "-----BEGIN CERTIFICATE-----
+MIIB3TCCAYKgAwIBAgIUfbmn1g8zvFqJaGe6Siq4QcNyOnYwCgYIKoZIzj0EAwIw
+MDEhMB8GA1UEAwwYVGVzdCBTdGF0dXMgTGlzdCBSb290IENBMQswCQYDVQQGEwJV
+UzAeFw0yNjA5MjUxMzI4MTFaFw00NjA5MTkxMzI4MTFaMC8xIDAeBgNVBAMMF1Rl
+c3QgU3RhdHVzIExpc3QgU2lnbmVyMQswCQYDVQQGEwJVUzBZMBMGByqGSM49AgEG
+CCqGSM49AwEHA0IABFh6TAqdE0bBRG+96eSRq0ejV8i8g9T9qcZn159gB2+SpNVA
+zJcnmzoPOfYWGKQDBtDsx8NiOEmMrFSOsa29+2qjezB5MAwGA1UdEwEB/wQCMAAw
+DgYDVR0PAQH/BAQDAgeAMBkGA1UdEQQSMBCCDnN0YXR1cy5leGFtcGxlMB0GA1Ud
+DgQWBBR8ppolkTgua/w2aJimDuROUiOq3jAfBgNVHSMEGDAWgBTOKmDZ1NZNSo21
+bQDoSxAW3tsKzDAKBggqhkjOPQQDAgNJADBGAiEAq05h7Rp5R2aeWuyHB1ZVqjXx
+Tf22elmDq7rWTOTxshwCIQDsHXngYDUmOslw/JjAK2vqYldLIE49FPyyW7WLpLP1
+Ag==
+-----END CERTIFICATE-----";
+    /// Test-only private key of [STATUS_LIST_SIGNER_CERT] (PKCS#8, P-256).
+    const STATUS_LIST_SIGNER_KEY: &str = "-----BEGIN PRIVATE KEY-----
+MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgKmNBunWjEFqhGhn4
+G4Oq22ahs02HcCEGTiUcztmr+c+hRANCAARYekwKnRNGwURvvenkkatHo1fIvIPU
+/anGZ9efYAdvkqTVQMyXJ5s6Dzn2FhikAwbQ7MfDYjhJjKxUjrGtvftq
+-----END PRIVATE KEY-----";
+    /// Self-signed test CA unrelated to [STATUS_LIST_SIGNER_CERT]. Valid until 2046.
+    const UNRELATED_ROOT_CA: &str = "-----BEGIN CERTIFICATE-----
+MIIBoDCCAUagAwIBAgIUbh8l2hryhw1EPW3aNxmlPRYQb/kwCgYIKoZIzj0EAwIw
+LjEfMB0GA1UEAwwWVW5yZWxhdGVkIFRlc3QgUm9vdCBDQTELMAkGA1UEBhMCVVMw
+HhcNMjYwOTI1MTMyODI4WhcNNDYwOTIwMTMyODI4WjAuMR8wHQYDVQQDDBZVbnJl
+bGF0ZWQgVGVzdCBSb290IENBMQswCQYDVQQGEwJVUzBZMBMGByqGSM49AgEGCCqG
+SM49AwEHA0IABPfNzFQzAznejGJv/AUkaNxxafUF9Hdy5pzrh+ixSqBPPacly9R7
+ERsMqQtcpIcsPqz9stGaV37vZ/ZRV/vSGsOjQjBAMA8GA1UdEwEB/wQFMAMBAf8w
+DgYDVR0PAQH/BAQDAgEGMB0GA1UdDgQWBBTC86sBx3jik76wJkXhXmQGtPFrUTAK
+BggqhkjOPQQDAgNIADBFAiEAhKLv5TB6lpDfRyh/ymK4DfikOKIlj666bVwNwdsU
+ycICIFoqyd8bcLA/OZ+UAdisSzWFg0z7XLHwFFwj1G+di+Xq
+-----END CERTIFICATE-----";
 
     /// Status list token that contains the following status list:
     /// token idx - status:

@@ -13,7 +13,7 @@ Defines the abstract protocol actor traits (`Issuer`, `Holder`, `Verifier`, `Sta
 | signer.rs | `CredentialSigner<KH, KMS>` — minimal stand-alone `SignCredential` implementation that carries only the KMS and DID resolver (no issuer metadata, no PoP state). The local-signer counterpart to a future external-signer path; embedded by `IssuerService` and used by the wrapper-level `VCCoreCredentialSigner` classes. |
 | unsigned.rs | `UnsignedCredential` enum (`SdJwt` / `Ldp`), `UnsignedSdJwtCredential`, `UnsignedLdpCredential`, and `DisclosureStrategy`. Externally-tagged serde shape (`{ "SdJwt": ... }` / `{ "Ldp": ... }`) — the wire format shared by every wrapper's `prepare → sign` split. |
 | holder.rs | `HolderService<KH, KMS, V, HC>` — stores/retrieves credentials from Vault, creates VPs, generates PoP. |
-| verifier.rs | `VerifierService` — verifies VPs, checks expiry and revocation status across all supported formats. |
+| verifier.rs | `VerifierService` — verifies VPs, checks expiry and revocation status across all supported formats. Status list tokens are verified against the same `VerificationParams.trusted_certs` as credentials. |
 | status_issuer.rs | `StatusIssuerService<KH, KMS>` — signs and issues JWT token status-list credentials. |
 | tests.rs | Shared test fixtures (`CredTestCase`, mock credential helpers) used across sub-module tests. |
 
