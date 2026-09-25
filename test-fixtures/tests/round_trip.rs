@@ -432,3 +432,51 @@ async fn jwe_does_not_decrypt_under_a_different_key() {
         .await
         .expect_err("a JWE must not decrypt under an unrelated key");
 }
+
+// --- access token -------------------------------------------------------
+
+#[tokio::test]
+async fn access_token_carries_issuer_and_scope() -> test_fixtures::Result<()> {
+    use test_fixtures::access_token::AccessToken;
+
+    let kms = LocalKms::new();
+    let key = FixtureKey::create_default(&kms).await?;
+
+    let token = AccessToken::builder(&key)
+        .issuer("https://idp.example/realms/pid-issuer-realm")
+        .scope("SD_JWT_cred")
+        .build()
+        .await?;
+
+    let claims = decode_payload(&token);
+    assert_eq!(claims["iss"], "https://idp.example/realms/pid-issuer-realm");
+    assert_eq!(claims["scope"], "SD_JWT_cred");
+    assert!(claims["exp"].as_i64().unwrap() > test_fixtures::claims::now());
+    Ok(())
+}
+
+#[tokio::test]
+async fn access_token_without_scope_omits_the_claim() -> test_fixtures::Result<()> {
+    use test_fixtures::access_token::AccessToken;
+
+    let kms = LocalKms::new();
+    let key = FixtureKey::create_default(&kms).await?;
+
+    let token = AccessToken::builder(&key).without_scope().build().await?;
+
+    assert!(decode_payload(&token).get("scope").is_none());
+    Ok(())
+}
+
+#[tokio::test]
+async fn expired_access_token_is_in_the_past() -> test_fixtures::Result<()> {
+    use test_fixtures::access_token::AccessToken;
+
+    let kms = LocalKms::new();
+    let key = FixtureKey::create_default(&kms).await?;
+
+    let token = AccessToken::builder(&key).expired().build().await?;
+
+    assert!(decode_payload(&token)["exp"].as_i64().unwrap() < test_fixtures::claims::now());
+    Ok(())
+}
