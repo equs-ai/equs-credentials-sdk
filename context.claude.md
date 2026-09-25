@@ -13,10 +13,11 @@ Phase B: `test-fixtures/src/bundle.rs` and `src/bin/fixture_gen.rs` mint the fix
 TypeScript, Kotlin and Swift wrapper suites now all read it (`EQUS_FIXTURE_BUNDLE`) instead of
 holding committed tokens. Task 12 closed the migration: CI now generates the bundle before every
 wrapper job that reads it (Node's `pretest`, an explicit step in the `wasm-test`/`wasm-test-job`
-jobs, Gradle's `fixtureGen`, and the Swift `Makefile`'s new `ios-generate-fixtures` target),
-`scan-embedded-tokens.py` runs as a tier-1 CI gate on `src/ tests/ plugins/askar/src wrappers/`
-beside `fmt`, and the unused `revokedStatusListJwt`/`vcRevoked` bundle pair was removed; see
-`claude/tests.md` and `test-fixtures/CLAUDE.md`._
+jobs, Gradle's `fixtureGen`, the Swift `Makefile`'s new `ios-generate-fixtures` target, and — after
+a fix round — `plugins/askar/wrappers/nodejs`'s own new `pretest`/`fixtures` scripts once its
+`vault.test.ts` was migrated too), `scan-embedded-tokens.py` runs as a tier-1 CI gate on the full
+`src/ tests/ plugins/ wrappers/` beside `fmt`, and the unused `revokedStatusListJwt`/`vcRevoked`
+bundle pair was removed; see `claude/tests.md` and `test-fixtures/CLAUDE.md`._
 
 ## How to navigate
 

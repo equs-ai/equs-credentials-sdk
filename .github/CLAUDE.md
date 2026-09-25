@@ -77,6 +77,12 @@ before `test:wasm`. `kotlin-test` (`make kotlin-test`) is covered by
 `ios-test-only` so both it and `make ios-test` (GitLab) pick it up; it runs
 `wrappers/uniffi/scripts/generate_fixtures.sh`, which `set -euo pipefail`s so
 a generation failure fails the job before `xcodebuild test` runs.
+`askar-plugin-nodejs-test` reads the bundle too, through
+`plugins/askar/wrappers/nodejs/test/vault.test.ts`: that package has its own
+`pretest`/`fixtures` npm scripts (added alongside migrating its two committed
+tokens — see the `scan-embedded-tokens` bullet below), which fire on the same
+`npm run test --prefix plugins/askar/wrappers/nodejs` this job already ran, so
+no `run:` line changed here.
 
 Jobs are declared in execution order: scans, lint, `build-prod`, the Rust
 checks, then each wrapper followed by its test, the three askar jobs together,
@@ -196,15 +202,22 @@ not preserve, and turns a soft cache miss into a hard failure on re-run.
   tree, and matching on them leaves both rules live in every file, so a new
   fixture needs no config change. Provider rules are untouched.
 - `scan-embedded-tokens` runs `scripts/scan-embedded-tokens.py --fail-on src/
-  tests/ plugins/askar/src wrappers/` plus its own `scripts/test_scan_embedded_tokens.py`
+  tests/ plugins/ wrappers/` plus its own `scripts/test_scan_embedded_tokens.py`
   regression suite. `toolchain: false`: it needs only the `python3` the
-  `rust:1.97.0-bookworm` image already ships. Bare `plugins/` is deliberately
-  not passed — `plugins/askar/wrappers/nodejs` still holds two committed
-  tokens, out of scope for this migration and not in the scanner's
-  `KNOWN_EXCEPTIONS` allowlist the way the two `demos/` hits are, so the job
-  would fail on every run. `demos/` is never passed either, for the same
-  reason `secret-scan`'s allowlists exist: two accepted, expired,
-  runtime-decoded Keycloak tokens the scanner reports but does not gate on.
+  `rust:1.97.0-bookworm` image already ships. `demos/` is never passed, for the
+  same reason `secret-scan`'s allowlists exist: two accepted, expired,
+  runtime-decoded Keycloak tokens the scanner reports but does not gate on
+  (see `scan-embedded-tokens.py`'s `KNOWN_EXCEPTIONS`). Bare `plugins/` was
+  briefly narrowed to `plugins/askar/src` because
+  `plugins/askar/wrappers/nodejs` still held two committed tokens in
+  `test/vault.test.ts`, not covered by `KNOWN_EXCEPTIONS` the way the two
+  `demos/` hits are — but that suite is real, CI-tested code
+  (`askar-plugin-nodejs-test`, `askar-plugin-nodejs-test-job`), not an
+  accepted exception, so it was migrated instead of excluded. That package now
+  has its own `pretest`/`fixtures` npm scripts and its own fixture loader
+  (`plugins/askar/wrappers/nodejs/test/fixtures.ts`), mirroring
+  `wrappers/nodejs` and `wrappers/test/js_common` respectively; see
+  `claude/tests.md` for the swap's detail.
 - `_job.yml` sets `CARGO_PROFILE_DEV_DEBUG` for every job from one input
   defaulting to `"0"`, rather than repeating it per job. `test-with-coverage`
   is the documented exception, passing `line-tables-only`.
