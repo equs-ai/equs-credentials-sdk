@@ -29,6 +29,25 @@ accepted -- see docs/superpowers/plans/2026-09-25-migrate-committed-tokens-to-fi
 Task 7. `demos/` is therefore never passed to --fail-on, but the scan still
 reports these two hits, tagged as accepted exceptions, so nobody mistakes the
 silence for the directory being clean.
+
+Known limitations -- shapes this scanner does NOT see, stated here rather than
+implied by silence:
+
+  - JWS JSON Serialization (`{"payload": ..., "signatures": [{"protected":
+    ..., "signature": ...}]}`) is spec-legal JOSE and is not detected at all.
+    Nothing in this repo currently uses it; if that changes, this scanner
+    needs a second detector, not a tweak to TOKEN_RE.
+  - Only three encodings of a split/obfuscated string are normalized before
+    matching: a Rust backslash-newline continuation, a `"..." + "..."`-style
+    concatenation (the common JS/TS/Kotlin/Swift way to wrap a long string,
+    handled across `+`, whitespace and newlines), and a `\"`-escaped JSON
+    literal (the common way a JWK ends up embedded in an ordinary, non-raw
+    string literal). A token or key hidden by some other transform --
+    string-building via `.join(...)`, computed/interpolated strings,
+    intentional character-swapping, a base64-of-base64 wrapper, a genuinely
+    binary file this scanner failed to decode as UTF-8 -- is invisible to it.
+  - It reads `git ls-files` tracked content only. A token that exists solely
+    in git history (an old commit, a stash, a reflog entry) is not scanned.
 """
 
 from __future__ import annotations
@@ -63,6 +82,31 @@ TOKEN_RE = re.compile(r"eyJ[A-Za-z0-9_-]{4,}(?:\.[A-Za-z0-9_-]*){1,4}")
 # its payload. Collapsing those continuations before matching is what makes
 # the scan trustworthy against a token someone wraps at 100 columns.
 LINE_CONTINUATION_RE = re.compile(r"\\\r?\n[ \t]*")
+
+# JS/TS/Kotlin/Swift have no line-continuation syntax, so the idiomatic way to
+# wrap a long string there is concatenation: `"eyJhbGci..." +\n  "eyJzdWI..."`,
+# or splitting exactly at a `.` boundary as `"eyJhbGci..." + "." + "eyJzdWI..."`.
+# Either way the two fragments are two separate string literals in the raw
+# text, with a closing quote, `+`, and opening quote between them -- not
+# contiguous base64url/dot text -- so TOKEN_RE cannot see across the join
+# unmodified. This matches that glue (quote, optional whitespace/newlines,
+# `+`, optional whitespace/newlines, quote) so removing it directly abuts the
+# two fragments' contents, which is exactly what the source represents as one
+# logical string. Quote characters do not need to match on both sides.
+STRING_CONCAT_GLUE_RE = re.compile(r"""["'`]\s*\+\s*["'`]""")
+
+# A JWK embedded as JSON *inside* an ordinary (non-raw) string literal is
+# written with every inner quote backslash-escaped:
+# `"{\"kty\": \"EC\", \"d\": \"...\"}"`. Those bytes contain no literal `"d"`
+# substring at all -- only `\"d\"` -- so neither the cheap pre-check in
+# find_private_jwks nor json.loads ever sees valid JSON. Un-escaping `\"` to
+# `"` before matching turns that back into ordinary embedded JSON. This is
+# applied file-wide rather than only inside detected string spans (finding
+# "the string literal boundaries" first would need a real language-aware
+# lexer per source language); the risk is an unrelated `\"` elsewhere in the
+# same file also being unescaped, which is harmless here since nothing else
+# in this scanner treats a bare `"` as meaningful outside a JSON parse attempt.
+ESCAPED_QUOTE_RE = re.compile(r'\\"')
 
 PEM_PRIVATE_KEY_RE = re.compile(r"-----BEGIN ([A-Z0-9 ]*PRIVATE KEY)-----")
 
@@ -150,42 +194,85 @@ def line_of(text: str, offset: int) -> int:
     return text.count("\n", 0, offset) + 1
 
 
-@dataclass
-class Normalized:
-    """`text` with backslash-newline continuations collapsed, plus enough of
-    a map to translate an offset in `text` back to the original file so
-    reported line numbers point at a real line."""
+def _pass_resolver(breakpoints: list[tuple[int, int]]):
+    """Builds a function mapping an offset in this pass's output text back to
+    an offset in this pass's input text, from (out_offset, in_offset)
+    breakpoints that are strictly increasing in both fields. Between two
+    consecutive breakpoints the two texts are identical, so the offset delta
+    is constant there; a lookup past the last breakpoint (inside or after a
+    replacement span) is clamped to that breakpoint's delta, which is not
+    always exact but always lands in the right neighbourhood."""
 
-    text: str
-    original: str
-    # (offset_in_normalized, offset_in_original) breakpoints, strictly
-    # increasing in both fields; between two consecutive breakpoints the two
-    # texts are identical, so the offset delta is constant there.
-    breakpoints: list[tuple[int, int]]
-
-    def original_offset(self, norm_offset: int) -> int:
-        idx = bisect.bisect_right(self.breakpoints, (norm_offset, float("inf"))) - 1
+    def resolve(out_offset: int) -> int:
+        idx = bisect.bisect_right(breakpoints, (out_offset, float("inf"))) - 1
         idx = max(0, idx)
-        norm_bp, orig_bp = self.breakpoints[idx]
-        return orig_bp + (norm_offset - norm_bp)
+        out_bp, in_bp = breakpoints[idx]
+        return in_bp + (out_offset - out_bp)
 
-    def line_at(self, norm_offset: int) -> int:
-        return line_of(self.original, self.original_offset(norm_offset))
+    return resolve
 
 
-def normalize(text: str) -> Normalized:
+def _apply_pass(text: str, pattern: re.Pattern[str], replacement: str) -> tuple[str, object]:
+    """Replaces every match of `pattern` in `text` with `replacement` and
+    returns the new text plus a resolver from an offset in the new text back
+    to an offset in `text`."""
     parts = []
     breakpoints = [(0, 0)]
     last_end = 0
     out_len = 0
-    for match in LINE_CONTINUATION_RE.finditer(text):
+    for match in pattern.finditer(text):
         chunk = text[last_end : match.start()]
         parts.append(chunk)
         out_len += len(chunk)
+        parts.append(replacement)
+        out_len += len(replacement)
         breakpoints.append((out_len, match.end()))
         last_end = match.end()
     parts.append(text[last_end:])
-    return Normalized(text="".join(parts), original=text, breakpoints=breakpoints)
+    return "".join(parts), _pass_resolver(breakpoints)
+
+
+@dataclass
+class Normalized:
+    """`text` is `original` after every normalization pass below has run, in
+    order. `resolve` maps an offset in `text` all the way back to an offset in
+    `original`, composing each pass's own resolver, so reported line numbers
+    point at a real line in the file on disk -- not at the synthetic text
+    these passes matched against."""
+
+    text: str
+    original: str
+    resolve: object  # Callable[[int], int]
+
+    def line_at(self, norm_offset: int) -> int:
+        return line_of(self.original, self.resolve(norm_offset))
+
+
+# Applied in this order because later passes depend on earlier ones having
+# already run: concatenation-glue removal must land segments contiguously
+# before quote-unescaping can turn a `\"kty\"...\"d\"` embedded in two
+# concatenated fragments into one parseable object (see STRING_CONCAT_GLUE_RE
+# and ESCAPED_QUOTE_RE's own comments for a worked example of that ordering).
+NORMALIZATION_PASSES: list[tuple[re.Pattern[str], str]] = [
+    (LINE_CONTINUATION_RE, ""),
+    (STRING_CONCAT_GLUE_RE, ""),
+    (ESCAPED_QUOTE_RE, '"'),
+]
+
+
+def normalize(text: str) -> Normalized:
+    resolvers = []
+    current = text
+    for pattern, replacement in NORMALIZATION_PASSES:
+        current, resolve = _apply_pass(current, pattern, replacement)
+        resolvers.append(resolve)
+
+    def resolve_to_original(offset: int) -> int:
+        for resolve in reversed(resolvers):
+            offset = resolve(offset)
+        return offset
+
+    return Normalized(text=current, original=text, resolve=resolve_to_original)
 
 
 def classify_token(header: dict, segments: list[str]) -> tuple[str, str, int | None]:

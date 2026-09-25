@@ -10,6 +10,7 @@ GitHub Actions has its own set under `.github/scripts/`.
 | `maven_release_manifest.sh` | Renders `release-manifest.yaml` for one Maven release. |
 | `file_release_manifest.sh` | Renders `release-manifest.yaml` for a release shipped as plain files. |
 | `scan-embedded-tokens.py` | Walks `git ls-files`, flags committed JWT/JWE strings and private key material, exits non-zero on a `--fail-on` path hit. |
+| `test_scan_embedded_tokens.py` | `unittest` regression tests for the scanner's detectors — run with `python3 scripts/test_scan_embedded_tokens.py` or `python3 -m unittest discover -s scripts -p "test_*.py"`. |
 
 ## release_manifest.sh
 
@@ -99,6 +100,20 @@ matching, so a token wrapped across physical lines is not missed.
 keep one accepted exception — see `claude/tests.md` — so `demos/` is never
 passed to `--fail-on`, but the scan still reports both hits, tagged as known
 exceptions, instead of silently skipping the directory.
+
+Before matching, `normalize()` collapses three ways a token or key gets split
+or obscured across the raw bytes of a source file: a Rust backslash-newline
+continuation, a `"..." + "..."`-style string concatenation (the normal way to
+wrap a long string in JS/TS/Kotlin/Swift), and a `\"`-escaped JSON literal
+(how a JWK ends up embedded inside an ordinary, non-raw string). Each of
+those was a real blind spot caught in review, not a hypothetical — see the
+script's own module docstring for what it still cannot see (JWS JSON
+Serialization, computed/interpolated strings, git history).
+
+`test_scan_embedded_tokens.py` pins all three blind-spot fixes plus the core
+detectors (`find_tokens`, `find_private_jwks`, `find_pem_private_keys`,
+`under_any`) down as regression tests; run it before touching `normalize()`,
+`TOKEN_RE` or the two key detectors.
 
 See `claude/tests.md` for the current clean/dirty state of each part of the
 tree.

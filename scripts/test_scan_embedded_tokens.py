@@ -1,0 +1,188 @@
+#!/usr/bin/env python3
+"""Regression tests for scan-embedded-tokens.py.
+
+Run directly:
+
+    python3 scripts/test_scan_embedded_tokens.py
+
+or via unittest discovery from the repo root:
+
+    python3 -m unittest discover -s scripts -p "test_*.py"
+
+`scan-embedded-tokens.py` has a hyphen in its name, so it cannot be `import`ed
+as an ordinary module; it is loaded here via `importlib` from its file path
+instead (see `_load_scanner` below). Loading it only executes module-level
+code (imports, regex compilation, dataclass/function definitions); `main()`
+only runs under `if __name__ == "__main__"`, so importing it here never
+invokes `git ls-files` or prints a report.
+
+These exist because two of the detectors' blind spots were found by manual,
+ad hoc testing during review and then silently lost -- exactly the failure
+mode that makes a "the scanner is right because I checked it once" claim
+worthless six months later. Each `Important` fixed here has a test named
+after it so the next person touching `normalize()`, `TOKEN_RE` or
+`find_private_jwks` has something to run before believing they haven't
+regressed it.
+"""
+
+from __future__ import annotations
+
+import base64
+import importlib.util
+import json
+import sys
+import time
+import unittest
+from pathlib import Path
+
+SCRIPT_PATH = Path(__file__).resolve().parent / "scan-embedded-tokens.py"
+
+
+def _load_scanner():
+    spec = importlib.util.spec_from_file_location("scan_embedded_tokens", SCRIPT_PATH)
+    module = importlib.util.module_from_spec(spec)
+    # Must be registered before exec_module: the module's @dataclass
+    # decorators resolve annotations against sys.modules[__module__], which
+    # does not exist yet otherwise (fails on CPython 3.14, harmless no-op on
+    # earlier versions where dataclass resolution is lazier).
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+scan = _load_scanner()
+
+
+def b64u(value: dict) -> str:
+    return base64.urlsafe_b64encode(json.dumps(value).encode()).rstrip(b"=").decode()
+
+
+class TestTokenDetection(unittest.TestCase):
+    def setUp(self):
+        self.header = b64u({"alg": "ES256", "typ": "JWT"})
+        self.live_payload = b64u({"exp": int(time.time()) + 3600, "sub": "x"})
+        self.expired_payload = b64u({"exp": int(time.time()) - 3600, "sub": "x"})
+        self.noexp_payload = b64u({"sub": "x"})
+        self.sig = "abc123_-XYZ"
+
+    def _token(self, payload: str) -> str:
+        return f"{self.header}.{payload}.{self.sig}"
+
+    def test_classifies_live_expired_and_noexp(self):
+        text = (
+            f'let a = "{self._token(self.live_payload)}"; '
+            f'let b = "{self._token(self.expired_payload)}"; '
+            f'let c = "{self._token(self.noexp_payload)}";'
+        )
+        hits = scan.find_tokens("t.rs", scan.normalize(text))
+        classifications = sorted(h.classification for h in hits)
+        self.assertEqual(classifications, ["expired", "live", "no-exp"])
+
+    def test_rejects_eyj_string_without_alg_or_enc_header(self):
+        fake_header = b64u({"foo": "bar"})
+        text = f'"{fake_header}.somepayload.somesig"'
+        hits = scan.find_tokens("t.rs", scan.normalize(text))
+        self.assertEqual(hits, [])
+
+    def test_detects_jwe_with_empty_encrypted_key_segment(self):
+        jwe_header = b64u({"alg": "ECDH-ES", "enc": "A128CBC-HS256"})
+        text = f'"{jwe_header}..iv123.ciphertext456.tag789"'
+        hits = scan.find_tokens("t.rs", scan.normalize(text))
+        self.assertEqual(len(hits), 1)
+        self.assertEqual(hits[0].kind, "JWE")
+        self.assertEqual(hits[0].classification, "encrypted")
+
+    def test_line_continuation_important_regression(self):
+        """A Rust `\\`-newline-continued string literal must not truncate or
+        split a token. This was the first blind spot found (Task 8): a token
+        wrapped this way produced zero hits before `normalize()` collapsed
+        the continuation."""
+        wrapped = (
+            f'const X: &str = "{self.header[:10]}\\\n'
+            f'{self.header[10:]}.{self.live_payload}\\\n'
+            f'.{self.sig}";'
+        )
+        hits = scan.find_tokens("t.rs", scan.normalize(wrapped))
+        self.assertEqual(len(hits), 1)
+        self.assertEqual(hits[0].classification, "live")
+
+    def test_string_concatenation_important_2_regression(self):
+        """A token wrapped as separate quoted fragments joined by `+` -- the
+        ordinary way to wrap a long string in JS/TS/Kotlin/Swift -- must not
+        be invisible. Fix round 1 found this: TOKEN_RE alone produced zero
+        hits for exactly this shape."""
+        text = f'"{self.header}" + "." + "{self.live_payload}" + "." + "{self.sig}"'
+        hits = scan.find_tokens("t.ts", scan.normalize(text))
+        self.assertEqual(len(hits), 1)
+        self.assertEqual(hits[0].classification, "live")
+
+    def test_string_concatenation_across_newlines(self):
+        """The dominant real-world shape: fragments concatenated across
+        physical lines, split mid-segment rather than at a `.` boundary (as
+        seen in plugins/askar/wrappers/nodejs/test/vault.test.ts)."""
+        token = self._token(self.live_payload)
+        mid = len(token) // 2
+        text = f'"{token[:mid]}" +\n      "{token[mid:]}"'
+        hits = scan.find_tokens("t.ts", scan.normalize(text))
+        self.assertEqual(len(hits), 1)
+        self.assertEqual(hits[0].classification, "live")
+
+
+class TestPrivateKeyDetection(unittest.TestCase):
+    def test_flags_a_literal_private_jwk(self):
+        text = '{"kty":"EC","crv":"P-256","x":"abc","y":"def","d":"SECRETSECRET"}'
+        hits = scan.find_private_jwks("t.rs", scan.normalize(text))
+        self.assertEqual(len(hits), 1)
+        self.assertEqual(hits[0].kind, "jwk-private")
+
+    def test_does_not_flag_a_public_jwk(self):
+        text = '{"kty":"EC","crv":"P-256","x":"abc","y":"def"}'
+        hits = scan.find_private_jwks("t.rs", scan.normalize(text))
+        self.assertEqual(hits, [])
+
+    def test_escaped_quote_jwk_important_1_regression(self):
+        """A JWK embedded as JSON inside an ordinary (non-raw) string literal
+        is written `"{\\"kty\\": \\"EC\\", \\"d\\": \\"...\\"}"`. Those bytes
+        contain no literal `"d"` substring -- only `\\"d\\"` -- so the
+        pre-check in find_private_jwks never even starts the brace scan.
+        Fix round 1 found this via a synthetic file the reviewer supplied
+        that produced zero hits."""
+        text = (
+            '"{\\"kty\\": \\"EC\\", \\"crv\\": \\"P-256\\", '
+            '\\"d\\": \\"SECRETVALUE\\"}"'
+        )
+        hits = scan.find_private_jwks("t.rs", scan.normalize(text))
+        self.assertEqual(len(hits), 1)
+
+    def test_escaped_and_concatenated_jwk(self):
+        """Both blind spots at once: an escaped-JSON JWK split across a `+`
+        concatenation. Exercises pass ordering in normalize() -- glue removal
+        has to run before quote-unescaping or the two fragments never
+        recombine into one parseable object."""
+        text = '"{\\"kty\\":\\"EC\\"," + "\\"d\\":\\"SECRETVALUE\\"}"'
+        hits = scan.find_private_jwks("t.rs", scan.normalize(text))
+        self.assertEqual(len(hits), 1)
+
+    def test_flags_pem_private_key_block(self):
+        text = "-----BEGIN EC PRIVATE KEY-----\nMIGk...\n-----END EC PRIVATE KEY-----"
+        hits = scan.find_pem_private_keys("t.rs", scan.normalize(text))
+        self.assertEqual(len(hits), 1)
+        self.assertIn("PRIVATE KEY", hits[0].detail)
+
+
+class TestUnderAny(unittest.TestCase):
+    def test_matches_exact_and_nested_paths(self):
+        self.assertTrue(scan.under_any("src/vc/foo.rs", ["src/"]))
+        self.assertTrue(scan.under_any("src/vc/foo.rs", ["src"]))
+        self.assertTrue(scan.under_any("tests/mod.rs", ["tests/"]))
+
+    def test_does_not_match_a_sibling_with_a_shared_prefix(self):
+        # "src2/" must not be considered "under" "src/".
+        self.assertFalse(scan.under_any("src2/foo.rs", ["src/"]))
+
+    def test_does_not_match_unrelated_paths(self):
+        self.assertFalse(scan.under_any("wrappers/nodejs/x.ts", ["src/", "tests/"]))
+
+
+if __name__ == "__main__":
+    unittest.main()
