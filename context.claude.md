@@ -9,9 +9,10 @@ scan gate) and the `test-fixtures` `access_token.rs`/`x509.rs` builders; see `cl
 Migrated the 11 backslash-line-continued tokens in `src/vc/formats/sd_jwt_vc.rs`,
 `src/vc/oid4vci/holder.rs` and `src/vc/status_formats/status_list_token_jwt.rs` the scan's
 single-line regex had missed — `src/` is now clean under the gate too.
-Phase B started: `test-fixtures/src/bundle.rs` and `src/bin/fixture_gen.rs` mint the fixture bundle
-the TypeScript/Kotlin/Swift wrapper suites will read; see `claude/tests.md` and
-`test-fixtures/CLAUDE.md`._
+Phase B: `test-fixtures/src/bundle.rs` and `src/bin/fixture_gen.rs` mint the fixture bundle; the
+TypeScript, Kotlin and Swift wrapper suites now all read it (`EQUS_FIXTURE_BUNDLE`) instead of
+holding committed tokens — only CI wiring to generate the bundle before each wrapper job remains;
+see `claude/tests.md` and `test-fixtures/CLAUDE.md`._
 
 ## How to navigate
 

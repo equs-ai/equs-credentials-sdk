@@ -38,11 +38,12 @@ implementations, covering scenarios that unit tests within individual modules ca
   compact JWS/JWE serializations, base64url-decodes each header to confirm it (`alg`/`enc`) rather
   than regex-guess, and separately flags a JWK carrying a `d` member or a PEM `PRIVATE KEY` block.
   `--fail-on PATH…` exits non-zero if a hit falls under one of the given paths.
-- `src/`, `tests/` and `plugins/askar/src` are clean (`python3 scripts/scan-embedded-tokens.py
-  --fail-on src/ tests/ plugins/askar/src` exits 0). `demos/multi-thread/src/main.rs` and
+- `src/`, `tests/`, `plugins/askar/src`, `wrappers/nodejs`, `wrappers/test` and `wrappers/uniffi` are
+  clean (`python3 scripts/scan-embedded-tokens.py --fail-on src/ tests/ plugins/askar/src
+  wrappers/nodejs wrappers/test wrappers/uniffi` exits 0). `demos/multi-thread/src/main.rs` and
   `demos/oid4vc/issuer/src/main.rs` each keep one accepted exception (expired localhost Keycloak
-  token `validate_scope` reads via `decode_unverified`); wrapper suites (TS/Kotlin/Swift, including
-  `plugins/askar/wrappers/nodejs`) still hold their committed tokens pending Phase B.
+  token `validate_scope` reads via `decode_unverified`); `plugins/askar/wrappers/nodejs` still holds
+  two committed tokens (out of scope for this migration).
 - Phase B bridge: `equs-test-fixtures` ships a `fixture_gen` binary
   (`test-fixtures/src/bin/fixture_gen.rs`, driven by `test-fixtures/src/bundle.rs`) that mints every
   fixture the non-Rust wrapper suites need — `authRequestJwt`, `vc`, `vp`, `statusListJwt`,
@@ -52,7 +53,17 @@ implementations, covering scenarios that unit tests within individual modules ca
   are two independently coherent Valid/revoked pairs at two different URLs, so a wrapper test can
   exercise status filtering without hand-rolling a status list. `dsdJwtGrantVpToken` needs
   `--features delegate-sd-jwt`; `bundle::build()` fails loudly rather than silently omitting it.
-  Wrapper suites themselves are not migrated yet — that is the rest of Phase B.
+  The TypeScript (`wrappers/nodejs`, `wrappers/test/js_common`), Kotlin (`wrappers/uniffi/kotlin`)
+  and Swift (`wrappers/uniffi/swift`) suites now read this bundle (`EQUS_FIXTURE_BUNDLE`) instead of
+  holding committed tokens. Two fixed-URL pairs the bundle publishes at `https://issuer.example/…`
+  are unreachable from a suite whose mock server binds a real `localhost` port or socket (TS's Jest
+  mock server, Kotlin's `MockWebServer`): those suites mint an equivalent pair in-process instead
+  (Kotlin's status pair via `VcCoreStatusIssuer`/`VcCoreIssuer`, mirroring `VcCoreTest.kt`). Swift's
+  `MockHttpRouter` matches routes on URL path only (see below), so it does not have this problem —
+  the bundle's `vcWithStatus`/`statusListJwt` pair is used directly. `revokedStatusListJwt`/
+  `vcRevoked` remain unconsumed by any suite (no wrapper test exercises revocation); they would be
+  reachable in Swift the same way but are not otherwise. Only CI wiring (generating the bundle
+  before each wrapper job) remains.
 - `cargo test --all-features` at the workspace root tests the root package only, so
   `equs-test-fixtures` runs in its own CI job (`test-fixtures-test`, `test-fixtures-test-job`).
 - SDK types do not unify across the fixture crate's dev-dependency cycle: a `src/` unit test builds

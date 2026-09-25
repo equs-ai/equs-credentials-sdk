@@ -12,35 +12,37 @@ import Testing
 	}
 
 	@Test func getAuthorizationRequest() async throws {
+		let minted = try await MintedOid4vp.authRequest.value
 		self.http["/auth_request"] = { request in
-			return MockHttpRouter.ok(Oid4vpHolderTestConstants.authRequestJwt, contentType: "application/oauth-authz-req+jwt")
+			return MockHttpRouter.ok(minted.jwt, contentType: "application/oauth-authz-req+jwt")
 		}
 
 		let actual: AuthorizationRequest = try await self.holder.getAuthorizationRequest(
-			requestUri: Oid4vpHolderTestConstants.requestUri)
+			requestUri: minted.requestUri)
 
 		compareJsonValues(
 			actual: actual.clientMetadata,
-			expected: Oid4vpHolderTestConstants.authRequest.clientMetadata)
+			expected: minted.authRequest.clientMetadata)
 		compareJsonValues(
 			actual: actual.presentationDefinition,
-			expected: Oid4vpHolderTestConstants.authRequest.presentationDefinition)
+			expected: minted.authRequest.presentationDefinition)
 
-		#expect(actual.clientId == Oid4vpHolderTestConstants.authRequest.clientId)
-		#expect(actual.nonce == Oid4vpHolderTestConstants.authRequest.nonce)
-		#expect(actual.responseType == Oid4vpHolderTestConstants.authRequest.responseType)
-		#expect(actual.responseMode == Oid4vpHolderTestConstants.authRequest.responseMode)
-		#expect(actual.responseUri == Oid4vpHolderTestConstants.authRequest.responseUri)
-		#expect(actual.state == Oid4vpHolderTestConstants.authRequest.state)
+		#expect(actual.clientId == minted.authRequest.clientId)
+		#expect(actual.nonce == minted.authRequest.nonce)
+		#expect(actual.responseType == minted.authRequest.responseType)
+		#expect(actual.responseMode == minted.authRequest.responseMode)
+		#expect(actual.responseUri == minted.authRequest.responseUri)
+		#expect(actual.state == minted.authRequest.state)
 	}
 
 		@Test func getAuthorizationRequestWithTransactionData() async throws {
-    		self.http["/auth_request"] = { request in
-    			return MockHttpRouter.ok(Oid4vpHolderTestConstants.authRequestJwt, contentType: "application/oauth-authz-req+jwt")
-    		}
+			let minted = try await MintedOid4vp.authRequest.value
+    			self.http["/auth_request"] = { request in
+    				return MockHttpRouter.ok(minted.jwt, contentType: "application/oauth-authz-req+jwt")
+    			}
 
-    		let actual: AuthorizationRequest = try await self.holder.getAuthorizationRequest(
-    			requestUri: Oid4vpHolderTestConstants.requestUriForTransactionData)
+    			let actual: AuthorizationRequest = try await self.holder.getAuthorizationRequest(
+    				requestUri: minted.requestUriForTransactionData)
 
             let transactionData = TransactionDataItem(type: "type1", credentialIds: ["Identity-1"], transactionDataHashesAlg: ["sha-256"])
 
@@ -50,22 +52,32 @@ import Testing
     	}
 
 	@Test func checkCustomNonceHandler() async throws {
+		let minted = try await MintedOid4vp.authRequest.value
 		self.http["/request"] = { request in
 			let body = request.body ?? "<invalid body>"
 			#expect(body.contains("some_nonce"))
-			return MockHttpRouter.ok(Oid4vpHolderTestConstants.authRequestJwt, contentType: "application/oauth-authz-req+jwt")
+			return MockHttpRouter.ok(minted.jwt, contentType: "application/oauth-authz-req+jwt")
 		}
 
 		let actual: AuthorizationRequest = try await self.holder.getAuthorizationRequest(
-			requestUri: Oid4vpHolderTestConstants.requestUriWithMethod)
+			requestUri: minted.requestUriWithMethod)
 	}
 
 	@Test func presentCredentialsAuto() async throws {
+		let minted = try await MintedOid4vp.authRequest.value
 		try await confirmation("Auth Response is not received") { confirmResponse in
 			self.http["/response"] = { request in
 				let body = request.body!.removingPercentEncoding!
 
-				#expect(body.contains(Oid4vpHolderTestConstants.sdJwtPayload))
+				// The credential discloses both `name` and `surname` (the fixture crate's SD-JWT
+				// VC builder always sets both), but the presentation definition only requests
+				// `$.name`, so presenting it drops the unneeded `surname` disclosure -- the full
+				// compact credential string is therefore no longer a literal substring of the
+				// presented body. Its JWS part (everything before the disclosures) is unchanged,
+				// and the specifically requested `name` disclosure is still present; check those
+				// instead of the whole string.
+				#expect(body.contains(Fixtures.jwsPrefix(Oid4vpHolderTestConstants.sdJwtPayload)))
+				#expect(body.contains(Fixtures.disclosure(Oid4vpHolderTestConstants.sdJwtPayload, forClaim: "name")!))
 
 				confirmResponse()
 				return MockHttpRouter.ok("", contentType: "text/plain")
@@ -74,7 +86,7 @@ import Testing
 			let holder = try await Oid4vpHolderTests.setupHolder(http: http)
 
 			let _ = try await holder.presentCredentialsAuto(
-				authRequest: Oid4vpHolderTestConstants.authRequest,
+				authRequest: minted.authRequest,
 				authResponseMetadata: AuthorizationResponseMetadata(
 					claimsToExclude: nil, idTokenMetadata: nil, dcApiOrigin: nil)
 			)
@@ -104,11 +116,20 @@ import Testing
 
 
 	@Test func presentCredentials() async throws {
+		let minted = try await MintedOid4vp.authRequest.value
 		try await confirmation("Auth Response is not received") { confirmResponse in
 			self.http["/response"] = { request in
 				let body = request.body!.removingPercentEncoding!
 
-				#expect(body.contains(Oid4vpHolderTestConstants.sdJwtPayload))
+				// The credential discloses both `name` and `surname` (the fixture crate's SD-JWT
+				// VC builder always sets both), but the presentation definition only requests
+				// `$.name`, so presenting it drops the unneeded `surname` disclosure -- the full
+				// compact credential string is therefore no longer a literal substring of the
+				// presented body. Its JWS part (everything before the disclosures) is unchanged,
+				// and the specifically requested `name` disclosure is still present; check those
+				// instead of the whole string.
+				#expect(body.contains(Fixtures.jwsPrefix(Oid4vpHolderTestConstants.sdJwtPayload)))
+				#expect(body.contains(Fixtures.disclosure(Oid4vpHolderTestConstants.sdJwtPayload, forClaim: "name")!))
 
 				confirmResponse()
 				return MockHttpRouter.ok("", contentType: "text/plain")
@@ -117,7 +138,7 @@ import Testing
 			let holder = try await Oid4vpHolderTests.setupHolder(http: http)
 
 			let credentials = try await holder.findVcsForPresentation(
-				authRequest: Oid4vpHolderTestConstants.authRequest)
+				authRequest: minted.authRequest)
 
 			var credentialMapping: [String: Array<CredentialEntry>] = [:]
 
@@ -137,7 +158,7 @@ import Testing
 			}
 
 			let _ = try await holder.presentCredentials(
-				authRequest: Oid4vpHolderTestConstants.authRequest,
+				authRequest: minted.authRequest,
 				credentialMapping: credentialMapping,
 				authResponseMetadata: AuthorizationResponseMetadata(
 					claimsToExclude: nil, idTokenMetadata: nil, dcApiOrigin: nil)
@@ -147,9 +168,10 @@ import Testing
 
 	@Test
 	func findVcsForPresentationReturnsCredentials() async throws {
+		let minted = try await MintedOid4vp.authRequest.value
 
 		let credentialsMapping = try await self.holder.findVcsForPresentation(
-			authRequest: Oid4vpHolderTestConstants.authRequest)
+			authRequest: minted.authRequest)
 
 		for (key, result) in credentialsMapping {
 			switch result.data {
@@ -194,7 +216,12 @@ import Testing
             case .reason(let reason):
                 switch reason {
                 case .paths(let claimsPaths):
-                    #expect(claimsPaths == [["$.first_name"],["$.last_name", "$.surname"]])
+                    // The bundle's `vc` fixture discloses both `name` and `surname` (the fixture
+                    // crate's SD-JWT VC builder always sets both -- unlike the old committed
+                    // token, which only ever disclosed `name`), so the `surname`/`last_name`
+                    // alternative is now genuinely satisfied; only `$.first_name` (which nothing
+                    // discloses) is still missing.
+                    #expect(claimsPaths == [["$.first_name"]])
                 default:
                     throw NSError(
                         domain: "ExtractError", code: 2,
@@ -276,6 +303,7 @@ import Testing
 	}
 
 	@Test func declineAuthorizationRequest() async throws {
+		let minted = try await MintedOid4vp.authRequest.value
 		let expectedResponse =
 			"error=access_denied&error_description=consent+to+share+the+presentation+is+not+given&state=1d8b0d93-86e8-4135-87d4-524bb0500bf3"
 
@@ -293,12 +321,12 @@ import Testing
 			let holder = try await Oid4vpHolderTests.setupHolder(http: http)
 
 			let _ = try await holder.declineAuthorizationRequest(
-				authRequest: Oid4vpHolderTestConstants.authRequest)
+				authRequest: minted.authRequest)
 		}
 	}
 
 	@Test func getCredentialStatus() async throws {
-        self.http["/status_list"] = { request in
+        self.http["/status-list"] = { request in
             return MockHttpRouter.ok(Oid4vpHolderTestConstants.statusList, contentType: "application/statuslist+jwt")
         }
 
@@ -314,8 +342,8 @@ import Testing
         let nonceHandler = MockNonceHandler(nonce: "some_nonce")
 
         var didAndKeyMetadata = await createDidAndKeyMetadata(kms: inMemKms)
-        didAndKeyMetadata.keyMetadata.didUrl =
-            "did:key:zDnaeZ1MuKdxYsz4UM69cJz6cEJJVo9aS4GKTkGvz1a4f9Fiu#zDnaeZ1MuKdxYsz4UM69cJz6cEJJVo9aS4GKTkGvz1a4f9Fiu"
+        let subject = Fixtures.claim(Oid4vpHolderTestConstants.sdJwtPayload, "sub")!
+        didAndKeyMetadata.keyMetadata.didUrl = "\(subject)#\(subject.replacingOccurrences(of: "did:key:", with: ""))"
 
         let credential = Credential(
             format: VcFormat.sdJwtVc, payload: Oid4vpHolderTestConstants.sdJwtPayload)
@@ -347,7 +375,108 @@ import Testing
 	}
 }
 
+// The generated fixture bundle's `authRequestJwt` is a DCQL/`dc_api.jwt` request (see
+// `test-fixtures/src/request_object.rs`); this suite exercises the PEX/`presentation_definition`
+// code path instead, and no OID4VP verifier is exposed to the Swift UniFFI bindings (only
+// `Oid4vpHolder` exists), unlike the nodejs wrapper the TypeScript suite uses
+// (`OID4VPVerifierBuilder`). So `MintedOid4vp` mints its own PEX-format request object
+// in-process instead, the same way `equs-test-fixtures`' `jws::sign_compact` does -- see
+// `JwsFixtures.swift`.
+//
+// The bundle's `vcWithStatus`/`statusListJwt` pair *is* usable here, unlike in the TypeScript
+// suite: `MockHttpRouter` (see `MockHttpRouter.swift`) matches routes on URL *path* only, never
+// touching real DNS/sockets, so the bundle's fixed `https://issuer.example/status-list` is
+// reachable simply by registering that path -- no local minting needed for it.
+enum MintedOid4vp {
+    struct AuthRequestFixture: Sendable {
+        let jwt: String
+        let authRequest: AuthorizationRequest
+        let requestUri: String
+        let requestUriForTransactionData: String
+        let requestUriWithMethod: String
+    }
+
+    static let authRequest: Task<AuthRequestFixture, any Swift.Error> = Task {
+        try await mintAuthRequestFixture()
+    }
+}
+
+private func mintAuthRequestFixture() async throws -> MintedOid4vp.AuthRequestFixture {
+    let nonce = "F3vbCyXV4Bkj-RConeiG1iKdA5XuaEHHaycOICINu2M"
+    let state = "1d8b0d93-86e8-4135-87d4-524bb0500bf3"
+    let responseUri = "http://localhost:9001/response"
+
+    let key = try await JwsFixtures.newSigningKey()
+    let clientId = "decentralized_identifier:\(key.did)"
+
+    let transactionDataItem: [String: Any] = [
+        "type": "type1",
+        "credential_ids": ["Identity-1"],
+        "transaction_data_hashes_alg": ["sha-256"],
+    ]
+    let transactionDataEncoded = JwsFixtures.b64url(JwsFixtures.jsonBytes(transactionDataItem))
+
+    let pdObject =
+        try JSONSerialization.jsonObject(
+            with: Oid4vpHolderTestConstants.presentationDefinition.data(using: .utf8)!) as! [String: Any]
+    let presentationDefinitionInner = pdObject["presentation_definition"]!
+
+    let clientMetadataObject =
+        try JSONSerialization.jsonObject(
+            with: Oid4vpHolderTestConstants.clientMetadata.data(using: .utf8)!) as! [String: Any]
+
+    let header: [String: Any] = [
+        "alg": "ES256",
+        "kid": key.didUrl,
+        "typ": "application/oauth-authz-req+jwt",
+    ]
+    let payload: [String: Any] = [
+        "response_type": "vp_token",
+        "state": state,
+        "transaction_data": [transactionDataEncoded],
+        "response_mode": "direct_post",
+        "nonce": nonce,
+        "client_metadata": clientMetadataObject,
+        "client_id": clientId,
+        "presentation_definition": presentationDefinitionInner,
+        "response_uri": responseUri,
+    ]
+
+    let jwt = try await JwsFixtures.sign(header: header, payload: payload, key: key)
+
+    let transactionData = TransactionDataItem(
+        type: "type1", credentialIds: ["Identity-1"], transactionDataHashesAlg: ["sha-256"])
+
+    let authRequest = AuthorizationRequest(
+        clientId: clientId,
+        clientMetadata: Oid4vpHolderTestConstants.clientMetadata,
+        presentationDefinition: Oid4vpHolderTestConstants.presentationDefinition,
+        nonce: nonce,
+        responseType: "vp_token",
+        responseMode: "direct_post",
+        responseUri: responseUri,
+        state: state,
+        transactionData: [transactionData],
+        expectedOrigins: nil
+    )
+
+    let encodedDid = key.did.replacingOccurrences(of: ":", with: "%3A")
+    let requestUri =
+        "openid4vp://?client_id=decentralized_identifier%3A\(encodedDid)&request_uri=http%3A%2F%2Flocalhost%3A9001%2Fauth_request"
+    let requestUriForTransactionData =
+        "openid4vp://?client_id=decentralized_identifier%3A\(encodedDid)&request_uri=http%3A%2F%2Flocalhost%3A9001%2Fauth_request"
+    let requestUriWithMethod =
+        "openid4vp://?client_id=decentralized_identifier:\(key.did)&request_uri_method=post&request_uri=http://localhost:9002/request"
+
+    return MintedOid4vp.AuthRequestFixture(
+        jwt: jwt, authRequest: authRequest, requestUri: requestUri,
+        requestUriForTransactionData: requestUriForTransactionData,
+        requestUriWithMethod: requestUriWithMethod)
+}
+
 enum Oid4vpHolderTestConstants {
+	static let VC_TYPE = "https://issuer.example/credential-schema"
+
 	static let presentationDefinition = """
 		{
 		   "presentation_definition":
@@ -364,7 +493,7 @@ enum Oid4vpHolderTestConstants {
 				                  ],
 				                  "filter":{
 				                     "type":"string",
-				                     "const":"https://credentials.example.com/identity_credential"
+				                     "const":"\(VC_TYPE)"
 				                  },
 				                  "predicate":null,
 				                  "intent_to_retain":false
@@ -464,7 +593,7 @@ static let presentationDefinitionWithFakeConstraints = """
                       ],
                       "filter": {
                         "type": "string",
-                        "const": "https://credentials.example.com/identity_credential"
+                        "const": "\(VC_TYPE)"
                       },
                       "predicate": null,
                       "intent_to_retain": false
@@ -535,24 +664,7 @@ static let presentationDefinitionWithFakeConstraints = """
         """
 
 	static let clientId = "did:key:zDnaeQpNYQD6h18VnagyA1Xbey9hFKA1j5cyhqPHGfaq9txmN"
-	static let requestUri =
-		"openid4vp://?client_id=decentralized_identifier%3Adid%3Akey%3AzDnaeQpNYQD6h18VnagyA1Xbey9hFKA1j5cyhqPHGfaq9txmN&request_uri=http%3A%2F%2Flocalhost%3A9001%2Fauth_request"
-	static let requestUriForTransactionData =
-	    "openid4vp://?client_id=decentralized_identifier%3Adid%3Akey%3AzDnaeQpNYQD6h18VnagyA1Xbey9hFKA1j5cyhqPHGfaq9txmN&request_uri=http%3A%2F%2Flocalhost%3A9001%2Fauth_request"
-	static let requestUriWithMethod =
-		"openid4vp://?client_id=decentralized_identifier:did:key:zDnaeQpNYQD6h18VnagyA1Xbey9hFKA1j5cyhqPHGfaq9txmN&request_uri_method=post&request_uri=http://localhost:9001/request"
-	static let authRequest = AuthorizationRequest(
-		clientId: "decentralized_identifier:did:key:zDnaeQpNYQD6h18VnagyA1Xbey9hFKA1j5cyhqPHGfaq9txmN",
-		clientMetadata: clientMetadata,
-		presentationDefinition: presentationDefinition,
-		nonce: "F3vbCyXV4Bkj-RConeiG1iKdA5XuaEHHaycOICINu2M",
-		responseType: "vp_token",
-		responseMode: "direct_post",
-		responseUri: "http://localhost:9001/response",
-		state: "1d8b0d93-86e8-4135-87d4-524bb0500bf3",
-		transactionData: nil,
-		expectedOrigins: nil
-	)
+
 	static let authRequestWithDirectPostJwt = AuthorizationRequest(
 		clientId: "decentralized_identifier:did:key:zDnaeQpNYQD6h18VnagyA1Xbey9hFKA1j5cyhqPHGfaq9txmN",
 		clientMetadata: clientMetadataForDirectPostJwt,
@@ -592,15 +704,10 @@ static let presentationDefinitionWithFakeConstraints = """
 		expectedOrigins: nil
 	)
 
-	static let authRequestJwt =
-		"eyJhbGciOiJFUzI1NiIsImtpZCI6ImRpZDprZXk6ekRuYWVRcE5ZUUQ2aDE4Vm5hZ3lBMVhiZXk5aEZLQTFqNWN5aHFQSEdmYXE5dHhtTiN6RG5hZVFwTllRRDZoMThWbmFneUExWGJleTloRktBMWo1Y3locVBIR2ZhcTl0eG1OIiwidHlwIjoiYXBwbGljYXRpb24vb2F1dGgtYXV0aHotcmVxK2p3dCJ9.eyJyZXNwb25zZV90eXBlIjoidnBfdG9rZW4iLCJzdGF0ZSI6IjFkOGIwZDkzLTg2ZTgtNDEzNS04N2Q0LTUyNGJiMDUwMGJmMyIsInRyYW5zYWN0aW9uX2RhdGEiOlsiZXlKMGVYQmxJam9pZEhsd1pURWlMQ0pqY21Wa1pXNTBhV0ZzWDJsa2N5STZXeUpKWkdWdWRHbDBlUzB4SWwwc0luUnlZVzV6WVdOMGFXOXVYMlJoZEdGZmFHRnphR1Z6WDJGc1p5STZXeUp6YUdFdE1qVTJJbDE5Il0sInJlc3BvbnNlX21vZGUiOiJkaXJlY3RfcG9zdCIsIm5vbmNlIjoiRjN2YkN5WFY0QmtqLVJDb25laUcxaUtkQTVYdWFFSEhheWNPSUNJTnUyTSIsImNsaWVudF9tZXRhZGF0YSI6eyJ2cF9mb3JtYXRzX3N1cHBvcnRlZCI6eyJkYytzZC1qd3QiOnsic2Qtand0X2FsZ192YWx1ZXMiOlsiRWREU0EiLCJFUzI1NiJdLCJrYi1qd3RfYWxnX3ZhbHVlcyI6WyJFZERTQSIsIkVTMjU2Il19fSwiandrcyI6eyJrZXlzIjpbeyJ1c2UiOiJlbmMiLCJhbGciOiJFUzI1NiIsImtpZCI6IjVRc2RnWFVHdUg6UDI1NjoiLCJrdHkiOiJFQyIsImNydiI6IlAtMjU2IiwieCI6IkNiX3VKaGlQTjdIOUtYZFFONFBRTjB1V0M2TG1Fd0l6NGowM3dYMXJCQXciLCJ5IjoieUVaOC11WDVoR2hDdU45TnJJejRTaE5IMFQxeTRmUXRzNXNpaUNIMFE3dyJ9XX0sImVuY3J5cHRlZF9yZXNwb25zZV9lbmNfdmFsdWVzX3N1cHBvcnRlZCI6WyJBMTI4R0NNIiwiQTEyOENCQy1IUzI1NiJdLCJzdWJqZWN0X3N5bnRheF90eXBlc19zdXBwb3J0ZWQiOlsiZGlkOmtleSJdfSwiY2xpZW50X2lkIjoiZGVjZW50cmFsaXplZF9pZGVudGlmaWVyOmRpZDprZXk6ekRuYWVRcE5ZUUQ2aDE4Vm5hZ3lBMVhiZXk5aEZLQTFqNWN5aHFQSEdmYXE5dHhtTiIsInByZXNlbnRhdGlvbl9kZWZpbml0aW9uIjp7ImlkIjoiMWI5ZDZiY2QtYmJmZC00YjJkLTliNWQtYWI4ZGZiYmQ0YmVkIiwiaW5wdXRfZGVzY3JpcHRvcnMiOlt7ImlkIjoiSWRlbnRpdHktMSIsImNvbnN0cmFpbnRzIjp7ImZpZWxkcyI6W3sicGF0aCI6WyIkLnZjdCJdLCJmaWx0ZXIiOnsidHlwZSI6InN0cmluZyIsImNvbnN0IjoiaHR0cHM6Ly9jcmVkZW50aWFscy5leGFtcGxlLmNvbS9pZGVudGl0eV9jcmVkZW50aWFsIn0sInByZWRpY2F0ZSI6bnVsbCwiaW50ZW50X3RvX3JldGFpbiI6ZmFsc2V9LHsicGF0aCI6WyIkLm5hbWUiXSwib3B0aW9uYWwiOnRydWUsInByZWRpY2F0ZSI6bnVsbCwiaW50ZW50X3RvX3JldGFpbiI6ZmFsc2V9XX0sIm5hbWUiOiJJZGVudGl0eSBWQyIsInB1cnBvc2UiOiJXZSB3YW50IGFuIGlkZW50aXR5IiwiZm9ybWF0Ijp7ImRjK3NkLWp3dCI6eyJzZC1qd3RfYWxnX3ZhbHVlcyI6WyJFUzI1NiIsIkVkRFNBIl0sImtiLWp3dF9hbGdfdmFsdWVzIjpbIkVTMjU2IiwiRWREU0EiXX19fV19LCJyZXNwb25zZV91cmkiOiJodHRwOi8vbG9jYWxob3N0OjkwMDEvcmVzcG9uc2UifQ.27WD-THq-vBdZZNb20WY3VYDRbbws0PTcp6LZM_GFh8Bhpp7tVPZnhu2m362D9E_fWtIwbLQiHzdigP27D9VyA"
-	static let sdJwtPayload =
-		"eyJ0eXAiOiJkYytzZC1qd3QiLCJhbGciOiJFUzI1NiIsImtpZCI6ImRpZDprZXk6ekRuYWVkNnN6c044VDhBWEhxQ044ZXFVOW9mWFpLQ1FDZUhzN2hqdmhVOHdiTmd4OSN6RG5hZWQ2c3pzTjhUOEFYSHFDTjhlcVU5b2ZYWktDUUNlSHM3aGp2aFU4d2JOZ3g5In0.eyJfc2QiOlsiZkZnbndmQ2k4TjZ0dUlYZWtCUU5BWC05eFA0RURkcVhTaXlpMV9NSWdJayJdLCJzdWIiOiJkaWQ6a2V5OnpEbmFlWjFNdUtkeFlzejRVTTY5Y0p6NmNFSkpWbzlhUzRHS1RrR3Z6MWE0ZjlGaXUiLCJ2Y3QiOiJodHRwczovL2NyZWRlbnRpYWxzLmV4YW1wbGUuY29tL2lkZW50aXR5X2NyZWRlbnRpYWwiLCJpYXQiOjE3NjA2MDYwNzUsIl9zZF9hbGciOiJzaGEtMjU2IiwiaXNzIjoiZGlkOmtleTp6RG5hZWQ2c3pzTjhUOEFYSHFDTjhlcVU5b2ZYWktDUUNlSHM3aGp2aFU4d2JOZ3g5IiwiZXhwIjoyMDc1OTY2MDc1LCJuYmYiOjE3NjA2MDYwNzUsImNuZiI6eyJqd2siOnsia3R5IjoiRUMiLCJjcnYiOiJQLTI1NiIsIngiOiJmMnVCbkhIZ1BIZmRHQmtUV3h5SnZETnVJWWhWUkw1eGVzLTBoTXBkWVRZIiwieSI6Ilp2eE1aNDJ0dzVMcDlDV0FUbllWT3Q4bkxhNzJRdEtjUFRENWphay1ZNncifX19.mwwICXVTPrH38BesqXZs3U-Zvc2SvAEo1YLFrukGkK1dRiyavku-ppBOeUPU_E4KKQQhMT2nDVUd_-GR5eN9OA~WyJTa25JV3VLMV9WVlhTQjJFb1l1UlJ3IiwgIm5hbWUiLCAiSm9obiJd~"
+	static let sdJwtPayload = Fixtures.token("vc")
 
-    static let statusList =
-        "eyJ0eXAiOiJzdGF0dXNsaXN0K2p3dCIsImFsZyI6IkVTMjU2Iiwia2lkIjoiZGlkOmtleTp6RG5hZVp4QmJlVFdBYlhOcXlHZER4dDJXRTZjbzNteHU0VllEOHlieXlkdjhkQnh4I3pEbmFlWnhCYmVUV0FiWE5xeUdkRHh0MldFNmNvM214dTRWWUQ4eWJ5eWR2OGRCeHgifQ.eyJzdGF0dXNfbGlzdCI6eyJsc3QiOiJlTnFid013QUJnQUVuUUNVIiwiYml0cyI6Mn0sInN1YiI6Imh0dHA6Ly9sb2NhbGhvc3Q6OTAwMS9zdGF0dXNfbGlzdCIsImlhdCI6MTc2MzAyNTYyMywiX3NkX2FsZyI6InNoYS0yNTYifQ.lCOpC_53MXw4mShUwGtLbxh3Ha-qFNiRohPTZWo2XyCkBVSWn2daxEjSXM048p2DN8LAo61fcgAA69BGvcf5WQ~"
-    static let sdJwtWithStatusPayload =
-        "eyJ0eXAiOiJkYytzZC1qd3QiLCJhbGciOiJFUzI1NiIsImtpZCI6ImRpZDprZXk6ekRuYWVmYUdTd1RmWmsyVXVRV1JqRFQ1Z3J0TEw2RWE1Z3hGcjVBN1hyMzZIUXdtQiN6RG5hZWZhR1N3VGZaazJVdVFXUmpEVDVncnRMTDZFYTVneEZyNUE3WHIzNkhRd21CIn0.eyJfc2QiOlsiTGtNQ3hnT3dKZXVWa2xFUVIxYUl1TDVUSXllRkZiSUhEYXNjZk9EOGlHWSIsInc5WHpEVG5YMFRNOVFFX0NjYUVSaUtpbVV3VkFkWEwxRzZIdU1wZHdkclkiXSwiYWRkcmVzcyI6IjIyMUIgQmFrZXIgU3RyZWV0IiwiaWF0IjoxNzUzMDU0NDQ4LCJkYXRlIjoiMDkvMDkvMTk4OSIsInN1YiI6ImRpZDprZXk6ekRuYWVoVzJXWERnaHBNMTZYRzN5Z2Vja2FSTWJpamJjWG9tZnQ0ZzI2cnlpUlZXUiIsInZjdCI6Imh0dHBzOi8vY3JlZGVudGlhbHMuZXhhbXBsZS5jb20vaWRlbnRpdHlfY3JlZGVudGlhbCIsInN0YXR1cyI6eyJzdGF0dXNfbGlzdCI6eyJ1cmkiOiJodHRwOi8vbG9jYWxob3N0OjkwMDEvc3RhdHVzX2xpc3QiLCJpZHgiOjF9fSwiX3NkX2FsZyI6InNoYS0yNTYiLCJpc3MiOiJkaWQ6a2V5OnpEbmFlZmFHU3dUZlprMlV1UVdSakRUNWdydExMNkVhNWd4RnI1QTdYcjM2SFF3bUIiLCJleHAiOjE3NTMwNTUwNDgsIm5iZiI6MTc1MzA1NDQ0OCwiY25mIjp7Imp3ayI6eyJrdHkiOiJFQyIsImNydiI6IlAtMjU2IiwieCI6Il9hRHExTWE2SFNOUUZrR0F0ZnBpNlR3UnVuMUhlVnpCWWo2R29DcEhmcW8iLCJ5IjoiSTY0VnRmaTNlbzktQTM0TmNNMFJ4cHRsbzhiOGd1RUV3dnd2S2w1YUZlWSJ9fX0.jruSbbpygwgyWcJ2DO0myKlGimKW0n_dsYc5l-hksJqIWZF2Wy5Sf01nZlkUop-_JkN3x9Ct1kCOHes8-Ozdxg~WyJ1eExOVGVtV1FrYzFWTzZMZ3NBcmxRIiwgIm5hbWUiLCAiSm9obiJd~WyIyQ0J1ZENXSTVFSW1haGd6ZGNVMVZ3IiwgInN1cm5hbWUiLCAiRG9lIl0~"
+    static let statusList = Fixtures.token("statusListJwt")
+    static let sdJwtWithStatusPayload = Fixtures.token("vcWithStatus")
 
 	static let responseString = "response=ey"
 }

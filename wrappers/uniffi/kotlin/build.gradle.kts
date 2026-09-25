@@ -19,8 +19,26 @@ dependencies {
     testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
 }
 
+val fixtureBundleFile = layout.buildDirectory.file("fixtures/fixtures.generated.json")
+
+val fixtureGen = tasks.register<Exec>("fixtureGen") {
+    group = "verification"
+    description = "Generates the equs-test-fixtures bundle that EQUS_FIXTURE_BUNDLE points test at."
+    val outFile = fixtureBundleFile.get().asFile
+    doFirst { outFile.parentFile.mkdirs() }
+    workingDir(rootDir.parentFile.parentFile.parentFile)
+    environment("RUSTUP_TOOLCHAIN", "1.97")
+    commandLine(
+        "cargo", "run", "-p", "equs-test-fixtures", "--all-features", "--bin", "fixture_gen",
+        "--", "--out", outFile.absolutePath,
+    )
+    outputs.file(outFile)
+}
+
 tasks.test {
     useJUnitPlatform()
+    dependsOn(fixtureGen)
+    environment("EQUS_FIXTURE_BUNDLE", fixtureBundleFile.get().asFile.absolutePath)
 }
 kotlin {
     jvmToolchain(17)
