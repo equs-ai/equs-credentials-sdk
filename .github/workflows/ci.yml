@@ -99,6 +99,13 @@ jobs:
       cache-key: common-macros-test
       run: cargo test -p equs-common-macros
 
+  test-fixtures-test:
+    needs: [fmt]
+    uses: ./.github/workflows/_job.yml
+    with:
+      cache-key: test-fixtures-test
+      run: cargo test --all-features -p equs-test-fixtures
+
   doc-build:
     needs: [fmt]
     uses: ./.github/workflows/_job.yml
@@ -159,7 +166,7 @@ jobs:
       artifact-path: tarpaulin-report.html
       run: |
         bash .github/scripts/binstall-or-build.sh cargo-tarpaulin
-        cargo tarpaulin --skip-clean --timeout 180 --all-features --exclude-files "src/didcomm/*" --exclude-files "demos/*" --exclude-files "dependencies/one-core/*" --exclude-files "wrappers/*" --fail-under 70 -o Html 2>&1 | tee tarpaulin.log || rc=$?
+        cargo tarpaulin --skip-clean --timeout 180 --all-features --exclude-files "src/didcomm/*" --exclude-files "demos/*" --exclude-files "dependencies/one-core/*" --exclude-files "wrappers/*" --exclude-files "test-fixtures/*" --fail-under 70 -o Html 2>&1 | tee tarpaulin.log || rc=$?
         line=$(grep -oE '[0-9.]+% coverage, [0-9/]+ lines covered' tarpaulin.log | tail -1) || true
         msg="${line:+**$line** — gate: 70%}"
         printf '### Coverage\n\n%s\n' "${msg:-no coverage figure produced}" | tee -a "$GITHUB_STEP_SUMMARY"

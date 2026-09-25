@@ -1480,6 +1480,9 @@ mod tests {
     use serde_json::{Value, json};
     use std::collections::HashMap;
     use std::sync::Arc;
+    use test_fixtures::equs_sdk::inmem::kms::LocalKms as FixtureKms;
+    use test_fixtures::keys::FixtureKey;
+    use test_fixtures::request_object::RequestObject as FixtureRequestObject;
     use url::Url;
 
     #[tokio::test]
@@ -1501,6 +1504,51 @@ mod tests {
             .unwrap();
 
         assert_eq!(request_obj, serde_json::from_str(AUTH_REQUEST).unwrap());
+    }
+
+    #[tokio::test]
+    async fn request_verifier_verifies_a_fixture_request_object() {
+        let fixture_kms = FixtureKms::new();
+        let key = FixtureKey::create_default(&fixture_kms).await.unwrap();
+        let jwt = FixtureRequestObject::builder(&key).build().await.unwrap();
+
+        let aro: AuthorizationRequestObject =
+            ssi::claims::jwt::decode_unverified::<openid4vp::core::object::UntypedObject>(&jwt)
+                .unwrap()
+                .try_into()
+                .unwrap();
+
+        request_verifier(MockHttpClient::new(), LocalKms::new(), InMemVault::new())
+            .await
+            .decentralized_identifier(&aro, jwt)
+            .await
+            .expect("a fixture request object must satisfy the SDK's own verifier");
+    }
+
+    #[tokio::test]
+    #[should_panic(expected = "do not match")]
+    async fn request_verifier_rejects_a_fixture_request_object_with_a_foreign_client_id() {
+        let fixture_kms = FixtureKms::new();
+        let key = FixtureKey::create_default(&fixture_kms).await.unwrap();
+        let other = FixtureKey::create_default(&fixture_kms).await.unwrap();
+
+        let jwt = FixtureRequestObject::builder(&key)
+            .client_id(format!("decentralized_identifier:{}", other.did))
+            .build()
+            .await
+            .unwrap();
+
+        let aro: AuthorizationRequestObject =
+            ssi::claims::jwt::decode_unverified::<openid4vp::core::object::UntypedObject>(&jwt)
+                .unwrap()
+                .try_into()
+                .unwrap();
+
+        request_verifier(MockHttpClient::new(), LocalKms::new(), InMemVault::new())
+            .await
+            .decentralized_identifier(&aro, jwt)
+            .await
+            .unwrap();
     }
 
     #[tokio::test]

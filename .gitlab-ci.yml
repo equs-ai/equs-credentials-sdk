@@ -209,7 +209,7 @@ test-with-coverage-job:
   stage: test
   script:
     - binstall_or_build cargo-tarpaulin "cargo tarpaulin --version"
-    - cargo tarpaulin --skip-clean --timeout 180 --all-features --exclude-files "src/didcomm/*" --exclude-files "demos/*" --exclude-files "dependencies/one-core/*" --exclude-files "wrappers/*" --fail-under 70 -o Html
+    - cargo tarpaulin --skip-clean --timeout 180 --all-features --exclude-files "src/didcomm/*" --exclude-files "demos/*" --exclude-files "dependencies/one-core/*" --exclude-files "wrappers/*" --exclude-files "test-fixtures/*" --fail-under 70 -o Html
   coverage: '/^\d+.\d+% coverage/'
   artifacts:
     paths:
@@ -223,6 +223,15 @@ common-macros-test-job:
   stage: test
   script:
     - cargo test -p equs-common-macros
+  only:
+    - merge_requests
+    - main
+
+test-fixtures-test-job:
+  <<: *rust_job_configs
+  stage: test
+  script:
+    - cargo test --all-features -p equs-test-fixtures
   only:
     - merge_requests
     - main
