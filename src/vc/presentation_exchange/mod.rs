@@ -778,7 +778,8 @@ fn validate_restriction(
 mod tests {
     use super::*;
     use crate::inmem::kms::LocalKms;
-    use crate::vc::core::tests::utils::CredTestCase;
+    use crate::vc::core::tests::utils::{CredTestCase, random_nonce};
+    use futures::executor::block_on;
     use openid4vp::core::{
         credential_format::ClaimFormatDesignation,
         input_descriptor::{ConstraintsField, InputDescriptor},
@@ -786,13 +787,19 @@ mod tests {
     use rstest::rstest;
     use serde_json::{Value, json};
     use std::str::FromStr;
+    use test_fixtures::equs_sdk::inmem::kms::LocalKms as FixtureKms;
+    use test_fixtures::kb_jwt::KbJwt as FixtureKbJwt;
+    use test_fixtures::keys::FixtureKey;
+    use test_fixtures::sd_jwt_vc::SdJwtVc as FixtureSdJwtVc;
 
     #[tokio::test]
     async fn prepare_presentation_response_succeeds_handling_single_case() {
-        let requested_presentation = create_requested_presentation_sdjwtvp(
-            "descriptor_id",
-            sample_sdjwt_presentation().as_str().unwrap(),
-        );
+        // A single token, reused for both the input and the expected output: this
+        // test asserts pass-through, so both sides must come from the same fixture
+        // call rather than two independently-minted (and therefore different) ones.
+        let presentation = sample_sdjwt_presentation();
+        let requested_presentation =
+            create_requested_presentation_sdjwtvp("descriptor_id", presentation.as_str().unwrap());
         let presentation_definition = create_single_presentation_definition();
 
         let result =
@@ -810,7 +817,7 @@ mod tests {
         assert_eq!(
             result.clone(),
             PresentationResponse {
-                presentations: sample_sdjwt_presentation(),
+                presentations: presentation,
                 presentation_submission: PresentationSubmission::new(
                     presentation_submission_id.to_owned(),
                     "presentation_definition_id".to_string(),
@@ -1187,10 +1194,26 @@ mod tests {
         DescriptorMap::new(id.to_string(), format, JsonPath::from_str(path).unwrap())
     }
 
+    /// Mints an SD-JWT VC and a KB-JWT presentation from it. These tests treat the
+    /// result as an opaque string round-tripped through `resolve_presentation_response`
+    /// / `prepare_presentation_response`, so any validly-signed pair works.
+    async fn sample_sdjwt_presentation_string() -> String {
+        let fixture_kms = FixtureKms::new();
+        let issuer = FixtureKey::create_default(&fixture_kms).await.unwrap();
+        let holder = FixtureKey::create_default(&fixture_kms).await.unwrap();
+        let credential = FixtureSdJwtVc::builder(&issuer, &holder)
+            .build()
+            .await
+            .unwrap();
+
+        FixtureKbJwt::builder(&fixture_kms, &holder, credential)
+            .build()
+            .await
+            .unwrap()
+    }
+
     fn sample_sdjwt_presentation() -> Value {
-        json!(
-            "eyJ0eXAiOiJ2YytzZC1qd3QiLCJhbGciOiJFUzI1NiIsImtpZCI6ImRpZDp3ZWI6bG9jYWxob3N0JTNBODA4OCNrZXktMCJ9.eyJfc2QiOlsiWGo2b2gtb2Q3ZWxSYWJsWEY0bWtBV25DUERVTFlMTXdoYWNrZ1hrUW9ERSIsImF0WXFsdlNTUUpKcy1CT0M1bnNHdk1sT2pka2VINkV5X1M4WGhIcVVNZkUiXSwidmN0IjoiaHR0cHM6Ly9jcmVkZW50aWFscy5leGFtcGxlLmNvbS9pZGVudGl0eV9jcmVkZW50aWFsXzIiLCJzdWIiOiJkaWQ6a2V5OnpEbmFlZTY1OWJ5WHU0cnFjdWpqclJMRmk1N005V2ZGOHVBMnVaZkJ3UjdlSGlDRnYiLCJuYmYiOjE3MjkxNzkxMTcsIl9zZF9hbGciOiJzaGEtMjU2IiwiaXNzIjoiZGlkOndlYjpsb2NhbGhvc3QlM0E4MDg4IiwiaWF0IjoxNzI5MTc5MTE3LCJleHAiOjE3NjA3MTUxMTcsImNuZiI6eyJqd2siOnsia3R5IjoiRUMiLCJjcnYiOiJQLTI1NiIsIngiOiJ5dXJteEE0VXBVZVZ2a3oxb0huUktpd2E2U19OVi1DWlpSQnBLakFkU1BVIiwieSI6Imxwb0NQQTUxcXVKTEU0S0xvajVEQTlMcU1sOE1ZUTRTbjdWUkVmeFpJVG8ifX19.bzL9_sEGMw_4LFZ8_NI1-pmgrTZ18rU4QjZR4jrQ8ZFlLplE2Ekgukgpk4sTamSZkHn8Dx1UI1fxFB2qphaSmw~WyI3LXlZS2M3R21yRS1faV9namZJNUFBIiwgImVtYWlsIiwgIkhBUkRDT0RFREBnbWFpbC5jb20iXQ~WyJ6MGJpN0xiRTFPRkdRZmxZMjE2VUxBIiwgInVzZXJuYW1lIiwgIlVTRVIiXQ~eyJ0eXAiOiJrYitqd3QiLCJhbGciOiJFUzI1NiJ9.eyJub25jZSI6InJ3RDFFWmwybGJiT1BJQkZXeEtpNlVpUkhGUVhxdXBPdXlwajZJdkRsX0kiLCJhdWQiOiJkaWQ6a2V5OnpEbmFleWhQTFhGc1VFRktqbTY0ZUUzdzRSOU1XTHFRQmNYRDJOdWRMZjZmWk1EdlEiLCJpYXQiOjE3MjkxNzkxMjMsInNkX2hhc2giOiJ5VDRTNnk1S1F4Q0tkQkc0bzZDaUE0YmxjS0t0Y1Z0Sk1IUWMzaEJTcHY4In0.OLRtLvwoiZ7UeOfMVrh7DzJ2f_MiZhEIcANmrHOARRRqoUos5y85GWHRv9JsPzgSZ8wd5Uwso75ZlydgiTGKxA"
-        )
+        json!(block_on(sample_sdjwt_presentation_string()))
     }
 
     fn sample_ldp_presentation_descriptor_with_enum() -> InputDescriptor {
@@ -1385,49 +1408,22 @@ mod tests {
         .unwrap()
     }
 
+    /// Mints an LDP-VC and the LDP-VP presentation made from it via the SDK's own
+    /// `CredTestCase` helper (json_ld_vc has no `equs-test-fixtures` builder), so this
+    /// drives a real, freshly-signed Data Integrity proof rather than a committed one.
+    async fn sample_ldp_presentation_value() -> Value {
+        let case = CredTestCase::ldp_vc();
+        let kms = LocalKms::new();
+        let (entry, _) = case.generate_vc(&kms, None).await;
+        let nonce = random_nonce().await;
+        let vp = match case.generate_vp(&kms, &entry, Some(nonce)).await {
+            Presentation::LdpVp(vp) => vp,
+            other => panic!("expected an LDP-VC presentation, got {other:?}"),
+        };
+        serde_json::to_value(&vp).unwrap()
+    }
+
     fn sample_ldp_presentation() -> Value {
-        json!({
-            "@context": "https://www.w3.org/2018/credentials/v1",
-            "type": "VerifiablePresentation",
-            "verifiableCredential": {
-              "@context": [
-                "https://www.w3.org/2018/credentials/v1",
-                "https://w3id.org/citizenship/v1"
-              ],
-              "type": [
-                "VerifiableCredential",
-                "PermanentResidentCard"
-              ],
-              "credentialSubject": {
-                "id": "did:key:zDnaed83nMWoHJW6gMLzPy4yMkLzqhSHkjtM3SSh7WRFXLgW6",
-                "givenName": "John",
-                "type": [
-                  "PermanentResident",
-                  "Person"
-                ],
-                "birthDate": "09/09/1989",
-                "familyName": "Doe"
-              },
-              "issuer": "did:web:localhost%3A8088",
-              "issuanceDate": "2024-10-29T18:11:32.699194+05:00",
-              "proof": {
-                "type": "EcdsaSecp256r1Signature2019",
-                "proofPurpose": "assertionMethod",
-                "verificationMethod": "did:web:localhost%3A8088#key-0",
-                "created": "2024-10-29T13:11:32.699344Z",
-                "jws": "eyJhbGciOiJFUzI1NiIsImNyaXQiOlsiYjY0Il0sImI2NCI6ZmFsc2V9..8wvxFlZoq-XbkNasM9pABuIVZb9Cap0SbyF10_2QKdsR47vLqK8VlfIVXA8Se5bm_VsIOrarXk5gZ-irn5nTiw"
-              },
-              "expirationDate": "2029-10-28T18:11:32.699194+05:00"
-            },
-            "proof": {
-              "type": "EcdsaSecp256r1Signature2019",
-              "proofPurpose": "assertionMethod",
-              "verificationMethod": "did:key:zDnaed83nMWoHJW6gMLzPy4yMkLzqhSHkjtM3SSh7WRFXLgW6#zDnaed83nMWoHJW6gMLzPy4yMkLzqhSHkjtM3SSh7WRFXLgW6",
-              "created": "2024-10-29T13:11:50.810659Z",
-              "jws": "eyJhbGciOiJFUzI1NiIsImNyaXQiOlsiYjY0Il0sImI2NCI6ZmFsc2V9..yoLIxlzoxA63refRlh_ZHsF5yMleTZQfK_xs3FMOMxVIxyW7wgS3RaR8w_3F1LxxnavylMeL-ixgqqBqq5WUvg"
-            },
-            "holder": "did:key:zDnaed83nMWoHJW6gMLzPy4yMkLzqhSHkjtM3SSh7WRFXLgW6"
-          }
-        )
+        block_on(sample_ldp_presentation_value())
     }
 }

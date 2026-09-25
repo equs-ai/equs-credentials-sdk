@@ -214,11 +214,21 @@ fn validate_did_match(
 
 #[cfg(test)]
 mod tests {
+    use crate::inmem::kms::LocalKms;
+    use crate::kms::KeyType;
+    use crate::utils::test_utils::{
+        create_did_url_and_key_handle, create_did_url_and_key_handle_kid,
+    };
+    use crate::vc::claims::Claims;
     use crate::vc::core::KeyMetadata;
     use crate::vc::formats::json_ld_vc::VC;
+    use crate::vc::formats::sd_jwt_vc::SdJwtAPI;
     use crate::vc::metadata::{CredentialMetadataProcessor, DefaultMetadataProcessor, Error};
-    use crate::vc::{Credential, VCFormat};
+    use crate::vc::{Credential, VCFormat, VCMetadata};
+    use futures::executor::block_on;
     use rstest::rstest;
+    use serde_json::json;
+    use time::Duration;
 
     struct TestCaseCred {
         pub credential: Credential,
@@ -227,23 +237,72 @@ mod tests {
         pub key_metadata: KeyMetadata,
     }
 
-    // inputs:
-    //
-    // "name": "John",
-    // "surname": "Doe",
-    // "dob": "09/09/1989",
-    // "vct": "https://issuer.net/cred_schema",
-    // "sub": "did:key:z6MkqLdRvJwvhEoakcdyQvL5koo2iHfDnicd5xor567ujpmr",
-    // "iss": "did:key:z6MkhEcbQWUFDpjbrmPZNwSrP88Xta7stHTo4QiA5AmrpHaY",
-    pub const SD_JWT_CRED: &str = "eyJ0eXAiOiJ2YytzZC1qd3QiLCJhbGciOiJFZERTQSIsImtpZCI6ImRpZDprZXk6ejZNa2hFY2JRV1VGRHBqYnJtUFpOd1NyUDg4WHRhN3N0SFRvNFFpQTVBbXJwSGFZIn0.eyJfc2QiOlsiYzZLRXVOWWhIbWY1em0wSC04NVlIc0t0X3h2NTY4VGJlMDJ3dTlQVkhQQSIsImVGd3NtMHBiTzhlM0VBaXJ0NEYyYWZBY2VoSHJtb2xsbEptVnNMdWR3aHciXSwiZG9iIjoiMDkvMDkvMTk4OSIsInZjdCI6Imh0dHBzOi8vaXNzdWVyLm5ldC9jcmVkX3NjaGVtYSIsInN1YiI6ImRpZDprZXk6ejZNa3FMZFJ2Snd2aEVvYWtjZHlRdkw1a29vMmlIZkRuaWNkNXhvcjU2N3VqcG1yIiwibmJmIjoxNzI3MTM0MTgxLCJfc2RfYWxnIjoic2hhLTI1NiIsImlzcyI6ImRpZDprZXk6ejZNa2hFY2JRV1VGRHBqYnJtUFpOd1NyUDg4WHRhN3N0SFRvNFFpQTVBbXJwSGFZIiwiaWF0IjoxNzI3MTM0MTgxLCJleHAiOjE3NTg2NzAxODEsImNuZiI6eyJqd2siOnsia3R5IjoiT0tQIiwiY3J2IjoiRWQyNTUxOSIsIngiOiJvYjJyckVQMldvdkhhSi1yUFBVcmxKTnZuNUV4X0hudEh1bmhRWXE2eVpVIn19fQ.NNeO4SZYVEo5P1pgdCKb3F41Mtb6mNhKtPvASuzW0O1AlfMsUaHRXUohAmkMNWDDh-KriRWhnA5_Fwypg-NpCg~WyJzendxOXg0X3lqVkVfaW8xUjdxNkxRIiwgIm5hbWUiLCAiSm9obiJd~WyJPWEoxWHh4YUxpTmpleHlkWUszY0hnIiwgInN1cm5hbWUiLCAiRG9lIl0~";
-    // inputs:
-    //
-    // "name": "John",
-    // "surname": "Doe",
-    // "dob": "09/09/1989",
-    // "sub": "did:key:z6MkftE2DVebXqAV1Qoa6Dv8whynhAcWBP4vTnAurG4pMVqK",
-    // "iss": "did:key:z6MkpB6C5bwpYTtKDnSKtb1QAmcxXxwTfmgQcz3Um2BpjZQ6",
-    pub const SD_JWT_CRED_NO_VCT: &str = "eyJ0eXAiOiJ2YytzZC1qd3QiLCJhbGciOiJFZERTQSIsImtpZCI6ImRpZDprZXk6ejZNa3BCNkM1YndwWVR0S0RuU0t0YjFRQW1jeFh4d1RmbWdRY3ozVW0yQnBqWlE2In0.eyJfc2QiOlsiaHJTV3dmSkFoc2M4U0xZUXItSU5iQWt3Y1ZBRF9lWURhOHU0LWI1UWN5OCIsIncxcjJtdnNQYk1ndXVjM281TnZNSTVpTzZzdDE2TUlFYndZSzhyYUhBTEEiXSwiZG9iIjoiMDkvMDkvMTk4OSIsInN1YiI6ImRpZDprZXk6ejZNa2Z0RTJEVmViWHFBVjFRb2E2RHY4d2h5bmhBY1dCUDR2VG5BdXJHNHBNVnFLIiwibmJmIjoxNzI3MTM0NDIwLCJfc2RfYWxnIjoic2hhLTI1NiIsImlzcyI6ImRpZDprZXk6ejZNa3BCNkM1YndwWVR0S0RuU0t0YjFRQW1jeFh4d1RmbWdRY3ozVW0yQnBqWlE2IiwiaWF0IjoxNzI3MTM0NDIwLCJleHAiOjE3NTg2NzA0MjAsImNuZiI6eyJqd2siOnsia3R5IjoiT0tQIiwiY3J2IjoiRWQyNTUxOSIsIngiOiJGVURyUDZZN05xZHhxMWlCalR1MzJCQUY1YS1QNEFPcFJGakt5Qk5LM3hJIn19fQ.l08oQxDKhJqkWvZ7g_4AuogB4uheINK_pIPC6yxhrKeFwbq9Xjd2_5MwzEz52VV5vyY3KxjaUHm81MisKIpoCw~WyJwdDJMeVBtR2pSTFpoaThUY0QybHJRIiwgIm5hbWUiLCAiSm9obiJd~WyJBQS05Ums3NnpuM1ZEX2FYR2NhZWhRIiwgInN1cm5hbWUiLCAiRG9lIl0~";
+    /// The credential type used by the minted SD-JWT VC fixtures below.
+    const SD_JWT_VCT: &str = "https://issuer.net/cred_schema";
+
+    /// Mints an EdDSA-signed SD-JWT VC with claims `name`, `surname`, `dob`
+    /// (`name`/`surname` selectively disclosed), mirroring the shape of the
+    /// old committed `SD_JWT_CRED`/`SD_JWT_CRED_NO_VCT` tokens (same header
+    /// `alg`, same claim set).
+    ///
+    /// `include_vct` toggles the negative case: the SDK's own
+    /// `SdJwtAPI::create_vc` always injects `vct`, so producing a credential
+    /// that genuinely lacks it means driving the prepare/sign split directly
+    /// and stripping the claim from the unsigned credential before signing —
+    /// the only way to get a validly-signed SD-JWT VC without a `vct`.
+    async fn sd_jwt_credential(include_vct: bool) -> (String, KeyMetadata) {
+        let kms = LocalKms::new();
+        let (iss_did_url, iss_kh) = create_did_url_and_key_handle(&kms, KeyType::Ed25519).await;
+        let (hld_did_url, hld_kid, hld_kh) =
+            create_did_url_and_key_handle_kid(&kms, KeyType::Ed25519).await;
+
+        let claims: Claims = json!({
+            "name": "John",
+            "surname": "Doe",
+            "dob": "09/09/1989",
+        })
+        .try_into()
+        .unwrap();
+
+        let vc_meta = VCMetadata {
+            vct: SD_JWT_VCT.to_string(),
+            lifetime: Some(Duration::days(365)),
+            disclosures: vec!["$.name".to_string(), "$.surname".to_string()],
+            credential_status: None,
+        };
+
+        let mut unsigned = SdJwtAPI::prepare_credential(
+            claims,
+            &iss_did_url,
+            &hld_did_url,
+            &hld_kh,
+            &vc_meta,
+            String::new(),
+        )
+        .unwrap();
+
+        if !include_vct {
+            unsigned.claims.remove("vct");
+        }
+
+        let credential = SdJwtAPI::sign_credential(unsigned, iss_kh).await.unwrap();
+
+        (
+            credential,
+            KeyMetadata {
+                kid: hld_kid,
+                did_url: hld_did_url.to_string(),
+            },
+        )
+    }
+
+    fn sd_jwt_cred_with_vct() -> (String, KeyMetadata) {
+        block_on(sd_jwt_credential(true))
+    }
+
+    fn sd_jwt_cred_without_vct() -> String {
+        block_on(sd_jwt_credential(false)).0
+    }
 
     pub const LDP_VC_CRED: &str = r###"{
             "@context": "https://www.w3.org/2018/credentials/v1",
@@ -304,7 +363,7 @@ mod tests {
             kid: "12345".to_string(),
         };
 
-        let invalid_cred = Credential::SdJwt(SD_JWT_CRED_NO_VCT.into());
+        let invalid_cred = Credential::SdJwt(sd_jwt_cred_without_vct());
         let res = DefaultMetadataProcessor::resolve_metadata(&invalid_cred, key_metadata.clone());
 
         assert!(matches!(res.err(), Some(Error::Resolving { .. })));
@@ -312,7 +371,8 @@ mod tests {
 
     #[test]
     fn resolve_sd_jwt_cred_fields() {
-        let credential = Credential::SdJwt(SD_JWT_CRED.into());
+        let (credential, _) = sd_jwt_cred_with_vct();
+        let credential = Credential::SdJwt(credential);
         let mut fields = DefaultMetadataProcessor::resolve_fields(&credential).unwrap();
 
         fields.sort();
@@ -359,14 +419,12 @@ mod tests {
     }
 
     fn sd_jwt_cred() -> TestCaseCred {
+        let (credential, key_metadata) = sd_jwt_cred_with_vct();
         TestCaseCred {
-            credential: Credential::SdJwt(SD_JWT_CRED.to_owned()),
-            type_: "https://issuer.net/cred_schema".to_owned(),
+            credential: Credential::SdJwt(credential),
+            type_: SD_JWT_VCT.to_owned(),
             format: VCFormat::SdJwtVc,
-            key_metadata: KeyMetadata{
-                did_url: "did:key:z6MkqLdRvJwvhEoakcdyQvL5koo2iHfDnicd5xor567ujpmr#z6MkqLdRvJwvhEoakcdyQvL5koo2iHfDnicd5xor567ujpmr".to_owned(),
-                kid: "12345".to_string(),
-            },
+            key_metadata,
         }
     }
 
