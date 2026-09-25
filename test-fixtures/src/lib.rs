@@ -64,6 +64,7 @@ pub mod request_object;
 pub mod sd_jwt_vc;
 pub mod status_list;
 pub mod vp_token;
+pub mod x509;
 
 #[cfg(feature = "delegate-sd-jwt")]
 pub mod dsd_jwt;
