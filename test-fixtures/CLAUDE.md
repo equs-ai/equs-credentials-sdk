@@ -20,8 +20,10 @@ and `tests/utils/fixtures/` mdoc blobs already show what that costs.
 | `src/claims.rs` | Shared claim defaults (`DEFAULT_AUDIENCE`, `DEFAULT_NONCE`, …) and `now()` / `from_now()` |
 | `src/jws.rs` | `sign_compact` / `sign_compact_with_header` — compact JWS assembly over `crypto::Signer` |
 | `src/http.rs` | `StaticHttpClient` — URL-keyed `HttpClient` stub; `404` for anything unregistered |
+| `src/access_token.rs` | `AccessToken` — OAuth 2.0 bearer access token (`typ: JWT`); signed ES256 since `LocalKms` has no RSA, so tests assert on claims rather than `alg` |
 | `src/pop.rs` | `ProofOfPossession` — OID4VCI `openid4vci-proof+jwt` |
 | `src/sd_jwt_vc.rs` | `SdJwtVc` — issuer-signed SD-JWT VC, via `VCFormatsSdJwtAPI::create_vc` |
+| `src/x509.rs` | `X509Chain` — self-signed P-256 leaf certificate (via `rcgen`) certifying a `FixtureKey`, plus `sign_sd_jwt_vc` to mint the SD-JWT VC that carries it in `x5c` |
 | `src/kb_jwt.rs` | `KbJwt` — SD-JWT VP with a `kb+jwt`, via `vc::core::HolderService::create_presentation` |
 | `src/dsd_jwt.rs` | `DsdJwt` — delegation grant, via `HolderService::create_delegated_credential`; feature `delegate-sd-jwt` |
 | `src/status_list.rs` | `StatusListToken` — `statuslist+jwt`, via `StatusListJwt::create_status_list` |
@@ -42,7 +44,7 @@ and `tests/utils/fixtures/` mdoc blobs already show what that costs.
 
 ## Dependencies
 - Depends on: `equs-credentials-sdk` (path, `in-memory`), `base64`, `serde_json`, `async-trait`,
-  `snafu`; `tokio` (dev).
+  `snafu`, `rcgen` (`X509Chain`'s self-signed certificates); `tokio` (dev).
 - Used by: `equs-credentials-sdk` `[dev-dependencies]` — a dev-dependency cycle, which Cargo permits
   and which `cargo package` strips from the published manifest. Also a normal `[dev-dependencies]`
   entry of `tests/` (the E2E integration crate, which links the SDK once and needs no

@@ -4,6 +4,9 @@
 > Add a one-line entry if a new `claude/*.md` is added; remove if deleted.
 > When a source file, directory, or domain changes, follow the update protocol in `CONTEXT_PLAN.md`.
 
+_Last updated: 2026-09-25 — added `scripts/scan-embedded-tokens.py` (the embedded-token/private-key
+scan gate) and the `test-fixtures` `access_token.rs`/`x509.rs` builders; see `claude/tests.md`._
+
 ## How to navigate
 
 Start here → pick a domain → follow the link to `claude/<domain>.md` →
@@ -54,7 +57,7 @@ equs-credentials-sdk/
 ├── tests/
 │   ├── e2e/              # End-to-end test suite
 │   └── utils/            # Shared test fixtures + helpers
-├── scripts/              # Release-pipeline scripts
+├── scripts/              # Release-pipeline scripts + scan-embedded-tokens.py
 ├── demos/                # Example applications
 ├── claude/               # Domain summary files (Phase 3)
 └── context.claude.md     # ← you are here

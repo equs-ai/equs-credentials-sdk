@@ -1,7 +1,7 @@
 # scripts/
 
-Scripts called by the release pipelines. GitHub Actions has its own set under
-`.github/scripts/`.
+Scripts called by the release pipelines, plus the embedded-token security gate.
+GitHub Actions has its own set under `.github/scripts/`.
 
 | File | Purpose |
 |------|---------|
@@ -9,6 +9,7 @@ Scripts called by the release pipelines. GitHub Actions has its own set under
 | `npm_release_manifest.sh` | Renders `release-manifest.yaml` for one npm release. |
 | `maven_release_manifest.sh` | Renders `release-manifest.yaml` for one Maven release. |
 | `file_release_manifest.sh` | Renders `release-manifest.yaml` for a release shipped as plain files. |
+| `scan-embedded-tokens.py` | Walks `git ls-files`, flags committed JWT/JWE strings and private key material, exits non-zero on a `--fail-on` path hit. |
 
 ## release_manifest.sh
 
@@ -79,3 +80,25 @@ entry per file, named by its basename. Called by the `manifest` job of
 sha256 of the file the job attaches to the release; a missing file is emitted
 with `digest: null` and a warning. `RELEASE_VERSION` sets `release:` and every
 entry's `version:`.
+
+## scan-embedded-tokens.py
+
+`scan-embedded-tokens.py [--fail-on PATH…]` — no arguments just reports; one or
+more `--fail-on` paths make it a gate that exits `1` if any token or private
+key falls under them. Python 3 standard library only, no new dependency.
+
+It matches `eyJ…` runs shaped like a compact JWS/JWE, base64url-decodes the
+first segment and requires an `alg` or `enc` member before counting it as a
+real token (not just base64-ish text), then classifies it by its `exp` claim
+(live / expired / no-exp / encrypted). Separately it flags a JSON object
+carrying both `kty` and `d` (a private JWK) and any PEM `-----BEGIN … PRIVATE
+KEY-----` block. A Rust `\`-continued string literal is collapsed before
+matching, so a token wrapped across physical lines is not missed.
+
+`demos/multi-thread/src/main.rs` and `demos/oid4vc/issuer/src/main.rs` each
+keep one accepted exception — see `claude/tests.md` — so `demos/` is never
+passed to `--fail-on`, but the scan still reports both hits, tagged as known
+exceptions, instead of silently skipping the directory.
+
+See `claude/tests.md` for the current clean/dirty state of each part of the
+tree.

@@ -34,6 +34,18 @@ implementations, covering scenarios that unit tests within individual modules ca
 - Tokens are built with `equs-test-fixtures`, not committed as strings. A signature-bound fixture
   cannot be edited without re-signing it — the mdoc blobs in `tests/utils/fixtures/` are the
   cautionary case.
+- `scripts/scan-embedded-tokens.py` makes that claim checkable: it walks `git ls-files`, matches
+  compact JWS/JWE serializations, base64url-decodes each header to confirm it (`alg`/`enc`) rather
+  than regex-guess, and separately flags a JWK carrying a `d` member or a PEM `PRIVATE KEY` block.
+  `--fail-on PATH…` exits non-zero if a hit falls under one of the given paths.
+- `tests/` and `plugins/askar/src` are clean (`python3 scripts/scan-embedded-tokens.py --fail-on
+  tests/ plugins/askar/src` exits 0). `src/` is not: `src/vc/formats/sd_jwt_vc.rs`,
+  `src/vc/oid4vci/holder.rs` and `src/vc/status_formats/status_list_token_jwt.rs` still hold 11
+  committed SD-JWT/status-list tokens — outside the 2026-09-25 token-migration plan's task list, so
+  Phase A did not close them. `demos/multi-thread/src/main.rs` and `demos/oid4vc/issuer/src/main.rs`
+  each keep one accepted exception (expired localhost Keycloak token `validate_scope` reads via
+  `decode_unverified`); wrapper suites (TS/Kotlin/Swift, including `plugins/askar/wrappers/nodejs`)
+  still hold their committed tokens pending Phase B.
 - `cargo test --all-features` at the workspace root tests the root package only, so
   `equs-test-fixtures` runs in its own CI job (`test-fixtures-test`, `test-fixtures-test-job`).
 - SDK types do not unify across the fixture crate's dev-dependency cycle: a `src/` unit test builds
