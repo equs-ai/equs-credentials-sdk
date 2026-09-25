@@ -902,8 +902,9 @@ mod tests {
     use crate::http::MockHttpClient;
     use crate::inmem::kms::LocalKms;
     use crate::inmem::vault::InMemVault;
+    use crate::kms::KeyType;
     use crate::utils::http::test::{mock_http_once, mock_http_req_predicate};
-    use crate::utils::test_utils::create_did_and_key_metadata;
+    use crate::utils::test_utils::{create_did_and_key_metadata, create_did_url_and_key_handle};
     use crate::vault::{MockVault, Vault};
     use crate::vc::VCFormat;
     use crate::vc::core::ProofOfPossessionMetadata;
@@ -1695,18 +1696,27 @@ mod tests {
     //noinspection HttpUrlsUsage
     #[rstest]
     #[case::ldpvc(ISSUER_URL, Credential::LdpVc(ldp_vc_credential()))]
-    #[case::sdjwt_iss_oid4vci(ISSUER_URL, Credential::SdJwt(SD_JWT_CREDENTIAL_ISS_OID4VCI.to_owned()
-    ))]
-    #[case::sdjwt_iss_did(ISSUER_URL, Credential::SdJwt(SD_JWT_CREDENTIAL_ISS_DID.to_owned()))]
+    #[case::sdjwt_iss_oid4vci(
+        ISSUER_URL,
+        sd_jwt_credential_with_iss(Some("https://issuer-backend.com")).await
+    )]
+    #[case::sdjwt_iss_did(
+        ISSUER_URL,
+        sd_jwt_credential_with_iss(Some("did:web:issuer-backend.com/ignored-path")).await
+    )]
     #[should_panic(
         expected = "Credential contains issuer identifier notadid:web:issuer-backend.com"
     )]
-    #[case::sdjwt_iss_other_invalid(ISSUER_URL, Credential::SdJwt(SD_JWT_CREDENTIAL_ISS_OTHER_INVALID.to_owned()
-    ))]
-    #[case::sdjwt_iss_other_valid("http://issuer-backend.com", Credential::SdJwt(SD_JWT_CREDENTIAL_ISS_OTHER_VALID.to_owned()
-    ))]
+    #[case::sdjwt_iss_other_invalid(
+        ISSUER_URL,
+        sd_jwt_credential_with_iss(Some("notadid:web:issuer-backend.com")).await
+    )]
+    #[case::sdjwt_iss_other_valid(
+        "http://issuer-backend.com",
+        sd_jwt_credential_with_iss(Some("http://issuer-backend.com")).await
+    )]
     #[should_panic(expected = "Credential does not contain issuer identifier")]
-    #[case::sdjwt_iss_none(ISSUER_URL, Credential::SdJwt(SD_JWT_CREDENTIAL_ISS_NONE.to_owned()))]
+    #[case::sdjwt_iss_none(ISSUER_URL, sd_jwt_credential_with_iss(None).await)]
     #[should_panic(expected = "Unsupported format: jwt_vc_json")]
     #[case::unsupported_format_jwt_vc_json(ISSUER_URL, Credential::JwtVcJson("MOCK_CREDENTIAL".to_owned()
     ))]
@@ -1776,31 +1786,49 @@ mod tests {
             .unwrap()
     }
 
-    // Payload: { "iss": "https://issuer-backend.com", "id": "1234" }
-    const SD_JWT_CREDENTIAL_ISS_OID4VCI: &str = "eyJ0eXAiOiJzZCtqd3QiLCJhbGciOiJFUzI1NiJ9\
-    .eyJpc3MiOiJodHRwczovL2lzc3Vlci1iYWNrZW5kLmNvbSIsImlkIjoiMTIzNCIsIl9zZF9hbGciOiJTSEEtMjU2In0\
-    .-ZfBXDOJhhpA448q5oxGUl7VcxZAYFg9C0gYTbAweDKBxsB2KNrBIh9UK3hAJsSizBRdA0wKnu_Tn5ZLyW-Ouw~";
+    /// Mints an SD-JWT VC through `SdJwtAPI::prepare_credential`/`sign_credential`
+    /// (the split `create_vc` uses internally), then overwrites `iss` on the
+    /// unsigned credential before signing — the SDK's own `create_vc` always
+    /// stamps the signer's DID into `iss`, so this is the only way to get a
+    /// validly-signed SD-JWT VC whose `iss` is a bare URL, a DID with a path
+    /// component, a non-DID string, or absent entirely. `iss: None` removes
+    /// the claim. Mirrors the old committed `SD_JWT_CREDENTIAL_ISS_*`
+    /// fixtures' `iss` values exactly, so `verify_credential_issuer_identifier`
+    /// asserts the same matches and panics it always did.
+    async fn sd_jwt_credential_with_iss(iss: Option<&str>) -> Credential {
+        let kms = LocalKms::new();
+        let (hld_did_url, hld_kh) = create_did_url_and_key_handle(&kms, KeyType::P256).await;
+        let (iss_did_url, iss_kh) = create_did_url_and_key_handle(&kms, KeyType::P256).await;
 
-    // Payload: { "iss": "did:web:issuer-backend.com/ignored-path", "id": "1234" }
-    const SD_JWT_CREDENTIAL_ISS_DID: &str = "eyJ0eXAiOiJzZCtqd3QiLCJhbGciOiJFUzI1NiJ9\
-    .eyJpc3MiOiJkaWQ6d2ViOmlzc3Vlci1iYWNrZW5kLmNvbS9pZ25vcmVkLXBhdGgiLCJpZCI6IjEyMzQiLCJfc2RfYWxnIjoiU0hBLTI1NiJ9\
-    .3peUWSXL3NZL6Ye2c7apa_czw4SCwUMpVk0ryxK4F_xr_SwS14AIz9SqrN3o1ZGC5goT1vVDmEczI9kMmHCCmA~";
+        let claims: crate::vc::claims::Claims = json!({ "id": "1234" }).try_into().unwrap();
 
-    // Payload: { "iss": "notadid:web:issuer-backend.com", "id": "1234" }
-    const SD_JWT_CREDENTIAL_ISS_OTHER_INVALID: &str = "eyJ0eXAiOiJzZCtqd3QiLCJhbGciOiJFUzI1NiJ9\
-    .eyJpc3MiOiJub3RhZGlkOndlYjppc3N1ZXItYmFja2VuZC5jb20iLCJpZCI6IjEyMzQiLCJfc2RfYWxnIjoiU0hBLTI1NiJ9\
-    .GcD3futV-qHM0WsTPxxVk_DCyAOlcjUAGXbikeSM7AkWgyk7QDVqS5Z_FUpQ0tdrzaG8lAzlNJMrUAf4FKkk9A~";
+        let mut unsigned = SdJwtAPI::prepare_credential(
+            claims,
+            &iss_did_url,
+            &hld_did_url,
+            &hld_kh,
+            &crate::vc::formats::sd_jwt_vc::VCMetadata {
+                vct: "https://issuer.net/cred_schema".to_owned(),
+                lifetime: None,
+                disclosures: vec![],
+                credential_status: None,
+            },
+            String::new(),
+        )
+        .unwrap();
 
-    // Payload: { "iss": "http://issuer-backend.com", "id": "1234" }
-    // Note that Credential Issuer Identifier is URL with https protocol.
-    const SD_JWT_CREDENTIAL_ISS_OTHER_VALID: &str = "eyJ0eXAiOiJzZCtqd3QiLCJhbGciOiJFUzI1NiJ9\
-    .eyJpc3MiOiJodHRwOi8vaXNzdWVyLWJhY2tlbmQuY29tIiwiaWQiOiIxMjM0In0\
-    .8n5Y2hzrT3nKuqtJ6ofppryjOAHVCKvvcEAv3NUrsPEIEFNTQe0lShRdcJqIeJjaJEu9FF4kmYru9QXfgB5-ug~";
+        match iss {
+            Some(value) => {
+                unsigned.claims.insert("iss".to_string(), json!(value));
+            }
+            None => {
+                unsigned.claims.remove("iss");
+            }
+        }
 
-    // Payload: { "id": "1234" }
-    const SD_JWT_CREDENTIAL_ISS_NONE: &str = "eyJ0eXAiOiJzZCtqd3QiLCJhbGciOiJFUzI1NiJ9\
-    .eyJpZCI6IjEyMzQiLCJfc2RfYWxnIjoiU0hBLTI1NiJ9\
-    .J1Lu6onzdyVbPM2QQg9mFUShMCI-4VPBe4rSss0O8g3H0Bc9klzB1eVdHjbEKxkB79Vt3fjg83UM-Ya4tXySzg~";
+        let signed = SdJwtAPI::sign_credential(unsigned, iss_kh).await.unwrap();
+        Credential::SdJwt(signed)
+    }
 
     fn ldp_vc_credential() -> VC {
         serde_json::from_str(

@@ -5,7 +5,10 @@
 > When a source file, directory, or domain changes, follow the update protocol in `CONTEXT_PLAN.md`.
 
 _Last updated: 2026-09-25 — added `scripts/scan-embedded-tokens.py` (the embedded-token/private-key
-scan gate) and the `test-fixtures` `access_token.rs`/`x509.rs` builders; see `claude/tests.md`._
+scan gate) and the `test-fixtures` `access_token.rs`/`x509.rs` builders; see `claude/tests.md`.
+Migrated the 11 backslash-line-continued tokens in `src/vc/formats/sd_jwt_vc.rs`,
+`src/vc/oid4vci/holder.rs` and `src/vc/status_formats/status_list_token_jwt.rs` the scan's
+single-line regex had missed — `src/` is now clean under the gate too._
 
 ## How to navigate
 

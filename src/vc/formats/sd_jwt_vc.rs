@@ -1588,55 +1588,65 @@ mod tests {
         }
     }
 
+    /// Mints an SD-JWT VC via `prepare_credential`/`sign_credential` (the same
+    /// split `create_vc` uses internally), then overwrites the `iss` claim on
+    /// the unsigned credential before signing — the only way to get a validly
+    /// signed SD-JWT VC whose `iss` is not the signer's own DID (a bare URL, a
+    /// non-DID string) or is absent entirely. Mirrors the old committed
+    /// `EXAMPLE_SD_JWT_ISSUER_*` fixtures' `iss` values exactly, so the
+    /// existing expectations do not change.
+    async fn sd_jwt_vc_with_iss(iss: Option<&str>) -> Credential {
+        let kms = LocalKms::new();
+        let (hld_did_url, hld_kh) = create_did_url_and_key_handle(&kms, KeyType::P256).await;
+        let (iss_did_url, iss_kh) = create_did_url_and_key_handle(&kms, KeyType::P256).await;
+
+        let mut unsigned = SdJwtAPI::prepare_credential(
+            sample_claims(),
+            &iss_did_url,
+            &hld_did_url,
+            &hld_kh,
+            &sample_vc_metadata(),
+            String::new(),
+        )
+        .unwrap();
+
+        match iss {
+            Some(value) => {
+                unsigned.claims.insert(ISS_CLAIM.to_string(), json!(value));
+            }
+            None => {
+                unsigned.claims.remove(ISS_CLAIM);
+            }
+        }
+
+        SdJwtAPI::sign_credential(unsigned, iss_kh).await.unwrap()
+    }
+
+    fn sd_jwt_vc_with_iss_blocking(iss: Option<&str>) -> Credential {
+        futures::executor::block_on(sd_jwt_vc_with_iss(iss))
+    }
+
     #[rstest]
     #[case::url(
-        EXAMPLE_SD_JWT_ISSUER_OID4VCI,
+        sd_jwt_vc_with_iss_blocking(Some("https://example.com/oid4vci-issuer")),
         Some(CredentialIssuerIdentifier::OID4VCI(
             IssuerUrl::new("https://example.com/oid4vci-issuer".to_owned()).unwrap())),
     )]
     #[case::did(
-        EXAMPLE_SD_JWT_ISSUER_DID,
+        sd_jwt_vc_with_iss_blocking(Some("did:example:123")),
         Some(CredentialIssuerIdentifier::DID(
             DIDURLBuf::from_str("did:example:123").unwrap())),
     )]
     #[case::other(
-        EXAMPLE_SD_JWT_ISSUER_OTHER,
+        sd_jwt_vc_with_iss_blocking(Some("notadid:example:123")),
         Some(CredentialIssuerIdentifier::Other("notadid:example:123".to_owned())),
     )]
-    #[case::no_iss(EXAMPLE_SD_JWT_ISSUER_NONE, None)]
+    #[case::no_iss(sd_jwt_vc_with_iss_blocking(None), None)]
     fn extract_issuer_identifier(
-        #[case] credential: &str,
+        #[case] credential: Credential,
         #[case] expected: Option<CredentialIssuerIdentifier>,
     ) {
-        let actual = SdJwtAPI::extract_issuer_identifier(&credential.to_owned()).unwrap();
+        let actual = SdJwtAPI::extract_issuer_identifier(&credential).unwrap();
         assert_eq!(expected, actual);
     }
-
-    const EXAMPLE_SD_JWT_ISSUER_OID4VCI: &str = "eyJ0eXAiOiJzZCtqd3QiLCJhbGciOiJFUzI1NiJ9\
-    .eyJpZCI6IjEyMzQiLCJpc3MiOiJodHRwczovL2V4YW1wbGUuY29tL29pZDR2Y2ktaXNzdWVyIiwiX3NkIjpbIkR4ZjFVYU1zREFNaF9qY3Q4QnUzSndGYW1VaW11NTVjeW5YNGp2dzdrSk0iLCJHMFVVREhLY3FhTG1zaHNrSzMzS3RJSktuRmtFcFA4RmxMb09WMl9xZTFnIiwiZXpUU0xKMTc2Ry1lYURGUXFiOXJic2hWWjRuSm45LTU5aVh1azJFVHNhYyJdLCJfc2RfYWxnIjoiU0hBLTI1NiJ9\
-    .m99jWkWFhSGXY8e0Ml6PF_oFHKYsIKIzQP88lkacDyWSTnmDBGT5m7IkxdZ0Y6djeUuqvmYUfFExNnt4CTp3Bw\
-    ~WyJiODM2YWE1NDE0ZGNmNjgzIiwiZmlyc3RuYW1lIiwiSm9obiJd\
-    ~WyJkMTllYjIxZjA3M2Y4Y2JjIiwibGFzdG5hbWUiLCJEb2UiXQ\
-    ~WyI0MTc4N2U1NGNmZGNkNWE3Iiwic3NuIiwiMTIzLTQ1LTY3ODkiXQ~";
-
-    const EXAMPLE_SD_JWT_ISSUER_DID: &str = "eyJ0eXAiOiJzZCtqd3QiLCJhbGciOiJFUzI1NiJ9\
-    .eyJpZCI6IjEyMzQiLCJpc3MiOiJkaWQ6ZXhhbXBsZToxMjMiLCJfc2QiOlsiRnQyNU1fQ3BTX0tCWldoYTJVbm9IeWZrMDVTM2pDOC01Q0tlbm9qQV9GVSIsIlV1MGhDM0VndmRXY3VQem5ONXlVbndfQUYtTkxpeW1hcXY0RXZKeW5ZTnciLCJzWTNDZWlzWkRJMGRkbFJyZndsZHd1ZjUyQ2xGMjUzQTlWZUowWUJ5UGlBIl0sIl9zZF9hbGciOiJTSEEtMjU2In0\
-    .ztkiOiV1KJKkQb8T2lhDo-A9kTaXWT7o-jbUlWmxH7f7q-3bDzhKWawpjyk7ylZehWgUIiyRkxneLdPFxVKJOA\
-    ~WyJmZmVmZmY0ZDI1NDdlYjY4IiwiZmlyc3RuYW1lIiwiSm9obiJd\
-    ~WyI3OWU2ZjJhODZkOTZhZmZkIiwibGFzdG5hbWUiLCJEb2UiXQ\
-    ~WyIzMzY3MDdmOGMzM2IyOGYyIiwic3NuIiwiMTIzLTQ1LTY3ODkiXQ~";
-
-    const EXAMPLE_SD_JWT_ISSUER_OTHER: &str = "eyJ0eXAiOiJzZCtqd3QiLCJhbGciOiJFUzI1NiJ9\
-    .eyJpZCI6IjEyMzQiLCJpc3MiOiJub3RhZGlkOmV4YW1wbGU6MTIzIiwiX3NkIjpbIkRYRUZDZmdpZk5HUDZyTHlCSXVXbnpTdFptSVhEeGdKQ1BxV0NKbkZ5MmciLCJPWmc3dlFTbTNBSDdrVUlTeTd2aG11LWh6MFdWb2NHQVo0WlJLU2pyeGFjIiwiaHRnZk1Wb2Qza0F4NVhHX1JWZFlBMVdoNlRUR0xYaHhkSnBMWTNqdGRrOCJdLCJfc2RfYWxnIjoiU0hBLTI1NiJ9\
-    .RLjK49RzHGR6jW1pM0hqMK_JUvlELUOfhnIpCXbDjzID9lxTPL629uJn3dHbv7oiuWlyy-669Ozp_5qt3xCh0w\
-    ~WyJmNzMxNDI5NWU1N2IwN2M3IiwiZmlyc3RuYW1lIiwiSm9obiJd\
-    ~WyI1ZTY2NzNjN2YyZGJkNDRjIiwibGFzdG5hbWUiLCJEb2UiXQ\
-    ~WyI2NDg4ZjJmNDA5ODBjOTIzIiwic3NuIiwiMTIzLTQ1LTY3ODkiXQ~";
-
-    const EXAMPLE_SD_JWT_ISSUER_NONE: &str = "eyJ0eXAiOiJzZCtqd3QiLCJhbGciOiJFUzI1NiJ9\
-    .eyJpZCI6IjEyMzQiLCJfc2QiOlsiLWpUTDVPeGFrdHRGSzIyWUF4cTZMVXdvWmZCTFllb3JEQkxnVXVZN0JwayIsImNocWNFN0xUeC13TjVtUUlkaHB5aUFLcVhZcUJHVHhmWnVDMjFzOGJmdEEiLCJrM2twMjFvTUc2RXJnRzAzZTdTakc0OGhkWXBDcDJTM2MyQ3VWVmdIVWZvIl0sIl9zZF9hbGciOiJTSEEtMjU2In0\
-    .wutZuchFO2sh0jQ6ACdf0gg7R4mAXvSrNNScKwkrQZYO0lFPlO9GEiBOXMVKoxLyat1bycUDXezgM-ENVBCB0A\
-    ~WyJlZGUzYjU4OTFjYmJkYTRiIiwiZmlyc3RuYW1lIiwiSm9obiJd\
-    ~WyJhZTEzMDRjNWFmZGVkOTZhIiwibGFzdG5hbWUiLCJEb2UiXQ\
-    ~WyJlYmZiNDhiM2VjZWM1ZDM4Iiwic3NuIiwiMTIzLTQ1LTY3ODkiXQ~";
 }
