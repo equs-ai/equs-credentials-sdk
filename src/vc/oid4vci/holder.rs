@@ -910,11 +910,11 @@ mod tests {
     use crate::vc::formats::json_ld_vc::VC;
     use crate::vc::oid4vci::protocol_error::TokenEndpointError;
     use crate::vc::oid4vci::tests::fixtures::{
-        ACCESS_TOKEN, AUTH_URL, CRED_DEF_ID, ISSUER_URL, NOTIFICATION_ID, REQ_URI_CODE, SCOPE,
-        SD_JWT_CREDS, SampleIssuerMetadata, fake_access_token, sample_access_token,
+        AUTH_URL, CRED_DEF_ID, ISSUER_URL, NOTIFICATION_ID, REQ_URI_CODE, SCOPE,
+        SampleIssuerMetadata, access_token, fake_access_token, sample_access_token,
         sample_authorization_metadata, sample_batch_cred_response, sample_cred_response,
         sample_credential_definition, sample_offer_with_auth_code_grant,
-        sample_offer_with_pre_auth_code_grant,
+        sample_offer_with_pre_auth_code_grant, sd_jwt_creds,
     };
     use crate::vc::oid4vci::{
         CredentialRequest, CredentialResult, Holder, Notification, protocol_error,
@@ -930,6 +930,7 @@ mod tests {
     #[tokio::test]
     async fn authorization_code_flow_with_scope_works_correctly() {
         let mut http_client = MockHttpClient::new();
+        let token = access_token(Some(SCOPE)).await;
 
         mock_http_once(
             &mut http_client,
@@ -946,7 +947,7 @@ mod tests {
             &mut http_client,
             Method::POST,
             access_token_endpoint(),
-            sample_access_token_response(),
+            sample_access_token_response(&token),
             StatusCode::OK,
         );
 
@@ -970,7 +971,7 @@ mod tests {
 
         assert_eq!(
             serde_json::to_value(&token_response).unwrap(),
-            sample_access_token_response()
+            sample_access_token_response(&token)
         );
     }
 
@@ -1010,6 +1011,7 @@ mod tests {
         #[case] token_req_body: &str,
     ) {
         let mut http_client = MockHttpClient::new();
+        let token = access_token(Some(SCOPE)).await;
 
         if code == "auth_code" {
             mock_http_once(
@@ -1041,7 +1043,7 @@ mod tests {
                 assert!(req_body.contains(&token_req_body));
                 true
             },
-            sample_access_token_response(),
+            sample_access_token_response(&token),
             StatusCode::OK,
             1.into(),
         );
@@ -1070,7 +1072,7 @@ mod tests {
 
         assert_eq!(
             serde_json::to_value(&token_response).unwrap(),
-            sample_access_token_response()
+            sample_access_token_response(&token)
         );
     }
 
@@ -1186,6 +1188,8 @@ mod tests {
     #[tokio::test]
     async fn holder_requests_credentials_correctly() {
         let mut http_client = MockHttpClient::new();
+        let sd_jwt = sd_jwt_creds().await;
+        let token = sample_access_token().await;
 
         // validate that CredentialRequest is formed correctly and sent to an Issuer
         mock_http_req_predicate(
@@ -1197,7 +1201,7 @@ mod tests {
                     .expect("invalid credential request");
                 true
             },
-            sample_cred_response(),
+            sample_cred_response(&sd_jwt),
             StatusCode::OK,
             1.into(),
         );
@@ -1224,7 +1228,7 @@ mod tests {
         .await;
 
         let _ = holder
-            .request_credential(&sample_access_token(), CRED_DEF_ID, &[key_metadata])
+            .request_credential(&token, CRED_DEF_ID, &[key_metadata])
             .await
             .unwrap();
     }
@@ -1232,12 +1236,13 @@ mod tests {
     #[tokio::test]
     async fn holder_receives_issued_credential_correctly() {
         let mut http_client = MockHttpClient::new();
+        let sd_jwt = sd_jwt_creds().await;
 
         mock_http_once(
             &mut http_client,
             Method::POST,
             credential_endpoint(),
-            sample_cred_response(),
+            sample_cred_response(&sd_jwt),
             StatusCode::OK,
         );
 
@@ -1263,7 +1268,7 @@ mod tests {
         .await;
 
         let response = holder
-            .request_credential(&sample_access_token(), CRED_DEF_ID, &[key_metadata])
+            .request_credential(&sample_access_token().await, CRED_DEF_ID, &[key_metadata])
             .await
             .unwrap();
 
@@ -1279,7 +1284,7 @@ mod tests {
 
         match &credentials[0] {
             Credential::SdJwt(cred) => {
-                assert_eq!(cred, SD_JWT_CREDS);
+                assert_eq!(cred, &sd_jwt);
                 assert_eq!(notification_id, NOTIFICATION_ID);
             }
             _ => {
@@ -1301,7 +1306,11 @@ mod tests {
         SampleIssuerMetadata::with_sdjwtvc_conf(),
         json![
         {
-            "credentials": [{"credential": SD_JWT_CREDS.to_string()}],
+            // `#[case]` values must be built synchronously, so this placeholder
+            // is swapped for a real, freshly signed SD-JWT VC inside the async
+            // test body below before it becomes the mocked response body — the
+            // holder verifies every credential it receives.
+            "credentials": [{"credential": "placeholder-sd-jwt-credential".to_string()}],
             "notification_id": Some("notification_id".to_string()),
         }],
     )]
@@ -1317,8 +1326,21 @@ mod tests {
     #[tokio::test]
     async fn holder_handles_deferred_credential_flow(
         #[case] issuer_metadata: IssuerMetadata,
-        #[case] expected_response: serde_json::Value,
+        #[case] mut expected_response: serde_json::Value,
     ) {
+        // `request_credential_inner` verifies every returned credential, so the
+        // "positive_credential" case's placeholder is swapped here for a real,
+        // signature-valid SD-JWT VC before it becomes the mocked response body.
+        if let Some(credentials) = expected_response
+            .get_mut("credentials")
+            .and_then(|v| v.as_array_mut())
+        {
+            let sd_jwt = sd_jwt_creds().await;
+            for credential in credentials {
+                credential["credential"] = json!(sd_jwt);
+            }
+        }
+
         let oid4vci_response =
             serde_json::from_value::<Response<CoreProfilesCredentialResponse>>(expected_response)
                 .unwrap();
@@ -1342,7 +1364,7 @@ mod tests {
         .await;
 
         let response = holder
-            .request_deferred_credential(&sample_access_token(), "transaction_id")
+            .request_deferred_credential(&sample_access_token().await, "transaction_id")
             .await
             .unwrap()
             .data;
@@ -1387,12 +1409,13 @@ mod tests {
     #[tokio::test]
     async fn holder_requests_multiple_credentials_correctly() {
         let mut http_client = MockHttpClient::new();
+        let sd_jwt = sd_jwt_creds().await;
 
         mock_http_once(
             &mut http_client,
             Method::POST,
             credential_endpoint(),
-            sample_batch_cred_response(),
+            sample_batch_cred_response(&sd_jwt),
             StatusCode::OK,
         );
 
@@ -1420,7 +1443,7 @@ mod tests {
 
         let response = holder
             .request_credential(
-                &sample_access_token(),
+                &sample_access_token().await,
                 CRED_DEF_ID,
                 &[key_metadata_1, key_metadata_2],
             )
@@ -1440,7 +1463,7 @@ mod tests {
         for credential in credentials {
             match &credential {
                 Credential::SdJwt(cred) => {
-                    assert_eq!(cred, SD_JWT_CREDS);
+                    assert_eq!(cred, &sd_jwt);
                     assert_eq!(notification_id, NOTIFICATION_ID);
                 }
                 _ => {
@@ -1500,7 +1523,7 @@ mod tests {
 
         let result = holder_service
             .request_credential(
-                &sample_access_token(),
+                &sample_access_token().await,
                 "unexpected_cred_def_id",
                 &[key_metadata],
             )
@@ -1539,7 +1562,7 @@ mod tests {
 
         let result = holder_service
             .request_credential(
-                &sample_access_token(),
+                &sample_access_token().await,
                 CRED_DEF_ID,
                 &[key_metadata_1, key_metadata_2],
             )
@@ -1580,7 +1603,7 @@ mod tests {
 
         let result = holder_service
             .request_credential(
-                &sample_access_token(),
+                &sample_access_token().await,
                 CRED_DEF_ID,
                 &[key_metadata_1, key_metadata_2, key_metadata_3],
             )
@@ -1621,7 +1644,7 @@ mod tests {
         .await;
 
         let result = holder_service
-            .request_credential(&sample_access_token(), CRED_DEF_ID, &[key_metadata])
+            .request_credential(&sample_access_token().await, CRED_DEF_ID, &[key_metadata])
             .await
             .unwrap();
     }
@@ -1748,7 +1771,7 @@ mod tests {
         );
 
         holder
-            .send_notification(&sample_access_token(), notification)
+            .send_notification(&sample_access_token().await, notification)
             .await
             .unwrap()
     }
@@ -1841,9 +1864,9 @@ mod tests {
         .unwrap()
     }
 
-    fn sample_access_token_response() -> serde_json::Value {
+    fn sample_access_token_response(access_token: &str) -> serde_json::Value {
         json!({
-            "access_token": ACCESS_TOKEN,
+            "access_token": access_token,
             "token_type": "bearer",
             "expires_in": 86400,
         })

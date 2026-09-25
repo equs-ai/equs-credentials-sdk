@@ -737,10 +737,9 @@ mod tests {
     use crate::vc::oid4vci::issuer::TokenValidation::ByJwks;
     use crate::vc::oid4vci::metadata::convert_metadata;
     use crate::vc::oid4vci::tests::fixtures::{
-        ACCESS_TOKEN, ACCESS_TOKEN_WITHOUT_SCOPE, AUTH_URL, CRED_DEF_ID, ISSUER_URL, JWKS_URL,
-        MockNonceHandler, NONCE, SAMPLE_PROOF_JWT, SCOPE, SampleCredentialRequest,
-        SampleIssuerMetadata, TOKEN_INTROSPECT_URL, sample_claims, sample_credential_definition,
-        sample_credential_offer,
+        AUTH_URL, CRED_DEF_ID, ISSUER_URL, JWKS_URL, MockNonceHandler, NONCE, SCOPE,
+        SampleCredentialRequest, SampleIssuerMetadata, TOKEN_INTROSPECT_URL, access_token,
+        sample_claims, sample_credential_definition, sample_credential_offer, sample_proof_jwt,
     };
     use crate::vc::oid4vci::{
         AuthorizationCodeGrant, CredentialLifetime, protocol_error, token_validation,
@@ -790,8 +789,8 @@ mod tests {
 
         let iss_result = issuer
             .issue_credential(
-                &SampleCredentialRequest::with_cred_configuration_id(),
-                ACCESS_TOKEN,
+                &SampleCredentialRequest::with_cred_configuration_id().await,
+                &access_token(Some(SCOPE)).await,
                 &sample_claims(),
                 None,
             )
@@ -809,8 +808,8 @@ mod tests {
 
         let iss_result = issuer
             .issue_credential(
-                &SampleCredentialRequest::with_cred_configuration_id(),
-                ACCESS_TOKEN,
+                &SampleCredentialRequest::with_cred_configuration_id().await,
+                &access_token(Some(SCOPE)).await,
                 &sample_claims(),
                 None,
             )
@@ -833,8 +832,8 @@ mod tests {
 
         let iss_result = issuer
             .issue_credential(
-                &SampleCredentialRequest::with_cred_configuration_id(),
-                ACCESS_TOKEN,
+                &SampleCredentialRequest::with_cred_configuration_id().await,
+                &access_token(Some(SCOPE)).await,
                 &sample_claims(),
                 None,
             )
@@ -878,8 +877,8 @@ mod tests {
 
         let iss_result = issuer
             .issue_credential(
-                &SampleCredentialRequest::with_cred_configuration_id_and_multiple_proofs(),
-                ACCESS_TOKEN,
+                &SampleCredentialRequest::with_cred_configuration_id_and_multiple_proofs().await,
+                &access_token(Some(SCOPE)).await,
                 &sample_claims(),
                 None,
             )
@@ -918,8 +917,8 @@ mod tests {
 
         issuer
             .issue_credential(
-                &SampleCredentialRequest::with_cred_configuration_id_and_multiple_proofs(),
-                ACCESS_TOKEN,
+                &SampleCredentialRequest::with_cred_configuration_id_and_multiple_proofs().await,
+                &access_token(Some(SCOPE)).await,
                 &sample_claims(),
                 None,
             )
@@ -943,7 +942,7 @@ mod tests {
         issuer
             .issue_credential(
                 &SampleCredentialRequest::with_empty_proofs(),
-                ACCESS_TOKEN,
+                &access_token(Some(SCOPE)).await,
                 &sample_claims(),
                 None,
             )
@@ -970,8 +969,8 @@ mod tests {
 
         issuer
             .issue_credential(
-                &SampleCredentialRequest::with_cred_configuration_id_and_multiple_proofs(),
-                ACCESS_TOKEN,
+                &SampleCredentialRequest::with_cred_configuration_id_and_multiple_proofs().await,
+                &access_token(Some(SCOPE)).await,
                 &sample_claims(),
                 None,
             )
@@ -991,13 +990,18 @@ mod tests {
         )
         .await;
 
-        let mut cred_req = SampleCredentialRequest::with_cred_configuration_id();
+        let mut cred_req = SampleCredentialRequest::with_cred_configuration_id().await;
         cred_req.credential_id = CredentialId::CredentialConfigurationId(
             CredentialConfigurationId::new("LdpVc".to_string()),
         );
 
         let iss_result = issuer
-            .issue_credential(&cred_req, ACCESS_TOKEN, &sample_claims(), None)
+            .issue_credential(
+                &cred_req,
+                &access_token(Some(SCOPE)).await,
+                &sample_claims(),
+                None,
+            )
             .await;
 
         let t = iss_result.unwrap();
@@ -1031,7 +1035,7 @@ mod tests {
 
     #[tokio::test]
     async fn credential_lifetime_per_cred_def_id_works() {
-        let cred_req = SampleCredentialRequest::with_cred_configuration_id();
+        let cred_req = SampleCredentialRequest::with_cred_configuration_id().await;
         let duration = Duration::days(100);
         let issuer = issuer_service_with_metadata(
             None,
@@ -1047,7 +1051,12 @@ mod tests {
         .await;
 
         let claims = match issuer
-            .issue_credential(&cred_req, ACCESS_TOKEN, &sample_claims(), None)
+            .issue_credential(
+                &cred_req,
+                &access_token(Some(SCOPE)).await,
+                &sample_claims(),
+                None,
+            )
             .await
             .unwrap()
             .response_kind()
@@ -1086,8 +1095,8 @@ mod tests {
 
         let iss_result = issuer
             .issue_credential(
-                &SampleCredentialRequest::with_cred_configuration_id(),
-                ACCESS_TOKEN,
+                &SampleCredentialRequest::with_cred_configuration_id().await,
+                &access_token(Some(SCOPE)).await,
                 &claims,
                 None,
             )
@@ -1117,8 +1126,8 @@ mod tests {
 
         let iss_result = issuer
             .issue_credential(
-                &SampleCredentialRequest::with_cred_configuration_id(),
-                ACCESS_TOKEN,
+                &SampleCredentialRequest::with_cred_configuration_id().await,
+                &access_token(Some(SCOPE)).await,
                 &sample_claims(),
                 None,
             )
@@ -1134,12 +1143,13 @@ mod tests {
     async fn issue_credential_succeeds_requesting_token_validity_from_auth_server() {
         let mut http_client = MockHttpClient::new();
         let token_intro_url = Url::parse(TOKEN_INTROSPECT_URL).unwrap();
+        let token = access_token(Some(SCOPE)).await;
 
         mock_http_req_body(
             &mut http_client,
             Method::POST,
             token_intro_url.clone(),
-            format!("token={}", ACCESS_TOKEN),
+            format!("token={}", token),
             json!({
                   "active": true,
             }),
@@ -1158,8 +1168,8 @@ mod tests {
 
         let iss_result = issuer
             .issue_credential(
-                &SampleCredentialRequest::with_cred_configuration_id(),
-                ACCESS_TOKEN,
+                &SampleCredentialRequest::with_cred_configuration_id().await,
+                &token,
                 &sample_claims(),
                 None,
             )
@@ -1188,12 +1198,13 @@ mod tests {
     async fn issue_credential_fails_with_invalid_token_error_when_token_is_not_active() {
         let mut http_client = MockHttpClient::new();
         let token_intro_url = Url::parse(TOKEN_INTROSPECT_URL).unwrap();
+        let token = access_token(Some(SCOPE)).await;
 
         mock_http_req_body(
             &mut http_client,
             Method::POST,
             Url::parse(TOKEN_INTROSPECT_URL).unwrap(),
-            format!("token={}", ACCESS_TOKEN),
+            format!("token={}", token),
             json!({
                   "active": false,
             }),
@@ -1212,8 +1223,8 @@ mod tests {
 
         let iss_result = issuer
             .issue_credential(
-                &SampleCredentialRequest::with_cred_configuration_id(),
-                ACCESS_TOKEN,
+                &SampleCredentialRequest::with_cred_configuration_id().await,
+                &token,
                 &sample_claims(),
                 None,
             )
@@ -1229,7 +1240,7 @@ mod tests {
     async fn resolve_cred_def_succeeds_with_correct_data() {
         let issuer_service = issuer_service(None, None, None).await;
 
-        let cred_req = SampleCredentialRequest::with_cred_configuration_id();
+        let cred_req = SampleCredentialRequest::with_cred_configuration_id().await;
         let (cred_def_id, cred_def_metadata) = issuer_service.resolve_cred_def(&cred_req).unwrap();
 
         assert_eq!(
@@ -1252,8 +1263,9 @@ mod tests {
     async fn validate_scope_succeeds_with_correct_data() {
         let issuer_service = issuer_service(None, None, None).await;
         let scope = Scope::new(SCOPE.to_owned());
+        let token = access_token(Some(SCOPE)).await;
 
-        let validate_res = issuer_service.validate_scope(ACCESS_TOKEN, CRED_DEF_ID, &scope);
+        let validate_res = issuer_service.validate_scope(&token, CRED_DEF_ID, &scope);
 
         validate_res.unwrap()
     }
@@ -1279,7 +1291,8 @@ mod tests {
     async fn get_cred_def_metadata_returns_none_on_unknown_cred_configuration_id() {
         let issuer_service =
             issuer_service(None, None, Some(Box::new(LocalNonceHandler::default()))).await;
-        let cred_req = sample_sdjwtvc_credential_request_with_cred_conf_id("unknown_cred_conf_id");
+        let cred_req =
+            sample_sdjwtvc_credential_request_with_cred_conf_id("unknown_cred_conf_id").await;
         let result = issuer_service.get_cred_def_metadata(&cred_req);
         assert_eq!(result, None);
     }
@@ -1323,7 +1336,7 @@ mod tests {
             issuer_service(None, None, Some(Box::new(LocalNonceHandler::default()))).await;
         issuer_service
             .issue_credential(
-                &SampleCredentialRequest::with_cred_identifier(),
+                &SampleCredentialRequest::with_cred_identifier().await,
                 "fake_token",
                 &claims,
                 None,
@@ -1338,7 +1351,7 @@ mod tests {
     )]
     async fn issue_credential_fails_on_incorrect_cred_def() {
         let credential_request =
-            sample_sdjwtvc_credential_request_with_cred_conf_id("unknown_cred_conf_id");
+            sample_sdjwtvc_credential_request_with_cred_conf_id("unknown_cred_conf_id").await;
         let claims = Claims::new();
 
         let issuer_service =
@@ -1354,7 +1367,7 @@ mod tests {
         expected = "No scope set for Credential definition ID: SD_JWT_cred_sample. Only scope authorization supported"
     )]
     async fn issue_credential_fails_on_absent_scope() {
-        let credential_request = SampleCredentialRequest::with_cred_configuration_id();
+        let credential_request = SampleCredentialRequest::with_cred_configuration_id().await;
         let claims = Claims::new();
 
         let issuer_service = issuer_service_with_metadata(
@@ -1375,7 +1388,7 @@ mod tests {
     #[tokio::test]
     #[should_panic(expected = "Could not parse the access token")]
     async fn issue_credential_fails_on_non_decodable_token() {
-        let credential_request = SampleCredentialRequest::with_cred_configuration_id();
+        let credential_request = SampleCredentialRequest::with_cred_configuration_id().await;
         let claims = Claims::new();
 
         let issuer_service =
@@ -1391,7 +1404,7 @@ mod tests {
         expected = "Access token should have scope=\"fake_scope\" for issuing \"SD_JWT_cred_sample\""
     )]
     async fn issue_credential_fails_on_incorrect_scope() {
-        let credential_request = SampleCredentialRequest::with_cred_configuration_id();
+        let credential_request = SampleCredentialRequest::with_cred_configuration_id().await;
         let claims = Claims::new();
 
         let issuer_service = issuer_service_with_metadata(
@@ -1404,7 +1417,12 @@ mod tests {
         )
         .await;
         issuer_service
-            .issue_credential(&credential_request, ACCESS_TOKEN, &claims, None)
+            .issue_credential(
+                &credential_request,
+                &access_token(Some(SCOPE)).await,
+                &claims,
+                None,
+            )
             .await
             .unwrap();
     }
@@ -1412,7 +1430,7 @@ mod tests {
     #[tokio::test]
     #[should_panic(expected = "Access token does not have \"scope\" field")]
     async fn issue_credential_fails_on_absent_token_scope() {
-        let credential_request = SampleCredentialRequest::with_cred_configuration_id();
+        let credential_request = SampleCredentialRequest::with_cred_configuration_id().await;
         let claims = Claims::new();
 
         let issuer_service =
@@ -1420,7 +1438,7 @@ mod tests {
         issuer_service
             .issue_credential(
                 &credential_request,
-                ACCESS_TOKEN_WITHOUT_SCOPE,
+                &access_token(None).await,
                 &claims,
                 None,
             )
@@ -1438,8 +1456,8 @@ mod tests {
         let issuer = issuer_service(None, None, Some(Box::new(MockNonceHandler::default()))).await;
         issuer
             .issue_credential(
-                &SampleCredentialRequest::with_cred_configuration_id(),
-                ACCESS_TOKEN,
+                &SampleCredentialRequest::with_cred_configuration_id().await,
+                &access_token(Some(SCOPE)).await,
                 &claims,
                 None,
             )
@@ -1461,7 +1479,12 @@ mod tests {
 
         let issuer = issuer_service(None, None, Some(Box::new(MockNonceHandler::default()))).await;
         issuer
-            .issue_credential(&credential_request, ACCESS_TOKEN, &claims, None)
+            .issue_credential(
+                &credential_request,
+                &access_token(Some(SCOPE)).await,
+                &claims,
+                None,
+            )
             .await
             .unwrap();
     }
@@ -1549,14 +1572,15 @@ mod tests {
         )
     }
 
-    fn sample_sdjwtvc_credential_request_with_cred_conf_id(
+    async fn sample_sdjwtvc_credential_request_with_cred_conf_id(
         cred_conf_id: &str,
     ) -> CredentialRequest {
+        let proof = sample_proof_jwt().await;
         serde_json::from_value(json!(
             {
                 "credential_configuration_id":cred_conf_id,
                 "proofs":{
-                    "jwt": [ SAMPLE_PROOF_JWT ]
+                    "jwt": [ proof ]
                 },
                 "credential_response_encryption":null
             }
@@ -1577,13 +1601,14 @@ mod tests {
         .unwrap()
     }
 
-    fn sample_sdjwtvc_credential_request_with_cwt_proof_format() -> CredentialRequest {
+    async fn sample_sdjwtvc_credential_request_with_cwt_proof_format() -> CredentialRequest {
+        let proof = sample_proof_jwt().await;
         serde_json::from_value(json!(
             {
                 "format":"dc+sd-jwt",
                 "vct":"SD_JWT_cred",
                 "proofs":{
-                    "cwt": [ SAMPLE_PROOF_JWT ]
+                    "cwt": [ proof ]
                 },
                 "credential_response_encryption":null
             }
