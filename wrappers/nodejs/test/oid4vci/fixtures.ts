@@ -1,15 +1,27 @@
 import {
+  Alg,
   AuthMetadata,
   Claims,
+  CredentialDefinitionFormat,
   CredentialFormats,
   CredentialOfferGrants,
+  InMemKms,
+  InMemVault,
+  IssuerMetadata,
   JwkAlgorithm,
   NonceHandler,
   OID4VCICredentialMetadata,
   OID4VCICredentialOffer,
   OID4VCICredentialRequest,
   OID4VCIIssuerMetadata,
+  ReqwestHttpClient,
+  UniversalDIDResolver,
+  VcCoreHolder,
+  VcCoreIssuer,
+  VCFormat,
 } from "../../";
+import { token } from "../../../test/js_common/test/bundle";
+import { createDidAndKeyMetadata } from "../utils";
 
 export const IssuerEndpoint = "http://localhost:9000";
 export const TokenEndpoint = `${IssuerEndpoint}/auth/token`;
@@ -109,31 +121,70 @@ export const CRED_DEF_METADATA: OID4VCICredentialMetadata = {
   },
 };
 
-export const PROOF_JWT =
-  "eyJhbGciOiJFUzI1NiIsImtpZCI6ImRpZDprZXk6ekRuYWVmM2lLZTFGV3U4QUtOM25yUEpCdWtTenNTNE5KNm95b0xiVjh1QkNTR2ZjZiN6RG5hZWYzaUtlMUZXdThBS04zbnJQSkJ1a1N6c1M0Tko2b3lvTGJWOHVCQ1NHZmNmIiwidHlwIjoib3BlbmlkNHZjaS1wcm9vZitqd3QifQ.eyJhdWQiOiJodHRwOi8vbG9jYWxob3N0OjkwMDAiLCJuYmYiOjE3MzYxODIzOTcsImlhdCI6MTczNjE4MjM5NywiZXhwIjo0ODg5NzgyMzk3LCJub25jZSI6IktCNTBWT205SS1rUExUOW1BQUNWOGcifQ.IteWgE_LbL7lanDu3CJDdwGheGRDrJdh_gn-ldOraEWazE_kTtcgXMp4WJG871FOqRzI8lphSxWfqrGBXG4wxA";
+/**
+ * Mints a fresh OID4VCI proof-of-possession JWT bound to `nonce`, with `aud`
+ * matching {@link IssuerEndpoint} — the generic bundle `proofJwt` carries a
+ * fixed `aud` (`https://issuer.example`) that doesn't match this issuer's
+ * own endpoint, so it can't stand in here. `VcCoreHolder.requestCredential`
+ * derives `aud` from the offer it's given, so a throwaway `VcCoreIssuer`
+ * configured with this endpoint produces a request whose proof already
+ * carries the right audience.
+ */
+export async function buildProofJwt(nonce: string): Promise<string> {
+  const issuerKms = new InMemKms();
+  const { keyMetadata: issuerKeyMetadata } = await createDidAndKeyMetadata(issuerKms);
+  const issuerMetadata: IssuerMetadata = {
+    issuerId: IssuerEndpoint,
+    credDefs: [
+      {
+        credDefId: CredDefId1,
+        format: VCFormat.SdJwtVc,
+        claims: {},
+        supportedProofs: { Jwt: ["ES256"] },
+        supportedSigningAlgs: [Alg.ES256],
+        display: undefined,
+        protocolData: {
+          format: CredentialDefinitionFormat.SdJwt,
+          payload: { vct: CredType, disclosures: ["$.given_name"] },
+        },
+        keyMetadata: issuerKeyMetadata,
+      },
+    ],
+    protocolData: undefined,
+  };
+  const issuer = new VcCoreIssuer(issuerKms, issuerMetadata, new UniversalDIDResolver());
+  const offer = issuer.offerCredential(CredDefId1, undefined);
 
-export const CredRequest1: OID4VCICredentialRequest = {
-  credential_configuration_id: CredDefId1,
-  proofs: {
-    jwt: [PROOF_JWT],
-  },
-  credential_response_encryption: null,
-};
-export const CredRequest2: OID4VCICredentialRequest = {
-  credential_configuration_id: CredDefId2,
-  proofs: {
-    jwt: [PROOF_JWT],
-  },
-  credential_response_encryption: null,
-};
+  const holderKms = new InMemKms();
+  const { keyMetadata: holderKeyMetadata } = await createDidAndKeyMetadata(holderKms);
+  const holder = new VcCoreHolder(
+    holderKms,
+    new InMemVault(),
+    { clientId: "wallet-dev", pop: { lifetime: 300 } },
+    new UniversalDIDResolver(),
+    ReqwestHttpClient.insecure(),
+  );
+  const request = await holder.requestCredential(offer, nonce, holderKeyMetadata);
+  return request.proof.proof;
+}
 
-export const CRED_REQUEST_FOR_BATCH_ISSUANCE: OID4VCICredentialRequest = {
-  credential_configuration_id: CredDefId1,
-  proofs: {
-    jwt: [PROOF_JWT, PROOF_JWT],
-  },
-  credential_response_encryption: null,
-};
+export async function buildCredRequest(credDefId: string, nonce: string): Promise<OID4VCICredentialRequest> {
+  const proofJwt = await buildProofJwt(nonce);
+  return {
+    credential_configuration_id: credDefId,
+    proofs: { jwt: [proofJwt] },
+    credential_response_encryption: null,
+  };
+}
+
+export async function buildBatchCredRequest(nonce: string): Promise<OID4VCICredentialRequest> {
+  const proofJwt = await buildProofJwt(nonce);
+  return {
+    credential_configuration_id: CredDefId1,
+    proofs: { jwt: [proofJwt, proofJwt] },
+    credential_response_encryption: null,
+  };
+}
 
 export const GRANTS: CredentialOfferGrants = {
   authorization_code: {
@@ -146,8 +197,7 @@ export const CRED_OFFER: OID4VCICredentialOffer = {
   grants: GRANTS,
 };
 
-export const ACCESS_TOKEN =
-  "eyJhbGciOiJSUzI1NiIsInR5cCIgOiAiSldUIiwia2lkIiA6ICJQY2xZUDZ2UmsxTHBLRGZqU08yRGEzNXJtR1JmaTkzNjJDcFJFeUpmOHAwIn0.eyJleHAiOjE3MjQzOTg0OTQsImlhdCI6MTcyNDM5ODE5NCwiYXV0aF90aW1lIjoxNzI0Mzk4MTgyLCJqdGkiOiIwYjRmZTM5MC00OTIxLTQwNDItYjdlMS1iMDNiM2QxOTYyMjkiLCJpc3MiOiJodHRwOi8vbG9jYWxob3N0OjgwODAvaWRwL3JlYWxtcy9waWQtaXNzdWVyLXJlYWxtIiwic3ViIjoiNjBiOGJhNWYtYzczZi00OTc2LWIwZGEtNDhkMGU1MzMzNWRlIiwidHlwIjoiQmVhcmVyIiwiYXpwIjoid2FsbGV0LWRldiIsInNpZCI6ImYxNWIzZTExLWZmMjgtNDRkZi04ZmNmLWE3N2QyNDcxNGEyMyIsImFsbG93ZWQtb3JpZ2lucyI6WyIvKiJdLCJzY29wZSI6IlNEX0pXVF9jcmVkIn0.pLGGmOApXnQCY6CwuFzxFXEN36aDJ-iE0TM_esYJ_qtijhUtWq5zI9lD-iGzhTSdwZ7Y51eUKtqmJXHixzBo847vmMeGla4Ko6JTY-4vVAIQ1Hk1xzl25ALuZNwxGbljlysjzBgCxeAjZo3fE0HTI5y6NItptIU8aY3ykoIX9xE81ZkexbVrR495cEX7UIgUgCZyhj8lXUMWFrNFBhELnzzFGdX01Dq3B-KflY9ACVaw-_U9bT6EzDI0-0Cyx2K658EU9VpDjBSR6URT5I9quvx1qoYMFPv7zhjW3sUASIVwThe4CvWCCR8Kf8rsnEQ2qnchn0f6gn9thxi51FGkvA";
+export const ACCESS_TOKEN = token("accessToken");
 
 export const CODE_RESPONSE = {
   request_uri: "urn:ietf:params:oauth:request_uri:code",
@@ -167,8 +217,7 @@ export const CLAIMS: Claims = {
   dob: "09/09/1989",
 };
 
-export const SD_JWT_CREDS =
-  "eyJ0eXAiOiJ2YytzZC1qd3QiLCJhbGciOiJFUzI1NiIsImtpZCI6ImRpZDprZXk6ekRuYWV1alBxWjVFakhtZmtyell3ZUxmTXFyOGFxQTNvdDNCdGM0RmU5dHlMcWttUiN6RG5hZXVqUHFaNUVqSG1ma3J6WXdlTGZNcXI4YXFBM290M0J0YzRGZTl0eUxxa21SIn0.eyJfc2QiOlsiQ1Q1bzFMZk5XRE9LT3h4NDJCWUc0NzU0bFpIeTZ0MG5PUGtGRWRmb3FvTSIsIks3bWEwTmZxR0NfM0xQdG12cWtySTR5ckpsdkg0VFU2OWU3SXYtN0VJbzQiLCJyZVlhTkZCV0h6VjE3Y3Z1cTNyRmpVSTNHeDVKc19EbW5VWlNFUmQ0aFpzIl0sInZjdCI6IlNEX0pXVF9jcmVkIiwic3ViIjoiZGlkOmtleTp6RG5hZW5wbnRDa1huRENuYURrNjJMeE5xUGM0Q01kMzJmYmhpVnNaVjVLcFBURzJjIiwibmJmIjoxNzI1NTMzMjU0LCJfc2RfYWxnIjoic2hhLTI1NiIsImlzcyI6ImRpZDprZXk6ekRuYWV1alBxWjVFakhtZmtyell3ZUxmTXFyOGFxQTNvdDNCdGM0RmU5dHlMcWttUiIsImlhdCI6MTcyNTUzMzI1NCwiZXhwIjoxNzU3MDY5MjU0LCJjbmYiOnsiandrIjp7Imt0eSI6IkVDIiwiY3J2IjoiUC0yNTYiLCJ4IjoiVExuNjZxYm5QZXhLeUZtZ3h1Y1kzSlpyZHhCRGpBc3ItbXkya1dBYms4ayIsInkiOiJzaFl6eUVUOENyWVcyTXhPU0FCSkxhbUpPTGV3LWpQbE9aeHdTUzZrWGdjIn19fQ.CBBzIiTjRs2bmKENQcRY14wVnl2vnIjJY9u3AYrA9KQDjqCXZXSzoxQlripAM6Ud_QaYNrZcHK2EVo4QlH3k9w~WyJvMFR4dEw4QWh1TFJXUmduSDk4NF9RIiwgImdpdmVuX25hbWUiLCAiSm9obiJd~WyJ2SVMzZXNQTHlRUHRRZ0JMZ09GYWFnIiwgImZhbWlseV9uYW1lIiwgIkRvZSJd~WyJsaW81cXNVZHZJX3V3eUdiRmFtTnFRIiwgImRvYiIsICIwOS8wOS8xOTg5Il0~";
+export const SD_JWT_CREDS = token("sdJwtCreds");
 
 export const CRED_RESPONSE = {
   format: "dc+sd-jwt",

@@ -29,26 +29,24 @@ import {
 } from "../../";
 import {
   AUTH_RESPONSE_JWE,
-  CLAIMS,
   DCQL,
   DELEGATE_JWK,
   DSD_JWT_GRANT_CRED_ID,
-  DSD_JWT_GRANT_CREDENTIAL,
   DSD_JWT_GRANT_NONCE,
   DSD_JWT_GRANT_RPQ,
   DSD_JWT_GRANT_TD_HASHES,
   DSD_JWT_GRANT_TRANSACTION_DATA,
-  DSD_JWT_GRANT_VP_TOKEN,
   PRESENTATION_DEFINITION,
   PRESENTATION_QUERY,
   PRESENTATION_QUERY_FOR_DCQL,
   PRESENTATION_SUBMISSION,
   SAMPLE_ROOT_X509_PEM,
   STATE,
-  VP,
   WALLET_METADATA_WITHOUT_X509,
   X509_SAN_DNS_CLIENT_ID,
   X509_SAN_DNS_NAME,
+  buildAuthResponseFixture,
+  buildDsdJwtGrant,
   generateX509SanDnsMaterial,
   X509SanDnsMaterial,
 } from "./fixtures";
@@ -64,6 +62,7 @@ describe("OID4VP Verifier: ", () => {
   beforeAll(async () => {
     x509Material = await generateX509SanDnsMaterial();
   });
+
   it("create Authorization Request by Value", async () => {
     const verifier = await buildVerifier();
 
@@ -238,20 +237,23 @@ describe("OID4VP Verifier: ", () => {
   });
 
   it("verify Authorization Response", async () => {
-    const verifier = await buildVerifier("did:key:zDnaehdgostuLiVRhFWfn4d6fr76dQx7DxSJnTzBD3jv832DP");
+    const verifierDid = "did:key:zDnaehdgostuLiVRhFWfn4d6fr76dQx7DxSJnTzBD3jv832DP";
+    const nonce = "n-07kSJUQNwlPISE3jc8QxEia2MHTqewM3WyVx-4XlM";
+    const verifier = await buildVerifier(verifierDid);
+    const { vp, claims: expectedClaims } = await buildAuthResponseFixture(verifierDid, nonce);
 
     const rpq: ResolvedPresentationQuery = {
       presentation_definition: PRESENTATION_QUERY.presentation_definition,
       dcql_query: PRESENTATION_QUERY.dcql_query,
     };
     const session: _PresentationSession = {
-      nonce: "n-07kSJUQNwlPISE3jc8QxEia2MHTqewM3WyVx-4XlM",
+      nonce,
       resolvedPresentationQuery: rpq,
       authorizationRequestJwt: "",
     };
 
     const auth_response_object: AuthorizationResponseObject = {
-      vpToken: VP,
+      vpToken: vp,
       presentationSubmission: PRESENTATION_SUBMISSION,
       state: STATE,
     };
@@ -264,18 +266,21 @@ describe("OID4VP Verifier: ", () => {
     const verificationMetadata: CredentialVerificationMetadata = {};
     const claims = await verifier.verifyPresentation(auth_response, session, verificationMetadata);
 
-    expect(claims).toEqual(CLAIMS);
+    expect(claims).toEqual(expectedClaims);
   });
 
   it("verify Authorization Response with transaction data", async () => {
-    const verifier = await buildVerifier("did:key:zDnaehdgostuLiVRhFWfn4d6fr76dQx7DxSJnTzBD3jv832DP");
+    const verifierDid = "did:key:zDnaehdgostuLiVRhFWfn4d6fr76dQx7DxSJnTzBD3jv832DP";
+    const nonce = "n-07kSJUQNwlPISE3jc8QxEia2MHTqewM3WyVx-4XlM";
+    const verifier = await buildVerifier(verifierDid);
+    const { vp, claims: expectedClaims } = await buildAuthResponseFixture(verifierDid, nonce);
 
     const rpq: ResolvedPresentationQuery = {
       presentation_definition: PRESENTATION_QUERY.presentation_definition,
       dcql_query: PRESENTATION_QUERY.dcql_query,
     };
     const session: _PresentationSession = {
-      nonce: "n-07kSJUQNwlPISE3jc8QxEia2MHTqewM3WyVx-4XlM",
+      nonce,
       resolvedPresentationQuery: rpq,
       authorizationRequestJwt: "",
     };
@@ -292,7 +297,7 @@ describe("OID4VP Verifier: ", () => {
     };
 
     const auth_response_object: AuthorizationResponseObject = {
-      vpToken: VP,
+      vpToken: vp,
       presentationSubmission: PRESENTATION_SUBMISSION,
       state: STATE,
       transactionDataResponse: transactionDataResponse,
@@ -308,7 +313,7 @@ describe("OID4VP Verifier: ", () => {
     };
     const claims = await verifier.verifyPresentation(auth_response, session, verificationMetadata);
 
-    expect(claims).toEqual(CLAIMS);
+    expect(claims).toEqual(expectedClaims);
   });
 
   it("create Authorization Request with TransactionData of type delegate", async () => {
@@ -399,6 +404,7 @@ describe("OID4VP Verifier: ", () => {
 
   it("verify and extract a dSD-JWT delegation grant", async () => {
     const verifier = await buildVerifier();
+    const grant = await buildDsdJwtGrant();
 
     const rpq = DSD_JWT_GRANT_RPQ as unknown as ResolvedPresentationQuery;
     const session: _PresentationSession = {
@@ -408,7 +414,7 @@ describe("OID4VP Verifier: ", () => {
     };
 
     const auth_response_object: AuthorizationResponseObject = {
-      vpToken: DSD_JWT_GRANT_VP_TOKEN,
+      vpToken: { [DSD_JWT_GRANT_CRED_ID]: [grant] },
       transactionDataResponse: { hashes: DSD_JWT_GRANT_TD_HASHES },
     };
     const auth_response: AuthorizationResponse = {
@@ -433,7 +439,7 @@ describe("OID4VP Verifier: ", () => {
     // The raw dSD-JWT grant is returned so the Delegate Holder can store it.
     const presentations = verified.presentations[DSD_JWT_GRANT_CRED_ID];
     expect(presentations).toHaveLength(1);
-    expect(presentations[0]).toEqual(DSD_JWT_GRANT_CREDENTIAL);
+    expect(presentations[0]).toEqual(grant);
     expect(presentations[0] as string).toMatch(/~$/);
   });
 
@@ -650,12 +656,16 @@ describe("OID4VP Verifier: ", () => {
         return innerKms.create(kt);
       }
       async get(kid: string): Promise<KeyHandle> {
-        if (kid == "ecdsa-kid") {
-          // this kid is used in AUTH_RESPONSE_JWT fixture
+        // The generated AUTH_RESPONSE_JWE carries a `kid` this KMS never
+        // created (it belongs to the fixture bundle's own verifier key), and
+        // `decrypt` below ignores the key material entirely — so any lookup
+        // just needs to resolve to *a* handle, not the matching one.
+        try {
+          return await innerKms.get(kid);
+        } catch {
           const kid_1 = await innerKms.create(KeyType.P256);
           return await innerKms.get(kid_1);
         }
-        return await innerKms.get(kid);
       }
       getByPublicKey(pk: Uint8Array): Promise<KeyHandle> {
         return innerKms.getByPublicKey(pk);

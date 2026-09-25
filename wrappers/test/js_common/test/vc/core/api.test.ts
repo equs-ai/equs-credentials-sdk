@@ -119,21 +119,12 @@ describe("VC::Core", () => {
 
   describe("Issuer", () => {
     it("issue credential", async () => {
-      const result = await issuer.issueCredential(
-        {
-          credDefId: utils.scope,
-          protocolData: undefined,
-          credOfferId: undefined,
-          proof: {
-            format: "jwt",
-            proof:
-              "eyJhbGciOiJFUzI1NiIsImtpZCI6ImRpZDprZXk6ekRuYWVxTnJnR1RBV3FVVlNVRnFvWFh3bjhONThVc2JLRVpDeUUyWlk5ZFRHS3B3cyN6RG5hZXFOcmdHVEFXcVVWU1VGcW9YWHduOE41OFVzYktFWkN5RTJaWTlkVEdLcHdzIiwidHlwIjoib3BlbmlkNHZjaS1wcm9vZitqd3QifQ.eyJhdWQiOiJodHRwczovL2lzc3Vlci1iYWNrZW5kLmNvbSIsIm5iZiI6MTczNTkwMTAzNCwiaWF0IjoxNzM1OTAxMDM0LCJleHAiOjY2MTQ4NTE1MTQsIm5vbmNlIjoiS0I1MFZPbTlJLWtQTFQ5bUFBQ1Y4ZyJ9.2flsRA_XKGFm4JBpvRHkV3QKLMo81OawQHL1YQdwVRo3OnZeugQJevWz8q-_lD-fo6U9_z_KuLNt9tQr_5A5Iw",
-          },
-        },
-        utils.claims,
-        utils.nonce,
-        utils.credStatusInfo,
-      );
+      // A real proof, minted via the same holder round trip `requestCredential`
+      // already exercises elsewhere in this file, rather than a committed JWT.
+      const offer = issuer.offerCredential(utils.scope, undefined);
+      const credentialRequest = await holder.requestCredential(offer, utils.nonce, await utils.getKeyMetadata());
+
+      const result = await issuer.issueCredential(credentialRequest, utils.claims, utils.nonce, utils.credStatusInfo);
 
       const decoded = jwtDecode<typeof utils.claims>(result.payload);
 
