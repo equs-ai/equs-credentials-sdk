@@ -346,6 +346,9 @@ impl JweEncryptor {
 
 #[cfg(test)]
 mod tests {
+    use crate::crypto::Key;
+    use crate::inmem::kms::LocalKms;
+    use crate::kms::{CreateOptions, KeyType, Kms};
     use crate::vc::oid4vp::jwe::JweEncryptor;
     use crate::vc::oid4vp::tests::utils::wrap_p256_private_key;
     use one_core_portable::one_crypto::jwe::decrypt_jwe_payload;
@@ -353,47 +356,38 @@ mod tests {
 
     #[tokio::test]
     async fn test_encoding() {
-        let metadata = super::test_utils::get_metadata(pregenerated_pub_jwk());
+        // Freshly minted at test time: the encryption key is never committed to
+        // source, only derived from a KMS handle the way production code does.
+        let kms = LocalKms::new();
+        let kid = kms
+            .create(KeyType::P256, CreateOptions::default())
+            .await
+            .unwrap();
+        let kh = kms.get(&kid).await.unwrap();
+
+        let mut verifier_public_jwk =
+            match serde_json::to_value(kh.jwk().unwrap().to_public()).unwrap() {
+                Value::Object(map) => map,
+                _ => unreachable!(),
+            };
+        verifier_public_jwk.insert("kid".to_string(), Value::from("ecdsa-kid"));
+        verifier_public_jwk.insert("alg".to_string(), Value::from("ECDH-ES"));
+
+        let metadata = super::test_utils::get_metadata(verifier_public_jwk);
         let encoder = JweEncryptor::new(metadata);
         let body = json!({
             "some_key": "some_value",
         });
-        let verifier_private_jwk = r#"{
-              "kty": "EC",
-              "crv": "P-256",
-              "x": "SSnPfyVhQgcU9Aaynqgi6QGhrq7K7WFEC0mAvpHG4TM",
-              "y": "rYQ5mLQLTs95WLBKKA8R5IjMTXjX13iZnzazsVectRY",
-              "d": "rs9veoNnfQCH7kfsAis_nAHtpcEghiAzKry8R-de0eA"
-            }"#;
-
-        // Used as part of ClientMetadata
-        let verifier_public_jwk = r#"{
-              "kty": "EC",
-              "crv": "P-256",
-              "x": "SSnPfyVhQgcU9Aaynqgi6QGhrq7K7WFEC0mAvpHG4TM",
-              "y": "rYQ5mLQLTs95WLBKKA8R5IjMTXjX13iZnzazsVectRY"
-            }"#;
         let jwe = encoder.encrypt(body.clone()).await.unwrap();
 
-        let kh = wrap_p256_private_key(verifier_private_jwk);
+        let private_key = kh.private_key().unwrap();
+        let secret = p256::SecretKey::from_slice(&private_key).unwrap();
+        let verifier_private_jwk = secret.to_jwk_string();
+
+        let kh = wrap_p256_private_key(&verifier_private_jwk);
 
         let res = decrypt_jwe_payload(&jwe, &kh).await.unwrap();
         assert_eq!(res, body.to_string().as_bytes().to_vec());
-    }
-
-    fn pregenerated_pub_jwk() -> serde_json::Map<String, Value> {
-        if let Value::Object(map) = json!({
-          "kid": "ecdsa-kid",
-          "kty": "EC",
-          "crv": "P-256",
-          "x": "SSnPfyVhQgcU9Aaynqgi6QGhrq7K7WFEC0mAvpHG4TM",
-          "y": "rYQ5mLQLTs95WLBKKA8R5IjMTXjX13iZnzazsVectRY",
-          "alg": "ECDH-ES"
-        }) {
-            map
-        } else {
-            unreachable!()
-        }
     }
 }
 

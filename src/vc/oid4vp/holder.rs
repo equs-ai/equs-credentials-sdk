@@ -1462,9 +1462,7 @@ mod tests {
     use crate::inmem::vault::InMemVault;
     use crate::kms::MockKms;
     use crate::kms::{CreateOptions, KeyType, Kms};
-    use crate::utils::http::test::{
-        mock_http_fn, mock_http_fn_with_plain_text_resp, mock_http_req_predicate,
-    };
+    use crate::utils::http::test::{mock_http_fn, mock_http_req_predicate};
     use crate::utils::test_utils::create_did_and_key_metadata;
     use crate::utils::test_utils::{failed_signer_key, no_jwk_key};
     use crate::vc;
@@ -1474,13 +1472,11 @@ mod tests {
     use crate::vc::oid4vp::protocol_error::ErrorType;
     use crate::vc::oid4vp::tests::fixtures::multi_presentation::transaction_data_items;
     use crate::vc::oid4vp::tests::fixtures::single_presentation::sd_jwt::{
-        AUTH_REQUEST, AUTH_REQUEST_JWT, AUTH_REQUEST_WITH_NON_URL_CLIENT_ID_PREFIX,
-        AUTH_REQUEST_WITH_REDIRECT_URI, AUTH_REQUEST_WITH_UNSUPPORTED_CLIENT_ID_PREFIX,
-        AUTH_REQUEST_WITH_WRONG_CLIENT_ID,
+        AUTH_REQUEST, AUTH_REQUEST_WITH_NON_URL_CLIENT_ID_PREFIX, AUTH_REQUEST_WITH_REDIRECT_URI,
+        AUTH_REQUEST_WITH_UNSUPPORTED_CLIENT_ID_PREFIX, AUTH_REQUEST_WITH_WRONG_CLIENT_ID,
     };
     use crate::vc::oid4vp::tests::fixtures::{
-        REQUEST_URI, SAMPLE_CREDENTIAL_STATUS_LIST, SAMPLE_SD_JWT_WITH_STATUS, STATE, VERIFIER_URL,
-        multi_presentation, single_presentation,
+        STATE, VERIFIER_URL, multi_presentation, single_presentation,
     };
     use crate::vc::oid4vp::tests::utils::{
         PresentationTestCase, build_url, holder_service, request_verifier, validate_claims,
@@ -1509,29 +1505,120 @@ mod tests {
     use std::collections::HashMap;
     use std::sync::Arc;
     use test_fixtures::equs_sdk::inmem::kms::LocalKms as FixtureKms;
+    use test_fixtures::jws::sign_compact;
     use test_fixtures::keys::FixtureKey;
     use test_fixtures::request_object::RequestObject as FixtureRequestObject;
+    use test_fixtures::sd_jwt_vc::SdJwtVc as FixtureSdJwtVc;
+    use test_fixtures::status_list::StatusListToken as FixtureStatusListToken;
     use url::Url;
+
+    /// Signs a fresh request object equivalent to the old committed
+    /// `AUTH_REQUEST_JWT`/`AUTH_REQUEST` pair, minus the client_id (which is
+    /// tied to the freshly generated signer's DID). Returns the compact JWT,
+    /// the `openid4vp://` request URI a holder would be handed, and the JSON
+    /// the resolved request must equal.
+    async fn signed_auth_request_fixture() -> (String, Url, Value) {
+        let fixture_kms = FixtureKms::new();
+        let key = FixtureKey::create_default(&fixture_kms).await.unwrap();
+        let client_id = format!("decentralized_identifier:{}", key.did);
+
+        let claims = json!({
+            "response_type": "vp_token",
+            "state": STATE,
+            "response_mode": "direct_post",
+            "nonce": "2T0n2qgdX6XyEz-UgCHFMH6fRl9-s4IDWrknnkGW0V0",
+            "client_metadata": {
+                "vp_formats_supported": {
+                    "dc+sd-jwt": {
+                        "sd-jwt_alg_values": ["EdDSA", "ES256"],
+                        "kb-jwt_alg_values": ["EdDSA", "ES256"]
+                    }
+                },
+                "jwks": {
+                    "keys": [{
+                        "use": "enc",
+                        "alg": "ES256",
+                        "kid": "RSdNFdnGHm:P256:",
+                        "kty": "EC",
+                        "crv": "P-256",
+                        "x": "Lb-3kpome-glvSArZWDORUokrlyl9TVv3hzmUuBgTXM",
+                        "y": "v1FgcOTxM17t9fwuQRxJ7KREpDXHFSz4kg2UCeCmXbw"
+                    }]
+                },
+                "encrypted_response_enc_values_supported": ["A128GCM", "A128CBC-HS256"],
+                "subject_syntax_types_supported": ["did:key"]
+            },
+            "client_id": client_id,
+            "presentation_definition": {
+                "id": "327ad171-c80a-485b-b098-50d7ad278ef6",
+                "input_descriptors": [{
+                    "id": "Identity-1",
+                    "constraints": {
+                        "fields": [
+                            {
+                                "path": ["$.vct"],
+                                "filter": {
+                                    "type": "string",
+                                    "const": "https://credentials.example.com/identity_credential"
+                                },
+                                "predicate": null,
+                                "intent_to_retain": false
+                            },
+                            {
+                                "path": ["$.name"],
+                                "optional": true,
+                                "predicate": null,
+                                "intent_to_retain": false
+                            }
+                        ]
+                    },
+                    "name": "Identity VC",
+                    "purpose": "We want an identity",
+                    "format": {
+                        "dc+sd-jwt": {
+                            "sd-jwt_alg_values": ["ES256", "EdDSA"],
+                            "kb-jwt_alg_values": ["ES256", "EdDSA"]
+                        }
+                    }
+                }]
+            },
+            "response_uri": "http://127.0.0.1:55796/auth"
+        });
+
+        let jwt = sign_compact(&key, "application/oauth-authz-req+jwt", &claims)
+            .await
+            .unwrap();
+
+        let mut request_uri = Url::parse("openid4vp://").unwrap();
+        request_uri
+            .query_pairs_mut()
+            .append_pair("client_id", &client_id)
+            .append_pair("request_uri", build_url(VERIFIER_URL, "request").as_str());
+
+        (jwt, request_uri, claims)
+    }
 
     #[tokio::test]
     async fn get_auth_request_success() {
+        let (jwt, request_uri, expected) = signed_auth_request_fixture().await;
+
         let mut http_client = MockHttpClient::new();
-        mock_http_fn_with_plain_text_resp(
+        mock_http_fn(
             &mut http_client,
             Method::GET,
             build_url(VERIFIER_URL, "request"),
-            AUTH_REQUEST_JWT,
+            move |_req| Ok(HttpResponse::new(jwt.clone().into_bytes())),
             1.into(),
         );
         let holder = holder_service(http_client, LocalKms::new(), InMemVault::new()).await;
 
         // Get request object
         let request_obj = holder
-            .get_authorization_request(&REQUEST_URI.parse().unwrap())
+            .get_authorization_request(&request_uri)
             .await
             .unwrap();
 
-        assert_eq!(request_obj, serde_json::from_str(AUTH_REQUEST).unwrap());
+        assert_eq!(request_obj, serde_json::from_value(expected).unwrap());
     }
 
     #[tokio::test]
@@ -1583,24 +1670,27 @@ mod tests {
     async fn request_verifier_verifies_for_did_successfully() {
         let request_verifier =
             request_verifier(MockHttpClient::new(), LocalKms::new(), InMemVault::new()).await;
-        let aro: AuthorizationRequestObject = serde_json::from_str(AUTH_REQUEST).unwrap();
+        let (jwt, _request_uri, expected) = signed_auth_request_fixture().await;
+        let aro: AuthorizationRequestObject = serde_json::from_value(expected).unwrap();
         request_verifier
-            .decentralized_identifier(&aro, AUTH_REQUEST_JWT.to_string())
+            .decentralized_identifier(&aro, jwt)
             .await
             .unwrap();
     }
 
     #[tokio::test]
-    #[should_panic(
-        expected = "DIDs from 'kid' (did:key:zDnaebMD6CqPmJL8WxF6YffAAbbK935aaKbyVEyuGQtukXk6f) and 'client_id' (decentralized_identifier:did:key:1) do not match"
-    )]
+    // The DID embedded in the panic message is the freshly generated signer's
+    // own, unknown ahead of time, so only the general shape is checked here —
+    // the same substring the fixture-built equivalent below checks.
+    #[should_panic(expected = "do not match")]
     async fn request_verifier_verifies_for_did_unsuccessfully() {
         let request_verifier =
             request_verifier(MockHttpClient::new(), LocalKms::new(), InMemVault::new()).await;
+        let (jwt, _request_uri, _expected) = signed_auth_request_fixture().await;
         let aro: AuthorizationRequestObject =
             serde_json::from_str(AUTH_REQUEST_WITH_WRONG_CLIENT_ID).unwrap();
         request_verifier
-            .decentralized_identifier(&aro, AUTH_REQUEST_JWT.to_string())
+            .decentralized_identifier(&aro, jwt)
             .await
             .unwrap();
     }
@@ -1647,19 +1737,20 @@ mod tests {
 
     #[tokio::test]
     async fn get_auth_request_with_state_success() {
+        let (jwt, request_uri, _expected) = signed_auth_request_fixture().await;
+
         let mut http_client = MockHttpClient::new();
-        mock_http_fn_with_plain_text_resp(
+        mock_http_fn(
             &mut http_client,
             Method::GET,
             build_url(VERIFIER_URL, "request"),
-            AUTH_REQUEST_JWT,
+            move |_req| Ok(HttpResponse::new(jwt.clone().into_bytes())),
             1.into(),
         );
         let holder = holder_service(http_client, LocalKms::new(), InMemVault::new()).await;
-        pub const REQUEST_URI: &str = "openid4vp://?client_id=decentralized_identifier%3Adid%3Akey%3AzDnaebMD6CqPmJL8WxF6YffAAbbK935aaKbyVEyuGQtukXk6f&request_uri=http%3A%2F%2F127.0.0.1%3A55796%2Frequest";
 
         let request_obj = holder
-            .get_authorization_request(&REQUEST_URI.parse().unwrap())
+            .get_authorization_request(&request_uri)
             .await
             .unwrap();
 
@@ -2857,18 +2948,40 @@ mod tests {
         let kms = LocalKms::new();
         let vault = test_case.prepare_vault(&kms).await;
 
+        // The status list and the credential are a matched pair: the
+        // credential's `status` claim indexes into this exact list.
+        let fixture_kms = FixtureKms::new();
+        let issuer = FixtureKey::create_default(&fixture_kms).await.unwrap();
+        let holder_key = FixtureKey::create_default(&fixture_kms).await.unwrap();
+        let status_list_url = "http://localhost:9001/status_list";
+
+        let status_list_token = FixtureStatusListToken::builder(&issuer)
+            .url(status_list_url)
+            .build()
+            .await
+            .unwrap();
+
+        let credential = FixtureSdJwtVc::builder(&issuer, &holder_key)
+            .claim(
+                "status",
+                json!({ "status_list": { "uri": status_list_url, "idx": 1 } }),
+            )
+            .build()
+            .await
+            .unwrap();
+
         let mut http_client = MockHttpClient::new();
-        mock_http_fn_with_plain_text_resp(
+        mock_http_fn(
             &mut http_client,
             Method::GET,
-            Url::parse("http://localhost:9001/status_list").unwrap(),
-            SAMPLE_CREDENTIAL_STATUS_LIST,
+            Url::parse(status_list_url).unwrap(),
+            move |_req| Ok(HttpResponse::new(status_list_token.clone().into_bytes())),
             1.into(),
         );
         let holder = holder_service(http_client, kms, vault).await;
 
         let status = holder
-            .get_credential_status(&Credential::SdJwt(SAMPLE_SD_JWT_WITH_STATUS.to_string()))
+            .get_credential_status(&Credential::SdJwt(credential))
             .await
             .unwrap()
             .unwrap();
