@@ -1,6 +1,6 @@
 //! Bundle-level checks: every contract key is present, no token anywhere in
 //! the bundle (including nested inside `vp` and `dsdJwtGrantVpToken`) is
-//! already expired, and the two status-list/credential pairs are mutually
+//! already expired, and the status-list/credential pair is mutually
 //! coherent.
 //!
 //! Run with `--features delegate-sd-jwt` (or `--all-features`) — without it,
@@ -31,8 +31,6 @@ const CONTRACT_KEYS: &[&str] = &[
     "sdJwtCreds",
     "authResponseJwe",
     "dsdJwtGrantVpToken",
-    "revokedStatusListJwt",
-    "vcRevoked",
 ];
 
 /// The `exp` claim of `value`, if `value` is a compact JWS/JWT whose payload
@@ -111,10 +109,9 @@ async fn bundle_holds_no_expired_token() -> test_fixtures::Result<()> {
     Ok(())
 }
 
-/// `vcWithStatus`/`statusListJwt` and `vcRevoked`/`revokedStatusListJwt` are
-/// two independent pairs. A fixture pair that silently points at the wrong
-/// index is a real failure mode (it already cost a fix round elsewhere in
-/// this branch), so this asserts both directions against the SDK's own
+/// `vcWithStatus`/`statusListJwt` is a fixture pair. A pair that silently
+/// points at the wrong index is a real failure mode (it already cost a fix
+/// round elsewhere in this branch), so this asserts it against the SDK's own
 /// status verifier rather than assuming the pairing from how `bundle::build`
 /// happens to wire the indices today.
 #[tokio::test]
@@ -122,20 +119,12 @@ async fn status_pairs_are_mutually_coherent() -> test_fixtures::Result<()> {
     let bundle = test_fixtures::bundle::build().await?;
 
     let status_list_jwt = bundle.get("statusListJwt").unwrap().as_str().unwrap();
-    let revoked_status_list_jwt = bundle
-        .get("revokedStatusListJwt")
-        .unwrap()
-        .as_str()
-        .unwrap();
     let vc_with_status = bundle.get("vcWithStatus").unwrap().as_str().unwrap();
-    let vc_revoked = bundle.get("vcRevoked").unwrap().as_str().unwrap();
 
     let vc_with_status_claims = decode_payload(vc_with_status);
-    let vc_revoked_claims = decode_payload(vc_revoked);
 
-    let http = StaticHttpClient::new()
-        .with_response(status_uri(&vc_with_status_claims), status_list_jwt)
-        .with_response(status_uri(&vc_revoked_claims), revoked_status_list_jwt);
+    let http =
+        StaticHttpClient::new().with_response(status_uri(&vc_with_status_claims), status_list_jwt);
 
     let valid_claims: Claims = vc_with_status_claims.try_into().unwrap();
     let valid_status =
@@ -146,17 +135,6 @@ async fn status_pairs_are_mutually_coherent() -> test_fixtures::Result<()> {
         valid_status,
         Some(VCStatus::Valid),
         "vcWithStatus must read Valid against statusListJwt"
-    );
-
-    let revoked_claims: Claims = vc_revoked_claims.try_into().unwrap();
-    let revoked_status =
-        StatusListJwt::get_vc_status(&revoked_claims, &http, UniversalResolver::default(), None)
-            .await
-            .expect("vcRevoked must resolve against revokedStatusListJwt");
-    assert_eq!(
-        revoked_status,
-        Some(VCStatus::Invalid),
-        "vcRevoked must read revoked against revokedStatusListJwt"
     );
 
     Ok(())

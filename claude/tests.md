@@ -47,24 +47,33 @@ implementations, covering scenarios that unit tests within individual modules ca
 - Phase B bridge: `equs-test-fixtures` ships a `fixture_gen` binary
   (`test-fixtures/src/bin/fixture_gen.rs`, driven by `test-fixtures/src/bundle.rs`) that mints every
   fixture the non-Rust wrapper suites need — `authRequestJwt`, `vc`, `vp`, `statusListJwt`,
-  `vcWithStatus`, `accessToken`, `proofJwt`, `sdJwtCreds`, `authResponseJwe`, `dsdJwtGrantVpToken`,
-  `revokedStatusListJwt`, `vcRevoked` — and writes them to a gitignored JSON file
-  (`fixtures.generated.json`). `statusListJwt`/`vcWithStatus` and `revokedStatusListJwt`/`vcRevoked`
-  are two independently coherent Valid/revoked pairs at two different URLs, so a wrapper test can
-  exercise status filtering without hand-rolling a status list. `dsdJwtGrantVpToken` needs
-  `--features delegate-sd-jwt`; `bundle::build()` fails loudly rather than silently omitting it.
-  The TypeScript (`wrappers/nodejs`, `wrappers/test/js_common`), Kotlin (`wrappers/uniffi/kotlin`)
+  `vcWithStatus`, `accessToken`, `proofJwt`, `sdJwtCreds`, `authResponseJwe`, `dsdJwtGrantVpToken`
+  — and writes them to a gitignored JSON file (`fixtures.generated.json`). `dsdJwtGrantVpToken`
+  needs `--features delegate-sd-jwt`; `bundle::build()` fails loudly rather than silently omitting
+  it. The TypeScript (`wrappers/nodejs`, `wrappers/test/js_common`), Kotlin (`wrappers/uniffi/kotlin`)
   and Swift (`wrappers/uniffi/swift`) suites now read this bundle (`EQUS_FIXTURE_BUNDLE`) instead of
-  holding committed tokens. Two fixed-URL pairs the bundle publishes at `https://issuer.example/…`
-  are unreachable from a suite whose mock server binds a real `localhost` port or socket (TS's Jest
-  mock server, Kotlin's `MockWebServer`): those suites mint an equivalent pair in-process instead
-  (Kotlin's status pair via `VcCoreStatusIssuer`/`VcCoreIssuer`, mirroring `VcCoreTest.kt`). Swift's
+  holding committed tokens. A fixed-URL pair the bundle publishes at `https://issuer.example/…` is
+  unreachable from a suite whose mock server binds a real `localhost` port or socket (TS's Jest mock
+  server, Kotlin's `MockWebServer`): those suites mint an equivalent pair in-process instead (Kotlin's
+  status pair via `VcCoreStatusIssuer`/`VcCoreIssuer`, mirroring `VcCoreTest.kt`). Swift's
   `MockHttpRouter` matches routes on URL path only (see below), so it does not have this problem —
-  the bundle's `vcWithStatus`/`statusListJwt` pair is used directly. `revokedStatusListJwt`/
-  `vcRevoked` remain unconsumed by any suite (no wrapper test exercises revocation); they would be
-  reachable in Swift the same way but are not otherwise. Only CI wiring (generating the bundle
-  before each wrapper job) remains.
+  the bundle's `vcWithStatus`/`statusListJwt` pair is used directly. An earlier revision also shipped
+  a second, independently coherent `revokedStatusListJwt`/`vcRevoked` pair; it was removed (Task 12)
+  once two reviews confirmed no TypeScript, Kotlin or Swift suite consumed it — Swift could have
+  reached it the same way it reaches `vcWithStatus`/`statusListJwt`, but nothing did. CI now
+  generates the bundle before every wrapper job that reads it (Task 12): Node's `pretest` covers
+  `wrappers/nodejs` and, in the same job, `wrappers/test/js_common`'s `test:nodejs`; the `wasm-test`
+  job generates it explicitly before `test:wasm` since it never runs the Node suite first; Gradle's
+  `fixtureGen` task (`dependsOn` on `tasks.test`) covers Kotlin; and
+  `wrappers/uniffi/Makefile`'s `ios-generate-fixtures` target, now a prerequisite of `ios-test-only`,
+  covers Swift in both `make ios-test` (GitLab) and `make ios-test-only` (GitHub Actions).
 - `cargo test --all-features` at the workspace root tests the root package only, so
   `equs-test-fixtures` runs in its own CI job (`test-fixtures-test`, `test-fixtures-test-job`).
+- `scripts/scan-embedded-tokens.py --fail-on src/ tests/ plugins/askar/src wrappers/` runs as a
+  tier-1 CI job (`scan-embedded-tokens`, `scan-embedded-tokens-job`) beside `fmt`, alongside
+  `scripts/test_scan_embedded_tokens.py`. Bare `plugins/` is not passed: it would also gate on
+  `plugins/askar/wrappers/nodejs`'s two committed tokens, which are out of scope for this migration
+  (see above) and are not in the scanner's `KNOWN_EXCEPTIONS` allowlist the way the two `demos/`
+  hits are, so the job would fail on every run.
 - SDK types do not unify across the fixture crate's dev-dependency cycle: a `src/` unit test builds
   a fixture's inputs through `test_fixtures::equs_sdk::…` and carries only the token string back.

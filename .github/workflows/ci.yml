@@ -50,6 +50,16 @@ jobs:
       components: rustfmt
       run: cargo fmt --all -- --check
 
+  scan-embedded-tokens:
+    uses: ./.github/workflows/_job.yml
+    with:
+      cache-key: scan-embedded-tokens
+      toolchain: false
+      sccache: false
+      run: |
+        python3 scripts/scan-embedded-tokens.py --fail-on src/ tests/ plugins/askar/src wrappers/
+        python3 scripts/test_scan_embedded_tokens.py
+
   # tier 2
 
   clippy:
@@ -227,6 +237,7 @@ jobs:
       node: true
       restore: wrapper-wasm
       run: |
+        cargo run -p equs-test-fixtures --all-features --bin fixture_gen -- --out wrappers/test/js_common/test/fixtures.generated.json
         cd wrappers/test/js_common
         npm pkg set dependencies.equs-credentials-sdk=file:../../wasm/pkg
         npm i

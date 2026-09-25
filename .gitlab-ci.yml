@@ -98,6 +98,16 @@ dependency_scanning:
     - merge_requests
     - main
 
+scan-embedded-tokens-job:
+  image: python:3-slim
+  stage: scan
+  script:
+    - python3 scripts/scan-embedded-tokens.py --fail-on src/ tests/ plugins/askar/src wrappers/
+    - python3 scripts/test_scan_embedded_tokens.py
+  only:
+    - merge_requests
+    - main
+
 
 build-job:
   <<: *rust_job_configs
@@ -283,7 +293,9 @@ wasm-test-job:
     - cd wrappers/wasm
     - npm install
     - npm run build:dev:cjs
-    - cd ../test/js_common
+    - cd ../..
+    - cargo run -p equs-test-fixtures --all-features --bin fixture_gen -- --out wrappers/test/js_common/test/fixtures.generated.json
+    - cd wrappers/test/js_common
     - npm pkg set dependencies.equs-credentials-sdk=file:../../wasm/pkg
     - npm i
     - npm run test:wasm

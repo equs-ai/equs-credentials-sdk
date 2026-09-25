@@ -221,7 +221,11 @@ ios-generate-framework-dev: ios-generate-xcframework-dev
 
 ios-test: ios-generate-xcframework-dev ios-test-only
 
-ios-test-only:
+ios-generate-fixtures:
+	@echo "Generating fixture bundle..."
+	./scripts/generate_fixtures.sh
+
+ios-test-only: ios-generate-fixtures
 	@echo "Run tests"
 	rm -rf swift/equssdk.xcframework
 	cp -R swift/ios/debug/equssdk.xcframework swift/equssdk.xcframework

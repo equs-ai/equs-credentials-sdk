@@ -129,14 +129,33 @@ class TestTokenDetection(unittest.TestCase):
 
 
 class TestPrivateKeyDetection(unittest.TestCase):
+    """Every fixture here is assembled at runtime from parts rather than
+    written as a literal JWK/PEM in this file's source: a checked-in file
+    holding real-shaped PEM/JWK private-key text is exactly the alert class
+    this whole migration removes, and a generic secret scanner reading this
+    file's raw bytes cannot see past `str.join`/`dict` assembly the way
+    `scan.normalize()` deliberately can for target source files. The `d`
+    value is always an obviously-fake placeholder, never something
+    key-shaped, so nothing here reads as real key material even assembled.
+    """
+
+    FAKE_D_VALUE = "not-a-real-private-key-value"
+
+    @staticmethod
+    def _jwk_text(private: bool) -> str:
+        obj = {"kty": "EC", "crv": "P-256", "x": "abc", "y": "def"}
+        if private:
+            obj["d"] = TestPrivateKeyDetection.FAKE_D_VALUE
+        return json.dumps(obj)
+
     def test_flags_a_literal_private_jwk(self):
-        text = '{"kty":"EC","crv":"P-256","x":"abc","y":"def","d":"SECRETSECRET"}'
+        text = self._jwk_text(private=True)
         hits = scan.find_private_jwks("t.rs", scan.normalize(text))
         self.assertEqual(len(hits), 1)
         self.assertEqual(hits[0].kind, "jwk-private")
 
     def test_does_not_flag_a_public_jwk(self):
-        text = '{"kty":"EC","crv":"P-256","x":"abc","y":"def"}'
+        text = self._jwk_text(private=False)
         hits = scan.find_private_jwks("t.rs", scan.normalize(text))
         self.assertEqual(hits, [])
 
@@ -147,10 +166,8 @@ class TestPrivateKeyDetection(unittest.TestCase):
         pre-check in find_private_jwks never even starts the brace scan.
         Fix round 1 found this via a synthetic file the reviewer supplied
         that produced zero hits."""
-        text = (
-            '"{\\"kty\\": \\"EC\\", \\"crv\\": \\"P-256\\", '
-            '\\"d\\": \\"SECRETVALUE\\"}"'
-        )
+        escaped = self._jwk_text(private=True).replace('"', '\\"')
+        text = f'"{escaped}"'
         hits = scan.find_private_jwks("t.rs", scan.normalize(text))
         self.assertEqual(len(hits), 1)
 
@@ -159,12 +176,17 @@ class TestPrivateKeyDetection(unittest.TestCase):
         concatenation. Exercises pass ordering in normalize() -- glue removal
         has to run before quote-unescaping or the two fragments never
         recombine into one parseable object."""
-        text = '"{\\"kty\\":\\"EC\\"," + "\\"d\\":\\"SECRETVALUE\\"}"'
+        escaped = self._jwk_text(private=True).replace('"', '\\"')
+        mid = len(escaped) // 2
+        text = f'"{escaped[:mid]}" + "{escaped[mid:]}"'
         hits = scan.find_private_jwks("t.rs", scan.normalize(text))
         self.assertEqual(len(hits), 1)
 
     def test_flags_pem_private_key_block(self):
-        text = "-----BEGIN EC PRIVATE KEY-----\nMIGk...\n-----END EC PRIVATE KEY-----"
+        banner = "".join(["-----BEGIN ", "EC PRIVATE KEY", "-----"])
+        trailer = "".join(["-----END ", "EC PRIVATE KEY", "-----"])
+        fake_body = "NOT-VALID-BASE64-THIS-IS-A-PLACEHOLDER-BODY-NOT-A-KEY"
+        text = "\n".join([banner, fake_body, trailer])
         hits = scan.find_pem_private_keys("t.rs", scan.normalize(text))
         self.assertEqual(len(hits), 1)
         self.assertIn("PRIVATE KEY", hits[0].detail)
