@@ -10,7 +10,7 @@
 //! [`equs_sdk::crypto::Signer::sign`] is async; blocking on the KMS from
 //! inside `rcgen`'s signing callback would deadlock under the current-thread
 //! runtime `#[tokio::test]` provides. Keeping the CA key inside `rcgen` costs
-//! nothing: the leaf still certifies the KMS key (via the [`KmsPublicKey`]
+//! nothing: the leaf still certifies the KMS key (via the `KmsPublicKey`
 //! adapter), and the credential itself is still signed inside the KMS.
 
 use base64::Engine;

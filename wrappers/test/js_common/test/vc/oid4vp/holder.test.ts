@@ -229,11 +229,14 @@ describe("OID4VP Holder: ", () => {
     for (const key in credentialsMapping) {
       expect(key).toBe("Identity-1");
       // The bundle's `vc` fixture discloses `surname` (the old committed
-      // literal never did), so that alternative is satisfied now — only
-      // `$.first_name`, which no fixture discloses, is still missing.
+      // literal never did), so `PRESENTATION_DEFINITION_WITH_FAKE_CONSTRAINTS`'s
+      // multi-alternative field now targets `middle_name`/`honorific_prefix`
+      // instead — neither disclosed by any fixture — so both the
+      // single-path (`$.first_name`) and multi-alternative branches of the
+      // unmatched-path reporting stay exercised.
       expect(credentialsMapping[key].data).toMatchObject({
         type: "Paths",
-        paths: [["$.first_name"]],
+        paths: [["$.first_name"], ["$.middle_name", "$.honorific_prefix"]],
       });
     }
   });

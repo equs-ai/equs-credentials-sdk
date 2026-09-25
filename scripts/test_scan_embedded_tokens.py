@@ -34,6 +34,7 @@ import sys
 import time
 import unittest
 from pathlib import Path
+from unittest import mock
 
 SCRIPT_PATH = Path(__file__).resolve().parent / "scan-embedded-tokens.py"
 
@@ -190,6 +191,29 @@ class TestPrivateKeyDetection(unittest.TestCase):
         hits = scan.find_pem_private_keys("t.rs", scan.normalize(text))
         self.assertEqual(len(hits), 1)
         self.assertIn("PRIVATE KEY", hits[0].detail)
+
+
+class TestGitMissing(unittest.TestCase):
+    """`python:3-slim` shipped no `git`, so every pipeline run of this gate
+    failed with a FileNotFoundError traceback -- indistinguishable from a
+    genuine hit by exit code alone (both were `1`). git_tracked_files() must
+    turn that into a distinct, legible error, and main() must exit with a
+    code that is neither `1` (tokens found) nor `2` (argparse usage error)."""
+
+    def test_git_tracked_files_raises_scan_environment_error_when_git_missing(self):
+        with mock.patch.object(
+            scan.subprocess, "run", side_effect=FileNotFoundError("git")
+        ):
+            with self.assertRaises(scan.ScanEnvironmentError):
+                scan.git_tracked_files()
+
+    def test_main_exits_with_a_distinct_code_when_git_missing(self):
+        with mock.patch.object(
+            scan.subprocess, "run", side_effect=FileNotFoundError("git")
+        ), mock.patch.object(sys, "argv", ["scan-embedded-tokens.py"]):
+            exit_code = scan.main()
+        self.assertEqual(exit_code, scan.EXIT_ENVIRONMENT_ERROR)
+        self.assertNotIn(exit_code, (0, 1, 2))
 
 
 class TestUnderAny(unittest.TestCase):

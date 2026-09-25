@@ -27,12 +27,12 @@ val fixtureGen = tasks.register<Exec>("fixtureGen") {
     val outFile = fixtureBundleFile.get().asFile
     doFirst { outFile.parentFile.mkdirs() }
     workingDir(rootDir.parentFile.parentFile.parentFile)
-    environment("RUSTUP_TOOLCHAIN", "1.97")
     commandLine(
-        "cargo", "run", "-p", "equs-test-fixtures", "--all-features", "--bin", "fixture_gen",
+        "cargo", "run", "-p", "equs-test-fixtures", "--bin", "fixture_gen",
         "--", "--out", outFile.absolutePath,
     )
     outputs.file(outFile)
+    outputs.upToDateWhen { false }
 }
 
 tasks.test {

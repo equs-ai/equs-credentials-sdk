@@ -19,7 +19,7 @@ those suites run and never committed (`.gitignore`: `fixtures.generated.json`).
 | File | Role |
 |------|------|
 | `src/lib.rs` | Crate root; module declarations, `Error`/`Result` re-exports, and the `equs_sdk` re-export the SDK's own unit tests go through |
-| `src/bundle.rs` | `Bundle` — a flat, serialisable map of fixture name to value — and `build()`, which mints one `LocalKms` plus issuer/holder/verifier keys and drives every builder a wrapper suite needs. `dsdJwtGrantVpToken` needs `delegate-sd-jwt`; `build()` fails loudly (`Error::Sdk`) rather than omitting it when the feature is off |
+| `src/bundle.rs` | `Bundle` — a flat, serialisable map of fixture name to value — and `build()`, which mints one `LocalKms` plus issuer/holder/verifier keys and drives every builder a wrapper suite needs. No longer needs `delegate-sd-jwt`: `authRequestJwt` and `dsdJwtGrantVpToken` were removed (zero live consumers across TS/Kotlin/Swift; each wrapper mints its own instead) |
 | `src/bin/fixture_gen.rs` | `fixture_gen --out <path>` binary; writes `bundle::build()`'s output as pretty JSON |
 | `src/error.rs` | `Error` / `Result` — `Kms`, `Did`, `Signing`, `Json`, `Sdk` variants |
 | `src/keys.rs` | `FixtureKey` — a `LocalKms` key handle plus its `did:key`, DID URL and `KeyMetadata`; covers all four `KeyType`s |
@@ -39,7 +39,7 @@ those suites run and never committed (`.gitignore`: `fixtures.generated.json`).
 | `src/jwe.rs` | `Jwe` — encrypted response, via `vc::oid4vp::jwe::JweEncryptor` |
 | `tests/round_trip.rs` | Round-trip + failure case for every kind whose verifier is public |
 | `tests/delegation.rs` | The same for `dsd_jwt`; gated on `delegate-sd-jwt` |
-| `tests/bundle.rs` | Every contract key is present; no token anywhere in the bundle (recursing into `vp` and `dsdJwtGrantVpToken`) is already expired; `vcWithStatus` resolves Valid against its paired `statusListJwt` via the SDK's own status verifier. Gated on `delegate-sd-jwt` for the same reason as `tests/delegation.rs` |
+| `tests/bundle.rs` | Every contract key is present; no token anywhere in the bundle (recursing into `vp`) is already expired; `vcWithStatus` resolves Valid against its paired `statusListJwt` via the SDK's own status verifier. Not feature-gated — the bundle no longer has a `delegate-sd-jwt`-only key |
 | `tests/util/mod.rs` | Unverified header/payload decoding for claim assertions |
 
 ## Key types / traits
@@ -60,10 +60,10 @@ those suites run and never committed (`.gitignore`: `fixtures.generated.json`).
   ships nowhere).
 
 ## Constraints
-- `cargo run -p equs-test-fixtures --all-features --bin fixture_gen -- --out fixtures.generated.json`
-  writes the wrapper fixture bundle. Needs `--features delegate-sd-jwt` (or `--all-features`) for
-  `dsdJwtGrantVpToken`; without it `bundle::build()` returns `Err`. The output path is gitignored
-  and Tasks 10/11 (the wrapper suites) own where they point the generator, not this crate.
+- `cargo run -p equs-test-fixtures --bin fixture_gen -- --out fixtures.generated.json` writes the
+  wrapper fixture bundle. No feature flags needed — `bundle::build()` no longer touches
+  `delegate-sd-jwt` (see `src/bundle.rs`'s module docs). The output path is gitignored and
+  Tasks 10/11 (the wrapper suites) own where they point the generator, not this crate.
 - Run with `cargo test --all-features -p equs-test-fixtures`. `cargo test --all-features` at the
   workspace root tests the root package only and never builds this crate; CI has its own job
   (`test-fixtures-test`, `test-fixtures-test-job`).

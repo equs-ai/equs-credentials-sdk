@@ -16,7 +16,6 @@
 //!
 //! | Key | Shape |
 //! |---|---|
-//! | `authRequestJwt` | string — signed OID4VP request object |
 //! | `vc` | string — issuer-signed SD-JWT VC |
 //! | `vp` | object `{ "credential", "presentation" }` — `vc` presented as a KB-JWT-bound SD-JWT VP |
 //! | `statusListJwt` | string — Token Status List JWT |
@@ -25,17 +24,13 @@
 //! | `proofJwt` | string — OID4VCI proof-of-possession JWT |
 //! | `sdJwtCreds` | string — issuer-signed SD-JWT VC, OID4VCI credential-response shape |
 //! | `authResponseJwe` | string — compact JWE encrypting an OID4VP authorization response |
-//! | `dsdJwtGrantVpToken` | object `{ "fixture-credential": [grant] }` — a delegated SD-JWT grant wrapped as a `vp_token` |
 //!
-//! # `delegate-sd-jwt`
-//!
-//! `dsdJwtGrantVpToken` needs [`crate::dsd_jwt::DsdJwt`], which only exists
-//! under this crate's `delegate-sd-jwt` feature. Rather than silently omit
-//! the key when the feature is off — handing a wrapper suite a bundle that
-//! looks complete but is not — [`build`] fails the whole call with
-//! [`crate::Error::Sdk`] once it reaches that key. Generate the bundle with
-//! `--features delegate-sd-jwt` (or `--all-features`) so every contract key
-//! is present.
+//! `authRequestJwt` and `dsdJwtGrantVpToken` were removed (a whole-branch
+//! review found zero live consumers of either across the TypeScript, Kotlin
+//! and Swift suites — each wrapper that needs an OID4VP request object or a
+//! delegated grant mints its own in-process instead). `dsdJwtGrantVpToken`
+//! was the only reason [`build`] needed the `delegate-sd-jwt` feature, so
+//! generating this bundle no longer requires it.
 
 use serde::Serialize;
 use serde_json::{Map, Value, json};
@@ -49,7 +44,6 @@ use crate::jwe::Jwe;
 use crate::kb_jwt::KbJwt;
 use crate::keys::FixtureKey;
 use crate::pop::ProofOfPossession;
-use crate::request_object::RequestObject;
 use crate::sd_jwt_vc::SdJwtVc;
 use crate::status_list::{DEFAULT_STATUS_LIST_URL, StatusListToken};
 
@@ -106,9 +100,6 @@ impl Bundle {
 /// * [`crate::Error::Json`], [`crate::Error::Signing`], [`crate::Error::Sdk`]
 ///   — one of the builders failed; see that builder's own `build` for the
 ///   exact cause.
-/// * [`crate::Error::Sdk`] — this crate was built without the
-///   `delegate-sd-jwt` feature, so `dsdJwtGrantVpToken` cannot be minted (see
-///   the module docs).
 pub async fn build() -> Result<Bundle> {
     let kms = LocalKms::new();
     let issuer = FixtureKey::create_default(&kms).await?;
@@ -116,9 +107,6 @@ pub async fn build() -> Result<Bundle> {
     let verifier = FixtureKey::create_default(&kms).await?;
 
     let mut bundle = Bundle(Map::new());
-
-    let auth_request_jwt = RequestObject::builder(&verifier).build().await?;
-    bundle.insert("authRequestJwt", Value::from(auth_request_jwt));
 
     let vc = SdJwtVc::builder(&issuer, &holder).build().await?;
     let presentation = KbJwt::builder(&kms, &holder, vc.clone()).build().await?;
@@ -159,53 +147,5 @@ pub async fn build() -> Result<Bundle> {
         .await?;
     bundle.insert("authResponseJwe", Value::from(auth_response_jwe));
 
-    insert_dsd_jwt_grant(&kms, &holder, &vc, &mut bundle).await?;
-
     Ok(bundle)
-}
-
-/// Delegates `credential` and wraps the grant as a `vp_token` under
-/// `dsdJwtGrantVpToken`.
-///
-/// # Errors
-///
-/// * [`crate::Error::Sdk`] — the holder service rejected the credential or
-///   the grant, or signing failed.
-#[cfg(feature = "delegate-sd-jwt")]
-async fn insert_dsd_jwt_grant(
-    kms: &LocalKms,
-    holder: &FixtureKey,
-    credential: &str,
-    bundle: &mut Bundle,
-) -> Result<()> {
-    let grant = crate::dsd_jwt::DsdJwt::builder(kms, holder, credential.to_string())
-        .build()
-        .await?;
-    bundle.insert(
-        "dsdJwtGrantVpToken",
-        json!({ "fixture-credential": [grant] }),
-    );
-    Ok(())
-}
-
-/// Fails loudly: without `delegate-sd-jwt`, [`crate::dsd_jwt::DsdJwt`] does
-/// not exist, so `dsdJwtGrantVpToken` cannot be minted. Returning
-/// [`crate::Error::Sdk`] here fails the whole [`build`] call rather than
-/// handing back a bundle that is silently missing a contract key.
-///
-/// # Errors
-///
-/// * [`crate::Error::Sdk`] — always; the `delegate-sd-jwt` feature is off.
-#[cfg(not(feature = "delegate-sd-jwt"))]
-async fn insert_dsd_jwt_grant(
-    _kms: &LocalKms,
-    _holder: &FixtureKey,
-    _credential: &str,
-    _bundle: &mut Bundle,
-) -> Result<()> {
-    Err(crate::error::Error::Sdk {
-        details: "dsdJwtGrantVpToken requires the delegate-sd-jwt feature; \
-                  rebuild with --features delegate-sd-jwt (or --all-features)"
-            .to_string(),
-    })
 }

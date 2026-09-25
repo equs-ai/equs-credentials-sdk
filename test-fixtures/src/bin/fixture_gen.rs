@@ -1,12 +1,11 @@
 //! Writes the wrapper fixture bundle to the path given by `--out`.
 //!
 //! Run before the TypeScript, Kotlin and Swift wrapper test suites: the
-//! output is generated, not committed (see `.gitignore`). `dsdJwtGrantVpToken`
-//! needs this crate's `delegate-sd-jwt` feature — see `test_fixtures::bundle`
-//! for what happens without it.
+//! output is generated, not committed (see `.gitignore`). See
+//! `test_fixtures::bundle` for the key contract.
 //!
 //! ```text
-//! cargo run -p equs-test-fixtures --features delegate-sd-jwt --bin fixture_gen -- --out fixtures.generated.json
+//! cargo run -p equs-test-fixtures --bin fixture_gen -- --out fixtures.generated.json
 //! ```
 
 #[tokio::main(flavor = "current_thread")]

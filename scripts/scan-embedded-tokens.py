@@ -110,6 +110,11 @@ ESCAPED_QUOTE_RE = re.compile(r'\\"')
 
 PEM_PRIVATE_KEY_RE = re.compile(r"-----BEGIN ([A-Z0-9 ]*PRIVATE KEY)-----")
 
+# `1` is what `--fail-on` returns for a genuine hit; this must never collide
+# with it, or a broken environment reads as a security finding by exit code
+# alone. `2` is argparse's own usage-error code, so this skips that too.
+EXIT_ENVIRONMENT_ERROR = 3
+
 KNOWN_EXCEPTIONS = {
     "demos/multi-thread/src/main.rs": (
         "expired localhost Keycloak token, read via validate_scope -> "
@@ -148,13 +153,26 @@ class ScanResult:
     key_hits: list[KeyHit] = field(default_factory=list)
 
 
+class ScanEnvironmentError(RuntimeError):
+    """The scan cannot run because a tool it depends on is missing.
+
+    Distinct from a real gate hit: `main()` maps this to `EXIT_ENVIRONMENT_ERROR`
+    (not `1`, the same code `--fail-on` uses for "tokens found"), so a broken
+    CI image reads as a broken CI image, not as a security finding."""
+
+
 def git_tracked_files() -> list[str]:
-    out = subprocess.run(
-        ["git", "ls-files", "-z"],
-        cwd=REPO_ROOT,
-        check=True,
-        capture_output=True,
-    ).stdout
+    try:
+        out = subprocess.run(
+            ["git", "ls-files", "-z"],
+            cwd=REPO_ROOT,
+            check=True,
+            capture_output=True,
+        ).stdout
+    except FileNotFoundError as e:
+        raise ScanEnvironmentError(
+            "git is not on PATH -- cannot enumerate tracked files"
+        ) from e
     return [p for p in out.decode("utf-8", "surrogateescape").split("\0") if p]
 
 
@@ -400,7 +418,11 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    result = scan()
+    try:
+        result = scan()
+    except ScanEnvironmentError as e:
+        print(f"Embedded token scan: ENVIRONMENT ERROR -- {e}", file=sys.stderr)
+        return EXIT_ENVIRONMENT_ERROR
 
     token_counts: dict[str, int] = {}
     for hit in result.token_hits:

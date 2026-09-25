@@ -6,4 +6,4 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 OUT="${EQUS_FIXTURE_BUNDLE:-$SCRIPT_DIR/../swift/Tests/EqusSdkTests/fixtures.generated.json}"
 
 cd "$REPO_ROOT"
-RUSTUP_TOOLCHAIN=1.97 cargo run -p equs-test-fixtures --all-features --bin fixture_gen -- --out "$OUT"
+cargo run -p equs-test-fixtures --bin fixture_gen -- --out "$OUT"

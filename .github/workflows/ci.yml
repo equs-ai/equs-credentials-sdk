@@ -237,7 +237,7 @@ jobs:
       node: true
       restore: wrapper-wasm
       run: |
-        cargo run -p equs-test-fixtures --all-features --bin fixture_gen -- --out wrappers/test/js_common/test/fixtures.generated.json
+        cargo run -p equs-test-fixtures --bin fixture_gen -- --out wrappers/test/js_common/test/fixtures.generated.json
         cd wrappers/test/js_common
         npm pkg set dependencies.equs-credentials-sdk=file:../../wasm/pkg
         npm i

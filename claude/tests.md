@@ -56,11 +56,16 @@ implementations, covering scenarios that unit tests within individual modules ca
   content and none needed to change.
 - Phase B bridge: `equs-test-fixtures` ships a `fixture_gen` binary
   (`test-fixtures/src/bin/fixture_gen.rs`, driven by `test-fixtures/src/bundle.rs`) that mints every
-  fixture the non-Rust wrapper suites need — `authRequestJwt`, `vc`, `vp`, `statusListJwt`,
-  `vcWithStatus`, `accessToken`, `proofJwt`, `sdJwtCreds`, `authResponseJwe`, `dsdJwtGrantVpToken`
-  — and writes them to a gitignored JSON file (`fixtures.generated.json`). `dsdJwtGrantVpToken`
-  needs `--features delegate-sd-jwt`; `bundle::build()` fails loudly rather than silently omitting
-  it. The TypeScript (`wrappers/nodejs`, `wrappers/test/js_common`), Kotlin (`wrappers/uniffi/kotlin`)
+  fixture the non-Rust wrapper suites need — `vc`, `vp`, `statusListJwt`, `vcWithStatus`,
+  `accessToken`, `proofJwt`, `sdJwtCreds`, `authResponseJwe` — and writes them to a gitignored JSON
+  file (`fixtures.generated.json`). `authRequestJwt` and `dsdJwtGrantVpToken` were removed from the
+  bundle (a whole-branch review found zero live TS/Kotlin/Swift consumers of either; each wrapper
+  mints its own OID4VP request object or delegated grant in-process instead), which also means
+  generating the bundle no longer needs `--features delegate-sd-jwt` / `--all-features` — none of
+  the five `fixture_gen` invocations (`wrappers/nodejs/package.json`,
+  `plugins/askar/wrappers/nodejs/package.json`, the two `wasm-test` CI lines,
+  `wrappers/uniffi/scripts/generate_fixtures.sh`, the Gradle `fixtureGen` task) pass it anymore. The
+  TypeScript (`wrappers/nodejs`, `wrappers/test/js_common`), Kotlin (`wrappers/uniffi/kotlin`)
   and Swift (`wrappers/uniffi/swift`) suites now read this bundle (`EQUS_FIXTURE_BUNDLE`) instead of
   holding committed tokens. A fixed-URL pair the bundle publishes at `https://issuer.example/…` is
   unreachable from a suite whose mock server binds a real `localhost` port or socket (TS's Jest mock
@@ -88,6 +93,9 @@ implementations, covering scenarios that unit tests within individual modules ca
   `scripts/test_scan_embedded_tokens.py`. An earlier draft narrowed this to `plugins/askar/src`
   because `plugins/askar/wrappers/nodejs` still held two committed tokens; that was routing the gate
   around a live gap instead of closing it, so those two tokens were migrated instead (see above) and
-  the full `plugins/` is what's actually gated now.
+  the full `plugins/` is what's actually gated now. GitLab's job image is `rust:${RUST_VERSION}-bookworm`
+  (matches the rest of the pipeline) — `python:3-slim` shipped no `git`, which `git_tracked_files()`
+  needs, and failed every run indistinguishably from a real hit (both exited `1`); the scanner now
+  raises `ScanEnvironmentError` and exits `3` when `git` is missing, never `1`.
 - SDK types do not unify across the fixture crate's dev-dependency cycle: a `src/` unit test builds
   a fixture's inputs through `test_fixtures::equs_sdk::…` and carries only the token string back.

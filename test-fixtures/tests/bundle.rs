@@ -1,13 +1,6 @@
 //! Bundle-level checks: every contract key is present, no token anywhere in
-//! the bundle (including nested inside `vp` and `dsdJwtGrantVpToken`) is
-//! already expired, and the status-list/credential pair is mutually
-//! coherent.
-//!
-//! Run with `--features delegate-sd-jwt` (or `--all-features`) — without it,
-//! [`test_fixtures::bundle::build`] fails on purpose (see its docs), so this
-//! whole suite is gated the same way `tests/delegation.rs` is.
-
-#![cfg(feature = "delegate-sd-jwt")]
+//! the bundle (including nested inside `vp`) is already expired, and the
+//! status-list/credential pair is mutually coherent.
 
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
@@ -21,7 +14,6 @@ use test_fixtures::http::StaticHttpClient;
 /// Every contract key `bundle::build()` promises. Shared between the
 /// presence check and the expiry walk so the two can't silently drift apart.
 const CONTRACT_KEYS: &[&str] = &[
-    "authRequestJwt",
     "vc",
     "vp",
     "statusListJwt",
@@ -30,7 +22,6 @@ const CONTRACT_KEYS: &[&str] = &[
     "proofJwt",
     "sdJwtCreds",
     "authResponseJwe",
-    "dsdJwtGrantVpToken",
 ];
 
 /// The `exp` claim of `value`, if `value` is a compact JWS/JWT whose payload
@@ -52,11 +43,10 @@ fn exp_of(value: &Value) -> Option<i64> {
 /// string leaf that parses as a compact JWS with an `exp` claim is not
 /// already expired.
 ///
-/// This is what makes the check reach `vp.presentation` and
-/// `dsdJwtGrantVpToken["fixture-credential"][0]`, not just the bundle's
-/// top-level string entries: `Bundle::tokens()` stays shallow (it is a
-/// simple "the bare tokens" view used nowhere else), and this test owns the
-/// recursion instead of pushing nested-entry iteration into the crate's
+/// This is what makes the check reach `vp.presentation`, not just the
+/// bundle's top-level string entries: `Bundle::tokens()` stays shallow (it is
+/// a simple "the bare tokens" view used nowhere else), and this test owns
+/// the recursion instead of pushing nested-entry iteration into the crate's
 /// public API for a need only this test has.
 fn assert_no_expired_token(path: &str, value: &Value) {
     match value {

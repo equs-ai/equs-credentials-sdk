@@ -143,7 +143,7 @@ export const PRESENTATION_DEFINITION_WITH_FAKE_CONSTRAINTS: PresentationDefiniti
             optional: false,
           },
           {
-            path: ["$.surname", "$.last_name"],
+            path: ["$.middle_name", "$.honorific_prefix"],
             intent_to_retain: false,
             predicate: null,
             optional: false,

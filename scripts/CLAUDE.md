@@ -86,7 +86,12 @@ entry's `version:`.
 
 `scan-embedded-tokens.py [--fail-on PATH…]` — no arguments just reports; one or
 more `--fail-on` paths make it a gate that exits `1` if any token or private
-key falls under them. Python 3 standard library only, no new dependency.
+key falls under them. Python 3 standard library only, no new dependency. Runs
+in CI on `rust:${RUST_VERSION}-bookworm` (needs `git` on `PATH`, which
+`python:3-slim` doesn't have); if `git` is missing, `git_tracked_files()`
+raises `ScanEnvironmentError` and `main()` exits `3` — distinct from `1`
+("tokens found") and `2` (argparse usage error) — so a broken CI image never
+reads as a security finding.
 
 It matches `eyJ…` runs shaped like a compact JWS/JWE, base64url-decodes the
 first segment and requires an `alg` or `enc` member before counting it as a

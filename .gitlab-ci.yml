@@ -99,7 +99,7 @@ dependency_scanning:
     - main
 
 scan-embedded-tokens-job:
-  image: python:3-slim
+  image: rust:${RUST_VERSION}-bookworm
   stage: scan
   script:
     - python3 scripts/scan-embedded-tokens.py --fail-on src/ tests/ plugins/ wrappers/
@@ -294,7 +294,7 @@ wasm-test-job:
     - npm install
     - npm run build:dev:cjs
     - cd ../..
-    - cargo run -p equs-test-fixtures --all-features --bin fixture_gen -- --out wrappers/test/js_common/test/fixtures.generated.json
+    - cargo run -p equs-test-fixtures --bin fixture_gen -- --out wrappers/test/js_common/test/fixtures.generated.json
     - cd wrappers/test/js_common
     - npm pkg set dependencies.equs-credentials-sdk=file:../../wasm/pkg
     - npm i

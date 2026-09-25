@@ -36,7 +36,6 @@ import { createDidAndKeyMetadata } from "../utils";
 type WebCrypto = webcrypto.Crypto;
 type WebCryptoKeyPair = webcrypto.CryptoKeyPair;
 
-export const AUTH_REQUEST_JWT = token("authRequestJwt");
 export const STATE = "eea7b48e-1866-41b4-beae-03b95d41670c";
 export const AUTH_RESPONSE_JWE = token("authResponseJwe");
 
@@ -183,8 +182,6 @@ export const PRESENTATION_SUBMISSION: PresentationSubmission = {
 };
 
 export const VC_TYPE = "https://credentials.example.com/identity_credential";
-
-export const VC = token("vc");
 
 /**
  * Mints a fresh SD-JWT VC + KB-JWT presentation bound to `verifierDid`/`nonce`,
