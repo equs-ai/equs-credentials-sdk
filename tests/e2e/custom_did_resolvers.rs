@@ -4,7 +4,7 @@ use crate::utils::fixtures::oid4vp::{
     single_sdjwt_presentation_case,
 };
 use crate::utils::fixtures::{
-    ACCESS_TOKEN, AUTHZ_URL, SCOPE, sample_authz_url, sample_claims_jsonld, sample_claims_sdjwt,
+    AUTHZ_URL, SCOPE, access_token, sample_authz_url, sample_claims_jsonld, sample_claims_sdjwt,
     sample_issuer_metadata, sample_issuer_url,
 };
 use crate::utils::helpers::oid4vci::setup_http_static_handlers;
@@ -88,8 +88,12 @@ async fn authorized_code_flow_using_custom_did_resolver(#[case] validate_token: 
         )
         .unwrap();
 
-    let http_client_for_holder =
-        prepare_http_client_for_holder(authz_code.clone(), req_uri_code.clone(), issuer);
+    let http_client_for_holder = prepare_http_client_for_holder(
+        authz_code.clone(),
+        req_uri_code.clone(),
+        access_token().await,
+        issuer,
+    );
 
     // 3.1 Creating holder from offer
     let kms = LocalKms::new();
@@ -316,6 +320,7 @@ fn prepare_http_client_for_issuer() -> impl HttpClient {
 fn prepare_http_client_for_holder(
     authz_code: String,
     req_uri_code: String,
+    access_token: String,
     issuer: impl Issuer + 'static,
 ) -> impl HttpClient {
     let mut http_client = HttpClientEmulator::new();
@@ -350,7 +355,7 @@ fn prepare_http_client_for_holder(
             assert_eq!(req.method(), Method::POST);
 
             let resp = json!({
-                "access_token": ACCESS_TOKEN,
+                "access_token": access_token.clone(),
                 "token_type": "bearer",
                 "expires_in": 86400,
             });

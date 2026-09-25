@@ -28,3 +28,4 @@ rand = "0.9.2"
 [dev-dependencies]
 tokio = { version = "1.25.0", features = ["macros"] }
 equs-credentials-sdk = { path = "../..", features = ["test-utils"] }
+equs-test-fixtures = { path = "../../test-fixtures" }

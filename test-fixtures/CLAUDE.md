@@ -44,7 +44,10 @@ and `tests/utils/fixtures/` mdoc blobs already show what that costs.
 - Depends on: `equs-credentials-sdk` (path, `in-memory`), `base64`, `serde_json`, `async-trait`,
   `snafu`; `tokio` (dev).
 - Used by: `equs-credentials-sdk` `[dev-dependencies]` — a dev-dependency cycle, which Cargo permits
-  and which `cargo package` strips from the published manifest.
+  and which `cargo package` strips from the published manifest. Also a normal `[dev-dependencies]`
+  entry of `tests/` (the E2E integration crate, which links the SDK once and needs no
+  `test_fixtures::equs_sdk::…` re-export) and of `plugins/askar` (`publish = false`, so the dev-dependency
+  ships nowhere).
 
 ## Constraints
 - Run with `cargo test --all-features -p equs-test-fixtures`. `cargo test --all-features` at the
