@@ -11,7 +11,7 @@ Houses all Verifiable Credential format implementations (SD-JWT, W3C JSON-LD, IS
 | vc.rs | `VCFormat` enum and `HasVCFormat` trait (JwtVcJson, JwtVcJsonLD, LdpVc, SdJwtVc, MsoMdoc). |
 | vp.rs | `VPFormat` enum and `HasVPFormat` trait (SdJwtVp, JwtVp, LdpVp, MsoMdoc). |
 | json_ld_vc.rs | W3C JSON-LD VC implementation: `JsonLdAPI`, `VC`, `VP`, `VCMetadata` using `ssi` data-integrity suites. |
-| sd_jwt_vc.rs | SD-JWT VC implementation: `SdJwtAPI`, `VCMetadata`, `SignerWrapper`, selective disclosure via `sd_jwt_rs`. |
+| sd_jwt_vc.rs | SD-JWT VC implementation: `SdJwtAPI`, `VCMetadata`, `SignerWrapper`, selective disclosure via `sd_jwt_rs`. `verify_vc` resolves the signing key from a DID URL `kid`, else an `x5c` chain validated against `VerifyOptions.trusted_certs` (native only), else a `kid`/`iss` DID; `verify_vp` resolves it through `DelegatingKeyResolver`. |
 | dsd_jwt.rs | Delegate SD-JWT (dSD-JWT/dSD-JWT+KB) format primitives — gated `delegate-sd-jwt`. |
 | mso_mdoc.rs | ISO 18013-5 mDoc implementation: `MsoMdocAPI`, `Presentation` (CBOR base64url + optional encryption key). Passes the trusted IACA PEMs to one-core, which validates the Document Signer chain up to one of them; with no configured anchor (`None` or empty) the issuer chain check is **skipped** (developer decision; SD-JWT VC, by contrast, rejects without anchors). |
 

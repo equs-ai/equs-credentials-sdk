@@ -169,6 +169,18 @@ pub fn from_one_core_public_key_jwk_jsonwebtoken_jwk(
     serde_json::from_value(json).ok()
 }
 
+/// Converts a one-core public key into the SDK's `JWK`.
+#[cfg(not(target_arch = "wasm32"))]
+#[instrument(
+    level = Level::TRACE,
+    ret(),
+)]
+pub fn from_public_jwk(public_jwk: PublicJwk) -> Option<ssi::jwk::JWK> {
+    let json = serde_json::to_value(public_jwk).ok()?;
+
+    serde_json::from_value(json).ok()
+}
+
 #[cfg(test)]
 mod tests {
     use crate::crypto::Key;
