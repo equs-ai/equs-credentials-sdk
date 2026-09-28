@@ -657,7 +657,7 @@ mod tests {
     ) {
         let token = x5c_signed_status_list("statuslist+jwt", true);
 
-        let vc_status = x5c_status_of(token, idx, Some(anchors(&[STATUS_LIST_ROOT_CA])))
+        let vc_status = x5c_status_of(token, idx, Some(anchors(&[pki().root_ca.as_str()])))
             .await
             .unwrap();
 
@@ -666,7 +666,7 @@ mod tests {
 
     #[rstest]
     #[case::no_trusted_anchors(None)]
-    #[case::unrelated_anchor(Some(anchors(&[UNRELATED_ROOT_CA])))]
+    #[case::unrelated_anchor(Some(anchors(&[pki().unrelated_root_ca.as_str()])))]
     #[tokio::test]
     async fn x5c_signed_status_list_is_rejected_without_its_anchor(
         #[case] trusted_certs: Option<HashMap<String, String>>,
@@ -688,7 +688,7 @@ mod tests {
     async fn status_list_with_unexpected_typ_is_rejected() {
         let token = x5c_signed_status_list("JWT", true);
 
-        let error = x5c_status_of(token, 2, Some(anchors(&[STATUS_LIST_ROOT_CA])))
+        let error = x5c_status_of(token, 2, Some(anchors(&[pki().root_ca.as_str()])))
             .await
             .unwrap_err()
             .to_string();
@@ -703,7 +703,7 @@ mod tests {
     async fn status_list_without_a_key_source_is_rejected() {
         let token = x5c_signed_status_list("statuslist+jwt", false);
 
-        let error = x5c_status_of(token, 2, Some(anchors(&[STATUS_LIST_ROOT_CA])))
+        let error = x5c_status_of(token, 2, Some(anchors(&[pki().root_ca.as_str()])))
             .await
             .unwrap_err()
             .to_string();
@@ -719,15 +719,14 @@ mod tests {
         header.typ = Some(typ.to_string());
         if with_x5c {
             header.x5c =
-                Some(one_core::mapper::x509::pem_chain_into_x5c(STATUS_LIST_SIGNER_CERT).unwrap());
+                Some(one_core::mapper::x509::pem_chain_into_x5c(&pki().signer_cert).unwrap());
         }
         let claims = json!({
             "sub": X5C_STATUS_LIST_URL,
             "iat": 1790000000,
             "status_list": { "bits": 2, "lst": "eNqbwMwABgAEnQCU" }
         });
-        let key =
-            jsonwebtoken::EncodingKey::from_ec_pem(STATUS_LIST_SIGNER_KEY.as_bytes()).unwrap();
+        let key = jsonwebtoken::EncodingKey::from_ec_pem(pki().signer_key.as_bytes()).unwrap();
 
         Box::leak(
             jsonwebtoken::encode(&header, &claims, &key)
@@ -754,51 +753,65 @@ mod tests {
             .collect()
     }
 
-    /// Self-signed test CA; issued [STATUS_LIST_SIGNER_CERT]. Valid until 2046.
-    const STATUS_LIST_ROOT_CA: &str = "-----BEGIN CERTIFICATE-----
-MIIBpDCCAUqgAwIBAgIUCkemKWp/mEZWOriUweY1x6kqPnIwCgYIKoZIzj0EAwIw
-MDEhMB8GA1UEAwwYVGVzdCBTdGF0dXMgTGlzdCBSb290IENBMQswCQYDVQQGEwJV
-UzAeFw0yNjA5MjUxMzI4MTFaFw00NjA5MjAxMzI4MTFaMDAxITAfBgNVBAMMGFRl
-c3QgU3RhdHVzIExpc3QgUm9vdCBDQTELMAkGA1UEBhMCVVMwWTATBgcqhkjOPQIB
-BggqhkjOPQMBBwNCAATh1JjKx3hq3ZIjK6G6pBeHiwdiyXiYu+ZmufaCF4sa+/qu
-Qa13rjydhWVf21XAn8ojKupFyHumcgn/9ViYI6joo0IwQDAPBgNVHRMBAf8EBTAD
-AQH/MA4GA1UdDwEB/wQEAwIBBjAdBgNVHQ4EFgQUzipg2dTWTUqNtW0A6EsQFt7b
-CswwCgYIKoZIzj0EAwIDSAAwRQIhALEaQwSxB5oUvfqlvZsUf9uqWyByr5BfTkqS
-daRDuYTCAiBxntj1WL8RYNzD2KDI6DCepwhUE/H+dilH7LO3hM6xUA==
------END CERTIFICATE-----";
-    /// Leaf issued by [STATUS_LIST_ROOT_CA]: SAN `DNS:status.example`, key usage
-    /// `digitalSignature`. Valid until 2046.
-    const STATUS_LIST_SIGNER_CERT: &str = "-----BEGIN CERTIFICATE-----
-MIIB3TCCAYKgAwIBAgIUfbmn1g8zvFqJaGe6Siq4QcNyOnYwCgYIKoZIzj0EAwIw
-MDEhMB8GA1UEAwwYVGVzdCBTdGF0dXMgTGlzdCBSb290IENBMQswCQYDVQQGEwJV
-UzAeFw0yNjA5MjUxMzI4MTFaFw00NjA5MTkxMzI4MTFaMC8xIDAeBgNVBAMMF1Rl
-c3QgU3RhdHVzIExpc3QgU2lnbmVyMQswCQYDVQQGEwJVUzBZMBMGByqGSM49AgEG
-CCqGSM49AwEHA0IABFh6TAqdE0bBRG+96eSRq0ejV8i8g9T9qcZn159gB2+SpNVA
-zJcnmzoPOfYWGKQDBtDsx8NiOEmMrFSOsa29+2qjezB5MAwGA1UdEwEB/wQCMAAw
-DgYDVR0PAQH/BAQDAgeAMBkGA1UdEQQSMBCCDnN0YXR1cy5leGFtcGxlMB0GA1Ud
-DgQWBBR8ppolkTgua/w2aJimDuROUiOq3jAfBgNVHSMEGDAWgBTOKmDZ1NZNSo21
-bQDoSxAW3tsKzDAKBggqhkjOPQQDAgNJADBGAiEAq05h7Rp5R2aeWuyHB1ZVqjXx
-Tf22elmDq7rWTOTxshwCIQDsHXngYDUmOslw/JjAK2vqYldLIE49FPyyW7WLpLP1
-Ag==
------END CERTIFICATE-----";
-    /// Test-only private key of [STATUS_LIST_SIGNER_CERT] (PKCS#8, P-256).
-    const STATUS_LIST_SIGNER_KEY: &str = "-----BEGIN PRIVATE KEY-----
-MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgKmNBunWjEFqhGhn4
-G4Oq22ahs02HcCEGTiUcztmr+c+hRANCAARYekwKnRNGwURvvenkkatHo1fIvIPU
-/anGZ9efYAdvkqTVQMyXJ5s6Dzn2FhikAwbQ7MfDYjhJjKxUjrGtvftq
------END PRIVATE KEY-----";
-    /// Self-signed test CA unrelated to [STATUS_LIST_SIGNER_CERT]. Valid until 2046.
-    const UNRELATED_ROOT_CA: &str = "-----BEGIN CERTIFICATE-----
-MIIBoDCCAUagAwIBAgIUbh8l2hryhw1EPW3aNxmlPRYQb/kwCgYIKoZIzj0EAwIw
-LjEfMB0GA1UEAwwWVW5yZWxhdGVkIFRlc3QgUm9vdCBDQTELMAkGA1UEBhMCVVMw
-HhcNMjYwOTI1MTMyODI4WhcNNDYwOTIwMTMyODI4WjAuMR8wHQYDVQQDDBZVbnJl
-bGF0ZWQgVGVzdCBSb290IENBMQswCQYDVQQGEwJVUzBZMBMGByqGSM49AgEGCCqG
-SM49AwEHA0IABPfNzFQzAznejGJv/AUkaNxxafUF9Hdy5pzrh+ixSqBPPacly9R7
-ERsMqQtcpIcsPqz9stGaV37vZ/ZRV/vSGsOjQjBAMA8GA1UdEwEB/wQFMAMBAf8w
-DgYDVR0PAQH/BAQDAgEGMB0GA1UdDgQWBBTC86sBx3jik76wJkXhXmQGtPFrUTAK
-BggqhkjOPQQDAgNIADBFAiEAhKLv5TB6lpDfRyh/ymK4DfikOKIlj666bVwNwdsU
-ycICIFoqyd8bcLA/OZ+UAdisSzWFg0z7XLHwFFwj1G+di+Xq
------END CERTIFICATE-----";
+    struct StatusListPki {
+        root_ca: String,
+        signer_cert: String,
+        signer_key: String,
+        unrelated_root_ca: String,
+    }
+
+    fn pki() -> &'static StatusListPki {
+        static PKI: std::sync::OnceLock<StatusListPki> = std::sync::OnceLock::new();
+        PKI.get_or_init(|| {
+            let (root_params, root_key) = new_root_ca("Test Status List Root CA");
+            let root_ca = root_params.self_signed(&root_key).unwrap().pem();
+            let root_issuer = rcgen::Issuer::new(root_params, root_key);
+
+            let signer_key = rcgen::KeyPair::generate().unwrap();
+            let mut signer_params =
+                rcgen::CertificateParams::new(vec!["status.example".to_string()]).unwrap();
+            signer_params
+                .distinguished_name
+                .push(rcgen::DnType::CommonName, "Test Status List Signer");
+            signer_params.key_usages = vec![rcgen::KeyUsagePurpose::DigitalSignature];
+            signer_params.use_authority_key_identifier_extension = true;
+            set_validity(&mut signer_params);
+            let signer_cert = signer_params
+                .signed_by(&signer_key, &root_issuer)
+                .unwrap()
+                .pem();
+
+            let (unrelated_params, unrelated_key) = new_root_ca("Unrelated Root CA");
+            let unrelated_root_ca = unrelated_params.self_signed(&unrelated_key).unwrap().pem();
+
+            StatusListPki {
+                root_ca,
+                signer_cert,
+                signer_key: signer_key.serialize_pem(),
+                unrelated_root_ca,
+            }
+        })
+    }
+
+    fn new_root_ca(common_name: &str) -> (rcgen::CertificateParams, rcgen::KeyPair) {
+        let mut params = rcgen::CertificateParams::new(Vec::<String>::new()).unwrap();
+        params
+            .distinguished_name
+            .push(rcgen::DnType::CommonName, common_name);
+        params.is_ca = rcgen::IsCa::Ca(rcgen::BasicConstraints::Unconstrained);
+        params.key_usages = vec![
+            rcgen::KeyUsagePurpose::KeyCertSign,
+            rcgen::KeyUsagePurpose::CrlSign,
+        ];
+        set_validity(&mut params);
+
+        (params, rcgen::KeyPair::generate().unwrap())
+    }
+
+    fn set_validity(params: &mut rcgen::CertificateParams) {
+        params.not_before = rcgen::date_time_ymd(2025, 1, 1);
+        params.not_after = rcgen::date_time_ymd(2046, 1, 1);
+    }
 
     /// Status list token that contains the following status list:
     /// token idx - status:
