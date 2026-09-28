@@ -117,7 +117,8 @@ android-build-libs: android-clang-symlinks
 # Generate UniFFI bindings for Kotlin
 android-generate-bindings: android-build-libs
 	@echo "Generating Kotlin bindings..."
-	cargo run --release --bin uniffi-bindgen generate --library ../../target/aarch64-linux-android/release/libequssdk.so --language kotlin --out-dir kotlin/android/src/main/kotlin
+	cargo build --profile release-bindgen --target aarch64-linux-android
+	cargo run --release --bin uniffi-bindgen generate --library ../../target/aarch64-linux-android/release-bindgen/libequssdk.so --language kotlin --out-dir kotlin/android/src/main/kotlin
 
 # Copy native libraries to jniLibs directory
 android-copy-libs:
