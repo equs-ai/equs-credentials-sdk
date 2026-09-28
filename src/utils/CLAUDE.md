@@ -41,5 +41,5 @@ A grab-bag of general-purpose helper modules shared across all SDK components: e
 ## Constraints
 - `x509_truststore` is `#[cfg(not(target_arch = "wasm32"))]`.
 - `test_utils` is `#[cfg(test)]` only.
-- `jwk::from_one_core_public_key_jwk_jsonwebtoken_jwk` is `#[cfg(not(target_arch = "wasm32"))]`.
+- `jwk::from_public_jwk` (one-core `PublicJwk` → `ssi::JWK`) and `jwk::from_one_core_public_key_jwk_jsonwebtoken_jwk` (→ `jsonwebtoken` JWK, for `DecodingKey`) are `#[cfg(not(target_arch = "wasm32"))]`.
 - All other sub-modules are wasm-compatible.

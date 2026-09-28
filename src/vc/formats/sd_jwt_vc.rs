@@ -15,9 +15,7 @@ use sd_jwt_rs::{
 use serde_json::{Map, Value};
 use snafu::ResultExt;
 use ssi::jwk::{JWK, JWKResolver};
-use std::borrow::Cow;
 use std::collections::HashMap;
-use std::ops::Deref;
 use time::OffsetDateTime;
 use tracing::{Level, instrument, trace};
 use url::Url;
@@ -502,23 +500,21 @@ impl SdJwtAPI {
     /// Resolves the key that signed `jwt`: a DID URL `kid`, else an `x5c` chain that validates up
     /// to one of `trusted_certs`, else a `kid` or `iss` DID.
     #[instrument(level = Level::TRACE, skip(did_resolver, trusted_certs), err(), ret())]
-    async fn get_jwk_from_jwt<'a>(
-        jwt: &'a str,
+    async fn get_jwk_from_jwt(
+        jwt: &str,
         did_resolver: UniversalResolver,
         trusted_certs: Option<&HashMap<String, String>>,
-    ) -> Result<Cow<'a, JWK>> {
+    ) -> Result<JWK> {
         let (header, payload) = ssi::claims::jws::decode_unverified(jwt).context(JWSSnafu)?;
 
         #[cfg(not(target_arch = "wasm32"))]
-        if !header
-            .key_id
-            .as_deref()
-            .is_some_and(|kid| DIDURL::new(kid).is_ok())
-            && let Some(x5c) = header.x509_certificate_chain.as_deref()
+        if let Some(x5c) = &header.x509_certificate_chain
+            && header
+                .key_id
+                .as_ref()
+                .is_none_or(|kid| DIDURL::new(kid).is_err())
         {
-            return Self::get_jwk_from_x5c(x5c, &payload, trusted_certs)
-                .await
-                .map(Cow::Owned);
+            return Self::get_jwk_from_x5c(x5c, &payload, trusted_certs).await;
         }
 
         let vm = match header.key_id {
@@ -581,7 +577,7 @@ impl SdJwtAPI {
             }
         };
 
-        Ok(Cow::Owned(vm.deref().clone()))
+        Ok(vm.into_owned())
     }
 
     /// Resolves the key of the leaf of `x5c` once the chain validates up to one of `trusted_certs`.
@@ -599,16 +595,17 @@ impl SdJwtAPI {
             .build()
         })?;
         // Optional; the truststore checks it against the leaf only when issuer-domain binding is on.
-        let iss = serde_json::from_slice::<Value>(payload)
-            .ok()
-            .and_then(|claims| claims.get(ISS_CLAIM)?.as_str().map(str::to_owned))
+        let claims: Value = serde_json::from_slice(payload).unwrap_or_default();
+        let iss = claims
+            .get(ISS_CLAIM)
+            .and_then(Value::as_str)
             .unwrap_or_default();
 
         let leaf = Truststore::new(
             CertificateValidatorImpl::default(),
             trusted_certs.cloned().unwrap_or_default(),
         )
-        .verify_chain_trust(&pem_chain, &iss)
+        .verify_chain_trust(&pem_chain, iss)
         .await
         .map_err(|e| {
             VerifyingSnafu {
@@ -624,14 +621,12 @@ impl SdJwtAPI {
             .build()
         })?;
 
-        utils::jwk::from_one_core_public_key_jwk_jsonwebtoken_jwk(jwk)
-            .and_then(|jwk| utils::jwk::from_jsonwebtoken_jwk(&jwk))
-            .ok_or_else(|| {
-                VerifyingSnafu {
-                    details: "could not convert the leaf certificate's public key to a JWK",
-                }
-                .build()
-            })
+        utils::jwk::from_public_jwk(jwk).ok_or_else(|| {
+            VerifyingSnafu {
+                details: "could not convert the leaf certificate's public key to a JWK",
+            }
+            .build()
+        })
     }
 
     #[instrument(level = Level::TRACE, ret())]
