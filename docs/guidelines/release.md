@@ -122,7 +122,7 @@ remote:
 git tag -a nodejs/v<version> -F NOTES.md
 git tag -a wasm/v<version> -F NOTES.md
 git tag -a askar-nodejs/v<version> -F NOTES.md
-git push github-equs tag nodejs/v<version> tag wasm/v<version> tag askar-nodejs/v<version>
+git push origin tag nodejs/v<version> tag wasm/v<version> tag askar-nodejs/v<version>
 ```
 
 As on GitLab, the published version is the tag. Only `X.Y.Z` is accepted — no dev builds go to npmjs.
