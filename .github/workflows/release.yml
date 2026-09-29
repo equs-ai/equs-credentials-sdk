@@ -63,7 +63,7 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
   crate:
-    needs: [preflight]
+    needs: [preflight, nodejs, askar-nodejs, wasm]
     uses: ./.github/workflows/publish-crate.yml
     secrets: inherit
 

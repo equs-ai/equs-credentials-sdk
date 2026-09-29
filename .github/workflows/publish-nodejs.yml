@@ -72,6 +72,7 @@ jobs:
     environment: npmjs
     timeout-minutes: 60
     strategy:
+      fail-fast: false
       matrix:
         include:
           - {target: aarch64-apple-darwin, alias: darwin-arm64}
