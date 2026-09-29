@@ -1,14 +1,14 @@
-name: Publish askar plugin
+name: Publish askar Node.js wrapper
 
 on:
   push:
-    tags: ['askar/v[0-9]*.[0-9]*.[0-9]*']
+    tags: ['askar-nodejs/v[0-9]*.[0-9]*.[0-9]*']
 
 permissions:
   contents: read
 
 concurrency:
-  group: publish-askar
+  group: publish-askar-nodejs
   cancel-in-progress: false
 
 env:
@@ -30,8 +30,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          version="${GITHUB_REF_NAME#askar/v}"
-          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "tag '$GITHUB_REF_NAME' is not askar/vX.Y.Z" >&2; exit 1; }
+          version="${GITHUB_REF_NAME#askar-nodejs/v}"
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "tag '$GITHUB_REF_NAME' is not askar-nodejs/vX.Y.Z" >&2; exit 1; }
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
   askar-target-linux:
@@ -57,7 +57,7 @@ jobs:
       - uses: ./.github/actions/setup-rustup
         with:
           rust-version: ${{ env.RUST_VERSION }}
-          cache-key: publish-askar
+          cache-key: publish-askar-nodejs
           tooling: 'false'
 
       - name: Build and publish
@@ -98,7 +98,7 @@ jobs:
       - uses: ./.github/actions/setup-rustup
         with:
           rust-version: ${{ env.RUST_VERSION }}
-          cache-key: publish-askar
+          cache-key: publish-askar-nodejs
           tooling: 'false'
 
       - name: Build and publish
@@ -134,7 +134,7 @@ jobs:
       - uses: ./.github/actions/setup-rustup
         with:
           rust-version: ${{ env.RUST_VERSION }}
-          cache-key: publish-askar
+          cache-key: publish-askar-nodejs
           tooling: 'false'
 
       - name: Build the SDK wrapper

@@ -25,7 +25,7 @@ The package can be imported with both ES module and CommonJS syntax.
 
 Each platform binary is published as its own npm package, then the
 `@equs-ai/equs-credentials-sdk-askar-storage` package that depends on them is published on top. Both steps run from
-[`publish-askar.yml`](../../../../.github/workflows/publish-askar.yml) on an `askar/vX.Y.Z` tag — see
+[`publish-askar-nodejs.yml`](../../../../.github/workflows/publish-askar-nodejs.yml) on an `askar-nodejs/vX.Y.Z` tag — see
 [Publish a New Release](../../../../docs/guidelines/release.md).
 
 The two scripts the pipeline calls, for a manual run:
