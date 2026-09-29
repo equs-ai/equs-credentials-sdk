@@ -47,8 +47,8 @@ REGISTRY_URL_NPM=<registry-url> NPM_TOKEN=<token> ENVIRONMENT=production scripts
 ```
 
 Both scripts pack the package and publish the resulting `.tgz`, which the release manifest hashes.
-Both append a registry auth line to `~/.npmrc` derived from `REGISTRY_URL_NPM`, so no
-`.npmrc` is committed. In CI, `REGISTRY_URL_NPM` is `https://registry.npmjs.org/` and `NPM_TOKEN` comes
+Neither writes an `.npmrc`: `NPM_TOKEN` is unset before the build and passed to
+`npm publish` alone as `npm_config_//<registry>/:_authToken`. In CI, `REGISTRY_URL_NPM` is `https://registry.npmjs.org/` and `NPM_TOKEN` comes
 from the `EQUS_CREDENTIALS_SDK_NPM_TOKEN` org secret.
 
 The target list is `napi.triples.additional` in [`package.json`](package.json); `defaults` is off, so

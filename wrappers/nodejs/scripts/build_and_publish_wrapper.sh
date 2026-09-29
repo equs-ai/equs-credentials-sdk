@@ -11,8 +11,8 @@ if [ -z "${REGISTRY_URL_NPM:-}" ]; then
   exit 1
 fi
 
-printf '%s:_authToken=%s\n' "//${REGISTRY_URL_NPM#*://}" "${NPM_TOKEN}" >> "${HOME}/.npmrc"
-chmod 600 "${HOME}/.npmrc"
+NPM_AUTH="npm_config_//${REGISTRY_URL_NPM#*://}:_authToken=${NPM_TOKEN}"
+unset NPM_TOKEN
 
 VERSION=$(npm pkg get version | tr -d '"')
 
@@ -33,6 +33,6 @@ npm i -g typescript @napi-rs/cli
 npx npm run $BUILD_SCRIPT
 npx napi prepublish --skip-gh-release
 TARBALL=$(npm pack --silent)
-NPM_TOKEN=${NPM_TOKEN} npm publish "${TARBALL}" --registry=${REGISTRY_URL_NPM} --tag ${TAG}
+env "${NPM_AUTH}" npm publish "${TARBALL}" --registry=${REGISTRY_URL_NPM} --tag ${TAG}
 
 npm version "${VERSION}" --no-git-tag-version --ignore-scripts --allow-same-version

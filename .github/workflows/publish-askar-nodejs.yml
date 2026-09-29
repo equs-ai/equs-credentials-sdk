@@ -44,7 +44,6 @@ jobs:
     env:
       CI_COMMIT_TAG: ${{ needs.version.outputs.version }}
       ENVIRONMENT: production
-      NPM_TOKEN: ${{ secrets.EQUS_CREDENTIALS_SDK_NPM_TOKEN }}
       TARGET: x86_64-unknown-linux-gnu
       ALIAS: linux-x64-gnu
     steps:
@@ -62,6 +61,8 @@ jobs:
 
       - name: Build and publish
         shell: bash
+        env:
+          NPM_TOKEN: ${{ secrets.EQUS_CREDENTIALS_SDK_NPM_TOKEN }}
         working-directory: plugins/askar/wrappers/nodejs
         run: bash scripts/build_and_publish_target.sh
 
@@ -85,7 +86,6 @@ jobs:
     env:
       CI_COMMIT_TAG: ${{ needs.version.outputs.version }}
       ENVIRONMENT: production
-      NPM_TOKEN: ${{ secrets.EQUS_CREDENTIALS_SDK_NPM_TOKEN }}
       TARGET: ${{ matrix.target }}
       ALIAS: ${{ matrix.alias }}
     steps:
@@ -103,6 +103,8 @@ jobs:
 
       - name: Build and publish
         shell: bash
+        env:
+          NPM_TOKEN: ${{ secrets.EQUS_CREDENTIALS_SDK_NPM_TOKEN }}
         working-directory: plugins/askar/wrappers/nodejs
         run: bash scripts/build_and_publish_target.sh
 
@@ -123,7 +125,6 @@ jobs:
     env:
       CI_COMMIT_TAG: ${{ needs.version.outputs.version }}
       ENVIRONMENT: production
-      NPM_TOKEN: ${{ secrets.EQUS_CREDENTIALS_SDK_NPM_TOKEN }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -146,6 +147,8 @@ jobs:
 
       - name: Build and publish
         shell: bash
+        env:
+          NPM_TOKEN: ${{ secrets.EQUS_CREDENTIALS_SDK_NPM_TOKEN }}
         working-directory: plugins/askar/wrappers/nodejs
         run: bash scripts/build_and_publish_wrapper.sh
 
