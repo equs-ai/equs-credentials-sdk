@@ -1,0 +1,122 @@
+name: Release
+
+on:
+  push:
+    tags: ['v[0-9]*.[0-9]*.[0-9]*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      version: ${{ steps.check.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - id: check
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "tag '$GITHUB_REF_NAME' is not vX.Y.Z" >&2; exit 1; }
+          crate=$(awk '/^\[package\]/{p=1;next} /^\[/{p=0} p&&/^version[[:space:]]*=/{gsub(/["[:space:]]/,"");sub(/^version=/,"");print;exit}' Cargo.toml)
+          [ "$version" = "$crate" ] || { echo "tag '$GITHUB_REF_NAME' does not match Cargo.toml version '$crate'" >&2; exit 1; }
+
+          taken=()
+          status=$(curl -sS -o /dev/null -w '%{http_code}' -A "$GITHUB_REPOSITORY release preflight" \
+            "https://crates.io/api/v1/crates/equs-credentials-sdk/$version")
+          case "$status" in
+            200) taken+=("equs-credentials-sdk@$version on crates.io") ;;
+            404) ;;
+            *) echo "crates.io returned $status" >&2; exit 1 ;;
+          esac
+
+          for p in \
+            @equs-ai/equs-credentials-sdk \
+            @equs-ai/equs-credentials-sdk-linux-x64-gnu \
+            @equs-ai/equs-credentials-sdk-darwin-arm64 \
+            @equs-ai/equs-credentials-sdk-darwin-x64 \
+            @equs-ai/equs-credentials-sdk-askar-storage \
+            @equs-ai/equs-credentials-sdk-askar-storage-linux-x64-gnu \
+            @equs-ai/equs-credentials-sdk-askar-storage-darwin-arm64 \
+            @equs-ai/equs-credentials-sdk-askar-storage-darwin-x64 \
+            @equs-ai/equs-credentials-sdk-wasm; do
+            if out=$(npm view "$p@$version" version 2>npm-err.txt); then
+              [ -z "$out" ] || taken+=("$p@$version on npmjs")
+            elif ! grep -q E404 npm-err.txt; then
+              cat npm-err.txt >&2; exit 1
+            fi
+          done
+
+          if [ "${#taken[@]}" -gt 0 ]; then
+            printf 'already published:\n' >&2
+            printf '  %s\n' "${taken[@]}" >&2
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+  crate:
+    needs: [preflight]
+    uses: ./.github/workflows/publish-crate.yml
+    secrets: inherit
+
+  nodejs:
+    needs: [preflight]
+    permissions:
+      contents: write
+    uses: ./.github/workflows/publish-nodejs.yml
+    with:
+      version: ${{ needs.preflight.outputs.version }}
+    secrets: inherit
+
+  askar-nodejs:
+    needs: [preflight]
+    permissions:
+      contents: write
+    uses: ./.github/workflows/publish-askar-nodejs.yml
+    with:
+      version: ${{ needs.preflight.outputs.version }}
+    secrets: inherit
+
+  wasm:
+    needs: [preflight]
+    permissions:
+      contents: write
+    uses: ./.github/workflows/publish-wasm.yml
+    with:
+      version: ${{ needs.preflight.outputs.version }}
+    secrets: inherit
+
+  release:
+    needs: [crate, nodejs, askar-nodejs, wasm]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    timeout-minutes: 10
+    steps:
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          pattern: release-manifest-*
+          path: manifests
+
+      - shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          for d in manifests/release-manifest-*; do
+            cp "$d/release-manifest.yaml" "${d##*/}.yaml"
+          done
+          ls release-manifest-*.yaml
+          gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1 ||
+            gh release create "$TAG" --repo "$REPO" --title "$TAG" --notes ""
+          gh release upload "$TAG" release-manifest-*.yaml --repo "$REPO" --clobber

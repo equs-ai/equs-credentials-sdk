@@ -109,6 +109,43 @@ The published dev version **is the tag** (`1.14.0-rc.1`), not `X.Y.Z-dev`, so ea
 produces a distinct version and repeat dev builds never collide. Run locally without `CI_COMMIT_TAG`
 and the old `X.Y.Z-dev` naming still applies.
 
+## npmjs
+
+The Node.js wrapper, the askar plugin (each with its three platform packages) and the WASM wrapper are also published to
+[npmjs](https://www.npmjs.com/org/equs-ai) by the GitHub workflows
+[`publish-nodejs.yml`](../../.github/workflows/publish-nodejs.yml) and
+[`publish-wasm.yml`](../../.github/workflows/publish-wasm.yml) and
+[`publish-askar-nodejs.yml`](../../.github/workflows/publish-askar-nodejs.yml). Each runs on its own tag, pushed to the GitHub
+remote:
+
+```shell
+git tag -a nodejs/v<version> -F NOTES.md
+git tag -a wasm/v<version> -F NOTES.md
+git tag -a askar-nodejs/v<version> -F NOTES.md
+git push origin tag nodejs/v<version> tag wasm/v<version> tag askar-nodejs/v<version>
+```
+
+The published version is the tag. `X.Y.Z` moves the `latest` dist-tag; `X.Y.Z-rc.N`
+(e.g. `nodejs/v1.14.0-rc.1`) publishes under `rc` and leaves `latest` alone. Both are release builds —
+no dev builds go to npmjs, and any other suffix is rejected.
+An npmjs version can never be republished, even after an unpublish, so a bad tag costs a version number.
+
+### Everything at once
+
+The SDK's own tag, `vX.Y.Z`, runs [`release.yml`](../../.github/workflows/release.yml): it publishes
+`equs-credentials-sdk` to crates.io and all three npm packages above at the same version, under
+`latest`, and attaches one manifest per package to the `vX.Y.Z` release
+(`release-manifest-{crate,nodejs,askar-nodejs,wasm}.yaml`).
+
+```shell
+git tag -a v<version> -F NOTES.md
+git push origin tag v<version>
+```
+
+`<version>` must equal `version` in the root `Cargo.toml`, and no package may already have it —
+the run checks both before anything publishes. rc tags are not accepted here; use the per-package
+tags for those. If one package fails, fix it and use **Re-run failed jobs**, never a full re-run.
+
 ## Release notes format
 
 One line per change:

@@ -1,8 +1,7 @@
 name: Publish crate
 
 on:
-  push:
-    tags: ['v[0-9]*.[0-9]*.[0-9]*']
+  workflow_call:
 
 permissions:
   contents: read
@@ -70,7 +69,7 @@ jobs:
       - if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: release-manifest
+          name: release-manifest-crate
           path: release-manifest.yaml
           if-no-files-found: error
 
@@ -84,25 +83,3 @@ jobs:
       - shell: bash
         run: printf "### Published\n\n\`equs-credentials-sdk %s\` to crates.io\n" "$VERSION" >> "$GITHUB_STEP_SUMMARY"
 
-  manifest:
-    needs: publish
-    if: always()
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    timeout-minutes: 10
-    steps:
-      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
-        with:
-          name: release-manifest
-
-      - shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.ref_name }}
-          REPO: ${{ github.repository }}
-        run: |
-          set -euo pipefail
-          gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1 ||
-            gh release create "$TAG" --repo "$REPO" --title "$TAG" --notes ""
-          gh release upload "$TAG" release-manifest.yaml --repo "$REPO" --clobber

@@ -21,8 +21,8 @@ if [ -z "${ALIAS:-}" ]; then
   exit 1
 fi
 
-printf '%s:_authToken=%s\n' "//${REGISTRY_URL_NPM#*://}" "${NPM_TOKEN}" >> "${HOME}/.npmrc"
-chmod 600 "${HOME}/.npmrc"
+NPM_AUTH="npm_config_//${REGISTRY_URL_NPM#*://}:_authToken=${NPM_TOKEN}"
+unset NPM_TOKEN
 
 BINARY_NAME="equs-credentials-sdk.${ALIAS}.node"
 VERSION=$(npm pkg get version | tr -d '"')
@@ -32,7 +32,7 @@ if [ "${ENVIRONMENT:-}" == "development" ]; then
   BUILD_FLAGS="--features=in-memory"
   PUBLISH_VERSION="${CI_COMMIT_TAG:-${VERSION}-dev}"
 else
-  TAG="latest"
+  TAG="${NPM_DIST_TAG:-latest}"
   BUILD_FLAGS="--release"
   PUBLISH_VERSION="${CI_COMMIT_TAG:-${VERSION}}"
 fi
@@ -49,7 +49,8 @@ mv "$BINARY_NAME" "npm/${ALIAS}/$BINARY_NAME"
 npx napi version
 
 cd "npm/${ALIAS}"
-NPM_TOKEN=${NPM_TOKEN} npm publish --registry=${REGISTRY_URL_NPM} --tag ${TAG}
+TARBALL=$(npm pack --silent)
+env "${NPM_AUTH}" npm publish "${TARBALL}" --registry=${REGISTRY_URL_NPM} --tag ${TAG}
 
 
 cd ../../
