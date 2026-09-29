@@ -82,16 +82,14 @@ jobs:
           tarball=$(npm pack --silent)
           env "$npm_auth" npm publish "$tarball" --registry="$REGISTRY_URL_NPM" --tag "$NPM_DIST_TAG"
 
-      - if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: npm-wasm
           path: wrappers/wasm/pkg/*.tgz
-          if-no-files-found: warn
+          if-no-files-found: error
 
   manifest:
     needs: [version, wasm]
-    if: always() && needs.version.result == 'success'
     runs-on: ubuntu-latest
     permissions:
       contents: write

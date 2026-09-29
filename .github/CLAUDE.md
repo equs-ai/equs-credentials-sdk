@@ -369,11 +369,15 @@ not preserve, and turns a soft cache miss into a hard failure on re-run.
   job builds the SDK wrapper first: the plugin's TypeScript imports its types
   through a local-path devDependency.
 - Every publish packs first and publishes the `.tgz` (`npm pack`, then
-  `npm publish <tarball>`), and uploads it as an `npm-*` artifact. The
-  `manifest` job collects them and runs `scripts/npm_release_manifest.sh`, so
-  each digest is the file npm received. Like the crate workflows it runs after
-  a failed publish too, and attaches `release-manifest.yaml` to the tag's
-  release.
+  `npm publish <tarball>`), and uploads it as an `npm-*` artifact only once
+  `npm publish` succeeded. The `manifest` job collects them and runs
+  `scripts/npm_release_manifest.sh`, so each digest is the file npm received,
+  and attaches `release-manifest.yaml` to the tag's release. Unlike the crate
+  workflows it runs only when every publish job succeeded: a failed publish
+  writes no manifest, and re-running an already-published tag fails at
+  `npm publish` and leaves the existing manifest alone. After a partial
+  failure, "Re-run failed jobs" keeps the earlier jobs' artifacts, so the
+  manifest still covers every package.
 - Prerequisites in settings: the organization secret
   `EQUS_CREDENTIALS_SDK_NPM_TOKEN` (an npm automation token with publish rights
   on the `@equs-ai` scope) and an environment named `npmjs`. Every publishing
