@@ -84,6 +84,7 @@ publish_ios_wrapper_dev:
 .android_to_registry_template: &android_to_registry_template
   <<: *android_job_configs
   stage: release
+  timeout: 2h
   # Each job pulls the Android SDK/NDK and runs a full Rust build. Running the
   # prod and dev jobs concurrently exhausted the node's ephemeral storage and
   # got the pod evicted (TerminationByKubelet), so serialize them.
