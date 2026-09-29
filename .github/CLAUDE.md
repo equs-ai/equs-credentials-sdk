@@ -2,9 +2,9 @@
 
 GitHub Actions port of the CI half of `.gitlab-ci.yml`, plus one release job.
 `.gitlab-ci.yml` is the running pipeline, so a CI change belongs in both files.
-The `publish-*.yml` workflows are the exceptions: GitLab publishes the npm and
-UniFFI wrappers to its own registry and never a crate; `publish-nodejs.yml`,
-`publish-wasm.yml` and `publish-askar-nodejs.yml` publish the same npm packages to npmjs.
+The `publish-*.yml` workflows are the exceptions and have no counterpart there:
+`publish-crate.yml` and `publish-common-macros.yml` publish to crates.io,
+`publish-nodejs.yml`, `publish-wasm.yml` and `publish-askar-nodejs.yml` to npmjs.
 
 Two workflows. `ci.yml` defines no jobs directly: every job calls a
 reusable workflow, so `container`, checkout,
@@ -354,7 +354,7 @@ not preserve, and turns a soft cache miss into a hard failure on re-run.
   `wasm/vX.Y.Z` and `publish-askar-nodejs.yml` on `askar-nodejs/vX.Y.Z`, disjoint from each
   other and from the crate's `vX.Y.Z`, so each package releases on its own. The published version is the tag
   (the wrapper scripts and the WASM `Makefile` read `CI_COMMIT_TAG`, which the
-  workflow sets from it), as on GitLab; `package.json` versions are not checked.
+  workflow sets from it); `package.json` versions are not checked.
   `X.Y.Z` publishes under the `latest` dist-tag and `X.Y.Z-rc.N` under `rc`;
   both are release builds (`ENVIRONMENT=production`, dist-tag from
   `NPM_DIST_TAG`), so no dev packages ship to npmjs. Any other suffix fails the
