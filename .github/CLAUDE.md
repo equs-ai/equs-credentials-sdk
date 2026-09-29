@@ -5,6 +5,8 @@ GitHub Actions port of the CI half of `.gitlab-ci.yml`, plus one release job.
 The `publish-*.yml` workflows are the exceptions and have no counterpart there:
 `publish-crate.yml` and `publish-common-macros.yml` publish to crates.io,
 `publish-nodejs.yml`, `publish-wasm.yml` and `publish-askar-nodejs.yml` to npmjs.
+`release.yml` runs on the SDK's `vX.Y.Z` and calls the crate and all three npm
+workflows, so one tag releases everything.
 
 Two workflows. `ci.yml` defines no jobs directly: every job calls a
 reusable workflow, so `container`, checkout,
@@ -22,11 +24,12 @@ is the one exception and is named `publish`.
 | `workflows/_job.yml` | The generic containerised job behind 23 of the 27. Owns `container`, checkout, toolchain, node/java/wasm, caches, disk report and artifact upload. |
 | `workflows/_macos.yml` | The generic `macos-15` job behind `ios-xcframework`, `swift-test` and `ios-demo`. |
 | `workflows/_android.yml` | `android-demo`: bare `ubuntu-latest`, SDK from the runner plus the pinned NDK. |
-| `workflows/publish-crate.yml` | Publishes `equs-credentials-sdk` to crates.io on a `vX.Y.Z` tag, then renders its release manifest and uploads it to the release. Defines its own jobs. |
+| `workflows/release.yml` | On a `vX.Y.Z` tag: preflight (tag is `X.Y.Z`, matches `Cargo.toml`, no package already at that version), then calls `publish-crate.yml`, `publish-nodejs.yml`, `publish-askar-nodejs.yml` and `publish-wasm.yml`, then attaches every manifest to the one release. |
+| `workflows/publish-crate.yml` | `workflow_call` only, from `release.yml`. Publishes `equs-credentials-sdk` to crates.io and renders its release manifest as the `release-manifest-crate` artifact. Defines its own jobs. |
 | `workflows/publish-common-macros.yml` | Publishes `equs-common-macros` to crates.io on a `common-macros/vX.Y.Z` tag, prerelease suffix allowed, then renders its release manifest and uploads it to the release. Defines its own jobs. |
-| `workflows/publish-nodejs.yml` | Publishes the Node.js wrapper and its three platform packages to npmjs on a `nodejs/vX.Y.Z` tag (`-rc.N` suffix publishes under the `rc` dist-tag), then renders its release manifest and uploads it to the release. Defines its own jobs. |
-| `workflows/publish-askar-nodejs.yml` | Publishes the askar plugin wrapper and its three platform packages to npmjs on an `askar-nodejs/vX.Y.Z` tag (`-rc.N` suffix publishes under the `rc` dist-tag), then renders its release manifest and uploads it to the release. Defines its own jobs. |
-| `workflows/publish-wasm.yml` | Publishes the WASM wrapper to npmjs on a `wasm/vX.Y.Z` tag (`-rc.N` suffix publishes under the `rc` dist-tag), then renders its release manifest and uploads it to the release. Defines its own jobs. |
+| `workflows/publish-nodejs.yml` | Publishes the Node.js wrapper and its three platform packages to npmjs on a `nodejs/vX.Y.Z` tag (`-rc.N` suffix publishes under the `rc` dist-tag), then renders its release manifest and uploads it to the release. Also called by `release.yml` with a `version` input, which then attaches the manifest instead. Defines its own jobs. |
+| `workflows/publish-askar-nodejs.yml` | Publishes the askar plugin wrapper and its three platform packages to npmjs on an `askar-nodejs/vX.Y.Z` tag (`-rc.N` suffix publishes under the `rc` dist-tag), then renders its release manifest and uploads it to the release. Also called by `release.yml` with a `version` input, which then attaches the manifest instead. Defines its own jobs. |
+| `workflows/publish-wasm.yml` | Publishes the WASM wrapper to npmjs on a `wasm/vX.Y.Z` tag (`-rc.N` suffix publishes under the `rc` dist-tag), then renders its release manifest and uploads it to the release. Also called by `release.yml` with a `version` input, which then attaches the manifest instead. Defines its own jobs. |
 | `actions/setup-rustup/` | Reclaims host disk, installs the pinned toolchain, restores the sccache and npm caches, installs `cargo-binstall` and `sccache`. |
 | `actions/cache/` | Named cache presets (`target-*`, `wrapper-*`), selected by the `restore`/`save` string inputs. |
 | `gitleaks.toml` | Secret-scan config. |
@@ -293,10 +296,10 @@ not preserve, and turns a soft cache miss into a hard failure on re-run.
   not cheap to compile. `--no-verify` here means "already verified in the
   previous step", not "unverified". Dropping `--locked` would let the release
   resolve dependencies the tested `Cargo.lock` never saw.
-- The tag filter is the glob `v[0-9]*.[0-9]*.[0-9]*`, not a regex — GitHub
+- The tag filter is the glob `v[0-9]*.[0-9]*.[0-9]*` on `release.yml`, not a regex — GitHub
   matches `on.push.tags` by glob, so `[0-9]+` would never fire. The glob is
-  deliberately loose and the `Resolve version` step strips the `v` and
-  re-checks against `^[0-9]+\.[0-9]+\.[0-9]+$` and against the `[package]`
+  deliberately loose; `release.yml`'s preflight, and again the `Resolve version`
+  step, strip the `v` and re-check against `^[0-9]+\.[0-9]+\.[0-9]+$` and against the `[package]`
   version in `Cargo.toml`, failing before anything is uploaded. A crates.io
   version can be yanked but never removed, so the mismatch has to be caught
   before the upload, not after. crates.io receives `X.Y.Z`; the `v` is
@@ -378,6 +381,24 @@ not preserve, and turns a soft cache miss into a hard failure on re-run.
   `npm publish` and leaves the existing manifest alone. After a partial
   failure, "Re-run failed jobs" keeps the earlier jobs' artifacts, so the
   manifest still covers every package.
+- `release.yml` is the only trigger for `vX.Y.Z`; `publish-crate.yml` has no
+  tag trigger of its own, so the crate never ships without the wrappers. The
+  per-package tags keep working on their own. Preflight fails the run before
+  any job publishes when the tag is not `X.Y.Z`, disagrees with `Cargo.toml`,
+  or any of the ten packages (crate plus nine npm) already has that version:
+  crates.io and npmjs both refuse a republish, so a half-published release
+  could never be completed. Global rcs are not accepted. The wrappers publish
+  at the crate's version under `latest`.
+- Called workflows share the caller's run, and with it the artifact
+  namespace, so every artifact name carries its package: `npm-nodejs-*`,
+  `npm-askar-nodejs-*`, `npm-wasm`, `release-manifest-<package>`. When called,
+  a wrapper's `manifest` job still renders and uploads its artifact but skips
+  the release upload (`if: ${{ !inputs.version }}`); `release.yml`'s `release`
+  job, which needs all four, attaches them as
+  `release-manifest-{crate,nodejs,askar-nodejs,wasm}.yaml`. The caller grants
+  `contents: write` to the wrapper calls because a called job cannot exceed
+  its caller's permissions. After a partial failure, "Re-run failed jobs"
+  reruns only the failed packages; preflight is not rerun.
 - Prerequisites in settings: the organization secret
   `EQUS_CREDENTIALS_SDK_NPM_TOKEN` (an npm automation token with publish rights
   on the `@equs-ai` scope) and an environment named `npmjs`. Every publishing

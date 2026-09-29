@@ -3,6 +3,11 @@ name: Publish Node.js wrapper
 on:
   push:
     tags: ['nodejs/v[0-9]*.[0-9]*.[0-9]*']
+  workflow_call:
+    inputs:
+      version:
+        type: string
+        required: true
 
 permissions:
   contents: read
@@ -29,9 +34,11 @@ jobs:
     steps:
       - id: resolve
         shell: bash
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
         run: |
           set -euo pipefail
-          version="${GITHUB_REF_NAME#nodejs/v}"
+          version="${INPUT_VERSION:-${GITHUB_REF_NAME#nodejs/v}}"
           [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$ ]] || { echo "tag '$GITHUB_REF_NAME' is not nodejs/vX.Y.Z or nodejs/vX.Y.Z-rc.N" >&2; exit 1; }
           echo "version=$version" >> "$GITHUB_OUTPUT"
           [[ "$version" == *-rc.* ]] && echo "dist-tag=rc" >> "$GITHUB_OUTPUT" || echo "dist-tag=latest" >> "$GITHUB_OUTPUT"
@@ -71,7 +78,7 @@ jobs:
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: npm-linux-x64-gnu
+          name: npm-nodejs-linux-x64-gnu
           path: wrappers/nodejs/npm/linux-x64-gnu/*.tgz
           if-no-files-found: error
 
@@ -113,7 +120,7 @@ jobs:
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: npm-${{ matrix.alias }}
+          name: npm-nodejs-${{ matrix.alias }}
           path: wrappers/nodejs/npm/${{ matrix.alias }}/*.tgz
           if-no-files-found: error
 
@@ -150,7 +157,7 @@ jobs:
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: npm-wrapper
+          name: npm-nodejs-wrapper
           path: wrappers/nodejs/*.tgz
           if-no-files-found: error
 
@@ -165,7 +172,7 @@ jobs:
 
       - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
-          pattern: npm-*
+          pattern: npm-nodejs-*
           path: tarballs
 
       - name: Render manifest
@@ -183,11 +190,12 @@ jobs:
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: release-manifest
+          name: release-manifest-nodejs
           path: release-manifest.yaml
           if-no-files-found: error
 
-      - shell: bash
+      - if: ${{ !inputs.version }}
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}

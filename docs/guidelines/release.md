@@ -130,6 +130,22 @@ The published version is the tag. `X.Y.Z` moves the `latest` dist-tag; `X.Y.Z-rc
 no dev builds go to npmjs, and any other suffix is rejected.
 An npmjs version can never be republished, even after an unpublish, so a bad tag costs a version number.
 
+### Everything at once
+
+The SDK's own tag, `vX.Y.Z`, runs [`release.yml`](../../.github/workflows/release.yml): it publishes
+`equs-credentials-sdk` to crates.io and all three npm packages above at the same version, under
+`latest`, and attaches one manifest per package to the `vX.Y.Z` release
+(`release-manifest-{crate,nodejs,askar-nodejs,wasm}.yaml`).
+
+```shell
+git tag -a v<version> -F NOTES.md
+git push origin tag v<version>
+```
+
+`<version>` must equal `version` in the root `Cargo.toml`, and no package may already have it —
+the run checks both before anything publishes. rc tags are not accepted here; use the per-package
+tags for those. If one package fails, fix it and use **Re-run failed jobs**, never a full re-run.
+
 ## Release notes format
 
 One line per change:

@@ -12,12 +12,14 @@ Scripts called by the release pipelines. GitHub Actions has its own set under
 
 `release_manifest.sh <crate> [output]` — one crate per run, because each crate
 releases on its own tag. The SDK's manifest is rendered by
-`.github/workflows/publish-crate.yml` and by `release_manifest_job` in the
+`.github/workflows/publish-crate.yml` (called by `release.yml`) and by `release_manifest_job` in the
 `manifest` stage; the macro crate's by
 `.github/workflows/publish-common-macros.yml`.
 
 Both workflows render with `if: always()`, so a failed publish still produces a
-manifest, and a follow-up job uploads it to that tag's release as an asset —
+manifest, and a follow-up job uploads it to that tag's release as an asset (for
+the SDK, `release.yml`'s `release` job, as `release-manifest-crate.yaml` beside
+the three npm manifests, and only once every package published) —
 build artifacts expire after 90 days, release assets do not. The release is
 created if the tag has none, and the notes are never touched. The `manifest`
 stage keeps the file as a build artifact only.
@@ -55,5 +57,6 @@ The digest is the sha256 of the tarball the publish job packed and passed to
 `npm publish`, found in `<tarball-dir>` by npm's file name
 (`equs-ai-<name>-<version>.tgz`). The version is read from the tarball's
 `package.json`. A missing tarball is emitted with `digest: null` and a warning.
-`RELEASE_VERSION` sets `release:` — the tags are `nodejs/vX.Y.Z` and
-`wasm/vX.Y.Z`, so the workflows pass the bare version.
+`RELEASE_VERSION` sets `release:` — the tags are `nodejs/vX.Y.Z`,
+`askar-nodejs/vX.Y.Z`, `wasm/vX.Y.Z` or the SDK's `vX.Y.Z`, so the workflows pass
+the bare version.

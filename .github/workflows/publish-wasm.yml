@@ -3,6 +3,11 @@ name: Publish WASM wrapper
 on:
   push:
     tags: ['wasm/v[0-9]*.[0-9]*.[0-9]*']
+  workflow_call:
+    inputs:
+      version:
+        type: string
+        required: true
 
 permissions:
   contents: read
@@ -29,9 +34,11 @@ jobs:
     steps:
       - id: resolve
         shell: bash
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
         run: |
           set -euo pipefail
-          version="${GITHUB_REF_NAME#wasm/v}"
+          version="${INPUT_VERSION:-${GITHUB_REF_NAME#wasm/v}}"
           [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$ ]] || { echo "tag '$GITHUB_REF_NAME' is not wasm/vX.Y.Z or wasm/vX.Y.Z-rc.N" >&2; exit 1; }
           echo "version=$version" >> "$GITHUB_OUTPUT"
           [[ "$version" == *-rc.* ]] && echo "dist-tag=rc" >> "$GITHUB_OUTPUT" || echo "dist-tag=latest" >> "$GITHUB_OUTPUT"
@@ -99,7 +106,7 @@ jobs:
 
       - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
-          pattern: npm-*
+          pattern: npm-wasm
           path: tarballs
 
       - name: Render manifest
@@ -114,11 +121,12 @@ jobs:
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: release-manifest
+          name: release-manifest-wasm
           path: release-manifest.yaml
           if-no-files-found: error
 
-      - shell: bash
+      - if: ${{ !inputs.version }}
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
