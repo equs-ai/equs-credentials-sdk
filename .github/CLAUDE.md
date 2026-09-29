@@ -30,6 +30,7 @@ is the one exception and is named `publish`.
 | `workflows/publish-nodejs.yml` | Publishes the Node.js wrapper and its three platform packages to npmjs on a `nodejs/vX.Y.Z` tag (`-rc.N` suffix publishes under the `rc` dist-tag), then renders its release manifest and uploads it to the release. Also called by `release.yml` with a `version` input, which then attaches the manifest instead. Defines its own jobs. |
 | `workflows/publish-askar-nodejs.yml` | Publishes the askar plugin wrapper and its three platform packages to npmjs on an `askar-nodejs/vX.Y.Z` tag (`-rc.N` suffix publishes under the `rc` dist-tag), then renders its release manifest and uploads it to the release. Also called by `release.yml` with a `version` input, which then attaches the manifest instead. Defines its own jobs. |
 | `workflows/publish-wasm.yml` | Publishes the WASM wrapper to npmjs on a `wasm/vX.Y.Z` tag (`-rc.N` suffix publishes under the `rc` dist-tag), then renders its release manifest and uploads it to the release. Also called by `release.yml` with a `version` input, which then attaches the manifest instead. Defines its own jobs. |
+| `actions/npm-version/` | Resolves the npm version and dist-tag from the `version` input or the tag and exports `CI_COMMIT_TAG`/`NPM_DIST_TAG`. Used by every npm build job. |
 | `actions/setup-rustup/` | Reclaims host disk, installs the pinned toolchain, restores the sccache and npm caches, installs `cargo-binstall` and `sccache`. |
 | `actions/cache/` | Named cache presets (`target-*`, `wrapper-*`), selected by the `restore`/`save` string inputs. |
 | `gitleaks.toml` | Secret-scan config. |
@@ -388,6 +389,12 @@ not preserve, and turns a soft cache miss into a hard failure on re-run.
   both are release builds (`ENVIRONMENT=production`, dist-tag from
   `NPM_DIST_TAG`), so no dev packages ship to npmjs. Any other suffix fails the
   version guard.
+- There is no `version` job. Every build job runs `actions/npm-version` right
+  after checkout: it takes the `version` input or strips the tag prefix,
+  rejects anything but `X.Y.Z` or `X.Y.Z-rc.N`, and exports `CI_COMMIT_TAG` and
+  `NPM_DIST_TAG` to the job. The wrapper job re-exports the version as an
+  output for `manifest` and `summary`. A bad tag therefore fails each build job
+  after its environment approval, not before it.
 - The Node.js and askar workflows run each wrapper's `build_and_publish_target.sh` per
   platform (`linux-x64-gnu` in the bookworm container for its glibc,
   `darwin-arm64`/`darwin-x64` on `macos-15`), then
