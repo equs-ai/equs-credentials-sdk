@@ -378,12 +378,16 @@ not preserve, and turns a soft cache miss into a hard failure on re-run.
   and attaches `release-manifest.yaml` to the tag's release. Unlike the crate
   workflows it runs only when every publish job succeeded: a failed publish
   writes no manifest, and re-running an already-published tag fails at
-  `npm publish` and leaves the existing manifest alone. After a partial
+  `npm publish` and leaves the existing manifest alone. After a transient
   failure, "Re-run failed jobs" keeps the earlier jobs' artifacts, so the
-  manifest still covers every package.
+  manifest still covers every package. The darwin matrix sets
+  `fail-fast: false`: a cancelled sibling could have published without
+  uploading its tarball, and its re-run would then fail at `npm publish`
+  with no artifact left for the manifest.
 - `release.yml` is the only trigger for `vX.Y.Z`; `publish-crate.yml` has no
-  tag trigger of its own, so the crate never ships without the wrappers. The
-  per-package tags keep working on their own. Preflight fails the run before
+  tag trigger of its own. `crate` runs first and the three npm calls need it, so
+  a crate failure publishes nothing and the wrappers never ship ahead of the
+  crate. The per-package tags keep working on their own. Preflight fails the run before
   any job publishes when the tag is not `X.Y.Z`, disagrees with `Cargo.toml`,
   or any of the ten packages (crate plus nine npm) already has that version:
   crates.io and npmjs both refuse a republish, so a half-published release
@@ -397,8 +401,14 @@ not preserve, and turns a soft cache miss into a hard failure on re-run.
   job, which needs all four, attaches them as
   `release-manifest-{crate,nodejs,askar-nodejs,wasm}.yaml`. The caller grants
   `contents: write` to the wrapper calls because a called job cannot exceed
-  its caller's permissions. After a partial failure, "Re-run failed jobs"
-  reruns only the failed packages; preflight is not rerun.
+  its caller's permissions. "Re-run failed jobs" reruns only the failed
+  packages and not preflight, but on the tag's original commit: it recovers a
+  transient failure (network, runner), never one that needs a code change.
+  A crate failure left nothing published: fix, then delete and re-push the
+  tag on the fixed commit. A wrapper
+  failure after the crate shipped is finished with that wrapper's own tag
+  (`nodejs/vX.Y.Z`, `askar-nodejs/vX.Y.Z`, `wasm/vX.Y.Z`) at the same version,
+  whose manifest then lands on that tag's release instead.
 - Prerequisites in settings: the organization secret
   `EQUS_CREDENTIALS_SDK_NPM_TOKEN` (an npm automation token with publish rights
   on the `@equs-ai` scope) and an environment named `npmjs`. Every publishing

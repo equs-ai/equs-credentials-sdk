@@ -68,7 +68,7 @@ jobs:
     secrets: inherit
 
   nodejs:
-    needs: [preflight]
+    needs: [preflight, crate]
     permissions:
       contents: write
     uses: ./.github/workflows/publish-nodejs.yml
@@ -77,7 +77,7 @@ jobs:
     secrets: inherit
 
   askar-nodejs:
-    needs: [preflight]
+    needs: [preflight, crate]
     permissions:
       contents: write
     uses: ./.github/workflows/publish-askar-nodejs.yml
@@ -86,7 +86,7 @@ jobs:
     secrets: inherit
 
   wasm:
-    needs: [preflight]
+    needs: [preflight, crate]
     permissions:
       contents: write
     uses: ./.github/workflows/publish-wasm.yml
