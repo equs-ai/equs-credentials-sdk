@@ -113,7 +113,7 @@ getrandom = "=0.4.2"
 didcomm = { package = "equs-didcomm", version = "0.1.0", features = ["uniffi"] }
 reqwest-middleware = { version = "0.4.0", default-features = false }
 reqwest-tracing = { version = "0.5.5", default-features = false }
-one-core = { package = "equs-one-core", version = "0.1.0" }
+one-core = { package = "equs-one-core", version = "0.1.1" }
 shared-types = { package = "equs-one-core-shared-types", version = "0.1.0" }
 x509-parser = { version = "0.18", features = ["verify"] }
 x509-cert = { version = "0.2", features = ["pem"] }
