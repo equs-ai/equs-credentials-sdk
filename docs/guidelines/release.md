@@ -147,11 +147,15 @@ git push origin tag v<version>
 
 `<version>` must equal `version` in the root `Cargo.toml`, and no package may already have it —
 the run checks both before anything publishes. rc tags are not accepted here; use the per-package
-tags for those. The crate publishes only after every npm package has.
+tags for those. The crate publishes first; the npm packages start only once it is on crates.io.
 
 If a job fails for a transient reason (network, runner), use **Re-run failed jobs**; it reruns the
-tag's original commit, so it cannot pick up a fix. A failure that needs a code change needs a version
-bump in `Cargo.toml` and a new tag — the npm packages that did publish have already used the version.
+tag's original commit, so it cannot pick up a fix. For a failure that needs a code change:
+
+- **Crate failed:** nothing was published. Fix it, then delete and re-push `v<version>` on the fixed commit.
+- **A wrapper failed after the crate shipped:** fix it and publish that wrapper with its own tag at
+  the same version (`nodejs/v<version>`, `askar-nodejs/v<version>` or `wasm/v<version>`). Its
+  manifest goes on that tag's release.
 
 ## Release notes format
 
