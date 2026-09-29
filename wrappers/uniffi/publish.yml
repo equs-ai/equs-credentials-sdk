@@ -100,6 +100,7 @@ publish_android_wrapper:
     - |
       cd wrappers/uniffi
       make android-aar
+      test -n "$(find kotlin/android/src/main/kotlin -name '*.kt')"
       cd kotlin
       ./gradlew publish
 
@@ -112,5 +113,6 @@ publish_android_wrapper_dev:
     - |
       cd wrappers/uniffi
       make android-aar-dev
+      test -n "$(find kotlin/android/src/main/kotlin -name '*.kt')"
       cd kotlin
       ./gradlew publish -Penv=development
