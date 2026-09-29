@@ -76,6 +76,7 @@ publish_nodejs_wrapper:
   script:
     - |
       cd wrappers/nodejs
+      npm pkg set scripts.postinstall="npm i --ignore-scripts"
       chmod +x scripts/build_and_publish_wrapper.sh
       NPM_TOKEN=${CI_JOB_TOKEN} ENVIRONMENT=production scripts/build_and_publish_wrapper.sh
 
@@ -87,5 +88,6 @@ publish_nodejs_wrapper_dev:
   script:
     - |
       cd wrappers/nodejs
+      npm pkg set scripts.postinstall="npm i --ignore-scripts"
       chmod +x scripts/build_and_publish_wrapper.sh
       NPM_TOKEN=${CI_JOB_TOKEN} ENVIRONMENT=development scripts/build_and_publish_wrapper.sh

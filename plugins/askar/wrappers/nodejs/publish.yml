@@ -51,5 +51,6 @@ publish_askar_nodejs_wrapper:
       npm i --prefix wrappers/nodejs
       npm run --prefix wrappers/nodejs build
       cd plugins/askar/wrappers/nodejs
+      npm pkg set scripts.postinstall="npm i --ignore-scripts"
       chmod +x scripts/build_and_publish_wrapper.sh
       NPM_TOKEN=${CI_JOB_TOKEN} ENVIRONMENT=production scripts/build_and_publish_wrapper.sh
