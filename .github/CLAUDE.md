@@ -425,6 +425,11 @@ not preserve, and turns a soft cache miss into a hard failure on re-run.
   `contents: write` to the wrapper calls because a called job cannot exceed
   its caller's permissions. After a partial failure, "Re-run failed jobs"
   reruns only the failed packages; preflight is not rerun.
+- `DRY_RUN: "1"` in the `env` of `publish-crate.yml`, `publish-nodejs.yml`,
+  `publish-askar-nodejs.yml` and `publish-wasm.yml` turns every `cargo publish`
+  and `npm publish` into `--dry-run` and lifts the npm token guard; every job
+  still builds, packs and renders its manifest. The wrapper scripts read the
+  same variable. Remove the line to publish for real.
 - Prerequisites in settings: the organization secret
   `EQUS_CREDENTIALS_SDK_NPM_TOKEN` (an npm automation token with publish rights
   on the `@equs-ai` scope) and an environment named `npmjs`. Every publishing

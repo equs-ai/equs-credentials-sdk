@@ -18,6 +18,7 @@ concurrency:
 
 env:
   RUST_VERSION: "1.97.0"
+  DRY_RUN: "1"
   NODE_VERSION: "20.18.0"
   CARGO_INCREMENTAL: "0"
   CARGO_TERM_COLOR: always
@@ -79,7 +80,7 @@ jobs:
         working-directory: wrappers/wasm
         run: |
           set -euo pipefail
-          [ -n "${NPM_TOKEN:-}" ] || { echo "org secret EQUS_CREDENTIALS_SDK_NPM_TOKEN is unset or not visible to this repo" >&2; exit 1; }
+          [ -n "${NPM_TOKEN:-}" ] || [ -n "${DRY_RUN:-}" ] || { echo "org secret EQUS_CREDENTIALS_SDK_NPM_TOKEN is unset or not visible to this repo" >&2; exit 1; }
           npm_auth="npm_config_//${REGISTRY_URL_NPM#*://}:_authToken=$NPM_TOKEN"
           unset NPM_TOKEN
           npm i
@@ -87,7 +88,7 @@ jobs:
           cp .npmignore pkg/.npmignore
           cd pkg
           tarball=$(npm pack --silent)
-          env "$npm_auth" npm publish "$tarball" --registry="$REGISTRY_URL_NPM" --tag "$NPM_DIST_TAG"
+          env "$npm_auth" npm publish "$tarball" --registry="$REGISTRY_URL_NPM" --tag "$NPM_DIST_TAG" ${DRY_RUN:+--dry-run}
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:

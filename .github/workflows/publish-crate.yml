@@ -12,6 +12,7 @@ concurrency:
 
 env:
   RUST_VERSION: "1.97.0"
+  DRY_RUN: "1"
   CARGO_INCREMENTAL: "0"
   CARGO_TERM_COLOR: always
 
@@ -52,7 +53,7 @@ jobs:
         run: |
           set -euo pipefail
           [ -n "${CARGO_REGISTRY_TOKEN:-}" ] || { echo "org secret EQUS_CREDENTIALS_SDK_CRATES_IO_TOKEN is unset or not visible to this repo" >&2; exit 1; }
-          cargo publish --locked --no-verify -p equs-credentials-sdk
+          cargo publish --locked --no-verify ${DRY_RUN:+--dry-run} -p equs-credentials-sdk
 
       - name: Render manifest
         if: always()
