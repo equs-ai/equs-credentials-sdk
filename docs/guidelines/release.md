@@ -147,7 +147,11 @@ git push origin tag v<version>
 
 `<version>` must equal `version` in the root `Cargo.toml`, and no package may already have it —
 the run checks both before anything publishes. rc tags are not accepted here; use the per-package
-tags for those. If one package fails, fix it and use **Re-run failed jobs**, never a full re-run.
+tags for those. The crate publishes only after every npm package has.
+
+If a job fails for a transient reason (network, runner), use **Re-run failed jobs**; it reruns the
+tag's original commit, so it cannot pick up a fix. A failure that needs a code change needs a version
+bump in `Cargo.toml` and a new tag — the npm packages that did publish have already used the version.
 
 ## Release notes format
 
