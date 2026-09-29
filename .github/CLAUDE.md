@@ -24,9 +24,9 @@ is the one exception and is named `publish`.
 | `workflows/_android.yml` | `android-demo`: bare `ubuntu-latest`, SDK from the runner plus the pinned NDK. |
 | `workflows/publish-crate.yml` | Publishes `equs-credentials-sdk` to crates.io on a `vX.Y.Z` tag, then renders its release manifest and uploads it to the release. Defines its own jobs. |
 | `workflows/publish-common-macros.yml` | Publishes `equs-common-macros` to crates.io on a `common-macros/vX.Y.Z` tag, prerelease suffix allowed, then renders its release manifest and uploads it to the release. Defines its own jobs. |
-| `workflows/publish-nodejs.yml` | Publishes the Node.js wrapper and its three platform packages to npmjs on a `nodejs/vX.Y.Z` tag, then renders its release manifest and uploads it to the release. Defines its own jobs. |
-| `workflows/publish-askar-nodejs.yml` | Publishes the askar plugin wrapper and its three platform packages to npmjs on an `askar-nodejs/vX.Y.Z` tag, then renders its release manifest and uploads it to the release. Defines its own jobs. |
-| `workflows/publish-wasm.yml` | Publishes the WASM wrapper to npmjs on a `wasm/vX.Y.Z` tag, then renders its release manifest and uploads it to the release. Defines its own jobs. |
+| `workflows/publish-nodejs.yml` | Publishes the Node.js wrapper and its three platform packages to npmjs on a `nodejs/vX.Y.Z` tag (`-rc.N` suffix publishes under the `rc` dist-tag), then renders its release manifest and uploads it to the release. Defines its own jobs. |
+| `workflows/publish-askar-nodejs.yml` | Publishes the askar plugin wrapper and its three platform packages to npmjs on an `askar-nodejs/vX.Y.Z` tag (`-rc.N` suffix publishes under the `rc` dist-tag), then renders its release manifest and uploads it to the release. Defines its own jobs. |
+| `workflows/publish-wasm.yml` | Publishes the WASM wrapper to npmjs on a `wasm/vX.Y.Z` tag (`-rc.N` suffix publishes under the `rc` dist-tag), then renders its release manifest and uploads it to the release. Defines its own jobs. |
 | `actions/setup-rustup/` | Reclaims host disk, installs the pinned toolchain, restores the sccache and npm caches, installs `cargo-binstall` and `sccache`. |
 | `actions/cache/` | Named cache presets (`target-*`, `wrapper-*`), selected by the `restore`/`save` string inputs. |
 | `gitleaks.toml` | Secret-scan config. |
@@ -355,8 +355,10 @@ not preserve, and turns a soft cache miss into a hard failure on re-run.
   other and from the crate's `vX.Y.Z`, so each package releases on its own. The published version is the tag
   (the wrapper scripts and the WASM `Makefile` read `CI_COMMIT_TAG`, which the
   workflow sets from it), as on GitLab; `package.json` versions are not checked.
-  Only `X.Y.Z` is accepted: it builds release and moves `latest`. Prerelease
-  tags fail the version guard; no dev packages ship to npmjs.
+  `X.Y.Z` publishes under the `latest` dist-tag and `X.Y.Z-rc.N` under `rc`;
+  both are release builds (`ENVIRONMENT=production`, dist-tag from
+  `NPM_DIST_TAG`), so no dev packages ship to npmjs. Any other suffix fails the
+  version guard.
 - The Node.js and askar workflows run each wrapper's `build_and_publish_target.sh` per
   platform (`linux-x64-gnu` in the bookworm container for its glibc,
   `darwin-arm64`/`darwin-x64` on `macos-15`), then

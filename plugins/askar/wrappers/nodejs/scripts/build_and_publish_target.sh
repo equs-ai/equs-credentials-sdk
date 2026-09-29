@@ -33,7 +33,7 @@ if [ "${ENVIRONMENT:-}" == "development" ]; then
   TAG="dev"
   PUBLISH_VERSION="${CI_COMMIT_TAG:-${VERSION}-dev}"
 else
-  TAG="latest"
+  TAG="${NPM_DIST_TAG:-latest}"
   PUBLISH_VERSION="${CI_COMMIT_TAG:-${VERSION}}"
 fi
 

@@ -32,7 +32,7 @@ if [ "${ENVIRONMENT:-}" == "development" ]; then
   BUILD_FLAGS="--features=in-memory"
   PUBLISH_VERSION="${CI_COMMIT_TAG:-${VERSION}-dev}"
 else
-  TAG="latest"
+  TAG="${NPM_DIST_TAG:-latest}"
   BUILD_FLAGS="--release"
   PUBLISH_VERSION="${CI_COMMIT_TAG:-${VERSION}}"
 fi

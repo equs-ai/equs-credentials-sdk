@@ -21,7 +21,7 @@ if [ "${ENVIRONMENT:-}" == "development" ]; then
   BUILD_SCRIPT="build:debug"
   PUBLISH_VERSION="${CI_COMMIT_TAG:-${VERSION}-dev}"
 else
-  TAG="latest"
+  TAG="${NPM_DIST_TAG:-latest}"
   BUILD_SCRIPT="build"
   PUBLISH_VERSION="${CI_COMMIT_TAG:-${VERSION}}"
 fi

@@ -25,14 +25,16 @@ jobs:
     timeout-minutes: 5
     outputs:
       version: ${{ steps.resolve.outputs.version }}
+      dist-tag: ${{ steps.resolve.outputs.dist-tag }}
     steps:
       - id: resolve
         shell: bash
         run: |
           set -euo pipefail
           version="${GITHUB_REF_NAME#askar-nodejs/v}"
-          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "tag '$GITHUB_REF_NAME' is not askar-nodejs/vX.Y.Z" >&2; exit 1; }
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$ ]] || { echo "tag '$GITHUB_REF_NAME' is not askar-nodejs/vX.Y.Z or askar-nodejs/vX.Y.Z-rc.N" >&2; exit 1; }
           echo "version=$version" >> "$GITHUB_OUTPUT"
+          [[ "$version" == *-rc.* ]] && echo "dist-tag=rc" >> "$GITHUB_OUTPUT" || echo "dist-tag=latest" >> "$GITHUB_OUTPUT"
 
   askar-target-linux:
     needs: [version]
@@ -43,6 +45,7 @@ jobs:
     timeout-minutes: 60
     env:
       CI_COMMIT_TAG: ${{ needs.version.outputs.version }}
+      NPM_DIST_TAG: ${{ needs.version.outputs.dist-tag }}
       ENVIRONMENT: production
       TARGET: x86_64-unknown-linux-gnu
       ALIAS: linux-x64-gnu
@@ -85,6 +88,7 @@ jobs:
           - {target: x86_64-apple-darwin, alias: darwin-x64}
     env:
       CI_COMMIT_TAG: ${{ needs.version.outputs.version }}
+      NPM_DIST_TAG: ${{ needs.version.outputs.dist-tag }}
       ENVIRONMENT: production
       TARGET: ${{ matrix.target }}
       ALIAS: ${{ matrix.alias }}
@@ -124,6 +128,7 @@ jobs:
     timeout-minutes: 60
     env:
       CI_COMMIT_TAG: ${{ needs.version.outputs.version }}
+      NPM_DIST_TAG: ${{ needs.version.outputs.dist-tag }}
       ENVIRONMENT: production
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

@@ -125,7 +125,9 @@ git tag -a askar-nodejs/v<version> -F NOTES.md
 git push origin tag nodejs/v<version> tag wasm/v<version> tag askar-nodejs/v<version>
 ```
 
-As on GitLab, the published version is the tag. Only `X.Y.Z` is accepted — no dev builds go to npmjs.
+As on GitLab, the published version is the tag. `X.Y.Z` moves the `latest` dist-tag; `X.Y.Z-rc.N`
+(e.g. `nodejs/v1.14.0-rc.1`) publishes under `rc` and leaves `latest` alone. Both are release builds —
+no dev builds go to npmjs, and any other suffix is rejected.
 An npmjs version can never be republished, even after an unpublish, so a bad tag costs a version number.
 
 ## Release notes format
