@@ -130,6 +130,9 @@ The published version is the tag. `X.Y.Z` moves the `latest` dist-tag; `X.Y.Z-rc
 no dev builds go to npmjs, and any other suffix is rejected.
 An npmjs version can never be republished, even after an unpublish, so a bad tag costs a version number.
 
+To rehearse a release, add `DRY_RUN: "1"` to the `env` of the four publish workflows: every tag then runs the full pipeline but publishes nothing
+(`cargo publish --dry-run`, `npm publish --dry-run`); the release and its manifests are still created.
+
 ### Everything at once
 
 The SDK's own tag, `vX.Y.Z`, runs [`release.yml`](../../.github/workflows/release.yml): it publishes
@@ -144,7 +147,15 @@ git push origin tag v<version>
 
 `<version>` must equal `version` in the root `Cargo.toml`, and no package may already have it —
 the run checks both before anything publishes. rc tags are not accepted here; use the per-package
-tags for those. If one package fails, fix it and use **Re-run failed jobs**, never a full re-run.
+tags for those. The crate publishes first; the npm packages start only once it is on crates.io.
+
+If a job fails for a transient reason (network, runner), use **Re-run failed jobs**; it reruns the
+tag's original commit, so it cannot pick up a fix. For a failure that needs a code change:
+
+- **Crate failed:** nothing was published. Fix it, then delete and re-push `v<version>` on the fixed commit.
+- **A wrapper failed after the crate shipped:** fix it and publish that wrapper with its own tag at
+  the same version (`nodejs/v<version>`, `askar-nodejs/v<version>` or `wasm/v<version>`). Its
+  manifest goes on that tag's release.
 
 ## Release notes format
 

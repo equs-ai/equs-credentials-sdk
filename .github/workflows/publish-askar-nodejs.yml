@@ -25,39 +25,24 @@ env:
   npm_config_access: public
 
 jobs:
-  version:
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    outputs:
-      version: ${{ steps.resolve.outputs.version }}
-      dist-tag: ${{ steps.resolve.outputs.dist-tag }}
-    steps:
-      - id: resolve
-        shell: bash
-        env:
-          INPUT_VERSION: ${{ inputs.version }}
-        run: |
-          set -euo pipefail
-          version="${INPUT_VERSION:-${GITHUB_REF_NAME#askar-nodejs/v}}"
-          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$ ]] || { echo "tag '$GITHUB_REF_NAME' is not askar-nodejs/vX.Y.Z or askar-nodejs/vX.Y.Z-rc.N" >&2; exit 1; }
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-          [[ "$version" == *-rc.* ]] && echo "dist-tag=rc" >> "$GITHUB_OUTPUT" || echo "dist-tag=latest" >> "$GITHUB_OUTPUT"
-
   askar-target-linux:
-    needs: [version]
     runs-on: ubuntu-latest
     environment: npmjs
     container:
       image: rust:1.97.0-bookworm
     timeout-minutes: 60
     env:
-      CI_COMMIT_TAG: ${{ needs.version.outputs.version }}
-      NPM_DIST_TAG: ${{ needs.version.outputs.dist-tag }}
       ENVIRONMENT: production
       TARGET: x86_64-unknown-linux-gnu
       ALIAS: linux-x64-gnu
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: ./.github/actions/npm-version
+        id: version
+        with:
+          prefix: askar-nodejs
+          version: ${{ inputs.version }}
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
@@ -83,23 +68,27 @@ jobs:
           if-no-files-found: error
 
   askar-target-darwin:
-    needs: [version]
     runs-on: macos-15
     environment: npmjs
     timeout-minutes: 60
     strategy:
+      fail-fast: false
       matrix:
         include:
           - {target: aarch64-apple-darwin, alias: darwin-arm64}
           - {target: x86_64-apple-darwin, alias: darwin-x64}
     env:
-      CI_COMMIT_TAG: ${{ needs.version.outputs.version }}
-      NPM_DIST_TAG: ${{ needs.version.outputs.dist-tag }}
       ENVIRONMENT: production
       TARGET: ${{ matrix.target }}
       ALIAS: ${{ matrix.alias }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: ./.github/actions/npm-version
+        id: version
+        with:
+          prefix: askar-nodejs
+          version: ${{ inputs.version }}
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
@@ -125,18 +114,24 @@ jobs:
           if-no-files-found: error
 
   askar-wrapper:
-    needs: [version, askar-target-linux, askar-target-darwin]
+    needs: [askar-target-linux, askar-target-darwin]
     runs-on: ubuntu-latest
     environment: npmjs
     container:
       image: rust:1.97.0-bookworm
     timeout-minutes: 60
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     env:
-      CI_COMMIT_TAG: ${{ needs.version.outputs.version }}
-      NPM_DIST_TAG: ${{ needs.version.outputs.dist-tag }}
       ENVIRONMENT: production
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: ./.github/actions/npm-version
+        id: version
+        with:
+          prefix: askar-nodejs
+          version: ${{ inputs.version }}
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
@@ -169,7 +164,7 @@ jobs:
           if-no-files-found: error
 
   manifest:
-    needs: [version, askar-target-linux, askar-target-darwin, askar-wrapper]
+    needs: [askar-target-linux, askar-target-darwin, askar-wrapper]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -187,7 +182,7 @@ jobs:
         env:
           CI_COMMIT_TAG: ${{ github.ref_name }}
           CI_COMMIT_SHA: ${{ github.sha }}
-          RELEASE_VERSION: ${{ needs.version.outputs.version }}
+          RELEASE_VERSION: ${{ needs.askar-wrapper.outputs.version }}
         run: |
           bash scripts/npm_release_manifest.sh @equs-ai/equs-credentials-sdk-askar-storage release-manifest.yaml tarballs \
             @equs-ai/equs-credentials-sdk-askar-storage \
@@ -212,17 +207,3 @@ jobs:
           gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1 ||
             gh release create "$TAG" --repo "$REPO" --title "$TAG" --notes ""
           gh release upload "$TAG" release-manifest.yaml --repo "$REPO" --clobber
-
-  summary:
-    needs: [version, askar-wrapper]
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - shell: bash
-        env:
-          VERSION: ${{ needs.version.outputs.version }}
-        run: |
-          printf "### Published to npmjs\n\n" >> "$GITHUB_STEP_SUMMARY"
-          for p in equs-credentials-sdk-askar-storage equs-credentials-sdk-askar-storage-linux-x64-gnu equs-credentials-sdk-askar-storage-darwin-arm64 equs-credentials-sdk-askar-storage-darwin-x64; do
-            printf -- "- \`@equs-ai/%s@%s\`\n" "$p" "$VERSION" >> "$GITHUB_STEP_SUMMARY"
-          done

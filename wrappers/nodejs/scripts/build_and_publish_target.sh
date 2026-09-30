@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-if [ -z "${NPM_TOKEN:-}" ]; then
+if [ -z "${NPM_TOKEN:-}" ] && [ -z "${DRY_RUN:-}" ]; then
   echo "No NPM_TOKEN"
   exit 1
 fi
@@ -50,7 +50,7 @@ npx napi version
 
 cd "npm/${ALIAS}"
 TARBALL=$(npm pack --silent)
-env "${NPM_AUTH}" npm publish "${TARBALL}" --registry=${REGISTRY_URL_NPM} --tag ${TAG}
+env "${NPM_AUTH}" npm publish "${TARBALL}" --registry=${REGISTRY_URL_NPM} --tag ${TAG} ${DRY_RUN:+--dry-run}
 
 
 cd ../../

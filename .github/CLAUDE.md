@@ -30,6 +30,7 @@ is the one exception and is named `publish`.
 | `workflows/publish-nodejs.yml` | Publishes the Node.js wrapper and its three platform packages to npmjs on a `nodejs/vX.Y.Z` tag (`-rc.N` suffix publishes under the `rc` dist-tag), then renders its release manifest and uploads it to the release. Also called by `release.yml` with a `version` input, which then attaches the manifest instead. Defines its own jobs. |
 | `workflows/publish-askar-nodejs.yml` | Publishes the askar plugin wrapper and its three platform packages to npmjs on an `askar-nodejs/vX.Y.Z` tag (`-rc.N` suffix publishes under the `rc` dist-tag), then renders its release manifest and uploads it to the release. Also called by `release.yml` with a `version` input, which then attaches the manifest instead. Defines its own jobs. |
 | `workflows/publish-wasm.yml` | Publishes the WASM wrapper to npmjs on a `wasm/vX.Y.Z` tag (`-rc.N` suffix publishes under the `rc` dist-tag), then renders its release manifest and uploads it to the release. Also called by `release.yml` with a `version` input, which then attaches the manifest instead. Defines its own jobs. |
+| `actions/npm-version/` | Resolves the npm version and dist-tag from the `version` input or the tag and exports `CI_COMMIT_TAG`/`NPM_DIST_TAG`. Used by every npm build job. |
 | `actions/setup-rustup/` | Reclaims host disk, installs the pinned toolchain, restores the sccache and npm caches, installs `cargo-binstall` and `sccache`. |
 | `actions/cache/` | Named cache presets (`target-*`, `wrapper-*`), selected by the `restore`/`save` string inputs. |
 | `gitleaks.toml` | Secret-scan config. |
@@ -388,6 +389,12 @@ not preserve, and turns a soft cache miss into a hard failure on re-run.
   both are release builds (`ENVIRONMENT=production`, dist-tag from
   `NPM_DIST_TAG`), so no dev packages ship to npmjs. Any other suffix fails the
   version guard.
+- There is no `version` job. Every build job runs `actions/npm-version` right
+  after checkout: it takes the `version` input or strips the tag prefix,
+  rejects anything but `X.Y.Z` or `X.Y.Z-rc.N`, and exports `CI_COMMIT_TAG` and
+  `NPM_DIST_TAG` to the job. The wrapper job re-exports the version as an
+  output for `manifest`. A bad tag therefore fails each build job
+  after its environment approval, not before it.
 - The Node.js and askar workflows run each wrapper's `build_and_publish_target.sh` per
   platform (`linux-x64-gnu` in the bookworm container for its glibc,
   `darwin-arm64`/`darwin-x64` on `macos-15`), then
@@ -404,12 +411,16 @@ not preserve, and turns a soft cache miss into a hard failure on re-run.
   and attaches `release-manifest.yaml` to the tag's release. Unlike the crate
   workflows it runs only when every publish job succeeded: a failed publish
   writes no manifest, and re-running an already-published tag fails at
-  `npm publish` and leaves the existing manifest alone. After a partial
+  `npm publish` and leaves the existing manifest alone. After a transient
   failure, "Re-run failed jobs" keeps the earlier jobs' artifacts, so the
-  manifest still covers every package.
+  manifest still covers every package. The darwin matrix sets
+  `fail-fast: false`: a cancelled sibling could have published without
+  uploading its tarball, and its re-run would then fail at `npm publish`
+  with no artifact left for the manifest.
 - `release.yml` is the only trigger for `vX.Y.Z`; `publish-crate.yml` has no
-  tag trigger of its own, so the crate never ships without the wrappers. The
-  per-package tags keep working on their own. Preflight fails the run before
+  tag trigger of its own. `crate` runs first and the three npm calls need it, so
+  a crate failure publishes nothing and the wrappers never ship ahead of the
+  crate. The per-package tags keep working on their own. Preflight fails the run before
   any job publishes when the tag is not `X.Y.Z`, disagrees with `Cargo.toml`,
   or any of the ten packages (crate plus nine npm) already has that version:
   crates.io and npmjs both refuse a republish, so a half-published release
@@ -423,8 +434,19 @@ not preserve, and turns a soft cache miss into a hard failure on re-run.
   job, which needs all four, attaches them as
   `release-manifest-{crate,nodejs,askar-nodejs,wasm}.yaml`. The caller grants
   `contents: write` to the wrapper calls because a called job cannot exceed
-  its caller's permissions. After a partial failure, "Re-run failed jobs"
-  reruns only the failed packages; preflight is not rerun.
+  its caller's permissions. "Re-run failed jobs" reruns only the failed
+  packages and not preflight, but on the tag's original commit: it recovers a
+  transient failure (network, runner), never one that needs a code change.
+  A crate failure left nothing published: fix, then delete and re-push the
+  tag on the fixed commit. A wrapper
+  failure after the crate shipped is finished with that wrapper's own tag
+  (`nodejs/vX.Y.Z`, `askar-nodejs/vX.Y.Z`, `wasm/vX.Y.Z`) at the same version,
+  whose manifest then lands on that tag's release instead.
+- Off by default: adding `DRY_RUN: "1"` to the `env` of `publish-crate.yml`, `publish-nodejs.yml`,
+  `publish-askar-nodejs.yml` and `publish-wasm.yml` turns every `cargo publish`
+  and `npm publish` into `--dry-run` and lifts the npm token guard; every job
+  still builds, packs and renders its manifest. The wrapper scripts read the
+  same variable.
 - Prerequisites in settings: the organization secret
   `EQUS_CREDENTIALS_SDK_NPM_TOKEN` (an npm automation token with publish rights
   on the `@equs-ai` scope) and an environment named `npmjs`. Every publishing
