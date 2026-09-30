@@ -18,7 +18,6 @@ concurrency:
 
 env:
   RUST_VERSION: "1.97.0"
-  DRY_RUN: "1"
   NODE_VERSION: "20.18.0"
   CARGO_INCREMENTAL: "0"
   CARGO_TERM_COLOR: always

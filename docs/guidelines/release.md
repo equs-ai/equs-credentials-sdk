@@ -130,7 +130,7 @@ The published version is the tag. `X.Y.Z` moves the `latest` dist-tag; `X.Y.Z-rc
 no dev builds go to npmjs, and any other suffix is rejected.
 An npmjs version can never be republished, even after an unpublish, so a bad tag costs a version number.
 
-While the publish workflows set `DRY_RUN: "1"`, every tag runs the full pipeline but publishes nothing
+To rehearse a release, add `DRY_RUN: "1"` to the `env` of the four publish workflows: every tag then runs the full pipeline but publishes nothing
 (`cargo publish --dry-run`, `npm publish --dry-run`); the release and its manifests are still created.
 
 ### Everything at once

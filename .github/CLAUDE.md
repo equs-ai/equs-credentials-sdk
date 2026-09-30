@@ -442,11 +442,11 @@ not preserve, and turns a soft cache miss into a hard failure on re-run.
   failure after the crate shipped is finished with that wrapper's own tag
   (`nodejs/vX.Y.Z`, `askar-nodejs/vX.Y.Z`, `wasm/vX.Y.Z`) at the same version,
   whose manifest then lands on that tag's release instead.
-- `DRY_RUN: "1"` in the `env` of `publish-crate.yml`, `publish-nodejs.yml`,
+- Off by default: adding `DRY_RUN: "1"` to the `env` of `publish-crate.yml`, `publish-nodejs.yml`,
   `publish-askar-nodejs.yml` and `publish-wasm.yml` turns every `cargo publish`
   and `npm publish` into `--dry-run` and lifts the npm token guard; every job
   still builds, packs and renders its manifest. The wrapper scripts read the
-  same variable. Remove the line to publish for real.
+  same variable.
 - Prerequisites in settings: the organization secret
   `EQUS_CREDENTIALS_SDK_NPM_TOKEN` (an npm automation token with publish rights
   on the `@equs-ai` scope) and an environment named `npmjs`. Every publishing
