@@ -26,7 +26,7 @@ publishing {
 			artifact(javadocJar)
 
 			groupId = group.toString()
-			artifactId = "equs-credentials-sdk"
+			artifactId = "equs-credentials-sdk-android"
 			version = project.version.toString()
 
 			pom {

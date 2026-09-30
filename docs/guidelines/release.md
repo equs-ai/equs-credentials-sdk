@@ -82,7 +82,7 @@ Each wrapper has a production job, published under the `latest` tag:
 | `publish_nodejs_target` / `publish_nodejs_wrapper` | `@equs-ai/equs-credentials-sdk` + per-platform binaries (linux-x64-gnu, darwin-arm64, darwin-x64) | npm |
 | `publish_wasm_wrapper` | `@equs-ai/equs-credentials-sdk-wasm` | npm |
 | `publish_askar_nodejs_target` / `publish_askar_nodejs_wrapper` | `@equs-ai/equs-credentials-sdk-askar-storage` + per-platform binaries | npm |
-| `publish_android_wrapper` | `equs-credentials-sdk` AAR | Maven |
+| `publish_android_wrapper` | `equs-credentials-sdk-android` AAR | Maven |
 | `publish_ios_wrapper` | `equs-credentials-sdk-ios` XCFramework zip + checksum | package registry |
 | `release_artifacts_job` | `SBOM.auto.out`, `AUDIT.auto.out`, `API.auto.tar.gz` (rustdoc) | pipeline artifacts |
 
@@ -133,7 +133,7 @@ An npmjs version can never be republished, even after an unpublish, so a bad tag
 ## Maven Central
 
 The Android AAR is also published to Maven Central as
-`ai.equs:equs-credentials-sdk` by
+`ai.equs:equs-credentials-sdk-android` by
 [`publish-android.yml`](../../.github/workflows/publish-android.yml), on its own tag:
 
 ```shell
