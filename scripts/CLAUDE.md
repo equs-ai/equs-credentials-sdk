@@ -75,7 +75,7 @@ that file's sha256, and a missing file is emitted with `digest: null`.
 
 `file_release_manifest.sh <component> <output> <file>...` — same schema, one
 entry per file, named by its basename. Called by the `manifest` job of
-`.github/workflows/publish-ios.yml` with the two iOS zips. The digest is the
+`.github/workflows/publish-ios.yml` with the iOS XCFramework zip. The digest is the
 sha256 of the file the job attaches to the release; a missing file is emitted
 with `digest: null` and a warning. `RELEASE_VERSION` sets `release:` and every
 entry's `version:`.

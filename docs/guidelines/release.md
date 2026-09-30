@@ -151,7 +151,7 @@ To rehearse a release, add `DRY_RUN: "1"` to the `env` of the five publish workf
 
 The SDK's own tag, `vX.Y.Z`, runs [`release.yml`](../../.github/workflows/release.yml): it publishes
 `equs-credentials-sdk` to crates.io, all three npm packages above under `latest` and the Android AAR to
-Maven Central, all at the same version, attaches the [iOS zips](#ios-on-github-releases), and attaches
+Maven Central, all at the same version, attaches the [iOS XCFramework](#ios-on-github-releases), and attaches
 one manifest per package to the `vX.Y.Z` release
 (`release-manifest-{crate,nodejs,askar-nodejs,wasm,android,ios}.yaml`).
 
@@ -174,9 +174,10 @@ tag's original commit, so it cannot pick up a fix. For a failure that needs a co
 
 ## iOS on GitHub releases
 
-[`publish-ios.yml`](../../.github/workflows/publish-ios.yml) builds the release XCFramework and
-attaches it to the GitHub release. There is no registry. It runs on `ios/v<version>` (`-rc.N` allowed)
-or as part of `v<version>`:
+[`publish-ios.yml`](../../.github/workflows/publish-ios.yml) builds a dynamic `EqusSdk.xcframework`,
+with the Swift bindings compiled in, and attaches it to the GitHub release. There is no registry. It
+runs on `ios/v<version>` or as part of `v<version>`. An `-rc.N` tag is released as a GitHub
+prerelease:
 
 ```shell
 git tag -a ios/v<version> -F NOTES.md
@@ -185,8 +186,7 @@ git push origin tag ios/v<version>
 
 | Asset | Use |
 | --- | --- |
-| `equs-credentials-sdk-ios-<version>.zip` | Local SwiftPM package (`Package.swift`, bindings, XCFramework) under `equs-credentials-sdk/`; unzip and add with `.package(path:)` |
-| `equs-credentials-sdk-ios-<version>.xcframework.zip` | `equssdk.xcframework` alone, for `.binaryTarget(url:checksum:)` |
+| `equs-credentials-sdk-ios-<version>.xcframework.zip` | `EqusSdk.xcframework`, for `.binaryTarget(url:checksum:)` or dragging into Xcode |
 | `equs-credentials-sdk-ios-<version>.xcframework.checksum` | The SwiftPM checksum of the zip above |
 
 The run's summary prints the `binaryTarget` declaration with the URL and checksum.

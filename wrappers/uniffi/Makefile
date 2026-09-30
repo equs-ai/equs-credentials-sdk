@@ -208,6 +208,16 @@ ios-generate-xcframework: ios-generate-ffi ios-create-lib ios-copy-libs
             -library ../../target/ios-simulator-release/release/libequssdk.a -headers ../../target/uniffi-xcframework-release \
             -output swift/ios/release/equssdk.xcframework
 
+IOS_MIN := $(shell sed -n 's/^IPHONEOS_DEPLOYMENT_TARGET = "\(.*\)"/\1/p' .cargo/config.toml)
+
+ios-generate-framework: ios-generate-xcframework
+	bash scripts/build_ios_framework.sh swift/ios/release/equssdk.xcframework \
+            swift/ios/release/Sources/EqusSdk/equssdk.swift swift/ios/framework $(IOS_MIN) $(CI_COMMIT_TAG)
+
+ios-generate-framework-dev: ios-generate-xcframework-dev
+	bash scripts/build_ios_framework.sh swift/ios/debug/equssdk.xcframework \
+            swift/ios/debug/Sources/EqusSdk/equssdk.swift swift/ios/framework-debug $(IOS_MIN) $(CI_COMMIT_TAG)
+
 
 ios-test: ios-generate-xcframework-dev ios-test-only
 

@@ -25,14 +25,14 @@ is the one exception and is named `publish`.
 | `workflows/_job.yml` | The generic containerised job behind 23 of the 27. Owns `container`, checkout, toolchain, node/java/wasm, caches, disk report and artifact upload. |
 | `workflows/_macos.yml` | The generic `macos-15` job behind `ios-xcframework`, `swift-test` and `ios-demo`. |
 | `workflows/_android.yml` | `android-demo`: bare `ubuntu-latest`, SDK from the runner plus the pinned NDK. |
-| `workflows/release.yml` | On a `vX.Y.Z` tag: preflight (tag is `X.Y.Z`, matches `Cargo.toml`, no package already at that version), then calls `publish-crate.yml`, `publish-nodejs.yml`, `publish-askar-nodejs.yml`, `publish-wasm.yml`, `publish-android.yml` and `publish-ios.yml`, then attaches every manifest, the AAR, the Maven bundle and the iOS zips to the one release. |
+| `workflows/release.yml` | On a `vX.Y.Z` tag: preflight (tag is `X.Y.Z`, matches `Cargo.toml`, no package already at that version), then calls `publish-crate.yml`, `publish-nodejs.yml`, `publish-askar-nodejs.yml`, `publish-wasm.yml`, `publish-android.yml` and `publish-ios.yml`, then attaches every manifest, the AAR, the Maven bundle and the iOS zip to the one release. |
 | `workflows/publish-crate.yml` | `workflow_call` only, from `release.yml`. Publishes `equs-credentials-sdk` to crates.io and renders its release manifest as the `release-manifest-crate` artifact. Defines its own jobs. |
 | `workflows/publish-common-macros.yml` | Publishes `equs-common-macros` to crates.io on a `common-macros/vX.Y.Z` tag, prerelease suffix allowed, then renders its release manifest and uploads it to the release. Defines its own jobs. |
 | `workflows/publish-nodejs.yml` | Publishes the Node.js wrapper and its three platform packages to npmjs on a `nodejs/vX.Y.Z` tag (`-rc.N` suffix publishes under the `rc` dist-tag), then renders its release manifest and uploads it to the release. Also called by `release.yml` with a `version` input, which then attaches the manifest instead. Defines its own jobs. |
 | `workflows/publish-askar-nodejs.yml` | Publishes the askar plugin wrapper and its three platform packages to npmjs on an `askar-nodejs/vX.Y.Z` tag (`-rc.N` suffix publishes under the `rc` dist-tag), then renders its release manifest and uploads it to the release. Also called by `release.yml` with a `version` input, which then attaches the manifest instead. Defines its own jobs. |
 | `workflows/publish-wasm.yml` | Publishes the WASM wrapper to npmjs on a `wasm/vX.Y.Z` tag (`-rc.N` suffix publishes under the `rc` dist-tag), then renders its release manifest and uploads it to the release. Also called by `release.yml` with a `version` input, which then attaches the manifest instead. Defines its own jobs. |
 | `workflows/publish-android.yml` | Publishes the Android AAR to Maven Central on an `android/vX.Y.Z` tag (`-rc.N` allowed), then renders its release manifest and uploads it to the release. Also called by `release.yml` with a `version` input. Defines its own jobs. |
-| `workflows/publish-ios.yml` | Builds the release XCFramework on an `ios/vX.Y.Z` tag (`-rc.N` allowed) and attaches the SwiftPM package zip, the XCFramework zip, its checksum and the release manifest to the release. Also called by `release.yml` with a `version` input. Defines its own jobs. |
+| `workflows/publish-ios.yml` | Builds the dynamic `EqusSdk.xcframework` on an `ios/vX.Y.Z` tag (`-rc.N` allowed, released as a prerelease) and attaches its zip, checksum and the release manifest to the release. Also called by `release.yml` with a `version` input. Defines its own jobs. |
 | `actions/npm-version/` | Resolves the npm version and dist-tag from the `version` input or the tag and exports `CI_COMMIT_TAG`/`NPM_DIST_TAG`. Used by every npm build job, `publish-android.yml` and `publish-ios.yml`. |
 | `actions/setup-rustup/` | Reclaims host disk, installs the pinned toolchain, restores the sccache and npm caches, installs `cargo-binstall` and `sccache`. |
 | `actions/cache/` | Named cache presets (`target-*`, `wrapper-*`), selected by the `restore`/`save` string inputs. |
@@ -140,7 +140,7 @@ not preserve, and turns a soft cache miss into a hard failure on re-run.
   arm64 host cannot run that simulator slice — Xcode 16 dropped the `arch=`
   key, and `ARCHS=x86_64` builds a bundle the arm64 simulator refuses to load
   — so it was compiled and never tested. Testing it needs a `macos-15-intel`
-  runner. The release path never built it. `ios-demo` therefore passes
+  runner. The release path builds it into the simulator slice untested. `ios-demo` therefore passes
   `ARCHS=arm64`: `-destination 'generic/platform=iOS Simulator'` builds every
   simulator arch, and without the pin it fails with `Undefined symbols for
   architecture x86_64`. `swift-test` needs no pin because `IOS_DESTINATION`
@@ -446,17 +446,17 @@ not preserve, and turns a soft cache miss into a hard failure on re-run.
   (`nodejs/vX.Y.Z`, `askar-nodejs/vX.Y.Z`, `wasm/vX.Y.Z`, `android/vX.Y.Z`, `ios/vX.Y.Z`) at the same version,
   whose manifest then lands on that tag's release instead.
 - `publish-ios.yml` publishes to no registry: the release assets are the
-  distribution. `ios` runs on `macos-15` with 120 minutes, runs
-  `make ios-generate-xcframework`, fails if the XCFramework lacks the
-  `ios-arm64` or `ios-arm64_x86_64-simulator` library, and packs
-  `equs-credentials-sdk-ios-<v>.zip` (the local SwiftPM package under
-  `equs-credentials-sdk/`, for `.package(path:)`) and
-  `equs-credentials-sdk-ios-<v>.xcframework.zip` (`equssdk.xcframework` at the
-  zip root, for `.binaryTarget(url:checksum:)`) with its `.checksum`. The step
-  summary prints the `binaryTarget` snippet. The zips go up as the `ios`
+  distribution. `ios` runs on `macos-15` with 120 minutes and runs
+  `make ios-generate-framework`, which compiles the bindings into a dynamic
+  `EqusSdk.xcframework` (see `wrappers/uniffi/scripts/build_ios_framework.sh`).
+  It fails if either the `ios-arm64` or the `ios-arm64_x86_64-simulator`
+  framework is missing or has no `.swiftinterface`, then packs
+  `equs-credentials-sdk-ios-<v>.xcframework.zip` (`EqusSdk.xcframework` at the
+  zip root, for `.binaryTarget(url:checksum:)`) and its `.checksum`. The step
+  summary prints the `binaryTarget` snippet. The zip goes up as the `ios`
   artifact; `manifest` renders `scripts/file_release_manifest.sh` and, on an
-  `ios/vX.Y.Z` tag, uploads everything; `release.yml`'s `release` job does it on
-  `vX.Y.Z`. Consumers pin the XCFramework zip's checksum, so a rebuilt zip under
+  `ios/vX.Y.Z` tag, creates the release (a prerelease for `-rc.N`) and uploads
+  everything; `release.yml`'s `release` job does it on `vX.Y.Z`. Consumers pin the XCFramework zip's checksum, so a rebuilt zip under
   the same name breaks them: `ios` fails before building when the tag's
   release already has an `equs-credentials-sdk-ios-*` asset. Within one run
   the uploads use `--clobber`, since a re-run uploads the same artifact bytes.

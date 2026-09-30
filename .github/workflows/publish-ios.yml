@@ -64,27 +64,24 @@ jobs:
       - name: Build the XCFramework
         shell: bash
         working-directory: wrappers/uniffi
-        run: make ios-generate-xcframework
+        run: make ios-generate-framework
 
       - name: Package
         shell: bash
-        working-directory: wrappers/uniffi/swift/ios/release
+        working-directory: wrappers/uniffi/swift/ios/framework
         run: |
           set -euo pipefail
-          base="$GITHUB_WORKSPACE/equs-credentials-sdk-ios-$CI_COMMIT_TAG"
-          plist=equssdk.xcframework/Info.plist
+          base="$GITHUB_WORKSPACE/equs-credentials-sdk-ios-$CI_COMMIT_TAG.xcframework"
+          plist=EqusSdk.xcframework/Info.plist
           for id in ios-arm64 ios-arm64_x86_64-simulator; do
             plutil -extract AvailableLibraries json -o - "$plist" |
               jq -e --arg id "$id" 'any(.[]; .LibraryIdentifier == $id)' >/dev/null ||
               { echo "$plist has no $id library" >&2; exit 1; }
+            test -n "$(find "EqusSdk.xcframework/$id" -name '*.swiftinterface')" ||
+              { echo "$id has no swiftinterface" >&2; exit 1; }
           done
-          test -n "$(find Sources -name '*.swift')"
-          stage=$(mktemp -d)
-          mkdir "$stage/equs-credentials-sdk"
-          cp -R Package.swift Sources equssdk.xcframework "$stage/equs-credentials-sdk/"
-          (cd "$stage" && zip -qry "$base.zip" equs-credentials-sdk)
-          zip -qry "$base.xcframework.zip" equssdk.xcframework
-          swift package compute-checksum "$base.xcframework.zip" > "$base.xcframework.checksum"
+          zip -qry "$base.zip" EqusSdk.xcframework
+          swift package compute-checksum "$base.zip" > "$base.checksum"
 
       - name: sccache stats
         if: always()
@@ -104,7 +101,7 @@ jobs:
           set -euo pipefail
           base="equs-credentials-sdk-ios-$CI_COMMIT_TAG.xcframework"
           fence='```'
-          printf '### Built equs-credentials-sdk-ios %s\n\n%sswift\n.binaryTarget(\n    name: "EqusSdkFFI",\n    url: "https://github.com/%s/releases/download/%s/%s.zip",\n    checksum: "%s"\n)\n%s\n' \
+          printf '### Built equs-credentials-sdk-ios %s\n\n%sswift\n.binaryTarget(\n    name: "EqusSdk",\n    url: "https://github.com/%s/releases/download/%s/%s.zip",\n    checksum: "%s"\n)\n%s\n' \
             "$CI_COMMIT_TAG" "$fence" "$REPO" "$TAG" "$base" "$(cat "$base.checksum")" "$fence" >> "$GITHUB_STEP_SUMMARY"
 
   manifest:
@@ -129,7 +126,6 @@ jobs:
           RELEASE_VERSION: ${{ needs.ios.outputs.version }}
         run: |
           bash scripts/file_release_manifest.sh equs-credentials-sdk-ios release-manifest.yaml \
-            "ios/equs-credentials-sdk-ios-$RELEASE_VERSION.zip" \
             "ios/equs-credentials-sdk-ios-$RELEASE_VERSION.xcframework.zip"
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -144,8 +140,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
           REPO: ${{ github.repository }}
+          RELEASE_VERSION: ${{ needs.ios.outputs.version }}
         run: |
           set -euo pipefail
+          prerelease=()
+          [[ "$RELEASE_VERSION" == *-rc.* ]] && prerelease=(--prerelease)
           gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1 ||
-            gh release create "$TAG" --repo "$REPO" --title "$TAG" --notes ""
+            gh release create "$TAG" --repo "$REPO" --title "$TAG" --notes "" "${prerelease[@]}"
           gh release upload "$TAG" release-manifest.yaml ios/* --repo "$REPO" --clobber

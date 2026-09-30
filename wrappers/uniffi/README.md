@@ -133,34 +133,24 @@ iOS builds target iOS 17. Change that in [`.cargo/config.toml`](./.cargo/config.
 
 ### Use a release
 
-Each [GitHub release](https://github.com/equs-ai/equs-credentials-sdk/releases) carries two zips.
-`equs-credentials-sdk-ios-<version>.zip` is a complete Swift package. Unzip it next to your project and
-add it:
+Each [GitHub release](https://github.com/equs-ai/equs-credentials-sdk/releases) carries
+`equs-credentials-sdk-ios-<version>.xcframework.zip`: a dynamic `EqusSdk.xcframework` with the Swift
+bindings compiled in. Add it as a binary target, taking the checksum from the release's `.checksum`
+asset:
 
 ```swift
-.package(path: "../equs-credentials-sdk")
-// target dependency
-.product(name: "EqusSdk", package: "equs-credentials-sdk")
-```
-
-`equs-credentials-sdk-ios-<version>.xcframework.zip` is the XCFramework alone, for a binary target
-resolved by URL. Put `Sources/EqusSdk/equssdk.swift` (from the first zip) in your own target, and
-take the checksum from the release's `.checksum` asset:
-
-```swift
-.target(
-    name: "EqusSdk",
-    dependencies: ["EqusSdkFFI"],
-    linkerSettings: [.linkedLibrary("z"), .linkedLibrary("iconv")]
-),
 .binaryTarget(
-    name: "EqusSdkFFI",
+    name: "EqusSdk",
     url: "https://github.com/equs-ai/equs-credentials-sdk/releases/download/<tag>/equs-credentials-sdk-ios-<version>.xcframework.zip",
     checksum: "<checksum>"
 ),
 ```
 
-`<tag>` is the release's tag, `v<version>` or `ios/v<version>`.
+`<tag>` is the release's tag, `v<version>` or `ios/v<version>`. In an Xcode project, drag the
+unzipped `EqusSdk.xcframework` in and set it to **Embed & Sign**. Either way, `import EqusSdk`.
+
+To build it locally, run `make ios-generate-framework` (release) or `make ios-generate-framework-dev`
+(debug); the output is `swift/ios/framework[-debug]/EqusSdk.xcframework`.
 
 ### 1. Setup Xcode Command-Line Tools
 
