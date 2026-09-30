@@ -100,7 +100,7 @@ publish_android_wrapper:
   script:
     - |
       cd wrappers/uniffi
-      make android-aar
+      make android-generate-bindings android-copy-libs
       test -n "$(find kotlin/android/src/main/kotlin -name '*.kt')"
       cd kotlin
       ./gradlew publish
@@ -113,7 +113,7 @@ publish_android_wrapper_dev:
   script:
     - |
       cd wrappers/uniffi
-      make android-aar-dev
+      make android-generate-bindings-dev android-copy-libs-dev
       test -n "$(find kotlin/android/src/main/kotlin -name '*.kt')"
       cd kotlin
       ./gradlew publish -Penv=development

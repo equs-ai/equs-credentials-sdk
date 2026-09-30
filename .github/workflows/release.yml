@@ -55,6 +55,14 @@ jobs:
             fi
           done
 
+          maven="https://repo1.maven.org/maven2/com/equs/credentials/equs-credentials-sdk-android/$version/equs-credentials-sdk-android-$version.pom"
+          status=$(curl -sS -o /dev/null -w '%{http_code}' "$maven")
+          case "$status" in
+            200) taken+=("com.equs.credentials:equs-credentials-sdk-android:$version on Maven Central") ;;
+            404) ;;
+            *) echo "Maven Central returned $status" >&2; exit 1 ;;
+          esac
+
           if [ "${#taken[@]}" -gt 0 ]; then
             printf 'already published:\n' >&2
             printf '  %s\n' "${taken[@]}" >&2
@@ -94,8 +102,17 @@ jobs:
       version: ${{ needs.preflight.outputs.version }}
     secrets: inherit
 
+  android:
+    needs: [preflight, crate]
+    permissions:
+      contents: write
+    uses: ./.github/workflows/publish-android.yml
+    with:
+      version: ${{ needs.preflight.outputs.version }}
+    secrets: inherit
+
   release:
-    needs: [crate, nodejs, askar-nodejs, wasm]
+    needs: [crate, nodejs, askar-nodejs, wasm, android]
     runs-on: ubuntu-latest
     permissions:
       contents: write
