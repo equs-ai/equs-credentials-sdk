@@ -127,6 +127,8 @@ repositories {
 }
 
 dependencies {
-    api("net.java.dev.jna:jna:5.13.0@aar")
+    implementation("net.java.dev.jna:jna:5.13.0@aar")
+    implementation("androidx.core:core-ktx:1.15.0")
+    implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.1")
 }
