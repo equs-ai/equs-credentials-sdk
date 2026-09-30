@@ -201,17 +201,3 @@ jobs:
           gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1 ||
             gh release create "$TAG" --repo "$REPO" --title "$TAG" --notes ""
           gh release upload "$TAG" release-manifest.yaml --repo "$REPO" --clobber
-
-  summary:
-    needs: [nodejs-wrapper]
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - shell: bash
-        env:
-          VERSION: ${{ needs.nodejs-wrapper.outputs.version }}
-        run: |
-          printf "### Published to npmjs\n\n" >> "$GITHUB_STEP_SUMMARY"
-          for p in equs-credentials-sdk equs-credentials-sdk-linux-x64-gnu equs-credentials-sdk-darwin-arm64 equs-credentials-sdk-darwin-x64; do
-            printf -- "- \`@equs-ai/%s@%s\`\n" "$p" "$VERSION" >> "$GITHUB_STEP_SUMMARY"
-          done

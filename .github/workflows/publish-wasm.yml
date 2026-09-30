@@ -123,13 +123,3 @@ jobs:
           gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1 ||
             gh release create "$TAG" --repo "$REPO" --title "$TAG" --notes ""
           gh release upload "$TAG" release-manifest.yaml --repo "$REPO" --clobber
-
-  summary:
-    needs: [wasm]
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - shell: bash
-        env:
-          VERSION: ${{ needs.wasm.outputs.version }}
-        run: printf "### Published to npmjs\n\n- \`@equs-ai/equs-credentials-sdk-wasm@%s\`\n" "$VERSION" >> "$GITHUB_STEP_SUMMARY"

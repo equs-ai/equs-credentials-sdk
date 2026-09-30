@@ -393,7 +393,7 @@ not preserve, and turns a soft cache miss into a hard failure on re-run.
   after checkout: it takes the `version` input or strips the tag prefix,
   rejects anything but `X.Y.Z` or `X.Y.Z-rc.N`, and exports `CI_COMMIT_TAG` and
   `NPM_DIST_TAG` to the job. The wrapper job re-exports the version as an
-  output for `manifest` and `summary`. A bad tag therefore fails each build job
+  output for `manifest`. A bad tag therefore fails each build job
   after its environment approval, not before it.
 - The Node.js and askar workflows run each wrapper's `build_and_publish_target.sh` per
   platform (`linux-x64-gnu` in the bookworm container for its glibc,
