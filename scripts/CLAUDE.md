@@ -8,6 +8,7 @@ Scripts called by the release pipelines. GitHub Actions has its own set under
 | `release_manifest.sh` | Renders `release-manifest.yaml` for one crate's release. |
 | `npm_release_manifest.sh` | Renders `release-manifest.yaml` for one npm release. |
 | `maven_release_manifest.sh` | Renders `release-manifest.yaml` for one Maven release. |
+| `file_release_manifest.sh` | Renders `release-manifest.yaml` for a release shipped as plain files. |
 
 ## release_manifest.sh
 
@@ -69,3 +70,12 @@ the bare version.
 `.github/workflows/publish-android.yml` with the AAR it uploaded; the digest is
 that file's sha256, and a missing file is emitted with `digest: null`.
 `RELEASE_VERSION` sets `release:`, since the tag is `android/vX.Y.Z` or `vX.Y.Z`.
+
+## file_release_manifest.sh
+
+`file_release_manifest.sh <component> <output> <file>...` — same schema, one
+entry per file, named by its basename. Called by the `manifest` job of
+`.github/workflows/publish-ios.yml` with the two iOS zips. The digest is the
+sha256 of the file the job attaches to the release; a missing file is emitted
+with `digest: null` and a warning. `RELEASE_VERSION` sets `release:` and every
+entry's `version:`.

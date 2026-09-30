@@ -131,6 +131,37 @@ Either target saves the archive to `./kotlin/android/build/outputs/aar/android-r
 
 iOS builds target iOS 17. Change that in [`.cargo/config.toml`](./.cargo/config.toml).
 
+### Use a release
+
+Each [GitHub release](https://github.com/equs-ai/equs-credentials-sdk/releases) carries two zips.
+`equs-credentials-sdk-ios-<version>.zip` is a complete Swift package. Unzip it next to your project and
+add it:
+
+```swift
+.package(path: "../equs-credentials-sdk")
+// target dependency
+.product(name: "EqusSdk", package: "equs-credentials-sdk")
+```
+
+`equs-credentials-sdk-ios-<version>.xcframework.zip` is the XCFramework alone, for a binary target
+resolved by URL. Put `Sources/EqusSdk/equssdk.swift` (from the first zip) in your own target, and
+take the checksum from the release's `.checksum` asset:
+
+```swift
+.target(
+    name: "EqusSdk",
+    dependencies: ["EqusSdkFFI"],
+    linkerSettings: [.linkedLibrary("z"), .linkedLibrary("iconv")]
+),
+.binaryTarget(
+    name: "EqusSdkFFI",
+    url: "https://github.com/equs-ai/equs-credentials-sdk/releases/download/<tag>/equs-credentials-sdk-ios-<version>.xcframework.zip",
+    checksum: "<checksum>"
+),
+```
+
+`<tag>` is the release's tag, `v<version>` or `ios/v<version>`.
+
 ### 1. Setup Xcode Command-Line Tools
 
 Install Xcode from the App Store (or from [developer.apple.com](https://developer.apple.com/download/all/)),

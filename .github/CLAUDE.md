@@ -5,9 +5,9 @@ GitHub Actions port of the CI half of `.gitlab-ci.yml`, plus one release job.
 The `publish-*.yml` workflows are the exceptions and have no counterpart there:
 `publish-crate.yml` and `publish-common-macros.yml` publish to crates.io,
 `publish-nodejs.yml`, `publish-wasm.yml` and `publish-askar-nodejs.yml` to npmjs,
-`publish-android.yml` to Maven Central.
+`publish-android.yml` to Maven Central, `publish-ios.yml` to GitHub release assets.
 `release.yml` runs on the SDK's `vX.Y.Z` and calls the crate, all three npm
-workflows and the Android one, so one tag releases everything.
+workflows, the Android one and the iOS one, so one tag releases everything.
 
 Two workflows. `ci.yml` defines no jobs directly: every job calls a
 reusable workflow, so `container`, checkout,
@@ -25,14 +25,15 @@ is the one exception and is named `publish`.
 | `workflows/_job.yml` | The generic containerised job behind 23 of the 27. Owns `container`, checkout, toolchain, node/java/wasm, caches, disk report and artifact upload. |
 | `workflows/_macos.yml` | The generic `macos-15` job behind `ios-xcframework`, `swift-test` and `ios-demo`. |
 | `workflows/_android.yml` | `android-demo`: bare `ubuntu-latest`, SDK from the runner plus the pinned NDK. |
-| `workflows/release.yml` | On a `vX.Y.Z` tag: preflight (tag is `X.Y.Z`, matches `Cargo.toml`, no package already at that version), then calls `publish-crate.yml`, `publish-nodejs.yml`, `publish-askar-nodejs.yml`, `publish-wasm.yml` and `publish-android.yml`, then attaches every manifest to the one release. |
+| `workflows/release.yml` | On a `vX.Y.Z` tag: preflight (tag is `X.Y.Z`, matches `Cargo.toml`, no package already at that version), then calls `publish-crate.yml`, `publish-nodejs.yml`, `publish-askar-nodejs.yml`, `publish-wasm.yml`, `publish-android.yml` and `publish-ios.yml`, then attaches every manifest, the AAR, the Maven bundle and the iOS zips to the one release. |
 | `workflows/publish-crate.yml` | `workflow_call` only, from `release.yml`. Publishes `equs-credentials-sdk` to crates.io and renders its release manifest as the `release-manifest-crate` artifact. Defines its own jobs. |
 | `workflows/publish-common-macros.yml` | Publishes `equs-common-macros` to crates.io on a `common-macros/vX.Y.Z` tag, prerelease suffix allowed, then renders its release manifest and uploads it to the release. Defines its own jobs. |
 | `workflows/publish-nodejs.yml` | Publishes the Node.js wrapper and its three platform packages to npmjs on a `nodejs/vX.Y.Z` tag (`-rc.N` suffix publishes under the `rc` dist-tag), then renders its release manifest and uploads it to the release. Also called by `release.yml` with a `version` input, which then attaches the manifest instead. Defines its own jobs. |
 | `workflows/publish-askar-nodejs.yml` | Publishes the askar plugin wrapper and its three platform packages to npmjs on an `askar-nodejs/vX.Y.Z` tag (`-rc.N` suffix publishes under the `rc` dist-tag), then renders its release manifest and uploads it to the release. Also called by `release.yml` with a `version` input, which then attaches the manifest instead. Defines its own jobs. |
 | `workflows/publish-wasm.yml` | Publishes the WASM wrapper to npmjs on a `wasm/vX.Y.Z` tag (`-rc.N` suffix publishes under the `rc` dist-tag), then renders its release manifest and uploads it to the release. Also called by `release.yml` with a `version` input, which then attaches the manifest instead. Defines its own jobs. |
 | `workflows/publish-android.yml` | Publishes the Android AAR to Maven Central on an `android/vX.Y.Z` tag (`-rc.N` allowed), then renders its release manifest and uploads it to the release. Also called by `release.yml` with a `version` input. Defines its own jobs. |
-| `actions/npm-version/` | Resolves the npm version and dist-tag from the `version` input or the tag and exports `CI_COMMIT_TAG`/`NPM_DIST_TAG`. Used by every npm build job and by `publish-android.yml`. |
+| `workflows/publish-ios.yml` | Builds the release XCFramework on an `ios/vX.Y.Z` tag (`-rc.N` allowed) and attaches the SwiftPM package zip, the XCFramework zip, its checksum and the release manifest to the release. Also called by `release.yml` with a `version` input. Defines its own jobs. |
+| `actions/npm-version/` | Resolves the npm version and dist-tag from the `version` input or the tag and exports `CI_COMMIT_TAG`/`NPM_DIST_TAG`. Used by every npm build job, `publish-android.yml` and `publish-ios.yml`. |
 | `actions/setup-rustup/` | Reclaims host disk, installs the pinned toolchain, restores the sccache and npm caches, installs `cargo-binstall` and `sccache`. |
 | `actions/cache/` | Named cache presets (`target-*`, `wrapper-*`), selected by the `restore`/`save` string inputs. |
 | `gitleaks.toml` | Secret-scan config. |
@@ -430,11 +431,11 @@ not preserve, and turns a soft cache miss into a hard failure on re-run.
   at the crate's version under `latest`.
 - Called workflows share the caller's run, and with it the artifact
   namespace, so every artifact name carries its package: `npm-nodejs-*`,
-  `npm-askar-nodejs-*`, `npm-wasm`, `release-manifest-<package>`. When called,
+  `npm-askar-nodejs-*`, `npm-wasm`, `maven-android`, `ios`, `release-manifest-<package>`. When called,
   a wrapper's `manifest` job still renders and uploads its artifact but skips
   the release upload (`if: ${{ !inputs.version }}`); `release.yml`'s `release`
-  job, which needs all four, attaches them as
-  `release-manifest-{crate,nodejs,askar-nodejs,wasm}.yaml`. The caller grants
+  job, which needs all six, attaches them as
+  `release-manifest-{crate,nodejs,askar-nodejs,wasm,android,ios}.yaml`. The caller grants
   `contents: write` to the wrapper calls because a called job cannot exceed
   its caller's permissions. "Re-run failed jobs" reruns only the failed
   packages and not preflight, but on the tag's original commit: it recovers a
@@ -442,8 +443,25 @@ not preserve, and turns a soft cache miss into a hard failure on re-run.
   A crate failure left nothing published: fix, then delete and re-push the
   tag on the fixed commit. A wrapper
   failure after the crate shipped is finished with that wrapper's own tag
-  (`nodejs/vX.Y.Z`, `askar-nodejs/vX.Y.Z`, `wasm/vX.Y.Z`) at the same version,
+  (`nodejs/vX.Y.Z`, `askar-nodejs/vX.Y.Z`, `wasm/vX.Y.Z`, `android/vX.Y.Z`, `ios/vX.Y.Z`) at the same version,
   whose manifest then lands on that tag's release instead.
+- `publish-ios.yml` publishes to no registry: the release assets are the
+  distribution. `ios` runs on `macos-15` with 120 minutes, runs
+  `make ios-generate-xcframework`, fails if the XCFramework lacks the
+  `ios-arm64` or `ios-arm64_x86_64-simulator` library, and packs
+  `equs-credentials-sdk-ios-<v>.zip` (the local SwiftPM package under
+  `equs-credentials-sdk/`, for `.package(path:)`) and
+  `equs-credentials-sdk-ios-<v>.xcframework.zip` (`equssdk.xcframework` at the
+  zip root, for `.binaryTarget(url:checksum:)`) with its `.checksum`. The step
+  summary prints the `binaryTarget` snippet. The zips go up as the `ios`
+  artifact; `manifest` renders `scripts/file_release_manifest.sh` and, on an
+  `ios/vX.Y.Z` tag, uploads everything; `release.yml`'s `release` job does it on
+  `vX.Y.Z`. Consumers pin the XCFramework zip's checksum, so a rebuilt zip under
+  the same name breaks them: `ios` fails before building when the tag's
+  release already has an `equs-credentials-sdk-ios-*` asset. Within one run
+  the uploads use `--clobber`, since a re-run uploads the same artifact bytes.
+  `DRY_RUN` does not apply; there is nothing to dry-run. No secrets, no
+  environment.
 - Off by default: adding `DRY_RUN: "1"` to the `env` of `publish-crate.yml`, `publish-nodejs.yml`,
   `publish-askar-nodejs.yml` and `publish-wasm.yml` turns every `cargo publish`
   and `npm publish` into `--dry-run` and lifts the npm token guard; every job
