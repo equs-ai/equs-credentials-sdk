@@ -1,5 +1,5 @@
 use crate::did::universal::UniversalResolver;
-use crate::http::HttpClient;
+use crate::http::{HttpClient, HttpResponse};
 use crate::kms::{KeyHandle, Kms};
 use crate::nonce::{Nonce, NonceHandler};
 use crate::utils::http::MimeType;
@@ -502,10 +502,24 @@ where
         &self,
         response_uri: Option<&Url>,
         response_mode: &ResponseMode,
-        mut error: ProtocolError,
+        error: ProtocolError,
     ) -> Result<ProtocolError> {
+        let (error, _) = self
+            .send_auth_error_resp(response_uri, response_mode, error)
+            .await?;
+
+        Ok(error)
+    }
+
+    #[instrument(level = Level::TRACE, skip(self), err(), ret())]
+    async fn send_auth_error_resp(
+        &self,
+        response_uri: Option<&Url>,
+        response_mode: &ResponseMode,
+        mut error: ProtocolError,
+    ) -> Result<(ProtocolError, Option<HttpResponse>)> {
         if response_mode == &ResponseMode::DcApi || response_mode == &ResponseMode::DcApiJwt {
-            return Ok(error);
+            return Ok((error, None));
         }
 
         let encoded = serde_urlencoded::to_string(&error).map_err(|e| {
@@ -535,7 +549,7 @@ where
                 )
                 .context(HttpClientSnafu)?;
 
-                let _ = self
+                let response = self
                     .http_client
                     .async_call(req)
                     .await
@@ -543,7 +557,7 @@ where
 
                 info!("authorization error response is sent to verifier");
 
-                Ok(error)
+                Ok((error, Some(response)))
             }
             _ => {
                 let mut response_uri = response_uri.clone();
@@ -551,7 +565,7 @@ where
 
                 error.set_redirect_uri(Some(response_uri));
 
-                Ok(error)
+                Ok((error, None))
             }
         }
     }
@@ -1268,13 +1282,27 @@ where
             "consent to share the presentation is not given",
             auth_request.state.clone(),
         );
-        let err = self
-            .handle_auth_error_resp(
+        let (err, response) = self
+            .send_auth_error_resp(
                 auth_request.response_uri.as_ref(),
                 &auth_request.response_mode,
                 err,
             )
             .await?;
+
+        if let Some(response) = response
+            && !response.status().is_success()
+        {
+            return Err(AuthorizationResponseSnafu {
+                details: format!(
+                    "error submitting authorization error response: status_code={}, response_body={}",
+                    response.status(),
+                    String::from_utf8_lossy(response.body())
+                ),
+            }
+            .build()
+            .into());
+        }
 
         Ok(err.redirect_uri().cloned())
     }
@@ -2711,6 +2739,43 @@ mod tests {
             .decline_authorization_request(&serde_json::from_str(AUTH_REQUEST).unwrap())
             .await
             .unwrap();
+    }
+
+    #[rstest]
+    #[case::internal_server_error(StatusCode::INTERNAL_SERVER_ERROR)]
+    #[case::bad_request(StatusCode::BAD_REQUEST)]
+    #[tokio::test]
+    async fn decline_authorization_request_fails_on_error_status(#[case] status: StatusCode) {
+        let mut http_client = MockHttpClient::new();
+
+        mock_http_fn(
+            &mut http_client,
+            Method::POST,
+            build_url("http://127.0.0.1:55796", "/auth"),
+            move |_| {
+                let mut response =
+                    HttpResponse::new("request already processed".as_bytes().to_owned());
+                *response.status_mut() = status;
+
+                Ok(response)
+            },
+            1.into(),
+        );
+
+        let holder = holder_service(http_client, LocalKms::new(), InMemVault::new()).await;
+
+        let err = holder
+            .decline_authorization_request(&serde_json::from_str(AUTH_REQUEST).unwrap())
+            .await
+            .unwrap_err();
+
+        assert!(matches!(err, Error::Internal { .. }));
+        assert!(
+            err.to_string().contains(&format!(
+                "status_code={status}, response_body=request already processed"
+            )),
+            "{err}"
+        );
     }
 
     #[tokio::test]

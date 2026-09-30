@@ -394,6 +394,7 @@ pub trait Holder: WasmNotSend + WasmNotSync {
     /// # Errors
     ///
     /// * [InternalError::HttpClient] - if the submission of the authorization error response fails.
+    /// * [InternalError::AuthorizationResponse] - if the Verifier answers with a non-2xx status
     async fn decline_authorization_request(
         &self,
         auth_request: &ResolvedAuthRequest,
