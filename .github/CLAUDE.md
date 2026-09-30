@@ -468,7 +468,8 @@ not preserve, and turns a soft cache miss into a hard failure on re-run.
   `MAVEN_CENTRAL_TOKEN_PASSWORD` (a Central Portal user token) and
   `MAVEN_CENTRAL_SIGNING_PRIVATE_KEY` (ASCII-armoured) /
   `MAVEN_CENTRAL_SIGNING_PRIVATE_KEY_PASSWORD`, an environment named
-  `maven-central`, and the verified Portal namespace `com.equs.credentials`.
+  `maven-central`, and the verified Portal namespace `ai.equs.credentials`
+  (the groupId; the Kotlin package stays `com.equs.credentials`).
   The signing key's public half must be on a keyserver Central queries
   (keys.openpgp.org, keyserver.ubuntu.com). A Maven Central version can never
   be replaced or deleted, so `release.yml`'s preflight also checks

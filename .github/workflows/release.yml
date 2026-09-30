@@ -55,10 +55,10 @@ jobs:
             fi
           done
 
-          maven="https://repo1.maven.org/maven2/com/equs/credentials/equs-credentials-sdk/$version/equs-credentials-sdk-$version.pom"
+          maven="https://repo1.maven.org/maven2/ai/equs/credentials/equs-credentials-sdk/$version/equs-credentials-sdk-$version.pom"
           status=$(curl -sS -o /dev/null -w '%{http_code}' "$maven")
           case "$status" in
-            200) taken+=("com.equs.credentials:equs-credentials-sdk:$version on Maven Central") ;;
+            200) taken+=("ai.equs.credentials:equs-credentials-sdk:$version on Maven Central") ;;
             404) ;;
             *) echo "Maven Central returned $status" >&2; exit 1 ;;
           esac

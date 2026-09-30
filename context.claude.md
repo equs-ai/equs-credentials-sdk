@@ -80,5 +80,5 @@ equs-credentials-sdk/
 | Node.js | `@equs-ai/equs-credentials-sdk` | `wrappers/nodejs/package.json` (napi binary `equs-credentials-sdk`). Published to npmjs with its three platform packages by `.github/workflows/publish-nodejs.yml` on a `nodejs/vX.Y.Z` tag (`-rc.N` suffix publishes under the `rc` dist-tag). |
 | WASM | `@equs-ai/equs-credentials-sdk-wasm` | `wrappers/wasm/package.json`. Published to npmjs by `.github/workflows/publish-wasm.yml` on a `wasm/vX.Y.Z` tag (`-rc.N` suffix publishes under the `rc` dist-tag). |
 | iOS | `equs-credentials-sdk` | `wrappers/uniffi/swift/Package.swift` (product/module stays `EqusSdk`) |
-| Kotlin | `com.equs.credentials` | `wrappers/uniffi/uniffi.toml` (AAR `com.equs.credentials:equs-credentials-sdk`). Published to Maven Central by `.github/workflows/publish-android.yml` on an `android/vX.Y.Z` tag. |
+| Kotlin | `com.equs.credentials` | `wrappers/uniffi/uniffi.toml` (AAR `ai.equs.credentials:equs-credentials-sdk`). Published to Maven Central by `.github/workflows/publish-android.yml` on an `android/vX.Y.Z` tag. |
 | Askar plugin (Node.js) | `@equs-ai/equs-credentials-sdk-askar-storage` | `plugins/askar/wrappers/nodejs/package.json`. Published to npmjs with its three platform packages by `.github/workflows/publish-askar-nodejs.yml` on an `askar-nodejs/vX.Y.Z` tag (`-rc.N` suffix publishes under the `rc` dist-tag). |
