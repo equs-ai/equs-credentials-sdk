@@ -24,7 +24,7 @@ env:
   CARGO_INCREMENTAL: "0"
   CARGO_TERM_COLOR: always
   CENTRAL_API: https://central.sonatype.com/api/v1/publisher
-  MAVEN_PATH: com/equs/credentials/equs-credentials-sdk-android
+  MAVEN_PATH: com/equs/credentials/equs-credentials-sdk
 
 jobs:
   android:
@@ -81,7 +81,7 @@ jobs:
           [ -n "${ORG_GRADLE_PROJECT_signingKey:-}" ] || { echo "secret MAVEN_CENTRAL_SIGNING_PRIVATE_KEY is unset" >&2; exit 1; }
           ./gradlew --no-daemon :android:publishReleasePublicationToStagingRepository
           dir="android/build/staging/$MAVEN_PATH/$CI_COMMIT_TAG"
-          aar="$dir/equs-credentials-sdk-android-$CI_COMMIT_TAG.aar"
+          aar="$dir/equs-credentials-sdk-$CI_COMMIT_TAG.aar"
           for abi in arm64-v8a armeabi-v7a x86 x86_64; do
             unzip -l "$aar" | grep -q "jni/$abi/libequssdk.so" || { echo "$aar has no jni/$abi/libequssdk.so" >&2; exit 1; }
           done
@@ -104,7 +104,7 @@ jobs:
           [ -n "${CENTRAL_USERNAME:-}" ] && [ -n "${CENTRAL_PASSWORD:-}" ] || { echo "secret MAVEN_CENTRAL_TOKEN_USERNAME or MAVEN_CENTRAL_TOKEN_PASSWORD is unset" >&2; exit 1; }
           auth="Authorization: Bearer $(printf '%s:%s' "$CENTRAL_USERNAME" "$CENTRAL_PASSWORD" | base64 -w0)"
           id=$(curl -sS --fail-with-body -H "$auth" -F bundle=@bundle.zip \
-            "$CENTRAL_API/upload?publishingType=AUTOMATIC&name=equs-credentials-sdk-android-$CI_COMMIT_TAG")
+            "$CENTRAL_API/upload?publishingType=AUTOMATIC&name=equs-credentials-sdk-$CI_COMMIT_TAG")
           echo "deployment $id"
           for _ in $(seq 120); do
             state=$(curl -sS --fail-with-body -X POST -H "$auth" "$CENTRAL_API/status?id=$id" | tee status.json | jq -r .deploymentState)
@@ -125,7 +125,7 @@ jobs:
           if-no-files-found: error
 
       - shell: bash
-        run: printf "### Published\n\n\`com.equs.credentials:equs-credentials-sdk-android:%s\` to Maven Central\n" "$CI_COMMIT_TAG" >> "$GITHUB_STEP_SUMMARY"
+        run: printf "### Published\n\n\`com.equs.credentials:equs-credentials-sdk:%s\` to Maven Central\n" "$CI_COMMIT_TAG" >> "$GITHUB_STEP_SUMMARY"
 
   manifest:
     needs: [android]
@@ -148,8 +148,8 @@ jobs:
           CI_COMMIT_SHA: ${{ github.sha }}
           RELEASE_VERSION: ${{ needs.android.outputs.version }}
         run: |
-          bash scripts/maven_release_manifest.sh com.equs.credentials:equs-credentials-sdk-android release-manifest.yaml \
-            "aar/equs-credentials-sdk-android-$RELEASE_VERSION.aar"
+          bash scripts/maven_release_manifest.sh com.equs.credentials:equs-credentials-sdk release-manifest.yaml \
+            "aar/equs-credentials-sdk-$RELEASE_VERSION.aar"
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
