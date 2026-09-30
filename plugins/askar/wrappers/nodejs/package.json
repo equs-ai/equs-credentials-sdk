@@ -55,5 +55,14 @@
     "ts-node": "^10.9.2",
     "tsconfig-paths": "^4.2.0",
     "typescript": "^5.6.3"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/equs-ai/equs-credentials-sdk.git",
+    "directory": "plugins/askar/wrappers/nodejs"
+  },
+  "homepage": "https://github.com/equs-ai/equs-credentials-sdk/tree/main/plugins/askar/wrappers/nodejs#readme",
+  "bugs": {
+    "url": "https://github.com/equs-ai/equs-credentials-sdk/issues"
   }
 }

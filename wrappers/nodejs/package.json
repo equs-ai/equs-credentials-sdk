@@ -70,5 +70,14 @@
   "cpu": [
     "x64",
     "arm64"
-  ]
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/equs-ai/equs-credentials-sdk.git",
+    "directory": "wrappers/nodejs"
+  },
+  "homepage": "https://github.com/equs-ai/equs-credentials-sdk/tree/main/wrappers/nodejs#readme",
+  "bugs": {
+    "url": "https://github.com/equs-ai/equs-credentials-sdk/issues"
+  }
 }
