@@ -39,7 +39,7 @@ Exposes the EQUS Credentials SDK Rust library to three foreign language targets 
 ## Key decisions / constraints
 - **Node.js** uses NAPI-RS (`#[napi]` macros); async methods become JS Promises via `napi::bindgen_prelude::AsyncTask`.
 - **UniFFI** uses `#[uniffi::export]`; targets Kotlin (Android) and Swift (iOS); foreign trait implementations use the `with_foreign` pattern; `JsonValue` is a custom_type bridging `serde_json::Value` to a JSON string.
-- **UniFFI Kotlin bindings** are generated from the unstripped `release-bindgen` profile: `uniffi-bindgen --library` reads metadata from the ELF symbol table, which `strip = true` removes, so a stripped `.so` yields no Kotlin and an AAR with an empty `classes.jar`. The shipped `jniLibs` still come from the stripped `release` profile; the Android publish jobs fail if no `.kt` files were generated.
+- **UniFFI Kotlin bindings** are generated from the unstripped `release-bindgen` profile: `uniffi-bindgen --library` reads metadata from the ELF symbol table, which `strip = true` removes, so a stripped `.so` yields no Kotlin and an AAR with an empty `classes.jar`. Each Android target is built once under `release-bindgen`; the copies in `jniLibs` are stripped with the NDK's `llvm-strip --strip-all`. The Android publish jobs fail if no `.kt` files were generated.
 - **WASM** uses `wasm-bindgen` (`#[wasm_bindgen]`); async methods use `wasm_bindgen_futures::future_to_promise`; all types must be `!Send` compatible (`?Send` on async traits).
 - The WASM wrapper does **not** expose DIDComm — that module is non-wasm only.
 - Each wrapper provides its own `HttpClient` implementation (Node.js: callback-based; UniFFI: `with_foreign`; WASM: `ReqwestHttpClient` with wasm-compatible backend).

@@ -111,13 +111,12 @@ android-build-libs: android-clang-symlinks
 	@echo "Building native libraries for Android..."
 	@for target in $(ANDROID_TARGETS); do \
 		echo "Building for $$target..."; \
-		cargo build --release --target $$target;\
+		cargo build --profile release-bindgen --target $$target;\
 	done
 
 # Generate UniFFI bindings for Kotlin
 android-generate-bindings: android-build-libs
 	@echo "Generating Kotlin bindings..."
-	cargo build --profile release-bindgen --target aarch64-linux-android
 	cargo run --release --bin uniffi-bindgen generate --library ../../target/aarch64-linux-android/release-bindgen/libequssdk.so --language kotlin --out-dir kotlin/android/src/main/kotlin
 
 # Copy native libraries to jniLibs directory
@@ -126,7 +125,7 @@ android-copy-libs:
 	@for target in $(ANDROID_TARGETS); do \
 		abidir=$$(echo "$(TARGET_TO_ABIDIR)" | tr ' ' '\n' | grep "^$$target:" | cut -d: -f2); \
 		mkdir -p ./kotlin/android/src/main/jniLibs/$$abidir; \
-		cp ../../target/$$target/release/libequssdk.so ./kotlin/android/src/main/jniLibs/$$abidir/; \
+		$(TOOLCHAIN_PATH)/llvm-strip --strip-all -o ./kotlin/android/src/main/jniLibs/$$abidir/libequssdk.so ../../target/$$target/release-bindgen/libequssdk.so; \
 	done
 
 # Build AAR package using Gradle
