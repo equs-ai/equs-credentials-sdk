@@ -30,6 +30,14 @@ jobs:
           [ "$version" = "$crate" ] || { echo "tag '$GITHUB_REF_NAME' does not match Cargo.toml version '$crate'" >&2; exit 1; }
 
           taken=()
+          status=$(curl -sS -o /dev/null -w '%{http_code}' -A "$GITHUB_REPOSITORY release preflight" \
+            "https://crates.io/api/v1/crates/equs-credentials-sdk/$version")
+          case "$status" in
+            200) taken+=("equs-credentials-sdk@$version on crates.io") ;;
+            404) ;;
+            *) echo "crates.io returned $status" >&2; exit 1 ;;
+          esac
+
           for p in \
             @equs-ai/equs-credentials-sdk \
             @equs-ai/equs-credentials-sdk-linux-x64-gnu \
@@ -54,8 +62,13 @@ jobs:
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
-  nodejs:
+  crate:
     needs: [preflight]
+    uses: ./.github/workflows/publish-crate.yml
+    secrets: inherit
+
+  nodejs:
+    needs: [preflight, crate]
     permissions:
       contents: write
     uses: ./.github/workflows/publish-nodejs.yml
@@ -64,7 +77,7 @@ jobs:
     secrets: inherit
 
   askar-nodejs:
-    needs: [preflight]
+    needs: [preflight, crate]
     permissions:
       contents: write
     uses: ./.github/workflows/publish-askar-nodejs.yml
@@ -73,7 +86,7 @@ jobs:
     secrets: inherit
 
   wasm:
-    needs: [preflight]
+    needs: [preflight, crate]
     permissions:
       contents: write
     uses: ./.github/workflows/publish-wasm.yml
@@ -82,7 +95,7 @@ jobs:
     secrets: inherit
 
   release:
-    needs: [nodejs, askar-nodejs, wasm]
+    needs: [crate, nodejs, askar-nodejs, wasm]
     runs-on: ubuntu-latest
     permissions:
       contents: write

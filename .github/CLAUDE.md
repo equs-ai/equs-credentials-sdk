@@ -447,10 +447,6 @@ not preserve, and turns a soft cache miss into a hard failure on re-run.
   and `npm publish` into `--dry-run` and lifts the npm token guard; every job
   still builds, packs and renders its manifest. The wrapper scripts read the
   same variable.
-- Temporary, to finish 1.0.1 on npm after the crate shipped alone: `release.yml`
-  has no `crate` job and preflight skips the crates.io check. The crate's
-  manifest is attached to the `v1.0.1` release by hand from the original run.
-  Restore both before the next release.
 - Prerequisites in settings: the repo secret `NPM_TOKEN` (an npm automation
   token with publish rights on the `@equs-ai` scope) and an environment named `npmjs`. Every publishing
   job uses the environment, so a required-reviewer rule prompts twice for a
