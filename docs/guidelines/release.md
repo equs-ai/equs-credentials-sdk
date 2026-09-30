@@ -133,7 +133,7 @@ An npmjs version can never be republished, even after an unpublish, so a bad tag
 ## Maven Central
 
 The Android AAR is also published to Maven Central as
-`ai.equs.credentials:equs-credentials-sdk` by
+`ai.equs:equs-credentials-sdk` by
 [`publish-android.yml`](../../.github/workflows/publish-android.yml), on its own tag:
 
 ```shell

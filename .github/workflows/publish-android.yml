@@ -24,7 +24,7 @@ env:
   CARGO_INCREMENTAL: "0"
   CARGO_TERM_COLOR: always
   CENTRAL_API: https://central.sonatype.com/api/v1/publisher
-  MAVEN_PATH: ai/equs/credentials/equs-credentials-sdk
+  MAVEN_PATH: ai/equs/equs-credentials-sdk
 
 jobs:
   android:
@@ -129,7 +129,7 @@ jobs:
       - shell: bash
         run: |
           [ -n "${DRY_RUN:-}" ] && heading="Dry run, not published" || heading=Published
-          printf "### %s\n\n\`ai.equs.credentials:equs-credentials-sdk:%s\` to Maven Central\n" "$heading" "$CI_COMMIT_TAG" >> "$GITHUB_STEP_SUMMARY"
+          printf "### %s\n\n\`ai.equs:equs-credentials-sdk:%s\` to Maven Central\n" "$heading" "$CI_COMMIT_TAG" >> "$GITHUB_STEP_SUMMARY"
 
   manifest:
     needs: [android]
@@ -152,7 +152,7 @@ jobs:
           CI_COMMIT_SHA: ${{ github.sha }}
           RELEASE_VERSION: ${{ needs.android.outputs.version }}
         run: |
-          bash scripts/maven_release_manifest.sh ai.equs.credentials:equs-credentials-sdk release-manifest.yaml \
+          bash scripts/maven_release_manifest.sh ai.equs:equs-credentials-sdk release-manifest.yaml \
             "aar/equs-credentials-sdk-$RELEASE_VERSION.aar"
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

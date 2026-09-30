@@ -8,7 +8,7 @@ plugins {
 val baseVersion = "1.0.2"
 val environment = project.findProperty("env")?.toString()
 
-group = "ai.equs.credentials"
+group = "ai.equs"
 val ciTag: String? = System.getenv("CI_COMMIT_TAG")?.takeIf { it.isNotBlank() }
 version = ciTag ?: if (environment == "development") "$baseVersion-dev" else baseVersion
 
