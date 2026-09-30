@@ -57,7 +57,7 @@ jobs:
       - name: Build and publish
         shell: bash
         env:
-          NPM_TOKEN: ${{ secrets.EQUS_CREDENTIALS_SDK_NPM_TOKEN }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
         working-directory: wrappers/nodejs
         run: bash scripts/build_and_publish_target.sh
 
@@ -103,7 +103,7 @@ jobs:
       - name: Build and publish
         shell: bash
         env:
-          NPM_TOKEN: ${{ secrets.EQUS_CREDENTIALS_SDK_NPM_TOKEN }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
         working-directory: wrappers/nodejs
         run: bash scripts/build_and_publish_target.sh
 
@@ -146,7 +146,7 @@ jobs:
       - name: Build and publish
         shell: bash
         env:
-          NPM_TOKEN: ${{ secrets.EQUS_CREDENTIALS_SDK_NPM_TOKEN }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
         working-directory: wrappers/nodejs
         run: bash scripts/build_and_publish_wrapper.sh
 

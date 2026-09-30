@@ -61,11 +61,11 @@ jobs:
       - name: Build and publish
         shell: bash
         env:
-          NPM_TOKEN: ${{ secrets.EQUS_CREDENTIALS_SDK_NPM_TOKEN }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
         working-directory: wrappers/wasm
         run: |
           set -euo pipefail
-          [ -n "${NPM_TOKEN:-}" ] || [ -n "${DRY_RUN:-}" ] || { echo "org secret EQUS_CREDENTIALS_SDK_NPM_TOKEN is unset or not visible to this repo" >&2; exit 1; }
+          [ -n "${NPM_TOKEN:-}" ] || [ -n "${DRY_RUN:-}" ] || { echo "repo secret NPM_TOKEN is unset" >&2; exit 1; }
           npm_auth="npm_config_//${REGISTRY_URL_NPM#*://}:_authToken=$NPM_TOKEN"
           unset NPM_TOKEN
           npm i
