@@ -26,6 +26,8 @@ repository = "https://github.com/equs-ai/equs-credentials-sdk"
 publish = true
 include = [
     "/src/**/*.rs",
+    "!/src/**/tests.rs",
+    "!/src/**/test_utils.rs",
     "/Cargo.toml",
     "/README.md",
     "/LICENSE",
