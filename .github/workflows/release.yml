@@ -123,6 +123,11 @@ jobs:
           pattern: release-manifest-*
           path: manifests
 
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: maven-android
+          path: android
+
       - shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -136,4 +141,4 @@ jobs:
           ls release-manifest-*.yaml
           gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1 ||
             gh release create "$TAG" --repo "$REPO" --title "$TAG" --notes ""
-          gh release upload "$TAG" release-manifest-*.yaml --repo "$REPO" --clobber
+          gh release upload "$TAG" release-manifest-*.yaml android/* --repo "$REPO" --clobber

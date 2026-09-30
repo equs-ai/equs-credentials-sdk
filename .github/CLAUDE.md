@@ -463,7 +463,9 @@ not preserve, and turns a soft cache miss into a hard failure on re-run.
   POSTed to the Central Portal's `upload?publishingType=AUTOMATIC`, then
   `status` is polled until `PUBLISHING` or `PUBLISHED`; `FAILED` prints the
   Portal's errors. `DRY_RUN` skips the upload and still builds, signs and
-  renders the manifest.
+  renders the manifest. The AAR and the signed Maven bundle zip are attached
+  to the GitHub release, by `manifest` on an `android/vX.Y.Z` tag and by
+  `release.yml`'s `release` job on `vX.Y.Z`.
 - Its prerequisites: the secrets `MAVEN_CENTRAL_TOKEN_USERNAME` /
   `MAVEN_CENTRAL_TOKEN_PASSWORD` (a Central Portal user token) and
   `MAVEN_CENTRAL_SIGNING_PRIVATE_KEY` (ASCII-armoured) /
