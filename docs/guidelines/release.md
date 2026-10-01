@@ -151,8 +151,9 @@ To rehearse a release, add `DRY_RUN: "1"` to the `env` of the five publish workf
 
 The SDK's own tag, `vX.Y.Z`, runs [`release.yml`](../../.github/workflows/release.yml): it publishes
 `equs-credentials-sdk` to crates.io, all three npm packages above under `latest` and the Android AAR to
-Maven Central, all at the same version, and attaches one manifest per package to the `vX.Y.Z` release
-(`release-manifest-{crate,nodejs,askar-nodejs,wasm,android}.yaml`).
+Maven Central, all at the same version, attaches the [iOS XCFramework](#ios-on-github-releases), and attaches
+one manifest per package to the `vX.Y.Z` release
+(`release-manifest-{crate,nodejs,askar-nodejs,wasm,android,ios}.yaml`).
 
 ```shell
 git tag -a v<version> -F NOTES.md
@@ -168,9 +169,30 @@ tag's original commit, so it cannot pick up a fix. For a failure that needs a co
 
 - **Crate failed:** nothing was published. Fix it, then delete and re-push `v<version>` on the fixed commit.
 - **A wrapper failed after the crate shipped:** fix it and publish that wrapper with its own tag at
-  the same version (`nodejs/v<version>`, `askar-nodejs/v<version>`, `wasm/v<version>` or
-  `android/v<version>`). Its
-  manifest goes on that tag's release.
+  the same version (`nodejs/v<version>`, `askar-nodejs/v<version>`, `wasm/v<version>`,
+  `android/v<version>` or `ios/v<version>`). Its manifest goes on that tag's release.
+
+## iOS on GitHub releases
+
+[`publish-ios.yml`](../../.github/workflows/publish-ios.yml) builds a dynamic `EqusSdk.xcframework`,
+with the Swift bindings compiled in, and attaches it to the GitHub release. There is no registry. It
+runs on `ios/v<version>` or as part of `v<version>`. An `-rc.N` tag is released as a GitHub
+prerelease:
+
+```shell
+git tag -a ios/v<version> -F NOTES.md
+git push origin tag ios/v<version>
+```
+
+| Asset | Use |
+| --- | --- |
+| `equs-credentials-sdk-ios-<version>.xcframework.zip` | `EqusSdk.xcframework`, for `.binaryTarget(url:checksum:)` or dragging into Xcode |
+| `equs-credentials-sdk-ios-<version>.xcframework.checksum` | The SwiftPM checksum of the zip above |
+
+The run's summary prints the `binaryTarget` declaration with the URL and checksum.
+Consumers pin that checksum, so an uploaded zip must never change: the run fails before building
+if the release already has iOS assets. To replace a bad build, delete the assets by hand and accept
+that everyone pinned to them breaks, or cut a new version.
 
 ## Release notes format
 

@@ -131,6 +131,27 @@ Either target saves the archive to `./kotlin/android/build/outputs/aar/android-r
 
 iOS builds target iOS 17. Change that in [`.cargo/config.toml`](./.cargo/config.toml).
 
+### Use a release
+
+Each [GitHub release](https://github.com/equs-ai/equs-credentials-sdk/releases) carries
+`equs-credentials-sdk-ios-<version>.xcframework.zip`: a dynamic `EqusSdk.xcframework` with the Swift
+bindings compiled in. Add it as a binary target, taking the checksum from the release's `.checksum`
+asset:
+
+```swift
+.binaryTarget(
+    name: "EqusSdk",
+    url: "https://github.com/equs-ai/equs-credentials-sdk/releases/download/<tag>/equs-credentials-sdk-ios-<version>.xcframework.zip",
+    checksum: "<checksum>"
+),
+```
+
+`<tag>` is the release's tag, `v<version>` or `ios/v<version>`. In an Xcode project, drag the
+unzipped `EqusSdk.xcframework` in and set it to **Embed & Sign**. Either way, `import EqusSdk`.
+
+To build it locally, run `make ios-generate-framework` (release) or `make ios-generate-framework-dev`
+(debug); the output is `swift/ios/framework[-debug]/EqusSdk.xcframework`.
+
 ### 1. Setup Xcode Command-Line Tools
 
 Install Xcode from the App Store (or from [developer.apple.com](https://developer.apple.com/download/all/)),
