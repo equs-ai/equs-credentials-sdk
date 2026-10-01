@@ -421,9 +421,10 @@ not preserve, and turns a soft cache miss into a hard failure on re-run.
   uploading its tarball, and its re-run would then fail at `npm publish`
   with no artifact left for the manifest.
 - `release.yml` is the only trigger for `vX.Y.Z`; `publish-crate.yml` has no
-  tag trigger of its own. `crate` runs first and the three npm calls need it, so
-  a crate failure publishes nothing and the wrappers never ship ahead of the
-  crate. The per-package tags keep working on their own. Preflight fails the run before
+  tag trigger of its own. For the first Maven Central release, `android` runs
+  first and `crate` needs it, so a failed Maven publish ships nothing else;
+  this reverts to `crate` first once that release is out. The npm and iOS calls
+  need `crate`, so the wrappers never ship ahead of the crate. The per-package tags keep working on their own. Preflight fails the run before
   any job publishes when the tag is not `X.Y.Z`, disagrees with `Cargo.toml`,
   or any of the ten packages (crate plus nine npm) already has that version:
   crates.io and npmjs both refuse a republish, so a half-published release

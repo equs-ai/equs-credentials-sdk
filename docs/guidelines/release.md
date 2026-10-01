@@ -162,7 +162,9 @@ git push origin tag v<version>
 
 `<version>` must equal `version` in the root `Cargo.toml`, and no package may already have it —
 the run checks both before anything publishes. rc tags are not accepted here; use the per-package
-tags for those. The crate publishes first; the npm packages and the AAR start only once it is on crates.io.
+tags for those. For now the AAR publishes first and the crate starts only once it is on Maven Central, so a
+failed Maven publish ships nothing else; the npm packages and iOS start once the crate is on crates.io.
+After the first Maven Central release the crate goes back to publishing first.
 
 If a job fails for a transient reason (network, runner), use **Re-run failed jobs**; it reruns the
 tag's original commit, so it cannot pick up a fix. For a failure that needs a code change:
