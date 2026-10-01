@@ -7,6 +7,7 @@ Scripts called by the release pipelines. GitHub Actions has its own set under
 |------|---------|
 | `release_manifest.sh` | Renders `release-manifest.yaml` for one crate's release. |
 | `npm_release_manifest.sh` | Renders `release-manifest.yaml` for one npm release. |
+| `maven_release_manifest.sh` | Renders `release-manifest.yaml` for one Maven release. |
 
 ## release_manifest.sh
 
@@ -60,3 +61,11 @@ The digest is the sha256 of the tarball the publish job packed and passed to
 `RELEASE_VERSION` sets `release:` — the tags are `nodejs/vX.Y.Z`,
 `askar-nodejs/vX.Y.Z`, `wasm/vX.Y.Z` or the SDK's `vX.Y.Z`, so the workflows pass
 the bare version.
+
+## maven_release_manifest.sh
+
+`maven_release_manifest.sh <group:artifact> <output> <file>` — same schema as
+`release_manifest.sh`, one entry. Called by the `manifest` job of
+`.github/workflows/publish-android.yml` with the AAR it uploaded; the digest is
+that file's sha256, and a missing file is emitted with `digest: null`.
+`RELEASE_VERSION` sets `release:`, since the tag is `android/vX.Y.Z` or `vX.Y.Z`.

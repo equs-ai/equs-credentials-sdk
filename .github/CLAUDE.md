@@ -4,9 +4,10 @@ GitHub Actions port of the CI half of `.gitlab-ci.yml`, plus one release job.
 `.gitlab-ci.yml` is the running pipeline, so a CI change belongs in both files.
 The `publish-*.yml` workflows are the exceptions and have no counterpart there:
 `publish-crate.yml` and `publish-common-macros.yml` publish to crates.io,
-`publish-nodejs.yml`, `publish-wasm.yml` and `publish-askar-nodejs.yml` to npmjs.
-`release.yml` runs on the SDK's `vX.Y.Z` and calls the crate and all three npm
-workflows, so one tag releases everything.
+`publish-nodejs.yml`, `publish-wasm.yml` and `publish-askar-nodejs.yml` to npmjs,
+`publish-android.yml` to Maven Central.
+`release.yml` runs on the SDK's `vX.Y.Z` and calls the crate, all three npm
+workflows and the Android one, so one tag releases everything.
 
 Two workflows. `ci.yml` defines no jobs directly: every job calls a
 reusable workflow, so `container`, checkout,
@@ -24,13 +25,14 @@ is the one exception and is named `publish`.
 | `workflows/_job.yml` | The generic containerised job behind 23 of the 27. Owns `container`, checkout, toolchain, node/java/wasm, caches, disk report and artifact upload. |
 | `workflows/_macos.yml` | The generic `macos-15` job behind `ios-xcframework`, `swift-test` and `ios-demo`. |
 | `workflows/_android.yml` | `android-demo`: bare `ubuntu-latest`, SDK from the runner plus the pinned NDK. |
-| `workflows/release.yml` | On a `vX.Y.Z` tag: preflight (tag is `X.Y.Z`, matches `Cargo.toml`, no package already at that version), then calls `publish-crate.yml`, `publish-nodejs.yml`, `publish-askar-nodejs.yml` and `publish-wasm.yml`, then attaches every manifest to the one release. |
+| `workflows/release.yml` | On a `vX.Y.Z` tag: preflight (tag is `X.Y.Z`, matches `Cargo.toml`, no package already at that version), then calls `publish-crate.yml`, `publish-nodejs.yml`, `publish-askar-nodejs.yml`, `publish-wasm.yml` and `publish-android.yml`, then attaches every manifest to the one release. |
 | `workflows/publish-crate.yml` | `workflow_call` only, from `release.yml`. Publishes `equs-credentials-sdk` to crates.io and renders its release manifest as the `release-manifest-crate` artifact. Defines its own jobs. |
 | `workflows/publish-common-macros.yml` | Publishes `equs-common-macros` to crates.io on a `common-macros/vX.Y.Z` tag, prerelease suffix allowed, then renders its release manifest and uploads it to the release. Defines its own jobs. |
 | `workflows/publish-nodejs.yml` | Publishes the Node.js wrapper and its three platform packages to npmjs on a `nodejs/vX.Y.Z` tag (`-rc.N` suffix publishes under the `rc` dist-tag), then renders its release manifest and uploads it to the release. Also called by `release.yml` with a `version` input, which then attaches the manifest instead. Defines its own jobs. |
 | `workflows/publish-askar-nodejs.yml` | Publishes the askar plugin wrapper and its three platform packages to npmjs on an `askar-nodejs/vX.Y.Z` tag (`-rc.N` suffix publishes under the `rc` dist-tag), then renders its release manifest and uploads it to the release. Also called by `release.yml` with a `version` input, which then attaches the manifest instead. Defines its own jobs. |
 | `workflows/publish-wasm.yml` | Publishes the WASM wrapper to npmjs on a `wasm/vX.Y.Z` tag (`-rc.N` suffix publishes under the `rc` dist-tag), then renders its release manifest and uploads it to the release. Also called by `release.yml` with a `version` input, which then attaches the manifest instead. Defines its own jobs. |
-| `actions/npm-version/` | Resolves the npm version and dist-tag from the `version` input or the tag and exports `CI_COMMIT_TAG`/`NPM_DIST_TAG`. Used by every npm build job. |
+| `workflows/publish-android.yml` | Publishes the Android AAR to Maven Central on an `android/vX.Y.Z` tag (`-rc.N` allowed), then renders its release manifest and uploads it to the release. Also called by `release.yml` with a `version` input. Defines its own jobs. |
+| `actions/npm-version/` | Resolves the npm version and dist-tag from the `version` input or the tag and exports `CI_COMMIT_TAG`/`NPM_DIST_TAG`. Used by every npm build job and by `publish-android.yml`. |
 | `actions/setup-rustup/` | Reclaims host disk, installs the pinned toolchain, restores the sccache and npm caches, installs `cargo-binstall` and `sccache`. |
 | `actions/cache/` | Named cache presets (`target-*`, `wrapper-*`), selected by the `restore`/`save` string inputs. |
 | `gitleaks.toml` | Secret-scan config. |
@@ -451,3 +453,26 @@ not preserve, and turns a soft cache miss into a hard failure on re-run.
   token with publish rights on the `@equs-ai` scope) and an environment named `npmjs`. Every publishing
   job uses the environment, so a required-reviewer rule prompts twice for a
   Node.js release (platforms, then wrapper) and once for WASM.
+- `publish-android.yml` runs on a bare `ubuntu-latest` for the same reason as
+  `android-demo`, with 120 minutes. It builds the four targets with
+  `make android-generate-bindings android-copy-libs`, then
+  `publishReleasePublicationToStagingRepository` builds, signs and stages the
+  AAR, sources, javadoc, POM and module into `android/build/staging`. The job
+  fails if the AAR lacks any of the four `jni/<abi>/libequssdk.so` or nothing
+  was signed. The version directory is zipped (no `maven-metadata.xml`) and
+  POSTed to the Central Portal's `upload?publishingType=AUTOMATIC`, then
+  `status` is polled until `PUBLISHING` or `PUBLISHED`; `FAILED` prints the
+  Portal's errors. `DRY_RUN` skips the upload and still builds, signs and
+  renders the manifest. The AAR and the signed Maven bundle zip are attached
+  to the GitHub release, by `manifest` on an `android/vX.Y.Z` tag and by
+  `release.yml`'s `release` job on `vX.Y.Z`.
+- Its prerequisites: the secrets `MAVEN_CENTRAL_TOKEN_USERNAME` /
+  `MAVEN_CENTRAL_TOKEN_PASSWORD` (a Central Portal user token) and
+  `MAVEN_CENTRAL_SIGNING_PRIVATE_KEY` (ASCII-armoured) /
+  `MAVEN_CENTRAL_SIGNING_PRIVATE_KEY_PASSWORD`, an environment named
+  `maven-central`, and the verified Portal namespace `ai.equs` (org Equs),
+  which is also the groupId; the Kotlin package stays `com.equs.credentials`.
+  The signing key's public half must be on a keyserver Central queries
+  (keys.openpgp.org, keyserver.ubuntu.com). A Maven Central version can never
+  be replaced or deleted, so `release.yml`'s preflight also checks
+  `repo1.maven.org` for the POM.

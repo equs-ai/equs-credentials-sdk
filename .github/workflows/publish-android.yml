@@ -1,0 +1,174 @@
+name: Publish Android wrapper
+
+on:
+  push:
+    tags: ['android/v[0-9]*.[0-9]*.[0-9]*']
+  workflow_call:
+    inputs:
+      version:
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-android
+  cancel-in-progress: false
+
+env:
+  RUST_VERSION: "1.97.0"
+  NDK_VERSION: "29.0.13599879"
+  RUSTC_WRAPPER: sccache
+  SCCACHE_CACHE_SIZE: 1G
+  CARGO_INCREMENTAL: "0"
+  CARGO_TERM_COLOR: always
+  CENTRAL_API: https://central.sonatype.com/api/v1/publisher
+  MAVEN_PATH: ai/equs/equs-credentials-sdk-android
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    environment: maven-central
+    timeout-minutes: 120
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: ./.github/actions/npm-version
+        id: version
+        with:
+          prefix: android
+          version: ${{ inputs.version }}
+
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: ./.github/actions/setup-rustup
+        with:
+          rust-version: ${{ env.RUST_VERSION }}
+          cache-key: publish-android
+
+      - name: Install the NDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdk="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$sdk" --licenses >/dev/null 2>&1 || true
+          "$sdk" "ndk;$NDK_VERSION"
+          echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/$NDK_VERSION" >> "$GITHUB_ENV"
+          echo "$ANDROID_SDK_ROOT/ndk/$NDK_VERSION/toolchains/llvm/prebuilt/linux-x86_64/bin" >> "$GITHUB_PATH"
+
+      - name: Build the native libraries and bindings
+        shell: bash
+        working-directory: wrappers/uniffi
+        run: |
+          set -euo pipefail
+          make android-generate-bindings android-copy-libs
+          test -n "$(find kotlin/android/src/main/kotlin -name '*.kt')"
+
+      - name: Build and sign
+        shell: bash
+        working-directory: wrappers/uniffi/kotlin
+        env:
+          ORG_GRADLE_PROJECT_signingKey: ${{ secrets.MAVEN_CENTRAL_SIGNING_PRIVATE_KEY }}
+          ORG_GRADLE_PROJECT_signingPassword: ${{ secrets.MAVEN_CENTRAL_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          [ -n "${ORG_GRADLE_PROJECT_signingKey:-}" ] || { echo "secret MAVEN_CENTRAL_SIGNING_PRIVATE_KEY is unset" >&2; exit 1; }
+          ./gradlew --no-daemon :android:publishReleasePublicationToStagingRepository
+          dir="android/build/staging/$MAVEN_PATH/$CI_COMMIT_TAG"
+          aar="$dir/equs-credentials-sdk-android-$CI_COMMIT_TAG.aar"
+          for abi in arm64-v8a armeabi-v7a x86 x86_64; do
+            unzip -l "$aar" | grep -q "jni/$abi/libequssdk.so" || { echo "$aar has no jni/$abi/libequssdk.so" >&2; exit 1; }
+          done
+          ls "$dir"/*.asc >/dev/null
+          (cd android/build/staging && zip -qr "$GITHUB_WORKSPACE/equs-credentials-sdk-android-$CI_COMMIT_TAG-maven-bundle.zip" "$MAVEN_PATH/$CI_COMMIT_TAG")
+          cp "$aar" "$GITHUB_WORKSPACE/"
+
+      - name: sccache stats
+        if: always()
+        run: sccache --show-stats
+
+      - name: Publish
+        if: ${{ !env.DRY_RUN }}
+        shell: bash
+        env:
+          CENTRAL_USERNAME: ${{ secrets.MAVEN_CENTRAL_TOKEN_USERNAME }}
+          CENTRAL_PASSWORD: ${{ secrets.MAVEN_CENTRAL_TOKEN_PASSWORD }}
+        run: |
+          set -euo pipefail
+          [ -n "${CENTRAL_USERNAME:-}" ] && [ -n "${CENTRAL_PASSWORD:-}" ] || { echo "secret MAVEN_CENTRAL_TOKEN_USERNAME or MAVEN_CENTRAL_TOKEN_PASSWORD is unset" >&2; exit 1; }
+          auth="Authorization: Bearer $(printf '%s:%s' "$CENTRAL_USERNAME" "$CENTRAL_PASSWORD" | base64 -w0)"
+          id=$(curl -sS --fail-with-body -H "$auth" -F bundle=@"equs-credentials-sdk-android-$CI_COMMIT_TAG-maven-bundle.zip" \
+            "$CENTRAL_API/upload?publishingType=AUTOMATIC&name=equs-credentials-sdk-android-$CI_COMMIT_TAG")
+          echo "deployment $id"
+          for _ in $(seq 120); do
+            state=$(curl -sS --fail-with-body -X POST -H "$auth" "$CENTRAL_API/status?id=$id" | tee status.json | jq -r .deploymentState)
+            echo "$state"
+            case "$state" in
+              PUBLISHING|PUBLISHED) exit 0 ;;
+              FAILED) jq . status.json >&2; exit 1 ;;
+            esac
+            sleep 15
+          done
+          echo "deployment $id still $state after 30 minutes" >&2
+          exit 1
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: maven-android
+          path: |
+            *.aar
+            *-maven-bundle.zip
+          if-no-files-found: error
+
+      - shell: bash
+        run: |
+          [ -n "${DRY_RUN:-}" ] && heading="Dry run, not published" || heading=Published
+          printf "### %s\n\n\`ai.equs:equs-credentials-sdk-android:%s\` to Maven Central\n" "$heading" "$CI_COMMIT_TAG" >> "$GITHUB_STEP_SUMMARY"
+
+  manifest:
+    needs: [android]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: maven-android
+          path: aar
+
+      - name: Render manifest
+        shell: bash
+        env:
+          CI_COMMIT_TAG: ${{ github.ref_name }}
+          CI_COMMIT_SHA: ${{ github.sha }}
+          RELEASE_VERSION: ${{ needs.android.outputs.version }}
+        run: |
+          bash scripts/maven_release_manifest.sh ai.equs:equs-credentials-sdk-android release-manifest.yaml \
+            "aar/equs-credentials-sdk-android-$RELEASE_VERSION.aar"
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-manifest-android
+          path: release-manifest.yaml
+          if-no-files-found: error
+
+      - if: ${{ !inputs.version }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1 ||
+            gh release create "$TAG" --repo "$REPO" --title "$TAG" --notes ""
+          gh release upload "$TAG" release-manifest.yaml aar/* --repo "$REPO" --clobber
