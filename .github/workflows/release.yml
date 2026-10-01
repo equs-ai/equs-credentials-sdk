@@ -71,7 +71,7 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
   crate:
-    needs: [preflight]
+    needs: [preflight, android]
     uses: ./.github/workflows/publish-crate.yml
     secrets: inherit
 
@@ -103,7 +103,7 @@ jobs:
     secrets: inherit
 
   android:
-    needs: [preflight, crate]
+    needs: [preflight]
     permissions:
       contents: write
     uses: ./.github/workflows/publish-android.yml
