@@ -14,13 +14,19 @@ work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 
 # The FFI module stays private to the framework, so the generated converters,
-# which UniFFI makes public for cross-crate use, must be internal.
+# which UniFFI makes public for cross-crate use, must be internal. Enums are
+# frozen so consumers can switch over them exhaustively under library evolution.
 sed -E -e 's/^import equssdkFFI$/@_implementationOnly import equssdkFFI/' \
-  -e 's/^public ((func|struct|class|enum) FfiConverter)/\1/' "$SRC" >"$work/equssdk.swift"
+  -e 's/^public ((func|struct|class|enum) FfiConverter)/\1/' \
+  -e 's/^public enum /@frozen public enum /' "$SRC" >"$work/equssdk.swift"
 grep -q '^@_implementationOnly import equssdkFFI$' "$work/equssdk.swift" ||
   { echo "no 'import equssdkFFI' line in $SRC" >&2; exit 1; }
 if grep -nE '^public .*FfiConverter' "$work/equssdk.swift" >&2; then
   echo "public FfiConverter declarations left in $SRC" >&2
+  exit 1
+fi
+if grep -nE '^[[:space:]]*public (indirect )?enum ' "$work/equssdk.swift" >&2; then
+  echo "non-frozen public enums left in $SRC" >&2
   exit 1
 fi
 
