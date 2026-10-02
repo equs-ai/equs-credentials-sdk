@@ -1198,8 +1198,10 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::crypto::Key;
     use crate::http::MockHttpClient;
     use crate::inmem::kms::LocalKms;
+    use crate::kms::{CreateOptions, KeyType};
     use crate::nonce::Nonce;
     use crate::vc::ClaimFormatDesignation;
     use crate::vc::claims::Claims;
@@ -1236,6 +1238,10 @@ mod tests {
     use serde_json::{Map, json};
     use ssi::claims::jwt::decode_unverified;
     use std::collections::HashMap;
+    use test_fixtures::equs_sdk::inmem::kms::LocalKms as FixtureKms;
+    use test_fixtures::id_token::IdToken as FixtureIdToken;
+    use test_fixtures::jws::sign_compact;
+    use test_fixtures::keys::FixtureKey;
     use url::Url;
 
     #[tokio::test]
@@ -1575,7 +1581,15 @@ mod tests {
         let (verifier, _did) = verifier_service().await;
         let auth_response_options = auth_response_options(build_url(VERIFIER_URL, "auth"), None);
 
-        let rprc = "eyJhbGciOiJFUzI1NiJ9.eyJpc3MiOiJyZWdpc3RyYXIifQ.c2ln";
+        let fixture_kms = FixtureKms::new();
+        let registrar_key = FixtureKey::create_default(&fixture_kms).await.unwrap();
+        let rprc = sign_compact(
+            &registrar_key,
+            "vnd.etsi.119472-2.rc+jwt",
+            &serde_json::json!({"iss": "registrar"}),
+        )
+        .await
+        .unwrap();
         let entries = NonEmptyVec::new(VerifierInfoEntry {
             format: "urn:etsi:119472-2:rc".to_string(),
             data: VerifierInfoData::String(rprc.to_string()),
@@ -2199,19 +2213,91 @@ mod tests {
             .unwrap();
     }
 
-    const JWE: &str = "eyJraWQiOiJhYyIsImVuYyI6IkExMjhDQkMtSFMyNTYiLCJhbGciOiJFQ0RILUVTIiwiYXB1IjoiYzI5dFpWOXViMjVqWlEiLCJhcHYiOiJjMjl0WlY5dWIyNWpaUSIsImVwayI6eyJrdHkiOiJFQyIsImNydiI6IlAtMjU2IiwieCI6IjZIaGh4WVlxbU9uc2NDLVkwZVNOYXJEZ0w0SGp5WW1BVXdJM3A2bkJ0eU0iLCJ5Ijoic3dYZ1BDbVdUR0RZSTJ6NGYtY2V5UE53dEhqRm9pNWZOY0Y0UTd2alNOYyJ9fQ..3zjOOJzGnCzYmEUp-xCgFA.CoDI0RyG7RV1K1oLb9jhqqMu-x55IWQFvQtFYsi3gzD1Shmb5o5TDWrnSX-66UZyHt_2yl0syKXDN557WUpazwRLckKituanU6fx0BFUARb0vyDnbHSvMNrLtJpfq7-pcsGqCg-6kCBNRV9NsvKrDyYqzlekyiAjO5eFR2fQ7x9r2IgI3kNZP9So6ZeQV5tESyiX5aX2sxPpplx9UlBquyTgLwWxfPvriuWuEwB09GmaEV9hSrfHTclZ-Pleltxjw3bKmm17gA1TzUhnjpw6GptkieVwWFplQO9xjyWV05V0EnaDZGeHpH2sGaA_uURXgei4V6YHjHq_Qor9LOY030OGNZr5VGEnD1UTCZlC__uzRGneBSGM_KqypBubGDS4DxrefF7AdRu1eDc1Gx846_9qgwT3K8bzI36pUGROboPCosJ2-l5_ICSghKqZJYUUubDOZpgLopPXQRwxSg84VGKlPs2U04JnhDlZkmGD5gNd3RKi1De5_2DfYxFyBJXF-mB8V4rWU3XwW1hcqD8ErY_1-vWa8oaxy7CoW7M0swdxza66xBuC8Rh2hVY6XNHpVltnG2RzViuZH2OYyPJ0O74uiuvneSjob7qpSi-jvfXHwDzWqu9te-mJT_3wk0MEFIVg3g8YZ6HBzDlOxEea_9aHwDpTz43-KEy5nfYvR_GTh0Tg-mu2qq-IZCBUnZQ1qtDGKBg-ixa9F7BNVz7Tcxc2UDaaByUjbGmQVTvYX2cuf2HFTqrQ4wYWws2fvMS0F9fjUQOL9dDvexdhqn7_raGN8zUSNsjW6tOubIayTXpgXCz4HvNLwZElh_fMK8Gb-5LAQcROzbkgECxT0LZcgFIBiMJbKAeAc8k0XyFek4f7MMMz6qCjQdZOrtrovGTLSIuUaB3cLVbrpq-JYKhwocn-iH6Bm_SLeTd5LjqMdLsDaXTNHvjXMPK1QT8ikSI846G1GvFBeL7Vek9q6t4pD18YuMsY7w9__V4az9KguWpZsJrULj7at831DGZfh0pa25Z_VdDKOjppb-j3ceROTolYCaZSTPrWyrDA_9cOjuKF_iF8bMbd2nGzmOHUd-tz096dcPUMJ9hets2cIU_8XOAoYYtTNCP3tXoP2ovLKptZsnuJsJuIgcP3kiQhuK05m8sfkMRRrJKci7wk6StbUHcO73v5olviO3ALDOZ5CsuAQeWO00BKTyjpNloeHt7t6gOEHM38gfebSIVNGxuWrrs0YL-VGcfDB91o7Cm8FScj0Qv_d0NT4snP46OBRQAaJdrX0_UBoxYhOyZQTBOzzhMXfuhMqn_NZuieglGqOUP25iexsaZPC8S4l-2HSFPv8m4t07GVgRW881XykozSR2L1CDz_JIsDtrVCEVWG-tnxVn4-1Lrt4VUhZOOrdqvjD9MkikX_Gysplmw0vMoS_26esWFAXhqtaRHlwAaoDoc8XmD_tvNiaPErj34imEFNBVffeyBHegA4WU_WydtA7MUOEt0xjO3hgUbRoAYB7w4c5Z94QFwOKC2IZl2Aj2Bz_r4LTESGpnUYd7810yJp_4PHpeAkE4LBmNaM5b1t_UVOnk7lkpnNOtXqqzeg_rdvzXhLjc-WyZvdNQt2m4LW6qpjNLBZ3jrrmZbeurQ2aqtDnnG2cjAxStpV7QJ16XRu6WPWamTriIMlEJfh7XzTREHd0TW79Kdk4fUTgzC1I1csKygh11e6-F3RI0xtXqsOd_k-uc-F6LNeIziQftaQeDY79XUpZed8xqJ5d9xIyrb2L9fHucPthg5btXeRrTNUaD76j6U-fewRRwdh1mWqmDIfIHmWzBRWAmMyFoUKDZKtDfz-iZPV_2I5RWbn6Jx3M02zEk6UCnH7t8IWT5aug02takkHRnEvD8ZNGljLs00MZjoe89Sz-Z0zPIJ-sXGIKXIbZITuU5H4yi7D6RLBDfZpRZPBJBjlFtF0WXlkItvaqQrUU31QLPRir73aTvTY6kKOGKfyg1BdLTtNyVoWJ7tbMTZH2UlJ8G8AA5X_gQQ0aD6mgdKCef0eha5NBQyJ-ATqSPhh1DD9RnWic2-CugNrIDhmFpcl8nDBfVokoNZsTWz62Pin9Cztp1f41T4T.jQWuxtlpSXrokaAhm440gQ";
-
-    #[rstest]
-    #[should_panic(expected = "Error while getting the jwe header")]
-    #[case("not_even_jwt")]
-    #[should_panic(expected = "Error while getting the key handle for ac")]
-    #[case(JWE)]
     #[tokio::test]
-    async fn resolve_authorization_response_jwe_negative(#[case] jwt: &str) {
+    async fn validate_id_token_accepts_a_fixture_id_token() {
+        let (verifier, client_id) = verifier_service().await;
+        let nonce = Nonce::from_secret(NONCE.to_owned());
+
+        let fixture_kms = FixtureKms::new();
+        let key = FixtureKey::create_default(&fixture_kms).await.unwrap();
+        let id_token = FixtureIdToken::builder(&key)
+            .audience(client_id)
+            .nonce(nonce.secret().to_owned())
+            .build()
+            .await
+            .unwrap();
+
+        verifier
+            .validate_id_token(&id_token, &nonce)
+            .await
+            .expect("a fixture id_token must satisfy the SDK's own validator");
+    }
+
+    #[should_panic(expected = "id token is expired")]
+    #[tokio::test]
+    async fn validate_id_token_rejects_an_expired_fixture_id_token() {
+        let (verifier, client_id) = verifier_service().await;
+        let nonce = Nonce::from_secret(NONCE.to_owned());
+
+        let fixture_kms = FixtureKms::new();
+        let key = FixtureKey::create_default(&fixture_kms).await.unwrap();
+        let id_token = FixtureIdToken::builder(&key)
+            .audience(client_id)
+            .nonce(nonce.secret().to_owned())
+            .lifetime(time::Duration::seconds(-1))
+            .build()
+            .await
+            .unwrap();
+
+        verifier.validate_id_token(&id_token, &nonce).await.unwrap();
+    }
+
+    #[tokio::test]
+    #[should_panic(expected = "Error while getting the jwe header")]
+    async fn resolve_authorization_response_jwe_negative_not_even_jwt() {
         let (verifier, _) = verifier_service().await;
 
-        let result = verifier
-            .resolve_authorization_response(&AuthorizationResponse::Jwe(jwt.to_owned()))
+        verifier
+            .resolve_authorization_response(&AuthorizationResponse::Jwe("not_even_jwt".to_owned()))
+            .await
+            .unwrap();
+    }
+
+    /// The verifier's own KMS never holds this key: the JWE is addressed to a
+    /// `kid` ("ac") that only exists in an unrelated, throwaway KMS, so
+    /// decryption must fail while looking up the key handle.
+    #[tokio::test]
+    #[should_panic(expected = "Error while getting the key handle for ac")]
+    async fn resolve_authorization_response_jwe_negative_unknown_kid() {
+        let (verifier, _) = verifier_service().await;
+
+        let unrelated_kms = LocalKms::new();
+        let key = unrelated_kms
+            .create(KeyType::P256, CreateOptions::default())
+            .await
+            .unwrap();
+        let kh = unrelated_kms.get(&key).await.unwrap();
+        let mut pub_jwk = kh.jwk().unwrap().to_public();
+        pub_jwk.key_id = Some("ac".to_string());
+        let pub_jwk_value = serde_json::to_value(&pub_jwk).unwrap();
+        let Value::Object(mut jwk_map) = pub_jwk_value else {
+            panic!("The jwk is not an object");
+        };
+        jwk_map.insert("alg".to_string(), Value::from("ECDH-ES"));
+
+        let metadata: ClientMetadata = serde_json::from_value(json!({
+            "jwks": { "keys": [jwk_map] },
+            "encrypted_response_enc_values_supported": ["A256GCM"],
+        }))
+        .unwrap();
+
+        let jwe = JweEncryptor::new(metadata)
+            .encrypt(json!({"vp_token": "fixture"}))
+            .await
+            .unwrap();
+
+        verifier
+            .resolve_authorization_response(&AuthorizationResponse::Jwe(jwe))
             .await
             .unwrap();
     }

@@ -1,13 +1,44 @@
 import {
+  Alg,
   Claims,
+  ClientId,
+  ClientMetadata,
   CommonAuthorizationRequest,
+  CredentialDefinitionFormat,
   CredentialFormats,
+  CredentialStatusInfoFormat,
+  DIDKey,
+  InMemKms,
+  InMemVault,
+  IssuerMetadata,
+  KeyMetadata,
+  KeyType,
+  LocalNonceHandler,
+  OID4VPVerifierBuilder,
+  PassAuthRequestObjectType,
   PresentationDefinition,
   PresentationSubmission,
+  ReqwestHttpClient,
+  StatusIssuerMetadata,
+  StatusListFormatFmt,
+  UniversalDIDResolver,
+  VcCoreHolder,
+  VcCoreIssuer,
+  VcCoreStatusIssuer,
+  VCFormat,
+  VCStatusesDataFormat,
 } from "equs-credentials-sdk";
+import { jwtDecode } from "jwt-decode";
+import { token } from "../../bundle";
 
-export const AUTH_REQUEST_JWT =
-  "eyJhbGciOiJFUzI1NiIsImtpZCI6ImRpZDprZXk6ekRuYWVyMWQzSHBkZzZSSDdLUmhXWFJ0enBpakVtOEd0YVZRbjdCdFN3N0RpVzcyRSN6RG5hZXIxZDNIcGRnNlJIN0tSaFdYUnR6cGlqRW04R3RhVlFuN0J0U3c3RGlXNzJFIiwidHlwIjoiYXBwbGljYXRpb24vb2F1dGgtYXV0aHotcmVxK2p3dCJ9.eyJyZXNwb25zZV90eXBlIjoidnBfdG9rZW4iLCJzdGF0ZSI6IjFkOGIwZDkzLTg2ZTgtNDEzNS04N2Q0LTUyNGJiMDUwMGJmMyIsInRyYW5zYWN0aW9uX2RhdGEiOlsiZXlKMGVYQmxJam9pYzI5dFpWOTBlWEJsSWl3aVkzSmxaR1Z1ZEdsaGJGOXBaSE1pT2xzaVNXUmxiblJwZEhrdE1TSmRMQ0owY21GdWMyRmpkR2x2Ymw5a1lYUmhYMmhoYzJobGMxOWhiR2NpT2xzaWMyaGhMVEkxTmlJc0luTm9ZUzAxTVRJaVhYMCJdLCJyZXNwb25zZV9tb2RlIjoiZGlyZWN0X3Bvc3QiLCJub25jZSI6IkVBOXp6VV9rUWZnR1VGMk1pd3JZdUZnTWdQcFhVRnpxc1B4cy16RWRvREkiLCJjbGllbnRfbWV0YWRhdGEiOnsidnBfZm9ybWF0c19zdXBwb3J0ZWQiOnsiZGMrc2Qtand0Ijp7InNkLWp3dF9hbGdfdmFsdWVzIjpbIkVkRFNBIiwiRVMyNTYiXSwia2Itand0X2FsZ192YWx1ZXMiOlsiRWREU0EiLCJFUzI1NiJdfX0sImp3a3MiOnsia2V5cyI6W3sidXNlIjoiZW5jIiwiYWxnIjoiRVMyNTYiLCJraWQiOiIxQ0tUN1NtaG9oOlAyNTY6Iiwia3R5IjoiRUMiLCJjcnYiOiJQLTI1NiIsIngiOiJZUE5aOEc1ZDRTTzhuR1g1QWZIOEgxeW9nODFBZ181czd5emZkNVN2MUt3IiwieSI6Ijg0T0dGWEdxTUF0cVpBUTlDNkJUN0VWMDJiVUFtNk9IbDVkN1kzMGdPazAifV19LCJlbmNyeXB0ZWRfcmVzcG9uc2VfZW5jX3ZhbHVlc19zdXBwb3J0ZWQiOlsiQTEyOEdDTSIsIkExMjhDQkMtSFMyNTYiXSwic3ViamVjdF9zeW50YXhfdHlwZXNfc3VwcG9ydGVkIjpbImRpZDprZXkiXX0sImNsaWVudF9pZCI6ImRlY2VudHJhbGl6ZWRfaWRlbnRpZmllcjpkaWQ6a2V5OnpEbmFlcjFkM0hwZGc2Ukg3S1JoV1hSdHpwaWpFbThHdGFWUW43QnRTdzdEaVc3MkUiLCJwcmVzZW50YXRpb25fZGVmaW5pdGlvbiI6eyJpZCI6ImY2NGVkYzk5LTJiNzktNDVjZS1hZDM2LTVlMzQ2ZWJmYzZlYyIsImlucHV0X2Rlc2NyaXB0b3JzIjpbeyJpZCI6IklkZW50aXR5LTEiLCJjb25zdHJhaW50cyI6eyJmaWVsZHMiOlt7InBhdGgiOlsiJC52Y3QiXSwiZmlsdGVyIjp7InR5cGUiOiJzdHJpbmciLCJjb25zdCI6Imh0dHBzOi8vY3JlZGVudGlhbHMuZXhhbXBsZS5jb20vaWRlbnRpdHlfY3JlZGVudGlhbCJ9LCJwcmVkaWNhdGUiOm51bGwsImludGVudF90b19yZXRhaW4iOmZhbHNlfSx7InBhdGgiOlsiJC5uYW1lIl0sIm9wdGlvbmFsIjp0cnVlLCJwcmVkaWNhdGUiOm51bGwsImludGVudF90b19yZXRhaW4iOmZhbHNlfV19LCJuYW1lIjoiSWRlbnRpdHkgVkMiLCJwdXJwb3NlIjoiV2Ugd2FudCBhbiBpZGVudGl0eSIsImZvcm1hdCI6eyJkYytzZC1qd3QiOnsic2Qtand0X2FsZ192YWx1ZXMiOlsiRVMyNTYiLCJFZERTQSJdLCJrYi1qd3RfYWxnX3ZhbHVlcyI6WyJFUzI1NiIsIkVkRFNBIl19fX1dLCJuYW1lIjoiRXhhbXBsZSB3aXRoIHNlbGVjdGl2ZSBkaXNjbG9zdXJlIn0sInJlc3BvbnNlX3VyaSI6Imh0dHA6Ly9sb2NhbGhvc3Q6OTAwMS9yZXNwb25zZSJ9.DPsKN_vh20a9rLFeRzLvEFim-TqRGH0G9GAAd9ezV7yWUsZcBjOyVp6nk0pTPTN4uD-jWp2xsKv1fmwU3ke1QA";
+async function createDidAndKeyMetadata(kms: InMemKms): Promise<{ did: string; keyMetadata: KeyMetadata }> {
+  const keyId = await kms.create(KeyType.P256);
+  const keyHandle = await kms.get(keyId);
+  const did = new DIDKey().generate(keyHandle);
+  const vm = await new UniversalDIDResolver().resolveVerificationMethod(did);
+  return { did, keyMetadata: { didUrl: vm.id, kid: keyId } };
+}
+
 export const STATE = "1d8b0d93-86e8-4135-87d4-524bb0500bf3";
 
 export const PRESENTATION_DEFINITION: PresentationDefinition = {
@@ -21,7 +52,7 @@ export const PRESENTATION_DEFINITION: PresentationDefinition = {
             path: ["$.vct"],
             filter: {
               type: "string",
-              const: "https://credentials.example.com/identity_credential",
+              const: "https://issuer.example/credential-schema",
             },
             predicate: null,
             intent_to_retain: false,
@@ -101,7 +132,7 @@ export const PRESENTATION_DEFINITION_WITH_FAKE_CONSTRAINTS: PresentationDefiniti
             predicate: null,
             filter: {
               type: "string",
-              const: "https://credentials.example.com/identity_credential",
+              const: "https://issuer.example/credential-schema",
             },
             intent_to_retain: false,
           },
@@ -112,7 +143,7 @@ export const PRESENTATION_DEFINITION_WITH_FAKE_CONSTRAINTS: PresentationDefiniti
             optional: false,
           },
           {
-            path: ["$.surname", "$.last_name"],
+            path: ["$.middle_name", "$.honorific_prefix"],
             intent_to_retain: false,
             predicate: null,
             optional: false,
@@ -123,74 +154,132 @@ export const PRESENTATION_DEFINITION_WITH_FAKE_CONSTRAINTS: PresentationDefiniti
   ],
 };
 
-export const AUTH_REQUEST: CommonAuthorizationRequest = {
-  client_id: "decentralized_identifier:did:key:zDnaer1d3Hpdg6RH7KRhWXRtzpijEm8GtaVQn7BtSw7DiW72E",
-  client_metadata: {
-    vp_formats_supported: {
-      "dc+sd-jwt": {
-        "sd-jwt_alg_values": ["EdDSA", "ES256"],
-        "kb-jwt_alg_values": ["EdDSA", "ES256"],
+const AUTH_REQUEST_CLIENT_METADATA: ClientMetadata = {
+  vp_formats_supported: {
+    "dc+sd-jwt": {
+      "sd-jwt_alg_values": ["EdDSA", "ES256"],
+      "kb-jwt_alg_values": ["EdDSA", "ES256"],
+    },
+  },
+  jwks: {
+    keys: [
+      {
+        use: "enc",
+        alg: "ES256",
+        kid: "1CKT7Smhoh:P256:",
+        kty: "EC",
+        crv: "P-256",
+        x: "YPNZ8G5d4SO8nGX5AfH8H1yog81Ag_5s7yzfd5Sv1Kw",
+        y: "84OGFXGqMAtqZAQ9C6BT7EV02bUAm6OHl5d7Y30gOk0",
+      },
+    ],
+  },
+  encrypted_response_enc_values_supported: ["A128GCM", "A128CBC-HS256"],
+  subject_syntax_types_supported: ["did:key"],
+};
+
+/**
+ * Mints a real signed OID4VP authorization request object matching what the
+ * committed `AUTH_REQUEST_JWT` used to carry, plus the `CommonAuthorizationRequest`
+ * a real `holder.getAuthorizationRequest()` resolves it to.
+ *
+ * The holder checks the signing key's DID against `client_id` before anything
+ * else, so `client_id` can't stay the fixed literal the old fixture had —
+ * that DID's private key isn't available to sign with. Everything else
+ * (`state`, `presentation_definition`, `response_uri`, `client_metadata`,
+ * `transaction_data`) is unchanged from the old fixture and round-trips
+ * through signing/parsing unmodified; only `client_id` and `nonce` (assigned
+ * by the verifier's nonce handler) are derived from what was actually built.
+ */
+export async function buildAuthRequestFixture(): Promise<{
+  authRequestJwt: string;
+  authRequest: CommonAuthorizationRequest;
+}> {
+  const kms = new InMemKms();
+  const { did, keyMetadata } = await createDidAndKeyMetadata(kms);
+
+  const verifier = await new OID4VPVerifierBuilder(kms, new LocalNonceHandler(), keyMetadata, ClientId.fromDid(did))
+    .withClientMetadata(AUTH_REQUEST_CLIENT_METADATA)
+    .withHttpClient(ReqwestHttpClient.insecure())
+    .build();
+
+  const result = await verifier.createAuthorizationRequest(
+    { presentation_definition: PRESENTATION_DEFINITION },
+    {
+      authResponseOptions: {
+        mode: "direct_post",
+        type: "vp_token",
+        submissionUri: "http://localhost:9001/response",
+        state: STATE,
+      },
+      passAuthRequestObject: { type: PassAuthRequestObjectType.ByValue },
+      transactionData: [
+        {
+          type: "some_type",
+          credential_ids: ["Identity-1"],
+          transaction_data_hashes_alg: ["sha-256", "sha-512"],
+        },
+      ] as any,
+    },
+    null,
+  );
+
+  const authRequestJwt = result.authorizationRequestJwt;
+  const decoded = jwtDecode(authRequestJwt) as Record<string, unknown>;
+
+  const authRequest: CommonAuthorizationRequest = {
+    client_id: `decentralized_identifier:${did}`,
+    client_metadata: AUTH_REQUEST_CLIENT_METADATA,
+    response_uri: "http://localhost:9001/response",
+    response_mode: "direct_post",
+    response_type: "vp_token",
+    nonce: decoded.nonce as string,
+    state: STATE,
+    presentation_definition: PRESENTATION_DEFINITION,
+    transaction_data: [
+      {
+        type: "some_type",
+        credential_ids: ["Identity-1"],
+        transaction_data_hashes_alg: ["sha-256", "sha-512"],
+      },
+    ] as any,
+  };
+
+  return { authRequestJwt, authRequest };
+}
+
+export function withDirectPostJwt(authRequest: CommonAuthorizationRequest): CommonAuthorizationRequest {
+  return {
+    ...authRequest,
+    client_metadata: {
+      ...authRequest.client_metadata,
+      jwks: {
+        keys: [
+          {
+            kid: "ecdsa-kid",
+            kty: "EC",
+            crv: "P-256",
+            x: "SSnPfyVhQgcU9Aaynqgi6QGhrq7K7WFEC0mAvpHG4TM",
+            y: "rYQ5mLQLTs95WLBKKA8R5IjMTXjX13iZnzazsVectRY",
+            alg: "ES256",
+          },
+        ],
       },
     },
-    jwks: {
-      keys: [
-        {
-          use: "enc",
-          alg: "ES256",
-          kid: "1CKT7Smhoh:P256:",
-          kty: "EC",
-          crv: "P-256",
-          x: "YPNZ8G5d4SO8nGX5AfH8H1yog81Ag_5s7yzfd5Sv1Kw",
-          y: "84OGFXGqMAtqZAQ9C6BT7EV02bUAm6OHl5d7Y30gOk0",
-        },
-      ],
-    },
-    encrypted_response_enc_values_supported: ["A128GCM", "A128CBC-HS256"],
-    subject_syntax_types_supported: ["did:key"],
-  },
-  response_uri: "http://localhost:9001/response",
-  response_mode: "direct_post",
-  response_type: "vp_token",
-  nonce: "EA9zzU_kQfgGUF2MiwrYuFgMgPpXUFzqsPxs-zEdoDI",
-  state: STATE,
-  presentation_definition: PRESENTATION_DEFINITION,
-  transaction_data: [
-    {
-      type: "some_type",
-      credential_ids: ["Identity-1"],
-      transaction_data_hashes_alg: ["sha-256", "sha-512"],
-    },
-  ],
-};
+    response_mode: "direct_post.jwt",
+  };
+}
 
-export const AUTH_REQUEST_WITH_DIRECT_POST_JWT: CommonAuthorizationRequest = {
-  ...AUTH_REQUEST,
-  client_metadata: {
-    ...AUTH_REQUEST.client_metadata,
-    jwks: {
-      keys: [
-        {
-          kid: "ecdsa-kid",
-          kty: "EC",
-          crv: "P-256",
-          x: "SSnPfyVhQgcU9Aaynqgi6QGhrq7K7WFEC0mAvpHG4TM",
-          y: "rYQ5mLQLTs95WLBKKA8R5IjMTXjX13iZnzazsVectRY",
-          alg: "ES256",
-        },
-      ],
-    },
-  },
-  response_mode: "direct_post.jwt",
-};
+export function withFakeVct(authRequest: CommonAuthorizationRequest): CommonAuthorizationRequest {
+  return { ...authRequest, presentation_definition: PRESENTATION_DEFINITION_WITH_FAKE_VCT } as CommonAuthorizationRequest;
+}
 
-export const AUTH_REQUEST_WITH_FAKE_VCT: CommonAuthorizationRequest = {
-  ...AUTH_REQUEST,
-  presentation_definition: PRESENTATION_DEFINITION_WITH_FAKE_VCT,
-};
-export const AUTH_REQUEST_WITH_FAKE_CONSTRAINTS: CommonAuthorizationRequest = {
-  ...AUTH_REQUEST,
-  presentation_definition: PRESENTATION_DEFINITION_WITH_FAKE_CONSTRAINTS,
-};
+export function withFakeConstraints(authRequest: CommonAuthorizationRequest): CommonAuthorizationRequest {
+  return {
+    ...authRequest,
+    presentation_definition: PRESENTATION_DEFINITION_WITH_FAKE_CONSTRAINTS,
+  } as CommonAuthorizationRequest;
+}
 
 export const PRESENTATION_SUBMISSION: PresentationSubmission = {
   id: "e18f2155-1235-43e9-8f0c-1f18cf72911a",
@@ -198,34 +287,91 @@ export const PRESENTATION_SUBMISSION: PresentationSubmission = {
   descriptor_map: [{ id: "Identity-1", format: CredentialFormats.VCSDJWT, path: "$", path_nested: null }],
 };
 
-export const VC_TYPE = "https://credentials.example.com/identity_credential";
+export const VC_TYPE = "https://issuer.example/credential-schema";
 
-export const VC =
-  "eyJ0eXAiOiJkYytzZC1qd3QiLCJhbGciOiJFUzI1NiIsImtpZCI6ImRpZDprZXk6ekRuYWVSYVc1OE00aG5SNEJ5UWdYdGhGbjVFbVhiUXBFODRwUmlIWDlnS2VyN3pVdyN6RG5hZVJhVzU4TTRoblI0QnlRZ1h0aEZuNUVtWGJRcEU4NHBSaUhYOWdLZXI3elV3In0.eyJfc2QiOlsiTUltVTcxZU8tZWJPTlROYnRYNW83QVNwVEkzcy1pZ2tJZVBsZW5KRjBQYyJdLCJ2Y3QiOiJodHRwczovL2NyZWRlbnRpYWxzLmV4YW1wbGUuY29tL2lkZW50aXR5X2NyZWRlbnRpYWwiLCJpYXQiOjE3NjA2MTA5NjQsInN1YiI6ImRpZDprZXk6ekRuYWV5RHU1WjVScWY4bjVuWkFrMTFkNVZpdDVnVTUxb1MxZkVwU0dkMmZCdXB1eSIsIl9zZF9hbGciOiJzaGEtMjU2IiwiaXNzIjoiZGlkOmtleTp6RG5hZVJhVzU4TTRoblI0QnlRZ1h0aEZuNUVtWGJRcEU4NHBSaUhYOWdLZXI3elV3IiwiZXhwIjoyMDc1OTcwOTY0LCJuYmYiOjE3NjA2MTA5NjQsImNuZiI6eyJqd2siOnsia3R5IjoiRUMiLCJjcnYiOiJQLTI1NiIsIngiOiI1em8ycU1KWFdyLUVNUXFVbnl1N2RPR2xaNXNxdEhaNlJZeFdLRFRiTzF3IiwieSI6InZoVVFxREFiY21XMnJuN0RaNENBN1M4RnhQLTZlbXVibmVwYXpVcnFPbmsifX19.sO30-49XYof7pqmYZg4QwPu_hqu56mU4z6GqTJX49wofBG_DSa76yPLTv069g3_KyvACr9Pj445X0M0P4jpeJg~WyJPMnBvMGwwQ0ZoYjd1SUpRNnZwV05BIiwgIm5hbWUiLCAiSm9obiJd~";
-export const VC_WITH_STATUS =
-  "eyJ0eXAiOiJkYytzZC1qd3QiLCJhbGciOiJFUzI1NiIsImtpZCI6ImRpZDprZXk6ekRuYWVmYUdTd1RmWmsyVXVRV1JqRFQ1Z3J0TEw2RWE1Z3hGcjVBN1hyMzZIUXdtQiN6RG5hZWZhR1N3VGZaazJVdVFXUmpEVDVncnRMTDZFYTVneEZyNUE3WHIzNkhRd21CIn0.eyJfc2QiOlsiTGtNQ3hnT3dKZXVWa2xFUVIxYUl1TDVUSXllRkZiSUhEYXNjZk9EOGlHWSIsInc5WHpEVG5YMFRNOVFFX0NjYUVSaUtpbVV3VkFkWEwxRzZIdU1wZHdkclkiXSwiYWRkcmVzcyI6IjIyMUIgQmFrZXIgU3RyZWV0IiwiaWF0IjoxNzUzMDU0NDQ4LCJkYXRlIjoiMDkvMDkvMTk4OSIsInN1YiI6ImRpZDprZXk6ekRuYWVoVzJXWERnaHBNMTZYRzN5Z2Vja2FSTWJpamJjWG9tZnQ0ZzI2cnlpUlZXUiIsInZjdCI6Imh0dHBzOi8vY3JlZGVudGlhbHMuZXhhbXBsZS5jb20vaWRlbnRpdHlfY3JlZGVudGlhbCIsInN0YXR1cyI6eyJzdGF0dXNfbGlzdCI6eyJ1cmkiOiJodHRwOi8vbG9jYWxob3N0OjkwMDEvc3RhdHVzX2xpc3QiLCJpZHgiOjF9fSwiX3NkX2FsZyI6InNoYS0yNTYiLCJpc3MiOiJkaWQ6a2V5OnpEbmFlZmFHU3dUZlprMlV1UVdSakRUNWdydExMNkVhNWd4RnI1QTdYcjM2SFF3bUIiLCJleHAiOjE3NTMwNTUwNDgsIm5iZiI6MTc1MzA1NDQ0OCwiY25mIjp7Imp3ayI6eyJrdHkiOiJFQyIsImNydiI6IlAtMjU2IiwieCI6Il9hRHExTWE2SFNOUUZrR0F0ZnBpNlR3UnVuMUhlVnpCWWo2R29DcEhmcW8iLCJ5IjoiSTY0VnRmaTNlbzktQTM0TmNNMFJ4cHRsbzhiOGd1RUV3dnd2S2w1YUZlWSJ9fX0.jruSbbpygwgyWcJ2DO0myKlGimKW0n_dsYc5l-hksJqIWZF2Wy5Sf01nZlkUop-_JkN3x9Ct1kCOHes8-Ozdxg~WyJ1eExOVGVtV1FrYzFWTzZMZ3NBcmxRIiwgIm5hbWUiLCAiSm9obiJd~WyIyQ0J1ZENXSTVFSW1haGd6ZGNVMVZ3IiwgInN1cm5hbWUiLCAiRG9lIl0~";
-export const STATUS_LIST_JWT = "eyJ0eXAiOiJzdGF0dXNsaXN0K2p3dCIsImFsZyI6IkVTMjU2Iiwia2lkIjoiZGlkOmtleTp6RG5hZVp4QmJlVFdBYlhOcXlHZER4dDJXRTZjbzNteHU0VllEOHlieXlkdjhkQnh4I3pEbmFlWnhCYmVUV0FiWE5xeUdkRHh0MldFNmNvM214dTRWWUQ4eWJ5eWR2OGRCeHgifQ.eyJzdGF0dXNfbGlzdCI6eyJsc3QiOiJlTnFid013QUJnQUVuUUNVIiwiYml0cyI6Mn0sInN1YiI6Imh0dHA6Ly9sb2NhbGhvc3Q6OTAwMS9zdGF0dXNfbGlzdCIsImlhdCI6MTc2MzAyNTYyMywiX3NkX2FsZyI6InNoYS0yNTYifQ.lCOpC_53MXw4mShUwGtLbxh3Ha-qFNiRohPTZWo2XyCkBVSWn2daxEjSXM048p2DN8LAo61fcgAA69BGvcf5WQ~";
-export const VP =
-  "eyJ0eXAiOiJ2YytzZC1qd3QiLCJhbGciOiJFUzI1NiIsImtpZCI6ImRpZDprZXk6ekRuYWV4ZWgzVDFDemlXV1NFZVdweXVUa1hxaVQ1aWtpQ3c1aVpRUkJ2NEhYdWV4NiN6RG5hZXhlaDNUMUN6aVdXU0VlV3B5dVRrWHFpVDVpa2lDdzVpWlFSQnY0SFh1ZXg2In0.eyJfc2QiOlsiZkp1Ri1FNUMzTnhleU5UTnNMbm1DX1pnM2FNYkVwTGF1QV9aWVFnU1B3VSJdLCJ2Y3QiOiJodHRwczovL2NyZWRlbnRpYWxzLmV4YW1wbGUuY29tL2lkZW50aXR5X2NyZWRlbnRpYWwiLCJzdWIiOiJkaWQ6a2V5OnpEbmFlajlRYWRnZFpudTh1RFhaWGQ0NTQ1ZGZKQUV2bVY2bm43eGFZVXF6Y3JQdk0iLCJuYmYiOjE3Mjg4ODI2MTEsIl9zZF9hbGciOiJzaGEtMjU2IiwiaXNzIjoiZGlkOmtleTp6RG5hZXhlaDNUMUN6aVdXU0VlV3B5dVRrWHFpVDVpa2lDdzVpWlFSQnY0SFh1ZXg2IiwiaWF0IjoxNzI4ODgyNjExLCJleHAiOjE3NjA0MTg2MTEsImNuZiI6eyJqd2siOnsia3R5IjoiRUMiLCJjcnYiOiJQLTI1NiIsIngiOiJGaEFNdi1UWGcyZ1NlOGpqZkhVcWdkTzdfMjZlSG9tWVNweUxxQk05WlNZIiwieSI6IkFNelNtSXRoMHZCUTFmZjI4RlF6c1paSS1XckxZdXFxSFI4TF9HbHZrWXMifX19.usBLTsyl9fgJWPjJvbyJlpaDmfXZNRuxJCt9voME2VAAb0GhncwakNACMUdAqS9fMU5e9Y9p-KUsuOOXXVAlmg~WyI4elFmQkItS3FZSHVKcW5wVER2c1VRIiwgIm5hbWUiLCAiSm9obiJd~eyJ0eXAiOiJrYitqd3QiLCJhbGciOiJFUzI1NiJ9.eyJub25jZSI6Im4wTmNFIiwiYXVkIjoiZGlkOmtleTp6RG5hZWZRQVBGVlF0OXNmVTYzaHlxWWdQemEycERTWFNKclByQ0c1cGFUNWVhUUpiIiwic2RfaGFzaCI6Im45dkFaUU04ZFNZSWVlVnJCLVExSHJGaWppY2VvcXBXUXV4SjFFT1lQSjQiLCJpYXQiOjE3Mjg4ODI2MTF9.2SQRzj4_PDTxVqoWCWtPGGgOzDn2d7sk6e8okhdAzqLgtvF6hUuOqHqzPd2XIJEDPtP0gfeV6W2dMRx3hKdrDA";
+export const VC = token("vc");
 
-export const CLAIMS: Claims = {
-  vp_token: {
-    "Identity-1": {
-      vct: "https://credentials.example.com/identity_credential",
-      sub: "did:key:zDnaej9QadgdZnu8uDXZXd4545dfJAEvmV6nn7xaYUqzcrPvM",
-      nbf: 1728882611,
-      iss: "did:key:zDnaexeh3T1CziWWSEeWpyuTkXqiT5ikiCw5iZQRBv4HXuex6",
-      iat: 1728882611,
-      exp: 1760418611,
-      cnf: {
-        jwk: {
-          kty: "EC",
-          crv: "P-256",
-          x: "FhAMv-TXg2gSe8jjfHUqgdO7_26eHomYSpyLqBM9ZSY",
-          y: "AMzSmIth0vBQ1ff28FQzsZZI-WrLYuqqHR8L_GlvkYs",
+/**
+ * Mints a fresh SD-JWT VC whose `status` claim points at index `idx` of a
+ * fresh status list published at `http://localhost:9001/status_list` (the
+ * mock server tests here already serve), with the bit at that index set to
+ * `valid`.
+ *
+ * The bundle's own `vcWithStatus`/`statusListJwt` pair (and the revoked
+ * pair) can't stand in for this: their status list is published at a fixed
+ * `https://issuer.example/...` URL that this suite's `mockServer` — bound to
+ * `localhost:9001` — can never intercept, since the fetch never reaches it
+ * (no DNS entry resolves that host to the mock server). Minting locally with
+ * an explicit `http://localhost:9001/status_list` URL keeps the credential
+ * and status list a real, SDK-signed, mutually coherent pair while staying
+ * reachable by the mock server the way the committed fixtures were.
+ */
+export async function buildStatusCredential(
+  statusIdx: number,
+  valid: boolean,
+): Promise<{ credential: string; statusListJwt: string }> {
+  const kms = new InMemKms();
+  const { keyMetadata } = await createDidAndKeyMetadata(kms);
+
+  const statusIssuerMetadata: StatusIssuerMetadata = {
+    issuerId: "test",
+    supportedStatusLists: [
+      {
+        id: "test_status_list",
+        format: {
+          format: StatusListFormatFmt.StatusListTokenJwt,
+          payload: {
+            statuses_nr: 32,
+            status_list_url: "http://localhost:9001/status_list",
+            status_size: 2,
+          },
         },
+        keyMetadata,
       },
-      name: "John",
-    },
-  },
-};
+    ],
+  };
+  const statusIssuer = new VcCoreStatusIssuer(kms, statusIssuerMetadata);
+  const statusList = await statusIssuer.issueStatusList("test_status_list", {
+    format: VCStatusesDataFormat.StatusListToken,
+    payload: { statuses: { [statusIdx.toString()]: valid ? 0 : 1 } },
+  });
+
+  const issuerMetadata: IssuerMetadata = {
+    issuerId: "https://issuer-backend.com",
+    credDefs: [
+      {
+        credDefId: "Identity-1",
+        format: VCFormat.SdJwtVc,
+        claims: {},
+        supportedProofs: { Jwt: ["ES256"] },
+        supportedSigningAlgs: [Alg.ES256],
+        display: undefined,
+        protocolData: {
+          format: CredentialDefinitionFormat.SdJwt,
+          payload: { vct: VC_TYPE, disclosures: ["$.name"] },
+        },
+        keyMetadata,
+      },
+    ],
+    protocolData: undefined,
+  };
+  const issuer = new VcCoreIssuer(kms, issuerMetadata, new UniversalDIDResolver());
+  const offer = issuer.offerCredential("Identity-1", undefined);
+
+  const holderKms = new InMemKms();
+  const { keyMetadata: holderKeyMetadata } = await createDidAndKeyMetadata(holderKms);
+  const holder = new VcCoreHolder(
+    holderKms,
+    new InMemVault(),
+    { clientId: "wallet-dev", pop: { lifetime: 300 } },
+    new UniversalDIDResolver(),
+    ReqwestHttpClient.insecure(),
+  );
+  const request = await holder.requestCredential(offer, null, holderKeyMetadata);
+  const credential = await issuer.issueCredential(request, { name: "John" }, null, {
+    format: CredentialStatusInfoFormat.TokenStatusList,
+    payload: { idx: statusIdx, uri: "http://localhost:9001/status_list" },
+  });
+
+  return { credential: credential.payload as string, statusListJwt: statusList.payload.jwt as string };
+}

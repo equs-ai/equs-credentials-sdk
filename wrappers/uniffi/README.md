@@ -206,6 +206,17 @@ Make sure you refresh your profile
 
 The Swift tests are located in the `swift` directory, which is a Swift Package with tests under `Tests/EqusSdkTests/`.
 
+Some fixtures are read from a JSON bundle emitted by `equs-test-fixtures`' `fixture_gen` binary rather
+than committed as literal tokens. `swift test`/`xcodebuild test` have no pretest hook, so generate that
+bundle once before running the Swift tests:
+
+```bash
+  ./scripts/generate_fixtures.sh
+```
+
+This writes `swift/Tests/EqusSdkTests/fixtures.generated.json` (gitignored), which `Fixtures.swift`
+reads by default; set `EQUS_FIXTURE_BUNDLE` to point it elsewhere instead.
+
 **Run Swift tests:**
 
 In order to run these tests, you will need to have the iOS simulator installed.

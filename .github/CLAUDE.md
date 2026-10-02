@@ -21,8 +21,8 @@ is the one exception and is named `publish`.
 
 | Path | Role |
 |------|------|
-| `workflows/ci.yml` | Triggers, gating and the 27 job calls. No steps. |
-| `workflows/_job.yml` | The generic containerised job behind 23 of the 27. Owns `container`, checkout, toolchain, node/java/wasm, caches, disk report and artifact upload. |
+| `workflows/ci.yml` | Triggers, gating and the 29 job calls. No steps. |
+| `workflows/_job.yml` | The generic containerised job behind 25 of the 29. Owns `container`, checkout, toolchain, node/java/wasm, caches, disk report and artifact upload. |
 | `workflows/_macos.yml` | The generic `macos-15` job behind `ios-xcframework`, `swift-test` and `ios-demo`. |
 | `workflows/_android.yml` | `android-demo`: bare `ubuntu-latest`, SDK from the runner plus the pinned NDK. |
 | `workflows/release.yml` | On a `vX.Y.Z` tag: preflight (tag is `X.Y.Z`, matches `Cargo.toml`, no package already at that version), then calls `publish-crate.yml`, `publish-nodejs.yml`, `publish-askar-nodejs.yml`, `publish-wasm.yml`, `publish-android.yml` and `publish-ios.yml`, then attaches every manifest, the AAR, the Maven bundle and the iOS zip to the one release. |
@@ -42,9 +42,10 @@ is the one exception and is named `publish`.
 | `scripts/binstall-or-build.sh` | Installs a `cargo-X` subcommand, falling back to a source build. Derives the check from the crate name, so it takes one argument where GitLab's `binstall_or_build` takes two. |
 
 Jobs run in five declared tiers, marked by `# tier N` and ordered in the file:
-1 `fmt` plus the two scans, which gate nothing; 2 `clippy`, `build-prod`,
-`build-prod-all-features`, `build-dev`, `common-macros-test`, `doc-build` and
-`ios-xcframework`; 3 the three wrappers, `test-with-coverage`,
+1 `fmt` plus the three scans (`secret-scan`, `dependency-scan`,
+`scan-embedded-tokens`), which gate nothing; 2 `clippy`, `build-prod`,
+`build-prod-all-features`, `build-dev`, `common-macros-test`, `test-fixtures-test`,
+`doc-build` and `ios-xcframework`; 3 the three wrappers, `test-with-coverage`,
 `askar-rust` and `oid4vc-demo`; 4 the tests, `askar-wrapper` and `wasm-demo-build`;
 5 `askar-plugin-nodejs-test`. Every demo in `demos/` is built: `oid4vc-demo`
 and `multi-thread-demo` in tier 3, and `wasm-demo-build`, `nodejs-demo-build`,
@@ -61,6 +62,27 @@ as an ordinary job.
 and run in parallel in tier 4. Before the split, `swift-test` built it and
 `ios-demo` waited for the whole 40-minute job just to reuse it. That mirrors
 `kotlin-test` and `android-demo`, which both hang off `kotlin-wrapper`.
+
+Every wrapper test job that reads `equs-test-fixtures`' bundle
+(`fixtures.generated.json`) generates it before the bundle is read, since
+nothing else guarantees it exists on that job's runner. `nodejs-test` gets
+this free through `npm run test`'s `pretest` hook, which also covers
+`wrappers/test/js_common`'s `test:nodejs` in the same job/filesystem.
+`wasm-test` never runs the Node suite first, so it has no free ride: it runs
+`cargo run -p equs-test-fixtures --all-features --bin fixture_gen` itself
+before `test:wasm`. `kotlin-test` (`make kotlin-test`) is covered by
+`wrappers/uniffi/kotlin/build.gradle.kts`'s `fixtureGen` Gradle task, which
+`tasks.test` `dependsOn`. `swift-test` (`make ios-test-only`) is covered by
+`wrappers/uniffi/Makefile`'s `ios-generate-fixtures` target, a prerequisite of
+`ios-test-only` so both it and `make ios-test` (GitLab) pick it up; it runs
+`wrappers/uniffi/scripts/generate_fixtures.sh`, which `set -euo pipefail`s so
+a generation failure fails the job before `xcodebuild test` runs.
+`askar-plugin-nodejs-test` reads the bundle too, through
+`plugins/askar/wrappers/nodejs/test/vault.test.ts`: that package has its own
+`pretest`/`fixtures` npm scripts (added alongside migrating its two committed
+tokens — see the `scan-embedded-tokens` bullet below), which fire on the same
+`npm run test --prefix plugins/askar/wrappers/nodejs` this job already ran, so
+no `run:` line changed here.
 
 Jobs are declared in execution order: scans, lint, `build-prod`, the Rust
 checks, then each wrapper followed by its test, the three askar jobs together,
@@ -179,17 +201,41 @@ not preserve, and turns a soft cache miss into a hard failure on re-run.
   W3C `…Key20xx` method-type names. Those three shapes are every hit in the
   tree, and matching on them leaves both rules live in every file, so a new
   fixture needs no config change. Provider rules are untouched.
+- `scan-embedded-tokens` runs `scripts/scan-embedded-tokens.py --fail-on src/
+  tests/ plugins/ wrappers/` plus its own `scripts/test_scan_embedded_tokens.py`
+  regression suite. `toolchain: false`: it needs only the `python3` the
+  `rust:1.97.0-bookworm` image already ships. `demos/` is never passed, for the
+  same reason `secret-scan`'s allowlists exist: two accepted, expired,
+  runtime-decoded Keycloak tokens the scanner reports but does not gate on
+  (see `scan-embedded-tokens.py`'s `KNOWN_EXCEPTIONS`). Bare `plugins/` was
+  briefly narrowed to `plugins/askar/src` because
+  `plugins/askar/wrappers/nodejs` still held two committed tokens in
+  `test/vault.test.ts`, not covered by `KNOWN_EXCEPTIONS` the way the two
+  `demos/` hits are — but that suite is real, CI-tested code
+  (`askar-plugin-nodejs-test`, `askar-plugin-nodejs-test-job`), not an
+  accepted exception, so it was migrated instead of excluded. That package now
+  has its own `pretest`/`fixtures` npm scripts and its own fixture loader
+  (`plugins/askar/wrappers/nodejs/test/fixtures.ts`), mirroring
+  `wrappers/nodejs` and `wrappers/test/js_common` respectively; see
+  `claude/tests.md` for the swap's detail.
 - `_job.yml` sets `CARGO_PROFILE_DEV_DEBUG` for every job from one input
   defaulting to `"0"`, rather than repeating it per job. `test-with-coverage`
   is the documented exception, passing `line-tables-only`.
 - `build-dev` gates nothing; it sits in tier 2 behind `fmt` like the other builds. It is the only producer of `target-dev-*`.
-- `common-macros-test` is the only job that runs `cargo test`. Coverage aside,
-  `test-with-coverage` is the pipeline's only other test runner, and
-  `cargo tarpaulin` at the workspace root inherits cargo's default package
-  selection — the root package only. That never built
-  `equs-common-macros/tests/debug_error.rs`, so the derive shipped untested.
-  `cargo test -p equs-common-macros` is a couple of seconds on top of the
-  container spin-up, and it has a GitLab counterpart, `common-macros-test-job`.
+- `common-macros-test` and `test-fixtures-test` are the only jobs that run
+  `cargo test`. Coverage aside, `test-with-coverage` is the pipeline's only
+  other test runner, and `cargo tarpaulin` at the workspace root inherits
+  cargo's default package selection — the root package only. That never built
+  `equs-common-macros/tests/debug_error.rs`, so the derive shipped untested, and
+  it would never build `test-fixtures/tests/` either. Each is a couple of
+  seconds on top of the container spin-up, and each has a GitLab counterpart:
+  `common-macros-test-job` and `test-fixtures-test-job`. The root
+  package's own unit tests cover the fixture crate from the other direction,
+  through the dev-dependency cycle, and run under `test-with-coverage`.
+  `test-fixtures/*` is excluded from tarpaulin: it is a workspace path
+  dependency, so tarpaulin counts its lines, and only the part the root
+  package's unit tests reach would ever be covered there — the rest is covered
+  by `test-fixtures-test`, which tarpaulin never runs.
 - `android-demo` runs on a bare runner, not the container. The Makefile's
   `android-clang-symlinks` writes `~/.cargo/config.toml`, which cargo ignores
   when `CARGO_HOME` points at the image's `/usr/local/cargo`, losing the NDK
@@ -258,10 +304,12 @@ not preserve, and turns a soft cache miss into a hard failure on re-run.
   and these entries are read once inside their own run, so they are the first
   to go. A scheduled prune was tried and dropped as redundant machinery.
 - `_job.yml` installs `cargo-binstall` and `sccache` only when `sccache` is on.
-  `fmt`, `nodejs-test`, `wasm-test`, `nodejs-demo-build` and
-  `askar-plugin-nodejs-test` run no cargo compilation and set `sccache: false`,
-  which skips the download. `wasm-wrapper` and `wasm-demo-build` also set it but do
-  compile; they simply do not use the wrapper.
+  `fmt`, `nodejs-test`, `nodejs-demo-build` and `askar-plugin-nodejs-test` run
+  no cargo compilation and set `sccache: false`, which skips the download.
+  `wasm-wrapper`, `wasm-demo-build` and `wasm-test` also set it but do
+  compile; they simply do not use the wrapper. `wasm-test` compiles because it
+  generates the `equs-test-fixtures` bundle `wrappers/test/js_common` reads —
+  see the fixture-generation note below.
 - `cargo tarpaulin` takes `--out` once per format: `-o Html -o Lcov`. A comma
   list is rejected as an invalid value.
 - Most `needs` edges carry a cache: the job restores what the upstream job

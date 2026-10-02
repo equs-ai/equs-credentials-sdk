@@ -539,11 +539,31 @@ mod tests {
         AskarVault, AskarVaultFetchOptions, AskarVaultParamsSortBy, AskarVaultParamsSortOrder,
     };
     use crate::{AskarStorage, AskarStorageConfig, KeyMethod};
+    use equs_sdk::inmem::kms::LocalKms;
     use equs_sdk::vault::{CredentialEntry, Vault, VaultFetchOptions};
     use equs_sdk::vc::{Credential, CredentialMetadata, VCFormat};
     use rstest::rstest;
+    use test_fixtures::keys::FixtureKey;
+    use test_fixtures::sd_jwt_vc::SdJwtVc;
 
-    const CRED_SD_JWT: &str = "eyJ0eXAiOiJ2YytzZC1qd3QiLCJhbGciOiJFUzI1NiIsImtpZCI6ImRpZDprZXk6ekRuYWV1alBxWjVFakhtZmtyell3ZUxmTXFyOGFxQTNvdDNCdGM0RmU5dHlMcWttUiN6RG5hZXVqUHFaNUVqSG1ma3J6WXdlTGZNcXI4YXFBM290M0J0YzRGZTl0eUxxa21SIn0.eyJfc2QiOlsiQ1Q1bzFMZk5XRE9LT3h4NDJCWUc0NzU0bFpIeTZ0MG5PUGtGRWRmb3FvTSIsIks3bWEwTmZxR0NfM0xQdG12cWtySTR5ckpsdkg0VFU2OWU3SXYtN0VJbzQiLCJyZVlhTkZCV0h6VjE3Y3Z1cTNyRmpVSTNHeDVKc19EbW5VWlNFUmQ0aFpzIl0sInZjdCI6IlNEX0pXVF9jcmVkIiwic3ViIjoiZGlkOmtleTp6RG5hZW5wbnRDa1huRENuYURrNjJMeE5xUGM0Q01kMzJmYmhpVnNaVjVLcFBURzJjIiwibmJmIjoxNzI1NTMzMjU0LCJfc2RfYWxnIjoic2hhLTI1NiIsImlzcyI6ImRpZDprZXk6ekRuYWV1alBxWjVFakhtZmtyell3ZUxmTXFyOGFxQTNvdDNCdGM0RmU5dHlMcWttUiIsImlhdCI6MTcyNTUzMzI1NCwiZXhwIjoxNzU3MDY5MjU0LCJjbmYiOnsiandrIjp7Imt0eSI6IkVDIiwiY3J2IjoiUC0yNTYiLCJ4IjoiVExuNjZxYm5QZXhLeUZtZ3h1Y1kzSlpyZHhCRGpBc3ItbXkya1dBYms4ayIsInkiOiJzaFl6eUVUOENyWVcyTXhPU0FCSkxhbUpPTGV3LWpQbE9aeHdTUzZrWGdjIn19fQ.CBBzIiTjRs2bmKENQcRY14wVnl2vnIjJY9u3AYrA9KQDjqCXZXSzoxQlripAM6Ud_QaYNrZcHK2EVo4QlH3k9w~WyJvMFR4dEw4QWh1TFJXUmduSDk4NF9RIiwgImdpdmVuX25hbWUiLCAiSm9obiJd~WyJ2SVMzZXNQTHlRUHRRZ0JMZ09GYWFnIiwgImZhbWlseV9uYW1lIiwgIkRvZSJd~WyJsaW81cXNVZHZJX3V3eUdiRmFtTnFRIiwgImRvYiIsICIwOS8wOS8xOTg5Il0~";
+    /// Mints a fresh issuer-signed SD-JWT VC. The vault stores and re-reads
+    /// credentials as opaque strings, so these tests only assert on
+    /// byte-identical round trips, never on the token's own claims.
+    async fn sd_jwt_credential() -> String {
+        let kms = LocalKms::new();
+        let issuer = FixtureKey::create_default(&kms)
+            .await
+            .expect("issuer fixture key should be created");
+        let holder = FixtureKey::create_default(&kms)
+            .await
+            .expect("holder fixture key should be created");
+
+        SdJwtVc::builder(&issuer, &holder)
+            .build()
+            .await
+            .expect("sd-jwt vc fixture should build")
+    }
+
     const CRED_LDP_VC: &str = r###"{
             "@context": "https://www.w3.org/2018/credentials/v1",
             "id": "http://example.org/credentials/3731",
@@ -576,13 +596,18 @@ mod tests {
     #[tokio::test]
     async fn askar_vault_mapping_credentials_uses_disjunction(#[case] fields: Vec<String>) {
         let vault = create_test_vault().await;
-        let sd_jwt_cred_id = store_sd_jwt_to_vault(&vault).await;
+        let sd_jwt_credential = sd_jwt_credential().await;
+        let sd_jwt_cred_id = store_sd_jwt_to_vault(&vault, &sd_jwt_credential).await;
 
         let find_res = vault.find_credentials(fields, None).await.unwrap();
 
         assert_eq!(
             serde_json::to_value(find_res).unwrap(),
-            serde_json::to_value(vec![create_expected_entry_sd_jwt(sd_jwt_cred_id)]).unwrap()
+            serde_json::to_value(vec![create_expected_entry_sd_jwt(
+                sd_jwt_cred_id,
+                &sd_jwt_credential
+            )])
+            .unwrap()
         );
     }
 
@@ -605,10 +630,11 @@ mod tests {
         let vault_3 = AskarVault::new(&storage, profile_3.clone());
         let vault_4 = AskarVault::new(&storage, profile_4.clone());
 
-        let sd_jwt_cred_id_1 = store_sd_jwt_to_vault(&vault_1).await;
-        let sd_jwt_cred_id_2 = store_sd_jwt_to_vault(&vault_2).await;
-        let sd_jwt_cred_id_3 = store_sd_jwt_to_vault(&vault_3).await;
-        let sd_jwt_cred_id_4 = store_sd_jwt_to_vault(&vault_4).await;
+        let sd_jwt_credential = sd_jwt_credential().await;
+        let sd_jwt_cred_id_1 = store_sd_jwt_to_vault(&vault_1, &sd_jwt_credential).await;
+        let sd_jwt_cred_id_2 = store_sd_jwt_to_vault(&vault_2, &sd_jwt_credential).await;
+        let sd_jwt_cred_id_3 = store_sd_jwt_to_vault(&vault_3, &sd_jwt_credential).await;
+        let sd_jwt_cred_id_4 = store_sd_jwt_to_vault(&vault_4, &sd_jwt_credential).await;
 
         vault_1
             .get_credential(&sd_jwt_cred_id_1.clone())
@@ -667,11 +693,12 @@ mod tests {
     #[tokio::test]
     async fn get_credentials_without_pagination_returns_all_credentials() {
         let vault = create_test_vault().await;
+        let credential = get_credential_sd_jwt().await;
 
         for i in 0..10 {
             vault
                 .store_credential(
-                    get_credential_sd_jwt().clone(),
+                    credential.clone(),
                     &get_empty_credential_metadata_sd_jwt(i.to_string()),
                 )
                 .await
@@ -695,11 +722,12 @@ mod tests {
         #[case] amount_to_get_from_vault: usize,
     ) {
         let vault = create_test_vault().await;
+        let credential = get_credential_sd_jwt().await;
 
         for i in 0..10 {
             vault
                 .store_credential(
-                    get_credential_sd_jwt().clone(),
+                    credential.clone(),
                     &get_empty_credential_metadata_sd_jwt(i.to_string()),
                 )
                 .await
@@ -728,11 +756,12 @@ mod tests {
         #[case] amount_to_get_from_vault: usize,
     ) {
         let vault = create_test_vault().await;
+        let credential = get_credential_sd_jwt().await;
 
         for i in 0..10 {
             vault
                 .store_credential(
-                    get_credential_sd_jwt().clone(),
+                    credential.clone(),
                     &get_empty_credential_metadata_sd_jwt(i.to_string()),
                 )
                 .await
@@ -757,11 +786,12 @@ mod tests {
     #[tokio::test]
     async fn find_credentials_without_pagination_returns_all_credentials() {
         let vault = create_test_vault().await;
+        let credential = get_credential_sd_jwt().await;
 
         for i in 0..10 {
             vault
                 .store_credential(
-                    get_credential_sd_jwt().clone(),
+                    credential.clone(),
                     &get_credential_metadata_sd_jwt_with_fields(i.to_string()),
                 )
                 .await
@@ -791,11 +821,12 @@ mod tests {
         #[case] result_amount: usize,
     ) {
         let vault = create_test_vault().await;
+        let credential = get_credential_sd_jwt().await;
 
         for i in 0..10 {
             vault
                 .store_credential(
-                    get_credential_sd_jwt().clone(),
+                    credential.clone(),
                     &get_credential_metadata_sd_jwt_with_fields(i.to_string()),
                 )
                 .await
@@ -815,8 +846,8 @@ mod tests {
         assert_eq!(credentials.len(), result_amount);
     }
 
-    fn get_credential_sd_jwt() -> Credential {
-        Credential::SdJwt(CRED_SD_JWT.to_string())
+    async fn get_credential_sd_jwt() -> Credential {
+        Credential::SdJwt(sd_jwt_credential().await)
     }
     fn get_empty_credential_metadata_sd_jwt(kid: String) -> CredentialMetadata {
         CredentialMetadata {
@@ -842,13 +873,15 @@ mod tests {
     }
 
     async fn test_vault(vault: &AskarVault) {
-        let cred1_id = store_sd_jwt_to_vault(vault).await;
+        let sd_jwt_credential = sd_jwt_credential().await;
+        let cred1_id = store_sd_jwt_to_vault(vault, &sd_jwt_credential).await;
         let cred2_id = store_ldp_vc_to_vault(vault).await;
 
         let get1_res = vault.get_credential(&cred1_id).await.unwrap().unwrap();
         let get2_res = vault.get_credential(&cred2_id).await.unwrap().unwrap();
 
-        let expected_entry_sd_jwt = create_expected_entry_sd_jwt(get1_res.clone().id);
+        let expected_entry_sd_jwt =
+            create_expected_entry_sd_jwt(get1_res.clone().id, &sd_jwt_credential);
         let expected_entry_ldp_vc = create_expected_entry_ldp_vc(get2_res.clone().id);
 
         assert_eq!(
@@ -918,7 +951,7 @@ mod tests {
         AskarVault::new(&storage, profile)
     }
 
-    async fn store_sd_jwt_to_vault(vault: &AskarVault) -> String {
+    async fn store_sd_jwt_to_vault(vault: &AskarVault, credential: &str) -> String {
         let cred_meta = CredentialMetadata {
             type_: "https://credentials.example.com/identity_credential".into(),
             kid: "1234".into(),
@@ -931,7 +964,7 @@ mod tests {
             ],
         };
         vault
-            .store_credential(Credential::SdJwt(CRED_SD_JWT.to_string()), &cred_meta)
+            .store_credential(Credential::SdJwt(credential.to_string()), &cred_meta)
             .await
             .unwrap()
     }
@@ -952,9 +985,9 @@ mod tests {
             .unwrap()
     }
 
-    fn create_expected_entry_sd_jwt(id: String) -> CredentialEntry {
+    fn create_expected_entry_sd_jwt(id: String, credential: &str) -> CredentialEntry {
         CredentialEntry {
-            credential: Credential::SdJwt(CRED_SD_JWT.to_string()),
+            credential: Credential::SdJwt(credential.to_string()),
             kid: "1234".into(),
             id,
         }

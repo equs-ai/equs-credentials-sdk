@@ -1,7 +1,7 @@
 # scripts/
 
-Scripts called by the release pipelines. GitHub Actions has its own set under
-`.github/scripts/`.
+Scripts called by the release pipelines, plus the embedded-token security gate.
+GitHub Actions has its own set under `.github/scripts/`.
 
 | File | Purpose |
 |------|---------|
@@ -9,6 +9,8 @@ Scripts called by the release pipelines. GitHub Actions has its own set under
 | `npm_release_manifest.sh` | Renders `release-manifest.yaml` for one npm release. |
 | `maven_release_manifest.sh` | Renders `release-manifest.yaml` for one Maven release. |
 | `file_release_manifest.sh` | Renders `release-manifest.yaml` for a release shipped as plain files. |
+| `scan-embedded-tokens.py` | Walks `git ls-files`, flags committed JWT/JWE strings and private key material, exits non-zero on a `--fail-on` path hit. |
+| `test_scan_embedded_tokens.py` | `unittest` regression tests for the scanner's detectors — run with `python3 scripts/test_scan_embedded_tokens.py` or `python3 -m unittest discover -s scripts -p "test_*.py"`. |
 
 ## release_manifest.sh
 
@@ -79,3 +81,44 @@ entry per file, named by its basename. Called by the `manifest` job of
 sha256 of the file the job attaches to the release; a missing file is emitted
 with `digest: null` and a warning. `RELEASE_VERSION` sets `release:` and every
 entry's `version:`.
+
+## scan-embedded-tokens.py
+
+`scan-embedded-tokens.py [--fail-on PATH…]` — no arguments just reports; one or
+more `--fail-on` paths make it a gate that exits `1` if any token or private
+key falls under them. Python 3 standard library only, no new dependency. Runs
+in CI on `rust:${RUST_VERSION}-bookworm` (needs `git` on `PATH`, which
+`python:3-slim` doesn't have); if `git` is missing, `git_tracked_files()`
+raises `ScanEnvironmentError` and `main()` exits `3` — distinct from `1`
+("tokens found") and `2` (argparse usage error) — so a broken CI image never
+reads as a security finding.
+
+It matches `eyJ…` runs shaped like a compact JWS/JWE, base64url-decodes the
+first segment and requires an `alg` or `enc` member before counting it as a
+real token (not just base64-ish text), then classifies it by its `exp` claim
+(live / expired / no-exp / encrypted). Separately it flags a JSON object
+carrying both `kty` and `d` (a private JWK) and any PEM `-----BEGIN … PRIVATE
+KEY-----` block. A Rust `\`-continued string literal is collapsed before
+matching, so a token wrapped across physical lines is not missed.
+
+`demos/multi-thread/src/main.rs` and `demos/oid4vc/issuer/src/main.rs` each
+keep one accepted exception — see `claude/tests.md` — so `demos/` is never
+passed to `--fail-on`, but the scan still reports both hits, tagged as known
+exceptions, instead of silently skipping the directory.
+
+Before matching, `normalize()` collapses three ways a token or key gets split
+or obscured across the raw bytes of a source file: a Rust backslash-newline
+continuation, a `"..." + "..."`-style string concatenation (the normal way to
+wrap a long string in JS/TS/Kotlin/Swift), and a `\"`-escaped JSON literal
+(how a JWK ends up embedded inside an ordinary, non-raw string). Each of
+those was a real blind spot caught in review, not a hypothetical — see the
+script's own module docstring for what it still cannot see (JWS JSON
+Serialization, computed/interpolated strings, git history).
+
+`test_scan_embedded_tokens.py` pins all three blind-spot fixes plus the core
+detectors (`find_tokens`, `find_private_jwks`, `find_pem_private_keys`,
+`under_any`) down as regression tests; run it before touching `normalize()`,
+`TOKEN_RE` or the two key detectors.
+
+See `claude/tests.md` for the current clean/dirty state of each part of the
+tree.

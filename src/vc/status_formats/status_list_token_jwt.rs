@@ -524,16 +524,16 @@ mod tests {
     }
 
     #[rstest]
-    #[case::one_bit_valid(1, status_list_jwt_token_1bit(), VCStatus::Valid)]
-    #[case::one_bit_invalid(2, status_list_jwt_token_1bit(), VCStatus::Invalid)]
-    #[case::two_bit_valid(1, status_list_jwt_token_2bit(), VCStatus::Valid)]
-    #[case::two_bit_invalid(2, status_list_jwt_token_2bit(), VCStatus::Invalid)]
-    #[case::two_bit_suspended(3, status_list_jwt_token_2bit(), VCStatus::Suspended)]
-    #[case::two_bit_app_specific(4, status_list_jwt_token_2bit(), VCStatus::AppSpecific(3))]
+    #[case::one_bit_valid(1, status_list_jwt_token(1, single_bit_statuses()).await, VCStatus::Valid)]
+    #[case::one_bit_invalid(2, status_list_jwt_token(1, single_bit_statuses()).await, VCStatus::Invalid)]
+    #[case::two_bit_valid(1, status_list_jwt_token(2, two_bit_statuses()).await, VCStatus::Valid)]
+    #[case::two_bit_invalid(2, status_list_jwt_token(2, two_bit_statuses()).await, VCStatus::Invalid)]
+    #[case::two_bit_suspended(3, status_list_jwt_token(2, two_bit_statuses()).await, VCStatus::Suspended)]
+    #[case::two_bit_app_specific(4, status_list_jwt_token(2, two_bit_statuses()).await, VCStatus::AppSpecific(3))]
     #[tokio::test]
     async fn vc_status_is_validated_correctly(
         #[case] vc_index: usize,
-        #[case] status_list_token: &str,
+        #[case] status_list_token: String,
         #[case] expected_status: VCStatus,
     ) {
         let mut http_client = MockHttpClient::new();
@@ -542,7 +542,7 @@ mod tests {
             &mut http_client,
             Method::GET,
             Url::from_str("http://example.com/status_list").unwrap(),
-            status_list_jwt_token_2bit(),
+            status_list_jwt_token(2, two_bit_statuses()).await,
             1.into(),
         );
 
@@ -569,12 +569,13 @@ mod tests {
     async fn vc_status_is_validated_correctly_when_cached_status_list_jwt_is_used() {
         let mut http_client = MockHttpClient::new();
         let url = "http://example.com/status_list";
+        let token = status_list_jwt_token(1, single_bit_statuses()).await;
 
         mock_http_fn_with_plain_text_resp(
             &mut http_client,
             Method::GET,
             Url::from_str(url).unwrap(),
-            status_list_jwt_token_1bit(),
+            token.clone(),
             1.into(),
         );
 
@@ -601,7 +602,7 @@ mod tests {
 
         assert_eq!(vc_status, Some(VCStatus::Invalid));
         assert_eq!(cached_jwts.len(), 1);
-        assert_eq!(cached_jwts.get(url).unwrap(), status_list_jwt_token_1bit());
+        assert_eq!(cached_jwts.get(url).unwrap(), &token);
 
         // Second call with same URL should use cached status list JWT
         http_client = MockHttpClient::new();
@@ -813,38 +814,22 @@ mod tests {
         params.not_after = rcgen::date_time_ymd(2046, 1, 1);
     }
 
-    /// Status list token that contains the following status list:
-    /// token idx - status:
-    /// 1 - Valid
-    /// 2 - Invalid
-    ///
-    /// Status bit size - 1
-    fn status_list_jwt_token_1bit() -> &'static str {
-        "eyJ0eXAiOiJzdGF0dXNsaXN0K2p3dCIsImFsZyI6IkVTMjU2Iiwia2lkIjoiZG\
-         lkOmtleTp6RG5hZWRlaHVUUVdzNWhaZHFKTVJzZGRpa2RBUnl4OGZhYzI4UjRN\
-         UFVRRTIybnhaI3pEbmFlZGVodVRRV3M1aFpkcUpNUnNkZGlrZEFSeXg4ZmFjMj\
-         hSNE1QVVFFMjJueFoifQ.eyJzdGF0dXNfbGlzdCI6eyJsc3QiOiJlTnBqWW1CZ\
-         0FBQUFEQUFEIiwiYml0cyI6MX0sImlhdCI6MTczODA3NDEzMCwic3ViIjoiaHR\
-         0cDovL2V4YW1wbGUuY29tL3N0YXR1c19saXN0IiwiX3NkX2FsZyI6InNoYS0yN\
-         TYifQ.HlkzOlNu8fNpLgHxfX0Ra7J1AqxxPwlyiskhMFaSfbVymoWRvHNuadT1\
-         PFr92AogZsMI5wHJkIBrBIOVdlfr3g~"
-    }
+    /// Mints a status list token via `StatusListJwt::create_status_list` (the
+    /// same call `status_list_is_created_correctly` exercises directly),
+    /// signed by a fresh DID so `extract_bitstring_status_list`'s signature
+    /// check — real, not a formality — has something valid to verify.
+    async fn status_list_jwt_token(status_bit_size: u8, statuses: VCStatuses) -> String {
+        let (iss_did, key_handle) =
+            create_did_url_and_key_handle(&LocalKms::new(), KeyType::P256).await;
 
-    /// Status list token that contains the following status list:
-    /// token idx - status:
-    /// 1 - Valid
-    /// 2 - Invalid
-    /// 3 - Suspended
-    /// 4 - AppSpecific (value - 3)
-    ///
-    /// Status bit size - 2
-    fn status_list_jwt_token_2bit() -> &'static str {
-        "eyJ0eXAiOiJzdGF0dXNsaXN0K2p3dCIsImFsZyI6IkVTMjU2Iiwia2lkIjoiZGlkOmtleTp6R\
-        G5hZWFoVE5nRVozN0ZESlRQcFhUWDJRUFBWb21nc2k4QVMzMjFjMjRNMlVvNWQ2I3pEbmFlYWh\
-        UTmdFWjM3RkRKVFBwWFRYMlFQUFZvbWdzaThBUzMyMWMyNE0yVW81ZDYifQ.eyJzdWIiOiJodH\
-        RwOi8vZXhhbXBsZS5jb20vc3RhdHVzX2xpc3QiLCJpYXQiOjE3NjMwMjQ0MTYsInN0YXR1c19s\
-        aXN0Ijp7ImxzdCI6ImVOcWJ3TXdBQmdBRW5RQ1UiLCJiaXRzIjoyfSwiX3NkX2FsZyI6InNoYS\
-        0yNTYifQ.uxeAWNaz0sP2PHrp3xndbrmNQTrHiGycOwsiGX4f1nsYGcLZhYmsTP5ixcdxWvTq3\
-        9blTkiRt1wXnCESlxqboQ~"
+        let metadata = SLMetadata {
+            statuses_nr: 32,
+            status_list_url: Url::from_str("http://example.com/status_list").unwrap(),
+            status_size: StatusSize::try_from(status_bit_size).unwrap(),
+        };
+
+        StatusListJwt::create_status_list(statuses, (&iss_did, key_handle), &metadata)
+            .await
+            .unwrap()
     }
 }

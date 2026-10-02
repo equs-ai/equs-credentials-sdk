@@ -212,8 +212,8 @@ describe("OID4VCI Holder: ", () => {
 
     const keyMetadata: KeyMetadata = {
       kid: "1",
-      didUrl:
-        "did:key:zDnaenpntCkXnDCnaDk62LxNqPc4CMd32fbhiVsZV5KpPTG2c#zDnaenpntCkXnDCnaDk62LxNqPc4CMd32fbhiVsZV5KpPTG2c",
+      // Must match `sdJWTCreds`'s own `sub` — random per bundle regeneration.
+      didUrl: utils.sdJWTCredsSubjectDidUrl,
     };
 
     const metadata = await resolveMetadata(credential, keyMetadata);

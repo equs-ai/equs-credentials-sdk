@@ -1,4 +1,5 @@
 import { Credential, parseClaims, VCFormat } from "equs-credentials-sdk";
+import { jwtDecode } from "jwt-decode";
 import { Fixtures } from "./fixtures";
 
 describe("Utils: ", () => {
@@ -8,14 +9,18 @@ describe("Utils: ", () => {
       payload: Fixtures.SDJWTVCPayload,
     };
     const result = await parseClaims(credential);
+
+    // Independent expectation: a naive decode (registered claims only —
+    // `name` is behind a disclosure `parseClaims` must merge itself, so it's
+    // not visible here) cross-checked against `parseClaims`'s own merge.
+    // `name: "John"` is a fixed default the fixture crate's SD-JWT VC
+    // builder always discloses; everything else (`sub`/`iss`/timestamps)
+    // changes every bundle regeneration. `parseClaims` doesn't surface `cnf`,
+    // matching what this test asserted before migration.
+    const { _sd, _sd_alg, cnf, ...registeredClaims } = jwtDecode(Fixtures.SDJWTVCPayload) as Record<string, unknown>;
     expect(result).toMatchObject({
+      ...registeredClaims,
       name: "John",
-      iat: 1728882611,
-      vct: "https://credentials.example.com/identity_credential",
-      sub: "did:key:zDnaej9QadgdZnu8uDXZXd4545dfJAEvmV6nn7xaYUqzcrPvM",
-      iss: "did:key:zDnaexeh3T1CziWWSEeWpyuTkXqiT5ikiCw5iZQRBv4HXuex6",
-      exp: 1760418611,
-      nbf: 1728882611,
     });
   });
 });

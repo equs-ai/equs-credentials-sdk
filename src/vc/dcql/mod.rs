@@ -876,7 +876,7 @@ mod tests {
     use crate::utils::test_utils::create_did_url_and_key_handle;
     use crate::vault::CredentialEntry;
     use crate::vc::claims::{Claim, Claims};
-    use crate::vc::core::tests::utils::CredTestCase;
+    use crate::vc::core::tests::utils::{CredTestCase, random_nonce};
     use crate::vc::core::{
         PresentationInput, PresentationRestriction, PresentationRestrictionValue,
     };
@@ -887,7 +887,8 @@ mod tests {
     };
     use crate::vc::formats::json_ld_vc::JsonLdAPI;
     use crate::vc::formats::sd_jwt_vc::{EXP_CLAIM, IAT_CLAIM, NBF_CLAIM, SdJwtAPI};
-    use crate::vc::{ClaimFormatDesignation, Credential, VCFormatsAPI, VCMetadata};
+    use crate::vc::{ClaimFormatDesignation, Credential, Presentation, VCFormatsAPI, VCMetadata};
+    use futures::executor::block_on;
     use iref::IriRefBuf;
     use openid4vp::core::dcql::DcqlCredentialSet;
     use rstest::rstest;
@@ -895,6 +896,10 @@ mod tests {
     use std::collections::HashMap;
     use std::ops::Add;
     use std::str::FromStr;
+    use test_fixtures::equs_sdk::inmem::kms::LocalKms as FixtureKms;
+    use test_fixtures::kb_jwt::KbJwt as FixtureKbJwt;
+    use test_fixtures::keys::FixtureKey;
+    use test_fixtures::sd_jwt_vc::SdJwtVc as FixtureSdJwtVc;
     use time::OffsetDateTime;
 
     #[rstest]
@@ -1639,31 +1644,52 @@ mod tests {
         (dcql, claims)
     }
 
-    fn sample_sdjwt_presentation_for_dcql() -> (Value, Value) {
-        let presentation_for_dcql = json!(
-        {"id":["eyJ0eXAiOiJkYytzZC1qd3QiLCJhbGciOiJFUzI1NiIsImtpZCI6ImRpZDprZXk6ekRuYWVwbmhBQXI5Tk51TnJ6M1pydU5ibTY0NGk5aW9VYW1xSHBZQXBTNldSUVNlTiN6RG5hZXBuaEFBcjlOTnVOcnozWnJ1TmJtNjQ0aTlpb1VhbXFIcFlBcFM2V1JRU2VOIn0.eyJfc2QiOlsiTWdsdFNpQUczcUpCTWMyUXU0UnVDUk1RSl9PNzdBZTI5ak9MY0NtRFNLUSIsImhfRkFmTEdCeVVyWHo5dkRNRHN1QnZzd2k3UDBRdlRhT0dyTW5XbTlDbEkiLCJsUzJVaWhBeU1ieEZ1cUJrS1ZhTmJDbmE1UjA5U1dQcGpVOFc4eDliakNnIl0sImlhdCI6MTc0NzI2ODYxMywiZGF0ZSI6IjA5LzA5LzE5ODkiLCJ2Y3QiOiJodHRwczovL2NyZWRlbnRpYWxzLmV4YW1wbGUuY29tL2lkZW50aXR5X2NyZWRlbnRpYWwiLCJzdWIiOiJkaWQ6a2V5OnpEbmFlc2tNWUozUmNrdkUxeXJ4cE1mTmtXTkxBdnptVXhFQjJKb3o3ZlF4OHRMQXUiLCJfc2RfYWxnIjoic2hhLTI1NiIsImlzcyI6ImRpZDprZXk6ekRuYWVwbmhBQXI5Tk51TnJ6M1pydU5ibTY0NGk5aW9VYW1xSHBZQXBTNldSUVNlTiIsImV4cCI6MTc3ODgwNDYxMywibmJmIjoxNzQ3MjY4NjEzLCJjbmYiOnsiandrIjp7Imt0eSI6IkVDIiwiY3J2IjoiUC0yNTYiLCJ4IjoibGVGdmtuNFlKNGtUdE45MUVQZmU4ZlRuN1hQWm5kMUtQV0Yxd193cDhYSSIsInkiOiJUZ0lwNjlfV3oxODFCYlZMcHg5cE16SW5fQ0JWeGhMbXRvcUFueE90ZDIwIn19fQ.P4e1UwBcxKMFSPq3xm9fFLUn8gJI6LdUQVUD1eIQLZLakMja7af-blESspA2RYS0vJ3NrNqUgft3RZ2v5dKlEw~WyJIc3RSS2JWR3JmVkViMk5lYTBwT0JRIiwgIm5hbWUiLCAiSm9obiJd~eyJ0eXAiOiJrYitqd3QiLCJhbGciOiJFUzI1NiJ9.eyJzZF9oYXNoIjoiT2dtazBIUlJPR1N5bDZaOWd1dTdydTFYOHR5VnZ1R0tsTXpkNkwwNUVubyIsIm5vbmNlIjoiN2dMaFFpdC1vY2FvMVNQejFKbWhyYm1GenNCelluak54ZVVnUHFWaWpzbyIsImlhdCI6MTc0NzI2ODYxMywiYXVkIjoiZGlkOmtleTp6RG5hZWdFYjRScWppR3ZHZ0xpWXFqYm05ckFjZzZ4ZmJHUG5MOXBrZnhma0F1M3ZrIn0.eauedo3Oz9aluDNN_xweJtDjXRjwyfKxqAmZjBARBWEvy6J09HhrrBHmS7Yr7LGG9FE27OXziV90ovnUv3M9sw"]}
-        );
-        let presentation_result = sample_sdjwt_presentation();
-        (presentation_for_dcql, presentation_result)
-    }
+    /// Mints an SD-JWT VC and a KB-JWT presentation from it, mirroring the
+    /// committed `presentation_for_dcql`/`presentation_result` pair. Both
+    /// values come from the same credential, since a KB-JWT's `sd_hash`
+    /// digests the exact credential and disclosure set it presents.
+    async fn sample_sdjwt_presentation_string() -> String {
+        let fixture_kms = FixtureKms::new();
+        let issuer = FixtureKey::create_default(&fixture_kms).await.unwrap();
+        let holder = FixtureKey::create_default(&fixture_kms).await.unwrap();
+        let credential = FixtureSdJwtVc::builder(&issuer, &holder)
+            .build()
+            .await
+            .unwrap();
 
-    fn sample_sdjwt_presentation() -> Value {
-        serde_json::to_value("eyJ0eXAiOiJkYytzZC1qd3QiLCJhbGciOiJFUzI1NiIsImtpZCI6ImRpZDprZXk6ekRuYWVwbmhBQXI5Tk51TnJ6M1pydU5ibTY0NGk5aW9VYW1xSHBZQXBTNldSUVNlTiN6RG5hZXBuaEFBcjlOTnVOcnozWnJ1TmJtNjQ0aTlpb1VhbXFIcFlBcFM2V1JRU2VOIn0.eyJfc2QiOlsiTWdsdFNpQUczcUpCTWMyUXU0UnVDUk1RSl9PNzdBZTI5ak9MY0NtRFNLUSIsImhfRkFmTEdCeVVyWHo5dkRNRHN1QnZzd2k3UDBRdlRhT0dyTW5XbTlDbEkiLCJsUzJVaWhBeU1ieEZ1cUJrS1ZhTmJDbmE1UjA5U1dQcGpVOFc4eDliakNnIl0sImlhdCI6MTc0NzI2ODYxMywiZGF0ZSI6IjA5LzA5LzE5ODkiLCJ2Y3QiOiJodHRwczovL2NyZWRlbnRpYWxzLmV4YW1wbGUuY29tL2lkZW50aXR5X2NyZWRlbnRpYWwiLCJzdWIiOiJkaWQ6a2V5OnpEbmFlc2tNWUozUmNrdkUxeXJ4cE1mTmtXTkxBdnptVXhFQjJKb3o3ZlF4OHRMQXUiLCJfc2RfYWxnIjoic2hhLTI1NiIsImlzcyI6ImRpZDprZXk6ekRuYWVwbmhBQXI5Tk51TnJ6M1pydU5ibTY0NGk5aW9VYW1xSHBZQXBTNldSUVNlTiIsImV4cCI6MTc3ODgwNDYxMywibmJmIjoxNzQ3MjY4NjEzLCJjbmYiOnsiandrIjp7Imt0eSI6IkVDIiwiY3J2IjoiUC0yNTYiLCJ4IjoibGVGdmtuNFlKNGtUdE45MUVQZmU4ZlRuN1hQWm5kMUtQV0Yxd193cDhYSSIsInkiOiJUZ0lwNjlfV3oxODFCYlZMcHg5cE16SW5fQ0JWeGhMbXRvcUFueE90ZDIwIn19fQ.P4e1UwBcxKMFSPq3xm9fFLUn8gJI6LdUQVUD1eIQLZLakMja7af-blESspA2RYS0vJ3NrNqUgft3RZ2v5dKlEw~WyJIc3RSS2JWR3JmVkViMk5lYTBwT0JRIiwgIm5hbWUiLCAiSm9obiJd~eyJ0eXAiOiJrYitqd3QiLCJhbGciOiJFUzI1NiJ9.eyJzZF9oYXNoIjoiT2dtazBIUlJPR1N5bDZaOWd1dTdydTFYOHR5VnZ1R0tsTXpkNkwwNUVubyIsIm5vbmNlIjoiN2dMaFFpdC1vY2FvMVNQejFKbWhyYm1GenNCelluak54ZVVnUHFWaWpzbyIsImlhdCI6MTc0NzI2ODYxMywiYXVkIjoiZGlkOmtleTp6RG5hZWdFYjRScWppR3ZHZ0xpWXFqYm05ckFjZzZ4ZmJHUG5MOXBrZnhma0F1M3ZrIn0.eauedo3Oz9aluDNN_xweJtDjXRjwyfKxqAmZjBARBWEvy6J09HhrrBHmS7Yr7LGG9FE27OXziV90ovnUv3M9sw")
+        FixtureKbJwt::builder(&fixture_kms, &holder, credential)
+            .build()
+            .await
             .unwrap()
     }
 
-    fn sample_ldp_vc_presentation_for_dcql() -> (Value, Value) {
-        let presentation_for_dcql = serde_json::to_value(json!(
-            {"id":[{"@context":["https://www.w3.org/2018/credentials/v1"],"type":["VerifiablePresentation"],"holder":"did:key:zDnaeW2x7yezzYRvcjJbsiDfc73rCVEK69Hgo9gf6KKBvm3QZ","verifiableCredential":{"@context":["https://www.w3.org/2018/credentials/v1","https://w3id.org/citizenship/v1"],"type":["VerifiableCredential","PermanentResident"],"credentialSubject":{"givenName":"John","type":["PermanentResident","Person"],"birthDate":"09/09/1989","familyName":"Doe","id":"did:key:zDnaeW2x7yezzYRvcjJbsiDfc73rCVEK69Hgo9gf6KKBvm3QZ"},"issuer":"did:key:zDnaeryTefzWK446XPbJwNkLyXiLhPcEnkfxYVyRbS8Vk6U8r","issuanceDate":"2025-05-15T06:22:50.399115247Z","expirationDate":"2030-05-14T06:22:50.399115247Z","proof":{"type":"EcdsaSecp256r1Signature2019","created":"2025-05-15T06:22:50.399Z","verificationMethod":"did:key:zDnaeryTefzWK446XPbJwNkLyXiLhPcEnkfxYVyRbS8Vk6U8r#zDnaeryTefzWK446XPbJwNkLyXiLhPcEnkfxYVyRbS8Vk6U8r","proofPurpose":"assertionMethod","jws":"eyJhbGciOiJFUzI1NiIsImNyaXQiOlsiYjY0Il0sImI2NCI6ZmFsc2V9..2WBzR1pbcRqzt2YJ-B9Kts663M_8jtNi8inUTOPloPpNqMufiNY83MLE-dx_m4g6OXddXgrsJIziOHCAiH3bXA"}},"proof":{"type":"EcdsaSecp256r1Signature2019","created":"2025-05-15T06:22:50.421Z","verificationMethod":"did:key:zDnaeW2x7yezzYRvcjJbsiDfc73rCVEK69Hgo9gf6KKBvm3QZ#zDnaeW2x7yezzYRvcjJbsiDfc73rCVEK69Hgo9gf6KKBvm3QZ","proofPurpose":"assertionMethod","nonce":"7CbUWaXwH5z14AYNj8FZjvfRZvHIf5o8fi-3XshrlwU","jws":"eyJhbGciOiJFUzI1NiIsImNyaXQiOlsiYjY0Il0sImI2NCI6ZmFsc2V9..rPb9wUX15ByHLEGjcl5oYpH0EzOkGGYHrBm22OERyqvTBD-akjAHO-HUB7W6gcd_fAhbmnCL8A0L36RVir5LXg"}}]}
-        )).unwrap();
-        let presentation_result = sample_ldp_vc_presentation();
+    fn sample_sdjwt_presentation_for_dcql() -> (Value, Value) {
+        let presentation = block_on(sample_sdjwt_presentation_string());
+        let presentation_result = serde_json::to_value(&presentation).unwrap();
+        let presentation_for_dcql = json!({"id": [presentation]});
         (presentation_for_dcql, presentation_result)
     }
 
-    fn sample_ldp_vc_presentation() -> Value {
-        serde_json::to_value(json!(
-            {"@context":["https://www.w3.org/2018/credentials/v1"],"type":["VerifiablePresentation"],"holder":"did:key:zDnaeW2x7yezzYRvcjJbsiDfc73rCVEK69Hgo9gf6KKBvm3QZ","verifiableCredential":{"@context":["https://www.w3.org/2018/credentials/v1","https://w3id.org/citizenship/v1"],"type":["VerifiableCredential","PermanentResident"],"credentialSubject":{"givenName":"John","type":["PermanentResident","Person"],"birthDate":"09/09/1989","familyName":"Doe","id":"did:key:zDnaeW2x7yezzYRvcjJbsiDfc73rCVEK69Hgo9gf6KKBvm3QZ"},"issuer":"did:key:zDnaeryTefzWK446XPbJwNkLyXiLhPcEnkfxYVyRbS8Vk6U8r","issuanceDate":"2025-05-15T06:22:50.399115247Z","expirationDate":"2030-05-14T06:22:50.399115247Z","proof":{"type":"EcdsaSecp256r1Signature2019","created":"2025-05-15T06:22:50.399Z","verificationMethod":"did:key:zDnaeryTefzWK446XPbJwNkLyXiLhPcEnkfxYVyRbS8Vk6U8r#zDnaeryTefzWK446XPbJwNkLyXiLhPcEnkfxYVyRbS8Vk6U8r","proofPurpose":"assertionMethod","jws":"eyJhbGciOiJFUzI1NiIsImNyaXQiOlsiYjY0Il0sImI2NCI6ZmFsc2V9..2WBzR1pbcRqzt2YJ-B9Kts663M_8jtNi8inUTOPloPpNqMufiNY83MLE-dx_m4g6OXddXgrsJIziOHCAiH3bXA"}},"proof":{"type":"EcdsaSecp256r1Signature2019","created":"2025-05-15T06:22:50.421Z","verificationMethod":"did:key:zDnaeW2x7yezzYRvcjJbsiDfc73rCVEK69Hgo9gf6KKBvm3QZ#zDnaeW2x7yezzYRvcjJbsiDfc73rCVEK69Hgo9gf6KKBvm3QZ","proofPurpose":"assertionMethod","nonce":"7CbUWaXwH5z14AYNj8FZjvfRZvHIf5o8fi-3XshrlwU","jws":"eyJhbGciOiJFUzI1NiIsImNyaXQiOlsiYjY0Il0sImI2NCI6ZmFsc2V9..rPb9wUX15ByHLEGjcl5oYpH0EzOkGGYHrBm22OERyqvTBD-akjAHO-HUB7W6gcd_fAhbmnCL8A0L36RVir5LXg"}}
-        )).unwrap()
+    /// Mints an LDP-VC and the LDP-VP presentation made from it via the
+    /// SDK's own `CredTestCase` helper (json_ld_vc has no `equs-test-fixtures`
+    /// builder), so the DCQL test drives a real, freshly-signed Data
+    /// Integrity proof rather than a committed one.
+    async fn sample_ldp_vc_presentation_value() -> Value {
+        let case = CredTestCase::ldp_vc();
+        let kms = LocalKms::new();
+        let (entry, _) = case.generate_vc(&kms, None).await;
+        let nonce = random_nonce().await;
+        let vp = match case.generate_vp(&kms, &entry, Some(nonce)).await {
+            Presentation::LdpVp(vp) => vp,
+            other => panic!("expected an LDP-VC presentation, got {other:?}"),
+        };
+        serde_json::to_value(&vp).unwrap()
+    }
+
+    fn sample_ldp_vc_presentation_for_dcql() -> (Value, Value) {
+        let presentation = block_on(sample_ldp_vc_presentation_value());
+        let presentation_for_dcql = json!({"id": [presentation.clone()]});
+        (presentation_for_dcql, presentation)
     }
 
     fn create_simple_dcql_case() -> (Vec<DCQLCredential>, Vec<PresentationInput>) {

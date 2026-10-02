@@ -23,17 +23,15 @@ import {
   VCStatusFormat,
 } from "equs-credentials-sdk";
 import {
-  AUTH_REQUEST,
-  AUTH_REQUEST_WITH_FAKE_VCT,
-  AUTH_REQUEST_JWT,
-  AUTH_REQUEST_WITH_DIRECT_POST_JWT,
+  buildAuthRequestFixture,
+  buildStatusCredential,
   PRESENTATION_SUBMISSION,
   STATE,
   VC,
   VC_TYPE,
-  VC_WITH_STATUS,
-  AUTH_REQUEST_WITH_FAKE_CONSTRAINTS,
-  STATUS_LIST_JWT,
+  withDirectPostJwt,
+  withFakeConstraints,
+  withFakeVct,
 } from "./fixtures";
 import { MockNonceHandler } from "./mockNonceHandler";
 
@@ -47,6 +45,30 @@ describe("OID4VP Holder: ", () => {
 
   let credential: Credential;
   let metadata: CredentialMetadata;
+
+  let AUTH_REQUEST_JWT: string;
+  let AUTH_REQUEST: import("equs-credentials-sdk").CommonAuthorizationRequest;
+  let AUTH_REQUEST_WITH_DIRECT_POST_JWT: import("equs-credentials-sdk").CommonAuthorizationRequest;
+  let AUTH_REQUEST_WITH_FAKE_VCT: import("equs-credentials-sdk").CommonAuthorizationRequest;
+  let AUTH_REQUEST_WITH_FAKE_CONSTRAINTS: import("equs-credentials-sdk").CommonAuthorizationRequest;
+  let requestUri: string;
+  let requestUriPost: string;
+
+  beforeAll(async () => {
+    const fixture = await buildAuthRequestFixture();
+    AUTH_REQUEST_JWT = fixture.authRequestJwt;
+    AUTH_REQUEST = fixture.authRequest;
+    AUTH_REQUEST_WITH_DIRECT_POST_JWT = withDirectPostJwt(AUTH_REQUEST);
+    AUTH_REQUEST_WITH_FAKE_VCT = withFakeVct(AUTH_REQUEST);
+    AUTH_REQUEST_WITH_FAKE_CONSTRAINTS = withFakeConstraints(AUTH_REQUEST);
+
+    // `AUTH_REQUEST.client_id` is `decentralized_identifier:<did>` — the deep
+    // link's own `client_id` param must carry the same freshly generated DID.
+    const did = AUTH_REQUEST.client_id.replace(/^decentralized_identifier:/, "");
+    const clientIdParam = `client_id=decentralized_identifier%3A${encodeURIComponent(did)}`;
+    requestUri = `openid4vp://?${clientIdParam}&request_uri=http%3A%2F%2Flocalhost%3A9001%2Frequest`;
+    requestUriPost = `openid4vp://?${clientIdParam}&request_uri_method=post&request_uri=http%3A%2F%2Flocalhost%3A9001%2Frequest`;
+  });
 
   beforeEach(async () => {
     mockServer.reset();
@@ -82,21 +104,20 @@ describe("OID4VP Holder: ", () => {
       .forGet("/request")
       .thenReply(200, AUTH_REQUEST_JWT, { "content-type": "application/oauth-authz-req+jwt" });
 
-    const authorizationRequest = await holder.getAuthorizationRequest(
-      "openid4vp://?client_id=decentralized_identifier%3Adid%3Akey%3AzDnaer1d3Hpdg6RH7KRhWXRtzpijEm8GtaVQn7BtSw7DiW72E&request_uri=http%3A%2F%2Flocalhost%3A9001%2Frequest",
-    );
+    const authorizationRequest = await holder.getAuthorizationRequest(requestUri);
 
     expect(authorizationRequest.getAuthRequest()).toMatchObject(AUTH_REQUEST);
   });
 
   it("get credential status", async () => {
+    const { credential: statusCredentialPayload, statusListJwt } = await buildStatusCredential(1, true);
     const credential = {
       format: VCFormat.SdJwtVc,
-      payload: VC_WITH_STATUS,
+      payload: statusCredentialPayload,
     };
     await mockServer
       .forGet("/status_list")
-      .thenReply(200, STATUS_LIST_JWT, { "content-type": "application/statuslist+jwt" });
+      .thenReply(200, statusListJwt, { "content-type": "application/statuslist+jwt" });
 
     const status: VCStatus = await holder.getCredentialStatus(credential);
     expect(status).toEqual({
@@ -112,9 +133,7 @@ describe("OID4VP Holder: ", () => {
       .forGet("/request")
       .thenReply(200, AUTH_REQUEST_JWT, { "content-type": "application/oauth-authz-req+jwt" });
 
-    const authorizationRequest = await holder.getAuthorizationRequest(
-      "openid4vp://?client_id=decentralized_identifier%3Adid%3Akey%3AzDnaer1d3Hpdg6RH7KRhWXRtzpijEm8GtaVQn7BtSw7DiW72E&request_uri=http%3A%2F%2Flocalhost%3A9001%2Frequest",
-    );
+    const authorizationRequest = await holder.getAuthorizationRequest(requestUri);
     let transactionData = authorizationRequest.getAuthRequest().transaction_data;
     expect(transactionData).toEqual([
       {
@@ -136,9 +155,7 @@ describe("OID4VP Holder: ", () => {
       };
     });
 
-    await holder.getAuthorizationRequest(
-      "openid4vp://?client_id=decentralized_identifier%3Adid%3Akey%3AzDnaer1d3Hpdg6RH7KRhWXRtzpijEm8GtaVQn7BtSw7DiW72E&request_uri_method=post&request_uri=http%3A%2F%2Flocalhost%3A9001%2Frequest",
-    );
+    await holder.getAuthorizationRequest(requestUriPost);
   });
 
   it("present credentials auto", async () => {
@@ -211,9 +228,15 @@ describe("OID4VP Holder: ", () => {
 
     for (const key in credentialsMapping) {
       expect(key).toBe("Identity-1");
+      // The bundle's `vc` fixture discloses `surname` (the old committed
+      // literal never did), so `PRESENTATION_DEFINITION_WITH_FAKE_CONSTRAINTS`'s
+      // multi-alternative field now targets `middle_name`/`honorific_prefix`
+      // instead — neither disclosed by any fixture — so both the
+      // single-path (`$.first_name`) and multi-alternative branches of the
+      // unmatched-path reporting stay exercised.
       expect(credentialsMapping[key].data).toMatchObject({
         type: "Paths",
-        paths: [["$.first_name"], ["$.surname", "$.last_name"]],
+        paths: [["$.first_name"], ["$.middle_name", "$.honorific_prefix"]],
       });
     }
   });
@@ -237,12 +260,15 @@ describe("OID4VP Holder: ", () => {
   });
 
   it("findVcsForPresentation filter out revoked credentials", async () => {
+    // A real, SDK-signed revoked credential + status list pair — not a
+    // hand-rolled status list — matching AUTH_REQUEST_WITH_FAKE_VCT's vct
+    // mismatch, so `is_valid()` must consult the (revoked) status to decide
+    // whether the mismatch reason surfaces at all (it must not).
+    const { credential: revokedCredentialPayload, statusListJwt } = await buildStatusCredential(1, false);
     const credential = {
       format: VCFormat.SdJwtVc,
-      payload: VC_WITH_STATUS,
+      payload: revokedCredentialPayload,
     };
-    const statusListJwt =
-      "eyJ0eXAiOiJzdGF0dXNsaXN0K2p3dCIsImFsZyI6IkVTMjU2Iiwia2lkIjoiZGlkOmtleTp6RG5hZVVDemI0RHMyRU44anVRRnJEclNoVjZBd1cxTjlZdlJ3WHdZUWdGeGVpdk1KI3pEbmFlVUN6YjREczJFTjhqdVFGckRyU2hWNkF3VzFOOVl2UndYd1lRZ0Z4ZWl2TUoifQ.eyJzdGF0dXNfbGlzdCI6eyJiaXRzIjoxLCJsc3QiOiJlTnBqWVdCZ0FBQUFGQUFGIn0sInN1YiI6Imh0dHA6Ly9sb2NhbGhvc3Q6OTAwMS9zdGF0dXNfbGlzdCIsImlhdCI6MTc1MzA1NDIzOCwiX3NkX2FsZyI6InNoYS0yNTYifQ.ZW5jcnlwdGVkX3Rlc3RfdmFsdWU~";
     await mockServer
       .forGet("/status_list")
       .thenReply(200, statusListJwt, { "content-type": "application/statuslist+jwt" });

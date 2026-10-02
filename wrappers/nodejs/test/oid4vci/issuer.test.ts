@@ -4,6 +4,7 @@ import {
   HttpResponse,
   InMemKms,
   NonceHandler,
+  OID4VCICredentialRequest,
   OID4VCIIssuer,
   OID4VCIIssuerBuilder,
 } from "../../";
@@ -12,15 +13,14 @@ import {
   CLAIMS,
   CRED_DEF_METADATA,
   CRED_OFFER,
-  CRED_REQUEST_FOR_BATCH_ISSUANCE,
   CredDefId1,
   CredDefId2,
-  CredRequest1,
-  CredRequest2,
   GRANTS,
   ISSUER_METADATA,
   MockNonceHandler,
-  PROOF_JWT,
+  buildBatchCredRequest,
+  buildCredRequest,
+  buildProofJwt,
 } from "./fixtures";
 import { createDidAndKeyMetadata } from "../utils";
 import { jwtDecode } from "jwt-decode";
@@ -29,6 +29,12 @@ describe("OID4VCI Issuer: ", () => {
   let issuer: OID4VCIIssuer;
   let nonceHandler: MockNonceHandler;
   const NONCE = "KB50VOm9I-kPLT9mAACV8g";
+  // Proofs must be minted at runtime (fixed aud/nonce, not the generic bundle
+  // fixture) — see `buildProofJwt`'s doc comment in ./fixtures.
+  let CredRequest1: OID4VCICredentialRequest;
+  let CredRequest2: OID4VCICredentialRequest;
+  let CRED_REQUEST_FOR_BATCH_ISSUANCE: OID4VCICredentialRequest;
+  let PROOF_JWT: string;
 
   beforeEach(async () => {
     const kms = new InMemKms();
@@ -41,6 +47,11 @@ describe("OID4VCI Issuer: ", () => {
       .withCredentialLifetime(CredDefId1, CredentialLifetime.finite(3600 * 24 * 365))
       // CredDefId2 lifetime must fallback to default (infinite).
       .build();
+
+    PROOF_JWT = await buildProofJwt(NONCE);
+    CredRequest1 = await buildCredRequest(CredDefId1, NONCE);
+    CredRequest2 = await buildCredRequest(CredDefId2, NONCE);
+    CRED_REQUEST_FOR_BATCH_ISSUANCE = await buildBatchCredRequest(NONCE);
   });
 
   test.skip("Custom http client", async () => {

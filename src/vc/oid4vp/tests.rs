@@ -5,8 +5,35 @@ pub mod fixtures {
     pub const STATE: &str = "1d8b0d93-86e8-4135-87d4-524bb0500bf3";
     pub const REQUEST_URI: &str = "openid4vp://?client_id=decentralized_identifier%3Adid%3Akey%3AzDnaebMD6CqPmJL8WxF6YffAAbbK935aaKbyVEyuGQtukXk6f&request_uri=http%3A%2F%2F127.0.0.1%3A55796%2Frequest";
     pub const CREDENTIAL_ID: &str = "abcde";
-    pub const SAMPLE_CREDENTIAL_STATUS_LIST: &str = "eyJ0eXAiOiJzdGF0dXNsaXN0K2p3dCIsImFsZyI6IkVTMjU2Iiwia2lkIjoiZGlkOmtleTp6RG5hZVp4QmJlVFdBYlhOcXlHZER4dDJXRTZjbzNteHU0VllEOHlieXlkdjhkQnh4I3pEbmFlWnhCYmVUV0FiWE5xeUdkRHh0MldFNmNvM214dTRWWUQ4eWJ5eWR2OGRCeHgifQ.eyJzdGF0dXNfbGlzdCI6eyJsc3QiOiJlTnFid013QUJnQUVuUUNVIiwiYml0cyI6Mn0sInN1YiI6Imh0dHA6Ly9sb2NhbGhvc3Q6OTAwMS9zdGF0dXNfbGlzdCIsImlhdCI6MTc2MzAyNTYyMywiX3NkX2FsZyI6InNoYS0yNTYifQ.lCOpC_53MXw4mShUwGtLbxh3Ha-qFNiRohPTZWo2XyCkBVSWn2daxEjSXM048p2DN8LAo61fcgAA69BGvcf5WQ~";
-    pub const SAMPLE_SD_JWT_WITH_STATUS: &str = "eyJ0eXAiOiJkYytzZC1qd3QiLCJhbGciOiJFUzI1NiIsImtpZCI6ImRpZDprZXk6ekRuYWVmYUdTd1RmWmsyVXVRV1JqRFQ1Z3J0TEw2RWE1Z3hGcjVBN1hyMzZIUXdtQiN6RG5hZWZhR1N3VGZaazJVdVFXUmpEVDVncnRMTDZFYTVneEZyNUE3WHIzNkhRd21CIn0.eyJfc2QiOlsiTGtNQ3hnT3dKZXVWa2xFUVIxYUl1TDVUSXllRkZiSUhEYXNjZk9EOGlHWSIsInc5WHpEVG5YMFRNOVFFX0NjYUVSaUtpbVV3VkFkWEwxRzZIdU1wZHdkclkiXSwiYWRkcmVzcyI6IjIyMUIgQmFrZXIgU3RyZWV0IiwiaWF0IjoxNzUzMDU0NDQ4LCJkYXRlIjoiMDkvMDkvMTk4OSIsInN1YiI6ImRpZDprZXk6ekRuYWVoVzJXWERnaHBNMTZYRzN5Z2Vja2FSTWJpamJjWG9tZnQ0ZzI2cnlpUlZXUiIsInZjdCI6Imh0dHBzOi8vY3JlZGVudGlhbHMuZXhhbXBsZS5jb20vaWRlbnRpdHlfY3JlZGVudGlhbCIsInN0YXR1cyI6eyJzdGF0dXNfbGlzdCI6eyJ1cmkiOiJodHRwOi8vbG9jYWxob3N0OjkwMDEvc3RhdHVzX2xpc3QiLCJpZHgiOjF9fSwiX3NkX2FsZyI6InNoYS0yNTYiLCJpc3MiOiJkaWQ6a2V5OnpEbmFlZmFHU3dUZlprMlV1UVdSakRUNWdydExMNkVhNWd4RnI1QTdYcjM2SFF3bUIiLCJleHAiOjE3NTMwNTUwNDgsIm5iZiI6MTc1MzA1NDQ0OCwiY25mIjp7Imp3ayI6eyJrdHkiOiJFQyIsImNydiI6IlAtMjU2IiwieCI6Il9hRHExTWE2SFNOUUZrR0F0ZnBpNlR3UnVuMUhlVnpCWWo2R29DcEhmcW8iLCJ5IjoiSTY0VnRmaTNlbzktQTM0TmNNMFJ4cHRsbzhiOGd1RUV3dnd2S2w1YUZlWSJ9fX0.jruSbbpygwgyWcJ2DO0myKlGimKW0n_dsYc5l-hksJqIWZF2Wy5Sf01nZlkUop-_JkN3x9Ct1kCOHes8-Ozdxg~WyJ1eExOVGVtV1FrYzFWTzZMZ3NBcmxRIiwgIm5hbWUiLCAiSm9obiJd~WyIyQ0J1ZENXSTVFSW1haGd6ZGNVMVZ3IiwgInN1cm5hbWUiLCAiRG9lIl0~";
+
+    use serde_json::{Map, Value};
+    use std::sync::OnceLock;
+
+    /// A P-256 keypair shared by the `"ac"` client-metadata encryption fixtures
+    /// (`single_presentation::sd_jwt::auth_request_with_direct_post_jwt_response`,
+    /// `utils::PresentationTestCase::build_auth_request_for_dcql` /
+    /// `get_private_enc_key`) and the matching decrypt key in
+    /// `utils::PresentationTestCase::mock_http_auth_response_endpoint_helper`.
+    /// Generated once per test run so no private key material is committed to
+    /// source; returns the public JWK (as a JSON map, `kid`/`use`/`alg` set the
+    /// way the fixture needs) and the private JWK string.
+    pub fn ac_encryption_key() -> &'static (Map<String, Value>, String) {
+        static KEY: OnceLock<(Map<String, Value>, String)> = OnceLock::new();
+        KEY.get_or_init(|| {
+            let secret = p256::SecretKey::random(&mut p256::elliptic_curve::rand_core::OsRng);
+            let mut pub_jwk = match serde_json::to_value(secret.public_key().to_jwk()).unwrap() {
+                Value::Object(map) => map,
+                _ => unreachable!(),
+            };
+            pub_jwk.insert("kid".to_string(), Value::from("ac"));
+            pub_jwk.insert("use".to_string(), Value::from("enc"));
+            pub_jwk.insert("alg".to_string(), Value::from("ES256"));
+
+            let private_jwk = secret.to_jwk_string().as_str().to_string();
+
+            (pub_jwk, private_jwk)
+        })
+    }
 
     pub mod single_presentation {
         pub mod json_ld {
@@ -949,7 +976,6 @@ pub mod fixtures {
             ]
         }"#;
 
-            pub const AUTH_REQUEST_JWT: &str = "eyJhbGciOiJFUzI1NiIsImtpZCI6ImRpZDprZXk6ekRuYWViTUQ2Q3FQbUpMOFd4RjZZZmZBQWJiSzkzNWFhS2J5VkV5dUdRdHVrWGs2ZiN6RG5hZWJNRDZDcVBtSkw4V3hGNllmZkFBYmJLOTM1YWFLYnlWRXl1R1F0dWtYazZmIiwidHlwIjoiYXBwbGljYXRpb24vb2F1dGgtYXV0aHotcmVxK2p3dCJ9.eyJyZXNwb25zZV90eXBlIjoidnBfdG9rZW4iLCJzdGF0ZSI6IjFkOGIwZDkzLTg2ZTgtNDEzNS04N2Q0LTUyNGJiMDUwMGJmMyIsInJlc3BvbnNlX21vZGUiOiJkaXJlY3RfcG9zdCIsIm5vbmNlIjoiMlQwbjJxZ2RYNlh5RXotVWdDSEZNSDZmUmw5LXM0SURXcmtubmtHVzBWMCIsImNsaWVudF9tZXRhZGF0YSI6eyJ2cF9mb3JtYXRzX3N1cHBvcnRlZCI6eyJkYytzZC1qd3QiOnsic2Qtand0X2FsZ192YWx1ZXMiOlsiRWREU0EiLCJFUzI1NiJdLCJrYi1qd3RfYWxnX3ZhbHVlcyI6WyJFZERTQSIsIkVTMjU2Il19fSwiandrcyI6eyJrZXlzIjpbeyJ1c2UiOiJlbmMiLCJhbGciOiJFUzI1NiIsImtpZCI6IlJTZE5GZG5HSG06UDI1NjoiLCJrdHkiOiJFQyIsImNydiI6IlAtMjU2IiwieCI6IkxiLTNrcG9tZS1nbHZTQXJaV0RPUlVva3JseWw5VFZ2M2h6bVV1QmdUWE0iLCJ5IjoidjFGZ2NPVHhNMTd0OWZ3dVFSeEo3S1JFcERYSEZTejRrZzJVQ2VDbVhidyJ9XX0sImVuY3J5cHRlZF9yZXNwb25zZV9lbmNfdmFsdWVzX3N1cHBvcnRlZCI6WyJBMTI4R0NNIiwiQTEyOENCQy1IUzI1NiJdLCJzdWJqZWN0X3N5bnRheF90eXBlc19zdXBwb3J0ZWQiOlsiZGlkOmtleSJdfSwiY2xpZW50X2lkIjoiZGVjZW50cmFsaXplZF9pZGVudGlmaWVyOmRpZDprZXk6ekRuYWViTUQ2Q3FQbUpMOFd4RjZZZmZBQWJiSzkzNWFhS2J5VkV5dUdRdHVrWGs2ZiIsInByZXNlbnRhdGlvbl9kZWZpbml0aW9uIjp7ImlkIjoiMzI3YWQxNzEtYzgwYS00ODViLWIwOTgtNTBkN2FkMjc4ZWY2IiwiaW5wdXRfZGVzY3JpcHRvcnMiOlt7ImlkIjoiSWRlbnRpdHktMSIsImNvbnN0cmFpbnRzIjp7ImZpZWxkcyI6W3sicGF0aCI6WyIkLnZjdCJdLCJmaWx0ZXIiOnsidHlwZSI6InN0cmluZyIsImNvbnN0IjoiaHR0cHM6Ly9jcmVkZW50aWFscy5leGFtcGxlLmNvbS9pZGVudGl0eV9jcmVkZW50aWFsIn0sInByZWRpY2F0ZSI6bnVsbCwiaW50ZW50X3RvX3JldGFpbiI6ZmFsc2V9LHsicGF0aCI6WyIkLm5hbWUiXSwib3B0aW9uYWwiOnRydWUsInByZWRpY2F0ZSI6bnVsbCwiaW50ZW50X3RvX3JldGFpbiI6ZmFsc2V9XX0sIm5hbWUiOiJJZGVudGl0eSBWQyIsInB1cnBvc2UiOiJXZSB3YW50IGFuIGlkZW50aXR5IiwiZm9ybWF0Ijp7ImRjK3NkLWp3dCI6eyJzZC1qd3RfYWxnX3ZhbHVlcyI6WyJFUzI1NiIsIkVkRFNBIl0sImtiLWp3dF9hbGdfdmFsdWVzIjpbIkVTMjU2IiwiRWREU0EiXX19fV19LCJyZXNwb25zZV91cmkiOiJodHRwOi8vMTI3LjAuMC4xOjU1Nzk2L2F1dGgifQ.vx7zZECHmm-hJ6Gnt0FAQf4aCCrYpbyoIQHJOUcTOw6cESozijzV8Y2VKmoEHefiEM6RWYYs7IZcF4hLZ2fdyw";
             pub const AUTH_REQUEST: &str = r#"
             {
               "response_type": "vp_token",
@@ -1160,79 +1186,6 @@ pub mod fixtures {
                   }
                 }"#;
 
-            pub const AUTH_REQUEST_WITH_DIRECT_POST_JWT_RESPONSE: &str = r#"
-                {
-                  "client_id": "decentralized_identifier:did:key:zDnaehgaHKAP7LAA3Kwa4FjXjJ1G3BcaHqr5gfRySJcGDgBtV",
-                  "state": null,
-                  "presentation_definition": {
-                    "id": "327ad171-c80a-485b-b098-50d7ad278ef6",
-                    "input_descriptors": [
-                      {
-                        "id": "Identity-1",
-                        "constraints": {
-                          "fields": [
-                            {
-                              "path": [
-                                "$.name"
-                              ],
-                              "predicate": null,
-                              "optional": true,
-                              "intent_to_retain": false
-                            },
-                            {
-                              "path": [
-                                "$.vct"
-                              ],
-                              "predicate": null,
-                              "filter": {
-                                "type": "string",
-                                "const": "https://credentials.example.com/identity_credential"
-                              },
-                              "intent_to_retain": false
-                            }
-                          ]
-                        },
-                        "name": "Identity VC",
-                        "purpose": "We want an identity",
-                        "format": {
-                          "dc+sd-jwt": {
-                            "sd-jwt_alg_values": [
-                              "ES256",
-                              "EdDSA"
-                            ],
-                            "kb-jwt_alg_values": [
-                              "ES256",
-                              "EdDSA"
-                            ]
-                          }
-                        }
-                      }
-                    ],
-                    "name": "Example with selective disclosure"
-                  },
-                  "nonce": "3DaLwdi89qDgplpSwAspX6wWzm6pLkzaN3Xuk-ar5zY",
-                  "response_mode": "direct_post.jwt",
-                  "response_type": "vp_token",
-                  "response_uri": "http://127.0.0.1:55796/auth",
-                  "client_metadata": {
-                    "vp_formats_supported": {
-                        "dc+sd-jwt": {
-                            "sd-jwt_alg_values": ["EdDSA", "ES256"],
-                            "kb-jwt_alg_values": ["EdDSA", "ES256"]
-                        }
-                    },
-                    "jwks": {
-                      "keys": [
-                        {
-                          "kty":"EC", "kid":"ac", "use":"enc", "crv":"P-256","alg":"ES256",
-                          "x": "SSnPfyVhQgcU9Aaynqgi6QGhrq7K7WFEC0mAvpHG4TM",
-                          "y": "rYQ5mLQLTs95WLBKKA8R5IjMTXjX13iZnzazsVectRY"
-                        }
-                     ]
-                    },
-                    "encrypted_response_enc_values_supported": ["A128GCM", "A128CBC-HS256"]
-                  }
-                }"#;
             pub const AUTH_REQUEST_WITH_NON_URL_CLIENT_ID_PREFIX: &str = r#"
                 {
                   "client_id": "redirect_uri:non-link-id",
@@ -1455,7 +1408,65 @@ pub mod fixtures {
                 serde_json::from_str(AUTH_REQUEST).unwrap()
             }
             pub fn auth_request_with_direct_post_jwt_response() -> ResolvedAuthRequest {
-                serde_json::from_str(AUTH_REQUEST_WITH_DIRECT_POST_JWT_RESPONSE).unwrap()
+                let (pub_jwk, _) = crate::vc::oid4vp::tests::fixtures::ac_encryption_key();
+                let auth_request = json!({
+                    "client_id": "decentralized_identifier:did:key:zDnaehgaHKAP7LAA3Kwa4FjXjJ1G3BcaHqr5gfRySJcGDgBtV",
+                    "state": null,
+                    "presentation_definition": {
+                        "id": "327ad171-c80a-485b-b098-50d7ad278ef6",
+                        "input_descriptors": [
+                            {
+                                "id": "Identity-1",
+                                "constraints": {
+                                    "fields": [
+                                        {
+                                            "path": ["$.name"],
+                                            "predicate": null,
+                                            "optional": true,
+                                            "intent_to_retain": false
+                                        },
+                                        {
+                                            "path": ["$.vct"],
+                                            "predicate": null,
+                                            "filter": {
+                                                "type": "string",
+                                                "const": "https://credentials.example.com/identity_credential"
+                                            },
+                                            "intent_to_retain": false
+                                        }
+                                    ]
+                                },
+                                "name": "Identity VC",
+                                "purpose": "We want an identity",
+                                "format": {
+                                    "dc+sd-jwt": {
+                                        "sd-jwt_alg_values": ["ES256", "EdDSA"],
+                                        "kb-jwt_alg_values": ["ES256", "EdDSA"]
+                                    }
+                                }
+                            }
+                        ],
+                        "name": "Example with selective disclosure"
+                    },
+                    "nonce": "3DaLwdi89qDgplpSwAspX6wWzm6pLkzaN3Xuk-ar5zY",
+                    "response_mode": "direct_post.jwt",
+                    "response_type": "vp_token",
+                    "response_uri": "http://127.0.0.1:55796/auth",
+                    "client_metadata": {
+                        "vp_formats_supported": {
+                            "dc+sd-jwt": {
+                                "sd-jwt_alg_values": ["EdDSA", "ES256"],
+                                "kb-jwt_alg_values": ["EdDSA", "ES256"]
+                            }
+                        },
+                        "jwks": {
+                            "keys": [pub_jwk]
+                        },
+                        "encrypted_response_enc_values_supported": ["A128GCM", "A128CBC-HS256"]
+                    }
+                });
+
+                serde_json::from_value(auth_request).unwrap()
             }
 
             pub fn auth_request_with_state() -> ResolvedAuthRequest {
@@ -3470,14 +3481,8 @@ pub mod utils {
             let transaction_data_response: Option<TransactionDataResponse>;
             if form.contains_key::<String>(&String::from("response")) {
                 let response = form.get::<String>(&String::from("response")).unwrap();
-                let jwk = r#"{
-                         "kty": "EC",
-                         "crv": "P-256",
-                         "x": "SSnPfyVhQgcU9Aaynqgi6QGhrq7K7WFEC0mAvpHG4TM",
-                         "y": "rYQ5mLQLTs95WLBKKA8R5IjMTXjX13iZnzazsVectRY",
-                         "d": "rs9veoNnfQCH7kfsAis_nAHtpcEghiAzKry8R-de0eA"
-                     }"#;
-                let kh = wrap_p256_private_key(jwk);
+                let (_, private_jwk) = crate::vc::oid4vp::tests::fixtures::ac_encryption_key();
+                let kh = wrap_p256_private_key(private_jwk);
 
                 let payload = decrypt_jwe_payload(response, &kh).await.unwrap();
                 let claim_set: Value = serde_json::from_slice(payload.as_slice()).unwrap();
@@ -3771,6 +3776,9 @@ pub mod utils {
         }
 
         pub fn build_auth_request_for_dcql(dcql: &str) -> ResolvedAuthRequest {
+            let (pub_jwk, _) = crate::vc::oid4vp::tests::fixtures::ac_encryption_key();
+            let x = pub_jwk.get("x").and_then(Value::as_str).unwrap();
+            let y = pub_jwk.get("y").and_then(Value::as_str).unwrap();
             let auth_request_str = format!(
                 r#"{{
                   "client_id": "decentralized_identifier:did:key:zDnaehgaHKAP7LAA3Kwa4FjXjJ1G3BcaHqr5gfRySJcGDgBtV",
@@ -3795,8 +3803,8 @@ pub mod utils {
                               "use":"enc",
                               "crv":"P-256",
                               "alg":"ES256",
-                              "x": "SSnPfyVhQgcU9Aaynqgi6QGhrq7K7WFEC0mAvpHG4TM",
-                              "y": "rYQ5mLQLTs95WLBKKA8R5IjMTXjX13iZnzazsVectRY"
+                              "x": "{x}",
+                              "y": "{y}"
                             }}
                         ]
                     }}
@@ -3808,14 +3816,8 @@ pub mod utils {
         }
 
         pub fn get_private_enc_key(&self) -> String {
-            r#"{
-                 "kty": "EC",
-                 "crv": "P-256",
-                 "x": "SSnPfyVhQgcU9Aaynqgi6QGhrq7K7WFEC0mAvpHG4TM",
-                 "y": "rYQ5mLQLTs95WLBKKA8R5IjMTXjX13iZnzazsVectRY",
-                 "d": "rs9veoNnfQCH7kfsAis_nAHtpcEghiAzKry8R-de0eA"
-            }"#
-            .to_string()
+            let (_, private_jwk) = crate::vc::oid4vp::tests::fixtures::ac_encryption_key();
+            private_jwk.clone()
         }
     }
 

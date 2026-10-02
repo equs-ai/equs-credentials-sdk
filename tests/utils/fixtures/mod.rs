@@ -1,44 +1,41 @@
 pub(crate) mod oid4vp;
 
+use equs_sdk::inmem::kms::LocalKms;
 use equs_sdk::vault::CredentialEntry;
 use equs_sdk::vc::claims::Claims;
 use equs_sdk::vc::oid4vci::{AuthorizationMetadata, IssuerMetadata};
 use equs_sdk::vc::oid4vp::{CredentialsFindResult, Holder, ResolvedAuthRequest};
 use serde_json::json;
 use std::collections::HashMap;
+use test_fixtures::access_token::AccessToken;
+use test_fixtures::keys::FixtureKey;
 use url::Url;
 
 pub const AUTHZ_URL: &str = "https://authz-backend.com";
 pub const ISSUER_URL: &str = "https://issuer-backend.com";
 
-// header:
-// {
-//   "alg": "RS256",
-//   "typ": "JWT",
-//   "kid": "PclYP6vRk1LpKDfjSO2Da35rmGRfi9362CpREyJf8p0"
-// }
-//
-// payload:
-// {
-//   "exp": 1759734659,
-//   "iat": 1759734359,
-//   "auth_time": 1759734105,
-//   "jti": "onrtac:415f60df-5dc3-d219-06ad-2cf0618e6225",
-//   "iss": "http://localhost:8080/realms/pid-issuer-realm",
-//   "sub": "60b8ba5f-c73f-4976-b0da-48d0e53335de",
-//   "typ": "Bearer",
-//   "azp": "wallet-dev",
-//   "sid": "e1de0faa-efd6-f290-22df-5f2caa56981a",
-//   "allowed-origins": [
-//     "/*",
-//     "http://localhost:3000"
-//   ],
-//   "scope": "SD_JWT_cred"
-// }
-pub const ACCESS_TOKEN: &str = "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6IlBjbFlQNnZSazFMcEtEZmpTTzJEYTM1cm1HUmZpOTM2MkNwUkV5SmY4cDAifQ.eyJleHAiOjE3NTk3MzQ2NTksImlhdCI6MTc1OTczNDM1OSwiYXV0aF90aW1lIjoxNzU5NzM0MTA1LCJqdGkiOiJvbnJ0YWM6NDE1ZjYwZGYtNWRjMy1kMjE5LTA2YWQtMmNmMDYxOGU2MjI1IiwiaXNzIjoiaHR0cDovL2xvY2FsaG9zdDo4MDgwL3JlYWxtcy9waWQtaXNzdWVyLXJlYWxtIiwic3ViIjoiNjBiOGJhNWYtYzczZi00OTc2LWIwZGEtNDhkMGU1MzMzNWRlIiwidHlwIjoiQmVhcmVyIiwiYXpwIjoid2FsbGV0LWRldiIsInNpZCI6ImUxZGUwZmFhLWVmZDYtZjI5MC0yMmRmLTVmMmNhYTU2OTgxYSIsImFsbG93ZWQtb3JpZ2lucyI6WyIvKiIsImh0dHA6Ly9sb2NhbGhvc3Q6MzAwMCJdLCJzY29wZSI6IlNEX0pXVF9jcmVkIn0.Vzd-czyWV8NamelfLXFAGe5KlzNsI9BQyHD3jwMiW5n5skG3yAbXHohXJIDD5OFe2RdQVXspuqwA8Fdxd3wMVpgW8vPPjFrBD7zQWMLUstiZKniVJroSFAo8A1u9Lq9pb648gF4DxZWTiQAy-1mNOW8QVEcN6XBEHTkZ0YaMPO-lyXkeQOuY5J1Z9s7y8_4HBE0FjnJuFRraO8S8l1ixoCAObtzMfARld3rBPM_EVTYxfrT1_TCXcylKuqRoJGjE8fnCSJYworG0AP7LO0hPcKrvlG5oiW8Zr_V0yBp4OKdOtwukgJ0R0gmxzCf0bOQHl_mdRm0QTxYslNYIrfh_yw";
 pub const SCOPE: &str = "SD_JWT_cred";
 pub const VERIFIER_ID: &str = "ver-id";
 pub const VC_TYPE: &str = "https://credentials.example.com/identity_credential";
+
+/// Mints a bearer access token carrying `scope: SCOPE`, as a Keycloak-issued
+/// token would for the authorization-code flow the E2E suite exercises. The
+/// signing key is generated fresh per call and discarded — these tests only
+/// ever decode the token's `scope` claim (`validate_scope`) or hand it to a
+/// mock introspection endpoint that ignores its content.
+pub async fn access_token() -> String {
+    let kms = LocalKms::new();
+    let key = FixtureKey::create_default(&kms)
+        .await
+        .expect("fixture key creation should succeed");
+
+    AccessToken::builder(&key)
+        .scope(SCOPE)
+        .build()
+        .await
+        .expect("access token fixture should build")
+}
+
 pub fn sample_authz_url() -> Url {
     Url::parse(AUTHZ_URL).unwrap()
 }

@@ -199,7 +199,12 @@ mod tests {
     use rstest::*;
     use sd_jwt_rs::resolver::KeyResolver;
     use sd_jwt_rs::{SDJWTSerializationFormat, SDJWTVerifier};
+    use serde_json::Map;
     use std::collections::HashMap;
+    use test_fixtures::equs_sdk::inmem::kms::LocalKms as FixtureKms;
+    use test_fixtures::keys::FixtureKey;
+    use test_fixtures::sd_jwt_vc::SdJwtVc as FixtureSdJwtVc;
+    use test_fixtures::x509::X509Chain;
     use x509_parser::prelude::Pem;
 
     fn anchors(ca_certs: &[&str]) -> HashMap<String, String> {
@@ -317,21 +322,59 @@ mod tests {
             .unwrap();
     }
 
-    #[rstest]
-    #[should_panic(expected = "Leaf certificate must not be self-signed")]
-    #[case::self_signed_issuer_cert(anchors(&[OPENID_CONFORMANCE_TEST_CERT]), SD_JWT_VC)]
-    #[should_panic(expected = "sd-jwt-vc token contains no x5c header")]
-    #[case::no_x5c(anchors(&[OPENID_CONFORMANCE_TEST_CERT]), SD_JWT_VC_NO_X5C)]
+    /// `resolve()` extracts `x5c` from the header and rejects it through the
+    /// same trust-anchor path `verify_chain_trust` uses directly (exercised
+    /// on a raw PEM chain by `rejects_chain_not_signed_up_to_held_anchor`
+    /// above). [`X509Chain`] mints a leaf that genuinely certifies the KMS
+    /// key that signs the credential — but the certifying signature itself
+    /// comes from a CA key `rcgen` generates and discards, never from the
+    /// certified key. One-core's self-signed check
+    /// (`certificate.verify_signature(None)`, i.e. "does this cert's own
+    /// embedded key validate its own signature") therefore never fires for
+    /// an `X509Chain` leaf, unlike the real self-signed conformance-suite
+    /// certificate the committed `SD_JWT_VC` carried. What an `X509Chain`
+    /// credential *can* exercise honestly through this path is a chain
+    /// whose issuer the truststore was never told to trust.
+    #[should_panic(expected = "does not validate against any trusted anchor")]
     #[tokio::test]
-    async fn resolve(#[case] trusted_roots: HashMap<String, String>, #[case] sd_jwt: &str) {
-        let mut sd_jwt_verifier = SDJWTVerifier::new(Box::new(truststore(trusted_roots)));
+    async fn resolve_rejects_a_credential_whose_chain_is_not_trusted() {
+        let kms = FixtureKms::new();
+        let key = FixtureKey::create_default(&kms).await.unwrap();
+        let chain = X509Chain::self_signed(&key, "localhost.emobix.co.uk").unwrap();
+
+        let mut claims = Map::new();
+        claims.insert(
+            "iss".to_string(),
+            serde_json::json!("https://localhost.emobix.co.uk/issuer"),
+        );
+        // `sign_sd_jwt_vc` returns a bare `header.payload.signature` JWS with no
+        // disclosures; `SDJWTSerializationFormat::Compact` still requires at
+        // least one `~` separator, so append the (empty) key-binding segment.
+        let sd_jwt = format!("{}~", chain.sign_sd_jwt_vc(claims).await.unwrap());
+
+        let mut sd_jwt_verifier = SDJWTVerifier::new(Box::new(truststore(HashMap::new())));
         sd_jwt_verifier
-            .verify_presentation(
-                sd_jwt.to_string(),
-                Some("x509_san_dns:verifier-asdk".to_string()),
-                Some("psX3cqQAPu3rVVV7Lj0kNqF1Dad6le1B2JRkjwhUN_E".to_string()),
-                SDJWTSerializationFormat::Compact,
-            )
+            .verify_presentation(sd_jwt, None, None, SDJWTSerializationFormat::Compact)
+            .await
+            .unwrap();
+    }
+
+    #[should_panic(expected = "sd-jwt-vc token contains no x5c header")]
+    #[tokio::test]
+    async fn resolve_rejects_a_credential_with_no_x5c_header() {
+        let kms = FixtureKms::new();
+        let issuer = FixtureKey::create_default(&kms).await.unwrap();
+        let holder = FixtureKey::create_default(&kms).await.unwrap();
+        let sd_jwt = FixtureSdJwtVc::builder(&issuer, &holder)
+            .build()
+            .await
+            .unwrap();
+
+        // The truststore is never consulted: `resolve` rejects the missing
+        // `x5c` header before it looks at a trust anchor.
+        let mut sd_jwt_verifier = SDJWTVerifier::new(Box::new(truststore(HashMap::new())));
+        sd_jwt_verifier
+            .verify_presentation(sd_jwt, None, None, SDJWTSerializationFormat::Compact)
             .await
             .unwrap();
     }
@@ -425,7 +468,4 @@ AQYwHQYDVR0OBBYEFDtMrzkKe90+27GziOeqUqSHpKMDMAoGCCqGSM49BAMCA0kA
 MEYCIQDte3ZMvXS6W3rbpNIOQzMbmhdpRUBgs8+ZbiB03MRrFQIhAMctAisCkF0M
 sPeg62mHhsTg9l5PSRUrvmvYac/4Fz6k
 -----END CERTIFICATE-----";
-
-    const SD_JWT_VC: &str = "eyJ4NWMiOlsiTUlJQ0hqQ0NBY09nQXdJQkFnSVVaWDlCUzVDRE9KUlcydDFGSzFVRE10L1F3TUV3Q2dZSUtvWkl6ajBFQXdJd0lURUxNQWtHQTFVRUJoTUNSMEl4RWpBUUJnTlZCQU1NQ1U5SlJFWWdWR1Z6ZERBZUZ3MHlOREV4TWpVd09ETTJNRFJhRncwek5ERXhNak13T0RNMk1EUmFNQ0V4Q3pBSkJnTlZCQVlUQWtkQ01SSXdFQVlEVlFRRERBbFBTVVJHSUZSbGMzUXdXVEFUQmdjcWhrak9QUUlCQmdncWhrak9QUU1CQndOQ0FBVFQvZExzZDUxTExCckdWNlIyM282dnltUnhIWGVGQm9JOHlxMzF5NWtGVjJWVjBnaTl4NVp6RUZpcThETWlBSHVjTEFDRm5keEx0Wm9yQ2hhOXp6blFvNEhZTUlIVk1CMEdBMVVkRGdRV0JCUzVjYmRnQWVNQmk1d3hwYnB3SVNHaFNoQVdFVEFmQmdOVkhTTUVHREFXZ0JTNWNiZGdBZU1CaTV3eHBicHdJU0doU2hBV0VUQVBCZ05WSFJNQkFmOEVCVEFEQVFIL01JR0JCZ05WSFJFRWVqQjRnaEIzZDNjdWFHVmxibUZ1TG0xbExuVnJnaDFrWlcxdkxtTmxjblJwWm1sallYUnBiMjR1YjNCbGJtbGtMbTVsZElJSmJHOWpZV3hvYjNOMGdoWnNiMk5oYkdodmMzUXVaVzF2WW1sNExtTnZMblZyZ2lKa1pXMXZMbkJwWkMxcGMzTjFaWEl1WW5WdVpHVnpaSEoxWTJ0bGNtVnBMbVJsTUFvR0NDcUdTTTQ5QkFNQ0Ewa0FNRVlDSVFDUGJuTHhDSStXUjF2aE9XK0E4S3puQVd2MU1KbytZRWIxTUk0NU5LVy9WUUloQUx6c3FveDhWdUJSd04yZGw1TGtwbnhQNG9IOXA2SDBBT1ptS1ArWTduWFMiXSwidHlwIjoiZGMrc2Qtand0IiwiYWxnIjoiRVMyNTYifQ.eyJfc2QiOlsiLUdDMkxkNFBQWDlLdXNrSlIzcU04U0RMeFhYQ2RZWjdqVXQ0cXVycDZabyIsIjZULUo4OGpfRlVNbHNLX1VmSHdSejk4enZvNWRkZUozR19laElKRzgtQ00iLCI4WFdheXdEM1NQSzVxWlY2ZnNjcUhwUTNOa1ZXZEQ5QzlxTVdaUzRZeDZzIiwiV0RuWVhQaXlLWFdPblA1TFFvRmlwVjVHaWdwT05GUUd4UU1OeEltTjZyNCIsImM0Vlo5RkVlQ1VfaU9OWnFWZ1QwNFVlZkQxQUZHMDg0RHhqZjAxSTRhM0kiLCJtb3pHZWFzcmJuYmdIbUxzU2MyZDBZV2xadlVtanFfQlphUFR0YzNLZnM0IiwicGswUkdJVkhYSFRUaVJuRkRYbElyd1JBcFNDZmxDaHBKTElocGVVMVh4QSJdLCJ2Y3QiOiJ1cm46ZXVkaTpwaWQ6MSIsImlzcyI6Imh0dHBzOi8vbG9jYWxob3N0LmVtb2JpeC5jby51azo5NDQzL3Rlc3QvYS9hc2RrLXZjaS12ZXJpZmllci10ZXN0LWFzZGstNTk4IiwiY25mIjp7Imp3ayI6eyJrdHkiOiJFQyIsImNydiI6IlAtMjU2IiwieCI6IjZUbUhSYVFIQWpwbXVUYzVLakVmOXhPOXk2MXZsLW1oLXdrbkFnenMzaFEiLCJ5IjoiYXhwUlhqak9nM1lzclZ2UzNUcEZyZGhBT1liR0F6YUZscTk3SHFCQ1IzcyJ9fSwiZXhwIjoxNzcwMzc3NjAwLCJpYXQiOjE3NjkxNjgwMDB9.sdoSEYncmx84v3TOj_ffSZvQ_pjQ5y1z2l5Gt9KIMUs7CL_lO81TMMwNGV-KY0n8slFKZLxZZgIiisZWx-gy6g~WyJZVW1qM3dBZGxQQW1ScndDZDFWOE1nIiwiZ2l2ZW5fbmFtZSIsIkplYW4iXQ~WyJWQWFXRWxBQk1TYUZ4aEZlWk5STkFnIiwiZmFtaWx5X25hbWUiLCJEdXBvbnQiXQ~WyI2TER6ZmltdWRwYlZYaGFLUHV4SWhBIiwiYmlydGhkYXRlIiwiMTk4MC0wNS0yMyJd~WyJWSG5oSDVCWldYc0FUNWRDQUtFbk5BIiwiYWdlX2luX3llYXJzIiwiNDQiXQ~eyJ0eXAiOiJrYitqd3QiLCJhbGciOiJFUzI1NiJ9.eyJzZF9oYXNoIjoiQk0tVVduSmZpdFVSLTRzaWZUbThIMkNNdW5aTWc4UXA0QUxVOVlMRDEtTSIsImF1ZCI6Ing1MDlfc2FuX2Ruczp2ZXJpZmllci1hc2RrIiwiaWF0IjoxNzY5MTY4MDAwLCJub25jZSI6InBzWDNjcVFBUHUzclZWVjdMajBrTnFGMURhZDZsZTFCMkpSa2p3aFVOX0UifQ.TPh8fnO5vG_sxi-stt2o3XJqfUF07fIi-4JQzv_xf1-QpYgspbE5LbEhsVWuTiykHWK-RvcBc4-bS9lg7OGLpA";
-    const SD_JWT_VC_NO_X5C: &str = "eyJ0eXAiOiJkYytzZC1qd3QiLCJhbGciOiJFUzI1NiJ9.eyJfc2QiOlsiLTBSVllzOWh3TDVLS3lUcE9xYVE2Y0M5UkJESFVtcFhmN3RmRjRtNGVWRSIsIkQ3ZUlyWXVuXzZUVV9OeVZKQVNlX1FZcWdXY0ljWkYtZzI1Z3JLMTZHdDAiLCJTd2hFSjJKc0dDOWhWd2lreXl5aXhIVzV5TUdZNmFKNFBkYWQtM2d4cjJBIiwiVGk2Znc4M2VrbE8xczhsTllPQ1RXdUhVUzB3OXgwUEk2MDNEV0xjWEtPTSIsIldmUUhQOVVJb1ZzTVhUUUFNeklOSlpTSEE5T1Y2VXowTHJFd0U1OEl2TUUiLCJqWmw5MVllT242YnJSelZiZWdsRUt1S3NMX3hOSVhDT2FobHpHaWFIQml3Iiwib2dCcE9WNHZrWUMwS2NzTENzbUEzSEg2NnRySzVwdjFXLU1VQ3FvSkZFbyJdLCJ2Y3QiOiJ1cm46ZXVkaTpwaWQ6MSIsImlzcyI6Imh0dHBzOi8vbG9jYWxob3N0LmVtb2JpeC5jby51azo5NDQzL3Rlc3QvYS9hc2RrLXZjaS12ZXJpZmllci10ZXN0LWFzZGstNTk4IiwiY25mIjp7Imp3ayI6eyJrdHkiOiJFQyIsImNydiI6IlAtMjU2IiwieCI6ImJWakRPZHc2YlRzdHBrRXJYZlNYR2RyQnVGempNX1VMOU1tZzJPRXpUVFUiLCJ5IjoiNGNURm55SzBkSzFHbmRyc0NFUi00aHMzeTFERGloQW1Pek80T3B4c1djayJ9fSwiZXhwIjoxNzY3ODk2NzQ3LCJpYXQiOjE3NjY2ODcxNDd9.cSYGUI29Ba4nVfCb769_n7n3jchww0qYlvmsJqg3lPXiZtj3pBQUguct3XDzFoI1QHAiaiacEhY5GIB2IFR98w~WyIzdW9aS0dhV0M2ajVyWWljeWRXVVN3IiwiZ2l2ZW5fbmFtZSIsIkplYW4iXQ~WyJkQUF0c0VOM2pwOUZNTzBiRWNJcEpnIiwiZmFtaWx5X25hbWUiLCJEdXBvbnQiXQ~WyJ5MEhkaU1qWXFVWlhvT3hIbWtTMjFRIiwiYmlydGhkYXRlIiwiMTk4MC0wNS0yMyJd~WyJVd1RsNzl6dEY0SDA0WkROaExKcTBnIiwiYWdlX2luX3llYXJzIiwiNDQiXQ~eyJ0eXAiOiJrYitqd3QiLCJhbGciOiJFUzI1NiJ9.eyJzZF9oYXNoIjoiYjhjeURvT19lV2c3WTNhdkxEQ3pCYkwyS29OSkMwRzIyczlqelRMR01JMCIsImF1ZCI6Ing1MDlfc2FuX2Ruczp2ZXJpZmllci1hc2RrIiwiaWF0IjoxNzY2Njg3MTQ3LCJub25jZSI6ImtubXBwVk9RSGNFczY5TUczalpBWmpuZUN6YlVFMFR5QkpQUGhtUlVoQTQifQ.VkU3S_8FQNyTLCYNMumH2GR_QbjGhYOMi9dlIDPZmpJU1aGshanBf0tRmTGe8-aIeWWoN-hGCmAgYjw4QQ8OSg";
 }

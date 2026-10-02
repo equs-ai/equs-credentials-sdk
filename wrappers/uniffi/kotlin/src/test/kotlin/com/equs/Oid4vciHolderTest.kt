@@ -1,8 +1,11 @@
 package com.equs
 
 import com.equs.credentials.*
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import okhttp3.mockwebserver.Dispatcher
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
@@ -10,6 +13,7 @@ import okhttp3.mockwebserver.RecordedRequest
 import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
+import java.util.Base64
 import kotlin.test.assertEquals
 import com.equs.credentials.Kms as EqusSdkKms
 import com.equs.credentials.Vault as EqusSdkVault
@@ -18,14 +22,20 @@ import com.equs.credentials.Vault as EqusSdkVault
 class HolderVCITest {
     companion object {
         const val SCOPE = "SD_JWT_cred"
-        const val ACCESS_TOKEN =
-            "eyJhbGciOiJSUzI1NiIsInR5cCIgOiAiSldUIiwia2lkIiA6ICJQY2xZUDZ2UmsxTHBLRGZqU08yRGEzNXJtR1JmaTkzNjJDcFJFeUpmOHAwIn0.eyJleHAiOjE3MjQzOTg0OTQsImlhdCI6MTcyNDM5ODE5NCwiYXV0aF90aW1lIjoxNzI0Mzk4MTgyLCJqdGkiOiIwYjRmZTM5MC00OTIxLTQwNDItYjdlMS1iMDNiM2QxOTYyMjkiLCJpc3MiOiJodHRwOi8vbG9jYWxob3N0OjgwODAvaWRwL3JlYWxtcy9waWQtaXNzdWVyLXJlYWxtIiwic3ViIjoiNjBiOGJhNWYtYzczZi00OTc2LWIwZGEtNDhkMGU1MzMzNWRlIiwidHlwIjoiQmVhcmVyIiwiYXpwIjoid2FsbGV0LWRldiIsInNpZCI6ImYxNWIzZTExLWZmMjgtNDRkZi04ZmNmLWE3N2QyNDcxNGEyMyIsImFsbG93ZWQtb3JpZ2lucyI6WyIvKiJdLCJzY29wZSI6IlNEX0pXVF9jcmVkIn0.pLGGmOApXnQCY6CwuFzxFXEN36aDJ-iE0TM_esYJ_qtijhUtWq5zI9lD-iGzhTSdwZ7Y51eUKtqmJXHixzBo847vmMeGla4Ko6JTY-4vVAIQ1Hk1xzl25ALuZNwxGbljlysjzBgCxeAjZo3fE0HTI5y6NItptIU8aY3ykoIX9xE81ZkexbVrR495cEX7UIgUgCZyhj8lXUMWFrNFBhELnzzFGdX01Dq3B-KflY9ACVaw-_U9bT6EzDI0-0Cyx2K658EU9VpDjBSR6URT5I9quvx1qoYMFPv7zhjW3sUASIVwThe4CvWCCR8Kf8rsnEQ2qnchn0f6gn9thxi51FGkvA"
+        val ACCESS_TOKEN = Fixtures.token("accessToken")
         const val ISSUER_ENDPOINT = "http://localhost:9081"
         const val AUTH_SERVER_ENDPOINT = "$ISSUER_ENDPOINT/auth"
-        const val SD_JWT_CRED =
-            "eyJ0eXAiOiJ2YytzZC1qd3QiLCJhbGciOiJFUzI1NiIsImtpZCI6ImRpZDprZXk6ekRuYWV1alBxWjVFakhtZmtyell3ZUxmTXFyOGFxQTNvdDNCdGM0RmU5dHlMcWttUiN6RG5hZXVqUHFaNUVqSG1ma3J6WXdlTGZNcXI4YXFBM290M0J0YzRGZTl0eUxxa21SIn0.eyJfc2QiOlsiQ1Q1bzFMZk5XRE9LT3h4NDJCWUc0NzU0bFpIeTZ0MG5PUGtGRWRmb3FvTSIsIks3bWEwTmZxR0NfM0xQdG12cWtySTR5ckpsdkg0VFU2OWU3SXYtN0VJbzQiLCJyZVlhTkZCV0h6VjE3Y3Z1cTNyRmpVSTNHeDVKc19EbW5VWlNFUmQ0aFpzIl0sInZjdCI6IlNEX0pXVF9jcmVkIiwic3ViIjoiZGlkOmtleTp6RG5hZW5wbnRDa1huRENuYURrNjJMeE5xUGM0Q01kMzJmYmhpVnNaVjVLcFBURzJjIiwibmJmIjoxNzI1NTMzMjU0LCJfc2RfYWxnIjoic2hhLTI1NiIsImlzcyI6ImRpZDprZXk6ekRuYWV1alBxWjVFakhtZmtyell3ZUxmTXFyOGFxQTNvdDNCdGM0RmU5dHlMcWttUiIsImlhdCI6MTcyNTUzMzI1NCwiZXhwIjoxNzU3MDY5MjU0LCJjbmYiOnsiandrIjp7Imt0eSI6IkVDIiwiY3J2IjoiUC0yNTYiLCJ4IjoiVExuNjZxYm5QZXhLeUZtZ3h1Y1kzSlpyZHhCRGpBc3ItbXkya1dBYms4ayIsInkiOiJzaFl6eUVUOENyWVcyTXhPU0FCSkxhbUpPTGV3LWpQbE9aeHdTUzZrWGdjIn19fQ.CBBzIiTjRs2bmKENQcRY14wVnl2vnIjJY9u3AYrA9KQDjqCXZXSzoxQlripAM6Ud_QaYNrZcHK2EVo4QlH3k9w~WyJvMFR4dEw4QWh1TFJXUmduSDk4NF9RIiwgImdpdmVuX25hbWUiLCAiSm9obiJd~WyJ2SVMzZXNQTHlRUHRRZ0JMZ09GYWFnIiwgImZhbWlseV9uYW1lIiwgIkRvZSJd~WyJsaW81cXNVZHZJX3V3eUdiRmFtTnFRIiwgImRvYiIsICIwOS8wOS8xOTg5Il0~"
-        const val SD_JWT_CRED_DID_WEB_ISS =
-            "eyJ0eXAiOiJkYytzZC1qd3QiLCJhbGciOiJFUzI1NiJ9.eyJpc3MiOiJkaWQ6d2ViOmxvY2FsaG9zdCUzQTkwODEiLCJpYXQiOjE3NTk3NTk4NDYsImV4cCI6MjA3NTI3ODIyNCwidmN0IjoiU0RfSldUX2NyZWQiLCJzdWIiOiJkaWQ6a2V5OnpEbmFlbnBudENrWG5EQ25hRGs2Mkx4TnFQYzRDTWQzMmZiaGlWc1pWNUtwUFRHMmMiLCJjbmYiOnsiandrIjp7Imt0eSI6IkVDIiwiY3J2IjoiUC0yNTYiLCJ4IjoiVExuNjZxYm5QZXhLeUZtZ3h1Y1kzSlpyZHhCRGpBc3ItbXkya1dBYms4ayIsInkiOiJzaFl6eUVUOENyWVcyTXhPU0FCSkxhbUpPTGV3LWpQbE9aeHdTUzZrWGdjIn19LCJfc2QiOlsiOGp0WjZXOTRzZ1RMVGN5Q0VqUDUxVnFCOWtqQ1ZtaTEwX0ZRUW9TYlVlVSIsIkFpbUlmd0JJRUN1OEJzWkdCd1RheDQ1MU9pMlFDemd3YUZQa2ZvNmowY1kiLCJYNEdKbmFxbXVOMFY5QzZrWWtRSUZjLThCRXFrY0IzX3l5bjk3c013RlVjIl0sIl9zZF9hbGciOiJzaGEtMjU2In0.8zRC9-8ZEoXRk3Edsh2QOwFSaAcnOAALJfwqLOs06EnEt625_T1K1-a7ZFB4-yqyGuGcZDmGl-UgaII9ROOwUQ~WyJiZTdlZjk3ZDFhZTNjOGM0IiwiZ2l2ZW5fbmFtZSIsIkpvaG4iXQ~WyJhYWQxMWQ1NTRlMDAzZWU1IiwiZmFtaWx5X25hbWUiLCJEb2UiXQ~WyI1OTQzYTlmZWViNTAwMTEyIiwiZG9iIiwiMDkvMDkvMTk4OSJd~"
+        val SD_JWT_CRED = Fixtures.token("sdJwtCreds")
+
+        // `iss` here must be `did:web:localhost%3A9081` -- the `did:web` derived from
+        // `ISSUER_ENDPOINT` -- for `verifyCredentialExtra`'s `CredentialIssuerIdentifier` check to
+        // match. `Holder::verify_credential_issuer_identifier` reads this via
+        // `SdJwtAPI::extract_issuer_identifier`, which calls `ssi::claims::jws::decode_unverified`
+        // (see `src/vc/formats/sd_jwt_vc.rs`) -- it never checks the signature, so no bundle key or
+        // resolvable `did:web` document is needed; a freshly signed, self-contained JWS with the
+        // right `iss` claim is sufficient and keeps this a real (if unverified-here) SD-JWT VC
+        // rather than a hand-typed string.
+        lateinit var SD_JWT_CRED_DID_WEB_ISS: String
 
         val issuerMetadata = Json.parseToJsonElement(
             """
@@ -157,6 +167,30 @@ class HolderVCITest {
             setJniLibPath()
             mockServer = MockWebServer()
             mockServer.start(9081)
+
+            runBlocking {
+                val kms = InMemKms()
+                val kid = kms.create(KeyType.P256)
+                val keyHandle = kms.get(kid)
+
+                val header = buildJsonObject {
+                    put("typ", "dc+sd-jwt")
+                    put("alg", "ES256")
+                }
+                val payload = buildJsonObject {
+                    put("iss", "did:web:localhost%3A9081")
+                    put("iat", 1759759846L)
+                    put("exp", 2075278224L)
+                    put("vct", "SD_JWT_cred")
+                    put("_sd_alg", "sha-256")
+                }
+                val signingInput =
+                    "${Base64.getUrlEncoder().withoutPadding().encodeToString(header.toString().toByteArray())}." +
+                        Base64.getUrlEncoder().withoutPadding().encodeToString(payload.toString().toByteArray())
+                val signature = keyHandle.inner.sign(signingInput.toByteArray())
+                SD_JWT_CRED_DID_WEB_ISS =
+                    "$signingInput.${Base64.getUrlEncoder().withoutPadding().encodeToString(signature)}"
+            }
 
             val dispatcher: Dispatcher = object : Dispatcher() {
                 @Throws(InterruptedException::class)
@@ -352,8 +386,8 @@ class HolderVCITest {
         val inMemVault = InMemVault()
 
         val didAndKeyMetadata = createDidAndKeyMetadata(inMemKms)
-        didAndKeyMetadata.keyMetadata.didUrl =
-            "did:key:zDnaenpntCkXnDCnaDk62LxNqPc4CMd32fbhiVsZV5KpPTG2c#zDnaenpntCkXnDCnaDk62LxNqPc4CMd32fbhiVsZV5KpPTG2c"
+        val subject = Fixtures.claim(SD_JWT_CRED, "sub")!!
+        didAndKeyMetadata.keyMetadata.didUrl = "$subject#${subject.removePrefix("did:key:")}"
 
         val credential = Credential(format = VcFormat.SD_JWT_VC, payload = SD_JWT_CRED)
         val metadata = resolveMetadata(credential, didAndKeyMetadata.keyMetadata)
