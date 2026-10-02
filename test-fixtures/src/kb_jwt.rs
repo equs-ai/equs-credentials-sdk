@@ -24,15 +24,12 @@ use crate::keys::FixtureKey;
 /// Builder for an SD-JWT VP carrying a key-binding JWT.
 ///
 /// `nonce` and `verifier_id` are what the KB-JWT binds to, and are what a
-/// verifier compares; both default and both are overridable.
+/// verifier compares. `verifier_id` is always [`DEFAULT_AUDIENCE`].
 pub struct KbJwt<'a> {
     kms: &'a LocalKms,
     holder: &'a FixtureKey,
     credential: String,
     nonce: String,
-    verifier_id: String,
-    response_uri: Option<String>,
-    disclosed: Vec<String>,
 }
 
 impl<'a> KbJwt<'a> {
@@ -48,9 +45,6 @@ impl<'a> KbJwt<'a> {
             holder,
             credential: credential.into(),
             nonce: DEFAULT_NONCE.to_string(),
-            verifier_id: DEFAULT_AUDIENCE.to_string(),
-            response_uri: None,
-            disclosed: vec!["name".to_string()],
         }
     }
 
@@ -58,27 +52,6 @@ impl<'a> KbJwt<'a> {
     #[must_use]
     pub fn nonce(mut self, nonce: impl Into<String>) -> Self {
         self.nonce = nonce.into();
-        self
-    }
-
-    /// Sets the `aud` of the KB-JWT — the verifier it is addressed to.
-    #[must_use]
-    pub fn verifier_id(mut self, verifier_id: impl Into<String>) -> Self {
-        self.verifier_id = verifier_id.into();
-        self
-    }
-
-    /// Sets the response URI carried in the holder binding.
-    #[must_use]
-    pub fn response_uri(mut self, response_uri: impl Into<String>) -> Self {
-        self.response_uri = Some(response_uri.into());
-        self
-    }
-
-    /// Sets which claim names are disclosed in the presentation.
-    #[must_use]
-    pub fn disclosed(mut self, disclosed: Vec<String>) -> Self {
-        self.disclosed = disclosed;
         self
     }
 
@@ -90,8 +63,8 @@ impl<'a> KbJwt<'a> {
     pub fn holder_binder(&self) -> HolderBinder {
         HolderBinder {
             nonce: Nonce::from_secret(self.nonce.clone()),
-            verifier_id: self.verifier_id.clone(),
-            response_uri: self.response_uri.clone(),
+            verifier_id: DEFAULT_AUDIENCE.to_string(),
+            response_uri: None,
         }
     }
 
@@ -124,15 +97,11 @@ impl<'a> KbJwt<'a> {
         let input = PresentationInput {
             id: "fixture-presentation".to_string(),
             format: None,
-            restrictions: self
-                .disclosed
-                .iter()
-                .map(|name| equs_sdk::vc::core::PresentationRestriction {
-                    fields: vec![format!("$.{name}")],
-                    value: None,
-                    optional: false,
-                })
-                .collect(),
+            restrictions: vec![equs_sdk::vc::core::PresentationRestriction {
+                fields: vec!["$.name".to_string()],
+                value: None,
+                optional: false,
+            }],
         };
 
         let presentation = holder

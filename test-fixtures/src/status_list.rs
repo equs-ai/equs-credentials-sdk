@@ -24,7 +24,6 @@ pub struct StatusListToken<'a> {
     issuer: &'a FixtureKey,
     url: String,
     statuses_nr: usize,
-    status_size: u8,
     statuses: VCStatuses,
 }
 
@@ -36,7 +35,6 @@ impl<'a> StatusListToken<'a> {
             issuer,
             url: DEFAULT_STATUS_LIST_URL.to_string(),
             statuses_nr: 32,
-            status_size: 1,
             statuses: VCStatuses::new(),
         }
     }
@@ -55,13 +53,6 @@ impl<'a> StatusListToken<'a> {
         self
     }
 
-    /// Sets the bit width per entry: 1, 2, 4 or 8.
-    #[must_use]
-    pub fn status_size(mut self, status_size: u8) -> Self {
-        self.status_size = status_size;
-        self
-    }
-
     /// Marks `index` with `status`. Unset entries stay [`VCStatus::Valid`].
     #[must_use]
     pub fn status(mut self, index: usize, status: VCStatus) -> Self {
@@ -73,15 +64,15 @@ impl<'a> StatusListToken<'a> {
     ///
     /// # Errors
     ///
-    /// * [`Error::Sdk`] — the URL is not a URL, the bit width is not 1/2/4/8, an
-    ///   index overflows the list, or signing failed.
+    /// * [`Error::Sdk`] — the URL is not a URL, an index overflows the list,
+    ///   or signing failed.
     pub async fn build(self) -> Result<String> {
         let metadata = SLMetadata {
             statuses_nr: self.statuses_nr,
             status_list_url: self.url.parse().map_err(|e| Error::Sdk {
                 details: format!("status list url: {e}"),
             })?,
-            status_size: StatusSize::try_from(self.status_size).map_err(|e| Error::Sdk {
+            status_size: StatusSize::try_from(1).map_err(|e| Error::Sdk {
                 details: format!("status size: {e:?}"),
             })?,
         };

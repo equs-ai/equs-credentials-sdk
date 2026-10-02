@@ -67,12 +67,6 @@ impl Bundle {
         self.0.get(name)
     }
 
-    /// The string-valued entries only — every bare token, skipping the kinds
-    /// this bundle stores as an object.
-    pub fn tokens(&self) -> impl Iterator<Item = (&String, &Value)> {
-        self.0.iter().filter(|(_, value)| value.is_string())
-    }
-
     /// How many fixtures the bundle holds.
     #[must_use]
     pub fn len(&self) -> usize {

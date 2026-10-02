@@ -9,7 +9,7 @@
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use equs_sdk::crypto::Signer;
-use serde_json::{Map, Value};
+use serde_json::Value;
 
 use crate::error::{Error, Result};
 use crate::keys::FixtureKey;
@@ -70,14 +70,4 @@ pub async fn sign_compact_with_header(
         "{signing_input}.{}",
         URL_SAFE_NO_PAD.encode(signature)
     ))
-}
-
-/// Merges `overrides` into `claims`, replacing any key already present.
-///
-/// This is how every builder applies its per-test overrides on top of its
-/// defaults: the default set is built first, then the caller's entries win.
-pub(crate) fn merge(claims: &mut Map<String, Value>, overrides: Map<String, Value>) {
-    for (key, value) in overrides {
-        claims.insert(key, value);
-    }
 }

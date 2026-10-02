@@ -9,7 +9,7 @@ use equs_sdk::vc::claims::Claims;
 use equs_sdk::vc::{VCFormatsAPI, VCFormatsSdJwtAPI, VCMetadata};
 use serde_json::{Map, Value};
 
-use crate::claims::{DEFAULT_VCT, from_now};
+use crate::claims::DEFAULT_VCT;
 use crate::error::{Error, Result};
 use crate::keys::FixtureKey;
 
@@ -21,8 +21,6 @@ pub struct SdJwtVc<'a> {
     issuer: &'a FixtureKey,
     holder: &'a FixtureKey,
     vct: String,
-    lifetime: Option<Duration>,
-    disclosures: Vec<String>,
     claims: Map<String, Value>,
 }
 
@@ -38,8 +36,6 @@ impl<'a> SdJwtVc<'a> {
             issuer,
             holder,
             vct: DEFAULT_VCT.to_string(),
-            lifetime: Some(Duration::days(365)),
-            disclosures: vec!["$.name".to_string(), "$.surname".to_string()],
             claims,
         }
     }
@@ -51,43 +47,10 @@ impl<'a> SdJwtVc<'a> {
         self
     }
 
-    /// Sets how far in the future `exp` lands.
-    ///
-    /// `create_vc` omits `exp` when this is `None` and no `exp` claim is set;
-    /// the delegation and presentation paths both want one, so it defaults to a
-    /// year.
-    #[must_use]
-    pub fn lifetime(mut self, lifetime: Option<Duration>) -> Self {
-        self.lifetime = lifetime;
-        self
-    }
-
-    /// Expires the credential, by writing an `exp` in the past.
-    #[must_use]
-    pub fn expired(mut self) -> Self {
-        self.claims
-            .insert("exp".to_string(), Value::from(from_now(Duration::days(-1))));
-        self
-    }
-
-    /// Replaces the selectively disclosable claim paths (`$.name` form).
-    #[must_use]
-    pub fn disclosures(mut self, disclosures: Vec<String>) -> Self {
-        self.disclosures = disclosures;
-        self
-    }
-
     /// Overrides or adds a raw claim.
     #[must_use]
     pub fn claim(mut self, name: impl Into<String>, value: Value) -> Self {
         self.claims.insert(name.into(), value);
-        self
-    }
-
-    /// Replaces the whole claim set.
-    #[must_use]
-    pub fn claims(mut self, claims: Map<String, Value>) -> Self {
-        self.claims = claims;
         self
     }
 
@@ -111,8 +74,8 @@ impl<'a> SdJwtVc<'a> {
             (&self.holder.did_url, self.holder.handle.clone()),
             VCMetadata {
                 vct: self.vct,
-                lifetime: self.lifetime,
-                disclosures: self.disclosures,
+                lifetime: Some(Duration::days(365)),
+                disclosures: vec!["$.name".to_string(), "$.surname".to_string()],
                 credential_status: None,
             },
             equs_sdk::did::universal::UniversalResolver::default(),

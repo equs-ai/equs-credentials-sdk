@@ -13,7 +13,7 @@ use serde_json::{Map, Value};
 
 use crate::claims::{DEFAULT_AUDIENCE, DEFAULT_LIFETIME, DEFAULT_NONCE, from_now, now};
 use crate::error::Result;
-use crate::jws::{merge, sign_compact};
+use crate::jws::sign_compact;
 use crate::keys::FixtureKey;
 use equs_sdk::Duration;
 
@@ -26,9 +26,6 @@ pub struct IdToken<'a> {
     audience: String,
     nonce: String,
     lifetime: Duration,
-    subject: Option<String>,
-    issuer: Option<String>,
-    overrides: Map<String, Value>,
 }
 
 impl<'a> IdToken<'a> {
@@ -40,9 +37,6 @@ impl<'a> IdToken<'a> {
             audience: DEFAULT_AUDIENCE.to_string(),
             nonce: DEFAULT_NONCE.to_string(),
             lifetime: DEFAULT_LIFETIME,
-            subject: None,
-            issuer: None,
-            overrides: Map::new(),
         }
     }
 
@@ -67,27 +61,6 @@ impl<'a> IdToken<'a> {
         self
     }
 
-    /// Overrides `sub`. Defaults to the signing key's DID.
-    #[must_use]
-    pub fn subject(mut self, subject: impl Into<String>) -> Self {
-        self.subject = Some(subject.into());
-        self
-    }
-
-    /// Overrides `iss`. Defaults to the signing key's DID.
-    #[must_use]
-    pub fn issuer(mut self, issuer: impl Into<String>) -> Self {
-        self.issuer = Some(issuer.into());
-        self
-    }
-
-    /// Overrides or adds a raw claim.
-    #[must_use]
-    pub fn claim(mut self, name: impl Into<String>, value: Value) -> Self {
-        self.overrides.insert(name.into(), value);
-        self
-    }
-
     /// Signs the `id_token` and returns the compact JWT.
     ///
     /// # Errors
@@ -97,16 +70,12 @@ impl<'a> IdToken<'a> {
         let did = self.key.did.clone();
 
         let mut claims = Map::new();
-        claims.insert(
-            "iss".to_string(),
-            Value::from(self.issuer.unwrap_or_else(|| did.clone())),
-        );
-        claims.insert("sub".to_string(), Value::from(self.subject.unwrap_or(did)));
+        claims.insert("iss".to_string(), Value::from(did.clone()));
+        claims.insert("sub".to_string(), Value::from(did));
         claims.insert("aud".to_string(), Value::from(self.audience));
         claims.insert("nonce".to_string(), Value::from(self.nonce));
         claims.insert("iat".to_string(), Value::from(now()));
         claims.insert("exp".to_string(), Value::from(from_now(self.lifetime)));
-        merge(&mut claims, self.overrides);
 
         sign_compact(self.key, ID_TOKEN_TYP, &Value::Object(claims)).await
     }

@@ -17,14 +17,10 @@ use serde_json::Value;
 use crate::error::{Error, Result};
 use equs_sdk::crypto::Key;
 
-/// Default content encryption algorithm for fixtures.
-pub const DEFAULT_ENC: &str = "A256GCM";
-
 /// Builder for a compact JWE addressed to a KMS-held recipient key.
 pub struct Jwe<'a> {
     kms: &'a LocalKms,
     recipient_kid: String,
-    enc: String,
     payload: Value,
 }
 
@@ -35,17 +31,8 @@ impl<'a> Jwe<'a> {
         Self {
             kms,
             recipient_kid: recipient_kid.into(),
-            enc: DEFAULT_ENC.to_string(),
             payload: serde_json::json!({ "vp_token": "fixture" }),
         }
-    }
-
-    /// Sets the content encryption algorithm: `A256GCM`, `A128GCM` or
-    /// `A128CBC-HS256`.
-    #[must_use]
-    pub fn enc(mut self, enc: impl Into<String>) -> Self {
-        self.enc = enc.into();
-        self
     }
 
     /// Sets the plaintext payload.
@@ -94,7 +81,7 @@ impl<'a> Jwe<'a> {
 
         let metadata: ClientMetadata = serde_json::from_value(serde_json::json!({
             "jwks": { "keys": [jwk_map] },
-            "encrypted_response_enc_values_supported": [self.enc],
+            "encrypted_response_enc_values_supported": ["A256GCM"],
         }))
         .map_err(|e| Error::Json {
             details: e.to_string(),

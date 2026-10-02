@@ -43,11 +43,8 @@ fn exp_of(value: &Value) -> Option<i64> {
 /// string leaf that parses as a compact JWS with an `exp` claim is not
 /// already expired.
 ///
-/// This is what makes the check reach `vp.presentation`, not just the
-/// bundle's top-level string entries: `Bundle::tokens()` stays shallow (it is
-/// a simple "the bare tokens" view used nowhere else), and this test owns
-/// the recursion instead of pushing nested-entry iteration into the crate's
-/// public API for a need only this test has.
+/// Recurses so the check reaches nested entries such as `vp.presentation`,
+/// not just the bundle's top-level token strings.
 fn assert_no_expired_token(path: &str, value: &Value) {
     match value {
         Value::String(_) => {

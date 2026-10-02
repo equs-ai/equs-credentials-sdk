@@ -10,7 +10,7 @@ use serde_json::{Map, Value};
 
 use crate::claims::{DEFAULT_AUDIENCE, DEFAULT_LIFETIME, from_now, now};
 use crate::error::Result;
-use crate::jws::{merge, sign_compact};
+use crate::jws::sign_compact;
 use crate::keys::FixtureKey;
 use equs_sdk::Duration;
 
@@ -20,15 +20,13 @@ pub const POP_TYP: &str = "openid4vci-proof+jwt";
 /// Builder for a proof-of-possession JWT.
 ///
 /// `aud` and `exp` are the claims OID4VCI requires; both default and both are
-/// overridable. `iss`, `nbf` and `nonce` are omitted unless set.
+/// overridable. `iss` and `nonce` are omitted unless set.
 pub struct ProofOfPossession<'a> {
     key: &'a FixtureKey,
     audience: String,
     lifetime: Duration,
     issuer: Option<String>,
-    not_before: Option<i64>,
     nonce: Option<String>,
-    overrides: Map<String, Value>,
 }
 
 impl<'a> ProofOfPossession<'a> {
@@ -40,9 +38,7 @@ impl<'a> ProofOfPossession<'a> {
             audience: DEFAULT_AUDIENCE.to_string(),
             lifetime: DEFAULT_LIFETIME,
             issuer: None,
-            not_before: None,
             nonce: None,
-            overrides: Map::new(),
         }
     }
 
@@ -67,24 +63,10 @@ impl<'a> ProofOfPossession<'a> {
         self
     }
 
-    /// Sets `nbf` as a Unix timestamp.
-    #[must_use]
-    pub fn not_before(mut self, not_before: i64) -> Self {
-        self.not_before = Some(not_before);
-        self
-    }
-
     /// Sets `nonce`, the value the issuer's nonce handler will compare.
     #[must_use]
     pub fn nonce(mut self, nonce: impl Into<String>) -> Self {
         self.nonce = Some(nonce.into());
-        self
-    }
-
-    /// Overrides or adds a raw claim, applied after every default.
-    #[must_use]
-    pub fn claim(mut self, name: impl Into<String>, value: Value) -> Self {
-        self.overrides.insert(name.into(), value);
         self
     }
 
@@ -101,13 +83,9 @@ impl<'a> ProofOfPossession<'a> {
         if let Some(issuer) = self.issuer {
             claims.insert("iss".to_string(), Value::from(issuer));
         }
-        if let Some(not_before) = self.not_before {
-            claims.insert("nbf".to_string(), Value::from(not_before));
-        }
         if let Some(nonce) = self.nonce {
             claims.insert("nonce".to_string(), Value::from(nonce));
         }
-        merge(&mut claims, self.overrides);
 
         sign_compact(self.key, POP_TYP, &Value::Object(claims)).await
     }

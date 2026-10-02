@@ -1,6 +1,6 @@
 //! JWT and JWE test fixtures for the EQUS Credentials SDK.
 //!
-//! One builder per JWT kind the SDK handles, plus a JWE builder. Each mints a
+//! One builder per JWT kind the SDK's tests need, plus a JWE builder. Each mints a
 //! valid token at test runtime with sane defaults and per-test overrides,
 //! rather than reading a committed static string: a signature-bound fixture
 //! cannot be edited without re-signing it, and the SDK's mdoc fixtures already
@@ -15,7 +15,7 @@
 //! hiding behind a pre-baked string.
 //!
 //! Where the SDK exposes a constructor for a kind — SD-JWT VC, the key-binding
-//! JWT, the delegation grant, the status list token, the JWE — the builder
+//! JWT, the status list token, the JWE — the builder
 //! calls it. The remaining kinds are built inline inside private SDK modules
 //! (`vc::pop` is private, `vc::formats` is `pub(crate)`), so those claim sets
 //! are assembled here and signed through the same [`keys::FixtureKey`].
@@ -64,11 +64,7 @@ pub mod pop;
 pub mod request_object;
 pub mod sd_jwt_vc;
 pub mod status_list;
-pub mod vp_token;
 pub mod x509;
-
-#[cfg(feature = "delegate-sd-jwt")]
-pub mod dsd_jwt;
 
 pub use error::{Error, Result};
 pub use keys::FixtureKey;

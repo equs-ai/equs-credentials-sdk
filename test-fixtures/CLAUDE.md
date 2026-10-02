@@ -1,8 +1,8 @@
 # test-fixtures — Context
 
 ## Purpose
-`equs-test-fixtures` (lib target `test_fixtures`, `publish = false`) mints a valid token of every
-JWT kind the SDK handles, plus a JWE, signed at test runtime with sane defaults and per-test
+`equs-test-fixtures` (lib target `test_fixtures`, `publish = false`) mints a valid token of each
+JWT kind the SDK's tests need, plus a JWE, signed at test runtime with sane defaults and per-test
 overrides. It exists so that a test needing, say, an SD-JWT VC with one claim moved does not have to
 rebuild the signing scaffolding, and so that `tests/` can reach fixtures that `src/utils/test_utils.rs`
 (`#[cfg(test)] pub(crate)`) keeps private.
@@ -31,14 +31,11 @@ those suites run and never committed (`.gitignore`: `fixtures.generated.json`).
 | `src/sd_jwt_vc.rs` | `SdJwtVc` — issuer-signed SD-JWT VC, via `VCFormatsSdJwtAPI::create_vc` |
 | `src/x509.rs` | `X509Chain` — self-signed P-256 leaf certificate (via `rcgen`) certifying a `FixtureKey`, plus `sign_sd_jwt_vc` to mint the SD-JWT VC that carries it in `x5c` |
 | `src/kb_jwt.rs` | `KbJwt` — SD-JWT VP with a `kb+jwt`, via `vc::core::HolderService::create_presentation` |
-| `src/dsd_jwt.rs` | `DsdJwt` — delegation grant, via `HolderService::create_delegated_credential`; feature `delegate-sd-jwt` |
 | `src/status_list.rs` | `StatusListToken` — `statuslist+jwt`, via `StatusListJwt::create_status_list` |
 | `src/request_object.rs` | `RequestObject` — OID4VP signed request object (`oauth-authz-req+jwt`) |
 | `src/id_token.rs` | `IdToken` — SIOP `id_token` (`typ: JWT`) |
-| `src/vp_token.rs` | `VpToken` — the `vp_token` JSON value wrapping one SD-JWT VP |
 | `src/jwe.rs` | `Jwe` — encrypted response, via `vc::oid4vp::jwe::JweEncryptor` |
 | `tests/round_trip.rs` | Round-trip + failure case for every kind whose verifier is public |
-| `tests/delegation.rs` | The same for `dsd_jwt`; gated on `delegate-sd-jwt` |
 | `tests/bundle.rs` | Every contract key is present; no token anywhere in the bundle (recursing into `vp`) is already expired; `vcWithStatus` resolves Valid against its paired `statusListJwt` via the SDK's own status verifier. Not feature-gated — the bundle no longer has a `delegate-sd-jwt`-only key |
 | `tests/util/mod.rs` | Unverified header/payload decoding for claim assertions |
 

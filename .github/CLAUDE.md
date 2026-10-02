@@ -229,8 +229,7 @@ not preserve, and turns a soft cache miss into a hard failure on re-run.
   `equs-common-macros/tests/debug_error.rs`, so the derive shipped untested, and
   it would never build `test-fixtures/tests/` either. Each is a couple of
   seconds on top of the container spin-up, and each has a GitLab counterpart:
-  `common-macros-test-job` and `test-fixtures-test-job`. `test-fixtures-test`
-  passes `--all-features` so the `delegate-sd-jwt` suite runs; the root
+  `common-macros-test-job` and `test-fixtures-test-job`. The root
   package's own unit tests cover the fixture crate from the other direction,
   through the dev-dependency cycle, and run under `test-with-coverage`.
   `test-fixtures/*` is excluded from tarpaulin: it is a workspace path

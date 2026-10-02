@@ -18,8 +18,7 @@ use equs_sdk::inmem::kms::LocalKms;
 use equs_sdk::jwe::JweDecrypt;
 use equs_sdk::kms::{CreateOptions, KeyType, Kms};
 use equs_sdk::nonce::Nonce;
-use equs_sdk::vc::Presentation;
-use equs_sdk::vc::core::{HolderBinder, Verifier, VerifierService};
+use equs_sdk::vc::core::HolderBinder;
 use equs_sdk::vc::status_formats::API as StatusFormatsAPI;
 use equs_sdk::vc::status_formats::status_list_token_jwt::{StatusListJwt, VCStatus};
 use equs_sdk::vc::{VCFormatsAPI, VCFormatsSdJwtAPI};
@@ -34,7 +33,6 @@ use test_fixtures::pop::{POP_TYP, ProofOfPossession};
 use test_fixtures::request_object::{REQUEST_OBJECT_TYP, RequestObject};
 use test_fixtures::sd_jwt_vc::SdJwtVc;
 use test_fixtures::status_list::{DEFAULT_STATUS_LIST_URL, StatusListToken};
-use test_fixtures::vp_token::VpToken;
 use test_fixtures::x509::X509Chain;
 
 mod util;
@@ -189,90 +187,6 @@ async fn kb_jwt_is_rejected_under_a_different_nonce() {
     )
     .await
     .expect_err("a presentation bound to another nonce must be rejected");
-}
-
-// --- vp_token ---------------------------------------------------------------
-
-#[tokio::test]
-async fn vp_token_verifies_against_the_sdk() {
-    let kms = LocalKms::new();
-    let issuer = FixtureKey::create_default(&kms).await.unwrap();
-    let holder = FixtureKey::create_default(&kms).await.unwrap();
-
-    let vc = SdJwtVc::builder(&issuer, &holder).build().await.unwrap();
-
-    let builder = VpToken::builder(&kms, &holder, vc).bare();
-    let binder = builder.holder_binder();
-    let vp_token = builder.build().await.unwrap();
-
-    let presentation = vp_token
-        .as_str()
-        .expect("bare() yields a string")
-        .to_string();
-
-    let verifier = VerifierService::new(
-        test_fixtures::claims::DEFAULT_AUDIENCE,
-        UniversalResolver::default(),
-    );
-    verifier
-        .verify_presentation(
-            Some(binder),
-            &Presentation::SdJwtVp(presentation),
-            &StaticHttpClient::new(),
-        )
-        .await
-        .expect("a fixture vp_token must satisfy the SDK's own verifier");
-}
-
-#[tokio::test]
-async fn vp_token_keys_presentations_by_dcql_credential_id() {
-    let kms = LocalKms::new();
-    let issuer = FixtureKey::create_default(&kms).await.unwrap();
-    let holder = FixtureKey::create_default(&kms).await.unwrap();
-
-    let vc = SdJwtVc::builder(&issuer, &holder).build().await.unwrap();
-    let vp_token = VpToken::builder(&kms, &holder, vc)
-        .credential_id("pid")
-        .build()
-        .await
-        .unwrap();
-
-    assert!(
-        vp_token["pid"].as_array().is_some_and(|v| v.len() == 1),
-        "vp_token must key one presentation under the credential id: {vp_token}"
-    );
-}
-
-#[tokio::test]
-async fn vp_token_is_rejected_under_a_different_nonce() {
-    let kms = LocalKms::new();
-    let issuer = FixtureKey::create_default(&kms).await.unwrap();
-    let holder = FixtureKey::create_default(&kms).await.unwrap();
-
-    let vc = SdJwtVc::builder(&issuer, &holder).build().await.unwrap();
-    let vp_token = VpToken::builder(&kms, &holder, vc)
-        .nonce("bound-nonce")
-        .bare()
-        .build()
-        .await
-        .unwrap();
-
-    let verifier = VerifierService::new(
-        test_fixtures::claims::DEFAULT_AUDIENCE,
-        UniversalResolver::default(),
-    );
-    verifier
-        .verify_presentation(
-            Some(HolderBinder {
-                nonce: Nonce::from_secret("other-nonce".to_string()),
-                verifier_id: test_fixtures::claims::DEFAULT_AUDIENCE.to_string(),
-                response_uri: None,
-            }),
-            &Presentation::SdJwtVp(vp_token.as_str().unwrap().to_string()),
-            &StaticHttpClient::new(),
-        )
-        .await
-        .expect_err("a vp_token bound to another nonce must be rejected");
 }
 
 // --- status list token ------------------------------------------------------
