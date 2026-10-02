@@ -7,6 +7,7 @@
 - [About EQUS Credentials SDK](#about-equs-credentials-sdk)
 - [Distinctive Features](#distinctive-features)
 - [Supported Protocol Standards](#supported-protocol-standards)
+- [Published Packages](#published-packages)
 - [How To Build and Run](#how-to-build-and-run)
 - [How to Use EQUS Credentials SDK in Applications](#how-to-use-equs-credentials-sdk-in-applications)
 - [Other Docs and Diagrams](#other-docs-and-diagrams)
@@ -118,6 +119,17 @@ Listed in the [W3C DID method registry](https://www.w3.org/TR/did-extensions-met
 | Protocol | Specification | Notes |
 | --- | --- | --- |
 | DIDComm v2 | [specification](https://identity.foundation/didcomm-messaging/spec/) | Protocol Engine for defining custom protocols over DIDComm v2 |
+
+## Published Packages
+
+| Target | Package | Registry |
+| --- | --- | --- |
+| Rust | `equs-credentials-sdk` | [crates.io](https://crates.io/crates/equs-credentials-sdk) |
+| Node.js | `@equs-ai/equs-credentials-sdk` | [npm](https://www.npmjs.com/package/@equs-ai/equs-credentials-sdk) |
+| Node.js Askar storage plugin | `@equs-ai/equs-credentials-sdk-askar-storage` | [npm](https://www.npmjs.com/package/@equs-ai/equs-credentials-sdk-askar-storage) |
+| WASM | `@equs-ai/equs-credentials-sdk-wasm` | [npm](https://www.npmjs.com/package/@equs-ai/equs-credentials-sdk-wasm) |
+| Android (Kotlin) | `ai.equs:equs-credentials-sdk-android` | [Maven Central](https://central.sonatype.com/artifact/ai.equs/equs-credentials-sdk-android) |
+| iOS (Swift) | XCFramework | [GitHub Releases](https://github.com/equs-ai/equs-credentials-sdk/releases/latest) |
 
 ## How To Build and Run
 

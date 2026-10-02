@@ -1,5 +1,21 @@
 # EQUS Credentials SDK wrappers for WASM
 
+## Installation
+
+Published on npm as `@equs-ai/equs-credentials-sdk-wasm`, built for the `web` target:
+
+```shell
+npm i @equs-ai/equs-credentials-sdk-wasm
+```
+
+Call the default export once before using the API:
+
+```ts
+import init from '@equs-ai/equs-credentials-sdk-wasm';
+
+await init();
+```
+
 ## How to build
 
 Install `wasm-pack` from https://rustwasm.github.io/wasm-pack/installer/ and then

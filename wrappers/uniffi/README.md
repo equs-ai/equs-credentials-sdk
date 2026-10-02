@@ -36,6 +36,20 @@ In order to run these tests, you will need to have the JDK installed.
 
 # Android
 
+### Use a release
+
+Published on Maven Central as `ai.equs:equs-credentials-sdk-android` (min SDK 24):
+
+```kotlin
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation("ai.equs:equs-credentials-sdk-android:<version>")
+}
+```
+
 ### 1. Setup Android SDK and NDK
 
 Using Command-line:
