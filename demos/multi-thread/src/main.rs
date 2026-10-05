@@ -3,7 +3,6 @@ use actix_web::{web, App, Error, HttpRequest, HttpResponse, HttpServer};
 use actix_web_httpauth::headers::authorization::{Authorization, Bearer};
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine;
-use equs_sdk::crypto::Signer;
 use equs_sdk::did::didkey::DIDKey;
 use equs_sdk::did::universal::UniversalResolver;
 use equs_sdk::did::{DIDBuf, DIDResolver, DID};
@@ -21,11 +20,32 @@ use equs_sdk::vc::oid4vci::{
 use equs_sdk::vc::oid4vci::{Holder, Issuer};
 use rand::distr::Alphanumeric;
 use rand::{rng, Rng};
+use rsa::pkcs1v15::SigningKey;
+use rsa::rand_core::OsRng;
+use rsa::sha2::Sha256;
+use rsa::signature::{SignatureEncoding, Signer};
+use rsa::RsaPrivateKey;
 use serde_json::json;
 use std::env;
+use std::sync::LazyLock;
 
 const DEFAULT_RUNS: u32 = 100;
 
+static DUMMY_TOKEN: LazyLock<String> = LazyLock::new(|| {
+    keycloak_access_token(json!({
+        "exp": 1724398494,
+        "iat": 1724398194,
+        "auth_time": 1724398182,
+        "jti": "0b4fe390-4921-4042-b7e1-b03b3d196229",
+        "iss": "http://localhost:8080/idp/realms/pid-issuer-realm",
+        "sub": "60b8ba5f-c73f-4976-b0da-48d0e53335de",
+        "typ": "Bearer",
+        "azp": "wallet-dev",
+        "sid": "f15b3e11-ff28-44df-8fcf-a77d24714a23",
+        "allowed-origins": ["/*"],
+        "scope": "SD_JWT_cred",
+    }))
+});
 const SERVER_URL: &str = "http://localhost:4000";
 
 struct AppState {
@@ -141,42 +161,29 @@ async fn start_holders(runs: u32) {
     }
 }
 
-/// A Keycloak-shaped OAuth access token with `scope`, signed ES256 by a fresh
-/// in-memory key (`LocalKms` has no RSA, so not RS256 like a real Keycloak token).
-async fn dummy_access_token(scope: &str) -> String {
-    let (kid, handle) = LocalKms::new()
-        .create_and_handle(kms::KeyType::P256, kms::CreateOptions::default())
-        .await
-        .unwrap();
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_secs();
-    let header = json!({ "alg": "ES256", "typ": "JWT", "kid": kid });
-    let claims = json!({
-        "exp": now + 300,
-        "iat": now,
-        "auth_time": now,
-        "jti": "0b4fe390-4921-4042-b7e1-b03b3d196229",
-        "iss": "http://localhost:8080/idp/realms/pid-issuer-realm",
-        "sub": "60b8ba5f-c73f-4976-b0da-48d0e53335de",
-        "typ": "Bearer",
-        "azp": "wallet-dev",
-        "sid": "f15b3e11-ff28-44df-8fcf-a77d24714a23",
-        "allowed-origins": ["/*"],
-        "scope": scope,
+/// Re-signs a Keycloak access token's header and claims with a freshly
+/// generated RSA key, so the demo carries no committed token.
+fn keycloak_access_token(claims: serde_json::Value) -> String {
+    let header = json!({
+        "alg": "RS256",
+        "typ": "JWT",
+        "kid": "PclYP6vRk1LpKDfjSO2Da35rmGRfi9362CpREyJf8p0",
     });
     let signing_input = format!(
         "{}.{}",
         URL_SAFE_NO_PAD.encode(header.to_string()),
         URL_SAFE_NO_PAD.encode(claims.to_string())
     );
-    let signature = handle.sign(signing_input.as_bytes()).await.unwrap();
-    format!("{signing_input}.{}", URL_SAFE_NO_PAD.encode(signature))
+    let key = RsaPrivateKey::new(&mut OsRng, 2048).unwrap();
+    let signature = SigningKey::<Sha256>::new(key).sign(signing_input.as_bytes());
+    format!(
+        "{signing_input}.{}",
+        URL_SAFE_NO_PAD.encode(signature.to_bytes())
+    )
 }
 
 async fn run_holder() -> Result<(), String> {
-    let dummy_token = AccessToken::new(dummy_access_token("SD_JWT_cred").await);
+    let dummy_token = AccessToken::new(DUMMY_TOKEN.clone());
 
     let kms = LocalKms::new();
     let (_, key_metadata) = create_did_and_key_metadata(&kms).await;

@@ -23,7 +23,6 @@ use actix_web::cookie::time::OffsetDateTime;
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use equs_sdk::crypto::Key;
-use equs_sdk::crypto::Signer;
 use equs_sdk::did::DIDDoc;
 use equs_sdk::did::didweb::DIDWeb;
 use equs_sdk::inmem::nonce::LocalNonceHandler;
@@ -39,8 +38,14 @@ use equs_sdk::vc::status_formats::status_list_token_jwt::{VCStatus, VCStatuses};
 #[allow(unused_imports)]
 use keycloak::{KeycloakAdmin, KeycloakAdminToken};
 use reqwest::Url;
+use rsa::RsaPrivateKey;
+use rsa::pkcs1v15::SigningKey;
+use rsa::rand_core::OsRng;
+use rsa::sha2::Sha256;
+use rsa::signature::{SignatureEncoding, Signer};
 use serde_json::json;
 use std::sync::Arc;
+use std::sync::LazyLock;
 use std::sync::Mutex;
 use std::time::Duration;
 
@@ -62,6 +67,21 @@ const DID_DOC_URL_PATH: &str = "/.well-known/did.json";
 const AUTH_METADATA_ENDPOINT_PATH: &str = "/.well-known/oauth-authorization-server";
 const TOKEN_ENDPOINT_PATH: &str = "/token";
 const TOKEN_INTROSPECT_PATH: &str = "/introspection";
+static DUMMY_ACCESS_TOKEN: LazyLock<String> = LazyLock::new(|| {
+    keycloak_access_token(json!({
+        "exp": 1736942414,
+        "iat": 1736942114,
+        "auth_time": 1736942112,
+        "jti": "431069d1-5f23-4920-b05f-55b663504186",
+        "iss": "http://localhost:8080/idp/realms/pid-issuer-realm",
+        "sub": "60b8ba5f-c73f-4976-b0da-48d0e53335de",
+        "typ": "Bearer",
+        "azp": "wallet-dev",
+        "sid": "40e62467-53fc-4d29-9dff-2e7f844c3e32",
+        "allowed-origins": ["/*"],
+        "scope": "SD_JWT_cred_scope",
+    }))
+});
 const STATUS_LIST_URL_PATH: &str = "/status_list";
 const VC_REVOKE_PATH: &str = "/revoke";
 const DEFAULT_STATUS_SIZE: u8 = 1;
@@ -260,7 +280,7 @@ async fn create_credential_offer_uri_with_pre_auth_code_grant() -> HttpResponse 
 async fn generate_token(req: web::Form<TokenRequest>) -> Result<HttpResponse, Error> {
     println!("Token request: {:?}", req.0);
     let resp: TokenResponse = serde_json::from_value(json!({
-        "access_token": dummy_access_token("SD_JWT_cred_scope").await,
+        "access_token": *DUMMY_ACCESS_TOKEN,
         "token_type": "Bearer",
         "expires_in": 86400,
     }))?;
@@ -268,38 +288,25 @@ async fn generate_token(req: web::Form<TokenRequest>) -> Result<HttpResponse, Er
     Ok(HttpResponse::Ok().json(resp))
 }
 
-/// A Keycloak-shaped OAuth access token with `scope`, signed ES256 by a fresh
-/// in-memory key (`LocalKms` has no RSA, so not RS256 like a real Keycloak token).
-async fn dummy_access_token(scope: &str) -> String {
-    let (kid, handle) = LocalKms::new()
-        .create_and_handle(kms::KeyType::P256, kms::CreateOptions::default())
-        .await
-        .unwrap();
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_secs();
-    let header = json!({ "alg": "ES256", "typ": "JWT", "kid": kid });
-    let claims = json!({
-        "exp": now + 300,
-        "iat": now,
-        "auth_time": now,
-        "jti": "431069d1-5f23-4920-b05f-55b663504186",
-        "iss": "http://localhost:8080/idp/realms/pid-issuer-realm",
-        "sub": "60b8ba5f-c73f-4976-b0da-48d0e53335de",
-        "typ": "Bearer",
-        "azp": "wallet-dev",
-        "sid": "40e62467-53fc-4d29-9dff-2e7f844c3e32",
-        "allowed-origins": ["/*"],
-        "scope": scope,
+/// Re-signs a Keycloak access token's header and claims with a freshly
+/// generated RSA key, so the demo carries no committed token.
+fn keycloak_access_token(claims: serde_json::Value) -> String {
+    let header = json!({
+        "alg": "RS256",
+        "typ": "JWT",
+        "kid": "PclYP6vRk1LpKDfjSO2Da35rmGRfi9362CpREyJf8p0",
     });
     let signing_input = format!(
         "{}.{}",
         URL_SAFE_NO_PAD.encode(header.to_string()),
         URL_SAFE_NO_PAD.encode(claims.to_string())
     );
-    let signature = handle.sign(signing_input.as_bytes()).await.unwrap();
-    format!("{signing_input}.{}", URL_SAFE_NO_PAD.encode(signature))
+    let key = RsaPrivateKey::new(&mut OsRng, 2048).unwrap();
+    let signature = SigningKey::<Sha256>::new(key).sign(signing_input.as_bytes());
+    format!(
+        "{signing_input}.{}",
+        URL_SAFE_NO_PAD.encode(signature.to_bytes())
+    )
 }
 
 async fn validate_token(req: web::Form<HashMap<String, String>>) -> Result<HttpResponse, Error> {
