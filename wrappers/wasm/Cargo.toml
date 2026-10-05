@@ -10,13 +10,14 @@ publish = false
 
 [features]
 default = ['console_error_panic_hook', 'instant/wasm-bindgen', 'instant/inaccurate']
-test-utils = []
+test-utils = ["dep:equs-test-fixtures"]
 
 [lib]
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 equs-credentials-sdk = { path = "../..", features = ["in-memory"] }
+equs-test-fixtures = { path = "../../test-fixtures", default-features = false, optional = true }
 
 async-trait = '0.1.85'
 wasm-bindgen-futures = '=0.4.50'

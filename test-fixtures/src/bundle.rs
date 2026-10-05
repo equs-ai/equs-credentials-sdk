@@ -1,8 +1,7 @@
 //! Builds the flat JSON bundle every wrapper test suite reads.
 //!
-//! [`build`] mints one [`equs_sdk::inmem::kms::LocalKms`], the issuer, holder
-//! and verifier keys every builder in this crate needs, then drives each of
-//! them once. The result is a [`Bundle`] — a flat map of fixture name to
+//! [`build`] drives one [`crate::generator::Generator`] through every fixture
+//! the wrapper suites read. The result is a [`Bundle`] — a flat map of fixture name to
 //! value — written to disk by `bin/fixture_gen.rs` and read back by the
 //! TypeScript, Kotlin and Swift test suites.
 //!
@@ -28,17 +27,9 @@
 use serde::Serialize;
 use serde_json::{Map, Value, json};
 
-use equs_sdk::inmem::kms::LocalKms;
-
-use crate::access_token::AccessToken;
-use crate::claims::{DEFAULT_ISSUER, DEFAULT_NONCE};
 use crate::error::Result;
-use crate::jwe::Jwe;
-use crate::kb_jwt::KbJwt;
-use crate::keys::FixtureKey;
-use crate::pop::ProofOfPossession;
-use crate::sd_jwt_vc::SdJwtVc;
-use crate::status_list::{DEFAULT_STATUS_LIST_URL, StatusListToken};
+use crate::generator::Generator;
+use crate::status_list::DEFAULT_STATUS_LIST_URL;
 
 /// The wrapper fixture bundle: a flat map of fixture name to value.
 ///
@@ -75,9 +66,8 @@ impl Bundle {
 
 /// Builds the wrapper fixture bundle.
 ///
-/// Mints one [`LocalKms`] and three [`FixtureKey`]s — issuer, holder,
-/// verifier — then drives every builder in this crate that a wrapper test
-/// suite needs, collecting the results into a [`Bundle`]. See the
+/// Drives one [`Generator`] through every fixture a wrapper test suite needs,
+/// collecting the results into a [`Bundle`]. See the
 /// [module docs](self) for the full key contract.
 ///
 /// # Errors
@@ -88,49 +78,26 @@ impl Bundle {
 ///   — one of the builders failed; see that builder's own `build` for the
 ///   exact cause.
 pub async fn build() -> Result<Bundle> {
-    let kms = LocalKms::new();
-    let issuer = FixtureKey::create_default(&kms).await?;
-    let holder = FixtureKey::create_default(&kms).await?;
-    let verifier = FixtureKey::create_default(&kms).await?;
-
+    let generator = Generator::new().await?;
     let mut bundle = Bundle(Map::new());
 
-    let vc = SdJwtVc::builder(&issuer, &holder).build().await?;
-    let presentation = KbJwt::builder(&kms, &holder, vc.clone()).build().await?;
-    bundle.insert("vc", Value::from(vc.clone()));
+    let vp = generator.presentation().await?;
+    bundle.insert("vc", Value::from(vp.credential.clone()));
     bundle.insert(
         "vp",
-        json!({ "credential": vc.clone(), "presentation": presentation.clone() }),
+        json!({ "credential": vp.credential, "presentation": vp.presentation.clone() }),
     );
 
-    let status_list_jwt = StatusListToken::builder(&issuer).build().await?;
-    bundle.insert("statusListJwt", Value::from(status_list_jwt));
+    let status = generator.status_pair(DEFAULT_STATUS_LIST_URL).await?;
+    bundle.insert("statusListJwt", Value::from(status.status_list_jwt));
+    bundle.insert("vcWithStatus", Value::from(status.credential));
 
-    let vc_with_status = SdJwtVc::builder(&issuer, &holder)
-        .claim(
-            "status",
-            json!({ "status_list": { "idx": 0, "uri": DEFAULT_STATUS_LIST_URL } }),
-        )
-        .build()
-        .await?;
-    bundle.insert("vcWithStatus", Value::from(vc_with_status));
+    bundle.insert("accessToken", Value::from(generator.access_token().await?));
+    bundle.insert("proofJwt", Value::from(generator.proof_jwt().await?));
+    bundle.insert("sdJwtCreds", Value::from(generator.sd_jwt_vc().await?));
 
-    let access_token = AccessToken::builder(&issuer).build().await?;
-    bundle.insert("accessToken", Value::from(access_token));
-
-    let proof_jwt = ProofOfPossession::builder(&holder)
-        .audience(DEFAULT_ISSUER)
-        .nonce(DEFAULT_NONCE)
-        .build()
-        .await?;
-    bundle.insert("proofJwt", Value::from(proof_jwt));
-
-    let sd_jwt_creds = SdJwtVc::builder(&issuer, &holder).build().await?;
-    bundle.insert("sdJwtCreds", Value::from(sd_jwt_creds));
-
-    let auth_response_jwe = Jwe::builder(&kms, verifier.kid.clone())
-        .payload(json!({ "vp_token": presentation, "state": "fixture-state" }))
-        .build()
+    let auth_response_jwe = generator
+        .auth_response_jwe(json!({ "vp_token": vp.presentation, "state": "fixture-state" }))
         .await?;
     bundle.insert("authResponseJwe", Value::from(auth_response_jwe));
 

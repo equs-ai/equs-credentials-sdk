@@ -11676,6 +11676,7 @@ dependencies = [
  "async-trait",
  "console_error_panic_hook",
  "equs-credentials-sdk",
+ "equs-test-fixtures",
  "getrandom 0.4.2",
  "instant",
  "js-sys",

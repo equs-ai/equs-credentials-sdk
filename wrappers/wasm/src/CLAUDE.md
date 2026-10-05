@@ -26,11 +26,11 @@ Root of the wasm-bindgen browser/WASM wrapper crate. Declares all top-level modu
 - `convert_to_opaque_object_unchecked` — Primary serialization helper; used throughout to serialize Rust structs into TypeScript-typed opaque JS values.
 
 ## Dependencies
-- Depends on: `equs_sdk` (all core modules), `wasm_bindgen`, `wasm_bindgen_futures`, `js_sys`, `web_sys`, `serde_wasm_bindgen`, `async_trait`, `serde_json`
+- Depends on: `equs_sdk` (all core modules), `wasm_bindgen`, `wasm_bindgen_futures`, `js_sys`, `web_sys`, `serde_wasm_bindgen`, `async_trait`, `serde_json`; `equs-test-fixtures` (default features off) under `test-utils`
 - Used by: TypeScript/JavaScript browser and Node.js WASM consumers
 
 ## Constraints
 - All async trait implementations use `#[async_trait(?Send)]` — the entire crate is single-threaded.
 - Uses `Rc` (not `Arc`) for shared ownership inside `JsKeyHandle` and `JsKms`.
 - Optional `wee_alloc` global allocator reduces WASM binary size when the `wee_alloc` feature is enabled.
-- `test-utils` feature exposes additional wasm_bindgen helpers (`KeyHandleTestHelper`, `KmsTestHelper`, `VaultTestHelper`) only for test builds.
+- `test-utils` feature exposes additional wasm_bindgen helpers (`KeyHandleTestHelper`, `KmsTestHelper`, `VaultTestHelper`) only for test builds, and links `equs-test-fixtures` for its `Generator`.
