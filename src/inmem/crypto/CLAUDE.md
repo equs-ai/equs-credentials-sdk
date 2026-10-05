@@ -24,7 +24,7 @@ Provides concrete in-memory implementations of all cryptographic suites supporte
 - `HasJWK` — associates a curve type with JWK serialization logic.
 
 ## Dependencies
-- Depends on: `crate::crypto` (traits and error types), `ed25519-dalek`, `ecdsa`, `p256`, `bip32`, `ssi::bbs`, `zkryptium`
+- Depends on: `crate::crypto` (traits and error types), `ed25519-dalek`, `ecdsa`, `p256`, `bip32`, `ssi-bbs`, `zkryptium`
 - Used by: `crate::inmem::kms` (`LocalKms` dispatches key operations to these suites)
 
 ## Constraints
