@@ -38,3 +38,4 @@ and the signing.
 - ES256 signatures are randomised, so two calls with the same inputs give different tokens; RS256 and HS256
   are deterministic for a given key.
 - Run with `cargo test -p equs-test-fixtures`; `cargo test` at the workspace root tests the root package only.
+  CI runs it in `test-fixtures-test` (GitHub) and `test-fixtures-test-job` (GitLab).
