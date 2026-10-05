@@ -532,6 +532,7 @@ dependencies = [
  "bip32",
  "ecdsa",
  "equs-credentials-sdk",
+ "equs-test-fixtures",
  "p256",
  "rand 0.9.4",
  "rstest 0.26.1",
@@ -3445,6 +3446,7 @@ dependencies = [
  "rsa 0.9.10",
  "rstest 0.22.0",
  "serde_json",
+ "sha2 0.10.9",
  "ssi",
 ]
 

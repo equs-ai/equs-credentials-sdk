@@ -15,5 +15,5 @@ Resolves `CredentialMetadata` (type string, format, key-id, claim-field paths) f
 - `Error` — `FormatNotSupported`, `Resolving`.
 
 ## Dependencies
-- Depends on: `crate::vc::formats::HasClaims`, `crate::vc::core::KeyMetadata`, `crate::vc::claims::Claim`, `crate::utils::json`
+- Depends on: `crate::vc::formats::HasClaims`, `crate::vc::core::KeyMetadata`, `crate::vc::claims::Claim`, `crate::utils::json`, `test_fixtures` (tests only: EdDSA SD-JWT fixtures under module-local Ed25519 keys)
 - Used by: `core::HolderService` (after credential acceptance)

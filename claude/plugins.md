@@ -13,7 +13,7 @@ Provides optional, pluggable extensions to EQUS Credentials SDK's core storage a
 | Askar — Node.js wrapper | `plugins/askar/wrappers/nodejs/src/` | [context](../plugins/askar/wrappers/nodejs/src/CLAUDE.md) |
 
 ## Cross-domain relationships
-- Depends on: `crate::kms`, `crate::vault`, `crate::storage` (implements these traits), `askar-crypto`, `aries-askar`
+- Depends on: `crate::kms`, `crate::vault`, `crate::storage` (implements these traits), `askar-crypto`, `aries-askar`, `test_fixtures` (tests only)
 - Used by: production applications that require secure key storage beyond the in-memory implementation; exposed through the Node.js wrapper
 
 ## Key decisions / constraints

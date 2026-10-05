@@ -18,7 +18,7 @@ Implements the OpenID for Verifiable Credential Issuance (OID4VCI) protocol laye
 | `token_validation.rs` | `Introspect<HC>` and `ByJwks<HC>` — two strategies for validating access tokens: OAuth2 introspection endpoint or JWKS signature verification. |
 | `protocol_error.rs` | `ProtocolError`, `ErrorType`, `CredentialEndpointError`, `TokenEndpointError`, `CredentialOfferEndpointError` — standard-defined error types mapped from `oid4vci` crate errors. |
 | `internal_error.rs` | `InternalError` — non-protocol unexpected errors (parse, vault, KMS, discovery, HTTP, nonce handler, type conversion, etc.). |
-| `tests.rs` | Shared test fixtures (`SampleIssuerMetadata`, `SampleCredentialRequest`, sample claims, mock nonce handler; access tokens, the proof JWT and the JWKS are generated through `test_fixtures`) used across intra-module tests. |
+| `tests.rs` | Shared test fixtures (`SampleIssuerMetadata`, `SampleCredentialRequest`, sample claims, mock nonce handler; access tokens, the proof JWT, the SD-JWT VC and the JWKS are generated through `test_fixtures`) used across intra-module tests. |
 
 ## Key types / traits
 - `Issuer` — async trait: `get_issuer_metadata`, `get_cred_def_metadata`, `generate_nonce`, `create_credential_offer`, `issue_credential`.

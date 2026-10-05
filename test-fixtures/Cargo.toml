@@ -15,6 +15,7 @@ base64 = "0.22.1"
 jsonwebtoken = "9.3.0"
 rsa = { version = "0.9.10", features = ["getrandom"] }
 serde_json = { version = "1.0.120", features = ["preserve_order"] }
+sha2 = "0.10"
 ssi = "=0.16.0"
 
 [dev-dependencies]

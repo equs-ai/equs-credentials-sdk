@@ -1590,20 +1590,20 @@ mod tests {
 
     #[rstest]
     #[case::url(
-        EXAMPLE_SD_JWT_ISSUER_OID4VCI,
+        example_sd_jwt_issuer_oid4vci(),
         Some(CredentialIssuerIdentifier::OID4VCI(
             IssuerUrl::new("https://example.com/oid4vci-issuer".to_owned()).unwrap())),
     )]
     #[case::did(
-        EXAMPLE_SD_JWT_ISSUER_DID,
+        example_sd_jwt_issuer_did(),
         Some(CredentialIssuerIdentifier::DID(
             DIDURLBuf::from_str("did:example:123").unwrap())),
     )]
     #[case::other(
-        EXAMPLE_SD_JWT_ISSUER_OTHER,
+        example_sd_jwt_issuer_other(),
         Some(CredentialIssuerIdentifier::Other("notadid:example:123".to_owned())),
     )]
-    #[case::no_iss(EXAMPLE_SD_JWT_ISSUER_NONE, None)]
+    #[case::no_iss(example_sd_jwt_issuer_none(), None)]
     fn extract_issuer_identifier(
         #[case] credential: &str,
         #[case] expected: Option<CredentialIssuerIdentifier>,
@@ -1612,31 +1612,98 @@ mod tests {
         assert_eq!(expected, actual);
     }
 
-    const EXAMPLE_SD_JWT_ISSUER_OID4VCI: &str = "eyJ0eXAiOiJzZCtqd3QiLCJhbGciOiJFUzI1NiJ9\
-    .eyJpZCI6IjEyMzQiLCJpc3MiOiJodHRwczovL2V4YW1wbGUuY29tL29pZDR2Y2ktaXNzdWVyIiwiX3NkIjpbIkR4ZjFVYU1zREFNaF9qY3Q4QnUzSndGYW1VaW11NTVjeW5YNGp2dzdrSk0iLCJHMFVVREhLY3FhTG1zaHNrSzMzS3RJSktuRmtFcFA4RmxMb09WMl9xZTFnIiwiZXpUU0xKMTc2Ry1lYURGUXFiOXJic2hWWjRuSm45LTU5aVh1azJFVHNhYyJdLCJfc2RfYWxnIjoiU0hBLTI1NiJ9\
-    .m99jWkWFhSGXY8e0Ml6PF_oFHKYsIKIzQP88lkacDyWSTnmDBGT5m7IkxdZ0Y6djeUuqvmYUfFExNnt4CTp3Bw\
-    ~WyJiODM2YWE1NDE0ZGNmNjgzIiwiZmlyc3RuYW1lIiwiSm9obiJd\
-    ~WyJkMTllYjIxZjA3M2Y4Y2JjIiwibGFzdG5hbWUiLCJEb2UiXQ\
-    ~WyI0MTc4N2U1NGNmZGNkNWE3Iiwic3NuIiwiMTIzLTQ1LTY3ODkiXQ~";
+    fn example_sd_jwt_issuer_oid4vci() -> &'static str {
+        static TOKEN: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
+            let keys = test_fixtures::keys();
+            test_fixtures::sd_jwt(
+                &serde_json::json!({
+                    "typ": "sd+jwt",
+                    "alg": "ES256"
+                }),
+                &serde_json::json!({
+                    "id": "1234",
+                    "iss": "https://example.com/oid4vci-issuer",
+                    "_sd_alg": "SHA-256"
+                }),
+                &[
+                    r#"["b836aa5414dcf683","firstname","John"]"#,
+                    r#"["d19eb21f073f8cbc","lastname","Doe"]"#,
+                    r#"["41787e54cfdcd5a7","ssn","123-45-6789"]"#,
+                ],
+                &keys.issuer,
+            )
+        });
+        &TOKEN
+    }
 
-    const EXAMPLE_SD_JWT_ISSUER_DID: &str = "eyJ0eXAiOiJzZCtqd3QiLCJhbGciOiJFUzI1NiJ9\
-    .eyJpZCI6IjEyMzQiLCJpc3MiOiJkaWQ6ZXhhbXBsZToxMjMiLCJfc2QiOlsiRnQyNU1fQ3BTX0tCWldoYTJVbm9IeWZrMDVTM2pDOC01Q0tlbm9qQV9GVSIsIlV1MGhDM0VndmRXY3VQem5ONXlVbndfQUYtTkxpeW1hcXY0RXZKeW5ZTnciLCJzWTNDZWlzWkRJMGRkbFJyZndsZHd1ZjUyQ2xGMjUzQTlWZUowWUJ5UGlBIl0sIl9zZF9hbGciOiJTSEEtMjU2In0\
-    .ztkiOiV1KJKkQb8T2lhDo-A9kTaXWT7o-jbUlWmxH7f7q-3bDzhKWawpjyk7ylZehWgUIiyRkxneLdPFxVKJOA\
-    ~WyJmZmVmZmY0ZDI1NDdlYjY4IiwiZmlyc3RuYW1lIiwiSm9obiJd\
-    ~WyI3OWU2ZjJhODZkOTZhZmZkIiwibGFzdG5hbWUiLCJEb2UiXQ\
-    ~WyIzMzY3MDdmOGMzM2IyOGYyIiwic3NuIiwiMTIzLTQ1LTY3ODkiXQ~";
+    fn example_sd_jwt_issuer_did() -> &'static str {
+        static TOKEN: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
+            let keys = test_fixtures::keys();
+            test_fixtures::sd_jwt(
+                &serde_json::json!({
+                    "typ": "sd+jwt",
+                    "alg": "ES256"
+                }),
+                &serde_json::json!({
+                    "id": "1234",
+                    "iss": "did:example:123",
+                    "_sd_alg": "SHA-256"
+                }),
+                &[
+                    r#"["ffefff4d2547eb68","firstname","John"]"#,
+                    r#"["79e6f2a86d96affd","lastname","Doe"]"#,
+                    r#"["336707f8c33b28f2","ssn","123-45-6789"]"#,
+                ],
+                &keys.issuer,
+            )
+        });
+        &TOKEN
+    }
 
-    const EXAMPLE_SD_JWT_ISSUER_OTHER: &str = "eyJ0eXAiOiJzZCtqd3QiLCJhbGciOiJFUzI1NiJ9\
-    .eyJpZCI6IjEyMzQiLCJpc3MiOiJub3RhZGlkOmV4YW1wbGU6MTIzIiwiX3NkIjpbIkRYRUZDZmdpZk5HUDZyTHlCSXVXbnpTdFptSVhEeGdKQ1BxV0NKbkZ5MmciLCJPWmc3dlFTbTNBSDdrVUlTeTd2aG11LWh6MFdWb2NHQVo0WlJLU2pyeGFjIiwiaHRnZk1Wb2Qza0F4NVhHX1JWZFlBMVdoNlRUR0xYaHhkSnBMWTNqdGRrOCJdLCJfc2RfYWxnIjoiU0hBLTI1NiJ9\
-    .RLjK49RzHGR6jW1pM0hqMK_JUvlELUOfhnIpCXbDjzID9lxTPL629uJn3dHbv7oiuWlyy-669Ozp_5qt3xCh0w\
-    ~WyJmNzMxNDI5NWU1N2IwN2M3IiwiZmlyc3RuYW1lIiwiSm9obiJd\
-    ~WyI1ZTY2NzNjN2YyZGJkNDRjIiwibGFzdG5hbWUiLCJEb2UiXQ\
-    ~WyI2NDg4ZjJmNDA5ODBjOTIzIiwic3NuIiwiMTIzLTQ1LTY3ODkiXQ~";
+    fn example_sd_jwt_issuer_other() -> &'static str {
+        static TOKEN: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
+            let keys = test_fixtures::keys();
+            test_fixtures::sd_jwt(
+                &serde_json::json!({
+                    "typ": "sd+jwt",
+                    "alg": "ES256"
+                }),
+                &serde_json::json!({
+                    "id": "1234",
+                    "iss": "notadid:example:123",
+                    "_sd_alg": "SHA-256"
+                }),
+                &[
+                    r#"["f7314295e57b07c7","firstname","John"]"#,
+                    r#"["5e6673c7f2dbd44c","lastname","Doe"]"#,
+                    r#"["6488f2f40980c923","ssn","123-45-6789"]"#,
+                ],
+                &keys.issuer,
+            )
+        });
+        &TOKEN
+    }
 
-    const EXAMPLE_SD_JWT_ISSUER_NONE: &str = "eyJ0eXAiOiJzZCtqd3QiLCJhbGciOiJFUzI1NiJ9\
-    .eyJpZCI6IjEyMzQiLCJfc2QiOlsiLWpUTDVPeGFrdHRGSzIyWUF4cTZMVXdvWmZCTFllb3JEQkxnVXVZN0JwayIsImNocWNFN0xUeC13TjVtUUlkaHB5aUFLcVhZcUJHVHhmWnVDMjFzOGJmdEEiLCJrM2twMjFvTUc2RXJnRzAzZTdTakc0OGhkWXBDcDJTM2MyQ3VWVmdIVWZvIl0sIl9zZF9hbGciOiJTSEEtMjU2In0\
-    .wutZuchFO2sh0jQ6ACdf0gg7R4mAXvSrNNScKwkrQZYO0lFPlO9GEiBOXMVKoxLyat1bycUDXezgM-ENVBCB0A\
-    ~WyJlZGUzYjU4OTFjYmJkYTRiIiwiZmlyc3RuYW1lIiwiSm9obiJd\
-    ~WyJhZTEzMDRjNWFmZGVkOTZhIiwibGFzdG5hbWUiLCJEb2UiXQ\
-    ~WyJlYmZiNDhiM2VjZWM1ZDM4Iiwic3NuIiwiMTIzLTQ1LTY3ODkiXQ~";
+    fn example_sd_jwt_issuer_none() -> &'static str {
+        static TOKEN: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
+            let keys = test_fixtures::keys();
+            test_fixtures::sd_jwt(
+                &serde_json::json!({
+                    "typ": "sd+jwt",
+                    "alg": "ES256"
+                }),
+                &serde_json::json!({
+                    "id": "1234",
+                    "_sd_alg": "SHA-256"
+                }),
+                &[
+                    r#"["ede3b5891cbbda4b","firstname","John"]"#,
+                    r#"["ae1304c5afded96a","lastname","Doe"]"#,
+                    r#"["ebfb48b3ecec5d38","ssn","123-45-6789"]"#,
+                ],
+                &keys.issuer,
+            )
+        });
+        &TOKEN
+    }
 }

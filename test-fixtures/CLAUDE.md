@@ -10,8 +10,8 @@ and the signing.
 
 | File | Role |
 |------|------|
-| `Cargo.toml` | Package manifest. Depends on `ssi`, `rsa`, `jsonwebtoken`, `serde_json` and `base64` — not on the SDK, so `ssi::JWK` is the same type on both sides and the crate builds for every target the SDK does. |
-| `src/lib.rs` | `keys()` — process-wide `Keys` (`authz` RSA-2048, `issuer` / `holder` / `verifier` P-256, `secret` HS256), generated on first use. `jws(header, payload, key)` — compact JWS; `alg` is read from the header. `jwks(keys)` — public JWK Set. `did_key_url(key)` — the `did:key` URL the SDK resolves a `kid` against. |
+| `Cargo.toml` | Package manifest. Depends on `ssi`, `rsa`, `jsonwebtoken`, `sha2`, `serde_json` and `base64` — not on the SDK, so `ssi::JWK` is the same type on both sides and the crate builds for every target the SDK does. |
+| `src/lib.rs` | `keys()` — process-wide `Keys` (`authz` RSA-2048, `issuer` / `holder` / `verifier` P-256, `secret` HS256), generated on first use. `jws(header, payload, key)` — compact JWS; `alg` is read from the header. `jwks(keys)` — public JWK Set. `did_key_url(key)` / `did_key(key)` — the `did:key` URL the SDK resolves a `kid` against, and the bare DID for `iss`, `sub` or `aud`. `sd_jwt(header, claims, disclosures, key)` — issuer-signed SD-JWT: `_sd` holds the sorted digests of the disclosures, given as their JSON array text, followed by the disclosures and a trailing `~`. `sd_jwt_kb(sd_jwt, header, claims, key)` — appends a `kb+jwt` carrying the `sd_hash` of `sd_jwt`. `digest(input)` — base64url SHA-256, the SD-JWT digest. |
 
 ## Key types / traits
 - `Keys` — one key per role; every fixture in a process signs with the same keys, so a token and the JWKS or
@@ -20,10 +20,10 @@ and the signing.
 
 ## Dependencies
 - Depends on: `ssi` (P-256 generation, JWS signing, `did:key`), `rsa` (RSA generation, which `ssi` lacks),
-  `jsonwebtoken` (HMAC, which `ssi` lacks), `serde_json` with `preserve_order` (headers and claims keep the
+  `jsonwebtoken` (HMAC, which `ssi` lacks), `sha2` (SD-JWT digests), `serde_json` with `preserve_order` (headers and claims keep the
   order they are written in), `base64`
 - Used by: the SDK's `[dev-dependencies]` (unit tests under `src/`, the E2E suite under `tests/`),
-  `demos/multi-thread`, `demos/oid4vc/issuer`
+  `plugins/askar` (`[dev-dependencies]`, the vault tests), `demos/multi-thread`, `demos/oid4vc/issuer`
 
 ## Constraints
 - Signing panics on bad input (an `alg` the key cannot sign, a symmetric key without `k`); fixtures are test
@@ -37,5 +37,8 @@ and the signing.
   under the dev profile (tens of milliseconds instead of seconds), and `keys()` runs it once per process.
 - Signing is deterministic (ES256 uses RFC 6979 nonces, RS256 is PKCS#1 v1.5, HS256 is a MAC), so two calls
   with the same inputs give the same token.
+- A disclosure is digested as the exact JSON text given (`sd_jwt_rs` writes `["salt", "name", value]` with a
+  space after each comma; hand-made fixtures are compact), so a recorded salt reproduces the recorded `_sd`
+  entry. `_sd` is sorted, as `sd_jwt_rs` sorts it, and omitted when there are no disclosures.
 - Run with `cargo test -p equs-test-fixtures`; `cargo test` at the workspace root tests the root package only.
   CI runs it in `test-fixtures-test` (GitHub) and `test-fixtures-test-job` (GitLab).

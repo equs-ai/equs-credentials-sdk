@@ -25,7 +25,45 @@ pub mod fixtures {
         );
         format!("{token}~")
     }
-    pub const SAMPLE_SD_JWT_WITH_STATUS: &str = "eyJ0eXAiOiJkYytzZC1qd3QiLCJhbGciOiJFUzI1NiIsImtpZCI6ImRpZDprZXk6ekRuYWVmYUdTd1RmWmsyVXVRV1JqRFQ1Z3J0TEw2RWE1Z3hGcjVBN1hyMzZIUXdtQiN6RG5hZWZhR1N3VGZaazJVdVFXUmpEVDVncnRMTDZFYTVneEZyNUE3WHIzNkhRd21CIn0.eyJfc2QiOlsiTGtNQ3hnT3dKZXVWa2xFUVIxYUl1TDVUSXllRkZiSUhEYXNjZk9EOGlHWSIsInc5WHpEVG5YMFRNOVFFX0NjYUVSaUtpbVV3VkFkWEwxRzZIdU1wZHdkclkiXSwiYWRkcmVzcyI6IjIyMUIgQmFrZXIgU3RyZWV0IiwiaWF0IjoxNzUzMDU0NDQ4LCJkYXRlIjoiMDkvMDkvMTk4OSIsInN1YiI6ImRpZDprZXk6ekRuYWVoVzJXWERnaHBNMTZYRzN5Z2Vja2FSTWJpamJjWG9tZnQ0ZzI2cnlpUlZXUiIsInZjdCI6Imh0dHBzOi8vY3JlZGVudGlhbHMuZXhhbXBsZS5jb20vaWRlbnRpdHlfY3JlZGVudGlhbCIsInN0YXR1cyI6eyJzdGF0dXNfbGlzdCI6eyJ1cmkiOiJodHRwOi8vbG9jYWxob3N0OjkwMDEvc3RhdHVzX2xpc3QiLCJpZHgiOjF9fSwiX3NkX2FsZyI6InNoYS0yNTYiLCJpc3MiOiJkaWQ6a2V5OnpEbmFlZmFHU3dUZlprMlV1UVdSakRUNWdydExMNkVhNWd4RnI1QTdYcjM2SFF3bUIiLCJleHAiOjE3NTMwNTUwNDgsIm5iZiI6MTc1MzA1NDQ0OCwiY25mIjp7Imp3ayI6eyJrdHkiOiJFQyIsImNydiI6IlAtMjU2IiwieCI6Il9hRHExTWE2SFNOUUZrR0F0ZnBpNlR3UnVuMUhlVnpCWWo2R29DcEhmcW8iLCJ5IjoiSTY0VnRmaTNlbzktQTM0TmNNMFJ4cHRsbzhiOGd1RUV3dnd2S2w1YUZlWSJ9fX0.jruSbbpygwgyWcJ2DO0myKlGimKW0n_dsYc5l-hksJqIWZF2Wy5Sf01nZlkUop-_JkN3x9Ct1kCOHes8-Ozdxg~WyJ1eExOVGVtV1FrYzFWTzZMZ3NBcmxRIiwgIm5hbWUiLCAiSm9obiJd~WyIyQ0J1ZENXSTVFSW1haGd6ZGNVMVZ3IiwgInN1cm5hbWUiLCAiRG9lIl0~";
+    /// SD-JWT VC whose `status` points at `sample_credential_status_list()`, index 1.
+    pub fn sample_sd_jwt_with_status() -> &'static str {
+        static TOKEN: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
+            let keys = test_fixtures::keys();
+            test_fixtures::sd_jwt(
+                &serde_json::json!({
+                    "typ": "dc+sd-jwt",
+                    "alg": "ES256",
+                    "kid": test_fixtures::did_key_url(&keys.issuer)
+                }),
+                &serde_json::json!({
+                    "address": "221B Baker Street",
+                    "iat": 1753054448,
+                    "date": "09/09/1989",
+                    "sub": test_fixtures::did_key(&keys.holder),
+                    "vct": "https://credentials.example.com/identity_credential",
+                    "status": {
+                        "status_list": {
+                            "uri": "http://localhost:9001/status_list",
+                            "idx": 1
+                        }
+                    },
+                    "_sd_alg": "sha-256",
+                    "iss": test_fixtures::did_key(&keys.issuer),
+                    "exp": 1753055048,
+                    "nbf": 1753054448,
+                    "cnf": {
+                        "jwk": keys.holder.to_public()
+                    }
+                }),
+                &[
+                    r#"["uxLNTemWQkc1VO6LgsArlQ", "name", "John"]"#,
+                    r#"["2CBudCWI5EImahgzdcU1Vw", "surname", "Doe"]"#,
+                ],
+                &keys.issuer,
+            )
+        });
+        &TOKEN
+    }
 
     pub mod single_presentation {
         pub mod json_ld {

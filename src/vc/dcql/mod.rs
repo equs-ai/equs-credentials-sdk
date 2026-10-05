@@ -1640,16 +1640,55 @@ mod tests {
     }
 
     fn sample_sdjwt_presentation_for_dcql() -> (Value, Value) {
-        let presentation_for_dcql = json!(
-        {"id":["eyJ0eXAiOiJkYytzZC1qd3QiLCJhbGciOiJFUzI1NiIsImtpZCI6ImRpZDprZXk6ekRuYWVwbmhBQXI5Tk51TnJ6M1pydU5ibTY0NGk5aW9VYW1xSHBZQXBTNldSUVNlTiN6RG5hZXBuaEFBcjlOTnVOcnozWnJ1TmJtNjQ0aTlpb1VhbXFIcFlBcFM2V1JRU2VOIn0.eyJfc2QiOlsiTWdsdFNpQUczcUpCTWMyUXU0UnVDUk1RSl9PNzdBZTI5ak9MY0NtRFNLUSIsImhfRkFmTEdCeVVyWHo5dkRNRHN1QnZzd2k3UDBRdlRhT0dyTW5XbTlDbEkiLCJsUzJVaWhBeU1ieEZ1cUJrS1ZhTmJDbmE1UjA5U1dQcGpVOFc4eDliakNnIl0sImlhdCI6MTc0NzI2ODYxMywiZGF0ZSI6IjA5LzA5LzE5ODkiLCJ2Y3QiOiJodHRwczovL2NyZWRlbnRpYWxzLmV4YW1wbGUuY29tL2lkZW50aXR5X2NyZWRlbnRpYWwiLCJzdWIiOiJkaWQ6a2V5OnpEbmFlc2tNWUozUmNrdkUxeXJ4cE1mTmtXTkxBdnptVXhFQjJKb3o3ZlF4OHRMQXUiLCJfc2RfYWxnIjoic2hhLTI1NiIsImlzcyI6ImRpZDprZXk6ekRuYWVwbmhBQXI5Tk51TnJ6M1pydU5ibTY0NGk5aW9VYW1xSHBZQXBTNldSUVNlTiIsImV4cCI6MTc3ODgwNDYxMywibmJmIjoxNzQ3MjY4NjEzLCJjbmYiOnsiandrIjp7Imt0eSI6IkVDIiwiY3J2IjoiUC0yNTYiLCJ4IjoibGVGdmtuNFlKNGtUdE45MUVQZmU4ZlRuN1hQWm5kMUtQV0Yxd193cDhYSSIsInkiOiJUZ0lwNjlfV3oxODFCYlZMcHg5cE16SW5fQ0JWeGhMbXRvcUFueE90ZDIwIn19fQ.P4e1UwBcxKMFSPq3xm9fFLUn8gJI6LdUQVUD1eIQLZLakMja7af-blESspA2RYS0vJ3NrNqUgft3RZ2v5dKlEw~WyJIc3RSS2JWR3JmVkViMk5lYTBwT0JRIiwgIm5hbWUiLCAiSm9obiJd~eyJ0eXAiOiJrYitqd3QiLCJhbGciOiJFUzI1NiJ9.eyJzZF9oYXNoIjoiT2dtazBIUlJPR1N5bDZaOWd1dTdydTFYOHR5VnZ1R0tsTXpkNkwwNUVubyIsIm5vbmNlIjoiN2dMaFFpdC1vY2FvMVNQejFKbWhyYm1GenNCelluak54ZVVnUHFWaWpzbyIsImlhdCI6MTc0NzI2ODYxMywiYXVkIjoiZGlkOmtleTp6RG5hZWdFYjRScWppR3ZHZ0xpWXFqYm05ckFjZzZ4ZmJHUG5MOXBrZnhma0F1M3ZrIn0.eauedo3Oz9aluDNN_xweJtDjXRjwyfKxqAmZjBARBWEvy6J09HhrrBHmS7Yr7LGG9FE27OXziV90ovnUv3M9sw"]}
-        );
-        let presentation_result = sample_sdjwt_presentation();
-        (presentation_for_dcql, presentation_result)
+        let presentation_for_dcql = json!({ "id": [sample_sdjwt_presentation_token()] });
+        (presentation_for_dcql, sample_sdjwt_presentation())
     }
 
     fn sample_sdjwt_presentation() -> Value {
-        serde_json::to_value("eyJ0eXAiOiJkYytzZC1qd3QiLCJhbGciOiJFUzI1NiIsImtpZCI6ImRpZDprZXk6ekRuYWVwbmhBQXI5Tk51TnJ6M1pydU5ibTY0NGk5aW9VYW1xSHBZQXBTNldSUVNlTiN6RG5hZXBuaEFBcjlOTnVOcnozWnJ1TmJtNjQ0aTlpb1VhbXFIcFlBcFM2V1JRU2VOIn0.eyJfc2QiOlsiTWdsdFNpQUczcUpCTWMyUXU0UnVDUk1RSl9PNzdBZTI5ak9MY0NtRFNLUSIsImhfRkFmTEdCeVVyWHo5dkRNRHN1QnZzd2k3UDBRdlRhT0dyTW5XbTlDbEkiLCJsUzJVaWhBeU1ieEZ1cUJrS1ZhTmJDbmE1UjA5U1dQcGpVOFc4eDliakNnIl0sImlhdCI6MTc0NzI2ODYxMywiZGF0ZSI6IjA5LzA5LzE5ODkiLCJ2Y3QiOiJodHRwczovL2NyZWRlbnRpYWxzLmV4YW1wbGUuY29tL2lkZW50aXR5X2NyZWRlbnRpYWwiLCJzdWIiOiJkaWQ6a2V5OnpEbmFlc2tNWUozUmNrdkUxeXJ4cE1mTmtXTkxBdnptVXhFQjJKb3o3ZlF4OHRMQXUiLCJfc2RfYWxnIjoic2hhLTI1NiIsImlzcyI6ImRpZDprZXk6ekRuYWVwbmhBQXI5Tk51TnJ6M1pydU5ibTY0NGk5aW9VYW1xSHBZQXBTNldSUVNlTiIsImV4cCI6MTc3ODgwNDYxMywibmJmIjoxNzQ3MjY4NjEzLCJjbmYiOnsiandrIjp7Imt0eSI6IkVDIiwiY3J2IjoiUC0yNTYiLCJ4IjoibGVGdmtuNFlKNGtUdE45MUVQZmU4ZlRuN1hQWm5kMUtQV0Yxd193cDhYSSIsInkiOiJUZ0lwNjlfV3oxODFCYlZMcHg5cE16SW5fQ0JWeGhMbXRvcUFueE90ZDIwIn19fQ.P4e1UwBcxKMFSPq3xm9fFLUn8gJI6LdUQVUD1eIQLZLakMja7af-blESspA2RYS0vJ3NrNqUgft3RZ2v5dKlEw~WyJIc3RSS2JWR3JmVkViMk5lYTBwT0JRIiwgIm5hbWUiLCAiSm9obiJd~eyJ0eXAiOiJrYitqd3QiLCJhbGciOiJFUzI1NiJ9.eyJzZF9oYXNoIjoiT2dtazBIUlJPR1N5bDZaOWd1dTdydTFYOHR5VnZ1R0tsTXpkNkwwNUVubyIsIm5vbmNlIjoiN2dMaFFpdC1vY2FvMVNQejFKbWhyYm1GenNCelluak54ZVVnUHFWaWpzbyIsImlhdCI6MTc0NzI2ODYxMywiYXVkIjoiZGlkOmtleTp6RG5hZWdFYjRScWppR3ZHZ0xpWXFqYm05ckFjZzZ4ZmJHUG5MOXBrZnhma0F1M3ZrIn0.eauedo3Oz9aluDNN_xweJtDjXRjwyfKxqAmZjBARBWEvy6J09HhrrBHmS7Yr7LGG9FE27OXziV90ovnUv3M9sw")
-            .unwrap()
+        json!(sample_sdjwt_presentation_token())
+    }
+
+    /// SD-JWT VC presentation with key binding: issuer, holder and verifier are the fixture keys.
+    fn sample_sdjwt_presentation_token() -> &'static str {
+        static TOKEN: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
+            let keys = test_fixtures::keys();
+            let sd_jwt = test_fixtures::sd_jwt(
+                &serde_json::json!({
+                    "typ": "dc+sd-jwt",
+                    "alg": "ES256",
+                    "kid": test_fixtures::did_key_url(&keys.issuer)
+                }),
+                &serde_json::json!({
+                    "iat": 1747268613,
+                    "date": "09/09/1989",
+                    "vct": "https://credentials.example.com/identity_credential",
+                    "sub": test_fixtures::did_key(&keys.holder),
+                    "_sd_alg": "sha-256",
+                    "iss": test_fixtures::did_key(&keys.issuer),
+                    "exp": 1778804613,
+                    "nbf": 1747268613,
+                    "cnf": {
+                        "jwk": keys.holder.to_public()
+                    }
+                }),
+                &[r#"["HstRKbVGrfVEb2Nea0pOBQ", "name", "John"]"#],
+                &keys.issuer,
+            );
+            test_fixtures::sd_jwt_kb(
+                &sd_jwt,
+                &serde_json::json!({
+                    "typ": "kb+jwt",
+                    "alg": "ES256"
+                }),
+                &serde_json::json!({
+                    "nonce": "7gLhQit-ocao1SPz1JmhrbmFzsBzYnjNxeUgPqVijso",
+                    "iat": 1747268613,
+                    "aud": test_fixtures::did_key(&keys.verifier)
+                }),
+                &keys.holder,
+            )
+        });
+        &TOKEN
     }
 
     fn sample_ldp_vc_presentation_for_dcql() -> (Value, Value) {

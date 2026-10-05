@@ -9,6 +9,7 @@ use base64::prelude::BASE64_URL_SAFE_NO_PAD;
 use rsa::rand_core::{OsRng, RngCore};
 use rsa::traits::{PrivateKeyParts, PublicKeyParts};
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 use ssi::jwk::Params;
 use std::sync::LazyLock;
 
@@ -72,6 +73,50 @@ pub fn did_key_url(key: &JWK) -> String {
     ssi::dids::DIDKey::generate_url(key)
         .expect("did:key")
         .to_string()
+}
+
+/// `did:key` DID of `key` — what a `did:key`-bound token carries as `iss`, `sub` or `aud`.
+pub fn did_key(key: &JWK) -> String {
+    ssi::dids::DIDKey::generate(key)
+        .expect("did:key")
+        .to_string()
+}
+
+/// base64url(SHA-256(`input`)): the digest of a disclosure, and the `sd_hash` of an SD-JWT.
+pub fn digest(input: &str) -> String {
+    BASE64_URL_SAFE_NO_PAD.encode(Sha256::digest(input.as_bytes()))
+}
+
+/// Issuer-signed SD-JWT: `claims` plus `_sd`, the sorted digests of `disclosures`, signed as a
+/// JWS under `header`, followed by each disclosure and a trailing `~`. A disclosure is its JSON
+/// array text (`["salt", "name", value]`), digested byte for byte, so a recorded salt reproduces
+/// the recorded digest. With no disclosures `_sd` is omitted.
+pub fn sd_jwt(header: &Value, claims: &Value, disclosures: &[&str], key: &JWK) -> String {
+    let encoded: Vec<String> = disclosures
+        .iter()
+        .map(|disclosure| BASE64_URL_SAFE_NO_PAD.encode(disclosure))
+        .collect();
+    let mut claims = claims.clone();
+    if !encoded.is_empty() {
+        let mut digests: Vec<String> = encoded.iter().map(|d| digest(d)).collect();
+        digests.sort();
+        claims["_sd"] = json!(digests);
+    }
+    let mut token = jws(header, &claims, key);
+    for disclosure in &encoded {
+        token.push('~');
+        token.push_str(disclosure);
+    }
+    token.push('~');
+    token
+}
+
+/// `sd_jwt` with key binding: a JWS over `claims` plus the `sd_hash` of `sd_jwt`, signed with
+/// the holder `key` under `header` (`typ: kb+jwt`), appended to `sd_jwt`.
+pub fn sd_jwt_kb(sd_jwt: &str, header: &Value, claims: &Value, key: &JWK) -> String {
+    let mut claims = claims.clone();
+    claims["sd_hash"] = json!(digest(sd_jwt));
+    format!("{sd_jwt}{}", jws(header, &claims, key))
 }
 
 fn b64(value: &Value) -> String {
@@ -169,6 +214,88 @@ mod tests {
         let (did, fragment) = url.split_once('#').unwrap();
 
         assert_eq!(did.strip_prefix("did:key:").unwrap(), fragment);
+    }
+
+    #[test]
+    fn sd_jwt_reproduces_the_digests_of_an_sdk_issued_credential() {
+        let disclosures = [
+            r#"["o0TxtL8AhuLRWRgnH984_Q", "given_name", "John"]"#,
+            r#"["vIS3esPLyQPtQgBLgOFaag", "family_name", "Doe"]"#,
+            r#"["lio5qsUdvI_uwyGbFamNqQ", "dob", "09/09/1989"]"#,
+        ];
+        let issuer = &keys().issuer;
+
+        let token = sd_jwt(
+            &json!({ "typ": "vc+sd-jwt", "alg": "ES256" }),
+            &json!({ "vct": "SD_JWT_cred", "_sd_alg": "sha-256" }),
+            &disclosures,
+            issuer,
+        );
+
+        let (issuer_jws, rest) = token.split_once('~').unwrap();
+        let encoded: Vec<String> = disclosures
+            .iter()
+            .map(|d| BASE64_URL_SAFE_NO_PAD.encode(d))
+            .collect();
+        assert_eq!(rest, format!("{}~", encoded.join("~")));
+        let (_, payload) =
+            ssi::claims::jws::decode_verify(issuer_jws, &issuer.to_public()).unwrap();
+        let claims: Value = serde_json::from_slice(&payload).unwrap();
+        assert_eq!(
+            claims["_sd"],
+            json!([
+                "CT5o1LfNWDOKOxx42BYG4754lZHy6t0nOPkFEdfoqoM",
+                "K7ma0NfqGC_3LPtmvqkrI4yrJlvH4TU69e7Iv-7EIo4",
+                "reYaNFBWHzV17cvuq3rFjUI3Gx5Js_DmnUZSERd4hZs"
+            ])
+        );
+        assert_eq!(claims["vct"], "SD_JWT_cred");
+    }
+
+    #[test]
+    fn sd_jwt_without_disclosures_has_no_sd_claim() {
+        let token = sd_jwt(
+            &json!({ "alg": "ES256" }),
+            &json!({ "id": "1" }),
+            &[],
+            &keys().issuer,
+        );
+
+        let (issuer_jws, rest) = token.split_once('~').unwrap();
+
+        assert_eq!(rest, "");
+        let (_, payload) = ssi::claims::jws::decode_unverified(issuer_jws).unwrap();
+        assert_eq!(payload, br#"{"id":"1"}"#);
+    }
+
+    #[test]
+    fn sd_jwt_kb_binds_the_hash_of_the_presented_sd_jwt() {
+        let holder = &keys().holder;
+        let sd_jwt = sd_jwt(&json!({ "alg": "ES256" }), &json!({}), &[], &keys().issuer);
+
+        let presentation = sd_jwt_kb(
+            &sd_jwt,
+            &json!({ "typ": "kb+jwt", "alg": "ES256" }),
+            &json!({ "nonce": "n", "aud": "a" }),
+            holder,
+        );
+
+        let kb_jwt = presentation.strip_prefix(sd_jwt.as_str()).unwrap();
+        let (header, payload) =
+            ssi::claims::jws::decode_verify(kb_jwt, &holder.to_public()).unwrap();
+        let claims: Value = serde_json::from_slice(&payload).unwrap();
+        assert_eq!(header.type_.as_deref(), Some("kb+jwt"));
+        assert_eq!(
+            claims,
+            json!({ "nonce": "n", "aud": "a", "sd_hash": digest(&sd_jwt) })
+        );
+    }
+
+    #[test]
+    fn did_key_is_the_did_of_did_key_url() {
+        let url = did_key_url(&keys().verifier);
+
+        assert_eq!(url.split_once('#').unwrap().0, did_key(&keys().verifier));
     }
 
     #[test]
