@@ -1474,12 +1474,12 @@ mod tests {
     use crate::vc::oid4vp::protocol_error::ErrorType;
     use crate::vc::oid4vp::tests::fixtures::multi_presentation::transaction_data_items;
     use crate::vc::oid4vp::tests::fixtures::single_presentation::sd_jwt::{
-        AUTH_REQUEST, AUTH_REQUEST_JWT, AUTH_REQUEST_WITH_NON_URL_CLIENT_ID_PREFIX,
-        AUTH_REQUEST_WITH_REDIRECT_URI, AUTH_REQUEST_WITH_UNSUPPORTED_CLIENT_ID_PREFIX,
-        AUTH_REQUEST_WITH_WRONG_CLIENT_ID,
+        AUTH_REQUEST_WITH_NON_URL_CLIENT_ID_PREFIX, AUTH_REQUEST_WITH_REDIRECT_URI,
+        AUTH_REQUEST_WITH_UNSUPPORTED_CLIENT_ID_PREFIX, AUTH_REQUEST_WITH_WRONG_CLIENT_ID,
+        auth_request_json, auth_request_jwt,
     };
     use crate::vc::oid4vp::tests::fixtures::{
-        REQUEST_URI, STATE, VERIFIER_URL, multi_presentation, sample_credential_status_list,
+        STATE, VERIFIER_URL, multi_presentation, request_uri, sample_credential_status_list,
         sample_sd_jwt_with_status, single_presentation,
     };
     use crate::vc::oid4vp::tests::utils::{
@@ -1517,42 +1517,43 @@ mod tests {
             &mut http_client,
             Method::GET,
             build_url(VERIFIER_URL, "request"),
-            AUTH_REQUEST_JWT,
+            auth_request_jwt(),
             1.into(),
         );
         let holder = holder_service(http_client, LocalKms::new(), InMemVault::new()).await;
 
         // Get request object
         let request_obj = holder
-            .get_authorization_request(&REQUEST_URI.parse().unwrap())
+            .get_authorization_request(&request_uri().parse().unwrap())
             .await
             .unwrap();
 
-        assert_eq!(request_obj, serde_json::from_str(AUTH_REQUEST).unwrap());
+        assert_eq!(
+            request_obj,
+            serde_json::from_str(&auth_request_json()).unwrap()
+        );
     }
 
     #[tokio::test]
     async fn request_verifier_verifies_for_did_successfully() {
         let request_verifier =
             request_verifier(MockHttpClient::new(), LocalKms::new(), InMemVault::new()).await;
-        let aro: AuthorizationRequestObject = serde_json::from_str(AUTH_REQUEST).unwrap();
+        let aro: AuthorizationRequestObject = serde_json::from_str(&auth_request_json()).unwrap();
         request_verifier
-            .decentralized_identifier(&aro, AUTH_REQUEST_JWT.to_string())
+            .decentralized_identifier(&aro, auth_request_jwt().to_string())
             .await
             .unwrap();
     }
 
     #[tokio::test]
-    #[should_panic(
-        expected = "DIDs from 'kid' (did:key:zDnaebMD6CqPmJL8WxF6YffAAbbK935aaKbyVEyuGQtukXk6f) and 'client_id' (decentralized_identifier:did:key:1) do not match"
-    )]
+    #[should_panic(expected = "and 'client_id' (decentralized_identifier:did:key:1) do not match")]
     async fn request_verifier_verifies_for_did_unsuccessfully() {
         let request_verifier =
             request_verifier(MockHttpClient::new(), LocalKms::new(), InMemVault::new()).await;
         let aro: AuthorizationRequestObject =
             serde_json::from_str(AUTH_REQUEST_WITH_WRONG_CLIENT_ID).unwrap();
         request_verifier
-            .decentralized_identifier(&aro, AUTH_REQUEST_JWT.to_string())
+            .decentralized_identifier(&aro, auth_request_jwt().to_string())
             .await
             .unwrap();
     }
@@ -1604,14 +1605,12 @@ mod tests {
             &mut http_client,
             Method::GET,
             build_url(VERIFIER_URL, "request"),
-            AUTH_REQUEST_JWT,
+            auth_request_jwt(),
             1.into(),
         );
         let holder = holder_service(http_client, LocalKms::new(), InMemVault::new()).await;
-        pub const REQUEST_URI: &str = "openid4vp://?client_id=decentralized_identifier%3Adid%3Akey%3AzDnaebMD6CqPmJL8WxF6YffAAbbK935aaKbyVEyuGQtukXk6f&request_uri=http%3A%2F%2F127.0.0.1%3A55796%2Frequest";
-
         let request_obj = holder
-            .get_authorization_request(&REQUEST_URI.parse().unwrap())
+            .get_authorization_request(&request_uri().parse().unwrap())
             .await
             .unwrap();
 
@@ -2736,7 +2735,7 @@ mod tests {
         let holder = holder_service(http_client, LocalKms::new(), InMemVault::new()).await;
 
         holder
-            .decline_authorization_request(&serde_json::from_str(AUTH_REQUEST).unwrap())
+            .decline_authorization_request(&serde_json::from_str(&auth_request_json()).unwrap())
             .await
             .unwrap();
     }
@@ -2765,7 +2764,7 @@ mod tests {
         let holder = holder_service(http_client, LocalKms::new(), InMemVault::new()).await;
 
         let err = holder
-            .decline_authorization_request(&serde_json::from_str(AUTH_REQUEST).unwrap())
+            .decline_authorization_request(&serde_json::from_str(&auth_request_json()).unwrap())
             .await
             .unwrap_err();
 
@@ -2783,7 +2782,7 @@ mod tests {
         let holder =
             holder_service(MockHttpClient::new(), LocalKms::new(), InMemVault::new()).await;
         let mut auth_req: serde_json::Map<String, Value> =
-            serde_json::from_str(AUTH_REQUEST).unwrap();
+            serde_json::from_str(&auth_request_json()).unwrap();
         auth_req.insert(
             "response_mode".to_string(),
             Value::String("fragment".to_string()),
