@@ -779,7 +779,6 @@ mod tests {
     use super::*;
     use crate::inmem::kms::LocalKms;
     use crate::vc::core::tests::utils::{CredTestCase, random_nonce};
-    use futures::executor::block_on;
     use openid4vp::core::{
         credential_format::ClaimFormatDesignation,
         input_descriptor::{ConstraintsField, InputDescriptor},
@@ -797,7 +796,7 @@ mod tests {
         // A single token, reused for both the input and the expected output: this
         // test asserts pass-through, so both sides must come from the same fixture
         // call rather than two independently-minted (and therefore different) ones.
-        let presentation = sample_sdjwt_presentation();
+        let presentation = sample_sdjwt_presentation().await;
         let requested_presentation =
             create_requested_presentation_sdjwtvp("descriptor_id", presentation.as_str().unwrap());
         let presentation_definition = create_single_presentation_definition();
@@ -849,8 +848,8 @@ mod tests {
     }
 
     #[rstest]
-    #[case::sdjwt(sample_sdjwt_presentation(), ClaimFormatDesignation::SdJwtVc)]
-    #[case::ldpvc(sample_ldp_presentation(), ClaimFormatDesignation::LdpVc)]
+    #[case::sdjwt(sample_sdjwt_presentation().await, ClaimFormatDesignation::SdJwtVc)]
+    #[case::ldpvc(sample_ldp_presentation().await, ClaimFormatDesignation::LdpVc)]
     #[tokio::test]
     async fn resolve_presentation_response_succeeds_on_correct_data(
         #[case] presentation_value: Value,
@@ -1011,7 +1010,7 @@ mod tests {
     )]
     async fn resolve_presentation_response_fails_on_wrong_descriptor_map_id() {
         let presentation_response = PresentationResponse {
-            presentations: sample_sdjwt_presentation(),
+            presentations: sample_sdjwt_presentation().await,
             presentation_submission: {
                 let descriptor_map = vec![create_descriptor_map(
                     "fake_descriptor_id",
@@ -1032,7 +1031,7 @@ mod tests {
     #[should_panic(expected = "Requested presentation \"descriptor_id\" not found by path")]
     async fn resolve_presentation_response_fails_on_wrong_path() {
         let presentation_response = PresentationResponse {
-            presentations: sample_sdjwt_presentation(),
+            presentations: sample_sdjwt_presentation().await,
             presentation_submission: {
                 let descriptor_map = vec![create_descriptor_map(
                     "descriptor_id",
@@ -1076,7 +1075,7 @@ mod tests {
         #[case] format: ClaimFormatDesignation,
     ) {
         let presentation_response = PresentationResponse {
-            presentations: sample_sdjwt_presentation(),
+            presentations: sample_sdjwt_presentation().await,
             presentation_submission: create_presentation_submission_with_descriptor_format(format),
         };
         let presentation_definition = create_single_presentation_definition();
@@ -1212,8 +1211,8 @@ mod tests {
             .unwrap()
     }
 
-    fn sample_sdjwt_presentation() -> Value {
-        json!(block_on(sample_sdjwt_presentation_string()))
+    async fn sample_sdjwt_presentation() -> Value {
+        json!(sample_sdjwt_presentation_string().await)
     }
 
     fn sample_ldp_presentation_descriptor_with_enum() -> InputDescriptor {
@@ -1423,7 +1422,7 @@ mod tests {
         serde_json::to_value(&vp).unwrap()
     }
 
-    fn sample_ldp_presentation() -> Value {
-        block_on(sample_ldp_presentation_value())
+    async fn sample_ldp_presentation() -> Value {
+        sample_ldp_presentation_value().await
     }
 }

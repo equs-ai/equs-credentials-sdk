@@ -2,8 +2,7 @@
 """Scan git-tracked files for embedded JWT/JWE compact serializations and
 private key material.
 
-Ports the method used by docs/security/2026-09-24-embedded-token-audit.md into
-a checked-in, machine-checkable gate:
+A checked-in, machine-checkable gate:
 
   - walks `git ls-files` (tracked files only, so build output and IDE state
     are never scanned);
@@ -24,9 +23,7 @@ Known, accepted exception: demos/multi-thread/src/main.rs and
 demos/oid4vc/issuer/src/main.rs each embed one expired token for a localhost
 Keycloak realm. Both are read at runtime by validate_scope -> decode_unverified
 to check the `scope` claim, so replacing them with placeholders breaks
-credential issuance in the demo. This was verified against the code and
-accepted -- see docs/superpowers/plans/2026-09-25-migrate-committed-tokens-to-fixtures.md,
-Task 7. `demos/` is therefore never passed to --fail-on, but the scan still
+credential issuance in the demo. `demos/` is therefore never passed to --fail-on, but the scan still
 reports these two hits, tagged as accepted exceptions, so nobody mistakes the
 silence for the directory being clean.
 
@@ -119,12 +116,12 @@ KNOWN_EXCEPTIONS = {
     "demos/multi-thread/src/main.rs": (
         "expired localhost Keycloak token, read via validate_scope -> "
         "decode_unverified for the `scope` claim; a placeholder breaks "
-        "credential issuance in the demo (accepted, see Task 7)"
+        "credential issuance in the demo"
     ),
     "demos/oid4vc/issuer/src/main.rs": (
         "expired localhost Keycloak token, read via validate_scope -> "
         "decode_unverified for the `scope` claim; a placeholder breaks "
-        "credential issuance in the demo (accepted, see Task 7)"
+        "credential issuance in the demo"
     ),
 }
 

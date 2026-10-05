@@ -37,10 +37,6 @@ object Fixtures {
         bundle[name]?.jsonPrimitive?.content
             ?: error("fixture $name is not a token")
 
-    fun obj(name: String): JsonObject =
-        bundle[name]?.jsonObject
-            ?: error("fixture $name is not an object")
-
     /**
      * A naive, unverified decode of a compact JWS's payload segment — the same trick the
      * TypeScript suites' `jwt-decode` performs. Used only to pull a claim (e.g. `sub`) out of a

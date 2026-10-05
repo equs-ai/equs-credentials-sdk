@@ -19,7 +19,7 @@ those suites run and never committed (`.gitignore`: `fixtures.generated.json`).
 | File | Role |
 |------|------|
 | `src/lib.rs` | Crate root; module declarations, `Error`/`Result` re-exports, and the `equs_sdk` re-export the SDK's own unit tests go through |
-| `src/bundle.rs` | `Bundle` — a flat, serialisable map of fixture name to value — and `build()`, which mints one `LocalKms` plus issuer/holder/verifier keys and drives every builder a wrapper suite needs. No longer needs `delegate-sd-jwt`: `authRequestJwt` and `dsdJwtGrantVpToken` were removed (zero live consumers across TS/Kotlin/Swift; each wrapper mints its own instead) |
+| `src/bundle.rs` | `Bundle` — a flat, serialisable map of fixture name to value — and `build()`, which mints one `LocalKms` plus issuer/holder/verifier keys and drives every builder a wrapper suite needs. |
 | `src/bin/fixture_gen.rs` | `fixture_gen --out <path>` binary; writes `bundle::build()`'s output as pretty JSON |
 | `src/error.rs` | `Error` / `Result` — `Kms`, `Did`, `Signing`, `Json`, `Sdk` variants |
 | `src/keys.rs` | `FixtureKey` — a `LocalKms` key handle plus its `did:key`, DID URL and `KeyMetadata`; covers all four `KeyType`s |

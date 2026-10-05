@@ -10,10 +10,6 @@ publish = false
 [lib]
 name = "test_fixtures"
 
-[[bin]]
-name = "fixture_gen"
-path = "src/bin/fixture_gen.rs"
-
 [dependencies]
 equs-credentials-sdk = { path = "..", features = ["in-memory"] }
 base64 = "0.22.1"

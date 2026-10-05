@@ -95,7 +95,7 @@ class TestTokenDetection(unittest.TestCase):
 
     def test_line_continuation_important_regression(self):
         """A Rust `\\`-newline-continued string literal must not truncate or
-        split a token. This was the first blind spot found (Task 8): a token
+        split a token. This was the first blind spot found: a token
         wrapped this way produced zero hits before `normalize()` collapsed
         the continuation."""
         wrapped = (

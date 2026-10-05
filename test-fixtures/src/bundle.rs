@@ -24,13 +24,6 @@
 //! | `proofJwt` | string — OID4VCI proof-of-possession JWT |
 //! | `sdJwtCreds` | string — issuer-signed SD-JWT VC, OID4VCI credential-response shape |
 //! | `authResponseJwe` | string — compact JWE encrypting an OID4VP authorization response |
-//!
-//! `authRequestJwt` and `dsdJwtGrantVpToken` were removed (a whole-branch
-//! review found zero live consumers of either across the TypeScript, Kotlin
-//! and Swift suites — each wrapper that needs an OID4VP request object or a
-//! delegated grant mints its own in-process instead). `dsdJwtGrantVpToken`
-//! was the only reason [`build`] needed the `delegate-sd-jwt` feature, so
-//! generating this bundle no longer requires it.
 
 use serde::Serialize;
 use serde_json::{Map, Value, json};

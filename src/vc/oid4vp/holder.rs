@@ -1462,7 +1462,9 @@ mod tests {
     use crate::inmem::vault::InMemVault;
     use crate::kms::MockKms;
     use crate::kms::{CreateOptions, KeyType, Kms};
-    use crate::utils::http::test::{mock_http_fn, mock_http_req_predicate};
+    use crate::utils::http::test::{
+        mock_http_fn, mock_http_fn_with_plain_text_resp, mock_http_req_predicate,
+    };
     use crate::utils::test_utils::create_did_and_key_metadata;
     use crate::utils::test_utils::{failed_signer_key, no_jwk_key};
     use crate::vc;
@@ -1523,68 +1525,8 @@ mod tests {
         let key = FixtureKey::create_default(&fixture_kms).await.unwrap();
         let client_id = format!("decentralized_identifier:{}", key.did);
 
-        let claims = json!({
-            "response_type": "vp_token",
-            "state": STATE,
-            "response_mode": "direct_post",
-            "nonce": "2T0n2qgdX6XyEz-UgCHFMH6fRl9-s4IDWrknnkGW0V0",
-            "client_metadata": {
-                "vp_formats_supported": {
-                    "dc+sd-jwt": {
-                        "sd-jwt_alg_values": ["EdDSA", "ES256"],
-                        "kb-jwt_alg_values": ["EdDSA", "ES256"]
-                    }
-                },
-                "jwks": {
-                    "keys": [{
-                        "use": "enc",
-                        "alg": "ES256",
-                        "kid": "RSdNFdnGHm:P256:",
-                        "kty": "EC",
-                        "crv": "P-256",
-                        "x": "Lb-3kpome-glvSArZWDORUokrlyl9TVv3hzmUuBgTXM",
-                        "y": "v1FgcOTxM17t9fwuQRxJ7KREpDXHFSz4kg2UCeCmXbw"
-                    }]
-                },
-                "encrypted_response_enc_values_supported": ["A128GCM", "A128CBC-HS256"],
-                "subject_syntax_types_supported": ["did:key"]
-            },
-            "client_id": client_id,
-            "presentation_definition": {
-                "id": "327ad171-c80a-485b-b098-50d7ad278ef6",
-                "input_descriptors": [{
-                    "id": "Identity-1",
-                    "constraints": {
-                        "fields": [
-                            {
-                                "path": ["$.vct"],
-                                "filter": {
-                                    "type": "string",
-                                    "const": "https://credentials.example.com/identity_credential"
-                                },
-                                "predicate": null,
-                                "intent_to_retain": false
-                            },
-                            {
-                                "path": ["$.name"],
-                                "optional": true,
-                                "predicate": null,
-                                "intent_to_retain": false
-                            }
-                        ]
-                    },
-                    "name": "Identity VC",
-                    "purpose": "We want an identity",
-                    "format": {
-                        "dc+sd-jwt": {
-                            "sd-jwt_alg_values": ["ES256", "EdDSA"],
-                            "kb-jwt_alg_values": ["ES256", "EdDSA"]
-                        }
-                    }
-                }]
-            },
-            "response_uri": "http://127.0.0.1:55796/auth"
-        });
+        let mut claims: Value = serde_json::from_str(AUTH_REQUEST).unwrap();
+        claims["client_id"] = Value::from(client_id.as_str());
 
         let jwt = sign_compact(&key, "application/oauth-authz-req+jwt", &claims)
             .await
@@ -1604,11 +1546,11 @@ mod tests {
         let (jwt, request_uri, expected) = signed_auth_request_fixture().await;
 
         let mut http_client = MockHttpClient::new();
-        mock_http_fn(
+        mock_http_fn_with_plain_text_resp(
             &mut http_client,
             Method::GET,
             build_url(VERIFIER_URL, "request"),
-            move |_req| Ok(HttpResponse::new(jwt.clone().into_bytes())),
+            jwt,
             1.into(),
         );
         let holder = holder_service(http_client, LocalKms::new(), InMemVault::new()).await;
@@ -1742,11 +1684,11 @@ mod tests {
         let (jwt, request_uri, _expected) = signed_auth_request_fixture().await;
 
         let mut http_client = MockHttpClient::new();
-        mock_http_fn(
+        mock_http_fn_with_plain_text_resp(
             &mut http_client,
             Method::GET,
             build_url(VERIFIER_URL, "request"),
-            move |_req| Ok(HttpResponse::new(jwt.clone().into_bytes())),
+            jwt,
             1.into(),
         );
         let holder = holder_service(http_client, LocalKms::new(), InMemVault::new()).await;
@@ -2986,11 +2928,11 @@ mod tests {
             .unwrap();
 
         let mut http_client = MockHttpClient::new();
-        mock_http_fn(
+        mock_http_fn_with_plain_text_resp(
             &mut http_client,
             Method::GET,
             Url::parse(status_list_url).unwrap(),
-            move |_req| Ok(HttpResponse::new(status_list_token.clone().into_bytes())),
+            status_list_token,
             2.into(),
         );
         let holder = holder_service(http_client, kms, vault).await;

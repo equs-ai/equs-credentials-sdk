@@ -1622,27 +1622,24 @@ mod tests {
         SdJwtAPI::sign_credential(unsigned, iss_kh).await.unwrap()
     }
 
-    fn sd_jwt_vc_with_iss_blocking(iss: Option<&str>) -> Credential {
-        futures::executor::block_on(sd_jwt_vc_with_iss(iss))
-    }
-
     #[rstest]
     #[case::url(
-        sd_jwt_vc_with_iss_blocking(Some("https://example.com/oid4vci-issuer")),
+        sd_jwt_vc_with_iss(Some("https://example.com/oid4vci-issuer")).await,
         Some(CredentialIssuerIdentifier::OID4VCI(
             IssuerUrl::new("https://example.com/oid4vci-issuer".to_owned()).unwrap())),
     )]
     #[case::did(
-        sd_jwt_vc_with_iss_blocking(Some("did:example:123")),
+        sd_jwt_vc_with_iss(Some("did:example:123")).await,
         Some(CredentialIssuerIdentifier::DID(
             DIDURLBuf::from_str("did:example:123").unwrap())),
     )]
     #[case::other(
-        sd_jwt_vc_with_iss_blocking(Some("notadid:example:123")),
+        sd_jwt_vc_with_iss(Some("notadid:example:123")).await,
         Some(CredentialIssuerIdentifier::Other("notadid:example:123".to_owned())),
     )]
-    #[case::no_iss(sd_jwt_vc_with_iss_blocking(None), None)]
-    fn extract_issuer_identifier(
+    #[case::no_iss(sd_jwt_vc_with_iss(None).await, None)]
+    #[tokio::test]
+    async fn extract_issuer_identifier(
         #[case] credential: Credential,
         #[case] expected: Option<CredentialIssuerIdentifier>,
     ) {

@@ -265,14 +265,14 @@ pub mod test {
             mock,
             method,
             url,
-            move |req| {
+            move |_req| {
                 let mut resp = HttpResponse::new(Vec::from(body.clone()));
                 resp.headers_mut()
                     .insert(CONTENT_TYPE, HeaderValue::from_str("text/plain").unwrap());
 
                 Ok(resp)
             },
-            1.into(),
+            times,
         );
     }
 

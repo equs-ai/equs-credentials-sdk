@@ -381,9 +381,9 @@ import Testing
 	}
 }
 
-// The generated fixture bundle's `authRequestJwt` is a DCQL/`dc_api.jwt` request (see
-// `test-fixtures/src/request_object.rs`); this suite exercises the PEX/`presentation_definition`
-// code path instead, and no OID4VP verifier is exposed to the Swift UniFFI bindings (only
+// The generated fixture bundle has no request object; this suite exercises the
+// PEX/`presentation_definition` code path, and no OID4VP verifier is exposed to the
+// Swift UniFFI bindings (only
 // `Oid4vpHolder` exists), unlike the nodejs wrapper the TypeScript suite uses
 // (`OID4VPVerifierBuilder`). So `MintedOid4vp` mints its own PEX-format request object
 // in-process instead, the same way `equs-test-fixtures`' `jws::sign_compact` does -- see

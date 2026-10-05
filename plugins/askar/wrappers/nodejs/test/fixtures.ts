@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-// Written by `cargo run -p equs-test-fixtures --all-features --bin fixture_gen` in pretest.
+// Written by `cargo run -p equs-test-fixtures --bin fixture_gen` in pretest.
 // Never committed: see the repo-root .gitignore.
 const path = process.env.EQUS_FIXTURE_BUNDLE ?? resolve(__dirname, "fixtures.generated.json");
 
@@ -13,7 +13,7 @@ export function bundle(): Record<string, unknown> {
       cached = JSON.parse(readFileSync(path, "utf8"));
     } catch (cause) {
       throw new Error(
-        `fixture bundle missing at ${path} -- run: cargo run -p equs-test-fixtures --all-features --bin fixture_gen -- --out ${path}`,
+        `fixture bundle missing at ${path} -- run: cargo run -p equs-test-fixtures --bin fixture_gen -- --out ${path}`,
         { cause },
       );
     }

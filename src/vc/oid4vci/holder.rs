@@ -1307,11 +1307,7 @@ mod tests {
         SampleIssuerMetadata::with_sdjwtvc_conf(),
         json![
         {
-            // `#[case]` values must be built synchronously, so this placeholder
-            // is swapped for a real, freshly signed SD-JWT VC inside the async
-            // test body below before it becomes the mocked response body — the
-            // holder verifies every credential it receives.
-            "credentials": [{"credential": "placeholder-sd-jwt-credential".to_string()}],
+            "credentials": [{"credential": sd_jwt_creds().await}],
             "notification_id": Some("notification_id".to_string()),
         }],
     )]
@@ -1327,21 +1323,8 @@ mod tests {
     #[tokio::test]
     async fn holder_handles_deferred_credential_flow(
         #[case] issuer_metadata: IssuerMetadata,
-        #[case] mut expected_response: serde_json::Value,
+        #[case] expected_response: serde_json::Value,
     ) {
-        // `request_credential_inner` verifies every returned credential, so the
-        // "positive_credential" case's placeholder is swapped here for a real,
-        // signature-valid SD-JWT VC before it becomes the mocked response body.
-        if let Some(credentials) = expected_response
-            .get_mut("credentials")
-            .and_then(|v| v.as_array_mut())
-        {
-            let sd_jwt = sd_jwt_creds().await;
-            for credential in credentials {
-                credential["credential"] = json!(sd_jwt);
-            }
-        }
-
         let oid4vci_response =
             serde_json::from_value::<Response<CoreProfilesCredentialResponse>>(expected_response)
                 .unwrap();

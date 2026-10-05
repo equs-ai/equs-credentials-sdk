@@ -3,7 +3,7 @@ import Foundation
 /// Reads the generated fixture bundle (`equs-test-fixtures`'s `fixture_gen` binary output).
 ///
 /// `swift test` has no pretest hook, so nothing regenerates the bundle automatically the way
-/// Task 10's `npm pretest` or this repo's Gradle `fixtureGen` task do. A developer (or CI) runs
+/// the wrappers' `npm pretest` or the Gradle `fixtureGen` task do. A developer (or CI) runs
 /// `wrappers/uniffi/scripts/generate_fixtures.sh` once before `swift test`; that script writes the
 /// bundle next to this file by default, which is where `Fixtures` looks unless
 /// `EQUS_FIXTURE_BUNDLE` is set to something else.
@@ -33,13 +33,6 @@ enum Fixtures {
     static func token(_ name: String) -> String {
         guard let value = bundle[name] as? String else {
             fatalError("fixture \(name) is not a token")
-        }
-        return value
-    }
-
-    static func object(_ name: String) -> [String: Any] {
-        guard let value = bundle[name] as? [String: Any] else {
-            fatalError("fixture \(name) is not an object")
         }
         return value
     }

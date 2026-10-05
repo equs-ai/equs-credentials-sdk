@@ -22,12 +22,10 @@ use serde_json::{Map, Value};
 use crate::error::{Error, Result};
 use crate::keys::FixtureKey;
 
-/// A leaf certificate certifying a KMS key, plus the CA that issued it.
+/// A self-signed leaf certificate certifying a KMS key.
 pub struct X509Chain {
     /// The leaf certificate, PEM encoded.
     pub leaf_pem: String,
-    /// The issuing CA certificate, PEM encoded.
-    pub root_pem: String,
     /// The chain in the base64 (not base64url) form an `x5c` header takes.
     pub chain_b64: Vec<String>,
     // The KMS key the leaf certifies, kept so `sign_sd_jwt_vc` can sign
@@ -40,8 +38,7 @@ impl X509Chain {
     /// certifying `subject`'s public key.
     ///
     /// The issuing CA key is generated fresh by `rcgen` and discarded after
-    /// signing; `root_pem` and `leaf_pem` are the same one-certificate chain,
-    /// which is what a self-signed leaf is.
+    /// signing.
     ///
     /// # Errors
     ///
@@ -81,14 +78,14 @@ impl X509Chain {
         let chain_b64 = vec![STANDARD.encode(cert.der())];
 
         Ok(Self {
-            root_pem: leaf_pem.clone(),
             leaf_pem,
             chain_b64,
             subject: subject.clone(),
         })
     }
 
-    /// Issues an SD-JWT VC signed by the certified key, with `x5c` in the header.
+    /// Issues an SD-JWT VC signed by the certified key, with `x5c` in the
+    /// header, in compact form with no disclosures (`<jws>~`).
     ///
     /// The header carries `alg` (taken from the signer), `typ: "dc+sd-jwt"`,
     /// and the full `x5c` chain built by [`X509Chain::self_signed`].
@@ -103,7 +100,10 @@ impl X509Chain {
             "typ": "dc+sd-jwt",
             "x5c": self.chain_b64,
         });
-        crate::jws::sign_compact_with_header(&self.subject, &header, &Value::Object(claims)).await
+        let jws =
+            crate::jws::sign_compact_with_header(&self.subject, &header, &Value::Object(claims))
+                .await?;
+        Ok(format!("{jws}~"))
     }
 }
 

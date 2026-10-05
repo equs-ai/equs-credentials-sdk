@@ -888,7 +888,6 @@ mod tests {
     use crate::vc::formats::json_ld_vc::JsonLdAPI;
     use crate::vc::formats::sd_jwt_vc::{EXP_CLAIM, IAT_CLAIM, NBF_CLAIM, SdJwtAPI};
     use crate::vc::{ClaimFormatDesignation, Credential, Presentation, VCFormatsAPI, VCMetadata};
-    use futures::executor::block_on;
     use iref::IriRefBuf;
     use openid4vp::core::dcql::DcqlCredentialSet;
     use rstest::rstest;
@@ -1067,9 +1066,10 @@ mod tests {
     }
 
     #[rstest]
-    #[case(sample_sdjwt_presentation_for_dcql(), ClaimFormatDesignation::SdJwtVc)]
-    #[case(sample_ldp_vc_presentation_for_dcql(), ClaimFormatDesignation::LdpVc)]
-    fn resolve_presentation_response_works_correctly_with_correct_data(
+    #[case(sample_sdjwt_presentation_for_dcql().await, ClaimFormatDesignation::SdJwtVc)]
+    #[case(sample_ldp_vc_presentation_for_dcql().await, ClaimFormatDesignation::LdpVc)]
+    #[tokio::test]
+    async fn resolve_presentation_response_works_correctly_with_correct_data(
         #[case] test_case: (Value, Value),
         #[case] format: ClaimFormatDesignation,
     ) {
@@ -1093,10 +1093,10 @@ mod tests {
         )
     }
 
-    #[test]
+    #[tokio::test]
     #[should_panic(expected = "Requested presentation \"not_correct_id\" not found by path")]
-    fn resolve_presentation_response_returns_error_with_wrong_path() {
-        let (presentation, _) = sample_sdjwt_presentation_for_dcql();
+    async fn resolve_presentation_response_returns_error_with_wrong_path() {
+        let (presentation, _) = sample_sdjwt_presentation_for_dcql().await;
         let format_str = ClaimFormatDesignation::SdJwtVc.to_string();
         let credential: DCQLCredential = serde_json::from_value(json!(
             {
@@ -1112,10 +1112,10 @@ mod tests {
                 .unwrap();
     }
 
-    #[test]
+    #[tokio::test]
     #[should_panic(expected = "Unsupported format")]
-    fn resolve_presentation_response_returns_error_with_wrong_format() {
-        let (presentation, _) = sample_sdjwt_presentation_for_dcql();
+    async fn resolve_presentation_response_returns_error_with_wrong_format() {
+        let (presentation, _) = sample_sdjwt_presentation_for_dcql().await;
         let wrong_format_str = ClaimFormatDesignation::Jwt.to_string();
         let credential: DCQLCredential = serde_json::from_value(json!(
             {
@@ -1663,8 +1663,8 @@ mod tests {
             .unwrap()
     }
 
-    fn sample_sdjwt_presentation_for_dcql() -> (Value, Value) {
-        let presentation = block_on(sample_sdjwt_presentation_string());
+    async fn sample_sdjwt_presentation_for_dcql() -> (Value, Value) {
+        let presentation = sample_sdjwt_presentation_string().await;
         let presentation_result = serde_json::to_value(&presentation).unwrap();
         let presentation_for_dcql = json!({"id": [presentation]});
         (presentation_for_dcql, presentation_result)
@@ -1686,8 +1686,8 @@ mod tests {
         serde_json::to_value(&vp).unwrap()
     }
 
-    fn sample_ldp_vc_presentation_for_dcql() -> (Value, Value) {
-        let presentation = block_on(sample_ldp_vc_presentation_value());
+    async fn sample_ldp_vc_presentation_for_dcql() -> (Value, Value) {
+        let presentation = sample_ldp_vc_presentation_value().await;
         let presentation_for_dcql = json!({"id": [presentation.clone()]});
         (presentation_for_dcql, presentation)
     }

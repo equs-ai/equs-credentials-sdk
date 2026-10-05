@@ -225,7 +225,6 @@ mod tests {
     use crate::vc::formats::sd_jwt_vc::SdJwtAPI;
     use crate::vc::metadata::{CredentialMetadataProcessor, DefaultMetadataProcessor, Error};
     use crate::vc::{Credential, VCFormat, VCMetadata};
-    use futures::executor::block_on;
     use rstest::rstest;
     use serde_json::json;
     use time::Duration;
@@ -296,14 +295,6 @@ mod tests {
         )
     }
 
-    fn sd_jwt_cred_with_vct() -> (String, KeyMetadata) {
-        block_on(sd_jwt_credential(true))
-    }
-
-    fn sd_jwt_cred_without_vct() -> String {
-        block_on(sd_jwt_credential(false)).0
-    }
-
     pub const LDP_VC_CRED: &str = r###"{
             "@context": "https://www.w3.org/2018/credentials/v1",
             "id": "http://example.org/credentials/3731",
@@ -316,10 +307,10 @@ mod tests {
         }"###;
 
     #[rstest]
-    #[case::sd_jwt_cred(sd_jwt_cred())]
+    #[case::sd_jwt_cred(sd_jwt_cred().await)]
     #[case::ldp_vc_cred(ldp_vc_cred())]
-    #[test]
-    fn metadata_resolved_correctly(#[case] case: TestCaseCred) {
+    #[tokio::test]
+    async fn metadata_resolved_correctly(#[case] case: TestCaseCred) {
         let key_metadata = case.key_metadata;
         let metadata =
             DefaultMetadataProcessor::resolve_metadata(&case.credential, key_metadata.clone())
@@ -356,22 +347,22 @@ mod tests {
         assert!(matches!(res.err(), Some(Error::Resolving { .. })));
     }
 
-    #[test]
-    fn sd_jwt_metadata_resolving_fails_when_vct_is_missing() {
+    #[tokio::test]
+    async fn sd_jwt_metadata_resolving_fails_when_vct_is_missing() {
         let key_metadata = KeyMetadata {
             did_url: "did:example".to_owned(),
             kid: "12345".to_string(),
         };
 
-        let invalid_cred = Credential::SdJwt(sd_jwt_cred_without_vct());
+        let invalid_cred = Credential::SdJwt(sd_jwt_credential(false).await.0);
         let res = DefaultMetadataProcessor::resolve_metadata(&invalid_cred, key_metadata.clone());
 
         assert!(matches!(res.err(), Some(Error::Resolving { .. })));
     }
 
-    #[test]
-    fn resolve_sd_jwt_cred_fields() {
-        let (credential, _) = sd_jwt_cred_with_vct();
+    #[tokio::test]
+    async fn resolve_sd_jwt_cred_fields() {
+        let (credential, _) = sd_jwt_credential(true).await;
         let credential = Credential::SdJwt(credential);
         let mut fields = DefaultMetadataProcessor::resolve_fields(&credential).unwrap();
 
@@ -418,8 +409,8 @@ mod tests {
         )
     }
 
-    fn sd_jwt_cred() -> TestCaseCred {
-        let (credential, key_metadata) = sd_jwt_cred_with_vct();
+    async fn sd_jwt_cred() -> TestCaseCred {
+        let (credential, key_metadata) = sd_jwt_credential(true).await;
         TestCaseCred {
             credential: Credential::SdJwt(credential),
             type_: SD_JWT_VCT.to_owned(),

@@ -322,19 +322,8 @@ mod tests {
             .unwrap();
     }
 
-    /// `resolve()` extracts `x5c` from the header and rejects it through the
-    /// same trust-anchor path `verify_chain_trust` uses directly (exercised
-    /// on a raw PEM chain by `rejects_chain_not_signed_up_to_held_anchor`
-    /// above). [`X509Chain`] mints a leaf that genuinely certifies the KMS
-    /// key that signs the credential — but the certifying signature itself
-    /// comes from a CA key `rcgen` generates and discards, never from the
-    /// certified key. One-core's self-signed check
-    /// (`certificate.verify_signature(None)`, i.e. "does this cert's own
-    /// embedded key validate its own signature") therefore never fires for
-    /// an `X509Chain` leaf, unlike the real self-signed conformance-suite
-    /// certificate the committed `SD_JWT_VC` carried. What an `X509Chain`
-    /// credential *can* exercise honestly through this path is a chain
-    /// whose issuer the truststore was never told to trust.
+    /// `resolve()` extracts `x5c` from the header and rejects a chain whose
+    /// issuer the truststore was never told to trust.
     #[should_panic(expected = "does not validate against any trusted anchor")]
     #[tokio::test]
     async fn resolve_rejects_a_credential_whose_chain_is_not_trusted() {
@@ -347,10 +336,7 @@ mod tests {
             "iss".to_string(),
             serde_json::json!("https://localhost.emobix.co.uk/issuer"),
         );
-        // `sign_sd_jwt_vc` returns a bare `header.payload.signature` JWS with no
-        // disclosures; `SDJWTSerializationFormat::Compact` still requires at
-        // least one `~` separator, so append the (empty) key-binding segment.
-        let sd_jwt = format!("{}~", chain.sign_sd_jwt_vc(claims).await.unwrap());
+        let sd_jwt = chain.sign_sd_jwt_vc(claims).await.unwrap();
 
         let mut sd_jwt_verifier = SDJWTVerifier::new(Box::new(truststore(HashMap::new())));
         sd_jwt_verifier

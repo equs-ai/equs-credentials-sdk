@@ -2285,13 +2285,7 @@ mod tests {
         };
         jwk_map.insert("alg".to_string(), Value::from("ECDH-ES"));
 
-        let metadata: ClientMetadata = serde_json::from_value(json!({
-            "jwks": { "keys": [jwk_map] },
-            "encrypted_response_enc_values_supported": ["A256GCM"],
-        }))
-        .unwrap();
-
-        let jwe = JweEncryptor::new(metadata)
+        let jwe = JweEncryptor::new(crate::vc::oid4vp::jwe::test_utils::get_metadata(jwk_map))
             .encrypt(json!({"vp_token": "fixture"}))
             .await
             .unwrap();
