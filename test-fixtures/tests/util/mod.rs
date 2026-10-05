@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 //! Decoding helpers for the round-trip suite.
 //!
 //! These read a compact JWS without verifying it — the assertions that follow

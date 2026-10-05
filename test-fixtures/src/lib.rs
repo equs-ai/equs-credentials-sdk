@@ -54,6 +54,7 @@ pub mod access_token;
 pub mod bundle;
 pub mod claims;
 pub mod error;
+pub mod generator;
 pub mod http;
 pub mod id_token;
 pub mod jwe;
@@ -64,6 +65,7 @@ pub mod pop;
 pub mod request_object;
 pub mod sd_jwt_vc;
 pub mod status_list;
+#[cfg(feature = "x509")]
 pub mod x509;
 
 pub use error::{Error, Result};

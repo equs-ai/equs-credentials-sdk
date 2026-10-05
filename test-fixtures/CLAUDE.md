@@ -10,17 +10,18 @@ rebuild the signing scaffolding, and so that `tests/` can reach fixtures that `s
 No committed static token strings: a signature-bound fixture cannot be edited without re-signing it,
 and `tests/utils/fixtures/` mdoc blobs already show what that costs.
 
-`src/bundle.rs` and `bin/fixture_gen.rs` mint every fixture the TypeScript, Kotlin and Swift
-wrapper suites need and write them to one JSON file, generated before those suites run and never
-committed (`.gitignore`: `fixtures.generated.json`).
+`src/generator.rs` mints the fixtures the wrapper suites need in-process, from one set of keys, for
+bindings to expose to TypeScript, Kotlin and Swift tests. `src/bundle.rs` and `bin/fixture_gen.rs`
+write the same fixtures to one JSON file instead (`.gitignore`: `fixtures.generated.json`).
 
 ## Files
 
 | File | Role |
 |------|------|
 | `src/lib.rs` | Crate root; module declarations, `Error`/`Result` re-exports, and the `equs_sdk` re-export |
-| `src/bundle.rs` | `Bundle` — a flat, serialisable map of fixture name to value — and `build()`, which mints one `LocalKms` plus issuer/holder/verifier keys and drives every builder a wrapper suite needs. |
-| `src/bin/fixture_gen.rs` | `fixture_gen --out <path>` binary; writes `bundle::build()`'s output as pretty JSON |
+| `src/generator.rs` | `Generator` — owns one `LocalKms` and the issuer, holder and verifier keys; mints an SD-JWT VC, a presentation, a status-list pair served at a caller-chosen URL, an access token, a PoP JWT and an auth-response JWE on demand |
+| `src/bundle.rs` | `Bundle` — a flat, serialisable map of fixture name to value — and `build()`, which drives one `Generator` through every fixture a wrapper suite reads |
+| `src/bin/fixture_gen.rs` | `fixture_gen --out <path>` binary (feature `cli`); writes `bundle::build()`'s output as pretty JSON |
 | `src/error.rs` | `Error` / `Result` — `Kms`, `Did`, `Signing`, `Json`, `Sdk` variants |
 | `src/keys.rs` | `FixtureKey` — a `LocalKms` key handle plus its `did:key`, DID URL and `KeyMetadata`; covers all four `KeyType`s |
 | `src/claims.rs` | Shared claim defaults (`DEFAULT_AUDIENCE`, `DEFAULT_NONCE`, …) and `now()` / `from_now()` |
@@ -29,13 +30,15 @@ committed (`.gitignore`: `fixtures.generated.json`).
 | `src/access_token.rs` | `AccessToken` — OAuth 2.0 bearer access token (`typ: JWT`); signed ES256 since `LocalKms` has no RSA, so tests assert on claims rather than `alg` |
 | `src/pop.rs` | `ProofOfPossession` — OID4VCI `openid4vci-proof+jwt` |
 | `src/sd_jwt_vc.rs` | `SdJwtVc` — issuer-signed SD-JWT VC, via `VCFormatsSdJwtAPI::create_vc` |
-| `src/x509.rs` | `X509Chain` — self-signed P-256 leaf certificate (via `rcgen`) certifying a `FixtureKey`, plus `sign_sd_jwt_vc` to mint the SD-JWT VC that carries it in `x5c` |
+| `src/x509.rs` | (feature `x509`) `X509Chain` — self-signed P-256 leaf certificate (via `rcgen`) certifying a `FixtureKey`, plus `sign_sd_jwt_vc` to mint the SD-JWT VC that carries it in `x5c` |
 | `src/kb_jwt.rs` | `KbJwt` — SD-JWT VP with a `kb+jwt`, via `vc::core::HolderService::create_presentation` |
 | `src/status_list.rs` | `StatusListToken` — `statuslist+jwt`, via `StatusListJwt::create_status_list` |
 | `src/request_object.rs` | `RequestObject` — OID4VP signed request object (`oauth-authz-req+jwt`) |
 | `src/id_token.rs` | `IdToken` — SIOP `id_token` (`typ: JWT`) |
 | `src/jwe.rs` | `Jwe` — encrypted response, via `vc::oid4vp::jwe::JweEncryptor` |
 | `tests/round_trip.rs` | Round-trip + failure case for every kind whose verifier is public |
+| `tests/generator.rs` | A `Generator` status pair resolves Valid at the URL it was minted for; its fixtures share the generator's keys |
+| `tests/x509.rs` | `X509Chain` checks; feature `x509` |
 | `tests/bundle.rs` | Every contract key is present; no token anywhere in the bundle (recursing into `vp`) is already expired; `vcWithStatus` resolves Valid against its paired `statusListJwt` via the SDK's own status verifier |
 | `tests/util/mod.rs` | Unverified header/payload decoding for claim assertions |
 
@@ -48,9 +51,9 @@ committed (`.gitignore`: `fixtures.generated.json`).
 
 ## Dependencies
 - Depends on: `equs-credentials-sdk` (path, `in-memory`), `base64`, `serde` (`derive`, for `Bundle`),
-  `serde_json`, `async-trait`, `snafu`, `rcgen` (`X509Chain`'s self-signed certificates), `tokio`
-  (`macros`, `rt` — a normal dependency, not dev-only, since `bin/fixture_gen.rs` needs it too).
-- Used by: no other crate in the workspace.
+  `serde_json`, `async-trait`, `snafu`; optionally `rcgen` (feature `x509`) and `tokio` (feature
+  `cli`, for `bin/fixture_gen.rs`). Both features are on by default.
+- Used by: `wrappers/wasm` under its `test-utils` feature, with default features off.
 
 ## Constraints
 - `cargo run -p equs-test-fixtures --bin fixture_gen -- --out fixtures.generated.json` writes the
@@ -59,6 +62,8 @@ committed (`.gitignore`: `fixtures.generated.json`).
 - Run with `cargo test --all-features -p equs-test-fixtures`. `cargo test --all-features` at the
   workspace root tests the root package only and never builds this crate; CI has its own job
   (`test-fixtures-test`, `test-fixtures-test-job`).
+- With default features off the crate builds for `wasm32-unknown-unknown`; `rcgen` (via `ring`) and
+  `tokio` are what the features keep out. The consumer supplies `getrandom`'s `wasm_js` feature.
 - Positive fixtures only. Malformed-token generation stays in the error-path tests that need it.
 - `vc::pop` is private and `vc::formats` is `pub(crate)`, so the PoP, request object and `id_token`
   claim sets are assembled here rather than taken from an SDK constructor, and their verifiers are
