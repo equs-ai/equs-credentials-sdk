@@ -21,8 +21,8 @@ is the one exception and is named `publish`.
 
 | Path | Role |
 |------|------|
-| `workflows/ci.yml` | Triggers, gating and the 27 job calls. No steps. |
-| `workflows/_job.yml` | The generic containerised job behind 23 of the 27. Owns `container`, checkout, toolchain, node/java/wasm, caches, disk report and artifact upload. |
+| `workflows/ci.yml` | Triggers, gating and the 28 job calls. No steps. |
+| `workflows/_job.yml` | The generic containerised job behind 24 of the 28. Owns `container`, checkout, toolchain, node/java/wasm, caches, disk report and artifact upload. |
 | `workflows/_macos.yml` | The generic `macos-15` job behind `ios-xcframework`, `swift-test` and `ios-demo`. |
 | `workflows/_android.yml` | `android-demo`: bare `ubuntu-latest`, SDK from the runner plus the pinned NDK. |
 | `workflows/release.yml` | On a `vX.Y.Z` tag: preflight (tag is `X.Y.Z`, matches `Cargo.toml`, no package already at that version), then calls `publish-crate.yml`, `publish-nodejs.yml`, `publish-askar-nodejs.yml`, `publish-wasm.yml`, `publish-android.yml` and `publish-ios.yml`, then attaches every manifest, the AAR, the Maven bundle and the iOS zip to the one release. |
@@ -349,7 +349,7 @@ not preserve, and turns a soft cache miss into a hard failure on re-run.
   renamed and published; `cargo package` succeeds now.
 - `publish-common-macros.yml` does not call `_job.yml`. `_job.yml` has no
   `secrets:` surface, and threading a registry token through the workflow that
-  runs all 27 CI jobs would widen that blast radius for one consumer. It is the
+  runs all 28 CI jobs would widen that blast radius for one consumer. It is the
   only workflow that declares its own `container` and steps.
 - It runs `cargo package` and then `cargo publish --no-verify`, not `cargo
   publish` alone. `cargo package` already builds and verifies the tarball;

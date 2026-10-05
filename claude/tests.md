@@ -20,7 +20,7 @@ Contains the end-to-end (E2E) test suite and shared test utilities for EQUS Cred
 
 ## Key decisions / constraints
 - Run with: `cargo test --features in-memory,didcomm-http-transport`
-- Signed JWT fixtures (access tokens, proof JWTs, status-list tokens) are generated at test runtime through `test_fixtures` (`jws`, `jwks`, `did_key_url`), with the header and payload values written at the call site; no token is committed as a string. Every `kid` is derived from the generated key, so tests never hard-code one. `cargo test -p equs-test-fixtures` runs that crate's own tests (CI: `test-fixtures-test`, `test-fixtures-test-job`) — the root `cargo test` does not build it.
+- Signed JWT fixtures (access tokens, proof JWTs, status-list tokens) are generated at test runtime through `test_fixtures` (`jws`, `jwks`, `did_key_url`), with the header and payload values written at the call site; the recorded tokens they replace are gone from the tree. Every `kid` is derived from the generated key, so tests never hard-code one. `cargo test -p equs-test-fixtures` runs that crate's own tests (CI: `test-fixtures-test`, `test-fixtures-test-job`) — the root `cargo test` does not build it.
 - E2E tests use `LocalKms` / `InMemVault` — never mock the KMS.
 - `MockHttpClient` (from `mockall` via `#[automock]` on `HttpClient`) is used for HTTP mocking; `mockito` is being phased out — prefer `MockHttpClient` for new tests.
 - Swift wrapper tests inject `MockHttpRouter` (`wrappers/uniffi/swift/Tests/EqusSdkTests/MockHttpRouter.swift`) as the `HttpClient` instead of binding a Swifter server. It matches on URL path, so fixtures with a port baked into a signed JWT need no socket bound. `HttpTests` keeps two real-socket `ReqwestHttpClient` tests as smoke coverage.
