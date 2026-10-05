@@ -207,7 +207,11 @@ export async function buildAuthRequestFixture(): Promise<{
 
   const b64url = (value: string | Uint8Array) => Buffer.from(value).toString("base64url");
   const header = { alg: "ES256", kid: keyMetadata.didUrl, typ: "application/oauth-authz-req+jwt" };
-  const signingInput = `${b64url(JSON.stringify(header))}.${b64url(JSON.stringify(authRequest))}`;
+  const claims = {
+    ...authRequest,
+    transaction_data: (authRequest.transaction_data as unknown[]).map((item) => b64url(JSON.stringify(item))),
+  };
+  const signingInput = `${b64url(JSON.stringify(header))}.${b64url(JSON.stringify(claims))}`;
   const signature = await (await kms.get(keyMetadata.kid)).sign(Buffer.from(signingInput));
 
   return { authRequestJwt: `${signingInput}.${b64url(signature)}`, authRequest };
