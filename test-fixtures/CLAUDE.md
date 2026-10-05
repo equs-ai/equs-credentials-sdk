@@ -10,8 +10,8 @@ kind; the crate owns only the key material and the cryptography.
 
 | File | Role |
 |------|------|
-| `Cargo.toml` | Package manifest. Depends on `ssi`, `rsa`, `jsonwebtoken`, `sha2`, `serde_json` and `base64` — not on the SDK, so `ssi::JWK` is the same type on both sides and the crate builds for every target the SDK does. |
-| `src/lib.rs` | `keys()` — process-wide `Keys` (`authz` RSA-2048, `issuer` / `holder` / `verifier` P-256, `secret` HS256), generated on first use. `jws(header, payload, key)` — compact JWS; `alg` is read from the header. `jwks(keys)` — public JWK Set. `did_key_url(key)` / `did_key(key)` — the `did:key` URL the SDK resolves a `kid` against, and the bare DID for `iss`, `sub` or `aud`. `sd_jwt(header, claims, disclosures, key)` — issuer-signed SD-JWT: `_sd` holds the sorted digests of the disclosures, given as their JSON array text, followed by the disclosures and a trailing `~`. `sd_jwt_kb(sd_jwt, header, claims, key)` — appends a `kb+jwt` carrying the `sd_hash` of `sd_jwt`. `digest(input)` — base64url SHA-256, the SD-JWT digest. |
+| `Cargo.toml` | Package manifest. Depends on `ssi`, `rsa`, `jsonwebtoken`, `sha2`, `equs-one-core-crypto`, `serde_json` and `base64` — not on the SDK, so `ssi::JWK` is the same type on both sides and the crate builds for every target the SDK does. |
+| `src/lib.rs` | `keys()` — process-wide `Keys` (`authz` RSA-2048, `issuer` / `holder` / `verifier` P-256, `secret` HS256), generated on first use. `jws(header, payload, key)` — compact JWS; `alg` is read from the header. `jwks(keys)` — public JWK Set. `did_key_url(key)` / `did_key(key)` — the `did:key` URL the SDK resolves a `kid` against, and the bare DID for `iss`, `sub` or `aud`. `sd_jwt(header, claims, disclosures, key)` — issuer-signed SD-JWT: `_sd` holds the sorted digests of the disclosures, given as their JSON array text, followed by the disclosures and a trailing `~`. `sd_jwt_kb(sd_jwt, header, claims, key)` — appends a `kb+jwt` carrying the `sd_hash` of `sd_jwt`. `digest(input)` — base64url SHA-256, the SD-JWT digest. `jwe(header, payload, recipient)` — compact JWE for a P-256 key by ECDH-ES direct key agreement, as the SDK's `JweEncryptor` builds it; `header` gives `kid`, `enc` and the raw `apu` / `apv`. |
 
 ## Key types / traits
 - `Keys` — one key per role; every fixture in a process signs with the same keys, so a token and the JWKS or
@@ -20,7 +20,7 @@ kind; the crate owns only the key material and the cryptography.
 
 ## Dependencies
 - Depends on: `ssi` (P-256 generation, JWS signing, `did:key`), `rsa` (RSA generation, which `ssi` lacks),
-  `jsonwebtoken` (HMAC, which `ssi` lacks), `sha2` (SD-JWT digests), `serde_json` with `preserve_order` (headers and claims keep the
+  `jsonwebtoken` (HMAC, which `ssi` lacks), `sha2` (SD-JWT digests), `equs-one-core-crypto` with `equs-one-core-standardized-types` and `secrecy` (the JWE builder and ECDH the SDK itself uses), `serde_json` with `preserve_order` (headers and claims keep the
   order they are written in), `base64`
 - Used by: the SDK's `[dev-dependencies]` (unit tests under `src/`, the E2E suite under `tests/`),
   `plugins/askar` (`[dev-dependencies]`, the vault tests), `demos/multi-thread`, `demos/oid4vc/issuer`
@@ -41,5 +41,9 @@ kind; the crate owns only the key material and the cryptography.
   space after each comma; hand-made fixtures are compact), so a recorded salt reproduces the recorded `_sd`
   entry. `_sd` is sorted, as `sd_jwt_rs` sorts it, keeps any digests the caller already put in `_sd` (claims
   left undisclosed), and is omitted when there are none.
+- `jwe` encrypts under a fresh ephemeral key each call and supports only `ECDH-ES` (the SDK's `JweEncryptor`
+  does the same); `apu` / `apv` are given raw and go on the wire base64url-encoded, as one-core writes them.
+- Through `equs-one-core-crypto` the crate needs `getrandom`'s `wasm_js` feature on `wasm32`, which the wasm
+  wrapper already enables; a standalone `cargo check --target wasm32-unknown-unknown` of the crate does not.
 - Run with `cargo test -p equs-test-fixtures`; `cargo test` at the workspace root tests the root package only.
   CI runs it in `test-fixtures-test` (GitHub) and `test-fixtures-test-job` (GitLab).

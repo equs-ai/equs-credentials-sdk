@@ -2203,13 +2203,78 @@ mod tests {
             .unwrap();
     }
 
-    const JWE: &str = "eyJraWQiOiJhYyIsImVuYyI6IkExMjhDQkMtSFMyNTYiLCJhbGciOiJFQ0RILUVTIiwiYXB1IjoiYzI5dFpWOXViMjVqWlEiLCJhcHYiOiJjMjl0WlY5dWIyNWpaUSIsImVwayI6eyJrdHkiOiJFQyIsImNydiI6IlAtMjU2IiwieCI6IjZIaGh4WVlxbU9uc2NDLVkwZVNOYXJEZ0w0SGp5WW1BVXdJM3A2bkJ0eU0iLCJ5Ijoic3dYZ1BDbVdUR0RZSTJ6NGYtY2V5UE53dEhqRm9pNWZOY0Y0UTd2alNOYyJ9fQ..3zjOOJzGnCzYmEUp-xCgFA.CoDI0RyG7RV1K1oLb9jhqqMu-x55IWQFvQtFYsi3gzD1Shmb5o5TDWrnSX-66UZyHt_2yl0syKXDN557WUpazwRLckKituanU6fx0BFUARb0vyDnbHSvMNrLtJpfq7-pcsGqCg-6kCBNRV9NsvKrDyYqzlekyiAjO5eFR2fQ7x9r2IgI3kNZP9So6ZeQV5tESyiX5aX2sxPpplx9UlBquyTgLwWxfPvriuWuEwB09GmaEV9hSrfHTclZ-Pleltxjw3bKmm17gA1TzUhnjpw6GptkieVwWFplQO9xjyWV05V0EnaDZGeHpH2sGaA_uURXgei4V6YHjHq_Qor9LOY030OGNZr5VGEnD1UTCZlC__uzRGneBSGM_KqypBubGDS4DxrefF7AdRu1eDc1Gx846_9qgwT3K8bzI36pUGROboPCosJ2-l5_ICSghKqZJYUUubDOZpgLopPXQRwxSg84VGKlPs2U04JnhDlZkmGD5gNd3RKi1De5_2DfYxFyBJXF-mB8V4rWU3XwW1hcqD8ErY_1-vWa8oaxy7CoW7M0swdxza66xBuC8Rh2hVY6XNHpVltnG2RzViuZH2OYyPJ0O74uiuvneSjob7qpSi-jvfXHwDzWqu9te-mJT_3wk0MEFIVg3g8YZ6HBzDlOxEea_9aHwDpTz43-KEy5nfYvR_GTh0Tg-mu2qq-IZCBUnZQ1qtDGKBg-ixa9F7BNVz7Tcxc2UDaaByUjbGmQVTvYX2cuf2HFTqrQ4wYWws2fvMS0F9fjUQOL9dDvexdhqn7_raGN8zUSNsjW6tOubIayTXpgXCz4HvNLwZElh_fMK8Gb-5LAQcROzbkgECxT0LZcgFIBiMJbKAeAc8k0XyFek4f7MMMz6qCjQdZOrtrovGTLSIuUaB3cLVbrpq-JYKhwocn-iH6Bm_SLeTd5LjqMdLsDaXTNHvjXMPK1QT8ikSI846G1GvFBeL7Vek9q6t4pD18YuMsY7w9__V4az9KguWpZsJrULj7at831DGZfh0pa25Z_VdDKOjppb-j3ceROTolYCaZSTPrWyrDA_9cOjuKF_iF8bMbd2nGzmOHUd-tz096dcPUMJ9hets2cIU_8XOAoYYtTNCP3tXoP2ovLKptZsnuJsJuIgcP3kiQhuK05m8sfkMRRrJKci7wk6StbUHcO73v5olviO3ALDOZ5CsuAQeWO00BKTyjpNloeHt7t6gOEHM38gfebSIVNGxuWrrs0YL-VGcfDB91o7Cm8FScj0Qv_d0NT4snP46OBRQAaJdrX0_UBoxYhOyZQTBOzzhMXfuhMqn_NZuieglGqOUP25iexsaZPC8S4l-2HSFPv8m4t07GVgRW881XykozSR2L1CDz_JIsDtrVCEVWG-tnxVn4-1Lrt4VUhZOOrdqvjD9MkikX_Gysplmw0vMoS_26esWFAXhqtaRHlwAaoDoc8XmD_tvNiaPErj34imEFNBVffeyBHegA4WU_WydtA7MUOEt0xjO3hgUbRoAYB7w4c5Z94QFwOKC2IZl2Aj2Bz_r4LTESGpnUYd7810yJp_4PHpeAkE4LBmNaM5b1t_UVOnk7lkpnNOtXqqzeg_rdvzXhLjc-WyZvdNQt2m4LW6qpjNLBZ3jrrmZbeurQ2aqtDnnG2cjAxStpV7QJ16XRu6WPWamTriIMlEJfh7XzTREHd0TW79Kdk4fUTgzC1I1csKygh11e6-F3RI0xtXqsOd_k-uc-F6LNeIziQftaQeDY79XUpZed8xqJ5d9xIyrb2L9fHucPthg5btXeRrTNUaD76j6U-fewRRwdh1mWqmDIfIHmWzBRWAmMyFoUKDZKtDfz-iZPV_2I5RWbn6Jx3M02zEk6UCnH7t8IWT5aug02takkHRnEvD8ZNGljLs00MZjoe89Sz-Z0zPIJ-sXGIKXIbZITuU5H4yi7D6RLBDfZpRZPBJBjlFtF0WXlkItvaqQrUU31QLPRir73aTvTY6kKOGKfyg1BdLTtNyVoWJ7tbMTZH2UlJ8G8AA5X_gQQ0aD6mgdKCef0eha5NBQyJ-ATqSPhh1DD9RnWic2-CugNrIDhmFpcl8nDBfVokoNZsTWz62Pin9Cztp1f41T4T.jQWuxtlpSXrokaAhm440gQ";
+    /// Encrypted authorization response for a recipient key the verifier does not hold
+    /// (`kid: ac`), carrying a key-bound SD-JWT presentation.
+    fn jwe() -> &'static str {
+        static TOKEN: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
+            let keys = test_fixtures::keys();
+            let sd_jwt = test_fixtures::sd_jwt(
+                &json!({
+                    "typ": "dc+sd-jwt",
+                    "alg": "ES256",
+                    "kid": test_fixtures::did_key_url(&keys.issuer)
+                }),
+                &json!({
+                    "iat": 1756132278,
+                    "sub": test_fixtures::did_key(&keys.holder),
+                    "vct": "https://credentials.example.com/identity_credential",
+                    "_sd_alg": "sha-256",
+                    "iss": test_fixtures::did_key(&keys.issuer),
+                    "exp": 1787668278,
+                    "nbf": 1756132278,
+                    "cnf": {
+                        "jwk": keys.holder.to_public()
+                    }
+                }),
+                &[r#"["kH5kXGmYa82ylXaOfFP_zA", "name", "Mark"]"#],
+                &keys.issuer,
+            );
+            let vp_token = test_fixtures::sd_jwt_kb(
+                &sd_jwt,
+                &json!({
+                    "typ": "kb+jwt",
+                    "alg": "ES256"
+                }),
+                &json!({
+                    "aud": test_fixtures::did_key(&keys.verifier),
+                    "iat": 1756132278,
+                    "nonce": "3DaLwdi89qDgplpSwAspX6wWzm6pLkzaN3Xuk-ar5zY"
+                }),
+                &keys.holder,
+            );
+            let response = json!({
+                "vp_token": vp_token,
+                "presentation_submission": {
+                    "id": "d5dec2be-1f86-4ba5-b021-9b18aa769afa",
+                    "definition_id": "327ad171-c80a-485b-b098-50d7ad278ef6",
+                    "descriptor_map": [{
+                        "id": "Identity-1",
+                        "format": "dc+sd-jwt",
+                        "path": "$",
+                        "path_nested": null
+                    }]
+                }
+            });
+            test_fixtures::jwe(
+                &json!({
+                    "kid": "ac",
+                    "enc": "A128CBC-HS256",
+                    "alg": "ECDH-ES",
+                    "apu": "some_nonce",
+                    "apv": "some_nonce"
+                }),
+                &serde_json::to_vec(&response).unwrap(),
+                &keys.verifier,
+            )
+        });
+        &TOKEN
+    }
 
     #[rstest]
     #[should_panic(expected = "Error while getting the jwe header")]
     #[case("not_even_jwt")]
     #[should_panic(expected = "Error while getting the key handle for ac")]
-    #[case(JWE)]
+    #[case(jwe())]
     #[tokio::test]
     async fn resolve_authorization_response_jwe_negative(#[case] jwt: &str) {
         let (verifier, _) = verifier_service().await;

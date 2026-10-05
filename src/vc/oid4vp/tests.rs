@@ -1214,42 +1214,47 @@ pub mod fixtures {
                   }
                 }"#;
 
-            pub const AUTH_REQUEST_WITH_DIRECT_POST_JWT_RESPONSE: &str = r#"
-                {
+            /// Direct-post JWT response request; the encryption key is the fixture verifier key under `kid: ac`.
+            pub fn auth_request_with_direct_post_jwt_response_json() -> String {
+                let jwk = serde_json::to_value(test_fixtures::keys().verifier.to_public()).unwrap();
+                let (x, y) = (jwk["x"].as_str().unwrap(), jwk["y"].as_str().unwrap());
+                format!(
+                    r#"
+                {{
                   "client_id": "decentralized_identifier:did:key:zDnaehgaHKAP7LAA3Kwa4FjXjJ1G3BcaHqr5gfRySJcGDgBtV",
                   "state": null,
-                  "presentation_definition": {
+                  "presentation_definition": {{
                     "id": "327ad171-c80a-485b-b098-50d7ad278ef6",
                     "input_descriptors": [
-                      {
+                      {{
                         "id": "Identity-1",
-                        "constraints": {
+                        "constraints": {{
                           "fields": [
-                            {
+                            {{
                               "path": [
                                 "$.name"
                               ],
                               "predicate": null,
                               "optional": true,
                               "intent_to_retain": false
-                            },
-                            {
+                            }},
+                            {{
                               "path": [
                                 "$.vct"
                               ],
                               "predicate": null,
-                              "filter": {
+                              "filter": {{
                                 "type": "string",
                                 "const": "https://credentials.example.com/identity_credential"
-                              },
+                              }},
                               "intent_to_retain": false
-                            }
+                            }}
                           ]
-                        },
+                        }},
                         "name": "Identity VC",
                         "purpose": "We want an identity",
-                        "format": {
-                          "dc+sd-jwt": {
+                        "format": {{
+                          "dc+sd-jwt": {{
                             "sd-jwt_alg_values": [
                               "ES256",
                               "EdDSA"
@@ -1258,35 +1263,37 @@ pub mod fixtures {
                               "ES256",
                               "EdDSA"
                             ]
-                          }
-                        }
-                      }
+                          }}
+                        }}
+                      }}
                     ],
                     "name": "Example with selective disclosure"
-                  },
+                  }},
                   "nonce": "3DaLwdi89qDgplpSwAspX6wWzm6pLkzaN3Xuk-ar5zY",
                   "response_mode": "direct_post.jwt",
                   "response_type": "vp_token",
                   "response_uri": "http://127.0.0.1:55796/auth",
-                  "client_metadata": {
-                    "vp_formats_supported": {
-                        "dc+sd-jwt": {
+                  "client_metadata": {{
+                    "vp_formats_supported": {{
+                        "dc+sd-jwt": {{
                             "sd-jwt_alg_values": ["EdDSA", "ES256"],
                             "kb-jwt_alg_values": ["EdDSA", "ES256"]
-                        }
-                    },
-                    "jwks": {
+                        }}
+                    }},
+                    "jwks": {{
                       "keys": [
-                        {
+                        {{
                           "kty":"EC", "kid":"ac", "use":"enc", "crv":"P-256","alg":"ES256",
-                          "x": "SSnPfyVhQgcU9Aaynqgi6QGhrq7K7WFEC0mAvpHG4TM",
-                          "y": "rYQ5mLQLTs95WLBKKA8R5IjMTXjX13iZnzazsVectRY"
-                        }
+                          "x": "{x}",
+                          "y": "{y}"
+                        }}
                      ]
-                    },
+                    }},
                     "encrypted_response_enc_values_supported": ["A128GCM", "A128CBC-HS256"]
-                  }
-                }"#;
+                  }}
+                }}"#
+                )
+            }
             pub const AUTH_REQUEST_WITH_NON_URL_CLIENT_ID_PREFIX: &str = r#"
                 {
                   "client_id": "redirect_uri:non-link-id",
@@ -1509,7 +1516,7 @@ pub mod fixtures {
                 serde_json::from_str(AUTH_REQUEST).unwrap()
             }
             pub fn auth_request_with_direct_post_jwt_response() -> ResolvedAuthRequest {
-                serde_json::from_str(AUTH_REQUEST_WITH_DIRECT_POST_JWT_RESPONSE).unwrap()
+                serde_json::from_str(&auth_request_with_direct_post_jwt_response_json()).unwrap()
             }
 
             pub fn auth_request_with_state() -> ResolvedAuthRequest {
@@ -3524,14 +3531,8 @@ pub mod utils {
             let transaction_data_response: Option<TransactionDataResponse>;
             if form.contains_key::<String>(&String::from("response")) {
                 let response = form.get::<String>(&String::from("response")).unwrap();
-                let jwk = r#"{
-                         "kty": "EC",
-                         "crv": "P-256",
-                         "x": "SSnPfyVhQgcU9Aaynqgi6QGhrq7K7WFEC0mAvpHG4TM",
-                         "y": "rYQ5mLQLTs95WLBKKA8R5IjMTXjX13iZnzazsVectRY",
-                         "d": "rs9veoNnfQCH7kfsAis_nAHtpcEghiAzKry8R-de0eA"
-                     }"#;
-                let kh = wrap_p256_private_key(jwk);
+                let jwk = serde_json::to_string(&test_fixtures::keys().verifier).unwrap();
+                let kh = wrap_p256_private_key(&jwk);
 
                 let payload = decrypt_jwe_payload(response, &kh).await.unwrap();
                 let claim_set: Value = serde_json::from_slice(payload.as_slice()).unwrap();
@@ -3825,6 +3826,8 @@ pub mod utils {
         }
 
         pub fn build_auth_request_for_dcql(dcql: &str) -> ResolvedAuthRequest {
+            let jwk = serde_json::to_value(test_fixtures::keys().verifier.to_public()).unwrap();
+            let (x, y) = (jwk["x"].as_str().unwrap(), jwk["y"].as_str().unwrap());
             let auth_request_str = format!(
                 r#"{{
                   "client_id": "decentralized_identifier:did:key:zDnaehgaHKAP7LAA3Kwa4FjXjJ1G3BcaHqr5gfRySJcGDgBtV",
@@ -3849,8 +3852,8 @@ pub mod utils {
                               "use":"enc",
                               "crv":"P-256",
                               "alg":"ES256",
-                              "x": "SSnPfyVhQgcU9Aaynqgi6QGhrq7K7WFEC0mAvpHG4TM",
-                              "y": "rYQ5mLQLTs95WLBKKA8R5IjMTXjX13iZnzazsVectRY"
+                              "x": "{x}",
+                              "y": "{y}"
                             }}
                         ]
                     }}
@@ -3862,14 +3865,7 @@ pub mod utils {
         }
 
         pub fn get_private_enc_key(&self) -> String {
-            r#"{
-                 "kty": "EC",
-                 "crv": "P-256",
-                 "x": "SSnPfyVhQgcU9Aaynqgi6QGhrq7K7WFEC0mAvpHG4TM",
-                 "y": "rYQ5mLQLTs95WLBKKA8R5IjMTXjX13iZnzazsVectRY",
-                 "d": "rs9veoNnfQCH7kfsAis_nAHtpcEghiAzKry8R-de0eA"
-            }"#
-            .to_string()
+            serde_json::to_string(&test_fixtures::keys().verifier).unwrap()
         }
     }
 
