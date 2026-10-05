@@ -820,14 +820,7 @@ mod tests {
     ///
     /// Status bit size - 1
     fn status_list_jwt_token_1bit() -> &'static str {
-        "eyJ0eXAiOiJzdGF0dXNsaXN0K2p3dCIsImFsZyI6IkVTMjU2Iiwia2lkIjoiZG\
-         lkOmtleTp6RG5hZWRlaHVUUVdzNWhaZHFKTVJzZGRpa2RBUnl4OGZhYzI4UjRN\
-         UFVRRTIybnhaI3pEbmFlZGVodVRRV3M1aFpkcUpNUnNkZGlrZEFSeXg4ZmFjMj\
-         hSNE1QVVFFMjJueFoifQ.eyJzdGF0dXNfbGlzdCI6eyJsc3QiOiJlTnBqWW1CZ\
-         0FBQUFEQUFEIiwiYml0cyI6MX0sImlhdCI6MTczODA3NDEzMCwic3ViIjoiaHR\
-         0cDovL2V4YW1wbGUuY29tL3N0YXR1c19saXN0IiwiX3NkX2FsZyI6InNoYS0yN\
-         TYifQ.HlkzOlNu8fNpLgHxfX0Ra7J1AqxxPwlyiskhMFaSfbVymoWRvHNuadT1\
-         PFr92AogZsMI5wHJkIBrBIOVdlfr3g~"
+        status_list_jwt(1738074130, "eNpjYmBgAAAADAAD", 1)
     }
 
     /// Status list token that contains the following status list:
@@ -839,12 +832,27 @@ mod tests {
     ///
     /// Status bit size - 2
     fn status_list_jwt_token_2bit() -> &'static str {
-        "eyJ0eXAiOiJzdGF0dXNsaXN0K2p3dCIsImFsZyI6IkVTMjU2Iiwia2lkIjoiZGlkOmtleTp6R\
-        G5hZWFoVE5nRVozN0ZESlRQcFhUWDJRUFBWb21nc2k4QVMzMjFjMjRNMlVvNWQ2I3pEbmFlYWh\
-        UTmdFWjM3RkRKVFBwWFRYMlFQUFZvbWdzaThBUzMyMWMyNE0yVW81ZDYifQ.eyJzdWIiOiJodH\
-        RwOi8vZXhhbXBsZS5jb20vc3RhdHVzX2xpc3QiLCJpYXQiOjE3NjMwMjQ0MTYsInN0YXR1c19s\
-        aXN0Ijp7ImxzdCI6ImVOcWJ3TXdBQmdBRW5RQ1UiLCJiaXRzIjoyfSwiX3NkX2FsZyI6InNoYS\
-        0yNTYifQ.uxeAWNaz0sP2PHrp3xndbrmNQTrHiGycOwsiGX4f1nsYGcLZhYmsTP5ixcdxWvTq3\
-        9blTkiRt1wXnCESlxqboQ~"
+        status_list_jwt(1763024416, "eNqbwMwABgAEnQCU", 2)
+    }
+
+    /// `statuslist+jwt` served at `http://example.com/status_list`, signed by the fixture issuer
+    /// key.
+    fn status_list_jwt(iat: u64, lst: &str, bits: u8) -> &'static str {
+        let issuer = &test_fixtures::keys().issuer;
+        let token = test_fixtures::jws(
+            &json!({
+                "typ": "statuslist+jwt",
+                "alg": "ES256",
+                "kid": test_fixtures::did_key_url(issuer)
+            }),
+            &json!({
+                "status_list": { "lst": lst, "bits": bits },
+                "iat": iat,
+                "sub": "http://example.com/status_list",
+                "_sd_alg": "sha-256"
+            }),
+            issuer,
+        );
+        Box::leak(format!("{token}~").into_boxed_str())
     }
 }

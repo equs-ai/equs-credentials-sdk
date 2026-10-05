@@ -16,7 +16,7 @@ utilities and scenario-specific e2e test modules covering all major supported pr
 - No public types; this crate is test-only.
 
 ## Dependencies
-- Depends on: `equs_sdk` (all features), `rstest`, `mockito`, `serde_json`, `oauth2`, `ssi`, `url`, `time`, `uuid`, `futures`
+- Depends on: `equs_sdk` (all features), `test_fixtures`, `rstest`, `mockito`, `serde_json`, `oauth2`, `ssi`, `url`, `time`, `uuid`, `futures`
 - Used by: CI via `cargo test --features in-memory,didcomm-http-transport`
 
 ## Constraints

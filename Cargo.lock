@@ -3051,6 +3051,7 @@ dependencies = [
  "equs-one-core-shared-types",
  "equs-openid4vp",
  "equs-sd-jwt-rs",
+ "equs-test-fixtures",
  "equs-vcx-did-parser-nom",
  "equs-vcx-did-peer",
  "equs-vcx-did-resolver",
@@ -3433,6 +3434,18 @@ dependencies = [
  "strum 0.25.0",
  "thiserror 1.0.69",
  "time",
+]
+
+[[package]]
+name = "equs-test-fixtures"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "jsonwebtoken",
+ "rsa 0.9.10",
+ "rstest 0.22.0",
+ "serde_json",
+ "ssi",
 ]
 
 [[package]]
@@ -5062,6 +5075,7 @@ dependencies = [
  "actix-web",
  "actix-web-httpauth",
  "equs-credentials-sdk",
+ "equs-test-fixtures",
  "keycloak",
  "reqwest 0.12.12",
  "serde",
@@ -6037,6 +6051,7 @@ dependencies = [
  "actix-web",
  "actix-web-httpauth",
  "equs-credentials-sdk",
+ "equs-test-fixtures",
  "futures",
  "rand 0.9.4",
  "serde",

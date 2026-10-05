@@ -12,13 +12,15 @@ Contains the end-to-end (E2E) test suite and shared test utilities for EQUS Cred
 | Shared test utilities | `tests/utils/` | [context](../tests/utils/CLAUDE.md) |
 | Test fixtures | `tests/utils/fixtures/` | [context](../tests/utils/fixtures/CLAUDE.md) |
 | Test helpers | `tests/utils/helpers/` | [context](../tests/utils/helpers/CLAUDE.md) |
+| Runtime fixtures crate | `test-fixtures/` | [context](../test-fixtures/CLAUDE.md) |
 
 ## Cross-domain relationships
-- Depends on: `crate::inmem` (`LocalKms`, `InMemVault`), all protocol domains (`vc`, `did`, `didcomm`), `mockall` (`MockHttpClient` via `#[automock]` on `HttpClient`)
+- Depends on: `crate::inmem` (`LocalKms`, `InMemVault`), all protocol domains (`vc`, `did`, `didcomm`), `test_fixtures` (keys and signed JWTs generated at runtime), `mockall` (`MockHttpClient` via `#[automock]` on `HttpClient`)
 - Used by: CI pipeline; not compiled into any production artifact
 
 ## Key decisions / constraints
 - Run with: `cargo test --features in-memory,didcomm-http-transport`
+- Signed JWT fixtures (access tokens, proof JWTs, status-list tokens) are generated at test runtime through `test_fixtures` (`jws`, `jwks`, `did_key_url`), with the header and payload values written at the call site; no token is committed as a string. Every `kid` is derived from the generated key, so tests never hard-code one. `cargo test -p equs-test-fixtures` runs that crate's own tests — the root `cargo test` does not build it.
 - E2E tests use `LocalKms` / `InMemVault` — never mock the KMS.
 - `MockHttpClient` (from `mockall` via `#[automock]` on `HttpClient`) is used for HTTP mocking; `mockito` is being phased out — prefer `MockHttpClient` for new tests.
 - Swift wrapper tests inject `MockHttpRouter` (`wrappers/uniffi/swift/Tests/EqusSdkTests/MockHttpRouter.swift`) as the `HttpClient` instead of binding a Swifter server. It matches on URL path, so fixtures with a port baked into a signed JWT need no socket bound. `HttpTests` keeps two real-socket `ReqwestHttpClient` tests as smoke coverage.

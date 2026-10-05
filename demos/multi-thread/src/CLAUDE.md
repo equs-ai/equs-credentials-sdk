@@ -15,8 +15,8 @@ Runnable demo binary that stress-tests the OID4VCI issuance flow under concurren
 - Default concurrency: 100 runs (`DEFAULT_RUNS`), configurable via CLI args.
 
 ## Dependencies
-- Depends on: `equs_sdk` (oid4vci, kms, inmem, reqwest), `actix-web`, `tokio` (multi_thread, 20 workers), `rand`
+- Depends on: `equs_sdk` (oid4vci, kms, inmem, reqwest), `test_fixtures` (dummy access token), `actix-web`, `tokio` (multi_thread, 20 workers), `rand`
 - Used by: developers testing concurrent issuance performance
 
 ## Constraints
-- Demo / development use only; hard-codes a dummy Bearer token and `localhost:4000`.
+- Demo / development use only; generates a Keycloak-shaped dummy Bearer token at startup through `test_fixtures` and hard-codes `localhost:4000`.

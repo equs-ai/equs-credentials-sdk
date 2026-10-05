@@ -13,7 +13,7 @@ requests from multiple holders simultaneously using Actix-web and Tokio.
 | Cargo.toml  | Crate manifest. |
 
 ## Dependencies
-- Depends on: `equs_sdk` (vc::core), `actix-web`, `tokio`, `reqwest`
+- Depends on: `equs_sdk` (vc::core), `test_fixtures`, `actix-web`, `tokio`, `reqwest`
 - Used by: developers verifying thread-safety of the SDK's issuer under load
 
 ## Constraints

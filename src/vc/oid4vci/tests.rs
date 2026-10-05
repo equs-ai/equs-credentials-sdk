@@ -20,32 +20,45 @@ pub mod fixtures {
     pub const JWKS_URL: &str = "http://issuer.org/certs";
     pub const NONCE: &str = "KB50VOm9I-kPLT9mAACV8g";
 
-    // header:
-    // {
-    //   "alg": "RS256",
-    //   "typ": "JWT",
-    //   "kid": "PclYP6vRk1LpKDfjSO2Da35rmGRfi9362CpREyJf8p0"
-    // }
-    //
-    // payload:
-    // {
-    //   "exp": 1759734659,
-    //   "iat": 1759734359,
-    //   "auth_time": 1759734105,
-    //   "jti": "onrtac:415f60df-5dc3-d219-06ad-2cf0618e6225",
-    //   "iss": "http://localhost:8080/realms/pid-issuer-realm",
-    //   "sub": "60b8ba5f-c73f-4976-b0da-48d0e53335de",
-    //   "typ": "Bearer",
-    //   "azp": "wallet-dev",
-    //   "sid": "e1de0faa-efd6-f290-22df-5f2caa56981a",
-    //   "allowed-origins": [
-    //     "/*",
-    //     "http://localhost:3000"
-    //   ],
-    //   "scope": "SD_JWT_cred"
-    // }
-    pub const ACCESS_TOKEN: &str = "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6IlBjbFlQNnZSazFMcEtEZmpTTzJEYTM1cm1HUmZpOTM2MkNwUkV5SmY4cDAifQ.eyJleHAiOjE3NTk3MzQ2NTksImlhdCI6MTc1OTczNDM1OSwiYXV0aF90aW1lIjoxNzU5NzM0MTA1LCJqdGkiOiJvbnJ0YWM6NDE1ZjYwZGYtNWRjMy1kMjE5LTA2YWQtMmNmMDYxOGU2MjI1IiwiaXNzIjoiaHR0cDovL2xvY2FsaG9zdDo4MDgwL3JlYWxtcy9waWQtaXNzdWVyLXJlYWxtIiwic3ViIjoiNjBiOGJhNWYtYzczZi00OTc2LWIwZGEtNDhkMGU1MzMzNWRlIiwidHlwIjoiQmVhcmVyIiwiYXpwIjoid2FsbGV0LWRldiIsInNpZCI6ImUxZGUwZmFhLWVmZDYtZjI5MC0yMmRmLTVmMmNhYTU2OTgxYSIsImFsbG93ZWQtb3JpZ2lucyI6WyIvKiIsImh0dHA6Ly9sb2NhbGhvc3Q6MzAwMCJdLCJzY29wZSI6IlNEX0pXVF9jcmVkIn0.Vzd-czyWV8NamelfLXFAGe5KlzNsI9BQyHD3jwMiW5n5skG3yAbXHohXJIDD5OFe2RdQVXspuqwA8Fdxd3wMVpgW8vPPjFrBD7zQWMLUstiZKniVJroSFAo8A1u9Lq9pb648gF4DxZWTiQAy-1mNOW8QVEcN6XBEHTkZ0YaMPO-lyXkeQOuY5J1Z9s7y8_4HBE0FjnJuFRraO8S8l1ixoCAObtzMfARld3rBPM_EVTYxfrT1_TCXcylKuqRoJGjE8fnCSJYworG0AP7LO0hPcKrvlG5oiW8Zr_V0yBp4OKdOtwukgJ0R0gmxzCf0bOQHl_mdRm0QTxYslNYIrfh_yw";
-    pub const ACCESS_TOKEN_WITHOUT_SCOPE: &str = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE3MjQzOTg0OTQsImlhdCI6MTcyNDM5ODE5NCwiYXV0aF90aW1lIjoxNzI0Mzk4MTgyLCJqdGkiOiIwYjRmZTM5MC00OTIxLTQwNDItYjdlMS1iMDNiM2QxOTYyMjkiLCJpc3MiOiJodHRwOi8vbG9jYWxob3N0OjgwODAvaWRwL3JlYWxtcy9waWQtaXNzdWVyLXJlYWxtIiwic3ViIjoiNjBiOGJhNWYtYzczZi00OTc2LWIwZGEtNDhkMGU1MzMzNWRlIiwidHlwIjoiQmVhcmVyIiwiYXpwIjoid2FsbGV0LWRldiIsInNpZCI6ImYxNWIzZTExLWZmMjgtNDRkZi04ZmNmLWE3N2QyNDcxNGEyMyIsImFsbG93ZWQtb3JpZ2lucyI6WyIvKiJdfQ.baJ-4kkcyLxf7v8J8e-qr9zlGFFM-Xa-P-K-Kg4iq8g";
+    pub fn access_token() -> String {
+        let authz = &test_fixtures::keys().authz;
+        test_fixtures::jws(
+            &json!({ "alg": "RS256", "typ": "JWT", "kid": authz.key_id }),
+            &json!({
+                "exp": 1759734659,
+                "iat": 1759734359,
+                "auth_time": 1759734105,
+                "jti": "onrtac:415f60df-5dc3-d219-06ad-2cf0618e6225",
+                "iss": "http://localhost:8080/realms/pid-issuer-realm",
+                "sub": "60b8ba5f-c73f-4976-b0da-48d0e53335de",
+                "typ": "Bearer",
+                "azp": "wallet-dev",
+                "sid": "e1de0faa-efd6-f290-22df-5f2caa56981a",
+                "allowed-origins": ["/*", "http://localhost:3000"],
+                "scope": "SD_JWT_cred"
+            }),
+            authz,
+        )
+    }
+
+    pub fn access_token_without_scope() -> String {
+        test_fixtures::jws(
+            &json!({ "alg": "HS256", "typ": "JWT" }),
+            &json!({
+                "exp": 1724398494,
+                "iat": 1724398194,
+                "auth_time": 1724398182,
+                "jti": "0b4fe390-4921-4042-b7e1-b03b3d196229",
+                "iss": "http://localhost:8080/idp/realms/pid-issuer-realm",
+                "sub": "60b8ba5f-c73f-4976-b0da-48d0e53335de",
+                "typ": "Bearer",
+                "azp": "wallet-dev",
+                "sid": "f15b3e11-ff28-44df-8fcf-a77d24714a23",
+                "allowed-origins": ["/*"]
+            }),
+            &test_fixtures::keys().secret,
+        )
+    }
 
     // claims used to generate credentilas:
     // {
@@ -370,14 +383,31 @@ pub mod fixtures {
     }
 
     pub fn sample_access_token() -> AccessToken {
-        AccessToken::new(ACCESS_TOKEN.to_string())
+        AccessToken::new(access_token())
     }
 
     pub fn fake_access_token() -> AccessToken {
         AccessToken::new("".to_string())
     }
 
-    pub const SAMPLE_PROOF_JWT: &str = "eyJhbGciOiJFUzI1NiIsImtpZCI6ImRpZDprZXk6ekRuYWVxTnJnR1RBV3FVVlNVRnFvWFh3bjhONThVc2JLRVpDeUUyWlk5ZFRHS3B3cyN6RG5hZXFOcmdHVEFXcVVWU1VGcW9YWHduOE41OFVzYktFWkN5RTJaWTlkVEdLcHdzIiwidHlwIjoib3BlbmlkNHZjaS1wcm9vZitqd3QifQ.eyJhdWQiOiJodHRwczovL2lzc3Vlci1iYWNrZW5kLmNvbSIsIm5iZiI6MTczNTkwMTAzNCwiaWF0IjoxNzM1OTAxMDM0LCJleHAiOjY2MTQ4NTE1MTQsIm5vbmNlIjoiS0I1MFZPbTlJLWtQTFQ5bUFBQ1Y4ZyJ9.2flsRA_XKGFm4JBpvRHkV3QKLMo81OawQHL1YQdwVRo3OnZeugQJevWz8q-_lD-fo6U9_z_KuLNt9tQr_5A5Iw";
+    pub fn sample_proof_jwt() -> String {
+        let holder = &test_fixtures::keys().holder;
+        test_fixtures::jws(
+            &json!({
+                "alg": "ES256",
+                "kid": test_fixtures::did_key_url(holder),
+                "typ": "openid4vci-proof+jwt"
+            }),
+            &json!({
+                "aud": ISSUER_URL,
+                "nbf": 1735901034,
+                "iat": 1735901034,
+                "exp": 6614851514_u64,
+                "nonce": NONCE
+            }),
+            holder,
+        )
+    }
 
     pub struct SampleCredentialRequest {}
 
@@ -387,7 +417,7 @@ pub mod fixtures {
                 {
                     "credential_configuration_id":"SD_JWT_cred_sample",
                     "proofs": {
-                        "jwt": [ SAMPLE_PROOF_JWT ],
+                        "jwt": [ sample_proof_jwt() ],
                     },
                 }
             ))
@@ -395,11 +425,12 @@ pub mod fixtures {
         }
 
         pub fn with_cred_configuration_id_and_multiple_proofs() -> CredentialRequest {
+            let proof = sample_proof_jwt();
             serde_json::from_value(json!(
                 {
                     "credential_configuration_id":"SD_JWT_cred_sample",
                     "proofs": {
-                        "jwt": [SAMPLE_PROOF_JWT, SAMPLE_PROOF_JWT, SAMPLE_PROOF_JWT],
+                        "jwt": [proof, proof, proof],
                     },
                 }
             ))
@@ -423,7 +454,7 @@ pub mod fixtures {
                 {
                     "credential_identifier":"CivilEngineeringDegree-2023",
                     "proofs": {
-                        "jwt": [ SAMPLE_PROOF_JWT ],
+                        "jwt": [ sample_proof_jwt() ],
                     },
                 }
             ))
@@ -462,25 +493,7 @@ pub mod fixtures {
     }
 
     pub fn sample_jwks() -> Value {
-        let jwks = json!({
-          "keys": [
-            {
-              "kid": "PclYP6vRk1LpKDfjSO2Da35rmGRfi9362CpREyJf8p0",
-              "kty": "RSA",
-              "alg": "RS256",
-              "use": "sig",
-              "n": "qIMTnddR8yxBzXe1ue1Fx7kfjgY9jzsWm5ge7UWv5GWlFEoKjtDrGmPhtSwFTden3DiM4XiIBZ-5AbX_8fdnGxNUON1_GFBnLQv6q0eea9NRM8gtu_avM4nlVzErpdW1LKVm7C3JjjfdlivBEu6XcUZA4bUKNPaj6nwuqQsKstrcuPG32WapVszLDksfSowEVUIc9p__U0aasrfz6jM83jTwq_phHgEwZKxzfw-i055X0Q-JdIs01I27JkiNp0KG5Va-KU9GJBhcTw3QgpifmRc7_9WzmiiSbkxqsTZQwnQbxyShQJYZc0TdBudd7C3mRhDUNh-gdflCk06vCb5sbw",
-              "e": "AQAB",
-              "x5c": [
-                "MIICrzCCAZcCBgGK8WCVpzANBgkqhkiG9w0BAQsFADAbMRkwFwYDVQQDDBBwaWQtaXNzdWVyLXJlYWxtMB4XDTIzMTAwMjE3MTA1M1oXDTMzMTAwMjE3MTIzM1owGzEZMBcGA1UEAwwQcGlkLWlzc3Vlci1yZWFsbTCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAKiDE53XUfMsQc13tbntRce5H44GPY87FpuYHu1Fr+RlpRRKCo7Q6xpj4bUsBU3Xp9w4jOF4iAWfuQG1//H3ZxsTVDjdfxhQZy0L+qtHnmvTUTPILbv2rzOJ5VcxK6XVtSylZuwtyY433ZYrwRLul3FGQOG1CjT2o+p8LqkLCrLa3Ljxt9lmqVbMyw5LH0qMBFVCHPaf/1NGmrK38+ozPN408Kv6YR4BMGSsc38PotOeV9EPiXSLNNSNuyZIjadChuVWvilPRiQYXE8N0IKYn5kXO//Vs5ookm5MarE2UMJ0G8ckoUCWGXNE3QbnXewt5kYQ1DYfoHX5QpNOrwm+bG8CAwEAATANBgkqhkiG9w0BAQsFAAOCAQEAg+H8Z/vQXxZ+kZZXupIOdZZCR3LuyLiZcselF2ldXaH44SUXBM2LbVvElLScg/DFak9Bp6+3fIrky56E9je/i8TpEtq0ey9sdncjAD070BmMHis7MIT5PdQkaESpCwJmN4HkVNrVFbsdiklnKIoSWmJ7IdARTPlYP3bDo6ts+0wxqc6dmFzePppVn+eMXr0HO4Il8ycctCaDr+iY4yvvi+OoOozm7yPBMzjFhYpLSV6Nisy5KABS3XTKJRmKelnC8jrqPl3lDWLXQx24PpIzxSRcRb6yPkClJWe7qFzckec7Zv5M7IRwLyxb0aWtK8m1xBlKXLNEWp+KXtrYGYHi0g=="
-              ],
-              "x5t": "f_nYDF5_zLbbZm1BxSroBsxCywU",
-              "x5t#S256": "cxRALdyDtXe6fbJ16gv7GHqnd2G4zoOsUmKU1SJYA3c"
-            }
-          ]
-        });
-
-        jwks
+        test_fixtures::jwks(&[&test_fixtures::keys().authz])
     }
 
     pub fn sample_introspect_response() -> Value {

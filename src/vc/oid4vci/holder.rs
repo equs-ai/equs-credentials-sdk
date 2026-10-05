@@ -910,8 +910,8 @@ mod tests {
     use crate::vc::formats::json_ld_vc::VC;
     use crate::vc::oid4vci::protocol_error::TokenEndpointError;
     use crate::vc::oid4vci::tests::fixtures::{
-        ACCESS_TOKEN, AUTH_URL, CRED_DEF_ID, ISSUER_URL, NOTIFICATION_ID, REQ_URI_CODE, SCOPE,
-        SD_JWT_CREDS, SampleIssuerMetadata, fake_access_token, sample_access_token,
+        AUTH_URL, CRED_DEF_ID, ISSUER_URL, NOTIFICATION_ID, REQ_URI_CODE, SCOPE, SD_JWT_CREDS,
+        SampleIssuerMetadata, access_token, fake_access_token, sample_access_token,
         sample_authorization_metadata, sample_batch_cred_response, sample_cred_response,
         sample_credential_definition, sample_offer_with_auth_code_grant,
         sample_offer_with_pre_auth_code_grant,
@@ -1843,7 +1843,7 @@ mod tests {
 
     fn sample_access_token_response() -> serde_json::Value {
         json!({
-            "access_token": ACCESS_TOKEN,
+            "access_token": access_token(),
             "token_type": "bearer",
             "expires_in": 86400,
         })

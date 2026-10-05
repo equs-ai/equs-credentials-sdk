@@ -251,8 +251,6 @@ mod tests {
     use oauth2::HttpResponse;
     use serde_json::{Value, json};
 
-    const TOKEN: &str = "eyJhbGciOiJSUzI1NiIsInR5cCIgOiAiSldUIiwia2lkIiA6ICJQY2xZUDZ2UmsxTHBLRGZqU08yRGEzNXJtR1JmaTkzNjJDcFJFeUpmOHAwIn0.eyJleHAiOjE3MjY4NDY2NDcsImlhdCI6MTcyNjgxMDgzOSwiYXV0aF90aW1lIjoxNzI2ODEwNjQ3LCJqdGkiOiJlNWIxZjFjNC1kYjEzLTRkODgtYmJkMi0yN2NkMDkxYzc1ZGEiLCJpc3MiOiJodHRwOi8vbG9jYWxob3N0OjgwODAvaWRwL3JlYWxtcy9waWQtaXNzdWVyLXJlYWxtIiwic3ViIjoiNjBiOGJhNWYtYzczZi00OTc2LWIwZGEtNDhkMGU1MzMzNWRlIiwidHlwIjoiQmVhcmVyIiwiYXpwIjoid2FsbGV0LWRldiIsInNpZCI6IjFmZTg0ZWI3LTE5MTEtNDBlYi04ZGNmLWRiMzYwN2E2OGQ4ZiIsImFsbG93ZWQtb3JpZ2lucyI6WyIvKiJdLCJzY29wZSI6IlNEX0pXVF9jcmVkX3Njb3BlIn0.Sj6R0q7nnumcspoZOMS6KhOFf4yCia9KAF4uSjUShLq4xUgO-GaprdFjk3zX6koNr1dj_fVdi0Kq0Msxm3JkgJ4tNJRksF_n2pGhgfTfsGW6llZr_ZcO_bYugWYbbyUuw88QqGVhVjdiGfffkg3YC6UP-2-nK96BgQGu9UmbSxSwYYeZdoCc1vqUglN_0zwZ3FSmZ9J12QBb7rvK-lPPMhKeXByaHyuz_MtQguEmi0GOg4J1v3DHQZz5aFEG7W9-zYKRVO3EXHgolOrzobnNgQyfpE0SzHkokLKrEddudbSATvUAT9DXihXHYCRPouf3pnSpV3WPl6Kxh46RdfNw-w";
-
     #[tokio::test]
     async fn introspect_validate_succeeds_by_correct_url() {
         let http_client = create_mock_http_client(
@@ -265,7 +263,7 @@ mod tests {
         let validator =
             Introspect::new(http_client, Url::parse(TOKEN_INTROSPECT_URL).unwrap(), None);
 
-        let result = validator.validate(TOKEN).await;
+        let result = validator.validate(&token()).await;
 
         result.unwrap()
     }
@@ -280,7 +278,7 @@ mod tests {
             JsonWebKeySetUrl::new(JWKS_URL.to_string()).unwrap(),
         );
 
-        let result = validator.validate(TOKEN).await;
+        let result = validator.validate(&token()).await;
 
         result.unwrap()
     }
@@ -298,7 +296,7 @@ mod tests {
         let validator =
             Introspect::new(http_client, Url::parse(TOKEN_INTROSPECT_URL).unwrap(), None);
 
-        let result = validator.validate(TOKEN).await;
+        let result = validator.validate(&token()).await;
 
         result.unwrap()
     }
@@ -316,7 +314,7 @@ mod tests {
         let validator =
             Introspect::new(http_client, Url::parse(TOKEN_INTROSPECT_URL).unwrap(), None);
 
-        let result = validator.validate(TOKEN).await;
+        let result = validator.validate(&token()).await;
 
         result.unwrap()
     }
@@ -344,5 +342,26 @@ mod tests {
             1.into(),
         );
         http_client
+    }
+
+    fn token() -> String {
+        let authz = &test_fixtures::keys().authz;
+        test_fixtures::jws(
+            &json!({ "alg": "RS256", "typ": "JWT", "kid": authz.key_id }),
+            &json!({
+                "exp": 1726846647,
+                "iat": 1726810839,
+                "auth_time": 1726810647,
+                "jti": "e5b1f1c4-db13-4d88-bbd2-27cd091c75da",
+                "iss": "http://localhost:8080/idp/realms/pid-issuer-realm",
+                "sub": "60b8ba5f-c73f-4976-b0da-48d0e53335de",
+                "typ": "Bearer",
+                "azp": "wallet-dev",
+                "sid": "1fe84eb7-1911-40eb-8dcf-db3607a68d8f",
+                "allowed-origins": ["/*"],
+                "scope": "SD_JWT_cred_scope"
+            }),
+            authz,
+        )
     }
 }

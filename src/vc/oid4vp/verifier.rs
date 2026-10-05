@@ -1575,10 +1575,14 @@ mod tests {
         let (verifier, _did) = verifier_service().await;
         let auth_response_options = auth_response_options(build_url(VERIFIER_URL, "auth"), None);
 
-        let rprc = "eyJhbGciOiJFUzI1NiJ9.eyJpc3MiOiJyZWdpc3RyYXIifQ.c2ln";
+        let rprc = test_fixtures::jws(
+            &json!({ "alg": "ES256" }),
+            &json!({ "iss": "registrar" }),
+            &test_fixtures::keys().verifier,
+        );
         let entries = NonEmptyVec::new(VerifierInfoEntry {
             format: "urn:etsi:119472-2:rc".to_string(),
-            data: VerifierInfoData::String(rprc.to_string()),
+            data: VerifierInfoData::String(rprc.clone()),
             credential_ids: None,
         });
 
@@ -1610,7 +1614,7 @@ mod tests {
 
         assert_eq!(claim.0.len(), 1);
         assert_eq!(claim.0[0].format, "urn:etsi:119472-2:rc");
-        assert_eq!(claim.0[0].data, VerifierInfoData::String(rprc.to_string()));
+        assert_eq!(claim.0[0].data, VerifierInfoData::String(rprc));
     }
 
     #[tokio::test]

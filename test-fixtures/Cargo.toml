@@ -1,0 +1,21 @@
+[package]
+name = "equs-test-fixtures"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.97.0"
+license = "Apache-2.0"
+description = "Runtime-generated test secrets for the EQUS Credentials SDK"
+publish = false
+
+[lib]
+name = "test_fixtures"
+
+[dependencies]
+base64 = "0.22.1"
+jsonwebtoken = "9.3.0"
+rsa = { version = "0.9.10", features = ["getrandom"] }
+serde_json = { version = "1.0.120", features = ["preserve_order"] }
+ssi = "=0.16.0"
+
+[dev-dependencies]
+rstest = "0.22.0"

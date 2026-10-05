@@ -15,7 +15,7 @@ Runnable demo binary implementing the Issuer role in a full OID4VCI flow. Expose
 - `AppState` — actix shared state holding the `Issuer` instance and a pre-generated `did:key` DID.
 
 ## Dependencies
-- Depends on: `equs_sdk` (oid4vci, kms, inmem, vc::core), `actix-web`, `tokio`
+- Depends on: `equs_sdk` (oid4vci, kms, inmem, vc::core), `test_fixtures` (the Keycloak-shaped access token `/token` returns), `actix-web`, `tokio`
 - Used by: developers demonstrating the issuer role end-to-end
 
 ## Constraints
