@@ -10,9 +10,9 @@ rebuild the signing scaffolding, and so that `tests/` can reach fixtures that `s
 No committed static token strings: a signature-bound fixture cannot be edited without re-signing it,
 and `tests/utils/fixtures/` mdoc blobs already show what that costs.
 
-Phase B extends this past Rust: `src/bundle.rs` and `bin/fixture_gen.rs` mint every fixture the
-TypeScript, Kotlin and Swift wrapper suites need and write them to one JSON file, generated before
-those suites run and never committed (`.gitignore`: `fixtures.generated.json`).
+`src/bundle.rs` and `bin/fixture_gen.rs` mint every fixture the TypeScript, Kotlin and Swift
+wrapper suites need and write them to one JSON file, generated before those suites run and never
+committed (`.gitignore`: `fixtures.generated.json`).
 
 ## Files
 
@@ -36,7 +36,7 @@ those suites run and never committed (`.gitignore`: `fixtures.generated.json`).
 | `src/id_token.rs` | `IdToken` — SIOP `id_token` (`typ: JWT`) |
 | `src/jwe.rs` | `Jwe` — encrypted response, via `vc::oid4vp::jwe::JweEncryptor` |
 | `tests/round_trip.rs` | Round-trip + failure case for every kind whose verifier is public |
-| `tests/bundle.rs` | Every contract key is present; no token anywhere in the bundle (recursing into `vp`) is already expired; `vcWithStatus` resolves Valid against its paired `statusListJwt` via the SDK's own status verifier. Not feature-gated — the bundle no longer has a `delegate-sd-jwt`-only key |
+| `tests/bundle.rs` | Every contract key is present; no token anywhere in the bundle (recursing into `vp`) is already expired; `vcWithStatus` resolves Valid against its paired `statusListJwt` via the SDK's own status verifier |
 | `tests/util/mod.rs` | Unverified header/payload decoding for claim assertions |
 
 ## Key types / traits
@@ -58,9 +58,8 @@ those suites run and never committed (`.gitignore`: `fixtures.generated.json`).
 
 ## Constraints
 - `cargo run -p equs-test-fixtures --bin fixture_gen -- --out fixtures.generated.json` writes the
-  wrapper fixture bundle. No feature flags needed — `bundle::build()` no longer touches
-  `delegate-sd-jwt` (see `src/bundle.rs`'s module docs). The output path is gitignored and
-  Tasks 10/11 (the wrapper suites) own where they point the generator, not this crate.
+  wrapper fixture bundle; it needs no feature flags. The output path is gitignored, and each wrapper
+  suite chooses where it points the generator.
 - Run with `cargo test --all-features -p equs-test-fixtures`. `cargo test --all-features` at the
   workspace root tests the root package only and never builds this crate; CI has its own job
   (`test-fixtures-test`, `test-fixtures-test-job`).

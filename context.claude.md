@@ -4,21 +4,6 @@
 > Add a one-line entry if a new `claude/*.md` is added; remove if deleted.
 > When a source file, directory, or domain changes, follow the update protocol in `CONTEXT_PLAN.md`.
 
-_Last updated: 2026-09-25 — added `scripts/scan-embedded-tokens.py` (the embedded-token/private-key
-scan gate) and the `test-fixtures` `access_token.rs`/`x509.rs` builders; see `claude/tests.md`.
-Migrated the 11 backslash-line-continued tokens in `src/vc/formats/sd_jwt_vc.rs`,
-`src/vc/oid4vci/holder.rs` and `src/vc/status_formats/status_list_token_jwt.rs` the scan's
-single-line regex had missed — `src/` is now clean under the gate too.
-Phase B: `test-fixtures/src/bundle.rs` and `src/bin/fixture_gen.rs` mint the fixture bundle; the
-TypeScript, Kotlin and Swift wrapper suites now all read it (`EQUS_FIXTURE_BUNDLE`) instead of
-holding committed tokens. Task 12 closed the migration: CI now generates the bundle before every
-wrapper job that reads it (Node's `pretest`, an explicit step in the `wasm-test`/`wasm-test-job`
-jobs, Gradle's `fixtureGen`, the Swift `Makefile`'s new `ios-generate-fixtures` target, and — after
-a fix round — `plugins/askar/wrappers/nodejs`'s own new `pretest`/`fixtures` scripts once its
-`vault.test.ts` was migrated too), `scan-embedded-tokens.py` runs as a tier-1 CI gate on the full
-`src/ tests/ plugins/ wrappers/` beside `fmt`, and the unused `revokedStatusListJwt`/`vcRevoked`
-bundle pair was removed; see `claude/tests.md` and `test-fixtures/CLAUDE.md`._
-
 ## How to navigate
 
 Start here → pick a domain → follow the link to `claude/<domain>.md` →

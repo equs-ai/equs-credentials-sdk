@@ -105,12 +105,11 @@ Before matching, `normalize()` collapses three ways a token or key gets split
 or obscured across the raw bytes of a source file: a Rust backslash-newline
 continuation, a `"..." + "..."`-style string concatenation (the normal way to
 wrap a long string in JS/TS/Kotlin/Swift), and a `\"`-escaped JSON literal
-(how a JWK ends up embedded inside an ordinary, non-raw string). Each of
-those was a real blind spot caught in review, not a hypothetical — see the
-script's own module docstring for what it still cannot see (JWS JSON
-Serialization, computed/interpolated strings, git history).
+(how a JWK ends up embedded inside an ordinary, non-raw string). The script's
+module docstring lists what it cannot see (JWS JSON Serialization,
+computed/interpolated strings, git history).
 
-`test_scan_embedded_tokens.py` pins all three blind-spot fixes plus the core
+`test_scan_embedded_tokens.py` covers the three `normalize()` cases plus the core
 detectors (`find_tokens`, `find_private_jwks`, `find_pem_private_keys`,
 `under_any`) down as regression tests; run it before touching `normalize()`,
 `TOKEN_RE` or the two key detectors.

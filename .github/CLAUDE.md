@@ -64,25 +64,13 @@ and run in parallel in tier 4. Before the split, `swift-test` built it and
 `kotlin-test` and `android-demo`, which both hang off `kotlin-wrapper`.
 
 Every wrapper test job that reads `equs-test-fixtures`' bundle
-(`fixtures.generated.json`) generates it before the bundle is read, since
-nothing else guarantees it exists on that job's runner. `nodejs-test` gets
-this free through `npm run test`'s `pretest` hook, which also covers
-`wrappers/test/js_common`'s `test:nodejs` in the same job/filesystem.
-`wasm-test` never runs the Node suite first, so it has no free ride: it runs
-`cargo run -p equs-test-fixtures --all-features --bin fixture_gen` itself
-before `test:wasm`. `kotlin-test` (`make kotlin-test`) is covered by
-`wrappers/uniffi/kotlin/build.gradle.kts`'s `fixtureGen` Gradle task, which
-`tasks.test` `dependsOn`. `swift-test` (`make ios-test-only`) is covered by
-`wrappers/uniffi/Makefile`'s `ios-generate-fixtures` target, a prerequisite of
-`ios-test-only` so both it and `make ios-test` (GitLab) pick it up; it runs
-`wrappers/uniffi/scripts/generate_fixtures.sh`, which `set -euo pipefail`s so
-a generation failure fails the job before `xcodebuild test` runs.
-`askar-plugin-nodejs-test` reads the bundle too, through
-`plugins/askar/wrappers/nodejs/test/vault.test.ts`: that package has its own
-`pretest`/`fixtures` npm scripts (added alongside migrating its two committed
-tokens — see the `scan-embedded-tokens` bullet below), which fire on the same
-`npm run test --prefix plugins/askar/wrappers/nodejs` this job already ran, so
-no `run:` line changed here.
+(`fixtures.generated.json`) generates it first. `nodejs-test` and
+`askar-plugin-nodejs-test` do so through their package's npm `pretest` hook;
+in `nodejs-test` that also covers `wrappers/test/js_common`'s `test:nodejs`.
+`wasm-test` runs `cargo run -p equs-test-fixtures --bin fixture_gen` before
+`test:wasm`. `kotlin-test` gets it from the `fixtureGen` Gradle task that
+`tasks.test` depends on, and `swift-test` from the `ios-generate-fixtures`
+Makefile target, a prerequisite of `ios-test-only` and `ios-test`.
 
 Jobs are declared in execution order: scans, lint, `build-prod`, the Rust
 checks, then each wrapper followed by its test, the three askar jobs together,
@@ -202,22 +190,10 @@ not preserve, and turns a soft cache miss into a hard failure on re-run.
   tree, and matching on them leaves both rules live in every file, so a new
   fixture needs no config change. Provider rules are untouched.
 - `scan-embedded-tokens` runs `scripts/scan-embedded-tokens.py --fail-on src/
-  tests/ plugins/ wrappers/` plus its own `scripts/test_scan_embedded_tokens.py`
-  regression suite. `toolchain: false`: it needs only the `python3` the
-  `rust:1.97.0-bookworm` image already ships. `demos/` is never passed, for the
-  same reason `secret-scan`'s allowlists exist: two accepted, expired,
-  runtime-decoded Keycloak tokens the scanner reports but does not gate on
-  (see `scan-embedded-tokens.py`'s `KNOWN_EXCEPTIONS`). Bare `plugins/` was
-  briefly narrowed to `plugins/askar/src` because
-  `plugins/askar/wrappers/nodejs` still held two committed tokens in
-  `test/vault.test.ts`, not covered by `KNOWN_EXCEPTIONS` the way the two
-  `demos/` hits are — but that suite is real, CI-tested code
-  (`askar-plugin-nodejs-test`, `askar-plugin-nodejs-test-job`), not an
-  accepted exception, so it was migrated instead of excluded. That package now
-  has its own `pretest`/`fixtures` npm scripts and its own fixture loader
-  (`plugins/askar/wrappers/nodejs/test/fixtures.ts`), mirroring
-  `wrappers/nodejs` and `wrappers/test/js_common` respectively; see
-  `claude/tests.md` for the swap's detail.
+  tests/ plugins/ wrappers/ demos/` plus `scripts/test_scan_embedded_tokens.py`.
+  `toolchain: false`: it needs only the `python3` and `git` the
+  `rust:1.97.0-bookworm` image ships, and marks the workspace a git
+  `safe.directory` itself, since that step otherwise comes with the toolchain.
 - `_job.yml` sets `CARGO_PROFILE_DEV_DEBUG` for every job from one input
   defaulting to `"0"`, rather than repeating it per job. `test-with-coverage`
   is the documented exception, passing `line-tables-only`.
@@ -225,9 +201,8 @@ not preserve, and turns a soft cache miss into a hard failure on re-run.
 - `common-macros-test` and `test-fixtures-test` are the only jobs that run
   `cargo test`. Coverage aside, `test-with-coverage` is the pipeline's only
   other test runner, and `cargo tarpaulin` at the workspace root inherits
-  cargo's default package selection — the root package only. That never built
-  `equs-common-macros/tests/debug_error.rs`, so the derive shipped untested, and
-  it would never build `test-fixtures/tests/` either. Each is a couple of
+  cargo's default package selection — the root package only, so it never
+  builds `equs-common-macros/tests/` or `test-fixtures/tests/`. Each is a couple of
   seconds on top of the container spin-up, and each has a GitLab counterpart:
   `common-macros-test-job` and `test-fixtures-test-job`. The root
   package's own unit tests cover the fixture crate from the other direction,
