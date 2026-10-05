@@ -423,6 +423,7 @@ mod tests {
         );
         issuer.key_usages = vec![KeyUsagePurpose::DigitalSignature];
         issuer.use_authority_key_identifier_extension = true;
+        issuer.is_ca = IsCa::ExplicitNoCa;
         let test_issuer_cert =
             test_fixtures::x509(issuer, &keys.issuer, Some((&test_root_ca, &test_root_key)));
 
@@ -470,6 +471,7 @@ mod tests {
         );
         intermediate.is_ca = IsCa::Ca(BasicConstraints::Constrained(0));
         intermediate.key_usages = ca_usages.to_vec();
+        intermediate.use_authority_key_identifier_extension = true;
         let intermediate_cert = test_fixtures::x509(
             intermediate,
             &intermediate_key,
@@ -483,6 +485,8 @@ mod tests {
         );
         leaf.key_usages = vec![KeyUsagePurpose::DigitalSignature];
         leaf.extended_key_usages = vec![ExtendedKeyUsagePurpose::ServerAuth];
+        leaf.is_ca = IsCa::ExplicitNoCa;
+        leaf.use_authority_key_identifier_extension = true;
         let github_leaf = test_fixtures::x509(
             leaf,
             &test_fixtures::JWK::generate_p256(),
@@ -500,6 +504,11 @@ mod tests {
                     r#"["6LDzfimudpbVXhaKPuxIhA","birthdate","1980-05-23"]"#,
                     r#"["VHnhH5BZWXsAT5dCAKEnNA","age_in_years","44"]"#,
                 ],
+                &[
+                    "-GC2Ld4PPX9KuskJR3qM8SDLxXXCdYZ7jUt4qurp6Zo",
+                    "6T-J88j_FUMlsK_UfHwRz98zvo5ddeJ3G_ehIJG8-CM",
+                    "WDnYXPiyKXWOnP5LQoFipV5GigpONFQGxQMNxImN6r4",
+                ],
                 "psX3cqQAPu3rVVV7Lj0kNqF1Dad6le1B2JRkjwhUN_E",
             ),
             sd_jwt_vc_no_x5c: presentation(
@@ -511,6 +520,11 @@ mod tests {
                     r#"["dAAtsEN3jp9FMO0bEcIpJg","family_name","Dupont"]"#,
                     r#"["y0HdiMjYqUZXoOxHmkS21Q","birthdate","1980-05-23"]"#,
                     r#"["UwTl79ztF4H04ZDNhLJq0g","age_in_years","44"]"#,
+                ],
+                &[
+                    "D7eIrYun_6TU_NyVJASe_QYqgWcIcZF-g25grK16Gt0",
+                    "SwhEJ2JsGC9hVwikyyyixHW5yMGY6aJ4Pdad-3gxr2A",
+                    "ogBpOV4vkYC0KcsLCsmA3HH66trK5pv1W-MUCqoJFEo",
                 ],
                 "knmppVOQHcEs69MG3jZAZjneCzbUE0TyBJPPhmRUhA4",
             ),
@@ -538,12 +552,14 @@ mod tests {
         params
     }
 
-    /// `dc+sd-jwt` presentation of the conformance suite's PID, bound to the fixture holder key.
+    /// `dc+sd-jwt` presentation of the conformance suite's PID, bound to the fixture holder key;
+    /// `undisclosed` holds the recorded digests of the claims it does not disclose.
     fn presentation(
         x5c: Option<Vec<String>>,
         iat: u64,
         exp: u64,
         disclosures: &[&str],
+        undisclosed: &[&str],
         nonce: &str,
     ) -> String {
         let keys = test_fixtures::keys();
@@ -554,6 +570,7 @@ mod tests {
         let sd_jwt = test_fixtures::sd_jwt(
             &header,
             &serde_json::json!({
+                "_sd": undisclosed,
                 "vct": "urn:eudi:pid:1",
                 "iss": "https://localhost.emobix.co.uk:9443/test/a/asdk-vci-verifier-test-asdk-598",
                 "cnf": { "jwk": keys.holder.to_public() },
