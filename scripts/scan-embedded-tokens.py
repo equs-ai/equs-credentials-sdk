@@ -16,16 +16,7 @@ A checked-in, machine-checkable gate:
 
 `--fail-on PATH [PATH ...]` exits non-zero when any hit (token or key) falls
 under one of the given paths. Paths not listed are still scanned and reported
--- they just do not affect the exit code. This is what lets a known, accepted
-exception (see below) stay visible without being a gate failure.
-
-Known, accepted exception: demos/multi-thread/src/main.rs and
-demos/oid4vc/issuer/src/main.rs each embed one expired token for a localhost
-Keycloak realm. Both are read at runtime by validate_scope -> decode_unverified
-to check the `scope` claim, so replacing them with placeholders breaks
-credential issuance in the demo. `demos/` is therefore never passed to --fail-on, but the scan still
-reports these two hits, tagged as accepted exceptions, so nobody mistakes the
-silence for the directory being clean.
+-- they just do not affect the exit code.
 
 Known limitations -- shapes this scanner does NOT see, stated here rather than
 implied by silence:
@@ -111,19 +102,6 @@ PEM_PRIVATE_KEY_RE = re.compile(r"-----BEGIN ([A-Z0-9 ]*PRIVATE KEY)-----")
 # with it, or a broken environment reads as a security finding by exit code
 # alone. `2` is argparse's own usage-error code, so this skips that too.
 EXIT_ENVIRONMENT_ERROR = 3
-
-KNOWN_EXCEPTIONS = {
-    "demos/multi-thread/src/main.rs": (
-        "expired localhost Keycloak token, read via validate_scope -> "
-        "decode_unverified for the `scope` claim; a placeholder breaks "
-        "credential issuance in the demo"
-    ),
-    "demos/oid4vc/issuer/src/main.rs": (
-        "expired localhost Keycloak token, read via validate_scope -> "
-        "decode_unverified for the `scope` claim; a placeholder breaks "
-        "credential issuance in the demo"
-    ),
-}
 
 
 @dataclass
@@ -447,22 +425,6 @@ def main() -> int:
     )
     print()
 
-    known_hits = [
-        h for h in result.token_hits if h.path in KNOWN_EXCEPTIONS
-    ] + [h for h in result.key_hits if h.path in KNOWN_EXCEPTIONS]
-    if known_hits:
-        print(
-            "Known accepted exceptions (demos/, not covered by --fail-on -- "
-            "see the module docstring for why):"
-        )
-        for hit in sorted(known_hits, key=lambda h: (h.path, h.line)):
-            reason = KNOWN_EXCEPTIONS[hit.path]
-            if isinstance(hit, TokenHit):
-                print(f"  {hit.path}:{hit.line}: {hit.kind} token, {hit.classification} -- {reason}")
-            else:
-                print(f"  {hit.path}:{hit.line}: {hit.kind} ({hit.detail}) -- {reason}")
-        print()
-
     all_hits = sorted(
         result.token_hits + result.key_hits, key=lambda h: (h.path, h.line)
     )
@@ -470,12 +432,11 @@ def main() -> int:
     if not all_hits:
         print("  (none)")
     for hit in all_hits:
-        tag = " [known accepted exception]" if hit.path in KNOWN_EXCEPTIONS else ""
         if isinstance(hit, TokenHit):
             exp_str = f", exp={hit.exp}" if hit.exp is not None else ""
-            print(f"  {hit.path}:{hit.line}: {hit.kind} token, {hit.classification}{exp_str}{tag}")
+            print(f"  {hit.path}:{hit.line}: {hit.kind} token, {hit.classification}{exp_str}")
         else:
-            print(f"  {hit.path}:{hit.line}: {hit.kind} ({hit.detail}){tag}")
+            print(f"  {hit.path}:{hit.line}: {hit.kind} ({hit.detail})")
     print()
 
     if args.fail_on:

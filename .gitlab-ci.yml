@@ -102,7 +102,7 @@ scan-embedded-tokens-job:
   image: rust:${RUST_VERSION}-bookworm
   stage: scan
   script:
-    - python3 scripts/scan-embedded-tokens.py --fail-on src/ tests/ plugins/ wrappers/
+    - python3 scripts/scan-embedded-tokens.py --fail-on src/ tests/ plugins/ wrappers/ demos/
     - python3 scripts/test_scan_embedded_tokens.py
   only:
     - merge_requests

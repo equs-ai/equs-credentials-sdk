@@ -5077,6 +5077,7 @@ version = "0.1.0"
 dependencies = [
  "actix-web",
  "actix-web-httpauth",
+ "base64 0.22.1",
  "equs-credentials-sdk",
  "keycloak",
  "reqwest 0.12.12",
@@ -6052,6 +6053,7 @@ version = "0.1.0"
 dependencies = [
  "actix-web",
  "actix-web-httpauth",
+ "base64 0.22.1",
  "equs-credentials-sdk",
  "futures",
  "rand 0.9.4",

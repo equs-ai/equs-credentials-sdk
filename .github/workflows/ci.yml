@@ -58,7 +58,7 @@ jobs:
       sccache: false
       run: |
         git config --global --add safe.directory "$GITHUB_WORKSPACE"
-        python3 scripts/scan-embedded-tokens.py --fail-on src/ tests/ plugins/ wrappers/
+        python3 scripts/scan-embedded-tokens.py --fail-on src/ tests/ plugins/ wrappers/ demos/
         python3 scripts/test_scan_embedded_tokens.py
 
   # tier 2

@@ -101,11 +101,6 @@ carrying both `kty` and `d` (a private JWK) and any PEM `-----BEGIN … PRIVATE
 KEY-----` block. A Rust `\`-continued string literal is collapsed before
 matching, so a token wrapped across physical lines is not missed.
 
-`demos/multi-thread/src/main.rs` and `demos/oid4vc/issuer/src/main.rs` each
-keep one accepted exception — see `claude/tests.md` — so `demos/` is never
-passed to `--fail-on`, but the scan still reports both hits, tagged as known
-exceptions, instead of silently skipping the directory.
-
 Before matching, `normalize()` collapses three ways a token or key gets split
 or obscured across the raw bytes of a source file: a Rust backslash-newline
 continuation, a `"..." + "..."`-style string concatenation (the normal way to

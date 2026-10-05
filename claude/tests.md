@@ -38,11 +38,10 @@ implementations, covering scenarios that unit tests within individual modules ca
   compact JWS/JWE serializations, base64url-decodes each header to confirm it (`alg`/`enc`) rather
   than regex-guess, and separately flags a JWK carrying a `d` member or a PEM `PRIVATE KEY` block.
   `--fail-on PATH…` exits non-zero if a hit falls under one of the given paths.
-- `src/`, `tests/`, `plugins/`, `wrappers/nodejs`, `wrappers/test` and `wrappers/uniffi` are clean
-  (`python3 scripts/scan-embedded-tokens.py --fail-on src/ tests/ plugins/ wrappers/nodejs
-  wrappers/test wrappers/uniffi` exits 0). `demos/multi-thread/src/main.rs` and
-  `demos/oid4vc/issuer/src/main.rs` each keep one accepted exception (expired localhost Keycloak
-  token `validate_scope` reads via `decode_unverified`). `plugins/askar/wrappers/nodejs`'s two
+- `src/`, `tests/`, `plugins/`, `wrappers/` and `demos/` are clean
+  (`python3 scripts/scan-embedded-tokens.py --fail-on src/ tests/ plugins/ wrappers/ demos/`
+  exits 0). The two demos that used to embed an expired Keycloak token now mint a
+  `scope`-only token at runtime, since `validate_scope` decodes it unverified. `plugins/askar/wrappers/nodejs`'s two
   committed tokens (`test/vault.test.ts`) were migrated in Task 12's fix round: the audit had missed
   them, the same way it missed the 11 backslash-continued tokens in `src/` that Task 8b caught — a
   package CI actually tests (`askar-plugin-nodejs-test`, `askar-plugin-nodejs-test-job`) is not
