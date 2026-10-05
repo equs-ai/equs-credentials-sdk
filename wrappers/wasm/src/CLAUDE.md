@@ -13,6 +13,7 @@ Root of the wasm-bindgen browser/WASM wrapper crate. Declares all top-level modu
 | `kms.rs` | `KeyHandle` / `Kms` opaque extern JS types declared via `extern "C"`. `JsKeyHandle(Rc<KeyHandle>)` — wraps a JS key handle, implements `Key`, `Signer`, and `Verifier` via `#[async_trait(?Send)]`. `JsKms(Rc<Kms>)` — wraps a JS KMS; implements `Kms` trait. `test-utils` feature gate exports `KeyHandleTestHelper` and `KmsTestHelper` for TypeScript tests. |
 | `nonce.rs` | `NonceHandler` opaque extern JS type with `generate` and `validate` async method declarations. `JsNonceHandler` — wraps a JS `NonceHandler` and implements `equs_sdk::nonce::NonceHandler` via `#[async_trait(?Send)]`. |
 | `utils.rs` | `Claims` opaque extern JS type. `resolveMetadata` and `parseClaims` wasm-exported async functions. `set_panic_hook` (enables `console_error_panic_hook` when feature is active). `js_value_to_string`, `get_property` helpers. `convert_to_rust_object<T, R>` (serde_wasm_bindgen deserialize), `convert_to_opaque_object<T, R>` (json_compatible serialize + `dyn_into`), `convert_to_opaque_object_unchecked<T, R>` (json_compatible serialize + `unchecked_into`). |
+| `test_fixtures.rs` | (feature `test-utils`) `FixtureGenerator` — `equs-test-fixtures`' `Generator`: static `create()`, `issuerDid`/`holderDid`/`verifierKid` getters, and async `sdJwtVc`, `presentation`, `statusPair(url)`, `accessToken`, `proofJwt`, `authResponseJwe(payload)`. |
 | `vault.rs` | `Vault` opaque extern JS type with `storeCredential`, `deleteCredential`, `getCredential`, `getCredentials`, `findCredentials` method declarations. `JsVault` — wraps a JS `Vault` and implements `equs_sdk::vault::Vault` via `#[async_trait(?Send)]`. `test-utils` feature gate exports `VaultTestHelper`. |
 | `did/` | DID method utilities and `UniversalDIDResolver` — see [did/CLAUDE.md](did/CLAUDE.md) |
 | `inmem/` | In-memory KMS and vault concrete implementations — see [inmem/CLAUDE.md](inmem/CLAUDE.md) |
@@ -33,4 +34,4 @@ Root of the wasm-bindgen browser/WASM wrapper crate. Declares all top-level modu
 - All async trait implementations use `#[async_trait(?Send)]` — the entire crate is single-threaded.
 - Uses `Rc` (not `Arc`) for shared ownership inside `JsKeyHandle` and `JsKms`.
 - Optional `wee_alloc` global allocator reduces WASM binary size when the `wee_alloc` feature is enabled.
-- `test-utils` feature exposes additional wasm_bindgen helpers (`KeyHandleTestHelper`, `KmsTestHelper`, `VaultTestHelper`) only for test builds, and links `equs-test-fixtures` for its `Generator`.
+- `test-utils` feature exposes additional wasm_bindgen helpers (`KeyHandleTestHelper`, `KmsTestHelper`, `VaultTestHelper`) only for test builds, and `FixtureGenerator` (`test_fixtures.rs`).

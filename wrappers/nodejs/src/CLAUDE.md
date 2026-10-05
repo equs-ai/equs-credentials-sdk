@@ -8,6 +8,7 @@ Root Rust source crate for the EQUS Credentials SDK Node.js wrapper. Uses NAPI-R
 | File/Dir | Role |
 |----------|------|
 | `lib.rs` | Crate root; declares all public and private modules; re-exports `enable_logs`, `parse_claims`, `resolve_metadata` from `utils`. |
+| `test_fixtures.rs` | (feature `test-fixtures`, on in `build:debug`) `FixtureGenerator` — `equs-test-fixtures`' `Generator`: static `create()`, `issuerDid`/`holderDid`/`verifierKid` getters, and async `sdJwtVc`, `presentation`, `statusPair(url)`, `accessToken`, `proofJwt`, `authResponseJwe(payload)`. |
 | `error.rs` | `EncodableError` (NAPI object with `code` and `message`) and `IntoNapiError` trait; all domain errors are serialized to JSON strings through this mechanism. |
 | `http.rs` | `JsHttpClient` (callback-based `HttpClient` impl using ThreadsafeFunction) and `ReqwestHttpClient` (concrete reqwest-backed client exposed as a NAPI class). Includes HTTP method/request/response type conversions. |
 | `kms.rs` | `JsKms` (callback-based `Kms` impl), `JsKeyHandle` (callback-based key handle satisfying `Key`/`Signer`/`Verifier`), key type and parameter types (`JsKeyType`, `JsECDHESParams`, `JsECDH1PUParams`, `JsBIP32Params`). Also `create_key_metadata` helper. |
@@ -29,7 +30,7 @@ Root Rust source crate for the EQUS Credentials SDK Node.js wrapper. Uses NAPI-R
 - `EncodableError` — Structured error serialized as JSON string for all NAPI error payloads.
 
 ## Dependencies
-- Depends on: `equs_sdk` (all modules), `napi`/`napi-derive`, `async-trait`, `serde_json`, `tracing`/`tracing-subscriber`
+- Depends on: `equs_sdk` (all modules), `napi`/`napi-derive`, `async-trait`, `serde_json`, `tracing`/`tracing-subscriber`; `equs-test-fixtures` (default features off) under `test-fixtures`
 - Used by: Node.js consumers via the compiled `.node` add-on; `demos/nodejs/`
 
 ## Constraints

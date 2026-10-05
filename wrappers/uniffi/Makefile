@@ -17,7 +17,7 @@ kotlin-release-build:
 
 kotlin-debug-build:
 	@echo "Building the UniFFI binary in debug mode..."
-	cargo build
+	cargo build --features test-fixtures
 
 kotlin-generate_kotlin_debug: kotlin-debug-build
 	@echo "Generating Kotlin bindings..."
@@ -145,8 +145,8 @@ IOS_DESTINATION ?= platform=iOS Simulator,id=$(or $(IOS_SIM_ID),$(error no avail
 
 ios-dev-build:
 	@echo "Generating binaries for the arm64 simulator and device"
-	cargo build --target aarch64-apple-ios-sim
-	cargo build --target aarch64-apple-ios
+	cargo build --features test-fixtures --target aarch64-apple-ios-sim
+	cargo build --features test-fixtures --target aarch64-apple-ios
 
 ios-create-dev-lib: ios-dev-build
 	@echo "Creating a debug library for the arm64 simulator"

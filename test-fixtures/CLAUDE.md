@@ -10,9 +10,8 @@ rebuild the signing scaffolding, and so that `tests/` can reach fixtures that `s
 No committed static token strings: a signature-bound fixture cannot be edited without re-signing it,
 and `tests/utils/fixtures/` mdoc blobs already show what that costs.
 
-`src/generator.rs` mints the fixtures the wrapper suites need in-process, from one set of keys, for
-bindings to expose to TypeScript, Kotlin and Swift tests. `src/bundle.rs` and `bin/fixture_gen.rs`
-write the same fixtures to one JSON file instead (`.gitignore`: `fixtures.generated.json`).
+`src/generator.rs` mints the fixtures the wrapper suites need in-process, from one set of keys. The
+Node, WASM and UniFFI bindings export it as `FixtureGenerator` in their test builds.
 
 ## Files
 
@@ -20,8 +19,6 @@ write the same fixtures to one JSON file instead (`.gitignore`: `fixtures.genera
 |------|------|
 | `src/lib.rs` | Crate root; module declarations, `Error`/`Result` re-exports, and the `equs_sdk` re-export |
 | `src/generator.rs` | `Generator` — owns one `LocalKms` and the issuer, holder and verifier keys; mints an SD-JWT VC, a presentation, a status-list pair served at a caller-chosen URL, an access token, a PoP JWT and an auth-response JWE on demand |
-| `src/bundle.rs` | `Bundle` — a flat, serialisable map of fixture name to value — and `build()`, which drives one `Generator` through every fixture a wrapper suite reads |
-| `src/bin/fixture_gen.rs` | `fixture_gen --out <path>` binary (feature `cli`); writes `bundle::build()`'s output as pretty JSON |
 | `src/error.rs` | `Error` / `Result` — `Kms`, `Did`, `Signing`, `Json`, `Sdk` variants |
 | `src/keys.rs` | `FixtureKey` — a `LocalKms` key handle plus its `did:key`, DID URL and `KeyMetadata`; covers all four `KeyType`s |
 | `src/claims.rs` | Shared claim defaults (`DEFAULT_AUDIENCE`, `DEFAULT_NONCE`, …) and `now()` / `from_now()` |
@@ -39,7 +36,6 @@ write the same fixtures to one JSON file instead (`.gitignore`: `fixtures.genera
 | `tests/round_trip.rs` | Round-trip + failure case for every kind whose verifier is public |
 | `tests/generator.rs` | A `Generator` status pair resolves Valid at the URL it was minted for; its fixtures share the generator's keys |
 | `tests/x509.rs` | `X509Chain` checks; feature `x509` |
-| `tests/bundle.rs` | Every contract key is present; no token anywhere in the bundle (recursing into `vp`) is already expired; `vcWithStatus` resolves Valid against its paired `statusListJwt` via the SDK's own status verifier |
 | `tests/util/mod.rs` | Unverified header/payload decoding for claim assertions |
 
 ## Key types / traits
@@ -50,20 +46,17 @@ write the same fixtures to one JSON file instead (`.gitignore`: `fixtures.genera
   for serving a status list token back to the status verifier.
 
 ## Dependencies
-- Depends on: `equs-credentials-sdk` (path, `in-memory`), `base64`, `serde` (`derive`, for `Bundle`),
-  `serde_json`, `async-trait`, `snafu`; optionally `rcgen` (feature `x509`) and `tokio` (feature
-  `cli`, for `bin/fixture_gen.rs`). Both features are on by default.
-- Used by: `wrappers/wasm` under its `test-utils` feature, with default features off.
+- Depends on: `equs-credentials-sdk` (path, `in-memory`), `base64`, `serde_json`, `async-trait`,
+  `snafu`; `rcgen` under feature `x509`, on by default.
+- Used by: the wrapper bindings, with default features off — `wrappers/nodejs` and
+  `wrappers/uniffi` under their `test-fixtures` feature, `wrappers/wasm` under `test-utils`.
 
 ## Constraints
-- `cargo run -p equs-test-fixtures --bin fixture_gen -- --out fixtures.generated.json` writes the
-  wrapper fixture bundle; it needs no feature flags. The output path is gitignored, and each wrapper
-  suite chooses where it points the generator.
 - Run with `cargo test --all-features -p equs-test-fixtures`. `cargo test --all-features` at the
   workspace root tests the root package only and never builds this crate; CI has its own job
   (`test-fixtures-test`, `test-fixtures-test-job`).
-- With default features off the crate builds for `wasm32-unknown-unknown`; `rcgen` (via `ring`) and
-  `tokio` are what the features keep out. The consumer supplies `getrandom`'s `wasm_js` feature.
+- With default features off the crate builds for `wasm32-unknown-unknown`; `rcgen` (via `ring`) is
+  what `x509` keeps out. The consumer supplies `getrandom`'s `wasm_js` feature.
 - Positive fixtures only. Malformed-token generation stays in the error-path tests that need it.
 - `vc::pop` is private and `vc::formats` is `pub(crate)`, so the PoP, request object and `id_token`
   claim sets are assembled here rather than taken from an SDK constructor, and their verifiers are

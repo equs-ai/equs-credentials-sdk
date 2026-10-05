@@ -51,7 +51,6 @@
 #![warn(missing_docs)]
 
 pub mod access_token;
-pub mod bundle;
 pub mod claims;
 pub mod error;
 pub mod generator;
