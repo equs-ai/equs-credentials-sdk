@@ -1,7 +1,6 @@
 import {
   Alg,
   Claims,
-  ClientId,
   ClientMetadata,
   CommonAuthorizationRequest,
   CredentialDefinitionFormat,
@@ -13,9 +12,6 @@ import {
   IssuerMetadata,
   KeyMetadata,
   KeyType,
-  LocalNonceHandler,
-  OID4VPVerifierBuilder,
-  PassAuthRequestObjectType,
   PresentationDefinition,
   PresentationSubmission,
   ReqwestHttpClient,
@@ -28,7 +24,6 @@ import {
   VCFormat,
   VCStatusesDataFormat,
 } from "equs-credentials-sdk";
-import { jwtDecode } from "jwt-decode";
 import { token } from "../../bundle";
 
 async function createDidAndKeyMetadata(kms: InMemKms): Promise<{ did: string; keyMetadata: KeyMetadata }> {
@@ -179,17 +174,11 @@ const AUTH_REQUEST_CLIENT_METADATA: ClientMetadata = {
 };
 
 /**
- * Mints a real signed OID4VP authorization request object matching what the
- * committed `AUTH_REQUEST_JWT` used to carry, plus the `CommonAuthorizationRequest`
- * a real `holder.getAuthorizationRequest()` resolves it to.
- *
- * The holder checks the signing key's DID against `client_id` before anything
- * else, so `client_id` can't stay the fixed literal the old fixture had —
- * that DID's private key isn't available to sign with. Everything else
- * (`state`, `presentation_definition`, `response_uri`, `client_metadata`,
- * `transaction_data`) is unchanged from the old fixture and round-trips
- * through signing/parsing unmodified; only `client_id` and `nonce` (assigned
- * by the verifier's nonce handler) are derived from what was actually built.
+ * Mints a signed OID4VP authorization request object plus the
+ * `CommonAuthorizationRequest` a holder resolves it to. Signed directly with
+ * the key handle rather than through a verifier, since the WASM build exposes
+ * no OID4VP verifier; `client_id` names the signing key's DID, which is what
+ * the holder checks first.
  */
 export async function buildAuthRequestFixture(): Promise<{
   authRequestJwt: string;
@@ -198,42 +187,13 @@ export async function buildAuthRequestFixture(): Promise<{
   const kms = new InMemKms();
   const { did, keyMetadata } = await createDidAndKeyMetadata(kms);
 
-  const verifier = await new OID4VPVerifierBuilder(kms, new LocalNonceHandler(), keyMetadata, ClientId.fromDid(did))
-    .withClientMetadata(AUTH_REQUEST_CLIENT_METADATA)
-    .withHttpClient(ReqwestHttpClient.insecure())
-    .build();
-
-  const result = await verifier.createAuthorizationRequest(
-    { presentation_definition: PRESENTATION_DEFINITION },
-    {
-      authResponseOptions: {
-        mode: "direct_post",
-        type: "vp_token",
-        submissionUri: "http://localhost:9001/response",
-        state: STATE,
-      },
-      passAuthRequestObject: { type: PassAuthRequestObjectType.ByValue },
-      transactionData: [
-        {
-          type: "some_type",
-          credential_ids: ["Identity-1"],
-          transaction_data_hashes_alg: ["sha-256", "sha-512"],
-        },
-      ] as any,
-    },
-    null,
-  );
-
-  const authRequestJwt = result.authorizationRequestJwt;
-  const decoded = jwtDecode(authRequestJwt) as Record<string, unknown>;
-
   const authRequest: CommonAuthorizationRequest = {
     client_id: `decentralized_identifier:${did}`,
     client_metadata: AUTH_REQUEST_CLIENT_METADATA,
     response_uri: "http://localhost:9001/response",
     response_mode: "direct_post",
     response_type: "vp_token",
-    nonce: decoded.nonce as string,
+    nonce: "fixture-nonce",
     state: STATE,
     presentation_definition: PRESENTATION_DEFINITION,
     transaction_data: [
@@ -245,7 +205,12 @@ export async function buildAuthRequestFixture(): Promise<{
     ] as any,
   };
 
-  return { authRequestJwt, authRequest };
+  const b64url = (value: string | Uint8Array) => Buffer.from(value).toString("base64url");
+  const header = { alg: "ES256", kid: keyMetadata.didUrl, typ: "application/oauth-authz-req+jwt" };
+  const signingInput = `${b64url(JSON.stringify(header))}.${b64url(JSON.stringify(authRequest))}`;
+  const signature = await (await kms.get(keyMetadata.kid)).sign(Buffer.from(signingInput));
+
+  return { authRequestJwt: `${signingInput}.${b64url(signature)}`, authRequest };
 }
 
 export function withDirectPostJwt(authRequest: CommonAuthorizationRequest): CommonAuthorizationRequest {
