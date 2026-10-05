@@ -3446,6 +3446,8 @@ dependencies = [
  "equs-one-core-crypto",
  "equs-one-core-standardized-types",
  "jsonwebtoken",
+ "p256",
+ "rcgen",
  "rsa 0.9.10",
  "rstest 0.22.0",
  "secrecy",
@@ -3453,6 +3455,7 @@ dependencies = [
  "sha2 0.10.9",
  "ssi",
  "tokio",
+ "x509-parser",
 ]
 
 [[package]]
