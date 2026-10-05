@@ -1,8 +1,9 @@
-//! Secrets the SDK's tests and demos need at runtime — keys generated once per process and a
-//! generic compact-JWS signer — so that no signed token or key is committed to the tree.
+//! Secrets the SDK's tests and demos need at runtime: keys generated once per process, and one
+//! generic builder per fixture kind on top of them, so that no token, key or certificate has to
+//! be committed to the tree.
 //!
-//! Call sites keep their own header and payload values and pass them to [`jws`]; this crate only
-//! owns the key material and the signing.
+//! Call sites keep their own header, claim and parameter values and pass them in; this crate owns
+//! only the key material and the cryptography.
 
 use base64::Engine;
 use base64::prelude::BASE64_URL_SAFE_NO_PAD;
@@ -87,19 +88,27 @@ pub fn digest(input: &str) -> String {
     BASE64_URL_SAFE_NO_PAD.encode(Sha256::digest(input.as_bytes()))
 }
 
-/// Issuer-signed SD-JWT: `claims` plus `_sd`, the sorted digests of `disclosures`, signed as a
-/// JWS under `header`, followed by each disclosure and a trailing `~`. A disclosure is its JSON
-/// array text (`["salt", "name", value]`), digested byte for byte, so a recorded salt reproduces
-/// the recorded digest. With no disclosures `_sd` is omitted.
+/// Issuer-signed SD-JWT: `claims` plus `_sd`, signed as a JWS under `header`, followed by each
+/// disclosure and a trailing `~`. `_sd` is the sorted digests of `disclosures` merged with any
+/// `_sd` already in `claims` (the digests of claims that stay undisclosed); with neither it is
+/// omitted. A disclosure is its JSON array text (`["salt", "name", value]`), digested byte for
+/// byte, so a recorded salt reproduces the recorded digest.
 pub fn sd_jwt(header: &Value, claims: &Value, disclosures: &[&str], key: &JWK) -> String {
     let encoded: Vec<String> = disclosures
         .iter()
         .map(|disclosure| BASE64_URL_SAFE_NO_PAD.encode(disclosure))
         .collect();
     let mut claims = claims.clone();
-    if !encoded.is_empty() {
-        let mut digests: Vec<String> = encoded.iter().map(|d| digest(d)).collect();
-        digests.sort();
+    let mut digests: Vec<String> = claims["_sd"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .map(str::to_string)
+        .collect();
+    digests.extend(encoded.iter().map(|d| digest(d)));
+    digests.sort();
+    if !digests.is_empty() {
         claims["_sd"] = json!(digests);
     }
     let mut token = jws(header, &claims, key);
@@ -250,6 +259,26 @@ mod tests {
             ])
         );
         assert_eq!(claims["vct"], "SD_JWT_cred");
+    }
+
+    #[test]
+    fn sd_jwt_keeps_the_digests_of_undisclosed_claims() {
+        let disclosure = r#"["s","a","1"]"#;
+
+        let token = sd_jwt(
+            &json!({ "alg": "ES256" }),
+            &json!({ "_sd": ["undisclosed-digest"] }),
+            &[disclosure],
+            &keys().issuer,
+        );
+
+        let (issuer_jws, _) = token.split_once('~').unwrap();
+        let (_, payload) = ssi::claims::jws::decode_unverified(issuer_jws).unwrap();
+        let claims: Value = serde_json::from_slice(&payload).unwrap();
+        let sd = claims["_sd"].as_array().unwrap();
+        assert_eq!(sd.len(), 2);
+        assert!(sd.contains(&json!("undisclosed-digest")));
+        assert!(sd.contains(&json!(digest(&BASE64_URL_SAFE_NO_PAD.encode(disclosure)))));
     }
 
     #[test]

@@ -1659,6 +1659,7 @@ mod tests {
                     "kid": test_fixtures::did_key_url(&keys.issuer)
                 }),
                 &serde_json::json!({
+                    "_sd": ["MgltSiAG3qJBMc2Qu4RuCRMQJ_O77Ae29jOLcCmDSKQ", "lS2UihAyMbxFuqBkKVaNbCna5R09SWPpjU8W8x9bjCg"],
                     "iat": 1747268613,
                     "date": "09/09/1989",
                     "vct": "https://credentials.example.com/identity_credential",

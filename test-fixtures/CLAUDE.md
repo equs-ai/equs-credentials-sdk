@@ -2,9 +2,9 @@
 
 ## Purpose
 `equs-test-fixtures` (lib target `test_fixtures`, `publish = false`) generates the secrets the SDK's tests and
-demos need at runtime — keys and signed JWTs — so that none is committed as a static string. Call sites keep
-their own header and payload values and pass them to one generic signer; the crate owns only the key material
-and the signing.
+demos need at runtime — keys, and the fixtures built on them — so that none is committed as a static string.
+Call sites keep their own header, claim and parameter values and pass them to one generic builder per fixture
+kind; the crate owns only the key material and the cryptography.
 
 ## Files
 
@@ -39,6 +39,7 @@ and the signing.
   with the same inputs give the same token.
 - A disclosure is digested as the exact JSON text given (`sd_jwt_rs` writes `["salt", "name", value]` with a
   space after each comma; hand-made fixtures are compact), so a recorded salt reproduces the recorded `_sd`
-  entry. `_sd` is sorted, as `sd_jwt_rs` sorts it, and omitted when there are no disclosures.
+  entry. `_sd` is sorted, as `sd_jwt_rs` sorts it, keeps any digests the caller already put in `_sd` (claims
+  left undisclosed), and is omitted when there are none.
 - Run with `cargo test -p equs-test-fixtures`; `cargo test` at the workspace root tests the root package only.
   CI runs it in `test-fixtures-test` (GitHub) and `test-fixtures-test-job` (GitLab).
