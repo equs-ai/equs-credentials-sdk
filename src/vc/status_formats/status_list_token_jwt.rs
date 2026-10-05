@@ -820,7 +820,9 @@ mod tests {
     ///
     /// Status bit size - 1
     fn status_list_jwt_token_1bit() -> &'static str {
-        status_list_jwt(1738074130, "eNpjYmBgAAAADAAD", 1)
+        static TOKEN: std::sync::LazyLock<String> =
+            std::sync::LazyLock::new(|| status_list_jwt(1738074130, "eNpjYmBgAAAADAAD", 1));
+        &TOKEN
     }
 
     /// Status list token that contains the following status list:
@@ -832,12 +834,14 @@ mod tests {
     ///
     /// Status bit size - 2
     fn status_list_jwt_token_2bit() -> &'static str {
-        status_list_jwt(1763024416, "eNqbwMwABgAEnQCU", 2)
+        static TOKEN: std::sync::LazyLock<String> =
+            std::sync::LazyLock::new(|| status_list_jwt(1763024416, "eNqbwMwABgAEnQCU", 2));
+        &TOKEN
     }
 
     /// `statuslist+jwt` served at `http://example.com/status_list`, signed by the fixture issuer
     /// key.
-    fn status_list_jwt(iat: u64, lst: &str, bits: u8) -> &'static str {
+    fn status_list_jwt(iat: u64, lst: &str, bits: u8) -> String {
         let issuer = &test_fixtures::keys().issuer;
         let token = test_fixtures::jws(
             &json!({
@@ -853,6 +857,6 @@ mod tests {
             }),
             issuer,
         );
-        Box::leak(format!("{token}~").into_boxed_str())
+        format!("{token}~")
     }
 }

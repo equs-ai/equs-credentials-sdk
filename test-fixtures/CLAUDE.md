@@ -35,7 +35,8 @@ and the signing.
   so it differs per process — a test must not hard-code one.
 - RSA-2048 generation is the only slow step: the workspace root sets `opt-level = 3` for `num-bigint-dig`
   under the dev profile (tens of milliseconds instead of seconds), and `keys()` runs it once per process.
-- ES256 signatures are randomised, so two calls with the same inputs give different tokens; RS256 and HS256
-  are deterministic for a given key.
+- Signing is deterministic (ES256 uses RFC 6979 nonces, RS256 is PKCS#1 v1.5, HS256 is a MAC), so two calls
+  with the same inputs give the same token. A fixture that is served more than once is still held in a
+  `LazyLock` at its call site, so it is signed once.
 - Run with `cargo test -p equs-test-fixtures`; `cargo test` at the workspace root tests the root package only.
   CI runs it in `test-fixtures-test` (GitHub) and `test-fixtures-test-job` (GitLab).
