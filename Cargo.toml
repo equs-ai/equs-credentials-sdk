@@ -12,6 +12,7 @@ members = [
     "wrappers/wasm",
     "wrappers/uniffi",
     "equs-common-macros",
+    "test-fixtures",
 ]
 
 [package]

@@ -20,7 +20,7 @@ that file lists every sub-area with a link to the relevant `CLAUDE.md` inside th
 | In-memory | `LocalKms`, `InMemVault`, `InMemStorage`, `LocalNonceHandler`, crypto key impls | [claude/inmem.md](claude/inmem.md) |
 | Wrappers | Node.js (NAPI-RS), WASM (wasm-bindgen), Kotlin/Swift (UniFFI) | [claude/wrappers.md](claude/wrappers.md) |
 | Plugins | Askar secure-storage plugin (KMS + Vault backed by `aries-askar`) | [claude/plugins.md](claude/plugins.md) |
-| Tests | E2E test suite, shared fixtures and helpers | [claude/tests.md](claude/tests.md) |
+| Tests | E2E test suite, shared fixtures and helpers, the JWT/JWE fixture crate | [claude/tests.md](claude/tests.md) |
 | Demos | OID4VC (issuer/holder/verifier), multi-thread, Node.js, WASM, Android, iOS, Keycloak | [claude/demos.md](claude/demos.md) |
 | CI/CD | GitHub Actions CI and the crates.io release | [.github/CLAUDE.md](.github/CLAUDE.md) |
 | Release | Release-pipeline scripts, release manifest | [scripts/CLAUDE.md](scripts/CLAUDE.md) |
@@ -50,6 +50,7 @@ equs-credentials-sdk/
 ├── plugins/
 │   └── askar/            # Askar secure-storage plugin
 ├── equs-common-macros/   # DebugError derive (lib target: common_macros)
+├── test-fixtures/        # JWT/JWE fixture builders (lib target: test_fixtures, publish = false)
 ├── tests/
 │   ├── e2e/              # End-to-end test suite
 │   └── utils/            # Shared test fixtures + helpers
