@@ -195,7 +195,7 @@ export const AUTH_REQUEST_WITH_DIRECT_POST_JWT: CommonAuthorizationRequest = {
   client_metadata: {
     ...AUTH_REQUEST.client_metadata,
     jwks: {
-      keys: [{ kid: "ecdsa-kid", ...JSON.parse(fixturePublicJwk(FixtureKey.Verifier)), alg: "ES256" }],
+      keys: [{ ...JSON.parse(fixturePublicJwk(FixtureKey.Verifier)), kid: "ecdsa-kid", alg: "ES256" }],
     },
   },
   response_mode: "direct_post.jwt",
@@ -244,7 +244,7 @@ export const VC_WITH_STATUS = fixtureSdJwt(
     status: { status_list: { uri: "http://localhost:9001/status_list", idx: 1 } },
     _sd_alg: "sha-256",
     iss: fixtureDidKey(FixtureKey.Issuer),
-    exp: 1753055048,
+    exp: 2075966075,
     nbf: 1753054448,
     cnf: { jwk: JSON.parse(fixturePublicJwk(FixtureKey.Holder)) },
   }),

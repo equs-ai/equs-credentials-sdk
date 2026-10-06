@@ -157,22 +157,6 @@ export const AUTH_REQUEST: CommonAuthorizationRequest = {
   state: STATE,
 };
 
-export const AUTH_REQUEST_JWT = fixtureJws(
-  JSON.stringify({ alg: "ES256", kid: fixtureDidKeyUrl(FixtureKey.Verifier), typ: "application/oauth-authz-req+jwt" }),
-  JSON.stringify({
-    response_type: "vp_token",
-    state: STATE,
-    response_mode: "direct_post",
-    nonce: AUTH_REQUEST.nonce,
-    client_metadata: { vp_formats: { "dc+sd-jwt": { alg: ["EdDSA", "ES256"] } } },
-    client_id: fixtureDidKey(FixtureKey.Verifier),
-    client_id_scheme: "did",
-    presentation_definition: PRESENTATION_DEFINITION,
-    response_uri: "http://localhost:9001/response",
-  }),
-  FixtureKey.Verifier,
-);
-
 export const PRESENTATION_SUBMISSION: PresentationSubmission = {
   id: "e18f2155-1235-43e9-8f0c-1f18cf72911a",
   definition_id: "1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed",
