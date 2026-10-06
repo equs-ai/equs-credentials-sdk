@@ -130,10 +130,8 @@ pub fn sd_jwt_kb(sd_jwt: &str, header: &Value, claims: &Value, key: &JWK) -> Str
     format!("{sd_jwt}{}", jws(header, &claims, key))
 }
 
-/// Compact JWE of `payload` for the P-256 `recipient`, built as the SDK's `JweEncryptor` builds
-/// it: ECDH-ES direct key agreement under a fresh ephemeral key. `header` supplies `kid`, `enc`
-/// (`A128GCM`, `A256GCM` or `A128CBC-HS256`) and the raw `apu` / `apv` values, which go on the
-/// wire base64url-encoded; `alg` must be `ECDH-ES`.
+/// Compact JWE of `payload` for the P-256 `recipient`: ECDH-ES under a fresh ephemeral key, as the
+/// SDK encrypts. `header` gives `kid`, `enc` and the raw `apu` / `apv`; `alg` must be `ECDH-ES`.
 pub fn jwe(header: &Value, payload: &[u8], recipient: &JWK) -> String {
     assert_eq!(header["alg"], "ECDH-ES", "only ECDH-ES is supported");
     let ephemeral = JWK::generate_p256();
