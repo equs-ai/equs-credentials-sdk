@@ -405,8 +405,6 @@ async fn get_credential_claims(cred_def: &CredDefMetadata) -> Result<Claims, Err
             "tneal".to_owned(),
             "http://localhost:8080",
         );
-        let admin_password =
-            std::env::var("KEYCLOAK_ADMIN_PASSWORD").expect("KEYCLOAK_ADMIN_PASSWORD is not set");
 
         let client = reqwest::Client::builder()
             .https_only(false)
@@ -416,7 +414,7 @@ async fn get_credential_claims(cred_def: &CredDefMetadata) -> Result<Claims, Err
         let admin_token = KeycloakAdminToken::acquire_custom_realm(
             keycloak_url,
             "admin",
-            &admin_password,
+            "password",
             "master",
             "admin-cli",
             "password",

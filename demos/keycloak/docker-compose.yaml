@@ -28,7 +28,7 @@ services:
       - KC_SPI_THEME_CACHE_THEMES=false
       - KC_SPI_THEME_CACHE_TEMPLATES=false
       - KEYCLOAK_ADMIN=admin
-      - KEYCLOAK_ADMIN_PASSWORD=${KEYCLOAK_ADMIN_PASSWORD:?set KEYCLOAK_ADMIN_PASSWORD}
+      - KEYCLOAK_ADMIN_PASSWORD=password
     healthcheck:
       test: "bash /opt/keycloak/health-check.sh"
       interval: 5s

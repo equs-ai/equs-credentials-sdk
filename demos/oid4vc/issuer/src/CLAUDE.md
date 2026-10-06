@@ -20,4 +20,3 @@ Runnable demo binary implementing the Issuer role in a full OID4VCI flow. Expose
 
 ## Constraints
 - Demo / development use only; hard-codes credential definitions and uses in-memory storage.
-- Outside the `ci_demo` feature it needs `KEYCLOAK_ADMIN_PASSWORD` set, the same variable the Keycloak compose file reads, to fetch realm users through the admin API.

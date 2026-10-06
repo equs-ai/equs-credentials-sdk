@@ -8,7 +8,7 @@ authorization server required by the OID4VC demo services.
 
 | File/Dir            | Role |
 |---------------------|------|
-| docker-compose.yaml | Defines the Keycloak service with realm import and theme mounting; the admin password comes from `KEYCLOAK_ADMIN_PASSWORD`, which must be set. |
+| docker-compose.yaml | Defines the Keycloak service with realm import and theme mounting. |
 | realms/             | Pre-configured realm JSON exports (e.g., `pid-issuer-realm`) with clients and scopes for demo flows. The export carries no key providers and no client secret: Keycloak generates the realm keys and the `pid-issuer-srv` secret at import. |
 | themes/             | Custom Keycloak UI themes used by the demo realm. |
 | certs/              | TLS certificates for HTTPS if needed. |
@@ -20,5 +20,4 @@ authorization server required by the OID4VC demo services.
 
 ## Constraints
 - Must be started before running any OID4VC demo; see the README linked from the parent demos/README.md.
-- `KEYCLOAK_ADMIN_PASSWORD` must be exported before `docker-compose up`; the issuer demo reads the same variable to obtain its admin token, and the README\'s `kcadm.sh` call passes it.
 - For the WASM demo, the Keycloak client's allowed origins must include the frontend host to avoid CORS issues.
