@@ -20,27 +20,27 @@ use std::sync::LazyLock;
 
 pub use ssi::JWK;
 
-/// Keys shared by every fixture in the process, generated on first use.
+/// Keys shared by every fixture in the process, each generated on first use.
 pub struct Keys {
     /// RSA-2048 key of the authorization server; signs `RS256`, with its JWK thumbprint as `kid`.
-    pub authz: JWK,
+    pub authz: LazyLock<JWK>,
     /// P-256 key of the credential issuer.
-    pub issuer: JWK,
+    pub issuer: LazyLock<JWK>,
     /// P-256 key of the holder.
-    pub holder: JWK,
+    pub holder: LazyLock<JWK>,
     /// P-256 key of the verifier.
-    pub verifier: JWK,
+    pub verifier: LazyLock<JWK>,
     /// 256-bit `HS256` secret.
-    pub secret: JWK,
+    pub secret: LazyLock<JWK>,
 }
 
-static KEYS: LazyLock<Keys> = LazyLock::new(|| Keys {
-    authz: rsa_jwk(),
-    issuer: JWK::generate_p256(),
-    holder: JWK::generate_p256(),
-    verifier: JWK::generate_p256(),
-    secret: secret_jwk(),
-});
+static KEYS: Keys = Keys {
+    authz: LazyLock::new(rsa_jwk),
+    issuer: LazyLock::new(JWK::generate_p256),
+    holder: LazyLock::new(JWK::generate_p256),
+    verifier: LazyLock::new(JWK::generate_p256),
+    secret: LazyLock::new(secret_jwk),
+};
 
 /// The process-wide [`Keys`].
 pub fn keys() -> &'static Keys {
@@ -96,20 +96,34 @@ pub fn digest(input: &str) -> String {
 /// `_sd` holds the sorted digests of the disclosures plus any digests already in `claims`; a
 /// disclosure is its JSON array text, digested as given.
 pub fn sd_jwt(header: &Value, claims: &Value, disclosures: &[&str], key: &JWK) -> String {
+    for disclosure in disclosures {
+        let parts: Vec<Value> = serde_json::from_str(disclosure)
+            .unwrap_or_else(|_| panic!("a disclosure is a JSON array, not {disclosure}"));
+        assert!(
+            matches!(parts.len(), 2 | 3),
+            "a disclosure is [salt, value] or [salt, name, value], not {disclosure}"
+        );
+    }
     let encoded: Vec<String> = disclosures
         .iter()
         .map(|disclosure| BASE64_URL_SAFE_NO_PAD.encode(disclosure))
         .collect();
     let mut claims = claims.clone();
-    let mut digests: Vec<String> = claims["_sd"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .filter_map(Value::as_str)
-        .map(str::to_string)
-        .collect();
+    let mut digests: Vec<String> = match &claims["_sd"] {
+        Value::Null => Vec::new(),
+        value => value
+            .as_array()
+            .expect("`_sd` must be an array")
+            .iter()
+            .map(|digest| digest.as_str().expect("`_sd` holds strings").to_string())
+            .collect(),
+    };
     digests.extend(encoded.iter().map(|d| digest(d)));
     digests.sort();
+    assert!(
+        digests.windows(2).all(|pair| pair[0] != pair[1]),
+        "duplicate `_sd` digest"
+    );
     if !digests.is_empty() {
         claims["_sd"] = json!(digests);
     }
@@ -125,6 +139,11 @@ pub fn sd_jwt(header: &Value, claims: &Value, disclosures: &[&str], key: &JWK) -
 /// `sd_jwt` with key binding: a JWS over `claims` plus the `sd_hash` of `sd_jwt`, signed with
 /// the holder `key` under `header` (`typ: kb+jwt`), appended to `sd_jwt`.
 pub fn sd_jwt_kb(sd_jwt: &str, header: &Value, claims: &Value, key: &JWK) -> String {
+    assert!(sd_jwt.ends_with('~'), "an SD-JWT ends with `~`");
+    assert!(
+        claims.get("sd_hash").is_none(),
+        "`sd_hash` is computed, not given"
+    );
     let mut claims = claims.clone();
     claims["sd_hash"] = json!(digest(sd_jwt));
     format!("{sd_jwt}{}", jws(header, &claims, key))
@@ -133,12 +152,26 @@ pub fn sd_jwt_kb(sd_jwt: &str, header: &Value, claims: &Value, key: &JWK) -> Str
 /// Compact JWE of `payload` for the P-256 `recipient`: ECDH-ES under a fresh ephemeral key, as the
 /// SDK encrypts. `header` gives `kid`, `enc` and the raw `apu` / `apv`; `alg` must be `ECDH-ES`.
 pub fn jwe(header: &Value, payload: &[u8], recipient: &JWK) -> String {
+    for field in header.as_object().expect("JWE header object").keys() {
+        assert!(
+            ["alg", "enc", "kid", "apu", "apv"].contains(&field.as_str()),
+            "unsupported JWE header field `{field}`"
+        );
+    }
     assert_eq!(header["alg"], "ECDH-ES", "only ECDH-ES is supported");
     let ephemeral = JWK::generate_p256();
     let shared_secret =
         ECDSASigner::shared_secret_p256(&private_scalar(&ephemeral), &public_jwk(recipient))
             .expect("ECDH");
-    let text = |name: &str| header.get(name).and_then(Value::as_str).map(str::to_string);
+    let text = |name: &str| match &header[name] {
+        Value::Null => None,
+        value => Some(
+            value
+                .as_str()
+                .unwrap_or_else(|| panic!("`{name}` must be a string"))
+                .to_string(),
+        ),
+    };
     build_jwe(
         payload,
         JweHeader {
@@ -171,7 +204,7 @@ fn public_jwk(key: &JWK) -> PublicJwk {
 /// "ca": true | false | {"path_len": 0}, "key_usages": ["digital_signature", "key_encipherment",
 /// "key_cert_sign", "crl_sign"], "extended_key_usages": ["server_auth", "client_auth"],
 /// "authority_key_identifier": true}`. The subject keeps the order given, the serial number is
-/// random, and an unknown field or a value of the wrong type panics.
+/// random, and a field or value it cannot apply panics.
 #[cfg(feature = "x509")]
 pub fn x509(spec: &Value, key: &JWK, issuer: Option<(&str, &JWK)>) -> String {
     use rcgen::{
@@ -215,21 +248,25 @@ pub fn x509(spec: &Value, key: &JWK, issuer: Option<(&str, &JWK)>) -> String {
             .collect()
     };
     let date = |name: &str| {
-        let parts: Vec<u32> = spec[name]
-            .as_str()
-            .expect(name)
-            .split('-')
-            .map(|part| part.parse().expect("YYYY-MM-DD"))
-            .collect();
-        rcgen::date_time_ymd(parts[0] as i32, parts[1] as u8, parts[2] as u8)
+        let text = spec[name].as_str().unwrap_or_default();
+        let bad = || format!("`{name}` must be a YYYY-MM-DD date, not {}", spec[name]);
+        let [year, month, day] = text.split('-').collect::<Vec<_>>()[..] else {
+            panic!("{}", bad())
+        };
+        rcgen::date_time_ymd(
+            year.parse().unwrap_or_else(|_| panic!("{}", bad())),
+            month.parse().unwrap_or_else(|_| panic!("{}", bad())),
+            day.parse().unwrap_or_else(|_| panic!("{}", bad())),
+        )
     };
     let mut params = CertificateParams::new(strings("sans")).expect("SANs");
     params.distinguished_name = DistinguishedName::new();
     for pair in list("subject") {
-        let (Some(kind), Some(value)) = (pair[0].as_str(), pair[1].as_str()) else {
-            panic!("`subject` holds [type, value] pairs")
+        let Some([Value::String(kind), Value::String(value)]) = pair.as_array().map(Vec::as_slice)
+        else {
+            panic!("`subject` holds [type, value] string pairs, not {pair}")
         };
-        let kind = match kind {
+        let kind = match kind.as_str() {
             "CN" => DnType::CommonName,
             "C" => DnType::CountryName,
             "O" => DnType::OrganizationName,
@@ -238,7 +275,7 @@ pub fn x509(spec: &Value, key: &JWK, issuer: Option<(&str, &JWK)>) -> String {
             "ST" => DnType::StateOrProvinceName,
             other => panic!("unknown DN type `{other}`"),
         };
-        params.distinguished_name.push(kind, value);
+        params.distinguished_name.push(kind, value.as_str());
     }
     if spec.get("not_before").is_some() {
         params.not_before = date("not_before");
@@ -249,9 +286,18 @@ pub fn x509(spec: &Value, key: &JWK, issuer: Option<(&str, &JWK)>) -> String {
     params.is_ca = match &spec["ca"] {
         Value::Bool(true) => IsCa::Ca(BasicConstraints::Unconstrained),
         Value::Bool(false) => IsCa::ExplicitNoCa,
-        Value::Object(ca) => IsCa::Ca(BasicConstraints::Constrained(
-            ca["path_len"].as_u64().expect("path_len") as u8,
-        )),
+        Value::Object(ca) => {
+            assert!(
+                ca.keys().all(|key| key == "path_len"),
+                "`ca` takes only `path_len`"
+            );
+            let path_len = ca["path_len"]
+                .as_u64()
+                .expect("`ca.path_len` must be a number");
+            IsCa::Ca(BasicConstraints::Constrained(
+                u8::try_from(path_len).expect("`ca.path_len` must be at most 255"),
+            ))
+        }
         Value::Null => IsCa::NoCa,
         other => panic!("`ca` must be true, false or {{\"path_len\": n}}, not {other}"),
     };
@@ -279,6 +325,15 @@ pub fn x509(spec: &Value, key: &JWK, issuer: Option<(&str, &JWK)>) -> String {
             .as_bool()
             .expect("`authority_key_identifier` must be a boolean"),
     };
+    assert!(
+        params.key_usages.is_empty()
+            || params.use_authority_key_identifier_extension
+            || !params.subject_alt_names.is_empty()
+            || !params.extended_key_usages.is_empty()
+            || !matches!(params.is_ca, IsCa::NoCa),
+        "rcgen writes `key_usages` only next to `sans`, `extended_key_usages`, \
+         `authority_key_identifier` or `ca`"
+    );
     let mut serial = [0u8; 20];
     OsRng.fill_bytes(&mut serial);
     serial[0] &= 0x7f;
@@ -635,7 +690,7 @@ mod tests {
 
     #[test]
     fn authz_key_carries_its_crt_parameters() {
-        let jwk = serde_json::to_value(&keys().authz).unwrap();
+        let jwk = serde_json::to_value(&*keys().authz).unwrap();
         let int = |name: &str| {
             rsa::BigUint::from_bytes_be(
                 &BASE64_URL_SAFE_NO_PAD
@@ -648,6 +703,64 @@ mod tests {
         assert_eq!(int("dp"), int("d") % (int("p") - &one));
         assert_eq!(int("dq"), int("d") % (int("q") - &one));
         assert_eq!((int("qi") * int("q")) % int("p"), one);
+    }
+
+    #[rstest]
+    #[should_panic(expected = "`ca.path_len` must be at most 255")]
+    #[case::path_len_out_of_range(json!({ "ca": { "path_len": 256 } }))]
+    #[should_panic(expected = "`ca` takes only `path_len`")]
+    #[case::unknown_ca_field(json!({ "ca": { "path_length": 0 } }))]
+    #[should_panic(expected = "`not_after` must be a YYYY-MM-DD date")]
+    #[case::date_without_day(json!({ "not_after": "2046-01" }))]
+    #[should_panic(expected = "`subject` holds [type, value] string pairs")]
+    #[case::subject_triple(json!({ "subject": [["CN", "x", "y"]] }))]
+    #[should_panic(expected = "rcgen writes `key_usages` only next to")]
+    #[case::key_usages_alone(json!({ "key_usages": ["digital_signature"] }))]
+    #[cfg(feature = "x509")]
+    fn x509_rejects_a_spec_it_cannot_apply(#[case] spec: Value) {
+        x509(&spec, &keys().issuer, None);
+    }
+
+    #[rstest]
+    #[should_panic(expected = "a disclosure is a JSON array")]
+    #[case::not_json(&["salt, name, value"], json!({}))]
+    #[should_panic(expected = "a disclosure is [salt, value] or [salt, name, value]")]
+    #[case::four_parts(&[r#"["salt", "name", "value", "extra"]"#], json!({}))]
+    #[should_panic(expected = "duplicate `_sd` digest")]
+    #[case::duplicate_digest(&[r#"["salt", "name", "John"]"#], json!({ "_sd": [digest(&BASE64_URL_SAFE_NO_PAD.encode(r#"["salt", "name", "John"]"#))] }))]
+    #[should_panic(expected = "`_sd` must be an array")]
+    #[case::sd_not_an_array(&[], json!({ "_sd": "digest" }))]
+    fn sd_jwt_rejects_what_it_cannot_apply(#[case] disclosures: &[&str], #[case] claims: Value) {
+        sd_jwt(
+            &json!({ "alg": "ES256" }),
+            &claims,
+            disclosures,
+            &keys().issuer,
+        );
+    }
+
+    #[rstest]
+    #[should_panic(expected = "an SD-JWT ends with `~`")]
+    #[case::plain_jws(jws(&json!({ "alg": "ES256" }), &json!({}), &keys().issuer), json!({}))]
+    #[should_panic(expected = "`sd_hash` is computed, not given")]
+    #[case::given_sd_hash("jws~".to_string(), json!({ "sd_hash": "x" }))]
+    fn sd_jwt_kb_rejects_what_it_cannot_apply(#[case] sd_jwt: String, #[case] claims: Value) {
+        sd_jwt_kb(
+            &sd_jwt,
+            &json!({ "alg": "ES256", "typ": "kb+jwt" }),
+            &claims,
+            &keys().holder,
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "unsupported JWE header field `typ`")]
+    fn jwe_rejects_a_header_field_it_would_drop() {
+        jwe(
+            &json!({ "alg": "ECDH-ES", "enc": "A256GCM", "kid": "k", "typ": "JWT" }),
+            b"{}",
+            &keys().verifier,
+        );
     }
 
     #[test]

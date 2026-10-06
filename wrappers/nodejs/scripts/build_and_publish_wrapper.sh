@@ -18,8 +18,7 @@ VERSION=$(npm pkg get version | tr -d '"')
 
 if [ "${ENVIRONMENT:-}" == "development" ]; then
   TAG="dev"
-  BUILD_SCRIPT="napi:build"
-  export npm_config_napi_flags="--features=in-memory"
+  BUILD_SCRIPT="build:dev"
   PUBLISH_VERSION="${CI_COMMIT_TAG:-${VERSION}-dev}"
 else
   TAG="${NPM_DIST_TAG:-latest}"

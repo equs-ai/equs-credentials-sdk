@@ -240,11 +240,11 @@ describe("OID4VP Holder: ", () => {
       format: VCFormat.SdJwtVc,
       payload: VC_WITH_STATUS,
     };
-    // One-bit list revoking index 2.
+    // One-bit list revoking index 1, the index `VC_WITH_STATUS` points at.
     const statusListJwt = `${fixtureJws(
       JSON.stringify({ typ: "statuslist+jwt", alg: "ES256", kid: fixtureDidKeyUrl(FixtureKey.Issuer) }),
       JSON.stringify({
-        status_list: { bits: 1, lst: "eNpjYWBgAAAAFAAF" },
+        status_list: { bits: 1, lst: "eNpjYmBgAAAADAAD" },
         sub: "http://localhost:9001/status_list",
         iat: 1753054238,
         _sd_alg: "sha-256",
@@ -257,15 +257,12 @@ describe("OID4VP Holder: ", () => {
 
     await vault.storeCredential(credential, metadata);
 
-    const credentialsMapping = await holder.findVcsForPresentation(
-      new AuthorizationRequest(AUTH_REQUEST_WITH_FAKE_VCT),
-    );
+    const credentialsMapping = await holder.findVcsForPresentation(new AuthorizationRequest(AUTH_REQUEST));
 
-    for (const key in credentialsMapping) {
-      expect(key).toBe("Identity-1");
-      expect((credentialsMapping[key].data as FindVCsFailReason).type).toStrictEqual("CredentialsNotFound");
-      expect((credentialsMapping[key].data as FindVCsFailReason).paths).toBeFalsy();
-    }
+    expect(Object.keys(credentialsMapping)).toEqual(["Identity-1"]);
+    const reason = credentialsMapping["Identity-1"].data as FindVCsFailReason;
+    expect(reason.type).toStrictEqual("CredentialsNotFound");
+    expect(reason.paths).toBeFalsy();
   });
 
   it("decline authorization request", async () => {
