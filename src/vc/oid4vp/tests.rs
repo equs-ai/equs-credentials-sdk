@@ -1012,20 +1012,17 @@ pub mod fixtures {
 
             /// `auth_request_json()` signed by the fixture verifier key as
             /// `application/oauth-authz-req+jwt`, the request object `request_uri()` points at.
-            pub fn auth_request_jwt() -> &'static str {
-                static TOKEN: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
-                    let verifier = &test_fixtures::keys().verifier;
-                    test_fixtures::jws(
-                        &serde_json::json!({
-                            "alg": "ES256",
-                            "kid": test_fixtures::did_key_url(verifier),
-                            "typ": "application/oauth-authz-req+jwt"
-                        }),
-                        &serde_json::from_str(&auth_request_json()).unwrap(),
-                        verifier,
-                    )
-                });
-                &TOKEN
+            pub fn auth_request_jwt() -> String {
+                let verifier = &test_fixtures::keys().verifier;
+                test_fixtures::jws(
+                    &serde_json::json!({
+                        "alg": "ES256",
+                        "kid": test_fixtures::did_key_url(verifier),
+                        "typ": "application/oauth-authz-req+jwt"
+                    }),
+                    &serde_json::from_str(&auth_request_json()).unwrap(),
+                    verifier,
+                )
             }
 
             /// Authorization request whose `client_id` is the fixture verifier's `did:key`.

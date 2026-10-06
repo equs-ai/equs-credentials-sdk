@@ -1540,7 +1540,7 @@ mod tests {
             request_verifier(MockHttpClient::new(), LocalKms::new(), InMemVault::new()).await;
         let aro: AuthorizationRequestObject = serde_json::from_str(&auth_request_json()).unwrap();
         request_verifier
-            .decentralized_identifier(&aro, auth_request_jwt().to_string())
+            .decentralized_identifier(&aro, auth_request_jwt())
             .await
             .unwrap();
     }
@@ -1553,7 +1553,7 @@ mod tests {
         let aro: AuthorizationRequestObject =
             serde_json::from_str(AUTH_REQUEST_WITH_WRONG_CLIENT_ID).unwrap();
         request_verifier
-            .decentralized_identifier(&aro, auth_request_jwt().to_string())
+            .decentralized_identifier(&aro, auth_request_jwt())
             .await
             .unwrap();
     }
