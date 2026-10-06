@@ -7,11 +7,15 @@
 
 use base64::Engine;
 use base64::prelude::BASE64_URL_SAFE_NO_PAD;
+use one_crypto::jwe::{Header as JweHeader, build_jwe};
+use one_crypto::signer::ecdsa::ECDSASigner;
 use rsa::rand_core::{OsRng, RngCore};
 use rsa::traits::{PrivateKeyParts, PublicKeyParts};
+use secrecy::SecretSlice;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use ssi::jwk::Params;
+use standardized_types::jwk::PublicJwk;
 use std::sync::LazyLock;
 
 pub use ssi::JWK;
@@ -124,6 +128,40 @@ pub fn sd_jwt_kb(sd_jwt: &str, header: &Value, claims: &Value, key: &JWK) -> Str
     let mut claims = claims.clone();
     claims["sd_hash"] = json!(digest(sd_jwt));
     format!("{sd_jwt}{}", jws(header, &claims, key))
+}
+
+/// Compact JWE of `payload` for the P-256 `recipient`: ECDH-ES under a fresh ephemeral key, as the
+/// SDK encrypts. `header` gives `kid`, `enc` and the raw `apu` / `apv`; `alg` must be `ECDH-ES`.
+pub fn jwe(header: &Value, payload: &[u8], recipient: &JWK) -> String {
+    assert_eq!(header["alg"], "ECDH-ES", "only ECDH-ES is supported");
+    let ephemeral = JWK::generate_p256();
+    let shared_secret =
+        ECDSASigner::shared_secret_p256(&private_scalar(&ephemeral), &public_jwk(recipient))
+            .expect("ECDH");
+    let text = |name: &str| header.get(name).and_then(Value::as_str).map(str::to_string);
+    build_jwe(
+        payload,
+        JweHeader {
+            key_id: text("kid").expect("`kid`"),
+            agreement_partyuinfo: text("apu"),
+            agreement_partyvinfo: text("apv"),
+        },
+        shared_secret,
+        public_jwk(&ephemeral),
+        serde_json::from_value(header["enc"].clone()).expect("`enc`"),
+    )
+    .expect("JWE")
+}
+
+fn private_scalar(key: &JWK) -> SecretSlice<u8> {
+    let Params::EC(ec) = &key.params else {
+        panic!("not an EC key")
+    };
+    SecretSlice::from(ec.ecc_private_key.as_ref().expect("`d`").0.clone())
+}
+
+fn public_jwk(key: &JWK) -> PublicJwk {
+    serde_json::from_value(serde_json::to_value(key.to_public()).expect("JWK")).expect("public JWK")
 }
 
 fn b64(value: &Value) -> String {
@@ -323,6 +361,56 @@ mod tests {
         let url = did_key_url(&keys().verifier);
 
         assert_eq!(url.split_once('#').unwrap().0, did_key(&keys().verifier));
+    }
+
+    struct Recipient(SecretSlice<u8>);
+
+    #[async_trait::async_trait]
+    impl one_crypto::jwe::PrivateKeyAgreementHandle for Recipient {
+        async fn shared_secret(
+            &self,
+            remote_jwk: &PublicJwk,
+        ) -> Result<SecretSlice<u8>, one_crypto::encryption::EncryptionError> {
+            ECDSASigner::shared_secret_p256(&self.0, remote_jwk)
+        }
+    }
+
+    #[tokio::test]
+    async fn jwe_decrypts_with_the_recipient_key() {
+        let verifier = &keys().verifier;
+        let header = json!({
+            "kid": "ac", "enc": "A128CBC-HS256", "alg": "ECDH-ES", "apu": "some_nonce", "apv": "some_nonce"
+        });
+
+        let token = jwe(&header, br#"{"hello":"world"}"#, verifier);
+
+        let protected = BASE64_URL_SAFE_NO_PAD
+            .decode(token.split('.').next().unwrap())
+            .unwrap();
+        let protected: Value = serde_json::from_slice(&protected).unwrap();
+        assert_eq!(protected["kid"], "ac");
+        assert_eq!(protected["alg"], "ECDH-ES");
+        assert_eq!(protected["enc"], "A128CBC-HS256");
+        assert_eq!(
+            protected["apu"],
+            BASE64_URL_SAFE_NO_PAD.encode("some_nonce")
+        );
+        assert_eq!(protected["epk"]["crv"], "P-256");
+        let plaintext =
+            one_crypto::jwe::decrypt_jwe_payload(&token, &Recipient(private_scalar(verifier)))
+                .await
+                .unwrap();
+        assert_eq!(plaintext, br#"{"hello":"world"}"#);
+    }
+
+    #[test]
+    #[should_panic(expected = "only ECDH-ES")]
+    fn jwe_rejects_another_alg() {
+        jwe(
+            &json!({ "kid": "k", "enc": "A128GCM", "alg": "RSA-OAEP" }),
+            b"x",
+            &keys().verifier,
+        );
     }
 
     #[test]

@@ -12,11 +12,16 @@ name = "test_fixtures"
 
 [dependencies]
 base64 = "0.22.1"
+equs-one-core-crypto = "0.1.0"
+equs-one-core-standardized-types = "0.1.0"
 jsonwebtoken = "9.3.0"
 rsa = { version = "0.9.10", features = ["getrandom"] }
+secrecy = "0.10.3"
 serde_json = { version = "1.0.120", features = ["preserve_order"] }
 sha2 = "0.10"
 ssi = "=0.16.0"
 
 [dev-dependencies]
+async-trait = "0.1.85"
 rstest = "0.22.0"
+tokio = { version = "1.25.0", features = ["macros", "rt"] }
