@@ -4,7 +4,7 @@ use crate::crypto::{
     SigningOptions, SigningSnafu, VerificationSnafu, Verifier, VerifyingKey, VerifyingOptions,
 };
 use async_trait::async_trait;
-use ssi::bbs::BBSplusSecretKey;
+use ssi_bbs::BBSplusSecretKey;
 use zkryptium::bbsplus::ciphersuites::Bls12381Sha256;
 use zkryptium::bbsplus::commitment::BlindFactor;
 use zkryptium::bbsplus::signature::BBSplusSignature;
@@ -51,7 +51,7 @@ impl Signer for Bls12381 {
             _ => BbsParameters::Baseline { header: [0; 64] },
         };
 
-        ssi::bbs::sign(params, &self.0, &self.0.public_key(), payloads).map_err(|err| {
+        ssi_bbs::sign(params, &self.0, &self.0.public_key(), payloads).map_err(|err| {
             SigningSnafu {
                 details: err.to_string(),
             }
@@ -146,7 +146,7 @@ impl Verifier for Bls12381 {
 
 impl crypto::Suite for Bls12381 {
     fn generate() -> Vec<u8> {
-        ssi::bbs::generate_secret_key(&mut ssi::crypto::rand::rngs::OsRng {})
+        ssi_bbs::generate_secret_key(&mut ssi::crypto::rand::rngs::OsRng {})
             .to_bytes()
             .to_vec()
     }
