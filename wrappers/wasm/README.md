@@ -49,6 +49,8 @@ Wrappers should be built before testing
     npm run test
 ```
 
+`build:dev` and `build:dev:cjs` enable the `test-utils` feature, which adds the test helpers and the `fixture*` functions of `equs-test-fixtures` to the package; `build` leaves it off.
+
 ### Compilation Issues on macOS with Apple Clang
 
 When compiling Rust projects targeting `wasm32-unknown-unknown` on macOS, you might encounter errors like:
