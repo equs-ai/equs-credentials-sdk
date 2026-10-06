@@ -3,7 +3,14 @@ pub mod fixtures {
     pub const NONCE: &str = "n0NcE";
     pub const CLIENT_ID: &str = "wallet-dev";
     pub const STATE: &str = "1d8b0d93-86e8-4135-87d4-524bb0500bf3";
-    pub const REQUEST_URI: &str = "openid4vp://?client_id=decentralized_identifier%3Adid%3Akey%3AzDnaebMD6CqPmJL8WxF6YffAAbbK935aaKbyVEyuGQtukXk6f&request_uri=http%3A%2F%2F127.0.0.1%3A55796%2Frequest";
+    /// `openid4vp://` link naming the fixture verifier as `client_id` and the request object URL.
+    pub fn request_uri() -> String {
+        let did = test_fixtures::did_key(&test_fixtures::keys().verifier);
+        format!(
+            "openid4vp://?client_id=decentralized_identifier%3Adid%3Akey%3A{}&request_uri=http%3A%2F%2F127.0.0.1%3A55796%2Frequest",
+            did.strip_prefix("did:key:").unwrap()
+        )
+    }
     pub const CREDENTIAL_ID: &str = "abcde";
     /// `statuslist+jwt` served at `http://localhost:9001/status_list`, signed by the fixture
     /// issuer key.
@@ -1003,23 +1010,41 @@ pub mod fixtures {
             ]
         }"#;
 
-            pub const AUTH_REQUEST_JWT: &str = "eyJhbGciOiJFUzI1NiIsImtpZCI6ImRpZDprZXk6ekRuYWViTUQ2Q3FQbUpMOFd4RjZZZmZBQWJiSzkzNWFhS2J5VkV5dUdRdHVrWGs2ZiN6RG5hZWJNRDZDcVBtSkw4V3hGNllmZkFBYmJLOTM1YWFLYnlWRXl1R1F0dWtYazZmIiwidHlwIjoiYXBwbGljYXRpb24vb2F1dGgtYXV0aHotcmVxK2p3dCJ9.eyJyZXNwb25zZV90eXBlIjoidnBfdG9rZW4iLCJzdGF0ZSI6IjFkOGIwZDkzLTg2ZTgtNDEzNS04N2Q0LTUyNGJiMDUwMGJmMyIsInJlc3BvbnNlX21vZGUiOiJkaXJlY3RfcG9zdCIsIm5vbmNlIjoiMlQwbjJxZ2RYNlh5RXotVWdDSEZNSDZmUmw5LXM0SURXcmtubmtHVzBWMCIsImNsaWVudF9tZXRhZGF0YSI6eyJ2cF9mb3JtYXRzX3N1cHBvcnRlZCI6eyJkYytzZC1qd3QiOnsic2Qtand0X2FsZ192YWx1ZXMiOlsiRWREU0EiLCJFUzI1NiJdLCJrYi1qd3RfYWxnX3ZhbHVlcyI6WyJFZERTQSIsIkVTMjU2Il19fSwiandrcyI6eyJrZXlzIjpbeyJ1c2UiOiJlbmMiLCJhbGciOiJFUzI1NiIsImtpZCI6IlJTZE5GZG5HSG06UDI1NjoiLCJrdHkiOiJFQyIsImNydiI6IlAtMjU2IiwieCI6IkxiLTNrcG9tZS1nbHZTQXJaV0RPUlVva3JseWw5VFZ2M2h6bVV1QmdUWE0iLCJ5IjoidjFGZ2NPVHhNMTd0OWZ3dVFSeEo3S1JFcERYSEZTejRrZzJVQ2VDbVhidyJ9XX0sImVuY3J5cHRlZF9yZXNwb25zZV9lbmNfdmFsdWVzX3N1cHBvcnRlZCI6WyJBMTI4R0NNIiwiQTEyOENCQy1IUzI1NiJdLCJzdWJqZWN0X3N5bnRheF90eXBlc19zdXBwb3J0ZWQiOlsiZGlkOmtleSJdfSwiY2xpZW50X2lkIjoiZGVjZW50cmFsaXplZF9pZGVudGlmaWVyOmRpZDprZXk6ekRuYWViTUQ2Q3FQbUpMOFd4RjZZZmZBQWJiSzkzNWFhS2J5VkV5dUdRdHVrWGs2ZiIsInByZXNlbnRhdGlvbl9kZWZpbml0aW9uIjp7ImlkIjoiMzI3YWQxNzEtYzgwYS00ODViLWIwOTgtNTBkN2FkMjc4ZWY2IiwiaW5wdXRfZGVzY3JpcHRvcnMiOlt7ImlkIjoiSWRlbnRpdHktMSIsImNvbnN0cmFpbnRzIjp7ImZpZWxkcyI6W3sicGF0aCI6WyIkLnZjdCJdLCJmaWx0ZXIiOnsidHlwZSI6InN0cmluZyIsImNvbnN0IjoiaHR0cHM6Ly9jcmVkZW50aWFscy5leGFtcGxlLmNvbS9pZGVudGl0eV9jcmVkZW50aWFsIn0sInByZWRpY2F0ZSI6bnVsbCwiaW50ZW50X3RvX3JldGFpbiI6ZmFsc2V9LHsicGF0aCI6WyIkLm5hbWUiXSwib3B0aW9uYWwiOnRydWUsInByZWRpY2F0ZSI6bnVsbCwiaW50ZW50X3RvX3JldGFpbiI6ZmFsc2V9XX0sIm5hbWUiOiJJZGVudGl0eSBWQyIsInB1cnBvc2UiOiJXZSB3YW50IGFuIGlkZW50aXR5IiwiZm9ybWF0Ijp7ImRjK3NkLWp3dCI6eyJzZC1qd3RfYWxnX3ZhbHVlcyI6WyJFUzI1NiIsIkVkRFNBIl0sImtiLWp3dF9hbGdfdmFsdWVzIjpbIkVTMjU2IiwiRWREU0EiXX19fV19LCJyZXNwb25zZV91cmkiOiJodHRwOi8vMTI3LjAuMC4xOjU1Nzk2L2F1dGgifQ.vx7zZECHmm-hJ6Gnt0FAQf4aCCrYpbyoIQHJOUcTOw6cESozijzV8Y2VKmoEHefiEM6RWYYs7IZcF4hLZ2fdyw";
-            pub const AUTH_REQUEST: &str = r#"
-            {
+            /// `auth_request_json()` signed by the fixture verifier key as
+            /// `application/oauth-authz-req+jwt`, the request object `request_uri()` points at.
+            pub fn auth_request_jwt() -> String {
+                let verifier = &test_fixtures::keys().verifier;
+                test_fixtures::jws(
+                    &serde_json::json!({
+                        "alg": "ES256",
+                        "kid": test_fixtures::did_key_url(verifier),
+                        "typ": "application/oauth-authz-req+jwt"
+                    }),
+                    &serde_json::from_str(&auth_request_json()).unwrap(),
+                    verifier,
+                )
+            }
+
+            /// Authorization request whose `client_id` is the fixture verifier's `did:key`.
+            pub fn auth_request_json() -> String {
+                let did = test_fixtures::did_key(&test_fixtures::keys().verifier);
+                format!(
+                    r#"
+            {{
               "response_type": "vp_token",
               "state": "1d8b0d93-86e8-4135-87d4-524bb0500bf3",
               "response_mode": "direct_post",
               "nonce": "2T0n2qgdX6XyEz-UgCHFMH6fRl9-s4IDWrknnkGW0V0",
-              "client_metadata": {
-                "vp_formats_supported": {
-                  "dc+sd-jwt": {
+              "client_metadata": {{
+                "vp_formats_supported": {{
+                  "dc+sd-jwt": {{
                     "sd-jwt_alg_values": ["EdDSA", "ES256"],
                     "kb-jwt_alg_values": ["EdDSA", "ES256"]
-                  }
-                },
-                "jwks": {
+                  }}
+                }},
+                "jwks": {{
                   "keys": [
-                    {
+                    {{
                       "use": "enc",
                       "alg": "ES256",
                       "kid": "RSdNFdnGHm:P256:",
@@ -1027,9 +1052,9 @@ pub mod fixtures {
                       "crv": "P-256",
                       "x": "Lb-3kpome-glvSArZWDORUokrlyl9TVv3hzmUuBgTXM",
                       "y": "v1FgcOTxM17t9fwuQRxJ7KREpDXHFSz4kg2UCeCmXbw"
-                    }
+                    }}
                   ]
-                },
+                }},
                 "encrypted_response_enc_values_supported": [
                   "A128GCM",
                   "A128CBC-HS256"
@@ -1037,40 +1062,40 @@ pub mod fixtures {
                 "subject_syntax_types_supported": [
                   "did:key"
                 ]
-              },
-              "client_id": "decentralized_identifier:did:key:zDnaebMD6CqPmJL8WxF6YffAAbbK935aaKbyVEyuGQtukXk6f",
-              "presentation_definition": {
+              }},
+              "client_id": "decentralized_identifier:{did}",
+              "presentation_definition": {{
                 "id": "327ad171-c80a-485b-b098-50d7ad278ef6",
                 "input_descriptors": [
-                  {
+                  {{
                     "id": "Identity-1",
-                    "constraints": {
+                    "constraints": {{
                       "fields": [
-                        {
+                        {{
                           "path": [
                             "$.vct"
                           ],
-                          "filter": {
+                          "filter": {{
                             "type": "string",
                             "const": "https://credentials.example.com/identity_credential"
-                          },
+                          }},
                           "predicate": null,
                           "intent_to_retain": false
-                        },
-                        {
+                        }},
+                        {{
                           "path": [
                             "$.name"
                           ],
                           "optional": true,
                           "predicate": null,
                           "intent_to_retain": false
-                        }
+                        }}
                       ]
-                    },
+                    }},
                     "name": "Identity VC",
                     "purpose": "We want an identity",
-                    "format": {
-                      "dc+sd-jwt": {
+                    "format": {{
+                      "dc+sd-jwt": {{
                         "sd-jwt_alg_values": [
                           "ES256",
                           "EdDSA"
@@ -1079,13 +1104,15 @@ pub mod fixtures {
                           "ES256",
                           "EdDSA"
                         ]
-                      }
-                    }
-                  }
+                      }}
+                    }}
+                  }}
                 ]
-              },
+              }},
               "response_uri": "http://127.0.0.1:55796/auth"
-            }"#;
+            }}"#
+                )
+            }
             pub const AUTH_REQUEST_WITH_WRONG_CLIENT_ID: &str = r#"
                 {
                   "client_id": "decentralized_identifier:did:key:1",
@@ -1513,7 +1540,7 @@ pub mod fixtures {
             }
 
             pub fn auth_request() -> ResolvedAuthRequest {
-                serde_json::from_str(AUTH_REQUEST).unwrap()
+                serde_json::from_str(&auth_request_json()).unwrap()
             }
             pub fn auth_request_with_direct_post_jwt_response() -> ResolvedAuthRequest {
                 serde_json::from_str(&auth_request_with_direct_post_jwt_response_json()).unwrap()
