@@ -533,7 +533,7 @@ mod tests {
     #[tokio::test]
     async fn vc_status_is_validated_correctly(
         #[case] vc_index: usize,
-        #[case] status_list_token: &str,
+        #[case] status_list_token: String,
         #[case] expected_status: VCStatus,
     ) {
         let mut http_client = MockHttpClient::new();
@@ -569,12 +569,13 @@ mod tests {
     async fn vc_status_is_validated_correctly_when_cached_status_list_jwt_is_used() {
         let mut http_client = MockHttpClient::new();
         let url = "http://example.com/status_list";
+        let token = status_list_jwt_token_1bit();
 
         mock_http_fn_with_plain_text_resp(
             &mut http_client,
             Method::GET,
             Url::from_str(url).unwrap(),
-            status_list_jwt_token_1bit(),
+            token.clone(),
             1.into(),
         );
 
@@ -601,7 +602,7 @@ mod tests {
 
         assert_eq!(vc_status, Some(VCStatus::Invalid));
         assert_eq!(cached_jwts.len(), 1);
-        assert_eq!(cached_jwts.get(url).unwrap(), status_list_jwt_token_1bit());
+        assert_eq!(cached_jwts.get(url).unwrap(), &token);
 
         // Second call with same URL should use cached status list JWT
         http_client = MockHttpClient::new();
@@ -620,7 +621,7 @@ mod tests {
     const X5C_STATUS_LIST_URL: &str = "https://status.example/status_list";
 
     async fn x5c_status_of(
-        token: &'static str,
+        token: String,
         idx: usize,
         trusted_certs: Option<HashMap<String, String>>,
     ) -> crate::vc::status_formats::Result<Option<VCStatus>> {
@@ -714,7 +715,7 @@ mod tests {
         );
     }
 
-    fn x5c_signed_status_list(typ: &str, with_x5c: bool) -> &'static str {
+    fn x5c_signed_status_list(typ: &str, with_x5c: bool) -> String {
         let mut header = jsonwebtoken::Header::new(jsonwebtoken::Algorithm::ES256);
         header.typ = Some(typ.to_string());
         if with_x5c {
@@ -728,11 +729,7 @@ mod tests {
         });
         let key = jsonwebtoken::EncodingKey::from_ec_pem(pki().signer_key.as_bytes()).unwrap();
 
-        Box::leak(
-            jsonwebtoken::encode(&header, &claims, &key)
-                .unwrap()
-                .into_boxed_str(),
-        )
+        jsonwebtoken::encode(&header, &claims, &key).unwrap()
     }
 
     /// Trusted anchors keyed by Subject Key Identifier, as the verifier holds them.
@@ -819,10 +816,8 @@ mod tests {
     /// 2 - Invalid
     ///
     /// Status bit size - 1
-    fn status_list_jwt_token_1bit() -> &'static str {
-        static TOKEN: std::sync::LazyLock<String> =
-            std::sync::LazyLock::new(|| status_list_jwt(1738074130, "eNpjYmBgAAAADAAD", 1));
-        &TOKEN
+    fn status_list_jwt_token_1bit() -> String {
+        status_list_jwt(1738074130, "eNpjYmBgAAAADAAD", 1)
     }
 
     /// Status list token that contains the following status list:
@@ -833,10 +828,8 @@ mod tests {
     /// 4 - AppSpecific (value - 3)
     ///
     /// Status bit size - 2
-    fn status_list_jwt_token_2bit() -> &'static str {
-        static TOKEN: std::sync::LazyLock<String> =
-            std::sync::LazyLock::new(|| status_list_jwt(1763024416, "eNqbwMwABgAEnQCU", 2));
-        &TOKEN
+    fn status_list_jwt_token_2bit() -> String {
+        status_list_jwt(1763024416, "eNqbwMwABgAEnQCU", 2)
     }
 
     /// `statuslist+jwt` served at `http://example.com/status_list`, signed by the fixture issuer

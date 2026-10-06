@@ -7,26 +7,23 @@ pub mod fixtures {
     pub const CREDENTIAL_ID: &str = "abcde";
     /// `statuslist+jwt` served at `http://localhost:9001/status_list`, signed by the fixture
     /// issuer key.
-    pub fn sample_credential_status_list() -> &'static str {
-        static TOKEN: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
-            let issuer = &test_fixtures::keys().issuer;
-            let token = test_fixtures::jws(
-                &serde_json::json!({
-                    "typ": "statuslist+jwt",
-                    "alg": "ES256",
-                    "kid": test_fixtures::did_key_url(issuer)
-                }),
-                &serde_json::json!({
-                    "status_list": { "lst": "eNqbwMwABgAEnQCU", "bits": 2 },
-                    "sub": "http://localhost:9001/status_list",
-                    "iat": 1763025623,
-                    "_sd_alg": "sha-256"
-                }),
-                issuer,
-            );
-            format!("{token}~")
-        });
-        &TOKEN
+    pub fn sample_credential_status_list() -> String {
+        let issuer = &test_fixtures::keys().issuer;
+        let token = test_fixtures::jws(
+            &serde_json::json!({
+                "typ": "statuslist+jwt",
+                "alg": "ES256",
+                "kid": test_fixtures::did_key_url(issuer)
+            }),
+            &serde_json::json!({
+                "status_list": { "lst": "eNqbwMwABgAEnQCU", "bits": 2 },
+                "sub": "http://localhost:9001/status_list",
+                "iat": 1763025623,
+                "_sd_alg": "sha-256"
+            }),
+            issuer,
+        );
+        format!("{token}~")
     }
     pub const SAMPLE_SD_JWT_WITH_STATUS: &str = "eyJ0eXAiOiJkYytzZC1qd3QiLCJhbGciOiJFUzI1NiIsImtpZCI6ImRpZDprZXk6ekRuYWVmYUdTd1RmWmsyVXVRV1JqRFQ1Z3J0TEw2RWE1Z3hGcjVBN1hyMzZIUXdtQiN6RG5hZWZhR1N3VGZaazJVdVFXUmpEVDVncnRMTDZFYTVneEZyNUE3WHIzNkhRd21CIn0.eyJfc2QiOlsiTGtNQ3hnT3dKZXVWa2xFUVIxYUl1TDVUSXllRkZiSUhEYXNjZk9EOGlHWSIsInc5WHpEVG5YMFRNOVFFX0NjYUVSaUtpbVV3VkFkWEwxRzZIdU1wZHdkclkiXSwiYWRkcmVzcyI6IjIyMUIgQmFrZXIgU3RyZWV0IiwiaWF0IjoxNzUzMDU0NDQ4LCJkYXRlIjoiMDkvMDkvMTk4OSIsInN1YiI6ImRpZDprZXk6ekRuYWVoVzJXWERnaHBNMTZYRzN5Z2Vja2FSTWJpamJjWG9tZnQ0ZzI2cnlpUlZXUiIsInZjdCI6Imh0dHBzOi8vY3JlZGVudGlhbHMuZXhhbXBsZS5jb20vaWRlbnRpdHlfY3JlZGVudGlhbCIsInN0YXR1cyI6eyJzdGF0dXNfbGlzdCI6eyJ1cmkiOiJodHRwOi8vbG9jYWxob3N0OjkwMDEvc3RhdHVzX2xpc3QiLCJpZHgiOjF9fSwiX3NkX2FsZyI6InNoYS0yNTYiLCJpc3MiOiJkaWQ6a2V5OnpEbmFlZmFHU3dUZlprMlV1UVdSakRUNWdydExMNkVhNWd4RnI1QTdYcjM2SFF3bUIiLCJleHAiOjE3NTMwNTUwNDgsIm5iZiI6MTc1MzA1NDQ0OCwiY25mIjp7Imp3ayI6eyJrdHkiOiJFQyIsImNydiI6IlAtMjU2IiwieCI6Il9hRHExTWE2SFNOUUZrR0F0ZnBpNlR3UnVuMUhlVnpCWWo2R29DcEhmcW8iLCJ5IjoiSTY0VnRmaTNlbzktQTM0TmNNMFJ4cHRsbzhiOGd1RUV3dnd2S2w1YUZlWSJ9fX0.jruSbbpygwgyWcJ2DO0myKlGimKW0n_dsYc5l-hksJqIWZF2Wy5Sf01nZlkUop-_JkN3x9Ct1kCOHes8-Ozdxg~WyJ1eExOVGVtV1FrYzFWTzZMZ3NBcmxRIiwgIm5hbWUiLCAiSm9obiJd~WyIyQ0J1ZENXSTVFSW1haGd6ZGNVMVZ3IiwgInN1cm5hbWUiLCAiRG9lIl0~";
 
