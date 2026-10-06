@@ -255,7 +255,7 @@ impl From<CredentialClaimValue> for Claim {
 pub mod tests {
     use crate::did::universal::UniversalResolver;
     use crate::nonce::Nonce;
-    use crate::utils::test_utils::anchors;
+    use crate::utils::test_utils::{anchors, iaca, mdl_chain};
     use crate::vc::VCFormatsAPI;
     use crate::vc::claims::Claim;
     use crate::vc::core::HolderBinder;
@@ -263,27 +263,35 @@ pub mod tests {
     use crate::vc::formats::mso_mdoc::{MsoMdocAPI, Presentation};
     use std::collections::HashMap;
 
-    pub const SAMPLE_MSO_MDOC_VP: &str = "o2d2ZXJzaW9uYzEuMGlkb2N1bWVudHOBo2dkb2NUeXBldW9yZy5pc28uMTgwMTMuNS4xLm1ETGxpc3N1ZXJTaWduZWSiam5hbWVTcGFjZXOhcW9yZy5pc28uMTgwMTMuNS4xgtgYWGqkaGRpZ2VzdElEAGZyYW5kb21YIBERERERERERERERERERERERERERERERERERERERERERcWVsZW1lbnRJZGVudGlmaWVya2ZhbWlseV9uYW1lbGVsZW1lbnRWYWx1ZWpNdXN0ZXJtYW5u2BhYZKRoZGlnZXN0SUQBZnJhbmRvbVggEhISEhISEhISEhISEhISEhISEhISEhISEhISEhISEhJxZWxlbWVudElkZW50aWZpZXJqZ2l2ZW5fbmFtZWxlbGVtZW50VmFsdWVlRXJpa2FqaXNzdWVyQXV0aIRDoQEmoRghWQF5MIIBdTCCARugAwIBAgIUCPAlVlCcdKtW_NgvnriGAvImXT0wCgYIKoZIzj0EAwIwITESMBAGA1UEAwwJVGVzdCBJQUNBMQswCQYDVQQGDAJVUzAeFw0yNjAxMDEwMDAwMDBaFw00NjAxMDEwMDAwMDBaMB8xEDAOBgNVBAMMB1Rlc3QgRFMxCzAJBgNVBAYMAlVTMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEfirDFSOgmMH7vUzoevRbzHEDHUKqVS2_Wgs6TTPel-EYXYnW5Tdp5Hqxxc9-kR6CXUexKxQdxfDPyIxPlCkm4aMzMDEwHwYDVR0jBBgwFoAUg8JM5sIlqsjvNR337KO_zIQbdMUwDgYDVR0PAQH_BAQDAgeAMAoGCCqGSM49BAMCA0gAMEUCIBoknaCNrvgm0ddRfm9xQYWzx_3WL9Fs-gQfolp5K0NUAiEA2douiRD8Jf33sHgWZdpnMsmRUsAPCOWe4QGb_tVi3-BZAaTYGFkBn6ZndmVyc2lvbmMxLjBvZGlnZXN0QWxnb3JpdGhtZ1NIQS0yNTZsdmFsdWVEaWdlc3RzoXFvcmcuaXNvLjE4MDEzLjUuMaIAWCAd9VB6Eetaki_Ezn9YWmXuDc2wwCLY5aSsTwJK0Vu88QFYIHDj8ldYRGUeM8LNa7OZU0NeOb7ayITJ5yOVaCZCJj_kbWRldmljZUtleUluZm-haWRldmljZUtleaQBAiABIVgg43kS_XmY3GpALvnEPRzn6GMuxJzInxX7r5XAeDah18UiWCCXlKF9EfKCs9NugFg2p8IbMMEMvwc0DucoRZQw3-a0XWdkb2NUeXBldW9yZy5pc28uMTgwMTMuNS4xLm1ETGx2YWxpZGl0eUluZm-kZnNpZ25lZMB0MjAyNi0wMS0wMVQwMDowMDowMFppdmFsaWRGcm9twHQyMDI2LTAxLTAxVDAwOjAwOjAwWmp2YWxpZFVudGlswHQyMDQ2LTAxLTAxVDAwOjAwOjAwWm5leHBlY3RlZFVwZGF0ZcB0MjA0Ni0wMS0wMVQwMDowMDowMFpYQGp32sfVRsBX3crXbFP1EPQ2EkXRe0L_cslmkkbyEMzj8MoNuAd5qVjercViO2oDpPPGFtL1LCVKNUxdYmTgJeZsZGV2aWNlU2lnbmVkompuYW1lU3BhY2Vz2BhBoGpkZXZpY2VBdXRooW9kZXZpY2VTaWduYXR1cmWEQ6EBJqD2WECCN_IWVAGLfKbNDKE8pPHD4Xi_AlUufrKO7r6br-z1WmpGBueaCf57nBVASs4DrBD88hLNRvR6btAlTMZx-WQ2ZnN0YXR1cwA";
-    /// Trusted certificates holding only a self-signed IACA (`CN=Test IACA, C=US`) unrelated to
-    /// `SAMPLE_MSO_MDOC_VP`.
-    fn unrelated_iaca() -> HashMap<String, String> {
-        let cert = test_fixtures::x509(
+    /// mDL presentation of Erika Mustermann under a fresh IACA → DS chain, bound to nonce
+    /// `4Y1DVuoVHfjotxmX55AQv36Tr5sdcvaBLXia6bj2hUM` and verifier `https://verifier.example.com`.
+    pub fn sample_mso_mdoc_vp() -> String {
+        let (_, ds, ds_key) = mdl_chain();
+        test_fixtures::mdoc(
             &serde_json::json!({
-                "subject": [["CN", "Test IACA"], ["C", "US"]],
-                "not_before": "2026-01-01", "not_after": "2046-01-01",
-                "ca": true, "key_usages": ["key_cert_sign", "crl_sign"]
+                "doc_type": "org.iso.18013.5.1.mDL",
+                "name_spaces": { "org.iso.18013.5.1": {
+                    "family_name": "Mustermann", "given_name": "Erika"
+                } },
+                "valid_from": "2026-01-01T00:00:00Z",
+                "valid_until": "2046-01-01T00:00:00Z",
+                "client_id": "https://verifier.example.com",
+                "nonce": "4Y1DVuoVHfjotxmX55AQv36Tr5sdcvaBLXia6bj2hUM"
             }),
-            &test_fixtures::JWK::generate_p256(),
-            None,
-        );
-        anchors(&[&cert])
+            (&ds, &ds_key),
+            &test_fixtures::keys().holder,
+        )
+    }
+    /// Trusted certificates holding only a self-signed IACA unrelated to `sample_mso_mdoc_vp`.
+    fn unrelated_iaca() -> HashMap<String, String> {
+        anchors(&[&iaca(&test_fixtures::JWK::generate_p256())])
     }
 
     #[tokio::test]
     async fn verify_vp_works_correctly() {
         let verified_claims = MsoMdocAPI::verify_vp(
             &Presentation {
-                value: SAMPLE_MSO_MDOC_VP.to_string(),
+                value: sample_mso_mdoc_vp(),
                 enc_pub_key: None,
             },
             Some(HolderBinder {
@@ -317,7 +325,7 @@ pub mod tests {
     async fn verify_vp_rejects_ds_chain_not_under_held_iaca() {
         MsoMdocAPI::verify_vp(
             &Presentation {
-                value: SAMPLE_MSO_MDOC_VP.to_string(),
+                value: sample_mso_mdoc_vp(),
                 enc_pub_key: None,
             },
             Some(HolderBinder {
@@ -329,6 +337,29 @@ pub mod tests {
             }),
             VerifyOptions {
                 trusted_certs: Some(unrelated_iaca()),
+                selective_claims: None,
+            },
+            UniversalResolver::default(),
+        )
+        .await
+        .unwrap();
+    }
+
+    #[tokio::test]
+    #[should_panic(expected = "verifying DeviceSigned")]
+    async fn verify_vp_rejects_mismatched_nonce() {
+        MsoMdocAPI::verify_vp(
+            &Presentation {
+                value: sample_mso_mdoc_vp(),
+                enc_pub_key: None,
+            },
+            Some(HolderBinder {
+                nonce: Nonce::from_secret("another-nonce".to_string()),
+                verifier_id: "https://verifier.example.com".to_string(),
+                response_uri: None,
+            }),
+            VerifyOptions {
+                trusted_certs: None,
                 selective_claims: None,
             },
             UniversalResolver::default(),

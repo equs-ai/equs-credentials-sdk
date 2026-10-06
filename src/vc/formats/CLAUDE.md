@@ -13,7 +13,7 @@ Houses all Verifiable Credential format implementations (SD-JWT, W3C JSON-LD, IS
 | json_ld_vc.rs | W3C JSON-LD VC implementation: `JsonLdAPI`, `VC`, `VP`, `VCMetadata` using `ssi` data-integrity suites. |
 | sd_jwt_vc.rs | SD-JWT VC implementation: `SdJwtAPI`, `VCMetadata`, `SignerWrapper`, selective disclosure via `sd_jwt_rs`. `verify_vc` resolves the signing key from a DID URL `kid`, else an `x5c` chain validated against `VerifyOptions.trusted_certs` (native only), else a `kid`/`iss` DID; `verify_vp` resolves it through `DelegatingKeyResolver`. |
 | dsd_jwt.rs | Delegate SD-JWT (dSD-JWT/dSD-JWT+KB) format primitives — gated `delegate-sd-jwt`. |
-| mso_mdoc.rs | ISO 18013-5 mDoc implementation: `MsoMdocAPI`, `Presentation` (CBOR base64url + optional encryption key). Passes the trusted IACA PEMs to one-core, which validates the Document Signer chain up to one of them; with no configured anchor (`None` or empty) the issuer chain check is **skipped** (developer decision; SD-JWT VC, by contrast, rejects without anchors). |
+| mso_mdoc.rs | ISO 18013-5 mDoc implementation: `MsoMdocAPI`, `Presentation` (CBOR base64url + optional encryption key). Passes the trusted IACA PEMs to one-core, which validates the Document Signer chain up to one of them; with no configured anchor (`None` or empty) the issuer chain check is **skipped** (developer decision; SD-JWT VC, by contrast, rejects without anchors). Its tests' presentation, `tests::sample_mso_mdoc_vp()`, is generated per call through `test_fixtures::mdoc` under a fresh IACA → DS chain and bound to its nonce and `https://verifier.example.com`; the OID4VP verifier tests reuse it. |
 
 ## Key types / traits
 - `API<CL, C, P, CM, PM, VR>` — async trait: `create_vc`, `create_vp`, `verify_vc`, `verify_vp`.
@@ -27,7 +27,7 @@ Houses all Verifiable Credential format implementations (SD-JWT, W3C JSON-LD, IS
 - `VCFormat` / `VPFormat` — format identification enums.
 
 ## Dependencies
-- Depends on: `ssi`, `sd_jwt_rs`, `one_core` (mso_mdoc, non-wasm), `one_core_portable`, `crate::crypto`, `crate::did::universal`, `crate::vc::claims`, `crate::vc::status_formats`, `test_fixtures` (tests only: SD-JWT issuer-identifier fixtures, the unrelated IACA of the mdoc tests)
+- Depends on: `ssi`, `sd_jwt_rs`, `one_core` (mso_mdoc, non-wasm), `one_core_portable`, `crate::crypto`, `crate::did::universal`, `crate::vc::claims`, `crate::vc::status_formats`, `test_fixtures` (tests only: SD-JWT issuer-identifier fixtures, the mdoc test presentation and its IACA → DS chain)
 - Used by: `crate::vc::core`, `crate::vc::mod` (top-level `Credential` and `Presentation` types)
 
 ## Constraints

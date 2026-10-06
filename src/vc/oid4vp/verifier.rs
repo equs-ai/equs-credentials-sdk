@@ -1204,7 +1204,7 @@ mod tests {
     use crate::vc::ClaimFormatDesignation;
     use crate::vc::claims::Claims;
     use crate::vc::dcql::DCQLCredential;
-    use crate::vc::formats::mso_mdoc::tests::SAMPLE_MSO_MDOC_VP;
+    use crate::vc::formats::mso_mdoc::tests::sample_mso_mdoc_vp;
     use crate::vc::oid4vp::jwe::JweEncryptor;
     use crate::vc::oid4vp::tests::fixtures::multi_presentation::{
         auth_response_options, submission_requirements, transaction_data_items,
@@ -2028,7 +2028,7 @@ mod tests {
         let mut vp_token = HashMap::new();
         vp_token.insert(
             "mDL",
-            Value::Array(vec![Value::String(SAMPLE_MSO_MDOC_VP.to_string())]),
+            Value::Array(vec![Value::String(sample_mso_mdoc_vp())]),
         );
 
         let response = AuthorizationResponseObject {
