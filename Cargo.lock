@@ -3462,6 +3462,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "equs-credentials-sdk",
+ "equs-test-fixtures",
  "oauth2",
  "serde",
  "serde_json",

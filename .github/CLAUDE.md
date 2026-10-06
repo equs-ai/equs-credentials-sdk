@@ -56,7 +56,8 @@ needs, not the whole tier, so the graph stays as parallel as the data allows.
 takes minutes, and every job used to wait on both. `clippy` now runs in tier 2
 as an ordinary job.
 
-`ios-xcframework` builds the XCFramework once in tier 2; `swift-test`
+`ios-xcframework` builds the test XCFramework (`make ios-generate-xcframework-test`,
+the debug build plus the `test-fixtures` feature) once in tier 2; `swift-test`
 (`make ios-test-only`) and `ios-demo` both restore it through `wrapper-swift`
 and run in parallel in tier 4. Before the split, `swift-test` built it and
 `ios-demo` waited for the whole 40-minute job just to reuse it. That mirrors

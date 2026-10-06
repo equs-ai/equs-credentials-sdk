@@ -67,7 +67,7 @@ jobs:
       cache-key: ios-xcframework
       targets: aarch64-apple-ios aarch64-apple-ios-sim
       save: wrapper-swift
-      run: cd wrappers/uniffi && make ios-generate-xcframework-dev
+      run: cd wrappers/uniffi && make ios-generate-xcframework-test
 
   build-prod:
     needs: [fmt]

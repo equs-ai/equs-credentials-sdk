@@ -34,6 +34,9 @@ In order to run these tests, you will need to have the JDK installed.
   make kotlin-test
 ```
 
+The test build enables the library's `test-fixtures` feature, which adds the `fixture*` functions the
+suite calls to generate its keys, tokens and certificates at run time; no release target enables it.
+
 # Android
 
 ### Use a release
@@ -213,5 +216,8 @@ In order to run these tests, you will need to have the iOS simulator installed.
 ```bash
   make ios-test
 ```
+
+Like the Kotlin tests, this builds the XCFramework with the `test-fixtures` feature
+(`make ios-generate-xcframework-test`); `make ios-generate-xcframework-dev` and the release targets do not.
 
 

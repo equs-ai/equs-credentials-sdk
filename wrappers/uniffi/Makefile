@@ -11,17 +11,20 @@ ifeq ($(OS),Windows_NT)
     BINARY_NAME = libequssdk.dll
 endif
 
+TEST_FEATURES := --features test-fixtures
+
 kotlin-release-build:
 	@echo "Building the UniFFI binary in release mode..."
 	cargo build --release
 
 kotlin-debug-build:
 	@echo "Building the UniFFI binary in debug mode..."
-	cargo build
+	cargo build $(FEATURES)
 
+kotlin-generate_kotlin_debug: FEATURES := $(TEST_FEATURES)
 kotlin-generate_kotlin_debug: kotlin-debug-build
 	@echo "Generating Kotlin bindings..."
-	cargo run --bin uniffi-bindgen generate --library ../../target/debug/$(BINARY_NAME) --language kotlin --out-dir kotlin/src/main/kotlin
+	cargo run $(FEATURES) --bin uniffi-bindgen generate --library ../../target/debug/$(BINARY_NAME) --language kotlin --out-dir kotlin/src/main/kotlin
 
 kotlin-test: kotlin-generate_kotlin_debug
 	@echo "Running Kotlin tests..."
@@ -145,8 +148,8 @@ IOS_DESTINATION ?= platform=iOS Simulator,id=$(or $(IOS_SIM_ID),$(error no avail
 
 ios-dev-build:
 	@echo "Generating binaries for the arm64 simulator and device"
-	cargo build --target aarch64-apple-ios-sim
-	cargo build --target aarch64-apple-ios
+	cargo build $(FEATURES) --target aarch64-apple-ios-sim
+	cargo build $(FEATURES) --target aarch64-apple-ios
 
 ios-create-dev-lib: ios-dev-build
 	@echo "Creating a debug library for the arm64 simulator"
@@ -157,7 +160,7 @@ ios-create-dev-lib: ios-dev-build
 
 ios-generate-ffi-dev: ios-dev-build
 	@echo "Generating framework module mapping and FFI bindings"
-	cargo run --bin uniffi-bindgen-swift -- ../../target/aarch64-apple-ios/debug/libequssdk.a ../../target/uniffi-xcframework-debug --swift-sources --headers --modulemap --module-name equssdkFFI --modulemap-filename module.modulemap
+	cargo run $(FEATURES) --bin uniffi-bindgen-swift -- ../../target/aarch64-apple-ios/debug/libequssdk.a ../../target/uniffi-xcframework-debug --swift-sources --headers --modulemap --module-name equssdkFFI --modulemap-filename module.modulemap
 	mkdir -p swift/Sources/EqusSdk
 	mv ../../target/uniffi-xcframework-debug/*.swift swift/Sources/EqusSdk/
 
@@ -219,7 +222,10 @@ ios-generate-framework-dev: ios-generate-xcframework-dev
             swift/ios/debug/Sources/EqusSdk/equssdk.swift swift/ios/framework-debug $(IOS_MIN) $(CI_COMMIT_TAG)
 
 
-ios-test: ios-generate-xcframework-dev ios-test-only
+ios-generate-xcframework-test: FEATURES := $(TEST_FEATURES)
+ios-generate-xcframework-test: ios-generate-xcframework-dev
+
+ios-test: ios-generate-xcframework-test ios-test-only
 
 ios-test-only:
 	@echo "Run tests"
