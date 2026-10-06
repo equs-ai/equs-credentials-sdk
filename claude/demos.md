@@ -26,7 +26,7 @@ Self-contained example applications demonstrating how to use EQUS Credentials SD
 - Used by: developers learning the SDK; CI smoke tests
 
 ## Key decisions / constraints
-- Demos use hard-coded keys, tokens, and localhost URLs — they are **not production-ready**.
+- Demos use hard-coded keys, tokens, and localhost URLs — they are **not production-ready**. The Keycloak admin password is the exception: it is read from `KEYCLOAK_ADMIN_PASSWORD`, and the realm export carries no key material.
 - The OID4VC demo is the canonical full-stack example: run issuer, holder, and verifier as three separate processes.
 - The multi-thread demo is specifically for load/concurrency testing of the OID4VCI flow (default 100 concurrent issuances).
 
