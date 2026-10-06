@@ -19,7 +19,7 @@ implementations backed by the `aries_askar` library, with a Node.js NAPI-RS wrap
 - Node.js counterparts: `AskarStorage`, `AskarKms`, `AskarKeyHandle`, `AskarVault` (NAPI classes).
 
 ## Dependencies
-- Depends on: `aries_askar`, `equs_sdk` (core SDK crate), `napi`/`napi-derive` (Node.js wrapper only)
+- Depends on: `aries_askar`, `equs_sdk` (core SDK crate), `napi`/`napi-derive` (Node.js wrapper only), `test_fixtures` (tests only: the SD-JWT the vault tests store)
 - Used by: Node.js SDK wrapper (`wrappers/nodejs/`), demo applications (`demos/nodejs/`)
 
 ## Constraints

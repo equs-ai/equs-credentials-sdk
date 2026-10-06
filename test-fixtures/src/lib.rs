@@ -1,17 +1,25 @@
-//! Secrets the SDK's tests and demos need at runtime — keys generated once per process and a
-//! generic compact-JWS signer — so that no signed token or key is committed to the tree.
+//! Secrets the SDK's tests and demos need at runtime: keys generated once per process, and one
+//! generic builder per fixture kind on top of them, so that no token, key or certificate has to
+//! be committed to the tree.
 //!
-//! Call sites keep their own header and payload values and pass them to [`jws`]; this crate only
-//! owns the key material and the signing.
+//! Call sites keep their own header, claim and parameter values and pass them in; this crate owns
+//! only the key material and the cryptography.
 
 use base64::Engine;
 use base64::prelude::BASE64_URL_SAFE_NO_PAD;
+use one_crypto::jwe::{Header as JweHeader, build_jwe};
+use one_crypto::signer::ecdsa::ECDSASigner;
 use rsa::rand_core::{OsRng, RngCore};
 use rsa::traits::{PrivateKeyParts, PublicKeyParts};
+use secrecy::SecretSlice;
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 use ssi::jwk::Params;
+use standardized_types::jwk::PublicJwk;
 use std::sync::LazyLock;
 
+#[cfg(feature = "x509")]
+pub use rcgen;
 pub use ssi::JWK;
 
 /// Keys shared by every fixture in the process, generated on first use.
@@ -72,6 +80,151 @@ pub fn did_key_url(key: &JWK) -> String {
     ssi::dids::DIDKey::generate_url(key)
         .expect("did:key")
         .to_string()
+}
+
+/// `did:key` DID of `key` — what a `did:key`-bound token carries as `iss`, `sub` or `aud`.
+pub fn did_key(key: &JWK) -> String {
+    ssi::dids::DIDKey::generate(key)
+        .expect("did:key")
+        .to_string()
+}
+
+/// base64url(SHA-256(`input`)): the digest of a disclosure, and the `sd_hash` of an SD-JWT.
+pub fn digest(input: &str) -> String {
+    BASE64_URL_SAFE_NO_PAD.encode(Sha256::digest(input.as_bytes()))
+}
+
+/// Issuer-signed SD-JWT over `header` and `claims`, followed by `disclosures` and a trailing `~`.
+/// `_sd` holds the sorted digests of the disclosures plus any digests already in `claims`; a
+/// disclosure is its JSON array text, digested as given.
+pub fn sd_jwt(header: &Value, claims: &Value, disclosures: &[&str], key: &JWK) -> String {
+    let encoded: Vec<String> = disclosures
+        .iter()
+        .map(|disclosure| BASE64_URL_SAFE_NO_PAD.encode(disclosure))
+        .collect();
+    let mut claims = claims.clone();
+    let mut digests: Vec<String> = claims["_sd"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .map(str::to_string)
+        .collect();
+    digests.extend(encoded.iter().map(|d| digest(d)));
+    digests.sort();
+    if !digests.is_empty() {
+        claims["_sd"] = json!(digests);
+    }
+    let mut token = jws(header, &claims, key);
+    for disclosure in &encoded {
+        token.push('~');
+        token.push_str(disclosure);
+    }
+    token.push('~');
+    token
+}
+
+/// `sd_jwt` with key binding: a JWS over `claims` plus the `sd_hash` of `sd_jwt`, signed with
+/// the holder `key` under `header` (`typ: kb+jwt`), appended to `sd_jwt`.
+pub fn sd_jwt_kb(sd_jwt: &str, header: &Value, claims: &Value, key: &JWK) -> String {
+    let mut claims = claims.clone();
+    claims["sd_hash"] = json!(digest(sd_jwt));
+    format!("{sd_jwt}{}", jws(header, &claims, key))
+}
+
+/// Compact JWE of `payload` for the P-256 `recipient`: ECDH-ES under a fresh ephemeral key, as the
+/// SDK encrypts. `header` gives `kid`, `enc` and the raw `apu` / `apv`; `alg` must be `ECDH-ES`.
+pub fn jwe(header: &Value, payload: &[u8], recipient: &JWK) -> String {
+    assert_eq!(header["alg"], "ECDH-ES", "only ECDH-ES is supported");
+    let ephemeral = JWK::generate_p256();
+    let shared_secret =
+        ECDSASigner::shared_secret_p256(&private_scalar(&ephemeral), &public_jwk(recipient))
+            .expect("ECDH");
+    let text = |name: &str| header.get(name).and_then(Value::as_str).map(str::to_string);
+    build_jwe(
+        payload,
+        JweHeader {
+            key_id: text("kid").expect("`kid`"),
+            agreement_partyuinfo: text("apu"),
+            agreement_partyvinfo: text("apv"),
+        },
+        shared_secret,
+        public_jwk(&ephemeral),
+        serde_json::from_value(header["enc"].clone()).expect("`enc`"),
+    )
+    .expect("JWE")
+}
+
+fn private_scalar(key: &JWK) -> SecretSlice<u8> {
+    let Params::EC(ec) = &key.params else {
+        panic!("not an EC key")
+    };
+    SecretSlice::from(ec.ecc_private_key.as_ref().expect("`d`").0.clone())
+}
+
+fn public_jwk(key: &JWK) -> PublicJwk {
+    serde_json::from_value(serde_json::to_value(key.to_public()).expect("JWK")).expect("public JWK")
+}
+
+/// X.509 certificate (PEM) over `params` for `key`: self-signed, or issued by `issuer`, a CA
+/// certificate (PEM) with its key. `params` is `rcgen`'s, so subject, SANs, validity, key usages
+/// and the CA flag are the caller's, and an unset serial number is drawn at random; `key` is a P-256
+/// [`JWK`], so the certified key is the one that signs with [`jws`] under an `x5c` header.
+#[cfg(feature = "x509")]
+pub fn x509(
+    mut params: rcgen::CertificateParams,
+    key: &JWK,
+    issuer: Option<(&str, &JWK)>,
+) -> String {
+    if params.serial_number.is_none() {
+        let mut serial = [0u8; 20];
+        OsRng.fill_bytes(&mut serial);
+        serial[0] &= 0x7f;
+        params.serial_number = Some(rcgen::SerialNumber::from_slice(&serial));
+    }
+    let signing_key = key_pair(key);
+    let certificate = match issuer {
+        None => params.self_signed(&signing_key),
+        Some((ca_pem, ca_key)) => params.signed_by(
+            &signing_key,
+            &rcgen::Issuer::from_ca_cert_pem(ca_pem, key_pair(ca_key)).expect("CA certificate"),
+        ),
+    };
+    certificate.expect("certificate").pem()
+}
+
+/// `x5c` header value of a PEM chain, in the order given (leaf first): each certificate's DER in
+/// standard base64.
+pub fn x5c(pem_chain: &str) -> Vec<String> {
+    pem_chain
+        .split("-----BEGIN CERTIFICATE-----")
+        .skip(1)
+        .map(|block| {
+            block
+                .split("-----END CERTIFICATE-----")
+                .next()
+                .expect("certificate block")
+                .split_whitespace()
+                .collect()
+        })
+        .collect()
+}
+
+#[cfg(feature = "x509")]
+fn key_pair(key: &JWK) -> rcgen::KeyPair {
+    use p256::pkcs8::{EncodePrivateKey, LineEnding};
+    let Params::EC(ec) = &key.params else {
+        panic!("not an EC key")
+    };
+    let secret = p256::SecretKey::from_slice(&ec.ecc_private_key.as_ref().expect("`d`").0)
+        .expect("P-256 key");
+    rcgen::KeyPair::from_pem(
+        secret
+            .to_pkcs8_pem(LineEnding::LF)
+            .expect("PKCS#8")
+            .as_str(),
+    )
+    .expect("key pair")
 }
 
 fn b64(value: &Value) -> String {
@@ -169,6 +322,222 @@ mod tests {
         let (did, fragment) = url.split_once('#').unwrap();
 
         assert_eq!(did.strip_prefix("did:key:").unwrap(), fragment);
+    }
+
+    #[test]
+    fn sd_jwt_reproduces_the_digests_of_an_sdk_issued_credential() {
+        let disclosures = [
+            r#"["o0TxtL8AhuLRWRgnH984_Q", "given_name", "John"]"#,
+            r#"["vIS3esPLyQPtQgBLgOFaag", "family_name", "Doe"]"#,
+            r#"["lio5qsUdvI_uwyGbFamNqQ", "dob", "09/09/1989"]"#,
+        ];
+        let issuer = &keys().issuer;
+
+        let token = sd_jwt(
+            &json!({ "typ": "vc+sd-jwt", "alg": "ES256" }),
+            &json!({ "vct": "SD_JWT_cred", "_sd_alg": "sha-256" }),
+            &disclosures,
+            issuer,
+        );
+
+        let (issuer_jws, rest) = token.split_once('~').unwrap();
+        let encoded: Vec<String> = disclosures
+            .iter()
+            .map(|d| BASE64_URL_SAFE_NO_PAD.encode(d))
+            .collect();
+        assert_eq!(rest, format!("{}~", encoded.join("~")));
+        let (_, payload) =
+            ssi::claims::jws::decode_verify(issuer_jws, &issuer.to_public()).unwrap();
+        let claims: Value = serde_json::from_slice(&payload).unwrap();
+        assert_eq!(
+            claims["_sd"],
+            json!([
+                "CT5o1LfNWDOKOxx42BYG4754lZHy6t0nOPkFEdfoqoM",
+                "K7ma0NfqGC_3LPtmvqkrI4yrJlvH4TU69e7Iv-7EIo4",
+                "reYaNFBWHzV17cvuq3rFjUI3Gx5Js_DmnUZSERd4hZs"
+            ])
+        );
+        assert_eq!(claims["vct"], "SD_JWT_cred");
+    }
+
+    #[test]
+    fn sd_jwt_keeps_the_digests_of_undisclosed_claims() {
+        let disclosure = r#"["s","a","1"]"#;
+
+        let token = sd_jwt(
+            &json!({ "alg": "ES256" }),
+            &json!({ "_sd": ["undisclosed-digest"] }),
+            &[disclosure],
+            &keys().issuer,
+        );
+
+        let (issuer_jws, _) = token.split_once('~').unwrap();
+        let (_, payload) = ssi::claims::jws::decode_unverified(issuer_jws).unwrap();
+        let claims: Value = serde_json::from_slice(&payload).unwrap();
+        let sd = claims["_sd"].as_array().unwrap();
+        assert_eq!(sd.len(), 2);
+        assert!(sd.contains(&json!("undisclosed-digest")));
+        assert!(sd.contains(&json!(digest(&BASE64_URL_SAFE_NO_PAD.encode(disclosure)))));
+    }
+
+    #[test]
+    fn sd_jwt_without_disclosures_has_no_sd_claim() {
+        let token = sd_jwt(
+            &json!({ "alg": "ES256" }),
+            &json!({ "id": "1" }),
+            &[],
+            &keys().issuer,
+        );
+
+        let (issuer_jws, rest) = token.split_once('~').unwrap();
+
+        assert_eq!(rest, "");
+        let (_, payload) = ssi::claims::jws::decode_unverified(issuer_jws).unwrap();
+        assert_eq!(payload, br#"{"id":"1"}"#);
+    }
+
+    #[test]
+    fn sd_jwt_kb_binds_the_hash_of_the_presented_sd_jwt() {
+        let holder = &keys().holder;
+        let sd_jwt = sd_jwt(&json!({ "alg": "ES256" }), &json!({}), &[], &keys().issuer);
+
+        let presentation = sd_jwt_kb(
+            &sd_jwt,
+            &json!({ "typ": "kb+jwt", "alg": "ES256" }),
+            &json!({ "nonce": "n", "aud": "a" }),
+            holder,
+        );
+
+        let kb_jwt = presentation.strip_prefix(sd_jwt.as_str()).unwrap();
+        let (header, payload) =
+            ssi::claims::jws::decode_verify(kb_jwt, &holder.to_public()).unwrap();
+        let claims: Value = serde_json::from_slice(&payload).unwrap();
+        assert_eq!(header.type_.as_deref(), Some("kb+jwt"));
+        assert_eq!(
+            claims,
+            json!({ "nonce": "n", "aud": "a", "sd_hash": digest(&sd_jwt) })
+        );
+    }
+
+    #[test]
+    fn did_key_is_the_did_of_did_key_url() {
+        let url = did_key_url(&keys().verifier);
+
+        assert_eq!(url.split_once('#').unwrap().0, did_key(&keys().verifier));
+    }
+
+    struct Recipient(SecretSlice<u8>);
+
+    #[async_trait::async_trait]
+    impl one_crypto::jwe::PrivateKeyAgreementHandle for Recipient {
+        async fn shared_secret(
+            &self,
+            remote_jwk: &PublicJwk,
+        ) -> Result<SecretSlice<u8>, one_crypto::encryption::EncryptionError> {
+            ECDSASigner::shared_secret_p256(&self.0, remote_jwk)
+        }
+    }
+
+    #[tokio::test]
+    async fn jwe_decrypts_with_the_recipient_key() {
+        let verifier = &keys().verifier;
+        let header = json!({
+            "kid": "ac", "enc": "A128CBC-HS256", "alg": "ECDH-ES", "apu": "some_nonce", "apv": "some_nonce"
+        });
+
+        let token = jwe(&header, br#"{"hello":"world"}"#, verifier);
+
+        let protected = BASE64_URL_SAFE_NO_PAD
+            .decode(token.split('.').next().unwrap())
+            .unwrap();
+        let protected: Value = serde_json::from_slice(&protected).unwrap();
+        assert_eq!(protected["kid"], "ac");
+        assert_eq!(protected["alg"], "ECDH-ES");
+        assert_eq!(protected["enc"], "A128CBC-HS256");
+        assert_eq!(
+            protected["apu"],
+            BASE64_URL_SAFE_NO_PAD.encode("some_nonce")
+        );
+        assert_eq!(protected["epk"]["crv"], "P-256");
+        let plaintext =
+            one_crypto::jwe::decrypt_jwe_payload(&token, &Recipient(private_scalar(verifier)))
+                .await
+                .unwrap();
+        assert_eq!(plaintext, br#"{"hello":"world"}"#);
+    }
+
+    #[test]
+    #[should_panic(expected = "only ECDH-ES")]
+    fn jwe_rejects_another_alg() {
+        jwe(
+            &json!({ "kid": "k", "enc": "A128GCM", "alg": "RSA-OAEP" }),
+            b"x",
+            &keys().verifier,
+        );
+    }
+
+    #[cfg(feature = "x509")]
+    #[test]
+    fn x509_issues_a_leaf_for_the_fixture_key_under_a_root() {
+        use base64::prelude::BASE64_STANDARD;
+        use rcgen::{BasicConstraints, CertificateParams, DnType, IsCa};
+        let ca_key = JWK::generate_p256();
+        let mut ca = CertificateParams::new(Vec::<String>::new()).unwrap();
+        ca.distinguished_name
+            .push(DnType::CommonName, "Fixture Root CA");
+        ca.is_ca = IsCa::Ca(BasicConstraints::Unconstrained);
+        let mut leaf = CertificateParams::new(vec!["issuer.example".to_string()]).unwrap();
+        leaf.distinguished_name
+            .push(DnType::CommonName, "Fixture Issuer");
+
+        let root = x509(ca, &ca_key, None);
+        let cert = x509(leaf, &keys().issuer, Some((&root, &ca_key)));
+
+        let root_pem = x509_parser::pem::parse_x509_pem(root.as_bytes()).unwrap().1;
+        let cert_pem = x509_parser::pem::parse_x509_pem(cert.as_bytes()).unwrap().1;
+        let root_x509 = root_pem.parse_x509().unwrap();
+        let cert_x509 = cert_pem.parse_x509().unwrap();
+        assert_eq!(
+            cert_x509.issuer().to_string(),
+            root_x509.subject().to_string()
+        );
+        assert_eq!(cert_x509.subject().to_string(), "CN=Fixture Issuer");
+        assert!(!cert_x509.is_ca() && root_x509.is_ca());
+        let Params::EC(ec) = &keys().issuer.params else {
+            panic!("not EC")
+        };
+        let point = [
+            &[4u8][..],
+            &ec.x_coordinate.as_ref().unwrap().0,
+            &ec.y_coordinate.as_ref().unwrap().0,
+        ]
+        .concat();
+        assert_eq!(
+            cert_x509.public_key().subject_public_key.data.as_ref(),
+            point.as_slice()
+        );
+        let chain = x5c(&format!("{cert}{root}"));
+        assert_eq!(chain.len(), 2);
+        assert_eq!(
+            BASE64_STANDARD.decode(&chain[0]).unwrap(),
+            cert_pem.contents
+        );
+        assert_eq!(
+            BASE64_STANDARD.decode(&chain[1]).unwrap(),
+            root_pem.contents
+        );
+        let again = x509(
+            rcgen::CertificateParams::new(Vec::<String>::new()).unwrap(),
+            &keys().issuer,
+            None,
+        );
+        let again_pem = x509_parser::pem::parse_x509_pem(again.as_bytes())
+            .unwrap()
+            .1;
+        assert_ne!(
+            again_pem.parse_x509().unwrap().raw_serial(),
+            cert_x509.raw_serial()
+        );
     }
 
     #[test]

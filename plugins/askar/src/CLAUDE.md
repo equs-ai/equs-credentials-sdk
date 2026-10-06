@@ -20,7 +20,7 @@ durable, encrypted key and credential storage as an alternative to the in-memory
 - `AskarVaultFetchOptions` — Askar-native pagination/sort parameters extending `VaultFetchOptions`.
 
 ## Dependencies
-- Depends on: `aries_askar`, `equs_sdk` (crypto, kms, vault, vc), `snafu`, `tracing`, `zeroize`, `base64`, `sha2`, `bip32`, `ecdsa`, `rand`, `uuid`, `async_trait`
+- Depends on: `aries_askar`, `equs_sdk` (crypto, kms, vault, vc), `snafu`, `tracing`, `zeroize`, `base64`, `sha2`, `bip32`, `ecdsa`, `rand`, `uuid`, `async_trait`, `test_fixtures` (tests only: the SD-JWT the vault tests store)
 - Used by: `plugins/askar/wrappers/nodejs/src/`, and optionally by host applications needing persistent storage
 
 ## Constraints

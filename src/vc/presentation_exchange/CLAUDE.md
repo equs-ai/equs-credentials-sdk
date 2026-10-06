@@ -17,5 +17,5 @@ Implements the DIF Presentation Exchange spec: converts a `PresentationDefinitio
 - `PresentationResponse` — internal struct pairing serialized presentations with submission metadata.
 
 ## Dependencies
-- Depends on: `openid4vp::core`, `crate::vc::core::api`, `crate::vc::claims`, `crate::vault`
+- Depends on: `openid4vp::core`, `crate::vc::core::api`, `crate::vc::claims`, `crate::vault`, `test_fixtures` (tests only: the SD-JWT presentation)
 - Used by: `oid4vp::holder`, `oid4vp::verifier`, `dcql` (StatusSize re-export)

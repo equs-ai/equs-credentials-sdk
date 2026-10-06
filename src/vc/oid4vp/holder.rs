@@ -1479,8 +1479,8 @@ mod tests {
         AUTH_REQUEST_WITH_WRONG_CLIENT_ID,
     };
     use crate::vc::oid4vp::tests::fixtures::{
-        REQUEST_URI, SAMPLE_SD_JWT_WITH_STATUS, STATE, VERIFIER_URL, multi_presentation,
-        sample_credential_status_list, single_presentation,
+        REQUEST_URI, STATE, VERIFIER_URL, multi_presentation, sample_credential_status_list,
+        sample_sd_jwt_with_status, single_presentation,
     };
     use crate::vc::oid4vp::tests::utils::{
         PresentationTestCase, build_url, holder_service, request_verifier, validate_claims,
@@ -2820,7 +2820,7 @@ mod tests {
         let holder = holder_service(http_client, kms, vault).await;
 
         let status = holder
-            .get_credential_status(&Credential::SdJwt(SAMPLE_SD_JWT_WITH_STATUS.to_string()))
+            .get_credential_status(&Credential::SdJwt(sample_sd_jwt_with_status()))
             .await
             .unwrap()
             .unwrap();

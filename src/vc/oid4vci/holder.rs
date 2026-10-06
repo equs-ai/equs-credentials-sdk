@@ -910,11 +910,11 @@ mod tests {
     use crate::vc::formats::json_ld_vc::VC;
     use crate::vc::oid4vci::protocol_error::TokenEndpointError;
     use crate::vc::oid4vci::tests::fixtures::{
-        AUTH_URL, CRED_DEF_ID, ISSUER_URL, NOTIFICATION_ID, REQ_URI_CODE, SCOPE, SD_JWT_CREDS,
+        AUTH_URL, CRED_DEF_ID, ISSUER_URL, NOTIFICATION_ID, REQ_URI_CODE, SCOPE,
         SampleIssuerMetadata, access_token, fake_access_token, sample_access_token,
         sample_authorization_metadata, sample_batch_cred_response, sample_cred_response,
         sample_credential_definition, sample_offer_with_auth_code_grant,
-        sample_offer_with_pre_auth_code_grant,
+        sample_offer_with_pre_auth_code_grant, sd_jwt_creds,
     };
     use crate::vc::oid4vci::{
         CredentialRequest, CredentialResult, Holder, Notification, protocol_error,
@@ -1279,7 +1279,7 @@ mod tests {
 
         match &credentials[0] {
             Credential::SdJwt(cred) => {
-                assert_eq!(cred, SD_JWT_CREDS);
+                assert_eq!(cred, &sd_jwt_creds());
                 assert_eq!(notification_id, NOTIFICATION_ID);
             }
             _ => {
@@ -1301,7 +1301,7 @@ mod tests {
         SampleIssuerMetadata::with_sdjwtvc_conf(),
         json![
         {
-            "credentials": [{"credential": SD_JWT_CREDS.to_string()}],
+            "credentials": [{"credential": sd_jwt_creds()}],
             "notification_id": Some("notification_id".to_string()),
         }],
     )]
@@ -1440,7 +1440,7 @@ mod tests {
         for credential in credentials {
             match &credential {
                 Credential::SdJwt(cred) => {
-                    assert_eq!(cred, SD_JWT_CREDS);
+                    assert_eq!(cred, &sd_jwt_creds());
                     assert_eq!(notification_id, NOTIFICATION_ID);
                 }
                 _ => {
@@ -1672,18 +1672,21 @@ mod tests {
     //noinspection HttpUrlsUsage
     #[rstest]
     #[case::ldpvc(ISSUER_URL, Credential::LdpVc(ldp_vc_credential()))]
-    #[case::sdjwt_iss_oid4vci(ISSUER_URL, Credential::SdJwt(SD_JWT_CREDENTIAL_ISS_OID4VCI.to_owned()
-    ))]
-    #[case::sdjwt_iss_did(ISSUER_URL, Credential::SdJwt(SD_JWT_CREDENTIAL_ISS_DID.to_owned()))]
+    #[case::sdjwt_iss_oid4vci(ISSUER_URL, Credential::SdJwt(sd_jwt_credential_iss_oid4vci()))]
+    #[case::sdjwt_iss_did(ISSUER_URL, Credential::SdJwt(sd_jwt_credential_iss_did()))]
     #[should_panic(
         expected = "Credential contains issuer identifier notadid:web:issuer-backend.com"
     )]
-    #[case::sdjwt_iss_other_invalid(ISSUER_URL, Credential::SdJwt(SD_JWT_CREDENTIAL_ISS_OTHER_INVALID.to_owned()
-    ))]
-    #[case::sdjwt_iss_other_valid("http://issuer-backend.com", Credential::SdJwt(SD_JWT_CREDENTIAL_ISS_OTHER_VALID.to_owned()
-    ))]
+    #[case::sdjwt_iss_other_invalid(
+        ISSUER_URL,
+        Credential::SdJwt(sd_jwt_credential_iss_other_invalid())
+    )]
+    #[case::sdjwt_iss_other_valid(
+        "http://issuer-backend.com",
+        Credential::SdJwt(sd_jwt_credential_iss_other_valid())
+    )]
     #[should_panic(expected = "Credential does not contain issuer identifier")]
-    #[case::sdjwt_iss_none(ISSUER_URL, Credential::SdJwt(SD_JWT_CREDENTIAL_ISS_NONE.to_owned()))]
+    #[case::sdjwt_iss_none(ISSUER_URL, Credential::SdJwt(sd_jwt_credential_iss_none()))]
     #[should_panic(expected = "Unsupported format: jwt_vc_json")]
     #[case::unsupported_format_jwt_vc_json(ISSUER_URL, Credential::JwtVcJson("MOCK_CREDENTIAL".to_owned()
     ))]
@@ -1753,31 +1756,88 @@ mod tests {
             .unwrap()
     }
 
-    // Payload: { "iss": "https://issuer-backend.com", "id": "1234" }
-    const SD_JWT_CREDENTIAL_ISS_OID4VCI: &str = "eyJ0eXAiOiJzZCtqd3QiLCJhbGciOiJFUzI1NiJ9\
-    .eyJpc3MiOiJodHRwczovL2lzc3Vlci1iYWNrZW5kLmNvbSIsImlkIjoiMTIzNCIsIl9zZF9hbGciOiJTSEEtMjU2In0\
-    .-ZfBXDOJhhpA448q5oxGUl7VcxZAYFg9C0gYTbAweDKBxsB2KNrBIh9UK3hAJsSizBRdA0wKnu_Tn5ZLyW-Ouw~";
+    fn sd_jwt_credential_iss_oid4vci() -> String {
+        let keys = test_fixtures::keys();
+        test_fixtures::sd_jwt(
+            &serde_json::json!({
+                "typ": "sd+jwt",
+                "alg": "ES256"
+            }),
+            &serde_json::json!({
+                "iss": "https://issuer-backend.com",
+                "id": "1234",
+                "_sd_alg": "SHA-256"
+            }),
+            &[],
+            &keys.issuer,
+        )
+    }
 
-    // Payload: { "iss": "did:web:issuer-backend.com/ignored-path", "id": "1234" }
-    const SD_JWT_CREDENTIAL_ISS_DID: &str = "eyJ0eXAiOiJzZCtqd3QiLCJhbGciOiJFUzI1NiJ9\
-    .eyJpc3MiOiJkaWQ6d2ViOmlzc3Vlci1iYWNrZW5kLmNvbS9pZ25vcmVkLXBhdGgiLCJpZCI6IjEyMzQiLCJfc2RfYWxnIjoiU0hBLTI1NiJ9\
-    .3peUWSXL3NZL6Ye2c7apa_czw4SCwUMpVk0ryxK4F_xr_SwS14AIz9SqrN3o1ZGC5goT1vVDmEczI9kMmHCCmA~";
+    fn sd_jwt_credential_iss_did() -> String {
+        let keys = test_fixtures::keys();
+        test_fixtures::sd_jwt(
+            &serde_json::json!({
+                "typ": "sd+jwt",
+                "alg": "ES256"
+            }),
+            &serde_json::json!({
+                "iss": "did:web:issuer-backend.com/ignored-path",
+                "id": "1234",
+                "_sd_alg": "SHA-256"
+            }),
+            &[],
+            &keys.issuer,
+        )
+    }
 
-    // Payload: { "iss": "notadid:web:issuer-backend.com", "id": "1234" }
-    const SD_JWT_CREDENTIAL_ISS_OTHER_INVALID: &str = "eyJ0eXAiOiJzZCtqd3QiLCJhbGciOiJFUzI1NiJ9\
-    .eyJpc3MiOiJub3RhZGlkOndlYjppc3N1ZXItYmFja2VuZC5jb20iLCJpZCI6IjEyMzQiLCJfc2RfYWxnIjoiU0hBLTI1NiJ9\
-    .GcD3futV-qHM0WsTPxxVk_DCyAOlcjUAGXbikeSM7AkWgyk7QDVqS5Z_FUpQ0tdrzaG8lAzlNJMrUAf4FKkk9A~";
+    fn sd_jwt_credential_iss_other_invalid() -> String {
+        let keys = test_fixtures::keys();
+        test_fixtures::sd_jwt(
+            &serde_json::json!({
+                "typ": "sd+jwt",
+                "alg": "ES256"
+            }),
+            &serde_json::json!({
+                "iss": "notadid:web:issuer-backend.com",
+                "id": "1234",
+                "_sd_alg": "SHA-256"
+            }),
+            &[],
+            &keys.issuer,
+        )
+    }
 
-    // Payload: { "iss": "http://issuer-backend.com", "id": "1234" }
-    // Note that Credential Issuer Identifier is URL with https protocol.
-    const SD_JWT_CREDENTIAL_ISS_OTHER_VALID: &str = "eyJ0eXAiOiJzZCtqd3QiLCJhbGciOiJFUzI1NiJ9\
-    .eyJpc3MiOiJodHRwOi8vaXNzdWVyLWJhY2tlbmQuY29tIiwiaWQiOiIxMjM0In0\
-    .8n5Y2hzrT3nKuqtJ6ofppryjOAHVCKvvcEAv3NUrsPEIEFNTQe0lShRdcJqIeJjaJEu9FF4kmYru9QXfgB5-ug~";
+    fn sd_jwt_credential_iss_other_valid() -> String {
+        let keys = test_fixtures::keys();
+        test_fixtures::sd_jwt(
+            &serde_json::json!({
+                "typ": "sd+jwt",
+                "alg": "ES256"
+            }),
+            &serde_json::json!({
+                "iss": "http://issuer-backend.com",
+                "id": "1234"
+            }),
+            &[],
+            &keys.issuer,
+        )
+    }
 
-    // Payload: { "id": "1234" }
-    const SD_JWT_CREDENTIAL_ISS_NONE: &str = "eyJ0eXAiOiJzZCtqd3QiLCJhbGciOiJFUzI1NiJ9\
-    .eyJpZCI6IjEyMzQiLCJfc2RfYWxnIjoiU0hBLTI1NiJ9\
-    .J1Lu6onzdyVbPM2QQg9mFUShMCI-4VPBe4rSss0O8g3H0Bc9klzB1eVdHjbEKxkB79Vt3fjg83UM-Ya4tXySzg~";
+    fn sd_jwt_credential_iss_none() -> String {
+        let keys = test_fixtures::keys();
+        test_fixtures::sd_jwt(
+            &serde_json::json!({
+                "typ": "sd+jwt",
+                "alg": "ES256"
+            }),
+            &serde_json::json!({
+                "id": "1234",
+                "_sd_alg": "SHA-256"
+            }),
+            &[],
+            &keys.issuer,
+        )
+    }
 
     fn ldp_vc_credential() -> VC {
         serde_json::from_str(

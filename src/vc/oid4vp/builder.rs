@@ -720,16 +720,22 @@ mod tests {
 
     #[tokio::test]
     async fn build_verifier_with_trusted_certs() {
-        let pem = "-----BEGIN CERTIFICATE-----
-MIIBZzCCAQ6gAwIBAgIUGaB+RAZje4MNjJqrAlNx1ByAiL8wCgYIKoZIzj0EAwIw
-EjEQMA4GA1UEAwwHQ0EgQ2VydDAeFw0yNTEyMTUxMDU2MzBaFw0zNTEyMTMxMDU2
-MzBaMBIxEDAOBgNVBAMMB0NBIENlcnQwWTATBgcqhkjOPQIBBggqhkjOPQMBBwNC
-AASVMf5Ykf8dzr46duTAZN3X2iFC1sp1pL15V3u/KDsmPjR21VnK1uv6kDvEziF7
-VyIFbvb40t/+c5eB3jg1cMq4o0IwQDAPBgNVHRMBAf8EBTADAQH/MA4GA1UdDwEB
-/wQEAwIBhjAdBgNVHQ4EFgQULHoOFFycXvdnCIlsyQiI5izPKkMwCgYIKoZIzj0E
-AwIDRwAwRAIgF+H7wT7a95WbiE+DDlZrQ7U3RlCUOMCFqudFRz+K6I4CIAT35kig
-4Q1ALvtXiWKDOjZIVxlw5eKQiq0dsd+bXKZE
------END CERTIFICATE-----";
+        use test_fixtures::rcgen::{
+            BasicConstraints, CertificateParams, DnType, IsCa, KeyUsagePurpose, date_time_ymd,
+        };
+        let mut params = CertificateParams::new(Vec::<String>::new()).unwrap();
+        params
+            .distinguished_name
+            .push(DnType::CommonName, "CA Cert");
+        params.is_ca = IsCa::Ca(BasicConstraints::Unconstrained);
+        params.key_usages = vec![
+            KeyUsagePurpose::DigitalSignature,
+            KeyUsagePurpose::KeyCertSign,
+            KeyUsagePurpose::CrlSign,
+        ];
+        params.not_before = date_time_ymd(2025, 12, 15);
+        params.not_after = date_time_ymd(2035, 12, 13);
+        let pem = test_fixtures::x509(params, &test_fixtures::JWK::generate_p256(), None);
 
         let kms = LocalKms::new();
         let nonce_gen = LocalNonceHandler::default();

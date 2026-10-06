@@ -543,7 +543,6 @@ mod tests {
     use equs_sdk::vc::{Credential, CredentialMetadata, VCFormat};
     use rstest::rstest;
 
-    const CRED_SD_JWT: &str = "eyJ0eXAiOiJ2YytzZC1qd3QiLCJhbGciOiJFUzI1NiIsImtpZCI6ImRpZDprZXk6ekRuYWV1alBxWjVFakhtZmtyell3ZUxmTXFyOGFxQTNvdDNCdGM0RmU5dHlMcWttUiN6RG5hZXVqUHFaNUVqSG1ma3J6WXdlTGZNcXI4YXFBM290M0J0YzRGZTl0eUxxa21SIn0.eyJfc2QiOlsiQ1Q1bzFMZk5XRE9LT3h4NDJCWUc0NzU0bFpIeTZ0MG5PUGtGRWRmb3FvTSIsIks3bWEwTmZxR0NfM0xQdG12cWtySTR5ckpsdkg0VFU2OWU3SXYtN0VJbzQiLCJyZVlhTkZCV0h6VjE3Y3Z1cTNyRmpVSTNHeDVKc19EbW5VWlNFUmQ0aFpzIl0sInZjdCI6IlNEX0pXVF9jcmVkIiwic3ViIjoiZGlkOmtleTp6RG5hZW5wbnRDa1huRENuYURrNjJMeE5xUGM0Q01kMzJmYmhpVnNaVjVLcFBURzJjIiwibmJmIjoxNzI1NTMzMjU0LCJfc2RfYWxnIjoic2hhLTI1NiIsImlzcyI6ImRpZDprZXk6ekRuYWV1alBxWjVFakhtZmtyell3ZUxmTXFyOGFxQTNvdDNCdGM0RmU5dHlMcWttUiIsImlhdCI6MTcyNTUzMzI1NCwiZXhwIjoxNzU3MDY5MjU0LCJjbmYiOnsiandrIjp7Imt0eSI6IkVDIiwiY3J2IjoiUC0yNTYiLCJ4IjoiVExuNjZxYm5QZXhLeUZtZ3h1Y1kzSlpyZHhCRGpBc3ItbXkya1dBYms4ayIsInkiOiJzaFl6eUVUOENyWVcyTXhPU0FCSkxhbUpPTGV3LWpQbE9aeHdTUzZrWGdjIn19fQ.CBBzIiTjRs2bmKENQcRY14wVnl2vnIjJY9u3AYrA9KQDjqCXZXSzoxQlripAM6Ud_QaYNrZcHK2EVo4QlH3k9w~WyJvMFR4dEw4QWh1TFJXUmduSDk4NF9RIiwgImdpdmVuX25hbWUiLCAiSm9obiJd~WyJ2SVMzZXNQTHlRUHRRZ0JMZ09GYWFnIiwgImZhbWlseV9uYW1lIiwgIkRvZSJd~WyJsaW81cXNVZHZJX3V3eUdiRmFtTnFRIiwgImRvYiIsICIwOS8wOS8xOTg5Il0~";
     const CRED_LDP_VC: &str = r###"{
             "@context": "https://www.w3.org/2018/credentials/v1",
             "id": "http://example.org/credentials/3731",
@@ -816,7 +815,7 @@ mod tests {
     }
 
     fn get_credential_sd_jwt() -> Credential {
-        Credential::SdJwt(CRED_SD_JWT.to_string())
+        Credential::SdJwt(cred_sd_jwt())
     }
     fn get_empty_credential_metadata_sd_jwt(kid: String) -> CredentialMetadata {
         CredentialMetadata {
@@ -931,7 +930,7 @@ mod tests {
             ],
         };
         vault
-            .store_credential(Credential::SdJwt(CRED_SD_JWT.to_string()), &cred_meta)
+            .store_credential(Credential::SdJwt(cred_sd_jwt()), &cred_meta)
             .await
             .unwrap()
     }
@@ -954,7 +953,7 @@ mod tests {
 
     fn create_expected_entry_sd_jwt(id: String) -> CredentialEntry {
         CredentialEntry {
-            credential: Credential::SdJwt(CRED_SD_JWT.to_string()),
+            credential: Credential::SdJwt(cred_sd_jwt()),
             kid: "1234".into(),
             id,
         }
@@ -965,5 +964,34 @@ mod tests {
             kid: "1234".into(),
             id,
         }
+    }
+
+    fn cred_sd_jwt() -> String {
+        let keys = test_fixtures::keys();
+        test_fixtures::sd_jwt(
+            &serde_json::json!({
+                "typ": "vc+sd-jwt",
+                "alg": "ES256",
+                "kid": test_fixtures::did_key_url(&keys.issuer)
+            }),
+            &serde_json::json!({
+                "vct": "SD_JWT_cred",
+                "sub": test_fixtures::did_key(&keys.holder),
+                "nbf": 1725533254,
+                "_sd_alg": "sha-256",
+                "iss": test_fixtures::did_key(&keys.issuer),
+                "iat": 1725533254,
+                "exp": 1757069254,
+                "cnf": {
+                    "jwk": keys.holder.to_public()
+                }
+            }),
+            &[
+                r#"["o0TxtL8AhuLRWRgnH984_Q", "given_name", "John"]"#,
+                r#"["vIS3esPLyQPtQgBLgOFaag", "family_name", "Doe"]"#,
+                r#"["lio5qsUdvI_uwyGbFamNqQ", "dob", "09/09/1989"]"#,
+            ],
+            &keys.issuer,
+        )
     }
 }
