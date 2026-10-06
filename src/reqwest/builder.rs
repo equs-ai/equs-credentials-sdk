@@ -299,21 +299,30 @@ mod tests {
     #[cfg(not(target_arch = "wasm32"))]
     #[test]
     fn add_trusted_root_certificate_appends_to_internal_vec() {
-        // A self-signed cert generated for testing only — PEM body validates
-        // shape; we just need a parseable Certificate.
-        const PEM: &str = "-----BEGIN CERTIFICATE-----\n\
-MIIBhTCCASugAwIBAgIQIRi6zePL6mKjOipn+dNuaTAKBggqhkjOPQQDAjASMRAw\n\
-DgYDVQQKEwdBY21lIENvMB4XDTE3MTAyMDE5NDMwNloXDTE4MTAyMDE5NDMwNlow\n\
-EjEQMA4GA1UEChMHQWNtZSBDbzBZMBMGByqGSM49AgEGCCqGSM49AwEHA0IABD0d\n\
-7VNhbWvZLWPuj/RtHFjvtJBEwOkhbN/BnnE8rnZR8+sbwnc/KhCk3FhnpHZnQz7B\n\
-5aETbbIgmuvewdjvSBSjYzBhMA4GA1UdDwEB/wQEAwICpDATBgNVHSUEDDAKBggr\n\
-BgEFBQcDATAPBgNVHRMBAf8EBTADAQH/MCkGA1UdEQQiMCCCDmxvY2FsaG9zdDo1\n\
-NDUzgg4xMjcuMC4wLjE6NTQ1MzAKBggqhkjOPQQDAgNIADBFAiEA2zpJEPQyz6/l\n\
-Wf86aX6PepsntZv2GYlA5UpabfT2EZICICpJ5h/iI+i341gBmLiAFQOyTDT+/wQc\n\
-6MF9+Yw1Yy0t\n\
------END CERTIFICATE-----";
+        use test_fixtures::rcgen::{
+            BasicConstraints, CertificateParams, DnType, ExtendedKeyUsagePurpose, IsCa,
+            KeyUsagePurpose, date_time_ymd,
+        };
+        let mut params = CertificateParams::new(vec![
+            "localhost:5453".to_string(),
+            "127.0.0.1:5453".to_string(),
+        ])
+        .unwrap();
+        params
+            .distinguished_name
+            .push(DnType::OrganizationName, "Acme Co");
+        params.is_ca = IsCa::Ca(BasicConstraints::Unconstrained);
+        params.key_usages = vec![
+            KeyUsagePurpose::DigitalSignature,
+            KeyUsagePurpose::KeyEncipherment,
+            KeyUsagePurpose::KeyCertSign,
+        ];
+        params.extended_key_usages = vec![ExtendedKeyUsagePurpose::ServerAuth];
+        params.not_before = date_time_ymd(2017, 10, 20);
+        params.not_after = date_time_ymd(2018, 10, 20);
+        let pem = test_fixtures::x509(params, &test_fixtures::JWK::generate_p256(), None);
 
-        let cert = Certificate::from_pem(PEM.as_bytes()).unwrap();
+        let cert = Certificate::from_pem(pem.as_bytes()).unwrap();
 
         let b = ReqwestClientBuilder::new().add_trusted_root_certificate(cert);
 

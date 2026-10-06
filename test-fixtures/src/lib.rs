@@ -18,6 +18,8 @@ use ssi::jwk::Params;
 use standardized_types::jwk::PublicJwk;
 use std::sync::LazyLock;
 
+#[cfg(feature = "x509")]
+pub use rcgen;
 pub use ssi::JWK;
 
 /// Keys shared by every fixture in the process, generated on first use.
@@ -162,6 +164,67 @@ fn private_scalar(key: &JWK) -> SecretSlice<u8> {
 
 fn public_jwk(key: &JWK) -> PublicJwk {
     serde_json::from_value(serde_json::to_value(key.to_public()).expect("JWK")).expect("public JWK")
+}
+
+/// X.509 certificate (PEM) over `params` for `key`: self-signed, or issued by `issuer`, a CA
+/// certificate (PEM) with its key. `params` is `rcgen`'s, so subject, SANs, validity, key usages
+/// and the CA flag are the caller's, and an unset serial number is drawn at random; `key` is a P-256
+/// [`JWK`], so the certified key is the one that signs with [`jws`] under an `x5c` header.
+#[cfg(feature = "x509")]
+pub fn x509(
+    mut params: rcgen::CertificateParams,
+    key: &JWK,
+    issuer: Option<(&str, &JWK)>,
+) -> String {
+    if params.serial_number.is_none() {
+        let mut serial = [0u8; 20];
+        OsRng.fill_bytes(&mut serial);
+        serial[0] &= 0x7f;
+        params.serial_number = Some(rcgen::SerialNumber::from_slice(&serial));
+    }
+    let signing_key = key_pair(key);
+    let certificate = match issuer {
+        None => params.self_signed(&signing_key),
+        Some((ca_pem, ca_key)) => params.signed_by(
+            &signing_key,
+            &rcgen::Issuer::from_ca_cert_pem(ca_pem, key_pair(ca_key)).expect("CA certificate"),
+        ),
+    };
+    certificate.expect("certificate").pem()
+}
+
+/// `x5c` header value of a PEM chain, in the order given (leaf first): each certificate's DER in
+/// standard base64.
+pub fn x5c(pem_chain: &str) -> Vec<String> {
+    pem_chain
+        .split("-----BEGIN CERTIFICATE-----")
+        .skip(1)
+        .map(|block| {
+            block
+                .split("-----END CERTIFICATE-----")
+                .next()
+                .expect("certificate block")
+                .split_whitespace()
+                .collect()
+        })
+        .collect()
+}
+
+#[cfg(feature = "x509")]
+fn key_pair(key: &JWK) -> rcgen::KeyPair {
+    use p256::pkcs8::{EncodePrivateKey, LineEnding};
+    let Params::EC(ec) = &key.params else {
+        panic!("not an EC key")
+    };
+    let secret = p256::SecretKey::from_slice(&ec.ecc_private_key.as_ref().expect("`d`").0)
+        .expect("P-256 key");
+    rcgen::KeyPair::from_pem(
+        secret
+            .to_pkcs8_pem(LineEnding::LF)
+            .expect("PKCS#8")
+            .as_str(),
+    )
+    .expect("key pair")
 }
 
 fn b64(value: &Value) -> String {
@@ -410,6 +473,70 @@ mod tests {
             &json!({ "kid": "k", "enc": "A128GCM", "alg": "RSA-OAEP" }),
             b"x",
             &keys().verifier,
+        );
+    }
+
+    #[cfg(feature = "x509")]
+    #[test]
+    fn x509_issues_a_leaf_for_the_fixture_key_under_a_root() {
+        use base64::prelude::BASE64_STANDARD;
+        use rcgen::{BasicConstraints, CertificateParams, DnType, IsCa};
+        let ca_key = JWK::generate_p256();
+        let mut ca = CertificateParams::new(Vec::<String>::new()).unwrap();
+        ca.distinguished_name
+            .push(DnType::CommonName, "Fixture Root CA");
+        ca.is_ca = IsCa::Ca(BasicConstraints::Unconstrained);
+        let mut leaf = CertificateParams::new(vec!["issuer.example".to_string()]).unwrap();
+        leaf.distinguished_name
+            .push(DnType::CommonName, "Fixture Issuer");
+
+        let root = x509(ca, &ca_key, None);
+        let cert = x509(leaf, &keys().issuer, Some((&root, &ca_key)));
+
+        let root_pem = x509_parser::pem::parse_x509_pem(root.as_bytes()).unwrap().1;
+        let cert_pem = x509_parser::pem::parse_x509_pem(cert.as_bytes()).unwrap().1;
+        let root_x509 = root_pem.parse_x509().unwrap();
+        let cert_x509 = cert_pem.parse_x509().unwrap();
+        assert_eq!(
+            cert_x509.issuer().to_string(),
+            root_x509.subject().to_string()
+        );
+        assert_eq!(cert_x509.subject().to_string(), "CN=Fixture Issuer");
+        assert!(!cert_x509.is_ca() && root_x509.is_ca());
+        let Params::EC(ec) = &keys().issuer.params else {
+            panic!("not EC")
+        };
+        let point = [
+            &[4u8][..],
+            &ec.x_coordinate.as_ref().unwrap().0,
+            &ec.y_coordinate.as_ref().unwrap().0,
+        ]
+        .concat();
+        assert_eq!(
+            cert_x509.public_key().subject_public_key.data.as_ref(),
+            point.as_slice()
+        );
+        let chain = x5c(&format!("{cert}{root}"));
+        assert_eq!(chain.len(), 2);
+        assert_eq!(
+            BASE64_STANDARD.decode(&chain[0]).unwrap(),
+            cert_pem.contents
+        );
+        assert_eq!(
+            BASE64_STANDARD.decode(&chain[1]).unwrap(),
+            root_pem.contents
+        );
+        let again = x509(
+            rcgen::CertificateParams::new(Vec::<String>::new()).unwrap(),
+            &keys().issuer,
+            None,
+        );
+        let again_pem = x509_parser::pem::parse_x509_pem(again.as_bytes())
+            .unwrap()
+            .1;
+        assert_ne!(
+            again_pem.parse_x509().unwrap().raw_serial(),
+            cert_x509.raw_serial()
         );
     }
 

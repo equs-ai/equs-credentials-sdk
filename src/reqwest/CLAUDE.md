@@ -20,7 +20,7 @@ Provides the SDK's concrete HTTP transport layer by wrapping the `reqwest` crate
 - `Certificate` — re-export of `reqwest::Certificate` (non-wasm only).
 
 ## Dependencies
-- Depends on: `crate::http` (`HttpClient`, `HttpError`), `crate::reqwest::validators`, `crate::reqwest::wasm`, `reqwest`, `reqwest_middleware`, `reqwest_tracing`, `oauth2`.
+- Depends on: `crate::http` (`HttpClient`, `HttpError`), `crate::reqwest::validators`, `crate::reqwest::wasm`, `reqwest`, `reqwest_middleware`, `reqwest_tracing`, `oauth2`, `test_fixtures` (tests only: the trusted-root certificate).
 - Used by: consumers of `crate::http::HttpClient` throughout the SDK (VC, DID, DIDComm modules).
 
 ## Constraints
