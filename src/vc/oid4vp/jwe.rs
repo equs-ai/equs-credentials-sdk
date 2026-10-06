@@ -347,35 +347,26 @@ impl JweEncryptor {
 #[cfg(test)]
 mod tests {
     use crate::vc::oid4vp::jwe::JweEncryptor;
+    use crate::vc::oid4vp::tests::fixtures::verifier_enc_jwk;
     use crate::vc::oid4vp::tests::utils::wrap_p256_private_key;
     use one_core_portable::one_crypto::jwe::decrypt_jwe_payload;
-    use serde_json::{Value, json};
+    use serde_json::json;
 
     #[tokio::test]
     async fn test_encoding() {
-        let metadata = super::test_utils::get_metadata(pregenerated_pub_jwk());
+        let metadata = super::test_utils::get_metadata(
+            serde_json::from_value(verifier_enc_jwk("ecdsa-kid", "ECDH-ES")).unwrap(),
+        );
         let encoder = JweEncryptor::new(metadata);
         let body = json!({
             "some_key": "some_value",
         });
-        let verifier_private_jwk = serde_json::to_string(&test_fixtures::keys().verifier).unwrap();
         let jwe = encoder.encrypt(body.clone()).await.unwrap();
 
-        let kh = wrap_p256_private_key(&verifier_private_jwk);
+        let kh = wrap_p256_private_key(&test_fixtures::keys().verifier);
 
         let res = decrypt_jwe_payload(&jwe, &kh).await.unwrap();
         assert_eq!(res, body.to_string().as_bytes().to_vec());
-    }
-
-    fn pregenerated_pub_jwk() -> serde_json::Map<String, Value> {
-        let Value::Object(mut map) =
-            serde_json::to_value(test_fixtures::keys().verifier.to_public()).unwrap()
-        else {
-            unreachable!()
-        };
-        map.insert("kid".to_string(), json!("ecdsa-kid"));
-        map.insert("alg".to_string(), json!("ECDH-ES"));
-        map
     }
 }
 

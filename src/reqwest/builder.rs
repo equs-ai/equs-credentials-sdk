@@ -299,28 +299,18 @@ mod tests {
     #[cfg(not(target_arch = "wasm32"))]
     #[test]
     fn add_trusted_root_certificate_appends_to_internal_vec() {
-        use test_fixtures::rcgen::{
-            BasicConstraints, CertificateParams, DnType, ExtendedKeyUsagePurpose, IsCa,
-            KeyUsagePurpose, date_time_ymd,
-        };
-        let mut params = CertificateParams::new(vec![
-            "localhost:5453".to_string(),
-            "127.0.0.1:5453".to_string(),
-        ])
-        .unwrap();
-        params
-            .distinguished_name
-            .push(DnType::OrganizationName, "Acme Co");
-        params.is_ca = IsCa::Ca(BasicConstraints::Unconstrained);
-        params.key_usages = vec![
-            KeyUsagePurpose::DigitalSignature,
-            KeyUsagePurpose::KeyEncipherment,
-            KeyUsagePurpose::KeyCertSign,
-        ];
-        params.extended_key_usages = vec![ExtendedKeyUsagePurpose::ServerAuth];
-        params.not_before = date_time_ymd(2017, 10, 20);
-        params.not_after = date_time_ymd(2018, 10, 20);
-        let pem = test_fixtures::x509(params, &test_fixtures::JWK::generate_p256(), None);
+        let pem = test_fixtures::x509(
+            &serde_json::json!({
+                "subject": [["O", "Acme Co"]],
+                "sans": ["localhost:5453", "127.0.0.1:5453"],
+                "not_before": "2017-10-20", "not_after": "2018-10-20",
+                "ca": true,
+                "key_usages": ["digital_signature", "key_encipherment", "key_cert_sign"],
+                "extended_key_usages": ["server_auth"]
+            }),
+            &test_fixtures::JWK::generate_p256(),
+            None,
+        );
 
         let cert = Certificate::from_pem(pem.as_bytes()).unwrap();
 

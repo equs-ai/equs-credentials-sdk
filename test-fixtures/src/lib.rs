@@ -18,8 +18,6 @@ use ssi::jwk::Params;
 use standardized_types::jwk::PublicJwk;
 use std::sync::LazyLock;
 
-#[cfg(feature = "x509")]
-pub use rcgen;
 pub use ssi::JWK;
 
 /// Keys shared by every fixture in the process, generated on first use.
@@ -166,22 +164,90 @@ fn public_jwk(key: &JWK) -> PublicJwk {
     serde_json::from_value(serde_json::to_value(key.to_public()).expect("JWK")).expect("public JWK")
 }
 
-/// X.509 certificate (PEM) over `params` for `key`: self-signed, or issued by `issuer`, a CA
-/// certificate (PEM) with its key. `params` is `rcgen`'s, so subject, SANs, validity, key usages
-/// and the CA flag are the caller's, and an unset serial number is drawn at random; `key` is a P-256
-/// [`JWK`], so the certified key is the one that signs with [`jws`] under an `x5c` header.
+/// X.509 certificate (PEM) for the P-256 `key`: self-signed, or issued by `issuer`, a CA
+/// certificate (PEM) with its key, so the certified key is the one that signs with [`jws`] under an
+/// `x5c` header. Every `spec` field is optional: `{"subject": [["CN", "..."], ["C", "US"]],
+/// "sans": ["a.example"], "not_before": "2026-09-23", "not_after": "2046-09-18",
+/// "ca": true | false | {"path_len": 0}, "key_usages": ["digital_signature", "key_encipherment",
+/// "key_cert_sign", "crl_sign"], "extended_key_usages": ["server_auth", "client_auth"],
+/// "authority_key_identifier": true}`. The serial number is random.
 #[cfg(feature = "x509")]
-pub fn x509(
-    mut params: rcgen::CertificateParams,
-    key: &JWK,
-    issuer: Option<(&str, &JWK)>,
-) -> String {
-    if params.serial_number.is_none() {
-        let mut serial = [0u8; 20];
-        OsRng.fill_bytes(&mut serial);
-        serial[0] &= 0x7f;
-        params.serial_number = Some(rcgen::SerialNumber::from_slice(&serial));
+pub fn x509(spec: &Value, key: &JWK, issuer: Option<(&str, &JWK)>) -> String {
+    use rcgen::{
+        BasicConstraints, CertificateParams, DnType, ExtendedKeyUsagePurpose, IsCa,
+        KeyUsagePurpose, SerialNumber,
+    };
+    let strings = |name: &str| -> Vec<String> {
+        spec[name]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_str)
+            .map(str::to_string)
+            .collect()
+    };
+    let date = |name: &str| {
+        let parts: Vec<u32> = spec[name]
+            .as_str()
+            .expect(name)
+            .split('-')
+            .map(|part| part.parse().expect("YYYY-MM-DD"))
+            .collect();
+        rcgen::date_time_ymd(parts[0] as i32, parts[1] as u8, parts[2] as u8)
+    };
+    let mut params = CertificateParams::new(strings("sans")).expect("SANs");
+    for pair in spec["subject"].as_array().into_iter().flatten() {
+        let kind = match pair[0].as_str().expect("DN type") {
+            "CN" => DnType::CommonName,
+            "C" => DnType::CountryName,
+            "O" => DnType::OrganizationName,
+            "OU" => DnType::OrganizationalUnitName,
+            "L" => DnType::LocalityName,
+            "ST" => DnType::StateOrProvinceName,
+            other => panic!("unknown DN type `{other}`"),
+        };
+        params
+            .distinguished_name
+            .push(kind, pair[1].as_str().expect("DN value"));
     }
+    if spec.get("not_before").is_some() {
+        params.not_before = date("not_before");
+    }
+    if spec.get("not_after").is_some() {
+        params.not_after = date("not_after");
+    }
+    params.is_ca = match &spec["ca"] {
+        Value::Bool(true) => IsCa::Ca(BasicConstraints::Unconstrained),
+        Value::Bool(false) => IsCa::ExplicitNoCa,
+        Value::Object(ca) => IsCa::Ca(BasicConstraints::Constrained(
+            ca["path_len"].as_u64().expect("path_len") as u8,
+        )),
+        _ => IsCa::NoCa,
+    };
+    params.key_usages = strings("key_usages")
+        .iter()
+        .map(|usage| match usage.as_str() {
+            "digital_signature" => KeyUsagePurpose::DigitalSignature,
+            "key_encipherment" => KeyUsagePurpose::KeyEncipherment,
+            "key_cert_sign" => KeyUsagePurpose::KeyCertSign,
+            "crl_sign" => KeyUsagePurpose::CrlSign,
+            other => panic!("unknown key usage `{other}`"),
+        })
+        .collect();
+    params.extended_key_usages = strings("extended_key_usages")
+        .iter()
+        .map(|usage| match usage.as_str() {
+            "server_auth" => ExtendedKeyUsagePurpose::ServerAuth,
+            "client_auth" => ExtendedKeyUsagePurpose::ClientAuth,
+            other => panic!("unknown extended key usage `{other}`"),
+        })
+        .collect();
+    params.use_authority_key_identifier_extension =
+        spec["authority_key_identifier"].as_bool().unwrap_or(false);
+    let mut serial = [0u8; 20];
+    OsRng.fill_bytes(&mut serial);
+    serial[0] &= 0x7f;
+    params.serial_number = Some(SerialNumber::from_slice(&serial));
     let signing_key = key_pair(key);
     let certificate = match issuer {
         None => params.self_signed(&signing_key),
@@ -191,23 +257,6 @@ pub fn x509(
         ),
     };
     certificate.expect("certificate").pem()
-}
-
-/// `x5c` header value of a PEM chain, in the order given (leaf first): each certificate's DER in
-/// standard base64.
-pub fn x5c(pem_chain: &str) -> Vec<String> {
-    pem_chain
-        .split("-----BEGIN CERTIFICATE-----")
-        .skip(1)
-        .map(|block| {
-            block
-                .split("-----END CERTIFICATE-----")
-                .next()
-                .expect("certificate block")
-                .split_whitespace()
-                .collect()
-        })
-        .collect()
 }
 
 #[cfg(feature = "x509")]
@@ -479,30 +528,40 @@ mod tests {
     #[cfg(feature = "x509")]
     #[test]
     fn x509_issues_a_leaf_for_the_fixture_key_under_a_root() {
-        use base64::prelude::BASE64_STANDARD;
-        use rcgen::{BasicConstraints, CertificateParams, DnType, IsCa};
         let ca_key = JWK::generate_p256();
-        let mut ca = CertificateParams::new(Vec::<String>::new()).unwrap();
-        ca.distinguished_name
-            .push(DnType::CommonName, "Fixture Root CA");
-        ca.is_ca = IsCa::Ca(BasicConstraints::Unconstrained);
-        let mut leaf = CertificateParams::new(vec!["issuer.example".to_string()]).unwrap();
-        leaf.distinguished_name
-            .push(DnType::CommonName, "Fixture Issuer");
+        let root = x509(
+            &json!({ "subject": [["CN", "Fixture Root CA"]], "ca": true, "key_usages": ["key_cert_sign", "crl_sign"] }),
+            &ca_key,
+            None,
+        );
+        let spec = json!({
+            "subject": [["CN", "Fixture Issuer"], ["C", "US"]], "sans": ["issuer.example"], "ca": false,
+            "not_before": "2026-01-02", "not_after": "2036-01-02",
+            "key_usages": ["digital_signature"], "extended_key_usages": ["server_auth"],
+            "authority_key_identifier": true
+        });
 
-        let root = x509(ca, &ca_key, None);
-        let cert = x509(leaf, &keys().issuer, Some((&root, &ca_key)));
+        let cert = x509(&spec, &keys().issuer, Some((&root, &ca_key)));
+        let again = x509(&spec, &keys().issuer, Some((&root, &ca_key)));
 
-        let root_pem = x509_parser::pem::parse_x509_pem(root.as_bytes()).unwrap().1;
-        let cert_pem = x509_parser::pem::parse_x509_pem(cert.as_bytes()).unwrap().1;
+        let parse = |pem: &str| x509_parser::pem::parse_x509_pem(pem.as_bytes()).unwrap().1;
+        let (root_pem, cert_pem, again_pem) = (parse(&root), parse(&cert), parse(&again));
         let root_x509 = root_pem.parse_x509().unwrap();
         let cert_x509 = cert_pem.parse_x509().unwrap();
+        assert_eq!(cert_x509.subject().to_string(), "CN=Fixture Issuer, C=US");
         assert_eq!(
             cert_x509.issuer().to_string(),
             root_x509.subject().to_string()
         );
-        assert_eq!(cert_x509.subject().to_string(), "CN=Fixture Issuer");
-        assert!(!cert_x509.is_ca() && root_x509.is_ca());
+        assert!(root_x509.is_ca() && !cert_x509.is_ca());
+        assert_eq!(cert_x509.validity().not_before.to_datetime().year(), 2026);
+        assert!(cert_x509.subject_alternative_name().unwrap().is_some());
+        assert!(
+            cert_x509
+                .extensions()
+                .iter()
+                .any(|e| e.oid == x509_parser::oid_registry::OID_X509_EXT_AUTHORITY_KEY_IDENTIFIER)
+        );
         let Params::EC(ec) = &keys().issuer.params else {
             panic!("not EC")
         };
@@ -516,24 +575,6 @@ mod tests {
             cert_x509.public_key().subject_public_key.data.as_ref(),
             point.as_slice()
         );
-        let chain = x5c(&format!("{cert}{root}"));
-        assert_eq!(chain.len(), 2);
-        assert_eq!(
-            BASE64_STANDARD.decode(&chain[0]).unwrap(),
-            cert_pem.contents
-        );
-        assert_eq!(
-            BASE64_STANDARD.decode(&chain[1]).unwrap(),
-            root_pem.contents
-        );
-        let again = x509(
-            rcgen::CertificateParams::new(Vec::<String>::new()).unwrap(),
-            &keys().issuer,
-            None,
-        );
-        let again_pem = x509_parser::pem::parse_x509_pem(again.as_bytes())
-            .unwrap()
-            .1;
         assert_ne!(
             again_pem.parse_x509().unwrap().raw_serial(),
             cert_x509.raw_serial()

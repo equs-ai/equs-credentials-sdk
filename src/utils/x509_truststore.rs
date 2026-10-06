@@ -190,34 +190,18 @@ fn x509_pub_key_to_decoding_key(kh: KeyHandle) -> Result<DecodingKey, SdJwtRsErr
 
 #[cfg(test)]
 mod tests {
+    use crate::utils::test_utils::{anchors, skid_of};
     use crate::utils::x509_truststore::Truststore;
     use jsonwebtoken::{Algorithm, Header};
-    use one_core::mapper::x509::{pem_chain_into_x5c, subject_key_identifier};
+    use one_core::mapper::x509::pem_chain_into_x5c;
     use one_core::proto::certificate_validator::{
         CertificateValidationOptions, CertificateValidator, CertificateValidatorImpl,
     };
     use rstest::*;
     use sd_jwt_rs::resolver::KeyResolver;
     use sd_jwt_rs::{SDJWTSerializationFormat, SDJWTVerifier};
+    use serde_json::json;
     use std::collections::HashMap;
-    use x509_parser::prelude::Pem;
-
-    fn anchors(ca_certs: &[&str]) -> HashMap<String, String> {
-        ca_certs
-            .iter()
-            .map(|ca_cert| (skid_of(ca_cert), ca_cert.to_string()))
-            .collect()
-    }
-
-    fn skid_of(cert_pem: &str) -> String {
-        let pem = Pem::iter_from_buffer(cert_pem.as_bytes())
-            .next()
-            .unwrap()
-            .unwrap();
-        subject_key_identifier(&pem.parse_x509().unwrap())
-            .unwrap()
-            .unwrap()
-    }
 
     fn truststore(trusted_roots: HashMap<String, String>) -> Truststore<CertificateValidatorImpl> {
         Truststore::new(CertificateValidatorImpl::default(), trusted_roots)
@@ -323,11 +307,11 @@ mod tests {
     #[should_panic(expected = "sd-jwt-vc token contains no x5c header")]
     #[case::no_x5c(anchors(&[openid_conformance_test_cert()]), sd_jwt_vc_no_x5c())]
     #[tokio::test]
-    async fn resolve(#[case] trusted_roots: HashMap<String, String>, #[case] sd_jwt: &str) {
+    async fn resolve(#[case] trusted_roots: HashMap<String, String>, #[case] sd_jwt: String) {
         let mut sd_jwt_verifier = SDJWTVerifier::new(Box::new(truststore(trusted_roots)));
         sd_jwt_verifier
             .verify_presentation(
-                sd_jwt.to_string(),
+                sd_jwt,
                 Some("x509_san_dns:verifier-asdk".to_string()),
                 Some("psX3cqQAPu3rVVV7Lj0kNqF1Dad6le1B2JRkjwhUN_E".to_string()),
                 SDJWTSerializationFormat::Compact,
@@ -336,7 +320,7 @@ mod tests {
             .unwrap();
     }
 
-    /// The test PKI and the presentations it certifies, generated once per process.
+    /// The test PKI, generated once per process.
     struct Pki {
         /// Self-signed CA; issued `test_issuer_cert`. Valid until 2046.
         test_root_ca: String,
@@ -351,11 +335,6 @@ mod tests {
         github_cert_chain: String,
         /// Self-signed `Sectigo Public Server Authentication Root E46`.
         github_root_ca: String,
-        /// `dc+sd-jwt` presentation with key binding, signed by the fixture issuer key under
-        /// `openid_conformance_test_cert` in `x5c`.
-        sd_jwt_vc: String,
-        /// The same presentation without `x5c`.
-        sd_jwt_vc_no_x5c: String,
     }
 
     fn pki() -> &'static Pki {
@@ -383,173 +362,130 @@ mod tests {
         &pki().github_root_ca
     }
 
-    fn sd_jwt_vc() -> &'static str {
-        &pki().sd_jwt_vc
+    /// `dc+sd-jwt` presentation with key binding, signed by the fixture issuer key under
+    /// `openid_conformance_test_cert` in `x5c`.
+    fn sd_jwt_vc() -> String {
+        presentation(
+            Some(pem_chain_into_x5c(openid_conformance_test_cert()).unwrap()),
+            1769168000,
+            1770377600,
+            &[
+                r#"["YUmj3wAdlPAmRrwCd1V8Mg","given_name","Jean"]"#,
+                r#"["VAaWElABMSaFxhFeZNRNAg","family_name","Dupont"]"#,
+                r#"["6LDzfimudpbVXhaKPuxIhA","birthdate","1980-05-23"]"#,
+                r#"["VHnhH5BZWXsAT5dCAKEnNA","age_in_years","44"]"#,
+            ],
+            &[
+                "-GC2Ld4PPX9KuskJR3qM8SDLxXXCdYZ7jUt4qurp6Zo",
+                "6T-J88j_FUMlsK_UfHwRz98zvo5ddeJ3G_ehIJG8-CM",
+                "WDnYXPiyKXWOnP5LQoFipV5GigpONFQGxQMNxImN6r4",
+            ],
+            "psX3cqQAPu3rVVV7Lj0kNqF1Dad6le1B2JRkjwhUN_E",
+        )
     }
 
-    fn sd_jwt_vc_no_x5c() -> &'static str {
-        &pki().sd_jwt_vc_no_x5c
+    /// `sd_jwt_vc` without `x5c`.
+    fn sd_jwt_vc_no_x5c() -> String {
+        presentation(
+            None,
+            1766687147,
+            1767896747,
+            &[
+                r#"["3uoZKGaWC6j5rYicydWUSw","given_name","Jean"]"#,
+                r#"["dAAtsEN3jp9FMO0bEcIpJg","family_name","Dupont"]"#,
+                r#"["y0HdiMjYqUZXoOxHmkS21Q","birthdate","1980-05-23"]"#,
+                r#"["UwTl79ztF4H04ZDNhLJq0g","age_in_years","44"]"#,
+            ],
+            &[
+                "D7eIrYun_6TU_NyVJASe_QYqgWcIcZF-g25grK16Gt0",
+                "SwhEJ2JsGC9hVwikyyyixHW5yMGY6aJ4Pdad-3gxr2A",
+                "ogBpOV4vkYC0KcsLCsmA3HH66trK5pv1W-MUCqoJFEo",
+            ],
+            "knmppVOQHcEs69MG3jZAZjneCzbUE0TyBJPPhmRUhA4",
+        )
     }
 
     fn build_pki() -> Pki {
-        use test_fixtures::rcgen::{
-            BasicConstraints, DnType, ExtendedKeyUsagePurpose, IsCa, KeyUsagePurpose,
-        };
         let keys = test_fixtures::keys();
-        let ca_usages = [KeyUsagePurpose::KeyCertSign, KeyUsagePurpose::CrlSign];
+        let ca_usages = json!(["key_cert_sign", "crl_sign"]);
 
         let test_root_key = test_fixtures::JWK::generate_p256();
-        let mut root = cert_params(
-            &[
-                (DnType::CommonName, "Test SD-JWT VC Root CA"),
-                (DnType::CountryName, "US"),
-            ],
-            &[],
-            (2026, 9, 23),
-            (2046, 9, 18),
+        let test_root_ca = test_fixtures::x509(
+            &json!({
+                "subject": [["CN", "Test SD-JWT VC Root CA"], ["C", "US"]],
+                "not_before": "2026-09-23", "not_after": "2046-09-18",
+                "ca": true, "key_usages": ca_usages
+            }),
+            &test_root_key,
+            None,
         );
-        root.is_ca = IsCa::Ca(BasicConstraints::Unconstrained);
-        root.key_usages = ca_usages.to_vec();
-        let test_root_ca = test_fixtures::x509(root, &test_root_key, None);
-
-        let mut issuer = cert_params(
-            &[
-                (DnType::CommonName, "Test SD-JWT VC Issuer"),
-                (DnType::CountryName, "US"),
-            ],
-            &["issuer.example"],
-            (2026, 9, 23),
-            (2046, 9, 17),
+        let test_issuer_cert = test_fixtures::x509(
+            &json!({
+                "subject": [["CN", "Test SD-JWT VC Issuer"], ["C", "US"]],
+                "sans": ["issuer.example"],
+                "not_before": "2026-09-23", "not_after": "2046-09-17",
+                "ca": false, "key_usages": ["digital_signature"], "authority_key_identifier": true
+            }),
+            &keys.issuer,
+            Some((&test_root_ca, &test_root_key)),
         );
-        issuer.key_usages = vec![KeyUsagePurpose::DigitalSignature];
-        issuer.use_authority_key_identifier_extension = true;
-        issuer.is_ca = IsCa::ExplicitNoCa;
-        let test_issuer_cert =
-            test_fixtures::x509(issuer, &keys.issuer, Some((&test_root_ca, &test_root_key)));
-
-        let mut oidf = cert_params(
-            &[
-                (DnType::CountryName, "GB"),
-                (DnType::CommonName, "OIDF Test"),
-            ],
-            &[
-                "www.heenan.me.uk",
-                "demo.certification.openid.net",
-                "localhost",
-                "localhost.emobix.co.uk",
-                "demo.pid-issuer.bundesdruckerei.de",
-            ],
-            (2024, 11, 25),
-            (2034, 11, 23),
+        let openid_conformance_test_cert = test_fixtures::x509(
+            &json!({
+                "subject": [["C", "GB"], ["CN", "OIDF Test"]],
+                "sans": [
+                    "www.heenan.me.uk",
+                    "demo.certification.openid.net",
+                    "localhost",
+                    "localhost.emobix.co.uk",
+                    "demo.pid-issuer.bundesdruckerei.de"
+                ],
+                "not_before": "2024-11-25", "not_after": "2034-11-23",
+                "ca": true
+            }),
+            &keys.issuer,
+            None,
         );
-        oidf.is_ca = IsCa::Ca(BasicConstraints::Unconstrained);
-        let openid_conformance_test_cert = test_fixtures::x509(oidf, &keys.issuer, None);
 
-        let sectigo = |cn: &'static str| {
-            [
-                (DnType::CountryName, "GB"),
-                (DnType::OrganizationName, "Sectigo Limited"),
-                (DnType::CommonName, cn),
-            ]
-        };
+        let sectigo = |cn: &str| json!([["C", "GB"], ["O", "Sectigo Limited"], ["CN", cn]]);
         let github_root_key = test_fixtures::JWK::generate_p256();
-        let mut github_root = cert_params(
-            &sectigo("Sectigo Public Server Authentication Root E46"),
-            &[],
-            (2026, 4, 24),
-            (2036, 4, 21),
+        let github_root_ca = test_fixtures::x509(
+            &json!({
+                "subject": sectigo("Sectigo Public Server Authentication Root E46"),
+                "not_before": "2026-04-24", "not_after": "2036-04-21",
+                "ca": true, "key_usages": ca_usages
+            }),
+            &github_root_key,
+            None,
         );
-        github_root.is_ca = IsCa::Ca(BasicConstraints::Unconstrained);
-        github_root.key_usages = ca_usages.to_vec();
-        let github_root_ca = test_fixtures::x509(github_root, &github_root_key, None);
         let intermediate_key = test_fixtures::JWK::generate_p256();
-        let mut intermediate = cert_params(
-            &sectigo("Sectigo Public Server Authentication CA DV E36"),
-            &[],
-            (2026, 4, 24),
-            (2036, 4, 21),
-        );
-        intermediate.is_ca = IsCa::Ca(BasicConstraints::Constrained(0));
-        intermediate.key_usages = ca_usages.to_vec();
-        intermediate.use_authority_key_identifier_extension = true;
         let intermediate_cert = test_fixtures::x509(
-            intermediate,
+            &json!({
+                "subject": sectigo("Sectigo Public Server Authentication CA DV E36"),
+                "not_before": "2026-04-24", "not_after": "2036-04-21",
+                "ca": { "path_len": 0 }, "key_usages": ca_usages, "authority_key_identifier": true
+            }),
             &intermediate_key,
             Some((&github_root_ca, &github_root_key)),
         );
-        let mut leaf = cert_params(
-            &[(DnType::CommonName, "github.com")],
-            &["github.com", "www.github.com"],
-            (2026, 4, 24),
-            (2036, 4, 21),
-        );
-        leaf.key_usages = vec![KeyUsagePurpose::DigitalSignature];
-        leaf.extended_key_usages = vec![ExtendedKeyUsagePurpose::ServerAuth];
-        leaf.is_ca = IsCa::ExplicitNoCa;
-        leaf.use_authority_key_identifier_extension = true;
         let github_leaf = test_fixtures::x509(
-            leaf,
+            &json!({
+                "subject": [["CN", "github.com"]],
+                "sans": ["github.com", "www.github.com"],
+                "not_before": "2026-04-24", "not_after": "2036-04-21",
+                "ca": false, "key_usages": ["digital_signature"],
+                "extended_key_usages": ["server_auth"], "authority_key_identifier": true
+            }),
             &test_fixtures::JWK::generate_p256(),
             Some((&intermediate_cert, &intermediate_key)),
         );
 
         Pki {
-            sd_jwt_vc: presentation(
-                Some(test_fixtures::x5c(&openid_conformance_test_cert)),
-                1769168000,
-                1770377600,
-                &[
-                    r#"["YUmj3wAdlPAmRrwCd1V8Mg","given_name","Jean"]"#,
-                    r#"["VAaWElABMSaFxhFeZNRNAg","family_name","Dupont"]"#,
-                    r#"["6LDzfimudpbVXhaKPuxIhA","birthdate","1980-05-23"]"#,
-                    r#"["VHnhH5BZWXsAT5dCAKEnNA","age_in_years","44"]"#,
-                ],
-                &[
-                    "-GC2Ld4PPX9KuskJR3qM8SDLxXXCdYZ7jUt4qurp6Zo",
-                    "6T-J88j_FUMlsK_UfHwRz98zvo5ddeJ3G_ehIJG8-CM",
-                    "WDnYXPiyKXWOnP5LQoFipV5GigpONFQGxQMNxImN6r4",
-                ],
-                "psX3cqQAPu3rVVV7Lj0kNqF1Dad6le1B2JRkjwhUN_E",
-            ),
-            sd_jwt_vc_no_x5c: presentation(
-                None,
-                1766687147,
-                1767896747,
-                &[
-                    r#"["3uoZKGaWC6j5rYicydWUSw","given_name","Jean"]"#,
-                    r#"["dAAtsEN3jp9FMO0bEcIpJg","family_name","Dupont"]"#,
-                    r#"["y0HdiMjYqUZXoOxHmkS21Q","birthdate","1980-05-23"]"#,
-                    r#"["UwTl79ztF4H04ZDNhLJq0g","age_in_years","44"]"#,
-                ],
-                &[
-                    "D7eIrYun_6TU_NyVJASe_QYqgWcIcZF-g25grK16Gt0",
-                    "SwhEJ2JsGC9hVwikyyyixHW5yMGY6aJ4Pdad-3gxr2A",
-                    "ogBpOV4vkYC0KcsLCsmA3HH66trK5pv1W-MUCqoJFEo",
-                ],
-                "knmppVOQHcEs69MG3jZAZjneCzbUE0TyBJPPhmRUhA4",
-            ),
             test_root_ca,
             test_issuer_cert,
             openid_conformance_test_cert,
             github_cert_chain: format!("{github_leaf}{intermediate_cert}"),
             github_root_ca,
         }
-    }
-
-    fn cert_params(
-        dn: &[(test_fixtures::rcgen::DnType, &str)],
-        sans: &[&str],
-        from: (i32, u8, u8),
-        until: (i32, u8, u8),
-    ) -> test_fixtures::rcgen::CertificateParams {
-        let sans: Vec<String> = sans.iter().map(|san| san.to_string()).collect();
-        let mut params = test_fixtures::rcgen::CertificateParams::new(sans).unwrap();
-        for (kind, value) in dn {
-            params.distinguished_name.push(kind.clone(), *value);
-        }
-        params.not_before = test_fixtures::rcgen::date_time_ymd(from.0, from.1, from.2);
-        params.not_after = test_fixtures::rcgen::date_time_ymd(until.0, until.1, until.2);
-        params
     }
 
     /// `dc+sd-jwt` presentation of the conformance suite's PID, bound to the fixture holder key;
