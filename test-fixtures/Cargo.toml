@@ -16,19 +16,20 @@ equs-one-core-crypto = "0.1.0"
 equs-one-core-standardized-types = "0.1.0"
 jsonwebtoken = "9.3.0"
 p256 = { version = "0.13.2", optional = true }
-rcgen = { version = "0.14", optional = true, features = ["x509-parser"] }
+rcgen = { version = "0.14.10", optional = true, features = ["x509-parser"] }
 rsa = { version = "0.9.10", features = ["getrandom"] }
 secrecy = "0.10.3"
+serde = { version = "1.0.220", features = ["derive"] }
 serde_json = { version = "1.0.120", features = ["preserve_order"] }
 sha2 = "0.10"
 ssi = "=0.16.0"
-x509-parser = { version = "0.18", optional = true }
 
 [dev-dependencies]
 async-trait = "0.1.85"
 rstest = "0.22.0"
 tokio = { version = "1.25.0", features = ["macros", "rt"] }
+x509-parser = "0.18"
 
 [features]
 default = ["x509"]
-x509 = ["dep:p256", "dep:rcgen", "dep:x509-parser"]
+x509 = ["dep:p256", "dep:rcgen"]

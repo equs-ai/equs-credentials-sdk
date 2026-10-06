@@ -18,13 +18,11 @@ VERSION=$(npm pkg get version | tr -d '"')
 
 if [ "${ENVIRONMENT:-}" == "development" ]; then
   TAG="dev"
-  BUILD_SCRIPT="napi:build"
   BUILD_FLAGS="--features=in-memory"
   PUBLISH_VERSION="${CI_COMMIT_TAG:-${VERSION}-dev}"
 else
   TAG="${NPM_DIST_TAG:-latest}"
-  BUILD_SCRIPT="build"
-  BUILD_FLAGS=""
+  BUILD_FLAGS="--release"
   PUBLISH_VERSION="${CI_COMMIT_TAG:-${VERSION}}"
 fi
 
@@ -32,7 +30,7 @@ npm version "${PUBLISH_VERSION}" --no-git-tag-version --ignore-scripts --allow-s
 
 npm i --ignore-scripts
 npm i -g typescript @napi-rs/cli
-npm_config_napi_flags="${BUILD_FLAGS}" npx npm run $BUILD_SCRIPT
+npm_config_napi_flags="${BUILD_FLAGS}" npx npm run napi:build
 npx napi prepublish --skip-gh-release
 TARBALL=$(npm pack --silent)
 env "${NPM_AUTH}" npm publish "${TARBALL}" --registry=${REGISTRY_URL_NPM} --tag ${TAG} ${DRY_RUN:+--dry-run}

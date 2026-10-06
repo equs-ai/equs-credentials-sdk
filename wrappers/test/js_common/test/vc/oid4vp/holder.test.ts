@@ -261,15 +261,14 @@ describe("OID4VP Holder: ", () => {
     // Revokes index 1, the index `VC_WITH_STATUS` points at.
     const data = await findWithStatusList("eNpjYmBgAAAADAAD");
 
-    expect(isCredentialEntries(data)).toBe(false);
-    expect((data as FindVCsFailReason).type).toStrictEqual("CredentialsNotFound");
+    expect(data).toMatchObject({ type: "CredentialsNotFound" });
   });
 
   it("findVcsForPresentation keeps credentials whose status is valid", async () => {
     // Revokes nothing.
     const data = await findWithStatusList("eNpjYGBgAAAABAAB");
 
-    expect(isCredentialEntries(data) && data.length).toBe(1);
+    expect(data).toHaveLength(1);
   });
 
   it("decline authorization request", async () => {
