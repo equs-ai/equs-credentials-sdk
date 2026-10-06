@@ -24,7 +24,10 @@ pub mod fixtures {
             "openid4vp://",
             [
                 ("client_id", verifier_client_id().as_str()),
-                ("request_uri", "http://127.0.0.1:55796/request"),
+                (
+                    "request_uri",
+                    crate::vc::oid4vp::tests::utils::build_url(VERIFIER_URL, "request").as_str(),
+                ),
             ],
         )
         .unwrap()

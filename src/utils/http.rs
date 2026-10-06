@@ -272,7 +272,7 @@ pub mod test {
 
                 Ok(resp)
             },
-            1.into(),
+            times,
         );
     }
 

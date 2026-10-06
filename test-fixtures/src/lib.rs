@@ -170,20 +170,48 @@ fn public_jwk(key: &JWK) -> PublicJwk {
 /// "sans": ["a.example"], "not_before": "2026-09-23", "not_after": "2046-09-18",
 /// "ca": true | false | {"path_len": 0}, "key_usages": ["digital_signature", "key_encipherment",
 /// "key_cert_sign", "crl_sign"], "extended_key_usages": ["server_auth", "client_auth"],
-/// "authority_key_identifier": true}`. The serial number is random.
+/// "authority_key_identifier": true}`. The subject keeps the order given, the serial number is
+/// random, and an unknown field or a value of the wrong type panics.
 #[cfg(feature = "x509")]
 pub fn x509(spec: &Value, key: &JWK, issuer: Option<(&str, &JWK)>) -> String {
     use rcgen::{
-        BasicConstraints, CertificateParams, DnType, ExtendedKeyUsagePurpose, IsCa,
-        KeyUsagePurpose, SerialNumber,
+        BasicConstraints, CertificateParams, DistinguishedName, DnType, ExtendedKeyUsagePurpose,
+        IsCa, KeyUsagePurpose, SerialNumber,
+    };
+    const FIELDS: [&str; 8] = [
+        "subject",
+        "sans",
+        "not_before",
+        "not_after",
+        "ca",
+        "key_usages",
+        "extended_key_usages",
+        "authority_key_identifier",
+    ];
+    for field in spec.as_object().expect("certificate spec object").keys() {
+        assert!(
+            FIELDS.contains(&field.as_str()),
+            "unknown certificate spec field `{field}`"
+        );
+    }
+    let list = |name: &str| -> Vec<Value> {
+        match &spec[name] {
+            Value::Null => Vec::new(),
+            value => value
+                .as_array()
+                .unwrap_or_else(|| panic!("`{name}` must be an array"))
+                .clone(),
+        }
     };
     let strings = |name: &str| -> Vec<String> {
-        spec[name]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .filter_map(Value::as_str)
-            .map(str::to_string)
+        list(name)
+            .iter()
+            .map(|value| {
+                value
+                    .as_str()
+                    .unwrap_or_else(|| panic!("`{name}` holds strings only"))
+                    .to_string()
+            })
             .collect()
     };
     let date = |name: &str| {
@@ -196,8 +224,12 @@ pub fn x509(spec: &Value, key: &JWK, issuer: Option<(&str, &JWK)>) -> String {
         rcgen::date_time_ymd(parts[0] as i32, parts[1] as u8, parts[2] as u8)
     };
     let mut params = CertificateParams::new(strings("sans")).expect("SANs");
-    for pair in spec["subject"].as_array().into_iter().flatten() {
-        let kind = match pair[0].as_str().expect("DN type") {
+    params.distinguished_name = DistinguishedName::new();
+    for pair in list("subject") {
+        let (Some(kind), Some(value)) = (pair[0].as_str(), pair[1].as_str()) else {
+            panic!("`subject` holds [type, value] pairs")
+        };
+        let kind = match kind {
             "CN" => DnType::CommonName,
             "C" => DnType::CountryName,
             "O" => DnType::OrganizationName,
@@ -206,9 +238,7 @@ pub fn x509(spec: &Value, key: &JWK, issuer: Option<(&str, &JWK)>) -> String {
             "ST" => DnType::StateOrProvinceName,
             other => panic!("unknown DN type `{other}`"),
         };
-        params
-            .distinguished_name
-            .push(kind, pair[1].as_str().expect("DN value"));
+        params.distinguished_name.push(kind, value);
     }
     if spec.get("not_before").is_some() {
         params.not_before = date("not_before");
@@ -222,7 +252,8 @@ pub fn x509(spec: &Value, key: &JWK, issuer: Option<(&str, &JWK)>) -> String {
         Value::Object(ca) => IsCa::Ca(BasicConstraints::Constrained(
             ca["path_len"].as_u64().expect("path_len") as u8,
         )),
-        _ => IsCa::NoCa,
+        Value::Null => IsCa::NoCa,
+        other => panic!("`ca` must be true, false or {{\"path_len\": n}}, not {other}"),
     };
     params.key_usages = strings("key_usages")
         .iter()
@@ -242,8 +273,12 @@ pub fn x509(spec: &Value, key: &JWK, issuer: Option<(&str, &JWK)>) -> String {
             other => panic!("unknown extended key usage `{other}`"),
         })
         .collect();
-    params.use_authority_key_identifier_extension =
-        spec["authority_key_identifier"].as_bool().unwrap_or(false);
+    params.use_authority_key_identifier_extension = match &spec["authority_key_identifier"] {
+        Value::Null => false,
+        value => value
+            .as_bool()
+            .expect("`authority_key_identifier` must be a boolean"),
+    };
     let mut serial = [0u8; 20];
     OsRng.fill_bytes(&mut serial);
     serial[0] &= 0x7f;
@@ -289,6 +324,8 @@ fn rsa_jwk() -> JWK {
     let mut jwk = JWK::try_from(json!({
         "kty": "RSA", "alg": "RS256", "use": "sig",
         "n": uint(key.n()), "e": uint(key.e()), "d": uint(key.d()), "p": uint(p), "q": uint(q),
+        "dp": uint(key.dp().expect("dp")), "dq": uint(key.dq().expect("dq")),
+        "qi": uint(&key.crt_coefficient().expect("qi")),
     }))
     .expect("RSA JWK");
     jwk.key_id = Some(jwk.thumbprint().expect("thumbprint"));
@@ -475,18 +512,6 @@ mod tests {
         assert_eq!(url.split_once('#').unwrap().0, did_key(&keys().verifier));
     }
 
-    struct Recipient(SecretSlice<u8>);
-
-    #[async_trait::async_trait]
-    impl one_crypto::jwe::PrivateKeyAgreementHandle for Recipient {
-        async fn shared_secret(
-            &self,
-            remote_jwk: &PublicJwk,
-        ) -> Result<SecretSlice<u8>, one_crypto::encryption::EncryptionError> {
-            ECDSASigner::shared_secret_p256(&self.0, remote_jwk)
-        }
-    }
-
     #[tokio::test]
     async fn jwe_decrypts_with_the_recipient_key() {
         let verifier = &keys().verifier;
@@ -535,7 +560,7 @@ mod tests {
             None,
         );
         let spec = json!({
-            "subject": [["CN", "Fixture Issuer"], ["C", "US"]], "sans": ["issuer.example"], "ca": false,
+            "subject": [["C", "US"], ["CN", "Fixture Issuer"]], "sans": ["issuer.example"], "ca": false,
             "not_before": "2026-01-02", "not_after": "2036-01-02",
             "key_usages": ["digital_signature"], "extended_key_usages": ["server_auth"],
             "authority_key_identifier": true
@@ -548,7 +573,7 @@ mod tests {
         let (root_pem, cert_pem, again_pem) = (parse(&root), parse(&cert), parse(&again));
         let root_x509 = root_pem.parse_x509().unwrap();
         let cert_x509 = cert_pem.parse_x509().unwrap();
-        assert_eq!(cert_x509.subject().to_string(), "CN=Fixture Issuer, C=US");
+        assert_eq!(cert_x509.subject().to_string(), "C=US, CN=Fixture Issuer");
         assert_eq!(
             cert_x509.issuer().to_string(),
             root_x509.subject().to_string()
@@ -581,9 +606,65 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "x509")]
+    #[test]
+    fn x509_subject_holds_only_the_given_names() {
+        let cert = x509(
+            &json!({ "subject": [["O", "Acme Co"]] }),
+            &keys().issuer,
+            None,
+        );
+
+        let pem = x509_parser::pem::parse_x509_pem(cert.as_bytes()).unwrap().1;
+        assert_eq!(pem.parse_x509().unwrap().subject().to_string(), "O=Acme Co");
+    }
+
+    #[cfg(feature = "x509")]
+    #[test]
+    #[should_panic(expected = "unknown certificate spec field `key_usage`")]
+    fn x509_rejects_an_unknown_spec_field() {
+        x509(&json!({ "key_usage": [] }), &keys().issuer, None);
+    }
+
+    #[cfg(feature = "x509")]
+    #[test]
+    #[should_panic(expected = "`ca` must be true, false")]
+    fn x509_rejects_a_ca_flag_of_the_wrong_type() {
+        x509(&json!({ "ca": "true" }), &keys().issuer, None);
+    }
+
+    #[test]
+    fn authz_key_carries_its_crt_parameters() {
+        let jwk = serde_json::to_value(&keys().authz).unwrap();
+        let int = |name: &str| {
+            rsa::BigUint::from_bytes_be(
+                &BASE64_URL_SAFE_NO_PAD
+                    .decode(jwk[name].as_str().unwrap())
+                    .unwrap(),
+            )
+        };
+        let one = rsa::BigUint::from(1u8);
+
+        assert_eq!(int("dp"), int("d") % (int("p") - &one));
+        assert_eq!(int("dq"), int("d") % (int("q") - &one));
+        assert_eq!((int("qi") * int("q")) % int("p"), one);
+    }
+
     #[test]
     #[should_panic(expected = "signing")]
     fn jws_rejects_an_alg_the_key_cannot_sign() {
         jws(&json!({ "alg": "ES256" }), &json!({}), &keys().authz);
+    }
+
+    struct Recipient(SecretSlice<u8>);
+
+    #[async_trait::async_trait]
+    impl one_crypto::jwe::PrivateKeyAgreementHandle for Recipient {
+        async fn shared_secret(
+            &self,
+            remote_jwk: &PublicJwk,
+        ) -> Result<SecretSlice<u8>, one_crypto::encryption::EncryptionError> {
+            ECDSASigner::shared_secret_p256(&self.0, remote_jwk)
+        }
     }
 }

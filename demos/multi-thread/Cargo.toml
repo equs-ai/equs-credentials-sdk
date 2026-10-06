@@ -16,4 +16,4 @@ futures = "0.3.30"
 rand = "0.9.1"
 
 equs-credentials-sdk = { path = "../..", features = ["in-memory"] }
-equs-test-fixtures = { path = "../../test-fixtures" }
+equs-test-fixtures = { path = "../../test-fixtures", default-features = false }

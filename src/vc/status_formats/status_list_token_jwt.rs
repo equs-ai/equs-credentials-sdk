@@ -524,8 +524,8 @@ mod tests {
     }
 
     #[rstest]
-    #[case::one_bit_valid(1, status_list_jwt_token_1bit(), VCStatus::Valid)]
-    #[case::one_bit_invalid(2, status_list_jwt_token_1bit(), VCStatus::Invalid)]
+    #[case::one_bit_invalid(1, status_list_jwt_token_1bit(), VCStatus::Invalid)]
+    #[case::one_bit_valid(2, status_list_jwt_token_1bit(), VCStatus::Valid)]
     #[case::two_bit_valid(1, status_list_jwt_token_2bit(), VCStatus::Valid)]
     #[case::two_bit_invalid(2, status_list_jwt_token_2bit(), VCStatus::Invalid)]
     #[case::two_bit_suspended(3, status_list_jwt_token_2bit(), VCStatus::Suspended)]
@@ -542,7 +542,7 @@ mod tests {
             &mut http_client,
             Method::GET,
             Url::from_str("http://example.com/status_list").unwrap(),
-            status_list_jwt_token_2bit(),
+            status_list_token,
             1.into(),
         );
 
@@ -776,8 +776,8 @@ mod tests {
 
     /// Status list token that contains the following status list:
     /// token idx - status:
-    /// 1 - Valid
-    /// 2 - Invalid
+    /// 1 - Invalid
+    /// 2 - Valid
     ///
     /// Status bit size - 1
     fn status_list_jwt_token_1bit() -> String {

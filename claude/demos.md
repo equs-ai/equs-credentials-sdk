@@ -26,7 +26,7 @@ Self-contained example applications demonstrating how to use EQUS Credentials SD
 - Used by: developers learning the SDK; CI smoke tests
 
 ## Key decisions / constraints
-- Demos use hard-coded keys and localhost URLs, and the Rust demos generate their dummy access tokens at startup through `test_fixtures` — they are **not production-ready**.
+- Demos use hard-coded keys and localhost URLs, and the Rust demos generate their dummy access tokens on demand through `test_fixtures` — they are **not production-ready**.
 - The OID4VC demo is the canonical full-stack example: run issuer, holder, and verifier as three separate processes.
 - The multi-thread demo is specifically for load/concurrency testing of the OID4VCI flow (default 100 concurrent issuances).
 

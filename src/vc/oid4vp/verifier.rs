@@ -2203,70 +2203,6 @@ mod tests {
             .unwrap();
     }
 
-    /// Encrypted authorization response for a recipient key the verifier does not hold
-    /// (`kid: ac`), carrying a key-bound SD-JWT presentation.
-    fn jwe() -> String {
-        let keys = test_fixtures::keys();
-        let sd_jwt = test_fixtures::sd_jwt(
-            &json!({
-                "typ": "dc+sd-jwt",
-                "alg": "ES256",
-                "kid": test_fixtures::did_key_url(&keys.issuer)
-            }),
-            &json!({
-                "iat": 1756132278,
-                "sub": test_fixtures::did_key(&keys.holder),
-                "vct": "https://credentials.example.com/identity_credential",
-                "_sd_alg": "sha-256",
-                "iss": test_fixtures::did_key(&keys.issuer),
-                "exp": 1787668278,
-                "nbf": 1756132278,
-                "cnf": {
-                    "jwk": keys.holder.to_public()
-                }
-            }),
-            &[r#"["kH5kXGmYa82ylXaOfFP_zA", "name", "Mark"]"#],
-            &keys.issuer,
-        );
-        let vp_token = test_fixtures::sd_jwt_kb(
-            &sd_jwt,
-            &json!({
-                "typ": "kb+jwt",
-                "alg": "ES256"
-            }),
-            &json!({
-                "aud": test_fixtures::did_key(&keys.verifier),
-                "iat": 1756132278,
-                "nonce": "3DaLwdi89qDgplpSwAspX6wWzm6pLkzaN3Xuk-ar5zY"
-            }),
-            &keys.holder,
-        );
-        let response = json!({
-            "vp_token": vp_token,
-            "presentation_submission": {
-                "id": "d5dec2be-1f86-4ba5-b021-9b18aa769afa",
-                "definition_id": "327ad171-c80a-485b-b098-50d7ad278ef6",
-                "descriptor_map": [{
-                    "id": "Identity-1",
-                    "format": "dc+sd-jwt",
-                    "path": "$",
-                    "path_nested": null
-                }]
-            }
-        });
-        test_fixtures::jwe(
-            &json!({
-                "kid": "ac",
-                "enc": "A128CBC-HS256",
-                "alg": "ECDH-ES",
-                "apu": "some_nonce",
-                "apv": "some_nonce"
-            }),
-            &serde_json::to_vec(&response).unwrap(),
-            &keys.verifier,
-        )
-    }
-
     #[rstest]
     #[should_panic(expected = "Error while getting the jwe header")]
     #[case("not_even_jwt".to_string())]
@@ -2380,6 +2316,70 @@ mod tests {
         let request = signed_request_object(Some(&metadata)).await;
 
         assert_eq!(audience_of(&request), "https://wallet.example.org");
+    }
+
+    /// Encrypted authorization response for a recipient key the verifier does not hold
+    /// (`kid: ac`), carrying a key-bound SD-JWT presentation.
+    fn jwe() -> String {
+        let keys = test_fixtures::keys();
+        let sd_jwt = test_fixtures::sd_jwt(
+            &json!({
+                "typ": "dc+sd-jwt",
+                "alg": "ES256",
+                "kid": test_fixtures::did_key_url(&keys.issuer)
+            }),
+            &json!({
+                "iat": 1756132278,
+                "sub": test_fixtures::did_key(&keys.holder),
+                "vct": "https://credentials.example.com/identity_credential",
+                "_sd_alg": "sha-256",
+                "iss": test_fixtures::did_key(&keys.issuer),
+                "exp": 1787668278,
+                "nbf": 1756132278,
+                "cnf": {
+                    "jwk": keys.holder.to_public()
+                }
+            }),
+            &[r#"["kH5kXGmYa82ylXaOfFP_zA", "name", "Mark"]"#],
+            &keys.issuer,
+        );
+        let vp_token = test_fixtures::sd_jwt_kb(
+            &sd_jwt,
+            &json!({
+                "typ": "kb+jwt",
+                "alg": "ES256"
+            }),
+            &json!({
+                "aud": test_fixtures::did_key(&keys.verifier),
+                "iat": 1756132278,
+                "nonce": "3DaLwdi89qDgplpSwAspX6wWzm6pLkzaN3Xuk-ar5zY"
+            }),
+            &keys.holder,
+        );
+        let response = json!({
+            "vp_token": vp_token,
+            "presentation_submission": {
+                "id": "d5dec2be-1f86-4ba5-b021-9b18aa769afa",
+                "definition_id": "327ad171-c80a-485b-b098-50d7ad278ef6",
+                "descriptor_map": [{
+                    "id": "Identity-1",
+                    "format": "dc+sd-jwt",
+                    "path": "$",
+                    "path_nested": null
+                }]
+            }
+        });
+        test_fixtures::jwe(
+            &json!({
+                "kid": "ac",
+                "enc": "A128CBC-HS256",
+                "alg": "ECDH-ES",
+                "apu": "some_nonce",
+                "apv": "some_nonce"
+            }),
+            &serde_json::to_vec(&response).unwrap(),
+            &keys.verifier,
+        )
     }
 
     fn wallet_metadata_with_issuer(issuer: &str) -> WalletMetadata {

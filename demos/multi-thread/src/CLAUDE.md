@@ -19,4 +19,4 @@ Runnable demo binary that stress-tests the OID4VCI issuance flow under concurren
 - Used by: developers testing concurrent issuance performance
 
 ## Constraints
-- Demo / development use only; generates a Keycloak-shaped dummy Bearer token at startup through `test_fixtures` and hard-codes `localhost:4000`.
+- Demo / development use only; generates a Keycloak-shaped dummy Bearer token for each holder run through `test_fixtures` and hard-codes `localhost:4000`.
