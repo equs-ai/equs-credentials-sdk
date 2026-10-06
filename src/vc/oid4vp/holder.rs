@@ -2820,7 +2820,7 @@ mod tests {
         let holder = holder_service(http_client, kms, vault).await;
 
         let status = holder
-            .get_credential_status(&Credential::SdJwt(sample_sd_jwt_with_status().to_string()))
+            .get_credential_status(&Credential::SdJwt(sample_sd_jwt_with_status()))
             .await
             .unwrap()
             .unwrap();

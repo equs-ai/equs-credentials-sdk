@@ -286,7 +286,7 @@ mod tests {
             kid: "12345".to_string(),
         };
 
-        let invalid_cred = Credential::SdJwt(sd_jwt_cred_no_vct_token().into());
+        let invalid_cred = Credential::SdJwt(sd_jwt_cred_no_vct_token());
         let res = DefaultMetadataProcessor::resolve_metadata(&invalid_cred, key_metadata.clone());
 
         assert!(matches!(res.err(), Some(Error::Resolving { .. })));
@@ -294,7 +294,7 @@ mod tests {
 
     #[test]
     fn resolve_sd_jwt_cred_fields() {
-        let credential = Credential::SdJwt(sd_jwt_cred_token().into());
+        let credential = Credential::SdJwt(sd_jwt_cred_token());
         let mut fields = DefaultMetadataProcessor::resolve_fields(&credential).unwrap();
 
         fields.sort();
@@ -342,7 +342,7 @@ mod tests {
 
     fn sd_jwt_cred() -> TestCaseCred {
         TestCaseCred {
-            credential: Credential::SdJwt(sd_jwt_cred_token().to_owned()),
+            credential: Credential::SdJwt(sd_jwt_cred_token()),
             type_: "https://issuer.net/cred_schema".to_owned(),
             format: VCFormat::SdJwtVc,
             key_metadata: KeyMetadata {
@@ -373,65 +373,59 @@ mod tests {
             )
         });
 
-    fn sd_jwt_cred_token() -> &'static str {
-        static TOKEN: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
-            let (issuer, holder) = &*ED25519_KEYS;
-            test_fixtures::sd_jwt(
-                &serde_json::json!({
-                    "typ": "vc+sd-jwt",
-                    "alg": "EdDSA",
-                    "kid": test_fixtures::did_key_url(issuer)
-                }),
-                &serde_json::json!({
-                    "dob": "09/09/1989",
-                    "vct": "https://issuer.net/cred_schema",
-                    "sub": test_fixtures::did_key(holder),
-                    "nbf": 1727134181,
-                    "_sd_alg": "sha-256",
-                    "iss": test_fixtures::did_key(issuer),
-                    "iat": 1727134181,
-                    "exp": 1758670181,
-                    "cnf": {
-                        "jwk": holder.to_public()
-                    }
-                }),
-                &[
-                    r#"["szwq9x4_yjVE_io1R7q6LQ", "name", "John"]"#,
-                    r#"["OXJ1XxxaLiNjexydYK3cHg", "surname", "Doe"]"#,
-                ],
-                issuer,
-            )
-        });
-        &TOKEN
+    fn sd_jwt_cred_token() -> String {
+        let (issuer, holder) = &*ED25519_KEYS;
+        test_fixtures::sd_jwt(
+            &serde_json::json!({
+                "typ": "vc+sd-jwt",
+                "alg": "EdDSA",
+                "kid": test_fixtures::did_key_url(issuer)
+            }),
+            &serde_json::json!({
+                "dob": "09/09/1989",
+                "vct": "https://issuer.net/cred_schema",
+                "sub": test_fixtures::did_key(holder),
+                "nbf": 1727134181,
+                "_sd_alg": "sha-256",
+                "iss": test_fixtures::did_key(issuer),
+                "iat": 1727134181,
+                "exp": 1758670181,
+                "cnf": {
+                    "jwk": holder.to_public()
+                }
+            }),
+            &[
+                r#"["szwq9x4_yjVE_io1R7q6LQ", "name", "John"]"#,
+                r#"["OXJ1XxxaLiNjexydYK3cHg", "surname", "Doe"]"#,
+            ],
+            issuer,
+        )
     }
-    fn sd_jwt_cred_no_vct_token() -> &'static str {
-        static TOKEN: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
-            let (issuer, holder) = &*ED25519_KEYS;
-            test_fixtures::sd_jwt(
-                &serde_json::json!({
-                    "typ": "vc+sd-jwt",
-                    "alg": "EdDSA",
-                    "kid": test_fixtures::did_key_url(issuer)
-                }),
-                &serde_json::json!({
-                    "dob": "09/09/1989",
-                    "sub": test_fixtures::did_key(holder),
-                    "nbf": 1727134420,
-                    "_sd_alg": "sha-256",
-                    "iss": test_fixtures::did_key(issuer),
-                    "iat": 1727134420,
-                    "exp": 1758670420,
-                    "cnf": {
-                        "jwk": holder.to_public()
-                    }
-                }),
-                &[
-                    r#"["pt2LyPmGjRLZhi8TcD2lrQ", "name", "John"]"#,
-                    r#"["AA-9Rk76zn3VD_aXGcaehQ", "surname", "Doe"]"#,
-                ],
-                issuer,
-            )
-        });
-        &TOKEN
+    fn sd_jwt_cred_no_vct_token() -> String {
+        let (issuer, holder) = &*ED25519_KEYS;
+        test_fixtures::sd_jwt(
+            &serde_json::json!({
+                "typ": "vc+sd-jwt",
+                "alg": "EdDSA",
+                "kid": test_fixtures::did_key_url(issuer)
+            }),
+            &serde_json::json!({
+                "dob": "09/09/1989",
+                "sub": test_fixtures::did_key(holder),
+                "nbf": 1727134420,
+                "_sd_alg": "sha-256",
+                "iss": test_fixtures::did_key(issuer),
+                "iat": 1727134420,
+                "exp": 1758670420,
+                "cnf": {
+                    "jwk": holder.to_public()
+                }
+            }),
+            &[
+                r#"["pt2LyPmGjRLZhi8TcD2lrQ", "name", "John"]"#,
+                r#"["AA-9Rk76zn3VD_aXGcaehQ", "surname", "Doe"]"#,
+            ],
+            issuer,
+        )
     }
 }

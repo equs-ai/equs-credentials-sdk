@@ -61,36 +61,33 @@ pub mod fixtures {
     }
 
     /// SD-JWT VC the issuer fixtures hand out; `cnf` is the holder fixture key.
-    pub fn sd_jwt_creds() -> &'static str {
-        static TOKEN: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
-            let keys = test_fixtures::keys();
-            test_fixtures::sd_jwt(
-                &serde_json::json!({
-                    "typ": "vc+sd-jwt",
-                    "alg": "ES256",
-                    "kid": test_fixtures::did_key_url(&keys.issuer)
-                }),
-                &serde_json::json!({
-                    "vct": "SD_JWT_cred",
-                    "sub": test_fixtures::did_key(&keys.holder),
-                    "nbf": 1725533254,
-                    "_sd_alg": "sha-256",
-                    "iss": test_fixtures::did_key(&keys.issuer),
-                    "iat": 1725533254,
-                    "exp": 1757069254,
-                    "cnf": {
-                        "jwk": keys.holder.to_public()
-                    }
-                }),
-                &[
-                    r#"["o0TxtL8AhuLRWRgnH984_Q", "given_name", "John"]"#,
-                    r#"["vIS3esPLyQPtQgBLgOFaag", "family_name", "Doe"]"#,
-                    r#"["lio5qsUdvI_uwyGbFamNqQ", "dob", "09/09/1989"]"#,
-                ],
-                &keys.issuer,
-            )
-        });
-        &TOKEN
+    pub fn sd_jwt_creds() -> String {
+        let keys = test_fixtures::keys();
+        test_fixtures::sd_jwt(
+            &serde_json::json!({
+                "typ": "vc+sd-jwt",
+                "alg": "ES256",
+                "kid": test_fixtures::did_key_url(&keys.issuer)
+            }),
+            &serde_json::json!({
+                "vct": "SD_JWT_cred",
+                "sub": test_fixtures::did_key(&keys.holder),
+                "nbf": 1725533254,
+                "_sd_alg": "sha-256",
+                "iss": test_fixtures::did_key(&keys.issuer),
+                "iat": 1725533254,
+                "exp": 1757069254,
+                "cnf": {
+                    "jwk": keys.holder.to_public()
+                }
+            }),
+            &[
+                r#"["o0TxtL8AhuLRWRgnH984_Q", "given_name", "John"]"#,
+                r#"["vIS3esPLyQPtQgBLgOFaag", "family_name", "Doe"]"#,
+                r#"["lio5qsUdvI_uwyGbFamNqQ", "dob", "09/09/1989"]"#,
+            ],
+            &keys.issuer,
+        )
     }
 
     pub const NOTIFICATION_ID: &str = "8fcc7362-dc77-4aaf-a953-fa56e39b22f7";

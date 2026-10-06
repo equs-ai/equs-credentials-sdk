@@ -1192,48 +1192,45 @@ mod tests {
     }
 
     /// SD-JWT VC presentation with key binding from a `did:web` issuer; holder and verifier are the fixture keys.
-    fn sample_sdjwt_presentation_token() -> &'static str {
-        static TOKEN: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
-            let keys = test_fixtures::keys();
-            let sd_jwt = test_fixtures::sd_jwt(
-                &serde_json::json!({
-                    "typ": "vc+sd-jwt",
-                    "alg": "ES256",
-                    "kid": "did:web:localhost%3A8088#key-0"
-                }),
-                &serde_json::json!({
-                    "vct": "https://credentials.example.com/identity_credential_2",
-                    "sub": test_fixtures::did_key(&keys.holder),
-                    "nbf": 1729179117,
-                    "_sd_alg": "sha-256",
-                    "iss": "did:web:localhost%3A8088",
-                    "iat": 1729179117,
-                    "exp": 1760715117,
-                    "cnf": {
-                        "jwk": keys.holder.to_public()
-                    }
-                }),
-                &[
-                    r#"["7-yYKc7GmrE-_i_gjfI5AA", "email", "HARDCODED@gmail.com"]"#,
-                    r#"["z0bi7LbE1OFGQflY216ULA", "username", "USER"]"#,
-                ],
-                &keys.issuer,
-            );
-            test_fixtures::sd_jwt_kb(
-                &sd_jwt,
-                &serde_json::json!({
-                    "typ": "kb+jwt",
-                    "alg": "ES256"
-                }),
-                &serde_json::json!({
-                    "nonce": "rwD1EZl2lbbOPIBFWxKi6UiRHFQXqupOuypj6IvDl_I",
-                    "aud": test_fixtures::did_key(&keys.verifier),
-                    "iat": 1729179123
-                }),
-                &keys.holder,
-            )
-        });
-        &TOKEN
+    fn sample_sdjwt_presentation_token() -> String {
+        let keys = test_fixtures::keys();
+        let sd_jwt = test_fixtures::sd_jwt(
+            &serde_json::json!({
+                "typ": "vc+sd-jwt",
+                "alg": "ES256",
+                "kid": "did:web:localhost%3A8088#key-0"
+            }),
+            &serde_json::json!({
+                "vct": "https://credentials.example.com/identity_credential_2",
+                "sub": test_fixtures::did_key(&keys.holder),
+                "nbf": 1729179117,
+                "_sd_alg": "sha-256",
+                "iss": "did:web:localhost%3A8088",
+                "iat": 1729179117,
+                "exp": 1760715117,
+                "cnf": {
+                    "jwk": keys.holder.to_public()
+                }
+            }),
+            &[
+                r#"["7-yYKc7GmrE-_i_gjfI5AA", "email", "HARDCODED@gmail.com"]"#,
+                r#"["z0bi7LbE1OFGQflY216ULA", "username", "USER"]"#,
+            ],
+            &keys.issuer,
+        );
+        test_fixtures::sd_jwt_kb(
+            &sd_jwt,
+            &serde_json::json!({
+                "typ": "kb+jwt",
+                "alg": "ES256"
+            }),
+            &serde_json::json!({
+                "nonce": "rwD1EZl2lbbOPIBFWxKi6UiRHFQXqupOuypj6IvDl_I",
+                "aud": test_fixtures::did_key(&keys.verifier),
+                "iat": 1729179123
+            }),
+            &keys.holder,
+        )
     }
 
     fn sample_ldp_presentation_descriptor_with_enum() -> InputDescriptor {

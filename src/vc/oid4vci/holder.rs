@@ -1279,7 +1279,7 @@ mod tests {
 
         match &credentials[0] {
             Credential::SdJwt(cred) => {
-                assert_eq!(cred, sd_jwt_creds());
+                assert_eq!(cred, &sd_jwt_creds());
                 assert_eq!(notification_id, NOTIFICATION_ID);
             }
             _ => {
@@ -1301,7 +1301,7 @@ mod tests {
         SampleIssuerMetadata::with_sdjwtvc_conf(),
         json![
         {
-            "credentials": [{"credential": sd_jwt_creds().to_string()}],
+            "credentials": [{"credential": sd_jwt_creds()}],
             "notification_id": Some("notification_id".to_string()),
         }],
     )]
@@ -1440,7 +1440,7 @@ mod tests {
         for credential in credentials {
             match &credential {
                 Credential::SdJwt(cred) => {
-                    assert_eq!(cred, sd_jwt_creds());
+                    assert_eq!(cred, &sd_jwt_creds());
                     assert_eq!(notification_id, NOTIFICATION_ID);
                 }
                 _ => {
@@ -1672,18 +1672,21 @@ mod tests {
     //noinspection HttpUrlsUsage
     #[rstest]
     #[case::ldpvc(ISSUER_URL, Credential::LdpVc(ldp_vc_credential()))]
-    #[case::sdjwt_iss_oid4vci(ISSUER_URL, Credential::SdJwt(sd_jwt_credential_iss_oid4vci().to_owned()
-    ))]
-    #[case::sdjwt_iss_did(ISSUER_URL, Credential::SdJwt(sd_jwt_credential_iss_did().to_owned()))]
+    #[case::sdjwt_iss_oid4vci(ISSUER_URL, Credential::SdJwt(sd_jwt_credential_iss_oid4vci()))]
+    #[case::sdjwt_iss_did(ISSUER_URL, Credential::SdJwt(sd_jwt_credential_iss_did()))]
     #[should_panic(
         expected = "Credential contains issuer identifier notadid:web:issuer-backend.com"
     )]
-    #[case::sdjwt_iss_other_invalid(ISSUER_URL, Credential::SdJwt(sd_jwt_credential_iss_other_invalid().to_owned()
-    ))]
-    #[case::sdjwt_iss_other_valid("http://issuer-backend.com", Credential::SdJwt(sd_jwt_credential_iss_other_valid().to_owned()
-    ))]
+    #[case::sdjwt_iss_other_invalid(
+        ISSUER_URL,
+        Credential::SdJwt(sd_jwt_credential_iss_other_invalid())
+    )]
+    #[case::sdjwt_iss_other_valid(
+        "http://issuer-backend.com",
+        Credential::SdJwt(sd_jwt_credential_iss_other_valid())
+    )]
     #[should_panic(expected = "Credential does not contain issuer identifier")]
-    #[case::sdjwt_iss_none(ISSUER_URL, Credential::SdJwt(sd_jwt_credential_iss_none().to_owned()))]
+    #[case::sdjwt_iss_none(ISSUER_URL, Credential::SdJwt(sd_jwt_credential_iss_none()))]
     #[should_panic(expected = "Unsupported format: jwt_vc_json")]
     #[case::unsupported_format_jwt_vc_json(ISSUER_URL, Credential::JwtVcJson("MOCK_CREDENTIAL".to_owned()
     ))]
@@ -1753,102 +1756,87 @@ mod tests {
             .unwrap()
     }
 
-    fn sd_jwt_credential_iss_oid4vci() -> &'static str {
-        static TOKEN: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
-            let keys = test_fixtures::keys();
-            test_fixtures::sd_jwt(
-                &serde_json::json!({
-                    "typ": "sd+jwt",
-                    "alg": "ES256"
-                }),
-                &serde_json::json!({
-                    "iss": "https://issuer-backend.com",
-                    "id": "1234",
-                    "_sd_alg": "SHA-256"
-                }),
-                &[],
-                &keys.issuer,
-            )
-        });
-        &TOKEN
+    fn sd_jwt_credential_iss_oid4vci() -> String {
+        let keys = test_fixtures::keys();
+        test_fixtures::sd_jwt(
+            &serde_json::json!({
+                "typ": "sd+jwt",
+                "alg": "ES256"
+            }),
+            &serde_json::json!({
+                "iss": "https://issuer-backend.com",
+                "id": "1234",
+                "_sd_alg": "SHA-256"
+            }),
+            &[],
+            &keys.issuer,
+        )
     }
 
-    fn sd_jwt_credential_iss_did() -> &'static str {
-        static TOKEN: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
-            let keys = test_fixtures::keys();
-            test_fixtures::sd_jwt(
-                &serde_json::json!({
-                    "typ": "sd+jwt",
-                    "alg": "ES256"
-                }),
-                &serde_json::json!({
-                    "iss": "did:web:issuer-backend.com/ignored-path",
-                    "id": "1234",
-                    "_sd_alg": "SHA-256"
-                }),
-                &[],
-                &keys.issuer,
-            )
-        });
-        &TOKEN
+    fn sd_jwt_credential_iss_did() -> String {
+        let keys = test_fixtures::keys();
+        test_fixtures::sd_jwt(
+            &serde_json::json!({
+                "typ": "sd+jwt",
+                "alg": "ES256"
+            }),
+            &serde_json::json!({
+                "iss": "did:web:issuer-backend.com/ignored-path",
+                "id": "1234",
+                "_sd_alg": "SHA-256"
+            }),
+            &[],
+            &keys.issuer,
+        )
     }
 
-    fn sd_jwt_credential_iss_other_invalid() -> &'static str {
-        static TOKEN: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
-            let keys = test_fixtures::keys();
-            test_fixtures::sd_jwt(
-                &serde_json::json!({
-                    "typ": "sd+jwt",
-                    "alg": "ES256"
-                }),
-                &serde_json::json!({
-                    "iss": "notadid:web:issuer-backend.com",
-                    "id": "1234",
-                    "_sd_alg": "SHA-256"
-                }),
-                &[],
-                &keys.issuer,
-            )
-        });
-        &TOKEN
+    fn sd_jwt_credential_iss_other_invalid() -> String {
+        let keys = test_fixtures::keys();
+        test_fixtures::sd_jwt(
+            &serde_json::json!({
+                "typ": "sd+jwt",
+                "alg": "ES256"
+            }),
+            &serde_json::json!({
+                "iss": "notadid:web:issuer-backend.com",
+                "id": "1234",
+                "_sd_alg": "SHA-256"
+            }),
+            &[],
+            &keys.issuer,
+        )
     }
 
-    fn sd_jwt_credential_iss_other_valid() -> &'static str {
-        static TOKEN: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
-            let keys = test_fixtures::keys();
-            test_fixtures::sd_jwt(
-                &serde_json::json!({
-                    "typ": "sd+jwt",
-                    "alg": "ES256"
-                }),
-                &serde_json::json!({
-                    "iss": "http://issuer-backend.com",
-                    "id": "1234"
-                }),
-                &[],
-                &keys.issuer,
-            )
-        });
-        &TOKEN
+    fn sd_jwt_credential_iss_other_valid() -> String {
+        let keys = test_fixtures::keys();
+        test_fixtures::sd_jwt(
+            &serde_json::json!({
+                "typ": "sd+jwt",
+                "alg": "ES256"
+            }),
+            &serde_json::json!({
+                "iss": "http://issuer-backend.com",
+                "id": "1234"
+            }),
+            &[],
+            &keys.issuer,
+        )
     }
 
-    fn sd_jwt_credential_iss_none() -> &'static str {
-        static TOKEN: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
-            let keys = test_fixtures::keys();
-            test_fixtures::sd_jwt(
-                &serde_json::json!({
-                    "typ": "sd+jwt",
-                    "alg": "ES256"
-                }),
-                &serde_json::json!({
-                    "id": "1234",
-                    "_sd_alg": "SHA-256"
-                }),
-                &[],
-                &keys.issuer,
-            )
-        });
-        &TOKEN
+    fn sd_jwt_credential_iss_none() -> String {
+        let keys = test_fixtures::keys();
+        test_fixtures::sd_jwt(
+            &serde_json::json!({
+                "typ": "sd+jwt",
+                "alg": "ES256"
+            }),
+            &serde_json::json!({
+                "id": "1234",
+                "_sd_alg": "SHA-256"
+            }),
+            &[],
+            &keys.issuer,
+        )
     }
 
     fn ldp_vc_credential() -> VC {

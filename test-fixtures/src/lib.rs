@@ -88,11 +88,9 @@ pub fn digest(input: &str) -> String {
     BASE64_URL_SAFE_NO_PAD.encode(Sha256::digest(input.as_bytes()))
 }
 
-/// Issuer-signed SD-JWT: `claims` plus `_sd`, signed as a JWS under `header`, followed by each
-/// disclosure and a trailing `~`. `_sd` is the sorted digests of `disclosures` merged with any
-/// `_sd` already in `claims` (the digests of claims that stay undisclosed); with neither it is
-/// omitted. A disclosure is its JSON array text (`["salt", "name", value]`), digested byte for
-/// byte, so a recorded salt reproduces the recorded digest.
+/// Issuer-signed SD-JWT over `header` and `claims`, followed by `disclosures` and a trailing `~`.
+/// `_sd` holds the sorted digests of the disclosures plus any digests already in `claims`; a
+/// disclosure is its JSON array text, digested as given.
 pub fn sd_jwt(header: &Value, claims: &Value, disclosures: &[&str], key: &JWK) -> String {
     let encoded: Vec<String> = disclosures
         .iter()

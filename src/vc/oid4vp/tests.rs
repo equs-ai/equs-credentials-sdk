@@ -26,43 +26,40 @@ pub mod fixtures {
         format!("{token}~")
     }
     /// SD-JWT VC whose `status` points at `sample_credential_status_list()`, index 1.
-    pub fn sample_sd_jwt_with_status() -> &'static str {
-        static TOKEN: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
-            let keys = test_fixtures::keys();
-            test_fixtures::sd_jwt(
-                &serde_json::json!({
-                    "typ": "dc+sd-jwt",
-                    "alg": "ES256",
-                    "kid": test_fixtures::did_key_url(&keys.issuer)
-                }),
-                &serde_json::json!({
-                    "address": "221B Baker Street",
-                    "iat": 1753054448,
-                    "date": "09/09/1989",
-                    "sub": test_fixtures::did_key(&keys.holder),
-                    "vct": "https://credentials.example.com/identity_credential",
-                    "status": {
-                        "status_list": {
-                            "uri": "http://localhost:9001/status_list",
-                            "idx": 1
-                        }
-                    },
-                    "_sd_alg": "sha-256",
-                    "iss": test_fixtures::did_key(&keys.issuer),
-                    "exp": 1753055048,
-                    "nbf": 1753054448,
-                    "cnf": {
-                        "jwk": keys.holder.to_public()
+    pub fn sample_sd_jwt_with_status() -> String {
+        let keys = test_fixtures::keys();
+        test_fixtures::sd_jwt(
+            &serde_json::json!({
+                "typ": "dc+sd-jwt",
+                "alg": "ES256",
+                "kid": test_fixtures::did_key_url(&keys.issuer)
+            }),
+            &serde_json::json!({
+                "address": "221B Baker Street",
+                "iat": 1753054448,
+                "date": "09/09/1989",
+                "sub": test_fixtures::did_key(&keys.holder),
+                "vct": "https://credentials.example.com/identity_credential",
+                "status": {
+                    "status_list": {
+                        "uri": "http://localhost:9001/status_list",
+                        "idx": 1
                     }
-                }),
-                &[
-                    r#"["uxLNTemWQkc1VO6LgsArlQ", "name", "John"]"#,
-                    r#"["2CBudCWI5EImahgzdcU1Vw", "surname", "Doe"]"#,
-                ],
-                &keys.issuer,
-            )
-        });
-        &TOKEN
+                },
+                "_sd_alg": "sha-256",
+                "iss": test_fixtures::did_key(&keys.issuer),
+                "exp": 1753055048,
+                "nbf": 1753054448,
+                "cnf": {
+                    "jwk": keys.holder.to_public()
+                }
+            }),
+            &[
+                r#"["uxLNTemWQkc1VO6LgsArlQ", "name", "John"]"#,
+                r#"["2CBudCWI5EImahgzdcU1Vw", "surname", "Doe"]"#,
+            ],
+            &keys.issuer,
+        )
     }
 
     pub mod single_presentation {

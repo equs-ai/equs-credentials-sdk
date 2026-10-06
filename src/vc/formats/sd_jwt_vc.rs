@@ -1605,105 +1605,93 @@ mod tests {
     )]
     #[case::no_iss(example_sd_jwt_issuer_none(), None)]
     fn extract_issuer_identifier(
-        #[case] credential: &str,
+        #[case] credential: String,
         #[case] expected: Option<CredentialIssuerIdentifier>,
     ) {
-        let actual = SdJwtAPI::extract_issuer_identifier(&credential.to_owned()).unwrap();
+        let actual = SdJwtAPI::extract_issuer_identifier(&credential).unwrap();
         assert_eq!(expected, actual);
     }
 
-    fn example_sd_jwt_issuer_oid4vci() -> &'static str {
-        static TOKEN: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
-            let keys = test_fixtures::keys();
-            test_fixtures::sd_jwt(
-                &serde_json::json!({
-                    "typ": "sd+jwt",
-                    "alg": "ES256"
-                }),
-                &serde_json::json!({
-                    "id": "1234",
-                    "iss": "https://example.com/oid4vci-issuer",
-                    "_sd_alg": "SHA-256"
-                }),
-                &[
-                    r#"["b836aa5414dcf683","firstname","John"]"#,
-                    r#"["d19eb21f073f8cbc","lastname","Doe"]"#,
-                    r#"["41787e54cfdcd5a7","ssn","123-45-6789"]"#,
-                ],
-                &keys.issuer,
-            )
-        });
-        &TOKEN
+    fn example_sd_jwt_issuer_oid4vci() -> String {
+        let keys = test_fixtures::keys();
+        test_fixtures::sd_jwt(
+            &serde_json::json!({
+                "typ": "sd+jwt",
+                "alg": "ES256"
+            }),
+            &serde_json::json!({
+                "id": "1234",
+                "iss": "https://example.com/oid4vci-issuer",
+                "_sd_alg": "SHA-256"
+            }),
+            &[
+                r#"["b836aa5414dcf683","firstname","John"]"#,
+                r#"["d19eb21f073f8cbc","lastname","Doe"]"#,
+                r#"["41787e54cfdcd5a7","ssn","123-45-6789"]"#,
+            ],
+            &keys.issuer,
+        )
     }
 
-    fn example_sd_jwt_issuer_did() -> &'static str {
-        static TOKEN: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
-            let keys = test_fixtures::keys();
-            test_fixtures::sd_jwt(
-                &serde_json::json!({
-                    "typ": "sd+jwt",
-                    "alg": "ES256"
-                }),
-                &serde_json::json!({
-                    "id": "1234",
-                    "iss": "did:example:123",
-                    "_sd_alg": "SHA-256"
-                }),
-                &[
-                    r#"["ffefff4d2547eb68","firstname","John"]"#,
-                    r#"["79e6f2a86d96affd","lastname","Doe"]"#,
-                    r#"["336707f8c33b28f2","ssn","123-45-6789"]"#,
-                ],
-                &keys.issuer,
-            )
-        });
-        &TOKEN
+    fn example_sd_jwt_issuer_did() -> String {
+        let keys = test_fixtures::keys();
+        test_fixtures::sd_jwt(
+            &serde_json::json!({
+                "typ": "sd+jwt",
+                "alg": "ES256"
+            }),
+            &serde_json::json!({
+                "id": "1234",
+                "iss": "did:example:123",
+                "_sd_alg": "SHA-256"
+            }),
+            &[
+                r#"["ffefff4d2547eb68","firstname","John"]"#,
+                r#"["79e6f2a86d96affd","lastname","Doe"]"#,
+                r#"["336707f8c33b28f2","ssn","123-45-6789"]"#,
+            ],
+            &keys.issuer,
+        )
     }
 
-    fn example_sd_jwt_issuer_other() -> &'static str {
-        static TOKEN: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
-            let keys = test_fixtures::keys();
-            test_fixtures::sd_jwt(
-                &serde_json::json!({
-                    "typ": "sd+jwt",
-                    "alg": "ES256"
-                }),
-                &serde_json::json!({
-                    "id": "1234",
-                    "iss": "notadid:example:123",
-                    "_sd_alg": "SHA-256"
-                }),
-                &[
-                    r#"["f7314295e57b07c7","firstname","John"]"#,
-                    r#"["5e6673c7f2dbd44c","lastname","Doe"]"#,
-                    r#"["6488f2f40980c923","ssn","123-45-6789"]"#,
-                ],
-                &keys.issuer,
-            )
-        });
-        &TOKEN
+    fn example_sd_jwt_issuer_other() -> String {
+        let keys = test_fixtures::keys();
+        test_fixtures::sd_jwt(
+            &serde_json::json!({
+                "typ": "sd+jwt",
+                "alg": "ES256"
+            }),
+            &serde_json::json!({
+                "id": "1234",
+                "iss": "notadid:example:123",
+                "_sd_alg": "SHA-256"
+            }),
+            &[
+                r#"["f7314295e57b07c7","firstname","John"]"#,
+                r#"["5e6673c7f2dbd44c","lastname","Doe"]"#,
+                r#"["6488f2f40980c923","ssn","123-45-6789"]"#,
+            ],
+            &keys.issuer,
+        )
     }
 
-    fn example_sd_jwt_issuer_none() -> &'static str {
-        static TOKEN: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
-            let keys = test_fixtures::keys();
-            test_fixtures::sd_jwt(
-                &serde_json::json!({
-                    "typ": "sd+jwt",
-                    "alg": "ES256"
-                }),
-                &serde_json::json!({
-                    "id": "1234",
-                    "_sd_alg": "SHA-256"
-                }),
-                &[
-                    r#"["ede3b5891cbbda4b","firstname","John"]"#,
-                    r#"["ae1304c5afded96a","lastname","Doe"]"#,
-                    r#"["ebfb48b3ecec5d38","ssn","123-45-6789"]"#,
-                ],
-                &keys.issuer,
-            )
-        });
-        &TOKEN
+    fn example_sd_jwt_issuer_none() -> String {
+        let keys = test_fixtures::keys();
+        test_fixtures::sd_jwt(
+            &serde_json::json!({
+                "typ": "sd+jwt",
+                "alg": "ES256"
+            }),
+            &serde_json::json!({
+                "id": "1234",
+                "_sd_alg": "SHA-256"
+            }),
+            &[
+                r#"["ede3b5891cbbda4b","firstname","John"]"#,
+                r#"["ae1304c5afded96a","lastname","Doe"]"#,
+                r#"["ebfb48b3ecec5d38","ssn","123-45-6789"]"#,
+            ],
+            &keys.issuer,
+        )
     }
 }
