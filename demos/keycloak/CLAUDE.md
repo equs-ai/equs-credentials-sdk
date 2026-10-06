@@ -9,7 +9,7 @@ authorization server required by the OID4VC demo services.
 | File/Dir            | Role |
 |---------------------|------|
 | docker-compose.yaml | Defines the Keycloak service with realm import and theme mounting. |
-| realms/             | Pre-configured realm JSON exports (e.g., `pid-issuer-realm`) with clients and scopes for demo flows. |
+| realms/             | Pre-configured realm JSON exports (e.g., `pid-issuer-realm`) with clients and scopes for demo flows. The export carries no key providers and no client secret: Keycloak generates the realm keys and the `pid-issuer-srv` secret at import. |
 | themes/             | Custom Keycloak UI themes used by the demo realm. |
 | certs/              | TLS certificates for HTTPS if needed. |
 | extra/              | Additional Keycloak configuration files. |
