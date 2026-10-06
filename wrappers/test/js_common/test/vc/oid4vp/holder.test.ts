@@ -21,6 +21,9 @@ import {
   VCFormat,
   VCStatus,
   VCStatusFormat,
+  FixtureKey,
+  fixtureDidKeyUrl,
+  fixtureJws,
 } from "equs-credentials-sdk";
 import {
   AUTH_REQUEST,
@@ -34,6 +37,8 @@ import {
   VC_WITH_STATUS,
   AUTH_REQUEST_WITH_FAKE_CONSTRAINTS,
   STATUS_LIST_JWT,
+  REQUEST_URI,
+  REQUEST_URI_WITH_POST,
 } from "./fixtures";
 import { MockNonceHandler } from "./mockNonceHandler";
 
@@ -82,9 +87,7 @@ describe("OID4VP Holder: ", () => {
       .forGet("/request")
       .thenReply(200, AUTH_REQUEST_JWT, { "content-type": "application/oauth-authz-req+jwt" });
 
-    const authorizationRequest = await holder.getAuthorizationRequest(
-      "openid4vp://?client_id=decentralized_identifier%3Adid%3Akey%3AzDnaer1d3Hpdg6RH7KRhWXRtzpijEm8GtaVQn7BtSw7DiW72E&request_uri=http%3A%2F%2Flocalhost%3A9001%2Frequest",
-    );
+    const authorizationRequest = await holder.getAuthorizationRequest(REQUEST_URI);
 
     expect(authorizationRequest.getAuthRequest()).toMatchObject(AUTH_REQUEST);
   });
@@ -112,9 +115,7 @@ describe("OID4VP Holder: ", () => {
       .forGet("/request")
       .thenReply(200, AUTH_REQUEST_JWT, { "content-type": "application/oauth-authz-req+jwt" });
 
-    const authorizationRequest = await holder.getAuthorizationRequest(
-      "openid4vp://?client_id=decentralized_identifier%3Adid%3Akey%3AzDnaer1d3Hpdg6RH7KRhWXRtzpijEm8GtaVQn7BtSw7DiW72E&request_uri=http%3A%2F%2Flocalhost%3A9001%2Frequest",
-    );
+    const authorizationRequest = await holder.getAuthorizationRequest(REQUEST_URI);
     let transactionData = authorizationRequest.getAuthRequest().transaction_data;
     expect(transactionData).toEqual([
       {
@@ -136,9 +137,7 @@ describe("OID4VP Holder: ", () => {
       };
     });
 
-    await holder.getAuthorizationRequest(
-      "openid4vp://?client_id=decentralized_identifier%3Adid%3Akey%3AzDnaer1d3Hpdg6RH7KRhWXRtzpijEm8GtaVQn7BtSw7DiW72E&request_uri_method=post&request_uri=http%3A%2F%2Flocalhost%3A9001%2Frequest",
-    );
+    await holder.getAuthorizationRequest(REQUEST_URI_WITH_POST);
   });
 
   it("present credentials auto", async () => {
@@ -241,8 +240,17 @@ describe("OID4VP Holder: ", () => {
       format: VCFormat.SdJwtVc,
       payload: VC_WITH_STATUS,
     };
-    const statusListJwt =
-      "eyJ0eXAiOiJzdGF0dXNsaXN0K2p3dCIsImFsZyI6IkVTMjU2Iiwia2lkIjoiZGlkOmtleTp6RG5hZVVDemI0RHMyRU44anVRRnJEclNoVjZBd1cxTjlZdlJ3WHdZUWdGeGVpdk1KI3pEbmFlVUN6YjREczJFTjhqdVFGckRyU2hWNkF3VzFOOVl2UndYd1lRZ0Z4ZWl2TUoifQ.eyJzdGF0dXNfbGlzdCI6eyJiaXRzIjoxLCJsc3QiOiJlTnBqWVdCZ0FBQUFGQUFGIn0sInN1YiI6Imh0dHA6Ly9sb2NhbGhvc3Q6OTAwMS9zdGF0dXNfbGlzdCIsImlhdCI6MTc1MzA1NDIzOCwiX3NkX2FsZyI6InNoYS0yNTYifQ.ZW5jcnlwdGVkX3Rlc3RfdmFsdWU~";
+    // One-bit list revoking index 2.
+    const statusListJwt = `${fixtureJws(
+      JSON.stringify({ typ: "statuslist+jwt", alg: "ES256", kid: fixtureDidKeyUrl(FixtureKey.Issuer) }),
+      JSON.stringify({
+        status_list: { bits: 1, lst: "eNpjYWBgAAAAFAAF" },
+        sub: "http://localhost:9001/status_list",
+        iat: 1753054238,
+        _sd_alg: "sha-256",
+      }),
+      FixtureKey.Issuer,
+    )}~`;
     await mockServer
       .forGet("/status_list")
       .thenReply(200, statusListJwt, { "content-type": "application/statuslist+jwt" });

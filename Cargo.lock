@@ -5978,6 +5978,7 @@ dependencies = [
  "chrono",
  "either",
  "equs-credentials-sdk",
+ "equs-test-fixtures",
  "log",
  "napi",
  "napi-build",

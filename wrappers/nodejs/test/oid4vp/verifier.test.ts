@@ -26,6 +26,8 @@ import {
   TransactionDataResponse,
   VpProtocolError,
   WalletMetadata,
+  FixtureKey,
+  fixtureDidKey,
 } from "../../";
 import {
   AUTH_RESPONSE_JWE,
@@ -230,15 +232,16 @@ describe("OID4VP Verifier: ", () => {
       authorizationRequestMetadata,
       null,
     );
-    const transactionDataAsBase64 =
-      "eyJjcmVkZW50aWFsX2lkcyI6WyIxIiwiMiJdLCJ0cmFuc2FjdGlvbl9kYXRhX2hhc2hlc19hbGciOlsic2hhLTI1NiJdLCJ0eXBlIjoic29tZV90eXBlIn0";
+    const transactionDataAsBase64 = jose.base64url.encode(
+      JSON.stringify({ credential_ids: ["1", "2"], transaction_data_hashes_alg: ["sha-256"], type: "some_type" }),
+    );
     const jwt = authReqByReference.authorizationRequestJwt.split(".")[1];
     expect(jose.base64url.decode(jwt).toString()).toContain(transactionDataAsBase64);
     expect(jose.base64url.decode(jwt).toString()).toContain("transaction_data");
   });
 
   it("verify Authorization Response", async () => {
-    const verifier = await buildVerifier("did:key:zDnaehdgostuLiVRhFWfn4d6fr76dQx7DxSJnTzBD3jv832DP");
+    const verifier = await buildVerifier(fixtureDidKey(FixtureKey.Verifier));
 
     const rpq: ResolvedPresentationQuery = {
       presentation_definition: PRESENTATION_QUERY.presentation_definition,
@@ -268,7 +271,7 @@ describe("OID4VP Verifier: ", () => {
   });
 
   it("verify Authorization Response with transaction data", async () => {
-    const verifier = await buildVerifier("did:key:zDnaehdgostuLiVRhFWfn4d6fr76dQx7DxSJnTzBD3jv832DP");
+    const verifier = await buildVerifier(fixtureDidKey(FixtureKey.Verifier));
 
     const rpq: ResolvedPresentationQuery = {
       presentation_definition: PRESENTATION_QUERY.presentation_definition,

@@ -15,12 +15,27 @@ import {
   VcCoreVerifier,
   VCCoreCredentialSigner,
   VCFormat,
+  FixtureKey,
+  fixtureDidKeyUrl,
+  fixtureJws,
 } from "equs-credentials-sdk";
 import { jwtDecode } from "jwt-decode";
 import { Utils } from "./fixtures";
 import { MockKeyHandle } from "./mockKeyHandle";
 import { MockKms } from "./mockKms";
 import { getLocal } from "mockttp";
+
+const PROOF_JWT = fixtureJws(
+  JSON.stringify({ alg: "ES256", kid: fixtureDidKeyUrl(FixtureKey.Holder), typ: "openid4vci-proof+jwt" }),
+  JSON.stringify({
+    aud: "https://issuer-backend.com",
+    nbf: 1735901034,
+    iat: 1735901034,
+    exp: 6614851514,
+    nonce: "KB50VOm9I-kPLT9mAACV8g",
+  }),
+  FixtureKey.Holder,
+);
 
 describe("VC::Core", () => {
   const mockServer = getLocal();
@@ -126,8 +141,7 @@ describe("VC::Core", () => {
           credOfferId: undefined,
           proof: {
             format: "jwt",
-            proof:
-              "eyJhbGciOiJFUzI1NiIsImtpZCI6ImRpZDprZXk6ekRuYWVxTnJnR1RBV3FVVlNVRnFvWFh3bjhONThVc2JLRVpDeUUyWlk5ZFRHS3B3cyN6RG5hZXFOcmdHVEFXcVVWU1VGcW9YWHduOE41OFVzYktFWkN5RTJaWTlkVEdLcHdzIiwidHlwIjoib3BlbmlkNHZjaS1wcm9vZitqd3QifQ.eyJhdWQiOiJodHRwczovL2lzc3Vlci1iYWNrZW5kLmNvbSIsIm5iZiI6MTczNTkwMTAzNCwiaWF0IjoxNzM1OTAxMDM0LCJleHAiOjY2MTQ4NTE1MTQsIm5vbmNlIjoiS0I1MFZPbTlJLWtQTFQ5bUFBQ1Y4ZyJ9.2flsRA_XKGFm4JBpvRHkV3QKLMo81OawQHL1YQdwVRo3OnZeugQJevWz8q-_lD-fo6U9_z_KuLNt9tQr_5A5Iw",
+            proof: PROOF_JWT,
           },
         },
         utils.claims,
