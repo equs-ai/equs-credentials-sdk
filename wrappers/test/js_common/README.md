@@ -10,7 +10,9 @@ Ensure that the following tools are installed on your machine:
 # Testing
 
 As these tests directly depended on packages these packages MUST be build & installed as aliases.
-Tests are not only package depended on but also platform depended.
+Tests are not only package depended on but also platform depended. The tests build their signed
+fixtures at runtime through the `fixture*` functions of the package under test, which only its
+test build exports (`build:debug` for Node.js, `build:dev:cjs` for WASM).
 
 Below are possible builds & their test scripts^
 

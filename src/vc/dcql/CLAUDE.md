@@ -17,5 +17,5 @@ Implements the Digital Credentials Query Language (DCQL) spec: converts DCQL que
 - `Error` — module-local snafu error enum (Parse, FormatNotSupported, NotFound, CredentialQueryValidation, CredentialClaimSetValidation, CredentialSetsValidation).
 
 ## Dependencies
-- Depends on: `openid4vp::core::dcql`, `crate::vc::core` (PresentationInput/Restriction), `crate::vault::CredentialEntry`, `crate::vc::formats`, `crate::vc::claims`
+- Depends on: `openid4vp::core::dcql`, `crate::vc::core` (PresentationInput/Restriction), `crate::vault::CredentialEntry`, `crate::vc::formats`, `crate::vc::claims`, `test_fixtures` (tests only: the SD-JWT presentation)
 - Used by: `oid4vp::holder`, `oid4vp::verifier`

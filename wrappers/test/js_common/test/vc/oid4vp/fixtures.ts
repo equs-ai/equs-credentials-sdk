@@ -4,10 +4,19 @@ import {
   CredentialFormats,
   PresentationDefinition,
   PresentationSubmission,
+  FixtureKey,
+  fixtureDidKey,
+  fixtureDidKeyUrl,
+  fixtureJws,
+  fixturePublicJwk,
+  fixtureSdJwt,
+  fixtureSdJwtKb,
 } from "equs-credentials-sdk";
+import { Fixtures } from "../../fixtures";
 
-export const AUTH_REQUEST_JWT =
-  "eyJhbGciOiJFUzI1NiIsImtpZCI6ImRpZDprZXk6ekRuYWVyMWQzSHBkZzZSSDdLUmhXWFJ0enBpakVtOEd0YVZRbjdCdFN3N0RpVzcyRSN6RG5hZXIxZDNIcGRnNlJIN0tSaFdYUnR6cGlqRW04R3RhVlFuN0J0U3c3RGlXNzJFIiwidHlwIjoiYXBwbGljYXRpb24vb2F1dGgtYXV0aHotcmVxK2p3dCJ9.eyJyZXNwb25zZV90eXBlIjoidnBfdG9rZW4iLCJzdGF0ZSI6IjFkOGIwZDkzLTg2ZTgtNDEzNS04N2Q0LTUyNGJiMDUwMGJmMyIsInRyYW5zYWN0aW9uX2RhdGEiOlsiZXlKMGVYQmxJam9pYzI5dFpWOTBlWEJsSWl3aVkzSmxaR1Z1ZEdsaGJGOXBaSE1pT2xzaVNXUmxiblJwZEhrdE1TSmRMQ0owY21GdWMyRmpkR2x2Ymw5a1lYUmhYMmhoYzJobGMxOWhiR2NpT2xzaWMyaGhMVEkxTmlJc0luTm9ZUzAxTVRJaVhYMCJdLCJyZXNwb25zZV9tb2RlIjoiZGlyZWN0X3Bvc3QiLCJub25jZSI6IkVBOXp6VV9rUWZnR1VGMk1pd3JZdUZnTWdQcFhVRnpxc1B4cy16RWRvREkiLCJjbGllbnRfbWV0YWRhdGEiOnsidnBfZm9ybWF0c19zdXBwb3J0ZWQiOnsiZGMrc2Qtand0Ijp7InNkLWp3dF9hbGdfdmFsdWVzIjpbIkVkRFNBIiwiRVMyNTYiXSwia2Itand0X2FsZ192YWx1ZXMiOlsiRWREU0EiLCJFUzI1NiJdfX0sImp3a3MiOnsia2V5cyI6W3sidXNlIjoiZW5jIiwiYWxnIjoiRVMyNTYiLCJraWQiOiIxQ0tUN1NtaG9oOlAyNTY6Iiwia3R5IjoiRUMiLCJjcnYiOiJQLTI1NiIsIngiOiJZUE5aOEc1ZDRTTzhuR1g1QWZIOEgxeW9nODFBZ181czd5emZkNVN2MUt3IiwieSI6Ijg0T0dGWEdxTUF0cVpBUTlDNkJUN0VWMDJiVUFtNk9IbDVkN1kzMGdPazAifV19LCJlbmNyeXB0ZWRfcmVzcG9uc2VfZW5jX3ZhbHVlc19zdXBwb3J0ZWQiOlsiQTEyOEdDTSIsIkExMjhDQkMtSFMyNTYiXSwic3ViamVjdF9zeW50YXhfdHlwZXNfc3VwcG9ydGVkIjpbImRpZDprZXkiXX0sImNsaWVudF9pZCI6ImRlY2VudHJhbGl6ZWRfaWRlbnRpZmllcjpkaWQ6a2V5OnpEbmFlcjFkM0hwZGc2Ukg3S1JoV1hSdHpwaWpFbThHdGFWUW43QnRTdzdEaVc3MkUiLCJwcmVzZW50YXRpb25fZGVmaW5pdGlvbiI6eyJpZCI6ImY2NGVkYzk5LTJiNzktNDVjZS1hZDM2LTVlMzQ2ZWJmYzZlYyIsImlucHV0X2Rlc2NyaXB0b3JzIjpbeyJpZCI6IklkZW50aXR5LTEiLCJjb25zdHJhaW50cyI6eyJmaWVsZHMiOlt7InBhdGgiOlsiJC52Y3QiXSwiZmlsdGVyIjp7InR5cGUiOiJzdHJpbmciLCJjb25zdCI6Imh0dHBzOi8vY3JlZGVudGlhbHMuZXhhbXBsZS5jb20vaWRlbnRpdHlfY3JlZGVudGlhbCJ9LCJwcmVkaWNhdGUiOm51bGwsImludGVudF90b19yZXRhaW4iOmZhbHNlfSx7InBhdGgiOlsiJC5uYW1lIl0sIm9wdGlvbmFsIjp0cnVlLCJwcmVkaWNhdGUiOm51bGwsImludGVudF90b19yZXRhaW4iOmZhbHNlfV19LCJuYW1lIjoiSWRlbnRpdHkgVkMiLCJwdXJwb3NlIjoiV2Ugd2FudCBhbiBpZGVudGl0eSIsImZvcm1hdCI6eyJkYytzZC1qd3QiOnsic2Qtand0X2FsZ192YWx1ZXMiOlsiRVMyNTYiLCJFZERTQSJdLCJrYi1qd3RfYWxnX3ZhbHVlcyI6WyJFUzI1NiIsIkVkRFNBIl19fX1dLCJuYW1lIjoiRXhhbXBsZSB3aXRoIHNlbGVjdGl2ZSBkaXNjbG9zdXJlIn0sInJlc3BvbnNlX3VyaSI6Imh0dHA6Ly9sb2NhbGhvc3Q6OTAwMS9yZXNwb25zZSJ9.DPsKN_vh20a9rLFeRzLvEFim-TqRGH0G9GAAd9ezV7yWUsZcBjOyVp6nk0pTPTN4uD-jWp2xsKv1fmwU3ke1QA";
+export const CLIENT_ID = `decentralized_identifier:${fixtureDidKey(FixtureKey.Verifier)}`;
+export const REQUEST_URI = `openid4vp://?client_id=${encodeURIComponent(CLIENT_ID)}&request_uri=http%3A%2F%2Flocalhost%3A9001%2Frequest`;
+export const REQUEST_URI_WITH_POST = `openid4vp://?client_id=${encodeURIComponent(CLIENT_ID)}&request_uri_method=post&request_uri=http%3A%2F%2Flocalhost%3A9001%2Frequest`;
 export const STATE = "1d8b0d93-86e8-4135-87d4-524bb0500bf3";
 
 export const PRESENTATION_DEFINITION: PresentationDefinition = {
@@ -124,7 +133,7 @@ export const PRESENTATION_DEFINITION_WITH_FAKE_CONSTRAINTS: PresentationDefiniti
 };
 
 export const AUTH_REQUEST: CommonAuthorizationRequest = {
-  client_id: "decentralized_identifier:did:key:zDnaer1d3Hpdg6RH7KRhWXRtzpijEm8GtaVQn7BtSw7DiW72E",
+  client_id: CLIENT_ID,
   client_metadata: {
     vp_formats_supported: {
       "dc+sd-jwt": {
@@ -163,21 +172,30 @@ export const AUTH_REQUEST: CommonAuthorizationRequest = {
   ],
 };
 
+export const AUTH_REQUEST_JWT = fixtureJws(
+  JSON.stringify({ alg: "ES256", kid: fixtureDidKeyUrl(FixtureKey.Verifier), typ: "application/oauth-authz-req+jwt" }),
+  JSON.stringify({
+    response_type: "vp_token",
+    state: STATE,
+    transaction_data: AUTH_REQUEST.transaction_data.map((item) =>
+      Buffer.from(JSON.stringify(item)).toString("base64url"),
+    ),
+    response_mode: "direct_post",
+    nonce: AUTH_REQUEST.nonce,
+    client_metadata: AUTH_REQUEST.client_metadata,
+    client_id: CLIENT_ID,
+    presentation_definition: PRESENTATION_DEFINITION,
+    response_uri: AUTH_REQUEST.response_uri,
+  }),
+  FixtureKey.Verifier,
+);
+
 export const AUTH_REQUEST_WITH_DIRECT_POST_JWT: CommonAuthorizationRequest = {
   ...AUTH_REQUEST,
   client_metadata: {
     ...AUTH_REQUEST.client_metadata,
     jwks: {
-      keys: [
-        {
-          kid: "ecdsa-kid",
-          kty: "EC",
-          crv: "P-256",
-          x: "SSnPfyVhQgcU9Aaynqgi6QGhrq7K7WFEC0mAvpHG4TM",
-          y: "rYQ5mLQLTs95WLBKKA8R5IjMTXjX13iZnzazsVectRY",
-          alg: "ES256",
-        },
-      ],
+      keys: [{ kid: "ecdsa-kid", ...JSON.parse(fixturePublicJwk(FixtureKey.Verifier)), alg: "ES256" }],
     },
   },
   response_mode: "direct_post.jwt",
@@ -200,31 +218,66 @@ export const PRESENTATION_SUBMISSION: PresentationSubmission = {
 
 export const VC_TYPE = "https://credentials.example.com/identity_credential";
 
-export const VC =
-  "eyJ0eXAiOiJkYytzZC1qd3QiLCJhbGciOiJFUzI1NiIsImtpZCI6ImRpZDprZXk6ekRuYWVSYVc1OE00aG5SNEJ5UWdYdGhGbjVFbVhiUXBFODRwUmlIWDlnS2VyN3pVdyN6RG5hZVJhVzU4TTRoblI0QnlRZ1h0aEZuNUVtWGJRcEU4NHBSaUhYOWdLZXI3elV3In0.eyJfc2QiOlsiTUltVTcxZU8tZWJPTlROYnRYNW83QVNwVEkzcy1pZ2tJZVBsZW5KRjBQYyJdLCJ2Y3QiOiJodHRwczovL2NyZWRlbnRpYWxzLmV4YW1wbGUuY29tL2lkZW50aXR5X2NyZWRlbnRpYWwiLCJpYXQiOjE3NjA2MTA5NjQsInN1YiI6ImRpZDprZXk6ekRuYWV5RHU1WjVScWY4bjVuWkFrMTFkNVZpdDVnVTUxb1MxZkVwU0dkMmZCdXB1eSIsIl9zZF9hbGciOiJzaGEtMjU2IiwiaXNzIjoiZGlkOmtleTp6RG5hZVJhVzU4TTRoblI0QnlRZ1h0aEZuNUVtWGJRcEU4NHBSaUhYOWdLZXI3elV3IiwiZXhwIjoyMDc1OTcwOTY0LCJuYmYiOjE3NjA2MTA5NjQsImNuZiI6eyJqd2siOnsia3R5IjoiRUMiLCJjcnYiOiJQLTI1NiIsIngiOiI1em8ycU1KWFdyLUVNUXFVbnl1N2RPR2xaNXNxdEhaNlJZeFdLRFRiTzF3IiwieSI6InZoVVFxREFiY21XMnJuN0RaNENBN1M4RnhQLTZlbXVibmVwYXpVcnFPbmsifX19.sO30-49XYof7pqmYZg4QwPu_hqu56mU4z6GqTJX49wofBG_DSa76yPLTv069g3_KyvACr9Pj445X0M0P4jpeJg~WyJPMnBvMGwwQ0ZoYjd1SUpRNnZwV05BIiwgIm5hbWUiLCAiSm9obiJd~";
-export const VC_WITH_STATUS =
-  "eyJ0eXAiOiJkYytzZC1qd3QiLCJhbGciOiJFUzI1NiIsImtpZCI6ImRpZDprZXk6ekRuYWVmYUdTd1RmWmsyVXVRV1JqRFQ1Z3J0TEw2RWE1Z3hGcjVBN1hyMzZIUXdtQiN6RG5hZWZhR1N3VGZaazJVdVFXUmpEVDVncnRMTDZFYTVneEZyNUE3WHIzNkhRd21CIn0.eyJfc2QiOlsiTGtNQ3hnT3dKZXVWa2xFUVIxYUl1TDVUSXllRkZiSUhEYXNjZk9EOGlHWSIsInc5WHpEVG5YMFRNOVFFX0NjYUVSaUtpbVV3VkFkWEwxRzZIdU1wZHdkclkiXSwiYWRkcmVzcyI6IjIyMUIgQmFrZXIgU3RyZWV0IiwiaWF0IjoxNzUzMDU0NDQ4LCJkYXRlIjoiMDkvMDkvMTk4OSIsInN1YiI6ImRpZDprZXk6ekRuYWVoVzJXWERnaHBNMTZYRzN5Z2Vja2FSTWJpamJjWG9tZnQ0ZzI2cnlpUlZXUiIsInZjdCI6Imh0dHBzOi8vY3JlZGVudGlhbHMuZXhhbXBsZS5jb20vaWRlbnRpdHlfY3JlZGVudGlhbCIsInN0YXR1cyI6eyJzdGF0dXNfbGlzdCI6eyJ1cmkiOiJodHRwOi8vbG9jYWxob3N0OjkwMDEvc3RhdHVzX2xpc3QiLCJpZHgiOjF9fSwiX3NkX2FsZyI6InNoYS0yNTYiLCJpc3MiOiJkaWQ6a2V5OnpEbmFlZmFHU3dUZlprMlV1UVdSakRUNWdydExMNkVhNWd4RnI1QTdYcjM2SFF3bUIiLCJleHAiOjE3NTMwNTUwNDgsIm5iZiI6MTc1MzA1NDQ0OCwiY25mIjp7Imp3ayI6eyJrdHkiOiJFQyIsImNydiI6IlAtMjU2IiwieCI6Il9hRHExTWE2SFNOUUZrR0F0ZnBpNlR3UnVuMUhlVnpCWWo2R29DcEhmcW8iLCJ5IjoiSTY0VnRmaTNlbzktQTM0TmNNMFJ4cHRsbzhiOGd1RUV3dnd2S2w1YUZlWSJ9fX0.jruSbbpygwgyWcJ2DO0myKlGimKW0n_dsYc5l-hksJqIWZF2Wy5Sf01nZlkUop-_JkN3x9Ct1kCOHes8-Ozdxg~WyJ1eExOVGVtV1FrYzFWTzZMZ3NBcmxRIiwgIm5hbWUiLCAiSm9obiJd~WyIyQ0J1ZENXSTVFSW1haGd6ZGNVMVZ3IiwgInN1cm5hbWUiLCAiRG9lIl0~";
-export const STATUS_LIST_JWT = "eyJ0eXAiOiJzdGF0dXNsaXN0K2p3dCIsImFsZyI6IkVTMjU2Iiwia2lkIjoiZGlkOmtleTp6RG5hZVp4QmJlVFdBYlhOcXlHZER4dDJXRTZjbzNteHU0VllEOHlieXlkdjhkQnh4I3pEbmFlWnhCYmVUV0FiWE5xeUdkRHh0MldFNmNvM214dTRWWUQ4eWJ5eWR2OGRCeHgifQ.eyJzdGF0dXNfbGlzdCI6eyJsc3QiOiJlTnFid013QUJnQUVuUUNVIiwiYml0cyI6Mn0sInN1YiI6Imh0dHA6Ly9sb2NhbGhvc3Q6OTAwMS9zdGF0dXNfbGlzdCIsImlhdCI6MTc2MzAyNTYyMywiX3NkX2FsZyI6InNoYS0yNTYifQ.lCOpC_53MXw4mShUwGtLbxh3Ha-qFNiRohPTZWo2XyCkBVSWn2daxEjSXM048p2DN8LAo61fcgAA69BGvcf5WQ~";
-export const VP =
-  "eyJ0eXAiOiJ2YytzZC1qd3QiLCJhbGciOiJFUzI1NiIsImtpZCI6ImRpZDprZXk6ekRuYWV4ZWgzVDFDemlXV1NFZVdweXVUa1hxaVQ1aWtpQ3c1aVpRUkJ2NEhYdWV4NiN6RG5hZXhlaDNUMUN6aVdXU0VlV3B5dVRrWHFpVDVpa2lDdzVpWlFSQnY0SFh1ZXg2In0.eyJfc2QiOlsiZkp1Ri1FNUMzTnhleU5UTnNMbm1DX1pnM2FNYkVwTGF1QV9aWVFnU1B3VSJdLCJ2Y3QiOiJodHRwczovL2NyZWRlbnRpYWxzLmV4YW1wbGUuY29tL2lkZW50aXR5X2NyZWRlbnRpYWwiLCJzdWIiOiJkaWQ6a2V5OnpEbmFlajlRYWRnZFpudTh1RFhaWGQ0NTQ1ZGZKQUV2bVY2bm43eGFZVXF6Y3JQdk0iLCJuYmYiOjE3Mjg4ODI2MTEsIl9zZF9hbGciOiJzaGEtMjU2IiwiaXNzIjoiZGlkOmtleTp6RG5hZXhlaDNUMUN6aVdXU0VlV3B5dVRrWHFpVDVpa2lDdzVpWlFSQnY0SFh1ZXg2IiwiaWF0IjoxNzI4ODgyNjExLCJleHAiOjE3NjA0MTg2MTEsImNuZiI6eyJqd2siOnsia3R5IjoiRUMiLCJjcnYiOiJQLTI1NiIsIngiOiJGaEFNdi1UWGcyZ1NlOGpqZkhVcWdkTzdfMjZlSG9tWVNweUxxQk05WlNZIiwieSI6IkFNelNtSXRoMHZCUTFmZjI4RlF6c1paSS1XckxZdXFxSFI4TF9HbHZrWXMifX19.usBLTsyl9fgJWPjJvbyJlpaDmfXZNRuxJCt9voME2VAAb0GhncwakNACMUdAqS9fMU5e9Y9p-KUsuOOXXVAlmg~WyI4elFmQkItS3FZSHVKcW5wVER2c1VRIiwgIm5hbWUiLCAiSm9obiJd~eyJ0eXAiOiJrYitqd3QiLCJhbGciOiJFUzI1NiJ9.eyJub25jZSI6Im4wTmNFIiwiYXVkIjoiZGlkOmtleTp6RG5hZWZRQVBGVlF0OXNmVTYzaHlxWWdQemEycERTWFNKclByQ0c1cGFUNWVhUUpiIiwic2RfaGFzaCI6Im45dkFaUU04ZFNZSWVlVnJCLVExSHJGaWppY2VvcXBXUXV4SjFFT1lQSjQiLCJpYXQiOjE3Mjg4ODI2MTF9.2SQRzj4_PDTxVqoWCWtPGGgOzDn2d7sk6e8okhdAzqLgtvF6hUuOqHqzPd2XIJEDPtP0gfeV6W2dMRx3hKdrDA";
+export const VC = fixtureSdJwt(
+  JSON.stringify({ typ: "dc+sd-jwt", alg: "ES256", kid: fixtureDidKeyUrl(FixtureKey.Issuer) }),
+  JSON.stringify({
+    vct: VC_TYPE,
+    iat: 1760610964,
+    sub: fixtureDidKey(FixtureKey.Holder),
+    _sd_alg: "sha-256",
+    iss: fixtureDidKey(FixtureKey.Issuer),
+    exp: 2075970964,
+    nbf: 1760610964,
+    cnf: { jwk: JSON.parse(fixturePublicJwk(FixtureKey.Holder)) },
+  }),
+  ['["O2po0l0CFhb7uIJQ6vpWNA", "name", "John"]'],
+  FixtureKey.Issuer,
+);
+export const VC_WITH_STATUS = fixtureSdJwt(
+  JSON.stringify({ typ: "dc+sd-jwt", alg: "ES256", kid: fixtureDidKeyUrl(FixtureKey.Issuer) }),
+  JSON.stringify({
+    address: "221B Baker Street",
+    iat: 1753054448,
+    date: "09/09/1989",
+    sub: fixtureDidKey(FixtureKey.Holder),
+    vct: VC_TYPE,
+    status: { status_list: { uri: "http://localhost:9001/status_list", idx: 1 } },
+    _sd_alg: "sha-256",
+    iss: fixtureDidKey(FixtureKey.Issuer),
+    exp: 1753055048,
+    nbf: 1753054448,
+    cnf: { jwk: JSON.parse(fixturePublicJwk(FixtureKey.Holder)) },
+  }),
+  ['["uxLNTemWQkc1VO6LgsArlQ", "name", "John"]', '["2CBudCWI5EImahgzdcU1Vw", "surname", "Doe"]'],
+  FixtureKey.Issuer,
+);
+export const STATUS_LIST_JWT = `${fixtureJws(
+  JSON.stringify({ typ: "statuslist+jwt", alg: "ES256", kid: fixtureDidKeyUrl(FixtureKey.Issuer) }),
+  JSON.stringify({
+    status_list: { lst: "eNqbwMwABgAEnQCU", bits: 2 },
+    sub: "http://localhost:9001/status_list",
+    iat: 1763025623,
+    _sd_alg: "sha-256",
+  }),
+  FixtureKey.Issuer,
+)}~`;
+export const VP = fixtureSdJwtKb(
+  Fixtures.SDJWTVCPayload,
+  JSON.stringify({ typ: "kb+jwt", alg: "ES256" }),
+  JSON.stringify({ nonce: "n0NcE", aud: fixtureDidKey(FixtureKey.Verifier), iat: 1728882611 }),
+  FixtureKey.Holder,
+);
 
 export const CLAIMS: Claims = {
   vp_token: {
     "Identity-1": {
-      vct: "https://credentials.example.com/identity_credential",
-      sub: "did:key:zDnaej9QadgdZnu8uDXZXd4545dfJAEvmV6nn7xaYUqzcrPvM",
+      vct: VC_TYPE,
+      sub: fixtureDidKey(FixtureKey.Holder),
       nbf: 1728882611,
-      iss: "did:key:zDnaexeh3T1CziWWSEeWpyuTkXqiT5ikiCw5iZQRBv4HXuex6",
+      iss: fixtureDidKey(FixtureKey.Issuer),
       iat: 1728882611,
       exp: 1760418611,
-      cnf: {
-        jwk: {
-          kty: "EC",
-          crv: "P-256",
-          x: "FhAMv-TXg2gSe8jjfHUqgdO7_26eHomYSpyLqBM9ZSY",
-          y: "AMzSmIth0vBQ1ff28FQzsZZI-WrLYuqqHR8L_GlvkYs",
-        },
-      },
+      cnf: { jwk: JSON.parse(fixturePublicJwk(FixtureKey.Holder)) },
       name: "John",
     },
   },

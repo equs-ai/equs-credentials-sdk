@@ -3,10 +3,81 @@ pub mod fixtures {
     pub const NONCE: &str = "n0NcE";
     pub const CLIENT_ID: &str = "wallet-dev";
     pub const STATE: &str = "1d8b0d93-86e8-4135-87d4-524bb0500bf3";
-    pub const REQUEST_URI: &str = "openid4vp://?client_id=decentralized_identifier%3Adid%3Akey%3AzDnaebMD6CqPmJL8WxF6YffAAbbK935aaKbyVEyuGQtukXk6f&request_uri=http%3A%2F%2F127.0.0.1%3A55796%2Frequest";
+    /// The fixture verifier's `did:key` as a `decentralized_identifier` client ID.
+    pub fn verifier_client_id() -> String {
+        format!(
+            "decentralized_identifier:{}",
+            test_fixtures::did_key(&test_fixtures::keys().verifier)
+        )
+    }
+    /// The fixture verifier's public key as a response-encryption JWK.
+    pub fn verifier_enc_jwk(kid: &str, alg: &str) -> serde_json::Value {
+        let mut jwk = serde_json::to_value(test_fixtures::keys().verifier.to_public()).unwrap();
+        jwk["kid"] = kid.into();
+        jwk["use"] = "enc".into();
+        jwk["alg"] = alg.into();
+        jwk
+    }
+    /// `openid4vp://` link naming the fixture verifier as `client_id` and the request object URL.
+    pub fn request_uri() -> url::Url {
+        url::Url::parse_with_params(
+            "openid4vp://",
+            [
+                ("client_id", verifier_client_id().as_str()),
+                (
+                    "request_uri",
+                    crate::vc::oid4vp::tests::utils::build_url(VERIFIER_URL, "request").as_str(),
+                ),
+            ],
+        )
+        .unwrap()
+    }
     pub const CREDENTIAL_ID: &str = "abcde";
-    pub const SAMPLE_CREDENTIAL_STATUS_LIST: &str = "eyJ0eXAiOiJzdGF0dXNsaXN0K2p3dCIsImFsZyI6IkVTMjU2Iiwia2lkIjoiZGlkOmtleTp6RG5hZVp4QmJlVFdBYlhOcXlHZER4dDJXRTZjbzNteHU0VllEOHlieXlkdjhkQnh4I3pEbmFlWnhCYmVUV0FiWE5xeUdkRHh0MldFNmNvM214dTRWWUQ4eWJ5eWR2OGRCeHgifQ.eyJzdGF0dXNfbGlzdCI6eyJsc3QiOiJlTnFid013QUJnQUVuUUNVIiwiYml0cyI6Mn0sInN1YiI6Imh0dHA6Ly9sb2NhbGhvc3Q6OTAwMS9zdGF0dXNfbGlzdCIsImlhdCI6MTc2MzAyNTYyMywiX3NkX2FsZyI6InNoYS0yNTYifQ.lCOpC_53MXw4mShUwGtLbxh3Ha-qFNiRohPTZWo2XyCkBVSWn2daxEjSXM048p2DN8LAo61fcgAA69BGvcf5WQ~";
-    pub const SAMPLE_SD_JWT_WITH_STATUS: &str = "eyJ0eXAiOiJkYytzZC1qd3QiLCJhbGciOiJFUzI1NiIsImtpZCI6ImRpZDprZXk6ekRuYWVmYUdTd1RmWmsyVXVRV1JqRFQ1Z3J0TEw2RWE1Z3hGcjVBN1hyMzZIUXdtQiN6RG5hZWZhR1N3VGZaazJVdVFXUmpEVDVncnRMTDZFYTVneEZyNUE3WHIzNkhRd21CIn0.eyJfc2QiOlsiTGtNQ3hnT3dKZXVWa2xFUVIxYUl1TDVUSXllRkZiSUhEYXNjZk9EOGlHWSIsInc5WHpEVG5YMFRNOVFFX0NjYUVSaUtpbVV3VkFkWEwxRzZIdU1wZHdkclkiXSwiYWRkcmVzcyI6IjIyMUIgQmFrZXIgU3RyZWV0IiwiaWF0IjoxNzUzMDU0NDQ4LCJkYXRlIjoiMDkvMDkvMTk4OSIsInN1YiI6ImRpZDprZXk6ekRuYWVoVzJXWERnaHBNMTZYRzN5Z2Vja2FSTWJpamJjWG9tZnQ0ZzI2cnlpUlZXUiIsInZjdCI6Imh0dHBzOi8vY3JlZGVudGlhbHMuZXhhbXBsZS5jb20vaWRlbnRpdHlfY3JlZGVudGlhbCIsInN0YXR1cyI6eyJzdGF0dXNfbGlzdCI6eyJ1cmkiOiJodHRwOi8vbG9jYWxob3N0OjkwMDEvc3RhdHVzX2xpc3QiLCJpZHgiOjF9fSwiX3NkX2FsZyI6InNoYS0yNTYiLCJpc3MiOiJkaWQ6a2V5OnpEbmFlZmFHU3dUZlprMlV1UVdSakRUNWdydExMNkVhNWd4RnI1QTdYcjM2SFF3bUIiLCJleHAiOjE3NTMwNTUwNDgsIm5iZiI6MTc1MzA1NDQ0OCwiY25mIjp7Imp3ayI6eyJrdHkiOiJFQyIsImNydiI6IlAtMjU2IiwieCI6Il9hRHExTWE2SFNOUUZrR0F0ZnBpNlR3UnVuMUhlVnpCWWo2R29DcEhmcW8iLCJ5IjoiSTY0VnRmaTNlbzktQTM0TmNNMFJ4cHRsbzhiOGd1RUV3dnd2S2w1YUZlWSJ9fX0.jruSbbpygwgyWcJ2DO0myKlGimKW0n_dsYc5l-hksJqIWZF2Wy5Sf01nZlkUop-_JkN3x9Ct1kCOHes8-Ozdxg~WyJ1eExOVGVtV1FrYzFWTzZMZ3NBcmxRIiwgIm5hbWUiLCAiSm9obiJd~WyIyQ0J1ZENXSTVFSW1haGd6ZGNVMVZ3IiwgInN1cm5hbWUiLCAiRG9lIl0~";
+    /// `statuslist+jwt` served at `http://localhost:9001/status_list`.
+    pub fn sample_credential_status_list() -> String {
+        crate::utils::test_utils::status_list_jwt(
+            "http://localhost:9001/status_list",
+            1763025623,
+            "eNqbwMwABgAEnQCU",
+            2,
+        )
+    }
+    /// SD-JWT VC whose `status` points at `sample_credential_status_list()`, index 1.
+    pub fn sample_sd_jwt_with_status() -> String {
+        let keys = test_fixtures::keys();
+        test_fixtures::sd_jwt(
+            &serde_json::json!({
+                "typ": "dc+sd-jwt",
+                "alg": "ES256",
+                "kid": test_fixtures::did_key_url(&keys.issuer)
+            }),
+            &serde_json::json!({
+                "address": "221B Baker Street",
+                "iat": 1753054448,
+                "date": "09/09/1989",
+                "sub": test_fixtures::did_key(&keys.holder),
+                "vct": "https://credentials.example.com/identity_credential",
+                "status": {
+                    "status_list": {
+                        "uri": "http://localhost:9001/status_list",
+                        "idx": 1
+                    }
+                },
+                "_sd_alg": "sha-256",
+                "iss": test_fixtures::did_key(&keys.issuer),
+                "exp": 1753055048,
+                "nbf": 1753054448,
+                "cnf": {
+                    "jwk": keys.holder.to_public()
+                }
+            }),
+            &[
+                r#"["uxLNTemWQkc1VO6LgsArlQ", "name", "John"]"#,
+                r#"["2CBudCWI5EImahgzdcU1Vw", "surname", "Doe"]"#,
+            ],
+            &keys.issuer,
+        )
+    }
 
     pub mod single_presentation {
         pub mod json_ld {
@@ -883,8 +954,8 @@ pub mod fixtures {
         pub mod sd_jwt {
             use crate::nonce::Nonce;
             use crate::vc::claims::Claims;
-            use crate::vc::oid4vp::tests::fixtures::NONCE;
             use crate::vc::oid4vp::tests::fixtures::multi_presentation::transaction_data;
+            use crate::vc::oid4vp::tests::fixtures::{NONCE, verifier_client_id, verifier_enc_jwk};
             use crate::vc::oid4vp::tests::utils::{PresentationTestCase, VerificationTestCase};
             use crate::vc::oid4vp::{
                 ClientMetadata, PresentationSession, ResolvedAuthRequest, ResolvedPresentationQuery,
@@ -949,7 +1020,21 @@ pub mod fixtures {
             ]
         }"#;
 
-            pub const AUTH_REQUEST_JWT: &str = "eyJhbGciOiJFUzI1NiIsImtpZCI6ImRpZDprZXk6ekRuYWViTUQ2Q3FQbUpMOFd4RjZZZmZBQWJiSzkzNWFhS2J5VkV5dUdRdHVrWGs2ZiN6RG5hZWJNRDZDcVBtSkw4V3hGNllmZkFBYmJLOTM1YWFLYnlWRXl1R1F0dWtYazZmIiwidHlwIjoiYXBwbGljYXRpb24vb2F1dGgtYXV0aHotcmVxK2p3dCJ9.eyJyZXNwb25zZV90eXBlIjoidnBfdG9rZW4iLCJzdGF0ZSI6IjFkOGIwZDkzLTg2ZTgtNDEzNS04N2Q0LTUyNGJiMDUwMGJmMyIsInJlc3BvbnNlX21vZGUiOiJkaXJlY3RfcG9zdCIsIm5vbmNlIjoiMlQwbjJxZ2RYNlh5RXotVWdDSEZNSDZmUmw5LXM0SURXcmtubmtHVzBWMCIsImNsaWVudF9tZXRhZGF0YSI6eyJ2cF9mb3JtYXRzX3N1cHBvcnRlZCI6eyJkYytzZC1qd3QiOnsic2Qtand0X2FsZ192YWx1ZXMiOlsiRWREU0EiLCJFUzI1NiJdLCJrYi1qd3RfYWxnX3ZhbHVlcyI6WyJFZERTQSIsIkVTMjU2Il19fSwiandrcyI6eyJrZXlzIjpbeyJ1c2UiOiJlbmMiLCJhbGciOiJFUzI1NiIsImtpZCI6IlJTZE5GZG5HSG06UDI1NjoiLCJrdHkiOiJFQyIsImNydiI6IlAtMjU2IiwieCI6IkxiLTNrcG9tZS1nbHZTQXJaV0RPUlVva3JseWw5VFZ2M2h6bVV1QmdUWE0iLCJ5IjoidjFGZ2NPVHhNMTd0OWZ3dVFSeEo3S1JFcERYSEZTejRrZzJVQ2VDbVhidyJ9XX0sImVuY3J5cHRlZF9yZXNwb25zZV9lbmNfdmFsdWVzX3N1cHBvcnRlZCI6WyJBMTI4R0NNIiwiQTEyOENCQy1IUzI1NiJdLCJzdWJqZWN0X3N5bnRheF90eXBlc19zdXBwb3J0ZWQiOlsiZGlkOmtleSJdfSwiY2xpZW50X2lkIjoiZGVjZW50cmFsaXplZF9pZGVudGlmaWVyOmRpZDprZXk6ekRuYWViTUQ2Q3FQbUpMOFd4RjZZZmZBQWJiSzkzNWFhS2J5VkV5dUdRdHVrWGs2ZiIsInByZXNlbnRhdGlvbl9kZWZpbml0aW9uIjp7ImlkIjoiMzI3YWQxNzEtYzgwYS00ODViLWIwOTgtNTBkN2FkMjc4ZWY2IiwiaW5wdXRfZGVzY3JpcHRvcnMiOlt7ImlkIjoiSWRlbnRpdHktMSIsImNvbnN0cmFpbnRzIjp7ImZpZWxkcyI6W3sicGF0aCI6WyIkLnZjdCJdLCJmaWx0ZXIiOnsidHlwZSI6InN0cmluZyIsImNvbnN0IjoiaHR0cHM6Ly9jcmVkZW50aWFscy5leGFtcGxlLmNvbS9pZGVudGl0eV9jcmVkZW50aWFsIn0sInByZWRpY2F0ZSI6bnVsbCwiaW50ZW50X3RvX3JldGFpbiI6ZmFsc2V9LHsicGF0aCI6WyIkLm5hbWUiXSwib3B0aW9uYWwiOnRydWUsInByZWRpY2F0ZSI6bnVsbCwiaW50ZW50X3RvX3JldGFpbiI6ZmFsc2V9XX0sIm5hbWUiOiJJZGVudGl0eSBWQyIsInB1cnBvc2UiOiJXZSB3YW50IGFuIGlkZW50aXR5IiwiZm9ybWF0Ijp7ImRjK3NkLWp3dCI6eyJzZC1qd3RfYWxnX3ZhbHVlcyI6WyJFUzI1NiIsIkVkRFNBIl0sImtiLWp3dF9hbGdfdmFsdWVzIjpbIkVTMjU2IiwiRWREU0EiXX19fV19LCJyZXNwb25zZV91cmkiOiJodHRwOi8vMTI3LjAuMC4xOjU1Nzk2L2F1dGgifQ.vx7zZECHmm-hJ6Gnt0FAQf4aCCrYpbyoIQHJOUcTOw6cESozijzV8Y2VKmoEHefiEM6RWYYs7IZcF4hLZ2fdyw";
+            /// `auth_request_json()` signed by the fixture verifier key as
+            /// `application/oauth-authz-req+jwt`, the request object `request_uri()` points at.
+            pub fn auth_request_jwt() -> String {
+                let verifier = &test_fixtures::keys().verifier;
+                test_fixtures::jws(
+                    &serde_json::json!({
+                        "alg": "ES256",
+                        "kid": test_fixtures::did_key_url(verifier),
+                        "typ": "application/oauth-authz-req+jwt"
+                    }),
+                    &auth_request_json(),
+                    verifier,
+                )
+            }
+
             pub const AUTH_REQUEST: &str = r#"
             {
               "response_type": "vp_token",
@@ -984,7 +1069,6 @@ pub mod fixtures {
                   "did:key"
                 ]
               },
-              "client_id": "decentralized_identifier:did:key:zDnaebMD6CqPmJL8WxF6YffAAbbK935aaKbyVEyuGQtukXk6f",
               "presentation_definition": {
                 "id": "327ad171-c80a-485b-b098-50d7ad278ef6",
                 "input_descriptors": [
@@ -1032,6 +1116,13 @@ pub mod fixtures {
               },
               "response_uri": "http://127.0.0.1:55796/auth"
             }"#;
+
+            /// `AUTH_REQUEST` with the fixture verifier's `did:key` as `client_id`.
+            pub fn auth_request_json() -> serde_json::Value {
+                let mut request: serde_json::Value = serde_json::from_str(AUTH_REQUEST).unwrap();
+                request["client_id"] = verifier_client_id().into();
+                request
+            }
             pub const AUTH_REQUEST_WITH_WRONG_CLIENT_ID: &str = r#"
                 {
                   "client_id": "decentralized_identifier:did:key:1",
@@ -1220,15 +1311,6 @@ pub mod fixtures {
                             "sd-jwt_alg_values": ["EdDSA", "ES256"],
                             "kb-jwt_alg_values": ["EdDSA", "ES256"]
                         }
-                    },
-                    "jwks": {
-                      "keys": [
-                        {
-                          "kty":"EC", "kid":"ac", "use":"enc", "crv":"P-256","alg":"ES256",
-                          "x": "SSnPfyVhQgcU9Aaynqgi6QGhrq7K7WFEC0mAvpHG4TM",
-                          "y": "rYQ5mLQLTs95WLBKKA8R5IjMTXjX13iZnzazsVectRY"
-                        }
-                     ]
                     },
                     "encrypted_response_enc_values_supported": ["A128GCM", "A128CBC-HS256"]
                   }
@@ -1452,10 +1534,16 @@ pub mod fixtures {
             }
 
             pub fn auth_request() -> ResolvedAuthRequest {
-                serde_json::from_str(AUTH_REQUEST).unwrap()
+                serde_json::from_value(auth_request_json()).unwrap()
             }
+            /// `AUTH_REQUEST_WITH_DIRECT_POST_JWT_RESPONSE` encrypting the response to the fixture
+            /// verifier key under `kid: ac`.
             pub fn auth_request_with_direct_post_jwt_response() -> ResolvedAuthRequest {
-                serde_json::from_str(AUTH_REQUEST_WITH_DIRECT_POST_JWT_RESPONSE).unwrap()
+                let mut request: serde_json::Value =
+                    serde_json::from_str(AUTH_REQUEST_WITH_DIRECT_POST_JWT_RESPONSE).unwrap();
+                request["client_metadata"]["jwks"] =
+                    json!({ "keys": [verifier_enc_jwk("ac", "ES256")] });
+                serde_json::from_value(request).unwrap()
             }
 
             pub fn auth_request_with_state() -> ResolvedAuthRequest {
@@ -3347,7 +3435,7 @@ pub mod utils {
         transaction_data_items, transaction_data_response,
     };
     use crate::vc::oid4vp::tests::fixtures::single_presentation::sd_jwt::client_metadata_no_keys;
-    use crate::vc::oid4vp::tests::fixtures::{CREDENTIAL_ID, VERIFIER_URL};
+    use crate::vc::oid4vp::tests::fixtures::{CREDENTIAL_ID, VERIFIER_URL, verifier_enc_jwk};
     use crate::vc::oid4vp::verifier::VerifierService;
     use crate::vc::oid4vp::{
         AuthorizationResponseMetadata, AuthorizationResponseObject, ClientId, ClientMetadata,
@@ -3470,14 +3558,7 @@ pub mod utils {
             let transaction_data_response: Option<TransactionDataResponse>;
             if form.contains_key::<String>(&String::from("response")) {
                 let response = form.get::<String>(&String::from("response")).unwrap();
-                let jwk = r#"{
-                         "kty": "EC",
-                         "crv": "P-256",
-                         "x": "SSnPfyVhQgcU9Aaynqgi6QGhrq7K7WFEC0mAvpHG4TM",
-                         "y": "rYQ5mLQLTs95WLBKKA8R5IjMTXjX13iZnzazsVectRY",
-                         "d": "rs9veoNnfQCH7kfsAis_nAHtpcEghiAzKry8R-de0eA"
-                     }"#;
-                let kh = wrap_p256_private_key(jwk);
+                let kh = wrap_p256_private_key(&test_fixtures::keys().verifier);
 
                 let payload = decrypt_jwe_payload(response, &kh).await.unwrap();
                 let claim_set: Value = serde_json::from_slice(payload.as_slice()).unwrap();
@@ -3786,36 +3867,15 @@ pub mod utils {
                             "sd-jwt_alg_values": ["EdDSA", "ES256"],
                             "kb-jwt_alg_values": ["EdDSA", "ES256"]
                         }}
-                    }},
-                    "jwks": {{
-                        "keys": [
-                            {{
-                              "kty":"EC",
-                              "kid":"ac",
-                              "use":"enc",
-                              "crv":"P-256",
-                              "alg":"ES256",
-                              "x": "SSnPfyVhQgcU9Aaynqgi6QGhrq7K7WFEC0mAvpHG4TM",
-                              "y": "rYQ5mLQLTs95WLBKKA8R5IjMTXjX13iZnzazsVectRY"
-                            }}
-                        ]
                     }}
                   }}
                 }}"#
             );
 
-            serde_json::from_str(&auth_request_str).unwrap()
-        }
-
-        pub fn get_private_enc_key(&self) -> String {
-            r#"{
-                 "kty": "EC",
-                 "crv": "P-256",
-                 "x": "SSnPfyVhQgcU9Aaynqgi6QGhrq7K7WFEC0mAvpHG4TM",
-                 "y": "rYQ5mLQLTs95WLBKKA8R5IjMTXjX13iZnzazsVectRY",
-                 "d": "rs9veoNnfQCH7kfsAis_nAHtpcEghiAzKry8R-de0eA"
-            }"#
-            .to_string()
+            let mut auth_request: Value = serde_json::from_str(&auth_request_str).unwrap();
+            auth_request["client_metadata"]["jwks"] =
+                json!({ "keys": [verifier_enc_jwk("ac", "ES256")] });
+            serde_json::from_value(auth_request).unwrap()
         }
     }
 
@@ -4352,8 +4412,8 @@ pub mod utils {
         }
     }
 
-    pub fn wrap_p256_private_key(jwk: &str) -> impl PrivateKeyAgreementHandle {
-        let key = p256::SecretKey::from_jwk_str(jwk).unwrap();
+    pub fn wrap_p256_private_key(jwk: &test_fixtures::JWK) -> impl PrivateKeyAgreementHandle {
+        let key = p256::SecretKey::from_jwk_str(&serde_json::to_string(jwk).unwrap()).unwrap();
         WrapperForES256Handle { key }
     }
 }

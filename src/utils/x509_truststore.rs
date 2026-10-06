@@ -190,43 +190,27 @@ fn x509_pub_key_to_decoding_key(kh: KeyHandle) -> Result<DecodingKey, SdJwtRsErr
 
 #[cfg(test)]
 mod tests {
+    use crate::utils::test_utils::{anchors, skid_of};
     use crate::utils::x509_truststore::Truststore;
     use jsonwebtoken::{Algorithm, Header};
-    use one_core::mapper::x509::{pem_chain_into_x5c, subject_key_identifier};
+    use one_core::mapper::x509::pem_chain_into_x5c;
     use one_core::proto::certificate_validator::{
         CertificateValidationOptions, CertificateValidator, CertificateValidatorImpl,
     };
     use rstest::*;
     use sd_jwt_rs::resolver::KeyResolver;
     use sd_jwt_rs::{SDJWTSerializationFormat, SDJWTVerifier};
+    use serde_json::json;
     use std::collections::HashMap;
-    use x509_parser::prelude::Pem;
-
-    fn anchors(ca_certs: &[&str]) -> HashMap<String, String> {
-        ca_certs
-            .iter()
-            .map(|ca_cert| (skid_of(ca_cert), ca_cert.to_string()))
-            .collect()
-    }
-
-    fn skid_of(cert_pem: &str) -> String {
-        let pem = Pem::iter_from_buffer(cert_pem.as_bytes())
-            .next()
-            .unwrap()
-            .unwrap();
-        subject_key_identifier(&pem.parse_x509().unwrap())
-            .unwrap()
-            .unwrap()
-    }
 
     fn truststore(trusted_roots: HashMap<String, String>) -> Truststore<CertificateValidatorImpl> {
         Truststore::new(CertificateValidatorImpl::default(), trusted_roots)
     }
 
     #[rstest]
-    #[case::issuer_chain(anchors(&[TEST_ROOT_CA]), TEST_ISSUER_CERT, "https://issuer.example/vc")]
-    #[case::web_pki_chain(anchors(&[GITHUB_ROOT_CA]), GITHUB_CERT_CHAIN, "https://github.com")]
-    #[case::iss_is_not_a_url(anchors(&[TEST_ROOT_CA]), TEST_ISSUER_CERT, "urn:example:issuer")]
+    #[case::issuer_chain(anchors(&[test_root_ca()]), test_issuer_cert(), "https://issuer.example/vc")]
+    #[case::web_pki_chain(anchors(&[github_root_ca()]), github_cert_chain(), "https://github.com")]
+    #[case::iss_is_not_a_url(anchors(&[test_root_ca()]), test_issuer_cert(), "urn:example:issuer")]
     #[tokio::test]
     async fn trusts_chain_signed_up_to_held_anchor(
         #[case] trusted_roots: HashMap<String, String>,
@@ -242,17 +226,17 @@ mod tests {
     #[rstest]
     #[should_panic(expected = "Leaf certificate must not be self-signed")]
     #[case::self_signed_leaf_as_its_own_anchor(
-        anchors(&[OPENID_CONFORMANCE_TEST_CERT]),
-        OPENID_CONFORMANCE_TEST_CERT
+        anchors(&[openid_conformance_test_cert()]),
+        openid_conformance_test_cert()
     )]
     #[should_panic(expected = "does not validate against any trusted anchor")]
-    #[case::empty_truststore(HashMap::new(), TEST_ISSUER_CERT)]
+    #[case::empty_truststore(HashMap::new(), test_issuer_cert())]
     #[should_panic(expected = "does not validate against any trusted anchor")]
-    #[case::chain_of_another_anchor(anchors(&[GITHUB_ROOT_CA]), TEST_ISSUER_CERT)]
+    #[case::chain_of_another_anchor(anchors(&[github_root_ca()]), test_issuer_cert())]
     #[should_panic(expected = "Certificate chain is not trusted")]
     #[case::declared_key_id_mapped_to_another_anchor(
-        HashMap::from([(skid_of(TEST_ROOT_CA), GITHUB_ROOT_CA.to_string())]),
-        TEST_ISSUER_CERT
+        HashMap::from([(skid_of(test_root_ca()), github_root_ca().to_string())]),
+        test_issuer_cert()
     )]
     #[tokio::test]
     async fn rejects_chain_not_signed_up_to_held_anchor(
@@ -278,9 +262,9 @@ mod tests {
         #[case] iss: &str,
         #[case] expected_error: Option<&str>,
     ) {
-        let result = truststore(anchors(&[TEST_ROOT_CA]))
+        let result = truststore(anchors(&[test_root_ca()]))
             .enforce_issuer_domain(true)
-            .verify_chain_trust(TEST_ISSUER_CERT, iss)
+            .verify_chain_trust(test_issuer_cert(), iss)
             .await;
 
         match expected_error {
@@ -295,8 +279,8 @@ mod tests {
     }
 
     #[rstest]
-    #[case::apex(GITHUB_CERT_CHAIN, "github.com")]
-    #[case::www(GITHUB_CERT_CHAIN, "www.github.com")]
+    #[case::apex(github_cert_chain(), "github.com")]
+    #[case::www(github_cert_chain(), "www.github.com")]
     #[tokio::test]
     async fn verify_iss_matches_certificate(#[case] pem_chain: &str, #[case] iss: &str) {
         let cert_validator = CertificateValidatorImpl::default();
@@ -309,9 +293,9 @@ mod tests {
     #[tokio::test]
     async fn resolves_issuer_key_from_trusted_x5c() {
         let mut header = Header::new(Algorithm::ES256);
-        header.x5c = Some(pem_chain_into_x5c(TEST_ISSUER_CERT).unwrap());
+        header.x5c = Some(pem_chain_into_x5c(test_issuer_cert()).unwrap());
 
-        truststore(anchors(&[TEST_ROOT_CA]))
+        truststore(anchors(&[test_root_ca()]))
             .resolve("https://issuer.example", &header)
             .await
             .unwrap();
@@ -319,15 +303,15 @@ mod tests {
 
     #[rstest]
     #[should_panic(expected = "Leaf certificate must not be self-signed")]
-    #[case::self_signed_issuer_cert(anchors(&[OPENID_CONFORMANCE_TEST_CERT]), SD_JWT_VC)]
+    #[case::self_signed_issuer_cert(anchors(&[openid_conformance_test_cert()]), sd_jwt_vc())]
     #[should_panic(expected = "sd-jwt-vc token contains no x5c header")]
-    #[case::no_x5c(anchors(&[OPENID_CONFORMANCE_TEST_CERT]), SD_JWT_VC_NO_X5C)]
+    #[case::no_x5c(anchors(&[openid_conformance_test_cert()]), sd_jwt_vc_no_x5c())]
     #[tokio::test]
-    async fn resolve(#[case] trusted_roots: HashMap<String, String>, #[case] sd_jwt: &str) {
+    async fn resolve(#[case] trusted_roots: HashMap<String, String>, #[case] sd_jwt: String) {
         let mut sd_jwt_verifier = SDJWTVerifier::new(Box::new(truststore(trusted_roots)));
         sd_jwt_verifier
             .verify_presentation(
-                sd_jwt.to_string(),
+                sd_jwt,
                 Some("x509_san_dns:verifier-asdk".to_string()),
                 Some("psX3cqQAPu3rVVV7Lj0kNqF1Dad6le1B2JRkjwhUN_E".to_string()),
                 SDJWTSerializationFormat::Compact,
@@ -336,96 +320,207 @@ mod tests {
             .unwrap();
     }
 
-    /// Self-signed CA; issued `TEST_ISSUER_CERT`. Valid until 2046.
-    const TEST_ROOT_CA: &str = "-----BEGIN CERTIFICATE-----
-MIIBwTCCAWegAwIBAgIUWxwFnkWKOBRX/9BDUaurh6Pn8WwwCgYIKoZIzj0EAwIw
-LjEfMB0GA1UEAwwWVGVzdCBTRC1KV1QgVkMgUm9vdCBDQTELMAkGA1UEBhMCVVMw
-HhcNMjYwOTIzMDgyNTMwWhcNNDYwOTE4MDgyNTMwWjAuMR8wHQYDVQQDDBZUZXN0
-IFNELUpXVCBWQyBSb290IENBMQswCQYDVQQGEwJVUzBZMBMGByqGSM49AgEGCCqG
-SM49AwEHA0IABN7T/1mYtFrbISvrZY43cdyvzgmlNx/ubD89upRX2FD8SS2DvQXx
-3gkV3cDmwluiit3f0vW+Ooiuh9oO4PprxbWjYzBhMB8GA1UdIwQYMBaAFI6JJsYa
-EPEoOyEJMpuEqugJ39OZMA8GA1UdEwEB/wQFMAMBAf8wDgYDVR0PAQH/BAQDAgEG
-MB0GA1UdDgQWBBSOiSbGGhDxKDshCTKbhKroCd/TmTAKBggqhkjOPQQDAgNIADBF
-AiBfGAO7kMRy/cpxrkK6uxZ5+w/Z33rVU2+RKprML+vQXgIhAM0b9fgtY1JoQZ8D
-4navNI23qfHsMbLeqBWae0Lt/3h6
------END CERTIFICATE-----";
-    /// Leaf issued by `TEST_ROOT_CA`: SAN `DNS:issuer.example`, key usage `digitalSignature`.
-    const TEST_ISSUER_CERT: &str = "-----BEGIN CERTIFICATE-----
-MIIB2TCCAX6gAwIBAgIUBB6zIXz4fM1yXKy5aEt4Lwz6O3MwCgYIKoZIzj0EAwIw
-LjEfMB0GA1UEAwwWVGVzdCBTRC1KV1QgVkMgUm9vdCBDQTELMAkGA1UEBhMCVVMw
-HhcNMjYwOTIzMDgyNTMwWhcNNDYwOTE3MDgyNTMwWjAtMR4wHAYDVQQDDBVUZXN0
-IFNELUpXVCBWQyBJc3N1ZXIxCzAJBgNVBAYTAlVTMFkwEwYHKoZIzj0CAQYIKoZI
-zj0DAQcDQgAEy4RWg4SAqjcqUxkDhE30DobP5nv3yuPwb0cwuu6ZTH0EgAbPEPZl
-BMWl70UqkU7fWrg3d2ccKCJdSoFnPzV0J6N7MHkwDAYDVR0TAQH/BAIwADAOBgNV
-HQ8BAf8EBAMCB4AwGQYDVR0RBBIwEIIOaXNzdWVyLmV4YW1wbGUwHQYDVR0OBBYE
-FNiEzQrF1w31Xf2VmE40+LiaOvMeMB8GA1UdIwQYMBaAFI6JJsYaEPEoOyEJMpuE
-qugJ39OZMAoGCCqGSM49BAMCA0kAMEYCIQCjyZhd33EaM5xBg74Xs/wbmA7kEpNP
-yWVTOGH0aFhhpQIhALuMdY1vn5GsjESEDd4YONR9+blXRyReOAeSBSCLlmuU
------END CERTIFICATE-----";
-    const OPENID_CONFORMANCE_TEST_CERT: &str = "-----BEGIN CERTIFICATE-----
-MIICHjCCAcOgAwIBAgIUZX9BS5CDOJRW2t1FK1UDMt/QwMEwCgYIKoZIzj0EAwIw
-ITELMAkGA1UEBhMCR0IxEjAQBgNVBAMMCU9JREYgVGVzdDAeFw0yNDExMjUwODM2
-MDRaFw0zNDExMjMwODM2MDRaMCExCzAJBgNVBAYTAkdCMRIwEAYDVQQDDAlPSURG
-IFRlc3QwWTATBgcqhkjOPQIBBggqhkjOPQMBBwNCAATT/dLsd51LLBrGV6R23o6v
-ymRxHXeFBoI8yq31y5kFV2VV0gi9x5ZzEFiq8DMiAHucLACFndxLtZorCha9zznQ
-o4HYMIHVMB0GA1UdDgQWBBS5cbdgAeMBi5wxpbpwISGhShAWETAfBgNVHSMEGDAW
-gBS5cbdgAeMBi5wxpbpwISGhShAWETAPBgNVHRMBAf8EBTADAQH/MIGBBgNVHREE
-ejB4ghB3d3cuaGVlbmFuLm1lLnVrgh1kZW1vLmNlcnRpZmljYXRpb24ub3Blbmlk
-Lm5ldIIJbG9jYWxob3N0ghZsb2NhbGhvc3QuZW1vYml4LmNvLnVrgiJkZW1vLnBp
-ZC1pc3N1ZXIuYnVuZGVzZHJ1Y2tlcmVpLmRlMAoGCCqGSM49BAMCA0kAMEYCIQCP
-bnLxCI+WR1vhOW+A8KznAWv1MJo+YEb1MI45NKW/VQIhALzsqox8VuBRwN2dl5Lk
-pnxP4oH9p6H0AOZmKP+Y7nXS
------END CERTIFICATE-----";
+    /// The test PKI, generated once per process.
+    struct Pki {
+        /// Self-signed CA; issued `test_issuer_cert`. Valid until 2046.
+        test_root_ca: String,
+        /// Leaf issued by `test_root_ca`: SAN `DNS:issuer.example`, key usage `digitalSignature`;
+        /// certifies the fixture issuer key.
+        test_issuer_cert: String,
+        /// Self-signed `C=GB, CN=OIDF Test` with the conformance suite's SAN DNS names; certifies
+        /// the fixture issuer key.
+        openid_conformance_test_cert: String,
+        /// Leaf `CN=github.com` (SAN `github.com`, `www.github.com`, EKU `serverAuth`) followed by
+        /// its intermediate, `Sectigo Public Server Authentication CA DV E36`, path length 0.
+        github_cert_chain: String,
+        /// Self-signed `Sectigo Public Server Authentication Root E46`.
+        github_root_ca: String,
+    }
 
-    // Generated 2026-04-24 with 10-year validity using self-signed test CA chain.
-    // Leaf: CN=github.com, SAN=github.com,www.github.com — expires 2036-04-21
-    // Intermediate: Sectigo Public Server Authentication CA DV E36 (test) — expires 2036-04-21
-    const GITHUB_CERT_CHAIN: &str = "-----BEGIN CERTIFICATE-----
-MIICFTCCAbugAwIBAgIUHfOdbWcllxGFOJj8RWIX1Pi+IKUwCgYIKoZIzj0EAwIw
-YDELMAkGA1UEBhMCR0IxGDAWBgNVBAoMD1NlY3RpZ28gTGltaXRlZDE3MDUGA1UE
-AwwuU2VjdGlnbyBQdWJsaWMgU2VydmVyIEF1dGhlbnRpY2F0aW9uIENBIERWIEUz
-NjAeFw0yNjA0MjQxMDQyNDJaFw0zNjA0MjExMDQyNDJaMBUxEzARBgNVBAMMCmdp
-dGh1Yi5jb20wWTATBgcqhkjOPQIBBggqhkjOPQMBBwNCAATVF6PYsWLGV1fQBjWG
-cQUQNGBMha1A8xZ2DhUkLvCiBIIibh9cLck5upGK+Na+A1DKN2bZ0/G8ItUm8f6g
-nouJo4GdMIGaMB0GA1UdDgQWBBR8kdc7/lXAcnXu3dixoOcPDc8hgjAfBgNVHSME
-GDAWgBTzduBYLtYjHL6uvhC/rhzRFdyZGzAMBgNVHRMBAf8EAjAAMA4GA1UdDwEB
-/wQEAwIHgDATBgNVHSUEDDAKBggrBgEFBQcDATAlBgNVHREEHjAcggpnaXRodWIu
-Y29tgg53d3cuZ2l0aHViLmNvbTAKBggqhkjOPQQDAgNIADBFAiEAq7FwJx1GWWil
-Ygzw03CxWDbsT9GoOPbQCsPrdttedo8CIA9seorBGqlTsCIMkewEB17U+W01LI3E
-L78UNnwPjC8j
------END CERTIFICATE-----
------BEGIN CERTIFICATE-----
-MIICJzCCAc2gAwIBAgIUPI1Ojrum4YkCyr4bvc0aDebsGtcwCgYIKoZIzj0EAwIw
-XzELMAkGA1UEBhMCR0IxGDAWBgNVBAoMD1NlY3RpZ28gTGltaXRlZDE2MDQGA1UE
-AwwtU2VjdGlnbyBQdWJsaWMgU2VydmVyIEF1dGhlbnRpY2F0aW9uIFJvb3QgRTQ2
-MB4XDTI2MDQyNDEwNDI0MloXDTM2MDQyMTEwNDI0MlowYDELMAkGA1UEBhMCR0Ix
-GDAWBgNVBAoMD1NlY3RpZ28gTGltaXRlZDE3MDUGA1UEAwwuU2VjdGlnbyBQdWJs
-aWMgU2VydmVyIEF1dGhlbnRpY2F0aW9uIENBIERWIEUzNjBZMBMGByqGSM49AgEG
-CCqGSM49AwEHA0IABOSx389xLO48MV/EVCzmC8am9BnAOYAEG44UxJbLGff16Wlw
-NNG7g0YoNvc/NN0HTCMPl9/9MjzslvdvCBsXi/mjZjBkMBIGA1UdEwEB/wQIMAYB
-Af8CAQAwDgYDVR0PAQH/BAQDAgEGMB0GA1UdDgQWBBTzduBYLtYjHL6uvhC/rhzR
-FdyZGzAfBgNVHSMEGDAWgBQ7TK85CnvdPtuxs4jnqlKkh6SjAzAKBggqhkjOPQQD
-AgNIADBFAiAhx3iZXHIgGnH8ymo1OgMlw2M0V06+vvTEejOmlHGKowIhAPbP+nWX
-zsTo5UAK3d5xiYe7zySUjS/LePwwP+Wxq/54
------END CERTIFICATE-----";
+    fn pki() -> &'static Pki {
+        static PKI: std::sync::LazyLock<Pki> = std::sync::LazyLock::new(build_pki);
+        &PKI
+    }
 
-    // Generated 2026-04-24 with 10-year validity — Sectigo Public Server Authentication Root E46 (test)
-    // Expires 2036-04-21
-    const GITHUB_ROOT_CA: &str = "-----BEGIN CERTIFICATE-----
-MIICJDCCAcmgAwIBAgIUBlNqqk9MoHxoE2qO6grp9r7vVZcwCgYIKoZIzj0EAwIw
-XzELMAkGA1UEBhMCR0IxGDAWBgNVBAoMD1NlY3RpZ28gTGltaXRlZDE2MDQGA1UE
-AwwtU2VjdGlnbyBQdWJsaWMgU2VydmVyIEF1dGhlbnRpY2F0aW9uIFJvb3QgRTQ2
-MB4XDTI2MDQyNDEwNDI0MloXDTM2MDQyMTEwNDI0MlowXzELMAkGA1UEBhMCR0Ix
-GDAWBgNVBAoMD1NlY3RpZ28gTGltaXRlZDE2MDQGA1UEAwwtU2VjdGlnbyBQdWJs
-aWMgU2VydmVyIEF1dGhlbnRpY2F0aW9uIFJvb3QgRTQ2MFkwEwYHKoZIzj0CAQYI
-KoZIzj0DAQcDQgAEb+Mh53Q0leh1DUFVKMMcK5KAg2X5LRh8QP9E4wtXaSxHsOvM
-eHD7kEwg9RzM9tFWAA24NYtkW4x8dNUxL1Elv6NjMGEwHwYDVR0jBBgwFoAUO0yv
-OQp73T7bsbOI56pSpIekowMwDwYDVR0TAQH/BAUwAwEB/zAOBgNVHQ8BAf8EBAMC
-AQYwHQYDVR0OBBYEFDtMrzkKe90+27GziOeqUqSHpKMDMAoGCCqGSM49BAMCA0kA
-MEYCIQDte3ZMvXS6W3rbpNIOQzMbmhdpRUBgs8+ZbiB03MRrFQIhAMctAisCkF0M
-sPeg62mHhsTg9l5PSRUrvmvYac/4Fz6k
------END CERTIFICATE-----";
+    fn test_root_ca() -> &'static str {
+        &pki().test_root_ca
+    }
 
-    const SD_JWT_VC: &str = "eyJ4NWMiOlsiTUlJQ0hqQ0NBY09nQXdJQkFnSVVaWDlCUzVDRE9KUlcydDFGSzFVRE10L1F3TUV3Q2dZSUtvWkl6ajBFQXdJd0lURUxNQWtHQTFVRUJoTUNSMEl4RWpBUUJnTlZCQU1NQ1U5SlJFWWdWR1Z6ZERBZUZ3MHlOREV4TWpVd09ETTJNRFJhRncwek5ERXhNak13T0RNMk1EUmFNQ0V4Q3pBSkJnTlZCQVlUQWtkQ01SSXdFQVlEVlFRRERBbFBTVVJHSUZSbGMzUXdXVEFUQmdjcWhrak9QUUlCQmdncWhrak9QUU1CQndOQ0FBVFQvZExzZDUxTExCckdWNlIyM282dnltUnhIWGVGQm9JOHlxMzF5NWtGVjJWVjBnaTl4NVp6RUZpcThETWlBSHVjTEFDRm5keEx0Wm9yQ2hhOXp6blFvNEhZTUlIVk1CMEdBMVVkRGdRV0JCUzVjYmRnQWVNQmk1d3hwYnB3SVNHaFNoQVdFVEFmQmdOVkhTTUVHREFXZ0JTNWNiZGdBZU1CaTV3eHBicHdJU0doU2hBV0VUQVBCZ05WSFJNQkFmOEVCVEFEQVFIL01JR0JCZ05WSFJFRWVqQjRnaEIzZDNjdWFHVmxibUZ1TG0xbExuVnJnaDFrWlcxdkxtTmxjblJwWm1sallYUnBiMjR1YjNCbGJtbGtMbTVsZElJSmJHOWpZV3hvYjNOMGdoWnNiMk5oYkdodmMzUXVaVzF2WW1sNExtTnZMblZyZ2lKa1pXMXZMbkJwWkMxcGMzTjFaWEl1WW5WdVpHVnpaSEoxWTJ0bGNtVnBMbVJsTUFvR0NDcUdTTTQ5QkFNQ0Ewa0FNRVlDSVFDUGJuTHhDSStXUjF2aE9XK0E4S3puQVd2MU1KbytZRWIxTUk0NU5LVy9WUUloQUx6c3FveDhWdUJSd04yZGw1TGtwbnhQNG9IOXA2SDBBT1ptS1ArWTduWFMiXSwidHlwIjoiZGMrc2Qtand0IiwiYWxnIjoiRVMyNTYifQ.eyJfc2QiOlsiLUdDMkxkNFBQWDlLdXNrSlIzcU04U0RMeFhYQ2RZWjdqVXQ0cXVycDZabyIsIjZULUo4OGpfRlVNbHNLX1VmSHdSejk4enZvNWRkZUozR19laElKRzgtQ00iLCI4WFdheXdEM1NQSzVxWlY2ZnNjcUhwUTNOa1ZXZEQ5QzlxTVdaUzRZeDZzIiwiV0RuWVhQaXlLWFdPblA1TFFvRmlwVjVHaWdwT05GUUd4UU1OeEltTjZyNCIsImM0Vlo5RkVlQ1VfaU9OWnFWZ1QwNFVlZkQxQUZHMDg0RHhqZjAxSTRhM0kiLCJtb3pHZWFzcmJuYmdIbUxzU2MyZDBZV2xadlVtanFfQlphUFR0YzNLZnM0IiwicGswUkdJVkhYSFRUaVJuRkRYbElyd1JBcFNDZmxDaHBKTElocGVVMVh4QSJdLCJ2Y3QiOiJ1cm46ZXVkaTpwaWQ6MSIsImlzcyI6Imh0dHBzOi8vbG9jYWxob3N0LmVtb2JpeC5jby51azo5NDQzL3Rlc3QvYS9hc2RrLXZjaS12ZXJpZmllci10ZXN0LWFzZGstNTk4IiwiY25mIjp7Imp3ayI6eyJrdHkiOiJFQyIsImNydiI6IlAtMjU2IiwieCI6IjZUbUhSYVFIQWpwbXVUYzVLakVmOXhPOXk2MXZsLW1oLXdrbkFnenMzaFEiLCJ5IjoiYXhwUlhqak9nM1lzclZ2UzNUcEZyZGhBT1liR0F6YUZscTk3SHFCQ1IzcyJ9fSwiZXhwIjoxNzcwMzc3NjAwLCJpYXQiOjE3NjkxNjgwMDB9.sdoSEYncmx84v3TOj_ffSZvQ_pjQ5y1z2l5Gt9KIMUs7CL_lO81TMMwNGV-KY0n8slFKZLxZZgIiisZWx-gy6g~WyJZVW1qM3dBZGxQQW1ScndDZDFWOE1nIiwiZ2l2ZW5fbmFtZSIsIkplYW4iXQ~WyJWQWFXRWxBQk1TYUZ4aEZlWk5STkFnIiwiZmFtaWx5X25hbWUiLCJEdXBvbnQiXQ~WyI2TER6ZmltdWRwYlZYaGFLUHV4SWhBIiwiYmlydGhkYXRlIiwiMTk4MC0wNS0yMyJd~WyJWSG5oSDVCWldYc0FUNWRDQUtFbk5BIiwiYWdlX2luX3llYXJzIiwiNDQiXQ~eyJ0eXAiOiJrYitqd3QiLCJhbGciOiJFUzI1NiJ9.eyJzZF9oYXNoIjoiQk0tVVduSmZpdFVSLTRzaWZUbThIMkNNdW5aTWc4UXA0QUxVOVlMRDEtTSIsImF1ZCI6Ing1MDlfc2FuX2Ruczp2ZXJpZmllci1hc2RrIiwiaWF0IjoxNzY5MTY4MDAwLCJub25jZSI6InBzWDNjcVFBUHUzclZWVjdMajBrTnFGMURhZDZsZTFCMkpSa2p3aFVOX0UifQ.TPh8fnO5vG_sxi-stt2o3XJqfUF07fIi-4JQzv_xf1-QpYgspbE5LbEhsVWuTiykHWK-RvcBc4-bS9lg7OGLpA";
-    const SD_JWT_VC_NO_X5C: &str = "eyJ0eXAiOiJkYytzZC1qd3QiLCJhbGciOiJFUzI1NiJ9.eyJfc2QiOlsiLTBSVllzOWh3TDVLS3lUcE9xYVE2Y0M5UkJESFVtcFhmN3RmRjRtNGVWRSIsIkQ3ZUlyWXVuXzZUVV9OeVZKQVNlX1FZcWdXY0ljWkYtZzI1Z3JLMTZHdDAiLCJTd2hFSjJKc0dDOWhWd2lreXl5aXhIVzV5TUdZNmFKNFBkYWQtM2d4cjJBIiwiVGk2Znc4M2VrbE8xczhsTllPQ1RXdUhVUzB3OXgwUEk2MDNEV0xjWEtPTSIsIldmUUhQOVVJb1ZzTVhUUUFNeklOSlpTSEE5T1Y2VXowTHJFd0U1OEl2TUUiLCJqWmw5MVllT242YnJSelZiZWdsRUt1S3NMX3hOSVhDT2FobHpHaWFIQml3Iiwib2dCcE9WNHZrWUMwS2NzTENzbUEzSEg2NnRySzVwdjFXLU1VQ3FvSkZFbyJdLCJ2Y3QiOiJ1cm46ZXVkaTpwaWQ6MSIsImlzcyI6Imh0dHBzOi8vbG9jYWxob3N0LmVtb2JpeC5jby51azo5NDQzL3Rlc3QvYS9hc2RrLXZjaS12ZXJpZmllci10ZXN0LWFzZGstNTk4IiwiY25mIjp7Imp3ayI6eyJrdHkiOiJFQyIsImNydiI6IlAtMjU2IiwieCI6ImJWakRPZHc2YlRzdHBrRXJYZlNYR2RyQnVGempNX1VMOU1tZzJPRXpUVFUiLCJ5IjoiNGNURm55SzBkSzFHbmRyc0NFUi00aHMzeTFERGloQW1Pek80T3B4c1djayJ9fSwiZXhwIjoxNzY3ODk2NzQ3LCJpYXQiOjE3NjY2ODcxNDd9.cSYGUI29Ba4nVfCb769_n7n3jchww0qYlvmsJqg3lPXiZtj3pBQUguct3XDzFoI1QHAiaiacEhY5GIB2IFR98w~WyIzdW9aS0dhV0M2ajVyWWljeWRXVVN3IiwiZ2l2ZW5fbmFtZSIsIkplYW4iXQ~WyJkQUF0c0VOM2pwOUZNTzBiRWNJcEpnIiwiZmFtaWx5X25hbWUiLCJEdXBvbnQiXQ~WyJ5MEhkaU1qWXFVWlhvT3hIbWtTMjFRIiwiYmlydGhkYXRlIiwiMTk4MC0wNS0yMyJd~WyJVd1RsNzl6dEY0SDA0WkROaExKcTBnIiwiYWdlX2luX3llYXJzIiwiNDQiXQ~eyJ0eXAiOiJrYitqd3QiLCJhbGciOiJFUzI1NiJ9.eyJzZF9oYXNoIjoiYjhjeURvT19lV2c3WTNhdkxEQ3pCYkwyS29OSkMwRzIyczlqelRMR01JMCIsImF1ZCI6Ing1MDlfc2FuX2Ruczp2ZXJpZmllci1hc2RrIiwiaWF0IjoxNzY2Njg3MTQ3LCJub25jZSI6ImtubXBwVk9RSGNFczY5TUczalpBWmpuZUN6YlVFMFR5QkpQUGhtUlVoQTQifQ.VkU3S_8FQNyTLCYNMumH2GR_QbjGhYOMi9dlIDPZmpJU1aGshanBf0tRmTGe8-aIeWWoN-hGCmAgYjw4QQ8OSg";
+    fn test_issuer_cert() -> &'static str {
+        &pki().test_issuer_cert
+    }
+
+    fn openid_conformance_test_cert() -> &'static str {
+        &pki().openid_conformance_test_cert
+    }
+
+    fn github_cert_chain() -> &'static str {
+        &pki().github_cert_chain
+    }
+
+    fn github_root_ca() -> &'static str {
+        &pki().github_root_ca
+    }
+
+    /// `dc+sd-jwt` presentation with key binding, signed by the fixture issuer key under
+    /// `openid_conformance_test_cert` in `x5c`.
+    fn sd_jwt_vc() -> String {
+        presentation(
+            Some(pem_chain_into_x5c(openid_conformance_test_cert()).unwrap()),
+            1769168000,
+            1770377600,
+            &[
+                r#"["YUmj3wAdlPAmRrwCd1V8Mg","given_name","Jean"]"#,
+                r#"["VAaWElABMSaFxhFeZNRNAg","family_name","Dupont"]"#,
+                r#"["6LDzfimudpbVXhaKPuxIhA","birthdate","1980-05-23"]"#,
+                r#"["VHnhH5BZWXsAT5dCAKEnNA","age_in_years","44"]"#,
+            ],
+            &[
+                "-GC2Ld4PPX9KuskJR3qM8SDLxXXCdYZ7jUt4qurp6Zo",
+                "6T-J88j_FUMlsK_UfHwRz98zvo5ddeJ3G_ehIJG8-CM",
+                "WDnYXPiyKXWOnP5LQoFipV5GigpONFQGxQMNxImN6r4",
+            ],
+            "psX3cqQAPu3rVVV7Lj0kNqF1Dad6le1B2JRkjwhUN_E",
+        )
+    }
+
+    /// `sd_jwt_vc` without `x5c`.
+    fn sd_jwt_vc_no_x5c() -> String {
+        presentation(
+            None,
+            1766687147,
+            1767896747,
+            &[
+                r#"["3uoZKGaWC6j5rYicydWUSw","given_name","Jean"]"#,
+                r#"["dAAtsEN3jp9FMO0bEcIpJg","family_name","Dupont"]"#,
+                r#"["y0HdiMjYqUZXoOxHmkS21Q","birthdate","1980-05-23"]"#,
+                r#"["UwTl79ztF4H04ZDNhLJq0g","age_in_years","44"]"#,
+            ],
+            &[
+                "D7eIrYun_6TU_NyVJASe_QYqgWcIcZF-g25grK16Gt0",
+                "SwhEJ2JsGC9hVwikyyyixHW5yMGY6aJ4Pdad-3gxr2A",
+                "ogBpOV4vkYC0KcsLCsmA3HH66trK5pv1W-MUCqoJFEo",
+            ],
+            "knmppVOQHcEs69MG3jZAZjneCzbUE0TyBJPPhmRUhA4",
+        )
+    }
+
+    fn build_pki() -> Pki {
+        let keys = test_fixtures::keys();
+        let ca_usages = json!(["key_cert_sign", "crl_sign"]);
+
+        let test_root_key = test_fixtures::JWK::generate_p256();
+        let test_root_ca = test_fixtures::x509(
+            &json!({
+                "subject": [["CN", "Test SD-JWT VC Root CA"], ["C", "US"]],
+                "not_before": "2026-09-23", "not_after": "2046-09-18",
+                "ca": true, "key_usages": ca_usages
+            }),
+            &test_root_key,
+            None,
+        );
+        let test_issuer_cert = test_fixtures::x509(
+            &json!({
+                "subject": [["CN", "Test SD-JWT VC Issuer"], ["C", "US"]],
+                "sans": ["issuer.example"],
+                "not_before": "2026-09-23", "not_after": "2046-09-17",
+                "ca": false, "key_usages": ["digital_signature"], "authority_key_identifier": true
+            }),
+            &keys.issuer,
+            Some((&test_root_ca, &test_root_key)),
+        );
+        let openid_conformance_test_cert = test_fixtures::x509(
+            &json!({
+                "subject": [["C", "GB"], ["CN", "OIDF Test"]],
+                "sans": [
+                    "www.heenan.me.uk",
+                    "demo.certification.openid.net",
+                    "localhost",
+                    "localhost.emobix.co.uk",
+                    "demo.pid-issuer.bundesdruckerei.de"
+                ],
+                "not_before": "2024-11-25", "not_after": "2034-11-23",
+                "ca": true
+            }),
+            &keys.issuer,
+            None,
+        );
+
+        let sectigo = |cn: &str| json!([["C", "GB"], ["O", "Sectigo Limited"], ["CN", cn]]);
+        let github_root_key = test_fixtures::JWK::generate_p256();
+        let github_root_ca = test_fixtures::x509(
+            &json!({
+                "subject": sectigo("Sectigo Public Server Authentication Root E46"),
+                "not_before": "2026-04-24", "not_after": "2036-04-21",
+                "ca": true, "key_usages": ca_usages
+            }),
+            &github_root_key,
+            None,
+        );
+        let intermediate_key = test_fixtures::JWK::generate_p256();
+        let intermediate_cert = test_fixtures::x509(
+            &json!({
+                "subject": sectigo("Sectigo Public Server Authentication CA DV E36"),
+                "not_before": "2026-04-24", "not_after": "2036-04-21",
+                "ca": { "path_len": 0 }, "key_usages": ca_usages, "authority_key_identifier": true
+            }),
+            &intermediate_key,
+            Some((&github_root_ca, &github_root_key)),
+        );
+        let github_leaf = test_fixtures::x509(
+            &json!({
+                "subject": [["CN", "github.com"]],
+                "sans": ["github.com", "www.github.com"],
+                "not_before": "2026-04-24", "not_after": "2036-04-21",
+                "ca": false, "key_usages": ["digital_signature"],
+                "extended_key_usages": ["server_auth"], "authority_key_identifier": true
+            }),
+            &test_fixtures::JWK::generate_p256(),
+            Some((&intermediate_cert, &intermediate_key)),
+        );
+
+        Pki {
+            test_root_ca,
+            test_issuer_cert,
+            openid_conformance_test_cert,
+            github_cert_chain: format!("{github_leaf}{intermediate_cert}"),
+            github_root_ca,
+        }
+    }
+
+    /// `dc+sd-jwt` presentation of the conformance suite's PID, bound to the fixture holder key;
+    /// `undisclosed` holds the recorded digests of the claims it does not disclose.
+    fn presentation(
+        x5c: Option<Vec<String>>,
+        iat: u64,
+        exp: u64,
+        disclosures: &[&str],
+        undisclosed: &[&str],
+        nonce: &str,
+    ) -> String {
+        let keys = test_fixtures::keys();
+        let mut header = serde_json::json!({ "typ": "dc+sd-jwt", "alg": "ES256" });
+        if let Some(x5c) = x5c {
+            header["x5c"] = serde_json::json!(x5c);
+        }
+        let sd_jwt = test_fixtures::sd_jwt(
+            &header,
+            &serde_json::json!({
+                "_sd": undisclosed,
+                "vct": "urn:eudi:pid:1",
+                "iss": "https://localhost.emobix.co.uk:9443/test/a/asdk-vci-verifier-test-asdk-598",
+                "cnf": { "jwk": keys.holder.to_public() },
+                "exp": exp,
+                "iat": iat
+            }),
+            disclosures,
+            &keys.issuer,
+        );
+        test_fixtures::sd_jwt_kb(
+            &sd_jwt,
+            &serde_json::json!({ "typ": "kb+jwt", "alg": "ES256" }),
+            &serde_json::json!({ "aud": "x509_san_dns:verifier-asdk", "iat": iat, "nonce": nonce }),
+            &keys.holder,
+        )
+    }
 }

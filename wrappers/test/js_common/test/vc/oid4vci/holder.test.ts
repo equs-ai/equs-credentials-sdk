@@ -15,6 +15,8 @@ import {
   resolveMetadata,
   UniversalDIDResolver,
   VCFormat,
+  FixtureKey,
+  fixtureDidKeyUrl,
 } from "equs-credentials-sdk";
 import { Utils } from "./fixtures";
 
@@ -210,11 +212,7 @@ describe("OID4VCI Holder: ", () => {
       payload: utils.sdJWTCreds,
     };
 
-    const keyMetadata: KeyMetadata = {
-      kid: "1",
-      didUrl:
-        "did:key:zDnaenpntCkXnDCnaDk62LxNqPc4CMd32fbhiVsZV5KpPTG2c#zDnaenpntCkXnDCnaDk62LxNqPc4CMd32fbhiVsZV5KpPTG2c",
-    };
+    const keyMetadata: KeyMetadata = { kid: "1", didUrl: fixtureDidKeyUrl(FixtureKey.Holder) };
 
     const metadata = await resolveMetadata(credential, keyMetadata);
 

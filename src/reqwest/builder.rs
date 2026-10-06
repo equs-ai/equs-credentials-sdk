@@ -299,21 +299,20 @@ mod tests {
     #[cfg(not(target_arch = "wasm32"))]
     #[test]
     fn add_trusted_root_certificate_appends_to_internal_vec() {
-        // A self-signed cert generated for testing only — PEM body validates
-        // shape; we just need a parseable Certificate.
-        const PEM: &str = "-----BEGIN CERTIFICATE-----\n\
-MIIBhTCCASugAwIBAgIQIRi6zePL6mKjOipn+dNuaTAKBggqhkjOPQQDAjASMRAw\n\
-DgYDVQQKEwdBY21lIENvMB4XDTE3MTAyMDE5NDMwNloXDTE4MTAyMDE5NDMwNlow\n\
-EjEQMA4GA1UEChMHQWNtZSBDbzBZMBMGByqGSM49AgEGCCqGSM49AwEHA0IABD0d\n\
-7VNhbWvZLWPuj/RtHFjvtJBEwOkhbN/BnnE8rnZR8+sbwnc/KhCk3FhnpHZnQz7B\n\
-5aETbbIgmuvewdjvSBSjYzBhMA4GA1UdDwEB/wQEAwICpDATBgNVHSUEDDAKBggr\n\
-BgEFBQcDATAPBgNVHRMBAf8EBTADAQH/MCkGA1UdEQQiMCCCDmxvY2FsaG9zdDo1\n\
-NDUzgg4xMjcuMC4wLjE6NTQ1MzAKBggqhkjOPQQDAgNIADBFAiEA2zpJEPQyz6/l\n\
-Wf86aX6PepsntZv2GYlA5UpabfT2EZICICpJ5h/iI+i341gBmLiAFQOyTDT+/wQc\n\
-6MF9+Yw1Yy0t\n\
------END CERTIFICATE-----";
+        let pem = test_fixtures::x509(
+            &serde_json::json!({
+                "subject": [["O", "Acme Co"]],
+                "sans": ["localhost:5453", "127.0.0.1:5453"],
+                "not_before": "2017-10-20", "not_after": "2018-10-20",
+                "ca": true,
+                "key_usages": ["digital_signature", "key_encipherment", "key_cert_sign"],
+                "extended_key_usages": ["server_auth"]
+            }),
+            &test_fixtures::JWK::generate_p256(),
+            None,
+        );
 
-        let cert = Certificate::from_pem(PEM.as_bytes()).unwrap();
+        let cert = Certificate::from_pem(pem.as_bytes()).unwrap();
 
         let b = ReqwestClientBuilder::new().add_trusted_root_certificate(cert);
 

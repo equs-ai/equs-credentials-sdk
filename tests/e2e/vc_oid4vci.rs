@@ -15,7 +15,7 @@ use std::{io, str};
 use uuid::Uuid;
 
 use crate::utils::fixtures::{
-    ACCESS_TOKEN, AUTHZ_URL, SCOPE, sample_authz_url, sample_claims_jsonld, sample_claims_sdjwt,
+    AUTHZ_URL, SCOPE, access_token, sample_authz_url, sample_claims_jsonld, sample_claims_sdjwt,
     sample_issuer_metadata, sample_issuer_url,
 };
 
@@ -246,7 +246,7 @@ fn prepare_http_client_for_holder(
             assert_eq!(req.method(), Method::POST);
 
             let resp = json!({
-                "access_token": ACCESS_TOKEN,
+                "access_token": access_token(),
                 "token_type": "bearer",
                 "expires_in": 86400,
             });

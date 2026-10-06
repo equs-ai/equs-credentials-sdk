@@ -1113,11 +1113,11 @@ mod tests {
     use crate::vc::formats::json_ld_vc::VC;
     use crate::vc::oid4vci::protocol_error::TokenEndpointError;
     use crate::vc::oid4vci::tests::fixtures::{
-        ACCESS_TOKEN, AUTH_URL, CRED_DEF_ID, ISSUER_URL, NOTIFICATION_ID, REQ_URI_CODE, SCOPE,
-        SD_JWT_CREDS, SampleIssuerMetadata, fake_access_token, sample_access_token,
+        AUTH_URL, CRED_DEF_ID, ISSUER_URL, NOTIFICATION_ID, REQ_URI_CODE, SCOPE,
+        SampleIssuerMetadata, access_token, fake_access_token, sample_access_token,
         sample_authorization_metadata, sample_batch_cred_response, sample_cred_response,
         sample_credential_definition, sample_offer_with_auth_code_grant,
-        sample_offer_with_pre_auth_code_grant,
+        sample_offer_with_pre_auth_code_grant, sd_jwt_creds,
     };
     use crate::vc::oid4vci::{
         CredentialRequest, CredentialResult, Holder, Notification, protocol_error,
@@ -1828,7 +1828,7 @@ mod tests {
 
         match &credentials[0] {
             Credential::SdJwt(cred) => {
-                assert_eq!(cred, SD_JWT_CREDS);
+                assert_eq!(cred, &sd_jwt_creds());
                 assert_eq!(notification_id, NOTIFICATION_ID);
             }
             _ => {
@@ -1850,7 +1850,7 @@ mod tests {
         SampleIssuerMetadata::with_sdjwtvc_conf(),
         json![
         {
-            "credentials": [{"credential": SD_JWT_CREDS.to_string()}],
+            "credentials": [{"credential": sd_jwt_creds()}],
             "notification_id": Some("notification_id".to_string()),
         }],
     )]
@@ -1989,7 +1989,7 @@ mod tests {
         for credential in credentials {
             match &credential {
                 Credential::SdJwt(cred) => {
-                    assert_eq!(cred, SD_JWT_CREDS);
+                    assert_eq!(cred, &sd_jwt_creds());
                     assert_eq!(notification_id, NOTIFICATION_ID);
                 }
                 _ => {
@@ -2221,18 +2221,21 @@ mod tests {
     //noinspection HttpUrlsUsage
     #[rstest]
     #[case::ldpvc(ISSUER_URL, Credential::LdpVc(ldp_vc_credential()))]
-    #[case::sdjwt_iss_oid4vci(ISSUER_URL, Credential::SdJwt(SD_JWT_CREDENTIAL_ISS_OID4VCI.to_owned()
-    ))]
-    #[case::sdjwt_iss_did(ISSUER_URL, Credential::SdJwt(SD_JWT_CREDENTIAL_ISS_DID.to_owned()))]
+    #[case::sdjwt_iss_oid4vci(ISSUER_URL, sd_jwt_credential(json!({ "iss": "https://issuer-backend.com", "id": "1234", "_sd_alg": "SHA-256" })))]
+    #[case::sdjwt_iss_did(ISSUER_URL, sd_jwt_credential(json!({ "iss": "did:web:issuer-backend.com/ignored-path", "id": "1234", "_sd_alg": "SHA-256" })))]
     #[should_panic(
         expected = "Credential contains issuer identifier notadid:web:issuer-backend.com"
     )]
-    #[case::sdjwt_iss_other_invalid(ISSUER_URL, Credential::SdJwt(SD_JWT_CREDENTIAL_ISS_OTHER_INVALID.to_owned()
-    ))]
-    #[case::sdjwt_iss_other_valid("http://issuer-backend.com", Credential::SdJwt(SD_JWT_CREDENTIAL_ISS_OTHER_VALID.to_owned()
-    ))]
+    #[case::sdjwt_iss_other_invalid(
+        ISSUER_URL,
+        sd_jwt_credential(json!({ "iss": "notadid:web:issuer-backend.com", "id": "1234", "_sd_alg": "SHA-256" }))
+    )]
+    #[case::sdjwt_iss_other_valid(
+        "http://issuer-backend.com",
+        sd_jwt_credential(json!({ "iss": "http://issuer-backend.com", "id": "1234" }))
+    )]
     #[should_panic(expected = "Credential does not contain issuer identifier")]
-    #[case::sdjwt_iss_none(ISSUER_URL, Credential::SdJwt(SD_JWT_CREDENTIAL_ISS_NONE.to_owned()))]
+    #[case::sdjwt_iss_none(ISSUER_URL, sd_jwt_credential(json!({ "id": "1234", "_sd_alg": "SHA-256" })))]
     #[should_panic(expected = "Unsupported format: jwt_vc_json")]
     #[case::unsupported_format_jwt_vc_json(ISSUER_URL, Credential::JwtVcJson("MOCK_CREDENTIAL".to_owned()
     ))]
@@ -2302,31 +2305,15 @@ mod tests {
             .unwrap()
     }
 
-    // Payload: { "iss": "https://issuer-backend.com", "id": "1234" }
-    const SD_JWT_CREDENTIAL_ISS_OID4VCI: &str = "eyJ0eXAiOiJzZCtqd3QiLCJhbGciOiJFUzI1NiJ9\
-    .eyJpc3MiOiJodHRwczovL2lzc3Vlci1iYWNrZW5kLmNvbSIsImlkIjoiMTIzNCIsIl9zZF9hbGciOiJTSEEtMjU2In0\
-    .-ZfBXDOJhhpA448q5oxGUl7VcxZAYFg9C0gYTbAweDKBxsB2KNrBIh9UK3hAJsSizBRdA0wKnu_Tn5ZLyW-Ouw~";
-
-    // Payload: { "iss": "did:web:issuer-backend.com/ignored-path", "id": "1234" }
-    const SD_JWT_CREDENTIAL_ISS_DID: &str = "eyJ0eXAiOiJzZCtqd3QiLCJhbGciOiJFUzI1NiJ9\
-    .eyJpc3MiOiJkaWQ6d2ViOmlzc3Vlci1iYWNrZW5kLmNvbS9pZ25vcmVkLXBhdGgiLCJpZCI6IjEyMzQiLCJfc2RfYWxnIjoiU0hBLTI1NiJ9\
-    .3peUWSXL3NZL6Ye2c7apa_czw4SCwUMpVk0ryxK4F_xr_SwS14AIz9SqrN3o1ZGC5goT1vVDmEczI9kMmHCCmA~";
-
-    // Payload: { "iss": "notadid:web:issuer-backend.com", "id": "1234" }
-    const SD_JWT_CREDENTIAL_ISS_OTHER_INVALID: &str = "eyJ0eXAiOiJzZCtqd3QiLCJhbGciOiJFUzI1NiJ9\
-    .eyJpc3MiOiJub3RhZGlkOndlYjppc3N1ZXItYmFja2VuZC5jb20iLCJpZCI6IjEyMzQiLCJfc2RfYWxnIjoiU0hBLTI1NiJ9\
-    .GcD3futV-qHM0WsTPxxVk_DCyAOlcjUAGXbikeSM7AkWgyk7QDVqS5Z_FUpQ0tdrzaG8lAzlNJMrUAf4FKkk9A~";
-
-    // Payload: { "iss": "http://issuer-backend.com", "id": "1234" }
-    // Note that Credential Issuer Identifier is URL with https protocol.
-    const SD_JWT_CREDENTIAL_ISS_OTHER_VALID: &str = "eyJ0eXAiOiJzZCtqd3QiLCJhbGciOiJFUzI1NiJ9\
-    .eyJpc3MiOiJodHRwOi8vaXNzdWVyLWJhY2tlbmQuY29tIiwiaWQiOiIxMjM0In0\
-    .8n5Y2hzrT3nKuqtJ6ofppryjOAHVCKvvcEAv3NUrsPEIEFNTQe0lShRdcJqIeJjaJEu9FF4kmYru9QXfgB5-ug~";
-
-    // Payload: { "id": "1234" }
-    const SD_JWT_CREDENTIAL_ISS_NONE: &str = "eyJ0eXAiOiJzZCtqd3QiLCJhbGciOiJFUzI1NiJ9\
-    .eyJpZCI6IjEyMzQiLCJfc2RfYWxnIjoiU0hBLTI1NiJ9\
-    .J1Lu6onzdyVbPM2QQg9mFUShMCI-4VPBe4rSss0O8g3H0Bc9klzB1eVdHjbEKxkB79Vt3fjg83UM-Ya4tXySzg~";
+    /// `sd+jwt` credential over `claims` without disclosures, signed by the fixture issuer key.
+    fn sd_jwt_credential(claims: serde_json::Value) -> Credential {
+        Credential::SdJwt(test_fixtures::sd_jwt(
+            &json!({ "typ": "sd+jwt", "alg": "ES256" }),
+            &claims,
+            &[],
+            &test_fixtures::keys().issuer,
+        ))
+    }
 
     fn ldp_vc_credential() -> VC {
         serde_json::from_str(
@@ -2597,7 +2584,7 @@ mod tests {
 
     fn sample_access_token_response() -> serde_json::Value {
         json!({
-            "access_token": ACCESS_TOKEN,
+            "access_token": access_token(),
             "token_type": "bearer",
             "expires_in": 86400,
         })

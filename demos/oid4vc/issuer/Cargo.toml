@@ -20,3 +20,4 @@ keycloak = "25.0.0"
 tracing-subscriber = "0.3.18"
 
 equs-credentials-sdk = { path = "../../..", features = ["in-memory"] }
+equs-test-fixtures = { path = "../../../test-fixtures", default-features = false }

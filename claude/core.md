@@ -17,7 +17,7 @@ Defines every abstract interface EQUS Credentials SDK is built on: cryptographic
 | Reqwest HTTP impl | `src/reqwest/` | [context](../src/reqwest/CLAUDE.md) |
 
 ## Cross-domain relationships
-- Depends on: `one-core-portable` (re-exported crypto/JWE primitives), `ssi` (JWK types), `async_trait`, `snafu`, `tracing`
+- Depends on: `one-core-portable` (re-exported crypto/JWE primitives), `ssi` (JWK types), `async_trait`, `snafu`, `tracing`, `test_fixtures` (tests only: the truststore PKIs and the reqwest trusted root)
 - Used by: every other domain — `did`, `vc`, `didcomm`, `inmem`, `wrappers`, `plugins`
 
 ## Key decisions / constraints

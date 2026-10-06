@@ -737,10 +737,10 @@ mod tests {
     use crate::vc::oid4vci::issuer::TokenValidation::ByJwks;
     use crate::vc::oid4vci::metadata::convert_metadata;
     use crate::vc::oid4vci::tests::fixtures::{
-        ACCESS_TOKEN, ACCESS_TOKEN_WITHOUT_SCOPE, AUTH_URL, CRED_DEF_ID, ISSUER_URL, JWKS_URL,
-        MockNonceHandler, NONCE, SAMPLE_PROOF_JWT, SCOPE, SampleCredentialRequest,
-        SampleIssuerMetadata, TOKEN_INTROSPECT_URL, sample_claims, sample_credential_definition,
-        sample_credential_offer,
+        AUTH_URL, CRED_DEF_ID, ISSUER_URL, JWKS_URL, MockNonceHandler, NONCE, SCOPE,
+        SampleCredentialRequest, SampleIssuerMetadata, TOKEN_INTROSPECT_URL, access_token,
+        access_token_without_scope, sample_claims, sample_credential_definition,
+        sample_credential_offer, sample_proof_jwt,
     };
     use crate::vc::oid4vci::{
         AuthorizationCodeGrant, CredentialLifetime, protocol_error, token_validation,
@@ -791,7 +791,7 @@ mod tests {
         let iss_result = issuer
             .issue_credential(
                 &SampleCredentialRequest::with_cred_configuration_id(),
-                ACCESS_TOKEN,
+                &access_token(),
                 &sample_claims(),
                 None,
             )
@@ -810,7 +810,7 @@ mod tests {
         let iss_result = issuer
             .issue_credential(
                 &SampleCredentialRequest::with_cred_configuration_id(),
-                ACCESS_TOKEN,
+                &access_token(),
                 &sample_claims(),
                 None,
             )
@@ -834,7 +834,7 @@ mod tests {
         let iss_result = issuer
             .issue_credential(
                 &SampleCredentialRequest::with_cred_configuration_id(),
-                ACCESS_TOKEN,
+                &access_token(),
                 &sample_claims(),
                 None,
             )
@@ -879,7 +879,7 @@ mod tests {
         let iss_result = issuer
             .issue_credential(
                 &SampleCredentialRequest::with_cred_configuration_id_and_multiple_proofs(),
-                ACCESS_TOKEN,
+                &access_token(),
                 &sample_claims(),
                 None,
             )
@@ -919,7 +919,7 @@ mod tests {
         issuer
             .issue_credential(
                 &SampleCredentialRequest::with_cred_configuration_id_and_multiple_proofs(),
-                ACCESS_TOKEN,
+                &access_token(),
                 &sample_claims(),
                 None,
             )
@@ -943,7 +943,7 @@ mod tests {
         issuer
             .issue_credential(
                 &SampleCredentialRequest::with_empty_proofs(),
-                ACCESS_TOKEN,
+                &access_token(),
                 &sample_claims(),
                 None,
             )
@@ -971,7 +971,7 @@ mod tests {
         issuer
             .issue_credential(
                 &SampleCredentialRequest::with_cred_configuration_id_and_multiple_proofs(),
-                ACCESS_TOKEN,
+                &access_token(),
                 &sample_claims(),
                 None,
             )
@@ -997,7 +997,7 @@ mod tests {
         );
 
         let iss_result = issuer
-            .issue_credential(&cred_req, ACCESS_TOKEN, &sample_claims(), None)
+            .issue_credential(&cred_req, &access_token(), &sample_claims(), None)
             .await;
 
         let t = iss_result.unwrap();
@@ -1047,7 +1047,7 @@ mod tests {
         .await;
 
         let claims = match issuer
-            .issue_credential(&cred_req, ACCESS_TOKEN, &sample_claims(), None)
+            .issue_credential(&cred_req, &access_token(), &sample_claims(), None)
             .await
             .unwrap()
             .response_kind()
@@ -1087,7 +1087,7 @@ mod tests {
         let iss_result = issuer
             .issue_credential(
                 &SampleCredentialRequest::with_cred_configuration_id(),
-                ACCESS_TOKEN,
+                &access_token(),
                 &claims,
                 None,
             )
@@ -1118,7 +1118,7 @@ mod tests {
         let iss_result = issuer
             .issue_credential(
                 &SampleCredentialRequest::with_cred_configuration_id(),
-                ACCESS_TOKEN,
+                &access_token(),
                 &sample_claims(),
                 None,
             )
@@ -1139,7 +1139,7 @@ mod tests {
             &mut http_client,
             Method::POST,
             token_intro_url.clone(),
-            format!("token={}", ACCESS_TOKEN),
+            format!("token={}", access_token()),
             json!({
                   "active": true,
             }),
@@ -1159,7 +1159,7 @@ mod tests {
         let iss_result = issuer
             .issue_credential(
                 &SampleCredentialRequest::with_cred_configuration_id(),
-                ACCESS_TOKEN,
+                &access_token(),
                 &sample_claims(),
                 None,
             )
@@ -1193,7 +1193,7 @@ mod tests {
             &mut http_client,
             Method::POST,
             Url::parse(TOKEN_INTROSPECT_URL).unwrap(),
-            format!("token={}", ACCESS_TOKEN),
+            format!("token={}", access_token()),
             json!({
                   "active": false,
             }),
@@ -1213,7 +1213,7 @@ mod tests {
         let iss_result = issuer
             .issue_credential(
                 &SampleCredentialRequest::with_cred_configuration_id(),
-                ACCESS_TOKEN,
+                &access_token(),
                 &sample_claims(),
                 None,
             )
@@ -1253,7 +1253,7 @@ mod tests {
         let issuer_service = issuer_service(None, None, None).await;
         let scope = Scope::new(SCOPE.to_owned());
 
-        let validate_res = issuer_service.validate_scope(ACCESS_TOKEN, CRED_DEF_ID, &scope);
+        let validate_res = issuer_service.validate_scope(&access_token(), CRED_DEF_ID, &scope);
 
         validate_res.unwrap()
     }
@@ -1404,7 +1404,7 @@ mod tests {
         )
         .await;
         issuer_service
-            .issue_credential(&credential_request, ACCESS_TOKEN, &claims, None)
+            .issue_credential(&credential_request, &access_token(), &claims, None)
             .await
             .unwrap();
     }
@@ -1420,7 +1420,7 @@ mod tests {
         issuer_service
             .issue_credential(
                 &credential_request,
-                ACCESS_TOKEN_WITHOUT_SCOPE,
+                &access_token_without_scope(),
                 &claims,
                 None,
             )
@@ -1439,7 +1439,7 @@ mod tests {
         issuer
             .issue_credential(
                 &SampleCredentialRequest::with_cred_configuration_id(),
-                ACCESS_TOKEN,
+                &access_token(),
                 &claims,
                 None,
             )
@@ -1461,7 +1461,7 @@ mod tests {
 
         let issuer = issuer_service(None, None, Some(Box::new(MockNonceHandler::default()))).await;
         issuer
-            .issue_credential(&credential_request, ACCESS_TOKEN, &claims, None)
+            .issue_credential(&credential_request, &access_token(), &claims, None)
             .await
             .unwrap();
     }
@@ -1556,7 +1556,7 @@ mod tests {
             {
                 "credential_configuration_id":cred_conf_id,
                 "proofs":{
-                    "jwt": [ SAMPLE_PROOF_JWT ]
+                    "jwt": [ sample_proof_jwt() ]
                 },
                 "credential_response_encryption":null
             }
@@ -1583,7 +1583,7 @@ mod tests {
                 "format":"dc+sd-jwt",
                 "vct":"SD_JWT_cred",
                 "proofs":{
-                    "cwt": [ SAMPLE_PROOF_JWT ]
+                    "cwt": [ sample_proof_jwt() ]
                 },
                 "credential_response_encryption":null
             }

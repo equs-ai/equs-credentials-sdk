@@ -21,12 +21,14 @@ npm i @equs-ai/equs-credentials-sdk
 Build the native binding, then run the test suite:
 
 ```shell
-npm run build:debug   # required for tests — enables the `in-memory` feature
+npm run build:debug   # required for tests — enables the `in-memory` and `test-fixtures` features
 npm test
 ```
 
-`npm run build` produces the release binary without the `in-memory`
-feature, so the tests will fail against it. Test files live in `test/`.
+`npm run build` produces the release binary without the `in-memory` and
+`test-fixtures` features, so the tests will fail against it. Test files live in `test/`;
+their signed tokens and certificates are built at runtime through the `fixture*`
+functions the `test-fixtures` feature exports.
 
 ## Usage
 

@@ -9,6 +9,8 @@ pub mod inmem;
 pub mod key_handle;
 pub mod kms;
 mod nonce;
+#[cfg(feature = "test-fixtures")]
+mod test_fixtures;
 mod utils;
 mod vault;
 pub mod vc;

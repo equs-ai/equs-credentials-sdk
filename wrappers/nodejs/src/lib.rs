@@ -7,6 +7,8 @@ pub mod http;
 pub mod inmem;
 pub mod kms;
 mod nonce;
+#[cfg(feature = "test-fixtures")]
+pub mod test_fixtures;
 pub(crate) mod utils;
 pub mod vault;
 pub mod vc;

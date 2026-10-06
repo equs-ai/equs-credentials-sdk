@@ -720,16 +720,15 @@ mod tests {
 
     #[tokio::test]
     async fn build_verifier_with_trusted_certs() {
-        let pem = "-----BEGIN CERTIFICATE-----
-MIIBZzCCAQ6gAwIBAgIUGaB+RAZje4MNjJqrAlNx1ByAiL8wCgYIKoZIzj0EAwIw
-EjEQMA4GA1UEAwwHQ0EgQ2VydDAeFw0yNTEyMTUxMDU2MzBaFw0zNTEyMTMxMDU2
-MzBaMBIxEDAOBgNVBAMMB0NBIENlcnQwWTATBgcqhkjOPQIBBggqhkjOPQMBBwNC
-AASVMf5Ykf8dzr46duTAZN3X2iFC1sp1pL15V3u/KDsmPjR21VnK1uv6kDvEziF7
-VyIFbvb40t/+c5eB3jg1cMq4o0IwQDAPBgNVHRMBAf8EBTADAQH/MA4GA1UdDwEB
-/wQEAwIBhjAdBgNVHQ4EFgQULHoOFFycXvdnCIlsyQiI5izPKkMwCgYIKoZIzj0E
-AwIDRwAwRAIgF+H7wT7a95WbiE+DDlZrQ7U3RlCUOMCFqudFRz+K6I4CIAT35kig
-4Q1ALvtXiWKDOjZIVxlw5eKQiq0dsd+bXKZE
------END CERTIFICATE-----";
+        let pem = test_fixtures::x509(
+            &serde_json::json!({
+                "subject": [["CN", "CA Cert"]],
+                "not_before": "2025-12-15", "not_after": "2035-12-13",
+                "ca": true, "key_usages": ["digital_signature", "key_cert_sign", "crl_sign"]
+            }),
+            &test_fixtures::JWK::generate_p256(),
+            None,
+        );
 
         let kms = LocalKms::new();
         let nonce_gen = LocalNonceHandler::default();
