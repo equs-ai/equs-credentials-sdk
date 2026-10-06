@@ -49,6 +49,19 @@ pub fn keys() -> &'static Keys {
     &KEYS
 }
 
+/// The process-wide key for `role`: `authz`, `issuer`, `holder`, `verifier` or `secret`.
+pub fn key(role: &str) -> &'static JWK {
+    let keys = keys();
+    match role {
+        "authz" => &keys.authz,
+        "issuer" => &keys.issuer,
+        "holder" => &keys.holder,
+        "verifier" => &keys.verifier,
+        "secret" => &keys.secret,
+        other => panic!("unknown key role `{other}`"),
+    }
+}
+
 /// Compact JWS of `payload` under `header`, signed with `key`; `alg` is read from the header.
 pub fn jws(header: &Value, payload: &Value, key: &JWK) -> String {
     let input = format!("{}.{}", b64(header), b64(payload));
@@ -191,6 +204,87 @@ pub fn x509(
         ),
     };
     certificate.expect("certificate").pem()
+}
+
+/// [`x509`] over a JSON certificate spec, for callers without `rcgen` types such as the wrapper
+/// test suites: `{"subject": [["CN", "..."], ["C", "US"]], "sans": ["a.example"],
+/// "not_before": "2026-09-23", "not_after": "2046-09-18", "ca": true | false | {"path_len": 0},
+/// "key_usages": ["digital_signature", "key_encipherment", "key_cert_sign", "crl_sign"],
+/// "extended_key_usages": ["server_auth", "client_auth"], "authority_key_identifier": true}`;
+/// every field is optional.
+#[cfg(feature = "x509")]
+pub fn x509_json(spec: &Value, key: &JWK, issuer: Option<(&str, &JWK)>) -> String {
+    use rcgen::{
+        BasicConstraints, CertificateParams, DnType, ExtendedKeyUsagePurpose, IsCa, KeyUsagePurpose,
+    };
+    let strings = |name: &str| -> Vec<String> {
+        spec[name]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_str)
+            .map(str::to_string)
+            .collect()
+    };
+    let date = |name: &str| {
+        let parts: Vec<u32> = spec[name]
+            .as_str()
+            .expect(name)
+            .split('-')
+            .map(|part| part.parse().expect("YYYY-MM-DD"))
+            .collect();
+        rcgen::date_time_ymd(parts[0] as i32, parts[1] as u8, parts[2] as u8)
+    };
+    let mut params = CertificateParams::new(strings("sans")).expect("SANs");
+    for pair in spec["subject"].as_array().into_iter().flatten() {
+        let kind = match pair[0].as_str().expect("DN type") {
+            "CN" => DnType::CommonName,
+            "C" => DnType::CountryName,
+            "O" => DnType::OrganizationName,
+            "OU" => DnType::OrganizationalUnitName,
+            "L" => DnType::LocalityName,
+            "ST" => DnType::StateOrProvinceName,
+            other => panic!("unknown DN type `{other}`"),
+        };
+        params
+            .distinguished_name
+            .push(kind, pair[1].as_str().expect("DN value"));
+    }
+    if spec.get("not_before").is_some() {
+        params.not_before = date("not_before");
+    }
+    if spec.get("not_after").is_some() {
+        params.not_after = date("not_after");
+    }
+    params.is_ca = match &spec["ca"] {
+        Value::Bool(true) => IsCa::Ca(BasicConstraints::Unconstrained),
+        Value::Bool(false) => IsCa::ExplicitNoCa,
+        Value::Object(ca) => IsCa::Ca(BasicConstraints::Constrained(
+            ca["path_len"].as_u64().expect("path_len") as u8,
+        )),
+        _ => IsCa::NoCa,
+    };
+    params.key_usages = strings("key_usages")
+        .iter()
+        .map(|usage| match usage.as_str() {
+            "digital_signature" => KeyUsagePurpose::DigitalSignature,
+            "key_encipherment" => KeyUsagePurpose::KeyEncipherment,
+            "key_cert_sign" => KeyUsagePurpose::KeyCertSign,
+            "crl_sign" => KeyUsagePurpose::CrlSign,
+            other => panic!("unknown key usage `{other}`"),
+        })
+        .collect();
+    params.extended_key_usages = strings("extended_key_usages")
+        .iter()
+        .map(|usage| match usage.as_str() {
+            "server_auth" => ExtendedKeyUsagePurpose::ServerAuth,
+            "client_auth" => ExtendedKeyUsagePurpose::ClientAuth,
+            other => panic!("unknown extended key usage `{other}`"),
+        })
+        .collect();
+    params.use_authority_key_identifier_extension =
+        spec["authority_key_identifier"].as_bool().unwrap_or(false);
+    x509(params, key, issuer)
 }
 
 /// `x5c` header value of a PEM chain, in the order given (leaf first): each certificate's DER in
@@ -537,6 +631,53 @@ mod tests {
         assert_ne!(
             again_pem.parse_x509().unwrap().raw_serial(),
             cert_x509.raw_serial()
+        );
+    }
+
+    #[test]
+    fn key_resolves_a_role_to_the_process_key() {
+        assert!(std::ptr::eq(key("issuer"), &keys().issuer));
+        assert!(std::ptr::eq(key("secret"), &keys().secret));
+    }
+
+    #[test]
+    #[should_panic(expected = "unknown key role")]
+    fn key_rejects_an_unknown_role() {
+        key("nobody");
+    }
+
+    #[cfg(feature = "x509")]
+    #[test]
+    fn x509_json_builds_the_same_chain_from_a_spec() {
+        let ca_key = JWK::generate_p256();
+        let root = x509_json(
+            &json!({ "subject": [["CN", "Spec Root"]], "ca": true, "key_usages": ["key_cert_sign", "crl_sign"] }),
+            &ca_key,
+            None,
+        );
+        let leaf = x509_json(
+            &json!({
+                "subject": [["CN", "Spec Leaf"], ["C", "US"]], "sans": ["leaf.example"], "ca": false,
+                "not_before": "2026-01-02", "not_after": "2036-01-02",
+                "key_usages": ["digital_signature"], "extended_key_usages": ["server_auth"],
+                "authority_key_identifier": true
+            }),
+            &keys().issuer,
+            Some((&root, &ca_key)),
+        );
+
+        let leaf_x509 = x509_parser::pem::parse_x509_pem(leaf.as_bytes()).unwrap().1;
+        let leaf_x509 = leaf_x509.parse_x509().unwrap();
+        assert_eq!(leaf_x509.subject().to_string(), "CN=Spec Leaf, C=US");
+        assert_eq!(leaf_x509.issuer().to_string(), "CN=Spec Root");
+        assert!(!leaf_x509.is_ca());
+        assert_eq!(leaf_x509.validity().not_before.to_datetime().year(), 2026);
+        assert!(leaf_x509.subject_alternative_name().unwrap().is_some());
+        assert!(
+            leaf_x509
+                .extensions()
+                .iter()
+                .any(|e| e.oid == x509_parser::oid_registry::OID_X509_EXT_AUTHORITY_KEY_IDENTIFIER)
         );
     }
 
