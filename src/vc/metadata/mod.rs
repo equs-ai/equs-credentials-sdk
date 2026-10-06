@@ -286,7 +286,11 @@ mod tests {
             kid: "12345".to_string(),
         };
 
-        let invalid_cred = Credential::SdJwt(sd_jwt_cred_no_vct_token());
+        let invalid_cred = Credential::SdJwt(sd_jwt_cred_token(
+            None,
+            1727134420,
+            ["pt2LyPmGjRLZhi8TcD2lrQ", "AA-9Rk76zn3VD_aXGcaehQ"],
+        ));
         let res = DefaultMetadataProcessor::resolve_metadata(&invalid_cred, key_metadata.clone());
 
         assert!(matches!(res.err(), Some(Error::Resolving { .. })));
@@ -294,7 +298,7 @@ mod tests {
 
     #[test]
     fn resolve_sd_jwt_cred_fields() {
-        let credential = Credential::SdJwt(sd_jwt_cred_token());
+        let credential = sd_jwt_cred().credential;
         let mut fields = DefaultMetadataProcessor::resolve_fields(&credential).unwrap();
 
         fields.sort();
@@ -342,7 +346,11 @@ mod tests {
 
     fn sd_jwt_cred() -> TestCaseCred {
         TestCaseCred {
-            credential: Credential::SdJwt(sd_jwt_cred_token()),
+            credential: Credential::SdJwt(sd_jwt_cred_token(
+                Some("https://issuer.net/cred_schema"),
+                1727134181,
+                ["szwq9x4_yjVE_io1R7q6LQ", "OXJ1XxxaLiNjexydYK3cHg"],
+            )),
             type_: "https://issuer.net/cred_schema".to_owned(),
             format: VCFormat::SdJwtVc,
             key_metadata: KeyMetadata {
@@ -373,57 +381,34 @@ mod tests {
             )
         });
 
-    fn sd_jwt_cred_token() -> String {
+    /// `vc+sd-jwt` credential issued to and bound with `ED25519_KEYS`, valid for a year from `iat`,
+    /// disclosing `name` and `surname` under the recorded `salts`.
+    fn sd_jwt_cred_token(vct: Option<&str>, iat: u64, salts: [&str; 2]) -> String {
         let (issuer, holder) = &*ED25519_KEYS;
+        let mut claims = serde_json::json!({
+            "dob": "09/09/1989",
+            "vct": vct,
+            "sub": test_fixtures::did_key(holder),
+            "nbf": iat,
+            "_sd_alg": "sha-256",
+            "iss": test_fixtures::did_key(issuer),
+            "iat": iat,
+            "exp": iat + 31_536_000,
+            "cnf": { "jwk": holder.to_public() }
+        });
+        if vct.is_none() {
+            claims.as_object_mut().unwrap().remove("vct");
+        }
         test_fixtures::sd_jwt(
             &serde_json::json!({
                 "typ": "vc+sd-jwt",
                 "alg": "EdDSA",
                 "kid": test_fixtures::did_key_url(issuer)
             }),
-            &serde_json::json!({
-                "dob": "09/09/1989",
-                "vct": "https://issuer.net/cred_schema",
-                "sub": test_fixtures::did_key(holder),
-                "nbf": 1727134181,
-                "_sd_alg": "sha-256",
-                "iss": test_fixtures::did_key(issuer),
-                "iat": 1727134181,
-                "exp": 1758670181,
-                "cnf": {
-                    "jwk": holder.to_public()
-                }
-            }),
+            &claims,
             &[
-                r#"["szwq9x4_yjVE_io1R7q6LQ", "name", "John"]"#,
-                r#"["OXJ1XxxaLiNjexydYK3cHg", "surname", "Doe"]"#,
-            ],
-            issuer,
-        )
-    }
-    fn sd_jwt_cred_no_vct_token() -> String {
-        let (issuer, holder) = &*ED25519_KEYS;
-        test_fixtures::sd_jwt(
-            &serde_json::json!({
-                "typ": "vc+sd-jwt",
-                "alg": "EdDSA",
-                "kid": test_fixtures::did_key_url(issuer)
-            }),
-            &serde_json::json!({
-                "dob": "09/09/1989",
-                "sub": test_fixtures::did_key(holder),
-                "nbf": 1727134420,
-                "_sd_alg": "sha-256",
-                "iss": test_fixtures::did_key(issuer),
-                "iat": 1727134420,
-                "exp": 1758670420,
-                "cnf": {
-                    "jwk": holder.to_public()
-                }
-            }),
-            &[
-                r#"["pt2LyPmGjRLZhi8TcD2lrQ", "name", "John"]"#,
-                r#"["AA-9Rk76zn3VD_aXGcaehQ", "surname", "Doe"]"#,
+                &format!(r#"["{}", "name", "John"]"#, salts[0]),
+                &format!(r#"["{}", "surname", "Doe"]"#, salts[1]),
             ],
             issuer,
         )

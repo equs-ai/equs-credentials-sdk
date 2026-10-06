@@ -1590,20 +1590,32 @@ mod tests {
 
     #[rstest]
     #[case::url(
-        example_sd_jwt_issuer_oid4vci(),
+        example_sd_jwt(
+            Some("https://example.com/oid4vci-issuer"),
+            ["b836aa5414dcf683", "d19eb21f073f8cbc", "41787e54cfdcd5a7"]
+        ),
         Some(CredentialIssuerIdentifier::OID4VCI(
             IssuerUrl::new("https://example.com/oid4vci-issuer".to_owned()).unwrap())),
     )]
     #[case::did(
-        example_sd_jwt_issuer_did(),
+        example_sd_jwt(
+            Some("did:example:123"),
+            ["ffefff4d2547eb68", "79e6f2a86d96affd", "336707f8c33b28f2"]
+        ),
         Some(CredentialIssuerIdentifier::DID(
             DIDURLBuf::from_str("did:example:123").unwrap())),
     )]
     #[case::other(
-        example_sd_jwt_issuer_other(),
+        example_sd_jwt(
+            Some("notadid:example:123"),
+            ["f7314295e57b07c7", "5e6673c7f2dbd44c", "6488f2f40980c923"]
+        ),
         Some(CredentialIssuerIdentifier::Other("notadid:example:123".to_owned())),
     )]
-    #[case::no_iss(example_sd_jwt_issuer_none(), None)]
+    #[case::no_iss(
+        example_sd_jwt(None, ["ede3b5891cbbda4b", "ae1304c5afded96a", "ebfb48b3ecec5d38"]),
+        None
+    )]
     fn extract_issuer_identifier(
         #[case] credential: String,
         #[case] expected: Option<CredentialIssuerIdentifier>,
@@ -1612,86 +1624,27 @@ mod tests {
         assert_eq!(expected, actual);
     }
 
-    fn example_sd_jwt_issuer_oid4vci() -> String {
-        let keys = test_fixtures::keys();
+    /// `sd+jwt` credential with `iss`, if any, disclosing `firstname`, `lastname` and `ssn` under
+    /// the recorded `salts`, signed by the fixture issuer key.
+    fn example_sd_jwt(iss: Option<&str>, salts: [&str; 3]) -> String {
+        let mut claims = json!({ "id": "1234", "iss": iss, "_sd_alg": "SHA-256" });
+        if iss.is_none() {
+            claims.as_object_mut().unwrap().remove("iss");
+        }
+        let disclosures: Vec<String> = [
+            ("firstname", "John"),
+            ("lastname", "Doe"),
+            ("ssn", "123-45-6789"),
+        ]
+        .iter()
+        .zip(salts)
+        .map(|((name, value), salt)| format!(r#"["{salt}","{name}","{value}"]"#))
+        .collect();
         test_fixtures::sd_jwt(
-            &serde_json::json!({
-                "typ": "sd+jwt",
-                "alg": "ES256"
-            }),
-            &serde_json::json!({
-                "id": "1234",
-                "iss": "https://example.com/oid4vci-issuer",
-                "_sd_alg": "SHA-256"
-            }),
-            &[
-                r#"["b836aa5414dcf683","firstname","John"]"#,
-                r#"["d19eb21f073f8cbc","lastname","Doe"]"#,
-                r#"["41787e54cfdcd5a7","ssn","123-45-6789"]"#,
-            ],
-            &keys.issuer,
-        )
-    }
-
-    fn example_sd_jwt_issuer_did() -> String {
-        let keys = test_fixtures::keys();
-        test_fixtures::sd_jwt(
-            &serde_json::json!({
-                "typ": "sd+jwt",
-                "alg": "ES256"
-            }),
-            &serde_json::json!({
-                "id": "1234",
-                "iss": "did:example:123",
-                "_sd_alg": "SHA-256"
-            }),
-            &[
-                r#"["ffefff4d2547eb68","firstname","John"]"#,
-                r#"["79e6f2a86d96affd","lastname","Doe"]"#,
-                r#"["336707f8c33b28f2","ssn","123-45-6789"]"#,
-            ],
-            &keys.issuer,
-        )
-    }
-
-    fn example_sd_jwt_issuer_other() -> String {
-        let keys = test_fixtures::keys();
-        test_fixtures::sd_jwt(
-            &serde_json::json!({
-                "typ": "sd+jwt",
-                "alg": "ES256"
-            }),
-            &serde_json::json!({
-                "id": "1234",
-                "iss": "notadid:example:123",
-                "_sd_alg": "SHA-256"
-            }),
-            &[
-                r#"["f7314295e57b07c7","firstname","John"]"#,
-                r#"["5e6673c7f2dbd44c","lastname","Doe"]"#,
-                r#"["6488f2f40980c923","ssn","123-45-6789"]"#,
-            ],
-            &keys.issuer,
-        )
-    }
-
-    fn example_sd_jwt_issuer_none() -> String {
-        let keys = test_fixtures::keys();
-        test_fixtures::sd_jwt(
-            &serde_json::json!({
-                "typ": "sd+jwt",
-                "alg": "ES256"
-            }),
-            &serde_json::json!({
-                "id": "1234",
-                "_sd_alg": "SHA-256"
-            }),
-            &[
-                r#"["ede3b5891cbbda4b","firstname","John"]"#,
-                r#"["ae1304c5afded96a","lastname","Doe"]"#,
-                r#"["ebfb48b3ecec5d38","ssn","123-45-6789"]"#,
-            ],
-            &keys.issuer,
+            &json!({ "typ": "sd+jwt", "alg": "ES256" }),
+            &claims,
+            &disclosures.iter().map(String::as_str).collect::<Vec<_>>(),
+            &test_fixtures::keys().issuer,
         )
     }
 }

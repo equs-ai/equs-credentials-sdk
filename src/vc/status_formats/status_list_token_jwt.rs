@@ -455,7 +455,7 @@ mod tests {
     use crate::inmem::kms::LocalKms;
     use crate::kms::KeyType;
     use crate::utils::http::test::mock_http_fn_with_plain_text_resp;
-    use crate::utils::test_utils::create_did_url_and_key_handle;
+    use crate::utils::test_utils::{anchors, create_did_url_and_key_handle, status_list_jwt};
     use crate::vc::presentation_exchange::StatusSize;
     use crate::vc::status_formats::API;
     use oauth2::http::Method;
@@ -716,98 +716,62 @@ mod tests {
     }
 
     fn x5c_signed_status_list(typ: &str, with_x5c: bool) -> String {
-        let mut header = jsonwebtoken::Header::new(jsonwebtoken::Algorithm::ES256);
-        header.typ = Some(typ.to_string());
+        let mut header = json!({ "typ": typ, "alg": "ES256" });
         if with_x5c {
-            header.x5c =
-                Some(one_core::mapper::x509::pem_chain_into_x5c(&pki().signer_cert).unwrap());
+            header["x5c"] =
+                json!(one_core::mapper::x509::pem_chain_into_x5c(&pki().signer_cert).unwrap());
         }
-        let claims = json!({
-            "sub": X5C_STATUS_LIST_URL,
-            "iat": 1790000000,
-            "status_list": { "bits": 2, "lst": "eNqbwMwABgAEnQCU" }
-        });
-        let key = jsonwebtoken::EncodingKey::from_ec_pem(pki().signer_key.as_bytes()).unwrap();
-
-        jsonwebtoken::encode(&header, &claims, &key).unwrap()
+        test_fixtures::jws(
+            &header,
+            &json!({
+                "sub": X5C_STATUS_LIST_URL,
+                "iat": 1790000000,
+                "status_list": { "bits": 2, "lst": "eNqbwMwABgAEnQCU" }
+            }),
+            &test_fixtures::keys().issuer,
+        )
     }
 
-    /// Trusted anchors keyed by Subject Key Identifier, as the verifier holds them.
-    fn anchors(ca_certs: &[&str]) -> HashMap<String, String> {
-        ca_certs
-            .iter()
-            .map(|ca_cert| {
-                let pem = x509_parser::prelude::Pem::iter_from_buffer(ca_cert.as_bytes())
-                    .next()
-                    .unwrap()
-                    .unwrap();
-                let skid =
-                    one_core::mapper::x509::subject_key_identifier(&pem.parse_x509().unwrap())
-                        .unwrap()
-                        .unwrap();
-                (skid, ca_cert.to_string())
-            })
-            .collect()
-    }
-
+    /// A root CA, the certificate it issued for the fixture issuer key, and an unrelated root CA.
     struct StatusListPki {
         root_ca: String,
         signer_cert: String,
-        signer_key: String,
         unrelated_root_ca: String,
     }
 
     fn pki() -> &'static StatusListPki {
-        static PKI: std::sync::OnceLock<StatusListPki> = std::sync::OnceLock::new();
-        PKI.get_or_init(|| {
-            let (root_params, root_key) = new_root_ca("Test Status List Root CA");
-            let root_ca = root_params.self_signed(&root_key).unwrap().pem();
-            let root_issuer = rcgen::Issuer::new(root_params, root_key);
-
-            let signer_key = rcgen::KeyPair::generate().unwrap();
-            let mut signer_params =
-                rcgen::CertificateParams::new(vec!["status.example".to_string()]).unwrap();
-            signer_params
-                .distinguished_name
-                .push(rcgen::DnType::CommonName, "Test Status List Signer");
-            signer_params.key_usages = vec![rcgen::KeyUsagePurpose::DigitalSignature];
-            signer_params.use_authority_key_identifier_extension = true;
-            set_validity(&mut signer_params);
-            let signer_cert = signer_params
-                .signed_by(&signer_key, &root_issuer)
-                .unwrap()
-                .pem();
-
-            let (unrelated_params, unrelated_key) = new_root_ca("Unrelated Root CA");
-            let unrelated_root_ca = unrelated_params.self_signed(&unrelated_key).unwrap().pem();
-
+        static PKI: std::sync::LazyLock<StatusListPki> = std::sync::LazyLock::new(|| {
+            let root = |common_name: &str| {
+                json!({
+                    "subject": [["CN", common_name]],
+                    "not_before": "2025-01-01", "not_after": "2046-01-01",
+                    "ca": true, "key_usages": ["key_cert_sign", "crl_sign"]
+                })
+            };
+            let root_key = test_fixtures::JWK::generate_p256();
+            let root_ca = test_fixtures::x509(&root("Test Status List Root CA"), &root_key, None);
+            let signer_cert = test_fixtures::x509(
+                &json!({
+                    "subject": [["CN", "Test Status List Signer"]],
+                    "sans": ["status.example"],
+                    "not_before": "2025-01-01", "not_after": "2046-01-01",
+                    "key_usages": ["digital_signature"], "authority_key_identifier": true
+                }),
+                &test_fixtures::keys().issuer,
+                Some((&root_ca, &root_key)),
+            );
+            let unrelated_root_ca = test_fixtures::x509(
+                &root("Unrelated Root CA"),
+                &test_fixtures::JWK::generate_p256(),
+                None,
+            );
             StatusListPki {
                 root_ca,
                 signer_cert,
-                signer_key: signer_key.serialize_pem(),
                 unrelated_root_ca,
             }
-        })
-    }
-
-    fn new_root_ca(common_name: &str) -> (rcgen::CertificateParams, rcgen::KeyPair) {
-        let mut params = rcgen::CertificateParams::new(Vec::<String>::new()).unwrap();
-        params
-            .distinguished_name
-            .push(rcgen::DnType::CommonName, common_name);
-        params.is_ca = rcgen::IsCa::Ca(rcgen::BasicConstraints::Unconstrained);
-        params.key_usages = vec![
-            rcgen::KeyUsagePurpose::KeyCertSign,
-            rcgen::KeyUsagePurpose::CrlSign,
-        ];
-        set_validity(&mut params);
-
-        (params, rcgen::KeyPair::generate().unwrap())
-    }
-
-    fn set_validity(params: &mut rcgen::CertificateParams) {
-        params.not_before = rcgen::date_time_ymd(2025, 1, 1);
-        params.not_after = rcgen::date_time_ymd(2046, 1, 1);
+        });
+        &PKI
     }
 
     /// Status list token that contains the following status list:
@@ -817,7 +781,12 @@ mod tests {
     ///
     /// Status bit size - 1
     fn status_list_jwt_token_1bit() -> String {
-        status_list_jwt(1738074130, "eNpjYmBgAAAADAAD", 1)
+        status_list_jwt(
+            "http://example.com/status_list",
+            1738074130,
+            "eNpjYmBgAAAADAAD",
+            1,
+        )
     }
 
     /// Status list token that contains the following status list:
@@ -829,27 +798,11 @@ mod tests {
     ///
     /// Status bit size - 2
     fn status_list_jwt_token_2bit() -> String {
-        status_list_jwt(1763024416, "eNqbwMwABgAEnQCU", 2)
-    }
-
-    /// `statuslist+jwt` served at `http://example.com/status_list`, signed by the fixture issuer
-    /// key.
-    fn status_list_jwt(iat: u64, lst: &str, bits: u8) -> String {
-        let issuer = &test_fixtures::keys().issuer;
-        let token = test_fixtures::jws(
-            &json!({
-                "typ": "statuslist+jwt",
-                "alg": "ES256",
-                "kid": test_fixtures::did_key_url(issuer)
-            }),
-            &json!({
-                "status_list": { "lst": lst, "bits": bits },
-                "iat": iat,
-                "sub": "http://example.com/status_list",
-                "_sd_alg": "sha-256"
-            }),
-            issuer,
-        );
-        format!("{token}~")
+        status_list_jwt(
+            "http://example.com/status_list",
+            1763024416,
+            "eNqbwMwABgAEnQCU",
+            2,
+        )
     }
 }

@@ -720,22 +720,15 @@ mod tests {
 
     #[tokio::test]
     async fn build_verifier_with_trusted_certs() {
-        use test_fixtures::rcgen::{
-            BasicConstraints, CertificateParams, DnType, IsCa, KeyUsagePurpose, date_time_ymd,
-        };
-        let mut params = CertificateParams::new(Vec::<String>::new()).unwrap();
-        params
-            .distinguished_name
-            .push(DnType::CommonName, "CA Cert");
-        params.is_ca = IsCa::Ca(BasicConstraints::Unconstrained);
-        params.key_usages = vec![
-            KeyUsagePurpose::DigitalSignature,
-            KeyUsagePurpose::KeyCertSign,
-            KeyUsagePurpose::CrlSign,
-        ];
-        params.not_before = date_time_ymd(2025, 12, 15);
-        params.not_after = date_time_ymd(2035, 12, 13);
-        let pem = test_fixtures::x509(params, &test_fixtures::JWK::generate_p256(), None);
+        let pem = test_fixtures::x509(
+            &serde_json::json!({
+                "subject": [["CN", "CA Cert"]],
+                "not_before": "2025-12-15", "not_after": "2035-12-13",
+                "ca": true, "key_usages": ["digital_signature", "key_cert_sign", "crl_sign"]
+            }),
+            &test_fixtures::JWK::generate_p256(),
+            None,
+        );
 
         let kms = LocalKms::new();
         let nonce_gen = LocalNonceHandler::default();

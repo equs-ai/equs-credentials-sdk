@@ -1524,13 +1524,13 @@ mod tests {
 
         // Get request object
         let request_obj = holder
-            .get_authorization_request(&request_uri().parse().unwrap())
+            .get_authorization_request(&request_uri())
             .await
             .unwrap();
 
         assert_eq!(
             request_obj,
-            serde_json::from_str(&auth_request_json()).unwrap()
+            serde_json::from_value(auth_request_json()).unwrap()
         );
     }
 
@@ -1538,7 +1538,7 @@ mod tests {
     async fn request_verifier_verifies_for_did_successfully() {
         let request_verifier =
             request_verifier(MockHttpClient::new(), LocalKms::new(), InMemVault::new()).await;
-        let aro: AuthorizationRequestObject = serde_json::from_str(&auth_request_json()).unwrap();
+        let aro: AuthorizationRequestObject = serde_json::from_value(auth_request_json()).unwrap();
         request_verifier
             .decentralized_identifier(&aro, auth_request_jwt())
             .await
@@ -1610,7 +1610,7 @@ mod tests {
         );
         let holder = holder_service(http_client, LocalKms::new(), InMemVault::new()).await;
         let request_obj = holder
-            .get_authorization_request(&request_uri().parse().unwrap())
+            .get_authorization_request(&request_uri())
             .await
             .unwrap();
 
@@ -1730,8 +1730,7 @@ mod tests {
                     }
                     AuthorizationResponse::Jwe(jwe) => {
                         assert_eq!(response_mode, ResponseMode::DcApiJwt);
-                        let jwk = test_case.get_private_enc_key();
-                        let kh = wrap_p256_private_key(&jwk);
+                        let kh = wrap_p256_private_key(&test_fixtures::keys().verifier);
                         let payload = decrypt_jwe_payload(&jwe, &kh).await.unwrap();
                         let resp: AuthorizationResponseObject =
                             serde_json::from_slice(payload.as_slice()).unwrap();
@@ -2735,7 +2734,7 @@ mod tests {
         let holder = holder_service(http_client, LocalKms::new(), InMemVault::new()).await;
 
         holder
-            .decline_authorization_request(&serde_json::from_str(&auth_request_json()).unwrap())
+            .decline_authorization_request(&serde_json::from_value(auth_request_json()).unwrap())
             .await
             .unwrap();
     }
@@ -2764,7 +2763,7 @@ mod tests {
         let holder = holder_service(http_client, LocalKms::new(), InMemVault::new()).await;
 
         let err = holder
-            .decline_authorization_request(&serde_json::from_str(&auth_request_json()).unwrap())
+            .decline_authorization_request(&serde_json::from_value(auth_request_json()).unwrap())
             .await
             .unwrap_err();
 
@@ -2782,7 +2781,7 @@ mod tests {
         let holder =
             holder_service(MockHttpClient::new(), LocalKms::new(), InMemVault::new()).await;
         let mut auth_req: serde_json::Map<String, Value> =
-            serde_json::from_str(&auth_request_json()).unwrap();
+            serde_json::from_value(auth_request_json()).unwrap();
         auth_req.insert(
             "response_mode".to_string(),
             Value::String("fragment".to_string()),

@@ -1672,21 +1672,21 @@ mod tests {
     //noinspection HttpUrlsUsage
     #[rstest]
     #[case::ldpvc(ISSUER_URL, Credential::LdpVc(ldp_vc_credential()))]
-    #[case::sdjwt_iss_oid4vci(ISSUER_URL, Credential::SdJwt(sd_jwt_credential_iss_oid4vci()))]
-    #[case::sdjwt_iss_did(ISSUER_URL, Credential::SdJwt(sd_jwt_credential_iss_did()))]
+    #[case::sdjwt_iss_oid4vci(ISSUER_URL, sd_jwt_credential(json!({ "iss": "https://issuer-backend.com", "id": "1234", "_sd_alg": "SHA-256" })))]
+    #[case::sdjwt_iss_did(ISSUER_URL, sd_jwt_credential(json!({ "iss": "did:web:issuer-backend.com/ignored-path", "id": "1234", "_sd_alg": "SHA-256" })))]
     #[should_panic(
         expected = "Credential contains issuer identifier notadid:web:issuer-backend.com"
     )]
     #[case::sdjwt_iss_other_invalid(
         ISSUER_URL,
-        Credential::SdJwt(sd_jwt_credential_iss_other_invalid())
+        sd_jwt_credential(json!({ "iss": "notadid:web:issuer-backend.com", "id": "1234", "_sd_alg": "SHA-256" }))
     )]
     #[case::sdjwt_iss_other_valid(
         "http://issuer-backend.com",
-        Credential::SdJwt(sd_jwt_credential_iss_other_valid())
+        sd_jwt_credential(json!({ "iss": "http://issuer-backend.com", "id": "1234" }))
     )]
     #[should_panic(expected = "Credential does not contain issuer identifier")]
-    #[case::sdjwt_iss_none(ISSUER_URL, Credential::SdJwt(sd_jwt_credential_iss_none()))]
+    #[case::sdjwt_iss_none(ISSUER_URL, sd_jwt_credential(json!({ "id": "1234", "_sd_alg": "SHA-256" })))]
     #[should_panic(expected = "Unsupported format: jwt_vc_json")]
     #[case::unsupported_format_jwt_vc_json(ISSUER_URL, Credential::JwtVcJson("MOCK_CREDENTIAL".to_owned()
     ))]
@@ -1756,87 +1756,14 @@ mod tests {
             .unwrap()
     }
 
-    fn sd_jwt_credential_iss_oid4vci() -> String {
-        let keys = test_fixtures::keys();
-        test_fixtures::sd_jwt(
-            &serde_json::json!({
-                "typ": "sd+jwt",
-                "alg": "ES256"
-            }),
-            &serde_json::json!({
-                "iss": "https://issuer-backend.com",
-                "id": "1234",
-                "_sd_alg": "SHA-256"
-            }),
+    /// `sd+jwt` credential over `claims` without disclosures, signed by the fixture issuer key.
+    fn sd_jwt_credential(claims: serde_json::Value) -> Credential {
+        Credential::SdJwt(test_fixtures::sd_jwt(
+            &json!({ "typ": "sd+jwt", "alg": "ES256" }),
+            &claims,
             &[],
-            &keys.issuer,
-        )
-    }
-
-    fn sd_jwt_credential_iss_did() -> String {
-        let keys = test_fixtures::keys();
-        test_fixtures::sd_jwt(
-            &serde_json::json!({
-                "typ": "sd+jwt",
-                "alg": "ES256"
-            }),
-            &serde_json::json!({
-                "iss": "did:web:issuer-backend.com/ignored-path",
-                "id": "1234",
-                "_sd_alg": "SHA-256"
-            }),
-            &[],
-            &keys.issuer,
-        )
-    }
-
-    fn sd_jwt_credential_iss_other_invalid() -> String {
-        let keys = test_fixtures::keys();
-        test_fixtures::sd_jwt(
-            &serde_json::json!({
-                "typ": "sd+jwt",
-                "alg": "ES256"
-            }),
-            &serde_json::json!({
-                "iss": "notadid:web:issuer-backend.com",
-                "id": "1234",
-                "_sd_alg": "SHA-256"
-            }),
-            &[],
-            &keys.issuer,
-        )
-    }
-
-    fn sd_jwt_credential_iss_other_valid() -> String {
-        let keys = test_fixtures::keys();
-        test_fixtures::sd_jwt(
-            &serde_json::json!({
-                "typ": "sd+jwt",
-                "alg": "ES256"
-            }),
-            &serde_json::json!({
-                "iss": "http://issuer-backend.com",
-                "id": "1234"
-            }),
-            &[],
-            &keys.issuer,
-        )
-    }
-
-    fn sd_jwt_credential_iss_none() -> String {
-        let keys = test_fixtures::keys();
-        test_fixtures::sd_jwt(
-            &serde_json::json!({
-                "typ": "sd+jwt",
-                "alg": "ES256"
-            }),
-            &serde_json::json!({
-                "id": "1234",
-                "_sd_alg": "SHA-256"
-            }),
-            &[],
-            &keys.issuer,
-        )
+            &test_fixtures::keys().issuer,
+        ))
     }
 
     fn ldp_vc_credential() -> VC {

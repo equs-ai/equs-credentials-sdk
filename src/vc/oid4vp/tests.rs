@@ -3,34 +3,41 @@ pub mod fixtures {
     pub const NONCE: &str = "n0NcE";
     pub const CLIENT_ID: &str = "wallet-dev";
     pub const STATE: &str = "1d8b0d93-86e8-4135-87d4-524bb0500bf3";
-    /// `openid4vp://` link naming the fixture verifier as `client_id` and the request object URL.
-    pub fn request_uri() -> String {
-        let did = test_fixtures::did_key(&test_fixtures::keys().verifier);
+    /// The fixture verifier's `did:key` as a `decentralized_identifier` client ID.
+    pub fn verifier_client_id() -> String {
         format!(
-            "openid4vp://?client_id=decentralized_identifier%3Adid%3Akey%3A{}&request_uri=http%3A%2F%2F127.0.0.1%3A55796%2Frequest",
-            did.strip_prefix("did:key:").unwrap()
+            "decentralized_identifier:{}",
+            test_fixtures::did_key(&test_fixtures::keys().verifier)
         )
     }
+    /// The fixture verifier's public key as a response-encryption JWK.
+    pub fn verifier_enc_jwk(kid: &str, alg: &str) -> serde_json::Value {
+        let mut jwk = serde_json::to_value(test_fixtures::keys().verifier.to_public()).unwrap();
+        jwk["kid"] = kid.into();
+        jwk["use"] = "enc".into();
+        jwk["alg"] = alg.into();
+        jwk
+    }
+    /// `openid4vp://` link naming the fixture verifier as `client_id` and the request object URL.
+    pub fn request_uri() -> url::Url {
+        url::Url::parse_with_params(
+            "openid4vp://",
+            [
+                ("client_id", verifier_client_id().as_str()),
+                ("request_uri", "http://127.0.0.1:55796/request"),
+            ],
+        )
+        .unwrap()
+    }
     pub const CREDENTIAL_ID: &str = "abcde";
-    /// `statuslist+jwt` served at `http://localhost:9001/status_list`, signed by the fixture
-    /// issuer key.
+    /// `statuslist+jwt` served at `http://localhost:9001/status_list`.
     pub fn sample_credential_status_list() -> String {
-        let issuer = &test_fixtures::keys().issuer;
-        let token = test_fixtures::jws(
-            &serde_json::json!({
-                "typ": "statuslist+jwt",
-                "alg": "ES256",
-                "kid": test_fixtures::did_key_url(issuer)
-            }),
-            &serde_json::json!({
-                "status_list": { "lst": "eNqbwMwABgAEnQCU", "bits": 2 },
-                "sub": "http://localhost:9001/status_list",
-                "iat": 1763025623,
-                "_sd_alg": "sha-256"
-            }),
-            issuer,
-        );
-        format!("{token}~")
+        crate::utils::test_utils::status_list_jwt(
+            "http://localhost:9001/status_list",
+            1763025623,
+            "eNqbwMwABgAEnQCU",
+            2,
+        )
     }
     /// SD-JWT VC whose `status` points at `sample_credential_status_list()`, index 1.
     pub fn sample_sd_jwt_with_status() -> String {
@@ -944,8 +951,8 @@ pub mod fixtures {
         pub mod sd_jwt {
             use crate::nonce::Nonce;
             use crate::vc::claims::Claims;
-            use crate::vc::oid4vp::tests::fixtures::NONCE;
             use crate::vc::oid4vp::tests::fixtures::multi_presentation::transaction_data;
+            use crate::vc::oid4vp::tests::fixtures::{NONCE, verifier_client_id, verifier_enc_jwk};
             use crate::vc::oid4vp::tests::utils::{PresentationTestCase, VerificationTestCase};
             use crate::vc::oid4vp::{
                 ClientMetadata, PresentationSession, ResolvedAuthRequest, ResolvedPresentationQuery,
@@ -1020,31 +1027,27 @@ pub mod fixtures {
                         "kid": test_fixtures::did_key_url(verifier),
                         "typ": "application/oauth-authz-req+jwt"
                     }),
-                    &serde_json::from_str(&auth_request_json()).unwrap(),
+                    &auth_request_json(),
                     verifier,
                 )
             }
 
-            /// Authorization request whose `client_id` is the fixture verifier's `did:key`.
-            pub fn auth_request_json() -> String {
-                let did = test_fixtures::did_key(&test_fixtures::keys().verifier);
-                format!(
-                    r#"
-            {{
+            pub const AUTH_REQUEST: &str = r#"
+            {
               "response_type": "vp_token",
               "state": "1d8b0d93-86e8-4135-87d4-524bb0500bf3",
               "response_mode": "direct_post",
               "nonce": "2T0n2qgdX6XyEz-UgCHFMH6fRl9-s4IDWrknnkGW0V0",
-              "client_metadata": {{
-                "vp_formats_supported": {{
-                  "dc+sd-jwt": {{
+              "client_metadata": {
+                "vp_formats_supported": {
+                  "dc+sd-jwt": {
                     "sd-jwt_alg_values": ["EdDSA", "ES256"],
                     "kb-jwt_alg_values": ["EdDSA", "ES256"]
-                  }}
-                }},
-                "jwks": {{
+                  }
+                },
+                "jwks": {
                   "keys": [
-                    {{
+                    {
                       "use": "enc",
                       "alg": "ES256",
                       "kid": "RSdNFdnGHm:P256:",
@@ -1052,9 +1055,9 @@ pub mod fixtures {
                       "crv": "P-256",
                       "x": "Lb-3kpome-glvSArZWDORUokrlyl9TVv3hzmUuBgTXM",
                       "y": "v1FgcOTxM17t9fwuQRxJ7KREpDXHFSz4kg2UCeCmXbw"
-                    }}
+                    }
                   ]
-                }},
+                },
                 "encrypted_response_enc_values_supported": [
                   "A128GCM",
                   "A128CBC-HS256"
@@ -1062,40 +1065,39 @@ pub mod fixtures {
                 "subject_syntax_types_supported": [
                   "did:key"
                 ]
-              }},
-              "client_id": "decentralized_identifier:{did}",
-              "presentation_definition": {{
+              },
+              "presentation_definition": {
                 "id": "327ad171-c80a-485b-b098-50d7ad278ef6",
                 "input_descriptors": [
-                  {{
+                  {
                     "id": "Identity-1",
-                    "constraints": {{
+                    "constraints": {
                       "fields": [
-                        {{
+                        {
                           "path": [
                             "$.vct"
                           ],
-                          "filter": {{
+                          "filter": {
                             "type": "string",
                             "const": "https://credentials.example.com/identity_credential"
-                          }},
+                          },
                           "predicate": null,
                           "intent_to_retain": false
-                        }},
-                        {{
+                        },
+                        {
                           "path": [
                             "$.name"
                           ],
                           "optional": true,
                           "predicate": null,
                           "intent_to_retain": false
-                        }}
+                        }
                       ]
-                    }},
+                    },
                     "name": "Identity VC",
                     "purpose": "We want an identity",
-                    "format": {{
-                      "dc+sd-jwt": {{
+                    "format": {
+                      "dc+sd-jwt": {
                         "sd-jwt_alg_values": [
                           "ES256",
                           "EdDSA"
@@ -1104,14 +1106,19 @@ pub mod fixtures {
                           "ES256",
                           "EdDSA"
                         ]
-                      }}
-                    }}
-                  }}
+                      }
+                    }
+                  }
                 ]
-              }},
+              },
               "response_uri": "http://127.0.0.1:55796/auth"
-            }}"#
-                )
+            }"#;
+
+            /// `AUTH_REQUEST` with the fixture verifier's `did:key` as `client_id`.
+            pub fn auth_request_json() -> serde_json::Value {
+                let mut request: serde_json::Value = serde_json::from_str(AUTH_REQUEST).unwrap();
+                request["client_id"] = verifier_client_id().into();
+                request
             }
             pub const AUTH_REQUEST_WITH_WRONG_CLIENT_ID: &str = r#"
                 {
@@ -1241,47 +1248,42 @@ pub mod fixtures {
                   }
                 }"#;
 
-            /// Direct-post JWT response request; the encryption key is the fixture verifier key under `kid: ac`.
-            pub fn auth_request_with_direct_post_jwt_response_json() -> String {
-                let jwk = serde_json::to_value(test_fixtures::keys().verifier.to_public()).unwrap();
-                let (x, y) = (jwk["x"].as_str().unwrap(), jwk["y"].as_str().unwrap());
-                format!(
-                    r#"
-                {{
+            pub const AUTH_REQUEST_WITH_DIRECT_POST_JWT_RESPONSE: &str = r#"
+                {
                   "client_id": "decentralized_identifier:did:key:zDnaehgaHKAP7LAA3Kwa4FjXjJ1G3BcaHqr5gfRySJcGDgBtV",
                   "state": null,
-                  "presentation_definition": {{
+                  "presentation_definition": {
                     "id": "327ad171-c80a-485b-b098-50d7ad278ef6",
                     "input_descriptors": [
-                      {{
+                      {
                         "id": "Identity-1",
-                        "constraints": {{
+                        "constraints": {
                           "fields": [
-                            {{
+                            {
                               "path": [
                                 "$.name"
                               ],
                               "predicate": null,
                               "optional": true,
                               "intent_to_retain": false
-                            }},
-                            {{
+                            },
+                            {
                               "path": [
                                 "$.vct"
                               ],
                               "predicate": null,
-                              "filter": {{
+                              "filter": {
                                 "type": "string",
                                 "const": "https://credentials.example.com/identity_credential"
-                              }},
+                              },
                               "intent_to_retain": false
-                            }}
+                            }
                           ]
-                        }},
+                        },
                         "name": "Identity VC",
                         "purpose": "We want an identity",
-                        "format": {{
-                          "dc+sd-jwt": {{
+                        "format": {
+                          "dc+sd-jwt": {
                             "sd-jwt_alg_values": [
                               "ES256",
                               "EdDSA"
@@ -1290,37 +1292,26 @@ pub mod fixtures {
                               "ES256",
                               "EdDSA"
                             ]
-                          }}
-                        }}
-                      }}
+                          }
+                        }
+                      }
                     ],
                     "name": "Example with selective disclosure"
-                  }},
+                  },
                   "nonce": "3DaLwdi89qDgplpSwAspX6wWzm6pLkzaN3Xuk-ar5zY",
                   "response_mode": "direct_post.jwt",
                   "response_type": "vp_token",
                   "response_uri": "http://127.0.0.1:55796/auth",
-                  "client_metadata": {{
-                    "vp_formats_supported": {{
-                        "dc+sd-jwt": {{
+                  "client_metadata": {
+                    "vp_formats_supported": {
+                        "dc+sd-jwt": {
                             "sd-jwt_alg_values": ["EdDSA", "ES256"],
                             "kb-jwt_alg_values": ["EdDSA", "ES256"]
-                        }}
-                    }},
-                    "jwks": {{
-                      "keys": [
-                        {{
-                          "kty":"EC", "kid":"ac", "use":"enc", "crv":"P-256","alg":"ES256",
-                          "x": "{x}",
-                          "y": "{y}"
-                        }}
-                     ]
-                    }},
+                        }
+                    },
                     "encrypted_response_enc_values_supported": ["A128GCM", "A128CBC-HS256"]
-                  }}
-                }}"#
-                )
-            }
+                  }
+                }"#;
             pub const AUTH_REQUEST_WITH_NON_URL_CLIENT_ID_PREFIX: &str = r#"
                 {
                   "client_id": "redirect_uri:non-link-id",
@@ -1540,10 +1531,16 @@ pub mod fixtures {
             }
 
             pub fn auth_request() -> ResolvedAuthRequest {
-                serde_json::from_str(&auth_request_json()).unwrap()
+                serde_json::from_value(auth_request_json()).unwrap()
             }
+            /// `AUTH_REQUEST_WITH_DIRECT_POST_JWT_RESPONSE` encrypting the response to the fixture
+            /// verifier key under `kid: ac`.
             pub fn auth_request_with_direct_post_jwt_response() -> ResolvedAuthRequest {
-                serde_json::from_str(&auth_request_with_direct_post_jwt_response_json()).unwrap()
+                let mut request: serde_json::Value =
+                    serde_json::from_str(AUTH_REQUEST_WITH_DIRECT_POST_JWT_RESPONSE).unwrap();
+                request["client_metadata"]["jwks"] =
+                    json!({ "keys": [verifier_enc_jwk("ac", "ES256")] });
+                serde_json::from_value(request).unwrap()
             }
 
             pub fn auth_request_with_state() -> ResolvedAuthRequest {
@@ -3435,7 +3432,7 @@ pub mod utils {
         transaction_data_items, transaction_data_response,
     };
     use crate::vc::oid4vp::tests::fixtures::single_presentation::sd_jwt::client_metadata_no_keys;
-    use crate::vc::oid4vp::tests::fixtures::{CREDENTIAL_ID, VERIFIER_URL};
+    use crate::vc::oid4vp::tests::fixtures::{CREDENTIAL_ID, VERIFIER_URL, verifier_enc_jwk};
     use crate::vc::oid4vp::verifier::VerifierService;
     use crate::vc::oid4vp::{
         AuthorizationResponseMetadata, AuthorizationResponseObject, ClientId, ClientMetadata,
@@ -3558,8 +3555,7 @@ pub mod utils {
             let transaction_data_response: Option<TransactionDataResponse>;
             if form.contains_key::<String>(&String::from("response")) {
                 let response = form.get::<String>(&String::from("response")).unwrap();
-                let jwk = serde_json::to_string(&test_fixtures::keys().verifier).unwrap();
-                let kh = wrap_p256_private_key(&jwk);
+                let kh = wrap_p256_private_key(&test_fixtures::keys().verifier);
 
                 let payload = decrypt_jwe_payload(response, &kh).await.unwrap();
                 let claim_set: Value = serde_json::from_slice(payload.as_slice()).unwrap();
@@ -3853,8 +3849,6 @@ pub mod utils {
         }
 
         pub fn build_auth_request_for_dcql(dcql: &str) -> ResolvedAuthRequest {
-            let jwk = serde_json::to_value(test_fixtures::keys().verifier.to_public()).unwrap();
-            let (x, y) = (jwk["x"].as_str().unwrap(), jwk["y"].as_str().unwrap());
             let auth_request_str = format!(
                 r#"{{
                   "client_id": "decentralized_identifier:did:key:zDnaehgaHKAP7LAA3Kwa4FjXjJ1G3BcaHqr5gfRySJcGDgBtV",
@@ -3870,29 +3864,15 @@ pub mod utils {
                             "sd-jwt_alg_values": ["EdDSA", "ES256"],
                             "kb-jwt_alg_values": ["EdDSA", "ES256"]
                         }}
-                    }},
-                    "jwks": {{
-                        "keys": [
-                            {{
-                              "kty":"EC",
-                              "kid":"ac",
-                              "use":"enc",
-                              "crv":"P-256",
-                              "alg":"ES256",
-                              "x": "{x}",
-                              "y": "{y}"
-                            }}
-                        ]
                     }}
                   }}
                 }}"#
             );
 
-            serde_json::from_str(&auth_request_str).unwrap()
-        }
-
-        pub fn get_private_enc_key(&self) -> String {
-            serde_json::to_string(&test_fixtures::keys().verifier).unwrap()
+            let mut auth_request: Value = serde_json::from_str(&auth_request_str).unwrap();
+            auth_request["client_metadata"]["jwks"] =
+                json!({ "keys": [verifier_enc_jwk("ac", "ES256")] });
+            serde_json::from_value(auth_request).unwrap()
         }
     }
 
@@ -4429,8 +4409,8 @@ pub mod utils {
         }
     }
 
-    pub fn wrap_p256_private_key(jwk: &str) -> impl PrivateKeyAgreementHandle {
-        let key = p256::SecretKey::from_jwk_str(jwk).unwrap();
+    pub fn wrap_p256_private_key(jwk: &test_fixtures::JWK) -> impl PrivateKeyAgreementHandle {
+        let key = p256::SecretKey::from_jwk_str(&serde_json::to_string(jwk).unwrap()).unwrap();
         WrapperForES256Handle { key }
     }
 }
