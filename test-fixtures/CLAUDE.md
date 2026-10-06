@@ -23,7 +23,7 @@ kind; the crate owns only the key material and the cryptography.
   `jsonwebtoken` (HMAC, which `ssi` lacks), `sha2` (SD-JWT digests), `equs-one-core-crypto` with `equs-one-core-standardized-types` and `secrecy` (the JWE builder and ECDH the SDK itself uses), `rcgen` with its `x509-parser` feature and `p256` (certificates issued for the same P-256 keys that sign JWS; feature `x509`), `serde_json` with `preserve_order` (headers and claims keep the
   order they are written in), `base64`
 - Used by: the SDK's `[dev-dependencies]` (unit tests under `src/`, the E2E suite under `tests/`),
-  `plugins/askar` (`[dev-dependencies]`, the vault tests), `demos/multi-thread`, `demos/oid4vc/issuer`
+  `plugins/askar` (`[dev-dependencies]`, the vault tests), `demos/multi-thread`, `demos/oid4vc/issuer`, and the test builds of the wrappers: `wrappers/nodejs` and `wrappers/uniffi` (feature `test-fixtures`), `wrappers/wasm` (feature `test-utils`, without `x509`)
 
 ## Constraints
 - Signing panics on bad input (an `alg` the key cannot sign, a symmetric key without `k`); fixtures are test

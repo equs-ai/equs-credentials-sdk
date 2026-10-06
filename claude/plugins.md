@@ -19,6 +19,6 @@ Provides optional, pluggable extensions to EQUS Credentials SDK's core storage a
 ## Key decisions / constraints
 - Plugins are separate crates (`plugins/askar/Cargo.toml`) — they are never compiled into the core SDK library; consumers must explicitly depend on them.
 - The Askar plugin is **native-only** — it links against native Askar libraries and is not available on wasm targets.
-- The Node.js wrapper for Askar follows the same NAPI-RS pattern as `wrappers/nodejs/`.
+- The Node.js wrapper for Askar follows the same NAPI-RS pattern as `wrappers/nodejs/`. Its vault tests build their SD-JWT through the SDK wrapper's `fixtureSdJwt` / `fixtureSdJwtKb`, so they run against the wrapper's `npm run build:debug` output (feature `test-fixtures`).
 - Profile provisioning is idempotent on both the Rust and Node.js surfaces (`AskarStorage::ensure_profile`, formerly `create_profile`) — an existing profile is success, not a `Duplicate` error.
 

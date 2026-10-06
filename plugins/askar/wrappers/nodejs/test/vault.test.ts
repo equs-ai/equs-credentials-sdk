@@ -1,19 +1,35 @@
 import { AskarStorage, AskarVault, KeyMethod } from "../index";
-import { Alg, VCFormat } from "@equs-ai/equs-credentials-sdk";
+import {
+  Alg,
+  FixtureKey,
+  fixtureSdJwt,
+  fixtureSdJwtKb,
+  VCFormat,
+} from "@equs-ai/equs-credentials-sdk";
 import * as assert from "node:assert";
 
 const CREDENTIAL_DATA = {
   credential: {
     format: VCFormat.SdJwtVc,
-    payload:
-      "eyJ0eXAiOiJzZCtqd3QiLCJhbGciOiJFUzI1NiJ9.eyJpZCI6IjEyMzQiLCJfc2QiOlsiYkRUUnZtNS1Zbi1IRzdjcXBWUjVPVlJJ" +
-      "WHNTYUJrNTdKZ2lPcV9qMVZJNCIsImV0M1VmUnlsd1ZyZlhkUEt6Zzc5aGNqRDFJdHpvUTlvQm9YUkd0TW9zRmsiLCJ6V2ZaTlMxOUF0Yl" +
-      "JTVGJvN3NKUm4wQlpRdldSZGNob0M3VVphYkZyalk4Il0sIl9zZF9hbGciOiJzaGEtMjU2In0.n27NCtnuwytlBYtUNjgkesDP_7gN7bha" +
-      "LhWNL4SWT6MaHsOjZ2ZMp987GgQRL6ZkLbJ7Cd3hlePHS84GBXPuvg~WyI1ZWI4Yzg2MjM0MDJjZjJlIiwiZmlyc3RuYW1lIiwiSm9obiJ" +
-      "d~WyJjNWMzMWY2ZWYzNTg4MWJjIiwibGFzdG5hbWUiLCJEb2UiXQ~WyJmYTlkYTUzZWJjOTk3OThlIiwic3NuIiwiMTIzLTQ1LTY3ODkiX" +
-      "Q~eyJ0eXAiOiJrYitqd3QiLCJhbGciOiJFUzI1NiJ9.eyJpYXQiOjE3MTAwNjk3MjIsImF1ZCI6ImRpZDpleGFtcGxlOjEyMyIsIm5vbmN" +
-      "lIjoiazh2ZGYwbmQ2Iiwic2RfaGFzaCI6Il8tTmJWSzNmczl3VzNHaDNOUktSNEt1NmZDMUwzN0R2MFFfalBXd0ppRkUifQ.pqw2OB5IA5" +
-      "ya9Mxf60hE3nr2gsJEIoIlnuCa4qIisijHbwg3WzTDFmW2SuNvK_ORN0WU6RoGbJx5uYZh8k4EbA",
+    payload: fixtureSdJwtKb(
+      fixtureSdJwt(
+        JSON.stringify({ typ: "sd+jwt", alg: "ES256" }),
+        JSON.stringify({ id: "1234", _sd_alg: "sha-256" }),
+        [
+          '["5eb8c8623402cf2e","firstname","John"]',
+          '["c5c31f6ef35881bc","lastname","Doe"]',
+          '["fa9da53ebc99798e","ssn","123-45-6789"]',
+        ],
+        FixtureKey.Issuer,
+      ),
+      JSON.stringify({ typ: "kb+jwt", alg: "ES256" }),
+      JSON.stringify({
+        iat: 1710069722,
+        aud: "did:example:123",
+        nonce: "k8vdf0nd6",
+      }),
+      FixtureKey.Holder,
+    ),
   },
   metadata: {
     type: "personal",

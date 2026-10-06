@@ -1,4 +1,4 @@
-import { Credential, parseClaims, VCFormat } from "equs-credentials-sdk";
+import { Credential, FixtureKey, fixtureDidKey, parseClaims, VCFormat } from "equs-credentials-sdk";
 import { Fixtures } from "./fixtures";
 
 describe("Utils: ", () => {
@@ -12,8 +12,8 @@ describe("Utils: ", () => {
       name: "John",
       iat: 1728882611,
       vct: "https://credentials.example.com/identity_credential",
-      sub: "did:key:zDnaej9QadgdZnu8uDXZXd4545dfJAEvmV6nn7xaYUqzcrPvM",
-      iss: "did:key:zDnaexeh3T1CziWWSEeWpyuTkXqiT5ikiCw5iZQRBv4HXuex6",
+      sub: fixtureDidKey(FixtureKey.Holder),
+      iss: fixtureDidKey(FixtureKey.Issuer),
       exp: 1760418611,
       nbf: 1728882611,
     });
