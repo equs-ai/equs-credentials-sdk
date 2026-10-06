@@ -13,7 +13,8 @@ import Swifter
 		// with whatever else (CI runner, prior job, etc.) might hold a fixed port.
 		// forceIPv4 keeps reqwest's 127.0.0.1 connect path reachable under the iOS Simulator;
 	// the request URLs use 127.0.0.1 rather than localhost so no ::1 attempt is made.
-		try server.start(0, forceIPv4: true)
+		// Swifter defaults to .background QoS, which loaded CI runners can starve until reqwest times out.
+		try server.start(0, forceIPv4: true, priority: .userInitiated)
 		self.port = in_port_t(try server.port())
 	}
 
