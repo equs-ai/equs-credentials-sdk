@@ -18,7 +18,7 @@ Implements the full Verifiable Credentials stack: credential issuance, presentat
 | Presentation Exchange | `src/vc/presentation_exchange/` | [context](../src/vc/presentation_exchange/CLAUDE.md) |
 
 ## Cross-domain relationships
-- Depends on: `crate::crypto`, `crate::kms`, `crate::http` (`HttpClient`), `crate::did` (`UniversalResolver`), `crate::storage`, `crate::vault`, `one-core-portable` (JWE/SD-JWT crypto)
+- Depends on: `crate::crypto`, `crate::kms`, `crate::http` (`HttpClient`), `crate::did` (`UniversalResolver`), `crate::storage`, `crate::vault`, `one-core-portable` (JWE/SD-JWT crypto), `test_fixtures` (tests only: runtime-generated tokens and keys)
 - Used by: `didcomm` (WACI/Aries issuance and present-proof protocols embed VC core), all three wrappers (Node.js, WASM, UniFFI expose OID4VCI + OID4VP), `tests/e2e/`
 
 ## Key decisions / constraints

@@ -255,6 +255,7 @@ impl From<CredentialClaimValue> for Claim {
 pub mod tests {
     use crate::did::universal::UniversalResolver;
     use crate::nonce::Nonce;
+    use crate::utils::test_utils::anchors;
     use crate::vc::VCFormatsAPI;
     use crate::vc::claims::Claim;
     use crate::vc::core::HolderBinder;
@@ -263,24 +264,19 @@ pub mod tests {
     use std::collections::HashMap;
 
     pub const SAMPLE_MSO_MDOC_VP: &str = "o2d2ZXJzaW9uYzEuMGlkb2N1bWVudHOBo2dkb2NUeXBldW9yZy5pc28uMTgwMTMuNS4xLm1ETGxpc3N1ZXJTaWduZWSiam5hbWVTcGFjZXOhcW9yZy5pc28uMTgwMTMuNS4xgtgYWGqkaGRpZ2VzdElEAGZyYW5kb21YIBERERERERERERERERERERERERERERERERERERERERERcWVsZW1lbnRJZGVudGlmaWVya2ZhbWlseV9uYW1lbGVsZW1lbnRWYWx1ZWpNdXN0ZXJtYW5u2BhYZKRoZGlnZXN0SUQBZnJhbmRvbVggEhISEhISEhISEhISEhISEhISEhISEhISEhISEhISEhJxZWxlbWVudElkZW50aWZpZXJqZ2l2ZW5fbmFtZWxlbGVtZW50VmFsdWVlRXJpa2FqaXNzdWVyQXV0aIRDoQEmoRghWQF5MIIBdTCCARugAwIBAgIUCPAlVlCcdKtW_NgvnriGAvImXT0wCgYIKoZIzj0EAwIwITESMBAGA1UEAwwJVGVzdCBJQUNBMQswCQYDVQQGDAJVUzAeFw0yNjAxMDEwMDAwMDBaFw00NjAxMDEwMDAwMDBaMB8xEDAOBgNVBAMMB1Rlc3QgRFMxCzAJBgNVBAYMAlVTMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEfirDFSOgmMH7vUzoevRbzHEDHUKqVS2_Wgs6TTPel-EYXYnW5Tdp5Hqxxc9-kR6CXUexKxQdxfDPyIxPlCkm4aMzMDEwHwYDVR0jBBgwFoAUg8JM5sIlqsjvNR337KO_zIQbdMUwDgYDVR0PAQH_BAQDAgeAMAoGCCqGSM49BAMCA0gAMEUCIBoknaCNrvgm0ddRfm9xQYWzx_3WL9Fs-gQfolp5K0NUAiEA2douiRD8Jf33sHgWZdpnMsmRUsAPCOWe4QGb_tVi3-BZAaTYGFkBn6ZndmVyc2lvbmMxLjBvZGlnZXN0QWxnb3JpdGhtZ1NIQS0yNTZsdmFsdWVEaWdlc3RzoXFvcmcuaXNvLjE4MDEzLjUuMaIAWCAd9VB6Eetaki_Ezn9YWmXuDc2wwCLY5aSsTwJK0Vu88QFYIHDj8ldYRGUeM8LNa7OZU0NeOb7ayITJ5yOVaCZCJj_kbWRldmljZUtleUluZm-haWRldmljZUtleaQBAiABIVgg43kS_XmY3GpALvnEPRzn6GMuxJzInxX7r5XAeDah18UiWCCXlKF9EfKCs9NugFg2p8IbMMEMvwc0DucoRZQw3-a0XWdkb2NUeXBldW9yZy5pc28uMTgwMTMuNS4xLm1ETGx2YWxpZGl0eUluZm-kZnNpZ25lZMB0MjAyNi0wMS0wMVQwMDowMDowMFppdmFsaWRGcm9twHQyMDI2LTAxLTAxVDAwOjAwOjAwWmp2YWxpZFVudGlswHQyMDQ2LTAxLTAxVDAwOjAwOjAwWm5leHBlY3RlZFVwZGF0ZcB0MjA0Ni0wMS0wMVQwMDowMDowMFpYQGp32sfVRsBX3crXbFP1EPQ2EkXRe0L_cslmkkbyEMzj8MoNuAd5qVjercViO2oDpPPGFtL1LCVKNUxdYmTgJeZsZGV2aWNlU2lnbmVkompuYW1lU3BhY2Vz2BhBoGpkZXZpY2VBdXRooW9kZXZpY2VTaWduYXR1cmWEQ6EBJqD2WECCN_IWVAGLfKbNDKE8pPHD4Xi_AlUufrKO7r6br-z1WmpGBueaCf57nBVASs4DrBD88hLNRvR6btAlTMZx-WQ2ZnN0YXR1cwA";
-    /// IACA of the e2e mdoc fixture, unrelated to the Document Signer of `SAMPLE_MSO_MDOC_VP`.
-    const UNRELATED_IACA: &str = "-----BEGIN CERTIFICATE-----
-MIIBhjCCASygAwIBAgIUYeDWpW7xP5iPyI2GeeWZAkM0rH4wCgYIKoZIzj0EAwIw
-ITESMBAGA1UEAwwJVGVzdCBJQUNBMQswCQYDVQQGDAJVUzAeFw0yNjAxMDEwMDAw
-MDBaFw00NjAxMDEwMDAwMDBaMCExEjAQBgNVBAMMCVRlc3QgSUFDQTELMAkGA1UE
-BgwCVVMwWTATBgcqhkjOPQIBBggqhkjOPQMBBwNCAATUvw7HNlqR7vybTtnII6mB
-InzVekm+lbnUzEJHMdnWksPBZ3v7d+XL5Hr2vo8RTqUGV1T8N380oTylGae/bwfy
-o0IwQDAOBgNVHQ8BAf8EBAMCAQYwHQYDVR0OBBYEFOg50rQHvvCMKRNtu1h971UW
-6NsdMA8GA1UdEwEB/wQFMAMBAf8wCgYIKoZIzj0EAwIDSAAwRQIgRL+P8RTUsyWn
-m8Fy+Z2zfwQ4xi+NqZvl4EXUYwVuETICIQCjY6xnRO8NaKtIHt06OzTwyWnjV2tE
-vbbU/lxzAYuDvQ==
------END CERTIFICATE-----";
-
+    /// Trusted certificates holding only a self-signed IACA (`CN=Test IACA, C=US`) unrelated to
+    /// `SAMPLE_MSO_MDOC_VP`.
     fn unrelated_iaca() -> HashMap<String, String> {
-        HashMap::from([(
-            "e8:39:d2:b4:07:be:f0:8c:29:13:6d:bb:58:7d:ef:55:16:e8:db:1d".to_string(),
-            UNRELATED_IACA.to_string(),
-        )])
+        let cert = test_fixtures::x509(
+            &serde_json::json!({
+                "subject": [["CN", "Test IACA"], ["C", "US"]],
+                "not_before": "2026-01-01", "not_after": "2046-01-01",
+                "ca": true, "key_usages": ["key_cert_sign", "crl_sign"]
+            }),
+            &test_fixtures::JWK::generate_p256(),
+            None,
+        );
+        anchors(&[&cert])
     }
 
     #[tokio::test]

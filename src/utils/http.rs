@@ -257,21 +257,22 @@ pub mod test {
         mock: &mut MockHttpClient,
         method: Method,
         url: Url,
-        body: &'static str,
+        body: impl Into<String>,
         times: mockall::TimesRange,
     ) {
+        let body = body.into();
         mock_http_fn(
             mock,
             method,
             url,
             move |req| {
-                let mut resp = HttpResponse::new(Vec::from(body));
+                let mut resp = HttpResponse::new(body.as_bytes().to_vec());
                 resp.headers_mut()
                     .insert(CONTENT_TYPE, HeaderValue::from_str("text/plain").unwrap());
 
                 Ok(resp)
             },
-            1.into(),
+            times,
         );
     }
 

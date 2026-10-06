@@ -59,7 +59,6 @@ const DID_DOC_URL_PATH: &str = "/.well-known/did.json";
 const AUTH_METADATA_ENDPOINT_PATH: &str = "/.well-known/oauth-authorization-server";
 const TOKEN_ENDPOINT_PATH: &str = "/token";
 const TOKEN_INTROSPECT_PATH: &str = "/introspection";
-const DUMMY_ACCESS_TOKEN: &str = "eyJhbGciOiJSUzI1NiIsInR5cCIgOiAiSldUIiwia2lkIiA6ICJQY2xZUDZ2UmsxTHBLRGZqU08yRGEzNXJtR1JmaTkzNjJDcFJFeUpmOHAwIn0.eyJleHAiOjE3MzY5NDI0MTQsImlhdCI6MTczNjk0MjExNCwiYXV0aF90aW1lIjoxNzM2OTQyMTEyLCJqdGkiOiI0MzEwNjlkMS01ZjIzLTQ5MjAtYjA1Zi01NWI2NjM1MDQxODYiLCJpc3MiOiJodHRwOi8vbG9jYWxob3N0OjgwODAvaWRwL3JlYWxtcy9waWQtaXNzdWVyLXJlYWxtIiwic3ViIjoiNjBiOGJhNWYtYzczZi00OTc2LWIwZGEtNDhkMGU1MzMzNWRlIiwidHlwIjoiQmVhcmVyIiwiYXpwIjoid2FsbGV0LWRldiIsInNpZCI6IjQwZTYyNDY3LTUzZmMtNGQyOS05ZGZmLTJlN2Y4NDRjM2UzMiIsImFsbG93ZWQtb3JpZ2lucyI6WyIvKiJdLCJzY29wZSI6IlNEX0pXVF9jcmVkX3Njb3BlIn0.g4Ll7wiGq9VrxwAcGeARHB1mziDYMQBSmKHl_KGyBZccUvMGlH7ZPIegW_FLFJg4ZSz3IyId2xchuXP8LaSAghgLf9HmKA4XWlVhvx4wP90aj9bj2fdD9UUuSwQIeRlkZe7DTNookyClsqKJ2uIBzvaLoID2_4_RAvqmNi_grIe-ruus4thyp5NsQdEoudErok5DQiM_N2Wz5zg2MRrECjZL4kX-CrEiSaGaikTR-Lxc9UpvLr8mmmEwz7O4BOCDukyslzCZylmC32lttMYzU2Cno_XsIOvXtfGzwNjzZ-ohF9ThnpHvl7EexoZeDaPP2oYSDJOdrh33BB879DGuHw";
 const STATUS_LIST_URL_PATH: &str = "/status_list";
 const VC_REVOKE_PATH: &str = "/revoke";
 const DEFAULT_STATUS_SIZE: u8 = 1;
@@ -255,10 +254,31 @@ async fn create_credential_offer_uri_with_pre_auth_code_grant() -> HttpResponse 
         .body(offer_uri.to_string())
 }
 
+fn dummy_access_token() -> String {
+    let authz = &test_fixtures::keys().authz;
+    test_fixtures::jws(
+        &json!({ "alg": "RS256", "typ": "JWT", "kid": authz.key_id }),
+        &json!({
+            "exp": 1736942414,
+            "iat": 1736942114,
+            "auth_time": 1736942112,
+            "jti": "431069d1-5f23-4920-b05f-55b663504186",
+            "iss": "http://localhost:8080/idp/realms/pid-issuer-realm",
+            "sub": "60b8ba5f-c73f-4976-b0da-48d0e53335de",
+            "typ": "Bearer",
+            "azp": "wallet-dev",
+            "sid": "40e62467-53fc-4d29-9dff-2e7f844c3e32",
+            "allowed-origins": ["/*"],
+            "scope": "SD_JWT_cred_scope"
+        }),
+        authz,
+    )
+}
+
 async fn generate_token(req: web::Form<TokenRequest>) -> Result<HttpResponse, Error> {
     println!("Token request: {:?}", req.0);
     let resp: TokenResponse = serde_json::from_value(json!({
-        "access_token": DUMMY_ACCESS_TOKEN,
+        "access_token": dummy_access_token(),
         "token_type": "Bearer",
         "expires_in": 86400,
     }))?;

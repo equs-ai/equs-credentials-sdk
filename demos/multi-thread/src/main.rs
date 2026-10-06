@@ -25,7 +25,26 @@ const DEFAULT_RUNS: u32 = 100;
 
 const SERVER_URL: &str = "http://localhost:4000";
 // Contains scope `SD_JWT_cred`
-const DUMMY_TOKEN: &str =  "eyJhbGciOiJSUzI1NiIsInR5cCIgOiAiSldUIiwia2lkIiA6ICJQY2xZUDZ2UmsxTHBLRGZqU08yRGEzNXJtR1JmaTkzNjJDcFJFeUpmOHAwIn0.eyJleHAiOjE3MjQzOTg0OTQsImlhdCI6MTcyNDM5ODE5NCwiYXV0aF90aW1lIjoxNzI0Mzk4MTgyLCJqdGkiOiIwYjRmZTM5MC00OTIxLTQwNDItYjdlMS1iMDNiM2QxOTYyMjkiLCJpc3MiOiJodHRwOi8vbG9jYWxob3N0OjgwODAvaWRwL3JlYWxtcy9waWQtaXNzdWVyLXJlYWxtIiwic3ViIjoiNjBiOGJhNWYtYzczZi00OTc2LWIwZGEtNDhkMGU1MzMzNWRlIiwidHlwIjoiQmVhcmVyIiwiYXpwIjoid2FsbGV0LWRldiIsInNpZCI6ImYxNWIzZTExLWZmMjgtNDRkZi04ZmNmLWE3N2QyNDcxNGEyMyIsImFsbG93ZWQtb3JpZ2lucyI6WyIvKiJdLCJzY29wZSI6IlNEX0pXVF9jcmVkIn0.pLGGmOApXnQCY6CwuFzxFXEN36aDJ-iE0TM_esYJ_qtijhUtWq5zI9lD-iGzhTSdwZ7Y51eUKtqmJXHixzBo847vmMeGla4Ko6JTY-4vVAIQ1Hk1xzl25ALuZNwxGbljlysjzBgCxeAjZo3fE0HTI5y6NItptIU8aY3ykoIX9xE81ZkexbVrR495cEX7UIgUgCZyhj8lXUMWFrNFBhELnzzFGdX01Dq3B-KflY9ACVaw-_U9bT6EzDI0-0Cyx2K658EU9VpDjBSR6URT5I9quvx1qoYMFPv7zhjW3sUASIVwThe4CvWCCR8Kf8rsnEQ2qnchn0f6gn9thxi51FGkvA";
+fn dummy_token() -> String {
+    let authz = &test_fixtures::keys().authz;
+    test_fixtures::jws(
+        &json!({ "alg": "RS256", "typ": "JWT", "kid": authz.key_id }),
+        &json!({
+            "exp": 1724398494,
+            "iat": 1724398194,
+            "auth_time": 1724398182,
+            "jti": "0b4fe390-4921-4042-b7e1-b03b3d196229",
+            "iss": "http://localhost:8080/idp/realms/pid-issuer-realm",
+            "sub": "60b8ba5f-c73f-4976-b0da-48d0e53335de",
+            "typ": "Bearer",
+            "azp": "wallet-dev",
+            "sid": "f15b3e11-ff28-44df-8fcf-a77d24714a23",
+            "allowed-origins": ["/*"],
+            "scope": "SD_JWT_cred"
+        }),
+        authz,
+    )
+}
 
 struct AppState {
     issuer: Box<dyn Issuer>,
@@ -141,7 +160,7 @@ async fn start_holders(runs: u32) {
 }
 
 async fn run_holder() -> Result<(), String> {
-    let dummy_token = AccessToken::new(DUMMY_TOKEN.into());
+    let dummy_token = AccessToken::new(dummy_token());
 
     let kms = LocalKms::new();
     let (_, key_metadata) = create_did_and_key_metadata(&kms).await;
