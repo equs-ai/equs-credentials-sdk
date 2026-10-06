@@ -235,16 +235,11 @@ describe("OID4VP Holder: ", () => {
     }
   });
 
-  it("findVcsForPresentation filter out revoked credentials", async () => {
-    const credential = {
-      format: VCFormat.SdJwtVc,
-      payload: VC_WITH_STATUS,
-    };
-    // One-bit list revoking index 1, the index `VC_WITH_STATUS` points at.
+  async function findWithStatusList(lst: string) {
     const statusListJwt = `${fixtureJws(
       JSON.stringify({ typ: "statuslist+jwt", alg: "ES256", kid: fixtureDidKeyUrl(FixtureKey.Issuer) }),
       JSON.stringify({
-        status_list: { bits: 1, lst: "eNpjYmBgAAAADAAD" },
+        status_list: { bits: 1, lst },
         sub: "http://localhost:9001/status_list",
         iat: 1753054238,
         _sd_alg: "sha-256",
@@ -254,15 +249,27 @@ describe("OID4VP Holder: ", () => {
     await mockServer
       .forGet("/status_list")
       .thenReply(200, statusListJwt, { "content-type": "application/statuslist+jwt" });
-
-    await vault.storeCredential(credential, metadata);
+    await vault.storeCredential({ format: VCFormat.SdJwtVc, payload: VC_WITH_STATUS }, metadata);
 
     const credentialsMapping = await holder.findVcsForPresentation(new AuthorizationRequest(AUTH_REQUEST));
 
     expect(Object.keys(credentialsMapping)).toEqual(["Identity-1"]);
-    const reason = credentialsMapping["Identity-1"].data as FindVCsFailReason;
-    expect(reason.type).toStrictEqual("CredentialsNotFound");
-    expect(reason.paths).toBeFalsy();
+    return credentialsMapping["Identity-1"].data;
+  }
+
+  it("findVcsForPresentation filter out revoked credentials", async () => {
+    // Revokes index 1, the index `VC_WITH_STATUS` points at.
+    const data = await findWithStatusList("eNpjYmBgAAAADAAD");
+
+    expect(isCredentialEntries(data)).toBe(false);
+    expect((data as FindVCsFailReason).type).toStrictEqual("CredentialsNotFound");
+  });
+
+  it("findVcsForPresentation keeps credentials whose status is valid", async () => {
+    // Revokes nothing.
+    const data = await findWithStatusList("eNpjYGBgAAAABAAB");
+
+    expect(isCredentialEntries(data) && data.length).toBe(1);
   });
 
   it("decline authorization request", async () => {

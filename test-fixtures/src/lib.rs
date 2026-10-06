@@ -94,30 +94,38 @@ pub fn digest(input: &str) -> String {
 
 /// Issuer-signed SD-JWT over `header` and `claims`, followed by `disclosures` and a trailing `~`.
 /// `_sd` holds the sorted digests of the disclosures plus any digests already in `claims`; a
-/// disclosure is its JSON array text, digested as given.
+/// disclosure is the JSON array text `[salt, name, value]` of a top-level claim, digested as given.
 pub fn sd_jwt(header: &Value, claims: &Value, disclosures: &[&str], key: &JWK) -> String {
+    let mut names = Vec::new();
     for disclosure in disclosures {
         let parts: Vec<Value> = serde_json::from_str(disclosure)
             .unwrap_or_else(|_| panic!("a disclosure is a JSON array, not {disclosure}"));
+        let [Value::String(_), Value::String(name), _] = parts.as_slice() else {
+            panic!(
+                "a disclosure is [salt, name, value] with a string salt and name, not {disclosure}"
+            )
+        };
         assert!(
-            matches!(parts.len(), 2 | 3),
-            "a disclosure is [salt, value] or [salt, name, value], not {disclosure}"
+            !matches!(name.as_str(), "_sd" | "...") && claims.get(name).is_none(),
+            "disclosure name `{name}` is reserved or already a plaintext claim"
         );
+        assert!(!names.contains(name), "duplicate disclosure name `{name}`");
+        names.push(name.clone());
     }
     let encoded: Vec<String> = disclosures
         .iter()
         .map(|disclosure| BASE64_URL_SAFE_NO_PAD.encode(disclosure))
         .collect();
     let mut claims = claims.clone();
-    let mut digests: Vec<String> = match &claims["_sd"] {
-        Value::Null => Vec::new(),
-        value => value
-            .as_array()
-            .expect("`_sd` must be an array")
-            .iter()
-            .map(|digest| digest.as_str().expect("`_sd` holds strings").to_string())
-            .collect(),
-    };
+    let mut digests: Vec<String> = optional(&claims["_sd"], "_sd", Value::as_array)
+        .into_iter()
+        .flatten()
+        .map(|digest| {
+            optional(digest, "_sd", Value::as_str)
+                .expect("`_sd` holds strings")
+                .to_string()
+        })
+        .collect();
     digests.extend(encoded.iter().map(|d| digest(d)));
     digests.sort();
     assert!(
@@ -163,15 +171,7 @@ pub fn jwe(header: &Value, payload: &[u8], recipient: &JWK) -> String {
     let shared_secret =
         ECDSASigner::shared_secret_p256(&private_scalar(&ephemeral), &public_jwk(recipient))
             .expect("ECDH");
-    let text = |name: &str| match &header[name] {
-        Value::Null => None,
-        value => Some(
-            value
-                .as_str()
-                .unwrap_or_else(|| panic!("`{name}` must be a string"))
-                .to_string(),
-        ),
-    };
+    let text = |name: &str| optional(&header[name], name, Value::as_str).map(str::to_string);
     build_jwe(
         payload,
         JweHeader {
@@ -228,13 +228,9 @@ pub fn x509(spec: &Value, key: &JWK, issuer: Option<(&str, &JWK)>) -> String {
         );
     }
     let list = |name: &str| -> Vec<Value> {
-        match &spec[name] {
-            Value::Null => Vec::new(),
-            value => value
-                .as_array()
-                .unwrap_or_else(|| panic!("`{name}` must be an array"))
-                .clone(),
-        }
+        optional(&spec[name], name, Value::as_array)
+            .cloned()
+            .unwrap_or_default()
     };
     let strings = |name: &str| -> Vec<String> {
         list(name)
@@ -248,24 +244,27 @@ pub fn x509(spec: &Value, key: &JWK, issuer: Option<(&str, &JWK)>) -> String {
             .collect()
     };
     let date = |name: &str| {
-        let text = spec[name].as_str().unwrap_or_default();
-        let bad = || format!("`{name}` must be a YYYY-MM-DD date, not {}", spec[name]);
+        let text = optional(&spec[name], name, Value::as_str)?;
+        let bad = || format!("`{name}` must be a YYYY-MM-DD date, not {text}");
         let [year, month, day] = text.split('-').collect::<Vec<_>>()[..] else {
             panic!("{}", bad())
         };
-        rcgen::date_time_ymd(
+        Some(rcgen::date_time_ymd(
             year.parse().unwrap_or_else(|_| panic!("{}", bad())),
             month.parse().unwrap_or_else(|_| panic!("{}", bad())),
             day.parse().unwrap_or_else(|_| panic!("{}", bad())),
-        )
+        ))
     };
     let mut params = CertificateParams::new(strings("sans")).expect("SANs");
     params.distinguished_name = DistinguishedName::new();
+    let mut kinds = Vec::new();
     for pair in list("subject") {
         let Some([Value::String(kind), Value::String(value)]) = pair.as_array().map(Vec::as_slice)
         else {
             panic!("`subject` holds [type, value] string pairs, not {pair}")
         };
+        assert!(!kinds.contains(kind), "`subject` repeats `{kind}`");
+        kinds.push(kind.clone());
         let kind = match kind.as_str() {
             "CN" => DnType::CommonName,
             "C" => DnType::CountryName,
@@ -277,11 +276,11 @@ pub fn x509(spec: &Value, key: &JWK, issuer: Option<(&str, &JWK)>) -> String {
         };
         params.distinguished_name.push(kind, value.as_str());
     }
-    if spec.get("not_before").is_some() {
-        params.not_before = date("not_before");
+    if let Some(not_before) = date("not_before") {
+        params.not_before = not_before;
     }
-    if spec.get("not_after").is_some() {
-        params.not_after = date("not_after");
+    if let Some(not_after) = date("not_after") {
+        params.not_after = not_after;
     }
     params.is_ca = match &spec["ca"] {
         Value::Bool(true) => IsCa::Ca(BasicConstraints::Unconstrained),
@@ -291,9 +290,10 @@ pub fn x509(spec: &Value, key: &JWK, issuer: Option<(&str, &JWK)>) -> String {
                 ca.keys().all(|key| key == "path_len"),
                 "`ca` takes only `path_len`"
             );
-            let path_len = ca["path_len"]
-                .as_u64()
-                .expect("`ca.path_len` must be a number");
+            let path_len = ca
+                .get("path_len")
+                .and_then(Value::as_u64)
+                .expect("`ca.path_len` must be a non-negative number");
             IsCa::Ca(BasicConstraints::Constrained(
                 u8::try_from(path_len).expect("`ca.path_len` must be at most 255"),
             ))
@@ -319,21 +319,13 @@ pub fn x509(spec: &Value, key: &JWK, issuer: Option<(&str, &JWK)>) -> String {
             other => panic!("unknown extended key usage `{other}`"),
         })
         .collect();
-    params.use_authority_key_identifier_extension = match &spec["authority_key_identifier"] {
-        Value::Null => false,
-        value => value
-            .as_bool()
-            .expect("`authority_key_identifier` must be a boolean"),
-    };
-    assert!(
-        params.key_usages.is_empty()
-            || params.use_authority_key_identifier_extension
-            || !params.subject_alt_names.is_empty()
-            || !params.extended_key_usages.is_empty()
-            || !matches!(params.is_ca, IsCa::NoCa),
-        "rcgen writes `key_usages` only next to `sans`, `extended_key_usages`, \
-         `authority_key_identifier` or `ca`"
-    );
+    params.use_authority_key_identifier_extension = optional(
+        &spec["authority_key_identifier"],
+        "authority_key_identifier",
+        Value::as_bool,
+    )
+    .unwrap_or(false);
+    let wants_key_usage = !params.key_usages.is_empty();
     let mut serial = [0u8; 20];
     OsRng.fill_bytes(&mut serial);
     serial[0] &= 0x7f;
@@ -346,7 +338,16 @@ pub fn x509(spec: &Value, key: &JWK, issuer: Option<(&str, &JWK)>) -> String {
             &rcgen::Issuer::from_ca_cert_pem(ca_pem, key_pair(ca_key)).expect("CA certificate"),
         ),
     };
-    certificate.expect("certificate").pem()
+    let certificate = certificate.expect("certificate");
+    if wants_key_usage {
+        let (_, parsed) =
+            x509_parser::parse_x509_certificate(certificate.der()).expect("certificate");
+        assert!(
+            parsed.key_usage().expect("key usage").is_some(),
+            "rcgen dropped `key_usages`; add another extension such as `sans` or `ca`"
+        );
+    }
+    certificate.pem()
 }
 
 #[cfg(feature = "x509")]
@@ -364,6 +365,20 @@ fn key_pair(key: &JWK) -> rcgen::KeyPair {
             .as_str(),
     )
     .expect("key pair")
+}
+
+/// `value` through `as_t`, or `None` when it is absent or `null`; any other type panics.
+fn optional<'a, T>(
+    value: &'a Value,
+    name: &str,
+    as_t: impl Fn(&'a Value) -> Option<T>,
+) -> Option<T> {
+    match value {
+        Value::Null => None,
+        value => {
+            Some(as_t(value).unwrap_or_else(|| panic!("`{name}` has the wrong type: {value}")))
+        }
+    }
 }
 
 fn b64(value: &Value) -> String {
@@ -714,7 +729,11 @@ mod tests {
     #[case::date_without_day(json!({ "not_after": "2046-01" }))]
     #[should_panic(expected = "`subject` holds [type, value] string pairs")]
     #[case::subject_triple(json!({ "subject": [["CN", "x", "y"]] }))]
-    #[should_panic(expected = "rcgen writes `key_usages` only next to")]
+    #[should_panic(expected = "`subject` repeats `OU`")]
+    #[case::repeated_subject_type(json!({ "subject": [["OU", "a"], ["CN", "x"], ["OU", "b"]] }))]
+    #[should_panic(expected = "`ca.path_len` must be a non-negative number")]
+    #[case::ca_without_path_len(json!({ "ca": {} }))]
+    #[should_panic(expected = "rcgen dropped `key_usages`")]
     #[case::key_usages_alone(json!({ "key_usages": ["digital_signature"] }))]
     #[cfg(feature = "x509")]
     fn x509_rejects_a_spec_it_cannot_apply(#[case] spec: Value) {
@@ -724,11 +743,17 @@ mod tests {
     #[rstest]
     #[should_panic(expected = "a disclosure is a JSON array")]
     #[case::not_json(&["salt, name, value"], json!({}))]
-    #[should_panic(expected = "a disclosure is [salt, value] or [salt, name, value]")]
+    #[should_panic(expected = "a disclosure is [salt, name, value]")]
     #[case::four_parts(&[r#"["salt", "name", "value", "extra"]"#], json!({}))]
+    #[should_panic(expected = "a disclosure is [salt, name, value]")]
+    #[case::array_element(&[r#"["salt", "value"]"#], json!({}))]
+    #[should_panic(expected = "disclosure name `vct` is reserved or already a plaintext claim")]
+    #[case::plaintext_clash(&[r#"["salt", "vct", "x"]"#], json!({ "vct": "y" }))]
+    #[should_panic(expected = "duplicate disclosure name `name`")]
+    #[case::repeated_name(&[r#"["a", "name", "x"]"#, r#"["b", "name", "y"]"#], json!({}))]
     #[should_panic(expected = "duplicate `_sd` digest")]
     #[case::duplicate_digest(&[r#"["salt", "name", "John"]"#], json!({ "_sd": [digest(&BASE64_URL_SAFE_NO_PAD.encode(r#"["salt", "name", "John"]"#))] }))]
-    #[should_panic(expected = "`_sd` must be an array")]
+    #[should_panic(expected = "`_sd` has the wrong type")]
     #[case::sd_not_an_array(&[], json!({ "_sd": "digest" }))]
     fn sd_jwt_rejects_what_it_cannot_apply(#[case] disclosures: &[&str], #[case] claims: Value) {
         sd_jwt(

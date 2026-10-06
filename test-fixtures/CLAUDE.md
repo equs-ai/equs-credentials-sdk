@@ -27,11 +27,12 @@ kind; the crate owns only the key material and the cryptography.
   `plugins/askar` (`[dev-dependencies]`, the vault tests), `demos/multi-thread`, `demos/oid4vc/issuer`, and the test builds of the wrappers: `wrappers/nodejs` and `wrappers/uniffi` (feature `test-fixtures`), `wrappers/wasm` (feature `test-utils`, without `x509`)
 
 ## Constraints
-- Every builder panics on input it cannot apply rather than dropping it: an `alg` the key cannot sign, a
-  disclosure that is not a JSON array, a duplicate `_sd` digest, an `sd_jwt_kb` input without the trailing `~`,
-  a JWE header field other than `alg` / `enc` / `kid` / `apu` / `apv`, and any certificate spec field or value
-  `x509` cannot apply (including `key_usages` alone, which `rcgen` writes only next to another extension).
-  Fixtures are test code, so there is no error type.
+- Every builder panics on input it cannot apply instead of dropping or rewriting it, for example: an `alg` the
+  key cannot sign; a disclosure other than `[salt, name, value]` for a new top-level claim, a repeated disclosure
+  name, a non-array `_sd` or a duplicate digest; an `sd_jwt_kb` input without the trailing `~` or with its own
+  `sd_hash`; a JWE header field other than `alg` / `enc` / `kid` / `apu` / `apv`, or one that is not a string; a
+  certificate spec field, value or repeated subject type `x509` cannot apply, including `key_usages` that `rcgen`
+  leaves out of the certificate. `null` counts as absent. Fixtures are test code, so there is no error type.
 - `authz` is a fresh RSA key per process with its RFC 7638 JWK thumbprint as `kid`; a call site writes
   `authz.key_id` into its own `RS256` header, and `jwks(&[&keys().authz])` is the JWK Set to serve wherever a
   test serves the realm's JWKS.

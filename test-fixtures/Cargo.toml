@@ -22,13 +22,13 @@ secrecy = "0.10.3"
 serde_json = { version = "1.0.120", features = ["preserve_order"] }
 sha2 = "0.10"
 ssi = "=0.16.0"
+x509-parser = { version = "0.18", optional = true }
 
 [dev-dependencies]
 async-trait = "0.1.85"
 rstest = "0.22.0"
 tokio = { version = "1.25.0", features = ["macros", "rt"] }
-x509-parser = "0.18"
 
 [features]
 default = ["x509"]
-x509 = ["dep:p256", "dep:rcgen"]
+x509 = ["dep:p256", "dep:rcgen", "dep:x509-parser"]
