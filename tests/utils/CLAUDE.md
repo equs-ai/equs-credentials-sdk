@@ -19,7 +19,7 @@ resolution, static fixtures, and builder helpers consumed by all e2e test module
 - `TestDIDResolver` — implements `equs_sdk::did::universal::DIDResolver` for any custom method name.
 
 ## Dependencies
-- Depends on: `equs_sdk` (http, did, vc, kms, nonce, inmem), `test_fixtures` (the access token in `fixtures/`), `oauth2`, `ssi`, `url`, `serde_json`
+- Depends on: `equs_sdk` (http, did, vc, kms, nonce, inmem), `test_fixtures` (the access token, the mDL IACA → DS chain and the mdoc presentation in `fixtures/`), `oauth2`, `ssi`, `url`, `serde_json`
 - Used by: `tests/e2e/` (all modules)
 
 ## Constraints

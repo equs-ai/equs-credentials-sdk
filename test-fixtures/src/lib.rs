@@ -1129,6 +1129,33 @@ mod tests {
     }
 
     #[test]
+    fn mdoc_digests_each_name_space_under_its_own_name() {
+        let ds_key = JWK::generate_p256();
+        let mut spec = mdl_spec();
+        spec["name_spaces"]["org.iso.18013.5.1.aamva"] = json!({ "DHS_compliance": "F" });
+        let document = document(&mdoc(&spec, (DS_CERT, &ds_key), &keys().holder));
+        let issuer_signed = field(&document, "issuerSigned");
+        let issuer_auth = field(issuer_signed, "issuerAuth").as_array().unwrap();
+        let mso = embedded(&decode(issuer_auth[2].as_bytes().unwrap()));
+
+        for (name_space, count) in [("org.iso.18013.5.1", 4), ("org.iso.18013.5.1.aamva", 1)] {
+            let items = field(field(issuer_signed, "nameSpaces"), name_space)
+                .as_array()
+                .unwrap();
+            let digests = field(field(&mso, "valueDigests"), name_space)
+                .as_map()
+                .unwrap();
+            assert_eq!(items.len(), count);
+            assert_eq!(digests.len(), count);
+            for item in items {
+                let id = field(&embedded(item), "digestID").clone();
+                let (_, digest) = digests.iter().find(|(key, _)| key == &id).unwrap();
+                assert_eq!(digest, &Cbor::Bytes(Sha256::digest(cbor(item)).to_vec()));
+            }
+        }
+    }
+
+    #[test]
     fn mdoc_device_signature_is_bound_to_the_client_id_and_nonce() {
         let ds_key = JWK::generate_p256();
         let document = document(&mdoc(&mdl_spec(), (DS_CERT, &ds_key), &keys().holder));
