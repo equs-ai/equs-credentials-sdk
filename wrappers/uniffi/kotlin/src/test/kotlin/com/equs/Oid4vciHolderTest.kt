@@ -18,14 +18,39 @@ import com.equs.credentials.Vault as EqusSdkVault
 class HolderVCITest {
     companion object {
         const val SCOPE = "SD_JWT_cred"
-        const val ACCESS_TOKEN =
-            "eyJhbGciOiJSUzI1NiIsInR5cCIgOiAiSldUIiwia2lkIiA6ICJQY2xZUDZ2UmsxTHBLRGZqU08yRGEzNXJtR1JmaTkzNjJDcFJFeUpmOHAwIn0.eyJleHAiOjE3MjQzOTg0OTQsImlhdCI6MTcyNDM5ODE5NCwiYXV0aF90aW1lIjoxNzI0Mzk4MTgyLCJqdGkiOiIwYjRmZTM5MC00OTIxLTQwNDItYjdlMS1iMDNiM2QxOTYyMjkiLCJpc3MiOiJodHRwOi8vbG9jYWxob3N0OjgwODAvaWRwL3JlYWxtcy9waWQtaXNzdWVyLXJlYWxtIiwic3ViIjoiNjBiOGJhNWYtYzczZi00OTc2LWIwZGEtNDhkMGU1MzMzNWRlIiwidHlwIjoiQmVhcmVyIiwiYXpwIjoid2FsbGV0LWRldiIsInNpZCI6ImYxNWIzZTExLWZmMjgtNDRkZi04ZmNmLWE3N2QyNDcxNGEyMyIsImFsbG93ZWQtb3JpZ2lucyI6WyIvKiJdLCJzY29wZSI6IlNEX0pXVF9jcmVkIn0.pLGGmOApXnQCY6CwuFzxFXEN36aDJ-iE0TM_esYJ_qtijhUtWq5zI9lD-iGzhTSdwZ7Y51eUKtqmJXHixzBo847vmMeGla4Ko6JTY-4vVAIQ1Hk1xzl25ALuZNwxGbljlysjzBgCxeAjZo3fE0HTI5y6NItptIU8aY3ykoIX9xE81ZkexbVrR495cEX7UIgUgCZyhj8lXUMWFrNFBhELnzzFGdX01Dq3B-KflY9ACVaw-_U9bT6EzDI0-0Cyx2K658EU9VpDjBSR6URT5I9quvx1qoYMFPv7zhjW3sUASIVwThe4CvWCCR8Kf8rsnEQ2qnchn0f6gn9thxi51FGkvA"
+        val ACCESS_TOKEN: String by lazy {
+            fixtureJws(
+                """{"alg":"RS256","typ":"JWT","kid":"${Fixtures.kid(FixtureKey.AUTHZ)}"}""",
+                """{"exp":1724398494,"iat":1724398194,"auth_time":1724398182,"jti":"0b4fe390-4921-4042-b7e1-b03b3d196229","iss":"http://localhost:8080/idp/realms/pid-issuer-realm","sub":"60b8ba5f-c73f-4976-b0da-48d0e53335de","typ":"Bearer","azp":"wallet-dev","sid":"f15b3e11-ff28-44df-8fcf-a77d24714a23","allowed-origins":["/*"],"scope":"SD_JWT_cred"}""",
+                FixtureKey.AUTHZ,
+            )
+        }
         const val ISSUER_ENDPOINT = "http://localhost:9081"
         const val AUTH_SERVER_ENDPOINT = "$ISSUER_ENDPOINT/auth"
-        const val SD_JWT_CRED =
-            "eyJ0eXAiOiJ2YytzZC1qd3QiLCJhbGciOiJFUzI1NiIsImtpZCI6ImRpZDprZXk6ekRuYWV1alBxWjVFakhtZmtyell3ZUxmTXFyOGFxQTNvdDNCdGM0RmU5dHlMcWttUiN6RG5hZXVqUHFaNUVqSG1ma3J6WXdlTGZNcXI4YXFBM290M0J0YzRGZTl0eUxxa21SIn0.eyJfc2QiOlsiQ1Q1bzFMZk5XRE9LT3h4NDJCWUc0NzU0bFpIeTZ0MG5PUGtGRWRmb3FvTSIsIks3bWEwTmZxR0NfM0xQdG12cWtySTR5ckpsdkg0VFU2OWU3SXYtN0VJbzQiLCJyZVlhTkZCV0h6VjE3Y3Z1cTNyRmpVSTNHeDVKc19EbW5VWlNFUmQ0aFpzIl0sInZjdCI6IlNEX0pXVF9jcmVkIiwic3ViIjoiZGlkOmtleTp6RG5hZW5wbnRDa1huRENuYURrNjJMeE5xUGM0Q01kMzJmYmhpVnNaVjVLcFBURzJjIiwibmJmIjoxNzI1NTMzMjU0LCJfc2RfYWxnIjoic2hhLTI1NiIsImlzcyI6ImRpZDprZXk6ekRuYWV1alBxWjVFakhtZmtyell3ZUxmTXFyOGFxQTNvdDNCdGM0RmU5dHlMcWttUiIsImlhdCI6MTcyNTUzMzI1NCwiZXhwIjoxNzU3MDY5MjU0LCJjbmYiOnsiandrIjp7Imt0eSI6IkVDIiwiY3J2IjoiUC0yNTYiLCJ4IjoiVExuNjZxYm5QZXhLeUZtZ3h1Y1kzSlpyZHhCRGpBc3ItbXkya1dBYms4ayIsInkiOiJzaFl6eUVUOENyWVcyTXhPU0FCSkxhbUpPTGV3LWpQbE9aeHdTUzZrWGdjIn19fQ.CBBzIiTjRs2bmKENQcRY14wVnl2vnIjJY9u3AYrA9KQDjqCXZXSzoxQlripAM6Ud_QaYNrZcHK2EVo4QlH3k9w~WyJvMFR4dEw4QWh1TFJXUmduSDk4NF9RIiwgImdpdmVuX25hbWUiLCAiSm9obiJd~WyJ2SVMzZXNQTHlRUHRRZ0JMZ09GYWFnIiwgImZhbWlseV9uYW1lIiwgIkRvZSJd~WyJsaW81cXNVZHZJX3V3eUdiRmFtTnFRIiwgImRvYiIsICIwOS8wOS8xOTg5Il0~"
-        const val SD_JWT_CRED_DID_WEB_ISS =
-            "eyJ0eXAiOiJkYytzZC1qd3QiLCJhbGciOiJFUzI1NiJ9.eyJpc3MiOiJkaWQ6d2ViOmxvY2FsaG9zdCUzQTkwODEiLCJpYXQiOjE3NTk3NTk4NDYsImV4cCI6MjA3NTI3ODIyNCwidmN0IjoiU0RfSldUX2NyZWQiLCJzdWIiOiJkaWQ6a2V5OnpEbmFlbnBudENrWG5EQ25hRGs2Mkx4TnFQYzRDTWQzMmZiaGlWc1pWNUtwUFRHMmMiLCJjbmYiOnsiandrIjp7Imt0eSI6IkVDIiwiY3J2IjoiUC0yNTYiLCJ4IjoiVExuNjZxYm5QZXhLeUZtZ3h1Y1kzSlpyZHhCRGpBc3ItbXkya1dBYms4ayIsInkiOiJzaFl6eUVUOENyWVcyTXhPU0FCSkxhbUpPTGV3LWpQbE9aeHdTUzZrWGdjIn19LCJfc2QiOlsiOGp0WjZXOTRzZ1RMVGN5Q0VqUDUxVnFCOWtqQ1ZtaTEwX0ZRUW9TYlVlVSIsIkFpbUlmd0JJRUN1OEJzWkdCd1RheDQ1MU9pMlFDemd3YUZQa2ZvNmowY1kiLCJYNEdKbmFxbXVOMFY5QzZrWWtRSUZjLThCRXFrY0IzX3l5bjk3c013RlVjIl0sIl9zZF9hbGciOiJzaGEtMjU2In0.8zRC9-8ZEoXRk3Edsh2QOwFSaAcnOAALJfwqLOs06EnEt625_T1K1-a7ZFB4-yqyGuGcZDmGl-UgaII9ROOwUQ~WyJiZTdlZjk3ZDFhZTNjOGM0IiwiZ2l2ZW5fbmFtZSIsIkpvaG4iXQ~WyJhYWQxMWQ1NTRlMDAzZWU1IiwiZmFtaWx5X25hbWUiLCJEb2UiXQ~WyI1OTQzYTlmZWViNTAwMTEyIiwiZG9iIiwiMDkvMDkvMTk4OSJd~"
+        val SD_JWT_CRED: String by lazy {
+            fixtureSdJwt(
+                """{"typ":"vc+sd-jwt","alg":"ES256","kid":"${fixtureDidKeyUrl(FixtureKey.ISSUER)}"}""",
+                """{"vct":"SD_JWT_cred","sub":"${fixtureDidKey(FixtureKey.HOLDER)}","nbf":1725533254,"_sd_alg":"sha-256","iss":"${fixtureDidKey(FixtureKey.ISSUER)}","iat":1725533254,"exp":1757069254,"cnf":{"jwk":${fixturePublicJwk(FixtureKey.HOLDER)}}}""",
+                listOf(
+                    """["o0TxtL8AhuLRWRgnH984_Q", "given_name", "John"]""",
+                    """["vIS3esPLyQPtQgBLgOFaag", "family_name", "Doe"]""",
+                    """["lio5qsUdvI_uwyGbFamNqQ", "dob", "09/09/1989"]""",
+                ),
+                FixtureKey.ISSUER,
+            )
+        }
+        val SD_JWT_CRED_DID_WEB_ISS: String by lazy {
+            fixtureSdJwt(
+                """{"typ":"dc+sd-jwt","alg":"ES256"}""",
+                """{"iss":"did:web:localhost%3A9081","iat":1759759846,"exp":2075278224,"vct":"SD_JWT_cred","sub":"${fixtureDidKey(FixtureKey.HOLDER)}","cnf":{"jwk":${fixturePublicJwk(FixtureKey.HOLDER)}},"_sd_alg":"sha-256"}""",
+                listOf(
+                    """["be7ef97d1ae3c8c4","given_name","John"]""",
+                    """["aad11d554e003ee5","family_name","Doe"]""",
+                    """["5943a9feeb500112","dob","09/09/1989"]""",
+                ),
+                FixtureKey.ISSUER,
+            )
+        }
 
         val issuerMetadata = Json.parseToJsonElement(
             """
@@ -112,7 +137,8 @@ class HolderVCITest {
                """
         )
 
-        val tokenResponse = Json.parseToJsonElement(
+        val tokenResponse by lazy {
+            Json.parseToJsonElement(
             """
                 {
                     "access_token": "$ACCESS_TOKEN",
@@ -121,16 +147,19 @@ class HolderVCITest {
                     "expires_in": 86400
                 }
                 """
-        )
+            )
+        }
 
-        val batchCredentialResponse = Json.parseToJsonElement(
-            """
+        val batchCredentialResponse by lazy {
+            Json.parseToJsonElement(
+                """
                 {
                     "credentials": [{"credential":"$SD_JWT_CRED"}, {"credential":"$SD_JWT_CRED"}],
                     "notification_id": "1111"
                 }
             """
-        )
+            )
+        }
 
         val deferredCredentialResponse = Json.parseToJsonElement(
             """
@@ -352,8 +381,7 @@ class HolderVCITest {
         val inMemVault = InMemVault()
 
         val didAndKeyMetadata = createDidAndKeyMetadata(inMemKms)
-        didAndKeyMetadata.keyMetadata.didUrl =
-            "did:key:zDnaenpntCkXnDCnaDk62LxNqPc4CMd32fbhiVsZV5KpPTG2c#zDnaenpntCkXnDCnaDk62LxNqPc4CMd32fbhiVsZV5KpPTG2c"
+        didAndKeyMetadata.keyMetadata.didUrl = fixtureDidKeyUrl(FixtureKey.HOLDER)
 
         val credential = Credential(format = VcFormat.SD_JWT_VC, payload = SD_JWT_CRED)
         val metadata = resolveMetadata(credential, didAndKeyMetadata.keyMetadata)
