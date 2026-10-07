@@ -268,11 +268,12 @@ pub mod tests {
     /// mDL presentation of Erika Mustermann under a fresh IACA → DS chain, bound to nonce
     /// `4Y1DVuoVHfjotxmX55AQv36Tr5sdcvaBLXia6bj2hUM` and verifier `https://verifier.example.com`.
     pub fn sample_mso_mdoc_vp() -> String {
-        mdoc_vp(None)
+        mdoc_vp(None, None)
     }
 
-    /// `sample_mso_mdoc_vp`, also bound to `response_uri` when given.
-    fn mdoc_vp(response_uri: Option<&str>) -> String {
+    /// `sample_mso_mdoc_vp`, also bound to `response_uri` and the thumbprint of `verifier_key`
+    /// when given.
+    fn mdoc_vp(response_uri: Option<&str>, verifier_key: Option<&test_fixtures::JWK>) -> String {
         let (_, ds, ds_key) = mdl_chain();
         test_fixtures::mdoc(
             &serde_json::json!({
@@ -284,7 +285,8 @@ pub mod tests {
                 "valid_until": "2046-01-01T00:00:00Z",
                 "client_id": "https://verifier.example.com",
                 "nonce": "4Y1DVuoVHfjotxmX55AQv36Tr5sdcvaBLXia6bj2hUM",
-                "response_uri": response_uri
+                "response_uri": response_uri,
+                "verifier_key": verifier_key.map(test_fixtures::JWK::to_public)
             }),
             (&ds, &ds_key),
             &test_fixtures::keys().holder,
@@ -387,7 +389,7 @@ pub mod tests {
     ) {
         let result = MsoMdocAPI::verify_vp(
             &Presentation {
-                value: mdoc_vp(Some(RESPONSE_URI)),
+                value: mdoc_vp(Some(RESPONSE_URI), None),
                 enc_pub_key: None,
             },
             Some(HolderBinder {
@@ -396,6 +398,38 @@ pub mod tests {
                 ),
                 verifier_id: "https://verifier.example.com".to_string(),
                 response_uri: response_uri.map(str::to_string),
+            }),
+            VerifyOptions {
+                trusted_certs: None,
+                selective_claims: None,
+            },
+            UniversalResolver::default(),
+        )
+        .await;
+
+        assert_eq!(result.is_ok(), valid, "{result:?}");
+    }
+
+    #[rstest::rstest]
+    #[case::matching_key(Some(test_fixtures::keys().verifier.to_public()), true)]
+    #[case::no_key(None, false)]
+    #[case::other_key(Some(test_fixtures::keys().issuer.to_public()), false)]
+    #[tokio::test]
+    async fn verify_vp_binds_the_verifier_key(
+        #[case] enc_pub_key: Option<test_fixtures::JWK>,
+        #[case] valid: bool,
+    ) {
+        let result = MsoMdocAPI::verify_vp(
+            &Presentation {
+                value: mdoc_vp(Some(RESPONSE_URI), Some(&test_fixtures::keys().verifier)),
+                enc_pub_key,
+            },
+            Some(HolderBinder {
+                nonce: Nonce::from_secret(
+                    "4Y1DVuoVHfjotxmX55AQv36Tr5sdcvaBLXia6bj2hUM".to_string(),
+                ),
+                verifier_id: "https://verifier.example.com".to_string(),
+                response_uri: Some(RESPONSE_URI.to_string()),
             }),
             VerifyOptions {
                 trusted_certs: None,

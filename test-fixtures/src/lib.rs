@@ -360,12 +360,13 @@ fn parse<'a, T: Deserialize<'a>>(what: &str, value: &'a Value) -> T {
 
 /// mso_mdoc DeviceResponse (base64url CBOR) presenting one document under an OpenID4VP 1.0
 /// handover (`OpenID4VPHandover` when `response_uri` is given, `OpenID4VPDCAPIHandover`
-/// otherwise; no verifier-key thumbprint), issuer-signed by `issuer` (DS certificate PEM and its
-/// key) and device-signed by `device`. `spec` is JSON: `{"doc_type": "org.iso.18013.5.1.mDL",
-/// "name_spaces": {"org.iso.18013.5.1": {"family_name": "Mustermann"}}, "valid_from":
-/// "2026-01-01T00:00:00Z", "valid_until": "2046-01-01T00:00:00Z", "client_id":
-/// "https://verifier.example.com", "nonce": "…", "response_uri": "…"}`; `response_uri` is
-/// optional. Element values are strings, integers or booleans; digest IDs follow the order given,
+/// otherwise, either carrying the RFC 7638 thumbprint of `verifier_key` for an encrypted
+/// response), issuer-signed by `issuer` (DS certificate PEM and its key) and device-signed by
+/// `device`. `spec` is JSON: `{"doc_type": "org.iso.18013.5.1.mDL", "name_spaces":
+/// {"org.iso.18013.5.1": {"family_name": "Mustermann"}}, "valid_from": "2026-01-01T00:00:00Z",
+/// "valid_until": "2046-01-01T00:00:00Z", "client_id": "https://verifier.example.com",
+/// "nonce": "…", "response_uri": "…", "verifier_key": {public JWK}}`; `response_uri` and
+/// `verifier_key` are optional. Element values are strings, integers or booleans; digest IDs follow the order given,
 /// each item gets a fresh random salt, and an unknown field or another value type panics.
 pub fn mdoc(spec: &Value, issuer: (&str, &JWK), device: &JWK) -> String {
     let spec: MdocSpec = parse("mdoc spec", spec);
@@ -420,7 +421,12 @@ pub fn mdoc(spec: &Value, issuer: (&str, &JWK), device: &JWK) -> String {
     let device_name_spaces = embed(&Cbor::Map(Vec::new()));
     let device_authentication = Cbor::Array(vec![
         "DeviceAuthentication".into(),
-        session_transcript(&spec.client_id, &spec.nonce, spec.response_uri.as_deref()),
+        session_transcript(
+            &spec.client_id,
+            &spec.nonce,
+            spec.response_uri.as_deref(),
+            spec.verifier_key.as_ref().map(jwk_thumbprint).as_deref(),
+        ),
         doc_type.into(),
         device_name_spaces.clone(),
     ]);
@@ -470,29 +476,36 @@ struct MdocSpec {
     client_id: String,
     nonce: String,
     response_uri: Option<String>,
+    verifier_key: Option<JWK>,
 }
 
 fn b64(value: &Value) -> String {
     BASE64_URL_SAFE_NO_PAD.encode(serde_json::to_vec(value).expect("JSON"))
 }
 
-/// OpenID4VP 1.0 SessionTranscript without a verifier-key thumbprint, as one-core rebuilds it to
-/// verify the device signature: `OpenID4VPHandover` with `response_uri`, `OpenID4VPDCAPIHandover`
-/// without.
-fn session_transcript(client_id: &str, nonce: &str, response_uri: Option<&str>) -> Cbor {
+/// OpenID4VP 1.0 SessionTranscript, as one-core rebuilds it to verify the device signature:
+/// `OpenID4VPHandover` with `response_uri`, `OpenID4VPDCAPIHandover` without; `thumbprint` is the
+/// verifier key's for an encrypted response.
+fn session_transcript(
+    client_id: &str,
+    nonce: &str,
+    response_uri: Option<&str>,
+    thumbprint: Option<&[u8]>,
+) -> Cbor {
+    let thumbprint = thumbprint.map_or(Cbor::Null, |bytes| bytes.to_vec().into());
     let (handover, info) = match response_uri {
         Some(response_uri) => (
             "OpenID4VPHandover",
             vec![
                 client_id.into(),
                 nonce.into(),
-                Cbor::Null,
+                thumbprint,
                 response_uri.into(),
             ],
         ),
         None => (
             "OpenID4VPDCAPIHandover",
-            vec![client_id.into(), nonce.into(), Cbor::Null],
+            vec![client_id.into(), nonce.into(), thumbprint],
         ),
     };
     Cbor::Array(vec![
@@ -503,6 +516,13 @@ fn session_transcript(client_id: &str, nonce: &str, response_uri: Option<&str>) 
             Sha256::digest(cbor(&Cbor::Array(info))).to_vec().into(),
         ]),
     ])
+}
+
+/// RFC 7638 SHA-256 thumbprint of `key` as raw bytes.
+fn jwk_thumbprint(key: &JWK) -> Vec<u8> {
+    BASE64_URL_SAFE_NO_PAD
+        .decode(key.thumbprint().expect("JWK thumbprint"))
+        .expect("base64url thumbprint")
 }
 
 /// Untagged ES256 COSE_Sign1 over `payload`, which stays in the structure when `attached` and is
@@ -1153,10 +1173,20 @@ mod tests {
         }
     }
 
-    fn device_payload(device_signed: &Cbor, nonce: &str, response_uri: Option<&str>) -> Vec<u8> {
+    fn device_payload(
+        device_signed: &Cbor,
+        nonce: &str,
+        response_uri: Option<&str>,
+        thumbprint: Option<&[u8]>,
+    ) -> Vec<u8> {
         let authentication = Cbor::Array(vec![
             "DeviceAuthentication".into(),
-            session_transcript("https://verifier.example.com", nonce, response_uri),
+            session_transcript(
+                "https://verifier.example.com",
+                nonce,
+                response_uri,
+                thumbprint,
+            ),
             "org.iso.18013.5.1.mDL".into(),
             field(device_signed, "nameSpaces").clone(),
         ]);
@@ -1171,7 +1201,7 @@ mod tests {
         let signature = field(field(device_signed, "deviceAuth"), "deviceSignature");
         assert_eq!(signature.as_array().unwrap()[2], Cbor::Null);
 
-        let payload = |nonce| device_payload(device_signed, nonce, None);
+        let payload = |nonce| device_payload(device_signed, nonce, None, None);
         verify_sign1(signature, &payload("n-0S6_WzA2Mj"), &keys().holder).unwrap();
         assert!(verify_sign1(signature, &payload("another"), &keys().holder).is_err());
     }
@@ -1185,7 +1215,8 @@ mod tests {
         let device_signed = field(&document, "deviceSigned");
         let signature = field(field(device_signed, "deviceAuth"), "deviceSignature");
 
-        let payload = |response_uri| device_payload(device_signed, "n-0S6_WzA2Mj", response_uri);
+        let payload =
+            |response_uri| device_payload(device_signed, "n-0S6_WzA2Mj", response_uri, None);
         let holder = &keys().holder;
         verify_sign1(
             signature,
@@ -1202,9 +1233,56 @@ mod tests {
             .is_err()
         );
         assert!(verify_sign1(signature, &payload(None), holder).is_err());
-        let transcript = session_transcript("https://verifier.example.com", "n", Some("https://r"));
+        let transcript =
+            session_transcript("https://verifier.example.com", "n", Some("https://r"), None);
         let handover = transcript.as_array().unwrap()[2].as_array().unwrap();
         assert_eq!(handover[0].as_text(), Some("OpenID4VPHandover"));
+    }
+
+    #[test]
+    fn mdoc_device_signature_with_a_verifier_key_is_bound_to_its_thumbprint() {
+        let ds_key = JWK::generate_p256();
+        let mut spec = mdl_spec();
+        spec["response_uri"] = json!("https://verifier.example.com/response");
+        spec["verifier_key"] = json!(keys().verifier.to_public());
+        let document = document(&mdoc(&spec, (DS_CERT, &ds_key), &keys().holder));
+        let device_signed = field(&document, "deviceSigned");
+        let signature = field(field(device_signed, "deviceAuth"), "deviceSignature");
+
+        let response_uri = Some("https://verifier.example.com/response");
+        let payload =
+            |thumbprint| device_payload(device_signed, "n-0S6_WzA2Mj", response_uri, thumbprint);
+        let holder = &keys().holder;
+        let thumbprint = jwk_thumbprint(&keys().verifier);
+        verify_sign1(signature, &payload(Some(&thumbprint)), holder).unwrap();
+        assert!(verify_sign1(signature, &payload(None), holder).is_err());
+        let other = jwk_thumbprint(&keys().issuer);
+        assert!(verify_sign1(signature, &payload(Some(&other)), holder).is_err());
+    }
+
+    #[test]
+    fn session_transcript_matches_the_openid4vp_test_vector() {
+        // OpenID4VP 1.0, Appendix B.2.6.1.
+        let key: JWK = serde_json::from_value(json!({
+            "kty": "EC", "crv": "P-256", "alg": "ES256", "use": "enc", "kid": "1",
+            "x": "DxiH5Q4Yx3UrukE2lWCErq8N8bqC9CHLLrAwLz5BmE0",
+            "y": "XtLM4-3h5o3HUH0MHVJV0kyq0iBlrBwlh8qEDMZ4-Pc"
+        }))
+        .unwrap();
+
+        let transcript = session_transcript(
+            "x509_san_dns:example.com",
+            "exc7gBkxjx1rdc9udRrveKvSsJIq80avlXeLHhGwqtA",
+            Some("https://example.com/response"),
+            Some(&jwk_thumbprint(&key)),
+        );
+
+        assert_eq!(
+            cbor(&transcript.as_array().unwrap()[2]),
+            hex(
+                "82714f70656e494434565048616e646f7665725820048bc053c00442af9b8eed494cefdd9d95240d254b046b11b68013722aad38ac"
+            )
+        );
     }
 
     #[test]
@@ -1212,6 +1290,7 @@ mod tests {
         let transcript = session_transcript(
             "https://verifier.example.com:5173",
             "BQlBqrJEK9Mv7VuBwB3oax3t1-tA84QMrt9hBF75Hu4",
+            None,
             None,
         );
 
