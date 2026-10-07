@@ -15,6 +15,7 @@ pub mod fixtures {
 
     pub const ISSUER_URL: &str = "https://issuer-backend.com";
     pub const AUTH_URL: &str = "https://authz-backend.com";
+    pub const SECOND_AUTH_URL: &str = "https://second-authz-backend.com";
     pub const TOKEN_INTROSPECT_URL: &str =
         "https://authz-backend.com/protocol/openid-connect/token/introspect";
     pub const JWKS_URL: &str = "http://issuer.org/certs";
