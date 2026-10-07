@@ -3,6 +3,8 @@ package com.equs
 import com.equs.credentials.*
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
 import okhttp3.mockwebserver.Dispatcher
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
@@ -10,6 +12,8 @@ import okhttp3.mockwebserver.RecordedRequest
 import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.assertThrows
+import java.util.Base64
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
@@ -226,6 +230,55 @@ class VcCoreTest {
             )
         assertTrue(explicit is Presentation.SdJwtVp)
         assertTrue((explicit as Presentation.SdJwtVp).v1.isNotEmpty())
+    }
+
+    @Test
+    fun holderCreatesDelegatedCredential() = runTest {
+        val resolver = newResolver()
+        val issuer = VcCoreIssuer(sharedKms, VcCoreFixtures.issuerMetadata(keyMetadata), resolver)
+        val holder = VcCoreHolder(
+            sharedKms, InMemVault(), VcCoreFixtures.holderMetadata(), resolver, ReqwestHttpClient.insecure(),
+        )
+        val offer = issuer.offerCredential(VcCoreFixtures.SCOPE, null)
+        val credentialRequest = holder.requestCredential(offer, VcCoreFixtures.NONCE, keyMetadata)
+        val credential = issuer.issueCredential(
+            credentialRequest, VcCoreFixtures.claims, VcCoreFixtures.NONCE, VcCoreFixtures.credStatusInfo,
+        )
+
+        val grant = holder.createDelegatedCredential(
+            CredentialEntry(credential = credential, kid = keyMetadata.kid, id = "entry-1"),
+            DelegationParams(
+                delegatePayloads = listOf("""{"scope":"purchase"}"""),
+                binding = ChainBindingMode.ISSUER_JWT_HASH,
+            ),
+        )
+
+        assertTrue(grant.endsWith("~"))
+        val link = grant.split("~").last { it.isNotEmpty() }
+        val linkPayload = Json.parseToJsonElement(
+            String(Base64.getUrlDecoder().decode(link.split(".")[1]))
+        ).jsonObject
+        assertEquals(Json.parseToJsonElement("""[{"scope":"purchase"}]"""), linkPayload["delegate_payload"])
+    }
+
+    @Test
+    fun holderRejectsInvalidDelegation() = runTest {
+        val holder = VcCoreHolder(
+            sharedKms, InMemVault(), VcCoreFixtures.holderMetadata(), newResolver(), ReqwestHttpClient.insecure(),
+        )
+        val notSdJwt = CredentialEntry(
+            credential = Credential(format = VcFormat.JWT_VC_JSON, payload = "eyJhbGciOiJub25lIn0.e30."),
+            kid = keyMetadata.kid,
+            id = "entry-2",
+        )
+        val params = DelegationParams(delegatePayloads = listOf("""{"scope":"purchase"}"""))
+
+        assertThrows<Exception.Core> {
+            runBlocking { holder.createDelegatedCredential(notSdJwt, params) }
+        }
+        assertThrows<Exception.Parse> {
+            runBlocking { holder.createDelegatedCredential(notSdJwt, params.copy(claimsToDisclose = "[]")) }
+        }
     }
 
     // -----------------------------------------------------------------

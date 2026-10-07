@@ -270,6 +270,79 @@ class VcCoreTests {
         #expect(!explicitPayload.isEmpty)
     }
 
+    @Test func holderCreatesDelegatedCredential() async throws {
+        let resolver = try UniversalDidResolver(resolvers: nil)
+        let issuer = try VcCoreIssuer(
+            kms: kms,
+            metadata: VcCoreFixtures.issuerMetadata(keyMetadata: keyMetadata),
+            didResolver: resolver
+        )
+        let holder = try VcCoreHolder(
+            kms: kms,
+            vault: InMemVault(),
+            metadata: VcCoreFixtures.holderMetadata(),
+            didResolver: resolver,
+            httpClient: http
+        )
+        let offer = try issuer.offerCredential(credDefId: VcCoreFixtures.scope, protocolData: nil)
+        let credentialRequest = try await holder.requestCredential(
+            credentialOffer: offer,
+            nonce: VcCoreFixtures.nonce,
+            keyMetadata: keyMetadata
+        )
+        let credential = try await issuer.issueCredential(
+            credentialRequest: credentialRequest,
+            claims: VcCoreFixtures.claims,
+            nonce: VcCoreFixtures.nonce,
+            statusInfo: VcCoreFixtures.credStatusInfo(port: port)
+        )
+
+        let grant = try await holder.createDelegatedCredential(
+            credential: CredentialEntry(credential: credential, kid: keyMetadata.kid, id: "entry-1"),
+            params: DelegationParams(delegatePayloads: [#"{"scope":"purchase"}"#], binding: .issuerJwtHash)
+        )
+
+        #expect(grant.hasSuffix("~"))
+        let link = try #require(grant.split(separator: "~").last)
+        let linkPayload = try #require(
+            JSONSerialization.jsonObject(with: Fixtures.base64UrlDecode(String(link.split(separator: ".")[1])))
+                as? [String: Any])
+        let delegatePayloads = try #require(linkPayload["delegate_payload"] as? [[String: Any]])
+        #expect(delegatePayloads.count == 1)
+        #expect(delegatePayloads[0]["scope"] as? String == "purchase")
+    }
+
+    @Test func holderRejectsInvalidDelegation() async throws {
+        let holder = try VcCoreHolder(
+            kms: kms,
+            vault: InMemVault(),
+            metadata: VcCoreFixtures.holderMetadata(),
+            didResolver: try UniversalDidResolver(resolvers: nil),
+            httpClient: http
+        )
+        let notSdJwt = CredentialEntry(
+            credential: Credential(format: .jwtVcJson, payload: "eyJhbGciOiJub25lIn0.e30."),
+            kid: keyMetadata.kid,
+            id: "entry-2"
+        )
+
+        do {
+            _ = try await holder.createDelegatedCredential(
+                credential: notSdJwt,
+                params: DelegationParams(delegatePayloads: [#"{"scope":"purchase"}"#]))
+            Issue.record("expected a non-SD-JWT credential to be rejected")
+        } catch EqusSdk.Error.Core(_) {
+        }
+
+        do {
+            _ = try await holder.createDelegatedCredential(
+                credential: notSdJwt,
+                params: DelegationParams(delegatePayloads: [#"{"scope":"purchase"}"#], claimsToDisclose: "[]"))
+            Issue.record("expected a non-object claimsToDisclose to be rejected")
+        } catch EqusSdk.Error.Parse(_) {
+        }
+    }
+
     @Test func verifierVerifiesPresentation() async throws {
         let vault = InMemVault()
         let resolver = try UniversalDidResolver(resolvers: nil)
