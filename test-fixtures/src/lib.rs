@@ -358,16 +358,11 @@ fn parse<'a, T: Deserialize<'a>>(what: &str, value: &'a Value) -> T {
     T::deserialize(value).unwrap_or_else(|err| panic!("{what}: {err}"))
 }
 
-/// mso_mdoc DeviceResponse (base64url CBOR) presenting one document under an OpenID4VP 1.0
-/// handover (`OpenID4VPHandover` when `response_uri` is given, `OpenID4VPDCAPIHandover`
-/// otherwise, either carrying the RFC 7638 thumbprint of `verifier_key` for an encrypted
-/// response), issuer-signed by `issuer` (DS certificate PEM and its key) and device-signed by
-/// `device`. `spec` is JSON: `{"doc_type": "org.iso.18013.5.1.mDL", "name_spaces":
-/// {"org.iso.18013.5.1": {"family_name": "Mustermann"}}, "valid_from": "2026-01-01T00:00:00Z",
-/// "valid_until": "2046-01-01T00:00:00Z", "client_id": "https://verifier.example.com",
-/// "nonce": "…", "response_uri": "…", "verifier_key": {public JWK}}`; `response_uri` and
-/// `verifier_key` are optional. Element values are strings, integers or booleans; digest IDs follow the order given,
-/// each item gets a fresh random salt, and an unknown field or another value type panics.
+/// mso_mdoc DeviceResponse (base64url CBOR) of one document, issuer-signed by `issuer` (DS
+/// certificate PEM, optionally followed by its chain, and DS key) and device-signed by `device`
+/// under an OpenID4VP 1.0 handover. `spec`: `doc_type`, `name_spaces` (string, integer or boolean
+/// values), `valid_from` / `valid_until` (`YYYY-MM-DDThh:mm:ssZ`), `client_id`, `nonce`, optional
+/// `response_uri` and `verifier_key`. Other input panics.
 pub fn mdoc(spec: &Value, issuer: (&str, &JWK), device: &JWK) -> String {
     let spec: MdocSpec = parse("mdoc spec", spec);
     let doc_type = spec.doc_type.as_str();
@@ -395,7 +390,6 @@ pub fn mdoc(spec: &Value, issuer: (&str, &JWK), device: &JWK) -> String {
         name_spaces.push((name_space.as_str().into(), Cbor::Array(items)));
         value_digests.push((name_space.as_str().into(), Cbor::Map(digests)));
     }
-    let date = |text: &str| Cbor::Tag(0, Box::new(text.into()));
     let mso = cbor_map([
         ("version", "1.0".into()),
         ("digestAlgorithm", "SHA-256".into()),
@@ -405,15 +399,15 @@ pub fn mdoc(spec: &Value, issuer: (&str, &JWK), device: &JWK) -> String {
         (
             "validityInfo",
             cbor_map([
-                ("signed", date(&spec.valid_from)),
-                ("validFrom", date(&spec.valid_from)),
-                ("validUntil", date(&spec.valid_until)),
+                ("signed", tdate(&spec.valid_from)),
+                ("validFrom", tdate(&spec.valid_from)),
+                ("validUntil", tdate(&spec.valid_until)),
             ]),
         ),
     ]);
     let (ds_cert, ds_key) = issuer;
     let issuer_auth = cose_sign1(
-        Cbor::Map(vec![(33.into(), pem_der(ds_cert).into())]),
+        Cbor::Map(vec![(33.into(), x5chain(ds_cert))]),
         cbor(&embed(&mso)),
         true,
         ds_key,
@@ -483,9 +477,8 @@ fn b64(value: &Value) -> String {
     BASE64_URL_SAFE_NO_PAD.encode(serde_json::to_vec(value).expect("JSON"))
 }
 
-/// OpenID4VP 1.0 SessionTranscript, as one-core rebuilds it to verify the device signature:
-/// `OpenID4VPHandover` with `response_uri`, `OpenID4VPDCAPIHandover` without; `thumbprint` is the
-/// verifier key's for an encrypted response.
+/// OpenID4VP 1.0 SessionTranscript as one-core rebuilds it: `OpenID4VPHandover` with `response_uri`
+/// (trailing `/` trimmed), `OpenID4VPDCAPIHandover` without.
 fn session_transcript(
     client_id: &str,
     nonce: &str,
@@ -497,10 +490,10 @@ fn session_transcript(
         Some(response_uri) => (
             "OpenID4VPHandover",
             vec![
-                client_id.into(),
+                client_id.trim_end_matches('/').into(),
                 nonce.into(),
                 thumbprint,
-                response_uri.into(),
+                response_uri.trim_end_matches('/').into(),
             ],
         ),
         None => (
@@ -566,7 +559,8 @@ fn element_value(value: &Value) -> Cbor {
     match value {
         Value::String(text) => text.as_str().into(),
         Value::Bool(flag) => (*flag).into(),
-        Value::Number(number) if number.as_i64().is_some() => number.as_i64().unwrap().into(),
+        Value::Number(number) if let Some(integer) = number.as_i64() => integer.into(),
+        Value::Number(number) if let Some(integer) = number.as_u64() => integer.into(),
         _ => panic!("element value must be a string, integer or boolean"),
     }
 }
@@ -591,17 +585,37 @@ fn cbor(value: &Cbor) -> Vec<u8> {
     bytes
 }
 
-/// DER of the first certificate in `pem`.
-fn pem_der(pem: &str) -> Vec<u8> {
-    let body: String = pem
-        .lines()
-        .skip_while(|line| !line.starts_with("-----BEGIN"))
+/// One certificate's DER, or an array for a chain.
+fn x5chain(pem: &str) -> Cbor {
+    let mut certificates: Vec<Cbor> = pem
+        .split("-----BEGIN CERTIFICATE-----")
         .skip(1)
-        .take_while(|line| !line.starts_with("-----END"))
+        .map(|block| {
+            let (body, _) = block
+                .split_once("-----END CERTIFICATE-----")
+                .expect("unterminated PEM certificate");
+            let body: String = body.split_whitespace().collect();
+            base64::prelude::BASE64_STANDARD
+                .decode(body)
+                .expect("PEM certificate base64")
+                .into()
+        })
         .collect();
-    base64::prelude::BASE64_STANDARD
-        .decode(body)
-        .expect("PEM certificate")
+    match certificates.len() {
+        0 => panic!("no PEM certificate"),
+        1 => certificates.remove(0),
+        _ => Cbor::Array(certificates),
+    }
+}
+
+/// `#6.0(text)`, UTC whole seconds only.
+fn tdate(text: &str) -> Cbor {
+    time::PrimitiveDateTime::parse(
+        text,
+        time::macros::format_description!("[year]-[month]-[day]T[hour]:[minute]:[second]Z"),
+    )
+    .unwrap_or_else(|err| panic!("date `{text}` is not YYYY-MM-DDThh:mm:ssZ: {err}"));
+    Cbor::Tag(0, Box::new(text.into()))
 }
 
 fn rsa_jwk() -> JWK {
@@ -1036,8 +1050,250 @@ mod tests {
         }
     }
 
-    /// The builder copies the certificate's DER into `x5chain` without parsing it.
+    #[test]
+    fn mdoc_issuer_auth_signs_the_digest_of_every_item_under_the_ds_certificate() {
+        let ds_key = JWK::generate_p256();
+        let document = document(&mdoc(&mdl_spec(), (DS_CERT, &ds_key), &keys().holder));
+        let issuer_signed = field(&document, "issuerSigned");
+        let issuer_auth = field(issuer_signed, "issuerAuth").as_array().unwrap();
+
+        assert_eq!(
+            issuer_auth[1],
+            Cbor::Map(vec![(33.into(), b"ds-cert".to_vec().into())])
+        );
+        let payload = issuer_auth[2].as_bytes().unwrap();
+        verify_sign1(field(issuer_signed, "issuerAuth"), payload, &ds_key).unwrap();
+
+        let mso = embedded(&decode(payload));
+        assert_eq!(
+            field(&mso, "docType").as_text(),
+            Some("org.iso.18013.5.1.mDL")
+        );
+        assert_digests(issuer_signed, &mso, "org.iso.18013.5.1", 4);
+        let values: Vec<Cbor> = field(field(issuer_signed, "nameSpaces"), "org.iso.18013.5.1")
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|item| field(&embedded(item), "elementValue").clone())
+            .collect();
+        assert_eq!(
+            values,
+            vec!["Mustermann".into(), "Erika".into(), true.into(), 42.into()]
+        );
+    }
+
+    #[test]
+    fn mdoc_digests_each_name_space_under_its_own_name() {
+        let ds_key = JWK::generate_p256();
+        let mut spec = mdl_spec();
+        spec["name_spaces"]["org.iso.18013.5.1.aamva"] = json!({ "DHS_compliance": "F" });
+        let document = document(&mdoc(&spec, (DS_CERT, &ds_key), &keys().holder));
+        let issuer_signed = field(&document, "issuerSigned");
+        let issuer_auth = field(issuer_signed, "issuerAuth").as_array().unwrap();
+        let mso = embedded(&decode(issuer_auth[2].as_bytes().unwrap()));
+
+        assert_digests(issuer_signed, &mso, "org.iso.18013.5.1", 4);
+        assert_digests(issuer_signed, &mso, "org.iso.18013.5.1.aamva", 1);
+    }
+
+    #[test]
+    fn mdoc_x5chain_holds_every_certificate_of_the_pem_in_order() {
+        let chain = format!("{DS_CERT}{IACA_CERT}");
+
+        assert_eq!(
+            x5chain(&chain),
+            Cbor::Array(vec![b"ds-cert".to_vec().into(), b"iaca".to_vec().into()])
+        );
+    }
+
+    #[rstest]
+    #[case::empty("")]
+    #[case::private_key("-----BEGIN PRIVATE KEY-----\nAAAA\n-----END PRIVATE KEY-----\n")]
+    #[case::unterminated("-----BEGIN CERTIFICATE-----\nZHMtY2VydA==\n")]
+    #[case::not_base64("-----BEGIN CERTIFICATE-----\n!!\n-----END CERTIFICATE-----\n")]
+    #[should_panic(expected = "PEM certificate")]
+    fn mdoc_rejects_an_issuer_pem_without_a_valid_certificate(#[case] pem: &str) {
+        let ds_key = JWK::generate_p256();
+        mdoc(&mdl_spec(), (pem, &ds_key), &keys().holder);
+    }
+
+    #[test]
+    fn mdoc_device_signature_is_bound_to_the_client_id_and_nonce() {
+        let ds_key = JWK::generate_p256();
+        let document = document(&mdoc(&mdl_spec(), (DS_CERT, &ds_key), &keys().holder));
+        let device_signed = field(&document, "deviceSigned");
+        let signature = field(field(device_signed, "deviceAuth"), "deviceSignature");
+        assert_eq!(signature.as_array().unwrap()[2], Cbor::Null);
+
+        let payload =
+            |client_id, nonce| device_payload(device_signed, client_id, nonce, None, None);
+        let holder = &keys().holder;
+        verify_sign1(signature, &payload(CLIENT_ID, NONCE), holder).unwrap();
+        assert!(verify_sign1(signature, &payload("https://other.example", NONCE), holder).is_err());
+        assert!(verify_sign1(signature, &payload(CLIENT_ID, "another"), holder).is_err());
+    }
+
+    #[test]
+    fn mdoc_device_signature_with_a_response_uri_is_bound_to_it() {
+        let ds_key = JWK::generate_p256();
+        let mut spec = mdl_spec();
+        spec["response_uri"] = json!(RESPONSE_URI);
+        let document = document(&mdoc(&spec, (DS_CERT, &ds_key), &keys().holder));
+        let device_signed = field(&document, "deviceSigned");
+        let signature = field(field(device_signed, "deviceAuth"), "deviceSignature");
+
+        let payload =
+            |response_uri| device_payload(device_signed, CLIENT_ID, NONCE, response_uri, None);
+        let holder = &keys().holder;
+        verify_sign1(signature, &payload(Some(RESPONSE_URI)), holder).unwrap();
+        assert!(
+            verify_sign1(
+                signature,
+                &payload(Some("https://other.example/response")),
+                holder
+            )
+            .is_err()
+        );
+        assert!(verify_sign1(signature, &payload(None), holder).is_err());
+        let transcript = session_transcript(CLIENT_ID, NONCE, Some(RESPONSE_URI), None);
+        let handover = transcript.as_array().unwrap()[2].as_array().unwrap();
+        assert_eq!(handover[0].as_text(), Some("OpenID4VPHandover"));
+    }
+
+    #[test]
+    fn mdoc_device_signature_with_a_verifier_key_is_bound_to_its_thumbprint() {
+        let ds_key = JWK::generate_p256();
+        let mut spec = mdl_spec();
+        spec["response_uri"] = json!(RESPONSE_URI);
+        spec["verifier_key"] = json!(keys().verifier.to_public());
+        let document = document(&mdoc(&spec, (DS_CERT, &ds_key), &keys().holder));
+        let device_signed = field(&document, "deviceSigned");
+        let signature = field(field(device_signed, "deviceAuth"), "deviceSignature");
+
+        let payload = |thumbprint| {
+            device_payload(
+                device_signed,
+                CLIENT_ID,
+                NONCE,
+                Some(RESPONSE_URI),
+                thumbprint,
+            )
+        };
+        let holder = &keys().holder;
+        let thumbprint = jwk_thumbprint(&keys().verifier);
+        verify_sign1(signature, &payload(Some(&thumbprint)), holder).unwrap();
+        assert!(verify_sign1(signature, &payload(None), holder).is_err());
+        let other = jwk_thumbprint(&keys().issuer);
+        assert!(verify_sign1(signature, &payload(Some(&other)), holder).is_err());
+    }
+
+    #[test]
+    fn session_transcript_matches_the_openid4vp_test_vector() {
+        // OpenID4VP 1.0, Appendix B.2.6.1.
+        let key: JWK = serde_json::from_value(json!({
+            "kty": "EC", "crv": "P-256", "alg": "ES256", "use": "enc", "kid": "1",
+            "x": "DxiH5Q4Yx3UrukE2lWCErq8N8bqC9CHLLrAwLz5BmE0",
+            "y": "XtLM4-3h5o3HUH0MHVJV0kyq0iBlrBwlh8qEDMZ4-Pc"
+        }))
+        .unwrap();
+
+        let transcript = session_transcript(
+            "x509_san_dns:example.com",
+            "exc7gBkxjx1rdc9udRrveKvSsJIq80avlXeLHhGwqtA",
+            Some("https://example.com/response"),
+            Some(&jwk_thumbprint(&key)),
+        );
+
+        assert_eq!(
+            cbor(&transcript.as_array().unwrap()[2]),
+            hex(
+                "82714f70656e494434565048616e646f7665725820048bc053c00442af9b8eed494cefdd9d95240d254b046b11b68013722aad38ac"
+            )
+        );
+    }
+
+    #[test]
+    fn session_transcript_matches_the_one_core_vector() {
+        let transcript = session_transcript(
+            "https://verifier.example.com:5173",
+            "BQlBqrJEK9Mv7VuBwB3oax3t1-tA84QMrt9hBF75Hu4",
+            None,
+            None,
+        );
+
+        let handover = transcript.as_array().unwrap()[2].as_array().unwrap();
+        assert_eq!(handover[0].as_text(), Some("OpenID4VPDCAPIHandover"));
+        assert_eq!(
+            handover[1].as_bytes().unwrap(),
+            &hex("47ba35613a5360b58e307bd52c49634e26832dcaf1d0863c90717ad2d8cdc9d7")
+        );
+    }
+
+    #[test]
+    fn session_transcript_drops_a_trailing_slash_only_in_the_openid4vp_handover() {
+        assert_eq!(
+            session_transcript(
+                "https://verifier.example.com/",
+                NONCE,
+                Some("https://r/"),
+                None
+            ),
+            session_transcript(CLIENT_ID, NONCE, Some("https://r"), None)
+        );
+        assert_ne!(
+            session_transcript("https://verifier.example.com/", NONCE, None, None),
+            session_transcript(CLIENT_ID, NONCE, None, None)
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "mdoc spec: unknown field `docType`")]
+    fn mdoc_rejects_an_unknown_spec_field() {
+        let ds_key = JWK::generate_p256();
+        mdoc(
+            &json!({ "docType": "x" }),
+            (DS_CERT, &ds_key),
+            &keys().holder,
+        );
+    }
+
+    #[test]
+    fn mdoc_element_values_cover_the_full_integer_range() {
+        assert_eq!(element_value(&json!(u64::MAX)), Cbor::from(u64::MAX));
+        assert_eq!(element_value(&json!(i64::MIN)), Cbor::from(i64::MIN));
+    }
+
+    #[rstest]
+    #[case::float(json!(1.5))]
+    #[case::array(json!(["a"]))]
+    #[case::null(json!(null))]
+    #[should_panic(expected = "element value must be a string, integer or boolean")]
+    fn mdoc_rejects_a_non_scalar_element_value(#[case] value: Value) {
+        let ds_key = JWK::generate_p256();
+        let mut spec = mdl_spec();
+        spec["name_spaces"]["org.iso.18013.5.1"]["family_name"] = value;
+        mdoc(&spec, (DS_CERT, &ds_key), &keys().holder);
+    }
+
+    #[rstest]
+    #[case::fraction("2046-01-01T00:00:00.5Z")]
+    #[case::offset("2046-01-01T00:00:00+01:00")]
+    #[case::date_only("2046-01-01")]
+    #[case::no_such_day("2046-02-30T00:00:00Z")]
+    #[should_panic(expected = "is not YYYY-MM-DDThh:mm:ssZ")]
+    fn mdoc_rejects_a_date_that_is_not_a_utc_tdate(#[case] date: &str) {
+        let ds_key = JWK::generate_p256();
+        let mut spec = mdl_spec();
+        spec["valid_until"] = json!(date);
+        mdoc(&spec, (DS_CERT, &ds_key), &keys().holder);
+    }
+
+    /// Fake PEMs: the builder copies the DER without parsing it.
     const DS_CERT: &str = "-----BEGIN CERTIFICATE-----\nZHMtY2VydA==\n-----END CERTIFICATE-----\n";
+    const IACA_CERT: &str = "-----BEGIN CERTIFICATE-----\naWFjYQ==\n-----END CERTIFICATE-----\n";
+    const CLIENT_ID: &str = "https://verifier.example.com";
+    const NONCE: &str = "n-0S6_WzA2Mj";
+    const RESPONSE_URI: &str = "https://verifier.example.com/response";
 
     fn mdl_spec() -> Value {
         json!({
@@ -1048,9 +1304,43 @@ mod tests {
             } },
             "valid_from": "2026-01-01T00:00:00Z",
             "valid_until": "2046-01-01T00:00:00Z",
-            "client_id": "https://verifier.example.com",
-            "nonce": "n-0S6_WzA2Mj"
+            "client_id": CLIENT_ID,
+            "nonce": NONCE
         })
+    }
+
+    /// `count` items in `name_space`, each under its digest in `mso`.
+    fn assert_digests(issuer_signed: &Cbor, mso: &Cbor, name_space: &str, count: usize) {
+        let items = field(field(issuer_signed, "nameSpaces"), name_space)
+            .as_array()
+            .unwrap();
+        let digests = field(field(mso, "valueDigests"), name_space)
+            .as_map()
+            .unwrap();
+        assert_eq!(items.len(), count);
+        assert_eq!(digests.len(), count);
+        for item in items {
+            let id = field(&embedded(item), "digestID").clone();
+            let (_, digest) = digests.iter().find(|(key, _)| key == &id).unwrap();
+            assert_eq!(digest, &Cbor::Bytes(Sha256::digest(cbor(item)).to_vec()));
+        }
+    }
+
+    /// DeviceAuthentication as a verifier rebuilds it.
+    fn device_payload(
+        device_signed: &Cbor,
+        client_id: &str,
+        nonce: &str,
+        response_uri: Option<&str>,
+        thumbprint: Option<&[u8]>,
+    ) -> Vec<u8> {
+        let authentication = Cbor::Array(vec![
+            "DeviceAuthentication".into(),
+            session_transcript(client_id, nonce, response_uri, thumbprint),
+            "org.iso.18013.5.1.mDL".into(),
+            field(device_signed, "nameSpaces").clone(),
+        ]);
+        cbor(&embed(&authentication))
     }
 
     fn decode(bytes: &[u8]) -> Cbor {
@@ -1103,225 +1393,5 @@ mod tests {
             .step_by(2)
             .map(|i| u8::from_str_radix(&text[i..i + 2], 16).unwrap())
             .collect()
-    }
-
-    #[test]
-    fn mdoc_issuer_auth_signs_the_digest_of_every_item_under_the_ds_certificate() {
-        let ds_key = JWK::generate_p256();
-        let document = document(&mdoc(&mdl_spec(), (DS_CERT, &ds_key), &keys().holder));
-        let issuer_signed = field(&document, "issuerSigned");
-        let issuer_auth = field(issuer_signed, "issuerAuth").as_array().unwrap();
-
-        assert_eq!(
-            issuer_auth[1],
-            Cbor::Map(vec![(33.into(), b"ds-cert".to_vec().into())])
-        );
-        let payload = issuer_auth[2].as_bytes().unwrap();
-        verify_sign1(field(issuer_signed, "issuerAuth"), payload, &ds_key).unwrap();
-
-        let mso = embedded(&decode(payload));
-        assert_eq!(
-            field(&mso, "docType").as_text(),
-            Some("org.iso.18013.5.1.mDL")
-        );
-        let digests = field(field(&mso, "valueDigests"), "org.iso.18013.5.1")
-            .as_map()
-            .unwrap();
-        let items = field(field(issuer_signed, "nameSpaces"), "org.iso.18013.5.1")
-            .as_array()
-            .unwrap();
-        assert_eq!(items.len(), 4);
-        for item in items {
-            let id = field(&embedded(item), "digestID").clone();
-            let (_, digest) = digests.iter().find(|(key, _)| key == &id).unwrap();
-            assert_eq!(digest, &Cbor::Bytes(Sha256::digest(cbor(item)).to_vec()));
-        }
-        let values: Vec<Cbor> = items
-            .iter()
-            .map(|item| field(&embedded(item), "elementValue").clone())
-            .collect();
-        assert_eq!(
-            values,
-            vec!["Mustermann".into(), "Erika".into(), true.into(), 42.into()]
-        );
-    }
-
-    #[test]
-    fn mdoc_digests_each_name_space_under_its_own_name() {
-        let ds_key = JWK::generate_p256();
-        let mut spec = mdl_spec();
-        spec["name_spaces"]["org.iso.18013.5.1.aamva"] = json!({ "DHS_compliance": "F" });
-        let document = document(&mdoc(&spec, (DS_CERT, &ds_key), &keys().holder));
-        let issuer_signed = field(&document, "issuerSigned");
-        let issuer_auth = field(issuer_signed, "issuerAuth").as_array().unwrap();
-        let mso = embedded(&decode(issuer_auth[2].as_bytes().unwrap()));
-
-        for (name_space, count) in [("org.iso.18013.5.1", 4), ("org.iso.18013.5.1.aamva", 1)] {
-            let items = field(field(issuer_signed, "nameSpaces"), name_space)
-                .as_array()
-                .unwrap();
-            let digests = field(field(&mso, "valueDigests"), name_space)
-                .as_map()
-                .unwrap();
-            assert_eq!(items.len(), count);
-            assert_eq!(digests.len(), count);
-            for item in items {
-                let id = field(&embedded(item), "digestID").clone();
-                let (_, digest) = digests.iter().find(|(key, _)| key == &id).unwrap();
-                assert_eq!(digest, &Cbor::Bytes(Sha256::digest(cbor(item)).to_vec()));
-            }
-        }
-    }
-
-    fn device_payload(
-        device_signed: &Cbor,
-        nonce: &str,
-        response_uri: Option<&str>,
-        thumbprint: Option<&[u8]>,
-    ) -> Vec<u8> {
-        let authentication = Cbor::Array(vec![
-            "DeviceAuthentication".into(),
-            session_transcript(
-                "https://verifier.example.com",
-                nonce,
-                response_uri,
-                thumbprint,
-            ),
-            "org.iso.18013.5.1.mDL".into(),
-            field(device_signed, "nameSpaces").clone(),
-        ]);
-        cbor(&Cbor::Tag(24, Box::new(cbor(&authentication).into())))
-    }
-
-    #[test]
-    fn mdoc_device_signature_is_bound_to_the_client_id_and_nonce() {
-        let ds_key = JWK::generate_p256();
-        let document = document(&mdoc(&mdl_spec(), (DS_CERT, &ds_key), &keys().holder));
-        let device_signed = field(&document, "deviceSigned");
-        let signature = field(field(device_signed, "deviceAuth"), "deviceSignature");
-        assert_eq!(signature.as_array().unwrap()[2], Cbor::Null);
-
-        let payload = |nonce| device_payload(device_signed, nonce, None, None);
-        verify_sign1(signature, &payload("n-0S6_WzA2Mj"), &keys().holder).unwrap();
-        assert!(verify_sign1(signature, &payload("another"), &keys().holder).is_err());
-    }
-
-    #[test]
-    fn mdoc_device_signature_with_a_response_uri_is_bound_to_it() {
-        let ds_key = JWK::generate_p256();
-        let mut spec = mdl_spec();
-        spec["response_uri"] = json!("https://verifier.example.com/response");
-        let document = document(&mdoc(&spec, (DS_CERT, &ds_key), &keys().holder));
-        let device_signed = field(&document, "deviceSigned");
-        let signature = field(field(device_signed, "deviceAuth"), "deviceSignature");
-
-        let payload =
-            |response_uri| device_payload(device_signed, "n-0S6_WzA2Mj", response_uri, None);
-        let holder = &keys().holder;
-        verify_sign1(
-            signature,
-            &payload(Some("https://verifier.example.com/response")),
-            holder,
-        )
-        .unwrap();
-        assert!(
-            verify_sign1(
-                signature,
-                &payload(Some("https://other.example/response")),
-                holder
-            )
-            .is_err()
-        );
-        assert!(verify_sign1(signature, &payload(None), holder).is_err());
-        let transcript =
-            session_transcript("https://verifier.example.com", "n", Some("https://r"), None);
-        let handover = transcript.as_array().unwrap()[2].as_array().unwrap();
-        assert_eq!(handover[0].as_text(), Some("OpenID4VPHandover"));
-    }
-
-    #[test]
-    fn mdoc_device_signature_with_a_verifier_key_is_bound_to_its_thumbprint() {
-        let ds_key = JWK::generate_p256();
-        let mut spec = mdl_spec();
-        spec["response_uri"] = json!("https://verifier.example.com/response");
-        spec["verifier_key"] = json!(keys().verifier.to_public());
-        let document = document(&mdoc(&spec, (DS_CERT, &ds_key), &keys().holder));
-        let device_signed = field(&document, "deviceSigned");
-        let signature = field(field(device_signed, "deviceAuth"), "deviceSignature");
-
-        let response_uri = Some("https://verifier.example.com/response");
-        let payload =
-            |thumbprint| device_payload(device_signed, "n-0S6_WzA2Mj", response_uri, thumbprint);
-        let holder = &keys().holder;
-        let thumbprint = jwk_thumbprint(&keys().verifier);
-        verify_sign1(signature, &payload(Some(&thumbprint)), holder).unwrap();
-        assert!(verify_sign1(signature, &payload(None), holder).is_err());
-        let other = jwk_thumbprint(&keys().issuer);
-        assert!(verify_sign1(signature, &payload(Some(&other)), holder).is_err());
-    }
-
-    #[test]
-    fn session_transcript_matches_the_openid4vp_test_vector() {
-        // OpenID4VP 1.0, Appendix B.2.6.1.
-        let key: JWK = serde_json::from_value(json!({
-            "kty": "EC", "crv": "P-256", "alg": "ES256", "use": "enc", "kid": "1",
-            "x": "DxiH5Q4Yx3UrukE2lWCErq8N8bqC9CHLLrAwLz5BmE0",
-            "y": "XtLM4-3h5o3HUH0MHVJV0kyq0iBlrBwlh8qEDMZ4-Pc"
-        }))
-        .unwrap();
-
-        let transcript = session_transcript(
-            "x509_san_dns:example.com",
-            "exc7gBkxjx1rdc9udRrveKvSsJIq80avlXeLHhGwqtA",
-            Some("https://example.com/response"),
-            Some(&jwk_thumbprint(&key)),
-        );
-
-        assert_eq!(
-            cbor(&transcript.as_array().unwrap()[2]),
-            hex(
-                "82714f70656e494434565048616e646f7665725820048bc053c00442af9b8eed494cefdd9d95240d254b046b11b68013722aad38ac"
-            )
-        );
-    }
-
-    #[test]
-    fn session_transcript_matches_the_one_core_vector() {
-        let transcript = session_transcript(
-            "https://verifier.example.com:5173",
-            "BQlBqrJEK9Mv7VuBwB3oax3t1-tA84QMrt9hBF75Hu4",
-            None,
-            None,
-        );
-
-        let handover = transcript.as_array().unwrap()[2].as_array().unwrap();
-        assert_eq!(handover[0].as_text(), Some("OpenID4VPDCAPIHandover"));
-        assert_eq!(
-            handover[1].as_bytes().unwrap(),
-            &hex("47ba35613a5360b58e307bd52c49634e26832dcaf1d0863c90717ad2d8cdc9d7")
-        );
-    }
-
-    #[test]
-    #[should_panic(expected = "mdoc spec: unknown field `docType`")]
-    fn mdoc_rejects_an_unknown_spec_field() {
-        let ds_key = JWK::generate_p256();
-        mdoc(
-            &json!({ "docType": "x" }),
-            (DS_CERT, &ds_key),
-            &keys().holder,
-        );
-    }
-
-    #[rstest]
-    #[case::float(json!(1.5))]
-    #[case::array(json!(["a"]))]
-    #[case::null(json!(null))]
-    #[should_panic(expected = "element value must be a string, integer or boolean")]
-    fn mdoc_rejects_a_non_scalar_element_value(#[case] value: Value) {
-        let ds_key = JWK::generate_p256();
-        let mut spec = mdl_spec();
-        spec["name_spaces"]["org.iso.18013.5.1"]["family_name"] = value;
-        mdoc(&spec, (DS_CERT, &ds_key), &keys().holder);
     }
 }

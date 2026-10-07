@@ -35,7 +35,7 @@ A grab-bag of general-purpose helper modules shared across all SDK components: e
 - `sanitize_log_msg` — log injection prevention helper.
 
 ## Dependencies
-- Depends on: `crate::crypto`, `crate::kms`, `crate::vc::claims`, `crate::http`, `ssi`, `jsonwebtoken`, `one-core` / `one-core-portable`, `base64`, `chrono`, `time`, `serde_json`, `serde`, `tracing`, `test_fixtures` (tests only: the truststore test PKIs, the `x5c`-bound presentations and the status-list token).
+- Depends on: `crate::crypto`, `crate::kms`, `crate::vc::claims`, `crate::http`, `ssi`, `jsonwebtoken`, `one-core` / `one-core-portable`, `base64`, `chrono`, `time`, `serde_json`, `serde`, `tracing`, `test_fixtures` (tests only: the truststore test PKIs, the `x5c`-bound presentations, the status-list token and the mDL IACA → DS chain).
 - Used by: virtually every other SDK module.
 
 ## Constraints
