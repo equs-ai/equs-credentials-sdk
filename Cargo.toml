@@ -43,7 +43,7 @@ equs-common-macros = { path = "./equs-common-macros", version = "0.1.0" }
 # Internally maintained forked dependencies
 oid4vci = { package = "equs-oid4vci", version = "0.1.0" }
 openid4vp = { package = "equs-openid4vp", version = "0.1.0" }
-sd-jwt-rs = { package = "equs-sd-jwt-rs", version = "0.1.0" }
+sd-jwt-rs = { package = "equs-sd-jwt-rs", version = "0.1.1" }
 didcomm = { package = "equs-didcomm", version = "0.1.0" }
 did_peer = { package = "equs-vcx-did-peer", version = "0.1.0" }
 did_resolver = { package = "equs-vcx-did-resolver", version = "0.1.0" }
